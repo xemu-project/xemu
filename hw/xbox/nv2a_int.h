@@ -112,6 +112,9 @@
 #define NV_PFIFO_CACHE1_PUSH1                            0x00001204
 #   define NV_PFIFO_CACHE1_PUSH1_CHID                         0x0000001F
 #   define NV_PFIFO_CACHE1_PUSH1_MODE                         0x00000100
+#       define NV_PFIFO_CACHE1_PUSH1_MODE_PIO                     0
+#       define NV_PFIFO_CACHE1_PUSH1_MODE_DMA                     1
+#define NV_PFIFO_CACHE1_PUT                              0x00001210
 #define NV_PFIFO_CACHE1_STATUS                           0x00001214
 #   define NV_PFIFO_CACHE1_STATUS_LOW_MARK                      (1 << 4)
 #   define NV_PFIFO_CACHE1_STATUS_HIGH_MARK                     (1 << 8)
@@ -127,6 +130,8 @@
 #   define NV_PFIFO_CACHE1_DMA_FETCH_MAX_REQS                 0x001F0000
 #define NV_PFIFO_CACHE1_DMA_STATE                        0x00001228
 #   define NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE                (1 << 0)
+#       define NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_INC          0
+#       define NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_NON_INC      1
 #   define NV_PFIFO_CACHE1_DMA_STATE_METHOD                   0x00001FFC
 #   define NV_PFIFO_CACHE1_DMA_STATE_SUBCHANNEL               0x0000E000
 #   define NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT             0x1FFC0000
@@ -146,6 +151,7 @@
 #   define NV_PFIFO_CACHE1_DMA_SUBROUTINE_STATE                (1 << 0)
 #define NV_PFIFO_CACHE1_PULL0                            0x00001250
 #   define NV_PFIFO_CACHE1_PULL0_ACCESS                        (1 << 0)
+#define NV_PFIFO_CACHE1_GET                              0x00001270
 #define NV_PFIFO_CACHE1_ENGINE                           0x00001280
 #define NV_PFIFO_CACHE1_DMA_DCOUNT                       0x000012A0
 #   define NV_PFIFO_CACHE1_DMA_DCOUNT_VALUE                   0x00001FFC
@@ -153,7 +159,8 @@
 #   define NV_PFIFO_CACHE1_DMA_GET_JMP_SHADOW_OFFSET          0x1FFFFFFC
 #define NV_PFIFO_CACHE1_DMA_RSVD_SHADOW                  0x000012A8
 #define NV_PFIFO_CACHE1_DMA_DATA_SHADOW                  0x000012AC
-
+#define NV_PFIFO_CACHE1_METHOD                           0x00001800
+#define NV_PFIFO_CACHE1_DATA                             0x00001804
 
 #define NV_PGRAPH_INTR                                   0x00000100
 #   define NV_PGRAPH_INTR_NOTIFY                              (1 << 0)
@@ -213,6 +220,16 @@
 #   define NV_PGRAPH_CTX_SWITCH1_CONTEXT_BETA1                 (1 << 29)
 #   define NV_PGRAPH_CTX_SWITCH1_CONTEXT_BETA4                 (1 << 30)
 #   define NV_PGRAPH_CTX_SWITCH1_VOLATILE_RESET                (1 << 31)
+#define NV_PGRAPH_CTX_SWITCH2                            0x00000150
+#define NV_PGRAPH_CTX_SWITCH3                            0x00000154
+#define NV_PGRAPH_CTX_SWITCH4                            0x00000158
+#   define NV_PGRAPH_CTX_SWITCH4_USER_INSTANCE                0x0000FFFF
+#define NV_PGRAPH_CTX_SWITCH5                            0x0000015C
+#define NV_PGRAPH_CTX_CACHE1                             0x00000160
+#define NV_PGRAPH_CTX_CACHE2                             0x00000180
+#define NV_PGRAPH_CTX_CACHE3                             0x000001A0
+#define NV_PGRAPH_CTX_CACHE4                             0x000001C0
+#define NV_PGRAPH_CTX_CACHE5                             0x000001E0
 #define NV_PGRAPH_TRAPPED_ADDR                           0x00000704
 #   define NV_PGRAPH_TRAPPED_ADDR_MTHD                        0x00001FFF
 #   define NV_PGRAPH_TRAPPED_ADDR_SUBCH                       0x00070000
@@ -666,6 +683,7 @@
 
 
 #define NV_CONTEXT_SURFACES_2D                           0x0062
+#   define NV062_SET_OBJECT                                   0x00000000
 #   define NV062_SET_CONTEXT_DMA_IMAGE_SOURCE                 0x00000184
 #   define NV062_SET_CONTEXT_DMA_IMAGE_DESTIN                 0x00000188
 #   define NV062_SET_COLOR_FORMAT                             0x00000300
@@ -677,6 +695,7 @@
 #   define NV062_SET_OFFSET_DESTIN                            0x0000030C
 
 #define NV_IMAGE_BLIT                                    0x009F
+#   define NV09F_SET_OBJECT                                   0x00000000
 #   define NV09F_SET_CONTEXT_SURFACES                         0x0000019C
 #   define NV09F_SET_OPERATION                                0x000002FC
 #       define NV09F_SET_OPERATION_SRCCOPY                        3
@@ -686,6 +705,7 @@
 
 
 #define NV_KELVIN_PRIMITIVE                              0x0097
+#   define NV097_SET_OBJECT                                   0x00000000
 #   define NV097_NO_OPERATION                                 0x00000100
 #   define NV097_WAIT_FOR_IDLE                                0x00000110
 #   define NV097_SET_FLIP_READ                                0x00000120
