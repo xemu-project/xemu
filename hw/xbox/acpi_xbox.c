@@ -72,10 +72,29 @@ static const MemoryRegionOps xbox_pm_gpio_ops = {
     .write = xbox_pm_gpio_write,
 };
 
+static void pm_update_sci(XBOX_PMRegs *pm)
+{
+    int sci_level, pm1a_sts;
+
+    pm1a_sts = acpi_pm1_evt_get_sts(&pm->acpi_regs);
+
+    sci_level = (((pm1a_sts & pm->acpi_regs.pm1.evt.en) &
+                  (ACPI_BITMASK_RT_CLOCK_ENABLE |
+                   ACPI_BITMASK_POWER_BUTTON_ENABLE |
+                   ACPI_BITMASK_GLOBAL_LOCK_ENABLE |
+                   ACPI_BITMASK_TIMER_ENABLE)) != 0);
+    qemu_set_irq(pm->irq, sci_level);
+
+    /* schedule a timer interruption if needed */
+    acpi_pm_tmr_update(&pm->acpi_regs,
+                       (pm->acpi_regs.pm1.evt.en & ACPI_BITMASK_TIMER_ENABLE) &&
+                       !(pm1a_sts & ACPI_BITMASK_TIMER_STATUS));
+}
+
 static void xbox_pm_update_sci_fn(ACPIREGS *regs)
 {
-    //XBOX_PMRegs *pm = container_of(regs, XBOX_PMRegs, acpi_regs);
-    //pm_update_sci(pm);
+    XBOX_PMRegs *pm = container_of(regs, XBOX_PMRegs, acpi_regs);
+    pm_update_sci(pm);
 }
 
 #define XBOX_PM_BASE_BAR 0

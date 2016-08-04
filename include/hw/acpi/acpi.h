@@ -34,7 +34,11 @@
 #define ACPI_PM_TIMER_WIDTH             32
 
 /* PM Timer ticks per second (HZ) */
+#ifdef TARGET_XBOX
+#define PM_TIMER_FREQUENCY  3375000
+#else
 #define PM_TIMER_FREQUENCY  3579545
+#endif
 
 
 /* ACPI fixed hardware registers */

@@ -492,6 +492,9 @@ static void fadt_setup(AcpiFadtDescriptorRev1 *fadt, AcpiPmInfo *pm)
                               (1 << ACPI_FADT_F_SLP_BUTTON) |
                               (1 << ACPI_FADT_F_RTC_S4));
     fadt->flags |= cpu_to_le32(1 << ACPI_FADT_F_USE_PLATFORM_CLOCK);
+#ifdef TARGET_XBOX
+    fadt->flags |= cpu_to_le32(1 << ACPI_FADT_F_TMR_VAL_EXT);
+#endif
 }
 
 
