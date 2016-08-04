@@ -144,7 +144,12 @@ static uint64_t ioportF0_read(void *opaque, hwaddr addr, unsigned size)
 /* TSC handling */
 uint64_t cpu_get_tsc(CPUX86State *env)
 {
+#ifdef TARGET_XBOX
+    return muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), 733333333,
+                    get_ticks_per_sec());
+#else
     return cpu_get_ticks();
+#endif
 }
 
 /* SMM support */
