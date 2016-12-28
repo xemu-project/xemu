@@ -146,6 +146,7 @@
 #   define NV_PFIFO_CACHE1_DMA_INSTANCE_ADDRESS               0x0000FFFF
 #define NV_PFIFO_CACHE1_DMA_PUT                          0x00001240
 #define NV_PFIFO_CACHE1_DMA_GET                          0x00001244
+#define NV_PFIFO_CACHE1_REF                              0x00001248
 #define NV_PFIFO_CACHE1_DMA_SUBROUTINE                   0x0000124C
 #   define NV_PFIFO_CACHE1_DMA_SUBROUTINE_RETURN_OFFSET       0x1FFFFFFC
 #   define NV_PFIFO_CACHE1_DMA_SUBROUTINE_STATE                (1 << 0)
@@ -162,6 +163,8 @@
 #define NV_PFIFO_CACHE1_METHOD                           0x00001800
 #define NV_PFIFO_CACHE1_DATA                             0x00001804
 
+#define NV_PGRAPH_DEBUG_3                                0x0000008C
+#   define NV_PGRAPH_DEBUG_3_HW_CONTEXT_SWITCH                (1 << 2)
 #define NV_PGRAPH_INTR                                   0x00000100
 #   define NV_PGRAPH_INTR_NOTIFY                              (1 << 0)
 #   define NV_PGRAPH_INTR_MISSING_HW                          (1 << 4)
@@ -1259,6 +1262,7 @@
 #define NV2A_CRYSTAL_FREQ 13500000
 #define NV2A_NUM_CHANNELS 32
 #define NV2A_NUM_SUBCHANNELS 8
+#define NV2A_CACHE1_SIZE 128
 
 #define NV2A_MAX_BATCH_LENGTH 0x1FFFF
 #define NV2A_VERTEXSHADER_ATTRIBUTES 16

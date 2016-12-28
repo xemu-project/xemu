@@ -450,19 +450,19 @@ typedef struct PGRAPHState {
     ImageBlitState image_blit;
     KelvinState kelvin;
 
-    unsigned int trapped_method; //NV_PGRAPH_TRAPPED_ADDR_MTHD
-    unsigned int trapped_subchannel; //NV_PGRAPH_TRAPPED_ADDR_SUBCH
-    unsigned int trapped_channel_id; //NV_PGRAPH_TRAPPED_ADDR_CHID
-    uint32_t trapped_data[2]; //[0] = NV_PGRAPH_TRAPPED_DATA_LOW, [1] = NV_PGRAPH_TRAPPED_DATA_HIGH
-    uint32_t notify_source; //NV_PGRAPH_NSOURCE
+    // unsigned int trapped_method; //NV_PGRAPH_TRAPPED_ADDR_MTHD
+    // unsigned int trapped_subchannel; //NV_PGRAPH_TRAPPED_ADDR_SUBCH
+    // unsigned int trapped_channel_id; //NV_PGRAPH_TRAPPED_ADDR_CHID
+    // uint32_t trapped_data[2]; //[0] = NV_PGRAPH_TRAPPED_DATA_LOW, [1] = NV_PGRAPH_TRAPPED_DATA_HIGH
+    // uint32_t notify_source; //NV_PGRAPH_NSOURCE
 
-    bool fifo_access; //NV_PGRAPH_FIFO_ACCESS
+    // bool fifo_access; //NV_PGRAPH_FIFO_ACCESS
     QemuCond fifo_access_cond;
 
     QemuCond flip_3d;
 
-    unsigned int channel_id; //qqq NV_PGRAPH_CTX_USER_CHID, NV_PGRAPH_STATE3D_CHANNEL_ID?
-    bool channel_valid; //qqq NV_PGRAPH_CTX_CONTROL_CHID_VALID
+    // unsigned int channel_id; //qqq NV_PGRAPH_CTX_USER_CHID, NV_PGRAPH_STATE3D_CHANNEL_ID?
+    // bool channel_valid; //qqq NV_PGRAPH_CTX_CONTROL_CHID_VALID
     // GraphicsContext context[NV2A_NUM_CHANNELS];
 
     hwaddr dma_color, dma_zeta;
@@ -487,7 +487,8 @@ typedef struct PGRAPHState {
     GloContext *gl_context;
     GLuint gl_framebuffer;
     GLuint gl_color_buffer, gl_zeta_buffer;
-    GraphicsSubchannel subchannel_data[NV2A_NUM_SUBCHANNELS];
+    // GraphicsSubchannel subchannel_data[NV2A_NUM_SUBCHANNELS];
+    //  ??? NV_PFIFO_CACHE1_SUBCH_01_INST
 
     hwaddr dma_report;
     hwaddr report_offset;
@@ -556,7 +557,7 @@ typedef struct PGRAPHState {
 //     uint32_t parameter;
 // } CacheEntry;
 
-typedef struct Cache1State {
+// typedef struct Cache1State {
 #if 0
     unsigned int channel_id;
     enum FifoMode mode;
@@ -572,7 +573,7 @@ typedef struct Cache1State {
     unsigned int subchannel : 3;
     unsigned int method_count : 24;
     uint32_t dcount;
-    bool subroutine_active;
+    bool subroutine_active; //NV_PFIFO_CACHE1_DMA_SUBROUTINE_STATE
     hwaddr subroutine_return;
     hwaddr get_jmp_shadow;
     uint32_t rsvd_shadow;
@@ -585,15 +586,11 @@ typedef struct Cache1State {
 #endif
 
     /* The actual command queue */
-    QemuMutex puller_lock;
-    QemuCond puller_cond;
-    QemuMutex pusher_lock;
-    QemuMutex pusher_cond;
     // QemuMutex cache_lock;
     // QemuCond cache_cond;
     // QSIMPLEQ_HEAD(, CacheEntry) cache;
     // QSIMPLEQ_HEAD(, CacheEntry) working_cache;
-} Cache1State;
+// } Cache1State;
 
 // typedef struct ChannelControl {
 //     hwaddr dma_put;
@@ -633,8 +630,13 @@ typedef struct NV2AState {
         uint32_t pending_interrupts;
         uint32_t enabled_interrupts;
 
+        QemuMutex lock;
         QemuThread puller_thread;
-        Cache1State cache1;
+        QemuCond puller_cond;
+        QemuThread pusher_thread;
+        QemuCond pusher_cond;
+
+        // Cache1State cache1;
 
         uint32_t regs[0x2000];
     } pfifo;
@@ -674,7 +676,7 @@ typedef struct NV2AState {
     } pramdac;
 
     struct {
-        ChannelControl channel_control[NV2A_NUM_CHANNELS];
+        // ChannelControl channel_control[NV2A_NUM_CHANNELS];
     } user;
 
 } NV2AState;
@@ -784,7 +786,10 @@ static uint32_t ramht_hash(NV2AState *d, uint32_t handle)
         hash ^= (handle & ((1 << bits) - 1));
         handle >>= bits;
     }
-    hash ^= d->pfifo.cache1.channel_id << (bits - 4);
+
+    unsigned int channel_id = GET_MASK(d->pfifo.regs[NV_PFIFO_CACHE1_PUSH1],
+                                       NV_PFIFO_CACHE1_PUSH1_CHID);
+    hash ^= channel_id << (bits - 4);
 
     return hash;
 }
@@ -2726,11 +2731,13 @@ static void pgraph_method(NV2AState *d,
 
     PGRAPHState *pg = &d->pgraph;
 
-    assert(pg->channel_valid);
+    bool channel_valid =
+        d->pgraph.regs[NV_PGRAPH_CTX_CONTROL] & NV_PGRAPH_CTX_CONTROL_CHID;
+    assert(channel_valid);
 
-    ContextSurfaces2DState *context_surfaces_2d = &pgraph->context_surfaces_2d;
-    ImageBlitState *image_blit = &pgraph->data.image_blit;
-    KelvinState *kelvin = &pgraph->data.kelvin;
+    ContextSurfaces2DState *context_surfaces_2d = &pg->context_surfaces_2d;
+    ImageBlitState *image_blit = &pg->image_blit;
+    KelvinState *kelvin = &pg->kelvin;
 
     if (method == NV_SET_OBJECT) {
         assert(parameter < memory_region_size(&d->ramin));
@@ -2742,21 +2749,21 @@ static void pgraph_method(NV2AState *d,
         uint32_t ctx_4 = ldl_le_p((uint32_t*)(obj_ptr+12));
         uint32_t ctx_5 = parameter;
 
-        pgraph->regs[NV_PGRAPH_CTX_SWITCH1] = ctx_1;
-        pgraph->regs[NV_PGRAPH_CTX_SWITCH2] = ctx_2;
-        pgraph->regs[NV_PGRAPH_CTX_SWITCH3] = ctx_3;
-        pgraph->regs[NV_PGRAPH_CTX_SWITCH4] = ctx_4;
-        pgraph->regs[NV_PGRAPH_CTX_SWITCH5] = ctx_5;
+        pg->regs[NV_PGRAPH_CTX_SWITCH1] = ctx_1;
+        pg->regs[NV_PGRAPH_CTX_SWITCH2] = ctx_2;
+        pg->regs[NV_PGRAPH_CTX_SWITCH3] = ctx_3;
+        pg->regs[NV_PGRAPH_CTX_SWITCH4] = ctx_4;
+        pg->regs[NV_PGRAPH_CTX_SWITCH5] = ctx_5;
 
         assert(subchannel < 8);
-        pgraph->regs[NV_PGRAPH_CTX_CACHE1 + subchannel * 4] = ctx_1;
-        pgraph->regs[NV_PGRAPH_CTX_CACHE2 + subchannel * 4] = ctx_2;
-        pgraph->regs[NV_PGRAPH_CTX_CACHE3 + subchannel * 4] = ctx_3;
-        pgraph->regs[NV_PGRAPH_CTX_CACHE4 + subchannel * 4] = ctx_4;
-        pgraph->regs[NV_PGRAPH_CTX_CACHE5 + subchannel * 4] = ctx_5;
+        pg->regs[NV_PGRAPH_CTX_CACHE1 + subchannel * 4] = ctx_1;
+        pg->regs[NV_PGRAPH_CTX_CACHE2 + subchannel * 4] = ctx_2;
+        pg->regs[NV_PGRAPH_CTX_CACHE3 + subchannel * 4] = ctx_3;
+        pg->regs[NV_PGRAPH_CTX_CACHE4 + subchannel * 4] = ctx_4;
+        pg->regs[NV_PGRAPH_CTX_CACHE5 + subchannel * 4] = ctx_5;
     }
 
-    uint32_t graphics_class = GET_MASK(pgraph->regs[NV_PGRAPH_CTX_SWITCH1],
+    uint32_t graphics_class = GET_MASK(pg->regs[NV_PGRAPH_CTX_SWITCH1],
                                        NV_PGRAPH_CTX_SWITCH1_GRCLASS);
 
     pgraph_method_log(subchannel, graphics_class, method, parameter);
@@ -4798,15 +4805,20 @@ static void pgraph_method(NV2AState *d,
 static void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
 {
     bool valid;
-    valid = d->pgraph.channel_valid && d->pgraph.channel_id == channel_id;
+
+    bool channel_valid =
+        d->pgraph.regs[NV_PGRAPH_CTX_CONTROL] & NV_PGRAPH_CTX_CONTROL_CHID;
+
+    valid = channel_valid && d->pgraph.channel_id == channel_id;
     if (!valid) {
         d->pgraph.trapped_channel_id = channel_id;
     }
     if (!valid) {
-        NV2A_DPRINTF("puller needs to switch to ch %d\n", channel_id);
+        NV2A_DPRINTF("pgraph switching to ch %d\n", channel_id);
 
-        ///qqq note bi NV_PGRAPH_DEBUG_3_HW_CONTEXT_SWITCH
-
+        /* TODO: hardware context switching */
+        assert(!(d->pgraph.regs[NV_PGRAPH_DEBUG_3]
+                & NV_PGRAPH_DEBUG_3_HW_CONTEXT_SWITCH));
 
         qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock_iothread();
@@ -4828,14 +4840,67 @@ static void pgraph_wait_fifo_access(NV2AState *d) {
     }
 }
 
+static bool pfifo_run_puller(NV2AState *d)
+{
+    uint32_t *pull0 = &d->pfifo.regs[NV_PFIFO_CACHE1_PULL0];
+    uint32_t *status = &d->pfifo.regs[NV_PFIFO_CACHE1_STATUS];
+
+    if (!GET_MASK(*pull0, NV_PFIFO_CACHE1_PULL0_ACCESS)) return;
+
+    CacheEntry working_cache[NV2A_CACHE1_SIZE];
+    int working_cache_size = 0;
+
+    // pull everything into our own queue
+
+    while (true) {
+        /* empty cache1 */
+        if (GET_MASK(*status, NV_PFIFO_CACHE1_STATUS_LOW_MARK)) return;
+
+    }
+
+
+
+    qemu_cond_signal(&d->pfifo.pusher_cond);
+
+    qemu_mutex_lock(&d->pgraph.lock);
+    //make pgraph busy
+
+    qemu_mutex_unlock(&d->pfifo.lock);
+    // process working_cache
+
+    // make pgraph not busy
+    qemu_mutex_unlock(&d->pgraph.lock);
+
+    qemu_mutex_lock(&d->pfifo.lock);
+}
+
 static void* pfifo_puller_thread(void *arg)
 {
     NV2AState *d = arg;
-    Cache1State *state = &d->pfifo.cache1;
+    // Cache1State *state = &d->pfifo.cache1;
 
     glo_set_current(d->pgraph.gl_context);
 
-    // wait on CACHE1_PULL0_ACCESS
+
+    qemu_mutex_lock(&d->pfifo.lock);
+    while (true) {
+        pfifo_run_puller(d);
+        qemu_cond_wait(&d->pfifo.puller_cond, &d->pfifo.lock);
+
+        if (d->exiting) {
+            break;
+        }
+    }
+    qemu_mutex_unlock(&d->pfifo.lock);
+
+
+
+
+
+
+    // wait on CACHE1_PULL0_ACCESS - puller access to cache1
+
+
 
     // while (true) {
 
@@ -4928,14 +4993,8 @@ static void* pfifo_puller_thread(void *arg)
     return NULL;
 }
 
-static void* pfifo_pusher_thread(void *arg)
+static void pfifo_run_pusher(NV2AState *d)
 {
-    NV2AState *d = arg;
-    Cache1State *state = &d->pfifo.cache1;
-
-    /* TODO: How is cache1 selected? */
-    Cache1State *state = &d->pfifo.cache1;
-
     uint32_t *push0 = &d->pfifo.regs[NV_PFIFO_CACHE1_PUSH0];
     uint32_t *push1 = &d->pfifo.regs[NV_PFIFO_CACHE1_PUSH1];
     uint32_t *dma_subroutine = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_SUBROUTINE];
@@ -4944,171 +5003,234 @@ static void* pfifo_pusher_thread(void *arg)
     uint32_t *dma_get = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET];
     uint32_t *dma_put = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT];
     uint32_t *dma_dcount = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_DCOUNT];
+
+    uint32_t *status = &d->pfifo.regs[NV_PFIFO_CACHE1_STATUS];
     uint32_t *get = &d->pfifo.regs[NV_PFIFO_CACHE1_GET];
     uint32_t *put = &d->pfifo.regs[NV_PFIFO_CACHE1_PUT];
 
+    if (!GET_MASK(*push0, NV_PFIFO_CACHE1_PUSH0_ACCESS)) return;
+    if (!GET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_ACCESS)) return;
+
+    /* suspended */
+    if (GET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_STATUS)) return;
+
+    // PPP should we become busy here??
+    //      NV_PFIFO_CACHE1_DMA_PUSH_STATE _BUSY
+
+    unsigned int channel_id = GET_MASK(*push1,
+                                       NV_PFIFO_CACHE1_PUSH1_CHID);
+
+
+    /* Channel running DMA mode */
+    uint32_t channel_modes = d->pfifo.regs[NV_PFIFO_MODE];
+    assert(channel_modes & (1 << channel_id));
+
+    assert(GET_MASK(*push1, NV_PFIFO_CACHE1_PUSH1_MODE)
+            == NV_PFIFO_CACHE1_PUSH1_MODE_DMA);
+
+    /* We're running so there should be no pending errors... */
+    assert(GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR)
+            == NV_PFIFO_CACHE1_DMA_STATE_ERROR_NONE);
+
+    hwaddr dma_instance =
+        GET_MASK(d->pfifo.regs[NV_PFIFO_CACHE1_DMA_INSTANCE],
+                 NV_PFIFO_CACHE1_DMA_INSTANCE_ADDRESS) << 4;
+
+    hwaddr dma_len;
+    uint8_t *dma = nv_dma_map(d, dma_instance, &dma_len);
+
     while (true) {
-        qemu_mutex_lock(&state->pusher_lock);
-        while (!GET_MASK(*push0, NV_PFIFO_CACHE1_PUSH0_ACCESS)
-           || !GET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_ACCESS)
-           || GET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_STATUS) /* suspended */
-        ) {
-            qemu_cond_wait(&state->pusher_cond, &state->pusher_lock);
-
-            if (d->exiting) {
-                qemu_mutex_unlock(&state->pusher_lock);
-                glo_set_current(NULL);
-                return NULL;
-            }
-        }
-
-        /* not handling PIO for now... */
-
-        unsigned int channel_id = GET_MASK(*push1,
-                                           NV_PFIFO_CACHE1_PUSH1_CHID);
-
-
-        /* Channel running DMA */
-        uint32_t channel_modes = d->pfifo.regs[NV_PFIFO_MODE];
-        assert(channel_modes & (1 << channel_id));
-        assert(GET_MASK(*push1, NV_PFIFO_CACHE1_PUSH1_MODE)
-                == NV_PFIFO_CACHE1_PUSH1_MODE_DMA);
-
-        /* We're running so there should be no pending errors... */
-        assert(GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR)
-                == NV_PFIFO_CACHE1_DMA_STATE_ERROR_NONE);
-
-        hwaddr dma_instance =
-            GET_MASK(d->pfifo.regs[NV_PFIFO_CACHE1_DMA_INSTANCE],
-                     NV_PFIFO_CACHE1_DMA_INSTANCE_ADDRESS) << 4;
-
-        hwaddr dma_len;
-        uint8_t *dma = nv_dma_map(d, dma_instance, &dma_len);
-
-        while (true) {
-            uint32_t dma_get_v = *dma_get;
-            uint32_t dma_put_v = *dma_put;
-            if (dma_get_v == dma_put_v) break;
-            if (dma_get_v >= dma_len) {
-                assert(false);
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
-                         NV_PFIFO_CACHE1_DMA_STATE_ERROR_PROTECTION);
-                break;
-            }
-
-            uint32_t word = ldl_le_p((uint32_t*)(dma + dma_get_v));
-            dma_get_v += 4;
-
-            uint32_t method_type =
-                GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE);
-            uint32_t method =
-                GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD);
-            uint32_t method_count =
-                GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT);
-
-            uint32_t subroutine_state =
-                GET_MASK(*dma_subroutine, NV_PFIFO_CACHE1_DMA_SUBROUTINE_STATE);
-
-            if (method_count) {
-                /* data word of methods command */
-                d->pfifo.regs[NV_PFIFO_CACHE1_DMA_DATA_SHADOW] = word;
-
-                ///////////////
-
-
-                if (method_type == NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_INC) {
-                    SET_MASK(*dma_sate, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
-                        method + 4);
-                }
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
-                         method_count - 1);
-                *dma_dcount++;
-            } else {
-                /* no command active - this is the first word of a new one */
-                d->pfifo.regs[NV_PFIFO_CACHE1_DMA_RSVD_SHADOW] = word;
-
-                /* match all forms */
-                if ((word & 0xe0000003) == 0x20000000) {
-                    /* old jump */
-                    d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET_JMP_SHADOW] =
-                        dma_get_v;
-                    dma_get_v = word & 0x1fffffff;
-                    NV2A_DPRINTF("pb OLD_JMP 0x%" HWADDR_PRIx "\n", dma_get_v);
-                } else if ((word & 3) == 1) {
-                    /* jump */
-                    d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET_JMP_SHADOW] =
-                        dma_get_v;
-                    dma_get_v = word & 0xfffffffc;
-                    NV2A_DPRINTF("pb JMP 0x%" HWADDR_PRIx "\n", dma_get_v);
-                } else if ((word & 3) == 2) {
-                    /* call */
-                    if (state->subroutine_active) {
-                        state->error = NV_PFIFO_CACHE1_DMA_STATE_ERROR_CALL;
-                        break;
-                    }
-                    state->subroutine_return = control->dma_get;
-                    state->subroutine_active = true;
-                    control->dma_get = word & 0xfffffffc;
-                    NV2A_DPRINTF("pb CALL 0x%" HWADDR_PRIx "\n", dma_get_v);
-                } else if (word == 0x00020000) {
-                    /* return */
-                    if (!subroutine_state) {
-                        SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
-                                 NV_PFIFO_CACHE1_DMA_STATE_ERROR_RETURN);
-                        break;
-                    }
-                    dma_get_v = state->subroutine_return;
-                    SET_MASK(*dma_subroutine, NV_PFIFO_CACHE1_DMA_SUBROUTINE_STATE,
-                             0);
-                    NV2A_DPRINTF("pb RET 0x%" HWADDR_PRIx "\n", dma_get_v);
-                } else if ((word & 0xe0030003) == 0) {
-                    /* increasing methods */
-                    SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
-                             word & 0x1fff);
-                    SET_MASK(*dma_sate, NV_PFIFO_CACHE1_DMA_STATE_SUBCHANNEL,
-                             (word >> 13) & 7);
-                    SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
-                             (word >> 18) & 0x7ff);
-                    SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE,
-                             NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_NON_INC);
-                    *dma_dcount = 0;
-                } else if ((word & 0xe0030003) == 0x40000000) {
-                    /* non-increasing methods */
-                    SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
-                             word & 0x1fff);
-                    SET_MASK(*dma_sate, NV_PFIFO_CACHE1_DMA_STATE_SUBCHANNEL,
-                             (word >> 13) & 7);
-                    SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
-                             (word >> 18) & 0x7ff);
-                    SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE,
-                             NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_INC);
-                    *dma_dcount = 0;
-                } else {
-                    NV2A_DPRINTF("pb reserved cmd 0x%" HWADDR_PRIx " - 0x%x\n",
-                                 control->dma_get, word);
-                    SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
-                             NV_PFIFO_CACHE1_DMA_STATE_ERROR_RESERVED_CMD);
-                    break;
-                }
-            }
-
-            *dma_get = dma_get_v;
-        }
-
-        // NV2A_DPRINTF("DMA pusher done: max 0x%" HWADDR_PRIx ", 0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx "\n",
-        //      dma_len, control->dma_get, control->dma_put);
-
-        uint32_t error = GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR)
-        if (error) {
-            NV2A_DPRINTF("pb error: %d\n", error);
+        uint32_t dma_get_v = *dma_get;
+        uint32_t dma_put_v = *dma_put;
+        if (dma_get_v == dma_put_v) break;
+        if (dma_get_v >= dma_len) {
             assert(false);
+            SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
+                     NV_PFIFO_CACHE1_DMA_STATE_ERROR_PROTECTION);
+            break;
+        }
 
-            SET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_STATUS, 1); /* suspended */
+        uint32_t word = ldl_le_p((uint32_t*)(dma + dma_get_v));
+        dma_get_v += 4;
 
-            d->pfifo.pending_interrupts |= NV_PFIFO_INTR_0_DMA_PUSHER;
-            update_irq(d);
+        uint32_t method_type =
+            GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE);
+        uint32_t method =
+            GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD);
+        uint32_t method_count =
+            GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT);
+
+        uint32_t subroutine_state =
+            GET_MASK(*dma_subroutine, NV_PFIFO_CACHE1_DMA_SUBROUTINE_STATE);
+
+        if (method_count) {
+            /* full */
+            if (GET_MASK(*status, NV_PFIFO_CACHE1_STATUS_HIGH_MARK)) return;
+
+
+            /* data word of methods command */
+            d->pfifo.regs[NV_PFIFO_CACHE1_DMA_DATA_SHADOW] = word;
+
+            ///////////////
+            // PPP actually do push...
+            ///////////////
+
+            // set high mark if full
+
+            qemu_cond_signal(&d->pfifo.puller_cond);
+
+
+            if (method_type == NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_INC) {
+                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
+                         method + 4);
+            }
+            SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
+                     method_count - 1);
+            *dma_dcount++;
+        } else {
+            /* no command active - this is the first word of a new one */
+            d->pfifo.regs[NV_PFIFO_CACHE1_DMA_RSVD_SHADOW] = word;
+
+            /* match all forms */
+            if ((word & 0xe0000003) == 0x20000000) {
+                /* old jump */
+                d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET_JMP_SHADOW] =
+                    dma_get_v;
+                dma_get_v = word & 0x1fffffff;
+                NV2A_DPRINTF("pb OLD_JMP 0x%" HWADDR_PRIx "\n", dma_get_v);
+            } else if ((word & 3) == 1) {
+                /* jump */
+                d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET_JMP_SHADOW] =
+                    dma_get_v;
+                dma_get_v = word & 0xfffffffc;
+                NV2A_DPRINTF("pb JMP 0x%" HWADDR_PRIx "\n", dma_get_v);
+            } else if ((word & 3) == 2) {
+                /* call */
+                if (subroutine_active) {
+                    SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
+                             NV_PFIFO_CACHE1_DMA_STATE_ERROR_CALL);
+                    break;
+                } else {
+                    *dma_subroutine = dma_get_v;
+                    SET_MASK(*dma_subroutine,
+                             NV_PFIFO_CACHE1_DMA_SUBROUTINE_STATE, 1);
+                    dma_get_v = word & 0xfffffffc;
+                    NV2A_DPRINTF("pb CALL 0x%" HWADDR_PRIx "\n", dma_get_v);
+                }
+            } else if (word == 0x00020000) {
+                /* return */
+                if (!subroutine_state) {
+                    SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
+                             NV_PFIFO_CACHE1_DMA_STATE_ERROR_RETURN);
+                    // break;
+                } else {
+                    dma_get_v = *dma_subroutine & 0xfffffffc;
+                    SET_MASK(*dma_subroutine,
+                             NV_PFIFO_CACHE1_DMA_SUBROUTINE_STATE, 0);
+                    NV2A_DPRINTF("pb RET 0x%" HWADDR_PRIx "\n", dma_get_v);
+                }
+            } else if ((word & 0xe0030003) == 0) {
+                /* increasing methods */
+                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
+                         word & 0x1fff);
+                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_SUBCHANNEL,
+                         (word >> 13) & 7);
+                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
+                         (word >> 18) & 0x7ff);
+                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE,
+                         NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_NON_INC);
+                *dma_dcount = 0;
+            } else if ((word & 0xe0030003) == 0x40000000) {
+                /* non-increasing methods */
+                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
+                         word & 0x1fff);
+                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_SUBCHANNEL,
+                         (word >> 13) & 7);
+                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
+                         (word >> 18) & 0x7ff);
+                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE,
+                         NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_INC);
+                *dma_dcount = 0;
+            } else {
+                NV2A_DPRINTF("pb reserved cmd 0x%" HWADDR_PRIx " - 0x%x\n",
+                             control->dma_get, word);
+                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
+                         NV_PFIFO_CACHE1_DMA_STATE_ERROR_RESERVED_CMD);
+                // break;
+            }
+        }
+
+        *dma_get = dma_get_v;
+
+        if (error) {
+            break;
         }
     }
+
+    // NV2A_DPRINTF("DMA pusher done: max 0x%" HWADDR_PRIx ", 0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx "\n",
+    //      dma_len, control->dma_get, control->dma_put);
+
+    uint32_t error = GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR);
+    if (error) {
+        NV2A_DPRINTF("pb error: %d\n", error);
+        assert(false);
+
+        SET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_STATUS, 1); /* suspended */
+
+        // d->pfifo.pending_interrupts |= NV_PFIFO_INTR_0_DMA_PUSHER;
+        // update_irq(d);
+    }
+}
+
+static void* pfifo_pusher_thread(void *arg)
+{
+    NV2AState *d = arg;
+    // Cache1State *state = &d->pfifo.cache1;
+
+    /* TODO: How is cache1 selected? */
+    // Cache1State *state = &d->pfifo.cache1;
+
+    qemu_mutex_lock(&d->pfifo.lock);
+    while (true) {
+        pfifo_run_pusher(d);
+        qemu_cond_wait(&d->pfifo.pusher_cond, &d->pfifo.lock);
+
+        if (d->exiting) {
+            break;
+        }
+    }
+    qemu_mutex_unlock(&d->pfifo.lock);
+
+
+    // uint32_t *push0 = &d->pfifo.regs[NV_PFIFO_CACHE1_PUSH0];
+    // uint32_t *push1 = &d->pfifo.regs[NV_PFIFO_CACHE1_PUSH1];
+    // uint32_t *dma_subroutine = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_SUBROUTINE];
+    // uint32_t *dma_state = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_STATE];
+    // uint32_t *dma_push = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUSH];
+    // uint32_t *dma_get = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET];
+    // uint32_t *dma_put = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT];
+    // uint32_t *dma_dcount = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_DCOUNT];
+
+    // uint32_t *status = &d->pfifo.regs[NV_PFIFO_CACHE1_STATUS];
+    // uint32_t *get = &d->pfifo.regs[NV_PFIFO_CACHE1_GET];
+    // uint32_t *put = &d->pfifo.regs[NV_PFIFO_CACHE1_PUT];
+
+    // while (true) {
+    //     qemu_mutex_lock(&state->pusher_lock);
+    //     while (!GET_MASK(*push0, NV_PFIFO_CACHE1_PUSH0_ACCESS)
+    //        || !GET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_ACCESS)
+    //        || GET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_STATUS) /* suspended */
+    //     ) {
+    //         qemu_cond_wait(&state->pusher_cond, &state->pusher_lock);
+
+    //         if (d->exiting) {
+    //             qemu_mutex_unlock(&state->pusher_lock);
+    //             glo_set_current(NULL);
+    //             return NULL;
+    //         }
+    //     }
+
+    // }
 
 #if 0
     NV2A_DPRINTF("DMA pusher: max 0x%" HWADDR_PRIx ", 0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx "\n",
@@ -5321,6 +5443,8 @@ static uint64_t pfifo_read(void *opaque,
     int i;
     NV2AState *d = opaque;
 
+    qemu_mutex_lock(&d->pfifo.lock);
+
     uint64_t r = 0;
     switch (addr) {
     case NV_PFIFO_INTR_0:
@@ -5407,6 +5531,8 @@ static uint64_t pfifo_read(void *opaque,
         r = d->pfifo.regs[addr];
         break;
     }
+
+    qemu_mutex_unlock(&d->pfifo.lock);
 
     reg_log_read(NV_PFIFO, addr, r);
     return r;
@@ -5855,9 +5981,9 @@ static void pgraph_write(void *opaque, hwaddr addr,
     case NV_PGRAPH_INTR_EN:
         d->pgraph.enabled_interrupts = val;
         break;
-    case NV_PGRAPH_CTX_CONTROL:
-        d->pgraph.channel_valid = (val & NV_PGRAPH_CTX_CONTROL_CHID);
-        break;
+    // case NV_PGRAPH_CTX_CONTROL:
+    //     d->pgraph.channel_valid = (val & NV_PGRAPH_CTX_CONTROL_CHID);
+    //     break;
     // case NV_PGRAPH_CTX_USER:
     //     pgraph_set_context_user(d, val);
     //     break;
@@ -6098,37 +6224,51 @@ static void pramin_write(void *opaque, hwaddr addr,
 
 /* USER - PFIFO MMIO and DMA submission area */
 static uint64_t user_read(void *opaque,
-                               hwaddr addr, unsigned int size)
+                          hwaddr addr, unsigned int size)
 {
     NV2AState *d = opaque;
 
     unsigned int channel_id = addr >> 16;
     assert(channel_id < NV2A_NUM_CHANNELS);
 
-    ChannelControl *control = &d->user.channel_control[channel_id];
+    qemu_mutex_lock(&d->pfifo.lock);
+
+    // ChannelControl *control = &d->user.channel_control[channel_id];
 
     uint32_t channel_modes = d->pfifo.regs[NV_PFIFO_MODE];
 
     uint64_t r = 0;
     if (channel_modes & (1 << channel_id)) {
         /* DMA Mode */
-        switch (addr & 0xFFFF) {
-        case NV_USER_DMA_PUT:
-            r = control->dma_put;
-            break;
-        case NV_USER_DMA_GET:
-            r = control->dma_get;
-            break;
-        case NV_USER_REF:
-            r = control->ref;
-            break;
-        default:
-            break;
+
+        unsigned int cur_channel_id =
+            GET_MASK(d->pfifo.regs[NV_PFIFO_CACHE1_PUSH1],
+                     NV_PFIFO_CACHE1_PUSH1_CHID);
+
+        if (channel_id == cur_channel_id) {
+            switch (addr & 0xFFFF) {
+            case NV_USER_DMA_PUT:
+                r = d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT];
+                break;
+            case NV_USER_DMA_GET:
+                r = d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET];
+                break;
+            case NV_USER_REF:
+                r = d->pfifo.regs[NV_PFIFO_CACHE1_REF];
+                break;
+            default:
+                break;
+            }
+        } else {
+            /* ramfc */
+            assert(false);
         }
     } else {
         /* PIO Mode */
         assert(false);
     }
+
+    qemu_mutex_unlock(&d->pfifo.lock);
 
     reg_log_read(NV_USER, addr, r);
     return r;
@@ -6143,32 +6283,59 @@ static void user_write(void *opaque, hwaddr addr,
     unsigned int channel_id = addr >> 16;
     assert(channel_id < NV2A_NUM_CHANNELS);
 
-    ChannelControl *control = &d->user.channel_control[channel_id];
+    // ChannelControl *control = &d->user.channel_control[channel_id];
+
+    qemu_mutex_lock(&d->pfifo.lock);
 
     uint32_t channel_modes = d->pfifo.regs[NV_PFIFO_MODE];
     if (channel_modes & (1 << channel_id)) {
         /* DMA Mode */
-        switch (addr & 0xFFFF) {
-        case NV_USER_DMA_PUT:
-            control->dma_put = val;
+        unsigned int cur_channel_id =
+            GET_MASK(d->pfifo.regs[NV_PFIFO_CACHE1_PUSH1],
+                     NV_PFIFO_CACHE1_PUSH1_CHID);
 
-            if (d->pfifo.cache1.push_enabled) {
-                pfifo_run_pusher(d);
+        if (channel_id == cur_channel_id) {
+            switch (addr & 0xFFFF) {
+            case NV_USER_DMA_PUT:
+                d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT] = val;
+                break;
+            case NV_USER_DMA_GET:
+                d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET] = val;
+                break;
+            case NV_USER_REF:
+                d->pfifo.regs[NV_PFIFO_CACHE1_REF] = val;
+                break;
+            default:
+                break;
             }
-            break;
-        case NV_USER_DMA_GET:
-            control->dma_get = val;
-            break;
-        case NV_USER_REF:
-            control->ref = val;
-            break;
-        default:
-            break;
+        } else {
+            /* ramfc */
+            assert(false);
         }
+
+        // switch (addr & 0xFFFF) {
+        // case NV_USER_DMA_PUT:
+        //     control->dma_put = val;
+
+        //     if (d->pfifo.cache1.push_enabled) {
+        //         pfifo_run_pusher(d);
+        //     }
+        //     break;
+        // case NV_USER_DMA_GET:
+        //     control->dma_get = val;
+        //     break;
+        // case NV_USER_REF:
+        //     control->ref = val;
+        //     break;
+        // default:
+        //     break;
+        // }
     } else {
         /* PIO Mode */
         assert(false);
     }
+
+    qemu_mutex_unlock(&d->pfifo.lock);
 
 }
 
@@ -6650,10 +6817,11 @@ static int nv2a_initfn(PCIDevice *dev)
     }
 
     /* init fifo cache1 */
-    qemu_mutex_init(&d->pfifo.cache1.cache_lock);
-    qemu_cond_init(&d->pfifo.cache1.cache_cond);
-    QSIMPLEQ_INIT(&d->pfifo.cache1.cache);
-    QSIMPLEQ_INIT(&d->pfifo.cache1.working_cache);
+    //PPP
+    // qemu_mutex_init(&d->pfifo.cache1.cache_lock);
+    // qemu_cond_init(&d->pfifo.cache1.cache_cond);
+    // QSIMPLEQ_INIT(&d->pfifo.cache1.cache);
+    // QSIMPLEQ_INIT(&d->pfifo.cache1.working_cache);
 
     return 0;
 }
@@ -6664,11 +6832,13 @@ static void nv2a_exitfn(PCIDevice *dev)
     d = NV2A_DEVICE(dev);
 
     d->exiting = true;
-    qemu_cond_signal(&d->pfifo.cache1.cache_cond);
-    qemu_thread_join(&d->pfifo.puller_thread);
 
-    qemu_mutex_destroy(&d->pfifo.cache1.cache_lock);
-    qemu_cond_destroy(&d->pfifo.cache1.cache_cond);
+    //PPP
+    // qemu_cond_signal(&d->pfifo.cache1.cache_cond);
+    // qemu_thread_join(&d->pfifo.puller_thread);
+
+    // qemu_mutex_destroy(&d->pfifo.cache1.cache_lock);
+    // qemu_cond_destroy(&d->pfifo.cache1.cache_cond);
 
     pgraph_destroy(&d->pgraph);
 }
