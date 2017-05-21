@@ -585,8 +585,73 @@ static QString* psh_convert(struct PixelShader *ps)
         case PS_TEXTUREMODES_PASSTHRU:
             qstring_append_fmt(vars, "vec4 t%d = pT%d;\n", i, i);
             break;
+        case PS_TEXTUREMODES_CLIPPLANE: {
+            int j;
+            qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_CLIPPLANE */\n",
+                               i);
+            for (j = 0; j < 4; j++) {
+                qstring_append_fmt(vars, "  if(pT%d.%c %s 0.0) { discard; };\n",
+                                   i, "xyzw"[j],
+                                   ps->state.compare_mode[i][j] ? ">=" : "<");
+            }
+            break;
+        }
+        case PS_TEXTUREMODES_BUMPENVMAP:
+            assert(!ps->state.rect_tex[i]);
+            sampler_type = "sampler2D";
+            qstring_append_fmt(preflight, "uniform mat2 bumpMat%d;\n", i);
+            /* FIXME: Do bumpMat swizzle on CPU before upload */
+            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xy + t%d.rg * mat2(bumpMat%d[0].xy,bumpMat%d[1].yx));\n",
+                               i, i, i, ps->input_tex[i], i, i);
+            break;
+        case PS_TEXTUREMODES_BUMPENVMAP_LUM:
+            qstring_append_fmt(preflight, "uniform float bumpScale%d;\n", i);
+            qstring_append_fmt(preflight, "uniform float bumpOffset%d;\n", i);
+            qstring_append_fmt(ps->code, "/* BUMPENVMAP_LUM for stage %d */\n", i);
+            qstring_append_fmt(ps->code, "t%d = t%d * (bumpScale%d * t%d.b + bumpOffset%d);\n",
+                               i, i, i, ps->input_tex[i], i);
+            /* Now the same as BUMPENVMAP */
+            assert(!ps->state.rect_tex[i]);
+            sampler_type = "sampler2D";
+            qstring_append_fmt(preflight, "uniform mat2 bumpMat%d;\n", i);
+            /* FIXME: Do bumpMat swizzle on CPU before upload */
+            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xy + t%d.rg * mat2(bumpMat%d[0].xy,bumpMat%d[1].yx));\n",
+                               i, i, i, ps->input_tex[i], i, i);
+            break;
+        case PS_TEXTUREMODES_BRDF:
+            qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_BRDF */\n",
+                               i);
+            assert(false); /* Unimplemented */
+            break;
+        case PS_TEXTUREMODES_DOT_ST:
+            qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_ST */\n",
+                               i);
+            assert(false); /* Unimplemented */
+            break;
+        case PS_TEXTUREMODES_DOT_ZW:
+            qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_ZW */\n",
+                               i);
+            assert(false); /* Unimplemented */
+            break;
+        case PS_TEXTUREMODES_DOT_RFLCT_DIFF:
+            qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_RFLCT_DIFF */\n",
+                               i);
+            assert(false); /* Unimplemented */
+            break;
         case PS_TEXTUREMODES_DOT_RFLCT_SPEC:
-            assert(false);
+            qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_RFLCT_SPEC */\n",
+                               i);
+            assert(false); /* Unimplemented */
+            break;
+        case PS_TEXTUREMODES_DOT_STR_3D:
+            qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_STR_3D */\n",
+                               i);
+            assert(false); /* Unimplemented */
+            break;
+        case PS_TEXTUREMODES_DOT_STR_CUBE:
+            qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_STR_CUBE */\n",
+                               i);
+            assert(false); /* Unimplemented */
             break;
         case PS_TEXTUREMODES_DPNDNT_AR:
             assert(!ps->state.rect_tex[i]);
@@ -600,38 +665,17 @@ static QString* psh_convert(struct PixelShader *ps)
             qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, t%d.gb);\n",
                                i, i, ps->input_tex[i]);
             break;
-        case PS_TEXTUREMODES_BUMPENVMAP_LUM:
-            qstring_append_fmt(preflight, "uniform float bumpScale%d;\n", i);
-            qstring_append_fmt(preflight, "uniform float bumpOffset%d;\n", i);
-            qstring_append_fmt(ps->code, "/* BUMPENVMAP_LUM for stage %d */\n", i);
-            qstring_append_fmt(ps->code, "t%d = t%d * (bumpScale%d * t%d.b + bumpOffset%d);\n",
-                               i, i, i, ps->input_tex[i], i);
-            /* No break here! Extension of BUMPENVMAP */
-        case PS_TEXTUREMODES_BUMPENVMAP:
-            assert(!ps->state.rect_tex[i]);
-            sampler_type = "sampler2D";
-            qstring_append_fmt(preflight, "uniform mat2 bumpMat%d;\n", i);
-            /* FIXME: Do bumpMat swizzle on CPU before upload */
-            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xy + t%d.rg * mat2(bumpMat%d[0].xy,bumpMat%d[1].yx));\n",
-                               i, i, i, ps->input_tex[i], i, i);
-            break;
-        case PS_TEXTUREMODES_CLIPPLANE: {
-            int j;
-            qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_CLIPPLANE */\n",
-                               i);
-            for (j = 0; j < 4; j++) {
-                qstring_append_fmt(vars, "  if(pT%d.%c %s 0.0) { discard; };\n",
-                                   i, "xyzw"[j],
-                                   ps->state.compare_mode[i][j] ? ">=" : "<");
-            }
-            break;
-        }
         case PS_TEXTUREMODES_DOTPRODUCT:
             qstring_append_fmt(vars, "vec4 t%d = vec4(dot(pT%d.xyz, t%d.rgb));\n",
                                i, i, ps->input_tex[i]);
             break;
+        case PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST:
+            qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST */\n",
+                               i);
+            assert(false); /* Unimplemented */
+            break;
         default:
-            printf("%x\n", ps->tex_modes[i]);
+            fprintf(stderr, "Unknown ps tex mode: 0x%x\n", ps->tex_modes[i]);
             assert(false);
             break;
         }

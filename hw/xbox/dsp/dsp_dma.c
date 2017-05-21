@@ -96,6 +96,7 @@ static void dsp_dma_run(DSPDMAState *s)
             item_mask = 0x00FFFFFF;
             break;
         default:
+            fprintf(stderr, "Unknown dsp dma format: 0x%x\n", format);
             assert(false);
             break;
         }
