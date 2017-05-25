@@ -2813,6 +2813,9 @@ static void pgraph_method(NV2AState *d,
             case NV062_SET_COLOR_FORMAT_LE_Y8:
                 bytes_per_pixel = 1;
                 break;
+            case NV062_SET_COLOR_FORMAT_LE_R5G6B5:
+                bytes_per_pixel = 2;
+                break;
             case NV062_SET_COLOR_FORMAT_LE_A8R8G8B8:
                 bytes_per_pixel = 4;
                 break;
