@@ -103,10 +103,10 @@ typedef struct ShaderBinding {
 
     GLint fog_color_loc;
     GLint fog_param_loc[2];
-    GLint light_infinite_half_vector_loc;
-    GLint light_infinite_direction_loc;
-    GLint light_local_position_loc;
-    GLint light_local_attenuation_loc;
+    GLint light_infinite_half_vector_loc[NV2A_MAX_LIGHTS];
+    GLint light_infinite_direction_loc[NV2A_MAX_LIGHTS];
+    GLint light_local_position_loc[NV2A_MAX_LIGHTS];
+    GLint light_local_attenuation_loc[NV2A_MAX_LIGHTS];
 
 } ShaderBinding;
 

@@ -930,14 +930,14 @@ ShaderBinding* generate_shaders(const ShaderState state)
     }
     for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
         snprintf(tmp, sizeof(tmp), "lightInfiniteHalfVector%d", i);
-        ret->light_infinite_half_vector_loc = glGetUniformLocation(program, tmp);
+        ret->light_infinite_half_vector_loc[i] = glGetUniformLocation(program, tmp);
         snprintf(tmp, sizeof(tmp), "lightInfiniteDirection%d", i);
-        ret->light_infinite_direction_loc = glGetUniformLocation(program, tmp);
+        ret->light_infinite_direction_loc[i] = glGetUniformLocation(program, tmp);
 
         snprintf(tmp, sizeof(tmp), "lightLocalPosition%d", i);
-        ret->light_local_position_loc = glGetUniformLocation(program, tmp);
+        ret->light_local_position_loc[i] = glGetUniformLocation(program, tmp);
         snprintf(tmp, sizeof(tmp), "lightLocalAttenuation%d", i);
-        ret->light_local_attenuation_loc = glGetUniformLocation(program, tmp);
+        ret->light_local_attenuation_loc[i] = glGetUniformLocation(program, tmp);
     }
 
     return ret;

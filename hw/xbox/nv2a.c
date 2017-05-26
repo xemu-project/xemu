@@ -1921,20 +1921,20 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
 
         for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
             GLint loc;
-            loc = binding->light_infinite_half_vector_loc;
+            loc = binding->light_infinite_half_vector_loc[i];
             if (loc != -1) {
                 glUniform3fv(loc, 1, pg->light_infinite_half_vector[i]);
             }
-            loc = binding->light_infinite_direction_loc;
+            loc = binding->light_infinite_direction_loc[i];
             if (loc != -1) {
                 glUniform3fv(loc, 1, pg->light_infinite_direction[i]);
             }
 
-            loc = binding->light_local_position_loc;
+            loc = binding->light_local_position_loc[i];
             if (loc != -1) {
                 glUniform3fv(loc, 1, pg->light_local_position[i]);
             }
-            loc = binding->light_local_attenuation_loc;
+            loc = binding->light_local_attenuation_loc[i];
             if (loc != -1) {
                 glUniform3fv(loc, 1, pg->light_local_attenuation[i]);
             }
