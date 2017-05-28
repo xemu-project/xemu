@@ -2820,7 +2820,9 @@ static void pgraph_method(NV2AState *d,
                 bytes_per_pixel = 4;
                 break;
             default:
+                fprintf(stderr, "Unknown blit surface format: 0x%x\n", context_surfaces->color_format);
                 assert(false);
+                break;
             }
 
             hwaddr source_dma_len, dest_dma_len;
@@ -3223,6 +3225,7 @@ static void pgraph_method(NV2AState *d,
         case NV097_SET_BLEND_FUNC_SFACTOR_V_ONE_MINUS_CONSTANT_ALPHA:
             factor = NV_PGRAPH_BLEND_SFACTOR_ONE_MINUS_CONSTANT_ALPHA; break;
         default:
+            fprintf(stderr, "Unknown blend source factor: 0x%x\n", parameter);
             assert(false);
             break;
         }
@@ -3265,6 +3268,7 @@ static void pgraph_method(NV2AState *d,
         case NV097_SET_BLEND_FUNC_DFACTOR_V_ONE_MINUS_CONSTANT_ALPHA:
             factor = NV_PGRAPH_BLEND_DFACTOR_ONE_MINUS_CONSTANT_ALPHA; break;
         default:
+            fprintf(stderr, "Unknown blend destination factor: 0x%x\n", parameter);
             assert(false);
             break;
         }
@@ -3411,6 +3415,7 @@ static void pgraph_method(NV2AState *d,
         case NV097_SET_FRONT_FACE_V_CCW:
             ccw = true; break;
         default:
+            fprintf(stderr, "Unknown front face: 0x%x\n", parameter);
             assert(false);
             break;
         }
@@ -3845,6 +3850,7 @@ static void pgraph_method(NV2AState *d,
             vertex_attribute->converted_count = 3 * vertex_attribute->count;
             break;
         default:
+            fprintf(stderr, "Unknown vertex type: 0x%x\n", vertex_attribute->format);
             assert(false);
             break;
         }
@@ -4556,6 +4562,7 @@ static void pgraph_method(NV2AState *d,
                 break;
             }
             default:
+                fprintf(stderr, "Unknown zeta surface format: 0x%x\n", pg->surface_shape.zeta_format);
                 assert(false);
                 break;
             }

@@ -363,8 +363,9 @@ static QString* decode_opcode_input(const uint32_t *shader_token,
         }
         break;
     default:
-        printf("Param: 0x%x\n", param);
+        fprintf(stderr, "Unknown vs param: 0x%x\n", param);
         assert(false);
+        break;
     }
     qstring_append(ret_str, tmp);
 
