@@ -6808,6 +6808,44 @@ static void emu_illegal(dsp_core_t* dsp)
     }
 }
 
+static void emu_inc(dsp_core_t* dsp)
+{
+    uint32_t destreg, source[3], dest[3];
+    uint16_t newsr;
+
+    destreg = DSP_REG_A + (dsp->cur_inst & 1);
+    if (destreg == DSP_REG_A) {
+        dest[0] = dsp->registers[DSP_REG_A2];
+        dest[1] = dsp->registers[DSP_REG_A1];
+        dest[2] = dsp->registers[DSP_REG_A0];
+    } else {
+        dest[0] = dsp->registers[DSP_REG_B2];
+        dest[1] = dsp->registers[DSP_REG_B1];
+        dest[2] = dsp->registers[DSP_REG_B0];
+    }
+
+    source[2] = 1;
+    source[1] = 0;
+    source[0] = 0;
+
+    newsr = dsp_add56(source, dest);
+
+    if (destreg == DSP_REG_A) {
+        dsp->registers[DSP_REG_A2] = dest[0];
+        dsp->registers[DSP_REG_A1] = dest[1];
+        dsp->registers[DSP_REG_A0] = dest[2];
+    } else {
+        dsp->registers[DSP_REG_B2] = dest[0];
+        dsp->registers[DSP_REG_B1] = dest[1];
+        dsp->registers[DSP_REG_B0] = dest[2];
+    }
+
+    emu_ccr_update_e_u_n_z(dsp, dest[0], dest[1], dest[2]);
+
+    dsp->registers[DSP_REG_SR] &= BITMASK(16)-((1<<DSP_SR_V)|(1<<DSP_SR_C));
+    dsp->registers[DSP_REG_SR] |= newsr;
+}
+
 static void emu_jcc_imm(dsp_core_t* dsp)
 {
     uint32_t cc_code, newpc;

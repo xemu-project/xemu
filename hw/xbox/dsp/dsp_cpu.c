@@ -249,7 +249,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "0000110000011010100sSSSD", "extractu S1, S2, D", NULL, NULL },
     { "0000110000011000100s000D", "extractu #CO, S2, D", NULL, NULL },
     { "000000000000000000000101", "ill", NULL, emu_illegal },
-    { "00000000000000000000100d", "inc D", NULL, NULL },
+    { "00000000000000000000100d", "inc D", NULL, emu_inc },
     { "00001100000110110qqqSSSD", "insert S1, S2, D", NULL, NULL },
     { "00001100000110010qqq000D", "insert #CO, S2, D", NULL, NULL },
     { "00001110CCCCaaaaaaaaaaaa", "jcc xxx", dis_jcc_imm, emu_jcc_imm },
