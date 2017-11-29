@@ -293,6 +293,7 @@ static void do_hvf_cpu_synchronize_post_reset(CPUState *cpu, run_on_cpu_data arg
 {
     CPUState *cpu_state = cpu;
     hvf_put_registers(cpu_state);
+    wvmcs(cpu_state->hvf_fd, VMCS_ENTRY_CTLS, 0);
     cpu_state->vcpu_dirty = false;
 }
 
