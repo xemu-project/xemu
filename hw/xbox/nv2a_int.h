@@ -152,6 +152,8 @@
 #   define NV_PFIFO_CACHE1_DMA_SUBROUTINE_STATE                (1 << 0)
 #define NV_PFIFO_CACHE1_PULL0                            0x00001250
 #   define NV_PFIFO_CACHE1_PULL0_ACCESS                        (1 << 0)
+#define NV_PFIFO_CACHE1_PULL1                            0x00001254
+#   define NV_PFIFO_CACHE1_PULL1_ENGINE                       0x00000003
 #define NV_PFIFO_CACHE1_GET                              0x00001270
 #define NV_PFIFO_CACHE1_ENGINE                           0x00001280
 #define NV_PFIFO_CACHE1_DMA_DCOUNT                       0x000012A0
@@ -161,6 +163,8 @@
 #define NV_PFIFO_CACHE1_DMA_RSVD_SHADOW                  0x000012A8
 #define NV_PFIFO_CACHE1_DMA_DATA_SHADOW                  0x000012AC
 #define NV_PFIFO_CACHE1_METHOD                           0x00001800
+#   define NV_PFIFO_CACHE1_METHOD_TYPE                         (1 << 0)
+#   define NV_PFIFO_CACHE1_METHOD_SUBCHANNEL                  0x0000E000
 #define NV_PFIFO_CACHE1_DATA                             0x00001804
 
 #define NV_PGRAPH_DEBUG_3                                0x0000008C
