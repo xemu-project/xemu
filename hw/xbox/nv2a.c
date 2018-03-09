@@ -394,10 +394,6 @@ typedef struct TextureBinding {
 
 typedef struct KelvinState {
     hwaddr object_instance;
-    hwaddr dma_notifies;
-    hwaddr dma_state; //NV_PGRAPH_DMA_STATE
-    hwaddr dma_semaphore;
-    unsigned int semaphore_offset; //NV_PGRAPH_SEMAPHOREOFFSET?
 } KelvinState;
 
 typedef struct ContextSurfaces2DState {
@@ -456,8 +452,10 @@ typedef struct PGRAPHState {
     GloContext *gl_context;
     GLuint gl_framebuffer;
     GLuint gl_color_buffer, gl_zeta_buffer;
-    // GraphicsSubchannel subchannel_data[NV2A_NUM_SUBCHANNELS];
-    //  ??? NV_PFIFO_CACHE1_SUBCH_01_INST
+
+    hwaddr dma_state;
+    hwaddr dma_notifies;
+    hwaddr dma_semaphore;
 
     hwaddr dma_report;
     hwaddr report_offset;
@@ -767,44 +765,6 @@ static void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len)
     *len = dma.limit;
     return d->vram_ptr + dma.address;
 }
-
-// static void load_graphics_object(NV2AState *d, hwaddr instance_address,
-//                                  GraphicsObject *obj)
-// {
-//     uint8_t *obj_ptr;
-//     uint32_t switch1, switch2, switch3;
-
-//     assert(instance_address < memory_region_size(&d->ramin));
-
-//     obj_ptr = d->ramin_ptr + instance_address;
-
-//     switch1 = ldl_le_p((uint32_t*)obj_ptr);
-//     switch2 = ldl_le_p((uint32_t*)(obj_ptr+4));
-//     switch3 = ldl_le_p((uint32_t*)(obj_ptr+8));
-
-//     obj->graphics_class = switch1 & NV_PGRAPH_CTX_SWITCH1_GRCLASS;
-
-//     /* init graphics object */
-//     switch (obj->graphics_class) {
-//     case NV_KELVIN_PRIMITIVE:
-//         // kelvin->vertex_attributes[NV2A_VERTEX_ATTR_DIFFUSE].inline_value = 0xFFFFFFF;
-//         break;
-//     default:
-//         break;
-//     }
-// }
-
-// static GraphicsObject* lookup_graphics_object(PGRAPHState *s,
-//                                               hwaddr instance_address)
-// {
-//     int i;
-//     for (i=0; i<NV2A_NUM_SUBCHANNELS; i++) {
-//         if (s->subchannel_data[i].object_instance == instance_address) {
-//             return &s->subchannel_data[i].object;
-//         }
-//     }
-//     return NULL;
-// }
 
 /* 16 bit to [0.0, F16_MAX = 511.9375] */
 static float convert_f16_to_float(uint16_t f16) {
@@ -2898,8 +2858,9 @@ static void pgraph_method(NV2AState *d,
         NV2A_DPRINTF("flip stall done\n");
         break;
 
+    // TODO: these should be loading the dma objects from ramin here?
     case NV097_SET_CONTEXT_DMA_NOTIFIES:
-        kelvin->dma_notifies = parameter;
+        pg->dma_notifies = parameter;
         break;
     case NV097_SET_CONTEXT_DMA_A:
         pg->dma_a = parameter;
@@ -2908,7 +2869,7 @@ static void pgraph_method(NV2AState *d,
         pg->dma_b = parameter;
         break;
     case NV097_SET_CONTEXT_DMA_STATE:
-        kelvin->dma_state = parameter;
+        pg->dma_state = parameter;
         break;
     case NV097_SET_CONTEXT_DMA_COLOR:
         /* try to get any straggling draws in before the surface's changed :/ */
@@ -2926,7 +2887,7 @@ static void pgraph_method(NV2AState *d,
         pg->dma_vertex_b = parameter;
         break;
     case NV097_SET_CONTEXT_DMA_SEMAPHORE:
-        kelvin->dma_semaphore = parameter;
+        pg->dma_semaphore = parameter;
         break;
     case NV097_SET_CONTEXT_DMA_REPORT:
         pg->dma_report = parameter;
@@ -4437,7 +4398,7 @@ static void pgraph_method(NV2AState *d,
     }
 
     case NV097_SET_SEMAPHORE_OFFSET:
-        kelvin->semaphore_offset = parameter;
+        pg->regs[NV_PGRAPH_SEMAPHOREOFFSET] = parameter;
         break;
     case NV097_BACK_END_WRITE_SEMAPHORE_RELEASE: {
 
@@ -4446,11 +4407,13 @@ static void pgraph_method(NV2AState *d,
         //qemu_mutex_unlock(&d->pgraph.lock);
         //qemu_mutex_lock_iothread();
 
+        uint32_t semaphore_offset = pg->regs[NV_PGRAPH_SEMAPHOREOFFSET];
+
         hwaddr semaphore_dma_len;
-        uint8_t *semaphore_data = nv_dma_map(d, kelvin->dma_semaphore,
+        uint8_t *semaphore_data = nv_dma_map(d, pg->dma_semaphore,
                                              &semaphore_dma_len);
-        assert(kelvin->semaphore_offset < semaphore_dma_len);
-        semaphore_data += kelvin->semaphore_offset;
+        assert(semaphore_offset < semaphore_dma_len);
+        semaphore_data += semaphore_offset;
 
         stl_le_p((uint32_t*)semaphore_data, parameter);
 
