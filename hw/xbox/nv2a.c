@@ -842,16 +842,16 @@ static DMAObject nv_dma_load(NV2AState *d, hwaddr dma_obj_address)
 
 static void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len)
 {
-    assert(dma_obj_address < memory_region_size(&d->ramin));
-
     DMAObject dma = nv_dma_load(d, dma_obj_address);
 
     /* TODO: Handle targets and classes properly */
-    NV2A_DPRINTF("dma_map %x, %x, %" HWADDR_PRIx " %" HWADDR_PRIx "\n",
+    NV2A_DPRINTF("dma_map %" HWADDR_PRIx " - %x, %x, %" HWADDR_PRIx " %" HWADDR_PRIx "\n",
+                 dma_obj_address,
                  dma.dma_class, dma.dma_target, dma.address, dma.limit);
 
     dma.address &= 0x07FFFFFF;
 
+    assert(dma.address < memory_region_size(d->vram));
     // assert(dma.address + dma.limit < memory_region_size(d->vram));
     *len = dma.limit;
     return d->vram_ptr + dma.address;
@@ -1533,9 +1533,9 @@ static void pgraph_bind_textures(NV2AState *d)
             continue;
         }
 
-        NV2A_DPRINTF(" texture %d is format 0x%x, (r %d, %d or %d, %d, %d; %d%s),"
+        NV2A_DPRINTF(" texture %d is format 0x%x, off 0x%x (r %d, %d or %d, %d, %d; %d%s),"
                         " filter %x %x, levels %d-%d %d bias %d\n",
-                     i, color_format,
+                     i, color_format, offset,
                      rect_width, rect_height,
                      1 << log_width, 1 << log_height, 1 << log_depth,
                      pitch,
@@ -2741,6 +2741,8 @@ static void pgraph_method(NV2AState *d,
     ImageBlitState *image_blit = &pg->image_blit;
     KelvinState *kelvin = &pg->kelvin;
 
+    assert(subchannel < 8);
+
     if (method == NV_SET_OBJECT) {
         assert(parameter < memory_region_size(&d->ramin));
         uint8_t *obj_ptr = d->ramin_ptr + parameter;
@@ -2751,13 +2753,6 @@ static void pgraph_method(NV2AState *d,
         uint32_t ctx_4 = ldl_le_p((uint32_t*)(obj_ptr+12));
         uint32_t ctx_5 = parameter;
 
-        pg->regs[NV_PGRAPH_CTX_SWITCH1] = ctx_1;
-        pg->regs[NV_PGRAPH_CTX_SWITCH2] = ctx_2;
-        pg->regs[NV_PGRAPH_CTX_SWITCH3] = ctx_3;
-        pg->regs[NV_PGRAPH_CTX_SWITCH4] = ctx_4;
-        pg->regs[NV_PGRAPH_CTX_SWITCH5] = ctx_5;
-
-        assert(subchannel < 8);
         pg->regs[NV_PGRAPH_CTX_CACHE1 + subchannel * 4] = ctx_1;
         pg->regs[NV_PGRAPH_CTX_CACHE2 + subchannel * 4] = ctx_2;
         pg->regs[NV_PGRAPH_CTX_CACHE3 + subchannel * 4] = ctx_3;
@@ -2765,10 +2760,23 @@ static void pgraph_method(NV2AState *d,
         pg->regs[NV_PGRAPH_CTX_CACHE5 + subchannel * 4] = ctx_5;
     }
 
+    // is this right?
+    pg->regs[NV_PGRAPH_CTX_SWITCH1] = pg->regs[NV_PGRAPH_CTX_CACHE1 + subchannel * 4];
+    pg->regs[NV_PGRAPH_CTX_SWITCH2] = pg->regs[NV_PGRAPH_CTX_CACHE2 + subchannel * 4];
+    pg->regs[NV_PGRAPH_CTX_SWITCH3] = pg->regs[NV_PGRAPH_CTX_CACHE3 + subchannel * 4];
+    pg->regs[NV_PGRAPH_CTX_SWITCH4] = pg->regs[NV_PGRAPH_CTX_CACHE4 + subchannel * 4];
+    pg->regs[NV_PGRAPH_CTX_SWITCH5] = pg->regs[NV_PGRAPH_CTX_CACHE5 + subchannel * 4];
+
     uint32_t graphics_class = GET_MASK(pg->regs[NV_PGRAPH_CTX_SWITCH1],
                                        NV_PGRAPH_CTX_SWITCH1_GRCLASS);
 
+    // NV2A_DPRINTF("graphics_class %d 0x%x\n", subchannel, graphics_class);
     pgraph_method_log(subchannel, graphics_class, method, parameter);
+
+    if (subchannel != 0) {
+        // catches context switching issues on xbox d3d
+        assert(graphics_class != 0x97);
+    }
 
     /* ugly switch for now */
     switch (graphics_class) {
@@ -2901,19 +2909,13 @@ static void pgraph_method(NV2AState *d,
         if (parameter != 0) {
             assert(!(pg->pending_interrupts & NV_PGRAPH_INTR_ERROR));
 
-            // qqq
-            // pg->trapped_channel_id = pg->channel_id;
             SET_MASK(pg->regs[NV_PGRAPH_TRAPPED_ADDR],
                 NV_PGRAPH_TRAPPED_ADDR_CHID, channel_id);
-            // pg->trapped_subchannel = subchannel;
             SET_MASK(pg->regs[NV_PGRAPH_TRAPPED_ADDR],
                 NV_PGRAPH_TRAPPED_ADDR_SUBCH, subchannel);
-            // pg->trapped_method = method;
             SET_MASK(pg->regs[NV_PGRAPH_TRAPPED_ADDR],
                 NV_PGRAPH_TRAPPED_ADDR_MTHD, method);
-            // pg->trapped_data[0] = parameter;
             pg->regs[NV_PGRAPH_TRAPPED_DATA_LOW] = parameter;
-            // pg->notify_source = NV_PGRAPH_NSOURCE_NOTIFICATION; /* TODO: check this */
             pg->regs[NV_PGRAPH_NSOURCE] = NV_PGRAPH_NSOURCE_NOTIFICATION; /* TODO: check this */
             pg->pending_interrupts |= NV_PGRAPH_INTR_ERROR;
 
@@ -4898,11 +4900,13 @@ static void pfifo_run_puller(NV2AState *d)
         uint32_t method = method_entry & 0x1FFC;
         uint32_t subchannel = GET_MASK(method_entry, NV_PFIFO_CACHE1_METHOD_SUBCHANNEL);
 
+        // NV2A_DPRINTF("pull %d 0x%x 0x%x - subch %d\n", get/4, method_entry, parameter, subchannel);
+
         if (method == 0) {
             RAMHTEntry entry = ramht_lookup(d, parameter);
             assert(entry.valid);
 
-            // assert(entry.channel_id == state->channel_id); PPP
+            // assert(entry.channel_id == state->channel_id);
 
             assert(entry.engine == ENGINE_GRAPHICS);
 
@@ -4911,9 +4915,10 @@ static void pfifo_run_puller(NV2AState *d)
             assert(subchannel < 8);
             SET_MASK(*engine_reg, 3 << (4*subchannel), entry.engine);
             SET_MASK(*pull1, NV_PFIFO_CACHE1_PULL1_ENGINE, entry.engine);
+            // NV2A_DPRINTF("engine_reg1 %d 0x%x\n", subchannel, *engine_reg);
 
 
-            // QQQ
+            // TODO: this is fucked
             qemu_mutex_lock(&d->pgraph.lock);
             //make pgraph busy
             qemu_mutex_unlock(&d->pfifo.lock);
@@ -4925,7 +4930,6 @@ static void pfifo_run_puller(NV2AState *d)
             // make pgraph not busy
             qemu_mutex_unlock(&d->pgraph.lock);
             qemu_mutex_lock(&d->pfifo.lock);
-
 
         } else if (method >= 0x100) {
             // method passed to engine
@@ -4942,6 +4946,7 @@ static void pfifo_run_puller(NV2AState *d)
             }
 
             enum FIFOEngine engine = GET_MASK(*engine_reg, 3 << (4*subchannel));
+            // NV2A_DPRINTF("engine_reg2 %d 0x%x\n", subchannel, *engine_reg);
             assert(engine == ENGINE_GRAPHICS);
             SET_MASK(*pull1, NV_PFIFO_CACHE1_PULL1_ENGINE, engine);
 
@@ -5185,6 +5190,8 @@ static void pfifo_run_pusher(NV2AState *d)
             SET_MASK(method_entry, NV_PFIFO_CACHE1_METHOD_ADDRESS, method >> 2);
             SET_MASK(method_entry, NV_PFIFO_CACHE1_METHOD_TYPE, method_type);
             SET_MASK(method_entry, NV_PFIFO_CACHE1_METHOD_SUBCHANNEL, method_subchannel);
+
+            // NV2A_DPRINTF("push %d 0x%x 0x%x - subch %d\n", put/4, method_entry, word, method_subchannel);
 
             assert(put < 128*4 && (put%4) == 0);
             d->pfifo.regs[NV_PFIFO_CACHE1_METHOD + put*2] = method_entry;
