@@ -164,6 +164,7 @@
 #define NV_PFIFO_CACHE1_DMA_DATA_SHADOW                  0x000012AC
 #define NV_PFIFO_CACHE1_METHOD                           0x00001800
 #   define NV_PFIFO_CACHE1_METHOD_TYPE                         (1 << 0)
+#   define NV_PFIFO_CACHE1_METHOD_ADDRESS                     0x00001FFC
 #   define NV_PFIFO_CACHE1_METHOD_SUBCHANNEL                  0x0000E000
 #define NV_PFIFO_CACHE1_DATA                             0x00001804
 

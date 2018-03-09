@@ -807,7 +807,7 @@ static RAMHTEntry ramht_lookup(NV2AState *d, uint32_t handle)
         GET_MASK(d->pfifo.regs[NV_PFIFO_RAMHT],
                  NV_PFIFO_RAMHT_BASE_ADDRESS) << 12;
 
-    assert(ramht_address + hash * 8 < ramht_size);
+    assert(ramht_address + hash * 8 < memory_region_size(&d->ramin));
 
     uint8_t *entry_ptr = d->ramin_ptr + ramht_address + hash * 8;
 
@@ -4880,7 +4880,7 @@ static void pfifo_run_puller(NV2AState *d)
         uint32_t method_entry = d->pfifo.regs[NV_PFIFO_CACHE1_METHOD + get*2];
         uint32_t parameter = d->pfifo.regs[NV_PFIFO_CACHE1_DATA + get*2];
 
-        uint32_t new_get = (get-4u) & 0x1fc;
+        uint32_t new_get = (get+4) & 0x1fc;
         *get_reg = new_get;
 
         if (new_get == put) {
@@ -5162,7 +5162,7 @@ static void pfifo_run_pusher(NV2AState *d)
         uint32_t method_subchannel =
             GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_SUBCHANNEL);
         uint32_t method =
-            GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD);
+            GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD) << 2;
         uint32_t method_count =
             GET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT);
 
@@ -5181,7 +5181,8 @@ static void pfifo_run_pusher(NV2AState *d)
             uint32_t get = *get_reg;
 
             assert((method & 3) == 0);
-            uint32_t method_entry = method;
+            uint32_t method_entry = 0;
+            SET_MASK(method_entry, NV_PFIFO_CACHE1_METHOD_ADDRESS, method >> 2);
             SET_MASK(method_entry, NV_PFIFO_CACHE1_METHOD_TYPE, method_type);
             SET_MASK(method_entry, NV_PFIFO_CACHE1_METHOD_SUBCHANNEL, method_subchannel);
 
@@ -5192,7 +5193,6 @@ static void pfifo_run_pusher(NV2AState *d)
             uint32_t new_put = (put+4) & 0x1fc;
             *put_reg = new_put;
             if (new_put == get) {
-                assert(false);
                 // set high mark
                 *status |= NV_PFIFO_CACHE1_STATUS_HIGH_MARK;
             }
@@ -5205,7 +5205,7 @@ static void pfifo_run_pusher(NV2AState *d)
 
             if (method_type == NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_INC) {
                 SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
-                         method + 4);
+                         (method + 4) >> 2);
             }
             SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
                      method_count - 1);
@@ -5255,18 +5255,7 @@ static void pfifo_run_pusher(NV2AState *d)
             } else if ((word & 0xe0030003) == 0) {
                 /* increasing methods */
                 SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
-                         word & 0x1fff);
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_SUBCHANNEL,
-                         (word >> 13) & 7);
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
-                         (word >> 18) & 0x7ff);
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE,
-                         NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_NON_INC);
-                *dma_dcount = 0;
-            } else if ((word & 0xe0030003) == 0x40000000) {
-                /* non-increasing methods */
-                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
-                         word & 0x1fff);
+                         (word & 0x1fff) >> 2 );
                 SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_SUBCHANNEL,
                          (word >> 13) & 7);
                 SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
@@ -5274,12 +5263,24 @@ static void pfifo_run_pusher(NV2AState *d)
                 SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE,
                          NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_INC);
                 *dma_dcount = 0;
+            } else if ((word & 0xe0030003) == 0x40000000) {
+                /* non-increasing methods */
+                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD,
+                         (word & 0x1fff) >> 2 );
+                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_SUBCHANNEL,
+                         (word >> 13) & 7);
+                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
+                         (word >> 18) & 0x7ff);
+                SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE,
+                         NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_NON_INC);
+                *dma_dcount = 0;
             } else {
                 NV2A_DPRINTF("pb reserved cmd 0x%x - 0x%x\n",
                              dma_get_v, word);
                 SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_ERROR,
                          NV_PFIFO_CACHE1_DMA_STATE_ERROR_RESERVED_CMD);
                 // break;
+                assert(false);
             }
         }
 
@@ -5770,7 +5771,7 @@ static void pfifo_write(void *opaque, hwaddr addr,
     qemu_cond_broadcast(&d->pfifo.pusher_cond);
     qemu_cond_broadcast(&d->pfifo.puller_cond);
 
-    qemu_mutex_lock(&d->pfifo.lock);
+    qemu_mutex_unlock(&d->pfifo.lock);
 }
 
 
@@ -6909,6 +6910,11 @@ static void nv2a_init_memory(NV2AState *d, MemoryRegion *ram)
     qemu_thread_create(&d->pfifo.puller_thread,
                        pfifo_puller_thread,
                        d, QEMU_THREAD_JOINABLE);
+
+    /* fire up pusher */
+    qemu_thread_create(&d->pfifo.pusher_thread,
+                       pfifo_pusher_thread,
+                       d, QEMU_THREAD_JOINABLE);
 }
 
 static int nv2a_initfn(PCIDevice *dev)
@@ -6965,6 +6971,12 @@ static int nv2a_initfn(PCIDevice *dev)
     // QSIMPLEQ_INIT(&d->pfifo.cache1.cache);
     // QSIMPLEQ_INIT(&d->pfifo.cache1.working_cache);
 
+    qemu_mutex_init(&d->pfifo.lock);
+    qemu_cond_init(&d->pfifo.puller_cond);
+    qemu_cond_init(&d->pfifo.pusher_cond);
+
+    d->pfifo.regs[NV_PFIFO_CACHE1_STATUS] |= NV_PFIFO_CACHE1_STATUS_LOW_MARK;
+
     return 0;
 }
 
@@ -6977,7 +6989,11 @@ static void nv2a_exitfn(PCIDevice *dev)
 
     //PPP
     // qemu_cond_signal(&d->pfifo.cache1.cache_cond);
-    // qemu_thread_join(&d->pfifo.puller_thread);
+    
+    qemu_cond_broadcast(&d->pfifo.puller_cond);
+    qemu_cond_broadcast(&d->pfifo.pusher_cond);
+    qemu_thread_join(&d->pfifo.puller_thread);
+    qemu_thread_join(&d->pfifo.pusher_thread);
 
     // qemu_mutex_destroy(&d->pfifo.cache1.cache_lock);
     // qemu_cond_destroy(&d->pfifo.cache1.cache_cond);
