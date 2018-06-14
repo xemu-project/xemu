@@ -539,6 +539,42 @@ static QString* psh_convert(struct PixelShader *ps)
     qstring_append(preflight, "\n");
     qstring_append(preflight, "uniform vec4 fogColor;\n");
 
+    /* Window Clipping */
+    QString *clip = qstring_new();
+    if (ps->state.window_clip_count != 0) {
+        qstring_append_fmt(preflight, "uniform ivec4 clipRegion[%d];\n",
+                           ps->state.window_clip_count);
+        qstring_append_fmt(clip, "/*  Window-clip (%s) */\n",
+                           ps->state.window_clip_exclusive ?
+                               "Exclusive" : "Inclusive");
+        if (!ps->state.window_clip_exclusive) {
+            qstring_append(clip, "bool clipContained = false;\n");
+        }
+        qstring_append_fmt(clip, "for (int i = 0; i < %d; i++) {\n",
+                           ps->state.window_clip_count);
+        qstring_append(clip, "  bvec4 clipTest = bvec4(lessThan(gl_FragCoord.xy, clipRegion[i].xy),\n"
+                             "                         greaterThan(gl_FragCoord.xy, clipRegion[i].zw));\n"
+                             "  if (!any(clipTest)) {\n");
+        if (ps->state.window_clip_exclusive) {
+            /* Pixel in clip region = exclude by discarding */
+            qstring_append(clip, "    discard;\n");
+            assert(false); /* Untested */
+        } else {
+            /* Pixel in clip region = mark pixel as contained and leave */
+            qstring_append(clip, "    clipContained = true;\n"
+                                 "    break;\n");
+        }
+        qstring_append(clip, "  }\n"
+                             "}\n");
+        /* Check for inclusive window clip */
+        if (!ps->state.window_clip_exclusive) {
+            qstring_append(clip, "if (!clipContained) { discard; }\n");
+        }
+    } else if (ps->state.window_clip_exclusive) {
+        /* Clip everything */
+        qstring_append(clip, "discard;\n");
+    }
+
     /* calculate perspective-correct inputs */
     QString *vars = qstring_new();
     qstring_append(vars, "vec4 pD0 = vtx.D0 / vtx.inv_w;\n");
@@ -746,6 +782,7 @@ static QString* psh_convert(struct PixelShader *ps)
     qstring_append(final, "#version 330\n\n");
     qstring_append(final, qstring_get_str(preflight));
     qstring_append(final, "void main() {\n");
+    qstring_append(final, qstring_get_str(clip));
     qstring_append(final, qstring_get_str(vars));
     qstring_append(final, qstring_get_str(ps->code));
     qstring_append(final, "fragColor = r0;\n");

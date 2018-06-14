@@ -52,6 +52,9 @@ typedef struct PshState {
 
     bool alpha_test;
     enum PshAlphaFunc alpha_func;
+
+    bool window_clip_exclusive;
+    unsigned int window_clip_count;
 } PshState;
 
 QString *psh_translate(const PshState state);

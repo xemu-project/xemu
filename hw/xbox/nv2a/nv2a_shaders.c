@@ -985,6 +985,10 @@ ShaderBinding* generate_shaders(const ShaderState state)
         snprintf(tmp, sizeof(tmp), "lightLocalAttenuation%d", i);
         ret->light_local_attenuation_loc[i] = glGetUniformLocation(program, tmp);
     }
+    for (i = 0; i < 8; i++) {
+        snprintf(tmp, sizeof(tmp), "clipRegion[%d]", i);
+        ret->clip_region_loc[i] = glGetUniformLocation(program, tmp);
+    }
 
     return ret;
 }

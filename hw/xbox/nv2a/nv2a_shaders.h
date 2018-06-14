@@ -108,6 +108,7 @@ typedef struct ShaderBinding {
     GLint light_local_position_loc[NV2A_MAX_LIGHTS];
     GLint light_local_attenuation_loc[NV2A_MAX_LIGHTS];
 
+    GLint clip_region_loc[8];
 } ShaderBinding;
 
 ShaderBinding* generate_shaders(const ShaderState state);

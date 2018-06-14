@@ -462,6 +462,7 @@
 #   define NV_PGRAPH_SETUPRASTER_FRONTFACE                      (1 << 23)
 #   define NV_PGRAPH_SETUPRASTER_CULLENABLE                     (1 << 28)
 #   define NV_PGRAPH_SETUPRASTER_Z_FORMAT                       (1 << 29)
+#   define NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE                 (1 << 31)
 #define NV_PGRAPH_SHADERCLIPMODE                         0x00001994
 #define NV_PGRAPH_SHADERCTL                              0x00001998
 #define NV_PGRAPH_SHADERPROG                             0x0000199C
@@ -554,6 +555,26 @@
 #define NV_PGRAPH_TEXPALETTE1                            0x00001A38
 #define NV_PGRAPH_TEXPALETTE2                            0x00001A3C
 #define NV_PGRAPH_TEXPALETTE3                            0x00001A40
+#define NV_PGRAPH_WINDOWCLIPX0                           0x00001A44
+#   define NV_PGRAPH_WINDOWCLIPX0_XMIN                          0x00000FFF
+#   define NV_PGRAPH_WINDOWCLIPX0_XMAX                          0x0FFF0000
+#define NV_PGRAPH_WINDOWCLIPX1                           0x00001A48
+#define NV_PGRAPH_WINDOWCLIPX2                           0x00001A4C
+#define NV_PGRAPH_WINDOWCLIPX3                           0x00001A50
+#define NV_PGRAPH_WINDOWCLIPX4                           0x00001A54
+#define NV_PGRAPH_WINDOWCLIPX5                           0x00001A58
+#define NV_PGRAPH_WINDOWCLIPX6                           0x00001A5C
+#define NV_PGRAPH_WINDOWCLIPX7                           0x00001A60
+#define NV_PGRAPH_WINDOWCLIPY0                           0x00001A64
+#   define NV_PGRAPH_WINDOWCLIPY0_YMIN                          0x00000FFF
+#   define NV_PGRAPH_WINDOWCLIPY0_YMAX                          0x0FFF0000
+#define NV_PGRAPH_WINDOWCLIPY1                           0x00001A68
+#define NV_PGRAPH_WINDOWCLIPY2                           0x00001A6C
+#define NV_PGRAPH_WINDOWCLIPY3                           0x00001A70
+#define NV_PGRAPH_WINDOWCLIPY4                           0x00001A74
+#define NV_PGRAPH_WINDOWCLIPY5                           0x00001A78
+#define NV_PGRAPH_WINDOWCLIPY6                           0x00001A7C
+#define NV_PGRAPH_WINDOWCLIPY7                           0x00001A80
 #define NV_PGRAPH_ZSTENCILCLEARVALUE                     0x00001A88
 #define NV_PGRAPH_ZCLIPMIN                               0x00001A90
 #define NV_PGRAPH_ZOFFSETBIAS                            0x00001AA4
@@ -794,6 +815,11 @@
 #       define NV097_SET_FOG_COLOR_GREEN                          0x0000FF00
 #       define NV097_SET_FOG_COLOR_BLUE                           0x00FF0000
 #       define NV097_SET_FOG_COLOR_ALPHA                          0xFF000000
+#   define NV097_SET_WINDOW_CLIP_TYPE                         0x000002B4
+#   define NV097_SET_WINDOW_CLIP_HORIZONTAL                   0x000002C0
+#       define NV097_SET_WINDOW_CLIP_HORIZONTAL_XMIN              0x00000FFF
+#       define NV097_SET_WINDOW_CLIP_HORIZONTAL_XMAX              0x0FFF0000
+#   define NV097_SET_WINDOW_CLIP_VERTICAL                     0x000002E0
 #   define NV097_SET_ALPHA_TEST_ENABLE                        0x00000300
 #   define NV097_SET_BLEND_ENABLE                             0x00000304
 #   define NV097_SET_CULL_FACE_ENABLE                         0x00000308
