@@ -147,6 +147,9 @@ static void pic_set_irq(void *opaque, int irq, int level)
             }
             s->last_irr |= mask;
         } else {
+#ifdef XBOX
+            s->irr &= ~mask;
+#endif
             s->last_irr &= ~mask;
         }
     }
