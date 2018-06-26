@@ -38,6 +38,7 @@ struct DriveInfo {
     int cyls, heads, secs, trans;
     QemuOpts *opts;
     char *serial;
+    bool locked;
     QTAILQ_ENTRY(DriveInfo) next;
 };
 

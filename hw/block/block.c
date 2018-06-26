@@ -15,6 +15,14 @@
 #include "qapi/qapi-types-block.h"
 #include "qemu/error-report.h"
 
+void blkconf_locked(BlockConf *conf, bool *locked)
+{
+    DriveInfo *dinfo;
+
+    dinfo = blk_legacy_dinfo(conf->blk);
+    *locked = dinfo->locked;
+}
+
 void blkconf_serial(BlockConf *conf, char **serial)
 {
     DriveInfo *dinfo;

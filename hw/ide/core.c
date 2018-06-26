@@ -76,6 +76,7 @@ static const char *IDE_DMA_CMD_str(enum ide_dma_cmd enval)
 }
 
 static void ide_dummy_transfer_stop(IDEState *s);
+static void ide_security_cmd(IDEState *s);
 
 static void padstr(char *str, const char *src, int len)
 {
@@ -211,6 +212,13 @@ static void ide_identify(IDEState *s)
     }
     if (dev) {
         put_le16(p + 217, dev->rotation_rate); /* Nominal media rotation rate */
+    }
+
+    /* 2: locked, 1: security enabled, 0: security supported */
+    if (dev && dev->locked) {
+        put_le16(p + 128, (1 << 2) | (1 << 1) | 1);
+    } else {
+        put_le16(p + 128, (1 << 0));
     }
 
     ide_identify_size(s);
@@ -1712,6 +1720,15 @@ static bool cmd_packet(IDEState *s, uint8_t cmd)
     return false;
 }
 
+static bool cmd_security_unlock(IDEState *s, uint8_t cmd)
+{
+    s->error = 0;
+    s->status = READY_STAT | SEEK_STAT;
+    ide_transfer_start(s, s->io_buffer, 512,
+                       ide_security_cmd);
+    return false;
+}
+
 
 /*** CF-ATA commands ***/
 
@@ -2046,6 +2063,7 @@ static const struct {
     [IBM_SENSE_CONDITION]         = { cmd_ibm_sense_condition, CFA_OK | SET_DSC },
     [CFA_WEAR_LEVEL]              = { cmd_cfa_erase_sectors, HD_CFA_OK | SET_DSC },
     [WIN_READ_NATIVE_MAX]         = { cmd_read_native_max, HD_CFA_OK | SET_DSC },
+    [WIN_SECURITY_UNLOCK]         = { cmd_security_unlock, ALL_OK | SET_DSC },
 };
 
 static bool ide_cmd_permitted(IDEState *s, uint32_t cmd)
@@ -2264,7 +2282,8 @@ void ide_cmd_write(void *opaque, uint32_t addr, uint32_t val)
 static bool ide_is_pio_out(IDEState *s)
 {
     if (s->end_transfer_func == ide_sector_write ||
-        s->end_transfer_func == ide_atapi_cmd) {
+        s->end_transfer_func == ide_atapi_cmd ||
+        s->end_transfer_func == ide_security_cmd) {
         return false;
     } else if (s->end_transfer_func == ide_sector_read ||
                s->end_transfer_func == ide_transfer_stop ||
@@ -2402,6 +2421,17 @@ static void ide_dummy_transfer_stop(IDEState *s)
     s->io_buffer[1] = 0xff;
     s->io_buffer[2] = 0xff;
     s->io_buffer[3] = 0xff;
+}
+
+static void ide_security_cmd(IDEState *s)
+{
+    /* XXX: Actually verify the password... */
+
+    put_le16((uint16_t *)s->identify_data + 128, (1 << 1) | 1);
+
+    s->error = 0;
+    s->status = READY_STAT | SEEK_STAT;
+    ide_set_irq(s->bus);
 }
 
 void ide_bus_reset(IDEBus *bus)
@@ -2724,6 +2754,7 @@ static EndTransferFunc* transfer_end_table[] = {
         ide_atapi_cmd_reply_end,
         ide_atapi_cmd,
         ide_dummy_transfer_stop,
+        ide_security_cmd,
 };
 
 static int transfer_end_table_idx(EndTransferFunc *fn)

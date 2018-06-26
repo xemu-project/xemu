@@ -776,6 +776,10 @@ QemuOptsList qemu_legacy_drive_opts = {
             .name = "copy-on-read",
             .type = QEMU_OPT_BOOL,
             .help = "copy read data from backing file into image file",
+        },{
+            .name = "locked",
+            .type = QEMU_OPT_BOOL,
+            .help = "emulate a security locked drive",
         },
 
         { /* end of list */ }
@@ -804,6 +808,7 @@ DriveInfo *drive_new(QemuOpts *all_opts, BlockInterfaceType block_default_type)
     const char *deprecated[] = {
         "serial", "trans", "secs", "heads", "cyls", "addr"
     };
+    bool locked;
 
     /* Change legacy command line options into QMP ones */
     static const struct {
@@ -1021,6 +1026,9 @@ DriveInfo *drive_new(QemuOpts *all_opts, BlockInterfaceType block_default_type)
         goto fail;
     }
 
+    /* Locked */
+    locked = qemu_opt_get_bool(legacy_opts, "locked", false);
+
     /* Serial number */
     serial = qemu_opt_get(legacy_opts, "serial");
 
@@ -1114,6 +1122,7 @@ DriveInfo *drive_new(QemuOpts *all_opts, BlockInterfaceType block_default_type)
     dinfo->unit = unit_id;
     dinfo->devaddr = devaddr;
     dinfo->serial = g_strdup(serial);
+    dinfo->locked = locked;
 
     blk_set_legacy_dinfo(blk, dinfo);
 
