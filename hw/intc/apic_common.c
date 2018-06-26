@@ -257,6 +257,27 @@ static void apic_reset_common(DeviceState *dev)
     info->vapic_base_update(s);
 
     apic_init_reset(dev);
+
+#ifdef XBOX
+    /* XBOX
+     * The following code was removed in b8eb551 stating:
+     *
+     *     Due to old Seabios bug, QEMU reenable LINT0 after reset. This bug
+     *     is long gone and therefore this hack is no longer needed.  Since it
+     *     violates the specifications, it is removed.
+     *
+     * However, Xbox kernels will *not* unmask LINT0, causing PIC interrupt
+     * delivery failure. So bring this code back for Xbox compat.
+     */
+    if (bsp) {
+        /*
+         * LINT0 delivery mode on CPU #0 is set to ExtInt at initialization
+         * time typically by BIOS, so PIC interrupt can be delivered to the
+         * processor when local APIC is enabled.
+         */
+        s->lvt[APIC_LVT_LINT0] = 0x700;
+    }
+#endif
 }
 
 /* This function is only used for old state version 1 and 2 */
