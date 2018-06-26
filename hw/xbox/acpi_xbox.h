@@ -28,11 +28,9 @@ typedef struct XBOX_PMRegs {
     MemoryRegion io;
     MemoryRegion io_gpio;
 
-    qemu_irq irq;   
+    qemu_irq irq;
 } XBOX_PMRegs;
 
 void xbox_pm_init(PCIDevice *dev, XBOX_PMRegs *pm, qemu_irq sci_irq);
-//void xbox_pm_iospace_update(MCPX_PMRegs *pm, uint32_t pm_io_base);
-
 
 #endif

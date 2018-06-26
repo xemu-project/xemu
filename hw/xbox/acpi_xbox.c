@@ -23,6 +23,7 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "hw/pci/pci.h"
@@ -30,28 +31,28 @@
 #include "sysemu/sysemu.h"
 #include "hw/acpi/acpi.h"
 #include "hw/xbox/xbox_pci.h"
-
 #include "hw/xbox/acpi_xbox.h"
 
-#define DEBUG
+// #define DEBUG
 #ifdef DEBUG
 # define XBOX_DPRINTF(format, ...)     printf(format, ## __VA_ARGS__)
 #else
 # define XBOX_DPRINTF(format, ...)     do { } while (0)
 #endif
 
+#define XBOX_PM_BASE_BAR  0
 #define XBOX_PM_GPIO_BASE 0xC0
-#define XBOX_PM_GPIO_LEN 26
+#define XBOX_PM_GPIO_LEN  26
 
-static int field_pin = 0;
+static int field_pin;
 
 static uint64_t xbox_pm_gpio_read(void *opaque, hwaddr addr, unsigned width)
 {
     uint64_t r = 0;
     switch (addr) {
     case 0:
-        // field pin from tv encoder?
-        field_pin = (field_pin+1)&1;
+        /* field pin from tv encoder? */
+        field_pin = (field_pin + 1) & 1;
         r = field_pin << 5;
         break;
     default:
@@ -97,18 +98,15 @@ static void xbox_pm_update_sci_fn(ACPIREGS *regs)
     pm_update_sci(pm);
 }
 
-#define XBOX_PM_BASE_BAR 0
-
-void xbox_pm_init(PCIDevice *dev, XBOX_PMRegs *pm, qemu_irq sci_irq) {
-
+void xbox_pm_init(PCIDevice *dev, XBOX_PMRegs *pm, qemu_irq sci_irq)
+{
     memory_region_init(&pm->io, OBJECT(dev), "xbox-pm", 256);
 
-    pci_register_bar(dev, XBOX_PM_BASE_BAR, PCI_BASE_ADDRESS_SPACE_IO,
-                     &pm->io);
+    pci_register_bar(dev, XBOX_PM_BASE_BAR, PCI_BASE_ADDRESS_SPACE_IO, &pm->io);
 
     acpi_pm_tmr_init(&pm->acpi_regs, xbox_pm_update_sci_fn, &pm->io);
     acpi_pm1_evt_init(&pm->acpi_regs, xbox_pm_update_sci_fn, &pm->io);
-    acpi_pm1_cnt_init(&pm->acpi_regs, &pm->io, 2);
+    acpi_pm1_cnt_init(&pm->acpi_regs, &pm->io, true, true, 2);
 
     memory_region_init_io(&pm->io_gpio, OBJECT(dev), &xbox_pm_gpio_ops, pm,
                           "xbox-pm-gpio", XBOX_PM_GPIO_LEN);
