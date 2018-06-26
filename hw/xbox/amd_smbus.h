@@ -24,7 +24,7 @@
 #define AMD_SMBUS_H
 
 typedef struct AMD756SMBus {
-    i2c_bus *smbus;
+    I2CBus *smbus;
 
     uint8_t smb_stat;
     uint8_t smb_ctl;

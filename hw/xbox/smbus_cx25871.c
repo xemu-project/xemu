@@ -17,17 +17,19 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/i2c/i2c.h"
 #include "hw/i2c/smbus.h"
+#include "smbus.h"
+
+//#define DEBUG
 
 typedef struct SMBusCX25871Device {
     SMBusDevice smbusdev;
 
     uint8_t registers[256];
 } SMBusCX25871Device;
-
-//#define DEBUG
 
 static void cx_quick_cmd(SMBusDevice *dev, uint8_t read)
 {
@@ -61,7 +63,7 @@ static void cx_write_data(SMBusDevice *dev, uint8_t cmd, uint8_t *buf, int len)
            dev->i2c.address, cmd, buf[0]);
 #endif
 
-    memcpy(cx->registers+cmd, buf, MIN(len, 256-cmd));
+    memcpy(cx->registers + cmd, buf, MIN(len, 256 - cmd));
 }
 
 static uint8_t cx_read_data(SMBusDevice *dev, uint8_t cmd, int n)
@@ -71,7 +73,7 @@ static uint8_t cx_read_data(SMBusDevice *dev, uint8_t cmd, int n)
         printf("cx_read_data: addr=0x%02x cmd=0x%02x n=%d\n",
                dev->i2c.address, cmd, n);
     #endif
-    
+
     return cx->registers[cmd];
 }
 
@@ -99,7 +101,6 @@ static TypeInfo smbus_cx25871_info = {
     .class_init = smbus_cx25871_class_initfn,
 };
 
-
 static void smbus_cx25871_register_devices(void)
 {
     type_register_static(&smbus_cx25871_info);
@@ -107,8 +108,7 @@ static void smbus_cx25871_register_devices(void)
 
 type_init(smbus_cx25871_register_devices)
 
-
-void smbus_cx25871_init(i2c_bus *smbus, int address)
+void smbus_cx25871_init(I2CBus *smbus, int address)
 {
     DeviceState *cx;
     cx = qdev_create((BusState *)smbus, "smbus-cx25871");
