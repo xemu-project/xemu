@@ -2,7 +2,7 @@
  * QEMU nForce Ethernet Controller implementation
  *
  * Copyright (c) 2013 espes
- * Copyright (c) 2015 Matt Borgerson
+ * Copyright (c) 2015-2018 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -17,6 +17,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
+
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "hw/pci/pci.h"
@@ -300,13 +302,12 @@ struct RingDesc {
  ******************************************************************************/
 
 /* Init */
-static int nvnet_initfn(PCIDevice *dev);
+static void nvnet_realize(PCIDevice *dev, Error **errp);
 static void nvnet_uninit(PCIDevice *dev);
 static void nvnet_class_init(ObjectClass *klass, void *data);
 static void nvnet_cleanup(NetClientState *nc);
 static void nvnet_reset(void *opaque);
 static void qdev_nvnet_reset(DeviceState *dev);
-static void nvnet_class_init(ObjectClass *klass, void *data);
 static void nvnet_register(void);
 
 /* MMIO / IO / Phy / Device Register Access */
@@ -787,7 +788,7 @@ static const MemoryRegionOps nvnet_io_ops = {
  * Init
  ******************************************************************************/
 
-static int nvnet_initfn(PCIDevice *pci_dev)
+static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
 {
     DeviceState *dev = DEVICE(pci_dev);
     NvNetState *s = NVNET_DEVICE(pci_dev);
@@ -800,7 +801,7 @@ static int nvnet_initfn(PCIDevice *pci_dev)
         if (!s->packet_dump_file) {
             fprintf(stderr, "Failed to open %s for writing!\n",
                             s->packet_dump_path);
-            return -1;
+            exit(1);
         }
     }
 
@@ -830,8 +831,6 @@ static int nvnet_initfn(PCIDevice *pci_dev)
     s->regs[NvRegMacAddrA+0x03] = s->conf.macaddr.a[3];
     s->regs[NvRegMacAddrB+0x00] = s->conf.macaddr.a[4];
     s->regs[NvRegMacAddrB+0x01] = s->conf.macaddr.a[5];
-
-    return 0;
 }
 
 static void nvnet_uninit(PCIDevice *dev)
@@ -842,8 +841,8 @@ static void nvnet_uninit(PCIDevice *dev)
         fclose(s->packet_dump_file);
     }
 
-    memory_region_destroy(&s->mmio);
-    memory_region_destroy(&s->io);
+    // memory_region_destroy(&s->mmio);
+    // memory_region_destroy(&s->io);
     qemu_del_nic(s->nic);
 }
 
@@ -994,7 +993,7 @@ static void nvnet_class_init(ObjectClass *klass, void *data)
     k->device_id = PCI_DEVICE_ID_NVIDIA_NVENET_1;
     k->revision  = 210;
     k->class_id  = PCI_CLASS_NETWORK_ETHERNET;
-    k->init      = nvnet_initfn;
+    k->realize   = nvnet_realize;
     k->exit      = nvnet_uninit;
 
     dc->desc  = "nForce Ethernet Controller";
@@ -1009,7 +1008,7 @@ static Property nvnet_properties[] = {
 };
 
 static NetClientInfo net_nvnet_info = {
-    .type                = NET_CLIENT_OPTIONS_KIND_NIC,
+    .type                = NET_CLIENT_DRIVER_NIC,
     .size                = sizeof(NICState),
     .can_receive         = nvnet_can_receive,
     .receive             = nvnet_receive,
@@ -1023,6 +1022,10 @@ static const TypeInfo nvnet_info = {
     .parent              = TYPE_PCI_DEVICE,
     .instance_size       = sizeof(NvNetState),
     .class_init          = nvnet_class_init,
+    .interfaces          = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static void nvnet_register(void)
@@ -1030,4 +1033,3 @@ static void nvnet_register(void)
     type_register_static(&nvnet_info);
 }
 type_init(nvnet_register);
-
