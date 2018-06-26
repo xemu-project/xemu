@@ -1133,6 +1133,25 @@ bool memory_region_get_dirty(MemoryRegion *mr, hwaddr addr,
 void memory_region_set_dirty(MemoryRegion *mr, hwaddr addr,
                              hwaddr size);
 
+bool memory_region_test_and_clear_dirty(MemoryRegion *mr, hwaddr addr,
+                                        hwaddr size, unsigned client);
+
+/**
+ * memory_region_set_client_dirty: Mark a range of bytes as dirty
+ *                                 in a memory region for a specified client.
+ *
+ * Marks a range of bytes as dirty, after it has been dirtied outside
+ * guest code.
+ *
+ * @mr: the memory region being dirtied.
+ * @addr: the address (relative to the start of the region) being dirtied.
+ * @size: size of the range being dirtied.
+ * @client: the user of the logging information; %DIRTY_MEMORY_MIGRATION or
+ *          %DIRTY_MEMORY_VGA.
+ */
+void memory_region_set_client_dirty(MemoryRegion *mr, hwaddr addr,
+                                    hwaddr size, unsigned client);
+
 /**
  * memory_region_snapshot_and_clear_dirty: Get a snapshot of the dirty
  *                                         bitmap and clear it.
@@ -2011,6 +2030,8 @@ address_space_write_cached(MemoryRegionCache *cache, hwaddr addr,
     assert(addr < cache->len && len <= cache->len - addr);
     address_space_write(cache->as, cache->xlat + addr, MEMTXATTRS_UNSPECIFIED, buf, len);
 }
+
+void memory_region_destroy(MemoryRegion *mr);
 
 #endif
 

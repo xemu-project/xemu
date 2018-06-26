@@ -11,7 +11,8 @@ typedef struct RAMBlockNotifier RAMBlockNotifier;
 #define DIRTY_MEMORY_VGA       0
 #define DIRTY_MEMORY_CODE      1
 #define DIRTY_MEMORY_MIGRATION 2
-#define DIRTY_MEMORY_NUM       3        /* num of dirty bits */
+#define DIRTY_MEMORY_NV2A      3
+#define DIRTY_MEMORY_NUM       4        /* num of dirty bits */
 
 /* The dirty memory bitmap is split into fixed-size blocks to allow growth
  * under RCU.  The bitmap for a block can be accessed as follows:
