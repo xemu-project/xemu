@@ -16,6 +16,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
+
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "hw/pci/pci.h"
@@ -26,25 +28,21 @@ typedef struct MCPXACIState {
 
     AC97LinkState ac97;
 
-
     MemoryRegion io_nam, io_nabm;
 
     MemoryRegion mmio;
     MemoryRegion nam_mmio, nabm_mmio;
 } MCPXACIState;
 
-
 #define MCPX_ACI_DEVICE(obj) \
     OBJECT_CHECK(MCPXACIState, (obj), "mcpx-aci")
 
-
-static int mcpx_aci_initfn(PCIDevice *dev)
+static void mcpx_aci_realize(PCIDevice *dev, Error **errp)
 {
     MCPXACIState *d = MCPX_ACI_DEVICE(dev);
 
     dev->config[PCI_INTERRUPT_PIN] = 0x01;
 
-    //mmio
     memory_region_init(&d->mmio, OBJECT(dev), "mcpx-aci-mmio", 0x1000);
 
     memory_region_init_io(&d->io_nam, OBJECT(dev), &ac97_io_nam_ops, &d->ac97,
@@ -65,10 +63,7 @@ static int mcpx_aci_initfn(PCIDevice *dev)
     memory_region_add_subregion(&d->mmio, 0x100, &d->io_nabm);
 
     pci_register_bar(&d->dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
-
     ac97_common_init(&d->ac97, &d->dev, pci_get_address_space(&d->dev));
-
-    return 0;
 }
 
 static void mcpx_aci_class_init(ObjectClass *klass, void *data)
@@ -80,7 +75,7 @@ static void mcpx_aci_class_init(ObjectClass *klass, void *data)
     k->device_id = PCI_DEVICE_ID_NVIDIA_MCPX_ACI;
     k->revision = 210;
     k->class_id = PCI_CLASS_MULTIMEDIA_AUDIO;
-    k->init = mcpx_aci_initfn;
+    k->realize = mcpx_aci_realize;
 
     dc->desc = "MCPX Audio Codec Interface";
 }
@@ -90,10 +85,15 @@ static const TypeInfo mcpx_aci_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(MCPXACIState),
     .class_init    = mcpx_aci_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static void mcpx_aci_register(void)
 {
     type_register_static(&mcpx_aci_info);
 }
+
 type_init(mcpx_aci_register);

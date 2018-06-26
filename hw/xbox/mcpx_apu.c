@@ -16,10 +16,12 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
+
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "hw/pci/pci.h"
-
+#include "cpu.h"
 #include "hw/xbox/dsp/dsp.h"
 
 #define NV_PAPU_ISTS                                     0x00001000
@@ -115,16 +117,13 @@ static const struct {
 
 #define MCPX_HW_MAX_VOICES 256
 
-
-#define GET_MASK(v, mask) (((v) & (mask)) >> (ffs(mask)-1))
+#define GET_MASK(v, mask) (((v) & (mask)) >> (ffs(mask) - 1))
 
 #define SET_MASK(v, mask, val)                                       \
     do {                                                             \
         (v) &= ~(mask);                                              \
-        (v) |= ((val) << (ffs(mask)-1)) & (mask);                    \
+        (v) |= ((val) << (ffs(mask) - 1)) & (mask);                  \
     } while (0)
-
-
 
 // #define MCPX_DEBUG
 #ifdef MCPX_DEBUG
@@ -132,7 +131,6 @@ static const struct {
 #else
 # define MCPX_DPRINTF(format, ...)       do { } while (0)
 #endif
-
 
 typedef struct MCPXAPUState {
     PCIDevice dev;
@@ -167,7 +165,6 @@ typedef struct MCPXAPUState {
 
 } MCPXAPUState;
 
-
 #define MCPX_APU_DEVICE(obj) \
     OBJECT_CHECK(MCPXAPUState, (obj), "mcpx-apu")
 
@@ -179,7 +176,8 @@ static uint32_t voice_get_mask(MCPXAPUState *d,
     assert(voice_handle < 0xFFFF);
     hwaddr voice = d->regs[NV_PAPU_VPVADDR]
                     + voice_handle * NV_PAVS_SIZE;
-    return (ldl_le_phys(voice + offset) & mask) >> (ffs(mask)-1);
+    return (ldl_le_phys(&address_space_memory, voice + offset) & mask)
+              >> (ffs(mask) - 1);
 }
 static void voice_set_mask(MCPXAPUState *d,
                            unsigned int voice_handle,
@@ -190,12 +188,10 @@ static void voice_set_mask(MCPXAPUState *d,
     assert(voice_handle < 0xFFFF);
     hwaddr voice = d->regs[NV_PAPU_VPVADDR]
                     + voice_handle * NV_PAVS_SIZE;
-    uint32_t v = ldl_le_phys(voice + offset) & ~mask;
-    stl_le_phys(voice + offset,
-                v | ((val << (ffs(mask)-1)) & mask));
+    uint32_t v = ldl_le_phys(&address_space_memory, voice + offset) & ~mask;
+    stl_le_phys(&address_space_memory, voice + offset,
+                v | ((val << (ffs(mask) - 1)) & mask));
 }
-
-
 
 static void update_irq(MCPXAPUState *d)
 {
@@ -233,6 +229,7 @@ static uint64_t mcpx_apu_read(void *opaque,
     MCPX_DPRINTF("mcpx apu: read [0x%llx] -> 0x%llx\n", addr, r);
     return r;
 }
+
 static void mcpx_apu_write(void *opaque, hwaddr addr,
                            uint64_t val, unsigned int size)
 {
@@ -247,8 +244,8 @@ static void mcpx_apu_write(void *opaque, hwaddr addr,
         update_irq(d);
         break;
     case NV_PAPU_SECTL:
-        if ( ((val & NV_PAPU_SECTL_XCNTMODE) >> 3)
-                == NV_PAPU_SECTL_XCNTMODE_OFF) {
+        if (((val & NV_PAPU_SECTL_XCNTMODE) >> 3)
+              == NV_PAPU_SECTL_XCNTMODE_OFF) {
             timer_del(d->se.frame_timer);
         } else {
             timer_mod(d->se.frame_timer,
@@ -260,7 +257,7 @@ static void mcpx_apu_write(void *opaque, hwaddr addr,
         /* 'magic write'
          * This value is expected to be written to FEMEMADDR on completion of
          * something to do with notifies. Just do it now :/ */
-        stl_le_phys(d->regs[NV_PAPU_FEMEMADDR], val);
+        stl_le_phys(&address_space_memory, d->regs[NV_PAPU_FEMEMADDR], val);
         d->regs[addr] = val;
         break;
     default:
@@ -270,11 +267,11 @@ static void mcpx_apu_write(void *opaque, hwaddr addr,
         break;
     }
 }
+
 static const MemoryRegionOps mcpx_apu_mmio_ops = {
     .read = mcpx_apu_read,
     .write = mcpx_apu_write,
 };
-
 
 static void fe_method(MCPXAPUState *d,
                       uint32_t method, uint32_t argument)
@@ -295,7 +292,7 @@ static void fe_method(MCPXAPUState *d,
         list = GET_MASK(d->regs[NV_PAPU_FEAV], NV_PAPU_FEAV_LST);
         if (list != NV1BA0_PIO_SET_ANTECEDENT_VOICE_LIST_INHERIT) {
             /* voice is added to the top of the selected list */
-            unsigned int top_reg = voice_list_regs[list-1].top;
+            unsigned int top_reg = voice_list_regs[list - 1].top;
             voice_set_mask(d, selected_handle,
                 NV_PAVS_VOICE_TAR_PITCH_LINK,
                 NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE,
@@ -342,7 +339,7 @@ static void fe_method(MCPXAPUState *d,
         break;
     case SE2FE_IDLE_VOICE:
         if (d->regs[NV_PAPU_FETFORCE1] & NV_PAPU_FETFORCE1_SE2FE_IDLE_VOICE) {
-            
+
             d->regs[NV_PAPU_FECTL] &= ~NV_PAPU_FECTL_FEMETHMODE;
             d->regs[NV_PAPU_FECTL] |= NV_PAPU_FECTL_FEMETHMODE_TRAPPED;
 
@@ -361,7 +358,6 @@ static void fe_method(MCPXAPUState *d,
     }
 }
 
-
 static uint64_t vp_read(void *opaque,
                         hwaddr addr, unsigned int size)
 {
@@ -376,6 +372,7 @@ static uint64_t vp_read(void *opaque,
     }
     return 0;
 }
+
 static void vp_write(void *opaque, hwaddr addr,
                      uint64_t val, unsigned int size)
 {
@@ -396,39 +393,50 @@ static void vp_write(void *opaque, hwaddr addr,
         break;
     }
 }
+
 static const MemoryRegionOps vp_ops = {
     .read = vp_read,
     .write = vp_write,
 };
 
 static void scratch_rw(hwaddr sge_base, unsigned int max_sge,
-                       uint8_t* ptr, uint32_t addr, size_t len, bool dir)
+                       uint8_t *ptr, uint32_t addr, size_t len, bool dir)
 {
     int i;
-    for (i=0; i<len; i++) {
+    for (i = 0; i < len; i++) {
         unsigned int entry = (addr + i) / TARGET_PAGE_SIZE;
         assert(entry < max_sge);
-        uint32_t prd_address = ldl_le_phys(sge_base + entry*4*2);
-        uint32_t prd_control = ldl_le_phys(sge_base + entry*4*2 + 1);
+        uint32_t prd_address = ldl_le_phys(&address_space_memory,
+                                           sge_base + entry * 8);
+        /* uint32_t prd_control = ldl_le_phys(&address_space_memory,
+                                            sge_base + entry*4*2 + 1); */
 
         hwaddr paddr = prd_address + (addr + i) % TARGET_PAGE_SIZE;
 
         if (dir) {
-            stb_phys(paddr, ptr[i]);
+            stb_phys(&address_space_memory, paddr, ptr[i]);
         } else {
-            ptr[i] = ldub_phys(paddr);
+            ptr[i] = ldub_phys(&address_space_memory, paddr);
         }
     }
 }
 
-static void gp_scratch_rw(void *opaque, uint8_t* ptr, uint32_t addr, size_t len, bool dir)
+static void gp_scratch_rw(void *opaque,
+                          uint8_t *ptr,
+                          uint32_t addr,
+                          size_t len,
+                          bool dir)
 {
     MCPXAPUState *d = opaque;
     scratch_rw(d->regs[NV_PAPU_GPSADDR], d->regs[NV_PAPU_GPSMAXSGE],
                ptr, addr, len, dir);
 }
 
-static void ep_scratch_rw(void *opaque, uint8_t* ptr, uint32_t addr, size_t len, bool dir)
+static void ep_scratch_rw(void *opaque,
+                          uint8_t *ptr,
+                          uint32_t addr,
+                          size_t len,
+                          bool dir)
 {
     MCPXAPUState *d = opaque;
     scratch_rw(d->regs[NV_PAPU_EPSADDR], d->regs[NV_PAPU_EPSMAXSGE],
@@ -439,16 +447,17 @@ static void proc_rst_write(DSPState *dsp, uint32_t oldval, uint32_t val)
 {
     if (!(val & NV_PAPU_GPRST_GPRST) || !(val & NV_PAPU_GPRST_GPDSPRST)) {
         dsp_reset(dsp);
-    } else if ((!(oldval & NV_PAPU_GPRST_GPRST)
-                || !(oldval & NV_PAPU_GPRST_GPDSPRST))
-            && ((val & NV_PAPU_GPRST_GPRST) && (val & NV_PAPU_GPRST_GPDSPRST)) ) {
+    } else if (
+        (!(oldval & NV_PAPU_GPRST_GPRST) || !(oldval & NV_PAPU_GPRST_GPDSPRST))
+        && ((val & NV_PAPU_GPRST_GPRST) && (val & NV_PAPU_GPRST_GPDSPRST))) {
         dsp_bootstrap(dsp);
     }
 }
 
 /* Global Processor - programmable DSP */
 static uint64_t gp_read(void *opaque,
-                        hwaddr addr, unsigned int size)
+                        hwaddr addr,
+                        unsigned int size)
 {
     MCPXAPUState *d = opaque;
 
@@ -456,6 +465,7 @@ static uint64_t gp_read(void *opaque,
     MCPX_DPRINTF("mcpx apu GP: read [0x%llx] -> 0x%llx\n", addr, r);
     return r;
 }
+
 static void gp_write(void *opaque, hwaddr addr,
                      uint64_t val, unsigned int size)
 {
@@ -473,31 +483,33 @@ static void gp_write(void *opaque, hwaddr addr,
         break;
     }
 }
+
 static const MemoryRegionOps gp_ops = {
     .read = gp_read,
     .write = gp_write,
 };
 
-
 /* Encode Processor - encoding DSP */
 static uint64_t ep_read(void *opaque,
-                        hwaddr addr, unsigned int size)
+                        hwaddr addr,
+                        unsigned int size)
 {
     MCPXAPUState *d = opaque;
 
     uint64_t r = 0;
+
     switch (addr) {
-    case NV_PAPU_EPXMEM ... NV_PAPU_EPXMEM + 0xC00*4: {
+    case NV_PAPU_EPXMEM ... NV_PAPU_EPXMEM + 0xC00 * 4: {
         uint32_t xaddr = (addr - NV_PAPU_EPXMEM) / 4;
         r = dsp_read_memory(d->ep.dsp, 'X', xaddr);
         break;
     }
-    case NV_PAPU_EPYMEM ... NV_PAPU_EPYMEM + 0x100*4: {
+    case NV_PAPU_EPYMEM ... NV_PAPU_EPYMEM + 0x100 * 4: {
         uint32_t yaddr = (addr - NV_PAPU_EPYMEM) / 4;
         r = dsp_read_memory(d->ep.dsp, 'Y', yaddr);
         break;
     }
-    case NV_PAPU_EPPMEM ... NV_PAPU_EPPMEM + 0x1000*4: {
+    case NV_PAPU_EPPMEM ... NV_PAPU_EPPMEM + 0x1000 * 4: {
         uint32_t paddr = (addr - NV_PAPU_EPPMEM) / 4;
         r = dsp_read_memory(d->ep.dsp, 'P', paddr);
         break;
@@ -509,6 +521,7 @@ static uint64_t ep_read(void *opaque,
     MCPX_DPRINTF("mcpx apu EP: read [0x%llx] -> 0x%llx\n", addr, r);
     return r;
 }
+
 static void ep_write(void *opaque, hwaddr addr,
                      uint64_t val, unsigned int size)
 {
@@ -517,15 +530,15 @@ static void ep_write(void *opaque, hwaddr addr,
     MCPX_DPRINTF("mcpx apu EP: [0x%llx] = 0x%llx\n", addr, val);
 
     switch (addr) {
-    case NV_PAPU_EPXMEM ... NV_PAPU_EPXMEM + 0xC00*4: {
+    case NV_PAPU_EPXMEM ... NV_PAPU_EPXMEM + 0xC00 * 4: {
         assert(false);
         break;
     }
-    case NV_PAPU_EPYMEM ... NV_PAPU_EPYMEM + 0x100*4: {
+    case NV_PAPU_EPYMEM ... NV_PAPU_EPYMEM + 0x100 * 4: {
         assert(false);
         break;
     }
-    case NV_PAPU_EPPMEM ... NV_PAPU_EPPMEM + 0x1000*4: {
+    case NV_PAPU_EPPMEM ... NV_PAPU_EPPMEM + 0x1000 * 4: {
         assert(false);
         break;
     }
@@ -538,11 +551,11 @@ static void ep_write(void *opaque, hwaddr addr,
         break;
     }
 }
+
 static const MemoryRegionOps ep_ops = {
     .read = ep_read,
     .write = ep_write,
 };
-
 
 /* TODO: this should be on a thread so it waits on the voice lock */
 static void se_frame(void *opaque)
@@ -551,7 +564,7 @@ static void se_frame(void *opaque)
     timer_mod(d->se.frame_timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 10);
     MCPX_DPRINTF("mcpx frame ping\n");
     int list;
-    for (list=0; list < 3; list++) {
+    for (list = 0; list < 3; list++) {
         hwaddr top, current, next;
         top = voice_list_regs[list].top;
         current = voice_list_regs[list].current;
@@ -590,8 +603,7 @@ static void se_frame(void *opaque)
     }
 }
 
-
-static int mcpx_apu_initfn(PCIDevice *dev)
+static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
 {
     MCPXAPUState *d = MCPX_APU_DEVICE(dev);
 
@@ -616,11 +628,8 @@ static int mcpx_apu_initfn(PCIDevice *dev)
 
 
     d->se.frame_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL, se_frame, d);
-
     d->gp.dsp = dsp_init(d, gp_scratch_rw);
     d->ep.dsp = dsp_init(d, ep_scratch_rw);
-
-    return 0;
 }
 
 static void mcpx_apu_class_init(ObjectClass *klass, void *data)
@@ -632,7 +641,7 @@ static void mcpx_apu_class_init(ObjectClass *klass, void *data)
     k->device_id = PCI_DEVICE_ID_NVIDIA_MCPX_APU;
     k->revision = 210;
     k->class_id = PCI_CLASS_MULTIMEDIA_AUDIO;
-    k->init = mcpx_apu_initfn;
+    k->realize = mcpx_apu_realize;
 
     dc->desc = "MCPX Audio Processing Unit";
 }
@@ -642,10 +651,15 @@ static const TypeInfo mcpx_apu_info = {
     .parent        = TYPE_PCI_DEVICE,
     .instance_size = sizeof(MCPXAPUState),
     .class_init    = mcpx_apu_class_init,
+    .interfaces = (InterfaceInfo[]) {
+        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
+        { },
+    },
 };
 
 static void mcpx_apu_register(void)
 {
     type_register_static(&mcpx_apu_info);
 }
+
 type_init(mcpx_apu_register);
