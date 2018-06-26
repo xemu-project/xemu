@@ -22,12 +22,13 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include "qemu/osdep.h"
+#include "qemu-common.h"
+
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
 #include <assert.h>
-
-#include "qemu-common.h"
 
 #include "dsp_cpu.h"
 #include "dsp_dma.h"
