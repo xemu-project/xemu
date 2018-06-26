@@ -32,6 +32,7 @@ devices-dirs-$(CONFIG_SOFTMMU) += usb/
 devices-dirs-$(CONFIG_SOFTMMU) += vfio/
 devices-dirs-$(CONFIG_SOFTMMU) += virtio/
 devices-dirs-$(CONFIG_SOFTMMU) += watchdog/
+devices-dirs-$(CONFIG_SOFTMMU) += xbox/
 devices-dirs-$(CONFIG_SOFTMMU) += xen/
 devices-dirs-$(CONFIG_MEM_HOTPLUG) += mem/
 devices-dirs-$(CONFIG_SOFTMMU) += smbios/
