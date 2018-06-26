@@ -2,6 +2,7 @@
  * QEMU Xbox System Emulator
  *
  * Copyright (c) 2013 espes
+ * Copyright (c) 2018 Matt Borgerson
  *
  * Based on pc.c
  * Copyright (c) 2003-2004 Fabrice Bellard
@@ -23,10 +24,37 @@
 #ifndef HW_XBOX_H
 #define HW_XBOX_H
 
+#include "hw/boards.h"
+
 #define MAX_IDE_BUS 2
 
-void xbox_init_common(QEMUMachineInitArgs *args,
-                      const uint8_t *default_eeprom,
-                      ISABus **out_isa_bus);
+void xbox_init_common(MachineState *machine,
+                      const uint8_t *eeprom,
+                      PCIBus **pci_bus_out,
+                      ISABus **isa_bus_out);
+
+#define TYPE_XBOX_MACHINE MACHINE_TYPE_NAME("xbox")
+
+#define XBOX_MACHINE(obj) \
+    OBJECT_CHECK(XboxMachineState, (obj), TYPE_XBOX_MACHINE)
+
+#define XBOX_MACHINE_CLASS(klass) \
+    OBJECT_CLASS_CHECK(XboxMachineClass, (klass), TYPE_XBOX_MACHINE)
+
+typedef struct XboxMachineState {
+    /*< private >*/
+    PCMachineState parent_obj;
+
+    /*< public >*/
+    char *bootrom;
+    bool short_animation;
+} XboxMachineState;
+
+typedef struct XboxMachineClass {
+    /*< private >*/
+    PCMachineClass parent_class;
+
+    /*< public >*/
+} XboxMachineClass;
 
 #endif
