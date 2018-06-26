@@ -477,13 +477,6 @@ static void usb_hub_handle_data(USBDevice *dev, USBPacket *p)
             unsigned int status;
             uint8_t buf[4];
             int i, n;
-            n = DIV_ROUND_UP(NUM_PORTS + 1, 8);
-            if (p->iov.size == 1) { /* FreeBSD workaround */
-                n = 1;
-            } else if (n > p->iov.size) {
-                p->status = USB_RET_BABBLE;
-                return;
-            }
             status = 0;
             for(i = 0; i < NUM_PORTS; i++) {
                 port = &s->ports[i];
@@ -491,6 +484,13 @@ static void usb_hub_handle_data(USBDevice *dev, USBPacket *p)
                     status |= (1 << (i + 1));
             }
             if (status != 0) {
+                n = DIV_ROUND_UP(NUM_PORTS + 1, 8);
+                if (p->iov.size == 1) { /* FreeBSD workaround */
+                    n = 1;
+                } else if (n > p->iov.size) {
+                    p->status = USB_RET_BABBLE;
+                    return;
+                }
                 trace_usb_hub_status_report(s->dev.addr, status);
                 for(i = 0; i < n; i++) {
                     buf[i] = status >> (8 * i);
