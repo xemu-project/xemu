@@ -502,13 +502,21 @@ static inline int64_t acpi_pm_tmr_get_clock(void)
 void acpi_pm_tmr_calc_overflow_time(ACPIREGS *ar)
 {
     int64_t d = acpi_pm_tmr_get_clock();
+#ifdef XBOX
+    ar->tmr.overflow_time = (d + 0x80000000LL) & ~0x7fffffffLL;
+#else
     ar->tmr.overflow_time = (d + 0x800000LL) & ~0x7fffffLL;
+#endif
 }
 
 static uint32_t acpi_pm_tmr_get(ACPIREGS *ar)
 {
     uint32_t d = acpi_pm_tmr_get_clock();
+#ifdef XBOX
+    return d;
+#else
     return d & 0xffffff;
+#endif
 }
 
 static void acpi_pm_tmr_timer(void *opaque)

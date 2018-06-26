@@ -50,7 +50,11 @@
 #define ACPI_PM_PROP_GPE0_BLK_LEN "gpe0_blk_len"
 
 /* PM Timer ticks per second (HZ) */
+#ifdef XBOX
+#define PM_TIMER_FREQUENCY  3375000
+#else
 #define PM_TIMER_FREQUENCY  3579545
+#endif
 
 
 /* ACPI fixed hardware registers */

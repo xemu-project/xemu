@@ -130,6 +130,9 @@ static void init_common_fadt_data(Object *o, AcpiFadtData *data)
             (1 << ACPI_FADT_F_SLP_BUTTON) |
             (1 << ACPI_FADT_F_RTC_S4) |
             (1 << ACPI_FADT_F_USE_PLATFORM_CLOCK) |
+#ifdef XBOX
+            (1 << ACPI_FADT_F_TMR_VAL_EXT) |
+#endif
             /* APIC destination mode ("Flat Logical") has an upper limit of 8
              * CPUs for more than 8 CPUs, "Clustered Logical" mode has to be
              * used
