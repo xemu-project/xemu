@@ -80,4 +80,9 @@ int smbus_write_block(I2CBus *bus, uint8_t addr, uint8_t command, uint8_t *data,
 void smbus_eeprom_init(I2CBus *smbus, int nb_eeprom,
                        const uint8_t *eeprom_spd, int size);
 
+#ifdef XBOX
+void smbus_eeprom_init_single(I2CBus *smbus, int address,
+                              uint8_t *eeprom_buf);
+#endif
+
 #endif
