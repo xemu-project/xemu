@@ -18,10 +18,56 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "qemu-common.h"
-#include "hw/xbox/nv2a_debug.h"
-#include "hw/xbox/nv2a_shaders_common.h"
-#include "hw/xbox/nv2a_shaders.h"
+#include "nv2a_debug.h"
+#include "nv2a_shaders_common.h"
+#include "nv2a_shaders.h"
+
+void qstring_append_fmt(QString *qstring, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    qstring_append_va(qstring, fmt, ap);
+    va_end(ap);
+}
+
+QString *qstring_from_fmt(const char *fmt, ...)
+{
+    QString *ret = qstring_new();
+    va_list ap;
+    va_start(ap, fmt);
+    qstring_append_va(ret, fmt, ap);
+    va_end(ap);
+
+    return ret;
+}
+
+void qstring_append_va(QString *qstring, const char *fmt, va_list va)
+{
+    char scratch[256];
+
+    va_list ap;
+    va_copy(ap, va);
+    const int len = vsnprintf(scratch, sizeof(scratch), fmt, ap);
+    va_end(ap);
+
+    if (len == 0) {
+        return;
+    } else if (len < sizeof(scratch)) {
+        qstring_append(qstring, scratch);
+        return;
+    }
+
+    /* overflowed out scratch buffer, alloc and try again */
+    char *buf = g_malloc(len + 1);
+    va_copy(ap, va);
+    vsnprintf(buf, len + 1, fmt, ap);
+    va_end(ap);
+
+    qstring_append(qstring, buf);
+    g_free(buf);
+}
 
 static QString* generate_geometry_shader(
                                       enum ShaderPolygonMode polygon_front_mode,

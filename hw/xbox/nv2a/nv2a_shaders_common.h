@@ -34,4 +34,9 @@
                            "  vec4 T3;\n" \
                            "};\n"
 
+
+void qstring_append_fmt(QString *qstring, const char *fmt, ...);
+QString *qstring_from_fmt(const char *fmt, ...);
+void qstring_append_va(QString *qstring, const char *fmt, va_list va);
+
 #endif
