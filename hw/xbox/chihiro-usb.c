@@ -17,12 +17,13 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "ui/console.h"
 #include "hw/usb.h"
 #include "hw/usb/desc.h"
 
-#define DEBUG_CUSB
+// #define DEBUG_CUSB
 #ifdef DEBUG_CUSB
 #define DPRINTF(s, ...) printf("chihiro-usb: " s, ## __VA_ARGS__)
 #else
@@ -144,10 +145,6 @@ static const USBDesc desc_chihiro_an2131qc = {
     .str  = chihiro_usb_stringtable,
 };
 
-
-
-
-
 static const USBDescIface desc_iface_chihiro_an2131sc = {
     .bInterfaceNumber              = 0,
     .bNumEndpoints                 = 6,
@@ -223,8 +220,6 @@ static const USBDesc desc_chihiro_an2131sc = {
     .str  = chihiro_usb_stringtable,
 };
 
-
-
 static void handle_reset(USBDevice *dev)
 {
     DPRINTF("usb reset\n");
@@ -235,7 +230,8 @@ static void handle_control(USBDevice *dev, USBPacket *p,
 {
     DPRINTF("handle control %d %d %d %d\n", request, value, index, length);
 
-    int ret = usb_desc_handle_control(dev, p, request, value, index, length, data);
+    int ret = usb_desc_handle_control(dev, p, request, value, index,
+                                      length, data);
     if (ret >= 0) {
         DPRINTF("handled by usb_desc_handle_control: %d\n", ret);
         return;
@@ -247,33 +243,29 @@ static void handle_data(USBDevice *dev, USBPacket *p)
     DPRINTF("handle_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
 }
 
-static void handle_destroy(USBDevice *dev)
-{
-    DPRINTF("usb reset\n");
-}
-
-
-static int chihiro_an2131qc_initfn(USBDevice *dev)
+static void chihiro_an2131qc_realize(USBDevice *dev, Error **errp)
 {
     // ChihiroUSBState *s = DO_UPCAST(ChihiroUSBState, dev, dev);
     usb_desc_init(dev);
+}
 
-    return 0;
+static void chihiro_an2131qc_unrealize(USBDevice *dev, Error **errp)
+{
 }
 
 static void chihiro_an2131qc_class_initfn(ObjectClass *klass, void *data)
 {
-    DeviceClass *dc = DEVICE_CLASS(klass);
+    // DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
-    uc->init           = chihiro_an2131qc_initfn;
+    uc->realize        = chihiro_an2131qc_realize;
+    uc->unrealize      = chihiro_an2131qc_unrealize;
     uc->product_desc   = "Chihiro an2131qc";
     uc->usb_desc       = &desc_chihiro_an2131qc;
 
     uc->handle_reset   = handle_reset;
     uc->handle_control = handle_control;
     uc->handle_data    = handle_data;
-    uc->handle_destroy = handle_destroy;
     uc->handle_attach  = usb_desc_attach;
 
     //dc->vmsd = &vmstate_usb_kbd;
@@ -286,29 +278,29 @@ static const TypeInfo chihiro_an2131qc_info = {
     .class_init    = chihiro_an2131qc_class_initfn,
 };
 
-
-
-static int chihiro_an2131sc_initfn(USBDevice *dev)
+static void chihiro_an2131sc_realize(USBDevice *dev, Error **errp)
 {
     // ChihiroUSBState *s = DO_UPCAST(ChihiroUSBState, dev, dev);
     usb_desc_init(dev);
+}
 
-    return 0;
+static void chihiro_an2131sc_unrealize(USBDevice *dev, Error **errp)
+{
 }
 
 static void chihiro_an2131sc_class_initfn(ObjectClass *klass, void *data)
 {
-    DeviceClass *dc = DEVICE_CLASS(klass);
+    // DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
-    uc->init           = chihiro_an2131sc_initfn;
+    uc->realize        = chihiro_an2131sc_realize;
+    uc->unrealize      = chihiro_an2131sc_unrealize;
     uc->product_desc   = "Chihiro an2131sc";
     uc->usb_desc       = &desc_chihiro_an2131sc;
 
     uc->handle_reset   = handle_reset;
     uc->handle_control = handle_control;
     uc->handle_data    = handle_data;
-    uc->handle_destroy = handle_destroy;
     uc->handle_attach  = usb_desc_attach;
 
     //dc->vmsd = &vmstate_usb_kbd;
@@ -320,7 +312,6 @@ static const TypeInfo chihiro_an2131sc_info = {
     .instance_size = sizeof(ChihiroUSBState),
     .class_init    = chihiro_an2131sc_class_initfn,
 };
-
 
 static void chihiro_usb_register_types(void)
 {

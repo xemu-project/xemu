@@ -2,6 +2,7 @@
  * QEMU Chihiro emulation
  *
  * Copyright (c) 2013 espes
+ * Copyright (c) 2018 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -17,17 +18,73 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include "hw/hw.h"
+#include "hw/loader.h"
 #include "hw/i386/pc.h"
+#include "hw/i386/apic.h"
+#include "hw/smbios/smbios.h"
+#include "hw/pci/pci.h"
+#include "hw/pci/pci_ids.h"
+#include "hw/usb.h"
+#include "net/net.h"
 #include "hw/boards.h"
 #include "hw/ide.h"
-#include "hw/loader.h"
-#include "hw/isa/isa.h"
+#include "sysemu/kvm.h"
+#include "hw/kvm/clock.h"
+#include "sysemu/sysemu.h"
+#include "hw/sysbus.h"
+#include "sysemu/arch_init.h"
+#include "hw/i2c/smbus.h"
+#include "hw/xen/xen.h"
 #include "exec/memory.h"
-#include "qemu/config-file.h"
-#include "sysemu/blockdev.h"
-#include "block/blkmemory.h"
-#include "hw/xbox/xbox.h"
+#include "exec/address-spaces.h"
+#include "hw/acpi/acpi.h"
+#include "cpu.h"
+#include "qapi/error.h"
+#include "qemu/error-report.h"
+#ifdef CONFIG_XEN
+#include <xen/hvm/hvm_info_table.h>
+#include "hw/xen/xen_pt.h"
+#endif
+#include "migration/global_state.h"
+#include "migration/misc.h"
+#include "kvm_i386.h"
+#include "sysemu/numa.h"
+
+#include "hw/timer/mc146818rtc.h"
+#include "xbox_pci.h"
+#include "smbus.h"
+
+#include "qemu/option.h"
+#include "xbox.h"
+
+#include "block/block.h"
+
+#define TYPE_CHIHIRO_MACHINE MACHINE_TYPE_NAME("chihiro")
+
+#define CHIHIRO_MACHINE(obj) \
+    OBJECT_CHECK(ChihiroMachineState, (obj), TYPE_CHIHIRO_MACHINE)
+
+#define CHIHIRO_MACHINE_CLASS(klass) \
+    OBJECT_CLASS_CHECK(ChihiroMachineClass, (klass), TYPE_CHIHIRO_MACHINE)
+
+typedef struct ChihiroMachineState {
+    /*< private >*/
+    PCMachineState parent_obj;
+
+    /*< public >*/
+    char *mediaboard_rom;
+    char *mediaboard_filesystem;
+} ChihiroMachineState;
+
+typedef struct ChihiroMachineClass {
+    /*< private >*/
+    PCMachineClass parent_class;
+
+    /*< public >*/
+} ChihiroMachineClass;
+
 
 
 #define SEGA_CHIP_REVISION                  0xF0
@@ -91,7 +148,7 @@ static void chihiro_lpc_realize(DeviceState *dev, Error **errp)
 {
     ChihiroLPCState *s = CHIHIRO_LPC_DEVICE(dev);
     ISADevice *isa = ISA_DEVICE(dev);
-    
+
     memory_region_init_io(&s->ioport, OBJECT(dev), &chihiro_lpc_io_ops, s,
                           "chihiro-lpc-io", 0x100);
     isa_register_ioport(isa, &s->ioport, 0x4000);
@@ -149,7 +206,7 @@ static void chihiro_ide_interface_init(const char *rom_file,
 
     rom = g_malloc(sizeof(*rom));
     memory_region_init_ram(rom, NULL, "chihiro.interface.rom",
-                           ROM_SECTORS * SECTOR_SIZE);
+                           ROM_SECTORS * SECTOR_SIZE, &error_fatal);
     memory_region_add_subregion(interface,
                                 (uint64_t)ROM_START * SECTOR_SIZE, rom);
 
@@ -157,7 +214,7 @@ static void chihiro_ide_interface_init(const char *rom_file,
     /* limited by the size of the board ram, which we emulate as 128M for now */
     filesystem = g_malloc(sizeof(*filesystem));
     memory_region_init_ram(filesystem, NULL, "chihiro.interface.filesystem",
-                           128 * 1024 * 1024);
+                           128 * 1024 * 1024, &error_fatal);
     memory_region_add_subregion(interface,
                                 (uint64_t)FILESYSTEM_START * SECTOR_SIZE,
                                 filesystem);
@@ -170,7 +227,9 @@ static void chihiro_ide_interface_init(const char *rom_file,
     /* read files */
     int rc, fd = -1;
 
-    if (!rom_file) rom_file = "fpr21042_m29w160et.bin";
+    if (!rom_file || (*rom_file == '\x00')) {
+        rom_file = "fpr21042_m29w160et.bin";
+    }
     char *rom_filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, rom_file);
     if (rom_filename) {
         int rom_size = get_image_size(rom_filename);
@@ -183,8 +242,7 @@ static void chihiro_ide_interface_init(const char *rom_file,
         close(fd);
     }
 
-
-    if (filesystem_file) {
+    if (filesystem_file && (*filesystem_file != '\x00')) {
         assert(access(filesystem_file, R_OK) == 0);
 
         int filesystem_size = get_image_size(filesystem_file);
@@ -197,6 +255,7 @@ static void chihiro_ide_interface_init(const char *rom_file,
         close(fd);
     }
 
+#if 0 // FIXME
     /* create the device */
     DriveInfo *dinfo;
     dinfo = g_malloc0(sizeof(*dinfo));
@@ -211,82 +270,162 @@ static void chihiro_ide_interface_init(const char *rom_file,
                              memory_region_size(interface)));
 
     drive_append(dinfo);
+#else
+    printf("Chihiro IDE not yet implemented (please fix it)\n");
+    assert(0);
+#endif
 }
 
-static void chihiro_init(QEMUMachineInitArgs *args)
-{
-    /* Placeholder blank eeprom for chihiro:
-     *   Serial number 000000000000
-     *   Mac address 00:00:00:00:00:00
-     *   ...etc.
-     */
-    const uint8_t eeprom[] = {
-        0xA7, 0x65, 0x60, 0x76, 0xB7, 0x2F, 0xFE, 0xD8,
-        0x20, 0xBC, 0x8B, 0x15, 0x13, 0xBF, 0x73, 0x9C,
-        0x8C, 0x3F, 0xD8, 0x07, 0x75, 0x55, 0x5F, 0x8B,
-        0x09, 0xD1, 0x25, 0xD1, 0x1A, 0xA2, 0xD5, 0xB7,
-        0x01, 0x7D, 0x9A, 0x31, 0xCD, 0x9C, 0x83, 0x6B,
-        0x2C, 0xAB, 0xAD, 0x6F, 0xAC, 0x36, 0xDE, 0xEF,
-        0x6F, 0x6E, 0x2F, 0x6F, 0x30, 0x30, 0x30, 0x30,
-        0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x01, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    };
+/* Placeholder blank eeprom for chihiro:
+ *   Serial number 000000000000
+ *   Mac address 00:00:00:00:00:00
+ *   ...etc.
+ */
+ /* FIXME: This should be passed in via machine args,
+  * please fix when xbox is fixed */
+static const uint8_t eeprom[] = {
+    0xA7, 0x65, 0x60, 0x76, 0xB7, 0x2F, 0xFE, 0xD8,
+    0x20, 0xBC, 0x8B, 0x15, 0x13, 0xBF, 0x73, 0x9C,
+    0x8C, 0x3F, 0xD8, 0x07, 0x75, 0x55, 0x5F, 0x8B,
+    0x09, 0xD1, 0x25, 0xD1, 0x1A, 0xA2, 0xD5, 0xB7,
+    0x01, 0x7D, 0x9A, 0x31, 0xCD, 0x9C, 0x83, 0x6B,
+    0x2C, 0xAB, 0xAD, 0x6F, 0xAC, 0x36, 0xDE, 0xEF,
+    0x6F, 0x6E, 0x2F, 0x6F, 0x30, 0x30, 0x30, 0x30,
+    0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30, 0x30,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x01, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 
-    QemuOpts *machine_opts = qemu_opts_find(qemu_find_opts("machine"), NULL);
-    if (machine_opts) {
-        const char *mediaboard_rom_file =
-            qemu_opt_get(machine_opts, "mediaboard_rom");
-        const char *mediaboard_filesystem_file =
-            qemu_opt_get(machine_opts, "mediaboard_filesystem");
-        
-        if (mediaboard_rom_file || mediaboard_filesystem_file) {
-            chihiro_ide_interface_init(mediaboard_rom_file,
-                                       mediaboard_filesystem_file);
-        }
-    }
+static void chihiro_init(MachineState *machine)
+{
+    const char *mediaboard_rom_file = object_property_get_str(
+        qdev_get_machine(), "mediaboard_rom", NULL);
+    const char *mediaboard_filesystem_file = object_property_get_str(
+        qdev_get_machine(), "mediaboard_filesystem", NULL);
+    chihiro_ide_interface_init(mediaboard_rom_file,
+                               mediaboard_filesystem_file);
 
     ISABus *isa_bus;
-    xbox_init_common(args, (uint8_t*)eeprom, &isa_bus);
-
+    xbox_init_common(machine, eeprom, NULL, &isa_bus);
     isa_create_simple(isa_bus, "chihiro-lpc");
 }
 
+static void chihiro_machine_options(MachineClass *m)
+{
+    PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
 
-static QEMUMachine chihiro_machine = {
-    .name = "chihiro",
-    .desc = "Sega Chihiro",
-    .init = chihiro_init,
-    .max_cpus = 1,
-    .no_floppy = 1,
-    .no_cdrom = 1,
-    .no_sdcard = 1,
-    PC_DEFAULT_MACHINE_OPTIONS
+    m->desc = "Sega Chihiro";
+    m->max_cpus = 1;
+    m->option_rom_has_mr = true;
+    m->rom_file_has_mr = false;
+    m->no_floppy = 1,
+    m->no_cdrom = 1,
+    m->no_sdcard = 1,
+    m->default_cpu_type = X86_CPU_TYPE_NAME("486");
+
+    pcmc->pci_enabled = true;
+    pcmc->has_acpi_build = false;
+    pcmc->smbios_defaults = false;
+    pcmc->gigabyte_align = false;
+    pcmc->smbios_legacy_mode = true;
+    pcmc->has_reserved_memory = false;
+    pcmc->default_nic_model = "nvnet";
+}
+
+static char *machine_get_mediaboard_rom(Object *obj, Error **errp)
+{
+    ChihiroMachineState *ms = CHIHIRO_MACHINE(obj);
+
+    return g_strdup(ms->mediaboard_rom);
+}
+
+static void machine_set_mediaboard_rom(Object *obj, const char *value,
+                                       Error **errp)
+{
+    ChihiroMachineState *ms = CHIHIRO_MACHINE(obj);
+
+    g_free(ms->mediaboard_rom);
+    ms->mediaboard_rom = g_strdup(value);
+}
+
+static char *machine_get_mediaboard_filesystem(Object *obj, Error **errp)
+{
+    ChihiroMachineState *ms = CHIHIRO_MACHINE(obj);
+
+    return g_strdup(ms->mediaboard_filesystem);
+}
+
+static void machine_set_mediaboard_filesystem(Object *obj, const char *value,
+                                              Error **errp)
+{
+    ChihiroMachineState *ms = CHIHIRO_MACHINE(obj);
+
+    g_free(ms->mediaboard_filesystem);
+    ms->mediaboard_filesystem = g_strdup(value);
+}
+
+static inline void chihiro_machine_initfn(Object *obj)
+{
+    object_property_add_str(obj, "mediaboard_rom",
+                            machine_get_mediaboard_rom,
+                            machine_set_mediaboard_rom, NULL);
+    object_property_set_description(obj, "mediaboard_rom",
+                                    "Chihiro mediaboard ROM", NULL);
+
+    object_property_add_str(obj, "mediaboard_filesystem",
+                            machine_get_mediaboard_filesystem,
+                            machine_set_mediaboard_filesystem, NULL);
+    object_property_set_description(obj, "mediaboard_filesystem",
+                                    "Chihiro mediaboard filesystem", NULL);
+}
+
+static void chihiro_machine_class_init(ObjectClass *oc, void *data)
+{
+    MachineClass *mc = MACHINE_CLASS(oc);
+    chihiro_machine_options(mc);
+    mc->init = chihiro_init;
+}
+
+static const TypeInfo pc_machine_type_chihiro = {
+    .name = TYPE_CHIHIRO_MACHINE,
+    .parent = TYPE_PC_MACHINE,
+    .abstract = false,
+    .instance_size = sizeof(ChihiroMachineState),
+    .instance_init = chihiro_machine_initfn,
+    .class_size = sizeof(ChihiroMachineClass),
+    .class_init = chihiro_machine_class_init,
+    .interfaces = (InterfaceInfo[]) {
+         // { TYPE_HOTPLUG_HANDLER },
+         // { TYPE_NMI },
+         { }
+    },
 };
 
-static void chihiro_machine_init(void) {
-    qemu_register_machine(&chihiro_machine);
+static void pc_machine_init_chihiro(void)
+{
+    type_register(&pc_machine_type_chihiro);
 }
-machine_init(chihiro_machine_init);
+
+type_init(pc_machine_init_chihiro)
