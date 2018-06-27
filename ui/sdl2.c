@@ -25,6 +25,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
+#include "qemu-version.h"
 #include "ui/console.h"
 #include "ui/input.h"
 #include "ui/sdl2.h"
@@ -135,6 +136,8 @@ static void sdl_update_caption(struct sdl2_console *scon)
     char win_title[1024];
     char icon_title[1024];
     const char *status = "";
+    const char *project_name = "XQEMU";
+    const char *hash_indicator = "Revision";
 
     if (!runstate_is_running()) {
         status = " [Stopped]";
@@ -149,12 +152,16 @@ static void sdl_update_caption(struct sdl2_console *scon)
     }
 
     if (qemu_name) {
-        snprintf(win_title, sizeof(win_title), "QEMU (%s-%d)%s", qemu_name,
+        snprintf(win_title, sizeof(win_title), "%s (%s: %s) (%s-%d)%s",
+                 project_name, hash_indicator, QEMU_PKGVERSION, qemu_name,
                  scon->idx, status);
-        snprintf(icon_title, sizeof(icon_title), "QEMU (%s)", qemu_name);
+        snprintf(icon_title, sizeof(icon_title), "%s (%s: %s) (%s)",
+                 project_name, hash_indicator, QEMU_PKGVERSION, qemu_name);
     } else {
-        snprintf(win_title, sizeof(win_title), "QEMU%s", status);
-        snprintf(icon_title, sizeof(icon_title), "QEMU");
+        snprintf(win_title, sizeof(win_title), "%s (%s: %s)%s",
+                 project_name, hash_indicator, QEMU_PKGVERSION, status);
+        snprintf(icon_title, sizeof(icon_title), "%s (%s: %s)",
+                 project_name, hash_indicator, QEMU_PKGVERSION);
     }
 
     if (scon->real_window) {

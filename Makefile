@@ -442,7 +442,7 @@ qemu-version.h: FORCE
 			pkgvers="$(PKGVERSION)"; \
 		else \
 			if test -d .git; then \
-				pkgvers=$$(git describe --match 'v*' 2>/dev/null | tr -d '\n');\
+				pkgvers=$$(git rev-parse --short HEAD 2>/dev/null | tr -d '\n');\
 				if ! git diff-index --quiet HEAD &>/dev/null; then \
 					pkgvers="$${pkgvers}-dirty"; \
 				fi; \
