@@ -40,7 +40,6 @@
 #include "nv2a_int.h"
 
 #include "gl/gloffscreen.h"
-#include "gl/glextensions.h"
 
 #define USE_TEXTURE_CACHE
 

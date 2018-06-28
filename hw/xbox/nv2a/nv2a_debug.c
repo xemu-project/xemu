@@ -29,6 +29,14 @@
 #include "nv2a_debug.h"
 #include "gl/glextensions.h"
 
+
+void gl_debug_initialize(void)
+{
+    if (glo_check_extension("GL_KHR_debug")) {
+       glEnable(GL_DEBUG_OUTPUT);
+    }
+}
+
 void gl_debug_message(bool cc, const char *fmt, ...)
 {
     size_t n;

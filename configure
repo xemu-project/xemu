@@ -848,7 +848,7 @@ if test "$mingw32" = "yes" ; then
   QEMU_CFLAGS="-D__USE_MINGW_ANSI_STDIO=1 $QEMU_CFLAGS"
   # MinGW needs -mthreads for TLS and macro _MT.
   QEMU_CFLAGS="-mthreads $QEMU_CFLAGS"
-  LIBS="-lwinmm -lws2_32 -liphlpapi -lopengl32 -lglew32 -lgdi32 $LIBS"
+  LIBS="-lwinmm -lws2_32 -liphlpapi -lopengl32 -lepoxy -lgdi32 $LIBS"
   write_c_skeleton;
   if compile_prog "" "-liberty" ; then
     LIBS="-liberty $LIBS"
@@ -2948,7 +2948,7 @@ fi
 
 # Xbox hack to include ogl framework
 if test "$darwin" = "yes" ; then
-    sdl_libs="$sdl_libs -framework OpenGL"
+    sdl_libs="$sdl_libs -framework OpenGL -lepoxy"
 #     cat > $TMPC << EOF
 # #include <OpenGL/gl.h>
 # #include <OpenGL/CGLTypes.h>
@@ -2958,7 +2958,7 @@ if test "$darwin" = "yes" ; then
 fi
 
 if test "$linux" = "yes" ; then
-    sdl_libs="$sdl_libs -lGLEW -lGLU -lGL"
+    sdl_libs="$sdl_libs -lepoxy -lGLU -lGL"
 fi
 
 ##########################################

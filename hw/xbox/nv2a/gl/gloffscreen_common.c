@@ -77,15 +77,7 @@ void glo_readpixels(GLenum gl_format, GLenum gl_type,
     glPixelStorei(GL_PACK_ALIGNMENT, pa);
 }
 
-
 bool glo_check_extension(const char* ext_name)
 {
-    int i;
-    int num_extensions = GL_NUM_EXTENSIONS;
-    for (i=0; i<num_extensions; i++) {
-      const char* ext = (const char*)glGetStringi(GL_EXTENSIONS, i);
-      if (!ext) break;
-      if (strcmp(ext, ext_name) == 0) return true;
-    }
-    return false;
+    return epoxy_has_gl_extension(ext_name);
 }

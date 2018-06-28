@@ -105,26 +105,11 @@ GloContext *glo_context_create(void)
     if (context->glx_context == NULL) return NULL;
     glo_set_current(context);
 
-    if (!initialized) {
-        /* Initialize glew */
-        glewExperimental = GL_TRUE;
-        if (GLEW_OK != glewInit()) {
-            /* GLEW failed! */
-            fprintf(stderr,"GLEW init failed.\n");
-            exit(EXIT_FAILURE);
-        }
-
-        /* Get rid of GLEW errors */
-        while(glGetError() != GL_NO_ERROR);
-    }
+    /* Get rid of possible errors from within GL wrapper or glo */
+    while(glGetError() != GL_NO_ERROR);
 
     initialized = true;
     return context;
-}
-
-void* glo_get_extension_proc(const char* ext_proc)
-{
-    return glXGetProcAddress((const GLubyte *)ext_proc);
 }
 
 /* Set current context */

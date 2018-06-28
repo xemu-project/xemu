@@ -24,9 +24,9 @@ bash -xlc "pacman --noconfirm -S --needed automake-wrapper"
 bash -xlc "pacman --noconfirm -S --needed mingw-w64-x86_64-libtool"
 bash -xlc "pacman --noconfirm -S --needed mingw-w64-x86_64-pkg-config"
 bash -xlc "pacman --noconfirm -S --needed mingw-w64-x86_64-glib2"
-bash -xlc "pacman --noconfirm -S --needed mingw-w64-x86_64-glew"
 bash -xlc "pacman --noconfirm -S --needed mingw-w64-x86_64-SDL2"
 bash -xlc "pacman --noconfirm -S --needed mingw-w64-x86_64-pixman"
+bash -xlc "pacman --noconfirm -S --needed mingw-w64-x86_64-libepoxy"
 
 rem Invoke subsequent bash in the build tree
 cd %APPVEYOR_BUILD_FOLDER%

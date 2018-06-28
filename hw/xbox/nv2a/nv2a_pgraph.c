@@ -2641,10 +2641,8 @@ void pgraph_init(NV2AState *d)
     assert(pg->gl_context);
 
 #ifdef DEBUG_NV2A_GL
-    glEnable(GL_DEBUG_OUTPUT);
+    gl_debug_initialize();
 #endif
-
-    glextensions_init();
 
     /* DXT textures */
     assert(glo_check_extension("GL_EXT_texture_compression_s3tc"));
