@@ -35,4 +35,4 @@ set CHERE_INVOKING=yes
 rem Build/test scripting
 bash -xlc "set pwd"
 bash -xlc "env"
-bash -xlc "./build_windows.sh"
+bash -xlc "./build.sh"

@@ -52,5 +52,4 @@ before_install:
   - if [ "$TRAVIS_OS_NAME" == "osx" ]; then brew install libffi gettext glib pixman pkg-config autoconf pixman sdl2 libepoxy; fi
 
 script:
-  - if [ "$TRAVIS_OS_NAME" == "osx" ]; then ./build_macos.sh ; fi
-  - if [ "$TRAVIS_OS_NAME" == "linux" ]; then ./build_linux.sh ; fi
+  - ./build.sh
