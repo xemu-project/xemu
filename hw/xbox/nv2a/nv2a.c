@@ -507,10 +507,21 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
     }
 
     /* init fifo cache1 */
+    qemu_spin_init(&d->pfifo.cache1.alloc_lock);
     qemu_mutex_init(&d->pfifo.cache1.cache_lock);
     qemu_cond_init(&d->pfifo.cache1.cache_cond);
     QSIMPLEQ_INIT(&d->pfifo.cache1.cache);
     QSIMPLEQ_INIT(&d->pfifo.cache1.working_cache);
+    QSIMPLEQ_INIT(&d->pfifo.cache1.available_entries);
+    QSIMPLEQ_INIT(&d->pfifo.cache1.retired_entries);
+
+    /* Pre-allocate memory for CacheEntry objects */
+    for (i=0; i < 100000; i++) {
+        CacheEntry *command = g_malloc0(sizeof(CacheEntry));
+        assert(command != NULL);
+        QSIMPLEQ_INSERT_TAIL(&d->pfifo.cache1.available_entries,
+                             command, entry);
+    }
 }
 
 static void nv2a_exitfn(PCIDevice *dev)
@@ -524,6 +535,13 @@ static void nv2a_exitfn(PCIDevice *dev)
 
     qemu_mutex_destroy(&d->pfifo.cache1.cache_lock);
     qemu_cond_destroy(&d->pfifo.cache1.cache_cond);
+
+    /* Release allocated CacheEntry objects */
+    while (!QSIMPLEQ_EMPTY(&d->pfifo.cache1.available_entries)) {
+        CacheEntry *entry = QSIMPLEQ_FIRST(&d->pfifo.cache1.available_entries);
+        QSIMPLEQ_REMOVE_HEAD(&d->pfifo.cache1.available_entries, entry);
+        free(entry);
+    }
 
     pgraph_destroy(&d->pgraph);
 }

@@ -234,6 +234,24 @@ void pfifo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     }
 }
 
+static CacheEntry *alloc_entry(Cache1State *state)
+{
+    CacheEntry *entry;
+
+    qemu_spin_lock(&state->alloc_lock);
+    if (QSIMPLEQ_EMPTY(&state->available_entries)) {
+        qemu_spin_unlock(&state->alloc_lock);
+        entry = g_malloc0(sizeof(CacheEntry));
+        assert(entry != NULL);
+    } else {
+        entry = QSIMPLEQ_FIRST(&state->available_entries);
+        QSIMPLEQ_REMOVE_HEAD(&state->available_entries, entry);
+        qemu_spin_unlock(&state->alloc_lock);
+        memset(entry, 0, sizeof(CacheEntry));
+    }
+
+    return entry;
+}
 
 /* pusher should be fine to run from a mimo handler
  * whenever's it's convenient */
@@ -287,11 +305,12 @@ static void pfifo_run_pusher(NV2AState *d) {
             /* data word of methods command */
             state->data_shadow = word;
 
-            command = (CacheEntry*)g_malloc0(sizeof(CacheEntry));
+            command = alloc_entry(state);
             command->method = state->method;
             command->subchannel = state->subchannel;
             command->nonincreasing = state->method_nonincreasing;
             command->parameter = word;
+
             qemu_mutex_lock(&state->cache_lock);
             QSIMPLEQ_INSERT_TAIL(&state->cache, command, entry);
             qemu_cond_signal(&state->cache_cond);
@@ -381,6 +400,14 @@ void *pfifo_puller_thread(void *opaque)
 
     while (true) {
         qemu_mutex_lock(&state->cache_lock);
+
+        /* Return any retired command entry objects back to the available
+         * queue for re-use by the pusher.
+         */
+        qemu_spin_lock(&state->alloc_lock);
+        QSIMPLEQ_CONCAT(&state->available_entries, &state->retired_entries);
+        qemu_spin_unlock(&state->alloc_lock);
+
         while (QSIMPLEQ_EMPTY(&state->cache) || !state->pull_enabled) {
             qemu_cond_wait(&state->cache_cond, &state->cache_lock);
 
@@ -459,7 +486,8 @@ void *pfifo_puller_thread(void *opaque)
                 // qemu_mutex_unlock(&state->cache_lock);
             }
 
-            g_free(command);
+            /* Hang onto the command object to recycle its memory later */
+            QSIMPLEQ_INSERT_TAIL(&state->retired_entries, command, entry);
         }
 
         qemu_mutex_unlock(&d->pgraph.lock);

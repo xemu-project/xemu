@@ -348,10 +348,13 @@ typedef struct Cache1State {
     enum FIFOEngine last_engine;
 
     /* The actual command queue */
+    QemuSpin alloc_lock;
     QemuMutex cache_lock;
     QemuCond cache_cond;
     QSIMPLEQ_HEAD(, CacheEntry) cache;
     QSIMPLEQ_HEAD(, CacheEntry) working_cache;
+    QSIMPLEQ_HEAD(, CacheEntry) available_entries;
+    QSIMPLEQ_HEAD(, CacheEntry) retired_entries;
 } Cache1State;
 
 typedef struct ChannelControl {
