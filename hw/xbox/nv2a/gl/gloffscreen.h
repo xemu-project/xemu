@@ -35,7 +35,6 @@
 
 #if defined(__APPLE__)                 /* macOS-Specific GL Includes */
 #include <OpenGL/OpenGL.h>
-#include <OpenGL/gl3.h>
 #include <OpenGL/glext.h>
 #elif defined(_WIN32)                  /* Windows-Specific GL Includes */
 #include <epoxy/wgl.h>

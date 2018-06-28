@@ -650,9 +650,7 @@ static void pgraph_method(NV2AState *d,
             GET_MASK(pg->regs[NV_PGRAPH_SURFACE],
                           NV_PGRAPH_SURFACE_WRITE_3D));
 
-        if (glFrameTerminatorGREMEDY) {
-            glFrameTerminatorGREMEDY();
-        }
+        NV2A_GL_DFRAME_TERMINATOR();
 
         break;
     }

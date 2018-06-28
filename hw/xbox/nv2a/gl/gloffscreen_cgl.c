@@ -66,11 +66,6 @@ GloContext *glo_context_create(void)
     return context;
 }
 
-void* glo_get_extension_proc(const char* ext_proc)
-{
-    return dlsym(RTLD_NEXT, ext_proc);
-}
-
 /* Set current context */
 void glo_set_current(GloContext *context)
 {
