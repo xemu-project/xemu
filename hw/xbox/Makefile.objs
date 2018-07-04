@@ -10,3 +10,6 @@ obj-y += chihiro-usb.o
 
 obj-y += dsp/
 obj-y += nv2a/
+
+xid-sdl.o-cflags := $(SDL_CFLAGS)
+xid-sdl.o-libs := $(SDL_LIBS)

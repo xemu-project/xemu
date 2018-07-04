@@ -1,1 +1,5 @@
 obj-y += dsp.o dsp_cpu.o dsp_dma.o
+
+# dsp_cpu.c uses SDL_GetTicks()
+dsp_cpu.o-cflags := $(SDL_CFLAGS)
+dsp_cpu.o-libs := $(SDL_LIBS)
