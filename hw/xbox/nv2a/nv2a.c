@@ -135,7 +135,7 @@ DEFINE_PROTO(pcrtc)
 DEFINE_PROTO(prmcio)
 DEFINE_PROTO(pramdac)
 DEFINE_PROTO(prmdio)
-DEFINE_PROTO(pramin)
+// DEFINE_PROTO(pramin)
 DEFINE_PROTO(user)
 
 #undef DEFINE_PROTO
