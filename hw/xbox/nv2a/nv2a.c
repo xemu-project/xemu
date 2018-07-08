@@ -113,34 +113,6 @@ void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len)
     return d->vram_ptr + dma.address;
 }
 
-#define STUB 0
-
-#if STUB
-void *pfifo_puller_thread(void *opaque) { return NULL; }
-void pgraph_init(NV2AState *d){}
-static void pfifo_run_pusher(NV2AState *d){}
-void pgraph_destroy(PGRAPHState *pg){}
-static uint8_t cliptobyte(int x)
-{
-    return (uint8_t)((x < 0) ? 0 : ((x > 255) ? 255 : x));
-}
-static void convert_yuy2_to_rgb(const uint8_t *line, unsigned int ix,
-                                uint8_t *r, uint8_t *g, uint8_t* b) {
-    int c, d, e;
-    c = (int)line[ix * 2] - 16;
-    if (ix % 2) {
-        d = (int)line[ix * 2 - 1] - 128;
-        e = (int)line[ix * 2 + 1] - 128;
-    } else {
-        d = (int)line[ix * 2 + 1] - 128;
-        e = (int)line[ix * 2 + 3] - 128;
-    }
-    *r = cliptobyte((298 * c + 409 * e + 128) >> 8);
-    *g = cliptobyte((298 * c - 100 * d - 208 * e + 128) >> 8);
-    *b = cliptobyte((298 * c + 516 * d + 128) >> 8);
-}
-#endif
-
 #define DEFINE_PROTO(prefix) \
     uint64_t prefix ## _read(void *opaque, hwaddr addr, unsigned int size); \
     void prefix ## _write(void *opaque, hwaddr addr, uint64_t val, unsigned int size);
@@ -171,10 +143,8 @@ DEFINE_PROTO(user)
 #include "nv2a_pbus.c"
 #include "nv2a_pcrtc.c"
 #include "nv2a_pfb.c"
-#if !STUB
 #include "nv2a_pgraph.c"
 #include "nv2a_pfifo.c"
-#endif
 #include "nv2a_pmc.c"
 #include "nv2a_pramdac.c"
 #include "nv2a_prmcio.c"
@@ -183,32 +153,6 @@ DEFINE_PROTO(user)
 #include "nv2a_pvideo.c"
 #include "nv2a_stubs.c"
 #include "nv2a_user.c"
-
-#if STUB
-void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
-{
-    reg_log_write(NV_PGRAPH, addr, val);
-}
-
-uint64_t pgraph_read(void *opaque, 
-                                   hwaddr addr, unsigned int size)
-{
-    reg_log_read(NV_PGRAPH, addr, 0);
-    return 0;
-}
-
-void pfifo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
-{
-    reg_log_write(NV_PFIFO, addr, val);
-}
-
-uint64_t pfifo_read(void *opaque, 
-                                   hwaddr addr, unsigned int size)
-{
-    reg_log_read(NV_PFIFO, addr, 0);
-    return 0;
-}
-#endif
 
 const struct NV2ABlockInfo blocktable[] = {
 
