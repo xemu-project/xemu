@@ -848,7 +848,7 @@ if test "$mingw32" = "yes" ; then
   QEMU_CFLAGS="-D__USE_MINGW_ANSI_STDIO=1 $QEMU_CFLAGS"
   # MinGW needs -mthreads for TLS and macro _MT.
   QEMU_CFLAGS="-mthreads $QEMU_CFLAGS"
-  LIBS="-lwinmm -lws2_32 -liphlpapi -lopengl32 -lepoxy -lgdi32 $LIBS"
+  LIBS="-lwinmm -lws2_32 -liphlpapi -lopengl32 -lgdi32 $LIBS"
   write_c_skeleton;
   if compile_prog "" "-liberty" ; then
     LIBS="-liberty $LIBS"
@@ -2948,7 +2948,7 @@ fi
 
 # Xbox hack to include ogl framework
 if test "$darwin" = "yes" ; then
-    sdl_libs="$sdl_libs -framework OpenGL -lepoxy"
+    sdl_libs="$sdl_libs -framework OpenGL"
 #     cat > $TMPC << EOF
 # #include <OpenGL/gl.h>
 # #include <OpenGL/CGLTypes.h>
@@ -2958,8 +2958,21 @@ if test "$darwin" = "yes" ; then
 fi
 
 if test "$linux" = "yes" ; then
-    sdl_libs="$sdl_libs -lepoxy -lGLU -lGL"
+    sdl_libs="$sdl_libs -lGLU -lGL"
 fi
+
+##########################################
+# epoxy probe
+
+if $pkg_config --exists epoxy ; then
+    epoxy_libs=$($pkg_config --libs epoxy)
+    epoxy_flags=$($pkg_config --cflags epoxy)
+else
+    error_exit "epoxy not present." \
+        "Please install the epoxy devel package."
+fi
+LIBS="$LIBS $epoxy_libs"
+QEMU_CFLAGS="$QEMU_CFLAGS $epoxy_flags"
 
 ##########################################
 # RDMA needs OpenFabrics libraries
