@@ -26,7 +26,12 @@
 #include "sysemu/sysemu.h"
 #include "smbus.h"
 
-//#define DEBUG
+// #define DEBUG
+#ifdef DEBUG
+# define DPRINTF(format, ...) printf(format, ## __VA_ARGS__)
+#else
+# define DPRINTF(format, ...) do { } while (0)
+#endif
 
 /*
  * Hardware is a PIC16LC
@@ -77,35 +82,25 @@ typedef struct SMBusSMCDevice {
 
 static void smc_quick_cmd(SMBusDevice *dev, uint8_t read)
 {
-#ifdef DEBUG
-    printf("smc_quick_cmd: addr=0x%02x read=%d\n", dev->i2c.address, read);
-#endif
+    DPRINTF("smc_quick_cmd: addr=0x%02x read=%d\n", dev->i2c.address, read);
 }
 
 static void smc_send_byte(SMBusDevice *dev, uint8_t val)
 {
-#ifdef DEBUG
-    printf("smc_send_byte: addr=0x%02x val=0x%02x\n",
-           dev->i2c.address, val);
-#endif
+    DPRINTF("smc_send_byte: addr=0x%02x val=0x%02x\n", dev->i2c.address, val);
 }
 
 static uint8_t smc_receive_byte(SMBusDevice *dev)
 {
-#ifdef DEBUG
-    printf("smc_receive_byte: addr=0x%02x\n",
-           dev->i2c.address);
-#endif
+    DPRINTF("smc_receive_byte: addr=0x%02x\n", dev->i2c.address);
     return 0;
 }
 
 static void smc_write_data(SMBusDevice *dev, uint8_t cmd, uint8_t *buf, int len)
 {
     SMBusSMCDevice *smc = (SMBusSMCDevice *) dev;
-#ifdef DEBUG
-    printf("smc_write_byte: addr=0x%02x cmd=0x%02x val=0x%02x\n",
+    DPRINTF("smc_write_byte: addr=0x%02x cmd=0x%02x val=0x%02x\n",
            dev->i2c.address, cmd, buf[0]);
-#endif
 
     switch (cmd) {
     case SMC_REG_VER:
@@ -139,11 +134,9 @@ static void smc_write_data(SMBusDevice *dev, uint8_t cmd, uint8_t *buf, int len)
 
 static uint8_t smc_read_data(SMBusDevice *dev, uint8_t cmd, int n)
 {
-    SMBusSMCDevice *smc = (SMBusSMCDevice *) dev;
-    #ifdef DEBUG
-        printf("smc_read_data: addr=0x%02x cmd=0x%02x n=%d\n",
-               dev->i2c.address, cmd, n);
-    #endif
+    SMBusSMCDevice *smc = (SMBusSMCDevice *)dev;
+    DPRINTF("smc_read_data: addr=0x%02x cmd=0x%02x n=%d\n",
+            dev->i2c.address, cmd, n);
 
     switch (cmd) {
     case SMC_REG_VER:
