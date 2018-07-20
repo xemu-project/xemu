@@ -63,8 +63,8 @@ enum {
 #       define NVREG_IRQ_TX1          0x0100
 #       define NVREG_IRQMASK_WANTED_1 0x005f
 #       define NVREG_IRQMASK_WANTED_2 0x0147
-#       define NVREG_IRQ_UNKNOWN      (~(NVREG_IRQ_RX|NVREG_IRQ_RX_NOBUF|\
-    NVREG_IRQ_TX_ERR|NVREG_IRQ_TX2|NVREG_IRQ_TIMER|NVREG_IRQ_LINK|\
+#       define NVREG_IRQ_UNKNOWN      (~(NVREG_IRQ_RX | NVREG_IRQ_RX_NOBUF | \
+    NVREG_IRQ_TX_ERR | NVREG_IRQ_TX2 | NVREG_IRQ_TIMER | NVREG_IRQ_LINK | \
     NVREG_IRQ_TX1))
     NvRegUnknownSetupReg6 = 0x008,
 #       define NVREG_UNKSETUP6_VAL 3
@@ -118,7 +118,7 @@ enum {
 #       define NVREG_LINKSPEED_100   100
 #       define NVREG_LINKSPEED_1000  1000
     NvRegUnknownSetupReg5 = 0x130,
-#       define NVREG_UNKSETUP5_BIT31 (1<<31)
+#       define NVREG_UNKSETUP5_BIT31 (1 << 31)
     NvRegUnknownSetupReg3 = 0x134,
 #       define NVREG_UNKSETUP3_VAL1 0x200010
     NvRegUnknownSetupReg8 = 0x13C,
@@ -145,7 +145,7 @@ enum {
 #       define NVREG_ADAPTCTL_RUNNING  0x100000
 #       define NVREG_ADAPTCTL_PHYSHIFT 24
     NvRegMIISpeed = 0x18c,
-#       define NVREG_MIISPEED_BIT8 (1<<8)
+#       define NVREG_MIISPEED_BIT8 (1 << 8)
 #       define NVREG_MIIDELAY  5
     NvRegMIIControl = 0x190,
 #       define NVREG_MIICTL_INUSE 0x10000
@@ -166,9 +166,9 @@ enum {
     NvRegPatternCRC = 0x204,
     NvRegPatternMask = 0x208,
     NvRegPowerCap = 0x268,
-#       define NVREG_POWERCAP_D3SUPP (1<<30)
-#       define NVREG_POWERCAP_D2SUPP (1<<26)
-#       define NVREG_POWERCAP_D1SUPP (1<<25)
+#       define NVREG_POWERCAP_D3SUPP (1 << 30)
+#       define NVREG_POWERCAP_D2SUPP (1 << 26)
+#       define NVREG_POWERCAP_D1SUPP (1 << 25)
     NvRegPowerState = 0x26c,
 #       define NVREG_POWERSTATE_POWEREDUP 0x8000
 #       define NVREG_POWERSTATE_VALID     0x0100
@@ -179,28 +179,28 @@ enum {
 #       define NVREG_POWERSTATE_D3        0x0003
 };
 
-#define NV_TX_LASTPACKET      (1<<0)
-#define NV_TX_RETRYERROR      (1<<3)
-#define NV_TX_LASTPACKET1     (1<<8)
-#define NV_TX_DEFERRED        (1<<10)
-#define NV_TX_CARRIERLOST     (1<<11)
-#define NV_TX_LATECOLLISION   (1<<12)
-#define NV_TX_UNDERFLOW       (1<<13)
-#define NV_TX_ERROR           (1<<14)
-#define NV_TX_VALID           (1<<15)
-#define NV_RX_DESCRIPTORVALID (1<<0)
-#define NV_RX_MISSEDFRAME     (1<<1)
-#define NV_RX_SUBSTRACT1      (1<<3)
-#define NV_RX_BIT4            (1<<4)
-#define NV_RX_ERROR1          (1<<7)
-#define NV_RX_ERROR2          (1<<8)
-#define NV_RX_ERROR3          (1<<9)
-#define NV_RX_ERROR4          (1<<10)
-#define NV_RX_CRCERR          (1<<11)
-#define NV_RX_OVERFLOW        (1<<12)
-#define NV_RX_FRAMINGERR      (1<<13)
-#define NV_RX_ERROR           (1<<14)
-#define NV_RX_AVAIL           (1<<15)
+#define NV_TX_LASTPACKET      (1 << 0)
+#define NV_TX_RETRYERROR      (1 << 3)
+#define NV_TX_LASTPACKET1     (1 << 8)
+#define NV_TX_DEFERRED        (1 << 10)
+#define NV_TX_CARRIERLOST     (1 << 11)
+#define NV_TX_LATECOLLISION   (1 << 12)
+#define NV_TX_UNDERFLOW       (1 << 13)
+#define NV_TX_ERROR           (1 << 14)
+#define NV_TX_VALID           (1 << 15)
+#define NV_RX_DESCRIPTORVALID (1 << 0)
+#define NV_RX_MISSEDFRAME     (1 << 1)
+#define NV_RX_SUBSTRACT1      (1 << 3)
+#define NV_RX_BIT4            (1 << 4)
+#define NV_RX_ERROR1          (1 << 7)
+#define NV_RX_ERROR2          (1 << 8)
+#define NV_RX_ERROR3          (1 << 9)
+#define NV_RX_ERROR4          (1 << 10)
+#define NV_RX_CRCERR          (1 << 11)
+#define NV_RX_OVERFLOW        (1 << 12)
+#define NV_RX_FRAMINGERR      (1 << 13)
+#define NV_RX_ERROR           (1 << 14)
+#define NV_RX_AVAIL           (1 << 15)
 
 /* Miscelaneous hardware related defines: */
 #define NV_PCI_REGSZ          0x270
@@ -224,7 +224,7 @@ enum {
 #define NV_WAKEUPMASKENTRIES  4
 
 /* General driver defaults */
-#define NV_WATCHDOG_TIMEO     (2*HZ)
+#define NV_WATCHDOG_TIMEO     (2 * HZ)
 #define DEFAULT_MTU           1500
 
 #define RX_RING               4
@@ -233,13 +233,13 @@ enum {
 #define TX_LIMIT_STOP         10
 #define TX_LIMIT_START        5
 
-/* rx/tx mac addr + type + vlan + align + slack*/
+/* rx / tx mac addr + type + vlan + align + slack*/
 #define RX_NIC_BUFSIZE        (DEFAULT_MTU + 64)
 /* even more slack */
 #define RX_ALLOC_BUFSIZE      (DEFAULT_MTU + 128)
 
-#define OOM_REFILL            (1+HZ/20)
-#define POLL_WAIT             (1+HZ/100)
+#define OOM_REFILL            (1 + HZ / 20)
+#define POLL_WAIT             (1 + HZ / 100)
 
 #define MII_READ      (-1)
 #define MII_PHYSID1   0x02    /* PHYS ID 1                   */
@@ -273,7 +273,7 @@ typedef struct NvNetState {
     NICState     *nic;
     NICConf      conf;
     MemoryRegion mmio, io;
-    uint8_t      regs[MMIO_SIZE/4];
+    uint8_t      regs[MMIO_SIZE / 4];
     uint32_t     phy_regs[6];
     uint8_t      tx_ring_index;
     uint8_t      tx_ring_size;
@@ -334,7 +334,7 @@ static void nvnet_set_link_status(NetClientState *nc);
 /* Interrupts */
 static void nvnet_update_irq(NvNetState *s);
 
-/* Packet Tx/Rx */
+/* Packet Tx / Rx */
 static void nvnet_send_packet(NvNetState *s,
     const uint8_t *buf, int size);
 static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
@@ -384,11 +384,11 @@ static uint32_t nvnet_get_reg(NvNetState *s, hwaddr addr, unsigned int size)
     switch (size) {
     case 4:
         assert((addr & 3) == 0); /* Unaligned register access. */
-        return ((uint32_t *)s->regs)[addr>>2];
+        return ((uint32_t *)s->regs)[addr >> 2];
 
     case 2:
         assert((addr & 1) == 0); /* Unaligned register access. */
-        return ((uint16_t *)s->regs)[addr>>1];
+        return ((uint16_t *)s->regs)[addr >> 1];
 
     case 1:
         return s->regs[addr];
@@ -407,12 +407,12 @@ static void nvnet_set_reg(NvNetState *s,
     switch (size) {
     case 4:
         assert((addr & 3) == 0); /* Unaligned register access. */
-        ((uint32_t *)s->regs)[addr>>2] = val;
+        ((uint32_t *)s->regs)[addr >> 2] = val;
         break;
 
     case 2:
         assert((addr & 1) == 0); /* Unaligned register access. */
-        ((uint16_t *)s->regs)[addr>>1] = (uint16_t)val;
+        ((uint16_t *)s->regs)[addr >> 1] = (uint16_t)val;
         break;
 
     case 1:
@@ -476,7 +476,7 @@ static int nvnet_mii_rw(NvNetState *s, uint64_t val)
 }
 
 /*******************************************************************************
- * MMIO Read/Write
+ * MMIO Read / Write
  ******************************************************************************/
 
 /*
@@ -532,8 +532,8 @@ static void nvnet_mmio_write(void *opaque, hwaddr addr,
     switch (addr) {
     case NvRegRingSizes:
         nvnet_set_reg(s, addr, val, size);
-        s->rx_ring_size = ((val >> NVREG_RINGSZ_RXSHIFT) & 0xffff)+1;
-        s->tx_ring_size = ((val >> NVREG_RINGSZ_TXSHIFT) & 0xffff)+1;
+        s->rx_ring_size = ((val >> NVREG_RINGSZ_RXSHIFT) & 0xffff) + 1;
+        s->tx_ring_size = ((val >> NVREG_RINGSZ_TXSHIFT) & 0xffff) + 1;
         break;
 
     case NvRegMIIData:
@@ -589,7 +589,7 @@ static const MemoryRegionOps nvnet_mmio_ops = {
 };
 
 /*******************************************************************************
- * Packet TX/RX
+ * Packet TX / RX
  ******************************************************************************/
 
 static void nvnet_send_packet(NvNetState *s, const uint8_t *buf, int size)
@@ -648,7 +648,7 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
         /* Read current ring descriptor */
         s->rx_ring_index %= s->rx_ring_size;
         dma_addr_t rx_ring_addr = nvnet_get_reg(s, NvRegRxRingPhysAddr, 4);
-        rx_ring_addr += s->rx_ring_index*sizeof(desc);
+        rx_ring_addr += s->rx_ring_index * sizeof(desc);
         pci_dma_read(&s->dev, rx_ring_addr, &desc, sizeof(desc));
         NVNET_DPRINTF("Looking at ring descriptor %d (0x%llx): ",
                       s->rx_ring_index, rx_ring_addr);
@@ -714,15 +714,15 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
         /* Transfer packet from guest memory */
         NVNET_DPRINTF("Sending packet...\n");
         pci_dma_read(&s->dev, desc.packet_buffer,
-                              s->txrx_dma_buf, desc.length+1);
-        nvnet_send_packet(s, s->txrx_dma_buf, desc.length+1);
+                              s->txrx_dma_buf, desc.length + 1);
+        nvnet_send_packet(s, s->txrx_dma_buf, desc.length + 1);
 
         /* Update descriptor */
         is_last_packet = desc.flags & NV_TX_LASTPACKET;
         desc.flags &= ~(NV_TX_VALID | NV_TX_RETRYERROR | NV_TX_DEFERRED |
             NV_TX_CARRIERLOST | NV_TX_LATECOLLISION | NV_TX_UNDERFLOW |
             NV_TX_ERROR);
-        desc.length = desc.length+5;
+        desc.length = desc.length + 5;
         pci_dma_write(&s->dev, tx_ring_addr, &desc, sizeof(desc));
 
         if (is_last_packet) {
@@ -764,7 +764,7 @@ static void nvnet_set_link_status(NetClientState *nc)
 }
 
 /*******************************************************************************
- * IO Read/Write
+ * IO Read / Write
  ******************************************************************************/
 
 static uint64_t nvnet_io_read(void *opaque, hwaddr addr, unsigned int size)
@@ -825,12 +825,12 @@ static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
         object_get_typename(OBJECT(s)), dev->id, s);
     assert(s->nic);
 
-    s->regs[NvRegMacAddrA+0x00] = s->conf.macaddr.a[0];
-    s->regs[NvRegMacAddrA+0x01] = s->conf.macaddr.a[1];
-    s->regs[NvRegMacAddrA+0x02] = s->conf.macaddr.a[2];
-    s->regs[NvRegMacAddrA+0x03] = s->conf.macaddr.a[3];
-    s->regs[NvRegMacAddrB+0x00] = s->conf.macaddr.a[4];
-    s->regs[NvRegMacAddrB+0x01] = s->conf.macaddr.a[5];
+    s->regs[NvRegMacAddrA + 0x00] = s->conf.macaddr.a[0];
+    s->regs[NvRegMacAddrA + 0x01] = s->conf.macaddr.a[1];
+    s->regs[NvRegMacAddrA + 0x02] = s->conf.macaddr.a[2];
+    s->regs[NvRegMacAddrA + 0x03] = s->conf.macaddr.a[3];
+    s->regs[NvRegMacAddrB + 0x00] = s->conf.macaddr.a[4];
+    s->regs[NvRegMacAddrB + 0x01] = s->conf.macaddr.a[5];
 }
 
 static void nvnet_uninit(PCIDevice *dev)
@@ -881,14 +881,14 @@ static void hex_dump(FILE *f, const uint8_t *buf, int size)
         fprintf(f, "%08x ", i);
         for (j = 0; j < 16; j++) {
             if (j < len) {
-                fprintf(f, " %02x", buf[i+j]);
+                fprintf(f, " %02x", buf[i + j]);
             } else {
                 fprintf(f, "   ");
             }
         }
         fprintf(f, " ");
         for (j = 0; j < len; j++) {
-            c = buf[i+j];
+            c = buf[i + j];
             if (c < ' ' || c > '~') {
                 c = '.';
             }
