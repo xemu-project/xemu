@@ -20,12 +20,11 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/display/vga_regs.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#include "qemu/error-report.h"
-#include <assert.h>
 #include "nv2a.h"
-#include "hw/display/vga_regs.h"
+#include <assert.h>
 
 #ifdef __WINNT__
 // HACK: mingw-w64 doesn't provide ffs, for now we just shove it here
@@ -34,19 +33,17 @@ int ffs(register int valu)
 {
     register int bit;
 
-    if (valu == 0)
+    if (valu == 0) {
         return 0;
+    }
 
-    for (bit = 1; !(valu & 1); bit++)
+    for (bit = 1; !(valu & 1); bit++) {
         valu >>= 1;
+    }
 
     return bit;
 }
 #endif
-
-DMAObject nv_dma_load(NV2AState *d, hwaddr dma_obj_address);
-void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len);
-void nv2a_init(PCIBus *bus, int devfn, MemoryRegion *ram);
 
 void update_irq(NV2AState *d)
 {
@@ -83,16 +80,16 @@ DMAObject nv_dma_load(NV2AState *d, hwaddr dma_obj_address)
 {
     assert(dma_obj_address < memory_region_size(&d->ramin));
 
-    uint32_t *dma_obj = (uint32_t*)(d->ramin_ptr + dma_obj_address);
+    uint32_t *dma_obj = (uint32_t *)(d->ramin_ptr + dma_obj_address);
     uint32_t flags = ldl_le_p(dma_obj);
     uint32_t limit = ldl_le_p(dma_obj + 1);
     uint32_t frame = ldl_le_p(dma_obj + 2);
 
     return (DMAObject){
-        .dma_class = GET_MASK(flags, NV_DMA_CLASS),
+        .dma_class  = GET_MASK(flags, NV_DMA_CLASS),
         .dma_target = GET_MASK(flags, NV_DMA_TARGET),
-        .address = (frame & NV_DMA_ADDRESS) | GET_MASK(flags, NV_DMA_ADJUST),
-        .limit = limit,
+        .address    = (frame & NV_DMA_ADDRESS) | GET_MASK(flags, NV_DMA_ADJUST),
+        .limit      = limit,
     };
 }
 
@@ -113,38 +110,11 @@ void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len)
     return d->vram_ptr + dma.address;
 }
 
-#define DEFINE_PROTO(prefix) \
-    uint64_t prefix ## _read(void *opaque, hwaddr addr, unsigned int size); \
-    void prefix ## _write(void *opaque, hwaddr addr, uint64_t val, unsigned int size);
-
-DEFINE_PROTO(pmc)
-DEFINE_PROTO(pbus)
-DEFINE_PROTO(pfifo)
-DEFINE_PROTO(prma)
-DEFINE_PROTO(pvideo)
-DEFINE_PROTO(ptimer)
-DEFINE_PROTO(pcounter)
-DEFINE_PROTO(pvpe)
-DEFINE_PROTO(ptv)
-DEFINE_PROTO(prmfb)
-DEFINE_PROTO(prmvio)
-DEFINE_PROTO(pfb)
-DEFINE_PROTO(pstraps)
-DEFINE_PROTO(pgraph)
-DEFINE_PROTO(pcrtc)
-DEFINE_PROTO(prmcio)
-DEFINE_PROTO(pramdac)
-DEFINE_PROTO(prmdio)
-// DEFINE_PROTO(pramin)
-DEFINE_PROTO(user)
-
-#undef DEFINE_PROTO
-
 #include "nv2a_pbus.c"
 #include "nv2a_pcrtc.c"
 #include "nv2a_pfb.c"
-#include "nv2a_pgraph.c"
 #include "nv2a_pfifo.c"
+#include "nv2a_pgraph.c"
 #include "nv2a_pmc.c"
 #include "nv2a_pramdac.c"
 #include "nv2a_prmcio.c"
@@ -154,42 +124,46 @@ DEFINE_PROTO(user)
 #include "nv2a_stubs.c"
 #include "nv2a_user.c"
 
+#define ENTRY(NAME, OFFSET, SIZE, RDFUNC, WRFUNC)      \
+    [NV_##NAME] = {                                    \
+        .name   = #NAME,                               \
+        .offset = OFFSET,                              \
+        .size   = SIZE,                                \
+        .ops    = { .read = RDFUNC, .write = WRFUNC }, \
+    }
+
 const struct NV2ABlockInfo blocktable[] = {
-
-#define ENTRY(NAME, OFFSET, SIZE, RDFUNC, WRFUNC) \
-    [ NV_ ## NAME ]  = { \
-        .name = #NAME, .offset = OFFSET, .size = SIZE, \
-        .ops = { .read = RDFUNC, .write = WRFUNC }, \
-    }, \
-
-    ENTRY(PMC,      0x000000, 0x001000, pmc_read,      pmc_write)
-    ENTRY(PBUS,     0x001000, 0x001000, pbus_read,     pbus_write)
-    ENTRY(PFIFO,    0x002000, 0x002000, pfifo_read,    pfifo_write)
-    ENTRY(PRMA,     0x007000, 0x001000, prma_read,     prma_write)
-    ENTRY(PVIDEO,   0x008000, 0x001000, pvideo_read,   pvideo_write)
-    ENTRY(PTIMER,   0x009000, 0x001000, ptimer_read,   ptimer_write)
-    ENTRY(PCOUNTER, 0x00a000, 0x001000, pcounter_read, pcounter_write)
-    ENTRY(PVPE,     0x00b000, 0x001000, pvpe_read,     pvpe_write)
-    ENTRY(PTV,      0x00d000, 0x001000, ptv_read,      ptv_write)
-    ENTRY(PRMFB,    0x0a0000, 0x020000, prmfb_read,    prmfb_write)
-    ENTRY(PRMVIO,   0x0c0000, 0x001000, prmvio_read,   prmvio_write)
-    ENTRY(PFB,      0x100000, 0x001000, pfb_read,      pfb_write)
-    ENTRY(PSTRAPS,  0x101000, 0x001000, pstraps_read,  pstraps_write)
-    ENTRY(PGRAPH,   0x400000, 0x002000, pgraph_read,   pgraph_write)
-    ENTRY(PCRTC,    0x600000, 0x001000, pcrtc_read,    pcrtc_write)
-    ENTRY(PRMCIO,   0x601000, 0x001000, prmcio_read,   prmcio_write)
-    ENTRY(PRAMDAC,  0x680000, 0x001000, pramdac_read,  pramdac_write)
-    ENTRY(PRMDIO,   0x681000, 0x001000, prmdio_read,   prmdio_write)
-    // ENTRY(PRAMIN,   0x700000, 0x100000, pramin_read,   pramin_write)
-    ENTRY(USER,     0x800000, 0x800000, user_read,     user_write)
-#undef ENTRY
+    ENTRY(PMC,      0x000000, 0x001000, pmc_read,      pmc_write),
+    ENTRY(PBUS,     0x001000, 0x001000, pbus_read,     pbus_write),
+    ENTRY(PFIFO,    0x002000, 0x002000, pfifo_read,    pfifo_write),
+    ENTRY(PRMA,     0x007000, 0x001000, prma_read,     prma_write),
+    ENTRY(PVIDEO,   0x008000, 0x001000, pvideo_read,   pvideo_write),
+    ENTRY(PTIMER,   0x009000, 0x001000, ptimer_read,   ptimer_write),
+    ENTRY(PCOUNTER, 0x00a000, 0x001000, pcounter_read, pcounter_write),
+    ENTRY(PVPE,     0x00b000, 0x001000, pvpe_read,     pvpe_write),
+    ENTRY(PTV,      0x00d000, 0x001000, ptv_read,      ptv_write),
+    ENTRY(PRMFB,    0x0a0000, 0x020000, prmfb_read,    prmfb_write),
+    ENTRY(PRMVIO,   0x0c0000, 0x001000, prmvio_read,   prmvio_write),
+    ENTRY(PFB,      0x100000, 0x001000, pfb_read,      pfb_write),
+    ENTRY(PSTRAPS,  0x101000, 0x001000, pstraps_read,  pstraps_write),
+    ENTRY(PGRAPH,   0x400000, 0x002000, pgraph_read,   pgraph_write),
+    ENTRY(PCRTC,    0x600000, 0x001000, pcrtc_read,    pcrtc_write),
+    ENTRY(PRMCIO,   0x601000, 0x001000, prmcio_read,   prmcio_write),
+    ENTRY(PRAMDAC,  0x680000, 0x001000, pramdac_read,  pramdac_write),
+    ENTRY(PRMDIO,   0x681000, 0x001000, prmdio_read,   prmdio_write),
+    // ENTRY(PRAMIN,   0x700000, 0x100000, pramin_read,   pramin_write),
+    ENTRY(USER,     0x800000, 0x800000, user_read,     user_write),
 };
+
+#undef ENTRY
 
 const int blocktable_len = ARRAY_SIZE(blocktable);
 
+// FIXME: Add nv2a_reg_names or remove this code
 // static const char* nv2a_reg_names[] = {};
 
-void reg_log_read(int block, hwaddr addr, uint64_t val) {
+void reg_log_read(int block, hwaddr addr, uint64_t val)
+{
     if (blocktable[block].name) {
         // hwaddr naddr = blocktable[block].offset + addr;
         // if (naddr < ARRAY_SIZE(nv2a_reg_names) && nv2a_reg_names[naddr]) {
@@ -197,15 +171,16 @@ void reg_log_read(int block, hwaddr addr, uint64_t val) {
         //             blocktable[block].name, nv2a_reg_names[naddr], val);
         // } else {
             NV2A_DPRINTF("%s: read [%" HWADDR_PRIx "] -> 0x%" PRIx64 "\n",
-                    blocktable[block].name, addr, val);
+                         blocktable[block].name, addr, val);
         // }
     } else {
         NV2A_DPRINTF("(%d?): read [%" HWADDR_PRIx "] -> 0x%" PRIx64 "\n",
-                block, addr, val);
+                     block, addr, val);
     }
 }
 
-void reg_log_write(int block, hwaddr addr, uint64_t val) {
+void reg_log_write(int block, hwaddr addr, uint64_t val)
+{
     if (blocktable[block].name) {
         // hwaddr naddr = blocktable[block].offset + addr;
         // if (naddr < ARRAY_SIZE(nv2a_reg_names) && nv2a_reg_names[naddr]) {
@@ -213,11 +188,11 @@ void reg_log_write(int block, hwaddr addr, uint64_t val) {
         //             blocktable[block].name, nv2a_reg_names[naddr], val);
         // } else {
             NV2A_DPRINTF("%s: [%" HWADDR_PRIx "] = 0x%" PRIx64 "\n",
-                    blocktable[block].name, addr, val);
+                         blocktable[block].name, addr, val);
         // }
     } else {
         NV2A_DPRINTF("(%d?): [%" HWADDR_PRIx "] = 0x%" PRIx64 "\n",
-                block, addr, val);
+                     block, addr, val);
     }
 }
 
@@ -346,8 +321,8 @@ static void nv2a_get_offsets(VGACommonState *s,
     *pstart_addr = start_addr;
 
     line_compare = s->cr[VGA_CRTC_LINE_COMPARE] |
-        ((s->cr[VGA_CRTC_OVERFLOW] & 0x10) << 4) |
-        ((s->cr[VGA_CRTC_MAX_SCAN] & 0x40) << 3);
+                   ((s->cr[VGA_CRTC_OVERFLOW] & 0x10) << 4) |
+                   ((s->cr[VGA_CRTC_MAX_SCAN] & 0x40) << 3);
     *pline_compare = line_compare;
 }
 
@@ -394,7 +369,6 @@ static void nv2a_init_memory(NV2AState *d, MemoryRegion *ram)
                              d->vram, 0, memory_region_size(d->vram));
     d->vga.vram_ptr = memory_region_get_ram_ptr(&d->vga.vram);
     vga_dirty_log_start(&d->vga);
-
 
     pgraph_init(d);
 
@@ -460,7 +434,7 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
     QSIMPLEQ_INIT(&d->pfifo.cache1.retired_entries);
 
     /* Pre-allocate memory for CacheEntry objects */
-    for (i=0; i < 100000; i++) {
+    for (i = 0; i < 100000; i++) {
         CacheEntry *command = g_malloc0(sizeof(CacheEntry));
         assert(command != NULL);
         QSIMPLEQ_INSERT_TAIL(&d->pfifo.cache1.available_entries,

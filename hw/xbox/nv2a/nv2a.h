@@ -23,44 +23,41 @@
 #define HW_NV2A_H
 
 #include "hw/hw.h"
-#include "hw/i386/pc.h"
-#include "ui/console.h"
-#include "hw/pci/pci.h"
-#include "ui/console.h"
 #include "hw/display/vga.h"
 #include "hw/display/vga_int.h"
-#include "qemu/thread.h"
+#include "hw/i386/pc.h"
+#include "hw/pci/pci.h"
 #include "qapi/qmp/qstring.h"
+#include "qemu/thread.h"
 #include "cpu.h"
 
 #include "g-lru-cache.h"
-#include "swizzle.h"
-#include "nv2a_shaders.h"
 #include "nv2a_debug.h"
 #include "nv2a_int.h"
-
+#include "nv2a_shaders.h"
+#include "swizzle.h"
 #include "gl/gloffscreen.h"
 
 #define USE_TEXTURE_CACHE
 
-#define GET_MASK(v, mask) (((v) & (mask)) >> (ffs(mask)-1))
+#define GET_MASK(v, mask) (((v) & (mask)) >> (ffs(mask) - 1))
 
-#define SET_MASK(v, mask, val) ({                                    \
-        const unsigned int __val = (val);                             \
-        const unsigned int __mask = (mask);                          \
-        (v) &= ~(__mask);                                            \
-        (v) |= ((__val) << (ffs(__mask)-1)) & (__mask);              \
+#define SET_MASK(v, mask, val)                            \
+    ({                                                    \
+        const unsigned int __val = (val);                 \
+        const unsigned int __mask = (mask);               \
+        (v) &= ~(__mask);                                 \
+        (v) |= ((__val) << (ffs(__mask) - 1)) & (__mask); \
     })
 
-#define CASE_4(v, step)                                              \
-    case (v):                                                        \
-    case (v)+(step):                                                 \
-    case (v)+(step)*2:                                               \
-    case (v)+(step)*3
+#define CASE_4(v, step)      \
+    case (v):                \
+    case ((v) + (step)):     \
+    case ((v) + (step) * 2): \
+    case ((v) + (step) * 3)
 
 
-#define NV2A_DEVICE(obj) \
-    OBJECT_CHECK(NV2AState, (obj), "nv2a")
+#define NV2A_DEVICE(obj) OBJECT_CHECK(NV2AState, (obj), "nv2a")
 
 void reg_log_read(int block, hwaddr addr, uint64_t val);
 void reg_log_write(int block, hwaddr addr, uint64_t val);
@@ -147,8 +144,8 @@ typedef struct TextureShape {
 typedef struct TextureKey {
     TextureShape state;
     uint64_t data_hash;
-    uint8_t* texture_data;
-    uint8_t* palette_data;
+    uint8_t *texture_data;
+    uint8_t *palette_data;
 } TextureKey;
 
 typedef struct TextureBinding {
@@ -248,7 +245,7 @@ typedef struct PGRAPHState {
     bool texture_matrix_enable[NV2A_MAX_TEXTURES];
 
     /* FIXME: Move to NV_PGRAPH_BUMPMAT... */
-    float bump_env_matrix[NV2A_MAX_TEXTURES-1][4]; /* 3 allowed stages with 2x2 matrix each */
+    float bump_env_matrix[NV2A_MAX_TEXTURES - 1][4]; /* 3 allowed stages with 2x2 matrix each */
 
     GloContext *gl_context;
     GLuint gl_framebuffer;
@@ -260,7 +257,7 @@ typedef struct PGRAPHState {
     bool zpass_pixel_count_enable;
     unsigned int zpass_pixel_count_result;
     unsigned int gl_zpass_pixel_count_query_count;
-    GLuint* gl_zpass_pixel_count_queries;
+    GLuint *gl_zpass_pixel_count_queries;
 
     hwaddr dma_vertex_a, dma_vertex_b;
 
@@ -310,7 +307,6 @@ typedef struct PGRAPHState {
 
     uint32_t regs[0x2000];
 } PGRAPHState;
-
 
 typedef struct CacheEntry {
     QSIMPLEQ_ENTRY(CacheEntry) entry;
@@ -431,7 +427,7 @@ typedef struct NV2AState {
 } NV2AState;
 
 typedef struct NV2ABlockInfo {
-    const char* name;
+    const char *name;
     hwaddr offset;
     uint64_t size;
     MemoryRegionOps ops;
@@ -440,9 +436,45 @@ typedef struct NV2ABlockInfo {
 extern const struct NV2ABlockInfo blocktable[];
 extern const int blocktable_len;
 
+DMAObject nv_dma_load(NV2AState *d, hwaddr dma_obj_address);
+void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len);
+void nv2a_init(PCIBus *bus, int devfn, MemoryRegion *ram);
 void pgraph_init(NV2AState *d);
 void *pfifo_puller_thread(void *opaque);
 void pgraph_destroy(PGRAPHState *pg);
 void update_irq(NV2AState *d);
+void pgraph_context_switch(NV2AState *d, unsigned int channel_id);
+void pgraph_wait_fifo_access(NV2AState *d);
+void pgraph_method(NV2AState *d,
+                   unsigned int subchannel,
+                   unsigned int method,
+                   uint32_t parameter);
+
+#define DEFINE_PROTO(n)                                              \
+    uint64_t n##_read(void *opaque, hwaddr addr, unsigned int size); \
+    void n##_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size);
+
+DEFINE_PROTO(pmc)
+DEFINE_PROTO(pbus)
+DEFINE_PROTO(pfifo)
+DEFINE_PROTO(prma)
+DEFINE_PROTO(pvideo)
+DEFINE_PROTO(ptimer)
+DEFINE_PROTO(pcounter)
+DEFINE_PROTO(pvpe)
+DEFINE_PROTO(ptv)
+DEFINE_PROTO(prmfb)
+DEFINE_PROTO(prmvio)
+DEFINE_PROTO(pfb)
+DEFINE_PROTO(pstraps)
+DEFINE_PROTO(pgraph)
+DEFINE_PROTO(pcrtc)
+DEFINE_PROTO(prmcio)
+DEFINE_PROTO(pramdac)
+DEFINE_PROTO(prmdio)
+// DEFINE_PROTO(pramin)
+DEFINE_PROTO(user)
+
+#undef DEFINE_PROTO
 
 #endif

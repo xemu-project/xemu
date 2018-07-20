@@ -261,12 +261,7 @@ static const SurfaceColorFormatInfo kelvin_surface_color_format_map[] = {
         {4, GL_RGBA8, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV},
 };
 
-uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size);
-void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size);
-
-static void pgraph_context_switch(NV2AState *d, unsigned int channel_id);
 static void pgraph_set_context_user(NV2AState *d, uint32_t val);
-static void pgraph_wait_fifo_access(NV2AState *d);
 static void pgraph_method_log(unsigned int subchannel, unsigned int graphics_class, unsigned int method, uint32_t parameter);
 static void pgraph_allocate_inline_buffer_vertices(PGRAPHState *pg, unsigned int attr);
 static void pgraph_finish_inline_buffer_vertex(PGRAPHState *pg);
@@ -440,10 +435,10 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     qemu_mutex_unlock(&d->pgraph.lock);
 }
 
-static void pgraph_method(NV2AState *d,
-                          unsigned int subchannel,
-                          unsigned int method,
-                          uint32_t parameter)
+void pgraph_method(NV2AState *d,
+                   unsigned int subchannel,
+                   unsigned int method,
+                   uint32_t parameter)
 {
     int i;
     GraphicsSubchannel *subchannel_data;
@@ -2311,7 +2306,7 @@ static void pgraph_method(NV2AState *d,
             if (parameter & NV097_CLEAR_SURFACE_STENCIL) {
                 gl_mask |= GL_STENCIL_BUFFER_BIT;
                 glStencilMask(0xff);
-                glClearStencil(gl_clear_stencil);            
+                glClearStencil(gl_clear_stencil);
             }
         }
         if (write_color) {
@@ -2516,7 +2511,7 @@ static void pgraph_method(NV2AState *d,
 }
 
 
-static void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
+void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
 {
     bool valid;
     valid = d->pgraph.channel_valid && d->pgraph.channel_id == channel_id;
@@ -2540,7 +2535,7 @@ static void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
     }
 }
 
-static void pgraph_wait_fifo_access(NV2AState *d) {
+void pgraph_wait_fifo_access(NV2AState *d) {
     while (!d->pgraph.fifo_access) {
         qemu_cond_wait(&d->pgraph.fifo_access_cond, &d->pgraph.lock);
     }
