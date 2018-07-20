@@ -29,8 +29,7 @@ static void pvideo_vga_invalidate(NV2AState *d)
     vga_invalidate_scanlines(&d->vga, y1, y2);
 }
 
-uint64_t pvideo_read(void *opaque,
-                            hwaddr addr, unsigned int size)
+uint64_t pvideo_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NV2AState *d = opaque;
 
@@ -48,8 +47,7 @@ uint64_t pvideo_read(void *opaque,
     return r;
 }
 
-void pvideo_write(void *opaque, hwaddr addr,
-                         uint64_t val, unsigned int size)
+void pvideo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     NV2AState *d = opaque;
 

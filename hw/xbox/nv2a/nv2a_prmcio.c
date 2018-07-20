@@ -20,8 +20,7 @@
  */
 
 /* PRMCIO - aliases VGA CRTC and attribute controller registers */
-uint64_t prmcio_read(void *opaque,
-                                  hwaddr addr, unsigned int size)
+uint64_t prmcio_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NV2AState *d = opaque;
     uint64_t r = vga_ioport_read(&d->vga, addr);
@@ -29,8 +28,8 @@ uint64_t prmcio_read(void *opaque,
     reg_log_read(NV_PRMCIO, addr, r);
     return r;
 }
-void prmcio_write(void *opaque, hwaddr addr,
-                               uint64_t val, unsigned int size)
+
+void prmcio_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     NV2AState *d = opaque;
 
