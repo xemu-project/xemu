@@ -47,7 +47,12 @@
 #define CONFIG_DEVICE_BASE_ADDRESS_LOW      0x61
 #define CONFIG_DEVICE_INETRRUPT             0x70
 
-#define DEBUG_LPC47M157
+// #define DEBUG
+#ifdef DEBUG
+# define DPRINTF(format, ...) printf(format, ## __VA_ARGS__)
+#else
+# define DPRINTF(format, ...) do { } while (0)
+#endif
 
 typedef struct LPC47M157State {
     ISADevice dev;
@@ -72,13 +77,12 @@ typedef struct LPC47M157State {
 static void update_devices(LPC47M157State *s)
 {
     ISADevice *isadev = ISA_DEVICE(s);
+    int i;
 
     /* init serial devices */
-    int i;
     for (i = 0; i < 2; i++) {
         uint8_t *dev = s->device_regs[DEVICE_SERIAL_PORT_1 + i];
         if (dev[CONFIG_DEVICE_ACTIVATE] && !s->serial[i].active) {
-
             uint32_t iobase = (dev[CONFIG_DEVICE_BASE_ADDRESS_HIGH] << 8)
                                 | dev[CONFIG_DEVICE_BASE_ADDRESS_LOW];
             uint32_t irq = dev[CONFIG_DEVICE_INETRRUPT];
@@ -99,9 +103,7 @@ static void lpc47m157_io_write(void *opaque, hwaddr addr, uint64_t val,
 {
     LPC47M157State *s = opaque;
 
-#ifdef DEBUG_LPC47M157
-    printf("lpc47m157 io write 0x%"HWADDR_PRIx" = 0x%"PRIx64"\n", addr, val);
-#endif
+    DPRINTF("lpc47m157 io write 0x%" HWADDR_PRIx " = 0x%" PRIx64 "\n", addr, val);
 
     if (addr == 0) {
         /* INDEX_PORT */
@@ -126,11 +128,9 @@ static void lpc47m157_io_write(void *opaque, hwaddr addr, uint64_t val,
             assert(s->config_regs[CONFIG_DEVICE_NUMBER] < MAX_DEVICE);
             uint8_t *dev = s->device_regs[s->config_regs[CONFIG_DEVICE_NUMBER]];
             dev[s->selected_reg] = val;
-#ifdef DEBUG_LPC47M157
-            printf("lpc47m157 dev %x . %x = %"PRIx64"\n",
+            DPRINTF("lpc47m157 dev %x . %x = %"PRIx64"\n",
                 s->config_regs[CONFIG_DEVICE_NUMBER],
                 s->selected_reg, val);
-#endif
         }
     } else {
         assert(false);
@@ -157,10 +157,7 @@ static uint64_t lpc47m157_io_read(void *opaque, hwaddr addr, unsigned int size)
         assert(false);
     }
 
-#ifdef DEBUG_LPC47M157
-    printf("lpc47m157 io read 0x%"HWADDR_PRIx" -> 0x%x\n", addr, val);
-#endif
-
+    DPRINTF("lpc47m157 io read 0x%"HWADDR_PRIx" -> 0x%x\n", addr, val);
     return val;
 }
 
@@ -183,6 +180,7 @@ static void lpc47m157_realize(DeviceState *dev, Error **errp)
 {
     LPC47M157State *s = LPC47M157_DEVICE(dev);
     ISADevice *isa = ISA_DEVICE(dev);
+    int i;
 
     const uint32_t iobase = 0x2e; //0x4e if SYSOPT pin, make it a property
     s->config_regs[CONFIG_PORT_LOW] = iobase & 0xFF;
@@ -193,7 +191,6 @@ static void lpc47m157_realize(DeviceState *dev, Error **errp)
     isa_register_ioport(isa, &s->io, iobase);
 
     /* init serial cores */
-    int i;
     for (i = 0; i < 2; i++) {
         Chardev *chr = serial_hds[i];
         if (chr == NULL) {
