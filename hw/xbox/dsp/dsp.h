@@ -48,6 +48,7 @@ void dsp_start_frame(DSPState* dsp);
 
 /* Dsp Debugger commands */
 uint32_t dsp_read_memory(DSPState* dsp, char space, uint32_t addr);
+void dsp_write_memory(DSPState* dsp, char space, uint32_t address, uint32_t value);
 uint32_t dsp_disasm_memory(DSPState* dsp, uint32_t dsp_memdump_addr, uint32_t dsp_memdump_upper, char space);
 uint32_t dsp_disasm_address(DSPState* dsp, FILE *out, uint32_t lowerAdr, uint32_t UpperAdr);
 void dsp_info(DSPState* dsp);

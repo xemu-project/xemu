@@ -496,20 +496,22 @@ static uint64_t ep_read(void *opaque,
 {
     MCPXAPUState *d = opaque;
 
-    uint64_t r = 0;
+    assert(size == 4);
+    assert(addr % 4 == 0);
 
+    uint64_t r = 0;
     switch (addr) {
-    case NV_PAPU_EPXMEM ... NV_PAPU_EPXMEM + 0xC00 * 4: {
+    case NV_PAPU_EPXMEM ... NV_PAPU_EPXMEM + 0xC00 * 4 - 1: {
         uint32_t xaddr = (addr - NV_PAPU_EPXMEM) / 4;
         r = dsp_read_memory(d->ep.dsp, 'X', xaddr);
         break;
     }
-    case NV_PAPU_EPYMEM ... NV_PAPU_EPYMEM + 0x100 * 4: {
+    case NV_PAPU_EPYMEM ... NV_PAPU_EPYMEM + 0x100 * 4 - 1: {
         uint32_t yaddr = (addr - NV_PAPU_EPYMEM) / 4;
         r = dsp_read_memory(d->ep.dsp, 'Y', yaddr);
         break;
     }
-    case NV_PAPU_EPPMEM ... NV_PAPU_EPPMEM + 0x1000 * 4: {
+    case NV_PAPU_EPPMEM ... NV_PAPU_EPPMEM + 0x1000 * 4 - 1: {
         uint32_t paddr = (addr - NV_PAPU_EPPMEM) / 4;
         r = dsp_read_memory(d->ep.dsp, 'P', paddr);
         break;
@@ -527,19 +529,25 @@ static void ep_write(void *opaque, hwaddr addr,
 {
     MCPXAPUState *d = opaque;
 
+    assert(size == 4);
+    assert(addr % 4 == 0);
+
     MCPX_DPRINTF("mcpx apu EP: [0x%llx] = 0x%llx\n", addr, val);
 
     switch (addr) {
-    case NV_PAPU_EPXMEM ... NV_PAPU_EPXMEM + 0xC00 * 4: {
-        assert(false);
+    case NV_PAPU_EPXMEM ... NV_PAPU_EPXMEM + 0xC00 * 4 - 1: {
+        uint32_t xaddr = (addr - NV_PAPU_EPXMEM) / 4;
+        dsp_write_memory(d->ep.dsp, 'X', xaddr, val);
         break;
     }
-    case NV_PAPU_EPYMEM ... NV_PAPU_EPYMEM + 0x100 * 4: {
-        assert(false);
+    case NV_PAPU_EPYMEM ... NV_PAPU_EPYMEM + 0x100 * 4 - 1: {
+        uint32_t yaddr = (addr - NV_PAPU_EPYMEM) / 4;
+        dsp_write_memory(d->ep.dsp, 'Y', yaddr, val);
         break;
     }
-    case NV_PAPU_EPPMEM ... NV_PAPU_EPPMEM + 0x1000 * 4: {
-        assert(false);
+    case NV_PAPU_EPPMEM ... NV_PAPU_EPPMEM + 0x1000 * 4 - 1: {
+        uint32_t paddr = (addr - NV_PAPU_EPPMEM) / 4;
+        dsp_write_memory(d->ep.dsp, 'P', paddr, val);
         break;
     }
     case NV_PAPU_EPRST:

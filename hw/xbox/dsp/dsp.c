@@ -198,27 +198,47 @@ uint32_t dsp_disasm_address(DSPState* dsp, FILE *out, uint32_t lowerAdr, uint32_
     return dsp_pc;
 }
 
-uint32_t dsp_read_memory(DSPState* dsp, char space_id, uint32_t address)
+uint32_t dsp_read_memory(DSPState* dsp, char space, uint32_t address)
 {
-    int space;
+    int space_id;
 
-    switch (space_id) {
+    switch (space) {
     case 'X':
-        space = DSP_SPACE_X;
+        space_id = DSP_SPACE_X;
         break;
     case 'Y':
-        space = DSP_SPACE_Y;
+        space_id = DSP_SPACE_Y;
         break;
     case 'P':
-        space = DSP_SPACE_P;
+        space_id = DSP_SPACE_P;
         break;
     default:
         assert(false);
     }
 
-    return dsp56k_read_memory(&dsp->core, space, address);
+    return dsp56k_read_memory(&dsp->core, space_id, address);
 }
 
+void dsp_write_memory(DSPState* dsp, char space, uint32_t address, uint32_t value)
+{
+    int space_id;
+
+    switch (space) {
+    case 'X':
+        space_id = DSP_SPACE_X;
+        break;
+    case 'Y':
+        space_id = DSP_SPACE_Y;
+        break;
+    case 'P':
+        space_id = DSP_SPACE_P;
+        break;
+    default:
+        assert(false);
+    }
+
+    dsp56k_write_memory(&dsp->core, space_id, address, value);
+}
 
 /**
  * Output memory values between given addresses in given DSP address space.
