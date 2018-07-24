@@ -972,8 +972,6 @@ uint32_t dsp56k_read_memory(dsp_core_t* dsp, int space, uint32_t address)
             return dsp->read_peripheral(dsp, address);
         } else if (address >= DSP_MIXBUFFER_BASE && address < DSP_MIXBUFFER_BASE+DSP_MIXBUFFER_SIZE) {
             return dsp->mixbuffer[address-DSP_MIXBUFFER_BASE];
-        } else if (address >= DSP_MIXBUFFER_READ_BASE && address < DSP_MIXBUFFER_READ_BASE+DSP_MIXBUFFER_SIZE) {
-            return dsp->mixbuffer[address-DSP_MIXBUFFER_READ_BASE];
         } else {
             assert(address < DSP_XRAM_SIZE);
             return dsp->xram[address];
@@ -1012,8 +1010,6 @@ static void write_memory_raw(dsp_core_t* dsp, int space, uint32_t address, uint3
             return;
         } else if (address >= DSP_MIXBUFFER_BASE && address < DSP_MIXBUFFER_BASE+DSP_MIXBUFFER_SIZE) {
             dsp->mixbuffer[address-DSP_MIXBUFFER_BASE] = value;
-        } else if (address >= DSP_MIXBUFFER_READ_BASE && address < DSP_MIXBUFFER_READ_BASE+DSP_MIXBUFFER_SIZE) {
-            dsp->mixbuffer[address-DSP_MIXBUFFER_READ_BASE] = value;
         } else {
             assert(address < DSP_XRAM_SIZE);
             dsp->xram[address] = value;
