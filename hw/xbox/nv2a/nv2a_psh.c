@@ -167,7 +167,6 @@ enum PS_FINALCOMBINERSETTING
 
 struct InputInfo {
     int reg, mod, chan;
-    bool invert;
 };
 
 struct InputVarInfo {
@@ -176,9 +175,6 @@ struct InputVarInfo {
 
 struct FCInputInfo {
     struct InputInfo a, b, c, d, e, f, g;
-    int c0, c1;
-    //uint32_t c0_value, c1_value;
-    bool c0_used, c1_used;
     bool v1r0_sum, clamp_sum, inv_v1, inv_r0, enabled;
 };
 
@@ -191,8 +187,6 @@ struct PSStageInfo {
     struct InputVarInfo rgb_input, alpha_input;
     struct OutputInfo rgb_output, alpha_output;
     int c0, c1;
-    //uint32_t c0_value, c1_value;
-    bool c0_used, c1_used;
 };
 
 struct PixelShader {
@@ -248,15 +242,9 @@ static QString* get_var(struct PixelShader *ps, int reg, bool is_dest)
         if (ps->flags & PS_COMBINERCOUNT_UNIQUE_C0 || ps->cur_stage == 8) {
             QString *reg = qstring_from_fmt("c0_%d", ps->cur_stage);
             add_const_ref(ps, qstring_get_str(reg));
-            if (ps->cur_stage == 8) {
-                ps->final_input.c0_used = true;
-            } else {
-                ps->stage[ps->cur_stage].c0_used = true;
-            }
             return reg;
         } else {  // Same c0
             add_const_ref(ps, "c0_0");
-            ps->stage[0].c0_used = true;
             return qstring_from_str("c0_0");
         }
         break;
@@ -264,15 +252,9 @@ static QString* get_var(struct PixelShader *ps, int reg, bool is_dest)
         if (ps->flags & PS_COMBINERCOUNT_UNIQUE_C1 || ps->cur_stage == 8) {
             QString *reg = qstring_from_fmt("c1_%d", ps->cur_stage);
             add_const_ref(ps, qstring_get_str(reg));
-            if (ps->cur_stage == 8) {
-                ps->final_input.c1_used = true;
-            } else {
-                ps->stage[ps->cur_stage].c1_used = true;
-            }
             return reg;
         } else {  // Same c1
             add_const_ref(ps, "c1_0");
-            ps->stage[0].c1_used = true;
             return qstring_from_str("c1_0");
         }
         break;
@@ -398,7 +380,7 @@ static QString* get_output(QString *reg, int mapping)
     return res;
 }
 
-// Add the HLSL code for a stage
+// Add the GLSL code for a stage
 static void add_stage_code(struct PixelShader *ps,
                            struct InputVarInfo input, struct OutputInfo output,
                            const char *write_mask, bool is_alpha)
@@ -505,12 +487,11 @@ static void add_final_stage_code(struct PixelShader *ps, struct FCInputInfo fina
     QString *d = get_input_var(ps, final.d, false);
     QString *g = get_input_var(ps, final.g, false);
 
-    add_var_ref(ps, "r0");
-    qstring_append_fmt(ps->code, "r0.rgb = %s + mix(vec3(%s), vec3(%s), vec3(%s));\n",
+    qstring_append_fmt(ps->code, "fragColor.rgb = %s + mix(vec3(%s), vec3(%s), vec3(%s));\n",
                        qstring_get_str(d), qstring_get_str(c),
                        qstring_get_str(b), qstring_get_str(a));
     /* FIXME: Is .x correctly here? */
-    qstring_append_fmt(ps->code, "r0.a = vec3(%s).x;\n", qstring_get_str(g));
+    qstring_append_fmt(ps->code, "fragColor.a = vec3(%s).x;\n", qstring_get_str(g));
 
     qobject_unref(a);
     qobject_unref(b);
@@ -741,20 +722,6 @@ static QString* psh_convert(struct PixelShader *ps)
         add_final_stage_code(ps, ps->final_input);
     }
 
-    for (i = 0; i < ps->num_var_refs; i++) {
-        qstring_append_fmt(vars, "vec4 %s;\n", ps->var_refs[i]);
-        if (strcmp(ps->var_refs[i], "r0") == 0) {
-            if (ps->tex_modes[0] != PS_TEXTUREMODES_NONE) {
-                qstring_append(vars, "r0.a = t0.a;\n");
-            } else {
-                qstring_append(vars, "r0.a = 1.0;\n");
-            }
-        }
-    }
-    for (i = 0; i < ps->num_const_refs; i++) {
-        qstring_append_fmt(preflight, "uniform vec4 %s;\n", ps->const_refs[i]);
-    }
-
     if (ps->state.alpha_test && ps->state.alpha_func != ALPHA_FUNC_ALWAYS) {
         qstring_append_fmt(preflight, "uniform float alphaRef;\n");
         if (ps->state.alpha_func == ALPHA_FUNC_NEVER) {
@@ -772,8 +739,23 @@ static QString* psh_convert(struct PixelShader *ps)
                 assert(false);
                 break;
             }
-            qstring_append_fmt(ps->code, "if (!(r0.a %s alphaRef)) discard;\n",
+            qstring_append_fmt(ps->code, "if (!(fragColor.a %s alphaRef)) discard;\n",
                                alpha_op);
+        }
+    }
+
+    for (i = 0; i < ps->num_const_refs; i++) {
+        qstring_append_fmt(preflight, "uniform vec4 %s;\n", ps->const_refs[i]);
+    }
+
+    for (i = 0; i < ps->num_var_refs; i++) {
+        qstring_append_fmt(vars, "vec4 %s;\n", ps->var_refs[i]);
+        if (strcmp(ps->var_refs[i], "r0") == 0) {
+            if (ps->tex_modes[0] != PS_TEXTUREMODES_NONE) {
+                qstring_append(vars, "r0.a = t0.a;\n");
+            } else {
+                qstring_append(vars, "r0.a = 1.0;\n");
+            }
         }
     }
 
@@ -784,7 +766,6 @@ static QString* psh_convert(struct PixelShader *ps)
     qstring_append(final, qstring_get_str(clip));
     qstring_append(final, qstring_get_str(vars));
     qstring_append(final, qstring_get_str(ps->code));
-    qstring_append(final, "fragColor = r0;\n");
     qstring_append(final, "}\n");
 
     qobject_unref(preflight);
@@ -854,10 +835,6 @@ QString *psh_translate(const PshState state)
 
         parse_combiner_output(state.rgb_outputs[i], &ps.stage[i].rgb_output);
         parse_combiner_output(state.alpha_outputs[i], &ps.stage[i].alpha_output);
-        //ps.stage[i].c0 = (pDef->PSC0Mapping >> (i * 4)) & 0xF;
-        //ps.stage[i].c1 = (pDef->PSC1Mapping >> (i * 4)) & 0xF;
-        //ps.stage[i].c0_value = constant_0[i];
-        //ps.stage[i].c1_value = constant_1[i];
     }
 
     struct InputInfo blank;
@@ -873,10 +850,6 @@ QString *psh_translate(const PshState state)
         ps.final_input.clamp_sum = flags & PS_FINALCOMBINERSETTING_CLAMP_SUM;
         ps.final_input.inv_v1 = flags & PS_FINALCOMBINERSETTING_COMPLEMENT_V1;
         ps.final_input.inv_r0 = flags & PS_FINALCOMBINERSETTING_COMPLEMENT_R0;
-        //ps.final_input.c0 = (pDef->PSFinalCombinerConstants >> 0) & 0xF;
-        //ps.final_input.c1 = (pDef->PSFinalCombinerConstants >> 4) & 0xF;
-        //ps.final_input.c0_value = final_constant_0;
-        //ps.final_input.c1_value = final_constant_1;
     }
 
 
