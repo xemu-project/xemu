@@ -2751,7 +2751,7 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
     int i, j;
 
     /* update combiner constants */
-    for (i = 0; i<= 8; i++) {
+    for (i = 0; i < 9; i++) {
         uint32_t constant[2];
         if (i == 8) {
             /* final combiner */

@@ -934,9 +934,9 @@ ShaderBinding* generate_shaders(const ShaderState state)
     ret->gl_primitive_mode = gl_primitive_mode;
 
     /* lookup fragment shader uniforms */
-    for (i=0; i<=8; i++) {
-        for (j=0; j<2; j++) {
-            snprintf(tmp, sizeof(tmp), "c_%d_%d", i, j);
+    for (i = 0; i < 9; i++) {
+        for (j = 0; j < 2; j++) {
+            snprintf(tmp, sizeof(tmp), "c%d_%d", j, i);
             ret->psh_constant_loc[i][j] = glGetUniformLocation(program, tmp);
         }
     }

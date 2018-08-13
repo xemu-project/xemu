@@ -245,9 +245,8 @@ static QString* get_var(struct PixelShader *ps, int reg, bool is_dest)
         }
         break;
     case PS_REGISTER_C0:
-        /* TODO: should the final stage really always be unique? */
         if (ps->flags & PS_COMBINERCOUNT_UNIQUE_C0 || ps->cur_stage == 8) {
-            QString *reg = qstring_from_fmt("c_%d_%d", ps->cur_stage, 0);
+            QString *reg = qstring_from_fmt("c0_%d", ps->cur_stage);
             add_const_ref(ps, qstring_get_str(reg));
             if (ps->cur_stage == 8) {
                 ps->final_input.c0_used = true;
@@ -256,14 +255,14 @@ static QString* get_var(struct PixelShader *ps, int reg, bool is_dest)
             }
             return reg;
         } else {  // Same c0
-            add_const_ref(ps, "c_0_0");
+            add_const_ref(ps, "c0_0");
             ps->stage[0].c0_used = true;
-            return qstring_from_str("c_0_0");
+            return qstring_from_str("c0_0");
         }
         break;
     case PS_REGISTER_C1:
         if (ps->flags & PS_COMBINERCOUNT_UNIQUE_C1 || ps->cur_stage == 8) {
-            QString *reg = qstring_from_fmt("c_%d_%d", ps->cur_stage, 1);
+            QString *reg = qstring_from_fmt("c1_%d", ps->cur_stage);
             add_const_ref(ps, qstring_get_str(reg));
             if (ps->cur_stage == 8) {
                 ps->final_input.c1_used = true;
@@ -272,9 +271,9 @@ static QString* get_var(struct PixelShader *ps, int reg, bool is_dest)
             }
             return reg;
         } else {  // Same c1
-            add_const_ref(ps, "c_0_1");
+            add_const_ref(ps, "c1_0");
             ps->stage[0].c1_used = true;
-            return qstring_from_str("c_0_1");
+            return qstring_from_str("c1_0");
         }
         break;
     case PS_REGISTER_FOG:
