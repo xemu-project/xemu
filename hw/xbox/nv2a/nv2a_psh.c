@@ -317,25 +317,27 @@ static QString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
 
     QString *res;
     switch (in.mod) {
-    case PS_INPUTMAPPING_SIGNED_IDENTITY:
     case PS_INPUTMAPPING_UNSIGNED_IDENTITY:
-        qobject_ref(reg);
-        res = reg;
+        res = qstring_from_fmt("max(%s, 0.0)", qstring_get_str(reg));
         break;
     case PS_INPUTMAPPING_UNSIGNED_INVERT:
-        res = qstring_from_fmt("(1.0 - %s)", qstring_get_str(reg));
+        res = qstring_from_fmt("(1.0 - clamp(%s, 0.0, 1.0))", qstring_get_str(reg));
         break;
-    case PS_INPUTMAPPING_EXPAND_NORMAL: // TODO: Change to max(0, x)??
-        res = qstring_from_fmt("(2.0 * %s - 1.0)", qstring_get_str(reg));
+    case PS_INPUTMAPPING_EXPAND_NORMAL:
+        res = qstring_from_fmt("(2.0 * max(%s, 0.0) - 1.0)", qstring_get_str(reg));
         break;
     case PS_INPUTMAPPING_EXPAND_NEGATE:
-        res = qstring_from_fmt("(1.0 - 2.0 * %s)", qstring_get_str(reg));
+        res = qstring_from_fmt("(-2.0 * max(%s, 0.0) + 1.0)", qstring_get_str(reg));
         break;
     case PS_INPUTMAPPING_HALFBIAS_NORMAL:
-        res = qstring_from_fmt("(%s - 0.5)", qstring_get_str(reg));
+        res = qstring_from_fmt("(max(%s, 0.0) - 0.5)", qstring_get_str(reg));
         break;
     case PS_INPUTMAPPING_HALFBIAS_NEGATE:
-        res = qstring_from_fmt("(0.5 - %s)", qstring_get_str(reg));
+        res = qstring_from_fmt("(-max(%s, 0.0) + 0.5)", qstring_get_str(reg));
+        break;
+    case PS_INPUTMAPPING_SIGNED_IDENTITY:
+        qobject_ref(reg);
+        res = reg;
         break;
     case PS_INPUTMAPPING_SIGNED_NEGATE:
         res = qstring_from_fmt("-%s", qstring_get_str(reg));
