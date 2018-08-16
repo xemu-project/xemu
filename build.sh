@@ -61,7 +61,7 @@ set -x # Print commands from now on
 	--disable-spice \
 	--disable-user \
 
-time make -j4 2>&1 | tee build.log
+time make -j`nproc` 2>&1 | tee build.log
 
 $POST_BUILD # call post build functions
 
