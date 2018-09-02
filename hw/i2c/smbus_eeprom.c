@@ -162,15 +162,3 @@ void smbus_eeprom_init(I2CBus *smbus, int nb_eeprom,
         smbus_eeprom_init_one(smbus, 0x50 + i, eeprom_buf + (i * 256));
     }
 }
-
-#ifdef XBOX
-void smbus_eeprom_init_single(I2CBus *smbus, int address,
-                              uint8_t *eeprom_buf)
-{
-    DeviceState *eeprom;
-    eeprom = qdev_create((BusState *)smbus, "smbus-eeprom");
-    qdev_prop_set_uint8(eeprom, "address", address);
-    qdev_prop_set_ptr(eeprom, "data", eeprom_buf);
-    qdev_init_nofail(eeprom);
-}
-#endif
