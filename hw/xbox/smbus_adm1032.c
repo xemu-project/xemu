@@ -48,17 +48,10 @@ static uint8_t tm_read_data(SMBusDevice *dev, uint8_t cmd, int n)
     return 0;
 }
 
-static int tm_init(SMBusDevice *dev)
-{
-    return 0;
-}
-
 static void smbus_adm1032_class_initfn(ObjectClass *klass, void *data)
 {
-    // DeviceClass *dc = DEVICE_CLASS(klass);
     SMBusDeviceClass *sc = SMBUS_DEVICE_CLASS(klass);
 
-    sc->init = tm_init;
     sc->read_data = tm_read_data;
 }
 
@@ -75,7 +68,6 @@ static void smbus_adm1032_register_devices(void)
 }
 
 type_init(smbus_adm1032_register_devices)
-
 
 void smbus_adm1032_init(I2CBus *smbus, int address)
 {
