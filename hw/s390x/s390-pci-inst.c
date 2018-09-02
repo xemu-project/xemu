@@ -155,8 +155,6 @@ int clp_service_call(S390CPU *cpu, uint8_t r2, uintptr_t ra)
     S390pciState *s = s390_get_phb();
     int i;
 
-    cpu_synchronize_state(CPU(cpu));
-
     if (env->psw.mask & PSW_MASK_PSTATE) {
         s390_program_interrupt(env, PGM_PRIVILEGED, 4, ra);
         return 0;
@@ -389,8 +387,6 @@ int pcilg_service_call(S390CPU *cpu, uint8_t r1, uint8_t r2, uintptr_t ra)
     uint32_t fh;
     uint8_t pcias;
 
-    cpu_synchronize_state(CPU(cpu));
-
     if (env->psw.mask & PSW_MASK_PSTATE) {
         s390_program_interrupt(env, PGM_PRIVILEGED, 4, ra);
         return 0;
@@ -486,8 +482,6 @@ int pcistg_service_call(S390CPU *cpu, uint8_t r1, uint8_t r2, uintptr_t ra)
     uint8_t len;
     uint32_t fh;
     uint8_t pcias;
-
-    cpu_synchronize_state(CPU(cpu));
 
     if (env->psw.mask & PSW_MASK_PSTATE) {
         s390_program_interrupt(env, PGM_PRIVILEGED, 4, ra);
@@ -595,7 +589,7 @@ static void s390_pci_update_iotlb(S390PCIIOMMU *iommu, S390IOTLBEntry *entry)
             }
 
             notify.perm = IOMMU_NONE;
-            memory_region_notify_iommu(&iommu->iommu_mr, notify);
+            memory_region_notify_iommu(&iommu->iommu_mr, 0, notify);
             notify.perm = entry->perm;
         }
 
@@ -607,7 +601,7 @@ static void s390_pci_update_iotlb(S390PCIIOMMU *iommu, S390IOTLBEntry *entry)
         g_hash_table_replace(iommu->iotlb, &cache->iova, cache);
     }
 
-    memory_region_notify_iommu(&iommu->iommu_mr, notify);
+    memory_region_notify_iommu(&iommu->iommu_mr, 0, notify);
 }
 
 int rpcit_service_call(S390CPU *cpu, uint8_t r1, uint8_t r2, uintptr_t ra)
@@ -619,8 +613,6 @@ int rpcit_service_call(S390CPU *cpu, uint8_t r1, uint8_t r2, uintptr_t ra)
     S390PCIIOMMU *iommu;
     S390IOTLBEntry entry;
     hwaddr start, end;
-
-    cpu_synchronize_state(CPU(cpu));
 
     if (env->psw.mask & PSW_MASK_PSTATE) {
         s390_program_interrupt(env, PGM_PRIVILEGED, 4, ra);
@@ -770,7 +762,8 @@ int pcistb_service_call(S390CPU *cpu, uint8_t r1, uint8_t r3, uint64_t gaddr,
     mr = s390_get_subregion(mr, offset, len);
     offset -= mr->addr;
 
-    if (!memory_region_access_valid(mr, offset, len, true)) {
+    if (!memory_region_access_valid(mr, offset, len, true,
+                                    MEMTXATTRS_UNSPECIFIED)) {
         s390_program_interrupt(env, PGM_OPERAND, 6, ra);
         return 0;
     }

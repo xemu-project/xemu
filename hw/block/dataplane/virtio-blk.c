@@ -19,7 +19,6 @@
 #include "qemu/thread.h"
 #include "qemu/error-report.h"
 #include "hw/virtio/virtio-access.h"
-#include "sysemu/block-backend.h"
 #include "hw/virtio/virtio-blk.h"
 #include "virtio-blk.h"
 #include "block/aio.h"
@@ -191,8 +190,8 @@ int virtio_blk_data_plane_start(VirtIODevice *vdev)
     /* Set up guest notifier (irq) */
     r = k->set_guest_notifiers(qbus->parent, nvqs, true);
     if (r != 0) {
-        fprintf(stderr, "virtio-blk failed to set guest notifier (%d), "
-                "ensure -enable-kvm is set\n", r);
+        error_report("virtio-blk failed to set guest notifier (%d), "
+                     "ensure -accel kvm is set.", r);
         goto fail_guest_notifiers;
     }
 

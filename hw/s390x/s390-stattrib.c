@@ -10,6 +10,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/units.h"
 #include "hw/boards.h"
 #include "cpu.h"
 #include "migration/qemu-file.h"
@@ -20,7 +21,8 @@
 #include "qapi/error.h"
 #include "qapi/qmp/qdict.h"
 
-#define CMMA_BLOCK_SIZE  (1 << 10)
+/* 512KiB cover 2GB of guest memory */
+#define CMMA_BLOCK_SIZE  (512 * KiB)
 
 #define STATTR_FLAG_EOS     0x01ULL
 #define STATTR_FLAG_MORE    0x02ULL
@@ -202,7 +204,7 @@ static int cmma_save(QEMUFile *f, void *opaque, int final)
     S390StAttribClass *sac = S390_STATTRIB_GET_CLASS(sas);
     uint8_t *buf;
     int r, cx, reallen = 0, ret = 0;
-    uint32_t buflen = 1 << 19;   /* 512kB cover 2GB of guest memory */
+    uint32_t buflen = CMMA_BLOCK_SIZE;
     uint64_t start_gfn = sas->migration_cur_gfn;
 
     buf = g_try_malloc(buflen);

@@ -19,8 +19,8 @@
 #include "hw/i2c/i2c.h"
 #include "hw/ssi/ssi.h"
 #include "chardev/char-fe.h"
-#include "sysemu/block-backend.h"
 #include "sysemu/blockdev.h"
+#include "sysemu/qtest.h"
 #include "qemu/cutils.h"
 
 static struct {
@@ -2095,32 +2095,31 @@ PXA2xxState *pxa270_init(MemoryRegion *address_space,
     s->gpio = pxa2xx_gpio_init(0x40e00000, s->cpu, s->pic, 121);
 
     dinfo = drive_get(IF_SD, 0, 0);
-    if (!dinfo) {
-        error_report("missing SecureDigital device");
-        exit(1);
+    if (!dinfo && !qtest_enabled()) {
+        warn_report("missing SecureDigital device");
     }
     s->mmc = pxa2xx_mmci_init(address_space, 0x41100000,
-                    blk_by_legacy_dinfo(dinfo),
+                    dinfo ? blk_by_legacy_dinfo(dinfo) : NULL,
                     qdev_get_gpio_in(s->pic, PXA2XX_PIC_MMC),
                     qdev_get_gpio_in(s->dma, PXA2XX_RX_RQ_MMCI),
                     qdev_get_gpio_in(s->dma, PXA2XX_TX_RQ_MMCI));
 
     for (i = 0; pxa270_serial[i].io_base; i++) {
-        if (serial_hds[i]) {
+        if (serial_hd(i)) {
             serial_mm_init(address_space, pxa270_serial[i].io_base, 2,
                            qdev_get_gpio_in(s->pic, pxa270_serial[i].irqn),
-                           14857000 / 16, serial_hds[i],
+                           14857000 / 16, serial_hd(i),
                            DEVICE_NATIVE_ENDIAN);
         } else {
             break;
         }
     }
-    if (serial_hds[i])
+    if (serial_hd(i))
         s->fir = pxa2xx_fir_init(address_space, 0x40800000,
                         qdev_get_gpio_in(s->pic, PXA2XX_PIC_ICP),
                         qdev_get_gpio_in(s->dma, PXA2XX_RX_RQ_ICP),
                         qdev_get_gpio_in(s->dma, PXA2XX_TX_RQ_ICP),
-                        serial_hds[i]);
+                        serial_hd(i));
 
     s->lcd = pxa2xx_lcdc_init(address_space, 0x44000000,
                     qdev_get_gpio_in(s->pic, PXA2XX_PIC_LCD));
@@ -2220,32 +2219,31 @@ PXA2xxState *pxa255_init(MemoryRegion *address_space, unsigned int sdram_size)
     s->gpio = pxa2xx_gpio_init(0x40e00000, s->cpu, s->pic, 85);
 
     dinfo = drive_get(IF_SD, 0, 0);
-    if (!dinfo) {
-        error_report("missing SecureDigital device");
-        exit(1);
+    if (!dinfo && !qtest_enabled()) {
+        warn_report("missing SecureDigital device");
     }
     s->mmc = pxa2xx_mmci_init(address_space, 0x41100000,
-                    blk_by_legacy_dinfo(dinfo),
+                    dinfo ? blk_by_legacy_dinfo(dinfo) : NULL,
                     qdev_get_gpio_in(s->pic, PXA2XX_PIC_MMC),
                     qdev_get_gpio_in(s->dma, PXA2XX_RX_RQ_MMCI),
                     qdev_get_gpio_in(s->dma, PXA2XX_TX_RQ_MMCI));
 
     for (i = 0; pxa255_serial[i].io_base; i++) {
-        if (serial_hds[i]) {
+        if (serial_hd(i)) {
             serial_mm_init(address_space, pxa255_serial[i].io_base, 2,
                            qdev_get_gpio_in(s->pic, pxa255_serial[i].irqn),
-                           14745600 / 16, serial_hds[i],
+                           14745600 / 16, serial_hd(i),
                            DEVICE_NATIVE_ENDIAN);
         } else {
             break;
         }
     }
-    if (serial_hds[i])
+    if (serial_hd(i))
         s->fir = pxa2xx_fir_init(address_space, 0x40800000,
                         qdev_get_gpio_in(s->pic, PXA2XX_PIC_ICP),
                         qdev_get_gpio_in(s->dma, PXA2XX_RX_RQ_ICP),
                         qdev_get_gpio_in(s->dma, PXA2XX_TX_RQ_ICP),
-                        serial_hds[i]);
+                        serial_hd(i));
 
     s->lcd = pxa2xx_lcdc_init(address_space, 0x44000000,
                     qdev_get_gpio_in(s->pic, PXA2XX_PIC_LCD));

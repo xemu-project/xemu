@@ -30,12 +30,6 @@
 #define kvm_pic_in_kernel()      0
 #define kvm_ioapic_in_kernel()   0
 
-/* These constants must never be used at runtime if kvm_enabled() is false.
- * They exist so we don't need #ifdefs around KVM-specific code that already
- * checks kvm_enabled() properly.
- */
-#define KVM_CPUID_FEATURES       0
-
 #endif  /* CONFIG_KVM */
 
 bool kvm_allows_irq0_override(void);
@@ -69,4 +63,6 @@ void kvm_put_apicbase(X86CPU *cpu, uint64_t value);
 
 bool kvm_enable_x2apic(void);
 bool kvm_has_x2apic_api(void);
+
+bool kvm_hv_vpindex_settable(void);
 #endif

@@ -79,6 +79,7 @@ static S390CPUDef s390_cpu_defs[] = {
     CPUDEF_INIT(0x2964, 13, 2, 47, 0x08000000U, "z13.2", "IBM z13 GA2"),
     CPUDEF_INIT(0x2965, 13, 2, 47, 0x08000000U, "z13s", "IBM z13s GA1"),
     CPUDEF_INIT(0x3906, 14, 1, 47, 0x08000000U, "z14", "IBM z14 GA1"),
+    CPUDEF_INIT(0x3907, 14, 1, 47, 0x08000000U, "z14ZR1", "IBM z14 Model ZR1 GA1"),
 };
 
 #define QEMU_MAX_CPU_TYPE 0x2827
@@ -551,7 +552,7 @@ static void cpu_info_from_model(CpuModelInfo *info, const S390CPUModel *model,
     }
 
     if (!qdict_size(qdict)) {
-        QDECREF(qdict);
+        qobject_unref(qdict);
     } else {
         info->props = QOBJECT(qdict);
         info->has_props = true;
@@ -715,6 +716,14 @@ CpuModelBaselineInfo *arch_query_cpu_model_baseline(CpuModelInfo *infoa,
 
     model.def = s390_find_cpu_def(cpu_type, max_gen, max_gen_ga,
                                   model.features);
+
+    /* models without early base features (esan3) are bad */
+    if (!model.def) {
+        error_setg(errp, "No compatible CPU model could be created as"
+                   " important base features are disabled");
+        return NULL;
+    }
+
     /* strip off features not part of the max model */
     bitmap_and(model.features, model.features, model.def->full_feat,
                S390_FEAT_MAX);

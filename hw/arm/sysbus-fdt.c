@@ -36,6 +36,7 @@
 #include "hw/vfio/vfio-platform.h"
 #include "hw/vfio/vfio-calxeda-xgmac.h"
 #include "hw/vfio/vfio-amd-xgbe.h"
+#include "hw/display/ramfb.h"
 #include "hw/arm/fdt.h"
 
 /*
@@ -48,15 +49,6 @@ typedef struct PlatformBusFDTData {
     const char *pbus_node_name; /* name of the platform bus node */
     PlatformBusDevice *pbus;
 } PlatformBusFDTData;
-
-/*
- * struct used when calling the machine init done notifier
- * that constructs the fdt nodes of platform bus devices
- */
-typedef struct PlatformBusFDTNotifierParams {
-    Notifier notifier;
-    ARMPlatformBusFDTParams *fdt_params;
-} PlatformBusFDTNotifierParams;
 
 /* struct that associates a device type name and a node creation function */
 typedef struct NodeCreationPair {
@@ -100,17 +92,22 @@ static void copy_properties_from_host(HostProperty *props, int nb_props,
         r = qemu_fdt_getprop(host_fdt, node_path,
                              props[i].name,
                              &prop_len,
-                             props[i].optional ? &err : &error_fatal);
+                             &err);
         if (r) {
             qemu_fdt_setprop(guest_fdt, nodename,
                              props[i].name, r, prop_len);
         } else {
-            if (prop_len != -FDT_ERR_NOTFOUND) {
-                /* optional property not returned although property exists */
-                error_report_err(err);
-            } else {
+            if (props[i].optional && prop_len == -FDT_ERR_NOTFOUND) {
+                /* optional property does not exist */
                 error_free(err);
+            } else {
+                error_report_err(err);
             }
+            if (!props[i].optional) {
+                /* mandatory property not found: bail out */
+                exit(1);
+            }
+            err = NULL;
         }
     }
 }
@@ -146,9 +143,9 @@ static void fdt_build_clock_node(void *host_fdt, void *guest_fdt,
 
     node_offset = fdt_node_offset_by_phandle(host_fdt, host_phandle);
     if (node_offset <= 0) {
-        error_setg(&error_fatal,
-                   "not able to locate clock handle %d in host device tree",
-                   host_phandle);
+        error_report("not able to locate clock handle %d in host device tree",
+                     host_phandle);
+        exit(1);
     }
     node_path = g_malloc(path_len);
     while ((ret = fdt_get_path(host_fdt, node_offset, node_path, path_len))
@@ -157,16 +154,16 @@ static void fdt_build_clock_node(void *host_fdt, void *guest_fdt,
         node_path = g_realloc(node_path, path_len);
     }
     if (ret < 0) {
-        error_setg(&error_fatal,
-                   "not able to retrieve node path for clock handle %d",
-                   host_phandle);
+        error_report("not able to retrieve node path for clock handle %d",
+                     host_phandle);
+        exit(1);
     }
 
     r = qemu_fdt_getprop(host_fdt, node_path, "compatible", &prop_len,
                          &error_fatal);
     if (strcmp(r, "fixed-clock")) {
-        error_setg(&error_fatal,
-                   "clock handle %d is not a fixed clock", host_phandle);
+        error_report("clock handle %d is not a fixed clock", host_phandle);
+        exit(1);
     }
 
     nodename = strrchr(node_path, '/');
@@ -309,34 +306,37 @@ static int add_amd_xgbe_fdt_node(SysBusDevice *sbdev, void *opaque)
 
     dt_name = sysfs_to_dt_name(vbasedev->name);
     if (!dt_name) {
-        error_setg(&error_fatal, "%s incorrect sysfs device name %s",
-                    __func__, vbasedev->name);
+        error_report("%s incorrect sysfs device name %s",
+                     __func__, vbasedev->name);
+        exit(1);
     }
     node_path = qemu_fdt_node_path(host_fdt, dt_name, vdev->compat,
                                    &error_fatal);
     if (!node_path || !node_path[0]) {
-        error_setg(&error_fatal, "%s unable to retrieve node path for %s/%s",
-                   __func__, dt_name, vdev->compat);
+        error_report("%s unable to retrieve node path for %s/%s",
+                     __func__, dt_name, vdev->compat);
+        exit(1);
     }
 
     if (node_path[1]) {
-        error_setg(&error_fatal, "%s more than one node matching %s/%s!",
-                   __func__, dt_name, vdev->compat);
+        error_report("%s more than one node matching %s/%s!",
+                     __func__, dt_name, vdev->compat);
+        exit(1);
     }
 
     g_free(dt_name);
 
     if (vbasedev->num_regions != 5) {
-        error_setg(&error_fatal, "%s Does the host dt node combine XGBE/PHY?",
-                   __func__);
+        error_report("%s Does the host dt node combine XGBE/PHY?", __func__);
+        exit(1);
     }
 
     /* generate nodes for DMA_CLK and PTP_CLK */
     r = qemu_fdt_getprop(host_fdt, node_path[0], "clocks",
                          &prop_len, &error_fatal);
     if (prop_len != 8) {
-        error_setg(&error_fatal, "%s clocks property should contain 2 handles",
-                   __func__);
+        error_report("%s clocks property should contain 2 handles", __func__);
+        exit(1);
     }
     host_clock_phandles = (uint32_t *)r;
     guest_clock_phandles[0] = qemu_fdt_alloc_phandle(guest_fdt);
@@ -415,12 +415,18 @@ static int add_amd_xgbe_fdt_node(SysBusDevice *sbdev, void *opaque)
 
 #endif /* CONFIG_LINUX */
 
+static int no_fdt_node(SysBusDevice *sbdev, void *opaque)
+{
+    return 0;
+}
+
 /* list of supported dynamic sysbus devices */
 static const NodeCreationPair add_fdt_node_functions[] = {
 #ifdef CONFIG_LINUX
     {TYPE_VFIO_CALXEDA_XGMAC, add_calxeda_midway_xgmac_fdt_node},
     {TYPE_VFIO_AMD_XGBE, add_amd_xgbe_fdt_node},
 #endif
+    {TYPE_RAMFB_DEVICE, no_fdt_node},
     {"", NULL}, /* last element */
 };
 
@@ -453,42 +459,17 @@ static void add_fdt_node(SysBusDevice *sbdev, void *opaque)
     exit(1);
 }
 
-/**
- * add_all_platform_bus_fdt_nodes - create all the platform bus nodes
- *
- * builds the parent platform bus node and all the nodes of dynamic
- * sysbus devices attached to it.
- */
-static void add_all_platform_bus_fdt_nodes(ARMPlatformBusFDTParams *fdt_params)
+void platform_bus_add_all_fdt_nodes(void *fdt, const char *intc, hwaddr addr,
+                                    hwaddr bus_size, int irq_start)
 {
     const char platcomp[] = "qemu,platform\0simple-bus";
     PlatformBusDevice *pbus;
     DeviceState *dev;
     gchar *node;
-    uint64_t addr, size;
-    int irq_start, dtb_size;
-    struct arm_boot_info *info = fdt_params->binfo;
-    const ARMPlatformBusSystemParams *params = fdt_params->system_params;
-    const char *intc = fdt_params->intc;
-    void *fdt = info->get_dtb(info, &dtb_size);
-
-    /*
-     * If the user provided a dtb, we assume the dynamic sysbus nodes
-     * already are integrated there. This corresponds to a use case where
-     * the dynamic sysbus nodes are complex and their generation is not yet
-     * supported. In that case the user can take charge of the guest dt
-     * while qemu takes charge of the qom stuff.
-     */
-    if (info->dtb_filename) {
-        return;
-    }
 
     assert(fdt);
 
-    node = g_strdup_printf("/platform@%"PRIx64, params->platform_bus_base);
-    addr = params->platform_bus_base;
-    size = params->platform_bus_size;
-    irq_start = params->platform_bus_first_irq;
+    node = g_strdup_printf("/platform@%"PRIx64, addr);
 
     /* Create a /platform node that we can put all devices into */
     qemu_fdt_add_subnode(fdt, node);
@@ -499,15 +480,12 @@ static void add_all_platform_bus_fdt_nodes(ARMPlatformBusFDTParams *fdt_params)
      */
     qemu_fdt_setprop_cells(fdt, node, "#size-cells", 1);
     qemu_fdt_setprop_cells(fdt, node, "#address-cells", 1);
-    qemu_fdt_setprop_cells(fdt, node, "ranges", 0, addr >> 32, addr, size);
+    qemu_fdt_setprop_cells(fdt, node, "ranges", 0, addr >> 32, addr, bus_size);
 
     qemu_fdt_setprop_phandle(fdt, node, "interrupt-parent", intc);
 
     dev = qdev_find_recursive(sysbus_get_default(), TYPE_PLATFORM_BUS_DEVICE);
     pbus = PLATFORM_BUS_DEVICE(dev);
-
-    /* We can only create dt nodes for dynamic devices when they're ready */
-    assert(pbus->done_gathering);
 
     PlatformBusFDTData data = {
         .fdt = fdt,
@@ -520,23 +498,4 @@ static void add_all_platform_bus_fdt_nodes(ARMPlatformBusFDTParams *fdt_params)
     foreach_dynamic_sysbus_device(add_fdt_node, &data);
 
     g_free(node);
-}
-
-static void platform_bus_fdt_notify(Notifier *notifier, void *data)
-{
-    PlatformBusFDTNotifierParams *p = DO_UPCAST(PlatformBusFDTNotifierParams,
-                                                notifier, notifier);
-
-    add_all_platform_bus_fdt_nodes(p->fdt_params);
-    g_free(p->fdt_params);
-    g_free(p);
-}
-
-void arm_register_platform_bus_fdt_creator(ARMPlatformBusFDTParams *fdt_params)
-{
-    PlatformBusFDTNotifierParams *p = g_new(PlatformBusFDTNotifierParams, 1);
-
-    p->fdt_params = fdt_params;
-    p->notifier.notify = platform_bus_fdt_notify;
-    qemu_add_machine_init_done_notifier(&p->notifier);
 }

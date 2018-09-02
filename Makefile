@@ -20,8 +20,6 @@ ifneq ($(wildcard config-host.mak),)
 all:
 include config-host.mak
 
-PYTHON_UTF8 = LC_ALL= LANG=C LC_CTYPE=en_US.UTF-8 $(PYTHON)
-
 git-submodule-update:
 
 .PHONY: git-submodule-update
@@ -98,6 +96,7 @@ GENERATED_FILES += qapi/qapi-types-char.h qapi/qapi-types-char.c
 GENERATED_FILES += qapi/qapi-types-common.h qapi/qapi-types-common.c
 GENERATED_FILES += qapi/qapi-types-crypto.h qapi/qapi-types-crypto.c
 GENERATED_FILES += qapi/qapi-types-introspect.h qapi/qapi-types-introspect.c
+GENERATED_FILES += qapi/qapi-types-job.h qapi/qapi-types-job.c
 GENERATED_FILES += qapi/qapi-types-migration.h qapi/qapi-types-migration.c
 GENERATED_FILES += qapi/qapi-types-misc.h qapi/qapi-types-misc.c
 GENERATED_FILES += qapi/qapi-types-net.h qapi/qapi-types-net.c
@@ -116,6 +115,7 @@ GENERATED_FILES += qapi/qapi-visit-char.h qapi/qapi-visit-char.c
 GENERATED_FILES += qapi/qapi-visit-common.h qapi/qapi-visit-common.c
 GENERATED_FILES += qapi/qapi-visit-crypto.h qapi/qapi-visit-crypto.c
 GENERATED_FILES += qapi/qapi-visit-introspect.h qapi/qapi-visit-introspect.c
+GENERATED_FILES += qapi/qapi-visit-job.h qapi/qapi-visit-job.c
 GENERATED_FILES += qapi/qapi-visit-migration.h qapi/qapi-visit-migration.c
 GENERATED_FILES += qapi/qapi-visit-misc.h qapi/qapi-visit-misc.c
 GENERATED_FILES += qapi/qapi-visit-net.h qapi/qapi-visit-net.c
@@ -133,6 +133,7 @@ GENERATED_FILES += qapi/qapi-commands-char.h qapi/qapi-commands-char.c
 GENERATED_FILES += qapi/qapi-commands-common.h qapi/qapi-commands-common.c
 GENERATED_FILES += qapi/qapi-commands-crypto.h qapi/qapi-commands-crypto.c
 GENERATED_FILES += qapi/qapi-commands-introspect.h qapi/qapi-commands-introspect.c
+GENERATED_FILES += qapi/qapi-commands-job.h qapi/qapi-commands-job.c
 GENERATED_FILES += qapi/qapi-commands-migration.h qapi/qapi-commands-migration.c
 GENERATED_FILES += qapi/qapi-commands-misc.h qapi/qapi-commands-misc.c
 GENERATED_FILES += qapi/qapi-commands-net.h qapi/qapi-commands-net.c
@@ -150,6 +151,7 @@ GENERATED_FILES += qapi/qapi-events-char.h qapi/qapi-events-char.c
 GENERATED_FILES += qapi/qapi-events-common.h qapi/qapi-events-common.c
 GENERATED_FILES += qapi/qapi-events-crypto.h qapi/qapi-events-crypto.c
 GENERATED_FILES += qapi/qapi-events-introspect.h qapi/qapi-events-introspect.c
+GENERATED_FILES += qapi/qapi-events-job.h qapi/qapi-events-job.c
 GENERATED_FILES += qapi/qapi-events-migration.h qapi/qapi-events-migration.c
 GENERATED_FILES += qapi/qapi-events-misc.h qapi/qapi-events-misc.c
 GENERATED_FILES += qapi/qapi-events-net.h qapi/qapi-events-net.c
@@ -318,6 +320,7 @@ KEYCODEMAP_FILES = \
 		 ui/input-keymap-xorgkbd-to-qcode.c \
 		 ui/input-keymap-xorgxquartz-to-qcode.c \
 		 ui/input-keymap-xorgxwin-to-qcode.c \
+		 ui/input-keymap-osx-to-qcode.c \
 		 $(NULL)
 
 GENERATED_FILES += $(KEYCODEMAP_FILES)
@@ -347,7 +350,7 @@ $(call set-vpath, $(SRC_PATH))
 
 LIBS+=-lz $(LIBS_TOOLS)
 
-HELPERS-$(CONFIG_LINUX) = qemu-bridge-helper$(EXESUF)
+HELPERS-$(call land,$(CONFIG_SOFTMMU),$(CONFIG_LINUX)) = qemu-bridge-helper$(EXESUF)
 
 ifdef BUILD_DOCS
 DOCS=qemu-doc.html qemu-doc.txt qemu.1 qemu-img.1 qemu-nbd.8 qemu-ga.8
@@ -485,7 +488,7 @@ subdir-dtc: .git-submodule-status dtc/libfdt dtc/tests
 	$(call quiet-command,$(MAKE) $(DTC_MAKE_ARGS) CPPFLAGS="$(DTC_CPPFLAGS)" CFLAGS="$(DTC_CFLAGS)" LDFLAGS="$(LDFLAGS)" ARFLAGS="$(ARFLAGS)" CC="$(CC)" AR="$(AR)" LD="$(LD)" $(SUBDIR_MAKEFLAGS) libfdt/libfdt.a,)
 
 dtc/%: .git-submodule-status
-	mkdir -p $@
+	@mkdir -p $@
 
 # Overriding CFLAGS causes us to lose defines added in the sub-makefile.
 # Not overriding CFLAGS leads to mis-matches between compilation modes.
@@ -563,7 +566,6 @@ $(SRC_PATH)/scripts/qapi/types.py \
 $(SRC_PATH)/scripts/qapi/visit.py \
 $(SRC_PATH)/scripts/qapi/common.py \
 $(SRC_PATH)/scripts/qapi/doc.py \
-$(SRC_PATH)/scripts/ordereddict.py \
 $(SRC_PATH)/scripts/qapi-gen.py
 
 qga/qapi-generated/qga-qapi-types.c qga/qapi-generated/qga-qapi-types.h \
@@ -572,7 +574,7 @@ qga/qapi-generated/qga-qapi-commands.h qga/qapi-generated/qga-qapi-commands.c \
 qga/qapi-generated/qga-qapi-doc.texi: \
 qga/qapi-generated/qapi-gen-timestamp ;
 qga/qapi-generated/qapi-gen-timestamp: $(SRC_PATH)/qga/qapi-schema.json $(qapi-py)
-	$(call quiet-command,$(PYTHON_UTF8) $(SRC_PATH)/scripts/qapi-gen.py \
+	$(call quiet-command,$(PYTHON) $(SRC_PATH)/scripts/qapi-gen.py \
 		-o qga/qapi-generated -p "qga-" $<, \
 		"GEN","$(@:%-timestamp=%)")
 	@>$@
@@ -582,6 +584,7 @@ qapi-modules = $(SRC_PATH)/qapi/qapi-schema.json $(SRC_PATH)/qapi/common.json \
                $(SRC_PATH)/qapi/char.json \
                $(SRC_PATH)/qapi/crypto.json \
                $(SRC_PATH)/qapi/introspect.json \
+               $(SRC_PATH)/qapi/job.json \
                $(SRC_PATH)/qapi/migration.json \
                $(SRC_PATH)/qapi/misc.json \
                $(SRC_PATH)/qapi/net.json \
@@ -601,6 +604,7 @@ qapi/qapi-types-char.c qapi/qapi-types-char.h \
 qapi/qapi-types-common.c qapi/qapi-types-common.h \
 qapi/qapi-types-crypto.c qapi/qapi-types-crypto.h \
 qapi/qapi-types-introspect.c qapi/qapi-types-introspect.h \
+qapi/qapi-types-job.c qapi/qapi-types-job.h \
 qapi/qapi-types-migration.c qapi/qapi-types-migration.h \
 qapi/qapi-types-misc.c qapi/qapi-types-misc.h \
 qapi/qapi-types-net.c qapi/qapi-types-net.h \
@@ -619,6 +623,7 @@ qapi/qapi-visit-char.c qapi/qapi-visit-char.h \
 qapi/qapi-visit-common.c qapi/qapi-visit-common.h \
 qapi/qapi-visit-crypto.c qapi/qapi-visit-crypto.h \
 qapi/qapi-visit-introspect.c qapi/qapi-visit-introspect.h \
+qapi/qapi-visit-job.c qapi/qapi-visit-job.h \
 qapi/qapi-visit-migration.c qapi/qapi-visit-migration.h \
 qapi/qapi-visit-misc.c qapi/qapi-visit-misc.h \
 qapi/qapi-visit-net.c qapi/qapi-visit-net.h \
@@ -636,6 +641,7 @@ qapi/qapi-commands-char.c qapi/qapi-commands-char.h \
 qapi/qapi-commands-common.c qapi/qapi-commands-common.h \
 qapi/qapi-commands-crypto.c qapi/qapi-commands-crypto.h \
 qapi/qapi-commands-introspect.c qapi/qapi-commands-introspect.h \
+qapi/qapi-commands-job.c qapi/qapi-commands-job.h \
 qapi/qapi-commands-migration.c qapi/qapi-commands-migration.h \
 qapi/qapi-commands-misc.c qapi/qapi-commands-misc.h \
 qapi/qapi-commands-net.c qapi/qapi-commands-net.h \
@@ -653,6 +659,7 @@ qapi/qapi-events-char.c qapi/qapi-events-char.h \
 qapi/qapi-events-common.c qapi/qapi-events-common.h \
 qapi/qapi-events-crypto.c qapi/qapi-events-crypto.h \
 qapi/qapi-events-introspect.c qapi/qapi-events-introspect.h \
+qapi/qapi-events-job.c qapi/qapi-events-job.h \
 qapi/qapi-events-migration.c qapi/qapi-events-migration.h \
 qapi/qapi-events-misc.c qapi/qapi-events-misc.h \
 qapi/qapi-events-net.c qapi/qapi-events-net.h \
@@ -667,7 +674,7 @@ qapi/qapi-introspect.h qapi/qapi-introspect.c \
 qapi/qapi-doc.texi: \
 qapi-gen-timestamp ;
 qapi-gen-timestamp: $(qapi-modules) $(qapi-py)
-	$(call quiet-command,$(PYTHON_UTF8) $(SRC_PATH)/scripts/qapi-gen.py \
+	$(call quiet-command,$(PYTHON) $(SRC_PATH)/scripts/qapi-gen.py \
 		-o "qapi" -b $<, \
 		"GEN","$(@:%-timestamp=%)")
 	@>$@
@@ -715,6 +722,14 @@ module_block.h: $(SRC_PATH)/scripts/modules/module_block.py config-host.mak
 	$(call quiet-command,$(PYTHON) $< $@ \
 	$(addprefix $(SRC_PATH)/,$(patsubst %.mo,%.c,$(block-obj-m))), \
 	"GEN","$@")
+
+ifdef CONFIG_GCOV
+.PHONY: clean-coverage
+clean-coverage:
+	$(call quiet-command, \
+		find . \( -name '*.gcda' -o -name '*.gcov' \) -type f -exec rm {} +, \
+		"CLEAN", "coverage files")
+endif
 
 clean:
 # avoid old build problems by removing potentially incorrect old files
@@ -971,6 +986,16 @@ docs/interop/qemu-qmp-ref.dvi docs/interop/qemu-qmp-ref.html \
     docs/interop/qemu-qmp-ref.txt docs/interop/qemu-qmp-ref.7: \
 	docs/interop/qemu-qmp-ref.texi docs/interop/qemu-qmp-qapi.texi
 
+# Reports/Analysis
+
+%/coverage-report.html:
+	@mkdir -p $*
+	$(call quiet-command,\
+		gcovr -p --html --html-details -o $@, \
+		"GEN", "coverage-report.html")
+
+.PHONY: coverage-report
+coverage-report: $(CURDIR)/reports/coverage/coverage-report.html
 
 ifdef CONFIG_WIN32
 
@@ -1047,9 +1072,6 @@ endif
 include $(SRC_PATH)/tests/docker/Makefile.include
 include $(SRC_PATH)/tests/vm/Makefile.include
 
-printgen:
-	@echo $(GENERATED_FILES)
-
 .PHONY: help
 help:
 	@echo  'Generic targets:'
@@ -1069,6 +1091,9 @@ endif
 		echo '')
 	@echo  'Cleaning targets:'
 	@echo  '  clean           - Remove most generated files but keep the config'
+ifdef CONFIG_GCOV
+	@echo  '  clean-coverage  - Remove coverage files'
+endif
 	@echo  '  distclean       - Remove all generated files'
 	@echo  '  dist            - Build a distributable tarball'
 	@echo  ''
@@ -1080,6 +1105,9 @@ endif
 	@echo  'Documentation targets:'
 	@echo  '  html info pdf txt'
 	@echo  '                  - Build documentation in specified format'
+ifdef CONFIG_GCOV
+	@echo  '  coverage-report - Create code coverage report'
+endif
 	@echo  ''
 ifdef CONFIG_WIN32
 	@echo  'Windows targets:'

@@ -26,12 +26,13 @@
 #include "qemu/config-file.h"
 #include "qemu/cutils.h"
 #include "qemu/option.h"
+#include "exec/exec-all.h"
 
 #define KERN_IMAGE_START                0x010000UL
+#define LINUX_MAGIC_ADDR                0x010008UL
 #define KERN_PARM_AREA                  0x010480UL
 #define INITRD_START                    0x800000UL
 #define INITRD_PARM_START               0x010408UL
-#define INITRD_PARM_SIZE                0x010410UL
 #define PARMFILE_START                  0x001000UL
 #define ZIPL_IMAGE_START                0x009000UL
 #define IPL_PSW_MASK                    (PSW_MASK_32 | PSW_MASK_64)
@@ -104,7 +105,9 @@ static uint64_t bios_translate_addr(void *opaque, uint64_t srcaddr)
 static void s390_ipl_realize(DeviceState *dev, Error **errp)
 {
     S390IPLState *ipl = S390_IPL(dev);
-    uint64_t pentry = KERN_IMAGE_START;
+    uint32_t *ipl_psw;
+    uint64_t pentry;
+    char *magic;
     int kernel_size;
     Error *err = NULL;
 
@@ -156,10 +159,24 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
                                NULL, 1, EM_S390, 0, 0);
         if (kernel_size < 0) {
             kernel_size = load_image_targphys(ipl->kernel, 0, ram_size);
-        }
-        if (kernel_size < 0) {
-            error_setg(&err, "could not load kernel '%s'", ipl->kernel);
-            goto error;
+            if (kernel_size < 0) {
+                error_setg(&err, "could not load kernel '%s'", ipl->kernel);
+                goto error;
+            }
+            /* if this is Linux use KERN_IMAGE_START */
+            magic = rom_ptr(LINUX_MAGIC_ADDR, 6);
+            if (magic && !memcmp(magic, "S390EP", 6)) {
+                pentry = KERN_IMAGE_START;
+            } else {
+                /* if not Linux load the address of the (short) IPL PSW */
+                ipl_psw = rom_ptr(4, 4);
+                if (ipl_psw) {
+                    pentry = be32_to_cpu(*ipl_psw) & 0x7fffffffUL;
+                } else {
+                    error_setg(&err, "Could not get IPL PSW");
+                    goto error;
+                }
+            }
         }
         /*
          * Is it a Linux kernel (starting at 0x10000)? If yes, we fill in the
@@ -168,9 +185,12 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
          * loader) and it won't work. For this case we force it to 0x10000, too.
          */
         if (pentry == KERN_IMAGE_START || pentry == 0x800) {
+            char *parm_area = rom_ptr(KERN_PARM_AREA, strlen(ipl->cmdline) + 1);
             ipl->start_addr = KERN_IMAGE_START;
             /* Overwrite parameters in the kernel image, which are "rom" */
-            strcpy(rom_ptr(KERN_PARM_AREA), ipl->cmdline);
+            if (parm_area) {
+                strcpy(parm_area, ipl->cmdline);
+            }
         } else {
             ipl->start_addr = pentry;
         }
@@ -178,6 +198,7 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
         if (ipl->initrd) {
             ram_addr_t initrd_offset;
             int initrd_size;
+            uint64_t *romptr;
 
             initrd_offset = INITRD_START;
             while (kernel_size + 0x100000 > initrd_offset) {
@@ -194,8 +215,11 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
              * we have to overwrite values in the kernel image,
              * which are "rom"
              */
-            stq_p(rom_ptr(INITRD_PARM_START), initrd_offset);
-            stq_p(rom_ptr(INITRD_PARM_SIZE), initrd_size);
+            romptr = rom_ptr(INITRD_PARM_START, 16);
+            if (romptr) {
+                stq_p(romptr, initrd_offset);
+                stq_p(romptr + 1, initrd_size);
+            }
         }
     }
     /*
@@ -373,6 +397,10 @@ int s390_ipl_set_loadparm(uint8_t *loadparm)
             loadparm[i] = ascii2ebcdic[(uint8_t) lp[i]];
         }
 
+        if (i < 8) {
+            memset(loadparm + i, 0x40, 8 - i); /* fill with EBCDIC spaces */
+        }
+
         g_free(lp);
         return 0;
     }
@@ -484,12 +512,20 @@ IplParameterBlock *s390_ipl_get_iplb(void)
     return &ipl->iplb;
 }
 
-void s390_reipl_request(void)
+void s390_ipl_reset_request(CPUState *cs, enum s390_reset reset_type)
 {
     S390IPLState *ipl = get_ipl_device();
 
-    ipl->reipl_requested = true;
-    if (ipl->iplb_valid &&
+    if (reset_type == S390_RESET_EXTERNAL || reset_type == S390_RESET_REIPL) {
+        /* use CPU 0 for full resets */
+        ipl->reset_cpu_index = 0;
+    } else {
+        ipl->reset_cpu_index = cs->cpu_index;
+    }
+    ipl->reset_type = reset_type;
+
+    if (reset_type == S390_RESET_REIPL &&
+        ipl->iplb_valid &&
         !ipl->netboot &&
         ipl->iplb.pbt == S390_IPL_TYPE_CCW &&
         is_virtio_scsi_device(&ipl->iplb)) {
@@ -505,7 +541,38 @@ void s390_reipl_request(void)
             ipl->iplb_valid = s390_gen_initial_iplb(ipl);
         }
     }
-    qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
+    if (reset_type == S390_RESET_MODIFIED_CLEAR ||
+        reset_type == S390_RESET_LOAD_NORMAL) {
+        /* ignore -no-reboot, send no event  */
+        qemu_system_reset_request(SHUTDOWN_CAUSE_SUBSYSTEM_RESET);
+    } else {
+        qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
+    }
+    /* as this is triggered by a CPU, make sure to exit the loop */
+    if (tcg_enabled()) {
+        cpu_loop_exit(cs);
+    }
+}
+
+void s390_ipl_get_reset_request(CPUState **cs, enum s390_reset *reset_type)
+{
+    S390IPLState *ipl = get_ipl_device();
+
+    *cs = qemu_get_cpu(ipl->reset_cpu_index);
+    if (!*cs) {
+        /* use any CPU */
+        *cs = first_cpu;
+    }
+    *reset_type = ipl->reset_type;
+}
+
+void s390_ipl_clear_reset_request(void)
+{
+    S390IPLState *ipl = get_ipl_device();
+
+    ipl->reset_type = S390_RESET_EXTERNAL;
+    /* use CPU 0 for full resets */
+    ipl->reset_cpu_index = 0;
 }
 
 static void s390_ipl_prepare_qipl(S390CPU *cpu)
@@ -552,11 +619,10 @@ static void s390_ipl_reset(DeviceState *dev)
 {
     S390IPLState *ipl = S390_IPL(dev);
 
-    if (!ipl->reipl_requested) {
+    if (ipl->reset_type != S390_RESET_REIPL) {
         ipl->iplb_valid = false;
         memset(&ipl->iplb, 0, sizeof(IplParameterBlock));
     }
-    ipl->reipl_requested = false;
 }
 
 static void s390_ipl_class_init(ObjectClass *klass, void *data)

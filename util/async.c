@@ -298,6 +298,7 @@ aio_ctx_finalize(GSource     *source)
     qemu_rec_mutex_destroy(&ctx->lock);
     qemu_lockcnt_destroy(&ctx->list_lock);
     timerlistgroup_deinit(&ctx->tlg);
+    aio_context_destroy(ctx);
 }
 
 static GSourceFuncs aio_source_funcs = {
@@ -322,12 +323,20 @@ ThreadPool *aio_get_thread_pool(AioContext *ctx)
 }
 
 #ifdef CONFIG_LINUX_AIO
-LinuxAioState *aio_get_linux_aio(AioContext *ctx)
+LinuxAioState *aio_setup_linux_aio(AioContext *ctx, Error **errp)
 {
     if (!ctx->linux_aio) {
-        ctx->linux_aio = laio_init();
-        laio_attach_aio_context(ctx->linux_aio, ctx);
+        ctx->linux_aio = laio_init(errp);
+        if (ctx->linux_aio) {
+            laio_attach_aio_context(ctx->linux_aio, ctx);
+        }
     }
+    return ctx->linux_aio;
+}
+
+LinuxAioState *aio_get_linux_aio(AioContext *ctx)
+{
+    assert(ctx->linux_aio);
     return ctx->linux_aio;
 }
 #endif

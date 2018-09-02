@@ -6,6 +6,7 @@
 
 { 'include': 'common.json' }
 { 'include': 'crypto.json' }
+{ 'include': 'job.json' }
 { 'include': 'sockets.json' }
 
 ##
@@ -51,8 +52,7 @@
 { 'union': 'ImageInfoSpecificQCow2Encryption',
   'base': 'ImageInfoSpecificQCow2EncryptionBase',
   'discriminator': 'format',
-  'data': { 'aes': 'QCryptoBlockInfoQCow',
-            'luks': 'QCryptoBlockInfoLUKS' } }
+  'data': { 'luks': 'QCryptoBlockInfoLUKS' } }
 
 ##
 # @ImageInfoSpecificQCow2:
@@ -866,6 +866,9 @@
 #
 # @node-name: The node name of the device. (Since 2.3)
 #
+# @qdev: The qdev ID, or if no ID is assigned, the QOM path of the block
+#        device. (since 3.0)
+#
 # @stats:  A @BlockDeviceStats for the device.
 #
 # @parent: This describes the file block device if it has one.
@@ -879,7 +882,7 @@
 # Since: 0.14.0
 ##
 { 'struct': 'BlockStats',
-  'data': {'*device': 'str', '*node-name': 'str',
+  'data': {'*device': 'str', '*qdev': 'str', '*node-name': 'str',
            'stats': 'BlockDeviceStats',
            '*parent': 'BlockStats',
            '*backing': 'BlockStats'} }
@@ -941,7 +944,8 @@
 #                "idle_time_ns":2953431879,
 #                "account_invalid":true,
 #                "account_failed":false
-#             }
+#             },
+#             "qdev": "/machine/unattached/device[23]"
 #          },
 #          {
 #             "device":"ide1-cd0",
@@ -959,7 +963,8 @@
 #                "wr_merged":0,
 #                "account_invalid":false,
 #                "account_failed":false
-#             }
+#             },
+#             "qdev": "/machine/unattached/device[24]"
 #          },
 #          {
 #             "device":"floppy0",
@@ -977,7 +982,8 @@
 #                "wr_merged":0,
 #                "account_invalid":false,
 #                "account_failed":false
-#             }
+#             },
+#             "qdev": "/machine/unattached/device[16]"
 #          },
 #          {
 #             "device":"sd0",
@@ -1050,93 +1056,22 @@
   'data': ['top', 'full', 'none', 'incremental'] }
 
 ##
-# @BlockJobType:
+# @MirrorCopyMode:
 #
-# Type of a block job.
+# An enumeration whose values tell the mirror block job when to
+# trigger writes to the target.
 #
-# @commit: block commit job type, see "block-commit"
+# @background: copy data in background only.
 #
-# @stream: block stream job type, see "block-stream"
+# @write-blocking: when data is written to the source, write it
+#                  (synchronously) to the target as well.  In
+#                  addition, data is copied in background just like in
+#                  @background mode.
 #
-# @mirror: drive mirror job type, see "drive-mirror"
-#
-# @backup: drive backup job type, see "drive-backup"
-#
-# Since: 1.7
+# Since: 3.0
 ##
-{ 'enum': 'BlockJobType',
-  'data': ['commit', 'stream', 'mirror', 'backup'] }
-
-##
-# @BlockJobVerb:
-#
-# Represents command verbs that can be applied to a blockjob.
-#
-# @cancel: see @block-job-cancel
-#
-# @pause: see @block-job-pause
-#
-# @resume: see @block-job-resume
-#
-# @set-speed: see @block-job-set-speed
-#
-# @complete: see @block-job-complete
-#
-# @dismiss: see @block-job-dismiss
-#
-# @finalize: see @block-job-finalize
-#
-# Since: 2.12
-##
-{ 'enum': 'BlockJobVerb',
-  'data': ['cancel', 'pause', 'resume', 'set-speed', 'complete', 'dismiss',
-           'finalize' ] }
-
-##
-# @BlockJobStatus:
-#
-# Indicates the present state of a given blockjob in its lifetime.
-#
-# @undefined: Erroneous, default state. Should not ever be visible.
-#
-# @created: The job has been created, but not yet started.
-#
-# @running: The job is currently running.
-#
-# @paused: The job is running, but paused. The pause may be requested by
-#          either the QMP user or by internal processes.
-#
-# @ready: The job is running, but is ready for the user to signal completion.
-#         This is used for long-running jobs like mirror that are designed to
-#         run indefinitely.
-#
-# @standby: The job is ready, but paused. This is nearly identical to @paused.
-#           The job may return to @ready or otherwise be canceled.
-#
-# @waiting: The job is waiting for other jobs in the transaction to converge
-#           to the waiting state. This status will likely not be visible for
-#           the last job in a transaction.
-#
-# @pending: The job has finished its work, but has finalization steps that it
-#           needs to make prior to completing. These changes may require
-#           manual intervention by the management process if manual was set
-#           to true. These changes may still fail.
-#
-# @aborting: The job is in the process of being aborted, and will finish with
-#            an error. The job will afterwards report that it is @concluded.
-#            This status may not be visible to the management process.
-#
-# @concluded: The job has finished all work. If manual was set to true, the job
-#             will remain in the query list until it is dismissed.
-#
-# @null: The job is in the process of being dismantled. This state should not
-#        ever be visible externally.
-#
-# Since: 2.12
-##
-{ 'enum': 'BlockJobStatus',
-  'data': ['undefined', 'created', 'running', 'paused', 'ready', 'standby',
-           'waiting', 'pending', 'aborting', 'concluded', 'null' ] }
+{ 'enum': 'MirrorCopyMode',
+  'data': ['background', 'write-blocking'] }
 
 ##
 # @BlockJobInfo:
@@ -1148,15 +1083,18 @@
 # @device: The job identifier. Originally the device name but other
 #          values are allowed since QEMU 2.7
 #
-# @len: the maximum progress value
+# @len: Estimated @offset value at the completion of the job. This value can
+#       arbitrarily change while the job is running, in both directions.
+#
+# @offset: Progress made until now. The unit is arbitrary and the value can
+#          only meaningfully be used for the ratio of @offset to @len. The
+#          value is monotonically increasing.
 #
 # @busy: false if the job is known to be in a quiescent state, with
 #        no pending I/O.  Since 1.3.
 #
 # @paused: whether the job is paused or, if @busy is true, will
 #          pause itself as soon as possible.  Since 1.3.
-#
-# @offset: the current progress value
 #
 # @speed: the rate limit, bytes per second
 #
@@ -1172,14 +1110,18 @@
 # @auto-dismiss: Job will dismiss itself when CONCLUDED, moving to the NULL
 #                state and disappearing from the query list. (since 2.12)
 #
+# @error: Error information if the job did not complete successfully.
+#         Not set if the job completed successfully. (since 2.12.1)
+#
 # Since: 1.1
 ##
 { 'struct': 'BlockJobInfo',
   'data': {'type': 'str', 'device': 'str', 'len': 'int',
            'offset': 'int', 'busy': 'bool', 'paused': 'bool', 'speed': 'int',
            'io-status': 'BlockDeviceIoStatus', 'ready': 'bool',
-           'status': 'BlockJobStatus',
-           'auto-finalize': 'bool', 'auto-dismiss': 'bool' } }
+           'status': 'JobStatus',
+           'auto-finalize': 'bool', 'auto-dismiss': 'bool',
+           '*error': 'str' } }
 
 ##
 # @query-block-jobs:
@@ -1773,6 +1715,9 @@
 #         written. Both will result in identical contents.
 #         Default is true. (Since 2.4)
 #
+# @copy-mode: when to copy data to the destination; defaults to 'background'
+#             (Since: 3.0)
+#
 # Since: 1.3
 ##
 { 'struct': 'DriveMirror',
@@ -1782,7 +1727,7 @@
             '*speed': 'int', '*granularity': 'uint32',
             '*buf-size': 'int', '*on-source-error': 'BlockdevOnError',
             '*on-target-error': 'BlockdevOnError',
-            '*unmap': 'bool' } }
+            '*unmap': 'bool', '*copy-mode': 'MirrorCopyMode' } }
 
 ##
 # @BlockDirtyBitmap:
@@ -1815,11 +1760,29 @@
 #            Currently, all dirty tracking bitmaps are loaded from Qcow2 on
 #            open.
 #
+# @x-disabled: the bitmap is created in the disabled state, which means that
+#              it will not track drive changes. The bitmap may be enabled with
+#              x-block-dirty-bitmap-enable. Default is false. (Since: 3.0)
+#
 # Since: 2.4
 ##
 { 'struct': 'BlockDirtyBitmapAdd',
   'data': { 'node': 'str', 'name': 'str', '*granularity': 'uint32',
-            '*persistent': 'bool', '*autoload': 'bool' } }
+            '*persistent': 'bool', '*autoload': 'bool', '*x-disabled': 'bool' } }
+
+##
+# @BlockDirtyBitmapMerge:
+#
+# @node: name of device/node which the bitmap is tracking
+#
+# @dst_name: name of the destination dirty bitmap
+#
+# @src_name: name of the source dirty bitmap
+#
+# Since: 3.0
+##
+{ 'struct': 'BlockDirtyBitmapMerge',
+  'data': { 'node': 'str', 'dst_name': 'str', 'src_name': 'str' } }
 
 ##
 # @block-dirty-bitmap-add:
@@ -1888,6 +1851,72 @@
 ##
 { 'command': 'block-dirty-bitmap-clear',
   'data': 'BlockDirtyBitmap' }
+
+##
+# @x-block-dirty-bitmap-enable:
+#
+# Enables a dirty bitmap so that it will begin tracking disk changes.
+#
+# Returns: nothing on success
+#          If @node is not a valid block device, DeviceNotFound
+#          If @name is not found, GenericError with an explanation
+#
+# Since: 3.0
+#
+# Example:
+#
+# -> { "execute": "x-block-dirty-bitmap-enable",
+#      "arguments": { "node": "drive0", "name": "bitmap0" } }
+# <- { "return": {} }
+#
+##
+  { 'command': 'x-block-dirty-bitmap-enable',
+    'data': 'BlockDirtyBitmap' }
+
+##
+# @x-block-dirty-bitmap-disable:
+#
+# Disables a dirty bitmap so that it will stop tracking disk changes.
+#
+# Returns: nothing on success
+#          If @node is not a valid block device, DeviceNotFound
+#          If @name is not found, GenericError with an explanation
+#
+# Since: 3.0
+#
+# Example:
+#
+# -> { "execute": "x-block-dirty-bitmap-disable",
+#      "arguments": { "node": "drive0", "name": "bitmap0" } }
+# <- { "return": {} }
+#
+##
+    { 'command': 'x-block-dirty-bitmap-disable',
+      'data': 'BlockDirtyBitmap' }
+
+##
+# @x-block-dirty-bitmap-merge:
+#
+# Merge @src_name dirty bitmap to @dst_name dirty bitmap. @src_name dirty
+# bitmap is unchanged. On error, @dst_name is unchanged.
+#
+# Returns: nothing on success
+#          If @node is not a valid block device, DeviceNotFound
+#          If @dst_name or @src_name is not found, GenericError
+#          If bitmaps has different sizes or granularities, GenericError
+#
+# Since: 3.0
+#
+# Example:
+#
+# -> { "execute": "x-block-dirty-bitmap-merge",
+#      "arguments": { "node": "drive0", "dst_name": "bitmap0",
+#                     "src_name": "bitmap1" } }
+# <- { "return": {} }
+#
+##
+      { 'command': 'x-block-dirty-bitmap-merge',
+        'data': 'BlockDirtyBitmapMerge' }
 
 ##
 # @BlockDirtyBitmapSha256:
@@ -1961,6 +1990,9 @@
 #                    above @device. If this option is not given, a node name is
 #                    autogenerated. (Since: 2.9)
 #
+# @copy-mode: when to copy data to the destination; defaults to 'background'
+#             (Since: 3.0)
+#
 # Returns: nothing on success.
 #
 # Since: 2.6
@@ -1981,7 +2013,8 @@
             '*speed': 'int', '*granularity': 'uint32',
             '*buf-size': 'int', '*on-source-error': 'BlockdevOnError',
             '*on-target-error': 'BlockdevOnError',
-            '*filter-node-name': 'str' } }
+            '*filter-node-name': 'str',
+            '*copy-mode': 'MirrorCopyMode' } }
 
 ##
 # @block_set_io_throttle:
@@ -2334,8 +2367,7 @@
 #
 # This command returns immediately after marking the active background block
 # operation for pausing.  It is an error to call this command if no
-# operation is in progress.  Pausing an already paused job has no cumulative
-# effect; a single block-job-resume command will resume the job.
+# operation is in progress or if the job is already paused.
 #
 # The operation will pause as soon as possible.  No event is emitted when
 # the operation is actually paused.  Cancelling a paused job automatically
@@ -2359,7 +2391,7 @@
 #
 # This command returns immediately after resuming a paused background block
 # operation.  It is an error to call this command if no operation is in
-# progress.  Resuming an already running job is not an error.
+# progress or if the job is not paused.
 #
 # This command also clears the error status of the job.
 #
@@ -2410,7 +2442,7 @@
 # QEMU 2.12+ job lifetime management semantics.
 #
 # This command will refuse to operate on any job that has not yet reached
-# its terminal state, BLOCK_JOB_STATUS_CONCLUDED. For jobs that make use of
+# its terminal state, JOB_STATUS_CONCLUDED. For jobs that make use of the
 # BLOCK_JOB_READY event, block-job-cancel or block-job-complete will still need
 # to be used as appropriate.
 #
@@ -2506,16 +2538,18 @@
 # @vxhs: Since 2.10
 # @throttle: Since 2.11
 # @nvme: Since 2.12
+# @copy-on-read: Since 3.0
+# @blklogwrites: Since 3.0
 #
 # Since: 2.9
 ##
 { 'enum': 'BlockdevDriver',
-  'data': [ 'blkdebug', 'blkverify', 'bochs', 'cloop',
-            'dmg', 'file', 'ftp', 'ftps', 'gluster', 'host_cdrom',
-            'host_device', 'http', 'https', 'iscsi', 'luks', 'nbd', 'nfs',
-            'null-aio', 'null-co', 'nvme', 'parallels', 'qcow', 'qcow2', 'qed',
-            'quorum', 'raw', 'rbd', 'replication', 'sheepdog', 'ssh',
-            'throttle', 'vdi', 'vhdx', 'vmdk', 'vpc', 'vvfat', 'vxhs' ] }
+  'data': [ 'blkdebug', 'blklogwrites', 'blkverify', 'bochs', 'cloop',
+            'copy-on-read', 'dmg', 'file', 'ftp', 'ftps', 'gluster',
+            'host_cdrom', 'host_device', 'http', 'https', 'iscsi', 'luks',
+            'nbd', 'nfs', 'null-aio', 'null-co', 'nvme', 'parallels', 'qcow',
+            'qcow2', 'qed', 'quorum', 'raw', 'rbd', 'replication', 'sheepdog',
+            'ssh', 'throttle', 'vdi', 'vhdx', 'vmdk', 'vpc', 'vvfat', 'vxhs' ] }
 
 ##
 # @BlockdevOptionsFile:
@@ -2530,6 +2564,10 @@
 # @locking:     whether to enable file locking. If set to 'auto', only enable
 #               when Open File Descriptor (OFD) locking API is available
 #               (default: auto, since 2.10)
+# @x-check-cache-dropped: whether to check that page cache was dropped on live
+#                         migration.  May cause noticeable delays if the image
+#                         file is large, do not use in production.
+#                         (default: off) (since: 3.0)
 #
 # Since: 2.9
 ##
@@ -2537,7 +2575,8 @@
   'data': { 'filename': 'str',
             '*pr-manager': 'str',
             '*locking': 'OnOffAuto',
-            '*aio': 'BlockdevAioOptions' } }
+            '*aio': 'BlockdevAioOptions',
+            '*x-check-cache-dropped': 'bool' } }
 
 ##
 # @BlockdevOptionsNull:
@@ -2663,18 +2702,21 @@
 # @template: Specifies a template mode which can be adjusted using the other
 #            flags, defaults to 'cached'
 #
+# @bitmap-directory: since 3.0
+#
 # Since: 2.9
 ##
 { 'struct': 'Qcow2OverlapCheckFlags',
-  'data': { '*template':       'Qcow2OverlapCheckMode',
-            '*main-header':    'bool',
-            '*active-l1':      'bool',
-            '*active-l2':      'bool',
-            '*refcount-table': 'bool',
-            '*refcount-block': 'bool',
-            '*snapshot-table': 'bool',
-            '*inactive-l1':    'bool',
-            '*inactive-l2':    'bool' } }
+  'data': { '*template':         'Qcow2OverlapCheckMode',
+            '*main-header':      'bool',
+            '*active-l1':        'bool',
+            '*active-l2':        'bool',
+            '*refcount-table':   'bool',
+            '*refcount-block':   'bool',
+            '*snapshot-table':   'bool',
+            '*inactive-l1':      'bool',
+            '*inactive-l2':      'bool',
+            '*bitmap-directory': 'bool' } }
 
 ##
 # @Qcow2OverlapChecks:
@@ -2845,16 +2887,6 @@
             'hash': 'str' }}
 
 ##
-# @SshHostKeyDummy:
-#
-# For those union branches that don't need additional fields.
-#
-# Since: 2.12
-##
-{ 'struct': 'SshHostKeyDummy',
-  'data': {} }
-
-##
 # @SshHostKeyCheck:
 #
 # Since: 2.12
@@ -2862,9 +2894,7 @@
 { 'union': 'SshHostKeyCheck',
   'base': { 'mode': 'SshHostKeyCheckMode' },
   'discriminator': 'mode',
-  'data': { 'none': 'SshHostKeyDummy',
-            'hash': 'SshHostKeyHash',
-            'known_hosts': 'SshHostKeyDummy' } }
+  'data': { 'hash': 'SshHostKeyHash' } }
 
 ##
 # @BlockdevOptionsSsh:
@@ -3025,6 +3055,32 @@
             '*set-state': ['BlkdebugSetStateOptions'] } }
 
 ##
+# @BlockdevOptionsBlklogwrites:
+#
+# Driver specific block device options for blklogwrites.
+#
+# @file:            block device
+#
+# @log:             block device used to log writes to @file
+#
+# @log-sector-size: sector size used in logging writes to @file, determines
+#                   granularity of offsets and sizes of writes (default: 512)
+#
+# @log-append:      append to an existing log (default: false)
+#
+# @log-super-update-interval: interval of write requests after which the log
+#                             super block is updated to disk (default: 4096)
+#
+# Since: 3.0
+##
+{ 'struct': 'BlockdevOptionsBlklogwrites',
+  'data': { 'file': 'BlockdevRef',
+            'log': 'BlockdevRef',
+            '*log-sector-size': 'uint32',
+            '*log-append': 'bool',
+            '*log-super-update-interval': 'uint64' } }
+
+##
 # @BlockdevOptionsBlkverify:
 #
 # Driver specific block device options for blkverify.
@@ -3170,6 +3226,14 @@
 
 
 ##
+# @RbdAuthMode:
+#
+# Since: 3.0
+##
+{ 'enum': 'RbdAuthMode',
+  'data': [ 'cephx', 'none' ] }
+
+##
 # @BlockdevOptionsRbd:
 #
 # @pool:               Ceph pool name.
@@ -3184,6 +3248,15 @@
 #
 # @user:               Ceph id name.
 #
+# @auth-client-required: Acceptable authentication modes.
+#                      This maps to Ceph configuration option
+#                      "auth_client_required".  (Since 3.0)
+#
+# @key-secret:         ID of a QCryptoSecret object providing a key
+#                      for cephx authentication.
+#                      This maps to Ceph configuration option
+#                      "key".  (Since 3.0)
+#
 # @server:             Monitor host address and port.  This maps
 #                      to the "mon_host" Ceph option.
 #
@@ -3195,6 +3268,8 @@
             '*conf': 'str',
             '*snapshot': 'str',
             '*user': 'str',
+            '*auth-client-required': ['RbdAuthMode'],
+            '*key-secret': 'str',
             '*server': ['InetSocketAddressBase'] } }
 
 ##
@@ -3432,12 +3507,17 @@
 #
 # @tls-creds:   TLS credentials ID
 #
+# @x-dirty-bitmap: A "qemu:dirty-bitmap:NAME" string to query in place of
+#                  traditional "base:allocation" block status (see
+#                  NBD_OPT_LIST_META_CONTEXT in the NBD protocol) (since 3.0)
+#
 # Since: 2.9
 ##
 { 'struct': 'BlockdevOptionsNbd',
   'data': { 'server': 'SocketAddress',
             '*export': 'str',
-            '*tls-creds': 'str' } }
+            '*tls-creds': 'str',
+            '*x-dirty-bitmap': 'str' } }
 
 ##
 # @BlockdevOptionsRaw:
@@ -3519,9 +3599,11 @@
   'discriminator': 'driver',
   'data': {
       'blkdebug':   'BlockdevOptionsBlkdebug',
+      'blklogwrites':'BlockdevOptionsBlklogwrites',
       'blkverify':  'BlockdevOptionsBlkverify',
       'bochs':      'BlockdevOptionsGenericFormat',
       'cloop':      'BlockdevOptionsGenericFormat',
+      'copy-on-read':'BlockdevOptionsGenericFormat',
       'dmg':        'BlockdevOptionsGenericFormat',
       'file':       'BlockdevOptionsFile',
       'ftp':        'BlockdevOptionsCurlFtp',
@@ -4023,15 +4105,6 @@
             '*force-size':          'bool' } }
 
 ##
-# @BlockdevCreateNotSupported:
-#
-# This is used for all drivers that don't support creating images.
-#
-# Since: 2.12
-##
-{ 'struct': 'BlockdevCreateNotSupported', 'data': {}}
-
-##
 # @BlockdevCreateOptions:
 #
 # Options for creating an image format on a given node.
@@ -4045,56 +4118,37 @@
       'driver':         'BlockdevDriver' },
   'discriminator': 'driver',
   'data': {
-      'blkdebug':       'BlockdevCreateNotSupported',
-      'blkverify':      'BlockdevCreateNotSupported',
-      'bochs':          'BlockdevCreateNotSupported',
-      'cloop':          'BlockdevCreateNotSupported',
-      'dmg':            'BlockdevCreateNotSupported',
       'file':           'BlockdevCreateOptionsFile',
-      'ftp':            'BlockdevCreateNotSupported',
-      'ftps':           'BlockdevCreateNotSupported',
       'gluster':        'BlockdevCreateOptionsGluster',
-      'host_cdrom':     'BlockdevCreateNotSupported',
-      'host_device':    'BlockdevCreateNotSupported',
-      'http':           'BlockdevCreateNotSupported',
-      'https':          'BlockdevCreateNotSupported',
-      'iscsi':          'BlockdevCreateNotSupported',
       'luks':           'BlockdevCreateOptionsLUKS',
-      'nbd':            'BlockdevCreateNotSupported',
       'nfs':            'BlockdevCreateOptionsNfs',
-      'null-aio':       'BlockdevCreateNotSupported',
-      'null-co':        'BlockdevCreateNotSupported',
-      'nvme':           'BlockdevCreateNotSupported',
       'parallels':      'BlockdevCreateOptionsParallels',
       'qcow':           'BlockdevCreateOptionsQcow',
       'qcow2':          'BlockdevCreateOptionsQcow2',
       'qed':            'BlockdevCreateOptionsQed',
-      'quorum':         'BlockdevCreateNotSupported',
-      'raw':            'BlockdevCreateNotSupported',
       'rbd':            'BlockdevCreateOptionsRbd',
-      'replication':    'BlockdevCreateNotSupported',
       'sheepdog':       'BlockdevCreateOptionsSheepdog',
       'ssh':            'BlockdevCreateOptionsSsh',
-      'throttle':       'BlockdevCreateNotSupported',
       'vdi':            'BlockdevCreateOptionsVdi',
       'vhdx':           'BlockdevCreateOptionsVhdx',
-      'vmdk':           'BlockdevCreateNotSupported',
-      'vpc':            'BlockdevCreateOptionsVpc',
-      'vvfat':          'BlockdevCreateNotSupported',
-      'vxhs':           'BlockdevCreateNotSupported'
+      'vpc':            'BlockdevCreateOptionsVpc'
   } }
 
 ##
-# @x-blockdev-create:
+# @blockdev-create:
 #
-# Create an image format on a given node.
-# TODO Replace with something asynchronous (block job?)
+# Starts a job to create an image format on a given node. The job is
+# automatically finalized, but a manual job-dismiss is required.
 #
-# Since: 2.12
+# @job-id:          Identifier for the newly created job.
+#
+# @options:         Options for the image creation.
+#
+# Since: 3.0
 ##
-{ 'command': 'x-blockdev-create',
-  'data': 'BlockdevCreateOptions',
-  'boxed': true }
+{ 'command': 'blockdev-create',
+  'data': { 'job-id': 'str',
+            'options': 'BlockdevCreateOptions' } }
 
 ##
 # @blockdev-open-tray:
@@ -4485,7 +4539,7 @@
 #
 ##
 { 'event': 'BLOCK_JOB_COMPLETED',
-  'data': { 'type'  : 'BlockJobType',
+  'data': { 'type'  : 'JobType',
             'device': 'str',
             'len'   : 'int',
             'offset': 'int',
@@ -4521,7 +4575,7 @@
 #
 ##
 { 'event': 'BLOCK_JOB_CANCELLED',
-  'data': { 'type'  : 'BlockJobType',
+  'data': { 'type'  : 'JobType',
             'device': 'str',
             'len'   : 'int',
             'offset': 'int',
@@ -4586,7 +4640,7 @@
 #
 ##
 { 'event': 'BLOCK_JOB_READY',
-  'data': { 'type'  : 'BlockJobType',
+  'data': { 'type'  : 'JobType',
             'device': 'str',
             'len'   : 'int',
             'offset': 'int',
@@ -4613,7 +4667,7 @@
 #
 ##
 { 'event': 'BLOCK_JOB_PENDING',
-  'data': { 'type'  : 'BlockJobType',
+  'data': { 'type'  : 'JobType',
             'id'    : 'str' } }
 
 ##

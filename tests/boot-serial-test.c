@@ -96,8 +96,7 @@ static testdef_t tests[] = {
     { "sparc", "SS-4", "", "MB86904" },
     { "sparc", "SS-600MP", "", "TMS390Z55" },
     { "sparc64", "sun4u", "", "UltraSPARC" },
-    { "s390x", "s390-ccw-virtio",
-      "-nodefaults -device sclpconsole,chardev=serial0", "virtio device" },
+    { "s390x", "s390-ccw-virtio", "", "virtio device" },
     { "m68k", "mcf5208evb", "", "TT", sizeof(kernel_mcf5208), kernel_mcf5208 },
     { "microblaze", "petalogix-s3adsp1800", "", "TT",
       sizeof(kernel_pls3adsp1800), kernel_pls3adsp1800 },
@@ -112,9 +111,8 @@ static testdef_t tests[] = {
     { NULL }
 };
 
-static void check_guest_output(const testdef_t *test, int fd)
+static bool check_guest_output(const testdef_t *test, int fd)
 {
-    bool output_ok = false;
     int i, nbr = 0, pos = 0, ccnt;
     char ch;
 
@@ -126,8 +124,7 @@ static void check_guest_output(const testdef_t *test, int fd)
                 pos += 1;
                 if (test->expect[pos] == '\0') {
                     /* We've reached the end of the expected string! */
-                    output_ok = true;
-                    goto done;
+                    return true;
                 }
             } else {
                 pos = 0;
@@ -137,8 +134,7 @@ static void check_guest_output(const testdef_t *test, int fd)
         g_usleep(10000);
     }
 
-done:
-    g_assert(output_ok);
+    return false;
 }
 
 static void test_machine(const void *data)
@@ -181,12 +177,16 @@ static void test_machine(const void *data)
                                 "-no-shutdown -serial chardev:serial0 %s",
                                 codeparam, code ? codetmp : "",
                                 test->machine, serialtmp, test->extra);
-    unlink(serialtmp);
     if (code) {
         unlink(codetmp);
     }
 
-    check_guest_output(test, ser_fd);
+    if (!check_guest_output(test, ser_fd)) {
+        g_error("Failed to find expected string. Please check '%s'",
+                serialtmp);
+    }
+    unlink(serialtmp);
+
     qtest_quit(global_qtest);
 
     close(ser_fd);

@@ -147,8 +147,9 @@ else
         TEST_IMG_FILE=$TEST_DIR/t.$IMGFMT
         TEST_IMG="ssh://127.0.0.1$TEST_IMG_FILE"
     elif [ "$IMGPROTO" = "nfs" ]; then
-        TEST_DIR="nfs://127.0.0.1/$TEST_DIR"
-        TEST_IMG=$TEST_DIR/t.$IMGFMT
+        TEST_IMG_FILE=$TEST_DIR/t.$IMGFMT
+        REMOTE_TEST_DIR="nfs://127.0.0.1$TEST_DIR"
+        TEST_IMG="nfs://127.0.0.1$TEST_IMG_FILE"
     elif [ "$IMGPROTO" = "vxhs" ]; then
         TEST_IMG_FILE=$TEST_DIR/t.$IMGFMT
         TEST_IMG="vxhs://127.0.0.1:9999/t.$IMGFMT"
@@ -173,6 +174,10 @@ if [ ! -d "$TEST_DIR" ]; then
     exit 1
 fi
 
+if [ -z "$REMOTE_TEST_DIR" ]; then
+    REMOTE_TEST_DIR="$TEST_DIR"
+fi
+
 if [ ! -d "$SAMPLE_IMG_DIR" ]; then
     echo "common.config: Error: \$SAMPLE_IMG_DIR ($SAMPLE_IMG_DIR) is not a directory"
     exit 1
@@ -187,6 +192,16 @@ _use_sample_img()
     then
         echo "_use_sample_img error, cannot extract '$SAMPLE_IMG_DIR/$1'"
         exit 1
+    fi
+}
+
+_stop_nbd_server()
+{
+    if [ -f "${QEMU_TEST_DIR}/qemu-nbd.pid" ]; then
+        local QEMU_NBD_PID
+        read QEMU_NBD_PID < "${QEMU_TEST_DIR}/qemu-nbd.pid"
+        kill ${QEMU_NBD_PID}
+        rm -f "${QEMU_TEST_DIR}/qemu-nbd.pid"
     fi
 }
 
@@ -229,6 +244,10 @@ _make_test_img()
         extra_img_options="-o $optstr $extra_img_options"
     fi
 
+    if [ $IMGPROTO = "nbd" ]; then
+        _stop_nbd_server
+    fi
+
     # XXX(hch): have global image options?
     (
      if [ $use_backing = 1 ]; then
@@ -269,12 +288,7 @@ _cleanup_test_img()
     case "$IMGPROTO" in
 
         nbd)
-            if [ -f "${QEMU_TEST_DIR}/qemu-nbd.pid" ]; then
-                local QEMU_NBD_PID
-                read QEMU_NBD_PID < "${QEMU_TEST_DIR}/qemu-nbd.pid"
-                kill ${QEMU_NBD_PID}
-                rm -f "${QEMU_TEST_DIR}/qemu-nbd.pid"
-            fi
+            _stop_nbd_server
             rm -f "$TEST_IMG_FILE"
             ;;
         vxhs)
@@ -333,7 +347,8 @@ _img_info()
     discard=0
     regex_json_spec_start='^ *"format-specific": \{'
     $QEMU_IMG info $QEMU_IMG_EXTRA_ARGS "$@" "$TEST_IMG" 2>&1 | \
-        sed -e "s#$IMGPROTO:$TEST_DIR#TEST_DIR#g" \
+        sed -e "s#$REMOTE_TEST_DIR#TEST_DIR#g" \
+            -e "s#$IMGPROTO:$TEST_DIR#TEST_DIR#g" \
             -e "s#$TEST_DIR#TEST_DIR#g" \
             -e "s#$IMGFMT#IMGFMT#g" \
             -e "/^disk size:/ D" \

@@ -81,15 +81,24 @@ void visit_type_%(c_name)s_members(Visitor *v, %(c_name)s *obj, Error **errp)
                      c_name=c_name(variants.tag_member.name))
 
         for var in variants.variants:
-            ret += mcgen('''
+            case_str = c_enum_const(variants.tag_member.type.name,
+                                    var.name,
+                                    variants.tag_member.type.prefix)
+            if var.type.name == 'q_empty':
+                # valid variant and nothing to do
+                ret += mcgen('''
+    case %(case)s:
+        break;
+''',
+                             case=case_str)
+            else:
+                ret += mcgen('''
     case %(case)s:
         visit_type_%(c_type)s_members(v, &obj->u.%(c_name)s, &err);
         break;
 ''',
-                         case=c_enum_const(variants.tag_member.type.name,
-                                           var.name,
-                                           variants.tag_member.type.prefix),
-                         c_type=var.type.c_name(), c_name=c_name(var.name))
+                             case=case_str,
+                             c_type=var.type.c_name(), c_name=c_name(var.name))
 
         ret += mcgen('''
     default:
@@ -293,7 +302,7 @@ class QAPISchemaGenVisitVisitor(QAPISchemaModularCVisitor):
 #include "qapi/qmp/qerror.h"
 #include "%(visit)s.h"
 ''',
-                                      visit=visit, prefix=self._prefix))
+                                      visit=visit))
         self._genh.preamble_add(mcgen('''
 #include "qapi/qapi-builtin-visit.h"
 #include "%(types)s.h"
@@ -301,30 +310,35 @@ class QAPISchemaGenVisitVisitor(QAPISchemaModularCVisitor):
 ''',
                                       types=types))
 
-    def visit_enum_type(self, name, info, values, prefix):
-        self._genh.add(gen_visit_decl(name, scalar=True))
-        self._genc.add(gen_visit_enum(name))
+    def visit_enum_type(self, name, info, ifcond, values, prefix):
+        with ifcontext(ifcond, self._genh, self._genc):
+            self._genh.add(gen_visit_decl(name, scalar=True))
+            self._genc.add(gen_visit_enum(name))
 
-    def visit_array_type(self, name, info, element_type):
-        self._genh.add(gen_visit_decl(name))
-        self._genc.add(gen_visit_list(name, element_type))
+    def visit_array_type(self, name, info, ifcond, element_type):
+        with ifcontext(ifcond, self._genh, self._genc):
+            self._genh.add(gen_visit_decl(name))
+            self._genc.add(gen_visit_list(name, element_type))
 
-    def visit_object_type(self, name, info, base, members, variants):
+    def visit_object_type(self, name, info, ifcond, base, members, variants):
         # Nothing to do for the special empty builtin
         if name == 'q_empty':
             return
-        self._genh.add(gen_visit_members_decl(name))
-        self._genc.add(gen_visit_object_members(name, base, members, variants))
-        # TODO Worth changing the visitor signature, so we could
-        # directly use rather than repeat type.is_implicit()?
-        if not name.startswith('q_'):
-            # only explicit types need an allocating visit
-            self._genh.add(gen_visit_decl(name))
-            self._genc.add(gen_visit_object(name, base, members, variants))
+        with ifcontext(ifcond, self._genh, self._genc):
+            self._genh.add(gen_visit_members_decl(name))
+            self._genc.add(gen_visit_object_members(name, base,
+                                                    members, variants))
+            # TODO Worth changing the visitor signature, so we could
+            # directly use rather than repeat type.is_implicit()?
+            if not name.startswith('q_'):
+                # only explicit types need an allocating visit
+                self._genh.add(gen_visit_decl(name))
+                self._genc.add(gen_visit_object(name, base, members, variants))
 
-    def visit_alternate_type(self, name, info, variants):
-        self._genh.add(gen_visit_decl(name))
-        self._genc.add(gen_visit_alternate(name, variants))
+    def visit_alternate_type(self, name, info, ifcond, variants):
+        with ifcontext(ifcond, self._genh, self._genc):
+            self._genh.add(gen_visit_decl(name))
+            self._genc.add(gen_visit_alternate(name, variants))
 
 
 def gen_visit(schema, output_dir, prefix, opt_builtins):

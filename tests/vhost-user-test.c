@@ -32,14 +32,6 @@
 #include <linux/virtio_net.h>
 #include <sys/vfs.h>
 
-/* GLIB version compatibility flags */
-#if !GLIB_CHECK_VERSION(2, 26, 0)
-#define G_TIME_SPAN_SECOND              (G_GINT64_CONSTANT(1000000))
-#endif
-
-#if GLIB_CHECK_VERSION(2, 28, 0)
-#define HAVE_MONOTONIC_TIME
-#endif
 
 #define QEMU_CMD_MEM    " -m %d -object memory-backend-file,id=mem,size=%dM," \
                         "mem-path=%s,share=on -numa node,memdev=mem"
@@ -150,8 +142,8 @@ typedef struct TestServer {
     int fds_num;
     int fds[VHOST_MEMORY_MAX_NREGIONS];
     VhostUserMemory memory;
-    CompatGMutex data_mutex;
-    CompatGCond data_cond;
+    GMutex data_mutex;
+    GCond data_cond;
     int log_fd;
     uint64_t rings;
     bool test_fail;
@@ -545,6 +537,7 @@ static gboolean _test_server_free(TestServer *server)
     g_free(server->mig_path);
 
     g_free(server->chr_name);
+    g_assert(server->bus);
     qpci_free_pc(server->bus);
 
     g_free(server);
@@ -642,21 +635,7 @@ test_migrate_source_check(GSource *source)
     return FALSE;
 }
 
-#if !GLIB_CHECK_VERSION(2,36,0)
-/* this callback is unnecessary with glib >2.36, the default
- * prepare for the source does the same */
-static gboolean
-test_migrate_source_prepare(GSource *source, gint *timeout)
-{
-    *timeout = -1;
-    return FALSE;
-}
-#endif
-
 GSourceFuncs test_migrate_source_funcs = {
-#if !GLIB_CHECK_VERSION(2,36,0)
-    .prepare = test_migrate_source_prepare,
-#endif
     .check = test_migrate_source_check,
 };
 
@@ -706,6 +685,7 @@ static void test_migrate(void)
     g_free(cmd);
 
     init_virtio_dev(s, 1u << VIRTIO_NET_F_MAC);
+    init_virtio_dev(dest, 1u << VIRTIO_NET_F_MAC);
     wait_for_fds(s);
     size = get_log_size(s);
     g_assert_cmpint(size, ==, (2 * 1024 * 1024) / (VHOST_LOG_PAGE * 8));
@@ -727,7 +707,7 @@ static void test_migrate(void)
     rsp = qmp("{ 'execute': 'migrate_set_speed',"
               "'arguments': { 'value': 10 } }");
     g_assert(qdict_haskey(rsp, "return"));
-    QDECREF(rsp);
+    qobject_unref(rsp);
 
     cmd = g_strdup_printf("{ 'execute': 'migrate',"
                           "'arguments': { 'uri': '%s' } }",
@@ -735,7 +715,7 @@ static void test_migrate(void)
     rsp = qmp(cmd);
     g_free(cmd);
     g_assert(qdict_haskey(rsp, "return"));
-    QDECREF(rsp);
+    qobject_unref(rsp);
 
     wait_for_log_fd(s);
 
@@ -751,7 +731,7 @@ static void test_migrate(void)
     rsp = qmp("{ 'execute': 'migrate_set_speed',"
               "'arguments': { 'value': 0 } }");
     g_assert(qdict_haskey(rsp, "return"));
-    QDECREF(rsp);
+    qobject_unref(rsp);
 
     qmp_eventwait("STOP");
 
@@ -761,6 +741,7 @@ static void test_migrate(void)
     read_guest_mem_server(dest);
 
     uninit_virtio_dev(s);
+    uninit_virtio_dev(dest);
 
     g_source_destroy(source);
     g_source_unref(source);

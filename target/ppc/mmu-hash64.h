@@ -17,8 +17,12 @@ void ppc_hash64_tlb_flush_hpte(PowerPCCPU *cpu,
                                target_ulong pte0, target_ulong pte1);
 unsigned ppc_hash64_hpte_page_shift_noslb(PowerPCCPU *cpu,
                                           uint64_t pte0, uint64_t pte1);
-void ppc_hash64_update_vrma(CPUPPCState *env);
-void ppc_hash64_update_rmls(CPUPPCState *env);
+void ppc_store_lpcr(PowerPCCPU *cpu, target_ulong val);
+void ppc_hash64_init(PowerPCCPU *cpu);
+void ppc_hash64_finalize(PowerPCCPU *cpu);
+void ppc_hash64_filter_pagesizes(PowerPCCPU *cpu,
+                                 bool (*cb)(void *, uint32_t, uint32_t),
+                                 void *opaque);
 #endif
 
 /*
@@ -100,6 +104,9 @@ void ppc_hash64_update_rmls(CPUPPCState *env);
 
 static inline hwaddr ppc_hash64_hpt_base(PowerPCCPU *cpu)
 {
+    if (cpu->vhyp) {
+        return 0;
+    }
     return cpu->env.spr[SPR_SDR1] & SDR_64_HTABORG;
 }
 
@@ -134,6 +141,48 @@ static inline uint64_t ppc_hash64_hpte1(PowerPCCPU *cpu,
     return ldq_p(&(hptes[i].pte1));
 }
 
+/*
+ * MMU Options
+ */
+
+struct PPCHash64PageSize {
+    uint32_t page_shift;  /* Page shift (or 0) */
+    uint32_t pte_enc;     /* Encoding in the HPTE (>>12) */
+};
+typedef struct PPCHash64PageSize PPCHash64PageSize;
+
+struct PPCHash64SegmentPageSizes {
+    uint32_t page_shift;  /* Base page shift of segment (or 0) */
+    uint32_t slb_enc;     /* SLB encoding for BookS */
+    PPCHash64PageSize enc[PPC_PAGE_SIZES_MAX_SZ];
+};
+
+struct PPCHash64Options {
+#define PPC_HASH64_1TSEG        0x00001
+#define PPC_HASH64_AMR          0x00002
+#define PPC_HASH64_CI_LARGEPAGE 0x00004
+    unsigned flags;
+    unsigned slb_size;
+    PPCHash64SegmentPageSizes sps[PPC_PAGE_SIZES_MAX_SZ];
+};
+
+extern const PPCHash64Options ppc_hash64_opts_basic;
+extern const PPCHash64Options ppc_hash64_opts_POWER7;
+
+static inline bool ppc_hash64_has(PowerPCCPU *cpu, unsigned feature)
+{
+    return !!(cpu->hash64_opts->flags & feature);
+}
+
 #endif /* CONFIG_USER_ONLY */
+
+#if defined(CONFIG_USER_ONLY) || !defined(TARGET_PPC64)
+static inline void ppc_hash64_init(PowerPCCPU *cpu)
+{
+}
+static inline void ppc_hash64_finalize(PowerPCCPU *cpu)
+{
+}
+#endif
 
 #endif /* MMU_HASH64_H */

@@ -39,6 +39,8 @@
 # @page-size: The number of bytes per page for the various page-based
 #        statistics (since 2.10)
 #
+# @multifd-bytes: The number of bytes sent through multifd (since 3.0)
+#
 # Since: 0.14.0
 ##
 { 'struct': 'MigrationStats',
@@ -46,7 +48,8 @@
            'duplicate': 'int', 'skipped': 'int', 'normal': 'int',
            'normal-bytes': 'int', 'dirty-pages-rate' : 'int',
            'mbps' : 'number', 'dirty-sync-count' : 'int',
-           'postcopy-requests' : 'int', 'page-size' : 'int' } }
+           'postcopy-requests' : 'int', 'page-size' : 'int',
+           'multifd-bytes' : 'uint64' } }
 
 ##
 # @XBZRLECacheStats:
@@ -89,6 +92,10 @@
 #
 # @postcopy-active: like active, but now in postcopy mode. (since 2.5)
 #
+# @postcopy-paused: during postcopy but paused. (since 3.0)
+#
+# @postcopy-recover: trying to recover from a paused postcopy. (since 3.0)
+#
 # @completed: migration is finished.
 #
 # @failed: some error occurred during migration process.
@@ -106,7 +113,8 @@
 ##
 { 'enum': 'MigrationStatus',
   'data': [ 'none', 'setup', 'cancelling', 'cancelled',
-            'active', 'postcopy-active', 'completed', 'failed', 'colo',
+            'active', 'postcopy-active', 'postcopy-paused',
+            'postcopy-recover', 'completed', 'failed', 'colo',
             'pre-switchover', 'device' ] }
 
 ##
@@ -156,6 +164,15 @@
 #              @status is 'failed'. Clients should not attempt to parse the
 #              error strings. (Since 2.7)
 #
+# @postcopy-blocktime: total time when all vCPU were blocked during postcopy
+#           live migration. This is only present when the postcopy-blocktime
+#           migration capability is enabled. (Since 3.0)
+#
+# @postcopy-vcpu-blocktime: list of the postcopy blocktime per vCPU.  This is
+#           only present when the postcopy-blocktime migration capability
+#           is enabled. (Since 3.0)
+#
+#
 # Since: 0.14.0
 ##
 { 'struct': 'MigrationInfo',
@@ -167,7 +184,9 @@
            '*downtime': 'int',
            '*setup-time': 'int',
            '*cpu-throttle-percentage': 'int',
-           '*error-desc': 'str'} }
+           '*error-desc': 'str',
+           '*postcopy-blocktime' : 'uint32',
+           '*postcopy-vcpu-blocktime': ['uint32']} }
 
 ##
 # @query-migrate:
@@ -357,13 +376,20 @@
 # @dirty-bitmaps: If enabled, QEMU will migrate named dirty bitmaps.
 #                 (since 2.12)
 #
+# @postcopy-blocktime: Calculate downtime for postcopy live migration
+#                     (since 3.0)
+#
+# @late-block-activate: If enabled, the destination will not activate block
+#           devices (and thus take locks) immediately at the end of migration.
+#           (since 3.0)
+#
 # Since: 1.2
 ##
 { 'enum': 'MigrationCapability',
   'data': ['xbzrle', 'rdma-pin-all', 'auto-converge', 'zero-blocks',
            'compress', 'events', 'postcopy-ram', 'x-colo', 'release-ram',
            'block', 'return-path', 'pause-before-switchover', 'x-multifd',
-           'dirty-bitmaps' ] }
+           'dirty-bitmaps', 'postcopy-blocktime', 'late-block-activate' ] }
 
 ##
 # @MigrationCapabilityStatus:
@@ -494,6 +520,9 @@
 #                     and a power of 2
 #                     (Since 2.11)
 #
+# @max-postcopy-bandwidth: Background transfer bandwidth during postcopy.
+#                     Defaults to 0 (unlimited).  In bytes per second.
+#                     (Since 3.0)
 # Since: 2.4
 ##
 { 'enum': 'MigrationParameter',
@@ -502,7 +531,7 @@
            'tls-creds', 'tls-hostname', 'max-bandwidth',
            'downtime-limit', 'x-checkpoint-delay', 'block-incremental',
            'x-multifd-channels', 'x-multifd-page-count',
-           'xbzrle-cache-size' ] }
+           'xbzrle-cache-size', 'max-postcopy-bandwidth' ] }
 
 ##
 # @MigrateSetParameters:
@@ -570,6 +599,10 @@
 #                     needs to be a multiple of the target page size
 #                     and a power of 2
 #                     (Since 2.11)
+#
+# @max-postcopy-bandwidth: Background transfer bandwidth during postcopy.
+#                     Defaults to 0 (unlimited).  In bytes per second.
+#                     (Since 3.0)
 # Since: 2.4
 ##
 # TODO either fuse back into MigrationParameters, or make
@@ -588,7 +621,8 @@
             '*block-incremental': 'bool',
             '*x-multifd-channels': 'int',
             '*x-multifd-page-count': 'int',
-            '*xbzrle-cache-size': 'size' } }
+            '*xbzrle-cache-size': 'size',
+            '*max-postcopy-bandwidth': 'size' } }
 
 ##
 # @migrate-set-parameters:
@@ -671,6 +705,10 @@
 #                     needs to be a multiple of the target page size
 #                     and a power of 2
 #                     (Since 2.11)
+#
+# @max-postcopy-bandwidth: Background transfer bandwidth during postcopy.
+#                     Defaults to 0 (unlimited).  In bytes per second.
+#                     (Since 3.0)
 # Since: 2.4
 ##
 { 'struct': 'MigrationParameters',
@@ -687,7 +725,8 @@
             '*block-incremental': 'bool' ,
             '*x-multifd-channels': 'uint8',
             '*x-multifd-page-count': 'uint32',
-            '*xbzrle-cache-size': 'size' } }
+            '*xbzrle-cache-size': 'size',
+            '*max-postcopy-bandwidth': 'size'  } }
 
 ##
 # @query-migrate-parameters:
@@ -1015,6 +1054,8 @@
 # @detach: this argument exists only for compatibility reasons and
 #          is ignored by QEMU
 #
+# @resume: resume one paused migration, default "off". (since 3.0)
+#
 # Returns: nothing on success
 #
 # Since: 0.14.0
@@ -1036,7 +1077,8 @@
 #
 ##
 { 'command': 'migrate',
-  'data': {'uri': 'str', '*blk': 'bool', '*inc': 'bool', '*detach': 'bool' } }
+  'data': {'uri': 'str', '*blk': 'bool', '*inc': 'bool',
+           '*detach': 'bool', '*resume': 'bool' } }
 
 ##
 # @migrate-incoming:
@@ -1170,3 +1212,39 @@
 # Since: 2.9
 ##
 { 'command': 'xen-colo-do-checkpoint' }
+
+##
+# @migrate-recover:
+#
+# Provide a recovery migration stream URI.
+#
+# @uri: the URI to be used for the recovery of migration stream.
+#
+# Returns: nothing.
+#
+# Example:
+#
+# -> { "execute": "migrate-recover",
+#      "arguments": { "uri": "tcp:192.168.1.200:12345" } }
+# <- { "return": {} }
+#
+# Since: 3.0
+##
+{ 'command': 'migrate-recover', 'data': { 'uri': 'str' },
+  'allow-oob': true }
+
+##
+# @migrate-pause:
+#
+# Pause a migration.  Currently it only supports postcopy.
+#
+# Returns: nothing.
+#
+# Example:
+#
+# -> { "execute": "migrate-pause" }
+# <- { "return": {} }
+#
+# Since: 3.0
+##
+{ 'command': 'migrate-pause', 'allow-oob': true }

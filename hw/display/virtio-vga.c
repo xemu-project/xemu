@@ -75,6 +75,16 @@ static void virtio_vga_gl_block(void *opaque, bool block)
     }
 }
 
+static void virtio_vga_disable_scanout(VirtIOGPU *g, int scanout_id)
+{
+    VirtIOVGA *vvga = container_of(g, VirtIOVGA, vdev);
+
+    if (scanout_id == 0) {
+        /* reset surface if needed */
+        vvga->vga.graphic_mode = -1;
+    }
+}
+
 static const GraphicHwOps virtio_vga_ops = {
     .invalidate = virtio_vga_invalidate_display,
     .gfx_update = virtio_vga_update_display,
@@ -106,7 +116,7 @@ static void virtio_vga_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
 
     /* init vga compat bits */
     vga->vram_size_mb = 8;
-    vga_common_init(vga, OBJECT(vpci_dev), false);
+    vga_common_init(vga, OBJECT(vpci_dev));
     vga_init(vga, OBJECT(vpci_dev), pci_address_space(&vpci_dev->pci_dev),
              pci_address_space_io(&vpci_dev->pci_dev), true);
     pci_register_bar(&vpci_dev->pci_dev, 0,
@@ -152,10 +162,11 @@ static void virtio_vga_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
     }
 
     /* add stdvga mmio regions */
-    pci_std_vga_mmio_region_init(vga, &vpci_dev->modern_bar,
+    pci_std_vga_mmio_region_init(vga, OBJECT(vvga), &vpci_dev->modern_bar,
                                  vvga->vga_mrs, true);
 
     vga->con = g->scanout[0].con;
+    g->disable_scanout = virtio_vga_disable_scanout;
     graphic_console_set_hwops(vga->con, &virtio_vga_ops, vvga);
 
     for (i = 0; i < g->conf.max_outputs; i++) {

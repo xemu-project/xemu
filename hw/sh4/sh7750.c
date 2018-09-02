@@ -31,7 +31,6 @@
 #include "hw/sh4/sh_intc.h"
 #include "cpu.h"
 #include "exec/exec-all.h"
-#include "exec/address-spaces.h"
 
 #define NB_DEVICES 4
 
@@ -451,15 +450,43 @@ static void sh7750_mem_writel(void *opaque, hwaddr addr,
     }
 }
 
+static uint64_t sh7750_mem_readfn(void *opaque, hwaddr addr, unsigned size)
+{
+    switch (size) {
+    case 1:
+        return sh7750_mem_readb(opaque, addr);
+    case 2:
+        return sh7750_mem_readw(opaque, addr);
+    case 4:
+        return sh7750_mem_readl(opaque, addr);
+    default:
+        g_assert_not_reached();
+    }
+}
+
+static void sh7750_mem_writefn(void *opaque, hwaddr addr,
+                               uint64_t value, unsigned size)
+{
+    switch (size) {
+    case 1:
+        sh7750_mem_writeb(opaque, addr, value);
+        break;
+    case 2:
+        sh7750_mem_writew(opaque, addr, value);
+        break;
+    case 4:
+        sh7750_mem_writel(opaque, addr, value);
+        break;
+    default:
+        g_assert_not_reached();
+    }
+}
+
 static const MemoryRegionOps sh7750_mem_ops = {
-    .old_mmio = {
-        .read = {sh7750_mem_readb,
-                 sh7750_mem_readw,
-                 sh7750_mem_readl },
-        .write = {sh7750_mem_writeb,
-                  sh7750_mem_writew,
-                  sh7750_mem_writel },
-    },
+    .read = sh7750_mem_readfn,
+    .write = sh7750_mem_writefn,
+    .valid.min_access_size = 1,
+    .valid.max_access_size = 4,
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
@@ -773,7 +800,7 @@ SH7750State *sh7750_init(SuperHCPU *cpu, MemoryRegion *sysmem)
     cpu->env.intc_handle = &s->intc;
 
     sh_serial_init(sysmem, 0x1fe00000,
-                   0, s->periph_freq, serial_hds[0],
+                   0, s->periph_freq, serial_hd(0),
                    s->intc.irqs[SCI1_ERI],
                    s->intc.irqs[SCI1_RXI],
                    s->intc.irqs[SCI1_TXI],
@@ -781,7 +808,7 @@ SH7750State *sh7750_init(SuperHCPU *cpu, MemoryRegion *sysmem)
                    NULL);
     sh_serial_init(sysmem, 0x1fe80000,
                    SH_SERIAL_FEAT_SCIF,
-                   s->periph_freq, serial_hds[1],
+                   s->periph_freq, serial_hd(1),
                    s->intc.irqs[SCIF_ERI],
                    s->intc.irqs[SCIF_RXI],
                    s->intc.irqs[SCIF_TXI],

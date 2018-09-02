@@ -50,7 +50,7 @@
 #include "exec/address-spaces.h"
 #include "trace.h"
 #include "elf.h"
-#include "qemu/cutils.h"
+#include "qemu/units.h"
 #include "kvm_ppc.h"
 
 /* SMP is not enabled, for now */
@@ -60,7 +60,7 @@
 
 #define CFG_ADDR 0xf0000510
 
-#define BIOS_SIZE (1024 * 1024)
+#define BIOS_SIZE (1 * MiB)
 #define BIOS_FILENAME "ppc_rom.bin"
 #define KERNEL_LOAD_ADDR 0x01000000
 #define INITRD_LOAD_ADDR 0x01800000
@@ -682,6 +682,7 @@ static void prep_machine_init(MachineClass *mc)
     mc->max_cpus = MAX_CPUS;
     mc->default_boot_order = "cad";
     mc->default_cpu_type = POWERPC_CPU_TYPE_NAME("602");
+    mc->default_display = "std";
 }
 
 static int prep_set_cmos_checksum(DeviceState *dev, void *opaque)
@@ -770,7 +771,6 @@ static void ibm_40p_init(MachineState *machine)
 
     /* add some more devices */
     if (defaults_enabled()) {
-        isa_create_simple(isa_bus, TYPE_I8042);
         m48t59 = NVRAM(isa_create_simple(isa_bus, "isa-m48t59"));
 
         dev = DEVICE(isa_create(isa_bus, "cs4231a"));
@@ -885,11 +885,11 @@ static void ibm_40p_machine_init(MachineClass *mc)
     mc->desc = "IBM RS/6000 7020 (40p)",
     mc->init = ibm_40p_init;
     mc->max_cpus = 1;
-    mc->pci_allow_0_address = true;
-    mc->default_ram_size = 128 * M_BYTE;
+    mc->default_ram_size = 128 * MiB;
     mc->block_default_type = IF_SCSI;
     mc->default_boot_order = "c";
     mc->default_cpu_type = POWERPC_CPU_TYPE_NAME("604");
+    mc->default_display = "std";
 }
 
 DEFINE_MACHINE("40p", ibm_40p_machine_init)

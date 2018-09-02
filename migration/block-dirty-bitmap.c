@@ -66,7 +66,7 @@
 #include "qemu/error-report.h"
 #include "migration/misc.h"
 #include "migration/migration.h"
-#include "migration/qemu-file.h"
+#include "qemu-file.h"
 #include "migration/vmstate.h"
 #include "migration/register.h"
 #include "qemu/hbitmap.h"
@@ -511,7 +511,7 @@ void dirty_bitmap_mig_before_vm_start(void)
         DirtyBitmapLoadBitmapState *b = item->data;
 
         if (b->migrated) {
-            bdrv_enable_dirty_bitmap(b->bitmap);
+            bdrv_enable_dirty_bitmap_locked(b->bitmap);
         } else {
             bdrv_dirty_bitmap_enable_successor(b->bitmap);
         }
@@ -547,7 +547,7 @@ static void dirty_bitmap_load_complete(QEMUFile *f, DirtyBitmapLoadState *s)
         if (enabled_bitmaps == NULL) {
             /* in postcopy */
             bdrv_reclaim_dirty_bitmap_locked(s->bs, s->bitmap, &error_abort);
-            bdrv_enable_dirty_bitmap(s->bitmap);
+            bdrv_enable_dirty_bitmap_locked(s->bitmap);
         } else {
             /* target not started, successor must be empty */
             int64_t count = bdrv_get_dirty_count(s->bitmap);
@@ -600,6 +600,7 @@ static int dirty_bitmap_load_bits(QEMUFile *f, DirtyBitmapLoadState *s)
         ret = qemu_get_buffer(f, buf, buf_size);
         if (ret != buf_size) {
             error_report("Failed to read bitmap bits");
+            g_free(buf);
             return -EIO;
         }
 
@@ -671,6 +672,9 @@ static int dirty_bitmap_load(QEMUFile *f, void *opaque, int version_id)
 
     do {
         ret = dirty_bitmap_load_header(f, &s);
+        if (ret < 0) {
+            return ret;
+        }
 
         if (s.flags & DIRTY_BITMAP_MIG_FLAG_START) {
             ret = dirty_bitmap_load_start(f, &s);

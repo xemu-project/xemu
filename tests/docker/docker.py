@@ -11,6 +11,7 @@
 # or (at your option) any later version. See the COPYING file in
 # the top-level directory.
 
+from __future__ import print_function
 import os
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__),
@@ -25,9 +26,13 @@ import tempfile
 import re
 import signal
 from tarfile import TarFile, TarInfo
-from StringIO import StringIO
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
 from shutil import copy, rmtree
 from pwd import getpwuid
+from datetime import datetime,timedelta
 
 
 FILTERED_ENV_NAMES = ['ftp_proxy', 'http_proxy', 'https_proxy']
@@ -48,7 +53,9 @@ def _guess_docker_command():
     commands = [["docker"], ["sudo", "-n", "docker"]]
     for cmd in commands:
         try:
-            if subprocess.call(cmd + ["images"],
+            # docker version will return the client details in stdout
+            # but still report a status of 1 if it can't contact the daemon
+            if subprocess.call(cmd + ["version"],
                                stdout=DEVNULL, stderr=DEVNULL) == 0:
                 return cmd
         except OSError:
@@ -87,7 +94,7 @@ def _get_so_libs(executable):
                 so_lib = search.groups()[1]
                 libs.append("%s/%s" % (so_path, so_lib))
     except subprocess.CalledProcessError:
-        print "%s had no associated libraries (static build?)" % (executable)
+        print("%s had no associated libraries (static build?)" % (executable))
 
     return libs
 
@@ -105,7 +112,36 @@ def _copy_binary_with_libs(src, dest_dir):
             so_path = os.path.dirname(l)
             _copy_with_mkdir(l , dest_dir, so_path)
 
+
+def _check_binfmt_misc(executable):
+    """Check binfmt_misc has entry for executable in the right place.
+
+    The details of setting up binfmt_misc are outside the scope of
+    this script but we should at least fail early with a useful
+    message if it won't work."""
+
+    binary = os.path.basename(executable)
+    binfmt_entry = "/proc/sys/fs/binfmt_misc/%s" % (binary)
+
+    if not os.path.exists(binfmt_entry):
+        print ("No binfmt_misc entry for %s" % (binary))
+        return False
+
+    with open(binfmt_entry) as x: entry = x.read()
+
+    qpath = "/usr/bin/%s" % (binary)
+    if not re.search("interpreter %s\n" % (qpath), entry):
+        print ("binfmt_misc for %s does not point to %s" % (binary, qpath))
+        return False
+
+    return True
+
+
 def _read_qemu_dockerfile(img_name):
+    # special case for Debian linux-user images
+    if img_name.startswith("debian") and img_name.endswith("user"):
+        img_name = "debian-bootstrap"
+
     df = os.path.join(os.path.dirname(__file__), "dockerfiles",
                       img_name + ".docker")
     return open(df, "r").read()
@@ -161,7 +197,7 @@ class Docker(object):
                 continue
             if only_known and instance_uuid not in self._instances:
                 continue
-            print "Terminating", i
+            print("Terminating", i)
             if active:
                 self._do(["kill", i])
             self._do(["rm", i])
@@ -178,8 +214,17 @@ class Docker(object):
                                        stderr=subprocess.STDOUT,
                                        **kwargs)
 
+    def inspect_tag(self, tag):
+        try:
+            return self._output(["inspect", tag])
+        except subprocess.CalledProcessError:
+            return None
+
+    def get_image_creation_time(self, info):
+        return json.loads(info)[0]["Created"]
+
     def get_image_dockerfile_checksum(self, tag):
-        resp = self._output(["inspect", tag])
+        resp = self.inspect_tag(tag)
         labels = json.loads(resp)[0]["Config"].get("Labels", {})
         return labels.get("com.qemu.dockerfile-checksum", "")
 
@@ -200,8 +245,10 @@ class Docker(object):
 
         tmp_df.write("\n")
         tmp_df.write("LABEL com.qemu.dockerfile-checksum=%s" %
-                     _text_checksum("\n".join([dockerfile] +
-                                    extra_files_cksum)))
+                     _text_checksum(_dockerfile_preprocess(dockerfile)))
+        for f, c in extra_files_cksum:
+            tmp_df.write("LABEL com.qemu.%s-checksum=%s" % (f, c))
+
         tmp_df.flush()
 
         self._do_check(["build", "-t", tag, "-f", tmp_df.name] + argv + \
@@ -288,10 +335,15 @@ class BuildCommand(SubCommand):
         if "--no-cache" not in argv and \
            dkr.image_matches_dockerfile(tag, dockerfile):
             if not args.quiet:
-                print "Image is up to date."
+                print("Image is up to date.")
         else:
             # Create a docker context directory for the build
             docker_dir = tempfile.mkdtemp(prefix="docker_build")
+
+            # Validate binfmt_misc will work
+            if args.include_executable:
+                if not _check_binfmt_misc(args.include_executable):
+                    return 1
 
             # Is there a .pre file to run in the build context?
             docker_pre = os.path.splitext(args.dockerfile)[0]+".pre"
@@ -300,10 +352,10 @@ class BuildCommand(SubCommand):
                 rc = subprocess.call(os.path.realpath(docker_pre),
                                      cwd=docker_dir, stdout=stdout)
                 if rc == 3:
-                    print "Skip"
+                    print("Skip")
                     return 0
                 elif rc != 0:
-                    print "%s exited with code %d" % (docker_pre, rc)
+                    print("%s exited with code %d" % (docker_pre, rc))
                     return 1
 
             # Copy any extra files into the Docker context. These can be
@@ -316,7 +368,7 @@ class BuildCommand(SubCommand):
                 _copy_binary_with_libs(args.include_executable, docker_dir)
             for filename in args.extra_files or []:
                 _copy_with_mkdir(filename, docker_dir)
-                cksum += [_file_checksum(filename)]
+                cksum += [(filename, _file_checksum(filename))]
 
             argv += ["--build-arg=" + k.lower() + "=" + v
                         for k, v in os.environ.iteritems()
@@ -389,6 +441,112 @@ class ImagesCommand(SubCommand):
     name = "images"
     def run(self, args, argv):
         return Docker().command("images", argv, args.quiet)
+
+
+class ProbeCommand(SubCommand):
+    """Probe if we can run docker automatically"""
+    name = "probe"
+
+    def run(self, args, argv):
+        try:
+            docker = Docker()
+            if docker._command[0] == "docker":
+                print("yes")
+            elif docker._command[0] == "sudo":
+                print("sudo")
+        except Exception:
+            print("no")
+
+        return
+
+
+class CcCommand(SubCommand):
+    """Compile sources with cc in images"""
+    name = "cc"
+
+    def args(self, parser):
+        parser.add_argument("--image", "-i", required=True,
+                            help="The docker image in which to run cc")
+        parser.add_argument("--cc", default="cc",
+                            help="The compiler executable to call")
+        parser.add_argument("--user",
+                            help="The user-id to run under")
+        parser.add_argument("--source-path", "-s", nargs="*", dest="paths",
+                            help="""Extra paths to (ro) mount into container for
+                            reading sources""")
+
+    def run(self, args, argv):
+        if argv and argv[0] == "--":
+            argv = argv[1:]
+        cwd = os.getcwd()
+        cmd = ["--rm", "-w", cwd,
+               "-v", "%s:%s:rw" % (cwd, cwd)]
+        if args.paths:
+            for p in args.paths:
+                cmd += ["-v", "%s:%s:ro,z" % (p, p)]
+        if args.user:
+            cmd += ["-u", args.user]
+        cmd += [args.image, args.cc]
+        cmd += argv
+        return Docker().command("run", cmd, args.quiet)
+
+
+class CheckCommand(SubCommand):
+    """Check if we need to re-build a docker image out of a dockerfile.
+    Arguments: <tag> <dockerfile>"""
+    name = "check"
+
+    def args(self, parser):
+        parser.add_argument("tag",
+                            help="Image Tag")
+        parser.add_argument("dockerfile", default=None,
+                            help="Dockerfile name", nargs='?')
+        parser.add_argument("--checktype", choices=["checksum", "age"],
+                            default="checksum", help="check type")
+        parser.add_argument("--olderthan", default=60, type=int,
+                            help="number of minutes")
+
+    def run(self, args, argv):
+        tag = args.tag
+
+        try:
+            dkr = Docker()
+        except:
+            print("Docker not set up")
+            return 1
+
+        info = dkr.inspect_tag(tag)
+        if info is None:
+            print("Image does not exist")
+            return 1
+
+        if args.checktype == "checksum":
+            if not args.dockerfile:
+                print("Need a dockerfile for tag:%s" % (tag))
+                return 1
+
+            dockerfile = open(args.dockerfile, "rb").read()
+
+            if dkr.image_matches_dockerfile(tag, dockerfile):
+                if not args.quiet:
+                    print("Image is up to date")
+                return 0
+            else:
+                print("Image needs updating")
+                return 1
+        elif args.checktype == "age":
+            timestr = dkr.get_image_creation_time(info).split(".")[0]
+            created = datetime.strptime(timestr, "%Y-%m-%dT%H:%M:%S")
+            past = datetime.now() - timedelta(minutes=args.olderthan)
+            if created < past:
+                print ("Image created @ %s more than %d minutes old" %
+                       (timestr, args.olderthan))
+                return 1
+            else:
+                if not args.quiet:
+                    print ("Image less than %d minutes old" % (args.olderthan))
+                return 0
+
 
 def main():
     parser = argparse.ArgumentParser(description="A Docker helper",

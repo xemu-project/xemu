@@ -25,9 +25,17 @@
 #define QEMU_AIO_FLUSH        0x0008
 #define QEMU_AIO_DISCARD      0x0010
 #define QEMU_AIO_WRITE_ZEROES 0x0020
+#define QEMU_AIO_COPY_RANGE   0x0040
+#define QEMU_AIO_TRUNCATE     0x0080
 #define QEMU_AIO_TYPE_MASK \
-        (QEMU_AIO_READ|QEMU_AIO_WRITE|QEMU_AIO_IOCTL|QEMU_AIO_FLUSH| \
-         QEMU_AIO_DISCARD|QEMU_AIO_WRITE_ZEROES)
+        (QEMU_AIO_READ | \
+         QEMU_AIO_WRITE | \
+         QEMU_AIO_IOCTL | \
+         QEMU_AIO_FLUSH | \
+         QEMU_AIO_DISCARD | \
+         QEMU_AIO_WRITE_ZEROES | \
+         QEMU_AIO_COPY_RANGE | \
+         QEMU_AIO_TRUNCATE)
 
 /* AIO flags */
 #define QEMU_AIO_MISALIGNED   0x1000
@@ -37,7 +45,7 @@
 /* linux-aio.c - Linux native implementation */
 #ifdef CONFIG_LINUX_AIO
 typedef struct LinuxAioState LinuxAioState;
-LinuxAioState *laio_init(void);
+LinuxAioState *laio_init(Error **errp);
 void laio_cleanup(LinuxAioState *s);
 int coroutine_fn laio_co_submit(BlockDriverState *bs, LinuxAioState *s, int fd,
                                 uint64_t offset, QEMUIOVector *qiov, int type);
@@ -57,7 +65,7 @@ void win32_aio_cleanup(QEMUWin32AIOState *aio);
 int win32_aio_attach(QEMUWin32AIOState *aio, HANDLE hfile);
 BlockAIOCB *win32_aio_submit(BlockDriverState *bs,
         QEMUWin32AIOState *aio, HANDLE hfile,
-        int64_t sector_num, QEMUIOVector *qiov, int nb_sectors,
+        uint64_t offset, uint64_t bytes, QEMUIOVector *qiov,
         BlockCompletionFunc *cb, void *opaque, int type);
 void win32_aio_detach_aio_context(QEMUWin32AIOState *aio,
                                   AioContext *old_context);

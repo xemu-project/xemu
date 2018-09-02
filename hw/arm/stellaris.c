@@ -20,6 +20,7 @@
 #include "qemu/log.h"
 #include "exec/address-spaces.h"
 #include "sysemu/sysemu.h"
+#include "hw/arm/armv7m.h"
 #include "hw/char/pl011.h"
 #include "hw/misc/unimp.h"
 #include "cpu.h"
@@ -203,15 +204,16 @@ static uint64_t gptm_read(void *opaque, hwaddr offset,
             return s->rtc;
         }
         qemu_log_mask(LOG_UNIMP,
-                      "GPTM: read of TAR but timer read not supported");
+                      "GPTM: read of TAR but timer read not supported\n");
         return 0;
     case 0x4c: /* TBR */
         qemu_log_mask(LOG_UNIMP,
-                      "GPTM: read of TBR but timer read not supported");
+                      "GPTM: read of TBR but timer read not supported\n");
         return 0;
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "GPTM: read at bad offset 0x%x\n", (int)offset);
+                      "GPTM: read at bad offset 0x02%" HWADDR_PRIx "\n",
+                      offset);
         return 0;
     }
 }
@@ -293,7 +295,8 @@ static void gptm_write(void *opaque, hwaddr offset,
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "GPTM: read at bad offset 0x%x\n", (int)offset);
+                      "GPTM: write at bad offset 0x02%" HWADDR_PRIx "\n",
+                      offset);
     }
     gptm_update_irq(s);
 }
@@ -559,7 +562,7 @@ static void ssys_write(void *opaque, hwaddr offset,
     case 0x040: /* SRCR0 */
     case 0x044: /* SRCR1 */
     case 0x048: /* SRCR2 */
-        fprintf(stderr, "Peripheral reset not implemented\n");
+        qemu_log_mask(LOG_UNIMP, "Peripheral reset not implemented\n");
         break;
     case 0x054: /* IMC */
         s->int_mask = value & 0x7f;
@@ -836,11 +839,12 @@ static void stellaris_i2c_write(void *opaque, hwaddr offset,
         break;
     case 0x20: /* MCR */
         if (value & 1) {
-            qemu_log_mask(LOG_UNIMP, "stellaris_i2c: Loopback not implemented");
+            qemu_log_mask(LOG_UNIMP,
+                          "stellaris_i2c: Loopback not implemented\n");
         }
         if (value & 0x20) {
             qemu_log_mask(LOG_UNIMP,
-                          "stellaris_i2c: Slave mode not implemented");
+                          "stellaris_i2c: Slave mode not implemented\n");
         }
         s->mcr = value & 0x31;
         break;
@@ -1124,7 +1128,7 @@ static void stellaris_adc_write(void *opaque, hwaddr offset,
         s->sspri = value;
         break;
     case 0x28: /* PSSI */
-        qemu_log_mask(LOG_UNIMP, "ADC: sample initiate unimplemented");
+        qemu_log_mask(LOG_UNIMP, "ADC: sample initiate unimplemented\n");
         break;
     case 0x30: /* SAC */
         s->sac = value;
@@ -1297,8 +1301,13 @@ static void stellaris_init(MachineState *ms, stellaris_board_info *board)
                            &error_fatal);
     memory_region_add_subregion(system_memory, 0x20000000, sram);
 
-    nvic = armv7m_init(system_memory, flash_size, NUM_IRQ_LINES,
-                       ms->kernel_filename, ms->cpu_type);
+    nvic = qdev_create(NULL, TYPE_ARMV7M);
+    qdev_prop_set_uint32(nvic, "num-irq", NUM_IRQ_LINES);
+    qdev_prop_set_string(nvic, "cpu-type", ms->cpu_type);
+    object_property_set_link(OBJECT(nvic), OBJECT(get_system_memory()),
+                                     "memory", &error_abort);
+    /* This will exit with an error if the user passed us a bad cpu_type */
+    qdev_init_nofail(nvic);
 
     qdev_connect_gpio_out_named(nvic, "SYSRESETREQ", 0,
                                 qemu_allocate_irq(&do_sys_reset, NULL, 0));
@@ -1353,7 +1362,7 @@ static void stellaris_init(MachineState *ms, stellaris_board_info *board)
         if (board->dc2 & (1 << i)) {
             pl011_luminary_create(0x4000c000 + i * 0x1000,
                                   qdev_get_gpio_in(nvic, uart_irq[i]),
-                                  serial_hds[i]);
+                                  serial_hd(i));
         }
     }
     if (board->dc2 & (1 << 4)) {
@@ -1430,6 +1439,8 @@ static void stellaris_init(MachineState *ms, stellaris_board_info *board)
     create_unimplemented_device("analogue-comparator", 0x4003c000, 0x1000);
     create_unimplemented_device("hibernation", 0x400fc000, 0x1000);
     create_unimplemented_device("flash-control", 0x400fd000, 0x1000);
+
+    armv7m_load_kernel(ARM_CPU(first_cpu), ms->kernel_filename, flash_size);
 }
 
 /* FIXME: Figure out how to generate these from stellaris_boards.  */

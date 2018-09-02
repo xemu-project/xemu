@@ -234,6 +234,8 @@ void hmp_info_migrate(Monitor *mon, const QDict *qdict)
                        info->ram->dirty_sync_count);
         monitor_printf(mon, "page size: %" PRIu64 " kbytes\n",
                        info->ram->page_size >> 10);
+        monitor_printf(mon, "multifd bytes: %" PRIu64 " kbytes\n",
+                       info->ram->multifd_bytes >> 10);
 
         if (info->ram->dirty_pages_rate) {
             monitor_printf(mon, "dirty pages rate: %" PRIu64 " pages\n",
@@ -274,6 +276,21 @@ void hmp_info_migrate(Monitor *mon, const QDict *qdict)
                        info->cpu_throttle_percentage);
     }
 
+    if (info->has_postcopy_blocktime) {
+        monitor_printf(mon, "postcopy blocktime: %u\n",
+                       info->postcopy_blocktime);
+    }
+
+    if (info->has_postcopy_vcpu_blocktime) {
+        Visitor *v;
+        char *str;
+        v = string_output_visitor_new(false, &str);
+        visit_type_uint32List(v, NULL, &info->postcopy_vcpu_blocktime, NULL);
+        visit_complete(v, &str);
+        monitor_printf(mon, "postcopy vcpu blocktime: %s\n", str);
+        g_free(str);
+        visit_free(v);
+    }
     qapi_free_MigrationInfo(info);
     qapi_free_MigrationCapabilityStatusList(caps);
 }
@@ -355,6 +372,9 @@ void hmp_info_migrate_parameters(Monitor *mon, const QDict *qdict)
         monitor_printf(mon, "%s: %" PRIu64 "\n",
             MigrationParameter_str(MIGRATION_PARAMETER_XBZRLE_CACHE_SIZE),
             params->xbzrle_cache_size);
+        monitor_printf(mon, "%s: %" PRIu64 "\n",
+            MigrationParameter_str(MIGRATION_PARAMETER_MAX_POSTCOPY_BANDWIDTH),
+            params->max_postcopy_bandwidth);
     }
 
     qapi_free_MigrationParameters(params);
@@ -596,6 +616,7 @@ void hmp_info_blockstats(Monitor *mon, const QDict *qdict)
     qapi_free_BlockStatsList(stats_list);
 }
 
+#ifdef CONFIG_VNC
 /* Helper for hmp_info_vnc_clients, _servers */
 static void hmp_info_VncBasicInfo(Monitor *mon, VncBasicInfo *info,
                                   const char *name)
@@ -683,6 +704,7 @@ void hmp_info_vnc(Monitor *mon, const QDict *qdict)
     qapi_free_VncInfo2List(info2l);
 
 }
+#endif
 
 #ifdef CONFIG_SPICE
 void hmp_info_spice(Monitor *mon, const QDict *qdict)
@@ -1048,6 +1070,14 @@ void hmp_system_reset(Monitor *mon, const QDict *qdict)
 void hmp_system_powerdown(Monitor *mon, const QDict *qdict)
 {
     qmp_system_powerdown(NULL);
+}
+
+void hmp_exit_preconfig(Monitor *mon, const QDict *qdict)
+{
+    Error *err = NULL;
+
+    qmp_x_exit_preconfig(&err);
+    hmp_handle_error(mon, &err);
 }
 
 void hmp_cpu(Monitor *mon, const QDict *qdict)
@@ -1502,6 +1532,25 @@ void hmp_migrate_incoming(Monitor *mon, const QDict *qdict)
     hmp_handle_error(mon, &err);
 }
 
+void hmp_migrate_recover(Monitor *mon, const QDict *qdict)
+{
+    Error *err = NULL;
+    const char *uri = qdict_get_str(qdict, "uri");
+
+    qmp_migrate_recover(uri, &err);
+
+    hmp_handle_error(mon, &err);
+}
+
+void hmp_migrate_pause(Monitor *mon, const QDict *qdict)
+{
+    Error *err = NULL;
+
+    qmp_migrate_pause(&err);
+
+    hmp_handle_error(mon, &err);
+}
+
 /* Kept for backwards compatibility */
 void hmp_migrate_set_downtime(Monitor *mon, const QDict *qdict)
 {
@@ -1642,6 +1691,10 @@ void hmp_migrate_set_parameter(Monitor *mon, const QDict *qdict)
         }
         p->xbzrle_cache_size = cache_size;
         break;
+    case MIGRATION_PARAMETER_MAX_POSTCOPY_BANDWIDTH:
+        p->has_max_postcopy_bandwidth = true;
+        visit_type_size(v, param, &p->max_postcopy_bandwidth, &err);
+        break;
     default:
         assert(0);
     }
@@ -1721,12 +1774,14 @@ void hmp_eject(Monitor *mon, const QDict *qdict)
     hmp_handle_error(mon, &err);
 }
 
+#ifdef CONFIG_VNC
 static void hmp_change_read_arg(void *opaque, const char *password,
                                 void *readline_opaque)
 {
     qmp_change_vnc_password(password, NULL);
     monitor_read_command(opaque, 1);
 }
+#endif
 
 void hmp_change(Monitor *mon, const QDict *qdict)
 {
@@ -1737,6 +1792,7 @@ void hmp_change(Monitor *mon, const QDict *qdict)
     BlockdevChangeReadOnlyMode read_only_mode = 0;
     Error *err = NULL;
 
+#ifdef CONFIG_VNC
     if (strcmp(device, "vnc") == 0) {
         if (read_only) {
             monitor_printf(mon,
@@ -1751,7 +1807,9 @@ void hmp_change(Monitor *mon, const QDict *qdict)
             }
         }
         qmp_change("vnc", target, !!arg, arg, &err);
-    } else {
+    } else
+#endif
+    {
         if (read_only) {
             read_only_mode =
                 qapi_enum_parse(&BlockdevChangeReadOnlyMode_lookup,
@@ -1774,9 +1832,8 @@ void hmp_change(Monitor *mon, const QDict *qdict)
 void hmp_block_set_io_throttle(Monitor *mon, const QDict *qdict)
 {
     Error *err = NULL;
+    char *device = (char *) qdict_get_str(qdict, "device");
     BlockIOThrottle throttle = {
-        .has_device = true,
-        .device = (char *) qdict_get_str(qdict, "device"),
         .bps = qdict_get_int(qdict, "bps"),
         .bps_rd = qdict_get_int(qdict, "bps_rd"),
         .bps_wr = qdict_get_int(qdict, "bps_wr"),
@@ -1784,6 +1841,17 @@ void hmp_block_set_io_throttle(Monitor *mon, const QDict *qdict)
         .iops_rd = qdict_get_int(qdict, "iops_rd"),
         .iops_wr = qdict_get_int(qdict, "iops_wr"),
     };
+
+    /* qmp_block_set_io_throttle has separate parameters for the
+     * (deprecated) block device name and the qdev ID but the HMP
+     * version has only one, so we must decide which one to pass. */
+    if (blk_by_name(device)) {
+        throttle.has_device = true;
+        throttle.device = device;
+    } else {
+        throttle.has_id = true;
+        throttle.id = device;
+    }
 
     qmp_block_set_io_throttle(&throttle, &err);
     hmp_handle_error(mon, &err);
@@ -1904,10 +1972,12 @@ void hmp_migrate(Monitor *mon, const QDict *qdict)
     bool detach = qdict_get_try_bool(qdict, "detach", false);
     bool blk = qdict_get_try_bool(qdict, "blk", false);
     bool inc = qdict_get_try_bool(qdict, "inc", false);
+    bool resume = qdict_get_try_bool(qdict, "resume", false);
     const char *uri = qdict_get_str(qdict, "uri");
     Error *err = NULL;
 
-    qmp_migrate(uri, !!blk, blk, !!inc, inc, false, false, &err);
+    qmp_migrate(uri, !!blk, blk, !!inc, inc,
+                false, false, true, resume, &err);
     if (err) {
         hmp_handle_error(mon, &err);
         return;
@@ -1951,6 +2021,7 @@ void hmp_device_del(Monitor *mon, const QDict *qdict)
 void hmp_dump_guest_memory(Monitor *mon, const QDict *qdict)
 {
     Error *err = NULL;
+    bool win_dmp = qdict_get_try_bool(qdict, "windmp", false);
     bool paging = qdict_get_try_bool(qdict, "paging", false);
     bool zlib = qdict_get_try_bool(qdict, "zlib", false);
     bool lzo = qdict_get_try_bool(qdict, "lzo", false);
@@ -1965,10 +2036,14 @@ void hmp_dump_guest_memory(Monitor *mon, const QDict *qdict)
     enum DumpGuestMemoryFormat dump_format = DUMP_GUEST_MEMORY_FORMAT_ELF;
     char *prot;
 
-    if (zlib + lzo + snappy > 1) {
-        error_setg(&err, "only one of '-z|-l|-s' can be set");
+    if (zlib + lzo + snappy + win_dmp > 1) {
+        error_setg(&err, "only one of '-z|-l|-s|-w' can be set");
         hmp_handle_error(mon, &err);
         return;
+    }
+
+    if (win_dmp) {
+        dump_format = DUMP_GUEST_MEMORY_FORMAT_WIN_DMP;
     }
 
     if (zlib) {
@@ -2077,12 +2152,12 @@ void hmp_sendkey(Monitor *mon, const QDict *qdict)
     int has_hold_time = qdict_haskey(qdict, "hold-time");
     int hold_time = qdict_get_try_int(qdict, "hold-time", -1);
     Error *err = NULL;
-    char *separator;
+    const char *separator;
     int keyname_len;
 
     while (1) {
-        separator = strchr(keys, '-');
-        keyname_len = separator ? separator - keys : strlen(keys);
+        separator = qemu_strchrnul(keys, '-');
+        keyname_len = separator - keys;
 
         /* Be compatible with old interface, convert user inputted "<" */
         if (keys[0] == '<' && keyname_len == 1) {
@@ -2119,7 +2194,7 @@ void hmp_sendkey(Monitor *mon, const QDict *qdict)
             keylist->value->u.qcode.data = idx;
         }
 
-        if (!separator) {
+        if (!*separator) {
             break;
         }
         keys = separator + 1;

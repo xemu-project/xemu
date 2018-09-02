@@ -71,7 +71,6 @@
 #include "hw/usb.h"
 #include "exec/address-spaces.h"
 #include "hw/sysbus.h"
-#include "qemu/cutils.h"
 #include "trace.h"
 
 #define MAX_IDE_BUS 2
@@ -82,36 +81,6 @@
 
 #define NDRV_VGA_FILENAME "qemu_vga.ndrv"
 
-/* UniN device */
-static void unin_write(void *opaque, hwaddr addr, uint64_t value,
-                       unsigned size)
-{
-    trace_mac99_uninorth_write(addr, value);
-    if (addr == 0x0) {
-        *(int*)opaque = value;
-    }
-}
-
-static uint64_t unin_read(void *opaque, hwaddr addr, unsigned size)
-{
-    uint32_t value;
-
-    value = 0;
-    switch (addr) {
-    case 0:
-        value = *(int*)opaque;
-    }
-
-    trace_mac99_uninorth_read(addr, value);
-
-    return value;
-}
-
-static const MemoryRegionOps unin_ops = {
-    .read = unin_read,
-    .write = unin_write,
-    .endianness = DEVICE_NATIVE_ENDIAN,
-};
 
 static void fw_cfg_boot_set(void *opaque, const char *boot_device,
                             Error **errp)
@@ -141,19 +110,19 @@ static void ppc_core99_init(MachineState *machine)
     const char *kernel_cmdline = machine->kernel_cmdline;
     const char *initrd_filename = machine->initrd_filename;
     const char *boot_device = machine->boot_order;
+    Core99MachineState *core99_machine = CORE99_MACHINE(machine);
     PowerPCCPU *cpu = NULL;
     CPUPPCState *env = NULL;
     char *filename;
-    qemu_irq *pic, **openpic_irqs;
-    MemoryRegion *isa = g_new(MemoryRegion, 1);
-    MemoryRegion *unin_memory = g_new(MemoryRegion, 1);
-    MemoryRegion *unin2_memory = g_new(MemoryRegion, 1);
+    qemu_irq **openpic_irqs;
     int linux_boot, i, j, k;
     MemoryRegion *ram = g_new(MemoryRegion, 1), *bios = g_new(MemoryRegion, 1);
     hwaddr kernel_base, initrd_base, cmdline_base = 0;
     long kernel_size, initrd_size;
+    UNINHostState *uninorth_pci;
     PCIBus *pci_bus;
     NewWorldMacIOState *macio;
+    bool has_pmu, has_adb;
     MACIOIDEState *macio_ide;
     BusState *adb_bus;
     MacIONVRAMState *nvr;
@@ -165,7 +134,6 @@ static void ppc_core99_init(MachineState *machine)
     int machine_arch;
     SysBusDevice *s;
     DeviceState *dev, *pic_dev;
-    int *token = g_new(int, 1);
     hwaddr nvram_addr = 0xFFF04000;
     uint64_t tbfreq;
 
@@ -273,17 +241,12 @@ static void ppc_core99_init(MachineState *machine)
         }
     }
 
-    /* Register 8 MB of ISA IO space */
-    memory_region_init_alias(isa, NULL, "isa_mmio",
-                             get_system_io(), 0, 0x00800000);
-    memory_region_add_subregion(get_system_memory(), 0xf2000000, isa);
-
-    /* UniN init: XXX should be a real device */
-    memory_region_init_io(unin_memory, NULL, &unin_ops, token, "unin", 0x1000);
-    memory_region_add_subregion(get_system_memory(), 0xf8000000, unin_memory);
-
-    memory_region_init_io(unin2_memory, NULL, &unin_ops, token, "unin", 0x1000);
-    memory_region_add_subregion(get_system_memory(), 0xf3000000, unin2_memory);
+    /* UniN init */
+    dev = qdev_create(NULL, TYPE_UNI_NORTH);
+    qdev_init_nofail(dev);
+    s = SYS_BUS_DEVICE(dev);
+    memory_region_add_subregion(get_system_memory(), 0xf8000000,
+                                sysbus_mmio_get_region(s, 0));
 
     openpic_irqs = g_malloc0(smp_cpus * sizeof(qemu_irq *));
     openpic_irqs[0] =
@@ -329,8 +292,6 @@ static void ppc_core99_init(MachineState *machine)
         }
     }
 
-    pic = g_new0(qemu_irq, 64);
-
     pic_dev = qdev_create(NULL, TYPE_OPENPIC);
     qdev_prop_set_uint32(pic_dev, "model", OPENPIC_MODEL_KEYLARGO);
     qdev_init_nofail(pic_dev);
@@ -342,21 +303,68 @@ static void ppc_core99_init(MachineState *machine)
         }
     }
 
-    for (i = 0; i < 64; i++) {
-        pic[i] = qdev_get_gpio_in(pic_dev, i);
-    }
-
     if (PPC_INPUT(env) == PPC_FLAGS_INPUT_970) {
         /* 970 gets a U3 bus */
-        pci_bus = pci_pmac_u3_init(pic, get_system_memory(), get_system_io());
+        /* Uninorth AGP bus */
+        dev = qdev_create(NULL, TYPE_U3_AGP_HOST_BRIDGE);
+        object_property_set_link(OBJECT(dev), OBJECT(pic_dev), "pic",
+                                 &error_abort);
+        qdev_init_nofail(dev);
+        uninorth_pci = U3_AGP_HOST_BRIDGE(dev);
+        s = SYS_BUS_DEVICE(dev);
+        /* PCI hole */
+        memory_region_add_subregion(get_system_memory(), 0x80000000ULL,
+                                    sysbus_mmio_get_region(s, 2));
+        /* Register 8 MB of ISA IO space */
+        memory_region_add_subregion(get_system_memory(), 0xf2000000,
+                                    sysbus_mmio_get_region(s, 3));
+        sysbus_mmio_map(s, 0, 0xf0800000);
+        sysbus_mmio_map(s, 1, 0xf0c00000);
+
         machine_arch = ARCH_MAC99_U3;
     } else {
-        pci_bus = pci_pmac_init(pic, get_system_memory(), get_system_io());
+        /* Use values found on a real PowerMac */
+        /* Uninorth AGP bus */
+        dev = qdev_create(NULL, TYPE_UNI_NORTH_AGP_HOST_BRIDGE);
+        object_property_set_link(OBJECT(dev), OBJECT(pic_dev), "pic",
+                                 &error_abort);
+        qdev_init_nofail(dev);
+        s = SYS_BUS_DEVICE(dev);
+        sysbus_mmio_map(s, 0, 0xf0800000);
+        sysbus_mmio_map(s, 1, 0xf0c00000);
+
+        /* Uninorth internal bus */
+        dev = qdev_create(NULL, TYPE_UNI_NORTH_INTERNAL_PCI_HOST_BRIDGE);
+        object_property_set_link(OBJECT(dev), OBJECT(pic_dev), "pic",
+                                 &error_abort);
+        qdev_init_nofail(dev);
+        s = SYS_BUS_DEVICE(dev);
+        sysbus_mmio_map(s, 0, 0xf4800000);
+        sysbus_mmio_map(s, 1, 0xf4c00000);
+
+        /* Uninorth main bus */
+        dev = qdev_create(NULL, TYPE_UNI_NORTH_PCI_HOST_BRIDGE);
+        object_property_set_link(OBJECT(dev), OBJECT(pic_dev), "pic",
+                                 &error_abort);
+        qdev_init_nofail(dev);
+        uninorth_pci = UNI_NORTH_PCI_HOST_BRIDGE(dev);
+        s = SYS_BUS_DEVICE(dev);
+        /* PCI hole */
+        memory_region_add_subregion(get_system_memory(), 0x80000000ULL,
+                                    sysbus_mmio_get_region(s, 2));
+        /* Register 8 MB of ISA IO space */
+        memory_region_add_subregion(get_system_memory(), 0xf2000000,
+                                    sysbus_mmio_get_region(s, 3));
+        sysbus_mmio_map(s, 0, 0xf2800000);
+        sysbus_mmio_map(s, 1, 0xf2c00000);
+
         machine_arch = ARCH_MAC99;
     }
-    object_property_set_bool(OBJECT(pci_bus), true, "realized", &error_abort);
 
     machine->usb |= defaults_enabled() && !machine->usb_disabled;
+    has_pmu = (core99_machine->via_config != CORE99_VIA_CONFIG_CUDA);
+    has_adb = (core99_machine->via_config == CORE99_VIA_CONFIG_CUDA ||
+               core99_machine->via_config == CORE99_VIA_CONFIG_PMU_ADB);
 
     /* Timebase Frequency */
     if (kvm_enabled()) {
@@ -365,17 +373,15 @@ static void ppc_core99_init(MachineState *machine)
         tbfreq = TBFREQ;
     }
 
+    /* init basic PC hardware */
+    pci_bus = PCI_HOST_BRIDGE(uninorth_pci)->bus;
+
     /* MacIO */
     macio = NEWWORLD_MACIO(pci_create(pci_bus, -1, TYPE_NEWWORLD_MACIO));
     dev = DEVICE(macio);
-    qdev_connect_gpio_out(dev, 0, pic[0x19]); /* CUDA */
-    qdev_connect_gpio_out(dev, 1, pic[0x24]); /* ESCC-B */
-    qdev_connect_gpio_out(dev, 2, pic[0x25]); /* ESCC-A */
-    qdev_connect_gpio_out(dev, 3, pic[0x0d]); /* IDE */
-    qdev_connect_gpio_out(dev, 4, pic[0x02]); /* IDE DMA */
-    qdev_connect_gpio_out(dev, 5, pic[0x0e]); /* IDE */
-    qdev_connect_gpio_out(dev, 6, pic[0x03]); /* IDE DMA */
     qdev_prop_set_uint64(dev, "frequency", tbfreq);
+    qdev_prop_set_bit(dev, "has-pmu", has_pmu);
+    qdev_prop_set_bit(dev, "has-adb", has_adb);
     object_property_set_link(OBJECT(macio), OBJECT(pic_dev), "pic",
                              &error_abort);
     qdev_init_nofail(dev);
@@ -391,19 +397,29 @@ static void ppc_core99_init(MachineState *machine)
                                                         "ide[1]"));
     macio_ide_init_drives(macio_ide, &hd[MAX_IDE_DEVS]);
 
-    dev = DEVICE(object_resolve_path_component(OBJECT(macio), "cuda"));
-    adb_bus = qdev_get_child_bus(dev, "adb.0");
-    dev = qdev_create(adb_bus, TYPE_ADB_KEYBOARD);
-    qdev_init_nofail(dev);
-    dev = qdev_create(adb_bus, TYPE_ADB_MOUSE);
-    qdev_init_nofail(dev);
+    if (has_adb) {
+        if (has_pmu) {
+            dev = DEVICE(object_resolve_path_component(OBJECT(macio), "pmu"));
+        } else {
+            dev = DEVICE(object_resolve_path_component(OBJECT(macio), "cuda"));
+        }
+
+        adb_bus = qdev_get_child_bus(dev, "adb.0");
+        dev = qdev_create(adb_bus, TYPE_ADB_KEYBOARD);
+        qdev_prop_set_bit(dev, "disable-direct-reg3-writes", true);
+        qdev_init_nofail(dev);
+
+        dev = qdev_create(adb_bus, TYPE_ADB_MOUSE);
+        qdev_prop_set_bit(dev, "disable-direct-reg3-writes", true);
+        qdev_init_nofail(dev);
+    }
 
     if (machine->usb) {
         pci_create_simple(pci_bus, -1, "pci-ohci");
 
         /* U3 needs to use USB for input because Linux doesn't support via-cuda
         on PPC64 */
-        if (machine_arch == ARCH_MAC99_U3) {
+        if (!has_adb || machine_arch == ARCH_MAC99_U3) {
             USBBus *usb_bus = usb_bus_find(-1);
 
             usb_create_simple(usb_bus, "usb-kbd");
@@ -459,6 +475,8 @@ static void ppc_core99_init(MachineState *machine)
     fw_cfg_add_i16(fw_cfg, FW_CFG_PPC_HEIGHT, graphic_height);
     fw_cfg_add_i16(fw_cfg, FW_CFG_PPC_DEPTH, graphic_depth);
 
+    fw_cfg_add_i32(fw_cfg, FW_CFG_PPC_VIACONFIG, core99_machine->via_config);
+
     fw_cfg_add_i32(fw_cfg, FW_CFG_PPC_IS_KVM, kvm_enabled());
     if (kvm_enabled()) {
 #ifdef CONFIG_KVM
@@ -507,6 +525,7 @@ static void core99_machine_class_init(ObjectClass *oc, void *data)
     mc->block_default_type = IF_IDE;
     mc->max_cpus = MAX_CPUS;
     mc->default_boot_order = "cd";
+    mc->default_display = "std";
     mc->kvm_type = core99_kvm_type;
 #ifdef TARGET_PPC64
     mc->default_cpu_type = POWERPC_CPU_TYPE_NAME("970fx_v3.1");
@@ -515,10 +534,61 @@ static void core99_machine_class_init(ObjectClass *oc, void *data)
 #endif
 }
 
+static char *core99_get_via_config(Object *obj, Error **errp)
+{
+    Core99MachineState *cms = CORE99_MACHINE(obj);
+
+    switch (cms->via_config) {
+    default:
+    case CORE99_VIA_CONFIG_CUDA:
+        return g_strdup("cuda");
+
+    case CORE99_VIA_CONFIG_PMU:
+        return g_strdup("pmu");
+
+    case CORE99_VIA_CONFIG_PMU_ADB:
+        return g_strdup("pmu-adb");
+    }
+}
+
+static void core99_set_via_config(Object *obj, const char *value, Error **errp)
+{
+    Core99MachineState *cms = CORE99_MACHINE(obj);
+
+    if (!strcmp(value, "cuda")) {
+        cms->via_config = CORE99_VIA_CONFIG_CUDA;
+    } else if (!strcmp(value, "pmu")) {
+        cms->via_config = CORE99_VIA_CONFIG_PMU;
+    } else if (!strcmp(value, "pmu-adb")) {
+        cms->via_config = CORE99_VIA_CONFIG_PMU_ADB;
+    } else {
+        error_setg(errp, "Invalid via value");
+        error_append_hint(errp, "Valid values are cuda, pmu, pmu-adb.\n");
+    }
+}
+
+static void core99_instance_init(Object *obj)
+{
+    Core99MachineState *cms = CORE99_MACHINE(obj);
+
+    /* Default via_config is CORE99_VIA_CONFIG_CUDA */
+    cms->via_config = CORE99_VIA_CONFIG_CUDA;
+    object_property_add_str(obj, "via", core99_get_via_config,
+                            core99_set_via_config, NULL);
+    object_property_set_description(obj, "via",
+                                    "Set VIA configuration. "
+                                    "Valid values are cuda, pmu and pmu-adb",
+                                    NULL);
+
+    return;
+}
+
 static const TypeInfo core99_machine_info = {
     .name          = MACHINE_TYPE_NAME("mac99"),
     .parent        = TYPE_MACHINE,
     .class_init    = core99_machine_class_init,
+    .instance_init = core99_instance_init,
+    .instance_size = sizeof(Core99MachineState)
 };
 
 static void mac_machine_register_types(void)

@@ -381,6 +381,9 @@ GSource *aio_get_g_source(AioContext *ctx);
 /* Return the ThreadPool bound to this AioContext */
 struct ThreadPool *aio_get_thread_pool(AioContext *ctx);
 
+/* Setup the LinuxAioState bound to this AioContext */
+struct LinuxAioState *aio_setup_linux_aio(AioContext *ctx, Error **errp);
+
 /* Return the LinuxAioState bound to this AioContext */
 struct LinuxAioState *aio_get_linux_aio(AioContext *ctx);
 
@@ -553,6 +556,14 @@ static inline bool in_aio_context_home_thread(AioContext *ctx)
  * Initialize the aio context.
  */
 void aio_context_setup(AioContext *ctx);
+
+/**
+ * aio_context_destroy:
+ * @ctx: the aio context
+ *
+ * Destroy the aio context.
+ */
+void aio_context_destroy(AioContext *ctx);
 
 /**
  * aio_context_set_poll_params:

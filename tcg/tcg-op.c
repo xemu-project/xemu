@@ -1033,6 +1033,26 @@ void tcg_gen_bswap32_i32(TCGv_i32 ret, TCGv_i32 arg)
     }
 }
 
+void tcg_gen_smin_i32(TCGv_i32 ret, TCGv_i32 a, TCGv_i32 b)
+{
+    tcg_gen_movcond_i32(TCG_COND_LT, ret, a, b, a, b);
+}
+
+void tcg_gen_umin_i32(TCGv_i32 ret, TCGv_i32 a, TCGv_i32 b)
+{
+    tcg_gen_movcond_i32(TCG_COND_LTU, ret, a, b, a, b);
+}
+
+void tcg_gen_smax_i32(TCGv_i32 ret, TCGv_i32 a, TCGv_i32 b)
+{
+    tcg_gen_movcond_i32(TCG_COND_LT, ret, a, b, b, a);
+}
+
+void tcg_gen_umax_i32(TCGv_i32 ret, TCGv_i32 a, TCGv_i32 b)
+{
+    tcg_gen_movcond_i32(TCG_COND_LTU, ret, a, b, b, a);
+}
+
 /* 64-bit ops */
 
 #if TCG_TARGET_REG_BITS == 32
@@ -2438,6 +2458,26 @@ void tcg_gen_mulsu2_i64(TCGv_i64 rl, TCGv_i64 rh, TCGv_i64 arg1, TCGv_i64 arg2)
     tcg_temp_free_i64(t2);
 }
 
+void tcg_gen_smin_i64(TCGv_i64 ret, TCGv_i64 a, TCGv_i64 b)
+{
+    tcg_gen_movcond_i64(TCG_COND_LT, ret, a, b, a, b);
+}
+
+void tcg_gen_umin_i64(TCGv_i64 ret, TCGv_i64 a, TCGv_i64 b)
+{
+    tcg_gen_movcond_i64(TCG_COND_LTU, ret, a, b, a, b);
+}
+
+void tcg_gen_smax_i64(TCGv_i64 ret, TCGv_i64 a, TCGv_i64 b)
+{
+    tcg_gen_movcond_i64(TCG_COND_LT, ret, a, b, b, a);
+}
+
+void tcg_gen_umax_i64(TCGv_i64 ret, TCGv_i64 a, TCGv_i64 b)
+{
+    tcg_gen_movcond_i64(TCG_COND_LTU, ret, a, b, b, a);
+}
+
 /* Size changing operations.  */
 
 void tcg_gen_extrl_i64_i32(TCGv_i32 ret, TCGv_i64 arg)
@@ -2534,10 +2574,30 @@ void tcg_gen_extr32_i64(TCGv_i64 lo, TCGv_i64 hi, TCGv_i64 arg)
 
 /* QEMU specific operations.  */
 
+void tcg_gen_exit_tb(TranslationBlock *tb, unsigned idx)
+{
+    uintptr_t val = (uintptr_t)tb + idx;
+
+    if (tb == NULL) {
+        tcg_debug_assert(idx == 0);
+    } else if (idx <= TB_EXIT_IDXMAX) {
+#ifdef CONFIG_DEBUG_TCG
+        /* This is an exit following a goto_tb.  Verify that we have
+           seen this numbered exit before, via tcg_gen_goto_tb.  */
+        tcg_debug_assert(tcg_ctx->goto_tb_issue_mask & (1 << idx));
+#endif
+    } else {
+        /* This is an exit via the exitreq label.  */
+        tcg_debug_assert(idx == TB_EXIT_REQUESTED);
+    }
+
+    tcg_gen_op1i(INDEX_op_exit_tb, val);
+}
+
 void tcg_gen_goto_tb(unsigned idx)
 {
     /* We only support two chained exits.  */
-    tcg_debug_assert(idx <= 1);
+    tcg_debug_assert(idx <= TB_EXIT_IDXMAX);
 #ifdef CONFIG_DEBUG_TCG
     /* Verify that we havn't seen this numbered exit before.  */
     tcg_debug_assert((tcg_ctx->goto_tb_issue_mask & (1 << idx)) == 0);
@@ -2554,7 +2614,7 @@ void tcg_gen_lookup_and_goto_ptr(void)
         tcg_gen_op1i(INDEX_op_goto_ptr, tcgv_ptr_arg(ptr));
         tcg_temp_free_ptr(ptr);
     } else {
-        tcg_gen_exit_tb(0);
+        tcg_gen_exit_tb(NULL, 0);
     }
 }
 
@@ -3011,11 +3071,19 @@ GEN_ATOMIC_HELPER(fetch_add, add, 0)
 GEN_ATOMIC_HELPER(fetch_and, and, 0)
 GEN_ATOMIC_HELPER(fetch_or, or, 0)
 GEN_ATOMIC_HELPER(fetch_xor, xor, 0)
+GEN_ATOMIC_HELPER(fetch_smin, smin, 0)
+GEN_ATOMIC_HELPER(fetch_umin, umin, 0)
+GEN_ATOMIC_HELPER(fetch_smax, smax, 0)
+GEN_ATOMIC_HELPER(fetch_umax, umax, 0)
 
 GEN_ATOMIC_HELPER(add_fetch, add, 1)
 GEN_ATOMIC_HELPER(and_fetch, and, 1)
 GEN_ATOMIC_HELPER(or_fetch, or, 1)
 GEN_ATOMIC_HELPER(xor_fetch, xor, 1)
+GEN_ATOMIC_HELPER(smin_fetch, smin, 1)
+GEN_ATOMIC_HELPER(umin_fetch, umin, 1)
+GEN_ATOMIC_HELPER(smax_fetch, smax, 1)
+GEN_ATOMIC_HELPER(umax_fetch, umax, 1)
 
 static void tcg_gen_mov2_i32(TCGv_i32 r, TCGv_i32 a, TCGv_i32 b)
 {

@@ -1,3 +1,6 @@
+common-obj-y += ramfb.o
+common-obj-y += ramfb-standalone.o
+
 common-obj-$(CONFIG_ADS7846) += ads7846.o
 common-obj-$(CONFIG_VGA_CIRRUS) += cirrus_vga.o
 common-obj-$(CONFIG_G364FB) += g364fb.o
@@ -9,6 +12,7 @@ common-obj-$(CONFIG_SSD0323) += ssd0323.o
 common-obj-$(CONFIG_XEN) += xenfb.o
 
 common-obj-$(CONFIG_VGA_PCI) += vga-pci.o
+common-obj-$(CONFIG_VGA_PCI) += bochs-display.o
 common-obj-$(CONFIG_VGA_ISA) += vga-isa.o
 common-obj-$(CONFIG_VGA_ISA_MM) += vga-isa-mm.o
 common-obj-$(CONFIG_VMWARE_VGA) += vmware_vga.o
@@ -20,6 +24,8 @@ common-obj-$(CONFIG_MILKYMIST) += milkymist-vgafb.o
 common-obj-$(CONFIG_ZAURUS) += tc6393xb.o
 
 common-obj-$(CONFIG_MILKYMIST_TMU2) += milkymist-tmu2.o
+milkymist-tmu2.o-cflags := $(X11_CFLAGS)
+milkymist-tmu2.o-libs := $(X11_LIBS)
 
 obj-$(CONFIG_OMAP) += omap_dss.o
 obj-$(CONFIG_OMAP) += omap_lcdc.o
@@ -33,8 +39,8 @@ obj-$(CONFIG_VGA) += vga.o
 
 common-obj-$(CONFIG_QXL) += qxl.o qxl-logger.o qxl-render.o
 
-obj-$(CONFIG_VIRTIO) += virtio-gpu.o virtio-gpu-3d.o
-obj-$(CONFIG_VIRTIO_PCI) += virtio-gpu-pci.o
+obj-$(CONFIG_VIRTIO_GPU) += virtio-gpu.o virtio-gpu-3d.o
+obj-$(call land,$(CONFIG_VIRTIO_GPU),$(CONFIG_VIRTIO_PCI)) += virtio-gpu-pci.o
 obj-$(CONFIG_VIRTIO_VGA) += virtio-vga.o
 virtio-gpu.o-cflags := $(VIRGL_CFLAGS)
 virtio-gpu.o-libs += $(VIRGL_LIBS)

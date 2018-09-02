@@ -45,11 +45,10 @@ static void riscv_harts_realize(DeviceState *dev, Error **errp)
     s->harts = g_new0(RISCVCPU, s->num_harts);
 
     for (n = 0; n < s->num_harts; n++) {
-
-        object_initialize(&s->harts[n], sizeof(RISCVCPU), s->cpu_type);
+        object_initialize_child(OBJECT(s), "harts[*]", &s->harts[n],
+                                sizeof(RISCVCPU), s->cpu_type,
+                                &error_abort, NULL);
         s->harts[n].env.mhartid = n;
-        object_property_add_child(OBJECT(s), "harts[*]", OBJECT(&s->harts[n]),
-                                  &error_abort);
         qemu_register_reset(riscv_harts_cpu_reset, &s->harts[n]);
         object_property_set_bool(OBJECT(&s->harts[n]), true,
                                  "realized", &err);
@@ -68,16 +67,10 @@ static void riscv_harts_class_init(ObjectClass *klass, void *data)
     dc->realize = riscv_harts_realize;
 }
 
-static void riscv_harts_init(Object *obj)
-{
-    /* RISCVHartArrayState *s = SIFIVE_COREPLEX(obj); */
-}
-
 static const TypeInfo riscv_harts_info = {
     .name          = TYPE_RISCV_HART_ARRAY,
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(RISCVHartArrayState),
-    .instance_init = riscv_harts_init,
     .class_init    = riscv_harts_class_init,
 };
 

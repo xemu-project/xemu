@@ -27,7 +27,7 @@
 #include "hw/sysbus.h"
 #include "sysemu/sysemu.h"
 #include "trace.h"
-#include "include/qapi/error.h"
+#include "qapi/error.h"
 #include "sysemu/block-backend.h"
 #include "sysemu/blockdev.h"
 #include "hw/sd/sd.h"
@@ -100,8 +100,7 @@ static void memcard_sd_command(MilkymistMemcardState *s)
     SDRequest req;
 
     req.cmd = s->command[0] & 0x3f;
-    req.arg = (s->command[1] << 24) | (s->command[2] << 16)
-              | (s->command[3] << 8) | s->command[4];
+    req.arg = ldl_be_p(s->command + 1);
     req.crc = s->command[5];
 
     s->response[0] = req.cmd;
@@ -140,7 +139,7 @@ static uint64_t memcard_read(void *opaque, hwaddr addr,
             r = s->response[s->response_read_ptr++];
             if (s->response_read_ptr > s->response_len) {
                 qemu_log_mask(LOG_GUEST_ERROR, "milkymist_memcard: "
-                              "read more cmd bytes than available. Clipping.");
+                              "read more cmd bytes than available: clipping\n");
                 s->response_read_ptr = 0;
             }
         }

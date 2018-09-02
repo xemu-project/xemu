@@ -78,6 +78,34 @@
   'data': { 'device': 'str', 'name': 'str' } }
 
 ##
+# @PRManagerInfo:
+#
+# Information about a persistent reservation manager
+#
+# @id: the identifier of the persistent reservation manager
+#
+# @connected: true if the persistent reservation manager is connected to
+#             the underlying storage or helper
+#
+# Since: 3.0
+##
+{ 'struct': 'PRManagerInfo',
+  'data': {'id': 'str', 'connected': 'bool'} }
+
+##
+# @query-pr-managers:
+#
+# Returns a list of information about each persistent reservation manager.
+#
+# Returns: a list of @PRManagerInfo for each persistent reservation manager
+#
+# Since: 3.0
+##
+{ 'command': 'query-pr-managers', 'returns': ['PRManagerInfo'],
+  'allow-preconfig': true }
+
+
+##
 # @blockdev-snapshot-internal-sync:
 #
 # Synchronously take an internal snapshot of a block device, when the
@@ -269,6 +297,29 @@
   'data': {'name': 'str', '*mode': 'NbdServerRemoveMode'} }
 
 ##
+# @x-nbd-server-add-bitmap:
+#
+# Expose a dirty bitmap associated with the selected export. The bitmap search
+# starts at the device attached to the export, and includes all backing files.
+# The exported bitmap is then locked until the NBD export is removed.
+#
+# @name: Export name.
+#
+# @bitmap: Bitmap name to search for.
+#
+# @bitmap-export-name: How the bitmap will be seen by nbd clients
+#                      (default @bitmap)
+#
+# Note: the client must use NBD_OPT_SET_META_CONTEXT with a query of
+# "qemu:dirty-bitmap:NAME" (where NAME matches @bitmap-export-name) to access
+# the exposed bitmap.
+#
+# Since: 3.0
+##
+  { 'command': 'x-nbd-server-add-bitmap',
+    'data': {'name': 'str', 'bitmap': 'str', '*bitmap-export-name': 'str'} }
+
+##
 # @nbd-server-stop:
 #
 # Stop QEMU's embedded NBD server, and unregister all devices previously
@@ -306,6 +357,30 @@
 ##
 { 'event': 'DEVICE_TRAY_MOVED',
   'data': { 'device': 'str', 'id': 'str', 'tray-open': 'bool' } }
+
+##
+# @PR_MANAGER_STATUS_CHANGED:
+#
+# Emitted whenever the connected status of a persistent reservation
+# manager changes.
+#
+# @id: The id of the PR manager object
+#
+# @connected: true if the PR manager is connected to a backend
+#
+# Since: 3.0
+#
+# Example:
+#
+# <- { "event": "PR_MANAGER_STATUS_CHANGED",
+#      "data": { "id": "pr-helper0",
+#                "connected": true
+#      },
+#      "timestamp": { "seconds": 1519840375, "microseconds": 450486 } }
+#
+##
+{ 'event': 'PR_MANAGER_STATUS_CHANGED',
+  'data': { 'id': 'str', 'connected': 'bool' } }
 
 ##
 # @QuorumOpType:

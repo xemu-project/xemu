@@ -44,6 +44,7 @@
 #include "hw/timer/cmsdk-apb-timer.h"
 #include "hw/misc/mps2-scc.h"
 #include "hw/misc/mps2-fpgaio.h"
+#include "hw/misc/tz-mpc.h"
 #include "hw/arm/iotkit.h"
 #include "hw/devices.h"
 #include "net/net.h"
@@ -64,22 +65,22 @@ typedef struct {
 
     IoTKit iotkit;
     MemoryRegion psram;
-    MemoryRegion ssram1;
+    MemoryRegion ssram[3];
     MemoryRegion ssram1_m;
-    MemoryRegion ssram23;
     MPS2SCC scc;
     MPS2FPGAIO fpgaio;
     TZPPC ppc[5];
-    UnimplementedDeviceState ssram_mpc[3];
+    TZMPC ssram_mpc[3];
     UnimplementedDeviceState spi[5];
     UnimplementedDeviceState i2c[4];
     UnimplementedDeviceState i2s_audio;
-    UnimplementedDeviceState gpio[5];
+    UnimplementedDeviceState gpio[4];
     UnimplementedDeviceState dma[4];
     UnimplementedDeviceState gfx;
     CMSDKAPBUART uart[5];
     SplitIRQ sec_resp_splitter;
     qemu_or_irq uart_irq_orgate;
+    DeviceState *lan9118;
 } MPS2TZMachineState;
 
 #define TYPE_MPS2TZ_MACHINE "mps2tz"
@@ -94,16 +95,6 @@ typedef struct {
 
 /* Main SYSCLK frequency in Hz */
 #define SYSCLK_FRQ 20000000
-
-/* Initialize the auxiliary RAM region @mr and map it into
- * the memory map at @base.
- */
-static void make_ram(MemoryRegion *mr, const char *name,
-                     hwaddr base, hwaddr size)
-{
-    memory_region_init_ram(mr, NULL, name, size, &error_fatal);
-    memory_region_add_subregion(get_system_memory(), base, mr);
-}
 
 /* Create an alias of an entire original MemoryRegion @orig
  * located at @base in the memory map.
@@ -172,7 +163,6 @@ static MemoryRegion *make_uart(MPS2TZMachineState *mms, void *opaque,
 {
     CMSDKAPBUART *uart = opaque;
     int i = uart - &mms->uart[0];
-    Chardev *uartchr = i < MAX_SERIAL_PORTS ? serial_hds[i] : NULL;
     int rxirqno = i * 2;
     int txirqno = i * 2 + 1;
     int combirqno = i + 10;
@@ -182,7 +172,7 @@ static MemoryRegion *make_uart(MPS2TZMachineState *mms, void *opaque,
 
     init_sysbus_child(OBJECT(mms), name, uart,
                       sizeof(mms->uart[0]), TYPE_CMSDK_APB_UART);
-    qdev_prop_set_chr(DEVICE(uart), "chardev", uartchr);
+    qdev_prop_set_chr(DEVICE(uart), "chardev", serial_hd(i));
     qdev_prop_set_uint32(DEVICE(uart), "pclk-frq", SYSCLK_FRQ);
     object_property_set_bool(OBJECT(uart), true, "realized", &error_fatal);
     s = SYS_BUS_DEVICE(uart);
@@ -223,6 +213,64 @@ static MemoryRegion *make_fpgaio(MPS2TZMachineState *mms, void *opaque,
     qdev_set_parent_bus(DEVICE(fpgaio), sysbus_get_default());
     object_property_set_bool(OBJECT(fpgaio), true, "realized", &error_fatal);
     return sysbus_mmio_get_region(SYS_BUS_DEVICE(fpgaio), 0);
+}
+
+static MemoryRegion *make_eth_dev(MPS2TZMachineState *mms, void *opaque,
+                                  const char *name, hwaddr size)
+{
+    SysBusDevice *s;
+    DeviceState *iotkitdev = DEVICE(&mms->iotkit);
+    NICInfo *nd = &nd_table[0];
+
+    /* In hardware this is a LAN9220; the LAN9118 is software compatible
+     * except that it doesn't support the checksum-offload feature.
+     */
+    qemu_check_nic_model(nd, "lan9118");
+    mms->lan9118 = qdev_create(NULL, "lan9118");
+    qdev_set_nic_properties(mms->lan9118, nd);
+    qdev_init_nofail(mms->lan9118);
+
+    s = SYS_BUS_DEVICE(mms->lan9118);
+    sysbus_connect_irq(s, 0, qdev_get_gpio_in_named(iotkitdev, "EXP_IRQ", 16));
+    return sysbus_mmio_get_region(s, 0);
+}
+
+static MemoryRegion *make_mpc(MPS2TZMachineState *mms, void *opaque,
+                              const char *name, hwaddr size)
+{
+    TZMPC *mpc = opaque;
+    int i = mpc - &mms->ssram_mpc[0];
+    MemoryRegion *ssram = &mms->ssram[i];
+    MemoryRegion *upstream;
+    char *mpcname = g_strdup_printf("%s-mpc", name);
+    static uint32_t ramsize[] = { 0x00400000, 0x00200000, 0x00200000 };
+    static uint32_t rambase[] = { 0x00000000, 0x28000000, 0x28200000 };
+
+    memory_region_init_ram(ssram, NULL, name, ramsize[i], &error_fatal);
+
+    init_sysbus_child(OBJECT(mms), mpcname, mpc,
+                      sizeof(mms->ssram_mpc[0]), TYPE_TZ_MPC);
+    object_property_set_link(OBJECT(mpc), OBJECT(ssram),
+                             "downstream", &error_fatal);
+    object_property_set_bool(OBJECT(mpc), true, "realized", &error_fatal);
+    /* Map the upstream end of the MPC into system memory */
+    upstream = sysbus_mmio_get_region(SYS_BUS_DEVICE(mpc), 1);
+    memory_region_add_subregion(get_system_memory(), rambase[i], upstream);
+    /* and connect its interrupt to the IoTKit */
+    qdev_connect_gpio_out_named(DEVICE(mpc), "irq", 0,
+                                qdev_get_gpio_in_named(DEVICE(&mms->iotkit),
+                                                       "mpcexp_status", i));
+
+    /* The first SSRAM is a special case as it has an alias; accesses to
+     * the alias region at 0x00400000 must also go to the MPC upstream.
+     */
+    if (i == 0) {
+        make_ram_alias(&mms->ssram1_m, "mps.ssram1_m", upstream, 0x00400000);
+    }
+
+    g_free(mpcname);
+    /* Return the register interface MR for our caller to map behind the PPC */
+    return sysbus_mmio_get_region(SYS_BUS_DEVICE(mpc), 0);
 }
 
 static void mps2tz_common_init(MachineState *machine)
@@ -286,14 +334,6 @@ static void mps2tz_common_init(MachineState *machine)
                                          NULL, "mps.ram", 0x01000000);
     memory_region_add_subregion(system_memory, 0x80000000, &mms->psram);
 
-    /* The SSRAM memories should all be behind Memory Protection Controllers,
-     * but we don't implement that yet.
-     */
-    make_ram(&mms->ssram1, "mps.ssram1", 0x00000000, 0x00400000);
-    make_ram_alias(&mms->ssram1_m, "mps.ssram1_m", &mms->ssram1, 0x00400000);
-
-    make_ram(&mms->ssram23, "mps.ssram23", 0x28000000, 0x00400000);
-
     /* The overflow IRQs for all UARTs are ORed together.
      * Tx, Rx and "combined" IRQs are sent to the NVIC separately.
      * Create the OR gate for this.
@@ -323,12 +363,9 @@ static void mps2tz_common_init(MachineState *machine)
     const PPCInfo ppcs[] = { {
             .name = "apb_ppcexp0",
             .ports = {
-                { "ssram-mpc0", make_unimp_dev, &mms->ssram_mpc[0],
-                  0x58007000, 0x1000 },
-                { "ssram-mpc1", make_unimp_dev, &mms->ssram_mpc[1],
-                  0x58008000, 0x1000 },
-                { "ssram-mpc2", make_unimp_dev, &mms->ssram_mpc[2],
-                  0x58009000, 0x1000 },
+                { "ssram-0", make_mpc, &mms->ssram_mpc[0], 0x58007000, 0x1000 },
+                { "ssram-1", make_mpc, &mms->ssram_mpc[1], 0x58008000, 0x1000 },
+                { "ssram-2", make_mpc, &mms->ssram_mpc[2], 0x58009000, 0x1000 },
             },
         }, {
             .name = "apb_ppcexp1",
@@ -364,7 +401,7 @@ static void mps2tz_common_init(MachineState *machine)
                 { "gpio1", make_unimp_dev, &mms->gpio[1], 0x40101000, 0x1000 },
                 { "gpio2", make_unimp_dev, &mms->gpio[2], 0x40102000, 0x1000 },
                 { "gpio3", make_unimp_dev, &mms->gpio[3], 0x40103000, 0x1000 },
-                { "gpio4", make_unimp_dev, &mms->gpio[4], 0x40104000, 0x1000 },
+                { "eth", make_eth_dev, NULL, 0x42000000, 0x100000 },
             },
         }, {
             .name = "ahb_ppcexp1",
@@ -447,13 +484,6 @@ static void mps2tz_common_init(MachineState *machine)
                               qdev_get_gpio_in_named(ppcdev,
                                                      "cfg_sec_resp", 0));
     }
-
-    /* In hardware this is a LAN9220; the LAN9118 is software compatible
-     * except that it doesn't support the checksum-offload feature.
-     * The ethernet controller is not behind a PPC.
-     */
-    lan9118_init(&nd_table[0], 0x42000000,
-                 qdev_get_gpio_in_named(iotkitdev, "EXP_IRQ", 16));
 
     create_unimplemented_device("FPGA NS PC", 0x48007000, 0x1000);
 

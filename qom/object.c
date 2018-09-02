@@ -295,7 +295,7 @@ static void type_initialize(TypeImpl *ti)
         GSList *e;
         int i;
 
-        g_assert_cmpint(parent->class_size, <=, ti->class_size);
+        g_assert(parent->class_size <= ti->class_size);
         memcpy(ti->class, parent->class, parent->class_size);
         ti->class->interfaces = NULL;
         ti->class->properties = g_hash_table_new_full(
@@ -372,9 +372,9 @@ static void object_initialize_with_type(void *data, size_t size, TypeImpl *type)
     g_assert(type != NULL);
     type_initialize(type);
 
-    g_assert_cmpint(type->instance_size, >=, sizeof(Object));
+    g_assert(type->instance_size >= sizeof(Object));
     g_assert(type->abstract == false);
-    g_assert_cmpint(size, >=, type->instance_size);
+    g_assert(size >= type->instance_size);
 
     memset(obj, 0, type->instance_size);
     obj->class = type->class;
@@ -390,6 +390,60 @@ void object_initialize(void *data, size_t size, const char *typename)
     TypeImpl *type = type_get_by_name(typename);
 
     object_initialize_with_type(data, size, type);
+}
+
+void object_initialize_child(Object *parentobj, const char *propname,
+                             void *childobj, size_t size, const char *type,
+                             Error **errp, ...)
+{
+    va_list vargs;
+
+    va_start(vargs, errp);
+    object_initialize_childv(parentobj, propname, childobj, size, type, errp,
+                             vargs);
+    va_end(vargs);
+}
+
+void object_initialize_childv(Object *parentobj, const char *propname,
+                              void *childobj, size_t size, const char *type,
+                              Error **errp, va_list vargs)
+{
+    Error *local_err = NULL;
+    Object *obj;
+
+    object_initialize(childobj, size, type);
+    obj = OBJECT(childobj);
+
+    object_set_propv(obj, &local_err, vargs);
+    if (local_err) {
+        goto out;
+    }
+
+    object_property_add_child(parentobj, propname, obj, &local_err);
+    if (local_err) {
+        goto out;
+    }
+
+    if (object_dynamic_cast(obj, TYPE_USER_CREATABLE)) {
+        user_creatable_complete(obj, &local_err);
+        if (local_err) {
+            object_unparent(obj);
+            goto out;
+        }
+    }
+
+    /*
+     * Since object_property_add_child added a reference to the child object,
+     * we can drop the reference added by object_initialize(), so the child
+     * property will own the only reference to the object.
+     */
+    object_unref(obj);
+
+out:
+    if (local_err) {
+        error_propagate(errp, local_err);
+        object_unref(obj);
+    }
 }
 
 static inline bool object_property_is_child(ObjectProperty *prop)
@@ -475,7 +529,7 @@ static void object_finalize(void *data)
     object_property_del_all(obj);
     object_deinit(obj, ti);
 
-    g_assert_cmpint(obj->ref, ==, 0);
+    g_assert(obj->ref == 0);
     if (obj->free) {
         obj->free(obj);
     }
@@ -917,7 +971,7 @@ void object_unref(Object *obj)
     if (!obj) {
         return;
     }
-    g_assert_cmpint(obj->ref, >, 0);
+    g_assert(obj->ref > 0);
 
     /* parent always holds a reference to its children */
     if (atomic_fetch_dec(&obj->ref) == 1) {
@@ -1129,7 +1183,7 @@ void object_property_set_str(Object *obj, const char *value,
     QString *qstr = qstring_from_str(value);
     object_property_set_qobject(obj, QOBJECT(qstr), name, errp);
 
-    QDECREF(qstr);
+    qobject_unref(qstr);
 }
 
 char *object_property_get_str(Object *obj, const char *name,
@@ -1147,7 +1201,7 @@ char *object_property_get_str(Object *obj, const char *name,
         error_setg(errp, QERR_INVALID_PARAMETER_TYPE, name, "string");
     }
 
-    qobject_decref(ret);
+    qobject_unref(ret);
     return retval;
 }
 
@@ -1187,7 +1241,7 @@ void object_property_set_bool(Object *obj, bool value,
     QBool *qbool = qbool_from_bool(value);
     object_property_set_qobject(obj, QOBJECT(qbool), name, errp);
 
-    QDECREF(qbool);
+    qobject_unref(qbool);
 }
 
 bool object_property_get_bool(Object *obj, const char *name,
@@ -1208,7 +1262,7 @@ bool object_property_get_bool(Object *obj, const char *name,
         retval = qbool_get_bool(qbool);
     }
 
-    qobject_decref(ret);
+    qobject_unref(ret);
     return retval;
 }
 
@@ -1218,7 +1272,7 @@ void object_property_set_int(Object *obj, int64_t value,
     QNum *qnum = qnum_from_int(value);
     object_property_set_qobject(obj, QOBJECT(qnum), name, errp);
 
-    QDECREF(qnum);
+    qobject_unref(qnum);
 }
 
 int64_t object_property_get_int(Object *obj, const char *name,
@@ -1238,7 +1292,7 @@ int64_t object_property_get_int(Object *obj, const char *name,
         retval = -1;
     }
 
-    qobject_decref(ret);
+    qobject_unref(ret);
     return retval;
 }
 
@@ -1248,7 +1302,7 @@ void object_property_set_uint(Object *obj, uint64_t value,
     QNum *qnum = qnum_from_uint(value);
 
     object_property_set_qobject(obj, QOBJECT(qnum), name, errp);
-    QDECREF(qnum);
+    qobject_unref(qnum);
 }
 
 uint64_t object_property_get_uint(Object *obj, const char *name,
@@ -1267,7 +1321,7 @@ uint64_t object_property_get_uint(Object *obj, const char *name,
         retval = 0;
     }
 
-    qobject_decref(ret);
+    qobject_unref(ret);
     return retval;
 }
 
@@ -1564,9 +1618,11 @@ static void object_set_link_property(Object *obj, Visitor *v,
         return;
     }
 
-    object_ref(new_target);
     *child = new_target;
-    object_unref(old_target);
+    if (prop->flags == OBJ_PROP_LINK_STRONG) {
+        object_ref(new_target);
+        object_unref(old_target);
+    }
 }
 
 static Object *object_resolve_link_property(Object *parent, void *opaque, const gchar *part)
@@ -1581,7 +1637,7 @@ static void object_release_link_property(Object *obj, const char *name,
 {
     LinkProperty *prop = opaque;
 
-    if ((prop->flags & OBJ_PROP_LINK_UNREF_ON_RELEASE) && *prop->child) {
+    if ((prop->flags & OBJ_PROP_LINK_STRONG) && *prop->child) {
         object_unref(*prop->child);
     }
     g_free(prop);
@@ -1644,8 +1700,9 @@ gchar *object_get_canonical_path_component(Object *obj)
     ObjectProperty *prop = NULL;
     GHashTableIter iter;
 
-    g_assert(obj);
-    g_assert(obj->parent != NULL);
+    if (obj->parent == NULL) {
+        return NULL;
+    }
 
     g_hash_table_iter_init(&iter, obj->parent->properties);
     while (g_hash_table_iter_next(&iter, NULL, (gpointer *)&prop)) {
@@ -1668,25 +1725,29 @@ gchar *object_get_canonical_path(Object *obj)
     Object *root = object_get_root();
     char *newpath, *path = NULL;
 
-    while (obj != root) {
-        char *component = object_get_canonical_path_component(obj);
-
-        if (path) {
-            newpath = g_strdup_printf("%s/%s", component, path);
-            g_free(component);
-            g_free(path);
-            path = newpath;
-        } else {
-            path = component;
-        }
-
-        obj = obj->parent;
+    if (obj == root) {
+        return g_strdup("/");
     }
 
-    newpath = g_strdup_printf("/%s", path ? path : "");
-    g_free(path);
+    do {
+        char *component = object_get_canonical_path_component(obj);
 
-    return newpath;
+        if (!component) {
+            /* A canonical path must be complete, so discard what was
+             * collected so far.
+             */
+            g_free(path);
+            return NULL;
+        }
+
+        newpath = g_strdup_printf("/%s%s", component, path ? path : "");
+        g_free(path);
+        g_free(component);
+        path = newpath;
+        obj = obj->parent;
+    } while (obj != root);
+
+    return path;
 }
 
 Object *object_resolve_path_component(Object *parent, const gchar *part)

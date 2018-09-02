@@ -324,6 +324,10 @@ void tcg_gen_ext8u_i32(TCGv_i32 ret, TCGv_i32 arg);
 void tcg_gen_ext16u_i32(TCGv_i32 ret, TCGv_i32 arg);
 void tcg_gen_bswap16_i32(TCGv_i32 ret, TCGv_i32 arg);
 void tcg_gen_bswap32_i32(TCGv_i32 ret, TCGv_i32 arg);
+void tcg_gen_smin_i32(TCGv_i32, TCGv_i32 arg1, TCGv_i32 arg2);
+void tcg_gen_smax_i32(TCGv_i32, TCGv_i32 arg1, TCGv_i32 arg2);
+void tcg_gen_umin_i32(TCGv_i32, TCGv_i32 arg1, TCGv_i32 arg2);
+void tcg_gen_umax_i32(TCGv_i32, TCGv_i32 arg1, TCGv_i32 arg2);
 
 static inline void tcg_gen_discard_i32(TCGv_i32 arg)
 {
@@ -517,6 +521,10 @@ void tcg_gen_ext32u_i64(TCGv_i64 ret, TCGv_i64 arg);
 void tcg_gen_bswap16_i64(TCGv_i64 ret, TCGv_i64 arg);
 void tcg_gen_bswap32_i64(TCGv_i64 ret, TCGv_i64 arg);
 void tcg_gen_bswap64_i64(TCGv_i64 ret, TCGv_i64 arg);
+void tcg_gen_smin_i64(TCGv_i64, TCGv_i64 arg1, TCGv_i64 arg2);
+void tcg_gen_smax_i64(TCGv_i64, TCGv_i64 arg1, TCGv_i64 arg2);
+void tcg_gen_umin_i64(TCGv_i64, TCGv_i64 arg1, TCGv_i64 arg2);
+void tcg_gen_umax_i64(TCGv_i64, TCGv_i64 arg1, TCGv_i64 arg2);
 
 #if TCG_TARGET_REG_BITS == 64
 static inline void tcg_gen_discard_i64(TCGv_i64 arg)
@@ -774,10 +782,19 @@ static inline void tcg_gen_insn_start(target_ulong pc, target_ulong a1,
 # error "Unhandled number of operands to insn_start"
 #endif
 
-static inline void tcg_gen_exit_tb(uintptr_t val)
-{
-    tcg_gen_op1i(INDEX_op_exit_tb, val);
-}
+/**
+ * tcg_gen_exit_tb() - output exit_tb TCG operation
+ * @tb: The TranslationBlock from which we are exiting
+ * @idx: Direct jump slot index, or exit request
+ *
+ * See tcg/README for more info about this TCG operation.
+ * See also tcg.h and the block comment above TB_EXIT_MASK.
+ *
+ * For a normal exit from the TB, back to the main loop, @tb should
+ * be NULL and @idx should be 0.  Otherwise, @tb should be valid and
+ * @idx should be one of the TB_EXIT_ values.
+ */
+void tcg_gen_exit_tb(TranslationBlock *tb, unsigned idx);
 
 /**
  * tcg_gen_goto_tb() - output goto_tb TCG operation
@@ -890,6 +907,7 @@ void tcg_gen_atomic_cmpxchg_i64(TCGv_i64, TCGv, TCGv_i64, TCGv_i64,
 
 void tcg_gen_atomic_xchg_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
 void tcg_gen_atomic_xchg_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
+
 void tcg_gen_atomic_fetch_add_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
 void tcg_gen_atomic_fetch_add_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
 void tcg_gen_atomic_fetch_and_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
@@ -898,6 +916,15 @@ void tcg_gen_atomic_fetch_or_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
 void tcg_gen_atomic_fetch_or_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
 void tcg_gen_atomic_fetch_xor_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
 void tcg_gen_atomic_fetch_xor_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
+void tcg_gen_atomic_fetch_smin_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
+void tcg_gen_atomic_fetch_smin_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
+void tcg_gen_atomic_fetch_umin_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
+void tcg_gen_atomic_fetch_umin_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
+void tcg_gen_atomic_fetch_smax_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
+void tcg_gen_atomic_fetch_smax_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
+void tcg_gen_atomic_fetch_umax_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
+void tcg_gen_atomic_fetch_umax_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
+
 void tcg_gen_atomic_add_fetch_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
 void tcg_gen_atomic_add_fetch_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
 void tcg_gen_atomic_and_fetch_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
@@ -906,6 +933,14 @@ void tcg_gen_atomic_or_fetch_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
 void tcg_gen_atomic_or_fetch_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
 void tcg_gen_atomic_xor_fetch_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
 void tcg_gen_atomic_xor_fetch_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
+void tcg_gen_atomic_smin_fetch_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
+void tcg_gen_atomic_smin_fetch_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
+void tcg_gen_atomic_umin_fetch_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
+void tcg_gen_atomic_umin_fetch_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
+void tcg_gen_atomic_smax_fetch_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
+void tcg_gen_atomic_smax_fetch_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
+void tcg_gen_atomic_umax_fetch_i32(TCGv_i32, TCGv, TCGv_i32, TCGArg, TCGMemOp);
+void tcg_gen_atomic_umax_fetch_i64(TCGv_i64, TCGv, TCGv_i64, TCGArg, TCGMemOp);
 
 void tcg_gen_mov_vec(TCGv_vec, TCGv_vec);
 void tcg_gen_dup_i32_vec(unsigned vece, TCGv_vec, TCGv_i32);
@@ -1025,16 +1060,28 @@ void tcg_gen_stl_vec(TCGv_vec r, TCGv_ptr base, TCGArg offset, TCGType t);
 #define tcg_gen_mulu2_tl tcg_gen_mulu2_i64
 #define tcg_gen_muls2_tl tcg_gen_muls2_i64
 #define tcg_gen_mulsu2_tl tcg_gen_mulsu2_i64
+#define tcg_gen_smin_tl tcg_gen_smin_i64
+#define tcg_gen_umin_tl tcg_gen_umin_i64
+#define tcg_gen_smax_tl tcg_gen_smax_i64
+#define tcg_gen_umax_tl tcg_gen_umax_i64
 #define tcg_gen_atomic_cmpxchg_tl tcg_gen_atomic_cmpxchg_i64
 #define tcg_gen_atomic_xchg_tl tcg_gen_atomic_xchg_i64
 #define tcg_gen_atomic_fetch_add_tl tcg_gen_atomic_fetch_add_i64
 #define tcg_gen_atomic_fetch_and_tl tcg_gen_atomic_fetch_and_i64
 #define tcg_gen_atomic_fetch_or_tl tcg_gen_atomic_fetch_or_i64
 #define tcg_gen_atomic_fetch_xor_tl tcg_gen_atomic_fetch_xor_i64
+#define tcg_gen_atomic_fetch_smin_tl tcg_gen_atomic_fetch_smin_i64
+#define tcg_gen_atomic_fetch_umin_tl tcg_gen_atomic_fetch_umin_i64
+#define tcg_gen_atomic_fetch_smax_tl tcg_gen_atomic_fetch_smax_i64
+#define tcg_gen_atomic_fetch_umax_tl tcg_gen_atomic_fetch_umax_i64
 #define tcg_gen_atomic_add_fetch_tl tcg_gen_atomic_add_fetch_i64
 #define tcg_gen_atomic_and_fetch_tl tcg_gen_atomic_and_fetch_i64
 #define tcg_gen_atomic_or_fetch_tl tcg_gen_atomic_or_fetch_i64
 #define tcg_gen_atomic_xor_fetch_tl tcg_gen_atomic_xor_fetch_i64
+#define tcg_gen_atomic_smin_fetch_tl tcg_gen_atomic_smin_fetch_i64
+#define tcg_gen_atomic_umin_fetch_tl tcg_gen_atomic_umin_fetch_i64
+#define tcg_gen_atomic_smax_fetch_tl tcg_gen_atomic_smax_fetch_i64
+#define tcg_gen_atomic_umax_fetch_tl tcg_gen_atomic_umax_fetch_i64
 #define tcg_gen_dup_tl_vec  tcg_gen_dup_i64_vec
 #else
 #define tcg_gen_movi_tl tcg_gen_movi_i32
@@ -1123,39 +1170,100 @@ void tcg_gen_stl_vec(TCGv_vec r, TCGv_ptr base, TCGArg offset, TCGType t);
 #define tcg_gen_mulu2_tl tcg_gen_mulu2_i32
 #define tcg_gen_muls2_tl tcg_gen_muls2_i32
 #define tcg_gen_mulsu2_tl tcg_gen_mulsu2_i32
+#define tcg_gen_smin_tl tcg_gen_smin_i32
+#define tcg_gen_umin_tl tcg_gen_umin_i32
+#define tcg_gen_smax_tl tcg_gen_smax_i32
+#define tcg_gen_umax_tl tcg_gen_umax_i32
 #define tcg_gen_atomic_cmpxchg_tl tcg_gen_atomic_cmpxchg_i32
 #define tcg_gen_atomic_xchg_tl tcg_gen_atomic_xchg_i32
 #define tcg_gen_atomic_fetch_add_tl tcg_gen_atomic_fetch_add_i32
 #define tcg_gen_atomic_fetch_and_tl tcg_gen_atomic_fetch_and_i32
 #define tcg_gen_atomic_fetch_or_tl tcg_gen_atomic_fetch_or_i32
 #define tcg_gen_atomic_fetch_xor_tl tcg_gen_atomic_fetch_xor_i32
+#define tcg_gen_atomic_fetch_smin_tl tcg_gen_atomic_fetch_smin_i32
+#define tcg_gen_atomic_fetch_umin_tl tcg_gen_atomic_fetch_umin_i32
+#define tcg_gen_atomic_fetch_smax_tl tcg_gen_atomic_fetch_smax_i32
+#define tcg_gen_atomic_fetch_umax_tl tcg_gen_atomic_fetch_umax_i32
 #define tcg_gen_atomic_add_fetch_tl tcg_gen_atomic_add_fetch_i32
 #define tcg_gen_atomic_and_fetch_tl tcg_gen_atomic_and_fetch_i32
 #define tcg_gen_atomic_or_fetch_tl tcg_gen_atomic_or_fetch_i32
 #define tcg_gen_atomic_xor_fetch_tl tcg_gen_atomic_xor_fetch_i32
+#define tcg_gen_atomic_smin_fetch_tl tcg_gen_atomic_smin_fetch_i32
+#define tcg_gen_atomic_umin_fetch_tl tcg_gen_atomic_umin_fetch_i32
+#define tcg_gen_atomic_smax_fetch_tl tcg_gen_atomic_smax_fetch_i32
+#define tcg_gen_atomic_umax_fetch_tl tcg_gen_atomic_umax_fetch_i32
 #define tcg_gen_dup_tl_vec  tcg_gen_dup_i32_vec
 #endif
 
 #if UINTPTR_MAX == UINT32_MAX
-# define tcg_gen_ld_ptr(R, A, O) \
-    tcg_gen_ld_i32(TCGV_PTR_TO_NAT(R), (A), (O))
-# define tcg_gen_discard_ptr(A) \
-    tcg_gen_discard_i32(TCGV_PTR_TO_NAT(A))
-# define tcg_gen_add_ptr(R, A, B) \
-    tcg_gen_add_i32(TCGV_PTR_TO_NAT(R), TCGV_PTR_TO_NAT(A), TCGV_PTR_TO_NAT(B))
-# define tcg_gen_addi_ptr(R, A, B) \
-    tcg_gen_addi_i32(TCGV_PTR_TO_NAT(R), TCGV_PTR_TO_NAT(A), (B))
-# define tcg_gen_ext_i32_ptr(R, A) \
-    tcg_gen_mov_i32(TCGV_PTR_TO_NAT(R), (A))
+# define PTR  i32
+# define NAT  TCGv_i32
 #else
-# define tcg_gen_ld_ptr(R, A, O) \
-    tcg_gen_ld_i64(TCGV_PTR_TO_NAT(R), (A), (O))
-# define tcg_gen_discard_ptr(A) \
-    tcg_gen_discard_i64(TCGV_PTR_TO_NAT(A))
-# define tcg_gen_add_ptr(R, A, B) \
-    tcg_gen_add_i64(TCGV_PTR_TO_NAT(R), TCGV_PTR_TO_NAT(A), TCGV_PTR_TO_NAT(B))
-# define tcg_gen_addi_ptr(R, A, B) \
-    tcg_gen_addi_i64(TCGV_PTR_TO_NAT(R), TCGV_PTR_TO_NAT(A), (B))
-# define tcg_gen_ext_i32_ptr(R, A) \
-    tcg_gen_ext_i32_i64(TCGV_PTR_TO_NAT(R), (A))
-#endif /* UINTPTR_MAX == UINT32_MAX */
+# define PTR  i64
+# define NAT  TCGv_i64
+#endif
+
+static inline void tcg_gen_ld_ptr(TCGv_ptr r, TCGv_ptr a, intptr_t o)
+{
+    glue(tcg_gen_ld_,PTR)((NAT)r, a, o);
+}
+
+static inline void tcg_gen_discard_ptr(TCGv_ptr a)
+{
+    glue(tcg_gen_discard_,PTR)((NAT)a);
+}
+
+static inline void tcg_gen_add_ptr(TCGv_ptr r, TCGv_ptr a, TCGv_ptr b)
+{
+    glue(tcg_gen_add_,PTR)((NAT)r, (NAT)a, (NAT)b);
+}
+
+static inline void tcg_gen_addi_ptr(TCGv_ptr r, TCGv_ptr a, intptr_t b)
+{
+    glue(tcg_gen_addi_,PTR)((NAT)r, (NAT)a, b);
+}
+
+static inline void tcg_gen_brcondi_ptr(TCGCond cond, TCGv_ptr a,
+                                       intptr_t b, TCGLabel *label)
+{
+    glue(tcg_gen_brcondi_,PTR)(cond, (NAT)a, b, label);
+}
+
+static inline void tcg_gen_ext_i32_ptr(TCGv_ptr r, TCGv_i32 a)
+{
+#if UINTPTR_MAX == UINT32_MAX
+    tcg_gen_mov_i32((NAT)r, a);
+#else
+    tcg_gen_ext_i32_i64((NAT)r, a);
+#endif
+}
+
+static inline void tcg_gen_trunc_i64_ptr(TCGv_ptr r, TCGv_i64 a)
+{
+#if UINTPTR_MAX == UINT32_MAX
+    tcg_gen_extrl_i64_i32((NAT)r, a);
+#else
+    tcg_gen_mov_i64((NAT)r, a);
+#endif
+}
+
+static inline void tcg_gen_extu_ptr_i64(TCGv_i64 r, TCGv_ptr a)
+{
+#if UINTPTR_MAX == UINT32_MAX
+    tcg_gen_extu_i32_i64(r, (NAT)a);
+#else
+    tcg_gen_mov_i64(r, (NAT)a);
+#endif
+}
+
+static inline void tcg_gen_trunc_ptr_i32(TCGv_i32 r, TCGv_ptr a)
+{
+#if UINTPTR_MAX == UINT32_MAX
+    tcg_gen_mov_i32(r, (NAT)a);
+#else
+    tcg_gen_extrl_i64_i32(r, (NAT)a);
+#endif
+}
+
+#undef PTR
+#undef NAT

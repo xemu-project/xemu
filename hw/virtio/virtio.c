@@ -123,11 +123,22 @@ static void virtio_free_region_cache(VRingMemoryRegionCaches *caches)
     g_free(caches);
 }
 
+static void virtio_virtqueue_reset_region_cache(struct VirtQueue *vq)
+{
+    VRingMemoryRegionCaches *caches;
+
+    caches = atomic_read(&vq->vring.caches);
+    atomic_rcu_set(&vq->vring.caches, NULL);
+    if (caches) {
+        call_rcu(caches, virtio_free_region_cache, rcu);
+    }
+}
+
 static void virtio_init_region_cache(VirtIODevice *vdev, int n)
 {
     VirtQueue *vq = &vdev->vq[n];
     VRingMemoryRegionCaches *old = vq->vring.caches;
-    VRingMemoryRegionCaches *new;
+    VRingMemoryRegionCaches *new = NULL;
     hwaddr addr, size;
     int event_size;
     int64_t len;
@@ -136,7 +147,7 @@ static void virtio_init_region_cache(VirtIODevice *vdev, int n)
 
     addr = vq->vring.desc;
     if (!addr) {
-        return;
+        goto out_no_cache;
     }
     new = g_new0(VRingMemoryRegionCaches, 1);
     size = virtio_queue_get_desc_size(vdev, n);
@@ -170,11 +181,14 @@ static void virtio_init_region_cache(VirtIODevice *vdev, int n)
     return;
 
 err_avail:
-    address_space_cache_destroy(&new->used);
+    address_space_cache_destroy(&new->avail);
 err_used:
-    address_space_cache_destroy(&new->desc);
+    address_space_cache_destroy(&new->used);
 err_desc:
+    address_space_cache_destroy(&new->desc);
+out_no_cache:
     g_free(new);
+    virtio_virtqueue_reset_region_cache(vq);
 }
 
 /* virt queue functions */
@@ -1165,17 +1179,6 @@ static enum virtio_device_endian virtio_current_cpu_endian(void)
         return VIRTIO_DEVICE_ENDIAN_BIG;
     } else {
         return VIRTIO_DEVICE_ENDIAN_LITTLE;
-    }
-}
-
-static void virtio_virtqueue_reset_region_cache(struct VirtQueue *vq)
-{
-    VRingMemoryRegionCaches *caches;
-
-    caches = atomic_read(&vq->vring.caches);
-    atomic_rcu_set(&vq->vring.caches, NULL);
-    if (caches) {
-        call_rcu(caches, virtio_free_region_cache, rcu);
     }
 }
 
@@ -2452,6 +2455,19 @@ void virtio_queue_host_notifier_read(EventNotifier *n)
 EventNotifier *virtio_queue_get_host_notifier(VirtQueue *vq)
 {
     return &vq->host_notifier;
+}
+
+int virtio_queue_set_host_notifier_mr(VirtIODevice *vdev, int n,
+                                      MemoryRegion *mr, bool assign)
+{
+    BusState *qbus = qdev_get_parent_bus(DEVICE(vdev));
+    VirtioBusClass *k = VIRTIO_BUS_GET_CLASS(qbus);
+
+    if (k->set_host_notifier_mr) {
+        return k->set_host_notifier_mr(qbus->parent, n, mr, assign);
+    }
+
+    return -1;
 }
 
 void virtio_device_set_child_bus_name(VirtIODevice *vdev, char *bus_name)

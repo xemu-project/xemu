@@ -18,6 +18,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/units.h"
 #include "qemu/error-report.h"
 #include "qemu-common.h"
 #include "cpu.h"
@@ -27,7 +28,6 @@
 #include "hw/devices.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
-#include "sysemu/block-backend.h"
 #include "elf.h"
 #include "lm32_hwsetup.h"
 #include "lm32.h"
@@ -88,10 +88,10 @@ static void lm32_evr_init(MachineState *machine)
 
     /* memory map */
     hwaddr flash_base  = 0x04000000;
-    size_t flash_sector_size       = 256 * 1024;
-    size_t flash_size              = 32 * 1024 * 1024;
+    size_t flash_sector_size       = 256 * KiB;
+    size_t flash_size              = 32 * MiB;
     hwaddr ram_base    = 0x08000000;
-    size_t ram_size                = 64 * 1024 * 1024;
+    size_t ram_size                = 64 * MiB;
     hwaddr timer0_base = 0x80002000;
     hwaddr uart0_base  = 0x80006000;
     hwaddr timer1_base = 0x8000a000;
@@ -125,12 +125,12 @@ static void lm32_evr_init(MachineState *machine)
         irq[i] = qdev_get_gpio_in(env->pic_state, i);
     }
 
-    lm32_uart_create(uart0_base, irq[uart0_irq], serial_hds[0]);
+    lm32_uart_create(uart0_base, irq[uart0_irq], serial_hd(0));
     sysbus_create_simple("lm32-timer", timer0_base, irq[timer0_irq]);
     sysbus_create_simple("lm32-timer", timer1_base, irq[timer1_irq]);
 
     /* make sure juart isn't the first chardev */
-    env->juart_state = lm32_juart_init(serial_hds[1]);
+    env->juart_state = lm32_juart_init(serial_hd(1));
 
     reset_info->bootstrap_pc = flash_base;
 
@@ -174,10 +174,10 @@ static void lm32_uclinux_init(MachineState *machine)
 
     /* memory map */
     hwaddr flash_base   = 0x04000000;
-    size_t flash_sector_size        = 256 * 1024;
-    size_t flash_size               = 32 * 1024 * 1024;
+    size_t flash_sector_size        = 256 * KiB;
+    size_t flash_size               = 32 * MiB;
     hwaddr ram_base     = 0x08000000;
-    size_t ram_size                 = 64 * 1024 * 1024;
+    size_t ram_size                 = 64 * MiB;
     hwaddr uart0_base   = 0x80000000;
     hwaddr timer0_base  = 0x80002000;
     hwaddr timer1_base  = 0x80010000;
@@ -217,13 +217,13 @@ static void lm32_uclinux_init(MachineState *machine)
         irq[i] = qdev_get_gpio_in(env->pic_state, i);
     }
 
-    lm32_uart_create(uart0_base, irq[uart0_irq], serial_hds[0]);
+    lm32_uart_create(uart0_base, irq[uart0_irq], serial_hd(0));
     sysbus_create_simple("lm32-timer", timer0_base, irq[timer0_irq]);
     sysbus_create_simple("lm32-timer", timer1_base, irq[timer1_irq]);
     sysbus_create_simple("lm32-timer", timer2_base, irq[timer2_irq]);
 
     /* make sure juart isn't the first chardev */
-    env->juart_state = lm32_juart_init(serial_hds[1]);
+    env->juart_state = lm32_juart_init(serial_hd(1));
 
     reset_info->bootstrap_pc = flash_base;
 

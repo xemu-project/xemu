@@ -28,9 +28,8 @@
 #include "hw/i386/apic.h"
 #include "hw/i386/ioapic.h"
 #include "hw/i386/ioapic_internal.h"
-#include "include/hw/pci/msi.h"
+#include "hw/pci/msi.h"
 #include "sysemu/kvm.h"
-#include "target/i386/cpu.h"
 #include "hw/i386/apic-msidef.h"
 #include "hw/i386/x86-iommu.h"
 #include "trace.h"
@@ -149,10 +148,11 @@ static void ioapic_set_irq(void *opaque, int vector, int level)
      * the cleanest way of doing it but it should work. */
 
     trace_ioapic_set_irq(vector, level);
+    ioapic_stat_update_irq(s, vector, level);
     if (vector == 0) {
         vector = 2;
     }
-    if (vector >= 0 && vector < IOAPIC_NUM_PINS) {
+    if (vector < IOAPIC_NUM_PINS) {
         uint32_t mask = 1 << vector;
         uint64_t entry = s->ioredtbl[vector];
 
@@ -230,17 +230,6 @@ void ioapic_eoi_broadcast(int vector)
                     ioapic_service(s);
                 }
             }
-        }
-    }
-}
-
-void ioapic_dump_state(Monitor *mon, const QDict *qdict)
-{
-    int i;
-
-    for (i = 0; i < MAX_IOAPICS; i++) {
-        if (ioapics[i] != 0) {
-            ioapic_print_redtbl(mon, ioapics[i]);
         }
     }
 }

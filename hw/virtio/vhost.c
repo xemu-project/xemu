@@ -386,7 +386,7 @@ static int vhost_verify_ring_mappings(struct vhost_dev *dev,
     return r;
 }
 
-static bool vhost_section(MemoryRegionSection *section)
+static bool vhost_section(struct vhost_dev *dev, MemoryRegionSection *section)
 {
     bool result;
     bool log_dirty = memory_region_get_dirty_log_mask(section->mr) &
@@ -398,6 +398,11 @@ static bool vhost_section(MemoryRegionSection *section)
      * than migration; this typically fires on VGA areas.
      */
     result &= !log_dirty;
+
+    if (result && dev->vhost_ops->vhost_backend_mem_section_filter) {
+        result &=
+            dev->vhost_ops->vhost_backend_mem_section_filter(dev, section);
+    }
 
     trace_vhost_section(section->mr->name, result);
     return result;
@@ -632,7 +637,7 @@ static void vhost_region_addnop(MemoryListener *listener,
     struct vhost_dev *dev = container_of(listener, struct vhost_dev,
                                          memory_listener);
 
-    if (!vhost_section(section)) {
+    if (!vhost_section(dev, section)) {
         return;
     }
     vhost_region_add_section(dev, section);
@@ -657,19 +662,26 @@ static void vhost_iommu_region_add(MemoryListener *listener,
                                          iommu_listener);
     struct vhost_iommu *iommu;
     Int128 end;
+    int iommu_idx;
+    IOMMUMemoryRegion *iommu_mr;
 
     if (!memory_region_is_iommu(section->mr)) {
         return;
     }
 
+    iommu_mr = IOMMU_MEMORY_REGION(section->mr);
+
     iommu = g_malloc0(sizeof(*iommu));
     end = int128_add(int128_make64(section->offset_within_region),
                      section->size);
     end = int128_sub(end, int128_one());
+    iommu_idx = memory_region_iommu_attrs_to_index(iommu_mr,
+                                                   MEMTXATTRS_UNSPECIFIED);
     iommu_notifier_init(&iommu->n, vhost_iommu_unmap_notify,
                         IOMMU_NOTIFIER_UNMAP,
                         section->offset_within_region,
-                        int128_get64(end));
+                        int128_get64(end),
+                        iommu_idx);
     iommu->mr = section->mr;
     iommu->iommu_offset = section->offset_within_address_space -
                           section->offset_within_region;
@@ -894,12 +906,16 @@ int vhost_device_iotlb_miss(struct vhost_dev *dev, uint64_t iova, int write)
 
     rcu_read_lock();
 
+    trace_vhost_iotlb_miss(dev, 1);
+
     iotlb = address_space_get_iotlb_entry(dev->vdev->dma_as,
-                                          iova, write);
+                                          iova, write,
+                                          MEMTXATTRS_UNSPECIFIED);
     if (iotlb.target_as != NULL) {
         ret = vhost_memory_region_lookup(dev, iotlb.translated_addr,
                                          &uaddr, &len);
         if (ret) {
+            trace_vhost_iotlb_miss(dev, 3);
             error_report("Fail to lookup the translated address "
                          "%"PRIx64, iotlb.translated_addr);
             goto out;
@@ -911,10 +927,14 @@ int vhost_device_iotlb_miss(struct vhost_dev *dev, uint64_t iova, int write)
         ret = vhost_backend_update_device_iotlb(dev, iova, uaddr,
                                                 len, iotlb.perm);
         if (ret) {
+            trace_vhost_iotlb_miss(dev, 4);
             error_report("Fail to update device iotlb");
             goto out;
         }
     }
+
+    trace_vhost_iotlb_miss(dev, 2);
+
 out:
     rcu_read_unlock();
 

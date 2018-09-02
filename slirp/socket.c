@@ -340,7 +340,7 @@ sosendoob(struct socket *so)
 	struct sbuf *sb = &so->so_rcv;
 	char buff[2048]; /* XXX Shouldn't be sending more oob data than this */
 
-	int n, len;
+	int n;
 
 	DEBUG_CALL("sosendoob");
 	DEBUG_ARG("so = %p", so);
@@ -359,7 +359,7 @@ sosendoob(struct socket *so)
 		 * send it all
 		 */
 		uint32_t urgc = so->so_urgc;
-		len = (sb->sb_data + sb->sb_datalen) - sb->sb_rptr;
+		int len = (sb->sb_data + sb->sb_datalen) - sb->sb_rptr;
 		if (len > urgc) {
 			len = urgc;
 		}
@@ -374,13 +374,13 @@ sosendoob(struct socket *so)
 			len += n;
 		}
 		n = slirp_send(so, buff, len, (MSG_OOB)); /* |MSG_DONTWAIT)); */
+#ifdef DEBUG
+		if (n != len) {
+			DEBUG_ERROR((dfd, "Didn't send all data urgently XXXXX\n"));
+		}
+#endif
 	}
 
-#ifdef DEBUG
-	if (n != len) {
-		DEBUG_ERROR((dfd, "Didn't send all data urgently XXXXX\n"));
-	}
-#endif
 	if (n < 0) {
 		return n;
 	}
@@ -701,10 +701,10 @@ tcp_listen(Slirp *slirp, uint32_t haddr, u_int hport, uint32_t laddr,
 	memset(&addr, 0, addrlen);
 
 	DEBUG_CALL("tcp_listen");
-	DEBUG_ARG("haddr = %x", haddr);
-	DEBUG_ARG("hport = %d", hport);
-	DEBUG_ARG("laddr = %x", laddr);
-	DEBUG_ARG("lport = %d", lport);
+	DEBUG_ARG("haddr = %s", inet_ntoa((struct in_addr){.s_addr = haddr}));
+	DEBUG_ARG("hport = %d", ntohs(hport));
+	DEBUG_ARG("laddr = %s", inet_ntoa((struct in_addr){.s_addr = laddr}));
+	DEBUG_ARG("lport = %d", ntohs(lport));
 	DEBUG_ARG("flags = %x", flags);
 
 	so = socreate(slirp);
@@ -754,6 +754,8 @@ tcp_listen(Slirp *slirp, uint32_t haddr, u_int hport, uint32_t laddr,
 		return NULL;
 	}
 	qemu_setsockopt(s, SOL_SOCKET, SO_OOBINLINE, &opt, sizeof(int));
+	opt = 1;
+	qemu_setsockopt(s, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(int));
 
 	getsockname(s,(struct sockaddr *)&addr,&addrlen);
 	so->so_ffamily = AF_INET;

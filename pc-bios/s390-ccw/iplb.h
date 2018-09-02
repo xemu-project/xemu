@@ -12,6 +12,8 @@
 #ifndef IPLB_H
 #define IPLB_H
 
+#define LOADPARM_LEN    8
+
 struct IplBlockCcw {
     uint8_t  reserved0[85];
     uint8_t  ssid;
@@ -61,7 +63,7 @@ struct IplParameterBlock {
     uint8_t  pbt;
     uint8_t  flags;
     uint16_t reserved01;
-    uint8_t  loadparm[8];
+    uint8_t  loadparm[LOADPARM_LEN];
     union {
         IplBlockCcw ccw;
         IplBlockFcp fcp;
@@ -101,10 +103,11 @@ static inline bool manage_iplb(IplParameterBlock *iplb, bool store)
 {
     register unsigned long addr asm("0") = (unsigned long) iplb;
     register unsigned long rc asm("1") = 0;
+    unsigned long subcode = store ? 6 : 5;
 
     asm volatile ("diag %0,%2,0x308\n"
                   : "+d" (addr), "+d" (rc)
-                  : "d" (store ? 6 : 5)
+                  : "d" (subcode)
                   : "memory", "cc");
     return rc == 0x01;
 }

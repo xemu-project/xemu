@@ -11,6 +11,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/units.h"
 #include "hw/boards.h"
 #include "qapi/error.h"
 #include "qapi/qapi-visit-common.h"
@@ -19,7 +20,6 @@
 #include "sysemu/sysemu.h"
 #include "sysemu/numa.h"
 #include "qemu/error-report.h"
-#include "qemu/cutils.h"
 #include "sysemu/qtest.h"
 
 static char *machine_get_accel(Object *obj, Error **errp)
@@ -522,7 +522,7 @@ static void machine_class_init(ObjectClass *oc, void *data)
     MachineClass *mc = MACHINE_CLASS(oc);
 
     /* Default 128 MB as guest ram size */
-    mc->default_ram_size = 128 * M_BYTE;
+    mc->default_ram_size = 128 * MiB;
     mc->rom_file_has_mr = true;
 
     /* numa node memory size aligned on 8MB by default.
@@ -674,6 +674,7 @@ static void machine_finalize(Object *obj)
     g_free(ms->dumpdtb);
     g_free(ms->dt_compatible);
     g_free(ms->firmware);
+    g_free(ms->device_memory);
 }
 
 bool machine_usb(MachineState *machine)
@@ -737,7 +738,7 @@ static char *cpu_slot_to_string(const CPUArchId *cpu)
     return g_string_free(s, false);
 }
 
-static void machine_numa_finish_init(MachineState *machine)
+static void machine_numa_finish_cpu_init(MachineState *machine)
 {
     int i;
     bool default_mapping;
@@ -791,9 +792,9 @@ void machine_run_board_init(MachineState *machine)
 {
     MachineClass *machine_class = MACHINE_GET_CLASS(machine);
 
-    if (nb_numa_nodes) {
-        machine_numa_finish_init(machine);
-    }
+    numa_complete_configuration(machine);
+    if (nb_numa_nodes)
+        machine_numa_finish_cpu_init(machine);
 
     /* If the machine supports the valid_cpu_types check and the user
      * specified a CPU with -cpu check here that the user CPU is supported.

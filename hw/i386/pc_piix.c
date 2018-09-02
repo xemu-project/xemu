@@ -24,10 +24,12 @@
 
 #include "qemu/osdep.h"
 
+#include "qemu/units.h"
 #include "hw/hw.h"
 #include "hw/loader.h"
 #include "hw/i386/pc.h"
 #include "hw/i386/apic.h"
+#include "hw/display/ramfb.h"
 #include "hw/smbios/smbios.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_ids.h"
@@ -130,7 +132,7 @@ static void pc_init1(MachineState *machine,
                 if (lowmem > 0xc0000000) {
                     lowmem = 0xc0000000;
                 }
-                if (lowmem & ((1ULL << 30) - 1)) {
+                if (lowmem & (1 * GiB - 1)) {
                     warn_report("Large machine and max_ram_below_4g "
                                 "(%" PRIu64 ") not a multiple of 1G; "
                                 "possible bad performance.",
@@ -289,7 +291,7 @@ static void pc_init1(MachineState *machine,
                                  TYPE_HOTPLUG_HANDLER,
                                  (Object **)&pcms->acpi_dev,
                                  object_property_allow_set_link,
-                                 OBJ_PROP_LINK_UNREF_ON_RELEASE, &error_abort);
+                                 OBJ_PROP_LINK_STRONG, &error_abort);
         object_property_set_link(OBJECT(machine), OBJECT(piix4_pm),
                                  PC_MACHINE_ACPI_DEVICE_PROP, &error_abort);
     }
@@ -423,13 +425,25 @@ static void pc_i440fx_machine_options(MachineClass *m)
     m->desc = "Standard PC (i440FX + PIIX, 1996)";
     m->default_machine_opts = "firmware=bios-256k.bin";
     m->default_display = "std";
+    machine_class_allow_dynamic_sysbus_dev(m, TYPE_RAMFB_DEVICE);
 }
 
-static void pc_i440fx_2_12_machine_options(MachineClass *m)
+static void pc_i440fx_3_0_machine_options(MachineClass *m)
 {
     pc_i440fx_machine_options(m);
     m->alias = "pc";
     m->is_default = 1;
+}
+
+DEFINE_I440FX_MACHINE(v3_0, "pc-i440fx-3.0", NULL,
+                      pc_i440fx_3_0_machine_options);
+
+static void pc_i440fx_2_12_machine_options(MachineClass *m)
+{
+    pc_i440fx_3_0_machine_options(m);
+    m->is_default = 0;
+    m->alias = NULL;
+    SET_MACHINE_COMPAT(m, PC_COMPAT_2_12);
 }
 
 DEFINE_I440FX_MACHINE(v2_12, "pc-i440fx-2.12", NULL,
@@ -438,8 +452,6 @@ DEFINE_I440FX_MACHINE(v2_12, "pc-i440fx-2.12", NULL,
 static void pc_i440fx_2_11_machine_options(MachineClass *m)
 {
     pc_i440fx_2_12_machine_options(m);
-    m->is_default = 0;
-    m->alias = NULL;
     SET_MACHINE_COMPAT(m, PC_COMPAT_2_11);
 }
 
@@ -945,6 +957,7 @@ static void pc_i440fx_0_11_machine_options(MachineClass *m)
 {
     pc_i440fx_0_12_machine_options(m);
     m->hw_version = "0.11";
+    m->deprecation_reason = "use a newer machine type instead";
     SET_MACHINE_COMPAT(m, PC_COMPAT_0_11);
 }
 

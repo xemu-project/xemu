@@ -525,13 +525,17 @@ static void do_armv7m_nvic_set_pending(void *opaque, int irq, bool secure,
     NVICState *s = (NVICState *)opaque;
     bool banked = exc_is_banked(irq);
     VecInfo *vec;
+    bool targets_secure;
 
     assert(irq > ARMV7M_EXCP_RESET && irq < s->num_irq);
     assert(!secure || banked);
 
     vec = (banked && secure) ? &s->sec_vectors[irq] : &s->vectors[irq];
 
-    trace_nvic_set_pending(irq, secure, derived, vec->enabled, vec->prio);
+    targets_secure = banked ? secure : exc_targets_secure(s, irq);
+
+    trace_nvic_set_pending(irq, secure, targets_secure,
+                           derived, vec->enabled, vec->prio);
 
     if (derived) {
         /* Derived exceptions are always synchronous. */
@@ -611,7 +615,7 @@ static void do_armv7m_nvic_set_pending(void *opaque, int irq, bool secure,
              */
             irq = ARMV7M_EXCP_HARD;
             if (arm_feature(&s->cpu->env, ARM_FEATURE_M_SECURITY) &&
-                (secure ||
+                (targets_secure ||
                  !(s->cpu->env.v7m.aircr & R_V7M_AIRCR_BFHFNMINS_MASK))) {
                 vec = &s->sec_vectors[irq];
             } else {
@@ -2060,7 +2064,7 @@ static int nvic_security_post_load(void *opaque, int version_id)
 }
 
 static const VMStateDescription vmstate_nvic_security = {
-    .name = "nvic/m-security",
+    .name = "armv7m_nvic/m-security",
     .version_id = 1,
     .minimum_version_id = 1,
     .needed = nvic_security_needed,
@@ -2183,7 +2187,11 @@ static void armv7m_nvic_realize(DeviceState *dev, Error **errp)
     int regionlen;
 
     s->cpu = ARM_CPU(qemu_get_cpu(0));
-    assert(s->cpu);
+
+    if (!s->cpu || !arm_feature(&s->cpu->env, ARM_FEATURE_M)) {
+        error_setg(errp, "The NVIC can only be used with a Cortex-M CPU");
+        return;
+    }
 
     if (s->num_irq > NVIC_MAX_IRQ) {
         error_setg(errp, "num-irq %d exceeds NVIC maximum", s->num_irq);
@@ -2292,9 +2300,8 @@ static void armv7m_nvic_instance_init(Object *obj)
     NVICState *nvic = NVIC(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);
 
-    object_initialize(&nvic->systick[M_REG_NS],
-                      sizeof(nvic->systick[M_REG_NS]), TYPE_SYSTICK);
-    qdev_set_parent_bus(DEVICE(&nvic->systick[M_REG_NS]), sysbus_get_default());
+    sysbus_init_child_obj(obj, "systick-reg-ns", &nvic->systick[M_REG_NS],
+                          sizeof(nvic->systick[M_REG_NS]), TYPE_SYSTICK);
     /* We can't initialize the secure systick here, as we don't know
      * yet if we need it.
      */

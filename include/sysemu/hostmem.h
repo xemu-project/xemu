@@ -52,7 +52,6 @@ struct HostMemoryBackend {
     Object parent;
 
     /* protected */
-    char *id;
     uint64_t size;
     bool merge, dump;
     bool prealloc, force_prealloc, is_mapped, share;
@@ -63,9 +62,10 @@ struct HostMemoryBackend {
 };
 
 bool host_memory_backend_mr_inited(HostMemoryBackend *backend);
-MemoryRegion *host_memory_backend_get_memory(HostMemoryBackend *backend,
-                                             Error **errp);
+MemoryRegion *host_memory_backend_get_memory(HostMemoryBackend *backend);
 
 void host_memory_backend_set_mapped(HostMemoryBackend *backend, bool mapped);
 bool host_memory_backend_is_mapped(HostMemoryBackend *backend);
+size_t host_memory_backend_pagesize(HostMemoryBackend *memdev);
+
 #endif

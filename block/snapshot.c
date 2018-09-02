@@ -25,6 +25,7 @@
 #include "qemu/osdep.h"
 #include "block/snapshot.h"
 #include "block/block_int.h"
+#include "block/qdict.h"
 #include "qapi/error.h"
 #include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qerror.h"
@@ -214,7 +215,7 @@ int bdrv_snapshot_goto(BlockDriverState *bs,
         bdrv_ref(file);
 
         qdict_extract_subqdict(options, &file_options, "file.");
-        QDECREF(file_options);
+        qobject_unref(file_options);
         qdict_put_str(options, "file", bdrv_get_node_name(file));
 
         drv->bdrv_close(bs);
@@ -223,7 +224,7 @@ int bdrv_snapshot_goto(BlockDriverState *bs,
 
         ret = bdrv_snapshot_goto(file, snapshot_id, errp);
         open_ret = drv->bdrv_open(bs, options, bs->open_flags, &local_err);
-        QDECREF(options);
+        qobject_unref(options);
         if (open_ret < 0) {
             bdrv_unref(file);
             bs->drv = NULL;

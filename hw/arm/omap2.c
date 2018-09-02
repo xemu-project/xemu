@@ -23,8 +23,7 @@
 #include "qapi/error.h"
 #include "qemu-common.h"
 #include "cpu.h"
-#include "sysemu/block-backend.h"
-#include "sysemu/blockdev.h"
+#include "sysemu/qtest.h"
 #include "hw/boards.h"
 #include "hw/hw.h"
 #include "hw/arm/arm.h"
@@ -2349,7 +2348,7 @@ struct omap_mpu_state_s *omap2420_mpu_init(MemoryRegion *sysmem,
                     s->drq[OMAP24XX_DMA_UART1_TX],
                     s->drq[OMAP24XX_DMA_UART1_RX],
                     "uart1",
-                    serial_hds[0]);
+                    serial_hd(0));
     s->uart[1] = omap2_uart_init(sysmem, omap_l4ta(s->l4, 20),
                                  qdev_get_gpio_in(s->ih[0],
                                                   OMAP_INT_24XX_UART2_IRQ),
@@ -2358,7 +2357,7 @@ struct omap_mpu_state_s *omap2420_mpu_init(MemoryRegion *sysmem,
                     s->drq[OMAP24XX_DMA_UART2_TX],
                     s->drq[OMAP24XX_DMA_UART2_RX],
                     "uart2",
-                    serial_hds[0] ? serial_hds[1] : NULL);
+                    serial_hd(0) ? serial_hd(1) : NULL);
     s->uart[2] = omap2_uart_init(sysmem, omap_l4ta(s->l4, 21),
                                  qdev_get_gpio_in(s->ih[0],
                                                   OMAP_INT_24XX_UART3_IRQ),
@@ -2367,7 +2366,7 @@ struct omap_mpu_state_s *omap2420_mpu_init(MemoryRegion *sysmem,
                     s->drq[OMAP24XX_DMA_UART3_TX],
                     s->drq[OMAP24XX_DMA_UART3_RX],
                     "uart3",
-                    serial_hds[0] && serial_hds[1] ? serial_hds[2] : NULL);
+                    serial_hd(0) && serial_hd(1) ? serial_hd(2) : NULL);
 
     s->gptimer[0] = omap_gp_timer_init(omap_l4ta(s->l4, 7),
                     qdev_get_gpio_in(s->ih[0], OMAP_INT_24XX_GPTIMER1),
@@ -2486,12 +2485,11 @@ struct omap_mpu_state_s *omap2420_mpu_init(MemoryRegion *sysmem,
                              s->drq[OMAP24XX_DMA_GPMC]);
 
     dinfo = drive_get(IF_SD, 0, 0);
-    if (!dinfo) {
-        error_report("missing SecureDigital device");
-        exit(1);
+    if (!dinfo && !qtest_enabled()) {
+        warn_report("missing SecureDigital device");
     }
     s->mmc = omap2_mmc_init(omap_l4tao(s->l4, 9),
-                    blk_by_legacy_dinfo(dinfo),
+                    dinfo ? blk_by_legacy_dinfo(dinfo) : NULL,
                     qdev_get_gpio_in(s->ih[0], OMAP_INT_24XX_MMC_IRQ),
                     &s->drq[OMAP24XX_DMA_MMC1_TX],
                     omap_findclk(s, "mmc_fclk"), omap_findclk(s, "mmc_iclk"));
@@ -2519,8 +2517,8 @@ struct omap_mpu_state_s *omap2420_mpu_init(MemoryRegion *sysmem,
     omap_sti_init(omap_l4ta(s->l4, 18), sysmem, 0x54000000,
                   qdev_get_gpio_in(s->ih[0], OMAP_INT_24XX_STI),
                   omap_findclk(s, "emul_ck"),
-                    serial_hds[0] && serial_hds[1] && serial_hds[2] ?
-                    serial_hds[3] : NULL);
+                    serial_hd(0) && serial_hd(1) && serial_hd(2) ?
+                    serial_hd(3) : NULL);
 
     s->eac = omap_eac_init(omap_l4ta(s->l4, 32),
                            qdev_get_gpio_in(s->ih[0], OMAP_INT_24XX_EAC_IRQ),

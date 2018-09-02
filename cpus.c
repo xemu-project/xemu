@@ -1355,6 +1355,7 @@ static int tcg_cpu_exec(CPUState *cpu)
     int64_t ti;
 #endif
 
+    assert(tcg_enabled());
 #ifdef CONFIG_PROFILER
     ti = profile_getclock();
 #endif
@@ -1397,6 +1398,7 @@ static void *qemu_tcg_rr_cpu_thread_fn(void *arg)
 {
     CPUState *cpu = arg;
 
+    assert(tcg_enabled());
     rcu_register_thread();
     tcg_register_thread();
 
@@ -1631,6 +1633,7 @@ static void *qemu_tcg_cpu_thread_fn(void *arg)
 {
     CPUState *cpu = arg;
 
+    assert(tcg_enabled());
     g_assert(!use_icount);
 
     rcu_register_thread();
@@ -1648,7 +1651,7 @@ static void *qemu_tcg_cpu_thread_fn(void *arg)
     /* process any pending work */
     cpu->exit_request = 1;
 
-    while (1) {
+    do {
         if (cpu_can_run(cpu)) {
             int r;
             qemu_mutex_unlock_iothread();
@@ -1854,6 +1857,7 @@ static void qemu_tcg_init_vcpu(CPUState *cpu)
     static QemuThread *single_tcg_cpu_thread;
     static int tcg_region_inited;
 
+    assert(tcg_enabled());
     /*
      * Initialize TCG regions--once. Now is a good time, because:
      * (1) TCG's init context, prologue and target globals have been set up.
@@ -2043,7 +2047,6 @@ int vm_stop(RunState state)
 int vm_prepare_start(void)
 {
     RunState requested;
-    int res = 0;
 
     qemu_vmstop_requested(&requested);
     if (runstate_is_running() && requested == RUN_STATE__MAX) {
@@ -2057,17 +2060,18 @@ int vm_prepare_start(void)
      */
     if (runstate_is_running()) {
         qapi_event_send_stop(&error_abort);
-        res = -1;
-    } else {
-        replay_enable_events();
-        cpu_enable_ticks();
-        runstate_set(RUN_STATE_RUNNING);
-        vm_state_notify(1, RUN_STATE_RUNNING);
+        qapi_event_send_resume(&error_abort);
+        return -1;
     }
 
     /* We are sending this now, but the CPUs will be resumed shortly later */
     qapi_event_send_resume(&error_abort);
-    return res;
+
+    replay_enable_events();
+    cpu_enable_ticks();
+    runstate_set(RUN_STATE_RUNNING);
+    vm_state_notify(1, RUN_STATE_RUNNING);
+    return 0;
 }
 
 void vm_start(void)
@@ -2187,6 +2191,59 @@ CpuInfoList *qmp_query_cpus(Error **errp)
     return head;
 }
 
+static CpuInfoArch sysemu_target_to_cpuinfo_arch(SysEmuTarget target)
+{
+    /*
+     * The @SysEmuTarget -> @CpuInfoArch mapping below is based on the
+     * TARGET_ARCH -> TARGET_BASE_ARCH mapping in the "configure" script.
+     */
+    switch (target) {
+    case SYS_EMU_TARGET_I386:
+    case SYS_EMU_TARGET_X86_64:
+        return CPU_INFO_ARCH_X86;
+
+    case SYS_EMU_TARGET_PPC:
+    case SYS_EMU_TARGET_PPCEMB:
+    case SYS_EMU_TARGET_PPC64:
+        return CPU_INFO_ARCH_PPC;
+
+    case SYS_EMU_TARGET_SPARC:
+    case SYS_EMU_TARGET_SPARC64:
+        return CPU_INFO_ARCH_SPARC;
+
+    case SYS_EMU_TARGET_MIPS:
+    case SYS_EMU_TARGET_MIPSEL:
+    case SYS_EMU_TARGET_MIPS64:
+    case SYS_EMU_TARGET_MIPS64EL:
+        return CPU_INFO_ARCH_MIPS;
+
+    case SYS_EMU_TARGET_TRICORE:
+        return CPU_INFO_ARCH_TRICORE;
+
+    case SYS_EMU_TARGET_S390X:
+        return CPU_INFO_ARCH_S390;
+
+    case SYS_EMU_TARGET_RISCV32:
+    case SYS_EMU_TARGET_RISCV64:
+        return CPU_INFO_ARCH_RISCV;
+
+    default:
+        return CPU_INFO_ARCH_OTHER;
+    }
+}
+
+static void cpustate_to_cpuinfo_s390(CpuInfoS390 *info, const CPUState *cpu)
+{
+#ifdef TARGET_S390X
+    S390CPU *s390_cpu = S390_CPU(cpu);
+    CPUS390XState *env = &s390_cpu->env;
+
+    info->cpu_state = env->cpu_state;
+#else
+    abort();
+#endif
+}
+
 /*
  * fast means: we NEVER interrupt vCPU threads to retrieve
  * information from KVM.
@@ -2196,11 +2253,9 @@ CpuInfoFastList *qmp_query_cpus_fast(Error **errp)
     MachineState *ms = MACHINE(qdev_get_machine());
     MachineClass *mc = MACHINE_GET_CLASS(ms);
     CpuInfoFastList *head = NULL, *cur_item = NULL;
+    SysEmuTarget target = qapi_enum_parse(&SysEmuTarget_lookup, TARGET_NAME,
+                                          -1, &error_abort);
     CPUState *cpu;
-#if defined(TARGET_S390X)
-    S390CPU *s390_cpu;
-    CPUS390XState *env;
-#endif
 
     CPU_FOREACH(cpu) {
         CpuInfoFastList *info = g_malloc0(sizeof(*info));
@@ -2218,12 +2273,12 @@ CpuInfoFastList *qmp_query_cpus_fast(Error **errp)
             info->value->props = props;
         }
 
-#if defined(TARGET_S390X)
-        s390_cpu = S390_CPU(cpu);
-        env = &s390_cpu->env;
-        info->value->arch = CPU_INFO_ARCH_S390;
-        info->value->u.s390.cpu_state = env->cpu_state;
-#endif
+        info->value->arch = sysemu_target_to_cpuinfo_arch(target);
+        info->value->target = target;
+        if (target == SYS_EMU_TARGET_S390X) {
+            cpustate_to_cpuinfo_s390(&info->value->u.s390x, cpu);
+        }
+
         if (!cur_item) {
             head = cur_item = info;
         } else {

@@ -274,6 +274,7 @@ static inline void float_inexact_excp(CPUPPCState *env)
 {
     CPUState *cs = CPU(ppc_env_get_cpu(env));
 
+    env->fpscr |= 1 << FPSCR_FI;
     env->fpscr |= 1 << FPSCR_XX;
     /* Update the floating-point exception summary */
     env->fpscr |= FP_FX;
@@ -324,6 +325,34 @@ void helper_fpscr_clrbit(CPUPPCState *env, uint32_t bit)
         case FPSCR_RN1:
         case FPSCR_RN:
             fpscr_set_rounding_mode(env);
+            break;
+        case FPSCR_VXSNAN:
+        case FPSCR_VXISI:
+        case FPSCR_VXIDI:
+        case FPSCR_VXZDZ:
+        case FPSCR_VXIMZ:
+        case FPSCR_VXVC:
+        case FPSCR_VXSOFT:
+        case FPSCR_VXSQRT:
+        case FPSCR_VXCVI:
+            if (!fpscr_ix) {
+                /* Set VX bit to zero */
+                env->fpscr &= ~(1 << FPSCR_VX);
+            }
+            break;
+        case FPSCR_OX:
+        case FPSCR_UX:
+        case FPSCR_ZX:
+        case FPSCR_XX:
+        case FPSCR_VE:
+        case FPSCR_OE:
+        case FPSCR_UE:
+        case FPSCR_ZE:
+        case FPSCR_XE:
+            if (!fpscr_eex) {
+                /* Set the FEX bit */
+                env->fpscr &= ~(1 << FPSCR_FEX);
+            }
             break;
         default:
             break;
@@ -505,6 +534,7 @@ static void do_float_check_status(CPUPPCState *env, uintptr_t raddr)
 {
     CPUState *cs = CPU(ppc_env_get_cpu(env));
     int status = get_float_exception_flags(&env->fp_status);
+    bool inexact_happened = false;
 
     if (status & float_flag_divbyzero) {
         float_zero_divide_excp(env, raddr);
@@ -514,6 +544,12 @@ static void do_float_check_status(CPUPPCState *env, uintptr_t raddr)
         float_underflow_excp(env);
     } else if (status & float_flag_inexact) {
         float_inexact_excp(env);
+        inexact_happened = true;
+    }
+
+    /* if the inexact flag was not set */
+    if (inexact_happened == false) {
+        env->fpscr &= ~(1 << FPSCR_FI); /* clear the FPSCR[FI] bit */
     }
 
     if (cs->exception_index == POWERPC_EXCP_PROGRAM &&
@@ -3382,7 +3418,6 @@ void helper_xssqrtqp(CPUPPCState *env, uint32_t opcode)
             xt.f128 = xb.f128;
         } else if (float128_is_neg(xb.f128) && !float128_is_zero(xb.f128)) {
             float_invalid_op_excp(env, POWERPC_EXCP_FP_VXSQRT, 1);
-            set_snan_bit_is_one(0, &env->fp_status);
             xt.f128 = float128_default_nan(&env->fp_status);
         }
     }

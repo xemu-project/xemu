@@ -33,6 +33,21 @@
 #else
 #include "exec/poison.h"
 #endif
+#ifdef __COVERITY__
+/* Coverity does not like the new _Float* types that are used by
+ * recent glibc, and croaks on every single file that includes
+ * stdlib.h.  These typedefs are enough to please it.
+ *
+ * Note that these fix parse errors so they cannot be placed in
+ * scripts/coverity-model.c.
+ */
+typedef float _Float32;
+typedef double _Float32x;
+typedef double _Float64;
+typedef __float80 _Float64x;
+typedef __float128 _Float128;
+#endif
+
 #include "qemu/compiler.h"
 
 /* Older versions of C++ don't get definitions of various macros from
@@ -107,6 +122,16 @@ extern int daemon(int, int);
 #include "glib-compat.h"
 #include "qemu/typedefs.h"
 
+/*
+ * According to waitpid man page:
+ * WCOREDUMP
+ *  This  macro  is  not  specified  in POSIX.1-2001 and is not
+ *  available on some UNIX implementations (e.g., AIX, SunOS).
+ *  Therefore, enclose its use inside #ifdef WCOREDUMP ... #endif.
+ */
+#ifndef WCOREDUMP
+#define WCOREDUMP(status) 0
+#endif
 /*
  * We have a lot of unaudited code that may fail in strange ways, or
  * even be a security risk during migration, if you disable assertions
@@ -357,7 +382,8 @@ void qemu_anon_ram_free(void *ptr, size_t size);
 #endif
 
 #if defined(__linux__) && \
-    (defined(__x86_64__) || defined(__arm__) || defined(__aarch64__))
+    (defined(__x86_64__) || defined(__arm__) || defined(__aarch64__) \
+     || defined(__powerpc64__))
    /* Use 2 MiB alignment so transparent hugepages can be used by KVM.
       Valgrind does not support alignments larger than 1 MiB,
       therefore we need special code which handles running on Valgrind. */

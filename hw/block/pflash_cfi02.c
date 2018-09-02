@@ -41,9 +41,9 @@
 #include "qapi/error.h"
 #include "qemu/timer.h"
 #include "sysemu/block-backend.h"
-#include "exec/address-spaces.h"
 #include "qemu/host-utils.h"
 #include "hw/sysbus.h"
+#include "trace.h"
 
 //#define PFLASH_DEBUG
 #ifdef PFLASH_DEBUG
@@ -125,7 +125,7 @@ static void pflash_timer (void *opaque)
 {
     pflash_t *pfl = opaque;
 
-    DPRINTF("%s: command %02x done\n", __func__, pfl->cmd);
+    trace_pflash_timer_expired(pfl->cmd);
     /* Reset flash */
     pfl->status ^= 0x80;
     if (pfl->bypass) {
@@ -144,8 +144,8 @@ static uint32_t pflash_read (pflash_t *pfl, hwaddr offset,
     uint32_t ret;
     uint8_t *p;
 
-    DPRINTF("%s: offset " TARGET_FMT_plx "\n", __func__, offset);
     ret = -1;
+    trace_pflash_read(offset, pfl->cmd, width, pfl->wcycle);
     /* Lazy reset to ROMD mode after a certain amount of read accesses */
     if (!pfl->rom_mode && pfl->wcycle == 0 &&
         ++pfl->read_counter > PFLASH_LAZY_ROMD_THRESHOLD) {
@@ -173,7 +173,7 @@ static uint32_t pflash_read (pflash_t *pfl, hwaddr offset,
         switch (width) {
         case 1:
             ret = p[offset];
-//            DPRINTF("%s: data offset %08x %02x\n", __func__, offset, ret);
+            trace_pflash_data_read8(offset, ret);
             break;
         case 2:
             if (be) {
@@ -183,7 +183,7 @@ static uint32_t pflash_read (pflash_t *pfl, hwaddr offset,
                 ret = p[offset];
                 ret |= p[offset + 1] << 8;
             }
-//            DPRINTF("%s: data offset %08x %04x\n", __func__, offset, ret);
+            trace_pflash_data_read16(offset, ret);
             break;
         case 4:
             if (be) {
@@ -197,7 +197,7 @@ static uint32_t pflash_read (pflash_t *pfl, hwaddr offset,
                 ret |= p[offset + 2] << 16;
                 ret |= p[offset + 3] << 24;
             }
-//            DPRINTF("%s: data offset %08x %08x\n", __func__, offset, ret);
+            trace_pflash_data_read32(offset, ret);
             break;
         }
         break;
@@ -275,8 +275,7 @@ static void pflash_write (pflash_t *pfl, hwaddr offset,
 #endif
         goto reset_flash;
     }
-    DPRINTF("%s: offset " TARGET_FMT_plx " %08x %d %d\n", __func__,
-            offset, value, width, pfl->wcycle);
+    trace_pflash_write(offset, value, width, pfl->wcycle);
     offset &= pfl->chip_len - 1;
 
     DPRINTF("%s: offset " TARGET_FMT_plx " %08x %d\n", __func__,
@@ -346,8 +345,7 @@ static void pflash_write (pflash_t *pfl, hwaddr offset,
             /* We need another unlock sequence */
             goto check_unlock0;
         case 0xA0:
-            DPRINTF("%s: write data offset " TARGET_FMT_plx " %08x %d\n",
-                    __func__, offset, value, width);
+            trace_pflash_data_write(offset, value, width, 0);
             p = pfl->storage;
             if (!pfl->ro) {
                 switch (width) {
@@ -484,6 +482,7 @@ static void pflash_write (pflash_t *pfl, hwaddr offset,
 
     /* Reset flash */
  reset_flash:
+    trace_pflash_reset();
     pfl->bypass = 0;
     pfl->wcycle = 0;
     pfl->cmd = 0;
@@ -494,102 +493,41 @@ static void pflash_write (pflash_t *pfl, hwaddr offset,
     pfl->cmd = 0;
 }
 
-
-static uint32_t pflash_readb_be(void *opaque, hwaddr addr)
+static uint64_t pflash_be_readfn(void *opaque, hwaddr addr, unsigned size)
 {
-    return pflash_read(opaque, addr, 1, 1);
+    return pflash_read(opaque, addr, size, 1);
 }
 
-static uint32_t pflash_readb_le(void *opaque, hwaddr addr)
+static void pflash_be_writefn(void *opaque, hwaddr addr,
+                              uint64_t value, unsigned size)
 {
-    return pflash_read(opaque, addr, 1, 0);
+    pflash_write(opaque, addr, value, size, 1);
 }
 
-static uint32_t pflash_readw_be(void *opaque, hwaddr addr)
+static uint64_t pflash_le_readfn(void *opaque, hwaddr addr, unsigned size)
 {
-    pflash_t *pfl = opaque;
-
-    return pflash_read(pfl, addr, 2, 1);
+    return pflash_read(opaque, addr, size, 0);
 }
 
-static uint32_t pflash_readw_le(void *opaque, hwaddr addr)
+static void pflash_le_writefn(void *opaque, hwaddr addr,
+                              uint64_t value, unsigned size)
 {
-    pflash_t *pfl = opaque;
-
-    return pflash_read(pfl, addr, 2, 0);
-}
-
-static uint32_t pflash_readl_be(void *opaque, hwaddr addr)
-{
-    pflash_t *pfl = opaque;
-
-    return pflash_read(pfl, addr, 4, 1);
-}
-
-static uint32_t pflash_readl_le(void *opaque, hwaddr addr)
-{
-    pflash_t *pfl = opaque;
-
-    return pflash_read(pfl, addr, 4, 0);
-}
-
-static void pflash_writeb_be(void *opaque, hwaddr addr,
-                             uint32_t value)
-{
-    pflash_write(opaque, addr, value, 1, 1);
-}
-
-static void pflash_writeb_le(void *opaque, hwaddr addr,
-                             uint32_t value)
-{
-    pflash_write(opaque, addr, value, 1, 0);
-}
-
-static void pflash_writew_be(void *opaque, hwaddr addr,
-                             uint32_t value)
-{
-    pflash_t *pfl = opaque;
-
-    pflash_write(pfl, addr, value, 2, 1);
-}
-
-static void pflash_writew_le(void *opaque, hwaddr addr,
-                             uint32_t value)
-{
-    pflash_t *pfl = opaque;
-
-    pflash_write(pfl, addr, value, 2, 0);
-}
-
-static void pflash_writel_be(void *opaque, hwaddr addr,
-                             uint32_t value)
-{
-    pflash_t *pfl = opaque;
-
-    pflash_write(pfl, addr, value, 4, 1);
-}
-
-static void pflash_writel_le(void *opaque, hwaddr addr,
-                             uint32_t value)
-{
-    pflash_t *pfl = opaque;
-
-    pflash_write(pfl, addr, value, 4, 0);
+    pflash_write(opaque, addr, value, size, 0);
 }
 
 static const MemoryRegionOps pflash_cfi02_ops_be = {
-    .old_mmio = {
-        .read = { pflash_readb_be, pflash_readw_be, pflash_readl_be, },
-        .write = { pflash_writeb_be, pflash_writew_be, pflash_writel_be, },
-    },
+    .read = pflash_be_readfn,
+    .write = pflash_be_writefn,
+    .valid.min_access_size = 1,
+    .valid.max_access_size = 4,
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
 static const MemoryRegionOps pflash_cfi02_ops_le = {
-    .old_mmio = {
-        .read = { pflash_readb_le, pflash_readw_le, pflash_readl_le, },
-        .write = { pflash_writeb_le, pflash_writew_le, pflash_writel_le, },
-    },
+    .read = pflash_le_readfn,
+    .write = pflash_le_writefn,
+    .valid.min_access_size = 1,
+    .valid.max_access_size = 4,
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 

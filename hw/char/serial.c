@@ -28,8 +28,8 @@
 #include "chardev/char-serial.h"
 #include "qapi/error.h"
 #include "qemu/timer.h"
-#include "exec/address-spaces.h"
 #include "qemu/error-report.h"
+#include "trace.h"
 
 //#define DEBUG_SERIAL
 
@@ -150,12 +150,9 @@ static void serial_update_irq(SerialState *s)
 
 static void serial_update_parameters(SerialState *s)
 {
-    int speed, parity, data_bits, stop_bits, frame_size;
+    float speed;
+    int parity, data_bits, stop_bits, frame_size;
     QEMUSerialSetParams ssp;
-
-    if (s->divider == 0 || s->divider > s->baudbase) {
-        return;
-    }
 
     /* Start bit. */
     frame_size = 1;
@@ -169,14 +166,16 @@ static void serial_update_parameters(SerialState *s)
     } else {
             parity = 'N';
     }
-    if (s->lcr & 0x04)
+    if (s->lcr & 0x04) {
         stop_bits = 2;
-    else
+    } else {
         stop_bits = 1;
+    }
 
     data_bits = (s->lcr & 0x03) + 5;
     frame_size += data_bits + stop_bits;
-    speed = s->baudbase / s->divider;
+    /* Zero divisor should give about 3500 baud */
+    speed = (s->divider == 0) ? 3500 : (float) s->baudbase / s->divider;
     ssp.speed = speed;
     ssp.parity = parity;
     ssp.data_bits = data_bits;
@@ -184,7 +183,7 @@ static void serial_update_parameters(SerialState *s)
     s->char_transmit_time =  (NANOSECONDS_PER_SECOND / speed) * frame_size;
     qemu_chr_fe_ioctl(&s->chr, CHR_IOCTL_SERIAL_SET_PARAMS, &ssp);
 
-    DPRINTF("speed=%d parity=%c data=%d stop=%d\n",
+    DPRINTF("speed=%.2f parity=%c data=%d stop=%d\n",
            speed, parity, data_bits, stop_bits);
 }
 
@@ -261,15 +260,20 @@ static void serial_xmit(SerialState *s)
         if (s->mcr & UART_MCR_LOOP) {
             /* in loopback mode, say that we just received a char */
             serial_receive1(s, &s->tsr, 1);
-        } else if (qemu_chr_fe_write(&s->chr, &s->tsr, 1) != 1 &&
-                   s->tsr_retry < MAX_XMIT_RETRY) {
-            assert(s->watch_tag == 0);
-            s->watch_tag =
-                qemu_chr_fe_add_watch(&s->chr, G_IO_OUT | G_IO_HUP,
-                                      serial_watch_cb, s);
-            if (s->watch_tag > 0) {
-                s->tsr_retry++;
-                return;
+        } else {
+            int rc = qemu_chr_fe_write(&s->chr, &s->tsr, 1);
+
+            if ((rc == 0 ||
+                 (rc == -1 && errno == EAGAIN)) &&
+                s->tsr_retry < MAX_XMIT_RETRY) {
+                assert(s->watch_tag == 0);
+                s->watch_tag =
+                    qemu_chr_fe_add_watch(&s->chr, G_IO_OUT | G_IO_HUP,
+                                          serial_watch_cb, s);
+                if (s->watch_tag > 0) {
+                    s->tsr_retry++;
+                    return;
+                }
             }
         }
         s->tsr_retry = 0;
@@ -336,12 +340,16 @@ static void serial_ioport_write(void *opaque, hwaddr addr, uint64_t val,
     SerialState *s = opaque;
 
     addr &= 7;
-    DPRINTF("write addr=0x%" HWADDR_PRIx " val=0x%" PRIx64 "\n", addr, val);
+    trace_serial_ioport_write(addr, val);
     switch(addr) {
     default:
     case 0:
         if (s->lcr & UART_LCR_DLAB) {
-            s->divider = (s->divider & 0xff00) | val;
+            if (size == 2) {
+                s->divider = (s->divider & 0xff00) | val;
+            } else if (size == 4) {
+                s->divider = val;
+            }
             serial_update_parameters(s);
         } else {
             s->thr = (uint8_t) val;
@@ -549,7 +557,7 @@ static uint64_t serial_ioport_read(void *opaque, hwaddr addr, unsigned size)
         ret = s->scr;
         break;
     }
-    DPRINTF("read addr=0x%" HWADDR_PRIx " val=0x%02x\n", addr, ret);
+    trace_serial_ioport_read(addr, ret);
     return ret;
 }
 
@@ -923,11 +931,6 @@ static int serial_be_change(void *opaque)
 
 void serial_realize_core(SerialState *s, Error **errp)
 {
-    if (!qemu_chr_fe_backend_connected(&s->chr)) {
-        error_setg(errp, "Can't create serial device, empty char device");
-        return;
-    }
-
     s->modem_status_poll = timer_new_ns(QEMU_CLOCK_VIRTUAL, (QEMUTimerCB *) serial_update_msl, s);
 
     s->fifo_timeout_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, (QEMUTimerCB *) fifo_timeout_int, s);

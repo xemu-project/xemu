@@ -38,7 +38,6 @@
 typedef struct SMBusDeviceClass
 {
     I2CSlaveClass parent_class;
-    int (*init)(SMBusDevice *dev);
     void (*quick_cmd)(SMBusDevice *dev, uint8_t read);
     void (*send_byte)(SMBusDevice *dev, uint8_t val);
     uint8_t (*receive_byte)(SMBusDevice *dev);
@@ -77,6 +76,7 @@ int smbus_read_block(I2CBus *bus, uint8_t addr, uint8_t command, uint8_t *data);
 int smbus_write_block(I2CBus *bus, uint8_t addr, uint8_t command, uint8_t *data,
                       int len);
 
+void smbus_eeprom_init_one(I2CBus *smbus, uint8_t address, uint8_t *eeprom_buf);
 void smbus_eeprom_init(I2CBus *smbus, int nb_eeprom,
                        const uint8_t *eeprom_spd, int size);
 

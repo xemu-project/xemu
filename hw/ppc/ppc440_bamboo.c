@@ -12,6 +12,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/units.h"
 #include "qemu/error-report.h"
 #include "qemu-common.h"
 #include "qemu/error-report.h"
@@ -49,7 +50,7 @@
 #define PPC440EP_SDRAM_NR_BANKS 4
 
 static const unsigned int ppc440ep_sdram_bank_sizes[] = {
-    256<<20, 128<<20, 64<<20, 32<<20, 16<<20, 8<<20, 0
+    256 * MiB, 128 * MiB, 64 * MiB, 32 * MiB, 16 * MiB, 8 * MiB, 0
 };
 
 static hwaddr entry;
@@ -151,7 +152,7 @@ static void main_cpu_reset(void *opaque)
     CPUPPCState *env = &cpu->env;
 
     cpu_reset(CPU(cpu));
-    env->gpr[1] = (16<<20) - 8;
+    env->gpr[1] = (16 * MiB) - 8;
     env->gpr[3] = FDT_ADDR;
     env->nip = entry;
 
@@ -238,14 +239,14 @@ static void bamboo_init(MachineState *machine)
                              get_system_io(), 0, PPC440EP_PCI_IOLEN);
     memory_region_add_subregion(get_system_memory(), PPC440EP_PCI_IO, isa);
 
-    if (serial_hds[0] != NULL) {
+    if (serial_hd(0) != NULL) {
         serial_mm_init(address_space_mem, 0xef600300, 0, pic[0],
-                       PPC_SERIAL_MM_BAUDBASE, serial_hds[0],
+                       PPC_SERIAL_MM_BAUDBASE, serial_hd(0),
                        DEVICE_BIG_ENDIAN);
     }
-    if (serial_hds[1] != NULL) {
+    if (serial_hd(1) != NULL) {
         serial_mm_init(address_space_mem, 0xef600400, 0, pic[1],
-                       PPC_SERIAL_MM_BAUDBASE, serial_hds[1],
+                       PPC_SERIAL_MM_BAUDBASE, serial_hd(1),
                        DEVICE_BIG_ENDIAN);
     }
 

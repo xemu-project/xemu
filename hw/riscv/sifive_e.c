@@ -74,26 +74,13 @@ static const struct MemmapEntry {
     [SIFIVE_E_DTIM] =     { 0x80000000,     0x4000 }
 };
 
-static void copy_le32_to_phys(hwaddr pa, uint32_t *rom, size_t len)
-{
-    int i;
-    for (i = 0; i < (len >> 2); i++) {
-        stl_phys(&address_space_memory, pa + (i << 2), rom[i]);
-    }
-}
-
-static uint64_t identity_translate(void *opaque, uint64_t addr)
-{
-    return addr;
-}
-
 static uint64_t load_kernel(const char *kernel_filename)
 {
     uint64_t kernel_entry, kernel_high;
 
-    if (load_elf(kernel_filename, identity_translate, NULL,
+    if (load_elf(kernel_filename, NULL, NULL,
                  &kernel_entry, NULL, &kernel_high,
-                 0, ELF_MACHINE, 1, 0) < 0) {
+                 0, EM_RISCV, 1, 0) < 0) {
         error_report("qemu: could not load kernel '%s'", kernel_filename);
         exit(1);
     }
@@ -115,17 +102,12 @@ static void riscv_sifive_e_init(MachineState *machine)
     SiFiveEState *s = g_new0(SiFiveEState, 1);
     MemoryRegion *sys_mem = get_system_memory();
     MemoryRegion *main_mem = g_new(MemoryRegion, 1);
-    MemoryRegion *mask_rom = g_new(MemoryRegion, 1);
-    MemoryRegion *xip_mem = g_new(MemoryRegion, 1);
+    int i;
 
-    /* Initialize SOC */
-    object_initialize(&s->soc, sizeof(s->soc), TYPE_RISCV_HART_ARRAY);
-    object_property_add_child(OBJECT(machine), "soc", OBJECT(&s->soc),
-                              &error_abort);
-    object_property_set_str(OBJECT(&s->soc), SIFIVE_E_CPU, "cpu-type",
-                            &error_abort);
-    object_property_set_int(OBJECT(&s->soc), smp_cpus, "num-harts",
-                            &error_abort);
+    /* Initialize SoC */
+    object_initialize_child(OBJECT(machine), "soc", &s->soc,
+                            sizeof(s->soc), TYPE_RISCV_E_SOC,
+                            &error_abort, NULL);
     object_property_set_bool(OBJECT(&s->soc), true, "realized",
                             &error_abort);
 
@@ -135,8 +117,51 @@ static void riscv_sifive_e_init(MachineState *machine)
     memory_region_add_subregion(sys_mem,
         memmap[SIFIVE_E_DTIM].base, main_mem);
 
+    /* Mask ROM reset vector */
+    uint32_t reset_vec[2] = {
+        0x204002b7,        /* 0x1000: lui     t0,0x20400 */
+        0x00028067,        /* 0x1004: jr      t0 */
+    };
+
+    /* copy in the reset vector in little_endian byte order */
+    for (i = 0; i < sizeof(reset_vec) >> 2; i++) {
+        reset_vec[i] = cpu_to_le32(reset_vec[i]);
+    }
+    rom_add_blob_fixed_as("mrom.reset", reset_vec, sizeof(reset_vec),
+                          memmap[SIFIVE_E_MROM].base, &address_space_memory);
+
+    if (machine->kernel_filename) {
+        load_kernel(machine->kernel_filename);
+    }
+}
+
+static void riscv_sifive_e_soc_init(Object *obj)
+{
+    SiFiveESoCState *s = RISCV_E_SOC(obj);
+
+    object_initialize_child(obj, "cpus", &s->cpus,
+                            sizeof(s->cpus), TYPE_RISCV_HART_ARRAY,
+                            &error_abort, NULL);
+    object_property_set_str(OBJECT(&s->cpus), SIFIVE_E_CPU, "cpu-type",
+                            &error_abort);
+    object_property_set_int(OBJECT(&s->cpus), smp_cpus, "num-harts",
+                            &error_abort);
+}
+
+static void riscv_sifive_e_soc_realize(DeviceState *dev, Error **errp)
+{
+    const struct MemmapEntry *memmap = sifive_e_memmap;
+
+    SiFiveESoCState *s = RISCV_E_SOC(dev);
+    MemoryRegion *sys_mem = get_system_memory();
+    MemoryRegion *xip_mem = g_new(MemoryRegion, 1);
+    MemoryRegion *mask_rom = g_new(MemoryRegion, 1);
+
+    object_property_set_bool(OBJECT(&s->cpus), true, "realized",
+                            &error_abort);
+
     /* Mask ROM */
-    memory_region_init_ram(mask_rom, NULL, "riscv.sifive.e.mrom",
+    memory_region_init_rom(mask_rom, NULL, "riscv.sifive.e.mrom",
         memmap[SIFIVE_E_MROM].size, &error_fatal);
     memory_region_add_subregion(sys_mem,
         memmap[SIFIVE_E_MROM].base, mask_rom);
@@ -162,13 +187,14 @@ static void riscv_sifive_e_init(MachineState *machine)
     sifive_mmio_emulate(sys_mem, "riscv.sifive.e.gpio0",
         memmap[SIFIVE_E_GPIO0].base, memmap[SIFIVE_E_GPIO0].size);
     sifive_uart_create(sys_mem, memmap[SIFIVE_E_UART0].base,
-        serial_hds[0], SIFIVE_PLIC(s->plic)->irqs[SIFIVE_E_UART0_IRQ]);
+        serial_hd(0), qdev_get_gpio_in(DEVICE(s->plic), SIFIVE_E_UART0_IRQ));
     sifive_mmio_emulate(sys_mem, "riscv.sifive.e.qspi0",
         memmap[SIFIVE_E_QSPI0].base, memmap[SIFIVE_E_QSPI0].size);
     sifive_mmio_emulate(sys_mem, "riscv.sifive.e.pwm0",
         memmap[SIFIVE_E_PWM0].base, memmap[SIFIVE_E_PWM0].size);
     /* sifive_uart_create(sys_mem, memmap[SIFIVE_E_UART1].base,
-        serial_hds[1], SIFIVE_PLIC(s->plic)->irqs[SIFIVE_E_UART1_IRQ]); */
+        serial_hd(1), qdev_get_gpio_in(DEVICE(s->plic),
+                                       SIFIVE_E_UART1_IRQ)); */
     sifive_mmio_emulate(sys_mem, "riscv.sifive.e.qspi1",
         memmap[SIFIVE_E_QSPI1].base, memmap[SIFIVE_E_QSPI1].size);
     sifive_mmio_emulate(sys_mem, "riscv.sifive.e.pwm1",
@@ -183,39 +209,7 @@ static void riscv_sifive_e_init(MachineState *machine)
         memmap[SIFIVE_E_XIP].size, &error_fatal);
     memory_region_set_readonly(xip_mem, true);
     memory_region_add_subregion(sys_mem, memmap[SIFIVE_E_XIP].base, xip_mem);
-
-    /* Mask ROM reset vector */
-    uint32_t reset_vec[2] = {
-        0x204002b7,        /* 0x1000: lui     t0,0x20400 */
-        0x00028067,        /* 0x1004: jr      t0 */
-    };
-
-    /* copy in the reset vector */
-    copy_le32_to_phys(memmap[SIFIVE_E_MROM].base, reset_vec, sizeof(reset_vec));
-    memory_region_set_readonly(mask_rom, true);
-
-    if (machine->kernel_filename) {
-        load_kernel(machine->kernel_filename);
-    }
 }
-
-static int riscv_sifive_e_sysbus_device_init(SysBusDevice *sysbusdev)
-{
-    return 0;
-}
-
-static void riscv_sifive_e_class_init(ObjectClass *klass, void *data)
-{
-    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
-    k->init = riscv_sifive_e_sysbus_device_init;
-}
-
-static const TypeInfo riscv_sifive_e_device = {
-    .name          = TYPE_SIFIVE_E,
-    .parent        = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(SiFiveEState),
-    .class_init    = riscv_sifive_e_class_init,
-};
 
 static void riscv_sifive_e_machine_init(MachineClass *mc)
 {
@@ -226,9 +220,26 @@ static void riscv_sifive_e_machine_init(MachineClass *mc)
 
 DEFINE_MACHINE("sifive_e", riscv_sifive_e_machine_init)
 
-static void riscv_sifive_e_register_types(void)
+static void riscv_sifive_e_soc_class_init(ObjectClass *oc, void *data)
 {
-    type_register_static(&riscv_sifive_e_device);
+    DeviceClass *dc = DEVICE_CLASS(oc);
+
+    dc->realize = riscv_sifive_e_soc_realize;
+    /* Reason: Uses serial_hds in realize function, thus can't be used twice */
+    dc->user_creatable = false;
 }
 
-type_init(riscv_sifive_e_register_types);
+static const TypeInfo riscv_sifive_e_soc_type_info = {
+    .name = TYPE_RISCV_E_SOC,
+    .parent = TYPE_DEVICE,
+    .instance_size = sizeof(SiFiveESoCState),
+    .instance_init = riscv_sifive_e_soc_init,
+    .class_init = riscv_sifive_e_soc_class_init,
+};
+
+static void riscv_sifive_e_soc_register_types(void)
+{
+    type_register_static(&riscv_sifive_e_soc_type_info);
+}
+
+type_init(riscv_sifive_e_soc_register_types)

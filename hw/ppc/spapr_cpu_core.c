@@ -28,8 +28,15 @@ static void spapr_cpu_reset(void *opaque)
     CPUState *cs = CPU(cpu);
     CPUPPCState *env = &cpu->env;
     PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
+    sPAPRCPUState *spapr_cpu = spapr_cpu_state(cpu);
+    target_ulong lpcr;
 
     cpu_reset(cs);
+
+    /* Set compatibility mode to match the boot CPU, which was either set
+     * by the machine reset code or by CAS. This should never fail.
+     */
+    ppc_set_compat(cpu, POWERPC_CPU(first_cpu)->compat_pvr, &error_abort);
 
     /* All CPUs start halted.  CPU0 is unhalted from the machine level
      * reset code and the rest are explicitly started up by the guest
@@ -38,39 +45,53 @@ static void spapr_cpu_reset(void *opaque)
 
     env->spr[SPR_HIOR] = 0;
 
-    /* Disable Power-saving mode Exit Cause exceptions for the CPU.
-     * This can cause issues when rebooting the guest if a secondary
-     * is awaken */
-    if (cs != first_cpu) {
-        env->spr[SPR_LPCR] &= ~pcc->lpcr_pm;
-    }
+    lpcr = env->spr[SPR_LPCR];
 
-    /* Set compatibility mode to match the boot CPU, which was either set
-     * by the machine reset code or by CAS. This should never fail.
+    /* Set emulated LPCR to not send interrupts to hypervisor. Note that
+     * under KVM, the actual HW LPCR will be set differently by KVM itself,
+     * the settings below ensure proper operations with TCG in absence of
+     * a real hypervisor.
+     *
+     * Clearing VPM0 will also cause us to use RMOR in mmu-hash64.c for
+     * real mode accesses, which thankfully defaults to 0 and isn't
+     * accessible in guest mode.
+     *
+     * Disable Power-saving mode Exit Cause exceptions for the CPU, so
+     * we don't get spurious wakups before an RTAS start-cpu call.
      */
-    if (cs != first_cpu) {
-        ppc_set_compat(cpu, POWERPC_CPU(first_cpu)->compat_pvr, &error_abort);
-    }
+    lpcr &= ~(LPCR_VPM0 | LPCR_VPM1 | LPCR_ISL | LPCR_KBV | pcc->lpcr_pm);
+    lpcr |= LPCR_LPES0 | LPCR_LPES1;
+
+    /* Set RMLS to the max (ie, 16G) */
+    lpcr &= ~LPCR_RMLS;
+    lpcr |= 1ull << LPCR_RMLS_SHIFT;
+
+    ppc_store_lpcr(cpu, lpcr);
+
+    /* Set a full AMOR so guest can use the AMR as it sees fit */
+    env->spr[SPR_AMOR] = 0xffffffffffffffffull;
+
+    spapr_cpu->vpa_addr = 0;
+    spapr_cpu->slb_shadow_addr = 0;
+    spapr_cpu->slb_shadow_size = 0;
+    spapr_cpu->dtl_addr = 0;
+    spapr_cpu->dtl_size = 0;
+
+    spapr_caps_cpu_apply(SPAPR_MACHINE(qdev_get_machine()), cpu);
+
+    kvm_check_mmu(cpu, &error_fatal);
 }
 
-static void spapr_cpu_destroy(PowerPCCPU *cpu)
+void spapr_cpu_set_entry_state(PowerPCCPU *cpu, target_ulong nip, target_ulong r3)
 {
-    qemu_unregister_reset(spapr_cpu_reset, cpu);
-}
-
-static void spapr_cpu_init(sPAPRMachineState *spapr, PowerPCCPU *cpu,
-                           Error **errp)
-{
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
     CPUPPCState *env = &cpu->env;
 
-    /* Set time-base frequency to 512 MHz */
-    cpu_ppc_tb_init(env, SPAPR_TIMEBASE_FREQ);
-
-    /* Enable PAPR mode in TCG or KVM */
-    cpu_ppc_set_papr(cpu, PPC_VIRTUAL_HYPERVISOR(spapr));
-
-    qemu_register_reset(spapr_cpu_reset, cpu);
-    spapr_cpu_reset(cpu);
+    env->nip = nip;
+    env->gpr[3] = r3;
+    CPU(cpu)->halted = 0;
+    /* Enable Power-saving mode Exit Cause exceptions */
+    ppc_store_lpcr(cpu, env->spr[SPR_LPCR] | pcc->lpcr_pm);
 }
 
 /*
@@ -92,53 +113,189 @@ const char *spapr_get_cpu_core_type(const char *cpu_type)
     return object_class_get_name(oc);
 }
 
-static void spapr_cpu_core_unrealizefn(DeviceState *dev, Error **errp)
+static void spapr_unrealize_vcpu(PowerPCCPU *cpu)
+{
+    qemu_unregister_reset(spapr_cpu_reset, cpu);
+    object_unparent(cpu->intc);
+    cpu_remove_sync(CPU(cpu));
+    object_unparent(OBJECT(cpu));
+}
+
+static void spapr_cpu_core_unrealize(DeviceState *dev, Error **errp)
 {
     sPAPRCPUCore *sc = SPAPR_CPU_CORE(OBJECT(dev));
     CPUCore *cc = CPU_CORE(dev);
     int i;
 
     for (i = 0; i < cc->nr_threads; i++) {
-        Object *obj = OBJECT(sc->threads[i]);
-        DeviceState *dev = DEVICE(obj);
-        CPUState *cs = CPU(dev);
-        PowerPCCPU *cpu = POWERPC_CPU(cs);
-
-        spapr_cpu_destroy(cpu);
-        object_unparent(cpu->intc);
-        cpu_remove_sync(cs);
-        object_unparent(obj);
+        spapr_unrealize_vcpu(sc->threads[i]);
     }
     g_free(sc->threads);
 }
 
-static void spapr_cpu_core_realize_child(Object *child,
-                                         sPAPRMachineState *spapr, Error **errp)
+static bool slb_shadow_needed(void *opaque)
 {
+    sPAPRCPUState *spapr_cpu = opaque;
+
+    return spapr_cpu->slb_shadow_addr != 0;
+}
+
+static const VMStateDescription vmstate_spapr_cpu_slb_shadow = {
+    .name = "spapr_cpu/vpa/slb_shadow",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = slb_shadow_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT64(slb_shadow_addr, sPAPRCPUState),
+        VMSTATE_UINT64(slb_shadow_size, sPAPRCPUState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static bool dtl_needed(void *opaque)
+{
+    sPAPRCPUState *spapr_cpu = opaque;
+
+    return spapr_cpu->dtl_addr != 0;
+}
+
+static const VMStateDescription vmstate_spapr_cpu_dtl = {
+    .name = "spapr_cpu/vpa/dtl",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = dtl_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT64(dtl_addr, sPAPRCPUState),
+        VMSTATE_UINT64(dtl_size, sPAPRCPUState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static bool vpa_needed(void *opaque)
+{
+    sPAPRCPUState *spapr_cpu = opaque;
+
+    return spapr_cpu->vpa_addr != 0;
+}
+
+static const VMStateDescription vmstate_spapr_cpu_vpa = {
+    .name = "spapr_cpu/vpa",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = vpa_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT64(vpa_addr, sPAPRCPUState),
+        VMSTATE_END_OF_LIST()
+    },
+    .subsections = (const VMStateDescription * []) {
+        &vmstate_spapr_cpu_slb_shadow,
+        &vmstate_spapr_cpu_dtl,
+        NULL
+    }
+};
+
+static const VMStateDescription vmstate_spapr_cpu_state = {
+    .name = "spapr_cpu",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_END_OF_LIST()
+    },
+    .subsections = (const VMStateDescription * []) {
+        &vmstate_spapr_cpu_vpa,
+        NULL
+    }
+};
+
+static void spapr_realize_vcpu(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+                               Error **errp)
+{
+    CPUPPCState *env = &cpu->env;
     Error *local_err = NULL;
-    CPUState *cs = CPU(child);
-    PowerPCCPU *cpu = POWERPC_CPU(cs);
 
-    object_property_set_bool(child, true, "realized", &local_err);
+    object_property_set_bool(OBJECT(cpu), true, "realized", &local_err);
     if (local_err) {
         goto error;
     }
 
-    spapr_cpu_init(spapr, cpu, &local_err);
-    if (local_err) {
-        goto error;
-    }
+    /* Set time-base frequency to 512 MHz */
+    cpu_ppc_tb_init(env, SPAPR_TIMEBASE_FREQ);
 
-    cpu->intc = icp_create(child, spapr->icp_type, XICS_FABRIC(spapr),
+    cpu_ppc_set_vhyp(cpu, PPC_VIRTUAL_HYPERVISOR(spapr));
+    kvmppc_set_papr(cpu);
+
+    qemu_register_reset(spapr_cpu_reset, cpu);
+    spapr_cpu_reset(cpu);
+
+    cpu->intc = icp_create(OBJECT(cpu), spapr->icp_type, XICS_FABRIC(spapr),
                            &local_err);
     if (local_err) {
-        goto error;
+        goto error_unregister;
     }
 
     return;
 
+error_unregister:
+    qemu_unregister_reset(spapr_cpu_reset, cpu);
+    cpu_remove_sync(CPU(cpu));
 error:
     error_propagate(errp, local_err);
+}
+
+static PowerPCCPU *spapr_create_vcpu(sPAPRCPUCore *sc, int i, Error **errp)
+{
+    sPAPRCPUCoreClass *scc = SPAPR_CPU_CORE_GET_CLASS(sc);
+    CPUCore *cc = CPU_CORE(sc);
+    Object *obj;
+    char *id;
+    CPUState *cs;
+    PowerPCCPU *cpu;
+    Error *local_err = NULL;
+
+    obj = object_new(scc->cpu_type);
+
+    cs = CPU(obj);
+    cpu = POWERPC_CPU(obj);
+    cs->cpu_index = cc->core_id + i;
+    spapr_set_vcpu_id(cpu, cs->cpu_index, &local_err);
+    if (local_err) {
+        goto err;
+    }
+
+    cpu->node_id = sc->node_id;
+
+    id = g_strdup_printf("thread[%d]", i);
+    object_property_add_child(OBJECT(sc), id, obj, &local_err);
+    g_free(id);
+    if (local_err) {
+        goto err;
+    }
+
+    cpu->machine_data = g_new0(sPAPRCPUState, 1);
+    if (!sc->pre_3_0_migration) {
+        vmstate_register(NULL, cs->cpu_index, &vmstate_spapr_cpu_state,
+                         cpu->machine_data);
+    }
+
+    object_unref(obj);
+    return cpu;
+
+err:
+    object_unref(obj);
+    error_propagate(errp, local_err);
+    return NULL;
+}
+
+static void spapr_delete_vcpu(PowerPCCPU *cpu, sPAPRCPUCore *sc)
+{
+    sPAPRCPUState *spapr_cpu = spapr_cpu_state(cpu);
+
+    if (!sc->pre_3_0_migration) {
+        vmstate_unregister(NULL, &vmstate_spapr_cpu_state, cpu->machine_data);
+    }
+    cpu->machine_data = NULL;
+    g_free(spapr_cpu);
+    object_unparent(OBJECT(cpu));
 }
 
 static void spapr_cpu_core_realize(DeviceState *dev, Error **errp)
@@ -150,10 +307,8 @@ static void spapr_cpu_core_realize(DeviceState *dev, Error **errp)
         (sPAPRMachineState *) object_dynamic_cast(qdev_get_machine(),
                                                   TYPE_SPAPR_MACHINE);
     sPAPRCPUCore *sc = SPAPR_CPU_CORE(OBJECT(dev));
-    sPAPRCPUCoreClass *scc = SPAPR_CPU_CORE_GET_CLASS(OBJECT(dev));
     CPUCore *cc = CPU_CORE(OBJECT(dev));
     Error *local_err = NULL;
-    Object *obj;
     int i, j;
 
     if (!spapr) {
@@ -163,46 +318,27 @@ static void spapr_cpu_core_realize(DeviceState *dev, Error **errp)
 
     sc->threads = g_new(PowerPCCPU *, cc->nr_threads);
     for (i = 0; i < cc->nr_threads; i++) {
-        char id[32];
-        CPUState *cs;
-        PowerPCCPU *cpu;
-
-        obj = object_new(scc->cpu_type);
-
-        cs = CPU(obj);
-        cpu = sc->threads[i] = POWERPC_CPU(obj);
-        cs->cpu_index = cc->core_id + i;
-        spapr_set_vcpu_id(cpu, cs->cpu_index, &local_err);
+        sc->threads[i] = spapr_create_vcpu(sc, i, &local_err);
         if (local_err) {
             goto err;
         }
-
-
-        /* Set NUMA node for the threads belonged to core  */
-        cpu->node_id = sc->node_id;
-
-        snprintf(id, sizeof(id), "thread[%d]", i);
-        object_property_add_child(OBJECT(sc), id, obj, &local_err);
-        if (local_err) {
-            goto err;
-        }
-        object_unref(obj);
     }
 
     for (j = 0; j < cc->nr_threads; j++) {
-        obj = OBJECT(sc->threads[j]);
-
-        spapr_cpu_core_realize_child(obj, spapr, &local_err);
+        spapr_realize_vcpu(sc->threads[j], spapr, &local_err);
         if (local_err) {
-            goto err;
+            goto err_unrealize;
         }
     }
     return;
 
+err_unrealize:
+    while (--j >= 0) {
+        spapr_unrealize_vcpu(sc->threads[j]);
+    }
 err:
     while (--i >= 0) {
-        obj = OBJECT(sc->threads[i]);
-        object_unparent(obj);
+        spapr_delete_vcpu(sc->threads[i], sc);
     }
     g_free(sc->threads);
     error_propagate(errp, local_err);
@@ -210,6 +346,8 @@ err:
 
 static Property spapr_cpu_core_properties[] = {
     DEFINE_PROP_INT32("node-id", sPAPRCPUCore, node_id, CPU_UNSET_NUMA_NODE_ID),
+    DEFINE_PROP_BOOL("pre-3.0-migration", sPAPRCPUCore, pre_3_0_migration,
+                     false),
     DEFINE_PROP_END_OF_LIST()
 };
 
@@ -219,7 +357,7 @@ static void spapr_cpu_core_class_init(ObjectClass *oc, void *data)
     sPAPRCPUCoreClass *scc = SPAPR_CPU_CORE_CLASS(oc);
 
     dc->realize = spapr_cpu_core_realize;
-    dc->unrealize = spapr_cpu_core_unrealizefn;
+    dc->unrealize = spapr_cpu_core_unrealize;
     dc->props = spapr_cpu_core_properties;
     scc->cpu_type = data;
 }

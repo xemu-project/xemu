@@ -26,7 +26,7 @@
 #include "qapi/error.h"
 #include "qemu-common.h"
 #include "block/block_int.h"
-#include "block/qcow2.h"
+#include "qcow2.h"
 #include "qemu/range.h"
 #include "qemu/bswap.h"
 #include "qemu/cutils.h"
@@ -734,7 +734,7 @@ void qcow2_process_discards(BlockDriverState *bs, int ret)
 
         /* Discard is optional, ignore the return value */
         if (ret >= 0) {
-            bdrv_pdiscard(bs->file->bs, d->offset, d->bytes);
+            bdrv_pdiscard(bs->file, d->offset, d->bytes);
         }
 
         g_free(d);
@@ -1577,9 +1577,9 @@ static int check_refcounts_l2(BlockDriverState *bs, BdrvCheckResult *res,
         case QCOW2_CLUSTER_COMPRESSED:
             /* Compressed clusters don't have QCOW_OFLAG_COPIED */
             if (l2_entry & QCOW_OFLAG_COPIED) {
-                fprintf(stderr, "ERROR: cluster %" PRId64 ": "
+                fprintf(stderr, "ERROR: coffset=0x%" PRIx64 ": "
                     "copied flag must never be set for compressed "
-                    "clusters\n", l2_entry >> s->cluster_bits);
+                    "clusters\n", l2_entry & s->cluster_offset_mask);
                 l2_entry &= ~QCOW_OFLAG_COPIED;
                 res->corruptions++;
             }
@@ -1799,6 +1799,19 @@ static int check_oflag_copied(BlockDriverState *bs, BdrvCheckResult *res,
     int ret;
     uint64_t refcount;
     int i, j;
+    bool repair;
+
+    if (fix & BDRV_FIX_ERRORS) {
+        /* Always repair */
+        repair = true;
+    } else if (fix & BDRV_FIX_LEAKS) {
+        /* Repair only if that seems safe: This function is always
+         * called after the refcounts have been fixed, so the refcount
+         * is accurate if that repair was successful */
+        repair = !res->check_errors && !res->corruptions && !res->leaks;
+    } else {
+        repair = false;
+    }
 
     for (i = 0; i < s->l1_size; i++) {
         uint64_t l1_entry = s->l1_table[i];
@@ -1818,10 +1831,8 @@ static int check_oflag_copied(BlockDriverState *bs, BdrvCheckResult *res,
         if ((refcount == 1) != ((l1_entry & QCOW_OFLAG_COPIED) != 0)) {
             fprintf(stderr, "%s OFLAG_COPIED L2 cluster: l1_index=%d "
                     "l1_entry=%" PRIx64 " refcount=%" PRIu64 "\n",
-                    fix & BDRV_FIX_ERRORS ? "Repairing" :
-                                            "ERROR",
-                    i, l1_entry, refcount);
-            if (fix & BDRV_FIX_ERRORS) {
+                    repair ? "Repairing" : "ERROR", i, l1_entry, refcount);
+            if (repair) {
                 s->l1_table[i] = refcount == 1
                                ? l1_entry |  QCOW_OFLAG_COPIED
                                : l1_entry & ~QCOW_OFLAG_COPIED;
@@ -1862,10 +1873,8 @@ static int check_oflag_copied(BlockDriverState *bs, BdrvCheckResult *res,
                 if ((refcount == 1) != ((l2_entry & QCOW_OFLAG_COPIED) != 0)) {
                     fprintf(stderr, "%s OFLAG_COPIED data cluster: "
                             "l2_entry=%" PRIx64 " refcount=%" PRIu64 "\n",
-                            fix & BDRV_FIX_ERRORS ? "Repairing" :
-                                                    "ERROR",
-                            l2_entry, refcount);
-                    if (fix & BDRV_FIX_ERRORS) {
+                            repair ? "Repairing" : "ERROR", l2_entry, refcount);
+                    if (repair) {
                         l2_table[j] = cpu_to_be64(refcount == 1
                                     ? l2_entry |  QCOW_OFLAG_COPIED
                                     : l2_entry & ~QCOW_OFLAG_COPIED);
@@ -2693,6 +2702,16 @@ int qcow2_check_metadata_overlap(BlockDriverState *bs, int ign, int64_t offset,
             }
 
             g_free(l1);
+        }
+    }
+
+    if ((chk & QCOW2_OL_BITMAP_DIRECTORY) &&
+        (s->autoclear_features & QCOW2_AUTOCLEAR_BITMAPS))
+    {
+        if (overlaps_with(s->bitmap_directory_offset,
+                          s->bitmap_directory_size))
+        {
+            return QCOW2_OL_BITMAP_DIRECTORY;
         }
     }
 

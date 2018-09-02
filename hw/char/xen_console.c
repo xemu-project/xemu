@@ -201,7 +201,7 @@ static int con_init(struct XenDevice *xendev)
     /* no Xen override, use qemu output device */
     if (output == NULL) {
         if (con->xendev.dev) {
-            qemu_chr_fe_init(&con->chr, serial_hds[con->xendev.dev],
+            qemu_chr_fe_init(&con->chr, serial_hd(con->xendev.dev),
                              &error_abort);
         }
     } else {
@@ -233,12 +233,11 @@ static int con_initialise(struct XenDevice *xendev)
     if (!xendev->dev) {
         xen_pfn_t mfn = con->ring_ref;
         con->sring = xenforeignmemory_map(xen_fmem, con->xendev.dom,
-                                          PROT_READ|PROT_WRITE,
+                                          PROT_READ | PROT_WRITE,
                                           1, &mfn, NULL);
     } else {
-        con->sring = xengnttab_map_grant_ref(xendev->gnttabdev, con->xendev.dom,
-                                             con->ring_ref,
-                                             PROT_READ|PROT_WRITE);
+        con->sring = xen_be_map_grant_ref(xendev, con->ring_ref,
+                                          PROT_READ | PROT_WRITE);
     }
     if (!con->sring)
 	return -1;
@@ -267,7 +266,7 @@ static void con_disconnect(struct XenDevice *xendev)
         if (!xendev->dev) {
             xenforeignmemory_unmap(xen_fmem, con->sring, 1);
         } else {
-            xengnttab_unmap(xendev->gnttabdev, con->sring, 1);
+            xen_be_unmap_grant_ref(xendev, con->sring);
         }
         con->sring = NULL;
     }

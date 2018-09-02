@@ -39,7 +39,7 @@
             '*enum1': 'EnumOne' } }   # intentional forward reference
 
 { 'enum': 'EnumOne',
-  'data': [ 'value1', 'value2', 'value3' ] }
+  'data': [ 'value1', 'value2', 'value3', 'value4' ] }
 
 { 'struct': 'UserDefZero',
   'data': { 'integer': 'int' } }
@@ -55,6 +55,9 @@
 { 'struct': 'UserDefTwo',
   'data': { 'string0': 'str',
             'dict1': 'UserDefTwoDict' } }
+
+{ 'struct': 'UserDefThree',
+  'data': { 'string0': 'str' } }
 
 # dummy struct to force generation of array types not otherwise mentioned
 { 'struct': 'ForceArrays',
@@ -76,7 +79,9 @@
   'discriminator': 'enum1',
   'data': { 'value1' : 'UserDefA',
             'value2' : 'UserDefB',
-            'value3' : 'UserDefB' } }
+            'value3' : 'UserDefB'
+            # 'value4' defaults to empty
+  } }
 
 { 'struct': 'UserDefUnionBase',
   'base': 'UserDefZero',
@@ -139,8 +144,8 @@
 { 'command': 'boxed-struct', 'boxed': true, 'data': 'UserDefZero' }
 { 'command': 'boxed-union', 'data': 'UserDefNativeListUnion', 'boxed': true }
 
-# Smoke test on Out-Of-Band
-{ 'command': 'an-oob-command', 'allow-oob': true }
+# Smoke test on out-of-band and allow-preconfig-test
+{ 'command': 'test-flags-command', 'allow-oob': true, 'allow-preconfig': true }
 
 # For testing integer range flattening in opts-visitor. The following schema
 # corresponds to the option format:
@@ -191,3 +196,26 @@
   'data': { 'a': ['__org.qemu_x-Enum'], 'b': ['__org.qemu_x-Struct'],
             'c': '__org.qemu_x-Union2', 'd': '__org.qemu_x-Alt' },
   'returns': '__org.qemu_x-Union1' }
+
+# test 'if' condition handling
+
+{ 'struct': 'TestIfStruct', 'data': { 'foo': 'int' },
+  'if': 'defined(TEST_IF_STRUCT)' }
+
+{ 'enum': 'TestIfEnum', 'data': [ 'foo', 'bar' ],
+  'if': 'defined(TEST_IF_ENUM)' }
+
+{ 'union': 'TestIfUnion', 'data': { 'foo': 'TestStruct' },
+  'if': 'defined(TEST_IF_UNION) && defined(TEST_IF_STRUCT)' }
+
+{ 'alternate': 'TestIfAlternate', 'data': { 'foo': 'int', 'bar': 'TestStruct' },
+  'if': 'defined(TEST_IF_ALT) && defined(TEST_IF_STRUCT)' }
+
+{ 'command': 'TestIfCmd', 'data': { 'foo': 'TestIfStruct' },
+  'returns': 'UserDefThree',
+  'if': ['defined(TEST_IF_CMD)', 'defined(TEST_IF_STRUCT)'] }
+
+{ 'command': 'TestCmdReturnDefThree', 'returns': 'UserDefThree' }
+
+{ 'event': 'TestIfEvent', 'data': { 'foo': 'TestIfStruct' },
+  'if': 'defined(TEST_IF_EVT) && defined(TEST_IF_STRUCT)' }

@@ -8,39 +8,44 @@
 #include "exec/exec-all.h"
 #include "helper_regs.h"
 #include "hw/ppc/spapr.h"
+#include "hw/ppc/spapr_cpu_core.h"
 #include "mmu-hash64.h"
 #include "cpu-models.h"
 #include "trace.h"
 #include "kvm_ppc.h"
 #include "hw/ppc/spapr_ovec.h"
 #include "mmu-book3s-v3.h"
+#include "hw/mem/memory-device.h"
 
-struct SPRSyncState {
-    int spr;
+struct LPCRSyncState {
     target_ulong value;
     target_ulong mask;
 };
 
-static void do_spr_sync(CPUState *cs, run_on_cpu_data arg)
+static void do_lpcr_sync(CPUState *cs, run_on_cpu_data arg)
 {
-    struct SPRSyncState *s = arg.host_ptr;
+    struct LPCRSyncState *s = arg.host_ptr;
     PowerPCCPU *cpu = POWERPC_CPU(cs);
     CPUPPCState *env = &cpu->env;
+    target_ulong lpcr;
 
     cpu_synchronize_state(cs);
-    env->spr[s->spr] &= ~s->mask;
-    env->spr[s->spr] |= s->value;
+    lpcr = env->spr[SPR_LPCR];
+    lpcr &= ~s->mask;
+    lpcr |= s->value;
+    ppc_store_lpcr(cpu, lpcr);
 }
 
-static void set_spr(CPUState *cs, int spr, target_ulong value,
-                    target_ulong mask)
+static void set_all_lpcrs(target_ulong value, target_ulong mask)
 {
-    struct SPRSyncState s = {
-        .spr = spr,
+    CPUState *cs;
+    struct LPCRSyncState s = {
         .value = value,
         .mask = mask
     };
-    run_on_cpu(cs, do_spr_sync, RUN_ON_CPU_HOST_PTR(&s));
+    CPU_FOREACH(cs) {
+        run_on_cpu(cs, do_lpcr_sync, RUN_ON_CPU_HOST_PTR(&s));
+    }
 }
 
 static bool has_spr(PowerPCCPU *cpu, int spr)
@@ -63,13 +68,13 @@ static inline bool valid_ptex(PowerPCCPU *cpu, target_ulong ptex)
 static bool is_ram_address(sPAPRMachineState *spapr, hwaddr addr)
 {
     MachineState *machine = MACHINE(spapr);
-    MemoryHotplugState *hpms = &spapr->hotplug_memory;
+    DeviceMemoryState *dms = machine->device_memory;
 
     if (addr < machine->ram_size) {
         return true;
     }
-    if ((addr >= hpms->base)
-        && ((addr - hpms->base) < memory_region_size(&hpms->mr))) {
+    if ((addr >= dms->base)
+        && ((addr - dms->base) < memory_region_size(&dms->mr))) {
         return true;
     }
 
@@ -904,9 +909,11 @@ unmap_out:
 #define VPA_SHARED_PROC_OFFSET 0x9
 #define VPA_SHARED_PROC_VAL    0x2
 
-static target_ulong register_vpa(CPUPPCState *env, target_ulong vpa)
+static target_ulong register_vpa(PowerPCCPU *cpu, target_ulong vpa)
 {
-    CPUState *cs = CPU(ppc_env_get_cpu(env));
+    CPUState *cs = CPU(cpu);
+    CPUPPCState *env = &cpu->env;
+    sPAPRCPUState *spapr_cpu = spapr_cpu_state(cpu);
     uint16_t size;
     uint8_t tmp;
 
@@ -931,32 +938,34 @@ static target_ulong register_vpa(CPUPPCState *env, target_ulong vpa)
         return H_PARAMETER;
     }
 
-    env->vpa_addr = vpa;
+    spapr_cpu->vpa_addr = vpa;
 
-    tmp = ldub_phys(cs->as, env->vpa_addr + VPA_SHARED_PROC_OFFSET);
+    tmp = ldub_phys(cs->as, spapr_cpu->vpa_addr + VPA_SHARED_PROC_OFFSET);
     tmp |= VPA_SHARED_PROC_VAL;
-    stb_phys(cs->as, env->vpa_addr + VPA_SHARED_PROC_OFFSET, tmp);
+    stb_phys(cs->as, spapr_cpu->vpa_addr + VPA_SHARED_PROC_OFFSET, tmp);
 
     return H_SUCCESS;
 }
 
-static target_ulong deregister_vpa(CPUPPCState *env, target_ulong vpa)
+static target_ulong deregister_vpa(PowerPCCPU *cpu, target_ulong vpa)
 {
-    if (env->slb_shadow_addr) {
+    sPAPRCPUState *spapr_cpu = spapr_cpu_state(cpu);
+
+    if (spapr_cpu->slb_shadow_addr) {
         return H_RESOURCE;
     }
 
-    if (env->dtl_addr) {
+    if (spapr_cpu->dtl_addr) {
         return H_RESOURCE;
     }
 
-    env->vpa_addr = 0;
+    spapr_cpu->vpa_addr = 0;
     return H_SUCCESS;
 }
 
-static target_ulong register_slb_shadow(CPUPPCState *env, target_ulong addr)
+static target_ulong register_slb_shadow(PowerPCCPU *cpu, target_ulong addr)
 {
-    CPUState *cs = CPU(ppc_env_get_cpu(env));
+    sPAPRCPUState *spapr_cpu = spapr_cpu_state(cpu);
     uint32_t size;
 
     if (addr == 0) {
@@ -964,7 +973,7 @@ static target_ulong register_slb_shadow(CPUPPCState *env, target_ulong addr)
         return H_HARDWARE;
     }
 
-    size = ldl_be_phys(cs->as, addr + 0x4);
+    size = ldl_be_phys(CPU(cpu)->as, addr + 0x4);
     if (size < 0x8) {
         return H_PARAMETER;
     }
@@ -973,26 +982,28 @@ static target_ulong register_slb_shadow(CPUPPCState *env, target_ulong addr)
         return H_PARAMETER;
     }
 
-    if (!env->vpa_addr) {
+    if (!spapr_cpu->vpa_addr) {
         return H_RESOURCE;
     }
 
-    env->slb_shadow_addr = addr;
-    env->slb_shadow_size = size;
+    spapr_cpu->slb_shadow_addr = addr;
+    spapr_cpu->slb_shadow_size = size;
 
     return H_SUCCESS;
 }
 
-static target_ulong deregister_slb_shadow(CPUPPCState *env, target_ulong addr)
+static target_ulong deregister_slb_shadow(PowerPCCPU *cpu, target_ulong addr)
 {
-    env->slb_shadow_addr = 0;
-    env->slb_shadow_size = 0;
+    sPAPRCPUState *spapr_cpu = spapr_cpu_state(cpu);
+
+    spapr_cpu->slb_shadow_addr = 0;
+    spapr_cpu->slb_shadow_size = 0;
     return H_SUCCESS;
 }
 
-static target_ulong register_dtl(CPUPPCState *env, target_ulong addr)
+static target_ulong register_dtl(PowerPCCPU *cpu, target_ulong addr)
 {
-    CPUState *cs = CPU(ppc_env_get_cpu(env));
+    sPAPRCPUState *spapr_cpu = spapr_cpu_state(cpu);
     uint32_t size;
 
     if (addr == 0) {
@@ -1000,26 +1011,28 @@ static target_ulong register_dtl(CPUPPCState *env, target_ulong addr)
         return H_HARDWARE;
     }
 
-    size = ldl_be_phys(cs->as, addr + 0x4);
+    size = ldl_be_phys(CPU(cpu)->as, addr + 0x4);
 
     if (size < 48) {
         return H_PARAMETER;
     }
 
-    if (!env->vpa_addr) {
+    if (!spapr_cpu->vpa_addr) {
         return H_RESOURCE;
     }
 
-    env->dtl_addr = addr;
-    env->dtl_size = size;
+    spapr_cpu->dtl_addr = addr;
+    spapr_cpu->dtl_size = size;
 
     return H_SUCCESS;
 }
 
-static target_ulong deregister_dtl(CPUPPCState *env, target_ulong addr)
+static target_ulong deregister_dtl(PowerPCCPU *cpu, target_ulong addr)
 {
-    env->dtl_addr = 0;
-    env->dtl_size = 0;
+    sPAPRCPUState *spapr_cpu = spapr_cpu_state(cpu);
+
+    spapr_cpu->dtl_addr = 0;
+    spapr_cpu->dtl_size = 0;
 
     return H_SUCCESS;
 }
@@ -1031,38 +1044,36 @@ static target_ulong h_register_vpa(PowerPCCPU *cpu, sPAPRMachineState *spapr,
     target_ulong procno = args[1];
     target_ulong vpa = args[2];
     target_ulong ret = H_PARAMETER;
-    CPUPPCState *tenv;
     PowerPCCPU *tcpu;
 
     tcpu = spapr_find_cpu(procno);
     if (!tcpu) {
         return H_PARAMETER;
     }
-    tenv = &tcpu->env;
 
     switch (flags) {
     case FLAGS_REGISTER_VPA:
-        ret = register_vpa(tenv, vpa);
+        ret = register_vpa(tcpu, vpa);
         break;
 
     case FLAGS_DEREGISTER_VPA:
-        ret = deregister_vpa(tenv, vpa);
+        ret = deregister_vpa(tcpu, vpa);
         break;
 
     case FLAGS_REGISTER_SLBSHADOW:
-        ret = register_slb_shadow(tenv, vpa);
+        ret = register_slb_shadow(tcpu, vpa);
         break;
 
     case FLAGS_DEREGISTER_SLBSHADOW:
-        ret = deregister_slb_shadow(tenv, vpa);
+        ret = deregister_slb_shadow(tcpu, vpa);
         break;
 
     case FLAGS_REGISTER_DTL:
-        ret = register_dtl(tenv, vpa);
+        ret = register_dtl(tcpu, vpa);
         break;
 
     case FLAGS_DEREGISTER_DTL:
-        ret = deregister_dtl(tenv, vpa);
+        ret = deregister_dtl(tcpu, vpa);
         break;
     }
 
@@ -1235,8 +1246,6 @@ static target_ulong h_set_mode_resource_le(PowerPCCPU *cpu,
                                            target_ulong value1,
                                            target_ulong value2)
 {
-    CPUState *cs;
-
     if (value1) {
         return H_P3;
     }
@@ -1246,16 +1255,12 @@ static target_ulong h_set_mode_resource_le(PowerPCCPU *cpu,
 
     switch (mflags) {
     case H_SET_MODE_ENDIAN_BIG:
-        CPU_FOREACH(cs) {
-            set_spr(cs, SPR_LPCR, 0, LPCR_ILE);
-        }
+        set_all_lpcrs(0, LPCR_ILE);
         spapr_pci_switch_vga(true);
         return H_SUCCESS;
 
     case H_SET_MODE_ENDIAN_LITTLE:
-        CPU_FOREACH(cs) {
-            set_spr(cs, SPR_LPCR, LPCR_ILE, LPCR_ILE);
-        }
+        set_all_lpcrs(LPCR_ILE, LPCR_ILE);
         spapr_pci_switch_vga(false);
         return H_SUCCESS;
     }
@@ -1268,7 +1273,6 @@ static target_ulong h_set_mode_resource_addr_trans_mode(PowerPCCPU *cpu,
                                                         target_ulong value1,
                                                         target_ulong value2)
 {
-    CPUState *cs;
     PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
 
     if (!(pcc->insns_flags2 & PPC2_ISA207S)) {
@@ -1285,9 +1289,7 @@ static target_ulong h_set_mode_resource_addr_trans_mode(PowerPCCPU *cpu,
         return H_UNSUPPORTED_FLAG;
     }
 
-    CPU_FOREACH(cs) {
-        set_spr(cs, SPR_LPCR, mflags << LPCR_AIL_SHIFT, LPCR_AIL);
-    }
+    set_all_lpcrs(mflags << LPCR_AIL_SHIFT, LPCR_AIL);
 
     return H_SUCCESS;
 }
@@ -1364,7 +1366,6 @@ static target_ulong h_register_process_table(PowerPCCPU *cpu,
                                              target_ulong opcode,
                                              target_ulong *args)
 {
-    CPUState *cs;
     target_ulong flags = args[0];
     target_ulong proc_tbl = args[1];
     target_ulong page_size = args[2];
@@ -1422,12 +1423,9 @@ static target_ulong h_register_process_table(PowerPCCPU *cpu,
     spapr->patb_entry = cproc; /* Save new process table */
 
     /* Update the UPRT and GTSE bits in the LPCR for all cpus */
-    CPU_FOREACH(cs) {
-        set_spr(cs, SPR_LPCR,
-                ((flags & (FLAG_RADIX | FLAG_HASH_PROC_TBL)) ? LPCR_UPRT : 0) |
-                ((flags & FLAG_GTSE) ? LPCR_GTSE : 0),
-                LPCR_UPRT | LPCR_GTSE);
-    }
+    set_all_lpcrs(((flags & (FLAG_RADIX | FLAG_HASH_PROC_TBL)) ? LPCR_UPRT : 0) |
+                  ((flags & FLAG_GTSE) ? LPCR_GTSE : 0),
+                  LPCR_UPRT | LPCR_GTSE);
 
     if (kvm_enabled()) {
         return kvmppc_configure_v3_mmu(cpu, flags & FLAG_RADIX,
@@ -1556,6 +1554,7 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu,
                 error_report_err(local_err);
                 return H_HARDWARE;
             }
+            error_free(local_err);
             local_err = NULL;
         }
     }

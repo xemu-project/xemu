@@ -19,7 +19,6 @@
 #include "cpu.h"
 #include "exec/memory.h"
 #include "exec/address-spaces.h"
-#include "exec/ioport.h"
 #include "qapi/visitor.h"
 #include "qemu/bitops.h"
 #include "qemu/error-report.h"
@@ -173,38 +172,38 @@ struct MemoryRegionIoeventfd {
     EventNotifier *e;
 };
 
-static bool memory_region_ioeventfd_before(MemoryRegionIoeventfd a,
-                                           MemoryRegionIoeventfd b)
+static bool memory_region_ioeventfd_before(MemoryRegionIoeventfd *a,
+                                           MemoryRegionIoeventfd *b)
 {
-    if (int128_lt(a.addr.start, b.addr.start)) {
+    if (int128_lt(a->addr.start, b->addr.start)) {
         return true;
-    } else if (int128_gt(a.addr.start, b.addr.start)) {
+    } else if (int128_gt(a->addr.start, b->addr.start)) {
         return false;
-    } else if (int128_lt(a.addr.size, b.addr.size)) {
+    } else if (int128_lt(a->addr.size, b->addr.size)) {
         return true;
-    } else if (int128_gt(a.addr.size, b.addr.size)) {
+    } else if (int128_gt(a->addr.size, b->addr.size)) {
         return false;
-    } else if (a.match_data < b.match_data) {
+    } else if (a->match_data < b->match_data) {
         return true;
-    } else  if (a.match_data > b.match_data) {
+    } else  if (a->match_data > b->match_data) {
         return false;
-    } else if (a.match_data) {
-        if (a.data < b.data) {
+    } else if (a->match_data) {
+        if (a->data < b->data) {
             return true;
-        } else if (a.data > b.data) {
+        } else if (a->data > b->data) {
             return false;
         }
     }
-    if (a.e < b.e) {
+    if (a->e < b->e) {
         return true;
-    } else if (a.e > b.e) {
+    } else if (a->e > b->e) {
         return false;
     }
     return false;
 }
 
-static bool memory_region_ioeventfd_equal(MemoryRegionIoeventfd a,
-                                          MemoryRegionIoeventfd b)
+static bool memory_region_ioeventfd_equal(MemoryRegionIoeventfd *a,
+                                          MemoryRegionIoeventfd *b)
 {
     return !memory_region_ioeventfd_before(a, b)
         && !memory_region_ioeventfd_before(b, a);
@@ -219,8 +218,6 @@ struct FlatRange {
     bool romd_mode;
     bool readonly;
 };
-
-typedef struct AddressSpaceOps AddressSpaceOps;
 
 #define FOR_EACH_FLAT_RANGE(var, view)          \
     for (var = (view)->ranges; var < (view)->ranges + (view)->nr; ++var)
@@ -298,7 +295,7 @@ static bool flatview_ref(FlatView *view)
     return atomic_fetch_inc_nonzero(&view->ref) > 0;
 }
 
-static void flatview_unref(FlatView *view)
+void flatview_unref(FlatView *view)
 {
     if (atomic_fetch_dec(&view->ref) == 1) {
         trace_flatview_destroy_rcu(view, view->root);
@@ -791,8 +788,8 @@ static void address_space_add_del_ioeventfds(AddressSpace *as,
     while (iold < fds_old_nb || inew < fds_new_nb) {
         if (iold < fds_old_nb
             && (inew == fds_new_nb
-                || memory_region_ioeventfd_before(fds_old[iold],
-                                                  fds_new[inew]))) {
+                || memory_region_ioeventfd_before(&fds_old[iold],
+                                                  &fds_new[inew]))) {
             fd = &fds_old[iold];
             section = (MemoryRegionSection) {
                 .fv = address_space_to_flatview(as),
@@ -804,8 +801,8 @@ static void address_space_add_del_ioeventfds(AddressSpace *as,
             ++iold;
         } else if (inew < fds_new_nb
                    && (iold == fds_old_nb
-                       || memory_region_ioeventfd_before(fds_new[inew],
-                                                         fds_old[iold]))) {
+                       || memory_region_ioeventfd_before(&fds_new[inew],
+                                                         &fds_old[iold]))) {
             fd = &fds_new[inew];
             section = (MemoryRegionSection) {
                 .fv = address_space_to_flatview(as),
@@ -822,7 +819,7 @@ static void address_space_add_del_ioeventfds(AddressSpace *as,
     }
 }
 
-static FlatView *address_space_get_flatview(AddressSpace *as)
+FlatView *address_space_get_flatview(AddressSpace *as)
 {
     FlatView *view;
 
@@ -1269,7 +1266,8 @@ static void unassigned_mem_write(void *opaque, hwaddr addr,
 }
 
 static bool unassigned_mem_accepts(void *opaque, hwaddr addr,
-                                   unsigned size, bool is_write)
+                                   unsigned size, bool is_write,
+                                   MemTxAttrs attrs)
 {
     return false;
 }
@@ -1347,7 +1345,8 @@ static const MemoryRegionOps ram_device_mem_ops = {
 bool memory_region_access_valid(MemoryRegion *mr,
                                 hwaddr addr,
                                 unsigned size,
-                                bool is_write)
+                                bool is_write,
+                                MemTxAttrs attrs)
 {
     int access_size_min, access_size_max;
     int access_size, i;
@@ -1373,7 +1372,7 @@ bool memory_region_access_valid(MemoryRegion *mr,
     access_size = MAX(MIN(size, access_size_max), access_size_min);
     for (i = 0; i < size; i += access_size) {
         if (!mr->ops->valid.accepts(mr->opaque, addr + i, access_size,
-                                    is_write)) {
+                                    is_write, attrs)) {
             return false;
         }
     }
@@ -1416,7 +1415,7 @@ MemTxResult memory_region_dispatch_read(MemoryRegion *mr,
 {
     MemTxResult r;
 
-    if (!memory_region_access_valid(mr, addr, size, false)) {
+    if (!memory_region_access_valid(mr, addr, size, false, attrs)) {
         *pval = unassigned_mem_read(mr, addr, size);
         return MEMTX_DECODE_ERROR;
     }
@@ -1443,7 +1442,7 @@ static bool memory_region_dispatch_write_eventfds(MemoryRegion *mr,
         ioeventfd.match_data = mr->ioeventfds[i].match_data;
         ioeventfd.e = mr->ioeventfds[i].e;
 
-        if (memory_region_ioeventfd_equal(ioeventfd, mr->ioeventfds[i])) {
+        if (memory_region_ioeventfd_equal(&ioeventfd, &mr->ioeventfds[i])) {
             event_notifier_set(ioeventfd.e);
             return true;
         }
@@ -1458,7 +1457,7 @@ MemTxResult memory_region_dispatch_write(MemoryRegion *mr,
                                          unsigned size,
                                          MemTxAttrs attrs)
 {
-    if (!memory_region_access_valid(mr, addr, size, true)) {
+    if (!memory_region_access_valid(mr, addr, size, true, attrs)) {
         unassigned_mem_write(mr, addr, data, size);
         return MEMTX_DECODE_ERROR;
     }
@@ -1810,6 +1809,9 @@ void memory_region_register_iommu_notifier(MemoryRegion *mr,
     iommu_mr = IOMMU_MEMORY_REGION(mr);
     assert(n->notifier_flags != IOMMU_NOTIFIER_NONE);
     assert(n->start <= n->end);
+    assert(n->iommu_idx >= 0 &&
+           n->iommu_idx < memory_region_iommu_num_indexes(iommu_mr));
+
     QLIST_INSERT_HEAD(&iommu_mr->iommu_notify, n, node);
     memory_region_update_iommu_notify_flags(iommu_mr);
 }
@@ -1840,7 +1842,7 @@ void memory_region_iommu_replay(IOMMUMemoryRegion *iommu_mr, IOMMUNotifier *n)
     granularity = memory_region_iommu_get_min_page_size(iommu_mr);
 
     for (addr = 0; addr < memory_region_size(mr); addr += granularity) {
-        iotlb = imrc->translate(iommu_mr, addr, IOMMU_NONE);
+        iotlb = imrc->translate(iommu_mr, addr, IOMMU_NONE, n->iommu_idx);
         if (iotlb.perm != IOMMU_NONE) {
             n->notify(n, &iotlb);
         }
@@ -1902,6 +1904,7 @@ void memory_region_notify_one(IOMMUNotifier *notifier,
 }
 
 void memory_region_notify_iommu(IOMMUMemoryRegion *iommu_mr,
+                                int iommu_idx,
                                 IOMMUTLBEntry entry)
 {
     IOMMUNotifier *iommu_notifier;
@@ -1909,7 +1912,9 @@ void memory_region_notify_iommu(IOMMUMemoryRegion *iommu_mr,
     assert(memory_region_is_iommu(MEMORY_REGION(iommu_mr)));
 
     IOMMU_NOTIFIER_FOREACH(iommu_notifier, iommu_mr) {
-        memory_region_notify_one(iommu_notifier, &entry);
+        if (iommu_notifier->iommu_idx == iommu_idx) {
+            memory_region_notify_one(iommu_notifier, &entry);
+        }
     }
 }
 
@@ -1924,6 +1929,29 @@ int memory_region_iommu_get_attr(IOMMUMemoryRegion *iommu_mr,
     }
 
     return imrc->get_attr(iommu_mr, attr, data);
+}
+
+int memory_region_iommu_attrs_to_index(IOMMUMemoryRegion *iommu_mr,
+                                       MemTxAttrs attrs)
+{
+    IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_GET_CLASS(iommu_mr);
+
+    if (!imrc->attrs_to_index) {
+        return 0;
+    }
+
+    return imrc->attrs_to_index(iommu_mr, attrs);
+}
+
+int memory_region_iommu_num_indexes(IOMMUMemoryRegion *iommu_mr)
+{
+    IOMMUMemoryRegionClass *imrc = IOMMU_MEMORY_REGION_GET_CLASS(iommu_mr);
+
+    if (!imrc->num_indexes) {
+        return 1;
+    }
+
+    return imrc->num_indexes(iommu_mr);
 }
 
 void memory_region_set_log(MemoryRegion *mr, bool log, unsigned client)
@@ -2269,7 +2297,7 @@ void memory_region_add_eventfd(MemoryRegion *mr,
     }
     memory_region_transaction_begin();
     for (i = 0; i < mr->ioeventfd_nb; ++i) {
-        if (memory_region_ioeventfd_before(mrfd, mr->ioeventfds[i])) {
+        if (memory_region_ioeventfd_before(&mrfd, &mr->ioeventfds[i])) {
             break;
         }
     }
@@ -2304,7 +2332,7 @@ void memory_region_del_eventfd(MemoryRegion *mr,
     }
     memory_region_transaction_begin();
     for (i = 0; i < mr->ioeventfd_nb; ++i) {
-        if (memory_region_ioeventfd_equal(mrfd, mr->ioeventfds[i])) {
+        if (memory_region_ioeventfd_equal(&mrfd, &mr->ioeventfds[i])) {
             break;
         }
     }
@@ -2886,10 +2914,49 @@ typedef QTAILQ_HEAD(mrqueue, MemoryRegionList) MemoryRegionListHead;
                            int128_sub((size), int128_one())) : 0)
 #define MTREE_INDENT "  "
 
+static void mtree_expand_owner(fprintf_function mon_printf, void *f,
+                               const char *label, Object *obj)
+{
+    DeviceState *dev = (DeviceState *) object_dynamic_cast(obj, TYPE_DEVICE);
+
+    mon_printf(f, " %s:{%s", label, dev ? "dev" : "obj");
+    if (dev && dev->id) {
+        mon_printf(f, " id=%s", dev->id);
+    } else {
+        gchar *canonical_path = object_get_canonical_path(obj);
+        if (canonical_path) {
+            mon_printf(f, " path=%s", canonical_path);
+            g_free(canonical_path);
+        } else {
+            mon_printf(f, " type=%s", object_get_typename(obj));
+        }
+    }
+    mon_printf(f, "}");
+}
+
+static void mtree_print_mr_owner(fprintf_function mon_printf, void *f,
+                                 const MemoryRegion *mr)
+{
+    Object *owner = mr->owner;
+    Object *parent = memory_region_owner((MemoryRegion *)mr);
+
+    if (!owner && !parent) {
+        mon_printf(f, " orphan");
+        return;
+    }
+    if (owner) {
+        mtree_expand_owner(mon_printf, f, "owner", owner);
+    }
+    if (parent && parent != owner) {
+        mtree_expand_owner(mon_printf, f, "parent", parent);
+    }
+}
+
 static void mtree_print_mr(fprintf_function mon_printf, void *f,
                            const MemoryRegion *mr, unsigned int level,
                            hwaddr base,
-                           MemoryRegionListHead *alias_print_queue)
+                           MemoryRegionListHead *alias_print_queue,
+                           bool owner)
 {
     MemoryRegionList *new_ml, *ml, *next_ml;
     MemoryRegionListHead submr_print_queue;
@@ -2935,7 +3002,7 @@ static void mtree_print_mr(fprintf_function mon_printf, void *f,
         }
         mon_printf(f, TARGET_FMT_plx "-" TARGET_FMT_plx
                    " (prio %d, %s): alias %s @%s " TARGET_FMT_plx
-                   "-" TARGET_FMT_plx "%s\n",
+                   "-" TARGET_FMT_plx "%s",
                    cur_start, cur_end,
                    mr->priority,
                    memory_region_type((MemoryRegion *)mr),
@@ -2944,15 +3011,22 @@ static void mtree_print_mr(fprintf_function mon_printf, void *f,
                    mr->alias_offset,
                    mr->alias_offset + MR_SIZE(mr->size),
                    mr->enabled ? "" : " [disabled]");
+        if (owner) {
+            mtree_print_mr_owner(mon_printf, f, mr);
+        }
     } else {
         mon_printf(f,
-                   TARGET_FMT_plx "-" TARGET_FMT_plx " (prio %d, %s): %s%s\n",
+                   TARGET_FMT_plx "-" TARGET_FMT_plx " (prio %d, %s): %s%s",
                    cur_start, cur_end,
                    mr->priority,
                    memory_region_type((MemoryRegion *)mr),
                    memory_region_name(mr),
                    mr->enabled ? "" : " [disabled]");
+        if (owner) {
+            mtree_print_mr_owner(mon_printf, f, mr);
+        }
     }
+    mon_printf(f, "\n");
 
     QTAILQ_INIT(&submr_print_queue);
 
@@ -2975,7 +3049,7 @@ static void mtree_print_mr(fprintf_function mon_printf, void *f,
 
     QTAILQ_FOREACH(ml, &submr_print_queue, mrqueue) {
         mtree_print_mr(mon_printf, f, ml->mr, level + 1, cur_start,
-                       alias_print_queue);
+                       alias_print_queue, owner);
     }
 
     QTAILQ_FOREACH_SAFE(ml, &submr_print_queue, mrqueue, next_ml) {
@@ -2988,6 +3062,7 @@ struct FlatViewInfo {
     void *f;
     int counter;
     bool dispatch_tree;
+    bool owner;
 };
 
 static void mtree_print_flatview(gpointer key, gpointer value,
@@ -3028,7 +3103,7 @@ static void mtree_print_flatview(gpointer key, gpointer value,
         mr = range->mr;
         if (range->offset_in_region) {
             p(f, MTREE_INDENT TARGET_FMT_plx "-"
-              TARGET_FMT_plx " (prio %d, %s): %s @" TARGET_FMT_plx "\n",
+              TARGET_FMT_plx " (prio %d, %s): %s @" TARGET_FMT_plx,
               int128_get64(range->addr.start),
               int128_get64(range->addr.start) + MR_SIZE(range->addr.size),
               mr->priority,
@@ -3037,13 +3112,17 @@ static void mtree_print_flatview(gpointer key, gpointer value,
               range->offset_in_region);
         } else {
             p(f, MTREE_INDENT TARGET_FMT_plx "-"
-              TARGET_FMT_plx " (prio %d, %s): %s\n",
+              TARGET_FMT_plx " (prio %d, %s): %s",
               int128_get64(range->addr.start),
               int128_get64(range->addr.start) + MR_SIZE(range->addr.size),
               mr->priority,
               range->readonly ? "rom" : memory_region_type(mr),
               memory_region_name(mr));
         }
+        if (fvi->owner) {
+            mtree_print_mr_owner(p, f, mr);
+        }
+        p(f, "\n");
         range++;
     }
 
@@ -3069,7 +3148,7 @@ static gboolean mtree_info_flatview_free(gpointer key, gpointer value,
 }
 
 void mtree_info(fprintf_function mon_printf, void *f, bool flatview,
-                bool dispatch_tree)
+                bool dispatch_tree, bool owner)
 {
     MemoryRegionListHead ml_head;
     MemoryRegionList *ml, *ml2;
@@ -3081,7 +3160,8 @@ void mtree_info(fprintf_function mon_printf, void *f, bool flatview,
             .mon_printf = mon_printf,
             .f = f,
             .counter = 0,
-            .dispatch_tree = dispatch_tree
+            .dispatch_tree = dispatch_tree,
+            .owner = owner,
         };
         GArray *fv_address_spaces;
         GHashTable *views = g_hash_table_new(g_direct_hash, g_direct_equal);
@@ -3113,14 +3193,14 @@ void mtree_info(fprintf_function mon_printf, void *f, bool flatview,
 
     QTAILQ_FOREACH(as, &address_spaces, address_spaces_link) {
         mon_printf(f, "address-space: %s\n", as->name);
-        mtree_print_mr(mon_printf, f, as->root, 1, 0, &ml_head);
+        mtree_print_mr(mon_printf, f, as->root, 1, 0, &ml_head, owner);
         mon_printf(f, "\n");
     }
 
     /* print aliased regions */
     QTAILQ_FOREACH(ml, &ml_head, mrqueue) {
         mon_printf(f, "memory-region: %s\n", memory_region_name(ml->mr));
-        mtree_print_mr(mon_printf, f, ml->mr, 1, 0, &ml_head);
+        mtree_print_mr(mon_printf, f, ml->mr, 1, 0, &ml_head, owner);
         mon_printf(f, "\n");
     }
 

@@ -139,7 +139,7 @@ static void tty_serial_init(int fd, int speed,
 
     tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP
                      | INLCR | IGNCR | ICRNL | IXON);
-    tty.c_oflag |= OPOST;
+    tty.c_oflag &= ~OPOST;
     tty.c_lflag &= ~(ECHO | ECHONL | ICANON | IEXTEN | ISIG);
     tty.c_cflag &= ~(CSIZE | PARENB | PARODD | CRTSCTS | CSTOPB);
     switch (data_bits) {
@@ -265,7 +265,8 @@ static void qmp_chardev_open_serial(Chardev *chr,
     ChardevHostdev *serial = backend->u.serial.data;
     int fd;
 
-    fd = qmp_chardev_open_file_source(serial->device, O_RDWR, errp);
+    fd = qmp_chardev_open_file_source(serial->device, O_RDWR | O_NONBLOCK,
+                                      errp);
     if (fd < 0) {
         return;
     }

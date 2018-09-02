@@ -25,6 +25,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/units.h"
 
 #include "hw/hw.h"
 #include "ui/input.h"
@@ -525,8 +526,8 @@ static int xenfb_configure_fb(struct XenFB *xenfb, size_t fb_len_lim,
                               int width, int height, int depth,
                               size_t fb_len, int offset, int row_stride)
 {
-    size_t mfn_sz = sizeof(*((struct xenfb_page *)0)->pd);
-    size_t pd_len = sizeof(((struct xenfb_page *)0)->pd) / mfn_sz;
+    size_t mfn_sz = sizeof_field(struct xenfb_page, pd[0]);
+    size_t pd_len = sizeof_field(struct xenfb_page, pd) / mfn_sz;
     size_t fb_pages = pd_len * XC_PAGE_SIZE / mfn_sz;
     size_t fb_len_max = fb_pages * XC_PAGE_SIZE;
     int max_width, max_height;
@@ -889,7 +890,7 @@ static int fb_initialise(struct XenDevice *xendev)
 	return rc;
 
     fb_page = fb->c.page;
-    rc = xenfb_configure_fb(fb, videoram * 1024 * 1024U,
+    rc = xenfb_configure_fb(fb, videoram * MiB,
 			    fb_page->width, fb_page->height, fb_page->depth,
 			    fb_page->mem_length, 0, fb_page->line_length);
     if (rc != 0)

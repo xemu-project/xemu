@@ -25,7 +25,7 @@
 #include "net/queue.h"
 #include "chardev/char-fe.h"
 #include "qemu/sockets.h"
-#include "net/colo.h"
+#include "colo.h"
 #include "sysemu/iothread.h"
 
 #define TYPE_COLO_COMPARE "colo-compare"
@@ -980,7 +980,7 @@ static void colo_compare_init(Object *obj)
     object_property_add_link(obj, "iothread", TYPE_IOTHREAD,
                             (Object **)&s->iothread,
                             object_property_allow_set_link,
-                            OBJ_PROP_LINK_UNREF_ON_RELEASE, NULL);
+                            OBJ_PROP_LINK_STRONG, NULL);
 
     s->vnet_hdr = false;
     object_property_add_bool(obj, "vnet_hdr_support", compare_get_vnet_hdr,

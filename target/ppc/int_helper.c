@@ -19,7 +19,6 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "internal.h"
-#include "exec/exec-all.h"
 #include "qemu/host-utils.h"
 #include "exec/helper-proto.h"
 #include "crypto/aes.h"
@@ -379,7 +378,7 @@ target_ulong helper_divso(CPUPPCState *env, target_ulong arg1,
 target_ulong helper_602_mfrom(target_ulong arg)
 {
     if (likely(arg < 602)) {
-#include "mfrom_table.c"
+#include "mfrom_table.inc.c"
         return mfrom_ROM_table[arg];
     } else {
         return 0;
@@ -1952,7 +1951,7 @@ VSPLT(w, u32)
 #define VINSERT(suffix, element)                                            \
     void helper_vinsert##suffix(ppc_avr_t *r, ppc_avr_t *b, uint32_t index) \
     {                                                                       \
-        memmove(&r->u8[index], &b->u8[8 - sizeof(r->element)],              \
+        memmove(&r->u8[index], &b->u8[8 - sizeof(r->element[0])],           \
                sizeof(r->element[0]));                                      \
     }
 #else

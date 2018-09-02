@@ -1,6 +1,6 @@
 #include "qemu/osdep.h"
 #include "sysemu/sysemu.h"
-#include "ui/keymaps.h"
+#include "keymaps.h"
 #include "ui/input.h"
 
 #include "standard-headers/linux/input.h"
@@ -21,6 +21,7 @@
 #include "ui/input-keymap-xorgkbd-to-qcode.c"
 #include "ui/input-keymap-xorgxquartz-to-qcode.c"
 #include "ui/input-keymap-xorgxwin-to-qcode.c"
+#include "ui/input-keymap-osx-to-qcode.c"
 
 int qemu_input_linux_to_qcode(unsigned int lnx)
 {

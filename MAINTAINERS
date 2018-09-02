@@ -135,6 +135,8 @@ M: Peter Maydell <peter.maydell@linaro.org>
 L: qemu-arm@nongnu.org
 S: Maintained
 F: target/arm/
+F: tests/tcg/arm/
+F: tests/tcg/aarch64/
 F: hw/arm/
 F: hw/cpu/a*mpcore.c
 F: include/hw/cpu/a*mpcore.h
@@ -185,7 +187,7 @@ F: disas/microblaze.c
 
 MIPS
 M: Aurelien Jarno <aurelien@aurel32.net>
-M: Yongbok Kim <yongbok.kim@mips.com>
+M: Aleksandar Markovic <aleksandar.markovic@mips.com>
 S: Maintained
 F: target/mips/
 F: hw/mips/
@@ -283,6 +285,8 @@ M: Richard Henderson <rth@twiddle.net>
 M: Eduardo Habkost <ehabkost@redhat.com>
 S: Maintained
 F: target/i386/
+F: tests/tcg/i386/
+F: tests/tcg/x86_64/
 F: hw/i386/
 F: disas/i386.c
 T: git git://github.com/ehabkost/qemu.git x86-next
@@ -302,6 +306,10 @@ S: Maintained
 F: target/tricore/
 F: hw/tricore/
 F: include/hw/tricore/
+
+Multiarch Linux User Tests
+M: Alex Bennée <alex.bennee@linaro.org>
+F: tests/tcg/multiarch/
 
 Guest CPU Cores (KVM):
 ----------------------
@@ -447,6 +455,10 @@ F: hw/timer/cmsdk-apb-timer.c
 F: include/hw/timer/cmsdk-apb-timer.h
 F: hw/char/cmsdk-apb-uart.c
 F: include/hw/char/cmsdk-apb-uart.h
+F: hw/misc/tz-ppc.c
+F: include/hw/misc/tz-ppc.h
+F: hw/misc/tz-mpc.c
+F: include/hw/misc/tz-mpc.h
 
 ARM cores
 M: Peter Maydell <peter.maydell@linaro.org>
@@ -489,9 +501,10 @@ F: include/hw/arm/digic.h
 F: hw/*/digic*
 
 Gumstix
+M: Philippe Mathieu-Daudé <f4bug@amsat.org>
 L: qemu-devel@nongnu.org
 L: qemu-arm@nongnu.org
-S: Orphan
+S: Odd Fixes
 F: hw/arm/gumstix.c
 
 i.MX31
@@ -515,8 +528,11 @@ M: Peter Maydell <peter.maydell@linaro.org>
 L: qemu-arm@nongnu.org
 S: Maintained
 F: hw/arm/mps2.c
-F: hw/misc/mps2-scc.c
-F: include/hw/misc/mps2-scc.h
+F: hw/arm/mps2-tz.c
+F: hw/misc/mps2-*.c
+F: include/hw/misc/mps2-*.h
+F: hw/arm/iotkit.c
+F: include/hw/arm/iotkit.h
 
 Musicpal
 M: Jan Kiszka <jan.kiszka@web.de>
@@ -629,6 +645,17 @@ M: Subbaraya Sundeep <sundeep.lkml@gmail.com>
 S: Maintained
 F: hw/arm/msf2-som.c
 
+ASPEED BMCs
+M: Cédric Le Goater <clg@kaod.org>
+R: Andrew Jeffery <andrew@aj.id.au>
+R: Joel Stanley <joel@jms.id.au>
+L: qemu-arm@nongnu.org
+S: Maintained
+F: hw/*/*aspeed*
+F: include/hw/*/*aspeed*
+F: hw/net/ftgmac100.c
+F: include/hw/net/ftgmac100.h
+
 CRIS Machines
 -------------
 Axis Dev88
@@ -691,7 +718,7 @@ S: Maintained
 F: hw/mips/mips_malta.c
 
 Mipssim
-M: Yongbok Kim <yongbok.kim@mips.com>
+M: Aleksandar Markovic <aleksandar.markovic@mips.com>
 S: Odd Fixes
 F: hw/mips/mips_mipssim.c
 F: hw/net/mipsnet.c
@@ -702,7 +729,7 @@ S: Maintained
 F: hw/mips/mips_r4k.c
 
 Fulong 2E
-M: Yongbok Kim <yongbok.kim@mips.com>
+M: Aleksandar Markovic <aleksandar.markovic@mips.com>
 S: Odd Fixes
 F: hw/mips/mips_fulong2e.c
 F: hw/isa/vt82c686.c
@@ -761,8 +788,11 @@ F: hw/ppc/mac_newworld.c
 F: hw/pci-host/uninorth.c
 F: hw/pci-bridge/dec.[hc]
 F: hw/misc/macio/
-F: include/hw/ppc/mac_dbdma.h
+F: hw/misc/mos6522.c
 F: hw/nvram/mac_nvram.c
+F: include/hw/misc/macio/
+F: include/hw/misc/mos6522.h
+F: include/hw/ppc/mac_dbdma.h
 
 Old World
 M: Alexander Graf <agraf@suse.de>
@@ -821,6 +851,7 @@ M: BALATON Zoltan <balaton@eik.bme.hu>
 L: qemu-ppc@nongnu.org
 S: Maintained
 F: hw/ide/sii3112.c
+F: hw/timer/m41t80.c
 
 SH4 Machines
 ------------
@@ -909,7 +940,7 @@ X86 Machines
 ------------
 PC
 M: Michael S. Tsirkin <mst@redhat.com>
-M: Marcel Apfelbaum <marcel@redhat.com>
+M: Marcel Apfelbaum <marcel.apfelbaum@gmail.com>
 S: Supported
 F: include/hw/i386/
 F: hw/i386/
@@ -959,7 +990,7 @@ F: include/hw/timer/mc146818rtc*
 
 Machine core
 M: Eduardo Habkost <ehabkost@redhat.com>
-M: Marcel Apfelbaum <marcel@redhat.com>
+M: Marcel Apfelbaum <marcel.apfelbaum@gmail.com>
 S: Supported
 F: hw/core/machine.c
 F: hw/core/null-machine.c
@@ -998,6 +1029,7 @@ F: hw/block/cdrom.c
 F: hw/block/hd-geometry.c
 F: tests/ide-test.c
 F: tests/ahci-test.c
+F: tests/cdrom-test.c
 F: tests/libqos/ahci*
 T: git git://github.com/jnsnow/qemu.git ide
 
@@ -1033,7 +1065,7 @@ F: hw/ipack/
 
 PCI
 M: Michael S. Tsirkin <mst@redhat.com>
-M: Marcel Apfelbaum <marcel@redhat.com>
+M: Marcel Apfelbaum <marcel.apfelbaum@gmail.com>
 S: Supported
 F: include/hw/pci/*
 F: hw/misc/pci-testdev.c
@@ -1314,6 +1346,33 @@ S: Maintained
 F: include/hw/misc/unimp.h
 F: hw/misc/unimp.c
 
+Standard VGA
+M: Gerd Hoffmann <kraxel@redhat.com>
+S: Maintained
+F: hw/display/vga*
+F: hw/display/bochs-display.c
+F: include/hw/display/vga.h
+F: include/hw/display/bochs-vbe.h
+
+ramfb
+M: Gerd Hoffmann <kraxel@redhat.com>
+S: Maintained
+F: hw/display/ramfb*.c
+F: include/hw/display/ramfb.h
+
+virtio-gpu
+M: Gerd Hoffmann <kraxel@redhat.com>
+S: Maintained
+F: hw/display/virtio-gpu*
+F: hw/display/virtio-vga.c
+F: include/hw/virtio/virtio-gpu.h
+
+Cirrus VGA
+M: Gerd Hoffmann <kraxel@redhat.com>
+S: Odd Fixes
+W: https://www.kraxel.org/blog/2014/10/qemu-using-cirrus-considered-harmful/
+F: hw/display/cirrus*
+
 Subsystems
 ----------
 Audio
@@ -1339,6 +1398,8 @@ F: qemu-img*
 F: qemu-io*
 F: tests/qemu-iotests/
 F: util/qemu-progress.c
+F: qobject/block-qdict.c
+F: test/check-block-qdict.c
 T: git git://repo.or.cz/qemu/kevin.git block
 
 Block I/O path
@@ -1369,10 +1430,14 @@ L: qemu-block@nongnu.org
 S: Supported
 F: blockjob.c
 F: include/block/blockjob.h
+F: job.c
+F: job-qmp.c
+F: include/block/job.h
 F: block/backup.c
 F: block/commit.c
 F: block/stream.c
 F: block/mirror.c
+F: qapi/job.json
 T: git git://github.com/codyprime/qemu-kvm-jtc.git block
 
 Block QAPI, monitor, command line
@@ -1573,7 +1638,8 @@ F: tests/test-*-visitor.c
 F: tests/test-qapi-*.c
 F: tests/test-qmp-*.c
 F: tests/test-visitor-serialization.c
-F: scripts/qapi*
+F: scripts/qapi-gen.py
+F: scripts/qapi/*
 F: docs/devel/qapi*
 T: git git://repo.or.cz/qemu/armbru.git qapi-next
 
@@ -1645,6 +1711,7 @@ S: Maintained
 F: slirp/
 F: net/slirp.c
 F: include/net/slirp.h
+T: git https://people.debian.org/~sthibault/qemu.git slirp
 T: git git://git.kiszka.org/qemu.git queues/slirp
 
 Stubs
@@ -1656,6 +1723,8 @@ Tracing
 M: Stefan Hajnoczi <stefanha@redhat.com>
 S: Maintained
 F: trace/
+F: trace-events
+F: qemu-option-trace.texi
 F: scripts/tracetool.py
 F: scripts/tracetool/
 F: docs/devel/tracing.txt
@@ -1780,6 +1849,12 @@ F: net/filter-replay.c
 F: include/sysemu/replay.h
 F: docs/replay.txt
 F: stubs/replay.c
+
+IOVA Tree
+M: Peter Xu <peterx@redhat.com>
+S: Maintained
+F: include/qemu/iova-tree.h
+F: util/iova-tree.c
 
 Usermode Emulation
 ------------------
@@ -1921,6 +1996,7 @@ F: nbd/
 F: include/block/nbd*
 F: qemu-nbd.*
 F: blockdev-nbd.c
+F: docs/interop/nbd.txt
 T: git git://repo.or.cz/qemu/ericb.git nbd
 
 NFS
@@ -1975,6 +2051,12 @@ M: Alberto Garcia <berto@igalia.com>
 S: Supported
 F: block/quorum.c
 L: qemu-block@nongnu.org
+
+blklogwrites
+M: Ari Sundholm <ari@tuxera.com>
+L: qemu-block@nongnu.org
+S: Supported
+F: block/blklogwrites.c
 
 blkverify
 M: Stefan Hajnoczi <stefanha@redhat.com>
@@ -2075,7 +2157,7 @@ F: docs/block-replication.txt
 
 PVRDMA
 M: Yuval Shaia <yuval.shaia@oracle.com>
-M: Marcel Apfelbaum <marcel@redhat.com>
+M: Marcel Apfelbaum <marcel.apfelbaum@gmail.com>
 S: Maintained
 F: hw/rdma/*
 F: hw/rdma/vmw/*
@@ -2090,6 +2172,7 @@ R: Philippe Mathieu-Daudé <f4bug@amsat.org>
 L: qemu-devel@nongnu.org
 S: Maintained
 F: .travis.yml
+F: scripts/travis/
 F: .shippable.yml
 F: tests/docker/
 F: tests/vm/
@@ -2097,12 +2180,23 @@ W: https://travis-ci.org/qemu/qemu
 W: https://app.shippable.com/github/qemu/qemu
 W: http://patchew.org/QEMU/
 
+Guest Test Compilation Support
+M: Alex Bennée <alex.bennee@linaro.org>
+R: Philippe Mathieu-Daudé <f4bug@amsat.org>
+F: tests/tcg/Makefile
+F: tests/tcg/Makefile.include
+L: qemu-devel@nongnu.org
+
 Documentation
 -------------
 Build system architecture
 M: Daniel P. Berrange <berrange@redhat.com>
 S: Odd Fixes
 F: docs/devel/build-system.txt
+
+Incompatible changes
+R: libvir-list@redhat.com
+F: qemu-deprecated.texi
 
 Build System
 ------------
