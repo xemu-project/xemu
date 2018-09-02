@@ -28,6 +28,7 @@
 #define IOPORT_SIZE 0x8
 #define MMIO_SIZE   0x400
 
+// #define DEBUG
 #ifdef DEBUG
 #   define NVNET_DPRINTF(format, ...) printf(format, ## __VA_ARGS__)
 #   define NVNET_DUMP_PACKETS_TO_SCREEN
@@ -692,6 +693,7 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
     struct RingDesc desc;
     bool is_last_packet;
     int i;
+    bool packet_sent = false;
 
     for (i = 0; i < s->tx_ring_size; i++) {
         /* Read ring descriptor */
@@ -716,6 +718,7 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
         pci_dma_read(&s->dev, desc.packet_buffer,
                               s->txrx_dma_buf, desc.length + 1);
         nvnet_send_packet(s, s->txrx_dma_buf, desc.length + 1);
+        packet_sent = true;
 
         /* Update descriptor */
         is_last_packet = desc.flags & NV_TX_LASTPACKET;
@@ -732,9 +735,11 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
     }
 
     /* Trigger interrupt */
-    NVNET_DPRINTF("Triggering interrupt\n");
-    nvnet_set_reg(s, NvRegIrqStatus, NVREG_IRQSTAT_BIT4, 4);
-    nvnet_update_irq(s);
+    if (packet_sent) {
+        NVNET_DPRINTF("Triggering interrupt\n");
+        nvnet_set_reg(s, NvRegIrqStatus, NVREG_IRQSTAT_BIT4, 4);
+        nvnet_update_irq(s);
+    }
 
     return 0;
 }
