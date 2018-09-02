@@ -192,7 +192,7 @@ static void lpc47m157_realize(DeviceState *dev, Error **errp)
 
     /* init serial cores */
     for (i = 0; i < 2; i++) {
-        Chardev *chr = serial_hds[i];
+        Chardev *chr = serial_hd(i);
         if (chr == NULL) {
             char name[5];
             snprintf(name, sizeof(name), "ser%d", i);
