@@ -25,6 +25,8 @@
 
 #define MAX_IDE_BUS 2
 
+uint8_t *load_eeprom(void);
+
 void xbox_init_common(MachineState *machine,
                       const uint8_t *eeprom,
                       PCIBus **pci_bus_out,
@@ -44,6 +46,7 @@ typedef struct XboxMachineState {
 
     /*< public >*/
     char *bootrom;
+    char *eeprom;
     bool short_animation;
 } XboxMachineState;
 

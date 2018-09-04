@@ -224,11 +224,62 @@ static void xbox_memory_init(PCMachineState *pcms,
     xbox_flash_init(rom_memory);
 }
 
+uint8_t *load_eeprom(void)
+{
+    char *filename;
+    int fd;
+    int rc;
+    int eeprom_file_size;
+    const int eeprom_size = 256;
+
+    uint8_t *eeprom_data = g_malloc(eeprom_size);
+
+    const char *eeprom_file = object_property_get_str(qdev_get_machine(),
+                                                      "eeprom", NULL);
+    if ((eeprom_file != NULL) && *eeprom_file) {
+        filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, eeprom_file);
+        assert(filename);
+
+        eeprom_file_size = get_image_size(filename);
+        if (eeprom_size != eeprom_file_size) {
+            fprintf(stderr,
+                    "qemu: EEPROM file size != %d bytes. (Is %d bytes)\n",
+                    eeprom_size, eeprom_file_size);
+            g_free(filename);
+            exit(1);
+            return NULL;
+        }
+
+        fd = open(filename, O_RDONLY | O_BINARY);
+        if (fd < 0) {
+            fprintf(stderr, "qemu: EEPROM file '%s' could not be opened.\n", filename);
+            g_free(filename);
+            exit(1);
+            return NULL;
+        }
+
+        rc = read(fd, eeprom_data, eeprom_size);
+        if (rc != eeprom_size) {
+            fprintf(stderr, "qemu: Could not read the full EEPROM file.\n");
+            close(fd);
+            g_free(filename);
+            exit(1);
+            return NULL;
+        }
+
+        close(fd);
+        g_free(filename);
+    } else {
+        memcpy(eeprom_data, default_eeprom, eeprom_size);
+    }
+    return eeprom_data;
+}
 
 /* PC hardware initialisation */
 static void xbox_init(MachineState *machine)
 {
-    xbox_init_common(machine, default_eeprom, NULL, NULL);
+    uint8_t *eeprom_data = load_eeprom();
+    xbox_init_common(machine, eeprom_data, NULL, NULL);
 }
 
 void xbox_init_common(MachineState *machine,
@@ -407,6 +458,22 @@ static void machine_set_bootrom(Object *obj, const char *value,
     ms->bootrom = g_strdup(value);
 }
 
+static char *machine_get_eeprom(Object *obj, Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+
+    return g_strdup(ms->eeprom);
+}
+
+static void machine_set_eeprom(Object *obj, const char *value,
+                                        Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+
+    g_free(ms->eeprom);
+    ms->eeprom = g_strdup(value);
+}
+
 static void machine_set_short_animation(Object *obj, bool value,
                                         Error **errp)
 {
@@ -427,6 +494,11 @@ static inline void xbox_machine_initfn(Object *obj)
                             machine_set_bootrom, NULL);
     object_property_set_description(obj, "bootrom",
                                     "Xbox bootrom file", NULL);
+
+    object_property_add_str(obj, "eeprom", machine_get_eeprom,
+                            machine_set_eeprom, NULL);
+    object_property_set_description(obj, "eeprom",
+                                    "Xbox EEPROM file", NULL);
 
     object_property_add_bool(obj, "short-animation",
                              machine_get_short_animation,
