@@ -40,7 +40,7 @@ esac
 
 set -x # Print commands from now on
 
-./configure \
+$(dirname "$0")/configure \
 	--enable-debug \
 	--extra-cflags="$CFLAGS_COMMON $CFLAGS" \
 	$CONFIGURE \
