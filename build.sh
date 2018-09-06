@@ -44,7 +44,7 @@ set -x # Print commands from now on
 	--enable-debug \
 	--extra-cflags="$CFLAGS_COMMON $CFLAGS" \
 	$CONFIGURE \
-    --target-list=i386-softmmu \
+	--target-list=i386-softmmu \
 	--enable-sdl \
 	--with-sdlabi=2.0 \
 	--disable-curl \
@@ -60,6 +60,7 @@ set -x # Print commands from now on
 	--disable-libiscsi \
 	--disable-spice \
 	--disable-user \
+	--disable-stack-protector \
 
 time make -j`nproc` 2>&1 | tee build.log
 
