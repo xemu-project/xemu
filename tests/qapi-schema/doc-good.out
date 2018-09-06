@@ -3,6 +3,7 @@ enum QType ['none', 'qnull', 'qnum', 'qstring', 'qdict', 'qlist', 'qbool']
     prefix QTYPE
 module doc-good.json
 enum Enum ['one', 'two']
+    if ['defined(IFCOND)']
 object Base
     member base1: Enum optional=False
 object Variant1
@@ -28,9 +29,9 @@ object q_obj_cmd-arg
     member arg2: str optional=True
     member arg3: bool optional=False
 command cmd q_obj_cmd-arg -> Object
-   gen=True success_response=True boxed=False oob=False
+   gen=True success_response=True boxed=False oob=False preconfig=False
 command cmd-boxed Object -> None
-   gen=True success_response=True boxed=True oob=False
+   gen=True success_response=True boxed=True oob=False preconfig=False
 doc freeform
     body=
 = Section

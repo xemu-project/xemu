@@ -29,6 +29,7 @@
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "block/block_int.h"
+#include "block/qdict.h"
 #include "trace.h"
 #include "qemu/iov.h"
 #include "qemu/option.h"
@@ -555,22 +556,27 @@ static BlockdevOptionsNfs *nfs_options_qdict_to_qapi(QDict *options,
                                                      Error **errp)
 {
     BlockdevOptionsNfs *opts = NULL;
-    QObject *crumpled = NULL;
     Visitor *v;
+    const QDictEntry *e;
     Error *local_err = NULL;
 
-    crumpled = qdict_crumple(options, errp);
-    if (crumpled == NULL) {
+    v = qobject_input_visitor_new_flat_confused(options, errp);
+    if (!v) {
         return NULL;
     }
 
-    v = qobject_input_visitor_new_keyval(crumpled);
     visit_type_BlockdevOptionsNfs(v, NULL, &opts, &local_err);
     visit_free(v);
-    qobject_decref(crumpled);
 
     if (local_err) {
+        error_propagate(errp, local_err);
         return NULL;
+    }
+
+    /* Remove the processed options from the QDict (the visitor processes
+     * _all_ options in the QDict) */
+    while ((e = qdict_first(options))) {
+        qdict_del(options, e->key);
     }
 
     return opts;
@@ -683,7 +689,7 @@ static int coroutine_fn nfs_file_co_create_opts(const char *url, QemuOpts *opts,
 
     ret = 0;
 out:
-    QDECREF(options);
+    qobject_unref(options);
     qapi_free_BlockdevCreateOptions(create_options);
     return ret;
 }
@@ -737,8 +743,9 @@ static int64_t nfs_get_allocated_file_size(BlockDriverState *bs)
     return (task.ret < 0 ? task.ret : st.st_blocks * 512);
 }
 
-static int nfs_file_truncate(BlockDriverState *bs, int64_t offset,
-                             PreallocMode prealloc, Error **errp)
+static int coroutine_fn
+nfs_file_co_truncate(BlockDriverState *bs, int64_t offset,
+                     PreallocMode prealloc, Error **errp)
 {
     NFSClient *client = bs->opaque;
     int ret;
@@ -867,7 +874,7 @@ static BlockDriver bdrv_nfs = {
 
     .bdrv_has_zero_init             = nfs_has_zero_init,
     .bdrv_get_allocated_file_size   = nfs_get_allocated_file_size,
-    .bdrv_truncate                  = nfs_file_truncate,
+    .bdrv_co_truncate               = nfs_file_co_truncate,
 
     .bdrv_file_open                 = nfs_file_open,
     .bdrv_close                     = nfs_file_close,

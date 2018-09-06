@@ -9,6 +9,7 @@
 #
 # For help see docs/devel/tracing.txt
 
+from __future__ import print_function
 import struct
 import re
 import inspect
@@ -44,7 +45,7 @@ def get_record(edict, idtoname, rechdr, fobj):
         rec = (name, rechdr[1], rechdr[3])
         try:
             event = edict[name]
-        except KeyError, e:
+        except KeyError as e:
             import sys
             sys.stderr.write('%s event is logged but is not declared ' \
                              'in the trace events file, try using ' \
@@ -69,7 +70,7 @@ def get_record(edict, idtoname, rechdr, fobj):
 def get_mapping(fobj):
     (event_id, ) = struct.unpack('=Q', fobj.read(8))
     (len, ) = struct.unpack('=L', fobj.read(4))
-    name = fobj.read(len)
+    name = fobj.read(len).decode()
 
     return (event_id, name)
 
@@ -257,6 +258,6 @@ if __name__ == '__main__':
                 else:
                     fields.append('%s=0x%x' % (name, rec[i]))
                 i += 1
-            print ' '.join(fields)
+            print(' '.join(fields))
 
     run(Formatter())

@@ -85,6 +85,16 @@ static inline uint32_t float_rel_to_flags(int res)
     return flags;
 }
 
+uint64_t HELPER(vfp_cmph_a64)(uint32_t x, uint32_t y, void *fp_status)
+{
+    return float_rel_to_flags(float16_compare_quiet(x, y, fp_status));
+}
+
+uint64_t HELPER(vfp_cmpeh_a64)(uint32_t x, uint32_t y, void *fp_status)
+{
+    return float_rel_to_flags(float16_compare(x, y, fp_status));
+}
+
 uint64_t HELPER(vfp_cmps_a64)(float32 x, float32 y, void *fp_status)
 {
     return float_rel_to_flags(float32_compare_quiet(x, y, fp_status));
@@ -204,7 +214,7 @@ uint64_t HELPER(neon_cgt_f64)(float64 a, float64 b, void *fpstp)
 #define float64_three make_float64(0x4008000000000000ULL)
 #define float64_one_point_five make_float64(0x3FF8000000000000ULL)
 
-float16 HELPER(recpsf_f16)(float16 a, float16 b, void *fpstp)
+uint32_t HELPER(recpsf_f16)(uint32_t a, uint32_t b, void *fpstp)
 {
     float_status *fpst = fpstp;
 
@@ -249,7 +259,7 @@ float64 HELPER(recpsf_f64)(float64 a, float64 b, void *fpstp)
     return float64_muladd(a, b, float64_two, 0, fpst);
 }
 
-float16 HELPER(rsqrtsf_f16)(float16 a, float16 b, void *fpstp)
+uint32_t HELPER(rsqrtsf_f16)(uint32_t a, uint32_t b, void *fpstp)
 {
     float_status *fpst = fpstp;
 
@@ -356,7 +366,7 @@ uint64_t HELPER(neon_addlp_u16)(uint64_t a)
 }
 
 /* Floating-point reciprocal exponent - see FPRecpX in ARM ARM */
-float16 HELPER(frecpx_f16)(float16 a, void *fpstp)
+uint32_t HELPER(frecpx_f16)(uint32_t a, void *fpstp)
 {
     float_status *fpst = fpstp;
     uint16_t val16, sbit;
@@ -366,13 +376,15 @@ float16 HELPER(frecpx_f16)(float16 a, void *fpstp)
         float16 nan = a;
         if (float16_is_signaling_nan(a, fpst)) {
             float_raise(float_flag_invalid, fpst);
-            nan = float16_maybe_silence_nan(a, fpst);
+            nan = float16_silence_nan(a, fpst);
         }
         if (fpst->default_nan_mode) {
             nan = float16_default_nan(fpst);
         }
         return nan;
     }
+
+    a = float16_squash_input_denormal(a, fpst);
 
     val16 = float16_val(a);
     sbit = 0x8000 & val16;
@@ -395,13 +407,15 @@ float32 HELPER(frecpx_f32)(float32 a, void *fpstp)
         float32 nan = a;
         if (float32_is_signaling_nan(a, fpst)) {
             float_raise(float_flag_invalid, fpst);
-            nan = float32_maybe_silence_nan(a, fpst);
+            nan = float32_silence_nan(a, fpst);
         }
         if (fpst->default_nan_mode) {
             nan = float32_default_nan(fpst);
         }
         return nan;
     }
+
+    a = float32_squash_input_denormal(a, fpst);
 
     val32 = float32_val(a);
     sbit = 0x80000000ULL & val32;
@@ -424,13 +438,15 @@ float64 HELPER(frecpx_f64)(float64 a, void *fpstp)
         float64 nan = a;
         if (float64_is_signaling_nan(a, fpst)) {
             float_raise(float_flag_invalid, fpst);
-            nan = float64_maybe_silence_nan(a, fpst);
+            nan = float64_silence_nan(a, fpst);
         }
         if (fpst->default_nan_mode) {
             nan = float64_default_nan(fpst);
         }
         return nan;
     }
+
+    a = float64_squash_input_denormal(a, fpst);
 
     val64 = float64_val(a);
     sbit = 0x8000000000000000ULL & val64;
@@ -456,7 +472,6 @@ float32 HELPER(fcvtx_f64_to_f32)(float64 a, CPUARMState *env)
     set_float_rounding_mode(float_round_to_zero, &tstat);
     set_float_exception_flags(0, &tstat);
     r = float64_to_float32(a, &tstat);
-    r = float32_maybe_silence_nan(r, &tstat);
     exflags = get_float_exception_flags(&tstat);
     if (exflags & float_flag_inexact) {
         r = make_float32(float32_val(r) | 1);
@@ -636,6 +651,49 @@ uint64_t HELPER(paired_cmpxchg64_be_parallel)(CPUARMState *env, uint64_t addr,
     return do_paired_cmpxchg64_be(env, addr, new_lo, new_hi, true, GETPC());
 }
 
+/* Writes back the old data into Rs.  */
+void HELPER(casp_le_parallel)(CPUARMState *env, uint32_t rs, uint64_t addr,
+                              uint64_t new_lo, uint64_t new_hi)
+{
+    uintptr_t ra = GETPC();
+#ifndef CONFIG_ATOMIC128
+    cpu_loop_exit_atomic(ENV_GET_CPU(env), ra);
+#else
+    Int128 oldv, cmpv, newv;
+
+    cmpv = int128_make128(env->xregs[rs], env->xregs[rs + 1]);
+    newv = int128_make128(new_lo, new_hi);
+
+    int mem_idx = cpu_mmu_index(env, false);
+    TCGMemOpIdx oi = make_memop_idx(MO_LEQ | MO_ALIGN_16, mem_idx);
+    oldv = helper_atomic_cmpxchgo_le_mmu(env, addr, cmpv, newv, oi, ra);
+
+    env->xregs[rs] = int128_getlo(oldv);
+    env->xregs[rs + 1] = int128_gethi(oldv);
+#endif
+}
+
+void HELPER(casp_be_parallel)(CPUARMState *env, uint32_t rs, uint64_t addr,
+                              uint64_t new_hi, uint64_t new_lo)
+{
+    uintptr_t ra = GETPC();
+#ifndef CONFIG_ATOMIC128
+    cpu_loop_exit_atomic(ENV_GET_CPU(env), ra);
+#else
+    Int128 oldv, cmpv, newv;
+
+    cmpv = int128_make128(env->xregs[rs + 1], env->xregs[rs]);
+    newv = int128_make128(new_lo, new_hi);
+
+    int mem_idx = cpu_mmu_index(env, false);
+    TCGMemOpIdx oi = make_memop_idx(MO_LEQ | MO_ALIGN_16, mem_idx);
+    oldv = helper_atomic_cmpxchgo_be_mmu(env, addr, cmpv, newv, oi, ra);
+
+    env->xregs[rs + 1] = int128_getlo(oldv);
+    env->xregs[rs] = int128_gethi(oldv);
+#endif
+}
+
 /*
  * AdvSIMD half-precision
  */
@@ -643,7 +701,7 @@ uint64_t HELPER(paired_cmpxchg64_be_parallel)(CPUARMState *env, uint64_t addr,
 #define ADVSIMD_HELPER(name, suffix) HELPER(glue(glue(advsimd_, name), suffix))
 
 #define ADVSIMD_HALFOP(name) \
-float16 ADVSIMD_HELPER(name, h)(float16 a, float16 b, void *fpstp) \
+uint32_t ADVSIMD_HELPER(name, h)(uint32_t a, uint32_t b, void *fpstp) \
 { \
     float_status *fpst = fpstp; \
     return float16_ ## name(a, b, fpst);    \
@@ -703,7 +761,8 @@ ADVSIMD_HALFOP(mulx)
 ADVSIMD_TWOHALFOP(mulx)
 
 /* fused multiply-accumulate */
-float16 HELPER(advsimd_muladdh)(float16 a, float16 b, float16 c, void *fpstp)
+uint32_t HELPER(advsimd_muladdh)(uint32_t a, uint32_t b, uint32_t c,
+                                 void *fpstp)
 {
     float_status *fpst = fpstp;
     return float16_muladd(a, b, c, 0, fpst);
@@ -734,14 +793,14 @@ uint32_t HELPER(advsimd_muladd2h)(uint32_t two_a, uint32_t two_b,
 
 #define ADVSIMD_CMPRES(test) (test) ? 0xffff : 0
 
-uint32_t HELPER(advsimd_ceq_f16)(float16 a, float16 b, void *fpstp)
+uint32_t HELPER(advsimd_ceq_f16)(uint32_t a, uint32_t b, void *fpstp)
 {
     float_status *fpst = fpstp;
     int compare = float16_compare_quiet(a, b, fpst);
     return ADVSIMD_CMPRES(compare == float_relation_equal);
 }
 
-uint32_t HELPER(advsimd_cge_f16)(float16 a, float16 b, void *fpstp)
+uint32_t HELPER(advsimd_cge_f16)(uint32_t a, uint32_t b, void *fpstp)
 {
     float_status *fpst = fpstp;
     int compare = float16_compare(a, b, fpst);
@@ -749,14 +808,14 @@ uint32_t HELPER(advsimd_cge_f16)(float16 a, float16 b, void *fpstp)
                           compare == float_relation_equal);
 }
 
-uint32_t HELPER(advsimd_cgt_f16)(float16 a, float16 b, void *fpstp)
+uint32_t HELPER(advsimd_cgt_f16)(uint32_t a, uint32_t b, void *fpstp)
 {
     float_status *fpst = fpstp;
     int compare = float16_compare(a, b, fpst);
     return ADVSIMD_CMPRES(compare == float_relation_greater);
 }
 
-uint32_t HELPER(advsimd_acge_f16)(float16 a, float16 b, void *fpstp)
+uint32_t HELPER(advsimd_acge_f16)(uint32_t a, uint32_t b, void *fpstp)
 {
     float_status *fpst = fpstp;
     float16 f0 = float16_abs(a);
@@ -766,7 +825,7 @@ uint32_t HELPER(advsimd_acge_f16)(float16 a, float16 b, void *fpstp)
                           compare == float_relation_equal);
 }
 
-uint32_t HELPER(advsimd_acgt_f16)(float16 a, float16 b, void *fpstp)
+uint32_t HELPER(advsimd_acgt_f16)(uint32_t a, uint32_t b, void *fpstp)
 {
     float_status *fpst = fpstp;
     float16 f0 = float16_abs(a);
@@ -776,12 +835,12 @@ uint32_t HELPER(advsimd_acgt_f16)(float16 a, float16 b, void *fpstp)
 }
 
 /* round to integral */
-float16 HELPER(advsimd_rinth_exact)(float16 x, void *fp_status)
+uint32_t HELPER(advsimd_rinth_exact)(uint32_t x, void *fp_status)
 {
     return float16_round_to_int(x, fp_status);
 }
 
-float16 HELPER(advsimd_rinth)(float16 x, void *fp_status)
+uint32_t HELPER(advsimd_rinth)(uint32_t x, void *fp_status)
 {
     int old_flags = get_float_exception_flags(fp_status), new_flags;
     float16 ret;
@@ -805,7 +864,7 @@ float16 HELPER(advsimd_rinth)(float16 x, void *fp_status)
  * setting the mode appropriately before calling the helper.
  */
 
-uint32_t HELPER(advsimd_f16tosinth)(float16 a, void *fpstp)
+uint32_t HELPER(advsimd_f16tosinth)(uint32_t a, void *fpstp)
 {
     float_status *fpst = fpstp;
 
@@ -817,7 +876,7 @@ uint32_t HELPER(advsimd_f16tosinth)(float16 a, void *fpstp)
     return float16_to_int16(a, fpst);
 }
 
-uint32_t HELPER(advsimd_f16touinth)(float16 a, void *fpstp)
+uint32_t HELPER(advsimd_f16touinth)(uint32_t a, void *fpstp)
 {
     float_status *fpst = fpstp;
 
@@ -833,7 +892,7 @@ uint32_t HELPER(advsimd_f16touinth)(float16 a, void *fpstp)
  * Square Root and Reciprocal square root
  */
 
-float16 HELPER(sqrt_f16)(float16 a, void *fpstp)
+uint32_t HELPER(sqrt_f16)(uint32_t a, void *fpstp)
 {
     float_status *s = fpstp;
 

@@ -77,7 +77,6 @@ _filter_qemu()
 {
     sed -e "s#\\(^\\|(qemu) \\)$(basename $QEMU_PROG):#\1QEMU_PROG:#" \
         -e 's#^QEMU [0-9]\+\.[0-9]\+\.[0-9]\+ monitor#QEMU X.Y.Z monitor#' \
-        -e '/main-loop: WARNING: I\/O thread spun for [0-9]\+ iterations/d' \
         -e $'s#\r##' # QEMU monitor uses \r\n line endings
 }
 
@@ -119,7 +118,8 @@ _filter_actual_image_size()
 # replace driver-specific options in the "Formatting..." line
 _filter_img_create()
 {
-    sed -e "s#$IMGPROTO:$TEST_DIR#TEST_DIR#g" \
+    sed -e "s#$REMOTE_TEST_DIR#TEST_DIR#g" \
+        -e "s#$IMGPROTO:$TEST_DIR#TEST_DIR#g" \
         -e "s#$TEST_DIR#TEST_DIR#g" \
         -e "s#$IMGFMT#IMGFMT#g" \
         -e 's#nbd:127.0.0.1:10810#TEST_DIR/t.IMGFMT#g' \
@@ -154,7 +154,8 @@ _filter_img_info()
 
     discard=0
     regex_json_spec_start='^ *"format-specific": \{'
-    sed -e "s#$IMGPROTO:$TEST_DIR#TEST_DIR#g" \
+    sed -e "s#$REMOTE_TEST_DIR#TEST_DIR#g" \
+        -e "s#$IMGPROTO:$TEST_DIR#TEST_DIR#g" \
         -e "s#$TEST_DIR#TEST_DIR#g" \
         -e "s#$IMGFMT#IMGFMT#g" \
         -e 's#nbd://127.0.0.1:10810$#TEST_DIR/t.IMGFMT#g' \

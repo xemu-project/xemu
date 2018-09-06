@@ -78,6 +78,65 @@ static inline void *xenforeignmemory_map(xc_interface *h, uint32_t dom,
 
 extern xenforeignmemory_handle *xen_fmem;
 
+#if CONFIG_XEN_CTRL_INTERFACE_VERSION < 40900
+
+typedef xc_interface xendevicemodel_handle;
+
+#else /* CONFIG_XEN_CTRL_INTERFACE_VERSION >= 40900 */
+
+#undef XC_WANT_COMPAT_DEVICEMODEL_API
+#include <xendevicemodel.h>
+
+#endif
+
+#if CONFIG_XEN_CTRL_INTERFACE_VERSION < 41100
+
+static inline int xendevicemodel_relocate_memory(
+    xendevicemodel_handle *dmod, domid_t domid, uint32_t size, uint64_t src_gfn,
+    uint64_t dst_gfn)
+{
+    uint32_t i;
+    int rc;
+
+    for (i = 0; i < size; i++) {
+        unsigned long idx = src_gfn + i;
+        xen_pfn_t gpfn = dst_gfn + i;
+
+        rc = xc_domain_add_to_physmap(xen_xc, domid, XENMAPSPACE_gmfn, idx,
+                                      gpfn);
+        if (rc) {
+            return rc;
+        }
+    }
+
+    return 0;
+}
+
+static inline int xendevicemodel_pin_memory_cacheattr(
+    xendevicemodel_handle *dmod, domid_t domid, uint64_t start, uint64_t end,
+    uint32_t type)
+{
+    return xc_domain_pin_memory_cacheattr(xen_xc, domid, start, end, type);
+}
+
+typedef void xenforeignmemory_resource_handle;
+
+#define XENMEM_resource_ioreq_server 0
+
+#define XENMEM_resource_ioreq_server_frame_bufioreq 0
+#define XENMEM_resource_ioreq_server_frame_ioreq(n) (1 + (n))
+
+static inline xenforeignmemory_resource_handle *xenforeignmemory_map_resource(
+    xenforeignmemory_handle *fmem, domid_t domid, unsigned int type,
+    unsigned int id, unsigned long frame, unsigned long nr_frames,
+    void **paddr, int prot, int flags)
+{
+    errno = EOPNOTSUPP;
+    return NULL;
+}
+
+#endif /* CONFIG_XEN_CTRL_INTERFACE_VERSION < 41100 */
+
 #if CONFIG_XEN_CTRL_INTERFACE_VERSION < 41000
 
 #define XEN_COMPAT_PHYSMAP
@@ -91,11 +150,26 @@ static inline void *xenforeignmemory_map2(xenforeignmemory_handle *h,
     return xenforeignmemory_map(h, dom, prot, pages, arr, err);
 }
 
+static inline int xentoolcore_restrict_all(domid_t domid)
+{
+    errno = ENOTTY;
+    return -1;
+}
+
+static inline int xendevicemodel_shutdown(xendevicemodel_handle *dmod,
+                                          domid_t domid, unsigned int reason)
+{
+    errno = ENOTTY;
+    return -1;
+}
+
+#else /* CONFIG_XEN_CTRL_INTERFACE_VERSION >= 41000 */
+
+#include <xentoolcore.h>
+
 #endif
 
 #if CONFIG_XEN_CTRL_INTERFACE_VERSION < 40900
-
-typedef xc_interface xendevicemodel_handle;
 
 static inline xendevicemodel_handle *xendevicemodel_open(
     struct xentoollog_logger *logger, unsigned int open_flags)
@@ -218,25 +292,6 @@ static inline int xendevicemodel_set_mem_type(
     return xc_hvm_set_mem_type(dmod, domid, mem_type, first_pfn, nr);
 }
 
-static inline int xendevicemodel_restrict(
-    xendevicemodel_handle *dmod, domid_t domid)
-{
-    errno = ENOTTY;
-    return -1;
-}
-
-static inline int xenforeignmemory_restrict(
-    xenforeignmemory_handle *fmem, domid_t domid)
-{
-    errno = ENOTTY;
-    return -1;
-}
-
-#else /* CONFIG_XEN_CTRL_INTERFACE_VERSION >= 40900 */
-
-#undef XC_WANT_COMPAT_DEVICEMODEL_API
-#include <xendevicemodel.h>
-
 #endif
 
 extern xendevicemodel_handle *xen_dmod;
@@ -290,28 +345,8 @@ static inline int xen_modified_memory(domid_t domid, uint64_t first_pfn,
 static inline int xen_restrict(domid_t domid)
 {
     int rc;
-
-    /* Attempt to restrict devicemodel operations */
-    rc = xendevicemodel_restrict(xen_dmod, domid);
+    rc = xentoolcore_restrict_all(domid);
     trace_xen_domid_restrict(rc ? errno : 0);
-
-    if (rc < 0) {
-        /*
-         * If errno is ENOTTY then restriction is not implemented so
-         * there's no point in trying to restrict other types of
-         * operation, but it should not be treated as a failure.
-         */
-        if (errno == ENOTTY) {
-            return 0;
-        }
-
-        return rc;
-    }
-
-    /* Restrict foreignmemory operations */
-    rc = xenforeignmemory_restrict(xen_fmem, domid);
-    trace_xen_domid_restrict(rc ? errno : 0);
-
     return rc;
 }
 
@@ -626,28 +661,6 @@ static inline int xen_set_ioreq_server_state(domid_t dom,
 
 #endif
 
-#if CONFIG_XEN_CTRL_INTERFACE_VERSION < 40600
-static inline int xen_xc_domain_add_to_physmap(xc_interface *xch, uint32_t domid,
-                                               unsigned int space,
-                                               unsigned long idx,
-                                               xen_pfn_t gpfn)
-{
-    return xc_domain_add_to_physmap(xch, domid, space, idx, gpfn);
-}
-#else
-static inline int xen_xc_domain_add_to_physmap(xc_interface *xch, uint32_t domid,
-                                               unsigned int space,
-                                               unsigned long idx,
-                                               xen_pfn_t gpfn)
-{
-    /* In Xen 4.6 rc is -1 and errno contains the error value. */
-    int rc = xc_domain_add_to_physmap(xch, domid, space, idx, gpfn);
-    if (rc == -1)
-        return errno;
-    return rc;
-}
-#endif
-
 #ifdef CONFIG_XEN_PV_DOMAIN_BUILD
 #if CONFIG_XEN_CTRL_INTERFACE_VERSION < 40700
 static inline int xen_domain_create(xc_interface *xc, uint32_t ssidref,
@@ -670,8 +683,21 @@ static inline int xen_domain_create(xc_interface *xc, uint32_t ssidref,
 
 #if CONFIG_XEN_CTRL_INTERFACE_VERSION < 40800
 
+struct xengnttab_grant_copy_segment {
+    union xengnttab_copy_ptr {
+        void *virt;
+        struct {
+            uint32_t ref;
+            uint16_t offset;
+            uint16_t domid;
+        } foreign;
+    } source, dest;
+    uint16_t len;
+    uint16_t flags;
+    int16_t status;
+};
 
-typedef void *xengnttab_grant_copy_segment_t;
+typedef struct xengnttab_grant_copy_segment xengnttab_grant_copy_segment_t;
 
 static inline int xengnttab_grant_copy(xengnttab_handle *xgt, uint32_t count,
                                        xengnttab_grant_copy_segment_t *segs)

@@ -26,6 +26,9 @@
 #include "sysemu/sysemu.h"
 #include "smbus.h"
 
+#define TYPE_XBOX_SMC "smbus-xbox-smc"
+#define XBOX_SMC(obj) OBJECT_CHECK(SMBusSMCDevice, (obj), TYPE_XBOX_SMC)
+
 // #define DEBUG
 #ifdef DEBUG
 # define DPRINTF(format, ...) printf(format, ## __VA_ARGS__)
@@ -168,9 +171,9 @@ static uint8_t smc_read_data(SMBusDevice *dev, uint8_t cmd, int n)
     return 0;
 }
 
-static int smbus_smc_init(SMBusDevice *dev)
+static void smbus_smc_realize(DeviceState *dev, Error **errp)
 {
-    SMBusSMCDevice *smc = (SMBusSMCDevice *)dev;
+    SMBusSMCDevice *smc = XBOX_SMC(dev);
 
     smc->version_string_index = 0;
     smc->scratch_reg = 0;
@@ -178,15 +181,14 @@ static int smbus_smc_init(SMBusDevice *dev)
     if (object_property_get_bool(qdev_get_machine(), "short-animation", NULL)) {
         smc->scratch_reg = SMC_REG_SCRATCH_SHORT_ANIMATION;
     }
-
-    return 0;
 }
 
 static void smbus_smc_class_initfn(ObjectClass *klass, void *data)
 {
+    DeviceClass *dc = DEVICE_CLASS(klass);
     SMBusDeviceClass *sc = SMBUS_DEVICE_CLASS(klass);
 
-    sc->init = smbus_smc_init;
+    dc->realize = smbus_smc_realize;
     sc->quick_cmd = smc_quick_cmd;
     sc->send_byte = smc_send_byte;
     sc->receive_byte = smc_receive_byte;
@@ -195,7 +197,7 @@ static void smbus_smc_class_initfn(ObjectClass *klass, void *data)
 }
 
 static TypeInfo smbus_smc_info = {
-    .name = "smbus-xbox-smc",
+    .name = TYPE_XBOX_SMC,
     .parent = TYPE_SMBUS_DEVICE,
     .instance_size = sizeof(SMBusSMCDevice),
     .class_init = smbus_smc_class_initfn,

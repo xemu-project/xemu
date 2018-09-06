@@ -39,6 +39,7 @@
 * QEMU User space emulator::
 * Implementation notes::
 * Deprecated features::
+* Supported build platforms::
 * License::
 * Index::
 @end menu
@@ -714,20 +715,12 @@ state is not saved or restored properly (in particular USB).
 @node pcsys_network
 @section Network emulation
 
-QEMU can simulate several network cards (PCI or ISA cards on the PC
-target) and can connect them to an arbitrary number of Virtual Local
-Area Networks (VLANs). Host TAP devices can be connected to any QEMU
-VLAN. VLAN can be connected between separate instances of QEMU to
-simulate large networks. For simpler usage, a non privileged user mode
-network stack can replace the TAP device to have a basic network
-connection.
-
-@subsection VLANs
-
-QEMU simulates several VLANs. A VLAN can be symbolised as a virtual
-connection between several network devices. These devices can be for
-example QEMU virtual Ethernet cards or virtual Host ethernet devices
-(TAP devices).
+QEMU can simulate several network cards (e.g. PCI or ISA cards on the PC
+target) and can connect them to a network backend on the host or an emulated
+hub. The various host network backends can either be used to connect the NIC of
+the guest to a real network (e.g. by using a TAP devices or the non-privileged
+user mode network stack), or to other guest instances running in another QEMU
+process (e.g. by using the socket host network backend).
 
 @subsection Using TAP network interfaces
 
@@ -763,7 +756,7 @@ network). The virtual network configuration is the following:
 
 @example
 
-         QEMU VLAN      <------>  Firewall/DHCP server <-----> Internet
+     guest (10.0.2.15)  <------>  Firewall/DHCP server <-----> Internet
                            |          (10.0.2.2)
                            |
                            ---->  DNS server (10.0.2.3)
@@ -798,11 +791,23 @@ When using the @option{'-netdev user,hostfwd=...'} option, TCP or UDP
 connections can be redirected from the host to the guest. It allows for
 example to redirect X11, telnet or SSH connections.
 
-@subsection Connecting VLANs between QEMU instances
+@subsection Hubs
 
-Using the @option{-net socket} option, it is possible to make VLANs
-that span several QEMU instances. See @ref{sec_invocation} to have a
-basic example.
+QEMU can simulate several hubs. A hub can be thought of as a virtual connection
+between several network devices. These devices can be for example QEMU virtual
+ethernet cards or virtual Host ethernet devices (TAP devices). You can connect
+guest NICs or host network backends to such a hub using the @option{-netdev
+hubport} or @option{-nic hubport} options. The legacy @option{-net} option
+also connects the given device to the emulated hub with ID 0 (i.e. the default
+hub) unless you specify a netdev with @option{-net nic,netdev=xxx} here.
+
+@subsection Connecting emulated networks between QEMU instances
+
+Using the @option{-netdev socket} (or @option{-nic socket} or
+@option{-net socket}) option, it is possible to create emulated
+networks that span several QEMU instances.
+See the description of the @option{-netdev socket} option in the
+@ref{sec_invocation,,Invocation chapter} to have a basic example.
 
 @node pcsys_other_devs
 @section Other Devices
@@ -1257,6 +1262,7 @@ The recommendation is for the server to keep its certificates in either
 * tls_generate_server::
 * tls_generate_client::
 * tls_creds_setup::
+* tls_psk::
 @end menu
 @node tls_generate_ca
 @subsection Setup the Certificate Authority
@@ -1503,6 +1509,42 @@ example with VNC:
 
 @example
 $QEMU -vnc 0.0.0.0:0,tls-creds=tls0
+@end example
+
+@node tls_psk
+@subsection TLS Pre-Shared Keys (PSK)
+
+Instead of using certificates, you may also use TLS Pre-Shared Keys
+(TLS-PSK).  This can be simpler to set up than certificates but is
+less scalable.
+
+Use the GnuTLS @code{psktool} program to generate a @code{keys.psk}
+file containing one or more usernames and random keys:
+
+@example
+mkdir -m 0700 /tmp/keys
+psktool -u rich -p /tmp/keys/keys.psk
+@end example
+
+TLS-enabled servers such as qemu-nbd can use this directory like so:
+
+@example
+qemu-nbd \
+  -t -x / \
+  --object tls-creds-psk,id=tls0,endpoint=server,dir=/tmp/keys \
+  --tls-creds tls0 \
+  image.qcow2
+@end example
+
+When connecting from a qemu-based client you must specify the
+directory containing @code{keys.psk} and an optional @var{username}
+(defaults to ``qemu''):
+
+@example
+qemu-img info \
+  --object tls-creds-psk,id=tls0,dir=/tmp/keys,username=rich,endpoint=client \
+  --image-opts \
+  file.driver=nbd,file.host=localhost,file.port=10809,file.tls-creds=tls0,file.export=/
 @end example
 
 @node gdb_usage
@@ -2749,232 +2791,74 @@ Run the emulation in single step mode.
 
 @include qemu-tech.texi
 
-@node Deprecated features
-@appendix Deprecated features
+@include qemu-deprecated.texi
 
-In general features are intended to be supported indefinitely once
-introduced into QEMU. In the event that a feature needs to be removed,
-it will be listed in this appendix. The feature will remain functional
-for 2 releases prior to actual removal. Deprecated features may also
-generate warnings on the console when QEMU starts up, or if activated
-via a monitor command, however, this is not a mandatory requirement.
+@node Supported build platforms
+@appendix Supported build platforms
 
-Prior to the 2.10.0 release there was no official policy on how
-long features would be deprecated prior to their removal, nor
-any documented list of which features were deprecated. Thus
-any features deprecated prior to 2.10.0 will be treated as if
-they were first deprecated in the 2.10.0 release.
+QEMU aims to support building and executing on multiple host OS platforms.
+This appendix outlines which platforms are the major build targets. These
+platforms are used as the basis for deciding upon the minimum required
+versions of 3rd party software QEMU depends on. The supported platforms
+are the targets for automated testing performed by the project when patches
+are submitted for review, and tested before and after merge.
 
-What follows is a list of all features currently marked as
-deprecated.
+If a platform is not listed here, it does not imply that QEMU won't work.
+If an unlisted platform has comparable software versions to a listed platform,
+there is every expectation that it will work. Bug reports are welcome for
+problems encountered on unlisted platforms unless they are clearly older
+vintage than what is described here.
 
-@section Build options
+Note that when considering software versions shipped in distros as support
+targets, QEMU considers only the version number, and assumes the features in
+that distro match the upstream release with the same version. In other words,
+if a distro backports extra features to the software in their distro, QEMU
+upstream code will not add explicit support for those backports, unless the
+feature is auto-detectable in a manner that works for the upstream releases
+too.
 
-@subsection GTK 2.x
+The Repology site @url{https://repology.org} is a useful resource to identify
+currently shipped versions of software in various operating systems, though
+it does not cover all distros listed below.
 
-Previously QEMU has supported building against both GTK 2.x
-and 3.x series APIs. Support for the GTK 2.x builds will be
-discontinued, so maintainers should switch to using GTK 3.x,
-which is the default.
+@section Linux OS
 
-@subsection SDL 1.2
+For distributions with frequent, short-lifetime releases, the project will
+aim to support all versions that are not end of life by their respective
+vendors. For the purposes of identifying supported software versions, the
+project will look at Fedora, Ubuntu, and openSUSE distros. Other short-
+lifetime distros will be assumed to ship similar software versions.
 
-Previously QEMU has supported building against both SDL 1.2
-and 2.0 series APIs. Support for the SDL 1.2 builds will be
-discontinued, so maintainers should switch to using SDL 2.0,
-which is the default.
+For distributions with long-lifetime releases, the project will aim to support
+the most recent major version at all times. Support for the previous major
+version will be dropped 2 years after the new major version is released. For
+the purposes of identifying supported software versions, the project will look
+at RHEL, Debian, Ubuntu LTS, and SLES distros. Other long-lifetime distros will
+be assumed to ship similar software versions.
 
-@section System emulator command line arguments
+@section Windows
 
-@subsection -no-kvm-pit-reinjection (since 1.3.0)
+The project supports building with current versions of the MinGW toolchain,
+hosted on Linux.
 
-The ``-no-kvm-pit-reinjection'' argument is now a
-synonym for setting ``-global kvm-pit.lost_tick_policy=discard''.
+@section macOS
 
-@subsection -no-kvm-irqchip (since 1.3.0)
+The project supports building with the two most recent versions of macOS, with
+the current homebrew package set available.
 
-The ``-no-kvm-irqchip'' argument is now a synonym for
-setting ``-machine kernel_irqchip=off''.
+@section FreeBSD
 
-@subsection -no-kvm (since 1.3.0)
+The project aims to support the all the versions which are not end of life.
 
-The ``-no-kvm'' argument is now a synonym for setting
-``-machine accel=tcg''.
+@section NetBSD
 
-@subsection -vnc tls (since 2.5.0)
+The project aims to support the most recent major version at all times. Support
+for the previous major version will be dropped 2 years after the new major
+version is released.
 
-The ``-vnc tls'' argument is now a synonym for setting
-``-object tls-creds-anon,id=tls0'' combined with
-``-vnc tls-creds=tls0'
+@section OpenBSD
 
-@subsection -vnc x509 (since 2.5.0)
-
-The ``-vnc x509=/path/to/certs'' argument is now a
-synonym for setting
-``-object tls-creds-x509,dir=/path/to/certs,id=tls0,verify-peer=no''
-combined with ``-vnc tls-creds=tls0'
-
-@subsection -vnc x509verify (since 2.5.0)
-
-The ``-vnc x509verify=/path/to/certs'' argument is now a
-synonym for setting
-``-object tls-creds-x509,dir=/path/to/certs,id=tls0,verify-peer=yes''
-combined with ``-vnc tls-creds=tls0'
-
-@subsection -tftp (since 2.6.0)
-
-The ``-tftp /some/dir'' argument is replaced by either
-``-netdev user,id=x,tftp=/some/dir '' (for pluggable NICs, accompanied
-with ``-device ...,netdev=x''), or ``-nic user,tftp=/some/dir''
-(for embedded NICs). The new syntax allows different settings to be
-provided per NIC.
-
-@subsection -bootp (since 2.6.0)
-
-The ``-bootp /some/file'' argument is replaced by either
-``-netdev user,id=x,bootp=/some/file '' (for pluggable NICs, accompanied
-with ``-device ...,netdev=x''), or ``-nic user,bootp=/some/file''
-(for embedded NICs). The new syntax allows different settings to be
-provided per NIC.
-
-@subsection -redir (since 2.6.0)
-
-The ``-redir [tcp|udp]:hostport:[guestaddr]:guestport'' argument is
-replaced by either
-``-netdev user,id=x,hostfwd=[tcp|udp]:[hostaddr]:hostport-[guestaddr]:guestport''
-(for pluggable NICs, accompanied with ``-device ...,netdev=x'') or
-``-nic user,hostfwd=[tcp|udp]:[hostaddr]:hostport-[guestaddr]:guestport''
-(for embedded NICs). The new syntax allows different settings to be
-provided per NIC.
-
-@subsection -smb (since 2.6.0)
-
-The ``-smb /some/dir'' argument is replaced by either
-``-netdev user,id=x,smb=/some/dir '' (for pluggable NICs, accompanied
-with ``-device ...,netdev=x''), or ``-nic user,smb=/some/dir''
-(for embedded NICs). The new syntax allows different settings to be
-provided per NIC.
-
-@subsection -net vlan (since 2.9.0)
-
-The ``-net vlan=NN'' argument was mostly used to attach separate
-network backends to different virtual NICs.  This is the default
-behavior for ``-netdev'' and ``-nic''.  You can connect multiple
-``-netdev'' and ``-nic'' devices to the same network using the
-"hubport" network backend, created with ``-netdev hubport,hubid=NN,...''
-and ``-nic hubport,hubid=NN''.
-
-@subsection -drive cyls=...,heads=...,secs=...,trans=... (since 2.10.0)
-
-The drive geometry arguments are replaced by the the geometry arguments
-that can be specified with the ``-device'' parameter.
-
-@subsection -drive serial=... (since 2.10.0)
-
-The drive serial argument is replaced by the the serial argument
-that can be specified with the ``-device'' parameter.
-
-@subsection -drive addr=... (since 2.10.0)
-
-The drive addr argument is replaced by the the addr argument
-that can be specified with the ``-device'' parameter.
-
-@subsection -usbdevice (since 2.10.0)
-
-The ``-usbdevice DEV'' argument is now a synonym for setting
-the ``-device usb-DEV'' argument instead. The deprecated syntax
-would automatically enable USB support on the machine type.
-If using the new syntax, USB support must be explicitly
-enabled via the ``-machine usb=on'' argument.
-
-@subsection -nodefconfig (since 2.11.0)
-
-The ``-nodefconfig`` argument is a synonym for ``-no-user-config``.
-
-@subsection -balloon (since 2.12.0)
-
-The @option{--balloon virtio} argument has been superseded by
-@option{--device virtio-balloon}.
-
-@subsection -machine s390-squash-mcss=on|off (since 2.12.0)
-
-The ``s390-squash-mcss=on`` property has been obsoleted by allowing the
-cssid to be chosen freely. Instead of squashing subchannels into the
-default channel subsystem image for guests that do not support multiple
-channel subsystems, all devices can be put into the default channel
-subsystem image.
-
-@subsection -fsdev handle (since 2.12.0)
-
-The ``handle'' fsdev backend does not support symlinks and causes the 9p
-filesystem in the guest to fail a fair amount of tests from the PJD POSIX
-filesystem test suite. Also it requires the CAP_DAC_READ_SEARCH capability,
-which is not the recommended way to run QEMU. This backend should not be
-used and it will be removed with no replacement.
-
-@subsection -no-frame (since 2.12.0)
-
-The @code{--no-frame} argument works with SDL 1.2 only. The other user
-interfaces never implemented this in the first place. So this will be
-removed together with SDL 1.2 support.
-
-@subsection -rtc-td-hack (since 2.12.0)
-
-The @code{-rtc-td-hack} option has been replaced by
-@code{-rtc driftfix=slew}.
-
-@subsection -localtime (since 2.12.0)
-
-The @code{-localtime} option has been replaced by @code{-rtc base=localtime}.
-
-@subsection -startdate (since 2.12.0)
-
-The @code{-startdate} option has been replaced by @code{-rtc base=@var{date}}.
-
-@section qemu-img command line arguments
-
-@subsection convert -s (since 2.0.0)
-
-The ``convert -s snapshot_id_or_name'' argument is obsoleted
-by the ``convert -l snapshot_param'' argument instead.
-
-@section QEMU Machine Protocol (QMP) commands
-
-@subsection block-dirty-bitmap-add "autoload" parameter (since 2.12.0)
-
-"autoload" parameter is now ignored. All bitmaps are automatically loaded
-from qcow2 images.
-
-@subsection query-cpus (since 2.12.0)
-
-The ``query-cpus'' command is replaced by the ``query-cpus-fast'' command.
-
-@section System emulator devices
-
-@subsection ivshmem (since 2.6.0)
-
-The ``ivshmem'' device type is replaced by either the ``ivshmem-plain''
-or ``ivshmem-doorbell`` device types.
-
-@subsection Page size support < 4k for embedded PowerPC CPUs (since 2.12.0)
-
-qemu-system-ppcemb will be removed. qemu-system-ppc (or qemu-system-ppc64)
-should be used instead. That means that embedded 4xx PowerPC CPUs will not
-support page sizes < 4096 any longer.
-
-@section System emulator machines
-
-@subsection Xilinx EP108 (since 2.11.0)
-
-The ``xlnx-ep108'' machine has been replaced by the ``xlnx-zcu102'' machine.
-The ``xlnx-zcu102'' machine has the same features and capabilites in QEMU.
-
-@section Block device options
-
-@subsection "backing": "" (since 2.12.0)
-
-In order to prevent QEMU from automatically opening an image's backing
-chain, use ``"backing": null'' instead.
+The project aims to support the all the versions which are not end of life.
 
 @node License
 @appendix License

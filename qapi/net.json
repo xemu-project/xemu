@@ -89,16 +89,6 @@
 { 'command': 'netdev_del', 'data': {'id': 'str'} }
 
 ##
-# @NetdevNoneOptions:
-#
-# Use it alone to have zero network devices.
-#
-# Since: 1.2
-##
-{ 'struct': 'NetdevNoneOptions',
-  'data': { } }
-
-##
 # @NetLegacyNicOptions:
 #
 # Create a new Network Interface Card.
@@ -160,6 +150,9 @@
 # @dnssearch: list of DNS suffixes to search, passed as DHCP option
 #             to the guest
 #
+# @domainname: guest-visible domain name of the virtual nameserver
+#              (since 3.0)
+#
 # @ipv6-prefix: IPv6 network prefix (default is fec0::) (since
 #               2.6). The network prefix is given in the usual
 #               hexadecimal IPv6 address notation.
@@ -197,6 +190,7 @@
     '*dhcpstart': 'str',
     '*dns':       'str',
     '*dnssearch': ['String'],
+    '*domainname': 'str',
     '*ipv6-prefix':      'str',
     '*ipv6-prefixlen':   'int',
     '*ipv6-host':        'str',
@@ -209,7 +203,7 @@
 ##
 # @NetdevTapOptions:
 #
-# Connect the host TAP network interface name to the VLAN.
+# Used to configure a host TAP network interface backend.
 #
 # @ifname: interface name
 #
@@ -267,8 +261,8 @@
 ##
 # @NetdevSocketOptions:
 #
-# Connect the VLAN to a remote VLAN in another QEMU virtual machine using a TCP
-# socket connection.
+# Socket netdevs are used to establish a network connection to another
+# QEMU virtual machine via a TCP socket.
 #
 # @fd: file descriptor of an already opened socket
 #
@@ -296,7 +290,7 @@
 ##
 # @NetdevL2TPv3Options:
 #
-# Connect the VLAN to Ethernet over L2TPv3 Static tunnel
+# Configure an Ethernet over L2TPv3 tunnel.
 #
 # @src: source address
 #
@@ -352,7 +346,7 @@
 ##
 # @NetdevVdeOptions:
 #
-# Connect the VLAN to a vde switch running on the host.
+# Connect to a vde switch running on the host.
 #
 # @sock: socket path
 #
@@ -450,7 +444,7 @@
 #
 # Since: 2.7
 #
-# 'dump' - removed with 2.12
+# 'dump': dropped in 2.12
 ##
 { 'enum': 'NetClientDriver',
   'data': [ 'none', 'nic', 'user', 'tap', 'l2tpv3', 'socket', 'vde',
@@ -473,7 +467,6 @@
   'base': { 'id': 'str', 'type': 'NetClientDriver' },
   'discriminator': 'type',
   'data': {
-    'none':     'NetdevNoneOptions',
     'nic':      'NetLegacyNicOptions',
     'user':     'NetdevUserOptions',
     'tap':      'NetdevTapOptions',
@@ -490,8 +483,6 @@
 #
 # Captures the configuration of a network device; legacy.
 #
-# @vlan: vlan number
-#
 # @id: identifier for monitor commands
 #
 # @name: identifier for monitor commands, ignored if @id is present
@@ -499,10 +490,11 @@
 # @opts: device type specific properties (legacy)
 #
 # Since: 1.2
+#
+# 'vlan': dropped in 3.0
 ##
 { 'struct': 'NetLegacy',
   'data': {
-    '*vlan': 'int32',
     '*id':   'str',
     '*name': 'str',
     'opts':  'NetLegacyOptions' } }
@@ -527,7 +519,6 @@
   'base': { 'type': 'NetLegacyOptionsType' },
   'discriminator': 'type',
   'data': {
-    'none':     'NetdevNoneOptions',
     'nic':      'NetLegacyNicOptions',
     'user':     'NetdevUserOptions',
     'tap':      'NetdevTapOptions',

@@ -338,7 +338,7 @@ static QString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
     switch (in.mod) {
     case PS_INPUTMAPPING_SIGNED_IDENTITY:
     case PS_INPUTMAPPING_UNSIGNED_IDENTITY:
-        QINCREF(reg);
+        qobject_ref(reg);
         res = reg;
         break;
     case PS_INPUTMAPPING_UNSIGNED_INVERT:
@@ -364,7 +364,7 @@ static QString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
         break;
     }
 
-    QDECREF(reg);
+    qobject_unref(reg);
     return res;
 }
 
@@ -374,7 +374,7 @@ static QString* get_output(QString *reg, int mapping)
     QString *res;
     switch (mapping) {
     case PS_COMBINEROUTPUT_IDENTITY:
-        QINCREF(reg);
+        qobject_ref(reg);
         res = reg;
         break;
     case PS_COMBINEROUTPUT_BIAS:
@@ -442,8 +442,8 @@ static void add_stage_code(struct PixelShader *ps,
         qstring_append_fmt(ps->code, "%s.%s = %s(%s);\n",
                            qstring_get_str(ab_dest), write_mask, caster, qstring_get_str(ab_mapping));
     } else {
-        QDECREF(ab_dest);
-        QINCREF(ab_mapping);
+        qobject_unref(ab_dest);
+        qobject_ref(ab_mapping);
         ab_dest = ab_mapping;
     }
 
@@ -451,8 +451,8 @@ static void add_stage_code(struct PixelShader *ps,
         qstring_append_fmt(ps->code, "%s.%s = %s(%s);\n",
                            qstring_get_str(cd_dest), write_mask, caster, qstring_get_str(cd_mapping));
     } else {
-        QDECREF(cd_dest);
-        QINCREF(cd_mapping);
+        qobject_unref(cd_dest);
+        qobject_ref(cd_mapping);
         cd_dest = cd_mapping;
     }
 
@@ -479,19 +479,19 @@ static void add_stage_code(struct PixelShader *ps,
                            qstring_get_str(sum_dest), write_mask, caster, qstring_get_str(sum_mapping));
     }
 
-    QDECREF(a);
-    QDECREF(b);
-    QDECREF(c);
-    QDECREF(d);
-    QDECREF(ab);
-    QDECREF(cd);
-    QDECREF(ab_mapping);
-    QDECREF(cd_mapping);
-    QDECREF(ab_dest);
-    QDECREF(cd_dest);
-    QDECREF(sum_dest);
-    QDECREF(sum);
-    QDECREF(sum_mapping);
+    qobject_unref(a);
+    qobject_unref(b);
+    qobject_unref(c);
+    qobject_unref(d);
+    qobject_unref(ab);
+    qobject_unref(cd);
+    qobject_unref(ab_mapping);
+    qobject_unref(cd_mapping);
+    qobject_unref(ab_dest);
+    qobject_unref(cd_dest);
+    qobject_unref(sum_dest);
+    qobject_unref(sum);
+    qobject_unref(sum_mapping);
 }
 
 // Add code for the final combiner stage
@@ -513,14 +513,14 @@ static void add_final_stage_code(struct PixelShader *ps, struct FCInputInfo fina
     /* FIXME: Is .x correctly here? */
     qstring_append_fmt(ps->code, "r0.a = vec3(%s).x;\n", qstring_get_str(g));
 
-    QDECREF(a);
-    QDECREF(b);
-    QDECREF(c);
-    QDECREF(d);
-    QDECREF(g);
+    qobject_unref(a);
+    qobject_unref(b);
+    qobject_unref(c);
+    qobject_unref(d);
+    qobject_unref(g);
 
-    QDECREF(ps->varE);
-    QDECREF(ps->varF);
+    qobject_unref(ps->varE);
+    qobject_unref(ps->varF);
     ps->varE = ps->varF = NULL;
 }
 
@@ -788,9 +788,9 @@ static QString* psh_convert(struct PixelShader *ps)
     qstring_append(final, "fragColor = r0;\n");
     qstring_append(final, "}\n");
 
-    QDECREF(preflight);
-    QDECREF(vars);
-    QDECREF(ps->code);
+    qobject_unref(preflight);
+    qobject_unref(vars);
+    qobject_unref(ps->code);
 
     return final;
 }

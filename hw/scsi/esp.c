@@ -564,7 +564,8 @@ void esp_reg_write(ESPState *s, uint32_t saddr, uint64_t val)
 }
 
 static bool esp_mem_accepts(void *opaque, hwaddr addr,
-                            unsigned size, bool is_write)
+                            unsigned size, bool is_write,
+                            MemTxAttrs attrs)
 {
     return (size == 1) || (is_write && size == 4);
 }
@@ -617,36 +618,6 @@ static const MemoryRegionOps sysbus_esp_mem_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
     .valid.accepts = esp_mem_accepts,
 };
-
-ESPState *esp_init(hwaddr espaddr, int it_shift,
-                   ESPDMAMemoryReadWriteFunc dma_memory_read,
-                   ESPDMAMemoryReadWriteFunc dma_memory_write,
-                   void *dma_opaque, qemu_irq irq, qemu_irq *reset,
-                   qemu_irq *dma_enable)
-{
-    DeviceState *dev;
-    SysBusDevice *s;
-    SysBusESPState *sysbus;
-    ESPState *esp;
-
-    dev = qdev_create(NULL, TYPE_ESP);
-    sysbus = ESP_STATE(dev);
-    esp = &sysbus->esp;
-    esp->dma_memory_read = dma_memory_read;
-    esp->dma_memory_write = dma_memory_write;
-    esp->dma_opaque = dma_opaque;
-    sysbus->it_shift = it_shift;
-    /* XXX for now until rc4030 has been changed to use DMA enable signal */
-    esp->dma_enabled = 1;
-    qdev_init_nofail(dev);
-    s = SYS_BUS_DEVICE(dev);
-    sysbus_connect_irq(s, 0, irq);
-    sysbus_mmio_map(s, 0, espaddr);
-    *reset = qdev_get_gpio_in(dev, 0);
-    *dma_enable = qdev_get_gpio_in(dev, 1);
-
-    return esp;
-}
 
 static const struct SCSIBusInfo esp_scsi_info = {
     .tcq = false,

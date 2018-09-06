@@ -92,6 +92,11 @@ _qemu_img_wrapper bench -w -c 1 TEST_DIR/t.qcow2
 qemu-img: Could not open 'TEST_DIR/t.qcow2': Failed to get "write" lock
 Is another process using the image?
 
+_qemu_img_wrapper create -f qcow2 TEST_DIR/t.qcow2 -b TEST_DIR/t.qcow2.base
+qemu-img: TEST_DIR/t.qcow2: Failed to get "write" lock
+Is another process using the image?
+file format: IMGFMT
+
 == Running utility commands -U ==
 
 _qemu_io_wrapper -U -c read 0 512 TEST_DIR/t.qcow2
@@ -209,6 +214,11 @@ _qemu_img_wrapper bench -w -c 1 TEST_DIR/t.qcow2
 qemu-img: Could not open 'TEST_DIR/t.qcow2': Failed to get "write" lock
 Is another process using the image?
 
+_qemu_img_wrapper create -f qcow2 TEST_DIR/t.qcow2 -b TEST_DIR/t.qcow2.base
+qemu-img: TEST_DIR/t.qcow2: Failed to get "write" lock
+Is another process using the image?
+file format: IMGFMT
+
 == Running utility commands -U ==
 
 _qemu_io_wrapper -U -c read 0 512 TEST_DIR/t.qcow2
@@ -309,6 +319,9 @@ _qemu_img_wrapper bench -c 1 TEST_DIR/t.qcow2
 
 _qemu_img_wrapper bench -w -c 1 TEST_DIR/t.qcow2
 
+_qemu_img_wrapper create -f qcow2 TEST_DIR/t.qcow2 -b TEST_DIR/t.qcow2.base
+file format: IMGFMT
+
 == Running utility commands -U ==
 
 _qemu_io_wrapper -U -c read 0 512 TEST_DIR/t.qcow2
@@ -356,6 +369,31 @@ _qemu_img_wrapper bench -U -w -c 1 TEST_DIR/t.qcow2
 qemu-img: Could not open 'TEST_DIR/t.qcow2': force-share=on can only be used with read-only images
 
 Round done
+
+== Two devices with the same image (read-only=off - read-only=off) ==
+QEMU_PROG: -drive if=none,file=TEST_DIR/t.qcow2,read-only=off: Failed to get "write" lock
+Is another process using the image?
+
+== Two devices with the same image (read-only=off - read-only=on) ==
+QEMU_PROG: -drive if=none,file=TEST_DIR/t.qcow2,read-only=on: Failed to get shared "write" lock
+Is another process using the image?
+
+== Two devices with the same image (read-only=off - read-only=on,force-share=on) ==
+
+== Two devices with the same image (read-only=on - read-only=off) ==
+QEMU_PROG: -drive if=none,file=TEST_DIR/t.qcow2,read-only=off: Failed to get "write" lock
+Is another process using the image?
+
+== Two devices with the same image (read-only=on - read-only=on) ==
+
+== Two devices with the same image (read-only=on - read-only=on,force-share=on) ==
+
+== Two devices with the same image (read-only=on,force-share=on - read-only=off) ==
+
+== Two devices with the same image (read-only=on,force-share=on - read-only=on) ==
+
+== Two devices with the same image (read-only=on,force-share=on - read-only=on,force-share=on) ==
+
 == Creating TEST_DIR/t.qcow2.[abc] ==
 Formatting 'TEST_DIR/t.IMGFMT.a', fmt=IMGFMT size=33554432 backing_file=TEST_DIR/t.IMGFMT
 Formatting 'TEST_DIR/t.IMGFMT.b', fmt=IMGFMT size=33554432 backing_file=TEST_DIR/t.IMGFMT
@@ -399,4 +437,20 @@ Is another process using the image?
 Closing the other
 
 _qemu_io_wrapper TEST_DIR/t.qcow2 -c write 0 512
+
+== Detecting -U and force-share conflicts ==
+
+No conflict:
+image: null-co://
+file format: null-co
+virtual size: 1.0G (1073741824 bytes)
+disk size: unavailable
+
+Conflict:
+qemu-img: --force-share/-U conflicts with image options
+
+No conflict:
+
+Conflict:
+-U conflicts with image options
 *** done

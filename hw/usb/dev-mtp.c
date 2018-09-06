@@ -24,7 +24,7 @@
 #include "qemu/iov.h"
 #include "trace.h"
 #include "hw/usb.h"
-#include "hw/usb/desc.h"
+#include "desc.h"
 
 /* ----------------------------------------------------------------------- */
 
@@ -1017,12 +1017,16 @@ static MTPData *usb_mtp_get_object(MTPState *s, MTPControl *c,
 static MTPData *usb_mtp_get_partial_object(MTPState *s, MTPControl *c,
                                            MTPObject *o)
 {
-    MTPData *d = usb_mtp_data_alloc(c);
+    MTPData *d;
     off_t offset;
 
+    if (c->argc <= 2) {
+        return NULL;
+    }
     trace_usb_mtp_op_get_partial_object(s->dev.addr, o->handle, o->path,
                                         c->argv[1], c->argv[2]);
 
+    d = usb_mtp_data_alloc(c);
     d->fd = open(o->path, O_RDONLY);
     if (d->fd == -1) {
         usb_mtp_data_free(d);
@@ -1446,8 +1450,7 @@ static void usb_mtp_command(MTPState *s, MTPControl *c)
             if (o == NULL) {
                 usb_mtp_queue_result(s, RES_INVALID_OBJECT_HANDLE, c->trans,
                                      0, 0, 0, 0);
-            }
-            if (o->format != FMT_ASSOCIATION) {
+            } else if (o->format != FMT_ASSOCIATION) {
                 usb_mtp_queue_result(s, RES_INVALID_PARENT_OBJECT, c->trans,
                                      0, 0, 0, 0);
             }
@@ -1660,6 +1663,7 @@ static void usb_mtp_write_metadata(MTPState *s)
     uint32_t next_handle = s->next_handle;
 
     assert(!s->write_pending);
+    assert(p != NULL);
 
     utf16_to_str(dataset->length, dataset->filename, filename);
 
@@ -1696,6 +1700,11 @@ static void usb_mtp_get_data(MTPState *s, mtp_container *container,
     uint64_t dlen;
     uint32_t data_len = p->iov.size;
 
+    if (!d) {
+            usb_mtp_queue_result(s, RES_INVALID_OBJECTINFO, 0,
+                                 0, 0, 0, 0);
+            return;
+    }
     if (d->first) {
         /* Total length of incoming data */
         d->length = cpu_to_le32(container->length) - sizeof(mtp_container);
@@ -1838,7 +1847,7 @@ static void usb_mtp_handle_data(USBDevice *dev, USBPacket *p)
             p->status = USB_RET_STALL;
             return;
         }
-        if (s->data_out && !s->data_out->first) {
+        if ((s->data_out != NULL) && !s->data_out->first) {
             container_type = TYPE_DATA;
         } else {
             usb_packet_copy(p, &container, sizeof(container));
@@ -1948,16 +1957,17 @@ static void usb_mtp_realize(USBDevice *dev, Error **errp)
             return;
         }
         s->desc = strrchr(s->root, '/');
-        /* Mark store as RW */
-        if (!s->readonly) {
-            s->flags |= (1 << MTP_FLAG_WRITABLE);
-        }
         if (s->desc && s->desc[0]) {
             s->desc = g_strdup(s->desc + 1);
         } else {
             s->desc = g_strdup("none");
         }
     }
+    /* Mark store as RW */
+    if (!s->readonly) {
+        s->flags |= (1 << MTP_FLAG_WRITABLE);
+    }
+
 }
 
 static const VMStateDescription vmstate_usb_mtp = {

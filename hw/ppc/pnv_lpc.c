@@ -22,6 +22,7 @@
 #include "target/ppc/cpu.h"
 #include "qapi/error.h"
 #include "qemu/log.h"
+#include "hw/isa/isa.h"
 
 #include "hw/ppc/pnv.h"
 #include "hw/ppc/pnv_lpc.h"
@@ -79,6 +80,7 @@ enum {
 
 #define ISA_IO_SIZE             0x00010000
 #define ISA_MEM_SIZE            0x10000000
+#define ISA_FW_SIZE             0x10000000
 #define LPC_IO_OPB_ADDR         0xd0010000
 #define LPC_IO_OPB_SIZE         0x00010000
 #define LPC_MEM_OPB_ADDR        0xe0010000
@@ -125,25 +127,17 @@ static int pnv_lpc_dt_xscom(PnvXScomInterface *dev, void *fdt, int xscom_offset)
 static bool opb_read(PnvLpcController *lpc, uint32_t addr, uint8_t *data,
                      int sz)
 {
-    bool success;
-
     /* XXX Handle access size limits and FW read caching here */
-    success = !address_space_rw(&lpc->opb_as, addr, MEMTXATTRS_UNSPECIFIED,
-                                data, sz, false);
-
-    return success;
+    return !address_space_rw(&lpc->opb_as, addr, MEMTXATTRS_UNSPECIFIED,
+                             data, sz, false);
 }
 
 static bool opb_write(PnvLpcController *lpc, uint32_t addr, uint8_t *data,
                       int sz)
 {
-    bool success;
-
     /* XXX Handle access size limits here */
-    success = !address_space_rw(&lpc->opb_as, addr, MEMTXATTRS_UNSPECIFIED,
-                                data, sz, true);
-
-    return success;
+    return !address_space_rw(&lpc->opb_as, addr, MEMTXATTRS_UNSPECIFIED,
+                             data, sz, true);
 }
 
 #define ECCB_CTL_READ           PPC_BIT(15)
@@ -437,6 +431,7 @@ static void pnv_lpc_realize(DeviceState *dev, Error **errp)
      */
     memory_region_init(&lpc->isa_io, OBJECT(dev), "isa-io", ISA_IO_SIZE);
     memory_region_init(&lpc->isa_mem, OBJECT(dev), "isa-mem", ISA_MEM_SIZE);
+    memory_region_init(&lpc->isa_fw, OBJECT(dev),  "isa-fw", ISA_FW_SIZE);
 
     /* Create windows from the OPB space to the ISA space */
     memory_region_init_alias(&lpc->opb_isa_io, OBJECT(dev), "lpc-isa-io",
@@ -448,7 +443,7 @@ static void pnv_lpc_realize(DeviceState *dev, Error **errp)
     memory_region_add_subregion(&lpc->opb_mr, LPC_MEM_OPB_ADDR,
                                 &lpc->opb_isa_mem);
     memory_region_init_alias(&lpc->opb_isa_fw, OBJECT(dev), "lpc-isa-fw",
-                             &lpc->isa_mem, 0, LPC_FW_OPB_SIZE);
+                             &lpc->isa_fw, 0, LPC_FW_OPB_SIZE);
     memory_region_add_subregion(&lpc->opb_mr, LPC_FW_OPB_ADDR,
                                 &lpc->opb_isa_fw);
 
@@ -541,16 +536,35 @@ static void pnv_lpc_isa_irq_handler(void *opaque, int n, int level)
     }
 }
 
-qemu_irq *pnv_lpc_isa_irq_create(PnvLpcController *lpc, int chip_type,
-                                 int nirqs)
+ISABus *pnv_lpc_isa_create(PnvLpcController *lpc, bool use_cpld, Error **errp)
 {
+    Error *local_err = NULL;
+    ISABus *isa_bus;
+    qemu_irq *irqs;
+    qemu_irq_handler handler;
+
+    /* let isa_bus_new() create its own bridge on SysBus otherwise
+     * devices speficied on the command line won't find the bus and
+     * will fail to create.
+     */
+    isa_bus = isa_bus_new(NULL, &lpc->isa_mem, &lpc->isa_io, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return NULL;
+    }
+
     /* Not all variants have a working serial irq decoder. If not,
      * handling of LPC interrupts becomes a platform issue (some
      * platforms have a CPLD to do it).
      */
-    if (chip_type == PNV_CHIP_POWER8NVL) {
-        return qemu_allocate_irqs(pnv_lpc_isa_irq_handler, lpc, nirqs);
+    if (use_cpld) {
+        handler = pnv_lpc_isa_irq_handler_cpld;
     } else {
-        return qemu_allocate_irqs(pnv_lpc_isa_irq_handler_cpld, lpc, nirqs);
+        handler = pnv_lpc_isa_irq_handler;
     }
+
+    irqs = qemu_allocate_irqs(handler, lpc, ISA_NUM_IRQS);
+
+    isa_bus_irqs(isa_bus, irqs);
+    return isa_bus;
 }

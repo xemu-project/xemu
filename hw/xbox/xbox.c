@@ -412,7 +412,7 @@ void xbox_init_common(MachineState *machine,
     /* smbus devices */
     uint8_t *eeprom_buf = g_malloc0(256);
     memcpy(eeprom_buf, eeprom, 256);
-    smbus_eeprom_init_single(smbus, 0x54, eeprom_buf);
+    smbus_eeprom_init_one(smbus, 0x54, eeprom_buf);
 
     smbus_xbox_smc_init(smbus, 0x10);
     smbus_cx25871_init(smbus, 0x45);

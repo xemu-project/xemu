@@ -69,16 +69,10 @@ static uint8_t cx_read_data(SMBusDevice *dev, uint8_t cmd, int n)
     return cx->registers[cmd];
 }
 
-static int smbus_cx_init(SMBusDevice *dev)
-{
-    return 0;
-}
-
 static void smbus_cx25871_class_initfn(ObjectClass *klass, void *data)
 {
     SMBusDeviceClass *sc = SMBUS_DEVICE_CLASS(klass);
 
-    sc->init = smbus_cx_init;
     sc->quick_cmd = cx_quick_cmd;
     sc->send_byte = cx_send_byte;
     sc->receive_byte = cx_receive_byte;

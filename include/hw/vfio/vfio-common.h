@@ -22,7 +22,6 @@
 #define HW_VFIO_VFIO_COMMON_H
 
 #include "qemu-common.h"
-#include "exec/address-spaces.h"
 #include "exec/memory.h"
 #include "qemu/queue.h"
 #include "qemu/notify.h"
@@ -33,15 +32,6 @@
 
 #define ERR_PREFIX "vfio error: %s: "
 #define WARN_PREFIX "vfio warning: %s: "
-
-/*#define DEBUG_VFIO*/
-#ifdef DEBUG_VFIO
-#define DPRINTF(fmt, ...) \
-    do { fprintf(stderr, "vfio: " fmt, ## __VA_ARGS__); } while (0)
-#else
-#define DPRINTF(fmt, ...) \
-    do { } while (0)
-#endif
 
 enum {
     VFIO_DEVICE_TYPE_PCI = 0,

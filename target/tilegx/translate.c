@@ -2362,7 +2362,7 @@ static void translate_one_bundle(DisasContext *dc, uint64_t bundle)
             tcg_temp_free_i64(next);
         }
         tcg_temp_free_i64(dc->jmp.dest);
-        tcg_gen_exit_tb(0);
+        tcg_gen_exit_tb(NULL, 0);
         dc->exit_tb = true;
     } else if (dc->atomic_excp != TILEGX_EXCP_NONE) {
         gen_exception(dc, dc->atomic_excp);
@@ -2375,7 +2375,7 @@ void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
     DisasContext ctx;
     DisasContext *dc = &ctx;
     uint64_t pc_start = tb->pc;
-    uint64_t next_page_start = (pc_start & TARGET_PAGE_MASK) + TARGET_PAGE_SIZE;
+    uint64_t page_start = pc_start & TARGET_PAGE_MASK;
     int num_insns = 0;
     int max_insns = tb_cflags(tb) & CF_COUNT_MASK;
 
@@ -2415,11 +2415,11 @@ void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
         }
         dc->pc += TILEGX_BUNDLE_SIZE_IN_BYTES;
         if (num_insns >= max_insns
-            || dc->pc >= next_page_start
+            || (dc->pc - page_start >= TARGET_PAGE_SIZE)
             || tcg_op_buf_full()) {
             /* Ending the TB due to TB size or page boundary.  Set PC.  */
             tcg_gen_movi_tl(cpu_pc, dc->pc);
-            tcg_gen_exit_tb(0);
+            tcg_gen_exit_tb(NULL, 0);
             break;
         }
     }

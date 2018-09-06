@@ -36,11 +36,6 @@
 #include "qemu/timer.h"
 #include "fpu/softfloat.h"
 
-#ifdef CONFIG_USER_ONLY
-/* tb_invalidate_phys_range */
-#include "accel/tcg/translate-all.h"
-#endif
-
 #ifndef CONFIG_USER_ONLY
 
 void xtensa_cpu_do_unaligned_access(CPUState *cs,
@@ -105,7 +100,8 @@ static void tb_invalidate_virtual_addr(CPUXtensaState *env, uint32_t vaddr)
     int ret = xtensa_get_physical_addr(env, false, vaddr, 2, 0,
             &paddr, &page_size, &access);
     if (ret == 0) {
-        tb_invalidate_phys_addr(&address_space_memory, paddr);
+        tb_invalidate_phys_addr(&address_space_memory, paddr,
+                                MEMTXATTRS_UNSPECIFIED);
     }
 }
 
@@ -113,9 +109,7 @@ static void tb_invalidate_virtual_addr(CPUXtensaState *env, uint32_t vaddr)
 
 static void tb_invalidate_virtual_addr(CPUXtensaState *env, uint32_t vaddr)
 {
-    mmap_lock();
-    tb_invalidate_phys_range(vaddr, vaddr + 1);
-    mmap_unlock();
+    tb_invalidate_phys_addr(vaddr);
 }
 
 #endif
@@ -464,7 +458,11 @@ void HELPER(check_interrupts)(CPUXtensaState *env)
 
 void HELPER(itlb_hit_test)(CPUXtensaState *env, uint32_t vaddr)
 {
-    get_page_addr_code(env, vaddr);
+    /*
+     * Attempt the memory load; we don't care about the result but
+     * only the side-effects (ie any MMU or other exception)
+     */
+    cpu_ldub_code_ra(env, vaddr, GETPC());
 }
 
 /*!

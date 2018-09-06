@@ -153,3 +153,23 @@ guest NVDIMM region mapping structure.  This unarmed flag indicates
 guest software that this vNVDIMM device contains a region that cannot
 accept persistent writes. In result, for example, the guest Linux
 NVDIMM driver, marks such vNVDIMM device as read-only.
+
+NVDIMM Persistence
+------------------
+
+ACPI 6.2 Errata A added support for a new Platform Capabilities Structure
+which allows the platform to communicate what features it supports related to
+NVDIMM data persistence.  Users can provide a persistence value to a guest via
+the optional "nvdimm-persistence" machine command line option:
+
+    -machine pc,accel=kvm,nvdimm,nvdimm-persistence=cpu
+
+There are currently two valid values for this option:
+
+"mem-ctrl" - The platform supports flushing dirty data from the memory
+             controller to the NVDIMMs in the event of power loss.
+
+"cpu"      - The platform supports flushing dirty data from the CPU cache to
+             the NVDIMMs in the event of power loss.  This implies that the
+             platform also supports flushing dirty data through the memory
+             controller on power loss.

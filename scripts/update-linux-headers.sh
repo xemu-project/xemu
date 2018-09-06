@@ -43,6 +43,7 @@ cp_portable() {
                                      -e 'limits' \
                                      -e 'linux/kernel' \
                                      -e 'linux/sysinfo' \
+                                     -e 'asm-generic/kvm_para' \
                                      > /dev/null
     then
         echo "Unexpected #include in input file $f".
@@ -50,7 +51,8 @@ cp_portable() {
     fi
 
     header=$(basename "$f");
-    sed -e 's/__u\([0-9][0-9]*\)/uint\1_t/g' \
+    sed -e 's/__aligned_u64/__u64 __attribute__((aligned(8)))/g' \
+        -e 's/__u\([0-9][0-9]*\)/uint\1_t/g' \
         -e 's/u\([0-9][0-9]*\)/uint\1_t/g' \
         -e 's/__s\([0-9][0-9]*\)/int\1_t/g' \
         -e 's/__le\([0-9][0-9]*\)/uint\1_t/g' \
@@ -83,11 +85,6 @@ for arch in $ARCHLIST; do
         continue
     fi
 
-    # Blacklist architectures which have KVM headers but are actually dead
-    if [ "$arch" = "ia64" -o "$arch" = "mips" ]; then
-        continue
-    fi
-
     if [ "$arch" = x86 ]; then
         arch_var=SRCARCH
     else
@@ -98,11 +95,12 @@ for arch in $ARCHLIST; do
 
     rm -rf "$output/linux-headers/asm-$arch"
     mkdir -p "$output/linux-headers/asm-$arch"
-    for header in kvm.h kvm_para.h unistd.h; do
+    for header in kvm.h unistd.h bitsperlong.h; do
         cp "$tmpdir/include/asm/$header" "$output/linux-headers/asm-$arch"
     done
-    if [ $arch = powerpc ]; then
-        cp "$tmpdir/include/asm/epapr_hcalls.h" "$output/linux-headers/asm-powerpc/"
+
+    if [ $arch = mips ]; then
+        cp "$tmpdir/include/asm/sgidefs.h" "$output/linux-headers/asm-mips/"
     fi
 
     rm -rf "$output/include/standard-headers/asm-$arch"
@@ -118,35 +116,46 @@ for arch in $ARCHLIST; do
         cp "$tmpdir/include/asm/unistd-common.h" "$output/linux-headers/asm-arm/"
     fi
     if [ $arch = x86 ]; then
-        cat <<-EOF >"$output/include/standard-headers/asm-x86/hyperv.h"
-        /* this is a temporary placeholder until kvm_para.h stops including it */
-EOF
         cp "$tmpdir/include/asm/unistd_32.h" "$output/linux-headers/asm-x86/"
         cp "$tmpdir/include/asm/unistd_x32.h" "$output/linux-headers/asm-x86/"
         cp "$tmpdir/include/asm/unistd_64.h" "$output/linux-headers/asm-x86/"
+        cp_portable "$tmpdir/include/asm/kvm_para.h" "$output/include/standard-headers/asm-$arch"
     fi
 done
 
 rm -rf "$output/linux-headers/linux"
 mkdir -p "$output/linux-headers/linux"
-for header in kvm.h kvm_para.h vfio.h vfio_ccw.h vhost.h \
+for header in kvm.h vfio.h vfio_ccw.h vhost.h \
               psci.h psp-sev.h userfaultfd.h; do
     cp "$tmpdir/include/linux/$header" "$output/linux-headers/linux"
 done
+
 rm -rf "$output/linux-headers/asm-generic"
 mkdir -p "$output/linux-headers/asm-generic"
-for header in kvm_para.h; do
+for header in unistd.h bitsperlong.h; do
     cp "$tmpdir/include/asm-generic/$header" "$output/linux-headers/asm-generic"
 done
+
 if [ -L "$linux/source" ]; then
     cp "$linux/source/COPYING" "$output/linux-headers"
 else
     cp "$linux/COPYING" "$output/linux-headers"
 fi
 
-cat <<EOF >$output/linux-headers/asm-x86/hyperv.h
-#include "standard-headers/asm-x86/hyperv.h"
-EOF
+# Recent kernel sources split the copyright/license info into multiple
+# files, which we need to copy. This set of licenses is the set that
+# are referred to by SPDX lines in the headers we currently copy.
+# We don't copy the Documentation/process/license-rules.rst which
+# is also referred to by COPYING, since it's explanatory rather than license.
+if [ -d "$linux/LICENSES" ]; then
+    mkdir -p "$output/linux-headers/LICENSES/preferred" \
+             "$output/linux-headers/LICENSES/exceptions"
+    for l in preferred/GPL-2.0 preferred/BSD-2-Clause preferred/BSD-3-Clause \
+             exceptions/Linux-syscall-note; do
+        cp "$linux/LICENSES/$l" "$output/linux-headers/LICENSES/$l"
+    done
+fi
+
 cat <<EOF >$output/linux-headers/linux/virtio_config.h
 #include "standard-headers/linux/virtio_config.h"
 EOF

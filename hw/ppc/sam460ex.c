@@ -12,12 +12,11 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/units.h"
 #include "qemu-common.h"
-#include "qemu/cutils.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "hw/hw.h"
-#include "sysemu/blockdev.h"
 #include "hw/boards.h"
 #include "sysemu/kvm.h"
 #include "kvm_ppc.h"
@@ -27,8 +26,8 @@
 #include "elf.h"
 #include "exec/address-spaces.h"
 #include "exec/memory.h"
-#include "hw/ppc/ppc440.h"
-#include "hw/ppc/ppc405.h"
+#include "ppc440.h"
+#include "ppc405.h"
 #include "hw/block/flash.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/qtest.h"
@@ -37,6 +36,9 @@
 #include "hw/i2c/ppc4xx_i2c.h"
 #include "hw/i2c/smbus.h"
 #include "hw/usb/hcd-ehci.h"
+#include "hw/ppc/fdt.h"
+
+#include <libfdt.h>
 
 #define BINARY_DEVICE_TREE_FILE "canyonlands.dtb"
 #define UBOOT_FILENAME "u-boot-sam460-20100605.bin"
@@ -47,7 +49,7 @@
 /* from Sam460 U-Boot include/configs/Sam460ex.h */
 #define FLASH_BASE             0xfff00000
 #define FLASH_BASE_H           0x4
-#define FLASH_SIZE             (1 << 20)
+#define FLASH_SIZE             (1 * MiB)
 #define UBOOT_LOAD_BASE        0xfff80000
 #define UBOOT_SIZE             0x00080000
 #define UBOOT_ENTRY            0xfffffffc
@@ -68,11 +70,15 @@
 */
 
 #define CPU_FREQ 1150000000
+#define PLB_FREQ 230000000
+#define OPB_FREQ 115000000
+#define EBC_FREQ 115000000
+#define UART_FREQ 11059200
 #define SDRAM_NR_BANKS 4
 
 /* FIXME: See u-boot.git 8ac41e, also fix in ppc440_uc.c */
 static const unsigned int ppc460ex_sdram_bank_sizes[] = {
-    1024 << 20, 512 << 20, 256 << 20, 128 << 20, 64 << 20, 32 << 20, 0
+    1 * GiB, 512 * MiB, 256 * MiB, 128 * MiB, 64 * MiB, 32 * MiB, 0
 };
 
 struct boot_info {
@@ -127,7 +133,7 @@ static void generate_eeprom_spd(uint8_t *eeprom, ram_addr_t ram_size)
     int i;
 
     /* work in terms of MB */
-    ram_size >>= 20;
+    ram_size /= MiB;
 
     while ((ram_size >= 4) && (nbanks <= 2)) {
         int sz_log2 = MIN(31 - clz32(ram_size), 14);
@@ -226,7 +232,7 @@ static int sam460ex_load_uboot(void)
     fl_sectors = (bios_size + 65535) >> 16;
 
     if (!pflash_cfi01_register(base, NULL, "sam460ex.flash", bios_size,
-                               blk, (64 * 1024), fl_sectors,
+                               blk, 64 * KiB, fl_sectors,
                                1, 0x89, 0x18, 0x0000, 0x0, 1)) {
         error_report("qemu: Error registering flash memory.");
         /* XXX: return an error instead? */
@@ -249,52 +255,41 @@ static int sam460ex_load_device_tree(hwaddr addr,
                                      hwaddr initrd_size,
                                      const char *kernel_cmdline)
 {
-    int ret = -1;
     uint32_t mem_reg_property[] = { 0, 0, cpu_to_be32(ramsize) };
     char *filename;
     int fdt_size;
     void *fdt;
     uint32_t tb_freq = CPU_FREQ;
     uint32_t clock_freq = CPU_FREQ;
+    int offset;
 
     filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, BINARY_DEVICE_TREE_FILE);
     if (!filename) {
-        goto out;
+        error_report("Couldn't find dtb file `%s'", BINARY_DEVICE_TREE_FILE);
+        exit(1);
     }
     fdt = load_device_tree(filename, &fdt_size);
-    g_free(filename);
-    if (fdt == NULL) {
-        goto out;
+    if (!fdt) {
+        error_report("Couldn't load dtb file `%s'", filename);
+        g_free(filename);
+        exit(1);
     }
+    g_free(filename);
 
     /* Manipulate device tree in memory. */
 
-    ret = qemu_fdt_setprop(fdt, "/memory", "reg", mem_reg_property,
-                               sizeof(mem_reg_property));
-    if (ret < 0) {
-        error_report("couldn't set /memory/reg");
-    }
+    qemu_fdt_setprop(fdt, "/memory", "reg", mem_reg_property,
+                     sizeof(mem_reg_property));
 
     /* default FDT doesn't have a /chosen node... */
     qemu_fdt_add_subnode(fdt, "/chosen");
 
-    ret = qemu_fdt_setprop_cell(fdt, "/chosen", "linux,initrd-start",
-                                    initrd_base);
-    if (ret < 0) {
-        error_report("couldn't set /chosen/linux,initrd-start");
-    }
+    qemu_fdt_setprop_cell(fdt, "/chosen", "linux,initrd-start", initrd_base);
 
-    ret = qemu_fdt_setprop_cell(fdt, "/chosen", "linux,initrd-end",
-                                    (initrd_base + initrd_size));
-    if (ret < 0) {
-        error_report("couldn't set /chosen/linux,initrd-end");
-    }
+    qemu_fdt_setprop_cell(fdt, "/chosen", "linux,initrd-end",
+                          (initrd_base + initrd_size));
 
-    ret = qemu_fdt_setprop_string(fdt, "/chosen", "bootargs",
-                                      kernel_cmdline);
-    if (ret < 0) {
-        error_report("couldn't set /chosen/bootargs");
-    }
+    qemu_fdt_setprop_string(fdt, "/chosen", "bootargs", kernel_cmdline);
 
     /* Copy data from the host device tree into the guest. Since the guest can
      * directly access the timebase without host involvement, we must expose
@@ -309,13 +304,31 @@ static int sam460ex_load_device_tree(hwaddr addr,
     qemu_fdt_setprop_cell(fdt, "/cpus/cpu@0", "timebase-frequency",
                               tb_freq);
 
+    /* Remove cpm node if it exists (it is not emulated) */
+    offset = fdt_path_offset(fdt, "/cpm");
+    if (offset >= 0) {
+        _FDT(fdt_nop_node(fdt, offset));
+    }
+
+    /* set serial port clocks */
+    offset = fdt_node_offset_by_compatible(fdt, -1, "ns16550");
+    while (offset >= 0) {
+        _FDT(fdt_setprop_cell(fdt, offset, "clock-frequency", UART_FREQ));
+        offset = fdt_node_offset_by_compatible(fdt, offset, "ns16550");
+    }
+
+    /* some more clocks */
+    qemu_fdt_setprop_cell(fdt, "/plb", "clock-frequency",
+                              PLB_FREQ);
+    qemu_fdt_setprop_cell(fdt, "/plb/opb", "clock-frequency",
+                              OPB_FREQ);
+    qemu_fdt_setprop_cell(fdt, "/plb/opb/ebc", "clock-frequency",
+                              EBC_FREQ);
+
     rom_add_blob_fixed(BINARY_DEVICE_TREE_FILE, fdt, fdt_size, addr);
     g_free(fdt);
-    ret = fdt_size;
 
-out:
-
-    return ret;
+    return fdt_size;
 }
 
 /* Create reset TLB entries for BookE, mapping only the flash memory.  */
@@ -360,14 +373,14 @@ static void main_cpu_reset(void *opaque)
 
     /* either we have a kernel to boot or we jump to U-Boot */
     if (bi->entry != UBOOT_ENTRY) {
-        env->gpr[1] = (16 << 20) - 8;
+        env->gpr[1] = (16 * MiB) - 8;
         env->gpr[3] = FDT_ADDR;
         env->nip = bi->entry;
 
         /* Create a mapping for the kernel.  */
         mmubooke_create_initial_mapping(env, 0, 0);
         env->gpr[6] = tswap32(EPAPR_MAGIC);
-        env->gpr[7] = (16 << 20) - 8; /*bi->ima_size;*/
+        env->gpr[7] = (16 * MiB) - 8; /* bi->ima_size; */
 
     } else {
         env->nip = UBOOT_ENTRY;
@@ -458,6 +471,7 @@ static void sam460ex_init(MachineState *machine)
     object_property_set_bool(OBJECT(dev), true, "realized", NULL);
     smbus_eeprom_init(i2c[0]->bus, 8, smbus_eeprom_buf, smbus_eeprom_size);
     g_free(smbus_eeprom_buf);
+    i2c_create_slave(i2c[0]->bus, "m41t80", 0x68);
 
     dev = sysbus_create_simple(TYPE_PPC4xx_I2C, 0x4ef600800, uic[0][3]);
     i2c[1] = PPC4xx_I2C(dev);
@@ -477,10 +491,13 @@ static void sam460ex_init(MachineState *machine)
     /* MAL */
     ppc4xx_mal_init(env, 4, 16, &uic[2][3]);
 
+    /* DMA */
+    ppc4xx_dma_init(env, 0x200);
+
     /* 256K of L2 cache as memory */
     ppc4xx_l2sram_init(env);
     /* FIXME: remove this after fixing l2sram mapping in ppc440_uc.c? */
-    memory_region_init_ram(l2cache_ram, NULL, "ppc440.l2cache_ram", 256 << 10,
+    memory_region_init_ram(l2cache_ram, NULL, "ppc440.l2cache_ram", 256 * KiB,
                            &error_abort);
     memory_region_add_subregion(address_space_mem, 0x400000000LL, l2cache_ram);
 
@@ -498,10 +515,8 @@ static void sam460ex_init(MachineState *machine)
 
     /* PCI bus */
     ppc460ex_pcie_init(env);
-    /* FIXME: is this correct? */
-    dev = sysbus_create_varargs("ppc440-pcix-host", 0xc0ec00000,
-                                uic[1][0], uic[1][20], uic[1][21], uic[1][22],
-                                NULL);
+    /* All PCI irqs are connected to the same UIC pin (cf. UBoot source) */
+    dev = sysbus_create_simple("ppc440-pcix-host", 0xc0ec00000, uic[1][0]);
     pci_bus = (PCIBus *)qdev_get_child_bus(dev, "pci.0");
     if (!pci_bus) {
         error_report("couldn't create PCI controller!");
@@ -522,14 +537,14 @@ static void sam460ex_init(MachineState *machine)
 
     /* SoC has 4 UARTs
      * but board has only one wired and two are present in fdt */
-    if (serial_hds[0] != NULL) {
+    if (serial_hd(0) != NULL) {
         serial_mm_init(address_space_mem, 0x4ef600300, 0, uic[1][1],
-                       PPC_SERIAL_MM_BAUDBASE, serial_hds[0],
+                       PPC_SERIAL_MM_BAUDBASE, serial_hd(0),
                        DEVICE_BIG_ENDIAN);
     }
-    if (serial_hds[1] != NULL) {
+    if (serial_hd(1) != NULL) {
         serial_mm_init(address_space_mem, 0x4ef600400, 0, uic[0][1],
-                       PPC_SERIAL_MM_BAUDBASE, serial_hds[1],
+                       PPC_SERIAL_MM_BAUDBASE, serial_hd(1),
                        DEVICE_BIG_ENDIAN);
     }
 
@@ -581,10 +596,6 @@ static void sam460ex_init(MachineState *machine)
         dt_size = sam460ex_load_device_tree(FDT_ADDR, machine->ram_size,
                                     RAMDISK_ADDR, initrd_size,
                                     machine->kernel_cmdline);
-        if (dt_size < 0) {
-            error_report("couldn't load device tree");
-            exit(1);
-        }
 
         boot_info->dt_base = FDT_ADDR;
         boot_info->dt_size = dt_size;
@@ -598,7 +609,7 @@ static void sam460ex_machine_init(MachineClass *mc)
     mc->desc = "aCube Sam460ex";
     mc->init = sam460ex_init;
     mc->default_cpu_type = POWERPC_CPU_TYPE_NAME("460exb");
-    mc->default_ram_size = 512 * M_BYTE;
+    mc->default_ram_size = 512 * MiB;
 }
 
 DEFINE_MACHINE("sam460ex", sam460ex_machine_init)

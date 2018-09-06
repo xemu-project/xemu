@@ -675,6 +675,16 @@ static const char *get_feature_xml(const char *p, const char **newp,
         }
         return target_xml;
     }
+    if (cc->gdb_get_dynamic_xml) {
+        CPUState *cpu = first_cpu;
+        char *xmlname = g_strndup(p, len);
+        const char *xml = cc->gdb_get_dynamic_xml(cpu, xmlname);
+
+        g_free(xmlname);
+        if (xml) {
+            return xml;
+        }
+    }
     for (i = 0; ; i++) {
         name = xml_builtin[i][0];
         if (!name || (strncmp(name, p, len) == 0 && strlen(name) == len))
@@ -1548,6 +1558,12 @@ void gdb_do_syscallv(gdb_syscall_complete_cb cb, const char *fmt, va_list va)
     *p = 0;
 #ifdef CONFIG_USER_ONLY
     put_packet(s, s->syscall_buf);
+    /* Return control to gdb for it to process the syscall request.
+     * Since the protocol requires that gdb hands control back to us
+     * using a "here are the results" F packet, we don't need to check
+     * gdb_handlesig's return value (which is the signal to deliver if
+     * execution was resumed via a continue packet).
+     */
     gdb_handlesig(s->c_cpu, 0);
 #else
     /* In this case wait to send the syscall packet until notification that
@@ -1804,7 +1820,7 @@ void gdb_signalled(CPUArchState *env, int sig)
     put_packet(s, buf);
 }
 
-static void gdb_accept(void)
+static bool gdb_accept(void)
 {
     GDBState *s;
     struct sockaddr_in sockaddr;
@@ -1816,17 +1832,19 @@ static void gdb_accept(void)
         fd = accept(gdbserver_fd, (struct sockaddr *)&sockaddr, &len);
         if (fd < 0 && errno != EINTR) {
             perror("accept");
-            return;
+            return false;
         } else if (fd >= 0) {
-#ifndef _WIN32
-            fcntl(fd, F_SETFD, FD_CLOEXEC);
-#endif
+            qemu_set_cloexec(fd);
             break;
         }
     }
 
     /* set short latency */
-    socket_set_nodelay(fd);
+    if (socket_set_nodelay(fd)) {
+        perror("setsockopt");
+        close(fd);
+        return false;
+    }
 
     s = g_malloc0(sizeof(GDBState));
     s->c_cpu = first_cpu;
@@ -1835,6 +1853,7 @@ static void gdb_accept(void)
     gdb_has_xml = false;
 
     gdbserver_state = s;
+    return true;
 }
 
 static int gdbserver_open(int port)
@@ -1847,9 +1866,7 @@ static int gdbserver_open(int port)
         perror("socket");
         return -1;
     }
-#ifndef _WIN32
-    fcntl(fd, F_SETFD, FD_CLOEXEC);
-#endif
+    qemu_set_cloexec(fd);
 
     socket_set_fast_reuse(fd);
 
@@ -1877,7 +1894,11 @@ int gdbserver_start(int port)
     if (gdbserver_fd < 0)
         return -1;
     /* accept connections */
-    gdb_accept();
+    if (!gdb_accept()) {
+        close(gdbserver_fd);
+        gdbserver_fd = -1;
+        return -1;
+    }
     return 0;
 }
 

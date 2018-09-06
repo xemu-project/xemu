@@ -145,7 +145,7 @@ static void replication_close(BlockDriverState *bs)
         replication_stop(s->rs, false, NULL);
     }
     if (s->stage == BLOCK_REPLICATION_FAILOVER) {
-        block_job_cancel_sync(s->active_disk->bs->job);
+        job_cancel_sync(&s->active_disk->bs->job->job);
     }
 
     if (s->mode == REPLICATION_MODE_SECONDARY) {
@@ -246,13 +246,14 @@ static coroutine_fn int replication_co_readv(BlockDriverState *bs,
         backup_cow_request_begin(&req, child->bs->job,
                                  sector_num * BDRV_SECTOR_SIZE,
                                  remaining_bytes);
-        ret = bdrv_co_readv(bs->file, sector_num, remaining_sectors,
-                            qiov);
+        ret = bdrv_co_preadv(bs->file, sector_num * BDRV_SECTOR_SIZE,
+                             remaining_bytes, qiov, 0);
         backup_cow_request_end(&req);
         goto out;
     }
 
-    ret = bdrv_co_readv(bs->file, sector_num, remaining_sectors, qiov);
+    ret = bdrv_co_preadv(bs->file, sector_num * BDRV_SECTOR_SIZE,
+                         remaining_sectors * BDRV_SECTOR_SIZE, qiov, 0);
 out:
     return replication_return_value(s, ret);
 }
@@ -260,7 +261,8 @@ out:
 static coroutine_fn int replication_co_writev(BlockDriverState *bs,
                                               int64_t sector_num,
                                               int remaining_sectors,
-                                              QEMUIOVector *qiov)
+                                              QEMUIOVector *qiov,
+                                              int flags)
 {
     BDRVReplicationState *s = bs->opaque;
     QEMUIOVector hd_qiov;
@@ -271,14 +273,15 @@ static coroutine_fn int replication_co_writev(BlockDriverState *bs,
     int ret;
     int64_t n;
 
+    assert(!flags);
     ret = replication_get_io_status(s);
     if (ret < 0) {
         goto out;
     }
 
     if (ret == 0) {
-        ret = bdrv_co_writev(top, sector_num,
-                             remaining_sectors, qiov);
+        ret = bdrv_co_pwritev(top, sector_num * BDRV_SECTOR_SIZE,
+                              remaining_sectors * BDRV_SECTOR_SIZE, qiov, 0);
         return replication_return_value(s, ret);
     }
 
@@ -304,7 +307,8 @@ static coroutine_fn int replication_co_writev(BlockDriverState *bs,
         qemu_iovec_concat(&hd_qiov, qiov, bytes_done, count);
 
         target = ret ? top : base;
-        ret = bdrv_co_writev(target, sector_num, n, &hd_qiov);
+        ret = bdrv_co_pwritev(target, sector_num * BDRV_SECTOR_SIZE,
+                              n * BDRV_SECTOR_SIZE, &hd_qiov, 0);
         if (ret < 0) {
             goto out1;
         }
@@ -566,7 +570,7 @@ static void replication_start(ReplicationState *rs, ReplicationMode mode,
         job = backup_job_create(NULL, s->secondary_disk->bs, s->hidden_disk->bs,
                                 0, MIRROR_SYNC_MODE_NONE, NULL, false,
                                 BLOCKDEV_ON_ERROR_REPORT,
-                                BLOCKDEV_ON_ERROR_REPORT, BLOCK_JOB_INTERNAL,
+                                BLOCKDEV_ON_ERROR_REPORT, JOB_INTERNAL,
                                 backup_job_completed, bs, NULL, &local_err);
         if (local_err) {
             error_propagate(errp, local_err);
@@ -574,7 +578,7 @@ static void replication_start(ReplicationState *rs, ReplicationMode mode,
             aio_context_release(aio_context);
             return;
         }
-        block_job_start(job);
+        job_start(&job->job);
         break;
     default:
         aio_context_release(aio_context);
@@ -679,7 +683,7 @@ static void replication_stop(ReplicationState *rs, bool failover, Error **errp)
          * disk, secondary disk in backup_job_completed().
          */
         if (s->secondary_disk->bs->job) {
-            block_job_cancel_sync(s->secondary_disk->bs->job);
+            job_cancel_sync(&s->secondary_disk->bs->job->job);
         }
 
         if (!failover) {
@@ -691,7 +695,7 @@ static void replication_stop(ReplicationState *rs, bool failover, Error **errp)
 
         s->stage = BLOCK_REPLICATION_FAILOVER;
         commit_active_start(NULL, s->active_disk->bs, s->secondary_disk->bs,
-                            BLOCK_JOB_INTERNAL, 0, BLOCKDEV_ON_ERROR_REPORT,
+                            JOB_INTERNAL, 0, BLOCKDEV_ON_ERROR_REPORT,
                             NULL, replication_done, bs, true, errp);
         break;
     default:

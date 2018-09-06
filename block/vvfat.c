@@ -27,6 +27,7 @@
 #include <dirent.h>
 #include "qapi/error.h"
 #include "block/block_int.h"
+#include "block/qdict.h"
 #include "qemu/module.h"
 #include "qemu/option.h"
 #include "qemu/bswap.h"
@@ -1244,8 +1245,8 @@ static int vvfat_open(BlockDriverState *bs, QDict *options, int flags,
     s->fat2 = NULL;
     s->downcase_short_names = 1;
 
-    fprintf(stderr, "vvfat %s chs %d,%d,%d\n",
-            dirname, cyls, heads, secs);
+    DLOG(fprintf(stderr, "vvfat %s chs %d,%d,%d\n",
+                 dirname, cyls, heads, secs));
 
     s->sector_count = cyls * heads * secs - s->offset_to_bootsector;
 
@@ -3133,6 +3134,7 @@ static void vvfat_qcow_options(int *child_flags, QDict *child_options,
 }
 
 static const BdrvChildRole child_vvfat_qcow = {
+    .parent_is_bds      = true,
     .inherit_options    = vvfat_qcow_options,
 };
 
@@ -3179,7 +3181,7 @@ static int enable_write_target(BlockDriverState *bs, Error **errp)
     qdict_put_str(options, "write-target.driver", "qcow");
     s->qcow = bdrv_open_child(s->qcow_filename, options, "write-target", bs,
                               &child_vvfat_qcow, false, errp);
-    QDECREF(options);
+    qobject_unref(options);
     if (!s->qcow) {
         ret = -EINVAL;
         goto err;

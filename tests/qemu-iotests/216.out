@@ -1,0 +1,15 @@
+
+=== Copy-on-read across nodes ===
+
+--- Setting up images ---
+
+Done
+
+--- Doing COR ---
+
+{u'return': {}}
+{u'return': u''}
+
+--- Checking COR result ---
+
+Done

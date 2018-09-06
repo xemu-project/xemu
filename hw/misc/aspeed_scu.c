@@ -16,6 +16,7 @@
 #include "qapi/visitor.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "crypto/random.h"
 #include "trace.h"
 
 #define TO_REG(offset) ((offset) >> 2)
@@ -154,6 +155,40 @@ static const uint32_t ast2500_a1_resets[ASPEED_SCU_NR_REGS] = {
      [BMC_DEV_ID]      = 0x00002402U
 };
 
+static uint32_t aspeed_scu_get_random(void)
+{
+    Error *err = NULL;
+    uint32_t num;
+
+    if (qcrypto_random_bytes((uint8_t *)&num, sizeof(num), &err)) {
+        error_report_err(err);
+        exit(1);
+    }
+
+    return num;
+}
+
+static void aspeed_scu_set_apb_freq(AspeedSCUState *s)
+{
+    uint32_t apb_divider;
+
+    switch (s->silicon_rev) {
+    case AST2400_A0_SILICON_REV:
+    case AST2400_A1_SILICON_REV:
+        apb_divider = 2;
+        break;
+    case AST2500_A0_SILICON_REV:
+    case AST2500_A1_SILICON_REV:
+        apb_divider = 4;
+        break;
+    default:
+        g_assert_not_reached();
+    }
+
+    s->apb_freq = s->hpll / (SCU_CLK_GET_PCLK_DIV(s->regs[CLK_SEL]) + 1)
+        / apb_divider;
+}
+
 static uint64_t aspeed_scu_read(void *opaque, hwaddr offset, unsigned size)
 {
     AspeedSCUState *s = ASPEED_SCU(opaque);
@@ -167,6 +202,12 @@ static uint64_t aspeed_scu_read(void *opaque, hwaddr offset, unsigned size)
     }
 
     switch (reg) {
+    case RNG_DATA:
+        /* On hardware, RNG_DATA works regardless of
+         * the state of the enable bit in RNG_CTRL
+         */
+        s->regs[RNG_DATA] = aspeed_scu_get_random();
+        break;
     case WAKEUP_EN:
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: Read of write-only offset 0x%" HWADDR_PRIx "\n",
@@ -202,11 +243,30 @@ static void aspeed_scu_write(void *opaque, hwaddr offset, uint64_t data,
     case PROT_KEY:
         s->regs[reg] = (data == ASPEED_SCU_PROT_KEY) ? 1 : 0;
         return;
-
+    case CLK_SEL:
+        s->regs[reg] = data;
+        aspeed_scu_set_apb_freq(s);
+        break;
+    case HW_STRAP1:
+        if (ASPEED_IS_AST2500(s->regs[SILICON_REV])) {
+            s->regs[HW_STRAP1] |= data;
+            return;
+        }
+        /* Jump to assignment below */
+        break;
+    case SILICON_REV:
+        if (ASPEED_IS_AST2500(s->regs[SILICON_REV])) {
+            s->regs[HW_STRAP1] &= ~data;
+        } else {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: Write to read-only offset 0x%" HWADDR_PRIx "\n",
+                          __func__, offset);
+        }
+        /* Avoid assignment below, we've handled everything */
+        return;
     case FREQ_CNTR_EVAL:
     case VGA_SCRATCH1 ... VGA_SCRATCH8:
     case RNG_DATA:
-    case SILICON_REV:
     case FREE_CNTR4:
     case FREE_CNTR4_EXT:
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -227,19 +287,93 @@ static const MemoryRegionOps aspeed_scu_ops = {
     .valid.unaligned = false,
 };
 
+static uint32_t aspeed_scu_get_clkin(AspeedSCUState *s)
+{
+    if (s->hw_strap1 & SCU_HW_STRAP_CLK_25M_IN) {
+        return 25000000;
+    } else if (s->hw_strap1 & SCU_HW_STRAP_CLK_48M_IN) {
+        return 48000000;
+    } else {
+        return 24000000;
+    }
+}
+
+/*
+ * Strapped frequencies for the AST2400 in MHz. They depend on the
+ * clkin frequency.
+ */
+static const uint32_t hpll_ast2400_freqs[][4] = {
+    { 384, 360, 336, 408 }, /* 24MHz or 48MHz */
+    { 400, 375, 350, 425 }, /* 25MHz */
+};
+
+static uint32_t aspeed_scu_calc_hpll_ast2400(AspeedSCUState *s)
+{
+    uint32_t hpll_reg = s->regs[HPLL_PARAM];
+    uint8_t freq_select;
+    bool clk_25m_in;
+
+    if (hpll_reg & SCU_AST2400_H_PLL_OFF) {
+        return 0;
+    }
+
+    if (hpll_reg & SCU_AST2400_H_PLL_PROGRAMMED) {
+        uint32_t multiplier = 1;
+
+        if (!(hpll_reg & SCU_AST2400_H_PLL_BYPASS_EN)) {
+            uint32_t n  = (hpll_reg >> 5) & 0x3f;
+            uint32_t od = (hpll_reg >> 4) & 0x1;
+            uint32_t d  = hpll_reg & 0xf;
+
+            multiplier = (2 - od) * ((n + 2) / (d + 1));
+        }
+
+        return s->clkin * multiplier;
+    }
+
+    /* HW strapping */
+    clk_25m_in = !!(s->hw_strap1 & SCU_HW_STRAP_CLK_25M_IN);
+    freq_select = SCU_AST2400_HW_STRAP_GET_H_PLL_CLK(s->hw_strap1);
+
+    return hpll_ast2400_freqs[clk_25m_in][freq_select] * 1000000;
+}
+
+static uint32_t aspeed_scu_calc_hpll_ast2500(AspeedSCUState *s)
+{
+    uint32_t hpll_reg   = s->regs[HPLL_PARAM];
+    uint32_t multiplier = 1;
+
+    if (hpll_reg & SCU_H_PLL_OFF) {
+        return 0;
+    }
+
+    if (!(hpll_reg & SCU_H_PLL_BYPASS_EN)) {
+        uint32_t p = (hpll_reg >> 13) & 0x3f;
+        uint32_t m = (hpll_reg >> 5) & 0xff;
+        uint32_t n = hpll_reg & 0x1f;
+
+        multiplier = ((m + 1) / (n + 1)) / (p + 1);
+    }
+
+    return s->clkin * multiplier;
+}
+
 static void aspeed_scu_reset(DeviceState *dev)
 {
     AspeedSCUState *s = ASPEED_SCU(dev);
     const uint32_t *reset;
+    uint32_t (*calc_hpll)(AspeedSCUState *s);
 
     switch (s->silicon_rev) {
     case AST2400_A0_SILICON_REV:
     case AST2400_A1_SILICON_REV:
         reset = ast2400_a0_resets;
+        calc_hpll = aspeed_scu_calc_hpll_ast2400;
         break;
     case AST2500_A0_SILICON_REV:
     case AST2500_A1_SILICON_REV:
         reset = ast2500_a1_resets;
+        calc_hpll = aspeed_scu_calc_hpll_ast2500;
         break;
     default:
         g_assert_not_reached();
@@ -250,6 +384,13 @@ static void aspeed_scu_reset(DeviceState *dev)
     s->regs[HW_STRAP1] = s->hw_strap1;
     s->regs[HW_STRAP2] = s->hw_strap2;
     s->regs[PROT_KEY] = s->hw_prot_key;
+
+    /*
+     * All registers are set. Now compute the frequencies of the main clocks
+     */
+    s->clkin = aspeed_scu_get_clkin(s);
+    s->hpll = calc_hpll(s);
+    aspeed_scu_set_apb_freq(s);
 }
 
 static uint32_t aspeed_silicon_revs[] = {

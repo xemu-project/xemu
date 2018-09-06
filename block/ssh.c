@@ -28,6 +28,7 @@
 #include <libssh2_sftp.h>
 
 #include "block/block_int.h"
+#include "block/qdict.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/option.h"
@@ -605,7 +606,6 @@ static BlockdevOptionsSsh *ssh_parse_options(QDict *options, Error **errp)
     BlockdevOptionsSsh *result = NULL;
     QemuOpts *opts = NULL;
     Error *local_err = NULL;
-    QObject *crumpled;
     const QDictEntry *e;
     Visitor *v;
 
@@ -622,23 +622,13 @@ static BlockdevOptionsSsh *ssh_parse_options(QDict *options, Error **errp)
     }
 
     /* Create the QAPI object */
-    crumpled = qdict_crumple(options, errp);
-    if (crumpled == NULL) {
+    v = qobject_input_visitor_new_flat_confused(options, errp);
+    if (!v) {
         goto fail;
     }
 
-    /*
-     * FIXME .numeric, .to, .ipv4 or .ipv6 don't work with -drive.
-     * .to doesn't matter, it's ignored anyway.
-     * That's because when @options come from -blockdev or
-     * blockdev_add, members are typed according to the QAPI schema,
-     * but when they come from -drive, they're all QString.  The
-     * visitor expects the former.
-     */
-    v = qobject_input_visitor_new(crumpled);
     visit_type_BlockdevOptionsSsh(v, NULL, &result, &local_err);
     visit_free(v);
-    qobject_decref(crumpled);
 
     if (local_err) {
         error_propagate(errp, local_err);
@@ -917,7 +907,7 @@ static int coroutine_fn ssh_co_create_opts(const char *filename, QemuOpts *opts,
     ret = ssh_co_create(create_options, errp);
 
  out:
-    QDECREF(uri_options);
+    qobject_unref(uri_options);
     qapi_free_BlockdevCreateOptions(create_options);
     return ret;
 }
@@ -1164,11 +1154,13 @@ static int ssh_write(BDRVSSHState *s, BlockDriverState *bs,
 
 static coroutine_fn int ssh_co_writev(BlockDriverState *bs,
                                       int64_t sector_num,
-                                      int nb_sectors, QEMUIOVector *qiov)
+                                      int nb_sectors, QEMUIOVector *qiov,
+                                      int flags)
 {
     BDRVSSHState *s = bs->opaque;
     int ret;
 
+    assert(!flags);
     qemu_co_mutex_lock(&s->lock);
     ret = ssh_write(s, bs, sector_num * BDRV_SECTOR_SIZE,
                     nb_sectors * BDRV_SECTOR_SIZE, qiov);
@@ -1251,8 +1243,8 @@ static int64_t ssh_getlength(BlockDriverState *bs)
     return length;
 }
 
-static int ssh_truncate(BlockDriverState *bs, int64_t offset,
-                        PreallocMode prealloc, Error **errp)
+static int coroutine_fn ssh_co_truncate(BlockDriverState *bs, int64_t offset,
+                                        PreallocMode prealloc, Error **errp)
 {
     BDRVSSHState *s = bs->opaque;
 
@@ -1287,7 +1279,7 @@ static BlockDriver bdrv_ssh = {
     .bdrv_co_readv                = ssh_co_readv,
     .bdrv_co_writev               = ssh_co_writev,
     .bdrv_getlength               = ssh_getlength,
-    .bdrv_truncate                = ssh_truncate,
+    .bdrv_co_truncate             = ssh_co_truncate,
     .bdrv_co_flush_to_disk        = ssh_co_flush,
     .create_opts                  = &ssh_create_opts,
 };

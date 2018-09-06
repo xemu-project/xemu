@@ -32,7 +32,6 @@ struct PCMachineState {
     /* <public> */
 
     /* State for other subsystems/APIs: */
-    MemoryHotplugState hotplug_memory;
     Notifier machine_done;
 
     /* Pointers to devices and objects: */
@@ -72,21 +71,18 @@ struct PCMachineState {
 };
 
 #define PC_MACHINE_ACPI_DEVICE_PROP "acpi-device"
-#define PC_MACHINE_MEMHP_REGION_SIZE "hotplug-memory-region-size"
+#define PC_MACHINE_DEVMEM_REGION_SIZE "device-memory-region-size"
 #define PC_MACHINE_MAX_RAM_BELOW_4G "max-ram-below-4g"
 #define PC_MACHINE_VMPORT           "vmport"
 #define PC_MACHINE_SMM              "smm"
 #define PC_MACHINE_NVDIMM           "nvdimm"
+#define PC_MACHINE_NVDIMM_PERSIST   "nvdimm-persistence"
 #define PC_MACHINE_SMBUS            "smbus"
 #define PC_MACHINE_SATA             "sata"
 #define PC_MACHINE_PIT              "pit"
 
 /**
  * PCMachineClass:
- *
- * Methods:
- *
- * @get_hotplug_handler: pointer to parent class callback @get_hotplug_handler
  *
  * Compat fields:
  *
@@ -106,10 +102,6 @@ struct PCMachineClass {
     MachineClass parent_class;
 
     /*< public >*/
-
-    /* Methods: */
-    HotplugHandler *(*get_hotplug_handler)(MachineState *machine,
-                                           DeviceState *dev);
 
     /* Device configuration: */
     bool pci_enabled;
@@ -161,9 +153,6 @@ int pic_read_irq(DeviceState *d);
 int pic_get_output(DeviceState *d);
 
 /* ioapic.c */
-
-void kvm_ioapic_dump_state(Monitor *mon, const QDict *qdict);
-void ioapic_dump_state(Monitor *mon, const QDict *qdict);
 
 /* Global System Interrupts */
 
@@ -305,9 +294,33 @@ int e820_add_entry(uint64_t, uint64_t, uint32_t);
 int e820_get_num_entries(void);
 bool e820_get_entry(int, uint32_t, uint64_t *, uint64_t *);
 
+#define PC_COMPAT_2_12 \
+    HW_COMPAT_2_12 \
+    {\
+        .driver   = TYPE_X86_CPU,\
+        .property = "legacy-cache",\
+        .value    = "on",\
+    },{\
+        .driver   = TYPE_X86_CPU,\
+        .property = "topoext",\
+        .value    = "off",\
+    },{\
+        .driver   = "EPYC-" TYPE_X86_CPU,\
+        .property = "xlevel",\
+        .value    = stringify(0x8000000a),\
+    },{\
+        .driver   = "EPYC-IBPB-" TYPE_X86_CPU,\
+        .property = "xlevel",\
+        .value    = stringify(0x8000000a),\
+    },
+
 #define PC_COMPAT_2_11 \
     HW_COMPAT_2_11 \
     {\
+        .driver   = TYPE_X86_CPU,\
+        .property = "x-migrate-smi-count",\
+        .value    = "off",\
+    },{\
         .driver   = "Skylake-Server" "-" TYPE_X86_CPU,\
         .property = "clflushopt",\
         .value    = "off",\

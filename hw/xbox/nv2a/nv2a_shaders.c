@@ -792,7 +792,7 @@ STRUCT_VERTEX_DATA);
 
     /* Return combined header + source */
     qstring_append(header, qstring_get_str(body));
-    QDECREF(body);
+    qobject_unref(body);
     return header;
 
 }
@@ -857,7 +857,7 @@ ShaderBinding* generate_shaders(const ShaderState state)
                                                   "geometry shader");
         glAttachShader(program, geometry_shader);
 
-        QDECREF(geometry_shader_code);
+        qobject_unref(geometry_shader_code);
 
         vtx_prefix = 'v';
     } else {
@@ -871,7 +871,7 @@ ShaderBinding* generate_shaders(const ShaderState state)
                                             qstring_get_str(vertex_shader_code),
                                             "vertex shader");
     glAttachShader(program, vertex_shader);
-    QDECREF(vertex_shader_code);
+    qobject_unref(vertex_shader_code);
 
 
     /* Bind attributes for vertices */
@@ -892,7 +892,7 @@ ShaderBinding* generate_shaders(const ShaderState state)
                                               "fragment shader");
     glAttachShader(program, fragment_shader);
 
-    QDECREF(fragment_shader_code);
+    qobject_unref(fragment_shader_code);
 
 
     /* link the program */

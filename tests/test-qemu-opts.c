@@ -8,7 +8,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/cutils.h"
+#include "qemu/units.h"
 #include "qemu/option.h"
 #include "qemu/option_int.h"
 #include "qapi/error.h"
@@ -459,8 +459,6 @@ static void test_opts_parse(void)
 {
     Error *err = NULL;
     QemuOpts *opts;
-    char long_key[129];
-    char *params;
 
     /* Nothing */
     opts = qemu_opts_parse(&opts_list_03, "", false, &error_abort);
@@ -470,22 +468,6 @@ static void test_opts_parse(void)
     opts = qemu_opts_parse(&opts_list_03, "=val", false, &error_abort);
     g_assert_cmpuint(opts_count(opts), ==, 1);
     g_assert_cmpstr(qemu_opt_get(opts, ""), ==, "val");
-
-    /* Long key */
-    memset(long_key, 'a', 127);
-    long_key[127] = 'z';
-    long_key[128] = 0;
-    params = g_strdup_printf("%s=v", long_key);
-    opts = qemu_opts_parse(&opts_list_03, params + 1, NULL, &error_abort);
-    g_assert_cmpuint(opts_count(opts), ==, 1);
-    g_assert_cmpstr(qemu_opt_get(opts, long_key + 1), ==, "v");
-
-    /* Overlong key gets truncated */
-    opts = qemu_opts_parse(&opts_list_03, params, NULL, &error_abort);
-    g_assert(opts_count(opts) == 1);
-    long_key[127] = 0;
-    g_assert_cmpstr(qemu_opt_get(opts, long_key), ==, "v");
-    g_free(params);
 
     /* Multiple keys, last one wins */
     opts = qemu_opts_parse(&opts_list_03, "a=1,b=2,,x,a=3",
@@ -722,13 +704,12 @@ static void test_opts_parse_size(void)
     g_assert_cmpuint(opts_count(opts), ==, 3);
     g_assert_cmphex(qemu_opt_get_size(opts, "size1", 0), ==, 8);
     g_assert_cmphex(qemu_opt_get_size(opts, "size2", 0), ==, 1536);
-    g_assert_cmphex(qemu_opt_get_size(opts, "size3", 0), ==, 2 * M_BYTE);
+    g_assert_cmphex(qemu_opt_get_size(opts, "size3", 0), ==, 2 * MiB);
     opts = qemu_opts_parse(&opts_list_02, "size1=0.1G,size2=16777215T",
                            false, &error_abort);
     g_assert_cmpuint(opts_count(opts), ==, 2);
-    g_assert_cmphex(qemu_opt_get_size(opts, "size1", 0), ==, G_BYTE / 10);
-    g_assert_cmphex(qemu_opt_get_size(opts, "size2", 0),
-                     ==, 16777215 * T_BYTE);
+    g_assert_cmphex(qemu_opt_get_size(opts, "size1", 0), ==, GiB / 10);
+    g_assert_cmphex(qemu_opt_get_size(opts, "size2", 0), ==, 16777215ULL * TiB);
 
     /* Beyond limit with suffix */
     opts = qemu_opts_parse(&opts_list_02, "size1=16777216T",
@@ -887,7 +868,7 @@ static void test_opts_to_qdict_basic(void)
     g_assert_cmpstr(qdict_get_str(dict, "number1"), ==, "42");
     g_assert_false(qdict_haskey(dict, "number2"));
 
-    QDECREF(dict);
+    qobject_unref(dict);
     qemu_opts_del(opts);
 }
 
@@ -914,7 +895,7 @@ static void test_opts_to_qdict_filtered(void)
     g_assert_cmpstr(qdict_get_str(dict, "number1"), ==, "42");
     g_assert_false(qdict_haskey(dict, "number2"));
     g_assert_false(qdict_haskey(dict, "bool1"));
-    QDECREF(dict);
+    qobject_unref(dict);
 
     dict = qemu_opts_to_qdict_filtered(opts, NULL, &opts_list_02, false);
     g_assert(dict != NULL);
@@ -924,7 +905,7 @@ static void test_opts_to_qdict_filtered(void)
     g_assert_false(qdict_haskey(dict, "str3"));
     g_assert_false(qdict_haskey(dict, "number1"));
     g_assert_false(qdict_haskey(dict, "number2"));
-    QDECREF(dict);
+    qobject_unref(dict);
 
     /* Now delete converted options from opts */
     dict = qemu_opts_to_qdict_filtered(opts, NULL, &opts_list_01, true);
@@ -935,7 +916,7 @@ static void test_opts_to_qdict_filtered(void)
     g_assert_cmpstr(qdict_get_str(dict, "number1"), ==, "42");
     g_assert_false(qdict_haskey(dict, "number2"));
     g_assert_false(qdict_haskey(dict, "bool1"));
-    QDECREF(dict);
+    qobject_unref(dict);
 
     dict = qemu_opts_to_qdict_filtered(opts, NULL, &opts_list_02, true);
     g_assert(dict != NULL);
@@ -945,7 +926,7 @@ static void test_opts_to_qdict_filtered(void)
     g_assert_false(qdict_haskey(dict, "str3"));
     g_assert_false(qdict_haskey(dict, "number1"));
     g_assert_false(qdict_haskey(dict, "number2"));
-    QDECREF(dict);
+    qobject_unref(dict);
 
     g_assert_true(QTAILQ_EMPTY(&opts->head));
 
@@ -978,13 +959,13 @@ static void test_opts_to_qdict_duplicates(void)
     dict = qemu_opts_to_qdict(opts, NULL);
     g_assert(dict != NULL);
     g_assert_cmpstr(qdict_get_str(dict, "foo"), ==, "b");
-    QDECREF(dict);
+    qobject_unref(dict);
 
     /* The last one still wins if entries are deleted, and both are deleted */
     dict = qemu_opts_to_qdict_filtered(opts, NULL, NULL, true);
     g_assert(dict != NULL);
     g_assert_cmpstr(qdict_get_str(dict, "foo"), ==, "b");
-    QDECREF(dict);
+    qobject_unref(dict);
 
     g_assert_true(QTAILQ_EMPTY(&opts->head));
 

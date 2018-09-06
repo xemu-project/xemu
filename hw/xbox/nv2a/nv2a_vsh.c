@@ -375,7 +375,7 @@ static QString* decode_opcode_input(const uint32_t *shader_token,
         /* swizzle bits are next to the neg bit */
         QString *swizzle_str = decode_swizzle(shader_token, neg_field+1);
         qstring_append(ret_str, qstring_get_str(swizzle_str));
-        QDECREF(swizzle_str);
+        qobject_unref(swizzle_str);
     }
 
     return ret_str;
@@ -465,7 +465,7 @@ static QString* decode_token(const uint32_t *shader_token)
                                     vsh_get_field(shader_token, FLD_A_R));
             qstring_append(inputs_mac, ", ");
             qstring_append(inputs_mac, qstring_get_str(input_a));
-            QDECREF(input_a);
+            qobject_unref(input_a);
         }
         if (mac_opcode_params[mac].B) {
             QString *input_b =
@@ -475,7 +475,7 @@ static QString* decode_token(const uint32_t *shader_token)
                                     vsh_get_field(shader_token, FLD_B_R));
             qstring_append(inputs_mac, ", ");
             qstring_append(inputs_mac, qstring_get_str(input_b));
-            QDECREF(input_b);
+            qobject_unref(input_b);
         }
         if (mac_opcode_params[mac].C) {
             qstring_append(inputs_mac, ", ");
@@ -488,7 +488,7 @@ static QString* decode_token(const uint32_t *shader_token)
                             vsh_get_field(shader_token, FLD_OUT_MAC_MASK),
                             mac_opcode[mac],
                             qstring_get_str(inputs_mac));
-        QDECREF(inputs_mac);
+        qobject_unref(inputs_mac);
     } else {
         ret = qstring_new();
     }
@@ -509,11 +509,11 @@ static QString* decode_token(const uint32_t *shader_token)
 
         qstring_append(ret, qstring_get_str(ilu_op));
 
-        QDECREF(inputs_c);
-        QDECREF(ilu_op);
+        qobject_unref(inputs_c);
+        qobject_unref(ilu_op);
     }
 
-    QDECREF(input_c);
+    qobject_unref(input_c);
 
     return ret;
 }
@@ -734,7 +734,7 @@ void vsh_translate(uint16_t version,
         qstring_append(body, "\n");
         qstring_append(body, qstring_get_str(token_str));
         qstring_append(body, "\n");
-        QDECREF(token_str);
+        qobject_unref(token_str);
 
         if (vsh_get_field(cur_token, FLD_FINAL)) {
             has_final = true;

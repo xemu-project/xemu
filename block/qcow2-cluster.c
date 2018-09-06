@@ -28,7 +28,7 @@
 #include "qapi/error.h"
 #include "qemu-common.h"
 #include "block/block_int.h"
-#include "block/qcow2.h"
+#include "qcow2.h"
 #include "qemu/bswap.h"
 #include "trace.h"
 
@@ -993,6 +993,17 @@ err:
     g_free(old_cluster);
     return ret;
  }
+
+/**
+ * Frees the allocated clusters because the request failed and they won't
+ * actually be linked.
+ */
+void qcow2_alloc_cluster_abort(BlockDriverState *bs, QCowL2Meta *m)
+{
+    BDRVQcow2State *s = bs->opaque;
+    qcow2_free_clusters(bs, m->alloc_offset, m->nb_clusters << s->cluster_bits,
+                        QCOW2_DISCARD_NEVER);
+}
 
 /*
  * Returns the number of contiguous clusters that can be used for an allocating

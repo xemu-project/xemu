@@ -18,6 +18,7 @@
 #include "qapi/visitor.h"
 #include "qemu/config-file.h"
 #include "qom/object_interfaces.h"
+#include "qemu/mmap-alloc.h"
 
 #ifdef CONFIG_NUMA
 #include <numaif.h>
@@ -246,8 +247,7 @@ bool host_memory_backend_mr_inited(HostMemoryBackend *backend)
     return memory_region_size(&backend->mr) != 0;
 }
 
-MemoryRegion *
-host_memory_backend_get_memory(HostMemoryBackend *backend, Error **errp)
+MemoryRegion *host_memory_backend_get_memory(HostMemoryBackend *backend)
 {
     return host_memory_backend_mr_inited(backend) ? &backend->mr : NULL;
 }
@@ -261,6 +261,23 @@ bool host_memory_backend_is_mapped(HostMemoryBackend *backend)
 {
     return backend->is_mapped;
 }
+
+#ifdef __linux__
+size_t host_memory_backend_pagesize(HostMemoryBackend *memdev)
+{
+    Object *obj = OBJECT(memdev);
+    char *path = object_property_get_str(obj, "mem-path", NULL);
+    size_t pagesize = qemu_mempath_getpagesize(path);
+
+    g_free(path);
+    return pagesize;
+}
+#else
+size_t host_memory_backend_pagesize(HostMemoryBackend *memdev)
+{
+    return getpagesize();
+}
+#endif
 
 static void
 host_memory_backend_memory_complete(UserCreatable *uc, Error **errp)
@@ -351,24 +368,6 @@ host_memory_backend_can_be_deleted(UserCreatable *uc)
     }
 }
 
-static char *get_id(Object *o, Error **errp)
-{
-    HostMemoryBackend *backend = MEMORY_BACKEND(o);
-
-    return g_strdup(backend->id);
-}
-
-static void set_id(Object *o, const char *str, Error **errp)
-{
-    HostMemoryBackend *backend = MEMORY_BACKEND(o);
-
-    if (backend->id) {
-        error_setg(errp, "cannot change property value");
-        return;
-    }
-    backend->id = g_strdup(str);
-}
-
 static bool host_memory_backend_get_share(Object *o, Error **errp)
 {
     HostMemoryBackend *backend = MEMORY_BACKEND(o);
@@ -416,16 +415,9 @@ host_memory_backend_class_init(ObjectClass *oc, void *data)
         &HostMemPolicy_lookup,
         host_memory_backend_get_policy,
         host_memory_backend_set_policy, &error_abort);
-    object_class_property_add_str(oc, "id", get_id, set_id, &error_abort);
     object_class_property_add_bool(oc, "share",
         host_memory_backend_get_share, host_memory_backend_set_share,
         &error_abort);
-}
-
-static void host_memory_backend_finalize(Object *o)
-{
-    HostMemoryBackend *backend = MEMORY_BACKEND(o);
-    g_free(backend->id);
 }
 
 static const TypeInfo host_memory_backend_info = {
@@ -436,7 +428,6 @@ static const TypeInfo host_memory_backend_info = {
     .class_init = host_memory_backend_class_init,
     .instance_size = sizeof(HostMemoryBackend),
     .instance_init = host_memory_backend_init,
-    .instance_finalize = host_memory_backend_finalize,
     .interfaces = (InterfaceInfo[]) {
         { TYPE_USER_CREATABLE },
         { }

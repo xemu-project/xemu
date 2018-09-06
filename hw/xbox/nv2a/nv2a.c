@@ -402,7 +402,7 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
     /* seems to start in color mode */
     vga->msr = VGA_MIS_COLOR;
 
-    vga_common_init(vga, OBJECT(dev), false); // FIXME: true or false? idk
+    vga_common_init(vga, OBJECT(dev));
     vga->get_bpp = nv2a_get_bpp;
     vga->get_offsets = nv2a_get_offsets;
     // vga->overlay_draw_line = nv2a_overlay_draw_line;
