@@ -1,10 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -e # exit if a command fails
 set -o pipefail # Will return the exit status of make if it fails
-
-CFLAGS_COMMON="-O0 -g -DXBOX=1" # Compilation flags for all platforms
-POST_BUILD=""
 
 package_windows() { # Script to prepare the windows exe
     mkdir -p dist
@@ -15,54 +12,83 @@ package_windows() { # Script to prepare the windows exe
     strip dist/xqemuw.exe
 }
 
-case "$(uname -s)" in # adjust compilation option based on platform
-    Linux)
-        echo "Compiling for Linux..."
-        CFLAGS="-march=native -Wno-error=redundant-decls -Wno-error=unused-but-set-variable"
-        CONFIGURE="--enable-kvm --disable-xen --disable-werror"
+postbuild=''
+debug_opts='--enable-debug'
+user_opts=''
+build_cflags='-O0 -g'
+job_count='4'
+
+while [ ! -z ${1} ]
+do
+    case "${1}" in
+    '-j'*)
+        job_count="${1:2}"
+        shift
         ;;
-    Darwin)
-        echo "Compiling for MacOS..."
-        CFLAGS="-march=native"
-        CONFIGURE="--disable-cocoa"
-        ;;
-    CYGWIN*|MINGW*|MSYS*)
-        echo "Compiling for Windows..."
-        CFLAGS="-Wno-error"
-        CONFIGURE="--python=python2 --disable-cocoa --disable-opengl"
-        POST_BUILD="package_windows" # set the above function to be called after build
+    '--release')
+        build_cflags='-O3'
+        debug_opts=''
+        shift
         ;;
     *)
-        echo "Could not detect OS $(uname -s), aborting."
+        user_opts="${user_opts} ${1}"
+        shift
+        ;;
+    esac
+done
+
+
+case "$(uname -s)" in # adjust compilation option based on platform
+    Linux)
+        echo 'Compiling for Linux…'
+        sys_cflags='-march=native -Wno-error=redundant-decls -Wno-error=unused-but-set-variable'
+        sys_opts='--enable-kvm --disable-xen --disable-werror'
+        ;;
+    Darwin)
+        echo 'Compiling for MacOS…'
+        sys_cflags='-march=native'
+        sys_opts='--disable-cocoa'
+        ;;
+    CYGWIN*|MINGW*|MSYS*)
+        echo 'Compiling for Windows…'
+        sys_cflags='-Wno-error'
+        sys_opts='--python=python2 --disable-cocoa --disable-opengl'
+        postbuild='package_windows' # set the above function to be called after build
+        ;;
+    *)
+        echo "could not detect OS $(uname -s), aborting" >&2
         exit -1
         ;;
 esac
 
+# find absolute path (and resolve symlinks) to build out of tree
+configure="$(dirname "$(readlink -f "${0}")")/configure"
+
 set -x # Print commands from now on
 
-$(dirname "$0")/configure \
-	--enable-debug \
-	--extra-cflags="$CFLAGS_COMMON $CFLAGS" \
-	$CONFIGURE \
-	--target-list=i386-softmmu \
-	--enable-sdl \
-	--with-sdlabi=2.0 \
-	--disable-curl \
-	--disable-vnc \
-	--disable-docs \
-	--disable-tools \
-	--disable-guest-agent \
-	--disable-tpm \
-	--disable-live-block-migration \
-	--disable-replication \
-	--disable-capstone \
-	--disable-fdt \
-	--disable-libiscsi \
-	--disable-spice \
-	--disable-user \
-	--disable-stack-protector \
+"${configure}" \
+    --extra-cflags="-DXBOX=1 ${build_cflags} ${sys_cflags} ${CFLAGS}" \
+    ${debug_opts} \
+    ${sys_opts} \
+    --target-list=i386-softmmu \
+    --enable-sdl \
+    --with-sdlabi=2.0 \
+    --disable-curl \
+    --disable-vnc \
+    --disable-docs \
+    --disable-tools \
+    --disable-guest-agent \
+    --disable-tpm \
+    --disable-live-block-migration \
+    --disable-replication \
+    --disable-capstone \
+    --disable-fdt \
+    --disable-libiscsi \
+    --disable-spice \
+    --disable-user \
+    --disable-stack-protector \
+    ${user_opts}
 
-time make -j`nproc` 2>&1 | tee build.log
+time make -j"${job_count}" 2>&1 | tee build.log
 
-$POST_BUILD # call post build functions
-
+${postbuild} # call post build functions
