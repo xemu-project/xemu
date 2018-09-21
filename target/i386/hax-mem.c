@@ -310,8 +310,17 @@ static void hax_ram_block_added(RAMBlockNotifier *n, void *host, size_t size)
     }
 }
 
+#ifdef XBOX
+static void hax_ram_block_removed(RAMBlockNotifier *n, void *host, size_t size)
+{
+}
+#endif
+
 static struct RAMBlockNotifier hax_ram_notifier = {
     .ram_block_added = hax_ram_block_added,
+#ifdef XBOX
+    .ram_block_removed = hax_ram_block_removed,
+#endif
 };
 
 void hax_memory_init(void)
