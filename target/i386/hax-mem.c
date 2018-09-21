@@ -281,7 +281,14 @@ static void hax_log_sync(MemoryListener *listener,
         return;
     }
 
+#ifndef XBOX
+    /* FIXME: Marking all pages as always dirty has some really bad consequences
+     * for the current NV2A emulation. The lesser of two evils for now is to
+     * leave the pages as-is. Eventually this will be replaced by proper dirty
+     * page tracking once HAXM supports it.
+     */
     memory_region_set_dirty(mr, 0, int128_get64(section->size));
+#endif
 }
 
 static MemoryListener hax_memory_listener = {
