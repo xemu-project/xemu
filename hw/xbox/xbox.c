@@ -22,54 +22,40 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/option.h"
 #include "hw/hw.h"
 #include "hw/loader.h"
 #include "hw/i386/pc.h"
-#include "hw/i386/apic.h"
-#include "hw/smbios/smbios.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_ids.h"
 #include "hw/usb.h"
 #include "net/net.h"
 #include "hw/boards.h"
 #include "hw/ide.h"
-#include "sysemu/kvm.h"
-#include "hw/kvm/clock.h"
 #include "sysemu/sysemu.h"
 #include "hw/sysbus.h"
 #include "sysemu/arch_init.h"
 #include "hw/i2c/smbus.h"
-#include "hw/xen/xen.h"
 #include "exec/memory.h"
 #include "exec/address-spaces.h"
-#include "hw/acpi/acpi.h"
 #include "cpu.h"
+
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#ifdef CONFIG_XEN
-#include <xen/hvm/hvm_info_table.h>
-#include "hw/xen/xen_pt.h"
-#endif
-#include "migration/global_state.h"
-#include "migration/misc.h"
-#include "kvm_i386.h"
-#include "sysemu/numa.h"
 
+#include "hw/timer/i8254.h"
+#include "hw/audio/pcspk.h"
 #include "hw/timer/mc146818rtc.h"
-#include "xbox_pci.h"
-#include "smbus.h"
 
-#include "qemu/option.h"
-#include "xbox.h"
+#include "hw/xbox/xbox_pci.h"
+#include "hw/xbox/smbus.h"
+
+#include "hw/xbox/xbox.h"
+
+/* FIXME: Move to header file */
+void nv2a_init(PCIBus *bus, int devfn, MemoryRegion *ram);
 
 #define MAX_IDE_BUS 2
-
-static char *machine_get_bootrom(Object *obj, Error **errp);
-static void machine_set_bootrom(Object *obj, const char *value,
-                                        Error **errp);
-static void machine_set_short_animation(Object *obj, bool value,
-                                        Error **errp);
-static bool machine_get_short_animation(Object *obj, Error **errp);
 
 // XBOX_TODO: Should be passed in through configuration
 /* bunnie's eeprom */
@@ -244,12 +230,6 @@ static void xbox_memory_init(PCMachineState *pcms,
 }
 
 
-/* FIXME: Move to header file */
-void nv2a_init(PCIBus *bus, int devfn, MemoryRegion *ram);
-
-#include "hw/timer/i8254.h"
-#include "hw/audio/pcspk.h"
-
 /* PC hardware initialisation */
 static void xbox_init(MachineState *machine)
 {
@@ -262,7 +242,7 @@ void xbox_init_common(MachineState *machine,
                       ISABus **isa_bus_out)
 {
     PCMachineState *pcms = PC_MACHINE(machine);
-    PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(pcms);
+    // PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(pcms);
 
     MemoryRegion *system_memory = get_system_memory();
     // MemoryRegion *system_io = get_system_io();
@@ -291,15 +271,11 @@ void xbox_init_common(MachineState *machine,
 
     pc_cpus_init(pcms);
 
-    if (kvm_enabled() && pcmc->kvmclock_enabled) {
-        kvmclock_create();
-    }
-
     pci_memory = g_new(MemoryRegion, 1);
     memory_region_init(pci_memory, NULL, "pci", UINT64_MAX);
     rom_memory = pci_memory;
 
-    pc_guest_info_init(pcms);
+    // pc_guest_info_init(pcms);
 
     /* allocate ram and load rom/bios */
     xbox_memory_init(pcms, system_memory, rom_memory, &ram_memory);
@@ -319,83 +295,28 @@ void xbox_init_common(MachineState *machine,
 
     isa_bus_irqs(isa_bus, pcms->gsi);
 
-    // if (kvm_pic_in_kernel()) {
-    //     i8259 = kvm_i8259_init(isa_bus);
-    // } else if (xen_enabled()) {
-    //     i8259 = xen_interrupt_controller_init();
-    // } else {
-        i8259 = i8259_init(isa_bus, pc_allocate_cpu_irq());
-    // }
+    i8259 = i8259_init(isa_bus, pc_allocate_cpu_irq());
 
     for (i = 0; i < ISA_NUM_IRQS; i++) {
         gsi_state->i8259_irq[i] = i8259[i];
     }
     g_free(i8259);
 
-    // if (pcmc->pci_enabled) {
-    //     ioapic_init_gsi(gsi_state, "i440fx");
-    // }
-
     pc_register_ferr_irq(pcms->gsi[13]);
-
-    // pc_vga_init(isa_bus, pcmc->pci_enabled ? pci_bus : NULL);
-
-    assert(pcms->vmport != ON_OFF_AUTO__MAX);
-    if (pcms->vmport == ON_OFF_AUTO_AUTO) {
-        pcms->vmport = xen_enabled() ? ON_OFF_AUTO_OFF : ON_OFF_AUTO_ON;
-    }
 
     /* init basic PC hardware */
     pcms->pit = 1; // XBOX_FIXME: What's the right way to do this?
-    // pc_basic_device_init(isa_bus, pcms->gsi, &rtc_state, true,
-    //                      (pcms->vmport != ON_OFF_AUTO_ON), pcms->pit, 0x4);
     rtc_state = mc146818_rtc_init(isa_bus, 2000, NULL);
 
     // qemu_register_boot_set(pc_boot_set, rtc_state);
-    ISADevice *pit = NULL;
+    ISADevice *pit = i8254_pit_init(isa_bus, 0x40, 0, NULL);
 
-    if (kvm_pit_in_kernel()) {
-        pit = kvm_pit_init(isa_bus, 0x40);
-    } else {
-        pit = i8254_pit_init(isa_bus, 0x40, 0, NULL);
-    }
-    // if (hpet) {
-    //     /* connect PIT to output control line of the HPET */
-    //     qdev_connect_gpio_out(hpet, 0, qdev_get_gpio_in(DEVICE(pit), 0));
-    // }
     pcspk_init(isa_bus, pit);
 
-    // i8257_dma_init(isa_bus, 0);
-
-    // pc_nic_init(pcmc, isa_bus, pci_bus);
-
     ide_drive_get(hd, ARRAY_SIZE(hd));
-    // if (pcmc->pci_enabled) {
-        PCIDevice *dev;
-        // if (xen_enabled()) {
-            // dev = pci_piix3_xen_ide_init(pci_bus, hd, piix3_devfn + 1);
-        // } else {
-            dev = pci_piix3_ide_init(pci_bus, hd, PCI_DEVFN(9, 0));
-        // }
-        idebus[0] = qdev_get_child_bus(&dev->qdev, "ide.0");
-        idebus[1] = qdev_get_child_bus(&dev->qdev, "ide.1");
-    // } else {
-    //     for(i = 0; i < MAX_IDE_BUS; i++) {
-    //         ISADevice *dev;
-    //         char busname[] = "ide.0";
-    //         dev = isa_ide_init(isa_bus, ide_iobase[i], ide_iobase2[i],
-    //                            ide_irq[i],
-    //                            hd[MAX_IDE_DEVS * i], hd[MAX_IDE_DEVS * i + 1]);
-    //         /*
-    //          * The ide bus name is ide.0 for the first bus and ide.1 for the
-    //          * second one.
-    //          */
-    //         busname[4] = '0' + i;
-    //         idebus[i] = qdev_get_child_bus(DEVICE(dev), busname);
-    //     }
-    // }
-
-    pc_cmos_init(pcms, idebus[0], idebus[1], rtc_state);
+    PCIDevice *ide_dev = pci_piix3_ide_init(pci_bus, hd, PCI_DEVFN(9, 0));
+    idebus[0] = qdev_get_child_bus(&ide_dev->qdev, "ide.0");
+    idebus[1] = qdev_get_child_bus(&ide_dev->qdev, "ide.1");
 
     // xbox bios wants this bit pattern set to mark the data as valid
     uint8_t bits = 0x55;
@@ -464,7 +385,7 @@ static void xbox_machine_options(MachineClass *m)
     m->no_floppy         = 1,
     m->no_cdrom          = 1,
     m->no_sdcard         = 1,
-    m->default_cpu_type  = X86_CPU_TYPE_NAME("486");
+    m->default_cpu_type  = X86_CPU_TYPE_NAME("pentium3");
 
     pcmc->pci_enabled         = true;
     pcmc->has_acpi_build      = false;
