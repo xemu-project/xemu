@@ -62,11 +62,6 @@
 void reg_log_read(int block, hwaddr addr, uint64_t val);
 void reg_log_write(int block, hwaddr addr, uint64_t val);
 
-enum FifoMode {
-    FIFO_PIO = 0,
-    FIFO_DMA = 1,
-};
-
 enum FIFOEngine {
     ENGINE_SOFTWARE = 0,
     ENGINE_GRAPHICS = 1,
@@ -155,52 +150,26 @@ typedef struct TextureBinding {
 } TextureBinding;
 
 typedef struct KelvinState {
-    hwaddr dma_notifies;
-    hwaddr dma_state;
-    hwaddr dma_semaphore;
-    unsigned int semaphore_offset;
+    hwaddr object_instance;
 } KelvinState;
 
 typedef struct ContextSurfaces2DState {
+    hwaddr object_instance;
     hwaddr dma_image_source;
     hwaddr dma_image_dest;
     unsigned int color_format;
     unsigned int source_pitch, dest_pitch;
     hwaddr source_offset, dest_offset;
-
 } ContextSurfaces2DState;
 
 typedef struct ImageBlitState {
+    hwaddr object_instance;
     hwaddr context_surfaces;
     unsigned int operation;
     unsigned int in_x, in_y;
     unsigned int out_x, out_y;
     unsigned int width, height;
-
 } ImageBlitState;
-
-typedef struct GraphicsObject {
-    uint8_t graphics_class;
-    union {
-        ContextSurfaces2DState context_surfaces_2d;
-
-        ImageBlitState image_blit;
-
-        KelvinState kelvin;
-    } data;
-} GraphicsObject;
-
-typedef struct GraphicsSubchannel {
-    hwaddr object_instance;
-    GraphicsObject object;
-    uint32_t object_cache[5];
-} GraphicsSubchannel;
-
-typedef struct GraphicsContext {
-    bool channel_3d;
-    unsigned int subchannel;
-} GraphicsContext;
-
 
 typedef struct PGRAPHState {
     QemuMutex lock;
@@ -209,24 +178,13 @@ typedef struct PGRAPHState {
     uint32_t enabled_interrupts;
     QemuCond interrupt_cond;
 
-    hwaddr context_table;
-    hwaddr context_address;
+    /* subchannels state we're not sure the location of... */
+    ContextSurfaces2DState context_surfaces_2d;
+    ImageBlitState image_blit;
+    KelvinState kelvin;
 
-
-    unsigned int trapped_method;
-    unsigned int trapped_subchannel;
-    unsigned int trapped_channel_id;
-    uint32_t trapped_data[2];
-    uint32_t notify_source;
-
-    bool fifo_access;
     QemuCond fifo_access_cond;
-
     QemuCond flip_3d;
-
-    unsigned int channel_id;
-    bool channel_valid;
-    GraphicsContext context[NV2A_NUM_CHANNELS];
 
     hwaddr dma_color, dma_zeta;
     Surface surface_color, surface_zeta;
@@ -250,7 +208,10 @@ typedef struct PGRAPHState {
     GloContext *gl_context;
     GLuint gl_framebuffer;
     GLuint gl_color_buffer, gl_zeta_buffer;
-    GraphicsSubchannel subchannel_data[NV2A_NUM_SUBCHANNELS];
+
+    hwaddr dma_state;
+    hwaddr dma_notifies;
+    hwaddr dma_semaphore;
 
     hwaddr dma_report;
     hwaddr report_offset;
@@ -308,56 +269,6 @@ typedef struct PGRAPHState {
     uint32_t regs[0x2000];
 } PGRAPHState;
 
-typedef struct CacheEntry {
-    QSIMPLEQ_ENTRY(CacheEntry) entry;
-    unsigned int method : 14;
-    unsigned int subchannel : 3;
-    bool nonincreasing;
-    uint32_t parameter;
-} CacheEntry;
-
-typedef struct Cache1State {
-    unsigned int channel_id;
-    enum FifoMode mode;
-
-    /* Pusher state */
-    bool push_enabled;
-    bool dma_push_enabled;
-    bool dma_push_suspended;
-    hwaddr dma_instance;
-
-    bool method_nonincreasing;
-    unsigned int method : 14;
-    unsigned int subchannel : 3;
-    unsigned int method_count : 24;
-    uint32_t dcount;
-    bool subroutine_active;
-    hwaddr subroutine_return;
-    hwaddr get_jmp_shadow;
-    uint32_t rsvd_shadow;
-    uint32_t data_shadow;
-    uint32_t error;
-
-    bool pull_enabled;
-    enum FIFOEngine bound_engines[NV2A_NUM_SUBCHANNELS];
-    enum FIFOEngine last_engine;
-
-    /* The actual command queue */
-    QemuSpin alloc_lock;
-    QemuMutex cache_lock;
-    QemuCond cache_cond;
-    QSIMPLEQ_HEAD(, CacheEntry) cache;
-    QSIMPLEQ_HEAD(, CacheEntry) working_cache;
-    QSIMPLEQ_HEAD(, CacheEntry) available_entries;
-    QSIMPLEQ_HEAD(, CacheEntry) retired_entries;
-} Cache1State;
-
-typedef struct ChannelControl {
-    hwaddr dma_put;
-    hwaddr dma_get;
-    uint32_t ref;
-} ChannelControl;
-
 typedef struct NV2AState {
     PCIDevice dev;
     qemu_irq irq;
@@ -382,11 +293,14 @@ typedef struct NV2AState {
     } pmc;
 
     struct {
-        QemuThread puller_thread;
         uint32_t pending_interrupts;
         uint32_t enabled_interrupts;
-        Cache1State cache1;
         uint32_t regs[0x2000];
+        QemuMutex lock;
+        QemuThread puller_thread;
+        QemuCond puller_cond;
+        QemuThread pusher_thread;
+        QemuCond pusher_cond;
     } pfifo;
 
     struct {
@@ -419,10 +333,6 @@ typedef struct NV2AState {
         uint32_t memory_clock_coeff;
         uint32_t video_clock_coeff;
     } pramdac;
-
-    struct {
-        ChannelControl channel_control[NV2A_NUM_CHANNELS];
-    } user;
 
 } NV2AState;
 

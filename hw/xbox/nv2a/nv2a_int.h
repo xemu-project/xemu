@@ -260,6 +260,7 @@
 #define NV_PGRAPH_CHANNEL_CTX_TRIGGER                    0x00000788
 #   define NV_PGRAPH_CHANNEL_CTX_TRIGGER_READ_IN                (1 << 0)
 #   define NV_PGRAPH_CHANNEL_CTX_TRIGGER_WRITE_OUT              (1 << 1)
+#define NV_PGRAPH_PATT_COLOR0                            0x00000B10
 #define NV_PGRAPH_CSV0_D                                 0x00000FB4
 #   define NV_PGRAPH_CSV0_D_LIGHTS                              0x0000FFFF
 #   define NV_PGRAPH_CSV0_D_LIGHT0                              0x00000003
@@ -712,6 +713,10 @@
 /* graphic classes and methods */
 #define NV_SET_OBJECT                                        0x00000000
 
+#define NV_MEMORY_TO_MEMORY_FORMAT                       0x0039
+
+#define NV_CONTEXT_PATTERN                               0x0044
+#   define NV044_SET_MONOCHROME_COLOR0                        0x00000310
 
 #define NV_CONTEXT_SURFACES_2D                           0x0062
 #   define NV062_SET_OBJECT                                   0x00000000

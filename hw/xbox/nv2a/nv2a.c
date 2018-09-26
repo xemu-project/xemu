@@ -95,16 +95,16 @@ DMAObject nv_dma_load(NV2AState *d, hwaddr dma_obj_address)
 
 void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len)
 {
-    assert(dma_obj_address < memory_region_size(&d->ramin));
-
     DMAObject dma = nv_dma_load(d, dma_obj_address);
 
     /* TODO: Handle targets and classes properly */
-    NV2A_DPRINTF("dma_map %x, %x, %" HWADDR_PRIx " %" HWADDR_PRIx "\n",
+    NV2A_DPRINTF("dma_map %" HWADDR_PRIx " - %x, %x, %" HWADDR_PRIx " %" HWADDR_PRIx "\n",
+                 dma_obj_address,
                  dma.dma_class, dma.dma_target, dma.address, dma.limit);
 
     dma.address &= 0x07FFFFFF;
 
+    assert(dma.address < memory_region_size(d->vram));
     // assert(dma.address + dma.limit < memory_region_size(d->vram));
     *len = dma.limit;
     return d->vram_ptr + dma.address;
@@ -376,6 +376,11 @@ static void nv2a_init_memory(NV2AState *d, MemoryRegion *ram)
     qemu_thread_create(&d->pfifo.puller_thread, "nv2a.puller_thread",
                        pfifo_puller_thread,
                        d, QEMU_THREAD_JOINABLE);
+
+    /* fire up pusher */
+    qemu_thread_create(&d->pfifo.pusher_thread, "nv2a.pusher_thread",
+                       pfifo_pusher_thread,
+                       d, QEMU_THREAD_JOINABLE);
 }
 
 static void nv2a_realize(PCIDevice *dev, Error **errp)
@@ -424,22 +429,11 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
                                     &d->block_mmio[i]);
     }
 
-    /* init fifo cache1 */
-    qemu_spin_init(&d->pfifo.cache1.alloc_lock);
-    qemu_mutex_init(&d->pfifo.cache1.cache_lock);
-    qemu_cond_init(&d->pfifo.cache1.cache_cond);
-    QSIMPLEQ_INIT(&d->pfifo.cache1.cache);
-    QSIMPLEQ_INIT(&d->pfifo.cache1.working_cache);
-    QSIMPLEQ_INIT(&d->pfifo.cache1.available_entries);
-    QSIMPLEQ_INIT(&d->pfifo.cache1.retired_entries);
+    qemu_mutex_init(&d->pfifo.lock);
+    qemu_cond_init(&d->pfifo.puller_cond);
+    qemu_cond_init(&d->pfifo.pusher_cond);
 
-    /* Pre-allocate memory for CacheEntry objects */
-    for (i = 0; i < 100000; i++) {
-        CacheEntry *command = g_malloc0(sizeof(CacheEntry));
-        assert(command != NULL);
-        QSIMPLEQ_INSERT_TAIL(&d->pfifo.cache1.available_entries,
-                             command, entry);
-    }
+    d->pfifo.regs[NV_PFIFO_CACHE1_STATUS] |= NV_PFIFO_CACHE1_STATUS_LOW_MARK;
 }
 
 static void nv2a_exitfn(PCIDevice *dev)
@@ -448,18 +442,11 @@ static void nv2a_exitfn(PCIDevice *dev)
     d = NV2A_DEVICE(dev);
 
     d->exiting = true;
-    qemu_cond_signal(&d->pfifo.cache1.cache_cond);
+
+    qemu_cond_broadcast(&d->pfifo.puller_cond);
+    qemu_cond_broadcast(&d->pfifo.pusher_cond);
     qemu_thread_join(&d->pfifo.puller_thread);
-
-    qemu_mutex_destroy(&d->pfifo.cache1.cache_lock);
-    qemu_cond_destroy(&d->pfifo.cache1.cache_cond);
-
-    /* Release allocated CacheEntry objects */
-    while (!QSIMPLEQ_EMPTY(&d->pfifo.cache1.available_entries)) {
-        CacheEntry *entry = QSIMPLEQ_FIRST(&d->pfifo.cache1.available_entries);
-        QSIMPLEQ_REMOVE_HEAD(&d->pfifo.cache1.available_entries, entry);
-        free(entry);
-    }
+    qemu_thread_join(&d->pfifo.pusher_thread);
 
     pgraph_destroy(&d->pgraph);
 }

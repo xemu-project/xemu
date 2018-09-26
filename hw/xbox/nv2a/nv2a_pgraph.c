@@ -261,7 +261,7 @@ static const SurfaceColorFormatInfo kelvin_surface_color_format_map[] = {
         {4, GL_RGBA8, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV},
 };
 
-static void pgraph_set_context_user(NV2AState *d, uint32_t val);
+// static void pgraph_set_context_user(NV2AState *d, uint32_t val);
 static void pgraph_method_log(unsigned int subchannel, unsigned int graphics_class, unsigned int method, uint32_t parameter);
 static void pgraph_allocate_inline_buffer_vertices(PGRAPHState *pg, unsigned int attr);
 static void pgraph_finish_inline_buffer_vertex(PGRAPHState *pg);
@@ -279,8 +279,6 @@ static void pgraph_get_surface_dimensions(PGRAPHState *pg, unsigned int *width, 
 static void pgraph_update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size, bool f);
 static void pgraph_bind_vertex_attributes(NV2AState *d, unsigned int num_elements, bool inline_data, unsigned int inline_stride);
 static unsigned int pgraph_bind_inline_array(NV2AState *d);
-static void load_graphics_object(NV2AState *d, hwaddr instance_address, GraphicsObject *obj);
-static GraphicsObject* lookup_graphics_object(PGRAPHState *s, hwaddr instance_address);
 static float convert_f16_to_float(uint16_t f16);
 static float convert_f24_to_float(uint32_t f24);
 static uint8_t cliptobyte(int x);
@@ -316,34 +314,6 @@ uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
     case NV_PGRAPH_INTR_EN:
         r = d->pgraph.enabled_interrupts;
         break;
-    case NV_PGRAPH_NSOURCE:
-        r = d->pgraph.notify_source;
-        break;
-    case NV_PGRAPH_CTX_USER:
-        SET_MASK(r, NV_PGRAPH_CTX_USER_CHANNEL_3D,
-                 d->pgraph.context[d->pgraph.channel_id].channel_3d);
-        SET_MASK(r, NV_PGRAPH_CTX_USER_CHANNEL_3D_VALID, 1);
-        SET_MASK(r, NV_PGRAPH_CTX_USER_SUBCH,
-                 d->pgraph.context[d->pgraph.channel_id].subchannel << 13);
-        SET_MASK(r, NV_PGRAPH_CTX_USER_CHID, d->pgraph.channel_id);
-        break;
-    case NV_PGRAPH_TRAPPED_ADDR:
-        SET_MASK(r, NV_PGRAPH_TRAPPED_ADDR_CHID, d->pgraph.trapped_channel_id);
-        SET_MASK(r, NV_PGRAPH_TRAPPED_ADDR_SUBCH, d->pgraph.trapped_subchannel);
-        SET_MASK(r, NV_PGRAPH_TRAPPED_ADDR_MTHD, d->pgraph.trapped_method);
-        break;
-    case NV_PGRAPH_TRAPPED_DATA_LOW:
-        r = d->pgraph.trapped_data[0];
-        break;
-    case NV_PGRAPH_FIFO:
-        SET_MASK(r, NV_PGRAPH_FIFO_ACCESS, d->pgraph.fifo_access);
-        break;
-    case NV_PGRAPH_CHANNEL_CTX_TABLE:
-        r = d->pgraph.context_table >> 4;
-        break;
-    case NV_PGRAPH_CHANNEL_CTX_POINTER:
-        r = d->pgraph.context_address >> 4;
-        break;
     default:
         r = d->pgraph.regs[addr];
         break;
@@ -354,15 +324,7 @@ uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
     reg_log_read(NV_PGRAPH, addr, r);
     return r;
 }
-static void pgraph_set_context_user(NV2AState *d, uint32_t val)
-{
-    d->pgraph.channel_id = (val & NV_PGRAPH_CTX_USER_CHID) >> 24;
 
-    d->pgraph.context[d->pgraph.channel_id].channel_3d =
-        GET_MASK(val, NV_PGRAPH_CTX_USER_CHANNEL_3D);
-    d->pgraph.context[d->pgraph.channel_id].subchannel =
-        GET_MASK(val, NV_PGRAPH_CTX_USER_SUBCH);
-}
 void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
@@ -379,12 +341,6 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     case NV_PGRAPH_INTR_EN:
         d->pgraph.enabled_interrupts = val;
         break;
-    case NV_PGRAPH_CTX_CONTROL:
-        d->pgraph.channel_valid = (val & NV_PGRAPH_CTX_CONTROL_CHID);
-        break;
-    case NV_PGRAPH_CTX_USER:
-        pgraph_set_context_user(d, val);
-        break;
     case NV_PGRAPH_INCREMENT:
         if (val & NV_PGRAPH_INCREMENT_READ_3D) {
             SET_MASK(d->pgraph.regs[NV_PGRAPH_SURFACE],
@@ -396,39 +352,42 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
             qemu_cond_broadcast(&d->pgraph.flip_3d);
         }
         break;
-    case NV_PGRAPH_FIFO:
-        d->pgraph.fifo_access = GET_MASK(val, NV_PGRAPH_FIFO_ACCESS);
-        qemu_cond_broadcast(&d->pgraph.fifo_access_cond);
-        break;
-    case NV_PGRAPH_CHANNEL_CTX_TABLE:
-        d->pgraph.context_table =
-            (val & NV_PGRAPH_CHANNEL_CTX_TABLE_INST) << 4;
-        break;
-    case NV_PGRAPH_CHANNEL_CTX_POINTER:
-        d->pgraph.context_address =
-            (val & NV_PGRAPH_CHANNEL_CTX_POINTER_INST) << 4;
-        break;
-    case NV_PGRAPH_CHANNEL_CTX_TRIGGER:
+    case NV_PGRAPH_CHANNEL_CTX_TRIGGER: {
+        hwaddr context_address =
+            GET_MASK(d->pgraph.regs[NV_PGRAPH_CHANNEL_CTX_POINTER], NV_PGRAPH_CHANNEL_CTX_POINTER_INST) << 4;
 
         if (val & NV_PGRAPH_CHANNEL_CTX_TRIGGER_READ_IN) {
-            NV2A_DPRINTF("PGRAPH: read channel %d context from %" HWADDR_PRIx "\n",
-                         d->pgraph.channel_id, d->pgraph.context_address);
+            unsigned pgraph_channel_id =
+                GET_MASK(d->pgraph.regs[NV_PGRAPH_CTX_USER], NV_PGRAPH_CTX_USER_CHID);
 
-            uint8_t *context_ptr = d->ramin_ptr + d->pgraph.context_address;
+            NV2A_DPRINTF("PGRAPH: read channel %d context from %" HWADDR_PRIx "\n",
+                         pgraph_channel_id, context_address);
+
+            assert(context_address < memory_region_size(&d->ramin));
+
+            uint8_t *context_ptr = d->ramin_ptr + context_address;
             uint32_t context_user = ldl_le_p((uint32_t*)context_ptr);
 
             NV2A_DPRINTF("    - CTX_USER = 0x%x\n", context_user);
 
-
-            pgraph_set_context_user(d, context_user);
+            d->pgraph.regs[NV_PGRAPH_CTX_USER] = context_user;
+            // pgraph_set_context_user(d, context_user);
         }
         if (val & NV_PGRAPH_CHANNEL_CTX_TRIGGER_WRITE_OUT) {
             /* do stuff ... */
         }
 
         break;
+    }
     default:
         d->pgraph.regs[addr] = val;
+        break;
+    }
+
+    // events
+    switch (addr) {
+    case NV_PGRAPH_FIFO:
+        qemu_cond_broadcast(&d->pgraph.fifo_access_cond);
         break;
     }
 
@@ -441,39 +400,71 @@ void pgraph_method(NV2AState *d,
                    uint32_t parameter)
 {
     int i;
-    GraphicsSubchannel *subchannel_data;
-    GraphicsObject *object;
-
     unsigned int slot;
 
     PGRAPHState *pg = &d->pgraph;
 
-    assert(pg->channel_valid);
-    subchannel_data = &pg->subchannel_data[subchannel];
-    object = &subchannel_data->object;
+    bool channel_valid =
+        d->pgraph.regs[NV_PGRAPH_CTX_CONTROL] & NV_PGRAPH_CTX_CONTROL_CHID;
+    assert(channel_valid);
 
-    ContextSurfaces2DState *context_surfaces_2d
-        = &object->data.context_surfaces_2d;
-    ImageBlitState *image_blit = &object->data.image_blit;
-    KelvinState *kelvin = &object->data.kelvin;
+    unsigned channel_id = GET_MASK(pg->regs[NV_PGRAPH_CTX_USER], NV_PGRAPH_CTX_USER_CHID);
 
+    ContextSurfaces2DState *context_surfaces_2d = &pg->context_surfaces_2d;
+    ImageBlitState *image_blit = &pg->image_blit;
+    KelvinState *kelvin = &pg->kelvin;
 
-
-    pgraph_method_log(subchannel, object->graphics_class, method, parameter);
+    assert(subchannel < 8);
 
     if (method == NV_SET_OBJECT) {
-        subchannel_data->object_instance = parameter;
+        assert(parameter < memory_region_size(&d->ramin));
+        uint8_t *obj_ptr = d->ramin_ptr + parameter;
 
-        //qemu_mutex_lock_iothread();
-        load_graphics_object(d, parameter, object);
-        //qemu_mutex_unlock_iothread();
-        return;
+        uint32_t ctx_1 = ldl_le_p((uint32_t*)obj_ptr);
+        uint32_t ctx_2 = ldl_le_p((uint32_t*)(obj_ptr+4));
+        uint32_t ctx_3 = ldl_le_p((uint32_t*)(obj_ptr+8));
+        uint32_t ctx_4 = ldl_le_p((uint32_t*)(obj_ptr+12));
+        uint32_t ctx_5 = parameter;
+
+        pg->regs[NV_PGRAPH_CTX_CACHE1 + subchannel * 4] = ctx_1;
+        pg->regs[NV_PGRAPH_CTX_CACHE2 + subchannel * 4] = ctx_2;
+        pg->regs[NV_PGRAPH_CTX_CACHE3 + subchannel * 4] = ctx_3;
+        pg->regs[NV_PGRAPH_CTX_CACHE4 + subchannel * 4] = ctx_4;
+        pg->regs[NV_PGRAPH_CTX_CACHE5 + subchannel * 4] = ctx_5;
+    }
+
+    // is this right?
+    pg->regs[NV_PGRAPH_CTX_SWITCH1] = pg->regs[NV_PGRAPH_CTX_CACHE1 + subchannel * 4];
+    pg->regs[NV_PGRAPH_CTX_SWITCH2] = pg->regs[NV_PGRAPH_CTX_CACHE2 + subchannel * 4];
+    pg->regs[NV_PGRAPH_CTX_SWITCH3] = pg->regs[NV_PGRAPH_CTX_CACHE3 + subchannel * 4];
+    pg->regs[NV_PGRAPH_CTX_SWITCH4] = pg->regs[NV_PGRAPH_CTX_CACHE4 + subchannel * 4];
+    pg->regs[NV_PGRAPH_CTX_SWITCH5] = pg->regs[NV_PGRAPH_CTX_CACHE5 + subchannel * 4];
+
+    uint32_t graphics_class = GET_MASK(pg->regs[NV_PGRAPH_CTX_SWITCH1],
+                                       NV_PGRAPH_CTX_SWITCH1_GRCLASS);
+
+    // NV2A_DPRINTF("graphics_class %d 0x%x\n", subchannel, graphics_class);
+    pgraph_method_log(subchannel, graphics_class, method, parameter);
+
+    if (subchannel != 0) {
+        // catches context switching issues on xbox d3d
+        assert(graphics_class != 0x97);
     }
 
     /* ugly switch for now */
-    switch (object->graphics_class) {
+    switch (graphics_class) {
+
+    case NV_CONTEXT_PATTERN: { switch (method) {
+    case NV044_SET_MONOCHROME_COLOR0:
+        pg->regs[NV_PGRAPH_PATT_COLOR0] = parameter;
+        break;
+    } break; }
 
     case NV_CONTEXT_SURFACES_2D: { switch (method) {
+    case NV062_SET_OBJECT:
+        context_surfaces_2d->object_instance = parameter;
+        break;
+
     case NV062_SET_CONTEXT_DMA_IMAGE_SOURCE:
         context_surfaces_2d->dma_image_source = parameter;
         break;
@@ -496,6 +487,10 @@ void pgraph_method(NV2AState *d,
     } break; }
 
     case NV_IMAGE_BLIT: { switch (method) {
+    case NV09F_SET_OBJECT:
+        image_blit->object_instance = parameter;
+        break;
+
     case NV09F_SET_CONTEXT_SURFACES:
         image_blit->context_surfaces = parameter;
         break;
@@ -519,14 +514,9 @@ void pgraph_method(NV2AState *d,
 
             NV2A_GL_DPRINTF(true, "NV09F_SET_OPERATION_SRCCOPY");
 
-            GraphicsObject *context_surfaces_obj =
-                lookup_graphics_object(pg, image_blit->context_surfaces);
-            assert(context_surfaces_obj);
-            assert(context_surfaces_obj->graphics_class
-                == NV_CONTEXT_SURFACES_2D);
-
-            ContextSurfaces2DState *context_surfaces =
-                &context_surfaces_obj->data.context_surfaces_2d;
+            ContextSurfaces2DState *context_surfaces = context_surfaces_2d;
+            assert(context_surfaces->object_instance
+                    == image_blit->context_surfaces);
 
             unsigned int bytes_per_pixel;
             switch (context_surfaces->color_format) {
@@ -584,6 +574,10 @@ void pgraph_method(NV2AState *d,
 
 
     case NV_KELVIN_PRIMITIVE: { switch (method) {
+    case NV097_SET_OBJECT:
+        kelvin->object_instance = parameter;
+        break;
+
     case NV097_NO_OPERATION:
         /* The bios uses nop as a software method call -
          * it seems to expect a notify interrupt if the parameter isn't 0.
@@ -594,12 +588,14 @@ void pgraph_method(NV2AState *d,
         if (parameter != 0) {
             assert(!(pg->pending_interrupts & NV_PGRAPH_INTR_ERROR));
 
-
-            pg->trapped_channel_id = pg->channel_id;
-            pg->trapped_subchannel = subchannel;
-            pg->trapped_method = method;
-            pg->trapped_data[0] = parameter;
-            pg->notify_source = NV_PGRAPH_NSOURCE_NOTIFICATION; /* TODO: check this */
+            SET_MASK(pg->regs[NV_PGRAPH_TRAPPED_ADDR],
+                NV_PGRAPH_TRAPPED_ADDR_CHID, channel_id);
+            SET_MASK(pg->regs[NV_PGRAPH_TRAPPED_ADDR],
+                NV_PGRAPH_TRAPPED_ADDR_SUBCH, subchannel);
+            SET_MASK(pg->regs[NV_PGRAPH_TRAPPED_ADDR],
+                NV_PGRAPH_TRAPPED_ADDR_MTHD, method);
+            pg->regs[NV_PGRAPH_TRAPPED_DATA_LOW] = parameter;
+            pg->regs[NV_PGRAPH_NSOURCE] = NV_PGRAPH_NSOURCE_NOTIFICATION; /* TODO: check this */
             pg->pending_interrupts |= NV_PGRAPH_INTR_ERROR;
 
             qemu_mutex_unlock(&pg->lock);
@@ -668,8 +664,9 @@ void pgraph_method(NV2AState *d,
         NV2A_DPRINTF("flip stall done\n");
         break;
 
+    // TODO: these should be loading the dma objects from ramin here?
     case NV097_SET_CONTEXT_DMA_NOTIFIES:
-        kelvin->dma_notifies = parameter;
+        pg->dma_notifies = parameter;
         break;
     case NV097_SET_CONTEXT_DMA_A:
         pg->dma_a = parameter;
@@ -678,7 +675,7 @@ void pgraph_method(NV2AState *d,
         pg->dma_b = parameter;
         break;
     case NV097_SET_CONTEXT_DMA_STATE:
-        kelvin->dma_state = parameter;
+        pg->dma_state = parameter;
         break;
     case NV097_SET_CONTEXT_DMA_COLOR:
         /* try to get any straggling draws in before the surface's changed :/ */
@@ -696,7 +693,7 @@ void pgraph_method(NV2AState *d,
         pg->dma_vertex_b = parameter;
         break;
     case NV097_SET_CONTEXT_DMA_SEMAPHORE:
-        kelvin->dma_semaphore = parameter;
+        pg->dma_semaphore = parameter;
         break;
     case NV097_SET_CONTEXT_DMA_REPORT:
         pg->dma_report = parameter;
@@ -2221,7 +2218,7 @@ void pgraph_method(NV2AState *d,
     }
 
     case NV097_SET_SEMAPHORE_OFFSET:
-        kelvin->semaphore_offset = parameter;
+        pg->regs[NV_PGRAPH_SEMAPHOREOFFSET] = parameter;
         break;
     case NV097_BACK_END_WRITE_SEMAPHORE_RELEASE: {
 
@@ -2230,11 +2227,13 @@ void pgraph_method(NV2AState *d,
         //qemu_mutex_unlock(&d->pgraph.lock);
         //qemu_mutex_lock_iothread();
 
+        uint32_t semaphore_offset = pg->regs[NV_PGRAPH_SEMAPHOREOFFSET];
+
         hwaddr semaphore_dma_len;
-        uint8_t *semaphore_data = (uint8_t*)nv_dma_map(d, kelvin->dma_semaphore,
+        uint8_t *semaphore_data = (uint8_t*)nv_dma_map(d, pg->dma_semaphore,
                                                        &semaphore_dma_len);
-        assert(kelvin->semaphore_offset < semaphore_dma_len);
-        semaphore_data += kelvin->semaphore_offset;
+        assert(semaphore_offset < semaphore_dma_len);
+        semaphore_data += semaphore_offset;
 
         stl_le_p((uint32_t*)semaphore_data, parameter);
 
@@ -2498,28 +2497,34 @@ void pgraph_method(NV2AState *d,
 
     default:
         NV2A_GL_DPRINTF(true, "    unhandled  (0x%02x 0x%08x)",
-                        object->graphics_class, method);
+                        graphics_class, method);
         break;
     } break; }
 
     default:
         NV2A_GL_DPRINTF(true, "    unhandled  (0x%02x 0x%08x)",
-                        object->graphics_class, method);
+                        graphics_class, method);
         break;
 
     }
 }
 
-
 void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
 {
-    bool valid;
-    valid = d->pgraph.channel_valid && d->pgraph.channel_id == channel_id;
+    bool channel_valid =
+        d->pgraph.regs[NV_PGRAPH_CTX_CONTROL] & NV_PGRAPH_CTX_CONTROL_CHID;
+    unsigned pgraph_channel_id = GET_MASK(d->pgraph.regs[NV_PGRAPH_CTX_USER], NV_PGRAPH_CTX_USER_CHID);
+
+    bool valid = channel_valid && pgraph_channel_id == channel_id;
     if (!valid) {
-        d->pgraph.trapped_channel_id = channel_id;
-    }
-    if (!valid) {
-        NV2A_DPRINTF("puller needs to switch to ch %d\n", channel_id);
+        SET_MASK(d->pgraph.regs[NV_PGRAPH_TRAPPED_ADDR],
+                 NV_PGRAPH_TRAPPED_ADDR_CHID, channel_id);
+
+        NV2A_DPRINTF("pgraph switching to ch %d\n", channel_id);
+
+        /* TODO: hardware context switching */
+        assert(!(d->pgraph.regs[NV_PGRAPH_DEBUG_3]
+                & NV_PGRAPH_DEBUG_3_HW_CONTEXT_SWITCH));
 
         qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock_iothread();
@@ -2529,6 +2534,7 @@ void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
         qemu_mutex_lock(&d->pgraph.lock);
         qemu_mutex_unlock_iothread();
 
+        // wait for the interrupt to be serviced
         while (d->pgraph.pending_interrupts & NV_PGRAPH_INTR_CONTEXT_SWITCH) {
             qemu_cond_wait(&d->pgraph.interrupt_cond, &d->pgraph.lock);
         }
@@ -2536,7 +2542,7 @@ void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
 }
 
 void pgraph_wait_fifo_access(NV2AState *d) {
-    while (!d->pgraph.fifo_access) {
+    while (!(d->pgraph.regs[NV_PGRAPH_FIFO] & NV_PGRAPH_FIFO_ACCESS)) {
         qemu_cond_wait(&d->pgraph.fifo_access_cond, &d->pgraph.lock);
     }
 }
@@ -2561,6 +2567,9 @@ static void pgraph_method_log(unsigned int subchannel,
         //         break;
         //     case NV_CONTEXT_SURFACES_2D:
         //         nmethod = method | (0x6d << 16);
+        //         break;
+        //     case NV_CONTEXT_PATTERN:
+        //         nmethod = method | (0x68 << 16);
         //         break;
         //     default:
         //         break;
@@ -3594,9 +3603,9 @@ static void pgraph_bind_textures(NV2AState *d)
             continue;
         }
 
-        NV2A_DPRINTF(" texture %d is format 0x%x, (r %d, %d or %d, %d, %d; %d%s),"
+        NV2A_DPRINTF(" texture %d is format 0x%x, off 0x%x (r %d, %d or %d, %d, %d; %d%s),"
                         " filter %x %x, levels %d-%d %d bias %d\n",
-                     i, color_format,
+                     i, color_format, offset,
                      rect_width, rect_height,
                      1 << log_width, 1 << log_height, 1 << log_depth,
                      pitch,
@@ -4029,44 +4038,6 @@ static unsigned int pgraph_bind_inline_array(NV2AState *d)
     pgraph_bind_vertex_attributes(d, index_count, true, vertex_size);
 
     return index_count;
-}
-
-static void load_graphics_object(NV2AState *d, hwaddr instance_address,
-                                 GraphicsObject *obj)
-{
-    uint8_t *obj_ptr;
-    uint32_t switch1, switch2, switch3;
-
-    assert(instance_address < memory_region_size(&d->ramin));
-
-    obj_ptr = d->ramin_ptr + instance_address;
-
-    switch1 = ldl_le_p((uint32_t*)obj_ptr);
-    switch2 = ldl_le_p((uint32_t*)(obj_ptr+4));
-    switch3 = ldl_le_p((uint32_t*)(obj_ptr+8));
-
-    obj->graphics_class = switch1 & NV_PGRAPH_CTX_SWITCH1_GRCLASS;
-
-    /* init graphics object */
-    switch (obj->graphics_class) {
-    case NV_KELVIN_PRIMITIVE:
-        // kelvin->vertex_attributes[NV2A_VERTEX_ATTR_DIFFUSE].inline_value = 0xFFFFFFF;
-        break;
-    default:
-        break;
-    }
-}
-
-static GraphicsObject* lookup_graphics_object(PGRAPHState *s,
-                                              hwaddr instance_address)
-{
-    int i;
-    for (i=0; i<NV2A_NUM_SUBCHANNELS; i++) {
-        if (s->subchannel_data[i].object_instance == instance_address) {
-            return &s->subchannel_data[i].object;
-        }
-    }
-    return NULL;
 }
 
 /* 16 bit to [0.0, F16_MAX = 511.9375] */
