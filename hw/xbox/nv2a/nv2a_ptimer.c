@@ -19,12 +19,14 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-/* PIMTER - time measurement and time-based alarms */
+/* PTIMER - time measurement and time-based alarms */
 static uint64_t ptimer_get_clock(NV2AState *d)
 {
-    return muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
-                    d->pramdac.core_clock_freq * d->ptimer.numerator,
-                    NANOSECONDS_PER_SECOND * d->ptimer.denominator);
+    return muldiv64(muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL),
+                             d->pramdac.core_clock_freq,
+                             NANOSECONDS_PER_SECOND),
+                    d->ptimer.denominator,
+                    d->ptimer.numerator);
 }
 
 uint64_t ptimer_read(void *opaque, hwaddr addr, unsigned int size)
