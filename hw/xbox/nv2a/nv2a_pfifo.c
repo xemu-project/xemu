@@ -204,7 +204,7 @@ static void pfifo_run_puller(NV2AState *d)
     }
 }
 
-void* pfifo_puller_thread(void *arg)
+static void* pfifo_puller_thread(void *arg)
 {
     NV2AState *d = (NV2AState *)arg;
 

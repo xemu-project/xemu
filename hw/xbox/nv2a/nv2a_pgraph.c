@@ -394,7 +394,7 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     qemu_mutex_unlock(&d->pgraph.lock);
 }
 
-void pgraph_method(NV2AState *d,
+static void pgraph_method(NV2AState *d,
                    unsigned int subchannel,
                    unsigned int method,
                    uint32_t parameter)
@@ -2509,7 +2509,7 @@ void pgraph_method(NV2AState *d,
     }
 }
 
-void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
+static void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
 {
     bool channel_valid =
         d->pgraph.regs[NV_PGRAPH_CTX_CONTROL] & NV_PGRAPH_CTX_CONTROL_CHID;
@@ -2541,7 +2541,7 @@ void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
     }
 }
 
-void pgraph_wait_fifo_access(NV2AState *d) {
+static void pgraph_wait_fifo_access(NV2AState *d) {
     while (!(d->pgraph.regs[NV_PGRAPH_FIFO] & NV_PGRAPH_FIFO_ACCESS)) {
         qemu_cond_wait(&d->pgraph.fifo_access_cond, &d->pgraph.lock);
     }
@@ -2630,7 +2630,7 @@ static void pgraph_finish_inline_buffer_vertex(PGRAPHState *pg)
     pg->inline_buffer_length++;
 }
 
-void pgraph_init(NV2AState *d)
+static void pgraph_init(NV2AState *d)
 {
     int i;
 
@@ -2717,7 +2717,7 @@ void pgraph_init(NV2AState *d)
     glo_set_current(NULL);
 }
 
-void pgraph_destroy(PGRAPHState *pg)
+static void pgraph_destroy(PGRAPHState *pg)
 {
     qemu_mutex_destroy(&pg->lock);
     qemu_cond_destroy(&pg->interrupt_cond);

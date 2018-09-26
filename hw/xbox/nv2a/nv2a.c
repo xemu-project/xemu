@@ -19,12 +19,27 @@
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <assert.h>
+
 #include "qemu/osdep.h"
-#include "hw/display/vga_regs.h"
+#include "qemu/thread.h"
+#include "qemu/main-loop.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#include "nv2a.h"
-#include <assert.h>
+
+#include "hw/hw.h"
+#include "hw/display/vga.h"
+#include "hw/display/vga_int.h"
+#include "hw/display/vga_regs.h"
+#include "hw/pci/pci.h"
+#include "cpu.h"
+
+#include "swizzle.h"
+
+#include "hw/xbox/nv2a/nv2a_int.h"
+
+#include "hw/xbox/nv2a/nv2a.h"
+
 
 #ifdef __WINNT__
 // HACK: mingw-w64 doesn't provide ffs, for now we just shove it here
@@ -45,7 +60,35 @@ int ffs(register int valu)
 }
 #endif
 
-void update_irq(NV2AState *d)
+
+#define DEFINE_PROTO(n)                                              \
+    uint64_t n##_read(void *opaque, hwaddr addr, unsigned int size); \
+    void n##_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size);
+
+DEFINE_PROTO(pmc)
+DEFINE_PROTO(pbus)
+DEFINE_PROTO(pfifo)
+DEFINE_PROTO(prma)
+DEFINE_PROTO(pvideo)
+DEFINE_PROTO(ptimer)
+DEFINE_PROTO(pcounter)
+DEFINE_PROTO(pvpe)
+DEFINE_PROTO(ptv)
+DEFINE_PROTO(prmfb)
+DEFINE_PROTO(prmvio)
+DEFINE_PROTO(pfb)
+DEFINE_PROTO(pstraps)
+DEFINE_PROTO(pgraph)
+DEFINE_PROTO(pcrtc)
+DEFINE_PROTO(prmcio)
+DEFINE_PROTO(pramdac)
+DEFINE_PROTO(prmdio)
+// DEFINE_PROTO(pramin)
+DEFINE_PROTO(user)
+
+#undef DEFINE_PROTO
+
+static void update_irq(NV2AState *d)
 {
     /* PFIFO */
     if (d->pfifo.pending_interrupts & d->pfifo.enabled_interrupts) {
@@ -76,7 +119,7 @@ void update_irq(NV2AState *d)
     }
 }
 
-DMAObject nv_dma_load(NV2AState *d, hwaddr dma_obj_address)
+static DMAObject nv_dma_load(NV2AState *d, hwaddr dma_obj_address)
 {
     assert(dma_obj_address < memory_region_size(&d->ramin));
 
@@ -93,7 +136,7 @@ DMAObject nv_dma_load(NV2AState *d, hwaddr dma_obj_address)
     };
 }
 
-void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len)
+static void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len)
 {
     DMAObject dma = nv_dma_load(d, dma_obj_address);
 
@@ -113,8 +156,8 @@ void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len)
 #include "nv2a_pbus.c"
 #include "nv2a_pcrtc.c"
 #include "nv2a_pfb.c"
-#include "nv2a_pfifo.c"
 #include "nv2a_pgraph.c"
+#include "nv2a_pfifo.c"
 #include "nv2a_pmc.c"
 #include "nv2a_pramdac.c"
 #include "nv2a_prmcio.c"
@@ -157,39 +200,36 @@ const struct NV2ABlockInfo blocktable[] = {
 
 #undef ENTRY
 
-const int blocktable_len = ARRAY_SIZE(blocktable);
+static const char* nv2a_reg_names[] = {};
 
-// FIXME: Add nv2a_reg_names or remove this code
-// static const char* nv2a_reg_names[] = {};
-
-void reg_log_read(int block, hwaddr addr, uint64_t val)
+static void reg_log_read(int block, hwaddr addr, uint64_t val)
 {
     if (blocktable[block].name) {
-        // hwaddr naddr = blocktable[block].offset + addr;
-        // if (naddr < ARRAY_SIZE(nv2a_reg_names) && nv2a_reg_names[naddr]) {
-        //     NV2A_DPRINTF("%s: read [%s] -> 0x%" PRIx64 "\n",
-        //             blocktable[block].name, nv2a_reg_names[naddr], val);
-        // } else {
+        hwaddr naddr = blocktable[block].offset + addr;
+        if (naddr < ARRAY_SIZE(nv2a_reg_names) && nv2a_reg_names[naddr]) {
+            NV2A_DPRINTF("%s: read [%s] -> 0x%" PRIx64 "\n",
+                    blocktable[block].name, nv2a_reg_names[naddr], val);
+        } else {
             NV2A_DPRINTF("%s: read [%" HWADDR_PRIx "] -> 0x%" PRIx64 "\n",
                          blocktable[block].name, addr, val);
-        // }
+        }
     } else {
         NV2A_DPRINTF("(%d?): read [%" HWADDR_PRIx "] -> 0x%" PRIx64 "\n",
                      block, addr, val);
     }
 }
 
-void reg_log_write(int block, hwaddr addr, uint64_t val)
+static void reg_log_write(int block, hwaddr addr, uint64_t val)
 {
     if (blocktable[block].name) {
-        // hwaddr naddr = blocktable[block].offset + addr;
-        // if (naddr < ARRAY_SIZE(nv2a_reg_names) && nv2a_reg_names[naddr]) {
-        //     NV2A_DPRINTF("%s: [%s] = 0x%" PRIx64 "\n",
-        //             blocktable[block].name, nv2a_reg_names[naddr], val);
-        // } else {
+        hwaddr naddr = blocktable[block].offset + addr;
+        if (naddr < ARRAY_SIZE(nv2a_reg_names) && nv2a_reg_names[naddr]) {
+            NV2A_DPRINTF("%s: [%s] = 0x%" PRIx64 "\n",
+                    blocktable[block].name, nv2a_reg_names[naddr], val);
+        } else {
             NV2A_DPRINTF("%s: [%" HWADDR_PRIx "] = 0x%" PRIx64 "\n",
                          blocktable[block].name, addr, val);
-        // }
+        }
     } else {
         NV2A_DPRINTF("(%d?): [%" HWADDR_PRIx "] = 0x%" PRIx64 "\n",
                      block, addr, val);

@@ -49,11 +49,9 @@
 
 #include "hw/xbox/xbox_pci.h"
 #include "hw/xbox/smbus.h"
-
+#include "hw/xbox/nv2a/nv2a.h"
+ 
 #include "hw/xbox/xbox.h"
-
-/* FIXME: Move to header file */
-void nv2a_init(PCIBus *bus, int devfn, MemoryRegion *ram);
 
 #define MAX_IDE_BUS 2
 
