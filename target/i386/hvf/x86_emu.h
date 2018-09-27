@@ -33,11 +33,11 @@ void simulate_wrmsr(struct CPUState *cpu);
 
 target_ulong read_reg(CPUX86State *env, int reg, int size);
 void write_reg(CPUX86State *env, int reg, target_ulong val, int size);
-target_ulong read_val_from_reg(target_ulong reg_ptr, int size);
-void write_val_to_reg(target_ulong reg_ptr, target_ulong val, int size);
-void write_val_ext(struct CPUX86State *env, target_ulong ptr, target_ulong val, int size);
+target_ulong read_val_from_reg(uintptr_t reg_ptr, int size);
+void write_val_to_reg(uintptr_t reg_ptr, target_ulong val, int size);
+void write_val_ext(struct CPUX86State *env, uintptr_t ptr, target_ulong val, int size);
 uint8_t *read_mmio(struct CPUX86State *env, target_ulong ptr, int bytes);
-target_ulong read_val_ext(struct CPUX86State *env, target_ulong ptr, int size);
+target_ulong read_val_ext(struct CPUX86State *env, uintptr_t ptr, int size);
 
 void exec_movzx(struct CPUX86State *env, struct x86_decode *decode);
 void exec_shl(struct CPUX86State *env, struct x86_decode *decode);

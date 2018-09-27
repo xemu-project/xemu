@@ -258,6 +258,7 @@ int hvf_put_registers(CPUState *cpu_state)
     wreg(cpu_state->hvf_fd, HV_X86_RSP, env->regs[R_ESP]);
     wreg(cpu_state->hvf_fd, HV_X86_RSI, env->regs[R_ESI]);
     wreg(cpu_state->hvf_fd, HV_X86_RDI, env->regs[R_EDI]);
+#ifdef TARGET_X86_64
     wreg(cpu_state->hvf_fd, HV_X86_R8, env->regs[8]);
     wreg(cpu_state->hvf_fd, HV_X86_R9, env->regs[9]);
     wreg(cpu_state->hvf_fd, HV_X86_R10, env->regs[10]);
@@ -266,6 +267,7 @@ int hvf_put_registers(CPUState *cpu_state)
     wreg(cpu_state->hvf_fd, HV_X86_R13, env->regs[13]);
     wreg(cpu_state->hvf_fd, HV_X86_R14, env->regs[14]);
     wreg(cpu_state->hvf_fd, HV_X86_R15, env->regs[15]);
+#endif
     wreg(cpu_state->hvf_fd, HV_X86_RFLAGS, env->eflags);
     wreg(cpu_state->hvf_fd, HV_X86_RIP, env->eip);
    
@@ -302,6 +304,7 @@ int hvf_get_registers(CPUState *cpu_state)
     env->regs[R_ESP] = rreg(cpu_state->hvf_fd, HV_X86_RSP);
     env->regs[R_ESI] = rreg(cpu_state->hvf_fd, HV_X86_RSI);
     env->regs[R_EDI] = rreg(cpu_state->hvf_fd, HV_X86_RDI);
+#ifdef TARGET_X86_64
     env->regs[8] = rreg(cpu_state->hvf_fd, HV_X86_R8);
     env->regs[9] = rreg(cpu_state->hvf_fd, HV_X86_R9);
     env->regs[10] = rreg(cpu_state->hvf_fd, HV_X86_R10);
@@ -310,7 +313,8 @@ int hvf_get_registers(CPUState *cpu_state)
     env->regs[13] = rreg(cpu_state->hvf_fd, HV_X86_R13);
     env->regs[14] = rreg(cpu_state->hvf_fd, HV_X86_R14);
     env->regs[15] = rreg(cpu_state->hvf_fd, HV_X86_R15);
-    
+#endif
+
     env->eflags = rreg(cpu_state->hvf_fd, HV_X86_RFLAGS);
     env->eip = rreg(cpu_state->hvf_fd, HV_X86_RIP);
    

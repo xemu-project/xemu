@@ -128,7 +128,7 @@ void write_reg(CPUX86State *env, int reg, target_ulong val, int size)
     }
 }
 
-target_ulong read_val_from_reg(target_ulong reg_ptr, int size)
+target_ulong read_val_from_reg(uintptr_t reg_ptr, int size)
 {
     target_ulong val;
     
@@ -151,7 +151,7 @@ target_ulong read_val_from_reg(target_ulong reg_ptr, int size)
     return val;
 }
 
-void write_val_to_reg(target_ulong reg_ptr, target_ulong val, int size)
+void write_val_to_reg(uintptr_t reg_ptr, target_ulong val, int size)
 {
     switch (size) {
     case 1:
@@ -171,12 +171,12 @@ void write_val_to_reg(target_ulong reg_ptr, target_ulong val, int size)
     }
 }
 
-static bool is_host_reg(struct CPUX86State *env, target_ulong ptr)
+static bool is_host_reg(struct CPUX86State *env, uintptr_t ptr)
 {
     return (ptr - (target_ulong)&env->hvf_emul->regs[0]) < sizeof(env->hvf_emul->regs);
 }
 
-void write_val_ext(struct CPUX86State *env, target_ulong ptr, target_ulong val, int size)
+void write_val_ext(struct CPUX86State *env, uintptr_t ptr, target_ulong val, int size)
 {
     if (is_host_reg(env, ptr)) {
         write_val_to_reg(ptr, val, size);
@@ -192,7 +192,7 @@ uint8_t *read_mmio(struct CPUX86State *env, target_ulong ptr, int bytes)
 }
 
 
-target_ulong read_val_ext(struct CPUX86State *env, target_ulong ptr, int size)
+target_ulong read_val_ext(struct CPUX86State *env, uintptr_t ptr, int size)
 {
     target_ulong val;
     uint8_t *mmio_ptr;
