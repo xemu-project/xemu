@@ -49,7 +49,7 @@
 #include "qemu-common.h"
 #include "qemu/error-report.h"
 
-#include "sysemu/hvf.h"
+#include "hvf_int.h"
 #include "hvf-i386.h"
 #include "vmcs.h"
 #include "vmx.h"
@@ -669,6 +669,8 @@ int hvf_vcpu_exec(CPUState *cpu)
 
     cpu->halted = 0;
 
+    // printf("hvf_vcpu_exec\n");
+
     if (hvf_process_events(cpu)) {
         return EXCP_HLT;
     }
@@ -705,6 +707,8 @@ int hvf_vcpu_exec(CPUState *cpu)
         rip = rreg(cpu->hvf_fd, HV_X86_RIP);
         RFLAGS(env) = rreg(cpu->hvf_fd, HV_X86_RFLAGS);
         env->eflags = RFLAGS(env);
+
+        // printf("rip 0x%llx, exit 0x%llx qual 0x%llx\n", rip, exit_reason, exit_qual);
 
         qemu_mutex_lock_iothread();
 
