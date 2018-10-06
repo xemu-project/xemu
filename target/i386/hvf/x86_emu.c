@@ -698,6 +698,9 @@ void simulate_rdmsr(struct CPUState *cpu)
     case MSR_CSTAR:
         abort();
         break;
+    case MSR_PAT:
+        val = env->pat;
+        break;
     case MSR_IA32_MISC_ENABLE:
         val = env->msr_ia32_misc_enable;
         break;
@@ -742,7 +745,7 @@ void simulate_rdmsr(struct CPUState *cpu)
         val = env->mtrr_deftype;
         break;
     default:
-        /* fprintf(stderr, "%s: unknown msr 0x%x\n", __func__, msr); */
+        fprintf(stderr, "%s: unknown msr 0x%x\n", __func__, msr);
         val = 0;
         break;
     }
@@ -797,6 +800,9 @@ void simulate_wrmsr(struct CPUState *cpu)
         if (data & MSR_EFER_NXE) {
             hv_vcpu_invalidate_tlb(cpu->hvf_fd);
         }
+        break;
+    case MSR_PAT:
+        env->pat = data;
         break;
     case MSR_MTRRphysBase(0):
     case MSR_MTRRphysBase(1):

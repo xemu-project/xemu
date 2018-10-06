@@ -141,6 +141,8 @@ void hvf_put_msrs(CPUState *cpu_state)
     hv_vcpu_write_msr(cpu_state->hvf_fd, MSR_IA32_SYSENTER_EIP,
                       env->sysenter_eip);
 
+    hv_vcpu_write_msr(cpu_state->hvf_fd, MSR_PAT, env->pat);
+
     hv_vcpu_write_msr(cpu_state->hvf_fd, MSR_STAR, env->star);
 
 #ifdef TARGET_X86_64
@@ -230,6 +232,8 @@ void hvf_get_msrs(CPUState *cpu_state)
 
     hv_vcpu_read_msr(cpu_state->hvf_fd, MSR_IA32_SYSENTER_EIP, &tmp);
     env->sysenter_eip = tmp;
+
+    hv_vcpu_read_msr(cpu_state->hvf_fd, MSR_PAT, &env->pat);
 
     hv_vcpu_read_msr(cpu_state->hvf_fd, MSR_STAR, &env->star);
 
