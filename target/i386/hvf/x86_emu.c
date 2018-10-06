@@ -173,7 +173,7 @@ void write_val_to_reg(uintptr_t reg_ptr, target_ulong val, int size)
 
 static bool is_host_reg(struct CPUX86State *env, uintptr_t ptr)
 {
-    return (ptr - (target_ulong)&env->hvf_emul->regs[0]) < sizeof(env->hvf_emul->regs);
+    return (ptr - (uintptr_t)&env->hvf_emul->regs[0]) < sizeof(env->hvf_emul->regs);
 }
 
 void write_val_ext(struct CPUX86State *env, uintptr_t ptr, target_ulong val, int size)
