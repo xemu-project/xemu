@@ -41,26 +41,6 @@
 #include "hw/xbox/nv2a/nv2a.h"
 
 
-#ifdef __WINNT__
-// HACK: mingw-w64 doesn't provide ffs, for now we just shove it here
-// TODO: decide on a better location
-int ffs(register int valu)
-{
-    register int bit;
-
-    if (valu == 0) {
-        return 0;
-    }
-
-    for (bit = 1; !(valu & 1); bit++) {
-        valu >>= 1;
-    }
-
-    return bit;
-}
-#endif
-
-
 #define DEFINE_PROTO(n)                                              \
     uint64_t n##_read(void *opaque, hwaddr addr, unsigned int size); \
     void n##_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size);

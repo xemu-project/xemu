@@ -459,7 +459,7 @@ static uint32_t ramht_hash(NV2AState *d, uint32_t handle)
         1 << (GET_MASK(d->pfifo.regs[NV_PFIFO_RAMHT], NV_PFIFO_RAMHT_SIZE)+12);
 
     /* XXX: Think this is different to what nouveau calculates... */
-    unsigned int bits = ffs(ramht_size)-2;
+    unsigned int bits = ctz32(ramht_size)-1;
 
     uint32_t hash = 0;
     while (handle) {

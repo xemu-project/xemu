@@ -38,14 +38,14 @@
 #include "hw/xbox/nv2a/nv2a_debug.h"
 #include "hw/xbox/nv2a/nv2a_regs.h"
 
-#define GET_MASK(v, mask) (((v) & (mask)) >> (ffs(mask) - 1))
+#define GET_MASK(v, mask) (((v) & (mask)) >> ctz32(mask))
 
 #define SET_MASK(v, mask, val)                            \
     ({                                                    \
         const unsigned int __val = (val);                 \
         const unsigned int __mask = (mask);               \
         (v) &= ~(__mask);                                 \
-        (v) |= ((__val) << (ffs(__mask) - 1)) & (__mask); \
+        (v) |= ((__val) << ctz32(__mask)) & (__mask);     \
     })
 
 #define CASE_4(v, step)      \

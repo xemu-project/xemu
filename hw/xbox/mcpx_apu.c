@@ -121,12 +121,12 @@ static const struct {
 
 #define MCPX_HW_MAX_VOICES 256
 
-#define GET_MASK(v, mask) (((v) & (mask)) >> (ffs(mask) - 1))
+#define GET_MASK(v, mask) (((v) & (mask)) >> ctz32(mask))
 
 #define SET_MASK(v, mask, val)                                       \
     do {                                                             \
         (v) &= ~(mask);                                              \
-        (v) |= ((val) << (ffs(mask) - 1)) & (mask);                  \
+        (v) |= ((val) << ctz32(mask)) & (mask);                      \
     } while (0)
 
 // #define MCPX_DEBUG
@@ -181,7 +181,7 @@ static uint32_t voice_get_mask(MCPXAPUState *d,
     hwaddr voice = d->regs[NV_PAPU_VPVADDR]
                     + voice_handle * NV_PAVS_SIZE;
     return (ldl_le_phys(&address_space_memory, voice + offset) & mask)
-              >> (ffs(mask) - 1);
+              >> ctz32(mask);
 }
 static void voice_set_mask(MCPXAPUState *d,
                            unsigned int voice_handle,
@@ -194,7 +194,7 @@ static void voice_set_mask(MCPXAPUState *d,
                     + voice_handle * NV_PAVS_SIZE;
     uint32_t v = ldl_le_phys(&address_space_memory, voice + offset) & ~mask;
     stl_le_phys(&address_space_memory, voice + offset,
-                v | ((val << (ffs(mask) - 1)) & mask));
+                v | ((val << ctz32(mask)) & mask));
 }
 
 static void update_irq(MCPXAPUState *d)
