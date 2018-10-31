@@ -738,16 +738,21 @@ static void pgraph_method(NV2AState *d,
             GET_MASK(parameter, NV097_SET_SURFACE_PITCH_COLOR);
         pg->surface_zeta.pitch =
             GET_MASK(parameter, NV097_SET_SURFACE_PITCH_ZETA);
+
+        pg->surface_color.buffer_dirty = true;
+        pg->surface_zeta.buffer_dirty = true;
         break;
     case NV097_SET_SURFACE_COLOR_OFFSET:
         pgraph_update_surface(d, false, true, true);
 
         pg->surface_color.offset = parameter;
+        pg->surface_color.buffer_dirty = true;
         break;
     case NV097_SET_SURFACE_ZETA_OFFSET:
         pgraph_update_surface(d, false, true, true);
 
         pg->surface_zeta.offset = parameter;
+        pg->surface_zeta.buffer_dirty = true;
         break;
 
     case NV097_SET_COMBINER_ALPHA_ICW ...
