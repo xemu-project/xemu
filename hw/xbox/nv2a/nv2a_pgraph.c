@@ -3379,11 +3379,9 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color) {
         }
         surface->buffer_dirty = false;
 
-#ifdef DEBUG_NV2A
-        uint8_t *out = data + surface->offset + 64;
-        NV2A_DPRINTF("upload_surface %s 0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx ", "
+        NV2A_GL_DPRINTF(true, "upload_surface %s 0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx ", "
                       "(0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx ", "
-                        "%d %d, %d %d, %d) - %x %x %x %x\n",
+                        "%d %d, %d %d, %d)",
             color ? "color" : "zeta",
             dma.address, dma.address + dma.limit,
             dma.address + surface->offset,
@@ -3391,9 +3389,7 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color) {
             pg->surface_shape.clip_x, pg->surface_shape.clip_y,
             pg->surface_shape.clip_width,
             pg->surface_shape.clip_height,
-            surface->pitch,
-            out[0], out[1], out[2], out[3]);
-#endif
+            surface->pitch);
     }
 
     if (!upload && surface->draw_dirty) {
@@ -3425,20 +3421,16 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color) {
         surface->draw_dirty = false;
         surface->write_enabled_cache = false;
 
-#ifdef DEBUG_NV2A
-        uint8_t *out = data + surface->offset + 64;
-        NV2A_DPRINTF("read_surface %s 0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx ", "
+        NV2A_GL_DPRINTF(true, "read_surface %s 0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx ", "
                       "(0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx ", "
-                        "%d %d, %d %d, %d) - %x %x %x %x\n",
+                        "%d %d, %d %d, %d)",
             color ? "color" : "zeta",
             dma.address, dma.address + dma.limit,
             dma.address + surface->offset,
             dma.address + surface->pitch * pg->surface_shape.clip_height,
             pg->surface_shape.clip_x, pg->surface_shape.clip_y,
             pg->surface_shape.clip_width, pg->surface_shape.clip_height,
-            surface->pitch,
-            out[0], out[1], out[2], out[3]);
-#endif
+            surface->pitch);
     }
 
     if (swizzle) {
