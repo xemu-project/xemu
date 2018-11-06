@@ -3143,24 +3143,24 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
         }
 
         uint32_t x   = pg->regs[NV_PGRAPH_WINDOWCLIPX0 + i * 4];
-        GLuint x_min = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMIN);
-        GLuint x_max = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMAX);
+        unsigned int x_min = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMIN);
+        unsigned int x_max = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMAX);
 
         /* Adjust y-coordinates for the OpenGL viewport: translate coordinates
          * to have the origin at the bottom-left of the surface (as opposed to
          * top-left), and flip y-min and y-max accordingly.
          */
         uint32_t y   = pg->regs[NV_PGRAPH_WINDOWCLIPY0 + i * 4];
-        GLuint y_min = (pg->surface_shape.clip_height - 1) -
-                       GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMAX);
-        GLuint y_max = (pg->surface_shape.clip_height - 1) -
-                       GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMIN);
+        unsigned int y_min = (pg->surface_shape.clip_height - 1) -
+                             GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMAX);
+        unsigned int y_max = (pg->surface_shape.clip_height - 1) -
+                             GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMIN);
 
         pgraph_apply_anti_aliasing_factor(pg, &x_min, &y_min);
         pgraph_apply_anti_aliasing_factor(pg, &x_max, &y_max);
 
         glUniform4i(pg->shader_binding->clip_region_loc[i],
-                    x_min, y_min, x_max, y_max);
+                    x_min, y_min, x_max + 1, y_max + 1);
     }
 
     pgraph_shader_update_constants(pg, pg->shader_binding, binding_changed,
