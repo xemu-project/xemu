@@ -49,7 +49,7 @@ static int guest_x, guest_y;
 static SDL_Cursor *guest_sprite;
 static Notifier mouse_mode_notifier;
 
-#define SDL2_REFRESH_INTERVAL_BUSY 10
+#define SDL2_REFRESH_INTERVAL_BUSY 16
 #define SDL2_MAX_IDLE_COUNT (2 * GUI_REFRESH_INTERVAL_DEFAULT \
                              / SDL2_REFRESH_INTERVAL_BUSY + 1)
 
