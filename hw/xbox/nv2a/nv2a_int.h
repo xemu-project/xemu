@@ -30,7 +30,7 @@
 // #include "qemu/thread.h"
 // #include "cpu.h"
 
-#include "g-lru-cache.h"
+#include "lru.h"
 #include "gl/gloffscreen.h"
 
 #include "hw/xbox/nv2a/nv2a_debug.h"
@@ -132,18 +132,19 @@ typedef struct TextureShape {
     unsigned int pitch;
 } TextureShape;
 
-typedef struct TextureKey {
-    TextureShape state;
-    uint64_t data_hash;
-    uint8_t *texture_data;
-    uint8_t *palette_data;
-} TextureKey;
-
 typedef struct TextureBinding {
     GLenum gl_target;
     GLuint gl_texture;
     unsigned int refcnt;
 } TextureBinding;
+
+typedef struct TextureKey {
+    struct lru_node node;
+    TextureShape state;
+    uint8_t *texture_data;
+    uint8_t *palette_data;
+    TextureBinding *binding;
+} TextureKey;
 
 typedef struct KelvinState {
     hwaddr object_instance;
@@ -189,7 +190,8 @@ typedef struct PGRAPHState {
     SurfaceShape last_surface_shape;
 
     hwaddr dma_a, dma_b;
-    GLruCache *texture_cache;
+    struct lru texture_cache;
+    struct TextureKey *texture_cache_entries;
     bool texture_dirty[NV2A_MAX_TEXTURES];
     TextureBinding *texture_binding[NV2A_MAX_TEXTURES];
 

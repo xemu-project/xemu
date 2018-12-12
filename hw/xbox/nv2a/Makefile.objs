@@ -1,4 +1,4 @@
-obj-y += g-lru-cache.o
+obj-y += lru.o
 obj-y += swizzle.o
 
 obj-y += nv2a.o

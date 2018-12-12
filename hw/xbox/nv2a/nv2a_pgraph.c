@@ -286,11 +286,10 @@ static void convert_yuy2_to_rgb(const uint8_t *line, unsigned int ix, uint8_t *r
 static uint8_t* convert_texture_data(const TextureShape s, const uint8_t *data, const uint8_t *palette_data, unsigned int width, unsigned int height, unsigned int depth, unsigned int row_pitch, unsigned int slice_pitch);
 static void upload_gl_texture(GLenum gl_target, const TextureShape s, const uint8_t *texture_data, const uint8_t *palette_data);
 static TextureBinding* generate_texture(const TextureShape s, const uint8_t *texture_data, const uint8_t *palette_data);
-static guint texture_key_hash(gconstpointer key);
-static gboolean texture_key_equal(gconstpointer a, gconstpointer b);
-static gpointer texture_key_retrieve(gpointer key, gpointer user_data, GError **error);
-static void texture_key_destroy(gpointer data);
 static void texture_binding_destroy(gpointer data);
+static struct lru_node *texture_cache_entry_init(struct lru_node *obj, void *key);
+static struct lru_node *texture_cache_entry_deinit(struct lru_node *obj);
+static int texture_cache_entry_compare(struct lru_node *obj, void *key);
 static guint shader_hash(gconstpointer key);
 static gboolean shader_equal(gconstpointer a, gconstpointer b);
 static unsigned int kelvin_map_stencil_op(uint32_t parameter);
@@ -2681,21 +2680,17 @@ static void pgraph_init(NV2AState *d)
 
     //glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 
-    pg->texture_cache = g_lru_cache_new_full(
-        0,
-        NULL,
-        texture_key_destroy,
-        0,
-        NULL,
-        texture_binding_destroy,
-        texture_key_hash,
-        texture_key_equal,
-        texture_key_retrieve,
-        NULL,
-        NULL
-        );
-
-    g_lru_cache_set_max_size(pg->texture_cache, 512);
+    // Initialize texture cache
+    const size_t texture_cache_size = 512;
+    lru_init(&pg->texture_cache,
+        &texture_cache_entry_init,
+        &texture_cache_entry_deinit,
+        &texture_cache_entry_compare);
+    pg->texture_cache_entries = malloc(texture_cache_size * sizeof(struct TextureKey));
+    assert(pg->texture_cache_entries != NULL);
+    for (i = 0; i < texture_cache_size; i++) {
+        lru_add_free(&pg->texture_cache, &pg->texture_cache_entries[i].node);
+    }
 
     pg->shader_cache = g_hash_table_new(shader_hash, shader_equal);
 
@@ -2740,7 +2735,10 @@ static void pgraph_destroy(PGRAPHState *pg)
     glDeleteFramebuffers(1, &pg->gl_framebuffer);
 
     // TODO: clear out shader cached
-    // TODO: clear out texture cache
+
+    // Clear out texture cache
+    lru_flush(&pg->texture_cache);
+    free(pg->texture_cache_entries);
 
     glo_set_current(NULL);
 
@@ -3753,20 +3751,19 @@ static void pgraph_bind_textures(NV2AState *d)
         };
 
 #ifdef USE_TEXTURE_CACHE
+        uint64_t texture_hash = fast_hash(texture_data, length, 5003)
+                              ^ fnv_hash(palette_data, palette_length);
+
         TextureKey key = {
             .state = state,
-            .data_hash = fast_hash(texture_data, length, 5003)
-                            ^ fnv_hash(palette_data, palette_length),
             .texture_data = texture_data,
             .palette_data = palette_data,
         };
 
-        gpointer cache_key = g_malloc(sizeof(TextureKey));
-        memcpy(cache_key, &key, sizeof(TextureKey));
-
-        GError *err;
-        TextureBinding *binding = (TextureBinding *)g_lru_cache_get(pg->texture_cache, cache_key, &err);
-        assert(binding);
+        struct lru_node *found = lru_lookup(&pg->texture_cache, texture_hash, &key);
+        TextureKey *key_out = container_of(found, struct TextureKey, node);
+        assert((key_out != NULL) && (key_out->binding != NULL));
+        TextureBinding *binding = key_out->binding;
         binding->refcnt++;
 #else
         TextureBinding *binding = generate_texture(state,
@@ -4371,35 +4368,6 @@ static TextureBinding* generate_texture(const TextureShape s,
     return ret;
 }
 
-/* functions for texture LRU cache */
-static guint texture_key_hash(gconstpointer key)
-{
-    const TextureKey *k = (const TextureKey *)key;
-    uint64_t state_hash = fnv_hash(
-        (const uint8_t*)&k->state, sizeof(TextureShape));
-    return state_hash ^ k->data_hash;
-}
-static gboolean texture_key_equal(gconstpointer a, gconstpointer b)
-{
-    const TextureKey *ak = (const TextureKey *)a, *bk = (const TextureKey *)b;
-    return memcmp(&ak->state, &bk->state, sizeof(TextureShape)) == 0
-            && ak->data_hash == bk->data_hash;
-}
-static gpointer texture_key_retrieve(gpointer key, gpointer user_data, GError **error)
-{
-    const TextureKey *k = (const TextureKey *)key;
-    TextureBinding *v = generate_texture(k->state,
-                                         k->texture_data,
-                                         k->palette_data);
-    if (error != NULL) {
-        *error = NULL;
-    }
-    return v;
-}
-static void texture_key_destroy(gpointer data)
-{
-    g_free(data);
-}
 static void texture_binding_destroy(gpointer data)
 {
     TextureBinding *binding = (TextureBinding *)data;
@@ -4409,6 +4377,32 @@ static void texture_binding_destroy(gpointer data)
         glDeleteTextures(1, &binding->gl_texture);
         g_free(binding);
     }
+}
+
+/* functions for texture LRU cache */
+static struct lru_node *texture_cache_entry_init(struct lru_node *obj, void *key)
+{
+    struct TextureKey *k_out = container_of(obj, struct TextureKey, node);
+    struct TextureKey *k_in = (struct TextureKey *)key;
+    memcpy(k_out, k_in, sizeof(struct TextureKey));
+    k_out->binding = generate_texture(k_in->state,
+                                      k_in->texture_data,
+                                      k_in->palette_data);
+    return obj;
+}
+
+static struct lru_node *texture_cache_entry_deinit(struct lru_node *obj)
+{
+    struct TextureKey *a = container_of(obj, struct TextureKey, node);
+    texture_binding_destroy(a->binding);
+    return obj;
+}
+
+static int texture_cache_entry_compare(struct lru_node *obj, void *key)
+{
+    struct TextureKey *a = container_of(obj, struct TextureKey, node);
+    struct TextureKey *b = (struct TextureKey *)key;
+    return memcmp(&a->state, &b->state, sizeof(a->state));
 }
 
 /* hash and equality for shader cache hash table */
