@@ -2,11 +2,13 @@ environment:
   matrix:
     - MSYS2_ARCH: x86_64
       MSYSTEM: MINGW64
-    # - MSYS2_ARCH: i686
-    #   MSYSTEM: MINGW32
+
+configuration:
+  - Release
+  - Debug
 
 build_script:
-  - '%APPVEYOR_BUILD_FOLDER%\appveyor.bat'
+  - '%APPVEYOR_BUILD_FOLDER%\appveyor.bat %CONFIGURATION%'
 
 deploy: off
 

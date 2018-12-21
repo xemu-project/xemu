@@ -17,7 +17,6 @@ bash -xlc "pacman --noconfirm -S --needed base-devel"
 
 rem Install the relevant native dependencies
 bash -xlc "pacman --noconfirm -S --needed git"
-bash -xlc "pacman --noconfirm -S --needed python2"
 bash -xlc "pacman --noconfirm -S --needed make"
 bash -xlc "pacman --noconfirm -S --needed autoconf"
 bash -xlc "pacman --noconfirm -S --needed automake-wrapper"
@@ -35,4 +34,10 @@ set CHERE_INVOKING=yes
 rem Build/test scripting
 bash -xlc "set pwd"
 bash -xlc "env"
-bash -xlc "./build.sh"
+
+IF "%1%" == "Release" (
+    bash -xlc "./build.sh --release"
+) ELSE (
+    bash -xlc "./build.sh"
+)
+
