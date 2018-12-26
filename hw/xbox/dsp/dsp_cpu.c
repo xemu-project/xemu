@@ -228,7 +228,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
     { "00001100000111111111gggd", "cmpu S1, S2", dis_cmpu, emu_cmpu },
     { "000000000000001000000000", "debug", NULL, NULL },
     { "00000000000000110000CCCC", "debugcc", NULL, NULL },
-    { "00000000000000000000101d", "dec D", NULL, NULL, /*dis_dec, emu_dec*/ },
+    { "00000000000000000000101d", "dec D", NULL /*dis_dec*/, emu_dec },
     { "000000011000000001JJd000", "div S, D", dis_div, emu_div },
     { "000000010010010s1sdkQQQQ", "dmac S1, S2, D", NULL, NULL },
     { "0000011001MMMRRR0S000000", "do [X or Y]:ea, expr", dis_do_ea, emu_do_ea, match_MMMRRR },
