@@ -101,6 +101,7 @@ static const struct {
 #define NV1BA0_PIO_VOICE_ON                              0x00000124
 #   define NV1BA0_PIO_VOICE_ON_HANDLE                       0x0000FFFF
 #define NV1BA0_PIO_VOICE_OFF                             0x00000128
+#   define NV1BA0_PIO_VOICE_OFF_HANDLE                      0x0000FFFF
 #define NV1BA0_PIO_VOICE_PAUSE                           0x00000140
 #   define NV1BA0_PIO_VOICE_PAUSE_HANDLE                    0x0000FFFF
 #   define NV1BA0_PIO_VOICE_PAUSE_ACTION                    (1 << 18)
@@ -327,7 +328,7 @@ static void fe_method(MCPXAPUState *d,
         }
         break;
     case NV1BA0_PIO_VOICE_OFF:
-        voice_set_mask(d, argument,
+        voice_set_mask(d, argument & NV1BA0_PIO_VOICE_OFF_HANDLE,
                 NV_PAVS_VOICE_PAR_STATE,
                 NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE,
                 0);
