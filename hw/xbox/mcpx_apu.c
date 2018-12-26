@@ -2,6 +2,7 @@
  * QEMU MCPX Audio Processing Unit implementation
  *
  * Copyright (c) 2012 espes
+ * Copyright (c) 2018 Jannik Vogel
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -23,6 +24,8 @@
 #include "hw/pci/pci.h"
 #include "cpu.h"
 #include "hw/xbox/dsp/dsp.h"
+
+#include "hw/xbox/mcpx_apu.h"
 
 #define NV_PAPU_ISTS                                     0x00001000
 #   define NV_PAPU_ISTS_GINTSTS                               (1 << 0)
@@ -139,6 +142,9 @@ static const struct {
 
 typedef struct MCPXAPUState {
     PCIDevice dev;
+
+    MemoryRegion *ram;
+    uint8_t *ram_ptr;
 
     MemoryRegion mmio;
 
@@ -403,25 +409,45 @@ static const MemoryRegionOps vp_ops = {
     .write = vp_write,
 };
 
-static void scratch_rw(hwaddr sge_base, unsigned int max_sge,
-                       uint8_t *ptr, uint32_t addr, size_t len, bool dir)
+static void scatter_gather_rw(MCPXAPUState *d,
+                              hwaddr sge_base, unsigned int max_sge,
+                              uint8_t *ptr, uint32_t addr, size_t len,
+                              bool dir)
 {
-    int i;
-    for (i = 0; i < len; i++) {
-        unsigned int entry = (addr + i) / TARGET_PAGE_SIZE;
-        assert(entry < max_sge);
-        uint32_t prd_address = ldl_le_phys(&address_space_memory,
-                                           sge_base + entry * 8 + 0);
-        /* uint32_t prd_control = ldl_le_phys(&address_space_memory,
-                                            sge_base + entry * 8 + 4); */
+    unsigned int page_entry = addr / TARGET_PAGE_SIZE;
+    unsigned int offset_in_page = addr % TARGET_PAGE_SIZE;
+    unsigned int bytes_to_copy = TARGET_PAGE_SIZE - offset_in_page;
 
-        hwaddr paddr = prd_address + (addr + i) % TARGET_PAGE_SIZE;
+    while (len > 0) {
+        assert(page_entry < max_sge);
+
+        uint32_t prd_address = ldl_le_phys(&address_space_memory,
+                                           sge_base + page_entry * 8 + 0);
+        /* uint32_t prd_control = ldl_le_phys(&address_space_memory,
+                                            sge_base + page_entry * 8 + 4); */
+
+        hwaddr paddr = prd_address + offset_in_page;
+
+        if (bytes_to_copy > len) {
+            bytes_to_copy = len;
+        }
+
+        assert(paddr + bytes_to_copy < memory_region_size(d->ram));
 
         if (dir) {
-            stb_phys(&address_space_memory, paddr, ptr[i]);
+            memcpy(&d->ram_ptr[paddr], ptr, bytes_to_copy);
+            memory_region_set_dirty(d->ram, paddr, bytes_to_copy);
         } else {
-            ptr[i] = ldub_phys(&address_space_memory, paddr);
+            memcpy(ptr, &d->ram_ptr[paddr], bytes_to_copy);
         }
+
+        ptr += bytes_to_copy;
+        len -= bytes_to_copy;
+
+        /* After the first iteration, we are page aligned */
+        page_entry += 1;
+        bytes_to_copy = TARGET_PAGE_SIZE;
+        offset_in_page = 0;
     }
 }
 
@@ -432,8 +458,8 @@ static void gp_scratch_rw(void *opaque,
                           bool dir)
 {
     MCPXAPUState *d = opaque;
-    scratch_rw(d->regs[NV_PAPU_GPSADDR], d->regs[NV_PAPU_GPSMAXSGE],
-               ptr, addr, len, dir);
+    scatter_gather_rw(d, d->regs[NV_PAPU_GPSADDR], d->regs[NV_PAPU_GPSMAXSGE],
+                      ptr, addr, len, dir);
 }
 
 static void ep_scratch_rw(void *opaque,
@@ -443,8 +469,8 @@ static void ep_scratch_rw(void *opaque,
                           bool dir)
 {
     MCPXAPUState *d = opaque;
-    scratch_rw(d->regs[NV_PAPU_EPSADDR], d->regs[NV_PAPU_EPSMAXSGE],
-               ptr, addr, len, dir);
+    scatter_gather_rw(d, d->regs[NV_PAPU_EPSADDR], d->regs[NV_PAPU_EPSMAXSGE],
+                      ptr, addr, len, dir);
 }
 
 static void proc_rst_write(DSPState *dsp, uint32_t oldval, uint32_t val)
@@ -724,5 +750,14 @@ static void mcpx_apu_register(void)
 {
     type_register_static(&mcpx_apu_info);
 }
-
 type_init(mcpx_apu_register);
+
+void mcpx_apu_init(PCIBus *bus, int devfn, MemoryRegion *ram)
+{
+    PCIDevice *dev = pci_create_simple(bus, devfn, "mcpx-apu");
+    MCPXAPUState *d = MCPX_APU_DEVICE(dev);
+
+    /* Keep pointers to system memory */
+    d->ram = ram;
+    d->ram_ptr = memory_region_get_ram_ptr(d->ram);
+}

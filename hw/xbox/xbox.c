@@ -47,6 +47,7 @@
 #include "hw/xbox/xbox_pci.h"
 #include "hw/xbox/smbus.h"
 #include "hw/xbox/nv2a/nv2a.h"
+#include "hw/xbox/mcpx_apu.h"
  
 #include "hw/xbox/xbox.h"
 
@@ -405,7 +406,7 @@ void xbox_init_common(MachineState *machine,
     }
 
     /* APU! */
-    pci_create_simple(pci_bus, PCI_DEVFN(5, 0), "mcpx-apu");
+    mcpx_apu_init(pci_bus, PCI_DEVFN(5, 0), ram_memory);
 
     /* ACI! */
     pci_create_simple(pci_bus, PCI_DEVFN(6, 0), "mcpx-aci");
