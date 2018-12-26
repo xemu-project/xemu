@@ -412,9 +412,9 @@ static void scratch_rw(hwaddr sge_base, unsigned int max_sge,
         unsigned int entry = (addr + i) / TARGET_PAGE_SIZE;
         assert(entry < max_sge);
         uint32_t prd_address = ldl_le_phys(&address_space_memory,
-                                           sge_base + entry * 8);
+                                           sge_base + entry * 8 + 0);
         /* uint32_t prd_control = ldl_le_phys(&address_space_memory,
-                                            sge_base + entry*4*2 + 1); */
+                                            sge_base + entry * 8 + 4); */
 
         hwaddr paddr = prd_address + (addr + i) % TARGET_PAGE_SIZE;
 
