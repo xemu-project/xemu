@@ -77,13 +77,26 @@ static void dsp_dma_run(DSPDMAState *s)
             s->eol = true;
         }
 
+        /* Decode control word */
+        bool dsp_interleave = (control >> 0) & 1;
+        bool direction = control & NODE_CONTROL_DIRECTION;
+        uint32_t unk2 = (control >> 2) & 0x3;
+        bool buffer_offset_writeback = (control >> 4) & 1;
+        uint32_t buf_id = (control >> 5) & 0xf;
+        bool unk9 = (control >> 9) & 1; /* FIXME: What does this do? */
+        uint32_t format = (control >> 10) & 0x7;
+        bool unk13 = (control >> 13) & 1;
+        uint32_t dsp_step = (control >> 14) & 0x3FF;
+
+        /* Check for unhandled control settings */
+        assert(unk2 == 0x0);
+        assert(unk13 == false);
 
         DPRINTF("\n\n\nDMA addr %x, control %x, count %x, "
                  "dsp_offset %x, scratch_offset %x, base %x, size %x\n\n\n",
                 addr, control, count, dsp_offset,
                 scratch_offset, scratch_base, scratch_size);
 
-        uint32_t format = (control >> 10) & 7;
         unsigned int item_size;
         uint32_t item_mask = 0xffffffff;
         switch(format) {
@@ -100,8 +113,6 @@ static void dsp_dma_run(DSPDMAState *s)
             assert(false);
             break;
         }
-
-        uint32_t buf_id = (control >> 5) & 0xf;
 
         size_t scratch_addr;
         if (buf_id == 0xe) { // 'circular'?
@@ -139,7 +150,7 @@ static void dsp_dma_run(DSPDMAState *s)
 
         uint8_t* scratch_buf = calloc(count, item_size);
 
-        if (control & NODE_CONTROL_DIRECTION) {
+        if (direction) {
             int i;
             for (i=0; i<count; i++) {
                 uint32_t v = dsp56k_read_memory(s->core,
