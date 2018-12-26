@@ -320,12 +320,11 @@ static void fe_method(MCPXAPUState *d,
                 NV_PAVS_VOICE_TAR_PITCH_LINK,
                 NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE,
                 selected_handle);
-
-            voice_set_mask(d, selected_handle,
-                    NV_PAVS_VOICE_PAR_STATE,
-                    NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE,
-                    1);
         }
+        voice_set_mask(d, selected_handle,
+                NV_PAVS_VOICE_PAR_STATE,
+                NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE,
+                1);
         break;
     case NV1BA0_PIO_VOICE_OFF:
         voice_set_mask(d, argument & NV1BA0_PIO_VOICE_OFF_HANDLE,
