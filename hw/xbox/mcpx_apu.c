@@ -55,7 +55,9 @@
 #define NV_PAPU_XGSCNT                                   0x0000200C
 #define NV_PAPU_VPVADDR                                  0x0000202C
 #define NV_PAPU_GPSADDR                                  0x00002040
+#define NV_PAPU_GPFADDR                                  0x00002044
 #define NV_PAPU_EPSADDR                                  0x00002048
+#define NV_PAPU_EPFADDR                                  0x0000204C
 #define NV_PAPU_TVL2D                                    0x00002054
 #define NV_PAPU_CVL2D                                    0x00002058
 #define NV_PAPU_NVL2D                                    0x0000205C
@@ -66,7 +68,42 @@
 #define NV_PAPU_CVLMP                                    0x00002070
 #define NV_PAPU_NVLMP                                    0x00002074
 #define NV_PAPU_GPSMAXSGE                                0x000020D4
+#define NV_PAPU_GPFMAXSGE                                0x000020D8
 #define NV_PAPU_EPSMAXSGE                                0x000020DC
+#define NV_PAPU_EPFMAXSGE                                0x000020E0
+
+/* Each FIFO has the same fields */
+#define NV_PAPU_GPOFBASE0                                0x00003024
+#   define NV_PAPU_GPOFBASE0_VALUE                          0x00FFFF00
+#define NV_PAPU_GPOFEND0                                 0x00003028
+#   define NV_PAPU_GPOFEND0_VALUE                           0x00FFFF00
+#define NV_PAPU_GPOFCUR0                                 0x0000302C
+#   define NV_PAPU_GPOFCUR0_VALUE                           0x00FFFFFC
+#define NV_PAPU_GPOFBASE1                                0x00003034
+#define NV_PAPU_GPOFEND1                                 0x00003038
+#define NV_PAPU_GPOFCUR1                                 0x0000303C
+#define NV_PAPU_GPOFBASE2                                0x00003044
+#define NV_PAPU_GPOFEND2                                 0x00003048
+#define NV_PAPU_GPOFCUR2                                 0x0000304C
+#define NV_PAPU_GPOFBASE3                                0x00003054
+#define NV_PAPU_GPOFEND3                                 0x00003058
+#define NV_PAPU_GPOFCUR3                                 0x0000305C
+
+/* Fields are same as for the 4 output FIFOs, but only 2 input FIFOs */
+#define NV_PAPU_GPIFBASE0                                0x00003064
+#define NV_PAPU_GPIFEND0                                 0x00003068
+#define NV_PAPU_GPIFCUR0                                 0x0000306C
+#define NV_PAPU_GPIFBASE1                                0x00003074
+#define NV_PAPU_GPIFEND1                                 0x00003078
+#define NV_PAPU_GPIFCUR1                                 0x0000307C
+
+/* Fields, strides and count is same as for GP FIFOs */
+#define NV_PAPU_EPOFBASE0                                0x00004024
+#define NV_PAPU_EPOFEND0                                 0x00004028
+#define NV_PAPU_EPOFCUR0                                 0x0000402C
+#define NV_PAPU_EPIFBASE0                                0x00004064
+#define NV_PAPU_EPIFEND0                                 0x00004068
+#define NV_PAPU_EPIFCUR0                                 0x0000406C
 
 #define NV_PAPU_GPXMEM                                   0x00000000
 #define NV_PAPU_GPMIXBUF                                 0x00005000
@@ -122,6 +159,11 @@ static const struct {
 #   define NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE   0x0000FFFF
 
 
+#define GP_OUTPUT_FIFO_COUNT  4
+#define GP_INPUT_FIFO_COUNT   2
+
+#define EP_OUTPUT_FIFO_COUNT  4
+#define EP_INPUT_FIFO_COUNT   2
 
 #define MCPX_HW_MAX_VOICES 256
 
@@ -471,6 +513,120 @@ static void ep_scratch_rw(void *opaque,
     MCPXAPUState *d = opaque;
     scatter_gather_rw(d, d->regs[NV_PAPU_EPSADDR], d->regs[NV_PAPU_EPSMAXSGE],
                       ptr, addr, len, dir);
+}
+
+static uint32_t circular_scatter_gather_rw(MCPXAPUState *d,
+                                           hwaddr sge_base,
+                                           unsigned int max_sge,
+                                           uint8_t *ptr,
+                                           uint32_t base, uint32_t end,
+                                           uint32_t cur,
+                                           size_t len,
+                                           bool dir)
+{
+    while (len > 0) {
+        unsigned int bytes_to_copy = end - cur;
+
+        if (bytes_to_copy > len) {
+            bytes_to_copy = len;
+        }
+
+        MCPX_DPRINTF("circular scatter gather %s in range 0x%x - 0x%x at 0x%x of length 0x%x / 0x%lx bytes\n",
+            dir ? "write" : "read", base, end, cur, bytes_to_copy, len);
+
+        assert((cur >= base) && ((cur + bytes_to_copy) <= end));
+        scatter_gather_rw(d, sge_base, max_sge, ptr, cur, bytes_to_copy, dir);
+
+        ptr += bytes_to_copy;
+        len -= bytes_to_copy;
+
+        /* After the first iteration we might have to wrap */
+        cur += bytes_to_copy;
+        if (cur >= end) {
+            assert(cur == end);
+            cur = base;
+        }
+    }
+
+    return cur;
+}
+
+static void gp_fifo_rw(void *opaque, uint8_t *ptr,
+                       unsigned int index, size_t len,
+                       bool dir)
+{
+    MCPXAPUState *d = opaque;
+    uint32_t base;
+    uint32_t end;
+    hwaddr cur_reg;
+    if (dir) {
+        assert(index < GP_OUTPUT_FIFO_COUNT);
+        base = GET_MASK(d->regs[NV_PAPU_GPOFBASE0 + 0x10 * index],
+                        NV_PAPU_GPOFBASE0_VALUE);
+        end = GET_MASK(d->regs[NV_PAPU_GPOFEND0 + 0x10 * index],
+                       NV_PAPU_GPOFEND0_VALUE);
+        cur_reg = NV_PAPU_GPOFCUR0 + 0x10 * index;
+    } else {
+        assert(index < GP_INPUT_FIFO_COUNT);
+        base = GET_MASK(d->regs[NV_PAPU_GPIFBASE0 + 0x10 * index],
+                        NV_PAPU_GPOFBASE0_VALUE);
+        end = GET_MASK(d->regs[NV_PAPU_GPIFEND0 + 0x10 * index],
+                       NV_PAPU_GPOFEND0_VALUE);
+        cur_reg = NV_PAPU_GPIFCUR0 + 0x10 * index;
+    }
+
+    uint32_t cur = GET_MASK(d->regs[cur_reg], NV_PAPU_GPOFCUR0_VALUE);
+
+    /* DSP hangs if current >= end; but forces current >= base */
+    assert(cur < end);
+    if (cur < base) {
+        cur = base;
+    }
+
+    cur = circular_scatter_gather_rw(d,
+        d->regs[NV_PAPU_GPFADDR], d->regs[NV_PAPU_GPFMAXSGE],
+        ptr, base, end, cur, len, dir);
+
+    SET_MASK(d->regs[cur_reg], NV_PAPU_GPOFCUR0_VALUE, cur);
+}
+
+static void ep_fifo_rw(void *opaque, uint8_t *ptr,
+                       unsigned int index, size_t len,
+                       bool dir)
+{
+    MCPXAPUState *d = opaque;
+    uint32_t base;
+    uint32_t end;
+    hwaddr cur_reg;
+    if (dir) {
+        assert(index < EP_OUTPUT_FIFO_COUNT);
+        base = GET_MASK(d->regs[NV_PAPU_EPOFBASE0 + 0x10 * index],
+                        NV_PAPU_GPOFBASE0_VALUE);
+        end = GET_MASK(d->regs[NV_PAPU_EPOFEND0 + 0x10 * index],
+                       NV_PAPU_GPOFEND0_VALUE);
+        cur_reg = NV_PAPU_EPOFCUR0 + 0x10 * index;
+    } else {
+        assert(index < EP_INPUT_FIFO_COUNT);
+        base = GET_MASK(d->regs[NV_PAPU_EPIFBASE0 + 0x10 * index],
+                        NV_PAPU_GPOFBASE0_VALUE);
+        end = GET_MASK(d->regs[NV_PAPU_EPIFEND0 + 0x10 * index],
+                       NV_PAPU_GPOFEND0_VALUE);
+        cur_reg = NV_PAPU_EPIFCUR0 + 0x10 * index;
+    }
+
+    uint32_t cur = GET_MASK(d->regs[cur_reg], NV_PAPU_GPOFCUR0_VALUE);
+
+    /* DSP hangs if current >= end; but forces current >= base */
+    assert(cur < end);
+    if (cur < base) {
+        cur = base;
+    }
+
+    cur = circular_scatter_gather_rw(d,
+        d->regs[NV_PAPU_EPFADDR], d->regs[NV_PAPU_EPFMAXSGE],
+        ptr, base, end, cur, len, dir);
+
+    SET_MASK(d->regs[cur_reg], NV_PAPU_GPOFCUR0_VALUE, cur);
 }
 
 static void proc_rst_write(DSPState *dsp, uint32_t oldval, uint32_t val)
