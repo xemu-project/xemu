@@ -221,6 +221,7 @@ static void dsp_dma_run(DSPDMAState *s)
                  scratch_size);
 
 
+        size_t transfer_size = count * item_size;
         uint8_t* scratch_buf = calloc(count, item_size);
 
         if (direction) {
@@ -241,13 +242,35 @@ static void dsp_dma_run(DSPDMAState *s)
                 }
             }
 
-            // write to scratch memory
-            s->scratch_rw(s->scratch_rw_opaque,
-                scratch_buf, scratch_addr, count*item_size, 1);
+            /* FIXME: Move to function; then reuse for both directions */
+            switch (buf_id) {
+            case 0x0:
+            case 0x1:
+            case 0x2:
+            case 0x3: {
+                unsigned int fifo_index = buf_id;
+                s->fifo_rw(s->rw_opaque,
+                    scratch_buf, fifo_index, transfer_size, 1);
+                break;
+            }
+            case 0xE:
+            case 0xF:
+                s->scratch_rw(s->rw_opaque,
+                    scratch_buf, scratch_addr, transfer_size, 1);
+                break;
+            default:
+                fprintf(stderr, "Unknown DSP DMA buffer: 0x%x\n", buf_id);
+                assert(false);
+                break;
+            }
         } else {
+
+            /* FIXME: Support FIFOs */
+            assert(buf_id == 0xE || buf_id == 0xF);
+
             // read from scratch memory
-            s->scratch_rw(s->scratch_rw_opaque,
-                scratch_buf, scratch_addr, count*item_size, 0);
+            s->scratch_rw(s->rw_opaque,
+                scratch_buf, scratch_addr, transfer_size, 0);
 
             int i;
             for (i=0; i<count; i++) {

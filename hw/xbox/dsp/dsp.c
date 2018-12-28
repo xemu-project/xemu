@@ -56,7 +56,9 @@ struct DSPState {
 static uint32_t read_peripheral(dsp_core_t* core, uint32_t address);
 static void write_peripheral(dsp_core_t* core, uint32_t address, uint32_t value);
 
-DSPState* dsp_init(void* scratch_rw_opaque, dsp_scratch_rw_func scratch_rw)
+DSPState *dsp_init(void *rw_opaque,
+                   dsp_scratch_rw_func scratch_rw,
+                   dsp_fifo_rw_func fifo_rw)
 {
     DPRINTF("dsp_init\n");
 
@@ -67,8 +69,9 @@ DSPState* dsp_init(void* scratch_rw_opaque, dsp_scratch_rw_func scratch_rw)
     dsp->core.write_peripheral = write_peripheral;
 
     dsp->dma.core = &dsp->core;
-    dsp->dma.scratch_rw_opaque = scratch_rw_opaque;
+    dsp->dma.rw_opaque = rw_opaque;
     dsp->dma.scratch_rw = scratch_rw;
+    dsp->dma.fifo_rw = fifo_rw;
 
     dsp_reset(dsp);
 
@@ -176,7 +179,7 @@ void dsp_run(DSPState* dsp, int cycles)
 void dsp_bootstrap(DSPState* dsp)
 {
     // scratch memory is dma'd in to pram by the bootrom
-    dsp->dma.scratch_rw(dsp->dma.scratch_rw_opaque,
+    dsp->dma.scratch_rw(dsp->dma.rw_opaque,
         (uint8_t*)dsp->core.pram, 0, 0x800*4, false);
 }
 

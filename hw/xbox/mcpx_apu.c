@@ -873,8 +873,8 @@ static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
 
 
     d->se.frame_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL, se_frame, d);
-    d->gp.dsp = dsp_init(d, gp_scratch_rw);
-    d->ep.dsp = dsp_init(d, ep_scratch_rw);
+    d->gp.dsp = dsp_init(d, gp_scratch_rw, gp_fifo_rw);
+    d->ep.dsp = dsp_init(d, ep_scratch_rw, ep_fifo_rw);
 }
 
 static void mcpx_apu_class_init(ObjectClass *klass, void *data)
