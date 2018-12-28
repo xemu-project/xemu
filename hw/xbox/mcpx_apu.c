@@ -419,7 +419,7 @@ static void scatter_gather_rw(MCPXAPUState *d,
     unsigned int bytes_to_copy = TARGET_PAGE_SIZE - offset_in_page;
 
     while (len > 0) {
-        assert(page_entry < max_sge);
+        assert(page_entry <= max_sge);
 
         uint32_t prd_address = ldl_le_phys(&address_space_memory,
                                            sge_base + page_entry * 8 + 0);
