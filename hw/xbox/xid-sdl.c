@@ -100,7 +100,9 @@ typedef struct USBXIDState {
     USBEndpoint *intr;
     const XIDDesc *xid_desc;
     XIDGamepadReport in_state;
+    XIDGamepadReport in_state_capabilities;
     XIDGamepadOutputReport out_state;
+    XIDGamepadOutputReport out_state_capabilities;
 
     uint8_t device_index;
     SDL_GameController *sdl_gamepad;
@@ -164,12 +166,12 @@ static const USBDesc desc_xbox_gamepad = {
 static const XIDDesc desc_xid_xbox_gamepad = {
     .bLength = 0x10,
     .bDescriptorType = USB_DT_XID,
-    .bcdXid = 1,
+    .bcdXid = 0x100,
     .bType = 1,
     .bSubType = 1,
-    .bMaxInputReportSize = 0x20,
-    .bMaxOutputReportSize = 0x6,
-    .wAlternateProductIds = {-1, -1, -1, -1},
+    .bMaxInputReportSize = 20,
+    .bMaxOutputReportSize = 6,
+    .wAlternateProductIds = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF },
 };
 
 #define GAMEPAD_A                0
@@ -313,30 +315,36 @@ static void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
     /* HID requests */
     case ClassInterfaceRequest | HID_GET_REPORT:
         DPRINTF("xid GET_REPORT 0x%x\n", value);
-        if (value == 0x100) { /* input */
-            update_input(s);
-            assert(s->in_state.bLength <= length);
-//          s->in_state.bReportId++; /* FIXME: I'm not sure if bReportId is just a counter */
-            memcpy(data, &s->in_state, s->in_state.bLength);
-            p->actual_length = s->in_state.bLength;
+        update_input(s);
+        if (value == 0x0100) { /* input */
+            if (length <= s->in_state.bLength) {
+                memcpy(data, &s->in_state, s->in_state.bLength);
+                p->actual_length = length;
+            } else {
+                p->status = USB_RET_STALL;
+            }
         } else {
+            p->status = USB_RET_STALL;
             assert(false);
         }
         break;
     case ClassInterfaceOutRequest | HID_SET_REPORT:
         DPRINTF("xid SET_REPORT 0x%x\n", value);
-        if (value == 0x200) { /* output */
+        if (value == 0x0200) { /* output */
             /* Read length, then the entire packet */
-            memcpy(&s->out_state, data, sizeof(s->out_state));
-            assert(s->out_state.length == sizeof(s->out_state));
-            assert(s->out_state.length <= length);
-            //FIXME: Check actuator endianess
-            DPRINTF("Set rumble power to 0x%x, 0x%x\n",
-                    s->out_state.left_actuator_strength,
-                    s->out_state.right_actuator_strength);
+            if (length == s->out_state.length) {
+                memcpy(&s->out_state, data, sizeof(s->out_state));
+
+                /* FIXME: This should also be a STALL */
+                assert(s->out_state.length == sizeof(s->out_state));
+
+                p->actual_length = length;
+            } else {
+                p->status = USB_RET_STALL;
+            }
             update_output(s);
-            p->actual_length = s->out_state.length;
         } else {
+            p->status = USB_RET_STALL;
             assert(false);
         }
         break;
@@ -348,14 +356,28 @@ static void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
             memcpy(data, s->xid_desc, s->xid_desc->bLength);
             p->actual_length = s->xid_desc->bLength;
         } else {
+            p->status = USB_RET_STALL;
             assert(false);
         }
         break;
     case VendorInterfaceRequest | XID_GET_CAPABILITIES:
         DPRINTF("xid XID_GET_CAPABILITIES 0x%x\n", value);
-        /* FIXME: ! */
-        p->status = USB_RET_STALL;
-        //assert(false);
+        if (value == 0x0100) {
+            if (length > s->in_state_capabilities.bLength) {
+                length = s->in_state_capabilities.bLength;
+            }
+            memcpy(data, &s->in_state_capabilities, length);
+            p->actual_length = length;
+        } else if (value == 0x0200) {
+            if (length > s->out_state_capabilities.length) {
+                length = s->out_state_capabilities.length;
+            }
+            memcpy(data, &s->out_state_capabilities, length);
+            p->actual_length = length;
+        } else {
+            p->status = USB_RET_STALL;
+            assert(false);
+        }
         break;
     case ((USB_DIR_IN|USB_TYPE_CLASS|USB_RECIP_DEVICE)<<8)
              | USB_REQ_GET_DESCRIPTOR:
@@ -399,7 +421,12 @@ static void usb_xid_handle_data(USBDevice *dev, USBPacket *p)
         }
         break;
     case USB_TOKEN_OUT:
-        p->status = USB_RET_STALL;
+        if (p->ep->nr == 2) {
+            usb_packet_copy(p, &s->out_state, s->out_state.length);
+            update_output(s);
+        } else {
+            assert(false);
+        }
         break;
     default:
         p->status = USB_RET_STALL;
@@ -445,8 +472,20 @@ static void usb_xbox_gamepad_realize(USBDevice *dev, Error **errp)
     s->intr = usb_ep_get(dev, USB_TOKEN_IN, 2);
 
     s->in_state.bLength = sizeof(s->in_state);
+    s->in_state.bReportId = 0;
+
     s->out_state.length = sizeof(s->out_state);
+    s->out_state.report_id = 0;
+
     s->xid_desc = &desc_xid_xbox_gamepad;
+
+    memset(&s->in_state_capabilities, 0xFF, sizeof(s->in_state_capabilities));
+    s->in_state_capabilities.bLength = sizeof(s->in_state_capabilities);
+    s->in_state_capabilities.bReportId = 0;
+
+    memset(&s->out_state_capabilities, 0xFF, sizeof(s->out_state_capabilities));
+    s->out_state_capabilities.length = sizeof(s->out_state_capabilities);
+    s->out_state_capabilities.report_id = 0;
 
     /* FIXME: Make sure SDL was init before */
     if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER)) {
