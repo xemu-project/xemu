@@ -2169,15 +2169,10 @@ static void pgraph_method(NV2AState *d,
     case NV097_SET_VERTEX_DATA2S ...
             NV097_SET_VERTEX_DATA2S + 0x3c: {
         slot = (method - NV097_SET_VERTEX_DATA2S) / 4;
-        assert(false); /* FIXME: Untested! */
         VertexAttribute *attribute = &pg->vertex_attributes[slot];
         pgraph_allocate_inline_buffer_vertices(pg, slot);
-        /* FIXME: Is mapping to [-1,+1] correct? */
-        attribute->inline_value[0] = ((int16_t)(parameter & 0xFFFF) * 2.0 + 1)
-                                         / 65535.0;
-        attribute->inline_value[1] = ((int16_t)(parameter >> 16) * 2.0 + 1)
-                                         / 65535.0;
-        /* FIXME: Should these really be set to 0.0 and 1.0 ? Conditions? */
+        attribute->inline_value[0] = (float)(int16_t)(parameter & 0xFFFF);
+        attribute->inline_value[1] = (float)(int16_t)(parameter >> 16);
         attribute->inline_value[2] = 0.0;
         attribute->inline_value[3] = 1.0;
         if (slot == 0) {
