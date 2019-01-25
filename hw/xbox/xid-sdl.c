@@ -273,11 +273,11 @@ static void update_input(USBXIDState *s)
     /* Triggers */
     state = SDL_GameControllerGetAxis(s->sdl_gamepad,
                                       SDL_CONTROLLER_AXIS_TRIGGERLEFT);
-    s->in_state.bAnalogButtons[GAMEPAD_LEFT_TRIGGER] = state >> 8;
+    s->in_state.bAnalogButtons[GAMEPAD_LEFT_TRIGGER] = state >> 7;
 
     state = SDL_GameControllerGetAxis(s->sdl_gamepad,
                                       SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
-    s->in_state.bAnalogButtons[GAMEPAD_RIGHT_TRIGGER] = state >> 8;
+    s->in_state.bAnalogButtons[GAMEPAD_RIGHT_TRIGGER] = state >> 7;
 
     /* Analog sticks */
     s->in_state.sThumbLX = SDL_GameControllerGetAxis(s->sdl_gamepad,
