@@ -112,7 +112,7 @@ static void amd756_smb_transaction(AMD756SMBus *s)
             s->smb_data0 = val;
             s->smb_data1 = val >> 8;
         } else {
-            smbus_write_word(bus, addr, cmd, s->smb_data0);
+            smbus_write_word(bus, addr, cmd, (s->smb_data1 << 8) | s->smb_data0);
         }
         break;
     case AMD756_BLOCK_DATA:
