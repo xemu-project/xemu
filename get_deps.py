@@ -22,7 +22,7 @@ def main():
 	elif not os.path.isdir(args.dest):
 		print('File exists with destination name')
 		sys.exit(1)
-		
+
 	try:
 		subprocess.check_output(['cygpath', '--help'])
 	except OSError as err:
@@ -30,7 +30,7 @@ def main():
 		print("Make sure you're using a recent version of MSYS2 and that it works correctly.")
 		sys.exit(1)
 
-	sout = subprocess.check_output(['ldd', args.prog])
+	sout = subprocess.check_output(['ldd', args.prog]).decode('utf-8')
 	for line in sout.splitlines():
 		line = line.strip().split()
 		dll_name, dll_path, dll_load_addr = line[0], line[2], line[3]
@@ -39,7 +39,7 @@ def main():
 			continue
 		# ldd on msys gives Unix-style paths, but mingw Python wants them Windows-style
 		# Use cygpath to convert the paths, because both mingw and msys Python can handle them
-		dll_path = subprocess.check_output(['cygpath', '-w', dll_path]).strip()
+		dll_path = subprocess.check_output(['cygpath', '-w', dll_path]).decode('utf-8').strip()
 		if dll_path.lower().startswith('c:\\windows'):
 			print('Skipping system DLL %s' % dll_path)
 			continue

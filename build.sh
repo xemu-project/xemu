@@ -7,7 +7,7 @@ package_windows() { # Script to prepare the windows exe
     mkdir -p dist
     cp i386-softmmu/qemu-system-i386.exe dist/xqemu.exe
     cp i386-softmmu/qemu-system-i386w.exe dist/xqemuw.exe
-    python2 ./get_deps.py dist/xqemu.exe dist
+    python3 ./get_deps.py dist/xqemu.exe dist
     strip dist/xqemu.exe
     strip dist/xqemuw.exe
 }
@@ -52,7 +52,7 @@ case "$(uname -s)" in # adjust compilation option based on platform
     CYGWIN*|MINGW*|MSYS*)
         echo 'Compiling for Windows…'
         sys_cflags='-Wno-error'
-        sys_opts='--python=python2 --disable-cocoa --disable-opengl'
+        sys_opts='--python=python3 --disable-cocoa --disable-opengl'
         postbuild='package_windows' # set the above function to be called after build
         ;;
     *)
