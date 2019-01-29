@@ -3083,7 +3083,15 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
         last_y = y;
     }
 
-    for (i = 0; i < 8; i++) {
+    /* FIXME: We should memset(state, 0x00, sizeof(state)) instead */
+    memset(state.psh.rgb_inputs, 0, sizeof(state.psh.rgb_inputs));
+    memset(state.psh.rgb_outputs, 0, sizeof(state.psh.rgb_outputs));
+    memset(state.psh.alpha_inputs, 0, sizeof(state.psh.alpha_inputs));
+    memset(state.psh.alpha_outputs, 0, sizeof(state.psh.alpha_outputs));
+
+    /* Copy content of enabled combiner stages */
+    int num_stages = pg->regs[NV_PGRAPH_COMBINECTL] & 0xFF;
+    for (i = 0; i < num_stages; i++) {
         state.psh.rgb_inputs[i] = pg->regs[NV_PGRAPH_COMBINECOLORI0 + i * 4];
         state.psh.rgb_outputs[i] = pg->regs[NV_PGRAPH_COMBINECOLORO0 + i * 4];
         state.psh.alpha_inputs[i] = pg->regs[NV_PGRAPH_COMBINEALPHAI0 + i * 4];
