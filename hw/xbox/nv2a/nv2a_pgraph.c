@@ -192,7 +192,7 @@ static const ColorFormatInfo kelvin_color_format_map[66] = {
          {GL_ONE, GL_ONE, GL_ONE, GL_RED}},
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8Y8] =
         {2, false, GL_RG8, GL_RG, GL_UNSIGNED_BYTE,
-         {GL_GREEN, GL_GREEN, GL_GREEN, GL_RED}},
+         {GL_RED, GL_RED, GL_RED, GL_GREEN}},
     [NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_AY8] =
         {1, true, GL_R8, GL_RED, GL_UNSIGNED_BYTE,
          {GL_RED, GL_RED, GL_RED, GL_RED}},
@@ -207,7 +207,7 @@ static const ColorFormatInfo kelvin_color_format_map[66] = {
          {GL_ONE, GL_ONE, GL_ONE, GL_RED}},
     [NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8Y8] =
         {2, true, GL_RG8, GL_RG, GL_UNSIGNED_BYTE,
-         {GL_GREEN, GL_GREEN, GL_GREEN, GL_RED}},
+         {GL_RED, GL_RED, GL_RED, GL_GREEN}},
 
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5] =
         {2, false, GL_RGB8_SNORM, GL_RGB, GL_BYTE}, /* FIXME: This might be signed */
