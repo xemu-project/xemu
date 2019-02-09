@@ -28,7 +28,6 @@
 
 #include <SDL2/SDL.h>
 
-//#define FORCE_FEEDBACK
 #define UPDATE
 
 //#define DEBUG_XID
@@ -59,6 +58,11 @@ enum {
     STR_PRODUCT,
     STR_SERIALNUMBER,
 };
+
+typedef enum HapticEmulationMode {
+    EMU_NONE,
+    EMU_HAPTIC_LEFT_RIGHT
+} HapticEmulationMode;
 
 static const USBDescStrings desc_strings = {
     [STR_MANUFACTURER]     = "QEMU",
@@ -105,11 +109,11 @@ typedef struct USBXIDState {
     XIDGamepadOutputReport out_state_capabilities;
 
     uint8_t device_index;
+
     SDL_GameController *sdl_gamepad;
-#ifdef FORCE_FEEDBACK
     SDL_Haptic *sdl_haptic;
     int sdl_haptic_effect_id;
-#endif
+    HapticEmulationMode haptic_emulation_mode;
 } USBXIDState;
 
 static const USBDescIface desc_iface_xbox_gamepad = {
@@ -194,36 +198,49 @@ static const XIDDesc desc_xid_xbox_gamepad = {
 
 #define BUTTON_MASK(button) (1 << ((button) - GAMEPAD_DPAD_UP))
 
-static void update_output(USBXIDState *s) {
-#ifdef FORCE_FEEDBACK
-    if (s->sdl_haptic == NULL) { return; }
-
-    SDL_HapticLeftRight effect = {
-        .type = SDL_HAPTIC_LEFTRIGHT,
-        .length = SDL_HAPTIC_INFINITY,
-        /* FIXME: Might be left/right inverted */
-        .large_magnitude = s->out_state.right_actuator_strength,
-        .small_magnitude = s->out_state.left_actuator_strength
-    };
-
-    if (s->sdl_haptic_effect_id == -1) {
-        int effect_id = SDL_HapticNewEffect(s->sdl_haptic,
-                                            (SDL_HapticEffect*)&effect);
-        if (effect_id == -1) {
-            fprintf(stderr, "Failed to upload haptic effect!\n");
-            SDL_HapticClose(s->sdl_haptic);
-            s->sdl_haptic = NULL;
-            return;
-        }
-        SDL_HapticRunEffect(s->sdl_haptic, effect_id, 1);
-
-        s->sdl_haptic_effect_id = effect_id;
-
-    } else {
-        SDL_HapticUpdateEffect(s->sdl_haptic, s->sdl_haptic_effect_id,
-                               (SDL_HapticEffect*)&effect);
+static int haptic_effect_prepare(SDL_HapticEffect *effect,
+                                 HapticEmulationMode mode,
+                                 uint16_t large_magnitude,
+                                 uint16_t small_magnitude)
+{
+    switch (mode) {
+    case EMU_HAPTIC_LEFT_RIGHT:
+        effect->leftright = (SDL_HapticLeftRight){
+            .type = SDL_HAPTIC_LEFTRIGHT,
+            .length = SDL_HAPTIC_INFINITY,
+            /* Xbox rumble returns in a range of 0x0000 -> 0xFFFF,
+             * SDL requires the range to be within 0x0000 -> 0x7FFF
+             */
+            .large_magnitude = large_magnitude >> 1,
+            .small_magnitude = small_magnitude >> 1,
+        };
+        break;
+    default:
+        fprintf(stderr, "Haptic Emulation Mode Not Supported!\n");
+        assert(false);
     }
-#endif
+
+    return 0;
+}
+
+static void update_output(USBXIDState *s)
+{
+    if (s->sdl_haptic == NULL) {
+        return;
+    }
+
+    SDL_HapticEffect effect;
+    int result = haptic_effect_prepare(&effect,
+                                       s->haptic_emulation_mode,
+                                       s->out_state.right_actuator_strength,
+                                       s->out_state.left_actuator_strength);
+
+    if (result < 0) {
+        fprintf(stderr, "Updating haptic effect failed!\n");
+        return;
+    }
+
+    SDL_HapticUpdateEffect(s->sdl_haptic, s->sdl_haptic_effect_id, &effect);
 }
 
 static void update_input(USBXIDState *s)
@@ -440,11 +457,9 @@ static void usb_xid_handle_destroy(USBDevice *dev)
 {
     USBXIDState *s = DO_UPCAST(USBXIDState, dev, dev);
     DPRINTF("xid handle_destroy\n");
-#ifdef FORCE_FEEDBACK
     if (s->sdl_haptic) {
         SDL_HapticClose(s->sdl_haptic);
     }
-#endif
     SDL_JoystickClose(s->sdl_gamepad);
 }
 #endif
@@ -462,6 +477,66 @@ static void usb_xid_class_initfn(ObjectClass *klass, void *data)
     uc->handle_data    = usb_xid_handle_data;
     // uc->handle_destroy = usb_xid_handle_destroy;
     uc->handle_attach  = usb_desc_attach;
+}
+
+static HapticEmulationMode select_haptic_emulation_mode(SDL_Haptic *haptic)
+{
+    unsigned int query_result = SDL_HapticQuery(haptic);
+    if (query_result & SDL_HAPTIC_LEFTRIGHT) {
+        return EMU_HAPTIC_LEFT_RIGHT;
+    }
+
+    fprintf(stderr, "No supported haptic mode found (SDL_HapticQuery result: 0x%x). Haptic disabled\n", query_result);
+
+    return EMU_NONE;
+}
+
+static int haptic_init(USBXIDState *s)
+{
+    if (SDL_HapticOpened(s->device_index)) {
+        fprintf(stderr, "Joystick haptic effect already opened, haptic effect disabled\n");
+        return -1;
+    }
+
+    SDL_Joystick *joystick = SDL_GameControllerGetJoystick(s->sdl_gamepad);
+    s->sdl_haptic = SDL_HapticOpenFromJoystick(joystick);
+    if (s->sdl_haptic == NULL) {
+        fprintf(stderr, "Joystick doesn't support haptic effects\n");
+        return -1;
+    }
+
+    s->haptic_emulation_mode = select_haptic_emulation_mode(s->sdl_haptic);
+
+    if (s->haptic_emulation_mode == EMU_NONE) {
+        SDL_HapticClose(s->sdl_haptic);
+        s->sdl_haptic = NULL;
+        fprintf(stderr, "Joystick doesn't support required haptic effects\n");
+        return -1;
+    }
+
+    SDL_HapticEffect effect;
+    haptic_effect_prepare(&effect, s->haptic_emulation_mode, 0, 0);
+
+    int effect_id = SDL_HapticNewEffect(s->sdl_haptic, &effect);
+    if (effect_id < 0) {
+        const char *error = SDL_GetError();
+        fprintf(stderr, "Failed to create haptic effect! SDL Error: %s\n", error);
+        SDL_HapticClose(s->sdl_haptic);
+        s->sdl_haptic = NULL;
+        return -1;
+    }
+
+    int run_result = SDL_HapticRunEffect(s->sdl_haptic, effect_id, 1);
+    if (run_result < 0) {
+        const char *error = SDL_GetError();
+        fprintf(stderr, "Failed to run haptic effect! SDL Error: %s\n", error);
+        SDL_HapticClose(s->sdl_haptic);
+        s->sdl_haptic = NULL;
+        return -1;
+    }
+
+    s->sdl_haptic_effect_id = effect_id;
+    return 0;
 }
 
 static void usb_xbox_gamepad_realize(USBDevice *dev, Error **errp)
@@ -500,7 +575,7 @@ static void usb_xbox_gamepad_realize(USBDevice *dev, Error **errp)
         exit(1);
     }
 
-    const char* name = SDL_GameControllerName(s->sdl_gamepad);
+    const char *name = SDL_GameControllerName(s->sdl_gamepad);
     printf("Found game controller %d (%s)\n", s->device_index, name);
 
 #ifndef UPDATE
@@ -511,18 +586,11 @@ static void usb_xbox_gamepad_realize(USBDevice *dev, Error **errp)
     SDL_JoystickEventState(SDL_ENABLE);
 #endif
 
-#ifdef FORCE_FEEDBACK
-    s->sdl_haptic = SDL_HapticOpenFromJoystick(s->sdl_gamepad);
-    if (s->sdl_haptic == NULL) {
-        fprintf(stderr, "Joystick doesn't support haptic\n");
+    if (!SDL_InitSubSystem(SDL_INIT_HAPTIC)) {
+        haptic_init(s);
     } else {
-        if ((SDL_HapticQuery(s->sdl_haptic) & SDL_HAPTIC_LEFTRIGHT) == 0) {
-            fprintf(stderr, "Joystick doesn't support necessary haptic effect\n");
-            SDL_HapticClose(s->sdl_haptic);
-            s->sdl_haptic = NULL;
-        }
+        fprintf(stderr, "SDL failed to initialize haptic feedback subsystem\n");
     }
-#endif
 }
 
 static Property xid_sdl_properties[] = {
