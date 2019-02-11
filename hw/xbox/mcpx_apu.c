@@ -2,7 +2,7 @@
  * QEMU MCPX Audio Processing Unit implementation
  *
  * Copyright (c) 2012 espes
- * Copyright (c) 2018 Jannik Vogel
+ * Copyright (c) 2018-2019 Jannik Vogel
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -24,6 +24,9 @@
 #include "hw/pci/pci.h"
 #include "cpu.h"
 #include "hw/xbox/dsp/dsp.h"
+
+#define NUM_SAMPLES_PER_FRAME 32
+#define NUM_MIXBINS 32
 
 #include "hw/xbox/mcpx_apu.h"
 
@@ -804,12 +807,28 @@ static const MemoryRegionOps ep_ops = {
     .write = ep_write,
 };
 
+static void process_voice(MCPXAPUState *d,
+                          int32_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
+                          uint32_t voice)
+{
+    /* FIXME: Implement */
+}
+
+/* This routine must run at 1500 Hz */
 /* TODO: this should be on a thread so it waits on the voice lock */
 static void se_frame(void *opaque)
 {
     MCPXAPUState *d = opaque;
+    int mixbin;
+    int sample;
+
     timer_mod(d->se.frame_timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 10);
     MCPX_DPRINTF("mcpx frame ping\n");
+
+    /* Buffer for all mixbins for this frame */
+    int32_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME] = { 0 };
+
+    /* Process all voices, mixing each into the affected MIXBINs */
     int list;
     for (list = 0; list < 3; list++) {
         hwaddr top, current, next;
@@ -828,12 +847,24 @@ static void se_frame(void *opaque)
                     NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE)) {
                 MCPX_DPRINTF("voice %d not active...!\n", d->regs[current]);
                 fe_method(d, SE2FE_IDLE_VOICE, d->regs[current]);
+            } else {
+                process_voice(d, mixbins, d->regs[current]);
             }
             MCPX_DPRINTF("next voice %d\n", d->regs[next]);
             d->regs[current] = d->regs[next];
         }
     }
 
+    /* Write VP results to the GP DSP MIXBUF */
+    for (mixbin = 0; mixbin < NUM_MIXBINS; mixbin++) {
+        for (sample = 0; sample < NUM_SAMPLES_PER_FRAME; sample++) {
+            dsp_write_memory(d->gp.dsp,
+                             'X', GP_DSP_MIXBUF_BASE + mixbin * 0x20 + sample,
+                             mixbins[mixbin][sample] & 0xFFFFFF);
+        }
+    }
+
+    /* Kickoff DSP processing */
     if ((d->gp.regs[NV_PAPU_GPRST] & NV_PAPU_GPRST_GPRST)
         && (d->gp.regs[NV_PAPU_GPRST] & NV_PAPU_GPRST_GPDSPRST)) {
         dsp_start_frame(d->gp.dsp);
