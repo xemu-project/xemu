@@ -159,6 +159,8 @@ static const struct {
 #   define NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE   0x0000FFFF
 
 
+#define GP_DSP_MIXBUF_BASE 0x001400
+
 #define GP_OUTPUT_FIFO_COUNT  4
 #define GP_INPUT_FIFO_COUNT   2
 
@@ -659,7 +661,7 @@ static uint64_t gp_read(void *opaque,
     }
     case NV_PAPU_GPMIXBUF ... NV_PAPU_GPMIXBUF + 0x400 * 4 - 1: {
         uint32_t xaddr = (addr - NV_PAPU_GPMIXBUF) / 4;
-        r = dsp_read_memory(d->gp.dsp, 'X', 0x001400 + xaddr);
+        r = dsp_read_memory(d->gp.dsp, 'X', GP_DSP_MIXBUF_BASE + xaddr);
         break;
     }
     case NV_PAPU_GPYMEM ... NV_PAPU_GPYMEM + 0x800 * 4 - 1: {
@@ -698,7 +700,7 @@ static void gp_write(void *opaque, hwaddr addr,
     }
     case NV_PAPU_GPMIXBUF ... NV_PAPU_GPMIXBUF + 0x400 * 4 - 1: {
         uint32_t xaddr = (addr - NV_PAPU_GPMIXBUF) / 4;
-        dsp_write_memory(d->gp.dsp, 'X', 0x001400 + xaddr, val);
+        dsp_write_memory(d->gp.dsp, 'X', GP_DSP_MIXBUF_BASE + xaddr, val);
         break;
     }
     case NV_PAPU_GPYMEM ... NV_PAPU_GPYMEM + 0x800 * 4 - 1: {
