@@ -24,6 +24,7 @@
 #include "hw/pci/pci.h"
 #include "cpu.h"
 #include "hw/xbox/dsp/dsp.h"
+#include <math.h>
 
 #define NUM_SAMPLES_PER_FRAME 32
 #define NUM_MIXBINS 32
@@ -186,6 +187,9 @@ static const struct {
 #else
 # define MCPX_DPRINTF(format, ...)       do { } while (0)
 #endif
+
+/* More debug functionality */
+#define GENERATE_MIXBIN_BEEP      0
 
 typedef struct MCPXAPUState {
     PCIDevice dev;
@@ -854,6 +858,21 @@ static void se_frame(void *opaque)
             d->regs[current] = d->regs[next];
         }
     }
+
+#if GENERATE_MIXBIN_BEEP
+    /* Inject some audio to the mixbin for debugging.
+     * Signal is 1500 Hz sine wave, phase shifted by mixbin number. */
+    for (mixbin = 0; mixbin < NUM_MIXBINS; mixbin++) {
+        for (sample = 0; sample < NUM_SAMPLES_PER_FRAME; sample++) {
+            /* Avoid multiple of 1.0 / NUM_SAMPLES_PER_FRAME for phase shift,
+             * or waves cancel out */
+            float offset = sample / (float)NUM_SAMPLES_PER_FRAME -
+                           mixbin / (float)(NUM_SAMPLES_PER_FRAME + 1);
+            float wave = sinf(offset * M_PI * 2.0f);
+            mixbins[mixbin][sample] += wave * 0x3FFFFF;
+        }
+    }
+#endif
 
     /* Write VP results to the GP DSP MIXBUF */
     for (mixbin = 0; mixbin < NUM_MIXBINS; mixbin++) {
