@@ -307,7 +307,11 @@ static QString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
             }
             break;
         case PS_CHANNEL_ALPHA:
-            qstring_append(reg, ".a");
+            if (is_alpha) {
+                qstring_append(reg, ".a");
+            } else {
+                qstring_append(reg, ".aaa");
+            }
             break;
         default:
             assert(false);
