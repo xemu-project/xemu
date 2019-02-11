@@ -422,7 +422,7 @@ static void add_stage_code(struct PixelShader *ps,
     QString *sum_dest = get_var(ps, output.muxsum, true);
 
     if (qstring_get_length(ab_dest)) {
-        qstring_append_fmt(ps->code, "%s.%s = %s(%s);\n",
+        qstring_append_fmt(ps->code, "%s.%s = clamp(%s(%s), -1.0, 1.0);\n",
                            qstring_get_str(ab_dest), write_mask, caster, qstring_get_str(ab_mapping));
     } else {
         qobject_unref(ab_dest);
@@ -431,7 +431,7 @@ static void add_stage_code(struct PixelShader *ps,
     }
 
     if (qstring_get_length(cd_dest)) {
-        qstring_append_fmt(ps->code, "%s.%s = %s(%s);\n",
+        qstring_append_fmt(ps->code, "%s.%s = clamp(%s(%s), -1.0, 1.0);\n",
                            qstring_get_str(cd_dest), write_mask, caster, qstring_get_str(cd_mapping));
     } else {
         qobject_unref(cd_dest);
@@ -458,7 +458,7 @@ static void add_stage_code(struct PixelShader *ps,
 
     QString *sum_mapping = get_output(sum, output.mapping);
     if (qstring_get_length(sum_dest)) {
-        qstring_append_fmt(ps->code, "%s.%s = %s(%s);\n",
+        qstring_append_fmt(ps->code, "%s.%s = clamp(%s(%s), -1.0, 1.0);\n",
                            qstring_get_str(sum_dest), write_mask, caster, qstring_get_str(sum_mapping));
     }
 
