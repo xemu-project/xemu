@@ -235,7 +235,7 @@ static QString* get_var(struct PixelShader *ps, int reg, bool is_dest)
         if (is_dest) {
             return qstring_from_str("");
         } else {
-            return qstring_from_str("0.0");
+            return qstring_from_str("vec4(0.0)");
         }
         break;
     case PS_REGISTER_C0:
@@ -280,9 +280,10 @@ static QString* get_var(struct PixelShader *ps, int reg, bool is_dest)
         return qstring_from_str("r1");
     case PS_REGISTER_V1R0_SUM:
         add_var_ref(ps, "r0");
-        return qstring_from_str("(v1 + r0)");
+        return qstring_from_str("vec4(v1.rgb + r0.rgb, 0.0)");
     case PS_REGISTER_EF_PROD:
-        return qstring_from_fmt("(%s * %s)", qstring_get_str(ps->varE),
+        return qstring_from_fmt("vec4(%s * %s, 0.0)",
+                                qstring_get_str(ps->varE),
                                 qstring_get_str(ps->varF));
     default:
         assert(false);
@@ -295,28 +296,24 @@ static QString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
 {
     QString *reg = get_var(ps, in.reg, false);
 
-    if (strcmp(qstring_get_str(reg), "0.0") != 0
-        && (in.reg != PS_REGISTER_EF_PROD
-            || strstr(qstring_get_str(reg), ".a") == NULL)) {
-        switch (in.chan) {
-        case PS_CHANNEL_RGB:
-            if (is_alpha) {
-                qstring_append(reg, ".b");
-            } else {
-                qstring_append(reg, ".rgb");
-            }
-            break;
-        case PS_CHANNEL_ALPHA:
-            if (is_alpha) {
-                qstring_append(reg, ".a");
-            } else {
-                qstring_append(reg, ".aaa");
-            }
-            break;
-        default:
-            assert(false);
-            break;
+    switch (in.chan) {
+    case PS_CHANNEL_RGB:
+        if (is_alpha) {
+            qstring_append(reg, ".b");
+        } else {
+            qstring_append(reg, ".rgb");
         }
+        break;
+    case PS_CHANNEL_ALPHA:
+        if (is_alpha) {
+            qstring_append(reg, ".a");
+        } else {
+            qstring_append(reg, ".aaa");
+        }
+        break;
+    default:
+        assert(false);
+        break;
     }
 
     QString *res;
