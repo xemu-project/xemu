@@ -321,9 +321,9 @@ static const uint8_t eeprom[] = {
 static void chihiro_init(MachineState *machine)
 {
     const char *mediaboard_rom_file = object_property_get_str(
-        qdev_get_machine(), "mediaboard_rom", NULL);
+        qdev_get_machine(), "mediaboard-rom", NULL);
     const char *mediaboard_filesystem_file = object_property_get_str(
-        qdev_get_machine(), "mediaboard_filesystem", NULL);
+        qdev_get_machine(), "mediaboard-filesystem", NULL);
     chihiro_ide_interface_init(mediaboard_rom_file,
                                mediaboard_filesystem_file);
 
@@ -388,16 +388,16 @@ static void machine_set_mediaboard_filesystem(Object *obj, const char *value,
 
 static inline void chihiro_machine_initfn(Object *obj)
 {
-    object_property_add_str(obj, "mediaboard_rom",
+    object_property_add_str(obj, "mediaboard-rom",
                             machine_get_mediaboard_rom,
                             machine_set_mediaboard_rom, NULL);
-    object_property_set_description(obj, "mediaboard_rom",
+    object_property_set_description(obj, "mediaboard-rom",
                                     "Chihiro mediaboard ROM", NULL);
 
-    object_property_add_str(obj, "mediaboard_filesystem",
+    object_property_add_str(obj, "mediaboard-filesystem",
                             machine_get_mediaboard_filesystem,
                             machine_set_mediaboard_filesystem, NULL);
-    object_property_set_description(obj, "mediaboard_filesystem",
+    object_property_set_description(obj, "mediaboard-filesystem",
                                     "Chihiro mediaboard filesystem", NULL);
 }
 
