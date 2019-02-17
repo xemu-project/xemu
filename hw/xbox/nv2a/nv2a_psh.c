@@ -296,24 +296,30 @@ static QString* get_input_var(struct PixelShader *ps, struct InputInfo in, bool 
 {
     QString *reg = get_var(ps, in.reg, false);
 
-    switch (in.chan) {
-    case PS_CHANNEL_RGB:
-        if (is_alpha) {
-            qstring_append(reg, ".b");
-        } else {
+    if (!is_alpha) {
+        switch (in.chan) {
+        case PS_CHANNEL_RGB:
             qstring_append(reg, ".rgb");
-        }
-        break;
-    case PS_CHANNEL_ALPHA:
-        if (is_alpha) {
-            qstring_append(reg, ".a");
-        } else {
+            break;
+        case PS_CHANNEL_ALPHA:
             qstring_append(reg, ".aaa");
+            break;
+        default:
+            assert(false);
+            break;
         }
-        break;
-    default:
-        assert(false);
-        break;
+    } else {
+        switch (in.chan) {
+        case PS_CHANNEL_BLUE:
+            qstring_append(reg, ".b");
+            break;
+        case PS_CHANNEL_ALPHA:
+            qstring_append(reg, ".a");
+            break;
+        default:
+            assert(false);
+            break;
+        }
     }
 
     QString *res;
