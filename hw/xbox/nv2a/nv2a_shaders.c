@@ -265,13 +265,12 @@ static void append_skinning_code(QString* str, bool mix,
             }
             qstring_append(str, "}\n");
         } else {
-            /* Individual matrices */
+            /* Individual weights */
             int i;
             for (i = 0; i < count; i++) {
                 char c = "xyzw"[i];
-                qstring_append_fmt(str, "%s += (%s * %s%d * weight.%c).%s;\n",
-                                   output, input, matrix, i, c,
-                                   swizzle);
+                qstring_append_fmt(str, "%s += (%s * %s%d).%s * weight.%c;\n",
+                                   output, input, matrix, i, swizzle, c);
             }
             assert(false); /* FIXME: Untested */
         }
