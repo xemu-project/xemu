@@ -372,14 +372,14 @@ GLSL_DEFINE(sceneAmbientColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_FR_AMB) ".xyz")
         mix = false; count = 0; break;
     case SKINNING_1WEIGHTS:
         mix = true; count = 2; break;
-    case SKINNING_2WEIGHTS:
-        mix = true; count = 3; break;
-    case SKINNING_3WEIGHTS:
-        mix = true; count = 4; break;
     case SKINNING_2WEIGHTS2MATRICES:
         mix = false; count = 2; break;
+    case SKINNING_2WEIGHTS:
+        mix = true; count = 3; break;
     case SKINNING_3WEIGHTS3MATRICES:
         mix = false; count = 3; break;
+    case SKINNING_3WEIGHTS:
+        mix = true; count = 4; break;
     case SKINNING_4WEIGHTS4MATRICES:
         mix = false; count = 4; break;
     default:
