@@ -246,18 +246,24 @@ static void append_skinning_code(QString* str, bool mix,
     } else {
         qstring_append_fmt(str, "%s %s = %s(0.0);\n", type, output, type);
         if (mix) {
-            /* Tweening */
-            if (count == 2) {
-                qstring_append_fmt(str,
-                                   "%s += mix((%s * %s1).%s,\n"
-                                   "          (%s * %s0).%s, weight.x);\n",
-                                   output,
-                                   input, matrix, swizzle,
-                                   input, matrix, swizzle);
-            } else {
-                /* FIXME: Not sure how blend weights are calculated */
-                assert(false);
+            /* Generated final weight (like GL_WEIGHT_SUM_UNITY_ARB) */
+            qstring_append(str, "{\n"
+                                "  float weight_i;\n"
+                                "  float weight_n = 1.0;\n");
+            int i;
+            for (i = 0; i < count; i++) {
+                if (i < (count - 1)) {
+                    char c = "xyzw"[i];
+                    qstring_append_fmt(str, "  weight_i = weight.%c;\n"
+                                            "  weight_n -= weight_i;\n",
+                                       c);
+                } else {
+                    qstring_append(str, "  weight_i = weight_n;\n");
+                }
+                qstring_append_fmt(str, "  %s += (%s * %s%d).%s * weight_i;\n",
+                                   output, input, matrix, i, swizzle);
             }
+            qstring_append(str, "}\n");
         } else {
             /* Individual matrices */
             int i;
