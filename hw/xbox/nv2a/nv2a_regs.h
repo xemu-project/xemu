@@ -1286,6 +1286,13 @@
 #define NV_IGRAPH_XF_LTC1_L6                         0x12
 #define NV_IGRAPH_XF_LTC1_L7                         0x13
 
+/* These RDI select values appear to be named by MS.
+ * nvidia seems to refer to RDI_INDEX_VTX_CONSTANTS0 by RDI_RAMSEL_XL_XFCTX.
+ * However, we don't have other nvidia names; so we use these aliases for now.
+ * Eventually we'll probably adopt nouveau names for these internals.
+ */
+#define RDI_INDEX_VTX_CONSTANTS0                     0x17
+
 
 #define NV2A_VERTEX_ATTR_POSITION       0
 #define NV2A_VERTEX_ATTR_WEIGHT         1
