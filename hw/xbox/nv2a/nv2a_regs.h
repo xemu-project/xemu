@@ -256,6 +256,10 @@
 #   define NV_PGRAPH_INCREMENT_READ_3D                          (1 << 1)
 #define NV_PGRAPH_FIFO                                   0x00000720
 #   define NV_PGRAPH_FIFO_ACCESS                                (1 << 0)
+#define NV_PGRAPH_RDI_INDEX                              0x00000750
+#   define NV_PGRAPH_RDI_INDEX_ADDRESS                        0x00001FFC
+#   define NV_PGRAPH_RDI_INDEX_SELECT                         0x01FF0000
+#define NV_PGRAPH_RDI_DATA                               0x00000754
 #define NV_PGRAPH_CHANNEL_CTX_TABLE                      0x00000780
 #   define NV_PGRAPH_CHANNEL_CTX_TABLE_INST                   0x0000FFFF
 #define NV_PGRAPH_CHANNEL_CTX_POINTER                    0x00000784

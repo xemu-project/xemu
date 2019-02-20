@@ -299,6 +299,33 @@ static uint64_t fnv_hash(const uint8_t *data, size_t len);
 static uint64_t fast_hash(const uint8_t *data, size_t len, unsigned int samples);
 
 /* PGRAPH - accelerated 2d/3d drawing engine */
+
+static uint32_t pgraph_rdi_read(PGRAPHState *pg,
+                                unsigned int select, unsigned int address)
+{
+    uint32_t r = 0;
+    switch(select) {
+    default:
+        fprintf(stderr, "nv2a: unknown rdi read select 0x%x address 0x%x\n",
+                select, address);
+        assert(false);
+        break;
+    }
+    return r;
+}
+
+static void pgraph_rdi_write(PGRAPHState *pg,
+                             unsigned int select, unsigned int address,
+                             uint32_t val)
+{
+    switch(select) {
+    default:
+        NV2A_DPRINTF("unknown rdi write select 0x%x, address 0x%x, val 0x%08x\n",
+                     select, address, val);
+        break;
+    }
+}
+
 uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
@@ -314,6 +341,21 @@ uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
     case NV_PGRAPH_INTR_EN:
         r = pg->enabled_interrupts;
         break;
+    case NV_PGRAPH_RDI_DATA: {
+        unsigned int select = GET_MASK(pg->regs[NV_PGRAPH_RDI_INDEX],
+                                       NV_PGRAPH_RDI_INDEX_SELECT);
+        unsigned int address = GET_MASK(pg->regs[NV_PGRAPH_RDI_INDEX],
+                                        NV_PGRAPH_RDI_INDEX_ADDRESS);
+
+        r = pgraph_rdi_read(pg, select, address);
+
+        /* FIXME: Overflow into select? */
+        assert(address < GET_MASK(NV_PGRAPH_RDI_INDEX_ADDRESS,
+                                  NV_PGRAPH_RDI_INDEX_ADDRESS));
+        SET_MASK(pg->regs[NV_PGRAPH_RDI_INDEX],
+                 NV_PGRAPH_RDI_INDEX_ADDRESS, address + 1);
+        break;
+    }
     default:
         r = pg->regs[addr];
         break;
@@ -353,6 +395,21 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
             qemu_cond_broadcast(&pg->flip_3d);
         }
         break;
+    case NV_PGRAPH_RDI_DATA: {
+        unsigned int select = GET_MASK(pg->regs[NV_PGRAPH_RDI_INDEX],
+                                       NV_PGRAPH_RDI_INDEX_SELECT);
+        unsigned int address = GET_MASK(pg->regs[NV_PGRAPH_RDI_INDEX],
+                                        NV_PGRAPH_RDI_INDEX_ADDRESS);
+
+        pgraph_rdi_write(pg, select, address, val);
+
+        /* FIXME: Overflow into select? */
+        assert(address < GET_MASK(NV_PGRAPH_RDI_INDEX_ADDRESS,
+                                  NV_PGRAPH_RDI_INDEX_ADDRESS));
+        SET_MASK(pg->regs[NV_PGRAPH_RDI_INDEX],
+                 NV_PGRAPH_RDI_INDEX_ADDRESS, address + 1);
+        break;
+    }
     case NV_PGRAPH_CHANNEL_CTX_TRIGGER: {
         hwaddr context_address =
             GET_MASK(pg->regs[NV_PGRAPH_CHANNEL_CTX_POINTER],
