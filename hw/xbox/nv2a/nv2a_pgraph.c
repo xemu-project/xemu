@@ -2177,7 +2177,6 @@ static void pgraph_method(NV2AState *d,
         attribute->inline_value[3] = 1.0;
         if (slot == 0) {
             pgraph_finish_inline_buffer_vertex(pg);
-            assert(false); /* FIXME: Untested */
         }
         break;
     }
@@ -2192,7 +2191,6 @@ static void pgraph_method(NV2AState *d,
         attribute->inline_value[3] = ((parameter >> 24) & 0xFF) / 255.0;
         if (slot == 0) {
             pgraph_finish_inline_buffer_vertex(pg);
-            assert(false); /* FIXME: Untested */
         }
         break;
     }
@@ -2211,7 +2209,6 @@ static void pgraph_method(NV2AState *d,
                                                      * 2.0 + 1) / 65535.0;
         if ((slot == 0) && (part == 1)) {
             pgraph_finish_inline_buffer_vertex(pg);
-            assert(false); /* FIXME: Untested */
         }
         break;
     }
