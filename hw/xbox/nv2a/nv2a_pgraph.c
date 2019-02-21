@@ -306,6 +306,7 @@ static uint32_t pgraph_rdi_read(PGRAPHState *pg,
     uint32_t r = 0;
     switch(select) {
     case RDI_INDEX_VTX_CONSTANTS0:
+    case RDI_INDEX_VTX_CONSTANTS1:
         assert((address / 4) < NV2A_VERTEXSHADER_CONSTANTS);
         r = pg->vsh_constants[address / 4][3 - address % 4];
         break;
@@ -324,6 +325,7 @@ static void pgraph_rdi_write(PGRAPHState *pg,
 {
     switch(select) {
     case RDI_INDEX_VTX_CONSTANTS0:
+    case RDI_INDEX_VTX_CONSTANTS1:
         assert(false); /* Untested */
         assert((address / 4) < NV2A_VERTEXSHADER_CONSTANTS);
         pg->vsh_constants_dirty[address / 4] |=

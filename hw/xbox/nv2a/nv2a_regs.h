@@ -1292,6 +1292,7 @@
  * Eventually we'll probably adopt nouveau names for these internals.
  */
 #define RDI_INDEX_VTX_CONSTANTS0                     0x17
+#define RDI_INDEX_VTX_CONSTANTS1                     0xCC
 
 
 #define NV2A_VERTEX_ATTR_POSITION       0
