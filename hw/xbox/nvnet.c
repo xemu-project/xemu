@@ -829,13 +829,6 @@ static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
     s->nic = qemu_new_nic(&net_nvnet_info, &s->conf,
         object_get_typename(OBJECT(s)), dev->id, s);
     assert(s->nic);
-
-    s->regs[NvRegMacAddrA + 0x00] = s->conf.macaddr.a[0];
-    s->regs[NvRegMacAddrA + 0x01] = s->conf.macaddr.a[1];
-    s->regs[NvRegMacAddrA + 0x02] = s->conf.macaddr.a[2];
-    s->regs[NvRegMacAddrA + 0x03] = s->conf.macaddr.a[3];
-    s->regs[NvRegMacAddrB + 0x00] = s->conf.macaddr.a[4];
-    s->regs[NvRegMacAddrB + 0x01] = s->conf.macaddr.a[5];
 }
 
 static void nvnet_uninit(PCIDevice *dev)
