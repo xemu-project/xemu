@@ -87,6 +87,7 @@ set -x # Print commands from now on
     --disable-spice \
     --disable-user \
     --disable-stack-protector \
+    --disable-glusterfs \
     ${user_opts}
 
 time make -j"${job_count}" 2>&1 | tee build.log
