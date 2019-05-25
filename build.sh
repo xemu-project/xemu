@@ -71,15 +71,18 @@ set -x # Print commands from now on
     ${debug_opts} \
     ${sys_opts} \
     --target-list=i386-softmmu \
+    --enable-trace-backends="nop" \
     --enable-sdl \
     --with-sdlabi=2.0 \
     --disable-curl \
     --disable-vnc \
+    --disable-vnc-sasl \
     --disable-docs \
     --disable-tools \
     --disable-guest-agent \
     --disable-tpm \
     --disable-live-block-migration \
+    --disable-rdma \
     --disable-replication \
     --disable-capstone \
     --disable-fdt \
@@ -88,6 +91,29 @@ set -x # Print commands from now on
     --disable-user \
     --disable-stack-protector \
     --disable-glusterfs \
+    --disable-bluez \
+    --disable-gtk \
+    --disable-curses \
+    --disable-gnutls \
+    --disable-nettle \
+    --disable-gcrypt \
+    --disable-crypto-afalg \
+    --disable-virglrenderer \
+    --disable-vhost-net \
+    --disable-vhost-crypto \
+    --disable-vhost-vsock \
+    --disable-vhost-user \
+    --disable-virtfs \
+    --disable-libssh2 \
+    --disable-snappy \
+    --disable-bzip2 \
+    --disable-vde \
+    --disable-libxml2 \
+    --disable-seccomp \
+    --disable-numa \
+    --disable-lzo \
+    --disable-smartcard \
+    --disable-usb-redir \
     ${user_opts}
 
 time make -j"${job_count}" 2>&1 | tee build.log
