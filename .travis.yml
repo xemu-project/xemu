@@ -7,7 +7,7 @@ os:
   - osx
 
 python:
-  - "2.6"
+  - "3.7"
 
 compiler:
   - gcc
@@ -42,14 +42,17 @@ addons:
       - uuid-dev
       - libsdl2-dev
       - libepoxy-dev
+  homebrew:
+    packages:
+      - glib
+      - pixman
+      - sdl2
+      - libepoxy
+
 
 git:
   # we want to do this ourselves
   submodules: false
-
-before_install:
-  - if [ "$TRAVIS_OS_NAME" == "osx" ]; then brew update ; fi
-  - if [ "$TRAVIS_OS_NAME" == "osx" ]; then brew install libffi gettext glib pixman pkg-config autoconf pixman sdl2 libepoxy; fi
 
 script:
   - ./build.sh
