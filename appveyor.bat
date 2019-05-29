@@ -8,10 +8,6 @@ rem    MSYSTEM:  MINGW64 or MINGW32
 rem Set the paths appropriately
 PATH C:\msys64\%MSYSTEM%\bin;C:\msys64\usr\bin;%PATH%
 
-rem Upgrade the MSYS2 platform
-bash -lc "pacman --noconfirm -Syu"
-bash -lc "pacman --noconfirm -Su"
-
 rem Install required tools
 bash -xlc "pacman --noconfirm -S --needed base-devel"
 
