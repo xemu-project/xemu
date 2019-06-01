@@ -26,6 +26,8 @@
 #include <string.h>
 #include <assert.h>
 
+#include "qemu/osdep.h"
+#include "qemu/bswap.h"
 #include "dsp_cpu.h"
 
 #define TRACE_DSP_DISASM 0
@@ -957,7 +959,7 @@ static uint32_t read_memory_p(dsp_core_t* dsp, uint32_t address)
 {
     assert((address & 0xFF000000) == 0);
     assert(address < DSP_PRAM_SIZE);
-    uint32_t r = dsp->pram[address];
+    uint32_t r = ldl_le_p(&dsp->pram[address]);
     assert((r & 0xFF000000) == 0);
     return r;
 }
@@ -1019,7 +1021,7 @@ static void write_memory_raw(dsp_core_t* dsp, int space, uint32_t address, uint3
         dsp->yram[address] = value;
     } else if (space == DSP_SPACE_P) {
         assert(address < DSP_PRAM_SIZE);
-        dsp->pram[address] = value;
+        stl_le_p(&dsp->pram[address], value);
     } else {
         assert(false);
     }
