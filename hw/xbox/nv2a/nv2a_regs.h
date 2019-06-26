@@ -678,7 +678,8 @@
 #   define NV_PRAMDAC_PLL_TEST_COUNTER_NVPLL_LOCK              (1 << 29)
 #   define NV_PRAMDAC_PLL_TEST_COUNTER_MPLL_LOCK               (1 << 30)
 #   define NV_PRAMDAC_PLL_TEST_COUNTER_VPLL_LOCK               (1 << 31)
-
+#define NV_PRAMDAC_GENERAL_CONTROL                       0x00000600
+#   define NV_PRAMDAC_GENERAL_CONTROL_ALT_MODE_SEL             (1 << 12)
 
 #define NV_USER_DMA_PUT                                  0x40
 #define NV_USER_DMA_GET                                  0x44

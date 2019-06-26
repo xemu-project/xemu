@@ -330,6 +330,7 @@ typedef struct NV2AState {
         uint64_t core_clock_freq;
         uint32_t memory_clock_coeff;
         uint32_t video_clock_coeff;
+        uint32_t general_control;
     } pramdac;
 
 } NV2AState;

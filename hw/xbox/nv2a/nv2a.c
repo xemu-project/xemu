@@ -317,10 +317,37 @@ static void nv2a_overlay_draw_line(VGACommonState *vga, uint8_t *line, int y)
 
 static int nv2a_get_bpp(VGACommonState *s)
 {
-    if ((s->cr[0x28] & 3) == 3) {
-        return 32;
+    NV2AState *d = container_of(s, NV2AState, vga);
+
+    int depth = s->cr[0x28] & 3;
+
+    int bpp;
+    switch (depth) {
+    case 0:
+        /* FIXME: This case is sometimes hit during early Xbox startup.
+         *        Presumably a race-condition where VGA isn't initialized, yet.
+         *        `bpp = 0` mimics old code that did `bpp = depth * 8;`.
+         *        This works around the issue of this mode being unhandled.
+         *        However, QEMU VGA uses a 4bpp mode if `bpp = 0`.
+         *        We don't know if Xbox hardware would do the same. */
+        bpp = 0;
+        break;
+    case 2:
+        bpp = d->pramdac.general_control &
+              NV_PRAMDAC_GENERAL_CONTROL_ALT_MODE_SEL ? 16 : 15;
+        break;
+    case 3:
+        bpp = 32;
+        break;
+    default:
+        /* This is only a fallback path */
+        bpp = depth * 8;
+        fprintf(stderr, "Unknown VGA depth: %d\n", depth);
+        assert(false);
+        break;
     }
-    return (s->cr[0x28] & 3) * 8;
+
+    return bpp;
 }
 
 static void nv2a_get_offsets(VGACommonState *s,

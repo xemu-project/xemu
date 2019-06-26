@@ -41,6 +41,9 @@ uint64_t pramdac_read(void *opaque, hwaddr addr, unsigned int size)
              | NV_PRAMDAC_PLL_TEST_COUNTER_MPLL_LOCK
              | NV_PRAMDAC_PLL_TEST_COUNTER_VPLL_LOCK;
         break;
+    case NV_PRAMDAC_GENERAL_CONTROL:
+        r = d->pramdac.general_control;
+        break;
     default:
         break;
     }
@@ -80,6 +83,9 @@ void pramdac_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         break;
     case NV_PRAMDAC_VPLL_COEFF:
         d->pramdac.video_clock_coeff = val;
+        break;
+    case NV_PRAMDAC_GENERAL_CONTROL:
+        d->pramdac.general_control = val;
         break;
     default:
         break;
