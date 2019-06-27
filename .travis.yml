@@ -43,6 +43,7 @@ addons:
       - libsdl2-dev
       - libepoxy-dev
   homebrew:
+    update: true
     packages:
       - glib
       - pixman
