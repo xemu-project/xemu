@@ -48,6 +48,8 @@ case "$(uname -s)" in # adjust compilation option based on platform
         echo 'Compiling for MacOS…'
         sys_cflags='-march=native'
         sys_opts='--disable-cocoa'
+        # necessary to find libffi, which is required by gobject
+        export PKG_CONFIG_PATH="${PKG_CONFIG_PATH}/usr/local/opt/libffi/lib/pkgconfig"
         ;;
     CYGWIN*|MINGW*|MSYS*)
         echo 'Compiling for Windows…'
