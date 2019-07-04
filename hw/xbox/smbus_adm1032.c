@@ -25,17 +25,52 @@
 #include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/i2c/i2c.h"
-#include "hw/i2c/smbus.h"
+#include "hw/i2c/smbus_slave.h"
 #include "smbus.h"
 
-#define DEBUG
+#define TYPE_SMBUS_ADM1032 "smbus-adm1032"
+#define SMBUS_ADM1032(obj) OBJECT_CHECK(SMBusADM1032Device, (obj), TYPE_SMBUS_ADM1032)
 
-static uint8_t tm_read_data(SMBusDevice *dev, uint8_t cmd, int n)
+// #define DEBUG
+#ifdef DEBUG
+# define DPRINTF(format, ...) printf(format, ## __VA_ARGS__)
+#else
+# define DPRINTF(format, ...) do { } while (0)
+#endif
+
+typedef struct SMBusADM1032Device {
+    SMBusDevice smbusdev;
+    uint8_t cmd;
+} SMBusADM1032Device;
+
+static void smbus_adm1032_quick_cmd(SMBusDevice *dev, uint8_t read)
 {
-    #ifdef DEBUG
-        printf("tm_read_data: addr=0x%02x cmd=0x%02x n=%d\n",
-               dev->i2c.address, cmd, n);
-    #endif
+    DPRINTF("smbus_adm1032_quick_cmd: addr=0x%02x read=%d\n", dev->i2c.address, read);
+}
+
+static int smbus_adm1032_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
+{
+    SMBusADM1032Device *cx = SMBUS_ADM1032(dev);
+    DPRINTF("smbus_adm1032_write_data: addr=0x%02x val=0x%02x\n",
+            dev->i2c.address, buf[0]);
+
+    cx->cmd = buf[0];
+    buf++;
+    len--;
+
+    DPRINTF("smbus_adm1032_write_data: addr=0x%02x cmd=0x%02x val=0x%02x\n",
+            dev->i2c.address, cx->cmd, buf[0]);
+
+    return 0;
+}
+
+static uint8_t smbus_adm1032_receive_byte(SMBusDevice *dev)
+{
+    SMBusADM1032Device *cx = SMBUS_ADM1032(dev);
+    DPRINTF("smbus_adm1032_receive_byte: addr=0x%02x cmd=0x%02x\n",
+            dev->i2c.address, cx->cmd);
+
+    uint8_t cmd = cx->cmd++;
 
     switch (cmd) {
     case 0x0:
@@ -48,17 +83,27 @@ static uint8_t tm_read_data(SMBusDevice *dev, uint8_t cmd, int n)
     return 0;
 }
 
+static void smbus_adm1032_realize(DeviceState *dev, Error **errp)
+{
+    SMBusADM1032Device *cx = SMBUS_ADM1032(dev);
+    cx->cmd = 0;
+}
+
 static void smbus_adm1032_class_initfn(ObjectClass *klass, void *data)
 {
+    DeviceClass *dc = DEVICE_CLASS(klass);
     SMBusDeviceClass *sc = SMBUS_DEVICE_CLASS(klass);
 
-    sc->read_data = tm_read_data;
+    dc->realize = smbus_adm1032_realize;
+    sc->quick_cmd = smbus_adm1032_quick_cmd;
+    sc->receive_byte = smbus_adm1032_receive_byte;
+    sc->write_data = smbus_adm1032_write_data;
 }
 
 static TypeInfo smbus_adm1032_info = {
-    .name = "smbus-adm1032",
+    .name = TYPE_SMBUS_ADM1032,
     .parent = TYPE_SMBUS_DEVICE,
-    .instance_size = sizeof(SMBusDevice),
+    .instance_size = sizeof(SMBusADM1032Device),
     .class_init = smbus_adm1032_class_initfn,
 };
 
@@ -72,7 +117,7 @@ type_init(smbus_adm1032_register_devices)
 void smbus_adm1032_init(I2CBus *smbus, int address)
 {
     DeviceState *tm;
-    tm = qdev_create((BusState *)smbus, "smbus-adm1032");
+    tm = qdev_create((BusState *)smbus, TYPE_SMBUS_ADM1032);
     qdev_prop_set_uint8(tm, "address", address);
     qdev_init_nofail(tm);
 }
