@@ -25,8 +25,11 @@
 #include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/i2c/i2c.h"
-#include "hw/i2c/smbus.h"
+#include "hw/i2c/smbus_slave.h"
 #include "smbus.h"
+
+#define TYPE_SMBUS_CX25871 "smbus-cx25871"
+#define SMBUS_CX25871(obj) OBJECT_CHECK(SMBusCX25871Device, (obj), TYPE_SMBUS_CX25871)
 
 // #define DEBUG
 #ifdef DEBUG
@@ -38,55 +41,61 @@
 typedef struct SMBusCX25871Device {
     SMBusDevice smbusdev;
     uint8_t registers[256];
+    uint8_t cmd;
 } SMBusCX25871Device;
 
-static void cx_quick_cmd(SMBusDevice *dev, uint8_t read)
+static void smbus_cx25871_quick_cmd(SMBusDevice *dev, uint8_t read)
 {
-    DPRINTF("cx_quick_cmd: addr=0x%02x read=%d\n", dev->i2c.address, read);
+    DPRINTF("smbus_cx25871_quick_cmd: addr=0x%02x read=%d\n", dev->i2c.address, read);
 }
 
-static void cx_send_byte(SMBusDevice *dev, uint8_t val)
+static int smbus_cx25871_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
 {
-    DPRINTF("cx_send_byte: addr=0x%02x val=0x%02x\n", dev->i2c.address, val);
-}
+    SMBusCX25871Device *cx = SMBUS_CX25871(dev);
 
-static uint8_t cx_receive_byte(SMBusDevice *dev)
-{
-    DPRINTF("cx_receive_byte: addr=0x%02x\n", dev->i2c.address);
-    return 0;
-}
+    cx->cmd = buf[0];
+    uint8_t cmd = cx->cmd;
+    buf++;
+    len--;
 
-static void cx_write_data(SMBusDevice *dev, uint8_t cmd, uint8_t *buf, int len)
-{
-    SMBusCX25871Device *cx = (SMBusCX25871Device *)dev;
-    DPRINTF("cx_write_byte: addr=0x%02x cmd=0x%02x val=0x%02x\n",
+    if (len < 1) return 0;
+
+    DPRINTF("smbus_cx25871_write_data: addr=0x%02x cmd=0x%02x val=0x%02x\n",
             dev->i2c.address, cmd, buf[0]);
 
     memcpy(cx->registers + cmd, buf, MIN(len, 256 - cmd));
+
+    return 0;
 }
 
-static uint8_t cx_read_data(SMBusDevice *dev, uint8_t cmd, int n)
+static uint8_t smbus_cx25871_receive_byte(SMBusDevice *dev)
 {
-    SMBusCX25871Device *cx = (SMBusCX25871Device *)dev;
-    DPRINTF("cx_read_data: addr=0x%02x cmd=0x%02x n=%d\n",
-            dev->i2c.address, cmd, n);
+    SMBusCX25871Device *cx = SMBUS_CX25871(dev);
+    DPRINTF("smbus_cx25871_receive_byte: addr=0x%02x cmd=0x%02x\n",
+            dev->i2c.address, cx->cmd);
+    return cx->registers[cx->cmd++];
+}
 
-    return cx->registers[cmd];
+static void smbus_cx25871_realize(DeviceState *dev, Error **errp)
+{
+    SMBusCX25871Device *cx = SMBUS_CX25871(dev);
+    memset(cx->registers, 0, 256);
+    cx->cmd = 0;
 }
 
 static void smbus_cx25871_class_initfn(ObjectClass *klass, void *data)
 {
+    DeviceClass *dc = DEVICE_CLASS(klass);
     SMBusDeviceClass *sc = SMBUS_DEVICE_CLASS(klass);
 
-    sc->quick_cmd = cx_quick_cmd;
-    sc->send_byte = cx_send_byte;
-    sc->receive_byte = cx_receive_byte;
-    sc->write_data = cx_write_data;
-    sc->read_data = cx_read_data;
+    dc->realize = smbus_cx25871_realize;
+    sc->quick_cmd = smbus_cx25871_quick_cmd;
+    sc->receive_byte = smbus_cx25871_receive_byte;
+    sc->write_data = smbus_cx25871_write_data;
 }
 
 static TypeInfo smbus_cx25871_info = {
-    .name = "smbus-cx25871",
+    .name = TYPE_SMBUS_CX25871,
     .parent = TYPE_SMBUS_DEVICE,
     .instance_size = sizeof(SMBusCX25871Device),
     .class_init = smbus_cx25871_class_initfn,
@@ -102,7 +111,7 @@ type_init(smbus_cx25871_register_devices)
 void smbus_cx25871_init(I2CBus *smbus, int address)
 {
     DeviceState *cx;
-    cx = qdev_create((BusState *)smbus, "smbus-cx25871");
+    cx = qdev_create((BusState *)smbus, TYPE_SMBUS_CX25871);
     qdev_prop_set_uint8(cx, "address", address);
     qdev_init_nofail(cx);
 }
