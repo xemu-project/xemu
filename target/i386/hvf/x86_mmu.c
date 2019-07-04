@@ -236,7 +236,7 @@ void vmx_write_mem(struct CPUState *cpu, target_ulong gva, void *data, int bytes
         int copy = MIN(bytes, 0x1000 - (gva & 0xfff));
 
         if (!mmu_gva_to_gpa(cpu, gva, &gpa)) {
-            VM_PANIC_EX("%s: mmu_gva_to_gpa %llx failed\n", __func__, gva);
+            VM_PANIC_EX("%s: mmu_gva_to_gpa 0x" TARGET_FMT_lx " failed\n", __func__, gva);
         } else {
             address_space_rw(&address_space_memory, gpa, MEMTXATTRS_UNSPECIFIED,
                              data, copy, 1);
@@ -257,7 +257,7 @@ void vmx_read_mem(struct CPUState *cpu, void *data, target_ulong gva, int bytes)
         int copy = MIN(bytes, 0x1000 - (gva & 0xfff));
 
         if (!mmu_gva_to_gpa(cpu, gva, &gpa)) {
-            VM_PANIC_EX("%s: mmu_gva_to_gpa %llx failed\n", __func__, gva);
+            VM_PANIC_EX("%s: mmu_gva_to_gpa 0x" TARGET_FMT_lx " failed\n", __func__, gva);
         }
         address_space_rw(&address_space_memory, gpa, MEMTXATTRS_UNSPECIFIED,
                          data, copy, 0);
