@@ -196,7 +196,7 @@ static void lpc47m157_realize(DeviceState *dev, Error **errp)
         if (chr == NULL) {
             char name[5];
             snprintf(name, sizeof(name), "ser%d", i);
-            chr = qemu_chr_new(name, "null");
+            chr = qemu_chr_new(name, "null", NULL);
         }
 
         SerialState *ss = &s->serial[i].state;
