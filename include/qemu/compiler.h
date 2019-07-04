@@ -28,12 +28,6 @@
 
 #define QEMU_SENTINEL __attribute__((sentinel))
 
-#if QEMU_GNUC_PREREQ(4, 3)
-#define QEMU_ARTIFICIAL __attribute__((always_inline, artificial))
-#else
-#define QEMU_ARTIFICIAL
-#endif
-
 #if defined(_WIN32)
 # define QEMU_PACKED __attribute__((gcc_struct, packed))
 #else
@@ -119,9 +113,63 @@
 #define GCC_FMT_ATTR(n, m)
 #endif
 
+#ifndef __has_warning
+#define __has_warning(x) 0 /* compatibility with non-clang compilers */
+#endif
+
 #ifndef __has_feature
 #define __has_feature(x) 0 /* compatibility with non-clang compilers */
 #endif
+
+#ifndef __has_builtin
+#define __has_builtin(x) 0 /* compatibility with non-clang compilers */
+#endif
+
+#if __has_builtin(__builtin_assume_aligned) || !defined(__clang__)
+#define HAS_ASSUME_ALIGNED
+#endif
+
+#ifndef __has_attribute
+#define __has_attribute(x) 0 /* compatibility with older GCC */
+#endif
+
+/*
+ * GCC doesn't provide __has_attribute() until GCC 5, but we know all the GCC
+ * versions we support have the "flatten" attribute. Clang may not have the
+ * "flatten" attribute but always has __has_attribute() to check for it.
+ */
+#if __has_attribute(flatten) || !defined(__clang__)
+# define QEMU_FLATTEN __attribute__((flatten))
+#else
+# define QEMU_FLATTEN
+#endif
+
+/*
+ * If __attribute__((error)) is present, use it to produce an error at
+ * compile time.  Otherwise, one must wait for the linker to diagnose
+ * the missing symbol.
+ */
+#if __has_attribute(error)
+# define QEMU_ERROR(X) __attribute__((error(X)))
+#else
+# define QEMU_ERROR(X)
+#endif
+
+/*
+ * The nonstring variable attribute specifies that an object or member
+ * declaration with type array of char or pointer to char is intended
+ * to store character arrays that do not necessarily contain a terminating
+ * NUL character. This is useful in detecting uses of such arrays or pointers
+ * with functions that expect NUL-terminated strings, and to avoid warnings
+ * when such an array or pointer is used as an argument to a bounded string
+ * manipulation function such as strncpy.
+ */
+#if __has_attribute(nonstring)
+# define QEMU_NONSTRING __attribute__((nonstring))
+#else
+# define QEMU_NONSTRING
+#endif
+
 /* Implement C11 _Generic via GCC builtins.  Example:
  *
  *    QEMU_GENERIC(x, (float, sinf), (long double, sinl), sin) (x)

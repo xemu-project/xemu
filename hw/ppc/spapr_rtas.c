@@ -33,6 +33,7 @@
 #include "sysemu/device_tree.h"
 #include "sysemu/cpus.h"
 #include "sysemu/hw_accel.h"
+#include "kvm_ppc.h"
 
 #include "hw/ppc/spapr.h"
 #include "hw/ppc/spapr_vio.h"
@@ -49,13 +50,13 @@
 #include "target/ppc/mmu-hash64.h"
 #include "target/ppc/mmu-book3s-v3.h"
 
-static void rtas_display_character(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+static void rtas_display_character(PowerPCCPU *cpu, SpaprMachineState *spapr,
                                    uint32_t token, uint32_t nargs,
                                    target_ulong args,
                                    uint32_t nret, target_ulong rets)
 {
     uint8_t c = rtas_ld(args, 0);
-    VIOsPAPRDevice *sdev = vty_lookup(spapr, 0);
+    SpaprVioDevice *sdev = vty_lookup(spapr, 0);
 
     if (!sdev) {
         rtas_st(rets, 0, RTAS_OUT_HW_ERROR);
@@ -65,7 +66,7 @@ static void rtas_display_character(PowerPCCPU *cpu, sPAPRMachineState *spapr,
     }
 }
 
-static void rtas_power_off(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+static void rtas_power_off(PowerPCCPU *cpu, SpaprMachineState *spapr,
                            uint32_t token, uint32_t nargs, target_ulong args,
                            uint32_t nret, target_ulong rets)
 {
@@ -78,7 +79,7 @@ static void rtas_power_off(PowerPCCPU *cpu, sPAPRMachineState *spapr,
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
 }
 
-static void rtas_system_reboot(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+static void rtas_system_reboot(PowerPCCPU *cpu, SpaprMachineState *spapr,
                                uint32_t token, uint32_t nargs,
                                target_ulong args,
                                uint32_t nret, target_ulong rets)
@@ -92,7 +93,7 @@ static void rtas_system_reboot(PowerPCCPU *cpu, sPAPRMachineState *spapr,
 }
 
 static void rtas_query_cpu_stopped_state(PowerPCCPU *cpu_,
-                                         sPAPRMachineState *spapr,
+                                         SpaprMachineState *spapr,
                                          uint32_t token, uint32_t nargs,
                                          target_ulong args,
                                          uint32_t nret, target_ulong rets)
@@ -122,7 +123,7 @@ static void rtas_query_cpu_stopped_state(PowerPCCPU *cpu_,
     rtas_st(rets, 0, RTAS_OUT_PARAM_ERROR);
 }
 
-static void rtas_start_cpu(PowerPCCPU *callcpu, sPAPRMachineState *spapr,
+static void rtas_start_cpu(PowerPCCPU *callcpu, SpaprMachineState *spapr,
                            uint32_t token, uint32_t nargs,
                            target_ulong args,
                            uint32_t nret, target_ulong rets)
@@ -171,10 +172,10 @@ static void rtas_start_cpu(PowerPCCPU *callcpu, sPAPRMachineState *spapr,
          * New cpus are expected to start in the same radix/hash mode
          * as the existing CPUs
          */
-        if (ppc64_radix_guest(callcpu)) {
-            lpcr |= LPCR_UPRT | LPCR_GTSE;
+        if (ppc64_v3_radix(callcpu)) {
+            lpcr |= LPCR_UPRT | LPCR_GTSE | LPCR_HR;
         } else {
-            lpcr &= ~(LPCR_UPRT | LPCR_GTSE);
+            lpcr &= ~(LPCR_UPRT | LPCR_GTSE | LPCR_HR);
         }
     }
     ppc_store_lpcr(newcpu, lpcr);
@@ -193,7 +194,7 @@ static void rtas_start_cpu(PowerPCCPU *callcpu, sPAPRMachineState *spapr,
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
 }
 
-static void rtas_stop_self(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+static void rtas_stop_self(PowerPCCPU *cpu, SpaprMachineState *spapr,
                            uint32_t token, uint32_t nargs,
                            target_ulong args,
                            uint32_t nret, target_ulong rets)
@@ -207,6 +208,7 @@ static void rtas_stop_self(PowerPCCPU *cpu, sPAPRMachineState *spapr,
      * guest */
     ppc_store_lpcr(cpu, env->spr[SPR_LPCR] & ~pcc->lpcr_pm);
     cs->halted = 1;
+    kvmppc_set_reg_ppc_online(cpu, 0);
     qemu_cpu_kick(cs);
 }
 
@@ -224,7 +226,7 @@ static inline int sysparm_st(target_ulong addr, target_ulong len,
 }
 
 static void rtas_ibm_get_system_parameter(PowerPCCPU *cpu,
-                                          sPAPRMachineState *spapr,
+                                          SpaprMachineState *spapr,
                                           uint32_t token, uint32_t nargs,
                                           target_ulong args,
                                           uint32_t nret, target_ulong rets)
@@ -266,7 +268,7 @@ static void rtas_ibm_get_system_parameter(PowerPCCPU *cpu,
 }
 
 static void rtas_ibm_set_system_parameter(PowerPCCPU *cpu,
-                                          sPAPRMachineState *spapr,
+                                          SpaprMachineState *spapr,
                                           uint32_t token, uint32_t nargs,
                                           target_ulong args,
                                           uint32_t nret, target_ulong rets)
@@ -286,7 +288,7 @@ static void rtas_ibm_set_system_parameter(PowerPCCPU *cpu,
 }
 
 static void rtas_ibm_os_term(PowerPCCPU *cpu,
-                            sPAPRMachineState *spapr,
+                            SpaprMachineState *spapr,
                             uint32_t token, uint32_t nargs,
                             target_ulong args,
                             uint32_t nret, target_ulong rets)
@@ -296,7 +298,7 @@ static void rtas_ibm_os_term(PowerPCCPU *cpu,
     rtas_st(rets, 0, RTAS_OUT_SUCCESS);
 }
 
-static void rtas_set_power_level(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+static void rtas_set_power_level(PowerPCCPU *cpu, SpaprMachineState *spapr,
                                  uint32_t token, uint32_t nargs,
                                  target_ulong args, uint32_t nret,
                                  target_ulong rets)
@@ -321,7 +323,7 @@ static void rtas_set_power_level(PowerPCCPU *cpu, sPAPRMachineState *spapr,
     rtas_st(rets, 1, 100);
 }
 
-static void rtas_get_power_level(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+static void rtas_get_power_level(PowerPCCPU *cpu, SpaprMachineState *spapr,
                                   uint32_t token, uint32_t nargs,
                                   target_ulong args, uint32_t nret,
                                   target_ulong rets)
@@ -351,7 +353,7 @@ static struct rtas_call {
     spapr_rtas_fn fn;
 } rtas_table[RTAS_TOKEN_MAX - RTAS_TOKEN_BASE];
 
-target_ulong spapr_rtas_call(PowerPCCPU *cpu, sPAPRMachineState *spapr,
+target_ulong spapr_rtas_call(PowerPCCPU *cpu, SpaprMachineState *spapr,
                              uint32_t token, uint32_t nargs, target_ulong args,
                              uint32_t nret, target_ulong rets)
 {
@@ -385,7 +387,7 @@ uint64_t qtest_rtas_call(char *cmd, uint32_t nargs, uint64_t args,
 
     for (token = 0; token < RTAS_TOKEN_MAX - RTAS_TOKEN_BASE; token++) {
         if (strcmp(cmd, rtas_table[token].name) == 0) {
-            sPAPRMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+            SpaprMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
             PowerPCCPU *cpu = POWERPC_CPU(first_cpu);
 
             rtas_table[token].fn(cpu, spapr, token + RTAS_TOKEN_BASE,
@@ -423,7 +425,7 @@ void spapr_dt_rtas_tokens(void *fdt, int rtas)
     }
 }
 
-void spapr_load_rtas(sPAPRMachineState *spapr, void *fdt, hwaddr addr)
+void spapr_load_rtas(SpaprMachineState *spapr, void *fdt, hwaddr addr)
 {
     int rtas_node;
     int ret;

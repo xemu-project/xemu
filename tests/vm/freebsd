@@ -18,13 +18,14 @@ import basevm
 
 class FreeBSDVM(basevm.BaseVM):
     name = "freebsd"
+    arch = "x86_64"
     BUILD_SCRIPT = """
         set -e;
+        rm -rf /var/tmp/qemu-test.*
         cd $(mktemp -d /var/tmp/qemu-test.XXXXXX);
         tar -xf /dev/vtbd1;
         ./configure {configure_opts};
-        gmake -j{jobs};
-        gmake check;
+        gmake --output-sync -j{jobs} {target} {verbose};
     """
 
     def build_image(self, img):
@@ -32,8 +33,9 @@ class FreeBSDVM(basevm.BaseVM):
                 sha256sum='adcb771549b37bc63826c501f05121a206ed3d9f55f49145908f7e1432d65891')
         img_tmp_xz = img + ".tmp.xz"
         img_tmp = img + ".tmp"
+        sys.stderr.write("Extracting the image...\n")
         subprocess.check_call(["cp", "-f", cimg, img_tmp_xz])
-        subprocess.check_call(["xz", "-df", img_tmp_xz])
+        subprocess.check_call(["xz", "-dvf", img_tmp_xz])
         if os.path.exists(img):
             os.remove(img)
         os.rename(img_tmp, img)

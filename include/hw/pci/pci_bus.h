@@ -1,6 +1,8 @@
 #ifndef QEMU_PCI_BUS_H
 #define QEMU_PCI_BUS_H
 
+#include "hw/pci/pci.h"
+
 /*
  * PCI Bus datastructures.
  *
@@ -16,6 +18,7 @@ typedef struct PCIBusClass {
     bool (*is_root)(PCIBus *bus);
     int (*bus_num)(PCIBus *bus);
     uint16_t (*numa_node)(PCIBus *bus);
+    bool (*allows_extended_config_space)(PCIBus *bus);
 } PCIBusClass;
 
 struct PCIBus {

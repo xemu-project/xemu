@@ -39,7 +39,6 @@ static const PnvChip pnv_chips[] = {
         .cfam_id    = 0x120d304980000000ull,
         .first_core = 0x1,
     },
-#if 0 /* POWER9 support is not ready yet */
     {
         .chip_type  = PNV_CHIP_POWER9,
         .cpu_model  = "POWER9",
@@ -47,7 +46,6 @@ static const PnvChip pnv_chips[] = {
         .cfam_id    = 0x220d104900008000ull,
         .first_core = 0x0,
     },
-#endif
 };
 
 static uint64_t pnv_xscom_addr(const PnvChip *chip, uint32_t pcba)
@@ -63,14 +61,15 @@ static uint64_t pnv_xscom_addr(const PnvChip *chip, uint32_t pcba)
     return addr;
 }
 
-static uint64_t pnv_xscom_read(const PnvChip *chip, uint32_t pcba)
+static uint64_t pnv_xscom_read(QTestState *qts, const PnvChip *chip,
+                               uint32_t pcba)
 {
-    return readq(pnv_xscom_addr(chip, pcba));
+    return qtest_readq(qts, pnv_xscom_addr(chip, pcba));
 }
 
-static void test_xscom_cfam_id(const PnvChip *chip)
+static void test_xscom_cfam_id(QTestState *qts, const PnvChip *chip)
 {
-    uint64_t f000f = pnv_xscom_read(chip, 0xf000f);
+    uint64_t f000f = pnv_xscom_read(qts, chip, 0xf000f);
 
     g_assert_cmphex(f000f, ==, chip->cfam_id);
 }
@@ -78,11 +77,11 @@ static void test_xscom_cfam_id(const PnvChip *chip)
 static void test_cfam_id(const void *data)
 {
     const PnvChip *chip = data;
+    QTestState *qts;
 
-    global_qtest = qtest_startf("-M powernv,accel=tcg -cpu %s",
-                                chip->cpu_model);
-    test_xscom_cfam_id(chip);
-    qtest_quit(global_qtest);
+    qts = qtest_initf("-M powernv,accel=tcg -cpu %s", chip->cpu_model);
+    test_xscom_cfam_id(qts, chip);
+    qtest_quit(qts);
 }
 
 
@@ -94,7 +93,7 @@ static void test_cfam_id(const void *data)
 
 #define PNV_XSCOM_EX_DTS_RESULT0     0x50000
 
-static void test_xscom_core(const PnvChip *chip)
+static void test_xscom_core(QTestState *qts, const PnvChip *chip)
 {
     uint32_t first_core_dts0 = PNV_XSCOM_EX_DTS_RESULT0;
     uint64_t dts0;
@@ -105,7 +104,7 @@ static void test_xscom_core(const PnvChip *chip)
         first_core_dts0 |= PNV_XSCOM_P9_EC_BASE(chip->first_core);
     }
 
-    dts0 = pnv_xscom_read(chip, first_core_dts0);
+    dts0 = pnv_xscom_read(qts, chip, first_core_dts0);
 
     g_assert_cmphex(dts0, ==, 0x26f024f023f0000ull);
 }
@@ -113,11 +112,11 @@ static void test_xscom_core(const PnvChip *chip)
 static void test_core(const void *data)
 {
     const PnvChip *chip = data;
+    QTestState *qts;
 
-    global_qtest = qtest_startf("-M powernv,accel=tcg -cpu %s",
-                                chip->cpu_model);
-    test_xscom_core(chip);
-    qtest_quit(global_qtest);
+    qts = qtest_initf("-M powernv,accel=tcg -cpu %s", chip->cpu_model);
+    test_xscom_core(qts, chip);
+    qtest_quit(qts);
 }
 
 static void add_test(const char *name, void (*test)(const void *data))

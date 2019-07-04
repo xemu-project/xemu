@@ -29,11 +29,14 @@
 #include "libqos/libqos.h"
 #include "libqos/pci-pc.h"
 #include "libqos/malloc-pc.h"
-
+#include "qapi/qmp/qdict.h"
 #include "qemu-common.h"
 #include "qemu/bswap.h"
 #include "hw/pci/pci_ids.h"
 #include "hw/pci/pci_regs.h"
+
+/* TODO actually test the results and get rid of this */
+#define qmp_discard_response(...) qobject_unref(qmp(__VA_ARGS__))
 
 #define TEST_IMAGE_SIZE 64 * 1024 * 1024
 
@@ -117,7 +120,7 @@ enum {
 #define assert_bit_clear(data, mask) g_assert_cmphex((data) & (mask), ==, 0)
 
 static QPCIBus *pcibus = NULL;
-static QGuestAllocator *guest_malloc;
+static QGuestAllocator guest_malloc;
 
 static char tmp_path[] = "/tmp/qtest.XXXXXX";
 static char debug_path[] = "/tmp/qtest-blkdebug.XXXXXX";
@@ -132,15 +135,18 @@ static void ide_test_start(const char *cmdline_fmt, ...)
     va_end(ap);
 
     qtest_start(cmdline);
-    guest_malloc = pc_alloc_init(global_qtest);
+    pc_alloc_init(&guest_malloc, global_qtest, 0);
 
     g_free(cmdline);
 }
 
 static void ide_test_quit(void)
 {
-    pc_alloc_uninit(guest_malloc);
-    guest_malloc = NULL;
+    if (pcibus) {
+        qpci_free_pc(pcibus);
+        pcibus = NULL;
+    }
+    alloc_destroy(&guest_malloc);
     qtest_end();
 }
 
@@ -150,7 +156,7 @@ static QPCIDevice *get_pci_device(QPCIBar *bmdma_bar, QPCIBar *ide_bar)
     uint16_t vendor_id, device_id;
 
     if (!pcibus) {
-        pcibus = qpci_init_pc(global_qtest, NULL);
+        pcibus = qpci_new_pc(global_qtest, NULL);
     }
 
     /* Find PCI device and verify it's the right one */
@@ -239,7 +245,7 @@ static int send_dma_request(int cmd, uint64_t sector, int nb_sectors,
 
     /* Setup PRDT */
     len = sizeof(*prdt) * prdt_entries;
-    guest_prdt = guest_alloc(guest_malloc, len);
+    guest_prdt = guest_alloc(&guest_malloc, len);
     memwrite(guest_prdt, prdt, len);
     qpci_io_writel(dev, bmdma_bar, bmreg_prdt, guest_prdt);
 
@@ -304,7 +310,7 @@ static void test_bmdma_simple_rw(void)
     uint8_t *buf;
     uint8_t *cmpbuf;
     size_t len = 512;
-    uintptr_t guest_buf = guest_alloc(guest_malloc, len);
+    uintptr_t guest_buf = guest_alloc(&guest_malloc, len);
 
     PrdtEntry prdt[] = {
         {
@@ -374,7 +380,7 @@ static void test_bmdma_trim(void)
     const uint64_t bad_range = trim_range_le(TEST_IMAGE_SIZE / 512 - 1, 2);
     size_t len = 512;
     uint8_t *buf;
-    uintptr_t guest_buf = guest_alloc(guest_malloc, len);
+    uintptr_t guest_buf = guest_alloc(&guest_malloc, len);
 
     PrdtEntry prdt[] = {
         {
@@ -529,8 +535,8 @@ static void test_bmdma_no_busmaster(void)
 static void test_bmdma_setup(void)
 {
     ide_test_start(
-        "-drive file=%s,if=ide,serial=%s,cache=writeback,format=raw "
-        "-global ide-hd.ver=%s",
+        "-drive file=%s,if=ide,cache=writeback,format=raw "
+        "-global ide-hd.serial=%s -global ide-hd.ver=%s",
         tmp_path, "testdisk", "version");
     qtest_irq_intercept_in(global_qtest, "ioapic");
 }
@@ -561,8 +567,8 @@ static void test_identify(void)
     int ret;
 
     ide_test_start(
-        "-drive file=%s,if=ide,serial=%s,cache=writeback,format=raw "
-        "-global ide-hd.ver=%s",
+        "-drive file=%s,if=ide,cache=writeback,format=raw "
+        "-global ide-hd.serial=%s -global ide-hd.ver=%s",
         tmp_path, "testdisk", "version");
 
     dev = get_pci_device(&bmdma_bar, &ide_bar);
@@ -618,7 +624,7 @@ static void make_dirty(uint8_t device)
 
     dev = get_pci_device(&bmdma_bar, &ide_bar);
 
-    guest_buf = guest_alloc(guest_malloc, len);
+    guest_buf = guest_alloc(&guest_malloc, len);
     buf = g_malloc(len);
     memset(buf, rand() % 255 + 1, len);
     g_assert(guest_buf);
@@ -694,7 +700,6 @@ static void test_retry_flush(const char *machine)
     QPCIDevice *dev;
     QPCIBar bmdma_bar, ide_bar;
     uint8_t data;
-    const char *s;
 
     prepare_blkdebug_script(debug_path, "flush_to_disk");
 
@@ -722,8 +727,7 @@ static void test_retry_flush(const char *machine)
     qmp_eventwait("STOP");
 
     /* Complete the command */
-    s = "{'execute':'cont' }";
-    qmp_discard_response(s);
+    qmp_discard_response("{'execute':'cont' }");
 
     /* Check registers */
     data = qpci_io_readb(dev, ide_bar, reg_device);
@@ -981,7 +985,7 @@ static void test_cdrom_dma(void)
                    "-device ide-cd,drive=sr0,bus=ide.0", tmp_path);
     qtest_irq_intercept_in(global_qtest, "ioapic");
 
-    guest_buf = guest_alloc(guest_malloc, len);
+    guest_buf = guest_alloc(&guest_malloc, len);
     prdt[0].addr = cpu_to_le32(guest_buf);
     prdt[0].size = cpu_to_le32(len | PRDT_EOT);
 
@@ -1004,15 +1008,8 @@ static void test_cdrom_dma(void)
 
 int main(int argc, char **argv)
 {
-    const char *arch = qtest_get_arch();
     int fd;
     int ret;
-
-    /* Check architecture */
-    if (strcmp(arch, "i386") && strcmp(arch, "x86_64")) {
-        g_test_message("Skipping test for non-x86\n");
-        return 0;
-    }
 
     /* Create temporary blkdebug instructions */
     fd = mkstemp(debug_path);

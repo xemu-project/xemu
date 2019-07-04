@@ -26,6 +26,7 @@ static bool test_stop;
 static const char commands_string[] =
     " -n = number of threads\n"
     " -m = use mutexes instead of atomic increments\n"
+    " -p = enable sync profiler\n"
     " -d = duration in seconds\n"
     " -r = range (will be rounded up to pow2)";
 
@@ -75,16 +76,14 @@ static void *thread_func(void *arg)
 
 static void run_test(void)
 {
-    unsigned int remaining;
     unsigned int i;
 
     while (atomic_read(&n_ready_threads) != n_threads) {
         cpu_relax();
     }
+
     atomic_set(&test_start, true);
-    do {
-        remaining = sleep(duration);
-    } while (remaining);
+    g_usleep(duration * G_USEC_PER_SEC);
     atomic_set(&test_stop, true);
 
     for (i = 0; i < n_threads; i++) {
@@ -143,7 +142,7 @@ static void parse_args(int argc, char *argv[])
     int c;
 
     for (;;) {
-        c = getopt(argc, argv, "hd:n:mr:");
+        c = getopt(argc, argv, "hd:n:mpr:");
         if (c < 0) {
             break;
         }
@@ -159,6 +158,9 @@ static void parse_args(int argc, char *argv[])
             break;
         case 'm':
             use_mutex = true;
+            break;
+        case 'p':
+            qsp_enable();
             break;
         case 'r':
             range = pow2ceil(atoi(optarg));

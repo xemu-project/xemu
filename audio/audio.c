@@ -26,6 +26,9 @@
 #include "audio.h"
 #include "monitor/monitor.h"
 #include "qemu/timer.h"
+#include "qapi/error.h"
+#include "qapi/qobject-input-visitor.h"
+#include "qapi/qapi-visit-audio.h"
 #include "sysemu/sysemu.h"
 #include "qemu/cutils.h"
 #include "sysemu/replay.h"
@@ -46,14 +49,16 @@
    The 1st one is the one used by default, that is the reason
     that we generate the list.
 */
-static const char *audio_prio_list[] = {
+const char *audio_prio_list[] = {
     "spice",
     CONFIG_AUDIO_DRIVERS
     "none",
     "wav",
+    NULL
 };
 
 static QLIST_HEAD(, audio_driver) audio_drivers;
+static AudiodevListHead audiodevs = QSIMPLEQ_HEAD_INITIALIZER(audiodevs);
 
 void audio_driver_register(audio_driver *drv)
 {
@@ -80,61 +85,6 @@ audio_driver *audio_driver_lookup(const char *name)
     return NULL;
 }
 
-static void audio_module_load_all(void)
-{
-    int i;
-
-    for (i = 0; i < ARRAY_SIZE(audio_prio_list); i++) {
-        audio_driver_lookup(audio_prio_list[i]);
-    }
-}
-
-struct fixed_settings {
-    int enabled;
-    int nb_voices;
-    int greedy;
-    struct audsettings settings;
-};
-
-static struct {
-    struct fixed_settings fixed_out;
-    struct fixed_settings fixed_in;
-    union {
-        int hertz;
-        int64_t ticks;
-    } period;
-    int try_poll_in;
-    int try_poll_out;
-} conf = {
-    .fixed_out = { /* DAC fixed settings */
-        .enabled = 1,
-        .nb_voices = 1,
-        .greedy = 1,
-        .settings = {
-            .freq = 44100,
-            .nchannels = 2,
-            .fmt = AUD_FMT_S16,
-            .endianness =  AUDIO_HOST_ENDIANNESS,
-        }
-    },
-
-    .fixed_in = { /* ADC fixed settings */
-        .enabled = 1,
-        .nb_voices = 1,
-        .greedy = 1,
-        .settings = {
-            .freq = 44100,
-            .nchannels = 2,
-            .fmt = AUD_FMT_S16,
-            .endianness = AUDIO_HOST_ENDIANNESS,
-        }
-    },
-
-    .period = { .hertz = 100 },
-    .try_poll_in = 1,
-    .try_poll_out = 1,
-};
-
 static AudioState glob_audio_state;
 
 const struct mixeng_volume nominal_volume = {
@@ -151,9 +101,6 @@ const struct mixeng_volume nominal_volume = {
 #ifdef AUDIO_IS_FLAWLESS_AND_NO_CHECKS_ARE_REQURIED
 #error No its not
 #else
-static void audio_print_options (const char *prefix,
-                                 struct audio_option *opt);
-
 int audio_bug (const char *funcname, int cond)
 {
     if (cond) {
@@ -161,16 +108,9 @@ int audio_bug (const char *funcname, int cond)
 
         AUD_log (NULL, "A bug was just triggered in %s\n", funcname);
         if (!shown) {
-            struct audio_driver *d;
-
             shown = 1;
             AUD_log (NULL, "Save all your work and restart without audio\n");
-            AUD_log (NULL, "Please send bug report to av1474@comtv.ru\n");
             AUD_log (NULL, "I am sorry\n");
-            d = glob_audio_state.drv;
-            if (d) {
-                audio_print_options (d->name, d->options);
-            }
         }
         AUD_log (NULL, "Context:\n");
 
@@ -232,135 +172,6 @@ void *audio_calloc (const char *funcname, int nmemb, size_t size)
     return g_malloc0 (len);
 }
 
-static char *audio_alloc_prefix (const char *s)
-{
-    const char qemu_prefix[] = "QEMU_";
-    size_t len, i;
-    char *r, *u;
-
-    if (!s) {
-        return NULL;
-    }
-
-    len = strlen (s);
-    r = g_malloc (len + sizeof (qemu_prefix));
-
-    u = r + sizeof (qemu_prefix) - 1;
-
-    pstrcpy (r, len + sizeof (qemu_prefix), qemu_prefix);
-    pstrcat (r, len + sizeof (qemu_prefix), s);
-
-    for (i = 0; i < len; ++i) {
-        u[i] = qemu_toupper(u[i]);
-    }
-
-    return r;
-}
-
-static const char *audio_audfmt_to_string (audfmt_e fmt)
-{
-    switch (fmt) {
-    case AUD_FMT_U8:
-        return "U8";
-
-    case AUD_FMT_U16:
-        return "U16";
-
-    case AUD_FMT_S8:
-        return "S8";
-
-    case AUD_FMT_S16:
-        return "S16";
-
-    case AUD_FMT_U32:
-        return "U32";
-
-    case AUD_FMT_S32:
-        return "S32";
-    }
-
-    dolog ("Bogus audfmt %d returning S16\n", fmt);
-    return "S16";
-}
-
-static audfmt_e audio_string_to_audfmt (const char *s, audfmt_e defval,
-                                        int *defaultp)
-{
-    if (!strcasecmp (s, "u8")) {
-        *defaultp = 0;
-        return AUD_FMT_U8;
-    }
-    else if (!strcasecmp (s, "u16")) {
-        *defaultp = 0;
-        return AUD_FMT_U16;
-    }
-    else if (!strcasecmp (s, "u32")) {
-        *defaultp = 0;
-        return AUD_FMT_U32;
-    }
-    else if (!strcasecmp (s, "s8")) {
-        *defaultp = 0;
-        return AUD_FMT_S8;
-    }
-    else if (!strcasecmp (s, "s16")) {
-        *defaultp = 0;
-        return AUD_FMT_S16;
-    }
-    else if (!strcasecmp (s, "s32")) {
-        *defaultp = 0;
-        return AUD_FMT_S32;
-    }
-    else {
-        dolog ("Bogus audio format `%s' using %s\n",
-               s, audio_audfmt_to_string (defval));
-        *defaultp = 1;
-        return defval;
-    }
-}
-
-static audfmt_e audio_get_conf_fmt (const char *envname,
-                                    audfmt_e defval,
-                                    int *defaultp)
-{
-    const char *var = getenv (envname);
-    if (!var) {
-        *defaultp = 1;
-        return defval;
-    }
-    return audio_string_to_audfmt (var, defval, defaultp);
-}
-
-static int audio_get_conf_int (const char *key, int defval, int *defaultp)
-{
-    int val;
-    char *strval;
-
-    strval = getenv (key);
-    if (strval && !qemu_strtoi(strval, NULL, 10, &val)) {
-        *defaultp = 0;
-        return val;
-    }
-    else {
-        *defaultp = 1;
-        return defval;
-    }
-}
-
-static const char *audio_get_conf_str (const char *key,
-                                       const char *defval,
-                                       int *defaultp)
-{
-    const char *val = getenv (key);
-    if (!val) {
-        *defaultp = 1;
-        return defval;
-    }
-    else {
-        *defaultp = 0;
-        return val;
-    }
-}
-
 void AUD_vlog (const char *cap, const char *fmt, va_list ap)
 {
     if (cap) {
@@ -379,182 +190,27 @@ void AUD_log (const char *cap, const char *fmt, ...)
     va_end (ap);
 }
 
-static void audio_print_options (const char *prefix,
-                                 struct audio_option *opt)
-{
-    char *uprefix;
-
-    if (!prefix) {
-        dolog ("No prefix specified\n");
-        return;
-    }
-
-    if (!opt) {
-        dolog ("No options\n");
-        return;
-    }
-
-    uprefix = audio_alloc_prefix (prefix);
-
-    for (; opt->name; opt++) {
-        const char *state = "default";
-        printf ("  %s_%s: ", uprefix, opt->name);
-
-        if (opt->overriddenp && *opt->overriddenp) {
-            state = "current";
-        }
-
-        switch (opt->tag) {
-        case AUD_OPT_BOOL:
-            {
-                int *intp = opt->valp;
-                printf ("boolean, %s = %d\n", state, *intp ? 1 : 0);
-            }
-            break;
-
-        case AUD_OPT_INT:
-            {
-                int *intp = opt->valp;
-                printf ("integer, %s = %d\n", state, *intp);
-            }
-            break;
-
-        case AUD_OPT_FMT:
-            {
-                audfmt_e *fmtp = opt->valp;
-                printf (
-                    "format, %s = %s, (one of: U8 S8 U16 S16 U32 S32)\n",
-                    state,
-                    audio_audfmt_to_string (*fmtp)
-                    );
-            }
-            break;
-
-        case AUD_OPT_STR:
-            {
-                const char **strp = opt->valp;
-                printf ("string, %s = %s\n",
-                        state,
-                        *strp ? *strp : "(not set)");
-            }
-            break;
-
-        default:
-            printf ("???\n");
-            dolog ("Bad value tag for option %s_%s %d\n",
-                   uprefix, opt->name, opt->tag);
-            break;
-        }
-        printf ("    %s\n", opt->descr);
-    }
-
-    g_free (uprefix);
-}
-
-static void audio_process_options (const char *prefix,
-                                   struct audio_option *opt)
-{
-    char *optname;
-    const char qemu_prefix[] = "QEMU_";
-    size_t preflen, optlen;
-
-    if (audio_bug(__func__, !prefix)) {
-        dolog ("prefix = NULL\n");
-        return;
-    }
-
-    if (audio_bug(__func__, !opt)) {
-        dolog ("opt = NULL\n");
-        return;
-    }
-
-    preflen = strlen (prefix);
-
-    for (; opt->name; opt++) {
-        size_t len, i;
-        int def;
-
-        if (!opt->valp) {
-            dolog ("Option value pointer for `%s' is not set\n",
-                   opt->name);
-            continue;
-        }
-
-        len = strlen (opt->name);
-        /* len of opt->name + len of prefix + size of qemu_prefix
-         * (includes trailing zero) + zero + underscore (on behalf of
-         * sizeof) */
-        optlen = len + preflen + sizeof (qemu_prefix) + 1;
-        optname = g_malloc (optlen);
-
-        pstrcpy (optname, optlen, qemu_prefix);
-
-        /* copy while upper-casing, including trailing zero */
-        for (i = 0; i <= preflen; ++i) {
-            optname[i + sizeof (qemu_prefix) - 1] = qemu_toupper(prefix[i]);
-        }
-        pstrcat (optname, optlen, "_");
-        pstrcat (optname, optlen, opt->name);
-
-        def = 1;
-        switch (opt->tag) {
-        case AUD_OPT_BOOL:
-        case AUD_OPT_INT:
-            {
-                int *intp = opt->valp;
-                *intp = audio_get_conf_int (optname, *intp, &def);
-            }
-            break;
-
-        case AUD_OPT_FMT:
-            {
-                audfmt_e *fmtp = opt->valp;
-                *fmtp = audio_get_conf_fmt (optname, *fmtp, &def);
-            }
-            break;
-
-        case AUD_OPT_STR:
-            {
-                const char **strp = opt->valp;
-                *strp = audio_get_conf_str (optname, *strp, &def);
-            }
-            break;
-
-        default:
-            dolog ("Bad value tag for option `%s' - %d\n",
-                   optname, opt->tag);
-            break;
-        }
-
-        if (!opt->overriddenp) {
-            opt->overriddenp = &opt->overridden;
-        }
-        *opt->overriddenp = !def;
-        g_free (optname);
-    }
-}
-
 static void audio_print_settings (struct audsettings *as)
 {
     dolog ("frequency=%d nchannels=%d fmt=", as->freq, as->nchannels);
 
     switch (as->fmt) {
-    case AUD_FMT_S8:
+    case AUDIO_FORMAT_S8:
         AUD_log (NULL, "S8");
         break;
-    case AUD_FMT_U8:
+    case AUDIO_FORMAT_U8:
         AUD_log (NULL, "U8");
         break;
-    case AUD_FMT_S16:
+    case AUDIO_FORMAT_S16:
         AUD_log (NULL, "S16");
         break;
-    case AUD_FMT_U16:
+    case AUDIO_FORMAT_U16:
         AUD_log (NULL, "U16");
         break;
-    case AUD_FMT_S32:
+    case AUDIO_FORMAT_S32:
         AUD_log (NULL, "S32");
         break;
-    case AUD_FMT_U32:
+    case AUDIO_FORMAT_U32:
         AUD_log (NULL, "U32");
         break;
     default:
@@ -585,12 +241,12 @@ static int audio_validate_settings (struct audsettings *as)
     invalid |= as->endianness != 0 && as->endianness != 1;
 
     switch (as->fmt) {
-    case AUD_FMT_S8:
-    case AUD_FMT_U8:
-    case AUD_FMT_S16:
-    case AUD_FMT_U16:
-    case AUD_FMT_S32:
-    case AUD_FMT_U32:
+    case AUDIO_FORMAT_S8:
+    case AUDIO_FORMAT_U8:
+    case AUDIO_FORMAT_S16:
+    case AUDIO_FORMAT_U16:
+    case AUDIO_FORMAT_S32:
+    case AUDIO_FORMAT_U32:
         break;
     default:
         invalid = 1;
@@ -606,25 +262,28 @@ static int audio_pcm_info_eq (struct audio_pcm_info *info, struct audsettings *a
     int bits = 8, sign = 0;
 
     switch (as->fmt) {
-    case AUD_FMT_S8:
+    case AUDIO_FORMAT_S8:
         sign = 1;
         /* fall through */
-    case AUD_FMT_U8:
+    case AUDIO_FORMAT_U8:
         break;
 
-    case AUD_FMT_S16:
+    case AUDIO_FORMAT_S16:
         sign = 1;
         /* fall through */
-    case AUD_FMT_U16:
+    case AUDIO_FORMAT_U16:
         bits = 16;
         break;
 
-    case AUD_FMT_S32:
+    case AUDIO_FORMAT_S32:
         sign = 1;
         /* fall through */
-    case AUD_FMT_U32:
+    case AUDIO_FORMAT_U32:
         bits = 32;
         break;
+
+    default:
+        abort();
     }
     return info->freq == as->freq
         && info->nchannels == as->nchannels
@@ -638,24 +297,27 @@ void audio_pcm_init_info (struct audio_pcm_info *info, struct audsettings *as)
     int bits = 8, sign = 0, shift = 0;
 
     switch (as->fmt) {
-    case AUD_FMT_S8:
+    case AUDIO_FORMAT_S8:
         sign = 1;
-    case AUD_FMT_U8:
+    case AUDIO_FORMAT_U8:
         break;
 
-    case AUD_FMT_S16:
+    case AUDIO_FORMAT_S16:
         sign = 1;
-    case AUD_FMT_U16:
+    case AUDIO_FORMAT_U16:
         bits = 16;
         shift = 1;
         break;
 
-    case AUD_FMT_S32:
+    case AUDIO_FORMAT_S32:
         sign = 1;
-    case AUD_FMT_U32:
+    case AUDIO_FORMAT_U32:
         bits = 32;
         shift = 2;
         break;
+
+    default:
+        abort();
     }
 
     info->freq = as->freq;
@@ -826,12 +488,7 @@ static int audio_attach_capture (HWVoiceOut *hw)
         SWVoiceOut *sw;
         HWVoiceOut *hw_cap = &cap->hw;
 
-        sc = audio_calloc(__func__, 1, sizeof(*sc));
-        if (!sc) {
-            dolog ("Could not allocate soft capture voice (%zu bytes)\n",
-                   sizeof (*sc));
-            return -1;
-        }
+        sc = g_malloc0(sizeof(*sc));
 
         sc->cap = cap;
         sw = &sc->sw;
@@ -1152,11 +809,11 @@ static void audio_reset_timer (AudioState *s)
 {
     if (audio_is_timer_needed ()) {
         timer_mod_anticipate_ns(s->ts,
-            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + conf.period.ticks);
+            qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + s->period_ticks);
         if (!audio_timer_running) {
             audio_timer_running = true;
             audio_timer_last = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-            trace_audio_timer_start(conf.period.ticks / SCALE_MS);
+            trace_audio_timer_start(s->period_ticks / SCALE_MS);
         }
     } else {
         timer_del(s->ts);
@@ -1170,16 +827,17 @@ static void audio_reset_timer (AudioState *s)
 static void audio_timer (void *opaque)
 {
     int64_t now, diff;
+    AudioState *s = opaque;
 
     now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     diff = now - audio_timer_last;
-    if (diff > conf.period.ticks * 3 / 2) {
+    if (diff > s->period_ticks * 3 / 2) {
         trace_audio_timer_delayed(diff / SCALE_MS);
     }
     audio_timer_last = now;
 
-    audio_run ("timer");
-    audio_reset_timer (opaque);
+    audio_run("timer");
+    audio_reset_timer(s);
 }
 
 /*
@@ -1239,7 +897,7 @@ void AUD_set_active_out (SWVoiceOut *sw, int on)
             if (!hw->enabled) {
                 hw->enabled = 1;
                 if (s->vm_running) {
-                    hw->pcm_ops->ctl_out (hw, VOICE_ENABLE, conf.try_poll_out);
+                    hw->pcm_ops->ctl_out(hw, VOICE_ENABLE);
                     audio_reset_timer (s);
                 }
             }
@@ -1284,7 +942,7 @@ void AUD_set_active_in (SWVoiceIn *sw, int on)
             if (!hw->enabled) {
                 hw->enabled = 1;
                 if (s->vm_running) {
-                    hw->pcm_ops->ctl_in (hw, VOICE_ENABLE, conf.try_poll_in);
+                    hw->pcm_ops->ctl_in(hw, VOICE_ENABLE);
                     audio_reset_timer (s);
                 }
             }
@@ -1605,169 +1263,10 @@ void audio_run (const char *msg)
 #endif
 }
 
-static struct audio_option audio_options[] = {
-    /* DAC */
-    {
-        .name  = "DAC_FIXED_SETTINGS",
-        .tag   = AUD_OPT_BOOL,
-        .valp  = &conf.fixed_out.enabled,
-        .descr = "Use fixed settings for host DAC"
-    },
-    {
-        .name  = "DAC_FIXED_FREQ",
-        .tag   = AUD_OPT_INT,
-        .valp  = &conf.fixed_out.settings.freq,
-        .descr = "Frequency for fixed host DAC"
-    },
-    {
-        .name  = "DAC_FIXED_FMT",
-        .tag   = AUD_OPT_FMT,
-        .valp  = &conf.fixed_out.settings.fmt,
-        .descr = "Format for fixed host DAC"
-    },
-    {
-        .name  = "DAC_FIXED_CHANNELS",
-        .tag   = AUD_OPT_INT,
-        .valp  = &conf.fixed_out.settings.nchannels,
-        .descr = "Number of channels for fixed DAC (1 - mono, 2 - stereo)"
-    },
-    {
-        .name  = "DAC_VOICES",
-        .tag   = AUD_OPT_INT,
-        .valp  = &conf.fixed_out.nb_voices,
-        .descr = "Number of voices for DAC"
-    },
-    {
-        .name  = "DAC_TRY_POLL",
-        .tag   = AUD_OPT_BOOL,
-        .valp  = &conf.try_poll_out,
-        .descr = "Attempt using poll mode for DAC"
-    },
-    /* ADC */
-    {
-        .name  = "ADC_FIXED_SETTINGS",
-        .tag   = AUD_OPT_BOOL,
-        .valp  = &conf.fixed_in.enabled,
-        .descr = "Use fixed settings for host ADC"
-    },
-    {
-        .name  = "ADC_FIXED_FREQ",
-        .tag   = AUD_OPT_INT,
-        .valp  = &conf.fixed_in.settings.freq,
-        .descr = "Frequency for fixed host ADC"
-    },
-    {
-        .name  = "ADC_FIXED_FMT",
-        .tag   = AUD_OPT_FMT,
-        .valp  = &conf.fixed_in.settings.fmt,
-        .descr = "Format for fixed host ADC"
-    },
-    {
-        .name  = "ADC_FIXED_CHANNELS",
-        .tag   = AUD_OPT_INT,
-        .valp  = &conf.fixed_in.settings.nchannels,
-        .descr = "Number of channels for fixed ADC (1 - mono, 2 - stereo)"
-    },
-    {
-        .name  = "ADC_VOICES",
-        .tag   = AUD_OPT_INT,
-        .valp  = &conf.fixed_in.nb_voices,
-        .descr = "Number of voices for ADC"
-    },
-    {
-        .name  = "ADC_TRY_POLL",
-        .tag   = AUD_OPT_BOOL,
-        .valp  = &conf.try_poll_in,
-        .descr = "Attempt using poll mode for ADC"
-    },
-    /* Misc */
-    {
-        .name  = "TIMER_PERIOD",
-        .tag   = AUD_OPT_INT,
-        .valp  = &conf.period.hertz,
-        .descr = "Timer period in HZ (0 - use lowest possible)"
-    },
-    { /* End of list */ }
-};
-
-static void audio_pp_nb_voices (const char *typ, int nb)
+static int audio_driver_init(AudioState *s, struct audio_driver *drv,
+                             bool msg, Audiodev *dev)
 {
-    switch (nb) {
-    case 0:
-        printf ("Does not support %s\n", typ);
-        break;
-    case 1:
-        printf ("One %s voice\n", typ);
-        break;
-    case INT_MAX:
-        printf ("Theoretically supports many %s voices\n", typ);
-        break;
-    default:
-        printf ("Theoretically supports up to %d %s voices\n", nb, typ);
-        break;
-    }
-
-}
-
-void AUD_help (void)
-{
-    struct audio_driver *d;
-
-    /* make sure we print the help text for modular drivers too */
-    audio_module_load_all();
-
-    audio_process_options ("AUDIO", audio_options);
-    QLIST_FOREACH(d, &audio_drivers, next) {
-        if (d->options) {
-            audio_process_options (d->name, d->options);
-        }
-    }
-
-    printf ("Audio options:\n");
-    audio_print_options ("AUDIO", audio_options);
-    printf ("\n");
-
-    printf ("Available drivers:\n");
-
-    QLIST_FOREACH(d, &audio_drivers, next) {
-
-        printf ("Name: %s\n", d->name);
-        printf ("Description: %s\n", d->descr);
-
-        audio_pp_nb_voices ("playback", d->max_voices_out);
-        audio_pp_nb_voices ("capture", d->max_voices_in);
-
-        if (d->options) {
-            printf ("Options:\n");
-            audio_print_options (d->name, d->options);
-        }
-        else {
-            printf ("No options\n");
-        }
-        printf ("\n");
-    }
-
-    printf (
-        "Options are settable through environment variables.\n"
-        "Example:\n"
-#ifdef _WIN32
-        "  set QEMU_AUDIO_DRV=wav\n"
-        "  set QEMU_WAV_PATH=c:\\tune.wav\n"
-#else
-        "  export QEMU_AUDIO_DRV=wav\n"
-        "  export QEMU_WAV_PATH=$HOME/tune.wav\n"
-        "(for csh replace export with setenv in the above)\n"
-#endif
-        "  qemu ...\n\n"
-        );
-}
-
-static int audio_driver_init (AudioState *s, struct audio_driver *drv)
-{
-    if (drv->options) {
-        audio_process_options (drv->name, drv->options);
-    }
-    s->drv_opaque = drv->init ();
+    s->drv_opaque = drv->init(dev);
 
     if (s->drv_opaque) {
         audio_init_nb_voices_out (drv);
@@ -1776,7 +1275,9 @@ static int audio_driver_init (AudioState *s, struct audio_driver *drv)
         return 0;
     }
     else {
-        dolog ("Could not init `%s' audio driver\n", drv->name);
+        if (msg) {
+            dolog("Could not init `%s' audio driver\n", drv->name);
+        }
         return -1;
     }
 }
@@ -1791,11 +1292,11 @@ static void audio_vm_change_state_handler (void *opaque, int running,
 
     s->vm_running = running;
     while ((hwo = audio_pcm_hw_find_any_enabled_out (hwo))) {
-        hwo->pcm_ops->ctl_out (hwo, op, conf.try_poll_out);
+        hwo->pcm_ops->ctl_out(hwo, op);
     }
 
     while ((hwi = audio_pcm_hw_find_any_enabled_in (hwi))) {
-        hwi->pcm_ops->ctl_in (hwi, op, conf.try_poll_in);
+        hwi->pcm_ops->ctl_in(hwi, op);
     }
     audio_reset_timer (s);
 }
@@ -1845,6 +1346,11 @@ void audio_cleanup(void)
         s->drv->fini (s->drv_opaque);
         s->drv = NULL;
     }
+
+    if (s->dev) {
+        qapi_free_Audiodev(s->dev);
+        s->dev = NULL;
+    }
 }
 
 static const VMStateDescription vmstate_audio = {
@@ -1856,18 +1362,57 @@ static const VMStateDescription vmstate_audio = {
     }
 };
 
-static void audio_init (void)
+static void audio_validate_opts(Audiodev *dev, Error **errp);
+
+static AudiodevListEntry *audiodev_find(
+    AudiodevListHead *head, const char *drvname)
+{
+    AudiodevListEntry *e;
+    QSIMPLEQ_FOREACH(e, head, next) {
+        if (strcmp(AudiodevDriver_str(e->dev->driver), drvname) == 0) {
+            return e;
+        }
+    }
+
+    return NULL;
+}
+
+static int audio_init(Audiodev *dev)
 {
     size_t i;
     int done = 0;
-    const char *drvname;
+    const char *drvname = NULL;
     VMChangeStateEntry *e;
     AudioState *s = &glob_audio_state;
     struct audio_driver *driver;
+    /* silence gcc warning about uninitialized variable */
+    AudiodevListHead head = QSIMPLEQ_HEAD_INITIALIZER(head);
 
     if (s->drv) {
-        return;
+        if (dev) {
+            dolog("Cannot create more than one audio backend, sorry\n");
+            qapi_free_Audiodev(dev);
+        }
+        return -1;
     }
+
+    if (dev) {
+        /* -audiodev option */
+        drvname = AudiodevDriver_str(dev->driver);
+    } else {
+        /* legacy implicit initialization */
+        head = audio_handle_legacy_opts();
+        /*
+         * In case of legacy initialization, all Audiodevs in the list will have
+         * the same configuration (except the driver), so it does't matter which
+         * one we chose.  We need an Audiodev to set up AudioState before we can
+         * init a driver.  Also note that dev at this point is still in the
+         * list.
+         */
+        dev = QSIMPLEQ_FIRST(&head)->dev;
+        audio_validate_opts(dev, &error_abort);
+    }
+    s->dev = dev;
 
     QLIST_INIT (&s->hw_head_out);
     QLIST_INIT (&s->hw_head_in);
@@ -1876,10 +1421,8 @@ static void audio_init (void)
 
     s->ts = timer_new_ns(QEMU_CLOCK_VIRTUAL, audio_timer, s);
 
-    audio_process_options ("AUDIO", audio_options);
-
-    s->nb_hw_voices_out = conf.fixed_out.nb_voices;
-    s->nb_hw_voices_in = conf.fixed_in.nb_voices;
+    s->nb_hw_voices_out = audio_get_pdo_out(dev)->voices;
+    s->nb_hw_voices_in = audio_get_pdo_in(dev)->voices;
 
     if (s->nb_hw_voices_out <= 0) {
         dolog ("Bogus number of playback voices %d, setting to 1\n",
@@ -1893,46 +1436,42 @@ static void audio_init (void)
         s->nb_hw_voices_in = 0;
     }
 
-    {
-        int def;
-        drvname = audio_get_conf_str ("QEMU_AUDIO_DRV", NULL, &def);
-    }
-
     if (drvname) {
         driver = audio_driver_lookup(drvname);
         if (driver) {
-            done = !audio_driver_init(s, driver);
+            done = !audio_driver_init(s, driver, true, dev);
         } else {
             dolog ("Unknown audio driver `%s'\n", drvname);
-            dolog ("Run with -audio-help to list available drivers\n");
         }
-    }
-
-    if (!done) {
-        for (i = 0; !done && i < ARRAY_SIZE(audio_prio_list); i++) {
+    } else {
+        for (i = 0; audio_prio_list[i]; i++) {
+            AudiodevListEntry *e = audiodev_find(&head, audio_prio_list[i]);
             driver = audio_driver_lookup(audio_prio_list[i]);
-            if (driver && driver->can_be_default) {
-                done = !audio_driver_init(s, driver);
+
+            if (e && driver) {
+                s->dev = dev = e->dev;
+                audio_validate_opts(dev, &error_abort);
+                done = !audio_driver_init(s, driver, false, dev);
+                if (done) {
+                    e->dev = NULL;
+                    break;
+                }
             }
         }
     }
+    audio_free_audiodev_list(&head);
 
     if (!done) {
         driver = audio_driver_lookup("none");
-        done = !audio_driver_init(s, driver);
+        done = !audio_driver_init(s, driver, false, dev);
         assert(done);
         dolog("warning: Using timer based audio emulation\n");
     }
 
-    if (conf.period.hertz <= 0) {
-        if (conf.period.hertz < 0) {
-            dolog ("warning: Timer period is negative - %d "
-                   "treating as zero\n",
-                   conf.period.hertz);
-        }
-        conf.period.ticks = 1;
+    if (dev->timer_period <= 0) {
+        s->period_ticks = 1;
     } else {
-        conf.period.ticks = NANOSECONDS_PER_SECOND / conf.period.hertz;
+        s->period_ticks = dev->timer_period * SCALE_US;
     }
 
     e = qemu_add_vm_change_state_handler (audio_vm_change_state_handler, s);
@@ -1943,11 +1482,22 @@ static void audio_init (void)
 
     QLIST_INIT (&s->card_head);
     vmstate_register (NULL, 0, &vmstate_audio, s);
+    return 0;
+}
+
+void audio_free_audiodev_list(AudiodevListHead *head)
+{
+    AudiodevListEntry *e;
+    while ((e = QSIMPLEQ_FIRST(head))) {
+        QSIMPLEQ_REMOVE_HEAD(head, next);
+        qapi_free_Audiodev(e->dev);
+        g_free(e);
+    }
 }
 
 void AUD_register_card (const char *name, QEMUSoundCard *card)
 {
-    audio_init ();
+    audio_init(NULL);
     card->name = g_strdup (name);
     memset (&card->entries, 0, sizeof (card->entries));
     QLIST_INSERT_HEAD (&glob_audio_state.card_head, card, entries);
@@ -1973,15 +1523,10 @@ CaptureVoiceOut *AUD_add_capture (
     if (audio_validate_settings (as)) {
         dolog ("Invalid settings were passed when trying to add capture\n");
         audio_print_settings (as);
-        goto err0;
+        return NULL;
     }
 
-    cb = audio_calloc(__func__, 1, sizeof(*cb));
-    if (!cb) {
-        dolog ("Could not allocate capture callback information, size %zu\n",
-               sizeof (*cb));
-        goto err0;
-    }
+    cb = g_malloc0(sizeof(*cb));
     cb->ops = *ops;
     cb->opaque = cb_opaque;
 
@@ -1994,12 +1539,7 @@ CaptureVoiceOut *AUD_add_capture (
         HWVoiceOut *hw;
         CaptureVoiceOut *cap;
 
-        cap = audio_calloc(__func__, 1, sizeof(*cap));
-        if (!cap) {
-            dolog ("Could not allocate capture voice, size %zu\n",
-                   sizeof (*cap));
-            goto err1;
-        }
+        cap = g_malloc0(sizeof(*cap));
 
         hw = &cap->hw;
         QLIST_INIT (&hw->sw_head);
@@ -2007,23 +1547,11 @@ CaptureVoiceOut *AUD_add_capture (
 
         /* XXX find a more elegant way */
         hw->samples = 4096 * 4;
-        hw->mix_buf = audio_calloc(__func__, hw->samples,
-                                   sizeof(struct st_sample));
-        if (!hw->mix_buf) {
-            dolog ("Could not allocate capture mix buffer (%d samples)\n",
-                   hw->samples);
-            goto err2;
-        }
+        hw->mix_buf = g_new0(struct st_sample, hw->samples);
 
         audio_pcm_init_info (&hw->info, as);
 
-        cap->buf = audio_calloc(__func__, hw->samples, 1 << hw->info.shift);
-        if (!cap->buf) {
-            dolog ("Could not allocate capture buffer "
-                   "(%d samples, each %d bytes)\n",
-                   hw->samples, 1 << hw->info.shift);
-            goto err3;
-        }
+        cap->buf = g_malloc0_n(hw->samples, 1 << hw->info.shift);
 
         hw->clip = mixeng_clip
             [hw->info.nchannels == 2]
@@ -2038,15 +1566,6 @@ CaptureVoiceOut *AUD_add_capture (
             audio_attach_capture (hw);
         }
         return cap;
-
-    err3:
-        g_free (cap->hw.mix_buf);
-    err2:
-        g_free (cap);
-    err1:
-        g_free (cb);
-    err0:
-        return NULL;
     }
 }
 
@@ -2117,4 +1636,175 @@ void AUD_set_volume_in (SWVoiceIn *sw, int mute, uint8_t lvol, uint8_t rvol)
             hw->pcm_ops->ctl_in (hw, VOICE_VOLUME, sw);
         }
     }
+}
+
+void audio_create_pdos(Audiodev *dev)
+{
+    switch (dev->driver) {
+#define CASE(DRIVER, driver, pdo_name)                              \
+    case AUDIODEV_DRIVER_##DRIVER:                                  \
+        if (!dev->u.driver.has_in) {                                \
+            dev->u.driver.in = g_malloc0(                           \
+                sizeof(Audiodev##pdo_name##PerDirectionOptions));   \
+            dev->u.driver.has_in = true;                            \
+        }                                                           \
+        if (!dev->u.driver.has_out) {                               \
+            dev->u.driver.out = g_malloc0(                          \
+                sizeof(AudiodevAlsaPerDirectionOptions));           \
+            dev->u.driver.has_out = true;                           \
+        }                                                           \
+        break
+
+        CASE(NONE, none, );
+        CASE(ALSA, alsa, Alsa);
+        CASE(COREAUDIO, coreaudio, Coreaudio);
+        CASE(DSOUND, dsound, );
+        CASE(OSS, oss, Oss);
+        CASE(PA, pa, Pa);
+        CASE(SDL, sdl, );
+        CASE(SPICE, spice, );
+        CASE(WAV, wav, );
+
+    case AUDIODEV_DRIVER__MAX:
+        abort();
+    };
+}
+
+static void audio_validate_per_direction_opts(
+    AudiodevPerDirectionOptions *pdo, Error **errp)
+{
+    if (!pdo->has_fixed_settings) {
+        pdo->has_fixed_settings = true;
+        pdo->fixed_settings = true;
+    }
+    if (!pdo->fixed_settings &&
+        (pdo->has_frequency || pdo->has_channels || pdo->has_format)) {
+        error_setg(errp,
+                   "You can't use frequency, channels or format with fixed-settings=off");
+        return;
+    }
+
+    if (!pdo->has_frequency) {
+        pdo->has_frequency = true;
+        pdo->frequency = 44100;
+    }
+    if (!pdo->has_channels) {
+        pdo->has_channels = true;
+        pdo->channels = 2;
+    }
+    if (!pdo->has_voices) {
+        pdo->has_voices = true;
+        pdo->voices = 1;
+    }
+    if (!pdo->has_format) {
+        pdo->has_format = true;
+        pdo->format = AUDIO_FORMAT_S16;
+    }
+}
+
+static void audio_validate_opts(Audiodev *dev, Error **errp)
+{
+    Error *err = NULL;
+
+    audio_create_pdos(dev);
+
+    audio_validate_per_direction_opts(audio_get_pdo_in(dev), &err);
+    if (err) {
+        error_propagate(errp, err);
+        return;
+    }
+
+    audio_validate_per_direction_opts(audio_get_pdo_out(dev), &err);
+    if (err) {
+        error_propagate(errp, err);
+        return;
+    }
+
+    if (!dev->has_timer_period) {
+        dev->has_timer_period = true;
+        dev->timer_period = 10000; /* 100Hz -> 10ms */
+    }
+}
+
+void audio_parse_option(const char *opt)
+{
+    AudiodevListEntry *e;
+    Audiodev *dev = NULL;
+
+    Visitor *v = qobject_input_visitor_new_str(opt, "driver", &error_fatal);
+    visit_type_Audiodev(v, NULL, &dev, &error_fatal);
+    visit_free(v);
+
+    audio_validate_opts(dev, &error_fatal);
+
+    e = g_malloc0(sizeof(AudiodevListEntry));
+    e->dev = dev;
+    QSIMPLEQ_INSERT_TAIL(&audiodevs, e, next);
+}
+
+void audio_init_audiodevs(void)
+{
+    AudiodevListEntry *e;
+
+    QSIMPLEQ_FOREACH(e, &audiodevs, next) {
+        audio_init(e->dev);
+    }
+}
+
+audsettings audiodev_to_audsettings(AudiodevPerDirectionOptions *pdo)
+{
+    return (audsettings) {
+        .freq = pdo->frequency,
+        .nchannels = pdo->channels,
+        .fmt = pdo->format,
+        .endianness = AUDIO_HOST_ENDIANNESS,
+    };
+}
+
+int audioformat_bytes_per_sample(AudioFormat fmt)
+{
+    switch (fmt) {
+    case AUDIO_FORMAT_U8:
+    case AUDIO_FORMAT_S8:
+        return 1;
+
+    case AUDIO_FORMAT_U16:
+    case AUDIO_FORMAT_S16:
+        return 2;
+
+    case AUDIO_FORMAT_U32:
+    case AUDIO_FORMAT_S32:
+        return 4;
+
+    case AUDIO_FORMAT__MAX:
+        ;
+    }
+    abort();
+}
+
+
+/* frames = freq * usec / 1e6 */
+int audio_buffer_frames(AudiodevPerDirectionOptions *pdo,
+                        audsettings *as, int def_usecs)
+{
+    uint64_t usecs = pdo->has_buffer_length ? pdo->buffer_length : def_usecs;
+    return (as->freq * usecs + 500000) / 1000000;
+}
+
+/* samples = channels * frames = channels * freq * usec / 1e6 */
+int audio_buffer_samples(AudiodevPerDirectionOptions *pdo,
+                         audsettings *as, int def_usecs)
+{
+    return as->nchannels * audio_buffer_frames(pdo, as, def_usecs);
+}
+
+/*
+ * bytes = bytes_per_sample * samples =
+ *     bytes_per_sample * channels * freq * usec / 1e6
+ */
+int audio_buffer_bytes(AudiodevPerDirectionOptions *pdo,
+                       audsettings *as, int def_usecs)
+{
+    return audio_buffer_samples(pdo, as, def_usecs) *
+        audioformat_bytes_per_sample(as->fmt);
 }

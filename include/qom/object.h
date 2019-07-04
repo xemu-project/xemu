@@ -20,7 +20,6 @@
 struct TypeImpl;
 typedef struct TypeImpl *Type;
 
-typedef struct ObjectClass ObjectClass;
 typedef struct Object Object;
 
 typedef struct TypeInfo TypeInfo;
@@ -455,10 +454,8 @@ struct Object
  *   parent class initialization has occurred, but before the class itself
  *   is initialized.  This is the function to use to undo the effects of
  *   memcpy from the parent class to the descendants.
- * @class_finalize: This function is called during class destruction and is
- *   meant to release and dynamic parameters allocated by @class_init.
- * @class_data: Data to pass to the @class_init, @class_base_init and
- *   @class_finalize functions.  This can be useful when building dynamic
+ * @class_data: Data to pass to the @class_init,
+ *   @class_base_init. This can be useful when building dynamic
  *   classes.
  * @interfaces: The list of interfaces associated with this type.  This
  *   should point to a static array that's terminated with a zero filled
@@ -479,7 +476,6 @@ struct TypeInfo
 
     void (*class_init)(ObjectClass *klass, void *data);
     void (*class_base_init)(ObjectClass *klass, void *data);
-    void (*class_finalize)(ObjectClass *klass, void *data);
     void *class_data;
 
     InterfaceInfo *interfaces;
@@ -678,6 +674,12 @@ Object *object_new_with_propv(const char *typename,
                               const char *id,
                               Error **errp,
                               va_list vargs);
+
+void object_apply_global_props(Object *obj, const GPtrArray *props,
+                               Error **errp);
+void object_set_machine_compat_props(GPtrArray *compat_props);
+void object_set_accelerator_compat_props(GPtrArray *compat_props);
+void object_apply_compat_props(Object *obj);
 
 /**
  * object_set_props:

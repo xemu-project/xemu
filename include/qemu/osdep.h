@@ -74,13 +74,30 @@ typedef __float128 _Float128;
 extern int daemon(int, int);
 #endif
 
+#ifdef _WIN32
+/* as defined in sdkddkver.h */
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600 /* Vista */
+#endif
+/* reduces the number of implicitly included headers */
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#endif
+
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
 #include <stdlib.h>
+
+/* enable C99/POSIX format strings (needs mingw32-runtime 3.15 or later) */
+#ifdef __MINGW32__
+#define __USE_MINGW_ANSI_STDIO 1
+#endif
 #include <stdio.h>
+
 #include <string.h>
 #include <strings.h>
 #include <inttypes.h>
@@ -92,6 +109,7 @@ extern int daemon(int, int);
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <assert.h>
@@ -121,6 +139,18 @@ extern int daemon(int, int);
 
 #include "glib-compat.h"
 #include "qemu/typedefs.h"
+
+/*
+ * For mingw, as of v6.0.0, the function implementing the assert macro is
+ * not marked as noreturn, so the compiler cannot delete code following an
+ * assert(false) as unused.  We rely on this within the code base to delete
+ * code that is unreachable when features are disabled.
+ * All supported versions of Glib's g_assert() satisfy this requirement.
+ */
+#ifdef __MINGW32__
+#undef assert
+#define assert(x)  g_assert(x)
+#endif
 
 /*
  * According to waitpid man page:
@@ -448,7 +478,8 @@ bool qemu_has_ofd_lock(void);
 #define FMT_pid "%d"
 #endif
 
-int qemu_create_pidfile(const char *filename);
+bool qemu_write_pidfile(const char *pidfile, Error **errp);
+
 int qemu_get_thread_id(void);
 
 #ifndef CONFIG_IOVEC
@@ -540,6 +571,19 @@ void os_mem_prealloc(int fd, char *area, size_t sz, int smp_cpus,
                      Error **errp);
 
 /**
+ * qemu_get_pmem_size:
+ * @filename: path to a pmem file
+ * @errp: pointer to a NULL-initialized error object
+ *
+ * Determine the size of a persistent memory file.  Besides supporting files on
+ * DAX file systems, this function also supports Linux devdax character
+ * devices.
+ *
+ * Returns: the size or 0 on failure
+ */
+uint64_t qemu_get_pmem_size(const char *filename, Error **errp);
+
+/**
  * qemu_get_pid_name:
  * @pid: pid of a process
  *
@@ -570,6 +614,23 @@ extern uintptr_t qemu_real_host_page_size;
 extern intptr_t qemu_real_host_page_mask;
 
 extern int qemu_icache_linesize;
+extern int qemu_icache_linesize_log;
 extern int qemu_dcache_linesize;
+extern int qemu_dcache_linesize_log;
+
+/*
+ * After using getopt or getopt_long, if you need to parse another set
+ * of options, then you must reset optind.  Unfortunately the way to
+ * do this varies between implementations of getopt.
+ */
+static inline void qemu_reset_optind(void)
+{
+#ifdef HAVE_OPTRESET
+    optind = 1;
+    optreset = 1;
+#else
+    optind = 0;
+#endif
+}
 
 #endif

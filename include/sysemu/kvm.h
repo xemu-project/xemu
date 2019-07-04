@@ -412,8 +412,6 @@ struct kvm_sw_breakpoint {
     QTAILQ_ENTRY(kvm_sw_breakpoint) entry;
 };
 
-QTAILQ_HEAD(kvm_sw_breakpoint_head, kvm_sw_breakpoint);
-
 struct kvm_sw_breakpoint *kvm_find_sw_breakpoint(CPUState *cpu,
                                                  target_ulong pc);
 
@@ -463,6 +461,8 @@ int kvm_vm_check_extension(KVMState *s, unsigned int extension);
 
 uint32_t kvm_arch_get_supported_cpuid(KVMState *env, uint32_t function,
                                       uint32_t index, int reg);
+uint32_t kvm_arch_get_supported_msr_feature(KVMState *s, uint32_t index);
+
 
 void kvm_set_sigmask_len(KVMState *s, unsigned int sigmask_len);
 

@@ -135,8 +135,11 @@ typedef enum {
 #define TCG_TARGET_HAS_shv_vec          0
 #define TCG_TARGET_HAS_cmp_vec          1
 #define TCG_TARGET_HAS_mul_vec          1
+#define TCG_TARGET_HAS_sat_vec          1
+#define TCG_TARGET_HAS_minmax_vec       1
 
 #define TCG_TARGET_DEFAULT_MO (0)
+#define TCG_TARGET_HAS_MEMORY_BSWAP     1
 
 static inline void flush_icache_range(uintptr_t start, uintptr_t stop)
 {

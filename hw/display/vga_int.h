@@ -166,7 +166,6 @@ MemoryRegion *vga_init_io(VGACommonState *s, Object *obj,
                           const MemoryRegionPortio **vbe_ports);
 void vga_common_reset(VGACommonState *s);
 
-void vga_sync_dirty_bitmap(VGACommonState *s);
 void vga_dirty_log_start(VGACommonState *s);
 void vga_dirty_log_stop(VGACommonState *s);
 
@@ -197,6 +196,6 @@ void pci_std_vga_mmio_region_init(VGACommonState *s,
                                   Object *owner,
                                   MemoryRegion *parent,
                                   MemoryRegion *subs,
-                                  bool qext);
+                                  bool qext, bool edid);
 
 #endif

@@ -9,7 +9,7 @@
 #include "qemu/atomic.h"
 #include "qemu/qht.h"
 #include "qemu/rcu.h"
-#include "exec/tb-hash-xx.h"
+#include "qemu/xxhash.h"
 
 struct thread_stats {
     size_t rd;
@@ -53,6 +53,7 @@ static unsigned long resize_delay = 1000;
 static double resize_rate; /* 0.0 to 1.0 */
 static unsigned int n_rz_threads = 1;
 static QemuThread *rz_threads;
+static bool precompute_hash;
 
 static double update_rate; /* 0.0 to 1.0 */
 static uint64_t update_threshold;
@@ -71,6 +72,7 @@ static const char commands_string[] =
     " -n = number of threads\n"
     "\n"
     " -o = offset at which keys start\n"
+    " -p = precompute hashes\n"
     "\n"
     " -g = set -s,-k,-K,-l,-r to the same value\n"
     " -s = initial size hint\n"
@@ -101,10 +103,17 @@ static bool is_equal(const void *ap, const void *bp)
     return *a == *b;
 }
 
-static inline uint32_t h(unsigned long v)
+static uint32_t h(unsigned long v)
 {
-    return tb_hash_func7(v, 0, 0, 0, 0);
+    return qemu_xxhash2(v);
 }
+
+static uint32_t hval(unsigned long v)
+{
+    return v;
+}
+
+static uint32_t (*hfunc)(unsigned long v) = h;
 
 /*
  * From: https://en.wikipedia.org/wiki/Xorshift
@@ -149,7 +158,7 @@ static void do_rw(struct thread_info *info)
         bool read;
 
         p = &keys[info->r & (lookup_range - 1)];
-        hash = h(*p);
+        hash = hfunc(*p);
         read = qht_lookup(&ht, p, hash);
         if (read) {
             stats->rd++;
@@ -158,7 +167,7 @@ static void do_rw(struct thread_info *info)
         }
     } else {
         p = &keys[info->r & (update_range - 1)];
-        hash = h(*p);
+        hash = hfunc(*p);
         if (info->write_op) {
             bool written = false;
 
@@ -289,7 +298,9 @@ static void htable_init(void)
     /* avoid allocating memory later by allocating all the keys now */
     keys = g_malloc(sizeof(*keys) * n);
     for (i = 0; i < n; i++) {
-        keys[i] = populate_offset + i;
+        long val = populate_offset + i;
+
+        keys[i] = precompute_hash ? h(val) : hval(val);
     }
 
     /* some sanity checks */
@@ -321,7 +332,7 @@ static void htable_init(void)
 
             r = xorshift64star(r);
             p = &keys[r & (init_range - 1)];
-            hash = h(*p);
+            hash = hfunc(*p);
             if (qht_insert(&ht, p, hash, NULL)) {
                 break;
             }
@@ -387,16 +398,14 @@ static void pr_stats(void)
 
 static void run_test(void)
 {
-    unsigned int remaining;
     int i;
 
     while (atomic_read(&n_ready_threads) != n_rw_threads + n_rz_threads) {
         cpu_relax();
     }
+
     atomic_set(&test_start, true);
-    do {
-        remaining = sleep(duration);
-    } while (remaining);
+    g_usleep(duration * G_USEC_PER_SEC);
     atomic_set(&test_stop, true);
 
     for (i = 0; i < n_rw_threads; i++) {
@@ -412,7 +421,7 @@ static void parse_args(int argc, char *argv[])
     int c;
 
     for (;;) {
-        c = getopt(argc, argv, "d:D:g:k:K:l:hn:N:o:r:Rs:S:u:");
+        c = getopt(argc, argv, "d:D:g:k:K:l:hn:N:o:pr:Rs:S:u:");
         if (c < 0) {
             break;
         }
@@ -450,6 +459,10 @@ static void parse_args(int argc, char *argv[])
             break;
         case 'o':
             populate_offset = atol(optarg);
+            break;
+        case 'p':
+            precompute_hash = true;
+            hfunc = hval;
             break;
         case 'r':
             update_range = pow2ceil(atol(optarg));

@@ -117,7 +117,7 @@ static void cpu_hotplug_wr(void *opaque, hwaddr addr, uint64_t data,
             DeviceState *dev = NULL;
             HotplugHandler *hotplug_ctrl = NULL;
 
-            if (!cdev->cpu) {
+            if (!cdev->cpu || cdev->cpu == first_cpu) {
                 trace_cpuhp_acpi_ejecting_invalid_cpu(cpu_st->selector);
                 break;
             }
@@ -126,6 +126,7 @@ static void cpu_hotplug_wr(void *opaque, hwaddr addr, uint64_t data,
             dev = DEVICE(cdev->cpu);
             hotplug_ctrl = qdev_get_hotplug_handler(dev);
             hotplug_handler_unplug(hotplug_ctrl, dev, NULL);
+            object_unparent(OBJECT(dev));
         }
         break;
     case ACPI_CPU_CMD_OFFSET_WR:
@@ -160,7 +161,7 @@ static void cpu_hotplug_wr(void *opaque, hwaddr addr, uint64_t data,
            cdev = &cpu_st->devs[cpu_st->selector];
            cdev->ost_status = data;
            info = acpi_cpu_device_status(cpu_st->selector, cdev);
-           qapi_event_send_acpi_device_ost(info, &error_abort);
+           qapi_event_send_acpi_device_ost(info);
            qapi_free_ACPIOSTInfo(info);
            trace_cpuhp_acpi_write_ost_status(cpu_st->selector,
                                              cdev->ost_status);
@@ -508,7 +509,7 @@ void build_cpus_aml(Aml *table, MachineState *machine, CPUHotplugFeatures opts,
             GArray *madt_buf = g_array_new(0, 1, 1);
             int arch_id = arch_ids->cpus[i].arch_id;
 
-            if (opts.apci_1_compatible && arch_id < 255) {
+            if (opts.acpi_1_compatible && arch_id < 255) {
                 dev = aml_processor(i, 0, 0, CPU_NAME_FMT, i);
             } else {
                 dev = aml_device(CPU_NAME_FMT, i);
@@ -541,9 +542,11 @@ void build_cpus_aml(Aml *table, MachineState *machine, CPUHotplugFeatures opts,
                 aml_buffer(madt_buf->len, (uint8_t *)madt_buf->data)));
             g_array_free(madt_buf, true);
 
-            method = aml_method("_EJ0", 1, AML_NOTSERIALIZED);
-            aml_append(method, aml_call1(CPU_EJECT_METHOD, uid));
-            aml_append(dev, method);
+            if (CPU(arch_ids->cpus[i].cpu) != first_cpu) {
+                method = aml_method("_EJ0", 1, AML_NOTSERIALIZED);
+                aml_append(method, aml_call1(CPU_EJECT_METHOD, uid));
+                aml_append(dev, method);
+            }
 
             method = aml_method("_OST", 3, AML_SERIALIZED);
             aml_append(method,

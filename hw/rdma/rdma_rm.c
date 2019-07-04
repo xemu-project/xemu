@@ -16,7 +16,9 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "cpu.h"
+#include "monitor/monitor.h"
 
+#include "trace.h"
 #include "rdma_utils.h"
 #include "rdma_backend.h"
 #include "rdma_rm.h"
@@ -24,6 +26,58 @@
 /* Page directory and page tables */
 #define PG_DIR_SZ { TARGET_PAGE_SIZE / sizeof(__u64) }
 #define PG_TBL_SZ { TARGET_PAGE_SIZE / sizeof(__u64) }
+
+void rdma_dump_device_counters(Monitor *mon, RdmaDeviceResources *dev_res)
+{
+    monitor_printf(mon, "\ttx               : %" PRId64 "\n",
+                   dev_res->stats.tx);
+    monitor_printf(mon, "\ttx_len           : %" PRId64 "\n",
+                   dev_res->stats.tx_len);
+    monitor_printf(mon, "\ttx_err           : %" PRId64 "\n",
+                   dev_res->stats.tx_err);
+    monitor_printf(mon, "\trx_bufs          : %" PRId64 "\n",
+                   dev_res->stats.rx_bufs);
+    monitor_printf(mon, "\trx_bufs_len      : %" PRId64 "\n",
+                   dev_res->stats.rx_bufs_len);
+    monitor_printf(mon, "\trx_bufs_err      : %" PRId64 "\n",
+                   dev_res->stats.rx_bufs_err);
+    monitor_printf(mon, "\tcomps            : %" PRId64 "\n",
+                   dev_res->stats.completions);
+    monitor_printf(mon, "\tmissing_comps    : %" PRId32 "\n",
+                   dev_res->stats.missing_cqe);
+    monitor_printf(mon, "\tpoll_cq (bk)     : %" PRId64 "\n",
+                   dev_res->stats.poll_cq_from_bk);
+    monitor_printf(mon, "\tpoll_cq_ppoll_to : %" PRId64 "\n",
+                   dev_res->stats.poll_cq_ppoll_to);
+    monitor_printf(mon, "\tpoll_cq (fe)     : %" PRId64 "\n",
+                   dev_res->stats.poll_cq_from_guest);
+    monitor_printf(mon, "\tpoll_cq_empty    : %" PRId64 "\n",
+                   dev_res->stats.poll_cq_from_guest_empty);
+    monitor_printf(mon, "\tmad_tx           : %" PRId64 "\n",
+                   dev_res->stats.mad_tx);
+    monitor_printf(mon, "\tmad_tx_err       : %" PRId64 "\n",
+                   dev_res->stats.mad_tx_err);
+    monitor_printf(mon, "\tmad_rx           : %" PRId64 "\n",
+                   dev_res->stats.mad_rx);
+    monitor_printf(mon, "\tmad_rx_err       : %" PRId64 "\n",
+                   dev_res->stats.mad_rx_err);
+    monitor_printf(mon, "\tmad_rx_bufs      : %" PRId64 "\n",
+                   dev_res->stats.mad_rx_bufs);
+    monitor_printf(mon, "\tmad_rx_bufs_err  : %" PRId64 "\n",
+                   dev_res->stats.mad_rx_bufs_err);
+    monitor_printf(mon, "\tPDs              : %" PRId32 "\n",
+                   dev_res->pd_tbl.used);
+    monitor_printf(mon, "\tMRs              : %" PRId32 "\n",
+                   dev_res->mr_tbl.used);
+    monitor_printf(mon, "\tUCs              : %" PRId32 "\n",
+                   dev_res->uc_tbl.used);
+    monitor_printf(mon, "\tQPs              : %" PRId32 "\n",
+                   dev_res->qp_tbl.used);
+    monitor_printf(mon, "\tCQs              : %" PRId32 "\n",
+                   dev_res->cq_tbl.used);
+    monitor_printf(mon, "\tCEQ_CTXs         : %" PRId32 "\n",
+                   dev_res->cqe_ctx_tbl.used);
+}
 
 static inline void res_tbl_init(const char *name, RdmaRmResTbl *tbl,
                                 uint32_t tbl_sz, uint32_t res_sz)
@@ -36,58 +90,66 @@ static inline void res_tbl_init(const char *name, RdmaRmResTbl *tbl,
     tbl->bitmap = bitmap_new(tbl_sz);
     tbl->tbl_sz = tbl_sz;
     tbl->res_sz = res_sz;
+    tbl->used = 0;
     qemu_mutex_init(&tbl->lock);
 }
 
 static inline void res_tbl_free(RdmaRmResTbl *tbl)
 {
+    if (!tbl->bitmap) {
+        return;
+    }
     qemu_mutex_destroy(&tbl->lock);
     g_free(tbl->tbl);
-    bitmap_zero_extend(tbl->bitmap, tbl->tbl_sz, 0);
+    g_free(tbl->bitmap);
 }
 
-static inline void *res_tbl_get(RdmaRmResTbl *tbl, uint32_t handle)
+static inline void *rdma_res_tbl_get(RdmaRmResTbl *tbl, uint32_t handle)
 {
-    pr_dbg("%s, handle=%d\n", tbl->name, handle);
+    trace_rdma_res_tbl_get(tbl->name, handle);
 
     if ((handle < tbl->tbl_sz) && (test_bit(handle, tbl->bitmap))) {
         return tbl->tbl + handle * tbl->res_sz;
     } else {
-        pr_dbg("Invalid handle %d\n", handle);
+        rdma_error_report("Table %s, invalid handle %d", tbl->name, handle);
         return NULL;
     }
 }
 
-static inline void *res_tbl_alloc(RdmaRmResTbl *tbl, uint32_t *handle)
+static inline void *rdma_res_tbl_alloc(RdmaRmResTbl *tbl, uint32_t *handle)
 {
     qemu_mutex_lock(&tbl->lock);
 
     *handle = find_first_zero_bit(tbl->bitmap, tbl->tbl_sz);
     if (*handle > tbl->tbl_sz) {
-        pr_dbg("Failed to alloc, bitmap is full\n");
+        rdma_error_report("Table %s, failed to allocate, bitmap is full",
+                          tbl->name);
         qemu_mutex_unlock(&tbl->lock);
         return NULL;
     }
 
     set_bit(*handle, tbl->bitmap);
 
+    tbl->used++;
+
     qemu_mutex_unlock(&tbl->lock);
 
     memset(tbl->tbl + *handle * tbl->res_sz, 0, tbl->res_sz);
 
-    pr_dbg("%s, handle=%d\n", tbl->name, *handle);
+    trace_rdma_res_tbl_alloc(tbl->name, *handle);
 
     return tbl->tbl + *handle * tbl->res_sz;
 }
 
-static inline void res_tbl_dealloc(RdmaRmResTbl *tbl, uint32_t handle)
+static inline void rdma_res_tbl_dealloc(RdmaRmResTbl *tbl, uint32_t handle)
 {
-    pr_dbg("%s, handle=%d\n", tbl->name, handle);
+    trace_rdma_res_tbl_dealloc(tbl->name, handle);
 
     qemu_mutex_lock(&tbl->lock);
 
     if (handle < tbl->tbl_sz) {
         clear_bit(handle, tbl->bitmap);
+        tbl->used--;
     }
 
     qemu_mutex_unlock(&tbl->lock);
@@ -99,7 +161,7 @@ int rdma_rm_alloc_pd(RdmaDeviceResources *dev_res, RdmaBackendDev *backend_dev,
     RdmaRmPD *pd;
     int ret = -ENOMEM;
 
-    pd = res_tbl_alloc(&dev_res->pd_tbl, pd_handle);
+    pd = rdma_res_tbl_alloc(&dev_res->pd_tbl, pd_handle);
     if (!pd) {
         goto out;
     }
@@ -115,7 +177,7 @@ int rdma_rm_alloc_pd(RdmaDeviceResources *dev_res, RdmaBackendDev *backend_dev,
     return 0;
 
 out_tbl_dealloc:
-    res_tbl_dealloc(&dev_res->pd_tbl, *pd_handle);
+    rdma_res_tbl_dealloc(&dev_res->pd_tbl, *pd_handle);
 
 out:
     return ret;
@@ -123,7 +185,7 @@ out:
 
 RdmaRmPD *rdma_rm_get_pd(RdmaDeviceResources *dev_res, uint32_t pd_handle)
 {
-    return res_tbl_get(&dev_res->pd_tbl, pd_handle);
+    return rdma_res_tbl_get(&dev_res->pd_tbl, pd_handle);
 }
 
 void rdma_rm_dealloc_pd(RdmaDeviceResources *dev_res, uint32_t pd_handle)
@@ -132,80 +194,62 @@ void rdma_rm_dealloc_pd(RdmaDeviceResources *dev_res, uint32_t pd_handle)
 
     if (pd) {
         rdma_backend_destroy_pd(&pd->backend_pd);
-        res_tbl_dealloc(&dev_res->pd_tbl, pd_handle);
+        rdma_res_tbl_dealloc(&dev_res->pd_tbl, pd_handle);
     }
 }
 
 int rdma_rm_alloc_mr(RdmaDeviceResources *dev_res, uint32_t pd_handle,
-                     uint64_t guest_start, size_t guest_length, void *host_virt,
-                     int access_flags, uint32_t *mr_handle, uint32_t *lkey,
-                     uint32_t *rkey)
+                     uint64_t guest_start, uint64_t guest_length,
+                     void *host_virt, int access_flags, uint32_t *mr_handle,
+                     uint32_t *lkey, uint32_t *rkey)
 {
     RdmaRmMR *mr;
     int ret = 0;
     RdmaRmPD *pd;
-    void *addr;
-    size_t length;
 
     pd = rdma_rm_get_pd(dev_res, pd_handle);
     if (!pd) {
-        pr_dbg("Invalid PD\n");
         return -EINVAL;
     }
 
-    mr = res_tbl_alloc(&dev_res->mr_tbl, mr_handle);
+    mr = rdma_res_tbl_alloc(&dev_res->mr_tbl, mr_handle);
     if (!mr) {
-        pr_dbg("Failed to allocate obj in table\n");
         return -ENOMEM;
     }
+    trace_rdma_rm_alloc_mr(*mr_handle, host_virt, guest_start, guest_length,
+                           access_flags);
 
-    if (!host_virt) {
-        /* TODO: This is my guess but not so sure that this needs to be
-         * done */
-        length = TARGET_PAGE_SIZE;
-        addr = g_malloc(length);
-    } else {
-        mr->user_mr.host_virt = host_virt;
-        pr_dbg("host_virt=0x%p\n", mr->user_mr.host_virt);
-        mr->user_mr.length = guest_length;
-        pr_dbg("length=%zu\n", guest_length);
-        mr->user_mr.guest_start = guest_start;
-        pr_dbg("guest_start=0x%" PRIx64 "\n", mr->user_mr.guest_start);
+    if (host_virt) {
+        mr->virt = host_virt;
+        mr->start = guest_start;
+        mr->length = guest_length;
+        mr->virt += (mr->start & (TARGET_PAGE_SIZE - 1));
 
-        length = mr->user_mr.length;
-        addr = mr->user_mr.host_virt;
+        ret = rdma_backend_create_mr(&mr->backend_mr, &pd->backend_pd, mr->virt,
+                                     mr->length, access_flags);
+        if (ret) {
+            ret = -EIO;
+            goto out_dealloc_mr;
+        }
     }
 
-    ret = rdma_backend_create_mr(&mr->backend_mr, &pd->backend_pd, addr, length,
-                                 access_flags);
-    if (ret) {
-        pr_dbg("Fail in rdma_backend_create_mr, err=%d\n", ret);
-        ret = -EIO;
-        goto out_dealloc_mr;
-    }
-
-    if (!host_virt) {
-        *lkey = mr->lkey = rdma_backend_mr_lkey(&mr->backend_mr);
-        *rkey = mr->rkey = rdma_backend_mr_rkey(&mr->backend_mr);
-    } else {
-        /* We keep mr_handle in lkey so send and recv get get mr ptr */
-        *lkey = *mr_handle;
-        *rkey = -1;
-    }
+    /* We keep mr_handle in lkey so send and recv get get mr ptr */
+    *lkey = *mr_handle;
+    *rkey = -1;
 
     mr->pd_handle = pd_handle;
 
     return 0;
 
 out_dealloc_mr:
-    res_tbl_dealloc(&dev_res->mr_tbl, *mr_handle);
+    rdma_res_tbl_dealloc(&dev_res->mr_tbl, *mr_handle);
 
     return ret;
 }
 
 RdmaRmMR *rdma_rm_get_mr(RdmaDeviceResources *dev_res, uint32_t mr_handle)
 {
-    return res_tbl_get(&dev_res->mr_tbl, mr_handle);
+    return rdma_res_tbl_get(&dev_res->mr_tbl, mr_handle);
 }
 
 void rdma_rm_dealloc_mr(RdmaDeviceResources *dev_res, uint32_t mr_handle)
@@ -214,8 +258,12 @@ void rdma_rm_dealloc_mr(RdmaDeviceResources *dev_res, uint32_t mr_handle)
 
     if (mr) {
         rdma_backend_destroy_mr(&mr->backend_mr);
-        munmap(mr->user_mr.host_virt, mr->user_mr.length);
-        res_tbl_dealloc(&dev_res->mr_tbl, mr_handle);
+        trace_rdma_rm_dealloc_mr(mr_handle, mr->start);
+        if (mr->start) {
+            mr->virt -= (mr->start & (TARGET_PAGE_SIZE - 1));
+            munmap(mr->virt, mr->length);
+        }
+        rdma_res_tbl_dealloc(&dev_res->mr_tbl, mr_handle);
     }
 }
 
@@ -227,12 +275,13 @@ int rdma_rm_alloc_uc(RdmaDeviceResources *dev_res, uint32_t pfn,
     /* TODO: Need to make sure pfn is between bar start address and
      * bsd+RDMA_BAR2_UAR_SIZE
     if (pfn > RDMA_BAR2_UAR_SIZE) {
-        pr_err("pfn out of range (%d > %d)\n", pfn, RDMA_BAR2_UAR_SIZE);
+        rdma_error_report("pfn out of range (%d > %d)", pfn,
+                          RDMA_BAR2_UAR_SIZE);
         return -ENOMEM;
     }
     */
 
-    uc = res_tbl_alloc(&dev_res->uc_tbl, uc_handle);
+    uc = rdma_res_tbl_alloc(&dev_res->uc_tbl, uc_handle);
     if (!uc) {
         return -ENOMEM;
     }
@@ -242,7 +291,7 @@ int rdma_rm_alloc_uc(RdmaDeviceResources *dev_res, uint32_t pfn,
 
 RdmaRmUC *rdma_rm_get_uc(RdmaDeviceResources *dev_res, uint32_t uc_handle)
 {
-    return res_tbl_get(&dev_res->uc_tbl, uc_handle);
+    return rdma_res_tbl_get(&dev_res->uc_tbl, uc_handle);
 }
 
 void rdma_rm_dealloc_uc(RdmaDeviceResources *dev_res, uint32_t uc_handle)
@@ -250,13 +299,13 @@ void rdma_rm_dealloc_uc(RdmaDeviceResources *dev_res, uint32_t uc_handle)
     RdmaRmUC *uc = rdma_rm_get_uc(dev_res, uc_handle);
 
     if (uc) {
-        res_tbl_dealloc(&dev_res->uc_tbl, uc_handle);
+        rdma_res_tbl_dealloc(&dev_res->uc_tbl, uc_handle);
     }
 }
 
 RdmaRmCQ *rdma_rm_get_cq(RdmaDeviceResources *dev_res, uint32_t cq_handle)
 {
-    return res_tbl_get(&dev_res->cq_tbl, cq_handle);
+    return rdma_res_tbl_get(&dev_res->cq_tbl, cq_handle);
 }
 
 int rdma_rm_alloc_cq(RdmaDeviceResources *dev_res, RdmaBackendDev *backend_dev,
@@ -265,13 +314,13 @@ int rdma_rm_alloc_cq(RdmaDeviceResources *dev_res, RdmaBackendDev *backend_dev,
     int rc;
     RdmaRmCQ *cq;
 
-    cq = res_tbl_alloc(&dev_res->cq_tbl, cq_handle);
+    cq = rdma_res_tbl_alloc(&dev_res->cq_tbl, cq_handle);
     if (!cq) {
         return -ENOMEM;
     }
 
     cq->opaque = opaque;
-    cq->notify = false;
+    cq->notify = CNT_CLEAR;
 
     rc = rdma_backend_create_cq(backend_dev, &cq->backend_cq, cqe);
     if (rc) {
@@ -292,15 +341,14 @@ void rdma_rm_req_notify_cq(RdmaDeviceResources *dev_res, uint32_t cq_handle,
 {
     RdmaRmCQ *cq;
 
-    pr_dbg("cq_handle=%d, notify=0x%x\n", cq_handle, notify);
-
     cq = rdma_rm_get_cq(dev_res, cq_handle);
     if (!cq) {
         return;
     }
 
-    cq->notify = notify;
-    pr_dbg("notify=%d\n", cq->notify);
+    if (cq->notify != CNT_SET) {
+        cq->notify = notify ? CNT_ARM : CNT_CLEAR;
+    }
 }
 
 void rdma_rm_dealloc_cq(RdmaDeviceResources *dev_res, uint32_t cq_handle)
@@ -314,7 +362,7 @@ void rdma_rm_dealloc_cq(RdmaDeviceResources *dev_res, uint32_t cq_handle)
 
     rdma_backend_destroy_cq(&cq->backend_cq);
 
-    res_tbl_dealloc(&dev_res->cq_tbl, cq_handle);
+    rdma_res_tbl_dealloc(&dev_res->cq_tbl, cq_handle);
 }
 
 RdmaRmQP *rdma_rm_get_qp(RdmaDeviceResources *dev_res, uint32_t qpn)
@@ -324,6 +372,10 @@ RdmaRmQP *rdma_rm_get_qp(RdmaDeviceResources *dev_res, uint32_t qpn)
     RdmaRmQP *qp = g_hash_table_lookup(dev_res->qp_hash, key);
 
     g_bytes_unref(key);
+
+    if (!qp) {
+        rdma_error_report("Invalid QP handle %d", qpn);
+    }
 
     return qp;
 }
@@ -340,11 +392,8 @@ int rdma_rm_alloc_qp(RdmaDeviceResources *dev_res, uint32_t pd_handle,
     RdmaRmPD *pd;
     uint32_t rm_qpn;
 
-    pr_dbg("qp_type=%d\n", qp_type);
-
     pd = rdma_rm_get_pd(dev_res, pd_handle);
     if (!pd) {
-        pr_err("Invalid pd handle (%d)\n", pd_handle);
         return -EINVAL;
     }
 
@@ -352,16 +401,20 @@ int rdma_rm_alloc_qp(RdmaDeviceResources *dev_res, uint32_t pd_handle,
     rcq = rdma_rm_get_cq(dev_res, recv_cq_handle);
 
     if (!scq || !rcq) {
-        pr_err("Invalid send_cqn or recv_cqn (%d, %d)\n",
-               send_cq_handle, recv_cq_handle);
+        rdma_error_report("Invalid send_cqn or recv_cqn (%d, %d)",
+                          send_cq_handle, recv_cq_handle);
         return -EINVAL;
     }
 
-    qp = res_tbl_alloc(&dev_res->qp_tbl, &rm_qpn);
+    if (qp_type == IBV_QPT_GSI) {
+        scq->notify = CNT_SET;
+        rcq->notify = CNT_SET;
+    }
+
+    qp = rdma_res_tbl_alloc(&dev_res->qp_tbl, &rm_qpn);
     if (!qp) {
         return -ENOMEM;
     }
-    pr_dbg("rm_qpn=%d\n", rm_qpn);
 
     qp->qpn = rm_qpn;
     qp->qp_state = IBV_QPS_RESET;
@@ -379,19 +432,19 @@ int rdma_rm_alloc_qp(RdmaDeviceResources *dev_res, uint32_t pd_handle,
     }
 
     *qpn = rdma_backend_qpn(&qp->backend_qp);
-    pr_dbg("rm_qpn=%d, backend_qpn=0x%x\n", rm_qpn, *qpn);
+    trace_rdma_rm_alloc_qp(rm_qpn, *qpn, qp_type);
     g_hash_table_insert(dev_res->qp_hash, g_bytes_new(qpn, sizeof(*qpn)), qp);
 
     return 0;
 
 out_dealloc_qp:
-    res_tbl_dealloc(&dev_res->qp_tbl, qp->qpn);
+    rdma_res_tbl_dealloc(&dev_res->qp_tbl, qp->qpn);
 
     return rc;
 }
 
 int rdma_rm_modify_qp(RdmaDeviceResources *dev_res, RdmaBackendDev *backend_dev,
-                      uint32_t qp_handle, uint32_t attr_mask,
+                      uint32_t qp_handle, uint32_t attr_mask, uint8_t sgid_idx,
                       union ibv_gid *dgid, uint32_t dqpn,
                       enum ibv_qp_state qp_state, uint32_t qkey,
                       uint32_t rq_psn, uint32_t sq_psn)
@@ -399,27 +452,22 @@ int rdma_rm_modify_qp(RdmaDeviceResources *dev_res, RdmaBackendDev *backend_dev,
     RdmaRmQP *qp;
     int ret;
 
-    pr_dbg("qpn=%d\n", qp_handle);
-
     qp = rdma_rm_get_qp(dev_res, qp_handle);
     if (!qp) {
         return -EINVAL;
     }
 
-    pr_dbg("qp_type=%d\n", qp->qp_type);
-    pr_dbg("attr_mask=0x%x\n", attr_mask);
-
     if (qp->qp_type == IBV_QPT_SMI) {
-        pr_dbg("QP0 unsupported\n");
+        rdma_error_report("Got QP0 request");
         return -EPERM;
     } else if (qp->qp_type == IBV_QPT_GSI) {
-        pr_dbg("QP1\n");
         return 0;
     }
 
+    trace_rdma_rm_modify_qp(qp_handle, attr_mask, qp_state, sgid_idx);
+
     if (attr_mask & IBV_QP_STATE) {
         qp->qp_state = qp_state;
-        pr_dbg("qp_state=%d\n", qp->qp_state);
 
         if (qp->qp_state == IBV_QPS_INIT) {
             ret = rdma_backend_qp_state_init(backend_dev, &qp->backend_qp,
@@ -430,9 +478,19 @@ int rdma_rm_modify_qp(RdmaDeviceResources *dev_res, RdmaBackendDev *backend_dev,
         }
 
         if (qp->qp_state == IBV_QPS_RTR) {
+            /* Get backend gid index */
+            sgid_idx = rdma_rm_get_backend_gid_index(dev_res, backend_dev,
+                                                     sgid_idx);
+            if (sgid_idx <= 0) { /* TODO check also less than bk.max_sgid */
+                rdma_error_report("Failed to get bk sgid_idx for sgid_idx %d",
+                                  sgid_idx);
+                return -EIO;
+            }
+
             ret = rdma_backend_qp_state_rtr(backend_dev, &qp->backend_qp,
-                                            qp->qp_type, dgid, dqpn, rq_psn,
-                                            qkey, attr_mask & IBV_QP_QKEY);
+                                            qp->qp_type, sgid_idx, dgid, dqpn,
+                                            rq_psn, qkey,
+                                            attr_mask & IBV_QP_QKEY);
             if (ret) {
                 return -EIO;
             }
@@ -457,14 +515,10 @@ int rdma_rm_query_qp(RdmaDeviceResources *dev_res, RdmaBackendDev *backend_dev,
 {
     RdmaRmQP *qp;
 
-    pr_dbg("qpn=%d\n", qp_handle);
-
     qp = rdma_rm_get_qp(dev_res, qp_handle);
     if (!qp) {
         return -EINVAL;
     }
-
-    pr_dbg("qp_type=%d\n", qp->qp_type);
 
     return rdma_backend_query_qp(&qp->backend_qp, attr, attr_mask, init_attr);
 }
@@ -483,21 +537,19 @@ void rdma_rm_dealloc_qp(RdmaDeviceResources *dev_res, uint32_t qp_handle)
         return;
     }
 
-    rdma_backend_destroy_qp(&qp->backend_qp);
+    rdma_backend_destroy_qp(&qp->backend_qp, dev_res);
 
-    res_tbl_dealloc(&dev_res->qp_tbl, qp->qpn);
+    rdma_res_tbl_dealloc(&dev_res->qp_tbl, qp->qpn);
 }
 
 void *rdma_rm_get_cqe_ctx(RdmaDeviceResources *dev_res, uint32_t cqe_ctx_id)
 {
     void **cqe_ctx;
 
-    cqe_ctx = res_tbl_get(&dev_res->cqe_ctx_tbl, cqe_ctx_id);
+    cqe_ctx = rdma_res_tbl_get(&dev_res->cqe_ctx_tbl, cqe_ctx_id);
     if (!cqe_ctx) {
         return NULL;
     }
-
-    pr_dbg("ctx=%p\n", *cqe_ctx);
 
     return *cqe_ctx;
 }
@@ -507,12 +559,11 @@ int rdma_rm_alloc_cqe_ctx(RdmaDeviceResources *dev_res, uint32_t *cqe_ctx_id,
 {
     void **cqe_ctx;
 
-    cqe_ctx = res_tbl_alloc(&dev_res->cqe_ctx_tbl, cqe_ctx_id);
+    cqe_ctx = rdma_res_tbl_alloc(&dev_res->cqe_ctx_tbl, cqe_ctx_id);
     if (!cqe_ctx) {
         return -ENOMEM;
     }
 
-    pr_dbg("ctx=%p\n", ctx);
     *cqe_ctx = ctx;
 
     return 0;
@@ -520,7 +571,61 @@ int rdma_rm_alloc_cqe_ctx(RdmaDeviceResources *dev_res, uint32_t *cqe_ctx_id,
 
 void rdma_rm_dealloc_cqe_ctx(RdmaDeviceResources *dev_res, uint32_t cqe_ctx_id)
 {
-    res_tbl_dealloc(&dev_res->cqe_ctx_tbl, cqe_ctx_id);
+    rdma_res_tbl_dealloc(&dev_res->cqe_ctx_tbl, cqe_ctx_id);
+}
+
+int rdma_rm_add_gid(RdmaDeviceResources *dev_res, RdmaBackendDev *backend_dev,
+                    const char *ifname, union ibv_gid *gid, int gid_idx)
+{
+    int rc;
+
+    rc = rdma_backend_add_gid(backend_dev, ifname, gid);
+    if (rc) {
+        return -EINVAL;
+    }
+
+    memcpy(&dev_res->port.gid_tbl[gid_idx].gid, gid, sizeof(*gid));
+
+    return 0;
+}
+
+int rdma_rm_del_gid(RdmaDeviceResources *dev_res, RdmaBackendDev *backend_dev,
+                    const char *ifname, int gid_idx)
+{
+    int rc;
+
+    if (!dev_res->port.gid_tbl[gid_idx].gid.global.interface_id) {
+        return 0;
+    }
+
+    rc = rdma_backend_del_gid(backend_dev, ifname,
+                              &dev_res->port.gid_tbl[gid_idx].gid);
+    if (rc) {
+        return -EINVAL;
+    }
+
+    memset(dev_res->port.gid_tbl[gid_idx].gid.raw, 0,
+           sizeof(dev_res->port.gid_tbl[gid_idx].gid));
+    dev_res->port.gid_tbl[gid_idx].backend_gid_index = -1;
+
+    return 0;
+}
+
+int rdma_rm_get_backend_gid_index(RdmaDeviceResources *dev_res,
+                                  RdmaBackendDev *backend_dev, int sgid_idx)
+{
+    if (unlikely(sgid_idx < 0 || sgid_idx >= MAX_PORT_GIDS)) {
+        rdma_error_report("Got invalid sgid_idx %d", sgid_idx);
+        return -EINVAL;
+    }
+
+    if (unlikely(dev_res->port.gid_tbl[sgid_idx].backend_gid_index == -1)) {
+        dev_res->port.gid_tbl[sgid_idx].backend_gid_index =
+        rdma_backend_get_gid_index(backend_dev,
+                                   &dev_res->port.gid_tbl[sgid_idx].gid);
+    }
+
+    return dev_res->port.gid_tbl[sgid_idx].backend_gid_index;
 }
 
 static void destroy_qp_hash_key(gpointer data)
@@ -528,8 +633,30 @@ static void destroy_qp_hash_key(gpointer data)
     g_bytes_unref(data);
 }
 
-int rdma_rm_init(RdmaDeviceResources *dev_res, struct ibv_device_attr *dev_attr,
-                 Error **errp)
+static void init_ports(RdmaDeviceResources *dev_res)
+{
+    int i;
+
+    memset(&dev_res->port, 0, sizeof(dev_res->port));
+
+    dev_res->port.state = IBV_PORT_DOWN;
+    for (i = 0; i < MAX_PORT_GIDS; i++) {
+        dev_res->port.gid_tbl[i].backend_gid_index = -1;
+    }
+}
+
+static void fini_ports(RdmaDeviceResources *dev_res,
+                       RdmaBackendDev *backend_dev, const char *ifname)
+{
+    int i;
+
+    dev_res->port.state = IBV_PORT_DOWN;
+    for (i = 0; i < MAX_PORT_GIDS; i++) {
+        rdma_rm_del_gid(dev_res, backend_dev, ifname, i);
+    }
+}
+
+int rdma_rm_init(RdmaDeviceResources *dev_res, struct ibv_device_attr *dev_attr)
 {
     dev_res->qp_hash = g_hash_table_new_full(g_bytes_hash, g_bytes_equal,
                                              destroy_qp_hash_key, NULL);
@@ -545,16 +672,31 @@ int rdma_rm_init(RdmaDeviceResources *dev_res, struct ibv_device_attr *dev_attr,
                        dev_attr->max_qp_wr, sizeof(void *));
     res_tbl_init("UC", &dev_res->uc_tbl, MAX_UCS, sizeof(RdmaRmUC));
 
+    init_ports(dev_res);
+
+    qemu_mutex_init(&dev_res->lock);
+
+    memset(&dev_res->stats, 0, sizeof(dev_res->stats));
+    atomic_set(&dev_res->stats.missing_cqe, 0);
+
     return 0;
 }
 
-void rdma_rm_fini(RdmaDeviceResources *dev_res)
+void rdma_rm_fini(RdmaDeviceResources *dev_res, RdmaBackendDev *backend_dev,
+                  const char *ifname)
 {
+    qemu_mutex_destroy(&dev_res->lock);
+
+    fini_ports(dev_res, backend_dev, ifname);
+
     res_tbl_free(&dev_res->uc_tbl);
     res_tbl_free(&dev_res->cqe_ctx_tbl);
     res_tbl_free(&dev_res->qp_tbl);
-    res_tbl_free(&dev_res->cq_tbl);
     res_tbl_free(&dev_res->mr_tbl);
+    res_tbl_free(&dev_res->cq_tbl);
     res_tbl_free(&dev_res->pd_tbl);
-    g_hash_table_destroy(dev_res->qp_hash);
+
+    if (dev_res->qp_hash) {
+        g_hash_table_destroy(dev_res->qp_hash);
+    }
 }

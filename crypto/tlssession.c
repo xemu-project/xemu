@@ -24,7 +24,7 @@
 #include "crypto/tlscredspsk.h"
 #include "crypto/tlscredsx509.h"
 #include "qapi/error.h"
-#include "qemu/acl.h"
+#include "authz/base.h"
 #include "trace.h"
 
 #ifdef CONFIG_GNUTLS
@@ -37,7 +37,7 @@ struct QCryptoTLSSession {
     QCryptoTLSCreds *creds;
     gnutls_session_t handle;
     char *hostname;
-    char *aclname;
+    char *authzid;
     bool handshakeComplete;
     QCryptoTLSSessionWriteFunc writeFunc;
     QCryptoTLSSessionReadFunc readFunc;
@@ -56,7 +56,7 @@ qcrypto_tls_session_free(QCryptoTLSSession *session)
     gnutls_deinit(session->handle);
     g_free(session->hostname);
     g_free(session->peername);
-    g_free(session->aclname);
+    g_free(session->authzid);
     object_unref(OBJECT(session->creds));
     g_free(session);
 }
@@ -90,18 +90,12 @@ qcrypto_tls_session_pull(void *opaque, void *buf, size_t len)
 }
 
 #define TLS_PRIORITY_ADDITIONAL_ANON "+ANON-DH"
-
-#if GNUTLS_VERSION_MAJOR >= 3
-#define TLS_ECDHE_PSK "+ECDHE-PSK:"
-#else
-#define TLS_ECDHE_PSK ""
-#endif
-#define TLS_PRIORITY_ADDITIONAL_PSK TLS_ECDHE_PSK "+DHE-PSK:+PSK"
+#define TLS_PRIORITY_ADDITIONAL_PSK "+ECDHE-PSK:+DHE-PSK:+PSK"
 
 QCryptoTLSSession *
 qcrypto_tls_session_new(QCryptoTLSCreds *creds,
                         const char *hostname,
-                        const char *aclname,
+                        const char *authzid,
                         QCryptoTLSCredsEndpoint endpoint,
                         Error **errp)
 {
@@ -111,13 +105,13 @@ qcrypto_tls_session_new(QCryptoTLSCreds *creds,
     session = g_new0(QCryptoTLSSession, 1);
     trace_qcrypto_tls_session_new(
         session, creds, hostname ? hostname : "<none>",
-        aclname ? aclname : "<none>", endpoint);
+        authzid ? authzid : "<none>", endpoint);
 
     if (hostname) {
         session->hostname = g_strdup(hostname);
     }
-    if (aclname) {
-        session->aclname = g_strdup(aclname);
+    if (authzid) {
+        session->authzid = g_strdup(authzid);
     }
     session->creds = creds;
     object_ref(OBJECT(creds));
@@ -268,6 +262,7 @@ qcrypto_tls_session_check_certificate(QCryptoTLSSession *session,
     unsigned int nCerts, i;
     time_t now;
     gnutls_x509_crt_t cert = NULL;
+    Error *err = NULL;
 
     now = time(NULL);
     if (now == ((time_t)-1)) {
@@ -355,19 +350,17 @@ qcrypto_tls_session_check_certificate(QCryptoTLSSession *session,
                            gnutls_strerror(ret));
                 goto error;
             }
-            if (session->aclname) {
-                qemu_acl *acl = qemu_acl_find(session->aclname);
-                int allow;
-                if (!acl) {
-                    error_setg(errp, "Cannot find ACL %s",
-                               session->aclname);
+            if (session->authzid) {
+                bool allow;
+
+                allow = qauthz_is_allowed_by_id(session->authzid,
+                                                session->peername, &err);
+                if (err) {
+                    error_propagate(errp, err);
                     goto error;
                 }
-
-                allow = qemu_acl_party_is_allowed(acl, session->peername);
-
                 if (!allow) {
-                    error_setg(errp, "TLS x509 ACL check for %s is denied",
+                    error_setg(errp, "TLS x509 authz check for %s is denied",
                                session->peername);
                     goto error;
                 }
@@ -479,6 +472,9 @@ qcrypto_tls_session_read(QCryptoTLSSession *session,
         case GNUTLS_E_INTERRUPTED:
             errno = EINTR;
             break;
+        case GNUTLS_E_PREMATURE_TERMINATION:
+            errno = ECONNABORTED;
+            break;
         default:
             errno = EIO;
             break;
@@ -558,7 +554,7 @@ qcrypto_tls_session_get_peer_name(QCryptoTLSSession *session)
 QCryptoTLSSession *
 qcrypto_tls_session_new(QCryptoTLSCreds *creds G_GNUC_UNUSED,
                         const char *hostname G_GNUC_UNUSED,
-                        const char *aclname G_GNUC_UNUSED,
+                        const char *authzid G_GNUC_UNUSED,
                         QCryptoTLSCredsEndpoint endpoint G_GNUC_UNUSED,
                         Error **errp)
 {

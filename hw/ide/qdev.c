@@ -190,7 +190,6 @@ static void ide_dev_initfn(IDEDevice *dev, IDEDriveKind kind, Error **errp)
 
     blkconf_locked(&dev->conf, &dev->locked);
 
-    blkconf_serial(&dev->conf, &dev->serial);
     if (kind != IDE_CD) {
         if (!blkconf_geometry(&dev->conf, &dev->chs_trans, 65535, 16, 255,
                               errp)) {

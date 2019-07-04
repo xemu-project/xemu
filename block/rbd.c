@@ -655,12 +655,61 @@ failed_opts:
     return r;
 }
 
+static int qemu_rbd_convert_options(QDict *options, BlockdevOptionsRbd **opts,
+                                    Error **errp)
+{
+    Visitor *v;
+    Error *local_err = NULL;
+
+    /* Convert the remaining options into a QAPI object */
+    v = qobject_input_visitor_new_flat_confused(options, errp);
+    if (!v) {
+        return -EINVAL;
+    }
+
+    visit_type_BlockdevOptionsRbd(v, NULL, opts, &local_err);
+    visit_free(v);
+
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
+static int qemu_rbd_attempt_legacy_options(QDict *options,
+                                           BlockdevOptionsRbd **opts,
+                                           char **keypairs)
+{
+    char *filename;
+    int r;
+
+    filename = g_strdup(qdict_get_try_str(options, "filename"));
+    if (!filename) {
+        return -EINVAL;
+    }
+    qdict_del(options, "filename");
+
+    qemu_rbd_parse_filename(filename, options, NULL);
+
+    /* keypairs freed by caller */
+    *keypairs = g_strdup(qdict_get_try_str(options, "=keyvalue-pairs"));
+    if (*keypairs) {
+        qdict_del(options, "=keyvalue-pairs");
+    }
+
+    r = qemu_rbd_convert_options(options, opts, NULL);
+
+    g_free(filename);
+    return r;
+}
+
 static int qemu_rbd_open(BlockDriverState *bs, QDict *options, int flags,
                          Error **errp)
 {
     BDRVRBDState *s = bs->opaque;
     BlockdevOptionsRbd *opts = NULL;
-    Visitor *v;
     const QDictEntry *e;
     Error *local_err = NULL;
     char *keypairs, *secretid;
@@ -676,20 +725,33 @@ static int qemu_rbd_open(BlockDriverState *bs, QDict *options, int flags,
         qdict_del(options, "password-secret");
     }
 
-    /* Convert the remaining options into a QAPI object */
-    v = qobject_input_visitor_new_flat_confused(options, errp);
-    if (!v) {
-        r = -EINVAL;
-        goto out;
-    }
-
-    visit_type_BlockdevOptionsRbd(v, NULL, &opts, &local_err);
-    visit_free(v);
-
+    r = qemu_rbd_convert_options(options, &opts, &local_err);
     if (local_err) {
-        error_propagate(errp, local_err);
-        r = -EINVAL;
-        goto out;
+        /* If keypairs are present, that means some options are present in
+         * the modern option format.  Don't attempt to parse legacy option
+         * formats, as we won't support mixed usage. */
+        if (keypairs) {
+            error_propagate(errp, local_err);
+            goto out;
+        }
+
+        /* If the initial attempt to convert and process the options failed,
+         * we may be attempting to open an image file that has the rbd options
+         * specified in the older format consisting of all key/value pairs
+         * encoded in the filename.  Go ahead and attempt to parse the
+         * filename, and see if we can pull out the required options. */
+        r = qemu_rbd_attempt_legacy_options(options, &opts, &keypairs);
+        if (r < 0) {
+            /* Propagate the original error, not the legacy parsing fallback
+             * error, as the latter was just a best-effort attempt. */
+            error_propagate(errp, local_err);
+            goto out;
+        }
+        /* Take care whenever deciding to actually deprecate; once this ability
+         * is removed, we will not be able to open any images with legacy-styled
+         * backing image strings. */
+        warn_report("RBD options encoded in the filename as keyvalue pairs "
+                    "is deprecated");
     }
 
     /* Remove the processed options from the QDict (the visitor processes
@@ -718,16 +780,10 @@ static int qemu_rbd_open(BlockDriverState *bs, QDict *options, int flags,
     /* If we are using an rbd snapshot, we must be r/o, otherwise
      * leave as-is */
     if (s->snap != NULL) {
-        if (!bdrv_is_read_only(bs)) {
-            error_report("Opening rbd snapshots without an explicit "
-                         "read-only=on option is deprecated. Future versions "
-                         "will refuse to open the image instead of "
-                         "automatically marking the image read-only.");
-            r = bdrv_set_read_only(bs, true, &local_err);
-            if (r < 0) {
-                error_propagate(errp, local_err);
-                goto failed_open;
-            }
+        r = bdrv_apply_auto_read_only(bs, "rbd snapshots are read-only", errp);
+        if (r < 0) {
+            rbd_close(s->image);
+            goto failed_open;
         }
     }
 
@@ -1172,6 +1228,18 @@ static QemuOptsList qemu_rbd_create_opts = {
     }
 };
 
+static const char *const qemu_rbd_strong_runtime_opts[] = {
+    "pool",
+    "image",
+    "conf",
+    "snapshot",
+    "user",
+    "server.",
+    "password-secret",
+
+    NULL
+};
+
 static BlockDriver bdrv_rbd = {
     .format_name            = "rbd",
     .instance_size          = sizeof(BDRVRBDState),
@@ -1209,6 +1277,8 @@ static BlockDriver bdrv_rbd = {
 #ifdef LIBRBD_SUPPORTS_INVALIDATE
     .bdrv_co_invalidate_cache = qemu_rbd_co_invalidate_cache,
 #endif
+
+    .strong_runtime_opts    = qemu_rbd_strong_runtime_opts,
 };
 
 static void bdrv_rbd_init(void)

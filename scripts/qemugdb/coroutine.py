@@ -7,11 +7,8 @@
 # Authors:
 #  Avi Kivity <avi@redhat.com>
 #
-# This work is licensed under the terms of the GNU GPL, version 2.  See
-# the COPYING file in the top-level directory.
-#
-# Contributions after 2012-01-13 are licensed under the terms of the
-# GNU GPL, version 2 or (at your option) any later version.
+# This work is licensed under the terms of the GNU GPL, version 2
+# or later.  See the COPYING file in the top-level directory.
 
 import gdb
 
@@ -22,7 +19,7 @@ def get_fs_base():
        pthread_self().'''
     # %rsp - 120 is scratch space according to the SystemV ABI
     old = gdb.parse_and_eval('*(uint64_t*)($rsp - 120)')
-    gdb.execute('call arch_prctl(0x1003, $rsp - 120)', False, True)
+    gdb.execute('call (int)arch_prctl(0x1003, $rsp - 120)', False, True)
     fs_base = gdb.parse_and_eval('*(uint64_t*)($rsp - 120)')
     gdb.execute('set *(uint64_t*)($rsp - 120) = %s' % old, False, True)
     return fs_base

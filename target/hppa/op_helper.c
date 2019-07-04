@@ -25,6 +25,7 @@
 #include "sysemu/sysemu.h"
 #include "qemu/timer.h"
 #include "fpu/softfloat.h"
+#include "trace.h"
 
 void QEMU_NORETURN HELPER(excp)(CPUHPPAState *env, int excp)
 {
@@ -81,10 +82,8 @@ static void atomic_store_3(CPUHPPAState *env, target_ulong addr, uint32_t val,
 }
 
 static void do_stby_b(CPUHPPAState *env, target_ulong addr, target_ureg val,
-                      bool parallel)
+                      bool parallel, uintptr_t ra)
 {
-    uintptr_t ra = GETPC();
-
     switch (addr & 3) {
     case 3:
         cpu_stb_data_ra(env, addr, val, ra);
@@ -109,20 +108,18 @@ static void do_stby_b(CPUHPPAState *env, target_ulong addr, target_ureg val,
 
 void HELPER(stby_b)(CPUHPPAState *env, target_ulong addr, target_ureg val)
 {
-    do_stby_b(env, addr, val, false);
+    do_stby_b(env, addr, val, false, GETPC());
 }
 
 void HELPER(stby_b_parallel)(CPUHPPAState *env, target_ulong addr,
                              target_ureg val)
 {
-    do_stby_b(env, addr, val, true);
+    do_stby_b(env, addr, val, true, GETPC());
 }
 
 static void do_stby_e(CPUHPPAState *env, target_ulong addr, target_ureg val,
-                      bool parallel)
+                      bool parallel, uintptr_t ra)
 {
-    uintptr_t ra = GETPC();
-
     switch (addr & 3) {
     case 3:
         /* The 3 byte store must appear atomic.  */
@@ -151,13 +148,13 @@ static void do_stby_e(CPUHPPAState *env, target_ulong addr, target_ureg val,
 
 void HELPER(stby_e)(CPUHPPAState *env, target_ulong addr, target_ureg val)
 {
-    do_stby_e(env, addr, val, false);
+    do_stby_e(env, addr, val, false, GETPC());
 }
 
 void HELPER(stby_e_parallel)(CPUHPPAState *env, target_ulong addr,
                              target_ureg val)
 {
-    do_stby_e(env, addr, val, true);
+    do_stby_e(env, addr, val, true, GETPC());
 }
 
 target_ureg HELPER(probe)(CPUHPPAState *env, target_ulong addr,
@@ -169,6 +166,7 @@ target_ureg HELPER(probe)(CPUHPPAState *env, target_ulong addr,
     int prot, excp;
     hwaddr phys;
 
+    trace_hppa_tlb_probe(addr, level, want);
     /* Fail if the requested privilege level is higher than current.  */
     if (level < (env->iaoq_f & 3)) {
         return 0;
@@ -665,22 +663,21 @@ void HELPER(reset)(CPUHPPAState *env)
 target_ureg HELPER(swap_system_mask)(CPUHPPAState *env, target_ureg nsm)
 {
     target_ulong psw = env->psw;
-    /* ??? On second reading this condition simply seems
-       to be undefined rather than a diagnosed trap.  */
-    if (nsm & ~psw & PSW_Q) {
-        hppa_dynamic_excp(env, EXCP_ILL, GETPC());
-    }
+    /*
+     * Setting the PSW Q bit to 1, if it was not already 1, is an
+     * undefined operation.
+     *
+     * However, HP-UX 10.20 does this with the SSM instruction.
+     * Tested this on HP9000/712 and HP9000/785/C3750 and both
+     * machines set the Q bit from 0 to 1 without an exception,
+     * so let this go without comment.
+     */
     env->psw = (psw & ~PSW_SM) | (nsm & PSW_SM);
     return psw & PSW_SM;
 }
 
 void HELPER(rfi)(CPUHPPAState *env)
 {
-    /* ??? On second reading this condition simply seems
-       to be undefined rather than a diagnosed trap.  */
-    if (env->psw & (PSW_I | PSW_R | PSW_Q)) {
-        helper_excp(env, EXCP_ILL);
-    }
     env->iasq_f = (uint64_t)env->cr[CR_IIASQ] << 32;
     env->iasq_b = (uint64_t)env->cr_back[0] << 32;
     env->iaoq_f = env->cr[CR_IIAOQ];

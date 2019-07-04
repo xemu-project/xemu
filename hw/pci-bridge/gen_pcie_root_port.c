@@ -20,6 +20,9 @@
         OBJECT_CHECK(GenPCIERootPort, (obj), TYPE_GEN_PCIE_ROOT_PORT)
 
 #define GEN_PCIE_ROOT_PORT_AER_OFFSET           0x100
+#define GEN_PCIE_ROOT_PORT_ACS_OFFSET \
+        (GEN_PCIE_ROOT_PORT_AER_OFFSET + PCI_ERR_SIZEOF)
+
 #define GEN_PCIE_ROOT_PORT_MSIX_NR_VECTOR       1
 
 typedef struct GenPCIERootPort {
@@ -29,12 +32,8 @@ typedef struct GenPCIERootPort {
 
     bool migrate_msix;
 
-    /* additional resources to reserve on firmware init */
-    uint32_t bus_reserve;
-    uint64_t io_reserve;
-    uint64_t mem_reserve;
-    uint64_t pref32_reserve;
-    uint64_t pref64_reserve;
+    /* additional resources to reserve */
+    PCIResReserve res_reserve;
 } GenPCIERootPort;
 
 static uint8_t gen_rp_aer_vector(const PCIDevice *d)
@@ -82,16 +81,15 @@ static void gen_rp_realize(DeviceState *dev, Error **errp)
         return;
     }
 
-    int rc = pci_bridge_qemu_reserve_cap_init(d, 0, grp->bus_reserve,
-            grp->io_reserve, grp->mem_reserve, grp->pref32_reserve,
-            grp->pref64_reserve, errp);
+    int rc = pci_bridge_qemu_reserve_cap_init(d, 0,
+                                              grp->res_reserve, errp);
 
     if (rc < 0) {
         rpc->parent_class.exit(d);
         return;
     }
 
-    if (!grp->io_reserve) {
+    if (!grp->res_reserve.io) {
         pci_word_test_and_clear_mask(d->wmask + PCI_COMMAND,
                                      PCI_COMMAND_IO);
         d->wmask[PCI_IO_BASE] = 0;
@@ -117,12 +115,22 @@ static const VMStateDescription vmstate_rp_dev = {
 };
 
 static Property gen_rp_props[] = {
-    DEFINE_PROP_BOOL("x-migrate-msix", GenPCIERootPort, migrate_msix, true),
-    DEFINE_PROP_UINT32("bus-reserve", GenPCIERootPort, bus_reserve, -1),
-    DEFINE_PROP_SIZE("io-reserve", GenPCIERootPort, io_reserve, -1),
-    DEFINE_PROP_SIZE("mem-reserve", GenPCIERootPort, mem_reserve, -1),
-    DEFINE_PROP_SIZE("pref32-reserve", GenPCIERootPort, pref32_reserve, -1),
-    DEFINE_PROP_SIZE("pref64-reserve", GenPCIERootPort, pref64_reserve, -1),
+    DEFINE_PROP_BOOL("x-migrate-msix", GenPCIERootPort,
+                     migrate_msix, true),
+    DEFINE_PROP_UINT32("bus-reserve", GenPCIERootPort,
+                       res_reserve.bus, -1),
+    DEFINE_PROP_SIZE("io-reserve", GenPCIERootPort,
+                     res_reserve.io, -1),
+    DEFINE_PROP_SIZE("mem-reserve", GenPCIERootPort,
+                     res_reserve.mem_non_pref, -1),
+    DEFINE_PROP_SIZE("pref32-reserve", GenPCIERootPort,
+                     res_reserve.mem_pref_32, -1),
+    DEFINE_PROP_SIZE("pref64-reserve", GenPCIERootPort,
+                     res_reserve.mem_pref_64, -1),
+    DEFINE_PROP_PCIE_LINK_SPEED("x-speed", PCIESlot,
+                                speed, PCIE_LINK_SPEED_16),
+    DEFINE_PROP_PCIE_LINK_WIDTH("x-width", PCIESlot,
+                                width, PCIE_LINK_WIDTH_32),
     DEFINE_PROP_END_OF_LIST()
 };
 
@@ -144,6 +152,7 @@ static void gen_rp_dev_class_init(ObjectClass *klass, void *data)
     rpc->interrupts_init = gen_rp_interrupts_init;
     rpc->interrupts_uninit = gen_rp_interrupts_uninit;
     rpc->aer_offset = GEN_PCIE_ROOT_PORT_AER_OFFSET;
+    rpc->acs_offset = GEN_PCIE_ROOT_PORT_ACS_OFFSET;
 }
 
 static const TypeInfo gen_rp_dev_info = {

@@ -145,7 +145,7 @@ static void ne2000_update_irq(NE2000State *s)
     isr = (s->isr & s->imr) & 0x7f;
 #if defined(DEBUG_NE2000)
     printf("NE2000: Set IRQ to %d (%02x %02x)\n",
-	   isr ? 1 : 0, s->isr, s->imr);
+           isr ? 1 : 0, s->isr, s->imr);
 #endif
     qemu_set_irq(s->irq, (isr != 0));
 }
@@ -174,7 +174,7 @@ static int ne2000_buffer_full(NE2000State *s)
 ssize_t ne2000_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
 {
     NE2000State *s = qemu_get_nic_opaque(nc);
-    int size = size_;
+    size_t size = size_;
     uint8_t *p;
     unsigned int total_len, next, avail, len, index, mcast_idx;
     uint8_t buf1[60];
@@ -182,7 +182,7 @@ ssize_t ne2000_receive(NetClientState *nc, const uint8_t *buf, size_t size_)
         { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
 #if defined(DEBUG_NE2000)
-    printf("NE2000: received len=%d\n", size);
+    printf("NE2000: received len=%zu\n", size);
 #endif
 
     if (s->cmd & E8390_STOP || ne2000_buffer_full(s))
@@ -396,12 +396,12 @@ static uint32_t ne2000_ioport_read(void *opaque, uint32_t addr)
         case EN0_ISR:
             ret = s->isr;
             break;
-	case EN0_RSARLO:
-	    ret = s->rsar & 0x00ff;
-	    break;
-	case EN0_RSARHI:
-	    ret = s->rsar >> 8;
-	    break;
+        case EN0_RSARLO:
+            ret = s->rsar & 0x00ff;
+            break;
+        case EN0_RSARHI:
+            ret = s->rsar >> 8;
+            break;
         case EN1_PHYS ... EN1_PHYS + 5:
             ret = s->phys[offset - EN1_PHYS];
             break;
@@ -420,21 +420,21 @@ static uint32_t ne2000_ioport_read(void *opaque, uint32_t addr)
         case EN2_STOPPG:
             ret = s->stop >> 8;
             break;
-	case EN0_RTL8029ID0:
-	    ret = 0x50;
-	    break;
-	case EN0_RTL8029ID1:
-	    ret = 0x43;
-	    break;
-	case EN3_CONFIG0:
-	    ret = 0;		/* 10baseT media */
-	    break;
-	case EN3_CONFIG2:
-	    ret = 0x40;		/* 10baseT active */
-	    break;
-	case EN3_CONFIG3:
-	    ret = 0x40;		/* Full duplex */
-	    break;
+        case EN0_RTL8029ID0:
+            ret = 0x50;
+            break;
+        case EN0_RTL8029ID1:
+            ret = 0x43;
+            break;
+        case EN3_CONFIG0:
+            ret = 0;		/* 10baseT media */
+            break;
+        case EN3_CONFIG2:
+            ret = 0x40;		/* 10baseT active */
+            break;
+        case EN3_CONFIG3:
+            ret = 0x40;		/* Full duplex */
+            break;
         default:
             ret = 0x00;
             break;

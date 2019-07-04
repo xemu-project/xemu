@@ -2,7 +2,7 @@
 #
 # TCG tests (per-target rules)
 #
-# This Makefile fragement is included from the per-target
+# This Makefile fragment is included from the per-target
 # Makefile.target so will be invoked for each linux-user program we
 # build. We have two options for compiling, either using a configured
 # guest compiler or calling one of our docker images to do it for us.
@@ -67,7 +67,7 @@ endif
 ifneq ($(GUEST_BUILD),)
 guest-tests: $(GUEST_BUILD)
 
-run-guest-tests: guest-tests qemu-$(TARGET_NAME)
+run-guest-tests: guest-tests qemu-$(subst y,system-,$(CONFIG_SOFTMMU))$(TARGET_NAME)
 	$(call quiet-command, \
 	(cd tests && $(MAKE) -f $(TCG_MAKE) SPEED=$(SPEED) run), \
 	"RUN", "tests for $(TARGET_NAME)")

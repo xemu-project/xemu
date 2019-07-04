@@ -41,7 +41,6 @@ can't open device nbd+tcp://127.0.0.1:PORT/foo
 
 === Check disconnect after neg2 ===
 
-Connection closed
 read failed: Input/output error
 
 === Check disconnect 8 neg2 ===
@@ -54,39 +53,30 @@ can't open device nbd+tcp://127.0.0.1:PORT/foo
 
 === Check disconnect before request ===
 
-Connection closed
 read failed: Input/output error
 
 === Check disconnect after request ===
 
-Connection closed
 read failed: Input/output error
 
 === Check disconnect before reply ===
 
-Connection closed
 read failed: Input/output error
 
 === Check disconnect after reply ===
 
-Unexpected end-of-file before all bytes were read
 read failed: Input/output error
 
 === Check disconnect 4 reply ===
 
-Unexpected end-of-file before all bytes were read
-Connection closed
 read failed: Input/output error
 
 === Check disconnect 8 reply ===
 
-Unexpected end-of-file before all bytes were read
-Connection closed
 read failed: Input/output error
 
 === Check disconnect before data ===
 
-Unexpected end-of-file before all bytes were read
 read failed: Input/output error
 
 === Check disconnect after data ===
@@ -116,7 +106,6 @@ can't open device nbd+tcp://127.0.0.1:PORT/
 
 === Check disconnect after neg-classic ===
 
-Connection closed
 read failed: Input/output error
 
 === Check disconnect before neg1 ===
@@ -177,34 +166,26 @@ read failed: Input/output error
 
 === Check disconnect after request ===
 
-Connection closed
 read failed: Input/output error
 
 === Check disconnect before reply ===
 
-Connection closed
 read failed: Input/output error
 
 === Check disconnect after reply ===
 
-Unexpected end-of-file before all bytes were read
 read failed: Input/output error
 
 === Check disconnect 4 reply ===
 
-Unexpected end-of-file before all bytes were read
-Connection closed
 read failed: Input/output error
 
 === Check disconnect 8 reply ===
 
-Unexpected end-of-file before all bytes were read
-Connection closed
 read failed: Input/output error
 
 === Check disconnect before data ===
 
-Unexpected end-of-file before all bytes were read
 read failed: Input/output error
 
 === Check disconnect after data ===

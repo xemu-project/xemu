@@ -48,8 +48,6 @@
 
 #define USE_FLASH_BIOS
 
-//#define DEBUG_BOARD_INIT
-
 /*****************************************************************************/
 /* PPC405EP reference board (IBM) */
 /* Standalone board with:
@@ -66,7 +64,7 @@ struct ref405ep_fpga_t {
     uint8_t reg1;
 };
 
-static uint32_t ref405ep_fpga_readb (void *opaque, hwaddr addr)
+static uint64_t ref405ep_fpga_readb(void *opaque, hwaddr addr, unsigned size)
 {
     ref405ep_fpga_t *fpga;
     uint32_t ret;
@@ -87,8 +85,8 @@ static uint32_t ref405ep_fpga_readb (void *opaque, hwaddr addr)
     return ret;
 }
 
-static void ref405ep_fpga_writeb (void *opaque,
-                                  hwaddr addr, uint32_t value)
+static void ref405ep_fpga_writeb(void *opaque, hwaddr addr, uint64_t value,
+                                 unsigned size)
 {
     ref405ep_fpga_t *fpga;
 
@@ -105,54 +103,14 @@ static void ref405ep_fpga_writeb (void *opaque,
     }
 }
 
-static uint32_t ref405ep_fpga_readw (void *opaque, hwaddr addr)
-{
-    uint32_t ret;
-
-    ret = ref405ep_fpga_readb(opaque, addr) << 8;
-    ret |= ref405ep_fpga_readb(opaque, addr + 1);
-
-    return ret;
-}
-
-static void ref405ep_fpga_writew (void *opaque,
-                                  hwaddr addr, uint32_t value)
-{
-    ref405ep_fpga_writeb(opaque, addr, (value >> 8) & 0xFF);
-    ref405ep_fpga_writeb(opaque, addr + 1, value & 0xFF);
-}
-
-static uint32_t ref405ep_fpga_readl (void *opaque, hwaddr addr)
-{
-    uint32_t ret;
-
-    ret = ref405ep_fpga_readb(opaque, addr) << 24;
-    ret |= ref405ep_fpga_readb(opaque, addr + 1) << 16;
-    ret |= ref405ep_fpga_readb(opaque, addr + 2) << 8;
-    ret |= ref405ep_fpga_readb(opaque, addr + 3);
-
-    return ret;
-}
-
-static void ref405ep_fpga_writel (void *opaque,
-                                  hwaddr addr, uint32_t value)
-{
-    ref405ep_fpga_writeb(opaque, addr, (value >> 24) & 0xFF);
-    ref405ep_fpga_writeb(opaque, addr + 1, (value >> 16) & 0xFF);
-    ref405ep_fpga_writeb(opaque, addr + 2, (value >> 8) & 0xFF);
-    ref405ep_fpga_writeb(opaque, addr + 3, value & 0xFF);
-}
-
 static const MemoryRegionOps ref405ep_fpga_ops = {
-    .old_mmio = {
-        .read = {
-            ref405ep_fpga_readb, ref405ep_fpga_readw, ref405ep_fpga_readl,
-        },
-        .write = {
-            ref405ep_fpga_writeb, ref405ep_fpga_writew, ref405ep_fpga_writel,
-        },
-    },
-    .endianness = DEVICE_NATIVE_ENDIAN,
+    .read = ref405ep_fpga_readb,
+    .write = ref405ep_fpga_writeb,
+    .impl.min_access_size = 1,
+    .impl.max_access_size = 1,
+    .valid.min_access_size = 1,
+    .valid.max_access_size = 4,
+    .endianness = DEVICE_BIG_ENDIAN,
 };
 
 static void ref405ep_fpga_reset (void *opaque)
@@ -189,7 +147,7 @@ static void ref405ep_init(MachineState *machine)
     MemoryRegion *bios;
     MemoryRegion *sram = g_new(MemoryRegion, 1);
     ram_addr_t bdloc;
-    MemoryRegion *ram_memories = g_malloc(2 * sizeof(*ram_memories));
+    MemoryRegion *ram_memories = g_new(MemoryRegion, 2);
     hwaddr ram_bases[2], ram_sizes[2];
     target_ulong sram_size;
     long bios_size;
@@ -198,16 +156,9 @@ static void ref405ep_init(MachineState *machine)
     target_ulong kernel_base, initrd_base;
     long kernel_size, initrd_size;
     int linux_boot;
-    int fl_idx, fl_sectors, len;
+    int len;
     DriveInfo *dinfo;
     MemoryRegion *sysmem = get_system_memory();
-
-#ifdef TARGET_PPCEMB
-    if (!qtest_enabled()) {
-        warn_report("qemu-system-ppcemb is deprecated, "
-                    "please use qemu-system-ppc instead.");
-    }
-#endif
 
     /* XXX: fix this */
     memory_region_allocate_system_memory(&ram_memories[0], NULL, "ef405ep.ram",
@@ -218,9 +169,6 @@ static void ref405ep_init(MachineState *machine)
     ram_bases[1] = 0x00000000;
     ram_sizes[1] = 0x00000000;
     ram_size = 128 * MiB;
-#ifdef DEBUG_BOARD_INIT
-    printf("%s: register cpu\n", __func__);
-#endif
     env = ppc405ep_init(sysmem, ram_memories, ram_bases, ram_sizes,
                         33333333, &pic, kernel_filename == NULL ? 0 : 1);
     /* allocate SRAM */
@@ -229,35 +177,19 @@ static void ref405ep_init(MachineState *machine)
                            &error_fatal);
     memory_region_add_subregion(sysmem, 0xFFF00000, sram);
     /* allocate and load BIOS */
-#ifdef DEBUG_BOARD_INIT
-    printf("%s: register BIOS\n", __func__);
-#endif
-    fl_idx = 0;
 #ifdef USE_FLASH_BIOS
-    dinfo = drive_get(IF_PFLASH, 0, fl_idx);
+    dinfo = drive_get(IF_PFLASH, 0, 0);
     if (dinfo) {
-        BlockBackend *blk = blk_by_legacy_dinfo(dinfo);
-
-        bios_size = blk_getlength(blk);
-        fl_sectors = (bios_size + 65535) >> 16;
-#ifdef DEBUG_BOARD_INIT
-        printf("Register parallel flash %d size %lx"
-               " at addr %lx '%s' %d\n",
-               fl_idx, bios_size, -bios_size,
-               blk_name(blk), fl_sectors);
-#endif
+        bios_size = 8 * MiB;
         pflash_cfi02_register((uint32_t)(-bios_size),
-                              NULL, "ef405ep.bios", bios_size,
-                              blk, 65536, fl_sectors, 1,
+                              "ef405ep.bios", bios_size,
+                              dinfo ? blk_by_legacy_dinfo(dinfo) : NULL,
+                              64 * KiB, 1,
                               2, 0x0001, 0x22DA, 0x0000, 0x0000, 0x555, 0x2AA,
                               1);
-        fl_idx++;
     } else
 #endif
     {
-#ifdef DEBUG_BOARD_INIT
-        printf("Load BIOS from file\n");
-#endif
         bios = g_new(MemoryRegion, 1);
         memory_region_init_ram(bios, NULL, "ef405ep.bios", BIOS_SIZE,
                                &error_fatal);
@@ -266,9 +198,11 @@ static void ref405ep_init(MachineState *machine)
             bios_name = BIOS_FILENAME;
         filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
         if (filename) {
-            bios_size = load_image(filename, memory_region_get_ram_ptr(bios));
+            bios_size = load_image_size(filename,
+                                        memory_region_get_ram_ptr(bios),
+                                        BIOS_SIZE);
             g_free(filename);
-            if (bios_size < 0 || bios_size > BIOS_SIZE) {
+            if (bios_size < 0) {
                 error_report("Could not load PowerPC BIOS '%s'", bios_name);
                 exit(1);
             }
@@ -284,21 +218,12 @@ static void ref405ep_init(MachineState *machine)
         memory_region_set_readonly(bios, true);
     }
     /* Register FPGA */
-#ifdef DEBUG_BOARD_INIT
-    printf("%s: register FPGA\n", __func__);
-#endif
     ref405ep_fpga_init(sysmem, 0xF0300000);
     /* Register NVRAM */
-#ifdef DEBUG_BOARD_INIT
-    printf("%s: register NVRAM\n", __func__);
-#endif
     m48t59_init(NULL, 0xF0000000, 0, 8192, 1968, 8);
     /* Load kernel */
     linux_boot = (kernel_filename != NULL);
     if (linux_boot) {
-#ifdef DEBUG_BOARD_INIT
-        printf("%s: load kernel\n", __func__);
-#endif
         memset(&bd, 0, sizeof(bd));
         bd.bi_memstart = 0x00000000;
         bd.bi_memsize = ram_size;
@@ -370,10 +295,6 @@ static void ref405ep_init(MachineState *machine)
         initrd_size = 0;
         bdloc = 0;
     }
-#ifdef DEBUG_BOARD_INIT
-    printf("bdloc " RAM_ADDR_FMT "\n", bdloc);
-    printf("%s: Done\n", __func__);
-#endif
 }
 
 static void ref405ep_class_init(ObjectClass *oc, void *data)
@@ -493,22 +414,15 @@ static void taihu_405ep_init(MachineState *machine)
     qemu_irq *pic;
     MemoryRegion *sysmem = get_system_memory();
     MemoryRegion *bios;
-    MemoryRegion *ram_memories = g_malloc(2 * sizeof(*ram_memories));
+    MemoryRegion *ram_memories = g_new(MemoryRegion, 2);
     MemoryRegion *ram = g_malloc0(sizeof(*ram));
     hwaddr ram_bases[2], ram_sizes[2];
     long bios_size;
     target_ulong kernel_base, initrd_base;
     long kernel_size, initrd_size;
     int linux_boot;
-    int fl_idx, fl_sectors;
+    int fl_idx;
     DriveInfo *dinfo;
-
-#ifdef TARGET_PPCEMB
-    if (!qtest_enabled()) {
-        warn_report("qemu-system-ppcemb is deprecated, "
-                    "please use qemu-system-ppc instead.");
-    }
-#endif
 
     /* RAM is soldered to the board so the size cannot be changed */
     ram_size = 0x08000000;
@@ -525,43 +439,24 @@ static void taihu_405ep_init(MachineState *machine)
     memory_region_init_alias(&ram_memories[1], NULL,
                              "taihu_405ep.ram-1", ram, ram_bases[1],
                              ram_sizes[1]);
-#ifdef DEBUG_BOARD_INIT
-    printf("%s: register cpu\n", __func__);
-#endif
     ppc405ep_init(sysmem, ram_memories, ram_bases, ram_sizes,
                   33333333, &pic, kernel_filename == NULL ? 0 : 1);
     /* allocate and load BIOS */
-#ifdef DEBUG_BOARD_INIT
-    printf("%s: register BIOS\n", __func__);
-#endif
     fl_idx = 0;
 #if defined(USE_FLASH_BIOS)
     dinfo = drive_get(IF_PFLASH, 0, fl_idx);
     if (dinfo) {
-        BlockBackend *blk = blk_by_legacy_dinfo(dinfo);
-
-        bios_size = blk_getlength(blk);
-        /* XXX: should check that size is 2MB */
-        //        bios_size = 2 * 1024 * 1024;
-        fl_sectors = (bios_size + 65535) >> 16;
-#ifdef DEBUG_BOARD_INIT
-        printf("Register parallel flash %d size %lx"
-               " at addr %lx '%s' %d\n",
-               fl_idx, bios_size, -bios_size,
-               blk_name(blk), fl_sectors);
-#endif
-        pflash_cfi02_register((uint32_t)(-bios_size),
-                              NULL, "taihu_405ep.bios", bios_size,
-                              blk, 65536, fl_sectors, 1,
+        bios_size = 2 * MiB;
+        pflash_cfi02_register(0xFFE00000,
+                              "taihu_405ep.bios", bios_size,
+                              dinfo ? blk_by_legacy_dinfo(dinfo) : NULL,
+                              64 * KiB, 1,
                               4, 0x0001, 0x22DA, 0x0000, 0x0000, 0x555, 0x2AA,
                               1);
         fl_idx++;
     } else
 #endif
     {
-#ifdef DEBUG_BOARD_INIT
-        printf("Load BIOS from file\n");
-#endif
         if (bios_name == NULL)
             bios_name = BIOS_FILENAME;
         bios = g_new(MemoryRegion, 1);
@@ -569,9 +464,11 @@ static void taihu_405ep_init(MachineState *machine)
                                &error_fatal);
         filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
         if (filename) {
-            bios_size = load_image(filename, memory_region_get_ram_ptr(bios));
+            bios_size = load_image_size(filename,
+                                        memory_region_get_ram_ptr(bios),
+                                        BIOS_SIZE);
             g_free(filename);
-            if (bios_size < 0 || bios_size > BIOS_SIZE) {
+            if (bios_size < 0) {
                 error_report("Could not load PowerPC BIOS '%s'", bios_name);
                 exit(1);
             }
@@ -586,35 +483,19 @@ static void taihu_405ep_init(MachineState *machine)
     /* Register Linux flash */
     dinfo = drive_get(IF_PFLASH, 0, fl_idx);
     if (dinfo) {
-        BlockBackend *blk = blk_by_legacy_dinfo(dinfo);
-
-        bios_size = blk_getlength(blk);
-        /* XXX: should check that size is 32MB */
         bios_size = 32 * MiB;
-        fl_sectors = (bios_size + 65535) >> 16;
-#ifdef DEBUG_BOARD_INIT
-        printf("Register parallel flash %d size %lx"
-               " at addr " TARGET_FMT_lx " '%s'\n",
-               fl_idx, bios_size, (target_ulong)0xfc000000,
-               blk_name(blk));
-#endif
-        pflash_cfi02_register(0xfc000000, NULL, "taihu_405ep.flash", bios_size,
-                              blk, 65536, fl_sectors, 1,
+        pflash_cfi02_register(0xfc000000, "taihu_405ep.flash", bios_size,
+                              dinfo ? blk_by_legacy_dinfo(dinfo) : NULL,
+                              64 * KiB, 1,
                               4, 0x0001, 0x22DA, 0x0000, 0x0000, 0x555, 0x2AA,
                               1);
         fl_idx++;
     }
     /* Register CLPD & LCD display */
-#ifdef DEBUG_BOARD_INIT
-    printf("%s: register CPLD\n", __func__);
-#endif
     taihu_cpld_init(sysmem, 0x50100000);
     /* Load kernel */
     linux_boot = (kernel_filename != NULL);
     if (linux_boot) {
-#ifdef DEBUG_BOARD_INIT
-        printf("%s: load kernel\n", __func__);
-#endif
         kernel_base = KERNEL_LOAD_ADDR;
         /* now we can load the kernel */
         kernel_size = load_image_targphys(kernel_filename, kernel_base,
@@ -643,9 +524,6 @@ static void taihu_405ep_init(MachineState *machine)
         initrd_base = 0;
         initrd_size = 0;
     }
-#ifdef DEBUG_BOARD_INIT
-    printf("%s: Done\n", __func__);
-#endif
 }
 
 static void taihu_class_init(ObjectClass *oc, void *data)

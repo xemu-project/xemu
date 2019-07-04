@@ -19,10 +19,7 @@ pushd ${destination}
 git checkout "v${version}"
 git submodule update --init
 (cd roms/seabios && git describe --tags --long --dirty > .version)
-# FIXME: The following line is a workaround for avoiding filename collisions
-# when unpacking u-boot sources on case-insensitive filesystems. Once we
-# update to something with u-boot commit 610eec7f0 we can drop this line.
-tar --exclude=.git -cjf roms/u-boot.tar.bz2 -C roms u-boot && rm -rf roms/u-boot
+(cd roms/skiboot && ./make_version.sh > .version)
 popd
 tar --exclude=.git -cjf ${destination}.tar.bz2 ${destination}
 rm -rf ${destination}

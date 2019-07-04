@@ -150,7 +150,7 @@ static MemTxResult tz_mpc_reg_read(void *opaque, hwaddr addr,
         r = s->ctrl;
         break;
     case A_BLK_MAX:
-        r = s->blk_max;
+        r = s->blk_max - 1;
         break;
     case A_BLK_CFG:
         /* We are never in "init in progress state", so this just indicates
@@ -448,7 +448,7 @@ static int tz_mpc_attrs_to_index(IOMMUMemoryRegion *iommu, MemTxAttrs attrs)
 {
     /* We treat unspecified attributes like secure. Transactions with
      * unspecified attributes come from places like
-     * cpu_physical_memory_write_rom() for initial image load, and we want
+     * rom_reset() for initial image load, and we want
      * those to pass through the from-reset "everything is secure" config.
      * All the real during-emulation transactions from the CPU will
      * specify attributes.

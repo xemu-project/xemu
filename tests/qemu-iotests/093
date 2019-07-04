@@ -69,18 +69,18 @@ class ThrottleTestCase(iotests.QMPTestCase):
         # in. The throttled requests won't be executed until we
         # advance the virtual clock.
         rq_size = 512
-        rd_nr = max(params['bps'] / rq_size / 2,
-                    params['bps_rd'] / rq_size,
-                    params['iops'] / 2,
+        rd_nr = max(params['bps'] // rq_size // 2,
+                    params['bps_rd'] // rq_size,
+                    params['iops'] // 2,
                     params['iops_rd'])
         rd_nr *= seconds * 2
-        rd_nr /= ndrives
-        wr_nr = max(params['bps'] / rq_size / 2,
-                    params['bps_wr'] / rq_size,
-                    params['iops'] / 2,
+        rd_nr //= ndrives
+        wr_nr = max(params['bps'] // rq_size // 2,
+                    params['bps_wr'] // rq_size,
+                    params['iops'] // 2,
                     params['iops_wr'])
         wr_nr *= seconds * 2
-        wr_nr /= ndrives
+        wr_nr //= ndrives
 
         # Send I/O requests to all drives
         for i in range(rd_nr):
@@ -196,7 +196,7 @@ class ThrottleTestCase(iotests.QMPTestCase):
             self.configure_throttle(ndrives, settings)
 
             # Wait for the bucket to empty so we can do bursts
-            wait_ns = nsec_per_sec * burst_length * burst_rate / rate
+            wait_ns = nsec_per_sec * burst_length * burst_rate // rate
             self.vm.qtest("clock_step %d" % wait_ns)
 
             # Test I/O at the max burst rate
@@ -207,6 +207,61 @@ class ThrottleTestCase(iotests.QMPTestCase):
             # Now test I/O at the normal rate
             limits[tk] = rate
             self.do_test_throttle(ndrives, 5, limits)
+
+    # Test that removing a drive from a throttle group should not
+    # affect the remaining members of the group.
+    # https://bugzilla.redhat.com/show_bug.cgi?id=1535914
+    def test_remove_group_member(self):
+        # Create a throttle group with two drives
+        # and set a 4 KB/s read limit.
+        params = {"bps": 0,
+                  "bps_rd": 4096,
+                  "bps_wr": 0,
+                  "iops": 0,
+                  "iops_rd": 0,
+                  "iops_wr": 0 }
+        self.configure_throttle(2, params)
+
+        # Read 4KB from drive0. This is performed immediately.
+        self.vm.hmp_qemu_io("drive0", "aio_read 0 4096")
+
+        # Read 2KB. The I/O limit has been exceeded so this
+        # request is throttled and a timer is set to wake it up.
+        self.vm.hmp_qemu_io("drive0", "aio_read 0 2048")
+
+        # Read 2KB again. We're still over the I/O limit so this is
+        # request is also throttled, but no new timer is set since
+        # there's already one.
+        self.vm.hmp_qemu_io("drive0", "aio_read 0 2048")
+
+        # Read from drive1. This request is also throttled, and no
+        # timer is set in drive1 because there's already one in
+        # drive0.
+        self.vm.hmp_qemu_io("drive1", "aio_read 0 4096")
+
+        # At this point only the first 4KB have been read from drive0.
+        # The other requests are throttled.
+        self.assertEqual(self.blockstats('drive0')[0], 4096)
+        self.assertEqual(self.blockstats('drive1')[0], 0)
+
+        # Remove drive0 from the throttle group and disable its I/O limits.
+        # drive1 remains in the group with a throttled request.
+        params['bps_rd'] = 0
+        params['device'] = 'drive0'
+        result = self.vm.qmp("block_set_io_throttle", conv_keys=False, **params)
+        self.assert_qmp(result, 'return', {})
+
+        # Removing the I/O limits from drive0 drains its two pending requests.
+        # The read request in drive1 is still throttled.
+        self.assertEqual(self.blockstats('drive0')[0], 8192)
+        self.assertEqual(self.blockstats('drive1')[0], 0)
+
+        # Advance the clock 5 seconds. This completes the request in drive1
+        self.vm.qtest("clock_step %d" % (5 * nsec_per_sec))
+
+        # Now all requests have been processed.
+        self.assertEqual(self.blockstats('drive0')[0], 8192)
+        self.assertEqual(self.blockstats('drive1')[0], 4096)
 
 class ThrottleTestCoroutine(ThrottleTestCase):
     test_img = "null-co://"

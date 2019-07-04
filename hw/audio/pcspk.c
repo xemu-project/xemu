@@ -114,7 +114,7 @@ static void pcspk_callback(void *opaque, int free)
 static int pcspk_audio_init(ISABus *bus)
 {
     PCSpkState *s = pcspk_state;
-    struct audsettings as = {PCSPK_SAMPLE_RATE, 1, AUD_FMT_U8, 0};
+    struct audsettings as = {PCSPK_SAMPLE_RATE, 1, AUDIO_FORMAT_U8, 0};
 
     AUD_register_card(s_spk, &s->card);
 
@@ -222,6 +222,7 @@ static void pcspk_class_initfn(ObjectClass *klass, void *data)
     dc->vmsd = &vmstate_spk;
     dc->props = pcspk_properties;
     /* Reason: realize sets global pcspk_state */
+    /* Reason: pit object link */
     dc->user_creatable = false;
 }
 

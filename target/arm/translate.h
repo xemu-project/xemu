@@ -7,6 +7,7 @@
 /* internal defines */
 typedef struct DisasContext {
     DisasContextBase base;
+    const ARMISARegisters *isar;
 
     target_ulong pc;
     target_ulong page_start;
@@ -25,8 +26,8 @@ typedef struct DisasContext {
     int user;
 #endif
     ARMMMUIdx mmu_idx; /* MMU index to use for normal loads/stores */
-    bool tbi0;         /* TBI0 for EL0/1 or TBI for EL2/3 */
-    bool tbi1;         /* TBI1 for EL0/1, not used for EL2/3 */
+    uint8_t tbii;      /* TBI1|TBI0 for insns */
+    uint8_t tbid;      /* TBI1|TBI0 for data */
     bool ns;        /* Use non-secure CPREG bank on access */
     int fp_excp_el; /* FP exception EL or 0 if enabled */
     int sve_excp_el; /* SVE exception EL or 0 if enabled */
@@ -38,6 +39,7 @@ typedef struct DisasContext {
     int vec_stride;
     bool v7m_handler_mode;
     bool v8m_secure; /* true if v8M and we're in Secure mode */
+    bool v8m_stackcheck; /* true if we need to perform v8M stack limit checks */
     /* Immediate value in AArch32 SVC insn; must be set if is_jmp == DISAS_SWI
      * so that top level loop can generate correct syndrome information.
      */
@@ -66,6 +68,17 @@ typedef struct DisasContext {
     bool is_ldex;
     /* True if a single-step exception will be taken to the current EL */
     bool ss_same_el;
+    /* True if v8.3-PAuth is active.  */
+    bool pauth_active;
+    /* True with v8.5-BTI and SCTLR_ELx.BT* set.  */
+    bool bt;
+    /*
+     * >= 0, a copy of PSTATE.BTYPE, which will be 0 without v8.5-BTI.
+     *  < 0, set by the current instruction.
+     */
+    int8_t btype;
+    /* True if this page is guarded.  */
+    bool guarded_page;
     /* Bottom two bits of XScale c15_cpar coprocessor access control reg */
     int c15_cpar;
     /* TCG op of the current insn_start.  */
@@ -188,5 +201,63 @@ static inline TCGv_i32 get_ahp_flag(void)
 
     return ret;
 }
+
+/* Set bits within PSTATE.  */
+static inline void set_pstate_bits(uint32_t bits)
+{
+    TCGv_i32 p = tcg_temp_new_i32();
+
+    tcg_debug_assert(!(bits & CACHED_PSTATE_BITS));
+
+    tcg_gen_ld_i32(p, cpu_env, offsetof(CPUARMState, pstate));
+    tcg_gen_ori_i32(p, p, bits);
+    tcg_gen_st_i32(p, cpu_env, offsetof(CPUARMState, pstate));
+    tcg_temp_free_i32(p);
+}
+
+/* Clear bits within PSTATE.  */
+static inline void clear_pstate_bits(uint32_t bits)
+{
+    TCGv_i32 p = tcg_temp_new_i32();
+
+    tcg_debug_assert(!(bits & CACHED_PSTATE_BITS));
+
+    tcg_gen_ld_i32(p, cpu_env, offsetof(CPUARMState, pstate));
+    tcg_gen_andi_i32(p, p, ~bits);
+    tcg_gen_st_i32(p, cpu_env, offsetof(CPUARMState, pstate));
+    tcg_temp_free_i32(p);
+}
+
+/* If the singlestep state is Active-not-pending, advance to Active-pending. */
+static inline void gen_ss_advance(DisasContext *s)
+{
+    if (s->ss_active) {
+        s->pstate_ss = 0;
+        clear_pstate_bits(PSTATE_SS);
+    }
+}
+
+/* Vector operations shared between ARM and AArch64.  */
+extern const GVecGen3 bsl_op;
+extern const GVecGen3 bit_op;
+extern const GVecGen3 bif_op;
+extern const GVecGen3 mla_op[4];
+extern const GVecGen3 mls_op[4];
+extern const GVecGen3 cmtst_op[4];
+extern const GVecGen2i ssra_op[4];
+extern const GVecGen2i usra_op[4];
+extern const GVecGen2i sri_op[4];
+extern const GVecGen2i sli_op[4];
+extern const GVecGen4 uqadd_op[4];
+extern const GVecGen4 sqadd_op[4];
+extern const GVecGen4 uqsub_op[4];
+extern const GVecGen4 sqsub_op[4];
+void gen_cmtst_i64(TCGv_i64 d, TCGv_i64 a, TCGv_i64 b);
+
+/*
+ * Forward to the isar_feature_* tests given a DisasContext pointer.
+ */
+#define dc_isar_feature(name, ctx) \
+    ({ DisasContext *ctx_ = (ctx); isar_feature_##name(ctx_->isar); })
 
 #endif /* TARGET_ARM_TRANSLATE_H */

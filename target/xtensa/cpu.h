@@ -131,6 +131,7 @@ enum {
     ACCLO = 16,
     ACCHI = 17,
     MR = 32,
+    PREFCTL = 40,
     WINDOW_BASE = 72,
     WINDOW_START = 73,
     PTEVADDR = 83,
@@ -217,6 +218,7 @@ enum {
 #define MEMCTL_IL0EN 0x1
 
 #define MAX_INSN_LENGTH 64
+#define MAX_INSN_SLOTS 32
 #define MAX_OPCODE_ARGS 16
 #define MAX_NAREG 64
 #define MAX_NINTERRUPT 32
@@ -344,14 +346,65 @@ typedef struct XtensaMemory {
     } location[MAX_NMEMORY];
 } XtensaMemory;
 
+typedef struct opcode_arg {
+    uint32_t imm;
+    uint32_t raw_imm;
+    void *in;
+    void *out;
+} OpcodeArg;
+
 typedef struct DisasContext DisasContext;
-typedef void (*XtensaOpcodeOp)(DisasContext *dc, const uint32_t arg[],
+typedef void (*XtensaOpcodeOp)(DisasContext *dc, const OpcodeArg arg[],
                                const uint32_t par[]);
+typedef bool (*XtensaOpcodeBoolTest)(DisasContext *dc,
+                                     const OpcodeArg arg[],
+                                     const uint32_t par[]);
+typedef uint32_t (*XtensaOpcodeUintTest)(DisasContext *dc,
+                                         const OpcodeArg arg[],
+                                         const uint32_t par[]);
+
+enum {
+    XTENSA_OP_ILL = 0x1,
+    XTENSA_OP_PRIVILEGED = 0x2,
+    XTENSA_OP_SYSCALL = 0x4,
+    XTENSA_OP_DEBUG_BREAK = 0x8,
+
+    XTENSA_OP_OVERFLOW = 0x10,
+    XTENSA_OP_UNDERFLOW = 0x20,
+    XTENSA_OP_ALLOCA = 0x40,
+    XTENSA_OP_COPROCESSOR = 0x80,
+
+    XTENSA_OP_DIVIDE_BY_ZERO = 0x100,
+
+    /* Postprocessing flags */
+    XTENSA_OP_CHECK_INTERRUPTS = 0x200,
+    XTENSA_OP_EXIT_TB_M1 = 0x400,
+    XTENSA_OP_EXIT_TB_0 = 0x800,
+    XTENSA_OP_SYNC_REGISTER_WINDOW = 0x1000,
+
+    XTENSA_OP_POSTPROCESS =
+        XTENSA_OP_CHECK_INTERRUPTS |
+        XTENSA_OP_EXIT_TB_M1 |
+        XTENSA_OP_EXIT_TB_0 |
+        XTENSA_OP_SYNC_REGISTER_WINDOW,
+
+    XTENSA_OP_NAME_ARRAY = 0x8000,
+
+    XTENSA_OP_CONTROL_FLOW = 0x10000,
+    XTENSA_OP_STORE = 0x20000,
+    XTENSA_OP_LOAD = 0x40000,
+    XTENSA_OP_LOAD_STORE =
+        XTENSA_OP_LOAD | XTENSA_OP_STORE,
+};
 
 typedef struct XtensaOpcodeOps {
-    const char *name;
+    const void *name;
     XtensaOpcodeOp translate;
+    XtensaOpcodeBoolTest test_ill;
+    XtensaOpcodeUintTest test_overflow;
     const uint32_t *par;
+    uint32_t op_flags;
+    uint32_t coprocessor;
 } XtensaOpcodeOps;
 
 typedef struct XtensaOpcodeTranslators {
@@ -370,6 +423,7 @@ struct XtensaConfig {
     int excm_level;
     int ndepc;
     unsigned inst_fetch_width;
+    unsigned max_insn_size;
     uint32_t vecbase;
     uint32_t exception_vector[EXC_MAX];
     unsigned ninterrupt;
@@ -407,6 +461,8 @@ struct XtensaConfig {
     xtensa_isa isa;
     XtensaOpcodeOps **opcode_ops;
     const XtensaOpcodeTranslators **opcode_translators;
+    xtensa_regfile a_regfile;
+    void ***regfile;
 
     uint32_t clock_freq_khz;
 
@@ -443,6 +499,7 @@ typedef struct CPUXtensaState {
         float64 f64;
     } fregs[16];
     float_status fp_status;
+    uint32_t windowbase_next;
 
 #ifndef CONFIG_USER_ONLY
     xtensa_tlb_entry itlb[7][MAX_TLB_WAY_SIZE];
@@ -452,7 +509,9 @@ typedef struct CPUXtensaState {
     AddressSpace *address_space_er;
     MemoryRegion *system_er;
     int pending_irq_level; /* level of last raised IRQ */
-    void **irq_inputs;
+    qemu_irq *irq_inputs;
+    qemu_irq ext_irq_inputs[MAX_NINTERRUPT];
+    qemu_irq runstall_irq;
     XtensaCcompareTimer ccompare[MAX_NCCOMPARE];
     uint64_t time_base;
     uint64_t ccount_time;
@@ -497,12 +556,15 @@ int xtensa_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int rw, int size,
                                 int mmu_idx);
 void xtensa_cpu_do_interrupt(CPUState *cpu);
 bool xtensa_cpu_exec_interrupt(CPUState *cpu, int interrupt_request);
-void xtensa_cpu_do_unassigned_access(CPUState *cpu, hwaddr addr,
-                                     bool is_write, bool is_exec, int opaque,
-                                     unsigned size);
+void xtensa_cpu_do_transaction_failed(CPUState *cs, hwaddr physaddr, vaddr addr,
+                                      unsigned size, MMUAccessType access_type,
+                                      int mmu_idx, MemTxAttrs attrs,
+                                      MemTxResult response, uintptr_t retaddr);
 void xtensa_cpu_dump_state(CPUState *cpu, FILE *f,
                            fprintf_function cpu_fprintf, int flags);
 hwaddr xtensa_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
+void xtensa_count_regs(const XtensaConfig *config,
+                       unsigned *n_regs, unsigned *n_core_regs);
 int xtensa_cpu_gdb_read_register(CPUState *cpu, uint8_t *buf, int reg);
 int xtensa_cpu_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg);
 void xtensa_cpu_do_unaligned_access(CPUState *cpu, vaddr addr,
@@ -529,14 +591,14 @@ void xtensa_cpu_do_unaligned_access(CPUState *cpu, vaddr addr,
     XTENSA_CPU_TYPE_NAME(XTENSA_DEFAULT_CPU_NOMMU_MODEL)
 
 void xtensa_translate_init(void);
+void **xtensa_get_regfile_by_name(const char *name);
 void xtensa_breakpoint_handler(CPUState *cs);
-void xtensa_finalize_config(XtensaConfig *config);
 void xtensa_register_core(XtensaConfigList *node);
 void xtensa_sim_open_console(Chardev *chr);
 void check_interrupts(CPUXtensaState *s);
 void xtensa_irq_init(CPUXtensaState *env);
-void *xtensa_get_extint(CPUXtensaState *env, unsigned extint);
-void xtensa_timer_irq(CPUXtensaState *env, uint32_t id, uint32_t active);
+qemu_irq *xtensa_get_extints(CPUXtensaState *env);
+qemu_irq xtensa_get_runstall(CPUXtensaState *env);
 int cpu_xtensa_signal_handler(int host_signum, void *pinfo, void *puc);
 void xtensa_cpu_list(FILE *f, fprintf_function cpu_fprintf);
 void xtensa_sync_window_from_phys(CPUXtensaState *env);
@@ -552,8 +614,6 @@ static inline void xtensa_select_static_vectors(CPUXtensaState *env,
     env->static_vectors = n;
 }
 void xtensa_runstall(CPUXtensaState *env, bool runstall);
-XtensaOpcodeOps *xtensa_find_opcode_ops(const XtensaOpcodeTranslators *t,
-                                        const char *opcode);
 
 #define XTENSA_OPTION_BIT(opt) (((uint64_t)1) << (opt))
 #define XTENSA_OPTION_ALL (~(uint64_t)0)
@@ -658,6 +718,14 @@ static inline int cpu_mmu_index(CPUXtensaState *env, bool ifetch)
 #define XTENSA_TBFLAG_WINDOW_MASK 0x18000
 #define XTENSA_TBFLAG_WINDOW_SHIFT 15
 #define XTENSA_TBFLAG_YIELD 0x20000
+#define XTENSA_TBFLAG_CWOE 0x40000
+#define XTENSA_TBFLAG_CALLINC_MASK 0x180000
+#define XTENSA_TBFLAG_CALLINC_SHIFT 19
+
+#define XTENSA_CSBASE_LEND_MASK 0x0000ffff
+#define XTENSA_CSBASE_LEND_SHIFT 0
+#define XTENSA_CSBASE_LBEG_OFF_MASK 0x00ff0000
+#define XTENSA_CSBASE_LBEG_OFF_SHIFT 16
 
 static inline void cpu_get_tb_cpu_state(CPUXtensaState *env, target_ulong *pc,
         target_ulong *cs_base, uint32_t *flags)
@@ -670,6 +738,32 @@ static inline void cpu_get_tb_cpu_state(CPUXtensaState *env, target_ulong *pc,
     *flags |= xtensa_get_ring(env);
     if (env->sregs[PS] & PS_EXCM) {
         *flags |= XTENSA_TBFLAG_EXCM;
+    } else if (xtensa_option_enabled(env->config, XTENSA_OPTION_LOOP)) {
+        target_ulong lend_dist =
+            env->sregs[LEND] - (env->pc & -(1u << TARGET_PAGE_BITS));
+
+        /*
+         * 0 in the csbase_lend field means that there may not be a loopback
+         * for any instruction that starts inside this page. Any other value
+         * means that an instruction that ends at this offset from the page
+         * start may loop back and will need loopback code to be generated.
+         *
+         * lend_dist is 0 when LEND points to the start of the page, but
+         * no instruction that starts inside this page may end at offset 0,
+         * so it's still correct.
+         *
+         * When an instruction ends at a page boundary it may only start in
+         * the previous page. lend_dist will be encoded as TARGET_PAGE_SIZE
+         * for the TB that contains this instruction.
+         */
+        if (lend_dist < (1u << TARGET_PAGE_BITS) + env->config->max_insn_size) {
+            target_ulong lbeg_off = env->sregs[LEND] - env->sregs[LBEG];
+
+            *cs_base = lend_dist;
+            if (lbeg_off < 256) {
+                *cs_base |= lbeg_off << XTENSA_CSBASE_LBEG_OFF_SHIFT;
+            }
+        }
     }
     if (xtensa_option_enabled(env->config, XTENSA_OPTION_EXTENDED_L32R) &&
             (env->sregs[LITBASE] & 1)) {
@@ -695,7 +789,9 @@ static inline void cpu_get_tb_cpu_state(CPUXtensaState *env, target_ulong *pc,
             (env->sregs[WINDOW_BASE] + 1);
         uint32_t w = ctz32(windowstart | 0x8);
 
-        *flags |= w << XTENSA_TBFLAG_WINDOW_SHIFT;
+        *flags |= (w << XTENSA_TBFLAG_WINDOW_SHIFT) | XTENSA_TBFLAG_CWOE;
+        *flags |= extract32(env->sregs[PS], PS_CALLINC_SHIFT,
+                            PS_CALLINC_LEN) << XTENSA_TBFLAG_CALLINC_SHIFT;
     } else {
         *flags |= 3 << XTENSA_TBFLAG_WINDOW_SHIFT;
     }

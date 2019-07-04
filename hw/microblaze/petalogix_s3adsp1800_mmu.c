@@ -33,8 +33,8 @@
 #include "net/net.h"
 #include "hw/block/flash.h"
 #include "sysemu/sysemu.h"
-#include "hw/devices.h"
 #include "hw/boards.h"
+#include "hw/misc/unimp.h"
 #include "exec/address-spaces.h"
 #include "hw/char/xilinx_uartlite.h"
 
@@ -47,6 +47,7 @@
 
 #define MEMORY_BASEADDR 0x90000000
 #define FLASH_BASEADDR 0xa0000000
+#define GPIO_BASEADDR 0x81400000
 #define INTC_BASEADDR 0x81800000
 #define TIMER_BASEADDR 0x83c00000
 #define UARTLITE_BASEADDR 0x84000000
@@ -86,10 +87,9 @@ petalogix_s3adsp1800_init(MachineState *machine)
 
     dinfo = drive_get(IF_PFLASH, 0, 0);
     pflash_cfi01_register(FLASH_BASEADDR,
-                          NULL, "petalogix_s3adsp1800.flash", FLASH_SIZE,
+                          "petalogix_s3adsp1800.flash", FLASH_SIZE,
                           dinfo ? blk_by_legacy_dinfo(dinfo) : NULL,
-                          64 * KiB, FLASH_SIZE >> 16,
-                          1, 0x89, 0x18, 0x0000, 0x0, 1);
+                          64 * KiB, 1, 0x89, 0x18, 0x0000, 0x0, 1);
 
     dev = qdev_create(NULL, "xlnx.xps-intc");
     qdev_prop_set_uint32(dev, "kind-of-intr",
@@ -121,6 +121,8 @@ petalogix_s3adsp1800_init(MachineState *machine)
     qdev_init_nofail(dev);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, ETHLITE_BASEADDR);
     sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, irq[ETHLITE_IRQ]);
+
+    create_unimplemented_device("gpio", GPIO_BASEADDR, 0x10000);
 
     microblaze_load_kernel(cpu, ddr_base, ram_size,
                            machine->initrd_filename,

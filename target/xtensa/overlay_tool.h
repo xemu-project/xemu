@@ -377,7 +377,6 @@
         static XtensaConfigList node = { \
             .config = &core, \
         }; \
-        xtensa_finalize_config(&core); \
         xtensa_register_core(&node); \
     }
 #else
@@ -457,6 +456,7 @@
     .nareg = XCHAL_NUM_AREGS, \
     .ndepc = (XCHAL_XEA_VERSION >= 2), \
     .inst_fetch_width = XCHAL_INST_FETCH_WIDTH, \
+    .max_insn_size = XCHAL_MAX_INSTRUCTION_SIZE, \
     EXCEPTIONS_SECTION, \
     INTERRUPTS_SECTION, \
     TLB_SECTION, \

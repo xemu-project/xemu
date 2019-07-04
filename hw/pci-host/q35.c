@@ -51,6 +51,10 @@ static void q35_host_realize(DeviceState *dev, Error **errp)
     sysbus_add_io(sbd, MCH_HOST_BRIDGE_CONFIG_DATA, &pci->data_mem);
     sysbus_init_ioports(sbd, MCH_HOST_BRIDGE_CONFIG_DATA, 4);
 
+    /* register q35 0xcf8 port as coalesced pio */
+    memory_region_set_flush_coalesced(&pci->data_mem);
+    memory_region_add_coalescing(&pci->conf_mem, 0, 4);
+
     pci->bus = pci_root_bus_new(DEVICE(s), "pcie.0",
                                 s->mch.pci_address_space,
                                 s->mch.address_space_io,
@@ -109,9 +113,7 @@ static void q35_host_get_pci_hole_end(Object *obj, Visitor *v,
  * the 64bit PCI hole will start after "over 4G RAM" and the
  * reserved space for memory hotplug if any.
  */
-static void q35_host_get_pci_hole64_start(Object *obj, Visitor *v,
-                                          const char *name, void *opaque,
-                                          Error **errp)
+static uint64_t q35_host_get_pci_hole64_start_value(Object *obj)
 {
     PCIHostState *h = PCI_HOST_BRIDGE(obj);
     Q35PCIHost *s = Q35_HOST_DEVICE(obj);
@@ -123,7 +125,16 @@ static void q35_host_get_pci_hole64_start(Object *obj, Visitor *v,
     if (!value && s->pci_hole64_fix) {
         value = pc_pci_hole64_start();
     }
-    visit_type_uint64(v, name, &value, errp);
+    return value;
+}
+
+static void q35_host_get_pci_hole64_start(Object *obj, Visitor *v,
+                                          const char *name, void *opaque,
+                                          Error **errp)
+{
+    uint64_t hole64_start = q35_host_get_pci_hole64_start_value(obj);
+
+    visit_type_uint64(v, name, &hole64_start, errp);
 }
 
 /*
@@ -138,7 +149,7 @@ static void q35_host_get_pci_hole64_end(Object *obj, Visitor *v,
 {
     PCIHostState *h = PCI_HOST_BRIDGE(obj);
     Q35PCIHost *s = Q35_HOST_DEVICE(obj);
-    uint64_t hole64_start = pc_pci_hole64_start();
+    uint64_t hole64_start = q35_host_get_pci_hole64_start_value(obj);
     Range w64;
     uint64_t value, hole64_end;
 
@@ -352,7 +363,7 @@ static void mch_update_pam(MCHPCIState *mch)
     memory_region_transaction_begin();
     for (i = 0; i < 13; i++) {
         pam_update(&mch->pam_regions[i], i,
-                   pd->config[MCH_HOST_BRIDGE_PAM0 + (DIV_ROUND_UP(i, 2))]);
+                   pd->config[MCH_HOST_BRIDGE_PAM0 + DIV_ROUND_UP(i, 2)]);
     }
     memory_region_transaction_commit();
 }
@@ -618,7 +629,15 @@ static void mch_class_init(ObjectClass *klass, void *data)
     dc->desc = "Host bridge";
     dc->vmsd = &vmstate_mch;
     k->vendor_id = PCI_VENDOR_ID_INTEL;
-    k->device_id = PCI_DEVICE_ID_INTEL_Q35_MCH;
+    /*
+     * The 'q35' machine type implements an Intel Series 3 chipset,
+     * of which there are several variants. The key difference between
+     * the 82P35 MCH ('p35') and 82Q35 GMCH ('q35') variants is that
+     * the latter has an integrated graphics adapter. QEMU does not
+     * implement integrated graphics, so uses the PCI ID for the 82P35
+     * chipset.
+     */
+    k->device_id = PCI_DEVICE_ID_INTEL_P35_MCH;
     k->revision = MCH_HOST_BRIDGE_REVISION_DEFAULT;
     k->class_id = PCI_CLASS_BRIDGE_HOST;
     /*

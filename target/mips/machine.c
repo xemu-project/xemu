@@ -20,7 +20,8 @@ static int cpu_post_load(void *opaque, int version_id)
 
 /* FPU state */
 
-static int get_fpr(QEMUFile *f, void *pv, size_t size, VMStateField *field)
+static int get_fpr(QEMUFile *f, void *pv, size_t size,
+                   const VMStateField *field)
 {
     int i;
     fpr_t *v = pv;
@@ -31,8 +32,8 @@ static int get_fpr(QEMUFile *f, void *pv, size_t size, VMStateField *field)
     return 0;
 }
 
-static int put_fpr(QEMUFile *f, void *pv, size_t size, VMStateField *field,
-                   QJSON *vmdesc)
+static int put_fpr(QEMUFile *f, void *pv, size_t size,
+                   const VMStateField *field, QJSON *vmdesc)
 {
     int i;
     fpr_t *v = pv;
@@ -128,7 +129,8 @@ const VMStateDescription vmstate_mvp = {
 
 /* TLB state */
 
-static int get_tlb(QEMUFile *f, void *pv, size_t size, VMStateField *field)
+static int get_tlb(QEMUFile *f, void *pv, size_t size,
+                   const VMStateField *field)
 {
     r4k_tlb_t *v = pv;
     uint16_t flags;
@@ -155,8 +157,8 @@ static int get_tlb(QEMUFile *f, void *pv, size_t size, VMStateField *field)
     return 0;
 }
 
-static int put_tlb(QEMUFile *f, void *pv, size_t size, VMStateField *field,
-                   QJSON *vmdesc)
+static int put_tlb(QEMUFile *f, void *pv, size_t size,
+                   const VMStateField *field, QJSON *vmdesc)
 {
     r4k_tlb_t *v = pv;
 
@@ -212,8 +214,8 @@ const VMStateDescription vmstate_tlb = {
 
 const VMStateDescription vmstate_mips_cpu = {
     .name = "cpu",
-    .version_id = 10,
-    .minimum_version_id = 10,
+    .version_id = 18,
+    .minimum_version_id = 18,
     .post_load = cpu_post_load,
     .fields = (VMStateField[]) {
         /* Active TC */
@@ -251,12 +253,17 @@ const VMStateDescription vmstate_mips_cpu = {
         VMSTATE_UINT64(env.CP0_EntryLo0, MIPSCPU),
         VMSTATE_UINT64(env.CP0_EntryLo1, MIPSCPU),
         VMSTATE_UINTTL(env.CP0_Context, MIPSCPU),
+        VMSTATE_INT32(env.CP0_MemoryMapID, MIPSCPU),
         VMSTATE_INT32(env.CP0_PageMask, MIPSCPU),
         VMSTATE_INT32(env.CP0_PageGrain, MIPSCPU),
         VMSTATE_UINTTL(env.CP0_SegCtl0, MIPSCPU),
         VMSTATE_UINTTL(env.CP0_SegCtl1, MIPSCPU),
         VMSTATE_UINTTL(env.CP0_SegCtl2, MIPSCPU),
+        VMSTATE_UINTTL(env.CP0_PWBase, MIPSCPU),
+        VMSTATE_UINTTL(env.CP0_PWField, MIPSCPU),
+        VMSTATE_UINTTL(env.CP0_PWSize, MIPSCPU),
         VMSTATE_INT32(env.CP0_Wired, MIPSCPU),
+        VMSTATE_INT32(env.CP0_PWCtl, MIPSCPU),
         VMSTATE_INT32(env.CP0_SRSConf0, MIPSCPU),
         VMSTATE_INT32(env.CP0_SRSConf1, MIPSCPU),
         VMSTATE_INT32(env.CP0_SRSConf2, MIPSCPU),
@@ -266,7 +273,10 @@ const VMStateDescription vmstate_mips_cpu = {
         VMSTATE_UINTTL(env.CP0_BadVAddr, MIPSCPU),
         VMSTATE_UINT32(env.CP0_BadInstr, MIPSCPU),
         VMSTATE_UINT32(env.CP0_BadInstrP, MIPSCPU),
+        VMSTATE_UINT32(env.CP0_BadInstrX, MIPSCPU),
         VMSTATE_INT32(env.CP0_Count, MIPSCPU),
+        VMSTATE_UINT32(env.CP0_SAARI, MIPSCPU),
+        VMSTATE_UINT64_ARRAY(env.CP0_SAAR, MIPSCPU, 2),
         VMSTATE_UINTTL(env.CP0_EntryHi, MIPSCPU),
         VMSTATE_INT32(env.CP0_Compare, MIPSCPU),
         VMSTATE_INT32(env.CP0_Status, MIPSCPU),
@@ -283,9 +293,10 @@ const VMStateDescription vmstate_mips_cpu = {
         VMSTATE_INT32(env.CP0_Config3, MIPSCPU),
         VMSTATE_INT32(env.CP0_Config6, MIPSCPU),
         VMSTATE_INT32(env.CP0_Config7, MIPSCPU),
+        VMSTATE_UINT64(env.CP0_LLAddr, MIPSCPU),
         VMSTATE_UINT64_ARRAY(env.CP0_MAAR, MIPSCPU, MIPS_MAAR_MAX),
         VMSTATE_INT32(env.CP0_MAARI, MIPSCPU),
-        VMSTATE_UINT64(env.lladdr, MIPSCPU),
+        VMSTATE_UINTTL(env.lladdr, MIPSCPU),
         VMSTATE_UINTTL_ARRAY(env.CP0_WatchLo, MIPSCPU, 8),
         VMSTATE_INT32_ARRAY(env.CP0_WatchHi, MIPSCPU, 8),
         VMSTATE_UINTTL(env.CP0_XContext, MIPSCPU),

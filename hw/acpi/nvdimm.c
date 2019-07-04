@@ -382,7 +382,7 @@ nvdimm_build_structure_caps(GArray *structures, uint32_t capabilities)
     nfit_caps->capabilities = cpu_to_le32(capabilities);
 }
 
-static GArray *nvdimm_build_device_structure(AcpiNVDIMMState *state)
+static GArray *nvdimm_build_device_structure(NVDIMMState *state)
 {
     GSList *device_list = nvdimm_get_device_list();
     GArray *structures = g_array_new(false, true /* clear */, 1);
@@ -416,7 +416,7 @@ static void nvdimm_init_fit_buffer(NvdimmFitBuffer *fit_buf)
     fit_buf->fit = g_array_new(false, true /* clear */, 1);
 }
 
-static void nvdimm_build_fit_buffer(AcpiNVDIMMState *state)
+static void nvdimm_build_fit_buffer(NVDIMMState *state)
 {
     NvdimmFitBuffer *fit_buf = &state->fit_buf;
 
@@ -425,12 +425,12 @@ static void nvdimm_build_fit_buffer(AcpiNVDIMMState *state)
     fit_buf->dirty = true;
 }
 
-void nvdimm_plug(AcpiNVDIMMState *state)
+void nvdimm_plug(NVDIMMState *state)
 {
     nvdimm_build_fit_buffer(state);
 }
 
-static void nvdimm_build_nfit(AcpiNVDIMMState *state, GArray *table_offsets,
+static void nvdimm_build_nfit(NVDIMMState *state, GArray *table_offsets,
                               GArray *table_data, BIOSLinker *linker)
 {
     NvdimmFitBuffer *fit_buf = &state->fit_buf;
@@ -570,7 +570,7 @@ nvdimm_dsm_no_payload(uint32_t func_ret_status, hwaddr dsm_mem_addr)
 #define NVDIMM_QEMU_RSVD_HANDLE_ROOT         0x10000
 
 /* Read FIT data, defined in docs/specs/acpi_nvdimm.txt. */
-static void nvdimm_dsm_func_read_fit(AcpiNVDIMMState *state, NvdimmDsmIn *in,
+static void nvdimm_dsm_func_read_fit(NVDIMMState *state, NvdimmDsmIn *in,
                                      hwaddr dsm_mem_addr)
 {
     NvdimmFitBuffer *fit_buf = &state->fit_buf;
@@ -581,7 +581,7 @@ static void nvdimm_dsm_func_read_fit(AcpiNVDIMMState *state, NvdimmDsmIn *in,
     int size;
 
     read_fit = (NvdimmFuncReadFITIn *)in->arg3;
-    le32_to_cpus(&read_fit->offset);
+    read_fit->offset = le32_to_cpu(read_fit->offset);
 
     fit = fit_buf->fit;
 
@@ -619,7 +619,7 @@ exit:
 }
 
 static void
-nvdimm_dsm_handle_reserved_root_method(AcpiNVDIMMState *state,
+nvdimm_dsm_handle_reserved_root_method(NVDIMMState *state,
                                        NvdimmDsmIn *in, hwaddr dsm_mem_addr)
 {
     switch (in->function) {
@@ -742,8 +742,8 @@ static void nvdimm_dsm_get_label_data(NVDIMMDevice *nvdimm, NvdimmDsmIn *in,
     int size;
 
     get_label_data = (NvdimmFuncGetLabelDataIn *)in->arg3;
-    le32_to_cpus(&get_label_data->offset);
-    le32_to_cpus(&get_label_data->length);
+    get_label_data->offset = le32_to_cpu(get_label_data->offset);
+    get_label_data->length = le32_to_cpu(get_label_data->length);
 
     nvdimm_debug("Read Label Data: offset %#x length %#x.\n",
                  get_label_data->offset, get_label_data->length);
@@ -781,8 +781,8 @@ static void nvdimm_dsm_set_label_data(NVDIMMDevice *nvdimm, NvdimmDsmIn *in,
 
     set_label_data = (NvdimmFuncSetLabelDataIn *)in->arg3;
 
-    le32_to_cpus(&set_label_data->offset);
-    le32_to_cpus(&set_label_data->length);
+    set_label_data->offset = le32_to_cpu(set_label_data->offset);
+    set_label_data->length = le32_to_cpu(set_label_data->length);
 
     nvdimm_debug("Write Label Data: offset %#x length %#x.\n",
                  set_label_data->offset, set_label_data->length);
@@ -863,7 +863,7 @@ nvdimm_dsm_read(void *opaque, hwaddr addr, unsigned size)
 static void
 nvdimm_dsm_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
 {
-    AcpiNVDIMMState *state = opaque;
+    NVDIMMState *state = opaque;
     NvdimmDsmIn *in;
     hwaddr dsm_mem_addr = val;
 
@@ -877,9 +877,9 @@ nvdimm_dsm_write(void *opaque, hwaddr addr, uint64_t val, unsigned size)
     in = g_new(NvdimmDsmIn, 1);
     cpu_physical_memory_read(dsm_mem_addr, in, sizeof(*in));
 
-    le32_to_cpus(&in->revision);
-    le32_to_cpus(&in->function);
-    le32_to_cpus(&in->handle);
+    in->revision = le32_to_cpu(in->revision);
+    in->function = le32_to_cpu(in->function);
+    in->handle = le32_to_cpu(in->handle);
 
     nvdimm_debug("Revision %#x Handler %#x Function %#x.\n", in->revision,
                  in->handle, in->function);
@@ -925,7 +925,7 @@ void nvdimm_acpi_plug_cb(HotplugHandler *hotplug_dev, DeviceState *dev)
     }
 }
 
-void nvdimm_init_acpi_state(AcpiNVDIMMState *state, MemoryRegion *io,
+void nvdimm_init_acpi_state(NVDIMMState *state, MemoryRegion *io,
                             FWCfgState *fw_cfg, Object *owner)
 {
     memory_region_init_io(&state->io_mr, owner, &nvdimm_dsm_ops, state,
@@ -992,7 +992,7 @@ static void nvdimm_build_common_dsm(Aml *dev)
     field = aml_field(NVDIMM_DSM_IOPORT, AML_DWORD_ACC, AML_NOLOCK,
                       AML_PRESERVE);
     aml_append(field, aml_named_field(NVDIMM_DSM_NOTIFY,
-               sizeof(uint32_t) * BITS_PER_BYTE));
+               NVDIMM_ACPI_IO_LEN * BITS_PER_BYTE));
     aml_append(method, field);
 
     /*
@@ -1086,7 +1086,7 @@ static void nvdimm_build_common_dsm(Aml *dev)
      */
     aml_append(method, aml_store(handle, aml_name(NVDIMM_DSM_HANDLE)));
     aml_append(method, aml_store(aml_arg(1), aml_name(NVDIMM_DSM_REVISION)));
-    aml_append(method, aml_store(aml_arg(2), aml_name(NVDIMM_DSM_FUNCTION)));
+    aml_append(method, aml_store(function, aml_name(NVDIMM_DSM_FUNCTION)));
 
     /*
      * The fourth parameter (Arg3) of _DSM is a package which contains
@@ -1260,7 +1260,7 @@ static void nvdimm_build_nvdimm_devices(Aml *root_dev, uint32_t ram_slots)
 }
 
 static void nvdimm_build_ssdt(GArray *table_offsets, GArray *table_data,
-                              BIOSLinker *linker, GArray *dsm_dma_arrea,
+                              BIOSLinker *linker, GArray *dsm_dma_area,
                               uint32_t ram_slots)
 {
     Aml *ssdt, *sb_scope, *dev;
@@ -1307,7 +1307,7 @@ static void nvdimm_build_ssdt(GArray *table_offsets, GArray *table_data,
                                                NVDIMM_ACPI_MEM_ADDR);
 
     bios_linker_loader_alloc(linker,
-                             NVDIMM_DSM_MEM_FILE, dsm_dma_arrea,
+                             NVDIMM_DSM_MEM_FILE, dsm_dma_area,
                              sizeof(NvdimmDsmIn), false /* high memory */);
     bios_linker_loader_add_pointer(linker,
         ACPI_BUILD_TABLE_FILE, mem_addr_offset, sizeof(uint32_t),
@@ -1319,7 +1319,7 @@ static void nvdimm_build_ssdt(GArray *table_offsets, GArray *table_data,
 }
 
 void nvdimm_build_acpi(GArray *table_offsets, GArray *table_data,
-                       BIOSLinker *linker, AcpiNVDIMMState *state,
+                       BIOSLinker *linker, NVDIMMState *state,
                        uint32_t ram_slots)
 {
     GSList *device_list;

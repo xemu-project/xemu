@@ -23,10 +23,19 @@ class QAPISchemaTestVisitor(QAPISchemaVisitor):
     def visit_include(self, name, info):
         print('include %s' % name)
 
-    def visit_enum_type(self, name, info, ifcond, values, prefix):
-        print('enum %s %s' % (name, values))
+    def visit_enum_type(self, name, info, ifcond, members, prefix):
+        print('enum %s' % name)
         if prefix:
             print('    prefix %s' % prefix)
+        for m in members:
+            print('    member %s' % m.name)
+            self._print_if(m.ifcond, indent=8)
+        self._print_if(ifcond)
+
+    def visit_array_type(self, name, info, ifcond, element_type):
+        if not info:
+            return              # suppress built-in arrays
+        print('array %s %s' % (name, element_type.name))
         self._print_if(ifcond)
 
     def visit_object_type(self, name, info, ifcond, base, members, variants):
@@ -34,8 +43,9 @@ class QAPISchemaTestVisitor(QAPISchemaVisitor):
         if base:
             print('    base %s' % base.name)
         for m in members:
-            print('    member %s: %s optional=%s' % \
-                  (m.name, m.type.name, m.optional))
+            print('    member %s: %s optional=%s'
+                  % (m.name, m.type.name, m.optional))
+            self._print_if(m.ifcond, 8)
         self._print_variants(variants)
         self._print_if(ifcond)
 
@@ -46,10 +56,11 @@ class QAPISchemaTestVisitor(QAPISchemaVisitor):
 
     def visit_command(self, name, info, ifcond, arg_type, ret_type, gen,
                       success_response, boxed, allow_oob, allow_preconfig):
-        print('command %s %s -> %s' % \
-              (name, arg_type and arg_type.name, ret_type and ret_type.name))
-        print('   gen=%s success_response=%s boxed=%s oob=%s preconfig=%s' % \
-              (gen, success_response, boxed, allow_oob, allow_preconfig))
+        print('command %s %s -> %s'
+              % (name, arg_type and arg_type.name,
+                 ret_type and ret_type.name))
+        print('   gen=%s success_response=%s boxed=%s oob=%s preconfig=%s'
+              % (gen, success_response, boxed, allow_oob, allow_preconfig))
         self._print_if(ifcond)
 
     def visit_event(self, name, info, ifcond, arg_type, boxed):
@@ -63,6 +74,7 @@ class QAPISchemaTestVisitor(QAPISchemaVisitor):
             print('    tag %s' % variants.tag_member.name)
             for v in variants.variants:
                 print('    case %s: %s' % (v.name, v.type.name))
+                QAPISchemaTestVisitor._print_if(v.ifcond, indent=8)
 
     @staticmethod
     def _print_if(ifcond, indent=4):

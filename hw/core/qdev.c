@@ -59,6 +59,8 @@ static void bus_remove_child(BusState *bus, DeviceState *child)
             snprintf(name, sizeof(name), "child[%d]", kid->index);
             QTAILQ_REMOVE(&bus->children, kid, sibling);
 
+            bus->num_children--;
+
             /* This gives back ownership of kid->child back to us.  */
             object_property_del(OBJECT(bus), name, NULL);
             object_unref(OBJECT(kid->child));
@@ -73,6 +75,7 @@ static void bus_add_child(BusState *bus, DeviceState *child)
     char name[32];
     BusChild *kid = g_malloc0(sizeof(*kid));
 
+    bus->num_children++;
     kid->index = bus->max_index++;
     kid->child = child;
     object_ref(OBJECT(kid->child));
@@ -158,7 +161,7 @@ DeviceState *qdev_try_create(BusState *bus, const char *type)
     return dev;
 }
 
-static QTAILQ_HEAD(device_listeners, DeviceListener) device_listeners
+static QTAILQ_HEAD(, DeviceListener) device_listeners
     = QTAILQ_HEAD_INITIALIZER(device_listeners);
 
 enum ListenerDirection { Forward, Reverse };
@@ -177,7 +180,7 @@ enum ListenerDirection { Forward, Reverse };
             break;                                                \
         case Reverse:                                             \
             QTAILQ_FOREACH_REVERSE(_listener, &device_listeners,  \
-                                   device_listeners, link) {      \
+                                   link) {                        \
                 if (_listener->_callback) {                       \
                     _listener->_callback(_listener, ##_args);     \
                 }                                                 \
@@ -233,14 +236,20 @@ HotplugHandler *qdev_get_machine_hotplug_handler(DeviceState *dev)
     return NULL;
 }
 
+HotplugHandler *qdev_get_bus_hotplug_handler(DeviceState *dev)
+{
+    if (dev->parent_bus) {
+        return dev->parent_bus->hotplug_handler;
+    }
+    return NULL;
+}
+
 HotplugHandler *qdev_get_hotplug_handler(DeviceState *dev)
 {
-    HotplugHandler *hotplug_ctrl;
+    HotplugHandler *hotplug_ctrl = qdev_get_machine_hotplug_handler(dev);
 
-    if (dev->parent_bus && dev->parent_bus->hotplug_handler) {
-        hotplug_ctrl = dev->parent_bus->hotplug_handler;
-    } else {
-        hotplug_ctrl = qdev_get_machine_hotplug_handler(dev);
+    if (hotplug_ctrl == NULL && dev->parent_bus) {
+        hotplug_ctrl = qdev_get_bus_hotplug_handler(dev);
     }
     return hotplug_ctrl;
 }
@@ -286,8 +295,7 @@ void qbus_reset_all_fn(void *opaque)
 void qdev_simple_device_unplug_cb(HotplugHandler *hotplug_dev,
                                   DeviceState *dev, Error **errp)
 {
-    /* just zap it */
-    object_unparent(OBJECT(dev));
+    object_property_set_bool(OBJECT(dev), false, "realized", NULL);
 }
 
 /*
@@ -643,7 +651,7 @@ static void qdev_get_legacy_property(Object *obj, Visitor *v,
  * the string depends on the property type.  Legacy properties are only
  * needed for "info qtree".
  *
- * Do not use this is new code!  QOM Properties added through this interface
+ * Do not use this in new code!  QOM Properties added through this interface
  * will be given names in the "legacy" namespace.
  */
 static void qdev_property_add_legacy(DeviceState *dev, Property *prop,
@@ -832,14 +840,6 @@ static void device_set_realized(Object *obj, bool value, Error **errp)
 
         DEVICE_LISTENER_CALL(realize, Forward, dev);
 
-        if (hotplug_ctrl) {
-            hotplug_handler_plug(hotplug_ctrl, dev, &local_err);
-        }
-
-        if (local_err != NULL) {
-            goto post_realize_fail;
-        }
-
         /*
          * always free/re-initialize here since the value cannot be cleaned up
          * in device_unrealize due to its usage later on in the unplug path
@@ -869,8 +869,12 @@ static void device_set_realized(Object *obj, bool value, Error **errp)
         dev->pending_deleted_event = false;
 
         if (hotplug_ctrl) {
-            hotplug_handler_post_plug(hotplug_ctrl, dev);
-        }
+            hotplug_handler_plug(hotplug_ctrl, dev, &local_err);
+            if (local_err != NULL) {
+                goto child_realize_fail;
+            }
+       }
+
     } else if (!value && dev->realized) {
         Error **local_errp = NULL;
         QLIST_FOREACH(bus, &dev->child_bus, sibling) {
@@ -976,6 +980,11 @@ static void device_initfn(Object *obj)
 
 static void device_post_init(Object *obj)
 {
+    /*
+     * Note: ordered so that the user's global properties take
+     * precedence.
+     */
+    object_apply_compat_props(obj);
     qdev_prop_set_globals(DEVICE(obj));
 }
 
@@ -1000,8 +1009,7 @@ static void device_finalize(Object *obj)
     if (dev->pending_deleted_event) {
         g_assert(dev->canonical_path);
 
-        qapi_event_send_device_deleted(!!dev->id, dev->id, dev->canonical_path,
-                                       &error_abort);
+        qapi_event_send_device_deleted(!!dev->id, dev->id, dev->canonical_path);
         g_free(dev->canonical_path);
         dev->canonical_path = NULL;
     }

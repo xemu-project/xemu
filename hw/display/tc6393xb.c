@@ -319,7 +319,7 @@ static void tc6393xb_scr_writeb(TC6393xbState *s, hwaddr addr, uint32_t value)
         SCR_REG_B(DEBUG);
     }
     fprintf(stderr, "tc6393xb_scr: unhandled write at %08x: %02x\n",
-					(uint32_t) addr, value & 0xff);
+                                        (uint32_t) addr, value & 0xff);
 }
 #undef SCR_REG_B
 #undef SCR_REG_W
@@ -358,7 +358,7 @@ static void tc6393xb_nand_cfg_writeb(TC6393xbState *s, hwaddr addr, uint32_t val
             return;
     }
     fprintf(stderr, "tc6393xb_nand_cfg: unhandled write at %08x: %02x\n",
-					(uint32_t) addr, value & 0xff);
+                                        (uint32_t) addr, value & 0xff);
 }
 
 static uint32_t tc6393xb_nand_readb(TC6393xbState *s, hwaddr addr) {
@@ -421,7 +421,7 @@ static void tc6393xb_nand_writeb(TC6393xbState *s, hwaddr addr, uint32_t value) 
             return;
     }
     fprintf(stderr, "tc6393xb_nand: unhandled write at %08x: %02x\n",
-					(uint32_t) addr, value & 0xff);
+                                        (uint32_t) addr, value & 0xff);
 }
 
 #define BITS 8
@@ -461,7 +461,7 @@ static void tc6393xb_draw_graphic(TC6393xbState *s, int full_update)
             return;
     }
 
-    dpy_gfx_update(s->con, 0, 0, s->scr_width, s->scr_height);
+    dpy_gfx_update_full(s->con);
 }
 
 static void tc6393xb_draw_blank(TC6393xbState *s, int full_update)
@@ -480,7 +480,7 @@ static void tc6393xb_draw_blank(TC6393xbState *s, int full_update)
         d += surface_stride(surface);
     }
 
-    dpy_gfx_update(s->con, 0, 0, s->scr_width, s->scr_height);
+    dpy_gfx_update_full(s->con);
 }
 
 static void tc6393xb_update_display(void *opaque)

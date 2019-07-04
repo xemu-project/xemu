@@ -39,7 +39,7 @@ static void max7310_reset(DeviceState *dev)
     s->command = 0x00;
 }
 
-static int max7310_rx(I2CSlave *i2c)
+static uint8_t max7310_rx(I2CSlave *i2c)
 {
     MAX7310State *s = MAX7310(i2c);
 
@@ -118,7 +118,7 @@ static int max7310_tx(I2CSlave *i2c, uint8_t data)
         break;
 
     case 0x00:	/* Input port - ignore writes */
-	break;
+        break;
     default:
 #ifdef VERBOSE
         printf("%s: unknown register %02x\n", __func__, s->command);

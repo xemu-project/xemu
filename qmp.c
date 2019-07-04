@@ -88,7 +88,7 @@ UuidInfo *qmp_query_uuid(Error **errp)
 void qmp_quit(Error **errp)
 {
     no_shutdown = 0;
-    qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_QMP);
+    qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_QMP_QUIT);
 }
 
 void qmp_stop(Error **errp)
@@ -109,7 +109,7 @@ void qmp_stop(Error **errp)
 
 void qmp_system_reset(Error **errp)
 {
-    qemu_system_reset_request(SHUTDOWN_CAUSE_HOST_QMP);
+    qemu_system_reset_request(SHUTDOWN_CAUSE_HOST_QMP_SYSTEM_RESET);
 }
 
 void qmp_system_powerdown(Error **erp)
@@ -183,7 +183,13 @@ void qmp_cont(Error **errp)
 
 void qmp_system_wakeup(Error **errp)
 {
-    qemu_system_wakeup_request(QEMU_WAKEUP_REASON_OTHER);
+    if (!qemu_wakeup_suspend_enabled()) {
+        error_setg(errp,
+                   "wake-up from suspend is not supported by this guest");
+        return;
+    }
+
+    qemu_system_wakeup_request(QEMU_WAKEUP_REASON_OTHER, errp);
 }
 
 ObjectPropertyInfoList *qmp_qom_list(const char *path, Error **errp)
@@ -597,32 +603,6 @@ ObjectPropertyInfoList *qmp_qom_list_properties(const char *typename,
     object_unref(obj);
 
     return prop_list;
-}
-
-CpuDefinitionInfoList *qmp_query_cpu_definitions(Error **errp)
-{
-    return arch_query_cpu_definitions(errp);
-}
-
-CpuModelExpansionInfo *qmp_query_cpu_model_expansion(CpuModelExpansionType type,
-                                                     CpuModelInfo *model,
-                                                     Error **errp)
-{
-    return arch_query_cpu_model_expansion(type, model, errp);
-}
-
-CpuModelCompareInfo *qmp_query_cpu_model_comparison(CpuModelInfo *modela,
-                                                    CpuModelInfo *modelb,
-                                                    Error **errp)
-{
-    return arch_query_cpu_model_comparison(modela, modelb, errp);
-}
-
-CpuModelBaselineInfo *qmp_query_cpu_model_baseline(CpuModelInfo *modela,
-                                                   CpuModelInfo *modelb,
-                                                   Error **errp)
-{
-    return arch_query_cpu_model_baseline(modela, modelb, errp);
 }
 
 void qmp_add_client(const char *protocol, const char *fdname,

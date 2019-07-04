@@ -518,6 +518,11 @@ static void switch_tss(CPUX86State *env, int tss_selector,
 
 static inline unsigned int get_sp_mask(unsigned int e2)
 {
+#ifdef TARGET_X86_64
+    if (e2 & DESC_L_MASK) {
+        return 0;
+    } else
+#endif
     if (e2 & DESC_B_MASK) {
         return 0xffffffff;
     } else {
@@ -986,11 +991,11 @@ void helper_syscall(CPUX86State *env, int next_eip_addend)
         int code64;
 
         env->regs[R_ECX] = env->eip + next_eip_addend;
-        env->regs[11] = cpu_compute_eflags(env);
+        env->regs[11] = cpu_compute_eflags(env) & ~RF_MASK;
 
         code64 = env->hflags & HF_CS64_MASK;
 
-        env->eflags &= ~env->fmask;
+        env->eflags &= ~(env->fmask | RF_MASK);
         cpu_load_eflags(env, env->eflags, 0);
         cpu_x86_load_seg_cache(env, R_CS, selector & 0xfffc,
                            0, 0xffffffff,
@@ -1239,7 +1244,7 @@ static void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
     }
     if (env->cr[0] & CR0_PE_MASK) {
 #if !defined(CONFIG_USER_ONLY)
-        if (env->hflags & HF_SVMI_MASK) {
+        if (env->hflags & HF_GUEST_MASK) {
             handle_even_inj(env, intno, is_int, error_code, is_hw, 0);
         }
 #endif
@@ -1254,7 +1259,7 @@ static void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
         }
     } else {
 #if !defined(CONFIG_USER_ONLY)
-        if (env->hflags & HF_SVMI_MASK) {
+        if (env->hflags & HF_GUEST_MASK) {
             handle_even_inj(env, intno, is_int, error_code, is_hw, 1);
         }
 #endif
@@ -1262,7 +1267,7 @@ static void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
     }
 
 #if !defined(CONFIG_USER_ONLY)
-    if (env->hflags & HF_SVMI_MASK) {
+    if (env->hflags & HF_GUEST_MASK) {
         CPUState *cs = CPU(cpu);
         uint32_t event_inj = x86_ldl_phys(cs, env->vm_vmcb +
                                       offsetof(struct vmcb,
@@ -1314,74 +1319,66 @@ bool x86_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
 {
     X86CPU *cpu = X86_CPU(cs);
     CPUX86State *env = &cpu->env;
-    bool ret = false;
+    int intno;
 
+    interrupt_request = x86_cpu_pending_interrupt(cs, interrupt_request);
+    if (!interrupt_request) {
+        return false;
+    }
+
+    /* Don't process multiple interrupt requests in a single call.
+     * This is required to make icount-driven execution deterministic.
+     */
+    switch (interrupt_request) {
 #if !defined(CONFIG_USER_ONLY)
-    if (interrupt_request & CPU_INTERRUPT_POLL) {
+    case CPU_INTERRUPT_POLL:
         cs->interrupt_request &= ~CPU_INTERRUPT_POLL;
         apic_poll_irq(cpu->apic_state);
-        /* Don't process multiple interrupt requests in a single call.
-           This is required to make icount-driven execution deterministic. */
-        return true;
-    }
+        break;
 #endif
-    if (interrupt_request & CPU_INTERRUPT_SIPI) {
+    case CPU_INTERRUPT_SIPI:
         do_cpu_sipi(cpu);
-        ret = true;
-    } else if (env->hflags2 & HF2_GIF_MASK) {
-        if ((interrupt_request & CPU_INTERRUPT_SMI) &&
-            !(env->hflags & HF_SMM_MASK)) {
-            cpu_svm_check_intercept_param(env, SVM_EXIT_SMI, 0, 0);
-            cs->interrupt_request &= ~CPU_INTERRUPT_SMI;
-            do_smm_enter(cpu);
-            ret = true;
-        } else if ((interrupt_request & CPU_INTERRUPT_NMI) &&
-                   !(env->hflags2 & HF2_NMI_MASK)) {
-            cpu_svm_check_intercept_param(env, SVM_EXIT_NMI, 0, 0);
-            cs->interrupt_request &= ~CPU_INTERRUPT_NMI;
-            env->hflags2 |= HF2_NMI_MASK;
-            do_interrupt_x86_hardirq(env, EXCP02_NMI, 1);
-            ret = true;
-        } else if (interrupt_request & CPU_INTERRUPT_MCE) {
-            cs->interrupt_request &= ~CPU_INTERRUPT_MCE;
-            do_interrupt_x86_hardirq(env, EXCP12_MCHK, 0);
-            ret = true;
-        } else if ((interrupt_request & CPU_INTERRUPT_HARD) &&
-                   (((env->hflags2 & HF2_VINTR_MASK) &&
-                     (env->hflags2 & HF2_HIF_MASK)) ||
-                    (!(env->hflags2 & HF2_VINTR_MASK) &&
-                     (env->eflags & IF_MASK &&
-                      !(env->hflags & HF_INHIBIT_IRQ_MASK))))) {
-            int intno;
-            cpu_svm_check_intercept_param(env, SVM_EXIT_INTR, 0, 0);
-            cs->interrupt_request &= ~(CPU_INTERRUPT_HARD |
-                                       CPU_INTERRUPT_VIRQ);
-            intno = cpu_get_pic_interrupt(env);
-            qemu_log_mask(CPU_LOG_TB_IN_ASM,
-                          "Servicing hardware INT=0x%02x\n", intno);
-            do_interrupt_x86_hardirq(env, intno, 1);
-            /* ensure that no TB jump will be modified as
-               the program flow was changed */
-            ret = true;
+        break;
+    case CPU_INTERRUPT_SMI:
+        cpu_svm_check_intercept_param(env, SVM_EXIT_SMI, 0, 0);
+        cs->interrupt_request &= ~CPU_INTERRUPT_SMI;
+        do_smm_enter(cpu);
+        break;
+    case CPU_INTERRUPT_NMI:
+        cpu_svm_check_intercept_param(env, SVM_EXIT_NMI, 0, 0);
+        cs->interrupt_request &= ~CPU_INTERRUPT_NMI;
+        env->hflags2 |= HF2_NMI_MASK;
+        do_interrupt_x86_hardirq(env, EXCP02_NMI, 1);
+        break;
+    case CPU_INTERRUPT_MCE:
+        cs->interrupt_request &= ~CPU_INTERRUPT_MCE;
+        do_interrupt_x86_hardirq(env, EXCP12_MCHK, 0);
+        break;
+    case CPU_INTERRUPT_HARD:
+        cpu_svm_check_intercept_param(env, SVM_EXIT_INTR, 0, 0);
+        cs->interrupt_request &= ~(CPU_INTERRUPT_HARD |
+                                   CPU_INTERRUPT_VIRQ);
+        intno = cpu_get_pic_interrupt(env);
+        qemu_log_mask(CPU_LOG_TB_IN_ASM,
+                      "Servicing hardware INT=0x%02x\n", intno);
+        do_interrupt_x86_hardirq(env, intno, 1);
+        break;
 #if !defined(CONFIG_USER_ONLY)
-        } else if ((interrupt_request & CPU_INTERRUPT_VIRQ) &&
-                   (env->eflags & IF_MASK) &&
-                   !(env->hflags & HF_INHIBIT_IRQ_MASK)) {
-            int intno;
-            /* FIXME: this should respect TPR */
-            cpu_svm_check_intercept_param(env, SVM_EXIT_VINTR, 0, 0);
-            intno = x86_ldl_phys(cs, env->vm_vmcb
+    case CPU_INTERRUPT_VIRQ:
+        /* FIXME: this should respect TPR */
+        cpu_svm_check_intercept_param(env, SVM_EXIT_VINTR, 0, 0);
+        intno = x86_ldl_phys(cs, env->vm_vmcb
                              + offsetof(struct vmcb, control.int_vector));
-            qemu_log_mask(CPU_LOG_TB_IN_ASM,
-                          "Servicing virtual hardware INT=0x%02x\n", intno);
-            do_interrupt_x86_hardirq(env, intno, 1);
-            cs->interrupt_request &= ~CPU_INTERRUPT_VIRQ;
-            ret = true;
+        qemu_log_mask(CPU_LOG_TB_IN_ASM,
+                      "Servicing virtual hardware INT=0x%02x\n", intno);
+        do_interrupt_x86_hardirq(env, intno, 1);
+        cs->interrupt_request &= ~CPU_INTERRUPT_VIRQ;
+        break;
 #endif
-        }
     }
 
-    return ret;
+    /* Ensure that no TB jump will be modified as the program flow was changed.  */
+    return true;
 }
 
 void helper_lldt(CPUX86State *env, int selector)
@@ -1628,8 +1625,8 @@ void helper_ljmp_protected(CPUX86State *env, int new_cs, target_ulong new_eip,
         }
         limit = get_seg_limit(e1, e2);
         if (new_eip > limit &&
-            !(env->hflags & HF_LMA_MASK) && !(e2 & DESC_L_MASK)) {
-            raise_exception_err_ra(env, EXCP0D_GPF, new_cs & 0xfffc, GETPC());
+            (!(env->hflags & HF_LMA_MASK) || !(e2 & DESC_L_MASK))) {
+            raise_exception_err_ra(env, EXCP0D_GPF, 0, GETPC());
         }
         cpu_x86_load_seg_cache(env, R_CS, (new_cs & 0xfffc) | cpl,
                        get_seg_base(e1, e2), limit, e2);
@@ -1640,6 +1637,14 @@ void helper_ljmp_protected(CPUX86State *env, int new_cs, target_ulong new_eip,
         rpl = new_cs & 3;
         cpl = env->hflags & HF_CPL_MASK;
         type = (e2 >> DESC_TYPE_SHIFT) & 0xf;
+
+#ifdef TARGET_X86_64
+        if (env->efer & MSR_EFER_LMA) {
+            if (type != 12) {
+                raise_exception_err_ra(env, EXCP0D_GPF, new_cs & 0xfffc, GETPC());
+            }
+        }
+#endif
         switch (type) {
         case 1: /* 286 TSS */
         case 9: /* 386 TSS */
@@ -1662,6 +1667,23 @@ void helper_ljmp_protected(CPUX86State *env, int new_cs, target_ulong new_eip,
             if (type == 12) {
                 new_eip |= (e2 & 0xffff0000);
             }
+
+#ifdef TARGET_X86_64
+            if (env->efer & MSR_EFER_LMA) {
+                /* load the upper 8 bytes of the 64-bit call gate */
+                if (load_segment_ra(env, &e1, &e2, new_cs + 8, GETPC())) {
+                    raise_exception_err_ra(env, EXCP0D_GPF, new_cs & 0xfffc,
+                                           GETPC());
+                }
+                type = (e2 >> DESC_TYPE_SHIFT) & 0x1f;
+                if (type != 0) {
+                    raise_exception_err_ra(env, EXCP0D_GPF, new_cs & 0xfffc,
+                                           GETPC());
+                }
+                new_eip |= ((target_ulong)e1) << 32;
+            }
+#endif
+
             if (load_segment_ra(env, &e1, &e2, gate_cs, GETPC()) != 0) {
                 raise_exception_err_ra(env, EXCP0D_GPF, gate_cs & 0xfffc, GETPC());
             }
@@ -1675,11 +1697,22 @@ void helper_ljmp_protected(CPUX86State *env, int new_cs, target_ulong new_eip,
                 (!(e2 & DESC_C_MASK) && (dpl != cpl))) {
                 raise_exception_err_ra(env, EXCP0D_GPF, gate_cs & 0xfffc, GETPC());
             }
+#ifdef TARGET_X86_64
+            if (env->efer & MSR_EFER_LMA) {
+                if (!(e2 & DESC_L_MASK)) {
+                    raise_exception_err_ra(env, EXCP0D_GPF, gate_cs & 0xfffc, GETPC());
+                }
+                if (e2 & DESC_B_MASK) {
+                    raise_exception_err_ra(env, EXCP0D_GPF, gate_cs & 0xfffc, GETPC());
+                }
+            }
+#endif
             if (!(e2 & DESC_P_MASK)) {
                 raise_exception_err_ra(env, EXCP0D_GPF, gate_cs & 0xfffc, GETPC());
             }
             limit = get_seg_limit(e1, e2);
-            if (new_eip > limit) {
+            if (new_eip > limit &&
+                (!(env->hflags & HF_LMA_MASK) || !(e2 & DESC_L_MASK))) {
                 raise_exception_err_ra(env, EXCP0D_GPF, 0, GETPC());
             }
             cpu_x86_load_seg_cache(env, R_CS, (gate_cs & 0xfffc) | cpl,
@@ -1724,12 +1757,12 @@ void helper_lcall_protected(CPUX86State *env, int new_cs, target_ulong new_eip,
                             int shift, target_ulong next_eip)
 {
     int new_stack, i;
-    uint32_t e1, e2, cpl, dpl, rpl, selector, offset, param_count;
-    uint32_t ss = 0, ss_e1 = 0, ss_e2 = 0, sp, type, ss_dpl, sp_mask;
+    uint32_t e1, e2, cpl, dpl, rpl, selector, param_count;
+    uint32_t ss = 0, ss_e1 = 0, ss_e2 = 0, type, ss_dpl, sp_mask;
     uint32_t val, limit, old_sp_mask;
-    target_ulong ssp, old_ssp;
+    target_ulong ssp, old_ssp, offset, sp;
 
-    LOG_PCALL("lcall %04x:%08x s=%d\n", new_cs, (uint32_t)new_eip, shift);
+    LOG_PCALL("lcall %04x:" TARGET_FMT_lx " s=%d\n", new_cs, new_eip, shift);
     LOG_PCALL_STATE(CPU(x86_env_get_cpu(env)));
     if ((new_cs & 0xfffc) == 0) {
         raise_exception_err_ra(env, EXCP0D_GPF, 0, GETPC());
@@ -1807,6 +1840,15 @@ void helper_lcall_protected(CPUX86State *env, int new_cs, target_ulong new_eip,
         type = (e2 >> DESC_TYPE_SHIFT) & 0x1f;
         dpl = (e2 >> DESC_DPL_SHIFT) & 3;
         rpl = new_cs & 3;
+
+#ifdef TARGET_X86_64
+        if (env->efer & MSR_EFER_LMA) {
+            if (type != 12) {
+                raise_exception_err_ra(env, EXCP0D_GPF, new_cs & 0xfffc, GETPC());
+            }
+        }
+#endif
+
         switch (type) {
         case 1: /* available 286 TSS */
         case 9: /* available 386 TSS */
@@ -1833,8 +1875,23 @@ void helper_lcall_protected(CPUX86State *env, int new_cs, target_ulong new_eip,
             raise_exception_err_ra(env, EXCP0B_NOSEG,  new_cs & 0xfffc, GETPC());
         }
         selector = e1 >> 16;
-        offset = (e2 & 0xffff0000) | (e1 & 0x0000ffff);
         param_count = e2 & 0x1f;
+        offset = (e2 & 0xffff0000) | (e1 & 0x0000ffff);
+#ifdef TARGET_X86_64
+        if (env->efer & MSR_EFER_LMA) {
+            /* load the upper 8 bytes of the 64-bit call gate */
+            if (load_segment_ra(env, &e1, &e2, new_cs + 8, GETPC())) {
+                raise_exception_err_ra(env, EXCP0D_GPF, new_cs & 0xfffc,
+                                       GETPC());
+            }
+            type = (e2 >> DESC_TYPE_SHIFT) & 0x1f;
+            if (type != 0) {
+                raise_exception_err_ra(env, EXCP0D_GPF, new_cs & 0xfffc,
+                                       GETPC());
+            }
+            offset |= ((target_ulong)e1) << 32;
+        }
+#endif
         if ((selector & 0xfffc) == 0) {
             raise_exception_err_ra(env, EXCP0D_GPF, 0, GETPC());
         }
@@ -1849,46 +1906,80 @@ void helper_lcall_protected(CPUX86State *env, int new_cs, target_ulong new_eip,
         if (dpl > cpl) {
             raise_exception_err_ra(env, EXCP0D_GPF, selector & 0xfffc, GETPC());
         }
+#ifdef TARGET_X86_64
+        if (env->efer & MSR_EFER_LMA) {
+            if (!(e2 & DESC_L_MASK)) {
+                raise_exception_err_ra(env, EXCP0D_GPF, selector & 0xfffc, GETPC());
+            }
+            if (e2 & DESC_B_MASK) {
+                raise_exception_err_ra(env, EXCP0D_GPF, selector & 0xfffc, GETPC());
+            }
+            shift++;
+        }
+#endif
         if (!(e2 & DESC_P_MASK)) {
             raise_exception_err_ra(env, EXCP0B_NOSEG, selector & 0xfffc, GETPC());
         }
 
         if (!(e2 & DESC_C_MASK) && dpl < cpl) {
             /* to inner privilege */
-            get_ss_esp_from_tss(env, &ss, &sp, dpl, GETPC());
-            LOG_PCALL("new ss:esp=%04x:%08x param_count=%d env->regs[R_ESP]="
-                      TARGET_FMT_lx "\n", ss, sp, param_count,
-                      env->regs[R_ESP]);
-            if ((ss & 0xfffc) == 0) {
-                raise_exception_err_ra(env, EXCP0A_TSS, ss & 0xfffc, GETPC());
-            }
-            if ((ss & 3) != dpl) {
-                raise_exception_err_ra(env, EXCP0A_TSS, ss & 0xfffc, GETPC());
-            }
-            if (load_segment_ra(env, &ss_e1, &ss_e2, ss, GETPC()) != 0) {
-                raise_exception_err_ra(env, EXCP0A_TSS, ss & 0xfffc, GETPC());
-            }
-            ss_dpl = (ss_e2 >> DESC_DPL_SHIFT) & 3;
-            if (ss_dpl != dpl) {
-                raise_exception_err_ra(env, EXCP0A_TSS, ss & 0xfffc, GETPC());
-            }
-            if (!(ss_e2 & DESC_S_MASK) ||
-                (ss_e2 & DESC_CS_MASK) ||
-                !(ss_e2 & DESC_W_MASK)) {
-                raise_exception_err_ra(env, EXCP0A_TSS, ss & 0xfffc, GETPC());
-            }
-            if (!(ss_e2 & DESC_P_MASK)) {
-                raise_exception_err_ra(env, EXCP0A_TSS, ss & 0xfffc, GETPC());
+#ifdef TARGET_X86_64
+            if (shift == 2) {
+                sp = get_rsp_from_tss(env, dpl);
+                ss = dpl;  /* SS = NULL selector with RPL = new CPL */
+                new_stack = 1;
+                sp_mask = 0;
+                ssp = 0;  /* SS base is always zero in IA-32e mode */
+                LOG_PCALL("new ss:rsp=%04x:%016llx env->regs[R_ESP]="
+                          TARGET_FMT_lx "\n", ss, sp, env->regs[R_ESP]);
+            } else
+#endif
+            {
+                uint32_t sp32;
+                get_ss_esp_from_tss(env, &ss, &sp32, dpl, GETPC());
+                LOG_PCALL("new ss:esp=%04x:%08x param_count=%d env->regs[R_ESP]="
+                          TARGET_FMT_lx "\n", ss, sp32, param_count,
+                          env->regs[R_ESP]);
+                sp = sp32;
+                if ((ss & 0xfffc) == 0) {
+                    raise_exception_err_ra(env, EXCP0A_TSS, ss & 0xfffc, GETPC());
+                }
+                if ((ss & 3) != dpl) {
+                    raise_exception_err_ra(env, EXCP0A_TSS, ss & 0xfffc, GETPC());
+                }
+                if (load_segment_ra(env, &ss_e1, &ss_e2, ss, GETPC()) != 0) {
+                    raise_exception_err_ra(env, EXCP0A_TSS, ss & 0xfffc, GETPC());
+                }
+                ss_dpl = (ss_e2 >> DESC_DPL_SHIFT) & 3;
+                if (ss_dpl != dpl) {
+                    raise_exception_err_ra(env, EXCP0A_TSS, ss & 0xfffc, GETPC());
+                }
+                if (!(ss_e2 & DESC_S_MASK) ||
+                    (ss_e2 & DESC_CS_MASK) ||
+                    !(ss_e2 & DESC_W_MASK)) {
+                    raise_exception_err_ra(env, EXCP0A_TSS, ss & 0xfffc, GETPC());
+                }
+                if (!(ss_e2 & DESC_P_MASK)) {
+                    raise_exception_err_ra(env, EXCP0A_TSS, ss & 0xfffc, GETPC());
+                }
+
+                sp_mask = get_sp_mask(ss_e2);
+                ssp = get_seg_base(ss_e1, ss_e2);
             }
 
             /* push_size = ((param_count * 2) + 8) << shift; */
 
             old_sp_mask = get_sp_mask(env->segs[R_SS].flags);
             old_ssp = env->segs[R_SS].base;
-
-            sp_mask = get_sp_mask(ss_e2);
-            ssp = get_seg_base(ss_e1, ss_e2);
-            if (shift) {
+#ifdef TARGET_X86_64
+            if (shift == 2) {
+                /* XXX: verify if new stack address is canonical */
+                PUSHQ_RA(sp, env->segs[R_SS].selector, GETPC());
+                PUSHQ_RA(sp, env->regs[R_ESP], GETPC());
+                /* parameters aren't supported for 64-bit call gates */
+            } else
+#endif
+            if (shift == 1) {
                 PUSHL_RA(ssp, sp, sp_mask, env->segs[R_SS].selector, GETPC());
                 PUSHL_RA(ssp, sp, sp_mask, env->regs[R_ESP], GETPC());
                 for (i = param_count - 1; i >= 0; i--) {
@@ -1917,7 +2008,13 @@ void helper_lcall_protected(CPUX86State *env, int new_cs, target_ulong new_eip,
             new_stack = 0;
         }
 
-        if (shift) {
+#ifdef TARGET_X86_64
+        if (shift == 2) {
+            PUSHQ_RA(sp, env->segs[R_CS].selector, GETPC());
+            PUSHQ_RA(sp, next_eip, GETPC());
+        } else
+#endif
+        if (shift == 1) {
             PUSHL_RA(ssp, sp, sp_mask, env->segs[R_CS].selector, GETPC());
             PUSHL_RA(ssp, sp, sp_mask, next_eip, GETPC());
         } else {
@@ -1928,11 +2025,18 @@ void helper_lcall_protected(CPUX86State *env, int new_cs, target_ulong new_eip,
         /* from this point, not restartable */
 
         if (new_stack) {
-            ss = (ss & ~3) | dpl;
-            cpu_x86_load_seg_cache(env, R_SS, ss,
-                                   ssp,
-                                   get_seg_limit(ss_e1, ss_e2),
-                                   ss_e2);
+#ifdef TARGET_X86_64
+            if (shift == 2) {
+                cpu_x86_load_seg_cache(env, R_SS, ss, 0, 0, 0);
+            } else
+#endif
+            {
+                ss = (ss & ~3) | dpl;
+                cpu_x86_load_seg_cache(env, R_SS, ss,
+                                       ssp,
+                                       get_seg_limit(ss_e1, ss_e2),
+                                       ss_e2);
+            }
         }
 
         selector = (selector & ~3) | dpl;

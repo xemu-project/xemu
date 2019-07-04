@@ -39,7 +39,7 @@ powerpc_cross_prefix := $(call find-cross-prefix,powerpc)
 x86_64_cross_prefix := $(call find-cross-prefix,x86_64)
 
 # tag our seabios builds
-SEABIOS_EXTRAVERSION="-prebuilt.qemu-project.org"
+SEABIOS_EXTRAVERSION="-prebuilt.qemu.org"
 
 #
 # EfiRom utility is shipped with edk2 / tianocore, in BaseTools/
@@ -47,10 +47,7 @@ SEABIOS_EXTRAVERSION="-prebuilt.qemu-project.org"
 # We need that to combine multiple images (legacy bios,
 # efi ia32, efi x64) into a single rom binary.
 #
-# We try to find it in the path.  You can also pass the location on
-# the command line, i.e. "make EFIROM=/path/to/EfiRom efirom"
-#
-EFIROM ?= $(shell which EfiRom 2>/dev/null)
+EDK2_EFIROM = edk2/BaseTools/Source/C/bin/EfiRom
 
 default:
 	@echo "nothing is build by default"
@@ -59,8 +56,7 @@ default:
 	@echo "  vgabios        -- update vgabios binaries (seabios)"
 	@echo "  sgabios        -- update sgabios binaries"
 	@echo "  pxerom         -- update nic roms (bios only)"
-	@echo "  efirom         -- update nic roms (bios+efi, this needs"
-	@echo "                    the EfiRom utility from edk2 / tianocore)"
+	@echo "  efirom         -- update nic roms (bios+efi)"
 	@echo "  slof           -- update slof.bin"
 	@echo "  skiboot        -- update skiboot.lid"
 	@echo "  u-boot.e500    -- update u-boot.e500"
@@ -83,12 +79,12 @@ build-seabios-config-%: config.%
 	cp $< seabios/builds/$*/.config
 	$(MAKE) -C seabios \
 		EXTRAVERSION=$(SEABIOS_EXTRAVERSION) \
-		CROSS_COMPILE=$(x86_64_cross_prefix) \
+		CROSS_PREFIX=$(x86_64_cross_prefix) \
 		KCONFIG_CONFIG=$(CURDIR)/seabios/builds/$*/.config \
 		OUT=$(CURDIR)/seabios/builds/$*/ oldnoconfig
 	$(MAKE) -C seabios \
 		EXTRAVERSION=$(SEABIOS_EXTRAVERSION) \
-		CROSS_COMPILE=$(x86_64_cross_prefix) \
+		CROSS_PREFIX=$(x86_64_cross_prefix) \
 		KCONFIG_CONFIG=$(CURDIR)/seabios/builds/$*/.config \
 		OUT=$(CURDIR)/seabios/builds/$*/ all
 
@@ -106,8 +102,8 @@ pxe-rom-%: build-pxe-roms
 
 efirom: $(patsubst %,efi-rom-%,$(pxerom_variants))
 
-efi-rom-%: build-pxe-roms build-efi-roms
-	$(EFIROM) -f "0x$(VID)" -i "0x$(DID)" -l 0x02 \
+efi-rom-%: build-pxe-roms build-efi-roms $(EDK2_EFIROM)
+	$(EDK2_EFIROM) -f "0x$(VID)" -i "0x$(DID)" -l 0x02 \
 		-b ipxe/src/bin/$(VID)$(DID).rom \
 		-ec ipxe/src/bin-i386-efi/$(VID)$(DID).efidrv \
 		-ec ipxe/src/bin-x86_64-efi/$(VID)$(DID).efidrv \
@@ -124,6 +120,21 @@ build-efi-roms: build-pxe-roms
 		$(patsubst %,bin-i386-efi/%.efidrv,$(pxerom_targets)) \
 		$(patsubst %,bin-x86_64-efi/%.efidrv,$(pxerom_targets))
 
+# Build scripts can pass compiler/linker flags to the EDK2 build tools
+# via the EDK2_BASETOOLS_OPTFLAGS (CPPFLAGS and CFLAGS) and
+# EDK2_BASETOOLS_LDFLAGS (LDFLAGS) environment variables.
+#
+# Example:
+#
+#  make -C roms \
+#    EDK2_BASETOOLS_OPTFLAGS='...' \
+#    EDK2_BASETOOLS_LDFLAGS='...' \
+#    efirom
+#
+$(EDK2_EFIROM):
+	$(MAKE) -C edk2/BaseTools \
+		EXTRA_OPTFLAGS='$(EDK2_BASETOOLS_OPTFLAGS)' \
+		EXTRA_LDFLAGS='$(EDK2_BASETOOLS_LDFLAGS)'
 
 slof:
 	$(MAKE) -C SLOF CROSS=$(powerpc64_cross_prefix) qemu
@@ -150,6 +161,7 @@ clean:
 	$(MAKE) -C sgabios clean
 	rm -f sgabios/.depend
 	$(MAKE) -C ipxe/src veryclean
+	$(MAKE) -C edk2/BaseTools clean
 	$(MAKE) -C SLOF clean
 	rm -rf u-boot/build.e500
 	$(MAKE) -C u-boot-sam460ex distclean

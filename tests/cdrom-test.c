@@ -99,7 +99,7 @@ static void test_cdrom_param(gconstpointer data)
     QTestState *qts;
     char *resp;
 
-    qts = qtest_startf("-M %s -cdrom %s", (const char *)data, isoimage);
+    qts = qtest_initf("-M %s -cdrom %s", (const char *)data, isoimage);
     resp = qtest_hmp(qts, "info block");
     g_assert(strstr(resp, isoimage) != 0);
     g_free(resp);
@@ -120,8 +120,8 @@ static void test_cdboot(gconstpointer data)
 {
     QTestState *qts;
 
-    qts = qtest_startf("-accel kvm:tcg -no-shutdown %s%s", (const char *)data,
-                       isoimage);
+    qts = qtest_initf("-accel kvm:tcg -no-shutdown %s%s", (const char *)data,
+                      isoimage);
     boot_sector_test(qts);
     qtest_quit(qts);
 }
@@ -132,8 +132,14 @@ static void add_x86_tests(void)
     qtest_add_data_func("cdrom/boot/virtio-scsi",
                         "-device virtio-scsi -device scsi-cd,drive=cdr "
                         "-blockdev file,node-name=cdr,filename=", test_cdboot);
-    qtest_add_data_func("cdrom/boot/isapc", "-M isapc "
-                        "-drive if=ide,media=cdrom,file=", test_cdboot);
+    /*
+     * Unstable CI test under load
+     * See https://lists.gnu.org/archive/html/qemu-devel/2019-02/msg05509.html
+     */
+    if (g_test_slow()) {
+        qtest_add_data_func("cdrom/boot/isapc", "-M isapc "
+                            "-drive if=ide,media=cdrom,file=", test_cdboot);
+    }
     qtest_add_data_func("cdrom/boot/am53c974",
                         "-device am53c974 -device scsi-cd,drive=cd1 "
                         "-drive if=none,id=cd1,format=raw,file=", test_cdboot);
@@ -169,7 +175,7 @@ int main(int argc, char **argv)
 
     if (exec_genisoimg(genisocheck)) {
         /* genisoimage not available - so can't run tests */
-        return 0;
+        return g_test_run();
     }
 
     ret = prepare_image(arch, isoimage);

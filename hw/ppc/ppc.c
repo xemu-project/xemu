@@ -30,10 +30,8 @@
 #include "qemu/timer.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/cpus.h"
-#include "hw/timer/m48t59.h"
 #include "qemu/log.h"
 #include "qemu/error-report.h"
-#include "hw/loader.h"
 #include "sysemu/kvm.h"
 #include "kvm_ppc.h"
 #include "trace.h"
@@ -308,7 +306,105 @@ void ppcPOWER7_irq_init(PowerPCCPU *cpu)
     env->irq_inputs = (void **)qemu_allocate_irqs(&power7_set_irq, cpu,
                                                   POWER7_INPUT_NB);
 }
+
+/* POWER9 internal IRQ controller */
+static void power9_set_irq(void *opaque, int pin, int level)
+{
+    PowerPCCPU *cpu = opaque;
+    CPUPPCState *env = &cpu->env;
+
+    LOG_IRQ("%s: env %p pin %d level %d\n", __func__,
+                env, pin, level);
+
+    switch (pin) {
+    case POWER9_INPUT_INT:
+        /* Level sensitive - active high */
+        LOG_IRQ("%s: set the external IRQ state to %d\n",
+                __func__, level);
+        ppc_set_irq(cpu, PPC_INTERRUPT_EXT, level);
+        break;
+    case POWER9_INPUT_HINT:
+        /* Level sensitive - active high */
+        LOG_IRQ("%s: set the external IRQ state to %d\n",
+                __func__, level);
+        ppc_set_irq(cpu, PPC_INTERRUPT_HVIRT, level);
+        break;
+    default:
+        /* Unknown pin - do nothing */
+        LOG_IRQ("%s: unknown IRQ pin %d\n", __func__, pin);
+        return;
+    }
+    if (level) {
+        env->irq_input_state |= 1 << pin;
+    } else {
+        env->irq_input_state &= ~(1 << pin);
+    }
+}
+
+void ppcPOWER9_irq_init(PowerPCCPU *cpu)
+{
+    CPUPPCState *env = &cpu->env;
+
+    env->irq_inputs = (void **)qemu_allocate_irqs(&power9_set_irq, cpu,
+                                                  POWER9_INPUT_NB);
+}
 #endif /* defined(TARGET_PPC64) */
+
+void ppc40x_core_reset(PowerPCCPU *cpu)
+{
+    CPUPPCState *env = &cpu->env;
+    target_ulong dbsr;
+
+    qemu_log_mask(CPU_LOG_RESET, "Reset PowerPC core\n");
+    cpu_interrupt(CPU(cpu), CPU_INTERRUPT_RESET);
+    dbsr = env->spr[SPR_40x_DBSR];
+    dbsr &= ~0x00000300;
+    dbsr |= 0x00000100;
+    env->spr[SPR_40x_DBSR] = dbsr;
+}
+
+void ppc40x_chip_reset(PowerPCCPU *cpu)
+{
+    CPUPPCState *env = &cpu->env;
+    target_ulong dbsr;
+
+    qemu_log_mask(CPU_LOG_RESET, "Reset PowerPC chip\n");
+    cpu_interrupt(CPU(cpu), CPU_INTERRUPT_RESET);
+    /* XXX: TODO reset all internal peripherals */
+    dbsr = env->spr[SPR_40x_DBSR];
+    dbsr &= ~0x00000300;
+    dbsr |= 0x00000200;
+    env->spr[SPR_40x_DBSR] = dbsr;
+}
+
+void ppc40x_system_reset(PowerPCCPU *cpu)
+{
+    qemu_log_mask(CPU_LOG_RESET, "Reset PowerPC system\n");
+    qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
+}
+
+void store_40x_dbcr0(CPUPPCState *env, uint32_t val)
+{
+    PowerPCCPU *cpu = ppc_env_get_cpu(env);
+
+    switch ((val >> 28) & 0x3) {
+    case 0x0:
+        /* No action */
+        break;
+    case 0x1:
+        /* Core reset */
+        ppc40x_core_reset(cpu);
+        break;
+    case 0x2:
+        /* Chip reset */
+        ppc40x_chip_reset(cpu);
+        break;
+    case 0x3:
+        /* System reset */
+        ppc40x_system_reset(cpu);
+        break;
+    }
+}
 
 /* PowerPC 40x internal IRQ controller */
 static void ppc40x_set_irq(void *opaque, int pin, int level)
@@ -648,11 +744,10 @@ bool ppc_decr_clear_on_delivery(CPUPPCState *env)
     return ((tb_env->flags & flags) == PPC_DECR_UNDERFLOW_TRIGGERED);
 }
 
-static inline uint32_t _cpu_ppc_load_decr(CPUPPCState *env, uint64_t next)
+static inline int64_t _cpu_ppc_load_decr(CPUPPCState *env, uint64_t next)
 {
     ppc_tb_t *tb_env = env->tb_env;
-    uint32_t decr;
-    int64_t diff;
+    int64_t decr, diff;
 
     diff = next - qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     if (diff >= 0) {
@@ -662,27 +757,49 @@ static inline uint32_t _cpu_ppc_load_decr(CPUPPCState *env, uint64_t next)
     }  else {
         decr = -muldiv64(-diff, tb_env->decr_freq, NANOSECONDS_PER_SECOND);
     }
-    LOG_TB("%s: %08" PRIx32 "\n", __func__, decr);
+    LOG_TB("%s: %016" PRIx64 "\n", __func__, decr);
 
     return decr;
 }
 
-uint32_t cpu_ppc_load_decr (CPUPPCState *env)
+target_ulong cpu_ppc_load_decr(CPUPPCState *env)
 {
     ppc_tb_t *tb_env = env->tb_env;
+    uint64_t decr;
 
     if (kvm_enabled()) {
         return env->spr[SPR_DECR];
     }
 
-    return _cpu_ppc_load_decr(env, tb_env->decr_next);
+    decr = _cpu_ppc_load_decr(env, tb_env->decr_next);
+
+    /*
+     * If large decrementer is enabled then the decrementer is signed extened
+     * to 64 bits, otherwise it is a 32 bit value.
+     */
+    if (env->spr[SPR_LPCR] & LPCR_LD) {
+        return decr;
+    }
+    return (uint32_t) decr;
 }
 
-uint32_t cpu_ppc_load_hdecr (CPUPPCState *env)
+target_ulong cpu_ppc_load_hdecr(CPUPPCState *env)
 {
+    PowerPCCPU *cpu = ppc_env_get_cpu(env);
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
     ppc_tb_t *tb_env = env->tb_env;
+    uint64_t hdecr;
 
-    return _cpu_ppc_load_decr(env, tb_env->hdecr_next);
+    hdecr =  _cpu_ppc_load_decr(env, tb_env->hdecr_next);
+
+    /*
+     * If we have a large decrementer (POWER9 or later) then hdecr is sign
+     * extended to 64 bits, otherwise it is 32 bits.
+     */
+    if (pcc->lrg_decr_bits > 32) {
+        return hdecr;
+    }
+    return (uint32_t) hdecr;
 }
 
 uint64_t cpu_ppc_load_purr (CPUPPCState *env)
@@ -722,7 +839,7 @@ static inline void cpu_ppc_hdecr_excp(PowerPCCPU *cpu)
      * interrupts in a PM state. Not only they don't cause a
      * wakeup but they also get effectively discarded.
      */
-    if (!env->in_pm_state) {
+    if (!env->resume_as_sreset) {
         ppc_set_irq(cpu, PPC_INTERRUPT_HDECR, 1);
     }
 }
@@ -736,13 +853,22 @@ static void __cpu_ppc_store_decr(PowerPCCPU *cpu, uint64_t *nextp,
                                  QEMUTimer *timer,
                                  void (*raise_excp)(void *),
                                  void (*lower_excp)(PowerPCCPU *),
-                                 uint32_t decr, uint32_t value)
+                                 target_ulong decr, target_ulong value,
+                                 int nr_bits)
 {
     CPUPPCState *env = &cpu->env;
     ppc_tb_t *tb_env = env->tb_env;
     uint64_t now, next;
+    bool negative;
 
-    LOG_TB("%s: %08" PRIx32 " => %08" PRIx32 "\n", __func__,
+    /* Truncate value to decr_width and sign extend for simplicity */
+    value &= ((1ULL << nr_bits) - 1);
+    negative = !!(value & (1ULL << (nr_bits - 1)));
+    if (negative) {
+        value |= (0xFFFFFFFFULL << nr_bits);
+    }
+
+    LOG_TB("%s: " TARGET_FMT_lx " => " TARGET_FMT_lx "\n", __func__,
                 decr, value);
 
     if (kvm_enabled()) {
@@ -764,15 +890,15 @@ static void __cpu_ppc_store_decr(PowerPCCPU *cpu, uint64_t *nextp,
      * an edge interrupt, so raise it here too.
      */
     if ((value < 3) ||
-        ((tb_env->flags & PPC_DECR_UNDERFLOW_LEVEL) && (value & 0x80000000)) ||
-        ((tb_env->flags & PPC_DECR_UNDERFLOW_TRIGGERED) && (value & 0x80000000)
-          && !(decr & 0x80000000))) {
+        ((tb_env->flags & PPC_DECR_UNDERFLOW_LEVEL) && negative) ||
+        ((tb_env->flags & PPC_DECR_UNDERFLOW_TRIGGERED) && negative
+          && !(decr & (1ULL << (nr_bits - 1))))) {
         (*raise_excp)(cpu);
         return;
     }
 
     /* On MSB level based systems a 0 for the MSB stops interrupt delivery */
-    if (!(value & 0x80000000) && (tb_env->flags & PPC_DECR_UNDERFLOW_LEVEL)) {
+    if (!negative && (tb_env->flags & PPC_DECR_UNDERFLOW_LEVEL)) {
         (*lower_excp)(cpu);
     }
 
@@ -785,21 +911,27 @@ static void __cpu_ppc_store_decr(PowerPCCPU *cpu, uint64_t *nextp,
     timer_mod(timer, next);
 }
 
-static inline void _cpu_ppc_store_decr(PowerPCCPU *cpu, uint32_t decr,
-                                       uint32_t value)
+static inline void _cpu_ppc_store_decr(PowerPCCPU *cpu, target_ulong decr,
+                                       target_ulong value, int nr_bits)
 {
     ppc_tb_t *tb_env = cpu->env.tb_env;
 
     __cpu_ppc_store_decr(cpu, &tb_env->decr_next, tb_env->decr_timer,
                          tb_env->decr_timer->cb, &cpu_ppc_decr_lower, decr,
-                         value);
+                         value, nr_bits);
 }
 
-void cpu_ppc_store_decr (CPUPPCState *env, uint32_t value)
+void cpu_ppc_store_decr(CPUPPCState *env, target_ulong value)
 {
     PowerPCCPU *cpu = ppc_env_get_cpu(env);
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
+    int nr_bits = 32;
 
-    _cpu_ppc_store_decr(cpu, cpu_ppc_load_decr(env), value);
+    if (env->spr[SPR_LPCR] & LPCR_LD) {
+        nr_bits = pcc->lrg_decr_bits;
+    }
+
+    _cpu_ppc_store_decr(cpu, cpu_ppc_load_decr(env), value, nr_bits);
 }
 
 static void cpu_ppc_decr_cb(void *opaque)
@@ -809,23 +941,25 @@ static void cpu_ppc_decr_cb(void *opaque)
     cpu_ppc_decr_excp(cpu);
 }
 
-static inline void _cpu_ppc_store_hdecr(PowerPCCPU *cpu, uint32_t hdecr,
-                                        uint32_t value)
+static inline void _cpu_ppc_store_hdecr(PowerPCCPU *cpu, target_ulong hdecr,
+                                        target_ulong value, int nr_bits)
 {
     ppc_tb_t *tb_env = cpu->env.tb_env;
 
     if (tb_env->hdecr_timer != NULL) {
         __cpu_ppc_store_decr(cpu, &tb_env->hdecr_next, tb_env->hdecr_timer,
                              tb_env->hdecr_timer->cb, &cpu_ppc_hdecr_lower,
-                             hdecr, value);
+                             hdecr, value, nr_bits);
     }
 }
 
-void cpu_ppc_store_hdecr (CPUPPCState *env, uint32_t value)
+void cpu_ppc_store_hdecr(CPUPPCState *env, target_ulong value)
 {
     PowerPCCPU *cpu = ppc_env_get_cpu(env);
+    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
 
-    _cpu_ppc_store_hdecr(cpu, cpu_ppc_load_hdecr(env), value);
+    _cpu_ppc_store_hdecr(cpu, cpu_ppc_load_hdecr(env), value,
+                         pcc->lrg_decr_bits);
 }
 
 static void cpu_ppc_hdecr_cb(void *opaque)
@@ -855,8 +989,8 @@ static void cpu_ppc_set_tb_clk (void *opaque, uint32_t freq)
      * if a decrementer exception is pending when it enables msr_ee at startup,
      * it's not ready to handle it...
      */
-    _cpu_ppc_store_decr(cpu, 0xFFFFFFFF, 0xFFFFFFFF);
-    _cpu_ppc_store_hdecr(cpu, 0xFFFFFFFF, 0xFFFFFFFF);
+    _cpu_ppc_store_decr(cpu, 0xFFFFFFFF, 0xFFFFFFFF, 32);
+    _cpu_ppc_store_hdecr(cpu, 0xFFFFFFFF, 0xFFFFFFFF, 32);
     cpu_ppc_store_purr(cpu, 0x0000000000000000ULL);
 }
 
@@ -967,7 +1101,7 @@ clk_setup_cb cpu_ppc_tb_init (CPUPPCState *env, uint32_t freq)
     tb_env = g_malloc0(sizeof(ppc_tb_t));
     env->tb_env = tb_env;
     tb_env->flags = PPC_DECR_UNDERFLOW_TRIGGERED;
-    if (env->insns_flags & PPC_SEGMENT_64B) {
+    if (is_book3s_arch2x(env)) {
         /* All Book3S 64bit CPUs implement level based DEC logic */
         tb_env->flags |= PPC_DECR_UNDERFLOW_LEVEL;
     }
@@ -1357,4 +1491,20 @@ void PPC_debug_write (void *opaque, uint32_t addr, uint32_t val)
         qemu_set_log(val | 0x100);
         break;
     }
+}
+
+PowerPCCPU *ppc_get_vcpu_by_pir(int pir)
+{
+    CPUState *cs;
+
+    CPU_FOREACH(cs) {
+        PowerPCCPU *cpu = POWERPC_CPU(cs);
+        CPUPPCState *env = &cpu->env;
+
+        if (env->spr_cb[SPR_PIR].default_value == pir) {
+            return cpu;
+        }
+    }
+
+    return NULL;
 }

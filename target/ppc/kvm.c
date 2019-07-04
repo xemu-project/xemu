@@ -36,7 +36,6 @@
 
 #include "hw/sysbus.h"
 #include "hw/ppc/spapr.h"
-#include "hw/ppc/spapr_vio.h"
 #include "hw/ppc/spapr_cpu_core.h"
 #include "hw/ppc/ppc.h"
 #include "sysemu/watchdog.h"
@@ -91,6 +90,9 @@ static int cap_ppc_pvr_compat;
 static int cap_ppc_safe_cache;
 static int cap_ppc_safe_bounds_check;
 static int cap_ppc_safe_indirect_branch;
+static int cap_ppc_count_cache_flush_assist;
+static int cap_ppc_nested_kvm_hv;
+static int cap_large_decr;
 
 static uint32_t debug_inst_opcode;
 
@@ -124,6 +126,7 @@ static bool kvmppc_is_pr(KVMState *ks)
 
 static int kvm_ppc_register_host_cpu_type(MachineState *ms);
 static void kvmppc_get_cpu_characteristics(KVMState *s);
+static int kvmppc_get_dec_bits(void);
 
 int kvm_arch_init(MachineState *ms, KVMState *s)
 {
@@ -150,6 +153,8 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
     cap_mmu_hash_v3 = kvm_vm_check_extension(s, KVM_CAP_PPC_MMU_HASH_V3);
     cap_resize_hpt = kvm_vm_check_extension(s, KVM_CAP_SPAPR_RESIZE_HPT);
     kvmppc_get_cpu_characteristics(s);
+    cap_ppc_nested_kvm_hv = kvm_vm_check_extension(s, KVM_CAP_PPC_NESTED_HV);
+    cap_large_decr = kvmppc_get_dec_bits();
     /*
      * Note: setting it to false because there is not such capability
      * in KVM at this moment.
@@ -627,13 +632,15 @@ static int kvm_put_fp(CPUState *cs)
 
         for (i = 0; i < 32; i++) {
             uint64_t vsr[2];
+            uint64_t *fpr = cpu_fpr_ptr(&cpu->env, i);
+            uint64_t *vsrl = cpu_vsrl_ptr(&cpu->env, i);
 
 #ifdef HOST_WORDS_BIGENDIAN
-            vsr[0] = float64_val(env->fpr[i]);
-            vsr[1] = env->vsr[i];
+            vsr[0] = float64_val(*fpr);
+            vsr[1] = *vsrl;
 #else
-            vsr[0] = env->vsr[i];
-            vsr[1] = float64_val(env->fpr[i]);
+            vsr[0] = *vsrl;
+            vsr[1] = float64_val(*fpr);
 #endif
             reg.addr = (uintptr_t) &vsr;
             reg.id = vsx ? KVM_REG_PPC_VSR(i) : KVM_REG_PPC_FPR(i);
@@ -658,7 +665,7 @@ static int kvm_put_fp(CPUState *cs)
 
         for (i = 0; i < 32; i++) {
             reg.id = KVM_REG_PPC_VR(i);
-            reg.addr = (uintptr_t)&env->avr[i];
+            reg.addr = (uintptr_t)cpu_avr_ptr(env, i);
             ret = kvm_vcpu_ioctl(cs, KVM_SET_ONE_REG, &reg);
             if (ret < 0) {
                 DPRINTF("Unable to set VR%d to KVM: %s\n", i, strerror(errno));
@@ -694,6 +701,8 @@ static int kvm_get_fp(CPUState *cs)
 
         for (i = 0; i < 32; i++) {
             uint64_t vsr[2];
+            uint64_t *fpr = cpu_fpr_ptr(&cpu->env, i);
+            uint64_t *vsrl = cpu_vsrl_ptr(&cpu->env, i);
 
             reg.addr = (uintptr_t) &vsr;
             reg.id = vsx ? KVM_REG_PPC_VSR(i) : KVM_REG_PPC_FPR(i);
@@ -705,14 +714,14 @@ static int kvm_get_fp(CPUState *cs)
                 return ret;
             } else {
 #ifdef HOST_WORDS_BIGENDIAN
-                env->fpr[i] = vsr[0];
+                *fpr = vsr[0];
                 if (vsx) {
-                    env->vsr[i] = vsr[1];
+                    *vsrl = vsr[1];
                 }
 #else
-                env->fpr[i] = vsr[1];
+                *fpr = vsr[1];
                 if (vsx) {
-                    env->vsr[i] = vsr[0];
+                    *vsrl = vsr[0];
                 }
 #endif
             }
@@ -730,7 +739,7 @@ static int kvm_get_fp(CPUState *cs)
 
         for (i = 0; i < 32; i++) {
             reg.id = KVM_REG_PPC_VR(i);
-            reg.addr = (uintptr_t)&env->avr[i];
+            reg.addr = (uintptr_t)cpu_avr_ptr(env, i);
             ret = kvm_vcpu_ioctl(cs, KVM_GET_ONE_REG, &reg);
             if (ret < 0) {
                 DPRINTF("Unable to get VR%d from KVM: %s\n",
@@ -747,7 +756,7 @@ static int kvm_get_fp(CPUState *cs)
 static int kvm_get_vpa(CPUState *cs)
 {
     PowerPCCPU *cpu = POWERPC_CPU(cs);
-    sPAPRCPUState *spapr_cpu = spapr_cpu_state(cpu);
+    SpaprCpuState *spapr_cpu = spapr_cpu_state(cpu);
     struct kvm_one_reg reg;
     int ret;
 
@@ -787,7 +796,7 @@ static int kvm_get_vpa(CPUState *cs)
 static int kvm_put_vpa(CPUState *cs)
 {
     PowerPCCPU *cpu = POWERPC_CPU(cs);
-    sPAPRCPUState *spapr_cpu = spapr_cpu_state(cpu);
+    SpaprCpuState *spapr_cpu = spapr_cpu_state(cpu);
     struct kvm_one_reg reg;
     int ret;
 
@@ -1315,9 +1324,7 @@ int kvmppc_set_interrupt(PowerPCCPU *cpu, int irq, int level)
     return 0;
 }
 
-#if defined(TARGET_PPCEMB)
-#define PPC_INPUT_INT PPC40x_INPUT_INT
-#elif defined(TARGET_PPC64)
+#if defined(TARGET_PPC64)
 #define PPC_INPUT_INT PPC970_INPUT_INT
 #else
 #define PPC_INPUT_INT PPC6xx_INPUT_INT
@@ -1590,70 +1597,93 @@ void kvm_arch_update_guest_debug(CPUState *cs, struct kvm_guest_debug *dbg)
     }
 }
 
+static int kvm_handle_hw_breakpoint(CPUState *cs,
+                                    struct kvm_debug_exit_arch *arch_info)
+{
+    int handle = 0;
+    int n;
+    int flag = 0;
+
+    if (nb_hw_breakpoint + nb_hw_watchpoint > 0) {
+        if (arch_info->status & KVMPPC_DEBUG_BREAKPOINT) {
+            n = find_hw_breakpoint(arch_info->address, GDB_BREAKPOINT_HW);
+            if (n >= 0) {
+                handle = 1;
+            }
+        } else if (arch_info->status & (KVMPPC_DEBUG_WATCH_READ |
+                                        KVMPPC_DEBUG_WATCH_WRITE)) {
+            n = find_hw_watchpoint(arch_info->address,  &flag);
+            if (n >= 0) {
+                handle = 1;
+                cs->watchpoint_hit = &hw_watchpoint;
+                hw_watchpoint.vaddr = hw_debug_points[n].addr;
+                hw_watchpoint.flags = flag;
+            }
+        }
+    }
+    return handle;
+}
+
+static int kvm_handle_singlestep(void)
+{
+    return 1;
+}
+
+static int kvm_handle_sw_breakpoint(void)
+{
+    return 1;
+}
+
 static int kvm_handle_debug(PowerPCCPU *cpu, struct kvm_run *run)
 {
     CPUState *cs = CPU(cpu);
     CPUPPCState *env = &cpu->env;
     struct kvm_debug_exit_arch *arch_info = &run->debug.arch;
-    int handle = 0;
-    int n;
-    int flag = 0;
 
     if (cs->singlestep_enabled) {
-        handle = 1;
-    } else if (arch_info->status) {
-        if (nb_hw_breakpoint + nb_hw_watchpoint > 0) {
-            if (arch_info->status & KVMPPC_DEBUG_BREAKPOINT) {
-                n = find_hw_breakpoint(arch_info->address, GDB_BREAKPOINT_HW);
-                if (n >= 0) {
-                    handle = 1;
-                }
-            } else if (arch_info->status & (KVMPPC_DEBUG_WATCH_READ |
-                                            KVMPPC_DEBUG_WATCH_WRITE)) {
-                n = find_hw_watchpoint(arch_info->address,  &flag);
-                if (n >= 0) {
-                    handle = 1;
-                    cs->watchpoint_hit = &hw_watchpoint;
-                    hw_watchpoint.vaddr = hw_debug_points[n].addr;
-                    hw_watchpoint.flags = flag;
-                }
-            }
-        }
-    } else if (kvm_find_sw_breakpoint(cs, arch_info->address)) {
-        handle = 1;
-    } else {
-        /* QEMU is not able to handle debug exception, so inject
-         * program exception to guest;
-         * Yes program exception NOT debug exception !!
-         * When QEMU is using debug resources then debug exception must
-         * be always set. To achieve this we set MSR_DE and also set
-         * MSRP_DEP so guest cannot change MSR_DE.
-         * When emulating debug resource for guest we want guest
-         * to control MSR_DE (enable/disable debug interrupt on need).
-         * Supporting both configurations are NOT possible.
-         * So the result is that we cannot share debug resources
-         * between QEMU and Guest on BOOKE architecture.
-         * In the current design QEMU gets the priority over guest,
-         * this means that if QEMU is using debug resources then guest
-         * cannot use them;
-         * For software breakpoint QEMU uses a privileged instruction;
-         * So there cannot be any reason that we are here for guest
-         * set debug exception, only possibility is guest executed a
-         * privileged / illegal instruction and that's why we are
-         * injecting a program interrupt.
-         */
-
-        cpu_synchronize_state(cs);
-        /* env->nip is PC, so increment this by 4 to use
-         * ppc_cpu_do_interrupt(), which set srr0 = env->nip - 4.
-         */
-        env->nip += 4;
-        cs->exception_index = POWERPC_EXCP_PROGRAM;
-        env->error_code = POWERPC_EXCP_INVAL;
-        ppc_cpu_do_interrupt(cs);
+        return kvm_handle_singlestep();
     }
 
-    return handle;
+    if (arch_info->status) {
+        return kvm_handle_hw_breakpoint(cs, arch_info);
+    }
+
+    if (kvm_find_sw_breakpoint(cs, arch_info->address)) {
+        return kvm_handle_sw_breakpoint();
+    }
+
+    /*
+     * QEMU is not able to handle debug exception, so inject
+     * program exception to guest;
+     * Yes program exception NOT debug exception !!
+     * When QEMU is using debug resources then debug exception must
+     * be always set. To achieve this we set MSR_DE and also set
+     * MSRP_DEP so guest cannot change MSR_DE.
+     * When emulating debug resource for guest we want guest
+     * to control MSR_DE (enable/disable debug interrupt on need).
+     * Supporting both configurations are NOT possible.
+     * So the result is that we cannot share debug resources
+     * between QEMU and Guest on BOOKE architecture.
+     * In the current design QEMU gets the priority over guest,
+     * this means that if QEMU is using debug resources then guest
+     * cannot use them;
+     * For software breakpoint QEMU uses a privileged instruction;
+     * So there cannot be any reason that we are here for guest
+     * set debug exception, only possibility is guest executed a
+     * privileged / illegal instruction and that's why we are
+     * injecting a program interrupt.
+     */
+    cpu_synchronize_state(cs);
+    /*
+     * env->nip is PC, so increment this by 4 to use
+     * ppc_cpu_do_interrupt(), which set srr0 = env->nip - 4.
+     */
+    env->nip += 4;
+    cs->exception_index = POWERPC_EXCP_PROGRAM;
+    env->error_code = POWERPC_EXCP_INVAL;
+    ppc_cpu_do_interrupt(cs);
+
+    return 0;
 }
 
 int kvm_arch_handle_exit(CPUState *cs, struct kvm_run *run)
@@ -1924,6 +1954,16 @@ uint64_t kvmppc_get_clockfreq(void)
     return kvmppc_read_int_cpu_dt("clock-frequency");
 }
 
+static int kvmppc_get_dec_bits(void)
+{
+    int nr_bits = kvmppc_read_int_cpu_dt("ibm,dec-bits");
+
+    if (nr_bits > 0) {
+        return nr_bits;
+    }
+    return 0;
+}
+
 static int kvmppc_get_pvinfo(CPUPPCState *env, struct kvm_ppc_pvinfo *pvinfo)
  {
      PowerPCCPU *cpu = ppc_env_get_cpu(env);
@@ -2002,6 +2042,11 @@ void kvmppc_enable_clear_ref_mod_hcalls(void)
 {
     kvmppc_enable_hcall(kvm_state, H_CLEAR_REF);
     kvmppc_enable_hcall(kvm_state, H_CLEAR_MOD);
+}
+
+void kvmppc_enable_h_page_init(void)
+{
+    kvmppc_enable_hcall(kvm_state, H_PAGE_INIT);
 }
 
 void kvmppc_set_papr(PowerPCCPU *cpu)
@@ -2376,12 +2421,26 @@ static int parse_cap_ppc_safe_bounds_check(struct kvm_ppc_cpu_char c)
 
 static int parse_cap_ppc_safe_indirect_branch(struct kvm_ppc_cpu_char c)
 {
-    if (c.character & c.character_mask & H_CPU_CHAR_CACHE_COUNT_DIS) {
+    if ((~c.behaviour & c.behaviour_mask & H_CPU_BEHAV_FLUSH_COUNT_CACHE) &&
+        (~c.character & c.character_mask & H_CPU_CHAR_CACHE_COUNT_DIS) &&
+        (~c.character & c.character_mask & H_CPU_CHAR_BCCTRL_SERIALISED)) {
+        return SPAPR_CAP_FIXED_NA;
+    } else if (c.behaviour & c.behaviour_mask & H_CPU_BEHAV_FLUSH_COUNT_CACHE) {
+        return SPAPR_CAP_WORKAROUND;
+    } else if (c.character & c.character_mask & H_CPU_CHAR_CACHE_COUNT_DIS) {
         return  SPAPR_CAP_FIXED_CCD;
     } else if (c.character & c.character_mask & H_CPU_CHAR_BCCTRL_SERIALISED) {
         return SPAPR_CAP_FIXED_IBS;
     }
 
+    return 0;
+}
+
+static int parse_cap_ppc_count_cache_flush_assist(struct kvm_ppc_cpu_char c)
+{
+    if (c.character & c.character_mask & H_CPU_CHAR_BCCTR_FLUSH_ASSIST) {
+        return 1;
+    }
     return 0;
 }
 
@@ -2407,6 +2466,8 @@ static void kvmppc_get_cpu_characteristics(KVMState *s)
     cap_ppc_safe_cache = parse_cap_ppc_safe_cache(c);
     cap_ppc_safe_bounds_check = parse_cap_ppc_safe_bounds_check(c);
     cap_ppc_safe_indirect_branch = parse_cap_ppc_safe_indirect_branch(c);
+    cap_ppc_count_cache_flush_assist =
+        parse_cap_ppc_count_cache_flush_assist(c);
 }
 
 int kvmppc_get_cap_safe_cache(void)
@@ -2424,9 +2485,53 @@ int kvmppc_get_cap_safe_indirect_branch(void)
     return cap_ppc_safe_indirect_branch;
 }
 
+int kvmppc_get_cap_count_cache_flush_assist(void)
+{
+    return cap_ppc_count_cache_flush_assist;
+}
+
+bool kvmppc_has_cap_nested_kvm_hv(void)
+{
+    return !!cap_ppc_nested_kvm_hv;
+}
+
+int kvmppc_set_cap_nested_kvm_hv(int enable)
+{
+    return kvm_vm_enable_cap(kvm_state, KVM_CAP_PPC_NESTED_HV, 0, enable);
+}
+
 bool kvmppc_has_cap_spapr_vfio(void)
 {
     return cap_spapr_vfio;
+}
+
+int kvmppc_get_cap_large_decr(void)
+{
+    return cap_large_decr;
+}
+
+int kvmppc_enable_cap_large_decr(PowerPCCPU *cpu, int enable)
+{
+    CPUState *cs = CPU(cpu);
+    uint64_t lpcr;
+
+    kvm_get_one_reg(cs, KVM_REG_PPC_LPCR_64, &lpcr);
+    /* Do we need to modify the LPCR? */
+    if (!!(lpcr & LPCR_LD) != !!enable) {
+        if (enable) {
+            lpcr |= LPCR_LD;
+        } else {
+            lpcr &= ~LPCR_LD;
+        }
+        kvm_set_one_reg(cs, KVM_REG_PPC_LPCR_64, &lpcr);
+        kvm_get_one_reg(cs, KVM_REG_PPC_LPCR_64, &lpcr);
+
+        if (!!(lpcr & LPCR_LD) != !!enable) {
+            return -1;
+        }
+    }
+
+    return 0;
 }
 
 PowerPCCPUClass *kvm_ppc_get_host_cpu_class(void)
@@ -2784,4 +2889,13 @@ bool kvmppc_pvr_workaround_required(PowerPCCPU *cpu)
     }
 
     return !kvmppc_is_pr(cs->kvm_state);
+}
+
+void kvmppc_set_reg_ppc_online(PowerPCCPU *cpu, unsigned int online)
+{
+    CPUState *cs = CPU(cpu);
+
+    if (kvm_enabled()) {
+        kvm_set_one_reg(cs, KVM_REG_PPC_ONLINE, &online);
+    }
 }

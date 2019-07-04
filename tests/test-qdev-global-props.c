@@ -89,6 +89,16 @@ static void test_static_prop(void)
     g_test_trap_assert_stdout("");
 }
 
+static void register_global_properties(GlobalProperty *props)
+{
+    int i;
+
+    for (i = 0; props[i].driver != NULL; i++) {
+        qdev_prop_register_global(props + i);
+    }
+}
+
+
 /* Test setting of static property using global properties */
 static void test_static_globalprop_subprocess(void)
 {
@@ -98,7 +108,7 @@ static void test_static_globalprop_subprocess(void)
         {}
     };
 
-    qdev_prop_register_global_list(props);
+    register_global_properties(props);
 
     mt = STATIC_TYPE(object_new(TYPE_STATIC_PROPS));
     qdev_init_nofail(DEVICE(mt));
@@ -206,25 +216,25 @@ static void test_dynamic_globalprop_subprocess(void)
 {
     MyType *mt;
     static GlobalProperty props[] = {
-        { TYPE_DYNAMIC_PROPS, "prop1", "101", true },
-        { TYPE_DYNAMIC_PROPS, "prop2", "102", true },
-        { TYPE_DYNAMIC_PROPS"-bad", "prop3", "103", true },
-        { TYPE_UNUSED_HOTPLUG, "prop4", "104", true },
-        { TYPE_UNUSED_NOHOTPLUG, "prop5", "105", true },
-        { TYPE_NONDEVICE, "prop6", "106", true },
+        { TYPE_DYNAMIC_PROPS, "prop1", "101", },
+        { TYPE_DYNAMIC_PROPS, "prop2", "102", },
+        { TYPE_DYNAMIC_PROPS"-bad", "prop3", "103", },
+        { TYPE_UNUSED_HOTPLUG, "prop4", "104", },
+        { TYPE_UNUSED_NOHOTPLUG, "prop5", "105", },
+        { TYPE_NONDEVICE, "prop6", "106", },
         {}
     };
-    int all_used;
+    int global_error;
 
-    qdev_prop_register_global_list(props);
+    register_global_properties(props);
 
     mt = DYNAMIC_TYPE(object_new(TYPE_DYNAMIC_PROPS));
     qdev_init_nofail(DEVICE(mt));
 
     g_assert_cmpuint(mt->prop1, ==, 101);
     g_assert_cmpuint(mt->prop2, ==, 102);
-    all_used = qdev_prop_check_globals();
-    g_assert_cmpuint(all_used, ==, 1);
+    global_error = qdev_prop_check_globals();
+    g_assert_cmpuint(global_error, ==, 1);
     g_assert(props[0].used);
     g_assert(props[1].used);
     g_assert(!props[2].used);
@@ -246,46 +256,6 @@ static void test_dynamic_globalprop(void)
     g_test_trap_assert_stdout("");
 }
 
-/* Test setting of dynamic properties using user_provided=false properties */
-static void test_dynamic_globalprop_nouser_subprocess(void)
-{
-    MyType *mt;
-    static GlobalProperty props[] = {
-        { TYPE_DYNAMIC_PROPS, "prop1", "101" },
-        { TYPE_DYNAMIC_PROPS, "prop2", "102" },
-        { TYPE_DYNAMIC_PROPS"-bad", "prop3", "103" },
-        { TYPE_UNUSED_HOTPLUG, "prop4", "104" },
-        { TYPE_UNUSED_NOHOTPLUG, "prop5", "105" },
-        { TYPE_NONDEVICE, "prop6", "106" },
-        {}
-    };
-    int all_used;
-
-    qdev_prop_register_global_list(props);
-
-    mt = DYNAMIC_TYPE(object_new(TYPE_DYNAMIC_PROPS));
-    qdev_init_nofail(DEVICE(mt));
-
-    g_assert_cmpuint(mt->prop1, ==, 101);
-    g_assert_cmpuint(mt->prop2, ==, 102);
-    all_used = qdev_prop_check_globals();
-    g_assert_cmpuint(all_used, ==, 0);
-    g_assert(props[0].used);
-    g_assert(props[1].used);
-    g_assert(!props[2].used);
-    g_assert(!props[3].used);
-    g_assert(!props[4].used);
-    g_assert(!props[5].used);
-}
-
-static void test_dynamic_globalprop_nouser(void)
-{
-    g_test_trap_subprocess("/qdev/properties/dynamic/global/nouser/subprocess", 0, 0);
-    g_test_trap_assert_passed();
-    g_test_trap_assert_stderr("");
-    g_test_trap_assert_stdout("");
-}
-
 /* Test if global props affecting subclasses are applied in the right order */
 static void test_subclass_global_props(void)
 {
@@ -299,7 +269,7 @@ static void test_subclass_global_props(void)
         {}
     };
 
-    qdev_prop_register_global_list(props);
+    register_global_properties(props);
 
     mt = STATIC_TYPE(object_new(TYPE_SUBCLASS));
     qdev_init_nofail(DEVICE(mt));
@@ -334,11 +304,6 @@ int main(int argc, char **argv)
                     test_dynamic_globalprop_subprocess);
     g_test_add_func("/qdev/properties/dynamic/global",
                     test_dynamic_globalprop);
-
-    g_test_add_func("/qdev/properties/dynamic/global/nouser/subprocess",
-                    test_dynamic_globalprop_nouser_subprocess);
-    g_test_add_func("/qdev/properties/dynamic/global/nouser",
-                    test_dynamic_globalprop_nouser);
 
     g_test_add_func("/qdev/properties/global/subclass",
                     test_subclass_global_props);

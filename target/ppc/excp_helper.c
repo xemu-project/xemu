@@ -65,6 +65,67 @@ static inline void dump_syscall(CPUPPCState *env)
                   ppc_dump_gpr(env, 6), env->nip);
 }
 
+static int powerpc_reset_wakeup(CPUState *cs, CPUPPCState *env, int excp,
+                                target_ulong *msr)
+{
+    /* We no longer are in a PM state */
+    env->resume_as_sreset = false;
+
+    /* Pretend to be returning from doze always as we don't lose state */
+    *msr |= (0x1ull << (63 - 47));
+
+    /* Machine checks are sent normally */
+    if (excp == POWERPC_EXCP_MCHECK) {
+        return excp;
+    }
+    switch (excp) {
+    case POWERPC_EXCP_RESET:
+        *msr |= 0x4ull << (63 - 45);
+        break;
+    case POWERPC_EXCP_EXTERNAL:
+        *msr |= 0x8ull << (63 - 45);
+        break;
+    case POWERPC_EXCP_DECR:
+        *msr |= 0x6ull << (63 - 45);
+        break;
+    case POWERPC_EXCP_SDOOR:
+        *msr |= 0x5ull << (63 - 45);
+        break;
+    case POWERPC_EXCP_SDOOR_HV:
+        *msr |= 0x3ull << (63 - 45);
+        break;
+    case POWERPC_EXCP_HV_MAINT:
+        *msr |= 0xaull << (63 - 45);
+        break;
+    case POWERPC_EXCP_HVIRT:
+        *msr |= 0x9ull << (63 - 45);
+        break;
+    default:
+        cpu_abort(cs, "Unsupported exception %d in Power Save mode\n",
+                  excp);
+    }
+    return POWERPC_EXCP_RESET;
+}
+
+static uint64_t ppc_excp_vector_offset(CPUState *cs, int ail)
+{
+    uint64_t offset = 0;
+
+    switch (ail) {
+    case AIL_0001_8000:
+        offset = 0x18000;
+        break;
+    case AIL_C000_0000_0000_4000:
+        offset = 0xc000000000004000ull;
+        break;
+    default:
+        cpu_abort(cs, "Invalid AIL combination %d\n", ail);
+        break;
+    }
+
+    return offset;
+}
+
 /* Note that this function should be greatly optimized
  * when called with a constant excp, from ppc_hw_interrupt
  */
@@ -97,47 +158,17 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
     asrr0 = -1;
     asrr1 = -1;
 
-    /* check for special resume at 0x100 from doze/nap/sleep/winkle on P7/P8 */
-    if (env->in_pm_state) {
-        env->in_pm_state = false;
-
-        /* Pretend to be returning from doze always as we don't lose state */
-        msr |= (0x1ull << (63 - 47));
-
-        /* Non-machine check are routed to 0x100 with a wakeup cause
-         * encoded in SRR1
-         */
-        if (excp != POWERPC_EXCP_MCHECK) {
-            switch (excp) {
-            case POWERPC_EXCP_RESET:
-                msr |= 0x4ull << (63 - 45);
-                break;
-            case POWERPC_EXCP_EXTERNAL:
-                msr |= 0x8ull << (63 - 45);
-                break;
-            case POWERPC_EXCP_DECR:
-                msr |= 0x6ull << (63 - 45);
-                break;
-            case POWERPC_EXCP_SDOOR:
-                msr |= 0x5ull << (63 - 45);
-                break;
-            case POWERPC_EXCP_SDOOR_HV:
-                msr |= 0x3ull << (63 - 45);
-                break;
-            case POWERPC_EXCP_HV_MAINT:
-                msr |= 0xaull << (63 - 45);
-                break;
-            default:
-                cpu_abort(cs, "Unsupported exception %d in Power Save mode\n",
-                          excp);
-            }
-            excp = POWERPC_EXCP_RESET;
-        }
+    /*
+     * check for special resume at 0x100 from doze/nap/sleep/winkle on
+     * P7/P8/P9
+     */
+    if (env->resume_as_sreset) {
+        excp = powerpc_reset_wakeup(cs, env, excp, &msr);
     }
 
     /* Exception targetting modifiers
      *
-     * LPES0 is supported on POWER7/8
+     * LPES0 is supported on POWER7/8/9
      * LPES1 is not supported (old iSeries mode)
      *
      * On anything else, we behave as if LPES0 is 1
@@ -148,9 +179,10 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
      */
 #if defined(TARGET_PPC64)
     if (excp_model == POWERPC_EXCP_POWER7 ||
-        excp_model == POWERPC_EXCP_POWER8) {
+        excp_model == POWERPC_EXCP_POWER8 ||
+        excp_model == POWERPC_EXCP_POWER9) {
         lpes0 = !!(env->spr[SPR_LPCR] & LPCR_LPES0);
-        if (excp_model == POWERPC_EXCP_POWER8) {
+        if (excp_model != POWERPC_EXCP_POWER7) {
             ail = (env->spr[SPR_LPCR] & LPCR_AIL) >> LPCR_AIL_SHIFT;
         } else {
             ail = 0;
@@ -348,19 +380,16 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
     case POWERPC_EXCP_ITLB:      /* Instruction TLB error                    */
         break;
     case POWERPC_EXCP_DEBUG:     /* Debug interrupt                          */
-        switch (excp_model) {
-        case POWERPC_EXCP_BOOKE:
+        if (env->flags & POWERPC_FLAG_DE) {
             /* FIXME: choose one or the other based on CPU type */
             srr0 = SPR_BOOKE_DSRR0;
             srr1 = SPR_BOOKE_DSRR1;
             asrr0 = SPR_BOOKE_CSRR0;
             asrr1 = SPR_BOOKE_CSRR1;
-            break;
-        default:
-            break;
+            /* DBSR already modified by caller */
+        } else {
+            cpu_abort(cs, "Debug exception triggered on unsupported model\n");
         }
-        /* XXX: TODO */
-        cpu_abort(cs, "Debug exception is not implemented yet !\n");
         break;
     case POWERPC_EXCP_SPEU:      /* SPE/embedded floating-point unavailable  */
         env->spr[SPR_BOOKE_ESR] = ESR_SPV;
@@ -419,6 +448,7 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
     case POWERPC_EXCP_HISEG:     /* Hypervisor instruction segment exception */
     case POWERPC_EXCP_SDOOR_HV:  /* Hypervisor Doorbell interrupt            */
     case POWERPC_EXCP_HV_EMU:
+    case POWERPC_EXCP_HVIRT:     /* Hypervisor virtualization                */
         srr0 = SPR_HSRR0;
         srr1 = SPR_HSRR1;
         new_msr |= (target_ulong)MSR_HVB;
@@ -655,7 +685,15 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
         }
     } else if (excp_model == POWERPC_EXCP_POWER8) {
         if (new_msr & MSR_HVB) {
-            if (env->spr[SPR_HID0] & (HID0_HILE | HID0_POWER9_HILE)) {
+            if (env->spr[SPR_HID0] & HID0_HILE) {
+                new_msr |= (target_ulong)1 << MSR_LE;
+            }
+        } else if (env->spr[SPR_LPCR] & LPCR_ILE) {
+            new_msr |= (target_ulong)1 << MSR_LE;
+        }
+    } else if (excp_model == POWERPC_EXCP_POWER9) {
+        if (new_msr & MSR_HVB) {
+            if (env->spr[SPR_HID0] & HID0_POWER9_HILE) {
                 new_msr |= (target_ulong)1 << MSR_LE;
             }
         } else if (env->spr[SPR_LPCR] & LPCR_ILE) {
@@ -688,17 +726,7 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
     /* Handle AIL */
     if (ail) {
         new_msr |= (1 << MSR_IR) | (1 << MSR_DR);
-        switch(ail) {
-        case AIL_0001_8000:
-            vector |= 0x18000;
-            break;
-        case AIL_C000_0000_0000_4000:
-            vector |= 0xc000000000004000ull;
-            break;
-        default:
-            cpu_abort(cs, "Invalid AIL combination %d\n", ail);
-            break;
-        }
+        vector |= ppc_excp_vector_offset(cs, ail);
     }
 
 #if defined(TARGET_PPC64)
@@ -751,13 +779,8 @@ void ppc_cpu_do_interrupt(CPUState *cs)
 static void ppc_hw_interrupt(CPUPPCState *env)
 {
     PowerPCCPU *cpu = ppc_env_get_cpu(env);
-#if 0
-    CPUState *cs = CPU(cpu);
+    bool async_deliver;
 
-    qemu_log_mask(CPU_LOG_INT, "%s: %p pending %08x req %08x me %d ee %d\n",
-                  __func__, env, env->pending_interrupts,
-                  cs->interrupt_request, (int)msr_me, (int)msr_ee);
-#endif
     /* External reset */
     if (env->pending_interrupts & (1 << PPC_INTERRUPT_RESET)) {
         env->pending_interrupts &= ~(1 << PPC_INTERRUPT_RESET);
@@ -778,21 +801,44 @@ static void ppc_hw_interrupt(CPUPPCState *env)
         return;
     }
 #endif
+
+    /*
+     * For interrupts that gate on MSR:EE, we need to do something a
+     * bit more subtle, as we need to let them through even when EE is
+     * clear when coming out of some power management states (in order
+     * for them to become a 0x100).
+     */
+    async_deliver = (msr_ee != 0) || env->resume_as_sreset;
+
     /* Hypervisor decrementer exception */
     if (env->pending_interrupts & (1 << PPC_INTERRUPT_HDECR)) {
         /* LPCR will be clear when not supported so this will work */
         bool hdice = !!(env->spr[SPR_LPCR] & LPCR_HDICE);
-        if ((msr_ee != 0 || msr_hv == 0) && hdice) {
+        if ((async_deliver || msr_hv == 0) && hdice) {
             /* HDEC clears on delivery */
             env->pending_interrupts &= ~(1 << PPC_INTERRUPT_HDECR);
             powerpc_excp(cpu, env->excp_model, POWERPC_EXCP_HDECR);
             return;
         }
     }
-    /* Extermal interrupt can ignore MSR:EE under some circumstances */
+
+    /* Hypervisor virtualization interrupt */
+    if (env->pending_interrupts & (1 << PPC_INTERRUPT_HVIRT)) {
+        /* LPCR will be clear when not supported so this will work */
+        bool hvice = !!(env->spr[SPR_LPCR] & LPCR_HVICE);
+        if ((async_deliver || msr_hv == 0) && hvice) {
+            powerpc_excp(cpu, env->excp_model, POWERPC_EXCP_HVIRT);
+            return;
+        }
+    }
+
+    /* External interrupt can ignore MSR:EE under some circumstances */
     if (env->pending_interrupts & (1 << PPC_INTERRUPT_EXT)) {
         bool lpes0 = !!(env->spr[SPR_LPCR] & LPCR_LPES0);
-        if (msr_ee != 0 || (env->has_hv_mode && msr_hv == 0 && !lpes0)) {
+        bool heic = !!(env->spr[SPR_LPCR] & LPCR_HEIC);
+        /* HEIC blocks delivery to the hypervisor */
+        if ((async_deliver && !(heic && msr_hv && !msr_pr)) ||
+            (env->has_hv_mode && msr_hv == 0 && !lpes0)) {
             powerpc_excp(cpu, env->excp_model, POWERPC_EXCP_EXTERNAL);
             return;
         }
@@ -800,17 +846,11 @@ static void ppc_hw_interrupt(CPUPPCState *env)
     if (msr_ce != 0) {
         /* External critical interrupt */
         if (env->pending_interrupts & (1 << PPC_INTERRUPT_CEXT)) {
-            /* Taking a critical external interrupt does not clear the external
-             * critical interrupt status
-             */
-#if 0
-            env->pending_interrupts &= ~(1 << PPC_INTERRUPT_CEXT);
-#endif
             powerpc_excp(cpu, env->excp_model, POWERPC_EXCP_CRITICAL);
             return;
         }
     }
-    if (msr_ee != 0) {
+    if (async_deliver != 0) {
         /* Watchdog timer on embedded PowerPC */
         if (env->pending_interrupts & (1 << PPC_INTERRUPT_WDT)) {
             env->pending_interrupts &= ~(1 << PPC_INTERRUPT_WDT);
@@ -863,6 +903,22 @@ static void ppc_hw_interrupt(CPUPPCState *env)
             powerpc_excp(cpu, env->excp_model, POWERPC_EXCP_THERM);
             return;
         }
+    }
+
+    if (env->resume_as_sreset) {
+        /*
+         * This is a bug ! It means that has_work took us out of halt without
+         * anything to deliver while in a PM state that requires getting
+         * out via a 0x100
+         *
+         * This means we will incorrectly execute past the power management
+         * instruction instead of triggering a reset.
+         *
+         * It generally means a discrepancy between the wakup conditions in the
+         * processor has_work implementation and the logic in this function.
+         */
+        cpu_abort(CPU(ppc_env_get_cpu(env)),
+                  "Wakeup from PM state but interrupt Undelivered");
     }
 }
 
@@ -958,22 +1014,15 @@ void helper_pminsn(CPUPPCState *env, powerpc_pm_insn_t insn)
 
     cs = CPU(ppc_env_get_cpu(env));
     cs->halted = 1;
-    env->in_pm_state = true;
 
     /* The architecture specifies that HDEC interrupts are
      * discarded in PM states
      */
     env->pending_interrupts &= ~(1 << PPC_INTERRUPT_HDECR);
 
-    /* Technically, nap doesn't set EE, but if we don't set it
-     * then ppc_hw_interrupt() won't deliver. We could add some
-     * other tests there based on LPCR but it's simpler to just
-     * whack EE in. It will be cleared by the 0x100 at wakeup
-     * anyway. It will still be observable by the guest in SRR1
-     * but this doesn't seem to be a problem.
-     */
-    env->msr |= (1ull << MSR_EE);
-    raise_exception(env, EXCP_HLT);
+    /* Condition for waking up at 0x100 */
+    env->resume_as_sreset = (insn != PPC_PM_STOP) ||
+        (env->spr[SPR_PSSCR] & PSSCR_EC);
 }
 #endif /* defined(TARGET_PPC64) */
 

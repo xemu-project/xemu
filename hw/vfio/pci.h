@@ -149,6 +149,8 @@ typedef struct VFIOPCIDevice {
 #define VFIO_FEATURE_ENABLE_IGD_OPREGION \
                                 (1 << VFIO_FEATURE_ENABLE_IGD_OPREGION_BIT)
     OnOffAuto display;
+    uint32_t display_xres;
+    uint32_t display_yres;
     int32_t bootindex;
     uint32_t igd_gms;
     OffAutoPCIBAR msix_relo;
@@ -165,6 +167,7 @@ typedef struct VFIOPCIDevice {
     bool no_geforce_quirks;
     bool no_kvm_ioeventfd;
     bool no_vfio_ioeventfd;
+    bool enable_ramfb;
     VFIODisplay *dpy;
 } VFIOPCIDevice;
 

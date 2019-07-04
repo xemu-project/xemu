@@ -76,6 +76,9 @@ typedef struct Job {
      * Set to false by the job while the coroutine has yielded and may be
      * re-entered by job_enter(). There may still be I/O or event loop activity
      * pending. Accessed under block_job_mutex (in blockjob.c).
+     *
+     * When the job is deferred to the main loop, busy is true as long as the
+     * bottom half is still pending.
      */
     bool busy;
 
@@ -124,11 +127,19 @@ typedef struct Job {
     /** Estimated progress_current value at the completion of the job */
     int64_t progress_total;
 
-    /** Error string for a failed job (NULL if, and only if, job->ret == 0) */
-    char *error;
-
-    /** ret code passed to job_completed. */
+    /**
+     * Return code from @run and/or @prepare callback(s).
+     * Not final until the job has reached the CONCLUDED status.
+     * 0 on success, -errno on failure.
+     */
     int ret;
+
+    /**
+     * Error object for a failed job.
+     * If job->ret is nonzero and an error object was not set, it will be set
+     * to strerror(-job->ret) during job_completed.
+     */
+    Error *err;
 
     /** The completion function that will be called when the job completes.  */
     BlockCompletionFunc *cb;
@@ -147,6 +158,9 @@ typedef struct Job {
 
     /** Notifiers called when the job transitions to READY */
     NotifierList on_ready;
+
+    /** Notifiers called when the job coroutine yields or terminates */
+    NotifierList on_idle;
 
     /** Element of the list of jobs */
     QLIST_ENTRY(Job) job_list;
@@ -168,8 +182,17 @@ struct JobDriver {
     /** Enum describing the operation */
     JobType job_type;
 
-    /** Mandatory: Entrypoint for the Coroutine. */
-    CoroutineEntry *start;
+    /**
+     * Mandatory: Entrypoint for the Coroutine.
+     *
+     * This callback will be invoked when moving from CREATED to RUNNING.
+     *
+     * If this callback returns nonzero, the job transaction it is part of is
+     * aborted. If it returns zero, the job moves into the WAITING state. If it
+     * is the last job to complete in its transaction, all jobs in the
+     * transaction move from WAITING to PENDING.
+     */
+    int coroutine_fn (*run)(Job *job, Error **errp);
 
     /**
      * If the callback is not NULL, it will be invoked when the job transitions
@@ -481,19 +504,6 @@ void job_early_fail(Job *job);
 /** Moves the @job from RUNNING to READY */
 void job_transition_to_ready(Job *job);
 
-/**
- * @job: The job being completed.
- * @ret: The status code.
- * @error: The error message for a failing job (only with @ret < 0). If @ret is
- *         negative, but NULL is given for @error, strerror() is used.
- *
- * Marks @job as completed. If @ret is non-zero, the job transaction it is part
- * of is aborted. If @ret is zero, the job moves into the WAITING state. If it
- * is the last job to complete in its transaction, all jobs in the transaction
- * move from WAITING to PENDING.
- */
-void job_completed(Job *job, int ret, Error *error);
-
 /** Asynchronously complete the specified @job. */
 void job_complete(Job *job, Error **errp);
 
@@ -517,6 +527,8 @@ void job_user_cancel(Job *job, bool force, Error **errp);
  *
  * Returns the return value from the job if the job actually completed
  * during the call, or -ECANCELED if it was canceled.
+ *
+ * Callers must hold the AioContext lock of job->aio_context.
  */
 int job_cancel_sync(Job *job);
 
@@ -534,6 +546,8 @@ void job_cancel_sync_all(void);
  * function).
  *
  * Returns the return value from the job.
+ *
+ * Callers must hold the AioContext lock of job->aio_context.
  */
 int job_complete_sync(Job *job, Error **errp);
 
@@ -553,29 +567,14 @@ void job_finalize(Job *job, Error **errp);
  */
 void job_dismiss(Job **job, Error **errp);
 
-typedef void JobDeferToMainLoopFn(Job *job, void *opaque);
-
-/**
- * @job: The job
- * @fn: The function to run in the main loop
- * @opaque: The opaque value that is passed to @fn
- *
- * This function must be called by the main job coroutine just before it
- * returns.  @fn is executed in the main loop with the job AioContext acquired.
- *
- * Block jobs must call bdrv_unref(), bdrv_close(), and anything that uses
- * bdrv_drain_all() in the main loop.
- *
- * The @job AioContext is held while @fn executes.
- */
-void job_defer_to_main_loop(Job *job, JobDeferToMainLoopFn *fn, void *opaque);
-
 /**
  * Synchronously finishes the given @job. If @finish is given, it is called to
  * trigger completion or cancellation of the job.
  *
  * Returns 0 if the job is successfully completed, -ECANCELED if the job was
  * cancelled before completing, and -errno in other error cases.
+ *
+ * Callers must hold the AioContext lock of job->aio_context.
  */
 int job_finish_sync(Job *job, void (*finish)(Job *, Error **errp), Error **errp);
 

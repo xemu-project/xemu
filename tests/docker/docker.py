@@ -14,14 +14,12 @@
 from __future__ import print_function
 import os
 import sys
-sys.path.append(os.path.join(os.path.dirname(__file__),
-                             '..', '..', 'scripts'))
-import argparse
 import subprocess
 import json
 import hashlib
 import atexit
 import uuid
+import argparse
 import tempfile
 import re
 import signal
@@ -32,7 +30,7 @@ except ImportError:
     from io import StringIO
 from shutil import copy, rmtree
 from pwd import getpwuid
-from datetime import datetime,timedelta
+from datetime import datetime, timedelta
 
 
 FILTERED_ENV_NAMES = ['ftp_proxy', 'http_proxy', 'https_proxy']
@@ -45,8 +43,10 @@ def _text_checksum(text):
     """Calculate a digest string unique to the text content"""
     return hashlib.sha1(text).hexdigest()
 
+
 def _file_checksum(filename):
     return _text_checksum(open(filename, 'rb').read())
+
 
 def _guess_docker_command():
     """ Guess a working docker command or raise exception if not found"""
@@ -61,8 +61,9 @@ def _guess_docker_command():
         except OSError:
             pass
     commands_txt = "\n".join(["  " + " ".join(x) for x in commands])
-    raise Exception("Cannot find working docker command. Tried:\n%s" % \
+    raise Exception("Cannot find working docker command. Tried:\n%s" %
                     commands_txt)
+
 
 def _copy_with_mkdir(src, root_dir, sub_path='.'):
     """Copy src into root_dir, creating sub_path as needed."""
@@ -98,19 +99,29 @@ def _get_so_libs(executable):
 
     return libs
 
-def _copy_binary_with_libs(src, dest_dir):
-    """Copy a binary executable and all its dependant libraries.
+
+def _copy_binary_with_libs(src, bin_dest, dest_dir):
+    """Maybe copy a binary and all its dependent libraries.
+
+    If bin_dest isn't set we only copy the support libraries because
+    we don't need qemu in the docker path to run (due to persistent
+    mapping). Indeed users may get confused if we aren't running what
+    is in the image.
 
     This does rely on the host file-system being fairly multi-arch
-    aware so the file don't clash with the guests layout."""
+    aware so the file don't clash with the guests layout.
+    """
 
-    _copy_with_mkdir(src, dest_dir, "/usr/bin")
+    if bin_dest:
+        _copy_with_mkdir(src, dest_dir, os.path.dirname(bin_dest))
+    else:
+        print("only copying support libraries for %s" % (src))
 
     libs = _get_so_libs(src)
     if libs:
         for l in libs:
             so_path = os.path.dirname(l)
-            _copy_with_mkdir(l , dest_dir, so_path)
+            _copy_with_mkdir(l, dest_dir, so_path)
 
 
 def _check_binfmt_misc(executable):
@@ -118,23 +129,34 @@ def _check_binfmt_misc(executable):
 
     The details of setting up binfmt_misc are outside the scope of
     this script but we should at least fail early with a useful
-    message if it won't work."""
+    message if it won't work.
+
+    Returns the configured binfmt path and a valid flag. For
+    persistent configurations we will still want to copy and dependent
+    libraries.
+    """
 
     binary = os.path.basename(executable)
     binfmt_entry = "/proc/sys/fs/binfmt_misc/%s" % (binary)
 
     if not os.path.exists(binfmt_entry):
         print ("No binfmt_misc entry for %s" % (binary))
-        return False
+        return None, False
 
     with open(binfmt_entry) as x: entry = x.read()
 
-    qpath = "/usr/bin/%s" % (binary)
-    if not re.search("interpreter %s\n" % (qpath), entry):
-        print ("binfmt_misc for %s does not point to %s" % (binary, qpath))
-        return False
+    if re.search("flags:.*F.*\n", entry):
+        print("binfmt_misc for %s uses persistent(F) mapping to host binary" %
+              (binary))
+        return None, True
 
-    return True
+    m = re.search("interpreter (\S+)\n", entry)
+    interp = m.group(1)
+    if interp and interp != executable:
+        print("binfmt_misc for %s does not point to %s, using %s" %
+              (binary, executable, interp))
+
+    return interp, True
 
 
 def _read_qemu_dockerfile(img_name):
@@ -145,6 +167,7 @@ def _read_qemu_dockerfile(img_name):
     df = os.path.join(os.path.dirname(__file__), "dockerfiles",
                       img_name + ".docker")
     return open(df, "r").read()
+
 
 def _dockerfile_preprocess(df):
     out = ""
@@ -162,6 +185,7 @@ def _dockerfile_preprocess(df):
             continue
         out += l + "\n"
     return out
+
 
 class Docker(object):
     """ Running Docker commands """
@@ -230,7 +254,7 @@ class Docker(object):
 
     def build_image(self, tag, docker_dir, dockerfile,
                     quiet=True, user=False, argv=None, extra_files_cksum=[]):
-        if argv == None:
+        if argv is None:
             argv = []
 
         tmp_df = tempfile.NamedTemporaryFile(dir=docker_dir, suffix=".docker")
@@ -251,7 +275,7 @@ class Docker(object):
 
         tmp_df.flush()
 
-        self._do_check(["build", "-t", tag, "-f", tmp_df.name] + argv + \
+        self._do_check(["build", "-t", tag, "-f", tmp_df.name] + argv +
                        [docker_dir],
                        quiet=quiet)
 
@@ -281,16 +305,19 @@ class Docker(object):
     def command(self, cmd, argv, quiet):
         return self._do([cmd] + argv, quiet=quiet)
 
+
 class SubCommand(object):
     """A SubCommand template base class"""
-    name = None # Subcommand name
+    name = None  # Subcommand name
+
     def shared_args(self, parser):
         parser.add_argument("--quiet", action="store_true",
-                            help="Run quietly unless an error occured")
+                            help="Run quietly unless an error occurred")
 
     def args(self, parser):
         """Setup argument parser"""
         pass
+
     def run(self, args, argv):
         """Run command.
         args: parsed argument by argument parser.
@@ -298,18 +325,23 @@ class SubCommand(object):
         """
         pass
 
+
 class RunCommand(SubCommand):
     """Invoke docker run and take care of cleaning up"""
     name = "run"
+
     def args(self, parser):
         parser.add_argument("--keep", action="store_true",
                             help="Don't remove image when command completes")
+
     def run(self, args, argv):
         return Docker().run(argv, args.keep, quiet=args.quiet)
 
+
 class BuildCommand(SubCommand):
-    """ Build docker image out of a dockerfile. Arguments: <tag> <dockerfile>"""
+    """ Build docker image out of a dockerfile. Arg: <tag> <dockerfile>"""
     name = "build"
+
     def args(self, parser):
         parser.add_argument("--include-executable", "-e",
                             help="""Specify a binary that will be copied to the
@@ -342,7 +374,8 @@ class BuildCommand(SubCommand):
 
             # Validate binfmt_misc will work
             if args.include_executable:
-                if not _check_binfmt_misc(args.include_executable):
+                qpath, enabled = _check_binfmt_misc(args.include_executable)
+                if not enabled:
                     return 1
 
             # Is there a .pre file to run in the build context?
@@ -365,14 +398,16 @@ class BuildCommand(SubCommand):
                 # FIXME: there is no checksum of this executable and the linked
                 # libraries, once the image built any change of this executable
                 # or any library won't trigger another build.
-                _copy_binary_with_libs(args.include_executable, docker_dir)
+                _copy_binary_with_libs(args.include_executable,
+                                       qpath, docker_dir)
+
             for filename in args.extra_files or []:
                 _copy_with_mkdir(filename, docker_dir)
                 cksum += [(filename, _file_checksum(filename))]
 
             argv += ["--build-arg=" + k.lower() + "=" + v
-                        for k, v in os.environ.iteritems()
-                        if k.lower() in FILTERED_ENV_NAMES]
+                     for k, v in os.environ.iteritems()
+                     if k.lower() in FILTERED_ENV_NAMES]
             dkr.build_image(tag, docker_dir, dockerfile,
                             quiet=args.quiet, user=args.user, argv=argv,
                             extra_files_cksum=cksum)
@@ -381,9 +416,11 @@ class BuildCommand(SubCommand):
 
         return 0
 
+
 class UpdateCommand(SubCommand):
-    """ Update a docker image with new executables. Arguments: <tag> <executable>"""
+    """ Update a docker image with new executables. Args: <tag> <executable>"""
     name = "update"
+
     def args(self, parser):
         parser.add_argument("tag",
                             help="Image Tag")
@@ -396,10 +433,17 @@ class UpdateCommand(SubCommand):
         tmp = tempfile.NamedTemporaryFile(suffix="dckr.tar.gz")
         tmp_tar = TarFile(fileobj=tmp, mode='w')
 
-        # Add the executable to the tarball
-        bn = os.path.basename(args.executable)
-        ff = "/usr/bin/%s" % bn
-        tmp_tar.add(args.executable, arcname=ff)
+        # Add the executable to the tarball, using the current
+        # configured binfmt_misc path. If we don't get a path then we
+        # only need the support libraries copied
+        ff, enabled = _check_binfmt_misc(args.executable)
+
+        if not enabled:
+            print("binfmt_misc not enabled, update disabled")
+            return 1
+
+        if ff:
+            tmp_tar.add(args.executable, arcname=ff)
 
         # Add any associated libraries
         libs = _get_so_libs(args.executable)
@@ -429,16 +473,20 @@ class UpdateCommand(SubCommand):
 
         return 0
 
+
 class CleanCommand(SubCommand):
     """Clean up docker instances"""
     name = "clean"
+
     def run(self, args, argv):
         Docker().clean()
         return 0
 
+
 class ImagesCommand(SubCommand):
     """Run "docker images" command"""
     name = "images"
+
     def run(self, args, argv):
         return Docker().command("images", argv, args.quiet)
 
@@ -511,7 +559,7 @@ class CheckCommand(SubCommand):
 
         try:
             dkr = Docker()
-        except:
+        except subprocess.CalledProcessError:
             print("Docker not set up")
             return 1
 
@@ -550,7 +598,8 @@ class CheckCommand(SubCommand):
 
 def main():
     parser = argparse.ArgumentParser(description="A Docker helper",
-            usage="%s <subcommand> ..." % os.path.basename(sys.argv[0]))
+                                     usage="%s <subcommand> ..." %
+                                     os.path.basename(sys.argv[0]))
     subparsers = parser.add_subparsers(title="subcommands", help=None)
     for cls in SubCommand.__subclasses__():
         cmd = cls()
@@ -560,6 +609,7 @@ def main():
         subp.set_defaults(cmdobj=cmd)
     args, argv = parser.parse_known_args()
     return args.cmdobj.run(args, argv)
+
 
 if __name__ == "__main__":
     sys.exit(main())

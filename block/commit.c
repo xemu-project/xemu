@@ -36,8 +36,10 @@ typedef struct CommitBlockJob {
     BlockDriverState *commit_top_bs;
     BlockBackend *top;
     BlockBackend *base;
+    BlockDriverState *base_bs;
     BlockdevOnError on_error;
-    int base_flags;
+    bool base_read_only;
+    bool chain_frozen;
     char *backing_file_str;
 } CommitBlockJob;
 
@@ -46,14 +48,9 @@ static int coroutine_fn commit_populate(BlockBackend *bs, BlockBackend *base,
                                         void *buf)
 {
     int ret = 0;
-    QEMUIOVector qiov;
-    struct iovec iov = {
-        .iov_base = buf,
-        .iov_len = bytes,
-    };
+    QEMUIOVector qiov = QEMU_IOVEC_INIT_BUF(qiov, buf, bytes);
 
     assert(bytes < SIZE_MAX);
-    qemu_iovec_init_external(&qiov, &iov, 1);
 
     ret = blk_co_preadv(bs, offset, qiov.size, &qiov, 0);
     if (ret < 0) {
@@ -68,76 +65,79 @@ static int coroutine_fn commit_populate(BlockBackend *bs, BlockBackend *base,
     return 0;
 }
 
-typedef struct {
-    int ret;
-} CommitCompleteData;
-
-static void commit_complete(Job *job, void *opaque)
+static int commit_prepare(Job *job)
 {
     CommitBlockJob *s = container_of(job, CommitBlockJob, common.job);
-    BlockJob *bjob = &s->common;
-    CommitCompleteData *data = opaque;
-    BlockDriverState *top = blk_bs(s->top);
-    BlockDriverState *base = blk_bs(s->base);
-    BlockDriverState *commit_top_bs = s->commit_top_bs;
-    int ret = data->ret;
-    bool remove_commit_top_bs = false;
 
-    /* Make sure commit_top_bs and top stay around until bdrv_replace_node() */
-    bdrv_ref(top);
-    bdrv_ref(commit_top_bs);
+    bdrv_unfreeze_backing_chain(s->commit_top_bs, s->base_bs);
+    s->chain_frozen = false;
 
     /* Remove base node parent that still uses BLK_PERM_WRITE/RESIZE before
      * the normal backing chain can be restored. */
     blk_unref(s->base);
+    s->base = NULL;
 
-    if (!job_is_cancelled(job) && ret == 0) {
-        /* success */
-        ret = bdrv_drop_intermediate(s->commit_top_bs, base,
-                                     s->backing_file_str);
-    } else {
-        /* XXX Can (or should) we somehow keep 'consistent read' blocked even
-         * after the failed/cancelled commit job is gone? If we already wrote
-         * something to base, the intermediate images aren't valid any more. */
-        remove_commit_top_bs = true;
+    /* FIXME: bdrv_drop_intermediate treats total failures and partial failures
+     * identically. Further work is needed to disambiguate these cases. */
+    return bdrv_drop_intermediate(s->commit_top_bs, s->base_bs,
+                                  s->backing_file_str);
+}
+
+static void commit_abort(Job *job)
+{
+    CommitBlockJob *s = container_of(job, CommitBlockJob, common.job);
+    BlockDriverState *top_bs = blk_bs(s->top);
+
+    if (s->chain_frozen) {
+        bdrv_unfreeze_backing_chain(s->commit_top_bs, s->base_bs);
     }
+
+    /* Make sure commit_top_bs and top stay around until bdrv_replace_node() */
+    bdrv_ref(top_bs);
+    bdrv_ref(s->commit_top_bs);
+
+    if (s->base) {
+        blk_unref(s->base);
+    }
+
+    /* free the blockers on the intermediate nodes so that bdrv_replace_nodes
+     * can succeed */
+    block_job_remove_all_bdrv(&s->common);
+
+    /* If bdrv_drop_intermediate() failed (or was not invoked), remove the
+     * commit filter driver from the backing chain now. Do this as the final
+     * step so that the 'consistent read' permission can be granted.
+     *
+     * XXX Can (or should) we somehow keep 'consistent read' blocked even
+     * after the failed/cancelled commit job is gone? If we already wrote
+     * something to base, the intermediate images aren't valid any more. */
+    bdrv_child_try_set_perm(s->commit_top_bs->backing, 0, BLK_PERM_ALL,
+                            &error_abort);
+    bdrv_replace_node(s->commit_top_bs, backing_bs(s->commit_top_bs),
+                      &error_abort);
+
+    bdrv_unref(s->commit_top_bs);
+    bdrv_unref(top_bs);
+}
+
+static void commit_clean(Job *job)
+{
+    CommitBlockJob *s = container_of(job, CommitBlockJob, common.job);
 
     /* restore base open flags here if appropriate (e.g., change the base back
      * to r/o). These reopens do not need to be atomic, since we won't abort
      * even on failure here */
-    if (s->base_flags != bdrv_get_flags(base)) {
-        bdrv_reopen(base, s->base_flags, NULL);
+    if (s->base_read_only) {
+        bdrv_reopen_set_read_only(s->base_bs, true, NULL);
     }
+
     g_free(s->backing_file_str);
     blk_unref(s->top);
-
-    /* If there is more than one reference to the job (e.g. if called from
-     * job_finish_sync()), job_completed() won't free it and therefore the
-     * blockers on the intermediate nodes remain. This would cause
-     * bdrv_set_backing_hd() to fail. */
-    block_job_remove_all_bdrv(bjob);
-
-    job_completed(job, ret, NULL);
-    g_free(data);
-
-    /* If bdrv_drop_intermediate() didn't already do that, remove the commit
-     * filter driver from the backing chain. Do this as the final step so that
-     * the 'consistent read' permission can be granted.  */
-    if (remove_commit_top_bs) {
-        bdrv_child_try_set_perm(commit_top_bs->backing, 0, BLK_PERM_ALL,
-                                &error_abort);
-        bdrv_replace_node(commit_top_bs, backing_bs(commit_top_bs),
-                          &error_abort);
-    }
-
-    bdrv_unref(commit_top_bs);
-    bdrv_unref(top);
 }
 
-static void coroutine_fn commit_run(void *opaque)
+static int coroutine_fn commit_run(Job *job, Error **errp)
 {
-    CommitBlockJob *s = opaque;
-    CommitCompleteData *data;
+    CommitBlockJob *s = container_of(job, CommitBlockJob, common.job);
     int64_t offset;
     uint64_t delay_ns = 0;
     int ret = 0;
@@ -210,9 +210,7 @@ static void coroutine_fn commit_run(void *opaque)
 out:
     qemu_vfree(buf);
 
-    data = g_malloc(sizeof(*data));
-    data->ret = ret;
-    job_defer_to_main_loop(&s->common.job, commit_complete, data);
+    return ret;
 }
 
 static const BlockJobDriver commit_job_driver = {
@@ -222,7 +220,10 @@ static const BlockJobDriver commit_job_driver = {
         .free          = block_job_free,
         .user_resume   = block_job_user_resume,
         .drain         = block_job_drain,
-        .start         = commit_run,
+        .run           = commit_run,
+        .prepare       = commit_prepare,
+        .abort         = commit_abort,
+        .clean         = commit_clean
     },
 };
 
@@ -232,15 +233,10 @@ static int coroutine_fn bdrv_commit_top_preadv(BlockDriverState *bs,
     return bdrv_co_preadv(bs->backing, offset, bytes, qiov, flags);
 }
 
-static void bdrv_commit_top_refresh_filename(BlockDriverState *bs, QDict *opts)
+static void bdrv_commit_top_refresh_filename(BlockDriverState *bs)
 {
-    bdrv_refresh_filename(bs->backing->bs);
     pstrcpy(bs->exact_filename, sizeof(bs->exact_filename),
             bs->backing->bs->filename);
-}
-
-static void bdrv_commit_top_close(BlockDriverState *bs)
-{
 }
 
 static void bdrv_commit_top_child_perm(BlockDriverState *bs, BdrvChild *c,
@@ -260,17 +256,16 @@ static BlockDriver bdrv_commit_top = {
     .bdrv_co_preadv             = bdrv_commit_top_preadv,
     .bdrv_co_block_status       = bdrv_co_block_status_from_backing,
     .bdrv_refresh_filename      = bdrv_commit_top_refresh_filename,
-    .bdrv_close                 = bdrv_commit_top_close,
     .bdrv_child_perm            = bdrv_commit_top_child_perm,
 };
 
 void commit_start(const char *job_id, BlockDriverState *bs,
-                  BlockDriverState *base, BlockDriverState *top, int64_t speed,
+                  BlockDriverState *base, BlockDriverState *top,
+                  int creation_flags, int64_t speed,
                   BlockdevOnError on_error, const char *backing_file_str,
                   const char *filter_node_name, Error **errp)
 {
     CommitBlockJob *s;
-    int orig_base_flags;
     BlockDriverState *iter;
     BlockDriverState *commit_top_bs = NULL;
     Error *local_err = NULL;
@@ -283,17 +278,15 @@ void commit_start(const char *job_id, BlockDriverState *bs,
     }
 
     s = block_job_create(job_id, &commit_job_driver, NULL, bs, 0, BLK_PERM_ALL,
-                         speed, JOB_DEFAULT, NULL, NULL, errp);
+                         speed, creation_flags, NULL, NULL, errp);
     if (!s) {
         return;
     }
 
     /* convert base to r/w, if necessary */
-    orig_base_flags = bdrv_get_flags(base);
-    if (!(orig_base_flags & BDRV_O_RDWR)) {
-        bdrv_reopen(base, orig_base_flags | BDRV_O_RDWR, &local_err);
-        if (local_err != NULL) {
-            error_propagate(errp, local_err);
+    s->base_read_only = bdrv_is_read_only(base);
+    if (s->base_read_only) {
+        if (bdrv_reopen_set_read_only(base, false, errp) != 0) {
             goto fail;
         }
     }
@@ -345,6 +338,11 @@ void commit_start(const char *job_id, BlockDriverState *bs,
         }
     }
 
+    if (bdrv_freeze_backing_chain(commit_top_bs, base, errp) < 0) {
+        goto fail;
+    }
+    s->chain_frozen = true;
+
     ret = block_job_add_bdrv(&s->common, "base", base, 0, BLK_PERM_ALL, errp);
     if (ret < 0) {
         goto fail;
@@ -360,6 +358,7 @@ void commit_start(const char *job_id, BlockDriverState *bs,
     if (ret < 0) {
         goto fail;
     }
+    s->base_bs = base;
 
     /* Required permissions are already taken with block_job_add_bdrv() */
     s->top = blk_new(0, BLK_PERM_ALL);
@@ -368,7 +367,6 @@ void commit_start(const char *job_id, BlockDriverState *bs,
         goto fail;
     }
 
-    s->base_flags = orig_base_flags;
     s->backing_file_str = g_strdup(backing_file_str);
     s->on_error = on_error;
 
@@ -377,16 +375,21 @@ void commit_start(const char *job_id, BlockDriverState *bs,
     return;
 
 fail:
+    if (s->chain_frozen) {
+        bdrv_unfreeze_backing_chain(commit_top_bs, base);
+    }
     if (s->base) {
         blk_unref(s->base);
     }
     if (s->top) {
         blk_unref(s->top);
     }
+    job_early_fail(&s->common.job);
+    /* commit_top_bs has to be replaced after deleting the block job,
+     * otherwise this would fail because of lack of permissions. */
     if (commit_top_bs) {
         bdrv_replace_node(commit_top_bs, top, &error_abort);
     }
-    job_early_fail(&s->common.job);
 }
 
 
@@ -400,7 +403,7 @@ int bdrv_commit(BlockDriverState *bs)
     BlockDriverState *commit_top_bs = NULL;
     BlockDriver *drv = bs->drv;
     int64_t offset, length, backing_length;
-    int ro, open_flags;
+    int ro;
     int64_t n;
     int ret = 0;
     uint8_t *buf = NULL;
@@ -419,10 +422,9 @@ int bdrv_commit(BlockDriverState *bs)
     }
 
     ro = bs->backing->bs->read_only;
-    open_flags =  bs->backing->bs->open_flags;
 
     if (ro) {
-        if (bdrv_reopen(bs->backing->bs, open_flags | BDRV_O_RDWR, NULL)) {
+        if (bdrv_reopen_set_read_only(bs->backing->bs, false, NULL)) {
             return -EACCES;
         }
     }
@@ -532,7 +534,7 @@ ro_cleanup:
 
     if (ro) {
         /* ignoring error return here */
-        bdrv_reopen(bs->backing->bs, open_flags & ~BDRV_O_RDWR, NULL);
+        bdrv_reopen_set_read_only(bs->backing->bs, true, NULL);
     }
 
     return ret;

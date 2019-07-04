@@ -1,7 +1,12 @@
-# Default configuration for riscv-softmmu
+# Default configuration for riscv32-softmmu
 
-CONFIG_SERIAL=y
-CONFIG_VIRTIO_MMIO=y
-include virtio.mak
+# Uncomment the following lines to disable these optional devices:
+#
+#CONFIG_PCI_DEVICES=n
 
-CONFIG_CADENCE=y
+# Boards:
+#
+CONFIG_SPIKE=y
+CONFIG_SIFIVE_E=y
+CONFIG_SIFIVE_U=y
+CONFIG_RISCV_VIRT=y

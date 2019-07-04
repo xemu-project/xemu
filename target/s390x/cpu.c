@@ -6,21 +6,18 @@
  * Copyright (c) 2012 SUSE LINUX Products GmbH
  * Copyright (c) 2012 IBM Corp.
  *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
- * This library is distributed in the hope that it will be useful,
+ * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * Lesser General Public License for more details.
+ * General Public License for more details.
  *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, see
- * <http://www.gnu.org/licenses/lgpl-2.1.html>
- * Contributions after 2012-12-11 are licensed under the terms of the
- * GNU GPL, version 2 or (at your option) any later version.
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "qemu/osdep.h"
@@ -144,6 +141,11 @@ static void s390_cpu_full_reset(CPUState *s)
     /* architectured initial values for CR 0 and 14 */
     env->cregs[0] = CR0_RESET;
     env->cregs[14] = CR14_RESET;
+
+#if defined(CONFIG_USER_ONLY)
+    /* user mode should always be allowed to use the full FPU */
+    env->cregs[0] |= CR0_AFP;
+#endif
 
     /* architectured initial value for Breaking-Event-Address register */
     env->gbea = 1;
@@ -419,16 +421,6 @@ void s390_crypto_reset(void)
     if (kvm_enabled()) {
         kvm_s390_crypto_reset();
     }
-}
-
-bool s390_get_squash_mcss(void)
-{
-    if (object_property_get_bool(OBJECT(qdev_get_machine()), "s390-squash-mcss",
-                                 NULL)) {
-        return true;
-    }
-
-    return false;
 }
 
 void s390_enable_css_support(S390CPU *cpu)

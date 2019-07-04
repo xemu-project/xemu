@@ -17,11 +17,11 @@
 #include "exec/memory.h"
 #include "sysemu/accel.h"
 
-extern int hvf_disabled;
+extern bool hvf_allowed;
 #ifdef CONFIG_HVF
 uint32_t hvf_get_supported_cpuid(uint32_t func, uint32_t idx,
                                  int reg);
-#define hvf_enabled() !hvf_disabled
+#define hvf_enabled() (hvf_allowed)
 #else
 #define hvf_enabled() 0
 #define hvf_get_supported_cpuid(func, idx, reg) 0

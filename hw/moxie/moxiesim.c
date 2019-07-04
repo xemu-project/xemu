@@ -31,7 +31,6 @@
 #include "cpu.h"
 #include "hw/sysbus.h"
 #include "hw/hw.h"
-#include "hw/isa/isa.h"
 #include "net/net.h"
 #include "sysemu/sysemu.h"
 #include "hw/boards.h"
@@ -54,11 +53,11 @@ typedef struct {
 static void load_kernel(MoxieCPU *cpu, LoaderParams *loader_params)
 {
     uint64_t entry, kernel_low, kernel_high;
+    int64_t initrd_size;
     long kernel_size;
-    long initrd_size;
     ram_addr_t initrd_offset;
 
-    kernel_size = load_elf(loader_params->kernel_filename,  NULL, NULL,
+    kernel_size = load_elf(loader_params->kernel_filename,  NULL, NULL, NULL,
                            &entry, &kernel_low, &kernel_high, 1, EM_MOXIE,
                            0, 0);
 

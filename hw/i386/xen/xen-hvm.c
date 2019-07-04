@@ -16,7 +16,8 @@
 #include "hw/i386/pc.h"
 #include "hw/i386/apic-msidef.h"
 #include "hw/xen/xen_common.h"
-#include "hw/xen/xen_backend.h"
+#include "hw/xen/xen-legacy-backend.h"
+#include "hw/xen/xen-bus.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-misc.h"
 #include "qemu/error-report.h"
@@ -570,7 +571,7 @@ static void xen_io_del(MemoryListener *listener,
 }
 
 static void xen_device_realize(DeviceListener *listener,
-			       DeviceState *dev)
+                               DeviceState *dev)
 {
     XenIOState *state = container_of(listener, XenIOState, device_listener);
 
@@ -588,7 +589,7 @@ static void xen_device_realize(DeviceListener *listener,
 }
 
 static void xen_device_unrealize(DeviceListener *listener,
-				 DeviceState *dev)
+                                 DeviceState *dev)
 {
     XenIOState *state = container_of(listener, XenIOState, device_listener);
 
@@ -1405,6 +1406,11 @@ void xen_hvm_init(PCMachineState *pcms, MemoryRegion **ram_memory)
     state->wakeup.notify = xen_wakeup_notifier;
     qemu_register_wakeup_notifier(&state->wakeup);
 
+    /*
+     * Register wake-up support in QMP query-current-machine API
+     */
+    qemu_register_wakeup_support();
+
     rc = xen_map_ioreq_server(state);
     if (rc < 0) {
         goto err;
@@ -1478,6 +1484,8 @@ void xen_hvm_init(PCMachineState *pcms, MemoryRegion **ram_memory)
     state->device_listener = xen_device_listener;
     QLIST_INIT(&state->dev_list);
     device_listener_register(&state->device_listener);
+
+    xen_bus_init();
 
     /* Initialize backend core & drivers */
     if (xen_be_init() != 0) {

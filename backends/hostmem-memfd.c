@@ -44,10 +44,6 @@ memfd_backend_memory_alloc(HostMemoryBackend *backend, Error **errp)
         return;
     }
 
-    if (host_memory_backend_mr_inited(backend)) {
-        return;
-    }
-
     backend->force_prealloc = mem_prealloc;
     fd = qemu_memfd_create(TYPE_MEMORY_BACKEND_MEMFD, backend->size,
                            m->hugetlb, m->hugetlbsize, m->seal ?
@@ -57,9 +53,10 @@ memfd_backend_memory_alloc(HostMemoryBackend *backend, Error **errp)
         return;
     }
 
-    name = object_get_canonical_path(OBJECT(backend));
+    name = host_memory_backend_get_name(backend);
     memory_region_init_ram_from_fd(&backend->mr, OBJECT(backend),
-                                   name, backend->size, true, fd, errp);
+                                   name, backend->size,
+                                   backend->share, fd, errp);
     g_free(name);
 }
 
@@ -131,6 +128,7 @@ memfd_backend_instance_init(Object *obj)
 
     /* default to sealed file */
     m->seal = true;
+    MEMORY_BACKEND(m)->share = true;
 }
 
 static void
@@ -140,18 +138,29 @@ memfd_backend_class_init(ObjectClass *oc, void *data)
 
     bc->alloc = memfd_backend_memory_alloc;
 
-    object_class_property_add_bool(oc, "hugetlb",
-                                   memfd_backend_get_hugetlb,
-                                   memfd_backend_set_hugetlb,
-                                   &error_abort);
-    object_class_property_add(oc, "hugetlbsize", "int",
-                              memfd_backend_get_hugetlbsize,
-                              memfd_backend_set_hugetlbsize,
-                              NULL, NULL, &error_abort);
+    if (qemu_memfd_check(MFD_HUGETLB)) {
+        object_class_property_add_bool(oc, "hugetlb",
+                                       memfd_backend_get_hugetlb,
+                                       memfd_backend_set_hugetlb,
+                                       &error_abort);
+        object_class_property_set_description(oc, "hugetlb",
+                                              "Use huge pages",
+                                              &error_abort);
+        object_class_property_add(oc, "hugetlbsize", "int",
+                                  memfd_backend_get_hugetlbsize,
+                                  memfd_backend_set_hugetlbsize,
+                                  NULL, NULL, &error_abort);
+        object_class_property_set_description(oc, "hugetlbsize",
+                                              "Huge pages size (ex: 2M, 1G)",
+                                              &error_abort);
+    }
     object_class_property_add_bool(oc, "seal",
                                    memfd_backend_get_seal,
                                    memfd_backend_set_seal,
                                    &error_abort);
+    object_class_property_set_description(oc, "seal",
+                                          "Seal growing & shrinking",
+                                          &error_abort);
 }
 
 static const TypeInfo memfd_backend_info = {
@@ -164,7 +173,9 @@ static const TypeInfo memfd_backend_info = {
 
 static void register_types(void)
 {
-    type_register_static(&memfd_backend_info);
+    if (qemu_memfd_check(MFD_ALLOW_SEALING)) {
+        type_register_static(&memfd_backend_info);
+    }
 }
 
 type_init(register_types);

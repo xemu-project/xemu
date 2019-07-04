@@ -26,7 +26,7 @@
 #include "qapi/error.h"
 #include "hw/hw.h"
 #include "chardev/char-fe.h"
-#include "hw/xen/xen_backend.h"
+#include "hw/xen/xen-legacy-backend.h"
 
 #include <xen/io/console.h>
 
@@ -39,7 +39,7 @@ struct buffer {
 };
 
 struct XenConsole {
-    struct XenDevice  xendev;  /* must be first */
+    struct XenLegacyDevice  xendev;  /* must be first */
     struct buffer     buffer;
     char              console[XEN_BUFSIZE];
     int               ring_ref;
@@ -60,34 +60,34 @@ static void buffer_append(struct XenConsole *con)
 
     size = prod - cons;
     if ((size == 0) || (size > sizeof(intf->out)))
-	return;
+        return;
 
     if ((buffer->capacity - buffer->size) < size) {
-	buffer->capacity += (size + 1024);
-	buffer->data = g_realloc(buffer->data, buffer->capacity);
+        buffer->capacity += (size + 1024);
+        buffer->data = g_realloc(buffer->data, buffer->capacity);
     }
 
     while (cons != prod)
-	buffer->data[buffer->size++] = intf->out[
-	    MASK_XENCONS_IDX(cons++, intf->out)];
+        buffer->data[buffer->size++] = intf->out[
+            MASK_XENCONS_IDX(cons++, intf->out)];
 
     xen_mb();
     intf->out_cons = cons;
     xen_pv_send_notify(&con->xendev);
 
     if (buffer->max_capacity &&
-	buffer->size > buffer->max_capacity) {
-	/* Discard the middle of the data. */
+        buffer->size > buffer->max_capacity) {
+        /* Discard the middle of the data. */
 
-	size_t over = buffer->size - buffer->max_capacity;
-	uint8_t *maxpos = buffer->data + buffer->max_capacity;
+        size_t over = buffer->size - buffer->max_capacity;
+        uint8_t *maxpos = buffer->data + buffer->max_capacity;
 
-	memmove(maxpos - over, maxpos, over);
-	buffer->data = g_realloc(buffer->data, buffer->max_capacity);
-	buffer->size = buffer->capacity = buffer->max_capacity;
+        memmove(maxpos - over, maxpos, over);
+        buffer->data = g_realloc(buffer->data, buffer->max_capacity);
+        buffer->size = buffer->capacity = buffer->max_capacity;
 
-	if (buffer->consumed > buffer->max_capacity - over)
-	    buffer->consumed = buffer->max_capacity - over;
+        if (buffer->consumed > buffer->max_capacity - over)
+            buffer->consumed = buffer->max_capacity - over;
     }
 }
 
@@ -95,8 +95,8 @@ static void buffer_advance(struct buffer *buffer, size_t len)
 {
     buffer->consumed += len;
     if (buffer->consumed == buffer->size) {
-	buffer->consumed = 0;
-	buffer->size = 0;
+        buffer->consumed = 0;
+        buffer->size = 0;
     }
 }
 
@@ -111,7 +111,7 @@ static int ring_free_bytes(struct XenConsole *con)
 
     space = prod - cons;
     if (space > sizeof(intf->in))
-	return 0; /* ring is screwed: ignore it */
+        return 0; /* ring is screwed: ignore it */
 
     return (sizeof(intf->in) - space);
 }
@@ -132,12 +132,12 @@ static void xencons_receive(void *opaque, const uint8_t *buf, int len)
     max = ring_free_bytes(con);
     /* The can_receive() func limits this, but check again anyway */
     if (max < len)
-	len = max;
+        len = max;
 
     prod = intf->in_prod;
     for (i = 0; i < len; i++) {
-	intf->in[MASK_XENCONS_IDX(prod++, intf->in)] =
-	    buf[i];
+        intf->in[MASK_XENCONS_IDX(prod++, intf->in)] =
+            buf[i];
     }
     xen_wmb();
     intf->in_prod = prod;
@@ -173,7 +173,7 @@ static void xencons_send(struct XenConsole *con)
 
 /* -------------------------------------------------------------------- */
 
-static int con_init(struct XenDevice *xendev)
+static int con_init(struct XenLegacyDevice *xendev)
 {
     struct XenConsole *con = container_of(xendev, struct XenConsole, xendev);
     char *type, *dom, label[32];
@@ -207,7 +207,12 @@ static int con_init(struct XenDevice *xendev)
     } else {
         snprintf(label, sizeof(label), "xencons%d", con->xendev.dev);
         qemu_chr_fe_init(&con->chr,
-                         qemu_chr_new(label, output), &error_abort);
+                         /*
+                          * FIXME: sure we want to support implicit
+                          * muxed monitors here?
+                          */
+                         qemu_chr_new_mux_mon(label, output, NULL),
+                         &error_abort);
     }
 
     xenstore_store_pv_console_info(con->xendev.dev,
@@ -218,17 +223,17 @@ out:
     return ret;
 }
 
-static int con_initialise(struct XenDevice *xendev)
+static int con_initialise(struct XenLegacyDevice *xendev)
 {
     struct XenConsole *con = container_of(xendev, struct XenConsole, xendev);
     int limit;
 
     if (xenstore_read_int(con->console, "ring-ref", &con->ring_ref) == -1)
-	return -1;
+        return -1;
     if (xenstore_read_int(con->console, "port", &con->xendev.remote_port) == -1)
-	return -1;
+        return -1;
     if (xenstore_read_int(con->console, "limit", &limit) == 0)
-	con->buffer.max_capacity = limit;
+        con->buffer.max_capacity = limit;
 
     if (!xendev->dev) {
         xen_pfn_t mfn = con->ring_ref;
@@ -240,7 +245,7 @@ static int con_initialise(struct XenDevice *xendev)
                                           PROT_READ | PROT_WRITE);
     }
     if (!con->sring)
-	return -1;
+        return -1;
 
     xen_be_bind_evtchn(&con->xendev);
     qemu_chr_fe_set_handlers(&con->chr, xencons_can_receive,
@@ -248,14 +253,14 @@ static int con_initialise(struct XenDevice *xendev)
 
     xen_pv_printf(xendev, 1,
                   "ring mfn %d, remote port %d, local port %d, limit %zd\n",
-		  con->ring_ref,
-		  con->xendev.remote_port,
-		  con->xendev.local_port,
-		  con->buffer.max_capacity);
+                  con->ring_ref,
+                  con->xendev.remote_port,
+                  con->xendev.local_port,
+                  con->buffer.max_capacity);
     return 0;
 }
 
-static void con_disconnect(struct XenDevice *xendev)
+static void con_disconnect(struct XenLegacyDevice *xendev)
 {
     struct XenConsole *con = container_of(xendev, struct XenConsole, xendev);
 
@@ -272,13 +277,13 @@ static void con_disconnect(struct XenDevice *xendev)
     }
 }
 
-static void con_event(struct XenDevice *xendev)
+static void con_event(struct XenLegacyDevice *xendev)
 {
     struct XenConsole *con = container_of(xendev, struct XenConsole, xendev);
 
     buffer_append(con);
     if (con->buffer.size - con->buffer.consumed)
-	xencons_send(con);
+        xencons_send(con);
 }
 
 /* -------------------------------------------------------------------- */

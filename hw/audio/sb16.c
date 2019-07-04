@@ -66,7 +66,7 @@ typedef struct SB16State {
     int fmt_stereo;
     int fmt_signed;
     int fmt_bits;
-    audfmt_e fmt;
+    AudioFormat fmt;
     int dma_auto;
     int block_size;
     int fifo;
@@ -224,7 +224,7 @@ static void continue_dma8 (SB16State *s)
 
 static void dma_cmd8 (SB16State *s, int mask, int dma_len)
 {
-    s->fmt = AUD_FMT_U8;
+    s->fmt = AUDIO_FORMAT_U8;
     s->use_hdma = 0;
     s->fmt_bits = 8;
     s->fmt_signed = 0;
@@ -319,18 +319,18 @@ static void dma_cmd (SB16State *s, uint8_t cmd, uint8_t d0, int dma_len)
 
     if (16 == s->fmt_bits) {
         if (s->fmt_signed) {
-            s->fmt = AUD_FMT_S16;
+            s->fmt = AUDIO_FORMAT_S16;
         }
         else {
-            s->fmt = AUD_FMT_U16;
+            s->fmt = AUDIO_FORMAT_U16;
         }
     }
     else {
         if (s->fmt_signed) {
-            s->fmt = AUD_FMT_S8;
+            s->fmt = AUDIO_FORMAT_S8;
         }
         else {
-            s->fmt = AUD_FMT_U8;
+            s->fmt = AUDIO_FORMAT_U8;
         }
     }
 
@@ -741,10 +741,15 @@ static void complete (SB16State *s)
             ldebug ("set time const %d\n", s->time_const);
             break;
 
-        case 0x42:              /* FT2 sets output freq with this, go figure */
-            qemu_log_mask(LOG_UNIMP, "cmd 0x42 might not do what it think it"
-                          " should\n");
         case 0x41:
+        case 0x42:
+            /*
+             * 0x41 is documented as setting the output sample rate,
+             * and 0x42 the input sample rate, but in fact SB16 hardware
+             * seems to have only a single sample rate under the hood,
+             * and FT2 sets output freq with this (go figure).  Compare:
+             * http://homepages.cae.wisc.edu/~brodskye/sb16doc/sb16doc.html#SamplingRate
+             */
             s->freq = dsp_get_hilo (s);
             ldebug ("set freq %d\n", s->freq);
             break;
@@ -847,7 +852,7 @@ static void legacy_reset (SB16State *s)
 
     as.freq = s->freq;
     as.nchannels = 1;
-    as.fmt = AUD_FMT_U8;
+    as.fmt = AUDIO_FORMAT_U8;
     as.endianness = 0;
 
     s->voice = AUD_open_out (

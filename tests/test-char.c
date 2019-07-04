@@ -11,11 +11,17 @@
 #include "qapi/qapi-commands-char.h"
 #include "qapi/qmp/qdict.h"
 #include "qom/qom-qobject.h"
+#include "io/channel-socket.h"
+#include "qapi/qobject-input-visitor.h"
+#include "qapi/qapi-visit-sockets.h"
 
 static bool quit;
 
 typedef struct FeHandler {
     int read_count;
+    bool is_open;
+    int openclose_count;
+    bool openclose_mismatch;
     int last_event;
     char read_buf[128];
 } FeHandler;
@@ -49,14 +55,27 @@ static void fe_read(void *opaque, const uint8_t *buf, int size)
 static void fe_event(void *opaque, int event)
 {
     FeHandler *h = opaque;
+    bool new_open_state;
 
     h->last_event = event;
-    if (event != CHR_EVENT_BREAK) {
+    switch (event) {
+    case CHR_EVENT_BREAK:
+        break;
+    case CHR_EVENT_OPENED:
+    case CHR_EVENT_CLOSED:
+        h->openclose_count++;
+        new_open_state = (event == CHR_EVENT_OPENED);
+        if (h->is_open == new_open_state) {
+            h->openclose_mismatch = true;
+        }
+        h->is_open = new_open_state;
+        /* no break */
+    default:
         quit = true;
+        break;
     }
 }
 
-#ifdef CONFIG_HAS_GLIB_SUBPROCESS_TESTS
 #ifdef _WIN32
 static void char_console_test_subprocess(void)
 {
@@ -67,7 +86,7 @@ static void char_console_test_subprocess(void)
                             1, &error_abort);
     qemu_opt_set(opts, "backend", "console", &error_abort);
 
-    chr = qemu_chr_new_from_opts(opts, NULL);
+    chr = qemu_chr_new_from_opts(opts, NULL, NULL);
     g_assert_nonnull(chr);
 
     qemu_chr_write_all(chr, (const uint8_t *)"CONSOLE", 7);
@@ -89,7 +108,7 @@ static void char_stdio_test_subprocess(void)
     CharBackend be;
     int ret;
 
-    chr = qemu_chr_new("label", "stdio");
+    chr = qemu_chr_new("label", "stdio", NULL);
     g_assert_nonnull(chr);
 
     qemu_chr_fe_init(&be, chr, &error_abort);
@@ -106,7 +125,6 @@ static void char_stdio_test(void)
     g_test_trap_assert_passed();
     g_test_trap_assert_stdout("buf");
 }
-#endif
 
 static void char_ringbuf_test(void)
 {
@@ -121,7 +139,7 @@ static void char_ringbuf_test(void)
     qemu_opt_set(opts, "backend", "ringbuf", &error_abort);
 
     qemu_opt_set(opts, "size", "5", &error_abort);
-    chr = qemu_chr_new_from_opts(opts, NULL);
+    chr = qemu_chr_new_from_opts(opts, NULL, NULL);
     g_assert_null(chr);
     qemu_opts_del(opts);
 
@@ -129,7 +147,7 @@ static void char_ringbuf_test(void)
                             1, &error_abort);
     qemu_opt_set(opts, "backend", "ringbuf", &error_abort);
     qemu_opt_set(opts, "size", "2", &error_abort);
-    chr = qemu_chr_new_from_opts(opts, &error_abort);
+    chr = qemu_chr_new_from_opts(opts, NULL, &error_abort);
     g_assert_nonnull(chr);
     qemu_opts_del(opts);
 
@@ -152,7 +170,7 @@ static void char_ringbuf_test(void)
                             1, &error_abort);
     qemu_opt_set(opts, "backend", "memory", &error_abort);
     qemu_opt_set(opts, "size", "2", &error_abort);
-    chr = qemu_chr_new_from_opts(opts, NULL);
+    chr = qemu_chr_new_from_opts(opts, NULL, NULL);
     g_assert_nonnull(chr);
     object_unparent(OBJECT(chr));
     qemu_opts_del(opts);
@@ -163,7 +181,7 @@ static void char_mux_test(void)
     QemuOpts *opts;
     Chardev *chr, *base;
     char *data;
-    FeHandler h1 = { 0, }, h2 = { 0, };
+    FeHandler h1 = { 0, false, 0, false, }, h2 = { 0, false, 0, false, };
     CharBackend chr_be1, chr_be2;
 
     opts = qemu_opts_create(qemu_find_opts("chardev"), "mux-label",
@@ -171,7 +189,7 @@ static void char_mux_test(void)
     qemu_opt_set(opts, "backend", "ringbuf", &error_abort);
     qemu_opt_set(opts, "size", "128", &error_abort);
     qemu_opt_set(opts, "mux", "on", &error_abort);
-    chr = qemu_chr_new_from_opts(opts, &error_abort);
+    chr = qemu_chr_new_from_opts(opts, NULL, &error_abort);
     g_assert_nonnull(chr);
     qemu_opts_del(opts);
 
@@ -235,6 +253,65 @@ static void char_mux_test(void)
     g_assert_cmpint(h1.last_event, ==, CHR_EVENT_BREAK);
     g_assert_cmpint(h2.last_event, ==, CHR_EVENT_MUX_OUT);
 
+    /* open/close state and corresponding events */
+    g_assert_true(qemu_chr_fe_backend_open(&chr_be1));
+    g_assert_true(qemu_chr_fe_backend_open(&chr_be2));
+    g_assert_true(h1.is_open);
+    g_assert_false(h1.openclose_mismatch);
+    g_assert_true(h2.is_open);
+    g_assert_false(h2.openclose_mismatch);
+
+    h1.openclose_count = h2.openclose_count = 0;
+
+    qemu_chr_fe_set_handlers(&chr_be1, NULL, NULL, NULL, NULL,
+                             NULL, NULL, false);
+    qemu_chr_fe_set_handlers(&chr_be2, NULL, NULL, NULL, NULL,
+                             NULL, NULL, false);
+    g_assert_cmpint(h1.openclose_count, ==, 0);
+    g_assert_cmpint(h2.openclose_count, ==, 0);
+
+    h1.is_open = h2.is_open = false;
+    qemu_chr_fe_set_handlers(&chr_be1,
+                             NULL,
+                             NULL,
+                             fe_event,
+                             NULL,
+                             &h1,
+                             NULL, false);
+    qemu_chr_fe_set_handlers(&chr_be2,
+                             NULL,
+                             NULL,
+                             fe_event,
+                             NULL,
+                             &h2,
+                             NULL, false);
+    g_assert_cmpint(h1.openclose_count, ==, 1);
+    g_assert_false(h1.openclose_mismatch);
+    g_assert_cmpint(h2.openclose_count, ==, 1);
+    g_assert_false(h2.openclose_mismatch);
+
+    qemu_chr_be_event(base, CHR_EVENT_CLOSED);
+    qemu_chr_be_event(base, CHR_EVENT_OPENED);
+    g_assert_cmpint(h1.openclose_count, ==, 3);
+    g_assert_false(h1.openclose_mismatch);
+    g_assert_cmpint(h2.openclose_count, ==, 3);
+    g_assert_false(h2.openclose_mismatch);
+
+    qemu_chr_fe_set_handlers(&chr_be2,
+                             fe_can_read,
+                             fe_read,
+                             fe_event,
+                             NULL,
+                             &h2,
+                             NULL, false);
+    qemu_chr_fe_set_handlers(&chr_be1,
+                             fe_can_read,
+                             fe_read,
+                             fe_event,
+                             NULL,
+                             &h1,
+                             NULL, false);
+
     /* remove first handler */
     qemu_chr_fe_set_handlers(&chr_be1, NULL, NULL, NULL, NULL,
                              NULL, NULL, true);
@@ -259,150 +336,128 @@ static void char_mux_test(void)
     qemu_chr_fe_deinit(&chr_be2, true);
 }
 
-typedef struct SocketIdleData {
-    GMainLoop *loop;
-    Chardev *chr;
-    bool conn_expected;
-    CharBackend *be;
-    CharBackend *client_be;
-} SocketIdleData;
 
-static gboolean char_socket_test_idle(gpointer user_data)
-{
-    SocketIdleData *data = user_data;
-
-    if (object_property_get_bool(OBJECT(data->chr), "connected", NULL)
-        == data->conn_expected) {
-        quit = true;
-        return FALSE;
-    }
-
-    return TRUE;
-}
-
-static void socket_read(void *opaque, const uint8_t *buf, int size)
-{
-    SocketIdleData *data = opaque;
-
-    g_assert_cmpint(size, ==, 1);
-    g_assert_cmpint(*buf, ==, 'Z');
-
-    size = qemu_chr_fe_write(data->be, (const uint8_t *)"hello", 5);
-    g_assert_cmpint(size, ==, 5);
-}
-
-static int socket_can_read(void *opaque)
-{
-    return 10;
-}
-
-static void socket_read_hello(void *opaque, const uint8_t *buf, int size)
+static void websock_server_read(void *opaque, const uint8_t *buf, int size)
 {
     g_assert_cmpint(size, ==, 5);
-    g_assert(strncmp((char *)buf, "hello", 5) == 0);
-
+    g_assert(memcmp(buf, "world", size) == 0);
     quit = true;
 }
 
-static int socket_can_read_hello(void *opaque)
+
+static int websock_server_can_read(void *opaque)
 {
     return 10;
 }
 
-static void char_socket_test_common(Chardev *chr)
+
+static bool websock_check_http_headers(char *buf, int size)
 {
-    Chardev *chr_client;
+    int i;
+    const char *ans[] = { "HTTP/1.1 101 Switching Protocols\r\n",
+                          "Server: QEMU VNC\r\n",
+                          "Upgrade: websocket\r\n",
+                          "Connection: Upgrade\r\n",
+                          "Sec-WebSocket-Accept:",
+                          "Sec-WebSocket-Protocol: binary\r\n" };
+
+    for (i = 0; i < 6; i++) {
+        if (g_strstr_len(buf, size, ans[i]) == NULL) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+static void websock_client_read(void *opaque, const uint8_t *buf, int size)
+{
+    const uint8_t ping[] = { 0x89, 0x85,                  /* Ping header */
+                             0x07, 0x77, 0x9e, 0xf9,      /* Masking key */
+                             0x6f, 0x12, 0xf2, 0x95, 0x68 /* "hello" */ };
+
+    const uint8_t binary[] = { 0x82, 0x85,                  /* Binary header */
+                               0x74, 0x90, 0xb9, 0xdf,      /* Masking key */
+                               0x03, 0xff, 0xcb, 0xb3, 0x10 /* "world" */ };
+    Chardev *chr_client = opaque;
+
+    if (websock_check_http_headers((char *) buf, size)) {
+        qemu_chr_fe_write(chr_client->be, ping, sizeof(ping));
+    } else if (buf[0] == 0x8a && buf[1] == 0x05) {
+        g_assert(strncmp((char *) buf + 2, "hello", 5) == 0);
+        qemu_chr_fe_write(chr_client->be, binary, sizeof(binary));
+    } else {
+        g_assert(buf[0] == 0x88 && buf[1] == 0x16);
+        g_assert(strncmp((char *) buf + 4, "peer requested close", 10) == 0);
+        quit = true;
+    }
+}
+
+
+static int websock_client_can_read(void *opaque)
+{
+    return 4096;
+}
+
+
+static void char_websock_test(void)
+{
     QObject *addr;
     QDict *qdict;
     const char *port;
-    SocketIdleData d = { .chr = chr };
+    char *tmp;
+    char *handshake_port;
     CharBackend be;
     CharBackend client_be;
-    char *tmp;
-
-    d.be = &be;
-    d.client_be = &be;
-
-    g_assert_nonnull(chr);
-    g_assert(!object_property_get_bool(OBJECT(chr), "connected", &error_abort));
+    Chardev *chr_client;
+    Chardev *chr = qemu_chr_new("server",
+                                "websocket:127.0.0.1:0,server,nowait", NULL);
+    const char handshake[] = "GET / HTTP/1.1\r\n"
+                             "Upgrade: websocket\r\n"
+                             "Connection: Upgrade\r\n"
+                             "Host: localhost:%s\r\n"
+                             "Origin: http://localhost:%s\r\n"
+                             "Sec-WebSocket-Key: o9JHNiS3/0/0zYE1wa3yIw==\r\n"
+                             "Sec-WebSocket-Version: 13\r\n"
+                             "Sec-WebSocket-Protocol: binary\r\n\r\n";
+    const uint8_t close[] = { 0x88, 0x82,             /* Close header */
+                              0xef, 0xaa, 0xc5, 0x97, /* Masking key */
+                              0xec, 0x42              /* Status code */ };
 
     addr = object_property_get_qobject(OBJECT(chr), "addr", &error_abort);
     qdict = qobject_to(QDict, addr);
     port = qdict_get_str(qdict, "port");
     tmp = g_strdup_printf("tcp:127.0.0.1:%s", port);
+    handshake_port = g_strdup_printf(handshake, port, port);
     qobject_unref(qdict);
 
     qemu_chr_fe_init(&be, chr, &error_abort);
-    qemu_chr_fe_set_handlers(&be, socket_can_read, socket_read,
-                             NULL, NULL, &d, NULL, true);
+    qemu_chr_fe_set_handlers(&be, websock_server_can_read, websock_server_read,
+                             NULL, NULL, chr, NULL, true);
 
-    chr_client = qemu_chr_new("client", tmp);
+    chr_client = qemu_chr_new("client", tmp, NULL);
     qemu_chr_fe_init(&client_be, chr_client, &error_abort);
-    qemu_chr_fe_set_handlers(&client_be, socket_can_read_hello,
-                             socket_read_hello,
-                             NULL, NULL, &d, NULL, true);
+    qemu_chr_fe_set_handlers(&client_be, websock_client_can_read,
+                             websock_client_read,
+                             NULL, NULL, chr_client, NULL, true);
     g_free(tmp);
 
-    d.conn_expected = true;
-    guint id = g_idle_add(char_socket_test_idle, &d);
-    g_source_set_name_by_id(id, "test-idle");
-    g_assert_cmpint(id, >, 0);
+    qemu_chr_write_all(chr_client,
+                       (uint8_t *) handshake_port,
+                       strlen(handshake_port));
+    g_free(handshake_port);
     main_loop();
 
     g_assert(object_property_get_bool(OBJECT(chr), "connected", &error_abort));
     g_assert(object_property_get_bool(OBJECT(chr_client),
                                       "connected", &error_abort));
 
-    qemu_chr_write_all(chr_client, (const uint8_t *)"Z", 1);
+    qemu_chr_write_all(chr_client, close, sizeof(close));
     main_loop();
 
     object_unparent(OBJECT(chr_client));
-
-    d.conn_expected = false;
-    g_idle_add(char_socket_test_idle, &d);
-    main_loop();
-
     object_unparent(OBJECT(chr));
-}
-
-
-static void char_socket_basic_test(void)
-{
-    Chardev *chr = qemu_chr_new("server", "tcp:127.0.0.1:0,server,nowait");
-
-    char_socket_test_common(chr);
-}
-
-
-static void char_socket_fdpass_test(void)
-{
-    Chardev *chr;
-    char *optstr;
-    QemuOpts *opts;
-    int fd;
-    SocketAddress *addr = g_new0(SocketAddress, 1);
-
-    addr->type = SOCKET_ADDRESS_TYPE_INET;
-    addr->u.inet.host = g_strdup("127.0.0.1");
-    addr->u.inet.port = g_strdup("0");
-
-    fd = socket_listen(addr, &error_abort);
-    g_assert(fd >= 0);
-
-    qapi_free_SocketAddress(addr);
-
-    optstr = g_strdup_printf("socket,id=cdev,fd=%d,server,nowait", fd);
-
-    opts = qemu_opts_parse_noisily(qemu_find_opts("chardev"),
-                                   optstr, true);
-    g_free(optstr);
-    g_assert_nonnull(opts);
-
-    chr = qemu_chr_new_from_opts(opts, &error_abort);
-
-    qemu_opts_del(opts);
-
-    char_socket_test_common(chr);
 }
 
 
@@ -427,7 +482,7 @@ static void char_pipe_test(void)
     }
 
     tmp = g_strdup_printf("pipe:%s", pipe);
-    chr = qemu_chr_new("pipe", tmp);
+    chr = qemu_chr_new("pipe", tmp, NULL);
     g_assert_nonnull(chr);
     g_free(tmp);
 
@@ -472,6 +527,28 @@ static void char_pipe_test(void)
 }
 #endif
 
+typedef struct SocketIdleData {
+    GMainLoop *loop;
+    Chardev *chr;
+    bool conn_expected;
+    CharBackend *be;
+    CharBackend *client_be;
+} SocketIdleData;
+
+
+static void socket_read_hello(void *opaque, const uint8_t *buf, int size)
+{
+    g_assert_cmpint(size, ==, 5);
+    g_assert(strncmp((char *)buf, "hello", 5) == 0);
+
+    quit = true;
+}
+
+static int socket_can_read_hello(void *opaque)
+{
+    return 10;
+}
+
 static int make_udp_socket(int *port)
 {
     struct sockaddr_in addr = { 0, };
@@ -509,7 +586,7 @@ static void char_udp_test_internal(Chardev *reuse_chr, int sock)
         int port;
         sock = make_udp_socket(&port);
         tmp = g_strdup_printf("udp:127.0.0.1:%d", port);
-        chr = qemu_chr_new("client", tmp);
+        chr = qemu_chr_new("client", tmp, NULL);
         g_assert_nonnull(chr);
 
         be = g_alloca(sizeof(CharBackend));
@@ -542,6 +619,488 @@ static void char_udp_test(void)
     char_udp_test_internal(NULL, 0);
 }
 
+
+typedef struct {
+    int event;
+    bool got_pong;
+} CharSocketTestData;
+
+
+#define SOCKET_PING "Hello"
+#define SOCKET_PONG "World"
+
+
+static void
+char_socket_event(void *opaque, int event)
+{
+    CharSocketTestData *data = opaque;
+    data->event = event;
+}
+
+
+static void
+char_socket_read(void *opaque, const uint8_t *buf, int size)
+{
+    CharSocketTestData *data = opaque;
+    g_assert_cmpint(size, ==, sizeof(SOCKET_PONG));
+    g_assert(memcmp(buf, SOCKET_PONG, size) == 0);
+    data->got_pong = true;
+}
+
+
+static int
+char_socket_can_read(void *opaque)
+{
+    return sizeof(SOCKET_PONG);
+}
+
+
+static char *
+char_socket_addr_to_opt_str(SocketAddress *addr, bool fd_pass,
+                            const char *reconnect, bool is_listen)
+{
+    if (fd_pass) {
+        QIOChannelSocket *ioc = qio_channel_socket_new();
+        int fd;
+        char *optstr;
+        g_assert(!reconnect);
+        if (is_listen) {
+            qio_channel_socket_listen_sync(ioc, addr, &error_abort);
+        } else {
+            qio_channel_socket_connect_sync(ioc, addr, &error_abort);
+        }
+        fd = ioc->fd;
+        ioc->fd = -1;
+        optstr = g_strdup_printf("socket,id=cdev0,fd=%d%s",
+                                 fd, is_listen ? ",server,nowait" : "");
+        object_unref(OBJECT(ioc));
+        return optstr;
+    } else {
+        switch (addr->type) {
+        case SOCKET_ADDRESS_TYPE_INET:
+            return g_strdup_printf("socket,id=cdev0,host=%s,port=%s%s%s",
+                                   addr->u.inet.host,
+                                   addr->u.inet.port,
+                                   reconnect ? reconnect : "",
+                                   is_listen ? ",server,nowait" : "");
+
+        case SOCKET_ADDRESS_TYPE_UNIX:
+            return g_strdup_printf("socket,id=cdev0,path=%s%s%s",
+                                   addr->u.q_unix.path,
+                                   reconnect ? reconnect : "",
+                                   is_listen ? ",server,nowait" : "");
+
+        default:
+            g_assert_not_reached();
+        }
+    }
+}
+
+
+static void
+char_socket_ping_pong(QIOChannel *ioc)
+{
+    char greeting[sizeof(SOCKET_PING)];
+    const char *response = SOCKET_PONG;
+
+    qio_channel_read_all(ioc, greeting, sizeof(greeting), &error_abort);
+
+    g_assert(memcmp(greeting, SOCKET_PING, sizeof(greeting)) == 0);
+
+    qio_channel_write_all(ioc, response, sizeof(SOCKET_PONG), &error_abort);
+
+    object_unref(OBJECT(ioc));
+}
+
+
+static gpointer
+char_socket_server_client_thread(gpointer data)
+{
+    SocketAddress *addr = data;
+    QIOChannelSocket *ioc = qio_channel_socket_new();
+
+    qio_channel_socket_connect_sync(ioc, addr, &error_abort);
+
+    char_socket_ping_pong(QIO_CHANNEL(ioc));
+
+    return NULL;
+}
+
+
+typedef struct {
+    SocketAddress *addr;
+    bool wait_connected;
+    bool fd_pass;
+} CharSocketServerTestConfig;
+
+
+static void char_socket_server_test(gconstpointer opaque)
+{
+    const CharSocketServerTestConfig *config = opaque;
+    Chardev *chr;
+    CharBackend be = {0};
+    CharSocketTestData data = {0};
+    QObject *qaddr;
+    SocketAddress *addr;
+    Visitor *v;
+    QemuThread thread;
+    int ret;
+    bool reconnected = false;
+    char *optstr;
+    QemuOpts *opts;
+
+    g_setenv("QTEST_SILENT_ERRORS", "1", 1);
+    /*
+     * We rely on config->addr containing "nowait", otherwise
+     * qemu_chr_new() will block until a client connects. We
+     * can't spawn our client thread though, because until
+     * qemu_chr_new() returns we don't know what TCP port was
+     * allocated by the OS
+     */
+    optstr = char_socket_addr_to_opt_str(config->addr,
+                                         config->fd_pass,
+                                         NULL,
+                                         true);
+    opts = qemu_opts_parse_noisily(qemu_find_opts("chardev"),
+                                   optstr, true);
+    g_assert_nonnull(opts);
+    chr = qemu_chr_new_from_opts(opts, NULL, &error_abort);
+    qemu_opts_del(opts);
+    g_assert_nonnull(chr);
+    g_assert(!object_property_get_bool(OBJECT(chr), "connected", &error_abort));
+
+    qaddr = object_property_get_qobject(OBJECT(chr), "addr", &error_abort);
+    g_assert_nonnull(qaddr);
+
+    v = qobject_input_visitor_new(qaddr);
+    visit_type_SocketAddress(v, "addr", &addr, &error_abort);
+    visit_free(v);
+    qobject_unref(qaddr);
+
+    qemu_chr_fe_init(&be, chr, &error_abort);
+
+ reconnect:
+    data.event = -1;
+    qemu_chr_fe_set_handlers(&be, NULL, NULL,
+                             char_socket_event, NULL,
+                             &data, NULL, true);
+    g_assert(data.event == -1);
+
+    /*
+     * Kick off a thread to act as the "remote" client
+     * which just plays ping-pong with us
+     */
+    qemu_thread_create(&thread, "client",
+                       char_socket_server_client_thread,
+                       addr, QEMU_THREAD_JOINABLE);
+    g_assert(data.event == -1);
+
+    if (config->wait_connected) {
+        /* Synchronously accept a connection */
+        qemu_chr_wait_connected(chr, &error_abort);
+    } else {
+        /*
+         * Asynchronously accept a connection when the evnt
+         * loop reports the listener socket as readable
+         */
+        while (data.event == -1) {
+            main_loop_wait(false);
+        }
+    }
+    g_assert(object_property_get_bool(OBJECT(chr), "connected", &error_abort));
+    g_assert(data.event == CHR_EVENT_OPENED);
+    data.event = -1;
+
+    /* Send a greeting to the client */
+    ret = qemu_chr_fe_write_all(&be, (const uint8_t *)SOCKET_PING,
+                                sizeof(SOCKET_PING));
+    g_assert_cmpint(ret, ==, sizeof(SOCKET_PING));
+    g_assert(data.event == -1);
+
+    /* Setup a callback to receive the reply to our greeting */
+    qemu_chr_fe_set_handlers(&be, char_socket_can_read,
+                             char_socket_read,
+                             char_socket_event, NULL,
+                             &data, NULL, true);
+    g_assert(data.event == CHR_EVENT_OPENED);
+    data.event = -1;
+
+    /* Wait for the client to go away */
+    while (data.event == -1) {
+        main_loop_wait(false);
+    }
+    g_assert(!object_property_get_bool(OBJECT(chr), "connected", &error_abort));
+    g_assert(data.event == CHR_EVENT_CLOSED);
+    g_assert(data.got_pong);
+
+    qemu_thread_join(&thread);
+
+    if (!reconnected) {
+        reconnected = true;
+        goto reconnect;
+    }
+
+    qapi_free_SocketAddress(addr);
+    object_unparent(OBJECT(chr));
+    g_free(optstr);
+    g_unsetenv("QTEST_SILENT_ERRORS");
+}
+
+
+static gpointer
+char_socket_client_server_thread(gpointer data)
+{
+    QIOChannelSocket *ioc = data;
+    QIOChannelSocket *cioc;
+
+    cioc = qio_channel_socket_accept(ioc, &error_abort);
+    g_assert_nonnull(cioc);
+
+    char_socket_ping_pong(QIO_CHANNEL(cioc));
+
+    return NULL;
+}
+
+
+typedef struct {
+    SocketAddress *addr;
+    const char *reconnect;
+    bool wait_connected;
+    bool fd_pass;
+} CharSocketClientTestConfig;
+
+
+static void char_socket_client_test(gconstpointer opaque)
+{
+    const CharSocketClientTestConfig *config = opaque;
+    QIOChannelSocket *ioc;
+    char *optstr;
+    Chardev *chr;
+    CharBackend be = {0};
+    CharSocketTestData data = {0};
+    SocketAddress *addr;
+    QemuThread thread;
+    int ret;
+    bool reconnected = false;
+    QemuOpts *opts;
+
+    /*
+     * Setup a listener socket and determine get its address
+     * so we know the TCP port for the client later
+     */
+    ioc = qio_channel_socket_new();
+    g_assert_nonnull(ioc);
+    qio_channel_socket_listen_sync(ioc, config->addr, &error_abort);
+    addr = qio_channel_socket_get_local_address(ioc, &error_abort);
+    g_assert_nonnull(addr);
+
+    /*
+     * Kick off a thread to act as the "remote" client
+     * which just plays ping-pong with us
+     */
+    qemu_thread_create(&thread, "client",
+                       char_socket_client_server_thread,
+                       ioc, QEMU_THREAD_JOINABLE);
+
+    /*
+     * Populate the chardev address based on what the server
+     * is actually listening on
+     */
+    optstr = char_socket_addr_to_opt_str(addr,
+                                         config->fd_pass,
+                                         config->reconnect,
+                                         false);
+
+    opts = qemu_opts_parse_noisily(qemu_find_opts("chardev"),
+                                   optstr, true);
+    g_assert_nonnull(opts);
+    chr = qemu_chr_new_from_opts(opts, NULL, &error_abort);
+    qemu_opts_del(opts);
+    g_assert_nonnull(chr);
+
+    if (config->reconnect) {
+        /*
+         * If reconnect is set, the connection will be
+         * established in a background thread and we won't
+         * see the "connected" status updated until we
+         * run the main event loop, or call qemu_chr_wait_connected
+         */
+        g_assert(!object_property_get_bool(OBJECT(chr), "connected",
+                                           &error_abort));
+    } else {
+        g_assert(object_property_get_bool(OBJECT(chr), "connected",
+                                          &error_abort));
+    }
+
+    qemu_chr_fe_init(&be, chr, &error_abort);
+
+ reconnect:
+    data.event = -1;
+    qemu_chr_fe_set_handlers(&be, NULL, NULL,
+                             char_socket_event, NULL,
+                             &data, NULL, true);
+    if (config->reconnect) {
+        g_assert(data.event == -1);
+    } else {
+        g_assert(data.event == CHR_EVENT_OPENED);
+    }
+
+    if (config->wait_connected) {
+        /*
+         * Synchronously wait for the connection to complete
+         * This should be a no-op if reconnect is not set.
+         */
+        qemu_chr_wait_connected(chr, &error_abort);
+    } else {
+        /*
+         * Asynchronously wait for the connection to be reported
+         * as complete when the background thread reports its
+         * status.
+         * The loop will short-circuit if reconnect was set
+         */
+        while (data.event == -1) {
+            main_loop_wait(false);
+        }
+    }
+    g_assert(data.event == CHR_EVENT_OPENED);
+    data.event = -1;
+    g_assert(object_property_get_bool(OBJECT(chr), "connected", &error_abort));
+
+    /* Send a greeting to the server */
+    ret = qemu_chr_fe_write_all(&be, (const uint8_t *)SOCKET_PING,
+                                sizeof(SOCKET_PING));
+    g_assert_cmpint(ret, ==, sizeof(SOCKET_PING));
+    g_assert(data.event == -1);
+
+    /* Setup a callback to receive the reply to our greeting */
+    qemu_chr_fe_set_handlers(&be, char_socket_can_read,
+                             char_socket_read,
+                             char_socket_event, NULL,
+                             &data, NULL, true);
+    g_assert(data.event == CHR_EVENT_OPENED);
+    data.event = -1;
+
+    /* Wait for the server to go away */
+    while (data.event == -1) {
+        main_loop_wait(false);
+    }
+    g_assert(data.event == CHR_EVENT_CLOSED);
+    g_assert(!object_property_get_bool(OBJECT(chr), "connected", &error_abort));
+    g_assert(data.got_pong);
+    qemu_thread_join(&thread);
+
+    if (config->reconnect && !reconnected) {
+        reconnected = true;
+        qemu_thread_create(&thread, "client",
+                           char_socket_client_server_thread,
+                           ioc, QEMU_THREAD_JOINABLE);
+        goto reconnect;
+    }
+
+    object_unref(OBJECT(ioc));
+    object_unparent(OBJECT(chr));
+    qapi_free_SocketAddress(addr);
+    g_free(optstr);
+}
+
+static void
+count_closed_event(void *opaque, int event)
+{
+    int *count = opaque;
+    if (event == CHR_EVENT_CLOSED) {
+        (*count)++;
+    }
+}
+
+static void
+char_socket_discard_read(void *opaque, const uint8_t *buf, int size)
+{
+}
+
+static void char_socket_server_two_clients_test(gconstpointer opaque)
+{
+    SocketAddress *incoming_addr = (gpointer) opaque;
+    Chardev *chr;
+    CharBackend be = {0};
+    QObject *qaddr;
+    SocketAddress *addr;
+    Visitor *v;
+    char *optstr;
+    QemuOpts *opts;
+    QIOChannelSocket *ioc1, *ioc2;
+    int closed = 0;
+
+    g_setenv("QTEST_SILENT_ERRORS", "1", 1);
+    /*
+     * We rely on addr containing "nowait", otherwise
+     * qemu_chr_new() will block until a client connects. We
+     * can't spawn our client thread though, because until
+     * qemu_chr_new() returns we don't know what TCP port was
+     * allocated by the OS
+     */
+    optstr = char_socket_addr_to_opt_str(incoming_addr,
+                                         false,
+                                         NULL,
+                                         true);
+    opts = qemu_opts_parse_noisily(qemu_find_opts("chardev"),
+                                   optstr, true);
+    g_assert_nonnull(opts);
+    chr = qemu_chr_new_from_opts(opts, NULL, &error_abort);
+    qemu_opts_del(opts);
+    g_assert_nonnull(chr);
+    g_assert(!object_property_get_bool(OBJECT(chr), "connected", &error_abort));
+
+    qaddr = object_property_get_qobject(OBJECT(chr), "addr", &error_abort);
+    g_assert_nonnull(qaddr);
+
+    v = qobject_input_visitor_new(qaddr);
+    visit_type_SocketAddress(v, "addr", &addr, &error_abort);
+    visit_free(v);
+    qobject_unref(qaddr);
+
+    qemu_chr_fe_init(&be, chr, &error_abort);
+
+    qemu_chr_fe_set_handlers(&be, char_socket_can_read, char_socket_discard_read,
+                             count_closed_event, NULL,
+                             &closed, NULL, true);
+
+    ioc1 = qio_channel_socket_new();
+    qio_channel_socket_connect_sync(ioc1, addr, &error_abort);
+    qemu_chr_wait_connected(chr, &error_abort);
+
+    /* switch the chardev to another context */
+    GMainContext *ctx = g_main_context_new();
+    qemu_chr_fe_set_handlers(&be, char_socket_can_read, char_socket_discard_read,
+                             count_closed_event, NULL,
+                             &closed, ctx, true);
+
+    /* Start a second connection while the first is still connected.
+     * It will be placed in the listen() backlog, and connect() will
+     * succeed immediately.
+     */
+    ioc2 = qio_channel_socket_new();
+    qio_channel_socket_connect_sync(ioc2, addr, &error_abort);
+
+    object_unref(OBJECT(ioc1));
+    /* The two connections should now be processed serially.  */
+    while (g_main_context_iteration(ctx, TRUE)) {
+        if (closed == 1 && ioc2) {
+            object_unref(OBJECT(ioc2));
+            ioc2 = NULL;
+        }
+        if (closed == 2) {
+            break;
+        }
+    }
+
+    qapi_free_SocketAddress(addr);
+    object_unparent(OBJECT(chr));
+    g_main_context_unref(ctx);
+    g_free(optstr);
+    g_unsetenv("QTEST_SILENT_ERRORS");
+}
+
+
 #ifdef HAVE_CHARDEV_SERIAL
 static void char_serial_test(void)
 {
@@ -553,14 +1112,14 @@ static void char_serial_test(void)
     qemu_opt_set(opts, "backend", "serial", &error_abort);
     qemu_opt_set(opts, "path", "/dev/null", &error_abort);
 
-    chr = qemu_chr_new_from_opts(opts, NULL);
+    chr = qemu_chr_new_from_opts(opts, NULL, NULL);
     g_assert_nonnull(chr);
     /* TODO: add more tests with a pty */
     object_unparent(OBJECT(chr));
 
     /* test tty alias */
     qemu_opt_set(opts, "backend", "tty", &error_abort);
-    chr = qemu_chr_new_from_opts(opts, NULL);
+    chr = qemu_chr_new_from_opts(opts, NULL, NULL);
     g_assert_nonnull(chr);
     object_unparent(OBJECT(chr));
 
@@ -593,7 +1152,7 @@ static void char_file_fifo_test(void)
     g_assert_cmpint(ret, ==, 8);
 
     chr = qemu_chardev_new("label-file", TYPE_CHARDEV_FILE, &backend,
-                           &error_abort);
+                           NULL, &error_abort);
 
     qemu_chr_fe_init(&be, chr, &error_abort);
     qemu_chr_fe_set_handlers(&be,
@@ -647,7 +1206,7 @@ static void char_file_test_internal(Chardev *ext_chr, const char *filepath)
         out = g_build_filename(tmp_path, "out", NULL);
         file.out = out;
         chr = qemu_chardev_new(NULL, TYPE_CHARDEV_FILE, &backend,
-                               &error_abort);
+                               NULL, &error_abort);
     }
     ret = qemu_chr_write_all(chr, (uint8_t *)"hello!", 6);
     g_assert_cmpint(ret, ==, 6);
@@ -682,7 +1241,7 @@ static void char_null_test(void)
     chr = qemu_chr_find("label-null");
     g_assert_null(chr);
 
-    chr = qemu_chr_new("label-null", "null");
+    chr = qemu_chr_new("label-null", "null", NULL);
     chr = qemu_chr_find("label-null");
     g_assert_nonnull(chr);
 
@@ -718,9 +1277,10 @@ static void char_null_test(void)
 static void char_invalid_test(void)
 {
     Chardev *chr;
-
-    chr = qemu_chr_new("label-invalid", "invalid");
+    g_setenv("QTEST_SILENT_ERRORS", "1", 1);
+    chr = qemu_chr_new("label-invalid", "invalid", NULL);
     g_assert_null(chr);
+    g_unsetenv("QTEST_SILENT_ERRORS");
 }
 
 static int chardev_change(void *opaque)
@@ -752,7 +1312,7 @@ static void char_hotswap_test(void)
 
     chr_args = g_strdup_printf("udp:127.0.0.1:%d", port);
 
-    chr = qemu_chr_new("chardev", chr_args);
+    chr = qemu_chr_new("chardev", chr_args, NULL);
     qemu_chr_fe_init(&be, chr, &error_abort);
 
     /* check that chardev operates correctly */
@@ -807,14 +1367,12 @@ int main(int argc, char **argv)
     g_test_add_func("/char/invalid", char_invalid_test);
     g_test_add_func("/char/ringbuf", char_ringbuf_test);
     g_test_add_func("/char/mux", char_mux_test);
-#ifdef CONFIG_HAS_GLIB_SUBPROCESS_TESTS
 #ifdef _WIN32
     g_test_add_func("/char/console/subprocess", char_console_test_subprocess);
     g_test_add_func("/char/console", char_console_test);
 #endif
     g_test_add_func("/char/stdio/subprocess", char_stdio_test_subprocess);
     g_test_add_func("/char/stdio", char_stdio_test);
-#endif
 #ifndef _WIN32
     g_test_add_func("/char/pipe", char_pipe_test);
 #endif
@@ -822,13 +1380,80 @@ int main(int argc, char **argv)
 #ifndef _WIN32
     g_test_add_func("/char/file-fifo", char_file_fifo_test);
 #endif
-    g_test_add_func("/char/socket/basic", char_socket_basic_test);
-    g_test_add_func("/char/socket/fdpass", char_socket_fdpass_test);
+
+    SocketAddress tcpaddr = {
+        .type = SOCKET_ADDRESS_TYPE_INET,
+        .u.inet.host = (char *)"127.0.0.1",
+        .u.inet.port = (char *)"0",
+    };
+#ifndef WIN32
+    SocketAddress unixaddr = {
+        .type = SOCKET_ADDRESS_TYPE_UNIX,
+        .u.q_unix.path = (char *)"test-char.sock",
+    };
+#endif
+
+#define SOCKET_SERVER_TEST(name, addr)                                  \
+    CharSocketServerTestConfig server1 ## name =                        \
+        { addr, false, false };                                         \
+    CharSocketServerTestConfig server2 ## name =                        \
+        { addr, true, false };                                          \
+    CharSocketServerTestConfig server3 ## name =                        \
+        { addr, false, true };                                          \
+    CharSocketServerTestConfig server4 ## name =                        \
+        { addr, true, true };                                           \
+    g_test_add_data_func("/char/socket/server/mainloop/" # name,        \
+                         &server1 ##name, char_socket_server_test);     \
+    g_test_add_data_func("/char/socket/server/wait-conn/" # name,       \
+                         &server2 ##name, char_socket_server_test);     \
+    g_test_add_data_func("/char/socket/server/mainloop-fdpass/" # name, \
+                         &server3 ##name, char_socket_server_test);     \
+    g_test_add_data_func("/char/socket/server/wait-conn-fdpass/" # name, \
+                         &server4 ##name, char_socket_server_test)
+
+#define SOCKET_CLIENT_TEST(name, addr)                                  \
+    CharSocketClientTestConfig client1 ## name =                        \
+        { addr, NULL, false, false };                                   \
+    CharSocketClientTestConfig client2 ## name =                        \
+        { addr, NULL, true, false };                                    \
+    CharSocketClientTestConfig client3 ## name =                        \
+        { addr, ",reconnect=1", false };                                \
+    CharSocketClientTestConfig client4 ## name =                        \
+        { addr, ",reconnect=1", true };                                 \
+    CharSocketClientTestConfig client5 ## name =                        \
+        { addr, NULL, false, true };                                    \
+    CharSocketClientTestConfig client6 ## name =                        \
+        { addr, NULL, true, true };                                     \
+    g_test_add_data_func("/char/socket/client/mainloop/" # name,        \
+                         &client1 ##name, char_socket_client_test);     \
+    g_test_add_data_func("/char/socket/client/wait-conn/" # name,       \
+                         &client2 ##name, char_socket_client_test);     \
+    g_test_add_data_func("/char/socket/client/mainloop-reconnect/" # name, \
+                         &client3 ##name, char_socket_client_test);     \
+    g_test_add_data_func("/char/socket/client/wait-conn-reconnect/" # name, \
+                         &client4 ##name, char_socket_client_test);     \
+    g_test_add_data_func("/char/socket/client/mainloop-fdpass/" # name, \
+                         &client5 ##name, char_socket_client_test);     \
+    g_test_add_data_func("/char/socket/client/wait-conn-fdpass/" # name, \
+                         &client6 ##name, char_socket_client_test)
+
+    SOCKET_SERVER_TEST(tcp, &tcpaddr);
+    SOCKET_CLIENT_TEST(tcp, &tcpaddr);
+    g_test_add_data_func("/char/socket/server/two-clients/tcp", &tcpaddr,
+                         char_socket_server_two_clients_test);
+#ifndef WIN32
+    SOCKET_SERVER_TEST(unix, &unixaddr);
+    SOCKET_CLIENT_TEST(unix, &unixaddr);
+    g_test_add_data_func("/char/socket/server/two-clients/unix", &unixaddr,
+                         char_socket_server_two_clients_test);
+#endif
+
     g_test_add_func("/char/udp", char_udp_test);
 #ifdef HAVE_CHARDEV_SERIAL
     g_test_add_func("/char/serial", char_serial_test);
 #endif
     g_test_add_func("/char/hotswap", char_hotswap_test);
+    g_test_add_func("/char/websocket", char_websock_test);
 
     return g_test_run();
 }

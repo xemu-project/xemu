@@ -29,7 +29,7 @@
 #include <sys/statvfs.h>
 /* See MySQL bug #7156 (http://bugs.mysql.com/bug.php?id=7156) for
    discussion about Solaris header problems */
-extern int madvise(caddr_t, size_t, int);
+extern int madvise(char *, size_t, int);
 #endif
 
 #include "qemu-common.h"
@@ -470,8 +470,8 @@ void fips_set_state(bool requested)
 
 #ifdef _FIPS_DEBUG
     fprintf(stderr, "FIPS mode %s (requested %s)\n",
-	    (fips_enabled ? "enabled" : "disabled"),
-	    (requested ? "enabled" : "disabled"));
+            (fips_enabled ? "enabled" : "disabled"),
+            (requested ? "enabled" : "disabled"));
 #endif
 }
 

@@ -240,10 +240,13 @@ should succeed even with the data missing.  To support this the
 subsection can be connected to a device property and from there
 to a versioned machine type.
 
-One important note is that the post_load() function is called "after"
-loading all subsections, because a newer subsection could change same
-value that it uses.  A flag, and the combination of pre_load and post_load
-can be used to detect whether a subsection was loaded, and to
+The 'pre_load' and 'post_load' functions on subsections are only
+called if the subsection is loaded.
+
+One important note is that the outer post_load() function is called "after"
+loading all subsections, because a newer subsection could change the same
+value that it uses.  A flag, and the combination of outer pre_load and
+post_load can be used to detect whether a subsection was loaded, and to
 fall back on default behaviour when the subsection isn't present.
 
 Example:
@@ -315,8 +318,8 @@ For example:
       the property to false.
    c) Add a static bool  support_foo function that tests the property.
    d) Add a subsection with a .needed set to the support_foo function
-   e) (potentially) Add a pre_load that sets up a default value for 'foo'
-      to be used if the subsection isn't loaded.
+   e) (potentially) Add an outer pre_load that sets up a default value
+      for 'foo' to be used if the subsection isn't loaded.
 
 Now that subsection will not be generated when using an older
 machine type and the migration stream will be accepted by older
@@ -416,8 +419,13 @@ The functions to do that are inside a vmstate definition, and are called:
 
   This function is called before we save the state of one device.
 
-Example: You can look at hpet.c, that uses the three function to
-massage the state that is transferred.
+- ``int (*post_save)(void *opaque);``
+
+  This function is called after we save the state of one device
+  (even upon failure, unless the call to pre_save returned an error).
+
+Example: You can look at hpet.c, that uses the first three functions
+to massage the state that is transferred.
 
 The ``VMSTATE_WITH_TMP`` macro may be useful when the migration
 data doesn't match the stored device data well; it allows an
@@ -432,6 +440,7 @@ Examples of such memory API functions are:
   - memory_region_add_subregion()
   - memory_region_del_subregion()
   - memory_region_set_readonly()
+  - memory_region_set_nonvolatile()
   - memory_region_set_enabled()
   - memory_region_set_address()
   - memory_region_set_alias_offset()

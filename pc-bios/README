@@ -5,7 +5,7 @@
   project (http://www.nongnu.org/vgabios/).
 
 - The PowerPC Open Hack'Ware Open Firmware Compatible BIOS is
-  available at http://repo.or.cz/w/openhackware.git.
+  available at https://repo.or.cz/openhackware.git.
 
 - OpenBIOS (http://www.openbios.org/) is a free (GPL v2) portable
   firmware implementation. The goal is to implement a 100% IEEE
@@ -17,13 +17,13 @@
 - SLOF (Slimline Open Firmware) is a free IEEE 1275 Open Firmware
   implementation for certain IBM POWER hardware.  The sources are at
   https://github.com/aik/SLOF, and the image currently in qemu is
-  built from git tag qemu-slof-20180621.
+  built from git tag qemu-slof-20190114.
 
 - sgabios (the Serial Graphics Adapter option ROM) provides a means for
   legacy x86 software to communicate with an attached serial console as
   if a video card were attached.  The master sources reside in a subversion
   repository at http://sgabios.googlecode.com/svn/trunk.  A git mirror is
-  available at git://git.qemu.org/sgabios.git.
+  available at https://git.qemu.org/git/sgabios.git.
 
 - The PXE roms come from the iPXE project. Built with BANNER_TIME 0.
   Sources available at http://ipxe.org.  Vendor:Device ID -> ROM mapping:
@@ -36,11 +36,11 @@
 	1af4:1000 -> pxe-virtio.rom
 
 - The sources for the Alpha palcode image is available from:
-  git://github.com/rth7680/qemu-palcode.git
+  https://github.com/rth7680/qemu-palcode.git
 
 - The u-boot binary for e500 comes from the upstream denx u-boot project where
   it was compiled using the qemu-ppce500 target.
-  A git mirror is available at: git://git.qemu.org/u-boot.git
+  A git mirror is available at: https://git.qemu.org/git/u-boot.git
   The hash used to compile the current version is: 2072e72
 
 - Skiboot (https://github.com/open-power/skiboot/) is an OPAL

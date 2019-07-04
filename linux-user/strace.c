@@ -647,11 +647,11 @@ print_execve(const struct syscallname *name,
     for (arg_ptr_addr = arg2; ; arg_ptr_addr += sizeof(abi_ulong)) {
         abi_ulong *arg_ptr, arg_addr;
 
-	arg_ptr = lock_user(VERIFY_READ, arg_ptr_addr, sizeof(abi_ulong), 1);
+        arg_ptr = lock_user(VERIFY_READ, arg_ptr_addr, sizeof(abi_ulong), 1);
         if (!arg_ptr)
             return;
     arg_addr = tswapal(*arg_ptr);
-	unlock_user(arg_ptr, arg_ptr_addr, 0);
+        unlock_user(arg_ptr, arg_ptr_addr, 0);
         if (!arg_addr)
             break;
         if ((s = lock_user_string(arg_addr))) {
@@ -1235,6 +1235,18 @@ print_chdir(const struct syscallname *name,
 }
 #endif
 
+#ifdef TARGET_NR_chroot
+static void
+print_chroot(const struct syscallname *name,
+    abi_long arg0, abi_long arg1, abi_long arg2,
+    abi_long arg3, abi_long arg4, abi_long arg5)
+{
+    print_syscall_prologue(name);
+    print_string(arg0, 1);
+    print_syscall_epilogue(name);
+}
+#endif
+
 #ifdef TARGET_NR_chmod
 static void
 print_chmod(const struct syscallname *name,
@@ -1741,6 +1753,9 @@ print_optint:
             break;
         case TARGET_SO_REUSEADDR:
             gemu_log("SO_REUSEADDR,");
+            goto print_optint;
+        case TARGET_SO_REUSEPORT:
+            gemu_log("SO_REUSEPORT,");
             goto print_optint;
         case TARGET_SO_TYPE:
             gemu_log("SO_TYPE,");
@@ -2304,7 +2319,19 @@ print_statfs(const struct syscallname *name,
     print_pointer(arg1, 1);
     print_syscall_epilogue(name);
 }
-#define print_statfs64  print_statfs
+#endif
+
+#ifdef TARGET_NR_statfs64
+static void
+print_statfs64(const struct syscallname *name,
+    abi_long arg0, abi_long arg1, abi_long arg2,
+    abi_long arg3, abi_long arg4, abi_long arg5)
+{
+    print_syscall_prologue(name);
+    print_string(arg0, 0);
+    print_pointer(arg1, 1);
+    print_syscall_epilogue(name);
+}
 #endif
 
 #ifdef TARGET_NR_symlink

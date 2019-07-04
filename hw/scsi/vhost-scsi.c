@@ -183,7 +183,7 @@ static void vhost_scsi_realize(DeviceState *dev, Error **errp)
     }
 
     vsc->dev.nvqs = VHOST_SCSI_VQ_NUM_FIXED + vs->conf.num_queues;
-    vsc->dev.vqs = g_new(struct vhost_virtqueue, vsc->dev.nvqs);
+    vsc->dev.vqs = g_new0(struct vhost_virtqueue, vsc->dev.nvqs);
     vsc->dev.vq_index = 0;
     vsc->dev.backend_features = 0;
 
@@ -215,6 +215,7 @@ static void vhost_scsi_unrealize(DeviceState *dev, Error **errp)
 {
     VirtIODevice *vdev = VIRTIO_DEVICE(dev);
     VHostSCSICommon *vsc = VHOST_SCSI_COMMON(dev);
+    struct vhost_virtqueue *vqs = vsc->dev.vqs;
 
     migrate_del_blocker(vsc->migration_blocker);
     error_free(vsc->migration_blocker);
@@ -223,7 +224,7 @@ static void vhost_scsi_unrealize(DeviceState *dev, Error **errp)
     vhost_scsi_set_status(vdev, 0);
 
     vhost_dev_cleanup(&vsc->dev);
-    g_free(vsc->dev.vqs);
+    g_free(vqs);
 
     virtio_scsi_common_unrealize(dev, errp);
 }
@@ -238,6 +239,9 @@ static Property vhost_scsi_properties[] = {
     DEFINE_PROP_UINT32("max_sectors", VirtIOSCSICommon, conf.max_sectors,
                        0xFFFF),
     DEFINE_PROP_UINT32("cmd_per_lun", VirtIOSCSICommon, conf.cmd_per_lun, 128),
+    DEFINE_PROP_BIT64("t10_pi", VHostSCSICommon, host_features,
+                                                 VIRTIO_SCSI_F_T10_PI,
+                                                 false),
     DEFINE_PROP_END_OF_LIST(),
 };
 

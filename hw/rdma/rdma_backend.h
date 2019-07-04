@@ -17,8 +17,22 @@
 #define RDMA_BACKEND_H
 
 #include "qapi/error.h"
+#include "chardev/char-fe.h"
+
 #include "rdma_rm_defs.h"
 #include "rdma_backend_defs.h"
+
+/* Vendor Errors */
+#define VENDOR_ERR_FAIL_BACKEND     0x201
+#define VENDOR_ERR_TOO_MANY_SGES    0x202
+#define VENDOR_ERR_NOMEM            0x203
+#define VENDOR_ERR_QP0              0x204
+#define VENDOR_ERR_INV_NUM_SGE      0x205
+#define VENDOR_ERR_MAD_SEND         0x206
+#define VENDOR_ERR_INVLKEY          0x207
+#define VENDOR_ERR_MR_SMALL         0x208
+#define VENDOR_ERR_INV_MAD_BUFF     0x209
+#define VENDOR_ERR_INV_GID_IDX      0x210
 
 /* Add definition for QP0 and QP1 as there is no userspace enums for them */
 enum ibv_special_qp_type {
@@ -26,14 +40,9 @@ enum ibv_special_qp_type {
     IBV_QPT_GSI = 1,
 };
 
-static inline union ibv_gid *rdma_backend_gid(RdmaBackendDev *dev)
-{
-    return &dev->gid;
-}
-
 static inline uint32_t rdma_backend_qpn(const RdmaBackendQP *qp)
 {
-    return qp->ibqp ? qp->ibqp->qp_num : 0;
+    return qp->ibqp ? qp->ibqp->qp_num : 1;
 }
 
 static inline uint32_t rdma_backend_mr_lkey(const RdmaBackendMR *mr)
@@ -46,14 +55,22 @@ static inline uint32_t rdma_backend_mr_rkey(const RdmaBackendMR *mr)
     return mr->ibmr ? mr->ibmr->rkey : 0;
 }
 
-int rdma_backend_init(RdmaBackendDev *backend_dev,
+int rdma_backend_init(RdmaBackendDev *backend_dev, PCIDevice *pdev,
                       RdmaDeviceResources *rdma_dev_res,
                       const char *backend_device_name, uint8_t port_num,
-                      uint8_t backend_gid_idx, struct ibv_device_attr *dev_attr,
-                      Error **errp);
+                      struct ibv_device_attr *dev_attr,
+                      CharBackend *mad_chr_be);
 void rdma_backend_fini(RdmaBackendDev *backend_dev);
-void rdma_backend_register_comp_handler(void (*handler)(int status,
-                                        unsigned int vendor_err, void *ctx));
+int rdma_backend_add_gid(RdmaBackendDev *backend_dev, const char *ifname,
+                         union ibv_gid *gid);
+int rdma_backend_del_gid(RdmaBackendDev *backend_dev, const char *ifname,
+                         union ibv_gid *gid);
+int rdma_backend_get_gid_index(RdmaBackendDev *backend_dev,
+                               union ibv_gid *gid);
+void rdma_backend_start(RdmaBackendDev *backend_dev);
+void rdma_backend_stop(RdmaBackendDev *backend_dev);
+void rdma_backend_register_comp_handler(void (*handler)(void *ctx,
+                                                        struct ibv_wc *wc));
 void rdma_backend_unregister_comp_handler(void);
 
 int rdma_backend_query_port(RdmaBackendDev *backend_dev,
@@ -78,22 +95,22 @@ int rdma_backend_create_qp(RdmaBackendQP *qp, uint8_t qp_type,
 int rdma_backend_qp_state_init(RdmaBackendDev *backend_dev, RdmaBackendQP *qp,
                                uint8_t qp_type, uint32_t qkey);
 int rdma_backend_qp_state_rtr(RdmaBackendDev *backend_dev, RdmaBackendQP *qp,
-                              uint8_t qp_type, union ibv_gid *dgid,
-                              uint32_t dqpn, uint32_t rq_psn, uint32_t qkey,
-                              bool use_qkey);
+                              uint8_t qp_type, uint8_t sgid_idx,
+                              union ibv_gid *dgid, uint32_t dqpn,
+                              uint32_t rq_psn, uint32_t qkey, bool use_qkey);
 int rdma_backend_qp_state_rts(RdmaBackendQP *qp, uint8_t qp_type,
                               uint32_t sq_psn, uint32_t qkey, bool use_qkey);
 int rdma_backend_query_qp(RdmaBackendQP *qp, struct ibv_qp_attr *attr,
                           int attr_mask, struct ibv_qp_init_attr *init_attr);
-void rdma_backend_destroy_qp(RdmaBackendQP *qp);
+void rdma_backend_destroy_qp(RdmaBackendQP *qp, RdmaDeviceResources *dev_res);
 
 void rdma_backend_post_send(RdmaBackendDev *backend_dev,
                             RdmaBackendQP *qp, uint8_t qp_type,
                             struct ibv_sge *sge, uint32_t num_sge,
+                            uint8_t sgid_idx, union ibv_gid *sgid,
                             union ibv_gid *dgid, uint32_t dqpn, uint32_t dqkey,
                             void *ctx);
 void rdma_backend_post_recv(RdmaBackendDev *backend_dev,
-                            RdmaDeviceResources *rdma_dev_res,
                             RdmaBackendQP *qp, uint8_t qp_type,
                             struct ibv_sge *sge, uint32_t num_sge, void *ctx);
 

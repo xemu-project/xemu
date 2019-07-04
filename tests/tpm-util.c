@@ -22,8 +22,6 @@
 #define TIS_REG(LOCTY, REG) \
     (TPM_TIS_ADDR_BASE + ((LOCTY) << 12) + REG)
 
-static bool got_stop;
-
 void tpm_util_crb_transfer(QTestState *s,
                            const unsigned char *req, size_t req_size,
                            unsigned char *rsp, size_t rsp_size)
@@ -147,39 +145,33 @@ void tpm_util_pcrread(QTestState *s, tx_func *tx,
     g_assert_cmpmem(buffer, exp_resp_size, exp_resp, exp_resp_size);
 }
 
-static gboolean tpm_util_swtpm_has_tpm2(void)
+bool tpm_util_swtpm_has_tpm2(void)
 {
-    gint mystdout;
-    gboolean succ;
-    unsigned i;
-    char buffer[10240];
-    ssize_t n;
-    gchar *swtpm_argv[] = {
-        g_strdup("swtpm"), g_strdup("socket"), g_strdup("--help"), NULL
+    bool has_tpm2 = false;
+    char *out = NULL;
+    static const char *argv[] = {
+        "swtpm", "socket", "--help", NULL
     };
 
-    succ = g_spawn_async_with_pipes(NULL, swtpm_argv, NULL,
-                                    G_SPAWN_SEARCH_PATH, NULL, NULL, NULL,
-                                    NULL, &mystdout, NULL, NULL);
-    if (!succ) {
-        goto cleanup;
+    if (!g_spawn_sync(NULL /* working_dir */,
+                      (char **)argv,
+                      NULL /* envp */,
+                      G_SPAWN_SEARCH_PATH,
+                      NULL /* child_setup */,
+                      NULL /* user_data */,
+                      &out,
+                      NULL /* err */,
+                      NULL /* exit_status */,
+                      NULL)) {
+        return false;
     }
 
-    n = read(mystdout, buffer, sizeof(buffer) - 1);
-    if (n < 0) {
-        goto cleanup;
-    }
-    buffer[n] = 0;
-    if (!strstr(buffer, "--tpm2")) {
-        succ = false;
+    if (strstr(out, "--tpm2")) {
+        has_tpm2 = true;
     }
 
- cleanup:
-    for (i = 0; swtpm_argv[i]; i++) {
-        g_free(swtpm_argv[i]);
-    }
-
-    return succ;
+    g_free(out);
+    return has_tpm2;
 }
 
 gboolean tpm_util_swtpm_start(const char *path, GPid *pid,
@@ -198,11 +190,6 @@ gboolean tpm_util_swtpm_start(const char *path, GPid *pid,
     gboolean succ;
     unsigned i;
 
-    succ = tpm_util_swtpm_has_tpm2();
-    if (!succ) {
-        goto cleanup;
-    }
-
     *addr = g_new0(SocketAddress, 1);
     (*addr)->type = SOCKET_ADDRESS_TYPE_UNIX;
     (*addr)->u.q_unix.path = g_build_filename(path, "sock", NULL);
@@ -210,7 +197,6 @@ gboolean tpm_util_swtpm_start(const char *path, GPid *pid,
     succ = g_spawn_async(NULL, swtpm_argv, NULL, G_SPAWN_SEARCH_PATH,
                          NULL, NULL, pid, error);
 
-cleanup:
     for (i = 0; swtpm_argv[i]; i++) {
         g_free(swtpm_argv[i]);
     }
@@ -239,52 +225,27 @@ void tpm_util_swtpm_kill(GPid pid)
 void tpm_util_migrate(QTestState *who, const char *uri)
 {
     QDict *rsp;
-    gchar *cmd;
 
-    cmd = g_strdup_printf("{ 'execute': 'migrate',"
-                          "'arguments': { 'uri': '%s' } }",
-                          uri);
-    rsp = qtest_qmp(who, cmd);
-    g_free(cmd);
+    rsp = qtest_qmp(who,
+                    "{ 'execute': 'migrate', 'arguments': { 'uri': %s } }",
+                    uri);
     g_assert(qdict_haskey(rsp, "return"));
     qobject_unref(rsp);
-}
-
-/*
- * Events can get in the way of responses we are actually waiting for.
- */
-static QDict *tpm_util_wait_command(QTestState *who, const char *command)
-{
-    const char *event_string;
-    QDict *response;
-
-    response = qtest_qmp(who, command);
-
-    while (qdict_haskey(response, "event")) {
-        /* OK, it was an event */
-        event_string = qdict_get_str(response, "event");
-        if (!strcmp(event_string, "STOP")) {
-            got_stop = true;
-        }
-        qobject_unref(response);
-        response = qtest_qmp_receive(who);
-    }
-    return response;
 }
 
 void tpm_util_wait_for_migration_complete(QTestState *who)
 {
     while (true) {
-        QDict *rsp, *rsp_return;
+        QDict *rsp_return;
         bool completed;
         const char *status;
 
-        rsp = tpm_util_wait_command(who, "{ 'execute': 'query-migrate' }");
-        rsp_return = qdict_get_qdict(rsp, "return");
+        qtest_qmp_send(who, "{ 'execute': 'query-migrate' }");
+        rsp_return = qtest_qmp_receive_success(who, NULL, NULL);
         status = qdict_get_str(rsp_return, "status");
         completed = strcmp(status, "completed") == 0;
         g_assert_cmpstr(status, !=,  "failed");
-        qobject_unref(rsp);
+        qobject_unref(rsp_return);
         if (completed) {
             return;
         }

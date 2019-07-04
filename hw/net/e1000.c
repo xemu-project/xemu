@@ -36,6 +36,7 @@
 #include "qemu/range.h"
 
 #include "e1000x_common.h"
+#include "trace.h"
 
 static const uint8_t bcast[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
@@ -118,6 +119,8 @@ typedef struct E1000State_st {
     bool mit_timer_on;         /* Mitigation timer is running. */
     bool mit_irq_level;        /* Tracks interrupt pin level. */
     uint32_t mit_ide;          /* Tracks E1000_TXD_CMD_IDE bit. */
+
+    QEMUTimer *flush_queue_timer;
 
 /* Compatibility flags for migration to/from qemu 1.3.0 and older */
 #define E1000_FLAG_AUTONEG_BIT 0
@@ -365,6 +368,7 @@ static void e1000_reset(void *opaque)
 
     timer_del(d->autoneg_timer);
     timer_del(d->mit_timer);
+    timer_del(d->flush_queue_timer);
     d->mit_timer_on = 0;
     d->mit_irq_level = 0;
     d->mit_ide = 0;
@@ -391,6 +395,14 @@ set_ctrl(E1000State *s, int index, uint32_t val)
 }
 
 static void
+e1000_flush_queue_timer(void *opaque)
+{
+    E1000State *s = opaque;
+
+    qemu_flush_queued_packets(qemu_get_queue(s->nic));
+}
+
+static void
 set_rx_control(E1000State *s, int index, uint32_t val)
 {
     s->mac_reg[RCTL] = val;
@@ -398,7 +410,8 @@ set_rx_control(E1000State *s, int index, uint32_t val)
     s->rxbuf_min_shift = ((val / E1000_RCTL_RDMTS_QUAT) & 3) + 1;
     DBGOUT(RX, "RCTL: %d, mac_reg[RCTL] = 0x%x\n", s->mac_reg[RDT],
            s->mac_reg[RCTL]);
-    qemu_flush_queued_packets(qemu_get_queue(s->nic));
+    timer_mod(s->flush_queue_timer,
+              qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 1000);
 }
 
 static void
@@ -836,7 +849,7 @@ e1000_can_receive(NetClientState *nc)
     E1000State *s = qemu_get_nic_opaque(nc);
 
     return e1000x_rx_ready(&s->parent_obj, s->mac_reg) &&
-        e1000_has_rxbufs(s, 1);
+        e1000_has_rxbufs(s, 1) && !timer_pending(s->flush_queue_timer);
 }
 
 static uint64_t rx_desc_base(E1000State *s)
@@ -845,6 +858,15 @@ static uint64_t rx_desc_base(E1000State *s)
     uint64_t bal = s->mac_reg[RDBAL] & ~0xf;
 
     return (bah << 32) + bal;
+}
+
+static void
+e1000_receiver_overrun(E1000State *s, size_t size)
+{
+    trace_e1000_receiver_overrun(size, s->mac_reg[RDH], s->mac_reg[RDT]);
+    e1000x_inc_reg_if_not_full(s->mac_reg, RNBC);
+    e1000x_inc_reg_if_not_full(s->mac_reg, MPC);
+    set_ics(s, 0, E1000_ICS_RXO);
 }
 
 static ssize_t
@@ -869,6 +891,10 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
 
     if (!e1000x_hw_rx_enabled(s->mac_reg)) {
         return -1;
+    }
+
+    if (timer_pending(s->flush_queue_timer)) {
+        return 0;
     }
 
     /* Pad to minimum Ethernet frame length */
@@ -916,8 +942,8 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
     desc_offset = 0;
     total_size = size + e1000x_fcs_len(s->mac_reg);
     if (!e1000_has_rxbufs(s, total_size)) {
-            set_ics(s, 0, E1000_ICS_RXO);
-            return -1;
+        e1000_receiver_overrun(s, total_size);
+        return -1;
     }
     do {
         desc_size = total_size - desc_offset;
@@ -969,7 +995,7 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
             rdh_start >= s->mac_reg[RDLEN] / sizeof(desc)) {
             DBGOUT(RXERR, "RDH wraparound @%x, RDT %x, RDLEN %x\n",
                    rdh_start, s->mac_reg[RDT], s->mac_reg[RDLEN]);
-            set_ics(s, 0, E1000_ICS_RXO);
+            e1000_receiver_overrun(s, total_size);
             return -1;
         }
     } while (desc_offset < total_size);
@@ -1627,6 +1653,8 @@ pci_e1000_uninit(PCIDevice *dev)
     timer_free(d->autoneg_timer);
     timer_del(d->mit_timer);
     timer_free(d->mit_timer);
+    timer_del(d->flush_queue_timer);
+    timer_free(d->flush_queue_timer);
     qemu_del_nic(d->nic);
 }
 
@@ -1690,6 +1718,8 @@ static void pci_e1000_realize(PCIDevice *pci_dev, Error **errp)
 
     d->autoneg_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL, e1000_autoneg_timer, d);
     d->mit_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, e1000_mit_timer, d);
+    d->flush_queue_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL,
+                                        e1000_flush_queue_timer, d);
 }
 
 static void qdev_e1000_reset(DeviceState *dev)

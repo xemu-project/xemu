@@ -21,7 +21,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/error-report.h"
+#include "qapi/error.h"
 #include "monitor/monitor.h"
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
@@ -393,9 +393,9 @@ static void ioapic_realize(DeviceState *dev, Error **errp)
     IOAPICCommonState *s = IOAPIC_COMMON(dev);
 
     if (s->version != 0x11 && s->version != 0x20) {
-        error_report("IOAPIC only supports version 0x11 or 0x20 "
-                     "(default: 0x%x).", IOAPIC_VER_DEF);
-        exit(1);
+        error_setg(errp, "IOAPIC only supports version 0x11 or 0x20 "
+                   "(default: 0x%x).", IOAPIC_VER_DEF);
+        return;
     }
 
     memory_region_init_io(&s->io_memory, OBJECT(s), &ioapic_io_ops, s,
@@ -429,7 +429,7 @@ static void ioapic_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo ioapic_info = {
-    .name          = "ioapic",
+    .name          = TYPE_IOAPIC,
     .parent        = TYPE_IOAPIC_COMMON,
     .instance_size = sizeof(IOAPICCommonState),
     .class_init    = ioapic_class_init,

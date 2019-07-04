@@ -241,9 +241,9 @@ void pci_bridge_update_mappings(PCIBridge *br)
      * while another accesses an unaffected region. */
     memory_region_transaction_begin();
     pci_bridge_region_del(br, br->windows);
+    pci_bridge_region_cleanup(br, w);
     br->windows = pci_bridge_region_init(br);
     memory_region_transaction_commit();
-    pci_bridge_region_cleanup(br, w);
 }
 
 /* default write_config function for PCI-to-PCI bridge */
@@ -369,7 +369,7 @@ void pci_bridge_initfn(PCIDevice *dev, const char *typename)
      * let users address the bus using the device name.
      */
     if (!br->bus_name && dev->qdev.id && *dev->qdev.id) {
-	    br->bus_name = dev->qdev.id;
+            br->bus_name = dev->qdev.id;
     }
 
     qbus_create_inplace(sec_bus, sizeof(br->sec_bus), typename, DEVICE(dev),
@@ -399,7 +399,7 @@ void pci_bridge_exitfn(PCIDevice *pci_dev)
 
 /*
  * before qdev initialization(qdev_init()), this function sets bus_name and
- * map_irq callback which are necessry for pci_bridge_initfn() to
+ * map_irq callback which are necessary for pci_bridge_initfn() to
  * initialize bus.
  */
 void pci_bridge_map_irq(PCIBridge *br, const char* bus_name,
@@ -411,38 +411,34 @@ void pci_bridge_map_irq(PCIBridge *br, const char* bus_name,
 
 
 int pci_bridge_qemu_reserve_cap_init(PCIDevice *dev, int cap_offset,
-                                     uint32_t bus_reserve, uint64_t io_reserve,
-                                     uint64_t mem_non_pref_reserve,
-                                     uint64_t mem_pref_32_reserve,
-                                     uint64_t mem_pref_64_reserve,
-                                     Error **errp)
+                                     PCIResReserve res_reserve, Error **errp)
 {
-    if (mem_pref_32_reserve != (uint64_t)-1 &&
-        mem_pref_64_reserve != (uint64_t)-1) {
+    if (res_reserve.mem_pref_32 != (uint64_t)-1 &&
+        res_reserve.mem_pref_64 != (uint64_t)-1) {
         error_setg(errp,
                    "PCI resource reserve cap: PREF32 and PREF64 conflict");
         return -EINVAL;
     }
 
-    if (mem_non_pref_reserve != (uint64_t)-1 &&
-        mem_non_pref_reserve >= (1ULL << 32)) {
+    if (res_reserve.mem_non_pref != (uint64_t)-1 &&
+        res_reserve.mem_non_pref >= (1ULL << 32)) {
         error_setg(errp,
                    "PCI resource reserve cap: mem-reserve must be less than 4G");
         return -EINVAL;
     }
 
-    if (mem_pref_32_reserve != (uint64_t)-1 &&
-        mem_pref_32_reserve >= (1ULL << 32)) {
+    if (res_reserve.mem_pref_32 != (uint64_t)-1 &&
+        res_reserve.mem_pref_32 >= (1ULL << 32)) {
         error_setg(errp,
                    "PCI resource reserve cap: pref32-reserve  must be less than 4G");
         return -EINVAL;
     }
 
-    if (bus_reserve == (uint32_t)-1 &&
-        io_reserve == (uint64_t)-1 &&
-        mem_non_pref_reserve == (uint64_t)-1 &&
-        mem_pref_32_reserve == (uint64_t)-1 &&
-        mem_pref_64_reserve == (uint64_t)-1) {
+    if (res_reserve.bus == (uint32_t)-1 &&
+        res_reserve.io == (uint64_t)-1 &&
+        res_reserve.mem_non_pref == (uint64_t)-1 &&
+        res_reserve.mem_pref_32 == (uint64_t)-1 &&
+        res_reserve.mem_pref_64 == (uint64_t)-1) {
         return 0;
     }
 
@@ -450,11 +446,11 @@ int pci_bridge_qemu_reserve_cap_init(PCIDevice *dev, int cap_offset,
     PCIBridgeQemuCap cap = {
             .len = cap_len,
             .type = REDHAT_PCI_CAP_RESOURCE_RESERVE,
-            .bus_res = bus_reserve,
-            .io = io_reserve,
-            .mem = mem_non_pref_reserve,
-            .mem_pref_32 = mem_pref_32_reserve,
-            .mem_pref_64 = mem_pref_64_reserve
+            .bus_res = res_reserve.bus,
+            .io = res_reserve.io,
+            .mem = res_reserve.mem_non_pref,
+            .mem_pref_32 = res_reserve.mem_pref_32,
+            .mem_pref_64 = res_reserve.mem_pref_64
     };
 
     int offset = pci_add_capability(dev, PCI_CAP_ID_VNDR,

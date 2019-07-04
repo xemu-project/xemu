@@ -40,25 +40,10 @@ static int memfd_create(const char *name, unsigned int flags)
 #ifdef __NR_memfd_create
     return syscall(__NR_memfd_create, name, flags);
 #else
+    errno = ENOSYS;
     return -1;
 #endif
 }
-#endif
-
-#ifndef MFD_CLOEXEC
-#define MFD_CLOEXEC 0x0001U
-#endif
-
-#ifndef MFD_ALLOW_SEALING
-#define MFD_ALLOW_SEALING 0x0002U
-#endif
-
-#ifndef MFD_HUGETLB
-#define MFD_HUGETLB 0x0004U
-#endif
-
-#ifndef MFD_HUGE_SHIFT
-#define MFD_HUGE_SHIFT 26
 #endif
 
 int qemu_memfd_create(const char *name, size_t size, bool hugetlb,
@@ -86,14 +71,18 @@ int qemu_memfd_create(const char *name, size_t size, bool hugetlb,
     }
     mfd = memfd_create(name, flags);
     if (mfd < 0) {
+        error_setg_errno(errp, errno,
+                         "failed to create memfd with flags 0x%x", flags);
         goto err;
     }
 
     if (ftruncate(mfd, size) == -1) {
+        error_setg_errno(errp, errno, "failed to resize memfd to %zu", size);
         goto err;
     }
 
     if (seals && fcntl(mfd, F_ADD_SEALS, seals) == -1) {
+        error_setg_errno(errp, errno, "failed to add seals 0x%x", seals);
         goto err;
     }
 
@@ -103,8 +92,9 @@ err:
     if (mfd >= 0) {
         close(mfd);
     }
+#else
+    error_setg_errno(errp, ENOSYS, "failed to create memfd");
 #endif
-    error_setg_errno(errp, errno, "failed to create memfd");
     return -1;
 }
 
@@ -187,6 +177,7 @@ bool qemu_memfd_alloc_check(void)
         int fd;
         void *ptr;
 
+        fd = -1;
         ptr = qemu_memfd_alloc("test", 4096, 0, &fd, NULL);
         memfd_check = ptr ? MEMFD_OK : MEMFD_KO;
         qemu_memfd_free(ptr, 4096, fd);
@@ -200,23 +191,16 @@ bool qemu_memfd_alloc_check(void)
  *
  * Check if host supports memfd.
  */
-bool qemu_memfd_check(void)
+bool qemu_memfd_check(unsigned int flags)
 {
 #ifdef CONFIG_LINUX
-    static int memfd_check = MEMFD_TODO;
+    int mfd = memfd_create("test", flags | MFD_CLOEXEC);
 
-    if (memfd_check == MEMFD_TODO) {
-        int mfd = memfd_create("test", 0);
-        if (mfd >= 0) {
-            memfd_check = MEMFD_OK;
-            close(mfd);
-        } else {
-            memfd_check = MEMFD_KO;
-        }
+    if (mfd >= 0) {
+        close(mfd);
+        return true;
     }
-
-    return memfd_check == MEMFD_OK;
-#else
-    return false;
 #endif
+
+    return false;
 }

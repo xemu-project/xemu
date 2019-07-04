@@ -181,12 +181,12 @@ int load_multiboot(FWCfgState *fw_cfg,
     if (!is_multiboot)
         return 0; /* no multiboot */
 
-    mb_debug("qemu: I believe we found a multiboot image!");
+    mb_debug("I believe we found a multiboot image!");
     memset(bootinfo, 0, sizeof(bootinfo));
     memset(&mbs, 0, sizeof(mbs));
 
     if (flags & 0x00000004) { /* MULTIBOOT_HEADER_HAS_VBE */
-        error_report("qemu: multiboot knows VBE. we don't.");
+        error_report("multiboot knows VBE. we don't");
     }
     if (!(flags & 0x00010000)) { /* MULTIBOOT_HEADER_HAS_ADDR */
         uint64_t elf_entry;
@@ -199,7 +199,7 @@ int load_multiboot(FWCfgState *fw_cfg,
             exit(1);
         }
 
-        kernel_size = load_elf(kernel_filename, NULL, NULL, &elf_entry,
+        kernel_size = load_elf(kernel_filename, NULL, NULL, NULL, &elf_entry,
                                &elf_low, &elf_high, 0, I386_ELF_MACHINE,
                                0, 0);
         if (kernel_size < 0) {
@@ -216,7 +216,7 @@ int load_multiboot(FWCfgState *fw_cfg,
             exit(1);
         }
 
-        mb_debug("qemu: loading multiboot-elf kernel "
+        mb_debug("loading multiboot-elf kernel "
                  "(%#x bytes) with entry %#zx",
                  mb_kernel_size, (size_t)mh_entry_addr);
     } else {
@@ -270,7 +270,7 @@ int load_multiboot(FWCfgState *fw_cfg,
         mb_debug("multiboot: load_addr = %#x", mh_load_addr);
         mb_debug("multiboot: load_end_addr = %#x", mh_load_end_addr);
         mb_debug("multiboot: bss_end_addr = %#x", mh_bss_end_addr);
-        mb_debug("qemu: loading multiboot kernel (%#x bytes) at %#x",
+        mb_debug("loading multiboot kernel (%#x bytes) at %#x",
                  mb_load_size, mh_load_addr);
 
         mbs.mb_buf = g_malloc(mb_kernel_size);
@@ -343,7 +343,11 @@ int load_multiboot(FWCfgState *fw_cfg,
             mbs.mb_buf_size = TARGET_PAGE_ALIGN(mb_mod_length + mbs.mb_buf_size);
             mbs.mb_buf = g_realloc(mbs.mb_buf, mbs.mb_buf_size);
 
-            load_image(one_file, (unsigned char *)mbs.mb_buf + offs);
+            if (load_image_size(one_file, (unsigned char *)mbs.mb_buf + offs,
+                                mbs.mb_buf_size - offs) < 0) {
+                error_report("Error loading file '%s'", one_file);
+                exit(1);
+            }
             mb_add_mod(&mbs, mbs.mb_buf_phys + offs,
                        mbs.mb_buf_phys + offs + mb_mod_length, c);
 

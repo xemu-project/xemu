@@ -206,7 +206,8 @@ static void guest_phys_blocks_region_add(MemoryListener *listener,
 
     /* we only care about RAM */
     if (!memory_region_is_ram(section->mr) ||
-        memory_region_is_ram_device(section->mr)) {
+        memory_region_is_ram_device(section->mr) ||
+        memory_region_is_nonvolatile(section->mr)) {
         return;
     }
 
@@ -222,7 +223,7 @@ static void guest_phys_blocks_region_add(MemoryListener *listener,
     if (!QTAILQ_EMPTY(&g->list->head)) {
         hwaddr predecessor_size;
 
-        predecessor = QTAILQ_LAST(&g->list->head, GuestPhysBlockHead);
+        predecessor = QTAILQ_LAST(&g->list->head);
         predecessor_size = predecessor->target_end - predecessor->target_start;
 
         /* the memory API guarantees monotonically increasing traversal */

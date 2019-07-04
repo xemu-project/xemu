@@ -28,20 +28,20 @@ static void spapr_cpu_reset(void *opaque)
     CPUState *cs = CPU(cpu);
     CPUPPCState *env = &cpu->env;
     PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
-    sPAPRCPUState *spapr_cpu = spapr_cpu_state(cpu);
+    SpaprCpuState *spapr_cpu = spapr_cpu_state(cpu);
     target_ulong lpcr;
 
     cpu_reset(cs);
-
-    /* Set compatibility mode to match the boot CPU, which was either set
-     * by the machine reset code or by CAS. This should never fail.
-     */
-    ppc_set_compat(cpu, POWERPC_CPU(first_cpu)->compat_pvr, &error_abort);
 
     /* All CPUs start halted.  CPU0 is unhalted from the machine level
      * reset code and the rest are explicitly started up by the guest
      * using an RTAS call */
     cs->halted = 1;
+
+    /* Set compatibility mode to match the boot CPU, which was either set
+     * by the machine reset code or by CAS. This should never fail.
+     */
+    ppc_set_compat(cpu, POWERPC_CPU(first_cpu)->compat_pvr, &error_abort);
 
     env->spr[SPR_HIOR] = 0;
 
@@ -89,6 +89,7 @@ void spapr_cpu_set_entry_state(PowerPCCPU *cpu, target_ulong nip, target_ulong r
 
     env->nip = nip;
     env->gpr[3] = r3;
+    kvmppc_set_reg_ppc_online(cpu, 1);
     CPU(cpu)->halted = 0;
     /* Enable Power-saving mode Exit Cause exceptions */
     ppc_store_lpcr(cpu, env->spr[SPR_LPCR] | pcc->lpcr_pm);
@@ -113,29 +114,9 @@ const char *spapr_get_cpu_core_type(const char *cpu_type)
     return object_class_get_name(oc);
 }
 
-static void spapr_unrealize_vcpu(PowerPCCPU *cpu)
-{
-    qemu_unregister_reset(spapr_cpu_reset, cpu);
-    object_unparent(cpu->intc);
-    cpu_remove_sync(CPU(cpu));
-    object_unparent(OBJECT(cpu));
-}
-
-static void spapr_cpu_core_unrealize(DeviceState *dev, Error **errp)
-{
-    sPAPRCPUCore *sc = SPAPR_CPU_CORE(OBJECT(dev));
-    CPUCore *cc = CPU_CORE(dev);
-    int i;
-
-    for (i = 0; i < cc->nr_threads; i++) {
-        spapr_unrealize_vcpu(sc->threads[i]);
-    }
-    g_free(sc->threads);
-}
-
 static bool slb_shadow_needed(void *opaque)
 {
-    sPAPRCPUState *spapr_cpu = opaque;
+    SpaprCpuState *spapr_cpu = opaque;
 
     return spapr_cpu->slb_shadow_addr != 0;
 }
@@ -146,15 +127,15 @@ static const VMStateDescription vmstate_spapr_cpu_slb_shadow = {
     .minimum_version_id = 1,
     .needed = slb_shadow_needed,
     .fields = (VMStateField[]) {
-        VMSTATE_UINT64(slb_shadow_addr, sPAPRCPUState),
-        VMSTATE_UINT64(slb_shadow_size, sPAPRCPUState),
+        VMSTATE_UINT64(slb_shadow_addr, SpaprCpuState),
+        VMSTATE_UINT64(slb_shadow_size, SpaprCpuState),
         VMSTATE_END_OF_LIST()
     }
 };
 
 static bool dtl_needed(void *opaque)
 {
-    sPAPRCPUState *spapr_cpu = opaque;
+    SpaprCpuState *spapr_cpu = opaque;
 
     return spapr_cpu->dtl_addr != 0;
 }
@@ -165,15 +146,15 @@ static const VMStateDescription vmstate_spapr_cpu_dtl = {
     .minimum_version_id = 1,
     .needed = dtl_needed,
     .fields = (VMStateField[]) {
-        VMSTATE_UINT64(dtl_addr, sPAPRCPUState),
-        VMSTATE_UINT64(dtl_size, sPAPRCPUState),
+        VMSTATE_UINT64(dtl_addr, SpaprCpuState),
+        VMSTATE_UINT64(dtl_size, SpaprCpuState),
         VMSTATE_END_OF_LIST()
     }
 };
 
 static bool vpa_needed(void *opaque)
 {
-    sPAPRCPUState *spapr_cpu = opaque;
+    SpaprCpuState *spapr_cpu = opaque;
 
     return spapr_cpu->vpa_addr != 0;
 }
@@ -184,7 +165,7 @@ static const VMStateDescription vmstate_spapr_cpu_vpa = {
     .minimum_version_id = 1,
     .needed = vpa_needed,
     .fields = (VMStateField[]) {
-        VMSTATE_UINT64(vpa_addr, sPAPRCPUState),
+        VMSTATE_UINT64(vpa_addr, SpaprCpuState),
         VMSTATE_END_OF_LIST()
     },
     .subsections = (const VMStateDescription * []) {
@@ -207,10 +188,39 @@ static const VMStateDescription vmstate_spapr_cpu_state = {
     }
 };
 
-static void spapr_realize_vcpu(PowerPCCPU *cpu, sPAPRMachineState *spapr,
-                               Error **errp)
+static void spapr_unrealize_vcpu(PowerPCCPU *cpu, SpaprCpuCore *sc)
+{
+    if (!sc->pre_3_0_migration) {
+        vmstate_unregister(NULL, &vmstate_spapr_cpu_state, cpu->machine_data);
+    }
+    qemu_unregister_reset(spapr_cpu_reset, cpu);
+    if (spapr_cpu_state(cpu)->icp) {
+        object_unparent(OBJECT(spapr_cpu_state(cpu)->icp));
+    }
+    if (spapr_cpu_state(cpu)->tctx) {
+        object_unparent(OBJECT(spapr_cpu_state(cpu)->tctx));
+    }
+    cpu_remove_sync(CPU(cpu));
+    object_unparent(OBJECT(cpu));
+}
+
+static void spapr_cpu_core_unrealize(DeviceState *dev, Error **errp)
+{
+    SpaprCpuCore *sc = SPAPR_CPU_CORE(OBJECT(dev));
+    CPUCore *cc = CPU_CORE(dev);
+    int i;
+
+    for (i = 0; i < cc->nr_threads; i++) {
+        spapr_unrealize_vcpu(sc->threads[i], sc);
+    }
+    g_free(sc->threads);
+}
+
+static void spapr_realize_vcpu(PowerPCCPU *cpu, SpaprMachineState *spapr,
+                               SpaprCpuCore *sc, Error **errp)
 {
     CPUPPCState *env = &cpu->env;
+    CPUState *cs = CPU(cpu);
     Error *local_err = NULL;
 
     object_property_set_bool(OBJECT(cpu), true, "realized", &local_err);
@@ -227,10 +237,14 @@ static void spapr_realize_vcpu(PowerPCCPU *cpu, sPAPRMachineState *spapr,
     qemu_register_reset(spapr_cpu_reset, cpu);
     spapr_cpu_reset(cpu);
 
-    cpu->intc = icp_create(OBJECT(cpu), spapr->icp_type, XICS_FABRIC(spapr),
-                           &local_err);
+    spapr->irq->cpu_intc_create(spapr, cpu, &local_err);
     if (local_err) {
         goto error_unregister;
+    }
+
+    if (!sc->pre_3_0_migration) {
+        vmstate_register(NULL, cs->cpu_index, &vmstate_spapr_cpu_state,
+                         cpu->machine_data);
     }
 
     return;
@@ -242,9 +256,9 @@ error:
     error_propagate(errp, local_err);
 }
 
-static PowerPCCPU *spapr_create_vcpu(sPAPRCPUCore *sc, int i, Error **errp)
+static PowerPCCPU *spapr_create_vcpu(SpaprCpuCore *sc, int i, Error **errp)
 {
-    sPAPRCPUCoreClass *scc = SPAPR_CPU_CORE_GET_CLASS(sc);
+    SpaprCpuCoreClass *scc = SPAPR_CPU_CORE_GET_CLASS(sc);
     CPUCore *cc = CPU_CORE(sc);
     Object *obj;
     char *id;
@@ -271,11 +285,7 @@ static PowerPCCPU *spapr_create_vcpu(sPAPRCPUCore *sc, int i, Error **errp)
         goto err;
     }
 
-    cpu->machine_data = g_new0(sPAPRCPUState, 1);
-    if (!sc->pre_3_0_migration) {
-        vmstate_register(NULL, cs->cpu_index, &vmstate_spapr_cpu_state,
-                         cpu->machine_data);
-    }
+    cpu->machine_data = g_new0(SpaprCpuState, 1);
 
     object_unref(obj);
     return cpu;
@@ -286,13 +296,10 @@ err:
     return NULL;
 }
 
-static void spapr_delete_vcpu(PowerPCCPU *cpu, sPAPRCPUCore *sc)
+static void spapr_delete_vcpu(PowerPCCPU *cpu, SpaprCpuCore *sc)
 {
-    sPAPRCPUState *spapr_cpu = spapr_cpu_state(cpu);
+    SpaprCpuState *spapr_cpu = spapr_cpu_state(cpu);
 
-    if (!sc->pre_3_0_migration) {
-        vmstate_unregister(NULL, &vmstate_spapr_cpu_state, cpu->machine_data);
-    }
     cpu->machine_data = NULL;
     g_free(spapr_cpu);
     object_unparent(OBJECT(cpu));
@@ -303,10 +310,10 @@ static void spapr_cpu_core_realize(DeviceState *dev, Error **errp)
     /* We don't use SPAPR_MACHINE() in order to exit gracefully if the user
      * tries to add a sPAPR CPU core to a non-pseries machine.
      */
-    sPAPRMachineState *spapr =
-        (sPAPRMachineState *) object_dynamic_cast(qdev_get_machine(),
+    SpaprMachineState *spapr =
+        (SpaprMachineState *) object_dynamic_cast(qdev_get_machine(),
                                                   TYPE_SPAPR_MACHINE);
-    sPAPRCPUCore *sc = SPAPR_CPU_CORE(OBJECT(dev));
+    SpaprCpuCore *sc = SPAPR_CPU_CORE(OBJECT(dev));
     CPUCore *cc = CPU_CORE(OBJECT(dev));
     Error *local_err = NULL;
     int i, j;
@@ -325,7 +332,7 @@ static void spapr_cpu_core_realize(DeviceState *dev, Error **errp)
     }
 
     for (j = 0; j < cc->nr_threads; j++) {
-        spapr_realize_vcpu(sc->threads[j], spapr, &local_err);
+        spapr_realize_vcpu(sc->threads[j], spapr, sc, &local_err);
         if (local_err) {
             goto err_unrealize;
         }
@@ -334,7 +341,7 @@ static void spapr_cpu_core_realize(DeviceState *dev, Error **errp)
 
 err_unrealize:
     while (--j >= 0) {
-        spapr_unrealize_vcpu(sc->threads[j]);
+        spapr_unrealize_vcpu(sc->threads[j], sc);
     }
 err:
     while (--i >= 0) {
@@ -345,8 +352,8 @@ err:
 }
 
 static Property spapr_cpu_core_properties[] = {
-    DEFINE_PROP_INT32("node-id", sPAPRCPUCore, node_id, CPU_UNSET_NUMA_NODE_ID),
-    DEFINE_PROP_BOOL("pre-3.0-migration", sPAPRCPUCore, pre_3_0_migration,
+    DEFINE_PROP_INT32("node-id", SpaprCpuCore, node_id, CPU_UNSET_NUMA_NODE_ID),
+    DEFINE_PROP_BOOL("pre-3.0-migration", SpaprCpuCore, pre_3_0_migration,
                      false),
     DEFINE_PROP_END_OF_LIST()
 };
@@ -354,7 +361,7 @@ static Property spapr_cpu_core_properties[] = {
 static void spapr_cpu_core_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
-    sPAPRCPUCoreClass *scc = SPAPR_CPU_CORE_CLASS(oc);
+    SpaprCpuCoreClass *scc = SPAPR_CPU_CORE_CLASS(oc);
 
     dc->realize = spapr_cpu_core_realize;
     dc->unrealize = spapr_cpu_core_unrealize;
@@ -375,8 +382,8 @@ static const TypeInfo spapr_cpu_core_type_infos[] = {
         .name = TYPE_SPAPR_CPU_CORE,
         .parent = TYPE_CPU_CORE,
         .abstract = true,
-        .instance_size = sizeof(sPAPRCPUCore),
-        .class_size = sizeof(sPAPRCPUCoreClass),
+        .instance_size = sizeof(SpaprCpuCore),
+        .class_size = sizeof(SpaprCpuCoreClass),
     },
     DEFINE_SPAPR_CPU_CORE_TYPE("970_v2.2"),
     DEFINE_SPAPR_CPU_CORE_TYPE("970mp_v1.0"),

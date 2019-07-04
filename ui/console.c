@@ -182,7 +182,7 @@ struct DisplayState {
 
 static DisplayState *display_state;
 static QemuConsole *active_console;
-static QTAILQ_HEAD(consoles_head, QemuConsole) consoles =
+static QTAILQ_HEAD(, QemuConsole) consoles =
     QTAILQ_HEAD_INITIALIZER(consoles);
 static bool cursor_visible_phase;
 static QEMUTimer *cursor_timer;
@@ -1303,7 +1303,7 @@ static QemuConsole *new_console(DisplayState *ds, console_type_t console_type,
         s->index = 0;
         QTAILQ_INSERT_TAIL(&consoles, s, next);
     } else if (console_type != GRAPHIC_CONSOLE || qdev_hotplug) {
-        QemuConsole *last = QTAILQ_LAST(&consoles, consoles_head);
+        QemuConsole *last = QTAILQ_LAST(&consoles);
         s->index = last->index + 1;
         QTAILQ_INSERT_TAIL(&consoles, s, next);
     } else {
@@ -1381,42 +1381,6 @@ DisplaySurface *qemu_create_displaysurface_pixman(pixman_image_t *image)
     trace_displaysurface_create_pixman(surface);
     surface->format = pixman_image_get_format(image);
     surface->image = pixman_image_ref(image);
-
-    return surface;
-}
-
-static void qemu_unmap_displaysurface_guestmem(pixman_image_t *image,
-                                               void *unused)
-{
-    void *data = pixman_image_get_data(image);
-    uint32_t size = pixman_image_get_stride(image) *
-        pixman_image_get_height(image);
-    cpu_physical_memory_unmap(data, size, 0, 0);
-}
-
-DisplaySurface *qemu_create_displaysurface_guestmem(int width, int height,
-                                                    pixman_format_code_t format,
-                                                    int linesize, uint64_t addr)
-{
-    DisplaySurface *surface;
-    hwaddr size;
-    void *data;
-
-    if (linesize == 0) {
-        linesize = width * PIXMAN_FORMAT_BPP(format) / 8;
-    }
-
-    size = (hwaddr)linesize * height;
-    data = cpu_physical_memory_map(addr, &size, 0);
-    if (size != (hwaddr)linesize * height) {
-        cpu_physical_memory_unmap(data, size, 0, 0);
-        return NULL;
-    }
-
-    surface = qemu_create_displaysurface_from
-        (width, height, format, linesize, data);
-    pixman_image_set_destroy_function
-        (surface->image, qemu_unmap_displaysurface_guestmem, NULL);
 
     return surface;
 }
@@ -2319,7 +2283,7 @@ bool qemu_display_find_default(DisplayOptions *opts)
 
     for (i = 0; i < ARRAY_SIZE(prio); i++) {
         if (dpys[prio[i]] == NULL) {
-            ui_module_load_one(DisplayType_lookup.array[prio[i]]);
+            ui_module_load_one(DisplayType_str(prio[i]));
         }
         if (dpys[prio[i]] == NULL) {
             continue;
@@ -2337,11 +2301,11 @@ void qemu_display_early_init(DisplayOptions *opts)
         return;
     }
     if (dpys[opts->type] == NULL) {
-        ui_module_load_one(DisplayType_lookup.array[opts->type]);
+        ui_module_load_one(DisplayType_str(opts->type));
     }
     if (dpys[opts->type] == NULL) {
         error_report("Display '%s' is not available.",
-                     DisplayType_lookup.array[opts->type]);
+                     DisplayType_str(opts->type));
         exit(1);
     }
     if (dpys[opts->type]->early_init) {

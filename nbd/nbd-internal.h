@@ -46,8 +46,9 @@
 /* Size of oldstyle negotiation */
 #define NBD_OLDSTYLE_NEGOTIATE_SIZE (8 + 8 + 8 + 4 + 124)
 
+#define NBD_INIT_MAGIC              0x4e42444d41474943LL /* ASCII "NBDMAGIC" */
 #define NBD_REQUEST_MAGIC           0x25609513
-#define NBD_OPTS_MAGIC              0x49484156454F5054LL
+#define NBD_OPTS_MAGIC              0x49484156454F5054LL /* ASCII "IHAVEOPT" */
 #define NBD_CLIENT_MAGIC            0x0000420281861253LL
 #define NBD_REP_MAGIC               0x0003e889045565a9LL
 
@@ -62,25 +63,6 @@
 #define NBD_DISCONNECT              _IO(0xab, 8)
 #define NBD_SET_TIMEOUT             _IO(0xab, 9)
 #define NBD_SET_FLAGS               _IO(0xab, 10)
-
-/* nbd_read_eof
- * Tries to read @size bytes from @ioc.
- * Returns 1 on success
- *         0 on eof, when no data was read (errp is not set)
- *         negative errno on failure (errp is set)
- */
-static inline int nbd_read_eof(QIOChannel *ioc, void *buffer, size_t size,
-                               Error **errp)
-{
-    int ret;
-
-    assert(size);
-    ret = qio_channel_read_all_eof(ioc, buffer, size, errp);
-    if (ret < 0) {
-        ret = -EIO;
-    }
-    return ret;
-}
 
 /* nbd_write
  * Writes @size bytes to @ioc. Returns 0 on success.
@@ -100,11 +82,6 @@ struct NBDTLSHandshakeData {
 
 void nbd_tls_handshake(QIOTask *task,
                        void *opaque);
-const char *nbd_opt_lookup(uint32_t opt);
-const char *nbd_rep_lookup(uint32_t rep);
-const char *nbd_info_lookup(uint16_t info);
-const char *nbd_cmd_lookup(uint16_t info);
-const char *nbd_err_lookup(int err);
 
 int nbd_drop(QIOChannel *ioc, size_t size, Error **errp);
 

@@ -13,50 +13,18 @@
 #ifndef TEST_ACPI_UTILS_H
 #define TEST_ACPI_UTILS_H
 
-#include "hw/acpi/acpi-defs.h"
 #include "libqtest.h"
 
 /* DSDT and SSDTs format */
 typedef struct {
-    AcpiTableHeader header;
-    gchar *aml;            /* aml bytecode from guest */
-    gsize aml_len;
+    uint8_t *aml;            /* aml bytecode from guest */
+    uint32_t aml_len;
     gchar *aml_file;
     gchar *asl;            /* asl code generated from aml */
     gsize asl_len;
     gchar *asl_file;
     bool tmp_files_retain;   /* do not delete the temp asl/aml */
 } AcpiSdtTable;
-
-#define ACPI_READ_FIELD(field, addr)            \
-    do {                                        \
-        memread(addr, &field, sizeof(field));   \
-        addr += sizeof(field);                  \
-    } while (0)
-
-#define ACPI_READ_ARRAY_PTR(arr, length, addr)  \
-    do {                                        \
-        int idx;                                \
-        for (idx = 0; idx < length; ++idx) {    \
-            ACPI_READ_FIELD(arr[idx], addr);    \
-        }                                       \
-    } while (0)
-
-#define ACPI_READ_ARRAY(arr, addr)                               \
-    ACPI_READ_ARRAY_PTR(arr, sizeof(arr) / sizeof(arr[0]), addr)
-
-#define ACPI_READ_TABLE_HEADER(table, addr)                      \
-    do {                                                         \
-        ACPI_READ_FIELD((table)->signature, addr);               \
-        ACPI_READ_FIELD((table)->length, addr);                  \
-        ACPI_READ_FIELD((table)->revision, addr);                \
-        ACPI_READ_FIELD((table)->checksum, addr);                \
-        ACPI_READ_ARRAY((table)->oem_id, addr);                  \
-        ACPI_READ_ARRAY((table)->oem_table_id, addr);            \
-        ACPI_READ_FIELD((table)->oem_revision, addr);            \
-        ACPI_READ_ARRAY((table)->asl_compiler_id, addr);         \
-        ACPI_READ_FIELD((table)->asl_compiler_revision, addr);   \
-    } while (0)
 
 #define ACPI_ASSERT_CMP(actual, expected) do { \
     char ACPI_ASSERT_CMP_str[5] = {}; \
@@ -70,18 +38,18 @@ typedef struct {
     g_assert_cmpstr(ACPI_ASSERT_CMP_str, ==, expected); \
 } while (0)
 
-#define ACPI_READ_GENERIC_ADDRESS(field, addr)       \
-    do {                                             \
-        ACPI_READ_FIELD((field).space_id, addr);     \
-        ACPI_READ_FIELD((field).bit_width, addr);    \
-        ACPI_READ_FIELD((field).bit_offset, addr);   \
-        ACPI_READ_FIELD((field).access_width, addr); \
-        ACPI_READ_FIELD((field).address, addr);      \
-    } while (0)
 
+#define ACPI_FOREACH_RSDT_ENTRY(table, table_len, entry_ptr, entry_size) \
+    for (entry_ptr = table + 36 /* 1st Entry */;                         \
+         entry_ptr < table + table_len;                                  \
+         entry_ptr += entry_size)
 
 uint8_t acpi_calc_checksum(const uint8_t *data, int len);
-uint32_t acpi_find_rsdp_address(void);
-void acpi_parse_rsdp_table(uint32_t addr, AcpiRsdpDescriptor *rsdp_table);
+uint32_t acpi_find_rsdp_address(QTestState *qts);
+uint64_t acpi_get_xsdt_address(uint8_t *rsdp_table);
+void acpi_parse_rsdp_table(QTestState *qts, uint32_t addr, uint8_t *rsdp_table);
+void acpi_fetch_table(QTestState *qts, uint8_t **aml, uint32_t *aml_len,
+                      const uint8_t *addr_ptr, const char *sig,
+                      bool verify_checksum);
 
 #endif  /* TEST_ACPI_UTILS_H */

@@ -1,0 +1,37 @@
+config HTIF
+    bool
+
+config HART
+    bool
+
+config SIFIVE
+    bool
+    select MSI_NONBROKEN
+
+config SIFIVE_E
+    bool
+    select HART
+    select SIFIVE
+
+config SIFIVE_U
+    bool
+    select CADENCE
+    select HART
+    select SIFIVE
+
+config SPIKE
+    bool
+    select HART
+    select HTIF
+    select SIFIVE
+
+config RISCV_VIRT
+    bool
+    imply PCI_DEVICES
+    imply TEST_DEVICES
+    select PCI
+    select HART
+    select SERIAL
+    select VIRTIO_MMIO
+    select PCI_EXPRESS_GENERIC_BRIDGE
+    select SIFIVE

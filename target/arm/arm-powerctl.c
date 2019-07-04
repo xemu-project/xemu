@@ -103,6 +103,16 @@ static void arm_set_cpu_on_async_work(CPUState *target_cpu_state,
     } else {
         /* Processor is not in secure mode */
         target_cpu->env.cp15.scr_el3 |= SCR_NS;
+
+        /*
+         * If QEMU is providing the equivalent of EL3 firmware, then we need
+         * to make sure a CPU targeting EL2 comes out of reset with a
+         * functional HVC insn.
+         */
+        if (arm_feature(&target_cpu->env, ARM_FEATURE_EL3)
+            && info->target_el == 2) {
+            target_cpu->env.cp15.scr_el3 |= SCR_HCE;
+        }
     }
 
     /* We check if the started CPU is now at the correct level */
@@ -110,11 +120,8 @@ static void arm_set_cpu_on_async_work(CPUState *target_cpu_state,
 
     if (info->target_aa64) {
         target_cpu->env.xregs[0] = info->context_id;
-        target_cpu->env.thumb = false;
     } else {
         target_cpu->env.regs[0] = info->context_id;
-        target_cpu->env.thumb = info->entry & 1;
-        info->entry &= 0xfffffffe;
     }
 
     /* Start the new CPU at the requested address */
@@ -216,6 +223,62 @@ int arm_set_cpu_on(uint64_t cpuid, uint64_t entry, uint64_t context_id,
 
     async_run_on_cpu(target_cpu_state, arm_set_cpu_on_async_work,
                      RUN_ON_CPU_HOST_PTR(info));
+
+    /* We are good to go */
+    return QEMU_ARM_POWERCTL_RET_SUCCESS;
+}
+
+static void arm_set_cpu_on_and_reset_async_work(CPUState *target_cpu_state,
+                                                run_on_cpu_data data)
+{
+    ARMCPU *target_cpu = ARM_CPU(target_cpu_state);
+
+    /* Initialize the cpu we are turning on */
+    cpu_reset(target_cpu_state);
+    target_cpu_state->halted = 0;
+
+    /* Finally set the power status */
+    assert(qemu_mutex_iothread_locked());
+    target_cpu->power_state = PSCI_ON;
+}
+
+int arm_set_cpu_on_and_reset(uint64_t cpuid)
+{
+    CPUState *target_cpu_state;
+    ARMCPU *target_cpu;
+
+    assert(qemu_mutex_iothread_locked());
+
+    /* Retrieve the cpu we are powering up */
+    target_cpu_state = arm_get_cpu_by_id(cpuid);
+    if (!target_cpu_state) {
+        /* The cpu was not found */
+        return QEMU_ARM_POWERCTL_INVALID_PARAM;
+    }
+
+    target_cpu = ARM_CPU(target_cpu_state);
+    if (target_cpu->power_state == PSCI_ON) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "[ARM]%s: CPU %" PRId64 " is already on\n",
+                      __func__, cpuid);
+        return QEMU_ARM_POWERCTL_ALREADY_ON;
+    }
+
+    /*
+     * If another CPU has powered the target on we are in the state
+     * ON_PENDING and additional attempts to power on the CPU should
+     * fail (see 6.6 Implementation CPU_ON/CPU_OFF races in the PSCI
+     * spec)
+     */
+    if (target_cpu->power_state == PSCI_ON_PENDING) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "[ARM]%s: CPU %" PRId64 " is already powering on\n",
+                      __func__, cpuid);
+        return QEMU_ARM_POWERCTL_ON_PENDING;
+    }
+
+    async_run_on_cpu(target_cpu_state, arm_set_cpu_on_and_reset_async_work,
+                     RUN_ON_CPU_NULL);
 
     /* We are good to go */
     return QEMU_ARM_POWERCTL_RET_SUCCESS;

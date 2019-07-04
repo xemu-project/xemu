@@ -203,6 +203,11 @@ struct target_ip_mreq_source {
     uint32_t imr_sourceaddr;
 };
 
+struct target_linger {
+    abi_int l_onoff;        /* Linger active                */
+    abi_int l_linger;       /* How long to linger for       */
+};
+
 struct target_timeval {
     abi_long tv_sec;
     abi_long tv_usec;
@@ -857,6 +862,34 @@ struct target_pollfd {
 #define TARGET_FS_IOC_SETFLAGS TARGET_IOW('f', 2, abi_long)
 
 #define TARGET_FS_IOC_FIEMAP TARGET_IOWR('f',11,struct fiemap)
+
+/* usb ioctls */
+#define TARGET_USBDEVFS_CONTROL TARGET_IOWRU('U', 0)
+#define TARGET_USBDEVFS_BULK TARGET_IOWRU('U', 2)
+#define TARGET_USBDEVFS_RESETEP TARGET_IORU('U', 3)
+#define TARGET_USBDEVFS_SETINTERFACE TARGET_IORU('U', 4)
+#define TARGET_USBDEVFS_SETCONFIGURATION TARGET_IORU('U',  5)
+#define TARGET_USBDEVFS_GETDRIVER TARGET_IOWU('U', 8)
+#define TARGET_USBDEVFS_SUBMITURB TARGET_IORU('U', 10)
+#define TARGET_USBDEVFS_DISCARDURB TARGET_IO('U', 11)
+#define TARGET_USBDEVFS_REAPURB TARGET_IOWU('U', 12)
+#define TARGET_USBDEVFS_REAPURBNDELAY TARGET_IOWU('U', 13)
+#define TARGET_USBDEVFS_DISCSIGNAL TARGET_IORU('U', 14)
+#define TARGET_USBDEVFS_CLAIMINTERFACE TARGET_IORU('U', 15)
+#define TARGET_USBDEVFS_RELEASEINTERFACE TARGET_IORU('U', 16)
+#define TARGET_USBDEVFS_CONNECTINFO TARGET_IOWU('U', 17)
+#define TARGET_USBDEVFS_IOCTL TARGET_IOWRU('U', 18)
+#define TARGET_USBDEVFS_HUB_PORTINFO TARGET_IORU('U', 19)
+#define TARGET_USBDEVFS_RESET TARGET_IO('U', 20)
+#define TARGET_USBDEVFS_CLEAR_HALT TARGET_IORU('U', 21)
+#define TARGET_USBDEVFS_DISCONNECT TARGET_IO('U', 22)
+#define TARGET_USBDEVFS_CONNECT TARGET_IO('U', 23)
+#define TARGET_USBDEVFS_CLAIM_PORT TARGET_IORU('U', 24)
+#define TARGET_USBDEVFS_RELEASE_PORT TARGET_IORU('U', 25)
+#define TARGET_USBDEVFS_GET_CAPABILITIES TARGET_IORU('U', 26)
+#define TARGET_USBDEVFS_DISCONNECT_CLAIM TARGET_IORU('U', 27)
+#define TARGET_USBDEVFS_DROP_PRIVILEGES TARGET_IOWU('U', 30)
+#define TARGET_USBDEVFS_GET_SPEED TARGET_IO('U', 31)
 
 /* cdrom commands */
 #define TARGET_CDROMPAUSE		0x5301 /* Pause Audio Operation */
@@ -1774,7 +1807,7 @@ struct target_stat {
 	abi_ulong	st_rdev;
 	abi_long	st_size;
 	abi_long	st_blksize;
-    	abi_long	st_blocks;	/* Number 512-byte blocks allocated. */
+	abi_long	st_blocks;	/* Number 512-byte blocks allocated. */
 
 	abi_ulong	target_st_atime;
 	abi_ulong 	target_st_atime_nsec; 
@@ -1783,7 +1816,7 @@ struct target_stat {
 	abi_ulong	target_st_ctime;
 	abi_ulong       target_st_ctime_nsec;
 
-  	abi_long	__unused[3];
+	abi_long	__unused[3];
 };
 #elif defined(TARGET_S390X)
 struct target_stat {

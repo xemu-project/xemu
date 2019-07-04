@@ -190,49 +190,88 @@ enum {
 /*----------------------------------------------------------------------------
 | Software IEC/IEEE integer-to-floating-point conversion routines.
 *----------------------------------------------------------------------------*/
-float32 int16_to_float32(int16_t, float_status *status);
-float32 int32_to_float32(int32_t, float_status *status);
-float64 int16_to_float64(int16_t, float_status *status);
-float64 int32_to_float64(int32_t, float_status *status);
-float32 uint16_to_float32(uint16_t, float_status *status);
-float32 uint32_to_float32(uint32_t, float_status *status);
-float64 uint16_to_float64(uint16_t, float_status *status);
-float64 uint32_to_float64(uint32_t, float_status *status);
-floatx80 int32_to_floatx80(int32_t, float_status *status);
-float128 int32_to_float128(int32_t, float_status *status);
-float32 int64_to_float32(int64_t, float_status *status);
-float64 int64_to_float64(int64_t, float_status *status);
-floatx80 int64_to_floatx80(int64_t, float_status *status);
-float128 int64_to_float128(int64_t, float_status *status);
-float32 uint64_to_float32(uint64_t, float_status *status);
-float64 uint64_to_float64(uint64_t, float_status *status);
-float128 uint64_to_float128(uint64_t, float_status *status);
 
-/*----------------------------------------------------------------------------
-| Software half-precision conversion routines.
-*----------------------------------------------------------------------------*/
-float16 float32_to_float16(float32, bool ieee, float_status *status);
-float32 float16_to_float32(float16, bool ieee, float_status *status);
-float16 float64_to_float16(float64 a, bool ieee, float_status *status);
-float64 float16_to_float64(float16 a, bool ieee, float_status *status);
-int16_t float16_to_int16(float16, float_status *status);
-uint16_t float16_to_uint16(float16 a, float_status *status);
-int16_t float16_to_int16_round_to_zero(float16, float_status *status);
-uint16_t float16_to_uint16_round_to_zero(float16 a, float_status *status);
-int32_t float16_to_int32(float16, float_status *status);
-uint32_t float16_to_uint32(float16 a, float_status *status);
-int32_t float16_to_int32_round_to_zero(float16, float_status *status);
-uint32_t float16_to_uint32_round_to_zero(float16 a, float_status *status);
-int64_t float16_to_int64(float16, float_status *status);
-uint64_t float16_to_uint64(float16 a, float_status *status);
-int64_t float16_to_int64_round_to_zero(float16, float_status *status);
-uint64_t float16_to_uint64_round_to_zero(float16 a, float_status *status);
+float16 int16_to_float16_scalbn(int16_t a, int, float_status *status);
+float16 int32_to_float16_scalbn(int32_t a, int, float_status *status);
+float16 int64_to_float16_scalbn(int64_t a, int, float_status *status);
+float16 uint16_to_float16_scalbn(uint16_t a, int, float_status *status);
+float16 uint32_to_float16_scalbn(uint32_t a, int, float_status *status);
+float16 uint64_to_float16_scalbn(uint64_t a, int, float_status *status);
+
 float16 int16_to_float16(int16_t a, float_status *status);
 float16 int32_to_float16(int32_t a, float_status *status);
 float16 int64_to_float16(int64_t a, float_status *status);
 float16 uint16_to_float16(uint16_t a, float_status *status);
 float16 uint32_to_float16(uint32_t a, float_status *status);
 float16 uint64_to_float16(uint64_t a, float_status *status);
+
+float32 int16_to_float32_scalbn(int16_t, int, float_status *status);
+float32 int32_to_float32_scalbn(int32_t, int, float_status *status);
+float32 int64_to_float32_scalbn(int64_t, int, float_status *status);
+float32 uint16_to_float32_scalbn(uint16_t, int, float_status *status);
+float32 uint32_to_float32_scalbn(uint32_t, int, float_status *status);
+float32 uint64_to_float32_scalbn(uint64_t, int, float_status *status);
+
+float32 int16_to_float32(int16_t, float_status *status);
+float32 int32_to_float32(int32_t, float_status *status);
+float32 int64_to_float32(int64_t, float_status *status);
+float32 uint16_to_float32(uint16_t, float_status *status);
+float32 uint32_to_float32(uint32_t, float_status *status);
+float32 uint64_to_float32(uint64_t, float_status *status);
+
+float64 int16_to_float64_scalbn(int16_t, int, float_status *status);
+float64 int32_to_float64_scalbn(int32_t, int, float_status *status);
+float64 int64_to_float64_scalbn(int64_t, int, float_status *status);
+float64 uint16_to_float64_scalbn(uint16_t, int, float_status *status);
+float64 uint32_to_float64_scalbn(uint32_t, int, float_status *status);
+float64 uint64_to_float64_scalbn(uint64_t, int, float_status *status);
+
+float64 int16_to_float64(int16_t, float_status *status);
+float64 int32_to_float64(int32_t, float_status *status);
+float64 int64_to_float64(int64_t, float_status *status);
+float64 uint16_to_float64(uint16_t, float_status *status);
+float64 uint32_to_float64(uint32_t, float_status *status);
+float64 uint64_to_float64(uint64_t, float_status *status);
+
+floatx80 int32_to_floatx80(int32_t, float_status *status);
+floatx80 int64_to_floatx80(int64_t, float_status *status);
+
+float128 int32_to_float128(int32_t, float_status *status);
+float128 int64_to_float128(int64_t, float_status *status);
+float128 uint64_to_float128(uint64_t, float_status *status);
+
+/*----------------------------------------------------------------------------
+| Software half-precision conversion routines.
+*----------------------------------------------------------------------------*/
+
+float16 float32_to_float16(float32, bool ieee, float_status *status);
+float32 float16_to_float32(float16, bool ieee, float_status *status);
+float16 float64_to_float16(float64 a, bool ieee, float_status *status);
+float64 float16_to_float64(float16 a, bool ieee, float_status *status);
+
+int16_t float16_to_int16_scalbn(float16, int, int, float_status *status);
+int32_t float16_to_int32_scalbn(float16, int, int, float_status *status);
+int64_t float16_to_int64_scalbn(float16, int, int, float_status *status);
+
+int16_t float16_to_int16(float16, float_status *status);
+int32_t float16_to_int32(float16, float_status *status);
+int64_t float16_to_int64(float16, float_status *status);
+
+int16_t float16_to_int16_round_to_zero(float16, float_status *status);
+int32_t float16_to_int32_round_to_zero(float16, float_status *status);
+int64_t float16_to_int64_round_to_zero(float16, float_status *status);
+
+uint16_t float16_to_uint16_scalbn(float16 a, int, int, float_status *status);
+uint32_t float16_to_uint32_scalbn(float16 a, int, int, float_status *status);
+uint64_t float16_to_uint64_scalbn(float16 a, int, int, float_status *status);
+
+uint16_t float16_to_uint16(float16 a, float_status *status);
+uint32_t float16_to_uint32(float16 a, float_status *status);
+uint64_t float16_to_uint64(float16 a, float_status *status);
+
+uint16_t float16_to_uint16_round_to_zero(float16 a, float_status *status);
+uint32_t float16_to_uint32_round_to_zero(float16 a, float_status *status);
+uint64_t float16_to_uint64_round_to_zero(float16 a, float_status *status);
 
 /*----------------------------------------------------------------------------
 | Software half-precision operations.
@@ -321,18 +360,31 @@ float16 float16_default_nan(float_status *status);
 /*----------------------------------------------------------------------------
 | Software IEC/IEEE single-precision conversion routines.
 *----------------------------------------------------------------------------*/
+
+int16_t float32_to_int16_scalbn(float32, int, int, float_status *status);
+int32_t float32_to_int32_scalbn(float32, int, int, float_status *status);
+int64_t float32_to_int64_scalbn(float32, int, int, float_status *status);
+
 int16_t float32_to_int16(float32, float_status *status);
-uint16_t float32_to_uint16(float32, float_status *status);
-int16_t float32_to_int16_round_to_zero(float32, float_status *status);
-uint16_t float32_to_uint16_round_to_zero(float32, float_status *status);
 int32_t float32_to_int32(float32, float_status *status);
-int32_t float32_to_int32_round_to_zero(float32, float_status *status);
-uint32_t float32_to_uint32(float32, float_status *status);
-uint32_t float32_to_uint32_round_to_zero(float32, float_status *status);
 int64_t float32_to_int64(float32, float_status *status);
-uint64_t float32_to_uint64(float32, float_status *status);
-uint64_t float32_to_uint64_round_to_zero(float32, float_status *status);
+
+int16_t float32_to_int16_round_to_zero(float32, float_status *status);
+int32_t float32_to_int32_round_to_zero(float32, float_status *status);
 int64_t float32_to_int64_round_to_zero(float32, float_status *status);
+
+uint16_t float32_to_uint16_scalbn(float32, int, int, float_status *status);
+uint32_t float32_to_uint32_scalbn(float32, int, int, float_status *status);
+uint64_t float32_to_uint64_scalbn(float32, int, int, float_status *status);
+
+uint16_t float32_to_uint16(float32, float_status *status);
+uint32_t float32_to_uint32(float32, float_status *status);
+uint64_t float32_to_uint64(float32, float_status *status);
+
+uint16_t float32_to_uint16_round_to_zero(float32, float_status *status);
+uint32_t float32_to_uint32_round_to_zero(float32, float_status *status);
+uint64_t float32_to_uint64_round_to_zero(float32, float_status *status);
+
 float64 float32_to_float64(float32, float_status *status);
 floatx80 float32_to_floatx80(float32, float_status *status);
 float128 float32_to_float128(float32, float_status *status);
@@ -412,6 +464,21 @@ static inline int float32_is_zero_or_denormal(float32 a)
     return (float32_val(a) & 0x7f800000) == 0;
 }
 
+static inline bool float32_is_normal(float32 a)
+{
+    return (((float32_val(a) >> 23) + 1) & 0xff) >= 2;
+}
+
+static inline bool float32_is_denormal(float32 a)
+{
+    return float32_is_zero_or_denormal(a) && !float32_is_zero(a);
+}
+
+static inline bool float32_is_zero_or_normal(float32 a)
+{
+    return float32_is_normal(a) || float32_is_zero(a);
+}
+
 static inline float32 float32_set_sign(float32 a, int sign)
 {
     return make_float32((float32_val(a) & 0x7fffffff) | (sign << 31));
@@ -450,18 +517,31 @@ float32 float32_default_nan(float_status *status);
 /*----------------------------------------------------------------------------
 | Software IEC/IEEE double-precision conversion routines.
 *----------------------------------------------------------------------------*/
+
+int16_t float64_to_int16_scalbn(float64, int, int, float_status *status);
+int32_t float64_to_int32_scalbn(float64, int, int, float_status *status);
+int64_t float64_to_int64_scalbn(float64, int, int, float_status *status);
+
 int16_t float64_to_int16(float64, float_status *status);
-uint16_t float64_to_uint16(float64, float_status *status);
-int16_t float64_to_int16_round_to_zero(float64, float_status *status);
-uint16_t float64_to_uint16_round_to_zero(float64, float_status *status);
 int32_t float64_to_int32(float64, float_status *status);
-int32_t float64_to_int32_round_to_zero(float64, float_status *status);
-uint32_t float64_to_uint32(float64, float_status *status);
-uint32_t float64_to_uint32_round_to_zero(float64, float_status *status);
 int64_t float64_to_int64(float64, float_status *status);
+
+int16_t float64_to_int16_round_to_zero(float64, float_status *status);
+int32_t float64_to_int32_round_to_zero(float64, float_status *status);
 int64_t float64_to_int64_round_to_zero(float64, float_status *status);
-uint64_t float64_to_uint64(float64 a, float_status *status);
-uint64_t float64_to_uint64_round_to_zero(float64 a, float_status *status);
+
+uint16_t float64_to_uint16_scalbn(float64, int, int, float_status *status);
+uint32_t float64_to_uint32_scalbn(float64, int, int, float_status *status);
+uint64_t float64_to_uint64_scalbn(float64, int, int, float_status *status);
+
+uint16_t float64_to_uint16(float64, float_status *status);
+uint32_t float64_to_uint32(float64, float_status *status);
+uint64_t float64_to_uint64(float64, float_status *status);
+
+uint16_t float64_to_uint16_round_to_zero(float64, float_status *status);
+uint32_t float64_to_uint32_round_to_zero(float64, float_status *status);
+uint64_t float64_to_uint64_round_to_zero(float64, float_status *status);
+
 float32 float64_to_float32(float64, float_status *status);
 floatx80 float64_to_floatx80(float64, float_status *status);
 float128 float64_to_float128(float64, float_status *status);
@@ -470,7 +550,6 @@ float128 float64_to_float128(float64, float_status *status);
 | Software IEC/IEEE double-precision operations.
 *----------------------------------------------------------------------------*/
 float64 float64_round_to_int(float64, float_status *status);
-float64 float64_trunc_to_int(float64, float_status *status);
 float64 float64_add(float64, float64, float_status *status);
 float64 float64_sub(float64, float64, float_status *status);
 float64 float64_mul(float64, float64, float_status *status);
@@ -539,6 +618,21 @@ static inline int float64_is_any_nan(float64 a)
 static inline int float64_is_zero_or_denormal(float64 a)
 {
     return (float64_val(a) & 0x7ff0000000000000LL) == 0;
+}
+
+static inline bool float64_is_normal(float64 a)
+{
+    return (((float64_val(a) >> 52) + 1) & 0x7ff) >= 2;
+}
+
+static inline bool float64_is_denormal(float64 a)
+{
+    return float64_is_zero_or_denormal(a) && !float64_is_zero(a);
+}
+
+static inline bool float64_is_zero_or_normal(float64 a)
+{
+    return float64_is_normal(a) || float64_is_zero(a);
 }
 
 static inline float64 float64_set_sign(float64 a, int sign)
@@ -784,6 +878,7 @@ int64_t float128_to_int64(float128, float_status *status);
 int64_t float128_to_int64_round_to_zero(float128, float_status *status);
 uint64_t float128_to_uint64(float128, float_status *status);
 uint64_t float128_to_uint64_round_to_zero(float128, float_status *status);
+uint32_t float128_to_uint32(float128, float_status *status);
 uint32_t float128_to_uint32_round_to_zero(float128, float_status *status);
 float32 float128_to_float32(float128, float_status *status);
 float64 float128_to_float64(float128, float_status *status);
@@ -844,6 +939,16 @@ static inline int float128_is_zero(float128 a)
 static inline int float128_is_zero_or_denormal(float128 a)
 {
     return (a.high & 0x7fff000000000000LL) == 0;
+}
+
+static inline bool float128_is_normal(float128 a)
+{
+    return (((a.high >> 48) + 1) & 0x7fff) >= 2;
+}
+
+static inline bool float128_is_denormal(float128 a)
+{
+    return float128_is_zero_or_denormal(a) && !float128_is_zero(a);
 }
 
 static inline int float128_is_any_nan(float128 a)

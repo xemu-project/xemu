@@ -366,7 +366,7 @@ static void * const qemu_st_helpers[16] = {
 static tcg_insn_unit *tb_ret_addr;
 uint64_t s390_facilities;
 
-static void patch_reloc(tcg_insn_unit *code_ptr, int type,
+static bool patch_reloc(tcg_insn_unit *code_ptr, int type,
                         intptr_t value, intptr_t addend)
 {
     intptr_t pcrel2;
@@ -377,22 +377,29 @@ static void patch_reloc(tcg_insn_unit *code_ptr, int type,
 
     switch (type) {
     case R_390_PC16DBL:
-        assert(pcrel2 == (int16_t)pcrel2);
-        tcg_patch16(code_ptr, pcrel2);
+        if (pcrel2 == (int16_t)pcrel2) {
+            tcg_patch16(code_ptr, pcrel2);
+            return true;
+        }
         break;
     case R_390_PC32DBL:
-        assert(pcrel2 == (int32_t)pcrel2);
-        tcg_patch32(code_ptr, pcrel2);
+        if (pcrel2 == (int32_t)pcrel2) {
+            tcg_patch32(code_ptr, pcrel2);
+            return true;
+        }
         break;
     case R_390_20:
-        assert(value == sextract64(value, 0, 20));
-        old = *(uint32_t *)code_ptr & 0xf00000ff;
-        old |= ((value & 0xfff) << 16) | ((value & 0xff000) >> 4);
-        tcg_patch32(code_ptr, old);
+        if (value == sextract64(value, 0, 20)) {
+            old = *(uint32_t *)code_ptr & 0xf00000ff;
+            old |= ((value & 0xfff) << 16) | ((value & 0xff000) >> 4);
+            tcg_patch32(code_ptr, old);
+            return true;
+        }
         break;
     default:
         g_assert_not_reached();
     }
+    return false;
 }
 
 /* parse target specific constraints */
@@ -1329,13 +1336,12 @@ static void tgen_branch(TCGContext *s, int cc, TCGLabel *l)
 static void tgen_compare_branch(TCGContext *s, S390Opcode opc, int cc,
                                 TCGReg r1, TCGReg r2, TCGLabel *l)
 {
-    intptr_t off;
+    intptr_t off = 0;
 
     if (l->has_value) {
         off = l->u.value_ptr - s->code_ptr;
+        tcg_debug_assert(off == (int16_t)off);
     } else {
-        /* We need to keep the offset unchanged for retranslation.  */
-        off = s->code_ptr[1];
         tcg_out_reloc(s, s->code_ptr + 1, R_390_PC16DBL, l, 2);
     }
 
@@ -1347,13 +1353,12 @@ static void tgen_compare_branch(TCGContext *s, S390Opcode opc, int cc,
 static void tgen_compare_imm_branch(TCGContext *s, S390Opcode opc, int cc,
                                     TCGReg r1, int i2, TCGLabel *l)
 {
-    tcg_target_long off;
+    tcg_target_long off = 0;
 
     if (l->has_value) {
         off = l->u.value_ptr - s->code_ptr;
+        tcg_debug_assert(off == (int16_t)off);
     } else {
-        /* We need to keep the offset unchanged for retranslation.  */
-        off = s->code_ptr[1];
         tcg_out_reloc(s, s->code_ptr + 1, R_390_PC16DBL, l, 2);
     }
 
@@ -1532,10 +1537,10 @@ static void tcg_out_qemu_st_direct(TCGContext *s, TCGMemOp opc, TCGReg data,
 #if defined(CONFIG_SOFTMMU)
 #include "tcg-ldst.inc.c"
 
-/* We're expecting to use a 20-bit signed offset on the tlb memory ops.
-   Using the offset of the second entry in the last tlb table ensures
-   that we can index all of the elements of the first entry.  */
-QEMU_BUILD_BUG_ON(offsetof(CPUArchState, tlb_table[NB_MMU_MODES - 1][1])
+/* We're expecting to use a 20-bit signed offset on the tlb memory ops.  */
+QEMU_BUILD_BUG_ON(offsetof(CPUArchState, tlb_mask[NB_MMU_MODES - 1])
+                  > 0x7ffff);
+QEMU_BUILD_BUG_ON(offsetof(CPUArchState, tlb_table[NB_MMU_MODES - 1])
                   > 0x7ffff);
 
 /* Load and compare a TLB entry, leaving the flags set.  Loads the TLB
@@ -1547,48 +1552,41 @@ static TCGReg tcg_out_tlb_read(TCGContext* s, TCGReg addr_reg, TCGMemOp opc,
     unsigned a_bits = get_alignment_bits(opc);
     unsigned s_mask = (1 << s_bits) - 1;
     unsigned a_mask = (1 << a_bits) - 1;
+    int mask_off = offsetof(CPUArchState, tlb_mask[mem_index]);
+    int table_off = offsetof(CPUArchState, tlb_table[mem_index]);
     int ofs, a_off;
     uint64_t tlb_mask;
+
+    tcg_out_sh64(s, RSY_SRLG, TCG_REG_R2, addr_reg, TCG_REG_NONE,
+                 TARGET_PAGE_BITS - CPU_TLB_ENTRY_BITS);
+    tcg_out_insn(s, RXY, NG, TCG_REG_R2, TCG_AREG0, TCG_REG_NONE, mask_off);
+    tcg_out_insn(s, RXY, AG, TCG_REG_R2, TCG_AREG0, TCG_REG_NONE, table_off);
 
     /* For aligned accesses, we check the first byte and include the alignment
        bits within the address.  For unaligned access, we check that we don't
        cross pages using the address of the last byte of the access.  */
     a_off = (a_bits >= s_bits ? 0 : s_mask - a_mask);
     tlb_mask = (uint64_t)TARGET_PAGE_MASK | a_mask;
-
-    if (s390_facilities & FACILITY_GEN_INST_EXT) {
-        tcg_out_risbg(s, TCG_REG_R2, addr_reg,
-                      64 - CPU_TLB_BITS - CPU_TLB_ENTRY_BITS,
-                      63 - CPU_TLB_ENTRY_BITS,
-                      64 + CPU_TLB_ENTRY_BITS - TARGET_PAGE_BITS, 1);
-        if (a_off) {
-            tcg_out_insn(s, RX, LA, TCG_REG_R3, addr_reg, TCG_REG_NONE, a_off);
-            tgen_andi(s, TCG_TYPE_TL, TCG_REG_R3, tlb_mask);
-        } else {
-            tgen_andi_risbg(s, TCG_REG_R3, addr_reg, tlb_mask);
-        }
+    if ((s390_facilities & FACILITY_GEN_INST_EXT) && a_off == 0) {
+        tgen_andi_risbg(s, TCG_REG_R3, addr_reg, tlb_mask);
     } else {
-        tcg_out_sh64(s, RSY_SRLG, TCG_REG_R2, addr_reg, TCG_REG_NONE,
-                     TARGET_PAGE_BITS - CPU_TLB_ENTRY_BITS);
         tcg_out_insn(s, RX, LA, TCG_REG_R3, addr_reg, TCG_REG_NONE, a_off);
-        tgen_andi(s, TCG_TYPE_I64, TCG_REG_R2,
-                  (CPU_TLB_SIZE - 1) << CPU_TLB_ENTRY_BITS);
         tgen_andi(s, TCG_TYPE_TL, TCG_REG_R3, tlb_mask);
     }
 
     if (is_ld) {
-        ofs = offsetof(CPUArchState, tlb_table[mem_index][0].addr_read);
+        ofs = offsetof(CPUTLBEntry, addr_read);
     } else {
-        ofs = offsetof(CPUArchState, tlb_table[mem_index][0].addr_write);
+        ofs = offsetof(CPUTLBEntry, addr_write);
     }
     if (TARGET_LONG_BITS == 32) {
-        tcg_out_mem(s, RX_C, RXY_CY, TCG_REG_R3, TCG_REG_R2, TCG_AREG0, ofs);
+        tcg_out_insn(s, RX, C, TCG_REG_R3, TCG_REG_R2, TCG_REG_NONE, ofs);
     } else {
-        tcg_out_mem(s, 0, RXY_CG, TCG_REG_R3, TCG_REG_R2, TCG_AREG0, ofs);
+        tcg_out_insn(s, RXY, CG, TCG_REG_R3, TCG_REG_R2, TCG_REG_NONE, ofs);
     }
 
-    ofs = offsetof(CPUArchState, tlb_table[mem_index][0].addend);
-    tcg_out_mem(s, 0, RXY_LG, TCG_REG_R2, TCG_REG_R2, TCG_AREG0, ofs);
+    tcg_out_insn(s, RXY, LG, TCG_REG_R2, TCG_REG_R2, TCG_REG_NONE,
+                 offsetof(CPUTLBEntry, addend));
 
     if (TARGET_LONG_BITS == 32) {
         tgen_ext32u(s, TCG_REG_R3, addr_reg);
@@ -1618,7 +1616,9 @@ static void tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
     TCGMemOpIdx oi = lb->oi;
     TCGMemOp opc = get_memop(oi);
 
-    patch_reloc(lb->label_ptr[0], R_390_PC16DBL, (intptr_t)s->code_ptr, 2);
+    bool ok = patch_reloc(lb->label_ptr[0], R_390_PC16DBL,
+                          (intptr_t)s->code_ptr, 2);
+    tcg_debug_assert(ok);
 
     tcg_out_mov(s, TCG_TYPE_PTR, TCG_REG_R2, TCG_AREG0);
     if (TARGET_LONG_BITS == 64) {
@@ -1639,7 +1639,9 @@ static void tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
     TCGMemOpIdx oi = lb->oi;
     TCGMemOp opc = get_memop(oi);
 
-    patch_reloc(lb->label_ptr[0], R_390_PC16DBL, (intptr_t)s->code_ptr, 2);
+    bool ok = patch_reloc(lb->label_ptr[0], R_390_PC16DBL,
+                          (intptr_t)s->code_ptr, 2);
+    tcg_debug_assert(ok);
 
     tcg_out_mov(s, TCG_TYPE_PTR, TCG_REG_R2, TCG_AREG0);
     if (TARGET_LONG_BITS == 64) {
@@ -1696,7 +1698,6 @@ static void tcg_out_qemu_ld(TCGContext* s, TCGReg data_reg, TCGReg addr_reg,
 
     base_reg = tcg_out_tlb_read(s, addr_reg, opc, mem_index, 1);
 
-    /* We need to keep the offset unchanged for retranslation.  */
     tcg_out16(s, RI_BRC | (S390_CC_NE << 4));
     label_ptr = s->code_ptr;
     s->code_ptr += 1;
@@ -1724,7 +1725,6 @@ static void tcg_out_qemu_st(TCGContext* s, TCGReg data_reg, TCGReg addr_reg,
 
     base_reg = tcg_out_tlb_read(s, addr_reg, opc, mem_index, 0);
 
-    /* We need to keep the offset unchanged for retranslation.  */
     tcg_out16(s, RI_BRC | (S390_CC_NE << 4));
     label_ptr = s->code_ptr;
     s->code_ptr += 1;

@@ -9,6 +9,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/units.h"
 #include <glusterfs/api/glfs.h>
 #include "block/block_int.h"
 #include "block/qdict.h"
@@ -19,6 +20,10 @@
 #include "qemu/error-report.h"
 #include "qemu/option.h"
 #include "qemu/cutils.h"
+
+#ifdef CONFIG_GLUSTERFS_FTRUNCATE_HAS_STAT
+# define glfs_ftruncate(fd, offset) glfs_ftruncate(fd, offset, NULL, NULL)
+#endif
 
 #define GLUSTER_OPT_FILENAME        "filename"
 #define GLUSTER_OPT_VOLUME          "volume"
@@ -37,6 +42,12 @@
 #define GLUSTER_DEBUG_MAX           9
 #define GLUSTER_OPT_LOGFILE         "logfile"
 #define GLUSTER_LOGFILE_DEFAULT     "-" /* handled in libgfapi as /dev/stderr */
+/*
+ * Several versions of GlusterFS (3.12? -> 6.0.1) fail when the transfer size
+ * is greater or equal to 1024 MiB, so we are limiting the transfer size to 512
+ * MiB to avoid this rare issue.
+ */
+#define GLUSTER_MAX_TRANSFER        (512 * MiB)
 
 #define GERR_INDEX_HINT "hint: check in 'server' array index '%d'\n"
 
@@ -72,7 +83,7 @@ typedef struct ListElement {
     GlfsPreopened saved;
 } ListElement;
 
-static QLIST_HEAD(glfs_list, ListElement) glfs_list;
+static QLIST_HEAD(, ListElement) glfs_list;
 
 static QemuOptsList qemu_gluster_create_opts = {
     .name = "qemu-gluster-create-opts",
@@ -725,7 +736,11 @@ static struct glfs *qemu_gluster_init(BlockdevOptionsGluster *gconf,
 /*
  * AIO callback routine called from GlusterFS thread.
  */
-static void gluster_finish_aiocb(struct glfs_fd *fd, ssize_t ret, void *arg)
+static void gluster_finish_aiocb(struct glfs_fd *fd, ssize_t ret,
+#ifdef CONFIG_GLUSTERFS_IOCB_HAS_STAT
+                                 struct glfs_stat *pre, struct glfs_stat *post,
+#endif
+                                 void *arg)
 {
     GlusterAIOCB *acb = (GlusterAIOCB *)arg;
 
@@ -849,8 +864,16 @@ static int qemu_gluster_open(BlockDriverState *bs,  QDict *options,
     qemu_gluster_parse_flags(bdrv_flags, &open_flags);
 
     s->fd = glfs_open(s->glfs, gconf->path, open_flags);
-    if (!s->fd) {
-        ret = -errno;
+    ret = s->fd ? 0 : -errno;
+
+    if (ret == -EACCES || ret == -EROFS) {
+        /* Try to degrade to read-only, but if it doesn't work, still use the
+         * normal error message. */
+        if (bdrv_apply_auto_read_only(bs, NULL, NULL) == 0) {
+            open_flags = (open_flags & ~O_RDWR) | O_RDONLY;
+            s->fd = glfs_open(s->glfs, gconf->path, open_flags);
+            ret = s->fd ? 0 : -errno;
+        }
     }
 
     s->supports_seek_data = qemu_gluster_test_seek(s->fd);
@@ -869,6 +892,11 @@ out:
     glfs_clear_preopened(s->glfs);
 
     return ret;
+}
+
+static void qemu_gluster_refresh_limits(BlockDriverState *bs, Error **errp)
+{
+    bs->bl.max_transfer = GLUSTER_MAX_TRANSFER;
 }
 
 static int qemu_gluster_reopen_prepare(BDRVReopenState *state,
@@ -1487,6 +1515,21 @@ static int coroutine_fn qemu_gluster_co_block_status(BlockDriverState *bs,
 }
 
 
+static const char *const gluster_strong_open_opts[] = {
+    GLUSTER_OPT_VOLUME,
+    GLUSTER_OPT_PATH,
+    GLUSTER_OPT_TYPE,
+    GLUSTER_OPT_SERVER_PATTERN,
+    GLUSTER_OPT_HOST,
+    GLUSTER_OPT_PORT,
+    GLUSTER_OPT_TO,
+    GLUSTER_OPT_IPV4,
+    GLUSTER_OPT_IPV6,
+    GLUSTER_OPT_SOCKET,
+
+    NULL
+};
+
 static BlockDriver bdrv_gluster = {
     .format_name                  = "gluster",
     .protocol_name                = "gluster",
@@ -1513,7 +1556,9 @@ static BlockDriver bdrv_gluster = {
     .bdrv_co_pwrite_zeroes        = qemu_gluster_co_pwrite_zeroes,
 #endif
     .bdrv_co_block_status         = qemu_gluster_co_block_status,
+    .bdrv_refresh_limits          = qemu_gluster_refresh_limits,
     .create_opts                  = &qemu_gluster_create_opts,
+    .strong_runtime_opts          = gluster_strong_open_opts,
 };
 
 static BlockDriver bdrv_gluster_tcp = {
@@ -1542,7 +1587,9 @@ static BlockDriver bdrv_gluster_tcp = {
     .bdrv_co_pwrite_zeroes        = qemu_gluster_co_pwrite_zeroes,
 #endif
     .bdrv_co_block_status         = qemu_gluster_co_block_status,
+    .bdrv_refresh_limits          = qemu_gluster_refresh_limits,
     .create_opts                  = &qemu_gluster_create_opts,
+    .strong_runtime_opts          = gluster_strong_open_opts,
 };
 
 static BlockDriver bdrv_gluster_unix = {
@@ -1571,7 +1618,9 @@ static BlockDriver bdrv_gluster_unix = {
     .bdrv_co_pwrite_zeroes        = qemu_gluster_co_pwrite_zeroes,
 #endif
     .bdrv_co_block_status         = qemu_gluster_co_block_status,
+    .bdrv_refresh_limits          = qemu_gluster_refresh_limits,
     .create_opts                  = &qemu_gluster_create_opts,
+    .strong_runtime_opts          = gluster_strong_open_opts,
 };
 
 /* rdma is deprecated (actually never supported for volfile fetch).
@@ -1606,7 +1655,9 @@ static BlockDriver bdrv_gluster_rdma = {
     .bdrv_co_pwrite_zeroes        = qemu_gluster_co_pwrite_zeroes,
 #endif
     .bdrv_co_block_status         = qemu_gluster_co_block_status,
+    .bdrv_refresh_limits          = qemu_gluster_refresh_limits,
     .create_opts                  = &qemu_gluster_create_opts,
+    .strong_runtime_opts          = gluster_strong_open_opts,
 };
 
 static void bdrv_gluster_init(void)

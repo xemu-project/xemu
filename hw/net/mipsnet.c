@@ -112,27 +112,27 @@ static uint64_t mipsnet_ioport_read(void *opaque, hwaddr addr,
     addr &= 0x3f;
     switch (addr) {
     case MIPSNET_DEV_ID:
-	ret = be32_to_cpu(0x4d495053);		/* MIPS */
+        ret = be32_to_cpu(0x4d495053);		/* MIPS */
         break;
     case MIPSNET_DEV_ID + 4:
-	ret = be32_to_cpu(0x4e455430);		/* NET0 */
+        ret = be32_to_cpu(0x4e455430);		/* NET0 */
         break;
     case MIPSNET_BUSY:
-	ret = s->busy;
+        ret = s->busy;
         break;
     case MIPSNET_RX_DATA_COUNT:
-	ret = s->rx_count;
+        ret = s->rx_count;
         break;
     case MIPSNET_TX_DATA_COUNT:
-	ret = s->tx_count;
+        ret = s->tx_count;
         break;
     case MIPSNET_INT_CTL:
-	ret = s->intctl;
+        ret = s->intctl;
         s->intctl &= ~MIPSNET_INTCTL_TESTBIT;
         break;
     case MIPSNET_INTERRUPT_INFO:
         /* XXX: This seems to be a per-VPE interrupt number. */
-	ret = 0;
+        ret = 0;
         break;
     case MIPSNET_RX_DATA_BUFFER:
         if (s->rx_count) {
@@ -161,7 +161,7 @@ static void mipsnet_ioport_write(void *opaque, hwaddr addr,
     trace_mipsnet_write(addr, val);
     switch (addr) {
     case MIPSNET_TX_DATA_COUNT:
-	s->tx_count = (val <= MAX_ETH_FRAME_SIZE) ? val : 0;
+        s->tx_count = (val <= MAX_ETH_FRAME_SIZE) ? val : 0;
         s->tx_written = 0;
         break;
     case MIPSNET_INT_CTL:
@@ -236,9 +236,9 @@ static const MemoryRegionOps mipsnet_ioport_ops = {
     .impl.max_access_size = 4,
 };
 
-static int mipsnet_sysbus_init(SysBusDevice *sbd)
+static void mipsnet_realize(DeviceState *dev, Error **errp)
 {
-    DeviceState *dev = DEVICE(sbd);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
     MIPSnetState *s = MIPS_NET(dev);
 
     memory_region_init_io(&s->io, OBJECT(dev), &mipsnet_ioport_ops, s,
@@ -249,8 +249,6 @@ static int mipsnet_sysbus_init(SysBusDevice *sbd)
     s->nic = qemu_new_nic(&net_mipsnet_info, &s->conf,
                           object_get_typename(OBJECT(dev)), dev->id, s);
     qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
-
-    return 0;
 }
 
 static void mipsnet_sysbus_reset(DeviceState *dev)
@@ -267,9 +265,8 @@ static Property mipsnet_properties[] = {
 static void mipsnet_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
 
-    k->init = mipsnet_sysbus_init;
+    dc->realize = mipsnet_realize;
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
     dc->desc = "MIPS Simulator network device";
     dc->reset = mipsnet_sysbus_reset;

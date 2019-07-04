@@ -152,7 +152,7 @@ static inline int hreg_store_msr(CPUPPCState *env, target_ulong value,
      * - 64-bit embedded implementations do not need any operation to be
      *   performed when PR is set.
      */
-    if ((env->insns_flags & PPC_SEGMENT_64B) && ((value >> MSR_PR) & 1)) {
+    if (is_book3s_arch2x(env) && ((value >> MSR_PR) & 1)) {
         value |= (1 << MSR_EE) | (1 << MSR_DR) | (1 << MSR_IR);
     }
 #endif
@@ -174,26 +174,19 @@ static inline int hreg_store_msr(CPUPPCState *env, target_ulong value,
 static inline void check_tlb_flush(CPUPPCState *env, bool global)
 {
     CPUState *cs = CPU(ppc_env_get_cpu(env));
-    if (env->tlb_need_flush & TLB_NEED_LOCAL_FLUSH) {
-        tlb_flush(cs);
+
+    /* Handle global flushes first */
+    if (global && (env->tlb_need_flush & TLB_NEED_GLOBAL_FLUSH)) {
+        env->tlb_need_flush &= ~TLB_NEED_GLOBAL_FLUSH;
         env->tlb_need_flush &= ~TLB_NEED_LOCAL_FLUSH;
+        tlb_flush_all_cpus_synced(cs);
+        return;
     }
 
-    /* Propagate TLB invalidations to other CPUs when the guest uses broadcast
-     * TLB invalidation instructions.
-     */
-    if (global && (env->tlb_need_flush & TLB_NEED_GLOBAL_FLUSH)) {
-        CPUState *other_cs;
-        CPU_FOREACH(other_cs) {
-            if (other_cs != cs) {
-                PowerPCCPU *cpu = POWERPC_CPU(other_cs);
-                CPUPPCState *other_env = &cpu->env;
-
-                other_env->tlb_need_flush &= ~TLB_NEED_LOCAL_FLUSH;
-                tlb_flush(other_cs);
-            }
-        }
-        env->tlb_need_flush &= ~TLB_NEED_GLOBAL_FLUSH;
+    /* Then handle local ones */
+    if (env->tlb_need_flush & TLB_NEED_LOCAL_FLUSH) {
+        env->tlb_need_flush &= ~TLB_NEED_LOCAL_FLUSH;
+        tlb_flush(cs);
     }
 }
 #else

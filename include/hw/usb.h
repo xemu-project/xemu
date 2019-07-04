@@ -408,7 +408,7 @@ struct USBPacket {
 
 struct USBCombinedPacket {
     USBPacket *first;
-    QTAILQ_HEAD(packets_head, USBPacket) packets;
+    QTAILQ_HEAD(, USBPacket) packets;
     QEMUIOVector iov;
 };
 
@@ -592,8 +592,6 @@ void usb_device_free_streams(USBDevice *dev, USBEndpoint **eps, int nr_eps);
 const char *usb_device_get_product_desc(USBDevice *dev);
 
 const USBDesc *usb_device_get_usb_desc(USBDevice *dev);
-
-int ehci_create_ich9_with_companions(PCIBus *bus, int slot);
 
 /* quirks.c */
 

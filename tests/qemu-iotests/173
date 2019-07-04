@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Test QAPI commands looking up protocol based images with relative
 # filename backing strings
@@ -24,7 +24,6 @@ owner=jcody@redhat.com
 seq=`basename $0`
 echo "QA output created by $seq"
 
-here=`pwd`
 status=1    # failure is the default!
 
 _cleanup()

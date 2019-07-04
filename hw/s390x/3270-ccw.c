@@ -78,13 +78,13 @@ static int emulated_ccw_3270_cb(SubchDev *sch, CCW1 ccw)
 
     if (rc == -EIO) {
         /* I/O error, specific devices generate specific conditions */
-        SCSW *s = &sch->curr_status.scsw;
+        SCHIB *schib = &sch->curr_status;
 
         sch->curr_status.scsw.dstat = SCSW_DSTAT_UNIT_CHECK;
         sch->sense_data[0] = 0x40;    /* intervention-req */
-        s->ctrl &= ~SCSW_ACTL_START_PEND;
-        s->ctrl &= ~SCSW_CTRL_MASK_STCTL;
-        s->ctrl |= SCSW_STCTL_PRIMARY | SCSW_STCTL_SECONDARY |
+        schib->scsw.ctrl &= ~SCSW_ACTL_START_PEND;
+        schib->scsw.ctrl &= ~SCSW_CTRL_MASK_STCTL;
+        schib->scsw.ctrl |= SCSW_STCTL_PRIMARY | SCSW_STCTL_SECONDARY |
                    SCSW_STCTL_ALERT | SCSW_STCTL_STATUS_PEND;
     }
 
@@ -98,13 +98,10 @@ static void emulated_ccw_3270_realize(DeviceState *ds, Error **errp)
     EmulatedCcw3270Class *ck = EMULATED_CCW_3270_GET_CLASS(dev);
     CcwDevice *cdev = CCW_DEVICE(ds);
     CCWDeviceClass *cdk = CCW_DEVICE_GET_CLASS(cdev);
-    DeviceState *parent = DEVICE(cdev);
-    BusState *qbus = qdev_get_parent_bus(parent);
-    VirtualCssBus *cbus = VIRTUAL_CSS_BUS(qbus);
     SubchDev *sch;
     Error *err = NULL;
 
-    sch = css_create_sch(cdev->devno, cbus->squash_mcss, errp);
+    sch = css_create_sch(cdev->devno, errp);
     if (!sch) {
         return;
     }

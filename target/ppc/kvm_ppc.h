@@ -23,6 +23,7 @@ int kvmppc_set_interrupt(PowerPCCPU *cpu, int irq, int level);
 void kvmppc_enable_logical_ci_hcalls(void);
 void kvmppc_enable_set_mode_hcall(void);
 void kvmppc_enable_clear_ref_mod_hcalls(void);
+void kvmppc_enable_h_page_init(void);
 void kvmppc_set_papr(PowerPCCPU *cpu);
 int kvmppc_set_compat(PowerPCCPU *cpu, uint32_t compat_pvr);
 void kvmppc_set_mpic_proxy(PowerPCCPU *cpu, int mpic_proxy);
@@ -62,6 +63,11 @@ bool kvmppc_has_cap_mmu_hash_v3(void);
 int kvmppc_get_cap_safe_cache(void);
 int kvmppc_get_cap_safe_bounds_check(void);
 int kvmppc_get_cap_safe_indirect_branch(void);
+int kvmppc_get_cap_count_cache_flush_assist(void);
+bool kvmppc_has_cap_nested_kvm_hv(void);
+int kvmppc_set_cap_nested_kvm_hv(int enable);
+int kvmppc_get_cap_large_decr(void);
+int kvmppc_enable_cap_large_decr(PowerPCCPU *cpu, int enable);
 int kvmppc_enable_hwrng(void);
 int kvmppc_put_books_sregs(PowerPCCPU *cpu);
 PowerPCCPUClass *kvm_ppc_get_host_cpu_class(void);
@@ -72,6 +78,7 @@ bool kvmppc_pvr_workaround_required(PowerPCCPU *cpu);
 
 bool kvmppc_hpt_needs_host_contiguous_pages(void);
 void kvm_check_mmu(PowerPCCPU *cpu, Error **errp);
+void kvmppc_set_reg_ppc_online(PowerPCCPU *cpu, unsigned int online);
 
 #else
 
@@ -132,6 +139,10 @@ static inline void kvmppc_enable_clear_ref_mod_hcalls(void)
 {
 }
 
+static inline void kvmppc_enable_h_page_init(void)
+{
+}
+
 static inline void kvmppc_set_papr(PowerPCCPU *cpu)
 {
 }
@@ -185,6 +196,12 @@ static inline target_ulong kvmppc_configure_v3_mmu(PowerPCCPU *cpu,
                                      uint64_t proc_tbl)
 {
     return 0;
+}
+
+static inline void kvmppc_set_reg_ppc_online(PowerPCCPU *cpu,
+                                             unsigned int online)
+{
+    return;
 }
 
 #ifndef CONFIG_USER_ONLY
@@ -311,6 +328,31 @@ static inline int kvmppc_get_cap_safe_bounds_check(void)
 static inline int kvmppc_get_cap_safe_indirect_branch(void)
 {
     return 0;
+}
+
+static inline int kvmppc_get_cap_count_cache_flush_assist(void)
+{
+    return 0;
+}
+
+static inline bool kvmppc_has_cap_nested_kvm_hv(void)
+{
+    return false;
+}
+
+static inline int kvmppc_set_cap_nested_kvm_hv(int enable)
+{
+    return -1;
+}
+
+static inline int kvmppc_get_cap_large_decr(void)
+{
+    return 0;
+}
+
+static inline int kvmppc_enable_cap_large_decr(PowerPCCPU *cpu, int enable)
+{
+    return -1;
 }
 
 static inline int kvmppc_enable_hwrng(void)

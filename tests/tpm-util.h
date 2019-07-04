@@ -13,7 +13,6 @@
 #ifndef TESTS_TPM_UTIL_H
 #define TESTS_TPM_UTIL_H
 
-#include "qemu/osdep.h"
 #include "io/channel-socket.h"
 
 typedef void (tx_func)(QTestState *s,
@@ -31,6 +30,8 @@ void tpm_util_startup(QTestState *s, tx_func *tx);
 void tpm_util_pcrextend(QTestState *s, tx_func *tx);
 void tpm_util_pcrread(QTestState *s, tx_func *tx,
                       const unsigned char *exp_resp, size_t exp_resp_size);
+
+bool tpm_util_swtpm_has_tpm2(void);
 
 gboolean tpm_util_swtpm_start(const char *path, GPid *pid,
                               SocketAddress **addr, GError **error);

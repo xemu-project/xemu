@@ -1,6 +1,6 @@
 QA output created by 223
 
-=== Create partially sparse image, then add dirty bitmap ===
+=== Create partially sparse image, then add dirty bitmaps ===
 
 Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=4194304
 wrote 2097152/2097152 bytes at offset 1048576
@@ -11,39 +11,93 @@ QMP_VERSION
 {"return": {}}
 {"return": {}}
 {"return": {}}
-{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN", "data": {"guest": false}}
+{"return": {}}
+{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN", "data": {"guest": false, "reason": "host-qmp-quit"}}
 
 
 === Write part of the file under active bitmap ===
 
+wrote 512/512 bytes at offset 512
+512 bytes, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
 wrote 2097152/2097152 bytes at offset 2097152
 2 MiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
 
-=== End dirty bitmap, and start serving image over NBD ===
+=== End dirty bitmaps, and start serving image over NBD ===
 
 {"return": {}}
 {"return": {}}
 {"return": {}}
+{"error": {"class": "GenericError", "desc": "NBD server not running"}}
 {"return": {}}
+{"error": {"class": "GenericError", "desc": "NBD server already running"}}
+exports available: 0
 {"return": {}}
+{"error": {"class": "GenericError", "desc": "Cannot find device=nosuch nor node_name=nosuch"}}
+{"error": {"class": "GenericError", "desc": "NBD server already has export named 'n'"}}
+{"error": {"class": "GenericError", "desc": "Enabled bitmap 'b2' incompatible with readonly export"}}
+{"error": {"class": "GenericError", "desc": "Bitmap 'b3' is not found"}}
 {"return": {}}
+exports available: 2
+ export: 'n'
+  size:  4194304
+  flags: 0x4ef ( readonly flush fua trim zeroes df cache )
+  min block: 1
+  opt block: 4096
+  max block: 33554432
+  available meta contexts: 2
+   base:allocation
+   qemu:dirty-bitmap:b
+ export: 'n2'
+  size:  4194304
+  flags: 0x4ed ( flush fua trim zeroes df cache )
+  min block: 1
+  opt block: 4096
+  max block: 33554432
+  available meta contexts: 2
+   base:allocation
+   qemu:dirty-bitmap:b2
 
-=== Contrast normal status with dirty-bitmap status ===
+=== Contrast normal status to large granularity dirty-bitmap ===
 
-read 1048576/1048576 bytes at offset 0
-1 MiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+read 512/512 bytes at offset 512
+512 bytes, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
+read 524288/524288 bytes at offset 524288
+512 KiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
 read 1048576/1048576 bytes at offset 1048576
 1 MiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
 read 2097152/2097152 bytes at offset 2097152
 2 MiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
-[{ "start": 0, "length": 1048576, "depth": 0, "zero": true, "data": false},
-{ "start": 1048576, "length": 3145728, "depth": 0, "zero": false, "data": true}]
-[{ "start": 0, "length": 2097152, "depth": 0, "zero": false, "data": true},
+[{ "start": 0, "length": 4096, "depth": 0, "zero": false, "data": true, "offset": OFFSET},
+{ "start": 4096, "length": 1044480, "depth": 0, "zero": true, "data": false, "offset": OFFSET},
+{ "start": 1048576, "length": 3145728, "depth": 0, "zero": false, "data": true, "offset": OFFSET}]
+[{ "start": 0, "length": 65536, "depth": 0, "zero": false, "data": false},
+{ "start": 65536, "length": 2031616, "depth": 0, "zero": false, "data": true, "offset": OFFSET},
 { "start": 2097152, "length": 2097152, "depth": 0, "zero": false, "data": false}]
 
-=== End NBD server ===
+=== Contrast to small granularity dirty-bitmap ===
+
+[{ "start": 0, "length": 512, "depth": 0, "zero": false, "data": true, "offset": OFFSET},
+{ "start": 512, "length": 512, "depth": 0, "zero": false, "data": false},
+{ "start": 1024, "length": 2096128, "depth": 0, "zero": false, "data": true, "offset": OFFSET},
+{ "start": 2097152, "length": 2097152, "depth": 0, "zero": false, "data": false}]
+
+=== End qemu NBD server ===
 
 {"return": {}}
 {"return": {}}
+{"error": {"class": "GenericError", "desc": "Export 'n2' is not found"}}
 {"return": {}}
+{"error": {"class": "GenericError", "desc": "NBD server not running"}}
+{"return": {}}
+{"timestamp": {"seconds":  TIMESTAMP, "microseconds":  TIMESTAMP}, "event": "SHUTDOWN", "data": {"guest": false, "reason": "host-qmp-quit"}}
+
+=== Use qemu-nbd as server ===
+
+[{ "start": 0, "length": 65536, "depth": 0, "zero": false, "data": false},
+{ "start": 65536, "length": 2031616, "depth": 0, "zero": false, "data": true, "offset": OFFSET},
+{ "start": 2097152, "length": 2097152, "depth": 0, "zero": false, "data": false}]
+[{ "start": 0, "length": 512, "depth": 0, "zero": false, "data": true, "offset": OFFSET},
+{ "start": 512, "length": 512, "depth": 0, "zero": false, "data": false},
+{ "start": 1024, "length": 2096128, "depth": 0, "zero": false, "data": true, "offset": OFFSET},
+{ "start": 2097152, "length": 2097152, "depth": 0, "zero": false, "data": false}]
 *** done

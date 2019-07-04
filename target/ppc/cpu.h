@@ -52,23 +52,7 @@
 #else /* defined (TARGET_PPC64) */
 /* PowerPC 32 definitions */
 #define TARGET_LONG_BITS 32
-
-#if defined(TARGET_PPCEMB)
-/* Specific definitions for PowerPC embedded */
-/* BookE have 36 bits physical address space */
-#if defined(CONFIG_USER_ONLY)
-/* It looks like a lot of Linux programs assume page size
- * is 4kB long. This is evil, but we have to deal with it...
- */
 #define TARGET_PAGE_BITS 12
-#else /* defined(CONFIG_USER_ONLY) */
-/* Pages can be 1 kB small */
-#define TARGET_PAGE_BITS 10
-#endif /* defined(CONFIG_USER_ONLY) */
-#else /* defined(TARGET_PPCEMB) */
-/* "standard" PowerPC 32 definitions */
-#define TARGET_PAGE_BITS 12
-#endif /* defined(TARGET_PPCEMB) */
 
 #define TARGET_PHYS_ADDR_SPACE_BITS 36
 #define TARGET_VIRT_ADDR_SPACE_BITS 32
@@ -86,25 +70,13 @@
 #define PPC_ELF_MACHINE     EM_PPC
 #endif
 
-#define PPC_BIT(bit)            (0x8000000000000000UL >> (bit))
-#define PPC_BIT32(bit)          (0x80000000UL >> (bit))
-#define PPC_BIT8(bit)           (0x80UL >> (bit))
+#define PPC_BIT(bit)            (0x8000000000000000ULL >> (bit))
+#define PPC_BIT32(bit)          (0x80000000 >> (bit))
+#define PPC_BIT8(bit)           (0x80 >> (bit))
 #define PPC_BITMASK(bs, be)     ((PPC_BIT(bs) - PPC_BIT(be)) | PPC_BIT(bs))
 #define PPC_BITMASK32(bs, be)   ((PPC_BIT32(bs) - PPC_BIT32(be)) | \
                                  PPC_BIT32(bs))
 #define PPC_BITMASK8(bs, be)    ((PPC_BIT8(bs) - PPC_BIT8(be)) | PPC_BIT8(bs))
-
-#if HOST_LONG_BITS == 32
-# define MASK_TO_LSH(m)          (__builtin_ffsll(m) - 1)
-#elif HOST_LONG_BITS == 64
-# define MASK_TO_LSH(m)          (__builtin_ffsl(m) - 1)
-#else
-# error Unknown sizeof long
-#endif
-
-#define GETFIELD(m, v)          (((v) & (m)) >> MASK_TO_LSH(m))
-#define SETFIELD(m, v, val)                             \
-        (((v) & ~(m)) | ((((typeof(v))(val)) << MASK_TO_LSH(m)) & (m)))
 
 /*****************************************************************************/
 /* Exception vectors definitions                                             */
@@ -188,8 +160,10 @@ enum {
     /* Server doorbell variants */
     POWERPC_EXCP_SDOOR    = 99,
     POWERPC_EXCP_SDOOR_HV = 100,
+    /* ISA 3.00 additions */
+    POWERPC_EXCP_HVIRT    = 101,
     /* EOL                                                                   */
-    POWERPC_EXCP_NB       = 101,
+    POWERPC_EXCP_NB       = 102,
     /* QEMU exceptions: used internally during code translation              */
     POWERPC_EXCP_STOP         = 0x200, /* stop translation                   */
     POWERPC_EXCP_BRANCH       = 0x201, /* branch instruction                 */
@@ -246,7 +220,6 @@ typedef struct opc_handler_t opc_handler_t;
 /* Types used to describe some PowerPC registers etc. */
 typedef struct DisasContext DisasContext;
 typedef struct ppc_spr_t ppc_spr_t;
-typedef union ppc_avr_t ppc_avr_t;
 typedef union ppc_tlb_t ppc_tlb_t;
 typedef struct ppc_hash_pte64 ppc_hash_pte64_t;
 
@@ -259,6 +232,7 @@ struct ppc_spr_t {
     void (*oea_write)(DisasContext *ctx, int spr_num, int gpr_num);
     void (*hea_read)(DisasContext *ctx, int gpr_num, int spr_num);
     void (*hea_write)(DisasContext *ctx, int spr_num, int gpr_num);
+    unsigned int gdb_id;
 #endif
     const char *name;
     target_ulong default_value;
@@ -270,22 +244,26 @@ struct ppc_spr_t {
 #endif
 };
 
-/* Altivec registers (128 bits) */
-union ppc_avr_t {
-    float32 f[4];
+/* VSX/Altivec registers (128 bits) */
+typedef union _ppc_vsr_t {
     uint8_t u8[16];
     uint16_t u16[8];
     uint32_t u32[4];
+    uint64_t u64[2];
     int8_t s8[16];
     int16_t s16[8];
     int32_t s32[4];
-    uint64_t u64[2];
     int64_t s64[2];
+    float32 f32[4];
+    float64 f64[2];
+    float128 f128;
 #ifdef CONFIG_INT128
     __uint128_t u128;
 #endif
-    Int128 s128;
-};
+    Int128  s128;
+} ppc_vsr_t;
+
+typedef ppc_vsr_t ppc_avr_t;
 
 #if !defined(CONFIG_USER_ONLY)
 /* Software TLB cache */
@@ -342,6 +320,10 @@ struct ppc_slb_t {
 #define SEGMENT_SHIFT_1T        40
 #define SEGMENT_MASK_1T         (~((1ULL << SEGMENT_SHIFT_1T) - 1))
 
+typedef struct ppc_v3_pate_t {
+    uint64_t dw0;
+    uint64_t dw1;
+} ppc_v3_pate_t;
 
 /*****************************************************************************/
 /* Machine state register bits definition                                    */
@@ -410,6 +392,7 @@ struct ppc_slb_t {
 #define LPCR_AIL          (3ull << LPCR_AIL_SHIFT)
 #define LPCR_UPRT         PPC_BIT(41) /* Use Process Table */
 #define LPCR_EVIRT        PPC_BIT(42) /* Enhanced Virtualisation */
+#define LPCR_HR           PPC_BIT(43) /* Host Radix */
 #define LPCR_ONL          PPC_BIT(45)
 #define LPCR_LD           PPC_BIT(46) /* Large Decrementer */
 #define LPCR_P7_PECE0     PPC_BIT(49)
@@ -437,6 +420,10 @@ struct ppc_slb_t {
 #define LPCR_RMI          PPC_BIT(62)
 #define LPCR_HVICE        PPC_BIT(62) /* HV Virtualisation Int Enable */
 #define LPCR_HDICE        PPC_BIT(63)
+
+/* PSSCR bits */
+#define PSSCR_ESL         PPC_BIT(42) /* Enable State Loss */
+#define PSSCR_EC          PPC_BIT(43) /* Exit Criterion */
 
 #define msr_sf   ((env->msr >> MSR_SF)   & 1)
 #define msr_isf  ((env->msr >> MSR_ISF)  & 1)
@@ -480,6 +467,11 @@ struct ppc_slb_t {
 #define msr_le   ((env->msr >> MSR_LE)   & 1)
 #define msr_ts   ((env->msr >> MSR_TS1)  & 3)
 #define msr_tm   ((env->msr >> MSR_TM)   & 1)
+
+#define DBCR0_ICMP (1 << 27)
+#define DBCR0_BRT (1 << 26)
+#define DBSR_ICMP (1 << 27)
+#define DBSR_BRT (1 << 26)
 
 /* Hypervisor bit is more specific */
 #if defined(TARGET_PPC64)
@@ -708,8 +700,6 @@ enum {
 /* Vector status and control register */
 #define VSCR_NJ		16 /* Vector non-java */
 #define VSCR_SAT	0 /* Vector saturation */
-#define vscr_nj		(((env->vscr) >> VSCR_NJ)	& 0x1)
-#define vscr_sat	(((env->vscr) >> VSCR_SAT)	& 0x1)
 
 /*****************************************************************************/
 /* BookE e500 MMU registers */
@@ -929,6 +919,19 @@ enum {
 /* number of possible TLBs */
 #define BOOKE206_MAX_TLBN      4
 
+#define EPID_EPID_SHIFT 0x0
+#define EPID_EPID 0xFF
+#define EPID_ELPID_SHIFT 0x10
+#define EPID_ELPID 0x3F0000
+#define EPID_EGS 0x20000000
+#define EPID_EGS_SHIFT 29
+#define EPID_EAS 0x40000000
+#define EPID_EAS_SHIFT 30
+#define EPID_EPR 0x80000000
+#define EPID_EPR_SHIFT 31
+/* We don't support EGS and ELPID */
+#define EPID_MASK (EPID_EPID | EPID_EAS | EPID_EPR)
+
 /*****************************************************************************/
 /* Server and Embedded Processor Control */
 
@@ -958,7 +961,16 @@ struct ppc_radix_page_info {
 
 /*****************************************************************************/
 /* The whole PowerPC CPU context */
-#define NB_MMU_MODES    8
+
+/* PowerPC needs eight modes for different hypervisor/supervisor/guest +
+ * real/paged mode combinations. The other two modes are for external PID
+ * load/store.
+ */
+#define NB_MMU_MODES    10
+#define MMU_MODE8_SUFFIX _epl
+#define MMU_MODE9_SUFFIX _eps
+#define PPC_TLB_EPID_LOAD 8
+#define PPC_TLB_EPID_STORE 9
 
 #define PPC_CPU_OPCODES_LEN          0x40
 #define PPC_CPU_INDIRECT_OPCODES_LEN 0x20
@@ -1002,8 +1014,6 @@ struct CPUPPCState {
 
     /* Floating point execution context */
     float_status fp_status;
-    /* floating point registers */
-    float64 fpr[32];
     /* floating point status and control register */
     target_ulong fpscr;
 
@@ -1053,11 +1063,12 @@ struct CPUPPCState {
     /* Special purpose registers */
     target_ulong spr[1024];
     ppc_spr_t spr_cb[1024];
-    /* Altivec registers */
-    ppc_avr_t avr[32];
+    /* Vector status and control register, minus VSCR_SAT.  */
     uint32_t vscr;
-    /* VSX registers */
-    uint64_t vsr[32];
+    /* VSX registers (including FP and AVR) */
+    ppc_vsr_t vsr[64] QEMU_ALIGNED(16);
+    /* Non-zero if and only if VSCR_SAT should be set.  */
+    ppc_vsr_t vscr_sat QEMU_ALIGNED(16);
     /* SPE registers */
     uint64_t spe_acc;
     uint32_t spe_fscr;
@@ -1110,11 +1121,13 @@ struct CPUPPCState {
      * instructions and SPRs are diallowed if MSR:HV is 0
      */
     bool has_hv_mode;
-    /* On P7/P8, set when in PM state, we need to handle resume
-     * in a special way (such as routing some resume causes to
-     * 0x100), so flag this here.
+
+    /*
+     * On P7/P8/P9, set when in PM state, we need to handle resume in
+     * a special way (such as routing some resume causes to 0x100, ie,
+     * sreset), so flag this here.
      */
-    bool in_pm_state;
+    bool resume_as_sreset;
 #endif
 
     /* Those resources are used only during code translation */
@@ -1196,7 +1209,6 @@ struct PowerPCCPU {
     int vcpu_id;
     uint32_t compat_pvr;
     PPCVirtualHypervisor *vhyp;
-    Object *intc;
     void *machine_data;
     int32_t node_id; /* NUMA node this CPU belongs to */
     PPCHash64Options *hash64_opts;
@@ -1240,7 +1252,7 @@ struct PPCVirtualHypervisorClass {
                         hwaddr ptex, int n);
     void (*store_hpte)(PPCVirtualHypervisor *vhyp, hwaddr ptex,
                        uint64_t pte0, uint64_t pte1);
-    uint64_t (*get_patbe)(PPCVirtualHypervisor *vhyp);
+    void (*get_pate)(PPCVirtualHypervisor *vhyp, ppc_v3_pate_t *entry);
     target_ulong (*encode_hpt_for_kvm_pr)(PPCVirtualHypervisor *vhyp);
 };
 
@@ -1265,6 +1277,10 @@ int ppc_cpu_gdb_read_register(CPUState *cpu, uint8_t *buf, int reg);
 int ppc_cpu_gdb_read_register_apple(CPUState *cpu, uint8_t *buf, int reg);
 int ppc_cpu_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg);
 int ppc_cpu_gdb_write_register_apple(CPUState *cpu, uint8_t *buf, int reg);
+#ifndef CONFIG_USER_ONLY
+void ppc_gdb_gen_spr_xml(PowerPCCPU *cpu);
+const char *ppc_gdb_get_dynamic_xml(CPUState *cs, const char *xml_name);
+#endif
 int ppc64_cpu_write_elf64_note(WriteCoreDumpFunction f, CPUState *cs,
                                int cpuid, void *opaque);
 int ppc32_cpu_write_elf32_note(WriteCoreDumpFunction f, CPUState *cs,
@@ -1305,10 +1321,10 @@ uint32_t cpu_ppc_load_atbu (CPUPPCState *env);
 void cpu_ppc_store_atbl (CPUPPCState *env, uint32_t value);
 void cpu_ppc_store_atbu (CPUPPCState *env, uint32_t value);
 bool ppc_decr_clear_on_delivery(CPUPPCState *env);
-uint32_t cpu_ppc_load_decr (CPUPPCState *env);
-void cpu_ppc_store_decr (CPUPPCState *env, uint32_t value);
-uint32_t cpu_ppc_load_hdecr (CPUPPCState *env);
-void cpu_ppc_store_hdecr (CPUPPCState *env, uint32_t value);
+target_ulong cpu_ppc_load_decr(CPUPPCState *env);
+void cpu_ppc_store_decr(CPUPPCState *env, target_ulong value);
+target_ulong cpu_ppc_load_hdecr(CPUPPCState *env);
+void cpu_ppc_store_hdecr(CPUPPCState *env, target_ulong value);
 uint64_t cpu_ppc_load_purr (CPUPPCState *env);
 uint32_t cpu_ppc601_load_rtcl (CPUPPCState *env);
 uint32_t cpu_ppc601_load_rtcu (CPUPPCState *env);
@@ -2316,6 +2332,13 @@ enum {
      * them */
     POWER7_INPUT_NB,
 };
+
+enum {
+    /* POWER9 input pins */
+    POWER9_INPUT_INT        = 0,
+    POWER9_INPUT_HINT       = 1,
+    POWER9_INPUT_NB,
+};
 #endif
 
 /* Hardware exceptions definitions */
@@ -2340,6 +2363,7 @@ enum {
     PPC_INTERRUPT_PERFM,          /* Performance monitor interrupt        */
     PPC_INTERRUPT_HMI,            /* Hypervisor Maintainance interrupt    */
     PPC_INTERRUPT_HDOORBELL,      /* Hypervisor Doorbell interrupt        */
+    PPC_INTERRUPT_HVIRT,          /* Hypervisor virtualization interrupt  */
 };
 
 /* Processor Compatibility mask (PCR) */
@@ -2384,6 +2408,12 @@ enum {
 #define is_isa300(ctx) (!!(ctx->insns_flags2 & PPC2_ISA300))
 target_ulong cpu_read_xer(CPUPPCState *env);
 void cpu_write_xer(CPUPPCState *env, target_ulong xer);
+
+/*
+ * All 64-bit server processors compliant with arch 2.x, ie. 970 and newer,
+ * have PPC_SEGMENT_64B.
+ */
+#define is_book3s_arch2x(ctx) (!!((ctx)->insns_flags & PPC_SEGMENT_64B))
 
 static inline void cpu_get_tb_cpu_state(CPUPPCState *env, target_ulong *pc,
                                         target_ulong *cs_base, uint32_t *flags)
@@ -2536,6 +2566,67 @@ static inline bool lsw_reg_in_range(int start, int nregs, int rx)
 {
     return (start + nregs <= 32 && rx >= start && rx < start + nregs) ||
            (start + nregs > 32 && (rx >= start || rx < start + nregs - 32));
+}
+
+/* Accessors for FP, VMX and VSX registers */
+#if defined(HOST_WORDS_BIGENDIAN)
+#define VsrB(i) u8[i]
+#define VsrSB(i) s8[i]
+#define VsrH(i) u16[i]
+#define VsrSH(i) s16[i]
+#define VsrW(i) u32[i]
+#define VsrSW(i) s32[i]
+#define VsrD(i) u64[i]
+#define VsrSD(i) s64[i]
+#else
+#define VsrB(i) u8[15 - (i)]
+#define VsrSB(i) s8[15 - (i)]
+#define VsrH(i) u16[7 - (i)]
+#define VsrSH(i) s16[7 - (i)]
+#define VsrW(i) u32[3 - (i)]
+#define VsrSW(i) s32[3 - (i)]
+#define VsrD(i) u64[1 - (i)]
+#define VsrSD(i) s64[1 - (i)]
+#endif
+
+static inline int vsr64_offset(int i, bool high)
+{
+    return offsetof(CPUPPCState, vsr[i].VsrD(high ? 0 : 1));
+}
+
+static inline int vsr_full_offset(int i)
+{
+    return offsetof(CPUPPCState, vsr[i].u64[0]);
+}
+
+static inline int fpr_offset(int i)
+{
+    return vsr64_offset(i, true);
+}
+
+static inline uint64_t *cpu_fpr_ptr(CPUPPCState *env, int i)
+{
+    return (uint64_t *)((uintptr_t)env + fpr_offset(i));
+}
+
+static inline uint64_t *cpu_vsrl_ptr(CPUPPCState *env, int i)
+{
+    return (uint64_t *)((uintptr_t)env + vsr64_offset(i, false));
+}
+
+static inline long avr64_offset(int i, bool high)
+{
+    return vsr64_offset(i + 32, high);
+}
+
+static inline int avr_full_offset(int i)
+{
+    return vsr_full_offset(i + 32);
+}
+
+static inline ppc_avr_t *cpu_avr_ptr(CPUPPCState *env, int i)
+{
+    return (ppc_avr_t *)((uintptr_t)env + avr_full_offset(i));
 }
 
 void dump_mmu(FILE *f, fprintf_function cpu_fprintf, CPUPPCState *env);

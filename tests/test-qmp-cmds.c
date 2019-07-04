@@ -32,6 +32,10 @@ void qmp_test_flags_command(Error **errp)
 {
 }
 
+void qmp_cmd_success_response(Error **errp)
+{
+}
+
 Empty2 *qmp_user_def_cmd0(Error **errp)
 {
     return g_new0(Empty2, 1);
@@ -83,7 +87,7 @@ void qmp_boxed_struct(UserDefZero *arg, Error **errp)
 {
 }
 
-void qmp_boxed_union(UserDefNativeListUnion *arg, Error **errp)
+void qmp_boxed_union(UserDefListUnion *arg, Error **errp)
 {
 }
 
@@ -122,6 +126,21 @@ static void test_dispatch_cmd(void)
     qobject_unref(req);
 }
 
+static void test_dispatch_cmd_oob(void)
+{
+    QDict *req = qdict_new();
+    QDict *resp;
+
+    qdict_put_str(req, "exec-oob", "test-flags-command");
+
+    resp = qmp_dispatch(&qmp_commands, QOBJECT(req), true);
+    assert(resp != NULL);
+    assert(!qdict_haskey(resp, "error"));
+
+    qobject_unref(resp);
+    qobject_unref(req);
+}
+
 /* test commands that return an error due to invalid parameters */
 static void test_dispatch_cmd_failure(void)
 {
@@ -150,6 +169,17 @@ static void test_dispatch_cmd_failure(void)
     assert(qdict_haskey(resp, "error"));
 
     qobject_unref(resp);
+    qobject_unref(req);
+}
+
+static void test_dispatch_cmd_success_response(void)
+{
+    QDict *req = qdict_new();
+    QDict *resp;
+
+    qdict_put_str(req, "execute", "cmd-success-response");
+    resp = qmp_dispatch(&qmp_commands, QOBJECT(req), false);
+    g_assert_null(resp);
     qobject_unref(req);
 }
 
@@ -286,11 +316,14 @@ int main(int argc, char **argv)
 {
     g_test_init(&argc, &argv, NULL);
 
-    g_test_add_func("/0.15/dispatch_cmd", test_dispatch_cmd);
-    g_test_add_func("/0.15/dispatch_cmd_failure", test_dispatch_cmd_failure);
-    g_test_add_func("/0.15/dispatch_cmd_io", test_dispatch_cmd_io);
-    g_test_add_func("/0.15/dealloc_types", test_dealloc_types);
-    g_test_add_func("/0.15/dealloc_partial", test_dealloc_partial);
+    g_test_add_func("/qmp/dispatch_cmd", test_dispatch_cmd);
+    g_test_add_func("/qmp/dispatch_cmd_oob", test_dispatch_cmd_oob);
+    g_test_add_func("/qmp/dispatch_cmd_failure", test_dispatch_cmd_failure);
+    g_test_add_func("/qmp/dispatch_cmd_io", test_dispatch_cmd_io);
+    g_test_add_func("/qmp/dispatch_cmd_success_response",
+                    test_dispatch_cmd_success_response);
+    g_test_add_func("/qmp/dealloc_types", test_dealloc_types);
+    g_test_add_func("/qmp/dealloc_partial", test_dealloc_partial);
 
     test_qmp_init_marshal(&qmp_commands);
     g_test_run();

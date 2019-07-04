@@ -126,7 +126,7 @@ void fork_end(int child)
            Discard information about the parent threads.  */
         CPU_FOREACH_SAFE(cpu, next_cpu) {
             if (cpu != thread_cpu) {
-                QTAILQ_REMOVE(&cpus, cpu, node);
+                QTAILQ_REMOVE_RCU(&cpus, cpu, node);
             }
         }
         qemu_init_cpu_list();
@@ -740,8 +740,8 @@ int main(int argc, char **argv, char **envp)
     target_argc = argc - optind;
     target_argv = calloc(target_argc + 1, sizeof (char *));
     if (target_argv == NULL) {
-	(void) fprintf(stderr, "Unable to allocate memory for target_argv\n");
-	exit(EXIT_FAILURE);
+        (void) fprintf(stderr, "Unable to allocate memory for target_argv\n");
+        exit(EXIT_FAILURE);
     }
 
     /*

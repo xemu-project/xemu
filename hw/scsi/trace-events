@@ -1,6 +1,6 @@
 # See docs/devel/tracing.txt for syntax documentation.
 
-# hw/scsi/scsi-bus.c
+# scsi-bus.c
 scsi_req_alloc(int target, int lun, int tag) "target %d lun %d tag %d"
 scsi_req_cancel(int target, int lun, int tag) "target %d lun %d tag %d"
 scsi_req_data(int target, int lun, int tag, int len) "target %d lun %d tag %d len %d"
@@ -18,7 +18,7 @@ scsi_inquiry(int target, int lun, int tag, int cdb1, int cdb2) "target %d lun %d
 scsi_test_unit_ready(int target, int lun, int tag) "target %d lun %d tag %d"
 scsi_request_sense(int target, int lun, int tag) "target %d lun %d tag %d"
 
-# hw/scsi/mptsas.c
+# mptsas.c
 mptsas_command_complete(void *dev, uint32_t ctx, uint32_t status, uint32_t resid) "dev %p context 0x%08x status 0x%x resid %d"
 mptsas_diag_read(void *dev, uint32_t addr, uint32_t val) "dev %p addr 0x%08x value 0x%08x"
 mptsas_diag_write(void *dev, uint32_t addr, uint32_t val) "dev %p addr 0x%08x value 0x%08x"
@@ -36,11 +36,11 @@ mptsas_sgl_overflow(void *dev, uint32_t ctx, uint64_t req, uint64_t found) "dev 
 mptsas_unhandled_cmd(void *dev, uint32_t ctx, uint8_t msg_cmd) "dev %p context 0x%08x: Unhandled cmd 0x%x"
 mptsas_unhandled_doorbell_cmd(void *dev, int cmd) "dev %p value 0x%08x"
 
-# hw/scsi/mptconfig.c
+# mptconfig.c
 mptsas_config_sas_device(void *dev, int address, int port, int phy_handle, int dev_handle, int page) "dev %p address %d (port %d, handles: phy %d dev %d) page %d"
 mptsas_config_sas_phy(void *dev, int address, int port, int phy_handle, int dev_handle, int page) "dev %p address %d (port %d, handles: phy %d dev %d) page %d"
 
-# hw/scsi/megasas.c
+# megasas.c
 megasas_init_firmware(uint64_t pa) "pa 0x%" PRIx64 " "
 megasas_init_queue(uint64_t queue_pa, int queue_len, uint64_t head, uint64_t tail, uint32_t flags) "queue at 0x%" PRIx64 " len %d head 0x%" PRIx64 " tail 0x%" PRIx64 " flags 0x%x"
 megasas_initq_map_failed(int frame) "scmd %d: failed to map queue"
@@ -118,7 +118,7 @@ megasas_mmio_invalid_readl(unsigned long addr) "addr 0x%lx"
 megasas_mmio_writel(const char *reg, uint32_t val) "reg %s: 0x%x"
 megasas_mmio_invalid_writel(uint32_t addr, uint32_t val) "addr 0x%x: 0x%x"
 
-# hw/scsi/vmw_pvscsi.c
+# vmw_pvscsi.c
 pvscsi_ring_init_data(uint32_t txr_len_log2, uint32_t rxr_len_log2) "TX/RX rings logarithms set to %d/%d"
 pvscsi_ring_init_msg(uint32_t len_log2) "MSG ring logarithm set to %d"
 pvscsi_ring_flush_cmp(uint64_t filled_cmp_ptr) "new production counter of completion ring is 0x%"PRIx64
@@ -153,7 +153,7 @@ pvscsi_state(const char* state) "starting %s ..."
 pvscsi_tx_rings_ppn(const char* label, uint64_t ppn) "%s page: 0x%"PRIx64
 pvscsi_tx_rings_num_pages(const char* label, uint32_t num) "Number of %s pages: %u"
 
-# hw/scsi/esp.c
+# esp.c
 esp_error_fifo_overrun(void) "FIFO overrun"
 esp_error_unhandled_command(uint32_t val) "unhandled command (0x%2.2x)"
 esp_error_invalid_write(uint32_t val, uint32_t addr) "invalid write of 0x%02x at [0x%x]"
@@ -167,6 +167,7 @@ esp_handle_satn_stop(uint32_t cmdlen) "cmdlen %d"
 esp_write_response(uint32_t status) "Transfer status (status=%d)"
 esp_do_dma(uint32_t cmdlen, uint32_t len) "command len %d + %d"
 esp_command_complete(void) "SCSI Command complete"
+esp_command_complete_deferred(void) "SCSI Command complete deferred"
 esp_command_complete_unexpected(void) "SCSI command completed unexpectedly"
 esp_command_complete_fail(void) "Command failed"
 esp_transfer_data(uint32_t dma_left, int32_t ti_size) "transfer %d/%d"
@@ -189,7 +190,7 @@ esp_mem_writeb_cmd_selatns(uint32_t val) "Select with ATN & stop (0x%2.2x)"
 esp_mem_writeb_cmd_ensel(uint32_t val) "Enable selection (0x%2.2x)"
 esp_mem_writeb_cmd_dissel(uint32_t val) "Disable selection (0x%2.2x)"
 
-# hw/scsi/esp-pci.c
+# esp-pci.c
 esp_pci_error_invalid_dma_direction(void) "invalid DMA transfer direction"
 esp_pci_error_invalid_read(uint32_t reg) "read access outside bounds (reg 0x%x)"
 esp_pci_error_invalid_write(uint32_t reg) "write access outside bounds (reg 0x%x)"
@@ -203,7 +204,7 @@ esp_pci_dma_start(uint32_t val) "START (0x%.8x)"
 esp_pci_sbac_read(uint32_t reg) "sbac: 0x%8.8x"
 esp_pci_sbac_write(uint32_t reg, uint32_t val) "sbac: 0x%8.8x -> 0x%8.8x"
 
-# hw/scsi/spapr_vscsi.c
+# spapr_vscsi.c
 spapr_vscsi_send_rsp(uint8_t status, int32_t res_in, int32_t res_out) "status: 0x%x, res_in: %"PRId32", res_out: %"PRId32
 spapr_vscsi_fetch_desc_no_data(void) "no data descriptor"
 spapr_vscsi_fetch_desc_direct(void) "direct segment"
@@ -229,3 +230,105 @@ spapr_vscsi_process_login(void) "Got login, sending response !"
 spapr_vscsi_queue_cmd_no_drive(uint64_t lun) "Command for lun 0x%08" PRIx64 " with no drive"
 spapr_vscsi_queue_cmd(uint32_t qtag, unsigned cdb, const char *cmd, int lun, int ret) "Queued command tag 0x%"PRIx32" CMD 0x%x=%s LUN %d ret: %d"
 spapr_vscsi_do_crq(unsigned c0, unsigned c1) "crq: %02x %02x ..."
+
+# lsi53c895a.c
+lsi_reset(void) "Reset"
+lsi_update_irq(int level, uint8_t dstat, uint8_t sist1, uint8_t sist0) "Update IRQ level %d dstat 0x%02x sist 0x%02x0x%02x"
+lsi_update_irq_disconnected(void) "Handled IRQs & disconnected, looking for pending processes"
+lsi_script_scsi_interrupt(uint8_t stat1, uint8_t stat0, uint8_t sist1, uint8_t sist0) "SCSI Interrupt 0x%02x0x%02x prev 0x%02x0x%02x"
+lsi_script_dma_interrupt(uint8_t stat, uint8_t dstat) "DMA Interrupt 0x%x prev 0x%x"
+lsi_bad_phase_jump(uint32_t dsp) "Data phase mismatch jump to 0x%"PRIX32
+lsi_bad_phase_interrupt(void) "Phase mismatch interrupt"
+lsi_bad_selection(uint32_t id) "Selected absent target %"PRIu32
+lsi_do_dma_unavailable(void) "DMA no data available"
+lsi_do_dma(uint64_t addr, int len) "DMA addr=0x%"PRIx64" len=%d"
+lsi_queue_command(uint32_t tag) "Queueing tag=0x%"PRId32
+lsi_add_msg_byte_error(void) "MSG IN data too long"
+lsi_add_msg_byte(uint8_t data) "MSG IN 0x%02x"
+lsi_reselect(int id) "Reselected target %d"
+lsi_queue_req_error(void *p) "Multiple IO pending for request %p"
+lsi_queue_req(uint32_t tag) "Queueing IO tag=0x%"PRIx32
+lsi_command_complete(uint32_t status) "Command complete status=%"PRId32
+lsi_transfer_data(uint32_t tag, uint32_t len) "Data ready tag=0x%"PRIx32" len=%"PRId32
+lsi_do_command(uint32_t dbc) "Send command len=%"PRId32
+lsi_do_status(uint32_t dbc, uint8_t status) "Get status len=%"PRId32" status=%d"
+lsi_do_status_error(void) "Bad Status move"
+lsi_do_msgin(uint32_t dbc, int len) "Message in len=%"PRId32" %d"
+lsi_do_msgout(uint32_t dbc) "MSG out len=%"PRId32
+lsi_do_msgout_disconnect(void) "MSG: Disconnect"
+lsi_do_msgout_noop(void) "MSG: No Operation"
+lsi_do_msgout_extended(uint8_t msg, uint8_t len) "Extended message 0x%x (len %d)"
+lsi_do_msgout_ignored(const char *msg) "%s (ignored)"
+lsi_do_msgout_simplequeue(uint8_t select_tag) "SIMPLE queue tag=0x%x"
+lsi_do_msgout_abort(uint32_t tag) "MSG: ABORT TAG tag=0x%"PRId32
+lsi_do_msgout_clearqueue(uint32_t tag) "MSG: CLEAR QUEUE tag=0x%"PRIx32
+lsi_do_msgout_busdevicereset(uint32_t tag) "MSG: BUS DEVICE RESET tag=0x%"PRIx32
+lsi_do_msgout_select(int id) "Select LUN %d"
+lsi_memcpy(uint32_t dest, uint32_t src, int count) "memcpy dest 0x%"PRIx32" src 0x%"PRIx32" count %d"
+lsi_wait_reselect(void) "Wait Reselect"
+lsi_execute_script(uint32_t dsp, uint32_t insn, uint32_t addr) "SCRIPTS dsp=0x%"PRIx32" opcode 0x%"PRIx32" arg 0x%"PRIx32
+lsi_execute_script_blockmove_delayed(void) "Delayed select timeout"
+lsi_execute_script_blockmove_badphase(const char *phase, const char *expected) "Wrong phase got %s expected %s"
+lsi_execute_script_io_alreadyreselected(void) "Already reselected, jumping to alternative address"
+lsi_execute_script_io_selected(uint8_t id, const char *atn) "Selected target %d%s"
+lsi_execute_script_io_disconnect(void) "Wait Disconnect"
+lsi_execute_script_io_set(const char *atn, const char *ack, const char *tm, const char *cc) "Set%s%s%s%s"
+lsi_execute_script_io_clear(const char *atn, const char *ack, const char *tm, const char *cc) "Clear%s%s%s%s"
+lsi_execute_script_io_opcode(const char *opcode, int reg, const char *opname, uint8_t data8, uint32_t sfbr, const char *ssfbr) "%s reg 0x%x %s data8=0x%02x sfbr=0x%02x%s"
+lsi_execute_script_tc_nop(void) "NOP"
+lsi_execute_script_tc_delayedselect_timeout(void) "Delayed select timeout"
+lsi_execute_script_tc_compc(int result) "Compare carry %d"
+lsi_execute_script_tc_compp(const char *phase, char op, const char *insn_phase) "Compare phase %s %c= %s"
+lsi_execute_script_tc_compd(uint32_t sfbr, uint8_t mask, char op, int result) "Compare data 0x%"PRIx32" & 0x%x %c= 0x%x"
+lsi_execute_script_tc_jump(uint32_t addr) "Jump to 0x%"PRIx32
+lsi_execute_script_tc_call(uint32_t addr) "Call 0x%"PRIx32
+lsi_execute_script_tc_return(uint32_t addr) "Return to 0x%"PRIx32
+lsi_execute_script_tc_interrupt(uint32_t addr) "Interrupt 0x%"PRIx32
+lsi_execute_script_tc_illegal(void) "Illegal transfer control"
+lsi_execute_script_tc_cc_failed(void) "Control condition failed"
+lsi_execute_script_mm_load(int reg, int n, uint32_t addr, int data) "Load reg 0x%x size %d addr 0x%"PRIx32" = 0x%08x"
+lsi_execute_script_mm_store(int reg, int n, uint32_t addr) "Store reg 0x%x size %d addr 0x%"PRIx32
+lsi_execute_script_stop(void) "SCRIPTS execution stopped"
+lsi_awoken(void) "Woken by SIGP"
+lsi_reg_read(const char *name, int offset, uint8_t ret) "Read reg %s 0x%x = 0x%02x"
+lsi_reg_write(const char *name, int offset, uint8_t val) "Write reg %s 0x%x = 0x%02x"
+
+# scsi-disk.c
+scsi_disk_check_condition(uint32_t tag, uint8_t key, uint8_t asc, uint8_t ascq) "Command complete tag=0x%x sense=%d/%d/%d"
+scsi_disk_read_complete(uint32_t tag, size_t size) "Data ready tag=0x%x len=%zd"
+scsi_disk_read_data_count(uint32_t sector_count) "Read sector_count=%d"
+scsi_disk_read_data_invalid(void) "Data transfer direction invalid"
+scsi_disk_write_complete_noio(uint32_t tag, size_t size) "Write complete tag=0x%x more=%zd"
+scsi_disk_write_data_invalid(void) "Data transfer direction invalid"
+scsi_disk_emulate_vpd_page_00(size_t xfer) "Inquiry EVPD[Supported pages] buffer size %zd"
+scsi_disk_emulate_vpd_page_80_not_supported(void) "Inquiry (EVPD[Serial number] not supported"
+scsi_disk_emulate_vpd_page_80(size_t xfer) "Inquiry EVPD[Serial number] buffer size %zd"
+scsi_disk_emulate_vpd_page_83(size_t xfer) "Inquiry EVPD[Device identification] buffer size %zd"
+scsi_disk_emulate_vpd_page_b0_not_supported(void) "Inquiry (EVPD[Block limits] not supported for CDROM"
+scsi_disk_emulate_mode_sense(int cmd, int page, size_t xfer, int control) "Mode Sense(%d) (page %d, xfer %zd, page_control %d)"
+scsi_disk_emulate_read_toc(int start_track, int format, int msf) "Read TOC (track %d format %d msf %d)"
+scsi_disk_emulate_read_data(int buflen) "Read buf_len=%d"
+scsi_disk_emulate_write_data(int buflen) "Write buf_len=%d"
+scsi_disk_emulate_command_SAI_16(void) "SAI READ CAPACITY(16)"
+scsi_disk_emulate_command_SAI_unsupported(void) "Unsupported Service Action In"
+scsi_disk_emulate_command_SEEK_10(uint64_t lba) "Seek(10) (sector %" PRId64 ")"
+scsi_disk_emulate_command_MODE_SELECT(size_t xfer) "Mode Select(6) (len %zd)"
+scsi_disk_emulate_command_MODE_SELECT_10(size_t xfer) "Mode Select(10) (len %zd)"
+scsi_disk_emulate_command_UNMAP(size_t xfer) "Unmap (len %zd)"
+scsi_disk_emulate_command_VERIFY(int bytchk) "Verify (bytchk %d)"
+scsi_disk_emulate_command_WRITE_SAME(int cmd, size_t xfer) "WRITE SAME %d (len %zd)"
+scsi_disk_emulate_command_UNKNOWN(int cmd, const char *name) "Unknown SCSI command (0x%2.2x=%s)"
+scsi_disk_dma_command_READ(uint64_t lba, uint32_t len) "Read (sector %" PRId64 ", count %u)"
+scsi_disk_dma_command_WRITE(const char *cmd, uint64_t lba, int len) "Write %s(sector %" PRId64 ", count %u)"
+scsi_disk_new_request(uint32_t lun, uint32_t tag, const char *line) "Command: lun=%d tag=0x%x data=%s"
+
+# scsi-generic.c
+scsi_generic_command_complete_noio(void *req, uint32_t tag, int statuc) "Command complete %p tag=0x%x status=%d"
+scsi_generic_read_complete(uint32_t tag, int len) "Data ready tag=0x%x len=%d"
+scsi_generic_read_data(uint32_t tag) "scsi_read_data tag=0x%x"
+scsi_generic_write_complete(int ret) "scsi_write_complete() ret = %d"
+scsi_generic_write_complete_blocksize(int blocksize) "block size %d"
+scsi_generic_write_data(uint32_t tag) "scsi_write_data tag=0x%x"
+scsi_generic_send_command(const char *line) "Command: data=%s"
+scsi_generic_realize_type(int type) "device type %d"
+scsi_generic_realize_blocksize(int blocksize) "block size %d"

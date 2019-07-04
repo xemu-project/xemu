@@ -164,7 +164,7 @@ static bool child_job_drained_poll(BdrvChild *c)
     /* An inactive or completed job doesn't have any pending requests. Jobs
      * with !job->busy are either already paused or have a pause point after
      * being reentered, so no job driver code will run before they pause. */
-    if (!job->busy || job_is_completed(job) || job->deferred_to_main_loop) {
+    if (!job->busy || job_is_completed(job)) {
         return false;
     }
 
@@ -219,6 +219,11 @@ int block_job_add_bdrv(BlockJob *job, const char *name, BlockDriverState *bs,
     bdrv_op_block_all(bs, job->blocker);
 
     return 0;
+}
+
+static void block_job_on_idle(Notifier *n, void *opaque)
+{
+    aio_wait_kick();
 }
 
 bool block_job_is_internal(BlockJob *job)
@@ -315,8 +320,7 @@ static void block_job_event_cancelled(Notifier *n, void *opaque)
                                         job->job.id,
                                         job->job.progress_total,
                                         job->job.progress_current,
-                                        job->speed,
-                                        &error_abort);
+                                        job->speed);
 }
 
 static void block_job_event_completed(Notifier *n, void *opaque)
@@ -338,8 +342,7 @@ static void block_job_event_completed(Notifier *n, void *opaque)
                                         job->job.progress_current,
                                         job->speed,
                                         !!msg,
-                                        msg,
-                                        &error_abort);
+                                        msg);
 }
 
 static void block_job_event_pending(Notifier *n, void *opaque)
@@ -351,8 +354,7 @@ static void block_job_event_pending(Notifier *n, void *opaque)
     }
 
     qapi_event_send_block_job_pending(job_type(&job->job),
-                                      job->job.id,
-                                      &error_abort);
+                                      job->job.id);
 }
 
 static void block_job_event_ready(Notifier *n, void *opaque)
@@ -367,7 +369,7 @@ static void block_job_event_ready(Notifier *n, void *opaque)
                                     job->job.id,
                                     job->job.progress_total,
                                     job->job.progress_current,
-                                    job->speed, &error_abort);
+                                    job->speed);
 }
 
 
@@ -419,6 +421,7 @@ void *block_job_create(const char *job_id, const BlockJobDriver *driver,
     job->finalize_completed_notifier.notify = block_job_event_completed;
     job->pending_notifier.notify = block_job_event_pending;
     job->ready_notifier.notify = block_job_event_ready;
+    job->idle_notifier.notify = block_job_on_idle;
 
     notifier_list_add(&job->job.on_finalize_cancelled,
                       &job->finalize_cancelled_notifier);
@@ -426,6 +429,7 @@ void *block_job_create(const char *job_id, const BlockJobDriver *driver,
                       &job->finalize_completed_notifier);
     notifier_list_add(&job->job.on_pending, &job->pending_notifier);
     notifier_list_add(&job->job.on_ready, &job->ready_notifier);
+    notifier_list_add(&job->job.on_idle, &job->idle_notifier);
 
     error_setg(&job->blocker, "block device is in use by block job: %s",
                job_type_str(&job->job));
@@ -494,12 +498,14 @@ BlockErrorAction block_job_error_action(BlockJob *job, BlockdevOnError on_err,
         qapi_event_send_block_job_error(job->job.id,
                                         is_read ? IO_OPERATION_TYPE_READ :
                                         IO_OPERATION_TYPE_WRITE,
-                                        action, &error_abort);
+                                        action);
     }
     if (action == BLOCK_ERROR_ACTION_STOP) {
-        job_pause(&job->job);
-        /* make the pause user visible, which will be resumed from QMP. */
-        job->job.user_paused = true;
+        if (!job->job.user_paused) {
+            job_pause(&job->job);
+            /* make the pause user visible, which will be resumed from QMP. */
+            job->job.user_paused = true;
+        }
         block_job_iostatus_set_err(job, error);
     }
     return action;

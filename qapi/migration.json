@@ -6,6 +6,7 @@
 ##
 
 { 'include': 'common.json' }
+{ 'include': 'sockets.json' }
 
 ##
 # @MigrationStats:
@@ -41,6 +42,9 @@
 #
 # @multifd-bytes: The number of bytes sent through multifd (since 3.0)
 #
+# @pages-per-second: the number of memory pages transferred per second
+#        (Since 4.0)
+#
 # Since: 0.14.0
 ##
 { 'struct': 'MigrationStats',
@@ -49,7 +53,7 @@
            'normal-bytes': 'int', 'dirty-pages-rate' : 'int',
            'mbps' : 'number', 'dirty-sync-count' : 'int',
            'postcopy-requests' : 'int', 'page-size' : 'int',
-           'multifd-bytes' : 'uint64' } }
+           'multifd-bytes' : 'uint64', 'pages-per-second' : 'uint64' } }
 
 ##
 # @XBZRLECacheStats:
@@ -74,6 +78,27 @@
   'data': {'cache-size': 'int', 'bytes': 'int', 'pages': 'int',
            'cache-miss': 'int', 'cache-miss-rate': 'number',
            'overflow': 'int' } }
+
+##
+# @CompressionStats:
+#
+# Detailed migration compression statistics
+#
+# @pages: amount of pages compressed and transferred to the target VM
+#
+# @busy: count of times that no free thread was available to compress data
+#
+# @busy-rate: rate of thread busy
+#
+# @compressed-size: amount of bytes after compression
+#
+# @compression-rate: rate of compressed size
+#
+# Since: 3.1
+##
+{ 'struct': 'CompressionStats',
+  'data': {'pages': 'int', 'busy': 'int', 'busy-rate': 'number',
+	   'compressed-size': 'int', 'compression-rate': 'number' } }
 
 ##
 # @MigrationStatus:
@@ -172,6 +197,10 @@
 #           only present when the postcopy-blocktime migration capability
 #           is enabled. (Since 3.0)
 #
+# @compression: migration compression statistics, only returned if compression
+#           feature is on and status is 'active' or 'completed' (Since 3.1)
+#
+# @socket-address: Only used for tcp, to know what the real port is (Since 4.0)
 #
 # Since: 0.14.0
 ##
@@ -186,7 +215,9 @@
            '*cpu-throttle-percentage': 'int',
            '*error-desc': 'str',
            '*postcopy-blocktime' : 'uint32',
-           '*postcopy-vcpu-blocktime': ['uint32']} }
+           '*postcopy-vcpu-blocktime': ['uint32'],
+           '*compression': 'CompressionStats',
+           '*socket-address': ['SocketAddress'] } }
 
 ##
 # @query-migrate:
@@ -212,13 +243,13 @@
 # -> { "execute": "query-migrate" }
 # <- { "return": {
 #         "status": "completed",
+#         "total-time":12345,
+#         "setup-time":12345,
+#         "downtime":12345,
 #         "ram":{
 #           "transferred":123,
 #           "remaining":123,
 #           "total":246,
-#           "total-time":12345,
-#           "setup-time":12345,
-#           "downtime":12345,
 #           "duplicate":123,
 #           "normal":123,
 #           "normal-bytes":123456,
@@ -238,13 +269,13 @@
 # <- {
 #       "return":{
 #          "status":"active",
+#          "total-time":12345,
+#          "setup-time":12345,
+#          "expected-downtime":12345,
 #          "ram":{
 #             "transferred":123,
 #             "remaining":123,
 #             "total":246,
-#             "total-time":12345,
-#             "setup-time":12345,
-#             "expected-downtime":12345,
 #             "duplicate":123,
 #             "normal":123,
 #             "normal-bytes":123456,
@@ -259,13 +290,13 @@
 # <- {
 #       "return":{
 #          "status":"active",
+#          "total-time":12345,
+#          "setup-time":12345,
+#          "expected-downtime":12345,
 #          "ram":{
 #             "total":1057024,
 #             "remaining":1053304,
 #             "transferred":3720,
-#             "total-time":12345,
-#             "setup-time":12345,
-#             "expected-downtime":12345,
 #             "duplicate":123,
 #             "normal":123,
 #             "normal-bytes":123456,
@@ -285,14 +316,13 @@
 # <- {
 #       "return":{
 #          "status":"active",
-#          "capabilities" : [ { "capability": "xbzrle", "state" : true } ],
+#          "total-time":12345,
+#          "setup-time":12345,
+#          "expected-downtime":12345,
 #          "ram":{
 #             "total":1057024,
 #             "remaining":1053304,
 #             "transferred":3720,
-#             "total-time":12345,
-#             "setup-time":12345,
-#             "expected-downtime":12345,
 #             "duplicate":10,
 #             "normal":3333,
 #             "normal-bytes":3412992,
@@ -371,7 +401,7 @@
 # @pause-before-switchover: Pause outgoing migration before serialising device
 #          state and before disabling block IO (since 2.11)
 #
-# @x-multifd: Use more than one fd for migration (since 2.11)
+# @multifd: Use more than one fd for migration (since 4.0)
 #
 # @dirty-bitmaps: If enabled, QEMU will migrate named dirty bitmaps.
 #                 (since 2.12)
@@ -383,13 +413,16 @@
 #           devices (and thus take locks) immediately at the end of migration.
 #           (since 3.0)
 #
+# @x-ignore-shared: If enabled, QEMU will not migrate shared memory (since 4.0)
+#
 # Since: 1.2
 ##
 { 'enum': 'MigrationCapability',
   'data': ['xbzrle', 'rdma-pin-all', 'auto-converge', 'zero-blocks',
            'compress', 'events', 'postcopy-ram', 'x-colo', 'release-ram',
-           'block', 'return-path', 'pause-before-switchover', 'x-multifd',
-           'dirty-bitmaps', 'postcopy-blocktime', 'late-block-activate' ] }
+           'block', 'return-path', 'pause-before-switchover', 'multifd',
+           'dirty-bitmaps', 'postcopy-blocktime', 'late-block-activate',
+           'x-ignore-shared' ] }
 
 ##
 # @MigrationCapabilityStatus:
@@ -454,6 +487,18 @@
 #
 # Migration parameters enumeration
 #
+# @announce-initial: Initial delay (in milliseconds) before sending the first
+#          announce (Since 4.0)
+#
+# @announce-max: Maximum delay (in milliseconds) between packets in the
+#          announcement (Since 4.0)
+#
+# @announce-rounds: Number of self-announce packets sent after migration
+#          (Since 4.0)
+#
+# @announce-step: Increase in delay (in milliseconds) between subsequent
+#          packets in the announcement (Since 4.0)
+#
 # @compress-level: Set the compression level to be used in live migration,
 #          the compression level is an integer between 0 and 9, where 0 means
 #          no compression, 1 means the best compression speed, and 9 means best
@@ -461,6 +506,11 @@
 #
 # @compress-threads: Set compression thread count to be used in live migration,
 #          the compression thread count is an integer between 1 and 255.
+#
+# @compress-wait-thread: Controls behavior when all compression threads are
+#                        currently busy. If true (default), wait for a free
+#                        compression thread to become available; otherwise,
+#                        send the page uncompressed. (Since 3.1)
 #
 # @decompress-threads: Set decompression thread count to be used in live
 #          migration, the decompression thread count is an integer between 1
@@ -491,6 +541,12 @@
 #                hostname must be provided so that the server's x509
 #                certificate identity can be validated. (Since 2.7)
 #
+# @tls-authz: ID of the 'authz' object subclass that provides access control
+#             checking of the TLS x509 certificate distinguished name.
+#             This object is only resolved at time of use, so can be deleted
+#             and recreated on the fly while the migration server is active.
+#             If missing, it will default to denying access (Since 4.0)
+#
 # @max-bandwidth: to set maximum speed for migration. maximum speed in
 #                 bytes per second. (Since 2.8)
 #
@@ -507,13 +563,10 @@
 # 	migrated and the destination must already have access to the
 # 	same backing chain as was used on the source.  (since 2.10)
 #
-# @x-multifd-channels: Number of channels used to migrate data in
-#                     parallel. This is the same number that the
-#                     number of sockets used for migration.  The
-#                     default value is 2 (since 2.11)
-#
-# @x-multifd-page-count: Number of pages sent together to a thread.
-#                        The default value is 16 (since 2.11)
+# @multifd-channels: Number of channels used to migrate data in
+#                    parallel. This is the same number that the
+#                    number of sockets used for migration.  The
+#                    default value is 2 (since 4.0)
 #
 # @xbzrle-cache-size: cache size to be used by XBZRLE migration.  It
 #                     needs to be a multiple of the target page size
@@ -523,22 +576,47 @@
 # @max-postcopy-bandwidth: Background transfer bandwidth during postcopy.
 #                     Defaults to 0 (unlimited).  In bytes per second.
 #                     (Since 3.0)
+#
+# @max-cpu-throttle: maximum cpu throttle percentage.
+#                    Defaults to 99. (Since 3.1)
+#
 # Since: 2.4
 ##
 { 'enum': 'MigrationParameter',
-  'data': ['compress-level', 'compress-threads', 'decompress-threads',
+  'data': ['announce-initial', 'announce-max',
+           'announce-rounds', 'announce-step',
+           'compress-level', 'compress-threads', 'decompress-threads',
+           'compress-wait-thread',
            'cpu-throttle-initial', 'cpu-throttle-increment',
-           'tls-creds', 'tls-hostname', 'max-bandwidth',
+           'tls-creds', 'tls-hostname', 'tls-authz', 'max-bandwidth',
            'downtime-limit', 'x-checkpoint-delay', 'block-incremental',
-           'x-multifd-channels', 'x-multifd-page-count',
-           'xbzrle-cache-size', 'max-postcopy-bandwidth' ] }
+           'multifd-channels',
+           'xbzrle-cache-size', 'max-postcopy-bandwidth',
+           'max-cpu-throttle' ] }
 
 ##
 # @MigrateSetParameters:
 #
+# @announce-initial: Initial delay (in milliseconds) before sending the first
+#          announce (Since 4.0)
+#
+# @announce-max: Maximum delay (in milliseconds) between packets in the
+#          announcement (Since 4.0)
+#
+# @announce-rounds: Number of self-announce packets sent after migration
+#          (Since 4.0)
+#
+# @announce-step: Increase in delay (in milliseconds) between subsequent
+#          packets in the announcement (Since 4.0)
+#
 # @compress-level: compression level
 #
 # @compress-threads: compression thread count
+#
+# @compress-wait-thread: Controls behavior when all compression threads are
+#                        currently busy. If true (default), wait for a free
+#                        compression thread to become available; otherwise,
+#                        send the page uncompressed. (Since 3.1)
 #
 # @decompress-threads: decompression thread count
 #
@@ -587,13 +665,10 @@
 # 	migrated and the destination must already have access to the
 # 	same backing chain as was used on the source.  (since 2.10)
 #
-# @x-multifd-channels: Number of channels used to migrate data in
-#                     parallel. This is the same number that the
-#                     number of sockets used for migration.  The
-#                     default value is 2 (since 2.11)
-#
-# @x-multifd-page-count: Number of pages sent together to a thread.
-#                        The default value is 16 (since 2.11)
+# @multifd-channels: Number of channels used to migrate data in
+#                    parallel. This is the same number that the
+#                    number of sockets used for migration.  The
+#                    default value is 2 (since 4.0)
 #
 # @xbzrle-cache-size: cache size to be used by XBZRLE migration.  It
 #                     needs to be a multiple of the target page size
@@ -603,26 +678,36 @@
 # @max-postcopy-bandwidth: Background transfer bandwidth during postcopy.
 #                     Defaults to 0 (unlimited).  In bytes per second.
 #                     (Since 3.0)
+#
+# @max-cpu-throttle: maximum cpu throttle percentage.
+#                    The default value is 99. (Since 3.1)
+#
 # Since: 2.4
 ##
 # TODO either fuse back into MigrationParameters, or make
 # MigrationParameters members mandatory
 { 'struct': 'MigrateSetParameters',
-  'data': { '*compress-level': 'int',
+  'data': { '*announce-initial': 'size',
+            '*announce-max': 'size',
+            '*announce-rounds': 'size',
+            '*announce-step': 'size',
+            '*compress-level': 'int',
             '*compress-threads': 'int',
+            '*compress-wait-thread': 'bool',
             '*decompress-threads': 'int',
             '*cpu-throttle-initial': 'int',
             '*cpu-throttle-increment': 'int',
             '*tls-creds': 'StrOrNull',
             '*tls-hostname': 'StrOrNull',
+            '*tls-authz': 'StrOrNull',
             '*max-bandwidth': 'int',
             '*downtime-limit': 'int',
             '*x-checkpoint-delay': 'int',
             '*block-incremental': 'bool',
-            '*x-multifd-channels': 'int',
-            '*x-multifd-page-count': 'int',
+            '*multifd-channels': 'int',
             '*xbzrle-cache-size': 'size',
-            '*max-postcopy-bandwidth': 'size' } }
+            '*max-postcopy-bandwidth': 'size',
+	    '*max-cpu-throttle': 'int' } }
 
 ##
 # @migrate-set-parameters:
@@ -645,9 +730,26 @@
 #
 # The optional members aren't actually optional.
 #
+# @announce-initial: Initial delay (in milliseconds) before sending the
+#          first announce (Since 4.0)
+#
+# @announce-max: Maximum delay (in milliseconds) between packets in the
+#          announcement (Since 4.0)
+#
+# @announce-rounds: Number of self-announce packets sent after migration
+#          (Since 4.0)
+#
+# @announce-step: Increase in delay (in milliseconds) between subsequent
+#          packets in the announcement (Since 4.0)
+#
 # @compress-level: compression level
 #
 # @compress-threads: compression thread count
+#
+# @compress-wait-thread: Controls behavior when all compression threads are
+#                        currently busy. If true (default), wait for a free
+#                        compression thread to become available; otherwise,
+#                        send the page uncompressed. (Since 3.1)
 #
 # @decompress-threads: decompression thread count
 #
@@ -678,6 +780,10 @@
 #                associated with the migration URI, if any. (Since 2.9)
 #                Note: 2.8 reports this by omitting tls-hostname instead.
 #
+# @tls-authz: ID of the 'authz' object subclass that provides access control
+#             checking of the TLS x509 certificate distinguished name. (Since
+#             4.0)
+#
 # @max-bandwidth: to set maximum speed for migration. maximum speed in
 #                 bytes per second. (Since 2.8)
 #
@@ -693,13 +799,10 @@
 # 	migrated and the destination must already have access to the
 # 	same backing chain as was used on the source.  (since 2.10)
 #
-# @x-multifd-channels: Number of channels used to migrate data in
-#                     parallel. This is the same number that the
-#                     number of sockets used for migration.
-#                     The default value is 2 (since 2.11)
-#
-# @x-multifd-page-count: Number of pages sent together to a thread.
-#                        The default value is 16 (since 2.11)
+# @multifd-channels: Number of channels used to migrate data in
+#                    parallel. This is the same number that the
+#                    number of sockets used for migration.
+#                    The default value is 2 (since 4.0)
 #
 # @xbzrle-cache-size: cache size to be used by XBZRLE migration.  It
 #                     needs to be a multiple of the target page size
@@ -709,24 +812,35 @@
 # @max-postcopy-bandwidth: Background transfer bandwidth during postcopy.
 #                     Defaults to 0 (unlimited).  In bytes per second.
 #                     (Since 3.0)
+#
+# @max-cpu-throttle: maximum cpu throttle percentage.
+#                    Defaults to 99.
+#                     (Since 3.1)
+#
 # Since: 2.4
 ##
 { 'struct': 'MigrationParameters',
-  'data': { '*compress-level': 'uint8',
+  'data': { '*announce-initial': 'size',
+            '*announce-max': 'size',
+            '*announce-rounds': 'size',
+            '*announce-step': 'size',
+            '*compress-level': 'uint8',
             '*compress-threads': 'uint8',
+            '*compress-wait-thread': 'bool',
             '*decompress-threads': 'uint8',
             '*cpu-throttle-initial': 'uint8',
             '*cpu-throttle-increment': 'uint8',
             '*tls-creds': 'str',
             '*tls-hostname': 'str',
+            '*tls-authz': 'str',
             '*max-bandwidth': 'size',
             '*downtime-limit': 'uint64',
             '*x-checkpoint-delay': 'uint32',
             '*block-incremental': 'bool' ,
-            '*x-multifd-channels': 'uint8',
-            '*x-multifd-page-count': 'uint32',
+            '*multifd-channels': 'uint8',
             '*xbzrle-cache-size': 'size',
-            '*max-postcopy-bandwidth': 'size'  } }
+	    '*max-postcopy-bandwidth': 'size',
+            '*max-cpu-throttle':'uint8'} }
 
 ##
 # @query-migrate-parameters:
@@ -867,18 +981,18 @@
 ##
 # @COLOMode:
 #
-# The colo mode
+# The COLO current mode.
 #
-# @unknown: unknown mode
+# @none: COLO is disabled.
 #
-# @primary: master side
+# @primary: COLO node in primary side.
 #
-# @secondary: slave side
+# @secondary: COLO node in slave side.
 #
 # Since: 2.8
 ##
 { 'enum': 'COLOMode',
-  'data': [ 'unknown', 'primary', 'secondary'] }
+  'data': [ 'none', 'primary', 'secondary'] }
 
 ##
 # @FailoverStatus:
@@ -899,6 +1013,47 @@
 ##
 { 'enum': 'FailoverStatus',
   'data': [ 'none', 'require', 'active', 'completed', 'relaunch' ] }
+
+##
+# @COLO_EXIT:
+#
+# Emitted when VM finishes COLO mode due to some errors happening or
+# at the request of users.
+#
+# @mode: report COLO mode when COLO exited.
+#
+# @reason: describes the reason for the COLO exit.
+#
+# Since: 3.1
+#
+# Example:
+#
+# <- { "timestamp": {"seconds": 2032141960, "microseconds": 417172},
+#      "event": "COLO_EXIT", "data": {"mode": "primary", "reason": "request" } }
+#
+##
+{ 'event': 'COLO_EXIT',
+  'data': {'mode': 'COLOMode', 'reason': 'COLOExitReason' } }
+
+##
+# @COLOExitReason:
+#
+# The reason for a COLO exit.
+#
+# @none: failover has never happened. This state does not occur
+# in the COLO_EXIT event, and is only visible in the result of
+# query-colo-status.
+#
+# @request: COLO exit is due to an external request.
+#
+# @error: COLO exit is due to an internal error.
+#
+# @processing: COLO is currently handling a failover (since 4.0).
+#
+# Since: 3.1
+##
+{ 'enum': 'COLOExitReason',
+  'data': [ 'none', 'request', 'error' , 'processing' ] }
 
 ##
 # @x-colo-lost-heartbeat:
@@ -1163,7 +1318,8 @@
 # Since: 2.9
 ##
 { 'command': 'xen-set-replication',
-  'data': { 'enable': 'bool', 'primary': 'bool', '*failover' : 'bool' } }
+  'data': { 'enable': 'bool', 'primary': 'bool', '*failover' : 'bool' },
+  'if': 'defined(CONFIG_REPLICATION)' }
 
 ##
 # @ReplicationStatus:
@@ -1178,7 +1334,8 @@
 # Since: 2.9
 ##
 { 'struct': 'ReplicationStatus',
-  'data': { 'error': 'bool', '*desc': 'str' } }
+  'data': { 'error': 'bool', '*desc': 'str' },
+  'if': 'defined(CONFIG_REPLICATION)' }
 
 ##
 # @query-xen-replication-status:
@@ -1195,7 +1352,8 @@
 # Since: 2.9
 ##
 { 'command': 'query-xen-replication-status',
-  'returns': 'ReplicationStatus' }
+  'returns': 'ReplicationStatus',
+  'if': 'defined(CONFIG_REPLICATION)' }
 
 ##
 # @xen-colo-do-checkpoint:
@@ -1211,7 +1369,45 @@
 #
 # Since: 2.9
 ##
-{ 'command': 'xen-colo-do-checkpoint' }
+{ 'command': 'xen-colo-do-checkpoint',
+  'if': 'defined(CONFIG_REPLICATION)' }
+
+##
+# @COLOStatus:
+#
+# The result format for 'query-colo-status'.
+#
+# @mode: COLO running mode. If COLO is running, this field will return
+#        'primary' or 'secondary'.
+#
+# @last-mode: COLO last running mode. If COLO is running, this field
+#             will return same like mode field, after failover we can
+#             use this field to get last colo mode. (since 4.0)
+#
+# @reason: describes the reason for the COLO exit.
+#
+# Since: 3.1
+##
+{ 'struct': 'COLOStatus',
+  'data': { 'mode': 'COLOMode', 'last-mode': 'COLOMode',
+            'reason': 'COLOExitReason' } }
+
+##
+# @query-colo-status:
+#
+# Query COLO status while the vm is running.
+#
+# Returns: A @COLOStatus object showing the status.
+#
+# Example:
+#
+# -> { "execute": "query-colo-status" }
+# <- { "return": { "mode": "primary", "reason": "request" } }
+#
+# Since: 3.1
+##
+{ 'command': 'query-colo-status',
+  'returns': 'COLOStatus' }
 
 ##
 # @migrate-recover:
@@ -1230,7 +1426,8 @@
 #
 # Since: 3.0
 ##
-{ 'command': 'migrate-recover', 'data': { 'uri': 'str' },
+{ 'command': 'migrate-recover',
+  'data': { 'uri': 'str' },
   'allow-oob': true }
 
 ##

@@ -321,6 +321,9 @@ static int streambuf_put(struct streambuf *buf, USBPacket *p)
     if (!free) {
         return 0;
     }
+    if (p->iov.size != USBAUDIO_PACKET_SIZE) {
+        return 0;
+    }
     assert(free >= USBAUDIO_PACKET_SIZE);
     usb_packet_copy(p, buf->data + (buf->prod % buf->size),
                     USBAUDIO_PACKET_SIZE);
@@ -647,7 +650,7 @@ static void usb_audio_realize(USBDevice *dev, Error **errp)
     s->out.vol[1]        = 240; /* 0 dB */
     s->out.as.freq       = USBAUDIO_SAMPLE_RATE;
     s->out.as.nchannels  = 2;
-    s->out.as.fmt        = AUD_FMT_S16;
+    s->out.as.fmt        = AUDIO_FORMAT_S16;
     s->out.as.endianness = 0;
     streambuf_init(&s->out.buf, s->buffer);
 

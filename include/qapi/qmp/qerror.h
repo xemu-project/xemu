@@ -61,9 +61,6 @@
 #define QERR_IO_ERROR \
     "An IO error has occurred"
 
-#define QERR_JSON_PARSING \
-    "Invalid JSON syntax"
-
 #define QERR_MIGRATION_ACTIVE \
     "There's a migration process in progress"
 
@@ -82,6 +79,9 @@
 #define QERR_QGA_COMMAND_FAILED \
     "Guest agent command failed, error was '%s'"
 
+#define QERR_REPLAY_NOT_SUPPORTED \
+    "Record/replay feature is not supported for '%s'"
+
 #define QERR_SET_PASSWD_FAILED \
     "Could not set password"
 
@@ -90,8 +90,5 @@
 
 #define QERR_UNSUPPORTED \
     "this feature or command is not currently supported"
-
-#define QERR_REPLAY_NOT_SUPPORTED \
-    "Record/replay feature is not supported for '%s'"
 
 #endif /* QERROR_H */

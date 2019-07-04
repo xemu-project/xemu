@@ -31,7 +31,6 @@
 #include "hw/sysbus.h"
 #include "hw/hw.h"
 #include "hw/sh4/sh.h"
-#include "hw/devices.h"
 #include "sysemu/sysemu.h"
 #include "hw/boards.h"
 #include "hw/pci/pci.h"
@@ -44,7 +43,7 @@
 #include "exec/address-spaces.h"
 
 #define FLASH_BASE 0x00000000
-#define FLASH_SIZE 0x02000000
+#define FLASH_SIZE (16 * MiB)
 
 #define SDRAM_BASE 0x0c000000 /* Physical location of SDRAM: Area 3 */
 #define SDRAM_SIZE 0x04000000
@@ -139,11 +138,11 @@ static uint64_t r2d_fpga_read(void *opaque, hwaddr addr, unsigned int size)
     case PA_IRLMSK:
         return s->irlmsk;
     case PA_OUTPORT:
-	return s->outport;
+        return s->outport;
     case PA_POWOFF:
-	return 0x00;
+        return 0x00;
     case PA_VERREG:
-	return 0x10;
+        return 0x10;
     }
 
     return 0;
@@ -158,18 +157,18 @@ r2d_fpga_write(void *opaque, hwaddr addr, uint64_t value, unsigned int size)
     case PA_IRLMSK:
         s->irlmsk = value;
         update_irl(s);
-	break;
+        break;
     case PA_OUTPORT:
-	s->outport = value;
-	break;
+        s->outport = value;
+        break;
     case PA_POWOFF:
         if (value & 1) {
             qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
         }
         break;
     case PA_VERREG:
-	/* Discard writes */
-	break;
+        /* Discard writes */
+        break;
     }
 }
 
@@ -220,7 +219,7 @@ static struct QEMU_PACKED
 
     char pad[232];
 
-    char kernel_cmdline[256];
+    char kernel_cmdline[256] QEMU_NONSTRING;
 } boot_params;
 
 static void r2d_init(MachineState *machine)
@@ -288,12 +287,19 @@ static void r2d_init(MachineState *machine)
     sysbus_mmio_map(busdev, 1, 0x1400080c);
     mmio_ide_init_drives(dev, dinfo, NULL);
 
-    /* onboard flash memory */
+    /*
+     * Onboard flash memory
+     * According to the old board user document in Japanese (under
+     * NDA) what is referred to as FROM (Area0) is connected via a
+     * 32-bit bus and CS0 to CN8. The docs mention a Cypress
+     * S29PL127J60TFI130 chipsset.  Per the 'S29PL-J 002-00615
+     * Rev. *E' datasheet, it is a 128Mbit NOR parallel flash
+     * addressable in words of 16bit.
+     */
     dinfo = drive_get(IF_PFLASH, 0, 0);
-    pflash_cfi02_register(0x0, NULL, "r2d.flash", FLASH_SIZE,
+    pflash_cfi02_register(0x0, "r2d.flash", FLASH_SIZE,
                           dinfo ? blk_by_legacy_dinfo(dinfo) : NULL,
-                          16 * KiB, FLASH_SIZE >> 16,
-                          1, 4, 0x0000, 0x0000, 0x0000, 0x0000,
+                          64 * KiB, 1, 2, 0x0001, 0x227e, 0x2220, 0x2200,
                           0x555, 0x2aa, 0);
 
     /* NIC: rtl8139 on-board, and 2 slots. */

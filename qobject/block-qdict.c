@@ -158,20 +158,25 @@ void qdict_flatten(QDict *qdict)
     qdict_flatten_qdict(qdict, qdict, NULL);
 }
 
-/* extract all the src QDict entries starting by start into dst */
+/* extract all the src QDict entries starting by start into dst.
+ * If dst is NULL then the entries are simply removed from src. */
 void qdict_extract_subqdict(QDict *src, QDict **dst, const char *start)
 
 {
     const QDictEntry *entry, *next;
     const char *p;
 
-    *dst = qdict_new();
+    if (dst) {
+        *dst = qdict_new();
+    }
     entry = qdict_first(src);
 
     while (entry != NULL) {
         next = qdict_next(src, entry);
         if (strstart(entry->key, start, &p)) {
-            qdict_put_obj(*dst, p, qobject_ref(entry->value));
+            if (dst) {
+                qdict_put_obj(*dst, p, qobject_ref(entry->value));
+            }
             qdict_del(src, entry->key);
         }
         entry = next;
@@ -572,7 +577,7 @@ static QObject *qdict_crumple_for_keyval_qiv(QDict *src, Error **errp)
         if (!tmp) {
             tmp = qdict_clone_shallow(src);
         }
-        qdict_put(tmp, ent->key, qstring_from_str(s));
+        qdict_put_str(tmp, ent->key, s);
         g_free(buf);
     }
 

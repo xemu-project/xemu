@@ -59,6 +59,7 @@ static void machine_hppa_init(MachineState *machine)
     const char *kernel_filename = machine->kernel_filename;
     const char *kernel_cmdline = machine->kernel_cmdline;
     const char *initrd_filename = machine->initrd_filename;
+    DeviceState *dev;
     PCIBus *pci_bus;
     ISABus *isa_bus;
     qemu_irq rtc_irq, serial_irq;
@@ -115,7 +116,8 @@ static void machine_hppa_init(MachineState *machine)
     }
 
     /* SCSI disk setup. */
-    lsi53c895a_create(pci_bus);
+    dev = DEVICE(pci_create_simple(pci_bus, -1, "lsi53c895a"));
+    lsi53c8xx_handle_legacy_cmdline(dev);
 
     /* Network setup.  e1000 is good enough, failing Tulip support.  */
     for (i = 0; i < nb_nics; i++) {
@@ -133,8 +135,8 @@ static void machine_hppa_init(MachineState *machine)
         exit(1);
     }
 
-    size = load_elf(firmware_filename, NULL,
-                    NULL, &firmware_entry, &firmware_low, &firmware_high,
+    size = load_elf(firmware_filename, NULL, NULL, NULL,
+                    &firmware_entry, &firmware_low, &firmware_high,
                     true, EM_PARISC, 0, 0);
 
     /* Unfortunately, load_elf sign-extends reading elf32.  */
@@ -163,7 +165,7 @@ static void machine_hppa_init(MachineState *machine)
 
     /* Load kernel */
     if (kernel_filename) {
-        size = load_elf(kernel_filename, &cpu_hppa_to_phys,
+        size = load_elf(kernel_filename, NULL, &cpu_hppa_to_phys,
                         NULL, &kernel_entry, &kernel_low, &kernel_high,
                         true, EM_PARISC, 0, 0);
 
@@ -189,7 +191,7 @@ static void machine_hppa_init(MachineState *machine)
 
         if (initrd_filename) {
             ram_addr_t initrd_base;
-            long initrd_size;
+            int64_t initrd_size;
 
             initrd_size = get_image_size(initrd_filename);
             if (initrd_size < 0) {

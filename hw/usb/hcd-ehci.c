@@ -12,18 +12,17 @@
  * Niels de Vos.  David S. Ahern continued working on it.  Kevin Wolf,
  * Jan Kiszka and Vincent Palatin contributed bugfixes.
  *
- *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or(at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
+ * You should have received a copy of the GNU Lesser General Public License
  * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
@@ -1440,9 +1439,12 @@ static int ehci_process_itd(EHCIState *ehci,
                 qemu_sglist_add(&ehci->isgl, ptr1 + off, len);
             }
 
-            pid = dir ? USB_TOKEN_IN : USB_TOKEN_OUT;
-
             dev = ehci_find_device(ehci, devaddr);
+            if (dev == NULL) {
+                ehci_trace_guest_bug(ehci, "no device found");
+                return -1;
+            }
+            pid = dir ? USB_TOKEN_IN : USB_TOKEN_OUT;
             ep = usb_ep_get(dev, pid, endp);
             if (ep && ep->type == USB_ENDPOINT_XFER_ISOC) {
                 usb_packet_setup(&ehci->ipacket, pid, ep, 0, addr, false,
@@ -1783,9 +1785,17 @@ static int ehci_state_fetchqtd(EHCIQueue *q)
     EHCIqtd qtd;
     EHCIPacket *p;
     int again = 1;
+    uint32_t addr;
 
-    if (get_dwords(q->ehci, NLPTR_GET(q->qtdaddr), (uint32_t *) &qtd,
-                   sizeof(EHCIqtd) >> 2) < 0) {
+    addr = NLPTR_GET(q->qtdaddr);
+    if (get_dwords(q->ehci, addr +  8, &qtd.token,   1) < 0) {
+        return 0;
+    }
+    barrier();
+    if (get_dwords(q->ehci, addr +  0, &qtd.next,    1) < 0 ||
+        get_dwords(q->ehci, addr +  4, &qtd.altnext, 1) < 0 ||
+        get_dwords(q->ehci, addr + 12, qtd.bufptr,
+                   ARRAY_SIZE(qtd.bufptr)) < 0) {
         return 0;
     }
     ehci_trace_qtd(q, NLPTR_GET(q->qtdaddr), &qtd);
@@ -1815,7 +1825,7 @@ static int ehci_state_fetchqtd(EHCIQueue *q)
             break;
         case EHCI_ASYNC_INFLIGHT:
             /* Check if the guest has added new tds to the queue */
-            again = ehci_fill_queue(QTAILQ_LAST(&q->packets, pkts_head));
+            again = ehci_fill_queue(QTAILQ_LAST(&q->packets));
             /* Unfinished async handled packet, go horizontal */
             ehci_set_state(q->ehci, q->async, EST_HORIZONTALQH);
             break;

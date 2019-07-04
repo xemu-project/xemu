@@ -29,6 +29,7 @@
 #include "hw/sh4/sh.h"
 #include "chardev/char-fe.h"
 #include "qapi/error.h"
+#include "qemu/timer.h"
 
 //#define DEBUG_SERIAL
 
@@ -63,6 +64,8 @@ typedef struct {
     int rtrg;
 
     CharBackend chr;
+    QEMUTimer *fifo_timeout_timer;
+    uint64_t etu; /* Elementary Time Unit (ns) */
 
     qemu_irq eri;
     qemu_irq rxi;
@@ -87,7 +90,7 @@ static void sh_serial_write(void *opaque, hwaddr offs,
 
 #ifdef DEBUG_SERIAL
     printf("sh_serial: write offs=0x%02x val=0x%02x\n",
-	   offs, val);
+           offs, val);
 #endif
     switch(offs) {
     case 0x00: /* SMR */
@@ -95,17 +98,17 @@ static void sh_serial_write(void *opaque, hwaddr offs,
         return;
     case 0x04: /* BRR */
         s->brr = val;
-	return;
+        return;
     case 0x08: /* SCR */
         /* TODO : For SH7751, SCIF mask should be 0xfb. */
         s->scr = val & ((s->feat & SH_SERIAL_FEAT_SCIF) ? 0xfa : 0xff);
         if (!(val & (1 << 5)))
             s->flags |= SH_SERIAL_FLAG_TEND;
         if ((s->feat & SH_SERIAL_FEAT_SCIF) && s->txi) {
-	    qemu_set_irq(s->txi, val & (1 << 7));
+            qemu_set_irq(s->txi, val & (1 << 7));
         }
         if (!(val & (1 << 6))) {
-	    qemu_set_irq(s->rxi, 0);
+            qemu_set_irq(s->rxi, 0);
         }
         return;
     case 0x0c: /* FTDR / TDR */
@@ -114,9 +117,9 @@ static void sh_serial_write(void *opaque, hwaddr offs,
             /* XXX this blocks entire thread. Rewrite to use
              * qemu_chr_fe_write and background I/O callbacks */
             qemu_chr_fe_write_all(&s->chr, &ch, 1);
-	}
-	s->dr = val;
-	s->flags &= ~SH_SERIAL_FLAG_TDE;
+        }
+        s->dr = val;
+        s->flags &= ~SH_SERIAL_FLAG_TDE;
         return;
 #if 0
     case 0x14: /* FRDR / RDR */
@@ -207,7 +210,7 @@ static uint64_t sh_serial_read(void *opaque, hwaddr offs,
         break;
     case 0x04:
         ret = s->brr;
-	break;
+        break;
     case 0x08:
         ret = s->scr;
         break;
@@ -285,7 +288,7 @@ static uint64_t sh_serial_read(void *opaque, hwaddr offs,
     }
 #ifdef DEBUG_SERIAL
     printf("sh_serial: read offs=0x%02x val=0x%x\n",
-	   offs, ret);
+           offs, ret);
 #endif
 
     if (ret & ~((1 << 16) - 1)) {
@@ -314,6 +317,16 @@ static int sh_serial_can_receive1(void *opaque)
     return sh_serial_can_receive(s);
 }
 
+static void sh_serial_timeout_int(void *opaque)
+{
+    sh_serial_state *s = opaque;
+
+    s->flags |= SH_SERIAL_FLAG_RDF;
+    if (s->scr & (1 << 6) && s->rxi) {
+        qemu_set_irq(s->rxi, 1);
+    }
+}
+
 static void sh_serial_receive1(void *opaque, const uint8_t *buf, int size)
 {
     sh_serial_state *s = opaque;
@@ -330,8 +343,12 @@ static void sh_serial_receive1(void *opaque, const uint8_t *buf, int size)
                 if (s->rx_cnt >= s->rtrg) {
                     s->flags |= SH_SERIAL_FLAG_RDF;
                     if (s->scr & (1 << 6) && s->rxi) {
+                        timer_del(s->fifo_timeout_timer);
                         qemu_set_irq(s->rxi, 1);
                     }
+                } else {
+                    timer_mod(s->fifo_timeout_timer,
+                        qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + 15 * s->etu);
                 }
             }
         }
@@ -402,6 +419,9 @@ void sh_serial_init(MemoryRegion *sysmem,
                                  sh_serial_event, NULL, s, NULL, true);
     }
 
+    s->fifo_timeout_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
+                                         sh_serial_timeout_int, s);
+    s->etu = NANOSECONDS_PER_SECOND / 9600;
     s->eri = eri_source;
     s->rxi = rxi_source;
     s->txi = txi_source;

@@ -98,10 +98,11 @@
  * We'd prefer not want to pull in everything else TCG related, so handle
  * those few cases by hand.
  *
- * Note that x32 is fully detected with __x64_64__ + _ILP32, and that for
- * Sparc we always force the use of sparcv9 in configure.
+ * Note that x32 is fully detected with __x86_64__ + _ILP32, and that for
+ * Sparc we always force the use of sparcv9 in configure. MIPS n32 (ILP32) &
+ * n64 (LP64) ABIs are both detected using __mips64.
  */
-#if defined(__x86_64__) || defined(__sparc__)
+#if defined(__x86_64__) || defined(__sparc__) || defined(__mips64)
 # define ATOMIC_REG_SIZE  8
 #else
 # define ATOMIC_REG_SIZE  sizeof(void *)
@@ -449,5 +450,39 @@
     }                                                                   \
     _oldn;                                                              \
 })
+
+/* Abstractions to access atomically (i.e. "once") i64/u64 variables */
+#ifdef CONFIG_ATOMIC64
+static inline int64_t atomic_read_i64(const int64_t *ptr)
+{
+    /* use __nocheck because sizeof(void *) might be < sizeof(u64) */
+    return atomic_read__nocheck(ptr);
+}
+
+static inline uint64_t atomic_read_u64(const uint64_t *ptr)
+{
+    return atomic_read__nocheck(ptr);
+}
+
+static inline void atomic_set_i64(int64_t *ptr, int64_t val)
+{
+    atomic_set__nocheck(ptr, val);
+}
+
+static inline void atomic_set_u64(uint64_t *ptr, uint64_t val)
+{
+    atomic_set__nocheck(ptr, val);
+}
+
+static inline void atomic64_init(void)
+{
+}
+#else /* !CONFIG_ATOMIC64 */
+int64_t  atomic_read_i64(const int64_t *ptr);
+uint64_t atomic_read_u64(const uint64_t *ptr);
+void atomic_set_i64(int64_t *ptr, int64_t val);
+void atomic_set_u64(uint64_t *ptr, uint64_t val);
+void atomic64_init(void);
+#endif /* !CONFIG_ATOMIC64 */
 
 #endif /* QEMU_ATOMIC_H */

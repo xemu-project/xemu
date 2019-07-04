@@ -99,6 +99,12 @@ void pci_bridge_reset(DeviceState *qdev);
 void pci_bridge_initfn(PCIDevice *pci_dev, const char *typename);
 void pci_bridge_exitfn(PCIDevice *pci_dev);
 
+void pci_bridge_dev_plug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
+                            Error **errp);
+void pci_bridge_dev_unplug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
+                              Error **errp);
+void pci_bridge_dev_unplug_request_cb(HotplugHandler *hotplug_dev,
+                                      DeviceState *dev, Error **errp);
 
 /*
  * before qdev initialization(qdev_init()), this function sets bus_name and
@@ -133,11 +139,19 @@ typedef struct PCIBridgeQemuCap {
 
 #define REDHAT_PCI_CAP_RESOURCE_RESERVE 1
 
+/*
+ * PCI BUS/IO/MEM/PREFMEM additional resources recorded as a
+ * capability in PCI configuration space to reserve on firmware init.
+ */
+typedef struct PCIResReserve {
+    uint32_t bus;
+    uint64_t io;
+    uint64_t mem_non_pref;
+    uint64_t mem_pref_32;
+    uint64_t mem_pref_64;
+} PCIResReserve;
+
 int pci_bridge_qemu_reserve_cap_init(PCIDevice *dev, int cap_offset,
-                              uint32_t bus_reserve, uint64_t io_reserve,
-                              uint64_t mem_non_pref_reserve,
-                              uint64_t mem_pref_32_reserve,
-                              uint64_t mem_pref_64_reserve,
-                              Error **errp);
+                               PCIResReserve res_reserve, Error **errp);
 
 #endif /* QEMU_PCI_BRIDGE_H */

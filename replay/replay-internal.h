@@ -122,6 +122,8 @@ void replay_finish_event(void);
     data_kind variable. */
 void replay_fetch_data_kind(void);
 
+/*! Advance replay_state.current_step to the specified value. */
+void replay_advance_current_step(uint64_t current_step);
 /*! Saves queued events (like instructions and sound). */
 void replay_save_instructions(void);
 
@@ -142,8 +144,6 @@ void replay_init_events(void);
 void replay_finish_events(void);
 /*! Flushes events queue */
 void replay_flush_events(void);
-/*! Clears events list before loading new VM state */
-void replay_clear_events(void);
 /*! Returns true if there are any unsaved events in the queue */
 bool replay_has_events(void);
 /*! Saves events from queue into the file */

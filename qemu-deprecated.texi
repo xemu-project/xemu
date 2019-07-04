@@ -17,97 +17,17 @@ they were first deprecated in the 2.10.0 release.
 What follows is a list of all features currently marked as
 deprecated.
 
-@section Build options
-
-@subsection GTK 2.x
-
-Previously QEMU has supported building against both GTK 2.x
-and 3.x series APIs. Support for the GTK 2.x builds will be
-discontinued, so maintainers should switch to using GTK 3.x,
-which is the default.
-
-@subsection SDL 1.2
-
-Previously QEMU has supported building against both SDL 1.2
-and 2.0 series APIs. Support for the SDL 1.2 builds will be
-discontinued, so maintainers should switch to using SDL 2.0,
-which is the default.
-
 @section System emulator command line arguments
+
+@subsection -machine enforce-config-section=on|off (since 3.1)
+
+The @option{enforce-config-section} parameter is replaced by the
+@option{-global migration.send-configuration=@var{on|off}} option.
 
 @subsection -no-kvm (since 1.3.0)
 
 The ``-no-kvm'' argument is now a synonym for setting
 ``-machine accel=tcg''.
-
-@subsection -vnc tls (since 2.5.0)
-
-The ``-vnc tls'' argument is now a synonym for setting
-``-object tls-creds-anon,id=tls0'' combined with
-``-vnc tls-creds=tls0'
-
-@subsection -vnc x509 (since 2.5.0)
-
-The ``-vnc x509=/path/to/certs'' argument is now a
-synonym for setting
-``-object tls-creds-x509,dir=/path/to/certs,id=tls0,verify-peer=no''
-combined with ``-vnc tls-creds=tls0'
-
-@subsection -vnc x509verify (since 2.5.0)
-
-The ``-vnc x509verify=/path/to/certs'' argument is now a
-synonym for setting
-``-object tls-creds-x509,dir=/path/to/certs,id=tls0,verify-peer=yes''
-combined with ``-vnc tls-creds=tls0'
-
-@subsection -tftp (since 2.6.0)
-
-The ``-tftp /some/dir'' argument is replaced by either
-``-netdev user,id=x,tftp=/some/dir '' (for pluggable NICs, accompanied
-with ``-device ...,netdev=x''), or ``-nic user,tftp=/some/dir''
-(for embedded NICs). The new syntax allows different settings to be
-provided per NIC.
-
-@subsection -bootp (since 2.6.0)
-
-The ``-bootp /some/file'' argument is replaced by either
-``-netdev user,id=x,bootp=/some/file '' (for pluggable NICs, accompanied
-with ``-device ...,netdev=x''), or ``-nic user,bootp=/some/file''
-(for embedded NICs). The new syntax allows different settings to be
-provided per NIC.
-
-@subsection -redir (since 2.6.0)
-
-The ``-redir [tcp|udp]:hostport:[guestaddr]:guestport'' argument is
-replaced by either
-``-netdev user,id=x,hostfwd=[tcp|udp]:[hostaddr]:hostport-[guestaddr]:guestport''
-(for pluggable NICs, accompanied with ``-device ...,netdev=x'') or
-``-nic user,hostfwd=[tcp|udp]:[hostaddr]:hostport-[guestaddr]:guestport''
-(for embedded NICs). The new syntax allows different settings to be
-provided per NIC.
-
-@subsection -smb (since 2.6.0)
-
-The ``-smb /some/dir'' argument is replaced by either
-``-netdev user,id=x,smb=/some/dir '' (for pluggable NICs, accompanied
-with ``-device ...,netdev=x''), or ``-nic user,smb=/some/dir''
-(for embedded NICs). The new syntax allows different settings to be
-provided per NIC.
-
-@subsection -drive cyls=...,heads=...,secs=...,trans=... (since 2.10.0)
-
-The drive geometry arguments are replaced by the the geometry arguments
-that can be specified with the ``-device'' parameter.
-
-@subsection -drive serial=... (since 2.10.0)
-
-The drive serial argument is replaced by the the serial argument
-that can be specified with the ``-device'' parameter.
-
-@subsection -drive addr=... (since 2.10.0)
-
-The drive addr argument is replaced by the the addr argument
-that can be specified with the ``-device'' parameter.
 
 @subsection -usbdevice (since 2.10.0)
 
@@ -117,70 +37,40 @@ would automatically enable USB support on the machine type.
 If using the new syntax, USB support must be explicitly
 enabled via the ``-machine usb=on'' argument.
 
-@subsection -nodefconfig (since 2.11.0)
-
-The ``-nodefconfig`` argument is a synonym for ``-no-user-config``.
-
-@subsection -balloon (since 2.12.0)
-
-The @option{--balloon virtio} argument has been superseded by
-@option{--device virtio-balloon}.
-
-@subsection -machine s390-squash-mcss=on|off (since 2.12.0)
-
-The ``s390-squash-mcss=on`` property has been obsoleted by allowing the
-cssid to be chosen freely. Instead of squashing subchannels into the
-default channel subsystem image for guests that do not support multiple
-channel subsystems, all devices can be put into the default channel
-subsystem image.
-
-@subsection -fsdev handle (since 2.12.0)
-
-The ``handle'' fsdev backend does not support symlinks and causes the 9p
-filesystem in the guest to fail a fair amount of tests from the PJD POSIX
-filesystem test suite. Also it requires the CAP_DAC_READ_SEARCH capability,
-which is not the recommended way to run QEMU. This backend should not be
-used and it will be removed with no replacement.
-
-@subsection -no-frame (since 2.12.0)
-
-The @code{--no-frame} argument works with SDL 1.2 only. The other user
-interfaces never implemented this in the first place. So this will be
-removed together with SDL 1.2 support.
-
-@subsection -rtc-td-hack (since 2.12.0)
-
-The @code{-rtc-td-hack} option has been replaced by
-@code{-rtc driftfix=slew}.
-
-@subsection -localtime (since 2.12.0)
-
-The @code{-localtime} option has been replaced by @code{-rtc base=localtime}.
-
-@subsection -startdate (since 2.12.0)
-
-The @code{-startdate} option has been replaced by @code{-rtc base=@var{date}}.
-
-@subsection -virtioconsole (since 3.0.0)
-
-Option @option{-virtioconsole} has been replaced by
-@option{-device virtconsole}.
-
-@subsection -clock (since 3.0.0)
-
-The @code{-clock} option is ignored since QEMU version 1.7.0. There is no
-replacement since it is not needed anymore.
-
-@subsection -enable-hax (since 3.0.0)
-
-The @option{-enable-hax} option has been replaced by @option{-accel hax}.
-Both options have been introduced in QEMU version 2.9.0.
-
 @subsection -drive file=json:@{...@{'driver':'file'@}@} (since 3.0)
 
 The 'file' driver for drives is no longer appropriate for character or host
 devices and will only accept regular files (S_IFREG). The correct driver
 for these file types is 'host_cdrom' or 'host_device' as appropriate.
+
+@subsection -net ...,name=@var{name} (since 3.1)
+
+The @option{name} parameter of the @option{-net} option is a synonym
+for the @option{id} parameter, which should now be used instead.
+
+@subsection -smp (invalid topologies) (since 3.1)
+
+CPU topology properties should describe whole machine topology including
+possible CPUs.
+
+However, historically it was possible to start QEMU with an incorrect topology
+where @math{@var{n} <= @var{sockets} * @var{cores} * @var{threads} < @var{maxcpus}},
+which could lead to an incorrect topology enumeration by the guest.
+Support for invalid topologies will be removed, the user must ensure
+topologies described with -smp include all possible cpus, i.e.
+  @math{@var{sockets} * @var{cores} * @var{threads} = @var{maxcpus}}.
+
+@subsection -vnc acl (since 4.0.0)
+
+The @code{acl} option to the @code{-vnc} argument has been replaced
+by the @code{tls-authz} and @code{sasl-authz} options.
+
+@subsection QEMU_AUDIO_ environment variables and -audio-help (since 4.0)
+
+The ``-audiodev'' argument is now the preferred way to specify audio
+backend settings instead of environment variables.  To ease migration to
+the new format, the ``-audiodev-help'' option can be used to convert
+the current values of the environment variables to ``-audiodev'' options.
 
 @section QEMU Machine Protocol (QMP) commands
 
@@ -188,6 +78,12 @@ for these file types is 'host_cdrom' or 'host_device' as appropriate.
 
 "autoload" parameter is now ignored. All bitmaps are automatically loaded
 from qcow2 images.
+
+@subsection query-block result field dirty-bitmaps[i].status (since 4.0)
+
+The ``status'' field of the ``BlockDirtyInfo'' structure, returned by
+the query-block command is deprecated. Two new boolean fields,
+``recording'' and ``busy'' effectively replace it.
 
 @subsection query-cpus (since 2.12.0)
 
@@ -198,25 +94,61 @@ The ``query-cpus'' command is replaced by the ``query-cpus-fast'' command.
 The ``arch'' output member of the ``query-cpus-fast'' command is
 replaced by the ``target'' output member.
 
+@subsection cpu-add (since 4.0)
+
+Use ``device_add'' for hotplugging vCPUs instead of ``cpu-add''.  See
+documentation of ``query-hotpluggable-cpus'' for additional
+details.
+
+@subsection query-events (since 4.0)
+
+The ``query-events'' command has been superseded by the more powerful
+and accurate ``query-qmp-schema'' command.
+
+@subsection chardev client socket with 'wait' option (since 4.0)
+
+Character devices creating sockets in client mode should not specify
+the 'wait' field, which is only applicable to sockets in server mode
+
+@section Human Monitor Protocol (HMP) commands
+
+@subsection The hub_id parameter of 'hostfwd_add' / 'hostfwd_remove' (since 3.1)
+
+The @option{[hub_id name]} parameter tuple of the 'hostfwd_add' and
+'hostfwd_remove' HMP commands has been replaced by @option{netdev_id}.
+
+@subsection cpu-add (since 4.0)
+
+Use ``device_add'' for hotplugging vCPUs instead of ``cpu-add''.  See
+documentation of ``query-hotpluggable-cpus'' for additional details.
+
+@subsection acl_show, acl_reset, acl_policy, acl_add, acl_remove (since 4.0.0)
+
+The ``acl_show'', ``acl_reset'', ``acl_policy'', ``acl_add'', and
+``acl_remove'' commands are deprecated with no replacement. Authorization
+for VNC should be performed using the pluggable QAuthZ objects.
+
 @section System emulator devices
 
-@subsection ivshmem (since 2.6.0)
+@subsection bluetooth (since 3.1)
 
-The ``ivshmem'' device type is replaced by either the ``ivshmem-plain''
-or ``ivshmem-doorbell`` device types.
-
-@subsection Page size support < 4k for embedded PowerPC CPUs (since 2.12.0)
-
-qemu-system-ppcemb will be removed. qemu-system-ppc (or qemu-system-ppc64)
-should be used instead. That means that embedded 4xx PowerPC CPUs will not
-support page sizes < 4096 any longer.
+The bluetooth subsystem is unmaintained since many years and likely bitrotten
+quite a bit. It will be removed without replacement unless some users speaks
+up at the @email{qemu-devel@@nongnu.org} mailing list with information about
+their usecases.
 
 @section System emulator machines
 
-@subsection pc-0.10 and pc-0.11 (since 3.0)
+@subsection pc-0.12, pc-0.13, pc-0.14 and pc-0.15 (since 4.0)
 
 These machine types are very old and likely can not be used for live migration
 from old QEMU versions anymore. A newer machine type should be used instead.
+
+@subsection prep (PowerPC) (since 3.1)
+
+This machine type uses an unmaintained firmware, broken in lots of ways,
+and unable to start post-2004 operating systems. 40p machine type should be
+used instead.
 
 @section Device options
 
@@ -227,8 +159,50 @@ from old QEMU versions anymore. A newer machine type should be used instead.
 In order to prevent QEMU from automatically opening an image's backing
 chain, use ``"backing": null'' instead.
 
-@subsection vio-spapr-device device options
+@subsubsection rbd keyvalue pair encoded filenames: "" (since 3.1.0)
 
-@subsubsection "irq": "" (since 3.0.0)
+Options for ``rbd'' should be specified according to its runtime options,
+like other block drivers.  Legacy parsing of keyvalue pair encoded
+filenames is useful to open images with the old format for backing files;
+These image files should be updated to use the current format.
 
-The ``irq'' property is obsoleted.
+Example of legacy encoding:
+
+@code{json:@{"file.driver":"rbd", "file.filename":"rbd:rbd/name"@}}
+
+The above, converted to the current supported format:
+
+@code{json:@{"file.driver":"rbd", "file.pool":"rbd", "file.image":"name"@}}
+
+@section Related binaries
+
+@subsection qemu-nbd --partition (since 4.0.0)
+
+The ``qemu-nbd --partition $digit'' code (also spelled @option{-P})
+can only handle MBR partitions, and has never correctly handled
+logical partitions beyond partition 5.  If you know the offset and
+length of the partition (perhaps by using @code{sfdisk} within the
+guest), you can achieve the effect of exporting just that subset of
+the disk by use of the @option{--image-opts} option with a raw
+blockdev using the @code{offset} and @code{size} parameters layered on
+top of any other existing blockdev. For example, if partition 1 is
+100MiB long starting at 1MiB, the old command:
+
+@code{qemu-nbd -t -P 1 -f qcow2 file.qcow2}
+
+can be rewritten as:
+
+@code{qemu-nbd -t --image-opts driver=raw,offset=1M,size=100M,file.driver=qcow2,file.backing.driver=file,file.backing.filename=file.qcow2}
+
+Alternatively, the @code{nbdkit} project provides a more powerful
+partition filter on top of its nbd plugin, which can be used to select
+an arbitrary MBR or GPT partition on top of any other full-image NBD
+export.  Using this to rewrite the above example results in:
+
+@code{qemu-nbd -t -k /tmp/sock -f qcow2 file.qcow2 &}
+@code{nbdkit -f --filter=partition nbd socket=/tmp/sock partition=1}
+
+Note that if you are exposing the export via /dev/nbd0, it is easier
+to just export the entire image and then mount only /dev/nbd0p1 than
+it is to reinvoke @command{qemu-nbd -c /dev/nbd0} limited to just a
+subset of the image.

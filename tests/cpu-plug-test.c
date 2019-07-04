@@ -32,12 +32,12 @@ static void test_plug_with_cpu_add(gconstpointer data)
     unsigned int i;
 
     args = g_strdup_printf("-machine %s -cpu %s "
-                           "-smp sockets=%u,cores=%u,threads=%u,maxcpus=%u",
+                           "-smp 1,sockets=%u,cores=%u,threads=%u,maxcpus=%u",
                            s->machine, s->cpu_model,
                            s->sockets, s->cores, s->threads, s->maxcpus);
     qtest_start(args);
 
-    for (i = s->sockets * s->cores * s->threads; i < s->maxcpus; i++) {
+    for (i = 1; i < s->maxcpus; i++) {
         response = qmp("{ 'execute': 'cpu-add',"
                        "  'arguments': { 'id': %d } }", i);
         g_assert(response);
@@ -56,7 +56,7 @@ static void test_plug_without_cpu_add(gconstpointer data)
     QDict *response;
 
     args = g_strdup_printf("-machine %s -cpu %s "
-                           "-smp sockets=%u,cores=%u,threads=%u,maxcpus=%u",
+                           "-smp 1,sockets=%u,cores=%u,threads=%u,maxcpus=%u",
                            s->machine, s->cpu_model,
                            s->sockets, s->cores, s->threads, s->maxcpus);
     qtest_start(args);
@@ -79,17 +79,18 @@ static void test_plug_with_device_add_x86(gconstpointer data)
     unsigned int s, c, t;
 
     args = g_strdup_printf("-machine %s -cpu %s "
-                           "-smp sockets=%u,cores=%u,threads=%u,maxcpus=%u",
+                           "-smp 1,sockets=%u,cores=%u,threads=%u,maxcpus=%u",
                            td->machine, td->cpu_model,
                            td->sockets, td->cores, td->threads, td->maxcpus);
     qtest_start(args);
 
-    for (s = td->sockets; s < td->maxcpus / td->cores / td->threads; s++) {
+    for (s = 1; s < td->sockets; s++) {
         for (c = 0; c < td->cores; c++) {
             for (t = 0; t < td->threads; t++) {
                 char *id = g_strdup_printf("id-%i-%i-%i", s, c, t);
-                qtest_qmp_device_add(td->device_model, id, "'socket-id':'%i', "
-                                     "'core-id':'%i', 'thread-id':'%i'",
+                qtest_qmp_device_add(td->device_model, id,
+                                     "{'socket-id':%u, 'core-id':%u,"
+                                     " 'thread-id':%u}",
                                      s, c, t);
                 g_free(id);
             }
@@ -112,9 +113,9 @@ static void test_plug_with_device_add_coreid(gconstpointer data)
                            td->sockets, td->cores, td->threads, td->maxcpus);
     qtest_start(args);
 
-    for (c = td->cores; c < td->maxcpus / td->sockets / td->threads; c++) {
+    for (c = 1; c < td->cores; c++) {
         char *id = g_strdup_printf("id-%i", c);
-        qtest_qmp_device_add(td->device_model, id, "'core-id':'%i'", c);
+        qtest_qmp_device_add(td->device_model, id, "{'core-id':%u}", c);
         g_free(id);
     }
 
@@ -147,7 +148,7 @@ static void add_pc_test_case(const char *mname)
     data->sockets = 1;
     data->cores = 3;
     data->threads = 2;
-    data->maxcpus = data->sockets * data->cores * data->threads * 2;
+    data->maxcpus = data->sockets * data->cores * data->threads;
     if (g_str_has_suffix(mname, "-1.4") ||
         (strcmp(mname, "pc-1.3") == 0) ||
         (strcmp(mname, "pc-1.2") == 0) ||
@@ -156,9 +157,7 @@ static void add_pc_test_case(const char *mname)
         (strcmp(mname, "pc-0.15") == 0) ||
         (strcmp(mname, "pc-0.14") == 0) ||
         (strcmp(mname, "pc-0.13") == 0) ||
-        (strcmp(mname, "pc-0.12") == 0) ||
-        (strcmp(mname, "pc-0.11") == 0) ||
-        (strcmp(mname, "pc-0.10") == 0)) {
+        (strcmp(mname, "pc-0.12") == 0)) {
         path = g_strdup_printf("cpu-plug/%s/init/%ux%ux%u&maxcpus=%u",
                                mname, data->sockets, data->cores,
                                data->threads, data->maxcpus);
@@ -202,7 +201,7 @@ static void add_pseries_test_case(const char *mname)
     data->sockets = 2;
     data->cores = 3;
     data->threads = 1;
-    data->maxcpus = data->sockets * data->cores * data->threads * 2;
+    data->maxcpus = data->sockets * data->cores * data->threads;
 
     path = g_strdup_printf("cpu-plug/%s/device-add/%ux%ux%u&maxcpus=%u",
                            mname, data->sockets, data->cores,
@@ -228,7 +227,7 @@ static void add_s390x_test_case(const char *mname)
     data->sockets = 1;
     data->cores = 3;
     data->threads = 1;
-    data->maxcpus = data->sockets * data->cores * data->threads * 2;
+    data->maxcpus = data->sockets * data->cores * data->threads;
 
     data2 = g_memdup(data, sizeof(PlugTestData));
     data2->machine = g_strdup(data->machine);
@@ -256,11 +255,11 @@ int main(int argc, char **argv)
     g_test_init(&argc, &argv, NULL);
 
     if (strcmp(arch, "i386") == 0 || strcmp(arch, "x86_64") == 0) {
-        qtest_cb_for_every_machine(add_pc_test_case);
+        qtest_cb_for_every_machine(add_pc_test_case, g_test_quick());
     } else if (g_str_equal(arch, "ppc64")) {
-        qtest_cb_for_every_machine(add_pseries_test_case);
+        qtest_cb_for_every_machine(add_pseries_test_case, g_test_quick());
     } else if (g_str_equal(arch, "s390x")) {
-        qtest_cb_for_every_machine(add_s390x_test_case);
+        qtest_cb_for_every_machine(add_s390x_test_case, g_test_quick());
     }
 
     return g_test_run();

@@ -28,16 +28,13 @@ typedef enum {
 } BlockInterfaceType;
 
 struct DriveInfo {
-    const char *devaddr;
     BlockInterfaceType type;
     int bus;
     int unit;
     int auto_del;               /* see blockdev_mark_auto_del() */
     bool is_default;            /* Added by default_drive() ?  */
     int media_cd;
-    int cyls, heads, secs, trans;
     QemuOpts *opts;
-    char *serial;
     bool locked;
     QTAILQ_ENTRY(DriveInfo) next;
 };
@@ -58,7 +55,8 @@ DriveInfo *drive_get_next(BlockInterfaceType type);
 QemuOpts *drive_def(const char *optstr);
 QemuOpts *drive_add(BlockInterfaceType type, int index, const char *file,
                     const char *optstr);
-DriveInfo *drive_new(QemuOpts *arg, BlockInterfaceType block_default_type);
+DriveInfo *drive_new(QemuOpts *arg, BlockInterfaceType block_default_type,
+                     Error **errp);
 
 /* device-hotplug */
 

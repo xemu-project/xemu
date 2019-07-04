@@ -21,6 +21,7 @@
 #include "qemu/coroutine_int.h"
 #include "hw/qdev.h"
 #include "io/channel.h"
+#include "net/announce.h"
 
 struct PostcopyBlocktimeContext;
 
@@ -35,6 +36,9 @@ struct MigrationIncomingState {
      * loading state.
      */
     QemuEvent main_thread_load_event;
+
+    /* For network announces */
+    AnnounceTimer  announce_timer;
 
     size_t         largest_page_size;
     bool           have_fault_thread;
@@ -80,6 +84,9 @@ struct MigrationIncomingState {
     bool postcopy_recover_triggered;
     QemuSemaphore postcopy_pause_sem_dst;
     QemuSemaphore postcopy_pause_sem_fault;
+
+    /* List of listening socket addresses  */
+    SocketAddressList *socket_address_list;
 };
 
 MigrationIncomingState *migration_incoming_get_current(void);
@@ -126,7 +133,13 @@ struct MigrationState
      */
     QemuSemaphore rate_limit_sem;
 
-    /* bytes already send at the beggining of current interation */
+    /* pages already send at the beginning of current iteration */
+    uint64_t iteration_initial_pages;
+
+    /* pages transferred per second */
+    double pages_per_second;
+
+    /* bytes already send at the beginning of current iteration */
     uint64_t iteration_initial_bytes;
     /* time at the start of current iteration */
     int64_t iteration_start_time;
@@ -206,9 +219,6 @@ struct MigrationState
      */
     bool store_global_state;
 
-    /* Whether the VM is only allowing for migratable devices */
-    bool only_migratable;
-
     /* Whether we send QEMU_VM_CONFIGURATION during migration */
     bool send_configuration;
     /* Whether we send section footer during migration */
@@ -229,7 +239,7 @@ struct MigrationState
 void migrate_set_state(int *state, int old_state, int new_state);
 
 void migration_fd_process_incoming(QEMUFile *f);
-void migration_ioc_process_incoming(QIOChannel *ioc);
+void migration_ioc_process_incoming(QIOChannel *ioc, Error **errp);
 void migration_incoming_process(void);
 
 bool  migration_has_all_channels(void);
@@ -240,6 +250,8 @@ void migrate_set_error(MigrationState *s, const Error *error);
 void migrate_fd_error(MigrationState *s, const Error *error);
 
 void migrate_fd_connect(MigrationState *s, Error *error_in);
+
+bool migration_is_setup_or_active(int state);
 
 void migrate_init(MigrationState *s);
 bool migration_is_blocked(Error **errp);
@@ -253,12 +265,12 @@ bool migrate_release_ram(void);
 bool migrate_postcopy_ram(void);
 bool migrate_zero_blocks(void);
 bool migrate_dirty_bitmaps(void);
+bool migrate_ignore_shared(void);
 
 bool migrate_auto_converge(void);
 bool migrate_use_multifd(void);
 bool migrate_pause_before_switchover(void);
 int migrate_multifd_channels(void);
-int migrate_multifd_page_count(void);
 
 int migrate_use_xbzrle(void);
 int64_t migrate_xbzrle_cache_size(void);
@@ -266,11 +278,15 @@ bool migrate_colo_enabled(void);
 
 bool migrate_use_block(void);
 bool migrate_use_block_incremental(void);
+int migrate_max_cpu_throttle(void);
 bool migrate_use_return_path(void);
+
+uint64_t ram_get_total_transferred_pages(void);
 
 bool migrate_use_compression(void);
 int migrate_compress_level(void);
 int migrate_compress_threads(void);
+int migrate_compress_wait_thread(void);
 int migrate_decompress_threads(void);
 bool migrate_use_events(void);
 bool migrate_postcopy_blocktime(void);
@@ -288,9 +304,12 @@ void migrate_send_rp_resume_ack(MigrationIncomingState *mis, uint32_t value);
 
 void dirty_bitmap_mig_before_vm_start(void);
 void init_dirty_bitmap_incoming_migration(void);
+void migrate_add_address(SocketAddress *address);
+
+int foreach_not_ignored_block(RAMBlockIterFunc func, void *opaque);
 
 #define qemu_ram_foreach_block \
-  #warning "Use qemu_ram_foreach_block_migratable in migration code"
+  #warning "Use foreach_not_ignored_block in migration code"
 
 void migration_make_urgent_request(void);
 void migration_consume_urgent_request(void);

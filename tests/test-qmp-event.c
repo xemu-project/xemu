@@ -21,6 +21,7 @@
 #include "qapi/qmp/qstring.h"
 #include "qapi/qmp-event.h"
 #include "test-qapi-events.h"
+#include "test-qapi-emit-events.h"
 
 typedef struct TestEventData {
     QDict *expect;
@@ -93,9 +94,7 @@ static bool qdict_cmp_simple(QDict *a, QDict *b)
     return d.result;
 }
 
-/* This function is hooked as final emit function, which can verify the
-   correctness. */
-static void event_test_emit(test_QAPIEvent event, QDict *d, Error **errp)
+void test_qapi_event_emit(test_QAPIEvent event, QDict *d)
 {
     QDict *t;
     int64_t s, ms;
@@ -156,7 +155,7 @@ static void test_event_a(TestEventData *data,
     QDict *d;
     d = data->expect;
     qdict_put_str(d, "event", "EVENT_A");
-    qapi_event_send_event_a(&error_abort);
+    qapi_event_send_event_a();
 }
 
 static void test_event_b(TestEventData *data,
@@ -165,7 +164,7 @@ static void test_event_b(TestEventData *data,
     QDict *d;
     d = data->expect;
     qdict_put_str(d, "event", "EVENT_B");
-    qapi_event_send_event_b(&error_abort);
+    qapi_event_send_event_b();
 }
 
 static void test_event_c(TestEventData *data,
@@ -191,7 +190,7 @@ static void test_event_c(TestEventData *data,
     qdict_put_str(d, "event", "EVENT_C");
     qdict_put(d, "data", d_data);
 
-    qapi_event_send_event_c(true, 1, true, &b, "test2", &error_abort);
+    qapi_event_send_event_c(true, 1, true, &b, "test2");
 
     g_free(b.string);
 }
@@ -233,8 +232,7 @@ static void test_event_d(TestEventData *data,
     qdict_put_str(d, "event", "EVENT_D");
     qdict_put(d, "data", d_data);
 
-    qapi_event_send_event_d(&a, "test3", false, NULL, true, ENUM_ONE_VALUE3,
-                           &error_abort);
+    qapi_event_send_event_d(&a, "test3", false, NULL, true, ENUM_ONE_VALUE3);
 
     g_free(struct1.string);
     g_free(a.string);
@@ -242,8 +240,6 @@ static void test_event_d(TestEventData *data,
 
 int main(int argc, char **argv)
 {
-    qmp_event_set_func_emit(event_test_emit);
-
     g_test_init(&argc, &argv, NULL);
 
     event_test_add("/event/event_a", test_event_a);

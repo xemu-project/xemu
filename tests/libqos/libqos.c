@@ -24,8 +24,8 @@ QOSState *qtest_vboot(QOSOps *ops, const char *cmdline_fmt, va_list ap)
     qs->qts = qtest_init(cmdline);
     qs->ops = ops;
     if (ops) {
-        qs->alloc = ops->init_allocator(qs->qts, ALLOC_NO_FLAGS);
-        qs->pcibus = ops->qpci_init(qs->qts, qs->alloc);
+        ops->alloc_init(&qs->alloc, qs->qts, ALLOC_NO_FLAGS);
+        qs->pcibus = ops->qpci_new(qs->qts, &qs->alloc);
     }
 
     g_free(cmdline);
@@ -58,11 +58,8 @@ void qtest_common_shutdown(QOSState *qs)
             qs->ops->qpci_free(qs->pcibus);
             qs->pcibus = NULL;
         }
-        if (qs->alloc && qs->ops->uninit_allocator) {
-            qs->ops->uninit_allocator(qs->alloc);
-            qs->alloc = NULL;
-        }
     }
+    alloc_destroy(&qs->alloc);
     qtest_quit(qs->qts);
     g_free(qs);
 }
@@ -76,11 +73,6 @@ void qtest_shutdown(QOSState *qs)
     }
 }
 
-void set_context(QOSState *s)
-{
-    global_qtest = s->qts;
-}
-
 static QDict *qmp_execute(QTestState *qts, const char *command)
 {
     return qtest_qmp(qts, "{ 'execute': %s }", command);
@@ -91,8 +83,6 @@ void migrate(QOSState *from, QOSState *to, const char *uri)
     const char *st;
     QDict *rsp, *sub;
     bool running;
-
-    set_context(from);
 
     /* Is the machine currently running? */
     rsp = qmp_execute(from->qts, "query-status");
@@ -116,8 +106,7 @@ void migrate(QOSState *from, QOSState *to, const char *uri)
 
     /* If we were running, we can wait for an event. */
     if (running) {
-        migrate_allocator(from->alloc, to->alloc);
-        set_context(to);
+        migrate_allocator(&from->alloc, &to->alloc);
         qtest_qmp_eventwait(to->qts, "RESUME");
         return;
     }
@@ -146,8 +135,7 @@ void migrate(QOSState *from, QOSState *to, const char *uri)
         g_assert_not_reached();
     }
 
-    migrate_allocator(from->alloc, to->alloc);
-    set_context(to);
+    migrate_allocator(&from->alloc, &to->alloc);
 }
 
 bool have_qemu_img(void)
@@ -185,21 +173,11 @@ void mkimg(const char *file, const char *fmt, unsigned size_mb)
     cli = g_strdup_printf("%s create -f %s %s %uM", qemu_img_abs_path,
                           fmt, file, size_mb);
     ret = g_spawn_command_line_sync(cli, &out, &out2, &rc, &err);
-    if (err) {
+    if (err || !g_spawn_check_exit_status(rc, &err)) {
         fprintf(stderr, "%s\n", err->message);
         g_error_free(err);
     }
     g_assert(ret && !err);
-
-    /* In glib 2.34, we have g_spawn_check_exit_status. in 2.12, we don't.
-     * glib 2.43.91 implementation assumes that any non-zero is an error for
-     * windows, but uses extra precautions for Linux. However,
-     * 0 is only possible if the program exited normally, so that should be
-     * sufficient for our purposes on all platforms, here. */
-    if (rc) {
-        fprintf(stderr, "qemu-img returned status code %d\n", rc);
-    }
-    g_assert(!rc);
 
     g_free(out);
     g_free(out2);

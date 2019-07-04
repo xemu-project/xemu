@@ -18,7 +18,6 @@
 #include <syslog.h>
 #include <sys/wait.h>
 #endif
-#include "qapi/qmp/json-streamer.h"
 #include "qapi/qmp/json-parser.h"
 #include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qjson.h"
@@ -35,6 +34,7 @@
 #include "qemu/systemd.h"
 #include "qemu-version.h"
 #ifdef _WIN32
+#include <dbt.h>
 #include "qga/service-win32.h"
 #include "qga/vss-win32.h"
 #endif
@@ -59,6 +59,7 @@
 #endif
 #define QGA_SENTINEL_BYTE 0xFF
 #define QGA_CONF_DEFAULT CONFIG_QEMU_CONFDIR G_DIR_SEPARATOR_S "qemu-ga.conf"
+#define QGA_RETRY_INTERVAL 5
 
 static struct {
     const char *state_dir;
@@ -69,6 +70,8 @@ typedef struct GAPersistentState {
 #define QGA_PSTATE_DEFAULT_FD_COUNTER 1000
     int64_t fd_counter;
 } GAPersistentState;
+
+typedef struct GAConfig GAConfig;
 
 struct GAState {
     JSONMessageParser parser;
@@ -81,6 +84,7 @@ struct GAState {
     bool logging_enabled;
 #ifdef _WIN32
     GAService service;
+    HANDLE wakeup_event;
 #endif
     bool delimit_response;
     bool frozen;
@@ -95,6 +99,9 @@ struct GAState {
 #endif
     gchar *pstate_filepath;
     GAPersistentState pstate;
+    GAConfig *config;
+    int socket_activation;
+    bool force_exit;
 };
 
 struct GAState *ga_state;
@@ -114,8 +121,11 @@ static const char *ga_freeze_whitelist[] = {
 #ifdef _WIN32
 DWORD WINAPI service_ctrl_handler(DWORD ctrl, DWORD type, LPVOID data,
                                   LPVOID ctx);
+DWORD WINAPI handle_serial_device_events(DWORD type, LPVOID data);
 VOID WINAPI service_main(DWORD argc, TCHAR *argv[]);
 #endif
+static int run_agent(GAState *s);
+static void stop_agent(GAState *s, bool requested);
 
 static void
 init_dfl_pathnames(void)
@@ -152,7 +162,7 @@ static void quit_handler(int sig)
             WaitForSingleObject(hEventTimeout, 0);
             CloseHandle(hEventTimeout);
         }
-        qga_vss_fsfreeze(&i, false, &err);
+        qga_vss_fsfreeze(&i, false, NULL, &err);
         if (err) {
             g_debug("Error unfreezing filesystems prior to exiting: %s",
                 error_get_pretty(err));
@@ -164,9 +174,7 @@ static void quit_handler(int sig)
     }
     g_debug("received signal num %d, quitting", sig);
 
-    if (g_main_loop_is_running(ga_state->main_loop)) {
-        g_main_loop_quit(ga_state->main_loop);
-    }
+    stop_agent(ga_state, true);
 }
 
 #ifndef _WIN32
@@ -251,6 +259,10 @@ QEMU_COPYRIGHT "\n"
 "                    to list available RPCs)\n"
 "  -D, --dump-conf   dump a qemu-ga config file based on current config\n"
 "                    options / command-line parameters to stdout\n"
+"  -r, --retry-path  attempt re-opening path if it's unavailable or closed\n"
+"                    due to an error which may be recoverable in the future\n"
+"                    (virtio-serial driver re-install, serial device hot\n"
+"                    plug/unplug, etc.)\n"
 "  -h, --help        display this help and exit\n"
 "\n"
 QEMU_HELP_BOTTOM "\n"
@@ -340,46 +352,6 @@ static FILE *ga_open_logfile(const char *logfile)
     qemu_set_cloexec(fileno(f));
     return f;
 }
-
-#ifndef _WIN32
-static bool ga_open_pidfile(const char *pidfile)
-{
-    int pidfd;
-    char pidstr[32];
-
-    pidfd = qemu_open(pidfile, O_CREAT|O_WRONLY, S_IRUSR|S_IWUSR);
-    if (pidfd == -1 || lockf(pidfd, F_TLOCK, 0)) {
-        g_critical("Cannot lock pid file, %s", strerror(errno));
-        if (pidfd != -1) {
-            close(pidfd);
-        }
-        return false;
-    }
-
-    if (ftruncate(pidfd, 0)) {
-        g_critical("Failed to truncate pid file");
-        goto fail;
-    }
-    snprintf(pidstr, sizeof(pidstr), "%d\n", getpid());
-    if (write(pidfd, pidstr, strlen(pidstr)) != strlen(pidstr)) {
-        g_critical("Failed to write pid file");
-        goto fail;
-    }
-
-    /* keep pidfile open & locked forever */
-    return true;
-
-fail:
-    unlink(pidfile);
-    close(pidfd);
-    return false;
-}
-#else /* _WIN32 */
-static bool ga_open_pidfile(const char *pidfile)
-{
-    return true;
-}
-#endif
 
 static gint ga_strcmp(gconstpointer str1, gconstpointer str2)
 {
@@ -480,8 +452,11 @@ void ga_unset_frozen(GAState *s)
     ga_enable_logging(s);
     g_warning("logging re-enabled due to filesystem unfreeze");
     if (s->deferred_options.pid_filepath) {
-        if (!ga_open_pidfile(s->deferred_options.pid_filepath)) {
-            g_warning("failed to create/open pid file");
+        Error *err = NULL;
+
+        if (!qemu_write_pidfile(s->deferred_options.pid_filepath, &err)) {
+            g_warning("%s", error_get_pretty(err));
+            error_free(err);
         }
         s->deferred_options.pid_filepath = NULL;
     }
@@ -516,8 +491,11 @@ static void become_daemon(const char *pidfile)
     }
 
     if (pidfile) {
-        if (!ga_open_pidfile(pidfile)) {
-            g_critical("failed to create pidfile");
+        Error *err = NULL;
+
+        if (!qemu_write_pidfile(pidfile, &err)) {
+            g_critical("%s", error_get_pretty(err));
+            error_free(err);
             exit(EXIT_FAILURE);
         }
     }
@@ -545,15 +523,15 @@ fail:
 #endif
 }
 
-static int send_response(GAState *s, QDict *payload)
+static int send_response(GAState *s, const QDict *rsp)
 {
     const char *buf;
     QString *payload_qstr, *response_qstr;
     GIOStatus status;
 
-    g_assert(payload && s->channel);
+    g_assert(rsp && s->channel);
 
-    payload_qstr = qobject_to_json(QOBJECT(payload));
+    payload_qstr = qobject_to_json(QOBJECT(rsp));
     if (!payload_qstr) {
         return -EINVAL;
     }
@@ -579,57 +557,24 @@ static int send_response(GAState *s, QDict *payload)
     return 0;
 }
 
-static void process_command(GAState *s, QDict *req)
+/* handle requests/control events coming in over the channel */
+static void process_event(void *opaque, QObject *obj, Error *err)
 {
+    GAState *s = opaque;
     QDict *rsp;
     int ret;
 
-    g_assert(req);
-    g_debug("processing command");
-    rsp = qmp_dispatch(&ga_commands, QOBJECT(req), false);
-    if (rsp) {
-        ret = send_response(s, rsp);
-        if (ret < 0) {
-            g_warning("error sending response: %s", strerror(-ret));
-        }
-        qobject_unref(rsp);
-    }
-}
-
-/* handle requests/control events coming in over the channel */
-static void process_event(JSONMessageParser *parser, GQueue *tokens)
-{
-    GAState *s = container_of(parser, GAState, parser);
-    QObject *obj;
-    QDict *req, *rsp;
-    Error *err = NULL;
-    int ret;
-
-    g_assert(s && parser);
-
     g_debug("process_event: called");
-    obj = json_parser_parse_err(tokens, NULL, &err);
+    assert(!obj != !err);
     if (err) {
-        goto err;
-    }
-    req = qobject_to(QDict, obj);
-    if (!req) {
-        error_setg(&err, QERR_JSON_PARSING);
-        goto err;
-    }
-    if (!qdict_haskey(req, "execute")) {
-        g_warning("unrecognized payload format");
-        error_setg(&err, QERR_UNSUPPORTED);
-        goto err;
+        rsp = qmp_error_response(err);
+        goto end;
     }
 
-    process_command(s, req);
-    qobject_unref(obj);
-    return;
+    g_debug("processing command");
+    rsp = qmp_dispatch(&ga_commands, obj, false);
 
-err:
-    g_warning("failed to parse event: %s", error_get_pretty(err));
-    rsp = qmp_error_response(err);
+end:
     ret = send_response(s, rsp);
     if (ret < 0) {
         g_warning("error sending error response: %s", strerror(-ret));
@@ -648,6 +593,7 @@ static gboolean channel_event_cb(GIOCondition condition, gpointer data)
     switch (status) {
     case G_IO_STATUS_ERROR:
         g_warning("error reading channel");
+        stop_agent(s, false);
         return false;
     case G_IO_STATUS_NORMAL:
         buf[count] = 0;
@@ -705,6 +651,36 @@ static gboolean channel_init(GAState *s, const gchar *method, const gchar *path,
 }
 
 #ifdef _WIN32
+DWORD WINAPI handle_serial_device_events(DWORD type, LPVOID data)
+{
+    DWORD ret = NO_ERROR;
+    PDEV_BROADCAST_HDR broadcast_header = (PDEV_BROADCAST_HDR)data;
+
+    if (broadcast_header->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE) {
+        switch (type) {
+            /* Device inserted */
+        case DBT_DEVICEARRIVAL:
+            /* Start QEMU-ga's service */
+            if (!SetEvent(ga_state->wakeup_event)) {
+                ret = GetLastError();
+            }
+            break;
+            /* Device removed */
+        case DBT_DEVICEQUERYREMOVE:
+        case DBT_DEVICEREMOVEPENDING:
+        case DBT_DEVICEREMOVECOMPLETE:
+            /* Stop QEMU-ga's service */
+            if (!ResetEvent(ga_state->wakeup_event)) {
+                ret = GetLastError();
+            }
+            break;
+        default:
+            ret = ERROR_CALL_NOT_IMPLEMENTED;
+        }
+    }
+    return ret;
+}
+
 DWORD WINAPI service_ctrl_handler(DWORD ctrl, DWORD type, LPVOID data,
                                   LPVOID ctx)
 {
@@ -716,8 +692,12 @@ DWORD WINAPI service_ctrl_handler(DWORD ctrl, DWORD type, LPVOID data,
         case SERVICE_CONTROL_STOP:
         case SERVICE_CONTROL_SHUTDOWN:
             quit_handler(SIGTERM);
+            SetEvent(ga_state->wakeup_event);
             service->status.dwCurrentState = SERVICE_STOP_PENDING;
             SetServiceStatus(service->status_handle, &service->status);
+            break;
+        case SERVICE_CONTROL_DEVICEEVENT:
+            handle_serial_device_events(type, data);
             break;
 
         default:
@@ -745,10 +725,24 @@ VOID WINAPI service_main(DWORD argc, TCHAR *argv[])
     service->status.dwServiceSpecificExitCode = NO_ERROR;
     service->status.dwCheckPoint = 0;
     service->status.dwWaitHint = 0;
+    DEV_BROADCAST_DEVICEINTERFACE notification_filter;
+    ZeroMemory(&notification_filter, sizeof(notification_filter));
+    notification_filter.dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE;
+    notification_filter.dbcc_size = sizeof(DEV_BROADCAST_DEVICEINTERFACE);
+    notification_filter.dbcc_classguid = GUID_VIOSERIAL_PORT;
+
+    service->device_notification_handle =
+        RegisterDeviceNotification(service->status_handle,
+            &notification_filter, DEVICE_NOTIFY_SERVICE_HANDLE);
+    if (!service->device_notification_handle) {
+        g_critical("Failed to register device notification handle!\n");
+        return;
+    }
     SetServiceStatus(service->status_handle, &service->status);
 
-    g_main_loop_run(ga_state->main_loop);
+    run_agent(ga_state);
 
+    UnregisterDeviceNotification(service->device_notification_handle);
     service->status.dwCurrentState = SERVICE_STOPPED;
     SetServiceStatus(service->status_handle, &service->status);
 }
@@ -944,7 +938,7 @@ static GList *split_list(const gchar *str, const gchar *delim)
     return list;
 }
 
-typedef struct GAConfig {
+struct GAConfig {
     char *channel_path;
     char *method;
     char *log_filepath;
@@ -961,7 +955,8 @@ typedef struct GAConfig {
     int daemonize;
     GLogLevelFlags log_level;
     int dumpconf;
-} GAConfig;
+    bool retry_path;
+};
 
 static void config_load(GAConfig *config)
 {
@@ -1009,6 +1004,10 @@ static void config_load(GAConfig *config)
         g_key_file_get_boolean(keyfile, "general", "verbose", &gerr)) {
         /* enable all log levels */
         config->log_level = G_LOG_LEVEL_MASK;
+    }
+    if (g_key_file_has_key(keyfile, "general", "retry-path", NULL)) {
+        config->retry_path =
+            g_key_file_get_boolean(keyfile, "general", "retry-path", &gerr);
     }
     if (g_key_file_has_key(keyfile, "general", "blacklist", NULL)) {
         config->bliststr =
@@ -1071,6 +1070,8 @@ static void config_dump(GAConfig *config)
     g_key_file_set_string(keyfile, "general", "statedir", config->state_dir);
     g_key_file_set_boolean(keyfile, "general", "verbose",
                            config->log_level == G_LOG_LEVEL_MASK);
+    g_key_file_set_boolean(keyfile, "general", "retry-path",
+                           config->retry_path);
     tmp = list_join(config->blacklist, ',');
     g_key_file_set_string(keyfile, "general", "blacklist", tmp);
     g_free(tmp);
@@ -1089,7 +1090,7 @@ static void config_dump(GAConfig *config)
 
 static void config_parse(GAConfig *config, int argc, char **argv)
 {
-    const char *sopt = "hVvdm:p:l:f:F::b:s:t:D";
+    const char *sopt = "hVvdm:p:l:f:F::b:s:t:Dr";
     int opt_ind = 0, ch;
     const struct option lopt[] = {
         { "help", 0, NULL, 'h' },
@@ -1109,6 +1110,7 @@ static void config_parse(GAConfig *config, int argc, char **argv)
         { "service", 1, NULL, 's' },
 #endif
         { "statedir", 1, NULL, 't' },
+        { "retry-path", 0, NULL, 'r' },
         { NULL, 0, NULL, 0 }
     };
 
@@ -1152,6 +1154,9 @@ static void config_parse(GAConfig *config, int argc, char **argv)
             break;
         case 'D':
             config->dumpconf = 1;
+            break;
+        case 'r':
+            config->retry_path = true;
             break;
         case 'b': {
             if (is_help_option(optarg)) {
@@ -1250,9 +1255,21 @@ static bool check_is_frozen(GAState *s)
     return false;
 }
 
-static int run_agent(GAState *s, GAConfig *config, int socket_activation)
+static GAState *initialize_agent(GAConfig *config, int socket_activation)
 {
-    ga_state = s;
+    GAState *s = g_new0(GAState, 1);
+
+    g_assert(ga_state == NULL);
+
+    s->log_level = config->log_level;
+    s->log_file = stderr;
+#ifdef CONFIG_FSFREEZE
+    s->fsfreeze_hook = config->fsfreeze_hook;
+#endif
+    s->pstate_filepath = g_strdup_printf("%s/qga.state", config->state_dir);
+    s->state_filepath_isfrozen = g_strdup_printf("%s/qga.state.isfrozen",
+                                                 config->state_dir);
+    s->frozen = check_is_frozen(s);
 
     g_log_set_default_handler(ga_log, s);
     g_log_set_fatal_mask(NULL, G_LOG_LEVEL_ERROR);
@@ -1268,7 +1285,7 @@ static int run_agent(GAState *s, GAConfig *config, int socket_activation)
     if (g_mkdir_with_parents(config->state_dir, S_IRWXU) == -1) {
         g_critical("unable to create (an ancestor of) the state directory"
                    " '%s': %s", config->state_dir, strerror(errno));
-        return EXIT_FAILURE;
+        return NULL;
     }
 #endif
 
@@ -1293,7 +1310,7 @@ static int run_agent(GAState *s, GAConfig *config, int socket_activation)
             if (!log_file) {
                 g_critical("unable to open specified log file: %s",
                            strerror(errno));
-                return EXIT_FAILURE;
+                return NULL;
             }
             s->log_file = log_file;
         }
@@ -1304,7 +1321,7 @@ static int run_agent(GAState *s, GAConfig *config, int socket_activation)
                                s->pstate_filepath,
                                ga_is_frozen(s))) {
         g_critical("failed to load persistent state");
-        return EXIT_FAILURE;
+        return NULL;
     }
 
     config->blacklist = ga_command_blacklist_init(config->blacklist);
@@ -1320,41 +1337,121 @@ static int run_agent(GAState *s, GAConfig *config, int socket_activation)
     s->command_state = ga_command_state_new();
     ga_command_state_init(s, s->command_state);
     ga_command_state_init_all(s->command_state);
-    json_message_parser_init(&s->parser, process_event);
+    json_message_parser_init(&s->parser, process_event, s, NULL);
 
 #ifndef _WIN32
     if (!register_signal_handlers()) {
         g_critical("failed to register signal handlers");
-        return EXIT_FAILURE;
+        return NULL;
     }
 #endif
 
     s->main_loop = g_main_loop_new(NULL, false);
 
-    if (!channel_init(ga_state, config->method, config->channel_path,
-                      socket_activation ? FIRST_SOCKET_ACTIVATION_FD : -1)) {
-        g_critical("failed to initialize guest agent channel");
-        return EXIT_FAILURE;
-    }
-#ifndef _WIN32
-    g_main_loop_run(ga_state->main_loop);
-#else
-    if (config->daemonize) {
-        SERVICE_TABLE_ENTRY service_table[] = {
-            { (char *)QGA_SERVICE_NAME, service_main }, { NULL, NULL } };
-        StartServiceCtrlDispatcher(service_table);
-    } else {
-        g_main_loop_run(ga_state->main_loop);
+    s->config = config;
+    s->socket_activation = socket_activation;
+
+#ifdef _WIN32
+    s->wakeup_event = CreateEvent(NULL, TRUE, FALSE, TEXT("WakeUp"));
+    if (s->wakeup_event == NULL) {
+        g_critical("CreateEvent failed");
+        return NULL;
     }
 #endif
 
+    ga_state = s;
+    return s;
+}
+
+static void cleanup_agent(GAState *s)
+{
+#ifdef _WIN32
+    CloseHandle(s->wakeup_event);
+#endif
+    if (s->command_state) {
+        ga_command_state_cleanup_all(s->command_state);
+        ga_command_state_free(s->command_state);
+        json_message_parser_destroy(&s->parser);
+    }
+    g_free(s->pstate_filepath);
+    g_free(s->state_filepath_isfrozen);
+    if (s->main_loop) {
+        g_main_loop_unref(s->main_loop);
+    }
+    g_free(s);
+    ga_state = NULL;
+}
+
+static int run_agent_once(GAState *s)
+{
+    if (!channel_init(s, s->config->method, s->config->channel_path,
+                      s->socket_activation ? FIRST_SOCKET_ACTIVATION_FD : -1)) {
+        g_critical("failed to initialize guest agent channel");
+        return EXIT_FAILURE;
+    }
+
+    g_main_loop_run(ga_state->main_loop);
+
+    if (s->channel) {
+        ga_channel_free(s->channel);
+    }
+
     return EXIT_SUCCESS;
+}
+
+static void wait_for_channel_availability(GAState *s)
+{
+    g_warning("waiting for channel path...");
+#ifndef _WIN32
+    sleep(QGA_RETRY_INTERVAL);
+#else
+    DWORD dwWaitResult;
+
+    dwWaitResult = WaitForSingleObject(s->wakeup_event, INFINITE);
+
+    switch (dwWaitResult) {
+    case WAIT_OBJECT_0:
+        break;
+    case WAIT_TIMEOUT:
+        break;
+    default:
+        g_critical("WaitForSingleObject failed");
+    }
+#endif
+}
+
+static int run_agent(GAState *s)
+{
+    int ret = EXIT_SUCCESS;
+
+    s->force_exit = false;
+
+    do {
+        ret = run_agent_once(s);
+        if (s->config->retry_path && !s->force_exit) {
+            g_warning("agent stopped unexpectedly, restarting...");
+            wait_for_channel_availability(s);
+        }
+    } while (s->config->retry_path && !s->force_exit);
+
+    return ret;
+}
+
+static void stop_agent(GAState *s, bool requested)
+{
+    if (!s->force_exit) {
+        s->force_exit = requested;
+    }
+
+    if (g_main_loop_is_running(s->main_loop)) {
+        g_main_loop_quit(s->main_loop);
+    }
 }
 
 int main(int argc, char **argv)
 {
     int ret = EXIT_SUCCESS;
-    GAState *s = g_new0(GAState, 1);
+    GAState *s;
     GAConfig *config = g_new0(GAConfig, 1);
     int socket_activation;
 
@@ -1422,44 +1519,37 @@ int main(int argc, char **argv)
         }
     }
 
-    s->log_level = config->log_level;
-    s->log_file = stderr;
-#ifdef CONFIG_FSFREEZE
-    s->fsfreeze_hook = config->fsfreeze_hook;
-#endif
-    s->pstate_filepath = g_strdup_printf("%s/qga.state", config->state_dir);
-    s->state_filepath_isfrozen = g_strdup_printf("%s/qga.state.isfrozen",
-                                                 config->state_dir);
-    s->frozen = check_is_frozen(s);
-
     if (config->dumpconf) {
         config_dump(config);
         goto end;
     }
 
-    ret = run_agent(s, config, socket_activation);
+    s = initialize_agent(config, socket_activation);
+    if (!s) {
+        g_critical("error initializing guest agent");
+        goto end;
+    }
+
+#ifdef _WIN32
+    if (config->daemonize) {
+        SERVICE_TABLE_ENTRY service_table[] = {
+            { (char *)QGA_SERVICE_NAME, service_main }, { NULL, NULL } };
+        StartServiceCtrlDispatcher(service_table);
+    } else {
+        ret = run_agent(s);
+    }
+#else
+    ret = run_agent(s);
+#endif
+
+    cleanup_agent(s);
 
 end:
-    if (s->command_state) {
-        ga_command_state_cleanup_all(s->command_state);
-        ga_command_state_free(s->command_state);
-        json_message_parser_destroy(&s->parser);
-    }
-    if (s->channel) {
-        ga_channel_free(s->channel);
-    }
-    g_free(s->pstate_filepath);
-    g_free(s->state_filepath_isfrozen);
-
     if (config->daemonize) {
         unlink(config->pid_filepath);
     }
 
     config_free(config);
-    if (s->main_loop) {
-        g_main_loop_unref(s->main_loop);
-    }
-    g_free(s);
 
     return ret;
 }

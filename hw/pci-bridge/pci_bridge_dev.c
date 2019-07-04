@@ -46,6 +46,9 @@ struct PCIBridgeDev {
     uint32_t flags;
 
     OnOffAuto msi;
+
+    /* additional resources to reserve */
+    PCIResReserve res_reserve;
 };
 typedef struct PCIBridgeDev PCIBridgeDev;
 
@@ -95,6 +98,12 @@ static void pci_bridge_dev_realize(PCIDevice *dev, Error **errp)
         error_free(local_err);
     }
 
+    err = pci_bridge_qemu_reserve_cap_init(dev, 0,
+                                         bridge_dev->res_reserve, errp);
+    if (err) {
+        goto cap_error;
+    }
+
     if (shpc_present(dev)) {
         /* TODO: spec recommends using 64 bit prefetcheable BAR.
          * Check whether that works well. */
@@ -103,6 +112,8 @@ static void pci_bridge_dev_realize(PCIDevice *dev, Error **errp)
     }
     return;
 
+cap_error:
+    msi_uninit(dev);
 msi_error:
     slotid_cap_cleanup(dev);
 slotid_error:
@@ -116,6 +127,8 @@ shpc_error:
 static void pci_bridge_dev_exitfn(PCIDevice *dev)
 {
     PCIBridgeDev *bridge_dev = PCI_BRIDGE_DEV(dev);
+
+    pci_del_capability(dev, PCI_CAP_ID_VNDR, sizeof(PCIBridgeQemuCap));
     if (msi_present(dev)) {
         msi_uninit(dev);
     }
@@ -162,6 +175,17 @@ static Property pci_bridge_dev_properties[] = {
                             ON_OFF_AUTO_AUTO),
     DEFINE_PROP_BIT(PCI_BRIDGE_DEV_PROP_SHPC, PCIBridgeDev, flags,
                     PCI_BRIDGE_DEV_F_SHPC_REQ, true),
+    DEFINE_PROP_UINT32("bus-reserve", PCIBridgeDev,
+                       res_reserve.bus, -1),
+    DEFINE_PROP_SIZE("io-reserve", PCIBridgeDev,
+                     res_reserve.io, -1),
+    DEFINE_PROP_SIZE("mem-reserve", PCIBridgeDev,
+                     res_reserve.mem_non_pref, -1),
+    DEFINE_PROP_SIZE("pref32-reserve", PCIBridgeDev,
+                     res_reserve.mem_pref_32, -1),
+    DEFINE_PROP_SIZE("pref64-reserve", PCIBridgeDev,
+                     res_reserve.mem_pref_64, -1),
+
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -182,31 +206,39 @@ static const VMStateDescription pci_bridge_dev_vmstate = {
     }
 };
 
-static void pci_bridge_dev_hotplug_cb(HotplugHandler *hotplug_dev,
+void pci_bridge_dev_plug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
+                            Error **errp)
+{
+    PCIDevice *pci_hotplug_dev = PCI_DEVICE(hotplug_dev);
+
+    if (!shpc_present(pci_hotplug_dev)) {
+        error_setg(errp, "standard hotplug controller has been disabled for "
+                   "this %s", object_get_typename(OBJECT(hotplug_dev)));
+        return;
+    }
+    shpc_device_plug_cb(hotplug_dev, dev, errp);
+}
+
+void pci_bridge_dev_unplug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
+                              Error **errp)
+{
+    PCIDevice *pci_hotplug_dev = PCI_DEVICE(hotplug_dev);
+
+    g_assert(shpc_present(pci_hotplug_dev));
+    shpc_device_unplug_cb(hotplug_dev, dev, errp);
+}
+
+void pci_bridge_dev_unplug_request_cb(HotplugHandler *hotplug_dev,
                                       DeviceState *dev, Error **errp)
 {
     PCIDevice *pci_hotplug_dev = PCI_DEVICE(hotplug_dev);
 
     if (!shpc_present(pci_hotplug_dev)) {
         error_setg(errp, "standard hotplug controller has been disabled for "
-                   "this %s", TYPE_PCI_BRIDGE_DEV);
+                   "this %s", object_get_typename(OBJECT(hotplug_dev)));
         return;
     }
-    shpc_device_hotplug_cb(hotplug_dev, dev, errp);
-}
-
-static void pci_bridge_dev_hot_unplug_request_cb(HotplugHandler *hotplug_dev,
-                                                 DeviceState *dev,
-                                                 Error **errp)
-{
-    PCIDevice *pci_hotplug_dev = PCI_DEVICE(hotplug_dev);
-
-    if (!shpc_present(pci_hotplug_dev)) {
-        error_setg(errp, "standard hotplug controller has been disabled for "
-                   "this %s", TYPE_PCI_BRIDGE_DEV);
-        return;
-    }
-    shpc_device_hot_unplug_request_cb(hotplug_dev, dev, errp);
+    shpc_device_unplug_request_cb(hotplug_dev, dev, errp);
 }
 
 static void pci_bridge_dev_class_init(ObjectClass *klass, void *data)
@@ -227,8 +259,9 @@ static void pci_bridge_dev_class_init(ObjectClass *klass, void *data)
     dc->props = pci_bridge_dev_properties;
     dc->vmsd = &pci_bridge_dev_vmstate;
     set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
-    hc->plug = pci_bridge_dev_hotplug_cb;
-    hc->unplug_request = pci_bridge_dev_hot_unplug_request_cb;
+    hc->plug = pci_bridge_dev_plug_cb;
+    hc->unplug = pci_bridge_dev_unplug_cb;
+    hc->unplug_request = pci_bridge_dev_unplug_request_cb;
 }
 
 static const TypeInfo pci_bridge_dev_info = {

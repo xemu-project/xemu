@@ -73,13 +73,13 @@
 #define ACPI_BITMASK_WAKE_STATUS                0x8000
 
 #define ACPI_BITMASK_ALL_FIXED_STATUS           (\
-	ACPI_BITMASK_TIMER_STATUS          | \
-	ACPI_BITMASK_BUS_MASTER_STATUS     | \
-	ACPI_BITMASK_GLOBAL_LOCK_STATUS    | \
-	ACPI_BITMASK_POWER_BUTTON_STATUS   | \
-	ACPI_BITMASK_SLEEP_BUTTON_STATUS   | \
-	ACPI_BITMASK_RT_CLOCK_STATUS       | \
-	ACPI_BITMASK_WAKE_STATUS)
+        ACPI_BITMASK_TIMER_STATUS          | \
+        ACPI_BITMASK_BUS_MASTER_STATUS     | \
+        ACPI_BITMASK_GLOBAL_LOCK_STATUS    | \
+        ACPI_BITMASK_POWER_BUTTON_STATUS   | \
+        ACPI_BITMASK_SLEEP_BUTTON_STATUS   | \
+        ACPI_BITMASK_RT_CLOCK_STATUS       | \
+        ACPI_BITMASK_WAKE_STATUS)
 
 /* PM1x_EN */
 #define ACPI_BITMASK_TIMER_ENABLE               0x0001
@@ -194,7 +194,6 @@ uint8_t *acpi_table_first(void);
 uint8_t *acpi_table_next(uint8_t *current);
 unsigned acpi_table_len(void *current);
 void acpi_table_add(const QemuOpts *opts, Error **errp);
-void acpi_table_add_builtin(const QemuOpts *opts, Error **errp);
 
 typedef struct AcpiSlicOem AcpiSlicOem;
 struct AcpiSlicOem {

@@ -48,8 +48,19 @@
 #define CPU_LDST_H
 
 #if defined(CONFIG_USER_ONLY)
+/* sparc32plus has 64bit long but 32bit space address
+ * this can make bad result with g2h() and h2g()
+ */
+#if TARGET_VIRT_ADDR_SPACE_BITS <= 32
+typedef uint32_t abi_ptr;
+#define TARGET_ABI_FMT_ptr "%x"
+#else
+typedef uint64_t abi_ptr;
+#define TARGET_ABI_FMT_ptr "%"PRIx64
+#endif
+
 /* All direct uses of g2h and h2g need to go away for usermode softmmu.  */
-#define g2h(x) ((void *)((unsigned long)(target_ulong)(x) + guest_base))
+#define g2h(x) ((void *)((unsigned long)(abi_ptr)(x) + guest_base))
 
 #define guest_addr_valid(x) ((x) <= GUEST_ADDR_MAX)
 #define h2g_valid(x) guest_addr_valid((unsigned long)(x) - guest_base)
@@ -61,7 +72,7 @@ static inline int guest_range_valid(unsigned long start, unsigned long len)
 
 #define h2g_nocheck(x) ({ \
     unsigned long __ret = (unsigned long)(x) - guest_base; \
-    (abi_ulong)__ret; \
+    (abi_ptr)__ret; \
 })
 
 #define h2g(x) ({ \
@@ -69,7 +80,9 @@ static inline int guest_range_valid(unsigned long start, unsigned long len)
     assert(h2g_valid(x)); \
     h2g_nocheck(x); \
 })
-
+#else
+typedef target_ulong abi_ptr;
+#define TARGET_ABI_FMT_ptr TARGET_ABI_FMT_lx
 #endif
 
 #if defined(CONFIG_USER_ONLY)
@@ -112,6 +125,36 @@ extern __thread uintptr_t helper_retaddr;
 
 /* The memory helpers for tcg-generated code need tcg_target_long etc.  */
 #include "tcg.h"
+
+static inline target_ulong tlb_addr_write(const CPUTLBEntry *entry)
+{
+#if TCG_OVERSIZED_GUEST
+    return entry->addr_write;
+#else
+    return atomic_read(&entry->addr_write);
+#endif
+}
+
+/* Find the TLB index corresponding to the mmu_idx + address pair.  */
+static inline uintptr_t tlb_index(CPUArchState *env, uintptr_t mmu_idx,
+                                  target_ulong addr)
+{
+    uintptr_t size_mask = env->tlb_mask[mmu_idx] >> CPU_TLB_ENTRY_BITS;
+
+    return (addr >> TARGET_PAGE_BITS) & size_mask;
+}
+
+static inline size_t tlb_n_entries(CPUArchState *env, uintptr_t mmu_idx)
+{
+    return (env->tlb_mask[mmu_idx] >> CPU_TLB_ENTRY_BITS) + 1;
+}
+
+/* Find the TLB entry corresponding to the mmu_idx + address pair.  */
+static inline CPUTLBEntry *tlb_entry(CPUArchState *env, uintptr_t mmu_idx,
+                                     target_ulong addr)
+{
+    return &env->tlb_table[mmu_idx][tlb_index(env, mmu_idx, addr)];
+}
 
 #ifdef MMU_MODE0_SUFFIX
 #define CPU_MMU_INDEX 0
@@ -397,15 +440,14 @@ extern __thread uintptr_t helper_retaddr;
  * This is the equivalent of the initial fast-path code used by
  * TCG backends for guest load and store accesses.
  */
-static inline void *tlb_vaddr_to_host(CPUArchState *env, target_ulong addr,
+static inline void *tlb_vaddr_to_host(CPUArchState *env, abi_ptr addr,
                                       int access_type, int mmu_idx)
 {
 #if defined(CONFIG_USER_ONLY)
     return g2h(addr);
 #else
-    int index = (addr >> TARGET_PAGE_BITS) & (CPU_TLB_SIZE - 1);
-    CPUTLBEntry *tlbentry = &env->tlb_table[mmu_idx][index];
-    target_ulong tlb_addr;
+    CPUTLBEntry *tlbentry = tlb_entry(env, mmu_idx, addr);
+    abi_ptr tlb_addr;
     uintptr_t haddr;
 
     switch (access_type) {
@@ -413,7 +455,7 @@ static inline void *tlb_vaddr_to_host(CPUArchState *env, target_ulong addr,
         tlb_addr = tlbentry->addr_read;
         break;
     case 1:
-        tlb_addr = tlbentry->addr_write;
+        tlb_addr = tlb_addr_write(tlbentry);
         break;
     case 2:
         tlb_addr = tlbentry->addr_code;
@@ -432,7 +474,7 @@ static inline void *tlb_vaddr_to_host(CPUArchState *env, target_ulong addr,
         return NULL;
     }
 
-    haddr = addr + env->tlb_table[mmu_idx][index].addend;
+    haddr = addr + tlbentry->addend;
     return (void *)haddr;
 #endif /* defined(CONFIG_USER_ONLY) */
 }

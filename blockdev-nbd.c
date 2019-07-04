@@ -23,6 +23,7 @@
 typedef struct NBDServerData {
     QIONetListener *listener;
     QCryptoTLSCreds *tlscreds;
+    char *tlsauthz;
 } NBDServerData;
 
 static NBDServerData *nbd_server;
@@ -36,8 +37,7 @@ static void nbd_accept(QIONetListener *listener, QIOChannelSocket *cioc,
                        gpointer opaque)
 {
     qio_channel_set_name(QIO_CHANNEL(cioc), "nbd-server");
-    nbd_client_new(NULL, cioc,
-                   nbd_server->tlscreds, NULL,
+    nbd_client_new(cioc, nbd_server->tlscreds, nbd_server->tlsauthz,
                    nbd_blockdev_client_closed);
 }
 
@@ -53,6 +53,7 @@ static void nbd_server_free(NBDServerData *server)
     if (server->tlscreds) {
         object_unref(OBJECT(server->tlscreds));
     }
+    g_free(server->tlsauthz);
 
     g_free(server);
 }
@@ -88,7 +89,7 @@ static QCryptoTLSCreds *nbd_get_tls_creds(const char *id, Error **errp)
 
 
 void nbd_server_start(SocketAddress *addr, const char *tls_creds,
-                      Error **errp)
+                      const char *tls_authz, Error **errp)
 {
     if (nbd_server) {
         error_setg(errp, "NBD server already running");
@@ -118,6 +119,8 @@ void nbd_server_start(SocketAddress *addr, const char *tls_creds,
         }
     }
 
+    nbd_server->tlsauthz = g_strdup(tls_authz);
+
     qio_net_listener_set_client_func(nbd_server->listener,
                                      nbd_accept,
                                      NULL,
@@ -132,20 +135,23 @@ void nbd_server_start(SocketAddress *addr, const char *tls_creds,
 
 void qmp_nbd_server_start(SocketAddressLegacy *addr,
                           bool has_tls_creds, const char *tls_creds,
+                          bool has_tls_authz, const char *tls_authz,
                           Error **errp)
 {
     SocketAddress *addr_flat = socket_address_flatten(addr);
 
-    nbd_server_start(addr_flat, tls_creds, errp);
+    nbd_server_start(addr_flat, tls_creds, tls_authz, errp);
     qapi_free_SocketAddress(addr_flat);
 }
 
 void qmp_nbd_server_add(const char *device, bool has_name, const char *name,
-                        bool has_writable, bool writable, Error **errp)
+                        bool has_writable, bool writable,
+                        bool has_bitmap, const char *bitmap, Error **errp)
 {
     BlockDriverState *bs = NULL;
     BlockBackend *on_eject_blk;
     NBDExport *exp;
+    int64_t len;
 
     if (!nbd_server) {
         error_setg(errp, "NBD server not running");
@@ -168,6 +174,13 @@ void qmp_nbd_server_add(const char *device, bool has_name, const char *name,
         return;
     }
 
+    len = bdrv_getlength(bs);
+    if (len < 0) {
+        error_setg_errno(errp, -len,
+                         "Failed to determine the NBD export's length");
+        return;
+    }
+
     if (!has_writable) {
         writable = false;
     }
@@ -175,13 +188,12 @@ void qmp_nbd_server_add(const char *device, bool has_name, const char *name,
         writable = false;
     }
 
-    exp = nbd_export_new(bs, 0, -1, writable ? 0 : NBD_FLAG_READ_ONLY,
+    exp = nbd_export_new(bs, 0, len, name, NULL, bitmap,
+                         writable ? 0 : NBD_FLAG_READ_ONLY,
                          NULL, false, on_eject_blk, errp);
     if (!exp) {
         return;
     }
-
-    nbd_export_set_name(exp, name);
 
     /* The list of named exports has a strong reference to this export now and
      * our only way of accessing it is through nbd_export_find(), so we can drop
@@ -215,31 +227,13 @@ void qmp_nbd_server_remove(const char *name,
 
 void qmp_nbd_server_stop(Error **errp)
 {
-    nbd_export_close_all();
-
-    nbd_server_free(nbd_server);
-    nbd_server = NULL;
-}
-
-void qmp_x_nbd_server_add_bitmap(const char *name, const char *bitmap,
-                                 bool has_bitmap_export_name,
-                                 const char *bitmap_export_name,
-                                 Error **errp)
-{
-    NBDExport *exp;
-
     if (!nbd_server) {
         error_setg(errp, "NBD server not running");
         return;
     }
 
-    exp = nbd_export_find(name);
-    if (exp == NULL) {
-        error_setg(errp, "Export '%s' is not found", name);
-        return;
-    }
+    nbd_export_close_all();
 
-    nbd_export_bitmap(exp, bitmap,
-                      has_bitmap_export_name ? bitmap_export_name : bitmap,
-                      errp);
+    nbd_server_free(nbd_server);
+    nbd_server = NULL;
 }

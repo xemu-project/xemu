@@ -15,9 +15,9 @@
 #ifndef QEMU_COLO_PROXY_H
 #define QEMU_COLO_PROXY_H
 
-#include "slirp/slirp.h"
 #include "qemu/jhash.h"
 #include "qemu/timer.h"
+#include "net/eth.h"
 
 #define HASHTABLE_MAX_SIZE 16384
 
@@ -80,12 +80,10 @@ typedef struct Connection {
     /* the maximum of acknowledgement number in secondary_list queue */
     uint32_t sack;
     /* offset = secondary_seq - primary_seq */
-    tcp_seq  offset;
-    /*
-     * we use this flag update offset func
-     * run once in independent tcp connection
-     */
-    int syn_flag;
+    uint32_t  offset;
+
+    int tcp_state; /* TCP FSM state */
+    uint32_t fin_ack_seq; /* the seq of 'fin=1,ack=1' */
 } Connection;
 
 uint32_t connection_key_hash(const void *opaque);
@@ -99,6 +97,8 @@ void connection_destroy(void *opaque);
 Connection *connection_get(GHashTable *connection_track_table,
                            ConnectionKey *key,
                            GQueue *conn_list);
+bool connection_has_tracked(GHashTable *connection_track_table,
+                            ConnectionKey *key);
 void connection_hashtable_reset(GHashTable *connection_track_table);
 Packet *packet_new(const void *data, int size, int vnet_hdr_len);
 void packet_destroy(void *opaque, void *user_data);

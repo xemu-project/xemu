@@ -37,6 +37,8 @@ typedef struct BDRVRawState {
     bool has_size;
 } BDRVRawState;
 
+static const char *const mutable_opts[] = { "offset", "size", NULL };
+
 static QemuOptsList raw_runtime_opts = {
     .name = "raw",
     .head = QTAILQ_HEAD_INITIALIZER(raw_runtime_opts.head),
@@ -432,10 +434,11 @@ static int raw_open(BlockDriverState *bs, QDict *options, int flags,
     bs->supported_write_flags = BDRV_REQ_WRITE_UNCHANGED |
         (BDRV_REQ_FUA & bs->file->bs->supported_write_flags);
     bs->supported_zero_flags = BDRV_REQ_WRITE_UNCHANGED |
-        ((BDRV_REQ_FUA | BDRV_REQ_MAY_UNMAP) &
+        ((BDRV_REQ_FUA | BDRV_REQ_MAY_UNMAP | BDRV_REQ_NO_FALLBACK) &
             bs->file->bs->supported_zero_flags);
 
     if (bs->probed && !bdrv_is_read_only(bs)) {
+        bdrv_refresh_filename(bs->file->bs);
         fprintf(stderr,
                 "WARNING: Image format was not specified for '%s' and probing "
                 "guessed raw.\n"
@@ -457,10 +460,6 @@ static int raw_open(BlockDriverState *bs, QDict *options, int flags,
     }
 
     return 0;
-}
-
-static void raw_close(BlockDriverState *bs)
-{
 }
 
 static int raw_probe(const uint8_t *buf, int buf_size, const char *filename)
@@ -535,6 +534,13 @@ static int coroutine_fn raw_co_copy_range_to(BlockDriverState *bs,
                                  read_flags, write_flags);
 }
 
+static const char *const raw_strong_runtime_opts[] = {
+    "offset",
+    "size",
+
+    NULL
+};
+
 BlockDriver bdrv_raw = {
     .format_name          = "raw",
     .instance_size        = sizeof(BDRVRawState),
@@ -543,7 +549,6 @@ BlockDriver bdrv_raw = {
     .bdrv_reopen_commit   = &raw_reopen_commit,
     .bdrv_reopen_abort    = &raw_reopen_abort,
     .bdrv_open            = &raw_open,
-    .bdrv_close           = &raw_close,
     .bdrv_child_perm      = bdrv_filter_default_perms,
     .bdrv_co_create_opts  = &raw_co_create_opts,
     .bdrv_co_preadv       = &raw_co_preadv,
@@ -565,7 +570,9 @@ BlockDriver bdrv_raw = {
     .bdrv_lock_medium     = &raw_lock_medium,
     .bdrv_co_ioctl        = &raw_co_ioctl,
     .create_opts          = &raw_create_opts,
-    .bdrv_has_zero_init   = &raw_has_zero_init
+    .bdrv_has_zero_init   = &raw_has_zero_init,
+    .strong_runtime_opts  = raw_strong_runtime_opts,
+    .mutable_opts         = mutable_opts,
 };
 
 static void bdrv_raw_init(void)

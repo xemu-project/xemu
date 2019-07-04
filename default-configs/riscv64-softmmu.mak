@@ -1,7 +1,3 @@
-# Default configuration for riscv-softmmu
+# Default configuration for riscv64-softmmu
 
-CONFIG_SERIAL=y
-CONFIG_VIRTIO_MMIO=y
-include virtio.mak
-
-CONFIG_CADENCE=y
+include riscv32-softmmu.mak

@@ -95,6 +95,7 @@ static bool has_msr_xss;
 static bool has_msr_spec_ctrl;
 static bool has_msr_virt_ssbd;
 static bool has_msr_smi_count;
+static bool has_msr_arch_capabs;
 
 static uint32_t has_architectural_pmu_version;
 static uint32_t num_architectural_pmu_gp_counters;
@@ -107,6 +108,7 @@ static int has_pit_state2;
 static bool has_msr_mcg_ext_ctl;
 
 static struct kvm_cpuid2 *cpuid_cache;
+static struct kvm_msr_list *kvm_feature_msrs;
 
 int kvm_has_pit_state2(void)
 {
@@ -387,6 +389,15 @@ uint32_t kvm_arch_get_supported_cpuid(KVMState *s, uint32_t function,
         if (host_tsx_blacklisted()) {
             ret &= ~(CPUID_7_0_EBX_RTM | CPUID_7_0_EBX_HLE);
         }
+    } else if (function == 7 && index == 0 && reg == R_EDX) {
+        /*
+         * Linux v4.17-v4.20 incorrectly return ARCH_CAPABILITIES on SVM hosts.
+         * We can detect the bug by checking if MSR_IA32_ARCH_CAPABILITIES is
+         * returned by KVM_GET_MSR_INDEX_LIST.
+         */
+        if (!has_msr_arch_capabs) {
+            ret &= ~CPUID_7_0_EDX_ARCH_CAPABILITIES;
+        }
     } else if (function == 0x80000001 && reg == R_ECX) {
         /*
          * It's safe to enable TOPOEXT even if it's not returned by
@@ -419,6 +430,42 @@ uint32_t kvm_arch_get_supported_cpuid(KVMState *s, uint32_t function,
 
     return ret;
 }
+
+uint32_t kvm_arch_get_supported_msr_feature(KVMState *s, uint32_t index)
+{
+    struct {
+        struct kvm_msrs info;
+        struct kvm_msr_entry entries[1];
+    } msr_data;
+    uint32_t ret;
+
+    if (kvm_feature_msrs == NULL) { /* Host doesn't support feature MSRs */
+        return 0;
+    }
+
+    /* Check if requested MSR is supported feature MSR */
+    int i;
+    for (i = 0; i < kvm_feature_msrs->nmsrs; i++)
+        if (kvm_feature_msrs->indices[i] == index) {
+            break;
+        }
+    if (i == kvm_feature_msrs->nmsrs) {
+        return 0; /* if the feature MSR is not supported, simply return 0 */
+    }
+
+    msr_data.info.nmsrs = 1;
+    msr_data.entries[0].index = index;
+
+    ret = kvm_ioctl(s, KVM_GET_MSRS, &msr_data);
+    if (ret != 1) {
+        error_report("KVM get MSR (index=0x%x) feature failed, %s",
+            index, strerror(-ret));
+        exit(1);
+    }
+
+    return msr_data.entries[0].data;
+}
+
 
 typedef struct HWPoisonPage {
     ram_addr_t ram_addr;
@@ -608,7 +655,8 @@ static bool hyperv_enabled(X86CPU *cpu)
             cpu->hyperv_synic ||
             cpu->hyperv_stimer ||
             cpu->hyperv_reenlightenment ||
-            cpu->hyperv_tlbflush);
+            cpu->hyperv_tlbflush ||
+            cpu->hyperv_ipi);
 }
 
 static int kvm_arch_set_tsc_khz(CPUState *cs)
@@ -733,9 +781,20 @@ static int hyperv_handle_properties(CPUState *cs)
         env->features[FEAT_HYPERV_EAX] |= HV_VP_RUNTIME_AVAILABLE;
     }
     if (cpu->hyperv_synic) {
-        if (!has_msr_hv_synic ||
-            kvm_vcpu_enable_cap(cs, KVM_CAP_HYPERV_SYNIC, 0)) {
-            fprintf(stderr, "Hyper-V SynIC is not supported by kernel\n");
+        unsigned int cap = KVM_CAP_HYPERV_SYNIC;
+        if (!cpu->hyperv_synic_kvm_only) {
+            if (!cpu->hyperv_vpindex) {
+                fprintf(stderr, "Hyper-V SynIC "
+                        "(requested by 'hv-synic' cpu flag) "
+                        "requires Hyper-V VP_INDEX ('hv-vpindex')\n");
+            return -ENOSYS;
+            }
+            cap = KVM_CAP_HYPERV_SYNIC2;
+        }
+
+        if (!has_msr_hv_synic || !kvm_check_extension(cs->kvm_state, cap)) {
+            fprintf(stderr, "Hyper-V SynIC (requested by 'hv-synic' cpu flag) "
+                    "is not supported by kernel\n");
             return -ENOSYS;
         }
 
@@ -748,17 +807,61 @@ static int hyperv_handle_properties(CPUState *cs)
         }
         env->features[FEAT_HYPERV_EAX] |= HV_SYNTIMERS_AVAILABLE;
     }
+    if (cpu->hyperv_relaxed_timing) {
+        env->features[FEAT_HV_RECOMM_EAX] |= HV_RELAXED_TIMING_RECOMMENDED;
+    }
+    if (cpu->hyperv_vapic) {
+        env->features[FEAT_HV_RECOMM_EAX] |= HV_APIC_ACCESS_RECOMMENDED;
+    }
+    if (cpu->hyperv_tlbflush) {
+        if (kvm_check_extension(cs->kvm_state,
+                                KVM_CAP_HYPERV_TLBFLUSH) <= 0) {
+            fprintf(stderr, "Hyper-V TLB flush support "
+                    "(requested by 'hv-tlbflush' cpu flag) "
+                    " is not supported by kernel\n");
+            return -ENOSYS;
+        }
+        env->features[FEAT_HV_RECOMM_EAX] |= HV_REMOTE_TLB_FLUSH_RECOMMENDED;
+        env->features[FEAT_HV_RECOMM_EAX] |= HV_EX_PROCESSOR_MASKS_RECOMMENDED;
+    }
+    if (cpu->hyperv_ipi) {
+        if (kvm_check_extension(cs->kvm_state,
+                                KVM_CAP_HYPERV_SEND_IPI) <= 0) {
+            fprintf(stderr, "Hyper-V IPI send support "
+                    "(requested by 'hv-ipi' cpu flag) "
+                    " is not supported by kernel\n");
+            return -ENOSYS;
+        }
+        env->features[FEAT_HV_RECOMM_EAX] |= HV_CLUSTER_IPI_RECOMMENDED;
+        env->features[FEAT_HV_RECOMM_EAX] |= HV_EX_PROCESSOR_MASKS_RECOMMENDED;
+    }
+    if (cpu->hyperv_evmcs) {
+        uint16_t evmcs_version;
+
+        if (kvm_vcpu_enable_cap(cs, KVM_CAP_HYPERV_ENLIGHTENED_VMCS, 0,
+                                (uintptr_t)&evmcs_version)) {
+            fprintf(stderr, "Hyper-V Enlightened VMCS "
+                    "(requested by 'hv-evmcs' cpu flag) "
+                    "is not supported by kernel\n");
+            return -ENOSYS;
+        }
+        env->features[FEAT_HV_RECOMM_EAX] |= HV_ENLIGHTENED_VMCS_RECOMMENDED;
+        env->features[FEAT_HV_NESTED_EAX] = evmcs_version;
+    }
+
     return 0;
 }
 
 static int hyperv_init_vcpu(X86CPU *cpu)
 {
+    CPUState *cs = CPU(cpu);
+    int ret;
+
     if (cpu->hyperv_vpindex && !hv_vpindex_settable) {
         /*
          * the kernel doesn't support setting vp_index; assert that its value
          * is in sync
          */
-        int ret;
         struct {
             struct kvm_msrs info;
             struct kvm_msr_entry entries[1];
@@ -767,15 +870,35 @@ static int hyperv_init_vcpu(X86CPU *cpu)
             .entries[0].index = HV_X64_MSR_VP_INDEX,
         };
 
-        ret = kvm_vcpu_ioctl(CPU(cpu), KVM_GET_MSRS, &msr_data);
+        ret = kvm_vcpu_ioctl(cs, KVM_GET_MSRS, &msr_data);
         if (ret < 0) {
             return ret;
         }
         assert(ret == 1);
 
-        if (msr_data.entries[0].data != hyperv_vp_index(cpu)) {
+        if (msr_data.entries[0].data != hyperv_vp_index(CPU(cpu))) {
             error_report("kernel's vp_index != QEMU's vp_index");
             return -ENXIO;
+        }
+    }
+
+    if (cpu->hyperv_synic) {
+        uint32_t synic_cap = cpu->hyperv_synic_kvm_only ?
+            KVM_CAP_HYPERV_SYNIC : KVM_CAP_HYPERV_SYNIC2;
+        ret = kvm_vcpu_enable_cap(cs, synic_cap, 0);
+        if (ret < 0) {
+            error_report("failed to turn on HyperV SynIC in KVM: %s",
+                         strerror(-ret));
+            return ret;
+        }
+
+        if (!cpu->hyperv_synic_kvm_only) {
+            ret = hyperv_x86_synic_add(cpu);
+            if (ret < 0) {
+                error_report("failed to create HyperV SynIC: %s",
+                             strerror(-ret));
+                return ret;
+            }
         }
     }
 
@@ -783,6 +906,7 @@ static int hyperv_init_vcpu(X86CPU *cpu)
 }
 
 static Error *invtsc_mig_blocker;
+static Error *vmx_mig_blocker;
 
 #define KVM_MAX_CPUID_ENTRIES  100
 
@@ -791,7 +915,15 @@ int kvm_arch_init_vcpu(CPUState *cs)
     struct {
         struct kvm_cpuid2 cpuid;
         struct kvm_cpuid_entry2 entries[KVM_MAX_CPUID_ENTRIES];
-    } QEMU_PACKED cpuid_data;
+    } cpuid_data;
+    /*
+     * The kernel defines these structs with padding fields so there
+     * should be no extra padding in our cpuid_data struct.
+     */
+    QEMU_BUILD_BUG_ON(sizeof(cpuid_data) !=
+                      sizeof(struct kvm_cpuid2) +
+                      sizeof(struct kvm_cpuid_entry2) * KVM_MAX_CPUID_ENTRIES);
+
     X86CPU *cpu = X86_CPU(cs);
     CPUX86State *env = &cpu->env;
     uint32_t limit, i, j, cpuid_i;
@@ -841,7 +973,8 @@ int kvm_arch_init_vcpu(CPUState *cs)
             memset(signature, 0, 12);
             memcpy(signature, cpu->hyperv_vendor_id, len);
         }
-        c->eax = HV_CPUID_MIN;
+        c->eax = cpu->hyperv_evmcs ?
+            HV_CPUID_NESTED_FEATURES : HV_CPUID_IMPLEMENT_LIMITS;
         c->ebx = signature[0];
         c->ecx = signature[1];
         c->edx = signature[2];
@@ -871,24 +1004,8 @@ int kvm_arch_init_vcpu(CPUState *cs)
 
         c = &cpuid_data.entries[cpuid_i++];
         c->function = HV_CPUID_ENLIGHTMENT_INFO;
-        if (cpu->hyperv_relaxed_timing) {
-            c->eax |= HV_RELAXED_TIMING_RECOMMENDED;
-        }
-        if (cpu->hyperv_vapic) {
-            c->eax |= HV_APIC_ACCESS_RECOMMENDED;
-        }
-        if (cpu->hyperv_tlbflush) {
-            if (kvm_check_extension(cs->kvm_state,
-                                    KVM_CAP_HYPERV_TLBFLUSH) <= 0) {
-                fprintf(stderr, "Hyper-V TLB flush support "
-                        "(requested by 'hv-tlbflush' cpu flag) "
-                        " is not supported by kernel\n");
-                return -ENOSYS;
-            }
-            c->eax |= HV_REMOTE_TLB_FLUSH_RECOMMENDED;
-            c->eax |= HV_EX_PROCESSOR_MASKS_RECOMMENDED;
-        }
 
+        c->eax = env->features[FEAT_HV_RECOMM_EAX];
         c->ebx = cpu->hyperv_spinlock_attempts;
 
         c = &cpuid_data.entries[cpuid_i++];
@@ -899,6 +1016,21 @@ int kvm_arch_init_vcpu(CPUState *cs)
 
         kvm_base = KVM_CPUID_SIGNATURE_NEXT;
         has_msr_hv_hypercall = true;
+
+        if (cpu->hyperv_evmcs) {
+            __u32 function;
+
+            /* Create zeroed 0x40000006..0x40000009 leaves */
+            for (function = HV_CPUID_IMPLEMENT_LIMITS + 1;
+                 function < HV_CPUID_NESTED_FEATURES; function++) {
+                c = &cpuid_data.entries[cpuid_i++];
+                c->function = function;
+            }
+
+            c = &cpuid_data.entries[cpuid_i++];
+            c->function = HV_CPUID_NESTED_FEATURES;
+            c->eax = env->features[FEAT_HV_NESTED_EAX];
+        }
     }
 
     if (cpu->expose_kvm) {
@@ -1138,6 +1270,17 @@ int kvm_arch_init_vcpu(CPUState *cs)
                                   !!(c->ecx & CPUID_EXT_SMX);
     }
 
+    if ((env->features[FEAT_1_ECX] & CPUID_EXT_VMX) && !vmx_mig_blocker) {
+        error_setg(&vmx_mig_blocker,
+                   "Nested VMX virtualization does not support live migration yet");
+        r = migrate_add_blocker(vmx_mig_blocker, &local_err);
+        if (local_err) {
+            error_report_err(local_err);
+            error_free(vmx_mig_blocker);
+            return r;
+        }
+    }
+
     if (env->mcg_cap & MCG_LMCE_P) {
         has_msr_mcg_ext_ctl = has_msr_feature_control = true;
     }
@@ -1145,7 +1288,6 @@ int kvm_arch_init_vcpu(CPUState *cs)
     if (!env->user_tsc_khz) {
         if ((env->features[FEAT_8000_0007_EDX] & CPUID_APM_INVTSC) &&
             invtsc_mig_blocker == NULL) {
-            /* for migration */
             error_setg(&invtsc_mig_blocker,
                        "State blocked by non-migratable CPU device"
                        " (invtsc flag)");
@@ -1153,10 +1295,8 @@ int kvm_arch_init_vcpu(CPUState *cs)
             if (local_err) {
                 error_report_err(local_err);
                 error_free(invtsc_mig_blocker);
-                goto fail;
+                return r;
             }
-            /* for savevm */
-            vmstate_x86_cpu.unmigratable = 1;
         }
     }
 
@@ -1189,7 +1329,7 @@ int kvm_arch_init_vcpu(CPUState *cs)
     }
 
     if (has_xsave) {
-        env->kvm_xsave_buf = qemu_memalign(4096, sizeof(struct kvm_xsave));
+        env->xsave_buf = qemu_memalign(4096, sizeof(struct kvm_xsave));
     }
     cpu->kvm_msr_buf = g_malloc0(MSR_BUF_SIZE);
 
@@ -1226,6 +1366,8 @@ void kvm_arch_reset_vcpu(X86CPU *cpu)
         for (i = 0; i < ARRAY_SIZE(env->msr_hv_synic_sint); i++) {
             env->msr_hv_synic_sint[i] = HV_SINT_MASKED;
         }
+
+        hyperv_x86_synic_reset(cpu);
     }
 }
 
@@ -1237,6 +1379,47 @@ void kvm_arch_do_init_vcpu(X86CPU *cpu)
     if (env->mp_state == KVM_MP_STATE_UNINITIALIZED) {
         env->mp_state = KVM_MP_STATE_INIT_RECEIVED;
     }
+}
+
+static int kvm_get_supported_feature_msrs(KVMState *s)
+{
+    int ret = 0;
+
+    if (kvm_feature_msrs != NULL) {
+        return 0;
+    }
+
+    if (!kvm_check_extension(s, KVM_CAP_GET_MSR_FEATURES)) {
+        return 0;
+    }
+
+    struct kvm_msr_list msr_list;
+
+    msr_list.nmsrs = 0;
+    ret = kvm_ioctl(s, KVM_GET_MSR_FEATURE_INDEX_LIST, &msr_list);
+    if (ret < 0 && ret != -E2BIG) {
+        error_report("Fetch KVM feature MSR list failed: %s",
+            strerror(-ret));
+        return ret;
+    }
+
+    assert(msr_list.nmsrs > 0);
+    kvm_feature_msrs = (struct kvm_msr_list *) \
+        g_malloc0(sizeof(msr_list) +
+                 msr_list.nmsrs * sizeof(msr_list.indices[0]));
+
+    kvm_feature_msrs->nmsrs = msr_list.nmsrs;
+    ret = kvm_ioctl(s, KVM_GET_MSR_FEATURE_INDEX_LIST, kvm_feature_msrs);
+
+    if (ret < 0) {
+        error_report("Fetch KVM feature MSR list failed: %s",
+            strerror(-ret));
+        g_free(kvm_feature_msrs);
+        kvm_feature_msrs = NULL;
+        return ret;
+    }
+
+    return 0;
 }
 
 static int kvm_get_supported_msrs(KVMState *s)
@@ -1330,6 +1513,9 @@ static int kvm_get_supported_msrs(KVMState *s)
                 case MSR_VIRT_SSBD:
                     has_msr_virt_ssbd = true;
                     break;
+                case MSR_IA32_ARCH_CAPABILITIES:
+                    has_msr_arch_capabs = true;
+                    break;
                 }
             }
         }
@@ -1381,17 +1567,9 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
     int ret;
     struct utsname utsname;
 
-#ifdef KVM_CAP_XSAVE
     has_xsave = kvm_check_extension(s, KVM_CAP_XSAVE);
-#endif
-
-#ifdef KVM_CAP_XCRS
     has_xcrs = kvm_check_extension(s, KVM_CAP_XCRS);
-#endif
-
-#ifdef KVM_CAP_PIT_STATE2
     has_pit_state2 = kvm_check_extension(s, KVM_CAP_PIT_STATE2);
-#endif
 
     hv_vpindex_settable = kvm_check_extension(s, KVM_CAP_HYPERV_VP_INDEX);
 
@@ -1399,6 +1577,8 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
     if (ret < 0) {
         return ret;
     }
+
+    kvm_get_supported_feature_msrs(s);
 
     uname(&utsname);
     lm_capable_kernel = strcmp(utsname.machine, "x86_64") == 0;
@@ -1647,7 +1827,7 @@ ASSERT_OFFSET(XSAVE_PKRU, pkru_state);
 static int kvm_put_xsave(X86CPU *cpu)
 {
     CPUX86State *env = &cpu->env;
-    X86XSaveArea *xsave = env->kvm_xsave_buf;
+    X86XSaveArea *xsave = env->xsave_buf;
 
     if (!has_xsave) {
         return kvm_put_fpu(cpu);
@@ -1856,6 +2036,12 @@ static int kvm_put_msrs(X86CPU *cpu, int level)
     }
 #endif
 
+    /* If host supports feature MSR, write down. */
+    if (has_msr_arch_capabs) {
+        kvm_msr_entry_add(cpu, MSR_IA32_ARCH_CAPABILITIES,
+                          env->features[FEAT_ARCH_CAPABILITIES]);
+    }
+
     /*
      * The following MSRs have side effects on the guest or are too heavy
      * for normal writeback. Limit them to reset or full state updates.
@@ -1945,7 +2131,8 @@ static int kvm_put_msrs(X86CPU *cpu, int level)
             kvm_msr_entry_add(cpu, HV_X64_MSR_VP_RUNTIME, env->msr_hv_runtime);
         }
         if (cpu->hyperv_vpindex && hv_vpindex_settable) {
-            kvm_msr_entry_add(cpu, HV_X64_MSR_VP_INDEX, hyperv_vp_index(cpu));
+            kvm_msr_entry_add(cpu, HV_X64_MSR_VP_INDEX,
+                              hyperv_vp_index(CPU(cpu)));
         }
         if (cpu->hyperv_synic) {
             int j;
@@ -2089,7 +2276,7 @@ static int kvm_get_fpu(X86CPU *cpu)
 static int kvm_get_xsave(X86CPU *cpu)
 {
     CPUX86State *env = &cpu->env;
-    X86XSaveArea *xsave = env->kvm_xsave_buf;
+    X86XSaveArea *xsave = env->xsave_buf;
     int ret;
 
     if (!has_xsave) {
@@ -2694,7 +2881,6 @@ static int kvm_put_vcpu_events(X86CPU *cpu, int level)
     events.exception.nr = env->exception_injected;
     events.exception.has_error_code = env->has_error_code;
     events.exception.error_code = env->error_code;
-    events.exception.pad = 0;
 
     events.interrupt.injected = (env->interrupt_injected >= 0);
     events.interrupt.nr = env->interrupt_injected;
@@ -2703,7 +2889,6 @@ static int kvm_put_vcpu_events(X86CPU *cpu, int level)
     events.nmi.injected = env->nmi_injected;
     events.nmi.pending = env->nmi_pending;
     events.nmi.masked = !!(env->hflags2 & HF2_NMI_MASK);
-    events.nmi.pad = 0;
 
     events.sipi_vector = env->sipi_vector;
     events.flags = 0;
@@ -3677,6 +3862,10 @@ int kvm_arch_fixup_msi_route(struct kvm_irq_routing_entry *route,
         MSIMessage src, dst;
         X86IOMMUClass *class = X86_IOMMU_GET_CLASS(iommu);
 
+        if (!class->int_remap) {
+            return 0;
+        }
+
         src.address = route->u.msi.address_hi;
         src.address <<= VTD_MSI_ADDR_HI_SHIFT;
         src.address |= route->u.msi.address_lo;
@@ -3714,7 +3903,7 @@ static QLIST_HEAD(, MSIRouteEntry) msi_route_list = \
 static void kvm_update_msi_routes_all(void *private, bool global,
                                       uint32_t index, uint32_t mask)
 {
-    int cnt = 0;
+    int cnt = 0, vector;
     MSIRouteEntry *entry;
     MSIMessage msg;
     PCIDevice *dev;
@@ -3722,11 +3911,19 @@ static void kvm_update_msi_routes_all(void *private, bool global,
     /* TODO: explicit route update */
     QLIST_FOREACH(entry, &msi_route_list, list) {
         cnt++;
+        vector = entry->vector;
         dev = entry->dev;
-        if (!msix_enabled(dev) && !msi_enabled(dev)) {
+        if (msix_enabled(dev) && !msix_is_masked(dev, vector)) {
+            msg = msix_get_message(dev, vector);
+        } else if (msi_enabled(dev) && !msi_is_masked(dev, vector)) {
+            msg = msi_get_message(dev, vector);
+        } else {
+            /*
+             * Either MSI/MSIX is disabled for the device, or the
+             * specific message was masked out.  Skip this one.
+             */
             continue;
         }
-        msg = pci_get_msi_message(dev, entry->vector);
         kvm_irqchip_update_msi_route(kvm_state, entry->virq, msg, dev);
     }
     kvm_irqchip_commit_routes(kvm_state);

@@ -1,12 +1,12 @@
 #include "qemu/osdep.h"
-#include "hw/xen/xen_backend.h"
+#include "hw/xen/xen-legacy-backend.h"
 #include "qemu/option.h"
 #include "sysemu/blockdev.h"
 
 /* ------------------------------------------------------------- */
 
 static int xen_config_dev_dirs(const char *ftype, const char *btype, int vdev,
-			       char *fe, char *be, int len)
+                               char *fe, char *be, int len)
 {
     char *dom;
 

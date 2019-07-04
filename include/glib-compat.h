@@ -83,7 +83,6 @@ static inline gboolean g_strv_contains_qemu(const gchar *const *strv,
 }
 #define g_strv_contains(a, b) g_strv_contains_qemu(a, b)
 
-
 #if defined(_WIN32) && !GLIB_CHECK_VERSION(2, 50, 0)
 /*
  * g_poll has a problem on Windows when using

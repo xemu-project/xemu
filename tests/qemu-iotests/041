@@ -234,6 +234,12 @@ class TestSingleBlockdev(TestSingleDrive):
         result = self.vm.qmp("blockdev-add", **args)
         self.assert_qmp(result, 'return', {})
 
+    def test_mirror_to_self(self):
+        result = self.vm.qmp(self.qmp_cmd, job_id='job0',
+                             device=self.qmp_target, sync='full',
+                             target=self.qmp_target)
+        self.assert_qmp(result, 'error/class', 'GenericError')
+
     test_large_cluster = None
     test_image_not_found = None
     test_small_buffer2 = None
@@ -398,7 +404,7 @@ new_state = "2"
 state = "2"
 event = "%s"
 new_state = "1"
-''' % (event, errno, self.MIRROR_GRANULARITY / 512, event, event))
+''' % (event, errno, self.MIRROR_GRANULARITY // 512, event, event))
         file.close()
 
     def setUp(self):
@@ -463,7 +469,7 @@ new_state = "1"
             self.assert_qmp(event, 'data/id', 'drive0')
             event = self.vm.get_qmp_event(wait=True)
 
-        self.assertEquals(event['event'], 'BLOCK_JOB_ERROR')
+        self.assertEqual(event['event'], 'BLOCK_JOB_ERROR')
         self.assert_qmp(event, 'data/device', 'drive0')
         self.assert_qmp(event, 'data/operation', 'read')
         result = self.vm.qmp('query-block-jobs')
@@ -488,7 +494,7 @@ new_state = "1"
             self.assert_qmp(event, 'data/id', 'drive0')
             event = self.vm.get_qmp_event(wait=True)
 
-        self.assertEquals(event['event'], 'BLOCK_JOB_ERROR')
+        self.assertEqual(event['event'], 'BLOCK_JOB_ERROR')
         self.assert_qmp(event, 'data/device', 'drive0')
         self.assert_qmp(event, 'data/operation', 'read')
         result = self.vm.qmp('query-block-jobs')
@@ -563,7 +569,7 @@ new_state = "2"
 state = "2"
 event = "%s"
 new_state = "1"
-''' % (event, errno, self.MIRROR_GRANULARITY / 512, event, event))
+''' % (event, errno, self.MIRROR_GRANULARITY // 512, event, event))
         file.close()
 
     def setUp(self):
@@ -619,7 +625,7 @@ new_state = "1"
         self.assert_qmp(result, 'return', {})
 
         event = self.vm.event_wait(name='BLOCK_JOB_ERROR')
-        self.assertEquals(event['event'], 'BLOCK_JOB_ERROR')
+        self.assertEqual(event['event'], 'BLOCK_JOB_ERROR')
         self.assert_qmp(event, 'data/device', 'drive0')
         self.assert_qmp(event, 'data/operation', 'write')
         result = self.vm.qmp('query-block-jobs')

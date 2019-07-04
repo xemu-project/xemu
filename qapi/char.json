@@ -25,9 +25,10 @@
 #
 # Since: 0.14.0
 ##
-{ 'struct': 'ChardevInfo', 'data': {'label': 'str',
-                                  'filename': 'str',
-                                  'frontend-open': 'bool'} }
+{ 'struct': 'ChardevInfo',
+  'data': { 'label': 'str',
+            'filename': 'str',
+            'frontend-open': 'bool' } }
 
 ##
 # @query-chardev:
@@ -152,7 +153,8 @@
 #
 ##
 { 'command': 'ringbuf-write',
-  'data': {'device': 'str', 'data': 'str',
+  'data': { 'device': 'str',
+            'data': 'str',
            '*format': 'DataFormat'} }
 
 ##
@@ -202,8 +204,9 @@
 #
 # Since: 2.6
 ##
-{ 'struct': 'ChardevCommon', 'data': { '*logfile': 'str',
-                                       '*logappend': 'bool' } }
+{ 'struct': 'ChardevCommon',
+  'data': { '*logfile': 'str',
+            '*logappend': 'bool' } }
 
 ##
 # @ChardevFile:
@@ -217,9 +220,10 @@
 #
 # Since: 1.4
 ##
-{ 'struct': 'ChardevFile', 'data': { '*in' : 'str',
-                                   'out' : 'str',
-                                   '*append': 'bool' },
+{ 'struct': 'ChardevFile',
+  'data': { '*in': 'str',
+            'out': 'str',
+            '*append': 'bool' },
   'base': 'ChardevCommon' }
 
 ##
@@ -232,7 +236,8 @@
 #
 # Since: 1.4
 ##
-{ 'struct': 'ChardevHostdev', 'data': { 'device' : 'str' },
+{ 'struct': 'ChardevHostdev',
+  'data': { 'device': 'str' },
   'base': 'ChardevCommon' }
 
 ##
@@ -243,6 +248,11 @@
 # @addr: socket address to listen on (server=true)
 #        or connect to (server=false)
 # @tls-creds: the ID of the TLS credentials object (since 2.6)
+# @tls-authz: the ID of the QAuthZ authorization object against which
+#             the client's x509 distinguished name will be validated. This
+#             object is only resolved at time of use, so can be deleted
+#             and recreated on the fly while the chardev server is active.
+#             If missing, it will default to denying access (since 4.0)
 # @server: create server socket (default: true)
 # @wait: wait for incoming connection on server
 #        sockets (default: false).
@@ -251,6 +261,8 @@
 #          sockets (default: false)
 # @tn3270: enable tn3270 protocol on server
 #          sockets (default: false) (Since: 2.10)
+# @websocket: enable websocket protocol on server
+#           sockets (default: false) (Since: 3.1)
 # @reconnect: For a client socket, if a socket is disconnected,
 #          then attempt a reconnect after the given number of seconds.
 #          Setting this to zero disables this function. (default: 0)
@@ -258,14 +270,17 @@
 #
 # Since: 1.4
 ##
-{ 'struct': 'ChardevSocket', 'data': { 'addr'       : 'SocketAddressLegacy',
-                                     '*tls-creds'  : 'str',
-                                     '*server'    : 'bool',
-                                     '*wait'      : 'bool',
-                                     '*nodelay'   : 'bool',
-                                     '*telnet'    : 'bool',
-                                     '*tn3270'    : 'bool',
-                                     '*reconnect' : 'int' },
+{ 'struct': 'ChardevSocket',
+  'data': { 'addr': 'SocketAddressLegacy',
+            '*tls-creds': 'str',
+            '*tls-authz'  : 'str',
+            '*server': 'bool',
+            '*wait': 'bool',
+            '*nodelay': 'bool',
+            '*telnet': 'bool',
+            '*tn3270': 'bool',
+            '*websocket': 'bool',
+            '*reconnect': 'int' },
   'base': 'ChardevCommon' }
 
 ##
@@ -278,8 +293,9 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'ChardevUdp', 'data': { 'remote' : 'SocketAddressLegacy',
-                                  '*local' : 'SocketAddressLegacy' },
+{ 'struct': 'ChardevUdp',
+  'data': { 'remote': 'SocketAddressLegacy',
+            '*local': 'SocketAddressLegacy' },
   'base': 'ChardevCommon' }
 
 ##
@@ -291,7 +307,8 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'ChardevMux', 'data': { 'chardev' : 'str' },
+{ 'struct': 'ChardevMux',
+  'data': { 'chardev': 'str' },
   'base': 'ChardevCommon' }
 
 ##
@@ -305,7 +322,8 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'ChardevStdio', 'data': { '*signal' : 'bool' },
+{ 'struct': 'ChardevStdio',
+  'data': { '*signal': 'bool' },
   'base': 'ChardevCommon' }
 
 
@@ -318,9 +336,10 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'ChardevSpiceChannel', 'data': { 'type'  : 'str' },
-  'base': 'ChardevCommon' }
-# TODO: 'if': 'defined(CONFIG_SPICE)'
+{ 'struct': 'ChardevSpiceChannel',
+  'data': { 'type': 'str' },
+  'base': 'ChardevCommon',
+  'if': 'defined(CONFIG_SPICE)' }
 
 ##
 # @ChardevSpicePort:
@@ -331,9 +350,10 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'ChardevSpicePort', 'data': { 'fqdn'  : 'str' },
-  'base': 'ChardevCommon' }
-# TODO: 'if': 'defined(CONFIG_SPICE)'
+{ 'struct': 'ChardevSpicePort',
+  'data': { 'fqdn': 'str' },
+  'base': 'ChardevCommon',
+  'if': 'defined(CONFIG_SPICE)' }
 
 ##
 # @ChardevVC:
@@ -347,10 +367,11 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'ChardevVC', 'data': { '*width'  : 'int',
-                                 '*height' : 'int',
-                                 '*cols'   : 'int',
-                                 '*rows'   : 'int' },
+{ 'struct': 'ChardevVC',
+  'data': { '*width': 'int',
+            '*height': 'int',
+            '*cols': 'int',
+            '*rows': 'int' },
   'base': 'ChardevCommon' }
 
 ##
@@ -362,7 +383,8 @@
 #
 # Since: 1.5
 ##
-{ 'struct': 'ChardevRingbuf', 'data': { '*size'  : 'int' },
+{ 'struct': 'ChardevRingbuf',
+  'data': { '*size': 'int' },
   'base': 'ChardevCommon' }
 
 ##
@@ -372,29 +394,30 @@
 #
 # Since: 1.4 (testdev since 2.2, wctablet since 2.9)
 ##
-{ 'union': 'ChardevBackend', 'data': { 'file'   : 'ChardevFile',
-                                       'serial' : 'ChardevHostdev',
-                                       'parallel': 'ChardevHostdev',
-                                       'pipe'   : 'ChardevHostdev',
-                                       'socket' : 'ChardevSocket',
-                                       'udp'    : 'ChardevUdp',
-                                       'pty'    : 'ChardevCommon',
-                                       'null'   : 'ChardevCommon',
-                                       'mux'    : 'ChardevMux',
-                                       'msmouse': 'ChardevCommon',
-                                       'wctablet' : 'ChardevCommon',
-                                       'braille': 'ChardevCommon',
-                                       'testdev': 'ChardevCommon',
-                                       'stdio'  : 'ChardevStdio',
-                                       'console': 'ChardevCommon',
-                                       'spicevmc': 'ChardevSpiceChannel',
-# TODO: { 'type': 'ChardevSpiceChannel', 'if': 'defined(CONFIG_SPICE)' },
-                                       'spiceport': 'ChardevSpicePort',
-# TODO: { 'type': 'ChardevSpicePort', 'if': 'defined(CONFIG_SPICE)' },
-                                       'vc'     : 'ChardevVC',
-                                       'ringbuf': 'ChardevRingbuf',
-                                       # next one is just for compatibility
-                                       'memory' : 'ChardevRingbuf' } }
+{ 'union': 'ChardevBackend',
+  'data': { 'file': 'ChardevFile',
+            'serial': 'ChardevHostdev',
+            'parallel': 'ChardevHostdev',
+            'pipe': 'ChardevHostdev',
+            'socket': 'ChardevSocket',
+            'udp': 'ChardevUdp',
+            'pty': 'ChardevCommon',
+            'null': 'ChardevCommon',
+            'mux': 'ChardevMux',
+            'msmouse': 'ChardevCommon',
+            'wctablet': 'ChardevCommon',
+            'braille': 'ChardevCommon',
+            'testdev': 'ChardevCommon',
+            'stdio': 'ChardevStdio',
+            'console': 'ChardevCommon',
+            'spicevmc': { 'type': 'ChardevSpiceChannel',
+                          'if': 'defined(CONFIG_SPICE)' },
+            'spiceport': { 'type': 'ChardevSpicePort',
+                           'if': 'defined(CONFIG_SPICE)' },
+            'vc': 'ChardevVC',
+            'ringbuf': 'ChardevRingbuf',
+            # next one is just for compatibility
+            'memory': 'ChardevRingbuf' } }
 
 ##
 # @ChardevReturn:
@@ -406,7 +429,8 @@
 #
 # Since: 1.4
 ##
-{ 'struct' : 'ChardevReturn', 'data': { '*pty' : 'str' } }
+{ 'struct' : 'ChardevReturn',
+  'data': { '*pty': 'str' } }
 
 ##
 # @chardev-add:
@@ -439,8 +463,9 @@
 # <- { "return": { "pty" : "/dev/pty/42" } }
 #
 ##
-{ 'command': 'chardev-add', 'data': {'id'      : 'str',
-                                     'backend' : 'ChardevBackend' },
+{ 'command': 'chardev-add',
+  'data': { 'id': 'str',
+            'backend': 'ChardevBackend' },
   'returns': 'ChardevReturn' }
 
 ##
@@ -479,8 +504,9 @@
 # <- {"return": {}}
 #
 ##
-{ 'command': 'chardev-change', 'data': {'id'      : 'str',
-                                        'backend' : 'ChardevBackend' },
+{ 'command': 'chardev-change',
+  'data': { 'id': 'str',
+            'backend': 'ChardevBackend' },
   'returns': 'ChardevReturn' }
 
 ##
@@ -500,7 +526,8 @@
 # <- { "return": {} }
 #
 ##
-{ 'command': 'chardev-remove', 'data': {'id': 'str'} }
+{ 'command': 'chardev-remove',
+  'data': { 'id': 'str' } }
 
 ##
 # @chardev-send-break:
@@ -519,7 +546,8 @@
 # <- { "return": {} }
 #
 ##
-{ 'command': 'chardev-send-break', 'data': {'id': 'str'} }
+{ 'command': 'chardev-send-break',
+  'data': { 'id': 'str' } }
 
 ##
 # @VSERPORT_CHANGE:
@@ -540,4 +568,5 @@
 #
 ##
 { 'event': 'VSERPORT_CHANGE',
-  'data': { 'id': 'str', 'open': 'bool' } }
+  'data': { 'id': 'str',
+            'open': 'bool' } }

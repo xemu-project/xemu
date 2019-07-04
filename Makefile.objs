@@ -1,71 +1,19 @@
 #######################################################################
 # Common libraries for tools and emulators
-stub-obj-y = stubs/ crypto/
+stub-obj-y = stubs/ util/ crypto/
 util-obj-y = util/ qobject/ qapi/
-util-obj-y += qapi/qapi-builtin-types.o
-util-obj-y += qapi/qapi-types.o
-util-obj-y += qapi/qapi-types-block-core.o
-util-obj-y += qapi/qapi-types-block.o
-util-obj-y += qapi/qapi-types-char.o
-util-obj-y += qapi/qapi-types-common.o
-util-obj-y += qapi/qapi-types-crypto.o
-util-obj-y += qapi/qapi-types-introspect.o
-util-obj-y += qapi/qapi-types-job.o
-util-obj-y += qapi/qapi-types-migration.o
-util-obj-y += qapi/qapi-types-misc.o
-util-obj-y += qapi/qapi-types-net.o
-util-obj-y += qapi/qapi-types-rocker.o
-util-obj-y += qapi/qapi-types-run-state.o
-util-obj-y += qapi/qapi-types-sockets.o
-util-obj-y += qapi/qapi-types-tpm.o
-util-obj-y += qapi/qapi-types-trace.o
-util-obj-y += qapi/qapi-types-transaction.o
-util-obj-y += qapi/qapi-types-ui.o
-util-obj-y += qapi/qapi-builtin-visit.o
-util-obj-y += qapi/qapi-visit.o
-util-obj-y += qapi/qapi-visit-block-core.o
-util-obj-y += qapi/qapi-visit-block.o
-util-obj-y += qapi/qapi-visit-char.o
-util-obj-y += qapi/qapi-visit-common.o
-util-obj-y += qapi/qapi-visit-crypto.o
-util-obj-y += qapi/qapi-visit-introspect.o
-util-obj-y += qapi/qapi-visit-job.o
-util-obj-y += qapi/qapi-visit-migration.o
-util-obj-y += qapi/qapi-visit-misc.o
-util-obj-y += qapi/qapi-visit-net.o
-util-obj-y += qapi/qapi-visit-rocker.o
-util-obj-y += qapi/qapi-visit-run-state.o
-util-obj-y += qapi/qapi-visit-sockets.o
-util-obj-y += qapi/qapi-visit-tpm.o
-util-obj-y += qapi/qapi-visit-trace.o
-util-obj-y += qapi/qapi-visit-transaction.o
-util-obj-y += qapi/qapi-visit-ui.o
-util-obj-y += qapi/qapi-events.o
-util-obj-y += qapi/qapi-events-block-core.o
-util-obj-y += qapi/qapi-events-block.o
-util-obj-y += qapi/qapi-events-char.o
-util-obj-y += qapi/qapi-events-common.o
-util-obj-y += qapi/qapi-events-crypto.o
-util-obj-y += qapi/qapi-events-introspect.o
-util-obj-y += qapi/qapi-events-job.o
-util-obj-y += qapi/qapi-events-migration.o
-util-obj-y += qapi/qapi-events-misc.o
-util-obj-y += qapi/qapi-events-net.o
-util-obj-y += qapi/qapi-events-rocker.o
-util-obj-y += qapi/qapi-events-run-state.o
-util-obj-y += qapi/qapi-events-sockets.o
-util-obj-y += qapi/qapi-events-tpm.o
-util-obj-y += qapi/qapi-events-trace.o
-util-obj-y += qapi/qapi-events-transaction.o
-util-obj-y += qapi/qapi-events-ui.o
-util-obj-y += qapi/qapi-introspect.o
 
 chardev-obj-y = chardev/
 
 #######################################################################
+# authz-obj-y is code used by both qemu system emulation and qemu-img
+
+authz-obj-y = authz/
+
+#######################################################################
 # block-obj-y is code used by both qemu system emulation and qemu-img
 
-block-obj-y += nbd/
+block-obj-y = nbd/
 block-obj-y += block.o blockjob.o job.o
 block-obj-y += block/ scsi/
 block-obj-y += qemu-io-cmds.o
@@ -123,8 +71,6 @@ common-obj-y += vl.o
 vl.o-cflags := $(GPROF_CFLAGS) $(SDL_CFLAGS)
 common-obj-$(CONFIG_TPM) += tpm.o
 
-common-obj-$(CONFIG_SLIRP) += slirp/
-
 common-obj-y += backends/
 common-obj-y += chardev/
 
@@ -137,26 +83,8 @@ common-obj-$(CONFIG_FDT) += device_tree.o
 ######################################################################
 # qapi
 
-common-obj-y += qapi/qapi-commands.o
-common-obj-y += qapi/qapi-commands-block-core.o
-common-obj-y += qapi/qapi-commands-block.o
-common-obj-y += qapi/qapi-commands-char.o
-common-obj-y += qapi/qapi-commands-common.o
-common-obj-y += qapi/qapi-commands-crypto.o
-common-obj-y += qapi/qapi-commands-introspect.o
-common-obj-y += qapi/qapi-commands-job.o
-common-obj-y += qapi/qapi-commands-migration.o
-common-obj-y += qapi/qapi-commands-misc.o
-common-obj-y += qapi/qapi-commands-net.o
-common-obj-y += qapi/qapi-commands-rocker.o
-common-obj-y += qapi/qapi-commands-run-state.o
-common-obj-y += qapi/qapi-commands-sockets.o
-common-obj-y += qapi/qapi-commands-tpm.o
-common-obj-y += qapi/qapi-commands-trace.o
-common-obj-y += qapi/qapi-commands-transaction.o
-common-obj-y += qapi/qapi-commands-ui.o
-common-obj-y += qapi/qapi-introspect.o
 common-obj-y += qmp.o hmp.o
+common-obj-y += qapi/
 endif
 
 #######################################################################
@@ -173,7 +101,6 @@ version-obj-$(CONFIG_WIN32) += $(BUILD_DIR)/version.o
 ######################################################################
 # tracing
 util-obj-y +=  trace/
-target-obj-y += trace/
 
 ######################################################################
 # guest agent
@@ -186,6 +113,7 @@ qga-vss-dll-obj-y = qga/
 
 ######################################################################
 # contrib
+elf2dmp-obj-y = contrib/elf2dmp/
 ivshmem-client-obj-$(CONFIG_IVSHMEM) = contrib/ivshmem-client/
 ivshmem-server-obj-$(CONFIG_IVSHMEM) = contrib/ivshmem-server/
 libvhost-user-obj-y = contrib/libvhost-user/
@@ -193,12 +121,14 @@ vhost-user-scsi.o-cflags := $(LIBISCSI_CFLAGS)
 vhost-user-scsi.o-libs := $(LIBISCSI_LIBS)
 vhost-user-scsi-obj-y = contrib/vhost-user-scsi/
 vhost-user-blk-obj-y = contrib/vhost-user-blk/
+rdmacm-mux-obj-y = contrib/rdmacm-mux/
 
 ######################################################################
 trace-events-subdirs =
 trace-events-subdirs += accel/kvm
 trace-events-subdirs += accel/tcg
 trace-events-subdirs += audio
+trace-events-subdirs += authz
 trace-events-subdirs += block
 trace-events-subdirs += chardev
 trace-events-subdirs += crypto
@@ -240,7 +170,9 @@ trace-events-subdirs += hw/tpm
 trace-events-subdirs += hw/usb
 trace-events-subdirs += hw/vfio
 trace-events-subdirs += hw/virtio
+trace-events-subdirs += hw/watchdog
 trace-events-subdirs += hw/xen
+trace-events-subdirs += hw/gpio
 trace-events-subdirs += io
 trace-events-subdirs += linux-user
 trace-events-subdirs += migration
@@ -250,9 +182,11 @@ trace-events-subdirs += qapi
 trace-events-subdirs += qom
 trace-events-subdirs += scsi
 trace-events-subdirs += target/arm
+trace-events-subdirs += target/hppa
 trace-events-subdirs += target/i386
 trace-events-subdirs += target/mips
 trace-events-subdirs += target/ppc
+trace-events-subdirs += target/riscv
 trace-events-subdirs += target/s390x
 trace-events-subdirs += target/sparc
 trace-events-subdirs += ui

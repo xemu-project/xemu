@@ -26,7 +26,7 @@ how the schemas, scripts, and resulting code are used.
 == QMP/Guest agent schema ==
 
 A QAPI schema file is designed to be loosely based on JSON
-(http://www.ietf.org/rfc/rfc7159.txt) with changes for quoting style
+(http://www.ietf.org/rfc/rfc8259.txt) with changes for quoting style
 and the use of comments; a QAPI schema file is then parsed by a python
 code generation program.  A valid QAPI schema consists of a series of
 top-level expressions, with no commas between them.  Where
@@ -752,6 +752,25 @@ gets its generated code guarded like this:
  #endif /* defined(HAVE_BAR) */
  #endif /* defined(CONFIG_FOO) */
 
+Where a member can be defined with a single string value for its type,
+it is also possible to supply a dictionary instead with both 'type'
+and 'if' keys.
+
+Example: a conditional 'bar' member
+
+{ 'struct': 'IfStruct', 'data':
+  { 'foo': 'int',
+    'bar': { 'type': 'int', 'if': 'defined(IFCOND)'} } }
+
+An enum value can be replaced by a dictionary with a 'name' and a 'if'
+key.
+
+Example: a conditional 'bar' enum member.
+
+{ 'enum': 'IfEnum', 'data':
+  [ 'foo',
+    { 'name' : 'bar', 'if': 'defined(IFCOND)' } ] }
+
 Please note that you are responsible to ensure that the C code will
 compile with an arbitrary combination of conditions, since the
 generators are unable to check it at this point.
@@ -1035,7 +1054,7 @@ Example:
     #ifndef EXAMPLE_QAPI_TYPES_H
     #define EXAMPLE_QAPI_TYPES_H
 
-[Built-in types omitted...]
+    #include "qapi/qapi-builtin-types.h"
 
     typedef struct UserDefOne UserDefOne;
 
@@ -1062,7 +1081,7 @@ Example:
         UserDefOneList *arg1;
     };
 
-    #endif
+    #endif /* EXAMPLE_QAPI_TYPES_H */
     $ cat qapi-generated/example-qapi-types.c
 [Uninteresting stuff omitted...]
 
@@ -1092,6 +1111,21 @@ Example:
         visit_free(v);
     }
 
+[Uninteresting stuff omitted...]
+
+For a modular QAPI schema (see section Include directives), code for
+each sub-module SUBDIR/SUBMODULE.json is actually generated into
+
+SUBDIR/$(prefix)qapi-types-SUBMODULE.h
+SUBDIR/$(prefix)qapi-types-SUBMODULE.c
+
+If qapi-gen.py is run with option --builtins, additional files are
+created:
+
+qapi-builtin-types.h - C types corresponding to built-in types
+
+qapi-builtin-types.c - Cleanup functions for the above C types
+
 === Code generated for visiting QAPI types ===
 
 These are the visitor functions used to walk through and convert
@@ -1118,7 +1152,9 @@ Example:
     #ifndef EXAMPLE_QAPI_VISIT_H
     #define EXAMPLE_QAPI_VISIT_H
 
-[Visitors for built-in types omitted...]
+    #include "qapi/qapi-builtin-visit.h"
+    #include "example-qapi-types.h"
+
 
     void visit_type_UserDefOne_members(Visitor *v, UserDefOne *obj, Error **errp);
     void visit_type_UserDefOne(Visitor *v, const char *name, UserDefOne **obj, Error **errp);
@@ -1126,7 +1162,7 @@ Example:
 
     void visit_type_q_obj_my_command_arg_members(Visitor *v, q_obj_my_command_arg *obj, Error **errp);
 
-    #endif
+    #endif /* EXAMPLE_QAPI_VISIT_H */
     $ cat qapi-generated/example-qapi-visit.c
 [Uninteresting stuff omitted...]
 
@@ -1219,6 +1255,21 @@ Example:
         error_propagate(errp, err);
     }
 
+[Uninteresting stuff omitted...]
+
+For a modular QAPI schema (see section Include directives), code for
+each sub-module SUBDIR/SUBMODULE.json is actually generated into
+
+SUBDIR/$(prefix)qapi-visit-SUBMODULE.h
+SUBDIR/$(prefix)qapi-visit-SUBMODULE.c
+
+If qapi-gen.py is run with option --builtins, additional files are
+created:
+
+qapi-builtin-visit.h - Visitor functions for built-in types
+
+qapi-builtin-visit.c - Declarations for these visitor functions
+
 === Code generated for commands ===
 
 These are the marshaling/dispatch functions for the commands defined
@@ -1238,18 +1289,17 @@ Example:
     $ cat qapi-generated/example-qapi-commands.h
 [Uninteresting stuff omitted...]
 
-    #ifndef EXAMPLE_QMP_COMMANDS_H
-    #define EXAMPLE_QMP_COMMANDS_H
+    #ifndef EXAMPLE_QAPI_COMMANDS_H
+    #define EXAMPLE_QAPI_COMMANDS_H
 
     #include "example-qapi-types.h"
-    #include "qapi/qmp/qdict.h"
     #include "qapi/qmp/dispatch.h"
 
-    void example_qmp_init_marshal(QmpCommandList *cmds);
     UserDefOne *qmp_my_command(UserDefOneList *arg1, Error **errp);
     void qmp_marshal_my_command(QDict *args, QObject **ret, Error **errp);
+    void example_qmp_init_marshal(QmpCommandList *cmds);
 
-    #endif
+    #endif /* EXAMPLE_QAPI_COMMANDS_H */
     $ cat qapi-generated/example-qapi-commands.c
 [Uninteresting stuff omitted...]
 
@@ -1316,6 +1366,14 @@ Example:
                              qmp_marshal_my_command, QCO_NO_OPTIONS);
     }
 
+[Uninteresting stuff omitted...]
+
+For a modular QAPI schema (see section Include directives), code for
+each sub-module SUBDIR/SUBMODULE.json is actually generated into
+
+SUBDIR/$(prefix)qapi-commands-SUBMODULE.h
+SUBDIR/$(prefix)qapi-commands-SUBMODULE.c
+
 === Code generated for events ===
 
 This is the code related to events defined in the schema, providing
@@ -1323,57 +1381,67 @@ qapi_event_send_EVENT().
 
 The following files are created:
 
-$(prefix)qapi-events.h - Function prototypes for each event type, plus an
-                        enumeration of all event names
+$(prefix)qapi-events.h - Function prototypes for each event type
 
 $(prefix)qapi-events.c - Implementation of functions to send an event
+
+$(prefix)qapi-emit-events.h - Enumeration of all event names, and
+                              common event code declarations
+
+$(prefix)qapi-emit-events.c - Common event code definitions
 
 Example:
 
     $ cat qapi-generated/example-qapi-events.h
 [Uninteresting stuff omitted...]
 
-    #ifndef EXAMPLE_QAPI_EVENT_H
-    #define EXAMPLE_QAPI_EVENT_H
+    #ifndef EXAMPLE_QAPI_EVENTS_H
+    #define EXAMPLE_QAPI_EVENTS_H
 
-    #include "qapi/qmp/qdict.h"
+    #include "qapi/util.h"
     #include "example-qapi-types.h"
 
+    void qapi_event_send_my_event(void);
 
-    void qapi_event_send_my_event(Error **errp);
-
-    typedef enum example_QAPIEvent {
-        EXAMPLE_QAPI_EVENT_MY_EVENT = 0,
-        EXAMPLE_QAPI_EVENT__MAX = 1,
-    } example_QAPIEvent;
-
-    #define example_QAPIEvent_str(val) \
-        qapi_enum_lookup(example_QAPIEvent_lookup, (val))
-
-    extern const char *const example_QAPIEvent_lookup[];
-
-    #endif
+    #endif /* EXAMPLE_QAPI_EVENTS_H */
     $ cat qapi-generated/example-qapi-events.c
 [Uninteresting stuff omitted...]
 
-    void qapi_event_send_my_event(Error **errp)
+    void qapi_event_send_my_event(void)
     {
         QDict *qmp;
-        Error *err = NULL;
-        QMPEventFuncEmit emit;
-
-        emit = qmp_event_get_func_emit();
-        if (!emit) {
-            return;
-        }
 
         qmp = qmp_event_build_dict("MY_EVENT");
 
-        emit(EXAMPLE_QAPI_EVENT_MY_EVENT, qmp, &err);
+        example_qapi_event_emit(EXAMPLE_QAPI_EVENT_MY_EVENT, qmp);
 
-        error_propagate(errp, err);
         qobject_unref(qmp);
     }
+
+[Uninteresting stuff omitted...]
+    $ cat qapi-generated/example-qapi-emit-events.h
+[Uninteresting stuff omitted...]
+
+    #ifndef EXAMPLE_QAPI_EMIT_EVENTS_H
+    #define EXAMPLE_QAPI_EMIT_EVENTS_H
+
+    #include "qapi/util.h"
+
+    typedef enum example_QAPIEvent {
+        EXAMPLE_QAPI_EVENT_MY_EVENT,
+        EXAMPLE_QAPI_EVENT__MAX,
+    } example_QAPIEvent;
+
+    #define example_QAPIEvent_str(val) \
+        qapi_enum_lookup(&example_QAPIEvent_lookup, (val))
+
+    extern const QEnumLookup example_QAPIEvent_lookup;
+
+    void example_qapi_event_emit(example_QAPIEvent event, QDict *qdict);
+
+    #endif /* EXAMPLE_QAPI_EMIT_EVENTS_H */
+    $ cat qapi-generated/example-qapi-emit-events.c
+[Uninteresting stuff omitted...]
 
     const QEnumLookup example_QAPIEvent_lookup = {
         .array = (const char *const[]) {
@@ -1381,6 +1449,14 @@ Example:
         },
         .size = EXAMPLE_QAPI_EVENT__MAX
     };
+
+[Uninteresting stuff omitted...]
+
+For a modular QAPI schema (see section Include directives), code for
+each sub-module SUBDIR/SUBMODULE.json is actually generated into
+
+SUBDIR/$(prefix)qapi-events-SUBMODULE.h
+SUBDIR/$(prefix)qapi-events-SUBMODULE.c
 
 === Code generated for introspection ===
 
@@ -1396,30 +1472,93 @@ Example:
     $ cat qapi-generated/example-qapi-introspect.h
 [Uninteresting stuff omitted...]
 
-    #ifndef EXAMPLE_QMP_INTROSPECT_H
-    #define EXAMPLE_QMP_INTROSPECT_H
+    #ifndef EXAMPLE_QAPI_INTROSPECT_H
+    #define EXAMPLE_QAPI_INTROSPECT_H
 
-    extern const QLitObject qmp_schema_qlit;
+    #include "qapi/qmp/qlit.h"
 
-    #endif
+    extern const QLitObject example_qmp_schema_qlit;
+
+    #endif /* EXAMPLE_QAPI_INTROSPECT_H */
     $ cat qapi-generated/example-qapi-introspect.c
 [Uninteresting stuff omitted...]
 
     const QLitObject example_qmp_schema_qlit = QLIT_QLIST(((QLitObject[]) {
         QLIT_QDICT(((QLitDictEntry[]) {
-            { "arg-type", QLIT_QSTR("0") },
-            { "meta-type", QLIT_QSTR("event") },
-            { "name", QLIT_QSTR("Event") },
-            { }
+            { "arg-type", QLIT_QSTR("0"), },
+            { "meta-type", QLIT_QSTR("command"), },
+            { "name", QLIT_QSTR("my-command"), },
+            { "ret-type", QLIT_QSTR("1"), },
+            {}
         })),
         QLIT_QDICT(((QLitDictEntry[]) {
-            { "members", QLIT_QLIST(((QLitObject[]) {
-                { }
-            })) },
-            { "meta-type", QLIT_QSTR("object") },
-            { "name", QLIT_QSTR("0") },
-            { }
+            { "arg-type", QLIT_QSTR("2"), },
+            { "meta-type", QLIT_QSTR("event"), },
+            { "name", QLIT_QSTR("MY_EVENT"), },
+            {}
         })),
-        ...
-        { }
+        /* "0" = q_obj_my-command-arg */
+        QLIT_QDICT(((QLitDictEntry[]) {
+            { "members", QLIT_QLIST(((QLitObject[]) {
+                QLIT_QDICT(((QLitDictEntry[]) {
+                    { "name", QLIT_QSTR("arg1"), },
+                    { "type", QLIT_QSTR("[1]"), },
+                    {}
+                })),
+                {}
+            })), },
+            { "meta-type", QLIT_QSTR("object"), },
+            { "name", QLIT_QSTR("0"), },
+            {}
+        })),
+        /* "1" = UserDefOne */
+        QLIT_QDICT(((QLitDictEntry[]) {
+            { "members", QLIT_QLIST(((QLitObject[]) {
+                QLIT_QDICT(((QLitDictEntry[]) {
+                    { "name", QLIT_QSTR("integer"), },
+                    { "type", QLIT_QSTR("int"), },
+                    {}
+                })),
+                QLIT_QDICT(((QLitDictEntry[]) {
+                    { "default", QLIT_QNULL, },
+                    { "name", QLIT_QSTR("string"), },
+                    { "type", QLIT_QSTR("str"), },
+                    {}
+                })),
+                {}
+            })), },
+            { "meta-type", QLIT_QSTR("object"), },
+            { "name", QLIT_QSTR("1"), },
+            {}
+        })),
+        /* "2" = q_empty */
+        QLIT_QDICT(((QLitDictEntry[]) {
+            { "members", QLIT_QLIST(((QLitObject[]) {
+                {}
+            })), },
+            { "meta-type", QLIT_QSTR("object"), },
+            { "name", QLIT_QSTR("2"), },
+            {}
+        })),
+        QLIT_QDICT(((QLitDictEntry[]) {
+            { "element-type", QLIT_QSTR("1"), },
+            { "meta-type", QLIT_QSTR("array"), },
+            { "name", QLIT_QSTR("[1]"), },
+            {}
+        })),
+        QLIT_QDICT(((QLitDictEntry[]) {
+            { "json-type", QLIT_QSTR("int"), },
+            { "meta-type", QLIT_QSTR("builtin"), },
+            { "name", QLIT_QSTR("int"), },
+            {}
+        })),
+        QLIT_QDICT(((QLitDictEntry[]) {
+            { "json-type", QLIT_QSTR("string"), },
+            { "meta-type", QLIT_QSTR("builtin"), },
+            { "name", QLIT_QSTR("str"), },
+            {}
+        })),
+        {}
     }));
+
+[Uninteresting stuff omitted...]

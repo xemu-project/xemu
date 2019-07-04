@@ -18,14 +18,16 @@ import basevm
 
 class OpenBSDVM(basevm.BaseVM):
     name = "openbsd"
+    arch = "x86_64"
     BUILD_SCRIPT = """
         set -e;
+        rm -rf /var/tmp/qemu-test.*
         cd $(mktemp -d /var/tmp/qemu-test.XXXXXX);
         tar -xf /dev/rsd1c;
         ./configure --cc=x86_64-unknown-openbsd6.1-gcc-4.9.4 --python=python2.7 {configure_opts};
-        gmake -j{jobs};
+        gmake --output-sync -j{jobs} {verbose};
         # XXX: "gmake check" seems to always hang or fail
-        #gmake check;
+        #gmake --output-sync -j{jobs} check {verbose};
     """
 
     def build_image(self, img):
@@ -33,8 +35,9 @@ class OpenBSDVM(basevm.BaseVM):
                 sha256sum='8c6cedc483e602cfee5e04f0406c64eb99138495e8ca580bc0293bcf0640c1bf')
         img_tmp_xz = img + ".tmp.xz"
         img_tmp = img + ".tmp"
+        sys.stderr.write("Extracting the image...\n")
         subprocess.check_call(["cp", "-f", cimg, img_tmp_xz])
-        subprocess.check_call(["xz", "-df", img_tmp_xz])
+        subprocess.check_call(["xz", "-dvf", img_tmp_xz])
         if os.path.exists(img):
             os.remove(img)
         os.rename(img_tmp, img)

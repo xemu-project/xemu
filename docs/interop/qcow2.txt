@@ -40,7 +40,18 @@ The first cluster of a qcow2 image contains the file header:
                     with larger cluster sizes.
 
          24 - 31:   size
-                    Virtual disk size in bytes
+                    Virtual disk size in bytes.
+
+                    Note: qemu has an implementation limit of 32 MB as
+                    the maximum L1 table size.  With a 2 MB cluster
+                    size, it is unable to populate a virtual cluster
+                    beyond 2 EB (61 bits); with a 512 byte cluster
+                    size, it is unable to populate a virtual size
+                    larger than 128 GB (37 bits).  Meanwhile, L1/L2
+                    table layouts limit an image to no more than 64 PB
+                    (56 bits) of populated clusters, and an image may
+                    hit other limits first (such as a file system's
+                    maximum size).
 
          32 - 35:   crypt_method
                     0 for no encryption
@@ -86,7 +97,19 @@ in the description of a field.
                                 be written to (unless for regaining
                                 consistency).
 
-                    Bits 2-63:  Reserved (set to 0)
+                    Bit 2:      External data file bit.  If this bit is set, an
+                                external data file is used. Guest clusters are
+                                then stored in the external data file. For such
+                                images, clusters in the external data file are
+                                not refcounted. The offset field in the
+                                Standard Cluster Descriptor must match the
+                                guest offset and neither compressed clusters
+                                nor internal snapshots are supported.
+
+                                An External Data File Name header extension may
+                                be present if this bit is set.
+
+                    Bits 3-63:  Reserved (set to 0)
 
          80 -  87:  compatible_features
                     Bitmask of compatible features. An implementation can
@@ -115,7 +138,21 @@ in the description of a field.
                                 bit is unset, the bitmaps extension data must be
                                 considered inconsistent.
 
-                    Bits 1-63:  Reserved (set to 0)
+                    Bit 1:      If this bit is set, the external data file can
+                                be read as a consistent standalone raw image
+                                without looking at the qcow2 metadata.
+
+                                Setting this bit has a performance impact for
+                                some operations on the image (e.g. writing
+                                zeros requires writing to the data file instead
+                                of only setting the zero flag in the L2 table
+                                entry) and conflicts with backing files.
+
+                                This bit may only be set if the External Data
+                                File bit (incompatible feature bit 1) is also
+                                set.
+
+                    Bits 2-63:  Reserved (set to 0)
 
          96 -  99:  refcount_order
                     Describes the width of a reference count block entry (width
@@ -133,10 +170,11 @@ be stored. Each extension has a structure like the following:
 
     Byte  0 -  3:   Header extension type:
                         0x00000000 - End of the header extension area
-                        0xE2792ACA - Backing file format name
+                        0xE2792ACA - Backing file format name string
                         0x6803f857 - Feature name table
                         0x23852875 - Bitmaps extension
                         0x0537be77 - Full disk encryption header pointer
+                        0x44415441 - External data file name string
                         other      - Unknown header extension, can be safely
                                      ignored
 
@@ -156,6 +194,16 @@ the first cluster. It is not allowed to store other data here, so that an
 implementation can safely modify the header and add extensions without harming
 data of compatible features that it doesn't support. Compatible features that
 need space for additional data can use a header extension.
+
+
+== String header extensions ==
+
+Some header extensions (such as the backing file format name and the external
+data file name) are just a single string. In this case, the header extension
+length is the string length and the string is not '\0' terminated. (The header
+extension padding can make it look like a string is '\0' terminated, but
+neither is padding always necessary nor is there a guarantee that zero bytes
+are used for padding.)
 
 
 == Feature name table ==
@@ -326,6 +374,17 @@ in the image file.
 It contains pointers to the second level structures which are called refcount
 blocks and are exactly one cluster in size.
 
+Although a large enough refcount table can reserve clusters past 64 PB
+(56 bits) (assuming the underlying protocol can even be sized that
+large), note that some qcow2 metadata such as L1/L2 tables must point
+to clusters prior to that point.
+
+Note: qemu has an implementation limit of 8 MB as the maximum refcount
+table size.  With a 2 MB cluster size and a default refcount_order of
+4, it is unable to reference host resources beyond 2 EB (61 bits); in
+the worst case, with a 512 cluster size and refcount_order of 6, it is
+unable to access beyond 32 GB (35 bits).
+
 Given an offset into the image file, the refcount of its cluster can be
 obtained as follows:
 
@@ -364,6 +423,16 @@ guest clusters to host clusters. They are called L1 and L2 table.
 The L1 table has a variable size (stored in the header) and may use multiple
 clusters, however it must be contiguous in the image file. L2 tables are
 exactly one cluster in size.
+
+The L1 and L2 tables have implications on the maximum virtual file
+size; for a given L1 table size, a larger cluster size is required for
+the guest to have access to more space.  Furthermore, a virtual
+cluster must currently map to a host offset below 64 PB (56 bits)
+(although this limit could be relaxed by putting reserved bits into
+use).  Additionally, as cluster size increases, the maximum host
+offset for a compressed cluster is reduced (a 2M cluster size requires
+compressed clusters to reside below 512 TB (49 bits), and this limit
+cannot be relaxed without an incompatible layout change).
 
 Given an offset into the virtual disk, the offset into the image file can be
 obtained as follows:
@@ -405,6 +474,11 @@ L2 table entry:
                     This information is only accurate in L2 tables
                     that are reachable from the active L1 table.
 
+                    With external data files, all guest clusters have an
+                    implicit refcount of 1 (because of the fixed host = guest
+                    mapping for guest cluster offsets), so this bit should be 1
+                    for all allocated clusters.
+
 Standard Cluster Descriptor:
 
     Bit       0:    If set to 1, the cluster reads as all zeros. The host
@@ -418,8 +492,10 @@ Standard Cluster Descriptor:
          1 -  8:    Reserved (set to 0)
 
          9 - 55:    Bits 9-55 of host cluster offset. Must be aligned to a
-                    cluster boundary. If the offset is 0, the cluster is
-                    unallocated.
+                    cluster boundary. If the offset is 0 and bit 63 is clear,
+                    the cluster is unallocated. The offset may only be 0 with
+                    bit 63 set (indicating a host cluster offset of 0) when an
+                    external data file is used.
 
         56 - 61:    Reserved (set to 0)
 
@@ -427,7 +503,9 @@ Standard Cluster Descriptor:
 Compressed Clusters Descriptor (x = 62 - (cluster_bits - 8)):
 
     Bit  0 - x-1:   Host cluster offset. This is usually _not_ aligned to a
-                    cluster or sector boundary!
+                    cluster or sector boundary!  If cluster_bits is
+                    small enough that this field includes bits beyond
+                    55, those upper bits must be set to 0.
 
          x - 61:    Number of additional 512-byte sectors used for the
                     compressed data, beyond the sector containing the offset
@@ -555,7 +633,10 @@ Structure of a bitmap directory entry:
                     Bit
                       0: in_use
                          The bitmap was not saved correctly and may be
-                         inconsistent.
+                         inconsistent. Although the bitmap metadata is still
+                         well-formed from a qcow2 perspective, the metadata
+                         (such as the auto flag or bitmap size) or data
+                         contents may be outdated.
 
                       1: auto
                          The bitmap must reflect all changes of the virtual
@@ -683,8 +764,8 @@ corresponding range of the virtual disk (see above) was written to while the
 bitmap was 'enabled'. An unset bit means that this range was not written to.
 
 The software doesn't have to sync the bitmap in the image file with its
-representation in RAM after each write. Flag 'in_use' should be set while the
-bitmap is not synced.
+representation in RAM after each write or metadata change. Flag 'in_use'
+should be set while the bitmap is not synced.
 
 In the image file the 'enabled' state is reflected by the 'auto' flag. If this
 flag is set, the software must consider the bitmap as 'enabled' and start
