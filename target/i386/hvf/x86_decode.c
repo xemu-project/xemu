@@ -1687,7 +1687,7 @@ calc_addr:
     }
 }
 
-target_ulong get_reg_ref(CPUX86State *env, int reg, int rex, int is_extended,
+uintptr_t get_reg_ref(CPUX86State *env, int reg, int rex, int is_extended,
                          int size)
 {
     uintptr_t ptr = 0;

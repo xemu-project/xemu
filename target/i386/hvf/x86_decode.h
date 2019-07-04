@@ -303,7 +303,7 @@ uint64_t sign(uint64_t val, int size);
 
 uint32_t decode_instruction(CPUX86State *env, struct x86_decode *decode);
 
-target_ulong get_reg_ref(CPUX86State *env, int reg, int rex, int is_extended,
+uintptr_t get_reg_ref(CPUX86State *env, int reg, int rex, int is_extended,
                          int size);
 target_ulong get_reg_val(CPUX86State *env, int reg, int rex, int is_extended,
                          int size);
