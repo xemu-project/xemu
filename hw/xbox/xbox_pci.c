@@ -451,31 +451,29 @@ static const TypeInfo xbox_pci_info = {
 #define CONFIG_ADDR 0xcf8
 #define CONFIG_DATA 0xcfc
 
-static int xbox_pcihost_initfn(SysBusDevice *dev)
+static void xbox_pcihost_realize(DeviceState *dev, Error **errp)
 {
     PCIHostState *s = PCI_HOST_BRIDGE(dev);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
 
     memory_region_init_io(&s->conf_mem, OBJECT(dev),
                           &pci_host_conf_le_ops, s,
                           "pci-conf-idx", 4);
-    sysbus_add_io(dev, CONFIG_ADDR, &s->conf_mem);
+    sysbus_add_io(sbd, CONFIG_ADDR, &s->conf_mem);
     sysbus_init_ioports(&s->busdev, CONFIG_ADDR, 4);
 
     memory_region_init_io(&s->data_mem, OBJECT(dev),
                           &pci_host_data_le_ops, s,
                           "pci-conf-data", 4);
-    sysbus_add_io(dev, CONFIG_DATA, &s->data_mem);
+    sysbus_add_io(sbd, CONFIG_DATA, &s->data_mem);
     sysbus_init_ioports(&s->busdev, CONFIG_DATA, 4);
-
-    return 0;
 }
 
 static void xbox_pcihost_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SysBusDeviceClass *k = SYS_BUS_DEVICE_CLASS(klass);
 
-    k->init = xbox_pcihost_initfn;
+    dc->realize = xbox_pcihost_realize;
     dc->user_creatable = false;
 }
 
