@@ -92,7 +92,7 @@ include $(SRC_PATH)/rules.mak
 QEMU_PKGVERSION := $(if $(PKGVERSION),$(PKGVERSION),$(shell \
   cd $(SRC_PATH); \
   if test -e .git; then \
-    git describe --match 'v*' 2>/dev/null | tr -d '\n'; \
+    git rev-parse --short HEAD 2>/dev/null | tr -d '\n'; \
     if ! git diff-index --quiet HEAD &>/dev/null; then \
       echo "-dirty"; \
     fi; \
