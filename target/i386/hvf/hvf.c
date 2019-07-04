@@ -397,7 +397,9 @@ static void hvf_log_sync(MemoryListener *listener,
      * sync of dirty pages is handled elsewhere; just make sure we keep
      * tracking the region.
      */
+#ifndef XBOX
     hvf_set_dirty_tracking(section, 1);
+#endif
 }
 
 static void hvf_region_add(MemoryListener *listener,
