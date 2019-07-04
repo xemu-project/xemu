@@ -1,5 +1,7 @@
 sudo: false
 
+dist: xenial
+
 language: c
 
 os:
