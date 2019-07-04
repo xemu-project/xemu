@@ -32,7 +32,6 @@
 #include "sysemu/sysemu.h"
 #include "hw/sysbus.h"
 #include "sysemu/arch_init.h"
-#include "hw/i2c/smbus.h"
 #include "exec/memory.h"
 #include "exec/address-spaces.h"
 #include "cpu.h"
@@ -45,7 +44,8 @@
 #include "hw/timer/mc146818rtc.h"
 
 #include "hw/xbox/xbox_pci.h"
-#include "hw/xbox/smbus.h"
+#include "hw/i2c/i2c.h"
+#include "hw/i2c/smbus_eeprom.h"
 #include "hw/xbox/nv2a/nv2a.h"
 #include "hw/xbox/mcpx_apu.h"
  
@@ -352,7 +352,7 @@ void xbox_init_common(MachineState *machine,
     pc_register_ferr_irq(pcms->gsi[13]);
 
     /* init basic PC hardware */
-    pcms->pit = 1; // XBOX_FIXME: What's the right way to do this?
+    pcms->pit_enabled = 1; // XBOX_FIXME: What's the right way to do this?
     rtc_state = mc146818_rtc_init(isa_bus, 2000, NULL);
 
     // qemu_register_boot_set(pc_boot_set, rtc_state);
