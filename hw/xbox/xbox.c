@@ -50,6 +50,7 @@
 #include "hw/xbox/mcpx_apu.h"
  
 #include "hw/xbox/xbox.h"
+#include "smbus.h"
 
 #define MAX_IDE_BUS 2
 
