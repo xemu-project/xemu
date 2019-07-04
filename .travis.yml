@@ -34,12 +34,13 @@ addons:
       - libseccomp-dev
       - libspice-protocol-dev
       - libspice-server-dev
-      - libssh2-1-dev
+      - libssh-dev
       - liburcu-dev
       - libusb-1.0-0-dev
-      - libvte-2.90-dev
+      - libvte-2.91-dev
       - sparse
       - uuid-dev
+      - gcovr
       - libsdl2-dev
       - libepoxy-dev
   homebrew:
@@ -48,7 +49,6 @@ addons:
       - pixman
       - sdl2
       - libepoxy
-
 
 git:
   # we want to do this ourselves
