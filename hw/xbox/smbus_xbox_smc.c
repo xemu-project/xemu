@@ -26,7 +26,7 @@
 #include "qemu/option.h"
 #include "hw/hw.h"
 #include "hw/i2c/i2c.h"
-#include "hw/i2c/smbus.h"
+#include "hw/i2c/smbus_slave.h"
 #include "qemu/config-file.h"
 #include "sysemu/sysemu.h"
 #include "smbus.h"
@@ -85,6 +85,7 @@ static const char *smc_version_string = "P01";
 typedef struct SMBusSMCDevice {
     SMBusDevice smbusdev;
     int version_string_index;
+    uint8_t cmd;
     uint8_t scratch_reg;
 } SMBusSMCDevice;
 
@@ -93,20 +94,17 @@ static void smc_quick_cmd(SMBusDevice *dev, uint8_t read)
     DPRINTF("smc_quick_cmd: addr=0x%02x read=%d\n", dev->i2c.address, read);
 }
 
-static void smc_send_byte(SMBusDevice *dev, uint8_t val)
+static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
 {
-    DPRINTF("smc_send_byte: addr=0x%02x val=0x%02x\n", dev->i2c.address, val);
-}
+    SMBusSMCDevice *smc = XBOX_SMC(dev);
 
-static uint8_t smc_receive_byte(SMBusDevice *dev)
-{
-    DPRINTF("smc_receive_byte: addr=0x%02x\n", dev->i2c.address);
-    return 0;
-}
+    smc->cmd = buf[0];
+    uint8_t cmd = smc->cmd;
+    buf++;
+    len--;
 
-static void smc_write_data(SMBusDevice *dev, uint8_t cmd, uint8_t *buf, int len)
-{
-    SMBusSMCDevice *smc = (SMBusSMCDevice *) dev;
+    if (len < 1) return 0;
+
     DPRINTF("smc_write_byte: addr=0x%02x cmd=0x%02x val=0x%02x\n",
            dev->i2c.address, cmd, buf[0]);
 
@@ -138,13 +136,17 @@ static void smc_write_data(SMBusDevice *dev, uint8_t cmd, uint8_t *buf, int len)
     default:
         break;
     }
+
+    return 0;
 }
 
-static uint8_t smc_read_data(SMBusDevice *dev, uint8_t cmd, int n)
+static uint8_t smc_receive_byte(SMBusDevice *dev)
 {
-    SMBusSMCDevice *smc = (SMBusSMCDevice *)dev;
-    DPRINTF("smc_read_data: addr=0x%02x cmd=0x%02x n=%d\n",
-            dev->i2c.address, cmd, n);
+    SMBusSMCDevice *smc = XBOX_SMC(dev);
+    DPRINTF("smc_receive_byte: addr=0x%02x cmd=0x%02x\n",
+            dev->i2c.address, smc->cmd);
+
+    uint8_t cmd = smc->cmd++;
 
     switch (cmd) {
     case SMC_REG_VER:
@@ -182,6 +184,7 @@ static void smbus_smc_realize(DeviceState *dev, Error **errp)
 
     smc->version_string_index = 0;
     smc->scratch_reg = 0;
+    smc->cmd = 0;
 
     if (object_property_get_bool(qdev_get_machine(), "short-animation", NULL)) {
         smc->scratch_reg = SMC_REG_SCRATCH_SHORT_ANIMATION;
@@ -195,10 +198,8 @@ static void smbus_smc_class_initfn(ObjectClass *klass, void *data)
 
     dc->realize = smbus_smc_realize;
     sc->quick_cmd = smc_quick_cmd;
-    sc->send_byte = smc_send_byte;
     sc->receive_byte = smc_receive_byte;
     sc->write_data = smc_write_data;
-    sc->read_data = smc_read_data;
 }
 
 static TypeInfo smbus_smc_info = {
@@ -218,7 +219,7 @@ type_init(smbus_smc_register_devices)
 void smbus_xbox_smc_init(I2CBus *smbus, int address)
 {
     DeviceState *smc;
-    smc = qdev_create((BusState *)smbus, "smbus-xbox-smc");
+    smc = qdev_create((BusState *)smbus, TYPE_XBOX_SMC);
     qdev_prop_set_uint8(smc, "address", address);
     qdev_init_nofail(smc);
 }
