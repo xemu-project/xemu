@@ -55,11 +55,8 @@ static int smbus_adm1032_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
             dev->i2c.address, buf[0]);
 
     cx->cmd = buf[0];
-    buf++;
-    len--;
-
-    DPRINTF("smbus_adm1032_write_data: addr=0x%02x cmd=0x%02x val=0x%02x\n",
-            dev->i2c.address, cx->cmd, buf[0]);
+    // buf++;
+    // len--;
 
     return 0;
 }
