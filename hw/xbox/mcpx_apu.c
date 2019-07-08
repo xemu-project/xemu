@@ -31,6 +31,8 @@
 
 #include "hw/xbox/mcpx_apu.h"
 
+#include "adpcm_block.h"
+
 #define NV_PAPU_ISTS                                     0x00001000
 #   define NV_PAPU_ISTS_GINTSTS                               (1 << 0)
 #   define NV_PAPU_ISTS_FETINTSTS                             (1 << 4)
@@ -653,16 +655,14 @@ static void fe_method(MCPXAPUState *d,
     case NV1BA0_PIO_SET_CURRENT_INBUF_SGE:
         d->inbuf_sge_handle = argument & NV1BA0_PIO_SET_CURRENT_INBUF_SGE_HANDLE;
         break;
-#if 0
     case NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET: {
         //FIXME: Is there an upper limit for the SGE table size?
         //FIXME: NV_PAPU_VPSGEADDR is probably bad, as outbuf SGE use the same handle range (or that is also wrong)
         hwaddr sge_address = d->regs[NV_PAPU_VPSGEADDR] + d->inbuf_sge_handle * 8;
-        stl_le_phys(sge_address, argument & NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET_PARAMETER);
+        stl_le_phys(&address_space_memory, sge_address, argument & NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET_PARAMETER);
         printf("Wrote inbuf SGE[0x%X] = 0x%08X\n", d->inbuf_sge_handle, argument & NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET_PARAMETER);
         break;
     }
-#endif
     CASE_4(NV1BA0_PIO_SET_OUTBUF_BA, 8): // 8 byte pitch, 4 entries
         slot = (method - NV1BA0_PIO_SET_OUTBUF_BA) / 8;
         //FIXME: Use NV1BA0_PIO_SET_OUTBUF_BA_ADDRESS = 0x007FFF00 ?
@@ -678,7 +678,6 @@ static void fe_method(MCPXAPUState *d,
     case NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE:
         d->outbuf_sge_handle = argument & NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_HANDLE;
         break;
-#if 0
     case NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET: {
         //FIXME: Is there an upper limit for the SGE table size?
         //FIXME: NV_PAPU_VPSGEADDR is probably bad, as inbuf SGE use the same handle range (or that is also wrong)
@@ -686,11 +685,10 @@ static void fe_method(MCPXAPUState *d,
         // NV_PAPU_GPFADDR   GP outbufs
         // But how does it know which outbuf is being written?!
         hwaddr sge_address = d->regs[NV_PAPU_VPSGEADDR] + d->outbuf_sge_handle * 8;
-        stl_le_phys(sge_address, argument & NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET_PARAMETER);
+        stl_le_phys(&address_space_memory, sge_address, argument & NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET_PARAMETER);
         printf("Wrote outbuf SGE[0x%X] = 0x%08X\n", d->outbuf_sge_handle, argument & NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET_PARAMETER);
         break;
     }
-#endif
     case SE2FE_IDLE_VOICE:
         if (d->regs[NV_PAPU_FETFORCE1] & NV_PAPU_FETFORCE1_SE2FE_IDLE_VOICE) {
 
@@ -1126,13 +1124,12 @@ static const MemoryRegionOps ep_ops = {
     .write = ep_write,
 };
 
-#if 0
 static hwaddr get_data_ptr(hwaddr sge_base, unsigned int max_sge, uint32_t addr) {
     unsigned int entry = addr / TARGET_PAGE_SIZE;
     assert(entry <= max_sge);
-    uint32_t prd_address = ldl_le_phys(sge_base + entry*4*2);
-    uint32_t prd_control = ldl_le_phys(sge_base + entry*4*2 + 4);
-    //printf("Addr: 0x%08X, control: 0x%08X\n", prd_address, prd_control);
+    uint32_t prd_address = ldl_le_phys(&address_space_memory, sge_base + entry*4*2);
+    // uint32_t prd_control = ldl_le_phys(&address_space_memory, sge_base + entry*4*2 + 4);
+    // printf("Addr: 0x%08X, control: 0x%08X\n", prd_address, prd_control);
 
     return prd_address + addr % TARGET_PAGE_SIZE;
 }
@@ -1256,15 +1253,15 @@ static float step_envelope(MCPXAPUState *d, unsigned int v, uint32_t reg_0, uint
     fprintf(stderr, "Unknown envelope state 0x%x\n", cur);
     assert(false);
   }
+
+  return 0;
 }
-#endif
 
 static void process_voice(MCPXAPUState *d,
                           int32_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
                           uint32_t voice)
 {
-#if 0
-    uint32_t v = d->regs[current];
+    uint32_t v = voice;
     int32_t samples[2][0x20] = {0};
 
     float ea_value = step_envelope(d, v, NV_PAVS_VOICE_CFG_ENV0, NV_PAVS_VOICE_CFG_ENVA, NV_PAVS_VOICE_TAR_LFO_ENV, NV_PAVS_VOICE_TAR_LFO_ENV_EA_RELEASERATE, NV_PAVS_VOICE_PAR_OFFSET, NV_PAVS_VOICE_PAR_OFFSET_EALVL, NV_PAVS_VOICE_CUR_ECNT_EACOUNT, NV_PAVS_VOICE_PAR_STATE_EACUR);
@@ -1350,12 +1347,12 @@ static void process_voice(MCPXAPUState *d,
                 // FIXME: Only load block data which will be used
                 for(unsigned int word_index = 0; word_index < 18; word_index++) {
                     hwaddr addr = get_data_ptr(d->regs[NV_PAPU_VPSGEADDR], 0xFFFFFFFF, linear_addr);
-                    block[word_index] = ldl_le_phys(addr);
+                    block[word_index] = ldl_le_phys(&address_space_memory, addr);
                     linear_addr += 4;
                 }
                 //FIXME: Used wrong sample format in my own decoder.. stupid me lol
                 int16_t tmp[2];
-                adpcm_decode_stereo_block(&tmp[0], &tmp[1], block, block_position, block_position);
+                adpcm_decode_stereo_block(&tmp[0], &tmp[1], (uint8_t*)block, block_position, block_position);
                 samples[0][i] = tmp[0];
                 samples[1][i] = tmp[1];
             } else {
@@ -1365,12 +1362,12 @@ static void process_voice(MCPXAPUState *d,
                 uint32_t linear_addr = ba + block_index * 36;
                 for(unsigned int word_index = 0; word_index < 9; word_index++) {
                     hwaddr addr = get_data_ptr(d->regs[NV_PAPU_VPSGEADDR], 0xFFFFFFFF, linear_addr);
-                    block[word_index] = ldl_le_phys(addr);
+                    block[word_index] = ldl_le_phys(&address_space_memory, addr);
                     linear_addr += 4;
                 }
                 //FIXME: Used wrong sample format in my own decoder.. stupid me lol
                 int16_t tmp;
-                adpcm_decode_mono_block(&tmp, block, block_position, block_position);
+                adpcm_decode_mono_block(&tmp, (uint8_t*)block, block_position, block_position);
                 samples[0][i] = tmp;
             }
 
@@ -1388,16 +1385,16 @@ static void process_voice(MCPXAPUState *d,
             for(unsigned int channel = 0; channel < channels; channel++) {
                 switch(sample_size) {
                 case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_U8:
-                    samples[channel][i] = ldub_phys(addr);
+                    samples[channel][i] = ldub_phys(&address_space_memory, addr);
                     break;
                 case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S16:
-                    samples[channel][i] = (int16_t)lduw_le_phys(addr);
+                    samples[channel][i] = (int16_t)lduw_le_phys(&address_space_memory, addr);
                     break;
                 case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S24:
-                    samples[channel][i] = (int32_t)(ldl_le_phys(addr) << 8) >> 8;
+                    samples[channel][i] = (int32_t)(ldl_le_phys(&address_space_memory, addr) << 8) >> 8;
                     break;
                 case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S32:
-                    samples[channel][i] = (int32_t)ldl_le_phys(addr);
+                    samples[channel][i] = (int32_t)ldl_le_phys(&address_space_memory, addr);
                     break;
                 }
              
@@ -1433,29 +1430,6 @@ static void process_voice(MCPXAPUState *d,
       voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA, NV_PAVS_VOICE_TAR_VOLA_VOLUME7_B3_0),
     };
 
-    if (v == 0x0044) {
-      static unsigned int x = 0;
-      
-      for(unsigned int i = 0; i < 0x20; i++) {
-        uint32_t sample_pos = cbo + (uint32_t)(i * rate * overdrive);
-        //uint32_t sample_pos = cbo + (uint32_t)(i * rate * overdrive);
-        //FIXME: The mod ebo thing is a hack!
-        uint32_t linear_addr = ba + (sample_pos % (ebo + 1)) * container_size;
-        hwaddr addr = get_data_ptr(d->regs[NV_PAPU_VPSGEADDR], 0xFFFFFFFF, linear_addr);
-        //printf("Sampling from 0x%08X\n", addr);
-        int16_t sample = (int16_t)lduw_le_phys(addr);
-        wav_out_write(&buf_wav_out[0], &sample, 2); // voice input
-        x++;
-      }
-      wav_out_update(&buf_wav_out[0]);
-
-      for(unsigned int i = 0; i < 0x20; i++) {
-        wav_out_write(&buf_wav_out[1], &samples[0][i], 3); // mixbuf for voice
-        wav_out_write(&buf_wav_out[1], &samples[channels - 1][i], 3); // mixbuf for voice
-      }
-      wav_out_update(&buf_wav_out[1]);
-    }
-
     if (paused) {
       assert(sizeof(samples) == 0x20 * 4 * 2);
       memset(samples, 0x00, sizeof(samples));
@@ -1463,43 +1437,6 @@ static void process_voice(MCPXAPUState *d,
       cbo += 0x20 * rate * overdrive;
       voice_set_mask(d, v, NV_PAVS_VOICE_PAR_OFFSET, NV_PAVS_VOICE_PAR_OFFSET_CBO, cbo);
     }
-
-    const char* name = "unk";
-#if 0
-    // Whitelisted: !
-    if (ba == 0x1F08) {
-      name = "Thunder";
-    } else if (ba == 0x141E8) { // White noise (in bad range?! 16U?!)
-      name = "White Noise";
-    } else if (ba == 0xD1F0) { // Beep sound
-      name = "Beep";
-    } else if (ba == 0x102E8) { // Flubber / Bubble sound
-      name = "Flubber";
-
-    // Blacklisted: !
-    } else if (ba == 0xF998) { // garbage? some sawtooth I guess
-      name = "Sawtooth";
-      goto skipvoice;
-    } else if (ba == 0x978) { // silence
-      name = "Silence";
-      goto skipvoice;
-
-
-    ///// Wavebank XDK sample
-    } else if (ba == 0x246C50) { // garbage? some sawtooth I guess
-      name = "Sound 9"; // "The call is tails"
-    } else if (ba == 0x3A6694) { // garbage? some sawtooth I guess
-      name = "Sound 13"; // Music
-
-
-    ///// Catchall
-    } else {
-      printf("Skipping ", ba);
-      goto skipvoice;
-    }
-    
-
-#endif
 
     // Apply the amplitude envelope
     //FIXME: Figure out when exactly and how exactly this is actually done
@@ -1518,12 +1455,9 @@ static void process_voice(MCPXAPUState *d,
         for(unsigned int i = 0; i < 0x20; i++) {
             //FIXME: how is the volume added?
             //FIXME: What happens to the other channel? Is this behaviour correct?
-            mixbuf[bin[j]][i] += (0xFFF - vol[j]) * samples[j % channels][i] / 0xFFF;
+            mixbins[bin[j]][i] += (0xFFF - vol[j]) * samples[j % channels][i] / 0xFFF;
         }
     }
-skipvoice:; // FIXME: Remove.. hack!
-    printf("Voice 0x%04X: '%s' (0x%X)\n", v, name, ba);
-#endif
 }
 
 /* This routine must run at 1500 Hz */
