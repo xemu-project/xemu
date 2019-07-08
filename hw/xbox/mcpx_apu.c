@@ -58,6 +58,7 @@
 #       define NV_PAPU_SECTL_XCNTMODE_OFF                       0
 #define NV_PAPU_XGSCNT                                   0x0000200C
 #define NV_PAPU_VPVADDR                                  0x0000202C
+#define NV_PAPU_VPSGEADDR                                0x00002030
 #define NV_PAPU_GPSADDR                                  0x00002040
 #define NV_PAPU_GPFADDR                                  0x00002044
 #define NV_PAPU_EPSADDR                                  0x00002048
@@ -144,23 +145,135 @@ static const struct {
 #       define NV1BA0_PIO_SET_ANTECEDENT_VOICE_LIST_MP_TOP      3
 #define NV1BA0_PIO_VOICE_ON                              0x00000124
 #   define NV1BA0_PIO_VOICE_ON_HANDLE                       0x0000FFFF
+#   define NV1BA0_PIO_VOICE_ON_ENVF                         0x0F000000
+#   define NV1BA0_PIO_VOICE_ON_ENVA                         0xF0000000
 #define NV1BA0_PIO_VOICE_OFF                             0x00000128
 #   define NV1BA0_PIO_VOICE_OFF_HANDLE                      0x0000FFFF
+#define NV1BA0_PIO_VOICE_RELEASE                           0x0000012C
+#   define NV1BA0_PIO_VOICE_RELEASE_HANDLE                  0x0000FFFF
 #define NV1BA0_PIO_VOICE_PAUSE                           0x00000140
 #   define NV1BA0_PIO_VOICE_PAUSE_HANDLE                    0x0000FFFF
 #   define NV1BA0_PIO_VOICE_PAUSE_ACTION                    (1 << 18)
 #define NV1BA0_PIO_SET_CURRENT_VOICE                     0x000002F8
+#define NV1BA0_PIO_SET_VOICE_CFG_VBIN                    0x00000300
+#define NV1BA0_PIO_SET_VOICE_CFG_FMT                     0x00000304
+#define NV1BA0_PIO_SET_VOICE_CFG_ENV0                    0x00000308
+#define NV1BA0_PIO_SET_VOICE_CFG_ENVA                    0x0000030C
+#define NV1BA0_PIO_SET_VOICE_CFG_ENV1                    0x00000310
+#define NV1BA0_PIO_SET_VOICE_CFG_ENVF                    0x00000314
+#define NV1BA0_PIO_SET_VOICE_CFG_MISC                    0x00000318
+#define NV1BA0_PIO_SET_VOICE_TAR_VOLA                    0x00000360
+#define NV1BA0_PIO_SET_VOICE_TAR_VOLB                    0x00000364
+#define NV1BA0_PIO_SET_VOICE_TAR_VOLC                    0x00000368
+#define NV1BA0_PIO_SET_VOICE_LFO_ENV                     0x0000036C
+#define NV1BA0_PIO_SET_VOICE_TAR_PITCH                   0x0000037C
+#   define NV1BA0_PIO_SET_VOICE_TAR_PITCH_STEP              0xFFFF0000
+#define NV1BA0_PIO_SET_VOICE_CFG_BUF_BASE                0x000003A0
+#   define NV1BA0_PIO_SET_VOICE_CFG_BUF_BASE_OFFSET         0x00FFFFFF
+#define NV1BA0_PIO_SET_VOICE_CFG_BUF_LBO                 0x000003A4
+#   define NV1BA0_PIO_SET_VOICE_CFG_BUF_LBO_OFFSET          0x00FFFFFF
+#define NV1BA0_PIO_SET_VOICE_BUF_CBO                     0x000003D8
+#   define NV1BA0_PIO_SET_VOICE_BUF_CBO_OFFSET              0x00FFFFFF
+#define NV1BA0_PIO_SET_VOICE_CFG_BUF_EBO                 0x000003DC
+#   define NV1BA0_PIO_SET_VOICE_CFG_BUF_EBO_OFFSET          0x00FFFFFF
+#define NV1BA0_PIO_SET_CURRENT_INBUF_SGE                 0x00000804
+#   define NV1BA0_PIO_SET_CURRENT_INBUF_SGE_HANDLE          0xFFFFFFFF
+#define NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET          0x00000808
+#   define NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET_PARAMETER 0xFFFFF000
+#define NV1BA0_PIO_SET_OUTBUF_BA                         0x00001000 // 8 byte pitch, 4 entries
+#   define NV1BA0_PIO_SET_OUTBUF_BA_ADDRESS                  0x007FFF00
+#define NV1BA0_PIO_SET_OUTBUF_LEN                        0x00001004 // 8 byte pitch, 4 entries
+#   define NV1BA0_PIO_SET_OUTBUF_LEN_VALUE                   0x007FFF00
+#define NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE                0x00001800
+#   define NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_HANDLE          0xFFFFFFFF
+#define NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET         0x00001808
+#   define NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET_PARAMETER 0xFFFFF000
 
 #define SE2FE_IDLE_VOICE                                 0x00008000
 
 
 /* voice structure */
 #define NV_PAVS_SIZE                                     0x00000080
+#define NV_PAVS_VOICE_CFG_VBIN                           0x00000000
+#   define NV_PAVS_VOICE_CFG_VBIN_V0BIN                     (0x1F << 0)
+#   define NV_PAVS_VOICE_CFG_VBIN_V1BIN                     (0x1F << 5)
+#   define NV_PAVS_VOICE_CFG_VBIN_V2BIN                     (0x1F << 10)
+#   define NV_PAVS_VOICE_CFG_VBIN_V3BIN                     (0x1F << 16)
+#   define NV_PAVS_VOICE_CFG_VBIN_V4BIN                     (0x1F << 21)
+#   define NV_PAVS_VOICE_CFG_VBIN_V5BIN                     (0x1F << 26)
+#define NV_PAVS_VOICE_CFG_FMT                            0x00000004
+#   define NV_PAVS_VOICE_CFG_FMT_V6BIN                      (0x1F << 0)
+#   define NV_PAVS_VOICE_CFG_FMT_V7BIN                      (0x1F << 5)
+#   define NV_PAVS_VOICE_CFG_FMT_SAMPLES_PER_BLOCK          (0x1F << 16)
+#   define NV_PAVS_VOICE_CFG_FMT_DATA_TYPE                  (1 << 24)
+#   define NV_PAVS_VOICE_CFG_FMT_LOOP                       (1 << 25)
+#   define NV_PAVS_VOICE_CFG_FMT_STEREO                     (1 << 27)
+#   define NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE                (0x3 << 28)
+#       define NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_U8             0
+#       define NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S16            1
+#       define NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S24            2
+#       define NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S32            3
+#   define NV_PAVS_VOICE_CFG_FMT_CONTAINER_SIZE             (0x3 << 30)
+#       define NV_PAVS_VOICE_CFG_FMT_CONTAINER_SIZE_B8          0
+#       define NV_PAVS_VOICE_CFG_FMT_CONTAINER_SIZE_B16         1
+#       define NV_PAVS_VOICE_CFG_FMT_CONTAINER_SIZE_ADPCM       2
+#       define NV_PAVS_VOICE_CFG_FMT_CONTAINER_SIZE_B32         3
+#define NV_PAVS_VOICE_CFG_ENV0                           0x00000008
+#   define NV_PAVS_VOICE_CFG_ENV0_EA_ATTACKRATE             (0xFFF << 0)
+#   define NV_PAVS_VOICE_CFG_ENV0_EA_DELAYTIME              (0xFFF << 12)
+#   define NV_PAVS_VOICE_CFG_ENV0_EF_PITCHSCALE             (0xFF << 24)
+#define NV_PAVS_VOICE_CFG_ENVA                           0x0000000C
+#   define NV_PAVS_VOICE_CFG_ENVA_EA_DECAYRATE              (0xFFF << 0)
+#   define NV_PAVS_VOICE_CFG_ENVA_EA_HOLDTIME               (0xFFF << 12)
+#   define NV_PAVS_VOICE_CFG_ENVA_EA_SUSTAINLEVEL           (0xFF << 24)
+#define NV_PAVS_VOICE_CFG_ENV1                           0x00000010
+#   define NV_PAVS_VOICE_CFG_ENV1_EF_FCSCALE                (0xFF << 24)
+#define NV_PAVS_VOICE_CFG_ENVF                           0x00000014
+#define NV_PAVS_VOICE_CFG_MISC                           0x00000018
+#   define NV_PAVS_VOICE_CFG_MISC_EF_RELEASERATE            (0xFFF << 0)
+
+#define NV_PAVS_VOICE_CUR_PSL_START                      0x00000020
+#   define NV_PAVS_VOICE_CUR_PSL_START_BA                   0x00FFFFFF
+#define NV_PAVS_VOICE_CUR_PSH_SAMPLE                     0x00000024
+#   define NV_PAVS_VOICE_CUR_PSH_SAMPLE_LBO                 0x00FFFFFF
+
+#define NV_PAVS_VOICE_CUR_ECNT                           0x00000034
+#   define NV_PAVS_VOICE_CUR_ECNT_EACOUNT                   0x0000FFFF
+#   define NV_PAVS_VOICE_CUR_ECNT_EFCOUNT                   0xFFFF0000
+
 #define NV_PAVS_VOICE_PAR_STATE                          0x00000054
 #   define NV_PAVS_VOICE_PAR_STATE_PAUSED                   (1 << 18)
+#   define NV_PAVS_VOICE_PAR_STATE_NEW_VOICE                (1 << 20)
 #   define NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE             (1 << 21)
-#define NV_PAVS_VOICE_TAR_PITCH_LINK                     0x0000007c
+#   define NV_PAVS_VOICE_PAR_STATE_EFCUR                    (0xF << 24)
+#   define NV_PAVS_VOICE_PAR_STATE_EACUR                    (0xF << 28)
+#define NV_PAVS_VOICE_PAR_OFFSET                         0x00000058
+#   define NV_PAVS_VOICE_PAR_OFFSET_CBO                     0x00FFFFFF
+#   define NV_PAVS_VOICE_PAR_OFFSET_EALVL                   0xFF000000
+#define NV_PAVS_VOICE_PAR_NEXT                           0x0000005C
+#   define NV_PAVS_VOICE_PAR_NEXT_EBO                       0x00FFFFFF
+#   define NV_PAVS_VOICE_PAR_NEXT_EFLVL                     0xFF000000
+#define NV_PAVS_VOICE_TAR_VOLA                           0x00000060
+#   define NV_PAVS_VOICE_TAR_VOLA_VOLUME6_B3_0              0x0000000F
+#   define NV_PAVS_VOICE_TAR_VOLA_VOLUME0                   0x0000FFF0
+#   define NV_PAVS_VOICE_TAR_VOLA_VOLUME7_B3_0              0x000F0000
+#   define NV_PAVS_VOICE_TAR_VOLA_VOLUME1                   0xFFF00000
+#define NV_PAVS_VOICE_TAR_VOLB                           0x00000064
+#   define NV_PAVS_VOICE_TAR_VOLB_VOLUME6_B7_4              0x0000000F
+#   define NV_PAVS_VOICE_TAR_VOLB_VOLUME2                   0x0000FFF0
+#   define NV_PAVS_VOICE_TAR_VOLB_VOLUME7_B7_4              0x000F0000
+#   define NV_PAVS_VOICE_TAR_VOLB_VOLUME3                   0xFFF00000
+#define NV_PAVS_VOICE_TAR_VOLC                           0x00000068
+#   define NV_PAVS_VOICE_TAR_VOLC_VOLUME6_B11_8             0x0000000F
+#   define NV_PAVS_VOICE_TAR_VOLC_VOLUME4                   0x0000FFF0
+#   define NV_PAVS_VOICE_TAR_VOLC_VOLUME7_B11_8             0x000F0000
+#   define NV_PAVS_VOICE_TAR_VOLC_VOLUME5                   0xFFF00000
+#define NV_PAVS_VOICE_TAR_LFO_ENV                        0x0000006C
+#   define NV_PAVS_VOICE_TAR_LFO_ENV_EA_RELEASERATE         (0xFFF << 0)
+
+#define NV_PAVS_VOICE_TAR_PITCH_LINK                     0x0000007C
 #   define NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE   0x0000FFFF
+#   define NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH               0xFFFF0000
 
 
 #define GP_DSP_MIXBUF_BASE 0x001400
@@ -180,6 +293,13 @@ static const struct {
         (v) &= ~(mask);                                              \
         (v) |= ((val) << ctz32(mask)) & (mask);                      \
     } while (0)
+
+#define CASE_4(v, step)                                              \
+    case (v):                                                        \
+    case (v)+(step):                                                 \
+    case (v)+(step)*2:                                               \
+    case (v)+(step)*3
+
 
 // #define MCPX_DEBUG
 #ifdef MCPX_DEBUG
@@ -223,6 +343,8 @@ typedef struct MCPXAPUState {
         uint32_t regs[0x10000];
     } ep;
 
+    uint32_t inbuf_sge_handle; //FIXME: Where is this stored?
+    uint32_t outbuf_sge_handle; //FIXME: Where is this stored?
     uint32_t regs[0x20000];
 
 } MCPXAPUState;
@@ -338,6 +460,8 @@ static const MemoryRegionOps mcpx_apu_mmio_ops = {
 static void fe_method(MCPXAPUState *d,
                       uint32_t method, uint32_t argument)
 {
+    unsigned int slot;
+
     MCPX_DPRINTF("mcpx fe_method 0x%x 0x%x\n", method, argument);
 
     //assert((d->regs[NV_PAPU_FECTL] & NV_PAPU_FECTL_FEMETHMODE) == 0);
@@ -378,6 +502,38 @@ static void fe_method(MCPXAPUState *d,
                 NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE,
                 selected_handle);
         }
+        unsigned int ea_start = GET_MASK(argument, NV1BA0_PIO_VOICE_ON_ENVA);
+        voice_set_mask(d, selected_handle,
+                NV_PAVS_VOICE_PAR_STATE,
+                NV_PAVS_VOICE_PAR_STATE_EACUR,
+                ea_start);
+        if (ea_start == 1) { // Delay
+            uint16_t delay_time = voice_get_mask(d, selected_handle, NV_PAVS_VOICE_CFG_ENV0, NV_PAVS_VOICE_CFG_ENV0_EA_DELAYTIME);
+            voice_set_mask(d, selected_handle, NV_PAVS_VOICE_CUR_ECNT, NV_PAVS_VOICE_CUR_ECNT_EACOUNT, delay_time * 16);
+        } else if (ea_start == 2) { // Attack
+            voice_set_mask(d, selected_handle, NV_PAVS_VOICE_CUR_ECNT, NV_PAVS_VOICE_CUR_ECNT_EACOUNT, 0x0000);
+        } else if (ea_start == 3) { // Hold
+            uint16_t hold_time = voice_get_mask(d, selected_handle, NV_PAVS_VOICE_CFG_ENVA, NV_PAVS_VOICE_CFG_ENVA_EA_HOLDTIME);
+            voice_set_mask(d, selected_handle, NV_PAVS_VOICE_CUR_ECNT, NV_PAVS_VOICE_CUR_ECNT_EACOUNT, hold_time * 16);
+        }
+        //FIXME: Will count be overwritten in other cases too?
+
+        unsigned int ef_start = GET_MASK(argument, NV1BA0_PIO_VOICE_ON_ENVF);
+        voice_set_mask(d, selected_handle,
+                NV_PAVS_VOICE_PAR_STATE,
+                NV_PAVS_VOICE_PAR_STATE_EFCUR,
+                ef_start);
+        if (ef_start == 1) { // Delay
+            uint16_t delay_time = voice_get_mask(d, selected_handle, NV_PAVS_VOICE_CFG_ENV1, NV_PAVS_VOICE_CFG_ENV0_EA_DELAYTIME);
+            voice_set_mask(d, selected_handle, NV_PAVS_VOICE_CUR_ECNT, NV_PAVS_VOICE_CUR_ECNT_EFCOUNT, delay_time * 16);
+        } else if (ef_start == 2) { // Attack
+            voice_set_mask(d, selected_handle, NV_PAVS_VOICE_CUR_ECNT, NV_PAVS_VOICE_CUR_ECNT_EFCOUNT, 0x0000);
+        } else if (ef_start == 3) { // Hold
+            uint16_t hold_time = voice_get_mask(d, selected_handle, NV_PAVS_VOICE_CFG_ENVF, NV_PAVS_VOICE_CFG_ENVA_EA_HOLDTIME);
+            voice_set_mask(d, selected_handle, NV_PAVS_VOICE_CUR_ECNT, NV_PAVS_VOICE_CUR_ECNT_EFCOUNT, hold_time * 16);
+        }
+        //FIXME: Will count be overwritten in other cases too?
+
         voice_set_mask(d, selected_handle,
                 NV_PAVS_VOICE_PAR_STATE,
                 NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE,
@@ -398,6 +554,143 @@ static void fe_method(MCPXAPUState *d,
     case NV1BA0_PIO_SET_CURRENT_VOICE:
         d->regs[NV_PAPU_FECV] = argument;
         break;
+    case NV1BA0_PIO_SET_VOICE_CFG_VBIN:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_CFG_VBIN,
+                0xFFFFFFFF,
+                argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_CFG_FMT:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_CFG_FMT,
+                0xFFFFFFFF,
+                argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_CFG_ENV0:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_CFG_ENV0,
+                0xFFFFFFFF,
+                argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_CFG_ENVA:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_CFG_ENVA,
+                0xFFFFFFFF,
+                argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_CFG_ENV1:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_CFG_ENV1,
+                0xFFFFFFFF,
+                argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_CFG_ENVF:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_CFG_ENVF,
+                0xFFFFFFFF,
+                argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_CFG_MISC:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_CFG_MISC,
+                0xFFFFFFFF,
+                argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_TAR_VOLA:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_TAR_VOLA,
+                0xFFFFFFFF,
+                argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_TAR_VOLB:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_TAR_VOLB,
+                0xFFFFFFFF,
+                argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_TAR_VOLC:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_TAR_VOLC,
+                0xFFFFFFFF,
+                argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_LFO_ENV:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_TAR_LFO_ENV,
+                0xFFFFFFFF,
+                argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_TAR_PITCH:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_TAR_PITCH_LINK,
+                NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH,
+                (argument & NV1BA0_PIO_SET_VOICE_TAR_PITCH_STEP) >> 16);
+        break;
+    case NV1BA0_PIO_SET_VOICE_CFG_BUF_BASE:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_CUR_PSL_START,
+                NV_PAVS_VOICE_CUR_PSL_START_BA,
+                argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_CFG_BUF_LBO:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_CUR_PSH_SAMPLE,
+                NV_PAVS_VOICE_CUR_PSH_SAMPLE_LBO,
+                argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_BUF_CBO:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_PAR_OFFSET,
+                NV_PAVS_VOICE_PAR_OFFSET_CBO,
+                argument);
+        break;
+    case NV1BA0_PIO_SET_VOICE_CFG_BUF_EBO:
+        voice_set_mask(d, d->regs[NV_PAPU_FECV],
+                NV_PAVS_VOICE_PAR_NEXT,
+                NV_PAVS_VOICE_PAR_NEXT_EBO,
+                argument);
+        break;
+    case NV1BA0_PIO_SET_CURRENT_INBUF_SGE:
+        d->inbuf_sge_handle = argument & NV1BA0_PIO_SET_CURRENT_INBUF_SGE_HANDLE;
+        break;
+#if 0
+    case NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET: {
+        //FIXME: Is there an upper limit for the SGE table size?
+        //FIXME: NV_PAPU_VPSGEADDR is probably bad, as outbuf SGE use the same handle range (or that is also wrong)
+        hwaddr sge_address = d->regs[NV_PAPU_VPSGEADDR] + d->inbuf_sge_handle * 8;
+        stl_le_phys(sge_address, argument & NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET_PARAMETER);
+        printf("Wrote inbuf SGE[0x%X] = 0x%08X\n", d->inbuf_sge_handle, argument & NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET_PARAMETER);
+        break;
+    }
+#endif
+    CASE_4(NV1BA0_PIO_SET_OUTBUF_BA, 8): // 8 byte pitch, 4 entries
+        slot = (method - NV1BA0_PIO_SET_OUTBUF_BA) / 8;
+        //FIXME: Use NV1BA0_PIO_SET_OUTBUF_BA_ADDRESS = 0x007FFF00 ?
+        printf("outbuf_ba[%d]: 0x%08X\n", slot, argument);
+        //assert(false); //FIXME: Enable assert! no idea what this reg does
+        break;
+    CASE_4(NV1BA0_PIO_SET_OUTBUF_LEN, 8): // 8 byte pitch, 4 entries
+        slot = (method - NV1BA0_PIO_SET_OUTBUF_LEN) / 8;
+        //FIXME: Use NV1BA0_PIO_SET_OUTBUF_LEN_VALUE = 0x007FFF00 ?
+        printf("outbuf_len[%d]: 0x%08X\n", slot, argument);
+        //assert(false); //FIXME: Enable assert! no idea what this reg does
+        break;
+    case NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE:
+        d->outbuf_sge_handle = argument & NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_HANDLE;
+        break;
+#if 0
+    case NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET: {
+        //FIXME: Is there an upper limit for the SGE table size?
+        //FIXME: NV_PAPU_VPSGEADDR is probably bad, as inbuf SGE use the same handle range (or that is also wrong)
+        // NV_PAPU_EPFADDR   EP outbufs
+        // NV_PAPU_GPFADDR   GP outbufs
+        // But how does it know which outbuf is being written?!
+        hwaddr sge_address = d->regs[NV_PAPU_VPSGEADDR] + d->outbuf_sge_handle * 8;
+        stl_le_phys(sge_address, argument & NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET_PARAMETER);
+        printf("Wrote outbuf SGE[0x%X] = 0x%08X\n", d->outbuf_sge_handle, argument & NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET_PARAMETER);
+        break;
+    }
+#endif
     case SE2FE_IDLE_VOICE:
         if (d->regs[NV_PAPU_FETFORCE1] & NV_PAPU_FETFORCE1_SE2FE_IDLE_VOICE) {
 
@@ -447,6 +740,28 @@ static void vp_write(void *opaque, hwaddr addr,
     case NV1BA0_PIO_VOICE_OFF:
     case NV1BA0_PIO_VOICE_PAUSE:
     case NV1BA0_PIO_SET_CURRENT_VOICE:
+    case NV1BA0_PIO_SET_VOICE_CFG_VBIN:
+    case NV1BA0_PIO_SET_VOICE_CFG_FMT:
+    case NV1BA0_PIO_SET_VOICE_CFG_ENV0:
+    case NV1BA0_PIO_SET_VOICE_CFG_ENVA:
+    case NV1BA0_PIO_SET_VOICE_CFG_ENV1:
+    case NV1BA0_PIO_SET_VOICE_CFG_ENVF:
+    case NV1BA0_PIO_SET_VOICE_CFG_MISC:
+    case NV1BA0_PIO_SET_VOICE_TAR_VOLA:
+    case NV1BA0_PIO_SET_VOICE_TAR_VOLB:
+    case NV1BA0_PIO_SET_VOICE_TAR_VOLC:
+    case NV1BA0_PIO_SET_VOICE_LFO_ENV:
+    case NV1BA0_PIO_SET_VOICE_TAR_PITCH:
+    case NV1BA0_PIO_SET_VOICE_CFG_BUF_BASE:
+    case NV1BA0_PIO_SET_VOICE_CFG_BUF_LBO:
+    case NV1BA0_PIO_SET_VOICE_BUF_CBO:
+    case NV1BA0_PIO_SET_VOICE_CFG_BUF_EBO:
+    case NV1BA0_PIO_SET_CURRENT_INBUF_SGE:
+    case NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET:
+    CASE_4(NV1BA0_PIO_SET_OUTBUF_BA, 8): // 8 byte pitch, 4 entries
+    CASE_4(NV1BA0_PIO_SET_OUTBUF_LEN, 8): // 8 byte pitch, 4 entries
+    case NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE:
+    case NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET:
         /* TODO: these should instead be queueing up fe commands */
         fe_method(d, addr, val);
         break;
@@ -811,11 +1126,404 @@ static const MemoryRegionOps ep_ops = {
     .write = ep_write,
 };
 
+#if 0
+static hwaddr get_data_ptr(hwaddr sge_base, unsigned int max_sge, uint32_t addr) {
+    unsigned int entry = addr / TARGET_PAGE_SIZE;
+    assert(entry <= max_sge);
+    uint32_t prd_address = ldl_le_phys(sge_base + entry*4*2);
+    uint32_t prd_control = ldl_le_phys(sge_base + entry*4*2 + 4);
+    //printf("Addr: 0x%08X, control: 0x%08X\n", prd_address, prd_control);
+
+    return prd_address + addr % TARGET_PAGE_SIZE;
+}
+
+static float step_envelope(MCPXAPUState *d, unsigned int v, uint32_t reg_0, uint32_t reg_a, uint32_t rr_reg, uint32_t rr_mask, uint32_t lvl_reg, uint32_t lvl_mask, uint32_t count_mask, uint32_t cur_mask) {
+  uint8_t cur = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask);
+  switch(cur) {
+  case 0: // Off
+    voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, 0);
+    voice_set_mask(d, v, lvl_reg, lvl_mask, 0xFF);
+    return 1.0f;
+  case 1: { // Delay
+    uint16_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
+    voice_set_mask(d, v, lvl_reg, lvl_mask, 0x00); // FIXME: Confirm this?
+    if (count == 0) {
+        cur++;
+        voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
+        count = 0;
+    } else {
+        count--;
+    }
+    voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
+    break;
+  }
+  case 2: { // Attack
+    uint16_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
+    uint16_t attack_rate = voice_get_mask(d, v, reg_0, NV_PAVS_VOICE_CFG_ENV0_EA_ATTACKRATE);
+    float value;
+    if (attack_rate == 0) {
+        //FIXME: [division by zero]
+        //       Got crackling sound in hardware for amplitude env.
+        value = 255.0f;
+    } else {
+        if (count <= attack_rate) {
+            value = (count * 0xFF) / attack_rate;
+        } else {
+            //FIXME: Overflow in hardware
+            //       The actual value seems to overflow, but not sure how
+            value = 255.0f;
+        }
+    }
+    voice_set_mask(d, v, lvl_reg, lvl_mask, value);
+    //FIXME: Comparison could also be the other way around?! Test please.
+    if (count == (attack_rate * 16)) {
+        cur++;
+        voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
+        uint16_t hold_time = voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_HOLDTIME);
+        count = hold_time * 16; //FIXME: Skip next phase if count is 0? [other instances too]
+    } else {
+        count++;
+    }
+    voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
+    return value / 255.0f;
+  }
+  case 3: { // Hold
+    uint16_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
+    voice_set_mask(d, v, lvl_reg, lvl_mask, 0xFF);
+    if (count == 0) {
+        cur++;
+        voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
+        uint16_t decay_rate = voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_DECAYRATE);
+        count = decay_rate * 16;
+    } else {
+        count--;
+    }
+    voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
+    return 1.0f;
+  }
+  case 4: { // Decay
+    uint16_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
+    uint16_t decay_rate = voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_DECAYRATE);
+    uint8_t sustain_level = voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_SUSTAINLEVEL);
+    float value;
+    if (decay_rate == 0) {
+        //FIXME: [division by zero]
+        //       Not tested on hardware
+        value = 0.0f;
+    } else {
+      //FIXME: This formula and threshold is not accurate, but I can't get it any better for now
+      value = 255.0f * powf(0.99988799f, (decay_rate * 16 - count) * 4096 / decay_rate);
+    }
+    if (value <= (sustain_level + 0.2f) || (value > 255.0f)) {
+        //FIXME: Should we still update lvl?
+        cur++;
+        voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
+    } else {
+        count--;
+        voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
+        voice_set_mask(d, v, lvl_reg, lvl_mask, value);
+    }
+    return value / 255.0f;
+  }
+  case 5: { // Sustain
+    uint8_t sustain_level = voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_SUSTAINLEVEL);
+    voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, 0x00); // FIXME: is this only set to 0 once or forced to zero?
+    voice_set_mask(d, v, lvl_reg, lvl_mask, sustain_level);
+    return sustain_level / 255.0f;
+  }
+  case 6: { // Release
+    uint16_t release_rate = voice_get_mask(d, v, rr_reg, rr_mask);
+    uint16_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
+    count--;
+    voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
+    uint8_t lvl = voice_get_mask(d, v, lvl_reg, lvl_mask);
+    float value = count * lvl / (release_rate * 16);
+    if (count == 0) {
+      //FIXME: What to do now?!
+#if 0 // Hack so we don't assert
+      cur++; // FIXME: Does this happen?!
+      voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
+#else
+      voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, 0x0); // Is this correct? FIXME: Turn off voice?
+#endif
+    }
+    return value / 255.0f;
+  }
+  case 7: // Force release
+    assert(false); //FIXME: This mode is not understood yet
+    return 1.0f;
+  default:
+    fprintf(stderr, "Unknown envelope state 0x%x\n", cur);
+    assert(false);
+  }
+}
+#endif
+
 static void process_voice(MCPXAPUState *d,
                           int32_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
                           uint32_t voice)
 {
-    /* FIXME: Implement */
+#if 0
+    uint32_t v = d->regs[current];
+    int32_t samples[2][0x20] = {0};
+
+    float ea_value = step_envelope(d, v, NV_PAVS_VOICE_CFG_ENV0, NV_PAVS_VOICE_CFG_ENVA, NV_PAVS_VOICE_TAR_LFO_ENV, NV_PAVS_VOICE_TAR_LFO_ENV_EA_RELEASERATE, NV_PAVS_VOICE_PAR_OFFSET, NV_PAVS_VOICE_PAR_OFFSET_EALVL, NV_PAVS_VOICE_CUR_ECNT_EACOUNT, NV_PAVS_VOICE_PAR_STATE_EACUR);
+    float ef_value = step_envelope(d, v, NV_PAVS_VOICE_CFG_ENV1, NV_PAVS_VOICE_CFG_ENVF, NV_PAVS_VOICE_CFG_MISC, NV_PAVS_VOICE_CFG_MISC_EF_RELEASERATE, NV_PAVS_VOICE_PAR_NEXT, NV_PAVS_VOICE_PAR_NEXT_EFLVL, NV_PAVS_VOICE_CUR_ECNT_EFCOUNT, NV_PAVS_VOICE_PAR_STATE_EFCUR);
+    assert(ea_value >= 0.0f);
+    assert(ea_value <= 1.0f);
+    assert(ef_value >= 0.0f);
+    assert(ef_value <= 1.0f);
+
+    int16_t p = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK, NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH);
+    int8_t pm = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_ENV0, NV_PAVS_VOICE_CFG_ENV0_EF_PITCHSCALE);
+    float rate = powf(2.0f, (p + pm * 32 * ef_value) / 4096.0f);
+    //printf("Got %f\n", rate * 48000.0f);
+
+    float overdrive = 1.0f; //FIXME: This is just a hack because our APU runs too rarely
+
+    //NV_PAVS_VOICE_PAR_OFFSET_CBO
+    bool stereo = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_STEREO);
+    unsigned int channels = stereo ? 2 : 1;
+    unsigned int sample_size = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE);
+
+    // B8, B16, ADPCM, B32
+    unsigned int container_sizes[4] = { 1, 2, 0, 4 };
+    unsigned int container_size_index = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_CONTAINER_SIZE);
+    //FIXME: Move down, but currently debug code depends on this
+    unsigned int container_size = container_sizes[container_size_index];
+
+    bool stream = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_DATA_TYPE);
+    assert(!stream);
+    bool paused = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE, NV_PAVS_VOICE_PAR_STATE_PAUSED);
+    bool loop = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_LOOP);
+    uint32_t ebo = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_NEXT, NV_PAVS_VOICE_PAR_NEXT_EBO);
+    uint32_t cbo = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_OFFSET, NV_PAVS_VOICE_PAR_OFFSET_CBO);
+    uint32_t lbo = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_PSH_SAMPLE, NV_PAVS_VOICE_CUR_PSH_SAMPLE_LBO);
+    uint32_t ba = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_PSL_START, NV_PAVS_VOICE_CUR_PSL_START_BA);
+    unsigned int samples_per_block = 1 + voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_SAMPLES_PER_BLOCK);
+
+    // This is probably cleared when the first sample is played
+    //FIXME: How will this behave if CBO > EBO on first play?
+    //FIXME: How will this behave if paused?
+    voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, NV_PAVS_VOICE_PAR_STATE_NEW_VOICE, 0);
+
+    for(unsigned int i = 0; i < 0x20; i++) {
+
+        uint32_t sample_pos = (uint32_t)(i * rate * overdrive);
+
+        if ((cbo + sample_pos) > ebo) {
+          if (!loop) {
+            // Set to safe state
+            cbo = ebo; //FIXME: Will the hw do this?
+            //FIXME: Not sure if this happens.. needs a hwtest.
+            // Some RE also suggests that the voices will automaticly be removed from the list (!!!)
+            voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE, 0);
+            break;
+          }
+          // Now go to loop start
+          //FIXME: Make sure this logic still works for very high sample_pos greater than ebo
+          cbo += sample_pos;
+          cbo %= ebo + 1;
+          cbo += lbo;
+          cbo -= sample_pos;
+        }
+
+        sample_pos += cbo;
+        assert(sample_pos <= ebo);
+
+        if (container_size_index == NV_PAVS_VOICE_CFG_FMT_CONTAINER_SIZE_ADPCM) {
+            //FIXME: Not sure how this behaves otherwise
+            assert(sample_size == NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S24);
+
+            unsigned int block_index = sample_pos / 65;
+            unsigned int block_position = sample_pos % 65;
+
+            printf("ADPCM: %d + %d\n", block_index, block_position);
+
+            //FIXME: Remove this from the loop which collects required samples
+            //       We can always just grab one or two blocks to get all required samples
+            if (stereo) {
+                assert(samples_per_block == 2);
+                // There are 65 samples per 72 byte block
+                uint32_t block[72/4];
+                uint32_t linear_addr = ba + block_index * 72;
+                // FIXME: Only load block data which will be used
+                for(unsigned int word_index = 0; word_index < 18; word_index++) {
+                    hwaddr addr = get_data_ptr(d->regs[NV_PAPU_VPSGEADDR], 0xFFFFFFFF, linear_addr);
+                    block[word_index] = ldl_le_phys(addr);
+                    linear_addr += 4;
+                }
+                //FIXME: Used wrong sample format in my own decoder.. stupid me lol
+                int16_t tmp[2];
+                adpcm_decode_stereo_block(&tmp[0], &tmp[1], block, block_position, block_position);
+                samples[0][i] = tmp[0];
+                samples[1][i] = tmp[1];
+            } else {
+                assert(samples_per_block == 1);
+                // There are 65 samples per 36 byte block
+                uint32_t block[36/4];
+                uint32_t linear_addr = ba + block_index * 36;
+                for(unsigned int word_index = 0; word_index < 9; word_index++) {
+                    hwaddr addr = get_data_ptr(d->regs[NV_PAPU_VPSGEADDR], 0xFFFFFFFF, linear_addr);
+                    block[word_index] = ldl_le_phys(addr);
+                    linear_addr += 4;
+                }
+                //FIXME: Used wrong sample format in my own decoder.. stupid me lol
+                int16_t tmp;
+                adpcm_decode_mono_block(&tmp, block, block_position, block_position);
+                samples[0][i] = tmp;
+            }
+
+        } else {
+            unsigned int block_size = container_size;
+            block_size *= samples_per_block;
+
+            uint32_t linear_addr = ba + sample_pos * block_size;
+            hwaddr addr = get_data_ptr(d->regs[NV_PAPU_VPSGEADDR], 0xFFFFFFFF, linear_addr);
+            //FIXME: Handle reading accross pages?!
+
+            //printf("Sampling from 0x%08X\n", addr);
+
+            // Get samples for this voice
+            for(unsigned int channel = 0; channel < channels; channel++) {
+                switch(sample_size) {
+                case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_U8:
+                    samples[channel][i] = ldub_phys(addr);
+                    break;
+                case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S16:
+                    samples[channel][i] = (int16_t)lduw_le_phys(addr);
+                    break;
+                case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S24:
+                    samples[channel][i] = (int32_t)(ldl_le_phys(addr) << 8) >> 8;
+                    break;
+                case NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S32:
+                    samples[channel][i] = (int32_t)ldl_le_phys(addr);
+                    break;
+                }
+             
+                // Advance cursor to second channel for stereo
+                addr += container_size;
+            }
+        }
+    }
+
+    //FIXME: Decode voice volume and bins
+    int bin[8] = {
+      voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN, NV_PAVS_VOICE_CFG_VBIN_V0BIN),
+      voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN, NV_PAVS_VOICE_CFG_VBIN_V1BIN),
+      voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN, NV_PAVS_VOICE_CFG_VBIN_V2BIN),
+      voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN, NV_PAVS_VOICE_CFG_VBIN_V3BIN),
+      voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN, NV_PAVS_VOICE_CFG_VBIN_V4BIN),
+      voice_get_mask(d, v, NV_PAVS_VOICE_CFG_VBIN, NV_PAVS_VOICE_CFG_VBIN_V5BIN),
+      voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_V6BIN),
+      voice_get_mask(d, v, NV_PAVS_VOICE_CFG_FMT, NV_PAVS_VOICE_CFG_FMT_V7BIN)
+    };
+    uint16_t vol[8] = {
+      voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA, NV_PAVS_VOICE_TAR_VOLA_VOLUME0),
+      voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA, NV_PAVS_VOICE_TAR_VOLA_VOLUME1),
+      voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB, NV_PAVS_VOICE_TAR_VOLB_VOLUME2),
+      voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB, NV_PAVS_VOICE_TAR_VOLB_VOLUME3),
+      voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC, NV_PAVS_VOICE_TAR_VOLC_VOLUME4),
+      voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC, NV_PAVS_VOICE_TAR_VOLC_VOLUME5),
+      (voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC, NV_PAVS_VOICE_TAR_VOLC_VOLUME6_B11_8) << 8) |
+      (voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB, NV_PAVS_VOICE_TAR_VOLB_VOLUME6_B7_4) << 4) |
+      voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA, NV_PAVS_VOICE_TAR_VOLA_VOLUME6_B3_0),
+      (voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLC, NV_PAVS_VOICE_TAR_VOLC_VOLUME7_B11_8) << 8) |
+      (voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLB, NV_PAVS_VOICE_TAR_VOLB_VOLUME7_B7_4) << 4) |
+      voice_get_mask(d, v, NV_PAVS_VOICE_TAR_VOLA, NV_PAVS_VOICE_TAR_VOLA_VOLUME7_B3_0),
+    };
+
+    if (v == 0x0044) {
+      static unsigned int x = 0;
+      
+      for(unsigned int i = 0; i < 0x20; i++) {
+        uint32_t sample_pos = cbo + (uint32_t)(i * rate * overdrive);
+        //uint32_t sample_pos = cbo + (uint32_t)(i * rate * overdrive);
+        //FIXME: The mod ebo thing is a hack!
+        uint32_t linear_addr = ba + (sample_pos % (ebo + 1)) * container_size;
+        hwaddr addr = get_data_ptr(d->regs[NV_PAPU_VPSGEADDR], 0xFFFFFFFF, linear_addr);
+        //printf("Sampling from 0x%08X\n", addr);
+        int16_t sample = (int16_t)lduw_le_phys(addr);
+        wav_out_write(&buf_wav_out[0], &sample, 2); // voice input
+        x++;
+      }
+      wav_out_update(&buf_wav_out[0]);
+
+      for(unsigned int i = 0; i < 0x20; i++) {
+        wav_out_write(&buf_wav_out[1], &samples[0][i], 3); // mixbuf for voice
+        wav_out_write(&buf_wav_out[1], &samples[channels - 1][i], 3); // mixbuf for voice
+      }
+      wav_out_update(&buf_wav_out[1]);
+    }
+
+    if (paused) {
+      assert(sizeof(samples) == 0x20 * 4 * 2);
+      memset(samples, 0x00, sizeof(samples));
+    } else {
+      cbo += 0x20 * rate * overdrive;
+      voice_set_mask(d, v, NV_PAVS_VOICE_PAR_OFFSET, NV_PAVS_VOICE_PAR_OFFSET_CBO, cbo);
+    }
+
+    const char* name = "unk";
+#if 0
+    // Whitelisted: !
+    if (ba == 0x1F08) {
+      name = "Thunder";
+    } else if (ba == 0x141E8) { // White noise (in bad range?! 16U?!)
+      name = "White Noise";
+    } else if (ba == 0xD1F0) { // Beep sound
+      name = "Beep";
+    } else if (ba == 0x102E8) { // Flubber / Bubble sound
+      name = "Flubber";
+
+    // Blacklisted: !
+    } else if (ba == 0xF998) { // garbage? some sawtooth I guess
+      name = "Sawtooth";
+      goto skipvoice;
+    } else if (ba == 0x978) { // silence
+      name = "Silence";
+      goto skipvoice;
+
+
+    ///// Wavebank XDK sample
+    } else if (ba == 0x246C50) { // garbage? some sawtooth I guess
+      name = "Sound 9"; // "The call is tails"
+    } else if (ba == 0x3A6694) { // garbage? some sawtooth I guess
+      name = "Sound 13"; // Music
+
+
+    ///// Catchall
+    } else {
+      printf("Skipping ", ba);
+      goto skipvoice;
+    }
+    
+
+#endif
+
+    // Apply the amplitude envelope
+    //FIXME: Figure out when exactly and how exactly this is actually done
+    for(unsigned int j = 0; j < channels; j++) {
+        for(unsigned int i = 0; i < 0x20; i++) {
+            samples[j][i] *= ea_value;
+        }
+    }
+
+    //FIXME: If phase negations means to flip the signal upside down
+    //       we should modify volume of bin6 and bin7 here.
+
+    // Mix samples into voice bins
+    for(unsigned int j = 0; j < 8; j++) {
+        //printf("Adding voice 0x%04X to bin %d [Rate %.2f, Volume 0x%03X] sample %d at %d [%.2fs]\n", v, bin[j], rate, vol[j], samples[0], cbo, cbo / (rate * 48000.0f));
+        for(unsigned int i = 0; i < 0x20; i++) {
+            //FIXME: how is the volume added?
+            //FIXME: What happens to the other channel? Is this behaviour correct?
+            mixbuf[bin[j]][i] += (0xFFF - vol[j]) * samples[j % channels][i] / 0xFFF;
+        }
+    }
+skipvoice:; // FIXME: Remove.. hack!
+    printf("Voice 0x%04X: '%s' (0x%X)\n", v, name, ba);
+#endif
 }
 
 /* This routine must run at 1500 Hz */
