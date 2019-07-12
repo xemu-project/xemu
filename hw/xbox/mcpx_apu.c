@@ -1135,126 +1135,126 @@ static hwaddr get_data_ptr(hwaddr sge_base, unsigned int max_sge, uint32_t addr)
 }
 
 static float step_envelope(MCPXAPUState *d, unsigned int v, uint32_t reg_0, uint32_t reg_a, uint32_t rr_reg, uint32_t rr_mask, uint32_t lvl_reg, uint32_t lvl_mask, uint32_t count_mask, uint32_t cur_mask) {
-  uint8_t cur = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask);
-  switch(cur) {
-  case 0: // Off
-    voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, 0);
-    voice_set_mask(d, v, lvl_reg, lvl_mask, 0xFF);
-    return 1.0f;
-  case 1: { // Delay
-    uint16_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
-    voice_set_mask(d, v, lvl_reg, lvl_mask, 0x00); // FIXME: Confirm this?
-    if (count == 0) {
-        cur++;
-        voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
-        count = 0;
-    } else {
-        count--;
-    }
-    voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
-    break;
-  }
-  case 2: { // Attack
-    uint16_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
-    uint16_t attack_rate = voice_get_mask(d, v, reg_0, NV_PAVS_VOICE_CFG_ENV0_EA_ATTACKRATE);
-    float value;
-    if (attack_rate == 0) {
-        //FIXME: [division by zero]
-        //       Got crackling sound in hardware for amplitude env.
-        value = 255.0f;
-    } else {
-        if (count <= attack_rate) {
-            value = (count * 0xFF) / attack_rate;
+    uint8_t cur = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask);
+    switch(cur) {
+    case 0: // Off
+        voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, 0);
+        voice_set_mask(d, v, lvl_reg, lvl_mask, 0xFF);
+        return 1.0f;
+    case 1: { // Delay
+        uint16_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
+        voice_set_mask(d, v, lvl_reg, lvl_mask, 0x00); // FIXME: Confirm this?
+        if (count == 0) {
+                cur++;
+                voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
+                count = 0;
         } else {
-            //FIXME: Overflow in hardware
-            //       The actual value seems to overflow, but not sure how
-            value = 255.0f;
+                count--;
         }
+        voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
+        break;
     }
-    voice_set_mask(d, v, lvl_reg, lvl_mask, value);
-    //FIXME: Comparison could also be the other way around?! Test please.
-    if (count == (attack_rate * 16)) {
-        cur++;
-        voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
-        uint16_t hold_time = voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_HOLDTIME);
-        count = hold_time * 16; //FIXME: Skip next phase if count is 0? [other instances too]
-    } else {
-        count++;
+    case 2: { // Attack
+        uint16_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
+        uint16_t attack_rate = voice_get_mask(d, v, reg_0, NV_PAVS_VOICE_CFG_ENV0_EA_ATTACKRATE);
+        float value;
+        if (attack_rate == 0) {
+                //FIXME: [division by zero]
+                //       Got crackling sound in hardware for amplitude env.
+                value = 255.0f;
+        } else {
+                if (count <= attack_rate) {
+                        value = (count * 0xFF) / attack_rate;
+                } else {
+                        //FIXME: Overflow in hardware
+                        //       The actual value seems to overflow, but not sure how
+                        value = 255.0f;
+                }
+        }
+        voice_set_mask(d, v, lvl_reg, lvl_mask, value);
+        //FIXME: Comparison could also be the other way around?! Test please.
+        if (count == (attack_rate * 16)) {
+                cur++;
+                voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
+                uint16_t hold_time = voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_HOLDTIME);
+                count = hold_time * 16; //FIXME: Skip next phase if count is 0? [other instances too]
+        } else {
+                count++;
+        }
+        voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
+        return value / 255.0f;
     }
-    voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
-    return value / 255.0f;
-  }
-  case 3: { // Hold
-    uint16_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
-    voice_set_mask(d, v, lvl_reg, lvl_mask, 0xFF);
-    if (count == 0) {
-        cur++;
-        voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
+    case 3: { // Hold
+        uint16_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
+        voice_set_mask(d, v, lvl_reg, lvl_mask, 0xFF);
+        if (count == 0) {
+                cur++;
+                voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
+                uint16_t decay_rate = voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_DECAYRATE);
+                count = decay_rate * 16;
+        } else {
+                count--;
+        }
+        voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
+        return 1.0f;
+    }
+    case 4: { // Decay
+        uint16_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
         uint16_t decay_rate = voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_DECAYRATE);
-        count = decay_rate * 16;
-    } else {
-        count--;
+        uint8_t sustain_level = voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_SUSTAINLEVEL);
+        float value;
+        if (decay_rate == 0) {
+                //FIXME: [division by zero]
+                //       Not tested on hardware
+                value = 0.0f;
+        } else {
+            //FIXME: This formula and threshold is not accurate, but I can't get it any better for now
+            value = 255.0f * powf(0.99988799f, (decay_rate * 16 - count) * 4096 / decay_rate);
+        }
+        if (value <= (sustain_level + 0.2f) || (value > 255.0f)) {
+                //FIXME: Should we still update lvl?
+                cur++;
+                voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
+        } else {
+                count--;
+                voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
+                voice_set_mask(d, v, lvl_reg, lvl_mask, value);
+        }
+        return value / 255.0f;
     }
-    voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
-    return 1.0f;
-  }
-  case 4: { // Decay
-    uint16_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
-    uint16_t decay_rate = voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_DECAYRATE);
-    uint8_t sustain_level = voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_SUSTAINLEVEL);
-    float value;
-    if (decay_rate == 0) {
-        //FIXME: [division by zero]
-        //       Not tested on hardware
-        value = 0.0f;
-    } else {
-      //FIXME: This formula and threshold is not accurate, but I can't get it any better for now
-      value = 255.0f * powf(0.99988799f, (decay_rate * 16 - count) * 4096 / decay_rate);
+    case 5: { // Sustain
+        uint8_t sustain_level = voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_SUSTAINLEVEL);
+        voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, 0x00); // FIXME: is this only set to 0 once or forced to zero?
+        voice_set_mask(d, v, lvl_reg, lvl_mask, sustain_level);
+        return sustain_level / 255.0f;
     }
-    if (value <= (sustain_level + 0.2f) || (value > 255.0f)) {
-        //FIXME: Should we still update lvl?
-        cur++;
-        voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
-    } else {
+    case 6: { // Release
+        uint16_t release_rate = voice_get_mask(d, v, rr_reg, rr_mask);
+        uint16_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
         count--;
         voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
-        voice_set_mask(d, v, lvl_reg, lvl_mask, value);
-    }
-    return value / 255.0f;
-  }
-  case 5: { // Sustain
-    uint8_t sustain_level = voice_get_mask(d, v, reg_a, NV_PAVS_VOICE_CFG_ENVA_EA_SUSTAINLEVEL);
-    voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, 0x00); // FIXME: is this only set to 0 once or forced to zero?
-    voice_set_mask(d, v, lvl_reg, lvl_mask, sustain_level);
-    return sustain_level / 255.0f;
-  }
-  case 6: { // Release
-    uint16_t release_rate = voice_get_mask(d, v, rr_reg, rr_mask);
-    uint16_t count = voice_get_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask);
-    count--;
-    voice_set_mask(d, v, NV_PAVS_VOICE_CUR_ECNT, count_mask, count);
-    uint8_t lvl = voice_get_mask(d, v, lvl_reg, lvl_mask);
-    float value = count * lvl / (release_rate * 16);
-    if (count == 0) {
-      //FIXME: What to do now?!
+        uint8_t lvl = voice_get_mask(d, v, lvl_reg, lvl_mask);
+        float value = count * lvl / (release_rate * 16);
+        if (count == 0) {
+            //FIXME: What to do now?!
 #if 0 // Hack so we don't assert
-      cur++; // FIXME: Does this happen?!
-      voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
+            cur++; // FIXME: Does this happen?!
+            voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, cur);
 #else
-      voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, 0x0); // Is this correct? FIXME: Turn off voice?
+            voice_set_mask(d, v, NV_PAVS_VOICE_PAR_STATE, cur_mask, 0x0); // Is this correct? FIXME: Turn off voice?
 #endif
+        }
+        return value / 255.0f;
     }
-    return value / 255.0f;
-  }
-  case 7: // Force release
-    assert(false); //FIXME: This mode is not understood yet
-    return 1.0f;
-  default:
-    fprintf(stderr, "Unknown envelope state 0x%x\n", cur);
-    assert(false);
-  }
+    case 7: // Force release
+        assert(false); //FIXME: This mode is not understood yet
+        return 1.0f;
+    default:
+        fprintf(stderr, "Unknown envelope state 0x%x\n", cur);
+        assert(false);
+    }
 
-  return 0;
+    return 0;
 }
 
 static void process_voice(MCPXAPUState *d,
