@@ -462,7 +462,9 @@ static const MemoryRegionOps mcpx_apu_mmio_ops = {
 static void fe_method(MCPXAPUState *d,
                       uint32_t method, uint32_t argument)
 {
+#ifdef MCPX_DEBUG
     unsigned int slot;
+#endif
 
     MCPX_DPRINTF("mcpx fe_method 0x%x 0x%x\n", method, argument);
 
@@ -664,15 +666,19 @@ static void fe_method(MCPXAPUState *d,
         break;
     }
     CASE_4(NV1BA0_PIO_SET_OUTBUF_BA, 8): // 8 byte pitch, 4 entries
+#ifdef MCPX_DEBUG
         slot = (method - NV1BA0_PIO_SET_OUTBUF_BA) / 8;
         //FIXME: Use NV1BA0_PIO_SET_OUTBUF_BA_ADDRESS = 0x007FFF00 ?
         MCPX_DPRINTF("outbuf_ba[%d]: 0x%08X\n", slot, argument);
+#endif
         //assert(false); //FIXME: Enable assert! no idea what this reg does
         break;
     CASE_4(NV1BA0_PIO_SET_OUTBUF_LEN, 8): // 8 byte pitch, 4 entries
+#ifdef MCPX_DEBUG
         slot = (method - NV1BA0_PIO_SET_OUTBUF_LEN) / 8;
         //FIXME: Use NV1BA0_PIO_SET_OUTBUF_LEN_VALUE = 0x007FFF00 ?
         MCPX_DPRINTF("outbuf_len[%d]: 0x%08X\n", slot, argument);
+#endif
         //assert(false); //FIXME: Enable assert! no idea what this reg does
         break;
     case NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE:
