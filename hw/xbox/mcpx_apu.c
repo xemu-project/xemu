@@ -31,8 +31,6 @@
 
 #include "hw/xbox/mcpx_apu.h"
 
-#include "adpcm_block.h"
-
 #define NV_PAPU_ISTS                                     0x00001000
 #   define NV_PAPU_ISTS_GINTSTS                               (1 << 0)
 #   define NV_PAPU_ISTS_FETINTSTS                             (1 << 4)
@@ -1130,6 +1128,9 @@ static const MemoryRegionOps ep_ops = {
     .write = ep_write,
 };
 
+#if 0
+#include "adpcm_block.h"
+
 static hwaddr get_data_ptr(hwaddr sge_base, unsigned int max_sge, uint32_t addr) {
     unsigned int entry = addr / TARGET_PAGE_SIZE;
     assert(entry <= max_sge);
@@ -1262,11 +1263,13 @@ static float step_envelope(MCPXAPUState *d, unsigned int v, uint32_t reg_0, uint
 
     return 0;
 }
+#endif
 
 static void process_voice(MCPXAPUState *d,
                           int32_t mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME],
                           uint32_t voice)
 {
+#if 0
     uint32_t v = voice;
     int32_t samples[2][0x20] = {0};
 
@@ -1464,6 +1467,7 @@ static void process_voice(MCPXAPUState *d,
             mixbins[bin[j]][i] += (0xFFF - vol[j]) * samples[j % channels][i] / 0xFFF;
         }
     }
+#endif
 }
 
 /* This routine must run at 1500 Hz */
