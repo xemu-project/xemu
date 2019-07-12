@@ -660,19 +660,19 @@ static void fe_method(MCPXAPUState *d,
         //FIXME: NV_PAPU_VPSGEADDR is probably bad, as outbuf SGE use the same handle range (or that is also wrong)
         hwaddr sge_address = d->regs[NV_PAPU_VPSGEADDR] + d->inbuf_sge_handle * 8;
         stl_le_phys(&address_space_memory, sge_address, argument & NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET_PARAMETER);
-        printf("Wrote inbuf SGE[0x%X] = 0x%08X\n", d->inbuf_sge_handle, argument & NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET_PARAMETER);
+        MCPX_DPRINTF("Wrote inbuf SGE[0x%X] = 0x%08X\n", d->inbuf_sge_handle, argument & NV1BA0_PIO_SET_CURRENT_INBUF_SGE_OFFSET_PARAMETER);
         break;
     }
     CASE_4(NV1BA0_PIO_SET_OUTBUF_BA, 8): // 8 byte pitch, 4 entries
         slot = (method - NV1BA0_PIO_SET_OUTBUF_BA) / 8;
         //FIXME: Use NV1BA0_PIO_SET_OUTBUF_BA_ADDRESS = 0x007FFF00 ?
-        printf("outbuf_ba[%d]: 0x%08X\n", slot, argument);
+        MCPX_DPRINTF("outbuf_ba[%d]: 0x%08X\n", slot, argument);
         //assert(false); //FIXME: Enable assert! no idea what this reg does
         break;
     CASE_4(NV1BA0_PIO_SET_OUTBUF_LEN, 8): // 8 byte pitch, 4 entries
         slot = (method - NV1BA0_PIO_SET_OUTBUF_LEN) / 8;
         //FIXME: Use NV1BA0_PIO_SET_OUTBUF_LEN_VALUE = 0x007FFF00 ?
-        printf("outbuf_len[%d]: 0x%08X\n", slot, argument);
+        MCPX_DPRINTF("outbuf_len[%d]: 0x%08X\n", slot, argument);
         //assert(false); //FIXME: Enable assert! no idea what this reg does
         break;
     case NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE:
@@ -686,7 +686,7 @@ static void fe_method(MCPXAPUState *d,
         // But how does it know which outbuf is being written?!
         hwaddr sge_address = d->regs[NV_PAPU_VPSGEADDR] + d->outbuf_sge_handle * 8;
         stl_le_phys(&address_space_memory, sge_address, argument & NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET_PARAMETER);
-        printf("Wrote outbuf SGE[0x%X] = 0x%08X\n", d->outbuf_sge_handle, argument & NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET_PARAMETER);
+        MCPX_DPRINTF("Wrote outbuf SGE[0x%X] = 0x%08X\n", d->outbuf_sge_handle, argument & NV1BA0_PIO_SET_CURRENT_OUTBUF_SGE_OFFSET_PARAMETER);
         break;
     }
     case SE2FE_IDLE_VOICE:
@@ -1129,7 +1129,7 @@ static hwaddr get_data_ptr(hwaddr sge_base, unsigned int max_sge, uint32_t addr)
     assert(entry <= max_sge);
     uint32_t prd_address = ldl_le_phys(&address_space_memory, sge_base + entry*4*2);
     // uint32_t prd_control = ldl_le_phys(&address_space_memory, sge_base + entry*4*2 + 4);
-    // printf("Addr: 0x%08X, control: 0x%08X\n", prd_address, prd_control);
+    MCPX_DPRINTF("Addr: 0x%08X, control: 0x%08X\n", prd_address, prd_control);
 
     return prd_address + addr % TARGET_PAGE_SIZE;
 }
@@ -1274,7 +1274,7 @@ static void process_voice(MCPXAPUState *d,
     int16_t p = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK, NV_PAVS_VOICE_TAR_PITCH_LINK_PITCH);
     int8_t pm = voice_get_mask(d, v, NV_PAVS_VOICE_CFG_ENV0, NV_PAVS_VOICE_CFG_ENV0_EF_PITCHSCALE);
     float rate = powf(2.0f, (p + pm * 32 * ef_value) / 4096.0f);
-    //printf("Got %f\n", rate * 48000.0f);
+    MCPX_DPRINTF("Got %f\n", rate * 48000.0f);
 
     float overdrive = 1.0f; //FIXME: This is just a hack because our APU runs too rarely
 
@@ -1335,7 +1335,7 @@ static void process_voice(MCPXAPUState *d,
             unsigned int block_index = sample_pos / 65;
             unsigned int block_position = sample_pos % 65;
 
-            printf("ADPCM: %d + %d\n", block_index, block_position);
+            MCPX_DPRINTF("ADPCM: %d + %d\n", block_index, block_position);
 
             //FIXME: Remove this from the loop which collects required samples
             //       We can always just grab one or two blocks to get all required samples
@@ -1379,7 +1379,7 @@ static void process_voice(MCPXAPUState *d,
             hwaddr addr = get_data_ptr(d->regs[NV_PAPU_VPSGEADDR], 0xFFFFFFFF, linear_addr);
             //FIXME: Handle reading accross pages?!
 
-            //printf("Sampling from 0x%08X\n", addr);
+            MCPX_DPRINTF("Sampling from 0x%08X\n", addr);
 
             // Get samples for this voice
             for(unsigned int channel = 0; channel < channels; channel++) {
@@ -1451,7 +1451,7 @@ static void process_voice(MCPXAPUState *d,
 
     // Mix samples into voice bins
     for(unsigned int j = 0; j < 8; j++) {
-        //printf("Adding voice 0x%04X to bin %d [Rate %.2f, Volume 0x%03X] sample %d at %d [%.2fs]\n", v, bin[j], rate, vol[j], samples[0], cbo, cbo / (rate * 48000.0f));
+        MCPX_DPRINTF("Adding voice 0x%04X to bin %d [Rate %.2f, Volume 0x%03X] sample %d at %d [%.2fs]\n", v, bin[j], rate, vol[j], samples[0], cbo, cbo / (rate * 48000.0f));
         for(unsigned int i = 0; i < 0x20; i++) {
             //FIXME: how is the volume added?
             //FIXME: What happens to the other channel? Is this behaviour correct?
