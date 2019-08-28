@@ -410,6 +410,9 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
 
     d = NV2A_DEVICE(dev);
 
+    /* setting subsystem ids again, see comment in nv2a_class_init() */
+    pci_set_word(dev->config + PCI_SUBSYSTEM_VENDOR_ID, 0);
+    pci_set_word(dev->config + PCI_SUBSYSTEM_ID, 0);
     dev->config[PCI_INTERRUPT_PIN] = 0x01;
 
     d->pcrtc.start = 0;
@@ -478,8 +481,13 @@ static void nv2a_class_init(ObjectClass *klass, void *data)
 
     k->vendor_id = PCI_VENDOR_ID_NVIDIA;
     k->device_id = PCI_DEVICE_ID_NVIDIA_GEFORCE_NV2A;
-    k->revision  = 161;
-    k->class_id  = PCI_CLASS_DISPLAY_3D;
+    k->revision  = 0xA1;
+    k->class_id  = PCI_CLASS_DISPLAY_VGA;
+    /* When both subsystem ids are set to 0, QEMU sets them to its own
+     * default values. However we set them anyway in case upstream decides
+     * to change this behavior. */
+    k->subsystem_vendor_id = 0;
+    k->subsystem_id = 0;
     k->realize   = nv2a_realize;
     k->exit      = nv2a_exitfn;
 
