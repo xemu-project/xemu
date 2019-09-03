@@ -29,4 +29,7 @@ void smbus_xbox_smc_init(I2CBus *smbus, int address);
 void smbus_cx25871_init(I2CBus *smbus, int address);
 void smbus_adm1032_init(I2CBus *smbus, int address);
 
+bool xbox_smc_avpack_to_reg(const char *avpack, uint8_t *value);
+void xbox_smc_append_avpack_hint(Error **errp);
+
 #endif

@@ -28,6 +28,7 @@
 #include "hw/i2c/i2c.h"
 #include "hw/i2c/smbus_slave.h"
 #include "qemu/config-file.h"
+#include "qapi/error.h"
 #include "sysemu/sysemu.h"
 #include "smbus.h"
 
@@ -55,10 +56,11 @@
 #define SMC_REG_AVPACK              0x04
 #define     SMC_REG_AVPACK_SCART        0x00
 #define     SMC_REG_AVPACK_HDTV         0x01
-#define     SMC_REG_AVPACK_VGA_SOG      0x02
+#define     SMC_REG_AVPACK_VGA          0x02
+#define     SMC_REG_AVPACK_RFU          0x03
 #define     SMC_REG_AVPACK_SVIDEO       0x04
 #define     SMC_REG_AVPACK_COMPOSITE    0x06
-#define     SMC_REG_AVPACK_VGA          0x07
+#define     SMC_REG_AVPACK_NONE         0x07
 #define SMC_REG_FANMODE             0x05
 #define SMC_REG_FANSPEED            0x06
 #define SMC_REG_LEDMODE             0x07
@@ -86,6 +88,7 @@ typedef struct SMBusSMCDevice {
     SMBusDevice smbusdev;
     int version_string_index;
     uint8_t cmd;
+    uint8_t avpack_reg;
     uint8_t scratch_reg;
 } SMBusSMCDevice;
 
@@ -154,8 +157,7 @@ static uint8_t smc_receive_byte(SMBusDevice *dev)
             smc->version_string_index++ % (sizeof(smc_version_string) - 1)];
 
     case SMC_REG_AVPACK:
-        /* pretend to have a composite av pack plugged in */
-        return SMC_REG_AVPACK_COMPOSITE;
+        return smc->avpack_reg;
 
     case SMC_REG_SCRATCH:
         return smc->scratch_reg;
@@ -178,16 +180,61 @@ static uint8_t smc_receive_byte(SMBusDevice *dev)
     return 0;
 }
 
+bool xbox_smc_avpack_to_reg(const char *avpack, uint8_t *value)
+{
+    uint8_t r;
+
+    if (!strcmp(avpack, "composite")) {
+        r = SMC_REG_AVPACK_COMPOSITE;
+    } else if (!strcmp(avpack, "scart")) {
+        r = SMC_REG_AVPACK_SCART;
+    } else if (!strcmp(avpack, "svideo")) {
+        r = SMC_REG_AVPACK_SVIDEO;
+    } else if (!strcmp(avpack, "vga")) {
+        r = SMC_REG_AVPACK_VGA;
+    } else if (!strcmp(avpack, "rfu")) {
+        r = SMC_REG_AVPACK_RFU;
+    } else if (!strcmp(avpack, "hdtv")) {
+        r = SMC_REG_AVPACK_HDTV;
+    } else if (!strcmp(avpack, "none")) {
+        r = SMC_REG_AVPACK_NONE;
+    } else {
+        return false;
+    }
+
+    if (value) {
+        *value = r;
+    }
+    return true;
+}
+
+void xbox_smc_append_avpack_hint(Error **errp)
+{
+    error_append_hint(errp, "Valid options are: composite (default), scart, svideo, vga, rfu, hdtv, none\n");
+}
+
 static void smbus_smc_realize(DeviceState *dev, Error **errp)
 {
     SMBusSMCDevice *smc = XBOX_SMC(dev);
+    char *avpack;
 
     smc->version_string_index = 0;
+    smc->avpack_reg = 0; /* Default value for Chihiro machine */
     smc->scratch_reg = 0;
     smc->cmd = 0;
 
     if (object_property_get_bool(qdev_get_machine(), "short-animation", NULL)) {
         smc->scratch_reg = SMC_REG_SCRATCH_SHORT_ANIMATION;
+    }
+
+    avpack = object_property_get_str(qdev_get_machine(), "avpack", NULL);
+    if (avpack) {
+        if (!xbox_smc_avpack_to_reg(avpack, &smc->avpack_reg)) {
+            error_setg(errp, "Unsupported avpack option '%s'", avpack);
+            xbox_smc_append_avpack_hint(errp);
+        }
+
+        g_free(avpack);
     }
 }
 

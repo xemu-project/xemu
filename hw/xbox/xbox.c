@@ -476,6 +476,28 @@ static void machine_set_eeprom(Object *obj, const char *value,
     ms->eeprom = g_strdup(value);
 }
 
+static char *machine_get_avpack(Object *obj, Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+
+    return g_strdup(ms->avpack);
+}
+
+static void machine_set_avpack(Object *obj, const char *value,
+                               Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+
+    if (!xbox_smc_avpack_to_reg(value, NULL)) {
+        error_setg(errp, "-machine avpack=%s: unsupported option", value);
+        xbox_smc_append_avpack_hint(errp);
+        return;
+    }
+
+    g_free(ms->avpack);
+    ms->avpack = g_strdup(value);
+}
+
 static void machine_set_short_animation(Object *obj, bool value,
                                         Error **errp)
 {
@@ -501,6 +523,12 @@ static inline void xbox_machine_initfn(Object *obj)
                             machine_set_eeprom, NULL);
     object_property_set_description(obj, "eeprom",
                                     "Xbox EEPROM file", NULL);
+
+    object_property_add_str(obj, "avpack", machine_get_avpack,
+                            machine_set_avpack, NULL);
+    object_property_set_description(obj, "avpack",
+                                    "Xbox video connector: composite (default), scart, svideo, vga, rfu, hdtv, none", NULL);
+    object_property_set_str(obj, "composite", "avpack", NULL);
 
     object_property_add_bool(obj, "short-animation",
                              machine_get_short_animation,
