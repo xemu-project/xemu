@@ -6,6 +6,9 @@ BUILD_DIR=$(CURDIR)
 # Before including a proper config-host.mak, assume we are in the source tree
 SRC_PATH=.
 
+# Use bash as sh if-statement evaluation is wonky
+SHELL := /usr/bin/env bash
+
 UNCHECKED_GOALS := %clean TAGS cscope ctags dist \
     html info pdf txt \
     help check-help print-% \
