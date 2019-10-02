@@ -57,5 +57,9 @@ git:
   # we want to do this ourselves
   submodules: false
 
+env:
+  - CONFIG=""
+  - CONFIG="--release"
+
 script:
-  - ./build.sh
+  - ./build.sh ${CONFIG}
