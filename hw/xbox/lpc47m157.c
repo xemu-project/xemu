@@ -45,7 +45,7 @@
 #define CONFIG_DEVICE_ACTIVATE              0x30
 #define CONFIG_DEVICE_BASE_ADDRESS_HIGH     0x60
 #define CONFIG_DEVICE_BASE_ADDRESS_LOW      0x61
-#define CONFIG_DEVICE_INETRRUPT             0x70
+#define CONFIG_DEVICE_INTERRUPT             0x70
 
 // #define DEBUG
 #ifdef DEBUG
@@ -85,7 +85,7 @@ static void update_devices(LPC47M157State *s)
         if (dev[CONFIG_DEVICE_ACTIVATE] && !s->serial[i].active) {
             uint32_t iobase = (dev[CONFIG_DEVICE_BASE_ADDRESS_HIGH] << 8)
                                 | dev[CONFIG_DEVICE_BASE_ADDRESS_LOW];
-            uint32_t irq = dev[CONFIG_DEVICE_INETRRUPT];
+            uint32_t irq = dev[CONFIG_DEVICE_INTERRUPT];
 
             SerialState *ss = &s->serial[i].state;
             if (irq != 0) {
