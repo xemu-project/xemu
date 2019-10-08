@@ -44,6 +44,27 @@ uint64_t pramdac_read(void *opaque, hwaddr addr, unsigned int size)
     case NV_PRAMDAC_GENERAL_CONTROL:
         r = d->pramdac.general_control;
         break;
+    case NV_PRAMDAC_FP_VDISPLAY_END:
+        r = d->pramdac.fp_vdisplay_end;
+        break;
+    case NV_PRAMDAC_FP_VCRTC:
+        r = d->pramdac.fp_vcrtc;
+        break;
+    case NV_PRAMDAC_FP_VSYNC_END:
+        r = d->pramdac.fp_vsync_end;
+        break;
+    case NV_PRAMDAC_FP_VVALID_END:
+        r = d->pramdac.fp_vvalid_end;
+        break;
+    case NV_PRAMDAC_FP_HDISPLAY_END:
+        r = d->pramdac.fp_hdisplay_end;
+        break;
+    case NV_PRAMDAC_FP_HCRTC:
+        r = d->pramdac.fp_hcrtc;
+        break;
+    case NV_PRAMDAC_FP_HVALID_END:
+        r = d->pramdac.fp_hvalid_end;
+        break;
     default:
         break;
     }
@@ -86,6 +107,27 @@ void pramdac_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         break;
     case NV_PRAMDAC_GENERAL_CONTROL:
         d->pramdac.general_control = val;
+        break;
+    case NV_PRAMDAC_FP_VDISPLAY_END:
+        d->pramdac.fp_vdisplay_end = val;
+        break;
+    case NV_PRAMDAC_FP_VCRTC:
+        d->pramdac.fp_vcrtc = val;
+        break;
+    case NV_PRAMDAC_FP_VSYNC_END:
+        d->pramdac.fp_vsync_end = val;
+        break;
+    case NV_PRAMDAC_FP_VVALID_END:
+        d->pramdac.fp_vvalid_end = val;
+        break;
+    case NV_PRAMDAC_FP_HDISPLAY_END:
+        d->pramdac.fp_hdisplay_end = val;
+        break;
+    case NV_PRAMDAC_FP_HCRTC:
+        d->pramdac.fp_hcrtc = val;
+        break;
+    case NV_PRAMDAC_FP_HVALID_END:
+        d->pramdac.fp_hvalid_end = val;
         break;
     default:
         break;

@@ -331,6 +331,13 @@ typedef struct NV2AState {
         uint32_t memory_clock_coeff;
         uint32_t video_clock_coeff;
         uint32_t general_control;
+        uint32_t fp_vdisplay_end;
+        uint32_t fp_vcrtc;
+        uint32_t fp_vsync_end;
+        uint32_t fp_vvalid_end;
+        uint32_t fp_hdisplay_end;
+        uint32_t fp_hcrtc;
+        uint32_t fp_hvalid_end;
     } pramdac;
 
 } NV2AState;
