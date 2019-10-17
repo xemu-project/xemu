@@ -37,6 +37,7 @@ do
     esac
 done
 
+readlink=$(command -v readlink)
 
 case "$(uname -s)" in # adjust compilation option based on platform
     Linux)
@@ -50,6 +51,13 @@ case "$(uname -s)" in # adjust compilation option based on platform
         sys_opts='--disable-cocoa'
         # necessary to find libffi, which is required by gobject
         export PKG_CONFIG_PATH="${PKG_CONFIG_PATH}/usr/local/opt/libffi/lib/pkgconfig"
+        # macOS needs greadlink for a GNU compatible version of readlink
+        if readlink=$(command -v greadlink); then
+            echo 'GNU compatible readlink detected'
+        else
+            echo 'Could not find a GNU compatible readlink. Please install coreutils with homebrew'
+            exit -1
+        fi
         ;;
     CYGWIN*|MINGW*|MSYS*)
         echo 'Compiling for Windows…'
@@ -64,7 +72,7 @@ case "$(uname -s)" in # adjust compilation option based on platform
 esac
 
 # find absolute path (and resolve symlinks) to build out of tree
-configure="$(dirname "$(readlink -f "${0}")")/configure"
+configure="$(dirname "$($readlink -f "${0}")")/configure"
 
 set -x # Print commands from now on
 

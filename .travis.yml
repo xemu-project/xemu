@@ -52,6 +52,7 @@ addons:
       - pixman
       - sdl2
       - libepoxy
+      - coreutils
 
 git:
   # we want to do this ourselves
