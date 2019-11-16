@@ -7,7 +7,8 @@ and Linux. Please visit [xqemu.com](http://xqemu.com) to learn more.
 Build Status
 ------------
 
-| Build   | Windows                                                                                                                                                               | macOS                                                                                                                                | Linux                                                                                                                                |
-| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Release | [![Build status](https://ci.appveyor.com/api/projects/status/i1m0keigjabxg170/branch/master?svg=true)](https://ci.appveyor.com/project/xqemu-bot/xqemu/branch/master) | [![Build status](https://travis-matrix-badges.herokuapp.com/repos/xqemu/xqemu/branches/master/4)](https://travis-ci.org/xqemu/xqemu) | [![Build status](https://travis-matrix-badges.herokuapp.com/repos/xqemu/xqemu/branches/master/2)](https://travis-ci.org/xqemu/xqemu) |
-| Debug   | [![Build status](https://ci.appveyor.com/api/projects/status/i1m0keigjabxg170/branch/master?svg=true)](https://ci.appveyor.com/project/xqemu-bot/xqemu/branch/master) | [![Build status](https://travis-matrix-badges.herokuapp.com/repos/xqemu/xqemu/branches/master/3)](https://travis-ci.org/xqemu/xqemu) | [![Build status](https://travis-matrix-badges.herokuapp.com/repos/xqemu/xqemu/branches/master/1)](https://travis-ci.org/xqemu/xqemu) |
+| Platform | Build Status |
+|----------|--------------|
+| Windows | [![Build status](https://github.com/xqemu/xqemu/workflows/Build%20(Windows)/badge.svg?branch=master)](https://github.com/xqemu/xqemu/actions?query=branch%3Amaster) |
+| macOS | [![Build status](https://github.com/xqemu/xqemu/workflows/Build%20(macOS)/badge.svg?branch=master)](https://github.com/xqemu/xqemu/actions?query=branch%3Amaster) |
+| Ubuntu | [![Build status](https://github.com/xqemu/xqemu/workflows/Build%20(Ubuntu)/badge.svg?branch=master)](https://github.com/xqemu/xqemu/actions?query=branch%3Amaster) |
