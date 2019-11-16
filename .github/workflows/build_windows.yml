@@ -1,0 +1,57 @@
+name: Build (Windows)
+
+on: [push, pull_request]
+
+jobs:
+  Windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        configuration: ["Debug", "Release"]
+    steps:
+    - name: Define Build Options
+      shell: python
+      run: |
+        if "${{ matrix.configuration }}" == "Debug":
+          print('Configuring for Debug')
+          print('::set-env name=BUILD_PARAM::')
+          print('::set-env name=ARTIFACT_NAME::xqemu-debug')
+        else:
+          print('Configuring for Release')
+          print('::set-env name=BUILD_PARAM::--release')
+          print('::set-env name=ARTIFACT_NAME::xqemu-release')
+    - name: Clone Tree
+      uses: actions/checkout@v1
+      with:
+        fetch-depth: 1
+    #
+    # An environment could be created as follows. Instead, use a pre-built
+    # toolchain to accelerate build times.
+    #
+    # - name: Install Dependencies
+    #   run: |
+    #     choco install msys2
+    #      C:\tools\msys64\usr\bin\bash -xlc "pacman --noconfirm -S --needed base-devel git make autoconf automake-wrapper mingw-w64-x86_64-libtool mingw-w64-x86_64-pkg-config mingw-w64-x86_64-glib2 mingw-w64-x86_64-SDL2 mingw-w64-x86_64-pixman mingw-w64-x86_64-libepoxy"
+    # - name: Compile
+    #   shell: cmd
+    #   run: |
+    #      C:\tools\msys64\usr\bin\bash -xlc "cd $GITHUB_WORKSPACE; export PATH="/mingw64/bin:$PATH"; ./build.sh"
+    #
+    - name: Install Dependencies
+      run: |
+        echo "Downloading MSYS2 environment..."
+        Invoke-WebRequest -Uri "https://dl.dropboxusercontent.com/s/8lt6464xtk00t59/msys64.7z" -OutFile "msys64.7z"
+        echo "Extracting MSYS2 environment..."
+        7z x -y msys64.7z "-oC:\"
+        echo "Updating MSYS2 environment..."
+        C:\msys64\usr\bin\bash.exe -lc "pacman -Syu"
+    - name: Compile
+      shell: cmd
+      run: |
+        echo $GITHUB_WORKSPACE
+        C:\msys64\usr\bin\bash.exe -lc "cd $GITHUB_WORKSPACE; export PATH="/mingw64/bin:$PATH"; ./build.sh ${{ env.BUILD_PARAM }}"
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@master
+      with:
+        name: ${{env.ARTIFACT_NAME}}
+        path: dist

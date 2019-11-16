@@ -1,0 +1,38 @@
+name: Build (macOS)
+
+on: [push, pull_request]
+
+jobs:
+  macOS:
+    runs-on: macOS-latest
+    strategy:
+      matrix:
+        configuration: ["Debug", "Release"]
+    steps:
+    - name: Define Build Options
+      shell: python
+      run: |
+        if "${{ matrix.configuration }}" == "Debug":
+          print('Configuring for Debug')
+          print('::set-env name=BUILD_PARAM::')
+          print('::set-env name=ARTIFACT_NAME::xqemu-debug')
+        else:
+          print('Configuring for Release')
+          print('::set-env name=BUILD_PARAM::--release')
+          print('::set-env name=ARTIFACT_NAME::xqemu-release')
+    - name: Clone Tree
+      uses: actions/checkout@v1
+      with:
+        fetch-depth: 1
+    - name: Install Dependencies
+      run: |
+        brew update
+        brew install \
+          glib \
+          pixman \
+          sdl2 \
+          libepoxy \
+          coreutils \
+          pkg-config
+    - name: Compile
+      run: ./build.sh ${{ env.BUILD_PARAM }}
