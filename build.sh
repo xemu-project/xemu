@@ -125,6 +125,6 @@ set -x # Print commands from now on
     --disable-usb-redir \
     ${user_opts}
 
-time make -j"${job_count}" 2>&1 | tee build.log
+time make -j"${job_count}" subdir-i386-softmmu 2>&1 | tee build.log
 
 ${postbuild} # call post build functions
