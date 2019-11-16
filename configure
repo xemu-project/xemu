@@ -1104,6 +1104,10 @@ for opt do
   ;;
   --disable-sparse) sparse="no"
   ;;
+  --disable-fortify-source) fortify_source="no"
+  ;;
+  --enable-fortify-source) fortify_source="yes"
+  ;;
   --disable-strip) strip_opt="no"
   ;;
   --disable-vnc-sasl) vnc_sasl="no"
