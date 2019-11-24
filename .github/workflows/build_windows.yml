@@ -24,32 +24,33 @@ jobs:
       uses: actions/checkout@v1
       with:
         fetch-depth: 1
-    #
-    # An environment could be created as follows. Instead, use a pre-built
-    # toolchain to accelerate build times.
-    #
-    # - name: Install Dependencies
-    #   run: |
-    #     choco install msys2
-    #      C:\tools\msys64\usr\bin\bash -xlc "pacman --noconfirm -S --needed base-devel git make autoconf automake-wrapper mingw-w64-x86_64-libtool mingw-w64-x86_64-pkg-config mingw-w64-x86_64-glib2 mingw-w64-x86_64-SDL2 mingw-w64-x86_64-pixman mingw-w64-x86_64-libepoxy"
-    # - name: Compile
-    #   shell: cmd
-    #   run: |
-    #      C:\tools\msys64\usr\bin\bash -xlc "cd $GITHUB_WORKSPACE; export PATH="/mingw64/bin:$PATH"; ./build.sh"
-    #
     - name: Install Dependencies
       run: |
         echo "Downloading MSYS2 environment..."
-        Invoke-WebRequest -Uri "https://dl.dropboxusercontent.com/s/8lt6464xtk00t59/msys64.7z" -OutFile "msys64.7z"
+        Invoke-WebRequest -Uri "https://github.com/xqemu/ci-environment-msys2/releases/latest/download/msys64.7z" -OutFile "msys64.7z"
         echo "Extracting MSYS2 environment..."
-        7z x -y msys64.7z "-oC:\"
+        7z x -y msys64.7z "-oC:\tools\"
         echo "Updating MSYS2 environment..."
-        C:\msys64\usr\bin\bash.exe -lc "pacman -Syu"
+        C:\tools\msys64\usr\bin\bash.exe -lc "pacman -Syu"
+    - name: Initialize Compiler Cache
+      id: cache
+      uses: actions/cache@v1
+      with:
+        path: C:\tools\msys64\tmp\xqemu-ccache
+        key: cache-${{ runner.os }}-${{ matrix.configuration }}-${{ github.sha }}
+        restore-keys: cache-${{ runner.os }}-${{ matrix.configuration }}-
     - name: Compile
-      shell: cmd
       run: |
-        echo $GITHUB_WORKSPACE
-        C:\msys64\usr\bin\bash.exe -lc "cd $GITHUB_WORKSPACE; export PATH="/mingw64/bin:$PATH"; ./build.sh ${{ env.BUILD_PARAM }}"
+        C:\tools\msys64\usr\bin\bash.exe -lc @"
+        set -e
+        cd `$GITHUB_WORKSPACE
+        export CCACHE_DIR=/tmp/xqemu-ccache
+        export CCACHE_MAXSIZE=250M
+        export PATH="/usr/lib/ccache/bin:/mingw64/bin:`$PATH"
+        ./build.sh ${{ env.BUILD_PARAM }}
+        echo -e '\nCompiler Cache Stats:'
+        ccache -s -c
+        "@
     - name: Upload Build Artifact
       uses: actions/upload-artifact@master
       with:
