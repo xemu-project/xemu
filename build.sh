@@ -123,6 +123,17 @@ set -x # Print commands from now on
     --disable-lzo \
     --disable-smartcard \
     --disable-usb-redir \
+    --disable-bochs \
+    --disable-cloop \
+    --disable-dmg \
+    --disable-vdi \
+    --disable-vvfat \
+    --disable-qcow1 \
+    --disable-qed \
+    --disable-parallels \
+    --disable-sheepdog \
+    --without-default-devices \
+    --disable-blobs \
     ${user_opts}
 
 time make -j"${job_count}" subdir-i386-softmmu 2>&1 | tee build.log

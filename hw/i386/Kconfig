@@ -99,3 +99,9 @@ config VMPORT
 config VMMOUSE
     bool
     depends on VMPORT
+
+config XBOX
+    select PC
+    select USB_OHCI
+    select USB_STORAGE_BOT
+    select AC97
