@@ -31,7 +31,7 @@ jobs:
         echo "Extracting MSYS2 environment..."
         7z x -y msys64.7z "-oC:\tools\"
         echo "Updating MSYS2 environment..."
-        C:\tools\msys64\usr\bin\bash.exe -lc "pacman -Syu"
+        C:\tools\msys64\usr\bin\bash.exe -lc "pacman -Syu --noconfirm"
     - name: Initialize Compiler Cache
       id: cache
       uses: actions/cache@v1
