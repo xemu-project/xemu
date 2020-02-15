@@ -3,8 +3,24 @@ name: Build
 on: [push, pull_request]
 
 jobs:
+  Init:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Create Build Tag
+      run: |
+        export BUILD_TAG=build-$(date -u +'%Y%m%d%H%M')
+        echo "::set-env name=BUILD_TAG::$BUILD_TAG"
+        mkdir -p dist
+        echo -n $BUILD_TAG > dist/tag
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v1
+      with:
+        name: dist
+        path: dist
+
   Windows:
     runs-on: windows-latest
+    needs: Init
     strategy:
       matrix:
         configuration: ["Debug", "Release"]
@@ -15,15 +31,13 @@ jobs:
         if "${{ matrix.configuration }}" == "Debug":
           print('Configuring for Debug')
           print('::set-env name=BUILD_PARAM::')
-          print('::set-env name=ARTIFACT_NAME::xqemu-debug')
+          print('::set-env name=ARTIFACT_NAME::xqemu-win-debug.zip')
         else:
           print('Configuring for Release')
           print('::set-env name=BUILD_PARAM::--release')
-          print('::set-env name=ARTIFACT_NAME::xqemu-release')
+          print('::set-env name=ARTIFACT_NAME::xqemu-win-release.zip')
     - name: Clone Tree
-      uses: actions/checkout@v1
-      with:
-        fetch-depth: 1
+      uses: actions/checkout@v2
     - name: Install Dependencies
       run: |
         echo "Downloading MSYS2 environment..."
@@ -51,14 +65,16 @@ jobs:
         echo -e '\nCompiler Cache Stats:'
         ccache -s -c
         "@
+        7z a ${{env.ARTIFACT_NAME}} .\dist\*
     - name: Upload Build Artifact
-      uses: actions/upload-artifact@master
+      uses: actions/upload-artifact@v1
       with:
-        name: ${{env.ARTIFACT_NAME}}
-        path: dist
+        name: dist
+        path: ${{env.ARTIFACT_NAME}}
 
   Ubuntu:
     runs-on: ubuntu-latest
+    needs: Init
     strategy:
       matrix:
         configuration: ["Debug", "Release"]
@@ -69,15 +85,13 @@ jobs:
         if "${{ matrix.configuration }}" == "Debug":
           print('Configuring for Debug')
           print('::set-env name=BUILD_PARAM::')
-          print('::set-env name=ARTIFACT_NAME::xqemu-debug')
+          print('::set-env name=ARTIFACT_NAME::xqemu-ubuntu-debug')
         else:
           print('Configuring for Release')
           print('::set-env name=BUILD_PARAM::--release')
-          print('::set-env name=ARTIFACT_NAME::xqemu-release')
+          print('::set-env name=ARTIFACT_NAME::xqemu-ubuntu-release')
     - name: Clone Tree
-      uses: actions/checkout@v1
-      with:
-        fetch-depth: 1
+      uses: actions/checkout@v2
     - name: Install Dependencies
       run: |
         sudo apt-get update
@@ -104,6 +118,7 @@ jobs:
 
   macOS:
     runs-on: macOS-latest
+    needs: Init
     strategy:
       matrix:
         configuration: ["Debug", "Release"]
@@ -114,15 +129,13 @@ jobs:
         if "${{ matrix.configuration }}" == "Debug":
           print('Configuring for Debug')
           print('::set-env name=BUILD_PARAM::')
-          print('::set-env name=ARTIFACT_NAME::xqemu-debug')
+          print('::set-env name=ARTIFACT_NAME::xqemu-macos-debug')
         else:
           print('Configuring for Release')
           print('::set-env name=BUILD_PARAM::--release')
-          print('::set-env name=ARTIFACT_NAME::xqemu-release')
+          print('::set-env name=ARTIFACT_NAME::xqemu-macos-release')
     - name: Clone Tree
-      uses: actions/checkout@v1
-      with:
-        fetch-depth: 1
+      uses: actions/checkout@v2
     - name: Install Dependencies
       run: |
         brew update
@@ -151,3 +164,50 @@ jobs:
         echo -e "\nCompiler Cache Stats:"
         ccache -s -c
 
+  Release:
+    runs-on: ubuntu-latest
+    needs: [Ubuntu, Windows, macOS]
+    env:
+      BUILD_TAG:
+    steps:
+    - name: Download Artifacts
+      uses: actions/download-artifact@v1
+      with:
+        name: dist
+    - name: Get Package Info
+      run: |
+        echo "::set-env name=BUILD_TAG::$(cat dist/tag)"
+    - name: Create Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ env.BUILD_TAG }}
+        release_name: ${{ env.BUILD_TAG }}
+        draft: false
+        prerelease: false
+    - name: Upload Release Assets (Windows Debug Build)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      id: upload-release-asset-win-debug
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_name: xqemu-win-debug.zip
+        asset_path: dist/xqemu-win-debug.zip
+        asset_content_type: application/zip
+
+    - name: Upload Release Assets (Windows Release Build)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      id: upload-release-asset-win-release
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_name: xqemu-win-release.zip
+        asset_path: dist/xqemu-win-release.zip
+        asset_content_type: application/zip
