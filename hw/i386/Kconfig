@@ -119,5 +119,6 @@ config VMMOUSE
 config XBOX
     select PC
     select USB_OHCI
+    select USB_OHCI_PCI
     select USB_STORAGE_BOT
     select AC97
