@@ -545,7 +545,7 @@ static void usb_hub_handle_data(USBDevice *dev, USBPacket *p)
                     status |= (1 << (i + 1));
             }
             if (status != 0) {
-                n = DIV_ROUND_UP(NUM_PORTS + 1, 8);
+                n = DIV_ROUND_UP(s->num_ports + 1, 8);
                 if (p->iov.size == 1) { /* FreeBSD workaround */
                     n = 1;
                 } else if (n > p->iov.size) {
