@@ -30,6 +30,11 @@
 #include "hw/boards.h"
 #include "hw/ide.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/kvm.h"
+#include "kvm_i386.h"
+#include "hw/kvm/clock.h"
+#include "hw/dma/i8257.h"
+
 #include "hw/sysbus.h"
 #include "sysemu/arch_init.h"
 #include "exec/memory.h"
@@ -41,7 +46,7 @@
 
 #include "hw/timer/i8254.h"
 #include "hw/audio/pcspk.h"
-#include "hw/timer/mc146818rtc.h"
+#include "hw/rtc/mc146818rtc.h"
 
 #include "hw/xbox/xbox_pci.h"
 #include "hw/i2c/i2c.h"
@@ -290,8 +295,8 @@ void xbox_init_common(MachineState *machine,
                       ISABus **isa_bus_out)
 {
     PCMachineState *pcms = PC_MACHINE(machine);
-    // PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(pcms);
-
+    PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(pcms);
+    X86MachineState *x86ms = X86_MACHINE(machine);
     MemoryRegion *system_memory = get_system_memory();
     // MemoryRegion *system_io = get_system_io();
 
@@ -300,14 +305,17 @@ void xbox_init_common(MachineState *machine,
     PCIBus *pci_bus;
     ISABus *isa_bus;
 
-    qemu_irq *i8259;
+    // qemu_irq *i8259;
     // qemu_irq smi_irq; // XBOX_TODO: SMM support?
 
     GSIState *gsi_state;
 
     DriveInfo *hd[MAX_IDE_BUS * MAX_IDE_DEVS];
-    BusState *idebus[MAX_IDE_BUS];
+    // BusState *idebus[MAX_IDE_BUS];
     ISADevice *rtc_state;
+    ISADevice *pit = NULL;
+    int pit_isa_irq = 0;
+    qemu_irq pit_alt_irq = NULL;
     // ISADevice *pit;
 
     MemoryRegion *ram_memory;
@@ -317,7 +325,11 @@ void xbox_init_common(MachineState *machine,
     I2CBus *smbus;
     PCIBus *agp_bus;
 
-    pc_cpus_init(pcms);
+    x86_cpus_init(x86ms, pcmc->default_cpu_version);
+
+    if (kvm_enabled() && pcmc->kvmclock_enabled) {
+        kvmclock_create();
+    }
 
     pci_memory = g_new(MemoryRegion, 1);
     memory_region_init(pci_memory, NULL, "pci", UINT64_MAX);
@@ -328,10 +340,9 @@ void xbox_init_common(MachineState *machine,
     /* allocate ram and load rom/bios */
     xbox_memory_init(pcms, system_memory, rom_memory, &ram_memory);
 
-    gsi_state = g_malloc0(sizeof(*gsi_state));
-    pcms->gsi = qemu_allocate_irqs(gsi_handler, gsi_state, GSI_NUM_PINS);
+    gsi_state = pc_gsi_create(&x86ms->gsi, pcmc->pci_enabled);
 
-    xbox_pci_init(pcms->gsi,
+    xbox_pci_init(x86ms->gsi,
                   get_system_memory(), get_system_io(),
                   pci_memory, ram_memory,
                   &pci_bus,
@@ -341,30 +352,33 @@ void xbox_init_common(MachineState *machine,
 
     pcms->bus = pci_bus;
 
-    isa_bus_irqs(isa_bus, pcms->gsi);
+    isa_bus_irqs(isa_bus, x86ms->gsi);
 
-    i8259 = i8259_init(isa_bus, pc_allocate_cpu_irq());
+    pc_i8259_create(isa_bus, gsi_state->i8259_irq);
 
-    for (i = 0; i < ISA_NUM_IRQS; i++) {
-        gsi_state->i8259_irq[i] = i8259[i];
+    if (tcg_enabled()) {
+        x86_register_ferr_irq(x86ms->gsi[13]);
     }
-    g_free(i8259);
-
-    pc_register_ferr_irq(pcms->gsi[13]);
 
     /* init basic PC hardware */
     pcms->pit_enabled = 1; // XBOX_FIXME: What's the right way to do this?
     rtc_state = mc146818_rtc_init(isa_bus, 2000, NULL);
 
-    // qemu_register_boot_set(pc_boot_set, rtc_state);
-    ISADevice *pit = i8254_pit_init(isa_bus, 0x40, 0, NULL);
+    if (kvm_pit_in_kernel()) {
+        pit = kvm_pit_init(isa_bus, 0x40);
+    } else {
+        pit = i8254_pit_init(isa_bus, 0x40, pit_isa_irq, pit_alt_irq);
+    }
+
+    i8257_dma_init(isa_bus, 0);
 
     pcspk_init(isa_bus, pit);
 
     ide_drive_get(hd, ARRAY_SIZE(hd));
-    PCIDevice *ide_dev = pci_piix3_ide_init(pci_bus, hd, PCI_DEVFN(9, 0));
-    idebus[0] = qdev_get_child_bus(&ide_dev->qdev, "ide.0");
-    idebus[1] = qdev_get_child_bus(&ide_dev->qdev, "ide.1");
+    // PCIDevice *ide_dev = pci_piix3_ide_init(pci_bus, hd, PCI_DEVFN(9, 0));
+    pci_piix3_ide_init(pci_bus, hd, PCI_DEVFN(9, 0));
+    // idebus[0] = qdev_get_child_bus(&ide_dev->qdev, "ide.0");
+    // idebus[1] = qdev_get_child_bus(&ide_dev->qdev, "ide.1");
 
     // xbox bios wants this bit pattern set to mark the data as valid
     uint8_t bits = 0x55;
