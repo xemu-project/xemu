@@ -19,13 +19,23 @@
 #ifndef HW_RISCV_VIRT_H
 #define HW_RISCV_VIRT_H
 
+#include "hw/riscv/riscv_hart.h"
+#include "hw/sysbus.h"
+#include "hw/block/flash.h"
+
+#define TYPE_RISCV_VIRT_MACHINE MACHINE_TYPE_NAME("virt")
+#define RISCV_VIRT_MACHINE(obj) \
+    OBJECT_CHECK(RISCVVirtState, (obj), TYPE_RISCV_VIRT_MACHINE)
+
 typedef struct {
     /*< private >*/
-    SysBusDevice parent_obj;
+    MachineState parent;
 
     /*< public >*/
     RISCVHartArrayState soc;
     DeviceState *plic;
+    PFlashCFI01 *flash[2];
+
     void *fdt;
     int fdt_size;
 } RISCVVirtState;
@@ -38,6 +48,7 @@ enum {
     VIRT_PLIC,
     VIRT_UART0,
     VIRT_VIRTIO,
+    VIRT_FLASH,
     VIRT_DRAM,
     VIRT_PCIE_MMIO,
     VIRT_PCIE_PIO,
@@ -50,10 +61,6 @@ enum {
     VIRTIO_COUNT = 8,
     PCIE_IRQ = 0x20, /* 32 to 35 */
     VIRTIO_NDEV = 0x35 /* Arbitrary maximum number of interrupts */
-};
-
-enum {
-    VIRT_CLOCK_FREQ = 1000000000
 };
 
 #define VIRT_PLIC_HART_CONFIG "MS"
@@ -74,9 +81,9 @@ enum {
                                FDT_PLIC_ADDR_CELLS + FDT_PLIC_INT_CELLS)
 
 #if defined(TARGET_RISCV32)
-#define VIRT_CPU TYPE_RISCV_CPU_RV32GCSU_V1_10_0
+#define VIRT_CPU TYPE_RISCV_CPU_BASE32
 #elif defined(TARGET_RISCV64)
-#define VIRT_CPU TYPE_RISCV_CPU_RV64GCSU_V1_10_0
+#define VIRT_CPU TYPE_RISCV_CPU_BASE64
 #endif
 
 #endif

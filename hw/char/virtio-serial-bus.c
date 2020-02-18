@@ -21,9 +21,13 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu/iov.h"
+#include "qemu/main-loop.h"
+#include "qemu/module.h"
+#include "migration/qemu-file-types.h"
 #include "monitor/monitor.h"
 #include "qemu/error-report.h"
 #include "qemu/queue.h"
+#include "hw/qdev-properties.h"
 #include "hw/sysbus.h"
 #include "trace.h"
 #include "hw/virtio/virtio-serial.h"
@@ -704,7 +708,7 @@ static void virtio_serial_save_device(VirtIODevice *vdev, QEMUFile *f)
         if (elem_popped) {
             qemu_put_be32s(f, &port->iov_idx);
             qemu_put_be64s(f, &port->iov_offset);
-            qemu_put_virtqueue_element(f, port->elem);
+            qemu_put_virtqueue_element(vdev, f, port->elem);
         }
     }
 }

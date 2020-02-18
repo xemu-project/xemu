@@ -12,14 +12,15 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "hw/hw.h"
+#include "hw/irq.h"
 #include "hw/sysbus.h"
+#include "migration/vmstate.h"
 #include "hw/arm/pxa.h"
 #include "hw/sd/sd.h"
-#include "hw/qdev.h"
 #include "hw/qdev-properties.h"
 #include "qemu/error-report.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "trace.h"
 
 #define TYPE_PXA2XX_MMCI "pxa2xx-mmci"

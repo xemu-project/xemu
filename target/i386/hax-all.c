@@ -30,7 +30,8 @@
 #include "qemu-common.h"
 #include "hax-i386.h"
 #include "sysemu/accel.h"
-#include "sysemu/sysemu.h"
+#include "sysemu/reset.h"
+#include "sysemu/runstate.h"
 #include "qemu/main-loop.h"
 #include "hw/boards.h"
 
@@ -67,7 +68,7 @@ int valid_hax_tunnel_size(uint16_t size)
 
 hax_fd hax_vcpu_get_fd(CPUArchState *env)
 {
-    struct hax_vcpu_state *vcpu = ENV_GET_CPU(env)->hax_vcpu;
+    struct hax_vcpu_state *vcpu = env_cpu(env)->hax_vcpu;
     if (!vcpu) {
         return HAX_INVALID_FD;
     }
@@ -409,7 +410,7 @@ static int hax_handle_io(CPUArchState *env, uint32_t df, uint16_t port,
 
 static int hax_vcpu_interrupt(CPUArchState *env)
 {
-    CPUState *cpu = ENV_GET_CPU(env);
+    CPUState *cpu = env_cpu(env);
     struct hax_vcpu_state *vcpu = cpu->hax_vcpu;
     struct hax_tunnel *ht = vcpu->tunnel;
 
@@ -461,7 +462,7 @@ void hax_raise_event(CPUState *cpu)
 static int hax_vcpu_hax_exec(CPUArchState *env)
 {
     int ret = 0;
-    CPUState *cpu = ENV_GET_CPU(env);
+    CPUState *cpu = env_cpu(env);
     X86CPU *x86_cpu = X86_CPU(cpu);
     struct hax_vcpu_state *vcpu = cpu->hax_vcpu;
     struct hax_tunnel *ht = vcpu->tunnel;
@@ -471,11 +472,33 @@ static int hax_vcpu_hax_exec(CPUArchState *env)
         return 0;
     }
 
-    cpu->halted = 0;
-
     if (cpu->interrupt_request & CPU_INTERRUPT_POLL) {
         cpu->interrupt_request &= ~CPU_INTERRUPT_POLL;
         apic_poll_irq(x86_cpu->apic_state);
+    }
+
+    /* After a vcpu is halted (either because it is an AP and has just been
+     * reset, or because it has executed the HLT instruction), it will not be
+     * run (hax_vcpu_run()) until it is unhalted. The next few if blocks check
+     * for events that may change the halted state of this vcpu:
+     *  a) Maskable interrupt, when RFLAGS.IF is 1;
+     *     Note: env->eflags may not reflect the current RFLAGS state, because
+     *           it is not updated after each hax_vcpu_run(). We cannot afford
+     *           to fail to recognize any unhalt-by-maskable-interrupt event
+     *           (in which case the vcpu will halt forever), and yet we cannot
+     *           afford the overhead of hax_vcpu_sync_state(). The current
+     *           solution is to err on the side of caution and have the HLT
+     *           handler (see case HAX_EXIT_HLT below) unconditionally set the
+     *           IF_MASK bit in env->eflags, which, in effect, disables the
+     *           RFLAGS.IF check.
+     *  b) NMI;
+     *  c) INIT signal;
+     *  d) SIPI signal.
+     */
+    if (((cpu->interrupt_request & CPU_INTERRUPT_HARD) &&
+         (env->eflags & IF_MASK)) ||
+        (cpu->interrupt_request & CPU_INTERRUPT_NMI)) {
+        cpu->halted = 0;
     }
 
     if (cpu->interrupt_request & CPU_INTERRUPT_INIT) {
@@ -491,6 +514,16 @@ static int hax_vcpu_hax_exec(CPUArchState *env)
         hax_vcpu_sync_state(env, 0);
         do_cpu_sipi(x86_cpu);
         hax_vcpu_sync_state(env, 1);
+    }
+
+    if (cpu->halted) {
+        /* If this vcpu is halted, we must not ask HAXM to run it. Instead, we
+         * break out of hax_smp_cpu_exec() as if this vcpu had executed HLT.
+         * That way, this vcpu thread will be trapped in qemu_wait_io_event(),
+         * until the vcpu is unhalted.
+         */
+        cpu->exception_index = EXCP_HLT;
+        return 0;
     }
 
     do {
@@ -540,7 +573,7 @@ static int hax_vcpu_hax_exec(CPUArchState *env)
                     ht->_exit_reason);
             qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
             hax_vcpu_sync_state(env, 0);
-            cpu_dump_state(cpu, stderr, fprintf, 0);
+            cpu_dump_state(cpu, stderr, 0);
             ret = -1;
             break;
         case HAX_EXIT_HLT:
@@ -571,7 +604,7 @@ static int hax_vcpu_hax_exec(CPUArchState *env)
             fprintf(stderr, "Unknown exit %x from HAX\n", ht->_exit_status);
             qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
             hax_vcpu_sync_state(env, 0);
-            cpu_dump_state(cpu, stderr, fprintf, 0);
+            cpu_dump_state(cpu, stderr, 0);
             ret = 1;
             break;
         }

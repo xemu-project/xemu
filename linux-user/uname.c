@@ -54,7 +54,7 @@ const char *cpu_to_uname_machine(void *cpu_env)
     return "armv5te" utsname_suffix;
 #elif defined(TARGET_I386) && !defined(TARGET_X86_64)
     /* see arch/x86/kernel/cpu/bugs.c: check_bugs(), 386, 486, 586, 686 */
-    CPUState *cpu = ENV_GET_CPU((CPUX86State *)cpu_env);
+    CPUState *cpu = env_cpu((CPUX86State *)cpu_env);
     int family = object_property_get_int(OBJECT(cpu), "family", NULL);
     if (family == 4) {
         return "i486";
@@ -72,9 +72,8 @@ const char *cpu_to_uname_machine(void *cpu_env)
 
 #define COPY_UTSNAME_FIELD(dest, src) \
   do { \
-      /* __NEW_UTS_LEN doesn't include terminating null */ \
-      (void) strncpy((dest), (src), __NEW_UTS_LEN); \
-      (dest)[__NEW_UTS_LEN] = '\0'; \
+      memcpy((dest), (src), MIN(sizeof(src), sizeof(dest))); \
+      (dest)[sizeof(dest) - 1] = '\0'; \
   } while (0)
 
 int sys_uname(struct new_utsname *buf)

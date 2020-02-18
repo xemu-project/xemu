@@ -29,12 +29,13 @@
 #include <grp.h>
 #include <libgen.h>
 
+#include "qemu-common.h"
 /* Needed early for CONFIG_BSD etc. */
-#include "sysemu/sysemu.h"
 #include "net/slirp.h"
 #include "qemu-options.h"
 #include "qemu/error-report.h"
 #include "qemu/log.h"
+#include "sysemu/runstate.h"
 #include "qemu/cutils.h"
 
 #ifdef CONFIG_LINUX

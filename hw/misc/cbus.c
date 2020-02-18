@@ -23,8 +23,8 @@
 #include "qemu/osdep.h"
 #include "hw/hw.h"
 #include "hw/irq.h"
-#include "hw/devices.h"
-#include "sysemu/sysemu.h"
+#include "hw/misc/cbus.h"
+#include "sysemu/runstate.h"
 
 //#define DEBUG
 

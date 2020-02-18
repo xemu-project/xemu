@@ -17,6 +17,7 @@
 #include "hw/s390x/s390_flic.h"
 #include "hw/s390x/ioinst.h"
 #include "sysemu/kvm.h"
+#include "target/s390x/cpu-qom.h"
 
 /* Channel subsystem constants. */
 #define MAX_DEVNO 65535
@@ -97,6 +98,7 @@ typedef struct CcwDataStream {
     int (*op_handler)(struct CcwDataStream *cds, void *buff, int len,
                       CcwDataStreamOp op);
     hwaddr cda;
+    bool do_skip;
 } CcwDataStream;
 
 /*
@@ -213,6 +215,9 @@ void css_clear_sei_pending(void);
 IOInstEnding s390_ccw_cmd_request(SubchDev *sch);
 IOInstEnding do_subchannel_work_virtual(SubchDev *sub);
 IOInstEnding do_subchannel_work_passthrough(SubchDev *sub);
+
+int s390_ccw_halt(SubchDev *sch);
+int s390_ccw_clear(SubchDev *sch);
 
 typedef enum {
     CSS_IO_ADAPTER_VIRTIO = 0,

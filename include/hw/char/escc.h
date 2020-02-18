@@ -3,6 +3,7 @@
 
 #include "chardev/char-fe.h"
 #include "chardev/char-serial.h"
+#include "hw/sysbus.h"
 #include "ui/input.h"
 
 /* escc.c */
@@ -50,6 +51,7 @@ typedef struct ESCCState {
 
     struct ESCCChannelState chn[2];
     uint32_t it_shift;
+    bool bit_swap;
     MemoryRegion mmio;
     uint32_t disabled;
     uint32_t frequency;

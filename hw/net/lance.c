@@ -36,9 +36,12 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/module.h"
 #include "qemu/timer.h"
 #include "hw/sparc/sparc32_dma.h"
+#include "migration/vmstate.h"
 #include "hw/net/lance.h"
+#include "hw/qdev-properties.h"
 #include "trace.h"
 #include "sysemu/sysemu.h"
 

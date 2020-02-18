@@ -12,19 +12,8 @@
 #ifndef UNICORE32_CPU_H
 #define UNICORE32_CPU_H
 
-#define TARGET_LONG_BITS                32
-#define TARGET_PAGE_BITS                12
-
-#define TARGET_PHYS_ADDR_SPACE_BITS     32
-#define TARGET_VIRT_ADDR_SPACE_BITS     32
-
-#define CPUArchState                struct CPUUniCore32State
-
-#include "qemu-common.h"
 #include "cpu-qom.h"
 #include "exec/cpu-defs.h"
-
-#define NB_MMU_MODES            2
 
 typedef struct CPUUniCore32State {
     /* Regs for current mode.  */
@@ -65,8 +54,6 @@ typedef struct CPUUniCore32State {
         float_status fp_status;
     } ucf64;
 
-    CPU_COMMON
-
     /* Internal CPU feature flags.  */
     uint32_t features;
 
@@ -83,22 +70,14 @@ struct UniCore32CPU {
     CPUState parent_obj;
     /*< public >*/
 
+    CPUNegativeOffsetState neg;
     CPUUniCore32State env;
 };
 
-static inline UniCore32CPU *uc32_env_get_cpu(CPUUniCore32State *env)
-{
-    return container_of(env, UniCore32CPU, env);
-}
-
-#define ENV_GET_CPU(e) CPU(uc32_env_get_cpu(e))
-
-#define ENV_OFFSET offsetof(UniCore32CPU, env)
 
 void uc32_cpu_do_interrupt(CPUState *cpu);
 bool uc32_cpu_exec_interrupt(CPUState *cpu, int int_req);
-void uc32_cpu_dump_state(CPUState *cpu, FILE *f,
-                         fprintf_function cpu_fprintf, int flags);
+void uc32_cpu_dump_state(CPUState *cpu, FILE *f, int flags);
 hwaddr uc32_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
 
 #define ASR_M                   (0x1f)
@@ -162,6 +141,9 @@ static inline int cpu_mmu_index(CPUUniCore32State *env, bool ifetch)
     return (env->uncached_asr & ASR_M) == ASR_MODE_USER ? 1 : 0;
 }
 
+typedef CPUUniCore32State CPUArchState;
+typedef UniCore32CPU ArchCPU;
+
 #include "exec/cpu-all.h"
 
 #define UNICORE32_CPU_TYPE_SUFFIX "-" TYPE_UNICORE32_CPU
@@ -179,8 +161,9 @@ static inline void cpu_get_tb_cpu_state(CPUUniCore32State *env, target_ulong *pc
     }
 }
 
-int uc32_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int size, int rw,
-                              int mmu_idx);
+bool uc32_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+                       MMUAccessType access_type, int mmu_idx,
+                       bool probe, uintptr_t retaddr);
 void uc32_translate_init(void);
 void switch_mode(CPUUniCore32State *, int);
 

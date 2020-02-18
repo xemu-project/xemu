@@ -9,9 +9,11 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/irq.h"
 #include "hw/ssi/imx_spi.h"
-#include "sysemu/sysemu.h"
+#include "migration/vmstate.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 
 #ifndef DEBUG_IMX_SPI
 #define DEBUG_IMX_SPI 0

@@ -11,8 +11,10 @@
 
 #include "qemu/osdep.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 
 #include "hw/misc/imx7_ccm.h"
+#include "migration/vmstate.h"
 
 static void imx7_analog_reset(DeviceState *dev)
 {

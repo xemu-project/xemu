@@ -20,11 +20,11 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
+#include "qemu/module.h"
 #include "qemu/timer.h"
 #include "sysemu/watchdog.h"
-#include "hw/hw.h"
 #include "hw/isa/isa.h"
+#include "migration/vmstate.h"
 
 /*#define IB700_DEBUG 1*/
 

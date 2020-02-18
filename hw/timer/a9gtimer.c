@@ -21,12 +21,17 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/hw.h"
+#include "hw/irq.h"
+#include "hw/qdev-properties.h"
 #include "hw/timer/a9gtimer.h"
+#include "migration/vmstate.h"
 #include "qapi/error.h"
 #include "qemu/timer.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
-#include "qom/cpu.h"
+#include "qemu/module.h"
+#include "hw/core/cpu.h"
 
 #ifndef A9_GTIMER_ERR_DEBUG
 #define A9_GTIMER_ERR_DEBUG 0

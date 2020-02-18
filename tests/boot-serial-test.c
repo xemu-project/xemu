@@ -24,6 +24,17 @@ static const uint8_t kernel_mcf5208[] = {
     0x60, 0xfa                              /* bra.s  loop */
 };
 
+static const uint8_t bios_nextcube[] = {
+    0x06, 0x00, 0x00, 0x00,                 /* Initial SP */
+    0x01, 0x00, 0x00, 0x08,                 /* Initial PC */
+    0x41, 0xf9, 0x02, 0x11, 0x80, 0x00,     /* lea 0x02118000,%a0 */
+    0x10, 0x3c, 0x00, 0x54,                 /* move.b #'T',%d0 */
+    0x11, 0x7c, 0x00, 0x05, 0x00, 0x01,     /* move.b #5,1(%a0)    Sel TXCTRL */
+    0x11, 0x7c, 0x00, 0x68, 0x00, 0x01,     /* move.b #0x68,1(%a0) Enable TX */
+    0x11, 0x40, 0x00, 0x03,                 /* move.b %d0,3(%a0)   Print 'T' */
+    0x60, 0xfa                              /* bra.s  loop */
+};
+
 static const uint8_t kernel_pls3adsp1800[] = {
     0xb0, 0x00, 0x84, 0x00,                 /* imm   0x8400 */
     0x30, 0x60, 0x00, 0x04,                 /* addik r3,r0,4 */
@@ -103,7 +114,8 @@ static testdef_t tests[] = {
     { "ppc64", "pseries",
       "-machine cap-cfpc=broken,cap-sbbc=broken,cap-ibs=broken",
       "Open Firmware" },
-    { "ppc64", "powernv", "-cpu POWER8", "OPAL" },
+    { "ppc64", "powernv8", "", "OPAL" },
+    { "ppc64", "powernv9", "", "OPAL" },
     { "ppc64", "sam460ex", "-device e1000", "8086  100e" },
     { "i386", "isapc", "-cpu qemu32 -device sga", "SGABIOS" },
     { "i386", "pc", "-device sga", "SGABIOS" },
@@ -114,8 +126,9 @@ static testdef_t tests[] = {
     { "sparc", "SS-4", "", "MB86904" },
     { "sparc", "SS-600MP", "", "TMS390Z55" },
     { "sparc64", "sun4u", "", "UltraSPARC" },
-    { "s390x", "s390-ccw-virtio", "", "virtio device" },
+    { "s390x", "s390-ccw-virtio", "", "device" },
     { "m68k", "mcf5208evb", "", "TT", sizeof(kernel_mcf5208), kernel_mcf5208 },
+    { "m68k", "next-cube", "", "TT", sizeof(bios_nextcube), 0, bios_nextcube },
     { "microblaze", "petalogix-s3adsp1800", "", "TT",
       sizeof(kernel_pls3adsp1800), kernel_pls3adsp1800 },
     { "microblazeel", "petalogix-ml605", "", "TT",

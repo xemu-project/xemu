@@ -26,13 +26,14 @@
 #include "cpu.h"
 #include "monitor/monitor.h"
 #include "monitor/hmp-target.h"
+#include "monitor/hmp.h"
 #include "qapi/qmp/qdict.h"
 #include "hw/i386/pc.h"
 #include "sysemu/kvm.h"
 #include "sysemu/sev.h"
-#include "hmp.h"
 #include "qapi/error.h"
 #include "sev_i386.h"
+#include "qapi/qapi-commands-misc-target.h"
 #include "qapi/qapi-commands-misc.h"
 
 /* Perform linear address sign extension */
@@ -664,8 +665,7 @@ void hmp_info_local_apic(Monitor *mon, const QDict *qdict)
         monitor_printf(mon, "No CPU available\n");
         return;
     }
-    x86_cpu_dump_local_apic_state(cs, (FILE *)mon, monitor_fprintf,
-                                  CPU_DUMP_FPU);
+    x86_cpu_dump_local_apic_state(cs, CPU_DUMP_FPU);
 }
 
 void hmp_info_io_apic(Monitor *mon, const QDict *qdict)

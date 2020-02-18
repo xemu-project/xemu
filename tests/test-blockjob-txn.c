@@ -15,6 +15,7 @@
 #include "qemu/main-loop.h"
 #include "block/blockjob_int.h"
 #include "sysemu/block-backend.h"
+#include "qapi/qmp/qdict.h"
 
 typedef struct {
     BlockJob common;
@@ -71,7 +72,6 @@ static const BlockJobDriver test_block_job_driver = {
         .instance_size = sizeof(TestBlockJob),
         .free          = block_job_free,
         .user_resume   = block_job_user_resume,
-        .drain         = block_job_drain,
         .run           = test_block_job_run,
         .clean         = test_block_job_clean,
     },
@@ -96,7 +96,9 @@ static BlockJob *test_block_job_start(unsigned int iterations,
 
     data = g_new0(TestBlockJobCBData, 1);
 
-    bs = bdrv_open("null-co://", NULL, NULL, 0, &error_abort);
+    QDict *opt = qdict_new();
+    qdict_put_str(opt, "file.read-zeroes", "on");
+    bs = bdrv_open("null-co://", NULL, opt, 0, &error_abort);
     g_assert_nonnull(bs);
 
     snprintf(job_id, sizeof(job_id), "job%u", counter++);

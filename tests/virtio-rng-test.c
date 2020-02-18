@@ -9,6 +9,7 @@
 
 #include "qemu/osdep.h"
 #include "libqtest.h"
+#include "qemu/module.h"
 #include "libqos/qgraph.h"
 #include "libqos/virtio-rng.h"
 
@@ -16,13 +17,16 @@
 
 static void rng_hotplug(void *obj, void *data, QGuestAllocator *alloc)
 {
+    QVirtioPCIDevice *dev = obj;
+    QTestState *qts = dev->pdev->bus->qts;
+
     const char *arch = qtest_get_arch();
 
-    qtest_qmp_device_add("virtio-rng-pci", "rng1",
+    qtest_qmp_device_add(qts, "virtio-rng-pci", "rng1",
                          "{'addr': %s}", stringify(PCI_SLOT_HP));
 
     if (strcmp(arch, "i386") == 0 || strcmp(arch, "x86_64") == 0) {
-        qpci_unplug_acpi_device_test("rng1", PCI_SLOT_HP);
+        qpci_unplug_acpi_device_test(qts, "rng1", PCI_SLOT_HP);
     }
 }
 

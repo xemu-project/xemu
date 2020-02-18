@@ -13,15 +13,13 @@
 #include "exec/address-spaces.h"
 #include "exec/ioport.h"
 #include "qemu-common.h"
-#include "strings.h"
 #include "sysemu/accel.h"
 #include "sysemu/whpx.h"
-#include "sysemu/sysemu.h"
 #include "sysemu/cpus.h"
+#include "sysemu/runstate.h"
 #include "qemu/main-loop.h"
 #include "hw/boards.h"
 #include "qemu/error-report.h"
-#include "qemu/queue.h"
 #include "qapi/error.h"
 #include "migration/blocker.h"
 #include "whp-dispatch.h"
@@ -1397,7 +1395,7 @@ static int whpx_accel_init(MachineState *ms)
     }
 
     memset(&prop, 0, sizeof(WHV_PARTITION_PROPERTY));
-    prop.ProcessorCount = smp_cpus;
+    prop.ProcessorCount = ms->smp.cpus;
     hr = whp_dispatch.WHvSetPartitionProperty(
         whpx->partition,
         WHvPartitionPropertyCodeProcessorCount,
@@ -1406,7 +1404,7 @@ static int whpx_accel_init(MachineState *ms)
 
     if (FAILED(hr)) {
         error_report("WHPX: Failed to set partition core count to %d,"
-                     " hr=%08lx", smp_cores, hr);
+                     " hr=%08lx", ms->smp.cores, hr);
         ret = -EINVAL;
         goto error;
     }

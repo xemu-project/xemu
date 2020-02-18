@@ -17,6 +17,7 @@
 #include "qemu/log.h"
 #include "exec/cpu_ldst.h"
 #include "exec/translator.h"
+#include "qemu/qemu-print.h"
 
 #include "exec/helper-proto.h"
 #include "exec/helper-gen.h"
@@ -179,7 +180,7 @@ static void store_reg(DisasContext *s, int reg, TCGv var)
 #define UCOP_SET_L              UCOP_SET(24)
 #define UCOP_SET_S              UCOP_SET(24)
 
-#define ILLEGAL         cpu_abort(CPU(cpu),                             \
+#define ILLEGAL         cpu_abort(env_cpu(env),                         \
                         "Illegal UniCore32 instruction %x at line %d!", \
                         insn, __LINE__)
 
@@ -187,7 +188,6 @@ static void store_reg(DisasContext *s, int reg, TCGv var)
 static void disas_cp0_insn(CPUUniCore32State *env, DisasContext *s,
         uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
     TCGv tmp, tmp2, tmp3;
     if ((insn & 0xfe000000) == 0xe0000000) {
         tmp2 = new_tmp();
@@ -213,7 +213,6 @@ static void disas_cp0_insn(CPUUniCore32State *env, DisasContext *s,
 static void disas_ocd_insn(CPUUniCore32State *env, DisasContext *s,
         uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
     TCGv tmp;
 
     if ((insn & 0xff003fff) == 0xe1000400) {
@@ -681,7 +680,6 @@ static inline long ucf64_reg_offset(int reg)
 /* UniCore-F64 single load/store I_offset */
 static void do_ucf64_ldst_i(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
     int offset;
     TCGv tmp;
     TCGv addr;
@@ -728,7 +726,6 @@ static void do_ucf64_ldst_i(CPUUniCore32State *env, DisasContext *s, uint32_t in
 /* UniCore-F64 load/store multiple words */
 static void do_ucf64_ldst_m(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
     unsigned int i;
     int j, n, freg;
     TCGv tmp;
@@ -814,7 +811,6 @@ static void do_ucf64_ldst_m(CPUUniCore32State *env, DisasContext *s, uint32_t in
 /* UniCore-F64 mrc/mcr */
 static void do_ucf64_trans(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
     TCGv tmp;
 
     if ((insn & 0xfe0003ff) == 0xe2000000) {
@@ -879,8 +875,6 @@ static void do_ucf64_trans(CPUUniCore32State *env, DisasContext *s, uint32_t ins
 /* UniCore-F64 convert instructions */
 static void do_ucf64_fcvt(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
-
     if (UCOP_UCF64_FMT == 3) {
         ILLEGAL;
     }
@@ -947,8 +941,6 @@ static void do_ucf64_fcvt(CPUUniCore32State *env, DisasContext *s, uint32_t insn
 /* UniCore-F64 compare instructions */
 static void do_ucf64_fcmp(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
-
     if (UCOP_SET(25)) {
         ILLEGAL;
     }
@@ -1027,8 +1019,6 @@ static void do_ucf64_fcmp(CPUUniCore32State *env, DisasContext *s, uint32_t insn
 /* UniCore-F64 data processing */
 static void do_ucf64_datap(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
-
     if (UCOP_UCF64_FMT == 3) {
         ILLEGAL;
     }
@@ -1062,8 +1052,6 @@ static void do_ucf64_datap(CPUUniCore32State *env, DisasContext *s, uint32_t ins
 /* Disassemble an F64 instruction */
 static void disas_ucf64_insn(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
-
     if (!UCOP_SET(29)) {
         if (UCOP_SET(26)) {
             do_ucf64_ldst_m(env, s, insn);
@@ -1161,8 +1149,6 @@ static void gen_exception_return(DisasContext *s, TCGv pc)
 static void disas_coproc_insn(CPUUniCore32State *env, DisasContext *s,
         uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
-
     switch (UCOP_CPNUM) {
 #ifndef CONFIG_USER_ONLY
     case 0:
@@ -1177,14 +1163,13 @@ static void disas_coproc_insn(CPUUniCore32State *env, DisasContext *s,
         break;
     default:
         /* Unknown coprocessor. */
-        cpu_abort(CPU(cpu), "Unknown coprocessor!");
+        cpu_abort(env_cpu(env), "Unknown coprocessor!");
     }
 }
 
 /* data processing instructions */
 static void do_datap(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
     TCGv tmp;
     TCGv tmp2;
     int logic_cc;
@@ -1418,7 +1403,6 @@ static void do_mult(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 /* miscellaneous instructions */
 static void do_misc(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
     unsigned int val;
     TCGv tmp;
 
@@ -1544,7 +1528,6 @@ static void do_ldst_ir(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 /* SWP instruction */
 static void do_swap(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
     TCGv addr;
     TCGv tmp;
     TCGv tmp2;
@@ -1572,7 +1555,6 @@ static void do_swap(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 /* load/store hw/sb */
 static void do_ldst_hwsb(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
     TCGv addr;
     TCGv tmp;
 
@@ -1625,7 +1607,6 @@ static void do_ldst_hwsb(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 /* load/store multiple words */
 static void do_ldst_m(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
     unsigned int val, i, mmu_idx;
     int j, n, reg, user, loaded_base;
     TCGv tmp;
@@ -1767,7 +1748,6 @@ static void do_ldst_m(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 /* branch (and link) */
 static void do_branch(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
     unsigned int val;
     int32_t offset;
     TCGv tmp;
@@ -1797,7 +1777,6 @@ static void do_branch(CPUUniCore32State *env, DisasContext *s, uint32_t insn)
 
 static void disas_uc32_insn(CPUUniCore32State *env, DisasContext *s)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
     unsigned int insn;
 
     insn = cpu_ldl_code(env, s->pc);
@@ -1870,14 +1849,13 @@ static void disas_uc32_insn(CPUUniCore32State *env, DisasContext *s)
 }
 
 /* generate intermediate code for basic block 'tb'.  */
-void gen_intermediate_code(CPUState *cs, TranslationBlock *tb)
+void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
 {
     CPUUniCore32State *env = cs->env_ptr;
     DisasContext dc1, *dc = &dc1;
     target_ulong pc_start;
     uint32_t page_start;
     int num_insns;
-    int max_insns;
 
     /* generate intermediate code */
     num_temps = 0;
@@ -1896,13 +1874,6 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb)
     cpu_F1d = tcg_temp_new_i64();
     page_start = pc_start & TARGET_PAGE_MASK;
     num_insns = 0;
-    max_insns = tb_cflags(tb) & CF_COUNT_MASK;
-    if (max_insns == 0) {
-        max_insns = CF_COUNT_MASK;
-    }
-    if (max_insns > TCG_MAX_INSNS) {
-        max_insns = TCG_MAX_INSNS;
-    }
 
 #ifndef CONFIG_USER_ONLY
     if ((env->uncached_asr & ASR_M) == ASR_MODE_USER) {
@@ -1960,7 +1931,6 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb)
                code.  */
             cpu_abort(cs, "IO on conditional branch instruction");
         }
-        gen_io_end();
     }
 
     /* At this stage dc->condjmp will only be set when the skipped
@@ -2043,8 +2013,7 @@ static const char *cpu_mode_names[16] = {
 
 #undef UCF64_DUMP_STATE
 #ifdef UCF64_DUMP_STATE
-static void cpu_dump_state_ucf64(CPUUniCore32State *env, FILE *f,
-        fprintf_function cpu_fprintf, int flags)
+static void cpu_dump_state_ucf64(CPUUniCore32State *env, int flags)
 {
     int i;
     union {
@@ -2064,20 +2033,19 @@ static void cpu_dump_state_ucf64(CPUUniCore32State *env, FILE *f,
         s0.i = d.l.lower;
         s1.i = d.l.upper;
         d0.f64 = d.d;
-        cpu_fprintf(f, "s%02d=%08x(%8g) s%02d=%08x(%8g)",
-                    i * 2, (int)s0.i, s0.s,
-                    i * 2 + 1, (int)s1.i, s1.s);
-        cpu_fprintf(f, " d%02d=%" PRIx64 "(%8g)\n",
-                    i, (uint64_t)d0.f64, d0.d);
+        qemu_fprintf(f, "s%02d=%08x(%8g) s%02d=%08x(%8g)",
+                     i * 2, (int)s0.i, s0.s,
+                     i * 2 + 1, (int)s1.i, s1.s);
+        qemu_fprintf(f, " d%02d=%" PRIx64 "(%8g)\n",
+                     i, (uint64_t)d0.f64, d0.d);
     }
-    cpu_fprintf(f, "FPSCR: %08x\n", (int)env->ucf64.xregs[UC32_UCF64_FPSCR]);
+    qemu_fprintf(f, "FPSCR: %08x\n", (int)env->ucf64.xregs[UC32_UCF64_FPSCR]);
 }
 #else
 #define cpu_dump_state_ucf64(env, file, pr, flags)      do { } while (0)
 #endif
 
-void uc32_cpu_dump_state(CPUState *cs, FILE *f,
-                         fprintf_function cpu_fprintf, int flags)
+void uc32_cpu_dump_state(CPUState *cs, FILE *f, int flags)
 {
     UniCore32CPU *cpu = UNICORE32_CPU(cs);
     CPUUniCore32State *env = &cpu->env;
@@ -2085,21 +2053,21 @@ void uc32_cpu_dump_state(CPUState *cs, FILE *f,
     uint32_t psr;
 
     for (i = 0; i < 32; i++) {
-        cpu_fprintf(f, "R%02d=%08x", i, env->regs[i]);
+        qemu_fprintf(f, "R%02d=%08x", i, env->regs[i]);
         if ((i % 4) == 3) {
-            cpu_fprintf(f, "\n");
+            qemu_fprintf(f, "\n");
         } else {
-            cpu_fprintf(f, " ");
+            qemu_fprintf(f, " ");
         }
     }
     psr = cpu_asr_read(env);
-    cpu_fprintf(f, "PSR=%08x %c%c%c%c %s\n",
-                psr,
-                psr & (1 << 31) ? 'N' : '-',
-                psr & (1 << 30) ? 'Z' : '-',
-                psr & (1 << 29) ? 'C' : '-',
-                psr & (1 << 28) ? 'V' : '-',
-                cpu_mode_names[psr & 0xf]);
+    qemu_fprintf(f, "PSR=%08x %c%c%c%c %s\n",
+                 psr,
+                 psr & (1 << 31) ? 'N' : '-',
+                 psr & (1 << 30) ? 'Z' : '-',
+                 psr & (1 << 29) ? 'C' : '-',
+                 psr & (1 << 28) ? 'V' : '-',
+                 cpu_mode_names[psr & 0xf]);
 
     if (flags & CPU_DUMP_FPU) {
         cpu_dump_state_ucf64(env, f, cpu_fprintf, flags);

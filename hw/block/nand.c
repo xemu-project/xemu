@@ -20,11 +20,13 @@
 
 #include "qemu/osdep.h"
 #include "hw/hw.h"
+#include "hw/qdev-properties.h"
 #include "hw/block/flash.h"
 #include "sysemu/block-backend.h"
-#include "hw/qdev.h"
+#include "migration/vmstate.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
+#include "qemu/module.h"
 
 # define NAND_CMD_READ0		0x00
 # define NAND_CMD_READ1		0x01

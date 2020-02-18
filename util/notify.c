@@ -14,7 +14,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/notify.h"
 
 void notifier_list_init(NotifierList *list)
@@ -39,6 +38,11 @@ void notifier_list_notify(NotifierList *list, void *data)
     QLIST_FOREACH_SAFE(notifier, &list->notifiers, node, next) {
         notifier->notify(notifier, data);
     }
+}
+
+bool notifier_list_empty(NotifierList *list)
+{
+    return QLIST_EMPTY(&list->notifiers);
 }
 
 void notifier_with_return_list_init(NotifierWithReturnList *list)

@@ -8,8 +8,10 @@
  */
 
 #include "qemu/osdep.h"
-#include "libqtest.h"
+#include "qemu-common.h"
+#include "libqtest-single.h"
 #include "qemu/iov.h"
+#include "qemu/module.h"
 #include "qapi/qmp/qdict.h"
 #include "hw/virtio/virtio-net.h"
 #include "libqos/qgraph.h"
@@ -31,6 +33,7 @@ static void rx_test(QVirtioDevice *dev,
                     QGuestAllocator *alloc, QVirtQueue *vq,
                     int socket)
 {
+    QTestState *qts = global_qtest;
     uint64_t req_addr;
     uint32_t free_head;
     char test[] = "TEST";
@@ -49,13 +52,14 @@ static void rx_test(QVirtioDevice *dev,
 
     req_addr = guest_alloc(alloc, 64);
 
-    free_head = qvirtqueue_add(vq, req_addr, 64, true, false);
-    qvirtqueue_kick(dev, vq, free_head);
+    free_head = qvirtqueue_add(qts, vq, req_addr, 64, true, false);
+    qvirtqueue_kick(qts, dev, vq, free_head);
 
     ret = iov_send(socket, iov, 2, 0, sizeof(len) + sizeof(test));
     g_assert_cmpint(ret, ==, sizeof(test) + sizeof(len));
 
-    qvirtio_wait_used_elem(dev, vq, free_head, NULL, QVIRTIO_NET_TIMEOUT_US);
+    qvirtio_wait_used_elem(qts, dev, vq, free_head, NULL,
+                           QVIRTIO_NET_TIMEOUT_US);
     memread(req_addr + VNET_HDR_SIZE, buffer, sizeof(test));
     g_assert_cmpstr(buffer, ==, "TEST");
 
@@ -66,6 +70,7 @@ static void tx_test(QVirtioDevice *dev,
                     QGuestAllocator *alloc, QVirtQueue *vq,
                     int socket)
 {
+    QTestState *qts = global_qtest;
     uint64_t req_addr;
     uint32_t free_head;
     uint32_t len;
@@ -75,10 +80,11 @@ static void tx_test(QVirtioDevice *dev,
     req_addr = guest_alloc(alloc, 64);
     memwrite(req_addr + VNET_HDR_SIZE, "TEST", 4);
 
-    free_head = qvirtqueue_add(vq, req_addr, 64, false, false);
-    qvirtqueue_kick(dev, vq, free_head);
+    free_head = qvirtqueue_add(qts, vq, req_addr, 64, false, false);
+    qvirtqueue_kick(qts, dev, vq, free_head);
 
-    qvirtio_wait_used_elem(dev, vq, free_head, NULL, QVIRTIO_NET_TIMEOUT_US);
+    qvirtio_wait_used_elem(qts, dev, vq, free_head, NULL,
+                           QVIRTIO_NET_TIMEOUT_US);
     guest_free(alloc, req_addr);
 
     ret = qemu_recv(socket, &len, sizeof(len), 0);
@@ -93,6 +99,7 @@ static void rx_stop_cont_test(QVirtioDevice *dev,
                               QGuestAllocator *alloc, QVirtQueue *vq,
                               int socket)
 {
+    QTestState *qts = global_qtest;
     uint64_t req_addr;
     uint32_t free_head;
     char test[] = "TEST";
@@ -112,8 +119,8 @@ static void rx_stop_cont_test(QVirtioDevice *dev,
 
     req_addr = guest_alloc(alloc, 64);
 
-    free_head = qvirtqueue_add(vq, req_addr, 64, true, false);
-    qvirtqueue_kick(dev, vq, free_head);
+    free_head = qvirtqueue_add(qts, vq, req_addr, 64, true, false);
+    qvirtqueue_kick(qts, dev, vq, free_head);
 
     rsp = qmp("{ 'execute' : 'stop'}");
     qobject_unref(rsp);
@@ -129,7 +136,8 @@ static void rx_stop_cont_test(QVirtioDevice *dev,
     rsp = qmp("{ 'execute' : 'cont'}");
     qobject_unref(rsp);
 
-    qvirtio_wait_used_elem(dev, vq, free_head, NULL, QVIRTIO_NET_TIMEOUT_US);
+    qvirtio_wait_used_elem(qts, dev, vq, free_head, NULL,
+                           QVIRTIO_NET_TIMEOUT_US);
     memread(req_addr + VNET_HDR_SIZE, buffer, sizeof(test));
     g_assert_cmpstr(buffer, ==, "TEST");
 
@@ -162,13 +170,15 @@ static void stop_cont_test(void *obj, void *data, QGuestAllocator *t_alloc)
 
 static void hotplug(void *obj, void *data, QGuestAllocator *t_alloc)
 {
+    QVirtioPCIDevice *dev = obj;
+    QTestState *qts = dev->pdev->bus->qts;
     const char *arch = qtest_get_arch();
 
-    qtest_qmp_device_add("virtio-net-pci", "net1",
+    qtest_qmp_device_add(qts, "virtio-net-pci", "net1",
                          "{'addr': %s}", stringify(PCI_SLOT_HP));
 
     if (strcmp(arch, "i386") == 0 || strcmp(arch, "x86_64") == 0) {
-        qpci_unplug_acpi_device_test("net1", PCI_SLOT_HP);
+        qpci_unplug_acpi_device_test(qts, "net1", PCI_SLOT_HP);
     }
 }
 
@@ -180,21 +190,72 @@ static void announce_self(void *obj, void *data, QGuestAllocator *t_alloc)
     QDict *rsp;
     int ret;
     uint16_t *proto = (uint16_t *)&buffer[12];
+    size_t total_received = 0;
+    uint64_t start, now, last_rxt, deadline;
 
+    /* Send a set of packets over a few second period */
     rsp = qmp("{ 'execute' : 'announce-self', "
                   " 'arguments': {"
-                      " 'initial': 50, 'max': 550,"
-                      " 'rounds': 10, 'step': 50 } }");
+                      " 'initial': 20, 'max': 100,"
+                      " 'rounds': 300, 'step': 10, 'id': 'bob' } }");
     assert(!qdict_haskey(rsp, "error"));
     qobject_unref(rsp);
 
-    /* Catch the packet and make sure it's a RARP */
+    /* Catch the first packet and make sure it's a RARP */
     ret = qemu_recv(sv[0], &len, sizeof(len), 0);
     g_assert_cmpint(ret, ==,  sizeof(len));
     len = ntohl(len);
 
     ret = qemu_recv(sv[0], buffer, len, 0);
     g_assert_cmpint(*proto, ==, htons(ETH_P_RARP));
+
+    /*
+     * Stop the announcment by settings rounds to 0 on the
+     * existing timer.
+     */
+    rsp = qmp("{ 'execute' : 'announce-self', "
+                  " 'arguments': {"
+                      " 'initial': 20, 'max': 100,"
+                      " 'rounds': 0, 'step': 10, 'id': 'bob' } }");
+    assert(!qdict_haskey(rsp, "error"));
+    qobject_unref(rsp);
+
+    /* Now make sure the packets stop */
+
+    /* Times are in us */
+    start = g_get_monotonic_time();
+    /* 30 packets, max gap 100ms, * 4 for wiggle */
+    deadline = start + 1000 * (100 * 30 * 4);
+    last_rxt = start;
+
+    while (true) {
+        int saved_err;
+        ret = qemu_recv(sv[0], buffer, 60, MSG_DONTWAIT);
+        saved_err = errno;
+        now = g_get_monotonic_time();
+        g_assert_cmpint(now, <, deadline);
+
+        if (ret >= 0) {
+            if (ret) {
+                last_rxt = now;
+            }
+            total_received += ret;
+
+            /* Check it's not spewing loads */
+            g_assert_cmpint(total_received, <, 60 * 30 * 2);
+        } else {
+            g_assert_cmpint(saved_err, ==, EAGAIN);
+
+            /* 400ms, i.e. 4 worst case gaps */
+            if ((now - last_rxt) > (1000 * 100 * 4)) {
+                /* Nothings arrived for a while - must have stopped */
+                break;
+            };
+
+            /* 100ms */
+            g_usleep(1000 * 100);
+        }
+    };
 }
 
 static void virtio_net_test_cleanup(void *sockets)
@@ -228,19 +289,20 @@ static void large_tx(void *obj, void *data, QGuestAllocator *t_alloc)
     uint64_t req_addr;
     uint32_t free_head;
     size_t alloc_size = (size_t)data / 64;
+    QTestState *qts = global_qtest;
     int i;
 
     /* Bypass the limitation by pointing several descriptors to a single
      * smaller area */
     req_addr = guest_alloc(t_alloc, alloc_size);
-    free_head = qvirtqueue_add(vq, req_addr, alloc_size, false, true);
+    free_head = qvirtqueue_add(qts, vq, req_addr, alloc_size, false, true);
 
     for (i = 0; i < 64; i++) {
-        qvirtqueue_add(vq, req_addr, alloc_size, false, i != 63);
+        qvirtqueue_add(qts, vq, req_addr, alloc_size, false, i != 63);
     }
-    qvirtqueue_kick(dev->vdev, vq, free_head);
+    qvirtqueue_kick(qts, dev->vdev, vq, free_head);
 
-    qvirtio_wait_used_elem(dev->vdev, vq, free_head, NULL,
+    qvirtio_wait_used_elem(qts, dev->vdev, vq, free_head, NULL,
                            QVIRTIO_NET_TIMEOUT_US);
     guest_free(t_alloc, req_addr);
 }

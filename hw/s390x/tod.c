@@ -12,7 +12,9 @@
 #include "hw/s390x/tod.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
+#include "qemu/module.h"
 #include "sysemu/kvm.h"
+#include "migration/qemu-file-types.h"
 #include "migration/register.h"
 
 void s390_init_tod(void)
@@ -99,7 +101,7 @@ static void s390_tod_realize(DeviceState *dev, Error **errp)
     S390TODState *td = S390_TOD(dev);
 
     /* Legacy migration interface */
-    register_savevm_live(NULL, "todclock", 0, 1, &savevm_tod, td);
+    register_savevm_live("todclock", 0, 1, &savevm_tod, td);
 }
 
 static void s390_tod_class_init(ObjectClass *oc, void *data)

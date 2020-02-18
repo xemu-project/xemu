@@ -548,7 +548,7 @@ static void tcg_out_sh32(TCGContext* s, S390Opcode op, TCGReg dest,
     tcg_out_insn_RS(s, op, dest, sh_reg, 0, sh_imm);
 }
 
-static void tcg_out_mov(TCGContext *s, TCGType type, TCGReg dst, TCGReg src)
+static bool tcg_out_mov(TCGContext *s, TCGType type, TCGReg dst, TCGReg src)
 {
     if (src != dst) {
         if (type == TCG_TYPE_I32) {
@@ -557,6 +557,7 @@ static void tcg_out_mov(TCGContext *s, TCGType type, TCGReg dst, TCGReg src)
             tcg_out_insn(s, RRE, LGR, dst, src);
         }
     }
+    return true;
 }
 
 static const S390Opcode lli_insns[4] = {
@@ -1429,7 +1430,7 @@ static void tcg_out_call(TCGContext *s, tcg_insn_unit *dest)
     }
 }
 
-static void tcg_out_qemu_ld_direct(TCGContext *s, TCGMemOp opc, TCGReg data,
+static void tcg_out_qemu_ld_direct(TCGContext *s, MemOp opc, TCGReg data,
                                    TCGReg base, TCGReg index, int disp)
 {
     switch (opc & (MO_SSIZE | MO_BSWAP)) {
@@ -1488,7 +1489,7 @@ static void tcg_out_qemu_ld_direct(TCGContext *s, TCGMemOp opc, TCGReg data,
     }
 }
 
-static void tcg_out_qemu_st_direct(TCGContext *s, TCGMemOp opc, TCGReg data,
+static void tcg_out_qemu_st_direct(TCGContext *s, MemOp opc, TCGReg data,
                                    TCGReg base, TCGReg index, int disp)
 {
     switch (opc & (MO_SIZE | MO_BSWAP)) {
@@ -1537,23 +1538,22 @@ static void tcg_out_qemu_st_direct(TCGContext *s, TCGMemOp opc, TCGReg data,
 #if defined(CONFIG_SOFTMMU)
 #include "tcg-ldst.inc.c"
 
-/* We're expecting to use a 20-bit signed offset on the tlb memory ops.  */
-QEMU_BUILD_BUG_ON(offsetof(CPUArchState, tlb_mask[NB_MMU_MODES - 1])
-                  > 0x7ffff);
-QEMU_BUILD_BUG_ON(offsetof(CPUArchState, tlb_table[NB_MMU_MODES - 1])
-                  > 0x7ffff);
+/* We're expecting to use a 20-bit negative offset on the tlb memory ops.  */
+QEMU_BUILD_BUG_ON(TLB_MASK_TABLE_OFS(0) > 0);
+QEMU_BUILD_BUG_ON(TLB_MASK_TABLE_OFS(0) < -(1 << 19));
 
 /* Load and compare a TLB entry, leaving the flags set.  Loads the TLB
    addend into R2.  Returns a register with the santitized guest address.  */
-static TCGReg tcg_out_tlb_read(TCGContext* s, TCGReg addr_reg, TCGMemOp opc,
+static TCGReg tcg_out_tlb_read(TCGContext *s, TCGReg addr_reg, MemOp opc,
                                int mem_index, bool is_ld)
 {
     unsigned s_bits = opc & MO_SIZE;
     unsigned a_bits = get_alignment_bits(opc);
     unsigned s_mask = (1 << s_bits) - 1;
     unsigned a_mask = (1 << a_bits) - 1;
-    int mask_off = offsetof(CPUArchState, tlb_mask[mem_index]);
-    int table_off = offsetof(CPUArchState, tlb_table[mem_index]);
+    int fast_off = TLB_MASK_TABLE_OFS(mem_index);
+    int mask_off = fast_off + offsetof(CPUTLBDescFast, mask);
+    int table_off = fast_off + offsetof(CPUTLBDescFast, table);
     int ofs, a_off;
     uint64_t tlb_mask;
 
@@ -1609,16 +1609,17 @@ static void add_qemu_ldst_label(TCGContext *s, bool is_ld, TCGMemOpIdx oi,
     label->label_ptr[0] = label_ptr;
 }
 
-static void tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
+static bool tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
 {
     TCGReg addr_reg = lb->addrlo_reg;
     TCGReg data_reg = lb->datalo_reg;
     TCGMemOpIdx oi = lb->oi;
-    TCGMemOp opc = get_memop(oi);
+    MemOp opc = get_memop(oi);
 
-    bool ok = patch_reloc(lb->label_ptr[0], R_390_PC16DBL,
-                          (intptr_t)s->code_ptr, 2);
-    tcg_debug_assert(ok);
+    if (!patch_reloc(lb->label_ptr[0], R_390_PC16DBL,
+                     (intptr_t)s->code_ptr, 2)) {
+        return false;
+    }
 
     tcg_out_mov(s, TCG_TYPE_PTR, TCG_REG_R2, TCG_AREG0);
     if (TARGET_LONG_BITS == 64) {
@@ -1630,18 +1631,20 @@ static void tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
     tcg_out_mov(s, TCG_TYPE_I64, data_reg, TCG_REG_R2);
 
     tgen_gotoi(s, S390_CC_ALWAYS, lb->raddr);
+    return true;
 }
 
-static void tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
+static bool tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
 {
     TCGReg addr_reg = lb->addrlo_reg;
     TCGReg data_reg = lb->datalo_reg;
     TCGMemOpIdx oi = lb->oi;
-    TCGMemOp opc = get_memop(oi);
+    MemOp opc = get_memop(oi);
 
-    bool ok = patch_reloc(lb->label_ptr[0], R_390_PC16DBL,
-                          (intptr_t)s->code_ptr, 2);
-    tcg_debug_assert(ok);
+    if (!patch_reloc(lb->label_ptr[0], R_390_PC16DBL,
+                     (intptr_t)s->code_ptr, 2)) {
+        return false;
+    }
 
     tcg_out_mov(s, TCG_TYPE_PTR, TCG_REG_R2, TCG_AREG0);
     if (TARGET_LONG_BITS == 64) {
@@ -1668,6 +1671,7 @@ static void tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *lb)
     tcg_out_call(s, qemu_st_helpers[opc & (MO_BSWAP | MO_SIZE)]);
 
     tgen_gotoi(s, S390_CC_ALWAYS, lb->raddr);
+    return true;
 }
 #else
 static void tcg_prepare_user_ldst(TCGContext *s, TCGReg *addr_reg,
@@ -1690,7 +1694,7 @@ static void tcg_prepare_user_ldst(TCGContext *s, TCGReg *addr_reg,
 static void tcg_out_qemu_ld(TCGContext* s, TCGReg data_reg, TCGReg addr_reg,
                             TCGMemOpIdx oi)
 {
-    TCGMemOp opc = get_memop(oi);
+    MemOp opc = get_memop(oi);
 #ifdef CONFIG_SOFTMMU
     unsigned mem_index = get_mmuidx(oi);
     tcg_insn_unit *label_ptr;
@@ -1717,7 +1721,7 @@ static void tcg_out_qemu_ld(TCGContext* s, TCGReg data_reg, TCGReg addr_reg,
 static void tcg_out_qemu_st(TCGContext* s, TCGReg data_reg, TCGReg addr_reg,
                             TCGMemOpIdx oi)
 {
-    TCGMemOp opc = get_memop(oi);
+    MemOp opc = get_memop(oi);
 #ifdef CONFIG_SOFTMMU
     unsigned mem_index = get_mmuidx(oi);
     tcg_insn_unit *label_ptr;

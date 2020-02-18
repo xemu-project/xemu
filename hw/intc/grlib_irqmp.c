@@ -3,7 +3,7 @@
  *
  * (Multiprocessor and extended interrupt not supported)
  *
- * Copyright (c) 2010-2011 AdaCore
+ * Copyright (c) 2010-2019 AdaCore
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,10 +28,12 @@
 #include "hw/sysbus.h"
 #include "cpu.h"
 
+#include "hw/qdev-properties.h"
 #include "hw/sparc/grlib.h"
 
 #include "trace.h"
 #include "qapi/error.h"
+#include "qemu/module.h"
 
 #define IRQMP_MAX_CPU 16
 #define IRQMP_REG_SIZE 256      /* Size of memory mapped registers */
@@ -47,7 +49,6 @@
 #define FORCE_OFFSET     0x80
 #define EXTENDED_OFFSET  0xC0
 
-#define TYPE_GRLIB_IRQMP "grlib,irqmp"
 #define GRLIB_IRQMP(obj) OBJECT_CHECK(IRQMP, (obj), TYPE_GRLIB_IRQMP)
 
 typedef struct IRQMPState IRQMPState;

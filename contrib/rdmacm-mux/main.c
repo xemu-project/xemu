@@ -14,16 +14,16 @@
  */
 
 #include "qemu/osdep.h"
-#include "sys/poll.h"
-#include "sys/ioctl.h"
-#include "pthread.h"
-#include "syslog.h"
+#include <sys/poll.h>
+#include <sys/ioctl.h>
+#include <pthread.h>
+#include <syslog.h>
 
-#include "infiniband/verbs.h"
-#include "infiniband/umad.h"
-#include "infiniband/umad_types.h"
-#include "infiniband/umad_sa.h"
-#include "infiniband/umad_cm.h"
+#include <infiniband/verbs.h>
+#include <infiniband/umad.h>
+#include <infiniband/umad_types.h>
+#include <infiniband/umad_sa.h>
+#include <infiniband/umad_cm.h>
 
 #include "rdmacm-mux.h"
 
@@ -115,7 +115,7 @@ static void parse_args(int argc, char *argv[])
 
         case 's':
             /* This is temporary, final name will build below */
-            strncpy(unix_socket_path, optarg, SOCKET_PATH_MAX);
+            strncpy(unix_socket_path, optarg, SOCKET_PATH_MAX - 1);
             break;
 
         case 'p':

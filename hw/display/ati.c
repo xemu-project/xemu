@@ -16,14 +16,18 @@
  * No 3D at all yet (maybe after 2D works, but feel free to improve it)
  */
 
+#include "qemu/osdep.h"
 #include "ati_int.h"
 #include "ati_regs.h"
+#include "vga-access.h"
+#include "hw/qdev-properties.h"
 #include "vga_regs.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
-#include "hw/hw.h"
 #include "ui/console.h"
+#include "hw/display/i2c-ddc.h"
 #include "trace.h"
 
 #define ATI_DEBUG_HW_CURSOR 0
@@ -47,6 +51,7 @@ static void ati_vga_switch_mode(ATIVGAState *s)
         s->mode = EXT_MODE;
         if (s->regs.crtc_gen_cntl & CRTC2_EN) {
             /* CRT controller enabled, use CRTC values */
+            /* FIXME Should these be the same as VGA CRTC regs? */
             uint32_t offs = s->regs.crtc_offset & 0x07ffffff;
             int stride = (s->regs.crtc_pitch & 0x7ff) * 8;
             int bpp = 0;
@@ -86,6 +91,9 @@ static void ati_vga_switch_mode(ATIVGAState *s)
             DPRINTF("Switching to %dx%d %d %d @ %x\n", h, v, stride, bpp, offs);
             vbe_ioport_write_index(&s->vga, 0, VBE_DISPI_INDEX_ENABLE);
             vbe_ioport_write_data(&s->vga, 0, VBE_DISPI_DISABLED);
+            s->vga.big_endian_fb = (s->regs.config_cntl & APER_0_ENDIAN ||
+                                    s->regs.config_cntl & APER_1_ENDIAN ?
+                                    true : false);
             /* reset VBE regs then set up mode */
             s->vga.vbe_regs[VBE_DISPI_INDEX_XRES] = h;
             s->vga.vbe_regs[VBE_DISPI_INDEX_YRES] = v;
@@ -97,16 +105,23 @@ static void ati_vga_switch_mode(ATIVGAState *s)
                 (s->regs.dac_cntl & DAC_8BIT_EN ? VBE_DISPI_8BIT_DAC : 0));
             /* now set offset and stride after enable as that resets these */
             if (stride) {
+                int bypp = DIV_ROUND_UP(bpp, BITS_PER_BYTE);
+
                 vbe_ioport_write_index(&s->vga, 0, VBE_DISPI_INDEX_VIRT_WIDTH);
                 vbe_ioport_write_data(&s->vga, 0, stride);
-                if (offs % stride == 0) {
-                    vbe_ioport_write_index(&s->vga, 0, VBE_DISPI_INDEX_Y_OFFSET);
-                    vbe_ioport_write_data(&s->vga, 0, offs / stride);
-                } else {
-                    /* FIXME what to do with this? */
-                    error_report("VGA offset is not multiple of pitch, "
-                                 "expect bad picture");
+                stride *= bypp;
+                if (offs % stride) {
+                    DPRINTF("CRTC offset is not multiple of pitch\n");
+                    vbe_ioport_write_index(&s->vga, 0,
+                                           VBE_DISPI_INDEX_X_OFFSET);
+                    vbe_ioport_write_data(&s->vga, 0, offs % stride / bypp);
                 }
+                vbe_ioport_write_index(&s->vga, 0, VBE_DISPI_INDEX_Y_OFFSET);
+                vbe_ioport_write_data(&s->vga, 0, offs / stride);
+                DPRINTF("VBE offset (%d,%d), vbe_start_addr=%x\n",
+                        s->vga.vbe_regs[VBE_DISPI_INDEX_X_OFFSET],
+                        s->vga.vbe_regs[VBE_DISPI_INDEX_Y_OFFSET],
+                        s->vga.vbe_start_addr);
             }
         }
     } else {
@@ -121,20 +136,19 @@ static void ati_vga_switch_mode(ATIVGAState *s)
 static void ati_cursor_define(ATIVGAState *s)
 {
     uint8_t data[1024];
-    uint8_t *src;
+    uint32_t srcoff;
     int i, j, idx = 0;
 
     if ((s->regs.cur_offset & BIT(31)) || s->cursor_guest_mode) {
         return; /* Do not update cursor if locked or rendered by guest */
     }
     /* FIXME handle cur_hv_offs correctly */
-    src = s->vga.vram_ptr + (s->regs.crtc_offset & 0x07ffffff) +
-          s->regs.cur_offset - (s->regs.cur_hv_offs >> 16) -
-          (s->regs.cur_hv_offs & 0xffff) * 16;
+    srcoff = s->regs.cur_offset -
+        (s->regs.cur_hv_offs >> 16) - (s->regs.cur_hv_offs & 0xffff) * 16;
     for (i = 0; i < 64; i++) {
         for (j = 0; j < 8; j++, idx++) {
-            data[idx] = src[i * 16 + j];
-            data[512 + idx] = src[i * 16 + j + 8];
+            data[idx] = vga_read_byte(&s->vga, srcoff + i * 16 + j);
+            data[512 + idx] = vga_read_byte(&s->vga, srcoff + i * 16 + j + 8);
         }
     }
     if (!s->cursor) {
@@ -176,7 +190,7 @@ static void ati_cursor_invalidate(VGACommonState *vga)
 static void ati_cursor_draw_line(VGACommonState *vga, uint8_t *d, int scr_y)
 {
     ATIVGAState *s = container_of(vga, ATIVGAState, vga);
-    uint8_t *src;
+    uint32_t srcoff;
     uint32_t *dp = (uint32_t *)d;
     int i, j, h;
 
@@ -186,14 +200,13 @@ static void ati_cursor_draw_line(VGACommonState *vga, uint8_t *d, int scr_y)
         return;
     }
     /* FIXME handle cur_hv_offs correctly */
-    src = s->vga.vram_ptr + (s->regs.crtc_offset & 0x07ffffff) +
-          s->cursor_offset + (scr_y - vga->hw_cursor_y) * 16;
+    srcoff = s->cursor_offset + (scr_y - vga->hw_cursor_y) * 16;
     dp = &dp[vga->hw_cursor_x];
     h = ((s->regs.crtc_h_total_disp >> 16) + 1) * 8;
     for (i = 0; i < 8; i++) {
         uint32_t color;
-        uint8_t abits = src[i];
-        uint8_t xbits = src[i + 8];
+        uint8_t abits = vga_read_byte(vga, srcoff + i);
+        uint8_t xbits = vga_read_byte(vga, srcoff + i + 8);
         for (j = 0; j < 8; j++, abits <<= 1, xbits <<= 1) {
             if (abits & BIT(7)) {
                 if (xbits & BIT(7)) {
@@ -203,7 +216,7 @@ static void ati_cursor_draw_line(VGACommonState *vga, uint8_t *d, int scr_y)
                 }
             } else {
                 color = (xbits & BIT(7) ? s->regs.cur_color1 :
-                                          s->regs.cur_color0) << 8 | 0xff;
+                                          s->regs.cur_color0) | 0xff000000;
             }
             if (vga->hw_cursor_x + i * 8 + j >= h) {
                 return; /* end of screen, don't span to next line */
@@ -211,6 +224,39 @@ static void ati_cursor_draw_line(VGACommonState *vga, uint8_t *d, int scr_y)
             dp[i * 8 + j] = color;
         }
     }
+}
+
+static uint64_t ati_i2c(bitbang_i2c_interface *i2c, uint64_t data, int base)
+{
+    bool c = (data & BIT(base + 17) ? !!(data & BIT(base + 1)) : 1);
+    bool d = (data & BIT(base + 16) ? !!(data & BIT(base)) : 1);
+
+    bitbang_i2c_set(i2c, BITBANG_I2C_SCL, c);
+    d = bitbang_i2c_set(i2c, BITBANG_I2C_SDA, d);
+
+    data &= ~0xf00ULL;
+    if (c) {
+        data |= BIT(base + 9);
+    }
+    if (d) {
+        data |= BIT(base + 8);
+    }
+    return data;
+}
+
+static void ati_vga_update_irq(ATIVGAState *s)
+{
+    pci_set_irq(&s->dev, !!(s->regs.gen_int_status & s->regs.gen_int_cntl));
+}
+
+static void ati_vga_vblank_irq(void *opaque)
+{
+    ATIVGAState *s = opaque;
+
+    timer_mod(&s->vblank_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+              NANOSECONDS_PER_SECOND / 60);
+    s->regs.gen_int_status |= CRTC_VBLANK_INT;
+    ati_vga_update_irq(s);
 }
 
 static inline uint64_t ati_reg_read_offs(uint32_t reg, int offs,
@@ -253,6 +299,12 @@ static uint64_t ati_mm_read(void *opaque, hwaddr addr, unsigned int size)
                                 addr - (BIOS_0_SCRATCH + i * 4), size);
         break;
     }
+    case GEN_INT_CNTL:
+        val = s->regs.gen_int_cntl;
+        break;
+    case GEN_INT_STATUS:
+        val = s->regs.gen_int_status;
+        break;
     case CRTC_GEN_CNTL ... CRTC_GEN_CNTL + 3:
         val = ati_reg_read_offs(s->regs.crtc_gen_cntl,
                                 addr - CRTC_GEN_CNTL, size);
@@ -264,7 +316,16 @@ static uint64_t ati_mm_read(void *opaque, hwaddr addr, unsigned int size)
     case DAC_CNTL:
         val = s->regs.dac_cntl;
         break;
-/*    case GPIO_MONID: FIXME hook up DDC I2C here */
+    case GPIO_VGA_DDC:
+        val = s->regs.gpio_vga_ddc;
+        break;
+    case GPIO_DVI_DDC:
+        val = s->regs.gpio_dvi_ddc;
+        break;
+    case GPIO_MONID ... GPIO_MONID + 3:
+        val = ati_reg_read_offs(s->regs.gpio_monid,
+                                addr - GPIO_MONID, size);
+        break;
     case PALETTE_INDEX:
         /* FIXME unaligned access */
         val = vga_ioport_read(&s->vga, VGA_PEL_IR) << 16;
@@ -273,8 +334,26 @@ static uint64_t ati_mm_read(void *opaque, hwaddr addr, unsigned int size)
     case PALETTE_DATA:
         val = vga_ioport_read(&s->vga, VGA_PEL_D);
         break;
+    case CNFG_CNTL:
+        val = s->regs.config_cntl;
+        break;
     case CNFG_MEMSIZE:
         val = s->vga.vram_size;
+        break;
+    case CONFIG_APER_0_BASE:
+    case CONFIG_APER_1_BASE:
+        val = pci_default_read_config(&s->dev,
+                                      PCI_BASE_ADDRESS_0, size) & 0xfffffff0;
+        break;
+    case CONFIG_APER_SIZE:
+        val = s->vga.vram_size;
+        break;
+    case CONFIG_REG_1_BASE:
+        val = pci_default_read_config(&s->dev,
+                                      PCI_BASE_ADDRESS_2, size) & 0xfffffff0;
+        break;
+    case CONFIG_REG_APER_SIZE:
+        val = memory_region_size(&s->mm);
         break;
     case MC_STATUS:
         val = 5;
@@ -389,9 +468,15 @@ static uint64_t ati_mm_read(void *opaque, hwaddr addr, unsigned int size)
         break;
     case DEFAULT_OFFSET:
         val = s->regs.default_offset;
+        if (s->dev_id != PCI_DEVICE_ID_ATI_RAGE128_PF) {
+            val >>= 10;
+            val |= s->regs.default_pitch << 16;
+            val |= s->regs.default_tile << 30;
+        }
         break;
     case DEFAULT_PITCH:
         val = s->regs.default_pitch;
+        val |= s->regs.default_tile << 16;
         break;
     case DEFAULT_SC_BOTTOM_RIGHT:
         val = s->regs.default_sc_bottom_right;
@@ -449,6 +534,21 @@ static void ati_mm_write(void *opaque, hwaddr addr,
                            addr - (BIOS_0_SCRATCH + i * 4), data, size);
         break;
     }
+    case GEN_INT_CNTL:
+        s->regs.gen_int_cntl = data;
+        if (data & CRTC_VBLANK_INT) {
+            ati_vga_vblank_irq(s);
+        } else {
+            timer_del(&s->vblank_timer);
+            ati_vga_update_irq(s);
+        }
+        break;
+    case GEN_INT_STATUS:
+        data &= (s->dev_id == PCI_DEVICE_ID_ATI_RAGE128_PF ?
+                 0x000f040fUL : 0xfc080effUL);
+        s->regs.gen_int_status &= ~data;
+        ati_vga_update_irq(s);
+        break;
     case CRTC_GEN_CNTL ... CRTC_GEN_CNTL + 3:
     {
         uint32_t val = s->regs.crtc_gen_cntl;
@@ -495,7 +595,36 @@ static void ati_mm_write(void *opaque, hwaddr addr,
         s->regs.dac_cntl = data & 0xffffe3ff;
         s->vga.dac_8bit = !!(data & DAC_8BIT_EN);
         break;
-/*    case GPIO_MONID: FIXME hook up DDC I2C here */
+    case GPIO_VGA_DDC:
+        if (s->dev_id != PCI_DEVICE_ID_ATI_RAGE128_PF) {
+            /* FIXME: Maybe add a property to select VGA or DVI port? */
+        }
+        break;
+    case GPIO_DVI_DDC:
+        if (s->dev_id != PCI_DEVICE_ID_ATI_RAGE128_PF) {
+            s->regs.gpio_dvi_ddc = ati_i2c(&s->bbi2c, data, 0);
+        }
+        break;
+    case GPIO_MONID ... GPIO_MONID + 3:
+        /* FIXME What does Radeon have here? */
+        if (s->dev_id == PCI_DEVICE_ID_ATI_RAGE128_PF) {
+            ati_reg_write_offs(&s->regs.gpio_monid,
+                               addr - GPIO_MONID, data, size);
+            /*
+             * Rage128p accesses DDC used to get EDID via these bits.
+             * Because some drivers access this via multiple byte writes
+             * we have to be careful when we send bits to avoid spurious
+             * changes in bitbang_i2c state. So only do it when mask is set
+             * and either the enable bits are changed or output bits changed
+             * while enabled.
+             */
+            if ((s->regs.gpio_monid & BIT(25)) &&
+                ((addr <= GPIO_MONID + 2 && addr + size > GPIO_MONID + 2) ||
+                 (addr == GPIO_MONID && (s->regs.gpio_monid & 0x60000)))) {
+                s->regs.gpio_monid = ati_i2c(&s->bbi2c, s->regs.gpio_monid, 1);
+            }
+        }
+        break;
     case PALETTE_INDEX ... PALETTE_INDEX + 3:
         if (size == 4) {
             vga_ioport_write(&s->vga, VGA_PEL_IR, (data >> 16) & 0xff);
@@ -516,6 +645,9 @@ static void ati_mm_write(void *opaque, hwaddr addr,
         vga_ioport_write(&s->vga, VGA_PEL_D, data & 0xff);
         data >>= 8;
         vga_ioport_write(&s->vga, VGA_PEL_D, data & 0xff);
+        break;
+    case CNFG_CNTL:
+        s->regs.config_cntl = data;
         break;
     case CRTC_H_TOTAL_DISP:
         s->regs.crtc_h_total_disp = data & 0x07ff07ff;
@@ -627,10 +759,10 @@ static void ati_mm_write(void *opaque, hwaddr addr,
     case SRC_PITCH_OFFSET:
         if (s->dev_id == PCI_DEVICE_ID_ATI_RAGE128_PF) {
             s->regs.src_offset = (data & 0x1fffff) << 5;
-            s->regs.src_pitch = (data >> 21) & 0x3ff;
+            s->regs.src_pitch = (data & 0x7fe00000) >> 21;
             s->regs.src_tile = data >> 31;
         } else {
-            s->regs.src_offset = (data & 0x3fffff) << 11;
+            s->regs.src_offset = (data & 0x3fffff) << 10;
             s->regs.src_pitch = (data & 0x3fc00000) >> 16;
             s->regs.src_tile = (data >> 30) & 1;
         }
@@ -638,10 +770,10 @@ static void ati_mm_write(void *opaque, hwaddr addr,
     case DST_PITCH_OFFSET:
         if (s->dev_id == PCI_DEVICE_ID_ATI_RAGE128_PF) {
             s->regs.dst_offset = (data & 0x1fffff) << 5;
-            s->regs.dst_pitch = (data >> 21) & 0x3ff;
+            s->regs.dst_pitch = (data & 0x7fe00000) >> 21;
             s->regs.dst_tile = data >> 31;
         } else {
-            s->regs.dst_offset = (data & 0x3fffff) << 11;
+            s->regs.dst_offset = (data & 0x3fffff) << 10;
             s->regs.dst_pitch = (data & 0x3fc00000) >> 16;
             s->regs.dst_tile = data >> 30;
         }
@@ -721,13 +853,19 @@ static void ati_mm_write(void *opaque, hwaddr addr,
         s->regs.dp_write_mask = data;
         break;
     case DEFAULT_OFFSET:
-        data &= (s->dev_id == PCI_DEVICE_ID_ATI_RAGE128_PF ?
-                 0x03fffc00 : 0xfffffc00);
-        s->regs.default_offset = data;
+        if (s->dev_id == PCI_DEVICE_ID_ATI_RAGE128_PF) {
+            s->regs.default_offset = data & 0xfffffff0;
+        } else {
+            /* Radeon has DEFAULT_PITCH_OFFSET here like DST_PITCH_OFFSET */
+            s->regs.default_offset = (data & 0x3fffff) << 10;
+            s->regs.default_pitch = (data & 0x3fc00000) >> 16;
+            s->regs.default_tile = data >> 30;
+        }
         break;
     case DEFAULT_PITCH:
         if (s->dev_id == PCI_DEVICE_ID_ATI_RAGE128_PF) {
-            s->regs.default_pitch = data & 0x103ff;
+            s->regs.default_pitch = data & 0x3fff;
+            s->regs.default_tile = (data >> 16) & 1;
         }
         break;
     case DEFAULT_SC_BOTTOM_RIGHT:
@@ -786,6 +924,12 @@ static void ati_vga_realize(PCIDevice *dev, Error **errp)
         vga->cursor_draw_line = ati_cursor_draw_line;
     }
 
+    /* ddc, edid */
+    I2CBus *i2cbus = i2c_init_bus(DEVICE(s), "ati-vga.ddc");
+    bitbang_i2c_init(&s->bbi2c, i2cbus);
+    I2CSlave *i2cddc = I2C_SLAVE(qdev_create(BUS(i2cbus), TYPE_I2CDDC));
+    i2c_set_slave_address(i2cddc, 0x50);
+
     /* mmio register space */
     memory_region_init_io(&s->mm, OBJECT(s), &ati_mm_ops, s,
                           "ati.mmregs", 0x4000);
@@ -795,11 +939,18 @@ static void ati_vga_realize(PCIDevice *dev, Error **errp)
     pci_register_bar(dev, 0, PCI_BASE_ADDRESS_MEM_PREFETCH, &vga->vram);
     pci_register_bar(dev, 1, PCI_BASE_ADDRESS_SPACE_IO, &s->io);
     pci_register_bar(dev, 2, PCI_BASE_ADDRESS_SPACE_MEMORY, &s->mm);
+
+    /* most interrupts are not yet emulated but MacOS needs at least VBlank */
+    dev->config[PCI_INTERRUPT_PIN] = 1;
+    timer_init_ns(&s->vblank_timer, QEMU_CLOCK_VIRTUAL, ati_vga_vblank_irq, s);
 }
 
 static void ati_vga_reset(DeviceState *dev)
 {
     ATIVGAState *s = ATI_VGA(dev);
+
+    timer_del(&s->vblank_timer);
+    ati_vga_update_irq(s);
 
     /* reset vga */
     vga_common_reset(&s->vga);
@@ -810,6 +961,7 @@ static void ati_vga_exit(PCIDevice *dev)
 {
     ATIVGAState *s = ATI_VGA(dev);
 
+    timer_del(&s->vblank_timer);
     graphic_console_close(s->vga.con);
 }
 
@@ -835,7 +987,7 @@ static void ati_vga_class_init(ObjectClass *klass, void *data)
     k->class_id = PCI_CLASS_DISPLAY_VGA;
     k->vendor_id = PCI_VENDOR_ID_ATI;
     k->device_id = PCI_DEVICE_ID_ATI_RAGE128_PF;
-    k->romfile = "vgabios-stdvga.bin";
+    k->romfile = "vgabios-ati.bin";
     k->realize = ati_vga_realize;
     k->exit = ati_vga_exit;
 }

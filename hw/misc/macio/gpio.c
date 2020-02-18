@@ -24,12 +24,14 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/hw.h"
 #include "hw/ppc/mac.h"
+#include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "hw/misc/macio/macio.h"
 #include "hw/misc/macio/gpio.h"
 #include "hw/nmi.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "trace.h"
 
 

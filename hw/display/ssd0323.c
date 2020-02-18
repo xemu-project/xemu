@@ -10,8 +10,11 @@
 /* The controller can support a variety of different displays, but we only
    implement one.  Most of the commends relating to brightness and geometry
    setup are ignored. */
+
 #include "qemu/osdep.h"
 #include "hw/ssi/ssi.h"
+#include "migration/vmstate.h"
+#include "qemu/module.h"
 #include "ui/console.h"
 
 //#define DEBUG_SSD0323 1

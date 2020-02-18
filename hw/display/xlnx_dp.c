@@ -25,7 +25,10 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "hw/display/xlnx_dp.h"
+#include "hw/irq.h"
+#include "migration/vmstate.h"
 
 #ifndef DEBUG_DP
 #define DEBUG_DP 0
@@ -391,13 +394,18 @@ static void xlnx_dp_audio_callback(void *opaque, int avail)
             written = AUD_write(s->amixer_output_stream,
                                 &s->out_buffer[s->data_ptr], s->byte_left);
         } else {
+             int len_to_copy;
             /*
              * There is nothing to play.. We don't have any data! Fill the
              * buffer with zero's and send it.
              */
             written = 0;
-            memset(s->out_buffer, 0, 1024);
-            AUD_write(s->amixer_output_stream, s->out_buffer, 1024);
+            while (avail) {
+                len_to_copy = MIN(AUD_CHBUF_MAX_DEPTH, avail);
+                memset(s->out_buffer, 0, len_to_copy);
+                avail -= AUD_write(s->amixer_output_stream, s->out_buffer,
+                                   len_to_copy);
+            }
         }
     } else {
         written = AUD_write(s->amixer_output_stream,
@@ -426,11 +434,18 @@ static uint8_t xlnx_dp_aux_pop_rx_fifo(XlnxDPState *s)
     uint8_t ret;
 
     if (fifo8_is_empty(&s->rx_fifo)) {
-        DPRINTF("rx_fifo underflow..\n");
-        abort();
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Reading empty RX_FIFO\n",
+                      __func__);
+        /*
+         * The datasheet is not clear about the reset value, it seems
+         * to be unspecified. We choose to return '0'.
+         */
+        ret = 0;
+    } else {
+        ret = fifo8_pop(&s->rx_fifo);
+        DPRINTF("pop 0x%" PRIX8 " from rx_fifo.\n", ret);
     }
-    ret = fifo8_pop(&s->rx_fifo);
-    DPRINTF("pop 0x%" PRIX8 " from rx_fifo.\n", ret);
     return ret;
 }
 

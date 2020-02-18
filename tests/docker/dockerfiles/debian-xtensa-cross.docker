@@ -8,8 +8,8 @@
 FROM debian:stretch-slim
 
 RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt install -yy eatmydata
-RUN DEBIAN_FRONTEND=noninteractive eatmydata \
+    DEBIAN_FRONTEND=noninteractive apt install -yy eatmydata && \
+    DEBIAN_FRONTEND=noninteractive eatmydata \
     apt-get install -y --no-install-recommends \
         bison \
         build-essential \
@@ -18,7 +18,7 @@ RUN DEBIAN_FRONTEND=noninteractive eatmydata \
         flex \
         gettext \
         git \
-        python-minimal
+        python3-minimal
 
 ENV CPU_LIST csp dc232b dc233c
 ENV TOOLCHAIN_RELEASE 2018.02

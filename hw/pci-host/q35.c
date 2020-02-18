@@ -27,11 +27,14 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #include "qemu/osdep.h"
-#include "hw/hw.h"
 #include "hw/pci-host/q35.h"
+#include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "qapi/error.h"
 #include "qapi/visitor.h"
+#include "qemu/module.h"
 
 /****************************************************************************
  * Q35 host
@@ -216,8 +219,8 @@ static void q35_host_initfn(Object *obj)
     memory_region_init_io(&phb->data_mem, obj, &pci_host_data_le_ops, phb,
                           "pci-conf-data", 4);
 
-    object_initialize(&s->mch, sizeof(s->mch), TYPE_MCH_PCI_DEVICE);
-    object_property_add_child(OBJECT(s), "mch", OBJECT(&s->mch), NULL);
+    object_initialize_child(OBJECT(s), "mch",  &s->mch, sizeof(s->mch),
+                            TYPE_MCH_PCI_DEVICE, &error_abort, NULL);
     qdev_prop_set_int32(DEVICE(&s->mch), "addr", PCI_DEVFN(0, 0));
     qdev_prop_set_bit(DEVICE(&s->mch), "multifunction", false);
     /* mch's object_initialize resets the default value, set it again */
@@ -258,15 +261,6 @@ static void q35_host_initfn(Object *obj)
     object_property_add_link(obj, MCH_HOST_PROP_IO_MEM, TYPE_MEMORY_REGION,
                              (Object **) &s->mch.address_space_io,
                              qdev_prop_allow_set_link_before_realize, 0, NULL);
-
-    /* Leave enough space for the biggest MCFG BAR */
-    /* TODO: this matches current bios behaviour, but
-     * it's not a power of two, which means an MTRR
-     * can't cover it exactly.
-     */
-    range_set_bounds(&s->mch.pci_hole,
-            MCH_HOST_BRIDGE_PCIEXBAR_DEFAULT + MCH_HOST_BRIDGE_PCIEXBAR_MAX,
-            IO_APIC_DEFAULT_ADDRESS - 1);
 }
 
 static const TypeInfo q35_host_info = {
@@ -338,20 +332,6 @@ static void mch_update_pciexbar(MCHPCIState *mch)
     }
     addr = pciexbar & addr_mask;
     pcie_host_mmcfg_update(pehb, enable, addr, length);
-    /* Leave enough space for the MCFG BAR */
-    /*
-     * TODO: this matches current bios behaviour, but it's not a power of two,
-     * which means an MTRR can't cover it exactly.
-     */
-    if (enable) {
-        range_set_bounds(&mch->pci_hole,
-                         addr + length,
-                         IO_APIC_DEFAULT_ADDRESS - 1);
-    } else {
-        range_set_bounds(&mch->pci_hole,
-                         MCH_HOST_BRIDGE_PCIEXBAR_DEFAULT,
-                         IO_APIC_DEFAULT_ADDRESS - 1);
-    }
 }
 
 /* PAM */
@@ -484,6 +464,14 @@ static void mch_update(MCHPCIState *mch)
     mch_update_pam(mch);
     mch_update_smram(mch);
     mch_update_ext_tseg_mbytes(mch);
+
+    /*
+     * pci hole goes from end-of-low-ram to io-apic.
+     * mmconfig will be excluded by the dsdt builder.
+     */
+    range_set_bounds(&mch->pci_hole,
+                     mch->below_4g_mem_size,
+                     IO_APIC_DEFAULT_ADDRESS - 1);
 }
 
 static int mch_post_load(void *opaque, int version_id)

@@ -18,10 +18,9 @@
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef AMD_IOMMU_H_
-#define AMD_IOMMU_H_
+#ifndef AMD_IOMMU_H
+#define AMD_IOMMU_H
 
-#include "hw/hw.h"
 #include "hw/pci/pci.h"
 #include "hw/i386/x86-iommu.h"
 

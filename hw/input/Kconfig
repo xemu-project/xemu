@@ -8,9 +8,14 @@ config LM832X
 config PCKBD
     bool
     default y
+    select PS2
     depends on ISA_BUS
 
 config PL050
+    bool
+    select PS2
+
+config PS2
     bool
 
 config STELLARIS_INPUT
@@ -27,7 +32,12 @@ config VIRTIO_INPUT
 config VIRTIO_INPUT_HOST
     bool
     default y
-    depends on VIRTIO && LINUX
+    depends on VIRTIO_INPUT && LINUX
+
+config VHOST_USER_INPUT
+    bool
+    default y
+    depends on VIRTIO_INPUT && VHOST_USER
 
 config TSC210X
     bool

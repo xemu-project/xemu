@@ -20,10 +20,9 @@
 #include "qemu/osdep.h"
 #include "qemu/units.h"
 #include "qemu/error-report.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "hw/sysbus.h"
-#include "hw/hw.h"
+#include "hw/irq.h"
 #include "hw/block/flash.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
@@ -31,6 +30,7 @@
 #include "lm32_hwsetup.h"
 #include "lm32.h"
 #include "exec/address-spaces.h"
+#include "sysemu/reset.h"
 #include "sysemu/sysemu.h"
 
 typedef struct {

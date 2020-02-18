@@ -21,11 +21,6 @@
 #ifndef M68K_CPU_H
 #define M68K_CPU_H
 
-#define TARGET_LONG_BITS 32
-
-#define CPUArchState struct CPUM68KState
-
-#include "qemu-common.h"
 #include "exec/cpu-defs.h"
 #include "cpu-qom.h"
 
@@ -82,7 +77,6 @@
 #define M68K_MAX_TTR 2
 #define TTR(type, index) ttr[((type & ACCESS_CODE) == ACCESS_CODE) * 2 + index]
 
-#define NB_MMU_MODES 2
 #define TARGET_INSN_START_EXTRA_WORDS 1
 
 typedef CPU_LDoubleU FPReg;
@@ -112,9 +106,11 @@ typedef struct CPUM68KState {
     float_status fp_status;
 
     uint64_t mactmp;
-    /* EMAC Hardware deals with 48-bit values composed of one 32-bit and
-       two 8-bit parts.  We store a single 64-bit value and
-       rearrange/extend this when changing modes.  */
+    /*
+     * EMAC Hardware deals with 48-bit values composed of one 32-bit and
+     * two 8-bit parts.  We store a single 64-bit value and
+     * rearrange/extend this when changing modes.
+     */
     uint64_t macc[4];
     uint32_t macsr;
     uint32_t mac_mask;
@@ -148,13 +144,11 @@ typedef struct CPUM68KState {
     /* Fields up to this point are cleared by a CPU reset */
     struct {} end_reset_fields;
 
-    CPU_COMMON
-
     /* Fields from here on are preserved across CPU reset. */
     uint32_t features;
 } CPUM68KState;
 
-/**
+/*
  * M68kCPU:
  * @env: #CPUM68KState
  *
@@ -165,31 +159,25 @@ struct M68kCPU {
     CPUState parent_obj;
     /*< public >*/
 
+    CPUNegativeOffsetState neg;
     CPUM68KState env;
 };
 
-static inline M68kCPU *m68k_env_get_cpu(CPUM68KState *env)
-{
-    return container_of(env, M68kCPU, env);
-}
-
-#define ENV_GET_CPU(e) CPU(m68k_env_get_cpu(e))
-
-#define ENV_OFFSET offsetof(M68kCPU, env)
 
 void m68k_cpu_do_interrupt(CPUState *cpu);
 bool m68k_cpu_exec_interrupt(CPUState *cpu, int int_req);
-void m68k_cpu_dump_state(CPUState *cpu, FILE *f, fprintf_function cpu_fprintf,
-                         int flags);
+void m68k_cpu_dump_state(CPUState *cpu, FILE *f, int flags);
 hwaddr m68k_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
 int m68k_cpu_gdb_read_register(CPUState *cpu, uint8_t *buf, int reg);
 int m68k_cpu_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg);
 
 void m68k_tcg_init(void);
 void m68k_cpu_init_gdb(M68kCPU *cpu);
-/* you can call this signal handler from your SIGBUS and SIGSEGV
-   signal handlers to inform the virtual CPU of exceptions. non zero
-   is returned if the signal was handled by the virtual CPU.  */
+/*
+ * you can call this signal handler from your SIGBUS and SIGSEGV
+ * signal handlers to inform the virtual CPU of exceptions. non zero
+ * is returned if the signal was handled by the virtual CPU.
+ */
 int cpu_m68k_signal_handler(int host_signum, void *pinfo,
                            void *puc);
 uint32_t cpu_m68k_get_ccr(CPUM68KState *env);
@@ -198,7 +186,8 @@ void cpu_m68k_set_sr(CPUM68KState *env, uint32_t);
 void cpu_m68k_set_fpcr(CPUM68KState *env, uint32_t val);
 
 
-/* Instead of computing the condition codes after each m68k instruction,
+/*
+ * Instead of computing the condition codes after each m68k instruction,
  * QEMU just stores one operand (called CC_SRC), the result
  * (called CC_DEST) and the type of operation (called CC_OP). When the
  * condition codes are needed, the condition codes can be calculated
@@ -463,9 +452,11 @@ void m68k_switch_sp(CPUM68KState *env);
 
 void do_m68k_semihosting(CPUM68KState *env, int nr);
 
-/* There are 4 ColdFire core ISA revisions: A, A+, B and C.
-   Each feature covers the subset of instructions common to the
-   ISA revisions mentioned.  */
+/*
+ * There are 4 ColdFire core ISA revisions: A, A+, B and C.
+ * Each feature covers the subset of instructions common to the
+ * ISA revisions mentioned.
+ */
 
 enum m68k_features {
     M68K_FEATURE_M68000,
@@ -499,15 +490,9 @@ static inline int m68k_feature(CPUM68KState *env, int feature)
     return (env->features & (1u << feature)) != 0;
 }
 
-void m68k_cpu_list(FILE *f, fprintf_function cpu_fprintf);
+void m68k_cpu_list(void);
 
 void register_m68k_insns (CPUM68KState *env);
-
-/* Coldfire Linux uses 8k pages
- * and m68k linux uses 4k pages
- * use the smallest one
- */
-#define TARGET_PAGE_BITS 12
 
 enum {
     /* 1 bit to define user level / supervisor access */
@@ -522,9 +507,6 @@ enum {
     ACCESS_CODE  = 0x10, /* Code fetch access                */
     ACCESS_DATA  = 0x20, /* Data load/store access        */
 };
-
-#define TARGET_PHYS_ADDR_SPACE_BITS 32
-#define TARGET_VIRT_ADDR_SPACE_BITS 32
 
 #define M68K_CPU_TYPE_SUFFIX "-" TYPE_M68K_CPU
 #define M68K_CPU_TYPE_NAME(model) model M68K_CPU_TYPE_SUFFIX
@@ -543,11 +525,16 @@ static inline int cpu_mmu_index (CPUM68KState *env, bool ifetch)
     return (env->sr & SR_S) == 0 ? 1 : 0;
 }
 
-int m68k_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int size, int rw,
-                              int mmu_idx);
-void m68k_cpu_unassigned_access(CPUState *cs, hwaddr addr,
-                                bool is_write, bool is_exec, int is_asi,
-                                unsigned size);
+bool m68k_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+                       MMUAccessType access_type, int mmu_idx,
+                       bool probe, uintptr_t retaddr);
+void m68k_cpu_transaction_failed(CPUState *cs, hwaddr physaddr, vaddr addr,
+                                 unsigned size, MMUAccessType access_type,
+                                 int mmu_idx, MemTxAttrs attrs,
+                                 MemTxResult response, uintptr_t retaddr);
+
+typedef CPUM68KState CPUArchState;
+typedef M68kCPU ArchCPU;
 
 #include "exec/cpu-all.h"
 
@@ -573,5 +560,6 @@ static inline void cpu_get_tb_cpu_state(CPUM68KState *env, target_ulong *pc,
     }
 }
 
-void dump_mmu(FILE *f, fprintf_function cpu_fprintf, CPUM68KState *env);
+void dump_mmu(CPUM68KState *env);
+
 #endif

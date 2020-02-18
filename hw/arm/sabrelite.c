@@ -12,9 +12,9 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "hw/arm/fsl-imx6.h"
 #include "hw/boards.h"
+#include "hw/qdev-properties.h"
 #include "sysemu/sysemu.h"
 #include "qemu/error-report.h"
 #include "sysemu/qtest.h"
@@ -55,9 +55,8 @@ static void sabrelite_init(MachineState *machine)
         exit(1);
     }
 
-    object_initialize(&s->soc, sizeof(s->soc), TYPE_FSL_IMX6);
-    object_property_add_child(OBJECT(machine), "soc", OBJECT(&s->soc),
-                              &error_abort);
+    object_initialize_child(OBJECT(machine), "soc", &s->soc, sizeof(s->soc),
+                            TYPE_FSL_IMX6, &error_abort, NULL);
 
     object_property_set_bool(OBJECT(&s->soc), true, "realized", &err);
     if (err != NULL) {
@@ -104,16 +103,13 @@ static void sabrelite_init(MachineState *machine)
     }
 
     sabrelite_binfo.ram_size = machine->ram_size;
-    sabrelite_binfo.kernel_filename = machine->kernel_filename;
-    sabrelite_binfo.kernel_cmdline = machine->kernel_cmdline;
-    sabrelite_binfo.initrd_filename = machine->initrd_filename;
-    sabrelite_binfo.nb_cpus = smp_cpus;
+    sabrelite_binfo.nb_cpus = machine->smp.cpus;
     sabrelite_binfo.secure_boot = true;
     sabrelite_binfo.write_secondary_boot = sabrelite_write_secondary;
     sabrelite_binfo.secondary_cpu_reset_hook = sabrelite_reset_secondary;
 
     if (!qtest_enabled()) {
-        arm_load_kernel(&s->soc.cpu[0], &sabrelite_binfo);
+        arm_load_kernel(&s->soc.cpu[0], machine, &sabrelite_binfo);
     }
 }
 

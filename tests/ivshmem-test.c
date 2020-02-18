@@ -100,7 +100,6 @@ static inline void write_mem(IVState *s, uint64_t off,
 
 static void cleanup_vm(IVState *s)
 {
-    assert(!global_qtest);
     g_free(s->dev);
     qtest_shutdown(s->qs);
 }
@@ -383,18 +382,19 @@ static void test_ivshmem_server(void)
 
 static void test_ivshmem_hotplug(void)
 {
+    QTestState *qts;
     const char *arch = qtest_get_arch();
 
-    qtest_start("-object memory-backend-ram,size=1M,id=mb1");
+    qts = qtest_init("-object memory-backend-ram,size=1M,id=mb1");
 
-    qtest_qmp_device_add("ivshmem-plain", "iv1",
+    qtest_qmp_device_add(qts, "ivshmem-plain", "iv1",
                          "{'addr': %s, 'memdev': 'mb1'}",
                          stringify(PCI_SLOT_HP));
     if (strcmp(arch, "ppc64") != 0) {
-        qpci_unplug_acpi_device_test("iv1", PCI_SLOT_HP);
+        qpci_unplug_acpi_device_test(qts, "iv1", PCI_SLOT_HP);
     }
 
-    qtest_end();
+    qtest_quit(qts);
 }
 
 static void test_ivshmem_memdev(void)

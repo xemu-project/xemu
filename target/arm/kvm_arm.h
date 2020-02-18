@@ -28,6 +28,20 @@
 int kvm_arm_vcpu_init(CPUState *cs);
 
 /**
+ * kvm_arm_vcpu_finalize
+ * @cs: CPUState
+ * @feature: int
+ *
+ * Finalizes the configuration of the specified VCPU feature by
+ * invoking the KVM_ARM_VCPU_FINALIZE ioctl. Features requiring
+ * this are documented in the "KVM_ARM_VCPU_FINALIZE" section of
+ * KVM's API documentation.
+ *
+ * Returns: 0 if success else < 0 error code
+ */
+int kvm_arm_vcpu_finalize(CPUState *cs, int feature);
+
+/**
  * kvm_arm_register_device:
  * @mr: memory region for this device
  * @devid: the KVM device ID
@@ -199,6 +213,17 @@ typedef struct ARMHostCPUFeatures {
 bool kvm_arm_get_host_cpu_features(ARMHostCPUFeatures *ahcf);
 
 /**
+ * kvm_arm_sve_get_vls:
+ * @cs: CPUState
+ * @map: bitmap to fill in
+ *
+ * Get all the SVE vector lengths supported by the KVM host, setting
+ * the bits corresponding to their length in quadwords minus one
+ * (vq - 1) in @map up to ARM_MAX_VQ.
+ */
+void kvm_arm_sve_get_vls(CPUState *cs, unsigned long *map);
+
+/**
  * kvm_arm_set_cpu_features_from_host:
  * @cpu: ARMCPU to set the features for
  *
@@ -206,6 +231,32 @@ bool kvm_arm_get_host_cpu_features(ARMHostCPUFeatures *ahcf);
  * from the host CPU.
  */
 void kvm_arm_set_cpu_features_from_host(ARMCPU *cpu);
+
+/**
+ * kvm_arm_aarch32_supported:
+ * @cs: CPUState
+ *
+ * Returns: true if the KVM VCPU can enable AArch32 mode
+ * and false otherwise.
+ */
+bool kvm_arm_aarch32_supported(CPUState *cs);
+
+/**
+ * bool kvm_arm_pmu_supported:
+ * @cs: CPUState
+ *
+ * Returns: true if the KVM VCPU can enable its PMU
+ * and false otherwise.
+ */
+bool kvm_arm_pmu_supported(CPUState *cs);
+
+/**
+ * bool kvm_arm_sve_supported:
+ * @cs: CPUState
+ *
+ * Returns true if the KVM VCPU can enable SVE and false otherwise.
+ */
+bool kvm_arm_sve_supported(CPUState *cs);
 
 /**
  * kvm_arm_get_max_vm_ipa_size - Returns the number of bits in the
@@ -235,6 +286,7 @@ int kvm_arm_vgic_probe(void);
 
 void kvm_arm_pmu_set_irq(CPUState *cs, int irq);
 void kvm_arm_pmu_init(CPUState *cs);
+int kvm_arm_set_irq(int cpu, int irqtype, int irq, int level);
 
 #else
 
@@ -245,6 +297,21 @@ static inline void kvm_arm_set_cpu_features_from_host(ARMCPU *cpu)
      */
     cpu->kvm_target = QEMU_KVM_ARM_TARGET_NONE;
     cpu->host_cpu_probe_failed = true;
+}
+
+static inline bool kvm_arm_aarch32_supported(CPUState *cs)
+{
+    return false;
+}
+
+static inline bool kvm_arm_pmu_supported(CPUState *cs)
+{
+    return false;
+}
+
+static inline bool kvm_arm_sve_supported(CPUState *cs)
+{
+    return false;
 }
 
 static inline int kvm_arm_get_max_vm_ipa_size(MachineState *ms)
@@ -260,6 +327,7 @@ static inline int kvm_arm_vgic_probe(void)
 static inline void kvm_arm_pmu_set_irq(CPUState *cs, int irq) {}
 static inline void kvm_arm_pmu_init(CPUState *cs) {}
 
+static inline void kvm_arm_sve_get_vls(CPUState *cs, unsigned long *map) {}
 #endif
 
 static inline const char *gic_class_name(void)

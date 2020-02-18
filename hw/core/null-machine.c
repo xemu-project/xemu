@@ -12,13 +12,11 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/error-report.h"
-#include "hw/hw.h"
 #include "hw/boards.h"
 #include "sysemu/sysemu.h"
 #include "exec/address-spaces.h"
-#include "qom/cpu.h"
+#include "hw/core/cpu.h"
 
 static void machine_none_init(MachineState *mch)
 {

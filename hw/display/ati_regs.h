@@ -34,16 +34,28 @@
 #define BUS_CNTL                                0x0030
 #define BUS_CNTL1                               0x0034
 #define GEN_INT_CNTL                            0x0040
+#define GEN_INT_STATUS                          0x0044
 #define CRTC_GEN_CNTL                           0x0050
 #define CRTC_EXT_CNTL                           0x0054
 #define DAC_CNTL                                0x0058
+#define GPIO_VGA_DDC                            0x0060
+#define GPIO_DVI_DDC                            0x0064
 #define GPIO_MONID                              0x0068
 #define I2C_CNTL_1                              0x0094
+#define AMCGPIO_MASK_MIR                        0x009c
+#define AMCGPIO_A_MIR                           0x00a0
+#define AMCGPIO_Y_MIR                           0x00a4
+#define AMCGPIO_EN_MIR                          0x00a8
 #define PALETTE_INDEX                           0x00b0
 #define PALETTE_DATA                            0x00b4
 #define CNFG_CNTL                               0x00e0
 #define GEN_RESET_CNTL                          0x00f0
 #define CNFG_MEMSIZE                            0x00f8
+#define CONFIG_APER_0_BASE                      0x0100
+#define CONFIG_APER_1_BASE                      0x0104
+#define CONFIG_APER_SIZE                        0x0108
+#define CONFIG_REG_1_BASE                       0x010c
+#define CONFIG_REG_APER_SIZE                    0x0110
 #define MEM_CNTL                                0x0140
 #define MC_FB_LOCATION                          0x0148
 #define MC_AGP_LOCATION                         0x014C
@@ -305,7 +317,14 @@
 #define XPLL_FB_DIV_MASK                        0x0000FF00
 #define X_MPLL_REF_DIV_MASK                     0x000000FF
 
+/* GEN_INT_CNTL) */
+#define CRTC_VBLANK_INT                         0x00000001
+#define CRTC_VLINE_INT                          0x00000002
+#define CRTC_VSYNC_INT                          0x00000004
+
 /* Config control values (CONFIG_CNTL) */
+#define APER_0_ENDIAN                           0x00000003
+#define APER_1_ENDIAN                           0x0000000c
 #define CFG_VGA_IO_DIS                          0x00000400
 
 /* CRTC control values (CRTC_GEN_CNTL) */
@@ -368,8 +387,8 @@
 #define BRUSH_SOLIDCOLOR                        0x00000d00
 
 /* DP_GUI_MASTER_CNTL bit constants */
-#define GMC_SRC_PITCH_OFFSET_DEFAULT            0x00000000
-#define GMC_DST_PITCH_OFFSET_DEFAULT            0x00000000
+#define GMC_SRC_PITCH_OFFSET_CNTL               0x00000001
+#define GMC_DST_PITCH_OFFSET_CNTL               0x00000002
 #define GMC_SRC_CLIP_DEFAULT                    0x00000000
 #define GMC_DST_CLIP_DEFAULT                    0x00000000
 #define GMC_BRUSH_SOLIDCOLOR                    0x000000d0

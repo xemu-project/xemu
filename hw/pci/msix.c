@@ -15,16 +15,15 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/hw.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/msix.h"
 #include "hw/pci/pci.h"
 #include "hw/xen/xen.h"
+#include "migration/qemu-file-types.h"
+#include "migration/vmstate.h"
 #include "qemu/range.h"
 #include "qapi/error.h"
 #include "trace.h"
-
-#define MSIX_CAP_LENGTH 12
 
 /* MSI enable bit and maskall bit are in byte 1 in FLAGS register */
 #define MSIX_CONTROL_OFFSET (PCI_MSIX_FLAGS + 1)

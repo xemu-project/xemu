@@ -15,11 +15,15 @@
 #include "block/block_int.h"
 #include "block/blockjob.h"
 #include "block/throttle-groups.h"
+#include "hw/qdev-core.h"
 #include "sysemu/blockdev.h"
+#include "sysemu/runstate.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/replay.h"
 #include "qapi/error.h"
 #include "qapi/qapi-events-block.h"
 #include "qemu/id.h"
+#include "qemu/main-loop.h"
 #include "qemu/option.h"
 #include "trace.h"
 #include "migration/misc.h"
@@ -42,6 +46,7 @@ struct BlockBackend {
     char *name;
     int refcnt;
     BdrvChild *root;
+    AioContext *ctx;
     DriveInfo *legacy_dinfo;    /* null unless created by drive_new() */
     QTAILQ_ENTRY(BlockBackend) link;         /* for block_backends */
     QTAILQ_ENTRY(BlockBackend) monitor_link; /* for monitor_block_backends */
@@ -71,12 +76,16 @@ struct BlockBackend {
     uint64_t shared_perm;
     bool disable_perm;
 
+    bool allow_aio_context_change;
     bool allow_write_beyond_eof;
 
     NotifierList remove_bs_notifiers, insert_bs_notifiers;
     QLIST_HEAD(, BlockBackendAioNotifier) aio_notifiers;
 
     int quiesce_counter;
+    CoQueue queued_requests;
+    bool disable_request_queuing;
+
     VMChangeStateEntry *vmsh;
     bool force_allow_inactivate;
 
@@ -119,10 +128,15 @@ static void blk_root_inherit_options(int *child_flags, QDict *child_options,
 }
 static void blk_root_drained_begin(BdrvChild *child);
 static bool blk_root_drained_poll(BdrvChild *child);
-static void blk_root_drained_end(BdrvChild *child);
+static void blk_root_drained_end(BdrvChild *child, int *drained_end_counter);
 
 static void blk_root_change_media(BdrvChild *child, bool load);
 static void blk_root_resize(BdrvChild *child);
+
+static bool blk_root_can_set_aio_ctx(BdrvChild *child, AioContext *ctx,
+                                     GSList **ignore, Error **errp);
+static void blk_root_set_aio_ctx(BdrvChild *child, AioContext *ctx,
+                                 GSList **ignore);
 
 static char *blk_root_get_parent_desc(BdrvChild *child)
 {
@@ -300,6 +314,9 @@ static const BdrvChildRole child_root = {
 
     .attach             = blk_root_attach,
     .detach             = blk_root_detach,
+
+    .can_set_aio_ctx    = blk_root_can_set_aio_ctx,
+    .set_aio_ctx        = blk_root_set_aio_ctx,
 };
 
 /*
@@ -313,12 +330,13 @@ static const BdrvChildRole child_root = {
  *
  * Return the new BlockBackend on success, null on failure.
  */
-BlockBackend *blk_new(uint64_t perm, uint64_t shared_perm)
+BlockBackend *blk_new(AioContext *ctx, uint64_t perm, uint64_t shared_perm)
 {
     BlockBackend *blk;
 
     blk = g_new0(BlockBackend, 1);
     blk->refcnt = 1;
+    blk->ctx = ctx;
     blk->perm = perm;
     blk->shared_perm = shared_perm;
     blk_set_enable_write_cache(blk, true);
@@ -328,6 +346,7 @@ BlockBackend *blk_new(uint64_t perm, uint64_t shared_perm)
 
     block_acct_init(&blk->stats);
 
+    qemu_co_queue_init(&blk->queued_requests);
     notifier_list_init(&blk->remove_bs_notifiers);
     notifier_list_init(&blk->insert_bs_notifiers);
     QLIST_INIT(&blk->aio_notifiers);
@@ -338,6 +357,7 @@ BlockBackend *blk_new(uint64_t perm, uint64_t shared_perm)
 
 /*
  * Creates a new BlockBackend, opens a new BlockDriverState, and connects both.
+ * The new BlockBackend is in the main AioContext.
  *
  * Just as with bdrv_open(), after having called this function the reference to
  * @options belongs to the block layer (even on failure).
@@ -373,17 +393,16 @@ BlockBackend *blk_new_open(const char *filename, const char *reference,
         perm |= BLK_PERM_RESIZE;
     }
 
-    blk = blk_new(perm, BLK_PERM_ALL);
+    blk = blk_new(qemu_get_aio_context(), perm, BLK_PERM_ALL);
     bs = bdrv_open(filename, reference, options, flags, errp);
     if (!bs) {
         blk_unref(blk);
         return NULL;
     }
 
-    blk->root = bdrv_root_attach_child(bs, "root", &child_root,
+    blk->root = bdrv_root_attach_child(bs, "root", &child_root, blk->ctx,
                                        perm, BLK_PERM_ALL, blk, errp);
     if (!blk->root) {
-        bdrv_unref(bs);
         blk_unref(blk);
         return NULL;
     }
@@ -791,12 +810,12 @@ void blk_remove_bs(BlockBackend *blk)
 int blk_insert_bs(BlockBackend *blk, BlockDriverState *bs, Error **errp)
 {
     ThrottleGroupMember *tgm = &blk->public.throttle_group_member;
-    blk->root = bdrv_root_attach_child(bs, "root", &child_root,
+    bdrv_ref(bs);
+    blk->root = bdrv_root_attach_child(bs, "root", &child_root, blk->ctx,
                                        blk->perm, blk->shared_perm, blk, errp);
     if (blk->root == NULL) {
         return -EPERM;
     }
-    bdrv_ref(bs);
 
     notifier_list_notify(&blk->insert_bs_notifiers, blk);
     if (tgm->throttle_state) {
@@ -1062,11 +1081,7 @@ void blk_iostatus_disable(BlockBackend *blk)
 void blk_iostatus_reset(BlockBackend *blk)
 {
     if (blk_iostatus_is_enabled(blk)) {
-        BlockDriverState *bs = blk_bs(blk);
         blk->iostatus = BLOCK_DEVICE_IO_STATUS_OK;
-        if (bs && bs->job) {
-            block_job_iostatus_reset(bs->job);
-        }
     }
 }
 
@@ -1082,6 +1097,16 @@ void blk_iostatus_set_err(BlockBackend *blk, int error)
 void blk_set_allow_write_beyond_eof(BlockBackend *blk, bool allow)
 {
     blk->allow_write_beyond_eof = allow;
+}
+
+void blk_set_allow_aio_context_change(BlockBackend *blk, bool allow)
+{
+    blk->allow_aio_context_change = allow;
+}
+
+void blk_set_disable_request_queuing(BlockBackend *blk, bool disable)
+{
+    blk->disable_request_queuing = disable;
 }
 
 static int blk_check_byte_request(BlockBackend *blk, int64_t offset,
@@ -1115,13 +1140,24 @@ static int blk_check_byte_request(BlockBackend *blk, int64_t offset,
     return 0;
 }
 
+static void coroutine_fn blk_wait_while_drained(BlockBackend *blk)
+{
+    if (blk->quiesce_counter && !blk->disable_request_queuing) {
+        qemu_co_queue_wait(&blk->queued_requests, NULL);
+    }
+}
+
 int coroutine_fn blk_co_preadv(BlockBackend *blk, int64_t offset,
                                unsigned int bytes, QEMUIOVector *qiov,
                                BdrvRequestFlags flags)
 {
     int ret;
-    BlockDriverState *bs = blk_bs(blk);
+    BlockDriverState *bs;
 
+    blk_wait_while_drained(blk);
+
+    /* Call blk_bs() only after waiting, the graph may have changed */
+    bs = blk_bs(blk);
     trace_blk_co_preadv(blk, bs, offset, bytes, flags);
 
     ret = blk_check_byte_request(blk, offset, bytes);
@@ -1142,13 +1178,18 @@ int coroutine_fn blk_co_preadv(BlockBackend *blk, int64_t offset,
     return ret;
 }
 
-int coroutine_fn blk_co_pwritev(BlockBackend *blk, int64_t offset,
-                                unsigned int bytes, QEMUIOVector *qiov,
-                                BdrvRequestFlags flags)
+int coroutine_fn blk_co_pwritev_part(BlockBackend *blk, int64_t offset,
+                                     unsigned int bytes,
+                                     QEMUIOVector *qiov, size_t qiov_offset,
+                                     BdrvRequestFlags flags)
 {
     int ret;
-    BlockDriverState *bs = blk_bs(blk);
+    BlockDriverState *bs;
 
+    blk_wait_while_drained(blk);
+
+    /* Call blk_bs() only after waiting, the graph may have changed */
+    bs = blk_bs(blk);
     trace_blk_co_pwritev(blk, bs, offset, bytes, flags);
 
     ret = blk_check_byte_request(blk, offset, bytes);
@@ -1167,9 +1208,17 @@ int coroutine_fn blk_co_pwritev(BlockBackend *blk, int64_t offset,
         flags |= BDRV_REQ_FUA;
     }
 
-    ret = bdrv_co_pwritev(blk->root, offset, bytes, qiov, flags);
+    ret = bdrv_co_pwritev_part(blk->root, offset, bytes, qiov, qiov_offset,
+                               flags);
     bdrv_dec_in_flight(bs);
     return ret;
+}
+
+int coroutine_fn blk_co_pwritev(BlockBackend *blk, int64_t offset,
+                                unsigned int bytes, QEMUIOVector *qiov,
+                                BdrvRequestFlags flags)
+{
+    return blk_co_pwritev_part(blk, offset, bytes, qiov, 0, flags);
 }
 
 typedef struct BlkRwCo {
@@ -1225,22 +1274,6 @@ static int blk_prw(BlockBackend *blk, int64_t offset, uint8_t *buf,
     return rwco.ret;
 }
 
-int blk_pread_unthrottled(BlockBackend *blk, int64_t offset, uint8_t *buf,
-                          int count)
-{
-    int ret;
-
-    ret = blk_check_byte_request(blk, offset, count);
-    if (ret < 0) {
-        return ret;
-    }
-
-    blk_root_drained_begin(blk->root);
-    ret = blk_pread(blk, offset, buf, count);
-    blk_root_drained_end(blk->root);
-    return ret;
-}
-
 int blk_pwrite_zeroes(BlockBackend *blk, int64_t offset,
                       int bytes, BdrvRequestFlags flags)
 {
@@ -1284,7 +1317,8 @@ BlockAIOCB *blk_abort_aio_request(BlockBackend *blk,
     acb->blk = blk;
     acb->ret = ret;
 
-    aio_bh_schedule_oneshot(blk_get_aio_context(blk), error_callback_bh, acb);
+    replay_bh_schedule_oneshot_event(blk_get_aio_context(blk),
+                                     error_callback_bh, acb);
     return &acb->common;
 }
 
@@ -1340,8 +1374,8 @@ static BlockAIOCB *blk_aio_prwv(BlockBackend *blk, int64_t offset, int bytes,
 
     acb->has_returned = true;
     if (acb->rwco.ret != NOT_DONE) {
-        aio_bh_schedule_oneshot(blk_get_aio_context(blk),
-                                blk_aio_complete_bh, acb);
+        replay_bh_schedule_oneshot_event(blk_get_aio_context(blk),
+                                         blk_aio_complete_bh, acb);
     }
 
     return &acb->common;
@@ -1352,6 +1386,12 @@ static void blk_aio_read_entry(void *opaque)
     BlkAioEmAIOCB *acb = opaque;
     BlkRwCo *rwco = &acb->rwco;
     QEMUIOVector *qiov = rwco->iobuf;
+
+    if (rwco->blk->quiesce_counter) {
+        blk_dec_in_flight(rwco->blk);
+        blk_wait_while_drained(rwco->blk);
+        blk_inc_in_flight(rwco->blk);
+    }
 
     assert(qiov->size == acb->bytes);
     rwco->ret = blk_co_preadv(rwco->blk, rwco->offset, acb->bytes,
@@ -1364,6 +1404,12 @@ static void blk_aio_write_entry(void *opaque)
     BlkAioEmAIOCB *acb = opaque;
     BlkRwCo *rwco = &acb->rwco;
     QEMUIOVector *qiov = rwco->iobuf;
+
+    if (rwco->blk->quiesce_counter) {
+        blk_dec_in_flight(rwco->blk);
+        blk_wait_while_drained(rwco->blk);
+        blk_inc_in_flight(rwco->blk);
+    }
 
     assert(!qiov || qiov->size == acb->bytes);
     rwco->ret = blk_co_pwritev(rwco->blk, rwco->offset, acb->bytes,
@@ -1486,6 +1532,8 @@ void blk_aio_cancel_async(BlockAIOCB *acb)
 
 int blk_co_ioctl(BlockBackend *blk, unsigned long int req, void *buf)
 {
+    blk_wait_while_drained(blk);
+
     if (!blk_is_available(blk)) {
         return -ENOMEDIUM;
     }
@@ -1526,7 +1574,11 @@ BlockAIOCB *blk_aio_ioctl(BlockBackend *blk, unsigned long int req, void *buf,
 
 int blk_co_pdiscard(BlockBackend *blk, int64_t offset, int bytes)
 {
-    int ret = blk_check_byte_request(blk, offset, bytes);
+    int ret;
+
+    blk_wait_while_drained(blk);
+
+    ret = blk_check_byte_request(blk, offset, bytes);
     if (ret < 0) {
         return ret;
     }
@@ -1536,6 +1588,8 @@ int blk_co_pdiscard(BlockBackend *blk, int64_t offset, int bytes)
 
 int blk_co_flush(BlockBackend *blk)
 {
+    blk_wait_while_drained(blk);
+
     if (!blk_is_available(blk)) {
         return -ENOMEDIUM;
     }
@@ -1843,7 +1897,14 @@ void blk_op_unblock_all(BlockBackend *blk, Error *reason)
 
 AioContext *blk_get_aio_context(BlockBackend *blk)
 {
-    return bdrv_get_aio_context(blk_bs(blk));
+    BlockDriverState *bs = blk_bs(blk);
+
+    if (bs) {
+        AioContext *ctx = bdrv_get_aio_context(blk_bs(blk));
+        assert(ctx == blk->ctx);
+    }
+
+    return blk->ctx;
 }
 
 static AioContext *blk_aiocb_get_aio_context(BlockAIOCB *acb)
@@ -1852,20 +1913,64 @@ static AioContext *blk_aiocb_get_aio_context(BlockAIOCB *acb)
     return blk_get_aio_context(blk_acb->blk);
 }
 
-void blk_set_aio_context(BlockBackend *blk, AioContext *new_context)
+static int blk_do_set_aio_context(BlockBackend *blk, AioContext *new_context,
+                                  bool update_root_node, Error **errp)
 {
     BlockDriverState *bs = blk_bs(blk);
     ThrottleGroupMember *tgm = &blk->public.throttle_group_member;
+    int ret;
 
     if (bs) {
+        if (update_root_node) {
+            ret = bdrv_child_try_set_aio_context(bs, new_context, blk->root,
+                                                 errp);
+            if (ret < 0) {
+                return ret;
+            }
+        }
         if (tgm->throttle_state) {
             bdrv_drained_begin(bs);
             throttle_group_detach_aio_context(tgm);
             throttle_group_attach_aio_context(tgm, new_context);
             bdrv_drained_end(bs);
         }
-        bdrv_set_aio_context(bs, new_context);
     }
+
+    blk->ctx = new_context;
+    return 0;
+}
+
+int blk_set_aio_context(BlockBackend *blk, AioContext *new_context,
+                        Error **errp)
+{
+    return blk_do_set_aio_context(blk, new_context, true, errp);
+}
+
+static bool blk_root_can_set_aio_ctx(BdrvChild *child, AioContext *ctx,
+                                     GSList **ignore, Error **errp)
+{
+    BlockBackend *blk = child->opaque;
+
+    if (blk->allow_aio_context_change) {
+        return true;
+    }
+
+    /* Only manually created BlockBackends that are not attached to anything
+     * can change their AioContext without updating their user. */
+    if (!blk->name || blk->dev) {
+        /* TODO Add BB name/QOM path */
+        error_setg(errp, "Cannot change iothread of active block backend");
+        return false;
+    }
+
+    return true;
+}
+
+static void blk_root_set_aio_ctx(BdrvChild *child, AioContext *ctx,
+                                 GSList **ignore)
+{
+    BlockBackend *blk = child->opaque;
+    blk_do_set_aio_context(blk, ctx, false, &error_abort);
 }
 
 void blk_add_aio_context_notifier(BlockBackend *blk,
@@ -1967,15 +2072,15 @@ int blk_pwrite_compressed(BlockBackend *blk, int64_t offset, const void *buf,
                    BDRV_REQ_WRITE_COMPRESSED);
 }
 
-int blk_truncate(BlockBackend *blk, int64_t offset, PreallocMode prealloc,
-                 Error **errp)
+int blk_truncate(BlockBackend *blk, int64_t offset, bool exact,
+                 PreallocMode prealloc, Error **errp)
 {
     if (!blk_is_available(blk)) {
         error_setg(errp, "No medium inserted");
         return -ENOMEDIUM;
     }
 
-    return bdrv_truncate(blk->root, offset, prealloc, errp);
+    return bdrv_truncate(blk->root, offset, exact, prealloc, errp);
 }
 
 static void blk_pdiscard_entry(void *opaque)
@@ -2173,7 +2278,7 @@ static bool blk_root_drained_poll(BdrvChild *child)
     return !!blk->in_flight;
 }
 
-static void blk_root_drained_end(BdrvChild *child)
+static void blk_root_drained_end(BdrvChild *child, int *drained_end_counter)
 {
     BlockBackend *blk = child->opaque;
     assert(blk->quiesce_counter);
@@ -2184,6 +2289,9 @@ static void blk_root_drained_end(BdrvChild *child)
     if (--blk->quiesce_counter == 0) {
         if (blk->dev_ops && blk->dev_ops->drained_end) {
             blk->dev_ops->drained_end(blk->dev_opaque);
+        }
+        while (qemu_co_enter_next(&blk->queued_requests, NULL)) {
+            /* Resume all queued requests */
         }
     }
 }

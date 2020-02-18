@@ -6,14 +6,19 @@
  * This code is licensed under the GPL version 2 or later. See the
  * COPYING file in the top-level directory.
  */
-#ifndef ASPEED_WDT_H
-#define ASPEED_WDT_H
 
+#ifndef WDT_ASPEED_H
+#define WDT_ASPEED_H
+
+#include "hw/misc/aspeed_scu.h"
 #include "hw/sysbus.h"
 
 #define TYPE_ASPEED_WDT "aspeed.wdt"
 #define ASPEED_WDT(obj) \
     OBJECT_CHECK(AspeedWDTState, (obj), TYPE_ASPEED_WDT)
+#define TYPE_ASPEED_2400_WDT TYPE_ASPEED_WDT "-ast2400"
+#define TYPE_ASPEED_2500_WDT TYPE_ASPEED_WDT "-ast2500"
+#define TYPE_ASPEED_2600_WDT TYPE_ASPEED_WDT "-ast2600"
 
 #define ASPEED_WDT_REGS_MAX        (0x20 / 4)
 
@@ -26,9 +31,22 @@ typedef struct AspeedWDTState {
     MemoryRegion iomem;
     uint32_t regs[ASPEED_WDT_REGS_MAX];
 
+    AspeedSCUState *scu;
     uint32_t pclk_freq;
-    uint32_t silicon_rev;
-    uint32_t ext_pulse_width_mask;
 } AspeedWDTState;
 
-#endif  /* ASPEED_WDT_H */
+#define ASPEED_WDT_CLASS(klass) \
+     OBJECT_CLASS_CHECK(AspeedWDTClass, (klass), TYPE_ASPEED_WDT)
+#define ASPEED_WDT_GET_CLASS(obj) \
+     OBJECT_GET_CLASS(AspeedWDTClass, (obj), TYPE_ASPEED_WDT)
+
+typedef struct AspeedWDTClass {
+    SysBusDeviceClass parent_class;
+
+    uint32_t offset;
+    uint32_t ext_pulse_width_mask;
+    uint32_t reset_ctrl_reg;
+    void (*reset_pulse)(AspeedWDTState *s, uint32_t property);
+}  AspeedWDTClass;
+
+#endif /* WDT_ASPEED_H */

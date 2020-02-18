@@ -267,7 +267,7 @@ the default configuration by uncommenting lines in the first group,
 or commenting out lines in the second group.
 
 It is also possible to run QEMU's configure script with the
-``--with-default-devices`` option.  When this is done, everything defaults
+``--without-default-devices`` option.  When this is done, everything defaults
 to ``n`` unless it is ``select``ed or explicitly switched on in the
 ``.mak`` files.  In other words, ``default`` and ``imply`` directives
 are disabled.  When QEMU is built with this option, the user will probably
@@ -299,7 +299,7 @@ and also listed as follows in the top-level Makefile's ``MINIKCONF_ARGS``
 variable::
 
     MINIKCONF_ARGS = \
-      $@ $*-config.devices.mak.d $< $(MINIKCONF_INPUTS) \
+      $@ $*/config-devices.mak.d $< $(MINIKCONF_INPUTS) \
       CONFIG_KVM=$(CONFIG_KVM) \
       CONFIG_SPICE=$(CONFIG_SPICE) \
       CONFIG_TPM=$(CONFIG_TPM) \

@@ -16,13 +16,14 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
+
 #include "qemu/osdep.h"
 #include "qemu/error-report.h"
-#include "hw/hw.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "sysemu/kvm.h"
-#include "hw/qdev.h"
 #include "kvm_ppc.h"
+#include "migration/vmstate.h"
 #include "sysemu/dma.h"
 #include "exec/address-spaces.h"
 #include "trace.h"
@@ -135,7 +136,7 @@ static IOMMUTLBEntry spapr_tce_translate_iommu(IOMMUMemoryRegion *iommu,
         ret.addr_mask = ~page_mask;
         ret.perm = spapr_tce_iommu_access_flags(tce);
     }
-    trace_spapr_iommu_xlate(tcet->liobn, addr, ret.iova, ret.perm,
+    trace_spapr_iommu_xlate(tcet->liobn, addr, ret.translated_addr, ret.perm,
                             ret.addr_mask);
 
     return ret;
@@ -204,9 +205,10 @@ static int spapr_tce_get_attr(IOMMUMemoryRegion *iommu,
     return -EINVAL;
 }
 
-static void spapr_tce_notify_flag_changed(IOMMUMemoryRegion *iommu,
-                                          IOMMUNotifierFlag old,
-                                          IOMMUNotifierFlag new)
+static int spapr_tce_notify_flag_changed(IOMMUMemoryRegion *iommu,
+                                         IOMMUNotifierFlag old,
+                                         IOMMUNotifierFlag new,
+                                         Error **errp)
 {
     struct SpaprTceTable *tbl = container_of(iommu, SpaprTceTable, iommu);
 
@@ -215,6 +217,7 @@ static void spapr_tce_notify_flag_changed(IOMMUMemoryRegion *iommu,
     } else if (old != IOMMU_NOTIFIER_NONE && new == IOMMU_NOTIFIER_NONE) {
         spapr_tce_set_need_vfio(tbl, false);
     }
+    return 0;
 }
 
 static int spapr_tce_table_post_load(void *opaque, int version_id)

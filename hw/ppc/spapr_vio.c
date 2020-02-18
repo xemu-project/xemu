@@ -23,16 +23,14 @@
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "qapi/visitor.h"
-#include "hw/hw.h"
 #include "qemu/log.h"
-#include "sysemu/sysemu.h"
-#include "hw/boards.h"
 #include "hw/loader.h"
 #include "elf.h"
 #include "hw/sysbus.h"
 #include "sysemu/kvm.h"
 #include "sysemu/device_tree.h"
 #include "kvm_ppc.h"
+#include "migration/vmstate.h"
 #include "sysemu/qtest.h"
 
 #include "hw/ppc/spapr.h"
@@ -295,7 +293,7 @@ int spapr_vio_send_crq(SpaprVioDevice *dev, uint8_t *crq)
     dev->crq.qnext = (dev->crq.qnext + 16) % dev->crq.qsize;
 
     if (dev->signal_state & 1) {
-        qemu_irq_pulse(spapr_vio_qirq(dev));
+        spapr_vio_irq_pulse(dev);
     }
 
     return 0;

@@ -29,6 +29,7 @@
 #include "io/channel-websock.h"
 #include "io/net-listener.h"
 #include "qemu/error-report.h"
+#include "qemu/module.h"
 #include "qemu/option.h"
 #include "qapi/error.h"
 #include "qapi/clone-visitor.h"
@@ -149,7 +150,7 @@ static void tcp_chr_accept(QIONetListener *listener,
                            void *opaque);
 
 static int tcp_chr_read_poll(void *opaque);
-static void tcp_chr_disconnect(Chardev *chr);
+static void tcp_chr_disconnect_locked(Chardev *chr);
 
 /* Called with chr_write_lock held.  */
 static int tcp_chr_write(Chardev *chr, const uint8_t *buf, int len)
@@ -173,7 +174,7 @@ static int tcp_chr_write(Chardev *chr, const uint8_t *buf, int len)
 
         if (ret < 0 && errno != EAGAIN) {
             if (tcp_chr_read_poll(chr) <= 0) {
-                tcp_chr_disconnect(chr);
+                tcp_chr_disconnect_locked(chr);
                 return len;
             } /* else let the read handler finish it properly */
         }
@@ -468,8 +469,9 @@ static void update_disconnected_filename(SocketChardev *s)
 /* NB may be called even if tcp_chr_connect has not been
  * reached, due to TLS or telnet initialization failure,
  * so can *not* assume s->state == TCP_CHARDEV_STATE_CONNECTED
+ * This must be called with chr->chr_write_lock held.
  */
-static void tcp_chr_disconnect(Chardev *chr)
+static void tcp_chr_disconnect_locked(Chardev *chr)
 {
     SocketChardev *s = SOCKET_CHARDEV(chr);
     bool emit_close = s->state == TCP_CHARDEV_STATE_CONNECTED;
@@ -487,6 +489,13 @@ static void tcp_chr_disconnect(Chardev *chr)
     if (s->reconnect_time) {
         qemu_chr_socket_restart_timer(chr);
     }
+}
+
+static void tcp_chr_disconnect(Chardev *chr)
+{
+    qemu_mutex_lock(&chr->chr_write_lock);
+    tcp_chr_disconnect_locked(chr);
+    qemu_mutex_unlock(&chr->chr_write_lock);
 }
 
 static gboolean tcp_chr_read(QIOChannel *chan, GIOCondition cond, void *opaque)
@@ -1130,8 +1139,10 @@ static gboolean socket_reconnect_timeout(gpointer opaque)
     Chardev *chr = CHARDEV(opaque);
     SocketChardev *s = SOCKET_CHARDEV(opaque);
 
+    qemu_mutex_lock(&chr->chr_write_lock);
     g_source_unref(s->reconnect_timer);
     s->reconnect_timer = NULL;
+    qemu_mutex_unlock(&chr->chr_write_lock);
 
     if (chr->be_open) {
         return false;
@@ -1159,7 +1170,7 @@ static int qmp_chardev_open_socket_server(Chardev *chr,
     qio_net_listener_set_name(s->listener, name);
     g_free(name);
 
-    if (qio_net_listener_open_sync(s->listener, s->addr, errp) < 0) {
+    if (qio_net_listener_open_sync(s->listener, s->addr, 1, errp) < 0) {
         object_unref(OBJECT(s->listener));
         s->listener = NULL;
         return -1;

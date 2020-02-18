@@ -1,7 +1,7 @@
 #ifndef HW_FDC_H
 #define HW_FDC_H
 
-#include "qemu-common.h"
+#include "exec/hwaddr.h"
 #include "qapi/qapi-types-block.h"
 
 /* fdc.c */

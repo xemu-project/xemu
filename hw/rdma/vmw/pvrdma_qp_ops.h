@@ -13,8 +13,8 @@
  *
  */
 
-#ifndef PVRDMA_QP_H
-#define PVRDMA_QP_H
+#ifndef PVRDMA_QP_OPS_H
+#define PVRDMA_QP_OPS_H
 
 #include "pvrdma.h"
 
@@ -22,6 +22,7 @@ int pvrdma_qp_ops_init(void);
 void pvrdma_qp_ops_fini(void);
 void pvrdma_qp_send(PVRDMADev *dev, uint32_t qp_handle);
 void pvrdma_qp_recv(PVRDMADev *dev, uint32_t qp_handle);
+void pvrdma_srq_recv(PVRDMADev *dev, uint32_t srq_handle);
 void pvrdma_cq_poll(RdmaDeviceResources *dev_res, uint32_t cq_handle);
 
 #endif

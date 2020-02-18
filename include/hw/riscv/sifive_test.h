@@ -19,6 +19,8 @@
 #ifndef HW_SIFIVE_TEST_H
 #define HW_SIFIVE_TEST_H
 
+#include "hw/sysbus.h"
+
 #define TYPE_SIFIVE_TEST "riscv.sifive.test"
 
 #define SIFIVE_TEST(obj) \
@@ -34,7 +36,8 @@ typedef struct SiFiveTestState {
 
 enum {
     FINISHER_FAIL = 0x3333,
-    FINISHER_PASS = 0x5555
+    FINISHER_PASS = 0x5555,
+    FINISHER_RESET = 0x7777
 };
 
 DeviceState *sifive_test_create(hwaddr addr);

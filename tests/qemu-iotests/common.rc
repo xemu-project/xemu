@@ -53,6 +53,26 @@ poke_file()
     printf "$3" | dd "of=$1" bs=1 "seek=$2" conv=notrunc &>/dev/null
 }
 
+# peek_file_le 'test.img' 512 2 => 65534
+peek_file_le()
+{
+    # Wrap in echo $() to strip spaces
+    echo $(od -j"$2" -N"$3" --endian=little -An -vtu"$3" "$1")
+}
+
+# peek_file_be 'test.img' 512 2 => 65279
+peek_file_be()
+{
+    # Wrap in echo $() to strip spaces
+    echo $(od -j"$2" -N"$3" --endian=big -An -vtu"$3" "$1")
+}
+
+# peek_file_raw 'test.img' 512 2 => '\xff\xfe'
+peek_file_raw()
+{
+    dd if="$1" bs=1 skip="$2" count="$3" status=none
+}
+
 
 if ! . ./common.config
     then
@@ -60,19 +80,68 @@ if ! . ./common.config
     exit 1
 fi
 
+# Set the variables to the empty string to turn Valgrind off
+# for specific processes, e.g.
+# $ VALGRIND_QEMU_IO= ./check -qcow2 -valgrind 015
+
+: ${VALGRIND_QEMU_VM=$VALGRIND_QEMU}
+: ${VALGRIND_QEMU_IMG=$VALGRIND_QEMU}
+: ${VALGRIND_QEMU_IO=$VALGRIND_QEMU}
+: ${VALGRIND_QEMU_NBD=$VALGRIND_QEMU}
+: ${VALGRIND_QEMU_VXHS=$VALGRIND_QEMU}
+
+# The Valgrind own parameters may be set with
+# its environment variable VALGRIND_OPTS, e.g.
+# $ VALGRIND_OPTS="--leak-check=yes" ./check -qcow2 -valgrind 015
+
+_qemu_proc_exec()
+{
+    local VALGRIND_LOGFILE="$1"
+    shift
+    if [[ "${VALGRIND_QEMU}" == "y" && "${NO_VALGRIND}" != "y" ]]; then
+        exec valgrind --log-file="${VALGRIND_LOGFILE}" --error-exitcode=99 "$@"
+    else
+        exec "$@"
+    fi
+}
+
+_qemu_proc_valgrind_log()
+{
+    local VALGRIND_LOGFILE="$1"
+    local RETVAL="$2"
+    if [[ "${VALGRIND_QEMU}" == "y" && "${NO_VALGRIND}" != "y" ]]; then
+        if [ $RETVAL == 99 ]; then
+            cat "${VALGRIND_LOGFILE}"
+        fi
+        rm -f "${VALGRIND_LOGFILE}"
+    fi
+}
+
 _qemu_wrapper()
 {
+    local VALGRIND_LOGFILE="${TEST_DIR}"/$$.valgrind
     (
         if [ -n "${QEMU_NEED_PID}" ]; then
             echo $BASHPID > "${QEMU_TEST_DIR}/qemu-${_QEMU_HANDLE}.pid"
         fi
-        exec "$QEMU_PROG" $QEMU_OPTIONS "$@"
+        VALGRIND_QEMU="${VALGRIND_QEMU_VM}" _qemu_proc_exec "${VALGRIND_LOGFILE}" \
+            "$QEMU_PROG" $QEMU_OPTIONS "$@"
     )
+    RETVAL=$?
+    _qemu_proc_valgrind_log "${VALGRIND_LOGFILE}" $RETVAL
+    return $RETVAL
 }
 
 _qemu_img_wrapper()
 {
-    (exec "$QEMU_IMG_PROG" $QEMU_IMG_OPTIONS "$@")
+    local VALGRIND_LOGFILE="${TEST_DIR}"/$$.valgrind
+    (
+        VALGRIND_QEMU="${VALGRIND_QEMU_IMG}" _qemu_proc_exec "${VALGRIND_LOGFILE}" \
+            "$QEMU_IMG_PROG" $QEMU_IMG_OPTIONS "$@"
+    )
+    RETVAL=$?
+    _qemu_proc_valgrind_log "${VALGRIND_LOGFILE}" $RETVAL
+    return $RETVAL
 }
 
 _qemu_io_wrapper()
@@ -85,38 +154,47 @@ _qemu_io_wrapper()
             QEMU_IO_ARGS="--object secret,id=keysec0,data=$IMGKEYSECRET $QEMU_IO_ARGS"
         fi
     fi
-    local RETVAL
     (
-        if [ "${VALGRIND_QEMU}" == "y" ]; then
-            exec valgrind --log-file="${VALGRIND_LOGFILE}" --error-exitcode=99 "$QEMU_IO_PROG" $QEMU_IO_ARGS "$@"
-        else
-            exec "$QEMU_IO_PROG" $QEMU_IO_ARGS "$@"
-        fi
+        VALGRIND_QEMU="${VALGRIND_QEMU_IO}" _qemu_proc_exec "${VALGRIND_LOGFILE}" \
+            "$QEMU_IO_PROG" $QEMU_IO_ARGS "$@"
     )
     RETVAL=$?
-    if [ "${VALGRIND_QEMU}" == "y" ]; then
-        if [ $RETVAL == 99 ]; then
-            cat "${VALGRIND_LOGFILE}"
-        fi
-        rm -f "${VALGRIND_LOGFILE}"
-    fi
-    (exit $RETVAL)
+    _qemu_proc_valgrind_log "${VALGRIND_LOGFILE}" $RETVAL
+    return $RETVAL
 }
 
 _qemu_nbd_wrapper()
 {
+    local VALGRIND_LOGFILE="${TEST_DIR}"/$$.valgrind
     (
-        echo $BASHPID > "${QEMU_TEST_DIR}/qemu-nbd.pid"
-        exec "$QEMU_NBD_PROG" $QEMU_NBD_OPTIONS "$@"
+        VALGRIND_QEMU="${VALGRIND_QEMU_NBD}" _qemu_proc_exec "${VALGRIND_LOGFILE}" \
+            "$QEMU_NBD_PROG" --pid-file="${QEMU_TEST_DIR}/qemu-nbd.pid" \
+             $QEMU_NBD_OPTIONS "$@"
     )
+    RETVAL=$?
+    _qemu_proc_valgrind_log "${VALGRIND_LOGFILE}" $RETVAL
+    return $RETVAL
 }
 
 _qemu_vxhs_wrapper()
 {
+    local VALGRIND_LOGFILE="${TEST_DIR}"/$$.valgrind
     (
         echo $BASHPID > "${TEST_DIR}/qemu-vxhs.pid"
-        exec "$QEMU_VXHS_PROG" $QEMU_VXHS_OPTIONS "$@"
+        VALGRIND_QEMU="${VALGRIND_QEMU_VXHS}" _qemu_proc_exec "${VALGRIND_LOGFILE}" \
+            "$QEMU_VXHS_PROG" $QEMU_VXHS_OPTIONS "$@"
     )
+    RETVAL=$?
+    _qemu_proc_valgrind_log "${VALGRIND_LOGFILE}" $RETVAL
+    return $RETVAL
+}
+
+# Valgrind bug #409141 https://bugs.kde.org/show_bug.cgi?id=409141
+# Until valgrind 3.16+ is ubiquitous, we must work around a hang in
+# valgrind when issuing sigkill. Disable valgrind for this invocation.
+_NO_VALGRIND()
+{
+    NO_VALGRIND="y" "$@"
 }
 
 export QEMU=_qemu_wrapper
@@ -139,7 +217,7 @@ if [ "$IMGOPTSSYNTAX" = "true" ]; then
         TEST_IMG="$DRIVER,file.filename=$TEST_DIR/t.$IMGFMT"
     elif [ "$IMGPROTO" = "nbd" ]; then
         TEST_IMG_FILE=$TEST_DIR/t.$IMGFMT
-        TEST_IMG="$DRIVER,file.driver=nbd,file.host=127.0.0.1,file.port=10810"
+        TEST_IMG="$DRIVER,file.driver=nbd,file.type=unix,file.path=$SOCKDIR/nbd"
     elif [ "$IMGPROTO" = "ssh" ]; then
         TEST_IMG_FILE=$TEST_DIR/t.$IMGFMT
         TEST_IMG="$DRIVER,file.driver=ssh,file.host=127.0.0.1,file.path=$TEST_IMG_FILE"
@@ -155,10 +233,10 @@ else
         TEST_IMG=$TEST_DIR/t.$IMGFMT
     elif [ "$IMGPROTO" = "nbd" ]; then
         TEST_IMG_FILE=$TEST_DIR/t.$IMGFMT
-        TEST_IMG="nbd:127.0.0.1:10810"
+        TEST_IMG="nbd+unix:///?socket=$SOCK_DIR/nbd"
     elif [ "$IMGPROTO" = "ssh" ]; then
         TEST_IMG_FILE=$TEST_DIR/t.$IMGFMT
-        REMOTE_TEST_DIR="ssh://127.0.0.1$TEST_DIR"
+        REMOTE_TEST_DIR="ssh://\\($USER@\\)\\?127.0.0.1\\(:[0-9]\\+\\)\\?$TEST_DIR"
         TEST_IMG="ssh://127.0.0.1$TEST_IMG_FILE"
     elif [ "$IMGPROTO" = "nfs" ]; then
         TEST_IMG_FILE=$TEST_DIR/t.$IMGFMT
@@ -215,7 +293,7 @@ _stop_nbd_server()
         local QEMU_NBD_PID
         read QEMU_NBD_PID < "${QEMU_TEST_DIR}/qemu-nbd.pid"
         kill ${QEMU_NBD_PID}
-        rm -f "${QEMU_TEST_DIR}/qemu-nbd.pid"
+        rm -f "${QEMU_TEST_DIR}/qemu-nbd.pid" "$SOCK_DIR/nbd"
     fi
 }
 
@@ -271,11 +349,14 @@ _make_test_img()
      fi
     ) | _filter_img_create
 
-    # Start an NBD server on the image file, which is what we'll be talking to
+    # Start an NBD server on the image file, which is what we'll be talking to.
+    # Once NBD gains resize support, we may also want to use -f raw at the
+    # server and interpret format over NBD, but for now, the format is
+    # interpreted at the server and raw data sent over NBD.
     if [ $IMGPROTO = "nbd" ]; then
         # Pass a sufficiently high number to -e that should be enough for all
         # tests
-        eval "$QEMU_NBD -v -t -b 127.0.0.1 -p 10810 -f $IMGFMT -e 42 -x '' $TEST_IMG_FILE >/dev/null &"
+        eval "$QEMU_NBD -v -t -k '$SOCK_DIR/nbd' -f $IMGFMT -e 42 -x '' $TEST_IMG_FILE >/dev/null &"
         sleep 1 # FIXME: qemu-nbd needs to be listening before we continue
     fi
 
@@ -347,6 +428,23 @@ _check_test_img()
             $QEMU_IMG check "$@" -f $IMGFMT "$TEST_IMG" 2>&1
         fi
     ) | _filter_testdir | _filter_qemu_img_check
+
+    # return real qemu_img check status, to analyze in
+    # _check_test_img_ignore_leaks
+    return ${PIPESTATUS[0]}
+}
+
+_check_test_img_ignore_leaks()
+{
+    out=$(_check_test_img "$@")
+    status=$?
+    if [ $status = 3 ]; then
+        # This must correspond to success output in dump_human_image_check()
+        echo "No errors were found on the image."
+        return 0
+    fi
+    echo "$out"
+    return $status
 }
 
 _img_info()
@@ -395,6 +493,15 @@ _notrun()
     echo "$seq not run: $*"
     status=0
     exit
+}
+
+# bail out, setting up .casenotrun file
+# The function _casenotrun() is used as a notifier. It is the
+# caller's responsibility to make skipped a particular test.
+#
+_casenotrun()
+{
+    echo "    [case not run] $*" >>"$OUTPUT_DIR/$seq.casenotrun"
 }
 
 # just plain bail out
@@ -520,6 +627,20 @@ _require_command()
         eval c=\$$1
     fi
     [ -x "$c" ] || _notrun "$1 utility required, skipped this test"
+}
+
+# Check that a set of drivers has been whitelisted in the QEMU binary
+#
+_require_drivers()
+{
+    available=$($QEMU -drive format=help | \
+                sed -e '/Supported formats:/!d' -e 's/Supported formats://')
+    for driver
+    do
+        if ! echo "$available" | grep -q " $driver\( \|$\)"; then
+            _notrun "$driver not available"
+        fi
+    done
 }
 
 # make sure this script returns success

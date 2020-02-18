@@ -31,7 +31,9 @@
 
 #include "qemu/thread.h"
 #include "qemu/main-loop.h"
+#include "qemu/module.h"
 #include "ccid.h"
+#include "hw/qdev-properties.h"
 #include "qapi/error.h"
 
 #define DPRINTF(card, lvl, fmt, ...) \

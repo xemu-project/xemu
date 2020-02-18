@@ -33,6 +33,7 @@
 #include <pxelinux.h>
 
 #include "s390-ccw.h"
+#include "cio.h"
 #include "virtio.h"
 
 #define DEFAULT_BOOT_RETRIES 10
@@ -268,6 +269,7 @@ static const char *get_uuid(void)
                  : "d" (r0), "d" (r1), [addr] "a" (buf)
                  : "cc", "memory");
     if (cc) {
+        free(mem);
         return NULL;
     }
 
@@ -475,6 +477,7 @@ static bool find_net_dev(Schib *schib, int dev_no)
         if (!schib->pmcw.dnv) {
             continue;
         }
+        enable_subchannel(net_schid);
         if (!virtio_is_supported(net_schid)) {
             continue;
         }

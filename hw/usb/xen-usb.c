@@ -24,6 +24,7 @@
 #include <sys/user.h>
 
 #include "qemu/config-file.h"
+#include "qemu/main-loop.h"
 #include "qemu/option.h"
 #include "hw/sysbus.h"
 #include "hw/usb.h"
@@ -32,8 +33,7 @@
 #include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qstring.h"
 
-#include "hw/xen/io/ring.h"
-#include <xen/io/usbif.h>
+#include "hw/xen/interface/io/usbif.h"
 
 /*
  * Check for required support of usbif.h: USBIF_SHORT_NOT_OK was the last

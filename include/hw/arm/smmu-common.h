@@ -80,12 +80,8 @@ typedef struct SMMUDevice {
     AddressSpace       as;
     uint32_t           cfg_cache_hits;
     uint32_t           cfg_cache_misses;
+    QLIST_ENTRY(SMMUDevice) next;
 } SMMUDevice;
-
-typedef struct SMMUNotifierNode {
-    SMMUDevice *sdev;
-    QLIST_ENTRY(SMMUNotifierNode) next;
-} SMMUNotifierNode;
 
 typedef struct SMMUPciBus {
     PCIBus       *bus;
@@ -108,7 +104,7 @@ typedef struct SMMUState {
     GHashTable *iotlb;
     SMMUPciBus *smmu_pcibus_by_bus_num[SMMU_PCI_BUS_MAX];
     PCIBus *pci_bus;
-    QLIST_HEAD(, SMMUNotifierNode) notifiers_list;
+    QLIST_HEAD(, SMMUDevice) devices_with_notifiers;
     uint8_t bus_num;
     PCIBus *primary_bus;
 } SMMUState;
@@ -167,4 +163,4 @@ void smmu_inv_notifiers_all(SMMUState *s);
 /* Unmap the range of all the notifiers registered to @mr */
 void smmu_inv_notifiers_mr(IOMMUMemoryRegion *mr);
 
-#endif  /* HW_ARM_SMMU_COMMON */
+#endif /* HW_ARM_SMMU_COMMON_H */

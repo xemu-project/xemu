@@ -20,7 +20,6 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "cpu.h"
-#include "qemu-common.h"
 #include "migration/vmstate.h"
 #include "machine.h"
 
@@ -74,10 +73,9 @@ static void moxie_cpu_realizefn(DeviceState *dev, Error **errp)
 
 static void moxie_cpu_initfn(Object *obj)
 {
-    CPUState *cs = CPU(obj);
     MoxieCPU *cpu = MOXIE_CPU(obj);
 
-    cs->env_ptr = &cpu->env;
+    cpu_set_cpustate_pointers(cpu);
 }
 
 static ObjectClass *moxie_cpu_class_by_name(const char *cpu_model)
@@ -112,9 +110,8 @@ static void moxie_cpu_class_init(ObjectClass *oc, void *data)
     cc->do_interrupt = moxie_cpu_do_interrupt;
     cc->dump_state = moxie_cpu_dump_state;
     cc->set_pc = moxie_cpu_set_pc;
-#ifdef CONFIG_USER_ONLY
-    cc->handle_mmu_fault = moxie_cpu_handle_mmu_fault;
-#else
+    cc->tlb_fill = moxie_cpu_tlb_fill;
+#ifndef CONFIG_USER_ONLY
     cc->get_phys_page_debug = moxie_cpu_get_phys_page_debug;
     cc->vmsd = &vmstate_moxie_cpu;
 #endif

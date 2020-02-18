@@ -41,6 +41,7 @@
 /qapi/qapi-types-*.[ch]
 /qapi/qapi-types.[ch]
 /qapi/qapi-visit-*.[ch]
+!/qapi/qapi-visit-core.c
 /qapi/qapi-visit.[ch]
 /qapi/qapi-doc.texi
 /qemu-doc.html
@@ -65,6 +66,8 @@
 /scsi/qemu-pr-helper
 /vhost-user-scsi
 /vhost-user-blk
+/vhost-user-gpu
+/vhost-user-input
 /fsdev/virtfs-proxy-helper
 *.tmp
 *.[1-9]
@@ -97,6 +100,7 @@
 *.gcno
 *.gcov
 /pc-bios/bios-pq/status
+/pc-bios/edk2-*.fd
 /pc-bios/vgabios-pq/status
 /pc-bios/optionrom/linuxboot.asm
 /pc-bios/optionrom/linuxboot.bin
@@ -130,6 +134,7 @@
 /docs/interop/qemu-qmp-ref.info*
 /docs/interop/qemu-qmp-ref.txt
 /docs/version.texi
+/contrib/vhost-user-gpu/50-qemu-gpu.json
 *.tps
 .stgit-*
 .git-submodule-status

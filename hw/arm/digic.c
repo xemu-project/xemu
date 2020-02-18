@@ -22,7 +22,9 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "qemu/module.h"
 #include "hw/arm/digic.h"
+#include "hw/qdev-properties.h"
 #include "sysemu/sysemu.h"
 
 #define DIGIC4_TIMER_BASE(n)    (0xc0210000 + (n) * 0x100)
@@ -32,27 +34,23 @@
 static void digic_init(Object *obj)
 {
     DigicState *s = DIGIC(obj);
-    DeviceState *dev;
     int i;
 
-    object_initialize(&s->cpu, sizeof(s->cpu), "arm946-" TYPE_ARM_CPU);
-    object_property_add_child(obj, "cpu", OBJECT(&s->cpu), NULL);
+    object_initialize_child(obj, "cpu", &s->cpu, sizeof(s->cpu),
+                            ARM_CPU_TYPE_NAME("arm946"),
+                            &error_abort, NULL);
 
     for (i = 0; i < DIGIC4_NB_TIMERS; i++) {
 #define DIGIC_TIMER_NAME_MLEN    11
         char name[DIGIC_TIMER_NAME_MLEN];
 
-        object_initialize(&s->timer[i], sizeof(s->timer[i]), TYPE_DIGIC_TIMER);
-        dev = DEVICE(&s->timer[i]);
-        qdev_set_parent_bus(dev, sysbus_get_default());
         snprintf(name, DIGIC_TIMER_NAME_MLEN, "timer[%d]", i);
-        object_property_add_child(obj, name, OBJECT(&s->timer[i]), NULL);
+        sysbus_init_child_obj(obj, name, &s->timer[i], sizeof(s->timer[i]),
+                              TYPE_DIGIC_TIMER);
     }
 
-    object_initialize(&s->uart, sizeof(s->uart), TYPE_DIGIC_UART);
-    dev = DEVICE(&s->uart);
-    qdev_set_parent_bus(dev, sysbus_get_default());
-    object_property_add_child(obj, "uart", OBJECT(&s->uart), NULL);
+    sysbus_init_child_obj(obj, "uart", &s->uart, sizeof(s->uart),
+                          TYPE_DIGIC_UART);
 }
 
 static void digic_realize(DeviceState *dev, Error **errp)

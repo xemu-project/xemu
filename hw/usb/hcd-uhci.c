@@ -25,17 +25,20 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #include "qemu/osdep.h"
-#include "hw/hw.h"
 #include "hw/usb.h"
 #include "hw/usb/uhci-regs.h"
+#include "migration/vmstate.h"
 #include "hw/pci/pci.h"
+#include "hw/qdev-properties.h"
 #include "qapi/error.h"
 #include "qemu/timer.h"
 #include "qemu/iov.h"
 #include "sysemu/dma.h"
 #include "trace.h"
 #include "qemu/main-loop.h"
+#include "qemu/module.h"
 
 #define FRAME_TIMER_FREQ 1000
 

@@ -17,6 +17,8 @@
 #include "qapi/error.h"
 #include "qemu/timer.h"
 #include "qemu/bswap.h"
+#include "qemu/main-loop.h"
+#include "qemu/module.h"
 #include "qemu/option.h"
 #include "trace.h"
 #include "qed.h"
@@ -113,15 +115,13 @@ static int coroutine_fn qed_write_header(BDRVQEDState *s)
     int nsectors = DIV_ROUND_UP(sizeof(QEDHeader), BDRV_SECTOR_SIZE);
     size_t len = nsectors * BDRV_SECTOR_SIZE;
     uint8_t *buf;
-    QEMUIOVector qiov;
     int ret;
 
     assert(s->allocating_acb || s->allocating_write_reqs_plugged);
 
     buf = qemu_blockalign(s->bs, len);
-    qemu_iovec_init_buf(&qiov, buf, len);
 
-    ret = bdrv_co_preadv(s->bs->file, 0, qiov.size, &qiov, 0);
+    ret = bdrv_co_pread(s->bs->file, 0, len, buf, 0);
     if (ret < 0) {
         goto out;
     }
@@ -129,7 +129,7 @@ static int coroutine_fn qed_write_header(BDRVQEDState *s)
     /* Update header */
     qed_header_cpu_to_le(&s->header, (QEDHeader *) buf);
 
-    ret = bdrv_co_pwritev(s->bs->file, 0, qiov.size,  &qiov, 0);
+    ret = bdrv_co_pwrite(s->bs->file, 0, len,  buf, 0);
     if (ret < 0) {
         goto out;
     }
@@ -651,7 +651,8 @@ static int coroutine_fn bdrv_qed_co_create(BlockdevCreateOptions *opts,
         return -EIO;
     }
 
-    blk = blk_new(BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL);
+    blk = blk_new(bdrv_get_aio_context(bs),
+                  BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL);
     ret = blk_insert_bs(blk, bs, errp);
     if (ret < 0) {
         goto out;
@@ -672,8 +673,11 @@ static int coroutine_fn bdrv_qed_co_create(BlockdevCreateOptions *opts,
 
     l1_size = header.cluster_size * header.table_size;
 
-    /* File must start empty and grow, check truncate is supported */
-    ret = blk_truncate(blk, 0, PREALLOC_MODE_OFF, errp);
+    /*
+     * The QED format associates file length with allocation status,
+     * so a new file (which is empty) must have a length of 0.
+     */
+    ret = blk_truncate(blk, 0, true, PREALLOC_MODE_OFF, errp);
     if (ret < 0) {
         goto out;
     }
@@ -1460,6 +1464,7 @@ static int coroutine_fn bdrv_qed_co_pwrite_zeroes(BlockDriverState *bs,
 
 static int coroutine_fn bdrv_qed_co_truncate(BlockDriverState *bs,
                                              int64_t offset,
+                                             bool exact,
                                              PreallocMode prealloc,
                                              Error **errp)
 {
@@ -1606,8 +1611,9 @@ static void coroutine_fn bdrv_qed_co_invalidate_cache(BlockDriverState *bs,
     }
 }
 
-static int bdrv_qed_co_check(BlockDriverState *bs, BdrvCheckResult *result,
-                             BdrvCheckMode fix)
+static int coroutine_fn bdrv_qed_co_check(BlockDriverState *bs,
+                                          BdrvCheckResult *result,
+                                          BdrvCheckMode fix)
 {
     BDRVQEDState *s = bs->opaque;
     int ret;
@@ -1667,6 +1673,7 @@ static BlockDriver bdrv_qed = {
     .bdrv_co_create           = bdrv_qed_co_create,
     .bdrv_co_create_opts      = bdrv_qed_co_create_opts,
     .bdrv_has_zero_init       = bdrv_has_zero_init_1,
+    .bdrv_has_zero_init_truncate = bdrv_has_zero_init_1,
     .bdrv_co_block_status     = bdrv_qed_co_block_status,
     .bdrv_co_readv            = bdrv_qed_co_readv,
     .bdrv_co_writev           = bdrv_qed_co_writev,

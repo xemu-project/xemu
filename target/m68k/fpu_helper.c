@@ -25,7 +25,8 @@
 #include "exec/cpu_ldst.h"
 #include "softfloat.h"
 
-/* Undefined offsets may be different on various FPU.
+/*
+ * Undefined offsets may be different on various FPU.
  * On 68040 they return 0.0 (floatx80_zero)
  */
 
@@ -395,14 +396,14 @@ typedef int (*float_access)(CPUM68KState *env, uint32_t addr, FPReg *fp,
                             uintptr_t ra);
 
 static uint32_t fmovem_predec(CPUM68KState *env, uint32_t addr, uint32_t mask,
-                               float_access access)
+                              float_access access_fn)
 {
     uintptr_t ra = GETPC();
     int i, size;
 
     for (i = 7; i >= 0; i--, mask <<= 1) {
         if (mask & 0x80) {
-            size = access(env, addr, &env->fregs[i], ra);
+            size = access_fn(env, addr, &env->fregs[i], ra);
             if ((mask & 0xff) != 0x80) {
                 addr -= size;
             }
@@ -413,14 +414,14 @@ static uint32_t fmovem_predec(CPUM68KState *env, uint32_t addr, uint32_t mask,
 }
 
 static uint32_t fmovem_postinc(CPUM68KState *env, uint32_t addr, uint32_t mask,
-                               float_access access)
+                               float_access access_fn)
 {
     uintptr_t ra = GETPC();
     int i, size;
 
     for (i = 0; i < 8; i++, mask <<= 1) {
         if (mask & 0x80) {
-            size = access(env, addr, &env->fregs[i], ra);
+            size = access_fn(env, addr, &env->fregs[i], ra);
             addr += size;
         }
     }
@@ -611,7 +612,8 @@ void HELPER(fcos)(CPUM68KState *env, FPReg *res, FPReg *val)
 void HELPER(fsincos)(CPUM68KState *env, FPReg *res0, FPReg *res1, FPReg *val)
 {
     floatx80 a = val->d;
-    /* If res0 and res1 specify the same floating-point data register,
+    /*
+     * If res0 and res1 specify the same floating-point data register,
      * the sine result is stored in the register, and the cosine
      * result is discarded.
      */

@@ -22,91 +22,30 @@
 #include "internal.h"
 #include "kvm_s390x.h"
 #include "sysemu/kvm.h"
+#include "sysemu/tcg.h"
 #include "exec/exec-all.h"
 #include "trace.h"
+#include "hw/hw.h"
 #include "hw/s390x/storage-keys.h"
-
-/* #define DEBUG_S390 */
-/* #define DEBUG_S390_PTE */
-/* #define DEBUG_S390_STDOUT */
-
-#ifdef DEBUG_S390
-#ifdef DEBUG_S390_STDOUT
-#define DPRINTF(fmt, ...) \
-    do { fprintf(stderr, fmt, ## __VA_ARGS__); \
-         if (qemu_log_separate()) qemu_log(fmt, ##__VA_ARGS__); } while (0)
-#else
-#define DPRINTF(fmt, ...) \
-    do { qemu_log(fmt, ## __VA_ARGS__); } while (0)
-#endif
-#else
-#define DPRINTF(fmt, ...) \
-    do { } while (0)
-#endif
-
-#ifdef DEBUG_S390_PTE
-#define PTE_DPRINTF DPRINTF
-#else
-#define PTE_DPRINTF(fmt, ...) \
-    do { } while (0)
-#endif
 
 /* Fetch/store bits in the translation exception code: */
 #define FS_READ  0x800
 #define FS_WRITE 0x400
 
 static void trigger_access_exception(CPUS390XState *env, uint32_t type,
-                                     uint32_t ilen, uint64_t tec)
+                                     uint64_t tec)
 {
-    S390CPU *cpu = s390_env_get_cpu(env);
+    S390CPU *cpu = env_archcpu(env);
 
     if (kvm_enabled()) {
         kvm_s390_access_exception(cpu, type, tec);
     } else {
-        CPUState *cs = CPU(cpu);
+        CPUState *cs = env_cpu(env);
         if (type != PGM_ADDRESSING) {
             stq_phys(cs->as, env->psa + offsetof(LowCore, trans_exc_code), tec);
         }
-        trigger_pgm_exception(env, type, ilen);
+        trigger_pgm_exception(env, type);
     }
-}
-
-static void trigger_prot_fault(CPUS390XState *env, target_ulong vaddr,
-                               uint64_t asc, int rw, bool exc)
-{
-    uint64_t tec;
-
-    tec = vaddr | (rw == MMU_DATA_STORE ? FS_WRITE : FS_READ) | 4 | asc >> 46;
-
-    DPRINTF("%s: trans_exc_code=%016" PRIx64 "\n", __func__, tec);
-
-    if (!exc) {
-        return;
-    }
-
-    trigger_access_exception(env, PGM_PROTECTION, ILEN_AUTO, tec);
-}
-
-static void trigger_page_fault(CPUS390XState *env, target_ulong vaddr,
-                               uint32_t type, uint64_t asc, int rw, bool exc)
-{
-    int ilen = ILEN_AUTO;
-    uint64_t tec;
-
-    tec = vaddr | (rw == MMU_DATA_STORE ? FS_WRITE : FS_READ) | asc >> 46;
-
-    DPRINTF("%s: trans_exc_code=%016" PRIx64 "\n", __func__, tec);
-
-    if (!exc) {
-        return;
-    }
-
-    /* Code accesses have an undefined ilc.  */
-    if (rw == MMU_INST_FETCH) {
-        ilen = 2;
-    }
-
-    trigger_access_exception(env, type, ilen, tec);
 }
 
 /* check whether the address would be proteted by Low-Address Protection */
@@ -154,122 +93,40 @@ target_ulong mmu_real2abs(CPUS390XState *env, target_ulong raddr)
     return raddr;
 }
 
-/* Decode page table entry (normal 4KB page) */
-static int mmu_translate_pte(CPUS390XState *env, target_ulong vaddr,
-                             uint64_t asc, uint64_t pt_entry,
-                             target_ulong *raddr, int *flags, int rw, bool exc)
+static inline bool read_table_entry(CPUS390XState *env, hwaddr gaddr,
+                                    uint64_t *entry)
 {
-    if (pt_entry & PAGE_INVALID) {
-        DPRINTF("%s: PTE=0x%" PRIx64 " invalid\n", __func__, pt_entry);
-        trigger_page_fault(env, vaddr, PGM_PAGE_TRANS, asc, rw, exc);
-        return -1;
+    CPUState *cs = env_cpu(env);
+
+    /*
+     * According to the PoP, these table addresses are "unpredictably real
+     * or absolute". Also, "it is unpredictable whether the address wraps
+     * or an addressing exception is recognized".
+     *
+     * We treat them as absolute addresses and don't wrap them.
+     */
+    if (unlikely(address_space_read(cs->as, gaddr, MEMTXATTRS_UNSPECIFIED,
+                                    (uint8_t *)entry, sizeof(*entry)) !=
+                 MEMTX_OK)) {
+        return false;
     }
-    if (pt_entry & PAGE_RES0) {
-        trigger_page_fault(env, vaddr, PGM_TRANS_SPEC, asc, rw, exc);
-        return -1;
-    }
-    if (pt_entry & PAGE_RO) {
-        *flags &= ~PAGE_WRITE;
-    }
-
-    *raddr = pt_entry & ASCE_ORIGIN;
-
-    PTE_DPRINTF("%s: PTE=0x%" PRIx64 "\n", __func__, pt_entry);
-
-    return 0;
-}
-
-/* Decode segment table entry */
-static int mmu_translate_segment(CPUS390XState *env, target_ulong vaddr,
-                                 uint64_t asc, uint64_t st_entry,
-                                 target_ulong *raddr, int *flags, int rw,
-                                 bool exc)
-{
-    CPUState *cs = CPU(s390_env_get_cpu(env));
-    uint64_t origin, offs, pt_entry;
-
-    if (st_entry & SEGMENT_ENTRY_RO) {
-        *flags &= ~PAGE_WRITE;
-    }
-
-    if ((st_entry & SEGMENT_ENTRY_FC) && (env->cregs[0] & CR0_EDAT)) {
-        /* Decode EDAT1 segment frame absolute address (1MB page) */
-        *raddr = (st_entry & 0xfffffffffff00000ULL) | (vaddr & 0xfffff);
-        PTE_DPRINTF("%s: SEG=0x%" PRIx64 "\n", __func__, st_entry);
-        return 0;
-    }
-
-    /* Look up 4KB page entry */
-    origin = st_entry & SEGMENT_ENTRY_ORIGIN;
-    offs  = (vaddr & VADDR_PX) >> 9;
-    pt_entry = ldq_phys(cs->as, origin + offs);
-    PTE_DPRINTF("%s: 0x%" PRIx64 " + 0x%" PRIx64 " => 0x%016" PRIx64 "\n",
-                __func__, origin, offs, pt_entry);
-    return mmu_translate_pte(env, vaddr, asc, pt_entry, raddr, flags, rw, exc);
-}
-
-/* Decode region table entries */
-static int mmu_translate_region(CPUS390XState *env, target_ulong vaddr,
-                                uint64_t asc, uint64_t entry, int level,
-                                target_ulong *raddr, int *flags, int rw,
-                                bool exc)
-{
-    CPUState *cs = CPU(s390_env_get_cpu(env));
-    uint64_t origin, offs, new_entry;
-    const int pchks[4] = {
-        PGM_SEGMENT_TRANS, PGM_REG_THIRD_TRANS,
-        PGM_REG_SEC_TRANS, PGM_REG_FIRST_TRANS
-    };
-
-    PTE_DPRINTF("%s: 0x%" PRIx64 "\n", __func__, entry);
-
-    origin = entry & REGION_ENTRY_ORIGIN;
-    offs = (vaddr >> (17 + 11 * level / 4)) & 0x3ff8;
-
-    new_entry = ldq_phys(cs->as, origin + offs);
-    PTE_DPRINTF("%s: 0x%" PRIx64 " + 0x%" PRIx64 " => 0x%016" PRIx64 "\n",
-                __func__, origin, offs, new_entry);
-
-    if ((new_entry & REGION_ENTRY_INV) != 0) {
-        DPRINTF("%s: invalid region\n", __func__);
-        trigger_page_fault(env, vaddr, pchks[level / 4], asc, rw, exc);
-        return -1;
-    }
-
-    if ((new_entry & REGION_ENTRY_TYPE_MASK) != level) {
-        trigger_page_fault(env, vaddr, PGM_TRANS_SPEC, asc, rw, exc);
-        return -1;
-    }
-
-    if (level == ASCE_TYPE_SEGMENT) {
-        return mmu_translate_segment(env, vaddr, asc, new_entry, raddr, flags,
-                                     rw, exc);
-    }
-
-    /* Check region table offset and length */
-    offs = (vaddr >> (28 + 11 * (level - 4) / 4)) & 3;
-    if (offs < ((new_entry & REGION_ENTRY_TF) >> 6)
-        || offs > (new_entry & REGION_ENTRY_LENGTH)) {
-        DPRINTF("%s: invalid offset or len (%lx)\n", __func__, new_entry);
-        trigger_page_fault(env, vaddr, pchks[level / 4 - 1], asc, rw, exc);
-        return -1;
-    }
-
-    if ((env->cregs[0] & CR0_EDAT) && (new_entry & REGION_ENTRY_RO)) {
-        *flags &= ~PAGE_WRITE;
-    }
-
-    /* yet another region */
-    return mmu_translate_region(env, vaddr, asc, new_entry, level - 4,
-                                raddr, flags, rw, exc);
+    *entry = be64_to_cpu(*entry);
+    return true;
 }
 
 static int mmu_translate_asce(CPUS390XState *env, target_ulong vaddr,
                               uint64_t asc, uint64_t asce, target_ulong *raddr,
-                              int *flags, int rw, bool exc)
+                              int *flags, int rw)
 {
-    int level;
-    int r;
+    const bool edat1 = (env->cregs[0] & CR0_EDAT) &&
+                       s390_has_feat(S390_FEAT_EDAT);
+    const bool edat2 = edat1 && s390_has_feat(S390_FEAT_EDAT_2);
+    const bool iep = (env->cregs[0] & CR0_IEP) &&
+                     s390_has_feat(S390_FEAT_INSTRUCTION_EXEC_PROT);
+    const int asce_tl = asce & ASCE_TABLE_LENGTH;
+    const int asce_p = asce & ASCE_PRIVATE_SPACE;
+    hwaddr gaddr = asce & ASCE_ORIGIN;
+    uint64_t entry;
 
     if (asce & ASCE_REAL_SPACE) {
         /* direct mapping */
@@ -277,60 +134,227 @@ static int mmu_translate_asce(CPUS390XState *env, target_ulong vaddr,
         return 0;
     }
 
-    level = asce & ASCE_TYPE_MASK;
-    switch (level) {
+    switch (asce & ASCE_TYPE_MASK) {
     case ASCE_TYPE_REGION1:
-        if ((vaddr >> 62) > (asce & ASCE_TABLE_LENGTH)) {
-            trigger_page_fault(env, vaddr, PGM_REG_FIRST_TRANS, asc, rw, exc);
-            return -1;
+        if (VADDR_REGION1_TL(vaddr) > asce_tl) {
+            return PGM_REG_FIRST_TRANS;
         }
+        gaddr += VADDR_REGION1_TX(vaddr) * 8;
         break;
     case ASCE_TYPE_REGION2:
-        if (vaddr & 0xffe0000000000000ULL) {
-            DPRINTF("%s: vaddr doesn't fit 0x%16" PRIx64
-                    " 0xffe0000000000000ULL\n", __func__, vaddr);
-            trigger_page_fault(env, vaddr, PGM_ASCE_TYPE, asc, rw, exc);
-            return -1;
+        if (VADDR_REGION1_TX(vaddr)) {
+            return PGM_ASCE_TYPE;
         }
-        if ((vaddr >> 51 & 3) > (asce & ASCE_TABLE_LENGTH)) {
-            trigger_page_fault(env, vaddr, PGM_REG_SEC_TRANS, asc, rw, exc);
-            return -1;
+        if (VADDR_REGION2_TL(vaddr) > asce_tl) {
+            return PGM_REG_SEC_TRANS;
         }
+        gaddr += VADDR_REGION2_TX(vaddr) * 8;
         break;
     case ASCE_TYPE_REGION3:
-        if (vaddr & 0xfffffc0000000000ULL) {
-            DPRINTF("%s: vaddr doesn't fit 0x%16" PRIx64
-                    " 0xfffffc0000000000ULL\n", __func__, vaddr);
-            trigger_page_fault(env, vaddr, PGM_ASCE_TYPE, asc, rw, exc);
-            return -1;
+        if (VADDR_REGION1_TX(vaddr) || VADDR_REGION2_TX(vaddr)) {
+            return PGM_ASCE_TYPE;
         }
-        if ((vaddr >> 40 & 3) > (asce & ASCE_TABLE_LENGTH)) {
-            trigger_page_fault(env, vaddr, PGM_REG_THIRD_TRANS, asc, rw, exc);
-            return -1;
+        if (VADDR_REGION3_TL(vaddr) > asce_tl) {
+            return PGM_REG_THIRD_TRANS;
         }
+        gaddr += VADDR_REGION3_TX(vaddr) * 8;
         break;
     case ASCE_TYPE_SEGMENT:
-        if (vaddr & 0xffffffff80000000ULL) {
-            DPRINTF("%s: vaddr doesn't fit 0x%16" PRIx64
-                    " 0xffffffff80000000ULL\n", __func__, vaddr);
-            trigger_page_fault(env, vaddr, PGM_ASCE_TYPE, asc, rw, exc);
-            return -1;
+        if (VADDR_REGION1_TX(vaddr) || VADDR_REGION2_TX(vaddr) ||
+            VADDR_REGION3_TX(vaddr)) {
+            return PGM_ASCE_TYPE;
         }
-        if ((vaddr >> 29 & 3) > (asce & ASCE_TABLE_LENGTH)) {
-            trigger_page_fault(env, vaddr, PGM_SEGMENT_TRANS, asc, rw, exc);
-            return -1;
+        if (VADDR_SEGMENT_TL(vaddr) > asce_tl) {
+            return PGM_SEGMENT_TRANS;
         }
+        gaddr += VADDR_SEGMENT_TX(vaddr) * 8;
         break;
     }
 
-    r = mmu_translate_region(env, vaddr, asc, asce, level, raddr, flags, rw,
-                             exc);
-    if (!r && rw == MMU_DATA_STORE && !(*flags & PAGE_WRITE)) {
-        trigger_prot_fault(env, vaddr, asc, rw, exc);
-        return -1;
+    switch (asce & ASCE_TYPE_MASK) {
+    case ASCE_TYPE_REGION1:
+        if (!read_table_entry(env, gaddr, &entry)) {
+            return PGM_ADDRESSING;
+        }
+        if (entry & REGION_ENTRY_I) {
+            return PGM_REG_FIRST_TRANS;
+        }
+        if ((entry & REGION_ENTRY_TT) != REGION_ENTRY_TT_REGION1) {
+            return PGM_TRANS_SPEC;
+        }
+        if (VADDR_REGION2_TL(vaddr) < (entry & REGION_ENTRY_TF) >> 6 ||
+            VADDR_REGION2_TL(vaddr) > (entry & REGION_ENTRY_TL)) {
+            return PGM_REG_SEC_TRANS;
+        }
+        if (edat1 && (entry & REGION_ENTRY_P)) {
+            *flags &= ~PAGE_WRITE;
+        }
+        gaddr = (entry & REGION_ENTRY_ORIGIN) + VADDR_REGION2_TX(vaddr) * 8;
+        /* fall through */
+    case ASCE_TYPE_REGION2:
+        if (!read_table_entry(env, gaddr, &entry)) {
+            return PGM_ADDRESSING;
+        }
+        if (entry & REGION_ENTRY_I) {
+            return PGM_REG_SEC_TRANS;
+        }
+        if ((entry & REGION_ENTRY_TT) != REGION_ENTRY_TT_REGION2) {
+            return PGM_TRANS_SPEC;
+        }
+        if (VADDR_REGION3_TL(vaddr) < (entry & REGION_ENTRY_TF) >> 6 ||
+            VADDR_REGION3_TL(vaddr) > (entry & REGION_ENTRY_TL)) {
+            return PGM_REG_THIRD_TRANS;
+        }
+        if (edat1 && (entry & REGION_ENTRY_P)) {
+            *flags &= ~PAGE_WRITE;
+        }
+        gaddr = (entry & REGION_ENTRY_ORIGIN) + VADDR_REGION3_TX(vaddr) * 8;
+        /* fall through */
+    case ASCE_TYPE_REGION3:
+        if (!read_table_entry(env, gaddr, &entry)) {
+            return PGM_ADDRESSING;
+        }
+        if (entry & REGION_ENTRY_I) {
+            return PGM_REG_THIRD_TRANS;
+        }
+        if ((entry & REGION_ENTRY_TT) != REGION_ENTRY_TT_REGION3) {
+            return PGM_TRANS_SPEC;
+        }
+        if (edat2 && (entry & REGION3_ENTRY_CR) && asce_p) {
+            return PGM_TRANS_SPEC;
+        }
+        if (edat1 && (entry & REGION_ENTRY_P)) {
+            *flags &= ~PAGE_WRITE;
+        }
+        if (edat2 && (entry & REGION3_ENTRY_FC)) {
+            if (iep && (entry & REGION3_ENTRY_IEP)) {
+                *flags &= ~PAGE_EXEC;
+            }
+            *raddr = (entry & REGION3_ENTRY_RFAA) |
+                     (vaddr & ~REGION3_ENTRY_RFAA);
+            return 0;
+        }
+        if (VADDR_SEGMENT_TL(vaddr) < (entry & REGION_ENTRY_TF) >> 6 ||
+            VADDR_SEGMENT_TL(vaddr) > (entry & REGION_ENTRY_TL)) {
+            return PGM_SEGMENT_TRANS;
+        }
+        gaddr = (entry & REGION_ENTRY_ORIGIN) + VADDR_SEGMENT_TX(vaddr) * 8;
+        /* fall through */
+    case ASCE_TYPE_SEGMENT:
+        if (!read_table_entry(env, gaddr, &entry)) {
+            return PGM_ADDRESSING;
+        }
+        if (entry & SEGMENT_ENTRY_I) {
+            return PGM_SEGMENT_TRANS;
+        }
+        if ((entry & SEGMENT_ENTRY_TT) != SEGMENT_ENTRY_TT_SEGMENT) {
+            return PGM_TRANS_SPEC;
+        }
+        if ((entry & SEGMENT_ENTRY_CS) && asce_p) {
+            return PGM_TRANS_SPEC;
+        }
+        if (entry & SEGMENT_ENTRY_P) {
+            *flags &= ~PAGE_WRITE;
+        }
+        if (edat1 && (entry & SEGMENT_ENTRY_FC)) {
+            if (iep && (entry & SEGMENT_ENTRY_IEP)) {
+                *flags &= ~PAGE_EXEC;
+            }
+            *raddr = (entry & SEGMENT_ENTRY_SFAA) |
+                     (vaddr & ~SEGMENT_ENTRY_SFAA);
+            return 0;
+        }
+        gaddr = (entry & SEGMENT_ENTRY_ORIGIN) + VADDR_PAGE_TX(vaddr) * 8;
+        break;
     }
 
-    return r;
+    if (!read_table_entry(env, gaddr, &entry)) {
+        return PGM_ADDRESSING;
+    }
+    if (entry & PAGE_ENTRY_I) {
+        return PGM_PAGE_TRANS;
+    }
+    if (entry & PAGE_ENTRY_0) {
+        return PGM_TRANS_SPEC;
+    }
+    if (entry & PAGE_ENTRY_P) {
+        *flags &= ~PAGE_WRITE;
+    }
+    if (iep && (entry & PAGE_ENTRY_IEP)) {
+        *flags &= ~PAGE_EXEC;
+    }
+
+    *raddr = entry & TARGET_PAGE_MASK;
+    return 0;
+}
+
+static void mmu_handle_skey(target_ulong addr, int rw, int *flags)
+{
+    static S390SKeysClass *skeyclass;
+    static S390SKeysState *ss;
+    uint8_t key;
+    int rc;
+
+    if (unlikely(addr >= ram_size)) {
+        return;
+    }
+
+    if (unlikely(!ss)) {
+        ss = s390_get_skeys_device();
+        skeyclass = S390_SKEYS_GET_CLASS(ss);
+    }
+
+    /*
+     * Whenever we create a new TLB entry, we set the storage key reference
+     * bit. In case we allow write accesses, we set the storage key change
+     * bit. Whenever the guest changes the storage key, we have to flush the
+     * TLBs of all CPUs (the whole TLB or all affected entries), so that the
+     * next reference/change will result in an MMU fault and make us properly
+     * update the storage key here.
+     *
+     * Note 1: "record of references ... is not necessarily accurate",
+     *         "change bit may be set in case no storing has occurred".
+     *         -> We can set reference/change bits even on exceptions.
+     * Note 2: certain accesses seem to ignore storage keys. For example,
+     *         DAT translation does not set reference bits for table accesses.
+     *
+     * TODO: key-controlled protection. Only CPU accesses make use of the
+     *       PSW key. CSS accesses are different - we have to pass in the key.
+     *
+     * TODO: we have races between getting and setting the key.
+     */
+    rc = skeyclass->get_skeys(ss, addr / TARGET_PAGE_SIZE, 1, &key);
+    if (rc) {
+        trace_get_skeys_nonzero(rc);
+        return;
+    }
+
+    switch (rw) {
+    case MMU_DATA_LOAD:
+    case MMU_INST_FETCH:
+        /*
+         * The TLB entry has to remain write-protected on read-faults if
+         * the storage key does not indicate a change already. Otherwise
+         * we might miss setting the change bit on write accesses.
+         */
+        if (!(key & SK_C)) {
+            *flags &= ~PAGE_WRITE;
+        }
+        break;
+    case MMU_DATA_STORE:
+        key |= SK_C;
+        break;
+    default:
+        g_assert_not_reached();
+    }
+
+    /* Any store/fetch sets the reference bit */
+    key |= SK_R;
+
+    rc = skeyclass->set_skeys(ss, addr / TARGET_PAGE_SIZE, 1, &key);
+    if (rc) {
+        trace_set_skeys_nonzero(rc);
+    }
 }
 
 /**
@@ -341,22 +365,18 @@ static int mmu_translate_asce(CPUS390XState *env, target_ulong vaddr,
  * @param raddr  the translated address is stored to this pointer
  * @param flags  the PAGE_READ/WRITE/EXEC flags are stored to this pointer
  * @param exc    true = inject a program check if a fault occurred
- * @return       0 if the translation was successful, -1 if a fault occurred
+ * @return       0 = success, != 0, the exception to raise
  */
 int mmu_translate(CPUS390XState *env, target_ulong vaddr, int rw, uint64_t asc,
-                  target_ulong *raddr, int *flags, bool exc)
+                  target_ulong *raddr, int *flags, uint64_t *tec)
 {
-    static S390SKeysState *ss;
-    static S390SKeysClass *skeyclass;
-    int r = -1;
-    uint8_t key;
+    uint64_t asce;
+    int r;
 
-    if (unlikely(!ss)) {
-        ss = s390_get_skeys_device();
-        skeyclass = S390_SKEYS_GET_CLASS(ss);
-    }
-
+    *tec = (vaddr & TARGET_PAGE_MASK) | (asc >> 46) |
+            (rw == MMU_DATA_STORE ? FS_WRITE : FS_READ);
     *flags = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
+
     if (is_low_address(vaddr & TARGET_PAGE_MASK) && lowprot_enabled(env, asc)) {
         /*
          * If any part of this page is currently protected, make sure the
@@ -368,10 +388,9 @@ int mmu_translate(CPUS390XState *env, target_ulong vaddr, int rw, uint64_t asc,
          */
         *flags |= PAGE_WRITE_INV;
         if (is_low_address(vaddr) && rw == MMU_DATA_STORE) {
-            if (exc) {
-                trigger_access_exception(env, PGM_PROTECTION, ILEN_AUTO, 0);
-            }
-            return -EACCES;
+            /* LAP sets bit 56 */
+            *tec |= 0x80;
+            return PGM_PROTECTION;
         }
     }
 
@@ -379,36 +398,18 @@ int mmu_translate(CPUS390XState *env, target_ulong vaddr, int rw, uint64_t asc,
 
     if (!(env->psw.mask & PSW_MASK_DAT)) {
         *raddr = vaddr;
-        r = 0;
-        goto out;
+        goto nodat;
     }
 
     switch (asc) {
     case PSW_ASC_PRIMARY:
-        PTE_DPRINTF("%s: asc=primary\n", __func__);
-        r = mmu_translate_asce(env, vaddr, asc, env->cregs[1], raddr, flags,
-                               rw, exc);
+        asce = env->cregs[1];
         break;
     case PSW_ASC_HOME:
-        PTE_DPRINTF("%s: asc=home\n", __func__);
-        r = mmu_translate_asce(env, vaddr, asc, env->cregs[13], raddr, flags,
-                               rw, exc);
+        asce = env->cregs[13];
         break;
     case PSW_ASC_SECONDARY:
-        PTE_DPRINTF("%s: asc=secondary\n", __func__);
-        /*
-         * Instruction: Primary
-         * Data: Secondary
-         */
-        if (rw == MMU_INST_FETCH) {
-            r = mmu_translate_asce(env, vaddr, PSW_ASC_PRIMARY, env->cregs[1],
-                                   raddr, flags, rw, exc);
-            *flags &= ~(PAGE_READ | PAGE_WRITE);
-        } else {
-            r = mmu_translate_asce(env, vaddr, PSW_ASC_SECONDARY, env->cregs[7],
-                                   raddr, flags, rw, exc);
-            *flags &= ~(PAGE_EXEC);
-        }
+        asce = env->cregs[7];
         break;
     case PSW_ASC_ACCREG:
     default:
@@ -416,31 +417,32 @@ int mmu_translate(CPUS390XState *env, target_ulong vaddr, int rw, uint64_t asc,
         break;
     }
 
- out:
+    /* perform the DAT translation */
+    r = mmu_translate_asce(env, vaddr, asc, asce, raddr, flags, rw);
+    if (unlikely(r)) {
+        return r;
+    }
+
+    /* check for DAT protection */
+    if (unlikely(rw == MMU_DATA_STORE && !(*flags & PAGE_WRITE))) {
+        /* DAT sets bit 61 only */
+        *tec |= 0x4;
+        return PGM_PROTECTION;
+    }
+
+    /* check for Instruction-Execution-Protection */
+    if (unlikely(rw == MMU_INST_FETCH && !(*flags & PAGE_EXEC))) {
+        /* IEP sets bit 56 and 61 */
+        *tec |= 0x84;
+        return PGM_PROTECTION;
+    }
+
+nodat:
     /* Convert real address -> absolute address */
     *raddr = mmu_real2abs(env, *raddr);
 
-    if (r == 0 && *raddr < ram_size) {
-        if (skeyclass->get_skeys(ss, *raddr / TARGET_PAGE_SIZE, 1, &key)) {
-            trace_get_skeys_nonzero(r);
-            return 0;
-        }
-
-        if (*flags & PAGE_READ) {
-            key |= SK_R;
-        }
-
-        if (*flags & PAGE_WRITE) {
-            key |= SK_C;
-        }
-
-        if (skeyclass->set_skeys(ss, *raddr / TARGET_PAGE_SIZE, 1, &key)) {
-            trace_set_skeys_nonzero(r);
-            return 0;
-        }
-    }
-
-    return r;
+    mmu_handle_skey(*raddr, rw, flags);
+    return 0;
 }
 
 /**
@@ -449,22 +451,22 @@ int mmu_translate(CPUS390XState *env, target_ulong vaddr, int rw, uint64_t asc,
  * the MEMOP interface.
  */
 static int translate_pages(S390CPU *cpu, vaddr addr, int nr_pages,
-                           target_ulong *pages, bool is_write)
+                           target_ulong *pages, bool is_write, uint64_t *tec)
 {
     uint64_t asc = cpu->env.psw.mask & PSW_MASK_ASC;
     CPUS390XState *env = &cpu->env;
     int ret, i, pflags;
 
     for (i = 0; i < nr_pages; i++) {
-        ret = mmu_translate(env, addr, is_write, asc, &pages[i], &pflags, true);
+        ret = mmu_translate(env, addr, is_write, asc, &pages[i], &pflags, tec);
         if (ret) {
             return ret;
         }
         if (!address_space_access_valid(&address_space_memory, pages[i],
                                         TARGET_PAGE_SIZE, is_write,
                                         MEMTXATTRS_UNSPECIFIED)) {
-            trigger_access_exception(env, PGM_ADDRESSING, ILEN_AUTO, 0);
-            return -EFAULT;
+            *tec = 0; /* unused */
+            return PGM_ADDRESSING;
         }
         addr += TARGET_PAGE_SIZE;
     }
@@ -492,6 +494,7 @@ int s390_cpu_virt_mem_rw(S390CPU *cpu, vaddr laddr, uint8_t ar, void *hostbuf,
 {
     int currlen, nr_pages, i;
     target_ulong *pages;
+    uint64_t tec;
     int ret;
 
     if (kvm_enabled()) {
@@ -505,8 +508,10 @@ int s390_cpu_virt_mem_rw(S390CPU *cpu, vaddr laddr, uint8_t ar, void *hostbuf,
                + 1;
     pages = g_malloc(nr_pages * sizeof(*pages));
 
-    ret = translate_pages(cpu, laddr, nr_pages, pages, is_write);
-    if (ret == 0 && hostbuf != NULL) {
+    ret = translate_pages(cpu, laddr, nr_pages, pages, is_write, &tec);
+    if (ret) {
+        trigger_access_exception(&cpu->env, ret, tec);
+    } else if (hostbuf != NULL) {
         /* Copy data by stepping through the area page by page */
         for (i = 0; i < nr_pages; i++) {
             currlen = MIN(len, TARGET_PAGE_SIZE - (laddr % TARGET_PAGE_SIZE));
@@ -538,10 +543,10 @@ void s390_cpu_virt_mem_handle_exc(S390CPU *cpu, uintptr_t ra)
  * @param rw     0 = read, 1 = write, 2 = code fetch
  * @param addr   the translated address is stored to this pointer
  * @param flags  the PAGE_READ/WRITE/EXEC flags are stored to this pointer
- * @return       0 if the translation was successful, < 0 if a fault occurred
+ * @return       0 = success, != 0, the exception to raise
  */
 int mmu_translate_real(CPUS390XState *env, target_ulong raddr, int rw,
-                       target_ulong *addr, int *flags)
+                       target_ulong *addr, int *flags, uint64_t *tec)
 {
     const bool lowprot_enabled = env->cregs[0] & CR0_LOWPROT;
 
@@ -550,13 +555,14 @@ int mmu_translate_real(CPUS390XState *env, target_ulong raddr, int rw,
         /* see comment in mmu_translate() how this works */
         *flags |= PAGE_WRITE_INV;
         if (is_low_address(raddr) && rw == MMU_DATA_STORE) {
-            trigger_access_exception(env, PGM_PROTECTION, ILEN_AUTO, 0);
-            return -EACCES;
+            /* LAP sets bit 56 */
+            *tec = (raddr & TARGET_PAGE_MASK) | FS_WRITE | 0x80;
+            return PGM_PROTECTION;
         }
     }
 
     *addr = mmu_real2abs(env, raddr & TARGET_PAGE_MASK);
 
-    /* TODO: storage key handling */
+    mmu_handle_skey(*addr, rw, flags);
     return 0;
 }

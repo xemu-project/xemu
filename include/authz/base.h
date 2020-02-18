@@ -18,10 +18,9 @@
  *
  */
 
-#ifndef QAUTHZ_BASE_H__
-#define QAUTHZ_BASE_H__
+#ifndef QAUTHZ_BASE_H
+#define QAUTHZ_BASE_H
 
-#include "qemu-common.h"
 #include "qapi/error.h"
 #include "qom/object.h"
 
@@ -108,5 +107,4 @@ bool qauthz_is_allowed_by_id(const char *authzid,
                              const char *identity,
                              Error **errp);
 
-#endif /* QAUTHZ_BASE_H__ */
-
+#endif /* QAUTHZ_BASE_H */

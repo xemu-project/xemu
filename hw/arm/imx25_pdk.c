@@ -25,7 +25,6 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "hw/arm/fsl-imx25.h"
 #include "hw/boards.h"
@@ -72,9 +71,8 @@ static void imx25_pdk_init(MachineState *machine)
     unsigned int alias_offset;
     int i;
 
-    object_initialize(&s->soc, sizeof(s->soc), TYPE_FSL_IMX25);
-    object_property_add_child(OBJECT(machine), "soc", OBJECT(&s->soc),
-                              &error_abort);
+    object_initialize_child(OBJECT(machine), "soc", &s->soc, sizeof(s->soc),
+                            TYPE_FSL_IMX25, &error_abort, NULL);
 
     object_property_set_bool(OBJECT(&s->soc), true, "realized", &error_fatal);
 
@@ -118,9 +116,6 @@ static void imx25_pdk_init(MachineState *machine)
     }
 
     imx25_pdk_binfo.ram_size = machine->ram_size;
-    imx25_pdk_binfo.kernel_filename = machine->kernel_filename;
-    imx25_pdk_binfo.kernel_cmdline = machine->kernel_cmdline;
-    imx25_pdk_binfo.initrd_filename = machine->initrd_filename;
     imx25_pdk_binfo.loader_start = FSL_IMX25_SDRAM0_ADDR;
     imx25_pdk_binfo.board_id = 1771,
     imx25_pdk_binfo.nb_cpus = 1;
@@ -131,16 +126,7 @@ static void imx25_pdk_init(MachineState *machine)
      * fail.
      */
     if (!qtest_enabled()) {
-        arm_load_kernel(&s->soc.cpu, &imx25_pdk_binfo);
-    } else {
-        /*
-         * This I2C device doesn't exist on the real board.
-         * We add it here (only on qtest usage) to be able to do a bit
-         * of simple qtest. See "make check" for details.
-         */
-        i2c_create_slave((I2CBus *)qdev_get_child_bus(DEVICE(&s->soc.i2c[0]),
-                                                      "i2c-bus.0"),
-                         "ds1338", 0x68);
+        arm_load_kernel(&s->soc.cpu, machine, &imx25_pdk_binfo);
     }
 }
 

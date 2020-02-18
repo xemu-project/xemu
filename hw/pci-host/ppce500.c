@@ -15,11 +15,14 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/hw.h"
+#include "hw/irq.h"
 #include "hw/ppc/e500-ccsr.h"
+#include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_host.h"
 #include "qemu/bswap.h"
+#include "qemu/module.h"
 #include "hw/pci-host/ppce500.h"
 
 #ifdef DEBUG_PCI

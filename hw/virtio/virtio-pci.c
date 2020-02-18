@@ -17,11 +17,16 @@
 
 #include "qemu/osdep.h"
 
+#include "exec/memop.h"
 #include "standard-headers/linux/virtio_pci.h"
 #include "hw/virtio/virtio.h"
+#include "migration/qemu-file-types.h"
 #include "hw/pci/pci.h"
+#include "hw/pci/pci_bus.h"
+#include "hw/qdev-properties.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
+#include "qemu/module.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/msix.h"
 #include "hw/loader.h"
@@ -539,16 +544,17 @@ void virtio_address_space_write(VirtIOPCIProxy *proxy, hwaddr addr,
         val = pci_get_byte(buf);
         break;
     case 2:
-        val = cpu_to_le16(pci_get_word(buf));
+        val = pci_get_word(buf);
         break;
     case 4:
-        val = cpu_to_le32(pci_get_long(buf));
+        val = pci_get_long(buf);
         break;
     default:
         /* As length is under guest control, handle illegal values. */
         return;
     }
-    memory_region_dispatch_write(mr, addr, val, len, MEMTXATTRS_UNSPECIFIED);
+    memory_region_dispatch_write(mr, addr, val, size_memop(len) | MO_LE,
+                                 MEMTXATTRS_UNSPECIFIED);
 }
 
 static void
@@ -571,16 +577,17 @@ virtio_address_space_read(VirtIOPCIProxy *proxy, hwaddr addr,
     /* Make sure caller aligned buf properly */
     assert(!(((uintptr_t)buf) & (len - 1)));
 
-    memory_region_dispatch_read(mr, addr, &val, len, MEMTXATTRS_UNSPECIFIED);
+    memory_region_dispatch_read(mr, addr, &val, size_memop(len) | MO_LE,
+                                MEMTXATTRS_UNSPECIFIED);
     switch (len) {
     case 1:
         pci_set_byte(buf, val);
         break;
     case 2:
-        pci_set_word(buf, le16_to_cpu(val));
+        pci_set_word(buf, val);
         break;
     case 4:
-        pci_set_long(buf, le32_to_cpu(val));
+        pci_set_long(buf, val);
         break;
     default:
         /* As length is under guest control, handle illegal values. */
@@ -596,6 +603,10 @@ static void virtio_write_config(PCIDevice *pci_dev, uint32_t address,
     struct virtio_pci_cfg_cap *cfg;
 
     pci_default_write_config(pci_dev, address, val, len);
+
+    if (proxy->flags & VIRTIO_PCI_FLAG_INIT_FLR) {
+        pcie_cap_flr_write_config(pci_dev, address, val, len);
+    }
 
     if (range_covers_byte(address, len, PCI_COMMAND) &&
         !(pci_dev->config[PCI_COMMAND] & PCI_COMMAND_MASTER)) {
@@ -1773,6 +1784,10 @@ static void virtio_pci_realize(PCIDevice *pci_dev, Error **errp)
             pcie_ats_init(pci_dev, 256);
         }
 
+        if (proxy->flags & VIRTIO_PCI_FLAG_INIT_FLR) {
+            /* Set Function Level Reset capability bit */
+            pcie_cap_flr_init(pci_dev);
+        }
     } else {
         /*
          * make future invocations of pci_is_express() return false
@@ -1840,6 +1855,8 @@ static Property virtio_pci_properties[] = {
                     VIRTIO_PCI_FLAG_INIT_LNKCTL_BIT, true),
     DEFINE_PROP_BIT("x-pcie-pm-init", VirtIOPCIProxy, flags,
                     VIRTIO_PCI_FLAG_INIT_PM_BIT, true),
+    DEFINE_PROP_BIT("x-pcie-flr-init", VirtIOPCIProxy, flags,
+                    VIRTIO_PCI_FLAG_INIT_FLR_BIT, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -1905,13 +1922,6 @@ static void virtio_pci_generic_class_init(ObjectClass *klass, void *data)
     dc->props = virtio_pci_generic_properties;
 }
 
-/* Used when the generic type and the base type is the same */
-static void virtio_pci_generic_base_class_init(ObjectClass *klass, void *data)
-{
-    virtio_pci_base_class_init(klass, data);
-    virtio_pci_generic_class_init(klass, NULL);
-}
-
 static void virtio_pci_transitional_instance_init(Object *obj)
 {
     VirtIOPCIProxy *proxy = VIRTIO_PCI(obj);
@@ -1930,15 +1940,15 @@ static void virtio_pci_non_transitional_instance_init(Object *obj)
 
 void virtio_pci_types_register(const VirtioPCIDeviceTypeInfo *t)
 {
+    char *base_name = NULL;
     TypeInfo base_type_info = {
         .name          = t->base_name,
         .parent        = t->parent ? t->parent : TYPE_VIRTIO_PCI,
         .instance_size = t->instance_size,
         .instance_init = t->instance_init,
         .class_size    = t->class_size,
-        .class_init    = virtio_pci_base_class_init,
-        .class_data    = (void *)t,
         .abstract      = true,
+        .interfaces    = t->interfaces,
     };
     TypeInfo generic_type_info = {
         .name = t->generic_name,
@@ -1953,13 +1963,20 @@ void virtio_pci_types_register(const VirtioPCIDeviceTypeInfo *t)
 
     if (!base_type_info.name) {
         /* No base type -> register a single generic device type */
-        base_type_info.name = t->generic_name;
-        base_type_info.class_init = virtio_pci_generic_base_class_init;
-        base_type_info.interfaces = generic_type_info.interfaces;
-        base_type_info.abstract = false;
-        generic_type_info.name = NULL;
+        /* use intermediate %s-base-type to add generic device props */
+        base_name = g_strdup_printf("%s-base-type", t->generic_name);
+        base_type_info.name = base_name;
+        base_type_info.class_init = virtio_pci_generic_class_init;
+
+        generic_type_info.parent = base_name;
+        generic_type_info.class_init = virtio_pci_base_class_init;
+        generic_type_info.class_data = (void *)t;
+
         assert(!t->non_transitional_name);
         assert(!t->transitional_name);
+    } else {
+        base_type_info.class_init = virtio_pci_base_class_init;
+        base_type_info.class_data = (void *)t;
     }
 
     type_register(&base_type_info);
@@ -1997,6 +2014,7 @@ void virtio_pci_types_register(const VirtioPCIDeviceTypeInfo *t)
         };
         type_register(&transitional_type_info);
     }
+    g_free(base_name);
 }
 
 /* virtio-pci-bus */

@@ -26,6 +26,7 @@
 #include "block/block.h"
 #include "sysemu/block-backend.h"
 #include "qapi/error.h"
+#include "qemu/main-loop.h"
 
 static void test_drain_aio_error_flush_cb(void *opaque, int ret)
 {
@@ -37,7 +38,8 @@ static void test_drain_aio_error_flush_cb(void *opaque, int ret)
 
 static void test_drain_aio_error(void)
 {
-    BlockBackend *blk = blk_new(BLK_PERM_ALL, BLK_PERM_ALL);
+    BlockBackend *blk = blk_new(qemu_get_aio_context(),
+                                BLK_PERM_ALL, BLK_PERM_ALL);
     BlockAIOCB *acb;
     bool completed = false;
 
@@ -53,7 +55,8 @@ static void test_drain_aio_error(void)
 
 static void test_drain_all_aio_error(void)
 {
-    BlockBackend *blk = blk_new(BLK_PERM_ALL, BLK_PERM_ALL);
+    BlockBackend *blk = blk_new(qemu_get_aio_context(),
+                                BLK_PERM_ALL, BLK_PERM_ALL);
     BlockAIOCB *acb;
     bool completed = false;
 

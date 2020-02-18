@@ -7,10 +7,8 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "alpha_sys.h"
 #include "qemu/log.h"
-#include "sysemu/sysemu.h"
 #include "trace.h"
 
 

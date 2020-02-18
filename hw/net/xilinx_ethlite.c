@@ -23,10 +23,11 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
+#include "qemu/module.h"
 #include "cpu.h" /* FIXME should not use tswap* */
 #include "hw/sysbus.h"
-#include "hw/hw.h"
+#include "hw/irq.h"
+#include "hw/qdev-properties.h"
 #include "net/net.h"
 
 #define D(x)

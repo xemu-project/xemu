@@ -21,7 +21,8 @@
 #ifndef M68K_TARGET_CPU_H
 #define M68K_TARGET_CPU_H
 
-static inline void cpu_clone_regs(CPUM68KState *env, target_ulong newsp)
+static inline void cpu_clone_regs_child(CPUM68KState *env, target_ulong newsp,
+                                        unsigned flags)
 {
     if (newsp) {
         env->aregs[7] = newsp;
@@ -29,9 +30,13 @@ static inline void cpu_clone_regs(CPUM68KState *env, target_ulong newsp)
     env->dregs[0] = 0;
 }
 
+static inline void cpu_clone_regs_parent(CPUM68KState *env, unsigned flags)
+{
+}
+
 static inline void cpu_set_tls(CPUM68KState *env, target_ulong newtls)
 {
-    CPUState *cs = CPU(m68k_env_get_cpu(env));
+    CPUState *cs = env_cpu(env);
     TaskState *ts = cs->opaque;
 
     ts->tp_value = newtls;

@@ -11,9 +11,9 @@
 #ifndef BCM2836_H
 #define BCM2836_H
 
-#include "hw/arm/arm.h"
 #include "hw/arm/bcm2835_peripherals.h"
 #include "hw/intc/bcm2836_control.h"
+#include "target/arm/cpu.h"
 
 #define TYPE_BCM283X "bcm283x"
 #define BCM283X(obj) OBJECT_CHECK(BCM283XState, (obj), TYPE_BCM283X)
@@ -35,7 +35,9 @@ typedef struct BCM283XState {
     char *cpu_type;
     uint32_t enabled_cpus;
 
-    ARMCPU cpus[BCM283X_NCPUS];
+    struct {
+        ARMCPU core;
+    } cpu[BCM283X_NCPUS];
     BCM2836ControlState control;
     BCM2835PeripheralState peripherals;
 } BCM283XState;

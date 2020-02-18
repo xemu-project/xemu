@@ -403,7 +403,7 @@ static inline void gen_store_mem(DisasContext *ctx,
 
 static DisasJumpType gen_store_conditional(DisasContext *ctx, int ra, int rb,
                                            int32_t disp16, int mem_idx,
-                                           TCGMemOp op)
+                                           MemOp op)
 {
     TCGLabel *lab_fail, *lab_done;
     TCGv addr, val;
@@ -1332,7 +1332,6 @@ static DisasJumpType gen_mfpr(DisasContext *ctx, TCGv va, int regno)
         if (use_icount) {
             gen_io_start();
             helper(va);
-            gen_io_end();
             return DISAS_PC_STALE;
         } else {
             helper(va);
@@ -2398,7 +2397,6 @@ static DisasJumpType translate_one(DisasContext *ctx, uint32_t insn)
             if (tb_cflags(ctx->base.tb) & CF_USE_ICOUNT) {
                 gen_io_start();
                 gen_helper_load_pcc(va, cpu_env);
-                gen_io_end();
                 ret = DISAS_PC_STALE;
             } else {
                 gen_helper_load_pcc(va, cpu_env);
@@ -2989,7 +2987,7 @@ static void alpha_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
 {
     DisasContext *ctx = container_of(dcbase, DisasContext, base);
     CPUAlphaState *env = cpu->env_ptr;
-    uint32_t insn = cpu_ldl_code(env, ctx->base.pc_next);
+    uint32_t insn = translator_ldl(env, ctx->base.pc_next);
 
     ctx->base.pc_next += 4;
     ctx->base.is_jmp = translate_one(ctx, insn);
@@ -3049,10 +3047,10 @@ static const TranslatorOps alpha_tr_ops = {
     .disas_log          = alpha_tr_disas_log,
 };
 
-void gen_intermediate_code(CPUState *cpu, TranslationBlock *tb)
+void gen_intermediate_code(CPUState *cpu, TranslationBlock *tb, int max_insns)
 {
     DisasContext dc;
-    translator_loop(&alpha_tr_ops, &dc.base, cpu, tb);
+    translator_loop(&alpha_tr_ops, &dc.base, cpu, tb, max_insns);
 }
 
 void restore_state_to_opc(CPUAlphaState *env, TranslationBlock *tb,

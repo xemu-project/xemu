@@ -25,6 +25,7 @@ apic_mem_writel(uint64_t addr, uint32_t val) "0x%"PRIx64" = 0x%08x"
 ioapic_set_remote_irr(int n) "set remote irr for pin %d"
 ioapic_clear_remote_irr(int n, int vector) "clear remote irr for pin %d vector %d"
 ioapic_eoi_broadcast(int vector) "EOI broadcast for vector %d"
+ioapic_eoi_delayed_reassert(int vector) "delayed reassert on EOI broadcast for vector %d"
 ioapic_mem_read(uint8_t addr, uint8_t regsel, uint8_t size, uint32_t val) "ioapic mem read addr 0x%"PRIx8" regsel: 0x%"PRIx8" size 0x%"PRIx8" retval 0x%"PRIx32
 ioapic_mem_write(uint8_t addr, uint8_t regsel, uint8_t size, uint32_t val) "ioapic mem write addr 0x%"PRIx8" regsel: 0x%"PRIx8" size 0x%"PRIx8" val 0x%"PRIx32
 ioapic_set_irq(int vector, int level) "vector: %d level: %d"
@@ -65,16 +66,15 @@ xics_icp_accept(uint32_t old_xirr, uint32_t new_xirr) "icp_accept: XIRR 0x%"PRIx
 xics_icp_eoi(int server, uint32_t xirr, uint32_t new_xirr) "icp_eoi: server %d given XIRR 0x%"PRIx32" new XIRR 0x%"PRIx32
 xics_icp_irq(int server, int nr, uint8_t priority) "cpu %d trying to deliver irq 0x%"PRIx32" priority 0x%x"
 xics_icp_raise(uint32_t xirr, uint8_t pending_priority) "raising IRQ new XIRR=0x%x new pending priority=0x%x"
-xics_ics_simple_set_irq_msi(int srcno, int nr) "set_irq_msi: srcno %d [irq 0x%x]"
+xics_ics_set_irq_msi(int srcno, int nr) "set_irq_msi: srcno %d [irq 0x%x]"
 xics_masked_pending(void) "set_irq_msi: masked pending"
-xics_ics_simple_set_irq_lsi(int srcno, int nr) "set_irq_lsi: srcno %d [irq 0x%x]"
-xics_ics_simple_write_xive(int nr, int srcno, int server, uint8_t priority) "ics_write_xive: irq 0x%x [src %d] server 0x%x prio 0x%x"
-xics_ics_simple_reject(int nr, int srcno) "reject irq 0x%x [src %d]"
-xics_ics_simple_eoi(int nr) "ics_eoi: irq 0x%x"
+xics_ics_set_irq_lsi(int srcno, int nr) "set_irq_lsi: srcno %d [irq 0x%x]"
+xics_ics_write_xive(int nr, int srcno, int server, uint8_t priority) "ics_write_xive: irq 0x%x [src %d] server 0x%x prio 0x%x"
+xics_ics_reject(int nr, int srcno) "reject irq 0x%x [src %d]"
+xics_ics_eoi(int nr) "ics_eoi: irq 0x%x"
 
 # s390_flic_kvm.c
 flic_create_device(int err) "flic: create device failed %d"
-flic_no_device_api(int err) "flic: no Device Contral API support %d"
 flic_reset_failed(int err) "flic: reset failed %d"
 
 # s390_flic.c

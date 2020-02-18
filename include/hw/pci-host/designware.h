@@ -21,7 +21,6 @@
 #ifndef DESIGNWARE_H
 #define DESIGNWARE_H
 
-#include "hw/hw.h"
 #include "hw/sysbus.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_bus.h"
@@ -99,4 +98,4 @@ typedef struct DesignwarePCIEHost {
     MemoryRegion mmio;
 } DesignwarePCIEHost;
 
-#endif  /* DESIGNWARE_H */
+#endif /* DESIGNWARE_H */

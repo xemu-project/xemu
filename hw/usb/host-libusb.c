@@ -40,12 +40,16 @@
 #include <libusb.h>
 
 #include "qapi/error.h"
-#include "qemu-common.h"
+#include "migration/vmstate.h"
 #include "monitor/monitor.h"
 #include "qemu/error-report.h"
+#include "qemu/main-loop.h"
+#include "qemu/module.h"
+#include "sysemu/runstate.h"
 #include "sysemu/sysemu.h"
 #include "trace.h"
 
+#include "hw/qdev-properties.h"
 #include "hw/usb.h"
 
 /* ------------------------------------------------------------------------ */
@@ -82,7 +86,9 @@ struct USBHostDevice {
     uint32_t                         options;
     uint32_t                         loglevel;
     bool                             needs_autoscan;
-    bool                             allow_guest_reset;
+    bool                             allow_one_guest_reset;
+    bool                             allow_all_guest_resets;
+
     /* state */
     QTAILQ_ENTRY(USBHostDevice)      next;
     int                              seen, errcount;
@@ -1225,19 +1231,21 @@ static void usb_host_set_address(USBHostDevice *s, int addr)
 
 static void usb_host_set_config(USBHostDevice *s, int config, USBPacket *p)
 {
-    int rc;
+    int rc = 0;
 
     trace_usb_host_set_config(s->bus_num, s->addr, config);
 
     usb_host_release_interfaces(s);
-    rc = libusb_set_configuration(s->dh, config);
-    if (rc != 0) {
-        usb_host_libusb_error("libusb_set_configuration", rc);
-        p->status = USB_RET_STALL;
-        if (rc == LIBUSB_ERROR_NO_DEVICE) {
-            usb_host_nodev(s);
+    if (s->ddesc.bNumConfigurations != 1) {
+        rc = libusb_set_configuration(s->dh, config);
+        if (rc != 0) {
+            usb_host_libusb_error("libusb_set_configuration", rc);
+            p->status = USB_RET_STALL;
+            if (rc == LIBUSB_ERROR_NO_DEVICE) {
+                usb_host_nodev(s);
+            }
+            return;
         }
-        return;
     }
     p->status = usb_host_claim_interfaces(s, config);
     if (p->status != USB_RET_SUCCESS) {
@@ -1456,7 +1464,10 @@ static void usb_host_handle_reset(USBDevice *udev)
     USBHostDevice *s = USB_HOST_DEVICE(udev);
     int rc;
 
-    if (!s->allow_guest_reset) {
+    if (!s->allow_one_guest_reset && !s->allow_all_guest_resets) {
+        return;
+    }
+    if (!s->allow_all_guest_resets && udev->addr == 0) {
         return;
     }
 
@@ -1577,7 +1588,10 @@ static Property usb_host_dev_properties[] = {
     DEFINE_PROP_UINT32("productid", USBHostDevice, match.product_id, 0),
     DEFINE_PROP_UINT32("isobufs",  USBHostDevice, iso_urb_count,    4),
     DEFINE_PROP_UINT32("isobsize", USBHostDevice, iso_urb_frames,   32),
-    DEFINE_PROP_BOOL("guest-reset", USBHostDevice, allow_guest_reset, true),
+    DEFINE_PROP_BOOL("guest-reset", USBHostDevice,
+                     allow_one_guest_reset, true),
+    DEFINE_PROP_BOOL("guest-resets-all", USBHostDevice,
+                     allow_all_guest_resets, false),
     DEFINE_PROP_UINT32("loglevel",  USBHostDevice, loglevel,
                        LIBUSB_LOG_LEVEL_WARNING),
     DEFINE_PROP_BIT("pipeline",    USBHostDevice, options,

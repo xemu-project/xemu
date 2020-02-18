@@ -16,10 +16,12 @@
  * You should have received a copy of the GNU General Public License along
  * with this program; if not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef hw_omap_h
+
+#ifndef HW_ARM_OMAP_H
+#define HW_ARM_OMAP_H
+
 #include "exec/memory.h"
-# define hw_omap_h		"omap.h"
-#include "hw/irq.h"
+#include "hw/input/tsc2xxx.h"
 #include "target/arm/cpu-qom.h"
 #include "qemu/log.h"
 
@@ -679,11 +681,6 @@ qemu_irq *omap_mpuio_in_get(struct omap_mpuio_s *s);
 void omap_mpuio_out_set(struct omap_mpuio_s *s, int line, qemu_irq handler);
 void omap_mpuio_key(struct omap_mpuio_s *s, int row, int col, int down);
 
-struct uWireSlave {
-    uint16_t (*receive)(void *opaque);
-    void (*send)(void *opaque, uint16_t data);
-    void *opaque;
-};
 struct omap_uwire_s;
 void omap_uwire_attach(struct omap_uwire_s *s,
                 uWireSlave *slave, int chipselect);
@@ -826,8 +823,6 @@ struct omap_mpu_state_s {
     MemoryRegion mpui_io_iomem;
     MemoryRegion tap_iomem;
     MemoryRegion imif_ram;
-    MemoryRegion emiff_ram;
-    MemoryRegion sdram;
     MemoryRegion sram;
 
     struct omap_dma_port_if_s {
@@ -839,7 +834,7 @@ struct omap_mpu_state_s {
                         hwaddr addr);
     } port[__omap_dma_port_last];
 
-    unsigned long sdram_size;
+    uint64_t sdram_size;
     unsigned long sram_size;
 
     /* MPUI-TIPB peripherals */
@@ -936,13 +931,11 @@ struct omap_mpu_state_s {
 };
 
 /* omap1.c */
-struct omap_mpu_state_s *omap310_mpu_init(MemoryRegion *system_memory,
-                unsigned long sdram_size,
+struct omap_mpu_state_s *omap310_mpu_init(MemoryRegion *sdram,
                 const char *core);
 
 /* omap2.c */
-struct omap_mpu_state_s *omap2420_mpu_init(MemoryRegion *sysmem,
-                unsigned long sdram_size,
+struct omap_mpu_state_s *omap2420_mpu_init(MemoryRegion *sdram,
                 const char *core);
 
 uint32_t omap_badwidth_read8(void *opaque, hwaddr addr);
@@ -995,4 +988,4 @@ enum {
 
 # define OMAP_MPUI_REG_MASK		0x000007ff
 
-#endif /* hw_omap_h */
+#endif

@@ -70,7 +70,9 @@ int monitor_get_fd(Monitor *mon, const char *fdname, Error **errp)
  * otherwise we get duplicate syms at link time.
  */
 __thread Monitor *cur_mon;
-void monitor_init(Chardev *chr, int flags) {}
+int monitor_vprintf(Monitor *mon, const char *fmt, va_list ap) { abort(); }
+void monitor_init_qmp(Chardev *chr, bool pretty) {}
+void monitor_init_hmp(Chardev *chr, bool use_readline) {}
 
 
 static void test_socket_fd_pass_name_good(void)
@@ -91,7 +93,7 @@ static void test_socket_fd_pass_name_good(void)
     g_assert_cmpint(fd, !=, mon_fd);
     close(fd);
 
-    fd = socket_listen(&addr, &error_abort);
+    fd = socket_listen(&addr, 1, &error_abort);
     g_assert_cmpint(fd, !=, -1);
     g_assert_cmpint(fd, !=, mon_fd);
     close(fd);
@@ -122,7 +124,7 @@ static void test_socket_fd_pass_name_bad(void)
     g_assert_cmpint(fd, ==, -1);
     error_free_or_abort(&err);
 
-    fd = socket_listen(&addr, &err);
+    fd = socket_listen(&addr, 1, &err);
     g_assert_cmpint(fd, ==, -1);
     error_free_or_abort(&err);
 
@@ -149,7 +151,7 @@ static void test_socket_fd_pass_name_nomon(void)
     g_assert_cmpint(fd, ==, -1);
     error_free_or_abort(&err);
 
-    fd = socket_listen(&addr, &err);
+    fd = socket_listen(&addr, 1, &err);
     g_assert_cmpint(fd, ==, -1);
     error_free_or_abort(&err);
 
@@ -172,7 +174,7 @@ static void test_socket_fd_pass_num_good(void)
     fd = socket_connect(&addr, &error_abort);
     g_assert_cmpint(fd, ==, sfd);
 
-    fd = socket_listen(&addr, &error_abort);
+    fd = socket_listen(&addr, 1, &error_abort);
     g_assert_cmpint(fd, ==, sfd);
 
     g_free(addr.u.fd.str);
@@ -195,7 +197,7 @@ static void test_socket_fd_pass_num_bad(void)
     g_assert_cmpint(fd, ==, -1);
     error_free_or_abort(&err);
 
-    fd = socket_listen(&addr, &err);
+    fd = socket_listen(&addr, 1, &err);
     g_assert_cmpint(fd, ==, -1);
     error_free_or_abort(&err);
 
@@ -218,7 +220,7 @@ static void test_socket_fd_pass_num_nocli(void)
     g_assert_cmpint(fd, ==, -1);
     error_free_or_abort(&err);
 
-    fd = socket_listen(&addr, &err);
+    fd = socket_listen(&addr, 1, &err);
     g_assert_cmpint(fd, ==, -1);
     error_free_or_abort(&err);
 
@@ -240,7 +242,8 @@ int main(int argc, char **argv)
      * with either IPv4 or IPv6 disabled.
      */
     if (socket_check_protocol_support(&has_ipv4, &has_ipv6) < 0) {
-        return 1;
+        g_printerr("socket_check_protocol_support() failed\n");
+        goto end;
     }
 
     if (has_ipv4) {
@@ -262,5 +265,6 @@ int main(int argc, char **argv)
                         test_socket_fd_pass_num_nocli);
     }
 
+end:
     return g_test_run();
 }

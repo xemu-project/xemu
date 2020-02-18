@@ -18,10 +18,12 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/hw.h"
 #include "hw/audio/soundhw.h"
 #include "audio/audio.h"
 #include "hw/pci/pci.h"
+#include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
+#include "qemu/module.h"
 #include "sysemu/dma.h"
 #include "ac97_int.h"
 
@@ -941,7 +943,7 @@ static int write_audio (AC97LinkState *s, AC97BusMasterRegs *r,
     uint32_t temp = r->picb << 1;
     uint32_t written = 0;
     int to_copy = 0;
-    temp = audio_MIN (temp, max);
+    temp = MIN (temp, max);
 
     if (!temp) {
         *stop = 1;
@@ -950,7 +952,7 @@ static int write_audio (AC97LinkState *s, AC97BusMasterRegs *r,
 
     while (temp) {
         int copied;
-        to_copy = audio_MIN (temp, sizeof (tmpbuf));
+        to_copy = MIN (temp, sizeof (tmpbuf));
         dma_memory_read (s->as, addr, tmpbuf, to_copy);
         copied = AUD_write (s->voice_po, tmpbuf, to_copy);
         dolog ("write_audio max=%x to_copy=%x copied=%x\n",
@@ -996,7 +998,7 @@ static void write_bup (AC97LinkState *s, int elapsed)
     }
 
     while (elapsed) {
-        int temp = audio_MIN (elapsed, sizeof (s->silence));
+        int temp = MIN (elapsed, sizeof (s->silence));
         while (temp) {
             int copied = AUD_write (s->voice_po, s->silence, temp);
             if (!copied)
@@ -1017,7 +1019,7 @@ static int read_audio (AC97LinkState *s, AC97BusMasterRegs *r,
     int to_copy = 0;
     SWVoiceIn *voice = (r - s->bm_regs) == MC_INDEX ? s->voice_mc : s->voice_pi;
 
-    temp = audio_MIN (temp, max);
+    temp = MIN (temp, max);
 
     if (!temp) {
         *stop = 1;
@@ -1026,7 +1028,7 @@ static int read_audio (AC97LinkState *s, AC97BusMasterRegs *r,
 
     while (temp) {
         int acquired;
-        to_copy = audio_MIN (temp, sizeof (tmpbuf));
+        to_copy = MIN (temp, sizeof (tmpbuf));
         acquired = AUD_read (voice, tmpbuf, to_copy);
         if (!acquired) {
             *stop = 1;
@@ -1270,10 +1272,8 @@ const MemoryRegionOps ac97_io_nabm_ops = {
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
-static void ac97_on_reset (void *opaque)
+static void ac97_on_reset (AC97LinkState *s)
 {
-    AC97LinkState *s = opaque;
-
     reset_bm_regs (s, &s->bm_regs[0]);
     reset_bm_regs (s, &s->bm_regs[1]);
     reset_bm_regs (s, &s->bm_regs[2]);
@@ -1293,13 +1293,9 @@ void ac97_common_init (AC97LinkState *s,
     s->pci_dev = pci_dev;
     s->as = as;
 
-    qemu_register_reset (ac97_on_reset, s);
     AUD_register_card ("ac97", &s->card);
     ac97_on_reset (s);
 }
-
-
-
 
 typedef struct AC97DeviceState {
     PCIDevice dev;
@@ -1310,6 +1306,12 @@ typedef struct AC97DeviceState {
     MemoryRegion io_nam;
     MemoryRegion io_nabm;
 } AC97DeviceState;
+
+static void ac97_on_device_reset (DeviceState *dev)
+{
+    AC97DeviceState *s = container_of(dev, AC97DeviceState, dev.qdev);
+    ac97_on_reset (&s->state);
+}
 
 #define AC97_DEVICE(obj) \
     OBJECT_CHECK(AC97DeviceState, (obj), "AC97")
@@ -1405,7 +1407,6 @@ static void ac97_realize (PCIDevice *dev, Error **errp)
                            "ac97-nabm", 256);
     pci_register_bar (&s->dev, 0, PCI_BASE_ADDRESS_SPACE_IO, &s->io_nam);
     pci_register_bar (&s->dev, 1, PCI_BASE_ADDRESS_SPACE_IO, &s->io_nabm);
-
     ac97_common_init(&s->state, &s->dev, pci_get_address_space(&s->dev));
 }
 
@@ -1424,8 +1425,8 @@ static int ac97_init (PCIBus *bus)
 }
 
 static Property ac97_properties[] = {
+    DEFINE_AUDIO_PROPERTIES(AC97DeviceState, state.card),
     DEFINE_PROP_UINT32 ("use_broken_id", AC97DeviceState, use_broken_id, 0),
-    DEFINE_PROP_END_OF_LIST (),
 };
 
 static void ac97_class_init (ObjectClass *klass, void *data)
@@ -1443,7 +1444,7 @@ static void ac97_class_init (ObjectClass *klass, void *data)
     dc->desc = "Intel 82801AA AC97 Audio";
     dc->vmsd = &vmstate_ac97;
     dc->props = ac97_properties;
-    dc->reset = (DeviceReset)ac97_on_reset;
+    dc->reset = ac97_on_device_reset;
 }
 
 static const TypeInfo ac97_info = {

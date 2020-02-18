@@ -21,15 +21,16 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #include "qemu/osdep.h"
 
 #include <gio/gio.h>
 
-#include "qemu-common.h"
 #include "ui/console.h"
 #include "qemu/config-file.h"
 #include "qemu/option.h"
 #include "qemu/cutils.h"
+#include "qemu/module.h"
 #include "qapi/error.h"
 #include "io/channel-command.h"
 #include "chardev/spice.h"
@@ -157,9 +158,10 @@ static void spice_app_display_early_init(DisplayOptions *opts)
     qemu_opt_set(qopts, "addr", sock_path, &error_abort);
     qemu_opt_set(qopts, "image-compression", "off", &error_abort);
     qemu_opt_set(qopts, "streaming-video", "off", &error_abort);
+#ifdef CONFIG_OPENGL
     qemu_opt_set(qopts, "gl", opts->has_gl ? "on" : "off", &error_abort);
     display_opengl = opts->has_gl;
-
+#endif
     be->u.spiceport.data->fqdn = g_strdup("org.qemu.monitor.qmp.0");
     qemu_chardev_new("org.qemu.monitor.qmp", TYPE_CHARDEV_SPICEPORT,
                      be, NULL, &error_abort);

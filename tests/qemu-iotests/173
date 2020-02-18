@@ -41,16 +41,15 @@ trap "_cleanup; exit \$status" 0 1 2 3 15
 
 _supported_fmt qcow2
 _supported_proto nfs
-_supported_os Linux
 
 size=100M
 
 BASE_IMG="${TEST_DIR}/image.base"
 TOP_IMG="${TEST_DIR}/image.snp1"
 
-TEST_IMG="${BASE_IMG}" _make_test_img $size
+TEST_IMG_FILE="${BASE_IMG}" _make_test_img $size
 
-TEST_IMG="${TOP_IMG}" _make_test_img $size
+TEST_IMG_FILE="${TOP_IMG}" _make_test_img $size
 
 echo
 echo === Running QEMU, using block-stream to find backing image ===

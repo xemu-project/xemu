@@ -20,8 +20,6 @@
  * THE SOFTWARE.
  */
 #include "qemu/osdep.h"
-#include "qemu-common.h"
-#include "hw/hw.h"
 #include "hw/usb.h"
 #include "sysemu/dma.h"
 

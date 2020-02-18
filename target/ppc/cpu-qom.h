@@ -20,7 +20,7 @@
 #ifndef QEMU_PPC_CPU_QOM_H
 #define QEMU_PPC_CPU_QOM_H
 
-#include "qom/cpu.h"
+#include "hw/core/cpu.h"
 
 #ifdef TARGET_PPC64
 #define TYPE_POWERPC_CPU "powerpc64-cpu"
@@ -191,6 +191,7 @@ typedef struct PowerPCCPUClass {
     const PPCHash64Options *hash64_opts;
     struct ppc_radix_page_info *radix_page_info;
     uint32_t lrg_decr_bits;
+    int n_host_threads;
     void (*init_proc)(CPUPPCState *env);
     int  (*check_pow)(CPUPPCState *env);
     int (*handle_mmu_fault)(PowerPCCPU *cpu, vaddr eaddr, int rwx, int mmu_idx);
@@ -201,9 +202,10 @@ typedef struct PowerPCCPUClass {
 typedef struct PPCTimebase {
     uint64_t guest_timebase;
     int64_t time_of_the_day_ns;
+    bool runstate_paused;
 } PPCTimebase;
 
-extern const struct VMStateDescription vmstate_ppc_timebase;
+extern const VMStateDescription vmstate_ppc_timebase;
 
 #define VMSTATE_PPC_TIMEBASE_V(_field, _state, _version) {            \
     .name       = (stringify(_field)),                                \

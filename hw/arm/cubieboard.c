@@ -16,8 +16,8 @@
  */
 
 #include "qemu/osdep.h"
+#include "exec/address-spaces.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "hw/sysbus.h"
 #include "hw/boards.h"
@@ -73,15 +73,13 @@ static void cubieboard_init(MachineState *machine)
     /* TODO create and connect IDE devices for ide_drive_get() */
 
     cubieboard_binfo.ram_size = machine->ram_size;
-    cubieboard_binfo.kernel_filename = machine->kernel_filename;
-    cubieboard_binfo.kernel_cmdline = machine->kernel_cmdline;
-    cubieboard_binfo.initrd_filename = machine->initrd_filename;
-    arm_load_kernel(&s->a10->cpu, &cubieboard_binfo);
+    arm_load_kernel(&s->a10->cpu, machine, &cubieboard_binfo);
 }
 
 static void cubieboard_machine_init(MachineClass *mc)
 {
-    mc->desc = "cubietech cubieboard";
+    mc->desc = "cubietech cubieboard (Cortex-A9)";
+    mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-a9");
     mc->init = cubieboard_init;
     mc->block_default_type = IF_IDE;
     mc->units_per_default_bus = 1;

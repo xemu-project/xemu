@@ -24,7 +24,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qapi/error.h"
 #include "qemu/job.h"
 #include "qemu/id.h"
@@ -432,7 +431,7 @@ void job_enter_cond(Job *job, bool(*fn)(Job *job))
     timer_del(&job->sleep_timer);
     job->busy = true;
     job_unlock();
-    aio_co_wake(job->co);
+    aio_co_enter(job->aio_context, job->co);
 }
 
 void job_enter(Job *job)
@@ -522,16 +521,6 @@ void coroutine_fn job_sleep_ns(Job *job, int64_t ns)
     }
 
     job_pause_point(job);
-}
-
-void job_drain(Job *job)
-{
-    /* If job is !busy this kicks it into the next pause point. */
-    job_enter(job);
-
-    if (job->driver->drain) {
-        job->driver->drain(job);
-    }
 }
 
 /* Assumes the block_job_mutex is held */
@@ -992,7 +981,7 @@ int job_finish_sync(Job *job, void (*finish)(Job *, Error **errp), Error **errp)
     }
 
     AIO_WAIT_WHILE(job->aio_context,
-                   (job_drain(job), !job_is_completed(job)));
+                   (job_enter(job), !job_is_completed(job)));
 
     ret = (job_is_cancelled(job) && job->ret == 0) ? -ECANCELED : job->ret;
     job_unref(job);

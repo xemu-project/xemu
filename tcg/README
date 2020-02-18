@@ -101,7 +101,7 @@ This can be overridden using the following function modifiers:
   canonical locations before calling the helper.
 - TCG_CALL_NO_WRITE_GLOBALS means that the helper does not modify any globals.
   They will only be saved to their canonical location before calling helpers,
-  but they won't be reloaded afterwise.
+  but they won't be reloaded afterwards.
 - TCG_CALL_NO_SIDE_EFFECTS means that the call to the function is removed if
   the return value is not used.
 
@@ -343,6 +343,13 @@ at bit 8.  This operation would be equivalent to
 
 (using an arithmetic right shift).
 
+* extract2_i32/i64 dest, t1, t2, pos
+
+For N = {32,64}, extract an N-bit quantity from the concatenation
+of t2:t1, beginning at pos.  The tcg_gen_extract2_{i32,i64} expander
+accepts 0 <= pos <= N as inputs.  The backend code generator will
+not see either 0 or N as inputs for these opcodes.
+
 * extrl_i64_i32 t0, t1
 
 For 64-bit hosts only, extract the low 32-bits of input T1 and place it
@@ -505,7 +512,7 @@ Both t0 and t1 may be split into little-endian ordered pairs of registers
 if dealing with 64-bit quantities on a 32-bit host.
 
 The memidx selects the qemu tlb index to use (e.g. user or kernel access).
-The flags are the TCGMemOp bits, selecting the sign, width, and endianness
+The flags are the MemOp bits, selecting the sign, width, and endianness
 of the memory access.
 
 For a 32-bit host, qemu_ld/st_i64 is guaranteed to only be used with a
@@ -553,6 +560,10 @@ E.g. VECL=1 -> 64 << 1 -> v128, and VECE=2 -> 1 << 2 -> i32.
 * neg_vec   v0, v1
 
   Similarly, v0 = -v1.
+
+* abs_vec   v0, v1
+
+  Similarly, v0 = v1 < 0 ? -v1 : v1, in elements across the vector.
 
 * smin_vec:
 * umin_vec:
@@ -615,6 +626,17 @@ E.g. VECL=1 -> 64 << 1 -> v128, and VECE=2 -> 1 << 2 -> i32.
 * cmp_vec  v0, v1, v2, cond
 
   Compare vectors by element, storing -1 for true and 0 for false.
+
+* bitsel_vec v0, v1, v2, v3
+
+  Bitwise select, v0 = (v2 & v1) | (v3 & ~v1), across the entire vector.
+
+* cmpsel_vec v0, c1, c2, v3, v4, cond
+
+  Select elements based on comparison results:
+  for (i = 0; i < n; ++i) {
+    v0[i] = (c1[i] cond c2[i]) ? v3[i] : v4[i].
+  }
 
 *********
 

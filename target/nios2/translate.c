@@ -31,6 +31,7 @@
 #include "exec/log.h"
 #include "exec/cpu_ldst.h"
 #include "exec/translator.h"
+#include "qemu/qemu-print.h"
 
 /* is_jmp field values */
 #define DISAS_JUMP    DISAS_TARGET_0 /* only pc was modified dynamically */
@@ -805,12 +806,11 @@ static void gen_exception(DisasContext *dc, uint32_t excp)
 }
 
 /* generate intermediate code for basic block 'tb'.  */
-void gen_intermediate_code(CPUState *cs, TranslationBlock *tb)
+void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
 {
     CPUNios2State *env = cs->env_ptr;
     DisasContext dc1, *dc = &dc1;
     int num_insns;
-    int max_insns;
 
     /* Initialize DC */
     dc->cpu_env = cpu_env;
@@ -823,19 +823,10 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb)
 
     /* Set up instruction counts */
     num_insns = 0;
-    if (cs->singlestep_enabled || singlestep) {
-        max_insns = 1;
-    } else {
+    if (max_insns > 1) {
         int page_insns = (TARGET_PAGE_SIZE - (tb->pc & TARGET_PAGE_MASK)) / 4;
-        max_insns = tb_cflags(tb) & CF_COUNT_MASK;
-        if (max_insns == 0) {
-            max_insns = CF_COUNT_MASK;
-        }
         if (max_insns > page_insns) {
             max_insns = page_insns;
-        }
-        if (max_insns > TCG_MAX_INSNS) {
-            max_insns = TCG_MAX_INSNS;
         }
     }
 
@@ -870,10 +861,6 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb)
     } while (!dc->is_jmp &&
              !tcg_op_buf_full() &&
              num_insns < max_insns);
-
-    if (tb_cflags(tb) & CF_LAST_IO) {
-        gen_io_end();
-    }
 
     /* Indicate where the next block should start */
     switch (dc->is_jmp) {
@@ -914,33 +901,32 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb)
 #endif
 }
 
-void nios2_cpu_dump_state(CPUState *cs, FILE *f, fprintf_function cpu_fprintf,
-                          int flags)
+void nios2_cpu_dump_state(CPUState *cs, FILE *f, int flags)
 {
     Nios2CPU *cpu = NIOS2_CPU(cs);
     CPUNios2State *env = &cpu->env;
     int i;
 
-    if (!env || !f) {
+    if (!env) {
         return;
     }
 
-    cpu_fprintf(f, "IN: PC=%x %s\n",
-                env->regs[R_PC], lookup_symbol(env->regs[R_PC]));
+    qemu_fprintf(f, "IN: PC=%x %s\n",
+                 env->regs[R_PC], lookup_symbol(env->regs[R_PC]));
 
     for (i = 0; i < NUM_CORE_REGS; i++) {
-        cpu_fprintf(f, "%9s=%8.8x ", regnames[i], env->regs[i]);
+        qemu_fprintf(f, "%9s=%8.8x ", regnames[i], env->regs[i]);
         if ((i + 1) % 4 == 0) {
-            cpu_fprintf(f, "\n");
+            qemu_fprintf(f, "\n");
         }
     }
 #if !defined(CONFIG_USER_ONLY)
-    cpu_fprintf(f, " mmu write: VPN=%05X PID %02X TLBACC %08X\n",
-                env->mmu.pteaddr_wr & CR_PTEADDR_VPN_MASK,
-                (env->mmu.tlbmisc_wr & CR_TLBMISC_PID_MASK) >> 4,
-                env->mmu.tlbacc_wr);
+    qemu_fprintf(f, " mmu write: VPN=%05X PID %02X TLBACC %08X\n",
+                 env->mmu.pteaddr_wr & CR_PTEADDR_VPN_MASK,
+                 (env->mmu.tlbmisc_wr & CR_TLBMISC_PID_MASK) >> 4,
+                 env->mmu.tlbacc_wr);
 #endif
-    cpu_fprintf(f, "\n\n");
+    qemu_fprintf(f, "\n\n");
 }
 
 void nios2_tcg_init(void)

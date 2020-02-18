@@ -18,6 +18,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu-common.h"
 #include "qemu.h"
 #include "cpu_loop-common.h"
 
@@ -26,7 +27,7 @@
 
 void cpu_loop(CPUS390XState *env)
 {
-    CPUState *cs = CPU(s390_env_get_cpu(env));
+    CPUState *cs = env_cpu(env);
     int trapnr, n, sig;
     target_siginfo_t info;
     target_ulong addr;
@@ -124,7 +125,7 @@ void cpu_loop(CPUS390XState *env)
 
             default:
                 fprintf(stderr, "Unhandled program exception: %#x\n", n);
-                cpu_dump_state(cs, stderr, fprintf, 0);
+                cpu_dump_state(cs, stderr, 0);
                 exit(EXIT_FAILURE);
             }
             break;
@@ -144,7 +145,7 @@ void cpu_loop(CPUS390XState *env)
             break;
         default:
             fprintf(stderr, "Unhandled trap: 0x%x\n", trapnr);
-            cpu_dump_state(cs, stderr, fprintf, 0);
+            cpu_dump_state(cs, stderr, 0);
             exit(EXIT_FAILURE);
         }
         process_pending_signals (env);

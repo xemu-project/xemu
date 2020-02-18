@@ -14,15 +14,17 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "qemu/host-utils.h"
-#include "sysemu/sysemu.h"
+#include "qemu/module.h"
 #include "sysemu/kvm.h"
+#include "sysemu/runstate.h"
 #include "sysemu/hw_accel.h"
 #include "kvm_i386.h"
+#include "migration/vmstate.h"
 #include "hw/sysbus.h"
 #include "hw/kvm/clock.h"
+#include "hw/qdev-properties.h"
 #include "qapi/error.h"
 
 #include <linux/kvm.h>
@@ -38,6 +40,9 @@ typedef struct KVMClockState {
 
     uint64_t clock;
     bool clock_valid;
+
+    /* whether the 'clock' value was obtained in the 'paused' state */
+    bool runstate_paused;
 
     /* whether machine type supports reliable KVM_GET_CLOCK */
     bool mach_use_reliable_get_clock;
@@ -200,6 +205,8 @@ static void kvmclock_vm_state_change(void *opaque, int running,
             return;
         }
 
+        s->runstate_paused = runstate_check(RUN_STATE_PAUSED);
+
         kvm_synchronize_all_tsc();
 
         kvm_update_clock(s);
@@ -258,9 +265,9 @@ static int kvmclock_pre_load(void *opaque)
 }
 
 /*
- * When migrating, read the clock just before migration,
- * so that the guest clock counts during the events
- * between:
+ * When migrating a running guest, read the clock just
+ * before migration, so that the guest clock counts
+ * during the events between:
  *
  *  * vm_stop()
  *  *
@@ -275,7 +282,9 @@ static int kvmclock_pre_save(void *opaque)
 {
     KVMClockState *s = opaque;
 
-    kvm_update_clock(s);
+    if (!s->runstate_paused) {
+        kvm_update_clock(s);
+    }
 
     return 0;
 }

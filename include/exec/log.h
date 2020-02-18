@@ -2,7 +2,7 @@
 #define QEMU_EXEC_LOG_H
 
 #include "qemu/log.h"
-#include "qom/cpu.h"
+#include "hw/core/cpu.h"
 #include "disas/disas.h"
 
 /* cpu_dump_state() logging functions: */
@@ -16,7 +16,7 @@
 static inline void log_cpu_state(CPUState *cpu, int flags)
 {
     if (qemu_log_enabled()) {
-        cpu_dump_state(cpu, qemu_logfile, fprintf, flags);
+        cpu_dump_state(cpu, qemu_logfile, flags);
     }
 }
 

@@ -15,7 +15,8 @@
 #include "qemu/osdep.h"
 #include "hw/misc/imx7_snvs.h"
 #include "qemu/log.h"
-#include "sysemu/sysemu.h"
+#include "qemu/module.h"
+#include "sysemu/runstate.h"
 
 static uint64_t imx7_snvs_read(void *opaque, hwaddr offset, unsigned size)
 {

@@ -21,11 +21,11 @@
 
 #include "qemu/osdep.h"
 
-#include "qemu-common.h"
+#include "qemu/module.h"
 #include "qemu/timer.h"
 #include "sysemu/watchdog.h"
-#include "hw/hw.h"
 #include "hw/pci/pci.h"
+#include "migration/vmstate.h"
 
 /*#define I6300ESB_DEBUG 1*/
 
@@ -200,7 +200,7 @@ static void i6300esb_timer_expired(void *vp)
         if (d->reboot_enabled) {
             d->previous_reboot_flag = 1;
             watchdog_perform_action(); /* This reboots, exits, etc */
-            i6300esb_reset(&d->dev.qdev);
+            i6300esb_reset(DEVICE(d));
         }
 
         /* In "free running mode" we start stage 1 again. */

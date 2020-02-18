@@ -1,4 +1,4 @@
-common-obj-y += rng.o rng-egd.o
+common-obj-y += rng.o rng-egd.o rng-builtin.o
 common-obj-$(CONFIG_POSIX) += rng-random.o
 
 common-obj-$(CONFIG_TPM) += tpm.o
@@ -13,5 +13,7 @@ ifeq ($(CONFIG_VIRTIO_CRYPTO),y)
 common-obj-y += cryptodev-vhost.o
 common-obj-$(CONFIG_VHOST_CRYPTO) += cryptodev-vhost-user.o
 endif
+
+common-obj-$(call land,$(CONFIG_VHOST_USER),$(CONFIG_VIRTIO)) += vhost-user.o
 
 common-obj-$(CONFIG_LINUX) += hostmem-memfd.o

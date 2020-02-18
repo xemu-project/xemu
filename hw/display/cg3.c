@@ -24,13 +24,17 @@
  */
 
 #include "qemu/osdep.h"
-#include "qapi/error.h"
 #include "qemu-common.h"
+#include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "ui/console.h"
 #include "hw/sysbus.h"
+#include "migration/vmstate.h"
+#include "hw/irq.h"
 #include "hw/loader.h"
+#include "hw/qdev-properties.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 
 /* Change to 1 to enable debugging */
 #define DEBUG_CG3 0

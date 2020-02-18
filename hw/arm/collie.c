@@ -10,11 +10,10 @@
  */
 #include "qemu/osdep.h"
 #include "qemu/units.h"
-#include "hw/hw.h"
 #include "hw/sysbus.h"
 #include "hw/boards.h"
 #include "strongarm.h"
-#include "hw/arm/arm.h"
+#include "hw/arm/boot.h"
 #include "hw/block/flash.h"
 #include "exec/address-spaces.h"
 #include "cpu.h"
@@ -26,14 +25,15 @@ static struct arm_boot_info collie_binfo = {
 
 static void collie_init(MachineState *machine)
 {
-    const char *kernel_filename = machine->kernel_filename;
-    const char *kernel_cmdline = machine->kernel_cmdline;
-    const char *initrd_filename = machine->initrd_filename;
     StrongARMState *s;
     DriveInfo *dinfo;
-    MemoryRegion *sysmem = get_system_memory();
+    MemoryRegion *sdram = g_new(MemoryRegion, 1);
 
-    s = sa1110_init(sysmem, collie_binfo.ram_size, machine->cpu_type);
+    s = sa1110_init(machine->cpu_type);
+
+    memory_region_allocate_system_memory(sdram, NULL, "strongarm.sdram",
+                                         collie_binfo.ram_size);
+    memory_region_add_subregion(get_system_memory(), SA_SDCS0, sdram);
 
     dinfo = drive_get(IF_PFLASH, 0, 0);
     pflash_cfi01_register(SA_CS0, "collie.fl1", 0x02000000,
@@ -47,11 +47,8 @@ static void collie_init(MachineState *machine)
 
     sysbus_create_simple("scoop", 0x40800000, NULL);
 
-    collie_binfo.kernel_filename = kernel_filename;
-    collie_binfo.kernel_cmdline = kernel_cmdline;
-    collie_binfo.initrd_filename = initrd_filename;
     collie_binfo.board_id = 0x208;
-    arm_load_kernel(s->cpu, &collie_binfo);
+    arm_load_kernel(s->cpu, machine, &collie_binfo);
 }
 
 static void collie_machine_init(MachineClass *mc)

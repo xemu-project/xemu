@@ -21,8 +21,9 @@
 
 #include "qemu/osdep.h"
 #include "hw/platform-bus.h"
+#include "hw/qdev-properties.h"
 #include "qemu/error-report.h"
-#include "sysemu/sysemu.h"
+#include "qemu/module.h"
 
 
 /*

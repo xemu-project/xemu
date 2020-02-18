@@ -25,7 +25,7 @@ void unallocated_encoding(DisasContext *s);
         qemu_log_mask(LOG_UNIMP,                                         \
                       "%s:%d: unsupported instruction encoding 0x%08x "  \
                       "at pc=%016" PRIx64 "\n",                          \
-                      __FILE__, __LINE__, insn, s->pc - 4);              \
+                      __FILE__, __LINE__, insn, s->pc_curr);             \
         unallocated_encoding(s);                                         \
     } while (0)
 
@@ -39,7 +39,6 @@ void write_fp_dreg(DisasContext *s, int reg, TCGv_i64 v);
 TCGv_ptr get_fpstatus_ptr(bool);
 bool logic_imm_decode_wmask(uint64_t *result, unsigned int immn,
                             unsigned int imms, unsigned int immr);
-uint64_t vfp_expand_imm(int size, uint8_t imm8);
 bool sve_access_check(DisasContext *s);
 
 /* We should have at some point before trying to access an FP register
@@ -65,7 +64,7 @@ static inline void assert_fp_access_checked(DisasContext *s)
  * the FP/vector register Qn.
  */
 static inline int vec_reg_offset(DisasContext *s, int regno,
-                                 int element, TCGMemOp size)
+                                 int element, MemOp size)
 {
     int element_size = 1 << size;
     int offs = element * element_size;
@@ -121,6 +120,8 @@ typedef void GVecGen2Fn(unsigned, uint32_t, uint32_t, uint32_t, uint32_t);
 typedef void GVecGen2iFn(unsigned, uint32_t, uint32_t, int64_t,
                          uint32_t, uint32_t);
 typedef void GVecGen3Fn(unsigned, uint32_t, uint32_t,
+                        uint32_t, uint32_t, uint32_t);
+typedef void GVecGen4Fn(unsigned, uint32_t, uint32_t, uint32_t,
                         uint32_t, uint32_t, uint32_t);
 
 #endif /* TARGET_ARM_TRANSLATE_A64_H */

@@ -24,11 +24,12 @@
 /* Ported SDL 1.2 code to 2.0 by Dave Airlie. */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
+#include "qemu/module.h"
 #include "qemu-version.h"
 #include "ui/console.h"
 #include "ui/input.h"
 #include "ui/sdl2.h"
+#include "sysemu/runstate.h"
 #include "sysemu/sysemu.h"
 
 static int sdl2_num_outputs;

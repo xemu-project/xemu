@@ -16,16 +16,21 @@
  *  You should have received a copy of the GNU General Public License
  *  along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
+
 #include "qemu/osdep.h"
+#include "qemu-common.h"
 #include "qemu/units.h"
+#include "sysemu/tcg.h"
 #include "qemu-version.h"
 #include <machine/trap.h>
 
 #include "qapi/error.h"
 #include "qemu.h"
 #include "qemu/config-file.h"
+#include "qemu/error-report.h"
 #include "qemu/path.h"
 #include "qemu/help_option.h"
+#include "qemu/module.h"
 #include "cpu.h"
 #include "exec/exec-all.h"
 #include "tcg.h"
@@ -139,8 +144,7 @@ static void set_idt(int n, unsigned int dpl)
 
 void cpu_loop(CPUX86State *env)
 {
-    X86CPU *cpu = x86_env_get_cpu(env);
-    CPUState *cs = CPU(cpu);
+    CPUState *cs = env_cpu(env);
     int trapnr;
     abi_ulong pc;
     //target_siginfo_t info;
@@ -486,7 +490,7 @@ static void flush_windows(CPUSPARCState *env)
 
 void cpu_loop(CPUSPARCState *env)
 {
-    CPUState *cs = CPU(sparc_env_get_cpu(env));
+    CPUState *cs = env_cpu(env);
     int trapnr, ret, syscall_nr;
     //target_siginfo_t info;
 
@@ -639,7 +643,7 @@ void cpu_loop(CPUSPARCState *env)
         badtrap:
 #endif
             printf ("Unhandled trap: 0x%x\n", trapnr);
-            cpu_dump_state(cs, stderr, fprintf, 0);
+            cpu_dump_state(cs, stderr, 0);
             exit (1);
         }
         process_pending_signals (env);
@@ -743,6 +747,7 @@ int main(int argc, char **argv)
     if (argc <= 1)
         usage();
 
+    error_init(argv[0]);
     module_call_init(MODULE_INIT_TRACE);
     qemu_init_cpu_list();
     module_call_init(MODULE_INIT_QOM);
@@ -817,7 +822,7 @@ int main(int argc, char **argv)
             if (is_help_option(cpu_model)) {
 /* XXX: implement xxx_cpu_list for targets that still miss it */
 #if defined(cpu_list)
-                    cpu_list(stdout, &fprintf);
+                    cpu_list();
 #endif
                 exit(1);
             }
@@ -903,7 +908,7 @@ int main(int argc, char **argv)
     /* init tcg before creating CPUs and to get qemu_host_page_size */
     tcg_exec_init(0);
 
-    cpu_type = parse_cpu_model(cpu_model);
+    cpu_type = parse_cpu_option(cpu_model);
     cpu = cpu_create(cpu_type);
     env = cpu->env_ptr;
 #if defined(TARGET_SPARC) || defined(TARGET_PPC)

@@ -15,14 +15,14 @@
 #include "qemu/osdep.h"
 #include <glib/gstdio.h>
 
-#include "libqtest.h"
+#include "libqtest-single.h"
 #include "tpm-tests.h"
 
 static bool
 tpm_test_swtpm_skip(void)
 {
     if (!tpm_util_swtpm_has_tpm2()) {
-        g_test_message("swtpm not in PATH or missing --tpm2 support");
+        g_test_skip("swtpm not in PATH or missing --tpm2 support");
         return true;
     }
 

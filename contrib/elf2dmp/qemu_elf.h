@@ -2,11 +2,10 @@
  * Copyright (c) 2018 Virtuozzo International GmbH
  *
  * This work is licensed under the terms of the GNU GPL, version 2 or later.
- *
  */
 
-#ifndef ELF2DMP_ELF_H
-#define ELF2DMP_ELF_H
+#ifndef ELF2DMP_QEMU_ELF_H
+#define ELF2DMP_QEMU_ELF_H
 
 #include "elf.h"
 
@@ -47,4 +46,4 @@ void QEMU_Elf_exit(QEMU_Elf *qe);
 Elf64_Phdr *elf64_getphdr(void *map);
 Elf64_Half elf_getphdrnum(void *map);
 
-#endif /* ELF2DMP_ELF_H */
+#endif /* ELF2DMP_QEMU_ELF_H */

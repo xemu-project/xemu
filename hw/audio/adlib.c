@@ -24,10 +24,11 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "hw/hw.h"
+#include "qemu/module.h"
 #include "hw/audio/soundhw.h"
 #include "audio/audio.h"
 #include "hw/isa/isa.h"
+#include "hw/qdev-properties.h"
 
 //#define DEBUG
 
@@ -194,7 +195,7 @@ static void adlib_callback (void *opaque, int free)
         return;
     }
 
-    to_play = audio_MIN (s->left, samples);
+    to_play = MIN (s->left, samples);
     while (to_play) {
         written = write_audio (s, to_play);
 
@@ -209,7 +210,7 @@ static void adlib_callback (void *opaque, int free)
         }
     }
 
-    samples = audio_MIN (samples, s->samples - s->pos);
+    samples = MIN (samples, s->samples - s->pos);
     if (!samples) {
         return;
     }
@@ -298,6 +299,7 @@ static void adlib_realizefn (DeviceState *dev, Error **errp)
 }
 
 static Property adlib_properties[] = {
+    DEFINE_AUDIO_PROPERTIES(AdlibState, card),
     DEFINE_PROP_UINT32 ("iobase",  AdlibState, port, 0x220),
     DEFINE_PROP_UINT32 ("freq",    AdlibState, freq,  44100),
     DEFINE_PROP_END_OF_LIST (),

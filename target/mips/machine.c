@@ -1,8 +1,6 @@
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "internal.h"
-#include "hw/hw.h"
 #include "migration/cpu.h"
 
 static int cpu_post_load(void *opaque, int version_id)
@@ -26,7 +24,7 @@ static int get_fpr(QEMUFile *f, void *pv, size_t size,
     int i;
     fpr_t *v = pv;
     /* Restore entire MSA vector register */
-    for (i = 0; i < MSA_WRLEN/64; i++) {
+    for (i = 0; i < MSA_WRLEN / 64; i++) {
         qemu_get_sbe64s(f, &v->wr.d[i]);
     }
     return 0;
@@ -38,7 +36,7 @@ static int put_fpr(QEMUFile *f, void *pv, size_t size,
     int i;
     fpr_t *v = pv;
     /* Save entire MSA vector register */
-    for (i = 0; i < MSA_WRLEN/64; i++) {
+    for (i = 0; i < MSA_WRLEN / 64; i++) {
         qemu_put_sbe64s(f, &v->wr.d[i]);
     }
 

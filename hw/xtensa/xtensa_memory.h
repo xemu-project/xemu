@@ -25,12 +25,10 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _XTENSA_MEMORY_H
-#define _XTENSA_MEMORY_H
+#ifndef XTENSA_MEMORY_H
+#define XTENSA_MEMORY_H
 
-#include "qemu-common.h"
 #include "cpu.h"
-#include "exec/memory.h"
 
 void xtensa_create_memory_regions(const XtensaMemory *memory,
                                   const char *name,

@@ -16,8 +16,9 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef _PPC_PNV_XSCOM_H
-#define _PPC_PNV_XSCOM_H
+
+#ifndef PPC_PNV_XSCOM_H
+#define PPC_PNV_XSCOM_H
 
 #include "qom/object.h"
 
@@ -86,7 +87,7 @@ typedef struct PnvXScomInterfaceClass {
 #define PNV9_XSCOM_XIVE_BASE      0x5013000
 #define PNV9_XSCOM_XIVE_SIZE      0x300
 
-extern void pnv_xscom_realize(PnvChip *chip, Error **errp);
+extern void pnv_xscom_realize(PnvChip *chip, uint64_t size, Error **errp);
 extern int pnv_dt_xscom(PnvChip *chip, void *fdt, int offset);
 
 extern void pnv_xscom_add_subregion(PnvChip *chip, hwaddr offset,
@@ -98,4 +99,4 @@ extern void pnv_xscom_region_init(MemoryRegion *mr,
                                   const char *name,
                                   uint64_t size);
 
-#endif /* _PPC_PNV_XSCOM_H */
+#endif /* PPC_PNV_XSCOM_H */

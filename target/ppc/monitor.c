@@ -21,38 +21,41 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "monitor/monitor.h"
+#include "qemu/ctype.h"
 #include "monitor/hmp-target.h"
-#include "hmp.h"
+#include "monitor/hmp.h"
 
-static target_long monitor_get_ccr (const struct MonitorDef *md, int val)
+static target_long monitor_get_ccr(const struct MonitorDef *md, int val)
 {
     CPUArchState *env = mon_get_cpu_env();
     unsigned int u;
     int i;
 
     u = 0;
-    for (i = 0; i < 8; i++)
+    for (i = 0; i < 8; i++) {
         u |= env->crf[i] << (32 - (4 * (i + 1)));
+    }
 
     return u;
 }
 
-static target_long monitor_get_decr (const struct MonitorDef *md, int val)
+static target_long monitor_get_decr(const struct MonitorDef *md, int val)
 {
     CPUArchState *env = mon_get_cpu_env();
     return cpu_ppc_load_decr(env);
 }
 
-static target_long monitor_get_tbu (const struct MonitorDef *md, int val)
+static target_long monitor_get_tbu(const struct MonitorDef *md, int val)
 {
     CPUArchState *env = mon_get_cpu_env();
     return cpu_ppc_load_tbu(env);
 }
 
-static target_long monitor_get_tbl (const struct MonitorDef *md, int val)
+static target_long monitor_get_tbl(const struct MonitorDef *md, int val)
 {
     CPUArchState *env = mon_get_cpu_env();
     return cpu_ppc_load_tbl(env);
@@ -66,7 +69,7 @@ void hmp_info_tlb(Monitor *mon, const QDict *qdict)
         monitor_printf(mon, "No CPU available\n");
         return;
     }
-    dump_mmu((FILE*)mon, (fprintf_function)monitor_printf, env1);
+    dump_mmu(env1);
 }
 
 const MonitorDef monitor_defs[] = {

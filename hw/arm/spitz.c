@@ -12,12 +12,14 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "hw/hw.h"
 #include "hw/arm/pxa.h"
-#include "hw/arm/arm.h"
+#include "hw/arm/boot.h"
+#include "sysemu/runstate.h"
 #include "sysemu/sysemu.h"
 #include "hw/pcmcia.h"
+#include "hw/qdev-properties.h"
 #include "hw/i2c/i2c.h"
+#include "hw/irq.h"
 #include "hw/ssi/ssi.h"
 #include "hw/block/flash.h"
 #include "qemu/timer.h"
@@ -27,6 +29,7 @@
 #include "audio/audio.h"
 #include "hw/boards.h"
 #include "hw/sysbus.h"
+#include "migration/vmstate.h"
 #include "exec/address-spaces.h"
 #include "cpu.h"
 
@@ -951,11 +954,8 @@ static void spitz_common_init(MachineState *machine,
         /* A 4.0 GB microdrive is permanently sitting in CF slot 0.  */
         spitz_microdrive_attach(mpu, 0);
 
-    spitz_binfo.kernel_filename = machine->kernel_filename;
-    spitz_binfo.kernel_cmdline = machine->kernel_cmdline;
-    spitz_binfo.initrd_filename = machine->initrd_filename;
     spitz_binfo.board_id = arm_id;
-    arm_load_kernel(mpu->cpu, &spitz_binfo);
+    arm_load_kernel(mpu->cpu, machine, &spitz_binfo);
     sl_bootparam_write(SL_PXA_PARAM_BASE);
 }
 

@@ -20,8 +20,7 @@
 #ifndef HW_CPU_CLUSTER_H
 #define HW_CPU_CLUSTER_H
 
-#include "qemu/osdep.h"
-#include "hw/qdev.h"
+#include "hw/qdev-core.h"
 
 /*
  * CPU Cluster type

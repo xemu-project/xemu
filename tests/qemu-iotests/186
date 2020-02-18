@@ -38,7 +38,7 @@ trap "_cleanup; exit \$status" 0 1 2 3 15
 
 _supported_fmt qcow2
 _supported_proto file
-_supported_os Linux
+_require_drivers null-co
 
 if [ "$QEMU_DEFAULT_MACHINE" != "pc" ]; then
     _notrun "Requires a PC machine"
@@ -87,8 +87,8 @@ echo "=== -blockdev/-device=<node-name> ==="
 echo
 
 for dev in $fixed $removable; do
-    check_info_block -blockdev driver=null-co,node-name=null -device $dev,drive=null
-    check_info_block -blockdev driver=null-co,node-name=null -device $dev,drive=null,id=qdev_id
+    check_info_block -blockdev driver=null-co,read-zeroes=on,node-name=null -device $dev,drive=null
+    check_info_block -blockdev driver=null-co,read-zeroes=on,node-name=null -device $dev,drive=null,id=qdev_id
 done
 
 echo
@@ -98,7 +98,7 @@ echo
 # This creates two BlockBackends that will show up in 'info block'!
 # A monitor-owned one from -drive, and anonymous one from -device
 for dev in $fixed $removable; do
-    check_info_block -drive if=none,driver=null-co,node-name=null -device $dev,drive=null,id=qdev_id
+    check_info_block -drive if=none,driver=null-co,read-zeroes=on,node-name=null -device $dev,drive=null,id=qdev_id
 done
 
 echo
@@ -106,8 +106,8 @@ echo "=== -drive if=none/-device=<bb-name> (with medium) ==="
 echo
 
 for dev in $fixed $removable; do
-    check_info_block -drive if=none,driver=null-co,node-name=null -device $dev,drive=none0
-    check_info_block -drive if=none,driver=null-co,node-name=null -device $dev,drive=none0,id=qdev_id
+    check_info_block -drive if=none,driver=null-co,read-zeroes=on,node-name=null -device $dev,drive=none0
+    check_info_block -drive if=none,driver=null-co,read-zeroes=on,node-name=null -device $dev,drive=none0,id=qdev_id
 done
 
 echo
@@ -126,15 +126,15 @@ echo "=== -drive if=... ==="
 echo
 
 check_info_block -drive if=floppy
-check_info_block -drive if=floppy,driver=null-co
+check_info_block -drive if=floppy,driver=null-co,read-zeroes=on
 
-check_info_block -drive if=ide,driver=null-co
+check_info_block -drive if=ide,driver=null-co,read-zeroes=on
 check_info_block -drive if=ide,media=cdrom
-check_info_block -drive if=ide,driver=null-co,media=cdrom
+check_info_block -drive if=ide,driver=null-co,read-zeroes=on,media=cdrom
 
-check_info_block -drive if=virtio,driver=null-co
+check_info_block -drive if=virtio,driver=null-co,read-zeroes=on
 
-check_info_block -drive if=pflash,driver=null-co,size=1M
+check_info_block -drive if=pflash,driver=null-co,read-zeroes=on,size=1M
 
 # success, all done
 echo "*** done"

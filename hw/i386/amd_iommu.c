@@ -19,10 +19,12 @@
  *
  * Cache implementation inspired by hw/i386/intel_iommu.c
  */
+
 #include "qemu/osdep.h"
 #include "hw/i386/pc.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/pci_bus.h"
+#include "migration/vmstate.h"
 #include "amd_iommu.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
@@ -1464,18 +1466,21 @@ static const MemoryRegionOps mmio_mem_ops = {
     }
 };
 
-static void amdvi_iommu_notify_flag_changed(IOMMUMemoryRegion *iommu,
-                                            IOMMUNotifierFlag old,
-                                            IOMMUNotifierFlag new)
+static int amdvi_iommu_notify_flag_changed(IOMMUMemoryRegion *iommu,
+                                           IOMMUNotifierFlag old,
+                                           IOMMUNotifierFlag new,
+                                           Error **errp)
 {
     AMDVIAddressSpace *as = container_of(iommu, AMDVIAddressSpace, iommu);
 
     if (new & IOMMU_NOTIFIER_MAP) {
-        error_report("device %02x.%02x.%x requires iommu notifier which is not "
-                     "currently supported", as->bus_num, PCI_SLOT(as->devfn),
-                     PCI_FUNC(as->devfn));
-        exit(1);
+        error_setg(errp,
+                   "device %02x.%02x.%x requires iommu notifier which is not "
+                   "currently supported", as->bus_num, PCI_SLOT(as->devfn),
+                   PCI_FUNC(as->devfn));
+        return -EINVAL;
     }
+    return 0;
 }
 
 static void amdvi_init(AMDVIState *s)
@@ -1535,6 +1540,7 @@ static void amdvi_realize(DeviceState *dev, Error **err)
     X86IOMMUState *x86_iommu = X86_IOMMU_DEVICE(dev);
     MachineState *ms = MACHINE(qdev_get_machine());
     PCMachineState *pcms = PC_MACHINE(ms);
+    X86MachineState *x86ms = X86_MACHINE(ms);
     PCIBus *bus = pcms->bus;
 
     s->iotlb = g_hash_table_new_full(amdvi_uint64_hash,
@@ -1563,7 +1569,7 @@ static void amdvi_realize(DeviceState *dev, Error **err)
     }
 
     /* Pseudo address space under root PCI bus. */
-    pcms->ioapic_as = amdvi_host_dma_iommu(bus, s, AMDVI_IOAPIC_SB_DEVID);
+    x86ms->ioapic_as = amdvi_host_dma_iommu(bus, s, AMDVI_IOAPIC_SB_DEVID);
 
     /* set up MMIO */
     memory_region_init_io(&s->mmio, OBJECT(s), &mmio_mem_ops, s, "amdvi-mmio",
@@ -1601,6 +1607,8 @@ static void amdvi_class_init(ObjectClass *klass, void* data)
     dc_class->int_remap = amdvi_int_remap;
     /* Supported by the pc-q35-* machine types */
     dc->user_creatable = true;
+    set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+    dc->desc = "AMD IOMMU (AMD-Vi) DMA Remapping device";
 }
 
 static const TypeInfo amdvi = {

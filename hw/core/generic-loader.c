@@ -31,11 +31,14 @@
  */
 
 #include "qemu/osdep.h"
-#include "qom/cpu.h"
+#include "hw/core/cpu.h"
 #include "hw/sysbus.h"
 #include "sysemu/dma.h"
+#include "sysemu/reset.h"
 #include "hw/loader.h"
+#include "hw/qdev-properties.h"
 #include "qapi/error.h"
+#include "qemu/module.h"
 #include "hw/core/generic-loader.h"
 
 #define CPU_NONE 0xFFFFFFFF

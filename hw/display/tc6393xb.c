@@ -10,11 +10,13 @@
  * Contributions after 2012-01-13 are licensed under the terms of the
  * GNU GPL, version 2 or (at your option) any later version.
  */
+
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu/host-utils.h"
-#include "hw/hw.h"
-#include "hw/devices.h"
+#include "hw/irq.h"
+#include "hw/display/tc6393xb.h"
+#include "exec/memory.h"
 #include "hw/block/flash.h"
 #include "ui/console.h"
 #include "ui/pixel_ops.h"
@@ -137,11 +139,6 @@ struct TC6393xbState {
              blanked : 1;
 };
 
-qemu_irq *tc6393xb_gpio_in_get(TC6393xbState *s)
-{
-    return s->gpio_in;
-}
-
 static void tc6393xb_gpio_set(void *opaque, int line, int level)
 {
 //    TC6393xbState *s = opaque;
@@ -152,17 +149,6 @@ static void tc6393xb_gpio_set(void *opaque, int line, int level)
     }
 
     // FIXME: how does the chip reflect the GPIO input level change?
-}
-
-void tc6393xb_gpio_out_set(TC6393xbState *s, int line,
-                    qemu_irq handler)
-{
-    if (line >= TC6393XB_GPIOS) {
-        fprintf(stderr, "TC6393xb: no GPIO pin %d\n", line);
-        return;
-    }
-
-    s->handler[line] = handler;
 }
 
 static void tc6393xb_gpio_handler_update(TC6393xbState *s)

@@ -11,7 +11,6 @@
 
 #include "qemu/osdep.h"
 #include "hw/mem/memory-device.h"
-#include "hw/qdev.h"
 #include "qapi/error.h"
 #include "hw/boards.h"
 #include "qemu/range.h"
@@ -180,13 +179,14 @@ static uint64_t memory_device_get_free_addr(MachineState *ms,
                 range_make_empty(&new);
                 break;
             }
+        } else if (range_lob(&tmp) > range_upb(&new)) {
+            break;
         }
     }
 
     if (!range_contains_range(&as, &new)) {
         error_setg(errp, "could not find position in guest address space for "
                    "memory device - memory fragmented due to alignments");
-        goto out;
     }
 out:
     g_slist_free(list);

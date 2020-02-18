@@ -27,7 +27,8 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "hw/boards.h"
-#include "hw/arm/arm.h"
+#include "hw/qdev-properties.h"
+#include "hw/arm/boot.h"
 #include "exec/address-spaces.h"
 #include "hw/arm/msf2-soc.h"
 #include "cpu.h"
@@ -53,6 +54,7 @@ static void emcraft_sf2_s2s010_init(MachineState *machine)
     if (strcmp(machine->cpu_type, mc->default_cpu_type) != 0) {
         error_report("This board can only be used with CPU %s",
                      mc->default_cpu_type);
+        exit(1);
     }
 
     memory_region_init_ram(ddr, NULL, "ddr-ram", DDR_SIZE,

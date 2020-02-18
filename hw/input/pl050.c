@@ -9,8 +9,11 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
+#include "migration/vmstate.h"
 #include "hw/input/ps2.h"
+#include "hw/irq.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 
 #define TYPE_PL050 "pl050"
 #define PL050(obj) OBJECT_CHECK(PL050State, (obj), TYPE_PL050)

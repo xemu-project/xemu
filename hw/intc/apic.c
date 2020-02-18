@@ -17,7 +17,6 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>
  */
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "qemu/thread.h"
 #include "hw/i386/apic_internal.h"
@@ -611,7 +610,7 @@ int apic_accept_pic_intr(DeviceState *dev)
 
     if ((s->apicbase & MSR_IA32_APICBASE_ENABLE) == 0 ||
         (lvt0 & APIC_LVT_MASKED) == 0)
-        return 1;
+        return isa_pic != NULL;
 
     return 0;
 }

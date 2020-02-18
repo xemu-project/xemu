@@ -25,7 +25,6 @@
 #ifndef ETSEC_H
 #define ETSEC_H
 
-#include "hw/qdev.h"
 #include "hw/sysbus.h"
 #include "net/net.h"
 #include "hw/ptimer.h"
@@ -142,7 +141,6 @@ typedef struct eTSEC {
     uint16_t phy_control;
 
     /* Polling */
-    QEMUBH *bh;
     struct ptimer_state *ptimer;
 
     /* Whether we should flush the rx queue when buffer becomes available. */

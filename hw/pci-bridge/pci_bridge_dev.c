@@ -21,11 +21,13 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "qemu/module.h"
 #include "hw/pci/pci_bridge.h"
 #include "hw/pci/pci_ids.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/shpc.h"
 #include "hw/pci/slotid_cap.h"
+#include "hw/qdev-properties.h"
 #include "exec/memory.h"
 #include "hw/pci/pci_bus.h"
 #include "hw/hotplug.h"
@@ -253,7 +255,7 @@ static void pci_bridge_dev_class_init(ObjectClass *klass, void *data)
     k->vendor_id = PCI_VENDOR_ID_REDHAT;
     k->device_id = PCI_DEVICE_ID_REDHAT_BRIDGE;
     k->class_id = PCI_CLASS_BRIDGE_PCI;
-    k->is_bridge = 1,
+    k->is_bridge = true;
     dc->desc = "Standard PCI Bridge";
     dc->reset = qdev_pci_bridge_dev_reset;
     dc->props = pci_bridge_dev_properties;

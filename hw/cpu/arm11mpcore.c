@@ -9,8 +9,11 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "qemu/module.h"
 #include "hw/cpu/arm11mpcore.h"
 #include "hw/intc/realview_gic.h"
+#include "hw/irq.h"
+#include "hw/qdev-properties.h"
 
 
 static void mpcore_priv_set_irq(void *opaque, int irq, int level)

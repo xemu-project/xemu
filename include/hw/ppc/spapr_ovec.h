@@ -33,11 +33,11 @@
  * This work is licensed under the terms of the GNU GPL, version 2 or later.
  * See the COPYING file in the top-level directory.
  */
-#ifndef _SPAPR_OVEC_H
-#define _SPAPR_OVEC_H
+
+#ifndef SPAPR_OVEC_H
+#define SPAPR_OVEC_H
 
 #include "cpu.h"
-#include "migration/vmstate.h"
 
 typedef struct SpaprOptionVector SpaprOptionVector;
 
@@ -80,4 +80,4 @@ int spapr_ovec_populate_dt(void *fdt, int fdt_offset,
 /* migration */
 extern const VMStateDescription vmstate_spapr_ovec;
 
-#endif /* !defined (_SPAPR_OVEC_H) */
+#endif /* SPAPR_OVEC_H */

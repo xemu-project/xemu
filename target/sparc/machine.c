@@ -1,9 +1,6 @@
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "exec/exec-all.h"
-#include "hw/hw.h"
-#include "hw/boards.h"
 #include "qemu/timer.h"
 
 #include "migration/cpu.h"

@@ -23,12 +23,16 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/hw.h"
+#include "qemu-common.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
+#include "sysemu/reset.h"
 #include "hw/boards.h"
 #include "hw/nvram/fw_cfg.h"
+#include "hw/qdev-properties.h"
 #include "hw/sysbus.h"
+#include "migration/qemu-file-types.h"
+#include "migration/vmstate.h"
 #include "trace.h"
 #include "qemu/error-report.h"
 #include "qemu/option.h"
@@ -59,6 +63,62 @@ struct FWCfgEntry {
     FWCfgCallback select_cb;
     FWCfgWriteCallback write_cb;
 };
+
+/**
+ * key_name:
+ *
+ * @key: The uint16 selector key.
+ *
+ * Returns: The stringified name if the selector refers to a well-known
+ *          numerically defined item, or NULL on key lookup failure.
+ */
+static const char *key_name(uint16_t key)
+{
+    static const char *fw_cfg_wellknown_keys[FW_CFG_FILE_FIRST] = {
+        [FW_CFG_SIGNATURE] = "signature",
+        [FW_CFG_ID] = "id",
+        [FW_CFG_UUID] = "uuid",
+        [FW_CFG_RAM_SIZE] = "ram_size",
+        [FW_CFG_NOGRAPHIC] = "nographic",
+        [FW_CFG_NB_CPUS] = "nb_cpus",
+        [FW_CFG_MACHINE_ID] = "machine_id",
+        [FW_CFG_KERNEL_ADDR] = "kernel_addr",
+        [FW_CFG_KERNEL_SIZE] = "kernel_size",
+        [FW_CFG_KERNEL_CMDLINE] = "kernel_cmdline",
+        [FW_CFG_INITRD_ADDR] = "initrd_addr",
+        [FW_CFG_INITRD_SIZE] = "initdr_size",
+        [FW_CFG_BOOT_DEVICE] = "boot_device",
+        [FW_CFG_NUMA] = "numa",
+        [FW_CFG_BOOT_MENU] = "boot_menu",
+        [FW_CFG_MAX_CPUS] = "max_cpus",
+        [FW_CFG_KERNEL_ENTRY] = "kernel_entry",
+        [FW_CFG_KERNEL_DATA] = "kernel_data",
+        [FW_CFG_INITRD_DATA] = "initrd_data",
+        [FW_CFG_CMDLINE_ADDR] = "cmdline_addr",
+        [FW_CFG_CMDLINE_SIZE] = "cmdline_size",
+        [FW_CFG_CMDLINE_DATA] = "cmdline_data",
+        [FW_CFG_SETUP_ADDR] = "setup_addr",
+        [FW_CFG_SETUP_SIZE] = "setup_size",
+        [FW_CFG_SETUP_DATA] = "setup_data",
+        [FW_CFG_FILE_DIR] = "file_dir",
+    };
+
+    if (key & FW_CFG_ARCH_LOCAL) {
+        return fw_cfg_arch_key_name(key);
+    }
+    if (key < FW_CFG_FILE_FIRST) {
+        return fw_cfg_wellknown_keys[key];
+    }
+
+    return NULL;
+}
+
+static inline const char *trace_key_name(uint16_t key)
+{
+    const char *name = key_name(key);
+
+    return name ? name : "unknown";
+}
 
 #define JPG_FILE 0
 #define BMP_FILE 1
@@ -177,7 +237,8 @@ static void fw_cfg_bootsplash(FWCfgState *s)
 static void fw_cfg_reboot(FWCfgState *s)
 {
     const char *reboot_timeout = NULL;
-    int64_t rt_val = -1;
+    uint64_t rt_val = -1;
+    uint32_t rt_le32;
 
     /* get user configuration */
     QemuOptsList *plist = qemu_find_opts("boot-opts");
@@ -186,15 +247,17 @@ static void fw_cfg_reboot(FWCfgState *s)
 
     if (reboot_timeout) {
         rt_val = qemu_opt_get_number(opts, "reboot-timeout", -1);
+
         /* validate the input */
-        if (rt_val < 0 || rt_val > 0xffff) {
+        if (rt_val > 0xffff && rt_val != (uint64_t)-1) {
             error_report("reboot timeout is invalid,"
-                         "it should be a value between 0 and 65535");
+                         "it should be a value between -1 and 65535");
             exit(1);
         }
     }
 
-    fw_cfg_add_file(s, "etc/boot-fail-wait", g_memdup(&rt_val, 4), 4);
+    rt_le32 = cpu_to_le32(rt_val);
+    fw_cfg_add_file(s, "etc/boot-fail-wait", g_memdup(&rt_le32, 4), 4);
 }
 
 static void fw_cfg_write(FWCfgState *s, uint8_t value)
@@ -233,7 +296,7 @@ static int fw_cfg_select(FWCfgState *s, uint16_t key)
         }
     }
 
-    trace_fw_cfg_select(s, key, ret);
+    trace_fw_cfg_select(s, key, trace_key_name(key), ret);
     return ret;
 }
 
@@ -616,6 +679,7 @@ static void *fw_cfg_modify_bytes_read(FWCfgState *s, uint16_t key,
 
 void fw_cfg_add_bytes(FWCfgState *s, uint16_t key, void *data, size_t len)
 {
+    trace_fw_cfg_add_bytes(key, trace_key_name(key), len);
     fw_cfg_add_bytes_callback(s, key, NULL, NULL, NULL, data, len, true);
 }
 
@@ -623,7 +687,17 @@ void fw_cfg_add_string(FWCfgState *s, uint16_t key, const char *value)
 {
     size_t sz = strlen(value) + 1;
 
+    trace_fw_cfg_add_string(key, trace_key_name(key), value);
     fw_cfg_add_bytes(s, key, g_memdup(value, sz), sz);
+}
+
+void fw_cfg_modify_string(FWCfgState *s, uint16_t key, const char *value)
+{
+    size_t sz = strlen(value) + 1;
+    char *old;
+
+    old = fw_cfg_modify_bytes_read(s, key, g_memdup(value, sz), sz);
+    g_free(old);
 }
 
 void fw_cfg_add_i16(FWCfgState *s, uint16_t key, uint16_t value)
@@ -632,6 +706,7 @@ void fw_cfg_add_i16(FWCfgState *s, uint16_t key, uint16_t value)
 
     copy = g_malloc(sizeof(value));
     *copy = cpu_to_le16(value);
+    trace_fw_cfg_add_i16(key, trace_key_name(key), value);
     fw_cfg_add_bytes(s, key, copy, sizeof(value));
 }
 
@@ -651,7 +726,18 @@ void fw_cfg_add_i32(FWCfgState *s, uint16_t key, uint32_t value)
 
     copy = g_malloc(sizeof(value));
     *copy = cpu_to_le32(value);
+    trace_fw_cfg_add_i32(key, trace_key_name(key), value);
     fw_cfg_add_bytes(s, key, copy, sizeof(value));
+}
+
+void fw_cfg_modify_i32(FWCfgState *s, uint16_t key, uint32_t value)
+{
+    uint32_t *copy, *old;
+
+    copy = g_malloc(sizeof(value));
+    *copy = cpu_to_le32(value);
+    old = fw_cfg_modify_bytes_read(s, key, copy, sizeof(value));
+    g_free(old);
 }
 
 void fw_cfg_add_i64(FWCfgState *s, uint16_t key, uint64_t value)
@@ -660,7 +746,18 @@ void fw_cfg_add_i64(FWCfgState *s, uint16_t key, uint64_t value)
 
     copy = g_malloc(sizeof(value));
     *copy = cpu_to_le64(value);
+    trace_fw_cfg_add_i64(key, trace_key_name(key), value);
     fw_cfg_add_bytes(s, key, copy, sizeof(value));
+}
+
+void fw_cfg_modify_i64(FWCfgState *s, uint16_t key, uint64_t value)
+{
+    uint64_t *copy, *old;
+
+    copy = g_malloc(sizeof(value));
+    *copy = cpu_to_le64(value);
+    old = fw_cfg_modify_bytes_read(s, key, copy, sizeof(value));
+    g_free(old);
 }
 
 void fw_cfg_set_order_override(FWCfgState *s, int order)
@@ -853,13 +950,21 @@ void *fw_cfg_modify_file(FWCfgState *s, const char *filename,
 
 static void fw_cfg_machine_reset(void *opaque)
 {
+    MachineClass *mc = MACHINE_GET_CLASS(qdev_get_machine());
+    FWCfgState *s = opaque;
     void *ptr;
     size_t len;
-    FWCfgState *s = opaque;
-    char *bootindex = get_boot_devices_list(&len);
+    char *buf;
 
-    ptr = fw_cfg_modify_file(s, "bootorder", (uint8_t *)bootindex, len);
+    buf = get_boot_devices_list(&len);
+    ptr = fw_cfg_modify_file(s, "bootorder", (uint8_t *)buf, len);
     g_free(ptr);
+
+    if (!mc->legacy_fw_cfg_order) {
+        buf = get_boot_devices_lchs_list(&len);
+        ptr = fw_cfg_modify_file(s, "bios-geometry", (uint8_t *)buf, len);
+        g_free(ptr);
+    }
 }
 
 static void fw_cfg_machine_ready(struct Notifier *n, void *data)

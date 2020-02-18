@@ -13,6 +13,7 @@
 
 #include <inttypes.h>
 #include <stdio.h>
+#include <string.h>
 #include "cpu_features_def.h"
 
 #define ARRAY_SIZE(array) (sizeof(array) / sizeof(array[0]))
@@ -213,6 +214,54 @@
     S390_FEAT_KMA_GCM_EAES_192, \
     S390_FEAT_KMA_GCM_EAES_256
 
+#define S390_FEAT_GROUP_MSA_EXT_9 \
+    S390_FEAT_MSA_EXT_9, \
+    S390_FEAT_KDSA_ECDSA_VERIFY_P256, \
+    S390_FEAT_KDSA_ECDSA_VERIFY_P384, \
+    S390_FEAT_KDSA_ECDSA_VERIFY_P512, \
+    S390_FEAT_KDSA_ECDSA_SIGN_P256, \
+    S390_FEAT_KDSA_ECDSA_SIGN_P384, \
+    S390_FEAT_KDSA_ECDSA_SIGN_P512, \
+    S390_FEAT_KDSA_EECDSA_SIGN_P256, \
+    S390_FEAT_KDSA_EECDSA_SIGN_P384, \
+    S390_FEAT_KDSA_EECDSA_SIGN_P512, \
+    S390_FEAT_KDSA_EDDSA_VERIFY_ED25519, \
+    S390_FEAT_KDSA_EDDSA_VERIFY_ED448, \
+    S390_FEAT_KDSA_EDDSA_SIGN_ED25519, \
+    S390_FEAT_KDSA_EDDSA_SIGN_ED448, \
+    S390_FEAT_KDSA_EEDDSA_SIGN_ED25519, \
+    S390_FEAT_KDSA_EEDDSA_SIGN_ED448, \
+    S390_FEAT_PCC_SCALAR_MULT_P256, \
+    S390_FEAT_PCC_SCALAR_MULT_P384, \
+    S390_FEAT_PCC_SCALAR_MULT_P512, \
+    S390_FEAT_PCC_SCALAR_MULT_ED25519, \
+    S390_FEAT_PCC_SCALAR_MULT_ED448, \
+    S390_FEAT_PCC_SCALAR_MULT_X25519, \
+    S390_FEAT_PCC_SCALAR_MULT_X448
+
+#define S390_FEAT_GROUP_MSA_EXT_9_PCKMO \
+    S390_FEAT_PCKMO_ECC_P256, \
+    S390_FEAT_PCKMO_ECC_P384, \
+    S390_FEAT_PCKMO_ECC_P521, \
+    S390_FEAT_PCKMO_ECC_ED25519, \
+    S390_FEAT_PCKMO_ECC_ED448
+
+#define S390_FEAT_GROUP_ENH_SORT \
+    S390_FEAT_ESORT_BASE, \
+    S390_FEAT_SORTL_SFLR, \
+    S390_FEAT_SORTL_SVLR, \
+    S390_FEAT_SORTL_32, \
+    S390_FEAT_SORTL_128, \
+    S390_FEAT_SORTL_F0
+
+
+#define S390_FEAT_GROUP_DEFLATE_CONVERSION \
+    S390_FEAT_DEFLATE_BASE, \
+    S390_FEAT_DEFLATE_GHDT, \
+    S390_FEAT_DEFLATE_CMPR, \
+    S390_FEAT_DEFLATE_XPND, \
+    S390_FEAT_DEFLATE_F0
+
 /* cpu feature groups */
 static uint16_t group_PLO[] = {
     S390_FEAT_GROUP_PLO,
@@ -252,6 +301,22 @@ static uint16_t group_MSA_EXT_7[] = {
 };
 static uint16_t group_MSA_EXT_8[] = {
     S390_FEAT_GROUP_MSA_EXT_8,
+};
+
+static uint16_t group_MSA_EXT_9[] = {
+    S390_FEAT_GROUP_MSA_EXT_9,
+};
+
+static uint16_t group_MSA_EXT_9_PCKMO[] = {
+    S390_FEAT_GROUP_MSA_EXT_9_PCKMO,
+};
+
+static uint16_t group_ENH_SORT[] = {
+    S390_FEAT_GROUP_ENH_SORT,
+};
+
+static uint16_t group_DEFLATE_CONVERSION[] = {
+    S390_FEAT_GROUP_DEFLATE_CONVERSION,
 };
 
 /* Base features (in order of release)
@@ -355,6 +420,10 @@ static uint16_t base_GEN14_GA1[] = {
 
 #define base_GEN14_GA2 EmptyFeat
 
+static uint16_t base_GEN15_GA1[] = {
+    S390_FEAT_MISC_INSTRUCTION_EXT3,
+};
+
 /* Full features (in order of release)
  * Automatically includes corresponding base features.
  * Full features are all features this hardware supports even if kvm/QEMU do not
@@ -450,6 +519,7 @@ static uint16_t full_GEN12_GA1[] = {
     S390_FEAT_EDAT_2,
     S390_FEAT_SIDE_EFFECT_ACCESS_ESOP2,
     S390_FEAT_AP_QUERY_CONFIG_INFO,
+    S390_FEAT_AP_QUEUE_INTERRUPT_CONTROL,
     S390_FEAT_AP_FACILITIES_TEST,
     S390_FEAT_AP,
 };
@@ -483,6 +553,16 @@ static uint16_t full_GEN14_GA1[] = {
 };
 
 #define full_GEN14_GA2 EmptyFeat
+
+static uint16_t full_GEN15_GA1[] = {
+    S390_FEAT_VECTOR_ENH2,
+    S390_FEAT_GROUP_ENH_SORT,
+    S390_FEAT_GROUP_DEFLATE_CONVERSION,
+    S390_FEAT_VECTOR_PACKED_DECIMAL_ENH,
+    S390_FEAT_GROUP_MSA_EXT_9,
+    S390_FEAT_GROUP_MSA_EXT_9_PCKMO,
+    S390_FEAT_ETOKEN,
+};
 
 /* Default features (in order of release)
  * Automatically includes corresponding base features.
@@ -560,6 +640,15 @@ static uint16_t default_GEN14_GA1[] = {
 
 #define default_GEN14_GA2 EmptyFeat
 
+static uint16_t default_GEN15_GA1[] = {
+    S390_FEAT_VECTOR_ENH2,
+    S390_FEAT_GROUP_DEFLATE_CONVERSION,
+    S390_FEAT_VECTOR_PACKED_DECIMAL_ENH,
+    S390_FEAT_GROUP_MSA_EXT_9,
+    S390_FEAT_GROUP_MSA_EXT_9_PCKMO,
+    S390_FEAT_ETOKEN,
+};
+
 /* QEMU (CPU model) features */
 
 static uint16_t qemu_V2_11[] = {
@@ -600,7 +689,7 @@ static uint16_t qemu_V3_1[] = {
     S390_FEAT_MSA_EXT_4,
 };
 
-static uint16_t qemu_LATEST[] = {
+static uint16_t qemu_V4_0[] = {
     /*
      * Only BFP bits are implemented (HFP, DFP, PFPO and DIVIDE TO INTEGER not
      * implemented yet).
@@ -609,12 +698,23 @@ static uint16_t qemu_LATEST[] = {
     S390_FEAT_ZPCI,
 };
 
+static uint16_t qemu_V4_1[] = {
+    S390_FEAT_STFLE_53,
+    S390_FEAT_VECTOR,
+};
+
+static uint16_t qemu_LATEST[] = {
+    S390_FEAT_ACCESS_EXCEPTION_FS_INDICATION,
+    S390_FEAT_SIDE_EFFECT_ACCESS_ESOP2,
+    S390_FEAT_ESOP,
+};
+
 /* add all new definitions before this point */
 static uint16_t qemu_MAX[] = {
-    /* z13+ features */
-    S390_FEAT_STFLE_53,
     /* generates a dependency warning, leave it out for now */
     S390_FEAT_MSA_EXT_5,
+    /* features introduced after the z13 */
+    S390_FEAT_INSTRUCTION_EXEC_PROT,
 };
 
 /****** END FEATURE DEFS ******/
@@ -676,6 +776,7 @@ static CpuFeatDefSpec CpuFeatDef[] = {
     CPU_FEAT_INITIALIZER(GEN13_GA2),
     CPU_FEAT_INITIALIZER(GEN14_GA1),
     CPU_FEAT_INITIALIZER(GEN14_GA2),
+    CPU_FEAT_INITIALIZER(GEN15_GA1),
 };
 
 #define FEAT_GROUP_INITIALIZER(_name)                  \
@@ -709,7 +810,11 @@ static FeatGroupDefSpec FeatGroupDef[] = {
     FEAT_GROUP_INITIALIZER(MSA_EXT_6),
     FEAT_GROUP_INITIALIZER(MSA_EXT_7),
     FEAT_GROUP_INITIALIZER(MSA_EXT_8),
+    FEAT_GROUP_INITIALIZER(MSA_EXT_9),
+    FEAT_GROUP_INITIALIZER(MSA_EXT_9_PCKMO),
     FEAT_GROUP_INITIALIZER(MULTIPLE_EPOCH_PTFF),
+    FEAT_GROUP_INITIALIZER(ENH_SORT),
+    FEAT_GROUP_INITIALIZER(DEFLATE_CONVERSION),
 };
 
 #define QEMU_FEAT_INITIALIZER(_name)                   \
@@ -726,6 +831,8 @@ static FeatGroupDefSpec FeatGroupDef[] = {
 static FeatGroupDefSpec QemuFeatDef[] = {
     QEMU_FEAT_INITIALIZER(V2_11),
     QEMU_FEAT_INITIALIZER(V3_1),
+    QEMU_FEAT_INITIALIZER(V4_0),
+    QEMU_FEAT_INITIALIZER(V4_1),
     QEMU_FEAT_INITIALIZER(LATEST),
     QEMU_FEAT_INITIALIZER(MAX),
 };
@@ -740,6 +847,11 @@ static void set_bits(uint64_t list[], BitSpec bits)
     }
 }
 
+static inline void clear_bit(uint64_t list[], unsigned long nr)
+{
+    list[nr / 64] &= ~(1ULL << (nr % 64));
+}
+
 static void print_feature_defs(void)
 {
     uint64_t base_feat[S390_FEAT_MAX / 64 + 1] = {};
@@ -750,6 +862,12 @@ static void print_feature_defs(void)
     printf("\n/* CPU model feature list data */\n");
 
     for (i = 0; i < ARRAY_SIZE(CpuFeatDef); i++) {
+        /* With gen15 CSSKE and BPB are deprecated */
+        if (strcmp(CpuFeatDef[i].name, "S390_FEAT_LIST_GEN15_GA1") == 0) {
+            clear_bit(base_feat, S390_FEAT_CONDITIONAL_SSKE);
+            clear_bit(default_feat, S390_FEAT_CONDITIONAL_SSKE);
+            clear_bit(default_feat, S390_FEAT_BPB);
+        }
         set_bits(base_feat, CpuFeatDef[i].base_bits);
         /* add the base to the default features */
         set_bits(default_feat, CpuFeatDef[i].base_bits);

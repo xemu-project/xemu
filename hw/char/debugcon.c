@@ -26,9 +26,10 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "hw/hw.h"
+#include "qemu/module.h"
 #include "chardev/char-fe.h"
 #include "hw/isa/isa.h"
+#include "hw/qdev-properties.h"
 
 #define TYPE_ISA_DEBUGCON_DEVICE "isa-debugcon"
 #define ISA_DEBUGCON_DEVICE(obj) \

@@ -5,7 +5,7 @@
 
 #include "exec/memory.h"
 #include "exec/ioport.h"
-#include "hw/qdev.h"
+#include "hw/qdev-core.h"
 
 #define ISA_NUM_IRQS 16
 
@@ -146,5 +146,7 @@ static inline ISABus *isa_bus_from_device(ISADevice *d)
 {
     return ISA_BUS(qdev_get_parent_bus(DEVICE(d)));
 }
+
+#define TYPE_PIIX4_PCI_DEVICE "piix4-isa"
 
 #endif

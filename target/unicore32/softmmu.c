@@ -36,8 +36,6 @@
 /* Map CPU modes onto saved register banks.  */
 static inline int bank_number(CPUUniCore32State *env, int mode)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
-
     switch (mode) {
     case ASR_MODE_USER:
     case ASR_MODE_SUSR:
@@ -51,7 +49,7 @@ static inline int bank_number(CPUUniCore32State *env, int mode)
     case ASR_MODE_INTR:
         return 4;
     }
-    cpu_abort(CPU(cpu), "Bad mode %x\n", mode);
+    cpu_abort(env_cpu(env), "Bad mode %x\n", mode);
     return -1;
 }
 
@@ -126,8 +124,7 @@ static int get_phys_addr_ucv2(CPUUniCore32State *env, uint32_t address,
         int access_type, int is_user, uint32_t *phys_ptr, int *prot,
         target_ulong *page_size)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
-    CPUState *cs = CPU(cpu);
+    CPUState *cs = env_cpu(env);
     int code;
     uint32_t table;
     uint32_t desc;
@@ -174,11 +171,11 @@ static int get_phys_addr_ucv2(CPUUniCore32State *env, uint32_t address,
             *page_size = TARGET_PAGE_SIZE;
             break;
         default:
-            cpu_abort(CPU(cpu), "wrong page type!");
+            cpu_abort(cs, "wrong page type!");
         }
         break;
     default:
-        cpu_abort(CPU(cpu), "wrong page type!");
+        cpu_abort(cs, "wrong page type!");
     }
 
     *phys_ptr = phys_addr;
@@ -215,8 +212,9 @@ do_fault:
     return code;
 }
 
-int uc32_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size,
-                              int access_type, int mmu_idx)
+bool uc32_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+                       MMUAccessType access_type, int mmu_idx,
+                       bool probe, uintptr_t retaddr)
 {
     UniCore32CPU *cpu = UNICORE32_CPU(cs);
     CPUUniCore32State *env = &cpu->env;
@@ -257,7 +255,11 @@ int uc32_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size,
         phys_addr &= TARGET_PAGE_MASK;
         address &= TARGET_PAGE_MASK;
         tlb_set_page(cs, address, phys_addr, prot, mmu_idx, page_size);
-        return 0;
+        return true;
+    }
+
+    if (probe) {
+        return false;
     }
 
     env->cp0.c3_faultstatus = ret;
@@ -267,7 +269,7 @@ int uc32_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size,
     } else {
         cs->exception_index = UC32_EXCP_DTRAP;
     }
-    return ret;
+    cpu_loop_exit_restore(cs, retaddr);
 }
 
 hwaddr uc32_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)

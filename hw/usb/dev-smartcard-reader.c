@@ -39,7 +39,10 @@
 #include "qapi/error.h"
 #include "qemu-common.h"
 #include "qemu/error-report.h"
+#include "qemu/module.h"
+#include "hw/qdev-properties.h"
 #include "hw/usb.h"
+#include "migration/vmstate.h"
 #include "desc.h"
 
 #include "ccid.h"

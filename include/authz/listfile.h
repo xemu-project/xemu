@@ -18,11 +18,10 @@
  *
  */
 
-#ifndef QAUTHZ_LIST_FILE_H__
-#define QAUTHZ_LIST_FILE_H__
+#ifndef QAUTHZ_LISTFILE_H
+#define QAUTHZ_LISTFILE_H
 
 #include "authz/list.h"
-#include "qapi/qapi-types-authz.h"
 #include "qemu/filemonitor.h"
 
 #define TYPE_QAUTHZ_LIST_FILE "authz-list-file"
@@ -106,6 +105,4 @@ QAuthZListFile *qauthz_list_file_new(const char *id,
                                      bool refresh,
                                      Error **errp);
 
-
-#endif /* QAUTHZ_LIST_FILE_H__ */
-
+#endif /* QAUTHZ_LISTFILE_H */

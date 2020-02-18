@@ -31,7 +31,6 @@
 #define LOCALEDIR "po"
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-misc.h"
 #include "qemu/cutils.h"
@@ -48,6 +47,7 @@
 
 #include "trace.h"
 #include "ui/input.h"
+#include "sysemu/runstate.h"
 #include "sysemu/sysemu.h"
 #include "keymaps.h"
 #include "chardev/char.h"
@@ -2215,6 +2215,7 @@ static void gtk_display_init(DisplayState *ds, DisplayOptions *opts)
     setlocale(LC_MESSAGES, "");
     setlocale(LC_CTYPE, "C.UTF-8");
     bindtextdomain("qemu", CONFIG_QEMU_LOCALEDIR);
+    bind_textdomain_codeset("qemu", "UTF-8");
     textdomain("qemu");
 
     window_display = gtk_widget_get_display(s->window);

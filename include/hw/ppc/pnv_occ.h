@@ -16,8 +16,9 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef _PPC_PNV_OCC_H
-#define _PPC_PNV_OCC_H
+
+#ifndef PPC_PNV_OCC_H
+#define PPC_PNV_OCC_H
 
 #include "hw/ppc/pnv_psi.h"
 
@@ -37,6 +38,7 @@ typedef struct PnvOCC {
     PnvPsi *psi;
 
     MemoryRegion xscom_regs;
+    MemoryRegion sram_regs;
 } PnvOCC;
 
 #define PNV_OCC_CLASS(klass) \
@@ -48,8 +50,10 @@ typedef struct PnvOCCClass {
     DeviceClass parent_class;
 
     int xscom_size;
+    int sram_size;
     const MemoryRegionOps *xscom_ops;
+    const MemoryRegionOps *sram_ops;
     int psi_irq;
 } PnvOCCClass;
 
-#endif /* _PPC_PNV_OCC_H */
+#endif /* PPC_PNV_OCC_H */

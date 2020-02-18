@@ -23,8 +23,12 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/irq.h"
+#include "hw/qdev-properties.h"
 #include "hw/timer/stm32f2xx_timer.h"
+#include "migration/vmstate.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 
 #ifndef STM_TIMER_ERR_DEBUG
 #define STM_TIMER_ERR_DEBUG 0

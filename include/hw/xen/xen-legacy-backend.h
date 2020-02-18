@@ -1,9 +1,8 @@
-#ifndef QEMU_HW_XEN_BACKEND_H
-#define QEMU_HW_XEN_BACKEND_H
+#ifndef HW_XEN_LEGACY_BACKEND_H
+#define HW_XEN_LEGACY_BACKEND_H
 
 #include "hw/xen/xen_common.h"
 #include "hw/xen/xen_pvdev.h"
-#include "sysemu/sysemu.h"
 #include "net/net.h"
 
 #define TYPE_XENSYSDEV "xen-sysdev"
@@ -101,4 +100,4 @@ int xen_config_dev_vfb(int vdev, const char *type);
 int xen_config_dev_vkbd(int vdev);
 int xen_config_dev_console(int vdev);
 
-#endif /* QEMU_HW_XEN_BACKEND_H */
+#endif /* HW_XEN_LEGACY_BACKEND_H */

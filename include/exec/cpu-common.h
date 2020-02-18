@@ -7,22 +7,6 @@
 #include "exec/hwaddr.h"
 #endif
 
-#include "qemu/bswap.h"
-#include "qemu/queue.h"
-#include "qemu/fprintf-fn.h"
-
-/**
- * CPUListState:
- * @cpu_fprintf: Print function.
- * @file: File to print to using @cpu_fprint.
- *
- * State commonly used for iterating over CPU models.
- */
-typedef struct CPUListState {
-    fprintf_function cpu_fprintf;
-    FILE *file;
-} CPUListState;
-
 /* The CPU list lock nests outside page_(un)lock or mmap_(un)lock */
 void qemu_init_cpu_list(void);
 void cpu_list_lock(void);
@@ -115,9 +99,6 @@ bool cpu_physical_memory_is_io(hwaddr phys_addr);
 void qemu_flush_coalesced_mmio_buffer(void);
 
 void cpu_flush_icache_range(hwaddr start, hwaddr len);
-
-extern struct MemoryRegion io_mem_rom;
-extern struct MemoryRegion io_mem_notdirty;
 
 typedef int (RAMBlockIterFunc)(RAMBlock *rb, void *opaque);
 

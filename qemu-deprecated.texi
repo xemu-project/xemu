@@ -26,8 +26,7 @@ The @option{enforce-config-section} parameter is replaced by the
 
 @subsection -no-kvm (since 1.3.0)
 
-The ``-no-kvm'' argument is now a synonym for setting
-``-machine accel=tcg''.
+The ``-no-kvm'' argument is now a synonym for setting ``-accel tcg''.
 
 @subsection -usbdevice (since 2.10.0)
 
@@ -72,18 +71,113 @@ backend settings instead of environment variables.  To ease migration to
 the new format, the ``-audiodev-help'' option can be used to convert
 the current values of the environment variables to ``-audiodev'' options.
 
+@subsection Creating sound card devices and vnc without audiodev= property (since 4.2)
+
+When not using the deprecated legacy audio config, each sound card
+should specify an @code{audiodev=} property.  Additionally, when using
+vnc, you should specify an @code{audiodev=} propery if you plan to
+transmit audio through the VNC protocol.
+
+@subsection -mon ...,control=readline,pretty=on|off (since 4.1)
+
+The @code{pretty=on|off} switch has no effect for HMP monitors, but is
+silently ignored. Using the switch with HMP monitors will become an
+error in the future.
+
+@subsection -realtime (since 4.1)
+
+The @code{-realtime mlock=on|off} argument has been replaced by the
+@code{-overcommit mem-lock=on|off} argument.
+
+@subsection -virtfs_synth (since 4.1)
+
+The ``-virtfs_synth'' argument is now deprecated. Please use ``-fsdev synth''
+and ``-device virtio-9p-...'' instead.
+
+@subsection -numa node,mem=@var{size} (since 4.1)
+
+The parameter @option{mem} of @option{-numa node} is used to assign a part of
+guest RAM to a NUMA node. But when using it, it's impossible to manage specified
+RAM chunk on the host side (like bind it to a host node, setting bind policy, ...),
+so guest end-ups with the fake NUMA configuration with suboptiomal performance.
+However since 2014 there is an alternative way to assign RAM to a NUMA node
+using parameter @option{memdev}, which does the same as @option{mem} and adds
+means to actualy manage node RAM on the host side. Use parameter @option{memdev}
+with @var{memory-backend-ram} backend as an replacement for parameter @option{mem}
+to achieve the same fake NUMA effect or a properly configured
+@var{memory-backend-file} backend to actually benefit from NUMA configuration.
+In future new machine versions will not accept the option but it will still
+work with old machine types. User can check QAPI schema to see if the legacy
+option is supported by looking at MachineInfo::numa-mem-supported property.
+
+@subsection -numa node (without memory specified) (since 4.1)
+
+Splitting RAM by default between NUMA nodes has the same issues as @option{mem}
+parameter described above with the difference that the role of the user plays
+QEMU using implicit generic or board specific splitting rule.
+Use @option{memdev} with @var{memory-backend-ram} backend or @option{mem} (if
+it's supported by used machine type) to define mapping explictly instead.
+
+@subsection -mem-path fallback to RAM (since 4.1)
+Currently if guest RAM allocation from file pointed by @option{mem-path}
+fails, QEMU falls back to allocating from RAM, which might result
+in unpredictable behavior since the backing file specified by the user
+is ignored. In the future, users will be responsible for making sure
+the backing storage specified with @option{-mem-path} can actually provide
+the guest RAM configured with @option{-m} and QEMU will fail to start up if
+RAM allocation is unsuccessful.
+
+@subsection RISC-V -bios (since 4.1)
+
+QEMU 4.1 introduced support for the -bios option in QEMU for RISC-V for the
+RISC-V virt machine and sifive_u machine.
+
+QEMU 4.1 has no changes to the default behaviour to avoid breakages. This
+default will change in a future QEMU release, so please prepare now. All users
+of the virt or sifive_u machine must change their command line usage.
+
+QEMU 4.1 has three options, please migrate to one of these three:
+ 1. ``-bios none`` - This is the current default behavior if no -bios option
+      is included. QEMU will not automatically load any firmware. It is up
+      to the user to load all the images they need.
+ 2. ``-bios default`` - In a future QEMU release this will become the default
+      behaviour if no -bios option is specified. This option will load the
+      default OpenSBI firmware automatically. The firmware is included with
+      the QEMU release and no user interaction is required. All a user needs
+      to do is specify the kernel they want to boot with the -kernel option
+ 3. ``-bios <file>`` - Tells QEMU to load the specified file as the firmwrae.
+
 @section QEMU Machine Protocol (QMP) commands
 
-@subsection block-dirty-bitmap-add "autoload" parameter (since 2.12.0)
+@subsection change (since 2.5.0)
 
-"autoload" parameter is now ignored. All bitmaps are automatically loaded
-from qcow2 images.
+Use ``blockdev-change-medium'' or ``change-vnc-password'' instead.
+
+@subsection migrate_set_downtime and migrate_set_speed (since 2.8.0)
+
+Use ``migrate-set-parameters'' instead.
+
+@subsection migrate-set-cache-size and query-migrate-cache-size (since 2.11.0)
+
+Use ``migrate-set-parameters'' and ``query-migrate-parameters'' instead.
 
 @subsection query-block result field dirty-bitmaps[i].status (since 4.0)
 
 The ``status'' field of the ``BlockDirtyInfo'' structure, returned by
 the query-block command is deprecated. Two new boolean fields,
 ``recording'' and ``busy'' effectively replace it.
+
+@subsection query-block result field dirty-bitmaps (Since 4.2)
+
+The ``dirty-bitmaps`` field of the ``BlockInfo`` structure, returned by
+the query-block command is itself now deprecated. The ``dirty-bitmaps``
+field of the ``BlockDeviceInfo`` struct should be used instead, which is the
+type of the ``inserted`` field in query-block replies, as well as the
+type of array items in query-named-block-nodes.
+
+Since the ``dirty-bitmaps`` field is optionally present in both the old and
+new locations, clients must use introspection to learn where to anticipate
+the field if/when it does appear in command output.
 
 @subsection query-cpus (since 2.12.0)
 
@@ -128,6 +222,29 @@ The ``acl_show'', ``acl_reset'', ``acl_policy'', ``acl_add'', and
 ``acl_remove'' commands are deprecated with no replacement. Authorization
 for VNC should be performed using the pluggable QAuthZ objects.
 
+@section Guest Emulator ISAs
+
+@subsection RISC-V ISA privledge specification version 1.09.1 (since 4.1)
+
+The RISC-V ISA privledge specification version 1.09.1 has been deprecated.
+QEMU supports both the newer version 1.10.0 and the ratified version 1.11.0, these
+should be used instead of the 1.09.1 version.
+
+@section System emulator CPUS
+
+@subsection RISC-V ISA CPUs (since 4.1)
+
+The RISC-V cpus with the ISA version in the CPU name have been depcreated. The
+four CPUs are: ``rv32gcsu-v1.9.1``, ``rv32gcsu-v1.10.0``, ``rv64gcsu-v1.9.1`` and
+``rv64gcsu-v1.10.0``. Instead the version can be specified via the CPU ``priv_spec``
+option when using the ``rv32`` or ``rv64`` CPUs.
+
+@subsection RISC-V ISA CPUs (since 4.1)
+
+The RISC-V no MMU cpus have been depcreated. The two CPUs: ``rv32imacu-nommu`` and
+``rv64imacu-nommu`` should no longer be used. Instead the MMU status can be specified
+via the CPU ``mmu`` option when using the ``rv32`` or ``rv64`` CPUs.
+
 @section System emulator devices
 
 @subsection bluetooth (since 3.1)
@@ -136,6 +253,16 @@ The bluetooth subsystem is unmaintained since many years and likely bitrotten
 quite a bit. It will be removed without replacement unless some users speaks
 up at the @email{qemu-devel@@nongnu.org} mailing list with information about
 their usecases.
+
+@subsection ide-drive (since 4.2)
+
+The 'ide-drive' device is deprecated. Users should use 'ide-hd' or
+'ide-cd' as appropriate to get an IDE hard disk or CD-ROM as needed.
+
+@subsection scsi-disk (since 4.2)
+
+The 'scsi-disk' device is deprecated. Users should use 'scsi-hd' or
+'scsi-cd' as appropriate to get a SCSI hard disk or CD-ROM as needed.
 
 @section System emulator machines
 
@@ -149,6 +276,12 @@ from old QEMU versions anymore. A newer machine type should be used instead.
 This machine type uses an unmaintained firmware, broken in lots of ways,
 and unable to start post-2004 operating systems. 40p machine type should be
 used instead.
+
+@subsection spike_v1.9.1 and spike_v1.10 (since 4.1)
+
+The version specific Spike machines have been deprecated in favour of the
+generic ``spike`` machine. If you need to specify an older version of the RISC-V
+spec you can use the ``-cpu rv64gcsu,priv_spec=v1.9.1`` command line argument.
 
 @section Device options
 
@@ -206,3 +339,52 @@ Note that if you are exposing the export via /dev/nbd0, it is easier
 to just export the entire image and then mount only /dev/nbd0p1 than
 it is to reinvoke @command{qemu-nbd -c /dev/nbd0} limited to just a
 subset of the image.
+
+@subsection qemu-img convert -n -o (since 4.2.0)
+
+All options specified in @option{-o} are image creation options, so
+they have no effect when used with @option{-n} to skip image creation.
+Silently ignored options can be confusing, so this combination of
+options will be made an error in future versions.
+
+@section Build system
+
+@subsection Python 2 support (since 4.1.0)
+
+In the future, QEMU will require Python 3 to be available at
+build time.  Support for Python 2 in scripts shipped with QEMU
+is deprecated.
+
+@section Backwards compatibility
+
+@subsection Runnability guarantee of CPU models (since 4.1.0)
+
+Previous versions of QEMU never changed existing CPU models in
+ways that introduced additional host software or hardware
+requirements to the VM.  This allowed management software to
+safely change the machine type of an existing VM without
+introducing new requirements ("runnability guarantee").  This
+prevented CPU models from being updated to include CPU
+vulnerability mitigations, leaving guests vulnerable in the
+default configuration.
+
+The CPU model runnability guarantee won't apply anymore to
+existing CPU models.  Management software that needs runnability
+guarantees must resolve the CPU model aliases using te
+``alias-of'' field returned by the ``query-cpu-definitions'' QMP
+command.
+
+
+@node Recently removed features
+@appendix Recently removed features
+
+What follows is a record of recently removed, formerly deprecated
+features that serves as a record for users who have encountered
+trouble after a recent upgrade.
+
+@section QEMU Machine Protocol (QMP) commands
+
+@subsection block-dirty-bitmap-add "autoload" parameter (since 4.2.0)
+
+The "autoload" parameter has been ignored since 2.12.0. All bitmaps
+are automatically loaded from qcow2 images.

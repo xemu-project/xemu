@@ -13,7 +13,9 @@
 
 #include "qemu/osdep.h"
 #include "hw/misc/imx25_ccm.h"
+#include "migration/vmstate.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 
 #ifndef DEBUG_IMX25_CCM
 #define DEBUG_IMX25_CCM 0

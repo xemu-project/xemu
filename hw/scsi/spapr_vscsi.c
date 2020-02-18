@@ -31,16 +31,17 @@
  *  - Add indirect descriptors support
  *  - Maybe do autosense (PAPR seems to mandate it, linux doesn't care)
  */
+
 #include "qemu/osdep.h"
-#include "qemu-common.h"
+#include "qemu/module.h"
 #include "cpu.h"
-#include "hw/hw.h"
 #include "hw/scsi/scsi.h"
+#include "migration/vmstate.h"
 #include "scsi/constants.h"
 #include "srp.h"
-#include "hw/qdev.h"
 #include "hw/ppc/spapr.h"
 #include "hw/ppc/spapr_vio.h"
+#include "hw/qdev-properties.h"
 #include "viosrp.h"
 #include "trace.h"
 

@@ -24,17 +24,18 @@
  * THE SOFTWARE.
  *
  */
+
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "cpu.h"
-#include "sysemu/sysemu.h"
-#include "hw/qdev.h"
 #include "sysemu/device_tree.h"
+#include "sysemu/runstate.h"
 
 #include "hw/ppc/fdt.h"
 #include "hw/ppc/spapr.h"
 #include "hw/ppc/spapr_vio.h"
 #include "hw/pci/pci.h"
+#include "hw/irq.h"
 #include "hw/pci-host/spapr.h"
 #include "hw/ppc/spapr_drc.h"
 #include "qemu/help_option.h"
@@ -313,7 +314,7 @@ rtas_event_log_to_source(SpaprMachineState *spapr, int log_type)
             g_assert(source->enabled);
             break;
         }
-        /* fall back to epow for legacy hotplug interrupt source */
+        /* fall through back to epow for legacy hotplug interrupt source */
     case RTAS_LOG_TYPE_EPOW:
         source = spapr_event_sources_get_source(spapr->event_sources,
                                                 EVENT_CLASS_EPOW);
@@ -357,6 +358,7 @@ static SpaprEventLogEntry *rtas_event_log_dequeue(SpaprMachineState *spapr,
             rtas_event_log_to_source(spapr,
                                      spapr_event_log_entry_type(entry));
 
+        g_assert(source);
         if (source->mask & event_mask) {
             break;
         }

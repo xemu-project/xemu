@@ -11,18 +11,19 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/hw.h"
 #include "hw/isa/vt82c686.h"
 #include "hw/i2c/i2c.h"
 #include "hw/pci/pci.h"
+#include "hw/qdev-properties.h"
 #include "hw/isa/isa.h"
 #include "hw/isa/superio.h"
 #include "hw/sysbus.h"
+#include "migration/vmstate.h"
 #include "hw/mips/mips.h"
 #include "hw/isa/apm.h"
 #include "hw/acpi/acpi.h"
 #include "hw/i2c/pm_smbus.h"
-#include "sysemu/sysemu.h"
+#include "qemu/module.h"
 #include "qemu/timer.h"
 #include "exec/address-spaces.h"
 
@@ -114,11 +115,10 @@ static const MemoryRegionOps superio_ops = {
     },
 };
 
-static void vt82c686b_reset(void * opaque)
+static void vt82c686b_isa_reset(DeviceState *dev)
 {
-    PCIDevice *d = opaque;
-    uint8_t *pci_conf = d->config;
-    VT82C686BState *vt82c = VT82C686B_DEVICE(d);
+    VT82C686BState *vt82c = VT82C686B_DEVICE(dev);
+    uint8_t *pci_conf = vt82c->dev.config;
 
     pci_set_long(pci_conf + PCI_CAPABILITY_LIST, 0x000000c0);
     pci_set_word(pci_conf + PCI_COMMAND, PCI_COMMAND_IO | PCI_COMMAND_MEMORY |
@@ -369,7 +369,7 @@ static void vt82c686b_pm_realize(PCIDevice *dev, Error **errp)
     pci_conf[0x90] = s->smb_io_base | 1;
     pci_conf[0x91] = s->smb_io_base >> 8;
     pci_conf[0xd2] = 0x90;
-    pm_smbus_init(&s->dev.qdev, &s->smb, false);
+    pm_smbus_init(DEVICE(s), &s->smb, false);
     memory_region_add_subregion(get_system_io(), s->smb_io_base, &s->smb.io);
 
     apm_init(dev, &s->apm, NULL, s);
@@ -474,8 +474,6 @@ static void vt82c686b_realize(PCIDevice *d, Error **errp)
      * But we do not emulate a floppy, so just set it here. */
     memory_region_add_subregion(isa_bus->address_space_io, 0x3f0,
                                 &vt82c->superio);
-
-    qemu_register_reset(vt82c686b_reset, d);
 }
 
 ISABus *vt82c686b_isa_init(PCIBus *bus, int devfn)
@@ -499,6 +497,7 @@ static void via_class_init(ObjectClass *klass, void *data)
     k->device_id = PCI_DEVICE_ID_VIA_ISA_BRIDGE;
     k->class_id = PCI_CLASS_BRIDGE_ISA;
     k->revision = 0x40;
+    dc->reset = vt82c686b_isa_reset;
     dc->desc = "ISA bridge";
     dc->vmsd = &vmstate_via;
     /*

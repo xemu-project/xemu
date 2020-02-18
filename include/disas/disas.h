@@ -1,7 +1,7 @@
 #ifndef QEMU_DISAS_H
 #define QEMU_DISAS_H
 
-#include "qemu-common.h"
+#include "exec/hwaddr.h"
 
 #ifdef NEED_CPU_H
 #include "cpu.h"
@@ -13,6 +13,8 @@ void target_disas(FILE *out, CPUState *cpu, target_ulong code,
 
 void monitor_disas(Monitor *mon, CPUState *cpu,
                    target_ulong pc, int nb_insn, int is_physical);
+
+char *plugin_disas(CPUState *cpu, uint64_t addr, size_t size);
 
 /* Look up symbol for debugging purpose.  Returns "" if unknown. */
 const char *lookup_symbol(target_ulong orig_addr);

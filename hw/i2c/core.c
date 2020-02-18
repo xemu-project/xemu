@@ -9,6 +9,9 @@
 
 #include "qemu/osdep.h"
 #include "hw/i2c/i2c.h"
+#include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
+#include "qemu/module.h"
 #include "trace.h"
 
 #define I2C_BROADCAST 0x00

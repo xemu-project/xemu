@@ -25,16 +25,15 @@
 #include "qemu/osdep.h"
 #include <sys/signal.h>
 
-#include "hw/hw.h"
 #include "hw/sysbus.h"
 #include "hw/boards.h"
+#include "hw/qdev-properties.h"
 #include "qemu/log.h"
+#include "qemu/main-loop.h"
 #include "qapi/error.h"
 #include "hw/xen/xen-legacy-backend.h"
 #include "hw/xen/xen_pvdev.h"
 #include "monitor/qdev.h"
-
-#include <xen/grant_table.h>
 
 DeviceState *xen_sysdev;
 BusState *xen_sysbus;

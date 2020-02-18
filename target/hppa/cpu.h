@@ -20,27 +20,9 @@
 #ifndef HPPA_CPU_H
 #define HPPA_CPU_H
 
-#include "qemu-common.h"
 #include "cpu-qom.h"
-
-#ifdef TARGET_HPPA64
-#define TARGET_LONG_BITS            64
-#define TARGET_VIRT_ADDR_SPACE_BITS 64
-#define TARGET_REGISTER_BITS        64
-#define TARGET_PHYS_ADDR_SPACE_BITS 64
-#elif defined(CONFIG_USER_ONLY)
-#define TARGET_LONG_BITS            32
-#define TARGET_VIRT_ADDR_SPACE_BITS 32
-#define TARGET_REGISTER_BITS        32
-#define TARGET_PHYS_ADDR_SPACE_BITS 32
-#else
-/* In order to form the GVA from space:offset,
-   we need a 64-bit virtual address space.  */
-#define TARGET_LONG_BITS            64
-#define TARGET_VIRT_ADDR_SPACE_BITS 64
-#define TARGET_REGISTER_BITS        32
-#define TARGET_PHYS_ADDR_SPACE_BITS 32
-#endif
+#include "exec/cpu-defs.h"
+#include "exec/memory.h"
 
 /* PA-RISC 1.x processors have a strong memory model.  */
 /* ??? While we do not yet implement PA-RISC 2.0, those processors have
@@ -48,14 +30,6 @@
    basis.  It's probably easier to fall back to a strong memory model.  */
 #define TCG_GUEST_DEFAULT_MO        TCG_MO_ALL
 
-#define CPUArchState struct CPUHPPAState
-
-#include "exec/cpu-defs.h"
-
-#define TARGET_PAGE_BITS 12
-
-#define ALIGNED_ONLY
-#define NB_MMU_MODES     5
 #define MMU_KERNEL_IDX   0
 #define MMU_USER_IDX     3
 #define MMU_PHYS_IDX     4
@@ -221,9 +195,6 @@ struct CPUHPPAState {
     target_ureg cr_back[2];  /* back of cr17/cr18 */
     target_ureg shadow[7];   /* shadow registers */
 
-    /* Those resources are used only in QEMU core */
-    CPU_COMMON
-
     /* ??? The number of entries isn't specified by the architecture.  */
     /* ??? Implement a unified itlb/dtlb for the moment.  */
     /* ??? We should use a more intelligent data structure.  */
@@ -242,17 +213,14 @@ struct HPPACPU {
     CPUState parent_obj;
     /*< public >*/
 
+    CPUNegativeOffsetState neg;
     CPUHPPAState env;
     QEMUTimer *alarm_timer;
 };
 
-static inline HPPACPU *hppa_env_get_cpu(CPUHPPAState *env)
-{
-    return container_of(env, HPPACPU, env);
-}
 
-#define ENV_GET_CPU(e)  CPU(hppa_env_get_cpu(e))
-#define ENV_OFFSET      offsetof(HPPACPU, env)
+typedef CPUHPPAState CPUArchState;
+typedef HPPACPU ArchCPU;
 
 #include "exec/cpu-all.h"
 
@@ -271,8 +239,6 @@ static inline int cpu_mmu_index(CPUHPPAState *env, bool ifetch)
 void hppa_translate_init(void);
 
 #define CPU_RESOLVING_TYPE TYPE_HPPA_CPU
-
-void hppa_cpu_list(FILE *f, fprintf_function cpu_fprintf);
 
 static inline target_ulong hppa_form_gva_psw(target_ureg psw, uint64_t spc,
                                              target_ureg off)
@@ -359,15 +325,15 @@ int hppa_cpu_gdb_read_register(CPUState *cpu, uint8_t *buf, int reg);
 int hppa_cpu_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg);
 void hppa_cpu_do_interrupt(CPUState *cpu);
 bool hppa_cpu_exec_interrupt(CPUState *cpu, int int_req);
-void hppa_cpu_dump_state(CPUState *cs, FILE *f, fprintf_function, int);
-#ifdef CONFIG_USER_ONLY
-int hppa_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int size,
-                              int rw, int midx);
-#else
+void hppa_cpu_dump_state(CPUState *cs, FILE *f, int);
+bool hppa_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+                       MMUAccessType access_type, int mmu_idx,
+                       bool probe, uintptr_t retaddr);
+#ifndef CONFIG_USER_ONLY
 int hppa_get_physical_address(CPUHPPAState *env, vaddr addr, int mmu_idx,
                               int type, hwaddr *pphys, int *pprot);
 extern const MemoryRegionOps hppa_io_eir_ops;
-extern const struct VMStateDescription vmstate_hppa_cpu;
+extern const VMStateDescription vmstate_hppa_cpu;
 void hppa_cpu_alarm_timer(void *);
 int hppa_artype_for_page(CPUHPPAState *env, target_ulong vaddr);
 #endif

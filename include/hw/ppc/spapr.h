@@ -10,6 +10,7 @@
 #include "hw/ppc/spapr_irq.h"
 #include "hw/ppc/spapr_xive.h"  /* For SpaprXive */
 #include "hw/ppc/xics.h"        /* For ICSState */
+#include "hw/ppc/spapr_tpm_proxy.h"
 
 struct SpaprVioBus;
 struct SpaprPhbState;
@@ -118,12 +119,17 @@ struct SpaprMachineClass {
     bool use_ohci_by_default;  /* use USB-OHCI instead of XHCI */
     bool pre_2_10_has_unused_icps;
     bool legacy_irq_allocation;
+    uint32_t nr_xirqs;
     bool broken_host_serial_model; /* present real host info to the guest */
+    bool pre_4_1_migration; /* don't migrate hpt-max-page-size */
+    bool linux_pci_probe;
+    bool smp_threads_vsmt; /* set VSMT to smp_threads by default */
 
     void (*phb_placement)(SpaprMachineState *spapr, uint32_t index,
                           uint64_t *buid, hwaddr *pio, 
                           hwaddr *mmio32, hwaddr *mmio64,
-                          unsigned n_dma, uint32_t *liobns, Error **errp);
+                          unsigned n_dma, uint32_t *liobns, hwaddr *nv2gpa,
+                          hwaddr *nv2atsd, Error **errp);
     SpaprResizeHpt resize_hpt_default;
     SpaprCapabilities default_caps;
     SpaprIrq *irq;
@@ -139,7 +145,6 @@ struct SpaprMachineState {
     struct SpaprVioBus *vio_bus;
     QLIST_HEAD(, SpaprPhbState) phbs;
     struct SpaprNvram *nvram;
-    ICSState *ics;
     SpaprRtcState rtc;
 
     SpaprResizeHpt resize_hpt;
@@ -150,8 +155,6 @@ struct SpaprMachineState {
 
     hwaddr rma_size;
     int vrma_adjust;
-    ssize_t rtas_size;
-    void *rtas_blob;
     uint32_t fdt_size;
     uint32_t fdt_initial_size;
     void *fdt_blob;
@@ -171,7 +174,7 @@ struct SpaprMachineState {
 
     /* ibm,client-architecture-support option negotiation */
     bool cas_reboot;
-    bool cas_legacy_guest_workaround;
+    bool cas_pre_isa3_guest;
     SpaprOptionVector *ov5;         /* QEMU-supported option vectors */
     SpaprOptionVector *ov5_cas;     /* negotiated (via CAS) option vectors */
     uint32_t max_compat_pvr;
@@ -193,12 +196,17 @@ struct SpaprMachineState {
 
     int32_t irq_map_nr;
     unsigned long *irq_map;
-    SpaprXive  *xive;
     SpaprIrq *irq;
     qemu_irq *qirqs;
+    SpaprInterruptController *active_intc;
+    ICSState *ics;
+    SpaprXive *xive;
 
     bool cmd_line_caps[SPAPR_CAP_NUM];
     SpaprCapabilities def, eff, mig;
+
+    unsigned gpu_numa_id;
+    SpaprTpmProxy *tpm_proxy;
 };
 
 #define H_SUCCESS         0
@@ -504,6 +512,15 @@ struct SpaprMachineState {
 #define KVMPPC_H_UPDATE_DT      (KVMPPC_HCALL_BASE + 0x3)
 #define KVMPPC_HCALL_MAX        KVMPPC_H_UPDATE_DT
 
+/*
+ * The hcall range 0xEF00 to 0xEF80 is reserved for use in facilitating
+ * Secure VM mode via an Ultravisor / Protected Execution Facility
+ */
+#define SVM_HCALL_BASE              0xEF00
+#define SVM_H_TPM_COMM              0xEF10
+#define SVM_HCALL_MAX               SVM_H_TPM_COMM
+
+
 typedef struct SpaprDeviceTreeUpdateHeader {
     uint32_t version_id;
 } SpaprDeviceTreeUpdateHeader;
@@ -520,6 +537,13 @@ typedef target_ulong (*spapr_hcall_fn)(PowerPCCPU *cpu, SpaprMachineState *sm,
 void spapr_register_hypercall(target_ulong opcode, spapr_hcall_fn fn);
 target_ulong spapr_hypercall(PowerPCCPU *cpu, target_ulong opcode,
                              target_ulong *args);
+
+/* Virtual Processor Area structure constants */
+#define VPA_MIN_SIZE           640
+#define VPA_SIZE_OFFSET        0x4
+#define VPA_SHARED_PROC_OFFSET 0x9
+#define VPA_SHARED_PROC_VAL    0x2
+#define VPA_DISPATCH_COUNTER   0x100
 
 /* ibm,set-eeh-option */
 #define RTAS_EEH_DISABLE                 0
@@ -620,8 +644,9 @@ target_ulong spapr_hypercall(PowerPCCPU *cpu, target_ulong opcode,
 #define RTAS_IBM_CREATE_PE_DMA_WINDOW           (RTAS_TOKEN_BASE + 0x27)
 #define RTAS_IBM_REMOVE_PE_DMA_WINDOW           (RTAS_TOKEN_BASE + 0x28)
 #define RTAS_IBM_RESET_PE_DMA_WINDOW            (RTAS_TOKEN_BASE + 0x29)
+#define RTAS_IBM_SUSPEND_ME                     (RTAS_TOKEN_BASE + 0x2A)
 
-#define RTAS_TOKEN_MAX                          (RTAS_TOKEN_BASE + 0x2A)
+#define RTAS_TOKEN_MAX                          (RTAS_TOKEN_BASE + 0x2B)
 
 /* RTAS ibm,get-system-parameter token values */
 #define RTAS_SYSPARM_SPLPAR_CHARACTERISTICS      20
@@ -777,6 +802,8 @@ void spapr_reallocate_hpt(SpaprMachineState *spapr, int shift,
                           Error **errp);
 void spapr_clear_pending_events(SpaprMachineState *spapr);
 int spapr_max_server_number(SpaprMachineState *spapr);
+void spapr_store_hpte(PowerPCCPU *cpu, hwaddr ptex,
+                      uint64_t pte0, uint64_t pte1);
 
 /* DRC callbacks. */
 void spapr_core_release(DeviceState *dev);
@@ -840,6 +867,7 @@ extern const VMStateDescription vmstate_spapr_cap_dfp;
 extern const VMStateDescription vmstate_spapr_cap_cfpc;
 extern const VMStateDescription vmstate_spapr_cap_sbbc;
 extern const VMStateDescription vmstate_spapr_cap_ibs;
+extern const VMStateDescription vmstate_spapr_cap_hpt_maxpagesize;
 extern const VMStateDescription vmstate_spapr_cap_nested_kvm_hv;
 extern const VMStateDescription vmstate_spapr_cap_large_decr;
 extern const VMStateDescription vmstate_spapr_cap_ccf_assist;

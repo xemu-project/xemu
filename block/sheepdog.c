@@ -13,6 +13,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu-common.h"
 #include "qapi/error.h"
 #include "qapi/qapi-visit-sockets.h"
 #include "qapi/qapi-visit-block-core.h"
@@ -21,6 +22,8 @@
 #include "qapi/qobject-output-visitor.h"
 #include "qemu/uri.h"
 #include "qemu/error-report.h"
+#include "qemu/main-loop.h"
+#include "qemu/module.h"
 #include "qemu/option.h"
 #include "qemu/sockets.h"
 #include "block/block_int.h"
@@ -1800,7 +1803,8 @@ static int sd_prealloc(BlockDriverState *bs, int64_t old_size, int64_t new_size,
     void *buf = NULL;
     int ret;
 
-    blk = blk_new(BLK_PERM_CONSISTENT_READ | BLK_PERM_WRITE | BLK_PERM_RESIZE,
+    blk = blk_new(bdrv_get_aio_context(bs),
+                  BLK_PERM_CONSISTENT_READ | BLK_PERM_WRITE | BLK_PERM_RESIZE,
                   BLK_PERM_ALL);
 
     ret = blk_insert_bs(blk, bs, errp);
@@ -2281,7 +2285,8 @@ static int64_t sd_getlength(BlockDriverState *bs)
 }
 
 static int coroutine_fn sd_co_truncate(BlockDriverState *bs, int64_t offset,
-                                       PreallocMode prealloc, Error **errp)
+                                       bool exact, PreallocMode prealloc,
+                                       Error **errp)
 {
     BDRVSheepdogState *s = bs->opaque;
     int ret, fd;
@@ -2597,7 +2602,7 @@ static coroutine_fn int sd_co_writev(BlockDriverState *bs, int64_t sector_num,
 
     assert(!flags);
     if (offset > s->inode.vdi_size) {
-        ret = sd_co_truncate(bs, offset, PREALLOC_MODE_OFF, NULL);
+        ret = sd_co_truncate(bs, offset, false, PREALLOC_MODE_OFF, NULL);
         if (ret < 0) {
             return ret;
         }
@@ -3225,6 +3230,7 @@ static BlockDriver bdrv_sheepdog = {
     .bdrv_co_create               = sd_co_create,
     .bdrv_co_create_opts          = sd_co_create_opts,
     .bdrv_has_zero_init           = bdrv_has_zero_init_1,
+    .bdrv_has_zero_init_truncate  = bdrv_has_zero_init_1,
     .bdrv_getlength               = sd_getlength,
     .bdrv_get_allocated_file_size = sd_get_allocated_file_size,
     .bdrv_co_truncate             = sd_co_truncate,

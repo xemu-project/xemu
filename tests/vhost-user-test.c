@@ -10,7 +10,7 @@
 
 #include "qemu/osdep.h"
 
-#include "libqtest.h"
+#include "libqtest-single.h"
 #include "qapi/error.h"
 #include "qapi/qmp/qdict.h"
 #include "qemu/config-file.h"
@@ -19,6 +19,7 @@
 #include "qemu/sockets.h"
 #include "chardev/char-fe.h"
 #include "qemu/memfd.h"
+#include "qemu/module.h"
 #include "sysemu/sysemu.h"
 #include "libqos/libqos.h"
 #include "libqos/pci-pc.h"

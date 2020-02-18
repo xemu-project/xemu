@@ -9,12 +9,16 @@
 
 #include "qemu/osdep.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "qapi/error.h"
 #include "target/ppc/cpu.h"
 #include "sysemu/cpus.h"
 #include "sysemu/dma.h"
+#include "sysemu/reset.h"
 #include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "monitor/monitor.h"
+#include "hw/irq.h"
 #include "hw/ppc/xive.h"
 #include "hw/ppc/xive_regs.h"
 
@@ -61,13 +65,28 @@ static uint8_t exception_mask(uint8_t ring)
     }
 }
 
+static qemu_irq xive_tctx_output(XiveTCTX *tctx, uint8_t ring)
+{
+        switch (ring) {
+        case TM_QW0_USER:
+                return 0; /* Not supported */
+        case TM_QW1_OS:
+                return tctx->os_output;
+        case TM_QW2_HV_POOL:
+        case TM_QW3_HV_PHYS:
+                return tctx->hv_output;
+        default:
+                return 0;
+        }
+}
+
 static uint64_t xive_tctx_accept(XiveTCTX *tctx, uint8_t ring)
 {
     uint8_t *regs = &tctx->regs[ring];
     uint8_t nsr = regs[TM_NSR];
     uint8_t mask = exception_mask(ring);
 
-    qemu_irq_lower(tctx->output);
+    qemu_irq_lower(xive_tctx_output(tctx, ring));
 
     if (regs[TM_NSR] & mask) {
         uint8_t cppr = regs[TM_PIPR];
@@ -100,7 +119,7 @@ static void xive_tctx_notify(XiveTCTX *tctx, uint8_t ring)
         default:
             g_assert_not_reached();
         }
-        qemu_irq_raise(tctx->output);
+        qemu_irq_raise(xive_tctx_output(tctx, ring));
     }
 }
 
@@ -114,6 +133,11 @@ static void xive_tctx_set_cppr(XiveTCTX *tctx, uint8_t ring, uint8_t cppr)
 
     /* CPPR has changed, check if we need to raise a pending exception */
     xive_tctx_notify(tctx, ring);
+}
+
+static inline uint32_t xive_tctx_word2(uint8_t *ring)
+{
+    return *((uint32_t *) &ring[TM_WORD2]);
 }
 
 /*
@@ -134,11 +158,12 @@ static uint64_t xive_tm_ack_hv_reg(XiveTCTX *tctx, hwaddr offset, unsigned size)
 static uint64_t xive_tm_pull_pool_ctx(XiveTCTX *tctx, hwaddr offset,
                                       unsigned size)
 {
-    uint64_t ret;
+    uint32_t qw2w2_prev = xive_tctx_word2(&tctx->regs[TM_QW2_HV_POOL]);
+    uint32_t qw2w2;
 
-    ret = tctx->regs[TM_QW2_HV_POOL + TM_WORD2] & TM_QW2W2_POOL_CAM;
-    tctx->regs[TM_QW2_HV_POOL + TM_WORD2] &= ~TM_QW2W2_POOL_CAM;
-    return ret;
+    qw2w2 = xive_set_field32(TM_QW2W2_VP, qw2w2_prev, 0);
+    memcpy(&tctx->regs[TM_QW2_HV_POOL + TM_WORD2], &qw2w2, 4);
+    return qw2w2;
 }
 
 static void xive_tm_vt_push(XiveTCTX *tctx, hwaddr offset,
@@ -166,31 +191,31 @@ static uint64_t xive_tm_vt_poll(XiveTCTX *tctx, hwaddr offset, unsigned size)
  */
 
 static const uint8_t xive_tm_hw_view[] = {
-    /* QW-0 User */   3, 0, 0, 0,   0, 0, 0, 0,   3, 3, 3, 3,   0, 0, 0, 0,
-    /* QW-1 OS   */   3, 3, 3, 3,   3, 3, 0, 3,   3, 3, 3, 3,   0, 0, 0, 0,
-    /* QW-2 POOL */   0, 0, 3, 3,   0, 0, 0, 0,   3, 3, 3, 3,   0, 0, 0, 0,
-    /* QW-3 PHYS */   3, 3, 3, 3,   0, 3, 0, 3,   3, 0, 0, 3,   3, 3, 3, 0,
+    3, 0, 0, 0,   0, 0, 0, 0,   3, 3, 3, 3,   0, 0, 0, 0, /* QW-0 User */
+    3, 3, 3, 3,   3, 3, 0, 2,   3, 3, 3, 3,   0, 0, 0, 0, /* QW-1 OS   */
+    0, 0, 3, 3,   0, 0, 0, 0,   3, 3, 3, 3,   0, 0, 0, 0, /* QW-2 POOL */
+    3, 3, 3, 3,   0, 3, 0, 2,   3, 0, 0, 3,   3, 3, 3, 0, /* QW-3 PHYS */
 };
 
 static const uint8_t xive_tm_hv_view[] = {
-    /* QW-0 User */   3, 0, 0, 0,   0, 0, 0, 0,   3, 3, 3, 3,   0, 0, 0, 0,
-    /* QW-1 OS   */   3, 3, 3, 3,   3, 3, 0, 3,   3, 3, 3, 3,   0, 0, 0, 0,
-    /* QW-2 POOL */   0, 0, 3, 3,   0, 0, 0, 0,   0, 3, 3, 3,   0, 0, 0, 0,
-    /* QW-3 PHYS */   3, 3, 3, 3,   0, 3, 0, 3,   3, 0, 0, 3,   0, 0, 0, 0,
+    3, 0, 0, 0,   0, 0, 0, 0,   3, 3, 3, 3,   0, 0, 0, 0, /* QW-0 User */
+    3, 3, 3, 3,   3, 3, 0, 2,   3, 3, 3, 3,   0, 0, 0, 0, /* QW-1 OS   */
+    0, 0, 3, 3,   0, 0, 0, 0,   0, 3, 3, 3,   0, 0, 0, 0, /* QW-2 POOL */
+    3, 3, 3, 3,   0, 3, 0, 2,   3, 0, 0, 3,   0, 0, 0, 0, /* QW-3 PHYS */
 };
 
 static const uint8_t xive_tm_os_view[] = {
-    /* QW-0 User */   3, 0, 0, 0,   0, 0, 0, 0,   3, 3, 3, 3,   0, 0, 0, 0,
-    /* QW-1 OS   */   2, 3, 2, 2,   2, 2, 0, 2,   0, 0, 0, 0,   0, 0, 0, 0,
-    /* QW-2 POOL */   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,
-    /* QW-3 PHYS */   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,
+    3, 0, 0, 0,   0, 0, 0, 0,   3, 3, 3, 3,   0, 0, 0, 0, /* QW-0 User */
+    2, 3, 2, 2,   2, 2, 0, 2,   0, 0, 0, 0,   0, 0, 0, 0, /* QW-1 OS   */
+    0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, /* QW-2 POOL */
+    0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, /* QW-3 PHYS */
 };
 
 static const uint8_t xive_tm_user_view[] = {
-    /* QW-0 User */   3, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,
-    /* QW-1 OS   */   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,
-    /* QW-2 POOL */   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,
-    /* QW-3 PHYS */   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,
+    3, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, /* QW-0 User */
+    0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, /* QW-1 OS   */
+    0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, /* QW-2 POOL */
+    0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, /* QW-3 PHYS */
 };
 
 /*
@@ -312,6 +337,17 @@ static void xive_tm_set_os_pending(XiveTCTX *tctx, hwaddr offset,
     xive_tctx_notify(tctx, TM_QW1_OS);
 }
 
+static uint64_t xive_tm_pull_os_ctx(XiveTCTX *tctx, hwaddr offset,
+                                    unsigned size)
+{
+    uint32_t qw1w2_prev = xive_tctx_word2(&tctx->regs[TM_QW1_OS]);
+    uint32_t qw1w2;
+
+    qw1w2 = xive_set_field32(TM_QW1W2_VO, qw1w2_prev, 0);
+    memcpy(&tctx->regs[TM_QW1_OS + TM_WORD2], &qw1w2, 4);
+    return qw1w2;
+}
+
 /*
  * Define a mapping of "special" operations depending on the TIMA page
  * offset and the size of the operation.
@@ -338,6 +374,8 @@ static const XiveTmOp xive_tm_operations[] = {
     /* MMIOs above 2K : special operations with side effects */
     { XIVE_TM_OS_PAGE, TM_SPC_ACK_OS_REG,     2, NULL, xive_tm_ack_os_reg },
     { XIVE_TM_OS_PAGE, TM_SPC_SET_OS_PENDING, 1, xive_tm_set_os_pending, NULL },
+    { XIVE_TM_HV_PAGE, TM_SPC_PULL_OS_CTX,    4, NULL, xive_tm_pull_os_ctx },
+    { XIVE_TM_HV_PAGE, TM_SPC_PULL_OS_CTX,    8, NULL, xive_tm_pull_os_ctx },
     { XIVE_TM_HV_PAGE, TM_SPC_ACK_HV_REG,     2, NULL, xive_tm_ack_hv_reg },
     { XIVE_TM_HV_PAGE, TM_SPC_PULL_POOL_CTX,  4, NULL, xive_tm_pull_pool_ctx },
     { XIVE_TM_HV_PAGE, TM_SPC_PULL_POOL_CTX,  8, NULL, xive_tm_pull_pool_ctx },
@@ -381,7 +419,7 @@ void xive_tctx_tm_write(XiveTCTX *tctx, hwaddr offset, uint64_t value,
     if (offset & 0x800) {
         xto = xive_tm_find_op(offset, size, true);
         if (!xto) {
-            qemu_log_mask(LOG_GUEST_ERROR, "XIVE: invalid write access at TIMA"
+            qemu_log_mask(LOG_GUEST_ERROR, "XIVE: invalid write access at TIMA "
                           "@%"HWADDR_PRIx"\n", offset);
         } else {
             xto->write_handler(tctx, offset, value, size);
@@ -468,11 +506,6 @@ const MemoryRegionOps xive_tm_ops = {
     },
 };
 
-static inline uint32_t xive_tctx_word2(uint8_t *ring)
-{
-    return *((uint32_t *) &ring[TM_WORD2]);
-}
-
 static char *xive_tctx_ring_print(uint8_t *ring)
 {
     uint32_t w2 = xive_tctx_word2(ring);
@@ -490,8 +523,27 @@ static const char * const xive_tctx_ring_names[] = {
 
 void xive_tctx_pic_print_info(XiveTCTX *tctx, Monitor *mon)
 {
-    int cpu_index = tctx->cs ? tctx->cs->cpu_index : -1;
+    int cpu_index;
     int i;
+
+    /* Skip partially initialized vCPUs. This can happen on sPAPR when vCPUs
+     * are hot plugged or unplugged.
+     */
+    if (!tctx) {
+        return;
+    }
+
+    cpu_index = tctx->cs ? tctx->cs->cpu_index : -1;
+
+    if (kvm_irqchip_in_kernel()) {
+        Error *local_err = NULL;
+
+        kvmppc_xive_cpu_synchronize_state(tctx, &local_err);
+        if (local_err) {
+            error_report_err(local_err);
+            return;
+        }
+    }
 
     monitor_printf(mon, "CPU[%04x]:   QW   NSR CPPR IPB LSMFB ACK# INC AGE PIPR"
                    "  W2\n", cpu_index);
@@ -504,10 +556,8 @@ void xive_tctx_pic_print_info(XiveTCTX *tctx, Monitor *mon)
     }
 }
 
-static void xive_tctx_reset(void *dev)
+void xive_tctx_reset(XiveTCTX *tctx)
 {
-    XiveTCTX *tctx = XIVE_TCTX(dev);
-
     memset(tctx->regs, 0, sizeof(tctx->regs));
 
     /* Set some defaults */
@@ -546,7 +596,8 @@ static void xive_tctx_realize(DeviceState *dev, Error **errp)
     env = &cpu->env;
     switch (PPC_INPUT(env)) {
     case PPC_FLAGS_INPUT_POWER9:
-        tctx->output = env->irq_inputs[POWER9_INPUT_INT];
+        tctx->hv_output = env->irq_inputs[POWER9_INPUT_HINT];
+        tctx->os_output = env->irq_inputs[POWER9_INPUT_INT];
         break;
 
     default:
@@ -555,18 +606,56 @@ static void xive_tctx_realize(DeviceState *dev, Error **errp)
         return;
     }
 
-    qemu_register_reset(xive_tctx_reset, dev);
+    /* Connect the presenter to the VCPU (required for CPU hotplug) */
+    if (kvm_irqchip_in_kernel()) {
+        kvmppc_xive_cpu_connect(tctx, &local_err);
+        if (local_err) {
+            error_propagate(errp, local_err);
+            return;
+        }
+    }
 }
 
-static void xive_tctx_unrealize(DeviceState *dev, Error **errp)
+static int vmstate_xive_tctx_pre_save(void *opaque)
 {
-    qemu_unregister_reset(xive_tctx_reset, dev);
+    Error *local_err = NULL;
+
+    if (kvm_irqchip_in_kernel()) {
+        kvmppc_xive_cpu_get_state(XIVE_TCTX(opaque), &local_err);
+        if (local_err) {
+            error_report_err(local_err);
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+static int vmstate_xive_tctx_post_load(void *opaque, int version_id)
+{
+    Error *local_err = NULL;
+
+    if (kvm_irqchip_in_kernel()) {
+        /*
+         * Required for hotplugged CPU, for which the state comes
+         * after all states of the machine.
+         */
+        kvmppc_xive_cpu_set_state(XIVE_TCTX(opaque), &local_err);
+        if (local_err) {
+            error_report_err(local_err);
+            return -1;
+        }
+    }
+
+    return 0;
 }
 
 static const VMStateDescription vmstate_xive_tctx = {
     .name = TYPE_XIVE_TCTX,
     .version_id = 1,
     .minimum_version_id = 1,
+    .pre_save = vmstate_xive_tctx_pre_save,
+    .post_load = vmstate_xive_tctx_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_BUFFER(regs, XiveTCTX),
         VMSTATE_END_OF_LIST()
@@ -579,8 +668,12 @@ static void xive_tctx_class_init(ObjectClass *klass, void *data)
 
     dc->desc = "XIVE Interrupt Thread Context";
     dc->realize = xive_tctx_realize;
-    dc->unrealize = xive_tctx_unrealize;
     dc->vmsd = &vmstate_xive_tctx;
+    /*
+     * Reason: part of XIVE interrupt controller, needs to be wired up
+     * by xive_tctx_create().
+     */
+    dc->user_creatable = false;
 }
 
 static const TypeInfo xive_tctx_info = {
@@ -598,6 +691,7 @@ Object *xive_tctx_create(Object *cpu, XiveRouter *xrtr, Error **errp)
     obj = object_new(TYPE_XIVE_TCTX);
     object_property_add_child(cpu, TYPE_XIVE_TCTX, obj, &error_abort);
     object_unref(obj);
+    object_ref(cpu);
     object_property_add_const_link(obj, "cpu", cpu, &error_abort);
     object_property_set_bool(obj, true, "realized", &local_err);
     if (local_err) {
@@ -610,6 +704,14 @@ error:
     object_unparent(obj);
     error_propagate(errp, local_err);
     return NULL;
+}
+
+void xive_tctx_destroy(XiveTCTX *tctx)
+{
+    Object *obj = OBJECT(tctx);
+
+    object_unref(object_property_get_link(obj, "cpu", &error_abort));
+    object_unparent(obj);
 }
 
 /*
@@ -990,9 +1092,11 @@ static void xive_source_realize(DeviceState *dev, Error **errp)
     xsrc->status = g_malloc0(xsrc->nr_irqs);
     xsrc->lsi_map = bitmap_new(xsrc->nr_irqs);
 
-    memory_region_init_io(&xsrc->esb_mmio, OBJECT(xsrc),
-                          &xive_source_esb_ops, xsrc, "xive.esb",
-                          (1ull << xsrc->esb_shift) * xsrc->nr_irqs);
+    if (!kvm_irqchip_in_kernel()) {
+        memory_region_init_io(&xsrc->esb_mmio, OBJECT(xsrc),
+                              &xive_source_esb_ops, xsrc, "xive.esb",
+                              (1ull << xsrc->esb_shift) * xsrc->nr_irqs);
+    }
 
     qemu_register_reset(xive_source_reset, dev);
 }
@@ -1027,6 +1131,11 @@ static void xive_source_class_init(ObjectClass *klass, void *data)
     dc->props   = xive_source_properties;
     dc->realize = xive_source_realize;
     dc->vmsd    = &vmstate_xive_source;
+    /*
+     * Reason: part of XIVE interrupt controller, needs to be wired up,
+     * e.g. by spapr_xive_instance_init().
+     */
+    dc->user_creatable = false;
 }
 
 static const TypeInfo xive_source_info = {
@@ -1042,8 +1151,7 @@ static const TypeInfo xive_source_info = {
 
 void xive_end_queue_pic_print_info(XiveEND *end, uint32_t width, Monitor *mon)
 {
-    uint64_t qaddr_base = (uint64_t) be32_to_cpu(end->w2 & 0x0fffffff) << 32
-        | be32_to_cpu(end->w3);
+    uint64_t qaddr_base = xive_end_qaddr(end);
     uint32_t qsize = xive_get_field32(END_W0_QSIZE, end->w0);
     uint32_t qindex = xive_get_field32(END_W1_PAGE_OFF, end->w1);
     uint32_t qentries = 1 << (qsize + 10);
@@ -1068,41 +1176,52 @@ void xive_end_queue_pic_print_info(XiveEND *end, uint32_t width, Monitor *mon)
                        be32_to_cpu(qdata));
         qindex = (qindex + 1) & (qentries - 1);
     }
+    monitor_printf(mon, "]");
 }
 
 void xive_end_pic_print_info(XiveEND *end, uint32_t end_idx, Monitor *mon)
 {
-    uint64_t qaddr_base = (uint64_t) be32_to_cpu(end->w2 & 0x0fffffff) << 32
-        | be32_to_cpu(end->w3);
+    uint64_t qaddr_base = xive_end_qaddr(end);
     uint32_t qindex = xive_get_field32(END_W1_PAGE_OFF, end->w1);
     uint32_t qgen = xive_get_field32(END_W1_GENERATION, end->w1);
     uint32_t qsize = xive_get_field32(END_W0_QSIZE, end->w0);
     uint32_t qentries = 1 << (qsize + 10);
 
-    uint32_t nvt = xive_get_field32(END_W6_NVT_INDEX, end->w6);
+    uint32_t nvt_blk = xive_get_field32(END_W6_NVT_BLOCK, end->w6);
+    uint32_t nvt_idx = xive_get_field32(END_W6_NVT_INDEX, end->w6);
     uint8_t priority = xive_get_field32(END_W7_F0_PRIORITY, end->w7);
+    uint8_t pq;
 
     if (!xive_end_is_valid(end)) {
         return;
     }
 
-    monitor_printf(mon, "  %08x %c%c%c%c%c prio:%d nvt:%04x eq:@%08"PRIx64
-                   "% 6d/%5d ^%d", end_idx,
+    pq = xive_get_field32(END_W1_ESn, end->w1);
+
+    monitor_printf(mon, "  %08x %c%c %c%c%c%c%c%c%c prio:%d nvt:%02x/%04x",
+                   end_idx,
+                   pq & XIVE_ESB_VAL_P ? 'P' : '-',
+                   pq & XIVE_ESB_VAL_Q ? 'Q' : '-',
                    xive_end_is_valid(end)    ? 'v' : '-',
                    xive_end_is_enqueue(end)  ? 'q' : '-',
                    xive_end_is_notify(end)   ? 'n' : '-',
                    xive_end_is_backlog(end)  ? 'b' : '-',
                    xive_end_is_escalate(end) ? 'e' : '-',
-                   priority, nvt, qaddr_base, qindex, qentries, qgen);
+                   xive_end_is_uncond_escalation(end)   ? 'u' : '-',
+                   xive_end_is_silent_escalation(end)   ? 's' : '-',
+                   priority, nvt_blk, nvt_idx);
 
-    xive_end_queue_pic_print_info(end, 6, mon);
-    monitor_printf(mon, "]\n");
+    if (qaddr_base) {
+        monitor_printf(mon, " eq:@%08"PRIx64"% 6d/%5d ^%d",
+                       qaddr_base, qindex, qentries, qgen);
+        xive_end_queue_pic_print_info(end, 6, mon);
+    }
+    monitor_printf(mon, "\n");
 }
 
 static void xive_end_enqueue(XiveEND *end, uint32_t data)
 {
-    uint64_t qaddr_base = (uint64_t) be32_to_cpu(end->w2 & 0x0fffffff) << 32
-        | be32_to_cpu(end->w3);
+    uint64_t qaddr_base = xive_end_qaddr(end);
     uint32_t qsize = xive_get_field32(END_W0_QSIZE, end->w0);
     uint32_t qindex = xive_get_field32(END_W1_PAGE_OFF, end->w1);
     uint32_t qgen = xive_get_field32(END_W1_GENERATION, end->w1);
@@ -1123,6 +1242,29 @@ static void xive_end_enqueue(XiveEND *end, uint32_t data)
         end->w1 = xive_set_field32(END_W1_GENERATION, end->w1, qgen);
     }
     end->w1 = xive_set_field32(END_W1_PAGE_OFF, end->w1, qindex);
+}
+
+void xive_end_eas_pic_print_info(XiveEND *end, uint32_t end_idx,
+                                   Monitor *mon)
+{
+    XiveEAS *eas = (XiveEAS *) &end->w4;
+    uint8_t pq;
+
+    if (!xive_end_is_escalate(end)) {
+        return;
+    }
+
+    pq = xive_get_field32(END_W1_ESe, end->w1);
+
+    monitor_printf(mon, "  %08x %c%c %c%c end:%02x/%04x data:%08x\n",
+                   end_idx,
+                   pq & XIVE_ESB_VAL_P ? 'P' : '-',
+                   pq & XIVE_ESB_VAL_Q ? 'Q' : '-',
+                   xive_eas_is_valid(eas) ? 'V' : ' ',
+                   xive_eas_is_masked(eas) ? 'M' : ' ',
+                   (uint8_t)  xive_get_field64(EAS_END_BLOCK, eas->w),
+                   (uint32_t) xive_get_field64(EAS_END_INDEX, eas->w),
+                   (uint32_t) xive_get_field64(EAS_END_DATA, eas->w));
 }
 
 /*
@@ -1177,27 +1319,16 @@ XiveTCTX *xive_router_get_tctx(XiveRouter *xrtr, CPUState *cs)
 }
 
 /*
- * By default on P9, the HW CAM line (23bits) is hardwired to :
+ * Encode the HW CAM line in the block group mode format :
  *
- *   0x000||0b1||4Bit chip number||7Bit Thread number.
- *
- * When the block grouping is enabled, the CAM line is changed to :
- *
- *   4Bit chip number||0x001||7Bit Thread number.
+ *   chip << 19 | 0000000 0 0001 thread (7Bit)
  */
-static uint32_t hw_cam_line(uint8_t chip_id, uint8_t tid)
-{
-    return 1 << 11 | (chip_id & 0xf) << 7 | (tid & 0x7f);
-}
-
-static bool xive_presenter_tctx_match_hw(XiveTCTX *tctx,
-                                         uint8_t nvt_blk, uint32_t nvt_idx)
+static uint32_t xive_tctx_hw_cam_line(XiveTCTX *tctx)
 {
     CPUPPCState *env = &POWERPC_CPU(tctx->cs)->env;
     uint32_t pir = env->spr_cb[SPR_PIR].default_value;
 
-    return hw_cam_line((pir >> 8) & 0xf, pir & 0x7f) ==
-        hw_cam_line(nvt_blk, nvt_idx);
+    return xive_nvt_cam_line((pir >> 8) & 0xf, 1 << 7 | (pir & 0x7f));
 }
 
 /*
@@ -1233,7 +1364,7 @@ static int xive_presenter_tctx_match(XiveTCTX *tctx, uint8_t format,
 
         /* PHYS ring */
         if ((be32_to_cpu(qw3w2) & TM_QW3W2_VT) &&
-            xive_presenter_tctx_match_hw(tctx, nvt_blk, nvt_idx)) {
+            cam == xive_tctx_hw_cam_line(tctx)) {
             return TM_QW3_HV_PHYS;
         }
 
@@ -1282,6 +1413,14 @@ static bool xive_presenter_match(XiveRouter *xrtr, uint8_t format,
     CPU_FOREACH(cs) {
         XiveTCTX *tctx = xive_router_get_tctx(xrtr, cs);
         int ring;
+
+        /*
+         * Skip partially initialized vCPUs. This can happen when
+         * vCPUs are hotplugged.
+         */
+        if (!tctx) {
+            continue;
+        }
 
         /*
          * HW checks that the CPU is enabled in the Physical Thread
@@ -1334,46 +1473,43 @@ static bool xive_presenter_match(XiveRouter *xrtr, uint8_t format,
  *
  * The parameters represent what is sent on the PowerBus
  */
-static void xive_presenter_notify(XiveRouter *xrtr, uint8_t format,
+static bool xive_presenter_notify(XiveRouter *xrtr, uint8_t format,
                                   uint8_t nvt_blk, uint32_t nvt_idx,
                                   bool cam_ignore, uint8_t priority,
                                   uint32_t logic_serv)
 {
-    XiveNVT nvt;
     XiveTCTXMatch match = { .tctx = NULL, .ring = 0 };
     bool found;
-
-    /* NVT cache lookup */
-    if (xive_router_get_nvt(xrtr, nvt_blk, nvt_idx, &nvt)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "XIVE: no NVT %x/%x\n",
-                      nvt_blk, nvt_idx);
-        return;
-    }
-
-    if (!xive_nvt_is_valid(&nvt)) {
-        qemu_log_mask(LOG_GUEST_ERROR, "XIVE: NVT %x/%x is invalid\n",
-                      nvt_blk, nvt_idx);
-        return;
-    }
 
     found = xive_presenter_match(xrtr, format, nvt_blk, nvt_idx, cam_ignore,
                                  priority, logic_serv, &match);
     if (found) {
         ipb_update(&match.tctx->regs[match.ring], priority);
         xive_tctx_notify(match.tctx, match.ring);
-        return;
     }
 
-    /* Record the IPB in the associated NVT structure */
-    ipb_update((uint8_t *) &nvt.w4, priority);
-    xive_router_write_nvt(xrtr, nvt_blk, nvt_idx, &nvt, 4);
+    return found;
+}
 
-    /*
-     * If no matching NVT is dispatched on a HW thread :
-     * - update the NVT structure if backlog is activated
-     * - escalate (ESe PQ bits and EAS in w4-5) if escalation is
-     *   activated
-     */
+/*
+ * Notification using the END ESe/ESn bit (Event State Buffer for
+ * escalation and notification). Profide futher coalescing in the
+ * Router.
+ */
+static bool xive_router_end_es_notify(XiveRouter *xrtr, uint8_t end_blk,
+                                      uint32_t end_idx, XiveEND *end,
+                                      uint32_t end_esmask)
+{
+    uint8_t pq = xive_get_field32(end_esmask, end->w1);
+    bool notify = xive_esb_trigger(&pq);
+
+    if (pq != xive_get_field32(end_esmask, end->w1)) {
+        end->w1 = xive_set_field32(end_esmask, end->w1, pq);
+        xive_router_write_end(xrtr, end_blk, end_idx, end, 1);
+    }
+
+    /* ESe/n[Q]=1 : end of notification */
+    return notify;
 }
 
 /*
@@ -1387,6 +1523,10 @@ static void xive_router_end_notify(XiveRouter *xrtr, uint8_t end_blk,
     XiveEND end;
     uint8_t priority;
     uint8_t format;
+    uint8_t nvt_blk;
+    uint32_t nvt_idx;
+    XiveNVT nvt;
+    bool found;
 
     /* END cache lookup */
     if (xive_router_get_end(xrtr, end_blk, end_idx, &end)) {
@@ -1405,6 +1545,13 @@ static void xive_router_end_notify(XiveRouter *xrtr, uint8_t end_blk,
         xive_end_enqueue(&end, end_data);
         /* Enqueuing event data modifies the EQ toggle and index */
         xive_router_write_end(xrtr, end_blk, end_idx, &end, 1);
+    }
+
+    /*
+     * When the END is silent, we skip the notification part.
+     */
+    if (xive_end_is_silent_escalation(&end)) {
+        goto do_escalation;
     }
 
     /*
@@ -1428,16 +1575,9 @@ static void xive_router_end_notify(XiveRouter *xrtr, uint8_t end_blk,
      * even futher coalescing in the Router
      */
     if (!xive_end_is_notify(&end)) {
-        uint8_t pq = xive_get_field32(END_W1_ESn, end.w1);
-        bool notify = xive_esb_trigger(&pq);
-
-        if (pq != xive_get_field32(END_W1_ESn, end.w1)) {
-            end.w1 = xive_set_field32(END_W1_ESn, end.w1, pq);
-            xive_router_write_end(xrtr, end_blk, end_idx, &end, 1);
-        }
-
         /* ESn[Q]=1 : end of notification */
-        if (!notify) {
+        if (!xive_router_end_es_notify(xrtr, end_blk, end_idx,
+                                       &end, END_W1_ESn)) {
             return;
         }
     }
@@ -1445,21 +1585,89 @@ static void xive_router_end_notify(XiveRouter *xrtr, uint8_t end_blk,
     /*
      * Follows IVPE notification
      */
-    xive_presenter_notify(xrtr, format,
-                          xive_get_field32(END_W6_NVT_BLOCK, end.w6),
-                          xive_get_field32(END_W6_NVT_INDEX, end.w6),
+    nvt_blk = xive_get_field32(END_W6_NVT_BLOCK, end.w6);
+    nvt_idx = xive_get_field32(END_W6_NVT_INDEX, end.w6);
+
+    /* NVT cache lookup */
+    if (xive_router_get_nvt(xrtr, nvt_blk, nvt_idx, &nvt)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "XIVE: no NVT %x/%x\n",
+                      nvt_blk, nvt_idx);
+        return;
+    }
+
+    if (!xive_nvt_is_valid(&nvt)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "XIVE: NVT %x/%x is invalid\n",
+                      nvt_blk, nvt_idx);
+        return;
+    }
+
+    found = xive_presenter_notify(xrtr, format, nvt_blk, nvt_idx,
                           xive_get_field32(END_W7_F0_IGNORE, end.w7),
                           priority,
                           xive_get_field32(END_W7_F1_LOG_SERVER_ID, end.w7));
 
     /* TODO: Auto EOI. */
+
+    if (found) {
+        return;
+    }
+
+    /*
+     * If no matching NVT is dispatched on a HW thread :
+     * - specific VP: update the NVT structure if backlog is activated
+     * - logical server : forward request to IVPE (not supported)
+     */
+    if (xive_end_is_backlog(&end)) {
+        if (format == 1) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "XIVE: END %x/%x invalid config: F1 & backlog\n",
+                          end_blk, end_idx);
+            return;
+        }
+        /* Record the IPB in the associated NVT structure */
+        ipb_update((uint8_t *) &nvt.w4, priority);
+        xive_router_write_nvt(xrtr, nvt_blk, nvt_idx, &nvt, 4);
+
+        /*
+         * On HW, follows a "Broadcast Backlog" to IVPEs
+         */
+    }
+
+do_escalation:
+    /*
+     * If activated, escalate notification using the ESe PQ bits and
+     * the EAS in w4-5
+     */
+    if (!xive_end_is_escalate(&end)) {
+        return;
+    }
+
+    /*
+     * Check the END ESe (Event State Buffer for escalation) for even
+     * futher coalescing in the Router
+     */
+    if (!xive_end_is_uncond_escalation(&end)) {
+        /* ESe[Q]=1 : end of notification */
+        if (!xive_router_end_es_notify(xrtr, end_blk, end_idx,
+                                       &end, END_W1_ESe)) {
+            return;
+        }
+    }
+
+    /*
+     * The END trigger becomes an Escalation trigger
+     */
+    xive_router_end_notify(xrtr,
+                           xive_get_field32(END_W4_ESC_END_BLOCK, end.w4),
+                           xive_get_field32(END_W4_ESC_END_INDEX, end.w4),
+                           xive_get_field32(END_W5_ESC_END_DATA,  end.w5));
 }
 
 void xive_router_notify(XiveNotifier *xn, uint32_t lisn)
 {
     XiveRouter *xrtr = XIVE_ROUTER(xn);
-    uint8_t eas_blk = XIVE_SRCNO_BLOCK(lisn);
-    uint32_t eas_idx = XIVE_SRCNO_INDEX(lisn);
+    uint8_t eas_blk = XIVE_EAS_BLOCK(lisn);
+    uint32_t eas_idx = XIVE_EAS_INDEX(lisn);
     XiveEAS eas;
 
     /* EAS cache lookup */
@@ -1663,6 +1871,11 @@ static void xive_end_source_class_init(ObjectClass *klass, void *data)
     dc->desc    = "XIVE END Source";
     dc->props   = xive_end_source_properties;
     dc->realize = xive_end_source_realize;
+    /*
+     * Reason: part of XIVE interrupt controller, needs to be wired up,
+     * e.g. by spapr_xive_instance_init().
+     */
+    dc->user_creatable = false;
 }
 
 static const TypeInfo xive_end_source_info = {

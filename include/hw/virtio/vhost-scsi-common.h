@@ -14,8 +14,6 @@
 #ifndef VHOST_SCSI_COMMON_H
 #define VHOST_SCSI_COMMON_H
 
-#include "qemu-common.h"
-#include "hw/qdev.h"
 #include "hw/virtio/virtio-scsi.h"
 #include "hw/virtio/vhost.h"
 #include "hw/fw-path-provider.h"
@@ -36,6 +34,7 @@ typedef struct VHostSCSICommon {
     int target;
     int lun;
     uint64_t host_features;
+    bool migratable;
 } VHostSCSICommon;
 
 int vhost_scsi_common_start(VHostSCSICommon *vsc);

@@ -6,9 +6,12 @@
  * This work is licensed under the terms of the GNU GPL, version 2 or later.
  * See the COPYING file in the top-level directory.
  */
-#include "hw/hw.h"
-#include "hw/qdev.h"
+
+#ifndef HW_NET_NE2000_ISA_H
+#define HW_NET_NE2000_ISA_H
+
 #include "hw/isa/isa.h"
+#include "hw/qdev-properties.h"
 #include "net/net.h"
 
 #define TYPE_ISA_NE2000 "ne2k_isa"
@@ -31,3 +34,5 @@ static inline ISADevice *isa_ne2000_init(ISABus *bus, int base, int irq,
     }
     return d;
 }
+
+#endif

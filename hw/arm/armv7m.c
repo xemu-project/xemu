@@ -10,14 +10,16 @@
 #include "qemu/osdep.h"
 #include "hw/arm/armv7m.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "hw/sysbus.h"
-#include "hw/arm/arm.h"
+#include "hw/arm/boot.h"
 #include "hw/loader.h"
+#include "hw/qdev-properties.h"
 #include "elf.h"
 #include "sysemu/qtest.h"
+#include "sysemu/reset.h"
 #include "qemu/error-report.h"
+#include "qemu/module.h"
 #include "exec/address-spaces.h"
 #include "target/arm/idau.h"
 
@@ -190,6 +192,22 @@ static void armv7m_realize(DeviceState *dev, Error **errp)
             return;
         }
     }
+    if (object_property_find(OBJECT(s->cpu), "vfp", NULL)) {
+        object_property_set_bool(OBJECT(s->cpu), s->vfp,
+                                 "vfp", &err);
+        if (err != NULL) {
+            error_propagate(errp, err);
+            return;
+        }
+    }
+    if (object_property_find(OBJECT(s->cpu), "dsp", NULL)) {
+        object_property_set_bool(OBJECT(s->cpu), s->dsp,
+                                 "dsp", &err);
+        if (err != NULL) {
+            error_propagate(errp, err);
+            return;
+        }
+    }
 
     /*
      * Tell the CPU where the NVIC is; it will fail realize if it doesn't
@@ -260,6 +278,8 @@ static Property armv7m_properties[] = {
     DEFINE_PROP_BOOL("enable-bitband", ARMv7MState, enable_bitband, false),
     DEFINE_PROP_BOOL("start-powered-off", ARMv7MState, start_powered_off,
                      false),
+    DEFINE_PROP_BOOL("vfp", ARMv7MState, vfp, true),
+    DEFINE_PROP_BOOL("dsp", ARMv7MState, dsp, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 

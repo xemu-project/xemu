@@ -17,6 +17,8 @@
 
 #include "virtio-pci.h"
 #include "hw/9pfs/virtio-9p.h"
+#include "hw/qdev-properties.h"
+#include "qemu/module.h"
 
 /*
  * virtio-9p-pci: This extends VirtioPCIProxy.

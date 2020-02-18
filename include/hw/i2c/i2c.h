@@ -1,7 +1,7 @@
 #ifndef QEMU_I2C_H
 #define QEMU_I2C_H
 
-#include "hw/qdev.h"
+#include "hw/qdev-core.h"
 
 /* The QEMU I2C implementation only supports simple transfers that complete
    immediately.  It does not support slave devices that need to be able to
@@ -80,8 +80,6 @@ int i2c_send(I2CBus *bus, uint8_t data);
 uint8_t i2c_recv(I2CBus *bus);
 
 DeviceState *i2c_create_slave(I2CBus *bus, const char *name, uint8_t addr);
-
-typedef struct bitbang_i2c_interface bitbang_i2c_interface;
 
 /* lm832x.c */
 void lm832x_key_event(DeviceState *dev, int key, int state);

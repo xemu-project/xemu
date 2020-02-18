@@ -14,7 +14,6 @@
 #ifndef MIGRATION_MISC_H
 #define MIGRATION_MISC_H
 
-#include "exec/cpu-common.h"
 #include "qemu/notify.h"
 #include "qapi/qapi-types-net.h"
 
@@ -61,6 +60,7 @@ void migration_object_init(void);
 void migration_shutdown(void);
 void qemu_start_incoming_migration(const char *uri, Error **errp);
 bool migration_is_idle(void);
+bool migration_is_active(MigrationState *);
 void add_migration_state_change_notifier(Notifier *notify);
 void remove_migration_state_change_notifier(Notifier *notify);
 bool migration_in_setup(MigrationState *);

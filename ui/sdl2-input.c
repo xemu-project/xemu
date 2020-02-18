@@ -24,11 +24,9 @@
 /* Ported SDL 1.2 code to 2.0 by Dave Airlie. */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "ui/console.h"
 #include "ui/input.h"
 #include "ui/sdl2.h"
-#include "sysemu/sysemu.h"
 
 void sdl2_process_key(struct sdl2_console *scon,
                       SDL_KeyboardEvent *ev)

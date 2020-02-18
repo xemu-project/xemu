@@ -14,9 +14,9 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "hw/arm/fsl-imx7.h"
 #include "hw/boards.h"
+#include "hw/qdev-properties.h"
 #include "sysemu/sysemu.h"
 #include "qemu/error-report.h"
 #include "sysemu/qtest.h"
@@ -30,7 +30,6 @@ static void mcimx7d_sabre_init(MachineState *machine)
 {
     static struct arm_boot_info boot_info;
     MCIMX7Sabre *s = g_new0(MCIMX7Sabre, 1);
-    Object *soc;
     int i;
 
     if (machine->ram_size > FSL_IMX7_MMDC_SIZE) {
@@ -43,16 +42,13 @@ static void mcimx7d_sabre_init(MachineState *machine)
         .loader_start = FSL_IMX7_MMDC_ADDR,
         .board_id = -1,
         .ram_size = machine->ram_size,
-        .kernel_filename = machine->kernel_filename,
-        .kernel_cmdline = machine->kernel_cmdline,
-        .initrd_filename = machine->initrd_filename,
-        .nb_cpus = smp_cpus,
+        .nb_cpus = machine->smp.cpus,
     };
 
-    object_initialize(&s->soc, sizeof(s->soc), TYPE_FSL_IMX7);
-    soc = OBJECT(&s->soc);
-    object_property_add_child(OBJECT(machine), "soc", soc, &error_fatal);
-    object_property_set_bool(soc, true, "realized", &error_fatal);
+    object_initialize_child(OBJECT(machine), "soc",
+                            &s->soc, sizeof(s->soc),
+                            TYPE_FSL_IMX7, &error_fatal, NULL);
+    object_property_set_bool(OBJECT(&s->soc), true, "realized", &error_fatal);
 
     memory_region_allocate_system_memory(&s->ram, NULL, "mcimx7d-sabre.ram",
                                          machine->ram_size);
@@ -75,7 +71,7 @@ static void mcimx7d_sabre_init(MachineState *machine)
     }
 
     if (!qtest_enabled()) {
-        arm_load_kernel(&s->soc.cpu[0], &boot_info);
+        arm_load_kernel(&s->soc.cpu[0], machine, &boot_info);
     }
 }
 

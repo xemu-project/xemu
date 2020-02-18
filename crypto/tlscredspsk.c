@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -22,6 +22,7 @@
 #include "crypto/tlscredspsk.h"
 #include "tlscredspriv.h"
 #include "qapi/error.h"
+#include "qemu/module.h"
 #include "qom/object_interfaces.h"
 #include "trace.h"
 
@@ -68,7 +69,8 @@ static int
 qcrypto_tls_creds_psk_load(QCryptoTLSCredsPSK *creds,
                            Error **errp)
 {
-    char *pskfile = NULL, *dhparams = NULL;
+    g_autofree char *pskfile = NULL;
+    g_autofree char *dhparams = NULL;
     const char *username;
     int ret;
     int rv = -1;
@@ -138,8 +140,6 @@ qcrypto_tls_creds_psk_load(QCryptoTLSCredsPSK *creds,
     rv = 0;
  cleanup:
     g_free(key.data);
-    g_free(pskfile);
-    g_free(dhparams);
     return rv;
 }
 

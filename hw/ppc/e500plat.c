@@ -11,10 +11,8 @@
 
 #include "qemu/osdep.h"
 #include "qemu/units.h"
-#include "qemu-common.h"
 #include "e500.h"
 #include "hw/net/fsl_etsec/etsec.h"
-#include "hw/boards.h"
 #include "sysemu/device_tree.h"
 #include "sysemu/kvm.h"
 #include "hw/sysbus.h"

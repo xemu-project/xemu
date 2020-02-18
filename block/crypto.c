@@ -28,6 +28,7 @@
 #include "qapi/qapi-visit-crypto.h"
 #include "qapi/qobject-input-visitor.h"
 #include "qapi/error.h"
+#include "qemu/module.h"
 #include "qemu/option.h"
 #include "crypto.h"
 
@@ -73,6 +74,7 @@ static ssize_t block_crypto_read_func(QCryptoBlock *block,
 struct BlockCryptoCreateData {
     BlockBackend *blk;
     uint64_t size;
+    PreallocMode prealloc;
 };
 
 
@@ -111,8 +113,8 @@ static ssize_t block_crypto_init_func(QCryptoBlock *block,
      * available to the guest, so we must take account of that
      * which will be used by the crypto header
      */
-    return blk_truncate(data->blk, data->size + headerlen, PREALLOC_MODE_OFF,
-                        errp);
+    return blk_truncate(data->blk, data->size + headerlen, false,
+                        data->prealloc, errp);
 }
 
 
@@ -250,6 +252,7 @@ static int block_crypto_open_generic(QCryptoBlockFormat format,
 static int block_crypto_co_create_generic(BlockDriverState *bs,
                                           int64_t size,
                                           QCryptoBlockCreateOptions *opts,
+                                          PreallocMode prealloc,
                                           Error **errp)
 {
     int ret;
@@ -257,16 +260,22 @@ static int block_crypto_co_create_generic(BlockDriverState *bs,
     QCryptoBlock *crypto = NULL;
     struct BlockCryptoCreateData data;
 
-    blk = blk_new(BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL);
+    blk = blk_new(bdrv_get_aio_context(bs),
+                  BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL);
 
     ret = blk_insert_bs(blk, bs, errp);
     if (ret < 0) {
         goto cleanup;
     }
 
+    if (prealloc == PREALLOC_MODE_METADATA) {
+        prealloc = PREALLOC_MODE_OFF;
+    }
+
     data = (struct BlockCryptoCreateData) {
         .blk = blk,
         .size = size,
+        .prealloc = prealloc,
     };
 
     crypto = qcrypto_block_create(opts, NULL,
@@ -288,7 +297,7 @@ static int block_crypto_co_create_generic(BlockDriverState *bs,
 }
 
 static int coroutine_fn
-block_crypto_co_truncate(BlockDriverState *bs, int64_t offset,
+block_crypto_co_truncate(BlockDriverState *bs, int64_t offset, bool exact,
                          PreallocMode prealloc, Error **errp)
 {
     BlockCrypto *crypto = bs->opaque;
@@ -302,7 +311,7 @@ block_crypto_co_truncate(BlockDriverState *bs, int64_t offset,
 
     offset += payload_offset;
 
-    return bdrv_co_truncate(bs->file, offset, prealloc, errp);
+    return bdrv_co_truncate(bs->file, offset, exact, prealloc, errp);
 }
 
 static void block_crypto_close(BlockDriverState *bs)
@@ -498,6 +507,7 @@ block_crypto_co_create_luks(BlockdevCreateOptions *create_options, Error **errp)
     BlockdevCreateOptionsLUKS *luks_opts;
     BlockDriverState *bs = NULL;
     QCryptoBlockCreateOptions create_opts;
+    PreallocMode preallocation = PREALLOC_MODE_OFF;
     int ret;
 
     assert(create_options->driver == BLOCKDEV_DRIVER_LUKS);
@@ -513,8 +523,12 @@ block_crypto_co_create_luks(BlockdevCreateOptions *create_options, Error **errp)
         .u.luks = *qapi_BlockdevCreateOptionsLUKS_base(luks_opts),
     };
 
+    if (luks_opts->has_preallocation) {
+        preallocation = luks_opts->preallocation;
+    }
+
     ret = block_crypto_co_create_generic(bs, luks_opts->size, &create_opts,
-                                         errp);
+                                         preallocation, errp);
     if (ret < 0) {
         goto fail;
     }
@@ -532,11 +546,23 @@ static int coroutine_fn block_crypto_co_create_opts_luks(const char *filename,
     QCryptoBlockCreateOptions *create_opts = NULL;
     BlockDriverState *bs = NULL;
     QDict *cryptoopts;
+    PreallocMode prealloc;
+    char *buf = NULL;
     int64_t size;
     int ret;
+    Error *local_err = NULL;
 
     /* Parse options */
     size = qemu_opt_get_size_del(opts, BLOCK_OPT_SIZE, 0);
+
+    buf = qemu_opt_get_del(opts, BLOCK_OPT_PREALLOC);
+    prealloc = qapi_enum_parse(&PreallocMode_lookup, buf,
+                               PREALLOC_MODE_OFF, &local_err);
+    g_free(buf);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return -EINVAL;
+    }
 
     cryptoopts = qemu_opts_to_qdict_filtered(opts, NULL,
                                              &block_crypto_create_opts_luks,
@@ -563,7 +589,7 @@ static int coroutine_fn block_crypto_co_create_opts_luks(const char *filename,
     }
 
     /* Create format layer */
-    ret = block_crypto_co_create_generic(bs, size, create_opts, errp);
+    ret = block_crypto_co_create_generic(bs, size, create_opts, prealloc, errp);
     if (ret < 0) {
         goto fail;
     }

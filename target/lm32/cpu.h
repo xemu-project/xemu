@@ -20,25 +20,15 @@
 #ifndef LM32_CPU_H
 #define LM32_CPU_H
 
-#define TARGET_LONG_BITS 32
-
-#define CPUArchState struct CPULM32State
-
-#include "qemu-common.h"
 #include "cpu-qom.h"
 #include "exec/cpu-defs.h"
-struct CPULM32State;
+
 typedef struct CPULM32State CPULM32State;
 
-#define NB_MMU_MODES 1
-#define TARGET_PAGE_BITS 12
 static inline int cpu_mmu_index(CPULM32State *env, bool ifetch)
 {
     return 0;
 }
-
-#define TARGET_PHYS_ADDR_SPACE_BITS 32
-#define TARGET_VIRT_ADDR_SPACE_BITS 32
 
 /* Exceptions indices */
 enum {
@@ -168,8 +158,6 @@ struct CPULM32State {
     /* Fields up to this point are cleared by a CPU reset */
     struct {} end_reset_fields;
 
-    CPU_COMMON
-
     /* Fields from here on are preserved across CPU reset. */
     uint32_t eba;       /* exception base address */
     uint32_t deba;      /* debug exception base address */
@@ -195,6 +183,7 @@ struct LM32CPU {
     CPUState parent_obj;
     /*< public >*/
 
+    CPUNegativeOffsetState neg;
     CPULM32State env;
 
     uint32_t revision;
@@ -204,23 +193,14 @@ struct LM32CPU {
     uint32_t features;
 };
 
-static inline LM32CPU *lm32_env_get_cpu(CPULM32State *env)
-{
-    return container_of(env, LM32CPU, env);
-}
-
-#define ENV_GET_CPU(e) CPU(lm32_env_get_cpu(e))
-
-#define ENV_OFFSET offsetof(LM32CPU, env)
 
 #ifndef CONFIG_USER_ONLY
-extern const struct VMStateDescription vmstate_lm32_cpu;
+extern const VMStateDescription vmstate_lm32_cpu;
 #endif
 
 void lm32_cpu_do_interrupt(CPUState *cpu);
 bool lm32_cpu_exec_interrupt(CPUState *cs, int int_req);
-void lm32_cpu_dump_state(CPUState *cpu, FILE *f, fprintf_function cpu_fprintf,
-                         int flags);
+void lm32_cpu_dump_state(CPUState *cpu, FILE *f, int flags);
 hwaddr lm32_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
 int lm32_cpu_gdb_read_register(CPUState *cpu, uint8_t *buf, int reg);
 int lm32_cpu_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg);
@@ -243,7 +223,7 @@ static inline lm32_wp_t lm32_wp_type(uint32_t dc, int idx)
    is returned if the signal was handled by the virtual CPU.  */
 int cpu_lm32_signal_handler(int host_signum, void *pinfo,
                           void *puc);
-void lm32_cpu_list(FILE *f, fprintf_function cpu_fprintf);
+void lm32_cpu_list(void);
 void lm32_translate_init(void);
 void cpu_lm32_set_phys_msb_ignore(CPULM32State *env, int value);
 void QEMU_NORETURN raise_exception(CPULM32State *env, int index);
@@ -262,8 +242,12 @@ bool lm32_cpu_do_semihosting(CPUState *cs);
 #define cpu_list lm32_cpu_list
 #define cpu_signal_handler cpu_lm32_signal_handler
 
-int lm32_cpu_handle_mmu_fault(CPUState *cpu, vaddr address, int size, int rw,
-                              int mmu_idx);
+bool lm32_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+                       MMUAccessType access_type, int mmu_idx,
+                       bool probe, uintptr_t retaddr);
+
+typedef CPULM32State CPUArchState;
+typedef LM32CPU ArchCPU;
 
 #include "exec/cpu-all.h"
 

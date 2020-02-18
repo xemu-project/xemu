@@ -5,10 +5,12 @@
  *
  * This code is licensed under the GPL
  */
+
 #include "qemu/osdep.h"
-#include "qemu-common.h"
+#include "qemu/module.h"
 #include "cpu.h"
 #include "hw/hw.h"
+#include "hw/irq.h"
 #include "hw/sysbus.h"
 #include "hw/m68k/mcf.h"
 

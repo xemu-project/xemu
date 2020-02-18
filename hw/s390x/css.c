@@ -12,16 +12,17 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qapi/visitor.h"
-#include "hw/qdev.h"
 #include "qemu/bitops.h"
 #include "qemu/error-report.h"
 #include "exec/address-spaces.h"
 #include "cpu.h"
 #include "hw/s390x/ioinst.h"
+#include "hw/qdev-properties.h"
 #include "hw/s390x/css.h"
 #include "trace.h"
 #include "hw/s390x/s390_flic.h"
 #include "hw/s390x/s390-virtio-ccw.h"
+#include "hw/s390x/s390-ccw.h"
 
 typedef struct CrwContainer {
     CRW crw;
@@ -830,8 +831,12 @@ static int ccw_dstream_rw_noflags(CcwDataStream *cds, void *buff, int len,
     if (op == CDS_OP_A) {
         goto incr;
     }
-    ret = address_space_rw(&address_space_memory, cds->cda,
-                           MEMTXATTRS_UNSPECIFIED, buff, len, op);
+    if (!cds->do_skip) {
+        ret = address_space_rw(&address_space_memory, cds->cda,
+                               MEMTXATTRS_UNSPECIFIED, buff, len, op);
+    } else {
+        ret = MEMTX_OK;
+    }
     if (ret != MEMTX_OK) {
         cds->flags |= CDS_F_STREAM_BROKEN;
         return -EINVAL;
@@ -928,8 +933,13 @@ static int ccw_dstream_rw_ida(CcwDataStream *cds, void *buff, int len,
     do {
         iter_len = MIN(len, cont_left);
         if (op != CDS_OP_A) {
-            ret = address_space_rw(&address_space_memory, cds->cda,
-                                   MEMTXATTRS_UNSPECIFIED, buff, iter_len, op);
+            if (!cds->do_skip) {
+                ret = address_space_rw(&address_space_memory, cds->cda,
+                                       MEMTXATTRS_UNSPECIFIED, buff, iter_len,
+                                       op);
+            } else {
+                ret = MEMTX_OK;
+            }
             if (ret != MEMTX_OK) {
                 /* assume inaccessible address */
                 ret = -EINVAL; /* channel program check */
@@ -968,6 +978,11 @@ void ccw_dstream_init(CcwDataStream *cds, CCW1 const *ccw, ORB const *orb)
 
     cds->count = ccw->count;
     cds->cda_orig = ccw->cda;
+    /* skip is only effective for read, read backwards, or sense commands */
+    cds->do_skip = (ccw->flags & CCW_FLAG_SKIP) &&
+        ((ccw->cmd_code & 0x0f) == CCW_CMD_BASIC_SENSE ||
+         (ccw->cmd_code & 0x03) == 0x02 /* read */ ||
+         (ccw->cmd_code & 0x0f) == 0x0c /* read backwards */);
     ccw_dstream_rewind(cds);
     if (!(cds->flags & CDS_F_IDA)) {
         cds->op_handler = ccw_dstream_rw_noflags;
@@ -1191,6 +1206,26 @@ static void sch_handle_start_func_virtual(SubchDev *sch)
 
 }
 
+static void sch_handle_halt_func_passthrough(SubchDev *sch)
+{
+    int ret;
+
+    ret = s390_ccw_halt(sch);
+    if (ret == -ENOSYS) {
+        sch_handle_halt_func(sch);
+    }
+}
+
+static void sch_handle_clear_func_passthrough(SubchDev *sch)
+{
+    int ret;
+
+    ret = s390_ccw_clear(sch);
+    if (ret == -ENOSYS) {
+        sch_handle_clear_func(sch);
+    }
+}
+
 static IOInstEnding sch_handle_start_func_passthrough(SubchDev *sch)
 {
     SCHIB *schib = &sch->curr_status;
@@ -1230,11 +1265,9 @@ IOInstEnding do_subchannel_work_passthrough(SubchDev *sch)
     SCHIB *schib = &sch->curr_status;
 
     if (schib->scsw.ctrl & SCSW_FCTL_CLEAR_FUNC) {
-        /* TODO: Clear handling */
-        sch_handle_clear_func(sch);
+        sch_handle_clear_func_passthrough(sch);
     } else if (schib->scsw.ctrl & SCSW_FCTL_HALT_FUNC) {
-        /* TODO: Halt handling */
-        sch_handle_halt_func(sch);
+        sch_handle_halt_func_passthrough(sch);
     } else if (schib->scsw.ctrl & SCSW_FCTL_START_FUNC) {
         return sch_handle_start_func_passthrough(sch);
     }

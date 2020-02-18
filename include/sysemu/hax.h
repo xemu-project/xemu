@@ -22,7 +22,6 @@
 #ifndef QEMU_HAX_H
 #define QEMU_HAX_H
 
-#include "qemu-common.h"
 
 int hax_sync_vcpus(void);
 int hax_init_vcpu(CPUState *cpu);
@@ -38,7 +37,6 @@ void hax_cpu_synchronize_pre_loadvm(CPUState *cpu);
 
 int hax_enabled(void);
 
-#include "hw/hw.h"
 #include "qemu/bitops.h"
 #include "exec/memory.h"
 int hax_vcpu_destroy(CPUState *cpu);

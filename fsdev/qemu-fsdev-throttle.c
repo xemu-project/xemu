@@ -16,6 +16,7 @@
 #include "qemu/error-report.h"
 #include "qemu-fsdev-throttle.h"
 #include "qemu/iov.h"
+#include "qemu/main-loop.h"
 #include "qemu/option.h"
 
 static void fsdev_throttle_read_timer_cb(void *opaque)
@@ -30,7 +31,7 @@ static void fsdev_throttle_write_timer_cb(void *opaque)
     qemu_co_enter_next(&fst->throttled_reqs[true], NULL);
 }
 
-void fsdev_throttle_parse_opts(QemuOpts *opts, FsThrottle *fst, Error **errp)
+int fsdev_throttle_parse_opts(QemuOpts *opts, FsThrottle *fst, Error **errp)
 {
     throttle_config_init(&fst->cfg);
     fst->cfg.buckets[THROTTLE_BPS_TOTAL].avg =
@@ -74,7 +75,7 @@ void fsdev_throttle_parse_opts(QemuOpts *opts, FsThrottle *fst, Error **errp)
     fst->cfg.op_size =
         qemu_opt_get_number(opts, "throttling.iops-size", 0);
 
-    throttle_is_valid(&fst->cfg, errp);
+    return throttle_is_valid(&fst->cfg, errp) ? 0 : -1;
 }
 
 void fsdev_throttle_init(FsThrottle *fst)

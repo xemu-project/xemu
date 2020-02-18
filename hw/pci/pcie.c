@@ -20,7 +20,6 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "hw/pci/pci_bridge.h"
 #include "hw/pci/pcie.h"
 #include "hw/pci/msix.h"
@@ -384,7 +383,7 @@ static void pcie_cap_slot_event(PCIDevice *dev, PCIExpressHotPlugEvent event)
 {
     /* Minor optimization: if nothing changed - no event is needed. */
     if (pci_word_test_and_set_mask(dev->config + dev->exp.exp_cap +
-                                   PCI_EXP_SLTSTA, event)) {
+                                   PCI_EXP_SLTSTA, event) == event) {
         return;
     }
     hotplug_event_notify(dev);
@@ -457,6 +456,10 @@ static void pcie_unplug_device(PCIBus *bus, PCIDevice *dev, void *opaque)
 {
     HotplugHandler *hotplug_ctrl = qdev_get_hotplug_handler(DEVICE(dev));
 
+    if (dev->partially_hotplugged) {
+        dev->qdev.pending_deleted_event = false;
+        return;
+    }
     hotplug_handler_unplug(hotplug_ctrl, DEVICE(dev), &error_abort);
     object_unparent(OBJECT(dev));
 }
@@ -473,6 +476,8 @@ void pcie_cap_slot_unplug_request_cb(HotplugHandler *hotplug_dev,
         error_propagate(errp, local_err);
         return;
     }
+
+    dev->pending_deleted_event = true;
 
     /* In case user cancel the operation of multi-function hot-add,
      * remove the function that is unexposed to guest individually,
@@ -595,7 +600,16 @@ void pcie_cap_slot_reset(PCIDevice *dev)
     hotplug_event_update_event_status(dev);
 }
 
+void pcie_cap_slot_get(PCIDevice *dev, uint16_t *slt_ctl, uint16_t *slt_sta)
+{
+    uint32_t pos = dev->exp.exp_cap;
+    uint8_t *exp_cap = dev->config + pos;
+    *slt_ctl = pci_get_word(exp_cap + PCI_EXP_SLTCTL);
+    *slt_sta = pci_get_word(exp_cap + PCI_EXP_SLTSTA);
+}
+
 void pcie_cap_slot_write_config(PCIDevice *dev,
+                                uint16_t old_slt_ctl, uint16_t old_slt_sta,
                                 uint32_t addr, uint32_t val, int len)
 {
     uint32_t pos = dev->exp.exp_cap;
@@ -603,6 +617,25 @@ void pcie_cap_slot_write_config(PCIDevice *dev,
     uint16_t sltsta = pci_get_word(exp_cap + PCI_EXP_SLTSTA);
 
     if (ranges_overlap(addr, len, pos + PCI_EXP_SLTSTA, 2)) {
+        /*
+         * Guests tend to clears all bits during init.
+         * If they clear bits that weren't set this is racy and will lose events:
+         * not a big problem for manual button presses, but a problem for us.
+         * As a work-around, detect this and revert status to what it was
+         * before the write.
+         *
+         * Note: in theory this can be detected as a duplicate button press
+         * which cancels the previous press. Does not seem to happen in
+         * practice as guests seem to only have this bug during init.
+         */
+#define PCIE_SLOT_EVENTS (PCI_EXP_SLTSTA_ABP | PCI_EXP_SLTSTA_PFD | \
+                          PCI_EXP_SLTSTA_MRLSC | PCI_EXP_SLTSTA_PDC | \
+                          PCI_EXP_SLTSTA_CC)
+
+        if (val & ~old_slt_sta & PCIE_SLOT_EVENTS) {
+            sltsta = (sltsta & ~PCIE_SLOT_EVENTS) | (old_slt_sta & PCIE_SLOT_EVENTS);
+            pci_set_word(exp_cap + PCI_EXP_SLTSTA, sltsta);
+        }
         hotplug_event_clear(dev);
     }
 
@@ -620,11 +653,17 @@ void pcie_cap_slot_write_config(PCIDevice *dev,
     }
 
     /*
-     * If the slot is polulated, power indicator is off and power
+     * If the slot is populated, power indicator is off and power
      * controller is off, it is safe to detach the devices.
+     *
+     * Note: don't detach if condition was already true:
+     * this is a work around for guests that overwrite
+     * control of powered off slots before powering them on.
      */
     if ((sltsta & PCI_EXP_SLTSTA_PDS) && (val & PCI_EXP_SLTCTL_PCC) &&
-        ((val & PCI_EXP_SLTCTL_PIC_OFF) == PCI_EXP_SLTCTL_PIC_OFF)) {
+        (val & PCI_EXP_SLTCTL_PIC_OFF) == PCI_EXP_SLTCTL_PIC_OFF &&
+        (!(old_slt_ctl & PCI_EXP_SLTCTL_PCC) ||
+        (old_slt_ctl & PCI_EXP_SLTCTL_PIC_OFF) != PCI_EXP_SLTCTL_PIC_OFF)) {
         PCIBus *sec_bus = pci_bridge_get_sec_bus(PCI_BRIDGE(dev));
         pci_for_each_device(sec_bus, pci_bus_num(sec_bus),
                             pcie_unplug_device, NULL);

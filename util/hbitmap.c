@@ -53,7 +53,9 @@
  */
 
 struct HBitmap {
-    /* Size of the bitmap, as requested in hbitmap_alloc. */
+    /*
+     * Size of the bitmap, as requested in hbitmap_alloc or in hbitmap_truncate.
+     */
     uint64_t orig_size;
 
     /* Number of total bits in the bottom level.  */
@@ -385,6 +387,10 @@ void hbitmap_set(HBitmap *hb, uint64_t start, uint64_t count)
     uint64_t first, n;
     uint64_t last = start + count - 1;
 
+    if (count == 0) {
+        return;
+    }
+
     trace_hbitmap_set(hb, start, count,
                       start >> hb->granularity, last >> hb->granularity);
 
@@ -474,6 +480,14 @@ void hbitmap_reset(HBitmap *hb, uint64_t start, uint64_t count)
     /* Compute range in the last layer.  */
     uint64_t first;
     uint64_t last = start + count - 1;
+    uint64_t gran = 1ULL << hb->granularity;
+
+    if (count == 0) {
+        return;
+    }
+
+    assert(QEMU_IS_ALIGNED(start, gran));
+    assert(QEMU_IS_ALIGNED(count, gran) || (start + count == hb->orig_size));
 
     trace_hbitmap_reset(hb, start, count,
                         start >> hb->granularity, last >> hb->granularity);
@@ -732,6 +746,8 @@ void hbitmap_truncate(HBitmap *hb, uint64_t size)
     uint64_t num_elements = size;
     uint64_t old;
 
+    hb->orig_size = size;
+
     /* Size comes in as logical elements, adjust for granularity. */
     size = (size + (1ULL << hb->granularity) - 1) >> hb->granularity;
     assert(size <= ((uint64_t)1 << HBITMAP_LOG_MAX_SIZE));
@@ -777,12 +793,33 @@ void hbitmap_truncate(HBitmap *hb, uint64_t size)
 
 bool hbitmap_can_merge(const HBitmap *a, const HBitmap *b)
 {
-    return (a->size == b->size) && (a->granularity == b->granularity);
+    return (a->orig_size == b->orig_size);
 }
 
 /**
- * Given HBitmaps A and B, let A := A (BITOR) B.
- * Bitmap B will not be modified.
+ * hbitmap_sparse_merge: performs dst = dst | src
+ * works with differing granularities.
+ * best used when src is sparsely populated.
+ */
+static void hbitmap_sparse_merge(HBitmap *dst, const HBitmap *src)
+{
+    uint64_t offset = 0;
+    uint64_t count = src->orig_size;
+
+    while (hbitmap_next_dirty_area(src, &offset, &count)) {
+        hbitmap_set(dst, offset, count);
+        offset += count;
+        if (offset >= src->orig_size) {
+            break;
+        }
+        count = src->orig_size - offset;
+    }
+}
+
+/**
+ * Given HBitmaps A and B, let R := A (BITOR) B.
+ * Bitmaps A and B will not be modified,
+ *     except when bitmap R is an alias of A or B.
  *
  * @return true if the merge was successful,
  *         false if it was not attempted.
@@ -797,7 +834,26 @@ bool hbitmap_merge(const HBitmap *a, const HBitmap *b, HBitmap *result)
     }
     assert(hbitmap_can_merge(b, result));
 
-    if (hbitmap_count(b) == 0) {
+    if ((!hbitmap_count(a) && result == b) ||
+        (!hbitmap_count(b) && result == a)) {
+        return true;
+    }
+
+    if (!hbitmap_count(a) && !hbitmap_count(b)) {
+        hbitmap_reset_all(result);
+        return true;
+    }
+
+    if (a->granularity != b->granularity) {
+        if ((a != result) && (b != result)) {
+            hbitmap_reset_all(result);
+        }
+        if (a != result) {
+            hbitmap_sparse_merge(result, a);
+        }
+        if (b != result) {
+            hbitmap_sparse_merge(result, b);
+        }
         return true;
     }
 
@@ -805,6 +861,7 @@ bool hbitmap_merge(const HBitmap *a, const HBitmap *b, HBitmap *result)
      * It may be possible to improve running times for sparsely populated maps
      * by using hbitmap_iter_next, but this is suboptimal for dense maps.
      */
+    assert(a->size == b->size);
     for (i = HBITMAP_LEVELS - 1; i >= 0; i--) {
         for (j = 0; j < a->sizes[i]; j++) {
             result->levels[i][j] = a->levels[i][j] | b->levels[i][j];

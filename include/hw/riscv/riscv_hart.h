@@ -21,6 +21,9 @@
 #ifndef HW_RISCV_HART_H
 #define HW_RISCV_HART_H
 
+#include "hw/sysbus.h"
+#include "target/riscv/cpu.h"
+
 #define TYPE_RISCV_HART_ARRAY "riscv.hart_array"
 
 #define RISCV_HART_ARRAY(obj) \
@@ -32,6 +35,7 @@ typedef struct RISCVHartArrayState {
 
     /*< public >*/
     uint32_t num_harts;
+    uint32_t hartid_base;
     char *cpu_type;
     RISCVCPU *harts;
 } RISCVHartArrayState;

@@ -2,6 +2,8 @@
 QEMU / KVM CPU model configuration
 @c man end
 
+@set qemu_system_x86 qemu-system-x86_64
+
 @c man begin DESCRIPTION
 
 @menu
@@ -200,6 +202,18 @@ Not included by default in any Intel CPU model.
 Should be explicitly turned on for all Intel CPU models.
 
 Note that not all CPU hardware will support this feature.
+
+@item @code{md-clear}
+
+Required to confirm the MDS (CVE-2018-12126, CVE-2018-12127, CVE-2018-12130,
+CVE-2019-11091) fixes.
+
+Not included by default in any Intel CPU model.
+
+Must be explicitly turned on for all Intel CPU models.
+
+Requires the host CPU microcode to support this feature before it
+can be used for guest CPUs.
 @end table
 
 
@@ -566,25 +580,25 @@ CPU models / features in QEMU and libvirt
 @item Host passthrough
 
 @example
-   $ qemu-system-x86_64 -cpu host
+   $ @value{qemu_system_x86} -cpu host
 @end example
 
 With feature customization:
 
 @example
-   $ qemu-system-x86_64 -cpu host,-vmx,...
+   $ @value{qemu_system_x86} -cpu host,-vmx,...
 @end example
 
 @item Named CPU models
 
 @example
-   $ qemu-system-x86_64 -cpu Westmere
+   $ @value{qemu_system_x86} -cpu Westmere
 @end example
 
 With feature customization:
 
 @example
-   $ qemu-system-x86_64 -cpu Westmere,+pcid,...
+   $ @value{qemu_system_x86} -cpu Westmere,+pcid,...
 @end example
 
 @end table

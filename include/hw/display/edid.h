@@ -1,7 +1,7 @@
 #ifndef EDID_H
 #define EDID_H
 
-#include "hw/hw.h"
+#include "qom/object.h"
 
 typedef struct qemu_edid_info {
     const char *vendor; /* http://www.uefi.org/pnp_id_list */
@@ -22,6 +22,8 @@ void qemu_edid_region_io(MemoryRegion *region, Object *owner,
 
 #define DEFINE_EDID_PROPERTIES(_state, _edid_info)              \
     DEFINE_PROP_UINT32("xres", _state, _edid_info.prefx, 0),    \
-    DEFINE_PROP_UINT32("yres", _state, _edid_info.prefy, 0)
+    DEFINE_PROP_UINT32("yres", _state, _edid_info.prefy, 0),    \
+    DEFINE_PROP_UINT32("xmax", _state, _edid_info.maxx, 0),     \
+    DEFINE_PROP_UINT32("ymax", _state, _edid_info.maxy, 0)
 
 #endif /* EDID_H */

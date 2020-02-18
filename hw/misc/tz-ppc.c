@@ -11,11 +11,15 @@
 
 #include "qemu/osdep.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "qapi/error.h"
 #include "trace.h"
 #include "hw/sysbus.h"
+#include "migration/vmstate.h"
 #include "hw/registerfields.h"
+#include "hw/irq.h"
 #include "hw/misc/tz-ppc.h"
+#include "hw/qdev-properties.h"
 
 static void tz_ppc_update_irq(TZPPC *s)
 {

@@ -17,12 +17,13 @@
 #include "qemu/cutils.h"
 #include "hw/ppc/spapr_drc.h"
 #include "qom/object.h"
-#include "hw/qdev.h"
+#include "migration/vmstate.h"
 #include "qapi/visitor.h"
 #include "qemu/error-report.h"
 #include "hw/ppc/spapr.h" /* for RTAS return codes */
 #include "hw/pci-host/spapr.h" /* spapr_phb_remove_pci_device_cb callback */
 #include "sysemu/device_tree.h"
+#include "sysemu/reset.h"
 #include "trace.h"
 
 #define DRC_CONTAINER_PATH "/dr-connector"
@@ -226,7 +227,7 @@ static uint32_t drc_set_unusable(SpaprDrc *drc)
     return RTAS_OUT_SUCCESS;
 }
 
-static const char *spapr_drc_name(SpaprDrc *drc)
+static char *spapr_drc_name(SpaprDrc *drc)
 {
     SpaprDrcClass *drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
 
@@ -781,7 +782,7 @@ SpaprDrc *spapr_drc_by_id(const char *type, uint32_t id)
 }
 
 /**
- * spapr_drc_populate_dt
+ * spapr_dt_drc
  *
  * @fdt: libfdt device tree
  * @path: path in the DT to generate properties
@@ -794,8 +795,7 @@ SpaprDrc *spapr_drc_by_id(const char *type, uint32_t id)
  *
  * as documented in PAPR+ v2.1, 13.5.2
  */
-int spapr_drc_populate_dt(void *fdt, int fdt_offset, Object *owner,
-                          uint32_t drc_type_mask)
+int spapr_dt_drc(void *fdt, int offset, Object *owner, uint32_t drc_type_mask)
 {
     Object *root_container;
     ObjectProperty *prop;
@@ -828,6 +828,7 @@ int spapr_drc_populate_dt(void *fdt, int fdt_offset, Object *owner,
         Object *obj;
         SpaprDrc *drc;
         SpaprDrcClass *drck;
+        char *drc_name = NULL;
         uint32_t drc_index, drc_power_domain;
 
         if (!strstart(prop->type, "link<", NULL)) {
@@ -857,8 +858,10 @@ int spapr_drc_populate_dt(void *fdt, int fdt_offset, Object *owner,
         g_array_append_val(drc_power_domains, drc_power_domain);
 
         /* ibm,drc-names */
-        drc_names = g_string_append(drc_names, spapr_drc_name(drc));
+        drc_name = spapr_drc_name(drc);
+        drc_names = g_string_append(drc_names, drc_name);
         drc_names = g_string_insert_len(drc_names, -1, "\0", 1);
+        g_free(drc_name);
 
         /* ibm,drc-types */
         drc_types = g_string_append(drc_types, drck->typename);
@@ -873,7 +876,7 @@ int spapr_drc_populate_dt(void *fdt, int fdt_offset, Object *owner,
     *(uint32_t *)drc_names->str = cpu_to_be32(drc_count);
     *(uint32_t *)drc_types->str = cpu_to_be32(drc_count);
 
-    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-indexes",
+    ret = fdt_setprop(fdt, offset, "ibm,drc-indexes",
                       drc_indexes->data,
                       drc_indexes->len * sizeof(uint32_t));
     if (ret) {
@@ -881,7 +884,7 @@ int spapr_drc_populate_dt(void *fdt, int fdt_offset, Object *owner,
         goto out;
     }
 
-    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-power-domains",
+    ret = fdt_setprop(fdt, offset, "ibm,drc-power-domains",
                       drc_power_domains->data,
                       drc_power_domains->len * sizeof(uint32_t));
     if (ret) {
@@ -889,14 +892,14 @@ int spapr_drc_populate_dt(void *fdt, int fdt_offset, Object *owner,
         goto out;
     }
 
-    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-names",
+    ret = fdt_setprop(fdt, offset, "ibm,drc-names",
                       drc_names->str, drc_names->len);
     if (ret) {
         error_report("Couldn't finalize ibm,drc-names property");
         goto out;
     }
 
-    ret = fdt_setprop(fdt, fdt_offset, "ibm,drc-types",
+    ret = fdt_setprop(fdt, offset, "ibm,drc-types",
                       drc_types->str, drc_types->len);
     if (ret) {
         error_report("Couldn't finalize ibm,drc-types property");

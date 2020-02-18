@@ -17,7 +17,10 @@
 
 #include "qemu/osdep.h"
 #include "hw/intc/imx_avic.h"
+#include "hw/irq.h"
+#include "migration/vmstate.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 
 #ifndef DEBUG_IMX_AVIC
 #define DEBUG_IMX_AVIC 0

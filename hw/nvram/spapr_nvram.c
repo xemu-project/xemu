@@ -23,18 +23,22 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/module.h"
 #include "qemu/units.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include <libfdt.h>
 
 #include "sysemu/block-backend.h"
 #include "sysemu/device_tree.h"
+#include "sysemu/sysemu.h"
+#include "sysemu/runstate.h"
 #include "hw/sysbus.h"
+#include "migration/vmstate.h"
 #include "hw/nvram/chrp_nvram.h"
 #include "hw/ppc/spapr.h"
 #include "hw/ppc/spapr_vio.h"
+#include "hw/qdev-properties.h"
 
 typedef struct SpaprNvram {
     SpaprVioDevice sdev;

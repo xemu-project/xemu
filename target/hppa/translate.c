@@ -279,7 +279,7 @@ typedef struct DisasContext {
 } DisasContext;
 
 /* Note that ssm/rsm instructions number PSW_W and PSW_E differently.  */
-static int expand_sm_imm(int val)
+static int expand_sm_imm(DisasContext *ctx, int val)
 {
     if (val & PSW_SM_E) {
         val = (val & ~PSW_SM_E) | PSW_E;
@@ -291,43 +291,43 @@ static int expand_sm_imm(int val)
 }
 
 /* Inverted space register indicates 0 means sr0 not inferred from base.  */
-static int expand_sr3x(int val)
+static int expand_sr3x(DisasContext *ctx, int val)
 {
     return ~val;
 }
 
 /* Convert the M:A bits within a memory insn to the tri-state value
    we use for the final M.  */
-static int ma_to_m(int val)
+static int ma_to_m(DisasContext *ctx, int val)
 {
     return val & 2 ? (val & 1 ? -1 : 1) : 0;
 }
 
 /* Convert the sign of the displacement to a pre or post-modify.  */
-static int pos_to_m(int val)
+static int pos_to_m(DisasContext *ctx, int val)
 {
     return val ? 1 : -1;
 }
 
-static int neg_to_m(int val)
+static int neg_to_m(DisasContext *ctx, int val)
 {
     return val ? -1 : 1;
 }
 
 /* Used for branch targets and fp memory ops.  */
-static int expand_shl2(int val)
+static int expand_shl2(DisasContext *ctx, int val)
 {
     return val << 2;
 }
 
 /* Used for fp memory ops.  */
-static int expand_shl3(int val)
+static int expand_shl3(DisasContext *ctx, int val)
 {
     return val << 3;
 }
 
 /* Used for assemble_21.  */
-static int expand_shl11(int val)
+static int expand_shl11(DisasContext *ctx, int val)
 {
     return val << 11;
 }
@@ -1500,7 +1500,7 @@ static void form_gva(DisasContext *ctx, TCGv_tl *pgva, TCGv_reg *pofs,
  */
 static void do_load_32(DisasContext *ctx, TCGv_i32 dest, unsigned rb,
                        unsigned rx, int scale, target_sreg disp,
-                       unsigned sp, int modify, TCGMemOp mop)
+                       unsigned sp, int modify, MemOp mop)
 {
     TCGv_reg ofs;
     TCGv_tl addr;
@@ -1518,7 +1518,7 @@ static void do_load_32(DisasContext *ctx, TCGv_i32 dest, unsigned rb,
 
 static void do_load_64(DisasContext *ctx, TCGv_i64 dest, unsigned rb,
                        unsigned rx, int scale, target_sreg disp,
-                       unsigned sp, int modify, TCGMemOp mop)
+                       unsigned sp, int modify, MemOp mop)
 {
     TCGv_reg ofs;
     TCGv_tl addr;
@@ -1536,7 +1536,7 @@ static void do_load_64(DisasContext *ctx, TCGv_i64 dest, unsigned rb,
 
 static void do_store_32(DisasContext *ctx, TCGv_i32 src, unsigned rb,
                         unsigned rx, int scale, target_sreg disp,
-                        unsigned sp, int modify, TCGMemOp mop)
+                        unsigned sp, int modify, MemOp mop)
 {
     TCGv_reg ofs;
     TCGv_tl addr;
@@ -1554,7 +1554,7 @@ static void do_store_32(DisasContext *ctx, TCGv_i32 src, unsigned rb,
 
 static void do_store_64(DisasContext *ctx, TCGv_i64 src, unsigned rb,
                         unsigned rx, int scale, target_sreg disp,
-                        unsigned sp, int modify, TCGMemOp mop)
+                        unsigned sp, int modify, MemOp mop)
 {
     TCGv_reg ofs;
     TCGv_tl addr;
@@ -1580,7 +1580,7 @@ static void do_store_64(DisasContext *ctx, TCGv_i64 src, unsigned rb,
 
 static bool do_load(DisasContext *ctx, unsigned rt, unsigned rb,
                     unsigned rx, int scale, target_sreg disp,
-                    unsigned sp, int modify, TCGMemOp mop)
+                    unsigned sp, int modify, MemOp mop)
 {
     TCGv_reg dest;
 
@@ -1653,7 +1653,7 @@ static bool trans_fldd(DisasContext *ctx, arg_ldst *a)
 
 static bool do_store(DisasContext *ctx, unsigned rt, unsigned rb,
                      target_sreg disp, unsigned sp,
-                     int modify, TCGMemOp mop)
+                     int modify, MemOp mop)
 {
     nullify_over(ctx);
     do_store_reg(ctx, load_gpr(ctx, rt), rb, 0, 0, disp, sp, modify, mop);
@@ -2161,7 +2161,6 @@ static bool trans_mfctl(DisasContext *ctx, arg_mfctl *a)
         if (tb_cflags(ctx->base.tb) & CF_USE_ICOUNT) {
             gen_io_start();
             gen_helper_read_interval_timer(tmp);
-            gen_io_end();
             ctx->base.is_jmp = DISAS_IAQ_N_STALE;
         } else {
             gen_helper_read_interval_timer(tmp);
@@ -2215,10 +2214,11 @@ static bool trans_mtsp(DisasContext *ctx, arg_mtsp *a)
 static bool trans_mtctl(DisasContext *ctx, arg_mtctl *a)
 {
     unsigned ctl = a->t;
-    TCGv_reg reg = load_gpr(ctx, a->r);
+    TCGv_reg reg;
     TCGv_reg tmp;
 
     if (ctl == CR_SAR) {
+        reg = load_gpr(ctx, a->r);
         tmp = tcg_temp_new();
         tcg_gen_andi_reg(tmp, reg, TARGET_REGISTER_BITS - 1);
         save_or_nullify(ctx, cpu_sar, tmp);
@@ -2233,6 +2233,8 @@ static bool trans_mtctl(DisasContext *ctx, arg_mtctl *a)
 
 #ifndef CONFIG_USER_ONLY
     nullify_over(ctx);
+    reg = load_gpr(ctx, a->r);
+
     switch (ctl) {
     case CR_IT:
         gen_helper_write_interval_timer(cpu_env, reg);
@@ -2509,6 +2511,60 @@ static bool trans_pxtlbx(DisasContext *ctx, arg_pxtlbx *a)
     } else {
         gen_helper_ptlb(cpu_env, addr);
     }
+
+    /* Exit TB for TLB change if mmu is enabled.  */
+    if (ctx->tb_flags & PSW_C) {
+        ctx->base.is_jmp = DISAS_IAQ_N_STALE;
+    }
+    return nullify_end(ctx);
+#endif
+}
+
+/*
+ * Implement the pcxl and pcxl2 Fast TLB Insert instructions.
+ * See
+ *     https://parisc.wiki.kernel.org/images-parisc/a/a9/Pcxl2_ers.pdf
+ *     page 13-9 (195/206)
+ */
+static bool trans_ixtlbxf(DisasContext *ctx, arg_ixtlbxf *a)
+{
+    CHECK_MOST_PRIVILEGED(EXCP_PRIV_OPR);
+#ifndef CONFIG_USER_ONLY
+    TCGv_tl addr, atl, stl;
+    TCGv_reg reg;
+
+    nullify_over(ctx);
+
+    /*
+     * FIXME:
+     *  if (not (pcxl or pcxl2))
+     *    return gen_illegal(ctx);
+     *
+     * Note for future: these are 32-bit systems; no hppa64.
+     */
+
+    atl = tcg_temp_new_tl();
+    stl = tcg_temp_new_tl();
+    addr = tcg_temp_new_tl();
+
+    tcg_gen_ld32u_i64(stl, cpu_env,
+                      a->data ? offsetof(CPUHPPAState, cr[CR_ISR])
+                      : offsetof(CPUHPPAState, cr[CR_IIASQ]));
+    tcg_gen_ld32u_i64(atl, cpu_env,
+                      a->data ? offsetof(CPUHPPAState, cr[CR_IOR])
+                      : offsetof(CPUHPPAState, cr[CR_IIAOQ]));
+    tcg_gen_shli_i64(stl, stl, 32);
+    tcg_gen_or_tl(addr, atl, stl);
+    tcg_temp_free_tl(atl);
+    tcg_temp_free_tl(stl);
+
+    reg = load_gpr(ctx, a->r);
+    if (a->addr) {
+        gen_helper_itlba(cpu_env, addr, reg);
+    } else {
+        gen_helper_itlbp(cpu_env, addr, reg);
+    }
+    tcg_temp_free_tl(addr);
 
     /* Exit TB for TLB change if mmu is enabled.  */
     if (ctx->tb_flags & PSW_C) {
@@ -2886,7 +2942,7 @@ static bool trans_st(DisasContext *ctx, arg_ldst *a)
 
 static bool trans_ldc(DisasContext *ctx, arg_ldst *a)
 {
-    TCGMemOp mop = MO_TEUL | MO_ALIGN_16 | a->size;
+    MemOp mop = MO_TEUL | MO_ALIGN_16 | a->size;
     TCGv_reg zero, dest, ofs;
     TCGv_tl addr;
 
@@ -3348,10 +3404,6 @@ static bool do_depw_sar(DisasContext *ctx, unsigned rt, unsigned c,
     TCGv_reg mask, tmp, shift, dest;
     unsigned msb = 1U << (len - 1);
 
-    if (c) {
-        nullify_over(ctx);
-    }
-
     dest = dest_gpr(ctx, rt);
     shift = tcg_temp_new();
     tmp = tcg_temp_new();
@@ -3384,11 +3436,17 @@ static bool do_depw_sar(DisasContext *ctx, unsigned rt, unsigned c,
 
 static bool trans_depw_sar(DisasContext *ctx, arg_depw_sar *a)
 {
+    if (a->c) {
+        nullify_over(ctx);
+    }
     return do_depw_sar(ctx, a->t, a->c, a->nz, a->clen, load_gpr(ctx, a->r));
 }
 
 static bool trans_depwi_sar(DisasContext *ctx, arg_depwi_sar *a)
 {
+    if (a->c) {
+        nullify_over(ctx);
+    }
     return do_depw_sar(ctx, a->t, a->c, a->nz, a->clen, load_const(ctx, a->i));
 }
 
@@ -4163,7 +4221,7 @@ static void hppa_tr_translate_insn(DisasContextBase *dcbase, CPUState *cs)
     {
         /* Always fetch the insn, even if nullified, so that we check
            the page permissions for execute.  */
-        uint32_t insn = cpu_ldl_code(env, ctx->base.pc_next);
+        uint32_t insn = translator_ldl(env, ctx->base.pc_next);
 
         /* Set up the IA queue for the next insn.
            This will be overwritten by a branch.  */
@@ -4312,11 +4370,10 @@ static const TranslatorOps hppa_tr_ops = {
     .disas_log          = hppa_tr_disas_log,
 };
 
-void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
-
+void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
 {
     DisasContext ctx;
-    translator_loop(&hppa_tr_ops, &ctx.base, cs, tb);
+    translator_loop(&hppa_tr_ops, &ctx.base, cs, tb, max_insns);
 }
 
 void restore_state_to_opc(CPUHPPAState *env, TranslationBlock *tb,

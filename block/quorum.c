@@ -15,6 +15,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/cutils.h"
+#include "qemu/module.h"
 #include "qemu/option.h"
 #include "block/block_int.h"
 #include "block/qdict.h"
@@ -1019,7 +1020,6 @@ static void quorum_add_child(BlockDriverState *bs, BlockDriverState *child_bs,
     child = bdrv_attach_child(bs, child_bs, indexstr, &child_format, errp);
     if (child == NULL) {
         s->next_child_index--;
-        bdrv_unref(child_bs);
         goto out;
     }
     s->children = g_renew(BdrvChild *, s->children, s->num_children + 1);

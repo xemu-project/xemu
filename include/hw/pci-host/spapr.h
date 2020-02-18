@@ -34,15 +34,21 @@
 
 typedef struct SpaprPhbState SpaprPhbState;
 
-typedef struct spapr_pci_msi {
+typedef struct SpaprPciMsi {
     uint32_t first_irq;
     uint32_t num;
-} spapr_pci_msi;
+} SpaprPciMsi;
 
-typedef struct spapr_pci_msi_mig {
+typedef struct SpaprPciMsiMig {
     uint32_t key;
-    spapr_pci_msi value;
-} spapr_pci_msi_mig;
+    SpaprPciMsi value;
+} SpaprPciMsiMig;
+
+typedef struct SpaprPciLsi {
+    uint32_t irq;
+} SpaprPciLsi;
+
+typedef struct SpaprPhbPciNvGpuConfig SpaprPhbPciNvGpuConfig;
 
 struct SpaprPhbState {
     PCIHostState parent_obj;
@@ -63,14 +69,12 @@ struct SpaprPhbState {
     AddressSpace iommu_as;
     MemoryRegion iommu_root;
 
-    struct spapr_pci_lsi {
-        uint32_t irq;
-    } lsi_table[PCI_NUM_PINS];
+    SpaprPciLsi lsi_table[PCI_NUM_PINS];
 
     GHashTable *msi;
     /* Temporary cache for migration purposes */
     int32_t msi_devs_num;
-    spapr_pci_msi_mig *msi_devs;
+    SpaprPciMsiMig *msi_devs;
 
     QLIST_ENTRY(SpaprPhbState) list;
 
@@ -87,6 +91,9 @@ struct SpaprPhbState {
     uint32_t mig_liobn;
     hwaddr mig_mem_win_addr, mig_mem_win_size;
     hwaddr mig_io_win_addr, mig_io_win_size;
+    hwaddr nv2_gpa_win_addr;
+    hwaddr nv2_atsd_win_addr;
+    SpaprPhbPciNvGpuConfig *nvgpus;
 };
 
 #define SPAPR_PCI_MEM_WIN_BUS_OFFSET 0x80000000ULL
@@ -105,15 +112,24 @@ struct SpaprPhbState {
 
 #define SPAPR_PCI_MSI_WINDOW         0x40000000000ULL
 
-static inline qemu_irq spapr_phb_lsi_qirq(struct SpaprPhbState *phb, int pin)
-{
-    SpaprMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
+#define SPAPR_PCI_NV2RAM64_WIN_BASE  SPAPR_PCI_LIMIT
+#define SPAPR_PCI_NV2RAM64_WIN_SIZE  (2 * TiB) /* For up to 6 GPUs 256GB each */
 
-    return spapr_qirq(spapr, phb->lsi_table[pin].irq);
-}
+/* Max number of these GPUsper a physical box */
+#define NVGPU_MAX_NUM                6
+/* Max number of NVLinks per GPU in any physical box */
+#define NVGPU_MAX_LINKS              3
 
-int spapr_populate_pci_dt(SpaprPhbState *phb, uint32_t intc_phandle, void *fdt,
-                          uint32_t nr_msis, int *node_offset);
+/*
+ * GPU RAM starts at 64TiB so huge DMA window to cover it all ends at 128TiB
+ * which is enough. We do not need DMA for ATSD so we put them at 128TiB.
+ */
+#define SPAPR_PCI_NV2ATSD_WIN_BASE   (128 * TiB)
+#define SPAPR_PCI_NV2ATSD_WIN_SIZE   (NVGPU_MAX_NUM * NVGPU_MAX_LINKS * \
+                                      64 * KiB)
+
+int spapr_dt_phb(SpaprMachineState *spapr, SpaprPhbState *phb,
+                 uint32_t intc_phandle, void *fdt, int *node_offset);
 
 void spapr_pci_rtas_init(void);
 
@@ -135,6 +151,13 @@ int spapr_phb_vfio_eeh_get_state(SpaprPhbState *sphb, int *state);
 int spapr_phb_vfio_eeh_reset(SpaprPhbState *sphb, int option);
 int spapr_phb_vfio_eeh_configure(SpaprPhbState *sphb);
 void spapr_phb_vfio_reset(DeviceState *qdev);
+void spapr_phb_nvgpu_setup(SpaprPhbState *sphb, Error **errp);
+void spapr_phb_nvgpu_free(SpaprPhbState *sphb);
+void spapr_phb_nvgpu_populate_dt(SpaprPhbState *sphb, void *fdt, int bus_off,
+                                 Error **errp);
+void spapr_phb_nvgpu_ram_populate_dt(SpaprPhbState *sphb, void *fdt);
+void spapr_phb_nvgpu_populate_pcidev_dt(PCIDevice *dev, void *fdt, int offset,
+                                        SpaprPhbState *sphb);
 #else
 static inline bool spapr_phb_eeh_available(SpaprPhbState *sphb)
 {
@@ -159,6 +182,25 @@ static inline int spapr_phb_vfio_eeh_configure(SpaprPhbState *sphb)
     return RTAS_OUT_HW_ERROR;
 }
 static inline void spapr_phb_vfio_reset(DeviceState *qdev)
+{
+}
+static inline void spapr_phb_nvgpu_setup(SpaprPhbState *sphb, Error **errp)
+{
+}
+static inline void spapr_phb_nvgpu_free(SpaprPhbState *sphb)
+{
+}
+static inline void spapr_phb_nvgpu_populate_dt(SpaprPhbState *sphb, void *fdt,
+                                               int bus_off, Error **errp)
+{
+}
+static inline void spapr_phb_nvgpu_ram_populate_dt(SpaprPhbState *sphb,
+                                                   void *fdt)
+{
+}
+static inline void spapr_phb_nvgpu_populate_pcidev_dt(PCIDevice *dev, void *fdt,
+                                                      int offset,
+                                                      SpaprPhbState *sphb)
 {
 }
 #endif

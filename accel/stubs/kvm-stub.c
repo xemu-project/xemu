@@ -11,7 +11,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "sysemu/kvm.h"
 
@@ -136,6 +135,18 @@ int kvm_irqchip_update_msi_route(KVMState *s, int virq, MSIMessage msg,
 }
 
 void kvm_irqchip_commit_routes(KVMState *s)
+{
+}
+
+void kvm_irqchip_add_change_notifier(Notifier *n)
+{
+}
+
+void kvm_irqchip_remove_change_notifier(Notifier *n)
+{
+}
+
+void kvm_irqchip_change_notify(void)
 {
 }
 

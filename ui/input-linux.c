@@ -6,10 +6,10 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "qemu/config-file.h"
+#include "qemu/main-loop.h"
+#include "qemu/module.h"
 #include "qemu/sockets.h"
-#include "sysemu/sysemu.h"
 #include "ui/input.h"
 #include "qom/object_interfaces.h"
 #include "sysemu/iothread.h"
@@ -112,6 +112,10 @@ static bool input_linux_check_toggle(InputLinux *il)
     case GRAB_TOGGLE_KEYS_ALT_ALT:
         return il->keydown[KEY_LEFTALT] &&
             il->keydown[KEY_RIGHTALT];
+
+    case GRAB_TOGGLE_KEYS_SHIFT_SHIFT:
+        return il->keydown[KEY_LEFTSHIFT] &&
+            il->keydown[KEY_RIGHTSHIFT];
 
     case GRAB_TOGGLE_KEYS_META_META:
         return il->keydown[KEY_LEFTMETA] &&

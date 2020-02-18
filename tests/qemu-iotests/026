@@ -41,9 +41,8 @@ trap "_cleanup; exit \$status" 0 1 2 3 15
 # Currently only qcow2 supports rebasing
 _supported_fmt qcow2
 _supported_proto file
-_supported_os Linux
-_default_cache_mode "writethrough"
-_supported_cache_modes "writethrough" "none"
+_default_cache_mode writethrough
+_supported_cache_modes writethrough none
 # The refcount table tests expect a certain minimum width for refcount entries
 # (so that the refcount table actually needs to grow); that minimum is 16 bits,
 # being the default refcount entry width.
@@ -108,7 +107,7 @@ if [ "$event" == "l2_load" ]; then
     $QEMU_IO -c "read $vmstate 0 128k " "$BLKDBG_TEST_IMG" | _filter_qemu_io
 fi
 
-_check_test_img 2>&1 | grep -v "refcount=1 reference=0"
+_check_test_img_ignore_leaks 2>&1 | grep -v "refcount=1 reference=0"
 
 done
 done
@@ -153,7 +152,7 @@ echo
 echo "Event: $event; errno: $errno; imm: $imm; once: $once; write $vmstate"
 $QEMU_IO -c "write $vmstate 0 64M" "$BLKDBG_TEST_IMG" | _filter_qemu_io
 
-_check_test_img 2>&1 | grep -v "refcount=1 reference=0"
+_check_test_img_ignore_leaks 2>&1 | grep -v "refcount=1 reference=0"
 
 done
 done
@@ -192,7 +191,7 @@ echo
 echo "Event: $event; errno: $errno; imm: $imm; once: $once"
 $QEMU_IO -c "write -b 0 64k" "$BLKDBG_TEST_IMG" | _filter_qemu_io
 
-_check_test_img 2>&1 | grep -v "refcount=1 reference=0"
+_check_test_img_ignore_leaks 2>&1 | grep -v "refcount=1 reference=0"
 
 done
 done

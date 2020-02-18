@@ -19,11 +19,16 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/boards.h"
 #include "hw/mem/pc-dimm.h"
+#include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "hw/mem/nvdimm.h"
 #include "hw/mem/memory-device.h"
 #include "qapi/error.h"
 #include "qapi/visitor.h"
+#include "qemu/module.h"
+#include "sysemu/hostmem.h"
 #include "sysemu/numa.h"
 #include "trace.h"
 
@@ -37,6 +42,13 @@ void pc_dimm_pre_plug(PCDIMMDevice *dimm, MachineState *machine,
 
     slot = object_property_get_int(OBJECT(dimm), PC_DIMM_SLOT_PROP,
                                    &error_abort);
+    if ((slot < 0 || slot >= machine->ram_slots) &&
+         slot != PC_DIMM_UNASSIGNED_SLOT) {
+        error_setg(&local_err, "invalid slot number, valid range is [0-%"
+                   PRIu64 "]", machine->ram_slots - 1);
+        goto out;
+    }
+
     slot = pc_dimm_get_free_slot(slot == PC_DIMM_UNASSIGNED_SLOT ? NULL : &slot,
                                  machine->ram_slots, &local_err);
     if (local_err) {
@@ -160,6 +172,8 @@ static void pc_dimm_realize(DeviceState *dev, Error **errp)
 {
     PCDIMMDevice *dimm = PC_DIMM(dev);
     PCDIMMDeviceClass *ddc = PC_DIMM_GET_CLASS(dimm);
+    MachineState *ms = MACHINE(qdev_get_machine());
+    int nb_numa_nodes = ms->numa_state->num_nodes;
 
     if (!dimm->hostmem) {
         error_setg(errp, "'" PC_DIMM_MEMDEV_PROP "' property is not set");

@@ -8,6 +8,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/module.h"
 #include "qemu/units.h"
 #include "libqtest.h"
 #include "libqos/qgraph.h"
@@ -69,7 +70,8 @@ static void nvme_register_nodes(void)
 {
     QOSGraphEdgeOptions opts = {
         .extra_device_opts = "addr=04.0,drive=drv0,serial=foo",
-        .before_cmd_line = "-drive id=drv0,if=none,file=null-co://,format=raw",
+        .before_cmd_line = "-drive id=drv0,if=none,file=null-co://,"
+                           "file.read-zeroes=on,format=raw",
     };
 
     add_qpci_address(&opts, &(QPCIAddress) { .devfn = QPCI_DEVFN(4, 0) });

@@ -21,9 +21,11 @@
 #include "qapi/error.h"
 #include "qom/object_interfaces.h"
 #include "qemu/base64.h"
+#include "qemu/module.h"
 #include "sysemu/kvm.h"
 #include "sev_i386.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/runstate.h"
 #include "trace.h"
 #include "migration/blocker.h"
 
@@ -160,6 +162,17 @@ sev_ram_block_removed(RAMBlockNotifier *n, void *host, size_t size)
 {
     int r;
     struct kvm_enc_region range;
+    ram_addr_t offset;
+    MemoryRegion *mr;
+
+    /*
+     * The RAM device presents a memory region that should be treated
+     * as IO region and should not have been pinned.
+     */
+    mr = memory_region_from_host(host, &offset);
+    if (mr && memory_region_is_ram_device(mr)) {
+        return;
+    }
 
     range.addr = (__u64)(unsigned long)host;
     range.size = size;
@@ -751,7 +764,7 @@ sev_guest_init(const char *id)
                                         "reduced-phys-bits", NULL);
     if (s->reduced_phys_bits < 1) {
         error_report("%s: reduced_phys_bits check failed, it should be >=1,"
-                     "' requested '%d'", __func__, s->reduced_phys_bits);
+                     " requested '%d'", __func__, s->reduced_phys_bits);
         goto err;
     }
 
@@ -771,7 +784,7 @@ sev_guest_init(const char *id)
     ret = sev_platform_ioctl(s->sev_fd, SEV_PLATFORM_STATUS, &status,
                              &fw_error);
     if (ret) {
-        error_report("%s: failed to get platform status ret=%d"
+        error_report("%s: failed to get platform status ret=%d "
                      "fw_error='%d: %s'", __func__, ret, fw_error,
                      fw_error_to_str(fw_error));
         goto err;

@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -41,27 +41,12 @@ void superh_cpu_do_unaligned_access(CPUState *cs, vaddr addr,
     cpu_loop_exit_restore(cs, retaddr);
 }
 
-void tlb_fill(CPUState *cs, target_ulong addr, int size,
-              MMUAccessType access_type, int mmu_idx, uintptr_t retaddr)
-{
-    int ret;
-
-    ret = superh_cpu_handle_mmu_fault(cs, addr, size, access_type, mmu_idx);
-    if (ret) {
-        /* now we have a real cpu fault */
-        cpu_loop_exit_restore(cs, retaddr);
-    }
-}
-
 #endif
 
 void helper_ldtlb(CPUSH4State *env)
 {
 #ifdef CONFIG_USER_ONLY
-    SuperHCPU *cpu = sh_env_get_cpu(env);
-
-    /* XXXXX */
-    cpu_abort(CPU(cpu), "Unhandled ldtlb");
+    cpu_abort(env_cpu(env), "Unhandled ldtlb");
 #else
     cpu_load_tlb(env);
 #endif
@@ -70,7 +55,7 @@ void helper_ldtlb(CPUSH4State *env)
 static inline void QEMU_NORETURN raise_exception(CPUSH4State *env, int index,
                                                  uintptr_t retaddr)
 {
-    CPUState *cs = CPU(sh_env_get_cpu(env));
+    CPUState *cs = env_cpu(env);
 
     cs->exception_index = index;
     cpu_loop_exit_restore(cs, retaddr);
@@ -103,7 +88,7 @@ void helper_debug(CPUSH4State *env)
 
 void helper_sleep(CPUSH4State *env)
 {
-    CPUState *cs = CPU(sh_env_get_cpu(env));
+    CPUState *cs = env_cpu(env);
 
     cs->halted = 1;
     env->in_sleep = 1;
@@ -119,7 +104,7 @@ void helper_trapa(CPUSH4State *env, uint32_t tra)
 void helper_exclusive(CPUSH4State *env)
 {
     /* We do not want cpu_restore_state to run.  */
-    cpu_loop_exit_atomic(ENV_GET_CPU(env), 0);
+    cpu_loop_exit_atomic(env_cpu(env), 0);
 }
 
 void helper_movcal(CPUSH4State *env, uint32_t address, uint32_t value)

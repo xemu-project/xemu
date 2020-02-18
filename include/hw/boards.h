@@ -3,11 +3,13 @@
 #ifndef HW_BOARDS_H
 #define HW_BOARDS_H
 
+#include "exec/memory.h"
 #include "sysemu/blockdev.h"
 #include "sysemu/accel.h"
-#include "hw/qdev.h"
+#include "qapi/qapi-types-machine.h"
+#include "qemu/module.h"
 #include "qom/object.h"
-#include "qom/cpu.h"
+#include "hw/core/cpu.h"
 
 /**
  * memory_region_allocate_system_memory - Allocate a board's main memory
@@ -57,7 +59,6 @@ void memory_region_allocate_system_memory(MemoryRegion *mr, Object *owner,
 #define MACHINE_CLASS(klass) \
     OBJECT_CLASS_CHECK(MachineClass, (klass), TYPE_MACHINE)
 
-MachineClass *find_default_machine(void);
 extern MachineState *current_machine;
 
 void machine_run_board_init(MachineState *machine);
@@ -85,7 +86,7 @@ void machine_class_allow_dynamic_sysbus_dev(MachineClass *mc, const char *type);
  * @props - CPU object properties, initialized by board
  * #vcpus_count - number of threads provided by @cpu object
  */
-typedef struct {
+typedef struct CPUArchId {
     uint64_t arch_id;
     int64_t vcpus_count;
     CpuInstanceProperties props;
@@ -159,6 +160,19 @@ typedef struct {
  * @kvm_type:
  *    Return the type of KVM corresponding to the kvm-type string option or
  *    computed based on other criteria such as the host kernel capabilities.
+ * @numa_mem_supported:
+ *    true if '--numa node.mem' option is supported and false otherwise
+ * @smp_parse:
+ *    The function pointer to hook different machine specific functions for
+ *    parsing "smp-opts" from QemuOpts to MachineState::CpuTopology and more
+ *    machine specific topology fields, such as smp_dies for PCMachine.
+ * @hotplug_allowed:
+ *    If the hook is provided, then it'll be called for each device
+ *    hotplug to check whether the device hotplug is allowed.  Return
+ *    true to grant allowance or false to reject the hotplug.  When
+ *    false is returned, an error must be set to show the reason of
+ *    the rejection.  If the hook is not provided, all hotplug will be
+ *    allowed.
  */
 struct MachineClass {
     /*< private >*/
@@ -172,9 +186,11 @@ struct MachineClass {
     const char *deprecation_reason;
 
     void (*init)(MachineState *state);
-    void (*reset)(void);
-    void (*hot_add_cpu)(const int64_t id, Error **errp);
+    void (*reset)(MachineState *state);
+    void (*wakeup)(MachineState *state);
+    void (*hot_add_cpu)(MachineState *state, const int64_t id, Error **errp);
     int (*kvm_type)(MachineState *machine, const char *arg);
+    void (*smp_parse)(MachineState *ms, QemuOpts *opts);
 
     BlockInterfaceType block_default_type;
     int units_per_default_bus;
@@ -211,9 +227,13 @@ struct MachineClass {
     bool ignore_boot_device_suffixes;
     bool smbus_no_migration_support;
     bool nvdimm_supported;
+    bool numa_mem_supported;
+    bool auto_enable_numa;
 
     HotplugHandler *(*get_hotplug_handler)(MachineState *machine,
                                            DeviceState *dev);
+    bool (*hotplug_allowed)(MachineState *state, DeviceState *dev,
+                            Error **errp);
     CpuInstanceProperties (*cpu_index_to_instance_props)(MachineState *machine,
                                                          unsigned cpu_index);
     const CPUArchIdList *(*possible_cpu_arch_ids)(MachineState *machine);
@@ -230,6 +250,20 @@ typedef struct DeviceMemoryState {
     hwaddr base;
     MemoryRegion mr;
 } DeviceMemoryState;
+
+/**
+ * CpuTopology:
+ * @cpus: the number of present logical processors on the machine
+ * @cores: the number of cores in one package
+ * @threads: the number of threads in one core
+ * @max_cpus: the maximum number of logical processors on the machine
+ */
+typedef struct CpuTopology {
+    unsigned int cpus;
+    unsigned int cores;
+    unsigned int threads;
+    unsigned int max_cpus;
+} CpuTopology;
 
 /**
  * MachineState:
@@ -273,7 +307,9 @@ struct MachineState {
     const char *cpu_type;
     AccelState *accelerator;
     CPUArchIdList *possible_cpus;
+    CpuTopology smp;
     struct NVDIMMState *nvdimms_state;
+    struct NumaState *numa_state;
 };
 
 #define DEFINE_MACHINE(namestr, machine_initfn) \
@@ -292,6 +328,12 @@ struct MachineState {
         type_register_static(&machine_initfn##_typeinfo); \
     } \
     type_init(machine_initfn##_register_types)
+
+extern GlobalProperty hw_compat_4_1[];
+extern const size_t hw_compat_4_1_len;
+
+extern GlobalProperty hw_compat_4_0[];
+extern const size_t hw_compat_4_0_len;
 
 extern GlobalProperty hw_compat_3_1[];
 extern const size_t hw_compat_3_1_len;

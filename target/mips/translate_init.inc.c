@@ -835,13 +835,12 @@ const mips_def_t mips_defs[] =
 };
 const int mips_defs_number = ARRAY_SIZE(mips_defs);
 
-void mips_cpu_list (FILE *f, fprintf_function cpu_fprintf)
+void mips_cpu_list(void)
 {
     int i;
 
     for (i = 0; i < ARRAY_SIZE(mips_defs); i++) {
-        (*cpu_fprintf)(f, "MIPS '%s'\n",
-                       mips_defs[i].name);
+        qemu_printf("MIPS '%s'\n", mips_defs[i].name);
     }
 }
 
@@ -872,8 +871,6 @@ static void r4k_mmu_init (CPUMIPSState *env, const mips_def_t *def)
 
 static void mmu_init (CPUMIPSState *env, const mips_def_t *def)
 {
-    MIPSCPU *cpu = mips_env_get_cpu(env);
-
     env->tlb = g_malloc0(sizeof(CPUMIPSTLBContext));
 
     switch (def->mmu_type) {
@@ -890,7 +887,7 @@ static void mmu_init (CPUMIPSState *env, const mips_def_t *def)
         case MMU_TYPE_R6000:
         case MMU_TYPE_R8000:
         default:
-            cpu_abort(CPU(cpu), "MMU type not supported\n");
+            cpu_abort(env_cpu(env), "MMU type not supported\n");
     }
 }
 #endif /* CONFIG_USER_ONLY */

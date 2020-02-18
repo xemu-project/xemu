@@ -22,10 +22,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #include "qemu/osdep.h"
 #include "cpu.h"
-#include "hw/hw.h"
-#include "hw/timer/m48t59.h"
+#include "hw/rtc/m48t59.h"
 #include "hw/char/serial.h"
 #include "hw/block/fdc.h"
 #include "net/net.h"
@@ -38,14 +38,15 @@
 #include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "hw/ide.h"
+#include "hw/irq.h"
 #include "hw/loader.h"
-#include "hw/timer/mc146818rtc.h"
-#include "hw/input/i8042.h"
+#include "hw/rtc/mc146818rtc.h"
 #include "hw/isa/pc87312.h"
 #include "hw/net/ne2000-isa.h"
 #include "sysemu/arch_init.h"
 #include "sysemu/kvm.h"
 #include "sysemu/qtest.h"
+#include "sysemu/reset.h"
 #include "exec/address-spaces.h"
 #include "trace.h"
 #include "elf.h"
@@ -429,7 +430,7 @@ static void ppc_prep_init(MachineState *machine)
     linux_boot = (kernel_filename != NULL);
 
     /* init CPUs */
-    for (i = 0; i < smp_cpus; i++) {
+    for (i = 0; i < machine->smp.cpus; i++) {
         cpu = POWERPC_CPU(cpu_create(machine->cpu_type));
         env = &cpu->env;
 
@@ -602,7 +603,7 @@ static int prep_set_cmos_checksum(DeviceState *dev, void *opaque)
     uint16_t checksum = *(uint16_t *)opaque;
     ISADevice *rtc;
 
-    if (object_dynamic_cast(OBJECT(dev), "mc146818rtc")) {
+    if (object_dynamic_cast(OBJECT(dev), TYPE_MC146818_RTC)) {
         rtc = ISA_DEVICE(dev);
         rtc_set_memory(rtc, 0x2e, checksum & 0xff);
         rtc_set_memory(rtc, 0x3e, checksum & 0xff);
@@ -674,6 +675,11 @@ static void ibm_40p_init(MachineState *machine)
     /* Memory controller */
     dev = DEVICE(isa_create(isa_bus, "rs6000-mc"));
     qdev_prop_set_uint32(dev, "ram-size", machine->ram_size);
+    qdev_init_nofail(dev);
+
+    /* RTC */
+    dev = DEVICE(isa_create(isa_bus, TYPE_MC146818_RTC));
+    qdev_prop_set_int32(dev, "base_year", 1900);
     qdev_init_nofail(dev);
 
     /* initialize CMOS checksums */
@@ -766,7 +772,7 @@ static void ibm_40p_init(MachineState *machine)
         boot_device = machine->boot_order[0];
     }
 
-    fw_cfg_add_i16(fw_cfg, FW_CFG_MAX_CPUS, (uint16_t)max_cpus);
+    fw_cfg_add_i16(fw_cfg, FW_CFG_MAX_CPUS, (uint16_t)machine->smp.max_cpus);
     fw_cfg_add_i64(fw_cfg, FW_CFG_RAM_SIZE, (uint64_t)machine->ram_size);
     fw_cfg_add_i16(fw_cfg, FW_CFG_MACHINE_ID, ARCH_PREP);
 
@@ -776,7 +782,6 @@ static void ibm_40p_init(MachineState *machine)
 
     fw_cfg_add_i32(fw_cfg, FW_CFG_PPC_IS_KVM, kvm_enabled());
     if (kvm_enabled()) {
-#ifdef CONFIG_KVM
         uint8_t *hypercall;
 
         fw_cfg_add_i32(fw_cfg, FW_CFG_PPC_TBFREQ, kvmppc_get_tbfreq());
@@ -784,7 +789,6 @@ static void ibm_40p_init(MachineState *machine)
         kvmppc_get_hypercall(env, hypercall, 16);
         fw_cfg_add_bytes(fw_cfg, FW_CFG_PPC_KVM_HC, hypercall, 16);
         fw_cfg_add_i32(fw_cfg, FW_CFG_PPC_KVM_PID, getpid());
-#endif
     } else {
         fw_cfg_add_i32(fw_cfg, FW_CFG_PPC_TBFREQ, NANOSECONDS_PER_SECOND);
     }

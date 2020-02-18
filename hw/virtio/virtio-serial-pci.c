@@ -17,7 +17,9 @@
 
 #include "qemu/osdep.h"
 
+#include "hw/qdev-properties.h"
 #include "hw/virtio/virtio-serial.h"
+#include "qemu/module.h"
 #include "virtio-pci.h"
 
 typedef struct VirtIOSerialPCI VirtIOSerialPCI;

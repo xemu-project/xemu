@@ -9,10 +9,11 @@
  * This work is licensed under the terms of the GNU GPL, version 2 or later.
  * See the COPYING file in the top-level directory.
  */
+
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "qemu/error-report.h"
+#include "qemu/module.h"
 #include "sysemu/hostmem.h"
 #include "sysemu/sysemu.h"
 #include "qom/object_interfaces.h"
@@ -55,28 +56,6 @@ file_backend_memory_alloc(HostMemoryBackend *backend, Error **errp)
     if (!fb->mem_path) {
         error_setg(errp, "mem-path property not set");
         return;
-    }
-
-    /*
-     * Verify pmem file size since starting a guest with an incorrect size
-     * leads to confusing failures inside the guest.
-     */
-    if (fb->is_pmem) {
-        Error *local_err = NULL;
-        uint64_t size;
-
-        size = qemu_get_pmem_size(fb->mem_path, &local_err);
-        if (!size) {
-            error_propagate(errp, local_err);
-            return;
-        }
-
-        if (backend->size > size) {
-            error_setg(errp, "size property %" PRIu64 " is larger than "
-                       "pmem file \"%s\" size %" PRIu64, backend->size,
-                       fb->mem_path, size);
-            return;
-        }
     }
 
     backend->force_prealloc = mem_prealloc;

@@ -66,7 +66,7 @@ with iotests.FilePath('t.img') as disk_path, \
                           'size': 4194304 })
     vm.shutdown()
 
-    iotests.img_info_log(remote_path, filter_path=disk_path)
+    iotests.img_info_log(remote_path)
     iotests.log("")
     iotests.img_info_log(disk_path)
 
@@ -91,7 +91,7 @@ with iotests.FilePath('t.img') as disk_path, \
                           'size': 8388608 })
     vm.shutdown()
 
-    iotests.img_info_log(remote_path, filter_path=disk_path)
+    iotests.img_info_log(remote_path)
 
     vm.launch()
     blockdev_create(vm, { 'driver': 'ssh',
@@ -108,14 +108,51 @@ with iotests.FilePath('t.img') as disk_path, \
                           'size': 4194304 })
     vm.shutdown()
 
-    iotests.img_info_log(remote_path, filter_path=disk_path)
+    iotests.img_info_log(remote_path)
 
-    md5_key = subprocess.check_output(
-        'ssh-keyscan -t rsa 127.0.0.1 2>/dev/null | grep -v "\\^#" | ' +
-        'cut -d" " -f3 | base64 -d | md5sum -b | cut -d" " -f1',
-        shell=True).rstrip().decode('ascii')
+    keys = subprocess.check_output(
+        'ssh-keyscan 127.0.0.1 2>/dev/null | grep -v "\\^#" | ' +
+        'cut -d" " -f3',
+        shell=True).rstrip().decode('ascii').split('\n')
+
+    # Mappings of base64 representations to digests
+    md5_keys = {}
+    sha1_keys = {}
+
+    for key in keys:
+        md5_keys[key] = subprocess.check_output(
+            'echo %s | base64 -d | md5sum -b | cut -d" " -f1' % key,
+            shell=True).rstrip().decode('ascii')
+
+        sha1_keys[key] = subprocess.check_output(
+            'echo %s | base64 -d | sha1sum -b | cut -d" " -f1' % key,
+            shell=True).rstrip().decode('ascii')
 
     vm.launch()
+
+    # Find correct key first
+    matching_key = None
+    for key in keys:
+        result = vm.qmp('blockdev-add',
+                        driver='ssh', node_name='node0', path=disk_path,
+                        server={
+                             'host': '127.0.0.1',
+                             'port': '22',
+                        }, host_key_check={
+                             'mode': 'hash',
+                             'type': 'md5',
+                             'hash': md5_keys[key],
+                        })
+
+        if 'error' not in result:
+            vm.qmp('blockdev-del', node_name='node0')
+            matching_key = key
+            break
+
+    if matching_key is None:
+        vm.shutdown()
+        iotests.notrun('Did not find a key that fits 127.0.0.1')
+
     blockdev_create(vm, { 'driver': 'ssh',
                           'location': {
                               'path': disk_path,
@@ -140,18 +177,13 @@ with iotests.FilePath('t.img') as disk_path, \
                               'host-key-check': {
                                   'mode': 'hash',
                                   'type': 'md5',
-                                  'hash': md5_key,
+                                  'hash': md5_keys[matching_key],
                               }
                           },
                           'size': 8388608 })
     vm.shutdown()
 
-    iotests.img_info_log(remote_path, filter_path=disk_path)
-
-    sha1_key = subprocess.check_output(
-        'ssh-keyscan -t rsa 127.0.0.1 2>/dev/null | grep -v "\\^#" | ' +
-        'cut -d" " -f3 | base64 -d | sha1sum -b | cut -d" " -f1',
-        shell=True).rstrip().decode('ascii')
+    iotests.img_info_log(remote_path)
 
     vm.launch()
     blockdev_create(vm, { 'driver': 'ssh',
@@ -178,13 +210,13 @@ with iotests.FilePath('t.img') as disk_path, \
                               'host-key-check': {
                                   'mode': 'hash',
                                   'type': 'sha1',
-                                  'hash': sha1_key,
+                                  'hash': sha1_keys[matching_key],
                               }
                           },
                           'size': 4194304 })
     vm.shutdown()
 
-    iotests.img_info_log(remote_path, filter_path=disk_path)
+    iotests.img_info_log(remote_path)
 
     #
     # Invalid path and user

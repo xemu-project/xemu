@@ -13,6 +13,8 @@
 
 #include "qemu/osdep.h"
 #include "hw/vfio/vfio-calxeda-xgmac.h"
+#include "migration/vmstate.h"
+#include "qemu/module.h"
 
 static void calxeda_xgmac_realize(DeviceState *dev, Error **errp)
 {
@@ -26,7 +28,7 @@ static void calxeda_xgmac_realize(DeviceState *dev, Error **errp)
 }
 
 static const VMStateDescription vfio_platform_calxeda_xgmac_vmstate = {
-    .name = TYPE_VFIO_CALXEDA_XGMAC,
+    .name = "vfio-calxeda-xgmac",
     .unmigratable = 1,
 };
 

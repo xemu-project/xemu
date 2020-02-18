@@ -21,6 +21,7 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "internal.h"
+#include "tcg_s390x.h"
 #include "exec/exec-all.h"
 #include "exec/helper-proto.h"
 #include "qemu/host-utils.h"
@@ -402,10 +403,23 @@ static uint32_t cc_calc_lcbb(uint64_t dst)
     return dst == 16 ? 0 : 3;
 }
 
+static uint32_t cc_calc_vc(uint64_t low, uint64_t high)
+{
+    if (high == -1ull && low == -1ull) {
+        /* all elements match */
+        return 0;
+    } else if (high == 0 && low == 0) {
+        /* no elements match */
+        return 3;
+    } else {
+        /* some elements but not all match */
+        return 1;
+    }
+}
+
 static uint32_t do_calc_cc(CPUS390XState *env, uint32_t cc_op,
                                   uint64_t src, uint64_t dst, uint64_t vr)
 {
-    S390CPU *cpu = s390_env_get_cpu(env);
     uint32_t r = 0;
 
     switch (cc_op) {
@@ -514,6 +528,9 @@ static uint32_t do_calc_cc(CPUS390XState *env, uint32_t cc_op,
     case CC_OP_LCBB:
         r = cc_calc_lcbb(dst);
         break;
+    case CC_OP_VC:
+        r = cc_calc_vc(src, dst);
+        break;
 
     case CC_OP_NZ_F32:
         r = set_cc_nz_f32(dst);
@@ -526,7 +543,7 @@ static uint32_t do_calc_cc(CPUS390XState *env, uint32_t cc_op,
         break;
 
     default:
-        cpu_abort(CPU(cpu), "Unknown CC operation: %s\n", cc_name(cc_op));
+        cpu_abort(env_cpu(env), "Unknown CC operation: %s\n", cc_name(cc_op));
     }
 
     HELPER_LOG("%s: %15s 0x%016lx 0x%016lx 0x%016lx = %d\n", __func__,
@@ -550,7 +567,7 @@ uint32_t HELPER(calc_cc)(CPUS390XState *env, uint32_t cc_op, uint64_t src,
 void HELPER(load_psw)(CPUS390XState *env, uint64_t mask, uint64_t addr)
 {
     load_psw(env, mask, addr);
-    cpu_loop_exit(CPU(s390_env_get_cpu(env)));
+    cpu_loop_exit(env_cpu(env));
 }
 
 void HELPER(sacf)(CPUS390XState *env, uint64_t a1)
@@ -572,8 +589,7 @@ void HELPER(sacf)(CPUS390XState *env, uint64_t a1)
         break;
     default:
         HELPER_LOG("unknown sacf mode: %" PRIx64 "\n", a1);
-        s390_program_interrupt(env, PGM_SPECIFICATION, 2, GETPC());
-        break;
+        tcg_s390_program_interrupt(env, PGM_SPECIFICATION, GETPC());
     }
 }
 #endif

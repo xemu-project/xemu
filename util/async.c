@@ -25,7 +25,6 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "block/aio.h"
 #include "block/thread-pool.h"
 #include "qemu/main-loop.h"
@@ -355,7 +354,11 @@ void aio_notify(AioContext *ctx)
 
 void aio_notify_accept(AioContext *ctx)
 {
-    if (atomic_xchg(&ctx->notified, false)) {
+    if (atomic_xchg(&ctx->notified, false)
+#ifdef WIN32
+        || true
+#endif
+    ) {
         event_notifier_test_and_clear(&ctx->notifier);
     }
 }
@@ -426,7 +429,6 @@ AioContext *aio_context_new(Error **errp)
 
     aio_set_event_notifier(ctx, &ctx->notifier,
                            false,
-                           (EventNotifierHandler *)
                            event_notifier_dummy_cb,
                            event_notifier_poll);
 #ifdef CONFIG_LINUX_AIO
@@ -460,9 +462,17 @@ void aio_co_schedule(AioContext *ctx, Coroutine *co)
         abort();
     }
 
+    /* The coroutine might run and release the last ctx reference before we
+     * invoke qemu_bh_schedule().  Take a reference to keep ctx alive until
+     * we're done.
+     */
+    aio_context_ref(ctx);
+
     QSLIST_INSERT_HEAD_ATOMIC(&ctx->scheduled_coroutines,
                               co, co_scheduled_next);
     qemu_bh_schedule(ctx->co_schedule_bh);
+
+    aio_context_unref(ctx);
 }
 
 void aio_co_wake(struct Coroutine *co)

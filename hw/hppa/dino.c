@@ -11,13 +11,14 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/module.h"
 #include "qemu/units.h"
 #include "qapi/error.h"
 #include "cpu.h"
-#include "hw/hw.h"
-#include "sysemu/sysemu.h"
+#include "hw/irq.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_bus.h"
+#include "migration/vmstate.h"
 #include "hppa_sys.h"
 #include "exec/address-spaces.h"
 
@@ -484,6 +485,7 @@ PCIBus *dino_init(MemoryRegion *addr_space,
         memory_region_init_alias(&s->pci_mem_alias[i], OBJECT(s),
                                  name, &s->pci_mem, addr,
                                  DINO_MEM_CHUNK_SIZE);
+        g_free(name);
     }
 
     /* Set up PCI view of memory: Bus master address space.  */

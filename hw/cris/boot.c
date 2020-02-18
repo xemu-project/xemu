@@ -23,13 +23,12 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "cpu.h"
-#include "hw/hw.h"
 #include "hw/loader.h"
 #include "elf.h"
 #include "boot.h"
 #include "qemu/cutils.h"
+#include "sysemu/reset.h"
 
 static void main_cpu_reset(void *opaque)
 {

@@ -24,11 +24,10 @@
 #include "qapi/error.h"
 #include "qapi/qmp/qnum.h"
 #include "acpi-build.h"
-#include "qemu-common.h"
 #include "qemu/bitmap.h"
 #include "qemu/error-report.h"
 #include "hw/pci/pci.h"
-#include "qom/cpu.h"
+#include "hw/core/cpu.h"
 #include "target/i386/cpu.h"
 #include "hw/misc/pvpanic.h"
 #include "hw/timer/hpet.h"
@@ -37,20 +36,22 @@
 #include "hw/acpi/cpu.h"
 #include "hw/nvram/fw_cfg.h"
 #include "hw/acpi/bios-linker-loader.h"
-#include "hw/loader.h"
 #include "hw/isa/isa.h"
 #include "hw/block/fdc.h"
 #include "hw/acpi/memory_hotplug.h"
 #include "sysemu/tpm.h"
 #include "hw/acpi/tpm.h"
 #include "hw/acpi/vmgenid.h"
+#include "hw/boards.h"
 #include "sysemu/tpm_backend.h"
-#include "hw/timer/mc146818rtc_regs.h"
+#include "hw/rtc/mc146818rtc_regs.h"
+#include "migration/vmstate.h"
 #include "hw/mem/memory-device.h"
 #include "sysemu/numa.h"
+#include "sysemu/reset.h"
 
 /* Supported chipsets: */
-#include "hw/acpi/piix4.h"
+#include "hw/southbridge/piix.h"
 #include "hw/acpi/pcihp.h"
 #include "hw/i386/ich9.h"
 #include "hw/pci/pci_bus.h"
@@ -58,6 +59,8 @@
 #include "hw/i386/x86-iommu.h"
 
 #include "hw/acpi/aml-build.h"
+#include "hw/acpi/utils.h"
+#include "hw/acpi/pci.h"
 
 #include "qom/qom-qobject.h"
 #include "hw/i386/amd_iommu.h"
@@ -85,11 +88,6 @@
 
 /* Default IOAPIC ID */
 #define ACPI_BUILD_IOAPIC_ID 0x0
-
-typedef struct AcpiMcfgInfo {
-    uint64_t mcfg_base;
-    uint32_t mcfg_size;
-} AcpiMcfgInfo;
 
 typedef struct AcpiPmInfo {
     bool s3_disabled;
@@ -125,7 +123,10 @@ typedef struct FwCfgTPMConfig {
     uint8_t tpmppi_version;
 } QEMU_PACKED FwCfgTPMConfig;
 
-static void init_common_fadt_data(Object *o, AcpiFadtData *data)
+static bool acpi_get_mcfg(AcpiMcfgInfo *mcfg);
+
+static void init_common_fadt_data(MachineState *ms, Object *o,
+                                  AcpiFadtData *data)
 {
     uint32_t io = object_property_get_uint(o, ACPI_PM_PROP_PM_IO_BASE, NULL);
     AmlAddressSpace as = AML_AS_SYSTEM_IO;
@@ -144,7 +145,8 @@ static void init_common_fadt_data(Object *o, AcpiFadtData *data)
              * CPUs for more than 8 CPUs, "Clustered Logical" mode has to be
              * used
              */
-            ((max_cpus > 8) ? (1 << ACPI_FADT_F_FORCE_APIC_CLUSTER_MODEL) : 0),
+            ((ms->smp.max_cpus > 8) ?
+                        (1 << ACPI_FADT_F_FORCE_APIC_CLUSTER_MODEL) : 0),
         .int_model = 1 /* Multiple APIC */,
         .rtc_century = RTC_CENTURY,
         .plvl2_lat = 0xfff /* C2 state not supported */,
@@ -167,17 +169,29 @@ static void init_common_fadt_data(Object *o, AcpiFadtData *data)
     *data = fadt;
 }
 
-static void acpi_get_pm_info(AcpiPmInfo *pm)
+static Object *object_resolve_type_unambiguous(const char *typename)
 {
-    Object *piix = piix4_pm_find();
-    Object *lpc = ich9_lpc_find();
+    bool ambig;
+    Object *o = object_resolve_path_type("", typename, &ambig);
+
+    if (ambig || !o) {
+        return NULL;
+    }
+    return o;
+}
+
+static void acpi_get_pm_info(MachineState *machine, AcpiPmInfo *pm)
+{
+    Object *piix = object_resolve_type_unambiguous(TYPE_PIIX4_PM);
+    Object *lpc = object_resolve_type_unambiguous(TYPE_ICH9_LPC_DEVICE);
     Object *obj = piix ? piix : lpc;
     QObject *o;
     pm->cpu_hp_io_base = 0;
     pm->pcihp_io_base = 0;
     pm->pcihp_io_len = 0;
 
-    init_common_fadt_data(obj, &pm->fadt);
+    assert(obj);
+    init_common_fadt_data(machine, obj, &pm->fadt);
     if (piix) {
         /* w2k requires FADT(rev1) or it won't boot, keep PC compatible */
         pm->fadt.rev = 1;
@@ -195,11 +209,10 @@ static void acpi_get_pm_info(AcpiPmInfo *pm)
         pm->fadt.flags |= 1 << ACPI_FADT_F_RESET_REG_SUP;
         pm->cpu_hp_io_base = ICH9_CPU_HOTPLUG_IO_BASE;
     }
-    assert(obj);
 
     /* The above need not be conditional on machine type because the reset port
      * happens to be the same on PIIX (pc) and ICH9 (q35). */
-    QEMU_BUILD_BUG_ON(ICH9_RST_CNT_IOPORT != RCR_IOPORT);
+    QEMU_BUILD_BUG_ON(ICH9_RST_CNT_IOPORT != PIIX_RCR_IOPORT);
 
     /* Fill in optional s3/s4 related properties */
     o = object_property_get_qobject(obj, ACPI_PM_PROP_S3_DISABLED, NULL);
@@ -231,8 +244,8 @@ static void acpi_get_pm_info(AcpiPmInfo *pm)
 
 static void acpi_get_misc_info(AcpiMiscInfo *info)
 {
-    Object *piix = piix4_pm_find();
-    Object *lpc = ich9_lpc_find();
+    Object *piix = object_resolve_type_unambiguous(TYPE_PIIX4_PM);
+    Object *lpc = object_resolve_type_unambiguous(TYPE_ICH9_LPC_DEVICE);
     assert(!!piix != !!lpc);
 
     if (piix) {
@@ -350,6 +363,7 @@ static void
 build_madt(GArray *table_data, BIOSLinker *linker, PCMachineState *pcms)
 {
     MachineClass *mc = MACHINE_GET_CLASS(pcms);
+    X86MachineState *x86ms = X86_MACHINE(pcms);
     const CPUArchIdList *apic_ids = mc->possible_cpu_arch_ids(MACHINE(pcms));
     int madt_start = table_data->len;
     AcpiDeviceIfClass *adevc = ACPI_DEVICE_IF_GET_CLASS(pcms->acpi_dev);
@@ -379,7 +393,7 @@ build_madt(GArray *table_data, BIOSLinker *linker, PCMachineState *pcms)
     io_apic->address = cpu_to_le32(IO_APIC_DEFAULT_ADDRESS);
     io_apic->interrupt = cpu_to_le32(0);
 
-    if (pcms->apic_xrupt_override) {
+    if (x86ms->apic_xrupt_override) {
         intsrcovr = acpi_data_push(table_data, sizeof *intsrcovr);
         intsrcovr->type   = ACPI_APIC_XRUPT_OVERRIDE;
         intsrcovr->length = sizeof(*intsrcovr);
@@ -746,10 +760,16 @@ static void crs_range_set_free(CrsRangeSet *range_set)
 
 static gint crs_range_compare(gconstpointer a, gconstpointer b)
 {
-     CrsRangeEntry *entry_a = *(CrsRangeEntry **)a;
-     CrsRangeEntry *entry_b = *(CrsRangeEntry **)b;
+    CrsRangeEntry *entry_a = *(CrsRangeEntry **)a;
+    CrsRangeEntry *entry_b = *(CrsRangeEntry **)b;
 
-     return (int64_t)entry_a->base - (int64_t)entry_b->base;
+    if (entry_a->base < entry_b->base) {
+        return -1;
+    } else if (entry_a->base > entry_b->base) {
+        return 1;
+    } else {
+        return 0;
+    }
 }
 
 /*
@@ -1273,7 +1293,7 @@ static void build_isa_devices_aml(Aml *table)
     } else if (!obj) {
         error_report("No ISA bus, unable to define IPMI ACPI data");
     } else {
-        build_acpi_ipmi_devices(scope, BUS(obj));
+        build_acpi_ipmi_devices(scope, BUS(obj), "\\_SB.PCI0.ISA");
     }
 
     aml_append(table, scope);
@@ -1792,6 +1812,18 @@ static Aml *build_q35_osc_method(void)
     return method;
 }
 
+static void build_smb0(Aml *table, I2CBus *smbus, int devnr, int func)
+{
+    Aml *scope = aml_scope("_SB.PCI0");
+    Aml *dev = aml_device("SMB0");
+
+    aml_append(dev, aml_name_decl("_HID", aml_eisaid("APP0005")));
+    aml_append(dev, aml_name_decl("_ADR", aml_int(devnr << 16 | func)));
+    build_acpi_ipmi_devices(dev, BUS(smbus), "\\_SB.PCI0.SMB0");
+    aml_append(scope, dev);
+    aml_append(table, scope);
+}
+
 static void
 build_dsdt(GArray *table_data, BIOSLinker *linker,
            AcpiPmInfo *pm, AcpiMiscInfo *misc,
@@ -1802,6 +1834,8 @@ build_dsdt(GArray *table_data, BIOSLinker *linker,
     CrsRangeSet crs_range_set;
     PCMachineState *pcms = PC_MACHINE(machine);
     PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(machine);
+    X86MachineState *x86ms = X86_MACHINE(machine);
+    AcpiMcfgInfo mcfg;
     uint32_t nr_mem = machine->ram_slots;
     int root_bus_limit = 0xFF;
     PCIBus *bus = NULL;
@@ -1844,6 +1878,9 @@ build_dsdt(GArray *table_data, BIOSLinker *linker,
         build_q35_isa_bridge(dsdt);
         build_isa_devices_aml(dsdt);
         build_q35_pci0_int(dsdt);
+        if (pcms->smbus && !pcmc->do_not_add_smb_acpi) {
+            build_smb0(dsdt, pcms->smbus, ICH9_SMB_DEV, ICH9_SMB_FUNC);
+        }
     }
 
     if (pcmc->legacy_cpu_hotplug) {
@@ -1855,7 +1892,12 @@ build_dsdt(GArray *table_data, BIOSLinker *linker,
         build_cpus_aml(dsdt, machine, opts, pm->cpu_hp_io_base,
                        "\\_SB.PCI0", "\\_GPE._E02");
     }
-    build_memory_hotplug_aml(dsdt, nr_mem, "\\_SB.PCI0", "\\_GPE._E03");
+
+    if (pcms->memhp_io_base && nr_mem) {
+        build_memory_hotplug_aml(dsdt, nr_mem, "\\_SB.PCI0",
+                                 "\\_GPE._E03", AML_SYSTEM_IO,
+                                 pcms->memhp_io_base);
+    }
 
     scope =  aml_scope("_GPE");
     {
@@ -1898,10 +1940,13 @@ build_dsdt(GArray *table_data, BIOSLinker *linker,
             scope = aml_scope("\\_SB");
             dev = aml_device("PC%.02X", bus_num);
             aml_append(dev, aml_name_decl("_UID", aml_int(bus_num)));
-            aml_append(dev, aml_name_decl("_HID", aml_eisaid("PNP0A03")));
             aml_append(dev, aml_name_decl("_BBN", aml_int(bus_num)));
             if (pci_bus_is_express(bus)) {
+                aml_append(dev, aml_name_decl("_HID", aml_eisaid("PNP0A08")));
+                aml_append(dev, aml_name_decl("_CID", aml_eisaid("PNP0A03")));
                 aml_append(dev, build_q35_osc_method());
+            } else {
+                aml_append(dev, aml_name_decl("_HID", aml_eisaid("PNP0A03")));
             }
 
             if (numa_node != NUMA_NODE_UNASSIGNED) {
@@ -1914,6 +1959,17 @@ build_dsdt(GArray *table_data, BIOSLinker *linker,
             aml_append(scope, dev);
             aml_append(dsdt, scope);
         }
+    }
+
+    /*
+     * At this point crs_range_set has all the ranges used by pci
+     * busses *other* than PCI0.  These ranges will be excluded from
+     * the PCI0._CRS.  Add mmconfig to the set so it will be excluded
+     * too.
+     */
+    if (acpi_get_mcfg(&mcfg)) {
+        crs_range_insert(crs_range_set.mem_ranges,
+                         mcfg.base, mcfg.base + mcfg.size - 1);
     }
 
     scope = aml_scope("\\_SB.PCI0");
@@ -2051,7 +2107,7 @@ build_dsdt(GArray *table_data, BIOSLinker *linker,
          * with half of the 16-bit control register. Hence, the total size
          * of the i/o region used is FW_CFG_CTL_SIZE; when using DMA, the
          * DMA control register is located at FW_CFG_DMA_IO_BASE + 4 */
-        uint8_t io_size = object_property_get_bool(OBJECT(pcms->fw_cfg),
+        uint8_t io_size = object_property_get_bool(OBJECT(x86ms->fw_cfg),
                                                    "dma_enabled", NULL) ?
                           ROUND_UP(FW_CFG_CTL_SIZE, 4) + sizeof(dma_addr_t) :
                           FW_CFG_CTL_SIZE;
@@ -2284,6 +2340,7 @@ build_srat(GArray *table_data, BIOSLinker *linker, MachineState *machine)
     int srat_start, numa_start, slots;
     uint64_t mem_len, mem_base, next_base;
     MachineClass *mc = MACHINE_GET_CLASS(machine);
+    X86MachineState *x86ms = X86_MACHINE(machine);
     const CPUArchIdList *apic_ids = mc->possible_cpu_arch_ids(machine);
     PCMachineState *pcms = PC_MACHINE(machine);
     ram_addr_t hotplugabble_address_space_size =
@@ -2354,16 +2411,16 @@ build_srat(GArray *table_data, BIOSLinker *linker, MachineState *machine)
         }
 
         /* Cut out the ACPI_PCI hole */
-        if (mem_base <= pcms->below_4g_mem_size &&
-            next_base > pcms->below_4g_mem_size) {
-            mem_len -= next_base - pcms->below_4g_mem_size;
+        if (mem_base <= x86ms->below_4g_mem_size &&
+            next_base > x86ms->below_4g_mem_size) {
+            mem_len -= next_base - x86ms->below_4g_mem_size;
             if (mem_len > 0) {
                 numamem = acpi_data_push(table_data, sizeof *numamem);
                 build_srat_memory(numamem, mem_base, mem_len, i - 1,
                                   MEM_AFFINITY_ENABLED);
             }
             mem_base = 1ULL << 32;
-            mem_len = next_base - pcms->below_4g_mem_size;
+            mem_len = next_base - x86ms->below_4g_mem_size;
             next_base = mem_base + mem_len;
         }
 
@@ -2398,35 +2455,6 @@ build_srat(GArray *table_data, BIOSLinker *linker, MachineState *machine)
                  (void *)(table_data->data + srat_start),
                  "SRAT",
                  table_data->len - srat_start, 1, NULL, NULL);
-}
-
-static void
-build_mcfg_q35(GArray *table_data, BIOSLinker *linker, AcpiMcfgInfo *info)
-{
-    AcpiTableMcfg *mcfg;
-    const char *sig;
-    int len = sizeof(*mcfg) + 1 * sizeof(mcfg->allocation[0]);
-
-    mcfg = acpi_data_push(table_data, len);
-    mcfg->allocation[0].address = cpu_to_le64(info->mcfg_base);
-    /* Only a single allocation so no need to play with segments */
-    mcfg->allocation[0].pci_segment = cpu_to_le16(0);
-    mcfg->allocation[0].start_bus_number = 0;
-    mcfg->allocation[0].end_bus_number = PCIE_MMCFG_BUS(info->mcfg_size - 1);
-
-    /* MCFG is used for ECAM which can be enabled or disabled by guest.
-     * To avoid table size changes (which create migration issues),
-     * always create the table even if there are no allocations,
-     * but set the signature to a reserved value in this case.
-     * ACPI spec requires OSPMs to ignore such tables.
-     */
-    if (info->mcfg_base == PCIE_BASE_ADDR_UNMAPPED) {
-        /* Reserved signature: ignored by OSPM */
-        sig = "QEMU";
-    } else {
-        sig = "MCFG";
-    }
-    build_header(linker, table_data, (void *)mcfg, sig, len, 1, NULL, NULL);
 }
 
 /*
@@ -2492,12 +2520,105 @@ build_dmar_q35(GArray *table_data, BIOSLinker *linker)
  */
 #define IOAPIC_SB_DEVID   (uint64_t)PCI_BUILD_BDF(0, PCI_DEVFN(0x14, 0))
 
+/*
+ * Insert IVHD entry for device and recurse, insert alias, or insert range as
+ * necessary for the PCI topology.
+ */
+static void
+insert_ivhd(PCIBus *bus, PCIDevice *dev, void *opaque)
+{
+    GArray *table_data = opaque;
+    uint32_t entry;
+
+    /* "Select" IVHD entry, type 0x2 */
+    entry = PCI_BUILD_BDF(pci_bus_num(bus), dev->devfn) << 8 | 0x2;
+    build_append_int_noprefix(table_data, entry, 4);
+
+    if (object_dynamic_cast(OBJECT(dev), TYPE_PCI_BRIDGE)) {
+        PCIBus *sec_bus = pci_bridge_get_sec_bus(PCI_BRIDGE(dev));
+        uint8_t sec = pci_bus_num(sec_bus);
+        uint8_t sub = dev->config[PCI_SUBORDINATE_BUS];
+
+        if (pci_bus_is_express(sec_bus)) {
+            /*
+             * Walk the bus if there are subordinates, otherwise use a range
+             * to cover an entire leaf bus.  We could potentially also use a
+             * range for traversed buses, but we'd need to take care not to
+             * create both Select and Range entries covering the same device.
+             * This is easier and potentially more compact.
+             *
+             * An example bare metal system seems to use Select entries for
+             * root ports without a slot (ie. built-ins) and Range entries
+             * when there is a slot.  The same system also only hard-codes
+             * the alias range for an onboard PCIe-to-PCI bridge, apparently
+             * making no effort to support nested bridges.  We attempt to
+             * be more thorough here.
+             */
+            if (sec == sub) { /* leaf bus */
+                /* "Start of Range" IVHD entry, type 0x3 */
+                entry = PCI_BUILD_BDF(sec, PCI_DEVFN(0, 0)) << 8 | 0x3;
+                build_append_int_noprefix(table_data, entry, 4);
+                /* "End of Range" IVHD entry, type 0x4 */
+                entry = PCI_BUILD_BDF(sub, PCI_DEVFN(31, 7)) << 8 | 0x4;
+                build_append_int_noprefix(table_data, entry, 4);
+            } else {
+                pci_for_each_device(sec_bus, sec, insert_ivhd, table_data);
+            }
+        } else {
+            /*
+             * If the secondary bus is conventional, then we need to create an
+             * Alias range for everything downstream.  The range covers the
+             * first devfn on the secondary bus to the last devfn on the
+             * subordinate bus.  The alias target depends on legacy versus
+             * express bridges, just as in pci_device_iommu_address_space().
+             * DeviceIDa vs DeviceIDb as per the AMD IOMMU spec.
+             */
+            uint16_t dev_id_a, dev_id_b;
+
+            dev_id_a = PCI_BUILD_BDF(sec, PCI_DEVFN(0, 0));
+
+            if (pci_is_express(dev) &&
+                pcie_cap_get_type(dev) == PCI_EXP_TYPE_PCI_BRIDGE) {
+                dev_id_b = dev_id_a;
+            } else {
+                dev_id_b = PCI_BUILD_BDF(pci_bus_num(bus), dev->devfn);
+            }
+
+            /* "Alias Start of Range" IVHD entry, type 0x43, 8 bytes */
+            build_append_int_noprefix(table_data, dev_id_a << 8 | 0x43, 4);
+            build_append_int_noprefix(table_data, dev_id_b << 8 | 0x0, 4);
+
+            /* "End of Range" IVHD entry, type 0x4 */
+            entry = PCI_BUILD_BDF(sub, PCI_DEVFN(31, 7)) << 8 | 0x4;
+            build_append_int_noprefix(table_data, entry, 4);
+        }
+    }
+}
+
+/* For all PCI host bridges, walk and insert IVHD entries */
+static int
+ivrs_host_bridges(Object *obj, void *opaque)
+{
+    GArray *ivhd_blob = opaque;
+
+    if (object_dynamic_cast(obj, TYPE_PCI_HOST_BRIDGE)) {
+        PCIBus *bus = PCI_HOST_BRIDGE(obj)->bus;
+
+        if (bus) {
+            pci_for_each_device(bus, pci_bus_num(bus), insert_ivhd, ivhd_blob);
+        }
+    }
+
+    return 0;
+}
+
 static void
 build_amd_iommu(GArray *table_data, BIOSLinker *linker)
 {
-    int ivhd_table_len = 28;
+    int ivhd_table_len = 24;
     int iommu_start = table_data->len;
     AMDVIState *s = AMD_IOMMU_DEVICE(x86_iommu_get_default());
+    GArray *ivhd_blob = g_array_new(false, true, 1);
 
     /* IVRS header */
     acpi_data_push(table_data, sizeof(AcpiTableHeader));
@@ -2519,12 +2640,34 @@ build_amd_iommu(GArray *table_data, BIOSLinker *linker)
                              1);
 
     /*
+     * A PCI bus walk, for each PCI host bridge, is necessary to create a
+     * complete set of IVHD entries.  Do this into a separate blob so that we
+     * can calculate the total IVRS table length here and then append the new
+     * blob further below.  Fall back to an entry covering all devices, which
+     * is sufficient when no aliases are present.
+     */
+    object_child_foreach_recursive(object_get_root(),
+                                   ivrs_host_bridges, ivhd_blob);
+
+    if (!ivhd_blob->len) {
+        /*
+         *   Type 1 device entry reporting all devices
+         *   These are 4-byte device entries currently reporting the range of
+         *   Refer to Spec - Table 95:IVHD Device Entry Type Codes(4-byte)
+         */
+        build_append_int_noprefix(ivhd_blob, 0x0000001, 4);
+    }
+
+    ivhd_table_len += ivhd_blob->len;
+
+    /*
      * When interrupt remapping is supported, we add a special IVHD device
      * for type IO-APIC.
      */
     if (x86_iommu_ir_supported(x86_iommu_get_default())) {
         ivhd_table_len += 8;
     }
+
     /* IVHD length */
     build_append_int_noprefix(table_data, ivhd_table_len, 2);
     /* DeviceID */
@@ -2544,12 +2687,10 @@ build_amd_iommu(GArray *table_data, BIOSLinker *linker)
                              (1UL << 2)   | /* GTSup  */
                              (1UL << 6),    /* GASup  */
                              4);
-    /*
-     *   Type 1 device entry reporting all devices
-     *   These are 4-byte device entries currently reporting the range of
-     *   Refer to Spec - Table 95:IVHD Device Entry Type Codes(4-byte)
-     */
-    build_append_int_noprefix(table_data, 0x0000001, 4);
+
+    /* IVHD entries as found above */
+    g_array_append_vals(table_data, ivhd_blob->data, ivhd_blob->len);
+    g_array_free(ivhd_blob, TRUE);
 
     /*
      * Add a special IVHD device type.
@@ -2593,12 +2734,15 @@ static bool acpi_get_mcfg(AcpiMcfgInfo *mcfg)
     if (!o) {
         return false;
     }
-    mcfg->mcfg_base = qnum_get_uint(qobject_to(QNum, o));
+    mcfg->base = qnum_get_uint(qobject_to(QNum, o));
     qobject_unref(o);
+    if (mcfg->base == PCIE_BASE_ADDR_UNMAPPED) {
+        return false;
+    }
 
     o = object_property_get_qobject(pci_host, PCIE_HOST_MCFG_SIZE, NULL);
     assert(o);
-    mcfg->mcfg_size = qnum_get_uint(qobject_to(QNum, o));
+    mcfg->size = qnum_get_uint(qobject_to(QNum, o));
     qobject_unref(o);
     return true;
 }
@@ -2608,6 +2752,7 @@ void acpi_build(AcpiBuildTables *tables, MachineState *machine)
 {
     PCMachineState *pcms = PC_MACHINE(machine);
     PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(pcms);
+    X86MachineState *x86ms = X86_MACHINE(machine);
     GArray *table_offsets;
     unsigned facs, dsdt, rsdt, fadt;
     AcpiPmInfo pm;
@@ -2620,7 +2765,7 @@ void acpi_build(AcpiBuildTables *tables, MachineState *machine)
     AcpiSlicOem slic_oem = { .id = NULL, .table_id = NULL };
     Object *vmgenid_dev;
 
-    acpi_get_pm_info(&pm);
+    acpi_get_pm_info(machine, &pm);
     acpi_get_misc_info(&misc);
     acpi_get_pci_holes(&pci_hole, &pci_hole64);
     acpi_get_slic_oem(&slic_oem);
@@ -2688,14 +2833,14 @@ void acpi_build(AcpiBuildTables *tables, MachineState *machine)
     if (pcms->numa_nodes) {
         acpi_add_table(table_offsets, tables_blob);
         build_srat(tables_blob, tables->linker, machine);
-        if (have_numa_distance) {
+        if (machine->numa_state->have_numa_distance) {
             acpi_add_table(table_offsets, tables_blob);
-            build_slit(tables_blob, tables->linker);
+            build_slit(tables_blob, tables->linker, machine);
         }
     }
     if (acpi_get_mcfg(&mcfg)) {
         acpi_add_table(table_offsets, tables_blob);
-        build_mcfg_q35(tables_blob, tables->linker, &mcfg);
+        build_mcfg(tables_blob, tables->linker, &mcfg);
     }
     if (x86_iommu_get_default()) {
         IommuType IOMMUType = x86_iommu_get_type();
@@ -2769,7 +2914,7 @@ void acpi_build(AcpiBuildTables *tables, MachineState *machine)
          */
         int legacy_aml_len =
             pcmc->legacy_acpi_table_size +
-            ACPI_BUILD_LEGACY_CPU_AML_SIZE * pcms->apic_id_limit;
+            ACPI_BUILD_LEGACY_CPU_AML_SIZE * x86ms->apic_id_limit;
         int legacy_table_size =
             ROUND_UP(tables_blob->len - aml_len + legacy_aml_len,
                      ACPI_BUILD_ALIGN_SIZE);
@@ -2845,14 +2990,6 @@ static void acpi_build_reset(void *build_opaque)
     build_state->patched = 0;
 }
 
-static MemoryRegion *acpi_add_rom_blob(AcpiBuildState *build_state,
-                                       GArray *blob, const char *name,
-                                       uint64_t max_size)
-{
-    return rom_add_blob(name, blob->data, acpi_data_len(blob), max_size, -1,
-                        name, acpi_build_update, build_state, NULL, true);
-}
-
 static const VMStateDescription vmstate_acpi_build = {
     .name = "acpi_build",
     .version_id = 1,
@@ -2867,13 +3004,14 @@ void acpi_setup(void)
 {
     PCMachineState *pcms = PC_MACHINE(qdev_get_machine());
     PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(pcms);
+    X86MachineState *x86ms = X86_MACHINE(pcms);
     AcpiBuildTables tables;
     AcpiBuildState *build_state;
     Object *vmgenid_dev;
     TPMIf *tpm;
     static FwCfgTPMConfig tpm_config;
 
-    if (!pcms->fw_cfg) {
+    if (!x86ms->fw_cfg) {
         ACPI_BUILD_DPRINTF("No fw cfg. Bailing out.\n");
         return;
     }
@@ -2894,16 +3032,17 @@ void acpi_setup(void)
     acpi_build(&tables, MACHINE(pcms));
 
     /* Now expose it all to Guest */
-    build_state->table_mr = acpi_add_rom_blob(build_state, tables.table_data,
-                                               ACPI_BUILD_TABLE_FILE,
-                                               ACPI_BUILD_TABLE_MAX_SIZE);
+    build_state->table_mr = acpi_add_rom_blob(acpi_build_update,
+                                              build_state, tables.table_data,
+                                              ACPI_BUILD_TABLE_FILE,
+                                              ACPI_BUILD_TABLE_MAX_SIZE);
     assert(build_state->table_mr != NULL);
 
     build_state->linker_mr =
-        acpi_add_rom_blob(build_state, tables.linker->cmd_blob,
-                          "etc/table-loader", 0);
+        acpi_add_rom_blob(acpi_build_update, build_state,
+                          tables.linker->cmd_blob, "etc/table-loader", 0);
 
-    fw_cfg_add_file(pcms->fw_cfg, ACPI_BUILD_TPMLOG_FILE,
+    fw_cfg_add_file(x86ms->fw_cfg, ACPI_BUILD_TPMLOG_FILE,
                     tables.tcpalog->data, acpi_data_len(tables.tcpalog));
 
     tpm = tpm_find();
@@ -2913,13 +3052,13 @@ void acpi_setup(void)
             .tpm_version = tpm_get_version(tpm),
             .tpmppi_version = TPM_PPI_VERSION_1_30
         };
-        fw_cfg_add_file(pcms->fw_cfg, "etc/tpm/config",
+        fw_cfg_add_file(x86ms->fw_cfg, "etc/tpm/config",
                         &tpm_config, sizeof tpm_config);
     }
 
     vmgenid_dev = find_vmgenid_dev();
     if (vmgenid_dev) {
-        vmgenid_add_fw_cfg(VMGENID(vmgenid_dev), pcms->fw_cfg,
+        vmgenid_add_fw_cfg(VMGENID(vmgenid_dev), x86ms->fw_cfg,
                            tables.vmgenid);
     }
 
@@ -2932,14 +3071,15 @@ void acpi_setup(void)
         uint32_t rsdp_size = acpi_data_len(tables.rsdp);
 
         build_state->rsdp = g_memdup(tables.rsdp->data, rsdp_size);
-        fw_cfg_add_file_callback(pcms->fw_cfg, ACPI_BUILD_RSDP_FILE,
+        fw_cfg_add_file_callback(x86ms->fw_cfg, ACPI_BUILD_RSDP_FILE,
                                  acpi_build_update, NULL, build_state,
                                  build_state->rsdp, rsdp_size, true);
         build_state->rsdp_mr = NULL;
     } else {
         build_state->rsdp = NULL;
-        build_state->rsdp_mr = acpi_add_rom_blob(build_state, tables.rsdp,
-                                                  ACPI_BUILD_RSDP_FILE, 0);
+        build_state->rsdp_mr = acpi_add_rom_blob(acpi_build_update,
+                                                 build_state, tables.rsdp,
+                                                 ACPI_BUILD_RSDP_FILE, 0);
     }
 
     qemu_register_reset(acpi_build_reset, build_state);

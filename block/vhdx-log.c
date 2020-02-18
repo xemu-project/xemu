@@ -17,12 +17,11 @@
  * See the COPYING.LIB file in the top-level directory.
  *
  */
+
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "block/block_int.h"
 #include "qemu/error-report.h"
-#include "qemu/module.h"
 #include "qemu/bswap.h"
 #include "vhdx.h"
 
@@ -551,15 +550,15 @@ static int vhdx_log_flush(BlockDriverState *bs, BDRVVHDXState *s,
         }
         if (file_length < desc_entries->hdr.last_file_offset) {
             new_file_size = desc_entries->hdr.last_file_offset;
-            if (new_file_size % (1024*1024)) {
+            if (new_file_size % (1 * MiB)) {
                 /* round up to nearest 1MB boundary */
                 new_file_size = QEMU_ALIGN_UP(new_file_size, MiB);
                 if (new_file_size > INT64_MAX) {
                     ret = -EINVAL;
                     goto exit;
                 }
-                ret = bdrv_truncate(bs->file, new_file_size, PREALLOC_MODE_OFF,
-                                    NULL);
+                ret = bdrv_truncate(bs->file, new_file_size, false,
+                                    PREALLOC_MODE_OFF, NULL);
                 if (ret < 0) {
                     goto exit;
                 }

@@ -15,16 +15,14 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "hw/hw.h"
+#include "qemu/module.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_ids.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/msix.h"
-#include "hw/qdev-core.h"
 #include "hw/qdev-properties.h"
 #include "cpu.h"
 #include "trace.h"
-#include "sysemu/sysemu.h"
 #include "monitor/monitor.h"
 #include "hw/rdma/rdma.h"
 
@@ -35,6 +33,7 @@
 #include <infiniband/verbs.h>
 #include "pvrdma.h"
 #include "standard-headers/rdma/vmw_pvrdma-abi.h"
+#include "sysemu/runstate.h"
 #include "standard-headers/drivers/infiniband/hw/vmw_pvrdma/pvrdma_dev_api.h"
 #include "pvrdma_qp_ops.h"
 
@@ -53,6 +52,7 @@ static Property pvrdma_dev_properties[] = {
     DEFINE_PROP_INT32("dev-caps-max-qp-init-rd-atom", PVRDMADev,
                       dev_attr.max_qp_init_rd_atom, MAX_QP_INIT_RD_ATOM),
     DEFINE_PROP_INT32("dev-caps-max-ah", PVRDMADev, dev_attr.max_ah, MAX_AH),
+    DEFINE_PROP_INT32("dev-caps-max-srq", PVRDMADev, dev_attr.max_srq, MAX_SRQ),
     DEFINE_PROP_CHR("mad-chardev", PVRDMADev, mad_chr),
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -261,6 +261,9 @@ static void init_dsr_dev_caps(PVRDMADev *dev)
     dsr->caps.max_mr = dev->dev_attr.max_mr;
     dsr->caps.max_pd = dev->dev_attr.max_pd;
     dsr->caps.max_ah = dev->dev_attr.max_ah;
+    dsr->caps.max_srq = dev->dev_attr.max_srq;
+    dsr->caps.max_srq_wr = dev->dev_attr.max_srq_wr;
+    dsr->caps.max_srq_sge = dev->dev_attr.max_srq_sge;
     dsr->caps.gid_tbl_len = MAX_GIDS;
     dsr->caps.sys_image_guid = 0;
     dsr->caps.node_guid = dev->node_guid;
@@ -485,6 +488,13 @@ static void pvrdma_uar_write(void *opaque, hwaddr addr, uint64_t val,
             pvrdma_cq_poll(&dev->rdma_dev_res, val & PVRDMA_UAR_HANDLE_MASK);
         }
         break;
+    case PVRDMA_UAR_SRQ_OFFSET:
+        if (val & PVRDMA_UAR_SRQ_RECV) {
+            trace_pvrdma_uar_write(addr, val, "QP", "SRQ",
+                                   val & PVRDMA_UAR_HANDLE_MASK, 0);
+            pvrdma_srq_recv(dev, val & PVRDMA_UAR_HANDLE_MASK);
+        }
+        break;
     default:
         rdma_error_report("Unsupported command, addr=0x%"PRIx64", val=0x%"PRIx64,
                           addr, val);
@@ -554,6 +564,11 @@ static void init_dev_caps(PVRDMADev *dev)
 
     dev->dev_attr.max_cqe = pg_tbl_bytes / sizeof(struct pvrdma_cqe) -
                             TARGET_PAGE_SIZE; /* First page is ring state */
+
+    dev->dev_attr.max_srq_wr = pg_tbl_bytes /
+                                ((sizeof(struct pvrdma_rq_wqe_hdr) +
+                                sizeof(struct pvrdma_sge)) *
+                                dev->dev_attr.max_sge) - TARGET_PAGE_SIZE;
 }
 
 static int pvrdma_check_ram_shared(Object *obj, void *opaque)
@@ -586,7 +601,7 @@ static void pvrdma_realize(PCIDevice *pdev, Error **errp)
     rdma_info_report("Initializing device %s %x.%x", pdev->name,
                      PCI_SLOT(pdev->devfn), PCI_FUNC(pdev->devfn));
 
-    if (TARGET_PAGE_SIZE != getpagesize()) {
+    if (TARGET_PAGE_SIZE != qemu_real_host_page_size) {
         error_setg(errp, "Target page size must be the same as host page size");
         return;
     }
@@ -648,6 +663,12 @@ static void pvrdma_realize(PCIDevice *pdev, Error **errp)
 
     dev->shutdown_notifier.notify = pvrdma_shutdown_notifier;
     qemu_register_shutdown_notifier(&dev->shutdown_notifier);
+
+#ifdef LEGACY_RDMA_REG_MR
+    rdma_info_report("Using legacy reg_mr");
+#else
+    rdma_info_report("Using iova reg_mr");
+#endif
 
 out:
     if (rc) {

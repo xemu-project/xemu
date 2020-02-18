@@ -24,15 +24,16 @@
  * THE SOFTWARE.
  *
  */
+
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "cpu.h"
-#include "hw/hw.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "net/net.h"
-#include "hw/qdev.h"
+#include "migration/vmstate.h"
 #include "hw/ppc/spapr.h"
 #include "hw/ppc/spapr_vio.h"
+#include "hw/qdev-properties.h"
 #include "sysemu/sysemu.h"
 #include "trace.h"
 
@@ -265,7 +266,7 @@ static ssize_t spapr_vlan_receive(NetClientState *nc, const uint8_t *buf,
     }
 
     if (sdev->signal_state & 1) {
-        qemu_irq_pulse(spapr_vio_qirq(sdev));
+        spapr_vio_irq_pulse(sdev);
     }
 
     return size;

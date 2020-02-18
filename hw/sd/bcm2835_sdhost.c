@@ -13,8 +13,11 @@
 
 #include "qemu/osdep.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "sysemu/blockdev.h"
+#include "hw/irq.h"
 #include "hw/sd/bcm2835_sdhost.h"
+#include "migration/vmstate.h"
 #include "trace.h"
 
 #define TYPE_BCM2835_SDHOST_BUS "bcm2835-sdhost-bus"

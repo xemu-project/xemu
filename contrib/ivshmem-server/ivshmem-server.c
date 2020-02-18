@@ -6,7 +6,6 @@
  * top-level directory.
  */
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/host-utils.h"
 #include "qemu/sockets.h"
 
@@ -354,6 +353,9 @@ ivshmem_server_start(IvshmemServer *server)
 err_close_sock:
     close(sock_fd);
 err_close_shm:
+    if (server->use_shm_open) {
+        shm_unlink(server->shm_path);
+    }
     close(shm_fd);
     return -1;
 }
@@ -371,6 +373,9 @@ ivshmem_server_close(IvshmemServer *server)
     }
 
     unlink(server->unix_sock_path);
+    if (server->use_shm_open) {
+        shm_unlink(server->shm_path);
+    }
     close(server->sock_fd);
     close(server->shm_fd);
     server->sock_fd = -1;

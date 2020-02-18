@@ -27,8 +27,6 @@
 #ifndef QEMU_VNC_H
 #define QEMU_VNC_H
 
-#include "qemu-common.h"
-#include "qapi/qapi-types-ui.h"
 #include "qemu/queue.h"
 #include "qemu/thread.h"
 #include "ui/console.h"
@@ -184,6 +182,8 @@ struct VncDisplay
 #ifdef CONFIG_VNC_SASL
     VncDisplaySASL sasl;
 #endif
+
+    AudioState *audio_state;
 };
 
 typedef struct VncTight {
@@ -338,10 +338,10 @@ struct VncState
     /* Encoding specific, if you add something here, don't forget to
      *  update vnc_async_encoding_start()
      */
-    VncTight tight;
+    VncTight *tight;
     VncZlib zlib;
     VncHextile hextile;
-    VncZrle zrle;
+    VncZrle *zrle;
     VncZywrle zywrle;
 
     Notifier mouse_mode_notifier;

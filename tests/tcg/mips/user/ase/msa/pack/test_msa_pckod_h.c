@@ -28,12 +28,14 @@
 
 #define TEST_COUNT_TOTAL (                                                \
             (PATTERN_INPUTS_SHORT_COUNT) * (PATTERN_INPUTS_SHORT_COUNT) + \
-            (RANDOM_INPUTS_SHORT_COUNT) * (RANDOM_INPUTS_SHORT_COUNT))
+            3 * (RANDOM_INPUTS_SHORT_COUNT) * (RANDOM_INPUTS_SHORT_COUNT))
 
 
 int32_t main(void)
 {
-    char *instruction_name = "PCKOD.H";
+    char *isa_ase_name = "MSA";
+    char *group_name = "Pack";
+    char *instruction_name =  "PCKOD.H";
     int32_t ret;
     uint32_t i, j;
     struct timeval start, end;
@@ -121,7 +123,41 @@ int32_t main(void)
         { 0x12f7153ffbbe4d93ULL, 0x8df1a942704f5e31ULL, },
         { 0x27d8ab2bac5ab9cfULL, 0x8df1a942704f5e31ULL, },
         { 0x8df1a942704f5e31ULL, 0x8df1a942704f5e31ULL, },
+        { 0x4b67fe7b886a2862ULL, 0x8df1704f8df1704fULL, },    /*  80  */
+        { 0x12f7153ffbbe4d93ULL, 0x8df18df14b67886aULL, },
+        { 0x27d8ab2bac5ab9cfULL, 0x8df14b6712f7fbbeULL, },
+        { 0x8df1a942704f5e31ULL, 0x8df112f727d8ac5aULL, },
+        { 0x4b67fe7b886a2862ULL, 0x8df127d88df1704fULL, },
+        { 0x12f7153ffbbe4d93ULL, 0x8df18df14b67886aULL, },
+        { 0x27d8ab2bac5ab9cfULL, 0x8df14b6712f7fbbeULL, },
+        { 0x8df1a942704f5e31ULL, 0x8df112f727d8ac5aULL, },
+        { 0x4b67fe7b886a2862ULL, 0x8df127d88df1704fULL, },    /*  88  */
+        { 0x12f7153ffbbe4d93ULL, 0x8df18df14b67886aULL, },
+        { 0x27d8ab2bac5ab9cfULL, 0x8df14b6712f7fbbeULL, },
+        { 0x8df1a942704f5e31ULL, 0x8df112f727d8ac5aULL, },
+        { 0x4b67fe7b886a2862ULL, 0x8df127d88df1704fULL, },
+        { 0x12f7153ffbbe4d93ULL, 0x8df18df14b67886aULL, },
+        { 0x27d8ab2bac5ab9cfULL, 0x8df14b6712f7fbbeULL, },
+        { 0x8df1a942704f5e31ULL, 0x8df112f727d8ac5aULL, },
+        { 0x8df127d88df1704fULL, 0x4b67fe7b886a2862ULL, },    /*  96  */
+        { 0x4b67886a8df18df1ULL, 0x4b67fe7b886a2862ULL, },
+        { 0x4b67886a4b678df1ULL, 0x4b67fe7b886a2862ULL, },
+        { 0x4b67886a4b674b67ULL, 0x4b67fe7b886a2862ULL, },
+        { 0x4b67886a4b674b67ULL, 0x12f7153ffbbe4d93ULL, },
+        { 0x12f7fbbe4b674b67ULL, 0x12f7153ffbbe4d93ULL, },
+        { 0x12f7fbbe12f74b67ULL, 0x12f7153ffbbe4d93ULL, },
+        { 0x12f7fbbe12f712f7ULL, 0x12f7153ffbbe4d93ULL, },
+        { 0x12f7fbbe12f712f7ULL, 0x27d8ab2bac5ab9cfULL, },    /* 104  */
+        { 0x27d8ac5a12f712f7ULL, 0x27d8ab2bac5ab9cfULL, },
+        { 0x27d8ac5a27d812f7ULL, 0x27d8ab2bac5ab9cfULL, },
+        { 0x27d8ac5a27d827d8ULL, 0x27d8ab2bac5ab9cfULL, },
+        { 0x27d8ac5a27d827d8ULL, 0x8df1a942704f5e31ULL, },
+        { 0x8df1704f27d827d8ULL, 0x8df1a942704f5e31ULL, },
+        { 0x8df1704f8df127d8ULL, 0x8df1a942704f5e31ULL, },
+        { 0x8df1704f8df18df1ULL, 0x8df1a942704f5e31ULL, },
     };
+
+    reset_msa_registers();
 
     gettimeofday(&start, NULL);
 
@@ -141,13 +177,38 @@ int32_t main(void)
         }
     }
 
+    for (i = 0; i < RANDOM_INPUTS_SHORT_COUNT; i++) {
+        for (j = 0; j < RANDOM_INPUTS_SHORT_COUNT; j++) {
+            do_msa_PCKOD_H__DDT(b128_random[i], b128_random[j],
+                                b128_result[
+                                    ((PATTERN_INPUTS_SHORT_COUNT) *
+                                     (PATTERN_INPUTS_SHORT_COUNT)) +
+                                    ((RANDOM_INPUTS_SHORT_COUNT) *
+                                     (RANDOM_INPUTS_SHORT_COUNT)) +
+                                    RANDOM_INPUTS_SHORT_COUNT * i + j]);
+        }
+    }
+
+    for (i = 0; i < RANDOM_INPUTS_SHORT_COUNT; i++) {
+        for (j = 0; j < RANDOM_INPUTS_SHORT_COUNT; j++) {
+            do_msa_PCKOD_H__DSD(b128_random[i], b128_random[j],
+                                b128_result[
+                                    ((PATTERN_INPUTS_SHORT_COUNT) *
+                                     (PATTERN_INPUTS_SHORT_COUNT)) +
+                                    (2 * (RANDOM_INPUTS_SHORT_COUNT) *
+                                     (RANDOM_INPUTS_SHORT_COUNT)) +
+                                    RANDOM_INPUTS_SHORT_COUNT * i + j]);
+        }
+    }
+
     gettimeofday(&end, NULL);
 
     elapsed_time = (end.tv_sec - start.tv_sec) * 1000.0;
     elapsed_time += (end.tv_usec - start.tv_usec) / 1000.0;
 
-    ret = check_results(instruction_name, TEST_COUNT_TOTAL, elapsed_time,
-                        &b128_result[0][0], &b128_expect[0][0]);
+    ret = check_results_128(isa_ase_name, group_name, instruction_name,
+                            TEST_COUNT_TOTAL, elapsed_time,
+                            &b128_result[0][0], &b128_expect[0][0]);
 
     return ret;
 }

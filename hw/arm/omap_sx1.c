@@ -27,11 +27,10 @@
  */
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "hw/hw.h"
 #include "ui/console.h"
 #include "hw/arm/omap.h"
 #include "hw/boards.h"
-#include "hw/arm/arm.h"
+#include "hw/arm/boot.h"
 #include "hw/block/flash.h"
 #include "sysemu/qtest.h"
 #include "exec/address-spaces.h"
@@ -104,6 +103,7 @@ static void sx1_init(MachineState *machine, const int version)
 {
     struct omap_mpu_state_s *mpu;
     MemoryRegion *address_space = get_system_memory();
+    MemoryRegion *dram = g_new(MemoryRegion, 1);
     MemoryRegion *flash = g_new(MemoryRegion, 1);
     MemoryRegion *cs = g_new(MemoryRegion, 4);
     static uint32_t cs0val = 0x00213090;
@@ -119,8 +119,11 @@ static void sx1_init(MachineState *machine, const int version)
         flash_size = flash2_size;
     }
 
-    mpu = omap310_mpu_init(address_space, sx1_binfo.ram_size,
-                           machine->cpu_type);
+    memory_region_allocate_system_memory(dram, NULL, "omap1.dram",
+                                         sx1_binfo.ram_size);
+    memory_region_add_subregion(address_space, OMAP_EMIFF_BASE, dram);
+
+    mpu = omap310_mpu_init(dram, machine->cpu_type);
 
     /* External Flash (EMIFS) */
     memory_region_init_ram(flash, NULL, "omap_sx1.flash0-0", flash_size,
@@ -196,10 +199,7 @@ static void sx1_init(MachineState *machine, const int version)
     }
 
     /* Load the kernel.  */
-    sx1_binfo.kernel_filename = machine->kernel_filename;
-    sx1_binfo.kernel_cmdline = machine->kernel_cmdline;
-    sx1_binfo.initrd_filename = machine->initrd_filename;
-    arm_load_kernel(mpu->cpu, &sx1_binfo);
+    arm_load_kernel(mpu->cpu, machine, &sx1_binfo);
 
     /* TODO: fix next line */
     //~ qemu_console_resize(ds, 640, 480);

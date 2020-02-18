@@ -5,11 +5,12 @@
  *
  * This code is licensed under the GPL
  */
+
 #include "qemu/osdep.h"
 #include "qemu/error-report.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "hw/hw.h"
+#include "hw/irq.h"
 #include "hw/m68k/mcf.h"
 #include "qemu/timer.h"
 #include "hw/ptimer.h"
@@ -55,10 +56,12 @@ static void m5206_timer_recalibrate(m5206_timer_state *s)
     int prescale;
     int mode;
 
+    ptimer_transaction_begin(s->timer);
     ptimer_stop(s->timer);
 
-    if ((s->tmr & TMR_RST) == 0)
-        return;
+    if ((s->tmr & TMR_RST) == 0) {
+        goto exit;
+    }
 
     prescale = (s->tmr >> 8) + 1;
     mode = (s->tmr >> 1) & 3;
@@ -76,6 +79,8 @@ static void m5206_timer_recalibrate(m5206_timer_state *s)
     ptimer_set_limit(s->timer, s->trr, 0);
 
     ptimer_run(s->timer, 0);
+exit:
+    ptimer_transaction_commit(s->timer);
 }
 
 static void m5206_timer_trigger(void *opaque)
@@ -121,7 +126,9 @@ static void m5206_timer_write(m5206_timer_state *s, uint32_t addr, uint32_t val)
         s->tcr = val;
         break;
     case 0xc:
+        ptimer_transaction_begin(s->timer);
         ptimer_set_count(s->timer, val);
+        ptimer_transaction_commit(s->timer);
         break;
     case 0x11:
         s->ter &= ~val;
@@ -135,11 +142,9 @@ static void m5206_timer_write(m5206_timer_state *s, uint32_t addr, uint32_t val)
 static m5206_timer_state *m5206_timer_init(qemu_irq irq)
 {
     m5206_timer_state *s;
-    QEMUBH *bh;
 
     s = g_new0(m5206_timer_state, 1);
-    bh = qemu_bh_new(m5206_timer_trigger, s);
-    s->timer = ptimer_init(bh, PTIMER_POLICY_DEFAULT);
+    s->timer = ptimer_init(m5206_timer_trigger, s, PTIMER_POLICY_DEFAULT);
     s->irq = irq;
     m5206_timer_reset(s);
     return s;

@@ -28,8 +28,11 @@
 #include "vnc.h"
 #include "vnc-jobs.h"
 #include "trace.h"
+#include "hw/qdev-core.h"
 #include "sysemu/sysemu.h"
 #include "qemu/error-report.h"
+#include "qemu/main-loop.h"
+#include "qemu/module.h"
 #include "qemu/option.h"
 #include "qemu/sockets.h"
 #include "qemu/timer.h"
@@ -43,6 +46,7 @@
 #include "crypto/hash.h"
 #include "crypto/tlscredsanon.h"
 #include "crypto/tlscredsx509.h"
+#include "crypto/random.h"
 #include "qom/object_interfaces.h"
 #include "qemu/cutils.h"
 #include "io/dns-resolver.h"
@@ -274,6 +278,7 @@ static void vnc_client_cache_addr(VncState *client)
     vnc_init_basic_info_from_remote_addr(client->sioc,
                                          qapi_VncClientInfo_base(client->info),
                                          &err);
+    client->info->websocket = client->websocket;
     if (err) {
         qapi_free_VncClientInfo(client->info);
         client->info = NULL;
@@ -1220,7 +1225,7 @@ static void audio_add(VncState *vs)
     ops.destroy = audio_capture_destroy;
     ops.capture = audio_capture;
 
-    vs->audio_cap = AUD_add_capture(&vs->as, &ops, vs);
+    vs->audio_cap = AUD_add_capture(vs->vd->audio_state, &vs->as, &ops, vs);
     if (!vs->audio_cap) {
         error_report("Failed to add audio capture");
     }
@@ -1302,6 +1307,8 @@ void vnc_disconnect_finish(VncState *vs)
     object_unref(OBJECT(vs->sioc));
     vs->sioc = NULL;
     vs->magic = 0;
+    g_free(vs->zrle);
+    g_free(vs->tight);
     g_free(vs);
 }
 
@@ -2053,8 +2060,8 @@ static void set_encodings(VncState *vs, int32_t *encodings, size_t n_encodings)
 
     vs->features = 0;
     vs->vnc_encoding = 0;
-    vs->tight.compression = 9;
-    vs->tight.quality = -1; /* Lossless by default */
+    vs->tight->compression = 9;
+    vs->tight->quality = -1; /* Lossless by default */
     vs->absolute = -1;
 
     /*
@@ -2122,11 +2129,11 @@ static void set_encodings(VncState *vs, int32_t *encodings, size_t n_encodings)
             vs->features |= VNC_FEATURE_LED_STATE_MASK;
             break;
         case VNC_ENCODING_COMPRESSLEVEL0 ... VNC_ENCODING_COMPRESSLEVEL0 + 9:
-            vs->tight.compression = (enc & 0x0F);
+            vs->tight->compression = (enc & 0x0F);
             break;
         case VNC_ENCODING_QUALITYLEVEL0 ... VNC_ENCODING_QUALITYLEVEL0 + 9:
             if (vs->vd->lossy) {
-                vs->tight.quality = (enc & 0x0F);
+                vs->tight->quality = (enc & 0x0F);
             }
             break;
         default:
@@ -2535,14 +2542,16 @@ void start_client_init(VncState *vs)
     vnc_read_when(vs, protocol_client_init, 1);
 }
 
-static void make_challenge(VncState *vs)
+static void authentication_failed(VncState *vs)
 {
-    int i;
-
-    srand(time(NULL)+getpid()+getpid()*987654+rand());
-
-    for (i = 0 ; i < sizeof(vs->challenge) ; i++)
-        vs->challenge[i] = (int) (256.0*rand()/(RAND_MAX+1.0));
+    vnc_write_u32(vs, 1); /* Reject auth */
+    if (vs->minor >= 8) {
+        static const char err[] = "Authentication failed";
+        vnc_write_u32(vs, sizeof(err));
+        vnc_write(vs, err, sizeof(err));
+    }
+    vnc_flush(vs);
+    vnc_client_error(vs);
 }
 
 static int protocol_client_auth_vnc(VncState *vs, uint8_t *data, size_t len)
@@ -2609,21 +2618,23 @@ static int protocol_client_auth_vnc(VncState *vs, uint8_t *data, size_t len)
     return 0;
 
 reject:
-    vnc_write_u32(vs, 1); /* Reject auth */
-    if (vs->minor >= 8) {
-        static const char err[] = "Authentication failed";
-        vnc_write_u32(vs, sizeof(err));
-        vnc_write(vs, err, sizeof(err));
-    }
-    vnc_flush(vs);
-    vnc_client_error(vs);
+    authentication_failed(vs);
     qcrypto_cipher_free(cipher);
     return 0;
 }
 
 void start_auth_vnc(VncState *vs)
 {
-    make_challenge(vs);
+    Error *err = NULL;
+
+    if (qcrypto_random_bytes(vs->challenge, sizeof(vs->challenge), &err)) {
+        trace_vnc_auth_fail(vs, vs->auth, "cannot get random bytes",
+                            error_get_pretty(err));
+        error_free(err);
+        authentication_failed(vs);
+        return;
+    }
+
     /* Send client a 'random' challenge */
     vnc_write(vs, vs->challenge, sizeof(vs->challenge));
     vnc_flush(vs);
@@ -2638,13 +2649,7 @@ static int protocol_client_auth(VncState *vs, uint8_t *data, size_t len)
      * must pick the one we sent. Verify this */
     if (data[0] != vs->auth) { /* Reject auth */
        trace_vnc_auth_reject(vs, vs->auth, (int)data[0]);
-       vnc_write_u32(vs, 1);
-       if (vs->minor >= 8) {
-           static const char err[] = "Authentication failed";
-           vnc_write_u32(vs, sizeof(err));
-           vnc_write(vs, err, sizeof(err));
-       }
-       vnc_client_error(vs);
+       authentication_failed(vs);
     } else { /* Accept requested auth */
        trace_vnc_auth_start(vs, vs->auth);
        switch (vs->auth) {
@@ -2673,13 +2678,7 @@ static int protocol_client_auth(VncState *vs, uint8_t *data, size_t len)
 
        default: /* Should not be possible, but just in case */
            trace_vnc_auth_fail(vs, vs->auth, "Unhandled auth method", "");
-           vnc_write_u8(vs, 1);
-           if (vs->minor >= 8) {
-               static const char err[] = "Authentication failed";
-               vnc_write_u32(vs, sizeof(err));
-               vnc_write(vs, err, sizeof(err));
-           }
-           vnc_client_error(vs);
+           authentication_failed(vs);
        }
     }
     return 0;
@@ -3037,6 +3036,8 @@ static void vnc_connect(VncDisplay *vd, QIOChannelSocket *sioc,
     int i;
 
     trace_vnc_client_connect(vs, sioc);
+    vs->zrle = g_new0(VncZrle, 1);
+    vs->tight = g_new0(VncTight, 1);
     vs->magic = VNC_MAGIC;
     vs->sioc = sioc;
     object_ref(OBJECT(vs->sioc));
@@ -3048,19 +3049,19 @@ static void vnc_connect(VncDisplay *vd, QIOChannelSocket *sioc,
     buffer_init(&vs->output,         "vnc-output/%p", sioc);
     buffer_init(&vs->jobs_buffer,    "vnc-jobs_buffer/%p", sioc);
 
-    buffer_init(&vs->tight.tight,    "vnc-tight/%p", sioc);
-    buffer_init(&vs->tight.zlib,     "vnc-tight-zlib/%p", sioc);
-    buffer_init(&vs->tight.gradient, "vnc-tight-gradient/%p", sioc);
+    buffer_init(&vs->tight->tight,    "vnc-tight/%p", sioc);
+    buffer_init(&vs->tight->zlib,     "vnc-tight-zlib/%p", sioc);
+    buffer_init(&vs->tight->gradient, "vnc-tight-gradient/%p", sioc);
 #ifdef CONFIG_VNC_JPEG
-    buffer_init(&vs->tight.jpeg,     "vnc-tight-jpeg/%p", sioc);
+    buffer_init(&vs->tight->jpeg,     "vnc-tight-jpeg/%p", sioc);
 #endif
 #ifdef CONFIG_VNC_PNG
-    buffer_init(&vs->tight.png,      "vnc-tight-png/%p", sioc);
+    buffer_init(&vs->tight->png,      "vnc-tight-png/%p", sioc);
 #endif
     buffer_init(&vs->zlib.zlib,      "vnc-zlib/%p", sioc);
-    buffer_init(&vs->zrle.zrle,      "vnc-zrle/%p", sioc);
-    buffer_init(&vs->zrle.fb,        "vnc-zrle-fb/%p", sioc);
-    buffer_init(&vs->zrle.zlib,      "vnc-zrle-zlib/%p", sioc);
+    buffer_init(&vs->zrle->zrle,      "vnc-zrle/%p", sioc);
+    buffer_init(&vs->zrle->fb,        "vnc-zrle-fb/%p", sioc);
+    buffer_init(&vs->zrle->zlib,      "vnc-zrle-zlib/%p", sioc);
 
     if (skipauth) {
         vs->auth = VNC_AUTH_NONE;
@@ -3375,6 +3376,9 @@ static QemuOptsList qemu_vnc_opts = {
         },{
             .name = "non-adaptive",
             .type = QEMU_OPT_BOOL,
+        },{
+            .name = "audiodev",
+            .type = QEMU_OPT_STRING,
         },
         { /* end of list */ }
     },
@@ -3766,7 +3770,7 @@ static int vnc_display_listen(VncDisplay *vd,
         qio_net_listener_set_name(vd->listener, "vnc-listen");
         for (i = 0; i < nsaddr; i++) {
             if (qio_net_listener_open_sync(vd->listener,
-                                           saddr[i],
+                                           saddr[i], 1,
                                            errp) < 0)  {
                 return -1;
             }
@@ -3781,7 +3785,7 @@ static int vnc_display_listen(VncDisplay *vd,
         qio_net_listener_set_name(vd->wslistener, "vnc-ws-listen");
         for (i = 0; i < nwsaddr; i++) {
             if (qio_net_listener_open_sync(vd->wslistener,
-                                           wsaddr[i],
+                                           wsaddr[i], 1,
                                            errp) < 0)  {
                 return -1;
             }
@@ -3812,6 +3816,7 @@ void vnc_display_open(const char *id, Error **errp)
     const char *saslauthz;
     int lock_key_sync = 1;
     int key_delay_ms;
+    const char *audiodev;
 
     if (!vd) {
         error_setg(errp, "VNC display not active");
@@ -3996,6 +4001,15 @@ void vnc_display_open(const char *id, Error **errp)
         vd->led = qemu_add_led_event_handler(kbd_leds, vd);
     }
     vd->ledstate = 0;
+
+    audiodev = qemu_opt_get(opts, "audiodev");
+    if (audiodev) {
+        vd->audio_state = audio_state_by_name(audiodev);
+        if (!vd->audio_state) {
+            error_setg(errp, "Audiodev '%s' not found", audiodev);
+            goto fail;
+        }
+    }
 
     device_id = qemu_opt_get(opts, "display");
     if (device_id) {

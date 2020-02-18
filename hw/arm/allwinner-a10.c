@@ -16,19 +16,22 @@
  */
 
 #include "qemu/osdep.h"
+#include "exec/address-spaces.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
+#include "qemu/module.h"
 #include "cpu.h"
 #include "hw/sysbus.h"
 #include "hw/arm/allwinner-a10.h"
 #include "hw/misc/unimp.h"
+#include "sysemu/sysemu.h"
 
 static void aw_a10_init(Object *obj)
 {
     AwA10State *s = AW_A10(obj);
 
     object_initialize_child(obj, "cpu", &s->cpu, sizeof(s->cpu),
-                            "cortex-a8-" TYPE_ARM_CPU, &error_abort, NULL);
+                            ARM_CPU_TYPE_NAME("cortex-a8"),
+                            &error_abort, NULL);
 
     sysbus_init_child_obj(obj, "intc", &s->intc, sizeof(s->intc),
                           TYPE_AW_A10_PIC);

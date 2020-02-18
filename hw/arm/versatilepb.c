@@ -9,15 +9,16 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "hw/sysbus.h"
-#include "hw/arm/arm.h"
-#include "hw/devices.h"
+#include "migration/vmstate.h"
+#include "hw/arm/boot.h"
+#include "hw/net/smc91c111.h"
 #include "net/net.h"
 #include "sysemu/sysemu.h"
 #include "hw/pci/pci.h"
 #include "hw/i2c/i2c.h"
+#include "hw/irq.h"
 #include "hw/boards.h"
 #include "exec/address-spaces.h"
 #include "hw/block/flash.h"
@@ -374,11 +375,8 @@ static void versatile_init(MachineState *machine, int board_id)
     }
 
     versatile_binfo.ram_size = machine->ram_size;
-    versatile_binfo.kernel_filename = machine->kernel_filename;
-    versatile_binfo.kernel_cmdline = machine->kernel_cmdline;
-    versatile_binfo.initrd_filename = machine->initrd_filename;
     versatile_binfo.board_id = board_id;
-    arm_load_kernel(cpu, &versatile_binfo);
+    arm_load_kernel(cpu, machine, &versatile_binfo);
 }
 
 static void vpb_init(MachineState *machine)

@@ -56,7 +56,9 @@
  *   Critical-Section Execution to Improve the Performance of Multithreaded
  *   Applications", USENIX ATC'12.
  */
+
 #include "qemu/osdep.h"
+#include "qemu/qemu-print.h"
 #include "qemu/thread.h"
 #include "qemu/timer.h"
 #include "qemu/qht.h"
@@ -129,6 +131,7 @@ QemuRecMutexLockFunc qemu_rec_mutex_lock_func = qemu_rec_mutex_lock_impl;
 QemuRecMutexTrylockFunc qemu_rec_mutex_trylock_func =
     qemu_rec_mutex_trylock_impl;
 QemuCondWaitFunc qemu_cond_wait_func = qemu_cond_wait_impl;
+QemuCondTimedWaitFunc qemu_cond_timedwait_func = qemu_cond_timedwait_impl;
 
 /*
  * It pays off to _not_ hash callsite->file; hashing a string is slow, and
@@ -410,6 +413,23 @@ qsp_cond_wait(QemuCond *cond, QemuMutex *mutex, const char *file, int line)
     qsp_entry_record(e, t1 - t0);
 }
 
+static bool
+qsp_cond_timedwait(QemuCond *cond, QemuMutex *mutex, int ms,
+                   const char *file, int line)
+{
+    QSPEntry *e;
+    int64_t t0, t1;
+    bool ret;
+
+    t0 = get_clock();
+    ret = qemu_cond_timedwait_impl(cond, mutex, ms, file, line);
+    t1 = get_clock();
+
+    e = qsp_entry_get(cond, file, line, QSP_CONDVAR);
+    qsp_entry_record(e, t1 - t0);
+    return ret;
+}
+
 bool qsp_is_enabled(void)
 {
     return atomic_read(&qemu_mutex_lock_func) == qsp_mutex_lock;
@@ -423,6 +443,7 @@ void qsp_enable(void)
     atomic_set(&qemu_rec_mutex_lock_func, qsp_rec_mutex_lock);
     atomic_set(&qemu_rec_mutex_trylock_func, qsp_rec_mutex_trylock);
     atomic_set(&qemu_cond_wait_func, qsp_cond_wait);
+    atomic_set(&qemu_cond_timedwait_func, qsp_cond_timedwait);
 }
 
 void qsp_disable(void)
@@ -433,6 +454,7 @@ void qsp_disable(void)
     atomic_set(&qemu_rec_mutex_lock_func, qemu_rec_mutex_lock_impl);
     atomic_set(&qemu_rec_mutex_trylock_func, qemu_rec_mutex_trylock_impl);
     atomic_set(&qemu_cond_wait_func, qemu_cond_wait_impl);
+    atomic_set(&qemu_cond_timedwait_func, qemu_cond_timedwait_impl);
 }
 
 static gint qsp_tree_cmp(gconstpointer ap, gconstpointer bp, gpointer up)
@@ -678,8 +700,7 @@ static gboolean qsp_tree_report(gpointer key, gpointer value, gpointer udata)
     return FALSE;
 }
 
-static void
-pr_report(const QSPReport *rep, FILE *f, fprintf_function pr)
+static void pr_report(const QSPReport *rep)
 {
     char *dashes;
     size_t max_len = 0;
@@ -702,15 +723,15 @@ pr_report(const QSPReport *rep, FILE *f, fprintf_function pr)
     /* white space to leave to the right of "Call site" */
     callsite_rspace = callsite_len - strlen("Call site");
 
-    pr(f, "Type               Object  Call site%*s  Wait Time (s)  "
-       "       Count  Average (us)\n", callsite_rspace, "");
+    qemu_printf("Type               Object  Call site%*s  Wait Time (s)  "
+                "       Count  Average (us)\n", callsite_rspace, "");
 
     /* build a horizontal rule with dashes */
     n_dashes = 79 + callsite_rspace;
     dashes = g_malloc(n_dashes + 1);
     memset(dashes, '-', n_dashes);
     dashes[n_dashes] = '\0';
-    pr(f, "%s\n", dashes);
+    qemu_printf("%s\n", dashes);
 
     for (i = 0; i < rep->n_entries; i++) {
         const QSPReportEntry *e = &rep->entries[i];
@@ -726,11 +747,11 @@ pr_report(const QSPReport *rep, FILE *f, fprintf_function pr)
                                e->callsite_at,
                                callsite_len - (int)strlen(e->callsite_at), "",
                                e->time_s, e->n_acqs, e->ns_avg * 1e-3);
-        pr(f, "%s", s->str);
+        qemu_printf("%s", s->str);
         g_string_free(s, TRUE);
     }
 
-    pr(f, "%s\n", dashes);
+    qemu_printf("%s\n", dashes);
     g_free(dashes);
 }
 
@@ -746,8 +767,8 @@ static void report_destroy(QSPReport *rep)
     g_free(rep->entries);
 }
 
-void qsp_report(FILE *f, fprintf_function cpu_fprintf, size_t max,
-                enum QSPSortBy sort_by, bool callsite_coalesce)
+void qsp_report(size_t max, enum QSPSortBy sort_by,
+                bool callsite_coalesce)
 {
     GTree *tree = g_tree_new_full(qsp_tree_cmp, &sort_by, g_free, NULL);
     QSPReport rep;
@@ -762,7 +783,7 @@ void qsp_report(FILE *f, fprintf_function cpu_fprintf, size_t max,
     g_tree_foreach(tree, qsp_tree_report, &rep);
     g_tree_destroy(tree);
 
-    pr_report(&rep, f, cpu_fprintf);
+    pr_report(&rep);
     report_destroy(&rep);
 }
 

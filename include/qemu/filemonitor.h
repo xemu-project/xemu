@@ -18,10 +18,9 @@
  *
  */
 
-#ifndef QEMU_FILE_MONITOR_H
-#define QEMU_FILE_MONITOR_H
+#ifndef QEMU_FILEMONITOR_H
+#define QEMU_FILEMONITOR_H
 
-#include "qemu-common.h"
 
 
 typedef struct QFileMonitor QFileMonitor;
@@ -125,4 +124,4 @@ void qemu_file_monitor_remove_watch(QFileMonitor *mon,
                                     const char *dirpath,
                                     int64_t id);
 
-#endif /* QEMU_FILE_MONITOR_H */
+#endif /* QEMU_FILEMONITOR_H */

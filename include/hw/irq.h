@@ -5,10 +5,6 @@
 
 #define TYPE_IRQ "irq"
 
-typedef struct IRQState *qemu_irq;
-
-typedef void (*qemu_irq_handler)(void *opaque, int n, int level);
-
 void qemu_set_irq(qemu_irq irq, int level);
 
 static inline void qemu_irq_raise(qemu_irq irq)
@@ -54,11 +50,6 @@ qemu_irq qemu_irq_invert(qemu_irq irq);
  * It's probably better to use the TYPE_SPLIT_IRQ device instead.
  */
 qemu_irq qemu_irq_split(qemu_irq irq1, qemu_irq irq2);
-
-/* Returns a new IRQ set which connects 1:1 to another IRQ set, which
- * may be set later.
- */
-qemu_irq *qemu_irq_proxy(qemu_irq **target, int n);
 
 /* For internal use in qtest.  Similar to qemu_irq_split, but operating
    on an existing vector of qemu_irq.  */

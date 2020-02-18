@@ -23,14 +23,15 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu-common.h"
 #include "qemu/units.h"
 #include "cpu.h"
 #include "hw/sysbus.h"
-#include "hw/hw.h"
 #include "hw/char/serial.h"
 #include "hw/block/flash.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/qtest.h"
+#include "sysemu/reset.h"
 #include "hw/boards.h"
 #include "sysemu/device_tree.h"
 #include "hw/loader.h"
@@ -42,6 +43,7 @@
 
 #include "hw/ppc/ppc.h"
 #include "hw/ppc/ppc4xx.h"
+#include "hw/qdev-properties.h"
 #include "ppc405.h"
 
 #define EPAPR_MAGIC    (0x45504150)

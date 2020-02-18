@@ -71,7 +71,7 @@
         'QapiErrorClass',           # all members, visible through errors
         'UuidInfo',                 # UUID, visible through query-uuid
         'X86CPURegister32',         # all members, visible indirectly through qom-get
-        'q_obj_CpuInfo-base'        # CPU, visible through query-cpu
+        'CpuInfo'                   # CPU, visible through query-cpu
     ] } }
 
 # Documentation generated with qapi-gen.py is in source order, with
@@ -80,12 +80,14 @@
 # stable order, it's best to include each sub-schema just once, or
 # include it first right here.
 
+{ 'include': 'error.json' }
 { 'include': 'common.json' }
 { 'include': 'sockets.json' }
 { 'include': 'run-state.json' }
 { 'include': 'crypto.json' }
 { 'include': 'block.json' }
 { 'include': 'char.json' }
+{ 'include': 'dump.json' }
 { 'include': 'job.json' }
 { 'include': 'net.json' }
 { 'include': 'rdma.json' }
@@ -97,6 +99,10 @@
 { 'include': 'transaction.json' }
 { 'include': 'trace.json' }
 { 'include': 'introspect.json' }
+{ 'include': 'qom.json' }
+{ 'include': 'qdev.json' }
+{ 'include': 'machine.json' }
+{ 'include': 'machine-target.json' }
 { 'include': 'misc.json' }
-{ 'include': 'target.json' }
+{ 'include': 'misc-target.json' }
 { 'include': 'audio.json' }

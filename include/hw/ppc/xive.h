@@ -140,7 +140,7 @@
 #ifndef PPC_XIVE_H
 #define PPC_XIVE_H
 
-#include "hw/qdev-core.h"
+#include "sysemu/kvm.h"
 #include "hw/sysbus.h"
 #include "hw/ppc/xive_regs.h"
 
@@ -148,13 +148,11 @@
  * XIVE Notifier (Interface between Source and Router)
  */
 
-typedef struct XiveNotifier {
-    Object parent;
-} XiveNotifier;
+typedef struct XiveNotifier XiveNotifier;
 
 #define TYPE_XIVE_NOTIFIER "xive-notifier"
 #define XIVE_NOTIFIER(obj)                                     \
-    OBJECT_CHECK(XiveNotifier, (obj), TYPE_XIVE_NOTIFIER)
+    INTERFACE_CHECK(XiveNotifier, (obj), TYPE_XIVE_NOTIFIER)
 #define XIVE_NOTIFIER_CLASS(klass)                                     \
     OBJECT_CLASS_CHECK(XiveNotifierClass, (klass), TYPE_XIVE_NOTIFIER)
 #define XIVE_NOTIFIER_GET_CLASS(obj)                                   \
@@ -193,6 +191,10 @@ typedef struct XiveSource {
     uint64_t        esb_flags;
     uint32_t        esb_shift;
     MemoryRegion    esb_mmio;
+
+    /* KVM support */
+    void            *esb_mmap;
+    MemoryRegion    esb_mmio_kvm;
 
     XiveNotifier    *xive;
 } XiveSource;
@@ -313,7 +315,8 @@ typedef struct XiveTCTX {
     DeviceState parent_obj;
 
     CPUState    *cs;
-    qemu_irq    output;
+    qemu_irq    hv_output;
+    qemu_irq    os_output;
 
     uint8_t     regs[XIVE_TM_RING_COUNT * XIVE_TM_RING_SIZE];
 } XiveTCTX;
@@ -350,8 +353,6 @@ typedef struct XiveRouterClass {
                      XiveNVT *nvt, uint8_t word_number);
     XiveTCTX *(*get_tctx)(XiveRouter *xrtr, CPUState *cs);
 } XiveRouterClass;
-
-void xive_eas_pic_print_info(XiveEAS *eas, uint32_t lisn, Monitor *mon);
 
 int xive_router_get_eas(XiveRouter *xrtr, uint8_t eas_blk, uint32_t eas_idx,
                         XiveEAS *eas);
@@ -394,9 +395,6 @@ typedef struct XiveENDSource {
  */
 #define XIVE_PRIORITY_MAX  7
 
-void xive_end_pic_print_info(XiveEND *end, uint32_t end_idx, Monitor *mon);
-void xive_end_queue_pic_print_info(XiveEND *end, uint32_t width, Monitor *mon);
-
 /*
  * XIVE Thread Interrupt Management Aera (TIMA)
  *
@@ -417,10 +415,23 @@ uint64_t xive_tctx_tm_read(XiveTCTX *tctx, hwaddr offset, unsigned size);
 
 void xive_tctx_pic_print_info(XiveTCTX *tctx, Monitor *mon);
 Object *xive_tctx_create(Object *cpu, XiveRouter *xrtr, Error **errp);
+void xive_tctx_reset(XiveTCTX *tctx);
+void xive_tctx_destroy(XiveTCTX *tctx);
 
 static inline uint32_t xive_nvt_cam_line(uint8_t nvt_blk, uint32_t nvt_idx)
 {
     return (nvt_blk << 19) | nvt_idx;
 }
+
+/*
+ * KVM XIVE device helpers
+ */
+
+int kvmppc_xive_source_reset_one(XiveSource *xsrc, int srcno, Error **errp);
+void kvmppc_xive_source_set_irq(void *opaque, int srcno, int val);
+void kvmppc_xive_cpu_connect(XiveTCTX *tctx, Error **errp);
+void kvmppc_xive_cpu_synchronize_state(XiveTCTX *tctx, Error **errp);
+void kvmppc_xive_cpu_get_state(XiveTCTX *tctx, Error **errp);
+void kvmppc_xive_cpu_set_state(XiveTCTX *tctx, Error **errp);
 
 #endif /* PPC_XIVE_H */

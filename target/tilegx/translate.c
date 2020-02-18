@@ -290,7 +290,7 @@ static void gen_cmul2(TCGv tdest, TCGv tsrca, TCGv tsrcb, int sh, int rd)
 }
 
 static TileExcp gen_st_opcode(DisasContext *dc, unsigned dest, unsigned srca,
-                              unsigned srcb, TCGMemOp memop, const char *name)
+                              unsigned srcb, MemOp memop, const char *name)
 {
     if (dest) {
         return TILEGX_EXCP_OPCODE_UNKNOWN;
@@ -305,7 +305,7 @@ static TileExcp gen_st_opcode(DisasContext *dc, unsigned dest, unsigned srca,
 }
 
 static TileExcp gen_st_add_opcode(DisasContext *dc, unsigned srca, unsigned srcb,
-                                  int imm, TCGMemOp memop, const char *name)
+                                  int imm, MemOp memop, const char *name)
 {
     TCGv tsrca = load_gr(dc, srca);
     TCGv tsrcb = load_gr(dc, srcb);
@@ -496,7 +496,7 @@ static TileExcp gen_rr_opcode(DisasContext *dc, unsigned opext,
 {
     TCGv tdest, tsrca;
     const char *mnemonic;
-    TCGMemOp memop;
+    MemOp memop;
     TileExcp ret = TILEGX_EXCP_NONE;
     bool prefetch_nofault = false;
 
@@ -1478,7 +1478,7 @@ static TileExcp gen_rri_opcode(DisasContext *dc, unsigned opext,
     TCGv tsrca = load_gr(dc, srca);
     bool prefetch_nofault = false;
     const char *mnemonic;
-    TCGMemOp memop;
+    MemOp memop;
     int i2, i3;
     TCGv t0;
 
@@ -2106,7 +2106,7 @@ static TileExcp decode_y2(DisasContext *dc, tilegx_bundle_bits bundle)
     unsigned srca = get_SrcA_Y2(bundle);
     unsigned srcbdest = get_SrcBDest_Y2(bundle);
     const char *mnemonic;
-    TCGMemOp memop;
+    MemOp memop;
     bool prefetch_nofault = false;
 
     switch (OEY2(opc, mode)) {
@@ -2369,7 +2369,7 @@ static void translate_one_bundle(DisasContext *dc, uint64_t bundle)
     }
 }
 
-void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
+void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
 {
     CPUTLGState *env = cs->env_ptr;
     DisasContext ctx;
@@ -2377,7 +2377,6 @@ void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
     uint64_t pc_start = tb->pc;
     uint64_t page_start = pc_start & TARGET_PAGE_MASK;
     int num_insns = 0;
-    int max_insns = tb_cflags(tb) & CF_COUNT_MASK;
 
     dc->pc = pc_start;
     dc->mmuidx = 0;
@@ -2391,15 +2390,6 @@ void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
     if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)) {
         qemu_log_lock();
         qemu_log("IN: %s\n", lookup_symbol(pc_start));
-    }
-    if (!max_insns) {
-        max_insns = CF_COUNT_MASK;
-    }
-    if (cs->singlestep_enabled || singlestep) {
-        max_insns = 1;
-    }
-    if (max_insns > TCG_MAX_INSNS) {
-        max_insns = TCG_MAX_INSNS;
     }
     gen_tb_start(tb);
 

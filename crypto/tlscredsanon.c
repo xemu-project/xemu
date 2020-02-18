@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -22,6 +22,7 @@
 #include "crypto/tlscredsanon.h"
 #include "tlscredspriv.h"
 #include "qapi/error.h"
+#include "qemu/module.h"
 #include "qom/object_interfaces.h"
 #include "trace.h"
 
@@ -33,9 +34,8 @@ static int
 qcrypto_tls_creds_anon_load(QCryptoTLSCredsAnon *creds,
                             Error **errp)
 {
-    char *dhparams = NULL;
+    g_autofree char *dhparams = NULL;
     int ret;
-    int rv = -1;
 
     trace_qcrypto_tls_creds_anon_load(creds,
             creds->parent_obj.dir ? creds->parent_obj.dir : "<nodir>");
@@ -44,20 +44,20 @@ qcrypto_tls_creds_anon_load(QCryptoTLSCredsAnon *creds,
         if (qcrypto_tls_creds_get_path(&creds->parent_obj,
                                        QCRYPTO_TLS_CREDS_DH_PARAMS,
                                        false, &dhparams, errp) < 0) {
-            goto cleanup;
+            return -1;
         }
 
         ret = gnutls_anon_allocate_server_credentials(&creds->data.server);
         if (ret < 0) {
             error_setg(errp, "Cannot allocate credentials: %s",
                        gnutls_strerror(ret));
-            goto cleanup;
+            return -1;
         }
 
         if (qcrypto_tls_creds_get_dh_params_file(&creds->parent_obj, dhparams,
                                                  &creds->parent_obj.dh_params,
                                                  errp) < 0) {
-            goto cleanup;
+            return -1;
         }
 
         gnutls_anon_set_server_dh_params(creds->data.server,
@@ -67,14 +67,11 @@ qcrypto_tls_creds_anon_load(QCryptoTLSCredsAnon *creds,
         if (ret < 0) {
             error_setg(errp, "Cannot allocate credentials: %s",
                        gnutls_strerror(ret));
-            goto cleanup;
+            return -1;
         }
     }
 
-    rv = 0;
- cleanup:
-    g_free(dhparams);
-    return rv;
+    return 0;
 }
 
 

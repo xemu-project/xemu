@@ -20,22 +20,23 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "hw/arm/fsl-imx7.h"
 #include "hw/misc/unimp.h"
+#include "hw/boards.h"
 #include "sysemu/sysemu.h"
 #include "qemu/error-report.h"
+#include "qemu/module.h"
 
 #define NAME_SIZE 20
 
 static void fsl_imx7_init(Object *obj)
 {
+    MachineState *ms = MACHINE(qdev_get_machine());
     FslIMX7State *s = FSL_IMX7(obj);
     char name[NAME_SIZE];
     int i;
 
-
-    for (i = 0; i < MIN(smp_cpus, FSL_IMX7_NUM_CPUS); i++) {
+    for (i = 0; i < MIN(ms->smp.cpus, FSL_IMX7_NUM_CPUS); i++) {
         snprintf(name, NAME_SIZE, "cpu%d", i);
         object_initialize_child(obj, name, &s->cpu[i], sizeof(s->cpu[i]),
                                 ARM_CPU_TYPE_NAME("cortex-a7"), &error_abort,
@@ -155,11 +156,13 @@ static void fsl_imx7_init(Object *obj)
 
 static void fsl_imx7_realize(DeviceState *dev, Error **errp)
 {
+    MachineState *ms = MACHINE(qdev_get_machine());
     FslIMX7State *s = FSL_IMX7(dev);
     Object *o;
     int i;
     qemu_irq irq;
     char name[NAME_SIZE];
+    unsigned int smp_cpus = ms->smp.cpus;
 
     if (smp_cpus > FSL_IMX7_NUM_CPUS) {
         error_setg(errp, "%s: Only %d CPUs are supported (%d requested)",
@@ -526,6 +529,17 @@ static void fsl_imx7_realize(DeviceState *dev, Error **errp)
      */
     create_unimplemented_device("lcdif", FSL_IMX7_LCDIF_ADDR,
                                 FSL_IMX7_LCDIF_SIZE);
+
+    /*
+     * DMA APBH
+     */
+    create_unimplemented_device("dma-apbh", FSL_IMX7_DMA_APBH_ADDR,
+                                FSL_IMX7_DMA_APBH_SIZE);
+    /*
+     * PCIe PHY
+     */
+    create_unimplemented_device("pcie-phy", FSL_IMX7_PCIE_PHY_ADDR,
+                                FSL_IMX7_PCIE_PHY_SIZE);
 }
 
 static void fsl_imx7_class_init(ObjectClass *oc, void *data)

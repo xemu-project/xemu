@@ -9,12 +9,12 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "hw/sysbus.h"
-#include "hw/arm/arm.h"
+#include "hw/arm/boot.h"
 #include "hw/arm/primecell.h"
-#include "hw/devices.h"
+#include "hw/net/lan9118.h"
+#include "hw/net/smc91c111.h"
 #include "hw/pci/pci.h"
 #include "net/net.h"
 #include "sysemu/sysemu.h"
@@ -25,6 +25,7 @@
 #include "hw/char/pl011.h"
 #include "hw/cpu/a9mpcore.h"
 #include "hw/intc/realview_gic.h"
+#include "hw/irq.h"
 
 #define SMP_BOOT_ADDR 0xe0000000
 #define SMP_BOOTREG_ADDR 0x10000030
@@ -69,6 +70,7 @@ static void realview_init(MachineState *machine,
     NICInfo *nd;
     I2CBus *i2c;
     int n;
+    unsigned int smp_cpus = machine->smp.cpus;
     int done_nic = 0;
     qemu_irq cpu_irq[4];
     int is_mpcore = 0;
@@ -349,13 +351,10 @@ static void realview_init(MachineState *machine,
     memory_region_add_subregion(sysmem, SMP_BOOT_ADDR, ram_hack);
 
     realview_binfo.ram_size = ram_size;
-    realview_binfo.kernel_filename = machine->kernel_filename;
-    realview_binfo.kernel_cmdline = machine->kernel_cmdline;
-    realview_binfo.initrd_filename = machine->initrd_filename;
     realview_binfo.nb_cpus = smp_cpus;
     realview_binfo.board_id = realview_board_id[board_type];
     realview_binfo.loader_start = (board_type == BOARD_PB_A8 ? 0x70000000 : 0);
-    arm_load_kernel(ARM_CPU(first_cpu), &realview_binfo);
+    arm_load_kernel(ARM_CPU(first_cpu), machine, &realview_binfo);
 }
 
 static void realview_eb_init(MachineState *machine)

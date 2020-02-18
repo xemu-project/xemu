@@ -149,10 +149,10 @@ void s390x_translate_init(void)
 static inline int vec_full_reg_offset(uint8_t reg)
 {
     g_assert(reg < 32);
-    return offsetof(CPUS390XState, vregs[reg][0].d);
+    return offsetof(CPUS390XState, vregs[reg][0]);
 }
 
-static inline int vec_reg_offset(uint8_t reg, uint8_t enr, TCGMemOp es)
+static inline int vec_reg_offset(uint8_t reg, uint8_t enr, MemOp es)
 {
     /* Convert element size (es) - e.g. MO_8 - to bytes */
     const uint8_t bytes = 1 << es;
@@ -318,6 +318,9 @@ static inline uint64_t ld_code4(CPUS390XState *env, uint64_t pc)
 
 static int get_mem_index(DisasContext *s)
 {
+#ifdef CONFIG_USER_ONLY
+    return MMU_USER_IDX;
+#else
     if (!(s->base.tb->flags & FLAG_MASK_DAT)) {
         return MMU_REAL_IDX;
     }
@@ -333,6 +336,7 @@ static int get_mem_index(DisasContext *s)
         tcg_abort();
         break;
     }
+#endif
 }
 
 static void gen_exception(int excp)
@@ -572,6 +576,7 @@ static void gen_op_calc_cc(DisasContext *s)
     case CC_OP_SLA_32:
     case CC_OP_SLA_64:
     case CC_OP_NZ_F128:
+    case CC_OP_VC:
         /* 2 arguments */
         gen_helper_calc_cc(cc_op, cpu_env, local_cc_op, cc_src, cc_dst, dummy);
         break;
@@ -1407,13 +1412,7 @@ static DisasJumpType help_branch(DisasContext *s, DisasCompare *c,
 
 static DisasJumpType op_abs(DisasContext *s, DisasOps *o)
 {
-    TCGv_i64 z, n;
-    z = tcg_const_i64(0);
-    n = tcg_temp_new_i64();
-    tcg_gen_neg_i64(n, o->in2);
-    tcg_gen_movcond_i64(TCG_COND_LT, o->out, o->in2, z, n, o->in2);
-    tcg_temp_free_i64(n);
-    tcg_temp_free_i64(z);
+    tcg_gen_abs_i64(o->out, o->in2);
     return DISAS_NEXT;
 }
 
@@ -2267,7 +2266,7 @@ static DisasJumpType op_csst(DisasContext *s, DisasOps *o)
 #ifndef CONFIG_USER_ONLY
 static DisasJumpType op_csp(DisasContext *s, DisasOps *o)
 {
-    TCGMemOp mop = s->insn->data;
+    MemOp mop = s->insn->data;
     TCGv_i64 addr, old, cc;
     TCGLabel *lab = gen_new_label();
 
@@ -3233,7 +3232,7 @@ static DisasJumpType op_lm64(DisasContext *s, DisasOps *o)
 static DisasJumpType op_lpd(DisasContext *s, DisasOps *o)
 {
     TCGv_i64 a1, a2;
-    TCGMemOp mop = s->insn->data;
+    MemOp mop = s->insn->data;
 
     /* In a parallel context, stop the world and single step.  */
     if (tb_cflags(s->base.tb) & CF_PARALLEL) {
@@ -3493,9 +3492,13 @@ static DisasJumpType op_mvpg(DisasContext *s, DisasOps *o)
 
 static DisasJumpType op_mvst(DisasContext *s, DisasOps *o)
 {
-    gen_helper_mvst(o->in1, cpu_env, regs[0], o->in1, o->in2);
+    TCGv_i32 t1 = tcg_const_i32(get_field(s->fields, r1));
+    TCGv_i32 t2 = tcg_const_i32(get_field(s->fields, r2));
+
+    gen_helper_mvst(cc_op, cpu_env, t1, t2);
+    tcg_temp_free_i32(t1);
+    tcg_temp_free_i32(t2);
     set_cc_static(s);
-    return_low128(o->in2);
     return DISAS_NEXT;
 }
 
@@ -6098,6 +6101,7 @@ enum DisasInsnEnum {
 #define FAC_PCI         S390_FEAT_ZPCI /* z/PCI facility */
 #define FAC_AIS         S390_FEAT_ADAPTER_INT_SUPPRESSION
 #define FAC_V           S390_FEAT_VECTOR /* vector facility */
+#define FAC_VE          S390_FEAT_VECTOR_ENH /* vector enhancements facility 1 */
 
 static const DisasInsn insn_info[] = {
 #include "insn-data.def"
@@ -6305,6 +6309,9 @@ static DisasJumpType translate_one(CPUS390XState *env, DisasContext *s)
     /* Search for the insn in the table.  */
     insn = extract_insn(env, s, &f);
 
+    /* Emit insn_start now that we know the ILEN.  */
+    tcg_gen_insn_start(s->base.pc_next, s->cc_op, s->ilen);
+
     /* Not found means unimplemented/illegal opcode.  */
     if (insn == NULL) {
         qemu_log_mask(LOG_UNIMP, "unimplemented opcode 0x%02x%02x\n",
@@ -6459,15 +6466,20 @@ static void s390x_tr_tb_start(DisasContextBase *db, CPUState *cs)
 
 static void s390x_tr_insn_start(DisasContextBase *dcbase, CPUState *cs)
 {
-    DisasContext *dc = container_of(dcbase, DisasContext, base);
-
-    tcg_gen_insn_start(dc->base.pc_next, dc->cc_op);
 }
 
 static bool s390x_tr_breakpoint_check(DisasContextBase *dcbase, CPUState *cs,
                                       const CPUBreakpoint *bp)
 {
     DisasContext *dc = container_of(dcbase, DisasContext, base);
+
+    /*
+     * Emit an insn_start to accompany the breakpoint exception.
+     * The ILEN value is a dummy, since this does not result in
+     * an s390x exception, but an internal qemu exception which
+     * brings us back to interact with the gdbstub.
+     */
+    tcg_gen_insn_start(dc->base.pc_next, dc->cc_op, 2);
 
     dc->base.is_jmp = DISAS_PC_STALE;
     dc->do_debug = true;
@@ -6552,19 +6564,25 @@ static const TranslatorOps s390x_tr_ops = {
     .disas_log          = s390x_tr_disas_log,
 };
 
-void gen_intermediate_code(CPUState *cs, TranslationBlock *tb)
+void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
 {
     DisasContext dc;
 
-    translator_loop(&s390x_tr_ops, &dc.base, cs, tb);
+    translator_loop(&s390x_tr_ops, &dc.base, cs, tb, max_insns);
 }
 
 void restore_state_to_opc(CPUS390XState *env, TranslationBlock *tb,
                           target_ulong *data)
 {
     int cc_op = data[1];
+
     env->psw.addr = data[0];
+
+    /* Update the CC opcode if it is not already up-to-date.  */
     if ((cc_op != CC_OP_DYNAMIC) && (cc_op != CC_OP_STATIC)) {
         env->cc_op = cc_op;
     }
+
+    /* Record ILEN.  */
+    env->int_pgm_ilen = data[2];
 }

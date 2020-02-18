@@ -18,14 +18,16 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/hw.h"
 #include "hw/pci/pci.h"
+#include "hw/qdev-properties.h"
 #include "hw/pci/msi.h"
 #include "qemu/timer.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "hw/audio/soundhw.h"
 #include "intel-hda.h"
+#include "migration/vmstate.h"
 #include "intel-hda-defs.h"
 #include "sysemu/dma.h"
 #include "qapi/error.h"

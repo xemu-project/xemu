@@ -5,7 +5,6 @@
  */
 #include "qemu/osdep.h"
 #include "qemu/bitmap.h"
-#include "qemu/queue.h"
 #include "ui/console.h"
 #include "ui/input.h"
 #include "ui/kbd-state.h"
@@ -59,7 +58,11 @@ void qkbd_state_key_event(QKbdState *kbd, QKeyCode qcode, bool down)
     }
 
     /* update key and modifier state */
-    change_bit(qcode, kbd->keys);
+    if (down) {
+        set_bit(qcode, kbd->keys);
+    } else {
+        clear_bit(qcode, kbd->keys);
+    }
     switch (qcode) {
     case Q_KEY_CODE_SHIFT:
     case Q_KEY_CODE_SHIFT_R:

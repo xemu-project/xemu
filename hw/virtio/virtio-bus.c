@@ -23,10 +23,9 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/hw.h"
 #include "qemu/error-report.h"
+#include "qemu/module.h"
 #include "qapi/error.h"
-#include "hw/qdev.h"
 #include "hw/virtio/virtio-bus.h"
 #include "hw/virtio/virtio.h"
 #include "exec/address-spaces.h"
@@ -287,6 +286,10 @@ int virtio_bus_set_host_notifier(VirtioBusState *bus, int n, bool assign)
         }
     } else {
         k->ioeventfd_assign(proxy, notifier, n, false);
+    }
+
+    if (r == 0) {
+        virtio_queue_set_host_notifier_enabled(vq, assign);
     }
 
     return r;

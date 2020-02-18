@@ -10,8 +10,12 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "hw/irq.h"
 #include "hw/misc/bcm2835_mbox.h"
+#include "migration/vmstate.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
+#include "trace.h"
 
 #define MAIL0_PEEK   0x90
 #define MAIL0_SENDER 0x94
@@ -120,6 +124,7 @@ static void bcm2835_mbox_update(BCM2835MboxState *s)
             set = true;
         }
     }
+    trace_bcm2835_mbox_irq(set);
     qemu_set_irq(s->arm_irq, set);
 }
 
@@ -173,10 +178,12 @@ static uint64_t bcm2835_mbox_read(void *opaque, hwaddr offset, unsigned size)
         break;
 
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset %"HWADDR_PRIx"\n",
+        qemu_log_mask(LOG_UNIMP, "%s: Unsupported offset 0x%"HWADDR_PRIx"\n",
                       __func__, offset);
+        trace_bcm2835_mbox_read(size, offset, res);
         return 0;
     }
+    trace_bcm2835_mbox_read(size, offset, res);
 
     bcm2835_mbox_update(s);
 
@@ -192,6 +199,7 @@ static void bcm2835_mbox_write(void *opaque, hwaddr offset,
 
     offset &= 0xff;
 
+    trace_bcm2835_mbox_write(size, offset, value);
     switch (offset) {
     case MAIL0_SENDER:
         break;
@@ -225,8 +233,9 @@ static void bcm2835_mbox_write(void *opaque, hwaddr offset,
         break;
 
     default:
-        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset %"HWADDR_PRIx"\n",
-                      __func__, offset);
+        qemu_log_mask(LOG_UNIMP, "%s: Unsupported offset 0x%"HWADDR_PRIx
+                                 " value 0x%"PRIx64"\n",
+                      __func__, offset, value);
         return;
     }
 
@@ -307,7 +316,7 @@ static void bcm2835_mbox_realize(DeviceState *dev, Error **errp)
     }
 
     s->mbox_mr = MEMORY_REGION(obj);
-    address_space_init(&s->mbox_as, s->mbox_mr, NULL);
+    address_space_init(&s->mbox_as, s->mbox_mr, TYPE_BCM2835_MBOX "-memory");
     bcm2835_mbox_reset(dev);
 }
 

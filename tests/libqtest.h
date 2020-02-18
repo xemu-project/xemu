@@ -22,14 +22,12 @@
 
 typedef struct QTestState QTestState;
 
-extern QTestState *global_qtest;
-
 /**
  * qtest_initf:
  * @fmt...: Format for creating other arguments to pass to QEMU, formatted
  * like sprintf().
  *
- * Convenience wrapper around qtest_start().
+ * Convenience wrapper around qtest_init().
  *
  * Returns: #QTestState instance.
  */
@@ -41,7 +39,7 @@ QTestState *qtest_initf(const char *fmt, ...) GCC_FMT_ATTR(1, 2);
  * like vsprintf().
  * @ap: Format arguments.
  *
- * Convenience wrapper around qtest_start().
+ * Convenience wrapper around qtest_init().
  *
  * Returns: #QTestState instance.
  */
@@ -85,6 +83,21 @@ QTestState *qtest_init_with_serial(const char *extra_args, int *sock_fd);
 void qtest_quit(QTestState *s);
 
 /**
+ * qtest_qmp_fds:
+ * @s: #QTestState instance to operate on.
+ * @fds: array of file descriptors
+ * @fds_num: number of elements in @fds
+ * @fmt...: QMP message to send to qemu, formatted like
+ * qobject_from_jsonf_nofail().  See parse_escape() for what's
+ * supported after '%'.
+ *
+ * Sends a QMP message to QEMU with fds and returns the response.
+ */
+QDict *qtest_qmp_fds(QTestState *s, int *fds, size_t fds_num,
+                     const char *fmt, ...)
+    GCC_FMT_ATTR(4, 5);
+
+/**
  * qtest_qmp:
  * @s: #QTestState instance to operate on.
  * @fmt...: QMP message to send to qemu, formatted like
@@ -120,7 +133,23 @@ void qtest_qmp_send_raw(QTestState *s, const char *fmt, ...)
     GCC_FMT_ATTR(2, 3);
 
 /**
- * qtest_qmpv:
+ * qtest_vqmp_fds:
+ * @s: #QTestState instance to operate on.
+ * @fds: array of file descriptors
+ * @fds_num: number of elements in @fds
+ * @fmt: QMP message to send to QEMU, formatted like
+ * qobject_from_jsonf_nofail().  See parse_escape() for what's
+ * supported after '%'.
+ * @ap: QMP message arguments
+ *
+ * Sends a QMP message to QEMU with fds and returns the response.
+ */
+QDict *qtest_vqmp_fds(QTestState *s, int *fds, size_t fds_num,
+                      const char *fmt, va_list ap)
+    GCC_FMT_ATTR(4, 0);
+
+/**
+ * qtest_vqmp:
  * @s: #QTestState instance to operate on.
  * @fmt: QMP message to send to QEMU, formatted like
  * qobject_from_jsonf_nofail().  See parse_escape() for what's
@@ -131,6 +160,22 @@ void qtest_qmp_send_raw(QTestState *s, const char *fmt, ...)
  */
 QDict *qtest_vqmp(QTestState *s, const char *fmt, va_list ap)
     GCC_FMT_ATTR(2, 0);
+
+/**
+ * qtest_qmp_vsend_fds:
+ * @s: #QTestState instance to operate on.
+ * @fds: array of file descriptors
+ * @fds_num: number of elements in @fds
+ * @fmt: QMP message to send to QEMU, formatted like
+ * qobject_from_jsonf_nofail().  See parse_escape() for what's
+ * supported after '%'.
+ * @ap: QMP message arguments
+ *
+ * Sends a QMP message to QEMU and leaves the response in the stream.
+ */
+void qtest_qmp_vsend_fds(QTestState *s, int *fds, size_t fds_num,
+                         const char *fmt, va_list ap)
+    GCC_FMT_ATTR(4, 0);
 
 /**
  * qtest_qmp_vsend:
@@ -214,6 +259,8 @@ char *qtest_hmp(QTestState *s, const char *fmt, ...) GCC_FMT_ATTR(2, 3);
  */
 char *qtest_vhmp(QTestState *s, const char *fmt, va_list ap)
     GCC_FMT_ATTR(2, 0);
+
+void qtest_module_load(QTestState *s, const char *prefix, const char *libname);
 
 /**
  * qtest_get_irq:
@@ -580,411 +627,21 @@ void qtest_add_data_func_full(const char *str, void *data,
 void qtest_add_abrt_handler(GHookFunc fn, const void *data);
 
 /**
- * qtest_start:
- * @args: other arguments to pass to QEMU
- *
- * Start QEMU and assign the resulting #QTestState to a global variable.
- * The global variable is used by "shortcut" functions documented below.
- *
- * Returns: #QTestState instance.
- */
-static inline QTestState *qtest_start(const char *args)
-{
-    global_qtest = qtest_init(args);
-    return global_qtest;
-}
-
-/**
- * qtest_end:
- *
- * Shut down the QEMU process started by qtest_start().
- */
-static inline void qtest_end(void)
-{
-    if (!global_qtest) {
-        return;
-    }
-    qtest_quit(global_qtest);
-    global_qtest = NULL;
-}
-
-/**
- * qmp:
+ * qtest_qmp_assert_success:
+ * @qts: QTestState instance to operate on
  * @fmt...: QMP message to send to qemu, formatted like
  * qobject_from_jsonf_nofail().  See parse_escape() for what's
  * supported after '%'.
  *
- * Sends a QMP message to QEMU and returns the response.
+ * Sends a QMP message to QEMU and asserts that a 'return' key is present in
+ * the response.
  */
-QDict *qmp(const char *fmt, ...) GCC_FMT_ATTR(1, 2);
-
-/**
- * qmp_send:
- * @fmt...: QMP message to send to qemu, formatted like
- * qobject_from_jsonf_nofail().  See parse_escape() for what's
- * supported after '%'.
- *
- * Sends a QMP message to QEMU and leaves the response in the stream.
- */
-void qmp_send(const char *fmt, ...) GCC_FMT_ATTR(1, 2);
-
-/**
- * qmp_receive:
- *
- * Reads a QMP message from QEMU and returns the response.
- */
-static inline QDict *qmp_receive(void)
-{
-    return qtest_qmp_receive(global_qtest);
-}
-
-/**
- * qmp_eventwait:
- * @s: #event event to wait for.
- *
- * Continuously polls for QMP responses until it receives the desired event.
- */
-static inline void qmp_eventwait(const char *event)
-{
-    return qtest_qmp_eventwait(global_qtest, event);
-}
-
-/**
- * qmp_eventwait_ref:
- * @s: #event event to wait for.
- *
- * Continuously polls for QMP responses until it receives the desired event.
- * Returns a copy of the event for further investigation.
- */
-static inline QDict *qmp_eventwait_ref(const char *event)
-{
-    return qtest_qmp_eventwait_ref(global_qtest, event);
-}
-
-/**
- * hmp:
- * @fmt...: HMP command to send to QEMU, formats arguments like sprintf().
- *
- * Send HMP command to QEMU via QMP's human-monitor-command.
- *
- * Returns: the command's output.  The caller should g_free() it.
- */
-char *hmp(const char *fmt, ...) GCC_FMT_ATTR(1, 2);
-
-/**
- * get_irq:
- * @num: Interrupt to observe.
- *
- * Returns: The level of the @num interrupt.
- */
-static inline bool get_irq(int num)
-{
-    return qtest_get_irq(global_qtest, num);
-}
-
-/**
- * irq_intercept_in:
- * @string: QOM path of a device.
- *
- * Associate qtest irqs with the GPIO-in pins of the device
- * whose path is specified by @string.
- */
-static inline void irq_intercept_in(const char *string)
-{
-    qtest_irq_intercept_in(global_qtest, string);
-}
-
-/**
- * qtest_irq_intercept_out:
- * @string: QOM path of a device.
- *
- * Associate qtest irqs with the GPIO-out pins of the device
- * whose path is specified by @string.
- */
-static inline void irq_intercept_out(const char *string)
-{
-    qtest_irq_intercept_out(global_qtest, string);
-}
-
-/**
- * outb:
- * @addr: I/O port to write to.
- * @value: Value being written.
- *
- * Write an 8-bit value to an I/O port.
- */
-static inline void outb(uint16_t addr, uint8_t value)
-{
-    qtest_outb(global_qtest, addr, value);
-}
-
-/**
- * outw:
- * @addr: I/O port to write to.
- * @value: Value being written.
- *
- * Write a 16-bit value to an I/O port.
- */
-static inline void outw(uint16_t addr, uint16_t value)
-{
-    qtest_outw(global_qtest, addr, value);
-}
-
-/**
- * outl:
- * @addr: I/O port to write to.
- * @value: Value being written.
- *
- * Write a 32-bit value to an I/O port.
- */
-static inline void outl(uint16_t addr, uint32_t value)
-{
-    qtest_outl(global_qtest, addr, value);
-}
-
-/**
- * inb:
- * @addr: I/O port to read from.
- *
- * Reads an 8-bit value from an I/O port.
- *
- * Returns: Value read.
- */
-static inline uint8_t inb(uint16_t addr)
-{
-    return qtest_inb(global_qtest, addr);
-}
-
-/**
- * inw:
- * @addr: I/O port to read from.
- *
- * Reads a 16-bit value from an I/O port.
- *
- * Returns: Value read.
- */
-static inline uint16_t inw(uint16_t addr)
-{
-    return qtest_inw(global_qtest, addr);
-}
-
-/**
- * inl:
- * @addr: I/O port to read from.
- *
- * Reads a 32-bit value from an I/O port.
- *
- * Returns: Value read.
- */
-static inline uint32_t inl(uint16_t addr)
-{
-    return qtest_inl(global_qtest, addr);
-}
-
-/**
- * writeb:
- * @addr: Guest address to write to.
- * @value: Value being written.
- *
- * Writes an 8-bit value to guest memory.
- */
-static inline void writeb(uint64_t addr, uint8_t value)
-{
-    qtest_writeb(global_qtest, addr, value);
-}
-
-/**
- * writew:
- * @addr: Guest address to write to.
- * @value: Value being written.
- *
- * Writes a 16-bit value to guest memory.
- */
-static inline void writew(uint64_t addr, uint16_t value)
-{
-    qtest_writew(global_qtest, addr, value);
-}
-
-/**
- * writel:
- * @addr: Guest address to write to.
- * @value: Value being written.
- *
- * Writes a 32-bit value to guest memory.
- */
-static inline void writel(uint64_t addr, uint32_t value)
-{
-    qtest_writel(global_qtest, addr, value);
-}
-
-/**
- * writeq:
- * @addr: Guest address to write to.
- * @value: Value being written.
- *
- * Writes a 64-bit value to guest memory.
- */
-static inline void writeq(uint64_t addr, uint64_t value)
-{
-    qtest_writeq(global_qtest, addr, value);
-}
-
-/**
- * readb:
- * @addr: Guest address to read from.
- *
- * Reads an 8-bit value from guest memory.
- *
- * Returns: Value read.
- */
-static inline uint8_t readb(uint64_t addr)
-{
-    return qtest_readb(global_qtest, addr);
-}
-
-/**
- * readw:
- * @addr: Guest address to read from.
- *
- * Reads a 16-bit value from guest memory.
- *
- * Returns: Value read.
- */
-static inline uint16_t readw(uint64_t addr)
-{
-    return qtest_readw(global_qtest, addr);
-}
-
-/**
- * readl:
- * @addr: Guest address to read from.
- *
- * Reads a 32-bit value from guest memory.
- *
- * Returns: Value read.
- */
-static inline uint32_t readl(uint64_t addr)
-{
-    return qtest_readl(global_qtest, addr);
-}
-
-/**
- * readq:
- * @addr: Guest address to read from.
- *
- * Reads a 64-bit value from guest memory.
- *
- * Returns: Value read.
- */
-static inline uint64_t readq(uint64_t addr)
-{
-    return qtest_readq(global_qtest, addr);
-}
-
-/**
- * memread:
- * @addr: Guest address to read from.
- * @data: Pointer to where memory contents will be stored.
- * @size: Number of bytes to read.
- *
- * Read guest memory into a buffer.
- */
-static inline void memread(uint64_t addr, void *data, size_t size)
-{
-    qtest_memread(global_qtest, addr, data, size);
-}
-
-/**
- * bufread:
- * @addr: Guest address to read from.
- * @data: Pointer to where memory contents will be stored.
- * @size: Number of bytes to read.
- *
- * Read guest memory into a buffer, receive using a base64 encoding.
- */
-static inline void bufread(uint64_t addr, void *data, size_t size)
-{
-    qtest_bufread(global_qtest, addr, data, size);
-}
-
-/**
- * memwrite:
- * @addr: Guest address to write to.
- * @data: Pointer to the bytes that will be written to guest memory.
- * @size: Number of bytes to write.
- *
- * Write a buffer to guest memory.
- */
-static inline void memwrite(uint64_t addr, const void *data, size_t size)
-{
-    qtest_memwrite(global_qtest, addr, data, size);
-}
-
-/**
- * bufwrite:
- * @addr: Guest address to write to.
- * @data: Pointer to the bytes that will be written to guest memory.
- * @size: Number of bytes to write.
- *
- * Write a buffer to guest memory, transmit using a base64 encoding.
- */
-static inline void bufwrite(uint64_t addr, const void *data, size_t size)
-{
-    qtest_bufwrite(global_qtest, addr, data, size);
-}
-
-/**
- * qmemset:
- * @addr: Guest address to write to.
- * @patt: Byte pattern to fill the guest memory region with.
- * @size: Number of bytes to write.
- *
- * Write a pattern to guest memory.
- */
-static inline void qmemset(uint64_t addr, uint8_t patt, size_t size)
-{
-    qtest_memset(global_qtest, addr, patt, size);
-}
-
-/**
- * clock_step_next:
- *
- * Advance the QEMU_CLOCK_VIRTUAL to the next deadline.
- *
- * Returns: The current value of the QEMU_CLOCK_VIRTUAL in nanoseconds.
- */
-static inline int64_t clock_step_next(void)
-{
-    return qtest_clock_step_next(global_qtest);
-}
-
-/**
- * clock_step:
- * @step: Number of nanoseconds to advance the clock by.
- *
- * Advance the QEMU_CLOCK_VIRTUAL by @step nanoseconds.
- *
- * Returns: The current value of the QEMU_CLOCK_VIRTUAL in nanoseconds.
- */
-static inline int64_t clock_step(int64_t step)
-{
-    return qtest_clock_step(global_qtest, step);
-}
-
-/**
- * clock_set:
- * @val: Nanoseconds value to advance the clock to.
- *
- * Advance the QEMU_CLOCK_VIRTUAL to @val nanoseconds since the VM was launched.
- *
- * Returns: The current value of the QEMU_CLOCK_VIRTUAL in nanoseconds.
- */
-static inline int64_t clock_set(int64_t val)
-{
-    return qtest_clock_set(global_qtest, val);
-}
+void qtest_qmp_assert_success(QTestState *qts, const char *fmt, ...)
+    GCC_FMT_ATTR(2, 3);
 
 QDict *qmp_fd_receive(int fd);
+void qmp_fd_vsend_fds(int fd, int *fds, size_t fds_num,
+                      const char *fmt, va_list ap) GCC_FMT_ATTR(4, 0);
 void qmp_fd_vsend(int fd, const char *fmt, va_list ap) GCC_FMT_ATTR(2, 0);
 void qmp_fd_send(int fd, const char *fmt, ...) GCC_FMT_ATTR(2, 3);
 void qmp_fd_send_raw(int fd, const char *fmt, ...) GCC_FMT_ATTR(2, 3);
@@ -1003,7 +660,20 @@ void qtest_cb_for_every_machine(void (*cb)(const char *machine),
                                 bool skip_old_versioned);
 
 /**
+ * qtest_qmp_device_add_qdict:
+ * @qts: QTestState instance to operate on
+ * @drv: Name of the device that should be added
+ * @arguments: QDict with properties for the device to intialize
+ *
+ * Generic hot-plugging test via the device_add QMP command with properties
+ * supplied in form of QDict. Use NULL for empty properties list.
+ */
+void qtest_qmp_device_add_qdict(QTestState *qts, const char *drv,
+                                const QDict *arguments);
+
+/**
  * qtest_qmp_device_add:
+ * @qts: QTestState instance to operate on
  * @driver: Name of the device that should be added
  * @id: Identification string
  * @fmt...: QMP message to send to qemu, formatted like
@@ -1012,16 +682,17 @@ void qtest_cb_for_every_machine(void (*cb)(const char *machine),
  *
  * Generic hot-plugging test via the device_add QMP command.
  */
-void qtest_qmp_device_add(const char *driver, const char *id, const char *fmt,
-                          ...) GCC_FMT_ATTR(3, 4);
+void qtest_qmp_device_add(QTestState *qts, const char *driver, const char *id,
+                          const char *fmt, ...) GCC_FMT_ATTR(4, 5);
 
 /**
  * qtest_qmp_device_del:
+ * @qts: QTestState instance to operate on
  * @id: Identification string
  *
  * Generic hot-unplugging test via the device_del QMP command.
  */
-void qtest_qmp_device_del(const char *id);
+void qtest_qmp_device_del(QTestState *qts, const char *id);
 
 /**
  * qmp_rsp_is_err:
@@ -1048,5 +719,14 @@ void qmp_assert_error_class(QDict *rsp, const char *class);
  * Returns: true if the child is still alive.
  */
 bool qtest_probe_child(QTestState *s);
+
+/**
+ * qtest_set_expected_status:
+ * @s: QTestState instance to operate on.
+ * @status: an expected exit status.
+ *
+ * Set expected exit status of the child.
+ */
+void qtest_set_expected_status(QTestState *s, int status);
 
 #endif

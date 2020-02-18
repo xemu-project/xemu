@@ -10,6 +10,7 @@
 #include "qemu/osdep.h"
 #include "libqtest.h"
 #include "qemu/bswap.h"
+#include "qemu/module.h"
 #include "libqos/qgraph.h"
 #include "libqos/pci.h"
 
@@ -66,7 +67,7 @@ static void megasas_pd_get_info_fuzz(void *obj, void *data, QGuestAllocator *all
     context[7] = cpu_to_le32(0);
 
     context_pa = guest_alloc(alloc, sizeof(context));
-    memwrite(context_pa, context, sizeof(context));
+    qtest_memwrite(dev->bus->qts, context_pa, context, sizeof(context));
     qpci_io_writel(dev, bar, 0x40, context_pa);
 }
 
@@ -74,7 +75,8 @@ static void megasas_register_nodes(void)
 {
     QOSGraphEdgeOptions opts = {
         .extra_device_opts = "addr=04.0,id=scsi0",
-        .before_cmd_line = "-drive id=drv0,if=none,file=null-co://,format=raw",
+        .before_cmd_line = "-drive id=drv0,if=none,file=null-co://,"
+                           "file.read-zeroes=on,format=raw",
         .after_cmd_line = "-device scsi-hd,bus=scsi0.0,drive=drv0",
     };
 

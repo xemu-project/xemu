@@ -31,13 +31,16 @@
 #include "ui/console.h"
 #include "ui/input.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/runstate.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-block.h"
 #include "qapi/qapi-commands-misc.h"
 #include "sysemu/blockdev.h"
 #include "qemu-version.h"
+#include "qemu/main-loop.h"
+#include "qemu/module.h"
 #include <Carbon/Carbon.h>
-#include "qom/cpu.h"
+#include "hw/core/cpu.h"
 
 #ifndef MAC_OS_X_VERSION_10_5
 #define MAC_OS_X_VERSION_10_5 1050
@@ -131,6 +134,7 @@ NSArray * supportedImageFileTypes;
 
 static QemuSemaphore display_init_sem;
 static QemuSemaphore app_started_sem;
+static bool allow_events;
 
 // Utility functions to run specified code block with iothread lock held
 typedef void (^CodeBlock)(void);
@@ -403,6 +407,41 @@ QemuCocoaView *cocoaView;
 - (BOOL) screenContainsPoint:(NSPoint) p
 {
     return (p.x > -1 && p.x < screen.width && p.y > -1 && p.y < screen.height);
+}
+
+/* Get location of event and convert to virtual screen coordinate */
+- (CGPoint) screenLocationOfEvent:(NSEvent *)ev
+{
+    NSWindow *eventWindow = [ev window];
+    // XXX: Use CGRect and -convertRectFromScreen: to support macOS 10.10
+    CGRect r = CGRectZero;
+    r.origin = [ev locationInWindow];
+    if (!eventWindow) {
+        if (!isFullscreen) {
+            return [[self window] convertRectFromScreen:r].origin;
+        } else {
+            CGPoint locationInSelfWindow = [[self window] convertRectFromScreen:r].origin;
+            CGPoint loc = [self convertPoint:locationInSelfWindow fromView:nil];
+            if (stretch_video) {
+                loc.x /= cdx;
+                loc.y /= cdy;
+            }
+            return loc;
+        }
+    } else if ([[self window] isEqual:eventWindow]) {
+        if (!isFullscreen) {
+            return r.origin;
+        } else {
+            CGPoint loc = [self convertPoint:r.origin fromView:nil];
+            if (stretch_video) {
+                loc.x /= cdx;
+                loc.y /= cdy;
+            }
+            return loc;
+        }
+    } else {
+        return [[self window] convertRectFromScreen:[eventWindow convertRectToScreen:r]].origin;
+    }
 }
 
 - (void) hideCursor
@@ -691,6 +730,16 @@ QemuCocoaView *cocoaView;
 
 - (bool) handleEvent:(NSEvent *)event
 {
+    if(!allow_events) {
+        /*
+         * Just let OSX have all events that arrive before
+         * applicationDidFinishLaunching.
+         * This avoids a deadlock on the iothread lock, which cocoa_display_init()
+         * will not drop until after the app_started_sem is posted. (In theory
+         * there should not be any such events, but OSX Catalina now emits some.)
+         */
+        return false;
+    }
     return bool_with_iothread_lock(^{
         return [self handleEventLocked:event];
     });
@@ -704,7 +753,8 @@ QemuCocoaView *cocoaView;
     int keycode = 0;
     bool mouse_event = false;
     static bool switched_to_fullscreen = false;
-    NSPoint p = [event locationInWindow];
+    // Location of event in virtual screen coordinates
+    NSPoint p = [self screenLocationOfEvent:event];
 
     switch ([event type]) {
         case NSEventTypeFlagsChanged:
@@ -815,7 +865,10 @@ QemuCocoaView *cocoaView;
             break;
         case NSEventTypeMouseMoved:
             if (isAbsoluteEnabled) {
-                if (![self screenContainsPoint:p] || ![[self window] isKeyWindow]) {
+                // Cursor re-entered into a window might generate events bound to screen coordinates
+                // and `nil` window property, and in full screen mode, current window might not be
+                // key window, where event location alone should suffice.
+                if (![self screenContainsPoint:p] || !([[self window] isKeyWindow] || isFullscreen)) {
                     if (isMouseGrabbed) {
                         [self ungrabMouse];
                     }
@@ -862,7 +915,12 @@ QemuCocoaView *cocoaView;
         case NSEventTypeLeftMouseUp:
             mouse_event = true;
             if (!isMouseGrabbed && [self screenContainsPoint:p]) {
-                if([[self window] isKeyWindow]) {
+                /*
+                 * In fullscreen mode, the window of cocoaView may not be the
+                 * key window, therefore the position relative to the virtual
+                 * screen alone will be sufficient.
+                 */
+                if(isFullscreen || [[self window] isKeyWindow]) {
                     [self grabMouse];
                 }
             }
@@ -1109,6 +1167,7 @@ QemuCocoaView *cocoaView;
 - (void)applicationDidFinishLaunching: (NSNotification *) note
 {
     COCOA_DEBUG("QemuCocoaAppController: applicationDidFinishLaunching\n");
+    allow_events = true;
     /* Tell cocoa_display_init to proceed */
     qemu_sem_post(&app_started_sem);
 }

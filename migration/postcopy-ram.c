@@ -25,10 +25,12 @@
 #include "ram.h"
 #include "qapi/error.h"
 #include "qemu/notify.h"
+#include "qemu/rcu.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/balloon.h"
 #include "qemu/error-report.h"
 #include "trace.h"
+#include "hw/boards.h"
 
 /* Arbitrary limit on size of each discard command,
  * keeps them around ~200 bytes
@@ -128,6 +130,8 @@ static void migration_exit_cb(Notifier *n, void *data)
 
 static struct PostcopyBlocktimeContext *blocktime_context_new(void)
 {
+    MachineState *ms = MACHINE(qdev_get_machine());
+    unsigned int smp_cpus = ms->smp.cpus;
     PostcopyBlocktimeContext *ctx = g_new0(PostcopyBlocktimeContext, 1);
     ctx->page_fault_vcpu_time = g_new0(uint32_t, smp_cpus);
     ctx->vcpu_addr = g_new0(uintptr_t, smp_cpus);
@@ -141,10 +145,11 @@ static struct PostcopyBlocktimeContext *blocktime_context_new(void)
 
 static uint32List *get_vcpu_blocktime_list(PostcopyBlocktimeContext *ctx)
 {
+    MachineState *ms = MACHINE(qdev_get_machine());
     uint32List *list = NULL, *entry = NULL;
     int i;
 
-    for (i = smp_cpus - 1; i >= 0; i--) {
+    for (i = ms->smp.cpus - 1; i >= 0; i--) {
         entry = g_new0(uint32List, 1);
         entry->value = ctx->vcpu_blocktime[i];
         entry->next = list;
@@ -303,7 +308,7 @@ static bool ufd_check_and_apply(int ufd, MigrationIncomingState *mis)
         return false;
     }
 
-    if (getpagesize() != ram_pagesize_summary()) {
+    if (qemu_real_host_page_size != ram_pagesize_summary()) {
         bool have_hp = false;
         /* We've got a huge page */
 #ifdef UFFD_FEATURE_MISSING_HUGETLBFS
@@ -341,7 +346,7 @@ static int test_ramblock_postcopiable(RAMBlock *rb, void *opaque)
  */
 bool postcopy_ram_supported_by_host(MigrationIncomingState *mis)
 {
-    long pagesize = getpagesize();
+    long pagesize = qemu_real_host_page_size;
     int ufd = -1;
     bool ret = false; /* Error unless we change it */
     void *testarea = NULL;
@@ -572,8 +577,6 @@ int postcopy_ram_incoming_cleanup(MigrationIncomingState *mis)
         }
     }
 
-    postcopy_state_set(POSTCOPY_INCOMING_END);
-
     if (mis->postcopy_tmp_page) {
         munmap(mis->postcopy_tmp_page, mis->largest_page_size);
         mis->postcopy_tmp_page = NULL;
@@ -763,9 +766,11 @@ static void mark_postcopy_blocktime_begin(uintptr_t addr, uint32_t ptid,
     atomic_xchg(&dc->page_fault_vcpu_time[cpu], low_time_offset);
     atomic_xchg(&dc->vcpu_addr[cpu], addr);
 
-    /* check it here, not at the begining of the function,
-     * due to, check could accur early than bitmap_set in
-     * qemu_ufd_copy_ioctl */
+    /*
+     * check it here, not at the beginning of the function,
+     * due to, check could occur early than bitmap_set in
+     * qemu_ufd_copy_ioctl
+     */
     already_received = ramblock_recv_bitmap_test(rb, (void *)addr);
     if (already_received) {
         atomic_xchg(&dc->vcpu_addr[cpu], 0);
@@ -807,6 +812,8 @@ static void mark_postcopy_blocktime_end(uintptr_t addr)
 {
     MigrationIncomingState *mis = migration_incoming_get_current();
     PostcopyBlocktimeContext *dc = mis->blocktime_ctx;
+    MachineState *ms = MACHINE(qdev_get_machine());
+    unsigned int smp_cpus = ms->smp.cpus;
     int i, affected_cpu = 0;
     bool vcpu_total_blocktime = false;
     uint32_t read_vcpu_time, low_time_offset;
@@ -1087,7 +1094,7 @@ retry:
     return NULL;
 }
 
-int postcopy_ram_enable_notify(MigrationIncomingState *mis)
+int postcopy_ram_incoming_setup(MigrationIncomingState *mis)
 {
     /* Open the fd for the kernel to give us userfaults */
     mis->userfault_fd = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK);
@@ -1126,6 +1133,32 @@ int postcopy_ram_enable_notify(MigrationIncomingState *mis)
         error_report("ram_block_enable_notify failed");
         return -1;
     }
+
+    mis->postcopy_tmp_page = mmap(NULL, mis->largest_page_size,
+                                  PROT_READ | PROT_WRITE, MAP_PRIVATE |
+                                  MAP_ANONYMOUS, -1, 0);
+    if (mis->postcopy_tmp_page == MAP_FAILED) {
+        mis->postcopy_tmp_page = NULL;
+        error_report("%s: Failed to map postcopy_tmp_page %s",
+                     __func__, strerror(errno));
+        return -1;
+    }
+
+    /*
+     * Map large zero page when kernel can't use UFFDIO_ZEROPAGE for hugepages
+     */
+    mis->postcopy_tmp_zero_page = mmap(NULL, mis->largest_page_size,
+                                       PROT_READ | PROT_WRITE,
+                                       MAP_PRIVATE | MAP_ANONYMOUS,
+                                       -1, 0);
+    if (mis->postcopy_tmp_zero_page == MAP_FAILED) {
+        int e = errno;
+        mis->postcopy_tmp_zero_page = NULL;
+        error_report("%s: Failed to map large zero page %s",
+                     __func__, strerror(e));
+        return -e;
+    }
+    memset(mis->postcopy_tmp_zero_page, '\0', mis->largest_page_size);
 
     /*
      * Ballooning can mark pages as absent while we're postcopying
@@ -1233,48 +1266,8 @@ int postcopy_place_page_zero(MigrationIncomingState *mis, void *host,
                                            qemu_ram_block_host_offset(rb,
                                                                       host));
     } else {
-        /* The kernel can't use UFFDIO_ZEROPAGE for hugepages */
-        if (!mis->postcopy_tmp_zero_page) {
-            mis->postcopy_tmp_zero_page = mmap(NULL, mis->largest_page_size,
-                                               PROT_READ | PROT_WRITE,
-                                               MAP_PRIVATE | MAP_ANONYMOUS,
-                                               -1, 0);
-            if (mis->postcopy_tmp_zero_page == MAP_FAILED) {
-                int e = errno;
-                mis->postcopy_tmp_zero_page = NULL;
-                error_report("%s: %s mapping large zero page",
-                             __func__, strerror(e));
-                return -e;
-            }
-            memset(mis->postcopy_tmp_zero_page, '\0', mis->largest_page_size);
-        }
-        return postcopy_place_page(mis, host, mis->postcopy_tmp_zero_page,
-                                   rb);
+        return postcopy_place_page(mis, host, mis->postcopy_tmp_zero_page, rb);
     }
-}
-
-/*
- * Returns a target page of memory that can be mapped at a later point in time
- * using postcopy_place_page
- * The same address is used repeatedly, postcopy_place_page just takes the
- * backing page away.
- * Returns: Pointer to allocated page
- *
- */
-void *postcopy_get_tmp_page(MigrationIncomingState *mis)
-{
-    if (!mis->postcopy_tmp_page) {
-        mis->postcopy_tmp_page = mmap(NULL, mis->largest_page_size,
-                             PROT_READ | PROT_WRITE, MAP_PRIVATE |
-                             MAP_ANONYMOUS, -1, 0);
-        if (mis->postcopy_tmp_page == MAP_FAILED) {
-            mis->postcopy_tmp_page = NULL;
-            error_report("%s: %s", __func__, strerror(errno));
-            return NULL;
-        }
-    }
-
-    return mis->postcopy_tmp_page;
 }
 
 #else
@@ -1314,7 +1307,7 @@ int postcopy_request_shared_page(struct PostCopyFD *pcfd, RAMBlock *rb,
     return -1;
 }
 
-int postcopy_ram_enable_notify(MigrationIncomingState *mis)
+int postcopy_ram_incoming_setup(MigrationIncomingState *mis)
 {
     assert(0);
     return -1;
@@ -1332,12 +1325,6 @@ int postcopy_place_page_zero(MigrationIncomingState *mis, void *host,
 {
     assert(0);
     return -1;
-}
-
-void *postcopy_get_tmp_page(MigrationIncomingState *mis)
-{
-    assert(0);
-    return NULL;
 }
 
 int postcopy_wake_shared(struct PostCopyFD *pcfd,
@@ -1371,22 +1358,16 @@ void postcopy_fault_thread_notify(MigrationIncomingState *mis)
  *   asking to discard individual ranges.
  *
  * @ms: The current migration state.
- * @offset: the bitmap offset of the named RAMBlock in the migration
- *   bitmap.
+ * @offset: the bitmap offset of the named RAMBlock in the migration bitmap.
  * @name: RAMBlock that discards will operate on.
- *
- * returns: a new PDS.
  */
-PostcopyDiscardState *postcopy_discard_send_init(MigrationState *ms,
-                                                 const char *name)
+static PostcopyDiscardState pds = {0};
+void postcopy_discard_send_init(MigrationState *ms, const char *name)
 {
-    PostcopyDiscardState *res = g_malloc0(sizeof(PostcopyDiscardState));
-
-    if (res) {
-        res->ramblock_name = name;
-    }
-
-    return res;
+    pds.ramblock_name = name;
+    pds.cur_entry = 0;
+    pds.nsentwords = 0;
+    pds.nsentcmds = 0;
 }
 
 /**
@@ -1395,30 +1376,29 @@ PostcopyDiscardState *postcopy_discard_send_init(MigrationState *ms,
  *   be sent later.
  *
  * @ms: Current migration state.
- * @pds: Structure initialised by postcopy_discard_send_init().
  * @start,@length: a range of pages in the migration bitmap in the
  *   RAM block passed to postcopy_discard_send_init() (length=1 is one page)
  */
-void postcopy_discard_send_range(MigrationState *ms, PostcopyDiscardState *pds,
-                                unsigned long start, unsigned long length)
+void postcopy_discard_send_range(MigrationState *ms, unsigned long start,
+                                 unsigned long length)
 {
     size_t tp_size = qemu_target_page_size();
     /* Convert to byte offsets within the RAM block */
-    pds->start_list[pds->cur_entry] = start  * tp_size;
-    pds->length_list[pds->cur_entry] = length * tp_size;
-    trace_postcopy_discard_send_range(pds->ramblock_name, start, length);
-    pds->cur_entry++;
-    pds->nsentwords++;
+    pds.start_list[pds.cur_entry] = start  * tp_size;
+    pds.length_list[pds.cur_entry] = length * tp_size;
+    trace_postcopy_discard_send_range(pds.ramblock_name, start, length);
+    pds.cur_entry++;
+    pds.nsentwords++;
 
-    if (pds->cur_entry == MAX_DISCARDS_PER_COMMAND) {
+    if (pds.cur_entry == MAX_DISCARDS_PER_COMMAND) {
         /* Full set, ship it! */
         qemu_savevm_send_postcopy_ram_discard(ms->to_dst_file,
-                                              pds->ramblock_name,
-                                              pds->cur_entry,
-                                              pds->start_list,
-                                              pds->length_list);
-        pds->nsentcmds++;
-        pds->cur_entry = 0;
+                                              pds.ramblock_name,
+                                              pds.cur_entry,
+                                              pds.start_list,
+                                              pds.length_list);
+        pds.nsentcmds++;
+        pds.cur_entry = 0;
     }
 }
 
@@ -1427,24 +1407,21 @@ void postcopy_discard_send_range(MigrationState *ms, PostcopyDiscardState *pds,
  * bitmap code. Sends any outstanding discard messages, frees the PDS
  *
  * @ms: Current migration state.
- * @pds: Structure initialised by postcopy_discard_send_init().
  */
-void postcopy_discard_send_finish(MigrationState *ms, PostcopyDiscardState *pds)
+void postcopy_discard_send_finish(MigrationState *ms)
 {
     /* Anything unsent? */
-    if (pds->cur_entry) {
+    if (pds.cur_entry) {
         qemu_savevm_send_postcopy_ram_discard(ms->to_dst_file,
-                                              pds->ramblock_name,
-                                              pds->cur_entry,
-                                              pds->start_list,
-                                              pds->length_list);
-        pds->nsentcmds++;
+                                              pds.ramblock_name,
+                                              pds.cur_entry,
+                                              pds.start_list,
+                                              pds.length_list);
+        pds.nsentcmds++;
     }
 
-    trace_postcopy_discard_send_finish(pds->ramblock_name, pds->nsentwords,
-                                       pds->nsentcmds);
-
-    g_free(pds);
+    trace_postcopy_discard_send_finish(pds.ramblock_name, pds.nsentwords,
+                                       pds.nsentcmds);
 }
 
 /*

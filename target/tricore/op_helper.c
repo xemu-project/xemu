@@ -29,7 +29,7 @@ static void QEMU_NORETURN
 raise_exception_sync_internal(CPUTriCoreState *env, uint32_t class, int tin,
                               uintptr_t pc, uint32_t fcd_pc)
 {
-    CPUState *cs = CPU(tricore_env_get_cpu(env));
+    CPUState *cs = env_cpu(env);
     /* in case we come from a helper-call we need to restore the PC */
     cpu_restore_state(cs, pc, true);
 
@@ -105,6 +105,13 @@ static void raise_exception_sync_helper(CPUTriCoreState *env, uint32_t class,
                                         uint32_t tin, uintptr_t pc)
 {
     raise_exception_sync_internal(env, class, tin, pc, 0);
+}
+
+void helper_qemu_excp(CPUTriCoreState *env, uint32_t excp)
+{
+    CPUState *cs = env_cpu(env);
+    cs->exception_index = excp;
+    cpu_loop_exit(cs);
 }
 
 /* Addressing mode helper */
@@ -2792,30 +2799,4 @@ void helper_psw_write(CPUTriCoreState *env, uint32_t arg)
 uint32_t helper_psw_read(CPUTriCoreState *env)
 {
     return psw_read(env);
-}
-
-
-static inline void QEMU_NORETURN do_raise_exception_err(CPUTriCoreState *env,
-                                                        uint32_t exception,
-                                                        int error_code,
-                                                        uintptr_t pc)
-{
-    CPUState *cs = CPU(tricore_env_get_cpu(env));
-    cs->exception_index = exception;
-    env->error_code = error_code;
-    /* now we have a real cpu fault */
-    cpu_loop_exit_restore(cs, pc);
-}
-
-void tlb_fill(CPUState *cs, target_ulong addr, int size,
-              MMUAccessType access_type, int mmu_idx, uintptr_t retaddr)
-{
-    int ret;
-    ret = cpu_tricore_handle_mmu_fault(cs, addr, access_type, mmu_idx);
-    if (ret) {
-        TriCoreCPU *cpu = TRICORE_CPU(cs);
-        CPUTriCoreState *env = &cpu->env;
-        do_raise_exception_err(env, cs->exception_index,
-                               env->error_code, retaddr);
-    }
 }

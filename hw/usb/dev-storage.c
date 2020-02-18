@@ -9,14 +9,16 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "qemu/error-report.h"
+#include "qemu/module.h"
 #include "qemu/option.h"
 #include "qemu/config-file.h"
 #include "hw/usb.h"
 #include "desc.h"
+#include "hw/qdev-properties.h"
 #include "hw/scsi/scsi.h"
 #include "ui/console.h"
+#include "migration/vmstate.h"
 #include "monitor/monitor.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/block-backend.h"
@@ -616,7 +618,7 @@ static void usb_msd_storage_realize(USBDevice *dev, Error **errp)
      * The hack is probably a bad idea.
      */
     blk_ref(blk);
-    blk_detach_dev(blk, &s->dev.qdev);
+    blk_detach_dev(blk, DEVICE(s));
     s->conf.blk = NULL;
 
     usb_desc_create_serial(dev);

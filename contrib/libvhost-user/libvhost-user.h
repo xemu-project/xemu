@@ -25,7 +25,6 @@
 #define VHOST_USER_F_PROTOCOL_FEATURES 30
 #define VHOST_LOG_PAGE 4096
 
-#define VHOST_MAX_NR_VIRTQUEUE 8
 #define VIRTQUEUE_MAX_SIZE 1024
 
 #define VHOST_MEMORY_MAX_NREGIONS 8
@@ -94,6 +93,7 @@ typedef enum VhostUserRequest {
     VHOST_USER_POSTCOPY_END     = 30,
     VHOST_USER_GET_INFLIGHT_FD = 31,
     VHOST_USER_SET_INFLIGHT_FD = 32,
+    VHOST_USER_GPU_SET_SOCKET = 33,
     VHOST_USER_MAX
 } VhostUserRequest;
 
@@ -148,7 +148,7 @@ typedef struct VhostUserInflight {
     uint16_t queue_size;
 } VhostUserInflight;
 
-#if defined(_WIN32)
+#if defined(_WIN32) && (defined(__x86_64__) || defined(__i386__))
 # define VU_PACKED __attribute__((gcc_struct, packed))
 #else
 # define VU_PACKED __attribute__((packed))
@@ -352,7 +352,7 @@ struct VuDev {
     int sock;
     uint32_t nregions;
     VuDevRegion regions[VHOST_MEMORY_MAX_NREGIONS];
-    VuVirtq vq[VHOST_MAX_NR_VIRTQUEUE];
+    VuVirtq *vq;
     VuDevInflightInfo inflight_info;
     int log_call_fd;
     int slave_fd;
@@ -361,6 +361,7 @@ struct VuDev {
     uint64_t features;
     uint64_t protocol_features;
     bool broken;
+    uint16_t max_queues;
 
     /* @set_watch: add or update the given fd to the watch set,
      * call cb when condition is met */
@@ -390,6 +391,7 @@ typedef struct VuVirtqElement {
 /**
  * vu_init:
  * @dev: a VuDev context
+ * @max_queues: maximum number of virtqueues
  * @socket: the socket connected to vhost-user master
  * @panic: a panic callback
  * @set_watch: a set_watch callback
@@ -397,8 +399,11 @@ typedef struct VuVirtqElement {
  * @iface: a VuDevIface structure with vhost-user device callbacks
  *
  * Intializes a VuDev vhost-user context.
+ *
+ * Returns: true on success, false on failure.
  **/
-void vu_init(VuDev *dev,
+bool vu_init(VuDev *dev,
+             uint16_t max_queues,
              int socket,
              vu_panic_cb panic,
              vu_set_watch_cb set_watch,

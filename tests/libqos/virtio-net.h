@@ -16,6 +16,9 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>
  */
 
+#ifndef TESTS_LIBQOS_VIRTIO_NET_H
+#define TESTS_LIBQOS_VIRTIO_NET_H
+
 #include "libqos/qgraph.h"
 #include "libqos/virtio.h"
 #include "libqos/virtio-pci.h"
@@ -26,7 +29,7 @@ typedef struct QVirtioNetDevice QVirtioNetDevice;
 
 struct QVirtioNet {
     QVirtioDevice *vdev;
-    int n_queues;
+    int n_queues; /* total number of virtqueues (rx, tx, ctrl) */
     QVirtQueue **queues;
 };
 
@@ -39,3 +42,5 @@ struct QVirtioNetDevice {
     QOSGraphObject obj;
     QVirtioNet net;
 };
+
+#endif

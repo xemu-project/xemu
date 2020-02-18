@@ -22,7 +22,6 @@
  * THE SOFTWARE.
  */
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/arch_init.h"
@@ -38,6 +37,10 @@
 #ifdef TARGET_SPARC
 int graphic_width = 1024;
 int graphic_height = 768;
+int graphic_depth = 8;
+#elif defined(TARGET_M68K)
+int graphic_width = 800;
+int graphic_height = 600;
 int graphic_depth = 8;
 #else
 int graphic_width = 800;
@@ -106,15 +109,4 @@ int xen_available(void)
 #else
     return 0;
 #endif
-}
-
-
-TargetInfo *qmp_query_target(Error **errp)
-{
-    TargetInfo *info = g_malloc0(sizeof(*info));
-
-    info->arch = qapi_enum_parse(&SysEmuTarget_lookup, TARGET_NAME, -1,
-                                 &error_abort);
-
-    return info;
 }

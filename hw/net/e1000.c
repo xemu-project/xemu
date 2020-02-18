@@ -26,13 +26,15 @@
 
 
 #include "qemu/osdep.h"
-#include "hw/hw.h"
 #include "hw/pci/pci.h"
+#include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "net/net.h"
 #include "net/checksum.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
 #include "qemu/iov.h"
+#include "qemu/module.h"
 #include "qemu/range.h"
 
 #include "e1000x_common.h"
@@ -901,7 +903,6 @@ e1000_receive_iov(NetClientState *nc, const struct iovec *iov, int iovcnt)
     if (size < sizeof(min_buf)) {
         iov_to_buf(iov, iovcnt, 0, min_buf, size);
         memset(&min_buf[size], 0, sizeof(min_buf) - size);
-        e1000x_inc_reg_if_not_full(s->mac_reg, RUC);
         min_iov.iov_base = filter_buf = min_buf;
         min_iov.iov_len = size = sizeof(min_buf);
         iovcnt = 1;
@@ -1381,11 +1382,6 @@ static int e1000_pre_save(void *opaque)
     E1000State *s = opaque;
     NetClientState *nc = qemu_get_queue(s->nic);
 
-    /* If the mitigation timer is active, emulate a timeout now. */
-    if (s->mit_timer_on) {
-        e1000_mit_timer(s);
-    }
-
     /*
      * If link is down and auto-negotiation is supported and ongoing,
      * complete auto-negotiation immediately. This allows us to look
@@ -1423,7 +1419,8 @@ static int e1000_post_load(void *opaque, int version_id)
         s->mit_irq_level = false;
     }
     s->mit_ide = 0;
-    s->mit_timer_on = false;
+    s->mit_timer_on = true;
+    timer_mod(s->mit_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + 1);
 
     /* nc.link_down can't be migrated, so infer link_down according
      * to link status bit in mac_reg[STATUS].
@@ -1611,7 +1608,7 @@ static const VMStateDescription vmstate_e1000 = {
 
 /*
  * EEPROM contents documented in Tables 5-2 and 5-3, pp. 98-102.
- * Note: A valid DevId will be inserted during pci_e1000_init().
+ * Note: A valid DevId will be inserted during pci_e1000_realize().
  */
 static const uint16_t e1000_eeprom_template[64] = {
     0x0000, 0x0000, 0x0000, 0x0000,      0xffff, 0x0000,      0x0000, 0x0000,

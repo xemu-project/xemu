@@ -18,6 +18,8 @@
 #include "qapi/error.h"
 #include "qemu/throttle.h"
 #include "qemu/error-report.h"
+#include "qemu/main-loop.h"
+#include "qemu/module.h"
 #include "block/throttle-groups.h"
 #include "sysemu/block-backend.h"
 
@@ -556,6 +558,8 @@ static bool do_test_accounting(bool is_ops, /* are we testing bps or ops */
     BucketType index;
     int i;
 
+    throttle_config_init(&cfg);
+
     for (i = 0; i < 3; i++) {
         BucketType index = to_test[is_ops][i];
         cfg.buckets[index].avg = avg;
@@ -675,9 +679,9 @@ static void test_groups(void)
     ThrottleGroupMember *tgm1, *tgm2, *tgm3;
 
     /* No actual I/O is performed on these devices */
-    blk1 = blk_new(0, BLK_PERM_ALL);
-    blk2 = blk_new(0, BLK_PERM_ALL);
-    blk3 = blk_new(0, BLK_PERM_ALL);
+    blk1 = blk_new(qemu_get_aio_context(), 0, BLK_PERM_ALL);
+    blk2 = blk_new(qemu_get_aio_context(), 0, BLK_PERM_ALL);
+    blk3 = blk_new(qemu_get_aio_context(), 0, BLK_PERM_ALL);
 
     blkp1 = blk_get_public(blk1);
     blkp2 = blk_get_public(blk2);

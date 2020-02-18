@@ -21,7 +21,6 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "cpu.h"
-#include "qemu-common.h"
 #include "migration/vmstate.h"
 #include "fpu/softfloat.h"
 
@@ -204,8 +203,10 @@ static void any_cpu_initfn(Object *obj)
     m68k_set_feature(env, M68K_FEATURE_CF_ISA_APLUSC);
     m68k_set_feature(env, M68K_FEATURE_BRAL);
     m68k_set_feature(env, M68K_FEATURE_CF_FPU);
-    /* MAC and EMAC are mututally exclusive, so pick EMAC.
-       It's mostly backwards compatible.  */
+    /*
+     * MAC and EMAC are mututally exclusive, so pick EMAC.
+     * It's mostly backwards compatible.
+     */
     m68k_set_feature(env, M68K_FEATURE_CF_EMAC);
     m68k_set_feature(env, M68K_FEATURE_CF_EMAC_B);
     m68k_set_feature(env, M68K_FEATURE_USP);
@@ -238,11 +239,9 @@ static void m68k_cpu_realizefn(DeviceState *dev, Error **errp)
 
 static void m68k_cpu_initfn(Object *obj)
 {
-    CPUState *cs = CPU(obj);
     M68kCPU *cpu = M68K_CPU(obj);
-    CPUM68KState *env = &cpu->env;
 
-    cs->env_ptr = env;
+    cpu_set_cpustate_pointers(cpu);
 }
 
 static const VMStateDescription vmstate_m68k_cpu = {
@@ -269,9 +268,9 @@ static void m68k_cpu_class_init(ObjectClass *c, void *data)
     cc->set_pc = m68k_cpu_set_pc;
     cc->gdb_read_register = m68k_cpu_gdb_read_register;
     cc->gdb_write_register = m68k_cpu_gdb_write_register;
-    cc->handle_mmu_fault = m68k_cpu_handle_mmu_fault;
+    cc->tlb_fill = m68k_cpu_tlb_fill;
 #if defined(CONFIG_SOFTMMU)
-    cc->do_unassigned_access = m68k_cpu_unassigned_access;
+    cc->do_transaction_failed = m68k_cpu_transaction_failed;
     cc->get_phys_page_debug = m68k_cpu_get_phys_page_debug;
 #endif
     cc->disas_set_info = m68k_cpu_disas_set_info;

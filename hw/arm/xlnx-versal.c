@@ -11,13 +11,13 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "hw/sysbus.h"
 #include "net/net.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/kvm.h"
-#include "hw/arm/arm.h"
+#include "hw/arm/boot.h"
 #include "kvm_arm.h"
 #include "hw/misc/unimp.h"
 #include "hw/intc/arm_gicv3_common.h"
@@ -257,6 +257,8 @@ static void versal_unimp(Versal *s)
                         MM_CRL, MM_CRL_SIZE);
     versal_unimp_area(s, "crf", &s->mr_ps,
                         MM_FPD_CRF, MM_FPD_CRF_SIZE);
+    versal_unimp_area(s, "crp", &s->mr_ps,
+                        MM_PMC_CRP, MM_PMC_CRP_SIZE);
     versal_unimp_area(s, "iou-scntr", &s->mr_ps,
                         MM_IOU_SCNTR, MM_IOU_SCNTR_SIZE);
     versal_unimp_area(s, "iou-scntr-seucre", &s->mr_ps,

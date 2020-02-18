@@ -15,7 +15,8 @@
 
 #include "hw/acpi/tpm.h"
 #include "io/channel-socket.h"
-#include "libqtest.h"
+#include "libqtest-single.h"
+#include "qemu/module.h"
 #include "tpm-emu.h"
 
 #define TPM_CMD "\x80\x01\x00\x00\x00\x0c\x00\x00\x01\x44\x00\x00"

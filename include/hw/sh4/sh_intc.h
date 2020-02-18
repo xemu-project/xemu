@@ -1,8 +1,7 @@
 #ifndef SH_INTC_H
 #define SH_INTC_H
 
-#include "qemu-common.h"
-#include "hw/irq.h"
+#include "exec/memory.h"
 
 typedef unsigned char intc_enum;
 

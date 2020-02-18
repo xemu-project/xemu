@@ -1,8 +1,10 @@
 /*
  *  Test program for MSA instruction AVER_S.B
  *
- *  Copyright (C) 2018  Wave Computing, Inc.
- *  Copyright (C) 2018  Mateja Marjanovic <mateja.marjanovic@rt-rk.com>
+ *  Copyright (C) 2019  Wave Computing, Inc.
+ *  Copyright (C) 2019  Aleksandar Markovic <amarkovic@wavecomp.com>
+ *  Copyright (C) 2019  RT-RK Computer Based Systems LLC
+ *  Copyright (C) 2019  Mateja Marjanovic <mateja.marjanovic@rt-rk.com>
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,8 +25,8 @@
 #include <stdint.h>
 
 #include "../../../../include/wrappers_msa.h"
-#include "../../../../include/test_inputs.h"
-#include "../../../../include/test_utils.h"
+#include "../../../../include/test_inputs_128.h"
+#include "../../../../include/test_utils_128.h"
 
 #define TEST_COUNT_TOTAL (                                                \
             (PATTERN_INPUTS_SHORT_COUNT) * (PATTERN_INPUTS_SHORT_COUNT) + \
@@ -33,7 +35,9 @@
 
 int32_t main(void)
 {
-    char *instruction_name = "AVER_S.B";
+    char *isa_ase_name = "MSA";
+    char *group_name = "Int Average";
+    char *instruction_name =  "AVER_S.B";
     int32_t ret;
     uint32_t i, j;
     struct timeval start, end;
@@ -119,7 +123,11 @@ int32_t main(void)
         { 0x0e55e2fc0c00b7e7ULL, 0xdae5a7ecaa3704daULL, },
         { 0xfc5dfe0d434a1c47ULL, 0xec2cca1bd45fc9d6ULL, },
         { 0x36070b5856e2d52bULL, 0xd0f4a2f9df411aceULL, },
+        { 0x0e55e2fc0c00b7e7ULL, 0xdae5a7ecaa3704daULL, },
+        { 0x704f164d5e31e24eULL, 0x8df188d8a942e2a0ULL, },
 };
+
+    reset_msa_registers();
 
     gettimeofday(&start, NULL);
 
@@ -144,8 +152,9 @@ int32_t main(void)
     elapsed_time = (end.tv_sec - start.tv_sec) * 1000.0;
     elapsed_time += (end.tv_usec - start.tv_usec) / 1000.0;
 
-    ret = check_results(instruction_name, TEST_COUNT_TOTAL, elapsed_time,
-                        &b128_result[0][0], &b128_expect[0][0]);
+    ret = check_results_128(isa_ase_name, group_name, instruction_name,
+                            TEST_COUNT_TOTAL, elapsed_time,
+                            &b128_result[0][0], &b128_expect[0][0]);
 
     return ret;
 }

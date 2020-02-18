@@ -36,11 +36,13 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/qdev.h"
+#include "qemu/log.h"
+#include "hw/irq.h"
+#include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "net/net.h"
 #include "net/eth.h"
 #include "qemu/timer.h"
-#include "sysemu/sysemu.h"
 #include "trace.h"
 
 #include "pcnet.h"
@@ -1501,7 +1503,8 @@ static void pcnet_bcr_writew(PCNetState *s, uint32_t rap, uint32_t val)
             val |= 0x0300;
             break;
         default:
-            printf("Bad SWSTYLE=0x%02x\n", val & 0xff);
+            qemu_log_mask(LOG_GUEST_ERROR, "pcnet: Bad SWSTYLE=0x%02x\n",
+                          val & 0xff);
             val = 0x0200;
             break;
         }

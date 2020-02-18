@@ -17,8 +17,8 @@
 
 #include "qemu/osdep.h"
 #include "hw/register.h"
-#include "hw/qdev.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 
 static inline void register_write_val(RegisterInfo *reg, uint64_t val)
 {

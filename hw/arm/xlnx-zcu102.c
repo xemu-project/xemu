@@ -17,7 +17,6 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "hw/arm/xlnx-zynqmp.h"
 #include "hw/boards.h"
@@ -91,9 +90,8 @@ static void xlnx_zcu102_init(MachineState *machine)
     memory_region_allocate_system_memory(&s->ddr_ram, NULL, "ddr-ram",
                                          ram_size);
 
-    object_initialize(&s->soc, sizeof(s->soc), TYPE_XLNX_ZYNQMP);
-    object_property_add_child(OBJECT(machine), "soc", OBJECT(&s->soc),
-                              &error_abort);
+    object_initialize_child(OBJECT(machine), "soc", &s->soc, sizeof(s->soc),
+                            TYPE_XLNX_ZYNQMP, &error_abort, NULL);
 
     object_property_set_link(OBJECT(&s->soc), OBJECT(&s->ddr_ram),
                          "ddr-ram", &error_abort);
@@ -173,11 +171,8 @@ static void xlnx_zcu102_init(MachineState *machine)
     /* TODO create and connect IDE devices for ide_drive_get() */
 
     xlnx_zcu102_binfo.ram_size = ram_size;
-    xlnx_zcu102_binfo.kernel_filename = machine->kernel_filename;
-    xlnx_zcu102_binfo.kernel_cmdline = machine->kernel_cmdline;
-    xlnx_zcu102_binfo.initrd_filename = machine->initrd_filename;
     xlnx_zcu102_binfo.loader_start = 0;
-    arm_load_kernel(s->soc.boot_cpu_ptr, &xlnx_zcu102_binfo);
+    arm_load_kernel(s->soc.boot_cpu_ptr, machine, &xlnx_zcu102_binfo);
 }
 
 static void xlnx_zcu102_machine_instance_init(Object *obj)

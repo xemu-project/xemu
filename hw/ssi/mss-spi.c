@@ -24,8 +24,11 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/irq.h"
 #include "hw/ssi/mss-spi.h"
+#include "migration/vmstate.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 
 #ifndef MSS_SPI_ERR_DEBUG
 #define MSS_SPI_ERR_DEBUG   0
@@ -164,7 +167,13 @@ spi_read(void *opaque, hwaddr addr, unsigned int size)
     case R_SPI_RX:
         s->regs[R_SPI_STATUS] &= ~S_RXFIFOFUL;
         s->regs[R_SPI_STATUS] &= ~S_RXCHOVRF;
-        ret = fifo32_pop(&s->rx_fifo);
+        if (fifo32_is_empty(&s->rx_fifo)) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                          "%s: Reading empty RX_FIFO\n",
+                          __func__);
+        } else {
+            ret = fifo32_pop(&s->rx_fifo);
+        }
         if (fifo32_is_empty(&s->rx_fifo)) {
             s->regs[R_SPI_STATUS] |= S_RXFIFOEMP;
         }

@@ -21,12 +21,12 @@
 #include "cpu.h"
 #include "exec/exec-all.h"
 #include "qemu/host-utils.h"
-#include "sysemu/sysemu.h"
-#include "exec/semihost.h"
+#include "hw/semihosting/semihost.h"
 #include "exec/log.h"
 
-int lm32_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size, int rw,
-                              int mmu_idx)
+bool lm32_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+                       MMUAccessType access_type, int mmu_idx,
+                       bool probe, uintptr_t retaddr)
 {
     LM32CPU *cpu = LM32_CPU(cs);
     CPULM32State *env = &cpu->env;
@@ -40,8 +40,7 @@ int lm32_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size, int rw,
     } else {
         tlb_set_page(cs, address, address, prot, mmu_idx, TARGET_PAGE_SIZE);
     }
-
-    return 0;
+    return true;
 }
 
 hwaddr lm32_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)
@@ -58,28 +57,23 @@ hwaddr lm32_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)
 
 void lm32_breakpoint_insert(CPULM32State *env, int idx, target_ulong address)
 {
-    LM32CPU *cpu = lm32_env_get_cpu(env);
-
-    cpu_breakpoint_insert(CPU(cpu), address, BP_CPU,
+    cpu_breakpoint_insert(env_cpu(env), address, BP_CPU,
                           &env->cpu_breakpoint[idx]);
 }
 
 void lm32_breakpoint_remove(CPULM32State *env, int idx)
 {
-    LM32CPU *cpu = lm32_env_get_cpu(env);
-
     if (!env->cpu_breakpoint[idx]) {
         return;
     }
 
-    cpu_breakpoint_remove_by_ref(CPU(cpu), env->cpu_breakpoint[idx]);
+    cpu_breakpoint_remove_by_ref(env_cpu(env), env->cpu_breakpoint[idx]);
     env->cpu_breakpoint[idx] = NULL;
 }
 
 void lm32_watchpoint_insert(CPULM32State *env, int idx, target_ulong address,
                             lm32_wp_t wp_type)
 {
-    LM32CPU *cpu = lm32_env_get_cpu(env);
     int flags = 0;
 
     switch (wp_type) {
@@ -98,26 +92,24 @@ void lm32_watchpoint_insert(CPULM32State *env, int idx, target_ulong address,
     }
 
     if (flags != 0) {
-        cpu_watchpoint_insert(CPU(cpu), address, 1, flags,
-                &env->cpu_watchpoint[idx]);
+        cpu_watchpoint_insert(env_cpu(env), address, 1, flags,
+                              &env->cpu_watchpoint[idx]);
     }
 }
 
 void lm32_watchpoint_remove(CPULM32State *env, int idx)
 {
-    LM32CPU *cpu = lm32_env_get_cpu(env);
-
     if (!env->cpu_watchpoint[idx]) {
         return;
     }
 
-    cpu_watchpoint_remove_by_ref(CPU(cpu), env->cpu_watchpoint[idx]);
+    cpu_watchpoint_remove_by_ref(env_cpu(env), env->cpu_watchpoint[idx]);
     env->cpu_watchpoint[idx] = NULL;
 }
 
 static bool check_watchpoints(CPULM32State *env)
 {
-    LM32CPU *cpu = lm32_env_get_cpu(env);
+    LM32CPU *cpu = env_archcpu(env);
     int i;
 
     for (i = 0; i < cpu->num_watchpoints; i++) {

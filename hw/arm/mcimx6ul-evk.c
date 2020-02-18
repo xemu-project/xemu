@@ -12,9 +12,9 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "hw/arm/fsl-imx6ul.h"
 #include "hw/boards.h"
+#include "hw/qdev-properties.h"
 #include "sysemu/sysemu.h"
 #include "qemu/error-report.h"
 #include "sysemu/qtest.h"
@@ -40,10 +40,7 @@ static void mcimx6ul_evk_init(MachineState *machine)
         .loader_start = FSL_IMX6UL_MMDC_ADDR,
         .board_id = -1,
         .ram_size = machine->ram_size,
-        .kernel_filename = machine->kernel_filename,
-        .kernel_cmdline = machine->kernel_cmdline,
-        .initrd_filename = machine->initrd_filename,
-        .nb_cpus = smp_cpus,
+        .nb_cpus = machine->smp.cpus,
     };
 
     object_initialize_child(OBJECT(machine), "soc", &s->soc,  sizeof(s->soc),
@@ -72,7 +69,7 @@ static void mcimx6ul_evk_init(MachineState *machine)
     }
 
     if (!qtest_enabled()) {
-        arm_load_kernel(&s->soc.cpu[0], &boot_info);
+        arm_load_kernel(&s->soc.cpu, machine, &boot_info);
     }
 }
 

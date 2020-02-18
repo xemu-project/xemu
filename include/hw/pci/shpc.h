@@ -1,10 +1,10 @@
 #ifndef SHPC_H
 #define SHPC_H
 
-#include "qemu-common.h"
 #include "exec/memory.h"
 #include "hw/hotplug.h"
 #include "hw/pci/pci.h"
+#include "migration/vmstate.h"
 
 struct SHPCDevice {
     /* Capability offset in device's config space */

@@ -14,9 +14,10 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
+#include "qemu/module.h"
 #include "hw/i2c/i2c.h"
-#include "hw/i2c/i2c-ddc.h"
+#include "migration/vmstate.h"
+#include "hw/display/i2c-ddc.h"
 #include "trace.h"
 
 #define SII9022_SYS_CTRL_DATA 0x1a

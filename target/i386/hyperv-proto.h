@@ -49,6 +49,7 @@
 #define HV_GUEST_IDLE_STATE_AVAILABLE           (1u << 5)
 #define HV_FREQUENCY_MSRS_AVAILABLE             (1u << 8)
 #define HV_GUEST_CRASH_MSR_AVAILABLE            (1u << 10)
+#define HV_STIMER_DIRECT_MODE_AVAILABLE         (1u << 19)
 
 /*
  * HV_CPUID_ENLIGHTMENT_INFO.EAX bits
@@ -62,6 +63,7 @@
 #define HV_CLUSTER_IPI_RECOMMENDED          (1u << 10)
 #define HV_EX_PROCESSOR_MASKS_RECOMMENDED   (1u << 11)
 #define HV_ENLIGHTENED_VMCS_RECOMMENDED     (1u << 14)
+#define HV_NO_NONARCH_CORESHARING           (1u << 18)
 
 /*
  * Basic virtualized MSRs

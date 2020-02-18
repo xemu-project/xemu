@@ -14,18 +14,34 @@
 #ifndef QEMU_MIGRATION_H
 #define QEMU_MIGRATION_H
 
-#include "qemu-common.h"
+#include "exec/cpu-common.h"
+#include "hw/qdev-core.h"
 #include "qapi/qapi-types-migration.h"
 #include "qemu/thread.h"
-#include "exec/cpu-common.h"
 #include "qemu/coroutine_int.h"
-#include "hw/qdev.h"
 #include "io/channel.h"
 #include "net/announce.h"
 
 struct PostcopyBlocktimeContext;
 
 #define  MIGRATION_RESUME_ACK_VALUE  (1)
+
+/*
+ * 1<<6=64 pages -> 256K chunk when page size is 4K.  This gives us
+ * the benefit that all the chunks are 64 pages aligned then the
+ * bitmaps are always aligned to LONG.
+ */
+#define CLEAR_BITMAP_SHIFT_MIN             6
+/*
+ * 1<<18=256K pages -> 1G chunk when page size is 4K.  This is the
+ * default value to use if no one specified.
+ */
+#define CLEAR_BITMAP_SHIFT_DEFAULT        18
+/*
+ * 1<<31=2G pages -> 8T chunk when page size is 4K.  This should be
+ * big enough and make sure we won't overflow easily.
+ */
+#define CLEAR_BITMAP_SHIFT_MAX            31
 
 /* State for the incoming migration */
 struct MigrationIncomingState {
@@ -116,8 +132,6 @@ struct MigrationState
     DeviceState parent_obj;
 
     /*< public >*/
-    size_t bytes_xfer;
-    size_t xfer_limit;
     QemuThread thread;
     QEMUBH *cleanup_bh;
     QEMUFile *to_dst_file;
@@ -192,6 +206,9 @@ struct MigrationState
     /* Flag set once the migration thread called bdrv_inactivate_all */
     bool block_inactive;
 
+    /* Migration is waiting for guest to unplug device */
+    QemuSemaphore wait_unplug_sem;
+
     /* Migration is paused due to pause-before-switchover */
     QemuSemaphore pause_sem;
 
@@ -234,6 +251,16 @@ struct MigrationState
      * do not trigger spurious decompression errors.
      */
     bool decompress_error_check;
+
+    /*
+     * This decides the size of guest memory chunk that will be used
+     * to track dirty bitmap clearing.  The size of memory chunk will
+     * be GUEST_PAGE_SIZE << N.  Say, N=0 means we will clear dirty
+     * bitmap for each page to send (1<<0=1); N=10 means we will clear
+     * dirty bitmap only once for 1<<10=1K continuous guest pages
+     * (which is in 4M chunk).
+     */
+    uint8_t clear_bitmap_shift;
 };
 
 void migrate_set_state(int *state, int old_state, int new_state);
@@ -266,6 +293,7 @@ bool migrate_postcopy_ram(void);
 bool migrate_zero_blocks(void);
 bool migrate_dirty_bitmaps(void);
 bool migrate_ignore_shared(void);
+bool migrate_validate_uuid(void);
 
 bool migrate_auto_converge(void);
 bool migrate_use_multifd(void);

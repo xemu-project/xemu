@@ -9,13 +9,16 @@
  * See the COPYING file in the top-level directory.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
+
 #include "qemu/osdep.h"
 #include "qemu/error-report.h"
+#include "qemu/module.h"
 #include "qapi/error.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/blockdev.h"
 #include "chardev/char.h"
 #include "hw/isa/superio.h"
+#include "hw/qdev-properties.h"
 #include "hw/input/i8042.h"
 #include "hw/char/serial.h"
 #include "trace.h"

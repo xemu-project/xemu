@@ -171,6 +171,8 @@ typedef struct {
     uint64_t unused2[7];
 } QEMU_PACKED VdiHeader;
 
+QEMU_BUILD_BUG_ON(sizeof(VdiHeader) != 512);
+
 typedef struct {
     /* The block map entries are little endian (even in memory). */
     uint32_t *bmap;
@@ -384,7 +386,7 @@ static int vdi_open(BlockDriverState *bs, QDict *options, int flags,
 
     logout("\n");
 
-    ret = bdrv_read(bs->file, 0, (uint8_t *)&header, 1);
+    ret = bdrv_pread(bs->file, 0, &header, sizeof(header));
     if (ret < 0) {
         goto fail;
     }
@@ -484,8 +486,8 @@ static int vdi_open(BlockDriverState *bs, QDict *options, int flags,
         goto fail;
     }
 
-    ret = bdrv_read(bs->file, s->bmap_sector, (uint8_t *)s->bmap,
-                    bmap_size);
+    ret = bdrv_pread(bs->file, header.offset_bmap, s->bmap,
+                     bmap_size * SECTOR_SIZE);
     if (ret < 0) {
         goto fail_free_bmap;
     }
@@ -540,7 +542,8 @@ static int coroutine_fn vdi_co_block_status(BlockDriverState *bs,
     *map = s->header.offset_data + (uint64_t)bmap_entry * s->block_size +
         index_in_block;
     *file = bs->file->bs;
-    return BDRV_BLOCK_DATA | BDRV_BLOCK_OFFSET_VALID;
+    return BDRV_BLOCK_DATA | BDRV_BLOCK_OFFSET_VALID |
+        (s->header.image_type == VDI_TYPE_STATIC ? BDRV_BLOCK_RECURSE : 0);
 }
 
 static int coroutine_fn
@@ -704,7 +707,7 @@ nonallocating_write:
         assert(VDI_IS_ALLOCATED(bmap_first));
         *header = s->header;
         vdi_header_to_le(header);
-        ret = bdrv_write(bs->file, 0, block, 1);
+        ret = bdrv_pwrite(bs->file, 0, block, sizeof(VdiHeader));
         g_free(block);
         block = NULL;
 
@@ -722,10 +725,11 @@ nonallocating_write:
         base = ((uint8_t *)&s->bmap[0]) + bmap_first * SECTOR_SIZE;
         logout("will write %u block map sectors starting from entry %u\n",
                n_sectors, bmap_first);
-        ret = bdrv_write(bs->file, offset, base, n_sectors);
+        ret = bdrv_pwrite(bs->file, offset * SECTOR_SIZE, base,
+                          n_sectors * SECTOR_SIZE);
     }
 
-    return ret;
+    return ret < 0 ? ret : 0;
 }
 
 static int coroutine_fn vdi_co_do_create(BlockdevCreateOptions *create_options,
@@ -800,7 +804,8 @@ static int coroutine_fn vdi_co_do_create(BlockdevCreateOptions *create_options,
         goto exit;
     }
 
-    blk = blk_new(BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL);
+    blk = blk_new(bdrv_get_aio_context(bs_file),
+                  BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL);
     ret = blk_insert_bs(blk, bs_file, errp);
     if (ret < 0) {
         goto exit;
@@ -869,7 +874,7 @@ static int coroutine_fn vdi_co_do_create(BlockdevCreateOptions *create_options,
     }
 
     if (image_type == VDI_TYPE_STATIC) {
-        ret = blk_truncate(blk, offset + blocks * block_size,
+        ret = blk_truncate(blk, offset + blocks * block_size, false,
                            PREALLOC_MODE_OFF, errp);
         if (ret < 0) {
             error_prepend(errp, "Failed to statically allocate file");
@@ -984,6 +989,17 @@ static void vdi_close(BlockDriverState *bs)
     error_free(s->migration_blocker);
 }
 
+static int vdi_has_zero_init(BlockDriverState *bs)
+{
+    BDRVVdiState *s = bs->opaque;
+
+    if (s->header.image_type == VDI_TYPE_STATIC) {
+        return bdrv_has_zero_init(bs->file->bs);
+    } else {
+        return 1;
+    }
+}
+
 static QemuOptsList vdi_create_opts = {
     .name = "vdi-create-opts",
     .head = QTAILQ_HEAD_INITIALIZER(vdi_create_opts.head),
@@ -1024,7 +1040,7 @@ static BlockDriver bdrv_vdi = {
     .bdrv_child_perm          = bdrv_format_default_perms,
     .bdrv_co_create      = vdi_co_create,
     .bdrv_co_create_opts = vdi_co_create_opts,
-    .bdrv_has_zero_init = bdrv_has_zero_init_1,
+    .bdrv_has_zero_init  = vdi_has_zero_init,
     .bdrv_co_block_status = vdi_co_block_status,
     .bdrv_make_empty = vdi_make_empty,
 

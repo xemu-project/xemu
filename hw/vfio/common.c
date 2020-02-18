@@ -31,9 +31,11 @@
 #include "exec/memory.h"
 #include "hw/hw.h"
 #include "qemu/error-report.h"
+#include "qemu/main-loop.h"
 #include "qemu/range.h"
 #include "sysemu/balloon.h"
 #include "sysemu/kvm.h"
+#include "sysemu/reset.h"
 #include "trace.h"
 #include "qapi/error.h"
 
@@ -93,6 +95,84 @@ void vfio_mask_single_irqindex(VFIODevice *vbasedev, int index)
     };
 
     ioctl(vbasedev->fd, VFIO_DEVICE_SET_IRQS, &irq_set);
+}
+
+static inline const char *action_to_str(int action)
+{
+    switch (action) {
+    case VFIO_IRQ_SET_ACTION_MASK:
+        return "MASK";
+    case VFIO_IRQ_SET_ACTION_UNMASK:
+        return "UNMASK";
+    case VFIO_IRQ_SET_ACTION_TRIGGER:
+        return "TRIGGER";
+    default:
+        return "UNKNOWN ACTION";
+    }
+}
+
+static const char *index_to_str(VFIODevice *vbasedev, int index)
+{
+    if (vbasedev->type != VFIO_DEVICE_TYPE_PCI) {
+        return NULL;
+    }
+
+    switch (index) {
+    case VFIO_PCI_INTX_IRQ_INDEX:
+        return "INTX";
+    case VFIO_PCI_MSI_IRQ_INDEX:
+        return "MSI";
+    case VFIO_PCI_MSIX_IRQ_INDEX:
+        return "MSIX";
+    case VFIO_PCI_ERR_IRQ_INDEX:
+        return "ERR";
+    case VFIO_PCI_REQ_IRQ_INDEX:
+        return "REQ";
+    default:
+        return NULL;
+    }
+}
+
+int vfio_set_irq_signaling(VFIODevice *vbasedev, int index, int subindex,
+                           int action, int fd, Error **errp)
+{
+    struct vfio_irq_set *irq_set;
+    int argsz, ret = 0;
+    const char *name;
+    int32_t *pfd;
+
+    argsz = sizeof(*irq_set) + sizeof(*pfd);
+
+    irq_set = g_malloc0(argsz);
+    irq_set->argsz = argsz;
+    irq_set->flags = VFIO_IRQ_SET_DATA_EVENTFD | action;
+    irq_set->index = index;
+    irq_set->start = subindex;
+    irq_set->count = 1;
+    pfd = (int32_t *)&irq_set->data;
+    *pfd = fd;
+
+    if (ioctl(vbasedev->fd, VFIO_DEVICE_SET_IRQS, irq_set)) {
+        ret = -errno;
+    }
+    g_free(irq_set);
+
+    if (!ret) {
+        return 0;
+    }
+
+    error_setg_errno(errp, -ret, "VFIO_DEVICE_SET_IRQS failure");
+
+    name = index_to_str(vbasedev, index);
+    if (name) {
+        error_prepend(errp, "%s-%d: ", name, subindex);
+    } else {
+        error_prepend(errp, "index %d-%d: ", index, subindex);
+    }
+    error_prepend(errp,
+                  "Failed to %s %s eventfd signaling for interrupt ",
+                  fd < 0 ? "tear down" : "set up", action_to_str(action));
+    return ret;
 }
 
 /*
@@ -429,6 +509,7 @@ static void vfio_listener_region_add(MemoryListener *listener,
     int ret;
     VFIOHostDMAWindow *hostwin;
     bool hostwin_found;
+    Error *err = NULL;
 
     if (vfio_listener_skipped_section(section)) {
         trace_vfio_listener_region_add_skip(
@@ -463,13 +544,20 @@ static void vfio_listener_region_add(MemoryListener *listener,
                                hostwin->max_iova - hostwin->min_iova + 1,
                                section->offset_within_address_space,
                                int128_get64(section->size))) {
-                ret = -1;
+                error_setg(&err,
+                    "region [0x%"PRIx64",0x%"PRIx64"] overlaps with existing"
+                    "host DMA window [0x%"PRIx64",0x%"PRIx64"]",
+                    section->offset_within_address_space,
+                    section->offset_within_address_space +
+                        int128_get64(section->size) - 1,
+                    hostwin->min_iova, hostwin->max_iova);
                 goto fail;
             }
         }
 
         ret = vfio_spapr_create_window(container, section, &pgsize);
         if (ret) {
+            error_setg_errno(&err, -ret, "Failed to create SPAPR window");
             goto fail;
         }
 
@@ -514,10 +602,8 @@ static void vfio_listener_region_add(MemoryListener *listener,
     }
 
     if (!hostwin_found) {
-        error_report("vfio: IOMMU container %p can't map guest IOVA region"
-                     " 0x%"HWADDR_PRIx"..0x%"HWADDR_PRIx,
-                     container, iova, end);
-        ret = -EFAULT;
+        error_setg(&err, "Container %p can't map guest IOVA region"
+                   " 0x%"HWADDR_PRIx"..0x%"HWADDR_PRIx, container, iova, end);
         goto fail;
     }
 
@@ -550,9 +636,14 @@ static void vfio_listener_region_add(MemoryListener *listener,
                             section->offset_within_region,
                             int128_get64(llend),
                             iommu_idx);
-        QLIST_INSERT_HEAD(&container->giommu_list, giommu, giommu_next);
 
-        memory_region_register_iommu_notifier(section->mr, &giommu->n);
+        ret = memory_region_register_iommu_notifier(section->mr, &giommu->n,
+                                                    &err);
+        if (ret) {
+            g_free(giommu);
+            goto fail;
+        }
+        QLIST_INSERT_HEAD(&container->giommu_list, giommu, giommu_next);
         memory_region_iommu_replay(giommu->iommu, &giommu->n);
 
         return;
@@ -584,11 +675,12 @@ static void vfio_listener_region_add(MemoryListener *listener,
     ret = vfio_dma_map(container, iova, int128_get64(llsize),
                        vaddr, section->readonly);
     if (ret) {
-        error_report("vfio_dma_map(%p, 0x%"HWADDR_PRIx", "
-                     "0x%"HWADDR_PRIx", %p) = %d (%m)",
-                     container, iova, int128_get64(llsize), vaddr, ret);
+        error_setg(&err, "vfio_dma_map(%p, 0x%"HWADDR_PRIx", "
+                   "0x%"HWADDR_PRIx", %p) = %d (%m)",
+                   container, iova, int128_get64(llsize), vaddr, ret);
         if (memory_region_is_ram_device(section->mr)) {
             /* Allow unexpected mappings not to be fatal for RAM devices */
+            error_report_err(err);
             return;
         }
         goto fail;
@@ -608,9 +700,14 @@ fail:
      */
     if (!container->initialized) {
         if (!container->error) {
-            container->error = ret;
+            error_propagate_prepend(&container->error, err,
+                                    "Region %s: ",
+                                    memory_region_name(section->mr));
+        } else {
+            error_free(err);
         }
     } else {
+        error_report_err(err);
         hw_error("vfio: DMA mapping failed, unable to continue");
     }
 }
@@ -1171,6 +1268,7 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as,
     container = g_malloc0(sizeof(*container));
     container->space = space;
     container->fd = fd;
+    container->error = NULL;
     QLIST_INIT(&container->giommu_list);
     QLIST_INIT(&container->hostwin_list);
 
@@ -1228,9 +1326,9 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as,
                                      &address_space_memory);
             if (container->error) {
                 memory_listener_unregister(&container->prereg_listener);
-                ret = container->error;
-                error_setg(errp,
-                    "RAM memory listener initialization failed for container");
+                ret = -1;
+                error_propagate_prepend(errp, container->error,
+                    "RAM memory listener initialization failed: ");
                 goto free_container_exit;
             }
         }
@@ -1285,9 +1383,9 @@ static int vfio_connect_container(VFIOGroup *group, AddressSpace *as,
     memory_listener_register(&container->listener, container->space->as);
 
     if (container->error) {
-        ret = container->error;
-        error_setg_errno(errp, -ret,
-                         "memory listener initialization failed for container");
+        ret = -1;
+        error_propagate_prepend(errp, container->error,
+            "memory listener initialization failed: ");
         goto listener_release_exit;
     }
 

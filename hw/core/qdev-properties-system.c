@@ -11,8 +11,9 @@
  */
 
 #include "qemu/osdep.h"
+#include "audio/audio.h"
 #include "net/net.h"
-#include "hw/qdev.h"
+#include "hw/qdev-properties.h"
 #include "qapi/error.h"
 #include "qapi/qmp/qerror.h"
 #include "sysemu/block-backend.h"
@@ -69,8 +70,8 @@ static void set_pointer(Object *obj, Visitor *v, Property *prop,
 
 /* --- drive --- */
 
-static void parse_drive(DeviceState *dev, const char *str, void **ptr,
-                        const char *propname, Error **errp)
+static void do_parse_drive(DeviceState *dev, const char *str, void **ptr,
+                           const char *propname, bool iothread, Error **errp)
 {
     BlockBackend *blk;
     bool blk_created = false;
@@ -80,7 +81,16 @@ static void parse_drive(DeviceState *dev, const char *str, void **ptr,
     if (!blk) {
         BlockDriverState *bs = bdrv_lookup_bs(NULL, str, NULL);
         if (bs) {
-            blk = blk_new(0, BLK_PERM_ALL);
+            /*
+             * If the device supports iothreads, it will make sure to move the
+             * block node to the right AioContext if necessary (or fail if this
+             * isn't possible because of other users). Devices that are not
+             * aware of iothreads require their BlockBackends to be in the main
+             * AioContext.
+             */
+            AioContext *ctx = iothread ? bdrv_get_aio_context(bs) :
+                                         qemu_get_aio_context();
+            blk = blk_new(ctx, 0, BLK_PERM_ALL);
             blk_created = true;
 
             ret = blk_insert_bs(blk, bs, errp);
@@ -116,6 +126,18 @@ fail:
         /* If we need to keep a reference, blk_attach_dev() took it */
         blk_unref(blk);
     }
+}
+
+static void parse_drive(DeviceState *dev, const char *str, void **ptr,
+                        const char *propname, Error **errp)
+{
+    do_parse_drive(dev, str, ptr, propname, false, errp);
+}
+
+static void parse_drive_iothread(DeviceState *dev, const char *str, void **ptr,
+                                 const char *propname, Error **errp)
+{
+    do_parse_drive(dev, str, ptr, propname, true, errp);
 }
 
 static void release_drive(Object *obj, const char *name, void *opaque)
@@ -160,11 +182,25 @@ static void set_drive(Object *obj, Visitor *v, const char *name, void *opaque,
     set_pointer(obj, v, opaque, parse_drive, name, errp);
 }
 
+static void set_drive_iothread(Object *obj, Visitor *v, const char *name,
+                               void *opaque, Error **errp)
+{
+    set_pointer(obj, v, opaque, parse_drive_iothread, name, errp);
+}
+
 const PropertyInfo qdev_prop_drive = {
     .name  = "str",
     .description = "Node name or ID of a block device to use as a backend",
     .get   = get_drive,
     .set   = set_drive,
+    .release = release_drive,
+};
+
+const PropertyInfo qdev_prop_drive_iothread = {
+    .name  = "str",
+    .description = "Node name or ID of a block device to use as a backend",
+    .get   = get_drive,
+    .set   = set_drive_iothread,
     .release = release_drive,
 };
 
@@ -317,6 +353,62 @@ const PropertyInfo qdev_prop_netdev = {
     .set   = set_netdev,
 };
 
+
+/* --- audiodev --- */
+static void get_audiodev(Object *obj, Visitor *v, const char* name,
+                         void *opaque, Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    Property *prop = opaque;
+    QEMUSoundCard *card = qdev_get_prop_ptr(dev, prop);
+    char *p = g_strdup(audio_get_id(card));
+
+    visit_type_str(v, name, &p, errp);
+    g_free(p);
+}
+
+static void set_audiodev(Object *obj, Visitor *v, const char* name,
+                         void *opaque, Error **errp)
+{
+    DeviceState *dev = DEVICE(obj);
+    Property *prop = opaque;
+    QEMUSoundCard *card = qdev_get_prop_ptr(dev, prop);
+    AudioState *state;
+    Error *local_err = NULL;
+    int err = 0;
+    char *str;
+
+    if (dev->realized) {
+        qdev_prop_set_after_realize(dev, name, errp);
+        return;
+    }
+
+    visit_type_str(v, name, &str, &local_err);
+    if (local_err) {
+        error_propagate(errp, local_err);
+        return;
+    }
+
+    state = audio_state_by_name(str);
+
+    if (!state) {
+        err = -ENOENT;
+        goto out;
+    }
+    card->state = state;
+
+out:
+    error_set_from_qdev_prop_error(errp, err, dev, prop, str);
+    g_free(str);
+}
+
+const PropertyInfo qdev_prop_audiodev = {
+    .name = "str",
+    .description = "ID of an audiodev to use as a backend",
+    /* release done on shutdown */
+    .get = get_audiodev,
+    .set = set_audiodev,
+};
 
 void qdev_prop_set_drive(DeviceState *dev, const char *name,
                          BlockBackend *value, Error **errp)

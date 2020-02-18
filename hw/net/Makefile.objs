@@ -1,8 +1,9 @@
 common-obj-$(CONFIG_DP8393X) += dp8393x.o
 common-obj-$(CONFIG_XEN) += xen_nic.o
+common-obj-$(CONFIG_NE2000_COMMON) += ne2000.o
 
 # PCI network cards
-common-obj-$(CONFIG_NE2000_PCI) += ne2000.o
+common-obj-$(CONFIG_NE2000_PCI) += ne2000-pci.o
 common-obj-$(CONFIG_EEPRO100_PCI) += eepro100.o
 common-obj-$(CONFIG_PCNET_PCI) += pcnet-pci.o
 common-obj-$(CONFIG_PCNET_COMMON) += pcnet.o
@@ -12,6 +13,7 @@ common-obj-$(CONFIG_E1000E_PCI_EXPRESS) += e1000e.o e1000e_core.o e1000x_common.
 common-obj-$(CONFIG_RTL8139_PCI) += rtl8139.o
 common-obj-$(CONFIG_VMXNET3_PCI) += net_tx_pkt.o net_rx_pkt.o
 common-obj-$(CONFIG_VMXNET3_PCI) += vmxnet3.o
+common-obj-$(CONFIG_TULIP) += tulip.o
 
 common-obj-$(CONFIG_SMC91C111) += smc91c111.o
 common-obj-$(CONFIG_LAN9118) += lan9118.o

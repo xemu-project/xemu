@@ -43,7 +43,8 @@ _supported_fmt generic
 _supported_proto generic
 _supported_os Linux
 _unsupported_imgopts "subformat=twoGbMaxExtentFlat" \
-                     "subformat=twoGbMaxExtentSparse"
+                     "subformat=twoGbMaxExtentSparse" \
+                     "subformat=streamOptimized"
 
 # vpc is limited to 127GB, so we can't test it here
 if [ "$IMGFMT" = "vpc" ]; then
@@ -53,6 +54,15 @@ fi
 # sheepdog image is limited to 4TB, so we can't test it here
 if [ "$IMGPROTO" = "sheepdog" ]; then
     _notrun "image protocol $IMGPROTO does not support large image sizes"
+fi
+
+# Sanity check: For raw, we require a file system that permits the creation
+# of a HUGE (but very sparse) file. Check we can create it before continuing.
+if [ "$IMGFMT" = "raw" ]; then
+    if ! truncate --size=5T "$TEST_IMG"; then
+        _notrun "file system on $TEST_DIR does not support large enough files"
+    fi
+    rm "$TEST_IMG"
 fi
 
 echo

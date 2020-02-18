@@ -65,7 +65,7 @@ F: *
 F: */
 
 Responsible Disclosure, Reporting Security Issues
-------------------------------
+-------------------------------------------------
 W: https://wiki.qemu.org/SecurityProcess
 M: Michael S. Tsirkin <mst@redhat.com>
 L: secalert@redhat.com
@@ -83,7 +83,7 @@ T: git https://github.com/vivier/qemu.git trivial-patches
 
 Architecture support
 --------------------
-S390
+S390 general architecture support
 M: Cornelia Huck <cohuck@redhat.com>
 S: Supported
 F: default-configs/s390x-softmmu.mak
@@ -102,14 +102,14 @@ F: pc-bios/s390-ccw/
 F: pc-bios/s390-ccw.img
 F: target/s390x/
 F: docs/vfio-ap.txt
+F: tests/migration/s390x/
 K: ^Subject:.*(?i)s390x?
 T: git https://github.com/cohuck/qemu.git s390-next
 L: qemu-s390x@nongnu.org
 
-Guest CPU cores (TCG):
-----------------------
-Overall
-L: qemu-devel@nongnu.org
+Guest CPU cores (TCG)
+---------------------
+Overall TCG CPUs
 M: Richard Henderson <rth@twiddle.net>
 R: Paolo Bonzini <pbonzini@redhat.com>
 S: Maintained
@@ -124,6 +124,7 @@ F: include/exec/exec-all.h
 F: include/exec/helper*.h
 F: include/exec/tb-hash.h
 F: include/sysemu/cpus.h
+F: include/sysemu/tcg.h
 
 FPU emulation
 M: Aurelien Jarno <aurelien@aurel32.net>
@@ -134,14 +135,14 @@ F: fpu/
 F: include/fpu/
 F: tests/fp/
 
-Alpha
+Alpha TCG CPUs
 M: Richard Henderson <rth@twiddle.net>
 S: Maintained
 F: target/alpha/
 F: tests/tcg/alpha/
 F: disas/alpha.c
 
-ARM
+ARM TCG CPUs
 M: Peter Maydell <peter.maydell@linaro.org>
 L: qemu-arm@nongnu.org
 S: Maintained
@@ -162,7 +163,7 @@ S: Maintained
 F: hw/arm/smmu*
 F: include/hw/arm/smmu*
 
-CRIS
+CRIS TCG CPUs
 M: Edgar E. Iglesias <edgar.iglesias@gmail.com>
 S: Maintained
 F: target/cris/
@@ -171,14 +172,14 @@ F: include/hw/cris/
 F: tests/tcg/cris/
 F: disas/cris.c
 
-HPPA (PA-RISC)
+HPPA (PA-RISC) TCG CPUs
 M: Richard Henderson <rth@twiddle.net>
 S: Maintained
 F: target/hppa/
 F: hw/hppa/
 F: disas/hppa.c
 
-LM32
+LM32 TCG CPUs
 M: Michael Walle <michael@walle.cc>
 S: Maintained
 F: target/lm32/
@@ -191,29 +192,27 @@ F: include/hw/char/lm32_juart.h
 F: include/hw/lm32/
 F: tests/tcg/lm32/
 
-M68K
+M68K TCG CPUs
 M: Laurent Vivier <laurent@vivier.eu>
 S: Maintained
 F: target/m68k/
 F: disas/m68k.c
 
-MicroBlaze
+MicroBlaze TCG CPUs
 M: Edgar E. Iglesias <edgar.iglesias@gmail.com>
 S: Maintained
 F: target/microblaze/
 F: hw/microblaze/
 F: disas/microblaze.c
 
-MIPS
+MIPS TCG CPUs
 M: Aurelien Jarno <aurelien@aurel32.net>
 M: Aleksandar Markovic <amarkovic@wavecomp.com>
-R: Aleksandar Rikalo <arikalo@wavecomp.com>
+R: Aleksandar Rikalo <aleksandar.rikalo@rt-rk.com>
 S: Maintained
 F: target/mips/
 F: default-configs/*mips*
-F: disas/mips.c
-F: disas/nanomips.cpp
-F: disas/nanomips.h
+F: disas/*mips*
 F: hw/intc/mips_gic.c
 F: hw/mips/
 F: hw/misc/mips_*
@@ -225,7 +224,7 @@ F: include/hw/timer/mips_gictimer.h
 F: tests/tcg/mips/
 K: ^Subject:.*(?i)mips
 
-Moxie
+Moxie TCG CPUs
 M: Anthony Green <green@moxielogic.com>
 S: Maintained
 F: target/moxie/
@@ -233,7 +232,7 @@ F: disas/moxie.c
 F: hw/moxie/
 F: default-configs/moxie-softmmu.mak
 
-NiosII
+NiosII TCG CPUs
 M: Chris Wulff <crwulff@gmail.com>
 M: Marek Vasut <marex@denx.de>
 S: Maintained
@@ -243,14 +242,14 @@ F: hw/intc/nios2_iic.c
 F: disas/nios2.c
 F: default-configs/nios2-softmmu.mak
 
-OpenRISC
+OpenRISC TCG CPUs
 M: Stafford Horne <shorne@gmail.com>
 S: Odd Fixes
 F: target/openrisc/
 F: hw/openrisc/
 F: tests/tcg/openrisc/
 
-PowerPC
+PowerPC TCG CPUs
 M: David Gibson <david@gibson.dropbear.id.au>
 L: qemu-ppc@nongnu.org
 S: Maintained
@@ -259,8 +258,8 @@ F: hw/ppc/
 F: include/hw/ppc/
 F: disas/ppc.c
 
-RISC-V
-M: Palmer Dabbelt <palmer@sifive.com>
+RISC-V TCG CPUs
+M: Palmer Dabbelt <palmer@dabbelt.com>
 M: Alistair Francis <Alistair.Francis@wdc.com>
 M: Sagar Karandikar <sagark@eecs.berkeley.edu>
 M: Bastian Koppelmann <kbastian@mail.uni-paderborn.de>
@@ -272,7 +271,7 @@ F: include/hw/riscv/
 F: linux-user/host/riscv32/
 F: linux-user/host/riscv64/
 
-S390
+S390 TCG CPUs
 M: Richard Henderson <rth@twiddle.net>
 M: David Hildenbrand <david@redhat.com>
 S: Maintained
@@ -282,7 +281,7 @@ F: disas/s390.c
 F: tests/tcg/s390x/
 L: qemu-s390x@nongnu.org
 
-SH4
+SH4 TCG CPUs
 M: Aurelien Jarno <aurelien@aurel32.net>
 S: Odd Fixes
 F: target/sh4/
@@ -290,7 +289,7 @@ F: hw/sh4/
 F: disas/sh4.c
 F: include/hw/sh4/
 
-SPARC
+SPARC TCG CPUs
 M: Mark Cave-Ayland <mark.cave-ayland@ilande.co.uk>
 M: Artyom Tarasenko <atar4qemu@gmail.com>
 S: Maintained
@@ -300,14 +299,14 @@ F: hw/sparc64/
 F: include/hw/sparc/sparc64.h
 F: disas/sparc.c
 
-UniCore32
+UniCore32 TCG CPUs
 M: Guan Xuetao <gxt@mprc.pku.edu.cn>
 S: Maintained
 F: target/unicore32/
 F: hw/unicore32/
 F: include/hw/unicore32/
 
-X86
+X86 TCG CPUs
 M: Paolo Bonzini <pbonzini@redhat.com>
 M: Richard Henderson <rth@twiddle.net>
 M: Eduardo Habkost <ehabkost@redhat.com>
@@ -320,7 +319,7 @@ F: disas/i386.c
 F: docs/qemu-cpu-models.texi
 T: git https://github.com/ehabkost/qemu.git x86-next
 
-Xtensa
+Xtensa TCG CPUs
 M: Max Filippov <jcmvbkbc@gmail.com>
 W: http://wiki.osll.ru/doku.php?id=etc:users:jcmvbkbc:qemu-target-xtensa
 S: Maintained
@@ -331,7 +330,7 @@ F: disas/xtensa.c
 F: include/hw/xtensa/xtensa-isa.h
 F: default-configs/xtensa*.mak
 
-TriCore
+TriCore TCG CPUs
 M: Bastian Koppelmann <kbastian@mail.uni-paderborn.de>
 S: Maintained
 F: target/tricore/
@@ -343,10 +342,9 @@ M: Alex Bennée <alex.bennee@linaro.org>
 S: Maintained
 F: tests/tcg/multiarch/
 
-Guest CPU Cores (KVM):
-----------------------
-
-Overall
+Guest CPU Cores (KVM)
+---------------------
+Overall KVM CPUs
 M: Paolo Bonzini <pbonzini@redhat.com>
 L: kvm@vger.kernel.org
 S: Supported
@@ -357,24 +355,24 @@ F: include/hw/kvm/
 F: include/sysemu/kvm*.h
 F: scripts/kvm/kvm_flightrecorder
 
-ARM
+ARM KVM CPUs
 M: Peter Maydell <peter.maydell@linaro.org>
 L: qemu-arm@nongnu.org
 S: Maintained
 F: target/arm/kvm.c
 
-MIPS
+MIPS KVM CPUs
 M: James Hogan <jhogan@kernel.org>
-R: Aleksandar Rikalo <arikalo@wavecomp.com>
+R: Aleksandar Rikalo <aleksandar.rikalo@rt-rk.com>
 S: Maintained
 F: target/mips/kvm.c
 
-PPC
+PPC KVM CPUs
 M: David Gibson <david@gibson.dropbear.id.au>
 S: Maintained
 F: target/ppc/kvm.c
 
-S390
+S390 KVM CPUs
 M: Halil Pasic <pasic@linux.ibm.com>
 M: Cornelia Huck <cohuck@redhat.com>
 M: Christian Borntraeger <borntraeger@de.ibm.com>
@@ -385,6 +383,8 @@ F: target/s390x/kvm-stub.c
 F: target/s390x/ioinst.[ch]
 F: target/s390x/machine.c
 F: target/s390x/sigp.c
+F: target/s390x/cpu_features*.[ch]
+F: target/s390x/cpu_models.[ch]
 F: hw/intc/s390_flic.c
 F: hw/intc/s390_flic_kvm.c
 F: include/hw/s390x/s390_flic.h
@@ -393,7 +393,7 @@ T: git https://github.com/cohuck/qemu.git s390-next
 T: git https://github.com/borntraeger/qemu.git s390-next
 L: qemu-s390x@nongnu.org
 
-X86
+X86 KVM CPUs
 M: Paolo Bonzini <pbonzini@redhat.com>
 M: Marcelo Tosatti <mtosatti@redhat.com>
 L: kvm@vger.kernel.org
@@ -401,17 +401,16 @@ S: Supported
 F: target/i386/kvm.c
 F: scripts/kvm/vmxcap
 
-Guest CPU Cores (Xen):
-----------------------
-
-X86
+Guest CPU Cores (Xen)
+---------------------
+X86 Xen CPUs
 M: Stefano Stabellini <sstabellini@kernel.org>
 M: Anthony Perard <anthony.perard@citrix.com>
-M: Paul Durrant <paul.durrant@citrix.com>
+M: Paul Durrant <paul@xen.org>
 L: xen-devel@lists.xenproject.org
 S: Supported
 F: */xen*
-F: hw/9pfs/xen-9p-backend.c
+F: hw/9pfs/xen-9p*
 F: hw/char/xen_console.c
 F: hw/display/xenfb.c
 F: hw/net/xen_nic.c
@@ -424,9 +423,8 @@ F: include/hw/block/dataplane/xen*
 F: include/hw/xen/
 F: include/sysemu/xen-mapcache.h
 
-Hosts:
-------
-
+Hosts
+-----
 LINUX
 M: Michael S. Tsirkin <mst@redhat.com>
 M: Cornelia Huck <cohuck@redhat.com>
@@ -444,19 +442,16 @@ F: util/*posix*.c
 F: include/qemu/*posix*.h
 
 NETBSD
-L: qemu-devel@nongnu.org
 M: Kamil Rytarowski <kamil@netbsd.org>
 S: Maintained
 K: ^Subject:.*(?i)NetBSD
 
 OPENBSD
-L: qemu-devel@nongnu.org
 M: Brad Smith <brad@comstyle.com>
 S: Maintained
 K: ^Subject:.*(?i)OpenBSD
 
 W32, W64
-L: qemu-devel@nongnu.org
 M: Stefan Weil <sw@weilnetz.de>
 S: Maintained
 F: *win32*
@@ -466,10 +461,12 @@ X: qga/*win32*
 F: qemu.nsi
 
 Alpha Machines
+--------------
 M: Richard Henderson <rth@twiddle.net>
 S: Maintained
 F: hw/alpha/
 F: hw/isa/smc37c669-superio.c
+F: tests/tcg/alpha/system/
 
 ARM Machines
 ------------
@@ -498,8 +495,8 @@ F: hw/intc/pl190.c
 F: hw/sd/pl181.c
 F: hw/ssi/pl022.c
 F: include/hw/ssi/pl022.h
-F: hw/timer/pl031.c
-F: include/hw/timer/pl031.h
+F: hw/rtc/pl031.c
+F: include/hw/rtc/pl031.h
 F: include/hw/arm/primecell.h
 F: hw/timer/cmsdk-apb-timer.c
 F: include/hw/timer/cmsdk-apb-timer.h
@@ -564,7 +561,6 @@ F: include/hw/*/digic*
 Gumstix
 M: Peter Maydell <peter.maydell@linaro.org>
 R: Philippe Mathieu-Daudé <f4bug@amsat.org>
-L: qemu-devel@nongnu.org
 L: qemu-arm@nongnu.org
 S: Odd Fixes
 F: hw/arm/gumstix.c
@@ -663,10 +659,14 @@ M: Peter Maydell <peter.maydell@linaro.org>
 L: qemu-arm@nongnu.org
 S: Odd Fixes
 F: hw/arm/nseries.c
+F: hw/display/blizzard.c
 F: hw/input/lm832x.c
 F: hw/input/tsc2005.c
 F: hw/misc/cbus.c
-F: hw/timer/twl92230.c
+F: hw/rtc/twl92230.c
+F: include/hw/display/blizzard.h
+F: include/hw/input/tsc2xxx.h
+F: include/hw/misc/cbus.h
 
 Palm
 M: Andrzej Zaborowski <balrogg@gmail.com>
@@ -675,6 +675,7 @@ L: qemu-arm@nongnu.org
 S: Odd Fixes
 F: hw/arm/palm.c
 F: hw/input/tsc210x.c
+F: include/hw/input/tsc2xxx.h
 
 Raspberry Pi
 M: Peter Maydell <peter.maydell@linaro.org>
@@ -714,6 +715,7 @@ F: hw/misc/mst_fpga.c
 F: hw/misc/max111x.c
 F: include/hw/arm/pxa.h
 F: include/hw/arm/sharpsl.h
+F: include/hw/display/tc6393xb.h
 
 SABRELITE / i.MX6
 M: Peter Maydell <peter.maydell@linaro.org>
@@ -728,6 +730,14 @@ F: include/hw/arm/fsl-imx6.h
 F: include/hw/misc/imx6_*.h
 F: include/hw/ssi/imx_spi.h
 
+SBSA-REF
+M: Radoslaw Biernacki <radoslaw.biernacki@linaro.org>
+M: Peter Maydell <peter.maydell@linaro.org>
+R: Leif Lindholm <leif.lindholm@linaro.org>
+L: qemu-arm@nongnu.org
+S: Maintained
+F: hw/arm/sbsa-ref.c
+
 Sharp SL-5500 (Collie) PDA
 M: Peter Maydell <peter.maydell@linaro.org>
 L: qemu-arm@nongnu.org
@@ -740,6 +750,7 @@ M: Peter Maydell <peter.maydell@linaro.org>
 L: qemu-arm@nongnu.org
 S: Maintained
 F: hw/*/stellaris*
+F: include/hw/input/gamepad.h
 
 Versatile Express
 M: Peter Maydell <peter.maydell@linaro.org>
@@ -899,6 +910,27 @@ F: hw/char/mcf_uart.c
 F: hw/net/mcf_fec.c
 F: include/hw/m68k/mcf*.h
 
+NeXTcube
+M: Thomas Huth <huth@tuxfamily.org>
+S: Odd Fixes
+F: hw/m68k/next-*.c
+F: hw/display/next-fb.c
+F: include/hw/m68k/next-cube.h
+
+q800
+M: Laurent Vivier <laurent@vivier.eu>
+S: Maintained
+F: hw/m68k/q800.c
+F: hw/misc/mac_via.c
+F: hw/nubus/*
+F: hw/display/macfb.c
+F: hw/block/swim.c
+F: hw/m68k/bootinfo.h
+F: include/hw/misc/mac_via.h
+F: include/hw/nubus/*
+F: include/hw/display/macfb.h
+F: include/hw/block/swim.h
+
 MicroBlaze Machines
 -------------------
 petalogix_s3adsp1800
@@ -916,7 +948,7 @@ MIPS Machines
 -------------
 Jazz
 M: Hervé Poussineau <hpoussin@reactos.org>
-R: Aleksandar Rikalo <arikalo@wavecomp.com>
+R: Aleksandar Rikalo <aleksandar.rikalo@rt-rk.com>
 S: Maintained
 F: hw/mips/mips_jazz.c
 F: hw/display/jazz_led.c
@@ -924,26 +956,28 @@ F: hw/dma/rc4030.c
 
 Malta
 M: Aurelien Jarno <aurelien@aurel32.net>
-R: Aleksandar Rikalo <arikalo@wavecomp.com>
+R: Aleksandar Rikalo <aleksandar.rikalo@rt-rk.com>
 S: Maintained
 F: hw/mips/mips_malta.c
+F: hw/mips/gt64xxx_pci.c
+F: tests/acceptance/linux_ssh_mips_malta.py
 
 Mipssim
 M: Aleksandar Markovic <amarkovic@wavecomp.com>
-R: Aleksandar Rikalo <arikalo@wavecomp.com>
+R: Aleksandar Rikalo <aleksandar.rikalo@rt-rk.com>
 S: Odd Fixes
 F: hw/mips/mips_mipssim.c
 F: hw/net/mipsnet.c
 
 R4000
 M: Aurelien Jarno <aurelien@aurel32.net>
-R: Aleksandar Rikalo <arikalo@wavecomp.com>
+R: Aleksandar Rikalo <aleksandar.rikalo@rt-rk.com>
 S: Maintained
 F: hw/mips/mips_r4k.c
 
 Fulong 2E
 M: Aleksandar Markovic <amarkovic@wavecomp.com>
-R: Aleksandar Rikalo <arikalo@wavecomp.com>
+R: Aleksandar Rikalo <aleksandar.rikalo@rt-rk.com>
 S: Odd Fixes
 F: hw/mips/mips_fulong2e.c
 F: hw/isa/vt82c686.c
@@ -952,7 +986,7 @@ F: include/hw/isa/vt82c686.h
 
 Boston
 M: Paul Burton <pburton@wavecomp.com>
-R: Aleksandar Rikalo <arikalo@wavecomp.com>
+R: Aleksandar Rikalo <aleksandar.rikalo@rt-rk.com>
 S: Maintained
 F: hw/core/loader-fit.c
 F: hw/mips/boston.c
@@ -1035,7 +1069,6 @@ F: pc-bios/qemu_vga.ndrv
 
 PReP
 M: Hervé Poussineau <hpoussin@reactos.org>
-L: qemu-devel@nongnu.org
 L: qemu-ppc@nongnu.org
 S: Maintained
 F: hw/ppc/prep.c
@@ -1045,10 +1078,11 @@ F: hw/pci-host/prep.[hc]
 F: hw/isa/i82378.c
 F: hw/isa/pc87312.c
 F: hw/dma/i82374.c
-F: hw/timer/m48t59-isa.c
+F: hw/rtc/m48t59-isa.c
 F: include/hw/isa/pc87312.h
-F: include/hw/timer/m48t59.h
+F: include/hw/rtc/m48t59.h
 F: pc-bios/ppc_rom.bin
+F: tests/acceptance/ppc_prep_40p.py
 
 sPAPR
 M: David Gibson <david@gibson.dropbear.id.au>
@@ -1058,8 +1092,6 @@ F: hw/*/spapr*
 F: include/hw/*/spapr*
 F: hw/*/xics*
 F: include/hw/*/xics*
-F: pc-bios/spapr-rtas/*
-F: pc-bios/spapr-rtas.bin
 F: pc-bios/slof.bin
 F: docs/specs/ppc-spapr-hcalls.txt
 F: docs/specs/ppc-spapr-hotplug.txt
@@ -1094,7 +1126,7 @@ F: hw/ppc/sam460ex.c
 F: hw/ppc/ppc440_pcix.c
 F: hw/display/sm501*
 F: hw/ide/sii3112.c
-F: hw/timer/m41t80.c
+F: hw/rtc/m41t80.c
 F: pc-bios/canyonlands.dt[sb]
 F: pc-bios/u-boot-sam460ex-20100605.bin
 F: roms/u-boot-sam460ex
@@ -1146,15 +1178,17 @@ Sun4v
 M: Artyom Tarasenko <atar4qemu@gmail.com>
 S: Maintained
 F: hw/sparc64/niagara.c
-F: hw/timer/sun4v-rtc.c
-F: include/hw/timer/sun4v-rtc.h
+F: hw/rtc/sun4v-rtc.c
+F: include/hw/rtc/sun4v-rtc.h
 
 Leon3
 M: Fabien Chouteau <chouteau@adacore.com>
+M: KONRAD Frederic <frederic.konrad@adacore.com>
 S: Maintained
 F: hw/sparc/leon3.c
 F: hw/*/grlib*
-F: include/hw/sparc/grlib.h
+F: include/hw/*/grlib*
+F: tests/acceptance/machine_sparc_leon3.py
 
 S390 Machines
 -------------
@@ -1181,17 +1215,18 @@ S: Supported
 F: hw/s390x/ipl.*
 F: pc-bios/s390-ccw/
 F: pc-bios/s390-ccw.img
+F: docs/devel/s390-dasd-ipl.txt
 T: git https://github.com/borntraeger/qemu.git s390-next
 L: qemu-s390x@nongnu.org
 
 S390 PCI
-M: Collin Walling <walling@linux.ibm.com>
+M: Matthew Rosato <mjrosato@linux.ibm.com>
 S: Supported
 F: hw/s390x/s390-pci*
 L: qemu-s390x@nongnu.org
 
 UniCore32 Machines
--------------
+------------------
 PKUnity-3 SoC initramfs-with-busybox
 M: Guan Xuetao <gxt@mprc.pku.edu.cn>
 S: Maintained
@@ -1206,18 +1241,19 @@ M: Marcel Apfelbaum <marcel.apfelbaum@gmail.com>
 S: Supported
 F: include/hw/i386/
 F: hw/i386/
-F: hw/pci-host/piix.c
+F: hw/pci-host/i440fx.c
 F: hw/pci-host/q35.c
 F: hw/pci-host/pam.c
+F: include/hw/pci-host/i440fx.h
 F: include/hw/pci-host/q35.h
 F: include/hw/pci-host/pam.h
-F: hw/isa/piix4.c
+F: hw/isa/piix3.c
 F: hw/isa/lpc_ich9.c
 F: hw/i2c/smbus_ich9.c
 F: hw/acpi/piix4.c
 F: hw/acpi/ich9.c
 F: include/hw/acpi/ich9.h
-F: include/hw/acpi/piix4.h
+F: include/hw/southbridge/piix.h
 F: hw/misc/sga.c
 F: hw/isa/apm.c
 F: include/hw/isa/apm.h
@@ -1242,7 +1278,7 @@ F: hw/misc/debugexit.c
 F: hw/misc/pc-testdev.c
 F: hw/timer/hpet*
 F: hw/timer/i8254*
-F: hw/timer/mc146818rtc*
+F: hw/rtc/mc146818rtc*
 F: hw/watchdog/wdt_ib700.c
 F: hw/watchdog/wdt_i6300esb.c
 F: include/hw/display/vga.h
@@ -1254,17 +1290,33 @@ F: include/hw/isa/i8259_internal.h
 F: include/hw/isa/superio.h
 F: include/hw/timer/hpet.h
 F: include/hw/timer/i8254*
-F: include/hw/timer/mc146818rtc*
+F: include/hw/rtc/mc146818rtc*
+
+microvm
+M: Sergio Lopez <slp@redhat.com>
+M: Paolo Bonzini <pbonzini@redhat.com>
+S: Maintained
+F: docs/microvm.rst
+F: hw/i386/microvm.c
+F: include/hw/i386/microvm.h
+F: pc-bios/bios-microvm.bin
 
 Machine core
 M: Eduardo Habkost <ehabkost@redhat.com>
 M: Marcel Apfelbaum <marcel.apfelbaum@gmail.com>
 S: Supported
+F: hw/core/cpu.c
+F: hw/core/machine-qmp-cmds.c
 F: hw/core/machine.c
 F: hw/core/null-machine.c
+F: hw/core/numa.c
 F: hw/cpu/cluster.c
+F: qapi/machine.json
+F: qapi/machine-target.json
 F: include/hw/boards.h
+F: include/hw/core/cpu.h
 F: include/hw/cpu/cluster.h
+F: include/sysemu/numa.h
 T: git https://github.com/ehabkost/qemu.git machine-next
 
 Xtensa Machines
@@ -1273,6 +1325,11 @@ sim
 M: Max Filippov <jcmvbkbc@gmail.com>
 S: Maintained
 F: hw/xtensa/sim.c
+
+virt
+M: Max Filippov <jcmvbkbc@gmail.com>
+S: Maintained
+F: hw/xtensa/virt.c
 
 XTFPGA (LX60, LX200, ML605, KC705)
 M: Max Filippov <jcmvbkbc@gmail.com>
@@ -1381,7 +1438,15 @@ S: Odd Fixes
 F: hw/net/
 F: include/hw/net/
 F: tests/virtio-net-test.c
+F: docs/virtio-net-failover.rst
 T: git https://github.com/jasowang/qemu.git net
+
+Parallel NOR Flash devices
+M: Philippe Mathieu-Daudé <philmd@redhat.com>
+T: git https://gitlab.com/philmd/qemu.git pflash-next
+S: Maintained
+F: hw/block/pflash_cfi*.c
+F: include/hw/block/flash.h
 
 SCSI
 M: Paolo Bonzini <pbonzini@redhat.com>
@@ -1440,11 +1505,11 @@ F: include/hw/vfio/
 vfio-ccw
 M: Cornelia Huck <cohuck@redhat.com>
 M: Eric Farman <farman@linux.ibm.com>
-M: Farhan Ali <alifm@linux.ibm.com>
 S: Supported
 F: hw/vfio/ccw.c
 F: hw/s390x/s390-ccw.c
 F: include/hw/s390x/s390-ccw.h
+F: include/hw/s390x/vfio-ccw.h
 T: git https://github.com/cohuck/qemu.git s390-next
 L: qemu-s390x@nongnu.org
 
@@ -1467,8 +1532,10 @@ M: Michael S. Tsirkin <mst@redhat.com>
 S: Supported
 F: hw/*/*vhost*
 F: docs/interop/vhost-user.json
-F: docs/interop/vhost-user.txt
+F: docs/interop/vhost-user.rst
 F: contrib/vhost-user-*/
+F: backends/vhost-user.c
+F: include/sysemu/vhost-user-backend.h
 
 virtio
 M: Michael S. Tsirkin <mst@redhat.com>
@@ -1482,8 +1549,9 @@ F: tests/virtio-balloon-test.c
 
 virtio-9p
 M: Greg Kurz <groug@kaod.org>
-S: Supported
+S: Odd Fixes
 F: hw/9pfs/
+X: hw/9pfs/xen-9p*
 F: fsdev/
 F: tests/virtio-9p-test.c
 T: git https://github.com/gkurz/qemu.git 9p-next
@@ -1510,11 +1578,14 @@ L: qemu-s390x@nongnu.org
 virtio-input
 M: Gerd Hoffmann <kraxel@redhat.com>
 S: Maintained
+F: hw/input/vhost-user-input.c
 F: hw/input/virtio-input*.c
 F: include/hw/virtio/virtio-input.h
+F: contrib/vhost-user-input/*
 
 virtio-serial
-M: Amit Shah <amit@kernel.org>
+M: Laurent Vivier <lvivier@redhat.com>
+R: Amit Shah <amit@kernel.org>
 S: Supported
 F: hw/char/virtio-serial-bus.c
 F: hw/char/virtio-console.c
@@ -1523,7 +1594,8 @@ F: tests/virtio-console-test.c
 F: tests/virtio-serial-test.c
 
 virtio-rng
-M: Amit Shah <amit@kernel.org>
+M: Laurent Vivier <lvivier@redhat.com>
+R: Amit Shah <amit@kernel.org>
 S: Supported
 F: hw/virtio/virtio-rng.c
 F: include/hw/virtio/virtio-rng.h
@@ -1598,6 +1670,12 @@ M: Stefan Weil <sw@weilnetz.de>
 S: Maintained
 F: hw/net/eepro100.c
 
+tulip
+M: Sven Schnelle <svens@stackframe.org>
+S: Maintained
+F: hw/net/tulip.c
+F: hw/net/tulip.h
+
 Generic Loader
 M: Alistair Francis <alistair@alistair23.me>
 S: Maintained
@@ -1652,8 +1730,16 @@ virtio-gpu
 M: Gerd Hoffmann <kraxel@redhat.com>
 S: Maintained
 F: hw/display/virtio-gpu*
-F: hw/display/virtio-vga.c
+F: hw/display/virtio-vga.*
 F: include/hw/virtio/virtio-gpu.h
+
+vhost-user-gpu
+M: Marc-André Lureau <marcandre.lureau@redhat.com>
+M: Gerd Hoffmann <kraxel@redhat.com>
+S: Maintained
+F: docs/interop/vhost-user-gpu.rst
+F: contrib/vhost-user-gpu
+F: hw/display/vhost-user-*
 
 Cirrus VGA
 M: Gerd Hoffmann <kraxel@redhat.com>
@@ -1668,6 +1754,13 @@ F: hw/display/edid*
 F: include/hw/display/edid.h
 F: qemu-edid.c
 
+PIIX4 South Bridge (i82371AB)
+M: Hervé Poussineau <hpoussin@reactos.org>
+M: Philippe Mathieu-Daudé <f4bug@amsat.org>
+S: Maintained
+F: hw/isa/piix4.c
+F: include/hw/southbridge/piix.h
+
 Firmware configuration (fw_cfg)
 M: Philippe Mathieu-Daudé <philmd@redhat.com>
 R: Laszlo Ersek <lersek@redhat.com>
@@ -1675,6 +1768,7 @@ R: Gerd Hoffmann <kraxel@redhat.com>
 S: Supported
 F: docs/specs/fw_cfg.txt
 F: hw/nvram/fw_cfg.c
+F: stubs/fw_cfg.c
 F: include/hw/nvram/fw_cfg.h
 F: include/standard-headers/linux/qemu_fw_cfg.h
 F: tests/libqos/fw_cfg.c
@@ -1688,6 +1782,7 @@ L: qemu-ppc@nongnu.org
 S: Supported
 F: hw/*/*xive*
 F: include/hw/*/*xive*
+F: docs/*/*xive*
 
 Subsystems
 ----------
@@ -1766,17 +1861,18 @@ F: qapi/transaction.json
 T: git https://repo.or.cz/qemu/armbru.git block-next
 
 Dirty Bitmaps
-M: Fam Zheng <fam@euphon.net>
 M: John Snow <jsnow@redhat.com>
+R: Vladimir Sementsov-Ogievskiy <vsementsov@virtuozzo.com>
 L: qemu-block@nongnu.org
 S: Supported
 F: util/hbitmap.c
 F: block/dirty-bitmap.c
 F: include/qemu/hbitmap.h
 F: include/block/dirty-bitmap.h
+F: qcow2-bitmap.c
+F: migration/block-dirty-bitmap.c
 F: tests/test-hbitmap.c
 F: docs/interop/bitmaps.rst
-T: git https://github.com/famz/qemu.git bitmaps
 T: git https://github.com/jnsnow/qemu.git bitmaps
 
 Character device backends
@@ -1806,12 +1902,6 @@ M: Markus Armbruster <armbru@redhat.com>
 S: Supported
 F: scripts/coverity-model.c
 
-CPU
-L: qemu-devel@nongnu.org
-S: Supported
-F: qom/cpu.c
-F: include/qom/cpu.h
-
 Device Tree
 M: Alistair Francis <alistair.francis@wdc.com>
 R: David Gibson <david@gibson.dropbear.id.au>
@@ -1822,11 +1912,13 @@ F: include/sysemu/device_tree.h
 Dump
 S: Supported
 M: Marc-André Lureau <marcandre.lureau@redhat.com>
-F: dump.c
+F: dump/
 F: hw/misc/vmcoreinfo.c
 F: include/hw/misc/vmcoreinfo.h
+F: include/qemu/win_dump_defs
 F: include/sysemu/dump-arch.h
 F: include/sysemu/dump.h
+F: qapi/dump.json
 F: scripts/dump-guest-memory.py
 F: stubs/dump.c
 
@@ -1835,11 +1927,14 @@ M: Markus Armbruster <armbru@redhat.com>
 S: Supported
 F: include/qapi/error.h
 F: include/qemu/error-report.h
+F: qapi/error.json
 F: util/error.c
 F: util/qemu-error.c
 
 GDB stub
-S: Orphan
+M: Alex Bennée <alex.bennee@linaro.org>
+R: Philippe Mathieu-Daudé <philmd@redhat.com>
+S: Maintained
 F: gdbstub*
 F: gdb-xml/
 
@@ -1848,6 +1943,7 @@ M: Paolo Bonzini <pbonzini@redhat.com>
 S: Supported
 F: include/exec/ioport.h
 F: ioport.c
+F: include/exec/memop.h
 F: include/exec/memory.h
 F: include/exec/ram_addr.h
 F: memory.c
@@ -1882,6 +1978,8 @@ Main loop
 M: Paolo Bonzini <pbonzini@redhat.com>
 S: Maintained
 F: cpus.c
+F: include/qemu/main-loop.h
+F: include/sysemu/runstate.h
 F: util/main-loop.c
 F: util/qemu-timer.c
 F: vl.c
@@ -1890,17 +1988,23 @@ F: qapi/run-state.json
 Human Monitor (HMP)
 M: Dr. David Alan Gilbert <dgilbert@redhat.com>
 S: Maintained
-F: monitor.c
-F: hmp.[ch]
+F: monitor/monitor-internal.h
+F: monitor/misc.c
+F: monitor/monitor.c
+F: monitor/hmp*
+F: hmp.h
 F: hmp-commands*.hx
 F: include/monitor/hmp-target.h
 F: tests/test-hmp.c
+F: include/qemu/qemu-print.h
+F: util/qemu-print.c
 
 Network device backends
 M: Jason Wang <jasowang@redhat.com>
 S: Maintained
 F: net/
 F: include/net/
+F: qemu-bridge-helper.c
 T: git https://github.com/jasowang/qemu.git net
 F: qapi/net.json
 
@@ -1911,13 +2015,6 @@ M: Vincenzo Maffione <v.maffione@gmail.com>
 W: http://info.iet.unipi.it/~luigi/netmap/
 S: Maintained
 F: net/netmap.c
-
-NUMA
-M: Eduardo Habkost <ehabkost@redhat.com>
-S: Maintained
-F: numa.c
-F: include/sysemu/numa.h
-T: git https://github.com/ehabkost/qemu.git machine-next
 
 Host Memory Backends
 M: Eduardo Habkost <ehabkost@redhat.com>
@@ -1937,7 +2034,7 @@ Python scripts
 M: Eduardo Habkost <ehabkost@redhat.com>
 M: Cleber Rosa <crosa@redhat.com>
 S: Odd fixes
-F: scripts/qmp/*
+F: python/qemu/*py
 F: scripts/*.py
 F: tests/*.py
 
@@ -1989,28 +2086,38 @@ QEMU Guest Agent
 M: Michael Roth <mdroth@linux.vnet.ibm.com>
 S: Maintained
 F: qga/
-F: qemu-ga.texi
+F: docs/interop/qemu-ga.rst
 F: scripts/qemu-guest-agent/
 F: tests/test-qga.c
 F: docs/interop/qemu-ga-ref.texi
 T: git https://github.com/mdroth/qemu.git qga
 
 QOM
-M: Andreas Färber <afaerber@suse.de>
+M: Paolo Bonzini <pbonzini@redhat.com>
+R: Daniel P. Berrange <berrange@redhat.com>
+R: Eduardo Habkost <ehabkost@redhat.com>
 S: Supported
-T: git https://github.com/afaerber/qemu-cpu.git qom-next
+F: docs/qdev-device-use.txt
+F: hw/core/qdev*
+F: include/hw/qdev*
+F: include/monitor/qdev.h
 F: include/qom/
-X: include/qom/cpu.h
+F: qapi/qom.json
+F: qapi/qdev.json
+F: qdev-monitor.c
 F: qom/
-X: qom/cpu.c
 F: tests/check-qom-interface.c
 F: tests/check-qom-proplist.c
+F: tests/test-qdev-global-props.c
 
 QMP
 M: Markus Armbruster <armbru@redhat.com>
 S: Supported
-F: qmp.c
-F: monitor.c
+F: monitor/monitor-internal.h
+F: monitor/qmp*
+F: monitor/misc.c
+F: monitor/monitor.c
+F: qapi/error.json
 F: docs/devel/*qmp-*
 F: docs/interop/*qmp-*
 F: scripts/qmp/
@@ -2024,7 +2131,8 @@ M: Laurent Vivier <lvivier@redhat.com>
 R: Paolo Bonzini <pbonzini@redhat.com>
 S: Maintained
 F: qtest.c
-F: tests/libqtest.*
+F: accel/qtest.c
+F: tests/libqtest*
 F: tests/libqos/
 F: tests/*-test.c
 
@@ -2037,13 +2145,11 @@ F: include/hw/registerfields.h
 
 SLIRP
 M: Samuel Thibault <samuel.thibault@ens-lyon.org>
-M: Jan Kiszka <jan.kiszka@siemens.com>
 S: Maintained
 F: slirp/
 F: net/slirp.c
 F: include/net/slirp.h
 T: git https://people.debian.org/~sthibault/qemu.git slirp
-T: git git://git.kiszka.org/qemu.git queues/slirp
 
 Stubs
 M: Paolo Bonzini <pbonzini@redhat.com>
@@ -2222,9 +2328,21 @@ F: include/hw/i2c/smbus_master.h
 F: include/hw/i2c/smbus_slave.h
 F: include/hw/i2c/smbus_eeprom.h
 
+EDK2 Firmware
+M: Laszlo Ersek <lersek@redhat.com>
+M: Philippe Mathieu-Daudé <philmd@redhat.com>
+S: Supported
+F: pc-bios/descriptors/??-edk2-*.json
+F: pc-bios/edk2-*
+F: roms/Makefile.edk2
+F: roms/edk2
+F: roms/edk2-*
+F: tests/data/uefi-boot-images/
+F: tests/uefi-test-tools/
+
 Usermode Emulation
 ------------------
-Overall
+Overall usermode emulation
 M: Riku Voipio <riku.voipio@iki.fi>
 S: Maintained
 F: thunk.c
@@ -2245,12 +2363,19 @@ F: scripts/qemu-binfmt-conf.sh
 
 Tiny Code Generator (TCG)
 -------------------------
-Common code
+Common TCG code
 M: Richard Henderson <rth@twiddle.net>
 S: Maintained
 F: tcg/
 
-AArch64 target
+TCG Plugins
+M: Alex Bennée <alex.bennee@linaro.org>
+S: Maintained
+F: docs/devel/tcg-plugins.rst
+F: plugins/
+F: tests/plugin
+
+AArch64 TCG target
 M: Claudio Fontana <claudio.fontana@huawei.com>
 M: Claudio Fontana <claudio.fontana@gmail.com>
 S: Maintained
@@ -2259,53 +2384,52 @@ F: tcg/aarch64/
 F: disas/arm-a64.cc
 F: disas/libvixl/
 
-ARM target
+ARM TCG target
 M: Andrzej Zaborowski <balrogg@gmail.com>
 S: Maintained
 L: qemu-arm@nongnu.org
 F: tcg/arm/
 F: disas/arm.c
 
-i386 target
+i386 TCG target
 M: Richard Henderson <rth@twiddle.net>
 S: Maintained
 F: tcg/i386/
 F: disas/i386.c
 
-MIPS target
+MIPS TCG target
 M: Aurelien Jarno <aurelien@aurel32.net>
-R: Aleksandar Rikalo <arikalo@wavecomp.com>
+R: Aleksandar Rikalo <aleksandar.rikalo@rt-rk.com>
 S: Maintained
 F: tcg/mips/
-F: disas/mips.c
 
-PPC
+PPC TCG target
 M: Richard Henderson <rth@twiddle.net>
 S: Odd Fixes
 F: tcg/ppc/
 F: disas/ppc.c
 
-RISC-V
-M: Palmer Dabbelt <palmer@sifive.com>
+RISC-V TCG target
+M: Palmer Dabbelt <palmer@dabbelt.com>
 M: Alistair Francis <Alistair.Francis@wdc.com>
 L: qemu-riscv@nongnu.org
 S: Maintained
 F: tcg/riscv/
 F: disas/riscv.c
 
-S390 target
+S390 TCG target
 M: Richard Henderson <rth@twiddle.net>
 S: Maintained
 F: tcg/s390/
 F: disas/s390.c
 L: qemu-s390x@nongnu.org
 
-SPARC target
+SPARC TCG target
 S: Odd Fixes
 F: tcg/sparc/
 F: disas/sparc.c
 
-TCI target
+TCI TCG target
 M: Stefan Weil <sw@weilnetz.de>
 S: Maintained
 F: tcg/tci/
@@ -2321,7 +2445,7 @@ S: Supported
 F: block/vmdk.c
 
 RBD
-M: Josh Durgin <jdurgin@redhat.com>
+M: Jason Dillaman <dillaman@redhat.com>
 L: qemu-block@nongnu.org
 S: Supported
 F: block/rbd.c
@@ -2380,12 +2504,13 @@ F: block/ssh.c
 
 CURL
 L: qemu-block@nongnu.org
-S: Supported
+S: Odd Fixes
 F: block/curl.c
 
 GLUSTER
 L: qemu-block@nongnu.org
-S: Supported
+L: integration@gluster.org
+S: Odd Fixes
 F: block/gluster.c
 
 Null Block Driver
@@ -2524,13 +2649,18 @@ F: docs/pvrdma.txt
 F: contrib/rdmacm-mux/*
 F: qapi/rdma.json
 
+Semihosting
+M: Alex Bennée <alex.bennee@linaro.org>
+S: Maintained
+F: hw/semihosting/
+F: include/hw/semihosting/
+
 Build and test automation
 -------------------------
 Build and test automation
 M: Alex Bennée <alex.bennee@linaro.org>
 M: Fam Zheng <fam@euphon.net>
 R: Philippe Mathieu-Daudé <philmd@redhat.com>
-L: qemu-devel@nongnu.org
 S: Maintained
 F: .travis.yml
 F: scripts/travis/
@@ -2545,7 +2675,6 @@ W: http://patchew.org/QEMU/
 FreeBSD Hosted Continuous Integration
 M: Ed Maste <emaste@freebsd.org>
 M: Li-Wen Hsu <lwhsu@freebsd.org>
-L: qemu-devel@nongnu.org
 S: Maintained
 F: .cirrus.yml
 W: https://cirrus-ci.com/github/qemu/qemu
@@ -2561,7 +2690,6 @@ R: Philippe Mathieu-Daudé <f4bug@amsat.org>
 S: Maintained
 F: tests/tcg/Makefile
 F: tests/tcg/Makefile.include
-L: qemu-devel@nongnu.org
 
 Documentation
 -------------

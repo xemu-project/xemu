@@ -19,7 +19,9 @@
 
 #include "qemu/osdep.h"
 #include "hw/sysbus.h"
+#include "migration/vmstate.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 
 #define TYPE_EXYNOS4210_CLK             "exynos4210.clk"
 #define EXYNOS4210_CLK(obj) \

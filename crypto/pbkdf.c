@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -69,11 +69,9 @@ uint64_t qcrypto_pbkdf2_count_iters(QCryptoHashAlgorithm hash,
                                     Error **errp)
 {
     uint64_t ret = -1;
-    uint8_t *out;
+    g_autofree uint8_t *out = g_new(uint8_t, nout);
     uint64_t iterations = (1 << 15);
     unsigned long long delta_ms, start_ms, end_ms;
-
-    out = g_new(uint8_t, nout);
 
     while (1) {
         if (qcrypto_pbkdf2_get_thread_cpu(&start_ms, errp) < 0) {
@@ -108,6 +106,5 @@ uint64_t qcrypto_pbkdf2_count_iters(QCryptoHashAlgorithm hash,
 
  cleanup:
     memset(out, 0, nout);
-    g_free(out);
     return ret;
 }

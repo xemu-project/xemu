@@ -22,31 +22,20 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/units.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "sysemu/sysemu.h"
 #include "hw/sysbus.h"
 #include "net/net.h"
-#include "hw/arm/arm.h"
+#include "hw/arm/boot.h"
 #include "exec/address-spaces.h"
 #include "hw/arm/exynos4210.h"
+#include "hw/net/lan9118.h"
+#include "hw/qdev-properties.h"
 #include "hw/boards.h"
-
-#undef DEBUG
-
-//#define DEBUG
-
-#ifdef DEBUG
-    #undef PRINT_DEBUG
-    #define  PRINT_DEBUG(fmt, args...) \
-        do { \
-            fprintf(stderr, "  [%s:%d]   "fmt, __func__, __LINE__, ##args); \
-        } while (0)
-#else
-    #define  PRINT_DEBUG(fmt, args...)  do {} while (0)
-#endif
+#include "hw/irq.h"
 
 #define SMDK_LAN9118_BASE_ADDR      0x05000000
 
@@ -57,7 +46,7 @@ typedef enum Exynos4BoardType {
 } Exynos4BoardType;
 
 typedef struct Exynos4BoardState {
-    Exynos4210State *soc;
+    Exynos4210State soc;
     MemoryRegion dram0_mem;
     MemoryRegion dram1_mem;
 } Exynos4BoardState;
@@ -73,8 +62,8 @@ static int exynos4_board_smp_bootreg_addr[EXYNOS4_NUM_OF_BOARDS] = {
 };
 
 static unsigned long exynos4_board_ram_size[EXYNOS4_NUM_OF_BOARDS] = {
-    [EXYNOS4_BOARD_NURI]     = 0x40000000,
-    [EXYNOS4_BOARD_SMDKC210] = 0x40000000,
+    [EXYNOS4_BOARD_NURI]     = 1 * GiB,
+    [EXYNOS4_BOARD_SMDKC210] = 1 * GiB,
 };
 
 static struct arm_boot_info exynos4_board_binfo = {
@@ -92,7 +81,7 @@ static void lan9215_init(uint32_t base, qemu_irq irq)
     /* This should be a 9215 but the 9118 is close enough */
     if (nd_table[0].used) {
         qemu_check_nic_model(&nd_table[0], "lan9118");
-        dev = qdev_create(NULL, "lan9118");
+        dev = qdev_create(NULL, TYPE_LAN9118);
         qdev_set_nic_properties(dev, &nd_table[0]);
         qdev_prop_set_uint32(dev, "mode_16bit", 1);
         qdev_init_nofail(dev);
@@ -133,26 +122,16 @@ exynos4_boards_init_common(MachineState *machine,
     exynos4_board_binfo.board_id = exynos4_board_id[board_type];
     exynos4_board_binfo.smp_bootreg_addr =
             exynos4_board_smp_bootreg_addr[board_type];
-    exynos4_board_binfo.kernel_filename = machine->kernel_filename;
-    exynos4_board_binfo.initrd_filename = machine->initrd_filename;
-    exynos4_board_binfo.kernel_cmdline = machine->kernel_cmdline;
     exynos4_board_binfo.gic_cpu_if_addr =
             EXYNOS4210_SMP_PRIVATE_BASE_ADDR + 0x100;
-
-    PRINT_DEBUG("\n ram_size: %luMiB [0x%08lx]\n"
-            " kernel_filename: %s\n"
-            " kernel_cmdline: %s\n"
-            " initrd_filename: %s\n",
-            exynos4_board_ram_size[board_type] / 1048576,
-            exynos4_board_ram_size[board_type],
-            machine->kernel_filename,
-            machine->kernel_cmdline,
-            machine->initrd_filename);
 
     exynos4_boards_init_ram(s, get_system_memory(),
                             exynos4_board_ram_size[board_type]);
 
-    s->soc = exynos4210_init(get_system_memory());
+    sysbus_init_child_obj(OBJECT(machine), "soc",
+                          &s->soc, sizeof(s->soc), TYPE_EXYNOS4210_SOC);
+    object_property_set_bool(OBJECT(&s->soc), true, "realized",
+                             &error_fatal);
 
     return s;
 }
@@ -161,7 +140,7 @@ static void nuri_init(MachineState *machine)
 {
     exynos4_boards_init_common(machine, EXYNOS4_BOARD_NURI);
 
-    arm_load_kernel(ARM_CPU(first_cpu), &exynos4_board_binfo);
+    arm_load_kernel(ARM_CPU(first_cpu), machine, &exynos4_board_binfo);
 }
 
 static void smdkc210_init(MachineState *machine)
@@ -170,8 +149,8 @@ static void smdkc210_init(MachineState *machine)
                                                       EXYNOS4_BOARD_SMDKC210);
 
     lan9215_init(SMDK_LAN9118_BASE_ADDR,
-            qemu_irq_invert(s->soc->irq_table[exynos4210_get_irq(37, 1)]));
-    arm_load_kernel(ARM_CPU(first_cpu), &exynos4_board_binfo);
+            qemu_irq_invert(s->soc.irq_table[exynos4210_get_irq(37, 1)]));
+    arm_load_kernel(ARM_CPU(first_cpu), machine, &exynos4_board_binfo);
 }
 
 static void nuri_class_init(ObjectClass *oc, void *data)

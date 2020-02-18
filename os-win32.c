@@ -22,11 +22,13 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #include "qemu/osdep.h"
 #include <windows.h>
 #include <mmsystem.h>
-#include "sysemu/sysemu.h"
+#include "qemu-common.h"
 #include "qemu-options.h"
+#include "sysemu/runstate.h"
 
 /***********************************************************/
 /* Functions missing in mingw */

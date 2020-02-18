@@ -9,10 +9,12 @@
 
 #include "qemu/osdep.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "qapi/error.h"
 #include "target/ppc/cpu.h"
 #include "sysemu/cpus.h"
 #include "sysemu/dma.h"
+#include "sysemu/reset.h"
 #include "monitor/monitor.h"
 #include "hw/ppc/fdt.h"
 #include "hw/ppc/pnv.h"
@@ -20,6 +22,7 @@
 #include "hw/ppc/pnv_xscom.h"
 #include "hw/ppc/pnv_xive.h"
 #include "hw/ppc/xive_regs.h"
+#include "hw/qdev-properties.h"
 #include "hw/ppc/ppc.h"
 
 #include <libfdt.h>
@@ -168,7 +171,7 @@ static uint64_t pnv_xive_vst_addr_indirect(PnvXive *xive, uint32_t type,
     vsd = ldq_be_dma(&address_space_memory, vsd_addr);
 
     if (!(vsd & VSD_ADDRESS_MASK)) {
-        xive_error(xive, "VST: invalid %s entry %x !?", info->name, 0);
+        xive_error(xive, "VST: invalid %s entry %x !?", info->name, idx);
         return 0;
     }
 
@@ -189,7 +192,7 @@ static uint64_t pnv_xive_vst_addr_indirect(PnvXive *xive, uint32_t type,
         vsd = ldq_be_dma(&address_space_memory, vsd_addr);
 
         if (!(vsd & VSD_ADDRESS_MASK)) {
-            xive_error(xive, "VST: invalid %s entry %x !?", info->name, 0);
+            xive_error(xive, "VST: invalid %s entry %x !?", info->name, idx);
             return 0;
         }
 
@@ -293,8 +296,12 @@ static int pnv_xive_write_end(XiveRouter *xrtr, uint8_t blk, uint32_t idx,
                               word_number);
 }
 
-static int pnv_xive_end_update(PnvXive *xive, uint8_t blk, uint32_t idx)
+static int pnv_xive_end_update(PnvXive *xive)
 {
+    uint8_t  blk = GETFIELD(VC_EQC_CWATCH_BLOCKID,
+                           xive->regs[(VC_EQC_CWATCH_SPEC >> 3)]);
+    uint32_t idx = GETFIELD(VC_EQC_CWATCH_OFFSET,
+                           xive->regs[(VC_EQC_CWATCH_SPEC >> 3)]);
     int i;
     uint64_t eqc_watch[4];
 
@@ -304,6 +311,24 @@ static int pnv_xive_end_update(PnvXive *xive, uint8_t blk, uint32_t idx)
 
     return pnv_xive_vst_write(xive, VST_TSEL_EQDT, blk, idx, eqc_watch,
                               XIVE_VST_WORD_ALL);
+}
+
+static void pnv_xive_end_cache_load(PnvXive *xive)
+{
+    uint8_t  blk = GETFIELD(VC_EQC_CWATCH_BLOCKID,
+                           xive->regs[(VC_EQC_CWATCH_SPEC >> 3)]);
+    uint32_t idx = GETFIELD(VC_EQC_CWATCH_OFFSET,
+                           xive->regs[(VC_EQC_CWATCH_SPEC >> 3)]);
+    uint64_t eqc_watch[4] = { 0 };
+    int i;
+
+    if (pnv_xive_vst_read(xive, VST_TSEL_EQDT, blk, idx, eqc_watch)) {
+        xive_error(xive, "VST: no END entry %x/%x !?", blk, idx);
+    }
+
+    for (i = 0; i < ARRAY_SIZE(eqc_watch); i++) {
+        xive->regs[(VC_EQC_CWATCH_DAT0 >> 3) + i] = be64_to_cpu(eqc_watch[i]);
+    }
 }
 
 static int pnv_xive_get_nvt(XiveRouter *xrtr, uint8_t blk, uint32_t idx,
@@ -319,8 +344,12 @@ static int pnv_xive_write_nvt(XiveRouter *xrtr, uint8_t blk, uint32_t idx,
                               word_number);
 }
 
-static int pnv_xive_nvt_update(PnvXive *xive, uint8_t blk, uint32_t idx)
+static int pnv_xive_nvt_update(PnvXive *xive)
 {
+    uint8_t  blk = GETFIELD(PC_VPC_CWATCH_BLOCKID,
+                           xive->regs[(PC_VPC_CWATCH_SPEC >> 3)]);
+    uint32_t idx = GETFIELD(PC_VPC_CWATCH_OFFSET,
+                           xive->regs[(PC_VPC_CWATCH_SPEC >> 3)]);
     int i;
     uint64_t vpc_watch[8];
 
@@ -332,23 +361,35 @@ static int pnv_xive_nvt_update(PnvXive *xive, uint8_t blk, uint32_t idx)
                               XIVE_VST_WORD_ALL);
 }
 
+static void pnv_xive_nvt_cache_load(PnvXive *xive)
+{
+    uint8_t  blk = GETFIELD(PC_VPC_CWATCH_BLOCKID,
+                           xive->regs[(PC_VPC_CWATCH_SPEC >> 3)]);
+    uint32_t idx = GETFIELD(PC_VPC_CWATCH_OFFSET,
+                           xive->regs[(PC_VPC_CWATCH_SPEC >> 3)]);
+    uint64_t vpc_watch[8] = { 0 };
+    int i;
+
+    if (pnv_xive_vst_read(xive, VST_TSEL_VPDT, blk, idx, vpc_watch)) {
+        xive_error(xive, "VST: no NVT entry %x/%x !?", blk, idx);
+    }
+
+    for (i = 0; i < ARRAY_SIZE(vpc_watch); i++) {
+        xive->regs[(PC_VPC_CWATCH_DAT0 >> 3) + i] = be64_to_cpu(vpc_watch[i]);
+    }
+}
+
 static int pnv_xive_get_eas(XiveRouter *xrtr, uint8_t blk, uint32_t idx,
                             XiveEAS *eas)
 {
     PnvXive *xive = PNV_XIVE(xrtr);
 
     if (pnv_xive_get_ic(blk) != xive) {
-        xive_error(xive, "VST: EAS %x is remote !?", XIVE_SRCNO(blk, idx));
+        xive_error(xive, "VST: EAS %x is remote !?", XIVE_EAS(blk, idx));
         return -1;
     }
 
     return pnv_xive_vst_read(xive, VST_TSEL_IVT, blk, idx, eas);
-}
-
-static int pnv_xive_eas_update(PnvXive *xive, uint8_t blk, uint32_t idx)
-{
-    /* All done. */
-    return 0;
 }
 
 static XiveTCTX *pnv_xive_get_tctx(XiveRouter *xrtr, CPUState *cs)
@@ -390,7 +431,7 @@ static void pnv_xive_notify(XiveNotifier *xn, uint32_t srcno)
     PnvXive *xive = PNV_XIVE(xn);
     uint8_t blk = xive->chip->chip_id;
 
-    xive_router_notify(xn, XIVE_SRCNO(blk, srcno));
+    xive_router_notify(xn, XIVE_EAS(blk, srcno));
 }
 
 /*
@@ -780,8 +821,7 @@ static void pnv_xive_ic_reg_write(void *opaque, hwaddr offset,
          * support recently though)
          */
         if (val & (VC_SBC_CONF_CPLX_CIST | VC_SBC_CONF_CIST_BOTH)) {
-            object_property_set_int(OBJECT(&xive->ipi_source),
-                                    XIVE_SRC_STORE_EOI, "flags", &error_fatal);
+            xive->ipi_source.esb_flags |= XIVE_SRC_STORE_EOI;
         }
         break;
 
@@ -950,28 +990,43 @@ static void pnv_xive_ic_reg_write(void *opaque, hwaddr offset,
      * XIVE PC & VC cache updates for EAS, NVT and END
      */
     case VC_IVC_SCRUB_MASK:
-        break;
     case VC_IVC_SCRUB_TRIG:
-        pnv_xive_eas_update(xive, GETFIELD(PC_SCRUB_BLOCK_ID, val),
-                            GETFIELD(VC_SCRUB_OFFSET, val));
         break;
 
-    case VC_EQC_SCRUB_MASK:
     case VC_EQC_CWATCH_SPEC:
-    case VC_EQC_CWATCH_DAT0 ... VC_EQC_CWATCH_DAT3:
+        val &= ~VC_EQC_CWATCH_CONFLICT; /* HW resets this bit */
         break;
+    case VC_EQC_CWATCH_DAT1 ... VC_EQC_CWATCH_DAT3:
+        break;
+    case VC_EQC_CWATCH_DAT0:
+        /* writing to DATA0 triggers the cache write */
+        xive->regs[reg] = val;
+        pnv_xive_end_update(xive);
+        break;
+    case VC_EQC_SCRUB_MASK:
     case VC_EQC_SCRUB_TRIG:
-        pnv_xive_end_update(xive, GETFIELD(VC_SCRUB_BLOCK_ID, val),
-                            GETFIELD(VC_SCRUB_OFFSET, val));
+        /*
+         * The scrubbing registers flush the cache in RAM and can also
+         * invalidate.
+         */
         break;
 
-    case PC_VPC_SCRUB_MASK:
     case PC_VPC_CWATCH_SPEC:
-    case PC_VPC_CWATCH_DAT0 ... PC_VPC_CWATCH_DAT7:
+        val &= ~PC_VPC_CWATCH_CONFLICT; /* HW resets this bit */
         break;
+    case PC_VPC_CWATCH_DAT1 ... PC_VPC_CWATCH_DAT7:
+        break;
+    case PC_VPC_CWATCH_DAT0:
+        /* writing to DATA0 triggers the cache write */
+        xive->regs[reg] = val;
+        pnv_xive_nvt_update(xive);
+        break;
+    case PC_VPC_SCRUB_MASK:
     case PC_VPC_SCRUB_TRIG:
-        pnv_xive_nvt_update(xive, GETFIELD(PC_SCRUB_BLOCK_ID, val),
-                           GETFIELD(PC_SCRUB_OFFSET, val));
+        /*
+         * The scrubbing registers flush the cache in RAM and can also
+         * invalidate.
+         */
         break;
 
 
@@ -1022,15 +1077,6 @@ static uint64_t pnv_xive_ic_reg_read(void *opaque, hwaddr offset, unsigned size)
     case PC_GLOBAL_CONFIG:
 
     case PC_VPC_SCRUB_MASK:
-    case PC_VPC_CWATCH_SPEC:
-    case PC_VPC_CWATCH_DAT0:
-    case PC_VPC_CWATCH_DAT1:
-    case PC_VPC_CWATCH_DAT2:
-    case PC_VPC_CWATCH_DAT3:
-    case PC_VPC_CWATCH_DAT4:
-    case PC_VPC_CWATCH_DAT5:
-    case PC_VPC_CWATCH_DAT6:
-    case PC_VPC_CWATCH_DAT7:
 
     case VC_GLOBAL_CONFIG:
     case VC_AIB_TX_ORDER_TAG2:
@@ -1043,12 +1089,6 @@ static uint64_t pnv_xive_ic_reg_read(void *opaque, hwaddr offset, unsigned size)
     case VC_IRQ_CONFIG_IPI_CASC:
 
     case VC_EQC_SCRUB_MASK:
-    case VC_EQC_CWATCH_DAT0:
-    case VC_EQC_CWATCH_DAT1:
-    case VC_EQC_CWATCH_DAT2:
-    case VC_EQC_CWATCH_DAT3:
-
-    case VC_EQC_CWATCH_SPEC:
     case VC_IVC_SCRUB_MASK:
     case VC_SBC_CONFIG:
     case VC_AT_MACRO_KILL_MASK:
@@ -1080,6 +1120,38 @@ static uint64_t pnv_xive_ic_reg_read(void *opaque, hwaddr offset, unsigned size)
     /*
      * XIVE PC & VC cache updates for EAS, NVT and END
      */
+    case VC_EQC_CWATCH_SPEC:
+        xive->regs[reg] = ~(VC_EQC_CWATCH_FULL | VC_EQC_CWATCH_CONFLICT);
+        val = xive->regs[reg];
+        break;
+    case VC_EQC_CWATCH_DAT0:
+        /*
+         * Load DATA registers from cache with data requested by the
+         * SPEC register
+         */
+        pnv_xive_end_cache_load(xive);
+        val = xive->regs[reg];
+        break;
+    case VC_EQC_CWATCH_DAT1 ... VC_EQC_CWATCH_DAT3:
+        val = xive->regs[reg];
+        break;
+
+    case PC_VPC_CWATCH_SPEC:
+        xive->regs[reg] = ~(PC_VPC_CWATCH_FULL | PC_VPC_CWATCH_CONFLICT);
+        val = xive->regs[reg];
+        break;
+    case PC_VPC_CWATCH_DAT0:
+        /*
+         * Load DATA registers from cache with data requested by the
+         * SPEC register
+         */
+        pnv_xive_nvt_cache_load(xive);
+        val = xive->regs[reg];
+        break;
+    case PC_VPC_CWATCH_DAT1 ... PC_VPC_CWATCH_DAT7:
+        val = xive->regs[reg];
+        break;
+
     case PC_VPC_SCRUB_TRIG:
     case VC_IVC_SCRUB_TRIG:
     case VC_EQC_SCRUB_TRIG:
@@ -1153,12 +1225,24 @@ static const MemoryRegionOps pnv_xive_ic_reg_ops = {
 
 static void pnv_xive_ic_hw_trigger(PnvXive *xive, hwaddr addr, uint64_t val)
 {
+    uint8_t blk;
+    uint32_t idx;
+
+    if (val & XIVE_TRIGGER_END) {
+        xive_error(xive, "IC: END trigger at @0x%"HWADDR_PRIx" data 0x%"PRIx64,
+                   addr, val);
+        return;
+    }
+
     /*
      * Forward the source event notification directly to the Router.
      * The source interrupt number should already be correctly encoded
      * with the chip block id by the sending device (PHB, PSI).
      */
-    xive_router_notify(XIVE_NOTIFIER(xive), val);
+    blk = XIVE_EAS_BLOCK(val);
+    idx = XIVE_EAS_INDEX(val);
+
+    xive_router_notify(XIVE_NOTIFIER(xive), XIVE_EAS(blk, idx));
 }
 
 static void pnv_xive_ic_notify_write(void *opaque, hwaddr addr, uint64_t val,
@@ -1494,7 +1578,7 @@ void pnv_xive_pic_print_info(PnvXive *xive, Monitor *mon)
 {
     XiveRouter *xrtr = XIVE_ROUTER(xive);
     uint8_t blk = xive->chip->chip_id;
-    uint32_t srcno0 = XIVE_SRCNO(blk, 0);
+    uint32_t srcno0 = XIVE_EAS(blk, 0);
     uint32_t nr_ipis = pnv_xive_nr_ipis(xive);
     uint32_t nr_ends = pnv_xive_nr_ends(xive);
     XiveEAS eas;
@@ -1522,6 +1606,15 @@ void pnv_xive_pic_print_info(PnvXive *xive, Monitor *mon)
             break;
         }
         xive_end_pic_print_info(&end, i, mon);
+    }
+
+    monitor_printf(mon, "XIVE[%x] END Escalation %08x .. %08x\n", blk, 0,
+                   nr_ends - 1);
+    for (i = 0; i < nr_ends; i++) {
+        if (xive_router_get_end(xrtr, blk, i, &end)) {
+            break;
+        }
+        xive_end_eas_pic_print_info(&end, i, mon);
     }
 }
 

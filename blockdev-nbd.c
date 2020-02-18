@@ -15,7 +15,6 @@
 #include "hw/block/block.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-block.h"
-#include "sysemu/sysemu.h"
 #include "block/nbd.h"
 #include "io/channel-socket.h"
 #include "io/net-listener.h"
@@ -102,7 +101,7 @@ void nbd_server_start(SocketAddress *addr, const char *tls_creds,
     qio_net_listener_set_name(nbd_server->listener,
                               "nbd-listener");
 
-    if (qio_net_listener_open_sync(nbd_server->listener, addr, errp) < 0) {
+    if (qio_net_listener_open_sync(nbd_server->listener, addr, 1, errp) < 0) {
         goto error;
     }
 
@@ -152,6 +151,7 @@ void qmp_nbd_server_add(const char *device, bool has_name, const char *name,
     BlockBackend *on_eject_blk;
     NBDExport *exp;
     int64_t len;
+    AioContext *aio_context;
 
     if (!nbd_server) {
         error_setg(errp, "NBD server not running");
@@ -160,6 +160,11 @@ void qmp_nbd_server_add(const char *device, bool has_name, const char *name,
 
     if (!has_name) {
         name = device;
+    }
+
+    if (strlen(name) > NBD_MAX_STRING_SIZE) {
+        error_setg(errp, "export name '%s' too long", name);
+        return;
     }
 
     if (nbd_export_find(name)) {
@@ -174,11 +179,13 @@ void qmp_nbd_server_add(const char *device, bool has_name, const char *name,
         return;
     }
 
+    aio_context = bdrv_get_aio_context(bs);
+    aio_context_acquire(aio_context);
     len = bdrv_getlength(bs);
     if (len < 0) {
         error_setg_errno(errp, -len,
                          "Failed to determine the NBD export's length");
-        return;
+        goto out;
     }
 
     if (!has_writable) {
@@ -188,17 +195,19 @@ void qmp_nbd_server_add(const char *device, bool has_name, const char *name,
         writable = false;
     }
 
-    exp = nbd_export_new(bs, 0, len, name, NULL, bitmap,
-                         writable ? 0 : NBD_FLAG_READ_ONLY,
+    exp = nbd_export_new(bs, 0, len, name, NULL, bitmap, !writable, !writable,
                          NULL, false, on_eject_blk, errp);
     if (!exp) {
-        return;
+        goto out;
     }
 
     /* The list of named exports has a strong reference to this export now and
      * our only way of accessing it is through nbd_export_find(), so we can drop
      * the strong reference that is @exp. */
     nbd_export_put(exp);
+
+ out:
+    aio_context_release(aio_context);
 }
 
 void qmp_nbd_server_remove(const char *name,
@@ -206,6 +215,7 @@ void qmp_nbd_server_remove(const char *name,
                            Error **errp)
 {
     NBDExport *exp;
+    AioContext *aio_context;
 
     if (!nbd_server) {
         error_setg(errp, "NBD server not running");
@@ -222,7 +232,10 @@ void qmp_nbd_server_remove(const char *name,
         mode = NBD_SERVER_REMOVE_MODE_SAFE;
     }
 
+    aio_context = nbd_export_aio_context(exp);
+    aio_context_acquire(aio_context);
     nbd_export_remove(exp, mode, errp);
+    aio_context_release(aio_context);
 }
 
 void qmp_nbd_server_stop(Error **errp)

@@ -23,7 +23,7 @@
 #include "cpu.h"
 #include "internal.h"
 #include "kvm_mips.h"
-#include "qemu-common.h"
+#include "qemu/module.h"
 #include "sysemu/kvm.h"
 #include "exec/exec-all.h"
 
@@ -57,9 +57,11 @@ static bool mips_cpu_has_work(CPUState *cs)
     CPUMIPSState *env = &cpu->env;
     bool has_work = false;
 
-    /* Prior to MIPS Release 6 it is implementation dependent if non-enabled
-       interrupts wake-up the CPU, however most of the implementations only
-       check for interrupts that can be taken. */
+    /*
+     * Prior to MIPS Release 6 it is implementation dependent if non-enabled
+     * interrupts wake-up the CPU, however most of the implementations only
+     * check for interrupts that can be taken.
+     */
     if ((cs->interrupt_request & CPU_INTERRUPT_HARD) &&
         cpu_mips_hw_interrupts_pending(env)) {
         if (cpu_mips_hw_interrupts_enabled(env) ||
@@ -70,8 +72,10 @@ static bool mips_cpu_has_work(CPUState *cs)
 
     /* MIPS-MT has the ability to halt the CPU.  */
     if (env->CP0_Config3 & (1 << CP0C3_MT)) {
-        /* The QEMU model will issue an _WAKE request whenever the CPUs
-           should be woken up.  */
+        /*
+         * The QEMU model will issue an _WAKE request whenever the CPUs
+         * should be woken up.
+         */
         if (cs->interrupt_request & CPU_INTERRUPT_WAKE) {
             has_work = true;
         }
@@ -112,7 +116,8 @@ static void mips_cpu_reset(CPUState *s)
 #endif
 }
 
-static void mips_cpu_disas_set_info(CPUState *s, disassemble_info *info) {
+static void mips_cpu_disas_set_info(CPUState *s, disassemble_info *info)
+{
     MIPSCPU *cpu = MIPS_CPU(s);
     CPUMIPSState *env = &cpu->env;
 
@@ -152,12 +157,11 @@ static void mips_cpu_realizefn(DeviceState *dev, Error **errp)
 
 static void mips_cpu_initfn(Object *obj)
 {
-    CPUState *cs = CPU(obj);
     MIPSCPU *cpu = MIPS_CPU(obj);
     CPUMIPSState *env = &cpu->env;
     MIPSCPUClass *mcc = MIPS_CPU_GET_CLASS(obj);
 
-    cs->env_ptr = env;
+    cpu_set_cpustate_pointers(cpu);
     env->cpu_model = mcc->cpu_def;
 }
 
@@ -197,10 +201,8 @@ static void mips_cpu_class_init(ObjectClass *c, void *data)
     cc->synchronize_from_tb = mips_cpu_synchronize_from_tb;
     cc->gdb_read_register = mips_cpu_gdb_read_register;
     cc->gdb_write_register = mips_cpu_gdb_write_register;
-#ifdef CONFIG_USER_ONLY
-    cc->handle_mmu_fault = mips_cpu_handle_mmu_fault;
-#else
-    cc->do_unassigned_access = mips_cpu_unassigned_access;
+#ifndef CONFIG_USER_ONLY
+    cc->do_transaction_failed = mips_cpu_do_transaction_failed;
     cc->do_unaligned_access = mips_cpu_do_unaligned_access;
     cc->get_phys_page_debug = mips_cpu_get_phys_page_debug;
     cc->vmsd = &vmstate_mips_cpu;
@@ -208,6 +210,7 @@ static void mips_cpu_class_init(ObjectClass *c, void *data)
     cc->disas_set_info = mips_cpu_disas_set_info;
 #ifdef CONFIG_TCG
     cc->tcg_initialize = mips_tcg_init;
+    cc->tlb_fill = mips_cpu_tlb_fill;
 #endif
 
     cc->gdb_num_core_regs = 73;

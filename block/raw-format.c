@@ -29,6 +29,7 @@
 #include "qemu/osdep.h"
 #include "block/block_int.h"
 #include "qapi/error.h"
+#include "qemu/module.h"
 #include "qemu/option.h"
 
 typedef struct BDRVRawState {
@@ -369,7 +370,8 @@ static void raw_refresh_limits(BlockDriverState *bs, Error **errp)
 }
 
 static int coroutine_fn raw_co_truncate(BlockDriverState *bs, int64_t offset,
-                                        PreallocMode prealloc, Error **errp)
+                                        bool exact, PreallocMode prealloc,
+                                        Error **errp)
 {
     BDRVRawState *s = bs->opaque;
 
@@ -385,7 +387,7 @@ static int coroutine_fn raw_co_truncate(BlockDriverState *bs, int64_t offset,
 
     s->size = offset;
     offset += s->offset;
-    return bdrv_co_truncate(bs->file, offset, prealloc, errp);
+    return bdrv_co_truncate(bs->file, offset, exact, prealloc, errp);
 }
 
 static void raw_eject(BlockDriverState *bs, bool eject_flag)
@@ -410,6 +412,11 @@ static int raw_co_ioctl(BlockDriverState *bs, unsigned long int req, void *buf)
 static int raw_has_zero_init(BlockDriverState *bs)
 {
     return bdrv_has_zero_init(bs->file->bs);
+}
+
+static int raw_has_zero_init_truncate(BlockDriverState *bs)
+{
+    return bdrv_has_zero_init_truncate(bs->file->bs);
 }
 
 static int coroutine_fn raw_co_create_opts(const char *filename, QemuOpts *opts,
@@ -571,6 +578,7 @@ BlockDriver bdrv_raw = {
     .bdrv_co_ioctl        = &raw_co_ioctl,
     .create_opts          = &raw_create_opts,
     .bdrv_has_zero_init   = &raw_has_zero_init,
+    .bdrv_has_zero_init_truncate = &raw_has_zero_init_truncate,
     .strong_runtime_opts  = raw_strong_runtime_opts,
     .mutable_opts         = mutable_opts,
 };

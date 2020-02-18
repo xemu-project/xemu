@@ -468,7 +468,8 @@ static void raw_close(BlockDriverState *bs)
 }
 
 static int coroutine_fn raw_co_truncate(BlockDriverState *bs, int64_t offset,
-                                        PreallocMode prealloc, Error **errp)
+                                        bool exact, PreallocMode prealloc,
+                                        Error **errp)
 {
     BDRVRawState *s = bs->opaque;
     LONG low, high;
@@ -635,6 +636,7 @@ BlockDriver bdrv_file = {
     .bdrv_close         = raw_close,
     .bdrv_co_create_opts = raw_co_create_opts,
     .bdrv_has_zero_init = bdrv_has_zero_init_1,
+    .bdrv_has_zero_init_truncate = bdrv_has_zero_init_1,
 
     .bdrv_aio_preadv    = raw_aio_preadv,
     .bdrv_aio_pwritev   = raw_aio_pwritev,

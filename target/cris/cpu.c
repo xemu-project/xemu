@@ -23,8 +23,8 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "qemu/qemu-print.h"
 #include "cpu.h"
-#include "qemu-common.h"
 #include "mmu.h"
 
 
@@ -103,27 +103,22 @@ static gint cris_cpu_list_compare(gconstpointer a, gconstpointer b)
 static void cris_cpu_list_entry(gpointer data, gpointer user_data)
 {
     ObjectClass *oc = data;
-    CPUListState *s = user_data;
     const char *typename = object_class_get_name(oc);
     char *name;
 
     name = g_strndup(typename, strlen(typename) - strlen(CRIS_CPU_TYPE_SUFFIX));
-    (*s->cpu_fprintf)(s->file, "  %s\n", name);
+    qemu_printf("  %s\n", name);
     g_free(name);
 }
 
-void cris_cpu_list(FILE *f, fprintf_function cpu_fprintf)
+void cris_cpu_list(void)
 {
-    CPUListState s = {
-        .file = f,
-        .cpu_fprintf = cpu_fprintf,
-    };
     GSList *list;
 
     list = object_class_get_list(TYPE_CRIS_CPU, false);
     list = g_slist_sort(list, cris_cpu_list_compare);
-    (*cpu_fprintf)(f, "Available CPUs:\n");
-    g_slist_foreach(list, cris_cpu_list_entry, &s);
+    qemu_printf("Available CPUs:\n");
+    g_slist_foreach(list, cris_cpu_list_entry, NULL);
     g_slist_free(list);
 }
 
@@ -176,12 +171,11 @@ static void cris_disas_set_info(CPUState *cpu, disassemble_info *info)
 
 static void cris_cpu_initfn(Object *obj)
 {
-    CPUState *cs = CPU(obj);
     CRISCPU *cpu = CRIS_CPU(obj);
     CRISCPUClass *ccc = CRIS_CPU_GET_CLASS(obj);
     CPUCRISState *env = &cpu->env;
 
-    cs->env_ptr = env;
+    cpu_set_cpustate_pointers(cpu);
 
     env->pregs[PR_VR] = ccc->vr;
 
@@ -273,9 +267,8 @@ static void cris_cpu_class_init(ObjectClass *oc, void *data)
     cc->set_pc = cris_cpu_set_pc;
     cc->gdb_read_register = cris_cpu_gdb_read_register;
     cc->gdb_write_register = cris_cpu_gdb_write_register;
-#ifdef CONFIG_USER_ONLY
-    cc->handle_mmu_fault = cris_cpu_handle_mmu_fault;
-#else
+    cc->tlb_fill = cris_cpu_tlb_fill;
+#ifndef CONFIG_USER_ONLY
     cc->get_phys_page_debug = cris_cpu_get_phys_page_debug;
     dc->vmsd = &vmstate_cris_cpu;
 #endif

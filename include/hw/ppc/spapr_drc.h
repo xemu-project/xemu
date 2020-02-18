@@ -14,10 +14,9 @@
 #define HW_SPAPR_DRC_H
 
 #include <libfdt.h>
-#include "qapi/qapi-types-run-state.h"
 #include "qom/object.h"
-#include "sysemu/sysemu.h"
-#include "hw/qdev.h"
+#include "sysemu/runstate.h"
+#include "hw/qdev-core.h"
 #include "qapi/error.h"
 
 #define TYPE_SPAPR_DR_CONNECTOR "spapr-dr-connector"
@@ -266,8 +265,7 @@ SpaprDrc *spapr_dr_connector_new(Object *owner, const char *type,
                                          uint32_t id);
 SpaprDrc *spapr_drc_by_index(uint32_t index);
 SpaprDrc *spapr_drc_by_id(const char *type, uint32_t id);
-int spapr_drc_populate_dt(void *fdt, int fdt_offset, Object *owner,
-                          uint32_t drc_type_mask);
+int spapr_dt_drc(void *fdt, int offset, Object *owner, uint32_t drc_type_mask);
 
 void spapr_drc_attach(SpaprDrc *drc, DeviceState *d, Error **errp);
 void spapr_drc_detach(SpaprDrc *drc);

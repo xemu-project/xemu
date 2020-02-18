@@ -31,17 +31,18 @@
 #ifndef CONFIG_USER_ONLY
 #include "sysemu/sysemu.h"
 #include "hw/s390x/s390_flic.h"
+#include "hw/boards.h"
 #endif
 
-void QEMU_NORETURN tcg_s390_program_interrupt(CPUS390XState *env, uint32_t code,
-                                              int ilen, uintptr_t ra)
+void QEMU_NORETURN tcg_s390_program_interrupt(CPUS390XState *env,
+                                              uint32_t code, uintptr_t ra)
 {
-    CPUState *cs = CPU(s390_env_get_cpu(env));
+    CPUState *cs = env_cpu(env);
 
     cpu_restore_state(cs, ra, true);
     qemu_log_mask(CPU_LOG_INT, "program interrupt at %#" PRIx64 "\n",
                   env->psw.addr);
-    trigger_pgm_exception(env, code, ilen);
+    trigger_pgm_exception(env, code);
     cpu_loop_exit(cs);
 }
 
@@ -51,7 +52,7 @@ void QEMU_NORETURN tcg_s390_data_exception(CPUS390XState *env, uint32_t dxc,
     g_assert(dxc <= 0xff);
 #if !defined(CONFIG_USER_ONLY)
     /* Store the DXC into the lowcore */
-    stl_phys(CPU(s390_env_get_cpu(env))->as,
+    stl_phys(env_cpu(env)->as,
              env->psa + offsetof(LowCore, data_exc_code), dxc);
 #endif
 
@@ -59,7 +60,22 @@ void QEMU_NORETURN tcg_s390_data_exception(CPUS390XState *env, uint32_t dxc,
     if (env->cregs[0] & CR0_AFP) {
         env->fpc = deposit32(env->fpc, 8, 8, dxc);
     }
-    tcg_s390_program_interrupt(env, PGM_DATA, ILEN_AUTO, ra);
+    tcg_s390_program_interrupt(env, PGM_DATA, ra);
+}
+
+void QEMU_NORETURN tcg_s390_vector_exception(CPUS390XState *env, uint32_t vxc,
+                                             uintptr_t ra)
+{
+    g_assert(vxc <= 0xff);
+#if !defined(CONFIG_USER_ONLY)
+    /* Always store the VXC into the lowcore, without AFP it is undefined */
+    stl_phys(env_cpu(env)->as,
+             env->psa + offsetof(LowCore, data_exc_code), vxc);
+#endif
+
+    /* Always store the VXC into the FPC, without AFP it is undefined */
+    env->fpc = deposit32(env->fpc, 8, 8, vxc);
+    tcg_s390_program_interrupt(env, PGM_VECTOR_PROCESSING, ra);
 }
 
 void HELPER(data_exception)(CPUS390XState *env, uint32_t dxc)
@@ -74,16 +90,17 @@ void s390_cpu_do_interrupt(CPUState *cs)
     cs->exception_index = -1;
 }
 
-int s390_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size,
-                              int rw, int mmu_idx)
+bool s390_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+                       MMUAccessType access_type, int mmu_idx,
+                       bool probe, uintptr_t retaddr)
 {
     S390CPU *cpu = S390_CPU(cs);
 
-    trigger_pgm_exception(&cpu->env, PGM_ADDRESSING, ILEN_AUTO);
+    trigger_pgm_exception(&cpu->env, PGM_ADDRESSING);
     /* On real machines this value is dropped into LowMem.  Since this
        is userland, simply put this someplace that cpu_loop can find it.  */
     cpu->env.__excp_addr = address;
-    return 1;
+    cpu_loop_exit_restore(cs, retaddr);
 }
 
 #else /* !CONFIG_USER_ONLY */
@@ -102,19 +119,20 @@ static inline uint64_t cpu_mmu_idx_to_asc(int mmu_idx)
     }
 }
 
-int s390_cpu_handle_mmu_fault(CPUState *cs, vaddr orig_vaddr, int size,
-                              int rw, int mmu_idx)
+bool s390_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+                       MMUAccessType access_type, int mmu_idx,
+                       bool probe, uintptr_t retaddr)
 {
     S390CPU *cpu = S390_CPU(cs);
     CPUS390XState *env = &cpu->env;
     target_ulong vaddr, raddr;
-    uint64_t asc;
-    int prot;
+    uint64_t asc, tec;
+    int prot, excp;
 
     qemu_log_mask(CPU_LOG_MMU, "%s: addr 0x%" VADDR_PRIx " rw %d mmu_idx %d\n",
-                  __func__, orig_vaddr, rw, mmu_idx);
+                  __func__, address, access_type, mmu_idx);
 
-    vaddr = orig_vaddr;
+    vaddr = address;
 
     if (mmu_idx < MMU_REAL_IDX) {
         asc = cpu_mmu_idx_to_asc(mmu_idx);
@@ -122,39 +140,55 @@ int s390_cpu_handle_mmu_fault(CPUState *cs, vaddr orig_vaddr, int size,
         if (!(env->psw.mask & PSW_MASK_64)) {
             vaddr &= 0x7fffffff;
         }
-        if (mmu_translate(env, vaddr, rw, asc, &raddr, &prot, true)) {
-            return 1;
-        }
+        excp = mmu_translate(env, vaddr, access_type, asc, &raddr, &prot, &tec);
     } else if (mmu_idx == MMU_REAL_IDX) {
         /* 31-Bit mode */
         if (!(env->psw.mask & PSW_MASK_64)) {
             vaddr &= 0x7fffffff;
         }
-        if (mmu_translate_real(env, vaddr, rw, &raddr, &prot)) {
-            return 1;
-        }
+        excp = mmu_translate_real(env, vaddr, access_type, &raddr, &prot, &tec);
     } else {
-        abort();
+        g_assert_not_reached();
     }
 
     /* check out of RAM access */
-    if (!address_space_access_valid(&address_space_memory, raddr,
-                                    TARGET_PAGE_SIZE, rw,
+    if (!excp &&
+        !address_space_access_valid(&address_space_memory, raddr,
+                                    TARGET_PAGE_SIZE, access_type,
                                     MEMTXATTRS_UNSPECIFIED)) {
         qemu_log_mask(CPU_LOG_MMU,
                       "%s: raddr %" PRIx64 " > ram_size %" PRIx64 "\n",
                       __func__, (uint64_t)raddr, (uint64_t)ram_size);
-        trigger_pgm_exception(env, PGM_ADDRESSING, ILEN_AUTO);
-        return 1;
+        excp = PGM_ADDRESSING;
+        tec = 0; /* unused */
     }
 
-    qemu_log_mask(CPU_LOG_MMU, "%s: set tlb %" PRIx64 " -> %" PRIx64 " (%x)\n",
-            __func__, (uint64_t)vaddr, (uint64_t)raddr, prot);
+    if (!excp) {
+        qemu_log_mask(CPU_LOG_MMU,
+                      "%s: set tlb %" PRIx64 " -> %" PRIx64 " (%x)\n",
+                      __func__, (uint64_t)vaddr, (uint64_t)raddr, prot);
+        tlb_set_page(cs, address & TARGET_PAGE_MASK, raddr, prot,
+                     mmu_idx, TARGET_PAGE_SIZE);
+        return true;
+    }
+    if (probe) {
+        return false;
+    }
 
-    tlb_set_page(cs, orig_vaddr & TARGET_PAGE_MASK, raddr, prot,
-                 mmu_idx, TARGET_PAGE_SIZE);
+    if (excp != PGM_ADDRESSING) {
+        stq_phys(env_cpu(env)->as,
+                 env->psa + offsetof(LowCore, trans_exc_code), tec);
+    }
 
-    return 0;
+    /*
+     * For data accesses, ILEN will be filled in from the unwind info,
+     * within cpu_loop_exit_restore.  For code accesses, retaddr == 0,
+     * and so unwinding will not occur.  However, ILEN is also undefined
+     * for that case -- we choose to set ILEN = 2.
+     */
+    env->int_pgm_ilen = 2;
+    trigger_pgm_exception(env, excp);
+    cpu_loop_exit_restore(cs, retaddr);
 }
 
 static void do_program_interrupt(CPUS390XState *env)
@@ -163,9 +197,6 @@ static void do_program_interrupt(CPUS390XState *env)
     LowCore *lowcore;
     int ilen = env->int_pgm_ilen;
 
-    if (ilen == ILEN_AUTO) {
-        ilen = get_ilen(cpu_ldub_code(env, env->psw.addr));
-    }
     assert(ilen == 2 || ilen == 4 || ilen == 6);
 
     switch (env->int_pgm_code) {
@@ -261,7 +292,7 @@ static void do_svc_interrupt(CPUS390XState *env)
 static void do_ext_interrupt(CPUS390XState *env)
 {
     QEMUS390FLICState *flic = QEMU_S390_FLIC(s390_get_flic());
-    S390CPU *cpu = s390_env_get_cpu(env);
+    S390CPU *cpu = env_archcpu(env);
     uint64_t mask, addr;
     uint16_t cpu_addr;
     LowCore *lowcore;
@@ -279,6 +310,10 @@ static void do_ext_interrupt(CPUS390XState *env)
         g_assert(cpu_addr < S390_MAX_CPUS);
         lowcore->cpu_addr = cpu_to_be16(cpu_addr);
         clear_bit(cpu_addr, env->emergency_signals);
+#ifndef CONFIG_USER_ONLY
+        MachineState *ms = MACHINE(qdev_get_machine());
+        unsigned int max_cpus = ms->smp.max_cpus;
+#endif
         if (bitmap_empty(env->emergency_signals, max_cpus)) {
             env->pending_int &= ~INTERRUPT_EMERGENCY_SIGNAL;
         }
@@ -369,8 +404,8 @@ static int mchk_store_vregs(CPUS390XState *env, uint64_t mcesao)
     }
 
     for (i = 0; i < 32; i++) {
-        sa->vregs[i][0] = cpu_to_be64(env->vregs[i][0].ll);
-        sa->vregs[i][1] = cpu_to_be64(env->vregs[i][1].ll);
+        sa->vregs[i][0] = cpu_to_be64(env->vregs[i][0]);
+        sa->vregs[i][1] = cpu_to_be64(env->vregs[i][1]);
     }
 
     cpu_physical_memory_unmap(sa, len, 1, len);
@@ -408,7 +443,7 @@ static void do_mchk_interrupt(CPUS390XState *env)
     lowcore->ar_access_id = 1;
 
     for (i = 0; i < 16; i++) {
-        lowcore->floating_pt_save_area[i] = cpu_to_be64(get_freg(env, i)->ll);
+        lowcore->floating_pt_save_area[i] = cpu_to_be64(*get_freg(env, i));
         lowcore->gpregs_save_area[i] = cpu_to_be64(env->regs[i]);
         lowcore->access_regs_save_area[i] = cpu_to_be32(env->aregs[i]);
         lowcore->cregs_save_area[i] = cpu_to_be64(env->cregs[i]);
@@ -573,7 +608,7 @@ void s390x_cpu_do_unaligned_access(CPUState *cs, vaddr addr,
     S390CPU *cpu = S390_CPU(cs);
     CPUS390XState *env = &cpu->env;
 
-    s390_program_interrupt(env, PGM_SPECIFICATION, ILEN_AUTO, retaddr);
+    tcg_s390_program_interrupt(env, PGM_SPECIFICATION, retaddr);
 }
 
 #endif /* CONFIG_USER_ONLY */

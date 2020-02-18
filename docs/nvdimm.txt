@@ -144,9 +144,25 @@ Guest Data Persistence
 ----------------------
 
 Though QEMU supports multiple types of vNVDIMM backends on Linux,
-currently the only one that can guarantee the guest write persistence
-is the device DAX on the real NVDIMM device (e.g., /dev/dax0.0), to
-which all guest access do not involve any host-side kernel cache.
+the only backend that can guarantee the guest write persistence is:
+
+A. DAX device (e.g., /dev/dax0.0, ) or
+B. DAX file(mounted with dax option)
+
+When using B (A file supporting direct mapping of persistent memory)
+as a backend, write persistence is guaranteed if the host kernel has
+support for the MAP_SYNC flag in the mmap system call (available
+since Linux 4.15 and on certain distro kernels) and additionally
+both 'pmem' and 'share' flags are set to 'on' on the backend.
+
+If these conditions are not satisfied i.e. if either 'pmem' or 'share'
+are not set, if the backend file does not support DAX or if MAP_SYNC
+is not supported by the host kernel, write persistence is not
+guaranteed after a system crash. For compatibility reasons, these
+conditions are ignored if not satisfied. Currently, no way is
+provided to test for them.
+For more details, please reference mmap(2) man page:
+http://man7.org/linux/man-pages/man2/mmap.2.html.
 
 When using other types of backends, it's suggested to set 'unarmed'
 option of '-device nvdimm' to 'on', which sets the unarmed flag of the
@@ -154,6 +170,35 @@ guest NVDIMM region mapping structure.  This unarmed flag indicates
 guest software that this vNVDIMM device contains a region that cannot
 accept persistent writes. In result, for example, the guest Linux
 NVDIMM driver, marks such vNVDIMM device as read-only.
+
+Backend File Setup Example
+--------------------------
+
+Here are two examples showing how to setup these persistent backends on
+linux using the tool ndctl [3].
+
+A. DAX device
+
+Use the following command to set up /dev/dax0.0 so that the entirety of
+namespace0.0 can be exposed as an emulated NVDIMM to the guest:
+
+    ndctl create-namespace -f -e namespace0.0 -m devdax
+
+The /dev/dax0.0 could be used directly in "mem-path" option.
+
+B. DAX file
+
+Individual files on a DAX host file system can be exposed as emulated
+NVDIMMS.  First an fsdax block device is created, partitioned, and then
+mounted with the "dax" mount option:
+
+    ndctl create-namespace -f -e namespace0.0 -m fsdax
+    (partition /dev/pmem0 with name pmem0p1)
+    mount -o dax /dev/pmem0p1 /mnt
+    (create or copy a disk image file with qemu-img(1), cp(1), or dd(1)
+     in /mnt)
+
+Then the new file in /mnt could be used in "mem-path" option.
 
 NVDIMM Persistence
 ------------------
@@ -196,3 +241,5 @@ References
     https://www.snia.org/sites/default/files/technical_work/final/NVMProgrammingModel_v1.2.pdf
 [2] Persistent Memory Development Kit (PMDK), formerly known as NVML project, home page:
     http://pmem.io/pmdk/
+[3] ndctl-create-namespace - provision or reconfigure a namespace
+    http://pmem.io/ndctl/ndctl-create-namespace.html

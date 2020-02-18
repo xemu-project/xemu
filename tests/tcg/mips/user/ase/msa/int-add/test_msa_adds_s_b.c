@@ -1,6 +1,8 @@
 /*
  *  Test program for MSA instruction ADDS_S.B
  *
+ *  Copyright (C) 2019  Wave Computing, Inc.
+ *  Copyright (C) 2019  Aleksandar Markovic <amarkovic@wavecomp.com>
  *  Copyright (C) 2019  RT-RK Computer Based Systems LLC
  *  Copyright (C) 2019  Mateja Marjanovic <mateja.marjanovic@rt-rk.com>
  *
@@ -33,7 +35,9 @@
 
 int32_t main(void)
 {
-    char *instruction_name = "ADDS_S.B";
+    char *isa_ase_name = "MSA";
+    char *group_name = "Int Add";
+    char *instruction_name =  "ADDS_S.B";
     int32_t ret;
     uint32_t i, j;
     struct timeval start, end;
@@ -119,7 +123,11 @@ int32_t main(void)
         { 0x1c7fc4f7170080ceULL, 0xb4c980d7806d07b4ULL, },
         { 0xf87ffc197f7f377fULL, 0xd8589336a77f92acULL, },
         { 0x6b0d167f7fc4a956ULL, 0x9fe880f2be7f349cULL, },
+        { 0x1c7fc4f7170080ceULL, 0xb4c980d7806d07b4ULL, },
+        { 0x7f7f2c7f7f62c47fULL, 0x80e280b0807fc480ULL, },
 };
+
+    reset_msa_registers();
 
     gettimeofday(&start, NULL);
 
@@ -144,8 +152,9 @@ int32_t main(void)
     elapsed_time = (end.tv_sec - start.tv_sec) * 1000.0;
     elapsed_time += (end.tv_usec - start.tv_usec) / 1000.0;
 
-    ret = check_results(instruction_name, TEST_COUNT_TOTAL, elapsed_time,
-                        &b128_result[0][0], &b128_expect[0][0]);
+    ret = check_results_128(isa_ase_name, group_name, instruction_name,
+                            TEST_COUNT_TOTAL, elapsed_time,
+                            &b128_result[0][0], &b128_expect[0][0]);
 
     return ret;
 }

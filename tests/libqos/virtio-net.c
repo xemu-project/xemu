@@ -18,6 +18,7 @@
 
 #include "qemu/osdep.h"
 #include "libqtest.h"
+#include "qemu/module.h"
 #include "libqos/qgraph.h"
 #include "libqos/virtio-net.h"
 #include "hw/virtio/virtio-net.h"
@@ -43,15 +44,16 @@ static void virtio_net_setup(QVirtioNet *interface)
 
     features = qvirtio_get_features(vdev);
     features &= ~(QVIRTIO_F_BAD_FEATURE |
-                  (1u << VIRTIO_RING_F_INDIRECT_DESC) |
-                  (1u << VIRTIO_RING_F_EVENT_IDX));
+                  (1ull << VIRTIO_RING_F_INDIRECT_DESC) |
+                  (1ull << VIRTIO_RING_F_EVENT_IDX));
     qvirtio_set_features(vdev, features);
 
-    if (features & (1u << VIRTIO_NET_F_MQ)) {
+    if (features & (1ull << VIRTIO_NET_F_MQ)) {
         interface->n_queues = qvirtio_config_readw(vdev, 8) * 2;
     } else {
         interface->n_queues = 2;
     }
+    interface->n_queues++; /* Account for the ctrl queue */
 
     interface->queues = g_new(QVirtQueue *, interface->n_queues);
     for (i = 0; i < interface->n_queues; i++) {

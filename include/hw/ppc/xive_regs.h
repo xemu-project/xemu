@@ -16,12 +16,35 @@
 #ifndef PPC_XIVE_REGS_H
 #define PPC_XIVE_REGS_H
 
+#include "qemu/bswap.h"
+#include "qemu/host-utils.h"
+
 /*
  * Interrupt source number encoding on PowerBUS
  */
-#define XIVE_SRCNO_BLOCK(srcno) (((srcno) >> 28) & 0xf)
-#define XIVE_SRCNO_INDEX(srcno) ((srcno) & 0x0fffffff)
-#define XIVE_SRCNO(blk, idx)    ((uint32_t)(blk) << 28 | (idx))
+/*
+ * Trigger data definition
+ *
+ * The trigger definition is used for triggers both for HW source
+ * interrupts (PHB, PSI), as well as for rerouting interrupts between
+ * Interrupt Controller.
+ *
+ * HW source controllers set bit0 of word0 to ‘0’ as they provide EAS
+ * information (EAS block + EAS index) in the 8 byte data and not END
+ * information, which is use for rerouting interrupts.
+ *
+ * bit1 of word0 to ‘1’ signals that the state bit check has been
+ * performed.
+ */
+#define XIVE_TRIGGER_END        PPC_BIT(0)
+#define XIVE_TRIGGER_PQ         PPC_BIT(1)
+
+/*
+ * QEMU macros to manipulate the trigger payload in native endian
+ */
+#define XIVE_EAS_BLOCK(n)       (((n) >> 28) & 0xf)
+#define XIVE_EAS_INDEX(n)       ((n) & 0x0fffffff)
+#define XIVE_EAS(blk, idx)      ((uint32_t)(blk) << 28 | (idx))
 
 #define TM_SHIFT                16
 
@@ -128,6 +151,8 @@ typedef struct XiveEAS {
 #define xive_eas_is_valid(eas)   (be64_to_cpu((eas)->w) & EAS_VALID)
 #define xive_eas_is_masked(eas)  (be64_to_cpu((eas)->w) & EAS_MASKED)
 
+void xive_eas_pic_print_info(XiveEAS *eas, uint32_t lisn, Monitor *mon);
+
 static inline uint64_t xive_get_field64(uint64_t mask, uint64_t word)
 {
     return (be64_to_cpu(word) & mask) >> ctz64(mask);
@@ -207,6 +232,20 @@ typedef struct XiveEND {
 #define xive_end_is_notify(end)   (be32_to_cpu((end)->w0) & END_W0_UCOND_NOTIFY)
 #define xive_end_is_backlog(end)  (be32_to_cpu((end)->w0) & END_W0_BACKLOG)
 #define xive_end_is_escalate(end) (be32_to_cpu((end)->w0) & END_W0_ESCALATE_CTL)
+#define xive_end_is_uncond_escalation(end)              \
+    (be32_to_cpu((end)->w0) & END_W0_UNCOND_ESCALATE)
+#define xive_end_is_silent_escalation(end)              \
+    (be32_to_cpu((end)->w0) & END_W0_SILENT_ESCALATE)
+
+static inline uint64_t xive_end_qaddr(XiveEND *end)
+{
+    return ((uint64_t) be32_to_cpu(end->w2) & 0x0fffffff) << 32 |
+        be32_to_cpu(end->w3);
+}
+
+void xive_end_pic_print_info(XiveEND *end, uint32_t end_idx, Monitor *mon);
+void xive_end_queue_pic_print_info(XiveEND *end, uint32_t width, Monitor *mon);
+void xive_end_eas_pic_print_info(XiveEND *end, uint32_t end_idx, Monitor *mon);
 
 /* Notification Virtual Target (NVT) */
 typedef struct XiveNVT {

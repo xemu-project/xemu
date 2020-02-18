@@ -18,11 +18,12 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "hw/arm/fsl-imx6ul.h"
 #include "hw/misc/unimp.h"
+#include "hw/boards.h"
 #include "sysemu/sysemu.h"
 #include "qemu/error-report.h"
+#include "qemu/module.h"
 
 #define NAME_SIZE 20
 
@@ -32,11 +33,8 @@ static void fsl_imx6ul_init(Object *obj)
     char name[NAME_SIZE];
     int i;
 
-    for (i = 0; i < MIN(smp_cpus, FSL_IMX6UL_NUM_CPUS); i++) {
-        snprintf(name, NAME_SIZE, "cpu%d", i);
-        object_initialize_child(obj, name, &s->cpu[i], sizeof(s->cpu[i]),
-                                "cortex-a7-" TYPE_ARM_CPU, &error_abort, NULL);
-    }
+    object_initialize_child(obj, "cpu0", &s->cpu, sizeof(s->cpu),
+                            ARM_CPU_TYPE_NAME("cortex-a7"), &error_abort, NULL);
 
     /*
      * A7MPCORE
@@ -156,43 +154,28 @@ static void fsl_imx6ul_init(Object *obj)
 
 static void fsl_imx6ul_realize(DeviceState *dev, Error **errp)
 {
+    MachineState *ms = MACHINE(qdev_get_machine());
     FslIMX6ULState *s = FSL_IMX6UL(dev);
     int i;
-    qemu_irq irq;
     char name[NAME_SIZE];
+    SysBusDevice *sbd;
+    DeviceState *d;
 
-    if (smp_cpus > FSL_IMX6UL_NUM_CPUS) {
-        error_setg(errp, "%s: Only %d CPUs are supported (%d requested)",
-                   TYPE_FSL_IMX6UL, FSL_IMX6UL_NUM_CPUS, smp_cpus);
+    if (ms->smp.cpus > 1) {
+        error_setg(errp, "%s: Only a single CPU is supported (%d requested)",
+                   TYPE_FSL_IMX6UL, ms->smp.cpus);
         return;
     }
 
-    for (i = 0; i < smp_cpus; i++) {
-        Object *o = OBJECT(&s->cpu[i]);
-
-        object_property_set_int(o, QEMU_PSCI_CONDUIT_SMC,
-                                "psci-conduit", &error_abort);
-
-        /* On uniprocessor, the CBAR is set to 0 */
-        if (smp_cpus > 1) {
-            object_property_set_int(o, FSL_IMX6UL_A7MPCORE_ADDR,
-                                    "reset-cbar", &error_abort);
-        }
-
-        if (i) {
-            /* Secondary CPUs start in PSCI powered-down state */
-            object_property_set_bool(o, true,
-                                     "start-powered-off", &error_abort);
-        }
-
-        object_property_set_bool(o, true, "realized", &error_abort);
-    }
+    object_property_set_int(OBJECT(&s->cpu), QEMU_PSCI_CONDUIT_SMC,
+                            "psci-conduit", &error_abort);
+    object_property_set_bool(OBJECT(&s->cpu), true,
+                             "realized", &error_abort);
 
     /*
      * A7MPCORE
      */
-    object_property_set_int(OBJECT(&s->a7mpcore), smp_cpus, "num-cpu",
-                            &error_abort);
+    object_property_set_int(OBJECT(&s->a7mpcore), 1, "num-cpu", &error_abort);
     object_property_set_int(OBJECT(&s->a7mpcore),
                             FSL_IMX6UL_MAX_IRQ + GIC_INTERNAL,
                             "num-irq", &error_abort);
@@ -200,18 +183,13 @@ static void fsl_imx6ul_realize(DeviceState *dev, Error **errp)
                              &error_abort);
     sysbus_mmio_map(SYS_BUS_DEVICE(&s->a7mpcore), 0, FSL_IMX6UL_A7MPCORE_ADDR);
 
-    for (i = 0; i < smp_cpus; i++) {
-        SysBusDevice *sbd = SYS_BUS_DEVICE(&s->a7mpcore);
-        DeviceState  *d   = DEVICE(qemu_get_cpu(i));
+    sbd = SYS_BUS_DEVICE(&s->a7mpcore);
+    d = DEVICE(&s->cpu);
 
-        irq = qdev_get_gpio_in(d, ARM_CPU_IRQ);
-        sysbus_connect_irq(sbd, i, irq);
-        sysbus_connect_irq(sbd, i + smp_cpus, qdev_get_gpio_in(d, ARM_CPU_FIQ));
-        sysbus_connect_irq(sbd, i + 2 * smp_cpus,
-                           qdev_get_gpio_in(d, ARM_CPU_VIRQ));
-        sysbus_connect_irq(sbd, i + 3 * smp_cpus,
-                           qdev_get_gpio_in(d, ARM_CPU_VFIQ));
-    }
+    sysbus_connect_irq(sbd, 0, qdev_get_gpio_in(d, ARM_CPU_IRQ));
+    sysbus_connect_irq(sbd, 1, qdev_get_gpio_in(d, ARM_CPU_FIQ));
+    sysbus_connect_irq(sbd, 2, qdev_get_gpio_in(d, ARM_CPU_VIRQ));
+    sysbus_connect_irq(sbd, 3, qdev_get_gpio_in(d, ARM_CPU_VFIQ));
 
     /*
      * A7MPCORE DAP

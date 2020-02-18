@@ -16,13 +16,17 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
+
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "internal.h"
 #include "qemu/host-utils.h"
+#include "qemu/main-loop.h"
 #include "exec/helper-proto.h"
 #include "crypto/aes.h"
 #include "fpu/softfloat.h"
+#include "qapi/error.h"
+#include "qemu/guest-random.h"
 
 #include "helper_regs.h"
 /*****************************************************************************/
@@ -137,7 +141,8 @@ uint64_t helper_divde(CPUPPCState *env, uint64_t rau, uint64_t rbu, uint32_t oe)
 /* if x = 0xab, returns 0xababababababababa */
 #define pattern(x) (((x) & 0xff) * (~(target_ulong)0 / 0xff))
 
-/* substract 1 from each byte, and with inverse, check if MSB is set at each
+/*
+ * subtract 1 from each byte, and with inverse, check if MSB is set at each
  * byte.
  * i.e. ((0x00 - 0x01) & ~(0x00)) & 0x80
  *      (0xFF & 0xFF) & 0x80 = 0x80 (zero found)
@@ -156,24 +161,38 @@ uint32_t helper_cmpeqb(target_ulong ra, target_ulong rb)
 #undef haszero
 #undef hasvalue
 
-/* Return invalid random number.
- *
- * FIXME: Add rng backend or other mechanism to get cryptographically suitable
- * random number
+/*
+ * Return a random number.
  */
-target_ulong helper_darn32(void)
+uint64_t helper_darn32(void)
 {
-    return -1;
+    Error *err = NULL;
+    uint32_t ret;
+
+    if (qemu_guest_getrandom(&ret, sizeof(ret), &err) < 0) {
+        qemu_log_mask(LOG_UNIMP, "darn: Crypto failure: %s",
+                      error_get_pretty(err));
+        error_free(err);
+        return -1;
+    }
+
+    return ret;
 }
 
-target_ulong helper_darn64(void)
+uint64_t helper_darn64(void)
 {
-    return -1;
+    Error *err = NULL;
+    uint64_t ret;
+
+    if (qemu_guest_getrandom(&ret, sizeof(ret), &err) < 0) {
+        qemu_log_mask(LOG_UNIMP, "darn: Crypto failure: %s",
+                      error_get_pretty(err));
+        error_free(err);
+        return -1;
+    }
+
+    return ret;
 }
-
-#endif
-
-#if defined(TARGET_PPC64)
 
 uint64_t helper_bpermd(uint64_t rs, uint64_t rb)
 {
@@ -181,7 +200,7 @@ uint64_t helper_bpermd(uint64_t rs, uint64_t rb)
     uint64_t ra = 0;
 
     for (i = 0; i < 8; i++) {
-        int index = (rs >> (i*8)) & 0xFF;
+        int index = (rs >> (i * 8)) & 0xFF;
         if (index < 64) {
             if (rb & PPC_BIT(index)) {
                 ra |= 1 << i;
@@ -370,7 +389,8 @@ target_ulong helper_divso(CPUPPCState *env, target_ulong arg1,
 /* 602 specific instructions */
 /* mfrom is the most crazy instruction ever seen, imho ! */
 /* Real implementation uses a ROM table. Do the same */
-/* Extremely decomposed:
+/*
+ * Extremely decomposed:
  *                      -arg / 256
  * return 256 * log10(10           + 1.0) + 0.5
  */
@@ -393,7 +413,7 @@ target_ulong helper_602_mfrom(target_ulong arg)
     for (index = 0; index < ARRAY_SIZE(r->element); index++)
 #else
 #define VECTOR_FOR_INORDER_I(index, element)                    \
-    for (index = ARRAY_SIZE(r->element)-1; index >= 0; index--)
+    for (index = ARRAY_SIZE(r->element) - 1; index >= 0; index--)
 #endif
 
 /* Saturating arithmetic helpers.  */
@@ -438,24 +458,6 @@ SATCVT(sw, uh, int32_t, uint16_t, 0, UINT16_MAX)
 SATCVT(sd, uw, int64_t, uint32_t, 0, UINT32_MAX)
 #undef SATCVT
 #undef SATCVTU
-
-void helper_lvsl(ppc_avr_t *r, target_ulong sh)
-{
-    int i, j = (sh & 0xf);
-
-    for (i = 0; i < ARRAY_SIZE(r->u8); i++) {
-        r->VsrB(i) = j++;
-    }
-}
-
-void helper_lvsr(ppc_avr_t *r, target_ulong sh)
-{
-    int i, j = 0x10 - (sh & 0xf);
-
-    for (i = 0; i < ARRAY_SIZE(r->u8); i++) {
-        r->VsrB(i) = j++;
-    }
-}
 
 void helper_mtvscr(CPUPPCState *env, uint32_t vscr)
 {
@@ -634,7 +636,8 @@ void helper_v##name(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)           \
     }                                                                   \
 }
 
-/* VABSDU - Vector absolute difference unsigned
+/*
+ * VABSDU - Vector absolute difference unsigned
  *   name    - instruction mnemonic suffix (b: byte, h: halfword, w: word)
  *   element - element type to access from vector
  */
@@ -739,7 +742,8 @@ void helper_vcmpne##suffix(CPUPPCState *env, ppc_avr_t *r,              \
     }                                                                   \
 }
 
-/* VCMPNEZ - Vector compare not equal to zero
+/*
+ * VCMPNEZ - Vector compare not equal to zero
  *   suffix  - instruction mnemonic suffix (b: byte, h: halfword, w: word)
  *   element - element type to access from vector
  */
@@ -1138,7 +1142,7 @@ void helper_vpermr(CPUPPCState *env, ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b,
 #define VBPERMQ_DW(index) (((index) & 0x40) != 0)
 #define EXTRACT_BIT(avr, i, index) (extract64((avr)->u64[i], index, 1))
 #else
-#define VBPERMQ_INDEX(avr, i) ((avr)->u8[15-(i)])
+#define VBPERMQ_INDEX(avr, i) ((avr)->u8[15 - (i)])
 #define VBPERMD_INDEX(i) (1 - i)
 #define VBPERMQ_DW(index) (((index) & 0x40) == 0)
 #define EXTRACT_BIT(avr, i, index) \
@@ -1169,7 +1173,7 @@ void helper_vbpermq(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
         int index = VBPERMQ_INDEX(b, i);
 
         if (index < 128) {
-            uint64_t mask = (1ull << (63-(index & 0x3F)));
+            uint64_t mask = (1ull << (63 - (index & 0x3F)));
             if (a->u64[VBPERMQ_DW(index)] & mask) {
                 perm |= (0x8000 >> i);
             }
@@ -1183,299 +1187,23 @@ void helper_vbpermq(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
 #undef VBPERMQ_INDEX
 #undef VBPERMQ_DW
 
-static const uint64_t VGBBD_MASKS[256] = {
-    0x0000000000000000ull, /* 00 */
-    0x0000000000000080ull, /* 01 */
-    0x0000000000008000ull, /* 02 */
-    0x0000000000008080ull, /* 03 */
-    0x0000000000800000ull, /* 04 */
-    0x0000000000800080ull, /* 05 */
-    0x0000000000808000ull, /* 06 */
-    0x0000000000808080ull, /* 07 */
-    0x0000000080000000ull, /* 08 */
-    0x0000000080000080ull, /* 09 */
-    0x0000000080008000ull, /* 0A */
-    0x0000000080008080ull, /* 0B */
-    0x0000000080800000ull, /* 0C */
-    0x0000000080800080ull, /* 0D */
-    0x0000000080808000ull, /* 0E */
-    0x0000000080808080ull, /* 0F */
-    0x0000008000000000ull, /* 10 */
-    0x0000008000000080ull, /* 11 */
-    0x0000008000008000ull, /* 12 */
-    0x0000008000008080ull, /* 13 */
-    0x0000008000800000ull, /* 14 */
-    0x0000008000800080ull, /* 15 */
-    0x0000008000808000ull, /* 16 */
-    0x0000008000808080ull, /* 17 */
-    0x0000008080000000ull, /* 18 */
-    0x0000008080000080ull, /* 19 */
-    0x0000008080008000ull, /* 1A */
-    0x0000008080008080ull, /* 1B */
-    0x0000008080800000ull, /* 1C */
-    0x0000008080800080ull, /* 1D */
-    0x0000008080808000ull, /* 1E */
-    0x0000008080808080ull, /* 1F */
-    0x0000800000000000ull, /* 20 */
-    0x0000800000000080ull, /* 21 */
-    0x0000800000008000ull, /* 22 */
-    0x0000800000008080ull, /* 23 */
-    0x0000800000800000ull, /* 24 */
-    0x0000800000800080ull, /* 25 */
-    0x0000800000808000ull, /* 26 */
-    0x0000800000808080ull, /* 27 */
-    0x0000800080000000ull, /* 28 */
-    0x0000800080000080ull, /* 29 */
-    0x0000800080008000ull, /* 2A */
-    0x0000800080008080ull, /* 2B */
-    0x0000800080800000ull, /* 2C */
-    0x0000800080800080ull, /* 2D */
-    0x0000800080808000ull, /* 2E */
-    0x0000800080808080ull, /* 2F */
-    0x0000808000000000ull, /* 30 */
-    0x0000808000000080ull, /* 31 */
-    0x0000808000008000ull, /* 32 */
-    0x0000808000008080ull, /* 33 */
-    0x0000808000800000ull, /* 34 */
-    0x0000808000800080ull, /* 35 */
-    0x0000808000808000ull, /* 36 */
-    0x0000808000808080ull, /* 37 */
-    0x0000808080000000ull, /* 38 */
-    0x0000808080000080ull, /* 39 */
-    0x0000808080008000ull, /* 3A */
-    0x0000808080008080ull, /* 3B */
-    0x0000808080800000ull, /* 3C */
-    0x0000808080800080ull, /* 3D */
-    0x0000808080808000ull, /* 3E */
-    0x0000808080808080ull, /* 3F */
-    0x0080000000000000ull, /* 40 */
-    0x0080000000000080ull, /* 41 */
-    0x0080000000008000ull, /* 42 */
-    0x0080000000008080ull, /* 43 */
-    0x0080000000800000ull, /* 44 */
-    0x0080000000800080ull, /* 45 */
-    0x0080000000808000ull, /* 46 */
-    0x0080000000808080ull, /* 47 */
-    0x0080000080000000ull, /* 48 */
-    0x0080000080000080ull, /* 49 */
-    0x0080000080008000ull, /* 4A */
-    0x0080000080008080ull, /* 4B */
-    0x0080000080800000ull, /* 4C */
-    0x0080000080800080ull, /* 4D */
-    0x0080000080808000ull, /* 4E */
-    0x0080000080808080ull, /* 4F */
-    0x0080008000000000ull, /* 50 */
-    0x0080008000000080ull, /* 51 */
-    0x0080008000008000ull, /* 52 */
-    0x0080008000008080ull, /* 53 */
-    0x0080008000800000ull, /* 54 */
-    0x0080008000800080ull, /* 55 */
-    0x0080008000808000ull, /* 56 */
-    0x0080008000808080ull, /* 57 */
-    0x0080008080000000ull, /* 58 */
-    0x0080008080000080ull, /* 59 */
-    0x0080008080008000ull, /* 5A */
-    0x0080008080008080ull, /* 5B */
-    0x0080008080800000ull, /* 5C */
-    0x0080008080800080ull, /* 5D */
-    0x0080008080808000ull, /* 5E */
-    0x0080008080808080ull, /* 5F */
-    0x0080800000000000ull, /* 60 */
-    0x0080800000000080ull, /* 61 */
-    0x0080800000008000ull, /* 62 */
-    0x0080800000008080ull, /* 63 */
-    0x0080800000800000ull, /* 64 */
-    0x0080800000800080ull, /* 65 */
-    0x0080800000808000ull, /* 66 */
-    0x0080800000808080ull, /* 67 */
-    0x0080800080000000ull, /* 68 */
-    0x0080800080000080ull, /* 69 */
-    0x0080800080008000ull, /* 6A */
-    0x0080800080008080ull, /* 6B */
-    0x0080800080800000ull, /* 6C */
-    0x0080800080800080ull, /* 6D */
-    0x0080800080808000ull, /* 6E */
-    0x0080800080808080ull, /* 6F */
-    0x0080808000000000ull, /* 70 */
-    0x0080808000000080ull, /* 71 */
-    0x0080808000008000ull, /* 72 */
-    0x0080808000008080ull, /* 73 */
-    0x0080808000800000ull, /* 74 */
-    0x0080808000800080ull, /* 75 */
-    0x0080808000808000ull, /* 76 */
-    0x0080808000808080ull, /* 77 */
-    0x0080808080000000ull, /* 78 */
-    0x0080808080000080ull, /* 79 */
-    0x0080808080008000ull, /* 7A */
-    0x0080808080008080ull, /* 7B */
-    0x0080808080800000ull, /* 7C */
-    0x0080808080800080ull, /* 7D */
-    0x0080808080808000ull, /* 7E */
-    0x0080808080808080ull, /* 7F */
-    0x8000000000000000ull, /* 80 */
-    0x8000000000000080ull, /* 81 */
-    0x8000000000008000ull, /* 82 */
-    0x8000000000008080ull, /* 83 */
-    0x8000000000800000ull, /* 84 */
-    0x8000000000800080ull, /* 85 */
-    0x8000000000808000ull, /* 86 */
-    0x8000000000808080ull, /* 87 */
-    0x8000000080000000ull, /* 88 */
-    0x8000000080000080ull, /* 89 */
-    0x8000000080008000ull, /* 8A */
-    0x8000000080008080ull, /* 8B */
-    0x8000000080800000ull, /* 8C */
-    0x8000000080800080ull, /* 8D */
-    0x8000000080808000ull, /* 8E */
-    0x8000000080808080ull, /* 8F */
-    0x8000008000000000ull, /* 90 */
-    0x8000008000000080ull, /* 91 */
-    0x8000008000008000ull, /* 92 */
-    0x8000008000008080ull, /* 93 */
-    0x8000008000800000ull, /* 94 */
-    0x8000008000800080ull, /* 95 */
-    0x8000008000808000ull, /* 96 */
-    0x8000008000808080ull, /* 97 */
-    0x8000008080000000ull, /* 98 */
-    0x8000008080000080ull, /* 99 */
-    0x8000008080008000ull, /* 9A */
-    0x8000008080008080ull, /* 9B */
-    0x8000008080800000ull, /* 9C */
-    0x8000008080800080ull, /* 9D */
-    0x8000008080808000ull, /* 9E */
-    0x8000008080808080ull, /* 9F */
-    0x8000800000000000ull, /* A0 */
-    0x8000800000000080ull, /* A1 */
-    0x8000800000008000ull, /* A2 */
-    0x8000800000008080ull, /* A3 */
-    0x8000800000800000ull, /* A4 */
-    0x8000800000800080ull, /* A5 */
-    0x8000800000808000ull, /* A6 */
-    0x8000800000808080ull, /* A7 */
-    0x8000800080000000ull, /* A8 */
-    0x8000800080000080ull, /* A9 */
-    0x8000800080008000ull, /* AA */
-    0x8000800080008080ull, /* AB */
-    0x8000800080800000ull, /* AC */
-    0x8000800080800080ull, /* AD */
-    0x8000800080808000ull, /* AE */
-    0x8000800080808080ull, /* AF */
-    0x8000808000000000ull, /* B0 */
-    0x8000808000000080ull, /* B1 */
-    0x8000808000008000ull, /* B2 */
-    0x8000808000008080ull, /* B3 */
-    0x8000808000800000ull, /* B4 */
-    0x8000808000800080ull, /* B5 */
-    0x8000808000808000ull, /* B6 */
-    0x8000808000808080ull, /* B7 */
-    0x8000808080000000ull, /* B8 */
-    0x8000808080000080ull, /* B9 */
-    0x8000808080008000ull, /* BA */
-    0x8000808080008080ull, /* BB */
-    0x8000808080800000ull, /* BC */
-    0x8000808080800080ull, /* BD */
-    0x8000808080808000ull, /* BE */
-    0x8000808080808080ull, /* BF */
-    0x8080000000000000ull, /* C0 */
-    0x8080000000000080ull, /* C1 */
-    0x8080000000008000ull, /* C2 */
-    0x8080000000008080ull, /* C3 */
-    0x8080000000800000ull, /* C4 */
-    0x8080000000800080ull, /* C5 */
-    0x8080000000808000ull, /* C6 */
-    0x8080000000808080ull, /* C7 */
-    0x8080000080000000ull, /* C8 */
-    0x8080000080000080ull, /* C9 */
-    0x8080000080008000ull, /* CA */
-    0x8080000080008080ull, /* CB */
-    0x8080000080800000ull, /* CC */
-    0x8080000080800080ull, /* CD */
-    0x8080000080808000ull, /* CE */
-    0x8080000080808080ull, /* CF */
-    0x8080008000000000ull, /* D0 */
-    0x8080008000000080ull, /* D1 */
-    0x8080008000008000ull, /* D2 */
-    0x8080008000008080ull, /* D3 */
-    0x8080008000800000ull, /* D4 */
-    0x8080008000800080ull, /* D5 */
-    0x8080008000808000ull, /* D6 */
-    0x8080008000808080ull, /* D7 */
-    0x8080008080000000ull, /* D8 */
-    0x8080008080000080ull, /* D9 */
-    0x8080008080008000ull, /* DA */
-    0x8080008080008080ull, /* DB */
-    0x8080008080800000ull, /* DC */
-    0x8080008080800080ull, /* DD */
-    0x8080008080808000ull, /* DE */
-    0x8080008080808080ull, /* DF */
-    0x8080800000000000ull, /* E0 */
-    0x8080800000000080ull, /* E1 */
-    0x8080800000008000ull, /* E2 */
-    0x8080800000008080ull, /* E3 */
-    0x8080800000800000ull, /* E4 */
-    0x8080800000800080ull, /* E5 */
-    0x8080800000808000ull, /* E6 */
-    0x8080800000808080ull, /* E7 */
-    0x8080800080000000ull, /* E8 */
-    0x8080800080000080ull, /* E9 */
-    0x8080800080008000ull, /* EA */
-    0x8080800080008080ull, /* EB */
-    0x8080800080800000ull, /* EC */
-    0x8080800080800080ull, /* ED */
-    0x8080800080808000ull, /* EE */
-    0x8080800080808080ull, /* EF */
-    0x8080808000000000ull, /* F0 */
-    0x8080808000000080ull, /* F1 */
-    0x8080808000008000ull, /* F2 */
-    0x8080808000008080ull, /* F3 */
-    0x8080808000800000ull, /* F4 */
-    0x8080808000800080ull, /* F5 */
-    0x8080808000808000ull, /* F6 */
-    0x8080808000808080ull, /* F7 */
-    0x8080808080000000ull, /* F8 */
-    0x8080808080000080ull, /* F9 */
-    0x8080808080008000ull, /* FA */
-    0x8080808080008080ull, /* FB */
-    0x8080808080800000ull, /* FC */
-    0x8080808080800080ull, /* FD */
-    0x8080808080808000ull, /* FE */
-    0x8080808080808080ull, /* FF */
-};
-
-void helper_vgbbd(ppc_avr_t *r, ppc_avr_t *b)
-{
-    int i;
-    uint64_t t[2] = { 0, 0 };
-
-    VECTOR_FOR_INORDER_I(i, u8) {
-#if defined(HOST_WORDS_BIGENDIAN)
-        t[i>>3] |= VGBBD_MASKS[b->u8[i]] >> (i & 7);
-#else
-        t[i>>3] |= VGBBD_MASKS[b->u8[i]] >> (7-(i & 7));
-#endif
-    }
-
-    r->u64[0] = t[0];
-    r->u64[1] = t[1];
-}
-
 #define PMSUM(name, srcfld, trgfld, trgtyp)                   \
 void helper_##name(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)  \
 {                                                             \
     int i, j;                                                 \
-    trgtyp prod[sizeof(ppc_avr_t)/sizeof(a->srcfld[0])];      \
+    trgtyp prod[sizeof(ppc_avr_t) / sizeof(a->srcfld[0])];    \
                                                               \
     VECTOR_FOR_INORDER_I(i, srcfld) {                         \
         prod[i] = 0;                                          \
         for (j = 0; j < sizeof(a->srcfld[0]) * 8; j++) {      \
-            if (a->srcfld[i] & (1ull<<j)) {                   \
+            if (a->srcfld[i] & (1ull << j)) {                 \
                 prod[i] ^= ((trgtyp)b->srcfld[i] << j);       \
             }                                                 \
         }                                                     \
     }                                                         \
                                                               \
     VECTOR_FOR_INORDER_I(i, trgfld) {                         \
-        r->trgfld[i] = prod[2*i] ^ prod[2*i+1];               \
+        r->trgfld[i] = prod[2 * i] ^ prod[2 * i + 1];         \
     }                                                         \
 }
 
@@ -1493,7 +1221,7 @@ void helper_vpmsumd(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
     VECTOR_FOR_INORDER_I(i, u64) {
         prod[i] = 0;
         for (j = 0; j < 64; j++) {
-            if (a->u64[i] & (1ull<<j)) {
+            if (a->u64[i] & (1ull << j)) {
                 prod[i] ^= (((__uint128_t)b->u64[i]) << j);
             }
         }
@@ -1508,7 +1236,7 @@ void helper_vpmsumd(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
     VECTOR_FOR_INORDER_I(i, u64) {
         prod[i].VsrD(1) = prod[i].VsrD(0) = 0;
         for (j = 0; j < 64; j++) {
-            if (a->u64[i] & (1ull<<j)) {
+            if (a->u64[i] & (1ull << j)) {
                 ppc_avr_t bshift;
                 if (j == 0) {
                     bshift.VsrD(0) = 0;
@@ -1548,9 +1276,9 @@ void helper_vpkpx(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
         VECTOR_FOR_INORDER_I(j, u32) {
             uint32_t e = x[i]->u32[j];
 
-            result.u16[4*i+j] = (((e >> 9) & 0xfc00) |
-                                 ((e >> 6) & 0x3e0) |
-                                 ((e >> 3) & 0x1f));
+            result.u16[4 * i + j] = (((e >> 9) & 0xfc00) |
+                                     ((e >> 6) & 0x3e0) |
+                                     ((e >> 3) & 0x1f));
         }
     }
     *r = result;
@@ -1568,7 +1296,7 @@ void helper_vpkpx(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
                                                                         \
         VECTOR_FOR_INORDER_I(i, from) {                                 \
             result.to[i] = cvt(a0->from[i], &sat);                      \
-            result.to[i+ARRAY_SIZE(r->from)] = cvt(a1->from[i], &sat);  \
+            result.to[i + ARRAY_SIZE(r->from)] = cvt(a1->from[i], &sat);\
         }                                                               \
         *r = result;                                                    \
         if (dosat && sat) {                                             \
@@ -1736,56 +1464,6 @@ VEXTU_X_DO(vextuhrx, 16, 0)
 VEXTU_X_DO(vextuwrx, 32, 0)
 #undef VEXTU_X_DO
 
-/* The specification says that the results are undefined if all of the
- * shift counts are not identical.  We check to make sure that they are
- * to conform to what real hardware appears to do.  */
-#define VSHIFT(suffix, leftp)                                           \
-    void helper_vs##suffix(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)    \
-    {                                                                   \
-        int shift = b->VsrB(15) & 0x7;                                  \
-        int doit = 1;                                                   \
-        int i;                                                          \
-                                                                        \
-        for (i = 0; i < ARRAY_SIZE(r->u8); i++) {                       \
-            doit = doit && ((b->u8[i] & 0x7) == shift);                 \
-        }                                                               \
-        if (doit) {                                                     \
-            if (shift == 0) {                                           \
-                *r = *a;                                                \
-            } else if (leftp) {                                         \
-                uint64_t carry = a->VsrD(1) >> (64 - shift);            \
-                                                                        \
-                r->VsrD(0) = (a->VsrD(0) << shift) | carry;             \
-                r->VsrD(1) = a->VsrD(1) << shift;                       \
-            } else {                                                    \
-                uint64_t carry = a->VsrD(0) << (64 - shift);            \
-                                                                        \
-                r->VsrD(1) = (a->VsrD(1) >> shift) | carry;             \
-                r->VsrD(0) = a->VsrD(0) >> shift;                       \
-            }                                                           \
-        }                                                               \
-    }
-VSHIFT(l, 1)
-VSHIFT(r, 0)
-#undef VSHIFT
-
-#define VSL(suffix, element, mask)                                      \
-    void helper_vsl##suffix(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)   \
-    {                                                                   \
-        int i;                                                          \
-                                                                        \
-        for (i = 0; i < ARRAY_SIZE(r->element); i++) {                  \
-            unsigned int shift = b->element[i] & mask;                  \
-                                                                        \
-            r->element[i] = a->element[i] << shift;                     \
-        }                                                               \
-    }
-VSL(b, u8, 0x7)
-VSL(h, u16, 0x0F)
-VSL(w, u32, 0x1F)
-VSL(d, u64, 0x3F)
-#undef VSL
-
 void helper_vslv(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
 {
     int i;
@@ -1793,10 +1471,10 @@ void helper_vslv(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
 
     size = ARRAY_SIZE(r->u8);
     for (i = 0; i < size; i++) {
-        shift = b->u8[i] & 0x7;             /* extract shift value */
-        bytes = (a->u8[i] << 8) +             /* extract adjacent bytes */
-            (((i + 1) < size) ? a->u8[i + 1] : 0);
-        r->u8[i] = (bytes << shift) >> 8;   /* shift and store result */
+        shift = b->VsrB(i) & 0x7;             /* extract shift value */
+        bytes = (a->VsrB(i) << 8) +           /* extract adjacent bytes */
+            (((i + 1) < size) ? a->VsrB(i + 1) : 0);
+        r->VsrB(i) = (bytes << shift) >> 8;   /* shift and store result */
     }
 }
 
@@ -1805,15 +1483,16 @@ void helper_vsrv(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
     int i;
     unsigned int shift, bytes;
 
-    /* Use reverse order, as destination and source register can be same. Its
-     * being modified in place saving temporary, reverse order will guarantee
-     * that computed result is not fed back.
+    /*
+     * Use reverse order, as destination and source register can be
+     * same. Its being modified in place saving temporary, reverse
+     * order will guarantee that computed result is not fed back.
      */
     for (i = ARRAY_SIZE(r->u8) - 1; i >= 0; i--) {
-        shift = b->u8[i] & 0x7;                 /* extract shift value */
-        bytes = ((i ? a->u8[i - 1] : 0) << 8) + a->u8[i];
+        shift = b->VsrB(i) & 0x7;               /* extract shift value */
+        bytes = ((i ? a->VsrB(i - 1) : 0) << 8) + a->VsrB(i);
                                                 /* extract adjacent bytes */
-        r->u8[i] = (bytes >> shift) & 0xFF;     /* shift and store result */
+        r->VsrB(i) = (bytes >> shift) & 0xFF;   /* shift and store result */
     }
 }
 
@@ -1840,7 +1519,7 @@ void helper_vslo(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
 
 #if defined(HOST_WORDS_BIGENDIAN)
     memmove(&r->u8[0], &a->u8[sh], 16 - sh);
-    memset(&r->u8[16-sh], 0, sh);
+    memset(&r->u8[16 - sh], 0, sh);
 #else
     memmove(&r->u8[sh], &a->u8[0], 16 - sh);
     memset(&r->u8[0], 0, sh);
@@ -1893,41 +1572,35 @@ VEXTRACT(uw, u32)
 VEXTRACT(d, u64)
 #undef VEXTRACT
 
-void helper_xxextractuw(CPUPPCState *env, target_ulong xtn,
-                        target_ulong xbn, uint32_t index)
+void helper_xxextractuw(CPUPPCState *env, ppc_vsr_t *xt,
+                        ppc_vsr_t *xb, uint32_t index)
 {
-    ppc_vsr_t xt, xb;
+    ppc_vsr_t t = { };
     size_t es = sizeof(uint32_t);
     uint32_t ext_index;
     int i;
 
-    getVSR(xbn, &xb, env);
-    memset(&xt, 0, sizeof(xt));
-
     ext_index = index;
     for (i = 0; i < es; i++, ext_index++) {
-        xt.VsrB(8 - es + i) = xb.VsrB(ext_index % 16);
+        t.VsrB(8 - es + i) = xb->VsrB(ext_index % 16);
     }
 
-    putVSR(xtn, &xt, env);
+    *xt = t;
 }
 
-void helper_xxinsertw(CPUPPCState *env, target_ulong xtn,
-                      target_ulong xbn, uint32_t index)
+void helper_xxinsertw(CPUPPCState *env, ppc_vsr_t *xt,
+                      ppc_vsr_t *xb, uint32_t index)
 {
-    ppc_vsr_t xt, xb;
+    ppc_vsr_t t = *xt;
     size_t es = sizeof(uint32_t);
     int ins_index, i = 0;
 
-    getVSR(xbn, &xb, env);
-    getVSR(xtn, &xt, env);
-
     ins_index = index;
     for (i = 0; i < es && ins_index < 16; i++, ins_index++) {
-        xt.VsrB(ins_index) = xb.VsrB(8 - es + i);
+        t.VsrB(ins_index) = xb->VsrB(8 - es + i);
     }
 
-    putVSR(xtn, &xt, env);
+    *xt = t;
 }
 
 #define VEXT_SIGNED(name, element, cast)                            \
@@ -1956,26 +1629,6 @@ void helper_##name(ppc_avr_t *r, ppc_avr_t *b)                      \
 VNEG(vnegw, s32)
 VNEG(vnegd, s64)
 #undef VNEG
-
-#define VSR(suffix, element, mask)                                      \
-    void helper_vsr##suffix(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)   \
-    {                                                                   \
-        int i;                                                          \
-                                                                        \
-        for (i = 0; i < ARRAY_SIZE(r->element); i++) {                  \
-            unsigned int shift = b->element[i] & mask;                  \
-            r->element[i] = a->element[i] >> shift;                     \
-        }                                                               \
-    }
-VSR(ab, s8, 0x7)
-VSR(ah, s16, 0xF)
-VSR(aw, s32, 0x1F)
-VSR(ad, s64, 0x3F)
-VSR(b, u8, 0x7)
-VSR(h, u16, 0xF)
-VSR(w, u32, 0x1F)
-VSR(d, u64, 0x3F)
-#undef VSR
 
 void helper_vsro(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
 {
@@ -2030,7 +1683,7 @@ void helper_vsum2sws(CPUPPCState *env, ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
     for (i = 0; i < ARRAY_SIZE(r->u64); i++) {
         int64_t t = (int64_t)b->VsrSW(upper + i * 2);
 
-        result.VsrW(i) = 0;
+        result.VsrD(i) = 0;
         for (j = 0; j < ARRAY_SIZE(r->u64); j++) {
             t += a->VsrSW(2 * i + j);
         }
@@ -2112,7 +1765,7 @@ void helper_vsum4ubs(CPUPPCState *env, ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
         ppc_avr_t result;                                               \
                                                                         \
         for (i = 0; i < ARRAY_SIZE(r->u32); i++) {                      \
-            uint16_t e = b->u16[hi ? i : i+4];                          \
+            uint16_t e = b->u16[hi ? i : i + 4];                        \
             uint8_t a = (e >> 15) ? 0xff : 0;                           \
             uint8_t r = (e >> 10) & 0x1f;                               \
             uint8_t g = (e >> 5) & 0x1f;                                \
@@ -2166,18 +1819,12 @@ VUPK(lsw, s64, s32, UPKLO)
 
 #define clzb(v) ((v) ? clz32((uint32_t)(v) << 24) : 8)
 #define clzh(v) ((v) ? clz32((uint32_t)(v) << 16) : 16)
-#define clzw(v) clz32((v))
-#define clzd(v) clz64((v))
 
 VGENERIC_DO(clzb, u8)
 VGENERIC_DO(clzh, u16)
-VGENERIC_DO(clzw, u32)
-VGENERIC_DO(clzd, u64)
 
 #undef clzb
 #undef clzh
-#undef clzw
-#undef clzd
 
 #define ctzb(v) ((v) ? ctz32(v) : 8)
 #define ctzh(v) ((v) ? ctz32(v) : 16)
@@ -2405,15 +2052,11 @@ void helper_vsubecuq(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b, ppc_avr_t *c)
 #define NATIONAL_PLUS   0x2B
 #define NATIONAL_NEG    0x2D
 
-#if defined(HOST_WORDS_BIGENDIAN)
 #define BCD_DIG_BYTE(n) (15 - ((n) / 2))
-#else
-#define BCD_DIG_BYTE(n) ((n) / 2)
-#endif
 
 static int bcd_get_sgn(ppc_avr_t *bcd)
 {
-    switch (bcd->u8[BCD_DIG_BYTE(0)] & 0xF) {
+    switch (bcd->VsrB(BCD_DIG_BYTE(0)) & 0xF) {
     case BCD_PLUS_PREF_1:
     case BCD_PLUS_PREF_2:
     case BCD_PLUS_ALT_1:
@@ -2448,9 +2091,9 @@ static uint8_t bcd_get_digit(ppc_avr_t *bcd, int n, int *invalid)
 {
     uint8_t result;
     if (n & 1) {
-        result = bcd->u8[BCD_DIG_BYTE(n)] >> 4;
+        result = bcd->VsrB(BCD_DIG_BYTE(n)) >> 4;
     } else {
-       result = bcd->u8[BCD_DIG_BYTE(n)] & 0xF;
+       result = bcd->VsrB(BCD_DIG_BYTE(n)) & 0xF;
     }
 
     if (unlikely(result > 9)) {
@@ -2462,11 +2105,11 @@ static uint8_t bcd_get_digit(ppc_avr_t *bcd, int n, int *invalid)
 static void bcd_put_digit(ppc_avr_t *bcd, uint8_t digit, int n)
 {
     if (n & 1) {
-        bcd->u8[BCD_DIG_BYTE(n)] &= 0x0F;
-        bcd->u8[BCD_DIG_BYTE(n)] |= (digit<<4);
+        bcd->VsrB(BCD_DIG_BYTE(n)) &= 0x0F;
+        bcd->VsrB(BCD_DIG_BYTE(n)) |= (digit << 4);
     } else {
-        bcd->u8[BCD_DIG_BYTE(n)] &= 0xF0;
-        bcd->u8[BCD_DIG_BYTE(n)] |= digit;
+        bcd->VsrB(BCD_DIG_BYTE(n)) &= 0xF0;
+        bcd->VsrB(BCD_DIG_BYTE(n)) |= digit;
     }
 }
 
@@ -2581,21 +2224,21 @@ uint32_t helper_bcdadd(ppc_avr_t *r,  ppc_avr_t *a, ppc_avr_t *b, uint32_t ps)
 
     if (!invalid) {
         if (sgna == sgnb) {
-            result.u8[BCD_DIG_BYTE(0)] = bcd_preferred_sgn(sgna, ps);
+            result.VsrB(BCD_DIG_BYTE(0)) = bcd_preferred_sgn(sgna, ps);
             bcd_add_mag(&result, a, b, &invalid, &overflow);
             cr = bcd_cmp_zero(&result);
         } else {
             int magnitude = bcd_cmp_mag(a, b);
             if (magnitude > 0) {
-                result.u8[BCD_DIG_BYTE(0)] = bcd_preferred_sgn(sgna, ps);
+                result.VsrB(BCD_DIG_BYTE(0)) = bcd_preferred_sgn(sgna, ps);
                 bcd_sub_mag(&result, a, b, &invalid, &overflow);
                 cr = (sgna > 0) ? CRF_GT : CRF_LT;
             } else if (magnitude < 0) {
-                result.u8[BCD_DIG_BYTE(0)] = bcd_preferred_sgn(sgnb, ps);
+                result.VsrB(BCD_DIG_BYTE(0)) = bcd_preferred_sgn(sgnb, ps);
                 bcd_sub_mag(&result, b, a, &invalid, &overflow);
                 cr = (sgnb > 0) ? CRF_GT : CRF_LT;
             } else {
-                result.u8[BCD_DIG_BYTE(0)] = bcd_preferred_sgn(0, ps);
+                result.VsrB(BCD_DIG_BYTE(0)) = bcd_preferred_sgn(0, ps);
                 cr = CRF_EQ;
             }
         }
@@ -2706,15 +2349,15 @@ uint32_t helper_bcdcfz(ppc_avr_t *r, ppc_avr_t *b, uint32_t ps)
     int zone_lead = ps ? 0xF : 0x3;
     int digit = 0;
     ppc_avr_t ret = { .u64 = { 0, 0 } };
-    int sgnb = b->u8[BCD_DIG_BYTE(0)] >> 4;
+    int sgnb = b->VsrB(BCD_DIG_BYTE(0)) >> 4;
 
     if (unlikely((sgnb < 0xA) && ps)) {
         invalid = 1;
     }
 
     for (i = 0; i < 16; i++) {
-        zone_digit = i ? b->u8[BCD_DIG_BYTE(i * 2)] >> 4 : zone_lead;
-        digit = b->u8[BCD_DIG_BYTE(i * 2)] & 0xF;
+        zone_digit = i ? b->VsrB(BCD_DIG_BYTE(i * 2)) >> 4 : zone_lead;
+        digit = b->VsrB(BCD_DIG_BYTE(i * 2)) & 0xF;
         if (unlikely(zone_digit != zone_lead || digit > 0x9)) {
             invalid = 1;
             break;
@@ -2760,7 +2403,7 @@ uint32_t helper_bcdctz(ppc_avr_t *r, ppc_avr_t *b, uint32_t ps)
             break;
         }
 
-        ret.u8[BCD_DIG_BYTE(i * 2)] = zone_lead + digit;
+        ret.VsrB(BCD_DIG_BYTE(i * 2)) = zone_lead + digit;
     }
 
     if (ps) {
@@ -2872,7 +2515,7 @@ uint32_t helper_bcdcpsgn(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b, uint32_t ps)
     }
 
     *r = *a;
-    bcd_put_digit(r, b->u8[BCD_DIG_BYTE(0)] & 0xF, 0);
+    bcd_put_digit(r, b->VsrB(BCD_DIG_BYTE(0)) & 0xF, 0);
 
     for (i = 1; i < 32; i++) {
         bcd_get_digit(a, i, &invalid);
@@ -2902,11 +2545,7 @@ uint32_t helper_bcdsetsgn(ppc_avr_t *r, ppc_avr_t *b, uint32_t ps)
 uint32_t helper_bcds(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b, uint32_t ps)
 {
     int cr;
-#if defined(HOST_WORDS_BIGENDIAN)
-    int i = a->s8[7];
-#else
-    int i = a->s8[8];
-#endif
+    int i = a->VsrSB(7);
     bool ox_flag = false;
     int sgnb = bcd_get_sgn(b);
     ppc_avr_t ret = *b;
@@ -2955,11 +2594,7 @@ uint32_t helper_bcdus(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b, uint32_t ps)
         }
     }
 
-#if defined(HOST_WORDS_BIGENDIAN)
-    i = a->s8[7];
-#else
-    i = a->s8[8];
-#endif
+    i = a->VsrSB(7);
     if (i >= 32) {
         ox_flag = true;
         ret.VsrD(1) = ret.VsrD(0) = 0;
@@ -2990,13 +2625,11 @@ uint32_t helper_bcdsr(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b, uint32_t ps)
     ppc_avr_t ret = *b;
     ret.VsrD(1) &= ~0xf;
 
-#if defined(HOST_WORDS_BIGENDIAN)
-    int i = a->s8[7];
-    ppc_avr_t bcd_one = { .u64 = { 0, 0x10 } };
-#else
-    int i = a->s8[8];
-    ppc_avr_t bcd_one = { .u64 = { 0x10, 0 } };
-#endif
+    int i = a->VsrSB(7);
+    ppc_avr_t bcd_one;
+
+    bcd_one.VsrD(0) = 0;
+    bcd_one.VsrD(1) = 0x10;
 
     if (bcd_is_valid(b) == false) {
         return CRF_SO;
@@ -3032,11 +2665,7 @@ uint32_t helper_bcdtrunc(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b, uint32_t ps)
 {
     uint64_t mask;
     uint32_t ox_flag = 0;
-#if defined(HOST_WORDS_BIGENDIAN)
-    int i = a->s16[3] + 1;
-#else
-    int i = a->s16[4] + 1;
-#endif
+    int i = a->VsrSH(3) + 1;
     ppc_avr_t ret = *b;
 
     if (bcd_is_valid(b) == false) {
@@ -3081,11 +2710,7 @@ uint32_t helper_bcdutrunc(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b, uint32_t ps)
         }
     }
 
-#if defined(HOST_WORDS_BIGENDIAN)
-    i = a->s16[3];
-#else
-    i = a->s16[4];
-#endif
+    i = a->VsrSH(3);
     if (i > 16 && i < 33) {
         mask = (uint64_t)-1 >> (128 - i * 4);
         if (ret.VsrD(0) & ~mask) {
@@ -3220,7 +2845,7 @@ void helper_vshasigmad(ppc_avr_t *r,  ppc_avr_t *a, uint32_t st_six)
 
     for (i = 0; i < ARRAY_SIZE(r->u64); i++) {
         if (st == 0) {
-            if ((six & (0x8 >> (2*i))) == 0) {
+            if ((six & (0x8 >> (2 * i))) == 0) {
                 r->VsrD(i) = ror64(a->VsrD(i), 1) ^
                              ror64(a->VsrD(i), 8) ^
                              (a->VsrD(i) >> 7);
@@ -3230,7 +2855,7 @@ void helper_vshasigmad(ppc_avr_t *r,  ppc_avr_t *a, uint32_t st_six)
                              (a->VsrD(i) >> 6);
             }
         } else { /* st == 1 */
-            if ((six & (0x8 >> (2*i))) == 0) {
+            if ((six & (0x8 >> (2 * i))) == 0) {
                 r->VsrD(i) = ror64(a->VsrD(i), 28) ^
                              ror64(a->VsrD(i), 34) ^
                              ror64(a->VsrD(i), 39);

@@ -24,9 +24,10 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/hw.h"
 #include "hw/isa/isa.h"
+#include "migration/vmstate.h"
 #include "qemu/error-report.h"
+#include "qemu/main-loop.h"
 #include "qemu/timer.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/blockdev.h"
@@ -36,7 +37,7 @@
 #include "qapi/error.h"
 #include "qemu/cutils.h"
 #include "sysemu/replay.h"
-
+#include "sysemu/runstate.h"
 #include "hw/ide/internal.h"
 #include "trace.h"
 
@@ -449,6 +450,14 @@ static void ide_issue_trim_cb(void *opaque, int ret)
     TrimAIOCB *iocb = opaque;
     IDEState *s = iocb->s;
 
+    if (iocb->i >= 0) {
+        if (ret >= 0) {
+            block_acct_done(blk_get_stats(s->blk), &s->acct);
+        } else {
+            block_acct_failed(blk_get_stats(s->blk), &s->acct);
+        }
+    }
+
     if (ret >= 0) {
         while (iocb->j < iocb->qiov->niov) {
             int j = iocb->j;
@@ -466,9 +475,13 @@ static void ide_issue_trim_cb(void *opaque, int ret)
                 }
 
                 if (!ide_sect_range_ok(s, sector, count)) {
+                    block_acct_invalid(blk_get_stats(s->blk), BLOCK_ACCT_UNMAP);
                     iocb->ret = -EINVAL;
                     goto done;
                 }
+
+                block_acct_start(blk_get_stats(s->blk), &s->acct,
+                                 count << BDRV_SECTOR_BITS, BLOCK_ACCT_UNMAP);
 
                 /* Got an entry! Submit and exit.  */
                 iocb->aiocb = blk_aio_pdiscard(s->blk,
@@ -730,9 +743,6 @@ static void ide_sector_read_cb(void *opaque, int ret)
     s->pio_aiocb = NULL;
     s->status &= ~BUSY_STAT;
 
-    if (ret == -ECANCELED) {
-        return;
-    }
     if (ret != 0) {
         if (ide_handle_rw_error(s, -ret, IDE_RETRY_PIO |
                                 IDE_RETRY_READ)) {
@@ -847,10 +857,6 @@ static void ide_dma_cb(void *opaque, int ret)
     int64_t sector_num;
     uint64_t offset;
     bool stay_active = false;
-
-    if (ret == -ECANCELED) {
-        return;
-    }
 
     if (ret == -EINVAL) {
         ide_dma_error(s);
@@ -983,10 +989,6 @@ static void ide_sector_write_cb(void *opaque, int ret)
     IDEState *s = opaque;
     int n;
 
-    if (ret == -ECANCELED) {
-        return;
-    }
-
     s->pio_aiocb = NULL;
     s->status &= ~BUSY_STAT;
 
@@ -1066,9 +1068,6 @@ static void ide_flush_cb(void *opaque, int ret)
 
     s->pio_aiocb = NULL;
 
-    if (ret == -ECANCELED) {
-        return;
-    }
     if (ret < 0) {
         /* XXX: What sector number to set here? */
         if (ide_handle_rw_error(s, -ret, IDE_RETRY_FLUSH)) {

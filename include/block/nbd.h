@@ -127,18 +127,34 @@ typedef struct NBDExtent {
 
 /* Transmission (export) flags: sent from server to client during handshake,
    but describe what will happen during transmission */
-#define NBD_FLAG_HAS_FLAGS         (1 << 0) /* Flags are there */
-#define NBD_FLAG_READ_ONLY         (1 << 1) /* Device is read-only */
-#define NBD_FLAG_SEND_FLUSH        (1 << 2) /* Send FLUSH */
-#define NBD_FLAG_SEND_FUA          (1 << 3) /* Send FUA (Force Unit Access) */
-#define NBD_FLAG_ROTATIONAL        (1 << 4) /* Use elevator algorithm -
-                                               rotational media */
-#define NBD_FLAG_SEND_TRIM         (1 << 5) /* Send TRIM (discard) */
-#define NBD_FLAG_SEND_WRITE_ZEROES (1 << 6) /* Send WRITE_ZEROES */
-#define NBD_FLAG_SEND_DF           (1 << 7) /* Send DF (Do not Fragment) */
-#define NBD_FLAG_CAN_MULTI_CONN    (1 << 8) /* Multi-client cache consistent */
-#define NBD_FLAG_SEND_RESIZE       (1 << 9) /* Send resize */
-#define NBD_FLAG_SEND_CACHE        (1 << 10) /* Send CACHE (prefetch) */
+enum {
+    NBD_FLAG_HAS_FLAGS_BIT          =  0, /* Flags are there */
+    NBD_FLAG_READ_ONLY_BIT          =  1, /* Device is read-only */
+    NBD_FLAG_SEND_FLUSH_BIT         =  2, /* Send FLUSH */
+    NBD_FLAG_SEND_FUA_BIT           =  3, /* Send FUA (Force Unit Access) */
+    NBD_FLAG_ROTATIONAL_BIT         =  4, /* Use elevator algorithm -
+                                             rotational media */
+    NBD_FLAG_SEND_TRIM_BIT          =  5, /* Send TRIM (discard) */
+    NBD_FLAG_SEND_WRITE_ZEROES_BIT  =  6, /* Send WRITE_ZEROES */
+    NBD_FLAG_SEND_DF_BIT            =  7, /* Send DF (Do not Fragment) */
+    NBD_FLAG_CAN_MULTI_CONN_BIT     =  8, /* Multi-client cache consistent */
+    NBD_FLAG_SEND_RESIZE_BIT        =  9, /* Send resize */
+    NBD_FLAG_SEND_CACHE_BIT         = 10, /* Send CACHE (prefetch) */
+    NBD_FLAG_SEND_FAST_ZERO_BIT     = 11, /* FAST_ZERO flag for WRITE_ZEROES */
+};
+
+#define NBD_FLAG_HAS_FLAGS         (1 << NBD_FLAG_HAS_FLAGS_BIT)
+#define NBD_FLAG_READ_ONLY         (1 << NBD_FLAG_READ_ONLY_BIT)
+#define NBD_FLAG_SEND_FLUSH        (1 << NBD_FLAG_SEND_FLUSH_BIT)
+#define NBD_FLAG_SEND_FUA          (1 << NBD_FLAG_SEND_FUA_BIT)
+#define NBD_FLAG_ROTATIONAL        (1 << NBD_FLAG_ROTATIONAL_BIT)
+#define NBD_FLAG_SEND_TRIM         (1 << NBD_FLAG_SEND_TRIM_BIT)
+#define NBD_FLAG_SEND_WRITE_ZEROES (1 << NBD_FLAG_SEND_WRITE_ZEROES_BIT)
+#define NBD_FLAG_SEND_DF           (1 << NBD_FLAG_SEND_DF_BIT)
+#define NBD_FLAG_CAN_MULTI_CONN    (1 << NBD_FLAG_CAN_MULTI_CONN_BIT)
+#define NBD_FLAG_SEND_RESIZE       (1 << NBD_FLAG_SEND_RESIZE_BIT)
+#define NBD_FLAG_SEND_CACHE        (1 << NBD_FLAG_SEND_CACHE_BIT)
+#define NBD_FLAG_SEND_FAST_ZERO    (1 << NBD_FLAG_SEND_FAST_ZERO_BIT)
 
 /* New-style handshake (global) flags, sent from server to client, and
    control what will happen during handshake phase. */
@@ -191,6 +207,7 @@ typedef struct NBDExtent {
 #define NBD_CMD_FLAG_DF         (1 << 2) /* don't fragment structured read */
 #define NBD_CMD_FLAG_REQ_ONE    (1 << 3) /* only one extent in BLOCK_STATUS
                                           * reply chunk */
+#define NBD_CMD_FLAG_FAST_ZERO  (1 << 4) /* fail if WRITE_ZEROES is not fast */
 
 /* Supported request types */
 enum {
@@ -209,12 +226,12 @@ enum {
 /* Maximum size of a single READ/WRITE data buffer */
 #define NBD_MAX_BUFFER_SIZE (32 * 1024 * 1024)
 
-/* Maximum size of an export name. The NBD spec requires 256 and
- * suggests that servers support up to 4096, but we stick to only the
- * required size so that we can stack-allocate the names, and because
- * going larger would require an audit of more code to make sure we
- * aren't overflowing some other buffer. */
-#define NBD_MAX_NAME_SIZE 256
+/*
+ * Maximum size of a protocol string (export name, meta context name,
+ * etc.).  Use malloc rather than stack allocation for storage of a
+ * string.
+ */
+#define NBD_MAX_STRING_SIZE 4096
 
 /* Two types of reply structures */
 #define NBD_SIMPLE_REPLY_MAGIC      0x67446698
@@ -256,6 +273,7 @@ static inline bool nbd_reply_type_is_error(int type)
 #define NBD_EINVAL     22
 #define NBD_ENOSPC     28
 #define NBD_EOVERFLOW  75
+#define NBD_ENOTSUP    95
 #define NBD_ESHUTDOWN  108
 
 /* Details collected by NBD_OPT_EXPORT_NAME and NBD_OPT_GO */
@@ -290,7 +308,8 @@ struct NBDExportInfo {
 };
 typedef struct NBDExportInfo NBDExportInfo;
 
-int nbd_receive_negotiate(QIOChannel *ioc, QCryptoTLSCreds *tlscreds,
+int nbd_receive_negotiate(AioContext *aio_context, QIOChannel *ioc,
+                          QCryptoTLSCreds *tlscreds,
                           const char *hostname, QIOChannel **outioc,
                           NBDExportInfo *info, Error **errp);
 void nbd_free_export_list(NBDExportInfo *info, int count);
@@ -311,7 +330,7 @@ typedef struct NBDClient NBDClient;
 
 NBDExport *nbd_export_new(BlockDriverState *bs, uint64_t dev_offset,
                           uint64_t size, const char *name, const char *desc,
-                          const char *bitmap, uint16_t nbdflags,
+                          const char *bitmap, bool readonly, bool shared,
                           void (*close)(NBDExport *), bool writethrough,
                           BlockBackend *on_eject_blk, Error **errp);
 void nbd_export_close(NBDExport *exp);
@@ -321,6 +340,7 @@ void nbd_export_put(NBDExport *exp);
 
 BlockBackend *nbd_export_get_blockdev(NBDExport *exp);
 
+AioContext *nbd_export_aio_context(NBDExport *exp);
 NBDExport *nbd_export_find(const char *name);
 void nbd_export_close_all(void);
 

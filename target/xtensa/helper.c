@@ -31,6 +31,7 @@
 #include "exec/gdbstub.h"
 #include "exec/helper-proto.h"
 #include "qemu/error-report.h"
+#include "qemu/qemu-print.h"
 #include "qemu/host-utils.h"
 
 static struct XtensaConfigList *xtensa_cores;
@@ -140,6 +141,7 @@ static void init_libisa(XtensaConfig *config)
         }
 #endif
     }
+    xtensa_collect_sr_names(config);
 }
 
 static void xtensa_finalize_config(XtensaConfig *config)
@@ -228,30 +230,32 @@ void xtensa_breakpoint_handler(CPUState *cs)
     }
 }
 
-void xtensa_cpu_list(FILE *f, fprintf_function cpu_fprintf)
+void xtensa_cpu_list(void)
 {
     XtensaConfigList *core = xtensa_cores;
-    cpu_fprintf(f, "Available CPUs:\n");
+    qemu_printf("Available CPUs:\n");
     for (; core; core = core->next) {
-        cpu_fprintf(f, "  %s\n", core->config->name);
+        qemu_printf("  %s\n", core->config->name);
     }
 }
 
 #ifdef CONFIG_USER_ONLY
 
-int xtensa_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size, int rw,
-                                int mmu_idx)
+bool xtensa_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+                         MMUAccessType access_type, int mmu_idx,
+                         bool probe, uintptr_t retaddr)
 {
     XtensaCPU *cpu = XTENSA_CPU(cs);
     CPUXtensaState *env = &cpu->env;
 
     qemu_log_mask(CPU_LOG_INT,
                   "%s: rw = %d, address = 0x%08" VADDR_PRIx ", size = %d\n",
-                  __func__, rw, address, size);
+                  __func__, access_type, address, size);
     env->sregs[EXCVADDR] = address;
-    env->sregs[EXCCAUSE] = rw ? STORE_PROHIBITED_CAUSE : LOAD_PROHIBITED_CAUSE;
+    env->sregs[EXCCAUSE] = (access_type == MMU_DATA_STORE ?
+                            STORE_PROHIBITED_CAUSE : LOAD_PROHIBITED_CAUSE);
     cs->exception_index = EXC_USER;
-    return 1;
+    cpu_loop_exit_restore(cs, retaddr);
 }
 
 #else
@@ -272,28 +276,33 @@ void xtensa_cpu_do_unaligned_access(CPUState *cs,
     }
 }
 
-void tlb_fill(CPUState *cs, target_ulong vaddr, int size,
-              MMUAccessType access_type, int mmu_idx, uintptr_t retaddr)
+bool xtensa_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+                         MMUAccessType access_type, int mmu_idx,
+                         bool probe, uintptr_t retaddr)
 {
     XtensaCPU *cpu = XTENSA_CPU(cs);
     CPUXtensaState *env = &cpu->env;
     uint32_t paddr;
     uint32_t page_size;
     unsigned access;
-    int ret = xtensa_get_physical_addr(env, true, vaddr, access_type, mmu_idx,
-                                       &paddr, &page_size, &access);
+    int ret = xtensa_get_physical_addr(env, true, address, access_type,
+                                       mmu_idx, &paddr, &page_size, &access);
 
-    qemu_log_mask(CPU_LOG_MMU, "%s(%08x, %d, %d) -> %08x, ret = %d\n",
-                  __func__, vaddr, access_type, mmu_idx, paddr, ret);
+    qemu_log_mask(CPU_LOG_MMU, "%s(%08" VADDR_PRIx
+                  ", %d, %d) -> %08x, ret = %d\n",
+                  __func__, address, access_type, mmu_idx, paddr, ret);
 
     if (ret == 0) {
         tlb_set_page(cs,
-                     vaddr & TARGET_PAGE_MASK,
+                     address & TARGET_PAGE_MASK,
                      paddr & TARGET_PAGE_MASK,
                      access, mmu_idx, page_size);
+        return true;
+    } else if (probe) {
+        return false;
     } else {
         cpu_restore_state(cs, retaddr, true);
-        HELPER(exception_cause_vaddr)(env, env->pc, ret, vaddr);
+        HELPER(exception_cause_vaddr)(env, env->pc, ret, address);
     }
 }
 
@@ -315,7 +324,7 @@ void xtensa_cpu_do_transaction_failed(CPUState *cs, hwaddr physaddr, vaddr addr,
 
 void xtensa_runstall(CPUXtensaState *env, bool runstall)
 {
-    CPUState *cpu = CPU(xtensa_env_get_cpu(env));
+    CPUState *cpu = env_cpu(env);
 
     env->runstall = runstall;
     cpu->halted = runstall;

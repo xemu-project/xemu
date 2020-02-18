@@ -23,7 +23,6 @@
  */
 #include "qemu/osdep.h"
 #include "qemu/main-loop.h"
-#include "qemu-common.h"
 #include "hw/irq.h"
 #include "qom/object.h"
 
@@ -119,20 +118,6 @@ qemu_irq qemu_irq_split(qemu_irq irq1, qemu_irq irq2)
     s[0] = irq1;
     s[1] = irq2;
     return qemu_allocate_irq(qemu_splitirq, s, 0);
-}
-
-static void proxy_irq_handler(void *opaque, int n, int level)
-{
-    qemu_irq **target = opaque;
-
-    if (*target) {
-        qemu_set_irq((*target)[n], level);
-    }
-}
-
-qemu_irq *qemu_irq_proxy(qemu_irq **target, int n)
-{
-    return qemu_allocate_irqs(proxy_irq_handler, target, n);
 }
 
 void qemu_irq_intercept_in(qemu_irq *gpio_in, qemu_irq_handler handler, int n)

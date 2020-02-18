@@ -25,7 +25,7 @@
 #include "cpu.h"
 #include "monitor/monitor.h"
 #include "monitor/hmp-target.h"
-#include "hmp.h"
+#include "monitor/hmp.h"
 
 
 void hmp_info_tlb(Monitor *mon, const QDict *qdict)
@@ -36,7 +36,7 @@ void hmp_info_tlb(Monitor *mon, const QDict *qdict)
         monitor_printf(mon, "No CPU available\n");
         return;
     }
-    dump_mmu((FILE*)mon, (fprintf_function)monitor_printf, env1);
+    dump_mmu(env1);
 }
 
 #ifndef TARGET_SPARC64

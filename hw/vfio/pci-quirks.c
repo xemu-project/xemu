@@ -11,14 +11,18 @@
  */
 
 #include "qemu/osdep.h"
+#include "exec/memop.h"
 #include "qemu/units.h"
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
+#include "qemu/module.h"
 #include "qemu/range.h"
 #include "qapi/error.h"
 #include "qapi/visitor.h"
 #include <sys/ioctl.h>
+#include "hw/hw.h"
 #include "hw/nvram/fw_cfg.h"
+#include "hw/qdev-properties.h"
 #include "pci.h"
 #include "trace.h"
 
@@ -1070,7 +1074,8 @@ static void vfio_rtl8168_quirk_address_write(void *opaque, hwaddr addr,
 
                 /* Write to the proper guest MSI-X table instead */
                 memory_region_dispatch_write(&vdev->pdev.msix_table_mmio,
-                                             offset, val, size,
+                                             offset, val,
+                                             size_memop(size) | MO_LE,
                                              MEMTXATTRS_UNSPECIFIED);
             }
             return; /* Do not write guest MSI-X data to hardware */
@@ -1101,7 +1106,8 @@ static uint64_t vfio_rtl8168_quirk_data_read(void *opaque,
     if (rtl->enabled && (vdev->pdev.cap_present & QEMU_PCI_CAP_MSIX)) {
         hwaddr offset = rtl->addr & 0xfff;
         memory_region_dispatch_read(&vdev->pdev.msix_table_mmio, offset,
-                                    &data, size, MEMTXATTRS_UNSPECIFIED);
+                                    &data, size_memop(size) | MO_LE,
+                                    MEMTXATTRS_UNSPECIFIED);
         trace_vfio_quirk_rtl8168_msix_read(vdev->vbasedev.name, offset, data);
     }
 
@@ -2179,4 +2185,135 @@ int vfio_add_virt_caps(VFIOPCIDevice *vdev, Error **errp)
     }
 
     return 0;
+}
+
+static void vfio_pci_nvlink2_get_tgt(Object *obj, Visitor *v,
+                                     const char *name,
+                                     void *opaque, Error **errp)
+{
+    uint64_t tgt = (uintptr_t) opaque;
+    visit_type_uint64(v, name, &tgt, errp);
+}
+
+static void vfio_pci_nvlink2_get_link_speed(Object *obj, Visitor *v,
+                                                 const char *name,
+                                                 void *opaque, Error **errp)
+{
+    uint32_t link_speed = (uint32_t)(uintptr_t) opaque;
+    visit_type_uint32(v, name, &link_speed, errp);
+}
+
+int vfio_pci_nvidia_v100_ram_init(VFIOPCIDevice *vdev, Error **errp)
+{
+    int ret;
+    void *p;
+    struct vfio_region_info *nv2reg = NULL;
+    struct vfio_info_cap_header *hdr;
+    struct vfio_region_info_cap_nvlink2_ssatgt *cap;
+    VFIOQuirk *quirk;
+
+    ret = vfio_get_dev_region_info(&vdev->vbasedev,
+                                   VFIO_REGION_TYPE_PCI_VENDOR_TYPE |
+                                   PCI_VENDOR_ID_NVIDIA,
+                                   VFIO_REGION_SUBTYPE_NVIDIA_NVLINK2_RAM,
+                                   &nv2reg);
+    if (ret) {
+        return ret;
+    }
+
+    hdr = vfio_get_region_info_cap(nv2reg, VFIO_REGION_INFO_CAP_NVLINK2_SSATGT);
+    if (!hdr) {
+        ret = -ENODEV;
+        goto free_exit;
+    }
+    cap = (void *) hdr;
+
+    p = mmap(NULL, nv2reg->size, PROT_READ | PROT_WRITE | PROT_EXEC,
+             MAP_SHARED, vdev->vbasedev.fd, nv2reg->offset);
+    if (p == MAP_FAILED) {
+        ret = -errno;
+        goto free_exit;
+    }
+
+    quirk = vfio_quirk_alloc(1);
+    memory_region_init_ram_ptr(&quirk->mem[0], OBJECT(vdev), "nvlink2-mr",
+                               nv2reg->size, p);
+    QLIST_INSERT_HEAD(&vdev->bars[0].quirks, quirk, next);
+
+    object_property_add(OBJECT(vdev), "nvlink2-tgt", "uint64",
+                        vfio_pci_nvlink2_get_tgt, NULL, NULL,
+                        (void *) (uintptr_t) cap->tgt, NULL);
+    trace_vfio_pci_nvidia_gpu_setup_quirk(vdev->vbasedev.name, cap->tgt,
+                                          nv2reg->size);
+free_exit:
+    g_free(nv2reg);
+
+    return ret;
+}
+
+int vfio_pci_nvlink2_init(VFIOPCIDevice *vdev, Error **errp)
+{
+    int ret;
+    void *p;
+    struct vfio_region_info *atsdreg = NULL;
+    struct vfio_info_cap_header *hdr;
+    struct vfio_region_info_cap_nvlink2_ssatgt *captgt;
+    struct vfio_region_info_cap_nvlink2_lnkspd *capspeed;
+    VFIOQuirk *quirk;
+
+    ret = vfio_get_dev_region_info(&vdev->vbasedev,
+                                   VFIO_REGION_TYPE_PCI_VENDOR_TYPE |
+                                   PCI_VENDOR_ID_IBM,
+                                   VFIO_REGION_SUBTYPE_IBM_NVLINK2_ATSD,
+                                   &atsdreg);
+    if (ret) {
+        return ret;
+    }
+
+    hdr = vfio_get_region_info_cap(atsdreg,
+                                   VFIO_REGION_INFO_CAP_NVLINK2_SSATGT);
+    if (!hdr) {
+        ret = -ENODEV;
+        goto free_exit;
+    }
+    captgt = (void *) hdr;
+
+    hdr = vfio_get_region_info_cap(atsdreg,
+                                   VFIO_REGION_INFO_CAP_NVLINK2_LNKSPD);
+    if (!hdr) {
+        ret = -ENODEV;
+        goto free_exit;
+    }
+    capspeed = (void *) hdr;
+
+    /* Some NVLink bridges may not have assigned ATSD */
+    if (atsdreg->size) {
+        p = mmap(NULL, atsdreg->size, PROT_READ | PROT_WRITE | PROT_EXEC,
+                 MAP_SHARED, vdev->vbasedev.fd, atsdreg->offset);
+        if (p == MAP_FAILED) {
+            ret = -errno;
+            goto free_exit;
+        }
+
+        quirk = vfio_quirk_alloc(1);
+        memory_region_init_ram_device_ptr(&quirk->mem[0], OBJECT(vdev),
+                                          "nvlink2-atsd-mr", atsdreg->size, p);
+        QLIST_INSERT_HEAD(&vdev->bars[0].quirks, quirk, next);
+    }
+
+    object_property_add(OBJECT(vdev), "nvlink2-tgt", "uint64",
+                        vfio_pci_nvlink2_get_tgt, NULL, NULL,
+                        (void *) (uintptr_t) captgt->tgt, NULL);
+    trace_vfio_pci_nvlink2_setup_quirk_ssatgt(vdev->vbasedev.name, captgt->tgt,
+                                              atsdreg->size);
+
+    object_property_add(OBJECT(vdev), "nvlink2-link-speed", "uint32",
+                        vfio_pci_nvlink2_get_link_speed, NULL, NULL,
+                        (void *) (uintptr_t) capspeed->link_speed, NULL);
+    trace_vfio_pci_nvlink2_setup_quirk_lnkspd(vdev->vbasedev.name,
+                                              capspeed->link_speed);
+free_exit:
+    g_free(atsdreg);
+
+    return ret;
 }

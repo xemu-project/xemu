@@ -31,8 +31,6 @@
 void helper_cp0_set(CPUUniCore32State *env, uint32_t val, uint32_t creg,
         uint32_t cop)
 {
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
-
     /*
      * movc pp.nn, rn, #imm9
      *      rn: UCOP_REG_D
@@ -101,7 +99,7 @@ void helper_cp0_set(CPUUniCore32State *env, uint32_t val, uint32_t creg,
     case 6:
         if ((cop <= 6) && (cop >= 2)) {
             /* invalid all tlb */
-            tlb_flush(CPU(cpu));
+            tlb_flush(env_cpu(env));
             return;
         }
         break;
@@ -212,29 +210,6 @@ void helper_cp1_putc(target_ulong x)
 {
     putc_on_screen((unsigned char)x);   /* Output to screen */
     DPRINTF("%c", x);                   /* Output to stdout */
-}
-#endif
-
-#ifdef CONFIG_USER_ONLY
-void switch_mode(CPUUniCore32State *env, int mode)
-{
-    UniCore32CPU *cpu = uc32_env_get_cpu(env);
-
-    if (mode != ASR_MODE_USER) {
-        cpu_abort(CPU(cpu), "Tried to switch out of user mode\n");
-    }
-}
-
-void uc32_cpu_do_interrupt(CPUState *cs)
-{
-    cpu_abort(cs, "NO interrupt in user mode\n");
-}
-
-int uc32_cpu_handle_mmu_fault(CPUState *cs, vaddr address, int size,
-                              int access_type, int mmu_idx)
-{
-    cpu_abort(cs, "NO mmu fault in user mode\n");
-    return 1;
 }
 #endif
 

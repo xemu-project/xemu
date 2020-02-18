@@ -9,15 +9,15 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "internal.h"
 #include "sysemu/hw_accel.h"
+#include "sysemu/runstate.h"
 #include "exec/address-spaces.h"
 #include "exec/exec-all.h"
-#include "sysemu/sysemu.h"
+#include "sysemu/tcg.h"
 #include "trace.h"
-#include "qapi/qapi-types-misc.h"
+#include "qapi/qapi-types-machine.h"
 
 QemuMutex qemu_sigp_mutex;
 
@@ -454,7 +454,7 @@ int handle_sigp(CPUS390XState *env, uint8_t order, uint64_t r1, uint64_t r3)
 {
     uint64_t *status_reg = &env->regs[r1];
     uint64_t param = (r1 % 2) ? env->regs[r1] : env->regs[r1 + 1];
-    S390CPU *cpu = s390_env_get_cpu(env);
+    S390CPU *cpu = env_archcpu(env);
     S390CPU *dst_cpu = NULL;
     int ret;
 
@@ -492,7 +492,7 @@ int s390_cpu_restart(S390CPU *cpu)
 
 void do_stop_interrupt(CPUS390XState *env)
 {
-    S390CPU *cpu = s390_env_get_cpu(env);
+    S390CPU *cpu = env_archcpu(env);
 
     if (s390_cpu_set_state(S390_CPU_STATE_STOPPED, cpu) == 0) {
         qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);

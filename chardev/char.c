@@ -28,12 +28,14 @@
 #include "sysemu/sysemu.h"
 #include "qemu/config-file.h"
 #include "qemu/error-report.h"
+#include "qemu/qemu-print.h"
 #include "chardev/char.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-char.h"
 #include "qapi/qmp/qerror.h"
 #include "sysemu/replay.h"
 #include "qemu/help_option.h"
+#include "qemu/module.h"
 #include "qemu/option.h"
 
 #include "chardev/char-mux.h"
@@ -651,7 +653,7 @@ Chardev *qemu_chr_new_from_opts(QemuOpts *opts, GMainContext *context,
 
         chardev_name_foreach(help_string_append, str);
 
-        error_printf("Available chardev backend types: %s\n", str->str);
+        qemu_printf("Available chardev backend types: %s\n", str->str);
         g_string_free(str, true);
         return NULL;
     }
@@ -729,7 +731,7 @@ Chardev *qemu_chr_new_noreplay(const char *label, const char *filename,
 
     if (qemu_opt_get_bool(opts, "mux", 0)) {
         assert(permit_mux_mon);
-        monitor_init(chr, MONITOR_USE_READLINE);
+        monitor_init_hmp(chr, true);
     }
 
 out:

@@ -22,7 +22,7 @@
 #include "hw/virtio/virtio-net.h"
 #include "net/vhost_net.h"
 #include "qemu/error-report.h"
-
+#include "qemu/main-loop.h"
 
 #include <sys/socket.h>
 #include <net/if.h>
@@ -49,6 +49,7 @@ static const int kernel_feature_bits[] = {
     VIRTIO_F_VERSION_1,
     VIRTIO_NET_F_MTU,
     VIRTIO_F_IOMMU_PLATFORM,
+    VIRTIO_F_RING_PACKED,
     VHOST_INVALID_FEATURE_BIT
 };
 
@@ -74,6 +75,7 @@ static const int user_feature_bits[] = {
     VIRTIO_NET_F_MRG_RXBUF,
     VIRTIO_NET_F_MTU,
     VIRTIO_F_IOMMU_PLATFORM,
+    VIRTIO_F_RING_PACKED,
 
     /* This bit implies RARP isn't sent by QEMU out of band */
     VIRTIO_NET_F_GUEST_ANNOUNCE,
@@ -244,6 +246,11 @@ static int vhost_net_start_one(struct vhost_net *net,
         qemu_set_fd_handler(net->backend, NULL, NULL, NULL);
         file.fd = net->backend;
         for (file.index = 0; file.index < net->dev.nvqs; ++file.index) {
+            if (!virtio_queue_enabled(dev, net->dev.vq_index +
+                                      file.index)) {
+                /* Queue might not be ready for start */
+                continue;
+            }
             r = vhost_net_set_backend(&net->dev, &file);
             if (r < 0) {
                 r = -errno;
@@ -256,6 +263,11 @@ fail:
     file.fd = -1;
     if (net->nc->info->type == NET_CLIENT_DRIVER_TAP) {
         while (file.index-- > 0) {
+            if (!virtio_queue_enabled(dev, net->dev.vq_index +
+                                      file.index)) {
+                /* Queue might not be ready for start */
+                continue;
+            }
             int r = vhost_net_set_backend(&net->dev, &file);
             assert(r >= 0);
         }

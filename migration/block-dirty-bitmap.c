@@ -62,6 +62,7 @@
 #include "block/block.h"
 #include "block/block_int.h"
 #include "sysemu/block-backend.h"
+#include "sysemu/runstate.h"
 #include "qemu/main-loop.h"
 #include "qemu/error-report.h"
 #include "migration/misc.h"
@@ -70,7 +71,6 @@
 #include "migration/vmstate.h"
 #include "migration/register.h"
 #include "qemu/hbitmap.h"
-#include "sysemu/sysemu.h"
 #include "qemu/cutils.h"
 #include "qapi/error.h"
 #include "trace.h"
@@ -273,7 +273,6 @@ static int init_dirty_bitmap_migration(void)
     BlockDriverState *bs;
     BdrvDirtyBitmap *bitmap;
     DirtyBitmapMigBitmapState *dbms;
-    BdrvNextIterator it;
     Error *local_err = NULL;
 
     dirty_bitmap_mig_state.bulk_completed = false;
@@ -281,22 +280,15 @@ static int init_dirty_bitmap_migration(void)
     dirty_bitmap_mig_state.prev_bitmap = NULL;
     dirty_bitmap_mig_state.no_bitmaps = false;
 
-    for (bs = bdrv_first(&it); bs; bs = bdrv_next(&it)) {
-        const char *drive_name = bdrv_get_device_or_node_name(bs);
+    for (bs = bdrv_next_all_states(NULL); bs; bs = bdrv_next_all_states(bs)) {
+        const char *name = bdrv_get_device_or_node_name(bs);
 
-        /* skip automatically inserted nodes */
-        while (bs && bs->drv && bs->implicit) {
-            bs = backing_bs(bs);
-        }
-
-        for (bitmap = bdrv_dirty_bitmap_next(bs, NULL); bitmap;
-             bitmap = bdrv_dirty_bitmap_next(bs, bitmap))
-        {
+        FOR_EACH_DIRTY_BITMAP(bs, bitmap) {
             if (!bdrv_dirty_bitmap_name(bitmap)) {
                 continue;
             }
 
-            if (drive_name == NULL) {
+            if (!name || strcmp(name, "") == 0) {
                 error_report("Found bitmap '%s' in unnamed node %p. It can't "
                              "be migrated", bdrv_dirty_bitmap_name(bitmap), bs);
                 goto fail;
@@ -313,7 +305,7 @@ static int init_dirty_bitmap_migration(void)
 
             dbms = g_new0(DirtyBitmapMigBitmapState, 1);
             dbms->bs = bs;
-            dbms->node_name = drive_name;
+            dbms->node_name = name;
             dbms->bitmap = bitmap;
             dbms->total_sectors = bdrv_nb_sectors(bs);
             dbms->sectors_per_chunk = CHUNK_SIZE * 8 *
@@ -332,7 +324,7 @@ static int init_dirty_bitmap_migration(void)
 
     /* unset migration flags here, to not roll back it */
     QSIMPLEQ_FOREACH(dbms, &dirty_bitmap_mig_state.dbms_list, entry) {
-        bdrv_dirty_bitmap_set_migration(dbms->bitmap, true);
+        bdrv_dirty_bitmap_skip_store(dbms->bitmap, true);
     }
 
     if (QSIMPLEQ_EMPTY(&dirty_bitmap_mig_state.dbms_list)) {
@@ -480,7 +472,7 @@ static int dirty_bitmap_load_start(QEMUFile *f, DirtyBitmapLoadState *s)
     if (flags & DIRTY_BITMAP_MIG_START_FLAG_ENABLED) {
         DirtyBitmapLoadBitmapState *b;
 
-        bdrv_dirty_bitmap_create_successor(s->bs, s->bitmap, &local_err);
+        bdrv_dirty_bitmap_create_successor(s->bitmap, &local_err);
         if (local_err) {
             error_report_err(local_err);
             return -EINVAL;
@@ -541,13 +533,12 @@ static void dirty_bitmap_load_complete(QEMUFile *f, DirtyBitmapLoadState *s)
         bdrv_dirty_bitmap_lock(s->bitmap);
         if (enabled_bitmaps == NULL) {
             /* in postcopy */
-            bdrv_reclaim_dirty_bitmap_locked(s->bs, s->bitmap, &error_abort);
+            bdrv_reclaim_dirty_bitmap_locked(s->bitmap, &error_abort);
             bdrv_enable_dirty_bitmap_locked(s->bitmap);
         } else {
             /* target not started, successor must be empty */
             int64_t count = bdrv_get_dirty_count(s->bitmap);
-            BdrvDirtyBitmap *ret = bdrv_reclaim_dirty_bitmap_locked(s->bs,
-                                                                    s->bitmap,
+            BdrvDirtyBitmap *ret = bdrv_reclaim_dirty_bitmap_locked(s->bitmap,
                                                                     NULL);
             /* bdrv_reclaim_dirty_bitmap can fail only on no successor (it
              * must be) or on merge fail, but merge can't fail when second
@@ -739,7 +730,7 @@ void dirty_bitmap_mig_init(void)
 {
     QSIMPLEQ_INIT(&dirty_bitmap_mig_state.dbms_list);
 
-    register_savevm_live(NULL, "dirty-bitmap", 0, 1,
+    register_savevm_live("dirty-bitmap", 0, 1,
                          &savevm_dirty_bitmap_handlers,
                          &dirty_bitmap_mig_state);
 }

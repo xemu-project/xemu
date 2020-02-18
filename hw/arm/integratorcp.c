@@ -9,18 +9,21 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "hw/sysbus.h"
-#include "hw/devices.h"
+#include "migration/vmstate.h"
 #include "hw/boards.h"
-#include "hw/arm/arm.h"
+#include "hw/arm/boot.h"
 #include "hw/misc/arm_integrator_debug.h"
+#include "hw/net/smc91c111.h"
 #include "net/net.h"
 #include "exec/address-spaces.h"
+#include "sysemu/runstate.h"
 #include "sysemu/sysemu.h"
 #include "qemu/error-report.h"
 #include "hw/char/pl011.h"
+#include "hw/hw.h"
+#include "hw/irq.h"
 
 #define TYPE_INTEGRATOR_CM "integrator_core"
 #define INTEGRATOR_CM(obj) \
@@ -579,9 +582,6 @@ static struct arm_boot_info integrator_binfo = {
 static void integratorcp_init(MachineState *machine)
 {
     ram_addr_t ram_size = machine->ram_size;
-    const char *kernel_filename = machine->kernel_filename;
-    const char *kernel_cmdline = machine->kernel_cmdline;
-    const char *initrd_filename = machine->initrd_filename;
     Object *cpuobj;
     ARMCPU *cpu;
     MemoryRegion *address_space_mem = get_system_memory();
@@ -651,10 +651,7 @@ static void integratorcp_init(MachineState *machine)
     sysbus_create_simple("pl110", 0xc0000000, pic[22]);
 
     integrator_binfo.ram_size = ram_size;
-    integrator_binfo.kernel_filename = kernel_filename;
-    integrator_binfo.kernel_cmdline = kernel_cmdline;
-    integrator_binfo.initrd_filename = initrd_filename;
-    arm_load_kernel(cpu, &integrator_binfo);
+    arm_load_kernel(cpu, machine, &integrator_binfo);
 }
 
 static void integratorcp_machine_init(MachineClass *mc)

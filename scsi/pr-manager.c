@@ -18,6 +18,7 @@
 #include "scsi/pr-manager.h"
 #include "trace.h"
 #include "qapi/qapi-types-block.h"
+#include "qemu/module.h"
 #include "qapi/qapi-commands-block.h"
 
 #define PR_MANAGER_PATH     "/objects"
@@ -38,7 +39,6 @@ static int pr_manager_worker(void *opaque)
     int fd = data->fd;
     int r;
 
-    g_free(data);
     trace_pr_manager_run(fd, hdr->cmdp[0], hdr->cmdp[1]);
 
     /* The reference was taken in pr_manager_execute.  */

@@ -26,13 +26,16 @@
 #include "qemu/units.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
-#include "hw/hw.h"
+#include "hw/irq.h"
+#include "hw/qdev-properties.h"
 #include "sysemu/dma.h"
 #include "qemu/timer.h"
 #include "qemu/bitops.h"
 #include "hw/sd/sdhci.h"
+#include "migration/vmstate.h"
 #include "sdhci-internal.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "trace.h"
 
 #define TYPE_SDHCI_BUS "sdhci-bus"
@@ -1529,6 +1532,8 @@ static const TypeInfo sdhci_bus_info = {
     .class_init = sdhci_bus_class_init,
 };
 
+/* --- qdev i.MX eSDHC --- */
+
 static uint64_t usdhc_read(void *opaque, hwaddr offset, unsigned size)
 {
     SDHCIState *s = SYSBUS_SDHCI(opaque);
@@ -1731,7 +1736,6 @@ usdhc_write(void *opaque, hwaddr offset, uint64_t val, unsigned size)
     }
 }
 
-
 static const MemoryRegionOps usdhc_mmio_ops = {
     .read = usdhc_read,
     .write = usdhc_write,
@@ -1757,11 +1761,76 @@ static const TypeInfo imx_usdhc_info = {
     .instance_init = imx_usdhc_init,
 };
 
+/* --- qdev Samsung s3c --- */
+
+#define S3C_SDHCI_CONTROL2      0x80
+#define S3C_SDHCI_CONTROL3      0x84
+#define S3C_SDHCI_CONTROL4      0x8c
+
+static uint64_t sdhci_s3c_read(void *opaque, hwaddr offset, unsigned size)
+{
+    uint64_t ret;
+
+    switch (offset) {
+    case S3C_SDHCI_CONTROL2:
+    case S3C_SDHCI_CONTROL3:
+    case S3C_SDHCI_CONTROL4:
+        /* ignore */
+        ret = 0;
+        break;
+    default:
+        ret = sdhci_read(opaque, offset, size);
+        break;
+    }
+
+    return ret;
+}
+
+static void sdhci_s3c_write(void *opaque, hwaddr offset, uint64_t val,
+                            unsigned size)
+{
+    switch (offset) {
+    case S3C_SDHCI_CONTROL2:
+    case S3C_SDHCI_CONTROL3:
+    case S3C_SDHCI_CONTROL4:
+        /* ignore */
+        break;
+    default:
+        sdhci_write(opaque, offset, val, size);
+        break;
+    }
+}
+
+static const MemoryRegionOps sdhci_s3c_mmio_ops = {
+    .read = sdhci_s3c_read,
+    .write = sdhci_s3c_write,
+    .valid = {
+        .min_access_size = 1,
+        .max_access_size = 4,
+        .unaligned = false
+    },
+    .endianness = DEVICE_LITTLE_ENDIAN,
+};
+
+static void sdhci_s3c_init(Object *obj)
+{
+    SDHCIState *s = SYSBUS_SDHCI(obj);
+
+    s->io_ops = &sdhci_s3c_mmio_ops;
+}
+
+static const TypeInfo sdhci_s3c_info = {
+    .name = TYPE_S3C_SDHCI  ,
+    .parent = TYPE_SYSBUS_SDHCI,
+    .instance_init = sdhci_s3c_init,
+};
+
 static void sdhci_register_types(void)
 {
     type_register_static(&sdhci_sysbus_info);
     type_register_static(&sdhci_bus_info);
     type_register_static(&imx_usdhc_info);
+    type_register_static(&sdhci_s3c_info);
 }
 
 type_init(sdhci_register_types)

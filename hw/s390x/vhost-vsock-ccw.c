@@ -7,8 +7,10 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/qdev-properties.h"
 #include "hw/virtio/virtio.h"
 #include "qapi/error.h"
+#include "qemu/module.h"
 #include "virtio-ccw.h"
 
 static Property vhost_vsock_ccw_properties[] = {

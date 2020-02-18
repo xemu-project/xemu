@@ -13,18 +13,18 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "hw/hw.h"
+#include "sysemu/runstate.h"
 #include "hw/arm/pxa.h"
-#include "hw/arm/arm.h"
-#include "hw/devices.h"
+#include "hw/arm/boot.h"
 #include "hw/arm/sharpsl.h"
 #include "hw/pcmcia.h"
 #include "hw/boards.h"
+#include "hw/display/tc6393xb.h"
 #include "hw/i2c/i2c.h"
+#include "hw/irq.h"
 #include "hw/ssi/ssi.h"
 #include "hw/sysbus.h"
 #include "exec/address-spaces.h"
-#include "sysemu/sysemu.h"
 
 #define TOSA_RAM    0x04000000
 #define TOSA_ROM	0x00800000
@@ -218,9 +218,6 @@ static struct arm_boot_info tosa_binfo = {
 
 static void tosa_init(MachineState *machine)
 {
-    const char *kernel_filename = machine->kernel_filename;
-    const char *kernel_cmdline = machine->kernel_cmdline;
-    const char *initrd_filename = machine->initrd_filename;
     MemoryRegion *address_space_mem = get_system_memory();
     MemoryRegion *rom = g_new(MemoryRegion, 1);
     PXA2xxState *mpu;
@@ -245,11 +242,8 @@ static void tosa_init(MachineState *machine)
 
     tosa_tg_init(mpu);
 
-    tosa_binfo.kernel_filename = kernel_filename;
-    tosa_binfo.kernel_cmdline = kernel_cmdline;
-    tosa_binfo.initrd_filename = initrd_filename;
     tosa_binfo.board_id = 0x208;
-    arm_load_kernel(mpu->cpu, &tosa_binfo);
+    arm_load_kernel(mpu->cpu, machine, &tosa_binfo);
     sl_bootparam_write(SL_PXA_PARAM_BASE);
 }
 

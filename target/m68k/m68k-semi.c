@@ -24,12 +24,10 @@
 #include "qemu.h"
 #define SEMIHOSTING_HEAP_SIZE (128 * 1024 * 1024)
 #else
-#include "qemu-common.h"
 #include "exec/gdbstub.h"
 #include "exec/softmmu-semi.h"
 #endif
 #include "qemu/log.h"
-#include "sysemu/sysemu.h"
 
 #define HOSTED_EXIT  0
 #define HOSTED_INIT_SIM 1
@@ -131,7 +129,8 @@ static void m68k_semi_return_u32(CPUM68KState *env, uint32_t ret, uint32_t err)
     target_ulong args = env->dregs[1];
     if (put_user_u32(ret, args) ||
         put_user_u32(err, args + 4)) {
-        /* The m68k semihosting ABI does not provide any way to report this
+        /*
+         * The m68k semihosting ABI does not provide any way to report this
          * error to the guest, so the best we can do is log it in qemu.
          * It is always a guest error not to pass us a valid argument block.
          */
@@ -160,8 +159,10 @@ static void m68k_semi_cb(CPUState *cs, target_ulong ret, target_ulong err)
     CPUM68KState *env = &cpu->env;
 
     if (m68k_semi_is_fseek) {
-        /* FIXME: We've already lost the high bits of the fseek
-           return value.  */
+        /*
+         * FIXME: We've already lost the high bits of the fseek
+         * return value.
+         */
         m68k_semi_return_u64(env, ret, err);
         m68k_semi_is_fseek = 0;
     } else {
@@ -169,7 +170,8 @@ static void m68k_semi_cb(CPUState *cs, target_ulong ret, target_ulong err)
     }
 }
 
-/* Read the input value from the argument block; fail the semihosting
+/*
+ * Read the input value from the argument block; fail the semihosting
  * call if the memory read fails.
  */
 #define GET_ARG(n) do {                                 \
@@ -421,7 +423,7 @@ void do_m68k_semihosting(CPUM68KState *env, int nr)
     case HOSTED_INIT_SIM:
 #if defined(CONFIG_USER_ONLY)
         {
-        CPUState *cs = CPU(m68k_env_get_cpu(env));
+        CPUState *cs = env_cpu(env);
         TaskState *ts = cs->opaque;
         /* Allocate the heap using sbrk.  */
         if (!ts->heap_limit) {
@@ -441,20 +443,24 @@ void do_m68k_semihosting(CPUM68KState *env, int nr)
             }
             ts->heap_limit = base + size;
         }
-        /* This call may happen before we have writable memory, so return
-           values directly in registers.  */
+        /*
+         * This call may happen before we have writable memory, so return
+         * values directly in registers.
+         */
         env->dregs[1] = ts->heap_limit;
         env->aregs[7] = ts->stack_base;
         }
 #else
-        /* FIXME: This is wrong for boards where RAM does not start at
-           address zero.  */
+        /*
+         * FIXME: This is wrong for boards where RAM does not start at
+         * address zero.
+         */
         env->dregs[1] = ram_size;
         env->aregs[7] = ram_size;
 #endif
         return;
     default:
-        cpu_abort(CPU(m68k_env_get_cpu(env)), "Unsupported semihosting syscall %d\n", nr);
+        cpu_abort(env_cpu(env), "Unsupported semihosting syscall %d\n", nr);
         result = 0;
     }
 failed:

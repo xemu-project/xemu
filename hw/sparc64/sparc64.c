@@ -28,6 +28,7 @@
 #include "hw/char/serial.h"
 #include "hw/sparc/sparc64.h"
 #include "qemu/timer.h"
+#include "sysemu/reset.h"
 #include "trace.h"
 
 
@@ -46,7 +47,7 @@ void cpu_check_irqs(CPUSPARCState *env)
     if (env->ivec_status & 0x20) {
         return;
     }
-    cs = CPU(sparc_env_get_cpu(env));
+    cs = env_cpu(env);
     /* check if TM or SM in SOFTINT are set
        setting these also causes interrupt 14 */
     if (env->softint & (SOFTINT_TIMER | SOFTINT_STIMER)) {

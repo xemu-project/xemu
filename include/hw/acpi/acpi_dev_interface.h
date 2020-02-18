@@ -1,8 +1,10 @@
 #ifndef ACPI_DEV_INTERFACE_H
 #define ACPI_DEV_INTERFACE_H
 
+#include "qapi/qapi-types-misc.h"
 #include "qom/object.h"
 #include "hw/boards.h"
+#include "hw/qdev-core.h"
 
 /* These values are part of guest ABI, and can not be changed */
 typedef enum {
@@ -11,6 +13,7 @@ typedef enum {
     ACPI_MEMORY_HOTPLUG_STATUS = 8,
     ACPI_NVDIMM_HOTPLUG_STATUS = 16,
     ACPI_VMGENID_CHANGE_STATUS = 32,
+    ACPI_POWER_DOWN_STATUS = 64,
 } AcpiEventStatusBits;
 
 #define TYPE_ACPI_DEVICE_IF "acpi-device-interface"

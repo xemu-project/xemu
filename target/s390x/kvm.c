@@ -28,15 +28,17 @@
 #include "cpu.h"
 #include "internal.h"
 #include "kvm_s390x.h"
+#include "sysemu/kvm_int.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/timer.h"
 #include "qemu/units.h"
+#include "qemu/main-loop.h"
 #include "qemu/mmap-alloc.h"
 #include "qemu/log.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/hw_accel.h"
-#include "hw/hw.h"
+#include "sysemu/runstate.h"
 #include "sysemu/device_tree.h"
 #include "exec/gdbstub.h"
 #include "exec/ram_addr.h"
@@ -119,8 +121,16 @@
  * Needs to be big enough to contain max_cpus emergency signals
  * and in addition NR_LOCAL_IRQS interrupts
  */
-#define VCPU_IRQ_BUF_SIZE (sizeof(struct kvm_s390_irq) * \
-                           (max_cpus + NR_LOCAL_IRQS))
+#define VCPU_IRQ_BUF_SIZE(max_cpus) (sizeof(struct kvm_s390_irq) * \
+                                     (max_cpus + NR_LOCAL_IRQS))
+/*
+ * KVM does only support memory slots up to KVM_MEM_MAX_NR_PAGES pages
+ * as the dirty bitmap must be managed by bitops that take an int as
+ * position indicator. This would end at an unaligned  address
+ * (0x7fffff00000). As future variants might provide larger pages
+ * and to make all addresses properly aligned, let us split at 4TB.
+ */
+#define KVM_SLOT_MAX_BYTES (4UL * TiB)
 
 static CPUWatchpoint hw_watchpoint;
 /*
@@ -283,45 +293,51 @@ void kvm_s390_crypto_reset(void)
     }
 }
 
-static int kvm_s390_configure_mempath_backing(KVMState *s)
+void kvm_s390_set_max_pagesize(uint64_t pagesize, Error **errp)
 {
-    size_t path_psize = qemu_getrampagesize();
-
-    if (path_psize == 4 * KiB) {
-        return 0;
+    if (pagesize == 4 * KiB) {
+        return;
     }
 
     if (!hpage_1m_allowed()) {
-        error_report("This QEMU machine does not support huge page "
-                     "mappings");
-        return -EINVAL;
+        error_setg(errp, "This QEMU machine does not support huge page "
+                   "mappings");
+        return;
     }
 
-    if (path_psize != 1 * MiB) {
-        error_report("Memory backing with 2G pages was specified, "
-                     "but KVM does not support this memory backing");
-        return -EINVAL;
+    if (pagesize != 1 * MiB) {
+        error_setg(errp, "Memory backing with 2G pages was specified, "
+                   "but KVM does not support this memory backing");
+        return;
     }
 
-    if (kvm_vm_enable_cap(s, KVM_CAP_S390_HPAGE_1M, 0)) {
-        error_report("Memory backing with 1M pages was specified, "
-                     "but KVM does not support this memory backing");
-        return -EINVAL;
+    if (kvm_vm_enable_cap(kvm_state, KVM_CAP_S390_HPAGE_1M, 0)) {
+        error_setg(errp, "Memory backing with 1M pages was specified, "
+                   "but KVM does not support this memory backing");
+        return;
     }
 
     cap_hpage_1m = 1;
-    return 0;
+}
+
+static void ccw_machine_class_foreach(ObjectClass *oc, void *opaque)
+{
+    MachineClass *mc = MACHINE_CLASS(oc);
+
+    mc->default_cpu_type = S390_CPU_TYPE_NAME("host");
 }
 
 int kvm_arch_init(MachineState *ms, KVMState *s)
 {
-    MachineClass *mc = MACHINE_GET_CLASS(ms);
+    object_class_foreach(ccw_machine_class_foreach, TYPE_S390_CCW_MACHINE,
+                         false, NULL);
 
-    if (kvm_s390_configure_mempath_backing(s)) {
-        return -EINVAL;
+    if (!kvm_check_extension(kvm_state, KVM_CAP_DEVICE_CTRL)) {
+        error_report("KVM is missing capability KVM_CAP_DEVICE_CTRL - "
+                     "please use kernel 3.15 or newer");
+        return -1;
     }
 
-    mc->default_cpu_type = S390_CPU_TYPE_NAME("host");
     cap_sync_regs = kvm_check_extension(s, KVM_CAP_SYNC_REGS);
     cap_async_pf = kvm_check_extension(s, KVM_CAP_ASYNC_PF);
     cap_mem_op = kvm_check_extension(s, KVM_CAP_S390_MEM_OP);
@@ -354,6 +370,7 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
      */
     /* kvm_vm_enable_cap(s, KVM_CAP_S390_AIS, 0); */
 
+    kvm_set_max_memslot_size(KVM_SLOT_MAX_BYTES);
     return 0;
 }
 
@@ -369,9 +386,20 @@ unsigned long kvm_arch_vcpu_id(CPUState *cpu)
 
 int kvm_arch_init_vcpu(CPUState *cs)
 {
+    unsigned int max_cpus = MACHINE(qdev_get_machine())->smp.max_cpus;
     S390CPU *cpu = S390_CPU(cs);
     kvm_s390_set_cpu_state(cpu, cpu->env.cpu_state);
-    cpu->irqstate = g_malloc0(VCPU_IRQ_BUF_SIZE);
+    cpu->irqstate = g_malloc0(VCPU_IRQ_BUF_SIZE(max_cpus));
+    return 0;
+}
+
+int kvm_arch_destroy_vcpu(CPUState *cs)
+{
+    S390CPU *cpu = S390_CPU(cs);
+
+    g_free(cpu->irqstate);
+    cpu->irqstate = NULL;
+
     return 0;
 }
 
@@ -425,21 +453,21 @@ int kvm_arch_put_registers(CPUState *cs, int level)
 
     if (can_sync_regs(cs, KVM_SYNC_VRS)) {
         for (i = 0; i < 32; i++) {
-            cs->kvm_run->s.regs.vrs[i][0] = env->vregs[i][0].ll;
-            cs->kvm_run->s.regs.vrs[i][1] = env->vregs[i][1].ll;
+            cs->kvm_run->s.regs.vrs[i][0] = env->vregs[i][0];
+            cs->kvm_run->s.regs.vrs[i][1] = env->vregs[i][1];
         }
         cs->kvm_run->s.regs.fpc = env->fpc;
         cs->kvm_run->kvm_dirty_regs |= KVM_SYNC_VRS;
     } else if (can_sync_regs(cs, KVM_SYNC_FPRS)) {
         for (i = 0; i < 16; i++) {
-            cs->kvm_run->s.regs.fprs[i] = get_freg(env, i)->ll;
+            cs->kvm_run->s.regs.fprs[i] = *get_freg(env, i);
         }
         cs->kvm_run->s.regs.fpc = env->fpc;
         cs->kvm_run->kvm_dirty_regs |= KVM_SYNC_FPRS;
     } else {
         /* Floating point */
         for (i = 0; i < 16; i++) {
-            fpu.fprs[i] = get_freg(env, i)->ll;
+            fpu.fprs[i] = *get_freg(env, i);
         }
         fpu.fpc = env->fpc;
 
@@ -593,13 +621,13 @@ int kvm_arch_get_registers(CPUState *cs)
     /* Floating point and vector registers */
     if (can_sync_regs(cs, KVM_SYNC_VRS)) {
         for (i = 0; i < 32; i++) {
-            env->vregs[i][0].ll = cs->kvm_run->s.regs.vrs[i][0];
-            env->vregs[i][1].ll = cs->kvm_run->s.regs.vrs[i][1];
+            env->vregs[i][0] = cs->kvm_run->s.regs.vrs[i][0];
+            env->vregs[i][1] = cs->kvm_run->s.regs.vrs[i][1];
         }
         env->fpc = cs->kvm_run->s.regs.fpc;
     } else if (can_sync_regs(cs, KVM_SYNC_FPRS)) {
         for (i = 0; i < 16; i++) {
-            get_freg(env, i)->ll = cs->kvm_run->s.regs.fprs[i];
+            *get_freg(env, i) = cs->kvm_run->s.regs.fprs[i];
         }
         env->fpc = cs->kvm_run->s.regs.fpc;
     } else {
@@ -608,7 +636,7 @@ int kvm_arch_get_registers(CPUState *cs)
             return r;
         }
         for (i = 0; i < 16; i++) {
-            get_freg(env, i)->ll = fpu.fprs[i];
+            *get_freg(env, i) = fpu.fprs[i];
         }
         env->fpc = fpu.fpc;
     }
@@ -782,7 +810,7 @@ int kvm_s390_mem_op(S390CPU *cpu, vaddr addr, uint8_t ar, void *hostbuf,
 
     ret = kvm_vcpu_ioctl(CPU(cpu), KVM_S390_MEM_OP, &mem_op);
     if (ret < 0) {
-        error_printf("KVM_S390_MEM_OP failed: %s\n", strerror(-ret));
+        warn_report("KVM_S390_MEM_OP failed: %s", strerror(-ret));
     }
     return ret;
 }
@@ -1947,9 +1975,10 @@ int kvm_s390_set_cpu_state(S390CPU *cpu, uint8_t cpu_state)
 
 void kvm_s390_vcpu_interrupt_pre_save(S390CPU *cpu)
 {
+    unsigned int max_cpus = MACHINE(qdev_get_machine())->smp.max_cpus;
     struct kvm_s390_irq_state irq_state = {
         .buf = (uint64_t) cpu->irqstate,
-        .len = VCPU_IRQ_BUF_SIZE,
+        .len = VCPU_IRQ_BUF_SIZE(max_cpus),
     };
     CPUState *cs = CPU(cpu);
     int32_t bytes;
@@ -2080,6 +2109,15 @@ static int query_cpu_subfunc(S390FeatBitmap features)
     if (test_bit(S390_FEAT_MSA_EXT_8, features)) {
         s390_add_from_feat_block(features, S390_FEAT_TYPE_KMA, prop.kma);
     }
+    if (test_bit(S390_FEAT_MSA_EXT_9, features)) {
+        s390_add_from_feat_block(features, S390_FEAT_TYPE_KDSA, prop.kdsa);
+    }
+    if (test_bit(S390_FEAT_ESORT_BASE, features)) {
+        s390_add_from_feat_block(features, S390_FEAT_TYPE_SORTL, prop.sortl);
+    }
+    if (test_bit(S390_FEAT_DEFLATE_BASE, features)) {
+        s390_add_from_feat_block(features, S390_FEAT_TYPE_DFLTCC, prop.dfltcc);
+    }
     return 0;
 }
 
@@ -2123,6 +2161,15 @@ static int configure_cpu_subfunc(const S390FeatBitmap features)
     }
     if (test_bit(S390_FEAT_MSA_EXT_8, features)) {
         s390_fill_feat_block(features, S390_FEAT_TYPE_KMA, prop.kma);
+    }
+    if (test_bit(S390_FEAT_MSA_EXT_9, features)) {
+        s390_fill_feat_block(features, S390_FEAT_TYPE_KDSA, prop.kdsa);
+    }
+    if (test_bit(S390_FEAT_ESORT_BASE, features)) {
+        s390_fill_feat_block(features, S390_FEAT_TYPE_SORTL, prop.sortl);
+    }
+    if (test_bit(S390_FEAT_DEFLATE_BASE, features)) {
+        s390_fill_feat_block(features, S390_FEAT_TYPE_DFLTCC, prop.dfltcc);
     }
     return kvm_vm_ioctl(kvm_state, KVM_SET_DEVICE_ATTR, &attr);
 }

@@ -28,6 +28,7 @@
 #include "exec/cpu_ldst.h"
 #include "exec/helper-gen.h"
 #include "exec/translator.h"
+#include "qemu/qemu-print.h"
 
 #include "trace-tcg.h"
 #include "exec/log.h"
@@ -918,7 +919,7 @@ static void dec_load(DisasContext *dc)
     unsigned int size;
     bool rev = false, ex = false, ea = false;
     int mem_index = cpu_mmu_index(&dc->cpu->env, false);
-    TCGMemOp mop;
+    MemOp mop;
 
     mop = dc->opcode & 3;
     size = 1 << mop;
@@ -961,17 +962,7 @@ static void dec_load(DisasContext *dc)
         switch (size) {
             case 1:
             {
-                /* 00 -> 11
-                   01 -> 10
-                   10 -> 10
-                   11 -> 00 */
-                TCGv low = tcg_temp_new();
-
-                tcg_gen_andi_tl(low, addr, 3);
-                tcg_gen_sub_tl(low, tcg_const_tl(3), low);
-                tcg_gen_andi_tl(addr, addr, ~3);
-                tcg_gen_or_tl(addr, addr, low);
-                tcg_temp_free(low);
+                tcg_gen_xori_tl(addr, addr, 3);
                 break;
             }
 
@@ -1005,9 +996,16 @@ static void dec_load(DisasContext *dc)
     tcg_gen_qemu_ld_i32(v, addr, mem_index, mop);
 
     if ((dc->cpu->env.pvr.regs[2] & PVR2_UNALIGNED_EXC_MASK) && size > 1) {
+        TCGv_i32 t0 = tcg_const_i32(0);
+        TCGv_i32 treg = tcg_const_i32(dc->rd);
+        TCGv_i32 tsize = tcg_const_i32(size - 1);
+
         tcg_gen_movi_i64(cpu_SR[SR_PC], dc->pc);
-        gen_helper_memalign(cpu_env, addr, tcg_const_i32(dc->rd),
-                            tcg_const_i32(0), tcg_const_i32(size - 1));
+        gen_helper_memalign(cpu_env, addr, treg, t0, tsize);
+
+        tcg_temp_free_i32(t0);
+        tcg_temp_free_i32(treg);
+        tcg_temp_free_i32(tsize);
     }
 
     if (ex) {
@@ -1034,7 +1032,7 @@ static void dec_store(DisasContext *dc)
     unsigned int size;
     bool rev = false, ex = false, ea = false;
     int mem_index = cpu_mmu_index(&dc->cpu->env, false);
-    TCGMemOp mop;
+    MemOp mop;
 
     mop = dc->opcode & 3;
     size = 1 << mop;
@@ -1094,17 +1092,7 @@ static void dec_store(DisasContext *dc)
         switch (size) {
             case 1:
             {
-                /* 00 -> 11
-                   01 -> 10
-                   10 -> 10
-                   11 -> 00 */
-                TCGv low = tcg_temp_new();
-
-                tcg_gen_andi_tl(low, addr, 3);
-                tcg_gen_sub_tl(low, tcg_const_tl(3), low);
-                tcg_gen_andi_tl(addr, addr, ~3);
-                tcg_gen_or_tl(addr, addr, low);
-                tcg_temp_free(low);
+                tcg_gen_xori_tl(addr, addr, 3);
                 break;
             }
 
@@ -1123,6 +1111,10 @@ static void dec_store(DisasContext *dc)
 
     /* Verify alignment if needed.  */
     if ((dc->cpu->env.pvr.regs[2] & PVR2_UNALIGNED_EXC_MASK) && size > 1) {
+        TCGv_i32 t1 = tcg_const_i32(1);
+        TCGv_i32 treg = tcg_const_i32(dc->rd);
+        TCGv_i32 tsize = tcg_const_i32(size - 1);
+
         tcg_gen_movi_i64(cpu_SR[SR_PC], dc->pc);
         /* FIXME: if the alignment is wrong, we should restore the value
          *        in memory. One possible way to achieve this is to probe
@@ -1130,8 +1122,11 @@ static void dec_store(DisasContext *dc)
          *        the alignment checks in between the probe and the mem
          *        access.
          */
-        gen_helper_memalign(cpu_env, addr, tcg_const_i32(dc->rd),
-                            tcg_const_i32(1), tcg_const_i32(size - 1));
+        gen_helper_memalign(cpu_env, addr, treg, t1, tsize);
+
+        tcg_temp_free_i32(t1);
+        tcg_temp_free_i32(treg);
+        tcg_temp_free_i32(tsize);
     }
 
     if (ex) {
@@ -1182,6 +1177,17 @@ static void eval_cond_jmp(DisasContext *dc, TCGv_i64 pc_true, TCGv_i64 pc_false)
     tcg_temp_free_i64(tmp_zero);
 }
 
+static void dec_setup_dslot(DisasContext *dc)
+{
+        TCGv_i32 tmp = tcg_const_i32(dc->type_b && (dc->tb_flags & IMM_FLAG));
+
+        dc->delayed_branch = 2;
+        dc->tb_flags |= D_FLAG;
+
+        tcg_gen_st_i32(tmp, cpu_env, offsetof(CPUMBState, bimm));
+        tcg_temp_free_i32(tmp);
+}
+
 static void dec_bcc(DisasContext *dc)
 {
     unsigned int cc;
@@ -1193,10 +1199,7 @@ static void dec_bcc(DisasContext *dc)
 
     dc->delayed_branch = 1;
     if (dslot) {
-        dc->delayed_branch = 2;
-        dc->tb_flags |= D_FLAG;
-        tcg_gen_st_i32(tcg_const_i32(dc->type_b && (dc->tb_flags & IMM_FLAG)),
-                      cpu_env, offsetof(CPUMBState, bimm));
+        dec_setup_dslot(dc);
     }
 
     if (dec_alu_op_b_is_small_imm(dc)) {
@@ -1255,10 +1258,7 @@ static void dec_br(DisasContext *dc)
 
     dc->delayed_branch = 1;
     if (dslot) {
-        dc->delayed_branch = 2;
-        dc->tb_flags |= D_FLAG;
-        tcg_gen_st_i32(tcg_const_i32(dc->type_b && (dc->tb_flags & IMM_FLAG)),
-                      cpu_env, offsetof(CPUMBState, bimm));
+        dec_setup_dslot(dc);
     }
     if (link && dc->rd)
         tcg_gen_movi_i32(cpu_R[dc->rd], dc->pc);
@@ -1360,10 +1360,7 @@ static void dec_rts(DisasContext *dc)
         return;
     }
 
-    dc->delayed_branch = 2;
-    dc->tb_flags |= D_FLAG;
-    tcg_gen_st_i32(tcg_const_i32(dc->type_b && (dc->tb_flags & IMM_FLAG)),
-                  cpu_env, offsetof(CPUMBState, bimm));
+    dec_setup_dslot(dc);
 
     if (i_bit) {
         LOG_DIS("rtid ir=%x\n", dc->ir);
@@ -1600,17 +1597,16 @@ static inline void decode(DisasContext *dc, uint32_t ir)
 }
 
 /* generate intermediate code for basic block 'tb'.  */
-void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
+void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
 {
     CPUMBState *env = cs->env_ptr;
-    MicroBlazeCPU *cpu = mb_env_get_cpu(env);
+    MicroBlazeCPU *cpu = env_archcpu(env);
     uint32_t pc_start;
     struct DisasContext ctx;
     struct DisasContext *dc = &ctx;
     uint32_t page_start, org_flags;
     uint32_t npc;
     int num_insns;
-    int max_insns;
 
     pc_start = tb->pc;
     dc->cpu = cpu;
@@ -1634,13 +1630,6 @@ void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
 
     page_start = pc_start & TARGET_PAGE_MASK;
     num_insns = 0;
-    max_insns = tb_cflags(tb) & CF_COUNT_MASK;
-    if (max_insns == 0) {
-        max_insns = CF_COUNT_MASK;
-    }
-    if (max_insns > TCG_MAX_INSNS) {
-        max_insns = TCG_MAX_INSNS;
-    }
 
     gen_tb_start(tb);
     do
@@ -1692,7 +1681,10 @@ void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
                 dc->tb_flags &= ~D_FLAG;
                 /* If it is a direct jump, try direct chaining.  */
                 if (dc->jmp == JMP_INDIRECT) {
-                    eval_cond_jmp(dc, env_btarget, tcg_const_i64(dc->pc));
+                    TCGv_i64 tmp_pc = tcg_const_i64(dc->pc);
+                    eval_cond_jmp(dc, env_btarget, tmp_pc);
+                    tcg_temp_free_i64(tmp_pc);
+
                     dc->is_jmp = DISAS_JUMP;
                 } else if (dc->jmp == JMP_DIRECT) {
                     t_sync_flags(dc);
@@ -1731,8 +1723,6 @@ void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
             npc = dc->jmp_pc;
     }
 
-    if (tb_cflags(tb) & CF_LAST_IO)
-        gen_io_end();
     /* Force an update if the per-tb cpu state has changed.  */
     if (dc->is_jmp == DISAS_NEXT
         && (dc->cpustate_changed || org_flags != dc->tb_flags)) {
@@ -1785,36 +1775,36 @@ void gen_intermediate_code(CPUState *cs, struct TranslationBlock *tb)
     assert(!dc->abort_at_next_insn);
 }
 
-void mb_cpu_dump_state(CPUState *cs, FILE *f, fprintf_function cpu_fprintf,
-                       int flags)
+void mb_cpu_dump_state(CPUState *cs, FILE *f, int flags)
 {
     MicroBlazeCPU *cpu = MICROBLAZE_CPU(cs);
     CPUMBState *env = &cpu->env;
     int i;
 
-    if (!env || !f)
+    if (!env) {
         return;
+    }
 
-    cpu_fprintf(f, "IN: PC=%" PRIx64 " %s\n",
-                env->sregs[SR_PC], lookup_symbol(env->sregs[SR_PC]));
-    cpu_fprintf(f, "rmsr=%" PRIx64 " resr=%" PRIx64 " rear=%" PRIx64 " "
-                   "debug=%x imm=%x iflags=%x fsr=%" PRIx64 "\n",
-             env->sregs[SR_MSR], env->sregs[SR_ESR], env->sregs[SR_EAR],
-             env->debug, env->imm, env->iflags, env->sregs[SR_FSR]);
-    cpu_fprintf(f, "btaken=%d btarget=%" PRIx64 " mode=%s(saved=%s) "
-                   "eip=%d ie=%d\n",
-             env->btaken, env->btarget,
-             (env->sregs[SR_MSR] & MSR_UM) ? "user" : "kernel",
-             (env->sregs[SR_MSR] & MSR_UMS) ? "user" : "kernel",
-             (bool)(env->sregs[SR_MSR] & MSR_EIP),
-             (bool)(env->sregs[SR_MSR] & MSR_IE));
+    qemu_fprintf(f, "IN: PC=%" PRIx64 " %s\n",
+                 env->sregs[SR_PC], lookup_symbol(env->sregs[SR_PC]));
+    qemu_fprintf(f, "rmsr=%" PRIx64 " resr=%" PRIx64 " rear=%" PRIx64 " "
+                 "debug=%x imm=%x iflags=%x fsr=%" PRIx64 "\n",
+                 env->sregs[SR_MSR], env->sregs[SR_ESR], env->sregs[SR_EAR],
+                 env->debug, env->imm, env->iflags, env->sregs[SR_FSR]);
+    qemu_fprintf(f, "btaken=%d btarget=%" PRIx64 " mode=%s(saved=%s) "
+                 "eip=%d ie=%d\n",
+                 env->btaken, env->btarget,
+                 (env->sregs[SR_MSR] & MSR_UM) ? "user" : "kernel",
+                 (env->sregs[SR_MSR] & MSR_UMS) ? "user" : "kernel",
+                 (bool)(env->sregs[SR_MSR] & MSR_EIP),
+                 (bool)(env->sregs[SR_MSR] & MSR_IE));
 
     for (i = 0; i < 32; i++) {
-        cpu_fprintf(f, "r%2.2d=%8.8x ", i, env->regs[i]);
+        qemu_fprintf(f, "r%2.2d=%8.8x ", i, env->regs[i]);
         if ((i + 1) % 4 == 0)
-            cpu_fprintf(f, "\n");
+            qemu_fprintf(f, "\n");
         }
-    cpu_fprintf(f, "\n\n");
+    qemu_fprintf(f, "\n\n");
 }
 
 void mb_tcg_init(void)

@@ -10,9 +10,13 @@
 
 #include "qemu/osdep.h"
 #include "hw/hw.h"
+#include "hw/irq.h"
+#include "hw/qdev-properties.h"
 #include "hw/arm/pxa.h"
 #include "hw/sysbus.h"
+#include "migration/vmstate.h"
 #include "qapi/error.h"
+#include "qemu/module.h"
 
 #define PXA255_DMA_NUM_CHANNELS 16
 #define PXA27X_DMA_NUM_CHANNELS 32

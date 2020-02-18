@@ -33,7 +33,9 @@
 
 int32_t main(void)
 {
-    char *instruction_name = "ILVL.B";
+    char *isa_ase_name = "MSA";
+    char *group_name = "Interleave";
+    char *instruction_name =  "ILVL.B";
     int32_t ret;
     uint32_t i, j;
     struct timeval start, end;
@@ -123,6 +125,8 @@ int32_t main(void)
         { 0xa9a94242e2e2a0a0ULL, 0x8d8df1f18888d8d8ULL, },
     };
 
+    reset_msa_registers();
+
     gettimeofday(&start, NULL);
 
     for (i = 0; i < PATTERN_INPUTS_SHORT_COUNT; i++) {
@@ -146,8 +150,9 @@ int32_t main(void)
     elapsed_time = (end.tv_sec - start.tv_sec) * 1000.0;
     elapsed_time += (end.tv_usec - start.tv_usec) / 1000.0;
 
-    ret = check_results(instruction_name, TEST_COUNT_TOTAL, elapsed_time,
-                        &b128_result[0][0], &b128_expect[0][0]);
+    ret = check_results_128(isa_ase_name, group_name, instruction_name,
+                            TEST_COUNT_TOTAL, elapsed_time,
+                            &b128_result[0][0], &b128_expect[0][0]);
 
     return ret;
 }

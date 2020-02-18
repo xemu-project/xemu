@@ -1,8 +1,6 @@
 #ifndef QEMU_CUTILS_H
 #define QEMU_CUTILS_H
 
-#include "qemu/fprintf-fn.h"
-
 /**
  * pstrcpy:
  * @buf: buffer to copy string into
@@ -156,6 +154,8 @@ int parse_uint_full(const char *s, unsigned long long *value, int base);
 int qemu_strtosz(const char *nptr, const char **end, uint64_t *result);
 int qemu_strtosz_MiB(const char *nptr, const char **end, uint64_t *result);
 int qemu_strtosz_metric(const char *nptr, const char **end, uint64_t *result);
+
+char *size_to_str(uint64_t val);
 
 /* used to print char* safely */
 #define STR_OR_NULL(str) ((str) ? (str) : "null")

@@ -6,9 +6,10 @@
 
 #include "qemu/osdep.h"
 #include "qemu/iov.h"
+#include "qemu/module.h"
 
-#include "hw/qdev.h"
 #include "hw/virtio/virtio.h"
+#include "hw/qdev-properties.h"
 #include "hw/virtio/virtio-input.h"
 
 #undef CONFIG_CURSES

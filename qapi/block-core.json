@@ -360,6 +360,9 @@
 # @write_threshold: configured write threshold for the device.
 #                   0 if disabled. (Since 2.3)
 #
+# @dirty-bitmaps: dirty bitmaps information (only present if node
+#                 has one or more dirty bitmaps) (Since 4.2)
+#
 # Since: 0.14.0
 #
 ##
@@ -378,7 +381,7 @@
             '*bps_wr_max_length': 'int', '*iops_max_length': 'int',
             '*iops_rd_max_length': 'int', '*iops_wr_max_length': 'int',
             '*iops_size': 'int', '*group': 'str', 'cache': 'BlockdevCacheInfo',
-            'write_threshold': 'int' } }
+            'write_threshold': 'int', '*dirty-bitmaps': ['BlockDirtyInfo'] } }
 
 ##
 # @BlockDeviceIoStatus:
@@ -656,6 +659,7 @@
 #
 # @dirty-bitmaps: dirty bitmaps information (only present if the
 #                 driver has one or more dirty bitmaps) (Since 2.0)
+#                 Deprecated in 4.2; see BlockDeviceInfo instead.
 #
 # @io-status: @BlockDeviceIoStatus. Only present if the device
 #             supports it and the VM is configured to stop on errors
@@ -856,6 +860,8 @@
 #
 # @wr_bytes:      The number of bytes written by the device.
 #
+# @unmap_bytes: The number of bytes unmapped by the device (Since 4.2)
+#
 # @rd_operations: The number of read operations performed by the device.
 #
 # @wr_operations: The number of write operations performed by the device.
@@ -863,12 +869,18 @@
 # @flush_operations: The number of cache flush operations performed by the
 #                    device (since 0.15.0)
 #
-# @flush_total_time_ns: Total time spend on cache flushes in nano-seconds
+# @unmap_operations: The number of unmap operations performed by the device
+#                    (Since 4.2)
+#
+# @rd_total_time_ns: Total time spent on reads in nanoseconds (since 0.15.0).
+#
+# @wr_total_time_ns: Total time spent on writes in nanoseconds (since 0.15.0).
+#
+# @flush_total_time_ns: Total time spent on cache flushes in nanoseconds
 #                       (since 0.15.0).
 #
-# @wr_total_time_ns: Total time spend on writes in nano-seconds (since 0.15.0).
-#
-# @rd_total_time_ns: Total_time_spend on reads in nano-seconds (since 0.15.0).
+# @unmap_total_time_ns: Total time spent on unmap operations in nanoseconds
+#                       (Since 4.2)
 #
 # @wr_highest_offset: The offset after the greatest byte written to the
 #                     device.  The intended use of this information is for
@@ -880,6 +892,9 @@
 #
 # @wr_merged: Number of write requests that have been merged into another
 #             request (Since 2.3).
+#
+# @unmap_merged: Number of unmap requests that have been merged into another
+#                request (Since 4.2)
 #
 # @idle_time_ns: Time since the last I/O operation, in
 #                nanoseconds. If the field is absent it means that
@@ -894,6 +909,9 @@
 # @failed_flush_operations: The number of failed flush operations
 #                           performed by the device (Since 2.5)
 #
+# @failed_unmap_operations: The number of failed unmap operations performed
+#                           by the device (Since 4.2)
+#
 # @invalid_rd_operations: The number of invalid read operations
 #                          performed by the device (Since 2.5)
 #
@@ -902,6 +920,9 @@
 #
 # @invalid_flush_operations: The number of invalid flush operations
 #                            performed by the device (Since 2.5)
+#
+# @invalid_unmap_operations: The number of invalid unmap operations performed
+#                            by the device (Since 4.2)
 #
 # @account_invalid: Whether invalid operations are included in the
 #                   last access statistics (Since 2.5)
@@ -921,19 +942,58 @@
 # Since: 0.14.0
 ##
 { 'struct': 'BlockDeviceStats',
-  'data': {'rd_bytes': 'int', 'wr_bytes': 'int', 'rd_operations': 'int',
-           'wr_operations': 'int', 'flush_operations': 'int',
-           'flush_total_time_ns': 'int', 'wr_total_time_ns': 'int',
-           'rd_total_time_ns': 'int', 'wr_highest_offset': 'int',
-           'rd_merged': 'int', 'wr_merged': 'int', '*idle_time_ns': 'int',
+  'data': {'rd_bytes': 'int', 'wr_bytes': 'int', 'unmap_bytes' : 'int',
+           'rd_operations': 'int', 'wr_operations': 'int',
+           'flush_operations': 'int', 'unmap_operations': 'int',
+           'rd_total_time_ns': 'int', 'wr_total_time_ns': 'int',
+           'flush_total_time_ns': 'int', 'unmap_total_time_ns': 'int',
+           'wr_highest_offset': 'int',
+           'rd_merged': 'int', 'wr_merged': 'int', 'unmap_merged': 'int',
+           '*idle_time_ns': 'int',
            'failed_rd_operations': 'int', 'failed_wr_operations': 'int',
-           'failed_flush_operations': 'int', 'invalid_rd_operations': 'int',
-           'invalid_wr_operations': 'int', 'invalid_flush_operations': 'int',
+           'failed_flush_operations': 'int', 'failed_unmap_operations': 'int',
+           'invalid_rd_operations': 'int', 'invalid_wr_operations': 'int',
+           'invalid_flush_operations': 'int', 'invalid_unmap_operations': 'int',
            'account_invalid': 'bool', 'account_failed': 'bool',
            'timed_stats': ['BlockDeviceTimedStats'],
            '*rd_latency_histogram': 'BlockLatencyHistogramInfo',
            '*wr_latency_histogram': 'BlockLatencyHistogramInfo',
            '*flush_latency_histogram': 'BlockLatencyHistogramInfo' } }
+
+##
+# @BlockStatsSpecificFile:
+#
+# File driver statistics
+#
+# @discard-nb-ok: The number of successful discard operations performed by
+#                 the driver.
+#
+# @discard-nb-failed: The number of failed discard operations performed by
+#                     the driver.
+#
+# @discard-bytes-ok: The number of bytes discarded by the driver.
+#
+# Since: 4.2
+##
+{ 'struct': 'BlockStatsSpecificFile',
+  'data': {
+      'discard-nb-ok': 'uint64',
+      'discard-nb-failed': 'uint64',
+      'discard-bytes-ok': 'uint64' } }
+
+##
+# @BlockStatsSpecific:
+#
+# Block driver specific statistics
+#
+# Since: 4.2
+##
+{ 'union': 'BlockStatsSpecific',
+  'base': { 'driver': 'BlockdevDriver' },
+  'discriminator': 'driver',
+  'data': {
+      'file': 'BlockStatsSpecificFile',
+      'host_device': 'BlockStatsSpecificFile' } }
 
 ##
 # @BlockStats:
@@ -950,6 +1010,8 @@
 #
 # @stats:  A @BlockDeviceStats for the device.
 #
+# @driver-specific: Optional driver-specific stats. (Since 4.2)
+#
 # @parent: This describes the file block device if it has one.
 #          Contains recursively the statistics of the underlying
 #          protocol (e.g. the host file for a qcow2 image). If there is
@@ -963,6 +1025,7 @@
 { 'struct': 'BlockStats',
   'data': {'*device': 'str', '*qdev': 'str', '*node-name': 'str',
            'stats': 'BlockDeviceStats',
+           '*driver-specific': 'BlockStatsSpecific',
            '*parent': 'BlockStats',
            '*backing': 'BlockStats'} }
 
@@ -1127,12 +1190,35 @@
 #
 # @none: only copy data written from now on
 #
-# @incremental: only copy data described by the dirty bitmap. Since: 2.4
+# @incremental: only copy data described by the dirty bitmap. (since: 2.4)
+#
+# @bitmap: only copy data described by the dirty bitmap. (since: 4.2)
+#          Behavior on completion is determined by the BitmapSyncMode.
 #
 # Since: 1.3
 ##
 { 'enum': 'MirrorSyncMode',
-  'data': ['top', 'full', 'none', 'incremental'] }
+  'data': ['top', 'full', 'none', 'incremental', 'bitmap'] }
+
+##
+# @BitmapSyncMode:
+#
+# An enumeration of possible behaviors for the synchronization of a bitmap
+# when used for data copy operations.
+#
+# @on-success: The bitmap is only synced when the operation is successful.
+#              This is the behavior always used for 'INCREMENTAL' backups.
+#
+# @never: The bitmap is never synchronized with the operation, and is
+#         treated solely as a read-only manifest of blocks to copy.
+#
+# @always: The bitmap is always synchronized with the operation,
+#          regardless of whether or not the operation was successful.
+#
+# Since: 4.2
+##
+{ 'enum': 'BitmapSyncMode',
+  'data': ['on-success', 'never', 'always'] }
 
 ##
 # @MirrorCopyMode:
@@ -1279,17 +1365,17 @@
 #
 # Either @device or @node-name must be set but not both.
 #
-# @device: the name of the device to generate the snapshot from.
+# @device: the name of the device to take a snapshot of.
 #
 # @node-name: graph node name to generate the snapshot from (Since 2.0)
 #
-# @snapshot-file: the target of the new image. If the file exists, or
-# if it is a device, the snapshot will be created in the existing
-# file/device. Otherwise, a new file will be created.
+# @snapshot-file: the target of the new overlay image. If the file
+# exists, or if it is a device, the overlay will be created in the
+# existing file/device. Otherwise, a new file will be created.
 #
 # @snapshot-node-name: the graph node name of the new image (Since 2.0)
 #
-# @format: the format of the snapshot image, default is 'qcow2'.
+# @format: the format of the overlay image, default is 'qcow2'.
 #
 # @mode: whether and how QEMU should create a new image, default is
 #        'absolute-paths'.
@@ -1302,10 +1388,10 @@
 ##
 # @BlockdevSnapshot:
 #
-# @node: device or node name that will have a snapshot created.
+# @node: device or node name that will have a snapshot taken.
 #
 # @overlay: reference to the existing block device that will become
-#           the overlay of @node, as part of creating the snapshot.
+#           the overlay of @node, as part of taking the snapshot.
 #           It must not have a current backing file (this can be
 #           achieved by passing "backing": null to blockdev-add).
 #
@@ -1315,12 +1401,78 @@
   'data': { 'node': 'str', 'overlay': 'str' } }
 
 ##
-# @DriveBackup:
+# @BackupCommon:
 #
 # @job-id: identifier for the newly-created block job. If
 #          omitted, the device name will be used. (Since 2.7)
 #
 # @device: the device name or node-name of a root node which should be copied.
+#
+# @sync: what parts of the disk image should be copied to the destination
+#        (all the disk, only the sectors allocated in the topmost image, from a
+#        dirty bitmap, or only new I/O).
+#
+# @speed: the maximum speed, in bytes per second. The default is 0,
+#         for unlimited.
+#
+# @bitmap: The name of a dirty bitmap to use.
+#          Must be present if sync is "bitmap" or "incremental".
+#          Can be present if sync is "full" or "top".
+#          Must not be present otherwise.
+#          (Since 2.4 (drive-backup), 3.1 (blockdev-backup))
+#
+# @bitmap-mode: Specifies the type of data the bitmap should contain after
+#               the operation concludes.
+#               Must be present if a bitmap was provided,
+#               Must NOT be present otherwise. (Since 4.2)
+#
+# @compress: true to compress data, if the target format supports it.
+#            (default: false) (since 2.8)
+#
+# @on-source-error: the action to take on an error on the source,
+#                   default 'report'.  'stop' and 'enospc' can only be used
+#                   if the block device supports io-status (see BlockInfo).
+#
+# @on-target-error: the action to take on an error on the target,
+#                   default 'report' (no limitations, since this applies to
+#                   a different block device than @device).
+#
+# @auto-finalize: When false, this job will wait in a PENDING state after it has
+#                 finished its work, waiting for @block-job-finalize before
+#                 making any block graph changes.
+#                 When true, this job will automatically
+#                 perform its abort or commit actions.
+#                 Defaults to true. (Since 2.12)
+#
+# @auto-dismiss: When false, this job will wait in a CONCLUDED state after it
+#                has completely ceased all work, and awaits @block-job-dismiss.
+#                When true, this job will automatically disappear from the query
+#                list without user intervention.
+#                Defaults to true. (Since 2.12)
+#
+# @filter-node-name: the node name that should be assigned to the
+#                    filter driver that the backup job inserts into the graph
+#                    above node specified by @drive. If this option is not given,
+#                    a node name is autogenerated. (Since: 4.2)
+#
+# Note: @on-source-error and @on-target-error only affect background
+# I/O.  If an error occurs during a guest write request, the device's
+# rerror/werror actions will be used.
+#
+# Since: 4.2
+##
+{ 'struct': 'BackupCommon',
+  'data': { '*job-id': 'str', 'device': 'str',
+            'sync': 'MirrorSyncMode', '*speed': 'int',
+            '*bitmap': 'str', '*bitmap-mode': 'BitmapSyncMode',
+            '*compress': 'bool',
+            '*on-source-error': 'BlockdevOnError',
+            '*on-target-error': 'BlockdevOnError',
+            '*auto-finalize': 'bool', '*auto-dismiss': 'bool',
+            '*filter-node-name': 'str' } }
+
+##
+# @DriveBackup:
 #
 # @target: the target of the new image. If the file exists, or if it
 #          is a device, the existing file/device will be used as the new
@@ -1329,121 +1481,32 @@
 # @format: the format of the new destination, default is to
 #          probe if @mode is 'existing', else the format of the source
 #
-# @sync: what parts of the disk image should be copied to the destination
-#        (all the disk, only the sectors allocated in the topmost image, from a
-#        dirty bitmap, or only new I/O).
-#
 # @mode: whether and how QEMU should create a new image, default is
 #        'absolute-paths'.
-#
-# @speed: the maximum speed, in bytes per second
-#
-# @bitmap: the name of dirty bitmap if sync is "incremental".
-#          Must be present if sync is "incremental", must NOT be present
-#          otherwise. (Since 2.4)
-#
-# @compress: true to compress data, if the target format supports it.
-#            (default: false) (since 2.8)
-#
-# @on-source-error: the action to take on an error on the source,
-#                   default 'report'.  'stop' and 'enospc' can only be used
-#                   if the block device supports io-status (see BlockInfo).
-#
-# @on-target-error: the action to take on an error on the target,
-#                   default 'report' (no limitations, since this applies to
-#                   a different block device than @device).
-#
-# @auto-finalize: When false, this job will wait in a PENDING state after it has
-#                 finished its work, waiting for @block-job-finalize before
-#                 making any block graph changes.
-#                 When true, this job will automatically
-#                 perform its abort or commit actions.
-#                 Defaults to true. (Since 2.12)
-#
-# @auto-dismiss: When false, this job will wait in a CONCLUDED state after it
-#                has completely ceased all work, and awaits @block-job-dismiss.
-#                When true, this job will automatically disappear from the query
-#                list without user intervention.
-#                Defaults to true. (Since 2.12)
-#
-# Note: @on-source-error and @on-target-error only affect background
-# I/O.  If an error occurs during a guest write request, the device's
-# rerror/werror actions will be used.
 #
 # Since: 1.6
 ##
 { 'struct': 'DriveBackup',
-  'data': { '*job-id': 'str', 'device': 'str', 'target': 'str',
-            '*format': 'str', 'sync': 'MirrorSyncMode',
-            '*mode': 'NewImageMode', '*speed': 'int',
-            '*bitmap': 'str', '*compress': 'bool',
-            '*on-source-error': 'BlockdevOnError',
-            '*on-target-error': 'BlockdevOnError',
-            '*auto-finalize': 'bool', '*auto-dismiss': 'bool' } }
+  'base': 'BackupCommon',
+  'data': { 'target': 'str',
+            '*format': 'str',
+            '*mode': 'NewImageMode' } }
 
 ##
 # @BlockdevBackup:
 #
-# @job-id: identifier for the newly-created block job. If
-#          omitted, the device name will be used. (Since 2.7)
-#
-# @device: the device name or node-name of a root node which should be copied.
-#
 # @target: the device name or node-name of the backup target node.
-#
-# @sync: what parts of the disk image should be copied to the destination
-#        (all the disk, only the sectors allocated in the topmost image, or
-#        only new I/O).
-#
-# @speed: the maximum speed, in bytes per second. The default is 0,
-#         for unlimited.
-#
-# @bitmap: the name of dirty bitmap if sync is "incremental".
-#          Must be present if sync is "incremental", must NOT be present
-#          otherwise. (Since 3.1)
-#
-# @compress: true to compress data, if the target format supports it.
-#            (default: false) (since 2.8)
-#
-# @on-source-error: the action to take on an error on the source,
-#                   default 'report'.  'stop' and 'enospc' can only be used
-#                   if the block device supports io-status (see BlockInfo).
-#
-# @on-target-error: the action to take on an error on the target,
-#                   default 'report' (no limitations, since this applies to
-#                   a different block device than @device).
-#
-# @auto-finalize: When false, this job will wait in a PENDING state after it has
-#                 finished its work, waiting for @block-job-finalize before
-#                 making any block graph changes.
-#                 When true, this job will automatically
-#                 perform its abort or commit actions.
-#                 Defaults to true. (Since 2.12)
-#
-# @auto-dismiss: When false, this job will wait in a CONCLUDED state after it
-#                has completely ceased all work, and awaits @block-job-dismiss.
-#                When true, this job will automatically disappear from the query
-#                list without user intervention.
-#                Defaults to true. (Since 2.12)
-#
-# Note: @on-source-error and @on-target-error only affect background
-# I/O.  If an error occurs during a guest write request, the device's
-# rerror/werror actions will be used.
 #
 # Since: 2.3
 ##
 { 'struct': 'BlockdevBackup',
-  'data': { '*job-id': 'str', 'device': 'str', 'target': 'str',
-            'sync': 'MirrorSyncMode', '*speed': 'int',
-            '*bitmap': 'str', '*compress': 'bool',
-            '*on-source-error': 'BlockdevOnError',
-            '*on-target-error': 'BlockdevOnError',
-            '*auto-finalize': 'bool', '*auto-dismiss': 'bool' } }
+  'base': 'BackupCommon',
+  'data': { 'target': 'str' } }
 
 ##
 # @blockdev-snapshot-sync:
 #
-# Generates a synchronous snapshot of a block device.
+# Takes a synchronous snapshot of a block device.
 #
 # For the arguments, see the documentation of BlockdevSnapshotSync.
 #
@@ -1469,9 +1532,9 @@
 ##
 # @blockdev-snapshot:
 #
-# Generates a snapshot of a block device.
+# Takes a snapshot of a block device.
 #
-# Create a snapshot, by installing 'node' as the backing image of
+# Take a snapshot, by installing 'node' as the backing image of
 # 'overlay'. Additionally, if 'node' is associated with a block
 # device, the block device changes to using 'overlay' as its new active
 # image.
@@ -1979,7 +2042,7 @@
 #
 # @node: name of device/node which the bitmap is tracking
 #
-# @name: name of the dirty bitmap
+# @name: name of the dirty bitmap (must be less than 1024 bytes)
 #
 # @granularity: the bitmap granularity, default is 64k for
 #               block-dirty-bitmap-add
@@ -1989,10 +2052,6 @@
 #              Qcow2 disks support persistent bitmaps. Default is false for
 #              block-dirty-bitmap-add. (Since: 2.10)
 #
-# @autoload: ignored and deprecated since 2.12.
-#            Currently, all dirty tracking bitmaps are loaded from Qcow2 on
-#            open.
-#
 # @disabled: the bitmap is created in the disabled state, which means that
 #            it will not track drive changes. The bitmap may be enabled with
 #            block-dirty-bitmap-enable. Default is false. (Since: 4.0)
@@ -2001,21 +2060,37 @@
 ##
 { 'struct': 'BlockDirtyBitmapAdd',
   'data': { 'node': 'str', 'name': 'str', '*granularity': 'uint32',
-            '*persistent': 'bool', '*autoload': 'bool', '*disabled': 'bool' } }
+            '*persistent': 'bool', '*disabled': 'bool' } }
+
+##
+# @BlockDirtyBitmapMergeSource:
+#
+# @local: name of the bitmap, attached to the same node as target bitmap.
+#
+# @external: bitmap with specified node
+#
+# Since: 4.1
+##
+{ 'alternate': 'BlockDirtyBitmapMergeSource',
+  'data': { 'local': 'str',
+            'external': 'BlockDirtyBitmap' } }
 
 ##
 # @BlockDirtyBitmapMerge:
 #
-# @node: name of device/node which the bitmap is tracking
+# @node: name of device/node which the @target bitmap is tracking
 #
 # @target: name of the destination dirty bitmap
 #
-# @bitmaps: name(s) of the source dirty bitmap(s)
+# @bitmaps: name(s) of the source dirty bitmap(s) at @node and/or fully
+#           specifed BlockDirtyBitmap elements. The latter are supported
+#           since 4.1.
 #
 # Since: 4.0
 ##
 { 'struct': 'BlockDirtyBitmapMerge',
-  'data': { 'node': 'str', 'target': 'str', 'bitmaps': ['str'] } }
+  'data': { 'node': 'str', 'target': 'str',
+            'bitmaps': ['BlockDirtyBitmapMergeSource'] } }
 
 ##
 # @block-dirty-bitmap-add:
@@ -2808,12 +2883,13 @@
 # @nvme: Since 2.12
 # @copy-on-read: Since 3.0
 # @blklogwrites: Since 3.0
+# @blkreplay: Since 4.2
 #
 # Since: 2.9
 ##
 { 'enum': 'BlockdevDriver',
-  'data': [ 'blkdebug', 'blklogwrites', 'blkverify', 'bochs', 'cloop',
-            'copy-on-read', 'dmg', 'file', 'ftp', 'ftps', 'gluster',
+  'data': [ 'blkdebug', 'blklogwrites', 'blkreplay', 'blkverify', 'bochs',
+            'cloop', 'copy-on-read', 'dmg', 'file', 'ftp', 'ftps', 'gluster',
             'host_cdrom', 'host_device', 'http', 'https', 'iscsi', 'luks',
             'nbd', 'nfs', 'null-aio', 'null-co', 'nvme', 'parallels', 'qcow',
             'qcow2', 'qed', 'quorum', 'raw', 'rbd',
@@ -2843,6 +2919,15 @@
 #                         file is large, do not use in production.
 #                         (default: off) (since: 3.0)
 #
+# Features:
+# @dynamic-auto-read-only: If present, enabled auto-read-only means that the
+#                          driver will open the image read-only at first,
+#                          dynamically reopen the image file read-write when
+#                          the first writer is attached to the node and reopen
+#                          read-only when the last writer is detached. This
+#                          allows giving QEMU write permissions only on demand
+#                          when an operation actually needs write access.
+#
 # Since: 2.9
 ##
 { 'struct': 'BlockdevOptionsFile',
@@ -2852,7 +2937,9 @@
             '*aio': 'BlockdevAioOptions',
 	    '*drop-cache': {'type': 'bool',
 	                    'if': 'defined(CONFIG_LINUX)'},
-            '*x-check-cache-dropped': 'bool' } }
+            '*x-check-cache-dropped': 'bool' },
+  'features': [ { 'name': 'dynamic-auto-read-only',
+                  'if': 'defined(CONFIG_POSIX)' } ] }
 
 ##
 # @BlockdevOptionsNull:
@@ -2863,11 +2950,13 @@
 # @latency-ns: emulated latency (in nanoseconds) in processing
 #              requests. Default to zero which completes requests immediately.
 #              (Since 2.4)
+# @read-zeroes: if true, reads from the device produce zeroes; if false, the
+#               buffer is left unchanged. (default: false; since: 4.1)
 #
 # Since: 2.9
 ##
 { 'struct': 'BlockdevOptionsNull',
-  'data': { '*size': 'int', '*latency-ns': 'uint64' } }
+  'data': { '*size': 'int', '*latency-ns': 'uint64', '*read-zeroes': 'bool' } }
 
 ##
 # @BlockdevOptionsNVMe:
@@ -3215,6 +3304,10 @@
 #
 # @cor_write: a write due to copy-on-read (since 2.11)
 #
+# @cluster_alloc_space: an allocation of file space for a cluster (since 4.1)
+#
+# @none: triggers once at creation of the blkdebug node (since 4.1)
+#
 # Since: 2.9
 ##
 { 'enum': 'BlkdebugEvent', 'prefix': 'BLKDBG',
@@ -3233,7 +3326,30 @@
             'pwritev_rmw_tail', 'pwritev_rmw_after_tail', 'pwritev',
             'pwritev_zero', 'pwritev_done', 'empty_image_prepare',
             'l1_shrink_write_table', 'l1_shrink_free_l2_clusters',
-            'cor_write'] }
+            'cor_write', 'cluster_alloc_space', 'none'] }
+
+##
+# @BlkdebugIOType:
+#
+# Kinds of I/O that blkdebug can inject errors in.
+#
+# @read: .bdrv_co_preadv()
+#
+# @write: .bdrv_co_pwritev()
+#
+# @write-zeroes: .bdrv_co_pwrite_zeroes()
+#
+# @discard: .bdrv_co_pdiscard()
+#
+# @flush: .bdrv_co_flush_to_disk()
+#
+# @block-status: .bdrv_co_block_status()
+#
+# Since: 4.1
+##
+{ 'enum': 'BlkdebugIOType', 'prefix': 'BLKDEBUG_IO_TYPE',
+  'data': [ 'read', 'write', 'write-zeroes', 'discard', 'flush',
+            'block-status' ] }
 
 ##
 # @BlkdebugInjectErrorOptions:
@@ -3244,6 +3360,11 @@
 #
 # @state:       the state identifier blkdebug needs to be in to
 #               actually trigger the event; defaults to "any"
+#
+# @iotype:      the type of I/O operations on which this error should
+#               be injected; defaults to "all read, write,
+#               write-zeroes, discard, and flush operations"
+#               (since: 4.1)
 #
 # @errno:       error identifier (errno) to be returned; defaults to
 #               EIO
@@ -3262,6 +3383,7 @@
 { 'struct': 'BlkdebugInjectErrorOptions',
   'data': { 'event': 'BlkdebugEvent',
             '*state': 'int',
+            '*iotype': 'BlkdebugIOType',
             '*errno': 'int',
             '*sector': 'int',
             '*once': 'bool',
@@ -3379,6 +3501,18 @@
 { 'struct': 'BlockdevOptionsBlkverify',
   'data': { 'test': 'BlockdevRef',
             'raw': 'BlockdevRef' } }
+
+##
+# @BlockdevOptionsBlkreplay:
+#
+# Driver specific block device options for blkreplay.
+#
+# @image:     disk image which should be controlled with blkreplay
+#
+# Since: 4.2
+##
+{ 'struct': 'BlockdevOptionsBlkreplay',
+  'data': { 'image': 'BlockdevRef' } }
 
 ##
 # @QuorumReadPattern:
@@ -3798,13 +3932,22 @@
 #                  traditional "base:allocation" block status (see
 #                  NBD_OPT_LIST_META_CONTEXT in the NBD protocol) (since 3.0)
 #
+# @reconnect-delay: On an unexpected disconnect, the nbd client tries to
+#                   connect again until succeeding or encountering a serious
+#                   error.  During the first @reconnect-delay seconds, all
+#                   requests are paused and will be rerun on a successful
+#                   reconnect. After that time, any delayed requests and all
+#                   future requests before a successful reconnect will
+#                   immediately fail. Default 0 (Since 4.2)
+#
 # Since: 2.9
 ##
 { 'struct': 'BlockdevOptionsNbd',
   'data': { 'server': 'SocketAddress',
             '*export': 'str',
             '*tls-creds': 'str',
-            '*x-dirty-bitmap': 'str' } }
+            '*x-dirty-bitmap': 'str',
+            '*reconnect-delay': 'uint32' } }
 
 ##
 # @BlockdevOptionsRaw:
@@ -3898,6 +4041,7 @@
       'blkdebug':   'BlockdevOptionsBlkdebug',
       'blklogwrites':'BlockdevOptionsBlklogwrites',
       'blkverify':  'BlockdevOptionsBlkverify',
+      'blkreplay':  'BlockdevOptionsBlkreplay',
       'bochs':      'BlockdevOptionsGenericFormat',
       'cloop':      'BlockdevOptionsGenericFormat',
       'copy-on-read':'BlockdevOptionsGenericFormat',
@@ -4103,7 +4247,10 @@
 #
 # @filename         Filename for the new image file
 # @size             Size of the virtual disk in bytes
-# @preallocation    Preallocation mode for the new image (default: off)
+# @preallocation    Preallocation mode for the new image (default: off;
+#                   allowed values: off,
+#                   falloc (if defined CONFIG_POSIX_FALLOCATE),
+#                   full (if defined CONFIG_POSIX))
 # @nocow            Turn off copy-on-write (valid only on btrfs; default: off)
 #
 # Since: 2.12
@@ -4121,7 +4268,10 @@
 #
 # @location         Where to store the new image file
 # @size             Size of the virtual disk in bytes
-# @preallocation    Preallocation mode for the new image (default: off)
+# @preallocation    Preallocation mode for the new image (default: off;
+#                   allowed values: off,
+#                   falloc (if defined CONFIG_GLUSTERFS_FALLOCATE),
+#                   full (if defined CONFIG_GLUSTERFS_ZEROFILL))
 #
 # Since: 2.12
 ##
@@ -4137,13 +4287,17 @@
 #
 # @file             Node to create the image format on
 # @size             Size of the virtual disk in bytes
+# @preallocation    Preallocation mode for the new image
+#                   (since: 4.2)
+#                   (default: off; allowed values: off, metadata, falloc, full)
 #
 # Since: 2.12
 ##
 { 'struct': 'BlockdevCreateOptionsLUKS',
   'base': 'QCryptoBlockCreateOptionsLUKS',
   'data': { 'file':             'BlockdevRef',
-            'size':             'size' } }
+            'size':             'size',
+            '*preallocation':   'PreallocMode' } }
 
 ##
 # @BlockdevCreateOptionsNfs:
@@ -4225,7 +4379,8 @@
 # @backing-fmt      Name of the block driver to use for the backing file
 # @encrypt          Encryption options if the image should be encrypted
 # @cluster-size     qcow2 cluster size in bytes (default: 65536)
-# @preallocation    Preallocation mode for the new image (default: off)
+# @preallocation    Preallocation mode for the new image (default: off;
+#                   allowed values: off, falloc, full, metadata)
 # @lazy-refcounts   True if refcounts may be updated lazily (default: off)
 # @refcount-bits    Width of reference counts in bits (default: 16)
 #
@@ -4408,7 +4563,8 @@
 # @location         Where to store the new image file
 # @size             Size of the virtual disk in bytes
 # @backing-file     File name of a base image
-# @preallocation    Preallocation mode (allowed values: off, full)
+# @preallocation    Preallocation mode for the new image (default: off;
+#                   allowed values: off, full)
 # @redundancy       Redundancy of the image
 # @object-size      Object size of the image
 #
@@ -4443,8 +4599,8 @@
 #
 # @file             Node to create the image format on
 # @size             Size of the virtual disk in bytes
-# @preallocation    Preallocation mode for the new image (allowed values: off,
-#                   metadata; default: off)
+# @preallocation    Preallocation mode for the new image (default: off;
+#                   allowed values: off, metadata)
 #
 # Since: 2.12
 ##
@@ -5097,10 +5253,11 @@
 # @off: no preallocation
 # @metadata: preallocate only for metadata
 # @falloc: like @full preallocation but allocate disk space by
-#          posix_fallocate() rather than writing zeros.
-# @full: preallocate all data by writing zeros to device to ensure disk
-#        space is really available. @full preallocation also sets up
-#        metadata correctly.
+#          posix_fallocate() rather than writing data.
+# @full: preallocate all data by writing it to the device to ensure
+#        disk space is really available. This data may or may not be
+#        zero, depending on the image format and storage.
+#        @full preallocation also sets up metadata correctly.
 #
 # Since: 2.2
 ##

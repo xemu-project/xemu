@@ -23,13 +23,15 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
 #include "qemu/osdep.h"
-#include "hw/hw.h"
 #include "hw/isa/isa.h"
 #include "vga_int.h"
 #include "ui/pixel_ops.h"
+#include "qemu/module.h"
 #include "qemu/timer.h"
 #include "hw/loader.h"
+#include "hw/qdev-properties.h"
 
 #define TYPE_ISA_VGA "isa-vga"
 #define ISA_VGA(obj) OBJECT_CHECK(ISAVGAState, (obj), TYPE_ISA_VGA)

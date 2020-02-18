@@ -10,8 +10,11 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "qemu/module.h"
 #include "hw/cpu/arm11mpcore.h"
 #include "hw/intc/realview_gic.h"
+#include "hw/irq.h"
+#include "hw/qdev-properties.h"
 
 #define TYPE_REALVIEW_MPCORE_RIRQ "realview_mpcore"
 #define REALVIEW_MPCORE_RIRQ(obj) \

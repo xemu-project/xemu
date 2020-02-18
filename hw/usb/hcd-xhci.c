@@ -18,12 +18,15 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
+
 #include "qemu/osdep.h"
-#include "hw/hw.h"
 #include "qemu/timer.h"
+#include "qemu/module.h"
 #include "qemu/queue.h"
 #include "hw/usb.h"
+#include "migration/vmstate.h"
 #include "hw/pci/pci.h"
+#include "hw/qdev-properties.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/msix.h"
 #include "trace.h"
@@ -1911,6 +1914,7 @@ static void xhci_kick_epctx(XHCIEPContext *epctx, unsigned int streamid)
             }
             usb_handle_packet(xfer->packet.ep->dev, &xfer->packet);
             if (xfer->packet.status == USB_RET_NAK) {
+                xhci_xfer_unmap(xfer);
                 return;
             }
             xhci_try_complete_packet(xfer);
@@ -2158,6 +2162,7 @@ static TRBCCode xhci_address_slot(XHCIState *xhci, unsigned int slotid,
                                   DeviceOutRequest | USB_REQ_SET_ADDRESS,
                                   slotid, 0, 0, NULL);
         assert(p.status != USB_RET_ASYNC);
+        usb_packet_cleanup(&p);
     }
 
     res = xhci_enable_ep(xhci, slotid, 1, octx+32, ep0_ctx);
@@ -2539,6 +2544,9 @@ static void xhci_process_commands(XHCIState *xhci)
             break;
         case CR_GET_PORT_BANDWIDTH:
             event.ccode = xhci_get_port_bandwidth(xhci, trb.parameter);
+            break;
+        case CR_NOOP:
+            event.ccode = CC_SUCCESS;
             break;
         case CR_VENDOR_NEC_FIRMWARE_REVISION:
             if (xhci->nec_quirks) {
@@ -3137,7 +3145,7 @@ static void xhci_doorbell_write(void *ptr, hwaddr reg,
         streamid = (val >> 16) & 0xffff;
         if (reg > xhci->numslots) {
             DPRINTF("xhci: bad doorbell %d\n", (int)reg);
-        } else if (epid > 31) {
+        } else if (epid == 0 || epid > 31) {
             DPRINTF("xhci: bad doorbell %d write: 0x%x\n",
                     (int)reg, (uint32_t)val);
         } else {
@@ -3306,7 +3314,7 @@ static void usb_xhci_init(XHCIState *xhci)
 {
     DeviceState *dev = DEVICE(xhci);
     XHCIPort *port;
-    int i, usbports, speedmask;
+    unsigned int i, usbports, speedmask;
 
     xhci->usbsts = USBSTS_HCH;
 
@@ -3336,6 +3344,7 @@ static void usb_xhci_init(XHCIState *xhci)
                 USB_SPEED_MASK_LOW  |
                 USB_SPEED_MASK_FULL |
                 USB_SPEED_MASK_HIGH;
+            assert(i < MAXPORTS);
             snprintf(port->name, sizeof(port->name), "usb2 port #%d", i+1);
             speedmask |= port->speedmask;
         }
@@ -3349,6 +3358,7 @@ static void usb_xhci_init(XHCIState *xhci)
             }
             port->uport = &xhci->uports[i];
             port->speedmask = USB_SPEED_MASK_SUPER;
+            assert(i < MAXPORTS);
             snprintf(port->name, sizeof(port->name), "usb3 port #%d", i+1);
             speedmask |= port->speedmask;
         }

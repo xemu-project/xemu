@@ -10,14 +10,17 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/option.h"
 #include "qemu/config-file.h"
 #include "trace.h"
 #include "qemu/error-report.h"
+#include "qemu/main-loop.h"
+#include "qemu/module.h"
 
 #include "hw/usb.h"
+#include "migration/vmstate.h"
 #include "desc.h"
+#include "hw/qdev-properties.h"
 #include "hw/scsi/scsi.h"
 #include "scsi/constants.h"
 

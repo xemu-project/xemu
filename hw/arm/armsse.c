@@ -11,13 +11,16 @@
 
 #include "qemu/osdep.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "qemu/bitops.h"
 #include "qapi/error.h"
 #include "trace.h"
 #include "hw/sysbus.h"
+#include "migration/vmstate.h"
 #include "hw/registerfields.h"
 #include "hw/arm/armsse.h"
-#include "hw/arm/arm.h"
+#include "hw/arm/boot.h"
+#include "hw/irq.h"
 
 /* Format of the System Information block SYS_CONFIG register */
 typedef enum SysConfigFormat {
@@ -37,6 +40,33 @@ struct ARMSSEInfo {
     bool has_cachectrl;
     bool has_cpusecctrl;
     bool has_cpuid;
+    Property *props;
+};
+
+static Property iotkit_properties[] = {
+    DEFINE_PROP_LINK("memory", ARMSSE, board_memory, TYPE_MEMORY_REGION,
+                     MemoryRegion *),
+    DEFINE_PROP_UINT32("EXP_NUMIRQ", ARMSSE, exp_numirq, 64),
+    DEFINE_PROP_UINT32("MAINCLK", ARMSSE, mainclk_frq, 0),
+    DEFINE_PROP_UINT32("SRAM_ADDR_WIDTH", ARMSSE, sram_addr_width, 15),
+    DEFINE_PROP_UINT32("init-svtor", ARMSSE, init_svtor, 0x10000000),
+    DEFINE_PROP_BOOL("CPU0_FPU", ARMSSE, cpu_fpu[0], true),
+    DEFINE_PROP_BOOL("CPU0_DSP", ARMSSE, cpu_dsp[0], true),
+    DEFINE_PROP_END_OF_LIST()
+};
+
+static Property armsse_properties[] = {
+    DEFINE_PROP_LINK("memory", ARMSSE, board_memory, TYPE_MEMORY_REGION,
+                     MemoryRegion *),
+    DEFINE_PROP_UINT32("EXP_NUMIRQ", ARMSSE, exp_numirq, 64),
+    DEFINE_PROP_UINT32("MAINCLK", ARMSSE, mainclk_frq, 0),
+    DEFINE_PROP_UINT32("SRAM_ADDR_WIDTH", ARMSSE, sram_addr_width, 15),
+    DEFINE_PROP_UINT32("init-svtor", ARMSSE, init_svtor, 0x10000000),
+    DEFINE_PROP_BOOL("CPU0_FPU", ARMSSE, cpu_fpu[0], false),
+    DEFINE_PROP_BOOL("CPU0_DSP", ARMSSE, cpu_dsp[0], false),
+    DEFINE_PROP_BOOL("CPU1_FPU", ARMSSE, cpu_fpu[1], true),
+    DEFINE_PROP_BOOL("CPU1_DSP", ARMSSE, cpu_dsp[1], true),
+    DEFINE_PROP_END_OF_LIST()
 };
 
 static const ARMSSEInfo armsse_variants[] = {
@@ -52,6 +82,7 @@ static const ARMSSEInfo armsse_variants[] = {
         .has_cachectrl = false,
         .has_cpusecctrl = false,
         .has_cpuid = false,
+        .props = iotkit_properties,
     },
     {
         .name = TYPE_SSE200,
@@ -65,6 +96,7 @@ static const ARMSSEInfo armsse_variants[] = {
         .has_cachectrl = true,
         .has_cpusecctrl = true,
         .has_cpuid = true,
+        .props = armsse_properties,
     },
 };
 
@@ -527,6 +559,20 @@ static void armsse_realize(DeviceState *dev, Error **errp)
          */
         if (extract32(info->cpuwait_rst, i, 1)) {
             object_property_set_bool(cpuobj, true, "start-powered-off", &err);
+            if (err) {
+                error_propagate(errp, err);
+                return;
+            }
+        }
+        if (!s->cpu_fpu[i]) {
+            object_property_set_bool(cpuobj, false, "vfp", &err);
+            if (err) {
+                error_propagate(errp, err);
+                return;
+            }
+        }
+        if (!s->cpu_dsp[i]) {
+            object_property_set_bool(cpuobj, false, "dsp", &err);
             if (err) {
                 error_propagate(errp, err);
                 return;
@@ -1221,16 +1267,6 @@ static const VMStateDescription armsse_vmstate = {
     }
 };
 
-static Property armsse_properties[] = {
-    DEFINE_PROP_LINK("memory", ARMSSE, board_memory, TYPE_MEMORY_REGION,
-                     MemoryRegion *),
-    DEFINE_PROP_UINT32("EXP_NUMIRQ", ARMSSE, exp_numirq, 64),
-    DEFINE_PROP_UINT32("MAINCLK", ARMSSE, mainclk_frq, 0),
-    DEFINE_PROP_UINT32("SRAM_ADDR_WIDTH", ARMSSE, sram_addr_width, 15),
-    DEFINE_PROP_UINT32("init-svtor", ARMSSE, init_svtor, 0x10000000),
-    DEFINE_PROP_END_OF_LIST()
-};
-
 static void armsse_reset(DeviceState *dev)
 {
     ARMSSE *s = ARMSSE(dev);
@@ -1243,13 +1279,14 @@ static void armsse_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     IDAUInterfaceClass *iic = IDAU_INTERFACE_CLASS(klass);
     ARMSSEClass *asc = ARMSSE_CLASS(klass);
+    const ARMSSEInfo *info = data;
 
     dc->realize = armsse_realize;
     dc->vmsd = &armsse_vmstate;
-    dc->props = armsse_properties;
+    dc->props = info->props;
     dc->reset = armsse_reset;
     iic->check = armsse_idau_check;
-    asc->info = data;
+    asc->info = info;
 }
 
 static const TypeInfo armsse_info = {

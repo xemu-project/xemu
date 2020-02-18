@@ -20,7 +20,7 @@
 #include "qemu/osdep.h"
 #include "qemu/main-loop.h"
 #include "exec/cpu-common.h"
-#include "qom/cpu.h"
+#include "hw/core/cpu.h"
 #include "sysemu/cpus.h"
 
 static QemuMutex qemu_cpu_list_lock;
@@ -69,12 +69,6 @@ static int cpu_get_free_index(void)
     return cpu_index;
 }
 
-static void finish_safe_work(CPUState *cpu)
-{
-    cpu_exec_start(cpu);
-    cpu_exec_end(cpu);
-}
-
 void cpu_list_add(CPUState *cpu)
 {
     qemu_mutex_lock(&qemu_cpu_list_lock);
@@ -86,8 +80,6 @@ void cpu_list_add(CPUState *cpu)
     }
     QTAILQ_INSERT_TAIL_RCU(&cpus, cpu, node);
     qemu_mutex_unlock(&qemu_cpu_list_lock);
-
-    finish_safe_work(cpu);
 }
 
 void cpu_list_remove(CPUState *cpu)
@@ -208,11 +200,15 @@ void start_exclusive(void)
      * section until end_exclusive resets pending_cpus to 0.
      */
     qemu_mutex_unlock(&qemu_cpu_list_lock);
+
+    current_cpu->in_exclusive_context = true;
 }
 
 /* Finish an exclusive operation.  */
 void end_exclusive(void)
 {
+    current_cpu->in_exclusive_context = false;
+
     qemu_mutex_lock(&qemu_cpu_list_lock);
     atomic_set(&pending_cpus, 0);
     qemu_cond_broadcast(&exclusive_resume);

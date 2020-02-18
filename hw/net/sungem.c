@@ -9,7 +9,10 @@
 
 #include "qemu/osdep.h"
 #include "hw/pci/pci.h"
+#include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "net/net.h"
 #include "net/eth.h"
 #include "net/checksum.h"

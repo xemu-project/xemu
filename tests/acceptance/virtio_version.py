@@ -12,7 +12,7 @@ import sys
 import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'python'))
-from qemu import QEMUMachine
+from qemu.machine import QEMUMachine
 from avocado_qemu import Test
 
 # Virtio Device IDs:
@@ -61,7 +61,7 @@ class VirtioVersionCheck(Test):
     same device tree created by `disable-modern` and
     `disable-legacy`.
 
-    :avocado: tags=x86_64
+    :avocado: tags=arch:x86_64
     """
 
     # just in case there are failures, show larger diff:

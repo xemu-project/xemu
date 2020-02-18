@@ -19,7 +19,6 @@
  */
 #include "qemu/osdep.h"
 #include "qemu/log.h"
-#include "qemu-common.h"
 #include "qemu/timer.h"
 #include "hw/arm/omap.h"
 #include "hw/irq.h"
@@ -1532,8 +1531,8 @@ static void omap_dma_write(void *opaque, hwaddr addr,
     case 0x404 ... 0x4fe:
         if (s->model <= omap_dma_3_1)
             break;
+        /* fall through */
     case 0x400:
-        /* Fall through. */
         if (omap_dma_sys_write(s, addr, value))
             break;
         return;

@@ -10,17 +10,20 @@
 
 #include "qemu/osdep.h"
 #include "qemu/units.h"
-#include "qemu-common.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "qemu/log.h"
+#include "qemu/main-loop.h"
+#include "qemu/module.h"
 #include "cpu.h"
-#include "hw/hw.h"
+#include "hw/irq.h"
 #include "exec/address-spaces.h"
 #include "exec/memory.h"
 #include "hw/ppc/ppc.h"
+#include "hw/qdev-properties.h"
 #include "hw/pci/pci.h"
 #include "sysemu/block-backend.h"
+#include "sysemu/reset.h"
 #include "ppc440.h"
 
 /*****************************************************************************/

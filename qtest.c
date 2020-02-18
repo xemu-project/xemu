@@ -13,20 +13,19 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "cpu.h"
 #include "sysemu/qtest.h"
-#include "hw/qdev.h"
+#include "sysemu/runstate.h"
 #include "chardev/char-fe.h"
 #include "exec/ioport.h"
 #include "exec/memory.h"
 #include "hw/irq.h"
 #include "sysemu/accel.h"
-#include "sysemu/sysemu.h"
 #include "sysemu/cpus.h"
 #include "qemu/config-file.h"
 #include "qemu/option.h"
 #include "qemu/error-report.h"
+#include "qemu/module.h"
 #include "qemu/cutils.h"
 #ifdef TARGET_PPC64
 #include "hw/ppc/spapr_rtas.h"
@@ -655,12 +654,22 @@ static void qtest_process_command(CharBackend *chr, gchar **words)
             int ret = qemu_strtoi64(words[1], NULL, 0, &ns);
             g_assert(ret == 0);
         } else {
-            ns = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL);
+            ns = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL,
+                                            QEMU_TIMER_ATTR_ALL);
         }
         qtest_clock_warp(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + ns);
         qtest_send_prefix(chr);
         qtest_sendf(chr, "OK %"PRIi64"\n",
                     (int64_t)qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+    } else if (strcmp(words[0], "module_load") == 0) {
+        g_assert(words[1] && words[2]);
+
+        qtest_send_prefix(chr);
+        if (module_load_one(words[1], words[2])) {
+            qtest_sendf(chr, "OK\n");
+        } else {
+            qtest_sendf(chr, "FAIL\n");
+        }
     } else if (qtest_enabled() && strcmp(words[0], "clock_set") == 0) {
         int64_t ns;
         int ret;
@@ -748,18 +757,7 @@ static void qtest_event(void *opaque, int event)
         break;
     }
 }
-
-static int qtest_init_accel(MachineState *ms)
-{
-    QemuOpts *opts = qemu_opts_create(qemu_find_opts("icount"), NULL, 0,
-                                      &error_abort);
-    qemu_opt_set(opts, "shift", "0", &error_abort);
-    configure_icount(opts, &error_abort);
-    qemu_opts_del(opts);
-    return 0;
-}
-
-void qtest_init(const char *qtest_chrdev, const char *qtest_log, Error **errp)
+void qtest_server_init(const char *qtest_chrdev, const char *qtest_log, Error **errp)
 {
     Chardev *chr;
 
@@ -791,27 +789,3 @@ bool qtest_driver(void)
 {
     return qtest_chr.chr != NULL;
 }
-
-static void qtest_accel_class_init(ObjectClass *oc, void *data)
-{
-    AccelClass *ac = ACCEL_CLASS(oc);
-    ac->name = "QTest";
-    ac->available = qtest_available;
-    ac->init_machine = qtest_init_accel;
-    ac->allowed = &qtest_allowed;
-}
-
-#define TYPE_QTEST_ACCEL ACCEL_CLASS_NAME("qtest")
-
-static const TypeInfo qtest_accel_type = {
-    .name = TYPE_QTEST_ACCEL,
-    .parent = TYPE_ACCEL,
-    .class_init = qtest_accel_class_init,
-};
-
-static void qtest_type_init(void)
-{
-    type_register_static(&qtest_accel_type);
-}
-
-type_init(qtest_type_init);

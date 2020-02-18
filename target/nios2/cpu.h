@@ -17,18 +17,13 @@
  * License along with this library; if not, see
  * <http://www.gnu.org/licenses/lgpl-2.1.html>
  */
-#ifndef CPU_NIOS2_H
-#define CPU_NIOS2_H
 
-#include "qemu-common.h"
-
-#define TARGET_LONG_BITS 32
-
-#define CPUArchState struct CPUNios2State
+#ifndef NIOS2_CPU_H
+#define NIOS2_CPU_H
 
 #include "exec/cpu-defs.h"
-#include "qom/cpu.h"
-struct CPUNios2State;
+#include "hw/core/cpu.h"
+
 typedef struct CPUNios2State CPUNios2State;
 #if !defined(CONFIG_USER_ONLY)
 #include "mmu.h"
@@ -141,7 +136,7 @@ typedef struct Nios2CPUClass {
 #define R_PC         64
 
 /* Exceptions */
-#define EXCP_BREAK    -1
+#define EXCP_BREAK    0x1000
 #define EXCP_RESET    0
 #define EXCP_PRESET   1
 #define EXCP_IRQ      2
@@ -163,8 +158,6 @@ typedef struct Nios2CPUClass {
 
 #define CPU_INTERRUPT_NMI       CPU_INTERRUPT_TGT_EXT_3
 
-#define NB_MMU_MODES 2
-
 struct CPUNios2State {
     uint32_t regs[NUM_CORE_REGS];
 
@@ -173,8 +166,6 @@ struct CPUNios2State {
 
     uint32_t irq_pending;
 #endif
-
-    CPU_COMMON
 };
 
 /**
@@ -188,7 +179,9 @@ typedef struct Nios2CPU {
     CPUState parent_obj;
     /*< public >*/
 
+    CPUNegativeOffsetState neg;
     CPUNios2State env;
+
     bool mmu_present;
     uint32_t pid_num_bits;
     uint32_t tlb_num_ways;
@@ -200,21 +193,12 @@ typedef struct Nios2CPU {
     uint32_t fast_tlb_miss_addr;
 } Nios2CPU;
 
-static inline Nios2CPU *nios2_env_get_cpu(CPUNios2State *env)
-{
-    return NIOS2_CPU(container_of(env, Nios2CPU, env));
-}
-
-#define ENV_GET_CPU(e) CPU(nios2_env_get_cpu(e))
-
-#define ENV_OFFSET offsetof(Nios2CPU, env)
 
 void nios2_tcg_init(void);
 void nios2_cpu_do_interrupt(CPUState *cs);
 int cpu_nios2_signal_handler(int host_signum, void *pinfo, void *puc);
-void dump_mmu(FILE *f, fprintf_function cpu_fprintf, CPUNios2State *env);
-void nios2_cpu_dump_state(CPUState *cpu, FILE *f, fprintf_function cpu_fprintf,
-                          int flags);
+void dump_mmu(CPUNios2State *env);
+void nios2_cpu_dump_state(CPUState *cpu, FILE *f, int flags);
 hwaddr nios2_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
 void nios2_cpu_do_unaligned_access(CPUState *cpu, vaddr addr,
                                    MMUAccessType access_type,
@@ -223,12 +207,7 @@ void nios2_cpu_do_unaligned_access(CPUState *cpu, vaddr addr,
 qemu_irq *nios2_cpu_pic_init(Nios2CPU *cpu);
 void nios2_check_interrupts(CPUNios2State *env);
 
-#define TARGET_PHYS_ADDR_SPACE_BITS 32
-#ifdef CONFIG_USER_ONLY
-# define TARGET_VIRT_ADDR_SPACE_BITS 31
-#else
-# define TARGET_VIRT_ADDR_SPACE_BITS 32
-#endif
+void do_nios2_semihosting(CPUNios2State *env);
 
 #define CPU_RESOLVING_TYPE TYPE_NIOS2_CPU
 
@@ -236,8 +215,6 @@ void nios2_check_interrupts(CPUNios2State *env);
 #define cpu_signal_handler cpu_nios2_signal_handler
 
 #define CPU_SAVE_VERSION 1
-
-#define TARGET_PAGE_BITS 12
 
 /* MMU modes definitions */
 #define MMU_MODE0_SUFFIX _kernel
@@ -251,13 +228,17 @@ static inline int cpu_mmu_index(CPUNios2State *env, bool ifetch)
                                                   MMU_SUPERVISOR_IDX;
 }
 
-int nios2_cpu_handle_mmu_fault(CPUState *env, vaddr address, int size,
-                               int rw, int mmu_idx);
+bool nios2_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+                        MMUAccessType access_type, int mmu_idx,
+                        bool probe, uintptr_t retaddr);
 
 static inline int cpu_interrupts_enabled(CPUNios2State *env)
 {
     return env->regs[CR_STATUS] & CR_STATUS_PIE;
 }
+
+typedef CPUNios2State CPUArchState;
+typedef Nios2CPU ArchCPU;
 
 #include "exec/cpu-all.h"
 
@@ -269,4 +250,4 @@ static inline void cpu_get_tb_cpu_state(CPUNios2State *env, target_ulong *pc,
     *flags = (env->regs[CR_STATUS] & (CR_STATUS_EH | CR_STATUS_U));
 }
 
-#endif /* CPU_NIOS2_H */
+#endif /* NIOS2_CPU_H */

@@ -1,3 +1,4 @@
+# -*- Mode: makefile -*-
 
 .PHONY: check-help
 check-help:
@@ -30,13 +31,20 @@ ifneq ($(wildcard config-host.mak),)
 export SRC_PATH
 
 # TODO don't duplicate $(SRC_PATH)/Makefile's qapi-py here
-qapi-py = $(SRC_PATH)/scripts/qapi/commands.py \
-$(SRC_PATH)/scripts/qapi/events.py \
-$(SRC_PATH)/scripts/qapi/introspect.py \
-$(SRC_PATH)/scripts/qapi/types.py \
-$(SRC_PATH)/scripts/qapi/visit.py \
+qapi-py = $(SRC_PATH)/scripts/qapi/__init__.py \
+$(SRC_PATH)/scripts/qapi/commands.py \
 $(SRC_PATH)/scripts/qapi/common.py \
 $(SRC_PATH)/scripts/qapi/doc.py \
+$(SRC_PATH)/scripts/qapi/error.py \
+$(SRC_PATH)/scripts/qapi/events.py \
+$(SRC_PATH)/scripts/qapi/expr.py \
+$(SRC_PATH)/scripts/qapi/gen.py \
+$(SRC_PATH)/scripts/qapi/introspect.py \
+$(SRC_PATH)/scripts/qapi/parser.py \
+$(SRC_PATH)/scripts/qapi/schema.py \
+$(SRC_PATH)/scripts/qapi/source.py \
+$(SRC_PATH)/scripts/qapi/types.py \
+$(SRC_PATH)/scripts/qapi/visit.py \
 $(SRC_PATH)/scripts/qapi-gen.py
 
 # Get the list of all supported sysemu targets
@@ -45,7 +53,7 @@ SYSEMU_TARGET_LIST := $(subst -softmmu.mak,,$(notdir \
 
 check-unit-y += tests/check-qdict$(EXESUF)
 check-unit-y += tests/check-block-qdict$(EXESUF)
-check-unit-y += tests/test-char$(EXESUF)
+check-unit-$(CONFIG_SOFTMMU) += tests/test-char$(EXESUF)
 check-unit-y += tests/check-qnum$(EXESUF)
 check-unit-y += tests/check-qstring$(EXESUF)
 check-unit-y += tests/check-qlist$(EXESUF)
@@ -61,21 +69,22 @@ check-unit-y += tests/test-string-input-visitor$(EXESUF)
 check-unit-y += tests/test-string-output-visitor$(EXESUF)
 check-unit-y += tests/test-qmp-event$(EXESUF)
 check-unit-y += tests/test-opts-visitor$(EXESUF)
-check-unit-y += tests/test-coroutine$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-coroutine$(EXESUF)
 check-unit-y += tests/test-visitor-serialization$(EXESUF)
 check-unit-y += tests/test-iov$(EXESUF)
-check-unit-y += tests/test-aio$(EXESUF)
-check-unit-y += tests/test-aio-multithread$(EXESUF)
-check-unit-y += tests/test-throttle$(EXESUF)
-check-unit-y += tests/test-thread-pool$(EXESUF)
-check-unit-y += tests/test-hbitmap$(EXESUF)
-check-unit-y += tests/test-bdrv-drain$(EXESUF)
-check-unit-y += tests/test-bdrv-graph-mod$(EXESUF)
-check-unit-y += tests/test-blockjob$(EXESUF)
-check-unit-y += tests/test-blockjob-txn$(EXESUF)
-check-unit-y += tests/test-block-backend$(EXESUF)
-check-unit-y += tests/test-block-iothread$(EXESUF)
-check-unit-y += tests/test-image-locking$(EXESUF)
+check-unit-y += tests/test-bitmap$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-aio$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-aio-multithread$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-throttle$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-thread-pool$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-hbitmap$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-bdrv-drain$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-bdrv-graph-mod$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-blockjob$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-blockjob-txn$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-block-backend$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-block-iothread$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-image-locking$(EXESUF)
 check-unit-y += tests/test-x86-cpuid$(EXESUF)
 # all code tested by test-x86-cpuid is inside topology.h
 ifeq ($(CONFIG_SOFTMMU),y)
@@ -101,52 +110,53 @@ check-unit-y += tests/check-qom-interface$(EXESUF)
 check-unit-y += tests/check-qom-proplist$(EXESUF)
 check-unit-y += tests/test-qemu-opts$(EXESUF)
 check-unit-y += tests/test-keyval$(EXESUF)
-check-unit-y += tests/test-write-threshold$(EXESUF)
-check-unit-y += tests/test-crypto-hash$(EXESUF)
-check-speed-y += tests/benchmark-crypto-hash$(EXESUF)
-check-unit-y += tests/test-crypto-hmac$(EXESUF)
-check-speed-y += tests/benchmark-crypto-hmac$(EXESUF)
-check-unit-y += tests/test-crypto-cipher$(EXESUF)
-check-speed-y += tests/benchmark-crypto-cipher$(EXESUF)
-check-unit-y += tests/test-crypto-secret$(EXESUF)
-check-unit-$(CONFIG_GNUTLS) += tests/test-crypto-tlscredsx509$(EXESUF)
-check-unit-$(CONFIG_GNUTLS) += tests/test-crypto-tlssession$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-write-threshold$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-crypto-hash$(EXESUF)
+check-speed-$(CONFIG_BLOCK) += tests/benchmark-crypto-hash$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-crypto-hmac$(EXESUF)
+check-speed-$(CONFIG_BLOCK) += tests/benchmark-crypto-hmac$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-crypto-cipher$(EXESUF)
+check-speed-$(CONFIG_BLOCK) += tests/benchmark-crypto-cipher$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-crypto-secret$(EXESUF)
+check-unit-$(call land,$(CONFIG_BLOCK),$(CONFIG_GNUTLS)) += tests/test-crypto-tlscredsx509$(EXESUF)
+check-unit-$(call land,$(CONFIG_BLOCK),$(CONFIG_GNUTLS)) += tests/test-crypto-tlssession$(EXESUF)
 ifneq (,$(findstring qemu-ga,$(TOOLS)))
 check-unit-$(call land,$(CONFIG_LINUX),$(CONFIG_VIRTIO_SERIAL)) += tests/test-qga$(EXESUF)
 endif
 check-unit-y += tests/test-timed-average$(EXESUF)
 check-unit-$(CONFIG_INOTIFY1) += tests/test-util-filemonitor$(EXESUF)
 check-unit-y += tests/test-util-sockets$(EXESUF)
-check-unit-y += tests/test-authz-simple$(EXESUF)
-check-unit-y += tests/test-authz-list$(EXESUF)
-check-unit-y += tests/test-authz-listfile$(EXESUF)
-check-unit-$(CONFIG_AUTH_PAM) += tests/test-authz-pam$(EXESUF)
-check-unit-y += tests/test-io-task$(EXESUF)
-check-unit-y += tests/test-io-channel-socket$(EXESUF)
-check-unit-y += tests/test-io-channel-file$(EXESUF)
-check-unit-$(CONFIG_GNUTLS) += tests/test-io-channel-tls$(EXESUF)
-check-unit-y += tests/test-io-channel-command$(EXESUF)
-check-unit-y += tests/test-io-channel-buffer$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-authz-simple$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-authz-list$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-authz-listfile$(EXESUF)
+check-unit-$(call land,$(CONFIG_BLOCK),$(CONFIG_AUTH_PAM)) += tests/test-authz-pam$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-io-task$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-io-channel-socket$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-io-channel-file$(EXESUF)
+check-unit-$(call land,$(CONFIG_BLOCK),$(CONFIG_GNUTLS)) += tests/test-io-channel-tls$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-io-channel-command$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-io-channel-buffer$(EXESUF)
 check-unit-y += tests/test-base64$(EXESUF)
-check-unit-$(if $(CONFIG_NETTLE),y,$(CONFIG_GCRYPT)) += tests/test-crypto-pbkdf$(EXESUF)
-check-unit-y += tests/test-crypto-ivgen$(EXESUF)
-check-unit-y += tests/test-crypto-afsplit$(EXESUF)
-check-unit-y += tests/test-crypto-xts$(EXESUF)
-check-unit-y += tests/test-crypto-block$(EXESUF)
+check-unit-$(call land,$(CONFIG_BLOCK),$(if $(CONFIG_NETTLE),y,$(CONFIG_GCRYPT))) += tests/test-crypto-pbkdf$(EXESUF)
+check-unit-$(CONFIG_BLOCK) += tests/test-crypto-ivgen$(EXESUF)
+check-unit-$(CONFIG_BLOCK)  += tests/test-crypto-afsplit$(EXESUF)
+check-unit-$(call land,$(CONFIG_BLOCK),$(CONFIG_QEMU_PRIVATE_XTS)) += tests/test-crypto-xts$(EXESUF)
+check-unit-$(CONFIG_BLOCK)  += tests/test-crypto-block$(EXESUF)
 check-unit-y += tests/test-logging$(EXESUF)
-check-unit-$(CONFIG_REPLICATION) += tests/test-replication$(EXESUF)
+check-unit-$(call land,$(CONFIG_BLOCK),$(CONFIG_REPLICATION)) += tests/test-replication$(EXESUF)
 check-unit-y += tests/test-bufferiszero$(EXESUF)
 check-unit-y += tests/test-uuid$(EXESUF)
 check-unit-y += tests/ptimer-test$(EXESUF)
 check-unit-y += tests/test-qapi-util$(EXESUF)
 
-check-block-$(CONFIG_POSIX) += tests/qemu-iotests-quick.sh
+check-block-$(call land,$(CONFIG_POSIX),$(CONFIG_SOFTMMU)) += tests/check-block.sh
 
 # All QTests for now are POSIX-only, but the dependencies are
 # really in libqtest, not in the testcases themselves.
 
 check-qtest-generic-y += tests/qmp-test$(EXESUF)
 check-qtest-generic-y += tests/qmp-cmd-test$(EXESUF)
+check-qtest-generic-$(CONFIG_MODULES) += tests/modules-test$(EXESUF)
 
 check-qtest-generic-y += tests/device-introspect-test$(EXESUF)
 check-qtest-generic-y += tests/cdrom-test$(EXESUF)
@@ -167,8 +177,9 @@ check-qtest-i386-$(CONFIG_SGA) += tests/boot-serial-test$(EXESUF)
 check-qtest-i386-$(CONFIG_SLIRP) += tests/pxe-test$(EXESUF)
 check-qtest-i386-y += tests/rtc-test$(EXESUF)
 check-qtest-i386-$(CONFIG_ISA_IPMI_KCS) += tests/ipmi-kcs-test$(EXESUF)
-# Disabled temporarily as it fails intermittently especially under NetBSD VM
-# check-qtest-i386-$(CONFIG_ISA_IPMI_BT) += tests/ipmi-bt-test$(EXESUF)
+ifdef CONFIG_LINUX
+check-qtest-i386-$(CONFIG_ISA_IPMI_BT) += tests/ipmi-bt-test$(EXESUF)
+endif
 check-qtest-i386-y += tests/i440fx-test$(EXESUF)
 check-qtest-i386-y += tests/fw_cfg-test$(EXESUF)
 check-qtest-i386-y += tests/device-plug-test$(EXESUF)
@@ -180,9 +191,7 @@ check-qtest-i386-$(CONFIG_PVPANIC) += tests/pvpanic-test$(EXESUF)
 check-qtest-i386-$(CONFIG_I82801B11) += tests/i82801b11-test$(EXESUF)
 check-qtest-i386-$(CONFIG_IOH3420) += tests/ioh3420-test$(EXESUF)
 check-qtest-i386-$(CONFIG_USB_UHCI) += tests/usb-hcd-uhci-test$(EXESUF)
-ifeq ($(CONFIG_USB_ECHI)$(CONFIG_USB_UHCI),yy)
-check-qtest-i386-y += tests/usb-hcd-ehci-test$(EXESUF)
-endif
+check-qtest-i386-$(call land,$(CONFIG_USB_EHCI),$(CONFIG_USB_UHCI)) += tests/usb-hcd-ehci-test$(EXESUF)
 check-qtest-i386-$(CONFIG_USB_XHCI_NEC) += tests/usb-hcd-xhci-test$(EXESUF)
 check-qtest-i386-y += tests/cpu-plug-test$(EXESUF)
 check-qtest-i386-y += tests/q35-test$(EXESUF)
@@ -255,18 +264,22 @@ check-qtest-sparc64-$(CONFIG_ISA_TESTDEV) = tests/endianness-test$(EXESUF)
 check-qtest-sparc64-y += tests/prom-env-test$(EXESUF)
 check-qtest-sparc64-y += tests/boot-serial-test$(EXESUF)
 
-check-qtest-arm-y += tests/tmp105-test$(EXESUF)
-check-qtest-arm-y += tests/pca9552-test$(EXESUF)
-check-qtest-arm-y += tests/ds1338-test$(EXESUF)
+check-qtest-arm-y += tests/arm-cpu-features$(EXESUF)
 check-qtest-arm-y += tests/microbit-test$(EXESUF)
 check-qtest-arm-y += tests/m25p80-test$(EXESUF)
 check-qtest-arm-y += tests/test-arm-mptimer$(EXESUF)
 check-qtest-arm-y += tests/boot-serial-test$(EXESUF)
 check-qtest-arm-y += tests/hexloader-test$(EXESUF)
+check-qtest-arm-$(CONFIG_PFLASH_CFI02) += tests/pflash-cfi02-test$(EXESUF)
 
-check-qtest-aarch64-y = tests/numa-test$(EXESUF)
+check-qtest-aarch64-y += tests/arm-cpu-features$(EXESUF)
+check-qtest-aarch64-y += tests/numa-test$(EXESUF)
 check-qtest-aarch64-y += tests/boot-serial-test$(EXESUF)
 check-qtest-aarch64-y += tests/migration-test$(EXESUF)
+# TODO: once aarch64 TCG is fixed on ARM 32 bit host, make test unconditional
+ifneq ($(ARCH),arm)
+check-qtest-aarch64-y += tests/bios-tables-test$(EXESUF)
+endif
 
 check-qtest-microblazeel-y += $(check-qtest-microblaze-y)
 
@@ -290,6 +303,7 @@ check-qtest-generic-y += tests/test-hmp$(EXESUF)
 qapi-schema += alternate-any.json
 qapi-schema += alternate-array.json
 qapi-schema += alternate-base.json
+qapi-schema += alternate-branch-if-invalid.json
 qapi-schema += alternate-clash.json
 qapi-schema += alternate-conflict-dict.json
 qapi-schema += alternate-conflict-enum-bool.json
@@ -307,7 +321,6 @@ qapi-schema += args-array-empty.json
 qapi-schema += args-array-unknown.json
 qapi-schema += args-bad-boxed.json
 qapi-schema += args-boxed-anon.json
-qapi-schema += args-boxed-empty.json
 qapi-schema += args-boxed-string.json
 qapi-schema += args-int.json
 qapi-schema += args-invalid.json
@@ -332,7 +345,11 @@ qapi-schema += base-cycle-indirect.json
 qapi-schema += command-int.json
 qapi-schema += comments.json
 qapi-schema += doc-bad-alternate-member.json
+qapi-schema += doc-bad-boxed-command-arg.json
 qapi-schema += doc-bad-command-arg.json
+qapi-schema += doc-bad-enum-member.json
+qapi-schema += doc-bad-event-arg.json
+qapi-schema += doc-bad-feature.json
 qapi-schema += doc-bad-section.json
 qapi-schema += doc-bad-symbol.json
 qapi-schema += doc-bad-union-member.json
@@ -356,7 +373,7 @@ qapi-schema += doc-missing-expr.json
 qapi-schema += doc-missing-space.json
 qapi-schema += doc-missing.json
 qapi-schema += doc-no-symbol.json
-qapi-schema += double-data.json
+qapi-schema += doc-undoc-feature.json
 qapi-schema += double-type.json
 qapi-schema += duplicate-key.json
 qapi-schema += empty.json
@@ -370,19 +387,24 @@ qapi-schema += enum-int-member.json
 qapi-schema += enum-member-case.json
 qapi-schema += enum-missing-data.json
 qapi-schema += enum-wrong-data.json
-qapi-schema += escape-outside-string.json
-qapi-schema += escape-too-big.json
-qapi-schema += escape-too-short.json
 qapi-schema += event-boxed-empty.json
 qapi-schema += event-case.json
 qapi-schema += event-member-invalid-dict.json
 qapi-schema += event-nest-struct.json
+qapi-schema += features-bad-type.json
+qapi-schema += features-duplicate-name.json
+qapi-schema += features-if-invalid.json
+qapi-schema += features-missing-name.json
+qapi-schema += features-name-bad-type.json
+qapi-schema += features-no-list.json
+qapi-schema += features-unknown-key.json
 qapi-schema += flat-union-array-branch.json
 qapi-schema += flat-union-bad-base.json
 qapi-schema += flat-union-bad-discriminator.json
 qapi-schema += flat-union-base-any.json
 qapi-schema += flat-union-base-union.json
 qapi-schema += flat-union-clash-member.json
+qapi-schema += flat-union-discriminator-bad-name.json
 qapi-schema += flat-union-empty.json
 qapi-schema += flat-union-inline.json
 qapi-schema += flat-union-inline-invalid-dict.json
@@ -394,11 +416,11 @@ qapi-schema += flat-union-no-base.json
 qapi-schema += flat-union-optional-discriminator.json
 qapi-schema += flat-union-string-discriminator.json
 qapi-schema += funny-char.json
+qapi-schema += funny-word.json
 qapi-schema += ident-with-escape.json
 qapi-schema += include-before-err.json
 qapi-schema += include-cycle.json
 qapi-schema += include-extra-junk.json
-qapi-schema += include-format-err.json
 qapi-schema += include-nested-err.json
 qapi-schema += include-no-file.json
 qapi-schema += include-non-file.json
@@ -421,6 +443,7 @@ qapi-schema += pragma-doc-required-crap.json
 qapi-schema += pragma-extra-junk.json
 qapi-schema += pragma-name-case-whitelist-crap.json
 qapi-schema += pragma-non-dict.json
+qapi-schema += pragma-unknown.json
 qapi-schema += pragma-returns-whitelist-crap.json
 qapi-schema += qapi-schema-test.json
 qapi-schema += quoted-structural-chars.json
@@ -441,9 +464,12 @@ qapi-schema += returns-array-bad.json
 qapi-schema += returns-dict.json
 qapi-schema += returns-unknown.json
 qapi-schema += returns-whitelist.json
+qapi-schema += string-code-point-31.json
+qapi-schema += string-code-point-127.json
 qapi-schema += struct-base-clash-deep.json
 qapi-schema += struct-base-clash.json
 qapi-schema += struct-data-invalid.json
+qapi-schema += struct-member-if-invalid.json
 qapi-schema += struct-member-invalid-dict.json
 qapi-schema += struct-member-invalid.json
 qapi-schema += trailing-comma-list.json
@@ -452,10 +478,10 @@ qapi-schema += type-bypass-bad-gen.json
 qapi-schema += unclosed-list.json
 qapi-schema += unclosed-object.json
 qapi-schema += unclosed-string.json
-qapi-schema += unicode-str.json
 qapi-schema += union-base-empty.json
 qapi-schema += union-base-no-discriminator.json
 qapi-schema += union-branch-case.json
+qapi-schema += union-branch-if-invalid.json
 qapi-schema += union-branch-invalid-dict.json
 qapi-schema += union-clash-branches.json
 qapi-schema += union-empty.json
@@ -468,39 +494,20 @@ qapi-schema += unknown-expr-key.json
 
 check-qapi-schema-y := $(addprefix tests/qapi-schema/, $(qapi-schema))
 
-GENERATED_FILES += tests/test-qapi-types.h \
-	tests/include/test-qapi-types-sub-module.h \
-	tests/test-qapi-types-sub-sub-module.h \
-	tests/test-qapi-visit.h \
-	tests/include/test-qapi-visit-sub-module.h \
-	tests/test-qapi-visit-sub-sub-module.h \
-	tests/test-qapi-commands.h \
-	tests/include/test-qapi-commands-sub-module.h \
-	tests/test-qapi-commands-sub-sub-module.h \
-	tests/test-qapi-events.h \
-	tests/include/test-qapi-events-sub-module.h \
-	tests/test-qapi-events-sub-sub-module.h \
-	tests/test-qapi-introspect.h
+generated-files-y += tests/test-qapi-types.h
+generated-files-y += tests/include/test-qapi-types-sub-module.h
+generated-files-y += tests/test-qapi-types-sub-sub-module.h
+generated-files-y += tests/test-qapi-visit.h
+generated-files-y += tests/include/test-qapi-visit-sub-module.h
+generated-files-y += tests/test-qapi-visit-sub-sub-module.h
+generated-files-y += tests/test-qapi-commands.h
+generated-files-y += tests/include/test-qapi-commands-sub-module.h
+generated-files-y += tests/test-qapi-commands-sub-sub-module.h
+generated-files-y += tests/test-qapi-events.h
+generated-files-y += tests/include/test-qapi-events-sub-module.h
+generated-files-y += tests/test-qapi-events-sub-sub-module.h
+generated-files-y += tests/test-qapi-introspect.h
 
-test-obj-y = tests/check-qnum.o tests/check-qstring.o tests/check-qdict.o \
-	tests/check-qlist.o tests/check-qnull.o tests/check-qobject.o \
-	tests/check-qjson.o tests/check-qlit.o \
-	tests/check-block-qtest.o \
-	tests/test-coroutine.o tests/test-string-output-visitor.o \
-	tests/test-string-input-visitor.o tests/test-qobject-output-visitor.o \
-	tests/test-clone-visitor.o \
-	tests/test-qobject-input-visitor.o \
-	tests/test-qmp-cmds.o tests/test-visitor-serialization.o \
-	tests/test-x86-cpuid.o tests/test-mul64.o tests/test-int128.o \
-	tests/test-opts-visitor.o tests/test-qmp-event.o \
-	tests/rcutorture.o tests/test-rcu-list.o \
-	tests/test-rcu-simpleq.o \
-	tests/test-rcu-tailq.o \
-	tests/test-qdist.o tests/test-shift128.o \
-	tests/test-qht.o tests/qht-bench.o tests/test-qht-par.o \
-	tests/atomic_add-bench.o tests/atomic64-bench.o
-
-$(test-obj-y): QEMU_INCLUDES += -Itests
 QEMU_CFLAGS += -I$(SRC_PATH)/tests
 
 
@@ -515,11 +522,11 @@ test-qapi-obj-y = tests/test-qapi-types.o \
 	tests/test-qapi-visit-sub-sub-module.o \
 	tests/test-qapi-introspect.o \
 	$(test-qom-obj-y)
-benchmark-crypto-obj-y = $(authz-obj-y) $(crypto-obj-y) $(test-qom-obj-y)
-test-crypto-obj-y = $(authz-obj-y) $(crypto-obj-y) $(test-qom-obj-y)
-test-io-obj-y = $(io-obj-y) $(test-crypto-obj-y)
-test-authz-obj-y = $(test-qom-obj-y) $(authz-obj-y)
-test-block-obj-y = $(block-obj-y) $(test-io-obj-y) tests/iothread.o
+benchmark-crypto-obj-$(CONFIG_BLOCK) = $(authz-obj-y) $(crypto-obj-y) $(test-qom-obj-y)
+test-crypto-obj-$(CONFIG_BLOCK) = $(authz-obj-y) $(crypto-obj-y) $(test-qom-obj-y)
+test-io-obj-$(CONFIG_BLOCK) = $(io-obj-y) $(test-crypto-obj-y)
+test-authz-obj-$(CONFIG_BLOCK) = $(test-qom-obj-y) $(authz-obj-y)
+test-block-obj-$(CONFIG_BLOCK) = $(block-obj-y) $(test-io-obj-y) tests/iothread.o
 
 tests/check-qnum$(EXESUF): tests/check-qnum.o $(test-util-obj-y)
 tests/check-qstring$(EXESUF): tests/check-qstring.o $(test-util-obj-y)
@@ -533,7 +540,7 @@ tests/check-qlit$(EXESUF): tests/check-qlit.o $(test-util-obj-y)
 tests/check-qom-interface$(EXESUF): tests/check-qom-interface.o $(test-qom-obj-y)
 tests/check-qom-proplist$(EXESUF): tests/check-qom-proplist.o $(test-qom-obj-y)
 
-tests/test-char$(EXESUF): tests/test-char.o $(test-util-obj-y) $(qtest-obj-y) $(test-io-obj-y) $(chardev-obj-y)
+tests/test-char$(EXESUF): tests/test-char.o $(test-util-obj-y) $(qtest-obj-y) $(test-io-obj-y) $(chardev-obj-y) tests/socket-helpers.o
 tests/test-coroutine$(EXESUF): tests/test-coroutine.o $(test-block-obj-y)
 tests/test-aio$(EXESUF): tests/test-aio.o $(test-block-obj-y)
 tests/test-aio-multithread$(EXESUF): tests/test-aio-multithread.o $(test-block-obj-y)
@@ -548,6 +555,7 @@ tests/test-image-locking$(EXESUF): tests/test-image-locking.o $(test-block-obj-y
 tests/test-thread-pool$(EXESUF): tests/test-thread-pool.o $(test-block-obj-y)
 tests/test-iov$(EXESUF): tests/test-iov.o $(test-util-obj-y)
 tests/test-hbitmap$(EXESUF): tests/test-hbitmap.o $(test-util-obj-y) $(test-crypto-obj-y)
+tests/test-bitmap$(EXESUF): tests/test-bitmap.o $(test-util-obj-y)
 tests/test-x86-cpuid$(EXESUF): tests/test-x86-cpuid.o
 tests/test-xbzrle$(EXESUF): tests/test-xbzrle.o migration/xbzrle.o migration/page_cache.o $(test-util-obj-y)
 tests/test-cutils$(EXESUF): tests/test-cutils.o util/cutils.o $(test-util-obj-y)
@@ -617,6 +625,7 @@ tests/test-qapi-gen-timestamp: \
 	$(call quiet-command,$(PYTHON) $(SRC_PATH)/scripts/qapi-gen.py \
 		-o tests -p "test-" $<, \
 		"GEN","$(@:%-timestamp=%)")
+	@rm -f tests/test-qapi-doc.texi
 	@>$@
 
 tests/qapi-schema/doc-good.test.texi: $(SRC_PATH)/tests/qapi-schema/doc-good.json $(qapi-py)
@@ -697,7 +706,7 @@ libqgraph-obj-y = tests/libqos/qgraph.o
 
 libqos-obj-y = $(libqgraph-obj-y) tests/libqos/pci.o tests/libqos/fw_cfg.o
 libqos-obj-y += tests/libqos/malloc.o
-libqos-obj-y += tests/libqos/i2c.o tests/libqos/libqos.o
+libqos-obj-y += tests/libqos/libqos.o
 libqos-spapr-obj-y = $(libqos-obj-y) tests/libqos/malloc-spapr.o
 libqos-spapr-obj-y += tests/libqos/libqos-spapr.o
 libqos-spapr-obj-y += tests/libqos/rtas.o
@@ -705,14 +714,15 @@ libqos-spapr-obj-y += tests/libqos/pci-spapr.o
 libqos-pc-obj-y = $(libqos-obj-y) tests/libqos/pci-pc.o
 libqos-pc-obj-y += tests/libqos/malloc-pc.o tests/libqos/libqos-pc.o
 libqos-pc-obj-y += tests/libqos/ahci.o
-libqos-omap-obj-y = $(libqos-obj-y) tests/libqos/i2c-omap.o
-libqos-imx-obj-y = $(libqos-obj-y) tests/libqos/i2c-imx.o
 libqos-usb-obj-y = $(libqos-spapr-obj-y) $(libqos-pc-obj-y) tests/libqos/usb.o
 
 # Devices
 qos-test-obj-y = tests/qos-test.o $(libqgraph-obj-y)
 qos-test-obj-y += $(libqos-pc-obj-y) $(libqos-spapr-obj-y)
 qos-test-obj-y += tests/libqos/e1000e.o
+qos-test-obj-y += tests/libqos/i2c.o
+qos-test-obj-y += tests/libqos/i2c-imx.o
+qos-test-obj-y += tests/libqos/i2c-omap.o
 qos-test-obj-y += tests/libqos/sdhci.o
 qos-test-obj-y += tests/libqos/tpci200.o
 qos-test-obj-y += tests/libqos/virtio.o
@@ -722,12 +732,15 @@ qos-test-obj-y += tests/libqos/virtio-blk.o
 qos-test-obj-y += tests/libqos/virtio-mmio.o
 qos-test-obj-y += tests/libqos/virtio-net.o
 qos-test-obj-y += tests/libqos/virtio-pci.o
+qos-test-obj-y += tests/libqos/virtio-pci-modern.o
 qos-test-obj-y += tests/libqos/virtio-rng.o
 qos-test-obj-y += tests/libqos/virtio-scsi.o
 qos-test-obj-y += tests/libqos/virtio-serial.o
 
 # Machines
 qos-test-obj-y += tests/libqos/aarch64-xlnx-zcu102-machine.o
+qos-test-obj-y += tests/libqos/arm-imx25-pdk-machine.o
+qos-test-obj-y += tests/libqos/arm-n800-machine.o
 qos-test-obj-y += tests/libqos/arm-raspi2-machine.o
 qos-test-obj-y += tests/libqos/arm-sabrelite-machine.o
 qos-test-obj-y += tests/libqos/arm-smdkc210-machine.o
@@ -738,6 +751,7 @@ qos-test-obj-y += tests/libqos/x86_64_pc-machine.o
 
 # Tests
 qos-test-obj-y += tests/ac97-test.o
+qos-test-obj-y += tests/ds1338-test.o
 qos-test-obj-y += tests/e1000-test.o
 qos-test-obj-y += tests/e1000e-test.o
 qos-test-obj-y += tests/eepro100-test.o
@@ -746,10 +760,12 @@ qos-test-obj-y += tests/ipoctal232-test.o
 qos-test-obj-y += tests/megasas-test.o
 qos-test-obj-y += tests/ne2000-test.o
 qos-test-obj-y += tests/nvme-test.o
+qos-test-obj-y += tests/pca9552-test.o
 qos-test-obj-y += tests/pci-test.o
 qos-test-obj-y += tests/pcnet-test.o
 qos-test-obj-y += tests/sdhci-test.o
 qos-test-obj-y += tests/spapr-phb-test.o
+qos-test-obj-y += tests/tmp105-test.o
 qos-test-obj-y += tests/usb-hcd-ohci-test.o $(libqos-usb-obj-y)
 qos-test-obj-$(CONFIG_VHOST_NET_USER) += tests/vhost-user-test.o $(chardev-obj-y) $(test-io-obj-y)
 qos-test-obj-y += tests/virtio-test.o
@@ -773,6 +789,7 @@ tests/device-introspect-test$(EXESUF): tests/device-introspect-test.o
 tests/rtc-test$(EXESUF): tests/rtc-test.o
 tests/m48t59-test$(EXESUF): tests/m48t59-test.o
 tests/hexloader-test$(EXESUF): tests/hexloader-test.o
+tests/pflash-cfi02$(EXESUF): tests/pflash-cfi02-test.o
 tests/endianness-test$(EXESUF): tests/endianness-test.o
 tests/prom-env-test$(EXESUF): tests/prom-env-test.o $(libqos-obj-y)
 tests/rtas-test$(EXESUF): tests/rtas-test.o $(libqos-spapr-obj-y)
@@ -781,15 +798,12 @@ tests/ide-test$(EXESUF): tests/ide-test.o $(libqos-pc-obj-y)
 tests/ahci-test$(EXESUF): tests/ahci-test.o $(libqos-pc-obj-y) qemu-img$(EXESUF)
 tests/ipmi-kcs-test$(EXESUF): tests/ipmi-kcs-test.o
 tests/ipmi-bt-test$(EXESUF): tests/ipmi-bt-test.o
-tests/hd-geo-test$(EXESUF): tests/hd-geo-test.o
+tests/hd-geo-test$(EXESUF): tests/hd-geo-test.o $(libqos-obj-y)
 tests/boot-order-test$(EXESUF): tests/boot-order-test.o $(libqos-obj-y)
 tests/boot-serial-test$(EXESUF): tests/boot-serial-test.o $(libqos-obj-y)
 tests/bios-tables-test$(EXESUF): tests/bios-tables-test.o \
 	tests/boot-sector.o tests/acpi-utils.o $(libqos-obj-y)
 tests/pxe-test$(EXESUF): tests/pxe-test.o tests/boot-sector.o $(libqos-obj-y)
-tests/tmp105-test$(EXESUF): tests/tmp105-test.o $(libqos-omap-obj-y)
-tests/pca9552-test$(EXESUF): tests/pca9552-test.o $(libqos-omap-obj-y)
-tests/ds1338-test$(EXESUF): tests/ds1338-test.o $(libqos-imx-obj-y)
 tests/microbit-test$(EXESUF): tests/microbit-test.o
 tests/m25p80-test$(EXESUF): tests/m25p80-test.o
 tests/i440fx-test$(EXESUF): tests/i440fx-test.o $(libqos-pc-obj-y)
@@ -831,6 +845,7 @@ tests/test-qapi-util$(EXESUF): tests/test-qapi-util.o $(test-util-obj-y)
 tests/numa-test$(EXESUF): tests/numa-test.o
 tests/vmgenid-test$(EXESUF): tests/vmgenid-test.o tests/boot-sector.o tests/acpi-utils.o
 tests/cdrom-test$(EXESUF): tests/cdrom-test.o tests/boot-sector.o $(libqos-obj-y)
+tests/arm-cpu-features$(EXESUF): tests/arm-cpu-features.o
 
 tests/migration/stress$(EXESUF): tests/migration/stress.o
 	$(call quiet-command, $(LINKPROG) -static -O3 $(PTHREAD_LIB) -o $@ $< ,"LINK","$(TARGET_DIR)$@")
@@ -899,7 +914,7 @@ define do_test_tap
 endef
 
 .PHONY: $(patsubst %, check-qtest-%, $(QTEST_TARGETS))
-$(patsubst %, check-qtest-%, $(QTEST_TARGETS)): check-qtest-%: subdir-%-softmmu $(check-qtest-y)
+$(patsubst %, check-qtest-%, $(QTEST_TARGETS)): check-qtest-%: %-softmmu/all $(check-qtest-y)
 	$(call do_test_human,$(check-qtest-$*-y) $(check-qtest-generic-y), \
 	  QTEST_QEMU_BINARY=$*-softmmu/qemu-system-$* \
 	  QTEST_QEMU_IMG=qemu-img$(EXESUF))
@@ -912,7 +927,7 @@ check-speed: $(check-speed-y)
 
 # gtester tests with TAP output
 
-$(patsubst %, check-report-qtest-%.tap, $(QTEST_TARGETS)): check-report-qtest-%.tap: $(check-qtest-y)
+$(patsubst %, check-report-qtest-%.tap, $(QTEST_TARGETS)): check-report-qtest-%.tap: %-softmmu/all $(check-qtest-y)
 	$(call do_test_tap, $(check-qtest-$*-y) $(check-qtest-generic-y), \
 	  QTEST_QEMU_BINARY=$*-softmmu/qemu-system-$* \
 	  QTEST_QEMU_IMG=qemu-img$(EXESUF))
@@ -923,7 +938,7 @@ check-report-unit.tap: $(check-unit-y)
 # Reports and overall runs
 
 check-report.tap: $(patsubst %,check-report-qtest-%.tap, $(QTEST_TARGETS)) check-report-unit.tap
-	$(call quiet-command,./scripts/tap-merge.py $^ > $@,"GEN","$@")
+	$(call quiet-command, cat $^ | scripts/tap-merge.pl >$@,"GEN","$@")
 
 # FPU Emulation tests (aka softfloat)
 #
@@ -1056,32 +1071,44 @@ check-softfloat:
 		"SKIPPED for non-TCG builds")
 endif
 
+# Plugins
+ifeq ($(CONFIG_PLUGIN),y)
+.PHONY: plugins
+plugins:
+	$(call quiet-command,\
+		$(MAKE) $(SUBDIR_MAKEFLAGS) -C tests/plugin V="$(V)", \
+		"BUILD", "plugins")
+endif
+
 # Per guest TCG tests
 
 BUILD_TCG_TARGET_RULES=$(patsubst %,build-tcg-tests-%, $(TARGET_DIRS))
 CLEAN_TCG_TARGET_RULES=$(patsubst %,clean-tcg-tests-%, $(TARGET_DIRS))
 RUN_TCG_TARGET_RULES=$(patsubst %,run-tcg-tests-%, $(TARGET_DIRS))
 
-ifeq ($(HAVE_USER_DOCKER),y)
 # Probe for the Docker Builds needed for each build
 $(foreach PROBE_TARGET,$(TARGET_DIRS), 				\
-	$(eval -include $(SRC_PATH)/tests/tcg/Makefile.probe) 	\
-	$(if $(DOCKER_PREREQ), 					\
-		$(eval build-tcg-tests-$(PROBE_TARGET): $(DOCKER_PREREQ))))
-endif
+	$(eval -include $(SRC_PATH)/tests/tcg/Makefile.prereqs))
 
-build-tcg-tests-%:
-	$(call quiet-command,$(MAKE) $(SUBDIR_MAKEFLAGS) -C $* V="$(V)" \
-		SKIP_DOCKER_BUILD=1 TARGET_DIR="$*/" guest-tests, \
+build-tcg-tests-%: $(if $(CONFIG_PLUGIN),plugins)
+	$(call quiet-command,$(MAKE) $(SUBDIR_MAKEFLAGS) \
+		-f $(SRC_PATH)/tests/tcg/Makefile.qemu \
+		SRC_PATH=$(SRC_PATH) \
+	       	V="$(V)" TARGET="$*" guest-tests, \
 		"BUILD", "TCG tests for $*")
 
-run-tcg-tests-%: % build-tcg-tests-%
-	$(call quiet-command,$(MAKE) $(SUBDIR_MAKEFLAGS) -C $* V="$(V)" \
-		SKIP_DOCKER_BUILD=1 TARGET_DIR="$*/" run-guest-tests, \
+run-tcg-tests-%: build-tcg-tests-% %/all
+	$(call quiet-command,$(MAKE) $(SUBDIR_MAKEFLAGS) \
+		-f $(SRC_PATH)/tests/tcg/Makefile.qemu \
+		SRC_PATH=$(SRC_PATH) SPEED="$(SPEED)" \
+		V="$(V)" TARGET="$*" run-guest-tests, \
 		"RUN", "TCG tests for $*")
 
 clean-tcg-tests-%:
-	$(call quiet-command,$(MAKE) $(SUBDIR_MAKEFLAGS) -C $* V="$(V)" TARGET_DIR="$*/" clean-guest-tests,)
+	$(call quiet-command,$(MAKE) $(SUBDIR_MAKEFLAGS) \
+		-f $(SRC_PATH)/tests/tcg/Makefile.qemu \
+		SRC_PATH=$(SRC_PATH) TARGET="$*" clean-guest-tests, \
+		"CLEAN", "TCG tests for $*")
 
 .PHONY: build-tcg
 build-tcg: $(BUILD_TCG_TARGET_RULES)
@@ -1096,21 +1123,17 @@ clean-tcg: $(CLEAN_TCG_TARGET_RULES)
 
 QEMU_IOTESTS_HELPERS-$(call land,$(CONFIG_SOFTMMU),$(CONFIG_LINUX)) = tests/qemu-iotests/socket_scm_helper$(EXESUF)
 
-.PHONY: check-tests/qemu-iotests-quick.sh
-check-tests/qemu-iotests-quick.sh: tests/qemu-iotests-quick.sh qemu-img$(EXESUF) qemu-io$(EXESUF) qemu-nbd$(EXESUF) $(QEMU_IOTESTS_HELPERS-y)
-	$<
+.PHONY: check-tests/check-block.sh
+check-tests/check-block.sh: tests/check-block.sh qemu-img$(EXESUF) \
+		qemu-io$(EXESUF) qemu-nbd$(EXESUF) $(QEMU_IOTESTS_HELPERS-y) \
+		$(patsubst %,%/all,$(filter %-softmmu,$(TARGET_DIRS)))
+	@$<
 
-.PHONY: $(patsubst %, check-%, $(check-qapi-schema-y))
-$(patsubst %, check-%, $(check-qapi-schema-y)): check-%.json: $(SRC_PATH)/%.json
+.PHONY: check-tests/qapi-schema/frontend
+check-tests/qapi-schema/frontend: $(addprefix $(SRC_PATH)/, $(check-qapi-schema-y))
 	$(call quiet-command, PYTHONPATH=$(SRC_PATH)/scripts \
-		$(PYTHON) $(SRC_PATH)/tests/qapi-schema/test-qapi.py \
-		$^ >$*.test.out 2>$*.test.err; \
-		echo $$? >$*.test.exit, \
-		"TEST","$*.out")
-	@# Sanitize error messages (make them independent of build directory)
-	@perl -p -e 's|\Q$(SRC_PATH)\E/||g' $*.test.err | diff -u $(SRC_PATH)/$*.err -
-	@diff -u $(SRC_PATH)/$*.out $*.test.out
-	@diff -u $(SRC_PATH)/$*.exit $*.test.exit
+	  PYTHONIOENCODING=utf-8 $(PYTHON) $(SRC_PATH)/tests/qapi-schema/test-qapi.py $^, \
+	  TEST, check-qapi-schema)
 
 .PHONY: check-tests/qapi-schema/doc-good.texi
 check-tests/qapi-schema/doc-good.texi: tests/qapi-schema/doc-good.test.texi
@@ -1133,9 +1156,10 @@ TESTS_RESULTS_DIR=$(BUILD_DIR)/tests/results
 # Controls the output generated by Avocado when running tests.
 # Any number of command separated loggers are accepted.  For more
 # information please refer to "avocado --help".
-AVOCADO_SHOW=none
+AVOCADO_SHOW=app
+AVOCADO_TAGS=$(patsubst %-softmmu,-t arch:%, $(filter %-softmmu,$(TARGET_DIRS)))
 
-ifneq ($(findstring v2,"v$(PYTHON_VERSION)"),v2)
+ifneq ($(PYTHON2),y)
 $(TESTS_VENV_DIR): $(TESTS_VENV_REQ)
 	$(call quiet-command, \
             $(PYTHON) -m venv --system-site-packages $@, \
@@ -1159,16 +1183,18 @@ check-acceptance: check-venv $(TESTS_RESULTS_DIR)
 	$(call quiet-command, \
             $(TESTS_VENV_DIR)/bin/python -m avocado \
             --show=$(AVOCADO_SHOW) run --job-results-dir=$(TESTS_RESULTS_DIR) \
+            --filter-by-tags-include-empty --filter-by-tags-include-empty-key \
+            $(AVOCADO_TAGS) \
             --failfast=on $(SRC_PATH)/tests/acceptance, \
             "AVOCADO", "tests/acceptance")
 
 # Consolidated targets
 
 .PHONY: check-block check-qapi-schema check-qtest check-unit check check-clean
-check-qapi-schema: $(patsubst %,check-%, $(check-qapi-schema-y)) check-tests/qapi-schema/doc-good.texi
+check-qapi-schema: check-tests/qapi-schema/frontend check-tests/qapi-schema/doc-good.texi
 check-qtest: $(patsubst %,check-qtest-%, $(QTEST_TARGETS))
 check-block: $(patsubst %,check-%, $(check-block-y))
-check: check-qapi-schema check-unit check-softfloat check-qtest check-decodetree
+check: check-block check-qapi-schema check-unit check-softfloat check-qtest check-decodetree
 check-clean:
 	rm -rf $(check-unit-y) tests/*.o $(QEMU_IOTESTS_HELPERS-y)
 	rm -rf $(sort $(foreach target,$(SYSEMU_TARGET_LIST), $(check-qtest-$(target)-y)) $(check-qtest-generic-y))

@@ -23,11 +23,13 @@
 
 #include "qemu/osdep.h"
 #include "qemu/units.h"
-#include "hw/hw.h"
 #include "sysemu/block-backend.h"
+#include "hw/qdev-properties.h"
 #include "hw/ssi/ssi.h"
+#include "migration/vmstate.h"
 #include "qemu/bitops.h"
 #include "qemu/log.h"
+#include "qemu/module.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 
@@ -325,6 +327,7 @@ static const FlashPartInfo known_devices[] = {
     { INFO("w25q80",      0xef5014,      0,  64 << 10,  16, ER_4K) },
     { INFO("w25q80bl",    0xef4014,      0,  64 << 10,  16, ER_4K) },
     { INFO("w25q256",     0xef4019,      0,  64 << 10, 512, ER_4K) },
+    { INFO("w25q512jv",   0xef4020,      0,  64 << 10, 1024, ER_4K) },
 };
 
 typedef enum {

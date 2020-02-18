@@ -13,9 +13,9 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu-common.h"
 #include "qemu/error-report.h"
 #include "trace.h"
-#include "qemu-common.h"
 #include "qapi/error.h"
 #include "net/net.h"
 #include "net/eth.h"
@@ -83,11 +83,14 @@ typedef struct CompareState {
     char *pri_indev;
     char *sec_indev;
     char *outdev;
+    char *notify_dev;
     CharBackend chr_pri_in;
     CharBackend chr_sec_in;
     CharBackend chr_out;
+    CharBackend chr_notify_dev;
     SocketReadState pri_rs;
     SocketReadState sec_rs;
+    SocketReadState notify_rs;
     bool vnet_hdr;
 
     /*
@@ -117,16 +120,44 @@ enum {
     SECONDARY_IN,
 };
 
-static void colo_compare_inconsistency_notify(void)
-{
-    notifier_list_notify(&colo_compare_notifiers,
-                migrate_get_current());
-}
 
 static int compare_chr_send(CompareState *s,
                             const uint8_t *buf,
                             uint32_t size,
-                            uint32_t vnet_hdr_len);
+                            uint32_t vnet_hdr_len,
+                            bool notify_remote_frame);
+
+static bool packet_matches_str(const char *str,
+                               const uint8_t *buf,
+                               uint32_t packet_len)
+{
+    if (packet_len != strlen(str)) {
+        return false;
+    }
+
+    return !memcmp(str, buf, strlen(str));
+}
+
+static void notify_remote_frame(CompareState *s)
+{
+    char msg[] = "DO_CHECKPOINT";
+    int ret = 0;
+
+    ret = compare_chr_send(s, (uint8_t *)msg, strlen(msg), 0, true);
+    if (ret < 0) {
+        error_report("Notify Xen COLO-frame failed");
+    }
+}
+
+static void colo_compare_inconsistency_notify(CompareState *s)
+{
+    if (s->notify_dev) {
+        notify_remote_frame(s);
+    } else {
+        notifier_list_notify(&colo_compare_notifiers,
+                             migrate_get_current());
+    }
+}
 
 static gint seq_sorter(Packet *a, Packet *b, gpointer data)
 {
@@ -238,7 +269,8 @@ static void colo_release_primary_pkt(CompareState *s, Packet *pkt)
     ret = compare_chr_send(s,
                            pkt->data,
                            pkt->size,
-                           pkt->vnet_hdr_len);
+                           pkt->vnet_hdr_len,
+                           false);
     if (ret < 0) {
         error_report("colo send primary packet failed");
     }
@@ -287,7 +319,7 @@ static bool colo_mark_tcp_pkt(Packet *ppkt, Packet *spkt,
     *mark = 0;
 
     if (ppkt->tcp_seq == spkt->tcp_seq && ppkt->seq_end == spkt->seq_end) {
-        if (colo_compare_packet_payload(ppkt, spkt,
+        if (!colo_compare_packet_payload(ppkt, spkt,
                                         ppkt->header_size, spkt->header_size,
                                         ppkt->payload_size)) {
             *mark = COLO_COMPARE_FREE_SECONDARY | COLO_COMPARE_FREE_PRIMARY;
@@ -297,7 +329,7 @@ static bool colo_mark_tcp_pkt(Packet *ppkt, Packet *spkt,
 
     /* one part of secondary packet payload still need to be compared */
     if (!after(ppkt->seq_end, spkt->seq_end)) {
-        if (colo_compare_packet_payload(ppkt, spkt,
+        if (!colo_compare_packet_payload(ppkt, spkt,
                                         ppkt->header_size + ppkt->offset,
                                         spkt->header_size + spkt->offset,
                                         ppkt->payload_size - ppkt->offset)) {
@@ -316,7 +348,7 @@ static bool colo_mark_tcp_pkt(Packet *ppkt, Packet *spkt,
         /* primary packet is longer than secondary packet, compare
          * the same part and mark the primary packet offset
          */
-        if (colo_compare_packet_payload(ppkt, spkt,
+        if (!colo_compare_packet_payload(ppkt, spkt,
                                         ppkt->header_size + ppkt->offset,
                                         spkt->header_size + spkt->offset,
                                         spkt->payload_size - spkt->offset)) {
@@ -430,7 +462,7 @@ sec:
         qemu_hexdump((char *)spkt->data, stderr,
                      "colo-compare spkt", spkt->size);
 
-        colo_compare_inconsistency_notify();
+        colo_compare_inconsistency_notify(s);
     }
 }
 
@@ -572,7 +604,7 @@ void colo_compare_unregister_notifier(Notifier *notify)
 }
 
 static int colo_old_packet_check_one_conn(Connection *conn,
-                                           void *user_data)
+                                          CompareState *s)
 {
     GList *result = NULL;
     int64_t check_time = REGULAR_PACKET_CHECK_MS;
@@ -583,7 +615,7 @@ static int colo_old_packet_check_one_conn(Connection *conn,
 
     if (result) {
         /* Do checkpoint will flush old packet */
-        colo_compare_inconsistency_notify();
+        colo_compare_inconsistency_notify(s);
         return 0;
     }
 
@@ -603,7 +635,7 @@ static void colo_old_packet_check(void *opaque)
      * If we find one old packet, stop finding job and notify
      * COLO frame do checkpoint.
      */
-    g_queue_find_custom(&s->conn_list, NULL,
+    g_queue_find_custom(&s->conn_list, s,
                         (GCompareFunc)colo_old_packet_check_one_conn);
 }
 
@@ -632,7 +664,8 @@ static void colo_compare_packet(CompareState *s, Connection *conn,
              */
             trace_colo_compare_main("packet different");
             g_queue_push_head(&conn->primary_list, pkt);
-            colo_compare_inconsistency_notify();
+
+            colo_compare_inconsistency_notify(s);
             break;
         }
     }
@@ -668,7 +701,8 @@ static void colo_compare_connection(void *opaque, void *user_data)
 static int compare_chr_send(CompareState *s,
                             const uint8_t *buf,
                             uint32_t size,
-                            uint32_t vnet_hdr_len)
+                            uint32_t vnet_hdr_len,
+                            bool notify_remote_frame)
 {
     int ret = 0;
     uint32_t len = htonl(size);
@@ -677,7 +711,14 @@ static int compare_chr_send(CompareState *s,
         return 0;
     }
 
-    ret = qemu_chr_fe_write_all(&s->chr_out, (uint8_t *)&len, sizeof(len));
+    if (notify_remote_frame) {
+        ret = qemu_chr_fe_write_all(&s->chr_notify_dev,
+                                    (uint8_t *)&len,
+                                    sizeof(len));
+    } else {
+        ret = qemu_chr_fe_write_all(&s->chr_out, (uint8_t *)&len, sizeof(len));
+    }
+
     if (ret != sizeof(len)) {
         goto err;
     }
@@ -688,13 +729,26 @@ static int compare_chr_send(CompareState *s,
          * know how to parse net packet correctly.
          */
         len = htonl(vnet_hdr_len);
-        ret = qemu_chr_fe_write_all(&s->chr_out, (uint8_t *)&len, sizeof(len));
+
+        if (!notify_remote_frame) {
+            ret = qemu_chr_fe_write_all(&s->chr_out,
+                                        (uint8_t *)&len,
+                                        sizeof(len));
+        }
+
         if (ret != sizeof(len)) {
             goto err;
         }
     }
 
-    ret = qemu_chr_fe_write_all(&s->chr_out, (uint8_t *)buf, size);
+    if (notify_remote_frame) {
+        ret = qemu_chr_fe_write_all(&s->chr_notify_dev,
+                                    (uint8_t *)buf,
+                                    size);
+    } else {
+        ret = qemu_chr_fe_write_all(&s->chr_out, (uint8_t *)buf, size);
+    }
+
     if (ret != size) {
         goto err;
     }
@@ -741,6 +795,19 @@ static void compare_sec_chr_in(void *opaque, const uint8_t *buf, int size)
         qemu_chr_fe_set_handlers(&s->chr_sec_in, NULL, NULL, NULL, NULL,
                                  NULL, NULL, true);
         error_report("colo-compare secondary_in error");
+    }
+}
+
+static void compare_notify_chr(void *opaque, const uint8_t *buf, int size)
+{
+    CompareState *s = COLO_COMPARE(opaque);
+    int ret;
+
+    ret = net_fill_rstate(&s->notify_rs, buf, size);
+    if (ret == -1) {
+        qemu_chr_fe_set_handlers(&s->chr_notify_dev, NULL, NULL, NULL, NULL,
+                                 NULL, NULL, true);
+        error_report("colo-compare notify_dev error");
     }
 }
 
@@ -813,9 +880,8 @@ static void colo_compare_handle_event(void *opaque)
         break;
     }
 
-    assert(event_unhandled_count > 0);
-
     qemu_mutex_lock(&event_mtx);
+    assert(event_unhandled_count > 0);
     event_unhandled_count--;
     qemu_cond_broadcast(&event_complete_cond);
     qemu_mutex_unlock(&event_mtx);
@@ -832,6 +898,11 @@ static void colo_compare_iothread(CompareState *s)
     qemu_chr_fe_set_handlers(&s->chr_sec_in, compare_chr_can_read,
                              compare_sec_chr_in, NULL, NULL,
                              s, s->worker_context, true);
+    if (s->notify_dev) {
+        qemu_chr_fe_set_handlers(&s->chr_notify_dev, compare_chr_can_read,
+                                 compare_notify_chr, NULL, NULL,
+                                 s, s->worker_context, true);
+    }
 
     colo_compare_timer_init(s);
     s->event_bh = qemu_bh_new(colo_compare_handle_event, s);
@@ -898,6 +969,21 @@ static void compare_set_vnet_hdr(Object *obj,
     s->vnet_hdr = value;
 }
 
+static char *compare_get_notify_dev(Object *obj, Error **errp)
+{
+    CompareState *s = COLO_COMPARE(obj);
+
+    return g_strdup(s->notify_dev);
+}
+
+static void compare_set_notify_dev(Object *obj, const char *value, Error **errp)
+{
+    CompareState *s = COLO_COMPARE(obj);
+
+    g_free(s->notify_dev);
+    s->notify_dev = g_strdup(value);
+}
+
 static void compare_pri_rs_finalize(SocketReadState *pri_rs)
 {
     CompareState *s = container_of(pri_rs, CompareState, pri_rs);
@@ -908,7 +994,8 @@ static void compare_pri_rs_finalize(SocketReadState *pri_rs)
         compare_chr_send(s,
                          pri_rs->buf,
                          pri_rs->packet_len,
-                         pri_rs->vnet_hdr_len);
+                         pri_rs->vnet_hdr_len,
+                         false);
     } else {
         /* compare packet in the specified connection */
         colo_compare_connection(conn, s);
@@ -928,6 +1015,29 @@ static void compare_sec_rs_finalize(SocketReadState *sec_rs)
     }
 }
 
+static void compare_notify_rs_finalize(SocketReadState *notify_rs)
+{
+    CompareState *s = container_of(notify_rs, CompareState, notify_rs);
+
+    const char msg[] = "COLO_COMPARE_GET_XEN_INIT";
+    int ret;
+
+    if (packet_matches_str("COLO_USERSPACE_PROXY_INIT",
+                           notify_rs->buf,
+                           notify_rs->packet_len)) {
+        ret = compare_chr_send(s, (uint8_t *)msg, strlen(msg), 0, true);
+        if (ret < 0) {
+            error_report("Notify Xen COLO-frame INIT failed");
+        }
+    } else if (packet_matches_str("COLO_CHECKPOINT",
+                                  notify_rs->buf,
+                                  notify_rs->packet_len)) {
+        /* colo-compare do checkpoint, flush pri packet and remove sec packet */
+        g_queue_foreach(&s->conn_list, colo_flush_packets, s);
+    } else {
+        error_report("COLO compare got unsupported instruction");
+    }
+}
 
 /*
  * Return 0 is success.
@@ -998,6 +1108,17 @@ static void colo_compare_complete(UserCreatable *uc, Error **errp)
     net_socket_rs_init(&s->pri_rs, compare_pri_rs_finalize, s->vnet_hdr);
     net_socket_rs_init(&s->sec_rs, compare_sec_rs_finalize, s->vnet_hdr);
 
+    /* Try to enable remote notify chardev, currently just for Xen COLO */
+    if (s->notify_dev) {
+        if (find_and_check_chardev(&chr, s->notify_dev, errp) ||
+            !qemu_chr_fe_init(&s->chr_notify_dev, chr, errp)) {
+            return;
+        }
+
+        net_socket_rs_init(&s->notify_rs, compare_notify_rs_finalize,
+                           s->vnet_hdr);
+    }
+
     QTAILQ_INSERT_TAIL(&net_compares, s, next);
 
     g_queue_init(&s->conn_list);
@@ -1025,7 +1146,8 @@ static void colo_flush_packets(void *opaque, void *user_data)
         compare_chr_send(s,
                          pkt->data,
                          pkt->size,
-                         pkt->vnet_hdr_len);
+                         pkt->vnet_hdr_len,
+                         false);
         packet_destroy(pkt, NULL);
     }
     while (!g_queue_is_empty(&conn->secondary_list)) {
@@ -1058,6 +1180,10 @@ static void colo_compare_init(Object *obj)
                             (Object **)&s->iothread,
                             object_property_allow_set_link,
                             OBJ_PROP_LINK_STRONG, NULL);
+    /* This parameter just for Xen COLO */
+    object_property_add_str(obj, "notify_dev",
+                            compare_get_notify_dev, compare_set_notify_dev,
+                            NULL);
 
     s->vnet_hdr = false;
     object_property_add_bool(obj, "vnet_hdr_support", compare_get_vnet_hdr,
@@ -1072,6 +1198,10 @@ static void colo_compare_finalize(Object *obj)
     qemu_chr_fe_deinit(&s->chr_pri_in, false);
     qemu_chr_fe_deinit(&s->chr_sec_in, false);
     qemu_chr_fe_deinit(&s->chr_out, false);
+    if (s->notify_dev) {
+        qemu_chr_fe_deinit(&s->chr_notify_dev, false);
+    }
+
     if (s->iothread) {
         colo_compare_timer_del(s);
     }
@@ -1104,6 +1234,7 @@ static void colo_compare_finalize(Object *obj)
     g_free(s->pri_indev);
     g_free(s->sec_indev);
     g_free(s->outdev);
+    g_free(s->notify_dev);
 }
 
 static const TypeInfo colo_compare_info = {

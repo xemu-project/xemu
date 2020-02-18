@@ -5,7 +5,7 @@ before_script:
 build-system1:
  script:
  - apt-get install -y -qq libgtk-3-dev libvte-dev nettle-dev libcacard-dev
-      libusb-dev libvde-dev libspice-protocol-dev libgl1-mesa-dev
+      libusb-dev libvde-dev libspice-protocol-dev libgl1-mesa-dev libvdeplug-dev
  - ./configure --enable-werror --target-list="aarch64-softmmu alpha-softmmu
       cris-softmmu hppa-softmmu lm32-softmmu moxie-softmmu microblazeel-softmmu
       mips64el-softmmu m68k-softmmu ppc-softmmu riscv64-softmmu sparc-softmmu"
@@ -45,15 +45,10 @@ build-tcg-disabled:
  - ./check -raw 001 002 003 004 005 008 009 010 011 012 021 025 032 033 048
             052 063 077 086 101 104 106 113 147 148 150 151 152 157 159 160
             163 170 171 183 184 192 194 197 205 208 215 221 222 226 227 236
- - ./check -qcow2 001 002 003 004 005 007 008 009 010 011 012 013 017 018 019
-            020 021 022 024 025 027 028 029 031 032 033 034 035 036 037 038
-            039 040 042 043 046 047 048 049 050 051 052 053 054 056 057 058
-            060 061 062 063 065 066 067 068 069 071 072 073 074 079 080 082
-            085 086 089 090 091 095 096 097 098 099 102 103 104 105 107 108
-            110 111 114 117 120 122 124 126 127 129 130 132 133 134 137 138
-            139 140 141 142 143 144 145 147 150 151 152 154 155 156 157 158
-            161 165 170 172 174 176 177 179 184 186 187 190 192 194 195 196
-            197 200 202 203 205 208 209 214 215 216 217 218 222 226 227 229 234
+ - ./check -qcow2 028 040 051 056 057 058 065 067 068 082 085 091 095 096 102
+            122 124 127 129 132 139 142 144 145 147 151 152 155 157 165 194
+            196 197 200 202 203 205 208 209 215 216 218 222 227 234 246 247
+            248 250 254 255 256
 
 build-user:
  script:
@@ -64,10 +59,25 @@ build-user:
 
 build-clang:
  script:
- - apt-get install -y -qq clang libsdl2-dev
+ - apt-get install -y -qq clang libsdl2-dev libattr1-dev libcap-dev
       xfslibs-dev libiscsi-dev libnfs-dev libseccomp-dev gnutls-dev librbd-dev
  - ./configure --cc=clang --cxx=clang++ --enable-werror
       --target-list="alpha-softmmu arm-softmmu m68k-softmmu mips64-softmmu
                      ppc-softmmu s390x-softmmu x86_64-softmmu arm-linux-user"
  - make -j2
  - make -j2 check
+
+build-tci:
+ script:
+ - TARGETS="aarch64 alpha arm hppa m68k microblaze moxie ppc64 s390x x86_64"
+ - ./configure --enable-tcg-interpreter
+      --target-list="$(for tg in $TARGETS; do echo -n ${tg}'-softmmu '; done)"
+ - make -j2
+ - make tests/boot-serial-test tests/cdrom-test tests/pxe-test
+ - for tg in $TARGETS ; do
+     export QTEST_QEMU_BINARY="${tg}-softmmu/qemu-system-${tg}" ;
+     ./tests/boot-serial-test || exit 1 ;
+     ./tests/cdrom-test || exit 1 ;
+   done
+ - QTEST_QEMU_BINARY="x86_64-softmmu/qemu-system-x86_64" ./tests/pxe-test
+ - QTEST_QEMU_BINARY="s390x-softmmu/qemu-system-s390x" ./tests/pxe-test -m slow

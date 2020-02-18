@@ -2,6 +2,8 @@
 #include "cpu.h"
 #include "exec/helper-proto.h"
 #include "qemu/host-utils.h"
+#include "qemu/main-loop.h"
+#include "sysemu/runstate.h"
 
 #include "hw/lm32/lm32_pic.h"
 #include "hw/char/lm32_juart.h"
@@ -10,13 +12,12 @@
 #include "exec/cpu_ldst.h"
 
 #ifndef CONFIG_USER_ONLY
-#include "sysemu/sysemu.h"
 #endif
 
 #if !defined(CONFIG_USER_ONLY)
 void raise_exception(CPULM32State *env, int index)
 {
-    CPUState *cs = CPU(lm32_env_get_cpu(env));
+    CPUState *cs = env_cpu(env);
 
     cs->exception_index = index;
     cpu_loop_exit(cs);
@@ -29,7 +30,7 @@ void HELPER(raise_exception)(CPULM32State *env, uint32_t index)
 
 void HELPER(hlt)(CPULM32State *env)
 {
-    CPUState *cs = CPU(lm32_env_get_cpu(env));
+    CPUState *cs = env_cpu(env);
 
     cs->halted = 1;
     cs->exception_index = EXCP_HLT;
@@ -39,7 +40,7 @@ void HELPER(hlt)(CPULM32State *env)
 void HELPER(ill)(CPULM32State *env)
 {
 #ifndef CONFIG_USER_ONLY
-    CPUState *cs = CPU(lm32_env_get_cpu(env));
+    CPUState *cs = env_cpu(env);
     fprintf(stderr, "VM paused due to illegal instruction. "
             "Connect a debugger or switch to the monitor console "
             "to find out more.\n");
@@ -142,22 +143,6 @@ uint32_t HELPER(rcsr_jtx)(CPULM32State *env)
 uint32_t HELPER(rcsr_jrx)(CPULM32State *env)
 {
     return lm32_juart_get_jrx(env->juart_state);
-}
-
-/* Try to fill the TLB and return an exception if error. If retaddr is
- * NULL, it means that the function was called in C code (i.e. not
- * from generated code or from helper.c)
- */
-void tlb_fill(CPUState *cs, target_ulong addr, int size,
-              MMUAccessType access_type, int mmu_idx, uintptr_t retaddr)
-{
-    int ret;
-
-    ret = lm32_cpu_handle_mmu_fault(cs, addr, size, access_type, mmu_idx);
-    if (unlikely(ret)) {
-        /* now we have a real cpu fault */
-        cpu_loop_exit_restore(cs, retaddr);
-    }
 }
 #endif
 

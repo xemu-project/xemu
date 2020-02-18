@@ -89,6 +89,7 @@ int load_image_gzipped(const char *filename, hwaddr addr, uint64_t max_sz);
 #define ELF_LOAD_NOT_ELF      -2
 #define ELF_LOAD_WRONG_ARCH   -3
 #define ELF_LOAD_WRONG_ENDIAN -4
+#define ELF_LOAD_TOO_BIG      -5
 const char *load_elf_strerror(int error);
 
 /** load_elf_ram_sym:
@@ -258,8 +259,9 @@ MemoryRegion *rom_add_blob(const char *name, const void *blob, size_t len,
                            FWCfgCallback fw_callback,
                            void *callback_opaque, AddressSpace *as,
                            bool read_only);
-int rom_add_elf_program(const char *name, void *data, size_t datasize,
-                        size_t romsize, hwaddr addr, AddressSpace *as);
+int rom_add_elf_program(const char *name, GMappedFile *mapped_file, void *data,
+                        size_t datasize, size_t romsize, hwaddr addr,
+                        AddressSpace *as);
 int rom_check_and_register_reset(void);
 void rom_set_fw(FWCfgState *f);
 void rom_set_order_override(int order);

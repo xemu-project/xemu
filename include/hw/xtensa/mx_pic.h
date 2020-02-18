@@ -25,11 +25,10 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef _XTENSA_MX_PIC_H
-#define _XTENSA_MX_PIC_H
+#ifndef XTENSA_MX_PIC_H
+#define XTENSA_MX_PIC_H
 
 #include "exec/memory.h"
-#include "hw/irq.h"
 
 struct XtensaMxPic;
 typedef struct XtensaMxPic XtensaMxPic;

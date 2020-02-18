@@ -19,6 +19,7 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "qemu/module.h"
 #include "hw/sysbus.h"
 #include "monitor/monitor.h"
 #include "exec/address-spaces.h"
@@ -150,6 +151,16 @@ static void sysbus_mmio_map_common(SysBusDevice *dev, int n, hwaddr addr,
         memory_region_add_subregion(get_system_memory(),
                                     addr,
                                     dev->mmio[n].memory);
+    }
+}
+
+void sysbus_mmio_unmap(SysBusDevice *dev, int n)
+{
+    assert(n >= 0 && n < dev->num_mmio);
+
+    if (dev->mmio[n].addr != (hwaddr)-1) {
+        memory_region_del_subregion(get_system_memory(), dev->mmio[n].memory);
+        dev->mmio[n].addr = (hwaddr)-1;
     }
 }
 

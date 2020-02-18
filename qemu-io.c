@@ -15,10 +15,12 @@
 #include <termios.h>
 #endif
 
+#include "qemu-common.h"
 #include "qapi/error.h"
 #include "qemu-io.h"
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
+#include "qemu/module.h"
 #include "qemu/option.h"
 #include "qemu/config-file.h"
 #include "qemu/readline.h"
@@ -33,8 +35,6 @@
 #include "qemu-version.h"
 
 #define CMD_NOFILE_OK   0x01
-
-static char *progname;
 
 static BlockBackend *qemuio_blk;
 static bool quit_qemu_io;
@@ -312,7 +312,7 @@ static char *get_prompt(void)
     static char prompt[FILENAME_MAX + 2 /*"> "*/ + 1 /*"\0"*/ ];
 
     if (!prompt[0]) {
-        snprintf(prompt, sizeof(prompt), "%s> ", progname);
+        snprintf(prompt, sizeof(prompt), "%s> ", error_get_progname());
     }
 
     return prompt;
@@ -475,6 +475,13 @@ static QemuOptsList qemu_object_opts = {
     },
 };
 
+static bool qemu_io_object_print_help(const char *type, QemuOpts *opts)
+{
+    if (user_creatable_print_help(type, opts)) {
+        exit(0);
+    }
+    return true;
+}
 
 static QemuOptsList file_opts = {
     .name = "file",
@@ -524,8 +531,8 @@ int main(int argc, char **argv)
     signal(SIGPIPE, SIG_IGN);
 #endif
 
+    error_init(argv[0]);
     module_call_init(MODULE_INIT_TRACE);
-    progname = g_path_get_basename(argv[0]);
     qemu_init_exec_dir(argv[0]);
 
     qcrypto_init(&error_fatal);
@@ -580,10 +587,10 @@ int main(int argc, char **argv)
             break;
         case 'V':
             printf("%s version " QEMU_FULL_VERSION "\n"
-                   QEMU_COPYRIGHT "\n", progname);
+                   QEMU_COPYRIGHT "\n", error_get_progname());
             exit(0);
         case 'h':
-            usage(progname);
+            usage(error_get_progname());
             exit(0);
         case 'U':
             force_share = true;
@@ -600,13 +607,13 @@ int main(int argc, char **argv)
             imageOpts = true;
             break;
         default:
-            usage(progname);
+            usage(error_get_progname());
             exit(1);
         }
     }
 
     if ((argc - optind) > 1) {
-        usage(progname);
+        usage(error_get_progname());
         exit(1);
     }
 
@@ -622,7 +629,7 @@ int main(int argc, char **argv)
 
     qemu_opts_foreach(&qemu_object_opts,
                       user_creatable_add_opts_foreach,
-                      NULL, &error_fatal);
+                      qemu_io_object_print_help, &error_fatal);
 
     if (!trace_init_backends()) {
         exit(1);

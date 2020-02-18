@@ -29,8 +29,10 @@
  * this file are based on code from GNOME glib-2 and use a different license,
  * see the license comment there.
  */
+
 #include "qemu/osdep.h"
 #include <windows.h>
+#include "qemu-common.h"
 #include "qapi/error.h"
 #include "sysemu/sysemu.h"
 #include "qemu/main-loop.h"
@@ -552,18 +554,12 @@ void os_mem_prealloc(int fd, char *area, size_t memory, int smp_cpus,
                      Error **errp)
 {
     int i;
-    size_t pagesize = getpagesize();
+    size_t pagesize = qemu_real_host_page_size;
 
     memory = (memory + pagesize - 1) & -pagesize;
     for (i = 0; i < memory / pagesize; i++) {
         memset(area + pagesize * i, 0, 1);
     }
-}
-
-uint64_t qemu_get_pmem_size(const char *filename, Error **errp)
-{
-    error_setg(errp, "pmem support not available");
-    return 0;
 }
 
 char *qemu_get_pid_name(pid_t pid)
@@ -589,7 +585,11 @@ int qemu_connect_wrap(int sockfd, const struct sockaddr *addr,
     int ret;
     ret = connect(sockfd, addr, addrlen);
     if (ret < 0) {
-        errno = socket_error();
+        if (WSAGetLastError() == WSAEWOULDBLOCK) {
+            errno = EINPROGRESS;
+        } else {
+            errno = socket_error();
+        }
     }
     return ret;
 }

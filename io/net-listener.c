@@ -22,6 +22,7 @@
 #include "io/net-listener.h"
 #include "io/dns-resolver.h"
 #include "qapi/error.h"
+#include "qemu/module.h"
 
 QIONetListener *qio_net_listener_new(void)
 {
@@ -61,6 +62,7 @@ static gboolean qio_net_listener_channel_func(QIOChannel *ioc,
 
 int qio_net_listener_open_sync(QIONetListener *listener,
                                SocketAddress *addr,
+                               int num,
                                Error **errp)
 {
     QIODNSResolver *resolver = qio_dns_resolver_get_instance();
@@ -81,7 +83,7 @@ int qio_net_listener_open_sync(QIONetListener *listener,
     for (i = 0; i < nresaddrs; i++) {
         QIOChannelSocket *sioc = qio_channel_socket_new();
 
-        if (qio_channel_socket_listen_sync(sioc, resaddrs[i],
+        if (qio_channel_socket_listen_sync(sioc, resaddrs[i], num,
                                            err ? NULL : &err) == 0) {
             success = true;
 

@@ -19,62 +19,54 @@ if test $# -lt 1; then
 fi
 
 tar_file=$(realpath "$1")
-list_file="${tar_file}.list"
-vroot_dir="${tar_file}.vroot"
+sub_tdir=$(mktemp -d "${tar_file%.tar}.sub.XXXXXXXX")
+sub_file="${sub_tdir}/submodule.tar"
 
 # We want a predictable list of submodules for builds, that is
 # independent of what the developer currently has initialized
 # in their checkout, because the build environment is completely
 # different to the host OS.
-submodules="dtc ui/keycodemapdb tests/fp/berkeley-softfloat-3 tests/fp/berkeley-testfloat-3"
+submodules="dtc slirp ui/keycodemapdb tests/fp/berkeley-softfloat-3 tests/fp/berkeley-testfloat-3"
+sub_deinit=""
 
-trap "status=$?; rm -rf \"$list_file\" \"$vroot_dir\"; exit \$status" 0 1 2 3 15
-
-if git diff-index --quiet HEAD -- &>/dev/null
-then
-    HEAD=HEAD
-else
-    HEAD=$(git stash create)
-fi
-git clone --shared . "$vroot_dir"
-test $? -ne 0 && error "failed to clone into '$vroot_dir'"
-for sm in $submodules; do
-    if test -d "$sm/.git"
-    then
-       git clone --shared "$sm" "$vroot_dir/$sm"
-       test $? -ne 0 && error "failed to clone submodule $sm"
+function cleanup() {
+    local status=$?
+    rm -rf "$sub_tdir"
+    if test "$sub_deinit" != ""; then
+        git submodule deinit $sub_deinit
     fi
-done
+    exit $status
+}
+trap "cleanup" 0 1 2 3 15
 
-cd "$vroot_dir"
-test $? -ne 0 && error "failed to change into '$vroot_dir'"
+function tree_ish() {
+    local retval='HEAD'
+    if ! git diff-index --quiet --ignore-submodules=all HEAD -- &>/dev/null
+    then
+        retval=$(git stash create)
+    fi
+    echo "$retval"
+}
 
-git checkout $HEAD
-test $? -ne 0 && error "failed to checkout $HEAD revision"
-
+git archive --format tar "$(tree_ish)" > "$tar_file"
+test $? -ne 0 && error "failed to archive qemu"
 for sm in $submodules; do
-    git submodule update --init $sm
-    test $? -ne 0 && error "failed to init submodule $sm"
+    status="$(git submodule status "$sm")"
+    smhash="${status#[ +-]}"
+    smhash="${smhash%% *}"
+    case "$status" in
+        -*)
+            sub_deinit="$sub_deinit $sm"
+            git submodule update --init "$sm"
+            test $? -ne 0 && error "failed to update submodule $sm"
+            ;;
+        +*)
+            echo "WARNING: submodule $sm is out of sync"
+            ;;
+    esac
+    (cd $sm; git archive --format tar --prefix "$sm/" $(tree_ish)) > "$sub_file"
+    test $? -ne 0 && error "failed to archive submodule $sm ($smhash)"
+    tar --concatenate --file "$tar_file" "$sub_file"
+    test $? -ne 0 && error "failed append submodule $sm to $tar_file"
 done
-
-if test -n "$submodules"; then
-    {
-        git ls-files || error "git ls-files failed"
-        for sm in $submodules; do
-            (cd $sm; git ls-files) | sed "s:^:$sm/:"
-            if test "${PIPESTATUS[*]}" != "0 0"; then
-                error "git ls-files in submodule $sm failed"
-            fi
-        done
-    } | grep -x -v $(for sm in $submodules; do echo "-e $sm"; done) > "$list_file"
-else
-    git ls-files > "$list_file"
-fi
-
-if test $? -ne 0; then
-    error "failed to generate list file"
-fi
-
-tar -cf "$tar_file" -T "$list_file" || error "failed to create tar file"
-
 exit 0

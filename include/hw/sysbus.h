@@ -3,7 +3,7 @@
 
 /* Devices attached directly to the main system bus.  */
 
-#include "hw/qdev.h"
+#include "hw/qdev-core.h"
 #include "exec/memory.h"
 
 #define QDEV_MAX_MMIO 32
@@ -89,6 +89,7 @@ qemu_irq sysbus_get_connected_irq(SysBusDevice *dev, int n);
 void sysbus_mmio_map(SysBusDevice *dev, int n, hwaddr addr);
 void sysbus_mmio_map_overlap(SysBusDevice *dev, int n, hwaddr addr,
                              int priority);
+void sysbus_mmio_unmap(SysBusDevice *dev, int n);
 void sysbus_add_io(SysBusDevice *dev, hwaddr addr,
                    MemoryRegion *mem);
 MemoryRegion *sysbus_address_space(SysBusDevice *dev);

@@ -16,7 +16,6 @@
 requires mingw dtc
 
 cd "$BUILD_DIR"
-DEF_TARGET_LIST="x86_64-softmmu,aarch64-softmmu"
 
 for prefix in x86_64-w64-mingw32- i686-w64-mingw32-; do
     TARGET_LIST=${TARGET_LIST:-$DEF_TARGET_LIST} \
@@ -27,8 +26,10 @@ for prefix in x86_64-w64-mingw32- i686-w64-mingw32-; do
         --enable-curl \
         --enable-vnc \
         --enable-bzip2 \
-        --enable-guest-agent
+        --enable-guest-agent \
+        --enable-docs
     install_qemu
+    make installer
     make clean
 
 done

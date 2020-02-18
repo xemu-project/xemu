@@ -94,6 +94,11 @@ bool vu_has_feature(VuDev *dev,
     return has_feature(dev->features, fbit);
 }
 
+static inline bool vu_has_protocol_feature(VuDev *dev, unsigned int fbit)
+{
+    return has_feature(dev->protocol_features, fbit);
+}
+
 static const char *
 vu_request_to_string(unsigned int req)
 {
@@ -130,6 +135,7 @@ vu_request_to_string(unsigned int req)
         REQ(VHOST_USER_POSTCOPY_END),
         REQ(VHOST_USER_GET_INFLIGHT_FD),
         REQ(VHOST_USER_SET_INFLIGHT_FD),
+        REQ(VHOST_USER_GPU_SET_SOCKET),
         REQ(VHOST_USER_MAX),
     };
 #undef REQ
@@ -213,6 +219,15 @@ vmsg_close_fds(VhostUserMsg *vmsg)
     for (i = 0; i < vmsg->fd_num; i++) {
         close(vmsg->fds[i]);
     }
+}
+
+/* Set reply payload.u64 and clear request flags and fd_num */
+static void vmsg_set_reply_u64(VhostUserMsg *vmsg, uint64_t val)
+{
+    vmsg->flags = 0; /* defaults will be set by vu_send_reply() */
+    vmsg->size = sizeof(vmsg->payload.u64);
+    vmsg->payload.u64 = val;
+    vmsg->fd_num = 0;
 }
 
 /* A test to see if we have userfault available */
@@ -433,7 +448,7 @@ vu_log_write(VuDev *dev, uint64_t address, uint64_t length)
     page = address / VHOST_LOG_PAGE;
     while (page * VHOST_LOG_PAGE < address + length) {
         vu_log_page(dev->log_table, page);
-        page += VHOST_LOG_PAGE;
+        page += 1;
     }
 
     vu_log_kick(dev);
@@ -483,9 +498,9 @@ vu_get_features_exec(VuDev *dev, VhostUserMsg *vmsg)
 static void
 vu_set_enable_all_rings(VuDev *dev, bool enabled)
 {
-    int i;
+    uint16_t i;
 
-    for (i = 0; i < VHOST_MAX_NR_VIRTQUEUE; i++) {
+    for (i = 0; i < dev->max_queues; i++) {
         dev->vq[i].enable = enabled;
     }
 }
@@ -542,7 +557,7 @@ static bool
 vu_set_mem_table_exec_postcopy(VuDev *dev, VhostUserMsg *vmsg)
 {
     int i;
-    VhostUserMemory *memory = &vmsg->payload.memory;
+    VhostUserMemory m = vmsg->payload.memory, *memory = &m;
     dev->nregions = memory->nregions;
 
     DPRINT("Nregions: %d\n", memory->nregions);
@@ -621,7 +636,7 @@ vu_set_mem_table_exec_postcopy(VuDev *dev, VhostUserMsg *vmsg)
          * data that's already arrived in the shared process.
          * TODO: How to do hugepage
          */
-        ret = madvise((void *)dev_region->mmap_addr,
+        ret = madvise((void *)(uintptr_t)dev_region->mmap_addr,
                       dev_region->size + dev_region->mmap_offset,
                       MADV_DONTNEED);
         if (ret) {
@@ -633,7 +648,7 @@ vu_set_mem_table_exec_postcopy(VuDev *dev, VhostUserMsg *vmsg)
          * in neighbouring pages.
          * TODO: Turn this backon later.
          */
-        ret = madvise((void *)dev_region->mmap_addr,
+        ret = madvise((void *)(uintptr_t)dev_region->mmap_addr,
                       dev_region->size + dev_region->mmap_offset,
                       MADV_NOHUGEPAGE);
         if (ret) {
@@ -663,10 +678,12 @@ vu_set_mem_table_exec_postcopy(VuDev *dev, VhostUserMsg *vmsg)
                      __func__, i);
             return false;
         }
-        DPRINT("%s: region %d: Registered userfault for %llx + %llx\n",
-                __func__, i, reg_struct.range.start, reg_struct.range.len);
+        DPRINT("%s: region %d: Registered userfault for %"
+               PRIx64 " + %" PRIx64 "\n", __func__, i,
+               (uint64_t)reg_struct.range.start,
+               (uint64_t)reg_struct.range.len);
         /* Now it's registered we can let the client at it */
-        if (mprotect((void *)dev_region->mmap_addr,
+        if (mprotect((void *)(uintptr_t)dev_region->mmap_addr,
                      dev_region->size + dev_region->mmap_offset,
                      PROT_READ | PROT_WRITE)) {
             vu_panic(dev, "failed to mprotect region %d for postcopy (%s)",
@@ -684,7 +701,7 @@ static bool
 vu_set_mem_table_exec(VuDev *dev, VhostUserMsg *vmsg)
 {
     int i;
-    VhostUserMemory *memory = &vmsg->payload.memory;
+    VhostUserMemory m = vmsg->payload.memory, *memory = &m;
 
     for (i = 0; i < dev->nregions; i++) {
         VuDevRegion *r = &dev->regions[i];
@@ -813,7 +830,7 @@ vu_set_vring_num_exec(VuDev *dev, VhostUserMsg *vmsg)
 static bool
 vu_set_vring_addr_exec(VuDev *dev, VhostUserMsg *vmsg)
 {
-    struct vhost_vring_addr *vra = &vmsg->payload.addr;
+    struct vhost_vring_addr addr = vmsg->payload.addr, *vra = &addr;
     unsigned int index = vra->index;
     VuVirtq *vq = &dev->vq[index];
 
@@ -904,7 +921,7 @@ vu_check_queue_msg_file(VuDev *dev, VhostUserMsg *vmsg)
 {
     int index = vmsg->payload.u64 & VHOST_USER_VRING_IDX_MASK;
 
-    if (index >= VHOST_MAX_NR_VIRTQUEUE) {
+    if (index >= dev->max_queues) {
         vmsg_close_fds(vmsg);
         vu_panic(dev, "Invalid queue index: %u", index);
         return false;
@@ -939,8 +956,7 @@ vu_check_queue_inflights(VuDev *dev, VuVirtq *vq)
 {
     int i = 0;
 
-    if (!has_feature(dev->protocol_features,
-        VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD)) {
+    if (!vu_has_protocol_feature(dev, VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD)) {
         return 0;
     }
 
@@ -976,7 +992,7 @@ vu_check_queue_inflights(VuDev *dev, VuVirtq *vq)
     vq->shadow_avail_idx = vq->last_avail_idx = vq->inuse + vq->used_idx;
 
     if (vq->inuse) {
-        vq->resubmit_list = malloc(sizeof(VuVirtqInflightDesc) * vq->inuse);
+        vq->resubmit_list = calloc(vq->inuse, sizeof(VuVirtqInflightDesc));
         if (!vq->resubmit_list) {
             return -1;
         }
@@ -1085,7 +1101,7 @@ bool vu_set_queue_host_notifier(VuDev *dev, VuVirtq *vq, int fd,
 
     vmsg.fd_num = fd_num;
 
-    if ((dev->protocol_features & VHOST_USER_PROTOCOL_F_SLAVE_SEND_FD) == 0) {
+    if (!vu_has_protocol_feature(dev, VHOST_USER_PROTOCOL_F_SLAVE_SEND_FD)) {
         return false;
     }
 
@@ -1148,7 +1164,8 @@ vu_set_vring_err_exec(VuDev *dev, VhostUserMsg *vmsg)
 static bool
 vu_get_protocol_features_exec(VuDev *dev, VhostUserMsg *vmsg)
 {
-    uint64_t features = 1ULL << VHOST_USER_PROTOCOL_F_LOG_SHMFD |
+    uint64_t features = 1ULL << VHOST_USER_PROTOCOL_F_MQ |
+                        1ULL << VHOST_USER_PROTOCOL_F_LOG_SHMFD |
                         1ULL << VHOST_USER_PROTOCOL_F_SLAVE_REQ |
                         1ULL << VHOST_USER_PROTOCOL_F_HOST_NOTIFIER |
                         1ULL << VHOST_USER_PROTOCOL_F_SLAVE_SEND_FD;
@@ -1157,14 +1174,15 @@ vu_get_protocol_features_exec(VuDev *dev, VhostUserMsg *vmsg)
         features |= 1ULL << VHOST_USER_PROTOCOL_F_PAGEFAULT;
     }
 
+    if (dev->iface->get_config && dev->iface->set_config) {
+        features |= 1ULL << VHOST_USER_PROTOCOL_F_CONFIG;
+    }
+
     if (dev->iface->get_protocol_features) {
         features |= dev->iface->get_protocol_features(dev);
     }
 
-    vmsg->payload.u64 = features;
-    vmsg->size = sizeof(vmsg->payload.u64);
-    vmsg->fd_num = 0;
-
+    vmsg_set_reply_u64(vmsg, features);
     return true;
 }
 
@@ -1187,8 +1205,8 @@ vu_set_protocol_features_exec(VuDev *dev, VhostUserMsg *vmsg)
 static bool
 vu_get_queue_num_exec(VuDev *dev, VhostUserMsg *vmsg)
 {
-    DPRINT("Function %s() not implemented yet.\n", __func__);
-    return false;
+    vmsg_set_reply_u64(vmsg, dev->max_queues);
+    return true;
 }
 
 static bool
@@ -1200,7 +1218,7 @@ vu_set_vring_enable_exec(VuDev *dev, VhostUserMsg *vmsg)
     DPRINT("State.index: %d\n", index);
     DPRINT("State.enable:   %d\n", enable);
 
-    if (index >= VHOST_MAX_NR_VIRTQUEUE) {
+    if (index >= dev->max_queues) {
         vu_panic(dev, "Invalid vring_enable index: %u", index);
         return false;
     }
@@ -1300,17 +1318,14 @@ out:
 static bool
 vu_set_postcopy_listen(VuDev *dev, VhostUserMsg *vmsg)
 {
-    vmsg->payload.u64 = -1;
-    vmsg->size = sizeof(vmsg->payload.u64);
-
     if (dev->nregions) {
         vu_panic(dev, "Regions already registered at postcopy-listen");
+        vmsg_set_reply_u64(vmsg, -1);
         return true;
     }
     dev->postcopy_listening = true;
 
-    vmsg->flags = VHOST_USER_VERSION |  VHOST_USER_REPLY_MASK;
-    vmsg->payload.u64 = 0; /* Success */
+    vmsg_set_reply_u64(vmsg, 0);
     return true;
 }
 
@@ -1325,10 +1340,7 @@ vu_set_postcopy_end(VuDev *dev, VhostUserMsg *vmsg)
         DPRINT("%s: Done close\n", __func__);
     }
 
-    vmsg->fd_num = 0;
-    vmsg->payload.u64 = 0;
-    vmsg->size = sizeof(vmsg->payload.u64);
-    vmsg->flags = VHOST_USER_VERSION |  VHOST_USER_REPLY_MASK;
+    vmsg_set_reply_u64(vmsg, 0);
     DPRINT("%s: exit\n", __func__);
     return true;
 }
@@ -1575,7 +1587,7 @@ vu_deinit(VuDev *dev)
     }
     dev->nregions = 0;
 
-    for (i = 0; i < VHOST_MAX_NR_VIRTQUEUE; i++) {
+    for (i = 0; i < dev->max_queues; i++) {
         VuVirtq *vq = &dev->vq[i];
 
         if (vq->call_fd != -1) {
@@ -1620,18 +1632,23 @@ vu_deinit(VuDev *dev)
     if (dev->sock != -1) {
         close(dev->sock);
     }
+
+    free(dev->vq);
+    dev->vq = NULL;
 }
 
-void
+bool
 vu_init(VuDev *dev,
+        uint16_t max_queues,
         int socket,
         vu_panic_cb panic,
         vu_set_watch_cb set_watch,
         vu_remove_watch_cb remove_watch,
         const VuDevIface *iface)
 {
-    int i;
+    uint16_t i;
 
+    assert(max_queues > 0);
     assert(socket >= 0);
     assert(set_watch);
     assert(remove_watch);
@@ -1647,18 +1664,28 @@ vu_init(VuDev *dev,
     dev->iface = iface;
     dev->log_call_fd = -1;
     dev->slave_fd = -1;
-    for (i = 0; i < VHOST_MAX_NR_VIRTQUEUE; i++) {
+    dev->max_queues = max_queues;
+
+    dev->vq = malloc(max_queues * sizeof(dev->vq[0]));
+    if (!dev->vq) {
+        DPRINT("%s: failed to malloc virtqueues\n", __func__);
+        return false;
+    }
+
+    for (i = 0; i < max_queues; i++) {
         dev->vq[i] = (VuVirtq) {
             .call_fd = -1, .kick_fd = -1, .err_fd = -1,
             .notification = true,
         };
     }
+
+    return true;
 }
 
 VuVirtq *
 vu_get_queue(VuDev *dev, int qidx)
 {
-    assert(qidx < VHOST_MAX_NR_VIRTQUEUE);
+    assert(qidx < dev->max_queues);
     return &dev->vq[qidx];
 }
 
@@ -2167,8 +2194,7 @@ vu_queue_map_desc(VuDev *dev, VuVirtq *vq, unsigned int idx, size_t sz)
 static int
 vu_queue_inflight_get(VuDev *dev, VuVirtq *vq, int desc_idx)
 {
-    if (!has_feature(dev->protocol_features,
-        VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD)) {
+    if (!vu_has_protocol_feature(dev, VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD)) {
         return 0;
     }
 
@@ -2185,8 +2211,7 @@ vu_queue_inflight_get(VuDev *dev, VuVirtq *vq, int desc_idx)
 static int
 vu_queue_inflight_pre_put(VuDev *dev, VuVirtq *vq, int desc_idx)
 {
-    if (!has_feature(dev->protocol_features,
-        VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD)) {
+    if (!vu_has_protocol_feature(dev, VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD)) {
         return 0;
     }
 
@@ -2202,8 +2227,7 @@ vu_queue_inflight_pre_put(VuDev *dev, VuVirtq *vq, int desc_idx)
 static int
 vu_queue_inflight_post_put(VuDev *dev, VuVirtq *vq, int desc_idx)
 {
-    if (!has_feature(dev->protocol_features,
-        VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD)) {
+    if (!vu_has_protocol_feature(dev, VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD)) {
         return 0;
     }
 
