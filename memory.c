@@ -2002,9 +2002,18 @@ int memory_region_iommu_num_indexes(IOMMUMemoryRegion *iommu_mr)
 void memory_region_set_log(MemoryRegion *mr, bool log, unsigned client)
 {
     uint8_t mask = 1 << client;
+    uint8_t old_logging;
 
     if (mr->alias) {
         memory_region_set_log(mr->alias, log, client);
+        return;
+    }
+
+    assert((client == DIRTY_MEMORY_VGA) \
+        || (client == DIRTY_MEMORY_NV2A));
+    old_logging = mr->vga_logging_count;
+    mr->vga_logging_count += log ? 1 : -1;
+    if (!!old_logging == !!mr->vga_logging_count) {
         return;
     }
 
