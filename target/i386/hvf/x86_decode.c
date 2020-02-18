@@ -1688,10 +1688,10 @@ calc_addr:
     }
 }
 
-target_ulong get_reg_ref(CPUX86State *env, int reg, int rex_present,
+uintptr_t get_reg_ref(CPUX86State *env, int reg, int rex_present,
                          int is_extended, int size)
 {
-    target_ulong ptr = 0;
+    uintptr_t ptr = 0;
 
     if (is_extended) {
         reg |= R_R8;
@@ -1700,13 +1700,13 @@ target_ulong get_reg_ref(CPUX86State *env, int reg, int rex_present,
     switch (size) {
     case 1:
         if (is_extended || reg < 4 || rex_present) {
-            ptr = (target_ulong)&RL(env, reg);
+            ptr = (uintptr_t)&RL(env, reg);
         } else {
-            ptr = (target_ulong)&RH(env, reg - 4);
+            ptr = (uintptr_t)&RH(env, reg - 4);
         }
         break;
     default:
-        ptr = (target_ulong)&RRX(env, reg);
+        ptr = (uintptr_t)&RRX(env, reg);
         break;
     }
     return ptr;
