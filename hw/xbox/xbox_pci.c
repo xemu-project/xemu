@@ -43,6 +43,7 @@
 #include "hw/xbox/acpi_xbox.h"
 #include "hw/xbox/amd_smbus.h"
 #include "hw/xbox/xbox_pci.h"
+#include "hw/irq.h"
 
  /*
   * xbox chipset based on nForce 420, which was based on AMD-760

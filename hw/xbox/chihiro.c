@@ -50,7 +50,7 @@
 #include "kvm_i386.h"
 #include "sysemu/numa.h"
 
-#include "hw/timer/mc146818rtc.h"
+#include "hw/rtc/mc146818rtc.h"
 #include "xbox_pci.h"
 #include "smbus.h"
 

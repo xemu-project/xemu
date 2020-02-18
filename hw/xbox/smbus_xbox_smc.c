@@ -31,6 +31,8 @@
 #include "qapi/error.h"
 #include "sysemu/sysemu.h"
 #include "smbus.h"
+#include "sysemu/runstate.h"
+#include "hw/qdev-properties.h"
 
 #define TYPE_XBOX_SMC "smbus-xbox-smc"
 #define XBOX_SMC(obj) OBJECT_CHECK(SMBusSMCDevice, (obj), TYPE_XBOX_SMC)

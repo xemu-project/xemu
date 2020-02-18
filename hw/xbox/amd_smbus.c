@@ -28,6 +28,7 @@
 #include "hw/xbox/amd_smbus.h"
 #include "hw/i2c/i2c.h"
 #include "hw/i2c/smbus_master.h"
+#include "hw/irq.h"
 
 // #define DEBUG
 #ifdef DEBUG

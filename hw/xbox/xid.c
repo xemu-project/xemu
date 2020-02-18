@@ -19,6 +19,9 @@
  */
 
 #include "qemu/osdep.h"
+#include "hw/qdev-properties.h"
+#include "migration/vmstate.h"
+#include "sysemu/sysemu.h"
 #include "hw/hw.h"
 #include "ui/console.h"
 #include "hw/usb.h"

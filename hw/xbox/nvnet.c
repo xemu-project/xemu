@@ -22,6 +22,7 @@
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "hw/pci/pci.h"
+#include "hw/qdev-properties.h"
 #include "net/net.h"
 #include "qemu/iov.h"
 
