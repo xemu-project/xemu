@@ -113,7 +113,6 @@ set -x # Print commands from now on
     --disable-vhost-vsock \
     --disable-vhost-user \
     --disable-virtfs \
-    --disable-libssh2 \
     --disable-snappy \
     --disable-bzip2 \
     --disable-vde \
@@ -136,6 +135,6 @@ set -x # Print commands from now on
     --disable-blobs \
     ${user_opts}
 
-time make -j"${job_count}" subdir-i386-softmmu 2>&1 | tee build.log
+time make -j"${job_count}" 2>&1 | tee build.log
 
 ${postbuild} # call post build functions
