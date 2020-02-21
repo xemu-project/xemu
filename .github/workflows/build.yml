@@ -141,7 +141,6 @@ jobs:
         brew update
         brew unlink python@2
         brew install \
-          glib \
           pixman \
           sdl2 \
           libepoxy \
