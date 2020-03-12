@@ -30,18 +30,18 @@ jobs:
       run: |
         if "${{ matrix.configuration }}" == "Debug":
           print('Configuring for Debug')
-          print('::set-env name=BUILD_PARAM::')
-          print('::set-env name=ARTIFACT_NAME::xqemu-win-debug.zip')
+          print('::set-env name=BUILD_PARAM::--debug')
+          print('::set-env name=ARTIFACT_NAME::xemu-win-debug.zip')
         else:
           print('Configuring for Release')
-          print('::set-env name=BUILD_PARAM::--release')
-          print('::set-env name=ARTIFACT_NAME::xqemu-win-release.zip')
+          print('::set-env name=BUILD_PARAM::')
+          print('::set-env name=ARTIFACT_NAME::xemu-win-release.zip')
     - name: Clone Tree
       uses: actions/checkout@v2
     - name: Install Dependencies
       run: |
         echo "Downloading MSYS2 environment..."
-        Invoke-WebRequest -Uri "https://github.com/xqemu/ci-environment-msys2/releases/latest/download/msys64.7z" -OutFile "msys64.7z"
+        Invoke-WebRequest -Uri "https://github.com/mborgerson/xemu-msys2/releases/latest/download/msys64.7z" -OutFile "msys64.7z"
         echo "Extracting MSYS2 environment..."
         7z x -y msys64.7z "-oC:\tools\"
         echo "Updating MSYS2 environment..."
@@ -50,7 +50,7 @@ jobs:
       id: cache
       uses: actions/cache@v1
       with:
-        path: C:\tools\msys64\tmp\xqemu-ccache
+        path: C:\tools\msys64\tmp\xemu-ccache
         key: cache-${{ runner.os }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-${{ runner.os }}-${{ matrix.configuration }}-
     - name: Compile
@@ -58,7 +58,7 @@ jobs:
         C:\tools\msys64\usr\bin\bash.exe -lc @"
         set -e
         cd `$GITHUB_WORKSPACE
-        export CCACHE_DIR=/tmp/xqemu-ccache
+        export CCACHE_DIR=/tmp/xemu-ccache
         export CCACHE_MAXSIZE=250M
         export PATH="/usr/lib/ccache/bin:/mingw64/bin:`$PATH"
         ./build.sh ${{ env.BUILD_PARAM }}
@@ -84,12 +84,12 @@ jobs:
       run: |
         if "${{ matrix.configuration }}" == "Debug":
           print('Configuring for Debug')
-          print('::set-env name=BUILD_PARAM::')
-          print('::set-env name=ARTIFACT_NAME::xqemu-ubuntu-debug')
+          print('::set-env name=BUILD_PARAM::--debug')
+          print('::set-env name=ARTIFACT_NAME::xemu-ubuntu-debug')
         else:
           print('Configuring for Release')
-          print('::set-env name=BUILD_PARAM::--release')
-          print('::set-env name=ARTIFACT_NAME::xqemu-ubuntu-release')
+          print('::set-env name=BUILD_PARAM::')
+          print('::set-env name=ARTIFACT_NAME::xemu-ubuntu-release')
     - name: Clone Tree
       uses: actions/checkout@v2
     - name: Install Dependencies
@@ -104,12 +104,12 @@ jobs:
       id: cache
       uses: actions/cache@v1
       with:
-        path: /tmp/xqemu-ccache
+        path: /tmp/xemu-ccache
         key: cache-${{ runner.os }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-${{ runner.os }}-${{ matrix.configuration }}-
     - name: Compile
       run: |
-        export CCACHE_DIR=/tmp/xqemu-ccache
+        export CCACHE_DIR=/tmp/xemu-ccache
         export CCACHE_MAXSIZE=250M
         export PATH="/usr/lib/ccache:$PATH"
         ./build.sh ${{ env.BUILD_PARAM }}
@@ -128,12 +128,12 @@ jobs:
       run: |
         if "${{ matrix.configuration }}" == "Debug":
           print('Configuring for Debug')
-          print('::set-env name=BUILD_PARAM::')
-          print('::set-env name=ARTIFACT_NAME::xqemu-macos-debug')
+          print('::set-env name=BUILD_PARAM::--debug')
+          print('::set-env name=ARTIFACT_NAME::xemu-macos-debug')
         else:
           print('Configuring for Release')
-          print('::set-env name=BUILD_PARAM::--release')
-          print('::set-env name=ARTIFACT_NAME::xqemu-macos-release')
+          print('::set-env name=BUILD_PARAM::')
+          print('::set-env name=ARTIFACT_NAME::xemu-macos-release')
     - name: Clone Tree
       uses: actions/checkout@v2
     - name: Install Dependencies
@@ -151,12 +151,12 @@ jobs:
       id: cache
       uses: actions/cache@v1
       with:
-        path: /tmp/xqemu-ccache
+        path: /tmp/xemu-ccache
         key: cache-${{ runner.os }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-${{ runner.os }}-${{ matrix.configuration }}-
     - name: Compile
       run: |
-        export CCACHE_DIR=/tmp/xqemu-ccache
+        export CCACHE_DIR=/tmp/xemu-ccache
         export CCACHE_MAXSIZE=250M
         export PATH="/usr/local/opt/ccache/libexec:$PATH"
         ./build.sh ${{ env.BUILD_PARAM }}
@@ -195,8 +195,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_name: xqemu-win-debug.zip
-        asset_path: dist/xqemu-win-debug.zip
+        asset_name: xemu-win-debug.zip
+        asset_path: dist/xemu-win-debug.zip
         asset_content_type: application/zip
 
     - name: Upload Release Assets (Windows Release Build)
@@ -207,6 +207,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_name: xqemu-win-release.zip
-        asset_path: dist/xqemu-win-release.zip
+        asset_name: xemu-win-release.zip
+        asset_path: dist/xemu-win-release.zip
         asset_content_type: application/zip
