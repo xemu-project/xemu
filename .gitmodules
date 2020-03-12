@@ -58,3 +58,6 @@
 [submodule "roms/qboot"]
 	path = roms/qboot
 	url = https://github.com/bonzini/qboot
+[submodule "ui/imgui"]
+	path = ui/imgui
+	url = https://github.com/ocornut/imgui
