@@ -22,7 +22,38 @@ sdl.mo-objs := sdl2.o sdl2-input.o sdl2-2d.o
 ifeq ($(CONFIG_OPENGL),y)
 sdl.mo-objs += sdl2-gl.o
 endif
-sdl.mo-cflags := $(SDL_CFLAGS)
+
+# Override with xemu UI
+sdl.mo-objs := \
+	sdl2-input.o \
+	xemu.o \
+	xemu-hud.o \
+	xemu-custom-widgets.o \
+	xemu-input.o \
+	xemu-monitor.o \
+	xemu-settings.o \
+	xemu-shaders.o \
+	imgui/imgui.o \
+	imgui/imgui_demo.o \
+	imgui/imgui_draw.o \
+	imgui/imgui_widgets.o \
+	imgui/examples/imgui_impl_opengl3.o \
+	imgui/examples/imgui_impl_sdl.o \
+	ImGuiFileDialog/ImGuiFileDialog.o
+
+ui/xemu-shaders.o: ui/shader/xemu-logo-frag.h
+
+ifeq ($(CONFIG_WIN32),y)
+IMGUI_FLAGS = -DWIN32 -DMINGW32
+endif
+ifeq ($(CONFIG_LINUX),y)
+IMGUI_FLAGS = -DLINUX
+endif
+ifeq ($(CONFIG_DARWIN),y)
+IMGUI_FLAGS = -DAPPLE
+endif
+
+sdl.mo-cflags := $(SDL_CFLAGS) -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM="\"epoxy/gl.h\"" -Iui/imgui $(IMGUI_FLAGS)
 sdl.mo-libs := $(SDL_LIBS)
 
 # ui-gtk module
@@ -59,9 +90,9 @@ spice-app.mo-libs := $(GIO_LIBS)
 
 common-obj-$(CONFIG_OPENGL) += shader.o
 common-obj-$(CONFIG_OPENGL) += console-gl.o
-common-obj-$(CONFIG_OPENGL) += egl-helpers.o
-common-obj-$(CONFIG_OPENGL) += egl-context.o
-common-obj-$(CONFIG_OPENGL_DMABUF) += egl-headless.o
+# common-obj-$(CONFIG_OPENGL) += egl-helpers.o
+# common-obj-$(CONFIG_OPENGL) += egl-context.o
+# common-obj-$(CONFIG_OPENGL_DMABUF) += egl-headless.o
 
 shader.o-libs += $(OPENGL_LIBS)
 console-gl.o-libs += $(OPENGL_LIBS)
