@@ -3282,35 +3282,6 @@ EOF
   fi
 fi
 
-
-# Xbox hack to include ogl framework
-if test "$darwin" = "yes" ; then
-    sdl_libs="$sdl_libs -framework OpenGL"
-#     cat > $TMPC << EOF
-# #include <OpenGL/gl.h>
-# #include <OpenGL/CGLTypes.h>
-# #include <OpenGL/CGLCurrent.h>
-# int main(void) { return GL_VERSION != 0; }
-# EOF
-fi
-
-if test "$linux" = "yes" ; then
-    sdl_libs="$sdl_libs -lGLU -lGL"
-fi
-
-##########################################
-# epoxy probe
-
-if $pkg_config --exists epoxy ; then
-    epoxy_libs=$($pkg_config --libs epoxy)
-    epoxy_flags=$($pkg_config --cflags epoxy)
-else
-    error_exit "epoxy not present." \
-        "Please install the epoxy devel package."
-fi
-LIBS="$LIBS $epoxy_libs"
-QEMU_CFLAGS="$QEMU_CFLAGS $epoxy_flags"
-
 ##########################################
 # RDMA needs OpenFabrics libraries
 if test "$rdma" != "no" ; then
@@ -4344,6 +4315,9 @@ if $pkg_config gbm; then
     gbm="yes"
 fi
 
+# XBOX: Just skip this, don't need it rn
+if false ; then
+
 if test "$opengl" != "no" ; then
   opengl_pkgs="epoxy gbm"
   if $pkg_config $opengl_pkgs; then
@@ -4386,6 +4360,36 @@ if test "$opengl" = "yes" && test "$have_x11" = "yes"; then
     esac
   done
 fi
+
+fi # XBOX
+
+# XBOX
+if test "$opengl" != "no" ; then
+  if test "$darwin" = "yes" ; then
+    opengl_libs="$opengl_libs -framework OpenGL"
+  elif test "$mingw32" = "yes" ; then
+    opengl_libs="$opengl_libs -lopengl32 -lgdi32"
+  elif test "$linux" = "yes" ; then
+    opengl_libs="$opengl_libs -lGLU -lGL"
+  fi
+  opengl_libs="$opengl_libs $($pkg_config --libs epoxy)"
+  opengl_cflags="$opengl_cflags $($pkg_config --cflags epoxy)"
+  QEMU_CFLAGS="$QEMU_CFLAGS $opengl_cflags"
+fi # test "$opengl" != "no"
+
+##########################################
+# epoxy probe
+
+# if $pkg_config --exists epoxy ; then
+#     epoxy_libs=$($pkg_config --libs epoxy)
+#     epoxy_flags=$($pkg_config --cflags epoxy)
+# else
+#     error_exit "epoxy not present." \
+#         "Please install the epoxy devel package."
+# fi
+# LIBS="$LIBS $epoxy_libs"
+# QEMU_CFLAGS="$QEMU_CFLAGS $epoxy_flags"
+
 
 ##########################################
 # libxml2 probe

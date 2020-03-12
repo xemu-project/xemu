@@ -83,6 +83,7 @@ set -x # Print commands from now on
     --target-list=i386-softmmu \
     --enable-trace-backends="nop" \
     --enable-sdl \
+    --enable-opengl \
     --disable-curl \
     --disable-vnc \
     --disable-vnc-sasl \
