@@ -61,3 +61,6 @@
 [submodule "ui/imgui"]
 	path = ui/imgui
 	url = https://github.com/ocornut/imgui
+[submodule "ui/ImGuiFileDialog"]
+	path = ui/ImGuiFileDialog
+	url = https://github.com/aiekick/ImGuiFileDialog
