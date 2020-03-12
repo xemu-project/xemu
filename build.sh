@@ -71,6 +71,11 @@ case "$(uname -s)" in # Adjust compilation options based on platform
         ;;
 esac
 
+# Ensure required submodules get checked out
+git submodule update --init ui/inih
+git submodule update --init ui/imgui
+git submodule update --init ui/ImGuiFileDialog
+
 # find absolute path (and resolve symlinks) to build out of tree
 configure="$(dirname "$($readlink -f "${0}")")/configure"
 
