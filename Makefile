@@ -495,6 +495,39 @@ qemu-version.h: FORCE
 	  rm $@.tmp; \
 	 fi)
 
+XEMU_DATE := $(shell date -u )
+
+XEMU_COMMIT := $(if $(PKGVERSION),$(PKGVERSION),$(shell \
+  cd $(SRC_PATH); \
+  if test -e .git; then \
+    git rev-parse HEAD 2>/dev/null | tr -d '\n'; \
+  fi))
+
+XEMU_BRANCH := $(shell \
+  cd $(SRC_PATH); \
+  if test -e .git; then \
+    git symbolic-ref --short HEAD; \
+  fi)
+
+XEMU_VERSION := $(shell \
+  cd $(SRC_PATH); \
+  if test -e .git; then \
+    git describe --match 'xemu-v*' | cut -c 6- | tr -d '\n'; \
+  fi)
+
+xemu-version.c: FORCE
+	$(call quiet-command, (\
+		printf 'const char *xemu_version = "$(XEMU_VERSION)";\n'; \
+		printf 'const char *xemu_branch  = "$(XEMU_BRANCH)";\n'; \
+		printf 'const char *xemu_commit  = "$(XEMU_COMMIT)";\n'; \
+		printf 'const char *xemu_date    = "$(XEMU_DATE)";\n'; \
+		) > $@.tmp)
+	$(call quiet-command, if ! cmp -s $@ $@.tmp; then \
+	  mv $@.tmp $@; \
+	 else \
+	  rm $@.tmp; \
+	 fi)
+
 config-host.h: config-host.h-timestamp
 config-host.h-timestamp: config-host.mak
 qemu-options.def: $(SRC_PATH)/qemu-options.hx $(SRC_PATH)/scripts/hxtool
