@@ -2,7 +2,8 @@
  * QEMU USB XID Devices
  *
  * Copyright (c) 2013 espes
- * Copyright (c) 2018 Matt Borgerson
+ * Copyright (c) 2017 Jannik Vogel
+ * Copyright (c) 2018-2020 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -26,30 +27,14 @@
 #include "ui/console.h"
 #include "hw/usb.h"
 #include "hw/usb/desc.h"
-#include "ui/input.h"
+#include "ui/xemu-input.h"
 
-// #define DEBUG_XID
+//#define DEBUG_XID
 #ifdef DEBUG_XID
 #define DPRINTF printf
 #else
 #define DPRINTF(...)
 #endif
-
-
-#define TYPE_USB_XID "usb-xbox-gamepad"
-#define USB_XID(obj) OBJECT_CHECK(USBXIDState, (obj), TYPE_USB_XID)
-
-enum {
-    STR_MANUFACTURER = 1,
-    STR_PRODUCT,
-    STR_SERIALNUMBER,
-};
-
-static const USBDescStrings desc_strings = {
-    [STR_MANUFACTURER]     = "QEMU",
-    [STR_PRODUCT]          = "Microsoft Gamepad",
-    [STR_SERIALNUMBER]     = "1",
-};
 
 /*
  * http://xbox-linux.cvs.sourceforge.net/viewvc/xbox-linux/kernel-2.6/drivers/usb/input/xpad.c
@@ -60,53 +45,68 @@ static const USBDescStrings desc_strings = {
 #define USB_CLASS_XID  0x58
 #define USB_DT_XID     0x42
 
-
 #define HID_GET_REPORT       0x01
 #define HID_SET_REPORT       0x09
 #define XID_GET_CAPABILITIES 0x01
 
+#define TYPE_USB_XID "usb-xbox-gamepad"
+#define USB_XID(obj) OBJECT_CHECK(USBXIDState, (obj), TYPE_USB_XID)
 
+enum {
+    STR_MANUFACTURER = 1,
+    STR_PRODUCT,
+    STR_SERIALNUMBER,
+};
+
+typedef enum HapticEmulationMode {
+    EMU_NONE,
+    EMU_HAPTIC_LEFT_RIGHT
+} HapticEmulationMode;
+
+static const USBDescStrings desc_strings = {
+    [STR_MANUFACTURER] = "QEMU",
+    [STR_PRODUCT]      = "Microsoft Xbox Controller",
+    [STR_SERIALNUMBER] = "1",
+};
 
 typedef struct XIDDesc {
-    uint8_t bLength;
-    uint8_t bDescriptorType;
+    uint8_t  bLength;
+    uint8_t  bDescriptorType;
     uint16_t bcdXid;
-    uint8_t bType;
-    uint8_t bSubType;
-    uint8_t bMaxInputReportSize;
-    uint8_t bMaxOutputReportSize;
+    uint8_t  bType;
+    uint8_t  bSubType;
+    uint8_t  bMaxInputReportSize;
+    uint8_t  bMaxOutputReportSize;
     uint16_t wAlternateProductIds[4];
 } QEMU_PACKED XIDDesc;
 
 typedef struct XIDGamepadReport {
-    uint8_t bReportId;
-    uint8_t bLength;
+    uint8_t  bReportId;
+    uint8_t  bLength;
     uint16_t wButtons;
-    uint8_t bAnalogButtons[8];
-    int16_t sThumbLX;
-    int16_t sThumbLY;
-    int16_t sThumbRX;
-    int16_t sThumbRY;
+    uint8_t  bAnalogButtons[8];
+    int16_t  sThumbLX;
+    int16_t  sThumbLY;
+    int16_t  sThumbRX;
+    int16_t  sThumbRY;
 } QEMU_PACKED XIDGamepadReport;
 
 typedef struct XIDGamepadOutputReport {
-    uint8_t report_id; //FIXME: is this correct?
-    uint8_t length;
+    uint8_t  report_id; //FIXME: is this correct?
+    uint8_t  length;
     uint16_t left_actuator_strength;
     uint16_t right_actuator_strength;
 } QEMU_PACKED XIDGamepadOutputReport;
 
-
 typedef struct USBXIDState {
-    USBDevice dev;
-    USBEndpoint *intr;
-    const XIDDesc *xid_desc;
-    QemuInputHandlerState *hs;
-    bool in_dirty;
-    XIDGamepadReport in_state;
-    XIDGamepadReport in_state_capabilities;
+    USBDevice              dev;
+    USBEndpoint            *intr;
+    const XIDDesc          *xid_desc;
+    XIDGamepadReport       in_state;
+    XIDGamepadReport       in_state_capabilities;
     XIDGamepadOutputReport out_state;
     XIDGamepadOutputReport out_state_capabilities;
+    uint8_t                device_index;
 } USBXIDState;
 
 static const USBDescIface desc_iface_xbox_gamepad = {
@@ -161,12 +161,12 @@ static const USBDesc desc_xbox_gamepad = {
 };
 
 static const XIDDesc desc_xid_xbox_gamepad = {
-    .bLength = 0x10,
-    .bDescriptorType = USB_DT_XID,
-    .bcdXid = 0x100,
-    .bType = 1,
-    .bSubType = 1,
-    .bMaxInputReportSize = 20,
+    .bLength              = 0x10,
+    .bDescriptorType      = USB_DT_XID,
+    .bcdXid               = 0x100,
+    .bType                = 1,
+    .bSubType             = 1,
+    .bMaxInputReportSize  = 20,
     .bMaxOutputReportSize = 6,
     .wAlternateProductIds = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF },
 };
@@ -189,136 +189,75 @@ static const XIDDesc desc_xid_xbox_gamepad = {
 #define GAMEPAD_LEFT_THUMB       14
 #define GAMEPAD_RIGHT_THUMB      15
 
-#define GAMEPAD_LEFT_THUMB_UP    16
-#define GAMEPAD_LEFT_THUMB_DOWN  17
-#define GAMEPAD_LEFT_THUMB_LEFT  18
-#define GAMEPAD_LEFT_THUMB_RIGHT 19
+#define BUTTON_MASK(button) (1 << ((button) - GAMEPAD_DPAD_UP))
 
-#define GAMEPAD_RIGHT_THUMB_UP    20
-#define GAMEPAD_RIGHT_THUMB_DOWN  21
-#define GAMEPAD_RIGHT_THUMB_LEFT  22
-#define GAMEPAD_RIGHT_THUMB_RIGHT 23
-
-static const int gamepad_mapping[] = {
-    [0 ... Q_KEY_CODE__MAX] = -1,
-
-    [Q_KEY_CODE_UP]    = GAMEPAD_DPAD_UP,
-    [Q_KEY_CODE_KP_8]  = GAMEPAD_DPAD_UP,
-    [Q_KEY_CODE_DOWN]  = GAMEPAD_DPAD_DOWN,
-    [Q_KEY_CODE_KP_2]  = GAMEPAD_DPAD_DOWN,
-    [Q_KEY_CODE_LEFT]  = GAMEPAD_DPAD_LEFT,
-    [Q_KEY_CODE_KP_4]  = GAMEPAD_DPAD_LEFT,
-    [Q_KEY_CODE_RIGHT] = GAMEPAD_DPAD_RIGHT,
-    [Q_KEY_CODE_KP_6]  = GAMEPAD_DPAD_RIGHT,
-
-    [Q_KEY_CODE_RET]   = GAMEPAD_START,
-    [Q_KEY_CODE_BACKSPACE] = GAMEPAD_BACK,
-
-    [Q_KEY_CODE_W]     = GAMEPAD_X,
-    [Q_KEY_CODE_E]     = GAMEPAD_Y,
-    [Q_KEY_CODE_S]     = GAMEPAD_A,
-    [Q_KEY_CODE_D]     = GAMEPAD_B,
-    [Q_KEY_CODE_X]     = GAMEPAD_WHITE,
-    [Q_KEY_CODE_C]     = GAMEPAD_BLACK,
-
-    [Q_KEY_CODE_Q]     = GAMEPAD_LEFT_TRIGGER,
-    [Q_KEY_CODE_R]     = GAMEPAD_RIGHT_TRIGGER,
-
-    [Q_KEY_CODE_V]     = GAMEPAD_LEFT_THUMB,
-    [Q_KEY_CODE_T]     = GAMEPAD_LEFT_THUMB_UP,
-    [Q_KEY_CODE_F]     = GAMEPAD_LEFT_THUMB_LEFT,
-    [Q_KEY_CODE_G]     = GAMEPAD_LEFT_THUMB_DOWN,
-    [Q_KEY_CODE_H]     = GAMEPAD_LEFT_THUMB_RIGHT,
-
-    [Q_KEY_CODE_M]     = GAMEPAD_RIGHT_THUMB,
-    [Q_KEY_CODE_I]     = GAMEPAD_RIGHT_THUMB_UP,
-    [Q_KEY_CODE_J]     = GAMEPAD_RIGHT_THUMB_LEFT,
-    [Q_KEY_CODE_K]     = GAMEPAD_RIGHT_THUMB_DOWN,
-    [Q_KEY_CODE_L]     = GAMEPAD_RIGHT_THUMB_RIGHT,
-};
-
-static void xbox_gamepad_keyboard_event(DeviceState *dev, QemuConsole *src,
-                                        InputEvent *evt)
+static void update_output(USBXIDState *s)
 {
-    USBXIDState *s = (USBXIDState *)dev;
-    InputKeyEvent *key;
-    int code;
-
-    assert(evt->type == INPUT_EVENT_KIND_KEY);
-    key = evt->u.key.data;
-    code = qemu_input_key_value_to_qcode(key->key);
-
-    if (code >= Q_KEY_CODE__MAX) {
+    if (xemu_input_get_test_mode()) {
+        // Don't report changes if we are testing the controller while running
         return;
     }
 
-    bool up = !key->down;
-    int button = gamepad_mapping[code];
-
-    DPRINTF("xid keyboard_event %d %d %d\n", code, button, up);
-
-    uint16_t mask;
-    switch (button) {
-    case GAMEPAD_A ... GAMEPAD_RIGHT_TRIGGER:
-        s->in_state.bAnalogButtons[button] = up ? 0 : 0xff;
-        break;
-    case GAMEPAD_DPAD_UP ... GAMEPAD_RIGHT_THUMB:
-        mask = (1 << (button - GAMEPAD_DPAD_UP));
-        s->in_state.wButtons &= ~mask;
-        if (!up) {
-            s->in_state.wButtons |= mask;
-        }
-        break;
-
-    case GAMEPAD_LEFT_THUMB_UP:
-        s->in_state.sThumbLY = up ? 0 : 32767;
-        break;
-    case GAMEPAD_LEFT_THUMB_DOWN:
-        s->in_state.sThumbLY = up ? 0 : -32768;
-        break;
-    case GAMEPAD_LEFT_THUMB_LEFT:
-        s->in_state.sThumbLX = up ? 0 : -32768;
-        break;
-    case GAMEPAD_LEFT_THUMB_RIGHT:
-        s->in_state.sThumbLX = up ? 0 : 32767;
-        break;
-
-    case GAMEPAD_RIGHT_THUMB_UP:
-        s->in_state.sThumbRY = up ? 0 : 32767;
-        break;
-    case GAMEPAD_RIGHT_THUMB_DOWN:
-        s->in_state.sThumbRY = up ? 0 : -32768;
-        break;
-    case GAMEPAD_RIGHT_THUMB_LEFT:
-        s->in_state.sThumbRX = up ? 0 : -32768;
-        break;
-    case GAMEPAD_RIGHT_THUMB_RIGHT:
-        s->in_state.sThumbRX = up ? 0 : 32767;
-        break;
-    default:
-        break;
-    }
-
-    s->in_dirty = true;
+    struct controller_state *state = xemu_input_get_bound(s->device_index);
+    assert(state);
+    state->rumble_l = s->out_state.left_actuator_strength;
+    state->rumble_r = s->out_state.right_actuator_strength;
+    xemu_input_update_rumble(state);
 }
 
-static QemuInputHandler xboxkbd_handler = {
-    .name  = "Xbox Keyboard",
-    .mask  = INPUT_EVENT_MASK_KEY,
-    .event = xbox_gamepad_keyboard_event,
-};
+static void update_input(USBXIDState *s)
+{
+    if (xemu_input_get_test_mode()) {
+        // Don't report changes if we are testing the controller while running
+        return;
+    }
+
+    struct controller_state *state = xemu_input_get_bound(s->device_index);
+    assert(state);
+
+    const int button_map_analog[6][2] = {
+        { GAMEPAD_A,     CONTROLLER_BUTTON_A     },
+        { GAMEPAD_B,     CONTROLLER_BUTTON_B     },
+        { GAMEPAD_X,     CONTROLLER_BUTTON_X     },
+        { GAMEPAD_Y,     CONTROLLER_BUTTON_Y     },
+        { GAMEPAD_BLACK, CONTROLLER_BUTTON_BLACK },
+        { GAMEPAD_WHITE, CONTROLLER_BUTTON_WHITE },
+    };
+
+    const int button_map_binary[8][2] = {
+        { GAMEPAD_BACK,        CONTROLLER_BUTTON_BACK       },
+        { GAMEPAD_START,       CONTROLLER_BUTTON_START      },
+        { GAMEPAD_LEFT_THUMB,  CONTROLLER_BUTTON_LSTICK     },
+        { GAMEPAD_RIGHT_THUMB, CONTROLLER_BUTTON_RSTICK     },
+        { GAMEPAD_DPAD_UP,     CONTROLLER_BUTTON_DPAD_UP    },
+        { GAMEPAD_DPAD_DOWN,   CONTROLLER_BUTTON_DPAD_DOWN  },
+        { GAMEPAD_DPAD_LEFT,   CONTROLLER_BUTTON_DPAD_LEFT  },
+        { GAMEPAD_DPAD_RIGHT,  CONTROLLER_BUTTON_DPAD_RIGHT },
+    };
+
+    for (int i = 0; i < 6; i++) {
+        int pressed = state->buttons & button_map_analog[i][1];
+        s->in_state.bAnalogButtons[button_map_analog[i][0]] = pressed ? 0xff : 0;
+    }
+
+    s->in_state.wButtons = 0;
+    for (int i = 0; i < 8; i++) {
+        if (state->buttons & button_map_binary[i][1]) {
+            s->in_state.wButtons |= BUTTON_MASK(button_map_binary[i][0]);
+        }
+    }
+
+    s->in_state.bAnalogButtons[GAMEPAD_LEFT_TRIGGER] = state->axis[CONTROLLER_AXIS_LTRIG] >> 7;
+    s->in_state.bAnalogButtons[GAMEPAD_RIGHT_TRIGGER] = state->axis[CONTROLLER_AXIS_RTRIG] >> 7;
+    s->in_state.sThumbLX = state->axis[CONTROLLER_AXIS_LSTICK_X];
+    s->in_state.sThumbLY = state->axis[CONTROLLER_AXIS_LSTICK_Y];
+    s->in_state.sThumbRX = state->axis[CONTROLLER_AXIS_RSTICK_X];
+    s->in_state.sThumbRY = state->axis[CONTROLLER_AXIS_RSTICK_Y];
+}
 
 static void usb_xid_handle_reset(USBDevice *dev)
 {
     DPRINTF("xid reset\n");
-}
-
-static void update_force_feedback(USBXIDState *s)
-{
-    /* FIXME: Check actuator endianess */
-    DPRINTF("Set rumble power to 0x%x, 0x%x\n",
-            s->out_state.left_actuator_strength,
-            s->out_state.right_actuator_strength);
 }
 
 static void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
@@ -326,10 +265,9 @@ static void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
 {
     USBXIDState *s = (USBXIDState *)dev;
 
-    DPRINTF("xid handle_control 0x%x 0x%x (length: %d)\n", request, value, length);
+    DPRINTF("xid handle_control 0x%x 0x%x\n", request, value);
 
-    int ret = usb_desc_handle_control(dev, p, request, value,
-                                      index, length, data);
+    int ret = usb_desc_handle_control(dev, p, request, value, index, length, data);
     if (ret >= 0) {
         DPRINTF("xid handled by usb_desc_handle_control: %d\n", ret);
         return;
@@ -339,6 +277,7 @@ static void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
     /* HID requests */
     case ClassInterfaceRequest | HID_GET_REPORT:
         DPRINTF("xid GET_REPORT 0x%x\n", value);
+        update_input(s);
         if (value == 0x0100) { /* input */
             if (length <= s->in_state.bLength) {
                 memcpy(data, &s->in_state, s->in_state.bLength);
@@ -365,7 +304,7 @@ static void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
             } else {
                 p->status = USB_RET_STALL;
             }
-            update_force_feedback(s);
+            update_output(s);
         } else {
             p->status = USB_RET_STALL;
             assert(false);
@@ -402,7 +341,7 @@ static void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
             assert(false);
         }
         break;
-    case ((USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_DEVICE) << 8)
+    case ((USB_DIR_IN|USB_TYPE_CLASS|USB_RECIP_DEVICE)<<8)
              | USB_REQ_GET_DESCRIPTOR:
         /* FIXME: ! */
         DPRINTF("xid unknown xpad request 0x%x: value = 0x%x\n",
@@ -412,7 +351,7 @@ static void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
         p->status = USB_RET_STALL;
         //assert(false);
         break;
-    case ((USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_ENDPOINT) << 8)
+    case ((USB_DIR_OUT|USB_TYPE_STANDARD|USB_RECIP_ENDPOINT)<<8)
              | USB_REQ_CLEAR_FEATURE:
         /* FIXME: ! */
         DPRINTF("xid unknown xpad request 0x%x: value = 0x%x\n",
@@ -430,19 +369,15 @@ static void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
 
 static void usb_xid_handle_data(USBDevice *dev, USBPacket *p)
 {
-    USBXIDState *s = (USBXIDState *)dev;
+    USBXIDState *s = DO_UPCAST(USBXIDState, dev, dev);
 
     DPRINTF("xid handle_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
 
     switch (p->pid) {
     case USB_TOKEN_IN:
         if (p->ep->nr == 2) {
-            if (s->in_dirty) {
-                usb_packet_copy(p, &s->in_state, s->in_state.bLength);
-                s->in_dirty = false;
-            } else {
-                p->status = USB_RET_NAK;
-            }
+            update_input(s);
+            usb_packet_copy(p, &s->in_state, s->in_state.bLength);
         } else {
             assert(false);
         }
@@ -450,7 +385,7 @@ static void usb_xid_handle_data(USBDevice *dev, USBPacket *p)
     case USB_TOKEN_OUT:
         if (p->ep->nr == 2) {
             usb_packet_copy(p, &s->out_state, s->out_state.length);
-            update_force_feedback(s);
+            update_output(s);
         } else {
             assert(false);
         }
@@ -462,6 +397,18 @@ static void usb_xid_handle_data(USBDevice *dev, USBPacket *p)
     }
 }
 
+#if 0
+static void usb_xid_handle_destroy(USBDevice *dev)
+{
+    USBXIDState *s = DO_UPCAST(USBXIDState, dev, dev);
+    DPRINTF("xid handle_destroy\n");
+}
+#endif
+
+static void usb_xbox_gamepad_unrealize(USBDevice *dev, Error **errp)
+{
+}
+
 static void usb_xid_class_initfn(ObjectClass *klass, void *data)
 {
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
@@ -469,6 +416,7 @@ static void usb_xid_class_initfn(ObjectClass *klass, void *data)
     uc->handle_reset   = usb_xid_handle_reset;
     uc->handle_control = usb_xid_handle_control;
     uc->handle_data    = usb_xid_handle_data;
+    // uc->handle_destroy = usb_xid_handle_destroy;
     uc->handle_attach  = usb_desc_attach;
 }
 
@@ -485,6 +433,8 @@ static void usb_xbox_gamepad_realize(USBDevice *dev, Error **errp)
     s->out_state.length = sizeof(s->out_state);
     s->out_state.report_id = 0;
 
+    s->xid_desc = &desc_xid_xbox_gamepad;
+
     memset(&s->in_state_capabilities, 0xFF, sizeof(s->in_state_capabilities));
     s->in_state_capabilities.bLength = sizeof(s->in_state_capabilities);
     s->in_state_capabilities.bReportId = 0;
@@ -492,19 +442,16 @@ static void usb_xbox_gamepad_realize(USBDevice *dev, Error **errp)
     memset(&s->out_state_capabilities, 0xFF, sizeof(s->out_state_capabilities));
     s->out_state_capabilities.length = sizeof(s->out_state_capabilities);
     s->out_state_capabilities.report_id = 0;
-
-
-    s->hs = qemu_input_handler_register((DeviceState *)(s), &xboxkbd_handler);
-    s->xid_desc = &desc_xid_xbox_gamepad;
 }
 
-static void usb_xbox_gamepad_unrealize(USBDevice *dev, Error **errp)
-{
-}
+static Property xid_properties[] = {
+    DEFINE_PROP_UINT8("index", USBXIDState, device_index, 0),
+    DEFINE_PROP_END_OF_LIST(),
+};
 
 static const VMStateDescription vmstate_usb_xbox = {
     .name = TYPE_USB_XID,
-    .unmigratable = 1,
+    .unmigratable = 1, // FIXME
 };
 
 static void usb_xbox_gamepad_class_initfn(ObjectClass *klass, void *data)
@@ -518,8 +465,9 @@ static void usb_xbox_gamepad_class_initfn(ObjectClass *klass, void *data)
     uc->unrealize      = usb_xbox_gamepad_unrealize;
     usb_xid_class_initfn(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
-    dc->vmsd = &vmstate_usb_xbox;
-    dc->desc = "Microsoft Xbox Controller";
+    dc->vmsd  = &vmstate_usb_xbox;
+    device_class_set_props(dc, xid_properties);
+    dc->desc  = "Microsoft Xbox Controller";
 }
 
 static const TypeInfo usb_xbox_gamepad_info = {
