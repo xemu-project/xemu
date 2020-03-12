@@ -32,32 +32,13 @@
 #include "qemu-version.h"
 #include "ui/console.h"
 #include "ui/input.h"
-#include "ui/sdl2.h"
+#include "ui/xemu-display.h"
 #include "sysemu/runstate.h"
 #include "sysemu/sysemu.h"
 #include "xemu-hud.h"
 #include "xemu-input.h"
 #include "xemu-settings.h"
 #include "xemu-shaders.h"
-
-// void sdl2_window_create(struct sdl2_console *scon);
-// void sdl2_window_destroy(struct sdl2_console *scon);
-// void sdl2_window_resize(struct sdl2_console *scon);
-// void sdl2_poll_events(struct sdl2_console *scon);
-
-// void sdl2_gl_update(DisplayChangeListener *dcl,
-//                     int x, int y, int w, int h);
-// void sdl2_gl_switch(DisplayChangeListener *dcl,
-//                     DisplaySurface *new_surface);
-// void sdl2_gl_refresh(DisplayChangeListener *dcl);
-// void sdl2_gl_redraw(struct sdl2_console *scon);
-
-// QEMUGLContext sdl2_gl_create_context(DisplayChangeListener *dcl,
-//                                      QEMUGLParams *params);
-// void sdl2_gl_destroy_context(DisplayChangeListener *dcl, QEMUGLContext ctx);
-// int sdl2_gl_make_context_current(DisplayChangeListener *dcl,
-//                                  QEMUGLContext ctx);
-// QEMUGLContext sdl2_gl_get_current_context(DisplayChangeListener *dcl);
 
 void xb_surface_gl_create_texture(QemuGLShader *gls,
                                DisplaySurface *surface);
@@ -66,16 +47,6 @@ void xb_surface_gl_update_texture(QemuGLShader *gls,
                                int x, int y, int w, int h);
 void xb_surface_gl_destroy_texture(QemuGLShader *gls,
                                 DisplaySurface *surface);
-// void sdl2_gl_scanout_disable(DisplayChangeListener *dcl);
-// void sdl2_gl_scanout_texture(DisplayChangeListener *dcl,
-//                              uint32_t backing_id,
-//                              bool backing_y_0_top,
-//                              uint32_t backing_width,
-//                              uint32_t backing_height,
-//                              uint32_t x, uint32_t y,
-//                              uint32_t w, uint32_t h);
-// void sdl2_gl_scanout_flush(DisplayChangeListener *dcl,
-//                            uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 
 // FIXME: Move this to a better location
 void pre_swap(void);
@@ -956,11 +927,6 @@ static void register_sdl1(void)
 
 type_init(register_sdl1);
 
-#include "qemu/osdep.h"
-#include "ui/console.h"
-#include "ui/input.h"
-#include "ui/sdl2.h"
-
 void xb_surface_gl_create_texture(QemuGLShader *gls,
                                DisplaySurface *surface)
 {
@@ -1322,4 +1288,32 @@ void sdl2_gl_scanout_flush(DisplayChangeListener *dcl,
 
     SDL_GL_SwapWindow(scon->real_window);
 #endif
+}
+
+// sdl2-input.c
+void sdl2_process_key(struct sdl2_console *scon,
+                      SDL_KeyboardEvent *ev)
+{
+    int qcode;
+    QemuConsole *con = scon->dcl.con;
+
+    if (ev->keysym.scancode >= qemu_input_map_usb_to_qcode_len) {
+        return;
+    }
+    qcode = qemu_input_map_usb_to_qcode[ev->keysym.scancode];
+    qkbd_state_key_event(scon->kbd, qcode, ev->type == SDL_KEYDOWN);
+
+    if (!qemu_console_is_graphic(con)) {
+        bool ctrl = qkbd_state_modifier_get(scon->kbd, QKBD_MOD_CTRL);
+        if (ev->type == SDL_KEYDOWN) {
+            switch (qcode) {
+            case Q_KEY_CODE_RET:
+                kbd_put_keysym_console(con, '\n');
+                break;
+            default:
+                kbd_put_qcode_console(con, qcode, ctrl);
+                break;
+            }
+        }
+    }
 }

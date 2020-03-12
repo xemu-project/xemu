@@ -25,7 +25,6 @@ endif
 
 # Override with xemu UI
 sdl.mo-objs := \
-	sdl2-input.o \
 	xemu.o \
 	xemu-hud.o \
 	xemu-custom-widgets.o \

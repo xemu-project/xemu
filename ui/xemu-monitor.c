@@ -26,7 +26,6 @@
 #include "qemu-common.h"
 #include "ui/console.h"
 #include "ui/input.h"
-#include "ui/sdl2.h"
 #include "sysemu/sysemu.h"
 #include "monitor/monitor.h"
 #include "chardev/char.h"
