@@ -9,6 +9,7 @@
 
 #include "ui/kbd-state.h"
 
+// FIXME: Cleanup
 struct sdl2_console {
     DisplayChangeListener dcl;
     DisplaySurface *surface;
@@ -26,11 +27,8 @@ struct sdl2_console {
     int ignore_hotkeys;
     SDL_GLContext winctx;
     QKbdState *kbd;
-// #ifdef CONFIG_OPENGL
-    QemuGLShader *gls;
     bool y0_top;
     bool scanout_mode;
-// #endif
 };
 
 void sdl2_window_create(struct sdl2_console *scon);

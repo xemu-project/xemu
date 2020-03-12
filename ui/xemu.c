@@ -40,13 +40,9 @@
 #include "xemu-settings.h"
 #include "xemu-shaders.h"
 
-void xb_surface_gl_create_texture(QemuGLShader *gls,
-                               DisplaySurface *surface);
-void xb_surface_gl_update_texture(QemuGLShader *gls,
-                               DisplaySurface *surface,
-                               int x, int y, int w, int h);
-void xb_surface_gl_destroy_texture(QemuGLShader *gls,
-                                DisplaySurface *surface);
+void xb_surface_gl_create_texture(DisplaySurface *surface);
+void xb_surface_gl_update_texture(DisplaySurface *surface, int x, int y, int w, int h);
+void xb_surface_gl_destroy_texture(DisplaySurface *surface);
 
 // FIXME: Move this to a better location
 void pre_swap(void);
@@ -927,8 +923,7 @@ static void register_sdl1(void)
 
 type_init(register_sdl1);
 
-void xb_surface_gl_create_texture(QemuGLShader *gls,
-                               DisplaySurface *surface)
+void xb_surface_gl_create_texture(DisplaySurface *surface)
 {
     // assert(gls);
     assert(QEMU_IS_ALIGNED(surface_stride(surface), surface_bytes_per_pixel(surface)));
@@ -968,13 +963,9 @@ void xb_surface_gl_create_texture(QemuGLShader *gls,
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 }
 
-void xb_surface_gl_update_texture(QemuGLShader *gls,
-                               DisplaySurface *surface,
-                               int x, int y, int w, int h)
+void xb_surface_gl_update_texture(DisplaySurface *surface, int x, int y, int w, int h)
 {
     uint8_t *data = (void *)surface_data(surface);
-
-    // assert(gls);
 
     if (surface->texture) {
         glBindTexture(GL_TEXTURE_2D, surface->texture);
@@ -990,8 +981,7 @@ void xb_surface_gl_update_texture(QemuGLShader *gls,
     }
 }
 
-void xb_surface_gl_destroy_texture(QemuGLShader *gls,
-                                DisplaySurface *surface)
+void xb_surface_gl_destroy_texture(DisplaySurface *surface)
 {
     if (!surface || !surface->texture) {
         return;
@@ -1011,8 +1001,8 @@ static void sdl2_set_scanout_mode(struct sdl2_console *scon, bool scanout)
     if (!scon->scanout_mode) {
         egl_fb_destroy(&scon->guest_fb);
         if (scon->surface) {
-            surface_gl_destroy_texture(scon->gls, scon->surface);
-            surface_gl_create_texture(scon->gls, scon->surface);
+            surface_gl_destroy_texture(scon->surface);
+            surface_gl_create_texture(scon->surface);
         }
     }
 }
@@ -1074,7 +1064,7 @@ static void xemu_sdl2_gl_render_surface(struct sdl2_console *scon)
 
     xemu_hud_render(scon->real_window);
 
-    // xb_surface_gl_render_texture(scon->gls, scon->surface);
+    // xb_surface_gl_render_texture(scon->surface);
     pre_swap();
     SDL_GL_SwapWindow(scon->real_window);
     post_swap();
@@ -1089,10 +1079,10 @@ void sdl2_gl_update(DisplayChangeListener *dcl,
     SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
     if (scon->surface) {
         // glDeleteTextures(1, &scon->surface->texture);
-        xb_surface_gl_destroy_texture(scon->gls, scon->surface);
+        xb_surface_gl_destroy_texture(scon->surface);
         // assert(glGetError() == GL_NO_ERROR);
     }
-    xb_surface_gl_create_texture(scon->gls, scon->surface);
+    xb_surface_gl_create_texture(scon->surface);
 #endif
     scon->updates++;
 }
@@ -1106,13 +1096,13 @@ void sdl2_gl_switch(DisplayChangeListener *dcl,
     assert(scon->opengl);
 
     SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
-    xb_surface_gl_destroy_texture(scon->gls, scon->surface);
+    xb_surface_gl_destroy_texture(scon->surface);
 
     scon->surface = new_surface;
 
     if (!new_surface) {
         // qemu_gl_fini_shader(scon->gls);
-        scon->gls = NULL;
+        // scon->gls = NULL;
         // sdl2_window_destroy(scon);
         return;
     }
@@ -1130,7 +1120,7 @@ void sdl2_gl_switch(DisplayChangeListener *dcl,
         // sdl2_window_resize(scon);
     }
 
-    xb_surface_gl_create_texture(scon->gls, scon->surface);
+    xb_surface_gl_create_texture(scon->surface);
 }
 
 void sdl2_gl_refresh(DisplayChangeListener *dcl)
