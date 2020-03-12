@@ -1,4 +1,2 @@
-obj-y += gloffscreen_common.o
-obj-$(CONFIG_WIN32) += gloffscreen_wgl.o
-obj-$(CONFIG_DARWIN) += gloffscreen_cgl.o
-obj-$(CONFIG_LINUX) += gloffscreen_glx.o
+obj-y += gloffscreen_common.o gloffscreen_sdl.o
+gloffscreen_sdl.o-cflags := $(SDL_CFLAGS)
