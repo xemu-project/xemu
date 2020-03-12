@@ -7,6 +7,7 @@ package_windows() { # Script to prepare the windows exe
     mkdir -p dist
     cp i386-softmmu/qemu-system-i386.exe dist/xemu.exe
     cp i386-softmmu/qemu-system-i386w.exe dist/xemuw.exe
+    cp -r data dist/
     python3 ./get_deps.py dist/xemu.exe dist
     strip dist/xemu.exe
     strip dist/xemuw.exe
