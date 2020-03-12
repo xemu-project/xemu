@@ -1137,7 +1137,7 @@
 { 'enum'    : 'DisplayType',
   'data'    : [ 'default', 'none', 'gtk', 'sdl',
                 'egl-headless', 'curses', 'cocoa',
-                'spice-app'] }
+                'spice-app', 'xemu'] }
 
 ##
 # @DisplayOptions:
