@@ -90,7 +90,11 @@
  * message (but as it remains present in the source code, it can still
  * be useful when debugging). */
 #if defined(CONFIG_STATIC_ASSERT)
+#ifdef __cplusplus
+#define QEMU_BUILD_BUG_MSG(x, msg) static_assert(!(x), msg)
+#else
 #define QEMU_BUILD_BUG_MSG(x, msg) _Static_assert(!(x), msg)
+#endif
 #elif defined(__COUNTER__)
 #define QEMU_BUILD_BUG_MSG(x, msg) typedef QEMU_BUILD_BUG_ON_STRUCT(x) \
     glue(qemu_build_bug_on__, __COUNTER__) __attribute__((unused))

@@ -70,7 +70,7 @@
         unsigned long name[BITS_TO_LONGS(bits)]
 
 #define small_nbits(nbits)                      \
-        ((nbits) <= BITS_PER_LONG)
+        ((unsigned long)(nbits) <= BITS_PER_LONG)
 
 int slow_bitmap_empty(const unsigned long *bitmap, long bits);
 int slow_bitmap_full(const unsigned long *bitmap, long bits);
@@ -93,7 +93,7 @@ long slow_bitmap_count_one(const unsigned long *bitmap, long nbits);
 static inline unsigned long *bitmap_try_new(long nbits)
 {
     long len = BITS_TO_LONGS(nbits) * sizeof(unsigned long);
-    return g_try_malloc0(len);
+    return (unsigned long *)g_try_malloc0(len);
 }
 
 static inline unsigned long *bitmap_new(long nbits)
@@ -265,9 +265,9 @@ static inline unsigned long *bitmap_zero_extend(unsigned long *old,
                                                 long old_nbits, long new_nbits)
 {
     long new_len = BITS_TO_LONGS(new_nbits) * sizeof(unsigned long);
-    unsigned long *new = g_realloc(old, new_len);
-    bitmap_clear(new, old_nbits, new_nbits - old_nbits);
-    return new;
+    unsigned long *new_ = (unsigned long *)g_realloc(old, new_len);
+    bitmap_clear(new_, old_nbits, new_nbits - old_nbits);
+    return new_;
 }
 
 void bitmap_to_le(unsigned long *dst, const unsigned long *src,

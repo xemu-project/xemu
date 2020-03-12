@@ -14,6 +14,11 @@
 #ifndef QEMU_OBJECT_H
 #define QEMU_OBJECT_H
 
+#ifdef __cplusplus
+#define class qom_class
+#define typename qom_typename
+#endif
+
 #include "qapi/qapi-builtin-types.h"
 #include "qemu/module.h"
 
@@ -1883,5 +1888,10 @@ char *object_property_help(const char *name, const char *type,
                            QObject *defval, const char *description);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(Object, object_unref)
+
+#ifdef __cplusplus
+#undef class
+#undef typename
+#endif
 
 #endif
