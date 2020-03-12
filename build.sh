@@ -5,18 +5,18 @@ set -o pipefail # Will return the exit status of make if it fails
 
 package_windows() { # Script to prepare the windows exe
     mkdir -p dist
-    cp i386-softmmu/qemu-system-i386.exe dist/xqemu.exe
-    cp i386-softmmu/qemu-system-i386w.exe dist/xqemuw.exe
-    python3 ./get_deps.py dist/xqemu.exe dist
-    strip dist/xqemu.exe
-    strip dist/xqemuw.exe
+    cp i386-softmmu/qemu-system-i386.exe dist/xemu.exe
+    cp i386-softmmu/qemu-system-i386w.exe dist/xemuw.exe
+    python3 ./get_deps.py dist/xemu.exe dist
+    strip dist/xemu.exe
+    strip dist/xemuw.exe
 }
 
 postbuild=''
-debug_opts='--enable-debug'
+debug_opts=''
 user_opts=''
-build_cflags='-O0 -g'
-job_count='4'
+build_cflags='-O3'
+job_count='12'
 
 while [ ! -z ${1} ]
 do
@@ -25,9 +25,9 @@ do
         job_count="${1:2}"
         shift
         ;;
-    '--release')
-        build_cflags='-O3'
-        debug_opts=''
+    '--debug')
+        build_cflags='-O0 -g'
+        debug_opts='--enable-debug'
         shift
         ;;
     *)
@@ -39,14 +39,14 @@ done
 
 readlink=$(command -v readlink)
 
-case "$(uname -s)" in # adjust compilation option based on platform
+case "$(uname -s)" in # Adjust compilation options based on platform
     Linux)
-        echo 'Compiling for Linux…'
+        echo 'Compiling for Linux...'
         sys_cflags='-march=native -Wno-error=redundant-decls -Wno-error=unused-but-set-variable'
         sys_opts='--enable-kvm --disable-xen --disable-werror'
         ;;
     Darwin)
-        echo 'Compiling for MacOS…'
+        echo 'Compiling for MacOS...'
         sys_cflags='-march=native'
         sys_opts='--disable-cocoa'
         # necessary to find libffi, which is required by gobject
@@ -60,7 +60,7 @@ case "$(uname -s)" in # adjust compilation option based on platform
         fi
         ;;
     CYGWIN*|MINGW*|MSYS*)
-        echo 'Compiling for Windows…'
+        echo 'Compiling for Windows...'
         sys_cflags='-Wno-error'
         sys_opts='--python=python3 --disable-cocoa --disable-opengl --disable-fortify-source'
         postbuild='package_windows' # set the above function to be called after build
