@@ -76,6 +76,9 @@ esac
 git submodule update --init ui/inih
 git submodule update --init ui/imgui
 git submodule update --init ui/ImGuiFileDialog
+pushd ui/ImGuiFileDialog
+git submodule update --init 3rdparty/dirent
+popd
 
 # find absolute path (and resolve symlinks) to build out of tree
 configure="$(dirname "$($readlink -f "${0}")")/configure"
