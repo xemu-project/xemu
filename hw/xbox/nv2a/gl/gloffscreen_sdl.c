@@ -36,10 +36,17 @@ struct _GloContext {
     SDL_GLContext gl_context;
 };
 
+static GloContext *g_context;
+
 /* Create an OpenGL context */
 GloContext *glo_context_create(void)
 {
     fprintf(stderr, "%s\n", __func__);
+
+    if (g_context) {
+        glo_set_current(g_context);
+        return g_context;
+    }
 
     GloContext *context = (GloContext *)malloc(sizeof(GloContext));
     assert(context != NULL);
@@ -81,6 +88,8 @@ GloContext *glo_context_create(void)
     }
 
     glo_set_current(context);
+
+    g_context = context;
 
     return context;
 }

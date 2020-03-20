@@ -29,6 +29,8 @@
 
 #include "qemu/osdep.h"
 #include "qemu/module.h"
+#include "qemu/thread.h"
+#include "qemu/main-loop.h"
 #include "qemu-version.h"
 #include "ui/console.h"
 #include "ui/input.h"
@@ -39,21 +41,28 @@
 #include "xemu-input.h"
 #include "xemu-settings.h"
 #include "xemu-shaders.h"
+#include "hw/xbox/nv2a/gl/gloffscreen.h" // FIXME
+
+// #define DEBUG_XEMU_C
+
+#ifdef DEBUG_XEMU_C
+#define DPRINTF(...) fprintf(stderr, __VA_ARGS__)
+#else
+#define DPRINTF(...)
+#endif
 
 void xb_surface_gl_create_texture(DisplaySurface *surface);
 void xb_surface_gl_update_texture(DisplaySurface *surface, int x, int y, int w, int h);
 void xb_surface_gl_destroy_texture(DisplaySurface *surface);
 
-// FIXME: Move this to a better location
-void pre_swap(void);
-void post_swap(void);
+static void pre_swap(void);
+static void post_swap(void);
+static void sleep_ns(int64_t ns);
 
 static int sdl2_num_outputs;
 static struct sdl2_console *sdl2_console;
-
 static SDL_Surface *guest_sprite_surface;
 static int gui_grab; /* if true, all keyboard/mouse events are grabbed */
-
 static int gui_saved_grab;
 static int gui_fullscreen;
 static int gui_grab_code = KMOD_LALT | KMOD_LCTRL;
@@ -64,9 +73,12 @@ static int guest_cursor;
 static int guest_x, guest_y;
 static SDL_Cursor *guest_sprite;
 static Notifier mouse_mode_notifier;
-
+static SDL_Window *m_window;
+static SDL_GLContext m_context;
 int scaling_mode = 1;
 struct decal_shader *blit;
+
+static QemuSemaphore display_init_sem;
 
 static void toggle_full_screen(struct sdl2_console *scon);
 
@@ -716,6 +728,7 @@ static void sdl_mouse_define(DisplayChangeListener *dcl,
     }
 }
 
+#if 0
 static void sdl_cleanup(void)
 {
     if (guest_sprite) {
@@ -723,13 +736,14 @@ static void sdl_cleanup(void)
     }
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
+#endif
 
 static const DisplayChangeListenerOps dcl_gl_ops = {
     .dpy_name                = "sdl2-gl",
     .dpy_gfx_update          = sdl2_gl_update,
     .dpy_gfx_switch          = sdl2_gl_switch,
     .dpy_gfx_check_format    = console_gl_check_format,
-    .dpy_refresh             = sdl2_gl_refresh,
+    // .dpy_refresh             = sdl2_gl_refresh,
     .dpy_mouse_set           = sdl_mouse_warp,
     .dpy_cursor_define       = sdl_mouse_define,
 
@@ -742,14 +756,8 @@ static const DisplayChangeListenerOps dcl_gl_ops = {
     .dpy_gl_update           = sdl2_gl_scanout_flush,
 };
 
-SDL_Window    *m_window;
-SDL_GLContext  m_context;
-
-static void sdl2_display_early_init(DisplayOptions *o)
+static void sdl2_display_very_early_init(DisplayOptions *o)
 {
-    assert(o->type == DISPLAY_TYPE_XEMU);
-    display_opengl = 1;
-
     fprintf(stderr, "%s\n", __func__);
 
 #ifdef __linux__
@@ -770,6 +778,7 @@ static void sdl2_display_early_init(DisplayOptions *o)
                 SDL_GetError());
         exit(1);
     }
+
 #ifdef SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR /* only available since SDL 2.0.8 */
     SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 #endif
@@ -812,6 +821,31 @@ static void sdl2_display_early_init(DisplayOptions *o)
         exit(1);
     }
 
+    int width, height, channels = 0;
+    stbi_set_flip_vertically_on_load(0);
+    unsigned char *icon_data = stbi_load("./data/xemu_64x64.png", &width, &height, &channels, 4);
+    if (icon_data) {
+        SDL_Surface *icon = SDL_CreateRGBSurfaceFrom(icon_data, width, height, 32, width*4,
+            0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
+        if (icon) {
+            SDL_SetWindowIcon(m_window, icon);
+        }
+        // Note: Retaining the memory allocated by stbi_load. It's used in place
+        // by the SDL surface.
+    }
+
+    // Initialize offscreen rendering context now
+    glo_context_create();
+    SDL_GL_MakeCurrent(NULL, NULL);
+
+    // FIXME: atexit(sdl_cleanup);
+}
+
+static void sdl2_display_early_init(DisplayOptions *o)
+{
+    assert(o->type == DISPLAY_TYPE_XEMU);
+    display_opengl = 1;
+
     SDL_GL_MakeCurrent(m_window, m_context);
     xemu_hud_init(m_window, m_context);
     blit = create_decal_shader(SHADER_TYPE_BLIT);
@@ -822,9 +856,9 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
     uint8_t data = 0;
     int i;
     SDL_SysWMinfo info;
-    SDL_Surface *icon = NULL;
 
     assert(o->type == DISPLAY_TYPE_XEMU);
+    SDL_GL_MakeCurrent(m_window, m_context);
 
     xemu_input_init();
     xemu_settings_get_enum(XEMU_SETTINGS_DISPLAY_SCALE, &scaling_mode);
@@ -879,23 +913,6 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
 #endif
     }
 
-    int width, height, channels = 0;
-    stbi_set_flip_vertically_on_load(0);
-    unsigned char *icon_data = stbi_load("./data/xemu_64x64.png", &width, &height, &channels, 4);
-    if (icon_data) {
-        icon = SDL_CreateRGBSurfaceFrom(icon_data, width, height, 32, width*4,
-            0x000000ff,
-            0x0000ff00,
-            0x00ff0000,
-            0xff000000
-            );    
-        // Note: Retaining the memory allocated by stbi_load. It's used in-place
-        // by the SDL surface.
-    }
-    if (icon) {
-        SDL_SetWindowIcon(sdl2_console[0].real_window, icon);
-    }
-
     gui_grab = 0;
     if (gui_fullscreen) {
         sdl_grab_start(0);
@@ -907,7 +924,9 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
     sdl_cursor_hidden = SDL_CreateCursor(&data, &data, 8, 1, 0, 0);
     sdl_cursor_normal = SDL_GetCursor();
 
-    atexit(sdl_cleanup);
+    /* Tell main thread to go ahead and create the app and enter the run loop */
+    SDL_GL_MakeCurrent(NULL, NULL);
+    qemu_sem_post(&display_init_sem);
 }
 
 static QemuDisplay qemu_display_sdl2 = {
@@ -1062,7 +1081,10 @@ static void xemu_sdl2_gl_render_surface(struct sdl2_console *scon)
     glClear(GL_COLOR_BUFFER_BIT);
     glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
 
+    // FIXME: Finer locking
+    qemu_mutex_lock_iothread();
     xemu_hud_render(scon->real_window);
+    qemu_mutex_unlock_iothread();
 
     // xb_surface_gl_render_texture(scon->surface);
     pre_swap();
@@ -1123,17 +1145,39 @@ void sdl2_gl_switch(DisplayChangeListener *dcl,
     xb_surface_gl_create_texture(scon->surface);
 }
 
+float fps = 1.0;
+
+static void update_fps(void)
+{
+    static int64_t last_update = 0;
+    const float r = 0.5;//0.1;
+    static float avg = 1.0;
+    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+    float ms = ((float)(now-last_update)/1000000.0);
+    last_update = now;
+    if (fabs(avg-ms) > 0.25*avg) avg = ms;
+    else avg = avg*(1.0-r)+ms*r;
+    fps = 1000.0/avg;
+}
+
 void sdl2_gl_refresh(DisplayChangeListener *dcl)
 {
     struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
     assert(scon->opengl);
 
+    update_fps();
+
+    SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
+
+    qemu_mutex_lock_iothread();
     graphic_hw_update(dcl->con);
+
     if (scon->updates && scon->surface) {
         scon->updates = 0;
     }
-    xemu_sdl2_gl_render_surface(scon);
     sdl2_poll_events(scon);
+    qemu_mutex_unlock_iothread();
+    xemu_sdl2_gl_render_surface(scon);
 }
 
 void sdl2_gl_redraw(struct sdl2_console *scon)
@@ -1147,7 +1191,7 @@ void sdl2_gl_redraw(struct sdl2_console *scon)
         // return sdl2_gl_scanout_flush(&scon->dcl, 0, 0, 0, 0);
     }
     if (scon->surface) {
-        xemu_sdl2_gl_render_surface(scon);
+        // xemu_sdl2_gl_render_surface(scon);
     }
 }
 
@@ -1305,5 +1349,98 @@ void sdl2_process_key(struct sdl2_console *scon,
                 break;
             }
         }
+    }
+}
+
+int gArgc;
+char **gArgv;
+
+// vl.c
+int qemu_main(int argc, char **argv, char **envp);
+
+static void *call_qemu_main(void *opaque)
+{
+    int status;
+
+    DPRINTF("Second thread: calling qemu_main()\n");
+    status = qemu_main(gArgc, gArgv, NULL);
+    DPRINTF("Second thread: qemu_main() returned, exiting\n");
+    exit(status);
+}
+
+static void pre_swap(void)
+{
+}
+
+/* Note: only supports millisecond resolution on Windows */
+static void sleep_ns(int64_t ns)
+{
+#ifndef _WIN32
+        struct timespec sleep_delay, rem_delay;
+        sleep_delay.tv_sec = ns / 1000000000LL;
+        sleep_delay.tv_nsec = ns % 1000000000LL;
+        nanosleep(&sleep_delay, &rem_delay);
+#else
+        Sleep(ns / SCALE_MS);
+#endif
+}
+
+static void post_swap(void)
+{
+    // Throttle to make sure swaps happen at 60Hz
+    static int64_t last_update = 0;
+    int64_t deadline = last_update + 16666666;
+    int64_t sleep_acc = 0;
+    int64_t spin_acc = 0;
+
+#ifndef _WIN32
+    const int64_t sleep_threshold = 2000000;
+#else
+    const int64_t sleep_threshold = 250000;
+#endif
+
+    while (1) {
+        int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+        int64_t time_remaining = deadline - now;
+        if (now < deadline) {
+            if (time_remaining > sleep_threshold) {
+                // Try to sleep until the until reaching the sleep threshold.
+                sleep_ns(time_remaining - sleep_threshold);
+                sleep_acc += qemu_clock_get_ns(QEMU_CLOCK_REALTIME)-now;
+            } else {
+                // Simply spin to avoid extra delays incurred with swapping to
+                // another process and back in the event of being within
+                // threshold to desired event.
+                spin_acc++;
+            }
+        } else {
+            DPRINTF("zzZz %g %ld\n", (double)sleep_acc/1000000.0, spin_acc);
+            last_update = now;
+            break;
+        }
+    }
+}
+
+// #undef main
+
+int main(int argc, char **argv) {
+    QemuThread thread;
+
+    DPRINTF("Entered main()\n");
+    gArgc = argc;
+    gArgv = argv;
+
+    sdl2_display_very_early_init(NULL);
+
+    qemu_sem_init(&display_init_sem, 0);
+    qemu_thread_create(&thread, "qemu_main", call_qemu_main,
+                       NULL, QEMU_THREAD_DETACHED);
+
+    DPRINTF("Main thread: waiting for display_init_sem\n");
+    qemu_sem_wait(&display_init_sem);
+    DPRINTF("Main thread: initializing app\n");
+
+    while (1) {
+        sdl2_gl_refresh(&sdl2_console[0].dcl);
     }
 }
