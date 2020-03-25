@@ -34,6 +34,16 @@
 #include "qemu/error-report.h"
 #include "qemu/queue.h"
 
+GMainContext *qemu_context = NULL;
+GMainLoop *qemu_loop = NULL;
+
+#define g_main_context_default g_main_context_default_intercepted
+static GMainContext *g_main_context_default_intercepted(void)
+{
+    assert(qemu_context != NULL);
+    return qemu_context;
+}
+
 #ifndef _WIN32
 #include <sys/wait.h>
 #endif
@@ -150,6 +160,10 @@ int qemu_init_main_loop(Error **errp)
     GSource *src;
     Error *local_error = NULL;
 
+    qemu_context = g_main_context_new();
+    assert(qemu_context != NULL);
+    qemu_loop = g_main_loop_new(qemu_context, FALSE);
+
     init_clocks(qemu_timer_notify_cb);
 
     ret = qemu_signal_init(errp);
@@ -166,11 +180,11 @@ int qemu_init_main_loop(Error **errp)
     gpollfds = g_array_new(FALSE, FALSE, sizeof(GPollFD));
     src = aio_get_g_source(qemu_aio_context);
     g_source_set_name(src, "aio-context");
-    g_source_attach(src, NULL);
+    g_source_attach(src, qemu_context);
     g_source_unref(src);
     src = iohandler_get_g_source();
     g_source_set_name(src, "io-handler");
-    g_source_attach(src, NULL);
+    g_source_attach(src, qemu_context);
     g_source_unref(src);
     return 0;
 }
