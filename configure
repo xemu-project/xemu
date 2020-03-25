@@ -4392,8 +4392,9 @@ fi # test "$opengl" != "no"
 
 # Depend on GTK for native file dialog boxes
 # FIXME: Add fallback when GTK is unavailable
+xemu_gtk="no"
 if test "$linux" = "yes" ; then
-    xemu_gtk=yes
+    xemu_gtk="yes"
 fi
 
 if test "$xemu_gtk" != "no"; then
@@ -4403,8 +4404,10 @@ if test "$xemu_gtk" != "no"; then
         xemu_gtk_cflags=$($pkg_config --cflags $gtkpackage)
         xemu_gtk_libs=$($pkg_config --libs $gtkpackage)
         xemu_gtk_version=$($pkg_config --modversion $gtkpackage)
-        QEMU_LDFLAGS="$QEMU_LDFLAGS $xemu_gtk_libs"
-        QEMU_CFLAGS="$QEMU_CFLAGS $xemu_gtk_cflags"
+        # Add GTK libraries/flags to SDL module. While this could be cleaner,
+        # it's only used for the xemu UI.
+        sdl_libs="$sdl_libs $xemu_gtk_libs"
+        sdl_cflags="$sdl_cflags $xemu_gtk_cflags"
     elif test "$xemu_gtk" = "yes"; then
         feature_not_found "gtk" "Install gtk3-devel"
     fi
