@@ -37,19 +37,21 @@ sdl.mo-objs := \
 	imgui/imgui_draw.o \
 	imgui/imgui_widgets.o \
 	imgui/examples/imgui_impl_opengl3.o \
-	imgui/examples/imgui_impl_sdl.o \
-	ImGuiFileDialog/ImGuiFileDialog.o
+	imgui/examples/imgui_impl_sdl.o
 
 ui/xemu-shaders.o: ui/shader/xemu-logo-frag.h
 
 ifeq ($(CONFIG_WIN32),y)
-IMGUI_FLAGS = -DWIN32 -DMINGW32 -Iui/ImGuiFileDialog/3rdparty/dirent/include
+IMGUI_FLAGS = -DWIN32 -DMINGW32
+sdl.mo-objs := $(sdl.mo-objs) noc_file_dialog_win32.o
 endif
 ifeq ($(CONFIG_LINUX),y)
 IMGUI_FLAGS = -DLINUX
+sdl.mo-objs := $(sdl.mo-objs) noc_file_dialog_gtk.o
 endif
 ifeq ($(CONFIG_DARWIN),y)
 IMGUI_FLAGS = -DAPPLE
+sdl.mo-objs := $(sdl.mo-objs) noc_file_dialog_macos.o
 endif
 
 sdl.mo-cflags := $(SDL_CFLAGS) -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM="\"epoxy/gl.h\"" -Iui/imgui $(IMGUI_FLAGS)

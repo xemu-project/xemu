@@ -31,11 +31,12 @@
 #include "xemu-version.h"
 
 #include "imgui/imgui.h"
-#include "ImGuiFileDialog/ImGuiFileDialog.h"
 #include "imgui/examples/imgui_impl_sdl.h"
 #include "imgui/examples/imgui_impl_opengl3.h"
 
 extern "C" {
+#include "noc_file_dialog.h"
+
 // Include necessary QEMU headers
 #include "qemu/osdep.h"
 #include "qemu-common.h"
@@ -55,6 +56,11 @@ extern "C" {
 #include "qemu/option.h"
 #include "qemu/config-file.h"
 #undef typename
+#undef atomic_fetch_add
+#undef atomic_fetch_and
+#undef atomic_fetch_xor
+#undef atomic_fetch_or
+#undef atomic_fetch_sub
 }
 
 uint32_t c = 0x81dc8a21; // FIXME: Use existing theme colors here
@@ -972,20 +978,12 @@ struct SettingsWindow
         }
         ImGui::SameLine();
         if (ImGui::Button("Browse...", ImVec2(100, 0))) {
-            ImGuiFileDialog::Instance()->OpenDialog(name, name, filters, strlen(buf) > 0 ? buf : ".");
+            const char *selected = noc_file_dialog_open(NOC_FILE_DIALOG_OPEN, filters, buf, NULL);
+            if (selected != NULL) {
+                strncpy(buf, selected, len-1);
+            }
         }
         ImGui::PopID();
-
-        if (ImGuiFileDialog::Instance()->FileDialog(name)) {
-            if (ImGuiFileDialog::Instance()->IsOk == true) {
-                std::string filePathName = ImGuiFileDialog::Instance()->GetFilepathName();
-                std::string filePath = ImGuiFileDialog::Instance()->GetCurrentPath();
-                strcpy(buf, filePathName.c_str());
-                dirty = true;
-            }
-
-            ImGuiFileDialog::Instance()->CloseDialog(name);
-        }
     }
 
     void Draw(const char* title, bool* p_open)
@@ -1001,9 +999,9 @@ struct SettingsWindow
             Load();
         }
 
-        const char *rom_file_filters = ".bin\0.rom\0\0";
-        const char *iso_file_filters = ".iso\0\0";
-        const char *qcow_file_filters = ".qcow2\0\0";
+        const char *rom_file_filters = ".bin Files\0*.bin\0.rom Files\0*.rom\0All Files\0*.*\0";
+        const char *iso_file_filters = ".iso Files\0*.iso\0All Files\0*.*\0";
+        const char *qcow_file_filters = ".qcow2 Files\0*.qcow2\0All Files\0*.*\0";
 
         ImGui::Columns(2, "", false);
         ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.25);

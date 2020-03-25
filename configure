@@ -4390,6 +4390,27 @@ fi # test "$opengl" != "no"
 # LIBS="$LIBS $epoxy_libs"
 # QEMU_CFLAGS="$QEMU_CFLAGS $epoxy_flags"
 
+# Depend on GTK for native file dialog boxes
+# FIXME: Add fallback when GTK is unavailable
+if test "$linux" = "yes" ; then
+    xemu_gtk=yes
+fi
+
+if test "$xemu_gtk" != "no"; then
+    gtkpackage="gtk+-3.0"
+    gtkversion="3.14.0"
+    if $pkg_config --exists "$gtkpackage >= $gtkversion"; then
+        xemu_gtk_cflags=$($pkg_config --cflags $gtkpackage)
+        xemu_gtk_libs=$($pkg_config --libs $gtkpackage)
+        xemu_gtk_version=$($pkg_config --modversion $gtkpackage)
+        QEMU_LDFLAGS="$QEMU_LDFLAGS $xemu_gtk_libs"
+        QEMU_CFLAGS="$QEMU_CFLAGS $xemu_gtk_cflags"
+    elif test "$xemu_gtk" = "yes"; then
+        feature_not_found "gtk" "Install gtk3-devel"
+    fi
+fi
+
+
 
 ##########################################
 # libxml2 probe

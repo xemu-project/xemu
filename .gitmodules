@@ -61,9 +61,6 @@
 [submodule "ui/imgui"]
 	path = ui/imgui
 	url = https://github.com/ocornut/imgui
-[submodule "ui/ImGuiFileDialog"]
-	path = ui/ImGuiFileDialog
-	url = https://github.com/aiekick/ImGuiFileDialog
 [submodule "ui/inih"]
 	path = ui/inih
 	url = https://github.com/benhoyt/inih
