@@ -578,10 +578,8 @@ static void handle_windowevent(SDL_Event *ev)
         }
         break;
     case SDL_WINDOWEVENT_RESTORED:
-        update_displaychangelistener(&scon->dcl, GUI_REFRESH_INTERVAL_DEFAULT);
         break;
     case SDL_WINDOWEVENT_MINIMIZED:
-        update_displaychangelistener(&scon->dcl, 500);
         break;
     case SDL_WINDOWEVENT_CLOSE:
         if (qemu_console_is_graphic(scon->dcl.con)) {
