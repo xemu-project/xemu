@@ -97,9 +97,10 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          libsdl2-dev \
           libepoxy-dev \
+          libgtk-3-dev \
           libpixman-1-dev \
+          libsdl2-dev \
           ccache
     - name: Initialize Compiler Cache
       id: cache
