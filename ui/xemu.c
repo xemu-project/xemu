@@ -783,6 +783,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
     SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 #endif
     SDL_SetHint(SDL_HINT_GRAB_KEYBOARD, "1");
+    SDL_SetHint(SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0");
 
     // Initialize rendering context
     SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
