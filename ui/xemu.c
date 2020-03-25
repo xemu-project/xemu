@@ -797,7 +797,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
         SDL_GL_CONTEXT_PROFILE_MASK,
         SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetSwapInterval(1);
+    SDL_GL_SetSwapInterval(0);
 
     // Create main window
     m_window = SDL_CreateWindow(
