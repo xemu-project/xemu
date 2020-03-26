@@ -96,45 +96,50 @@ const uint8_t default_eeprom[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
+/* FIXME: Clean this up and propagate errors to UI */
 static void xbox_flash_init(MemoryRegion *rom_memory)
 {
-    char *filename;
-    int bios_size;
-    int bootrom_size;
-
-    MemoryRegion *bios;
-    MemoryRegion *map_bios;
-
-    uint32_t map_loc;
-    int rc, fd = -1;
-
-    char *bios_data;
-
     /* Locate BIOS ROM image */
     if (bios_name == NULL) {
         bios_name = "bios.bin";
     }
 
-    filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
-    if (filename) {
-        bios_size = get_image_size(filename);
-    } else {
-        bios_size = -1;
-    }
-    if (bios_size <= 0 ||
-        (bios_size % 65536) != 0) {
-        goto bios_error;
+    int failed_to_load_bios = 1;
+    char *filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
+    int bios_size = 256*1024;
+
+    if (filename != NULL) {
+        int bios_file_size = get_image_size(filename);
+        if ((bios_file_size > 0) && ((bios_file_size % 65536) == 0)) {
+            failed_to_load_bios = 0;
+            bios_size = bios_file_size;
+        }
     }
 
-    /* Read BIOS ROM into memory */
-    bios_data = g_malloc(bios_size);
+    char *bios_data = g_malloc(bios_size);
     assert(bios_data != NULL);
-    fd = open(filename, O_RDONLY | O_BINARY);
-    assert(fd >= 0);
-    rc = read(fd, bios_data, bios_size);
-    assert(rc == bios_size);
-    close(fd);
-    g_free(filename);
+
+    if (!failed_to_load_bios && (filename != NULL)) {
+        /* Read BIOS ROM into memory */
+        failed_to_load_bios = 1;
+        int fd = open(filename, O_RDONLY | O_BINARY);
+        if (fd >= 0) {
+            int rc = read(fd, bios_data, bios_size);
+            if (rc == bios_size) {
+                failed_to_load_bios = 0;
+            }
+            close(fd);
+        }
+
+    }
+
+    if (failed_to_load_bios) {
+        fprintf(stderr, "Failed to load BIOS '%s'\n", filename);
+        memset(bios_data, 0xff, bios_size);
+    }
+    if (filename != NULL) {
+        g_free(filename);
+    }
 
     /* XBOX_FIXME: What follows is a big hack to overlay the MCPX ROM on the
      * top 512 bytes of the ROM region. This differs from original XQEMU
@@ -158,7 +163,7 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
         filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bootrom_file);
         assert(filename);
 
-        bootrom_size = get_image_size(filename);
+        int bootrom_size = get_image_size(filename);
         if (bootrom_size != 512) {
             fprintf(stderr, "MCPX bootrom should be 512 bytes, got %d\n",
                     bootrom_size);
@@ -167,15 +172,16 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
         }
 
         /* Read in MCPX ROM over last 512 bytes of BIOS data */
-        fd = open(filename, O_RDONLY | O_BINARY);
+        int fd = open(filename, O_RDONLY | O_BINARY);
         assert(fd >= 0);
-        rc = read(fd, &bios_data[bios_size - bootrom_size], bootrom_size);
+        int rc = read(fd, &bios_data[bios_size - bootrom_size], bootrom_size);
         assert(rc == bootrom_size);
         close(fd);
         g_free(filename);
     }
 
     /* Create BIOS region */
+    MemoryRegion *bios;
     bios = g_malloc(sizeof(*bios));
     assert(bios != NULL);
     memory_region_init_ram(bios, NULL, "xbox.bios", bios_size, &error_fatal);
@@ -188,20 +194,17 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
      */
 
     /* Mirror ROM from 0xff000000 - 0xffffffff */
+    uint32_t map_loc;
     for (map_loc = (uint32_t)(-bios_size);
          map_loc >= 0xff000000;
          map_loc -= bios_size) {
-        map_bios = g_malloc(sizeof(*map_bios));
+        MemoryRegion *map_bios = g_malloc(sizeof(*map_bios));
         memory_region_init_alias(map_bios, NULL, "pci-bios", bios, 0, bios_size);
         memory_region_add_subregion(rom_memory, map_loc, map_bios);
         memory_region_set_readonly(map_bios, true);
     }
 
     return;
-
-bios_error:
-    fprintf(stderr, "qemu: could not load xbox BIOS '%s'\n", bios_name);
-    exit(1);
 }
 
 static void xbox_memory_init(PCMachineState *pcms,
