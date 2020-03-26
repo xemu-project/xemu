@@ -2918,16 +2918,14 @@ void qemu_init(int argc, char **argv, char **envp)
     const char *flash_path;
     xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_FLASH_PATH, &flash_path);
     autostart = 0; // Do not auto-start the machine without a valid BIOS file
-    if (strlen(flash_path) > 0) {
-        if (xemu_check_file(flash_path)) {
-            char *msg = g_strdup_printf("Failed to open flash file '%s'. Please check machine settings.", flash_path);
-            xemu_queue_error_message(msg);
-            g_free(msg);
-        } else {
-            fake_argv[fake_argc++] = strdup("-bios");
-            fake_argv[fake_argc++] = strdup(flash_path);
-            autostart = 1;
-        }
+    if (xemu_check_file(flash_path)) {
+        char *msg = g_strdup_printf("Failed to open flash file '%s'. Please check machine settings.", flash_path);
+        xemu_queue_error_message(msg);
+        g_free(msg);
+    } else {
+        fake_argv[fake_argc++] = strdup("-bios");
+        fake_argv[fake_argc++] = strdup(flash_path);
+        autostart = 1;
     }
 
     int mem;
