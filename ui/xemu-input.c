@@ -223,10 +223,6 @@ void xemu_input_update_controllers(void)
 {
     struct controller_state *iter;
     for (iter=available_controllers; iter != NULL; iter=iter->next) {
-        if (iter->bound < 0) {
-            // Don't process unbound input devices
-            continue;
-        }
         if (iter->type == INPUT_DEVICE_SDL_KEYBOARD) {
             xemu_input_update_sdl_kbd_controller_state(iter);
         } else if (iter->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
