@@ -2948,19 +2948,22 @@ void qemu_init(int argc, char **argv, char **envp)
         }
     }
 
-    const char *dvd_path;
+    const char *dvd_path = "";
     xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_DVD_PATH, &dvd_path);
     if (strlen(dvd_path) > 0) {
         if (xemu_check_file(dvd_path)) {
             char *msg = g_strdup_printf("Failed to open DVD image file '%s'. Please check machine settings.", dvd_path);
             xemu_queue_error_message(msg);
             g_free(msg);
-        } else {
-            fake_argv[fake_argc++] = strdup("-drive");
-            fake_argv[fake_argc++] = g_strdup_printf("index=1,media=cdrom,file=%s",
-                dvd_path);
+            dvd_path = "";
         }
     }
+
+    // Always populate DVD drive. If disc path is the empty string, drive is
+    // connected but no media present.
+    fake_argv[fake_argc++] = strdup("-drive");
+    fake_argv[fake_argc++] = g_strdup_printf("index=1,media=cdrom,file=%s",
+        dvd_path);
 
     fake_argv[fake_argc++] = strdup("-display");
     fake_argv[fake_argc++] = strdup("xemu");
