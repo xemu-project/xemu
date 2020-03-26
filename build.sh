@@ -13,6 +13,70 @@ package_windows() { # Script to prepare the windows exe
     strip dist/xemuw.exe
 }
 
+package_macos() {
+    #
+    # Create bundle
+    #
+    rm -rf dist
+
+    # Copy in executable
+    mkdir -p dist/xemu.app/Contents/MacOS/
+    cp i386-softmmu/qemu-system-i386 dist/xemu.app/Contents/MacOS/xemu
+
+    # Copy in in executable dylib dependencies
+    mkdir -p dist/xemu.app/Contents/Frameworks
+    dylibbundler -cd -of -b -x dist/xemu.app/Contents/MacOS/xemu \
+        -d dist/xemu.app/Contents/Frameworks/ \
+        -p '@executable_path/../Frameworks/'
+
+    # Copy in runtime resources
+    mkdir -p dist/xemu.app/Contents/Resources
+    cp -r data dist/xemu.app/Contents/Resources
+
+    # Generate icon file
+    mkdir -p xemu.iconset
+    for r in 16 32 128 256 512; do cp ui/icons/xemu_${r}x${r}.png xemu.iconset/icon_${r}x${r}.png; done
+    iconutil --convert icns --output dist/xemu.app/Contents/Resources/xemu.icns xemu.iconset
+
+    # Generate Info.plist file
+    cat <<EOF > dist/xemu.app/Contents/Info.plist
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>xemu</string>
+  <key>CFBundleIconFile</key>
+  <string>xemu.icns</string>
+  <key>CFBundleIdentifier</key>
+  <string>xemu.app.0</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>xemu</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1</string>
+  <key>CFBundleSignature</key>
+  <string>xemu</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.games</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>10.6</string>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+</dict>
+</plist>
+EOF
+}
+
 postbuild=''
 debug_opts=''
 user_opts=''
@@ -48,7 +112,7 @@ case "$(uname -s)" in # Adjust compilation options based on platform
         ;;
     Darwin)
         echo 'Compiling for MacOS...'
-        sys_cflags='-march=native'
+        sys_cflags='-march=ivybridge'
         sys_opts='--disable-cocoa'
         # necessary to find libffi, which is required by gobject
         export PKG_CONFIG_PATH="${PKG_CONFIG_PATH}/usr/local/opt/libffi/lib/pkgconfig"
@@ -59,6 +123,7 @@ case "$(uname -s)" in # Adjust compilation options based on platform
             echo 'Could not find a GNU compatible readlink. Please install coreutils with homebrew'
             exit -1
         fi
+        postbuild='package_macos'
         ;;
     CYGWIN*|MINGW*|MSYS*)
         echo 'Compiling for Windows...'

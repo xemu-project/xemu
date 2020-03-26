@@ -131,11 +131,11 @@ jobs:
         if "${{ matrix.configuration }}" == "Debug":
           print('Configuring for Debug')
           print('::set-env name=BUILD_PARAM::--debug')
-          print('::set-env name=ARTIFACT_NAME::xemu-macos-debug')
+          print('::set-env name=ARTIFACT_NAME::xemu-macos-debug.zip')
         else:
           print('Configuring for Release')
           print('::set-env name=BUILD_PARAM::')
-          print('::set-env name=ARTIFACT_NAME::xemu-macos-release')
+          print('::set-env name=ARTIFACT_NAME::xemu-macos-release.zip')
     - name: Clone Tree
       uses: actions/checkout@v2
     - name: Install Dependencies
@@ -143,12 +143,13 @@ jobs:
         brew update
         brew unlink python@2
         brew install \
-          pixman \
-          sdl2 \
-          libepoxy \
+          ccache \
           coreutils \
+          dylibbundler \
+          libepoxy \
+          pixman \
           pkg-config \
-          ccache
+          sdl2
     - name: Initialize Compiler Cache
       id: cache
       uses: actions/cache@v1
@@ -164,6 +165,14 @@ jobs:
         ./build.sh ${{ env.BUILD_PARAM }}
         echo -e "\nCompiler Cache Stats:"
         ccache -s -c
+        pushd dist
+        zip -r ../${{env.ARTIFACT_NAME}} xemu.app
+        popd
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v1
+      with:
+        name: dist
+        path: ${{env.ARTIFACT_NAME}}
 
   Release:
     runs-on: ubuntu-latest
