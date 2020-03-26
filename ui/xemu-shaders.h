@@ -37,6 +37,7 @@ struct decal_shader
     float scale;
     float smoothing;
     float outline_dist;
+    uint32_t time;
 
     // GL object handles
     GLuint prog, vao, vbo, ebo;

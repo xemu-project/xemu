@@ -1112,6 +1112,12 @@ struct AboutWindow
             return;
         }
 
+        static uint32_t time_start = 0;
+        if (ImGui::IsWindowAppearing()) {
+            time_start = SDL_GetTicks();
+        }
+        uint32_t now = SDL_GetTicks() - time_start;
+
         ImGui::SetCursorPosY(ImGui::GetCursorPosY()-50);
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-256)/2);
 
@@ -1123,7 +1129,10 @@ struct AboutWindow
             ImVec2(t_w-x_off, t_h),
             ImVec2(x_off/t_w, t_h/t_h),
             ImVec2(t_w/t_w, 0));
-        render_logo(0x42e335ff, 0x42e335ff, 0x00000000);
+        if (ImGui::IsItemClicked()) {
+            time_start = SDL_GetTicks();
+        }
+        render_logo(now, 0x42e335ff, 0x42e335ff, 0x00000000);
         render_to_default_fb();
         ImGui::SetCursorPosX(10);
 
@@ -1186,6 +1195,12 @@ struct FirstBootWindow
             return;
         }
 
+        static uint32_t time_start = 0;
+        if (ImGui::IsWindowAppearing()) {
+            time_start = SDL_GetTicks();
+        }
+        uint32_t now = SDL_GetTicks() - time_start;
+
         ImGui::SetCursorPosY(ImGui::GetCursorPosY()-50);
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-256)/2);
 
@@ -1197,7 +1212,7 @@ struct FirstBootWindow
             ImVec2(t_w-x_off, t_h),
             ImVec2(x_off/t_w, t_h/t_h),
             ImVec2(t_w/t_w, 0));
-        render_logo(0x42e335ff, 0x42e335ff, 0x00000000);
+        render_logo(now, 0x42e335ff, 0x42e335ff, 0x00000000);
         render_to_default_fb();
         ImGui::SetCursorPosX(10);
 

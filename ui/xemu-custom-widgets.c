@@ -287,8 +287,9 @@ void render_controller_port(float frame_x, float frame_y, int i, uint32_t port_c
     glUseProgram(0);
 }
 
-void render_logo(uint32_t primary_color, uint32_t secondary_color, uint32_t fill_color)
+void render_logo(uint32_t time, uint32_t primary_color, uint32_t secondary_color, uint32_t fill_color)
 {
+    s_logo->time = time;
     glUseProgram(s_logo->prog);
     glBindVertexArray(s->vao);
     glBlendFunc(GL_ONE, GL_ZERO);

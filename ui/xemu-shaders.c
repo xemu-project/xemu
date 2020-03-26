@@ -61,6 +61,7 @@ struct decal_shader *create_decal_shader(enum SHADER_TYPE type)
     s->scale = 1.4;
     s->smoothing = 1.0;
     s->outline_dist = 1.0;
+    s->time = 0;
 
     const char *vert_src =
         "#version 150 core\n"
@@ -244,7 +245,7 @@ void render_decal(
     glUniform4f(s->ColorPrimary_loc,   COL(primary,   3), COL(primary,   2), COL(primary,   1), COL(primary,   0));
     glUniform4f(s->ColorSecondary_loc, COL(secondary, 3), COL(secondary, 2), COL(secondary, 1), COL(secondary, 0));
     glUniform4f(s->ColorFill_loc,      COL(fill,      3), COL(fill,      2), COL(fill,      1), COL(fill,      0));
-    if (s->time_loc >= 0) glUniform1f(s->time_loc, SDL_GetTicks()/1000.0f);
+    if (s->time_loc >= 0) glUniform1f(s->time_loc, s->time/1000.0f);
     if (s->scale_loc >= 0) glUniform1f(s->scale_loc, s->scale);
     #undef COL
     glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
