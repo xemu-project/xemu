@@ -980,8 +980,9 @@ struct SettingsWindow
         ImGui::SameLine();
         if (ImGui::Button("Browse...", ImVec2(100, 0))) {
             const char *selected = noc_file_dialog_open(NOC_FILE_DIALOG_OPEN, filters, buf, NULL);
-            if (selected != NULL) {
+            if ((selected != NULL) && (strcmp(buf, selected) != 0)) {
                 strncpy(buf, selected, len-1);
+                dirty = true;
             }
         }
         ImGui::PopID();
