@@ -29,6 +29,7 @@
 #include "xemu-custom-widgets.h"
 #include "xemu-monitor.h"
 #include "xemu-version.h"
+#include "xemu-data.h"
 
 #include "imgui/imgui.h"
 #include "imgui/examples/imgui_impl_sdl.h"
@@ -111,7 +112,7 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     io.IniFilename = NULL;
 
     // Load fonts
-    io.Fonts->AddFontFromFileTTF("./data/Roboto-Medium.ttf", 16);
+    io.Fonts->AddFontFromFileTTF(xemu_get_resource_path("Roboto-Medium.ttf"), 16);
     fixed_width_font = io.Fonts->AddFontDefault();
 
     // Setup Platform/Renderer bindings

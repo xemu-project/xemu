@@ -166,29 +166,25 @@ const char *xemu_settings_get_path(void)
 		return settings_path;
 	}
 
-	// Note: Ideally SDL_GetPrefPath should be used here to determine where the
-	// settings file should be stored. However, until xemu gains a proper
-	// installer, assume it will be run in "portable mode" such that everything
-	// needed to run is all in the same directory, or specified explicitly by
-	// the user via config file.
-#if 0
 	char *base = SDL_GetPrefPath("xemu", "xemu");
-#else
-	// char *base = SDL_GetBasePath();
-	// if (base == NULL) {
-	// 	base = strdup("./");
-	// }
-	char *base = strdup("./");
-#endif
 	assert(base != NULL);
 	size_t base_len = strlen(base);
+
 	size_t filename_len = strlen(filename);
-	size_t len = base_len + filename_len + 1;
-	char *path = malloc(len);
+	size_t final_len = base_len + filename_len;
+	final_len += 1; // Terminating null byte
+
+	char *path = malloc(final_len);
+	assert(path != NULL);
+
+	// Copy base part
 	memcpy(path, base, base_len);
 	free(base);
+
+	// Copy filename part
 	memcpy(path+base_len, filename, strlen(filename));
-	path[len-1] = '\0';
+	path[final_len-1] = '\0';
+
 	settings_path = path;
 
 	fprintf(stderr, "%s: config path: %s\n", __func__, settings_path);

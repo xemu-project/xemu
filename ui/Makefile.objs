@@ -25,19 +25,20 @@ endif
 
 # Override with xemu UI
 sdl.mo-objs := \
-	xemu.o \
-	xemu-hud.o \
-	xemu-custom-widgets.o \
-	xemu-input.o \
-	xemu-monitor.o \
-	xemu-settings.o \
-	xemu-shaders.o \
 	imgui/imgui.o \
 	imgui/imgui_demo.o \
 	imgui/imgui_draw.o \
 	imgui/imgui_widgets.o \
 	imgui/examples/imgui_impl_opengl3.o \
-	imgui/examples/imgui_impl_sdl.o
+	imgui/examples/imgui_impl_sdl.o \
+	xemu.o \
+	xemu-custom-widgets.o \
+	xemu-data.o \
+	xemu-hud.o \
+	xemu-input.o \
+	xemu-monitor.o \
+	xemu-settings.o \
+	xemu-shaders.o \
 
 ui/xemu-shaders.o: ui/shader/xemu-logo-frag.h
 

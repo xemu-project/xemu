@@ -24,6 +24,7 @@
 
 #include "xemu-shaders.h"
 #include "xemu-custom-widgets.h"
+#include "xemu-data.h"
 
 static struct decal_shader *s = NULL;
 static struct decal_shader *s_logo = NULL;
@@ -66,9 +67,9 @@ void initialize_custom_ui_rendering(void)
     glGetIntegerv(GL_VIEWPORT, vp);
 
     glActiveTexture(GL_TEXTURE0);
-    g_ui_tex = load_texture_from_file("data/controller-mask.png");
+    g_ui_tex = load_texture_from_file(xemu_get_resource_path("controller-mask.png"));
     s = create_decal_shader(SHADER_TYPE_MASK);
-    g_logo_tex = load_texture_from_file("data/logo-sdf.png");
+    g_logo_tex = load_texture_from_file(xemu_get_resource_path("logo-sdf.png"));
     s_logo = create_decal_shader(SHADER_TYPE_LOGO);
     controller_fbo = create_fbo(512, 512);
     logo_fbo = create_fbo(512, 512);
