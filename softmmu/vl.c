@@ -2878,6 +2878,7 @@ void qemu_init(int argc, char **argv, char **envp)
     // now.
     //
     xemu_settings_load();
+    int first_boot = xemu_settings_did_fail_to_load();
     char *fake_argv[32];
     memset(fake_argv, 0, 32 * sizeof(char*));
 
@@ -2918,7 +2919,10 @@ void qemu_init(int argc, char **argv, char **envp)
     const char *flash_path;
     xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_FLASH_PATH, &flash_path);
     autostart = 0; // Do not auto-start the machine without a valid BIOS file
-    if (xemu_check_file(flash_path)) {
+    if (first_boot) {
+        // Don't display an error if this is the first boot. Give user a chance
+        // to configure the path.
+    } else if (xemu_check_file(flash_path)) {
         char *msg = g_strdup_printf("Failed to open flash file '%s'. Please check machine settings.", flash_path);
         xemu_queue_error_message(msg);
         g_free(msg);
