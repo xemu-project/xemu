@@ -242,7 +242,7 @@ const char *noc_file_dialog_open(int flags,
         [open_panel setCanChooseFiles:NO];
     }
 
-    if (default_path) {
+    if (default_path && (strlen(default_path) > 0)) {
         default_url = [NSURL fileURLWithPath:
             [NSString stringWithUTF8String:default_path]];
         [panel setDirectoryURL:default_url];
