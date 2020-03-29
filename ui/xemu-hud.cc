@@ -472,12 +472,12 @@ void xemu_hud_render(SDL_Window *window)
             if (t >= 1.0) {
                 alpha = 0.0;
             }
-            ImGui::SetNextWindowBgAlpha(alpha);
         }
         if (alpha > 0.0) {
             ImVec4 tc = ImGui::GetStyle().Colors[ImGuiCol_Text];
             tc.w = alpha;
             ImGui::PushStyleColor(ImGuiCol_Text, tc);
+            ImGui::SetNextWindowBgAlpha(alpha);
             ShowMainMenu();
             ImGui::PopStyleColor();
         } else {
