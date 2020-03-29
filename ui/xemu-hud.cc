@@ -97,33 +97,23 @@ static void ShowAboutWindow(bool* p_open);
 
 bool show_demo_window = false;
 
-void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
+float ui_scale = 1.0;
+bool trigger_style_update = true;
+
+static void init_style(void)
 {
-    xemu_monitor_init();
-
-    initialize_custom_ui_rendering();
-    
-    // Setup Dear ImGui context
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
-    io.IniFilename = NULL;
 
-    // Load fonts
-    io.Fonts->AddFontFromFileTTF(xemu_get_resource_path("Roboto-Medium.ttf"), 16);
-    fixed_width_font = io.Fonts->AddFontDefault();
+    io.Fonts->Clear();
+    io.Fonts->AddFontFromFileTTF(xemu_get_resource_path("Roboto-Medium.ttf"), 16*ui_scale);
+    ImFontConfig font_cfg = ImFontConfig();
+    font_cfg.OversampleH = font_cfg.OversampleV = 1;
+    font_cfg.PixelSnapH = true;
+    font_cfg.SizePixels = 13.0f*ui_scale;
+    fixed_width_font = io.Fonts->AddFontDefault(&font_cfg);
+    ImGui_ImplOpenGL3_CreateFontsTexture();
 
-    // Setup Platform/Renderer bindings
-    ImGui_ImplSDL2_InitForOpenGL(window, sdl_gl_context);
-    const char *glsl_version = "#version 150";
-    ImGui_ImplOpenGL3_Init(glsl_version);
-
-    // Set default theme, override
-    ImGui::StyleColorsDark();
-
-    ImGuiStyle& style = ImGui::GetStyle();
+    ImGuiStyle style;
     style.FrameRounding = 8.0;
     style.GrabRounding = 12.0;
     style.PopupRounding = 5.0;
@@ -134,6 +124,11 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     style.PopupBorderSize = 0;
     style.FrameBorderSize = 0;
     style.TabBorderSize = 0;
+    ImGui::GetStyle() = style;
+    ImGui::GetStyle().ScaleAllSizes(ui_scale);
+
+    // Set default theme, override
+    ImGui::StyleColorsDark();
 
     ImVec4* colors = ImGui::GetStyle().Colors;
     colors[ImGuiCol_Text]                   = ImVec4(0.86f, 0.93f, 0.89f, 0.78f);
@@ -184,6 +179,26 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     colors[ImGuiCol_NavWindowingHighlight]  = ImVec4(1.00f, 1.00f, 1.00f, 0.70f);
     colors[ImGuiCol_NavWindowingDimBg]      = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
     colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.16f, 0.16f, 0.16f, 0.73f);
+}
+
+void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
+{
+    xemu_monitor_init();
+
+    initialize_custom_ui_rendering();
+
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+    io.IniFilename = NULL;
+
+    // Setup Platform/Renderer bindings
+    ImGui_ImplSDL2_InitForOpenGL(window, sdl_gl_context);
+    const char *glsl_version = "#version 150";
+    ImGui_ImplOpenGL3_Init(glsl_version);
 
     show_first_boot_window = xemu_settings_did_fail_to_load();
     if (show_first_boot_window) {
@@ -249,7 +264,15 @@ static void ShowMainMenu()
 
         if (ImGui::BeginMenu("View"))
         {
-            if (ImGui::Combo("Scaling Mode", &scaling_mode, "Center\0Scale\0Stretch\0\0")) {
+            int ui_scale_combo = ui_scale - 1.0;
+            if (ui_scale_combo < 0) ui_scale_combo = 0;
+            if (ui_scale_combo > 1) ui_scale_combo = 1;
+            if (ImGui::Combo("UI Scale", &ui_scale_combo, "1x\0" "2x\0")) {
+                ui_scale = ui_scale_combo + 1;
+                trigger_style_update = true;
+            }
+
+            if (ImGui::Combo("Scaling Mode", &scaling_mode, "Center\0Scale\0Stretch\0")) {
                 xemu_settings_set_enum(XEMU_SETTINGS_DISPLAY_SCALE, scaling_mode);
                 xemu_settings_save();
             }
@@ -257,6 +280,7 @@ static void ShowMainMenu()
             if (ImGui::MenuItem("Fullscreen", NULL, xemu_is_fullscreen(), true)) {
                 xemu_toggle_fullscreen();
             }
+
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Debug"))
@@ -272,11 +296,11 @@ static void ShowMainMenu()
             ImGui::EndMenu();
         }
 
-        ImGui::SetCursorPosX(ImGui::GetWindowWidth()-100.0);
+        ImGui::SetCursorPosX(ImGui::GetWindowWidth()-100.0*ui_scale);
         extern float fps;
         ImGui::Text("%.3f", fps);
         ImGui::SameLine();
-        ImGui::SetCursorPosX(ImGui::GetWindowWidth()-300.0);
+        ImGui::SetCursorPosX(ImGui::GetWindowWidth()-200.0*ui_scale);
         ImGui::Text("%.3f", 1000.0/fps);
 
         main_menu_height = ImGui::GetWindowHeight();
@@ -418,6 +442,11 @@ void xemu_hud_render(SDL_Window *window)
     // to navigate the HUD
     xemu_input_set_test_mode(controller_focus_capture);
 
+    if (trigger_style_update) {
+        init_style();
+        trigger_style_update = false;
+    }
+
     // Start the Dear ImGui frame
     ImGui_ImplOpenGL3_NewFrame();
 
@@ -531,7 +560,6 @@ void xemu_hud_render(SDL_Window *window)
         ImGui::EndPopup();
     }
 
-    // Rendering
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
@@ -573,7 +601,7 @@ struct MonitorConsole
 
     void Draw(const char* title, bool* p_open)
     {
-        ImGui::SetNextWindowSize(ImVec2(520,600), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(520*ui_scale, 600*ui_scale), ImGuiCond_FirstUseEver);
         if (!ImGui::Begin(title, p_open))
         {
             ImGui::End();
@@ -696,7 +724,7 @@ struct InputWindow
 
     void Draw(const char* title, bool* p_open)
     {
-        ImGui::SetNextWindowSize(ImVec2(500,620), ImGuiCond_Appearing);
+        ImGui::SetNextWindowSize(ImVec2(500*ui_scale,620*ui_scale), ImGuiCond_Appearing);
 
         // Remove window X padding for this window to easily center stuff
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0,ImGui::GetStyle().WindowPadding.y));
@@ -738,7 +766,7 @@ struct InputWindow
             bool port_is_bound = (xemu_input_get_bound(i) != NULL);
 
             // Set an X offset to center the image button within the column
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX()+(int)((ImGui::GetColumnWidth()-b_w-2*port_padding)/2));
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX()+(int)((ImGui::GetColumnWidth()-b_w*ui_scale-2*port_padding*ui_scale)/2));
 
             // We are using the same texture for all buttons, but ImageButton
             // uses the texture as a unique ID. Push a new ID now to resolve
@@ -747,7 +775,7 @@ struct InputWindow
             float x = b_x+i*b_x_stride;
             ImGui::PushStyleColor(ImGuiCol_Button, is_currently_selected ? color_active : color_inactive);
             bool activated = ImGui::ImageButton(id,
-                ImVec2(b_w,b_h),
+                ImVec2(b_w*ui_scale,b_h*ui_scale),
                 ImVec2(x/t_w, (b_y+b_h)/t_h),
                 ImVec2((x+b_w)/t_w, b_y/t_h),
                 port_padding);
@@ -778,12 +806,12 @@ struct InputWindow
         //
 
         // Center the combo above the controller with the same width
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX()+(int)((ImGui::GetColumnWidth()-controller_width)/2.0));
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX()+(int)((ImGui::GetColumnWidth()-controller_width*ui_scale)/2.0));
 
         // Note: SetNextItemWidth applies only to the combo element, but not the
         // associated label which follows, so scale back a bit to make space for
         // the label.
-        ImGui::SetNextItemWidth(controller_width*0.75);
+        ImGui::SetNextItemWidth(controller_width*0.75*ui_scale);
 
         // List available input devices
         const char *not_connected = "Not Connected";
@@ -857,9 +885,9 @@ struct InputWindow
         // update_sdl_controller_state(&state);
         // update_sdl_kbd_controller_state(&state);
         ImVec2 cur = ImGui::GetCursorPos();
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX()+(int)((ImGui::GetColumnWidth()-controller_width)/2.0));
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX()+(int)((ImGui::GetColumnWidth()-controller_width*ui_scale)/2.0));
         ImGui::Image(id,
-            ImVec2(controller_width, controller_height),
+            ImVec2(controller_width*ui_scale, controller_height*ui_scale),
             ImVec2(0, controller_height/t_h),
             ImVec2(controller_width/t_w, 0));
 
@@ -867,8 +895,8 @@ struct InputWindow
             // ImGui::SameLine();
             const char *msg = "Please select an available input device";
             ImVec2 dim = ImGui::CalcTextSize(msg);
-            ImGui::SetCursorPosX(cur.x + (controller_width-dim.x)/2);
-            ImGui::SetCursorPosY(cur.y +(controller_height-dim.y)/2);
+            ImGui::SetCursorPosX(cur.x + (controller_width*ui_scale-dim.x)/2);
+            ImGui::SetCursorPosY(cur.y + (controller_height*ui_scale-dim.y)/2);
             ImGui::Text("%s", msg);
             ImGui::SameLine();
         }
@@ -978,7 +1006,7 @@ struct SettingsWindow
             dirty = true;
         }
         ImGui::SameLine();
-        if (ImGui::Button("Browse...", ImVec2(100, 0))) {
+        if (ImGui::Button("Browse...", ImVec2(100*ui_scale, 0))) {
             const char *selected = noc_file_dialog_open(NOC_FILE_DIALOG_OPEN, filters, buf, NULL);
             if ((selected != NULL) && (strcmp(buf, selected) != 0)) {
                 strncpy(buf, selected, len-1);
@@ -990,7 +1018,7 @@ struct SettingsWindow
 
     void Draw(const char* title, bool* p_open)
     {
-        ImGui::SetNextWindowSize(ImVec2(550, 300), ImGuiCond_Appearing);
+        ImGui::SetNextWindowSize(ImVec2(550*ui_scale, 300*ui_scale), ImGuiCond_Appearing);
         if (!ImGui::Begin(title, p_open, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
         {
             ImGui::End();
@@ -1010,7 +1038,7 @@ struct SettingsWindow
 
         ImGui::Text("Flash (BIOS) File");
         ImGui::NextColumn();
-        float picker_width = ImGui::GetColumnWidth()-120;
+        float picker_width = ImGui::GetColumnWidth()-120*ui_scale;
         ImGui::SetNextItemWidth(picker_width);
         FilePicker("###Flash", flash_path, MAX_STRING_LEN, rom_file_filters);
         ImGui::NextColumn();
@@ -1042,7 +1070,7 @@ struct SettingsWindow
         ImGui::Text("System Memory");
         ImGui::NextColumn();
         ImGui::SetNextItemWidth(ImGui::GetColumnWidth()*0.5);
-        if (ImGui::Combo("###mem", &memory_idx, "64 MiB\0" "128 MiB\0" "\0")) {
+        if (ImGui::Combo("###mem", &memory_idx, "64 MiB\0" "128 MiB\0")) {
             dirty = true;
         }
         ImGui::NextColumn();
@@ -1056,7 +1084,7 @@ struct SettingsWindow
 
         ImGui::Columns(1);
 
-        ImGui::SetCursorPosY(ImGui::GetWindowHeight()-(10+20));
+        ImGui::SetCursorPosY(ImGui::GetWindowHeight()-(10+20)*ui_scale);
         if (dirty) {
             ImGui::Text("Warning: Unsaved changes!");
             ImGui::SameLine();
@@ -1065,11 +1093,11 @@ struct SettingsWindow
             ImGui::SameLine();
         }
 
-        ImGui::SetCursorPosY(ImGui::GetWindowHeight()-(10+25));
-        ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10));
+        ImGui::SetCursorPosY(ImGui::GetWindowHeight()-(10+25)*ui_scale);
+        ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*ui_scale);
 
         ImGui::SetItemDefaultFocus();
-        if (ImGui::Button("Save", ImVec2(120, 0))) {
+        if (ImGui::Button("Save", ImVec2(120*ui_scale, 0))) {
             Save();
             dirty = false;
             pending_restart = true;
@@ -1105,7 +1133,7 @@ struct AboutWindow
 
     void Draw(const char* title, bool* p_open)
     {
-        ImGui::SetNextWindowSize(ImVec2(400, 350), ImGuiCond_Appearing);
+        ImGui::SetNextWindowSize(ImVec2(400*ui_scale, 350*ui_scale), ImGuiCond_Appearing);
         if (!ImGui::Begin(title, p_open, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
         {
             ImGui::End();
@@ -1118,15 +1146,15 @@ struct AboutWindow
         }
         uint32_t now = SDL_GetTicks() - time_start;
 
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY()-50);
-        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-256)/2);
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY()-50*ui_scale);
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-256*ui_scale)/2);
 
         ImTextureID id = (ImTextureID)render_to_fbo(logo_fbo);
         float t_w = 256.0;
         float t_h = 256.0;
         float x_off = 0;
         ImGui::Image(id,
-            ImVec2(t_w-x_off, t_h),
+            ImVec2((t_w-x_off)*ui_scale, t_h*ui_scale),
             ImVec2(x_off/t_w, t_h/t_h),
             ImVec2(t_w/t_w, 0));
         if (ImGui::IsItemClicked()) {
@@ -1134,21 +1162,21 @@ struct AboutWindow
         }
         render_logo(now, 0x42e335ff, 0x42e335ff, 0x00000000);
         render_to_default_fb();
-        ImGui::SetCursorPosX(10);
+        ImGui::SetCursorPosX(10*ui_scale);
 
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY()-100);
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY()-100*ui_scale);
 
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(xemu_version).x)/2);
         ImGui::Text("%s", xemu_version);
 
-        ImGui::SetCursorPosX(10);
-        ImGui::Dummy(ImVec2(0,35));
+        ImGui::SetCursorPosX(10*ui_scale);
+        ImGui::Dummy(ImVec2(0,35*ui_scale));
 
         const char *msg = "Visit https://xemu.app for more information";
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
         ImGui::Text("%s", msg);
 
-        ImGui::Dummy(ImVec2(0,35));
+        ImGui::Dummy(ImVec2(0,35*ui_scale));
 
         ImGui::PushFont(fixed_width_font);
         ImGui::InputTextMultiline("##build_info", build_info_text, IM_ARRAYSIZE(build_info_text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 6), ImGuiInputTextFlags_ReadOnly);
@@ -1183,7 +1211,7 @@ struct FirstBootWindow
 
     void Draw(const char* title, bool* p_open)
     {
-        ImVec2 size(400, 300);
+        ImVec2 size(400*ui_scale, 300*ui_scale);
         ImGuiIO& io = ImGui::GetIO();
 
         ImVec2 window_pos = ImVec2((io.DisplaySize.x - size.x)/2, (io.DisplaySize.y - size.y)/2);
@@ -1201,38 +1229,38 @@ struct FirstBootWindow
         }
         uint32_t now = SDL_GetTicks() - time_start;
 
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY()-50);
-        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-256)/2);
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY()-50*ui_scale);
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-256*ui_scale)/2);
 
         ImTextureID id = (ImTextureID)render_to_fbo(logo_fbo);
         float t_w = 256.0;
         float t_h = 256.0;
         float x_off = 0;
         ImGui::Image(id,
-            ImVec2(t_w-x_off, t_h),
+            ImVec2((t_w-x_off)*ui_scale, t_h*ui_scale),
             ImVec2(x_off/t_w, t_h/t_h),
             ImVec2(t_w/t_w, 0));
         render_logo(now, 0x42e335ff, 0x42e335ff, 0x00000000);
         render_to_default_fb();
-        ImGui::SetCursorPosX(10);
+        ImGui::SetCursorPosX(10*ui_scale);
 
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY()-75);
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY()-75*ui_scale);
 
         const char *msg = "To get started, please configure machine settings.";
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
         ImGui::Text("%s", msg);
 
-        ImGui::Dummy(ImVec2(0,20));
-        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120)/2);
-        if (ImGui::Button("Settings", ImVec2(120, 0))) {
+        ImGui::Dummy(ImVec2(0,20*ui_scale));
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120*ui_scale)/2);
+        if (ImGui::Button("Settings", ImVec2(120*ui_scale, 0))) {
             show_settings_window = true;
         }
-        ImGui::Dummy(ImVec2(0,20));
+        ImGui::Dummy(ImVec2(0,20*ui_scale));
 
-        ImGui::SetCursorPosX(10);
+        ImGui::SetCursorPosX(10*ui_scale);
 
         msg = "Visit https://xemu.app for more information";
-        ImGui::SetCursorPosY(ImGui::GetWindowHeight()-ImGui::CalcTextSize(msg).y-10);
+        ImGui::SetCursorPosY(ImGui::GetWindowHeight()-ImGui::CalcTextSize(msg).y-10*ui_scale);
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
         ImGui::Text("%s", msg);
         
