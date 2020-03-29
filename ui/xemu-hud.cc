@@ -204,6 +204,11 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     if (show_first_boot_window) {
         show_main_menu = false;
     }
+
+    int ui_scale_int = 1;
+    xemu_settings_get_int(XEMU_SETTINGS_DISPLAY_UI_SCALE, &ui_scale_int);
+    if (ui_scale_int < 1) ui_scale_int = 1;
+    ui_scale = ui_scale_int;
 }
 
 void xemu_hud_process_sdl_events(SDL_Event *event)
@@ -269,6 +274,8 @@ static void ShowMainMenu()
             if (ui_scale_combo > 1) ui_scale_combo = 1;
             if (ImGui::Combo("UI Scale", &ui_scale_combo, "1x\0" "2x\0")) {
                 ui_scale = ui_scale_combo + 1;
+                xemu_settings_set_int(XEMU_SETTINGS_DISPLAY_UI_SCALE, ui_scale);
+                xemu_settings_save();
                 trigger_style_update = true;
             }
 
