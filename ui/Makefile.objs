@@ -37,6 +37,7 @@ sdl.mo-objs := \
 	xemu-hud.o \
 	xemu-input.o \
 	xemu-monitor.o \
+	xemu-net.o \
 	xemu-settings.o \
 	xemu-shaders.o \
 

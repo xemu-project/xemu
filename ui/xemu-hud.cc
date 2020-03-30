@@ -30,6 +30,7 @@
 #include "xemu-monitor.h"
 #include "xemu-version.h"
 #include "xemu-data.h"
+#include "xemu-net.h"
 
 #include "imgui/imgui.h"
 #include "imgui/examples/imgui_impl_sdl.h"
@@ -94,6 +95,9 @@ static void ShowSettingsWindow(bool* p_open);
 
 bool show_about_window = false;
 static void ShowAboutWindow(bool* p_open);
+
+bool show_network_window = false;
+static void ShowNetworkWindow(bool* p_open);
 
 bool show_demo_window = false;
 
@@ -244,7 +248,8 @@ static void ShowMainMenu()
     {
         if (ImGui::BeginMenu("Machine"))
         {
-            ImGui::MenuItem("Input", NULL, &show_input_window);
+            ImGui::MenuItem("Input",    NULL, &show_input_window);
+            ImGui::MenuItem("Network",  NULL, &show_network_window);
             ImGui::MenuItem("Settings", NULL, &show_settings_window);
             ImGui::Separator();
             if (ImGui::MenuItem(running ? "Pause" : "Run")) {
@@ -526,6 +531,7 @@ void xemu_hud_render(SDL_Window *window)
     if (show_settings_window)   ShowSettingsWindow(&show_settings_window);
     if (show_monitor_window)    ShowMonitorConsole(&show_monitor_window);
     if (show_about_window)      ShowAboutWindow(&show_about_window);
+    if (show_network_window)    ShowNetworkWindow(&show_network_window);
     if (show_demo_window)       ImGui::ShowDemoWindow(&show_demo_window);
     
     if (notification.active) {
@@ -1279,4 +1285,103 @@ static void ShowFirstBootWindow(bool* p_open)
 {
     static FirstBootWindow console;
     console.Draw("First Boot", p_open);
+}
+
+struct NetworkWindow
+{
+    char remote_addr[64];
+    char local_addr[64];
+
+    NetworkWindow()
+    {
+        const char *tmp;
+        xemu_settings_get_string(XEMU_SETTINGS_NETWORK_REMOTE_ADDR, &tmp);
+        strncpy(remote_addr, tmp, sizeof(remote_addr)-1);
+        xemu_settings_get_string(XEMU_SETTINGS_NETWORK_LOCAL_ADDR, &tmp);
+        strncpy(local_addr, tmp, sizeof(local_addr)-1);
+    }
+
+    ~NetworkWindow()
+    {
+    }
+
+    void Draw(const char* title, bool* p_open)
+    {
+        ImVec2 size(400*ui_scale, 250*ui_scale);
+
+        ImGui::SetNextWindowSize(size, ImGuiCond_Appearing);
+        if (!ImGui::Begin(title, p_open, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
+            ImGui::End();
+            return;
+        }
+
+        bool is_enabled = xemu_net_is_enabled();
+
+        ImGui::TextWrapped(
+            "xemu socket networking works by sending and recieving packets over "
+            "UDP which encapsulate the network traffic that the machine would "
+            "send or recieve when connected to a Local Area Network (LAN)."
+            );
+
+        ImGui::Dummy(ImVec2(0, 5*ui_scale));
+        ImGui::Separator();
+        ImGui::Dummy(ImVec2(0, 5*ui_scale));
+
+        ImGui::Columns(2, "", false);
+        ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.33);
+
+        ImGuiInputTextFlags flg = 0;
+        if (is_enabled) {
+            flg |= ImGuiInputTextFlags_ReadOnly;
+        }
+
+        ImGui::Text("Remote Host");
+        ImGui::SameLine(); HelpMarker("The remote <IP address>:<Port> to forward packets to (e.g. 1.2.3.4:9368)");
+        ImGui::NextColumn();
+        float w = ImGui::GetColumnWidth()-10*ui_scale;
+        ImGui::SetNextItemWidth(w);
+        if (is_enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
+        ImGui::InputText("###remote_host", remote_addr, sizeof(remote_addr), flg);
+        if (is_enabled) ImGui::PopStyleVar();
+        ImGui::NextColumn();
+
+        ImGui::Text("Local Host");
+        ImGui::SameLine(); HelpMarker("The local <IP address>:<Port> to recieve packets on (e.g. 0.0.0.0:9368)");
+        ImGui::NextColumn();
+        ImGui::SetNextItemWidth(w);
+        if (is_enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
+        ImGui::InputText("###local_host", local_addr, sizeof(local_addr), flg);
+        if (is_enabled) ImGui::PopStyleVar();
+        ImGui::NextColumn();
+
+        ImGui::Columns(1);
+
+        ImGui::SetCursorPosY(ImGui::GetWindowHeight()-(10+20)*ui_scale);
+        ImGui::Text("Status: %sEnabled", is_enabled ? "" : "Not ");
+        ImGui::SameLine();
+
+        ImGui::SetCursorPosY(ImGui::GetWindowHeight()-(10+25)*ui_scale);
+        ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*ui_scale);
+
+        ImGui::SetItemDefaultFocus();
+        if (ImGui::Button(is_enabled ? "Disable" : "Enable", ImVec2(120*ui_scale, 0))) {
+            if (!is_enabled) {
+                xemu_settings_set_string(XEMU_SETTINGS_NETWORK_REMOTE_ADDR, remote_addr);
+                xemu_settings_set_string(XEMU_SETTINGS_NETWORK_LOCAL_ADDR, local_addr);
+                xemu_net_enable();
+            } else {
+                xemu_net_disable();
+            }
+            xemu_settings_set_bool(XEMU_SETTINGS_NETWORK_ENABLED, xemu_net_is_enabled());
+            xemu_settings_save();
+        }
+        
+        ImGui::End();
+    }
+};
+
+static void ShowNetworkWindow(bool* p_open)
+{
+    static NetworkWindow console;
+    console.Draw("Network", p_open);
 }
