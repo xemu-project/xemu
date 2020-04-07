@@ -45,15 +45,15 @@ ui/xemu-shaders.o: ui/shader/xemu-logo-frag.h
 
 ifeq ($(CONFIG_WIN32),y)
 IMGUI_FLAGS = -DWIN32 -DMINGW32
-sdl.mo-objs := $(sdl.mo-objs) noc_file_dialog_win32.o
+sdl.mo-objs := $(sdl.mo-objs) noc_file_dialog_win32.o xemu-os-utils-win32.o
 endif
 ifeq ($(CONFIG_LINUX),y)
 IMGUI_FLAGS = -DLINUX
-sdl.mo-objs := $(sdl.mo-objs) noc_file_dialog_gtk.o
+sdl.mo-objs := $(sdl.mo-objs) noc_file_dialog_gtk.o xemu-os-utils-linux.o
 endif
 ifeq ($(CONFIG_DARWIN),y)
 IMGUI_FLAGS = -DAPPLE
-sdl.mo-objs := $(sdl.mo-objs) noc_file_dialog_macos.o
+sdl.mo-objs := $(sdl.mo-objs) noc_file_dialog_macos.o xemu-os-utils-macos.o
 endif
 
 sdl.mo-cflags := $(SDL_CFLAGS) -DIMGUI_IMPL_OPENGL_LOADER_CUSTOM="\"epoxy/gl.h\"" -Iui/imgui $(IMGUI_FLAGS)

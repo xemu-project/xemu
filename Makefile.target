@@ -106,6 +106,10 @@ all: $(PROGS) stap
 obj-y += trace/
 
 #########################################################
+# xemu
+obj-y += xemu-xbe.o
+
+#########################################################
 # cpu emulator library
 obj-y += exec.o exec-vary.o
 obj-y += accel/

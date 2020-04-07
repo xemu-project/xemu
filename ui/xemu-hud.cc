@@ -57,6 +57,7 @@ extern "C" {
 #include "qapi/qmp/qdict.h"
 #include "qemu/option.h"
 #include "qemu/config-file.h"
+
 #undef typename
 #undef atomic_fetch_add
 #undef atomic_fetch_and
@@ -98,6 +99,9 @@ static void ShowAboutWindow(bool* p_open);
 
 bool show_network_window = false;
 static void ShowNetworkWindow(bool* p_open);
+
+bool show_compatibility_reporter_window = true;
+static void ShowCompatibilityReporter(bool* p_open);
 
 bool show_demo_window = false;
 
@@ -304,6 +308,8 @@ static void ShowMainMenu()
         }
         if (ImGui::BeginMenu("Help"))
         {
+            ImGui::MenuItem("Report Compatibility", NULL, &show_compatibility_reporter_window);
+            ImGui::Separator();
             ImGui::MenuItem("About", NULL, &show_about_window);
             ImGui::EndMenu();
         }
@@ -532,6 +538,7 @@ void xemu_hud_render(SDL_Window *window)
     if (show_monitor_window)    ShowMonitorConsole(&show_monitor_window);
     if (show_about_window)      ShowAboutWindow(&show_about_window);
     if (show_network_window)    ShowNetworkWindow(&show_network_window);
+    if (show_compatibility_reporter_window) ShowCompatibilityReporter(&show_compatibility_reporter_window);
     if (show_demo_window)       ImGui::ShowDemoWindow(&show_demo_window);
     
     if (notification.active) {
@@ -1318,7 +1325,7 @@ struct NetworkWindow
         bool is_enabled = xemu_net_is_enabled();
 
         ImGui::TextWrapped(
-            "xemu socket networking works by sending and recieving packets over "
+            "xemu socket networking works by sending and receiving packets over "
             "UDP which encapsulate the network traffic that the machine would "
             "send or recieve when connected to a Local Area Network (LAN)."
             );
@@ -1384,4 +1391,169 @@ static void ShowNetworkWindow(bool* p_open)
 {
     static NetworkWindow console;
     console.Draw("Network", p_open);
+}
+
+#ifdef WIN32
+// https://stackoverflow.com/a/2513561
+#include <windows.h>
+unsigned long long getTotalSystemMemory()
+{
+    MEMORYSTATUSEX status;
+    status.dwLength = sizeof(status);
+    GlobalMemoryStatusEx(&status);
+    return status.ullTotalPhys / (1024 * 1024);
+}
+#else
+#include <unistd.h>
+unsigned long long getTotalSystemMemory()
+{
+    long pages = sysconf(_SC_PHYS_PAGES);
+    long page_size = sysconf(_SC_PAGE_SIZE);
+    return pages * page_size / (1024 * 1024);
+}
+#endif
+
+#ifdef CONFIG_CPUID_H
+#include <cpuid.h>
+#endif
+
+const char *get_cpu_info(void)
+{
+    const char *cpu_info = "";
+#ifdef CONFIG_CPUID_H
+    static uint32_t brand[12];
+    if (__get_cpuid_max(0x80000004, NULL)) {
+        __get_cpuid(0x80000002, brand+0x0, brand+0x1, brand+0x2, brand+0x3);
+        __get_cpuid(0x80000003, brand+0x4, brand+0x5, brand+0x6, brand+0x7);
+        __get_cpuid(0x80000004, brand+0x8, brand+0x9, brand+0xa, brand+0xb);
+    }
+    cpu_info = (const char *)brand;
+#endif
+    // FIXME: Support other architectures (e.g. ARM)
+    return cpu_info;
+}
+
+#include "xemu-os-utils.h"
+#include "xemu-xbe.h"
+
+struct CompatibilityReporter
+{
+    CompatibilityReporter()
+    {
+    }
+
+    ~CompatibilityReporter()
+    {
+    }
+
+    void Draw(const char* title, bool* p_open)
+    {
+        ImVec2 size(450*ui_scale, 475*ui_scale);
+
+        ImGui::SetNextWindowSize(size, ImGuiCond_Appearing);
+        if (!ImGui::Begin(title, p_open, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
+            ImGui::End();
+            return;
+        }
+
+        static char gpu_info[1024];
+        static char xbe_info[512];
+        static char report_info[4096];
+        static int report_info_initialized = 0;
+
+        if (ImGui::IsWindowAppearing()) {
+            // Refresh whenever the window is re-opened
+            report_info_initialized = 0;
+        }
+
+        if (!report_info_initialized) {
+            struct xbe_info *xbe = xemu_get_xbe_info(); 
+            snprintf(
+                gpu_info,
+                sizeof(gpu_info),
+                "%s, %s, %s, %s",
+                glGetString(GL_VENDOR),
+                glGetString(GL_RENDERER),
+                glGetString(GL_VERSION),
+                glGetString(GL_SHADING_LANGUAGE_VERSION)
+                );
+
+            if (xbe) {
+                snprintf(xbe_info, sizeof(xbe_info),
+                    "%s v1.%02d", xbe->cert_title_id_str, xbe->cert_version);
+            } else {
+                xbe_info[0] = '\x00';
+            }
+
+            snprintf(
+                report_info,
+                sizeof(report_info),
+                "xemu:   %s [branch %s on %s]\n"
+                "OS:     %s\n"
+                "CPU:    %s\n"
+                "GPU:    %s\n"
+                "Memory: %lld M\n"
+                "XBE:    %s",
+                xemu_version,
+                xemu_branch,
+                xemu_date,
+                xemu_get_os_info(),
+                get_cpu_info(),
+                gpu_info,
+                getTotalSystemMemory(),
+                xbe_info
+                );
+
+            report_info_initialized = 1;
+        }
+
+        ImGui::TextWrapped(
+            "If you would like to submit a compatibility report for this "
+            "title, including some basic information about your system listed "
+            "below, please select an appropriate playability level, enter a "
+            "brief description of your experience, then click 'Send.' Note: "
+            "this information may be made publicly available.");
+
+        ImGui::Dummy(ImVec2(0, 5*ui_scale));
+        ImGui::Separator();
+        ImGui::Dummy(ImVec2(0, 5*ui_scale));
+
+        static int playability;
+        ImGui::Combo("Playability Rating", &playability,
+            "Unknown\0" "Broken\0" "Intro/Menus\0" "Starts\0" "Playable\0" "Perfect\0");
+
+        char buf[64];
+        buf[0] = '\x00';
+        ImGui::InputText("Contributor Token", buf, sizeof(buf), 0);
+        ImGui::SameLine();
+        HelpMarker("Optional. This is a unique token that trusted users may "
+            "provide in order to expedite publication of their compatibility "
+            "reports.");
+
+        char description[255] = {0};
+        ImGui::Text("Description");
+        ImGui::InputTextMultiline("###desc", description, sizeof(description), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 6), 0);
+
+        ImGui::Text("Additional Information");
+        ImGui::PushFont(fixed_width_font);
+        ImGui::InputTextMultiline("##build_info", report_info, IM_ARRAYSIZE(report_info), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 7), ImGuiInputTextFlags_ReadOnly);
+        ImGui::PopFont();
+
+        ImGui::Columns(1);
+
+        ImGui::SetCursorPosY(ImGui::GetWindowHeight()-(10+25)*ui_scale);
+        ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*ui_scale);
+
+        ImGui::SetItemDefaultFocus();
+        if (ImGui::Button("Send", ImVec2(120*ui_scale, 0))) {
+        }
+        
+        ImGui::End();
+    }
+};
+
+static void ShowCompatibilityReporter(bool* p_open)
+{
+    static CompatibilityReporter console;
+    console.Draw("Report Compatibility", p_open);
 }
