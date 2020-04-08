@@ -31,6 +31,9 @@
 #include "xemu-version.h"
 #include "xemu-data.h"
 #include "xemu-net.h"
+#include "xemu-os-utils.h"
+#include "xemu-xbe.h"
+
 
 #include "imgui/imgui.h"
 #include "imgui/examples/imgui_impl_sdl.h"
@@ -1140,7 +1143,7 @@ struct AboutWindow
     AboutWindow()
     {
         snprintf(build_info_text, sizeof(build_info_text),
-            "Verson: %s\n" "Branch: %s\n" "Commit: %s\n" "Date:   %s\n",
+            "Verson: %s\n" "Branch: %s\n" "Commit: %s\n" "Date:   %s",
             xemu_version,  xemu_branch,   xemu_commit,   xemu_date);
         // FIXME: Show platform
         // FIXME: Show driver
@@ -1185,18 +1188,22 @@ struct AboutWindow
         ImGui::SetCursorPosX(10*ui_scale);
 
         ImGui::SetCursorPosY(ImGui::GetCursorPosY()-100*ui_scale);
-
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(xemu_version).x)/2);
         ImGui::Text("%s", xemu_version);
 
         ImGui::SetCursorPosX(10*ui_scale);
-        ImGui::Dummy(ImVec2(0,35*ui_scale));
+        ImGui::Dummy(ImVec2(0,20*ui_scale));
 
         const char *msg = "Visit https://xemu.app for more information";
-        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
-        ImGui::Text("%s", msg);
+        float button_width = ImGui::GetStyle().FramePadding.x*2 + ImGui::CalcTextSize(msg).x;
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-button_width)/2);
+        // ImGui::Text("%s", msg);
 
-        ImGui::Dummy(ImVec2(0,35*ui_scale));
+        if (ImGui::Button(msg, ImVec2(button_width, 0))) {
+            xemu_open_web_browser("https://xemu.app");
+        }
+
+        ImGui::Dummy(ImVec2(0,40*ui_scale));
 
         ImGui::PushFont(fixed_width_font);
         ImGui::InputTextMultiline("##build_info", build_info_text, IM_ARRAYSIZE(build_info_text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 6), ImGuiInputTextFlags_ReadOnly);
@@ -1432,9 +1439,6 @@ const char *get_cpu_info(void)
     // FIXME: Support other architectures (e.g. ARM)
     return cpu_info;
 }
-
-#include "xemu-os-utils.h"
-#include "xemu-xbe.h"
 
 struct CompatibilityReporter
 {

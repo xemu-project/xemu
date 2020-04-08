@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 const char *xemu_get_os_info(void);
+void xemu_open_web_browser(const char *url);
 	
 #ifdef __cplusplus
 }
