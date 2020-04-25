@@ -943,6 +943,9 @@ static void ShowInputWindow(bool* p_open)
 
 struct SettingsWindow
 {
+    bool dirty;
+    bool pending_restart;
+
     char flash_path[MAX_STRING_LEN];
     char bootrom_path[MAX_STRING_LEN];
     char hdd_path[MAX_STRING_LEN];
@@ -950,18 +953,18 @@ struct SettingsWindow
     char eeprom_path[MAX_STRING_LEN];
     int  memory_idx;
     bool short_animation;
-    bool dirty;
-    bool pending_restart;
 
     SettingsWindow()
     {
-        Load(); // Note: This does not catch updates made elsewhere! That isn't
-                // a problem yet, but in the future might need to be changed to
-                // get most recent data. I put it here so we don't need to sync
-                // settings back to these temporary buffers on every frame.
-                // Please don't do this. If you need it, consider adding an "on
-                // settings updated" callback to sync the updates, if necessary.
+        flash_path[0] = '\0';
+        bootrom_path[0] = '\0';
+        hdd_path[0] = '\0';
+        dvd_path[0] = '\0';
+        eeprom_path[0] = '\0';
+        memory_idx = 0;
+        short_animation = false;
         pending_restart = false;
+        dirty = false;
     }
     
     ~SettingsWindow()
