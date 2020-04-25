@@ -1522,18 +1522,37 @@ struct CompatibilityReporter
         ImGui::Separator();
         ImGui::Dummy(ImVec2(0, 5*ui_scale));
 
-        static int playability;
-        ImGui::Combo("Playability Rating", &playability,
-            "Unknown\0" "Broken\0" "Intro/Menus\0" "Starts\0" "Playable\0" "Perfect\0");
+        ImGui::Columns(2, "", false);
+        ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.25);
 
         char buf[64];
         buf[0] = '\x00';
-        ImGui::InputText("Contributor Token", buf, sizeof(buf), 0);
+        
+        ImGui::Text("User Token");
         ImGui::SameLine();
-        HelpMarker("Optional. This is a unique token that trusted users may "
+        HelpMarker("Optional. This is a unique token that users may "
             "provide in order to expedite publication of their compatibility "
-            "reports.");
+            "reports.");    
+        ImGui::NextColumn();
+        float item_width = ImGui::GetColumnWidth()-20*ui_scale;
+        ImGui::SetNextItemWidth(item_width*0.70);
+        ImGui::InputText("###UserToken", buf, sizeof(buf), 0);
+        ImGui::SameLine();
+        if (ImGui::Button("Get Token")) {
+            xemu_open_web_browser("https://xemu.app");
+        }
+        ImGui::NextColumn();
 
+        ImGui::Text("Playability");
+        ImGui::NextColumn();
+        static int playability;
+        ImGui::SetNextItemWidth(item_width);
+        ImGui::Combo("###PlayabilityRating", &playability,
+            "Unknown\0" "Broken\0" "Intro/Menus\0" "Starts\0" "Playable\0" "Perfect\0");
+        ImGui::NextColumn();
+        
+        ImGui::Columns(1);
+        
         char description[255] = {0};
         ImGui::Text("Description");
         ImGui::InputTextMultiline("###desc", description, sizeof(description), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 6), 0);
