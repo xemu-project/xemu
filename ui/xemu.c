@@ -1082,7 +1082,7 @@ static void xemu_sdl2_gl_render_surface(struct sdl2_console *scon)
 
     // FIXME: Finer locking
     qemu_mutex_lock_iothread();
-    xemu_hud_render(scon->real_window);
+    xemu_hud_render();
     qemu_mutex_unlock_iothread();
 
     // xb_surface_gl_render_texture(scon->surface);
