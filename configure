@@ -4390,6 +4390,10 @@ fi # test "$opengl" != "no"
 # LIBS="$LIBS $epoxy_libs"
 # QEMU_CFLAGS="$QEMU_CFLAGS $epoxy_flags"
 
+
+##########################################
+# gtk probe
+
 # Depend on GTK for native file dialog boxes
 # FIXME: Add fallback when GTK is unavailable
 xemu_gtk="no"
@@ -4413,7 +4417,14 @@ if test "$xemu_gtk" != "no"; then
     fi
 fi
 
-
+##########################################
+# openssl probe
+if $pkg_config --exists openssl; then
+    QEMU_CFLAGS="$QEMU_CFLAGS $($pkg_config --cflags openssl)"
+    LIBS="$LIBS $($pkg_config --libs openssl)"
+else
+    feature_not_found "openssl" "Install openssl-dev"
+fi
 
 ##########################################
 # libxml2 probe
