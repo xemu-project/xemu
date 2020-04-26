@@ -113,7 +113,7 @@ struct decal_shader *create_decal_shader(enum SHADER_TYPE type)
         "    out_Color.a += t.a - t.b;\n"
         "}\n";
 
-    const char *frag_src;
+    const char *frag_src = NULL;
     if (type == SHADER_TYPE_MASK) {
         frag_src = mask_frag_src;
     } else if (type == SHADER_TYPE_BLIT) {
