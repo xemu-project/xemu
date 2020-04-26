@@ -1420,9 +1420,8 @@ static void post_swap(void)
     }
 }
 
-// #undef main
-
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
     QemuThread thread;
 
     DPRINTF("Entered main()\n");

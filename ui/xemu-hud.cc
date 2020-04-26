@@ -20,6 +20,7 @@
 #include <SDL.h>
 #include <epoxy/gl.h>
 #include <stdio.h>
+#include <deque>
 
 #include "xemu-hud.h"
 #include "xemu-input.h"
@@ -55,22 +56,21 @@ extern "C" {
 #undef atomic_fetch_sub
 }
 
-#include <deque>
-
-using namespace std;
-
 ImFont *g_fixed_width_font;
 float g_main_menu_height;
 float g_ui_scale = 1.0;
 bool g_trigger_style_update = true;
 
-struct NotificationManager {
-    std::deque<const char *> notification_queue;
+class NotificationManager
+{
+private:
     const int kNotificationDuration = 4000;
+    std::deque<const char *> notification_queue;
     bool active;
     uint32_t notification_end_ts;
     const char *msg;
 
+public:
     NotificationManager()
     {
         active = false;
@@ -112,6 +112,7 @@ struct NotificationManager {
         }
     }
 
+private:
     void DrawNotification(float t, const char *msg)
     {
         const float DISTANCE = 10.0f;
@@ -181,10 +182,12 @@ static void HelpMarker(const char* desc)
     }
 }
 
-struct MonitorWindow
+class MonitorWindow
 {
+public:
     bool is_open;
 
+private:
     char                  InputBuf[256];
     ImVector<char*>       Items;
     ImVector<const char*> Commands;
@@ -194,6 +197,7 @@ struct MonitorWindow
     bool                  AutoScroll;
     bool                  ScrollToBottom;
 
+public:
     MonitorWindow()
     {
         is_open = false;
@@ -208,7 +212,6 @@ struct MonitorWindow
 
     // Portable helpers
     static int   Stricmp(const char* str1, const char* str2)         { int d; while ((d = toupper(*str2) - toupper(*str1)) == 0 && *str1) { str1++; str2++; } return d; }
-    static int   Strnicmp(const char* str1, const char* str2, int n) { int d = 0; while (n > 0 && (d = toupper(*str2) - toupper(*str1)) == 0 && *str1) { str1++; str2++; n--; } return d; }
     static char* Strdup(const char *str)                             { size_t len = strlen(str) + 1; void* buf = malloc(len); IM_ASSERT(buf); return (char*)memcpy(buf, (const void*)str, len); }
     static void  Strtrim(char* str)                                  { char* str_end = str + strlen(str); while (str_end > str && str_end[-1] == ' ') str_end--; *str_end = 0; }
 
@@ -262,6 +265,7 @@ struct MonitorWindow
         ImGui::End();
     }
 
+private:
     void ExecCommand(const char* command_line)
     {
         xemu_run_monitor_command(command_line);
@@ -322,8 +326,9 @@ struct MonitorWindow
     }
 };
 
-struct InputWindow
+class InputWindow
 {
+public:
     bool is_open;
 
     InputWindow()
@@ -369,8 +374,8 @@ struct InputWindow
         // circular numbers above them. These buttons can be activated to
         // configure the associated port, like a tabbed interface.
         //
-        ImVec4 color_active = ImVec4(0.5058, 0.8627, 0.5411, 0.1294);
-        ImVec4 color_inactive = ImVec4(0, 0, 0, 0);
+        ImVec4 color_active(0.50, 0.86, 0.54, 0.12);
+        ImVec4 color_inactive(0, 0, 0, 0);
 
         // Begin a 4-column layout to render the ports
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0,12));
@@ -529,10 +534,12 @@ struct InputWindow
 #define MAX_STRING_LEN 2048 // FIXME: Completely arbitrary and only used here
                             // to give a buffer to ImGui for each field
 
-struct SettingsWindow
+class SettingsWindow
 {
+public:
     bool is_open;
 
+private:
     bool dirty;
     bool pending_restart;
 
@@ -544,9 +551,13 @@ struct SettingsWindow
     int  memory_idx;
     bool short_animation;
 
+public:
     SettingsWindow()
     {
         is_open = false;
+        dirty = false;
+        pending_restart = false;
+    
         flash_path[0] = '\0';
         bootrom_path[0] = '\0';
         hdd_path[0] = '\0';
@@ -554,15 +565,13 @@ struct SettingsWindow
         eeprom_path[0] = '\0';
         memory_idx = 0;
         short_animation = false;
-        pending_restart = false;
-        dirty = false;
     }
     
     ~SettingsWindow()
     {
     }
 
-    void Load(void)
+    void Load()
     {
         const char *tmp;
         int tmp_int;
@@ -570,27 +579,27 @@ struct SettingsWindow
 
         xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_FLASH_PATH, &tmp);
         len = strlen(tmp);
-        assert(len < (MAX_STRING_LEN-1));
+        assert(len < MAX_STRING_LEN);
         strncpy(flash_path, tmp, sizeof(flash_path));
 
         xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_BOOTROM_PATH, &tmp);
         len = strlen(tmp);
-        assert(len < (MAX_STRING_LEN-1));
+        assert(len < MAX_STRING_LEN);
         strncpy(bootrom_path, tmp, sizeof(bootrom_path));
 
         xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_HDD_PATH, &tmp);
         len = strlen(tmp);
-        assert(len < (MAX_STRING_LEN-1));
+        assert(len < MAX_STRING_LEN);
         strncpy(hdd_path, tmp, sizeof(hdd_path));
 
         xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_DVD_PATH, &tmp);
         len = strlen(tmp);
-        assert(len < (MAX_STRING_LEN-1));
+        assert(len < MAX_STRING_LEN);
         strncpy(dvd_path, tmp, sizeof(dvd_path));
 
         xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_EEPROM_PATH, &tmp);
         len = strlen(tmp);
-        assert(len < (MAX_STRING_LEN-1));
+        assert(len < MAX_STRING_LEN);
         strncpy(eeprom_path, tmp, sizeof(eeprom_path));
         
         xemu_settings_get_int(XEMU_SETTINGS_SYSTEM_MEMORY, &tmp_int);
@@ -602,7 +611,7 @@ struct SettingsWindow
         dirty = false;
     }
 
-    void Save(void)
+    void Save()
     {
         xemu_settings_set_string(XEMU_SETTINGS_SYSTEM_FLASH_PATH, flash_path);
         xemu_settings_set_string(XEMU_SETTINGS_SYSTEM_BOOTROM_PATH, bootrom_path);
@@ -659,31 +668,31 @@ struct SettingsWindow
         ImGui::NextColumn();
         float picker_width = ImGui::GetColumnWidth()-120*g_ui_scale;
         ImGui::SetNextItemWidth(picker_width);
-        FilePicker("###Flash", flash_path, MAX_STRING_LEN, rom_file_filters);
+        FilePicker("###Flash", flash_path, sizeof(flash_path), rom_file_filters);
         ImGui::NextColumn();
 
         ImGui::Text("BootROM File");
         ImGui::NextColumn();
         ImGui::SetNextItemWidth(picker_width);
-        FilePicker("###BootROM", bootrom_path, MAX_STRING_LEN, rom_file_filters);
+        FilePicker("###BootROM", bootrom_path, sizeof(bootrom_path), rom_file_filters);
         ImGui::NextColumn();
 
         ImGui::Text("Hard Disk Image File");
         ImGui::NextColumn();
         ImGui::SetNextItemWidth(picker_width);
-        FilePicker("###HDD", hdd_path, MAX_STRING_LEN, qcow_file_filters);
+        FilePicker("###HDD", hdd_path, sizeof(hdd_path), qcow_file_filters);
         ImGui::NextColumn();
 
         ImGui::Text("DVD Image File");
         ImGui::NextColumn();
         ImGui::SetNextItemWidth(picker_width);
-        FilePicker("###DVD", dvd_path, MAX_STRING_LEN, iso_file_filters);
+        FilePicker("###DVD", dvd_path, sizeof(dvd_path), iso_file_filters);
         ImGui::NextColumn();
 
         ImGui::Text("EEPROM File");
         ImGui::NextColumn();
         ImGui::SetNextItemWidth(picker_width);
-        FilePicker("###EEPROM", eeprom_path, MAX_STRING_LEN, rom_file_filters);
+        FilePicker("###EEPROM", eeprom_path, sizeof(eeprom_path), rom_file_filters);
         ImGui::NextColumn();
 
         ImGui::Text("System Memory");
@@ -726,11 +735,15 @@ struct SettingsWindow
     }
 };
 
-struct AboutWindow
+class AboutWindow
 {
+public:
     bool is_open;
+
+private:
     char build_info_text[256];
 
+public:
     AboutWindow()
     {
         snprintf(build_info_text, sizeof(build_info_text),
@@ -786,109 +799,27 @@ struct AboutWindow
 
         ImGui::SetCursorPosX(10*g_ui_scale);
         ImGui::Dummy(ImVec2(0,20*g_ui_scale));
-
+        
         const char *msg = "Visit https://xemu.app for more information";
-        float button_width = ImGui::GetStyle().FramePadding.x*2 + ImGui::CalcTextSize(msg).x;
-        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-button_width)/2);
-        // ImGui::Text("%s", msg);
-
-        if (ImGui::Button(msg, ImVec2(button_width, 0))) {
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
+        ImGui::Text("%s", msg);
+        if (ImGui::IsItemClicked()) {
             xemu_open_web_browser("https://xemu.app");
         }
 
         ImGui::Dummy(ImVec2(0,40*g_ui_scale));
 
         ImGui::PushFont(g_fixed_width_font);
-        ImGui::InputTextMultiline("##build_info", build_info_text, IM_ARRAYSIZE(build_info_text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 6), ImGuiInputTextFlags_ReadOnly);
+        ImGui::InputTextMultiline("##build_info", build_info_text, sizeof(build_info_text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 6), ImGuiInputTextFlags_ReadOnly);
         ImGui::PopFont();
-        if (ImGui::BeginPopupContextItem("##build_info_context", 1))
-        {
-            if (ImGui::MenuItem("Copy to Clipboard")) {
-                SDL_SetClipboardText(build_info_text);
-            }
-            ImGui::EndPopup();
-        }
-        
+
         ImGui::End();
     }
 };
 
-struct FirstBootWindow
+class NetworkWindow
 {
-    bool is_open;
-
-    FirstBootWindow()
-    {
-        is_open = false;
-    }
-    
-    ~FirstBootWindow()
-    {
-    }
-
-    void Draw()
-    {
-        if (!is_open) return;
-
-        ImVec2 size(400*g_ui_scale, 300*g_ui_scale);
-        ImGuiIO& io = ImGui::GetIO();
-
-        ImVec2 window_pos = ImVec2((io.DisplaySize.x - size.x)/2, (io.DisplaySize.y - size.y)/2);
-        ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always);
-
-        ImGui::SetNextWindowSize(size, ImGuiCond_Appearing);
-        if (!ImGui::Begin("First Boot", &is_open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration)) {
-            ImGui::End();
-            return;
-        }
-
-        static uint32_t time_start = 0;
-        if (ImGui::IsWindowAppearing()) {
-            time_start = SDL_GetTicks();
-        }
-        uint32_t now = SDL_GetTicks() - time_start;
-
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY()-50*g_ui_scale);
-        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-256*g_ui_scale)/2);
-
-        ImTextureID id = (ImTextureID)(intptr_t)render_to_fbo(logo_fbo);
-        float t_w = 256.0;
-        float t_h = 256.0;
-        float x_off = 0;
-        ImGui::Image(id,
-            ImVec2((t_w-x_off)*g_ui_scale, t_h*g_ui_scale),
-            ImVec2(x_off/t_w, t_h/t_h),
-            ImVec2(t_w/t_w, 0));
-        render_logo(now, 0x42e335ff, 0x42e335ff, 0x00000000);
-        render_to_default_fb();
-
-        ImGui::SetCursorPosX(10*g_ui_scale);
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY()-75*g_ui_scale);
-
-        const char *msg = "To get started, please configure machine settings.";
-        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
-        ImGui::Text("%s", msg);
-
-        ImGui::Dummy(ImVec2(0,20*g_ui_scale));
-        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120*g_ui_scale)/2);
-        if (ImGui::Button("Settings", ImVec2(120*g_ui_scale, 0))) {
-            // settings_window.is_open = true; // FIXME
-        }
-        ImGui::Dummy(ImVec2(0,20*g_ui_scale));
-
-        ImGui::SetCursorPosX(10*g_ui_scale);
-
-        msg = "Visit https://xemu.app for more information";
-        ImGui::SetCursorPosY(ImGui::GetWindowHeight()-ImGui::CalcTextSize(msg).y-10*g_ui_scale);
-        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
-        ImGui::Text("%s", msg);
-        
-        ImGui::End();
-    }
-};
-
-struct NetworkWindow
-{
+public:
     bool is_open;
     char remote_addr[64];
     char local_addr[64];
@@ -922,8 +853,6 @@ struct NetworkWindow
             strncpy(local_addr, tmp, sizeof(local_addr)-1);
         }
 
-        bool is_enabled = xemu_net_is_enabled();
-
         ImGui::TextWrapped(
             "xemu socket networking works by sending and receiving packets over "
             "UDP which encapsulate the network traffic that the machine would "
@@ -938,6 +867,7 @@ struct NetworkWindow
         ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.33);
 
         ImGuiInputTextFlags flg = 0;
+        bool is_enabled = xemu_net_is_enabled();
         if (is_enabled) {
             flg |= ImGuiInputTextFlags_ReadOnly;
         }
@@ -987,27 +917,6 @@ struct NetworkWindow
     }
 };
 
-
-#ifdef WIN32
-// https://stackoverflow.com/a/2513561
-#include <windows.h>
-unsigned long long getTotalSystemMemory()
-{
-    MEMORYSTATUSEX status;
-    status.dwLength = sizeof(status);
-    GlobalMemoryStatusEx(&status);
-    return status.ullTotalPhys / (1024 * 1024);
-}
-#else
-#include <unistd.h>
-unsigned long long getTotalSystemMemory()
-{
-    long pages = sysconf(_SC_PHYS_PAGES);
-    long page_size = sysconf(_SC_PAGE_SIZE);
-    return pages * page_size / (1024 * 1024);
-}
-#endif
-
 #ifdef CONFIG_CPUID_H
 #include <cpuid.h>
 #endif
@@ -1028,8 +937,9 @@ const char *get_cpu_info(void)
     return cpu_info;
 }
 
-struct CompatibilityReporter
+class CompatibilityReporter
 {
+public:
     bool is_open;
 
     CompatibilityReporter()
@@ -1089,7 +999,6 @@ struct CompatibilityReporter
                 "OS:     %s\n"
                 "CPU:    %s\n"
                 "GPU:    %s\n"
-                "Memory: %lld M\n"
                 "XBE:    %s",
                 xemu_version,
                 xemu_branch,
@@ -1097,7 +1006,6 @@ struct CompatibilityReporter
                 xemu_get_os_info(),
                 get_cpu_info(),
                 gpu_info,
-                getTotalSystemMemory(),
                 xbe_info
                 );
 
@@ -1152,7 +1060,7 @@ struct CompatibilityReporter
 
         ImGui::Text("Additional Information");
         ImGui::PushFont(g_fixed_width_font);
-        ImGui::InputTextMultiline("##build_info", report_info, IM_ARRAYSIZE(report_info), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 7), ImGuiInputTextFlags_ReadOnly);
+        ImGui::InputTextMultiline("##build_info", report_info, sizeof(report_info), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 7), ImGuiInputTextFlags_ReadOnly);
         ImGui::PopFont();
 
         ImGui::Columns(1);
@@ -1171,12 +1079,95 @@ struct CompatibilityReporter
 static MonitorWindow monitor_window;
 static InputWindow input_window;
 static NetworkWindow network_window;
-static FirstBootWindow first_boot_window;
 static AboutWindow about_window;
 static SettingsWindow settings_window;
 static CompatibilityReporter compatibility_reporter_window;
 static NotificationManager notification_manager;
 static std::deque<const char *> g_errors;
+
+
+
+class FirstBootWindow
+{
+public:
+    bool is_open;
+
+    FirstBootWindow()
+    {
+        is_open = false;
+    }
+    
+    ~FirstBootWindow()
+    {
+    }
+
+    void Draw()
+    {
+        if (!is_open) return;
+
+        ImVec2 size(400*g_ui_scale, 300*g_ui_scale);
+        ImGuiIO& io = ImGui::GetIO();
+
+        ImVec2 window_pos = ImVec2((io.DisplaySize.x - size.x)/2, (io.DisplaySize.y - size.y)/2);
+        ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always);
+
+        ImGui::SetNextWindowSize(size, ImGuiCond_Appearing);
+        if (!ImGui::Begin("First Boot", &is_open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration)) {
+            ImGui::End();
+            return;
+        }
+
+        static uint32_t time_start = 0;
+        if (ImGui::IsWindowAppearing()) {
+            time_start = SDL_GetTicks();
+        }
+        uint32_t now = SDL_GetTicks() - time_start;
+
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY()-50*g_ui_scale);
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-256*g_ui_scale)/2);
+
+        ImTextureID id = (ImTextureID)(intptr_t)render_to_fbo(logo_fbo);
+        float t_w = 256.0;
+        float t_h = 256.0;
+        float x_off = 0;
+        ImGui::Image(id,
+            ImVec2((t_w-x_off)*g_ui_scale, t_h*g_ui_scale),
+            ImVec2(x_off/t_w, t_h/t_h),
+            ImVec2(t_w/t_w, 0));
+        if (ImGui::IsItemClicked()) {
+            time_start = SDL_GetTicks();
+        }
+        render_logo(now, 0x42e335ff, 0x42e335ff, 0x00000000);
+        render_to_default_fb();
+
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY()-100*g_ui_scale);
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(xemu_version).x)/2);
+        ImGui::Text("%s", xemu_version);
+
+        ImGui::SetCursorPosX(10*g_ui_scale);
+        ImGui::Dummy(ImVec2(0,20*g_ui_scale));
+
+        const char *msg = "To get started, please configure machine settings.";
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
+        ImGui::Text("%s", msg);
+
+        ImGui::Dummy(ImVec2(0,20*g_ui_scale));
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120*g_ui_scale)/2);
+        if (ImGui::Button("Settings", ImVec2(120*g_ui_scale, 0))) {
+            settings_window.is_open = true; // FIXME
+        }
+        ImGui::Dummy(ImVec2(0,20*g_ui_scale));
+
+        msg = "Visit https://xemu.app for more information";
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
+        ImGui::Text("%s", msg);
+        if (ImGui::IsItemClicked()) {
+            xemu_open_web_browser("https://xemu.app");
+        }
+        
+        ImGui::End();
+    }
+};
 
 static void ShowMainMenu()
 {
@@ -1293,7 +1284,7 @@ static void InitializeStyle()
     ImVec4* colors = ImGui::GetStyle().Colors;
     colors[ImGuiCol_Text]                   = ImVec4(0.86f, 0.93f, 0.89f, 0.78f);
     colors[ImGuiCol_TextDisabled]           = ImVec4(0.86f, 0.93f, 0.89f, 0.28f);
-    colors[ImGuiCol_WindowBg]               = ImVec4(0.06f, 0.06f, 0.06f, 250.0/255.0);
+    colors[ImGuiCol_WindowBg]               = ImVec4(0.06f, 0.06f, 0.06f, 0.98f);
     colors[ImGuiCol_ChildBg]                = ImVec4(0.16f, 0.16f, 0.16f, 0.58f);
     colors[ImGuiCol_PopupBg]                = ImVec4(0.16f, 0.16f, 0.16f, 0.90f);
     colors[ImGuiCol_Border]                 = ImVec4(0.11f, 0.11f, 0.11f, 0.60f);
@@ -1342,6 +1333,7 @@ static void InitializeStyle()
 }
 
 /* External interface, called from ui/xemu.c which handles SDL main loop */
+static FirstBootWindow first_boot_window;
 static SDL_Window *g_sdl_window;
 
 void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
@@ -1360,8 +1352,7 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
 
     // Setup Platform/Renderer bindings
     ImGui_ImplSDL2_InitForOpenGL(window, sdl_gl_context);
-    const char *glsl_version = "#version 150";
-    ImGui_ImplOpenGL3_Init(glsl_version);
+    ImGui_ImplOpenGL3_Init("#version 150");
 
     first_boot_window.is_open = xemu_settings_did_fail_to_load();
 

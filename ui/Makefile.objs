@@ -26,7 +26,6 @@ endif
 # Override with xemu UI
 sdl.mo-objs := \
 	imgui/imgui.o \
-	imgui/imgui_demo.o \
 	imgui/imgui_draw.o \
 	imgui/imgui_widgets.o \
 	imgui/examples/imgui_impl_opengl3.o \

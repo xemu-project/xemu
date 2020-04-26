@@ -102,9 +102,9 @@ void xemu_run_monitor_command(const char *cmd)
     int len = strlen(cmd)+1;
 
     /* FIXME: qemu_chr_be_write needs to be fixed to declare inbuf as const. It
-     * does not modify the data. Accept the warning for now as a reminder.
+     * does not modify the data. Cast for now.
      */
-    qemu_chr_be_write(mon_chr, cmd, len);
+    qemu_chr_be_write(mon_chr, (unsigned char*)cmd, len);
 }
 
 static const TypeInfo char_xemu_type_info = {
