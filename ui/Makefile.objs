@@ -39,6 +39,7 @@ sdl.mo-objs := \
 	xemu-net.o \
 	xemu-settings.o \
 	xemu-shaders.o \
+	xemu-reporting.o \
 
 ui/xemu-shaders.o: ui/shader/xemu-logo-frag.h
 

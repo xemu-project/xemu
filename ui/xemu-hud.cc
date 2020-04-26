@@ -34,6 +34,7 @@
 #include "xemu-net.h"
 #include "xemu-os-utils.h"
 #include "xemu-xbe.h"
+#include "xemu-reporting.h"
 
 #include "imgui/imgui.h"
 #include "imgui/examples/imgui_impl_sdl.h"
@@ -940,11 +941,32 @@ const char *get_cpu_info(void)
 class CompatibilityReporter
 {
 public:
+    CompatibilityReport report;
+    bool dirty;
     bool is_open;
+    std::string serialized_report;
 
     CompatibilityReporter()
     {
         is_open = false;
+
+        report.token = "";
+        report.xemu_version = xemu_version;
+        report.xemu_branch = xemu_branch;
+        report.xemu_commit = xemu_commit;
+        report.xemu_date = xemu_date;
+#if defined(__linux__)
+        report.os_platform = "Linux";
+#elif defined(_WIN32)
+        report.os_platform = "Windows";
+#elif defined(__APPLE__)
+        report.os_platform = "macOS";
+#else
+        report.os_platform = "Unknown";
+#endif
+        report.os_version = xemu_get_os_info();
+        report.cpu = get_cpu_info();
+        dirty = true;
     }
 
     ~CompatibilityReporter()
@@ -958,58 +980,25 @@ public:
         ImVec2 size(450*g_ui_scale, 475*g_ui_scale);
 
         ImGui::SetNextWindowSize(size, ImGuiCond_Appearing);
-        if (!ImGui::Begin("Report Compatibility", &is_open, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
+        if (!ImGui::Begin("Report Compatibility", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::End();
             return;
         }
 
-        static char gpu_info[1024];
-        static char xbe_info[512];
-        static char report_info[4096];
-        static int report_info_initialized = 0;
-
         if (ImGui::IsWindowAppearing()) {
-            // Refresh whenever the window is re-opened
-            report_info_initialized = 0;
-        }
-
-        if (!report_info_initialized) {
-            struct xbe_info *xbe = xemu_get_xbe_info(); 
-            snprintf(
-                gpu_info,
-                sizeof(gpu_info),
-                "%s, %s, %s, %s",
-                glGetString(GL_VENDOR),
-                glGetString(GL_RENDERER),
-                glGetString(GL_VERSION),
-                glGetString(GL_SHADING_LANGUAGE_VERSION)
-                );
-
-            if (xbe) {
-                snprintf(xbe_info, sizeof(xbe_info),
-                    "%s v1.%02d", xbe->cert_title_id_str, xbe->cert_version);
-            } else {
-                xbe_info[0] = '\x00';
+            report.gl_vendor = (const char *)glGetString(GL_VENDOR);
+            report.gl_renderer = (const char *)glGetString(GL_RENDERER);
+            report.gl_version = (const char *)glGetString(GL_VERSION);
+            report.gl_shading_language_version = (const char *)glGetString(GL_SHADING_LANGUAGE_VERSION);
+            struct xbe_info *xbe = xemu_get_xbe_info();
+            if (xbe != NULL) {
+                report.xbe_timestamp = xbe->timedate;
+                report.xbe_cert_timestamp = xbe->cert_timedate;
+                report.xbe_cert_title_id = xbe->cert_title_id;
+                report.xbe_cert_region = xbe->cert_region;
+                report.xbe_cert_disc_num = xbe->cert_disc_num;
+                report.xbe_cert_version = xbe->cert_version;
             }
-
-            snprintf(
-                report_info,
-                sizeof(report_info),
-                "xemu:   %s [branch %s on %s]\n"
-                "OS:     %s\n"
-                "CPU:    %s\n"
-                "GPU:    %s\n"
-                "XBE:    %s",
-                xemu_version,
-                xemu_branch,
-                xemu_date,
-                xemu_get_os_info(),
-                get_cpu_info(),
-                gpu_info,
-                xbe_info
-                );
-
-            report_info_initialized = 1;
         }
 
         ImGui::TextWrapped(
@@ -1025,19 +1014,21 @@ public:
 
         ImGui::Columns(2, "", false);
         ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.25);
-
-        char buf[64];
-        buf[0] = '\x00';
         
         ImGui::Text("User Token");
         ImGui::SameLine();
         HelpMarker("Optional. This is a unique token that users may "
             "provide in order to expedite publication of their compatibility "
-            "reports.");    
+            "reports. If a token is not provided, reports will be published "
+            "with submitters public IP address.");    
         ImGui::NextColumn();
         float item_width = ImGui::GetColumnWidth()-20*g_ui_scale;
         ImGui::SetNextItemWidth(item_width*0.70);
-        ImGui::InputText("###UserToken", buf, sizeof(buf), 0);
+        static char token_buf[512] = {0};
+        if (ImGui::InputText("###UserToken", token_buf, sizeof(token_buf), 0)) {
+            report.token = token_buf;
+            dirty = true;
+        }
         ImGui::SameLine();
         if (ImGui::Button("Get Token")) {
             xemu_open_web_browser("https://xemu.app");
@@ -1048,28 +1039,48 @@ public:
         ImGui::NextColumn();
         static int playability;
         ImGui::SetNextItemWidth(item_width);
-        ImGui::Combo("###PlayabilityRating", &playability,
-            "Unknown\0" "Broken\0" "Intro/Menus\0" "Starts\0" "Playable\0" "Perfect\0");
+        const char *playability_names[] = {
+            "Unknown",
+            "Broken",
+            "Intro/Menus",
+            "Starts",
+            "Playable",
+            "Perfect",
+        };
+        if (ImGui::Combo("###PlayabilityRating", &playability,
+            "Unknown\0" "Broken\0" "Intro/Menus\0" "Starts\0" "Playable\0" "Perfect\0")) {
+            report.compat_rating = playability_names[playability];
+            dirty = true;
+        }
         ImGui::NextColumn();
         
         ImGui::Columns(1);
         
-        char description[255] = {0};
+        static char description[1024] = {0};
         ImGui::Text("Description");
-        ImGui::InputTextMultiline("###desc", description, sizeof(description), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 6), 0);
+        if (ImGui::InputTextMultiline("###desc", description, sizeof(description), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 6), 0)) {
+            report.compat_comments = description;
+            dirty = true;
+        }
 
-        ImGui::Text("Additional Information");
-        ImGui::PushFont(g_fixed_width_font);
-        ImGui::InputTextMultiline("##build_info", report_info, sizeof(report_info), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 7), ImGuiInputTextFlags_ReadOnly);
-        ImGui::PopFont();
+        if (ImGui::TreeNode("Full Report Information")) {
+            ImGui::PushFont(g_fixed_width_font);
+            if (dirty) {
+                serialized_report = report.GetSerializedReport();
+                dirty = false;
+            }
+            ImGui::InputTextMultiline("##build_info", (char*)serialized_report.c_str(), strlen(serialized_report.c_str())+1, ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 7), ImGuiInputTextFlags_ReadOnly);
+            ImGui::PopFont();
+            ImGui::TreePop();
+        }
 
         ImGui::Columns(1);
 
-        ImGui::SetCursorPosY(ImGui::GetWindowHeight()-(10+25)*g_ui_scale);
         ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*g_ui_scale);
 
         ImGui::SetItemDefaultFocus();
         if (ImGui::Button("Send", ImVec2(120*g_ui_scale, 0))) {
+            report.Send();
         }
         
         ImGui::End();
@@ -1084,8 +1095,6 @@ static SettingsWindow settings_window;
 static CompatibilityReporter compatibility_reporter_window;
 static NotificationManager notification_manager;
 static std::deque<const char *> g_errors;
-
-
 
 class FirstBootWindow
 {
