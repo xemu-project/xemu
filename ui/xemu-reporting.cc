@@ -1,9 +1,9 @@
+#include <glib.h>
+#include <glib/gi18n.h>
 #include <stdio.h>
 #include "xemu-reporting.h"
-
 #define CPPHTTPLIB_OPENSSL_SUPPORT 1
 #include "httplib.h"
-
 #include "json.hpp"
 using json = nlohmann::json;
 
@@ -30,15 +30,9 @@ const std::string &CompatibilityReport::GetSerializedReport()
 		{"gl_renderer", gl_renderer},
 		{"gl_version", gl_version},
 		{"gl_shading_language_version", gl_shading_language_version},
-		{"memory", memory},
-		{"xbe_timestamp", xbe_timestamp},
-		{"xbe_cert_timestamp", xbe_cert_timestamp},
-		{"xbe_cert_title_id", xbe_cert_title_id},
-		{"xbe_cert_region", xbe_cert_region},
-		{"xbe_cert_disc_num", xbe_cert_disc_num},
-		{"xbe_cert_version", xbe_cert_version},
 		{"compat_rating", compat_rating},
 		{"compat_comments", compat_comments},
+		{"xbe_headers", xbe_headers},
 	};
 	serialized = report.dump(2); 
 	return serialized;
@@ -73,4 +67,16 @@ void CompatibilityReport::Send()
 	}
 
 	fprintf(stderr, "%d\n", res->status);
+}
+
+void CompatibilityReport::SetXbeData(struct xbe *xbe)
+{
+	assert(xbe != NULL);
+	assert(xbe->headers != NULL);
+	assert(xbe->headers_len > 0);
+
+    // base64 encode all XBE headers to be sent with the report
+    gchar *buf = g_base64_encode(xbe->headers, xbe->headers_len);
+    xbe_headers = buf;
+    g_free(buf);
 }

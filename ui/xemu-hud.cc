@@ -990,14 +990,11 @@ public:
             report.gl_renderer = (const char *)glGetString(GL_RENDERER);
             report.gl_version = (const char *)glGetString(GL_VERSION);
             report.gl_shading_language_version = (const char *)glGetString(GL_SHADING_LANGUAGE_VERSION);
-            struct xbe_info *xbe = xemu_get_xbe_info();
+            struct xbe *xbe = xemu_get_xbe_info();
             if (xbe != NULL) {
-                report.xbe_timestamp = xbe->timedate;
-                report.xbe_cert_timestamp = xbe->cert_timedate;
-                report.xbe_cert_title_id = xbe->cert_title_id;
-                report.xbe_cert_region = xbe->cert_region;
-                report.xbe_cert_disc_num = xbe->cert_disc_num;
-                report.xbe_cert_version = xbe->cert_version;
+                report.SetXbeData(xbe);
+            } else {
+                // FIXME: Show message if XBE could not be identified
             }
         }
 

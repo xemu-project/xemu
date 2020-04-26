@@ -91,22 +91,14 @@ struct xbe_certificate
 };
 #pragma pack()
 
-struct xbe_info {
-	// Typically accessed fields extracted from heeaders
-    uint32_t timedate;
-    uint32_t cert_timedate;
-    uint32_t cert_title_id;
-    uint32_t cert_version;
-	uint32_t cert_region;
-	uint32_t cert_disc_num;
-
-	// Full XBE headers, copied into a temporary buffer
+struct xbe {
+	// Full XBE headers, copied into an allocated buffer
 	uint8_t *headers;
 	uint32_t headers_len;
 
-	// Pointer into `headers` (note: little-endian!)
-	struct xbe_header *xbe_hdr;
-	struct xbe_certificate *xbe_cert;
+	// Pointers into `headers` (note: little-endian!)
+	struct xbe_header *header;
+	struct xbe_certificate *cert;
 };
 
 #ifdef __cplusplus
@@ -114,7 +106,7 @@ extern "C" {
 #endif
 
 // Get current XBE info
-struct xbe_info *xemu_get_xbe_info(void);
+struct xbe *xemu_get_xbe_info(void);
 
 #ifdef __cplusplus
 }

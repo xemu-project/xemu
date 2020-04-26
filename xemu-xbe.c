@@ -1,3 +1,24 @@
+/*
+ * xemu XBE accessing
+ *
+ * Helper functions to get details about the currently running executable.
+ *
+ * Copyright (C) 2020 Matt Borgerson
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include "xemu-xbe.h"
 #include "qemu/osdep.h"
 #include "hw/hw.h"
@@ -6,10 +27,7 @@
 #include "monitor/hmp-target.h"
 #include "sysemu/hw_accel.h"
 
-// #include "base64/base64.h"
-// #include "base64/base64.c"
-
-static int virt_to_phys(target_ulong virt_addr, hwaddr *phys_addr)
+static int virt_to_phys(vaddr vaddr, hwaddr *phys_addr)
 {
     MemTxAttrs attrs;
     CPUState *cs;
@@ -22,11 +40,11 @@ static int virt_to_phys(target_ulong virt_addr, hwaddr *phys_addr)
 
     cpu_synchronize_state(cs);
 
-    gpa = cpu_get_phys_page_attrs_debug(cs, virt_addr & TARGET_PAGE_MASK, &attrs);
+    gpa = cpu_get_phys_page_attrs_debug(cs, vaddr & TARGET_PAGE_MASK, &attrs);
     if (gpa == -1) {
         return 1; // Unmapped
     } else {
-        *phys_addr = gpa + (virt_addr & ~TARGET_PAGE_MASK);
+        *phys_addr = gpa + (vaddr & ~TARGET_PAGE_MASK);
     }
 
     return 0;
@@ -44,31 +62,33 @@ static ssize_t virt_dma_memory_read(vaddr vaddr, void *buf, size_t len)
         }
 
         // Read contents from the page
-        size_t bytes_in_chunk = (len-num_bytes_read) & (TARGET_PAGE_SIZE-1);
-        // FIXME: Check return value
-        dma_memory_read(&address_space_memory, phys_addr, buf + num_bytes_read, bytes_in_chunk);
+        size_t num_bytes_to_read = MIN(len-num_bytes_read, TARGET_PAGE_SIZE-(phys_addr & ~TARGET_PAGE_MASK));
+        num_bytes_to_read = MIN(num_bytes_to_read, 0x100);
 
-        num_bytes_read += bytes_in_chunk;
+        // FIXME: Check return value
+        dma_memory_read(&address_space_memory, phys_addr, buf + num_bytes_read, num_bytes_to_read);
+
+        num_bytes_read += num_bytes_to_read;
+        fprintf(stderr, "read %d bytes\n", (int)num_bytes_to_read);
     }
 
     return num_bytes_read;
 }
 
-// Get current XBE info
-struct xbe_info *xemu_get_xbe_info(void)
+struct xbe *xemu_get_xbe_info(void)
 {
-    vaddr xbe_hdr_addr_virt = 0x10000;
+    vaddr hdr_addr_virt = 0x10000;
 
-    static struct xbe_info xbe_info;
+    static struct xbe xbe = {0};
 
-    if (xbe_info.headers) {
-        free(xbe_info.headers);
-        xbe_info.headers = NULL;
+    if (xbe.headers) {
+        free(xbe.headers);
+        xbe.headers = NULL;
     }
 
     // Get physical page of headers
     hwaddr hdr_addr_phys = 0;
-    if (virt_to_phys(xbe_hdr_addr_virt, &hdr_addr_phys) != 0) {
+    if (virt_to_phys(hdr_addr_virt, &hdr_addr_phys) != 0) {
         return NULL;
     }
 
@@ -79,52 +99,35 @@ struct xbe_info *xemu_get_xbe_info(void)
     }
 
     // Determine full length of headers
-    xbe_info.headers_len = ldl_le_phys(&address_space_memory,
+    xbe.headers_len = ldl_le_phys(&address_space_memory,
         hdr_addr_phys + offsetof(struct xbe_header, m_sizeof_headers));
-    if (xbe_info.headers_len > 4*TARGET_PAGE_SIZE) {
+    if (xbe.headers_len > 4*TARGET_PAGE_SIZE) {
         // Headers are unusually large
         return NULL;
     }
 
-    xbe_info.headers = malloc(xbe_info.headers_len);
-    assert(xbe_info.headers != NULL);
+    xbe.headers = malloc(xbe.headers_len);
+    assert(xbe.headers != NULL);
     
     // Read all XBE headers
-    ssize_t bytes_read = virt_dma_memory_read(xbe_hdr_addr_virt,
-                                              xbe_info.headers,
-                                              xbe_info.headers_len);
-    if (bytes_read != xbe_info.headers_len) {
+    ssize_t bytes_read = virt_dma_memory_read(hdr_addr_virt,
+                                              xbe.headers,
+                                              xbe.headers_len);
+    if (bytes_read != xbe.headers_len) {
         // Failed to read headers
         return NULL;
     }
 
     // Extract XBE header fields
-    xbe_info.xbe_hdr = (struct xbe_header *)xbe_info.headers;
-    xbe_info.timedate = ldl_le_p(&xbe_info.xbe_hdr->m_timedate);
+    xbe.header = (struct xbe_header *)xbe.headers;
 
     // Get certificate
-    uint32_t cert_addr_virt = ldl_le_p(&xbe_info.xbe_hdr->m_certificate_addr);
-    if ((cert_addr_virt == 0) || ((cert_addr_virt + sizeof(struct xbe_certificate)) > (xbe_hdr_addr_virt + xbe_info.headers_len))) {
+    vaddr cert_addr_virt = ldl_le_p(&xbe.header->m_certificate_addr);
+    if ((cert_addr_virt == 0) || ((cert_addr_virt + sizeof(struct xbe_certificate)) > (hdr_addr_virt + xbe.headers_len))) {
         // Invalid certificate header (a valid certificate is expected for official titles)
         return NULL;
     }
-    
-    // Extract certificate fields
-    xbe_info.xbe_cert = (struct xbe_certificate *)(xbe_info.headers + cert_addr_virt - xbe_hdr_addr_virt);
-    xbe_info.cert_timedate = ldl_le_p(&xbe_info.xbe_cert->m_timedate);
-    xbe_info.cert_title_id = ldl_le_p(&xbe_info.xbe_cert->m_titleid);
-    xbe_info.cert_version = ldl_le_p(&xbe_info.xbe_cert->m_version);
-    xbe_info.cert_region = ldl_le_p(&xbe_info.xbe_cert->m_game_region);
-    xbe_info.cert_disc_num = ldl_le_p(&xbe_info.xbe_cert->m_disk_number);
+    xbe.cert = (struct xbe_certificate *)(xbe.headers + cert_addr_virt - hdr_addr_virt);
 
-#if 0
-    // Dump base64 version of headers
-    FILE *fd = fopen("dump2.bin", "wb");
-    void *b64buf = malloc(xbe_info.headers_len*2);
-    int enc = base64_encode(xbe_info.headers, xbe_info.headers_len, b64buf);
-    fwrite(b64buf, 1, enc, fd);
-    free(b64buf);
-#endif
-
-    return &xbe_info;
+    return &xbe;
 }

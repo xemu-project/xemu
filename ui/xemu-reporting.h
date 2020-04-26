@@ -25,6 +25,8 @@
 #include <string>
 #include <stdint.h>
 
+#include "xemu-xbe.h"
+
 class CompatibilityReport {
 public:
 	std::string token;
@@ -39,15 +41,9 @@ public:
 	std::string gl_renderer;
 	std::string gl_version;
 	std::string gl_shading_language_version;
-	std::string memory;
-	uint32_t xbe_timestamp;
-	uint32_t xbe_cert_timestamp;
-	uint32_t xbe_cert_title_id;
-	uint32_t xbe_cert_region;
-	uint32_t xbe_cert_disc_num;
-	uint32_t xbe_cert_version;
 	std::string compat_rating;
 	std::string compat_comments;
+	std::string xbe_headers;
 
 	std::string serialized;
 
@@ -56,6 +52,7 @@ public:
 	~CompatibilityReport();
 	void Send();
 	const std::string &GetSerializedReport();
+	void SetXbeData(struct xbe *xbe);
 };
 
 #endif
