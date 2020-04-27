@@ -45,7 +45,7 @@ ui/xemu-shaders.o: ui/shader/xemu-logo-frag.h
 
 ifeq ($(CONFIG_WIN32),y)
 IMGUI_FLAGS = -DWIN32 -DMINGW32
-sdl.mo-objs := $(sdl.mo-objs) noc_file_dialog_win32.o xemu-os-utils-win32.o
+sdl.mo-objs := $(sdl.mo-objs) noc_file_dialog_win32.o xemu-os-utils-windows.o
 endif
 ifeq ($(CONFIG_LINUX),y)
 IMGUI_FLAGS = -DLINUX
