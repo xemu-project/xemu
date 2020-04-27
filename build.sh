@@ -116,6 +116,8 @@ case "$(uname -s)" in # Adjust compilation options based on platform
         sys_opts='--disable-cocoa'
         # necessary to find libffi, which is required by gobject
         export PKG_CONFIG_PATH="${PKG_CONFIG_PATH}/usr/local/opt/libffi/lib/pkgconfig"
+        export PKG_CONFIG_PATH="/usr/local/opt/openssl@1.1/lib/pkgconfig:${PKG_CONFIG_PATH}"
+        echo $PKG_CONFIG_PATH
         # macOS needs greadlink for a GNU compatible version of readlink
         if readlink=$(command -v greadlink); then
             echo 'GNU compatible readlink detected'
