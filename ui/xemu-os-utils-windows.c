@@ -1,4 +1,5 @@
 #include "xemu-os-utils.h"
+#include <windows.h>
 
 const char *xemu_get_os_info(void)
 {
