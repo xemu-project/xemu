@@ -57,19 +57,21 @@ static ssize_t virt_dma_memory_read(vaddr vaddr, void *buf, size_t len)
     while (num_bytes_read < len) {
         // Get physical page for this offset
         hwaddr phys_addr = 0;
-        if (virt_to_phys(vaddr+num_bytes_read, &phys_addr) != 0) {
+        if (virt_to_phys(vaddr + num_bytes_read, &phys_addr) != 0) {
             return -1;
         }
 
         // Read contents from the page
-        size_t num_bytes_to_read = MIN(len-num_bytes_read, TARGET_PAGE_SIZE-(phys_addr & ~TARGET_PAGE_MASK));
-        num_bytes_to_read = MIN(num_bytes_to_read, 0x100);
+        size_t bytes_remaining_in_page = TARGET_PAGE_SIZE - (phys_addr & ~TARGET_PAGE_MASK);
+        size_t num_bytes_to_read = MIN(len - num_bytes_read, bytes_remaining_in_page);
 
         // FIXME: Check return value
-        dma_memory_read(&address_space_memory, phys_addr, buf + num_bytes_read, num_bytes_to_read);
+        dma_memory_read(&address_space_memory,
+                        phys_addr,
+                        buf + num_bytes_read,
+                        num_bytes_to_read);
 
         num_bytes_read += num_bytes_to_read;
-        fprintf(stderr, "read %d bytes\n", (int)num_bytes_to_read);
     }
 
     return num_bytes_read;
