@@ -45,12 +45,17 @@ public:
 	std::string compat_comments;
 	std::string xbe_headers;
 
+private:
 	std::string serialized;
+	int result_code;
+	std::string result_msg;
 
 public:
 	CompatibilityReport();
 	~CompatibilityReport();
-	void Send();
+	bool Send();
+	int GetResultCode() { return result_code; }
+	std::string &GetResultMessage() { return result_msg; }
 	const std::string &GetSerializedReport();
 	void SetXbeData(struct xbe *xbe);
 };

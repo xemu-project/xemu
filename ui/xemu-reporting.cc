@@ -38,12 +38,10 @@ const std::string &CompatibilityReport::GetSerializedReport()
 	return serialized;
 }
 
-void CompatibilityReport::Send()
+bool CompatibilityReport::Send()
 {
 	// Serialize the report
 	const std::string &s = GetSerializedReport();
-
-	fprintf(stderr, "%s\n", s.c_str());
 
 	httplib::SSLClient cli("127.0.0.1", 443);
 	// httplib::SSLClient cli("reports.xemu.app", 443);
@@ -63,10 +61,36 @@ void CompatibilityReport::Send()
 	    }
 #endif
 #endif
-	    return;
+
+		result_code = -1;
+		result_msg = "Failed to connect";
+	    return false;
 	}
 
-	fprintf(stderr, "%d\n", res->status);
+	result_code = res->status;
+
+	switch(res->status) {
+	case 200:
+		result_msg = "Ok";
+		return true;
+
+	case 400:
+	case 411:
+		result_msg = "Invalid request";
+		return false;
+
+	case 403:
+		result_msg = "Invalid token";
+		return false;
+
+	case 413:
+		result_msg = "Report too long";
+		return false;
+
+	default:
+		result_msg = "Unknown error occured";
+		return false;
+	}
 }
 
 void CompatibilityReport::SetXbeData(struct xbe *xbe)

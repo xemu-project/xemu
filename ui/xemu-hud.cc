@@ -944,6 +944,8 @@ public:
     CompatibilityReport report;
     bool dirty;
     bool is_open;
+    bool is_xbe_identified;
+    bool did_send, send_result;
     std::string serialized_report;
 
     CompatibilityReporter()
@@ -967,6 +969,8 @@ public:
         report.os_version = xemu_get_os_info();
         report.cpu = get_cpu_info();
         dirty = true;
+        is_xbe_identified = false;
+        did_send = send_result = false;
     }
 
     ~CompatibilityReporter()
@@ -991,11 +995,19 @@ public:
             report.gl_version = (const char *)glGetString(GL_VERSION);
             report.gl_shading_language_version = (const char *)glGetString(GL_SHADING_LANGUAGE_VERSION);
             struct xbe *xbe = xemu_get_xbe_info();
-            if (xbe != NULL) {
+            is_xbe_identified = xbe != NULL;
+            if (is_xbe_identified) {
                 report.SetXbeData(xbe);
-            } else {
-                // FIXME: Show message if XBE could not be identified
             }
+            did_send = send_result = false;
+        }
+
+        if (!is_xbe_identified) {
+            ImGui::TextWrapped(
+                "An XBE could not be identified. Please launch an official "
+                "Xbox title to submit a compatibility report.");
+            ImGui::End();
+            return;
         }
 
         ImGui::TextWrapped(
@@ -1073,11 +1085,25 @@ public:
 
         ImGui::Columns(1);
 
+        ImGui::Dummy(ImVec2(0, 5*g_ui_scale));
+        ImGui::Separator();
+        ImGui::Dummy(ImVec2(0, 5*g_ui_scale));
+
+        if (did_send) {
+            if (send_result) {
+                ImGui::Text("Sent! Thanks.");
+            } else {
+                ImGui::Text("Error: %s (%d)", report.GetResultMessage().c_str(), report.GetResultCode());
+            }
+            ImGui::SameLine();
+        }
+
         ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*g_ui_scale);
 
         ImGui::SetItemDefaultFocus();
         if (ImGui::Button("Send", ImVec2(120*g_ui_scale, 0))) {
-            report.Send();
+            did_send = true;
+            send_result = report.Send();
         }
         
         ImGui::End();
