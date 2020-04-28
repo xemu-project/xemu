@@ -33,15 +33,18 @@ def main():
 	sout = subprocess.check_output(['ldd', args.prog]).decode('utf-8')
 	for line in sout.splitlines():
 		line = line.strip().split()
-		dll_name, dll_path, dll_load_addr = line[0], line[2], line[3]
+		dll_name, original_dll_path, dll_load_addr = line[0], line[2], line[3]
 		if dll_name.startswith('???'):
 			print('Unknown DLL?')
 			continue
+
 		# ldd on msys gives Unix-style paths, but mingw Python wants them Windows-style
 		# Use cygpath to convert the paths, because both mingw and msys Python can handle them
+		# Force lookup against /mingw64/bin to avoid external DLLs
+		dll_path = '/mingw64/bin/' + dll_name
 		dll_path = subprocess.check_output(['cygpath', '-w', dll_path]).decode('utf-8').strip()
-		if dll_path.lower().startswith('c:\\windows'):
-			print('Skipping system DLL %s' % dll_path)
+		if not os.path.exists(dll_path):
+			print('Skipping DLL outside /mingw64/bin: %s' % original_dll_path)
 			continue
 
 		dest_path = os.path.join(args.dest, dll_name)
