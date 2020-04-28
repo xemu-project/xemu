@@ -345,11 +345,10 @@ public:
     {
         if (!is_open) return;
 
-        ImGui::SetNextWindowSize(ImVec2(500*g_ui_scale,620*g_ui_scale), ImGuiCond_Appearing);
-
+        ImGui::SetNextWindowContentSize(ImVec2(500.0f*g_ui_scale, 0.0f));
         // Remove window X padding for this window to easily center stuff
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0,ImGui::GetStyle().WindowPadding.y));
-        if (!ImGui::Begin("Input", &is_open, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
+        if (!ImGui::Begin("Input", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize))
         {
             ImGui::End();
             ImGui::PopStyleVar();
@@ -483,10 +482,11 @@ public:
             ImGui::EndCombo();
         }
 
+        ImGui::Columns(1);
+
         //
         // Add a separator between input selection and controller graphic
         //
-        ImGui::Columns(1);
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
         ImGui::Separator();
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
@@ -647,8 +647,8 @@ public:
     {
         if (!is_open) return;
 
-        ImGui::SetNextWindowSize(ImVec2(550*g_ui_scale, 300*g_ui_scale), ImGuiCond_Appearing);
-        if (!ImGui::Begin("Settings", &is_open, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
+        ImGui::SetNextWindowContentSize(ImVec2(550.0f*g_ui_scale, 0.0f));
+        if (!ImGui::Begin("Settings", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize))
         {
             ImGui::End();
             return;
@@ -713,7 +713,10 @@ public:
 
         ImGui::Columns(1);
 
-        ImGui::SetCursorPosY(ImGui::GetWindowHeight()-(10+20)*g_ui_scale);
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+        ImGui::Separator();
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+
         if (dirty) {
             ImGui::Text("Warning: Unsaved changes!");
             ImGui::SameLine();
@@ -722,9 +725,7 @@ public:
             ImGui::SameLine();
         }
 
-        ImGui::SetCursorPosY(ImGui::GetWindowHeight()-(10+25)*g_ui_scale);
         ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*g_ui_scale);
-
         ImGui::SetItemDefaultFocus();
         if (ImGui::Button("Save", ImVec2(120*g_ui_scale, 0))) {
             Save();
@@ -763,8 +764,8 @@ public:
     {
         if (!is_open) return;
 
-        ImGui::SetNextWindowSize(ImVec2(400*g_ui_scale, 350*g_ui_scale), ImGuiCond_Appearing);
-        if (!ImGui::Begin("About", &is_open, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
+        ImGui::SetNextWindowContentSize(ImVec2(400.0f*g_ui_scale, 0.0f));
+        if (!ImGui::Begin("About", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize))
         {
             ImGui::End();
             return;
@@ -838,10 +839,8 @@ public:
     {
         if (!is_open) return;
 
-        ImVec2 size(400*g_ui_scale, 250*g_ui_scale);
-
-        ImGui::SetNextWindowSize(size, ImGuiCond_Appearing);
-        if (!ImGui::Begin("Network", &is_open, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
+        ImGui::SetNextWindowContentSize(ImVec2(400.0f*g_ui_scale, 0.0f));
+        if (!ImGui::Begin("Network", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::End();
             return;
         }
@@ -860,9 +859,9 @@ public:
             "send or recieve when connected to a Local Area Network (LAN)."
             );
 
-        ImGui::Dummy(ImVec2(0, 5*g_ui_scale));
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
         ImGui::Separator();
-        ImGui::Dummy(ImVec2(0, 5*g_ui_scale));
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
 
         ImGui::Columns(2, "", false);
         ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.33);
@@ -894,13 +893,14 @@ public:
 
         ImGui::Columns(1);
 
-        ImGui::SetCursorPosY(ImGui::GetWindowHeight()-(10+20)*g_ui_scale);
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+        ImGui::Separator();
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+
         ImGui::Text("Status: %sEnabled", is_enabled ? "" : "Not ");
         ImGui::SameLine();
 
-        ImGui::SetCursorPosY(ImGui::GetWindowHeight()-(10+25)*g_ui_scale);
         ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*g_ui_scale);
-
         ImGui::SetItemDefaultFocus();
         if (ImGui::Button(is_enabled ? "Disable" : "Enable", ImVec2(120*g_ui_scale, 0))) {
             if (!is_enabled) {
@@ -981,9 +981,7 @@ public:
     {
         if (!is_open) return;
 
-        ImVec2 size(550*g_ui_scale, 475*g_ui_scale);
-
-        ImGui::SetNextWindowSize(size, ImGuiCond_Appearing);
+        ImGui::SetNextWindowContentSize(ImVec2(550.0f*g_ui_scale, 0.0f));
         if (!ImGui::Begin("Report Compatibility", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::End();
             return;
@@ -1019,9 +1017,9 @@ public:
             "collection, archival, and publication of information as outlined "
             "in 'Privacy Disclosure' below.");
 
-        ImGui::Dummy(ImVec2(0, 5*g_ui_scale));
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
         ImGui::Separator();
-        ImGui::Dummy(ImVec2(0, 5*g_ui_scale));
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
 
         ImGui::Columns(2, "", false);
         ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.25);
@@ -1102,10 +1100,10 @@ public:
                 "indicated by your report.");    
             ImGui::TreePop();
         }
-
-        ImGui::Dummy(ImVec2(0, 5*g_ui_scale));
+        
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
         ImGui::Separator();
-        ImGui::Dummy(ImVec2(0, 5*g_ui_scale));
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
 
         if (did_send) {
             if (send_result) {
