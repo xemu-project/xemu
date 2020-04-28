@@ -981,7 +981,7 @@ public:
     {
         if (!is_open) return;
 
-        ImVec2 size(450*g_ui_scale, 475*g_ui_scale);
+        ImVec2 size(550*g_ui_scale, 475*g_ui_scale);
 
         ImGui::SetNextWindowSize(size, ImGuiCond_Appearing);
         if (!ImGui::Begin("Report Compatibility", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
@@ -1011,11 +1011,13 @@ public:
         }
 
         ImGui::TextWrapped(
-            "If you would like to submit a compatibility report for this "
-            "title, including some basic information about your system listed "
-            "below, please select an appropriate playability level, enter a "
-            "brief description of your experience, then click 'Send.' Note: "
-            "this information may be made publicly available.");
+            "If you would like to help improve xemu by submitting a compatibility report for this "
+            "title, please select an appropriate playability level, enter a "
+            "brief description, then click 'Send'."
+            "\n\n"
+            "Note: By submitting a report, you acknowledge and consent to "
+            "collection, archival, and publication of information as outlined "
+            "in 'Privacy Disclosure' below.");
 
         ImGui::Dummy(ImVec2(0, 5*g_ui_scale));
         ImGui::Separator();
@@ -1027,9 +1029,8 @@ public:
         ImGui::Text("User Token");
         ImGui::SameLine();
         HelpMarker("Optional. This is a unique token that users may "
-            "provide in order to expedite publication of their compatibility "
-            "reports. If a token is not provided, reports will be published "
-            "with submitters public IP address.");    
+            "provide in order to associate their report with their Discord "
+            "username. To request a token, click 'Get Token'.");    
         ImGui::NextColumn();
         float item_width = ImGui::GetColumnWidth()-20*g_ui_scale;
         ImGui::SetNextItemWidth(item_width*0.70);
@@ -1072,7 +1073,7 @@ public:
             dirty = true;
         }
 
-        if (ImGui::TreeNode("Full Report Information")) {
+        if (ImGui::TreeNode("Report Details")) {
             ImGui::PushFont(g_fixed_width_font);
             if (dirty) {
                 serialized_report = report.GetSerializedReport();
@@ -1083,7 +1084,24 @@ public:
             ImGui::TreePop();
         }
 
-        ImGui::Columns(1);
+        if (ImGui::TreeNode("Privacy Disclosure (Please read before submission!)")) {
+            ImGui::TextWrapped(
+                "By volunteering to submit a compatibility report, basic information about your "
+                "computer is collected, including: your operating system version, CPU model, "
+                "graphics card/driver information, and details about the title which are "
+                "extracted from the executable in memory. The contents of this report can be "
+                "seen before submission by expanding 'Report Details'."
+                "\n\n"
+                "Like many websites, upon submission, the public IP address of your computer is "
+                "also recorded with your report. If you choose to submit with a token, the "
+                "identity associated with your token (e.g. Discord username) is also recorded. "
+                "\n\n"
+                "This information will be archived and used to analyze, resolve problems with, "
+                "and improve the application. This information may be made publicly visible, "
+                "for example: to anyone who wishes to see the playability status of a title, as "
+                "indicated by your report.");    
+            ImGui::TreePop();
+        }
 
         ImGui::Dummy(ImVec2(0, 5*g_ui_scale));
         ImGui::Separator();
