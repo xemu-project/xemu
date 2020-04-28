@@ -856,7 +856,7 @@ public:
         ImGui::TextWrapped(
             "xemu socket networking works by sending and receiving packets over "
             "UDP which encapsulate the network traffic that the machine would "
-            "send or recieve when connected to a Local Area Network (LAN)."
+            "send or receive when connected to a Local Area Network (LAN)."
             );
 
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
@@ -883,7 +883,7 @@ public:
         ImGui::NextColumn();
 
         ImGui::Text("Local Host");
-        ImGui::SameLine(); HelpMarker("The local <IP address>:<Port> to recieve packets on (e.g. 0.0.0.0:9368)");
+        ImGui::SameLine(); HelpMarker("The local <IP address>:<Port> to receive packets on (e.g. 0.0.0.0:9368)");
         ImGui::NextColumn();
         ImGui::SetNextItemWidth(w);
         if (is_enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
