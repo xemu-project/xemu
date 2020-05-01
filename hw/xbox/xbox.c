@@ -28,7 +28,7 @@
 #include "hw/usb.h"
 #include "net/net.h"
 #include "hw/boards.h"
-#include "hw/ide.h"
+#include "hw/ide/pci.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/kvm.h"
 #include "kvm_i386.h"
@@ -310,7 +310,7 @@ void xbox_init_common(MachineState *machine,
 
     GSIState *gsi_state;
 
-    DriveInfo *hd[MAX_IDE_BUS * MAX_IDE_DEVS];
+    // DriveInfo *hd[MAX_IDE_BUS * MAX_IDE_DEVS];
     // BusState *idebus[MAX_IDE_BUS];
     ISADevice *rtc_state;
     ISADevice *pit = NULL;
@@ -374,11 +374,10 @@ void xbox_init_common(MachineState *machine,
 
     pcspk_init(isa_bus, pit);
 
-    ide_drive_get(hd, ARRAY_SIZE(hd));
-    // PCIDevice *ide_dev = pci_piix3_ide_init(pci_bus, hd, PCI_DEVFN(9, 0));
-    pci_piix3_ide_init(pci_bus, hd, PCI_DEVFN(9, 0));
-    // idebus[0] = qdev_get_child_bus(&ide_dev->qdev, "ide.0");
-    // idebus[1] = qdev_get_child_bus(&ide_dev->qdev, "ide.1");
+    PCIDevice *dev = pci_create_simple(pci_bus, PCI_DEVFN(9, 0), "piix3-ide");
+    pci_ide_create_devs(dev);
+    // idebus[0] = qdev_get_child_bus(&dev->qdev, "ide.0");
+    // idebus[1] = qdev_get_child_bus(&dev->qdev, "ide.1");
 
     // xbox bios wants this bit pattern set to mark the data as valid
     uint8_t bits = 0x55;
