@@ -106,7 +106,7 @@ static void mips_cps_realize(DeviceState *dev, Error **errp)
         object_property_set_bool(OBJECT(&s->itu), saar_present, "saar-present",
                                  &err);
         if (saar_present) {
-            qdev_prop_set_ptr(DEVICE(&s->itu), "saar", (void *)&env->CP0_SAAR);
+            s->itu.saar = &env->CP0_SAAR;
         }
         object_property_set_bool(OBJECT(&s->itu), true, "realized", &err);
         if (err != NULL) {
@@ -178,7 +178,7 @@ static void mips_cps_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = mips_cps_realize;
-    dc->props = mips_cps_properties;
+    device_class_set_props(dc, mips_cps_properties);
 }
 
 static const TypeInfo mips_cps_info = {

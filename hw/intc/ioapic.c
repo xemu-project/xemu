@@ -23,10 +23,11 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "monitor/monitor.h"
-#include "hw/i386/pc.h"
 #include "hw/i386/apic.h"
 #include "hw/i386/ioapic.h"
 #include "hw/i386/ioapic_internal.h"
+#include "hw/i386/x86.h"
+#include "hw/intc/i8259.h"
 #include "hw/pci/msi.h"
 #include "hw/qdev-properties.h"
 #include "sysemu/kvm.h"
@@ -476,7 +477,7 @@ static void ioapic_class_init(ObjectClass *klass, void *data)
      */
     k->post_load = ioapic_update_kvm_routes;
     dc->reset = ioapic_reset_common;
-    dc->props = ioapic_properties;
+    device_class_set_props(dc, ioapic_properties);
 }
 
 static const TypeInfo ioapic_info = {

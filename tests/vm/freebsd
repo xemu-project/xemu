@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # FreeBSD VM image
 #
@@ -24,14 +24,15 @@ class FreeBSDVM(basevm.BaseVM):
     name = "freebsd"
     arch = "x86_64"
 
-    link = "https://download.freebsd.org/ftp/releases/ISO-IMAGES/12.0/FreeBSD-12.0-RELEASE-amd64-disc1.iso.xz"
-    csum = "1d40015bea89d05b8bd13e2ed80c40b522a9ec1abd8e7c8b80954fb485fb99db"
+    link = "https://download.freebsd.org/ftp/releases/ISO-IMAGES/12.1/FreeBSD-12.1-RELEASE-amd64-disc1.iso.xz"
+    csum = "7394c3f60a1e236e7bd3a05809cf43ae39a3b8e5d42d782004cf2f26b1cfcd88"
     size = "20G"
     pkgs = [
         # build tools
         "git",
         "pkgconf",
         "bzip2",
+        "python37",
 
         # gnu tools
         "bash",
@@ -54,6 +55,9 @@ class FreeBSDVM(basevm.BaseVM):
         # libs: opengl
         "libepoxy",
         "mesa-libs",
+
+        # libs: migration
+        "zstd",
     ]
 
     BUILD_SCRIPT = """
@@ -63,7 +67,7 @@ class FreeBSDVM(basevm.BaseVM):
         mkdir src build; cd src;
         tar -xf /dev/vtbd1;
         cd ../build
-        ../src/configure --python=python3.6 {configure_opts};
+        ../src/configure --python=python3.7 {configure_opts};
         gmake --output-sync -j{jobs} {target} {verbose};
     """
 
@@ -82,13 +86,13 @@ class FreeBSDVM(basevm.BaseVM):
         self.print_step("Preparing iso and disk image")
         subprocess.check_call(["cp", "-f", cimg, iso_xz])
         subprocess.check_call(["xz", "-dvf", iso_xz])
-        subprocess.check_call(["qemu-img", "create", "-f", "qcow2",
-                               img_tmp, self.size])
+        self.exec_qemu_img("create", "-f", "qcow2", img_tmp, self.size)
 
         self.print_step("Booting installer")
         self.boot(img_tmp, extra_args = [
             "-bios", "pc-bios/bios-256k.bin",
             "-machine", "graphics=off",
+            "-device", "VGA",
             "-cdrom", iso
         ])
         self.console_init()

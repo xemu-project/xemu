@@ -104,6 +104,9 @@ static void arm_set_cpu_on_async_work(CPUState *target_cpu_state,
         /* Processor is not in secure mode */
         target_cpu->env.cp15.scr_el3 |= SCR_NS;
 
+        /* Set NSACR.{CP11,CP10} so NS can access the FPU */
+        target_cpu->env.cp15.nsacr |= 3 << 10;
+
         /*
          * If QEMU is providing the equivalent of EL3 firmware, then we need
          * to make sure a CPU targeting EL2 comes out of reset with a
@@ -123,6 +126,9 @@ static void arm_set_cpu_on_async_work(CPUState *target_cpu_state,
     } else {
         target_cpu->env.regs[0] = info->context_id;
     }
+
+    /* CP15 update requires rebuilding hflags */
+    arm_rebuild_hflags(&target_cpu->env);
 
     /* Start the new CPU at the requested address */
     cpu_set_pc(target_cpu_state, info->entry);

@@ -2,8 +2,6 @@
 #include <sys/prctl.h>
 #include <stdio.h>
 
-asm(".arch armv8.4-a");
-
 #ifndef PR_PAC_RESET_KEYS
 #define PR_PAC_RESET_KEYS  54
 #define PR_PAC_APDAKEY     (1 << 2)
@@ -31,7 +29,7 @@ int main()
     }
 
     perc = (float) count / (float) (TESTS * 2);
-    printf("Ptr Check: %0.2f%%", perc * 100.0);
+    printf("Ptr Check: %0.2f%%\n", perc * 100.0);
     assert(perc > 0.95);
     return 0;
 }

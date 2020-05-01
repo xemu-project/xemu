@@ -22,6 +22,7 @@
 #include "qemu/error-report.h"
 #include "hw/ppc/spapr.h" /* for RTAS return codes */
 #include "hw/pci-host/spapr.h" /* spapr_phb_remove_pci_device_cb callback */
+#include "hw/ppc/spapr_nvdimm.h"
 #include "sysemu/device_tree.h"
 #include "sysemu/reset.h"
 #include "trace.h"
@@ -455,21 +456,46 @@ void spapr_drc_reset(SpaprDrc *drc)
     }
 }
 
-bool spapr_drc_needed(void *opaque)
+static bool spapr_drc_unplug_requested_needed(void *opaque)
 {
-    SpaprDrc *drc = (SpaprDrc *)opaque;
+    return spapr_drc_unplug_requested(opaque);
+}
+
+static const VMStateDescription vmstate_spapr_drc_unplug_requested = {
+    .name = "spapr_drc/unplug_requested",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = spapr_drc_unplug_requested_needed,
+    .fields  = (VMStateField []) {
+        VMSTATE_BOOL(unplug_requested, SpaprDrc),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+bool spapr_drc_transient(SpaprDrc *drc)
+{
     SpaprDrcClass *drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
 
-    /* If no dev is plugged in there is no need to migrate the DRC state */
+    /*
+     * If no dev is plugged in there is no need to migrate the DRC state
+     * nor to reset the DRC at CAS.
+     */
     if (!drc->dev) {
         return false;
     }
 
     /*
-     * We need to migrate the state if it's not equal to the expected
-     * long-term state, which is the same as the coldplugged initial
-     * state */
-    return (drc->state != drck->ready_state);
+     * We need to reset the DRC at CAS or to migrate the DRC state if it's
+     * not equal to the expected long-term state, which is the same as the
+     * coldplugged initial state, or if an unplug request is pending.
+     */
+    return drc->state != drck->ready_state ||
+        spapr_drc_unplug_requested(drc);
+}
+
+static bool spapr_drc_needed(void *opaque)
+{
+    return spapr_drc_transient(opaque);
 }
 
 static const VMStateDescription vmstate_spapr_drc = {
@@ -480,6 +506,10 @@ static const VMStateDescription vmstate_spapr_drc = {
     .fields  = (VMStateField []) {
         VMSTATE_UINT32(state, SpaprDrc),
         VMSTATE_END_OF_LIST()
+    },
+    .subsections = (const VMStateDescription * []) {
+        &vmstate_spapr_drc_unplug_requested,
+        NULL
     }
 };
 
@@ -511,7 +541,7 @@ static void realize(DeviceState *d, Error **errp)
         error_propagate(errp, err);
         return;
     }
-    vmstate_register(DEVICE(drc), spapr_drc_index(drc), &vmstate_spapr_drc,
+    vmstate_register(VMSTATE_IF(drc), spapr_drc_index(drc), &vmstate_spapr_drc,
                      drc);
     trace_spapr_drc_realize_complete(spapr_drc_index(drc));
 }
@@ -523,7 +553,7 @@ static void unrealize(DeviceState *d, Error **errp)
     gchar *name;
 
     trace_spapr_drc_unrealize(spapr_drc_index(drc));
-    vmstate_unregister(DEVICE(drc), &vmstate_spapr_drc, drc);
+    vmstate_unregister(VMSTATE_IF(drc), &vmstate_spapr_drc, drc);
     root_container = container_get(object_get_root(), DRC_CONTAINER_PATH);
     name = g_strdup_printf("%x", spapr_drc_index(drc));
     object_property_del(root_container, name, errp);
@@ -553,7 +583,8 @@ static void spapr_dr_connector_instance_init(Object *obj)
     SpaprDrc *drc = SPAPR_DR_CONNECTOR(obj);
     SpaprDrcClass *drck = SPAPR_DR_CONNECTOR_GET_CLASS(drc);
 
-    object_property_add_uint32_ptr(obj, "id", &drc->id, NULL);
+    object_property_add_uint32_ptr(obj, "id", &drc->id, OBJ_PROP_FLAG_READ,
+                                   NULL);
     object_property_add(obj, "index", "uint32", prop_get_index,
                         NULL, NULL, NULL, NULL);
     object_property_add(obj, "fdt", "struct", prop_get_fdt,
@@ -619,7 +650,8 @@ static void realize_physical(DeviceState *d, Error **errp)
         return;
     }
 
-    vmstate_register(DEVICE(drcp), spapr_drc_index(SPAPR_DR_CONNECTOR(drcp)),
+    vmstate_register(VMSTATE_IF(drcp),
+                     spapr_drc_index(SPAPR_DR_CONNECTOR(drcp)),
                      &vmstate_spapr_drc_physical, drcp);
     qemu_register_reset(drc_physical_reset, drcp);
 }
@@ -635,7 +667,7 @@ static void unrealize_physical(DeviceState *d, Error **errp)
         return;
     }
 
-    vmstate_unregister(DEVICE(drcp), &vmstate_spapr_drc_physical, drcp);
+    vmstate_unregister(VMSTATE_IF(drcp), &vmstate_spapr_drc_physical, drcp);
     qemu_unregister_reset(drc_physical_reset, drcp);
 }
 
@@ -708,6 +740,17 @@ static void spapr_drc_phb_class_init(ObjectClass *k, void *data)
     drck->dt_populate = spapr_phb_dt_populate;
 }
 
+static void spapr_drc_pmem_class_init(ObjectClass *k, void *data)
+{
+    SpaprDrcClass *drck = SPAPR_DR_CONNECTOR_CLASS(k);
+
+    drck->typeshift = SPAPR_DR_CONNECTOR_TYPE_SHIFT_PMEM;
+    drck->typename = "PMEM";
+    drck->drc_name_prefix = "PMEM ";
+    drck->release = NULL;
+    drck->dt_populate = spapr_pmem_dt_populate;
+}
+
 static const TypeInfo spapr_dr_connector_info = {
     .name          = TYPE_SPAPR_DR_CONNECTOR,
     .parent        = TYPE_DEVICE,
@@ -756,6 +799,12 @@ static const TypeInfo spapr_drc_phb_info = {
     .parent        = TYPE_SPAPR_DRC_LOGICAL,
     .instance_size = sizeof(SpaprDrc),
     .class_init    = spapr_drc_phb_class_init,
+};
+
+static const TypeInfo spapr_drc_pmem_info = {
+    .name          = TYPE_SPAPR_DRC_PMEM,
+    .parent        = TYPE_SPAPR_DRC_LOGICAL,
+    .class_init    = spapr_drc_pmem_class_init,
 };
 
 /* helper functions for external users */
@@ -1229,6 +1278,7 @@ static void spapr_drc_register_types(void)
     type_register_static(&spapr_drc_pci_info);
     type_register_static(&spapr_drc_lmb_info);
     type_register_static(&spapr_drc_phb_info);
+    type_register_static(&spapr_drc_pmem_info);
 
     spapr_rtas_register(RTAS_SET_INDICATOR, "set-indicator",
                         rtas_set_indicator);

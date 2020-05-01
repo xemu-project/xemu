@@ -15,6 +15,10 @@
 
 #define TYPE_SPAPR_XIVE "spapr-xive"
 #define SPAPR_XIVE(obj) OBJECT_CHECK(SpaprXive, (obj), TYPE_SPAPR_XIVE)
+#define SPAPR_XIVE_CLASS(klass)                                         \
+    OBJECT_CLASS_CHECK(SpaprXiveClass, (klass), TYPE_SPAPR_XIVE)
+#define SPAPR_XIVE_GET_CLASS(obj)                               \
+    OBJECT_GET_CLASS(SpaprXiveClass, (obj), TYPE_SPAPR_XIVE)
 
 typedef struct SpaprXive {
     XiveRouter    parent;
@@ -47,6 +51,12 @@ typedef struct SpaprXive {
     VMChangeStateEntry *change;
 } SpaprXive;
 
+typedef struct SpaprXiveClass {
+    XiveRouterClass parent;
+
+    DeviceRealize parent_realize;
+} SpaprXiveClass;
+
 /*
  * The sPAPR machine has a unique XIVE IC device. Assign a fixed value
  * to the controller block id value. It can nevertheless be changed
@@ -66,7 +76,8 @@ int spapr_xive_end_to_target(uint8_t end_blk, uint32_t end_idx,
 /*
  * KVM XIVE device helpers
  */
-int kvmppc_xive_connect(SpaprInterruptController *intc, Error **errp);
+int kvmppc_xive_connect(SpaprInterruptController *intc, uint32_t nr_servers,
+                        Error **errp);
 void kvmppc_xive_disconnect(SpaprInterruptController *intc);
 void kvmppc_xive_reset(SpaprXive *xive, Error **errp);
 void kvmppc_xive_set_source_config(SpaprXive *xive, uint32_t lisn, XiveEAS *eas,

@@ -176,7 +176,7 @@ static void qemu_s390_skeys_init(Object *obj)
     QEMUS390SKeysState *skeys = QEMU_S390_SKEYS(obj);
     MachineState *machine = MACHINE(qdev_get_machine());
 
-    skeys->key_count = machine->maxram_size / TARGET_PAGE_SIZE;
+    skeys->key_count = machine->ram_size / TARGET_PAGE_SIZE;
     skeys->keydata = g_malloc0(skeys->key_count);
 }
 
@@ -392,7 +392,7 @@ static inline void s390_skeys_set_migration_enabled(Object *obj, bool value,
         register_savevm_live(TYPE_S390_SKEYS, 0, 1,
                              &savevm_s390_storage_keys, ss);
     } else {
-        unregister_savevm(DEVICE(ss), TYPE_S390_SKEYS, ss);
+        unregister_savevm(VMSTATE_IF(ss), TYPE_S390_SKEYS, ss);
     }
 }
 

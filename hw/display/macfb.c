@@ -362,8 +362,8 @@ static void macfb_common_realize(DeviceState *dev, MacfbState *s, Error **errp)
         return;
     }
 
-    memory_region_init_io(&s->mem_ctrl, NULL, &macfb_ctrl_ops, s, "macfb-ctrl",
-                          0x1000);
+    memory_region_init_io(&s->mem_ctrl, OBJECT(dev), &macfb_ctrl_ops, s,
+                          "macfb-ctrl", 0x1000);
 
     memory_region_init_ram_nomigrate(&s->mem_vram, OBJECT(s), "macfb-vram",
                                      MACFB_VRAM_SIZE, errp);
@@ -437,7 +437,7 @@ static void macfb_sysbus_class_init(ObjectClass *klass, void *data)
     dc->desc = "SysBus Macintosh framebuffer";
     dc->reset = macfb_sysbus_reset;
     dc->vmsd = &vmstate_macfb;
-    dc->props = macfb_sysbus_properties;
+    device_class_set_props(dc, macfb_sysbus_properties);
 }
 
 static void macfb_nubus_class_init(ObjectClass *klass, void *data)
@@ -450,7 +450,7 @@ static void macfb_nubus_class_init(ObjectClass *klass, void *data)
     dc->desc = "Nubus Macintosh framebuffer";
     dc->reset = macfb_nubus_reset;
     dc->vmsd = &vmstate_macfb;
-    dc->props = macfb_nubus_properties;
+    device_class_set_props(dc, macfb_nubus_properties);
 }
 
 static TypeInfo macfb_sysbus_info = {

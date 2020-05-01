@@ -13,8 +13,8 @@ common-obj-$(CONFIG_USB_XHCI) += hcd-xhci.o
 common-obj-$(CONFIG_USB_XHCI_NEC) += hcd-xhci-nec.o
 common-obj-$(CONFIG_USB_MUSB) += hcd-musb.o
 
-obj-$(CONFIG_TUSB6010) += tusb6010.o
-obj-$(CONFIG_IMX)      += chipidea.o
+common-obj-$(CONFIG_TUSB6010) += tusb6010.o
+common-obj-$(CONFIG_IMX)      += chipidea.o
 
 # emulated usb devices
 common-obj-$(CONFIG_USB) += dev-hub.o
@@ -25,7 +25,6 @@ common-obj-$(CONFIG_USB_STORAGE_UAS)  += dev-uas.o
 common-obj-$(CONFIG_USB_AUDIO)        += dev-audio.o
 common-obj-$(CONFIG_USB_SERIAL)       += dev-serial.o
 common-obj-$(CONFIG_USB_NETWORK)      += dev-network.o
-common-obj-$(CONFIG_USB_BLUETOOTH)    += dev-bluetooth.o
 
 ifeq ($(CONFIG_USB_SMARTCARD),y)
 common-obj-y                          += dev-smartcard-reader.o
@@ -40,9 +39,11 @@ common-obj-$(CONFIG_USB_STORAGE_MTP)  += dev-mtp.o
 endif
 
 # usb redirection
+ifeq ($(CONFIG_USB),y)
 common-obj-$(CONFIG_USB_REDIR) += redirect.o quirks.o
 redirect.o-cflags = $(USB_REDIR_CFLAGS)
 redirect.o-libs = $(USB_REDIR_LIBS)
+endif
 
 # usb pass-through
 ifeq ($(CONFIG_USB_LIBUSB)$(CONFIG_USB),yy)
@@ -60,3 +61,5 @@ common-obj-$(CONFIG_XEN) += xen-usb.o
 xen-usb.o-cflags := $(LIBUSB_CFLAGS)
 xen-usb.o-libs := $(LIBUSB_LIBS)
 endif
+
+common-obj-$(CONFIG_IMX_USBPHY) += imx-usb-phy.o

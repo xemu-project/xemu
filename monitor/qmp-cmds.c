@@ -15,7 +15,6 @@
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
-#include "qemu-version.h"
 #include "qemu/cutils.h"
 #include "qemu/option.h"
 #include "monitor/monitor.h"
@@ -31,7 +30,8 @@
 #include "sysemu/blockdev.h"
 #include "sysemu/block-backend.h"
 #include "qapi/error.h"
-#include "qapi/qapi-commands-block-core.h"
+#include "qapi/qapi-commands-block.h"
+#include "qapi/qapi-commands-control.h"
 #include "qapi/qapi-commands-machine.h"
 #include "qapi/qapi-commands-misc.h"
 #include "qapi/qapi-commands-ui.h"
@@ -47,19 +47,6 @@ NameInfo *qmp_query_name(Error **errp)
         info->has_name = true;
         info->name = g_strdup(qemu_name);
     }
-
-    return info;
-}
-
-VersionInfo *qmp_query_version(Error **errp)
-{
-    VersionInfo *info = g_new0(VersionInfo, 1);
-
-    info->qemu = g_new0(VersionTriple, 1);
-    info->qemu->major = QEMU_VERSION_MAJOR;
-    info->qemu->minor = QEMU_VERSION_MINOR;
-    info->qemu->micro = QEMU_VERSION_MICRO;
-    info->package = g_strdup(QEMU_PKGVERSION);
 
     return info;
 }
@@ -109,7 +96,7 @@ void qmp_system_reset(Error **errp)
     qemu_system_reset_request(SHUTDOWN_CAUSE_HOST_QMP_SYSTEM_RESET);
 }
 
-void qmp_system_powerdown(Error **erp)
+void qmp_system_powerdown(Error **errp)
 {
     qemu_system_powerdown_request();
 }

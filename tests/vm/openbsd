@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # OpenBSD VM image
 #
@@ -22,8 +22,8 @@ class OpenBSDVM(basevm.BaseVM):
     name = "openbsd"
     arch = "x86_64"
 
-    link = "https://cdn.openbsd.org/pub/OpenBSD/6.5/amd64/install65.iso"
-    csum = "38d1f8cadd502f1c27bf05c5abde6cc505dd28f3f34f8a941048ff9a54f9f608"
+    link = "https://cdn.openbsd.org/pub/OpenBSD/6.6/amd64/install66.iso"
+    csum = "b22e63df56e6266de6bbeed8e9be0fbe9ee2291551c5bc03f3cc2e4ab9436ee3"
     size = "20G"
     pkgs = [
         # tools
@@ -51,6 +51,9 @@ class OpenBSDVM(basevm.BaseVM):
         "sdl2",
         "gtk+3",
         "libxkbcommon",
+
+        # libs: migration
+        "zstd",
     ]
 
     BUILD_SCRIPT = """
@@ -73,13 +76,13 @@ class OpenBSDVM(basevm.BaseVM):
 
         self.print_step("Preparing iso and disk image")
         subprocess.check_call(["cp", "-f", cimg, iso])
-        subprocess.check_call(["qemu-img", "create", "-f", "qcow2",
-                               img_tmp, self.size])
+        self.exec_qemu_img("create", "-f", "qcow2", img_tmp, self.size)
 
         self.print_step("Booting installer")
         self.boot(img_tmp, extra_args = [
             "-bios", "pc-bios/bios-256k.bin",
             "-machine", "graphics=off",
+            "-device", "VGA",
             "-cdrom", iso
         ])
         self.console_init()

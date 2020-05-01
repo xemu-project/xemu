@@ -30,16 +30,16 @@ class IbmPrep40pMachine(Test):
         :avocado: tags=machine:40p
         :avocado: tags=slowness:high
         """
-        bios_url = ('ftp://ftp.boulder.ibm.com/rs6000/firmware/'
+        bios_url = ('http://ftpmirror.your.org/pub/misc/'
+                    'ftp.software.ibm.com/rs6000/firmware/'
                     '7020-40p/P12H0456.IMG')
         bios_hash = '1775face4e6dc27f3a6ed955ef6eb331bf817f03'
         bios_path = self.fetch_asset(bios_url, asset_hash=bios_hash)
-        drive_url = ('https://ftp.netbsd.org/pub/NetBSD/NetBSD-archive/'
+        drive_url = ('https://cdn.netbsd.org/pub/NetBSD/NetBSD-archive/'
                      'NetBSD-4.0/prep/installation/floppy/generic_com0.fs')
         drive_hash = 'dbcfc09912e71bd5f0d82c7c1ee43082fb596ceb'
         drive_path = self.fetch_asset(drive_url, asset_hash=drive_hash)
 
-        self.vm.set_machine('40p')
         self.vm.set_console()
         self.vm.add_args('-bios', bios_path,
                          '-fda', drive_path)
@@ -53,7 +53,6 @@ class IbmPrep40pMachine(Test):
         :avocado: tags=arch:ppc
         :avocado: tags=machine:40p
         """
-        self.vm.set_machine('40p')
         self.vm.set_console()
         self.vm.add_args('-m', '192') # test fw_cfg
 
@@ -68,12 +67,11 @@ class IbmPrep40pMachine(Test):
         :avocado: tags=arch:ppc
         :avocado: tags=machine:40p
         """
-        drive_url = ('https://ftp.netbsd.org/pub/NetBSD/iso/7.1.2/'
+        drive_url = ('https://cdn.netbsd.org/pub/NetBSD/iso/7.1.2/'
                      'NetBSD-7.1.2-prep.iso')
         drive_hash = 'ac6fa2707d888b36d6fa64de6e7fe48e'
         drive_path = self.fetch_asset(drive_url, asset_hash=drive_hash,
                                       algorithm='md5')
-        self.vm.set_machine('40p')
         self.vm.set_console()
         self.vm.add_args('-cdrom', drive_path,
                          '-boot', 'd')

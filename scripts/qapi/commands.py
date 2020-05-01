@@ -237,9 +237,9 @@ void %(c_prefix)sqmp_init_marshal(QmpCommandList *cmds)
 class QAPISchemaGenCommandVisitor(QAPISchemaModularCVisitor):
 
     def __init__(self, prefix):
-        QAPISchemaModularCVisitor.__init__(
-            self, prefix, 'qapi-commands',
-            ' * Schema-defined QAPI/QMP commands', __doc__)
+        super().__init__(
+            prefix, 'qapi-commands',
+            ' * Schema-defined QAPI/QMP commands', None, __doc__)
         self._regy = QAPIGenCCode(None)
         self._visited_ret_types = {}
 
@@ -263,22 +263,29 @@ class QAPISchemaGenCommandVisitor(QAPISchemaModularCVisitor):
                              commands=commands, visit=visit))
         self._genh.add(mcgen('''
 #include "%(types)s.h"
-#include "qapi/qmp/dispatch.h"
 
 ''',
                              types=types))
 
     def visit_end(self):
-        (genc, genh) = self._module[self._main_module]
-        genh.add(mcgen('''
+        self._add_system_module('init', ' * QAPI Commands initialization')
+        self._genh.add(mcgen('''
+#include "qapi/qmp/dispatch.h"
+
 void %(c_prefix)sqmp_init_marshal(QmpCommandList *cmds);
 ''',
-                       c_prefix=c_name(self._prefix, protect=False)))
-        genc.add(gen_registry(self._regy.get_content(), self._prefix))
+                             c_prefix=c_name(self._prefix, protect=False)))
+        self._genc.preamble_add(mcgen('''
+#include "qemu/osdep.h"
+#include "%(prefix)sqapi-commands.h"
+#include "%(prefix)sqapi-init-commands.h"
+''',
+                                      prefix=self._prefix))
+        self._genc.add(gen_registry(self._regy.get_content(), self._prefix))
 
-    def visit_command(self, name, info, ifcond, arg_type, ret_type, gen,
-                      success_response, boxed, allow_oob, allow_preconfig,
-                      features):
+    def visit_command(self, name, info, ifcond, features,
+                      arg_type, ret_type, gen, success_response, boxed,
+                      allow_oob, allow_preconfig):
         if not gen:
             return
         # FIXME: If T is a user-defined type, the user is responsible

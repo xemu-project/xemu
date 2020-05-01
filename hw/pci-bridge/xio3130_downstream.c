@@ -94,7 +94,7 @@ static void xio3130_downstream_realize(PCIDevice *d, Error **errp)
     }
     pcie_cap_flr_init(d);
     pcie_cap_deverr_init(d);
-    pcie_cap_slot_init(d, s->slot);
+    pcie_cap_slot_init(d, s);
     pcie_cap_arifwd_init(d);
 
     pcie_chassis_create(s->chassis);
@@ -169,7 +169,7 @@ static void xio3130_downstream_class_init(ObjectClass *klass, void *data)
     dc->desc = "TI X3130 Downstream Port of PCI Express Switch";
     dc->reset = xio3130_downstream_reset;
     dc->vmsd = &vmstate_xio3130_downstream;
-    dc->props = xio3130_downstream_props;
+    device_class_set_props(dc, xio3130_downstream_props);
 }
 
 static const TypeInfo xio3130_downstream_info = {

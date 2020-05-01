@@ -19,6 +19,7 @@
 #include <stddef.h>
 #include <sys/poll.h>
 #include <linux/vhost.h>
+#include <pthread.h>
 #include "standard-headers/linux/virtio_ring.h"
 
 /* Based on qemu/hw/virtio/vhost-user.c */
@@ -53,6 +54,7 @@ enum VhostUserProtocolFeature {
     VHOST_USER_PROTOCOL_F_SLAVE_SEND_FD = 10,
     VHOST_USER_PROTOCOL_F_HOST_NOTIFIER = 11,
     VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD = 12,
+    VHOST_USER_PROTOCOL_F_INBAND_NOTIFICATIONS = 14,
 
     VHOST_USER_PROTOCOL_F_MAX
 };
@@ -94,6 +96,7 @@ typedef enum VhostUserRequest {
     VHOST_USER_GET_INFLIGHT_FD = 31,
     VHOST_USER_SET_INFLIGHT_FD = 32,
     VHOST_USER_GPU_SET_SOCKET = 33,
+    VHOST_USER_VRING_KICK = 35,
     VHOST_USER_MAX
 } VhostUserRequest;
 
@@ -102,6 +105,8 @@ typedef enum VhostUserSlaveRequest {
     VHOST_USER_SLAVE_IOTLB_MSG = 1,
     VHOST_USER_SLAVE_CONFIG_CHANGE_MSG = 2,
     VHOST_USER_SLAVE_VRING_HOST_NOTIFIER_MSG = 3,
+    VHOST_USER_SLAVE_VRING_CALL = 4,
+    VHOST_USER_SLAVE_VRING_ERR = 5,
     VHOST_USER_SLAVE_MAX
 }  VhostUserSlaveRequest;
 
@@ -281,7 +286,7 @@ typedef struct VuVirtqInflight {
     uint16_t used_idx;
 
     /* Used to track the state of each descriptor in descriptor table */
-    VuDescStateSplit desc[0];
+    VuDescStateSplit desc[];
 } VuVirtqInflight;
 
 typedef struct VuVirtqInflightDesc {
@@ -326,6 +331,9 @@ typedef struct VuVirtq {
     int err_fd;
     unsigned int enable;
     bool started;
+
+    /* Guest addresses of our ring */
+    struct vhost_vring_addr vra;
 } VuVirtq;
 
 enum VuWatchCondtion {
@@ -355,6 +363,8 @@ struct VuDev {
     VuVirtq *vq;
     VuDevInflightInfo inflight_info;
     int log_call_fd;
+    /* Must be held while using slave_fd */
+    pthread_mutex_t slave_mutex;
     int slave_fd;
     uint64_t log_size;
     uint8_t *log_table;
@@ -521,6 +531,16 @@ bool vu_queue_empty(VuDev *dev, VuVirtq *vq);
  * Request to notify the queue via callfd (skipped if unnecessary)
  */
 void vu_queue_notify(VuDev *dev, VuVirtq *vq);
+
+/**
+ * vu_queue_notify_sync:
+ * @dev: a VuDev context
+ * @vq: a VuVirtq queue
+ *
+ * Request to notify the queue via callfd (skipped if unnecessary)
+ * or sync message if possible.
+ */
+void vu_queue_notify_sync(VuDev *dev, VuVirtq *vq);
 
 /**
  * vu_queue_pop:

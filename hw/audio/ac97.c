@@ -1301,8 +1301,6 @@ typedef struct AC97DeviceState {
     PCIDevice dev;
     AC97LinkState state;
 
-    uint32_t use_broken_id;
-
     MemoryRegion io_nam;
     MemoryRegion io_nabm;
 } AC97DeviceState;
@@ -1391,13 +1389,6 @@ static void ac97_realize (PCIDevice *dev, Error **errp)
     c[PCI_BASE_ADDRESS_0 + 6] = 0x00;
     c[PCI_BASE_ADDRESS_0 + 7] = 0x00;
 
-    if (s->use_broken_id) {
-        c[PCI_SUBSYSTEM_VENDOR_ID] = 0x86;
-        c[PCI_SUBSYSTEM_VENDOR_ID + 1] = 0x80;
-        c[PCI_SUBSYSTEM_ID] = 0x00;
-        c[PCI_SUBSYSTEM_ID + 1] = 0x00;
-    }
-
     c[PCI_INTERRUPT_LINE] = 0x00;      /* intr_ln interrupt line rw */
     c[PCI_INTERRUPT_PIN] = 0x01;      /* intr_pn interrupt pin ro */
 
@@ -1426,7 +1417,7 @@ static int ac97_init (PCIBus *bus)
 
 static Property ac97_properties[] = {
     DEFINE_AUDIO_PROPERTIES(AC97DeviceState, state.card),
-    DEFINE_PROP_UINT32 ("use_broken_id", AC97DeviceState, use_broken_id, 0),
+    DEFINE_PROP_END_OF_LIST (),
 };
 
 static void ac97_class_init (ObjectClass *klass, void *data)
@@ -1443,7 +1434,7 @@ static void ac97_class_init (ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_SOUND, dc->categories);
     dc->desc = "Intel 82801AA AC97 Audio";
     dc->vmsd = &vmstate_ac97;
-    dc->props = ac97_properties;
+    device_class_set_props(dc, ac97_properties);
     dc->reset = ac97_on_device_reset;
 }
 

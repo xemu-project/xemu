@@ -8,6 +8,7 @@
 #include "qapi/qmp/qerror.h"
 #include "qemu/ctype.h"
 #include "qemu/error-report.h"
+#include "qapi/qapi-types-migration.h"
 #include "hw/block/block.h"
 #include "net/hub.h"
 #include "qapi/visitor.h"
@@ -73,12 +74,10 @@ static void set_enum(Object *obj, Visitor *v, const char *name, void *opaque,
     visit_type_enum(v, prop->name, ptr, prop->info->enum_table, errp);
 }
 
-static void set_default_value_enum(Object *obj, const Property *prop)
+static void set_default_value_enum(ObjectProperty *op, const Property *prop)
 {
-    object_property_set_str(obj,
-                            qapi_enum_lookup(prop->info->enum_table,
-                                             prop->defval.i),
-                            prop->name, &error_abort);
+    object_property_set_default_str(op,
+        qapi_enum_lookup(prop->info->enum_table, prop->defval.i));
 }
 
 /* Bit */
@@ -132,9 +131,9 @@ static void prop_set_bit(Object *obj, Visitor *v, const char *name,
     bit_prop_set(dev, prop, value);
 }
 
-static void set_default_value_bool(Object *obj, const Property *prop)
+static void set_default_value_bool(ObjectProperty *op, const Property *prop)
 {
-    object_property_set_bool(obj, prop->defval.u, prop->name, &error_abort);
+    object_property_set_default_bool(op, prop->defval.u);
 }
 
 const PropertyInfo qdev_prop_bit = {
@@ -265,14 +264,14 @@ static void set_uint8(Object *obj, Visitor *v, const char *name, void *opaque,
     visit_type_uint8(v, name, ptr, errp);
 }
 
-static void set_default_value_int(Object *obj, const Property *prop)
+static void set_default_value_int(ObjectProperty *op, const Property *prop)
 {
-    object_property_set_int(obj, prop->defval.i, prop->name, &error_abort);
+    object_property_set_default_int(op, prop->defval.i);
 }
 
-static void set_default_value_uint(Object *obj, const Property *prop)
+static void set_default_value_uint(ObjectProperty *op, const Property *prop)
 {
-    object_property_set_uint(obj, prop->defval.u, prop->name, &error_abort);
+    object_property_set_default_uint(op, prop->defval.u);
 }
 
 const PropertyInfo qdev_prop_uint8 = {
@@ -501,13 +500,6 @@ const PropertyInfo qdev_prop_string = {
     .set   = set_string,
 };
 
-/* --- pointer --- */
-
-/* Not a proper property, just for dirty hacks.  TODO Remove it!  */
-const PropertyInfo qdev_prop_ptr = {
-    .name  = "ptr",
-};
-
 /* --- mac address --- */
 
 /*
@@ -643,6 +635,18 @@ const PropertyInfo qdev_prop_fdc_drive_type = {
     .description = "FDC drive type, "
                    "144/288/120/none/auto",
     .enum_table = &FloppyDriveType_lookup,
+    .get = get_enum,
+    .set = set_enum,
+    .set_default_value = set_default_value_enum,
+};
+
+/* --- MultiFDCompression --- */
+
+const PropertyInfo qdev_prop_multifd_compression = {
+    .name = "MultiFDCompression",
+    .description = "multifd_compression values, "
+                   "none/zlib/zstd",
+    .enum_table = &MultiFDCompression_lookup,
     .get = get_enum,
     .set = set_enum,
     .set_default_value = set_default_value_enum,
@@ -932,9 +936,9 @@ static void set_uuid(Object *obj, Visitor *v, const char *name, void *opaque,
     g_free(str);
 }
 
-static void set_default_uuid_auto(Object *obj, const Property *prop)
+static void set_default_uuid_auto(ObjectProperty *op, const Property *prop)
 {
-    object_property_set_str(obj, UUID_VALUE_AUTO, prop->name, &error_abort);
+    object_property_set_default_str(op, UUID_VALUE_AUTO);
 }
 
 const PropertyInfo qdev_prop_uuid = {
@@ -1078,7 +1082,7 @@ static Property *qdev_prop_find(DeviceState *dev, const char *name)
     /* device properties */
     class = object_get_class(OBJECT(dev));
     do {
-        prop = qdev_prop_walk(DEVICE_CLASS(class)->props, name);
+        prop = qdev_prop_walk(DEVICE_CLASS(class)->props_, name);
         if (prop) {
             return prop;
         }
@@ -1163,17 +1167,6 @@ void qdev_prop_set_enum(DeviceState *dev, const char *name, int value)
     object_property_set_str(OBJECT(dev),
                             qapi_enum_lookup(prop->info->enum_table, value),
                             name, &error_abort);
-}
-
-void qdev_prop_set_ptr(DeviceState *dev, const char *name, void *value)
-{
-    Property *prop;
-    void **ptr;
-
-    prop = qdev_prop_find(dev, name);
-    assert(prop && prop->info == &qdev_prop_ptr);
-    ptr = qdev_get_prop_ptr(dev, prop);
-    *ptr = value;
 }
 
 static GPtrArray *global_props(void)
@@ -1261,15 +1254,13 @@ const PropertyInfo qdev_prop_size = {
 
 /* --- object link property --- */
 
-static void create_link_property(Object *obj, Property *prop, Error **errp)
+static void create_link_property(ObjectClass *oc, Property *prop, Error **errp)
 {
-    Object **child = qdev_get_prop_ptr(DEVICE(obj), prop);
-
-    object_property_add_link(obj, prop->name, prop->link_type,
-                             child,
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG,
-                             errp);
+    object_class_property_add_link(oc, prop->name, prop->link_type,
+                                   prop->offset,
+                                   qdev_prop_allow_set_link_before_realize,
+                                   OBJ_PROP_LINK_STRONG,
+                                   errp);
 }
 
 const PropertyInfo qdev_prop_link = {

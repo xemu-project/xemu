@@ -185,7 +185,7 @@ uint32_t vfp_get_fpscr(CPUARMState *env)
 void HELPER(vfp_set_fpscr)(CPUARMState *env, uint32_t val)
 {
     /* When ARMv8.2-FP16 is not supported, FZ16 is RES0.  */
-    if (!cpu_isar_feature(aa64_fp16, env_archcpu(env))) {
+    if (!cpu_isar_feature(any_fp16, env_archcpu(env))) {
         val &= ~FPCR_FZ16;
     }
 
@@ -1320,6 +1320,35 @@ float64 HELPER(frint32_d)(float64 f, void *fpst)
 float64 HELPER(frint64_d)(float64 f, void *fpst)
 {
     return frint_d(f, fpst, 64);
+}
+
+void HELPER(check_hcr_el2_trap)(CPUARMState *env, uint32_t rt, uint32_t reg)
+{
+    uint32_t syndrome;
+
+    switch (reg) {
+    case ARM_VFP_MVFR0:
+    case ARM_VFP_MVFR1:
+    case ARM_VFP_MVFR2:
+        if (!(arm_hcr_el2_eff(env) & HCR_TID3)) {
+            return;
+        }
+        break;
+    case ARM_VFP_FPSID:
+        if (!(arm_hcr_el2_eff(env) & HCR_TID0)) {
+            return;
+        }
+        break;
+    default:
+        g_assert_not_reached();
+    }
+
+    syndrome = ((EC_FPIDTRAP << ARM_EL_EC_SHIFT)
+                | ARM_EL_IL
+                | (1 << 24) | (0xe << 20) | (7 << 14)
+                | (reg << 10) | (rt << 5) | 1);
+
+    raise_exception(env, EXCP_HYP_TRAP, syndrome, 2);
 }
 
 #endif

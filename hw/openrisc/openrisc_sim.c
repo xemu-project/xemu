@@ -98,7 +98,7 @@ static void openrisc_load_kernel(ram_addr_t ram_size,
 
     if (kernel_filename && !qtest_enabled()) {
         kernel_size = load_elf(kernel_filename, NULL, NULL, NULL,
-                               &elf_entry, NULL, NULL, 1, EM_OPENRISC,
+                               &elf_entry, NULL, NULL, NULL, 1, EM_OPENRISC,
                                1, 0);
         entry = elf_entry;
         if (kernel_size < 0) {
@@ -176,7 +176,7 @@ static void openrisc_sim_machine_init(MachineClass *mc)
     mc->desc = "or1k simulation";
     mc->init = openrisc_sim_init;
     mc->max_cpus = 2;
-    mc->is_default = 1;
+    mc->is_default = true;
     mc->default_cpu_type = OPENRISC_CPU_TYPE_NAME("or1200");
 }
 

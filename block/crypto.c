@@ -30,6 +30,7 @@
 #include "qapi/error.h"
 #include "qemu/module.h"
 #include "qemu/option.h"
+#include "qemu/cutils.h"
 #include "crypto.h"
 
 typedef struct BlockCrypto BlockCrypto;
@@ -484,6 +485,67 @@ static int64_t block_crypto_getlength(BlockDriverState *bs)
 }
 
 
+static BlockMeasureInfo *block_crypto_measure(QemuOpts *opts,
+                                              BlockDriverState *in_bs,
+                                              Error **errp)
+{
+    g_autoptr(QCryptoBlockCreateOptions) create_opts = NULL;
+    Error *local_err = NULL;
+    BlockMeasureInfo *info;
+    uint64_t size;
+    size_t luks_payload_size;
+    QDict *cryptoopts;
+
+    /*
+     * Preallocation mode doesn't affect size requirements but we must consume
+     * the option.
+     */
+    g_free(qemu_opt_get_del(opts, BLOCK_OPT_PREALLOC));
+
+    size = qemu_opt_get_size_del(opts, BLOCK_OPT_SIZE, 0);
+
+    if (in_bs) {
+        int64_t ssize = bdrv_getlength(in_bs);
+
+        if (ssize < 0) {
+            error_setg_errno(&local_err, -ssize,
+                             "Unable to get image virtual_size");
+            goto err;
+        }
+
+        size = ssize;
+    }
+
+    cryptoopts = qemu_opts_to_qdict_filtered(opts, NULL,
+            &block_crypto_create_opts_luks, true);
+    qdict_put_str(cryptoopts, "format", "luks");
+    create_opts = block_crypto_create_opts_init(cryptoopts, &local_err);
+    qobject_unref(cryptoopts);
+    if (!create_opts) {
+        goto err;
+    }
+
+    if (!qcrypto_block_calculate_payload_offset(create_opts, NULL,
+                                                &luks_payload_size,
+                                                &local_err)) {
+        goto err;
+    }
+
+    /*
+     * Unallocated blocks are still encrypted so allocation status makes no
+     * difference to the file size.
+     */
+    info = g_new(BlockMeasureInfo, 1);
+    info->fully_allocated = luks_payload_size + size;
+    info->required = luks_payload_size + size;
+    return info;
+
+err:
+    error_propagate(errp, local_err);
+    return NULL;
+}
+
+
 static int block_crypto_probe_luks(const uint8_t *buf,
                                    int buf_size,
                                    const char *filename) {
@@ -539,7 +601,8 @@ fail:
     return ret;
 }
 
-static int coroutine_fn block_crypto_co_create_opts_luks(const char *filename,
+static int coroutine_fn block_crypto_co_create_opts_luks(BlockDriver *drv,
+                                                         const char *filename,
                                                          QemuOpts *opts,
                                                          Error **errp)
 {
@@ -596,6 +659,23 @@ static int coroutine_fn block_crypto_co_create_opts_luks(const char *filename,
 
     ret = 0;
 fail:
+    /*
+     * If an error occurred, delete 'filename'. Even if the file existed
+     * beforehand, it has been truncated and corrupted in the process.
+     */
+    if (ret && bs) {
+        Error *local_delete_err = NULL;
+        int r_del = bdrv_co_delete_file(bs, &local_delete_err);
+        /*
+         * ENOTSUP will happen if the block driver doesn't support
+         * the 'bdrv_co_delete_file' interface. This is a predictable
+         * scenario and shouldn't be reported back to the user.
+         */
+        if ((r_del < 0) && (r_del != -ENOTSUP)) {
+            error_report_err(local_delete_err);
+        }
+    }
+
     bdrv_unref(bs);
     qapi_free_QCryptoBlockCreateOptions(create_opts);
     qobject_unref(cryptoopts);
@@ -670,6 +750,7 @@ static BlockDriver bdrv_crypto_luks = {
     .bdrv_co_preadv     = block_crypto_co_preadv,
     .bdrv_co_pwritev    = block_crypto_co_pwritev,
     .bdrv_getlength     = block_crypto_getlength,
+    .bdrv_measure       = block_crypto_measure,
     .bdrv_get_info      = block_crypto_get_info_luks,
     .bdrv_get_specific_info = block_crypto_get_specific_info_luks,
 

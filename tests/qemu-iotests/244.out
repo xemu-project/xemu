@@ -33,7 +33,7 @@ Convert to compressed target with data file:
 Formatting 'TEST_DIR/t.IMGFMT.src', fmt=IMGFMT size=67108864
 wrote 1048576/1048576 bytes at offset 0
 1 MiB, X ops; XX:XX:XX.X (XXX YYY/sec and XXX ops/sec)
-qemu-img: error while writing sector 0: Operation not supported
+qemu-img: error while writing at byte 0: Operation not supported
 
 Convert uncompressed, then write compressed data manually:
 Images are identical.
@@ -122,4 +122,10 @@ Offset          Length          Mapped to       File
 0               0x100000        0               TEST_DIR/t.qcow2.data
 [{ "start": 0, "length": 1048576, "depth": 0, "zero": false, "data": true, "offset": 0},
 { "start": 1048576, "length": 66060288, "depth": 0, "zero": true, "data": false}]
+
+=== Copy offloading ===
+
+Formatting 'TEST_DIR/t.IMGFMT', fmt=IMGFMT size=67108864 data_file=TEST_DIR/t.IMGFMT.data
+Images are identical.
+Images are identical.
 *** done

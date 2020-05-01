@@ -139,7 +139,7 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
 
         bios_size = load_elf(bios_filename, NULL,
                              bios_translate_addr, &fwbase,
-                             &ipl->bios_start_addr, NULL, NULL, 1,
+                             &ipl->bios_start_addr, NULL, NULL, NULL, 1,
                              EM_S390, 0, 0);
         if (bios_size > 0) {
             /* Adjust ELF start address to final location */
@@ -164,7 +164,7 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
     if (ipl->kernel) {
         kernel_size = load_elf(ipl->kernel, NULL, NULL, NULL,
                                &pentry, NULL,
-                               NULL, 1, EM_S390, 0, 0);
+                               NULL, NULL, 1, EM_S390, 0, 0);
         if (kernel_size < 0) {
             kernel_size = load_image_targphys(ipl->kernel, 0, ram_size);
             if (kernel_size < 0) {
@@ -179,7 +179,7 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
                 /* if not Linux load the address of the (short) IPL PSW */
                 ipl_psw = rom_ptr(4, 4);
                 if (ipl_psw) {
-                    pentry = be32_to_cpu(*ipl_psw) & 0x7fffffffUL;
+                    pentry = be32_to_cpu(*ipl_psw) & PSW_MASK_SHORT_ADDR;
                 } else {
                     error_setg(&err, "Could not get IPL PSW");
                     goto error;
@@ -237,7 +237,15 @@ static void s390_ipl_realize(DeviceState *dev, Error **errp)
      */
     ipl->compat_start_addr = ipl->start_addr;
     ipl->compat_bios_start_addr = ipl->bios_start_addr;
-    qemu_register_reset(qdev_reset_all_fn, dev);
+    /*
+     * Because this Device is not on any bus in the qbus tree (it is
+     * not a sysbus device and it's not on some other bus like a PCI
+     * bus) it will not be automatically reset by the 'reset the
+     * sysbus' hook registered by vl.c like most devices. So we must
+     * manually register a reset hook for it.
+     * TODO: there should be a better way to do this.
+     */
+    qemu_register_reset(resettable_cold_reset_fn, dev);
 error:
     error_propagate(errp, err);
 }
@@ -473,7 +481,8 @@ static int load_netboot_image(Error **errp)
 
     img_size = load_elf_ram(netboot_filename, NULL, NULL, NULL,
                             &ipl->start_addr,
-                            NULL, NULL, 1, EM_S390, 0, 0, NULL, false);
+                            NULL, NULL, NULL, 1, EM_S390, 0, 0, NULL,
+                            false);
 
     if (img_size < 0) {
         img_size = load_image_size(netboot_filename, ram_ptr, ram_size);
@@ -529,6 +538,30 @@ static bool is_virtio_scsi_device(IplParameterBlock *iplb)
     return is_virtio_ccw_device_of_type(iplb, VIRTIO_ID_SCSI);
 }
 
+static void update_machine_ipl_properties(IplParameterBlock *iplb)
+{
+    Object *machine = qdev_get_machine();
+    Error *err = NULL;
+
+    /* Sync loadparm */
+    if (iplb->flags & DIAG308_FLAGS_LP_VALID) {
+        uint8_t *ebcdic_loadparm = iplb->loadparm;
+        char ascii_loadparm[9];
+        int i;
+
+        for (i = 0; i < 8 && ebcdic_loadparm[i]; i++) {
+            ascii_loadparm[i] = ebcdic2ascii[(uint8_t) ebcdic_loadparm[i]];
+        }
+        ascii_loadparm[i] = 0;
+        object_property_set_str(machine, ascii_loadparm, "loadparm", &err);
+    } else {
+        object_property_set_str(machine, "", "loadparm", &err);
+    }
+    if (err) {
+        warn_report_err(err);
+    }
+}
+
 void s390_ipl_update_diag308(IplParameterBlock *iplb)
 {
     S390IPLState *ipl = get_ipl_device();
@@ -536,6 +569,7 @@ void s390_ipl_update_diag308(IplParameterBlock *iplb)
     ipl->iplb = *iplb;
     ipl->iplb_valid = true;
     ipl->netboot = is_virtio_net_device(iplb);
+    update_machine_ipl_properties(iplb);
 }
 
 IplParameterBlock *s390_ipl_get_iplb(void)
@@ -617,7 +651,7 @@ static void s390_ipl_prepare_qipl(S390CPU *cpu)
     uint8_t *addr;
     uint64_t len = 4096;
 
-    addr = cpu_physical_memory_map(cpu->env.psa, &len, 1);
+    addr = cpu_physical_memory_map(cpu->env.psa, &len, true);
     if (!addr || len < QIPL_ADDRESS + sizeof(QemuIplParameters)) {
         error_report("Cannot set QEMU IPL parameters");
         return;
@@ -666,7 +700,7 @@ static void s390_ipl_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = s390_ipl_realize;
-    dc->props = s390_ipl_properties;
+    device_class_set_props(dc, s390_ipl_properties);
     dc->reset = s390_ipl_reset;
     dc->vmsd = &vmstate_ipl;
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);

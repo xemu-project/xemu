@@ -114,7 +114,16 @@ void qmp_job_finalize(const char *id, Error **errp)
     }
 
     trace_qmp_job_finalize(job);
+    job_ref(job);
     job_finalize(job, errp);
+
+    /*
+     * Job's context might have changed via job_finalize (and job_txn_apply
+     * automatically acquires the new one), so make sure we release the correct
+     * one.
+     */
+    aio_context = job->aio_context;
+    job_unref(job);
     aio_context_release(aio_context);
 }
 
@@ -143,8 +152,8 @@ static JobInfo *job_query_single(Job *job, Error **errp)
         .id                 = g_strdup(job->id),
         .type               = job_type(job),
         .status             = job->status,
-        .current_progress   = job->progress_current,
-        .total_progress     = job->progress_total,
+        .current_progress   = job->progress.current,
+        .total_progress     = job->progress.total,
         .has_error          = !!job->err,
         .error              = job->err ? \
                               g_strdup(error_get_pretty(job->err)) : NULL,

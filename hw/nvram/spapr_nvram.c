@@ -89,7 +89,7 @@ static void rtas_nvram_fetch(PowerPCCPU *cpu, SpaprMachineState *spapr,
 
     assert(nvram->buf);
 
-    membuf = cpu_physical_memory_map(buffer, &len, 1);
+    membuf = cpu_physical_memory_map(buffer, &len, true);
     memcpy(membuf, nvram->buf + offset, len);
     cpu_physical_memory_unmap(membuf, len, 1, len);
 
@@ -127,7 +127,7 @@ static void rtas_nvram_store(PowerPCCPU *cpu, SpaprMachineState *spapr,
         return;
     }
 
-    membuf = cpu_physical_memory_map(buffer, &len, 0);
+    membuf = cpu_physical_memory_map(buffer, &len, false);
 
     alen = len;
     if (nvram->blk) {
@@ -269,7 +269,7 @@ static void spapr_nvram_class_init(ObjectClass *klass, void *data)
     k->dt_type = "nvram";
     k->dt_compatible = "qemu,spapr-nvram";
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
-    dc->props = spapr_nvram_properties;
+    device_class_set_props(dc, spapr_nvram_properties);
     dc->vmsd = &vmstate_spapr_nvram;
     /* Reason: Internal device only, uses spapr_rtas_register() in realize() */
     dc->user_creatable = false;

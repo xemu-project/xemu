@@ -265,7 +265,7 @@ struct MigrationState
 
 void migrate_set_state(int *state, int old_state, int new_state);
 
-void migration_fd_process_incoming(QEMUFile *f);
+void migration_fd_process_incoming(QEMUFile *f, Error **errp);
 void migration_ioc_process_incoming(QIOChannel *ioc, Error **errp);
 void migration_incoming_process(void);
 
@@ -279,6 +279,7 @@ void migrate_fd_error(MigrationState *s, const Error *error);
 void migrate_fd_connect(MigrationState *s, Error *error_in);
 
 bool migration_is_setup_or_active(int state);
+bool migration_is_running(int state);
 
 void migrate_init(MigrationState *s);
 bool migration_is_blocked(Error **errp);
@@ -299,6 +300,9 @@ bool migrate_auto_converge(void);
 bool migrate_use_multifd(void);
 bool migrate_pause_before_switchover(void);
 int migrate_multifd_channels(void);
+MultiFDCompression migrate_multifd_compression(void);
+int migrate_multifd_zlib_level(void);
+int migrate_multifd_zstd_level(void);
 
 int migrate_use_xbzrle(void);
 int64_t migrate_xbzrle_cache_size(void);
@@ -341,5 +345,6 @@ int foreach_not_ignored_block(RAMBlockIterFunc func, void *opaque);
 
 void migration_make_urgent_request(void);
 void migration_consume_urgent_request(void);
+bool migration_rate_limit(void);
 
 #endif

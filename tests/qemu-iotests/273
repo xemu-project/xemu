@@ -37,6 +37,9 @@ trap "_cleanup; exit \$status" 0 1 2 3 15
 _supported_fmt qcow2
 _supported_proto file
 _supported_os Linux
+# External data files would add nodes to the block graph, so it would
+# not match the reference output
+_unsupported_imgopts data_file
 
 do_run_qemu()
 {
@@ -48,7 +51,8 @@ do_run_qemu()
 run_qemu()
 {
     do_run_qemu "$@" 2>&1 | _filter_testdir | _filter_qemu | _filter_qmp |
-        _filter_generated_node_ids | _filter_imgfmt | _filter_actual_image_size
+        _filter_generated_node_ids | _filter_imgfmt |
+        _filter_actual_image_size | _filter_img_info
 }
 
 TEST_IMG="$TEST_IMG.base" _make_test_img 64M

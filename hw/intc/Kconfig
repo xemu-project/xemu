@@ -3,12 +3,14 @@ config HEATHROW_PIC
 
 config I8259
     bool
+    select ISA_BUS
 
 config PL190
     bool
 
 config IOAPIC
     bool
+    select I8259
 
 config ARM_GIC
     bool
@@ -21,6 +23,7 @@ config OPENPIC
 config APIC
     bool
     select MSI_NONBROKEN
+    select I8259
 
 config ARM_GIC_KVM
     bool

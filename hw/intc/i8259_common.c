@@ -24,7 +24,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/i386/pc.h"
+#include "hw/intc/i8259.h"
 #include "hw/isa/i8259_internal.h"
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
@@ -186,7 +186,7 @@ static void pic_common_class_init(ObjectClass *klass, void *data)
     InterruptStatsProviderClass *ic = INTERRUPT_STATS_PROVIDER_CLASS(klass);
 
     dc->vmsd = &vmstate_pic_common;
-    dc->props = pic_properties_common;
+    device_class_set_props(dc, pic_properties_common);
     dc->realize = pic_common_realize;
     /*
      * Reason: unlike ordinary ISA devices, the PICs need additional

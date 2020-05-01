@@ -404,11 +404,11 @@ typedef enum {
 
     /* MIPS r6 introduced names for weaker variants of SYNC.  These are
        backward compatible to previous architecture revisions.  */
-    OPC_SYNC_WMB     = OPC_SYNC | 0x04 << 5,
-    OPC_SYNC_MB      = OPC_SYNC | 0x10 << 5,
-    OPC_SYNC_ACQUIRE = OPC_SYNC | 0x11 << 5,
-    OPC_SYNC_RELEASE = OPC_SYNC | 0x12 << 5,
-    OPC_SYNC_RMB     = OPC_SYNC | 0x13 << 5,
+    OPC_SYNC_WMB     = OPC_SYNC | 0x04 << 6,
+    OPC_SYNC_MB      = OPC_SYNC | 0x10 << 6,
+    OPC_SYNC_ACQUIRE = OPC_SYNC | 0x11 << 6,
+    OPC_SYNC_RELEASE = OPC_SYNC | 0x12 << 6,
+    OPC_SYNC_RMB     = OPC_SYNC | 0x13 << 6,
 
     /* Aliases for convenience.  */
     ALIAS_PADD     = sizeof(void *) == 4 ? OPC_ADDU : OPC_DADDU,
@@ -1107,7 +1107,7 @@ static void tcg_out_call(TCGContext *s, tcg_insn_unit *arg)
 }
 
 #if defined(CONFIG_SOFTMMU)
-#include "tcg-ldst.inc.c"
+#include "../tcg-ldst.inc.c"
 
 static void * const qemu_ld_helpers[16] = {
     [MO_UB]   = helper_ret_ldub_mmu,

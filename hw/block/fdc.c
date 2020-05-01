@@ -606,7 +606,7 @@ static void floppy_drive_class_init(ObjectClass *klass, void *data)
     k->realize = floppy_drive_realize;
     set_bit(DEVICE_CATEGORY_STORAGE, k->categories);
     k->bus_type = TYPE_FLOPPY_BUS;
-    k->props = floppy_drive_properties;
+    device_class_set_props(k, floppy_drive_properties);
     k->desc = "virtual floppy drive";
 }
 
@@ -1714,53 +1714,28 @@ static void fdctrl_start_transfer(FDCtrl *fdctrl, int direction)
     }
     fdctrl->eot = fdctrl->fifo[6];
     if (fdctrl->dor & FD_DOR_DMAEN) {
-        IsaDmaTransferMode dma_mode;
+        /* DMA transfer is enabled. */
         IsaDmaClass *k = ISADMA_GET_CLASS(fdctrl->dma);
-        bool dma_mode_ok;
-        /* DMA transfer are enabled. Check if DMA channel is well programmed */
-        dma_mode = k->get_transfer_mode(fdctrl->dma, fdctrl->dma_chann);
-        FLOPPY_DPRINTF("dma_mode=%d direction=%d (%d - %d)\n",
-                       dma_mode, direction,
-                       (128 << fdctrl->fifo[5]) *
+
+        FLOPPY_DPRINTF("direction=%d (%d - %d)\n",
+                       direction, (128 << fdctrl->fifo[5]) *
                        (cur_drv->last_sect - ks + 1), fdctrl->data_len);
-        switch (direction) {
-        case FD_DIR_SCANE:
-        case FD_DIR_SCANL:
-        case FD_DIR_SCANH:
-            dma_mode_ok = (dma_mode == ISADMA_TRANSFER_VERIFY);
-            break;
-        case FD_DIR_WRITE:
-            dma_mode_ok = (dma_mode == ISADMA_TRANSFER_WRITE);
-            break;
-        case FD_DIR_READ:
-            dma_mode_ok = (dma_mode == ISADMA_TRANSFER_READ);
-            break;
-        case FD_DIR_VERIFY:
-            dma_mode_ok = true;
-            break;
-        default:
-            dma_mode_ok = false;
-            break;
-        }
-        if (dma_mode_ok) {
-            /* No access is allowed until DMA transfer has completed */
-            fdctrl->msr &= ~FD_MSR_RQM;
-            if (direction != FD_DIR_VERIFY) {
-                /* Now, we just have to wait for the DMA controller to
-                 * recall us...
-                 */
-                k->hold_DREQ(fdctrl->dma, fdctrl->dma_chann);
-                k->schedule(fdctrl->dma);
-            } else {
-                /* Start transfer */
-                fdctrl_transfer_handler(fdctrl, fdctrl->dma_chann, 0,
-                                        fdctrl->data_len);
-            }
-            return;
+
+        /* No access is allowed until DMA transfer has completed */
+        fdctrl->msr &= ~FD_MSR_RQM;
+        if (direction != FD_DIR_VERIFY) {
+            /*
+             * Now, we just have to wait for the DMA controller to
+             * recall us...
+             */
+            k->hold_DREQ(fdctrl->dma, fdctrl->dma_chann);
+            k->schedule(fdctrl->dma);
         } else {
-            FLOPPY_DPRINTF("bad dma_mode=%d direction=%d\n", dma_mode,
-                           direction);
+            /* Start transfer */
+            fdctrl_transfer_handler(fdctrl, fdctrl->dma_chann, 0,
+                    fdctrl->data_len);
         }
+        return;
     }
     FLOPPY_DPRINTF("start non-DMA transfer\n");
     fdctrl->msr |= FD_MSR_NONDMA | FD_MSR_RQM;
@@ -2827,7 +2802,7 @@ static void isabus_fdc_class_init(ObjectClass *klass, void *data)
     dc->fw_name = "fdc";
     dc->reset = fdctrl_external_reset_isa;
     dc->vmsd = &vmstate_isa_fdc;
-    dc->props = isa_fdc_properties;
+    device_class_set_props(dc, isa_fdc_properties);
     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
 }
 
@@ -2880,7 +2855,7 @@ static void sysbus_fdc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->props = sysbus_fdc_properties;
+    device_class_set_props(dc, sysbus_fdc_properties);
     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
 }
 
@@ -2906,7 +2881,7 @@ static void sun4m_fdc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->props = sun4m_fdc_properties;
+    device_class_set_props(dc, sun4m_fdc_properties);
     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
 }
 

@@ -113,6 +113,8 @@ struct USBRedirDevice {
     /* Properties */
     CharBackend cs;
     bool enable_streams;
+    bool suppress_remote_wake;
+    bool in_write;
     uint8_t debug;
     int32_t bootindex;
     char *filter_str;
@@ -290,6 +292,13 @@ static int usbredir_write(void *priv, uint8_t *data, int count)
         return 0;
     }
 
+    /* Recursion check */
+    if (dev->in_write) {
+        DPRINTF("usbredir_write recursion\n");
+        return 0;
+    }
+    dev->in_write = true;
+
     r = qemu_chr_fe_write(&dev->cs, data, count);
     if (r < count) {
         if (!dev->watch) {
@@ -300,6 +309,7 @@ static int usbredir_write(void *priv, uint8_t *data, int count)
             r = 0;
         }
     }
+    dev->in_write = false;
     return r;
 }
 
@@ -1354,7 +1364,7 @@ static void usbredir_chardev_read(void *opaque, const uint8_t *buf, int size)
     usbredirparser_do_write(dev->parser);
 }
 
-static void usbredir_chardev_event(void *opaque, int event)
+static void usbredir_chardev_event(void *opaque, QEMUChrEvent event)
 {
     USBRedirDevice *dev = opaque;
 
@@ -1369,6 +1379,11 @@ static void usbredir_chardev_event(void *opaque, int event)
     case CHR_EVENT_CLOSED:
         DPRINTF("chardev close\n");
         qemu_bh_schedule(dev->chardev_close_bh);
+        break;
+    case CHR_EVENT_BREAK:
+    case CHR_EVENT_MUX_IN:
+    case CHR_EVENT_MUX_OUT:
+        /* Ignore */
         break;
     }
 }
@@ -1989,6 +2004,23 @@ static void usbredir_control_packet(void *priv, uint64_t id,
             memcpy(dev->dev.data_buf, data, data_len);
         }
         p->actual_length = len;
+        /*
+         * If this is GET_DESCRIPTOR request for configuration descriptor,
+         * remove 'remote wakeup' flag from it to prevent idle power down
+         * in Windows guest
+         */
+        if (dev->suppress_remote_wake &&
+            control_packet->requesttype == USB_DIR_IN &&
+            control_packet->request == USB_REQ_GET_DESCRIPTOR &&
+            control_packet->value == (USB_DT_CONFIG << 8) &&
+            control_packet->index == 0 &&
+            /* bmAttributes field of config descriptor */
+            len > 7 && (dev->dev.data_buf[7] & USB_CFG_ATT_WAKEUP)) {
+                DPRINTF("Removed remote wake %04X:%04X\n",
+                    dev->device_info.vendor_id,
+                    dev->device_info.product_id);
+                dev->dev.data_buf[7] &= ~USB_CFG_ATT_WAKEUP;
+            }
         usb_generic_async_ctrl_complete(&dev->dev, p);
     }
     free(data);
@@ -2530,6 +2562,8 @@ static Property usbredir_properties[] = {
     DEFINE_PROP_UINT8("debug", USBRedirDevice, debug, usbredirparser_warning),
     DEFINE_PROP_STRING("filter", USBRedirDevice, filter_str),
     DEFINE_PROP_BOOL("streams", USBRedirDevice, enable_streams, true),
+    DEFINE_PROP_BOOL("suppress-remote-wake", USBRedirDevice,
+                     suppress_remote_wake, true),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -2550,7 +2584,7 @@ static void usbredir_class_initfn(ObjectClass *klass, void *data)
     uc->alloc_streams  = usbredir_alloc_streams;
     uc->free_streams   = usbredir_free_streams;
     dc->vmsd           = &usbredir_vmstate;
-    dc->props          = usbredir_properties;
+    device_class_set_props(dc, usbredir_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 

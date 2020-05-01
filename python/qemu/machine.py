@@ -104,6 +104,7 @@ class QEMUMachine(object):
         self._events = []
         self._iolog = None
         self._socket_scm_helper = socket_scm_helper
+        self._qmp_set = True   # Enable QMP monitor by default.
         self._qmp = None
         self._qemu_full_args = None
         self._test_dir = test_dir
@@ -111,6 +112,7 @@ class QEMUMachine(object):
         self._sock_dir = sock_dir
         self._launched = False
         self._machine = None
+        self._console_index = 0
         self._console_set = False
         self._console_device_type = None
         self._console_address = None
@@ -228,17 +230,20 @@ class QEMUMachine(object):
                 self._iolog = iolog.read()
 
     def _base_args(self):
-        if isinstance(self._monitor_address, tuple):
-            moncdev = "socket,id=mon,host=%s,port=%s" % (
-                self._monitor_address[0],
-                self._monitor_address[1])
-        else:
-            moncdev = 'socket,id=mon,path=%s' % self._vm_monitor
-        args = ['-chardev', moncdev,
-                '-mon', 'chardev=mon,mode=control',
-                '-display', 'none', '-vga', 'none']
+        args = ['-display', 'none', '-vga', 'none']
+        if self._qmp_set:
+            if isinstance(self._monitor_address, tuple):
+                moncdev = "socket,id=mon,host=%s,port=%s" % (
+                    self._monitor_address[0],
+                    self._monitor_address[1])
+            else:
+                moncdev = 'socket,id=mon,path=%s' % self._vm_monitor
+            args.extend(['-chardev', moncdev, '-mon',
+                         'chardev=mon,mode=control'])
         if self._machine is not None:
             args.extend(['-machine', self._machine])
+        for i in range(self._console_index):
+            args.extend(['-serial', 'null'])
         if self._console_set:
             self._console_address = os.path.join(self._sock_dir,
                                                  self._name + "-console.sock")
@@ -255,20 +260,22 @@ class QEMUMachine(object):
 
     def _pre_launch(self):
         self._temp_dir = tempfile.mkdtemp(dir=self._test_dir)
-        if self._monitor_address is not None:
-            self._vm_monitor = self._monitor_address
-        else:
-            self._vm_monitor = os.path.join(self._sock_dir,
-                                            self._name + "-monitor.sock")
-            self._remove_files.append(self._vm_monitor)
         self._qemu_log_path = os.path.join(self._temp_dir, self._name + ".log")
         self._qemu_log_file = open(self._qemu_log_path, 'wb')
 
-        self._qmp = qmp.QEMUMonitorProtocol(self._vm_monitor,
-                                            server=True)
+        if self._qmp_set:
+            if self._monitor_address is not None:
+                self._vm_monitor = self._monitor_address
+            else:
+                self._vm_monitor = os.path.join(self._sock_dir,
+                                                self._name + "-monitor.sock")
+                self._remove_files.append(self._vm_monitor)
+            self._qmp = qmp.QEMUMonitorProtocol(self._vm_monitor, server=True,
+                                                nickname=self._name)
 
     def _post_launch(self):
-        self._qmp.accept()
+        if self._qmp:
+            self._qmp.accept()
 
     def _post_shutdown(self):
         if self._qemu_log_file is not None:
@@ -330,7 +337,8 @@ class QEMUMachine(object):
         Wait for the VM to power off
         """
         self._popen.wait()
-        self._qmp.close()
+        if self._qmp:
+            self._qmp.close()
         self._load_io_log()
         self._post_shutdown()
 
@@ -346,12 +354,14 @@ class QEMUMachine(object):
             self._console_socket = None
 
         if self.is_running():
-            try:
-                if not has_quit:
-                    self._qmp.cmd('quit')
-                self._qmp.close()
-            except:
-                self._popen.kill()
+            if self._qmp:
+                try:
+                    if not has_quit:
+                        self._qmp.cmd('quit')
+                    self._qmp.close()
+                    self._popen.wait(timeout=3)
+                except:
+                    self._popen.kill()
             self._popen.wait()
 
         self._load_io_log()
@@ -367,6 +377,21 @@ class QEMUMachine(object):
             LOG.warning(msg, -exitcode, command)
 
         self._launched = False
+
+    def set_qmp_monitor(self, enabled=True):
+        """
+        Set the QMP monitor.
+
+        @param enabled: if False, qmp monitor options will be removed from
+                        the base arguments of the resulting QEMU command
+                        line. Default is True.
+        @note: call this function before launch().
+        """
+        if enabled:
+            self._qmp_set = True
+        else:
+            self._qmp_set = False
+            self._qmp = None
 
     def qmp(self, cmd, conv_keys=True, **args):
         """
@@ -507,7 +532,7 @@ class QEMUMachine(object):
         """
         self._machine = machine_type
 
-    def set_console(self, device_type=None):
+    def set_console(self, device_type=None, console_index=0):
         """
         Sets the device type for a console device
 
@@ -528,9 +553,14 @@ class QEMUMachine(object):
                             chardev:console" command line argument will
                             be used instead, resorting to the machine's
                             default device type.
+        @param console_index: the index of the console device to use.
+                              If not zero, the command line will create
+                              'index - 1' consoles and connect them to
+                              the 'null' backing character device.
         """
         self._console_set = True
         self._console_device_type = device_type
+        self._console_index = console_index
 
     @property
     def console_socket(self):

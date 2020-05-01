@@ -28,8 +28,10 @@ status=1	# failure is the default!
 
 _cleanup()
 {
-    rm -f "$TEST_IMG".[123]
-	_cleanup_test_img
+    for img in "$TEST_IMG".[123]; do
+        _rm_test_img "$img"
+    done
+    _cleanup_test_img
 }
 trap "_cleanup; exit \$status" 0 1 2 3 15
 
@@ -273,6 +275,20 @@ $QEMU_IO -c "write -P 42 0 64k" "$TEST_IMG".orig | _filter_qemu_io
 $QEMU_IMG convert -O $IMGFMT -n "$TEST_IMG" "$TEST_IMG".orig
 
 $QEMU_IMG compare "$TEST_IMG" "$TEST_IMG".orig
+
+echo
+echo '=== -n -B to an image without a backing file ==='
+echo
+
+# Base for the output
+TEST_IMG="$TEST_IMG".base _make_test_img 64M
+
+# Output that does have $TEST_IMG.base set as its (implicit) backing file
+TEST_IMG="$TEST_IMG".orig _make_test_img 64M
+
+# Convert with -n, which should not confuse -B with "target BDS has a
+# backing file"
+$QEMU_IMG convert -O $IMGFMT -B "$TEST_IMG".base -n "$TEST_IMG" "$TEST_IMG".orig
 
 # success, all done
 echo '*** done'

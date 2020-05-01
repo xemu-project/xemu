@@ -12,7 +12,7 @@
 
 #include "qemu/osdep.h"
 #include "monitor/monitor.h"
-#include "hw/i386/pc.h"
+#include "hw/i386/x86.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
 #include "hw/i386/ioapic_internal.h"
@@ -45,18 +45,6 @@ void kvm_pc_setup_irq_routing(bool pci_enabled)
             }
         }
         kvm_irqchip_commit_routes(s);
-    }
-}
-
-void kvm_pc_gsi_handler(void *opaque, int n, int level)
-{
-    GSIState *s = opaque;
-
-    if (n < ISA_NUM_IRQS) {
-        /* Kernel will forward to both PIC and IOAPIC */
-        qemu_set_irq(s->i8259_irq[n], level);
-    } else {
-        qemu_set_irq(s->ioapic_irq[n], level);
     }
 }
 
@@ -161,7 +149,7 @@ static void kvm_ioapic_class_init(ObjectClass *klass, void *data)
     k->pre_save  = kvm_ioapic_get;
     k->post_load = kvm_ioapic_put;
     dc->reset    = kvm_ioapic_reset;
-    dc->props    = kvm_ioapic_properties;
+    device_class_set_props(dc, kvm_ioapic_properties);
 }
 
 static const TypeInfo kvm_ioapic_info = {

@@ -28,7 +28,6 @@ typedef struct {
     char *tag;
     uint16_t num_request_queues;
     uint16_t queue_size;
-    char *vhostfd;
 } VHostUserFSConf;
 
 typedef struct {
@@ -38,6 +37,8 @@ typedef struct {
     struct vhost_virtqueue *vhost_vqs;
     struct vhost_dev vhost_dev;
     VhostUserState vhost_user;
+    VirtQueue **req_vqs;
+    VirtQueue *hiprio_vq;
 
     /*< public >*/
 } VHostUserFS;

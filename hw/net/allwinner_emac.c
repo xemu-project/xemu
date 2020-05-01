@@ -178,7 +178,7 @@ static uint32_t fifo8_pop_word(Fifo8 *fifo)
     return ret;
 }
 
-static int aw_emac_can_receive(NetClientState *nc)
+static bool aw_emac_can_receive(NetClientState *nc)
 {
     AwEmacState *s = qemu_get_nic_opaque(nc);
 
@@ -519,7 +519,7 @@ static void aw_emac_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = aw_emac_realize;
-    dc->props = aw_emac_properties;
+    device_class_set_props(dc, aw_emac_properties);
     dc->reset = aw_emac_reset;
     dc->vmsd = &vmstate_aw_emac;
 }

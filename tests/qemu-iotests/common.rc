@@ -53,21 +53,57 @@ poke_file()
     printf "$3" | dd "of=$1" bs=1 "seek=$2" conv=notrunc &>/dev/null
 }
 
+# poke_file_le $img_filename $offset $byte_width $value
+# Example: poke_file_le "$TEST_IMG" 512 2 65534
+poke_file_le()
+{
+    local img=$1 ofs=$2 len=$3 val=$4 str=''
+
+    while ((len--)); do
+        str+=$(printf '\\x%02x' $((val & 0xff)))
+        val=$((val >> 8))
+    done
+
+    poke_file "$img" "$ofs" "$str"
+}
+
+# poke_file_be $img_filename $offset $byte_width $value
+# Example: poke_file_be "$TEST_IMG" 512 2 65279
+poke_file_be()
+{
+    local img=$1 ofs=$2 len=$3 val=$4
+    local str=$(printf "%0$((len * 2))x\n" $val | sed 's/\(..\)/\\x\1/g')
+
+    poke_file "$img" "$ofs" "$str"
+}
+
 # peek_file_le 'test.img' 512 2 => 65534
 peek_file_le()
 {
-    # Wrap in echo $() to strip spaces
-    echo $(od -j"$2" -N"$3" --endian=little -An -vtu"$3" "$1")
+    local val=0 shift=0 byte
+
+    # coreutils' od --endian is not portable, so manually assemble bytes.
+    for byte in $(od -j"$2" -N"$3" -An -v -tu1 "$1"); do
+        val=$(( val | (byte << shift) ))
+        shift=$((shift + 8))
+    done
+    printf %llu $val
 }
 
 # peek_file_be 'test.img' 512 2 => 65279
 peek_file_be()
 {
-    # Wrap in echo $() to strip spaces
-    echo $(od -j"$2" -N"$3" --endian=big -An -vtu"$3" "$1")
+    local val=0 byte
+
+    # coreutils' od --endian is not portable, so manually assemble bytes.
+    for byte in $(od -j"$2" -N"$3" -An -v -tu1 "$1"); do
+        val=$(( (val << 8) | byte ))
+    done
+    printf %llu $val
 }
 
-# peek_file_raw 'test.img' 512 2 => '\xff\xfe'
+# peek_file_raw 'test.img' 512 2 => '\xff\xfe'. Do not use if the raw data
+# is likely to contain \0 or trailing \n.
 peek_file_raw()
 {
     dd if="$1" bs=1 skip="$2" count="$3" status=none
@@ -217,7 +253,8 @@ if [ "$IMGOPTSSYNTAX" = "true" ]; then
         TEST_IMG="$DRIVER,file.filename=$TEST_DIR/t.$IMGFMT"
     elif [ "$IMGPROTO" = "nbd" ]; then
         TEST_IMG_FILE=$TEST_DIR/t.$IMGFMT
-        TEST_IMG="$DRIVER,file.driver=nbd,file.type=unix,file.path=$SOCKDIR/nbd"
+        TEST_IMG="$DRIVER,file.driver=nbd,file.type=unix"
+        TEST_IMG="$TEST_IMG,file.path=$SOCK_DIR/nbd"
     elif [ "$IMGPROTO" = "ssh" ]; then
         TEST_IMG_FILE=$TEST_DIR/t.$IMGFMT
         TEST_IMG="$DRIVER,file.driver=ssh,file.host=127.0.0.1,file.path=$TEST_IMG_FILE"
@@ -297,17 +334,32 @@ _stop_nbd_server()
     fi
 }
 
+# Gets the data_file value from IMGOPTS and replaces the '$TEST_IMG'
+# pattern by '$1'
+# Caution: The replacement is done with sed, so $1 must be escaped
+#          properly.  (The delimiter is '#'.)
+_get_data_file()
+{
+    if ! echo "$IMGOPTS" | grep -q 'data_file='; then
+        return 1
+    fi
+
+    echo "$IMGOPTS" | sed -e 's/.*data_file=\([^,]*\).*/\1/' \
+                    | sed -e "s#\\\$TEST_IMG#$1#"
+}
+
 _make_test_img()
 {
     # extra qemu-img options can be added by tests
     # at least one argument (the image size) needs to be added
     local extra_img_options=""
-    local image_size=$*
     local optstr=""
     local img_name=""
     local use_backing=0
     local backing_file=""
     local object_options=""
+    local opts_param=false
+    local misc_params=()
 
     if [ -n "$TEST_IMG_FILE" ]; then
         img_name=$TEST_IMG_FILE
@@ -316,18 +368,43 @@ _make_test_img()
     fi
 
     if [ -n "$IMGOPTS" ]; then
-        optstr=$(_optstr_add "$optstr" "$IMGOPTS")
+        imgopts_expanded=$(echo "$IMGOPTS" | sed -e "s#\\\$TEST_IMG#$img_name#")
+        optstr=$(_optstr_add "$optstr" "$imgopts_expanded")
     fi
     if [ -n "$IMGKEYSECRET" ]; then
         object_options="--object secret,id=keysec0,data=$IMGKEYSECRET"
         optstr=$(_optstr_add "$optstr" "key-secret=keysec0")
     fi
 
-    if [ "$1" = "-b" ]; then
-        use_backing=1
-        backing_file=$2
-        image_size=$3
-    fi
+    for param; do
+        if [ "$use_backing" = "1" -a -z "$backing_file" ]; then
+            backing_file=$param
+            continue
+        elif $opts_param; then
+            optstr=$(_optstr_add "$optstr" "$param")
+            opts_param=false
+            continue
+        fi
+
+        case "$param" in
+            -b)
+                use_backing=1
+                ;;
+
+            -o)
+                opts_param=true
+                ;;
+
+            --no-opts)
+                optstr=""
+                ;;
+
+            *)
+                misc_params=("${misc_params[@]}" "$param")
+                ;;
+        esac
+    done
+
     if [ \( "$IMGFMT" = "qcow2" -o "$IMGFMT" = "qed" \) -a -n "$CLUSTER_SIZE" ]; then
         optstr=$(_optstr_add "$optstr" "cluster_size=$CLUSTER_SIZE")
     fi
@@ -343,9 +420,9 @@ _make_test_img()
     # XXX(hch): have global image options?
     (
      if [ $use_backing = 1 ]; then
-        $QEMU_IMG create $object_options -f $IMGFMT $extra_img_options -b "$backing_file" "$img_name" $image_size 2>&1
+        $QEMU_IMG create $object_options -f $IMGFMT $extra_img_options -b "$backing_file" "$img_name" "${misc_params[@]}" 2>&1
      else
-        $QEMU_IMG create $object_options -f $IMGFMT $extra_img_options "$img_name" $image_size 2>&1
+        $QEMU_IMG create $object_options -f $IMGFMT $extra_img_options "$img_name" "${misc_params[@]}" 2>&1
      fi
     ) | _filter_img_create
 
@@ -374,6 +451,11 @@ _rm_test_img()
         # Remove all the extents for vmdk
         "$QEMU_IMG" info "$img" 2>/dev/null | grep 'filename:' | cut -f 2 -d: \
             | xargs -I {} rm -f "{}"
+    elif [ "$IMGFMT" = "qcow2" ]; then
+        # Remove external data file
+        if data_file=$(_get_data_file "$img"); then
+            rm -f "$data_file"
+        fi
     fi
     rm -f "$img"
 }
@@ -599,6 +681,20 @@ _default_cache_mode()
         return
     fi
 }
+_supported_aio_modes()
+{
+    for mode; do
+        if [ "$mode" = "$AIOMODE" ]; then
+            return
+        fi
+    done
+    _notrun "not suitable for aio mode: $AIOMODE"
+}
+_default_aio_mode()
+{
+    AIOMODE="$1"
+    QEMU_IO="$QEMU_IO --aio $1"
+}
 
 _unsupported_imgopts()
 {
@@ -639,6 +735,30 @@ _require_drivers()
     do
         if ! echo "$available" | grep -q " $driver\( \|$\)"; then
             _notrun "$driver not available"
+        fi
+    done
+}
+
+# Check that we have a file system that allows huge (but very sparse) files
+#
+_require_large_file()
+{
+    if ! truncate --size="$1" "$TEST_IMG"; then
+        _notrun "file system on $TEST_DIR does not support large enough files"
+    fi
+    rm "$TEST_IMG"
+}
+
+# Check that a set of devices is available in the QEMU binary
+#
+_require_devices()
+{
+    available=$($QEMU -M none -device help | \
+                grep ^name | sed -e 's/^name "//' -e 's/".*$//')
+    for device
+    do
+        if ! echo "$available" | grep -q "$device" ; then
+            _notrun "$device not available"
         fi
     done
 }

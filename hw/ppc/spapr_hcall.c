@@ -1,4 +1,5 @@
 #include "qemu/osdep.h"
+#include "qemu/cutils.h"
 #include "qapi/error.h"
 #include "sysemu/hw_accel.h"
 #include "sysemu/runstate.h"
@@ -15,6 +16,7 @@
 #include "cpu-models.h"
 #include "trace.h"
 #include "kvm_ppc.h"
+#include "hw/ppc/fdt.h"
 #include "hw/ppc/spapr_ovec.h"
 #include "mmu-book3s-v3.h"
 #include "hw/mem/memory-device.h"
@@ -830,7 +832,7 @@ static target_ulong h_page_init(PowerPCCPU *cpu, SpaprMachineState *spapr,
     if (!is_ram_address(spapr, dst) || (dst & ~TARGET_PAGE_MASK) != 0) {
         return H_PARAMETER;
     }
-    pdst = cpu_physical_memory_map(dst, &len, 1);
+    pdst = cpu_physical_memory_map(dst, &len, true);
     if (!pdst || len != TARGET_PAGE_SIZE) {
         return H_PARAMETER;
     }
@@ -841,7 +843,7 @@ static target_ulong h_page_init(PowerPCCPU *cpu, SpaprMachineState *spapr,
             ret = H_PARAMETER;
             goto unmap_out;
         }
-        psrc = cpu_physical_memory_map(src, &len, 0);
+        psrc = cpu_physical_memory_map(src, &len, false);
         if (!psrc || len != TARGET_PAGE_SIZE) {
             ret = H_PARAMETER;
             goto unmap_out;
@@ -1456,7 +1458,7 @@ static void spapr_check_setup_free_hpt(SpaprMachineState *spapr,
         spapr_free_hpt(spapr);
     } else if (!(patbe_new & PATE1_GR)) {
         /* RADIX->HASH || NOTHING->HASH : Allocate HPT */
-        spapr_setup_hpt_and_vrma(spapr);
+        spapr_setup_hpt(spapr);
     }
     return;
 }
@@ -1638,6 +1640,31 @@ static uint32_t cas_check_pvr(SpaprMachineState *spapr, PowerPCCPU *cpu,
     return best_compat;
 }
 
+static void spapr_handle_transient_dev_before_cas(SpaprMachineState *spapr)
+{
+    Object *drc_container;
+    ObjectProperty *prop;
+    ObjectPropertyIterator iter;
+
+    drc_container = container_get(object_get_root(), "/dr-connector");
+    object_property_iter_init(&iter, drc_container);
+    while ((prop = object_property_iter_next(&iter))) {
+        SpaprDrc *drc;
+
+        if (!strstart(prop->type, "link<", NULL)) {
+            continue;
+        }
+        drc = SPAPR_DR_CONNECTOR(object_property_get_link(drc_container,
+                                                          prop->name, NULL));
+
+        if (spapr_drc_transient(drc)) {
+            spapr_drc_reset(drc);
+        }
+    }
+
+    spapr_clear_pending_hotplug_events(spapr);
+}
+
 static target_ulong h_client_architecture_support(PowerPCCPU *cpu,
                                                   SpaprMachineState *spapr,
                                                   target_ulong opcode,
@@ -1645,13 +1672,27 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu,
 {
     /* Working address in data buffer */
     target_ulong addr = ppc64_phys_to_real(args[0]);
+    target_ulong fdt_buf = args[1];
+    target_ulong fdt_bufsize = args[2];
     target_ulong ov_table;
     uint32_t cas_pvr;
-    SpaprOptionVector *ov1_guest, *ov5_guest, *ov5_cas_old, *ov5_updates;
+    SpaprOptionVector *ov1_guest, *ov5_guest, *ov5_cas_old;
     bool guest_radix;
     Error *local_err = NULL;
     bool raw_mode_supported = false;
     bool guest_xive;
+    CPUState *cs;
+
+    /* CAS is supposed to be called early when only the boot vCPU is active. */
+    CPU_FOREACH(cs) {
+        if (cs == CPU(cpu)) {
+            continue;
+        }
+        if (!cs->halted) {
+            warn_report("guest has multiple active vCPUs at CAS, which is not allowed");
+            return H_MULTI_THREADS_ACTIVE;
+        }
+    }
 
     cas_pvr = cas_check_pvr(spapr, cpu, &addr, &raw_mode_supported, &local_err);
     if (local_err) {
@@ -1679,7 +1720,16 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu,
     ov_table = addr;
 
     ov1_guest = spapr_ovec_parse_vector(ov_table, 1);
+    if (!ov1_guest) {
+        warn_report("guest didn't provide option vector 1");
+        return H_PARAMETER;
+    }
     ov5_guest = spapr_ovec_parse_vector(ov_table, 5);
+    if (!ov5_guest) {
+        spapr_ovec_cleanup(ov1_guest);
+        warn_report("guest didn't provide option vector 5");
+        return H_PARAMETER;
+    }
     if (spapr_ovec_test(ov5_guest, OV5_MMU_BOTH)) {
         error_report("guest requested hash and radix MMU, which is invalid.");
         exit(EXIT_FAILURE);
@@ -1746,9 +1796,7 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu,
     /* capabilities that have been added since CAS-generated guest reset.
      * if capabilities have since been removed, generate another reset
      */
-    ov5_updates = spapr_ovec_new();
-    spapr->cas_reboot = spapr_ovec_diff(ov5_updates,
-                                        ov5_cas_old, spapr->ov5_cas);
+    spapr->cas_reboot = !spapr_ovec_subset(ov5_cas_old, spapr->ov5_cas);
     spapr_ovec_cleanup(ov5_cas_old);
     /* Now that processing is finished, set the radix/hash bit for the
      * guest if it requested a valid mode; otherwise terminate the boot. */
@@ -1767,21 +1815,10 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu,
     }
     spapr->cas_pre_isa3_guest = !spapr_ovec_test(ov1_guest, OV1_PPC_3_00);
     spapr_ovec_cleanup(ov1_guest);
-    if (!spapr->cas_reboot) {
-        /* If spapr_machine_reset() did not set up a HPT but one is necessary
-         * (because the guest isn't going to use radix) then set it up here. */
-        if ((spapr->patb_entry & PATE1_GR) && !guest_radix) {
-            /* legacy hash or new hash: */
-            spapr_setup_hpt_and_vrma(spapr);
-        }
-        spapr->cas_reboot =
-            (spapr_h_cas_compose_response(spapr, args[1], args[2],
-                                          ov5_updates) != 0);
-    }
 
     /*
-     * Ensure the guest asks for an interrupt mode we support; otherwise
-     * terminate the boot.
+     * Ensure the guest asks for an interrupt mode we support;
+     * otherwise terminate the boot.
      */
     if (guest_xive) {
         if (!spapr->irq->xive) {
@@ -1797,17 +1834,42 @@ static target_ulong h_client_architecture_support(PowerPCCPU *cpu,
         }
     }
 
-    /*
-     * Generate a machine reset when we have an update of the
-     * interrupt mode. Only required when the machine supports both
-     * modes.
-     */
-    if (!spapr->cas_reboot) {
-        spapr->cas_reboot = spapr_ovec_test(ov5_updates, OV5_XIVE_EXPLOIT)
-            && spapr->irq->xics && spapr->irq->xive;
-    }
+    spapr_irq_update_active_intc(spapr);
 
-    spapr_ovec_cleanup(ov5_updates);
+    spapr_handle_transient_dev_before_cas(spapr);
+
+    if (!spapr->cas_reboot) {
+        void *fdt;
+        SpaprDeviceTreeUpdateHeader hdr = { .version_id = 1 };
+
+        /* If spapr_machine_reset() did not set up a HPT but one is necessary
+         * (because the guest isn't going to use radix) then set it up here. */
+        if ((spapr->patb_entry & PATE1_GR) && !guest_radix) {
+            /* legacy hash or new hash: */
+            spapr_setup_hpt(spapr);
+        }
+
+        if (fdt_bufsize < sizeof(hdr)) {
+            error_report("SLOF provided insufficient CAS buffer "
+                         TARGET_FMT_lu " (min: %zu)", fdt_bufsize, sizeof(hdr));
+            exit(EXIT_FAILURE);
+        }
+
+        fdt_bufsize -= sizeof(hdr);
+
+        fdt = spapr_build_fdt(spapr, false, fdt_bufsize);
+        _FDT((fdt_pack(fdt)));
+
+        cpu_physical_memory_write(fdt_buf, &hdr, sizeof(hdr));
+        cpu_physical_memory_write(fdt_buf + sizeof(hdr), fdt,
+                                  fdt_totalsize(fdt));
+        trace_spapr_cas_continue(fdt_totalsize(fdt) + sizeof(hdr));
+
+        g_free(spapr->fdt_blob);
+        spapr->fdt_size = fdt_totalsize(fdt);
+        spapr->fdt_initial_size = spapr->fdt_size;
+        spapr->fdt_blob = fdt;
+    }
 
     if (spapr->cas_reboot) {
         qemu_system_reset_request(SHUTDOWN_CAUSE_SUBSYSTEM_RESET);

@@ -138,9 +138,9 @@ def gen_event_send(name, arg_type, boxed, event_enum_name, event_emit):
 class QAPISchemaGenEventVisitor(QAPISchemaModularCVisitor):
 
     def __init__(self, prefix):
-        QAPISchemaModularCVisitor.__init__(
-            self, prefix, 'qapi-events',
-            ' * Schema-defined QAPI/QMP events', __doc__)
+        super().__init__(
+            prefix, 'qapi-events',
+            ' * Schema-defined QAPI/QMP events', None, __doc__)
         self._event_enum_name = c_name(prefix + 'QAPIEvent', protect=False)
         self._event_enum_members = []
         self._event_emit_name = c_name(prefix + 'qapi_event_emit')
@@ -189,7 +189,7 @@ void %(event_emit)s(%(event_enum)s event, QDict *qdict);
                              event_emit=self._event_emit_name,
                              event_enum=self._event_enum_name))
 
-    def visit_event(self, name, info, ifcond, arg_type, boxed):
+    def visit_event(self, name, info, ifcond, features, arg_type, boxed):
         with ifcontext(ifcond, self._genh, self._genc):
             self._genh.add(gen_event_send_decl(name, arg_type, boxed))
             self._genc.add(gen_event_send(name, arg_type, boxed,

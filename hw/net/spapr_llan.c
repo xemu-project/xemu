@@ -110,11 +110,11 @@ typedef struct SpaprVioVlan {
     RxBufPool *rx_pool[RX_MAX_POOLS];  /* Receive buffer descriptor pools */
 } SpaprVioVlan;
 
-static int spapr_vlan_can_receive(NetClientState *nc)
+static bool spapr_vlan_can_receive(NetClientState *nc)
 {
     SpaprVioVlan *dev = qemu_get_nic_opaque(nc);
 
-    return (dev->isopen && dev->rx_bufs > 0);
+    return dev->isopen && dev->rx_bufs > 0;
 }
 
 /**
@@ -856,7 +856,7 @@ static void spapr_vlan_class_init(ObjectClass *klass, void *data)
     k->dt_compatible = "IBM,l-lan";
     k->signal_mask = 0x1;
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
-    dc->props = spapr_vlan_properties;
+    device_class_set_props(dc, spapr_vlan_properties);
     k->rtce_window_size = 0x10000000;
     dc->vmsd = &vmstate_spapr_llan;
 }

@@ -155,7 +155,7 @@ static void grlib_apbuart_receive(void *opaque, const uint8_t *buf, int size)
     }
 }
 
-static void grlib_apbuart_event(void *opaque, int event)
+static void grlib_apbuart_event(void *opaque, QEMUChrEvent event)
 {
     trace_grlib_apbuart_event(event);
 }
@@ -285,7 +285,7 @@ static void grlib_apbuart_class_init(ObjectClass *klass, void *data)
 
     dc->realize = grlib_apbuart_realize;
     dc->reset = grlib_apbuart_reset;
-    dc->props = grlib_apbuart_properties;
+    device_class_set_props(dc, grlib_apbuart_properties);
 }
 
 static const TypeInfo grlib_apbuart_info = {

@@ -1114,7 +1114,7 @@ static int connect_namedsocket(const char *path, Error **errp)
     return sockfd;
 }
 
-static void error_append_socket_sockfd_hint(Error **errp)
+static void error_append_socket_sockfd_hint(Error *const *errp)
 {
     error_append_hint(errp, "Either specify socket=/some/path where /some/path"
                       " points to a listening AF_UNIX socket or sock_fd=fd"
@@ -1139,10 +1139,10 @@ static int proxy_parse_opts(QemuOpts *opts, FsDriverEntry *fs, Error **errp)
     }
     if (socket) {
         fs->path = g_strdup(socket);
-        fs->export_flags = V9FS_PROXY_SOCK_NAME;
+        fs->export_flags |= V9FS_PROXY_SOCK_NAME;
     } else {
         fs->path = g_strdup(sock_fd);
-        fs->export_flags = V9FS_PROXY_SOCK_FD;
+        fs->export_flags |= V9FS_PROXY_SOCK_FD;
     }
     return 0;
 }

@@ -18,15 +18,15 @@ refcount_table_offset     0x10000
 refcount_table_clusters   1
 nb_snapshots              0
 snapshot_offset           0x0
-incompatible_features     0x0
-compatible_features       0x1
-autoclear_features        0x0
+incompatible_features     []
+compatible_features       [0]
+autoclear_features        []
 refcount_order            4
 header_length             104
 
 Header extension:
 magic                     0x6803f857
-length                    192
+length                    288
 data                      <binary>
 
 magic                     0x514649fb
@@ -42,9 +42,9 @@ refcount_table_offset     0x10000
 refcount_table_clusters   1
 nb_snapshots              0
 snapshot_offset           0x0
-incompatible_features     0x0
-compatible_features       0x0
-autoclear_features        0x0
+incompatible_features     []
+compatible_features       []
+autoclear_features        []
 refcount_order            4
 header_length             72
 
@@ -76,15 +76,15 @@ refcount_table_offset     0x10000
 refcount_table_clusters   1
 nb_snapshots              0
 snapshot_offset           0x0
-incompatible_features     0x0
-compatible_features       0x1
-autoclear_features        0x0
+incompatible_features     []
+compatible_features       [0]
+autoclear_features        []
 refcount_order            4
 header_length             104
 
 Header extension:
 magic                     0x6803f857
-length                    192
+length                    288
 data                      <binary>
 
 magic                     0x514649fb
@@ -100,9 +100,9 @@ refcount_table_offset     0x10000
 refcount_table_clusters   1
 nb_snapshots              0
 snapshot_offset           0x0
-incompatible_features     0x0
-compatible_features       0x0
-autoclear_features        0x0
+incompatible_features     []
+compatible_features       []
+autoclear_features        []
 refcount_order            4
 header_length             72
 
@@ -132,15 +132,15 @@ refcount_table_offset     0x10000
 refcount_table_clusters   1
 nb_snapshots              0
 snapshot_offset           0x0
-incompatible_features     0x1
-compatible_features       0x1
-autoclear_features        0x0
+incompatible_features     [0]
+compatible_features       [0]
+autoclear_features        []
 refcount_order            4
 header_length             104
 
 Header extension:
 magic                     0x6803f857
-length                    192
+length                    288
 data                      <binary>
 
 ERROR cluster 5 refcount=0 reference=1
@@ -161,9 +161,9 @@ refcount_table_offset     0x80000
 refcount_table_clusters   1
 nb_snapshots              0
 snapshot_offset           0x0
-incompatible_features     0x0
-compatible_features       0x0
-autoclear_features        0x0
+incompatible_features     []
+compatible_features       []
+autoclear_features        []
 refcount_order            4
 header_length             72
 
@@ -187,15 +187,15 @@ refcount_table_offset     0x10000
 refcount_table_clusters   1
 nb_snapshots              0
 snapshot_offset           0x0
-incompatible_features     0x0
-compatible_features       0x40000000000
-autoclear_features        0x40000000000
+incompatible_features     []
+compatible_features       [42]
+autoclear_features        [42]
 refcount_order            4
 header_length             104
 
 Header extension:
 magic                     0x6803f857
-length                    192
+length                    288
 data                      <binary>
 
 magic                     0x514649fb
@@ -211,9 +211,9 @@ refcount_table_offset     0x10000
 refcount_table_clusters   1
 nb_snapshots              0
 snapshot_offset           0x0
-incompatible_features     0x0
-compatible_features       0x0
-autoclear_features        0x0
+incompatible_features     []
+compatible_features       []
+autoclear_features        []
 refcount_order            4
 header_length             72
 
@@ -237,9 +237,9 @@ refcount_table_offset     0x10000
 refcount_table_clusters   1
 nb_snapshots              0
 snapshot_offset           0x0
-incompatible_features     0x0
-compatible_features       0x0
-autoclear_features        0x0
+incompatible_features     []
+compatible_features       []
+autoclear_features        []
 refcount_order            4
 header_length             72
 
@@ -256,15 +256,15 @@ refcount_table_offset     0x10000
 refcount_table_clusters   1
 nb_snapshots              0
 snapshot_offset           0x0
-incompatible_features     0x0
-compatible_features       0x1
-autoclear_features        0x0
+incompatible_features     []
+compatible_features       [0]
+autoclear_features        []
 refcount_order            4
 header_length             104
 
 Header extension:
 magic                     0x6803f857
-length                    192
+length                    288
 data                      <binary>
 
 read 65536/65536 bytes at offset 44040192
@@ -290,15 +290,15 @@ refcount_table_offset     0x10000
 refcount_table_clusters   1
 nb_snapshots              0
 snapshot_offset           0x0
-incompatible_features     0x1
-compatible_features       0x1
-autoclear_features        0x0
+incompatible_features     [0]
+compatible_features       [0]
+autoclear_features        []
 refcount_order            4
 header_length             104
 
 Header extension:
 magic                     0x6803f857
-length                    192
+length                    288
 data                      <binary>
 
 ERROR cluster 5 refcount=0 reference=1
@@ -319,15 +319,15 @@ refcount_table_offset     0x80000
 refcount_table_clusters   1
 nb_snapshots              0
 snapshot_offset           0x0
-incompatible_features     0x0
-compatible_features       0x0
-autoclear_features        0x0
+incompatible_features     []
+compatible_features       []
+autoclear_features        []
 refcount_order            4
 header_length             104
 
 Header extension:
 magic                     0x6803f857
-length                    192
+length                    288
 data                      <binary>
 
 read 131072/131072 bytes at offset 0

@@ -7,7 +7,6 @@ config LM832X
 
 config PCKBD
     bool
-    default y
     select PS2
     depends on ISA_BUS
 
@@ -41,3 +40,6 @@ config VHOST_USER_INPUT
 
 config TSC210X
     bool
+
+config LASIPS2
+    select PS2

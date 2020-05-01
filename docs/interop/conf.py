@@ -18,5 +18,5 @@ html_theme_options['description'] = u'System Emulation Management and Interopera
 # (source start file, name, description, authors, manual section).
 man_pages = [
     ('qemu-ga', 'qemu-ga', u'QEMU Guest Agent',
-     ['Michael Roth <mdroth@linux.vnet.ibm.com>'], 8)
+     ['Michael Roth <mdroth@linux.vnet.ibm.com>'], 8),
 ]

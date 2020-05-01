@@ -26,6 +26,7 @@
 #include "qemu/sockets.h"
 #include "qemu/base64.h"
 #include "qemu/cutils.h"
+#include "commands-common.h"
 
 #ifdef HAVE_UTMPX
 #include <utmpx.h>
@@ -156,6 +157,17 @@ void qmp_guest_set_time(bool has_time, int64_t time_ns, Error **errp)
     pid_t pid;
     Error *local_err = NULL;
     struct timeval tv;
+    static const char hwclock_path[] = "/sbin/hwclock";
+    static int hwclock_available = -1;
+
+    if (hwclock_available < 0) {
+        hwclock_available = (access(hwclock_path, X_OK) == 0);
+    }
+
+    if (!hwclock_available) {
+        error_setg(errp, QERR_UNSUPPORTED);
+        return;
+    }
 
     /* If user has passed a time, validate and set it. */
     if (has_time) {
@@ -195,7 +207,7 @@ void qmp_guest_set_time(bool has_time, int64_t time_ns, Error **errp)
 
         /* Use '/sbin/hwclock -w' to set RTC from the system time,
          * or '/sbin/hwclock -s' to set the system time from RTC. */
-        execle("/sbin/hwclock", "hwclock", has_time ? "-w" : "-s",
+        execle(hwclock_path, "hwclock", has_time ? "-w" : "-s",
                NULL, environ);
         _exit(EXIT_FAILURE);
     } else if (pid < 0) {
@@ -226,12 +238,12 @@ typedef enum {
     RW_STATE_WRITING,
 } RwState;
 
-typedef struct GuestFileHandle {
+struct GuestFileHandle {
     uint64_t id;
     FILE *fh;
     RwState state;
     QTAILQ_ENTRY(GuestFileHandle) next;
-} GuestFileHandle;
+};
 
 static struct {
     QTAILQ_HEAD(, GuestFileHandle) filehandles;
@@ -257,7 +269,7 @@ static int64_t guest_file_handle_add(FILE *fh, Error **errp)
     return handle;
 }
 
-static GuestFileHandle *guest_file_handle_find(int64_t id, Error **errp)
+GuestFileHandle *guest_file_handle_find(int64_t id, Error **errp)
 {
     GuestFileHandle *gfh;
 
@@ -449,28 +461,13 @@ void qmp_guest_file_close(int64_t handle, Error **errp)
     g_free(gfh);
 }
 
-struct GuestFileRead *qmp_guest_file_read(int64_t handle, bool has_count,
-                                          int64_t count, Error **errp)
+GuestFileRead *guest_file_read_unsafe(GuestFileHandle *gfh,
+                                      int64_t count, Error **errp)
 {
-    GuestFileHandle *gfh = guest_file_handle_find(handle, errp);
     GuestFileRead *read_data = NULL;
     guchar *buf;
-    FILE *fh;
+    FILE *fh = gfh->fh;
     size_t read_count;
-
-    if (!gfh) {
-        return NULL;
-    }
-
-    if (!has_count) {
-        count = QGA_READ_COUNT_DEFAULT;
-    } else if (count < 0 || count >= UINT32_MAX) {
-        error_setg(errp, "value '%" PRId64 "' is invalid for argument count",
-                   count);
-        return NULL;
-    }
-
-    fh = gfh->fh;
 
     /* explicitly flush when switching from writing to reading */
     if (gfh->state == RW_STATE_WRITING) {
@@ -486,7 +483,6 @@ struct GuestFileRead *qmp_guest_file_read(int64_t handle, bool has_count,
     read_count = fread(buf, 1, count, fh);
     if (ferror(fh)) {
         error_setg_errno(errp, errno, "failed to read file");
-        slog("guest-file-read failed, handle: %" PRId64, handle);
     } else {
         buf[read_count] = 0;
         read_data = g_new0(GuestFileRead, 1);
@@ -1049,6 +1045,7 @@ static void build_guest_fsinfo_for_virtual_device(char const *syspath,
                                                   GuestFilesystemInfo *fs,
                                                   Error **errp)
 {
+    Error *err = NULL;
     DIR *dir;
     char *dirpath;
     struct dirent *entry;
@@ -1078,10 +1075,11 @@ static void build_guest_fsinfo_for_virtual_device(char const *syspath,
 
             g_debug(" slave device '%s'", entry->d_name);
             path = g_strdup_printf("%s/slaves/%s", syspath, entry->d_name);
-            build_guest_fsinfo_for_device(path, fs, errp);
+            build_guest_fsinfo_for_device(path, fs, &err);
             g_free(path);
 
-            if (*errp) {
+            if (err) {
+                error_propagate(errp, err);
                 break;
             }
         }
@@ -1760,6 +1758,7 @@ static void guest_suspend(SuspendMode mode, Error **errp)
     }
 
     error_free(local_err);
+    local_err = NULL;
 
     if (pmutils_supports_mode(mode, &local_err)) {
         mode_supported = true;
@@ -1771,6 +1770,7 @@ static void guest_suspend(SuspendMode mode, Error **errp)
     }
 
     error_free(local_err);
+    local_err = NULL;
 
     if (linux_sys_state_supports_mode(mode, &local_err)) {
         mode_supported = true;
@@ -1778,6 +1778,7 @@ static void guest_suspend(SuspendMode mode, Error **errp)
     }
 
     if (!mode_supported) {
+        error_free(local_err);
         error_setg(errp,
                    "the requested suspend mode is not supported by the guest");
     } else {
@@ -2781,7 +2782,7 @@ static double ga_get_login_time(struct utmpx *user_info)
     return seconds + useconds;
 }
 
-GuestUserList *qmp_guest_get_users(Error **err)
+GuestUserList *qmp_guest_get_users(Error **errp)
 {
     GHashTable *cache = NULL;
     GuestUserList *head = NULL, *cur_item = NULL;

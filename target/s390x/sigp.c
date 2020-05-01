@@ -254,7 +254,7 @@ static void sigp_initial_cpu_reset(CPUState *cs, run_on_cpu_data arg)
     SigpInfo *si = arg.host_ptr;
 
     cpu_synchronize_state(cs);
-    scc->initial_cpu_reset(cs);
+    scc->reset(cs, S390_CPU_RESET_INITIAL);
     cpu_synchronize_post_reset(cs);
     si->cc = SIGP_CC_ORDER_CODE_ACCEPTED;
 }
@@ -266,7 +266,7 @@ static void sigp_cpu_reset(CPUState *cs, run_on_cpu_data arg)
     SigpInfo *si = arg.host_ptr;
 
     cpu_synchronize_state(cs);
-    scc->cpu_reset(cs);
+    scc->reset(cs, S390_CPU_RESET_NORMAL);
     cpu_synchronize_post_reset(cs);
     si->cc = SIGP_CC_ORDER_CODE_ACCEPTED;
 }
@@ -348,9 +348,9 @@ static void sigp_sense_running(S390CPU *dst_cpu, SigpInfo *si)
 
     /* If halted (which includes also STOPPED), it is not running */
     if (CPU(dst_cpu)->halted) {
-        si->cc = SIGP_CC_ORDER_CODE_ACCEPTED;
-    } else {
         set_sigp_status(si, SIGP_STAT_NOT_RUNNING);
+    } else {
+        si->cc = SIGP_CC_ORDER_CODE_ACCEPTED;
     }
 }
 

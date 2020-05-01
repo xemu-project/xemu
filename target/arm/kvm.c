@@ -17,6 +17,8 @@
 #include "qemu/timer.h"
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
+#include "qom/object.h"
+#include "qapi/error.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/kvm.h"
 #include "sysemu/kvm_int.h"
@@ -179,11 +181,35 @@ void kvm_arm_set_cpu_features_from_host(ARMCPU *cpu)
     env->features = arm_host_cpu_features.features;
 }
 
+static bool kvm_no_adjvtime_get(Object *obj, Error **errp)
+{
+    return !ARM_CPU(obj)->kvm_adjvtime;
+}
+
+static void kvm_no_adjvtime_set(Object *obj, bool value, Error **errp)
+{
+    ARM_CPU(obj)->kvm_adjvtime = !value;
+}
+
+/* KVM VCPU properties should be prefixed with "kvm-". */
+void kvm_arm_add_vcpu_properties(Object *obj)
+{
+    if (!kvm_enabled()) {
+        return;
+    }
+
+    ARM_CPU(obj)->kvm_adjvtime = true;
+    object_property_add_bool(obj, "kvm-no-adjvtime", kvm_no_adjvtime_get,
+                             kvm_no_adjvtime_set, &error_abort);
+    object_property_set_description(obj, "kvm-no-adjvtime",
+                                    "Set on to disable the adjustment of "
+                                    "the virtual counter. VM stopped time "
+                                    "will be counted.", &error_abort);
+}
+
 bool kvm_arm_pmu_supported(CPUState *cpu)
 {
-    KVMState *s = KVM_STATE(current_machine->accelerator);
-
-    return kvm_check_extension(s, KVM_CAP_ARM_PMU_V3);
+    return kvm_check_extension(cpu->kvm_state, KVM_CAP_ARM_PMU_V3);
 }
 
 int kvm_arm_get_max_vm_ipa_size(MachineState *ms)
@@ -359,6 +385,22 @@ static int compare_u64(const void *a, const void *b)
     return 0;
 }
 
+/*
+ * cpreg_values are sorted in ascending order by KVM register ID
+ * (see kvm_arm_init_cpreg_list). This allows us to cheaply find
+ * the storage for a KVM register by ID with a binary search.
+ */
+static uint64_t *kvm_arm_get_cpreg_ptr(ARMCPU *cpu, uint64_t regidx)
+{
+    uint64_t *res;
+
+    res = bsearch(&regidx, cpu->cpreg_indexes, cpu->cpreg_array_len,
+                  sizeof(uint64_t), compare_u64);
+    assert(res);
+
+    return &cpu->cpreg_values[res - cpu->cpreg_indexes];
+}
+
 /* Initialize the ARMCPU cpreg list according to the kernel's
  * definition of what CPU registers it knows about (and throw away
  * the previous TCG-created cpreg list).
@@ -512,6 +554,23 @@ bool write_list_to_kvmstate(ARMCPU *cpu, int level)
     return ok;
 }
 
+void kvm_arm_cpu_pre_save(ARMCPU *cpu)
+{
+    /* KVM virtual time adjustment */
+    if (cpu->kvm_vtime_dirty) {
+        *kvm_arm_get_cpreg_ptr(cpu, KVM_REG_ARM_TIMER_CNT) = cpu->kvm_vtime;
+    }
+}
+
+void kvm_arm_cpu_post_load(ARMCPU *cpu)
+{
+    /* KVM virtual time adjustment */
+    if (cpu->kvm_adjvtime) {
+        cpu->kvm_vtime = *kvm_arm_get_cpreg_ptr(cpu, KVM_REG_ARM_TIMER_CNT);
+        cpu->kvm_vtime_dirty = true;
+    }
+}
+
 void kvm_arm_reset_vcpu(ARMCPU *cpu)
 {
     int ret;
@@ -577,6 +636,50 @@ int kvm_arm_sync_mpstate_to_qemu(ARMCPU *cpu)
     }
 
     return 0;
+}
+
+void kvm_arm_get_virtual_time(CPUState *cs)
+{
+    ARMCPU *cpu = ARM_CPU(cs);
+    struct kvm_one_reg reg = {
+        .id = KVM_REG_ARM_TIMER_CNT,
+        .addr = (uintptr_t)&cpu->kvm_vtime,
+    };
+    int ret;
+
+    if (cpu->kvm_vtime_dirty) {
+        return;
+    }
+
+    ret = kvm_vcpu_ioctl(cs, KVM_GET_ONE_REG, &reg);
+    if (ret) {
+        error_report("Failed to get KVM_REG_ARM_TIMER_CNT");
+        abort();
+    }
+
+    cpu->kvm_vtime_dirty = true;
+}
+
+void kvm_arm_put_virtual_time(CPUState *cs)
+{
+    ARMCPU *cpu = ARM_CPU(cs);
+    struct kvm_one_reg reg = {
+        .id = KVM_REG_ARM_TIMER_CNT,
+        .addr = (uintptr_t)&cpu->kvm_vtime,
+    };
+    int ret;
+
+    if (!cpu->kvm_vtime_dirty) {
+        return;
+    }
+
+    ret = kvm_vcpu_ioctl(cs, KVM_SET_ONE_REG, &reg);
+    if (ret) {
+        error_report("Failed to set KVM_REG_ARM_TIMER_CNT");
+        abort();
+    }
+
+    cpu->kvm_vtime_dirty = false;
 }
 
 int kvm_put_vcpu_events(ARMCPU *cpu)
@@ -690,6 +793,21 @@ MemTxAttrs kvm_arch_post_run(CPUState *cs, struct kvm_run *run)
     return MEMTXATTRS_UNSPECIFIED;
 }
 
+void kvm_arm_vm_state_change(void *opaque, int running, RunState state)
+{
+    CPUState *cs = opaque;
+    ARMCPU *cpu = ARM_CPU(cs);
+
+    if (running) {
+        if (cpu->kvm_adjvtime) {
+            kvm_arm_put_virtual_time(cs);
+        }
+    } else {
+        if (cpu->kvm_adjvtime) {
+            kvm_arm_get_virtual_time(cs);
+        }
+    }
+}
 
 int kvm_arch_handle_exit(CPUState *cs, struct kvm_run *run)
 {
@@ -741,11 +859,11 @@ void kvm_arch_init_irq_routing(KVMState *s)
 {
 }
 
-int kvm_arch_irqchip_create(MachineState *ms, KVMState *s)
+int kvm_arch_irqchip_create(KVMState *s)
 {
-     if (machine_kernel_irqchip_split(ms)) {
-         perror("-machine kernel_irqchip=split is not supported on ARM.");
-         exit(1);
+    if (kvm_kernel_irqchip_split()) {
+        perror("-machine kernel_irqchip=split is not supported on ARM.");
+        exit(1);
     }
 
     /* If we can create the VGIC using the newer device control API, we
@@ -756,15 +874,17 @@ int kvm_arch_irqchip_create(MachineState *ms, KVMState *s)
 
 int kvm_arm_vgic_probe(void)
 {
+    int val = 0;
+
     if (kvm_create_device(kvm_state,
                           KVM_DEV_TYPE_ARM_VGIC_V3, true) == 0) {
-        return 3;
-    } else if (kvm_create_device(kvm_state,
-                                 KVM_DEV_TYPE_ARM_VGIC_V2, true) == 0) {
-        return 2;
-    } else {
-        return 0;
+        val |= KVM_ARM_VGIC_V3;
     }
+    if (kvm_create_device(kvm_state,
+                          KVM_DEV_TYPE_ARM_VGIC_V2, true) == 0) {
+        val |= KVM_ARM_VGIC_V2;
+    }
+    return val;
 }
 
 int kvm_arm_set_irq(int cpu, int irqtype, int irq, int level)

@@ -477,7 +477,8 @@ static void g364fb_init(DeviceState *dev, G364State *s)
 
     s->con = graphic_console_init(dev, 0, &g364fb_ops, s);
 
-    memory_region_init_io(&s->mem_ctrl, NULL, &g364fb_ctrl_ops, s, "ctrl", 0x180000);
+    memory_region_init_io(&s->mem_ctrl, OBJECT(dev), &g364fb_ctrl_ops, s,
+                          "ctrl", 0x180000);
     memory_region_init_ram_ptr(&s->mem_vram, NULL, "vram",
                                s->vram_size, s->vram);
     vmstate_register_ram(&s->mem_vram, dev);
@@ -526,7 +527,7 @@ static void g364fb_sysbus_class_init(ObjectClass *klass, void *data)
     dc->desc = "G364 framebuffer";
     dc->reset = g364fb_sysbus_reset;
     dc->vmsd = &vmstate_g364fb;
-    dc->props = g364fb_sysbus_properties;
+    device_class_set_props(dc, g364fb_sysbus_properties);
 }
 
 static const TypeInfo g364fb_sysbus_info = {

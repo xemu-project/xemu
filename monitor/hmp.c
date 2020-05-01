@@ -1322,7 +1322,7 @@ static void monitor_read(void *opaque, const uint8_t *buf, int size)
     cur_mon = old_mon;
 }
 
-static void monitor_event(void *opaque, int event)
+static void monitor_event(void *opaque, QEMUChrEvent event)
 {
     Monitor *mon = opaque;
     MonitorHMP *hmp_mon = container_of(mon, MonitorHMP, common);
@@ -1371,6 +1371,10 @@ static void monitor_event(void *opaque, int event)
         mon_refcount--;
         monitor_fdsets_cleanup();
         break;
+
+    case CHR_EVENT_BREAK:
+        /* Ignored */
+        break;
     }
 }
 
@@ -1395,12 +1399,16 @@ static void monitor_readline_flush(void *opaque)
     monitor_flush(&mon->common);
 }
 
-void monitor_init_hmp(Chardev *chr, bool use_readline)
+void monitor_init_hmp(Chardev *chr, bool use_readline, Error **errp)
 {
     MonitorHMP *mon = g_new0(MonitorHMP, 1);
 
+    if (!qemu_chr_fe_init(&mon->common.chr, chr, errp)) {
+        g_free(mon);
+        return;
+    }
+
     monitor_data_init(&mon->common, false, false, false);
-    qemu_chr_fe_init(&mon->common.chr, chr, &error_abort);
 
     mon->use_readline = use_readline;
     if (mon->use_readline) {

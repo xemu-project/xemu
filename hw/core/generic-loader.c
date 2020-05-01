@@ -140,7 +140,7 @@ static void generic_loader_realize(DeviceState *dev, Error **errp)
 
         if (!s->force_raw) {
             size = load_elf_as(s->file, NULL, NULL, NULL, &entry, NULL, NULL,
-                               big_endian, 0, 0, 0, as);
+                               NULL, big_endian, 0, 0, 0, as);
 
             if (size < 0) {
                 size = load_uimage_as(s->file, &entry, NULL, NULL, NULL, NULL,
@@ -201,7 +201,7 @@ static void generic_loader_class_init(ObjectClass *klass, void *data)
      */
     dc->realize = generic_loader_realize;
     dc->unrealize = generic_loader_unrealize;
-    dc->props = generic_loader_props;
+    device_class_set_props(dc, generic_loader_props);
     dc->desc = "Generic Loader";
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }

@@ -132,6 +132,11 @@ void nbd_server_start(SocketAddress *addr, const char *tls_creds,
     nbd_server = NULL;
 }
 
+void nbd_server_start_options(NbdServerOptions *arg, Error **errp)
+{
+    nbd_server_start(arg->addr, arg->tls_creds, arg->tls_authz, errp);
+}
+
 void qmp_nbd_server_start(SocketAddressLegacy *addr,
                           bool has_tls_creds, const char *tls_creds,
                           bool has_tls_authz, const char *tls_authz,
@@ -143,9 +148,7 @@ void qmp_nbd_server_start(SocketAddressLegacy *addr,
     qapi_free_SocketAddress(addr_flat);
 }
 
-void qmp_nbd_server_add(const char *device, bool has_name, const char *name,
-                        bool has_writable, bool writable,
-                        bool has_bitmap, const char *bitmap, Error **errp)
+void qmp_nbd_server_add(BlockExportNbd *arg, Error **errp)
 {
     BlockDriverState *bs = NULL;
     BlockBackend *on_eject_blk;
@@ -158,23 +161,28 @@ void qmp_nbd_server_add(const char *device, bool has_name, const char *name,
         return;
     }
 
-    if (!has_name) {
-        name = device;
+    if (!arg->has_name) {
+        arg->name = arg->device;
     }
 
-    if (strlen(name) > NBD_MAX_STRING_SIZE) {
-        error_setg(errp, "export name '%s' too long", name);
+    if (strlen(arg->name) > NBD_MAX_STRING_SIZE) {
+        error_setg(errp, "export name '%s' too long", arg->name);
         return;
     }
 
-    if (nbd_export_find(name)) {
-        error_setg(errp, "NBD server already has export named '%s'", name);
+    if (arg->description && strlen(arg->description) > NBD_MAX_STRING_SIZE) {
+        error_setg(errp, "description '%s' too long", arg->description);
         return;
     }
 
-    on_eject_blk = blk_by_name(device);
+    if (nbd_export_find(arg->name)) {
+        error_setg(errp, "NBD server already has export named '%s'", arg->name);
+        return;
+    }
 
-    bs = bdrv_lookup_bs(device, device, errp);
+    on_eject_blk = blk_by_name(arg->device);
+
+    bs = bdrv_lookup_bs(arg->device, arg->device, errp);
     if (!bs) {
         return;
     }
@@ -188,14 +196,15 @@ void qmp_nbd_server_add(const char *device, bool has_name, const char *name,
         goto out;
     }
 
-    if (!has_writable) {
-        writable = false;
+    if (!arg->has_writable) {
+        arg->writable = false;
     }
     if (bdrv_is_read_only(bs)) {
-        writable = false;
+        arg->writable = false;
     }
 
-    exp = nbd_export_new(bs, 0, len, name, NULL, bitmap, !writable, !writable,
+    exp = nbd_export_new(bs, 0, len, arg->name, arg->description, arg->bitmap,
+                         !arg->writable, !arg->writable,
                          NULL, false, on_eject_blk, errp);
     if (!exp) {
         goto out;

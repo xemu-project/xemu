@@ -25,7 +25,7 @@
 
 typedef struct ASCIIConsoleData {
     EventBufferHeader ebh;
-    char data[0];
+    char data[];
 } QEMU_PACKED ASCIIConsoleData;
 
 /* max size for ASCII data in 4K SCCB page */
@@ -258,7 +258,7 @@ static void console_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     SCLPEventClass *ec = SCLP_EVENT_CLASS(klass);
 
-    dc->props = console_properties;
+    device_class_set_props(dc, console_properties);
     dc->reset = console_reset;
     dc->vmsd = &vmstate_sclpconsole;
     ec->init = console_init;

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Fedora VM image
 #
@@ -53,7 +53,10 @@ class FedoraVM(basevm.BaseVM):
         # libs: audio
         '"pkgconfig(libpulse)"',
         '"pkgconfig(alsa)"',
-    ]
+
+        # libs: migration
+        '"pkgconfig(libzstd)"',
+]
 
     BUILD_SCRIPT = """
         set -e;
@@ -74,13 +77,12 @@ class FedoraVM(basevm.BaseVM):
 
         self.print_step("Preparing iso and disk image")
         subprocess.check_call(["cp", "-f", cimg, iso])
-        subprocess.check_call(["qemu-img", "create", "-f", "qcow2",
-                               img_tmp, self.size])
-
+        self.exec_qemu_img("create", "-f", "qcow2", img_tmp, self.size)
         self.print_step("Booting installer")
         self.boot(img_tmp, extra_args = [
             "-bios", "pc-bios/bios-256k.bin",
             "-machine", "graphics=off",
+            "-device", "VGA",
             "-cdrom", iso
         ])
         self.console_init(300)

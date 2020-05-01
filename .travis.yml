@@ -1,6 +1,7 @@
 # The current Travis default is a VM based 16.04 Xenial on GCE
 # Additional builds with specific requirements for a full VM need to
 # be added as additional matrix: entries later on
+os: linux
 dist: xenial
 language: c
 compiler:
@@ -26,7 +27,6 @@ addons:
       - libaio-dev
       - libattr1-dev
       - libbrlapi-dev
-      - libcap-dev
       - libcap-ng-dev
       - libgcc-4.8-dev
       - libgnutls28-dev
@@ -49,16 +49,12 @@ addons:
       - libusb-1.0-0-dev
       - libvdeplug-dev
       - libvte-2.91-dev
+      - libzstd-dev
       - sparse
       - uuid-dev
       - gcovr
-  homebrew:
-    packages:
-      - ccache
-      - glib
-      - pixman
-      - gnu-sed
-    update: true
+      # Tests dependencies
+      - genisoimage
 
 
 # The channel name "irc.oftc.net#qemu" is encrypted against qemu/qemu
@@ -74,94 +70,126 @@ notifications:
 
 env:
   global:
-    - SRC_DIR="."
-    - BUILD_DIR="."
+    - SRC_DIR=".."
+    - BUILD_DIR="build"
     - BASE_CONFIG="--disable-docs --disable-tools"
+    - TEST_BUILD_CMD=""
     - TEST_CMD="make check V=1"
     # This is broadly a list of "mainline" softmmu targets which have support across the major distros
     - MAIN_SOFTMMU_TARGETS="aarch64-softmmu,mips64-softmmu,ppc64-softmmu,riscv64-softmmu,s390x-softmmu,x86_64-softmmu"
     - CCACHE_SLOPPINESS="include_file_ctime,include_file_mtime"
     - CCACHE_MAXSIZE=1G
+    - G_MESSAGES_DEBUG=error
 
 
 git:
   # we want to do this ourselves
   submodules: false
 
-
-before_script:
-  - if [ "$TRAVIS_OS_NAME" == "osx" ] ; then export PATH="/usr/local/opt/ccache/libexec:$PATH" ; fi
+# Common first phase for all steps
+before_install:
   - if command -v ccache ; then ccache --zero-stats ; fi
+  - export JOBS=$(($(getconf _NPROCESSORS_ONLN) + 1))
+  - echo "=== Using ${JOBS} simultaneous jobs ==="
+
+# Configure step - may be overridden
+before_script:
   - mkdir -p ${BUILD_DIR} && cd ${BUILD_DIR}
   - ${SRC_DIR}/configure ${BASE_CONFIG} ${CONFIG} || { cat config.log && exit 1; }
+
+# Main build & test - rarely overridden - controlled by TEST_CMD
 script:
-  - make -j3 && travis_retry ${TEST_CMD}
+  - BUILD_RC=0 && make -j${JOBS} || BUILD_RC=$?
+  - |
+    if [ "$BUILD_RC" -eq 0 ] && [ -n "$TEST_BUILD_CMD" ]; then
+        ${TEST_BUILD_CMD} || BUILD_RC=$?
+    else
+        $(exit $BUILD_RC);
+    fi
+  - |
+    if [ "$BUILD_RC" -eq 0 ] ; then
+        ${TEST_CMD} ;
+    else
+        $(exit $BUILD_RC);
+    fi
 after_script:
   - if command -v ccache ; then ccache --show-stats ; fi
 
 
-matrix:
+jobs:
   include:
-    - env:
+    - name: "GCC static (user)"
+      env:
         - CONFIG="--disable-system --static"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-default"
 
 
     # we split the system builds as it takes a while to build them all
-    - env:
+    - name: "GCC (main-softmmu)"
+      env:
         - CONFIG="--disable-user --target-list=${MAIN_SOFTMMU_TARGETS}"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-default"
 
 
-    - env:
-        - CONFIG="--disable-user --target-list-exclude=${MAIN_SOFTMMU_TARGETS}"
+    - name: "GCC (other-softmmu)"
+      env:
+       - CONFIG="--disable-user --target-list-exclude=${MAIN_SOFTMMU_TARGETS}"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-default"
 
 
     # Just build tools and run minimal unit and softfloat checks
-    - env:
+    - name: "GCC check-softfloat (user)"
+      env:
         - BASE_CONFIG="--enable-tools"
         - CONFIG="--disable-user --disable-system"
-        - TEST_CMD="make check-unit check-softfloat -j3"
+        - TEST_CMD="make check-unit check-softfloat -j${JOBS}"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-default"
 
 
     # --enable-debug implies --enable-debug-tcg, also runs quite a bit slower
-    - env:
+    - name: "GCC debug (main-softmmu)"
+      env:
         - CONFIG="--enable-debug --target-list=${MAIN_SOFTMMU_TARGETS}"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-debug"
 
 
     # TCG debug can be run just on its own and is mostly agnostic to user/softmmu distinctions
-    - env:
+    - name: "GCC debug (user)"
+      env:
         - CONFIG="--enable-debug-tcg --disable-system"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-debug-tcg"
 
 
-    - env:
+    - name: "GCC some libs disabled (main-softmmu)"
+      env:
         - CONFIG="--disable-linux-aio --disable-cap-ng --disable-attr --disable-brlapi --disable-libusb --disable-replication --target-list=${MAIN_SOFTMMU_TARGETS}"
 
 
     # Module builds are mostly of interest to major distros
-    - env:
+    - name: "GCC modules (main-softmmu)"
+      env:
         - CONFIG="--enable-modules --target-list=${MAIN_SOFTMMU_TARGETS}"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-default"
 
 
     # Alternate coroutines implementations are only really of interest to KVM users
     # However we can't test against KVM on Travis so we can only run unit tests
-    - env:
+    - name: "check-unit coroutine=ucontext"
+      env:
         - CONFIG="--with-coroutine=ucontext --disable-tcg"
-        - TEST_CMD="make check-unit -j3 V=1"
+        - TEST_CMD="make check-unit -j${JOBS} V=1"
 
 
-    - env:
+    - name: "check-unit coroutine=sigaltstack"
+      env:
         - CONFIG="--with-coroutine=sigaltstack --disable-tcg"
-        - TEST_CMD="make check-unit -j3 V=1"
+        - TEST_CMD="make check-unit -j${JOBS} V=1"
 
 
     # Check we can build docs and tools (out of tree)
-    - env:
+    - name: "tools and docs (bionic)"
+      dist: bionic
+      env:
         - BUILD_DIR="out-of-tree/build/dir" SRC_DIR="../../.."
         - BASE_CONFIG="--enable-tools --enable-docs"
         - CONFIG="--target-list=x86_64-softmmu,aarch64-linux-user"
@@ -169,118 +197,147 @@ matrix:
       addons:
         apt:
           packages:
-            - python-sphinx
+            - python3-sphinx
             - texinfo
             - perl
 
 
     # Test with Clang for compile portability (Travis uses clang-5.0)
-    - env:
+    - name: "Clang (user)"
+      env:
         - CONFIG="--disable-system"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-clang-default"
       compiler: clang
 
 
-    - env:
-        - CONFIG="--disable-user --target-list=${MAIN_SOFTMMU_TARGETS}"
-        - CACHE_NAME="${TRAVIS_BRANCH}-linux-clang-default"
-      compiler: clang
-
-
-    - env:
+    - name: "Clang (main-softmmu)"
+      env:
         - CONFIG="--target-list=${MAIN_SOFTMMU_TARGETS} "
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-clang-sanitize"
       compiler: clang
       before_script:
-        - ./configure ${CONFIG} --extra-cflags="-fsanitize=undefined -Werror" || { cat config.log && exit 1; }
+        - mkdir -p ${BUILD_DIR} && cd ${BUILD_DIR}
+        - ${SRC_DIR}/configure ${CONFIG} --extra-cflags="-fsanitize=undefined -Werror" || { cat config.log && exit 1; }
 
 
-    - env:
+    - name: "Clang (other-softmmu)"
+      env:
         - CONFIG="--disable-user --target-list-exclude=${MAIN_SOFTMMU_TARGETS}"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-clang-default"
       compiler: clang
 
 
     # gprof/gcov are GCC features
-    - env:
+    - name: "GCC gprof/gcov"
+      env:
         - CONFIG="--enable-gprof --enable-gcov --disable-pie --target-list=${MAIN_SOFTMMU_TARGETS}"
       after_success:
         - ${SRC_DIR}/scripts/travis/coverage-summary.sh
 
 
     # We manually include builds which we disable "make check" for
-    - env:
+    - name: "GCC without-default-devices (softmmu)"
+      env:
         - CONFIG="--without-default-devices --disable-user"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-default"
         - TEST_CMD=""
 
 
-    # We manually include builds which we disable "make check" for
-    - env:
-        - CONFIG="--enable-debug --enable-tcg-interpreter"
-        - TEST_CMD=""
+    # Check the TCG interpreter (TCI)
+    - name: "GCC TCI"
+      env:
+        - CONFIG="--enable-debug-tcg --enable-tcg-interpreter --disable-kvm --disable-containers
+            --target-list=alpha-softmmu,arm-softmmu,hppa-softmmu,m68k-softmmu,microblaze-softmmu,moxie-softmmu,ppc-softmmu,s390x-softmmu,x86_64-softmmu"
+        - TEST_CMD="make check-qtest check-tcg V=1"
 
 
     # We don't need to exercise every backend with every front-end
-    - env:
+    - name: "GCC trace log,simple,syslog (user)"
+      env:
         - CONFIG="--enable-trace-backends=log,simple,syslog --disable-system"
         - TEST_CMD=""
 
 
-    - env:
+    - name: "GCC trace ftrace (x86_64-softmmu)"
+      env:
         - CONFIG="--enable-trace-backends=ftrace --target-list=x86_64-softmmu"
         - TEST_CMD=""
 
 
-    - env:
+    - name: "GCC trace ust (x86_64-softmmu)"
+      env:
         - CONFIG="--enable-trace-backends=ust --target-list=x86_64-softmmu"
         - TEST_CMD=""
 
 
     # MacOSX builds - cirrus.yml also tests some MacOS builds including latest Xcode
 
-    - env:
+    - name: "OSX Xcode 10.3"
+      env:
+        - BASE_CONFIG="--disable-docs --enable-tools"
         - CONFIG="--target-list=i386-softmmu,ppc-softmmu,ppc64-softmmu,m68k-softmmu,x86_64-softmmu"
       os: osx
       osx_image: xcode10.3
       compiler: clang
+      addons:
+        homebrew:
+          packages:
+            - ccache
+            - glib
+            - pixman
+            - gnu-sed
+            - python
+          update: true
+      before_script:
+        - brew link --overwrite python
+        - export PATH="/usr/local/opt/ccache/libexec:$PATH"
+        - mkdir -p ${BUILD_DIR} && cd ${BUILD_DIR}
+        - ${SRC_DIR}/configure ${BASE_CONFIG} ${CONFIG} || { cat config.log && exit 1; }
 
 
     # Python builds
-    - env:
+    - name: "GCC Python 3.5 (x86_64-softmmu)"
+      env:
         - CONFIG="--target-list=x86_64-softmmu"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-default"
       language: python
-      python:
-        - "3.4"
+      python: 3.5
 
 
-    - env:
+    - name: "GCC Python 3.6 (x86_64-softmmu)"
+      env:
         - CONFIG="--target-list=x86_64-softmmu"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-default"
       language: python
-      python:
-        - "3.6"
+      python: 3.6
 
 
     # Acceptance (Functional) tests
-    - env:
-        - CONFIG="--python=/usr/bin/python3 --target-list=x86_64-softmmu,mips-softmmu,mips64el-softmmu,aarch64-softmmu,arm-softmmu,s390x-softmmu,alpha-softmmu,ppc-softmmu,ppc64-softmmu,m68k-softmmu,sparc-softmmu"
+    - name: "GCC check-acceptance"
+      dist: bionic
+      env:
+        - CONFIG="--enable-tools --target-list=aarch64-softmmu,alpha-softmmu,arm-softmmu,m68k-softmmu,microblaze-softmmu,mips-softmmu,mips64el-softmmu,nios2-softmmu,or1k-softmmu,ppc-softmmu,ppc64-softmmu,s390x-softmmu,sparc-softmmu,x86_64-softmmu,xtensa-softmmu"
         - TEST_CMD="make check-acceptance"
-      after_failure:
-        - cat tests/results/latest/job.log
+        - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-acceptance"
+      after_script:
+        - python3 -c 'import json; r = json.load(open("tests/results/latest/results.json")); [print(t["logfile"]) for t in r["tests"] if t["status"] not in ("PASS", "SKIP")]' | xargs cat
+        - du -chs $HOME/avocado/data/cache
       addons:
         apt:
           packages:
             - python3-pil
             - python3-pip
-            - python3.5-venv
+            - python3-numpy
+            - python3-opencv
+            - python3-venv
+            - rpm2cpio
             - tesseract-ocr
             - tesseract-ocr-eng
 
 
     # Using newer GCC with sanitizers
-    - addons:
+    - name: "GCC9 with sanitizers (softmmu)"
+      addons:
         apt:
           update: true
           sources:
@@ -323,56 +380,212 @@ matrix:
         - CONFIG="--cc=gcc-9 --cxx=g++-9 --disable-pie --disable-linux-user"
         - TEST_CMD=""
       before_script:
-        - ./configure ${CONFIG} --extra-cflags="-g3 -O0 -Wno-error=stringop-truncation -fsanitize=thread -fuse-ld=gold" || { cat config.log && exit 1; }
+        - mkdir -p ${BUILD_DIR} && cd ${BUILD_DIR}
+        - ${SRC_DIR}/configure ${CONFIG} --extra-cflags="-g3 -O0 -Wno-error=stringop-truncation -fsanitize=thread" --extra-ldflags="-fuse-ld=gold" || { cat config.log && exit 1; }
 
 
     # Run check-tcg against linux-user
-    - env:
+    - name: "GCC check-tcg (user)"
+      env:
         - CONFIG="--disable-system --enable-debug-tcg"
-        - TEST_CMD="make -j3 check-tcg V=1"
+        - TEST_BUILD_CMD="make build-tcg"
+        - TEST_CMD="make check-tcg"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-debug-tcg"
 
 
     # Run check-tcg against linux-user (with plugins)
     # we skip sparc64-linux-user until it has been fixed somewhat
-    - env:
-        - CONFIG="--disable-system --enable-plugins --enable-debug-tcg --target-list-exclude=sparc64-linux-user"
-        - TEST_CMD="make -j3 check-tcg V=1"
+    # we skip cris-linux-user as it doesn't use the common run loop
+    - name: "GCC plugins check-tcg (user)"
+      env:
+        - CONFIG="--disable-system --enable-plugins --enable-debug-tcg --target-list-exclude=sparc64-linux-user,cris-linux-user"
+        - TEST_BUILD_CMD="make build-tcg"
+        - TEST_CMD="make check-tcg"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-debug-tcg"
 
 
     # Run check-tcg against softmmu targets
-    - env:
+    - name: "GCC check-tcg (some-softmmu)"
+      env:
         - CONFIG="--enable-debug-tcg --target-list=xtensa-softmmu,arm-softmmu,aarch64-softmmu,alpha-softmmu"
-        - TEST_CMD="make -j3 check-tcg V=1"
+        - TEST_BUILD_CMD="make build-tcg"
+        - TEST_CMD="make check-tcg"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-debug-tcg"
 
 
     # Run check-tcg against softmmu targets (with plugins)
-    - env:
+    - name: "GCC plugins check-tcg (some-softmmu)"
+      env:
         - CONFIG="--enable-plugins --enable-debug-tcg --target-list=xtensa-softmmu,arm-softmmu,aarch64-softmmu,alpha-softmmu"
-        - TEST_CMD="make -j3 check-tcg V=1"
+        - TEST_BUILD_CMD="make build-tcg"
+        - TEST_CMD="make check-tcg"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-debug-tcg"
 
+    - name: "[aarch64] GCC check-tcg"
+      arch: arm64
+      dist: xenial
+      addons:
+        apt_packages:
+          - libaio-dev
+          - libattr1-dev
+          - libbrlapi-dev
+          - libcap-ng-dev
+          - libgcrypt20-dev
+          - libgnutls28-dev
+          - libgtk-3-dev
+          - libiscsi-dev
+          - liblttng-ust-dev
+          - libncurses5-dev
+          - libnfs-dev
+          - libnss3-dev
+          - libpixman-1-dev
+          - libpng-dev
+          - librados-dev
+          - libsdl2-dev
+          - libseccomp-dev
+          - liburcu-dev
+          - libusb-1.0-0-dev
+          - libvdeplug-dev
+          - libvte-2.91-dev
+          # Tests dependencies
+          - genisoimage
+      env:
+        - TEST_CMD="make check check-tcg V=1"
+        - CONFIG="--disable-containers --target-list=${MAIN_SOFTMMU_TARGETS}"
+
+    - name: "[ppc64] GCC check-tcg"
+      arch: ppc64le
+      dist: xenial
+      addons:
+        apt_packages:
+          - libaio-dev
+          - libattr1-dev
+          - libbrlapi-dev
+          - libcap-ng-dev
+          - libgcrypt20-dev
+          - libgnutls28-dev
+          - libgtk-3-dev
+          - libiscsi-dev
+          - liblttng-ust-dev
+          - libncurses5-dev
+          - libnfs-dev
+          - libnss3-dev
+          - libpixman-1-dev
+          - libpng-dev
+          - librados-dev
+          - libsdl2-dev
+          - libseccomp-dev
+          - liburcu-dev
+          - libusb-1.0-0-dev
+          - libvdeplug-dev
+          - libvte-2.91-dev
+          # Tests dependencies
+          - genisoimage
+      env:
+        - TEST_CMD="make check check-tcg V=1"
+        - CONFIG="--disable-containers --target-list=${MAIN_SOFTMMU_TARGETS},ppc64le-linux-user"
+
+    - name: "[s390x] GCC check-tcg"
+      arch: s390x
+      dist: bionic
+      addons:
+        apt_packages:
+          - libaio-dev
+          - libattr1-dev
+          - libbrlapi-dev
+          - libcap-ng-dev
+          - libgcrypt20-dev
+          - libgnutls28-dev
+          - libgtk-3-dev
+          - libiscsi-dev
+          - liblttng-ust-dev
+          - libncurses5-dev
+          - libnfs-dev
+          - libnss3-dev
+          - libpixman-1-dev
+          - libpng-dev
+          - librados-dev
+          - libsdl2-dev
+          - libseccomp-dev
+          - liburcu-dev
+          - libusb-1.0-0-dev
+          - libvdeplug-dev
+          - libvte-2.91-dev
+          # Tests dependencies
+          - genisoimage
+      env:
+        - TEST_CMD="make check check-tcg V=1"
+        - CONFIG="--disable-containers --target-list=${MAIN_SOFTMMU_TARGETS},s390x-linux-user"
+      script:
+        - ( cd ${SRC_DIR} ; git submodule update --init roms/SLOF )
+        - BUILD_RC=0 && make -j${JOBS} || BUILD_RC=$?
+        - |
+          if [ "$BUILD_RC" -eq 0 ] ; then
+              mv pc-bios/s390-ccw/*.img pc-bios/ ;
+              ${TEST_CMD} ;
+          else
+              $(exit $BUILD_RC);
+          fi
+
+    - name: "[s390x] GCC check (KVM)"
+      arch: s390x
+      dist: bionic
+      addons:
+        apt_packages:
+          - libaio-dev
+          - libattr1-dev
+          - libbrlapi-dev
+          - libcap-ng-dev
+          - libgcrypt20-dev
+          - libgnutls28-dev
+          - libgtk-3-dev
+          - libiscsi-dev
+          - liblttng-ust-dev
+          - libncurses5-dev
+          - libnfs-dev
+          - libnss3-dev
+          - libpixman-1-dev
+          - libpng-dev
+          - librados-dev
+          - libsdl2-dev
+          - libseccomp-dev
+          - liburcu-dev
+          - libusb-1.0-0-dev
+          - libvdeplug-dev
+          - libvte-2.91-dev
+          # Tests dependencies
+          - genisoimage
+      env:
+        - TEST_CMD="make check-unit"
+        - CONFIG="--disable-containers --disable-tcg --enable-kvm --disable-tools"
+      script:
+        - ( cd ${SRC_DIR} ; git submodule update --init roms/SLOF )
+        - BUILD_RC=0 && make -j${JOBS} || BUILD_RC=$?
+        - |
+          if [ "$BUILD_RC" -eq 0 ] ; then
+              mv pc-bios/s390-ccw/*.img pc-bios/ ;
+              ${TEST_CMD} ;
+          else
+              $(exit $BUILD_RC);
+          fi
 
     # Release builds
     # The make-release script expect a QEMU version, so our tag must start with a 'v'.
     # This is the case when release candidate tags are created.
-    - if: tag IS present AND tag =~ /^v\d+\.\d+(\.\d+)?(-\S*)?$/
+    - name: "Release tarball"
+      if: tag IS present AND tag =~ /^v\d+\.\d+(\.\d+)?(-\S*)?$/
       env:
         # We want to build from the release tarball
         - BUILD_DIR="release/build/dir" SRC_DIR="../../.."
         - BASE_CONFIG="--prefix=$PWD/dist"
         - CONFIG="--target-list=x86_64-softmmu,aarch64-softmmu,armeb-linux-user,ppc-linux-user"
-        - TEST_CMD="make install -j3"
+        - TEST_CMD="make install -j${JOBS}"
         - QEMU_VERSION="${TRAVIS_TAG:1}"
         - CACHE_NAME="${TRAVIS_BRANCH}-linux-gcc-default"
-      before_script:
-        - command -v ccache && ccache --zero-stats
-        - mkdir -p ${BUILD_DIR} && cd ${BUILD_DIR}
       script:
         - make -C ${SRC_DIR} qemu-${QEMU_VERSION}.tar.bz2
         - ls -l ${SRC_DIR}/qemu-${QEMU_VERSION}.tar.bz2
         - tar -xf ${SRC_DIR}/qemu-${QEMU_VERSION}.tar.bz2 && cd qemu-${QEMU_VERSION}
-        - ./configure ${BASE_CONFIG} ${CONFIG} || { cat config.log && exit 1; }
+        - mkdir -p release-build && cd release-build
+        - ../configure ${BASE_CONFIG} ${CONFIG} || { cat config.log && exit 1; }
         - make install

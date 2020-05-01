@@ -187,7 +187,8 @@ static void platform_bus_realize(DeviceState *dev, Error **errp)
     d = SYS_BUS_DEVICE(dev);
     pbus = PLATFORM_BUS_DEVICE(dev);
 
-    memory_region_init(&pbus->mmio, NULL, "platform bus", pbus->mmio_size);
+    memory_region_init(&pbus->mmio, OBJECT(dev), "platform bus",
+                       pbus->mmio_size);
     sysbus_init_mmio(d, &pbus->mmio);
 
     pbus->used_irqs = bitmap_new(pbus->num_irqs);
@@ -211,7 +212,7 @@ static void platform_bus_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = platform_bus_realize;
-    dc->props = platform_bus_properties;
+    device_class_set_props(dc, platform_bus_properties);
 }
 
 static const TypeInfo platform_bus_info = {

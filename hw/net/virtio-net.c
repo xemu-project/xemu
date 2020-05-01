@@ -1234,26 +1234,26 @@ static void virtio_net_handle_rx(VirtIODevice *vdev, VirtQueue *vq)
     qemu_flush_queued_packets(qemu_get_subqueue(n->nic, queue_index));
 }
 
-static int virtio_net_can_receive(NetClientState *nc)
+static bool virtio_net_can_receive(NetClientState *nc)
 {
     VirtIONet *n = qemu_get_nic_opaque(nc);
     VirtIODevice *vdev = VIRTIO_DEVICE(n);
     VirtIONetQueue *q = virtio_net_get_subqueue(nc);
 
     if (!vdev->vm_running) {
-        return 0;
+        return false;
     }
 
     if (nc->queue_index >= n->curr_queues) {
-        return 0;
+        return false;
     }
 
     if (!virtio_queue_ready(q->rx_vq) ||
         !(vdev->status & VIRTIO_CONFIG_S_DRIVER_OK)) {
-        return 0;
+        return false;
     }
 
-    return 1;
+    return true;
 }
 
 static int virtio_net_has_buffers(VirtIONetQueue *q, int bufsize)
@@ -2853,7 +2853,8 @@ static void virtio_net_handle_migration_primary(VirtIONet *n,
 
     if (migration_in_setup(s) && !should_be_hidden) {
         if (failover_unplug_primary(n)) {
-            vmstate_unregister(n->primary_dev, qdev_get_vmsd(n->primary_dev),
+            vmstate_unregister(VMSTATE_IF(n->primary_dev),
+                    qdev_get_vmsd(n->primary_dev),
                     n->primary_dev);
             qapi_event_send_unplug_primary(n->primary_device_id);
             atomic_set(&n->primary_should_be_hidden, true);
@@ -3101,7 +3102,8 @@ static void virtio_net_device_unrealize(DeviceState *dev, Error **errp)
     for (i = 0; i < max_queues; i++) {
         virtio_net_del_queue(n, i);
     }
-
+    /* delete also control vq */
+    virtio_del_queue(vdev, max_queues * 2);
     qemu_announce_timer_del(&n->announce_timer, false);
     g_free(n->vqs);
     qemu_del_nic(n->nic);
@@ -3234,7 +3236,7 @@ static void virtio_net_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     VirtioDeviceClass *vdc = VIRTIO_DEVICE_CLASS(klass);
 
-    dc->props = virtio_net_properties;
+    device_class_set_props(dc, virtio_net_properties);
     dc->vmsd = &vmstate_virtio_net;
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
     vdc->realize = virtio_net_device_realize;

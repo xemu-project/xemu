@@ -70,6 +70,7 @@ static void isa_ipmi_bt_lower_irq(IPMIBT *ib)
 
 static void isa_ipmi_bt_realize(DeviceState *dev, Error **errp)
 {
+    Error *err = NULL;
     ISADevice *isadev = ISA_DEVICE(dev);
     ISAIPMIBTDevice *iib = ISA_IPMI_BT(dev);
     IPMIInterface *ii = IPMI_INTERFACE(dev);
@@ -85,9 +86,11 @@ static void isa_ipmi_bt_realize(DeviceState *dev, Error **errp)
     iib->bt.bmc->intf = ii;
     iib->bt.opaque = iib;
 
-    iic->init(ii, 0, errp);
-    if (*errp)
+    iic->init(ii, 0, &err);
+    if (err) {
+        error_propagate(errp, err);
         return;
+    }
 
     if (iib->isairq > 0) {
         isa_init_irq(isadev, &iib->irq, iib->isairq);
@@ -144,7 +147,7 @@ static void isa_ipmi_bt_class_init(ObjectClass *oc, void *data)
     IPMIInterfaceClass *iic = IPMI_INTERFACE_CLASS(oc);
 
     dc->realize = isa_ipmi_bt_realize;
-    dc->props = ipmi_isa_properties;
+    device_class_set_props(dc, ipmi_isa_properties);
 
     iic->get_backend_data = isa_ipmi_bt_get_backend_data;
     ipmi_bt_class_init(iic);

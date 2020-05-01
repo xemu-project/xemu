@@ -7,18 +7,18 @@
 #include "hw/timer/allwinner-a10-pit.h"
 #include "hw/intc/allwinner-a10-pic.h"
 #include "hw/net/allwinner_emac.h"
+#include "hw/sd/allwinner-sdhost.h"
 #include "hw/ide/ahci.h"
+#include "hw/usb/hcd-ohci.h"
+#include "hw/usb/hcd-ehci.h"
+#include "hw/rtc/allwinner-rtc.h"
 
 #include "target/arm/cpu.h"
 
 
-#define AW_A10_PIC_REG_BASE     0x01c20400
-#define AW_A10_PIT_REG_BASE     0x01c20c00
-#define AW_A10_UART0_REG_BASE   0x01c28000
-#define AW_A10_EMAC_BASE        0x01c0b000
-#define AW_A10_SATA_BASE        0x01c18000
-
 #define AW_A10_SDRAM_BASE       0x40000000
+
+#define AW_A10_NUM_USB          2
 
 #define TYPE_AW_A10 "allwinner-a10"
 #define AW_A10(obj) OBJECT_CHECK(AwA10State, (obj), TYPE_AW_A10)
@@ -29,12 +29,15 @@ typedef struct AwA10State {
     /*< public >*/
 
     ARMCPU cpu;
-    qemu_irq irq[AW_A10_PIC_INT_NR];
     AwA10PITState timer;
     AwA10PICState intc;
     AwEmacState emac;
     AllwinnerAHCIState sata;
+    AwSdHostState mmc0;
+    AwRtcState rtc;
     MemoryRegion sram_a;
+    EHCISysBusState ehci[AW_A10_NUM_USB];
+    OHCISysBusState ohci[AW_A10_NUM_USB];
 } AwA10State;
 
 #endif

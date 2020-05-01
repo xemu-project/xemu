@@ -39,13 +39,15 @@ trap "_cleanup; exit \$status" 0 1 2 3 15
 _supported_fmt qcow2
 _supported_proto file nfs
 
+# Some containers (e.g. non-x86 on Travis) do not allow large files
+_require_large_file 4G
+
 echo "=== Check option preallocation and cluster_size ==="
 echo
 cluster_sizes="16384 32768 65536 131072 262144 524288 1048576 2097152 4194304"
 
 for s in $cluster_sizes; do
-    IMGOPTS=$(_optstr_add "$IMGOPTS" "preallocation=metadata,cluster_size=$s") \
-        _make_test_img 4G
+    _make_test_img -o "preallocation=metadata,cluster_size=$s" 4G
 done
 
 # success, all done

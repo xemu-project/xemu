@@ -9,9 +9,10 @@
 static bool vfp_needed(void *opaque)
 {
     ARMCPU *cpu = opaque;
-    CPUARMState *env = &cpu->env;
 
-    return arm_feature(env, ARM_FEATURE_VFP);
+    return (arm_feature(&cpu->env, ARM_FEATURE_AARCH64)
+            ? cpu_isar_feature(aa64_fp_simd, cpu)
+            : cpu_isar_feature(aa32_vfp_simd, cpu));
 }
 
 static int get_fpscr(QEMUFile *f, void *opaque, size_t size,
@@ -642,6 +643,12 @@ static int cpu_pre_save(void *opaque)
             /* This should never fail */
             abort();
         }
+
+        /*
+         * kvm_arm_cpu_pre_save() must be called after
+         * write_kvmstate_to_list()
+         */
+        kvm_arm_cpu_pre_save(cpu);
     } else {
         if (!write_cpustate_to_list(cpu, false)) {
             /* This should never fail. */
@@ -744,6 +751,7 @@ static int cpu_post_load(void *opaque, int version_id)
          * we're using it.
          */
         write_list_to_cpustate(cpu);
+        kvm_arm_cpu_post_load(cpu);
     } else {
         if (!write_list_to_cpustate(cpu)) {
             return -1;

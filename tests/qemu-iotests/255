@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Test commit job graph modifications while requests are active
 #
@@ -24,16 +24,6 @@ import iotests
 from iotests import imgfmt
 
 iotests.verify_image_format(supported_fmts=['qcow2'])
-
-def blockdev_create(vm, options):
-    result = vm.qmp_log('blockdev-create',
-                        filters=[iotests.filter_qmp_testfiles],
-                        job_id='job0', options=options)
-
-    if 'return' in result:
-        assert result['return'] == {}
-        vm.run_job('job0')
-    iotests.log("")
 
 iotests.log('Finishing a commit job with background reads')
 iotests.log('============================================')

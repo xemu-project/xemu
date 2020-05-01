@@ -186,7 +186,7 @@ static int32_t *VIB_TABLE;
 
 /* envelope output curve table */
 /* attack + decay + OFF */
-static int32_t ENV_CURVE[2*EG_ENT+1];
+static int32_t *ENV_CURVE;
 
 /* multiple table */
 #define ML 2
@@ -627,6 +627,7 @@ static int OPLOpenTable( void )
 		free(AMS_TABLE);
 		return 0;
 	}
+    ENV_CURVE = g_new(int32_t, 2 * EG_ENT + 1);
 	/* make total level table */
 	for (t = 0;t < EG_ENT-1 ;t++){
 		rate = ((1<<TL_BITS)-1)/pow(10,EG_STEP*t/20);	/* dB -> voltage */
@@ -694,6 +695,7 @@ static int OPLOpenTable( void )
 
 static void OPLCloseTable( void )
 {
+    g_free(ENV_CURVE);
 	free(TL_TABLE);
 	free(SIN_TABLE);
 	free(AMS_TABLE);
@@ -1066,7 +1068,7 @@ static void OPLResetChip(FM_OPL *OPL)
 	}
 }
 
-/* ----------  Create one of vietual YM3812 ----------       */
+/* ----------  Create one of virtual YM3812 ----------       */
 /* 'rate'  is sampling rate and 'bufsiz' is the size of the  */
 FM_OPL *OPLCreate(int clock, int rate)
 {
@@ -1115,7 +1117,7 @@ FM_OPL *OPLCreate(int clock, int rate)
 	return OPL;
 }
 
-/* ----------  Destroy one of vietual YM3812 ----------       */
+/* ----------  Destroy one of virtual YM3812 ----------       */
 void OPLDestroy(FM_OPL *OPL)
 {
 #ifdef OPL_OUTPUT_LOG

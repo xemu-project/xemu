@@ -1,17 +1,17 @@
 #######################################################################
 # Common libraries for tools and emulators
-stub-obj-y = stubs/ util/ crypto/
-util-obj-y = util/ qobject/ qapi/
+stub-obj-y = stubs/
+util-obj-y = crypto/ util/ qobject/ qapi/
+qom-obj-y = qom/
+
+#######################################################################
+# code used by both qemu system emulation and qemu-img
+
+ifeq ($(call lor,$(CONFIG_SOFTMMU),$(CONFIG_TOOLS)),y)
 
 chardev-obj-y = chardev/
 
-#######################################################################
-# authz-obj-y is code used by both qemu system emulation and qemu-img
-
 authz-obj-y = authz/
-
-#######################################################################
-# block-obj-y is code used by both qemu system emulation and qemu-img
 
 block-obj-y = nbd/
 block-obj-y += block.o blockjob.o job.o
@@ -21,21 +21,20 @@ block-obj-$(CONFIG_REPLICATION) += replication.o
 
 block-obj-m = block/
 
-#######################################################################
-# crypto-obj-y is code used by both qemu system emulation and qemu-img
-
 crypto-obj-y = crypto/
-crypto-user-obj-y = crypto/
-
-#######################################################################
-# qom-obj-y is code used by both qemu system emulation and qemu-img
-
-qom-obj-y = qom/
-
-#######################################################################
-# io-obj-y is code used by both qemu system emulation and qemu-img
 
 io-obj-y = io/
+
+endif # CONFIG_SOFTMMU or CONFIG_TOOLS
+
+#######################################################################
+# storage-daemon-obj-y is code used by qemu-storage-daemon (these objects are
+# used for system emulation, too, but specified separately there)
+
+storage-daemon-obj-y = block/ monitor/ qapi/ qom/ storage-daemon/
+storage-daemon-obj-y += blockdev.o blockdev-nbd.o iothread.o job-qmp.o
+storage-daemon-obj-$(CONFIG_WIN32) += os-win32.o
+storage-daemon-obj-$(CONFIG_POSIX) += os-posix.o
 
 ######################################################################
 # Target independent part of system emulation. The long term path is to
@@ -49,12 +48,13 @@ common-obj-y += dump/
 common-obj-y += job-qmp.o
 common-obj-y += monitor/
 common-obj-y += net/
-common-obj-y += qdev-monitor.o device-hotplug.o
+common-obj-y += qdev-monitor.o
 common-obj-$(CONFIG_WIN32) += os-win32.o
 common-obj-$(CONFIG_POSIX) += os-posix.o
 
 common-obj-$(CONFIG_LINUX) += fsdev/
 
+common-obj-y += accel/
 common-obj-y += migration/
 
 common-obj-y += audio/
@@ -65,12 +65,8 @@ common-obj-y += replay/
 
 common-obj-y += ui/
 common-obj-m += ui/
-common-obj-y += bt-host.o bt-vhci.o
-bt-host.o-cflags := $(BLUEZ_CFLAGS)
 
 common-obj-y += dma-helpers.o
-common-obj-y += vl.o
-vl.o-cflags := $(GPROF_CFLAGS) $(SDL_CFLAGS)
 common-obj-$(CONFIG_TPM) += tpm.o
 
 common-obj-y += backends/
@@ -82,11 +78,9 @@ qemu-seccomp.o-libs := $(SECCOMP_LIBS)
 
 common-obj-$(CONFIG_FDT) += device_tree.o
 
-######################################################################
-# qapi
-
 common-obj-y += qapi/
-endif
+
+endif # CONFIG_SOFTMMU
 
 #######################################################################
 # Target-independent parts used in system and user emulation
@@ -125,11 +119,13 @@ vhost-user-blk-obj-y = contrib/vhost-user-blk/
 rdmacm-mux-obj-y = contrib/rdmacm-mux/
 vhost-user-input-obj-y = contrib/vhost-user-input/
 vhost-user-gpu-obj-y = contrib/vhost-user-gpu/
+virtiofsd-obj-y = tools/virtiofsd/
 
 ######################################################################
 trace-events-subdirs =
 trace-events-subdirs += accel/kvm
 trace-events-subdirs += accel/tcg
+trace-events-subdirs += backends
 trace-events-subdirs += crypto
 trace-events-subdirs += monitor
 ifeq ($(CONFIG_USER_ONLY),y)
@@ -143,8 +139,8 @@ trace-events-subdirs += nbd
 trace-events-subdirs += scsi
 endif
 ifeq ($(CONFIG_SOFTMMU),y)
-trace-events-subdirs += chardev
 trace-events-subdirs += audio
+trace-events-subdirs += chardev
 trace-events-subdirs += hw/9pfs
 trace-events-subdirs += hw/acpi
 trace-events-subdirs += hw/alpha
@@ -179,6 +175,7 @@ trace-events-subdirs += hw/scsi
 trace-events-subdirs += hw/sd
 trace-events-subdirs += hw/sparc
 trace-events-subdirs += hw/sparc64
+trace-events-subdirs += hw/ssi
 trace-events-subdirs += hw/timer
 trace-events-subdirs += hw/tpm
 trace-events-subdirs += hw/usb
@@ -192,6 +189,7 @@ trace-events-subdirs += migration
 trace-events-subdirs += net
 trace-events-subdirs += ui
 endif
+trace-events-subdirs += hw/core
 trace-events-subdirs += hw/display
 trace-events-subdirs += qapi
 trace-events-subdirs += qom
@@ -204,7 +202,6 @@ trace-events-subdirs += target/riscv
 trace-events-subdirs += target/s390x
 trace-events-subdirs += target/sparc
 trace-events-subdirs += util
-trace-events-subdirs += hw/core
 
 trace-events-files = $(SRC_PATH)/trace-events $(trace-events-subdirs:%=$(SRC_PATH)/%/trace-events)
 

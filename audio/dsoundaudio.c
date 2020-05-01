@@ -53,12 +53,14 @@ typedef struct {
 typedef struct {
     HWVoiceOut hw;
     LPDIRECTSOUNDBUFFER dsound_buffer;
+    bool first_time;
     dsound *s;
 } DSoundVoiceOut;
 
 typedef struct {
     HWVoiceIn hw;
     LPDIRECTSOUNDCAPTUREBUFFER dsound_capture_buffer;
+    bool first_time;
     dsound *s;
 } DSoundVoiceIn;
 
@@ -277,7 +279,7 @@ static int dsound_get_status_out (LPDIRECTSOUNDBUFFER dsb, DWORD *statusp,
         return -1;
     }
 
-    if (*statusp & DSERR_BUFFERLOST) {
+    if (*statusp & DSBSTATUS_BUFFERLOST) {
         dsound_restore_out(dsb, s);
         return -1;
     }
@@ -414,20 +416,31 @@ static void *dsound_get_buffer_out(HWVoiceOut *hw, size_t *size)
     DSoundVoiceOut *ds = (DSoundVoiceOut *) hw;
     LPDIRECTSOUNDBUFFER dsb = ds->dsound_buffer;
     HRESULT hr;
-    DWORD ppos, act_size;
+    DWORD ppos, wpos, act_size;
     size_t req_size;
     int err;
     void *ret;
 
-    hr = IDirectSoundBuffer_GetCurrentPosition(dsb, &ppos, NULL);
+    hr = IDirectSoundBuffer_GetCurrentPosition(
+        dsb, &ppos, ds->first_time ? &wpos : NULL);
     if (FAILED(hr)) {
         dsound_logerr(hr, "Could not get playback buffer position\n");
         *size = 0;
         return NULL;
     }
 
+    if (ds->first_time) {
+        hw->pos_emul = wpos;
+        ds->first_time = false;
+    }
+
     req_size = audio_ring_dist(ppos, hw->pos_emul, hw->size_emul);
     req_size = MIN(req_size, hw->size_emul - hw->pos_emul);
+
+    if (req_size == 0) {
+        *size = 0;
+        return NULL;
+    }
 
     err = dsound_lock_out(dsb, &hw->info, hw->pos_emul, req_size, &ret, NULL,
                           &act_size, NULL, false, ds->s);
@@ -508,20 +521,31 @@ static void *dsound_get_buffer_in(HWVoiceIn *hw, size_t *size)
     DSoundVoiceIn *ds = (DSoundVoiceIn *) hw;
     LPDIRECTSOUNDCAPTUREBUFFER dscb = ds->dsound_capture_buffer;
     HRESULT hr;
-    DWORD cpos, act_size;
+    DWORD cpos, rpos, act_size;
     size_t req_size;
     int err;
     void *ret;
 
-    hr = IDirectSoundCaptureBuffer_GetCurrentPosition(dscb, &cpos, NULL);
+    hr = IDirectSoundCaptureBuffer_GetCurrentPosition(
+        dscb, &cpos, ds->first_time ? &rpos : NULL);
     if (FAILED(hr)) {
         dsound_logerr(hr, "Could not get capture buffer position\n");
         *size = 0;
         return NULL;
     }
 
+    if (ds->first_time) {
+        hw->pos_emul = rpos;
+        ds->first_time = false;
+    }
+
     req_size = audio_ring_dist(cpos, hw->pos_emul, hw->size_emul);
-    req_size = MIN(req_size, hw->size_emul - hw->pos_emul);
+    req_size = MIN(*size, MIN(req_size, hw->size_emul - hw->pos_emul));
+
+    if (req_size == 0) {
+        *size = 0;
+        return NULL;
+    }
 
     err = dsound_lock_in(dscb, &hw->info, hw->pos_emul, req_size, &ret, NULL,
                          &act_size, NULL, false, ds->s);

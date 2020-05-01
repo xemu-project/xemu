@@ -75,7 +75,7 @@ static void kvm_cpu_disable_all(void)
 
 void kvmppc_xive_cpu_set_state(XiveTCTX *tctx, Error **errp)
 {
-    SpaprXive *xive = SPAPR_MACHINE(qdev_get_machine())->xive;
+    SpaprXive *xive = SPAPR_XIVE(tctx->xptr);
     uint64_t state[2];
     int ret;
 
@@ -97,7 +97,7 @@ void kvmppc_xive_cpu_set_state(XiveTCTX *tctx, Error **errp)
 
 void kvmppc_xive_cpu_get_state(XiveTCTX *tctx, Error **errp)
 {
-    SpaprXive *xive = SPAPR_MACHINE(qdev_get_machine())->xive;
+    SpaprXive *xive = SPAPR_XIVE(tctx->xptr);
     uint64_t state[2] = { 0 };
     int ret;
 
@@ -152,7 +152,7 @@ void kvmppc_xive_cpu_synchronize_state(XiveTCTX *tctx, Error **errp)
 
 void kvmppc_xive_cpu_connect(XiveTCTX *tctx, Error **errp)
 {
-    SpaprXive *xive = SPAPR_MACHINE(qdev_get_machine())->xive;
+    SpaprXive *xive = SPAPR_XIVE(tctx->xptr);
     unsigned long vcpu_id;
     int ret;
 
@@ -171,8 +171,16 @@ void kvmppc_xive_cpu_connect(XiveTCTX *tctx, Error **errp)
     ret = kvm_vcpu_enable_cap(tctx->cs, KVM_CAP_PPC_IRQ_XIVE, 0, xive->fd,
                               vcpu_id, 0);
     if (ret < 0) {
-        error_setg(errp, "XIVE: unable to connect CPU%ld to KVM device: %s",
+        Error *local_err = NULL;
+
+        error_setg(&local_err,
+                   "XIVE: unable to connect CPU%ld to KVM device: %s",
                    vcpu_id, strerror(errno));
+        if (errno == ENOSPC) {
+            error_append_hint(&local_err, "Try -smp maxcpus=N with N < %u\n",
+                              MACHINE(qdev_get_machine())->smp.max_cpus);
+        }
+        error_propagate(errp, local_err);
         return;
     }
 
@@ -354,32 +362,20 @@ static void kvmppc_xive_source_get_state(XiveSource *xsrc)
 void kvmppc_xive_source_set_irq(void *opaque, int srcno, int val)
 {
     XiveSource *xsrc = opaque;
-    SpaprXive *xive = SPAPR_XIVE(xsrc->xive);
-    struct kvm_irq_level args;
-    int rc;
 
-    /* The KVM XIVE device should be in use */
-    assert(xive->fd != -1);
-
-    args.irq = srcno;
     if (!xive_source_irq_is_lsi(xsrc, srcno)) {
         if (!val) {
             return;
         }
-        args.level = KVM_INTERRUPT_SET;
     } else {
         if (val) {
             xsrc->status[srcno] |= XIVE_STATUS_ASSERTED;
-            args.level = KVM_INTERRUPT_SET_LEVEL;
         } else {
             xsrc->status[srcno] &= ~XIVE_STATUS_ASSERTED;
-            args.level = KVM_INTERRUPT_UNSET;
         }
     }
-    rc = kvm_vm_ioctl(kvm_state, KVM_IRQ_LINE, &args);
-    if (rc < 0) {
-        error_report("XIVE: kvm_irq_line() failed : %s", strerror(errno));
-    }
+
+    xive_esb_trigger(xsrc, srcno);
 }
 
 /*
@@ -740,7 +736,8 @@ static void *kvmppc_xive_mmap(SpaprXive *xive, int pgoff, size_t len,
  * All the XIVE memory regions are now backed by mappings from the KVM
  * XIVE device.
  */
-int kvmppc_xive_connect(SpaprInterruptController *intc, Error **errp)
+int kvmppc_xive_connect(SpaprInterruptController *intc, uint32_t nr_servers,
+                        Error **errp)
 {
     SpaprXive *xive = SPAPR_XIVE(intc);
     XiveSource *xsrc = &xive->source;
@@ -767,6 +764,16 @@ int kvmppc_xive_connect(SpaprInterruptController *intc, Error **errp)
     if (xive->fd < 0) {
         error_setg_errno(errp, -xive->fd, "XIVE: error creating KVM device");
         return -1;
+    }
+
+    /* Tell KVM about the # of VCPUs we may have */
+    if (kvm_device_check_attr(xive->fd, KVM_DEV_XIVE_GRP_CTRL,
+                              KVM_DEV_XIVE_NR_SERVERS)) {
+        if (kvm_device_access(xive->fd, KVM_DEV_XIVE_GRP_CTRL,
+                              KVM_DEV_XIVE_NR_SERVERS, &nr_servers, true,
+                              &local_err)) {
+            goto fail;
+        }
     }
 
     /*

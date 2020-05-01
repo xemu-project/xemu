@@ -22,6 +22,7 @@
 #include "hw/misc/unimp.h"
 #include "hw/intc/arm_gicv3_common.h"
 #include "hw/arm/xlnx-versal.h"
+#include "hw/char/pl011.h"
 
 #define XLNX_VERSAL_ACPU_TYPE ARM_CPU_TYPE_NAME("cortex-a72")
 #define GEM_REVISION        0x40070106
@@ -144,7 +145,7 @@ static void versal_create_uarts(Versal *s, qemu_irq *pic)
         DeviceState *dev;
         MemoryRegion *mr;
 
-        dev = qdev_create(NULL, "pl011");
+        dev = qdev_create(NULL, TYPE_PL011);
         s->lpd.iou.uart[i] = SYS_BUS_DEVICE(dev);
         qdev_prop_set_chr(dev, "chardev", serial_hd(i));
         object_property_add_child(OBJECT(s), name, OBJECT(dev), &error_fatal);
@@ -189,6 +190,29 @@ static void versal_create_gems(Versal *s, qemu_irq *pic)
         memory_region_add_subregion(&s->mr_ps, addrs[i], mr);
 
         sysbus_connect_irq(s->lpd.iou.gem[i], 0, pic[irqs[i]]);
+        g_free(name);
+    }
+}
+
+static void versal_create_admas(Versal *s, qemu_irq *pic)
+{
+    int i;
+
+    for (i = 0; i < ARRAY_SIZE(s->lpd.iou.adma); i++) {
+        char *name = g_strdup_printf("adma%d", i);
+        DeviceState *dev;
+        MemoryRegion *mr;
+
+        dev = qdev_create(NULL, "xlnx.zdma");
+        s->lpd.iou.adma[i] = SYS_BUS_DEVICE(dev);
+        object_property_add_child(OBJECT(s), name, OBJECT(dev), &error_fatal);
+        qdev_init_nofail(dev);
+
+        mr = sysbus_mmio_get_region(s->lpd.iou.adma[i], 0);
+        memory_region_add_subregion(&s->mr_ps,
+                                    MM_ADMA_CH0 + i * MM_ADMA_CH0_SIZE, mr);
+
+        sysbus_connect_irq(s->lpd.iou.adma[i], 0, pic[VERSAL_ADMA_IRQ_0 + i]);
         g_free(name);
     }
 }
@@ -274,6 +298,7 @@ static void versal_realize(DeviceState *dev, Error **errp)
     versal_create_apu_gic(s, pic);
     versal_create_uarts(s, pic);
     versal_create_gems(s, pic);
+    versal_create_admas(s, pic);
     versal_map_ddr(s);
     versal_unimp(s);
 
@@ -305,7 +330,7 @@ static void versal_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = versal_realize;
-    dc->props = versal_properties;
+    device_class_set_props(dc, versal_properties);
     /* No VMSD since we haven't got any top-level SoC state to save.  */
 }
 

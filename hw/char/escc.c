@@ -634,7 +634,7 @@ static void serial_receive1(void *opaque, const uint8_t *buf, int size)
     serial_receive_byte(s, buf[0]);
 }
 
-static void serial_event(void *opaque, int event)
+static void serial_event(void *opaque, QEMUChrEvent event)
 {
     ESCCChannelState *s = opaque;
     if (event == CHR_EVENT_BREAK)
@@ -865,7 +865,7 @@ static void escc_class_init(ObjectClass *klass, void *data)
     dc->reset = escc_reset;
     dc->realize = escc_realize;
     dc->vmsd = &vmstate_escc;
-    dc->props = escc_properties;
+    device_class_set_props(dc, escc_properties);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
 }
 

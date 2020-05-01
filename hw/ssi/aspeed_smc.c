@@ -31,6 +31,7 @@
 #include "qapi/error.h"
 #include "exec/address-spaces.h"
 #include "qemu/units.h"
+#include "trace.h"
 
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
@@ -137,7 +138,7 @@
 /* Checksum Calculation Result */
 #define R_DMA_CHECKSUM    (0x90 / 4)
 
-/* Misc Control Register #2 */
+/* Read Timing Compensation Register */
 #define R_TIMINGS         (0x94 / 4)
 
 /* SPI controller registers and bits (AST2400) */
@@ -256,6 +257,7 @@ static const AspeedSMCController controllers[] = {
         .r_ce_ctrl         = R_CE_CTRL,
         .r_ctrl0           = R_CTRL0,
         .r_timings         = R_TIMINGS,
+        .nregs_timings     = 1,
         .conf_enable_w0    = CONF_ENABLE_W0,
         .max_slaves        = 5,
         .segments          = aspeed_segments_legacy,
@@ -271,6 +273,7 @@ static const AspeedSMCController controllers[] = {
         .r_ce_ctrl         = R_CE_CTRL,
         .r_ctrl0           = R_CTRL0,
         .r_timings         = R_TIMINGS,
+        .nregs_timings     = 1,
         .conf_enable_w0    = CONF_ENABLE_W0,
         .max_slaves        = 5,
         .segments          = aspeed_segments_fmc,
@@ -288,6 +291,7 @@ static const AspeedSMCController controllers[] = {
         .r_ce_ctrl         = 0xff,
         .r_ctrl0           = R_SPI_CTRL0,
         .r_timings         = R_SPI_TIMINGS,
+        .nregs_timings     = 1,
         .conf_enable_w0    = SPI_CONF_ENABLE_W0,
         .max_slaves        = 1,
         .segments          = aspeed_segments_spi,
@@ -303,6 +307,7 @@ static const AspeedSMCController controllers[] = {
         .r_ce_ctrl         = R_CE_CTRL,
         .r_ctrl0           = R_CTRL0,
         .r_timings         = R_TIMINGS,
+        .nregs_timings     = 1,
         .conf_enable_w0    = CONF_ENABLE_W0,
         .max_slaves        = 3,
         .segments          = aspeed_segments_ast2500_fmc,
@@ -320,6 +325,7 @@ static const AspeedSMCController controllers[] = {
         .r_ce_ctrl         = R_CE_CTRL,
         .r_ctrl0           = R_CTRL0,
         .r_timings         = R_TIMINGS,
+        .nregs_timings     = 1,
         .conf_enable_w0    = CONF_ENABLE_W0,
         .max_slaves        = 2,
         .segments          = aspeed_segments_ast2500_spi1,
@@ -335,6 +341,7 @@ static const AspeedSMCController controllers[] = {
         .r_ce_ctrl         = R_CE_CTRL,
         .r_ctrl0           = R_CTRL0,
         .r_timings         = R_TIMINGS,
+        .nregs_timings     = 1,
         .conf_enable_w0    = CONF_ENABLE_W0,
         .max_slaves        = 2,
         .segments          = aspeed_segments_ast2500_spi2,
@@ -350,12 +357,15 @@ static const AspeedSMCController controllers[] = {
         .r_ce_ctrl         = R_CE_CTRL,
         .r_ctrl0           = R_CTRL0,
         .r_timings         = R_TIMINGS,
+        .nregs_timings     = 1,
         .conf_enable_w0    = CONF_ENABLE_W0,
         .max_slaves        = 3,
         .segments          = aspeed_segments_ast2600_fmc,
         .flash_window_base = ASPEED26_SOC_FMC_FLASH_BASE,
         .flash_window_size = 0x10000000,
         .has_dma           = true,
+        .dma_flash_mask    = 0x0FFFFFFC,
+        .dma_dram_mask     = 0x3FFFFFFC,
         .nregs             = ASPEED_SMC_R_MAX,
         .segment_to_reg    = aspeed_2600_smc_segment_to_reg,
         .reg_to_segment    = aspeed_2600_smc_reg_to_segment,
@@ -365,12 +375,15 @@ static const AspeedSMCController controllers[] = {
         .r_ce_ctrl         = R_CE_CTRL,
         .r_ctrl0           = R_CTRL0,
         .r_timings         = R_TIMINGS,
+        .nregs_timings     = 2,
         .conf_enable_w0    = CONF_ENABLE_W0,
         .max_slaves        = 2,
         .segments          = aspeed_segments_ast2600_spi1,
         .flash_window_base = ASPEED26_SOC_SPI_FLASH_BASE,
         .flash_window_size = 0x10000000,
-        .has_dma           = false,
+        .has_dma           = true,
+        .dma_flash_mask    = 0x0FFFFFFC,
+        .dma_dram_mask     = 0x3FFFFFFC,
         .nregs             = ASPEED_SMC_R_MAX,
         .segment_to_reg    = aspeed_2600_smc_segment_to_reg,
         .reg_to_segment    = aspeed_2600_smc_reg_to_segment,
@@ -380,12 +393,15 @@ static const AspeedSMCController controllers[] = {
         .r_ce_ctrl         = R_CE_CTRL,
         .r_ctrl0           = R_CTRL0,
         .r_timings         = R_TIMINGS,
+        .nregs_timings     = 3,
         .conf_enable_w0    = CONF_ENABLE_W0,
         .max_slaves        = 3,
         .segments          = aspeed_segments_ast2600_spi2,
         .flash_window_base = ASPEED26_SOC_SPI2_FLASH_BASE,
         .flash_window_size = 0x10000000,
-        .has_dma           = false,
+        .has_dma           = true,
+        .dma_flash_mask    = 0x0FFFFFFC,
+        .dma_dram_mask     = 0x3FFFFFFC,
         .nregs             = ASPEED_SMC_R_MAX,
         .segment_to_reg    = aspeed_2600_smc_segment_to_reg,
         .reg_to_segment    = aspeed_2600_smc_reg_to_segment,
@@ -444,8 +460,13 @@ static void aspeed_2600_smc_reg_to_segment(const AspeedSMCState *s,
     uint32_t start_offset = (reg << 16) & AST2600_SEG_ADDR_MASK;
     uint32_t end_offset = reg & AST2600_SEG_ADDR_MASK;
 
-    seg->addr = s->ctrl->flash_window_base + start_offset;
-    seg->size = end_offset + MiB - start_offset;
+    if (reg) {
+        seg->addr = s->ctrl->flash_window_base + start_offset;
+        seg->size = end_offset + MiB - start_offset;
+    } else {
+        seg->addr = s->ctrl->flash_window_base;
+        seg->size = 0;
+    }
 }
 
 static bool aspeed_smc_flash_overlap(const AspeedSMCState *s,
@@ -475,13 +496,31 @@ static bool aspeed_smc_flash_overlap(const AspeedSMCState *s,
     return false;
 }
 
-static void aspeed_smc_flash_set_segment(AspeedSMCState *s, int cs,
-                                         uint64_t new)
+static void aspeed_smc_flash_set_segment_region(AspeedSMCState *s, int cs,
+                                                uint64_t regval)
 {
     AspeedSMCFlash *fl = &s->flashes[cs];
     AspeedSegments seg;
 
+    s->ctrl->reg_to_segment(s, regval, &seg);
+
+    memory_region_transaction_begin();
+    memory_region_set_size(&fl->mmio, seg.size);
+    memory_region_set_address(&fl->mmio, seg.addr - s->ctrl->flash_window_base);
+    memory_region_set_enabled(&fl->mmio, !!seg.size);
+    memory_region_transaction_commit();
+
+    s->regs[R_SEG_ADDR0 + cs] = regval;
+}
+
+static void aspeed_smc_flash_set_segment(AspeedSMCState *s, int cs,
+                                         uint64_t new)
+{
+    AspeedSegments seg;
+
     s->ctrl->reg_to_segment(s, new, &seg);
+
+    trace_aspeed_smc_flash_set_segment(cs, new, seg.addr, seg.addr + seg.size);
 
     /* The start address of CS0 is read-only */
     if (cs == 0 && seg.addr != s->ctrl->flash_window_base) {
@@ -510,8 +549,9 @@ static void aspeed_smc_flash_set_segment(AspeedSMCState *s, int cs,
     }
 
     /* Keep the segment in the overall flash window */
-    if (seg.addr + seg.size <= s->ctrl->flash_window_base ||
-        seg.addr > s->ctrl->flash_window_base + s->ctrl->flash_window_size) {
+    if (seg.size &&
+        (seg.addr + seg.size <= s->ctrl->flash_window_base ||
+         seg.addr > s->ctrl->flash_window_base + s->ctrl->flash_window_size)) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: new segment for CS%d is invalid : "
                       "[ 0x%"HWADDR_PRIx" - 0x%"HWADDR_PRIx" ]\n",
                       s->ctrl->name, cs, seg.addr, seg.addr + seg.size);
@@ -529,13 +569,7 @@ static void aspeed_smc_flash_set_segment(AspeedSMCState *s, int cs,
     aspeed_smc_flash_overlap(s, &seg, cs);
 
     /* All should be fine now to move the region */
-    memory_region_transaction_begin();
-    memory_region_set_size(&fl->mmio, seg.size);
-    memory_region_set_address(&fl->mmio, seg.addr - s->ctrl->flash_window_base);
-    memory_region_set_enabled(&fl->mmio, true);
-    memory_region_transaction_commit();
-
-    s->regs[R_SEG_ADDR0 + cs] = new;
+    aspeed_smc_flash_set_segment_region(s, cs, new);
 }
 
 static uint64_t aspeed_smc_flash_default_read(void *opaque, hwaddr addr,
@@ -611,27 +645,23 @@ static inline int aspeed_smc_flash_is_4byte(const AspeedSMCFlash *fl)
     }
 }
 
-static inline bool aspeed_smc_is_ce_stop_active(const AspeedSMCFlash *fl)
+static void aspeed_smc_flash_do_select(AspeedSMCFlash *fl, bool unselect)
 {
-    const AspeedSMCState *s = fl->controller;
+    AspeedSMCState *s = fl->controller;
 
-    return s->regs[s->r_ctrl0 + fl->id] & CTRL_CE_STOP_ACTIVE;
+    trace_aspeed_smc_flash_select(fl->id, unselect ? "un" : "");
+
+    qemu_set_irq(s->cs_lines[fl->id], unselect);
 }
 
 static void aspeed_smc_flash_select(AspeedSMCFlash *fl)
 {
-    AspeedSMCState *s = fl->controller;
-
-    s->regs[s->r_ctrl0 + fl->id] &= ~CTRL_CE_STOP_ACTIVE;
-    qemu_set_irq(s->cs_lines[fl->id], aspeed_smc_is_ce_stop_active(fl));
+    aspeed_smc_flash_do_select(fl, false);
 }
 
 static void aspeed_smc_flash_unselect(AspeedSMCFlash *fl)
 {
-    AspeedSMCState *s = fl->controller;
-
-    s->regs[s->r_ctrl0 + fl->id] |= CTRL_CE_STOP_ACTIVE;
-    qemu_set_irq(s->cs_lines[fl->id], aspeed_smc_is_ce_stop_active(fl));
+    aspeed_smc_flash_do_select(fl, true);
 }
 
 static uint32_t aspeed_smc_check_segment_addr(const AspeedSMCFlash *fl,
@@ -728,6 +758,8 @@ static uint64_t aspeed_smc_flash_read(void *opaque, hwaddr addr, unsigned size)
                       __func__, aspeed_smc_flash_mode(fl));
     }
 
+    trace_aspeed_smc_flash_read(fl->id, addr, size, ret,
+                                aspeed_smc_flash_mode(fl));
     return ret;
 }
 
@@ -762,11 +794,11 @@ static int aspeed_smc_num_dummies(uint8_t command)
     case FAST_READ:
     case DOR:
     case QOR:
+    case FAST_READ_4:
     case DOR_4:
     case QOR_4:
         return 1;
     case DIOR:
-    case FAST_READ_4:
     case DIOR_4:
         return 2;
     case QIOR:
@@ -782,6 +814,9 @@ static bool aspeed_smc_do_snoop(AspeedSMCFlash *fl,  uint64_t data,
 {
     AspeedSMCState *s = fl->controller;
     uint8_t addr_width = aspeed_smc_flash_is_4byte(fl) ? 4 : 3;
+
+    trace_aspeed_smc_do_snoop(fl->id, s->snoop_index, s->snoop_dummies,
+                              (uint8_t) data & 0xff);
 
     if (s->snoop_index == SNOOP_OFF) {
         return false; /* Do nothing */
@@ -833,6 +868,9 @@ static void aspeed_smc_flash_write(void *opaque, hwaddr addr, uint64_t data,
     AspeedSMCState *s = fl->controller;
     int i;
 
+    trace_aspeed_smc_flash_write(fl->id, addr, size, data,
+                                 aspeed_smc_flash_mode(fl));
+
     if (!aspeed_smc_is_writable(fl)) {
         qemu_log_mask(LOG_GUEST_ERROR, "%s: flash is not writable at 0x%"
                       HWADDR_PRIx "\n", __func__, addr);
@@ -875,13 +913,25 @@ static const MemoryRegionOps aspeed_smc_flash_ops = {
     },
 };
 
-static void aspeed_smc_flash_update_cs(AspeedSMCFlash *fl)
+static void aspeed_smc_flash_update_ctrl(AspeedSMCFlash *fl, uint32_t value)
 {
     AspeedSMCState *s = fl->controller;
+    bool unselect;
 
-    s->snoop_index = aspeed_smc_is_ce_stop_active(fl) ? SNOOP_OFF : SNOOP_START;
+    /* User mode selects the CS, other modes unselect */
+    unselect = (value & CTRL_CMD_MODE_MASK) != CTRL_USERMODE;
 
-    qemu_set_irq(s->cs_lines[fl->id], aspeed_smc_is_ce_stop_active(fl));
+    /* A change of CTRL_CE_STOP_ACTIVE from 0 to 1, unselects the CS */
+    if (!(s->regs[s->r_ctrl0 + fl->id] & CTRL_CE_STOP_ACTIVE) &&
+        value & CTRL_CE_STOP_ACTIVE) {
+        unselect = true;
+    }
+
+    s->regs[s->r_ctrl0 + fl->id] = value;
+
+    s->snoop_index = unselect ? SNOOP_OFF : SNOOP_START;
+
+    aspeed_smc_flash_do_select(fl, unselect);
 }
 
 static void aspeed_smc_reset(DeviceState *d)
@@ -897,10 +947,10 @@ static void aspeed_smc_reset(DeviceState *d)
         qemu_set_irq(s->cs_lines[i], true);
     }
 
-    /* setup default segment register values for all */
+    /* setup the default segment register values and regions for all */
     for (i = 0; i < s->ctrl->max_slaves; ++i) {
-        s->regs[R_SEG_ADDR0 + i] =
-            s->ctrl->segment_to_reg(s, &s->ctrl->segments[i]);
+        aspeed_smc_flash_set_segment_region(s, i,
+                    s->ctrl->segment_to_reg(s, &s->ctrl->segments[i]));
     }
 
     /* HW strapping flash type for the AST2600 controllers  */
@@ -935,7 +985,8 @@ static uint64_t aspeed_smc_read(void *opaque, hwaddr addr, unsigned int size)
     addr >>= 2;
 
     if (addr == s->r_conf ||
-        addr == s->r_timings ||
+        (addr >= s->r_timings &&
+         addr < s->r_timings + s->ctrl->nregs_timings) ||
         addr == s->r_ce_ctrl ||
         addr == R_INTR_CTRL ||
         addr == R_DUMMY_DATA ||
@@ -946,6 +997,9 @@ static uint64_t aspeed_smc_read(void *opaque, hwaddr addr, unsigned int size)
         (s->ctrl->has_dma && addr == R_DMA_CHECKSUM) ||
         (addr >= R_SEG_ADDR0 && addr < R_SEG_ADDR0 + s->ctrl->max_slaves) ||
         (addr >= s->r_ctrl0 && addr < s->r_ctrl0 + s->ctrl->max_slaves)) {
+
+        trace_aspeed_smc_read(addr, size, s->regs[addr]);
+
         return s->regs[addr];
     } else {
         qemu_log_mask(LOG_UNIMP, "%s: not implemented: 0x%" HWADDR_PRIx "\n",
@@ -1065,6 +1119,7 @@ static void aspeed_smc_dma_checksum(AspeedSMCState *s)
                           __func__, s->regs[R_DMA_FLASH_ADDR]);
             return;
         }
+        trace_aspeed_smc_dma_checksum(s->regs[R_DMA_FLASH_ADDR], data);
 
         /*
          * When the DMA is on-going, the DMA registers are updated
@@ -1086,6 +1141,11 @@ static void aspeed_smc_dma_rw(AspeedSMCState *s)
     MemTxResult result;
     uint32_t data;
 
+    trace_aspeed_smc_dma_rw(s->regs[R_DMA_CTRL] & DMA_CTRL_WRITE ?
+                            "write" : "read",
+                            s->regs[R_DMA_FLASH_ADDR],
+                            s->regs[R_DMA_DRAM_ADDR],
+                            s->regs[R_DMA_LEN]);
     while (s->regs[R_DMA_LEN]) {
         if (s->regs[R_DMA_CTRL] & DMA_CTRL_WRITE) {
             data = address_space_ldl_le(&s->dram_as, s->regs[R_DMA_DRAM_ADDR],
@@ -1199,14 +1259,16 @@ static void aspeed_smc_write(void *opaque, hwaddr addr, uint64_t data,
 
     addr >>= 2;
 
+    trace_aspeed_smc_write(addr, size, data);
+
     if (addr == s->r_conf ||
-        addr == s->r_timings ||
+        (addr >= s->r_timings &&
+         addr < s->r_timings + s->ctrl->nregs_timings) ||
         addr == s->r_ce_ctrl) {
         s->regs[addr] = value;
     } else if (addr >= s->r_ctrl0 && addr < s->r_ctrl0 + s->num_cs) {
         int cs = addr - s->r_ctrl0;
-        s->regs[addr] = value;
-        aspeed_smc_flash_update_cs(&s->flashes[cs]);
+        aspeed_smc_flash_update_ctrl(&s->flashes[cs], value);
     } else if (addr >= R_SEG_ADDR0 &&
                addr < R_SEG_ADDR0 + s->ctrl->max_slaves) {
         int cs = addr - R_SEG_ADDR0;
@@ -1374,7 +1436,7 @@ static void aspeed_smc_class_init(ObjectClass *klass, void *data)
 
     dc->realize = aspeed_smc_realize;
     dc->reset = aspeed_smc_reset;
-    dc->props = aspeed_smc_properties;
+    device_class_set_props(dc, aspeed_smc_properties);
     dc->vmsd = &vmstate_aspeed_smc;
     mc->ctrl = data;
 }

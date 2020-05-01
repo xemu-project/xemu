@@ -17,7 +17,11 @@ config TWL92230
     depends on I2C
 
 config MC146818RTC
+    depends on ISA_BUS
     bool
 
 config SUN4V_RTC
+    bool
+
+config GOLDFISH_RTC
     bool

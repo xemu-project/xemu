@@ -249,11 +249,9 @@ static struct cris_load_info li;
 static
 void axisdev88_init(MachineState *machine)
 {
-    ram_addr_t ram_size = machine->ram_size;
     const char *kernel_filename = machine->kernel_filename;
     const char *kernel_cmdline = machine->kernel_cmdline;
     CRISCPU *cpu;
-    CPUCRISState *env;
     DeviceState *dev;
     SysBusDevice *s;
     DriveInfo *nand;
@@ -262,17 +260,12 @@ void axisdev88_init(MachineState *machine)
     struct etraxfs_dma_client *dma_eth;
     int i;
     MemoryRegion *address_space_mem = get_system_memory();
-    MemoryRegion *phys_ram = g_new(MemoryRegion, 1);
     MemoryRegion *phys_intmem = g_new(MemoryRegion, 1);
 
     /* init CPUs */
     cpu = CRIS_CPU(cpu_create(machine->cpu_type));
-    env = &cpu->env;
 
-    /* allocate RAM */
-    memory_region_allocate_system_memory(phys_ram, NULL, "axisdev88.ram",
-                                         ram_size);
-    memory_region_add_subregion(address_space_mem, 0x40000000, phys_ram);
+    memory_region_add_subregion(address_space_mem, 0x40000000, machine->ram);
 
     /* The ETRAX-FS has 128Kb on chip ram, the docs refer to it as the 
        internal memory.  */
@@ -297,8 +290,6 @@ void axisdev88_init(MachineState *machine)
 
 
     dev = qdev_create(NULL, "etraxfs,pic");
-    /* FIXME: Is there a proper way to signal vectors to the CPU core?  */
-    qdev_prop_set_ptr(dev, "interrupt_vector", &env->interrupt_vector);
     qdev_init_nofail(dev);
     s = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(s, 0, 0x3001c000);
@@ -353,8 +344,9 @@ static void axisdev88_machine_init(MachineClass *mc)
 {
     mc->desc = "AXIS devboard 88";
     mc->init = axisdev88_init;
-    mc->is_default = 1;
+    mc->is_default = true;
     mc->default_cpu_type = CRIS_CPU_TYPE_NAME("crisv32");
+    mc->default_ram_id = "axisdev88.ram";
 }
 
 DEFINE_MACHINE("axis-dev88", axisdev88_machine_init)

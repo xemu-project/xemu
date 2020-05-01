@@ -235,7 +235,7 @@ static int uart_can_rx(void *opaque)
     return !(s->regs[R_LSR] & LSR_DR);
 }
 
-static void uart_event(void *opaque, int event)
+static void uart_event(void *opaque, QEMUChrEvent event)
 {
 }
 
@@ -293,7 +293,7 @@ static void lm32_uart_class_init(ObjectClass *klass, void *data)
 
     dc->reset = uart_reset;
     dc->vmsd = &vmstate_lm32_uart;
-    dc->props = lm32_uart_properties;
+    device_class_set_props(dc, lm32_uart_properties);
     dc->realize = lm32_uart_realize;
 }
 

@@ -40,7 +40,8 @@ static void vhost_user_fs_pci_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
     DeviceState *vdev = DEVICE(&dev->vdev);
 
     if (vpci_dev->nvectors == DEV_NVECTORS_UNSPECIFIED) {
-        vpci_dev->nvectors = dev->vdev.conf.num_request_queues + 1;
+        /* Also reserve config change and hiprio queue vectors */
+        vpci_dev->nvectors = dev->vdev.conf.num_request_queues + 2;
     }
 
     qdev_set_parent_bus(vdev, BUS(&vpci_dev->bus));
@@ -54,7 +55,7 @@ static void vhost_user_fs_pci_class_init(ObjectClass *klass, void *data)
     PCIDeviceClass *pcidev_k = PCI_DEVICE_CLASS(klass);
     k->realize = vhost_user_fs_pci_realize;
     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
-    dc->props = vhost_user_fs_pci_properties;
+    device_class_set_props(dc, vhost_user_fs_pci_properties);
     pcidev_k->vendor_id = PCI_VENDOR_ID_REDHAT_QUMRANET;
     pcidev_k->device_id = 0; /* Set by virtio-pci based on virtio id */
     pcidev_k->revision = 0x00;

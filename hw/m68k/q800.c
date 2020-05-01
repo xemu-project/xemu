@@ -47,7 +47,7 @@
 #include "sysemu/runstate.h"
 #include "sysemu/reset.h"
 
-#define MACROM_ADDR     0x40000000
+#define MACROM_ADDR     0x40800000
 #define MACROM_SIZE     0x00100000
 
 #define MACROM_FILENAME "MacROM.bin"
@@ -128,6 +128,27 @@ static void main_cpu_reset(void *opaque)
     cpu->env.pc = ldl_phys(cs->as, 4);
 }
 
+static uint8_t fake_mac_rom[] = {
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+
+    /* offset: 0xa - mac_reset */
+
+    /* via2[vDirB] |= VIA2B_vPower */
+    0x20, 0x7C, 0x50, 0xF0, 0x24, 0x00, /* moveal VIA2_BASE+vDirB,%a0 */
+    0x10, 0x10,                         /* moveb %a0@,%d0 */
+    0x00, 0x00, 0x00, 0x04,             /* orib #4,%d0 */
+    0x10, 0x80,                         /* moveb %d0,%a0@ */
+
+    /* via2[vBufB] &= ~VIA2B_vPower */
+    0x20, 0x7C, 0x50, 0xF0, 0x20, 0x00, /* moveal VIA2_BASE+vBufB,%a0 */
+    0x10, 0x10,                         /* moveb %a0@,%d0 */
+    0x02, 0x00, 0xFF, 0xFB,             /* andib #-5,%d0 */
+    0x10, 0x80,                         /* moveb %d0,%a0@ */
+
+    /* while (true) ; */
+    0x60, 0xFE                          /* bras [self] */
+};
+
 static void q800_init(MachineState *machine)
 {
     M68kCPU *cpu = NULL;
@@ -139,7 +160,6 @@ static void q800_init(MachineState *machine)
     ram_addr_t initrd_base;
     int32_t initrd_size;
     MemoryRegion *rom;
-    MemoryRegion *ram;
     MemoryRegion *io;
     const int io_slice_nb = (IO_SIZE / IO_SLICE) - 1;
     int i;
@@ -158,6 +178,7 @@ static void q800_init(MachineState *machine)
     NubusBus *nubus;
     GLUEState *irq;
     qemu_irq *pic;
+    DriveInfo *dinfo;
 
     linux_boot = (kernel_filename != NULL);
 
@@ -172,9 +193,7 @@ static void q800_init(MachineState *machine)
     qemu_register_reset(main_cpu_reset, cpu);
 
     /* RAM */
-    ram = g_malloc(sizeof(*ram));
-    memory_region_init_ram(ram, NULL, "m68k_mac.ram", ram_size, &error_abort);
-    memory_region_add_subregion(get_system_memory(), 0, ram);
+    memory_region_add_subregion(get_system_memory(), 0, machine->ram);
 
     /*
      * Memory from IO_BASE to IO_BASE + IO_SLICE is repeated
@@ -200,6 +219,11 @@ static void q800_init(MachineState *machine)
     /* VIA */
 
     via_dev = qdev_create(NULL, TYPE_MAC_VIA);
+    dinfo = drive_get(IF_MTD, 0, 0);
+    if (dinfo) {
+        qdev_prop_set_drive(via_dev, "drive", blk_by_legacy_dinfo(dinfo),
+                            &error_abort);
+    }
     qdev_init_nofail(via_dev);
     sysbus = SYS_BUS_DEVICE(via_dev);
     sysbus_mmio_map(sysbus, 0, VIA_BASE);
@@ -239,7 +263,8 @@ static void q800_init(MachineState *machine)
     qdev_set_nic_properties(dev, &nd_table[0]);
     qdev_prop_set_uint8(dev, "it_shift", 2);
     qdev_prop_set_bit(dev, "big_endian", true);
-    qdev_prop_set_ptr(dev, "dma_mr", get_system_memory());
+    object_property_set_link(OBJECT(dev), OBJECT(get_system_memory()),
+                             "dma_mr", &error_abort);
     qdev_init_nofail(dev);
     sysbus = SYS_BUS_DEVICE(dev);
     sysbus_mmio_map(sysbus, 0, SONIC_BASE);
@@ -314,7 +339,7 @@ static void q800_init(MachineState *machine)
     if (linux_boot) {
         uint64_t high;
         kernel_size = load_elf(kernel_filename, NULL, NULL, NULL,
-                               &elf_entry, NULL, &high, 1,
+                               &elf_entry, NULL, &high, NULL, 1,
                                EM_68K, 0, 0);
         if (kernel_size < 0) {
             error_report("could not load kernel '%s'", kernel_filename);
@@ -339,6 +364,12 @@ static void q800_init(MachineState *machine)
         BOOTINFO1(cs->as, parameters_base, BI_MAC_VROW,
                   (graphic_width * graphic_depth + 7) / 8);
         BOOTINFO1(cs->as, parameters_base, BI_MAC_SCCBASE, SCC_BASE);
+
+        rom = g_malloc(sizeof(*rom));
+        memory_region_init_ram_ptr(rom, NULL, "m68k_fake_mac.rom",
+                                   sizeof(fake_mac_rom), fake_mac_rom);
+        memory_region_set_readonly(rom, true);
+        memory_region_add_subregion(get_system_memory(), MACROM_ADDR, rom);
 
         if (kernel_cmdline) {
             BOOTINFOSTR(cs->as, parameters_base, BI_COMMAND_LINE,
@@ -368,13 +399,12 @@ static void q800_init(MachineState *machine)
         uint8_t *ptr;
         /* allocate and load BIOS */
         rom = g_malloc(sizeof(*rom));
-        memory_region_init_ram(rom, NULL, "m68k_mac.rom", MACROM_SIZE,
+        memory_region_init_rom(rom, NULL, "m68k_mac.rom", MACROM_SIZE,
                                &error_abort);
         if (bios_name == NULL) {
             bios_name = MACROM_FILENAME;
         }
         filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
-        memory_region_set_readonly(rom, true);
         memory_region_add_subregion(get_system_memory(), MACROM_ADDR, rom);
 
         /* Load MacROM binary */
@@ -407,8 +437,8 @@ static void q800_machine_class_init(ObjectClass *oc, void *data)
     mc->init = q800_init;
     mc->default_cpu_type = M68K_CPU_TYPE_NAME("m68040");
     mc->max_cpus = 1;
-    mc->is_default = 0;
     mc->block_default_type = IF_SCSI;
+    mc->default_ram_id = "m68k_mac.ram";
 }
 
 static const TypeInfo q800_machine_typeinfo = {

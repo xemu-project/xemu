@@ -6,6 +6,7 @@
 /config-target.*
 /config.status
 /config-temp
+/tools/virtiofsd/50-qemu-virtiofsd.json
 /elf2dmp
 /trace-events-all
 /trace/generated-events.h
@@ -37,6 +38,7 @@
 /qapi/qapi-emit-events.[ch]
 /qapi/qapi-events-*.[ch]
 /qapi/qapi-events.[ch]
+/qapi/qapi-init-commands.[ch]
 /qapi/qapi-introspect.[ch]
 /qapi/qapi-types-*.[ch]
 /qapi/qapi-types.[ch]
@@ -44,9 +46,6 @@
 !/qapi/qapi-visit-core.c
 /qapi/qapi-visit.[ch]
 /qapi/qapi-doc.texi
-/qemu-doc.html
-/qemu-doc.info
-/qemu-doc.txt
 /qemu-edid
 /qemu-img
 /qemu-nbd

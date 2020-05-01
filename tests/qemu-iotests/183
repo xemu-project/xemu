@@ -31,7 +31,7 @@ MIG_SOCKET="${SOCK_DIR}/migrate"
 _cleanup()
 {
     rm -f "${MIG_SOCKET}"
-    rm -f "${TEST_IMG}.dest"
+    _rm_test_img "${TEST_IMG}.dest"
     _cleanup_test_img
     _cleanup_qemu
 }
@@ -42,6 +42,7 @@ trap "_cleanup; exit \$status" 0 1 2 3 15
 . ./common.filter
 . ./common.qemu
 
+_supported_os Linux FreeBSD NetBSD
 _supported_fmt qcow2 raw qed quorum
 _supported_proto file
 
@@ -56,12 +57,12 @@ echo
 qemu_comm_method="qmp"
 
 _launch_qemu \
-    -drive file="${TEST_IMG}",cache=$CACHEMODE,driver=$IMGFMT,id=disk
+    -drive file="${TEST_IMG}",cache=$CACHEMODE,aio=$AIOMODE,driver=$IMGFMT,id=disk
 src=$QEMU_HANDLE
 _send_qemu_cmd $src "{ 'execute': 'qmp_capabilities' }" 'return'
 
 _launch_qemu \
-    -drive file="${TEST_IMG}.dest",cache=$CACHEMODE,driver=$IMGFMT,id=disk \
+    -drive file="${TEST_IMG}.dest",cache=$CACHEMODE,aio=$AIOMODE,driver=$IMGFMT,id=disk \
     -incoming "unix:${MIG_SOCKET}"
 dest=$QEMU_HANDLE
 _send_qemu_cmd $dest "{ 'execute': 'qmp_capabilities' }" 'return'

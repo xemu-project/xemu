@@ -26,7 +26,6 @@
 #include "qemu/log.h"
 #include "hw/isa/isa.h"
 #include "migration/vmstate.h"
-#include "hw/i386/pc.h"
 #include "hw/input/ps2.h"
 #include "hw/irq.h"
 #include "hw/input/i8042.h"
@@ -483,17 +482,15 @@ void i8042_mm_init(qemu_irq kbd_irq, qemu_irq mouse_irq,
 
 #define I8042(obj) OBJECT_CHECK(ISAKBDState, (obj), TYPE_I8042)
 
-typedef struct ISAKBDState {
+struct ISAKBDState {
     ISADevice parent_obj;
 
     KBDState kbd;
     MemoryRegion io[2];
-} ISAKBDState;
+};
 
-void i8042_isa_mouse_fake_event(void *opaque)
+void i8042_isa_mouse_fake_event(ISAKBDState *isa)
 {
-    ISADevice *dev = opaque;
-    ISAKBDState *isa = I8042(dev);
     KBDState *s = &isa->kbd;
 
     ps2_mouse_fake_event(s->mouse);

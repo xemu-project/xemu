@@ -128,12 +128,12 @@ static ssize_t qcow2_compress(void *dest, size_t dest_size,
  * @src - source buffer, @src_size bytes
  *
  * Returns: 0 on success
- *          -1 on fail
+ *          -EIO on fail
  */
 static ssize_t qcow2_decompress(void *dest, size_t dest_size,
                                 const void *src, size_t src_size)
 {
-    int ret = 0;
+    int ret;
     z_stream strm;
 
     memset(&strm, 0, sizeof(strm));
@@ -144,17 +144,19 @@ static ssize_t qcow2_decompress(void *dest, size_t dest_size,
 
     ret = inflateInit2(&strm, -12);
     if (ret != Z_OK) {
-        return -1;
+        return -EIO;
     }
 
     ret = inflate(&strm, Z_FINISH);
-    if ((ret != Z_STREAM_END && ret != Z_BUF_ERROR) || strm.avail_out != 0) {
+    if ((ret == Z_STREAM_END || ret == Z_BUF_ERROR) && strm.avail_out == 0) {
         /*
          * We approve Z_BUF_ERROR because we need @dest buffer to be filled, but
          * @src buffer may be processed partly (because in qcow2 we know size of
          * compressed data with precision of one sector)
          */
-        ret = -1;
+        ret = 0;
+    } else {
+        ret = -EIO;
     }
 
     inflateEnd(&strm);
@@ -246,11 +248,14 @@ qcow2_co_encdec(BlockDriverState *bs, uint64_t host_offset,
         .len = len,
         .func = func,
     };
+    uint64_t sector_size;
 
-    assert(QEMU_IS_ALIGNED(guest_offset, BDRV_SECTOR_SIZE));
-    assert(QEMU_IS_ALIGNED(host_offset, BDRV_SECTOR_SIZE));
-    assert(QEMU_IS_ALIGNED(len, BDRV_SECTOR_SIZE));
     assert(s->crypto);
+
+    sector_size = qcrypto_block_get_sector_size(s->crypto);
+    assert(QEMU_IS_ALIGNED(guest_offset, sector_size));
+    assert(QEMU_IS_ALIGNED(host_offset, sector_size));
+    assert(QEMU_IS_ALIGNED(len, sector_size));
 
     return len == 0 ? 0 : qcow2_co_process(bs, qcow2_encdec_pool_func, &arg);
 }
@@ -270,7 +275,8 @@ qcow2_co_encdec(BlockDriverState *bs, uint64_t host_offset,
  *        will be written to the underlying storage device at
  *        @host_offset
  *
- * @len - length of the buffer (must be a BDRV_SECTOR_SIZE multiple)
+ * @len - length of the buffer (must be a multiple of the encryption
+ *        sector size)
  *
  * Depending on the encryption method, @host_offset and/or @guest_offset
  * may be used for generating the initialization vector for

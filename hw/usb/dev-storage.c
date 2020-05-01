@@ -17,9 +17,7 @@
 #include "desc.h"
 #include "hw/qdev-properties.h"
 #include "hw/scsi/scsi.h"
-#include "ui/console.h"
 #include "migration/vmstate.h"
-#include "monitor/monitor.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/block-backend.h"
 #include "qapi/visitor.h"
@@ -702,7 +700,7 @@ static void usb_msd_class_storage_initfn(ObjectClass *klass, void *data)
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
     uc->realize = usb_msd_storage_realize;
-    dc->props = msd_properties;
+    device_class_set_props(dc, msd_properties);
 }
 
 static void usb_msd_get_bootindex(Object *obj, Visitor *v, const char *name,

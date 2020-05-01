@@ -74,8 +74,7 @@ static int get_pte(dma_addr_t baseaddr, uint32_t index, uint64_t *pte,
     dma_addr_t addr = baseaddr + index * sizeof(*pte);
 
     /* TODO: guarantee 64-bit single-copy atomicity */
-    ret = dma_memory_read(&address_space_memory, addr,
-                          (uint8_t *)pte, sizeof(*pte));
+    ret = dma_memory_read(&address_space_memory, addr, pte, sizeof(*pte));
 
     if (ret != MEMTX_OK) {
         info->type = SMMU_PTW_ERR_WALK_EABT;
@@ -291,19 +290,21 @@ inline int smmu_ptw(SMMUTransCfg *cfg, dma_addr_t iova, IOMMUAccessFlags perm,
 SMMUPciBus *smmu_find_smmu_pcibus(SMMUState *s, uint8_t bus_num)
 {
     SMMUPciBus *smmu_pci_bus = s->smmu_pcibus_by_bus_num[bus_num];
+    GHashTableIter iter;
 
-    if (!smmu_pci_bus) {
-        GHashTableIter iter;
+    if (smmu_pci_bus) {
+        return smmu_pci_bus;
+    }
 
-        g_hash_table_iter_init(&iter, s->smmu_pcibus_by_busptr);
-        while (g_hash_table_iter_next(&iter, NULL, (void **)&smmu_pci_bus)) {
-            if (pci_bus_num(smmu_pci_bus->bus) == bus_num) {
-                s->smmu_pcibus_by_bus_num[bus_num] = smmu_pci_bus;
-                return smmu_pci_bus;
-            }
+    g_hash_table_iter_init(&iter, s->smmu_pcibus_by_busptr);
+    while (g_hash_table_iter_next(&iter, NULL, (void **)&smmu_pci_bus)) {
+        if (pci_bus_num(smmu_pci_bus->bus) == bus_num) {
+            s->smmu_pcibus_by_bus_num[bus_num] = smmu_pci_bus;
+            return smmu_pci_bus;
         }
     }
-    return smmu_pci_bus;
+
+    return NULL;
 }
 
 static AddressSpace *smmu_find_add_as(PCIBus *bus, void *opaque, int devfn)
@@ -461,7 +462,7 @@ static void smmu_base_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     SMMUBaseClass *sbc = ARM_SMMU_CLASS(klass);
 
-    dc->props = smmu_dev_properties;
+    device_class_set_props(dc, smmu_dev_properties);
     device_class_set_parent_realize(dc, smmu_base_realize,
                                     &sbc->parent_realize);
     dc->reset = smmu_base_reset;

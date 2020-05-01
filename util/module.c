@@ -19,6 +19,9 @@
 #endif
 #include "qemu/queue.h"
 #include "qemu/module.h"
+#ifdef CONFIG_MODULE_UPGRADES
+#include "qemu-version.h"
+#endif
 
 typedef struct ModuleEntry
 {
@@ -30,6 +33,7 @@ typedef struct ModuleEntry
 typedef QTAILQ_HEAD(, ModuleEntry) ModuleTypeList;
 
 static ModuleTypeList init_type_list[MODULE_INIT_MAX];
+static bool modules_init_done[MODULE_INIT_MAX];
 
 static ModuleTypeList dso_init_list;
 
@@ -91,11 +95,17 @@ void module_call_init(module_init_type type)
     ModuleTypeList *l;
     ModuleEntry *e;
 
+    if (modules_init_done[type]) {
+        return;
+    }
+
     l = find_type(type);
 
     QTAILQ_FOREACH(e, l, node) {
         e->init();
     }
+
+    modules_init_done[type] = true;
 }
 
 #ifdef CONFIG_MODULES
@@ -163,8 +173,11 @@ bool module_load_one(const char *prefix, const char *lib_name)
 #ifdef CONFIG_MODULES
     char *fname = NULL;
     char *exec_dir;
+#ifdef CONFIG_MODULE_UPGRADES
+    char *version_dir;
+#endif
     const char *search_dir;
-    char *dirs[4];
+    char *dirs[5];
     char *module_name;
     int i = 0, n_dirs = 0;
     int ret;
@@ -194,6 +207,14 @@ bool module_load_one(const char *prefix, const char *lib_name)
     dirs[n_dirs++] = g_strdup_printf("%s", CONFIG_QEMU_MODDIR);
     dirs[n_dirs++] = g_strdup_printf("%s/..", exec_dir ? : "");
     dirs[n_dirs++] = g_strdup_printf("%s", exec_dir ? : "");
+
+#ifdef CONFIG_MODULE_UPGRADES
+    version_dir = g_strcanon(g_strdup(QEMU_PKGVERSION),
+                             G_CSET_A_2_Z G_CSET_a_2_z G_CSET_DIGITS "+-.~",
+                             '_');
+    dirs[n_dirs++] = g_strdup_printf("/var/run/qemu/%s", version_dir);
+#endif
+
     assert(n_dirs <= ARRAY_SIZE(dirs));
 
     g_free(exec_dir);
@@ -214,6 +235,7 @@ bool module_load_one(const char *prefix, const char *lib_name)
 
     if (!success) {
         g_hash_table_remove(loaded_modules, module_name);
+        g_free(module_name);
     }
 
     for (i = 0; i < n_dirs; i++) {

@@ -1181,6 +1181,7 @@ static const QXLInterface qxl_interface = {
 
 static const GraphicHwOps qxl_ops = {
     .gfx_update  = qxl_hw_update,
+    .gfx_update_async = true,
 };
 
 static void qxl_enter_vga_mode(PCIQXLDevice *d)
@@ -1308,7 +1309,8 @@ static void qxl_vga_ioport_write(void *opaque, uint32_t addr, uint32_t val)
     PCIQXLDevice *qxl = container_of(vga, PCIQXLDevice, vga);
 
     trace_qxl_io_write_vga(qxl->id, qxl_mode_to_string(qxl->mode), addr, val);
-    if (qxl->mode != QXL_MODE_VGA) {
+    if (qxl->mode != QXL_MODE_VGA &&
+        qxl->revision <= QXL_REVISION_STABLE_V12) {
         qxl_destroy_primary(qxl, QXL_SYNC);
         qxl_soft_reset(qxl);
     }
@@ -1629,7 +1631,7 @@ static void ioport_write(void *opaque, hwaddr addr,
     PCIQXLDevice *d = opaque;
     uint32_t io_port = addr;
     qxl_async_io async = QXL_SYNC;
-    uint32_t orig_io_port = io_port;
+    uint32_t orig_io_port;
 
     if (d->guest_bug && io_port != QXL_IO_RESET) {
         return;
@@ -1763,7 +1765,7 @@ async_common:
         qxl_set_mode(d, val, 0);
         break;
     case QXL_IO_LOG:
-        if (TRACE_QXL_IO_LOG_ENABLED || d->guestdebug) {
+        if (trace_event_get_state_backends(TRACE_QXL_IO_LOG) || d->guestdebug) {
             /* We cannot trust the guest to NUL terminate d->ram->log_buf */
             char *log_buf = g_strndup((const char *)d->ram->log_buf,
                                       sizeof(d->ram->log_buf));
@@ -2120,6 +2122,10 @@ static void qxl_realize_common(PCIQXLDevice *qxl, Error **errp)
         pci_device_rev = QXL_REVISION_STABLE_V12;
         io_size = pow2ceil(QXL_IO_RANGE_SIZE);
         break;
+    case 5: /* qxl-5 */
+        pci_device_rev = QXL_REVISION_STABLE_V12 + 1;
+        io_size = pow2ceil(QXL_IO_RANGE_SIZE);
+        break;
     default:
         error_setg(errp, "Invalid revision %d for qxl device (max %d)",
                    qxl->revision, QXL_DEFAULT_REVISION);
@@ -2130,7 +2136,7 @@ static void qxl_realize_common(PCIQXLDevice *qxl, Error **errp)
     pci_set_byte(&config[PCI_INTERRUPT_PIN], 1);
 
     qxl->rom_size = qxl_rom_size();
-    memory_region_init_ram(&qxl->rom_bar, OBJECT(qxl), "qxl.vrom",
+    memory_region_init_rom(&qxl->rom_bar, OBJECT(qxl), "qxl.vrom",
                            qxl->rom_size, &error_fatal);
     init_qxl_rom(qxl);
     init_qxl_ram(qxl);
@@ -2477,7 +2483,7 @@ static void qxl_pci_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_DISPLAY, dc->categories);
     dc->reset = qxl_reset_handler;
     dc->vmsd = &qxl_vmstate;
-    dc->props = qxl_properties;
+    device_class_set_props(dc, qxl_properties);
 }
 
 static const TypeInfo qxl_pci_type_info = {

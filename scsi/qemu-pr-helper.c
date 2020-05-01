@@ -24,7 +24,7 @@
 #include <linux/dm-ioctl.h>
 #include <scsi/sg.h>
 
-#ifdef CONFIG_LIBCAP
+#ifdef CONFIG_LIBCAP_NG
 #include <cap-ng.h>
 #endif
 #include <pwd.h>
@@ -70,7 +70,7 @@ static int num_active_sockets = 1;
 static int noisy;
 static int verbose;
 
-#ifdef CONFIG_LIBCAP
+#ifdef CONFIG_LIBCAP_NG
 static int uid = -1;
 static int gid = -1;
 #endif
@@ -97,7 +97,7 @@ static void usage(const char *name)
 "                            (default '%s')\n"
 "  -T, --trace [[enable=]<pattern>][,events=<file>][,file=<file>]\n"
 "                            specify tracing options\n"
-#ifdef CONFIG_LIBCAP
+#ifdef CONFIG_LIBCAP_NG
 "  -u, --user=USER           user to drop privileges to\n"
 "  -g, --group=GROUP         group to drop privileges to\n"
 #endif
@@ -421,9 +421,12 @@ static int multipath_pr_out(int fd, const uint8_t *cdb, uint8_t *sense,
     int rq_servact = cdb[1];
     int rq_scope = cdb[2] >> 4;
     int rq_type = cdb[2] & 0xf;
-    struct prout_param_descriptor paramp;
+    g_autofree struct prout_param_descriptor *paramp = NULL;
     char transportids[PR_HELPER_DATA_SIZE];
     int r;
+
+    paramp = g_malloc0(sizeof(struct prout_param_descriptor)
+                       + sizeof(struct transportid *) * MPATH_MX_TIDS);
 
     if (sz < PR_OUT_FIXED_PARAM_SIZE) {
         /* Illegal request, Parameter list length error.  This isn't fatal;
@@ -454,10 +457,9 @@ static int multipath_pr_out(int fd, const uint8_t *cdb, uint8_t *sense,
      * used by libmpathpersist (which, of course, will immediately
      * do the opposite).
      */
-    memset(&paramp, 0, sizeof(paramp));
-    memcpy(&paramp.key, &param[0], 8);
-    memcpy(&paramp.sa_key, &param[8], 8);
-    paramp.sa_flags = param[20];
+    memcpy(&paramp->key, &param[0], 8);
+    memcpy(&paramp->sa_key, &param[8], 8);
+    paramp->sa_flags = param[20];
     if (sz > PR_OUT_FIXED_PARAM_SIZE) {
         size_t transportid_len;
         int i, j;
@@ -520,12 +522,13 @@ static int multipath_pr_out(int fd, const uint8_t *cdb, uint8_t *sense,
                 return CHECK_CONDITION;
             }
 
-            paramp.trnptid_list[paramp.num_transportid++] = id;
+            assert(paramp->num_transportid < MPATH_MX_TIDS);
+            paramp->trnptid_list[paramp->num_transportid++] = id;
         }
     }
 
     r = mpath_persistent_reserve_out(fd, rq_servact, rq_scope, rq_type,
-                                     &paramp, noisy, verbose);
+                                     paramp, noisy, verbose);
     return mpath_reconstruct_sense(fd, r, sense);
 }
 #endif
@@ -827,7 +830,7 @@ static void close_server_socket(void)
     num_active_sockets--;
 }
 
-#ifdef CONFIG_LIBCAP
+#ifdef CONFIG_LIBCAP_NG
 static int drop_privileges(void)
 {
     /* clear all capabilities */
@@ -920,7 +923,7 @@ int main(int argc, char **argv)
             pidfile = g_strdup(optarg);
             pidfile_specified = true;
             break;
-#ifdef CONFIG_LIBCAP
+#ifdef CONFIG_LIBCAP_NG
         case 'u': {
             unsigned long res;
             struct passwd *userinfo = getpwnam(optarg);
@@ -1056,7 +1059,7 @@ int main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-#ifdef CONFIG_LIBCAP
+#ifdef CONFIG_LIBCAP_NG
     if (drop_privileges() < 0) {
         error_report("Failed to drop privileges: %s", strerror(errno));
         exit(EXIT_FAILURE);

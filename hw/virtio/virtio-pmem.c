@@ -130,6 +130,7 @@ static void virtio_pmem_unrealize(DeviceState *dev, Error **errp)
     VirtIOPMEM *pmem = VIRTIO_PMEM(dev);
 
     host_memory_backend_set_mapped(pmem->memdev, false);
+    virtio_delete_queue(pmem->rq_vq);
     virtio_cleanup(vdev);
 }
 
@@ -165,7 +166,7 @@ static void virtio_pmem_class_init(ObjectClass *klass, void *data)
     VirtioDeviceClass *vdc = VIRTIO_DEVICE_CLASS(klass);
     VirtIOPMEMClass *vpc = VIRTIO_PMEM_CLASS(klass);
 
-    dc->props = virtio_pmem_properties;
+    device_class_set_props(dc, virtio_pmem_properties);
 
     vdc->realize = virtio_pmem_realize;
     vdc->unrealize = virtio_pmem_unrealize;
