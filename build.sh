@@ -100,7 +100,6 @@ set -x # Print commands from now on
     --disable-user \
     --disable-stack-protector \
     --disable-glusterfs \
-    --disable-bluez \
     --disable-gtk \
     --disable-curses \
     --disable-gnutls \
