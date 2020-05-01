@@ -2,6 +2,7 @@
  * QEMU SMSC LPC47M157 (Super I/O)
  *
  * Copyright (c) 2013 espes
+ * Copyright (c) 2018-2020 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -94,6 +95,10 @@ static void update_devices(LPC47M157State *s)
             if (irq != 0) {
                 isa_init_irq(isadev, &ss->irq, irq);
             }
+            object_property_set_bool(OBJECT(ss), true, "realized", &error_abort);
+
+            memory_region_init_io(&ss->io, OBJECT(s),
+                                  &serial_io_ops, ss, "serial", 8);
             isa_register_ioport(isadev, &ss->io, iobase);
 
             s->serial[i].active = true;
@@ -205,9 +210,6 @@ static void lpc47m157_realize(DeviceState *dev, Error **errp)
         SerialState *ss = &s->serial[i].state;
         ss->baudbase = 115200;
         qdev_prop_set_chr(dev, i == 0 ? "chardev0" : "chardev1", chr);
-        serial_realize_core(ss, errp);
-        memory_region_init_io(&ss->io, OBJECT(s),
-                              &serial_io_ops, ss, "serial", 8);
     }
 }
 
@@ -231,13 +233,24 @@ static void lpc47m157_class_init(ObjectClass *klass, void *data)
     dc->realize = lpc47m157_realize;
     dc->vmsd = &vmstate_lpc47m157;
     //dc->reset = pc87312_reset;
-    dc->props = lpc47m157_properties;
+    device_class_set_props(dc, lpc47m157_properties);
+}
+
+static void lpc47m157_initfn(Object *o)
+{
+    LPC47M157State *self = LPC47M157_DEVICE(o);
+
+    object_initialize_child(o, "serial0", &self->serial[0].state, sizeof(self->serial[0].state),
+                            TYPE_SERIAL, &error_abort, NULL);
+    object_initialize_child(o, "serial1", &self->serial[1].state, sizeof(self->serial[1].state),
+                            TYPE_SERIAL, &error_abort, NULL);
 }
 
 static const TypeInfo lpc47m157_type_info = {
     .name          = "lpc47m157",
     .parent        = TYPE_ISA_DEVICE,
     .instance_size = sizeof(LPC47M157State),
+    .instance_init = lpc47m157_initfn,
     .class_init    = lpc47m157_class_init,
 };
 
