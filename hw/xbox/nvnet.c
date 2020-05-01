@@ -342,7 +342,7 @@ static void nvnet_send_packet(NvNetState *s,
 static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
     const uint8_t *buf, size_t size);
 static ssize_t nvnet_dma_packet_from_guest(NvNetState *s);
-static int nvnet_can_receive(NetClientState *nc);
+static bool nvnet_can_receive(NetClientState *nc);
 static ssize_t nvnet_receive(NetClientState *nc,
     const uint8_t *buf, size_t size);
 static ssize_t nvnet_receive_iov(NetClientState *nc,
@@ -603,7 +603,7 @@ static void nvnet_send_packet(NvNetState *s, const uint8_t *buf, int size)
     qemu_send_packet(nc, buf, size);
 }
 
-static int nvnet_can_receive(NetClientState *nc)
+static bool nvnet_can_receive(NetClientState *nc)
 {
     NVNET_DPRINTF("nvnet_can_receive called\n");
     return 1;
