@@ -997,7 +997,7 @@ static void nvnet_class_init(ObjectClass *klass, void *data)
 
     dc->desc  = "nForce Ethernet Controller";
     dc->reset = qdev_nvnet_reset;
-    dc->props = nvnet_properties;
+    device_class_set_props(dc, nvnet_properties);
 }
 
 static Property nvnet_properties[] = {

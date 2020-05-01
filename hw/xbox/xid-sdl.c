@@ -618,7 +618,7 @@ static void usb_xbox_gamepad_class_initfn(ObjectClass *klass, void *data)
     usb_xid_class_initfn(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     dc->vmsd  = &vmstate_usb_xbox;
-    dc->props = xid_sdl_properties;
+    device_class_set_props(dc, xid_sdl_properties);
     dc->desc  = "Microsoft Xbox Controller";
 }
 
