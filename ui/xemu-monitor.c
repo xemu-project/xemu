@@ -65,7 +65,7 @@ void xemu_monitor_init(void)
     assert(mon_chr == NULL);
     mon_chr = qemu_chardev_new(NULL, TYPE_CHARDEV_XEMU_MONITOR,
                                NULL, NULL, &error_abort);
-    monitor_init_hmp(mon_chr, false);
+    monitor_init_hmp(mon_chr, true, &error_abort);
 }
 
 char *xemu_get_monitor_buffer(void)
