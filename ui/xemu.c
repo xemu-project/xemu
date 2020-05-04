@@ -205,9 +205,9 @@ static void sdl_update_caption(struct sdl2_console *scon)
 #endif
 }
 
-static void sdl_hide_cursor(void)
+static void sdl_hide_cursor(struct sdl2_console *scon)
 {
-    if (!cursor_hide) {
+    if (scon->opts->has_show_cursor && scon->opts->show_cursor) {
         return;
     }
 
@@ -219,9 +219,9 @@ static void sdl_hide_cursor(void)
     }
 }
 
-static void sdl_show_cursor(void)
+static void sdl_show_cursor(struct sdl2_console *scon)
 {
-    if (!cursor_hide) {
+    if (scon->opts->has_show_cursor && scon->opts->show_cursor) {
         return;
     }
 
@@ -261,7 +261,7 @@ static void sdl_grab_start(struct sdl2_console *scon)
             SDL_WarpMouseInWindow(scon->real_window, guest_x, guest_y);
         }
     } else {
-        sdl_hide_cursor();
+        sdl_hide_cursor(scon);
     }
     SDL_SetWindowGrab(scon->real_window, SDL_TRUE);
     gui_grab = 1;
@@ -273,7 +273,7 @@ static void sdl_grab_end(struct sdl2_console *scon)
 {
     SDL_SetWindowGrab(scon->real_window, SDL_FALSE);
     gui_grab = 0;
-    sdl_show_cursor();
+    sdl_show_cursor(scon);
     sdl_update_caption(scon);
 }
 
@@ -679,7 +679,7 @@ static void sdl_mouse_warp(DisplayChangeListener *dcl,
 
     if (on) {
         if (!guest_cursor) {
-            sdl_show_cursor();
+            sdl_show_cursor(scon);
         }
         if (gui_grab || qemu_input_is_absolute() || absolute_enabled) {
             SDL_SetCursor(guest_sprite);
@@ -688,7 +688,7 @@ static void sdl_mouse_warp(DisplayChangeListener *dcl,
             }
         }
     } else if (gui_grab) {
-        sdl_hide_cursor();
+        sdl_hide_cursor(scon);
     }
     guest_cursor = on;
     guest_x = x, guest_y = y;
