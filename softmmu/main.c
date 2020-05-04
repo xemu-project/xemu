@@ -26,6 +26,11 @@
 #include "qemu-common.h"
 #include "sysemu/sysemu.h"
 
+#ifdef XBOX
+#undef main
+int qemu_main(int argc, char **argv, char **envp)
+#else
+
 #ifdef CONFIG_SDL
 #if defined(__APPLE__) || defined(main)
 #include <SDL.h>
@@ -44,6 +49,7 @@ int main(int argc, char **argv)
 #endif /* CONFIG_COCOA */
 
 int main(int argc, char **argv, char **envp)
+#endif // ifdef XBOX
 {
     qemu_init(argc, argv, envp);
     qemu_main_loop();
