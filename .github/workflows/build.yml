@@ -209,7 +209,6 @@ jobs:
         asset_name: xemu-win-debug.zip
         asset_path: dist/xemu-win-debug.zip
         asset_content_type: application/zip
-
     - name: Upload Release Assets (Windows Release Build)
       if: github.event_name == 'push' && github.ref == 'refs/heads/master'
       id: upload-release-asset-win-release
@@ -220,4 +219,26 @@ jobs:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_name: xemu-win-release.zip
         asset_path: dist/xemu-win-release.zip
+        asset_content_type: application/zip
+    - name: Upload Release Assets (macOS Release Build)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      id: upload-release-asset-macos-release
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_name: xemu-macos-release.zip
+        asset_path: dist/xemu-macos-release.zip
+        asset_content_type: application/zip
+    - name: Upload Release Assets (macOS Debug Build)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      id: upload-release-asset-macos-debug
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_name: xemu-macos-debug.zip
+        asset_path: dist/xemu-macos-debug.zip
         asset_content_type: application/zip
