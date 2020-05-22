@@ -41,8 +41,6 @@ static GloContext *g_context;
 /* Create an OpenGL context */
 GloContext *glo_context_create(void)
 {
-    fprintf(stderr, "%s\n", __func__);
-
     if (g_context) {
         glo_set_current(g_context);
         return g_context;

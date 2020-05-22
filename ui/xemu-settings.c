@@ -331,8 +331,6 @@ void xemu_settings_load(void)
 		// fprintf(stderr, "Failed to load config! Using defaults\n");
 		settings_failed_to_load = 1;
 	}
-
-	printf("Config loaded!\n");
 }
 
 int xemu_settings_save(void)

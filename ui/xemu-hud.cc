@@ -1287,13 +1287,6 @@ static void ShowMainMenu()
             ImGui::EndMenu();
         }
 
-        ImGui::SetCursorPosX(ImGui::GetWindowWidth()-100.0*g_ui_scale);
-        extern float fps;
-        ImGui::Text("%.3f", fps);
-        ImGui::SameLine();
-        ImGui::SetCursorPosX(ImGui::GetWindowWidth()-200.0*g_ui_scale);
-        ImGui::Text("%.3f", 1000.0/fps);
-
         g_main_menu_height = ImGui::GetWindowHeight();
         ImGui::EndMainMenuBar();
     }

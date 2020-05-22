@@ -756,8 +756,6 @@ static const DisplayChangeListenerOps dcl_gl_ops = {
 
 static void sdl2_display_very_early_init(DisplayOptions *o)
 {
-    fprintf(stderr, "%s\n", __func__);
-
 #ifdef __linux__
     /* on Linux, SDL may use fbcon|directfb|svgalib when run without
      * accessible $DISPLAY to open X11 window.  This is often the case
