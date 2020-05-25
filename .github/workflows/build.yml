@@ -38,6 +38,9 @@ jobs:
           print('::set-env name=ARTIFACT_NAME::xemu-win-release.zip')
     - name: Clone Tree
       uses: actions/checkout@v2
+    - name: Clone Tree (Unshallow)
+      run: |
+        git fetch --prune --unshallow --tags
     - name: Install Dependencies
       run: |
         echo "Downloading MSYS2 environment..."
@@ -86,13 +89,16 @@ jobs:
         if "${{ matrix.configuration }}" == "Debug":
           print('Configuring for Debug')
           print('::set-env name=BUILD_PARAM::--debug')
-          print('::set-env name=ARTIFACT_NAME::xemu-ubuntu-debug')
+          print('::set-env name=ARTIFACT_NAME::xemu-ubuntu-debug.tgz')
         else:
           print('Configuring for Release')
           print('::set-env name=BUILD_PARAM::')
-          print('::set-env name=ARTIFACT_NAME::xemu-ubuntu-release')
+          print('::set-env name=ARTIFACT_NAME::xemu-ubuntu-release.tgz')
     - name: Clone Tree
       uses: actions/checkout@v2
+    - name: Clone Tree (Unshallow)
+      run: |
+        git fetch --prune --unshallow --tags
     - name: Install Dependencies
       run: |
         sudo apt-get update
@@ -117,6 +123,12 @@ jobs:
         ./build.sh ${{ env.BUILD_PARAM }}
         echo -e "\nCompiler Cache Stats:"
         ccache -s -c
+        tar -czvf ${{env.ARTIFACT_NAME}} --transform "s#^dist#xemu#" dist
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v1
+      with:
+        name: dist
+        path: ${{env.ARTIFACT_NAME}}
 
   macOS:
     runs-on: macOS-latest
@@ -138,6 +150,9 @@ jobs:
           print('::set-env name=ARTIFACT_NAME::xemu-macos-release.zip')
     - name: Clone Tree
       uses: actions/checkout@v2
+    - name: Clone Tree (Unshallow)
+      run: |
+        git fetch --prune --unshallow --tags
     - name: Install Dependencies
       run: |
         brew update
@@ -242,3 +257,25 @@ jobs:
         asset_name: xemu-macos-debug.zip
         asset_path: dist/xemu-macos-debug.zip
         asset_content_type: application/zip
+    - name: Upload Release Assets (Ubuntu Release Build)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      id: upload-release-asset-ubuntu-release
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_name: xemu-ubuntu-release.tgz
+        asset_path: dist/xemu-ubuntu-release.tgz
+        asset_content_type: application/gzip
+    - name: Upload Release Assets (Ubuntu Debug Build)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      id: upload-release-asset-ubuntu-debug
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_name: xemu-ubuntu-debug.tgz
+        asset_path: dist/xemu-ubuntu-debug.tgz
+        asset_content_type: application/gzip

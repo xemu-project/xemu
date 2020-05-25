@@ -66,6 +66,16 @@ const char *xemu_get_resource_path(const char *filename)
 		return resource_path;
 	}
 
+#if defined(__linux__)
+	// /usr/share/xemu/data when installed
+	snprintf(resource_path, resource_path_buffer_len, "/usr/share/xemu/data/%s",
+		filename);
+
+	if (path_exists(resource_path)) {
+		return resource_path;
+	}
+#endif
+
 	// Path not found or file not readable
 	assert(0);
 	return NULL;

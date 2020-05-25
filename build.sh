@@ -3,7 +3,8 @@
 set -e # exit if a command fails
 set -o pipefail # Will return the exit status of make if it fails
 
-package_windows() { # Script to prepare the windows exe
+package_windows() {
+    rm -rf dist
     mkdir -p dist
     cp i386-softmmu/qemu-system-i386.exe dist/xemu.exe
     cp i386-softmmu/qemu-system-i386w.exe dist/xemuw.exe
@@ -77,13 +78,19 @@ package_macos() {
 EOF
 }
 
+package_linux() {
+    rm -rf dist
+    mkdir -p dist
+    cp i386-softmmu/qemu-system-i386 dist/xemu
+    cp -r data dist
+}
+
 postbuild=''
 debug_opts=''
-user_opts=''
 build_cflags='-O3'
 job_count='12'
 
-while [ ! -z ${1} ]
+while [ ! -z "${1}" ]
 do
     case "${1}" in
     '-j'*)
@@ -96,8 +103,7 @@ do
         shift
         ;;
     *)
-        user_opts="${user_opts} ${1}"
-        shift
+        break
         ;;
     esac
 done
@@ -107,8 +113,9 @@ readlink=$(command -v readlink)
 case "$(uname -s)" in # Adjust compilation options based on platform
     Linux)
         echo 'Compiling for Linux...'
-        sys_cflags='-march=native -Wno-error=redundant-decls -Wno-error=unused-but-set-variable'
+        sys_cflags='-Wno-error=redundant-decls -Wno-error=unused-but-set-variable'
         sys_opts='--enable-kvm --disable-xen --disable-werror'
+        postbuild='package_linux'
         ;;
     Darwin)
         echo 'Compiling for MacOS...'
@@ -206,7 +213,7 @@ set -x # Print commands from now on
     --without-default-devices \
     --disable-blobs \
     --disable-slirp \
-    ${user_opts}
+    "$@"
 
 time make -j"${job_count}" 2>&1 | tee build.log
 
