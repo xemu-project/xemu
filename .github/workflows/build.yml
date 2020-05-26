@@ -257,25 +257,43 @@ jobs:
         asset_name: xemu-macos-debug.zip
         asset_path: dist/xemu-macos-debug.zip
         asset_content_type: application/zip
-    - name: Upload Release Assets (Ubuntu Release Build)
-      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-      id: upload-release-asset-ubuntu-release
-      uses: actions/upload-release-asset@v1.0.1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Sync archive version of source (including submodule code) to the
+  # ppa-snapshot branch to work around limitations of the Launchpad platform,
+  # namely: no network egress on package build, no custom scripting in source
+  # package creation.
+  PushToPPA:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    # needs: [Ubuntu, Windows, macOS]
+    needs: Init
+    runs-on: ubuntu-latest
+    steps:
+    - name: Clone Tree
+      uses: actions/checkout@v2
+    - name: Clone Tree (Unshallow)
+      run: |
+        git fetch --prune --unshallow --tags
+    - name: Create Source Archive
+      run: |
+        ./scripts/archive-source.sh archive.tgz
+        mkdir archive
+        pushd archive
+        tar xf ../archive.tgz
+        popd
+    - name: Integrate Debian Packaging
+      run: |
+        # Clone deb branch containing packaging files
+        git clone --branch=deb --depth=1 https://github.com/mborgerson/xemu.git /tmp/xemu-debian
+        mv /tmp/xemu-debian/debian archive
+
+        # Create changelog containing current version
+        echo -e "xemu (1:$(cat archive/XEMU_VERSION)-0) unstable; urgency=medium\n" > archive/debian/changelog
+        echo -e "  Built from $(cat archive/XEMU_VERSION)\n" >> archive/debian/changelog
+        echo " -- Matt Borgerson <contact@mborgerson.com>  $(date -R)" >> archive/debian/changelog
+    - name: Deploy Source Archive to Branch
+      uses: peaceiris/actions-gh-pages@v3
       with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_name: xemu-ubuntu-release.tgz
-        asset_path: dist/xemu-ubuntu-release.tgz
-        asset_content_type: application/gzip
-    - name: Upload Release Assets (Ubuntu Debug Build)
-      if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-      id: upload-release-asset-ubuntu-debug
-      uses: actions/upload-release-asset@v1.0.1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_name: xemu-ubuntu-debug.tgz
-        asset_path: dist/xemu-ubuntu-debug.tgz
-        asset_content_type: application/gzip
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./archive
+        publish_branch: ppa-snapshot
+        force_orphan: true

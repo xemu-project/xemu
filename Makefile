@@ -512,7 +512,9 @@ XEMU_BRANCH := $(shell \
 XEMU_VERSION := $(shell \
   cd $(SRC_PATH); \
   if test -e .git; then \
-    git describe --match 'xemu-v*' | cut -c 6- | tr -d '\n'; \
+    git describe --match 'xemu-v*' | cut -c 7- | tr -d '\n'; \
+  elif test -e XEMU_VERSION; then \
+    cat XEMU_VERSION; \
   fi)
 
 xemu-version.c: FORCE
