@@ -497,16 +497,20 @@ qemu-version.h: FORCE
 
 XEMU_DATE := $(shell date -u )
 
-XEMU_COMMIT := $(if $(PKGVERSION),$(PKGVERSION),$(shell \
+XEMU_COMMIT := $(shell \
   cd $(SRC_PATH); \
   if test -e .git; then \
     git rev-parse HEAD 2>/dev/null | tr -d '\n'; \
-  fi))
+  elif test -e XEMU_COMMIT; then \
+    cat XEMU_COMMIT; \
+  fi)
 
 XEMU_BRANCH := $(shell \
   cd $(SRC_PATH); \
   if test -e .git; then \
     git symbolic-ref --short HEAD; \
+  elif test -e XEMU_BRANCH; then \
+    cat XEMU_BRANCH; \
   fi)
 
 XEMU_VERSION := $(shell \
