@@ -264,8 +264,7 @@ jobs:
   # package creation.
   PushToPPA:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    # needs: [Ubuntu, Windows, macOS]
-    needs: Init
+    needs: [Ubuntu, Windows, macOS]
     runs-on: ubuntu-latest
     steps:
     - name: Clone Tree
