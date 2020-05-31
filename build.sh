@@ -208,7 +208,6 @@ set -x # Print commands from now on
     --disable-sheepdog \
     --without-default-devices \
     --disable-blobs \
-    --disable-slirp \
     "$@"
 
 time make -j"${job_count}" 2>&1 | tee build.log
