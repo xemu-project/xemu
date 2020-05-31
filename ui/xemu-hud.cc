@@ -1229,6 +1229,55 @@ public:
     }
 };
 
+static bool is_shortcut_key_pressed(int scancode)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    const bool is_osx = io.ConfigMacOSXBehaviors;
+    const bool is_shortcut_key = (is_osx ? (io.KeySuper && !io.KeyCtrl) : (io.KeyCtrl && !io.KeySuper)) && !io.KeyAlt && !io.KeyShift; // OS X style: Shortcuts using Cmd/Super instead of Ctrl
+    return is_shortcut_key && io.KeysDown[scancode] && (io.KeysDownDuration[scancode] == 0.0);
+}
+
+static void action_toggle_pause(void)
+{
+    if (runstate_is_running()) {
+        vm_stop(RUN_STATE_PAUSED);
+    } else {
+        vm_start();
+    }
+}
+
+static void action_reset(void)
+{
+    qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
+}
+
+static void action_shutdown(void)
+{
+    qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_UI);
+}
+
+static void process_keyboard_shortcuts(void)
+{
+    if (is_shortcut_key_pressed(SDL_SCANCODE_P)) {
+        action_toggle_pause();
+    }
+
+    if (is_shortcut_key_pressed(SDL_SCANCODE_R)) {
+        action_reset();
+    }
+
+    if (is_shortcut_key_pressed(SDL_SCANCODE_Q)) {
+        action_shutdown();
+    }
+}
+
+#if defined(__APPLE__)
+#define SHORTCUT_KEY_REPR "⌘"
+#else
+#define SHORTCUT_KEY_REPR "Ctrl"
+#endif
+#define SHORTCUT_MENU_TEXT(c) SHORTCUT_KEY_REPR "+" #c
+
 static void ShowMainMenu()
 {
     bool running = runstate_is_running();
@@ -1241,22 +1290,14 @@ static void ShowMainMenu()
             ImGui::MenuItem("Network",  NULL, &network_window.is_open);
             ImGui::MenuItem("Settings", NULL, &settings_window.is_open);
             ImGui::Separator();
-            if (ImGui::MenuItem(running ? "Pause" : "Run")) {
-                if (running) {
-                    vm_stop(RUN_STATE_PAUSED);
-                } else {
-                    vm_start();
-                }
+            if (ImGui::MenuItem(running ? "Pause" : "Run", SHORTCUT_MENU_TEXT(P))) {
+                action_toggle_pause();
             }
-            // FIXME: Disabled for now because nv2a crashes during resets. This
-            // will be fixed shortly.
-            #if 0
-            if (ImGui::MenuItem("Restart")) {
-                qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
+            if (ImGui::MenuItem("Reset", SHORTCUT_MENU_TEXT(R))) {
+                action_reset();
             }
-            #endif
-            if (ImGui::MenuItem("Shutdown")) {
-                qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_UI);
+            if (ImGui::MenuItem("Shutdown", SHORTCUT_MENU_TEXT(Q))) {
+                action_shutdown();
             }
             ImGui::EndMenu();
         }
@@ -1534,6 +1575,7 @@ void xemu_hud_render(void)
     MAP_ANALOG(ImGuiNavInput_LStickDown,    CONTROLLER_AXIS_LSTICK_Y, -thumb_dead_zone, -32767);
 
     ImGui::NewFrame();
+    process_keyboard_shortcuts();
 
     bool show_main_menu = true;
 
