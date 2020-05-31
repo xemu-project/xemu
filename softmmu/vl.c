@@ -4372,8 +4372,10 @@ void qemu_init(int argc, char **argv, char **envp)
     if (default_net) {
         QemuOptsList *net = qemu_find_opts("net");
         qemu_opts_set(net, NULL, "type", "nic", &error_abort);
+#ifndef XBOX
 #ifdef CONFIG_SLIRP
         qemu_opts_set(net, NULL, "type", "user", &error_abort);
+#endif
 #endif
     }
 
