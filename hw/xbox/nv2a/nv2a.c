@@ -430,29 +430,48 @@ static void nv2a_init_memory(NV2AState *d, MemoryRegion *ram)
                        d, QEMU_THREAD_JOINABLE);
 }
 
+static void nv2a_reset(NV2AState *d)
+{
+    qemu_mutex_lock(&d->pfifo.lock);
+    qemu_mutex_lock(&d->pgraph.lock);
+
+    memset(d->pfifo.regs, 0, sizeof(d->pfifo.regs));
+    memset(d->pgraph.regs, 0, sizeof(d->pgraph.regs));
+
+    d->pcrtc.start = 0;
+    d->pramdac.core_clock_coeff = 0x00011c01; /* 189MHz...? */
+    d->pramdac.core_clock_freq = 189000000;
+    d->pramdac.memory_clock_coeff = 0;
+    d->pramdac.video_clock_coeff = 0x0003C20D; /* 25182Khz...? */
+
+    d->pfifo.regs[NV_PFIFO_CACHE1_STATUS] |= NV_PFIFO_CACHE1_STATUS_LOW_MARK;
+
+    // PGRAPH might be blocked waiting for an increment. Simply simulate one
+    // here to continue for now.
+    SET_MASK(d->pgraph.regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_READ_3D, 1);
+
+    vga_common_reset(&d->vga);
+
+    qemu_cond_broadcast(&d->pfifo.puller_cond);
+    qemu_cond_broadcast(&d->pfifo.pusher_cond);
+    qemu_cond_broadcast(&d->pgraph.flip_3d);
+    qemu_cond_broadcast(&d->pgraph.interrupt_cond);
+
+    qemu_mutex_unlock(&d->pfifo.lock);
+    qemu_mutex_unlock(&d->pgraph.lock);
+}
+
 static void nv2a_realize(PCIDevice *dev, Error **errp)
 {
-    int i;
-    NV2AState *d;
-
-    d = NV2A_DEVICE(dev);
+    NV2AState *d = NV2A_DEVICE(dev);
 
     /* setting subsystem ids again, see comment in nv2a_class_init() */
     pci_set_word(dev->config + PCI_SUBSYSTEM_VENDOR_ID, 0);
     pci_set_word(dev->config + PCI_SUBSYSTEM_ID, 0);
     dev->config[PCI_INTERRUPT_PIN] = 0x01;
 
-    d->pcrtc.start = 0;
-
-    d->pramdac.core_clock_coeff = 0x00011c01; /* 189MHz...? */
-    d->pramdac.core_clock_freq = 189000000;
-    d->pramdac.memory_clock_coeff = 0;
-    d->pramdac.video_clock_coeff = 0x0003C20D; /* 25182Khz...? */
-
     /* legacy VGA shit */
     VGACommonState *vga = &d->vga;
-    vga_common_reset(vga);
-
     vga->vram_size_mb = 64;
     /* seems to start in color mode */
     vga->msr = VGA_MIS_COLOR;
@@ -470,7 +489,7 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
     memory_region_init(&d->mmio, OBJECT(dev), "nv2a-mmio", 0x1000000);
     pci_register_bar(&d->dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
 
-    for (i=0; i<ARRAY_SIZE(blocktable); i++) {
+    for (int i=0; i < ARRAY_SIZE(blocktable); i++) {
         if (!blocktable[i].name) continue;
         memory_region_init_io(&d->block_mmio[i], OBJECT(dev),
                               &blocktable[i].ops, d,
@@ -482,8 +501,6 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
     qemu_mutex_init(&d->pfifo.lock);
     qemu_cond_init(&d->pfifo.puller_cond);
     qemu_cond_init(&d->pfifo.pusher_cond);
-
-    d->pfifo.regs[NV_PFIFO_CACHE1_STATUS] |= NV_PFIFO_CACHE1_STATUS_LOW_MARK;
 }
 
 static void nv2a_exitfn(PCIDevice *dev)
@@ -499,6 +516,12 @@ static void nv2a_exitfn(PCIDevice *dev)
     qemu_thread_join(&d->pfifo.pusher_thread);
 
     pgraph_destroy(&d->pgraph);
+}
+
+static void qdev_nv2a_reset(DeviceState *dev)
+{
+    NV2AState *d = NV2A_DEVICE(dev);
+    nv2a_reset(d);
 }
 
 static void nv2a_class_init(ObjectClass *klass, void *data)
@@ -519,6 +542,7 @@ static void nv2a_class_init(ObjectClass *klass, void *data)
     k->exit      = nv2a_exitfn;
 
     dc->desc = "GeForce NV2A Integrated Graphics";
+    dc->reset = qdev_nv2a_reset;
 }
 
 static const TypeInfo nv2a_info = {
