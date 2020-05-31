@@ -89,6 +89,7 @@ postbuild=''
 debug_opts=''
 build_cflags='-O3'
 job_count='12'
+sys_ldflags=''
 
 while [ ! -z "${1}" ]
 do
@@ -120,6 +121,7 @@ case "$(uname -s)" in # Adjust compilation options based on platform
     Darwin)
         echo 'Compiling for MacOS...'
         sys_cflags='-march=ivybridge'
+        sys_ldflags='-headerpad_max_install_names'
         sys_opts='--disable-cocoa'
         # necessary to find libffi, which is required by gobject
         export PKG_CONFIG_PATH="${PKG_CONFIG_PATH}/usr/local/opt/libffi/lib/pkgconfig"
@@ -153,6 +155,7 @@ set -x # Print commands from now on
 
 "${configure}" \
     --extra-cflags="-DXBOX=1 ${build_cflags} ${sys_cflags} ${CFLAGS}" \
+    --extra-ldflags="${sys_ldflags}" \
     ${debug_opts} \
     ${sys_opts} \
     --target-list=i386-softmmu \
