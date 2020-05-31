@@ -56,6 +56,7 @@ struct xemu_settings {
 
 	// [network]
 	int   net_enabled; // Boolean
+	int   net_backend;
 	char *net_local_addr;
 	char *net_remote_addr;
 };
@@ -70,6 +71,12 @@ static const struct enum_str_map display_scale_map[DISPLAY_SCALE__COUNT+1] = {
 	{ DISPLAY_SCALE_SCALE,   "scale"   },
 	{ DISPLAY_SCALE_STRETCH, "stretch" },
 	{ 0,                     NULL      },
+};
+
+static const struct enum_str_map net_backend_map[XEMU_NET_BACKEND__COUNT+1] = {
+	{ XEMU_NET_BACKEND_USER,       "user" },
+	{ XEMU_NET_BACKEND_SOCKET_UDP, "udp"  },
+	{ 0,                           NULL   },
 };
 
 struct config_offset_table {
@@ -102,6 +109,7 @@ struct config_offset_table {
 	[XEMU_SETTINGS_INPUT_CONTROLLER_4_GUID] = { CONFIG_TYPE_STRING,   "input", "controller_4_guid", offsetof(struct xemu_settings, controller_4_guid), { .default_str = "" } },
 
 	[XEMU_SETTINGS_NETWORK_ENABLED]     = { CONFIG_TYPE_BOOL,   "network", "enabled",     offsetof(struct xemu_settings, net_enabled),     { .default_bool = 0              } },
+	[XEMU_SETTINGS_NETWORK_BACKEND]     = { CONFIG_TYPE_ENUM,   "network", "backend",     offsetof(struct xemu_settings, net_backend),     { .default_int = XEMU_NET_BACKEND_USER }, net_backend_map },
 	[XEMU_SETTINGS_NETWORK_LOCAL_ADDR]  = { CONFIG_TYPE_STRING, "network", "local_addr",  offsetof(struct xemu_settings, net_local_addr),  { .default_str  = "0.0.0.0:9368" } },
 	[XEMU_SETTINGS_NETWORK_REMOTE_ADDR] = { CONFIG_TYPE_STRING, "network", "remote_addr", offsetof(struct xemu_settings, net_remote_addr), { .default_str  = "1.2.3.4:9368" } },
 };
