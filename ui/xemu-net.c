@@ -46,16 +46,29 @@ void xemu_net_enable(void)
         return;
     }
 
+    int backend;
     const char *local_addr, *remote_addr;
+    xemu_settings_get_enum(XEMU_SETTINGS_NETWORK_BACKEND, &backend);
     xemu_settings_get_string(XEMU_SETTINGS_NETWORK_REMOTE_ADDR, &remote_addr);
     xemu_settings_get_string(XEMU_SETTINGS_NETWORK_LOCAL_ADDR, &local_addr);
 
-    // Create the UDP netdev
-    QDict *qdict = qdict_new();
-    qdict_put_str(qdict, "id",        id);
-    qdict_put_str(qdict, "type",      "socket");
-    qdict_put_str(qdict, "udp",       remote_addr);
-    qdict_put_str(qdict, "localaddr", local_addr);
+    // Create the netdev
+    QDict *qdict;
+    if (backend == XEMU_NET_BACKEND_USER) {
+        qdict = qdict_new();
+        qdict_put_str(qdict, "id",   id);
+        qdict_put_str(qdict, "type", "user");
+    } else if (backend == XEMU_NET_BACKEND_SOCKET_UDP) {
+        qdict = qdict_new();
+        qdict_put_str(qdict, "id",        id);
+        qdict_put_str(qdict, "type",      "socket");
+        qdict_put_str(qdict, "udp",       remote_addr);
+        qdict_put_str(qdict, "localaddr", local_addr);
+    } else {
+        // Unsupported backend type
+        return;
+    }
+
     QemuOpts *opts = qemu_opts_from_qdict(qemu_find_opts("netdev"), qdict, &error_abort);
     qobject_unref(qdict);
     netdev_add(opts, &local_err);

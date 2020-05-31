@@ -823,6 +823,7 @@ class NetworkWindow
 {
 public:
     bool is_open;
+    int  backend;
     char remote_addr[64];
     char local_addr[64];
 
@@ -851,20 +852,8 @@ public:
             strncpy(remote_addr, tmp, sizeof(remote_addr)-1);
             xemu_settings_get_string(XEMU_SETTINGS_NETWORK_LOCAL_ADDR, &tmp);
             strncpy(local_addr, tmp, sizeof(local_addr)-1);
+            xemu_settings_get_enum(XEMU_SETTINGS_NETWORK_BACKEND, &backend);
         }
-
-        ImGui::TextWrapped(
-            "xemu socket networking works by sending and receiving packets over "
-            "UDP which encapsulate the network traffic that the machine would "
-            "send or receive when connected to a Local Area Network (LAN)."
-            );
-
-        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
-        ImGui::Separator();
-        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
-
-        ImGui::Columns(2, "", false);
-        ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.33);
 
         ImGuiInputTextFlags flg = 0;
         bool is_enabled = xemu_net_is_enabled();
@@ -872,24 +861,47 @@ public:
             flg |= ImGuiInputTextFlags_ReadOnly;
         }
 
-        ImGui::Text("Remote Host");
-        ImGui::SameLine(); HelpMarker("The remote <IP address>:<Port> to forward packets to (e.g. 1.2.3.4:9368)");
+        ImGui::Columns(2, "", false);
+        ImGui::SetColumnWidth(0, ImGui::GetWindowWidth()*0.33);
+
+        ImGui::Text("Attached To");
+        ImGui::SameLine(); HelpMarker("The network backend which the emulated NIC interacts with");
         ImGui::NextColumn();
-        float w = ImGui::GetColumnWidth()-10*g_ui_scale;
-        ImGui::SetNextItemWidth(w);
         if (is_enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
-        ImGui::InputText("###remote_host", remote_addr, sizeof(remote_addr), flg);
+        int temp_backend = backend; // Temporary to make backend combo read-only (FIXME: surely there's a nicer way)
+        if (ImGui::Combo("##backend", is_enabled ? &temp_backend : &backend, "User (NAT)\0Socket\0") && !is_enabled) {
+            xemu_settings_set_enum(XEMU_SETTINGS_NETWORK_BACKEND, backend);
+            xemu_settings_save();
+        }
         if (is_enabled) ImGui::PopStyleVar();
+        ImGui::SameLine();
+        if (backend == XEMU_NET_BACKEND_USER) {
+            HelpMarker("User-mode TCP/IP stack with a NAT'd network");
+        } else if (backend == XEMU_NET_BACKEND_SOCKET_UDP) {
+            HelpMarker("Encapsulates link-layer traffic in UDP packets");
+        }
         ImGui::NextColumn();
 
-        ImGui::Text("Local Host");
-        ImGui::SameLine(); HelpMarker("The local <IP address>:<Port> to receive packets on (e.g. 0.0.0.0:9368)");
-        ImGui::NextColumn();
-        ImGui::SetNextItemWidth(w);
-        if (is_enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
-        ImGui::InputText("###local_host", local_addr, sizeof(local_addr), flg);
-        if (is_enabled) ImGui::PopStyleVar();
-        ImGui::NextColumn();
+        if (backend == XEMU_NET_BACKEND_SOCKET_UDP) {
+            ImGui::Text("Remote Host");
+            ImGui::SameLine(); HelpMarker("The remote <IP address>:<Port> to forward packets to (e.g. 1.2.3.4:9368)");
+            ImGui::NextColumn();
+            float w = ImGui::GetColumnWidth()-10*g_ui_scale;
+            ImGui::SetNextItemWidth(w);
+            if (is_enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
+            ImGui::InputText("###remote_host", remote_addr, sizeof(remote_addr), flg);
+            if (is_enabled) ImGui::PopStyleVar();
+            ImGui::NextColumn();
+
+            ImGui::Text("Local Host");
+            ImGui::SameLine(); HelpMarker("The local <IP address>:<Port> to receive packets on (e.g. 0.0.0.0:9368)");
+            ImGui::NextColumn();
+            ImGui::SetNextItemWidth(w);
+            if (is_enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
+            ImGui::InputText("###local_host", local_addr, sizeof(local_addr), flg);
+            if (is_enabled) ImGui::PopStyleVar();
+            ImGui::NextColumn();
+        }
 
         ImGui::Columns(1);
 
