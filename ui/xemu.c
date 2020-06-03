@@ -43,6 +43,12 @@
 #include "xemu-shaders.h"
 #include "hw/xbox/nv2a/gl/gloffscreen.h" // FIXME
 
+#include "qemu-common.h"
+#include "qapi/error.h"
+#include "qapi/qapi-commands-block.h"
+#include "qapi/qmp/qdict.h"
+#include "hw/xbox/smbus.h" // For eject, drive tray
+
 // #define DEBUG_XEMU_C
 
 #ifdef DEBUG_XEMU_C
@@ -1439,4 +1445,28 @@ int main(int argc, char **argv)
     while (1) {
         sdl2_gl_refresh(&sdl2_console[0].dcl);
     }
+}
+
+void xemu_eject_disc(void)
+{
+    xbox_smc_eject_button();
+
+    // Xbox software may request that the drive open, but do it now anyway
+    Error *err = NULL;
+    qmp_eject(true, "ide0-cd1", false, NULL, true, false, &err);
+
+    xbox_smc_update_tray_state();
+}
+
+void xemu_load_disc(const char *path)
+{
+    // Ensure an eject sequence is always triggered so Xbox software reloads
+    xbox_smc_eject_button();
+
+    Error *err = NULL;
+    qmp_blockdev_change_medium(true, "ide0-cd1", false, NULL, path,
+                               false, "", false, 0,
+                               &err);
+
+    xbox_smc_update_tray_state();
 }
