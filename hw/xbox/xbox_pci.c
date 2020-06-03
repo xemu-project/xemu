@@ -2,7 +2,7 @@
  * QEMU Xbox PCI buses implementation
  *
  * Copyright (c) 2012 espes
- * Copyright (c) 2018 Matt Borgerson
+ * Copyright (c) 2018-2020 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -351,23 +351,32 @@ static const VMStateDescription vmstate_xbox_lpc = {
 };
 #endif
 
+static void xbox_send_gpe(AcpiDeviceIf *adev, AcpiEventStatusBits ev)
+{
+    XBOX_LPCState *s = XBOX_LPC_DEVICE(adev);
+
+    acpi_send_gpe_event(&s->pm.acpi_regs, s->pm.irq, ev);
+}
+
 static void xbox_lpc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
+    AcpiDeviceIfClass *adevc = ACPI_DEVICE_IF_CLASS(klass);
 
     dc->hotpluggable = false;
-    k->realize      = xbox_lpc_realize;
+    k->realize = xbox_lpc_realize;
     //k->config_write = xbox_lpc_config_write;
-    k->vendor_id    = PCI_VENDOR_ID_NVIDIA;
-    k->device_id    = PCI_DEVICE_ID_NVIDIA_NFORCE_LPC;
-    k->revision     = 212;
-    k->class_id     = PCI_CLASS_BRIDGE_ISA;
+    k->vendor_id = PCI_VENDOR_ID_NVIDIA;
+    k->device_id = PCI_DEVICE_ID_NVIDIA_NFORCE_LPC;
+    k->revision = 212;
+    k->class_id = PCI_CLASS_BRIDGE_ISA;
 
-    dc->desc        = "nForce LPC Bridge";
+    dc->desc = "nForce LPC Bridge";
     dc->user_creatable = false;
-    dc->reset       = xbox_lpc_reset;
-    //dc->vmsd        = &vmstate_xbox_lpc;
+    dc->reset = xbox_lpc_reset;
+    //dc->vmsd = &vmstate_xbox_lpc;
+    adevc->send_event = xbox_send_gpe;
 }
 
 static const TypeInfo xbox_lpc_info = {
@@ -376,6 +385,7 @@ static const TypeInfo xbox_lpc_info = {
     .instance_size = sizeof(XBOX_LPCState),
     .class_init = xbox_lpc_class_init,
     .interfaces = (InterfaceInfo[]) {
+        { TYPE_ACPI_DEVICE_IF },
         { INTERFACE_CONVENTIONAL_PCI_DEVICE },
         { },
     },

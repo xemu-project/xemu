@@ -26,6 +26,7 @@ typedef struct XBOX_PMRegs {
     ACPIREGS acpi_regs;
 
     MemoryRegion io;
+    MemoryRegion io_gpe;
     MemoryRegion io_gpio;
 
     qemu_irq irq;

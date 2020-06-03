@@ -2,6 +2,7 @@
  * Xbox ACPI implementation
  *
  * Copyright (c) 2012 espes
+ * Copyright (c) 2020 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -24,6 +25,7 @@
 #include "hw/pci/pci.h"
 #include "qemu/timer.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/reset.h"
 #include "hw/acpi/acpi.h"
 #include "hw/xbox/xbox_pci.h"
 #include "hw/xbox/acpi_xbox.h"
@@ -36,6 +38,8 @@
 #endif
 
 #define XBOX_PM_BASE_BAR  0
+#define XBOX_PM_GPE_BASE  0x20
+#define XBOX_PM_GPE_LEN   4
 #define XBOX_PM_GPIO_BASE 0xC0
 #define XBOX_PM_GPIO_LEN  26
 
@@ -93,6 +97,42 @@ static void xbox_pm_update_sci_fn(ACPIREGS *regs)
     pm_update_sci(pm);
 }
 
+static uint64_t xbox_pm_gpe_readb(void *opaque, hwaddr addr, unsigned width)
+{
+    XBOX_PMRegs *pm = opaque;
+    return acpi_gpe_ioport_readb(&pm->acpi_regs, addr);
+}
+
+static void xbox_pm_gpe_writeb(void *opaque, hwaddr addr, uint64_t val,
+                            unsigned width)
+{
+    XBOX_PMRegs *pm = opaque;
+    acpi_gpe_ioport_writeb(&pm->acpi_regs, addr, val);
+    acpi_update_sci(&pm->acpi_regs, pm->irq);
+}
+
+static const MemoryRegionOps xbox_pm_gpe_ops = {
+    .read = xbox_pm_gpe_readb,
+    .write = xbox_pm_gpe_writeb,
+    .valid.min_access_size = 1,
+    .valid.max_access_size = 4,
+    .impl.min_access_size = 1,
+    .impl.max_access_size = 1,
+    .endianness = DEVICE_LITTLE_ENDIAN,
+};
+
+static void pm_reset(void *opaque)
+{
+    XBOX_PMRegs *pm = opaque;
+
+    acpi_pm1_evt_reset(&pm->acpi_regs);
+    acpi_pm1_cnt_reset(&pm->acpi_regs);
+    acpi_pm_tmr_reset(&pm->acpi_regs);
+    acpi_gpe_reset(&pm->acpi_regs);
+
+    acpi_update_sci(&pm->acpi_regs, pm->irq);
+}
+
 void xbox_pm_init(PCIDevice *dev, XBOX_PMRegs *pm, qemu_irq sci_irq)
 {
     memory_region_init(&pm->io, OBJECT(dev), "xbox-pm", 256);
@@ -102,10 +142,16 @@ void xbox_pm_init(PCIDevice *dev, XBOX_PMRegs *pm, qemu_irq sci_irq)
     acpi_pm_tmr_init(&pm->acpi_regs, xbox_pm_update_sci_fn, &pm->io);
     acpi_pm1_evt_init(&pm->acpi_regs, xbox_pm_update_sci_fn, &pm->io);
     acpi_pm1_cnt_init(&pm->acpi_regs, &pm->io, true, true, 2);
+    acpi_gpe_init(&pm->acpi_regs, XBOX_PM_GPE_LEN);
+
+    memory_region_init_io(&pm->io_gpe, OBJECT(dev), &xbox_pm_gpe_ops, pm,
+                          "xbox-pm-gpe0", XBOX_PM_GPE_LEN);
+    memory_region_add_subregion(&pm->io, XBOX_PM_GPE_BASE, &pm->io_gpe);
 
     memory_region_init_io(&pm->io_gpio, OBJECT(dev), &xbox_pm_gpio_ops, pm,
                           "xbox-pm-gpio", XBOX_PM_GPIO_LEN);
     memory_region_add_subregion(&pm->io, XBOX_PM_GPIO_BASE, &pm->io_gpio);
 
     pm->irq = sci_irq;
+    qemu_register_reset(pm_reset, pm);
 }
