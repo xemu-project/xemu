@@ -31,5 +31,8 @@ void smbus_adm1032_init(I2CBus *smbus, int address);
 
 bool xbox_smc_avpack_to_reg(const char *avpack, uint8_t *value);
 void xbox_smc_append_avpack_hint(Error **errp);
+void xbox_smc_power_button(void);
+void xbox_smc_eject_button(void);
+void xbox_smc_update_tray_state(void);
 
 #endif

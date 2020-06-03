@@ -2,6 +2,7 @@
  * QEMU SMBus Xbox System Management Controller
  *
  * Copyright (c) 2011 espes
+ * Copyright (c) 2020 Matt Borgerson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,10 +26,13 @@
 #include "qemu/osdep.h"
 #include "qemu/option.h"
 #include "hw/hw.h"
+#include "hw/acpi/acpi.h"
 #include "hw/i2c/i2c.h"
 #include "hw/i2c/smbus_slave.h"
 #include "qemu/config-file.h"
 #include "qapi/error.h"
+#include "sysemu/block-backend.h"
+#include "sysemu/blockdev.h"
 #include "sysemu/sysemu.h"
 #include "smbus.h"
 #include "sysemu/runstate.h"
@@ -55,6 +59,9 @@
 #define     SMC_REG_POWER_CYCLE         0x40
 #define     SMC_REG_POWER_SHUTDOWN      0x80
 #define SMC_REG_TRAYSTATE           0x03
+#define     SMC_REG_TRAYSTATE_OPEN              0x10
+#define     SMC_REG_TRAYSTATE_NO_MEDIA_DETECTED 0x40
+#define     SMC_REG_TRAYSTATE_MEDIA_DETECTED    0x60
 #define SMC_REG_AVPACK              0x04
 #define     SMC_REG_AVPACK_SCART        0x00
 #define     SMC_REG_AVPACK_HDTV         0x01
@@ -90,7 +97,9 @@ typedef struct SMBusSMCDevice {
     SMBusDevice smbusdev;
     int version_string_index;
     uint8_t cmd;
+    uint8_t traystate_reg;
     uint8_t avpack_reg;
+    uint8_t intstatus_reg;
     uint8_t scratch_reg;
 } SMBusSMCDevice;
 
@@ -158,11 +167,20 @@ static uint8_t smc_receive_byte(SMBusDevice *dev)
         return smc_version_string[
             smc->version_string_index++ % (sizeof(smc_version_string) - 1)];
 
-    case SMC_REG_AVPACK:
-        return smc->avpack_reg;
+    case SMC_REG_TRAYSTATE:
+        return smc->traystate_reg;
 
     case SMC_REG_SCRATCH:
         return smc->scratch_reg;
+
+    case SMC_REG_AVPACK:
+        return smc->avpack_reg;
+
+    case SMC_REG_INTSTATUS: {
+        uint8_t r = smc->intstatus_reg;
+        smc->intstatus_reg = 0; // FIXME: Confirm clear on read
+        return r;
+    }
 
     /* challenge request:
      * must be non-0 */
@@ -221,7 +239,9 @@ static void smbus_smc_realize(DeviceState *dev, Error **errp)
     char *avpack;
 
     smc->version_string_index = 0;
+    smc->traystate_reg = 0;
     smc->avpack_reg = 0; /* Default value for Chihiro machine */
+    smc->intstatus_reg = 0;
     smc->scratch_reg = 0;
     smc->cmd = 0;
 
@@ -238,6 +258,8 @@ static void smbus_smc_realize(DeviceState *dev, Error **errp)
 
         g_free(avpack);
     }
+
+    xbox_smc_update_tray_state();
 }
 
 static void smbus_smc_class_initfn(ObjectClass *klass, void *data)
@@ -271,4 +293,52 @@ void smbus_xbox_smc_init(I2CBus *smbus, int address)
     smc = qdev_create((BusState *)smbus, TYPE_XBOX_SMC);
     qdev_prop_set_uint8(smc, "address", address);
     qdev_init_nofail(smc);
+}
+
+static void xbox_assert_extsmi(void)
+{
+    Object *obj = object_resolve_path_type("", TYPE_ACPI_DEVICE_IF, NULL);
+    acpi_send_event(DEVICE(obj), ACPI_EXTSMI_STATUS);
+}
+
+void xbox_smc_power_button(void)
+{
+    Object *obj = object_resolve_path_type("", TYPE_XBOX_SMC, NULL);
+    SMBusSMCDevice *smc = XBOX_SMC(obj);
+    smc->intstatus_reg |= SMC_REG_INTSTATUS_POWER;
+    xbox_assert_extsmi();
+}
+
+void xbox_smc_eject_button(void)
+{
+    Object *obj = object_resolve_path_type("", TYPE_XBOX_SMC, NULL);
+    SMBusSMCDevice *smc = XBOX_SMC(obj);
+    smc->intstatus_reg |= SMC_REG_INTSTATUS_EJECT_BUTTON;
+    xbox_assert_extsmi();
+}
+
+// FIXME: Ideally this would be called on a tray state change callback (see
+// tray_moved event), for now it's called explicitly from UI upon user
+// interaction.
+void xbox_smc_update_tray_state(void)
+{
+    Object *obj = object_resolve_path_type("", TYPE_XBOX_SMC, NULL);
+    SMBusSMCDevice *smc = XBOX_SMC(obj);
+
+    const char *blk_name = "ide0-cd1";
+    BlockBackend *blk = blk_by_name(blk_name);
+    assert(blk != NULL);
+
+    if (blk_dev_is_tray_open(blk)) {
+        smc->traystate_reg = SMC_REG_TRAYSTATE_OPEN;
+        smc->intstatus_reg |= SMC_REG_INTSTATUS_TRAYOPENING;
+    } else {
+        BlockDriverState *bs = blk_bs(blk);
+        smc->traystate_reg = (bs && bs->drv)
+                                ? SMC_REG_TRAYSTATE_MEDIA_DETECTED
+                                : SMC_REG_TRAYSTATE_NO_MEDIA_DETECTED;
+        smc->intstatus_reg |= SMC_REG_INTSTATUS_TRAYCLOSED;
+    }
+
+    xbox_assert_extsmi();
 }
