@@ -28,6 +28,8 @@
 #include "json.hpp"
 using json = nlohmann::json;
 
+#define DEBUG_COMPAT_SERVICE 0
+
 CompatibilityReport::CompatibilityReport()
 {
 }
@@ -64,8 +66,11 @@ bool CompatibilityReport::Send()
 	// Serialize the report
 	const std::string &s = GetSerializedReport();
 
+#if DEBUG_COMPAT_SERVICE
 	httplib::SSLClient cli("127.0.0.1", 443);
-	// httplib::SSLClient cli("reports.xemu.app", 443);
+#else
+	httplib::SSLClient cli("reports.xemu.app", 443);
+#endif
 
 	cli.set_follow_location(true);
 	cli.set_timeout_sec(5);
