@@ -943,6 +943,9 @@ public:
     bool is_open;
     bool is_xbe_identified;
     bool did_send, send_result;
+    char token_buf[512];
+    int playability;
+    char description[1024];
     std::string serialized_report;
 
     CompatibilityReporter()
@@ -978,6 +981,22 @@ public:
     {
         if (!is_open) return;
 
+        const char *playability_names[] = {
+            "Broken",
+            "Intro",
+            "Starts",
+            "Playable",
+            "Perfect",
+        };
+
+        const char *playability_descriptions[] = {
+            "This title crashes very soon after launching, or displays nothing at all.",
+            "This title displays an intro sequence, but fails to make it to gameplay.",
+            "This title starts, but may crash or have significant issues.",
+            "This title is playable from start to finish, with only minor issues.",
+            "This title is playable from start to finish with no noticable issues."
+        };
+
         ImGui::SetNextWindowContentSize(ImVec2(550.0f*g_ui_scale, 0.0f));
         if (!ImGui::Begin("Report Compatibility", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::End();
@@ -995,6 +1014,19 @@ public:
                 report.SetXbeData(xbe);
             }
             did_send = send_result = false;
+
+            playability = 3; // Playable
+            report.compat_rating = playability_names[playability];
+            description[0] = '\x00';
+            report.compat_comments = description;
+
+            const char *tmp;
+            xemu_settings_get_string(XEMU_SETTINGS_MISC_USER_TOKEN, &tmp);
+            assert(strlen(tmp) < sizeof(token_buf));
+            strncpy(token_buf, tmp, sizeof(token_buf));
+            report.token = token_buf;
+
+            dirty = true;
         }
 
         if (!is_xbe_identified) {
@@ -1023,45 +1055,36 @@ public:
         
         ImGui::Text("User Token");
         ImGui::SameLine();
-        HelpMarker("Optional. This is a unique token that users may "
-            "provide in order to associate their report with their Discord "
-            "username. To request a token, click 'Get Token'.");    
+        HelpMarker("This is a unique access token used to authorize submission of the report. To request a token, click 'Get Token'.");
         ImGui::NextColumn();
-        float item_width = ImGui::GetColumnWidth()-20*g_ui_scale;
-        ImGui::SetNextItemWidth(item_width*0.70);
-        static char token_buf[512] = {0};
+        float item_width = ImGui::GetColumnWidth()*0.75-20*g_ui_scale;
+        ImGui::SetNextItemWidth(item_width);
+        ImGui::PushFont(g_fixed_width_font);
         if (ImGui::InputText("###UserToken", token_buf, sizeof(token_buf), 0)) {
             report.token = token_buf;
             dirty = true;
         }
+        ImGui::PopFont();
         ImGui::SameLine();
         if (ImGui::Button("Get Token")) {
-            xemu_open_web_browser("https://xemu.app");
+            xemu_open_web_browser("https://reports.xemu.app");
         }
         ImGui::NextColumn();
 
         ImGui::Text("Playability");
         ImGui::NextColumn();
-        static int playability;
         ImGui::SetNextItemWidth(item_width);
-        const char *playability_names[] = {
-            "Unknown",
-            "Broken",
-            "Intro/Menus",
-            "Starts",
-            "Playable",
-            "Perfect",
-        };
         if (ImGui::Combo("###PlayabilityRating", &playability,
-            "Unknown\0" "Broken\0" "Intro/Menus\0" "Starts\0" "Playable\0" "Perfect\0")) {
+            "Broken\0" "Intro/Menus\0" "Starts\0" "Playable\0" "Perfect\0")) {
             report.compat_rating = playability_names[playability];
             dirty = true;
         }
+        ImGui::SameLine();
+        HelpMarker(playability_descriptions[playability]);
         ImGui::NextColumn();
         
         ImGui::Columns(1);
         
-        static char description[1024] = {0};
         ImGui::Text("Description");
         if (ImGui::InputTextMultiline("###desc", description, sizeof(description), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 6), 0)) {
             report.compat_comments = description;
@@ -1088,8 +1111,8 @@ public:
                 "seen before submission by expanding 'Report Details'."
                 "\n\n"
                 "Like many websites, upon submission, the public IP address of your computer is "
-                "also recorded with your report. If you choose to submit with a token, the "
-                "identity associated with your token (e.g. Discord username) is also recorded. "
+                "also recorded with your report. If provided, the identity associated with your "
+                "token is also recorded."
                 "\n\n"
                 "This information will be archived and used to analyze, resolve problems with, "
                 "and improve the application. This information may be made publicly visible, "
@@ -1117,6 +1140,14 @@ public:
         if (ImGui::Button("Send", ImVec2(120*g_ui_scale, 0))) {
             did_send = true;
             send_result = report.Send();
+            if (send_result) {
+                // Close window on success
+                is_open = false;
+
+                // Save user token if it was used
+                xemu_settings_set_string(XEMU_SETTINGS_MISC_USER_TOKEN, token_buf);
+                xemu_settings_save();
+            }
         }
         
         ImGui::End();
