@@ -99,20 +99,19 @@ bool CompatibilityReport::Send()
 	case 200:
 		result_msg = "Ok";
 		return true;
-
 	case 400:
 	case 411:
 		result_msg = "Invalid request";
 		return false;
-
 	case 403:
 		result_msg = "Invalid token";
 		return false;
-
+	case 409:
+		result_msg = "Please upgrade to latest version";
+		return false;
 	case 413:
 		result_msg = "Report too long";
 		return false;
-
 	default:
 		result_msg = "Unknown error occured";
 		return false;
