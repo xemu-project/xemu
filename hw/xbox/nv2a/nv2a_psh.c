@@ -647,37 +647,37 @@ static QString* psh_convert(struct PixelShader *ps)
         case PS_TEXTUREMODES_BRDF:
             qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_BRDF */\n",
                                i);
-            assert(false); /* Unimplemented */
+            NV2A_UNIMPLEMENTED("PS_TEXTUREMODES_BRDF");
             break;
         case PS_TEXTUREMODES_DOT_ST:
             qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_ST */\n",
                                i);
-            assert(false); /* Unimplemented */
+            NV2A_UNIMPLEMENTED("PS_TEXTUREMODES_DOT_ST");
             break;
         case PS_TEXTUREMODES_DOT_ZW:
             qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_ZW */\n",
                                i);
-            assert(false); /* Unimplemented */
+            NV2A_UNIMPLEMENTED("PS_TEXTUREMODES_DOT_ZW");
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_DIFF:
             qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_RFLCT_DIFF */\n",
                                i);
-            assert(false); /* Unimplemented */
+            NV2A_UNIMPLEMENTED("PS_TEXTUREMODES_DOT_RFLCT_DIFF");
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_SPEC:
             qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_RFLCT_SPEC */\n",
                                i);
-            assert(false); /* Unimplemented */
+            NV2A_UNIMPLEMENTED("PS_TEXTUREMODES_DOT_RFLCT_SPEC");
             break;
         case PS_TEXTUREMODES_DOT_STR_3D:
             qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_STR_3D */\n",
                                i);
-            assert(false); /* Unimplemented */
+            NV2A_UNIMPLEMENTED("PS_TEXTUREMODES_DOT_STR_3D");
             break;
         case PS_TEXTUREMODES_DOT_STR_CUBE:
             qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_STR_CUBE */\n",
                                i);
-            assert(false); /* Unimplemented */
+            NV2A_UNIMPLEMENTED("PS_TEXTUREMODES_DOT_STR_CUBE");
             break;
         case PS_TEXTUREMODES_DPNDNT_AR:
             assert(!ps->state.rect_tex[i]);
@@ -698,7 +698,7 @@ static QString* psh_convert(struct PixelShader *ps)
         case PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST:
             qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST */\n",
                                i);
-            assert(false); /* Unimplemented */
+            NV2A_UNIMPLEMENTED("PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST");
             break;
         default:
             fprintf(stderr, "Unknown ps tex mode: 0x%x\n", ps->tex_modes[i]);

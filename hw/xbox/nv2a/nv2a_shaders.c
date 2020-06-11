@@ -20,7 +20,6 @@
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
-#include "nv2a_debug.h"
 #include "nv2a_shaders_common.h"
 #include "nv2a_shaders.h"
 
