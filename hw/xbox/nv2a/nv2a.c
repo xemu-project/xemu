@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2012 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2018 Matt Borgerson
+ * Copyright (c) 2018-2020 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -419,20 +419,20 @@ static void nv2a_init_memory(NV2AState *d, MemoryRegion *ram)
 
     pgraph_init(d);
 
-    /* fire up puller */
-    qemu_thread_create(&d->pfifo.puller_thread, "nv2a.puller_thread",
-                       pfifo_puller_thread,
-                       d, QEMU_THREAD_JOINABLE);
-
-    /* fire up pusher */
-    qemu_thread_create(&d->pfifo.pusher_thread, "nv2a.pusher_thread",
-                       pfifo_pusher_thread,
-                       d, QEMU_THREAD_JOINABLE);
+    /* fire up pfifo */
+    qemu_thread_create(&d->pfifo.thread, "nv2a.pfifo_thread",
+                       pfifo_thread, d, QEMU_THREAD_JOINABLE);
 }
 
 static void nv2a_reset(NV2AState *d)
 {
     qemu_mutex_lock(&d->pfifo.lock);
+
+    // Wait for pfifo to become idle
+    qemu_cond_broadcast(&d->pfifo.fifo_cond);
+    qemu_mutex_unlock_iothread();
+    qemu_cond_wait(&d->pfifo.fifo_idle_cond, &d->pfifo.lock);
+    qemu_mutex_lock_iothread();
     qemu_mutex_lock(&d->pgraph.lock);
 
     memset(d->pfifo.regs, 0, sizeof(d->pfifo.regs));
@@ -446,19 +446,17 @@ static void nv2a_reset(NV2AState *d)
 
     d->pfifo.regs[NV_PFIFO_CACHE1_STATUS] |= NV_PFIFO_CACHE1_STATUS_LOW_MARK;
 
-    // PGRAPH might be blocked waiting for an increment. Simply simulate one
-    // here to continue for now.
-    SET_MASK(d->pgraph.regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_READ_3D, 1);
-
     vga_common_reset(&d->vga);
 
-    qemu_cond_broadcast(&d->pfifo.puller_cond);
-    qemu_cond_broadcast(&d->pfifo.pusher_cond);
-    qemu_cond_broadcast(&d->pgraph.flip_3d);
-    qemu_cond_broadcast(&d->pgraph.interrupt_cond);
+    d->pgraph.waiting_for_nop = false;
+    d->pgraph.waiting_for_flip = false;
+    d->pgraph.waiting_for_fifo_access = false;
+    d->pgraph.waiting_for_context_switch = false;
 
-    qemu_mutex_unlock(&d->pfifo.lock);
+    pfifo_kick(d);
+
     qemu_mutex_unlock(&d->pgraph.lock);
+    qemu_mutex_unlock(&d->pfifo.lock);
 }
 
 static void nv2a_realize(PCIDevice *dev, Error **errp)
@@ -499,8 +497,8 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
     }
 
     qemu_mutex_init(&d->pfifo.lock);
-    qemu_cond_init(&d->pfifo.puller_cond);
-    qemu_cond_init(&d->pfifo.pusher_cond);
+    qemu_cond_init(&d->pfifo.fifo_cond);
+    qemu_cond_init(&d->pfifo.fifo_idle_cond);
 }
 
 static void nv2a_exitfn(PCIDevice *dev)
@@ -510,10 +508,8 @@ static void nv2a_exitfn(PCIDevice *dev)
 
     d->exiting = true;
 
-    qemu_cond_broadcast(&d->pfifo.puller_cond);
-    qemu_cond_broadcast(&d->pfifo.pusher_cond);
-    qemu_thread_join(&d->pfifo.puller_thread);
-    qemu_thread_join(&d->pfifo.pusher_thread);
+    qemu_cond_broadcast(&d->pfifo.fifo_cond);
+    qemu_thread_join(&d->pfifo.thread);
 
     pgraph_destroy(&d->pgraph);
 }

@@ -102,9 +102,7 @@ void user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
                 break;
             }
 
-            // kick pfifo
-            qemu_cond_broadcast(&d->pfifo.pusher_cond);
-            qemu_cond_broadcast(&d->pfifo.puller_cond);
+            pfifo_kick(d);
 
         } else {
             /* ramfc */
