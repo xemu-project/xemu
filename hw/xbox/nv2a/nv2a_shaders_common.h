@@ -21,6 +21,8 @@
 #ifndef HW_NV2A_SHADERS_COMMON_H
 #define HW_NV2A_SHADERS_COMMON_H
 
+#include "nv2a_debug.h"
+
 #define STRUCT_VERTEX_DATA "struct VertexData {\n" \
                            "  float inv_w;\n" \
                            "  vec4 D0;\n" \

@@ -62,4 +62,30 @@ void gl_debug_frame_terminator(void);
 # define NV2A_GL_DFRAME_TERMINATOR()               do { } while (0)
 #endif
 
+/* Debug prints to identify when unimplemented or unconfirmed features
+ * are being exercised. These cases likely result in graphical problems of
+ * varying degree, but should otherwise not crash the system. Enable this
+ * macro for debugging.
+ */
+// #define DEBUG_NV2A_FEATURES 1
+
+#ifdef DEBUG_NV2A_FEATURES
+
+/* Feature which has not yet been confirmed */
+#define NV2A_UNCONFIRMED(format, ...) do { \
+    fprintf(stderr, "nv2a: Warning unconfirmed feature: " format "\n", ## __VA_ARGS__); \
+} while (0)
+
+/* Feature which is not implemented */
+#define NV2A_UNIMPLEMENTED(format, ...) do { \
+    fprintf(stderr, "nv2a: Warning unimplemented feature: " format "\n", ## __VA_ARGS__); \
+} while (0)
+
+#else
+
+#define NV2A_UNCONFIRMED(...) do {} while (0)
+#define NV2A_UNIMPLEMENTED(...) do {} while (0)
+
+#endif
+
 #endif

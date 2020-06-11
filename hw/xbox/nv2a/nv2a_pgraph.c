@@ -1866,7 +1866,7 @@ static void pgraph_method(NV2AState *d,
 
             } else {
                 NV2A_GL_DPRINTF(true, "EMPTY NV097_SET_BEGIN_END");
-                assert(false);
+                NV2A_UNCONFIRMED("EMPTY NV097_SET_BEGIN_END");
             }
 
             /* End of visibility testing */
@@ -3650,10 +3650,10 @@ static void pgraph_bind_textures(NV2AState *d)
         }
 
         /* Check for unsupported features */
-        assert(!(filter & NV_PGRAPH_TEXFILTER0_ASIGNED));
-        assert(!(filter & NV_PGRAPH_TEXFILTER0_RSIGNED));
-        assert(!(filter & NV_PGRAPH_TEXFILTER0_GSIGNED));
-        assert(!(filter & NV_PGRAPH_TEXFILTER0_BSIGNED));
+        if (filter & NV_PGRAPH_TEXFILTER0_ASIGNED) NV2A_UNIMPLEMENTED("NV_PGRAPH_TEXFILTER0_ASIGNED");
+        if (filter & NV_PGRAPH_TEXFILTER0_RSIGNED) NV2A_UNIMPLEMENTED("NV_PGRAPH_TEXFILTER0_RSIGNED");
+        if (filter & NV_PGRAPH_TEXFILTER0_GSIGNED) NV2A_UNIMPLEMENTED("NV_PGRAPH_TEXFILTER0_GSIGNED");
+        if (filter & NV_PGRAPH_TEXFILTER0_BSIGNED) NV2A_UNIMPLEMENTED("NV_PGRAPH_TEXFILTER0_BSIGNED");
 
         glActiveTexture(GL_TEXTURE0 + i);
         if (!enabled) {
