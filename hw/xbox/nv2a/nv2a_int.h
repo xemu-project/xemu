@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2012 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2018 Matt Borgerson
+ * Copyright (c) 2018-2020 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -173,15 +173,11 @@ typedef struct PGRAPHState {
 
     uint32_t pending_interrupts;
     uint32_t enabled_interrupts;
-    QemuCond interrupt_cond;
 
     /* subchannels state we're not sure the location of... */
     ContextSurfaces2DState context_surfaces_2d;
     ImageBlitState image_blit;
     KelvinState kelvin;
-
-    QemuCond fifo_access_cond;
-    QemuCond flip_3d;
 
     hwaddr dma_color, dma_zeta;
     Surface surface_color, surface_zeta;
@@ -265,6 +261,12 @@ typedef struct PGRAPHState {
     GLuint gl_vertex_array;
 
     uint32_t regs[0x2000];
+
+    bool waiting_for_nop;
+    bool waiting_for_flip;
+    bool waiting_for_fifo_access;
+    bool waiting_for_context_switch;
+
 } PGRAPHState;
 
 typedef struct NV2AState {
@@ -295,10 +297,10 @@ typedef struct NV2AState {
         uint32_t enabled_interrupts;
         uint32_t regs[0x2000];
         QemuMutex lock;
-        QemuThread puller_thread;
-        QemuCond puller_cond;
-        QemuThread pusher_thread;
-        QemuCond pusher_cond;
+        QemuThread thread;
+        QemuCond fifo_cond;
+        QemuCond fifo_idle_cond;
+        bool fifo_kick;
     } pfifo;
 
     struct {
@@ -351,5 +353,7 @@ typedef struct NV2ABlockInfo {
 
 static void reg_log_read(int block, hwaddr addr, uint64_t val);
 static void reg_log_write(int block, hwaddr addr, uint64_t val);
+
+void pfifo_kick(NV2AState *d);
 
 #endif

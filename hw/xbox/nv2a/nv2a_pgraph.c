@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2012 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2018 Matt Borgerson
+ * Copyright (c) 2018-2020 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -387,12 +387,20 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 
     reg_log_write(NV_PGRAPH, addr, val);
 
+    qemu_mutex_lock(&d->pfifo.lock); // FIXME: Factor out fifo lock here
     qemu_mutex_lock(&pg->lock);
 
     switch (addr) {
     case NV_PGRAPH_INTR:
         pg->pending_interrupts &= ~val;
-        qemu_cond_broadcast(&pg->interrupt_cond);
+
+        if (!(pg->pending_interrupts & NV_PGRAPH_INTR_ERROR)) {
+            pg->waiting_for_nop = false;
+        }
+        if (!(pg->pending_interrupts & NV_PGRAPH_INTR_CONTEXT_SWITCH)) {
+            pg->waiting_for_context_switch = false;
+        }
+        pfifo_kick(d);
         break;
     case NV_PGRAPH_INTR_EN:
         pg->enabled_interrupts = val;
@@ -405,7 +413,7 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
                               NV_PGRAPH_SURFACE_READ_3D)+1)
                         % GET_MASK(pg->regs[NV_PGRAPH_SURFACE],
                                    NV_PGRAPH_SURFACE_MODULO_3D) );
-            qemu_cond_broadcast(&pg->flip_3d);
+            pfifo_kick(d);
         }
         break;
     case NV_PGRAPH_RDI_DATA: {
@@ -459,11 +467,33 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     // events
     switch (addr) {
     case NV_PGRAPH_FIFO:
-        qemu_cond_broadcast(&pg->fifo_access_cond);
+        pfifo_kick(d);
         break;
     }
 
     qemu_mutex_unlock(&pg->lock);
+    qemu_mutex_unlock(&d->pfifo.lock);
+}
+
+/* If NV097_FLIP_STALL was executed, check if the flip has completed.
+ * This will usually happen in the VSYNC interrupt handler.
+ */
+static int pgraph_is_flip_stall_complete(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+ 
+    NV2A_DPRINTF("flip stall read: %d, write: %d, modulo: %d\n",
+        GET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_READ_3D),
+        GET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_WRITE_3D),
+        GET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_MODULO_3D));
+
+    uint32_t s = pg->regs[NV_PGRAPH_SURFACE];
+    if (GET_MASK(s, NV_PGRAPH_SURFACE_READ_3D)
+        != GET_MASK(s, NV_PGRAPH_SURFACE_WRITE_3D)) {
+        return 1;
+    }
+
+    return 0;
 }
 
 static void pgraph_method(NV2AState *d,
@@ -669,23 +699,19 @@ static void pgraph_method(NV2AState *d,
             pg->regs[NV_PGRAPH_TRAPPED_DATA_LOW] = parameter;
             pg->regs[NV_PGRAPH_NSOURCE] = NV_PGRAPH_NSOURCE_NOTIFICATION; /* TODO: check this */
             pg->pending_interrupts |= NV_PGRAPH_INTR_ERROR;
+            pg->waiting_for_nop = true;
 
             qemu_mutex_unlock(&pg->lock);
             qemu_mutex_lock_iothread();
             update_irq(d);
-            qemu_mutex_lock(&pg->lock);
             qemu_mutex_unlock_iothread();
-
-            while (pg->pending_interrupts & NV_PGRAPH_INTR_ERROR) {
-                qemu_cond_wait(&pg->interrupt_cond, &pg->lock);
-            }
+            qemu_mutex_lock(&pg->lock);
         }
         break;
 
     case NV097_WAIT_FOR_IDLE:
         pgraph_update_surface(d, false, true, true);
         break;
-
 
     case NV097_SET_FLIP_READ:
         SET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_READ_3D,
@@ -719,21 +745,7 @@ static void pgraph_method(NV2AState *d,
     }
     case NV097_FLIP_STALL:
         pgraph_update_surface(d, false, true, true);
-
-        while (true) {
-            NV2A_DPRINTF("flip stall read: %d, write: %d, modulo: %d\n",
-                GET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_READ_3D),
-                GET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_WRITE_3D),
-                GET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_MODULO_3D));
-
-            uint32_t s = pg->regs[NV_PGRAPH_SURFACE];
-            if (GET_MASK(s, NV_PGRAPH_SURFACE_READ_3D)
-                != GET_MASK(s, NV_PGRAPH_SURFACE_WRITE_3D)) {
-                break;
-            }
-            qemu_cond_wait(&pg->flip_3d, &pg->lock);
-        }
-        NV2A_DPRINTF("flip stall done\n");
+        pg->waiting_for_flip = true;
         break;
 
     // TODO: these should be loading the dma objects from ramin here?
@@ -2595,25 +2607,23 @@ static void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
         assert(!(d->pgraph.regs[NV_PGRAPH_DEBUG_3]
                 & NV_PGRAPH_DEBUG_3_HW_CONTEXT_SWITCH));
 
+        d->pgraph.waiting_for_context_switch = true;
         qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock_iothread();
         d->pgraph.pending_interrupts |= NV_PGRAPH_INTR_CONTEXT_SWITCH;
         update_irq(d);
-
-        qemu_mutex_lock(&d->pgraph.lock);
         qemu_mutex_unlock_iothread();
-
-        // wait for the interrupt to be serviced
-        while (d->pgraph.pending_interrupts & NV_PGRAPH_INTR_CONTEXT_SWITCH) {
-            qemu_cond_wait(&d->pgraph.interrupt_cond, &d->pgraph.lock);
-        }
+        qemu_mutex_lock(&d->pgraph.lock);
     }
 }
 
-static void pgraph_wait_fifo_access(NV2AState *d) {
-    while (!(d->pgraph.regs[NV_PGRAPH_FIFO] & NV_PGRAPH_FIFO_ACCESS)) {
-        qemu_cond_wait(&d->pgraph.fifo_access_cond, &d->pgraph.lock);
-    }
+static void pgraph_wait_fifo_access(NV2AState *d)
+{
+    d->pgraph.waiting_for_fifo_access = true;
+}
+
+static int pgraph_is_wait_for_access_complete(NV2AState *d) {
+    return !!(d->pgraph.regs[NV_PGRAPH_FIFO] & NV_PGRAPH_FIFO_ACCESS);
 }
 
 // static const char* nv2a_method_names[] = {};
@@ -2706,9 +2716,6 @@ static void pgraph_init(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
 
     qemu_mutex_init(&pg->lock);
-    qemu_cond_init(&pg->interrupt_cond);
-    qemu_cond_init(&pg->fifo_access_cond);
-    qemu_cond_init(&pg->flip_3d);
 
     /* fire up opengl */
 
@@ -2785,9 +2792,6 @@ static void pgraph_init(NV2AState *d)
 static void pgraph_destroy(PGRAPHState *pg)
 {
     qemu_mutex_destroy(&pg->lock);
-    qemu_cond_destroy(&pg->interrupt_cond);
-    qemu_cond_destroy(&pg->fifo_access_cond);
-    qemu_cond_destroy(&pg->flip_3d);
 
     glo_set_current(pg->gl_context);
 
