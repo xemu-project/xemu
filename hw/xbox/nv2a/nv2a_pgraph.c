@@ -475,6 +475,22 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     qemu_mutex_unlock(&d->pfifo.lock);
 }
 
+static void pgraph_flush(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+
+    // Clear last surface shape to force recreation of buffers at next draw
+    pg->surface_color.draw_dirty = false;
+    pg->surface_zeta.draw_dirty = false;
+    memset(&pg->last_surface_shape, 0, sizeof(pg->last_surface_shape));
+
+    // Sync all RAM
+    glBindBuffer(GL_ARRAY_BUFFER, d->pgraph.gl_memory_buffer);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, memory_region_size(d->vram), d->vram_ptr);
+
+    // FIXME: Flush more?
+}
+
 /* If NV097_FLIP_STALL was executed, check if the flip has completed.
  * This will usually happen in the VSYNC interrupt handler.
  */
@@ -505,6 +521,11 @@ static void pgraph_method(NV2AState *d,
     unsigned int slot;
 
     PGRAPHState *pg = &d->pgraph;
+
+    if (pg->flush_pending) {
+        pgraph_flush(d);
+        pg->flush_pending = false;
+    }
 
     bool channel_valid =
         d->pgraph.regs[NV_PGRAPH_CTX_CONTROL] & NV_PGRAPH_CTX_CONTROL_CHID;
