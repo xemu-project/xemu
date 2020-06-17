@@ -3,6 +3,7 @@
  *
  * Copyright (c) 2012 espes
  * Copyright (c) 2018-2019 Jannik Vogel
+ * Copyright (c) 2020 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -24,6 +25,11 @@
 #include "hw/pci/pci.h"
 #include "cpu.h"
 #include "hw/xbox/dsp/dsp.h"
+#include "hw/xbox/dsp/dsp_dma.h"
+#include "hw/xbox/dsp/dsp_cpu.h"
+#include "hw/xbox/dsp/dsp_state.h"
+#include "migration/vmstate.h"
+
 #include <math.h>
 
 #define NUM_SAMPLES_PER_FRAME 32
@@ -1581,6 +1587,117 @@ static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
     d->ep.dsp = dsp_init(d, ep_scratch_rw, ep_fifo_rw);
 }
 
+static int mcpx_apu_pre_load(void *opaque)
+{
+    MCPXAPUState *d = opaque;
+
+    timer_del(d->se.frame_timer);
+
+    return 0;
+}
+
+static int mcpx_apu_post_load(void *opaque, int version_id)
+{
+    MCPXAPUState *d = opaque;
+
+    if (((d->regs[NV_PAPU_SECTL] & NV_PAPU_SECTL_XCNTMODE) >> 3) != NV_PAPU_SECTL_XCNTMODE_OFF) {
+        timer_mod(d->se.frame_timer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 10);
+    }
+
+    return 0;
+}
+
+const VMStateDescription vmstate_vp_dsp_dma_state = {
+    .name = "mcpx-apu/dsp-state/dma",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .minimum_version_id_old = 1,
+    .fields      = (VMStateField[]) {
+        VMSTATE_UINT32(configuration, DSPDMAState),
+        VMSTATE_UINT32(control, DSPDMAState),
+        VMSTATE_UINT32(start_block, DSPDMAState),
+        VMSTATE_UINT32(next_block, DSPDMAState),
+        VMSTATE_BOOL(error, DSPDMAState),
+        VMSTATE_BOOL(eol, DSPDMAState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+const VMStateDescription vmstate_vp_dsp_core_state = {
+    .name = "mcpx-apu/dsp-state/core",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .minimum_version_id_old = 1,
+    .fields      = (VMStateField[]) {
+        // FIXME: Remove unnecessary fields
+        VMSTATE_UINT16(instr_cycle, dsp_core_t),
+        VMSTATE_UINT32(pc, dsp_core_t),
+        VMSTATE_UINT32_ARRAY(registers, dsp_core_t, DSP_REG_MAX),
+        VMSTATE_UINT32_2DARRAY(stack, dsp_core_t, 2, 16),
+        VMSTATE_UINT32_ARRAY(xram, dsp_core_t, DSP_XRAM_SIZE),
+        VMSTATE_UINT32_ARRAY(yram, dsp_core_t, DSP_YRAM_SIZE),
+        VMSTATE_UINT32_ARRAY(pram, dsp_core_t, DSP_PRAM_SIZE),
+        VMSTATE_UINT32_ARRAY(mixbuffer, dsp_core_t, DSP_MIXBUFFER_SIZE),
+        VMSTATE_UINT32_ARRAY(periph, dsp_core_t, DSP_PERIPH_SIZE),
+        VMSTATE_UINT32(loop_rep, dsp_core_t),
+        VMSTATE_UINT32(pc_on_rep, dsp_core_t),
+        VMSTATE_UINT16(interrupt_state, dsp_core_t),
+        VMSTATE_UINT16(interrupt_instr_fetch, dsp_core_t),
+        VMSTATE_UINT16(interrupt_save_pc, dsp_core_t),
+        VMSTATE_UINT16(interrupt_counter, dsp_core_t),
+        VMSTATE_UINT16(interrupt_ipl_to_raise, dsp_core_t),
+        VMSTATE_UINT16(interrupt_pipeline_count, dsp_core_t),
+        VMSTATE_INT16_ARRAY(interrupt_ipl, dsp_core_t, 12),
+        VMSTATE_UINT16_ARRAY(interrupt_is_pending, dsp_core_t, 12),
+        VMSTATE_UINT32(num_inst, dsp_core_t),
+        VMSTATE_UINT32(cur_inst_len, dsp_core_t),
+        VMSTATE_UINT32(cur_inst, dsp_core_t),
+        VMSTATE_BOOL(executing_for_disasm, dsp_core_t),
+        VMSTATE_UINT32(disasm_memory_ptr, dsp_core_t),
+        VMSTATE_BOOL(exception_debugging, dsp_core_t),
+        VMSTATE_UINT32(disasm_prev_inst_pc, dsp_core_t),
+        VMSTATE_BOOL(disasm_is_looping, dsp_core_t),
+        VMSTATE_UINT32(disasm_cur_inst, dsp_core_t),
+        VMSTATE_UINT16(disasm_cur_inst_len, dsp_core_t),
+        VMSTATE_UINT32_ARRAY(disasm_registers_save, dsp_core_t, 64),
+// #ifdef DSP_DISASM_REG_PC
+//         VMSTATE_UINT32(pc_save, dsp_core_t),
+// #endif
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+const VMStateDescription vmstate_vp_dsp_state = {
+    .name = "mcpx-apu/dsp-state",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .minimum_version_id_old = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_STRUCT(core, DSPState, 1, vmstate_vp_dsp_core_state, dsp_core_t),
+        VMSTATE_STRUCT(dma, DSPState, 1, vmstate_vp_dsp_dma_state, DSPDMAState),
+        VMSTATE_INT32(save_cycles, DSPState),
+        VMSTATE_UINT32(interrupts, DSPState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_mcpx_apu = {
+    .name = "mcpx-apu",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .pre_load = mcpx_apu_pre_load,
+    .post_load = mcpx_apu_post_load,
+    .fields = (VMStateField[]) {
+        VMSTATE_PCI_DEVICE(dev, MCPXAPUState),
+        VMSTATE_STRUCT_POINTER(gp.dsp, MCPXAPUState, vmstate_vp_dsp_state, DSPState),
+        VMSTATE_UINT32_ARRAY(gp.regs, MCPXAPUState, 0x10000),
+        VMSTATE_STRUCT_POINTER(ep.dsp, MCPXAPUState, vmstate_vp_dsp_state, DSPState),
+        VMSTATE_UINT32_ARRAY(ep.regs, MCPXAPUState, 0x10000),
+        VMSTATE_UINT32_ARRAY(regs, MCPXAPUState, 0x20000),
+        VMSTATE_END_OF_LIST()
+    },
+};
+
 static void mcpx_apu_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -1593,6 +1710,7 @@ static void mcpx_apu_class_init(ObjectClass *klass, void *data)
     k->realize = mcpx_apu_realize;
 
     dc->desc = "MCPX Audio Processing Unit";
+    dc->vmsd = &vmstate_mcpx_apu;
 }
 
 static const TypeInfo mcpx_apu_info = {
