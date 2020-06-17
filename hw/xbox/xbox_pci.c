@@ -44,6 +44,7 @@
 #include "hw/xbox/amd_smbus.h"
 #include "hw/xbox/xbox_pci.h"
 #include "hw/irq.h"
+#include "migration/vmstate.h"
 
  /*
   * xbox chipset based on nForce 420, which was based on AMD-760
@@ -258,19 +259,31 @@ static void xbox_smbus_realize(PCIDevice *dev, Error **errp)
                      &s->smb_bar);
 }
 
+static const VMStateDescription vmstate_xbox_smbus = {
+    .name = "xbox-smbus",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_PCI_DEVICE(dev, XBOX_SMBState),
+        // FIXME
+        VMSTATE_END_OF_LIST()
+    },
+};
+
 static void xbox_smbus_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->realize      = xbox_smbus_realize;
-    k->vendor_id    = PCI_VENDOR_ID_NVIDIA;
-    k->device_id    = PCI_DEVICE_ID_NVIDIA_NFORCE_SMBUS;
-    k->revision     = 161;
-    k->class_id     = PCI_CLASS_SERIAL_SMBUS;
+    k->realize = xbox_smbus_realize;
+    k->vendor_id = PCI_VENDOR_ID_NVIDIA;
+    k->device_id = PCI_DEVICE_ID_NVIDIA_NFORCE_SMBUS;
+    k->revision = 161;
+    k->class_id = PCI_CLASS_SERIAL_SMBUS;
 
-    dc->desc        = "nForce PCI System Management";
+    dc->desc = "nForce PCI System Management";
     dc->user_creatable = false;
+    dc->vmsd = &vmstate_xbox_smbus;
 }
 
 static const TypeInfo xbox_smbus_info = {
@@ -358,6 +371,17 @@ static void xbox_send_gpe(AcpiDeviceIf *adev, AcpiEventStatusBits ev)
     acpi_send_gpe_event(&s->pm.acpi_regs, s->pm.irq, ev);
 }
 
+static const VMStateDescription vmstate_xbox_lpc = {
+    .name = "xbox-lpc",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_PCI_DEVICE(dev, XBOX_LPCState),
+        VMSTATE_STRUCT(pm, XBOX_LPCState, 0, vmstate_xbox_pm, XBOX_PMRegs),
+        VMSTATE_END_OF_LIST()
+    },
+};
+
 static void xbox_lpc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -375,7 +399,7 @@ static void xbox_lpc_class_init(ObjectClass *klass, void *data)
     dc->desc = "nForce LPC Bridge";
     dc->user_creatable = false;
     dc->reset = xbox_lpc_reset;
-    //dc->vmsd = &vmstate_xbox_lpc;
+    dc->vmsd = &vmstate_xbox_lpc;
     adevc->send_event = xbox_send_gpe;
 }
 
@@ -403,16 +427,17 @@ static void xbox_agp_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
-    k->realize      = xbox_agp_realize;
-    k->exit         = pci_bridge_exitfn;
+    k->realize = xbox_agp_realize;
+    k->exit = pci_bridge_exitfn;
     k->config_write = pci_bridge_write_config;
-    k->is_bridge    = 1;
-    k->vendor_id    = PCI_VENDOR_ID_NVIDIA;
-    k->device_id    = PCI_DEVICE_ID_NVIDIA_NFORCE_AGP;
-    k->revision     = 161;
+    k->is_bridge = 1;
+    k->vendor_id = PCI_VENDOR_ID_NVIDIA;
+    k->device_id = PCI_DEVICE_ID_NVIDIA_NFORCE_AGP;
+    k->revision = 161;
 
-    dc->desc        = "nForce AGP to PCI Bridge";
-    dc->reset       = pci_bridge_reset;
+    dc->desc = "nForce AGP to PCI Bridge";
+    dc->vmsd = &vmstate_pci_device;
+    dc->reset = pci_bridge_reset;
 }
 
 static const TypeInfo xbox_agp_info = {
@@ -431,6 +456,14 @@ static void xbox_pci_realize(PCIDevice *d, Error **errp)
     //XBOX_PCIState *s = DO_UPCAST(XBOX_PCIState, dev, dev);
 }
 
+static const VMStateDescription pci_bridge_dev_vmstate = {
+    .name = "xbox-pci",
+    .fields = (VMStateField[]) {
+        VMSTATE_PCI_DEVICE(parent_obj, PCIBridge),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void xbox_pci_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -446,6 +479,7 @@ static void xbox_pci_class_init(ObjectClass *klass, void *data)
 
     dc->desc = "Xbox PCI Host";
     dc->user_creatable = false;
+    dc->vmsd = &pci_bridge_dev_vmstate;
 }
 
 static const TypeInfo xbox_pci_info = {
