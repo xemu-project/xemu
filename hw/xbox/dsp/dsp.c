@@ -32,6 +32,7 @@
 
 #include "dsp_cpu.h"
 #include "dsp_dma.h"
+#include "dsp_state.h"
 
 #include "dsp.h"
 
@@ -44,14 +45,6 @@
 #define INTERRUPT_DMA_EOL (1 << 7)
 
 #define DPRINTF(s, ...) printf(s, ## __VA_ARGS__)
-
-struct DSPState {
-    dsp_core_t core;
-    DSPDMAState dma;
-    int save_cycles;
-
-    uint32_t interrupts;
-};
 
 static uint32_t read_peripheral(dsp_core_t* core, uint32_t address);
 static void write_peripheral(dsp_core_t* core, uint32_t address, uint32_t value);
