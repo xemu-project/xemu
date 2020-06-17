@@ -451,7 +451,13 @@ static Property xid_properties[] = {
 
 static const VMStateDescription vmstate_usb_xbox = {
     .name = TYPE_USB_XID,
-    .unmigratable = 1, // FIXME
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_USB_DEVICE(dev, USBXIDState),
+        // FIXME
+        VMSTATE_END_OF_LIST()
+    },
 };
 
 static void usb_xbox_gamepad_class_initfn(ObjectClass *klass, void *data)
