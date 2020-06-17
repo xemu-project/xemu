@@ -266,7 +266,7 @@ typedef struct PGRAPHState {
     bool waiting_for_flip;
     bool waiting_for_fifo_access;
     bool waiting_for_context_switch;
-
+    bool flush_pending;
 } PGRAPHState;
 
 typedef struct NV2AState {
