@@ -2617,12 +2617,7 @@ static void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
     }
 }
 
-static void pgraph_wait_fifo_access(NV2AState *d)
-{
-    d->pgraph.waiting_for_fifo_access = true;
-}
-
-static int pgraph_is_wait_for_access_complete(NV2AState *d) {
+static int pgraph_can_fifo_access(NV2AState *d) {
     return !!(d->pgraph.regs[NV_PGRAPH_FIFO] & NV_PGRAPH_FIFO_ACCESS);
 }
 
