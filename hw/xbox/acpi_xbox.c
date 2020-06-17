@@ -29,6 +29,7 @@
 #include "hw/acpi/acpi.h"
 #include "hw/xbox/xbox_pci.h"
 #include "hw/xbox/acpi_xbox.h"
+#include "migration/vmstate.h"
 
 // #define DEBUG
 #ifdef DEBUG
@@ -110,6 +111,33 @@ static void xbox_pm_gpe_writeb(void *opaque, hwaddr addr, uint64_t val,
     acpi_gpe_ioport_writeb(&pm->acpi_regs, addr, val);
     acpi_update_sci(&pm->acpi_regs, pm->irq);
 }
+
+#define VMSTATE_GPE_ARRAY(_field, _state)                            \
+ {                                                                   \
+     .name       = (stringify(_field)),                              \
+     .version_id = 0,                                                \
+     .num        = XBOX_PM_GPE_LEN,                                  \
+     .info       = &vmstate_info_uint8,                              \
+     .size       = sizeof(uint8_t),                                  \
+     .flags      = VMS_ARRAY | VMS_POINTER,                          \
+     .offset     = vmstate_offset_pointer(_state, _field, uint8_t),  \
+ }
+
+const VMStateDescription vmstate_xbox_pm = {
+    .name = "xbox-pm",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT16(acpi_regs.pm1.evt.sts, XBOX_PMRegs),
+        VMSTATE_UINT16(acpi_regs.pm1.evt.en, XBOX_PMRegs),
+        VMSTATE_UINT16(acpi_regs.pm1.cnt.cnt, XBOX_PMRegs),
+        VMSTATE_TIMER_PTR(acpi_regs.tmr.timer, XBOX_PMRegs),
+        VMSTATE_INT64(acpi_regs.tmr.overflow_time, XBOX_PMRegs),
+        VMSTATE_GPE_ARRAY(acpi_regs.gpe.sts, XBOX_PMRegs),
+        VMSTATE_GPE_ARRAY(acpi_regs.gpe.en, XBOX_PMRegs),
+        VMSTATE_END_OF_LIST()
+    },
+};
 
 static const MemoryRegionOps xbox_pm_gpe_ops = {
     .read = xbox_pm_gpe_readb,
