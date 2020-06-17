@@ -2,7 +2,7 @@
  * QEMU nForce Ethernet Controller implementation
  *
  * Copyright (c) 2013 espes
- * Copyright (c) 2015-2018 Matt Borgerson
+ * Copyright (c) 2015-2020 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -25,6 +25,7 @@
 #include "hw/qdev-properties.h"
 #include "net/net.h"
 #include "qemu/iov.h"
+#include "migration/vmstate.h"
 
 #define IOPORT_SIZE 0x8
 #define MMIO_SIZE   0x400
@@ -997,6 +998,23 @@ static const char *nvnet_get_mii_reg_name(uint8_t reg)
  * Properties
  ******************************************************************************/
 
+static const VMStateDescription vmstate_nvnet = {
+    .name = "nvnet",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_PCI_DEVICE(parent_obj, NvNetState),
+        VMSTATE_UINT8_ARRAY(regs, NvNetState, MMIO_SIZE),
+        VMSTATE_UINT32_ARRAY(phy_regs, NvNetState, 6),
+        VMSTATE_UINT8(tx_ring_index, NvNetState),
+        VMSTATE_UINT8(tx_ring_size, NvNetState),
+        VMSTATE_UINT8(rx_ring_index, NvNetState),
+        VMSTATE_UINT8(rx_ring_size, NvNetState),
+        VMSTATE_UINT8_ARRAY(txrx_dma_buf, NvNetState, RX_ALLOC_BUFSIZE),
+        VMSTATE_END_OF_LIST()
+    },
+};
+
 static void nvnet_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -1012,6 +1030,7 @@ static void nvnet_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
     dc->desc = "nForce Ethernet Controller";
     dc->reset = qdev_nvnet_reset;
+    dc->vmsd = &vmstate_nvnet;
     device_class_set_props(dc, nvnet_properties);
 }
 
