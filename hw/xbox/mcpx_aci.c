@@ -2,6 +2,7 @@
  * QEMU MCPX Audio Codec Interface implementation
  *
  * Copyright (c) 2012 espes
+ * Copyright (c) 2020 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -22,6 +23,7 @@
 #include "hw/i386/pc.h"
 #include "hw/pci/pci.h"
 #include "hw/audio/ac97_int.h"
+#include "migration/vmstate.h"
 
 typedef struct MCPXACIState {
     PCIDevice dev;
@@ -66,6 +68,17 @@ static void mcpx_aci_realize(PCIDevice *dev, Error **errp)
     ac97_common_init(&d->ac97, &d->dev, pci_get_address_space(&d->dev));
 }
 
+static const VMStateDescription vmstate_mcpx_aci = {
+    .name = "mcpx-aci",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_PCI_DEVICE(dev, MCPXACIState),
+        // FIXME
+        VMSTATE_END_OF_LIST()
+    },
+};
+
 static void mcpx_aci_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -78,6 +91,7 @@ static void mcpx_aci_class_init(ObjectClass *klass, void *data)
     k->realize = mcpx_aci_realize;
 
     dc->desc = "MCPX Audio Codec Interface";
+    dc->vmsd = &vmstate_mcpx_aci;
 }
 
 static const TypeInfo mcpx_aci_info = {
