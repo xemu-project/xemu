@@ -173,6 +173,13 @@ static void pfifo_run_puller(NV2AState *d)
             qemu_mutex_lock(&d->pgraph.lock);
             //make pgraph busy
 
+            if (!pgraph_can_fifo_access(d)) {
+                qemu_mutex_unlock(&d->pgraph.lock);
+                qemu_mutex_lock(&d->pfifo.lock);
+                // Wait for event
+                return;
+            }
+
             // Switch contexts if necessary
             pgraph_context_switch(d, entry.channel_id);
             if (d->pgraph.waiting_for_context_switch) {
@@ -181,15 +188,6 @@ static void pfifo_run_puller(NV2AState *d)
                 // Wait for event
                 return;
             }
-
-            pgraph_wait_fifo_access(d);
-            if (!pgraph_is_wait_for_access_complete(d)) {
-                qemu_mutex_unlock(&d->pgraph.lock);
-                qemu_mutex_lock(&d->pfifo.lock);
-                // Wait for event
-                return;
-            }
-            d->pgraph.waiting_for_fifo_access = false;
             pgraph_method(d, subchannel, 0, entry.instance);
 
             // make pgraph not busy
@@ -220,8 +218,7 @@ static void pfifo_run_puller(NV2AState *d)
             qemu_mutex_lock(&d->pgraph.lock);
             //make pgraph busy
 
-            pgraph_wait_fifo_access(d);
-            if (!pgraph_is_wait_for_access_complete(d)) {
+            if (!pgraph_can_fifo_access(d)) {
                 qemu_mutex_unlock(&d->pgraph.lock);
                 qemu_mutex_lock(&d->pfifo.lock);
                 // Wait for event
