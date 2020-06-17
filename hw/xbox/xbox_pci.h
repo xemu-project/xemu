@@ -57,6 +57,8 @@ typedef struct XBOX_LPCState {
     uint8_t bootrom_data[512];
 } XBOX_LPCState;
 
+extern const VMStateDescription vmstate_xbox_pm;
+
 #define XBOX_PCI_DEVICE(obj) \
     OBJECT_CHECK(XBOX_PCIState, (obj), "xbox-pci")
 
