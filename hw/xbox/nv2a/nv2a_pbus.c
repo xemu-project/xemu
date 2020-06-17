@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2012 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2018 Matt Borgerson
+ * Copyright (c) 2018-2020 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -22,18 +22,19 @@
 /* PBUS - bus control */
 uint64_t pbus_read(void *opaque, hwaddr addr, unsigned int size)
 {
-    NV2AState *d = opaque;
+    NV2AState *s = opaque;
+    PCIDevice *d = PCI_DEVICE(s);
 
     uint64_t r = 0;
     switch (addr) {
     case NV_PBUS_PCI_NV_0:
-        r = pci_get_long(d->dev.config + PCI_VENDOR_ID);
+        r = pci_get_long(d->config + PCI_VENDOR_ID);
         break;
     case NV_PBUS_PCI_NV_1:
-        r = pci_get_long(d->dev.config + PCI_COMMAND);
+        r = pci_get_long(d->config + PCI_COMMAND);
         break;
     case NV_PBUS_PCI_NV_2:
-        r = pci_get_long(d->dev.config + PCI_CLASS_REVISION);
+        r = pci_get_long(d->config + PCI_CLASS_REVISION);
         break;
     default:
         break;
@@ -45,13 +46,14 @@ uint64_t pbus_read(void *opaque, hwaddr addr, unsigned int size)
 
 void pbus_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
-    NV2AState *d = opaque;
+    NV2AState *s = opaque;
+    PCIDevice *d = PCI_DEVICE(s);
 
     reg_log_write(NV_PBUS, addr, val);
 
     switch (addr) {
     case NV_PBUS_PCI_NV_1:
-        pci_set_long(d->dev.config + PCI_COMMAND, val);
+        pci_set_long(d->config + PCI_COMMAND, val);
         break;
     default:
         break;

@@ -270,7 +270,10 @@ typedef struct PGRAPHState {
 } PGRAPHState;
 
 typedef struct NV2AState {
-    PCIDevice dev;
+    /*< private >*/
+    PCIDevice parent_obj;
+    /*< public >*/
+
     qemu_irq irq;
     bool exiting;
 
