@@ -93,9 +93,9 @@ static void update_irq(NV2AState *d)
 
     if (d->pmc.pending_interrupts && d->pmc.enabled_interrupts) {
         NV2A_DPRINTF("raise irq\n");
-        pci_irq_assert(&d->dev);
+        pci_irq_assert(PCI_DEVICE(d));
     } else {
-        pci_irq_deassert(&d->dev);
+        pci_irq_deassert(PCI_DEVICE(d));
     }
 }
 
@@ -391,7 +391,7 @@ static void nv2a_init_memory(NV2AState *d, MemoryRegion *ram)
      /* PCI exposed vram */
     memory_region_init_alias(&d->vram_pci, OBJECT(d), "nv2a-vram-pci", d->vram,
                              0, memory_region_size(d->vram));
-    pci_register_bar(&d->dev, 1, PCI_BASE_ADDRESS_MEM_PREFETCH, &d->vram_pci);
+    pci_register_bar(PCI_DEVICE(d), 1, PCI_BASE_ADDRESS_MEM_PREFETCH, &d->vram_pci);
 
 
     /* RAMIN - should be in vram somewhere, but not quite sure where atm */
@@ -485,7 +485,7 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
 
     /* mmio */
     memory_region_init(&d->mmio, OBJECT(dev), "nv2a-mmio", 0x1000000);
-    pci_register_bar(&d->dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
+    pci_register_bar(PCI_DEVICE(d), 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
 
     for (int i=0; i < ARRAY_SIZE(blocktable); i++) {
         if (!blocktable[i].name) continue;
