@@ -1085,9 +1085,11 @@ static void xemu_sdl2_gl_render_surface(struct sdl2_console *scon)
     glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
 
     // FIXME: Finer locking
+    qemu_mutex_lock_main_loop();
     qemu_mutex_lock_iothread();
     xemu_hud_render();
     qemu_mutex_unlock_iothread();
+    qemu_mutex_unlock_main_loop();
 
     // xb_surface_gl_render_texture(scon->surface);
     pre_swap();
@@ -1172,6 +1174,7 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
 
     SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
 
+    qemu_mutex_lock_main_loop();
     qemu_mutex_lock_iothread();
     graphic_hw_update(dcl->con);
 
@@ -1180,6 +1183,7 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     }
     sdl2_poll_events(scon);
     qemu_mutex_unlock_iothread();
+    qemu_mutex_unlock_main_loop();
     xemu_sdl2_gl_render_surface(scon);
 }
 

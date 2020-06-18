@@ -2993,6 +2993,10 @@ void qemu_init(int argc, char **argv, char **envp)
     qemu_init_cpu_list();
     qemu_init_cpu_loop();
 
+#ifdef XBOX
+    qemu_init_main_loop_lock();
+    qemu_mutex_lock_main_loop();
+#endif
     qemu_mutex_lock_iothread();
 
     atexit(qemu_run_exit_notifiers);
