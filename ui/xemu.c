@@ -863,7 +863,6 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
     assert(o->type == DISPLAY_TYPE_XEMU);
     SDL_GL_MakeCurrent(m_window, m_context);
 
-    xemu_input_init();
     xemu_settings_get_enum(XEMU_SETTINGS_DISPLAY_SCALE, &scaling_mode);
 
     memset(&info, 0, sizeof(info));
@@ -1444,6 +1443,7 @@ int main(int argc, char **argv)
 
     DPRINTF("Main thread: waiting for display_init_sem\n");
     qemu_sem_wait(&display_init_sem);
+
     DPRINTF("Main thread: initializing app\n");
 
     while (1) {

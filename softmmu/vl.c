@@ -116,6 +116,7 @@
 #include "ui/xemu-settings.h"
 #include "ui/xemu-notifications.h"
 #include "ui/xemu-net.h"
+#include "ui/xemu-input.h"
 
 #define MAX_VIRTIO_CONSOLES 1
 
@@ -4575,6 +4576,10 @@ void qemu_init(int argc, char **argv, char **envp)
      */
     qemu_register_reset(resettable_cold_reset_fn, sysbus_get_default());
     qemu_run_machine_init_done_notifiers();
+
+#ifdef XBOX
+    xemu_input_init();
+#endif
 
     if (rom_check_and_register_reset() != 0) {
         error_report("rom check and register reset failed");
