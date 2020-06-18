@@ -48,6 +48,12 @@
  */
 GMainContext *qemu_main_context = NULL;
 GMainLoop *qemu_main_loop_obj = NULL;
+
+/* *Another* main loop lock. Used for ensuring the main loop does not get a
+ * chance to continue when some action is being handled on the UI interaction
+ * thread that gives up the BQL but expects the main loop to not be running.
+ */
+QemuMutex qemu_main_loop_lock;
 #endif
 
 #ifndef _WIN32
@@ -159,6 +165,23 @@ void qemu_notify_event(void)
 }
 
 static GArray *gpollfds;
+
+#ifdef XBOX
+void qemu_init_main_loop_lock(void)
+{
+    qemu_mutex_init(&qemu_main_loop_lock);
+}
+
+void qemu_mutex_lock_main_loop(void)
+{
+    qemu_mutex_lock(&qemu_main_loop_lock);
+}
+
+void qemu_mutex_unlock_main_loop(void)
+{
+    qemu_mutex_unlock(&qemu_main_loop_lock);
+}
+#endif
 
 int qemu_init_main_loop(Error **errp)
 {
@@ -277,7 +300,13 @@ static int os_host_main_loop_wait(int64_t timeout)
     qemu_mutex_unlock_iothread();
     replay_mutex_unlock();
 
+#ifdef XBOX
+    qemu_mutex_unlock_main_loop();
+#endif
     ret = qemu_poll_ns((GPollFD *)gpollfds->data, gpollfds->len, timeout);
+#ifdef XBOX
+    qemu_mutex_lock_main_loop();
+#endif
 
     replay_mutex_lock();
     qemu_mutex_lock_iothread();
@@ -494,7 +523,13 @@ static int os_host_main_loop_wait(int64_t timeout)
 
     replay_mutex_unlock();
 
+#ifdef XBOX
+    qemu_mutex_unlock_main_loop();
+#endif
     g_poll_ret = qemu_poll_ns(poll_fds, n_poll_fds + w->num, poll_timeout_ns);
+#ifdef XBOX
+    qemu_mutex_lock_main_loop();
+#endif
 
     replay_mutex_lock();
 
