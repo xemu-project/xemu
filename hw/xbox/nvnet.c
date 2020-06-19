@@ -278,13 +278,15 @@ typedef struct NvNetState {
     NICState     *nic;
     NICConf      conf;
     MemoryRegion mmio, io;
-    uint8_t      regs[MMIO_SIZE / 4];
+
+    uint8_t      regs[MMIO_SIZE];
     uint32_t     phy_regs[6];
     uint8_t      tx_ring_index;
     uint8_t      tx_ring_size;
     uint8_t      rx_ring_index;
     uint8_t      rx_ring_size;
     uint8_t      txrx_dma_buf[RX_ALLOC_BUFSIZE];
+
     FILE         *packet_dump_file;
     char         *packet_dump_path;
 } NvNetState;
@@ -388,6 +390,8 @@ static void nvnet_update_irq(NvNetState *s)
  */
 static uint32_t nvnet_get_reg(NvNetState *s, hwaddr addr, unsigned int size)
 {
+    assert(addr < MMIO_SIZE);
+
     switch (size) {
     case 4:
         assert((addr & 3) == 0); /* Unaligned register access. */
@@ -411,6 +415,8 @@ static uint32_t nvnet_get_reg(NvNetState *s, hwaddr addr, unsigned int size)
 static void nvnet_set_reg(NvNetState *s,
                           hwaddr addr, uint32_t val, unsigned int size)
 {
+    assert(addr < MMIO_SIZE);
+
     switch (size) {
     case 4:
         assert((addr & 3) == 0); /* Unaligned register access. */
