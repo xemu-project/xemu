@@ -2881,10 +2881,11 @@ void qemu_init(int argc, char **argv, char **envp)
     //
     xemu_settings_load();
     int first_boot = xemu_settings_did_fail_to_load();
-    char *fake_argv[32];
-    memset(fake_argv, 0, 32 * sizeof(char*));
+    int fake_argc = 32 + argc;
+    char **fake_argv = malloc(sizeof(char*)*fake_argc);
+    memset(fake_argv, 0, sizeof(char*)*fake_argc);
 
-    int fake_argc = 0;
+    fake_argc = 0;
     fake_argv[fake_argc++] = argv[0];
     fake_argv[fake_argc++] = strdup("-cpu");
     fake_argv[fake_argc++] = strdup("pentium3");
@@ -2979,6 +2980,10 @@ void qemu_init(int argc, char **argv, char **envp)
     fake_argv[fake_argc++] = strdup("-audiodev");
     fake_argv[fake_argc++] = strdup("none,id=snd0");
 #endif
+
+    for (int i = 1; i < argc; i++) {
+        fake_argv[fake_argc++] = argv[i];
+    }
 
     printf("Created QEMU launch parameters: ");
     for (int i = 0; i < fake_argc; i++) {
