@@ -1004,12 +1004,13 @@ static void nvnet_class_init(ObjectClass *klass, void *data)
 
     k->vendor_id = PCI_VENDOR_ID_NVIDIA;
     k->device_id = PCI_DEVICE_ID_NVIDIA_NVENET_1;
-    k->revision  = 210;
-    k->class_id  = PCI_CLASS_NETWORK_ETHERNET;
-    k->realize   = nvnet_realize;
-    k->exit      = nvnet_uninit;
+    k->revision = 210;
+    k->class_id = PCI_CLASS_NETWORK_ETHERNET;
+    k->realize = nvnet_realize;
+    k->exit = nvnet_uninit;
 
-    dc->desc  = "nForce Ethernet Controller";
+    set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
+    dc->desc = "nForce Ethernet Controller";
     dc->reset = qdev_nvnet_reset;
     device_class_set_props(dc, nvnet_properties);
 }
