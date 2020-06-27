@@ -448,7 +448,6 @@ GLSL_DEFINE(sceneAmbientColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_FR_AMB) ".xyz")
                 qstring_append_fmt(body, "  oT%d.%c = r.%c * invM + 0.5;\n",
                                    i, c, c);
                 qstring_append(body, "}\n");
-                assert(false); /* Untested */
                 break;
             case TEXGEN_REFLECTION_MAP:
                 assert(i < 3); /* Channels S,T,R only! */
