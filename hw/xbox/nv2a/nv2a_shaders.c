@@ -430,7 +430,7 @@ GLSL_DEFINE(sceneAmbientColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_FR_AMB) ".xyz")
                 assert(false); /* Untested */
                 break;
             case TEXGEN_SPHERE_MAP:
-                assert(i < 2);  /* Channels S,T only! */
+                assert(j < 2);  /* Channels S,T only! */
                 qstring_append(body, "{\n");
                 /* FIXME: u, r and m only have to be calculated once */
                 qstring_append(body, "  vec3 u = normalize(tPosition.xyz);\n");
@@ -450,7 +450,7 @@ GLSL_DEFINE(sceneAmbientColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_FR_AMB) ".xyz")
                 qstring_append(body, "}\n");
                 break;
             case TEXGEN_REFLECTION_MAP:
-                assert(i < 3); /* Channels S,T,R only! */
+                assert(j < 3); /* Channels S,T,R only! */
                 qstring_append(body, "{\n");
                 /* FIXME: u and r only have to be calculated once, can share the one from SPHERE_MAP */
                 qstring_append(body, "  vec3 u = normalize(tPosition.xyz);\n");
@@ -460,7 +460,7 @@ GLSL_DEFINE(sceneAmbientColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_FR_AMB) ".xyz")
                 qstring_append(body, "}\n");
                 break;
             case TEXGEN_NORMAL_MAP:
-                assert(i < 3); /* Channels S,T,R only! */
+                assert(j < 3); /* Channels S,T,R only! */
                 qstring_append_fmt(body, "oT%d.%c = tNormal.%c;\n",
                                    i, c, c);
                 break;
