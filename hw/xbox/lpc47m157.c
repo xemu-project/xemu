@@ -95,7 +95,7 @@ static void update_devices(LPC47M157State *s)
             if (irq != 0) {
                 isa_init_irq(isadev, &ss->irq, irq);
             }
-            object_property_set_bool(OBJECT(ss), true, "realized", &error_abort);
+            object_property_set_bool(OBJECT(ss), "realized", true, &error_fatal);
 
             memory_region_init_io(&ss->io, OBJECT(s),
                                   &serial_io_ops, ss, "serial", 8);
