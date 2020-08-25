@@ -240,10 +240,8 @@ static void lpc47m157_initfn(Object *o)
 {
     LPC47M157State *self = LPC47M157_DEVICE(o);
 
-    object_initialize_child(o, "serial0", &self->serial[0].state, sizeof(self->serial[0].state),
-                            TYPE_SERIAL, &error_abort, NULL);
-    object_initialize_child(o, "serial1", &self->serial[1].state, sizeof(self->serial[1].state),
-                            TYPE_SERIAL, &error_abort, NULL);
+    object_initialize_child(o, "serial0", &self->serial[0].state, TYPE_SERIAL);
+    object_initialize_child(o, "serial1", &self->serial[1].state, TYPE_SERIAL);
 }
 
 static const TypeInfo lpc47m157_type_info = {
