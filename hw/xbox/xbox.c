@@ -203,8 +203,6 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
         memory_region_add_subregion(rom_memory, map_loc, map_bios);
         memory_region_set_readonly(map_bios, true);
     }
-
-    return;
 }
 
 static void xbox_memory_init(PCMachineState *pcms,
@@ -232,6 +230,7 @@ static void xbox_memory_init(PCMachineState *pcms,
     memory_region_add_subregion(system_memory, 0, ram);
 
     xbox_flash_init(rom_memory);
+    pc_system_flash_cleanup_unused(pcms);
 }
 
 uint8_t *load_eeprom(void)
