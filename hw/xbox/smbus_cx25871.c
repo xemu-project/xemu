@@ -28,6 +28,7 @@
 #include "hw/i2c/i2c.h"
 #include "hw/i2c/smbus_slave.h"
 #include "smbus.h"
+#include "qapi/error.h"
 
 #define TYPE_SMBUS_CX25871 "smbus-cx25871"
 #define SMBUS_CX25871(obj) OBJECT_CHECK(SMBusCX25871Device, (obj), TYPE_SMBUS_CX25871)
@@ -111,8 +112,8 @@ type_init(smbus_cx25871_register_devices)
 
 void smbus_cx25871_init(I2CBus *smbus, int address)
 {
-    DeviceState *cx;
-    cx = qdev_create((BusState *)smbus, TYPE_SMBUS_CX25871);
-    qdev_prop_set_uint8(cx, "address", address);
-    qdev_init_nofail(cx);
+    DeviceState *dev;
+    dev = qdev_new(TYPE_SMBUS_CX25871);
+    qdev_prop_set_uint8(dev, "address", address);
+    qdev_realize_and_unref(dev, (BusState *)smbus, &error_fatal);
 }

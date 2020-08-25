@@ -28,6 +28,7 @@
 #include "hw/i2c/i2c.h"
 #include "hw/i2c/smbus_slave.h"
 #include "smbus.h"
+#include "qapi/error.h"
 
 #define TYPE_SMBUS_ADM1032 "smbus-adm1032"
 #define SMBUS_ADM1032(obj) OBJECT_CHECK(SMBusADM1032Device, (obj), TYPE_SMBUS_ADM1032)
@@ -114,8 +115,8 @@ type_init(smbus_adm1032_register_devices)
 
 void smbus_adm1032_init(I2CBus *smbus, int address)
 {
-    DeviceState *tm;
-    tm = qdev_create((BusState *)smbus, TYPE_SMBUS_ADM1032);
-    qdev_prop_set_uint8(tm, "address", address);
-    qdev_init_nofail(tm);
+    DeviceState *dev;
+    dev = qdev_new(TYPE_SMBUS_ADM1032);
+    qdev_prop_set_uint8(dev, "address", address);
+    qdev_realize_and_unref(dev, (BusState *)smbus, &error_fatal);
 }

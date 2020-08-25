@@ -289,10 +289,10 @@ type_init(smbus_smc_register_devices)
 
 void smbus_xbox_smc_init(I2CBus *smbus, int address)
 {
-    DeviceState *smc;
-    smc = qdev_create((BusState *)smbus, TYPE_XBOX_SMC);
-    qdev_prop_set_uint8(smc, "address", address);
-    qdev_init_nofail(smc);
+    DeviceState *dev;
+    dev = qdev_new(TYPE_XBOX_SMC);
+    qdev_prop_set_uint8(dev, "address", address);
+    qdev_realize_and_unref(dev, (BusState *)smbus, &error_fatal);
 }
 
 static void xbox_assert_extsmi(void)

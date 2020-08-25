@@ -158,13 +158,12 @@ void xbox_pci_init(qemu_irq *pic,
     XBOX_PCIState *bridge_state;
 
     /* pci host bus */
-    host = qdev_create(NULL, "xbox-pcihost");
+    host = qdev_new("xbox-pcihost");
     host_state = PCI_HOST_BRIDGE(host);
-
-    host_bus = pci_root_bus_new(host, NULL,
-                           pci_memory, address_space_io, 0, TYPE_PCI_BUS);
+    host_bus = pci_root_bus_new(host, NULL, pci_memory,
+                                address_space_io, 0, TYPE_PCI_BUS);
     host_state->bus = host_bus;
-    qdev_init_nofail(host);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(host), &error_fatal);
 
     bridge = pci_create_simple_multifunction(host_bus, PCI_DEVFN(0, 0),
                                              true, "xbox-pci");
