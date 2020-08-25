@@ -403,22 +403,22 @@ void xbox_init_common(MachineState *machine,
     smbus_adm1032_init(smbus, 0x4c);
 
     /* USB */
-    PCIDevice *usb1 = pci_create(pci_bus, PCI_DEVFN(3, 0), "pci-ohci");
+    PCIDevice *usb1 = pci_new(PCI_DEVFN(3, 0), "pci-ohci");
     qdev_prop_set_uint32(&usb1->qdev, "num-ports", 4);
-    qdev_init_nofail(&usb1->qdev);
+    pci_realize_and_unref(usb1, pci_bus, &error_fatal);
 
-    PCIDevice *usb0 = pci_create(pci_bus, PCI_DEVFN(2, 0), "pci-ohci");
+    PCIDevice *usb0 = pci_new(PCI_DEVFN(2, 0), "pci-ohci");
     qdev_prop_set_uint32(&usb0->qdev, "num-ports", 4);
-    qdev_init_nofail(&usb0->qdev);
+    pci_realize_and_unref(usb0, pci_bus, &error_fatal);
 
     /* Ethernet! */
-    PCIDevice *nvnet = pci_create(pci_bus, PCI_DEVFN(4, 0), "nvnet");
+    PCIDevice *nvnet = pci_new(PCI_DEVFN(4, 0), "nvnet");
 
     for (i = 0; i < nb_nics; i++) {
         NICInfo *nd = &nd_table[i];
         qemu_check_nic_model(nd, "nvnet");
         qdev_set_nic_properties(&nvnet->qdev, nd);
-        qdev_init_nofail(&nvnet->qdev);
+        pci_realize_and_unref(nvnet, pci_bus, &error_fatal);
     }
 
     /* APU! */
