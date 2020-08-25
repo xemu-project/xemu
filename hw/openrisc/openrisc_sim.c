@@ -59,11 +59,11 @@ static void openrisc_sim_net_init(hwaddr base, hwaddr descriptors,
     SysBusDevice *s;
     int i;
 
-    dev = qdev_create(NULL, "open_eth");
+    dev = qdev_new("open_eth");
     qdev_set_nic_properties(dev, nd);
-    qdev_init_nofail(dev);
 
     s = SYS_BUS_DEVICE(dev);
+    sysbus_realize_and_unref(s, &error_fatal);
     for (i = 0; i < num_cpus; i++) {
         sysbus_connect_irq(s, 0, cpu_irqs[i][irq_pin]);
     }
@@ -78,11 +78,11 @@ static void openrisc_sim_ompic_init(hwaddr base, int num_cpus,
     SysBusDevice *s;
     int i;
 
-    dev = qdev_create(NULL, "or1k-ompic");
+    dev = qdev_new("or1k-ompic");
     qdev_prop_set_uint32(dev, "num-cpus", num_cpus);
-    qdev_init_nofail(dev);
 
     s = SYS_BUS_DEVICE(dev);
+    sysbus_realize_and_unref(s, &error_fatal);
     for (i = 0; i < num_cpus; i++) {
         sysbus_connect_irq(s, i, cpu_irqs[i][irq_pin]);
     }
@@ -134,6 +134,7 @@ static void openrisc_sim_init(MachineState *machine)
     int n;
     unsigned int smp_cpus = machine->smp.cpus;
 
+    assert(smp_cpus >= 1 && smp_cpus <= 2);
     for (n = 0; n < smp_cpus; n++) {
         cpu = OPENRISC_CPU(cpu_create(machine->cpu_type));
         if (cpu == NULL) {

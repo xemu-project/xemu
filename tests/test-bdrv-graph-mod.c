@@ -26,11 +26,11 @@
 
 static BlockDriver bdrv_pass_through = {
     .format_name = "pass-through",
-    .bdrv_child_perm = bdrv_filter_default_perms,
+    .bdrv_child_perm = bdrv_default_perms,
 };
 
 static void no_perm_default_perms(BlockDriverState *bs, BdrvChild *c,
-                                         const BdrvChildRole *role,
+                                         BdrvChildRole role,
                                          BlockReopenQueue *reopen_queue,
                                          uint64_t perm, uint64_t shared,
                                          uint64_t *nperm, uint64_t *nshared)
@@ -111,12 +111,11 @@ static void test_update_perm_tree(void)
 
     blk_insert_bs(root, bs, &error_abort);
 
-    bdrv_attach_child(filter, bs, "child", &child_file, &error_abort);
+    bdrv_attach_child(filter, bs, "child", &child_of_bds,
+                      BDRV_CHILD_FILTERED | BDRV_CHILD_PRIMARY, &error_abort);
 
     bdrv_append(filter, bs, &local_err);
-
-    g_assert_nonnull(local_err);
-    error_free(local_err);
+    error_free_or_abort(&local_err);
 
     blk_unref(root);
 }
@@ -177,7 +176,8 @@ static void test_should_update_child(void)
     bdrv_set_backing_hd(target, bs, &error_abort);
 
     g_assert(target->backing->bs == bs);
-    bdrv_attach_child(filter, target, "target", &child_file, &error_abort);
+    bdrv_attach_child(filter, target, "target", &child_of_bds,
+                      BDRV_CHILD_DATA, &error_abort);
     bdrv_append(filter, bs, &error_abort);
     g_assert(target->backing->bs == bs);
 

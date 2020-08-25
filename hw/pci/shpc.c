@@ -547,7 +547,7 @@ void shpc_device_plug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
 void shpc_device_unplug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
                            Error **errp)
 {
-    object_property_set_bool(OBJECT(dev), false, "realized", NULL);
+    qdev_unrealize(dev);
 }
 
 void shpc_device_unplug_request_cb(HotplugHandler *hotplug_dev,
@@ -649,7 +649,7 @@ int shpc_init(PCIDevice *d, PCIBus *sec_bus, MemoryRegion *bar,
     shpc_cap_update_dword(d);
     memory_region_add_subregion(bar, offset, &shpc->mmio);
 
-    qbus_set_hotplug_handler(BUS(sec_bus), OBJECT(d), NULL);
+    qbus_set_hotplug_handler(BUS(sec_bus), OBJECT(d));
 
     d->cap_present |= QEMU_PCI_CAP_SHPC;
     return 0;

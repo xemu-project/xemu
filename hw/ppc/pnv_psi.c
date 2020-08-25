@@ -483,10 +483,9 @@ static void pnv_psi_power8_instance_init(Object *obj)
 {
     Pnv8Psi *psi8 = PNV8_PSI(obj);
 
-    object_initialize_child(obj, "ics-psi",  &psi8->ics, sizeof(psi8->ics),
-                            TYPE_ICS, &error_abort, NULL);
+    object_initialize_child(obj, "ics-psi", &psi8->ics, TYPE_ICS);
     object_property_add_alias(obj, ICS_PROP_XICS, OBJECT(&psi8->ics),
-                              ICS_PROP_XICS, &error_abort);
+                              ICS_PROP_XICS);
 }
 
 static const uint8_t irq_to_xivr[] = {
@@ -502,18 +501,14 @@ static void pnv_psi_power8_realize(DeviceState *dev, Error **errp)
 {
     PnvPsi *psi = PNV_PSI(dev);
     ICSState *ics = &PNV8_PSI(psi)->ics;
-    Error *err = NULL;
     unsigned int i;
 
     /* Create PSI interrupt control source */
-    object_property_set_int(OBJECT(ics), PSI_NUM_INTERRUPTS, "nr-irqs", &err);
-    if (err) {
-        error_propagate(errp, err);
+    if (!object_property_set_int(OBJECT(ics), "nr-irqs", PSI_NUM_INTERRUPTS,
+                                 errp)) {
         return;
     }
-    object_property_set_bool(OBJECT(ics), true, "realized",  &err);
-    if (err) {
-        error_propagate(errp, err);
+    if (!qdev_realize(DEVICE(ics), NULL, errp)) {
         return;
     }
 
@@ -836,26 +831,21 @@ static void pnv_psi_power9_instance_init(Object *obj)
 {
     Pnv9Psi *psi = PNV9_PSI(obj);
 
-    object_initialize_child(obj, "source", &psi->source, sizeof(psi->source),
-                            TYPE_XIVE_SOURCE, &error_abort, NULL);
+    object_initialize_child(obj, "source", &psi->source, TYPE_XIVE_SOURCE);
 }
 
 static void pnv_psi_power9_realize(DeviceState *dev, Error **errp)
 {
     PnvPsi *psi = PNV_PSI(dev);
     XiveSource *xsrc = &PNV9_PSI(psi)->source;
-    Error *local_err = NULL;
     int i;
 
     /* This is the only device with 4k ESB pages */
-    object_property_set_int(OBJECT(xsrc), XIVE_ESB_4K, "shift",
+    object_property_set_int(OBJECT(xsrc), "shift", XIVE_ESB_4K, &error_fatal);
+    object_property_set_int(OBJECT(xsrc), "nr-irqs", PSIHB9_NUM_IRQS,
                             &error_fatal);
-    object_property_set_int(OBJECT(xsrc), PSIHB9_NUM_IRQS, "nr-irqs",
-                            &error_fatal);
-    object_property_set_link(OBJECT(xsrc), OBJECT(psi), "xive", &error_abort);
-    object_property_set_bool(OBJECT(xsrc), true, "realized", &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    object_property_set_link(OBJECT(xsrc), "xive", OBJECT(psi), &error_abort);
+    if (!qdev_realize(DEVICE(xsrc), NULL, errp)) {
         return;
     }
 
@@ -939,11 +929,12 @@ static void pnv_psi_class_init(ObjectClass *klass, void *data)
     dc->desc = "PowerNV PSI Controller";
     device_class_set_props(dc, pnv_psi_properties);
     dc->reset = pnv_psi_reset;
+    dc->user_creatable = false;
 }
 
 static const TypeInfo pnv_psi_info = {
     .name          = TYPE_PNV_PSI,
-    .parent        = TYPE_SYS_BUS_DEVICE,
+    .parent        = TYPE_DEVICE,
     .instance_size = sizeof(PnvPsi),
     .class_init    = pnv_psi_class_init,
     .class_size    = sizeof(PnvPsiClass),

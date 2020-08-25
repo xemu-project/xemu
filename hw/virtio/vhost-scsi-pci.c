@@ -53,8 +53,7 @@ static void vhost_scsi_pci_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
         vpci_dev->nvectors = vs->conf.num_queues + 3;
     }
 
-    qdev_set_parent_bus(vdev, BUS(&vpci_dev->bus));
-    object_property_set_bool(OBJECT(vdev), true, "realized", errp);
+    qdev_realize(vdev, BUS(&vpci_dev->bus), errp);
 }
 
 static void vhost_scsi_pci_class_init(ObjectClass *klass, void *data)
@@ -78,7 +77,7 @@ static void vhost_scsi_pci_instance_init(Object *obj)
     virtio_instance_init_common(obj, &dev->vdev, sizeof(dev->vdev),
                                 TYPE_VHOST_SCSI);
     object_property_add_alias(obj, "bootindex", OBJECT(&dev->vdev),
-                              "bootindex", &error_abort);
+                              "bootindex");
 }
 
 static const VirtioPCIDeviceTypeInfo vhost_scsi_pci_info = {

@@ -26,6 +26,7 @@
 #include "sysemu/blockdev.h"
 #include "sysemu/qtest.h"
 #include "qemu/cutils.h"
+#include "qemu/log.h"
 
 static struct {
     hwaddr io_base;
@@ -112,7 +113,9 @@ static uint64_t pxa2xx_pm_read(void *opaque, hwaddr addr,
         return s->pm_regs[addr >> 2];
     default:
     fail:
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad read offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
         break;
     }
     return 0;
@@ -143,8 +146,9 @@ static void pxa2xx_pm_write(void *opaque, hwaddr addr,
             s->pm_regs[addr >> 2] = value;
             break;
         }
-
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad write offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
         break;
     }
 }
@@ -185,7 +189,9 @@ static uint64_t pxa2xx_cm_read(void *opaque, hwaddr addr,
         return s->cm_regs[CCCR >> 2] | (3 << 28);
 
     default:
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad read offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
         break;
     }
     return 0;
@@ -210,7 +216,9 @@ static void pxa2xx_cm_write(void *opaque, hwaddr addr,
         break;
 
     default:
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad write offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
         break;
     }
 }
@@ -415,7 +423,9 @@ static uint64_t pxa2xx_mm_read(void *opaque, hwaddr addr,
             return s->mm_regs[addr >> 2];
         /* fall through */
     default:
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad read offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
         break;
     }
     return 0;
@@ -434,7 +444,9 @@ static void pxa2xx_mm_write(void *opaque, hwaddr addr,
         }
 
     default:
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad write offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
         break;
     }
 }
@@ -641,7 +653,9 @@ static uint64_t pxa2xx_ssp_read(void *opaque, hwaddr addr,
     case SSACD:
         return s->ssacd;
     default:
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad read offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
         break;
     }
     return 0;
@@ -733,7 +747,9 @@ static void pxa2xx_ssp_write(void *opaque, hwaddr addr,
         break;
 
     default:
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad write offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
         break;
     }
 }
@@ -995,7 +1011,9 @@ static uint64_t pxa2xx_rtc_read(void *opaque, hwaddr addr,
         else
             return s->last_swcr;
     default:
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad read offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
         break;
     }
     return 0;
@@ -1101,7 +1119,9 @@ static void pxa2xx_rtc_write(void *opaque, hwaddr addr,
         break;
 
     default:
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad write offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
     }
 }
 
@@ -1354,7 +1374,9 @@ static uint64_t pxa2xx_i2c_read(void *opaque, hwaddr addr,
             s->ibmr = 0;
         return s->ibmr;
     default:
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad read offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
         break;
     }
     return 0;
@@ -1427,7 +1449,9 @@ static void pxa2xx_i2c_write(void *opaque, hwaddr addr,
         break;
 
     default:
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad write offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
     }
 }
 
@@ -1486,20 +1510,21 @@ PXA2xxI2CState *pxa2xx_i2c_init(hwaddr base,
     PXA2xxI2CState *s;
     I2CBus *i2cbus;
 
-    dev = qdev_create(NULL, TYPE_PXA2XX_I2C);
+    dev = qdev_new(TYPE_PXA2XX_I2C);
     qdev_prop_set_uint32(dev, "size", region_size + 1);
     qdev_prop_set_uint32(dev, "offset", base & region_size);
-    qdev_init_nofail(dev);
 
     i2c_dev = SYS_BUS_DEVICE(dev);
+    sysbus_realize_and_unref(i2c_dev, &error_fatal);
     sysbus_mmio_map(i2c_dev, 0, base & ~region_size);
     sysbus_connect_irq(i2c_dev, 0, irq);
 
     s = PXA2XX_I2C(i2c_dev);
     /* FIXME: Should the slave device really be on a separate bus?  */
     i2cbus = i2c_init_bus(dev, "dummy");
-    dev = i2c_create_slave(i2cbus, TYPE_PXA2XX_I2C_SLAVE, 0);
-    s->slave = PXA2XX_I2C_SLAVE(dev);
+    s->slave = PXA2XX_I2C_SLAVE(i2c_slave_create_simple(i2cbus,
+                                                        TYPE_PXA2XX_I2C_SLAVE,
+                                                        0));
     s->slave->host = s;
 
     return s;
@@ -1628,7 +1653,9 @@ static uint64_t pxa2xx_i2s_read(void *opaque, hwaddr addr,
         }
         return 0;
     default:
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad read offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
         break;
     }
     return 0;
@@ -1685,7 +1712,9 @@ static void pxa2xx_i2s_write(void *opaque, hwaddr addr,
         }
         break;
     default:
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad write offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
     }
 }
 
@@ -1870,7 +1899,9 @@ static uint64_t pxa2xx_fir_read(void *opaque, hwaddr addr,
     case ICFOR:
         return s->rx_len;
     default:
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad read offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
         break;
     }
     return 0;
@@ -1922,7 +1953,9 @@ static void pxa2xx_fir_write(void *opaque, hwaddr addr,
     case ICFOR:
         break;
     default:
-        printf("%s: Bad register " REG_FMT "\n", __func__, addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: Bad write offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
     }
 }
 
@@ -2041,10 +2074,10 @@ static PXA2xxFIrState *pxa2xx_fir_init(MemoryRegion *sysmem,
     DeviceState *dev;
     SysBusDevice *sbd;
 
-    dev = qdev_create(NULL, TYPE_PXA2XX_FIR);
+    dev = qdev_new(TYPE_PXA2XX_FIR);
     qdev_prop_set_chr(dev, "chardev", chr);
-    qdev_init_nofail(dev);
     sbd = SYS_BUS_DEVICE(dev);
+    sysbus_realize_and_unref(sbd, &error_fatal);
     sysbus_mmio_map(sbd, 0, base);
     sysbus_connect_irq(sbd, 0, irq);
     sysbus_connect_irq(sbd, 1, rx_dma);

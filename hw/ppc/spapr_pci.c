@@ -1203,46 +1203,36 @@ static SpaprDrc *drc_from_devfn(SpaprPhbState *phb,
                            drc_id_from_devfn(phb, chassis, devfn));
 }
 
-static uint8_t chassis_from_bus(PCIBus *bus, Error **errp)
+static uint8_t chassis_from_bus(PCIBus *bus)
 {
     if (pci_bus_is_root(bus)) {
         return 0;
     } else {
         PCIDevice *bridge = pci_bridge_get_device(bus);
 
-        return object_property_get_uint(OBJECT(bridge), "chassis_nr", errp);
+        return object_property_get_uint(OBJECT(bridge), "chassis_nr",
+                                        &error_abort);
     }
 }
 
 static SpaprDrc *drc_from_dev(SpaprPhbState *phb, PCIDevice *dev)
 {
-    Error *local_err = NULL;
-    uint8_t chassis = chassis_from_bus(pci_get_bus(dev), &local_err);
-
-    if (local_err) {
-        error_report_err(local_err);
-        return NULL;
-    }
+    uint8_t chassis = chassis_from_bus(pci_get_bus(dev));
 
     return drc_from_devfn(phb, chassis, dev->devfn);
 }
 
-static void add_drcs(SpaprPhbState *phb, PCIBus *bus, Error **errp)
+static void add_drcs(SpaprPhbState *phb, PCIBus *bus)
 {
     Object *owner;
     int i;
     uint8_t chassis;
-    Error *local_err = NULL;
 
     if (!phb->dr_enabled) {
         return;
     }
 
-    chassis = chassis_from_bus(bus, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        return;
-    }
+    chassis = chassis_from_bus(bus);
 
     if (pci_bus_is_root(bus)) {
         owner = OBJECT(phb);
@@ -1256,21 +1246,16 @@ static void add_drcs(SpaprPhbState *phb, PCIBus *bus, Error **errp)
     }
 }
 
-static void remove_drcs(SpaprPhbState *phb, PCIBus *bus, Error **errp)
+static void remove_drcs(SpaprPhbState *phb, PCIBus *bus)
 {
     int i;
     uint8_t chassis;
-    Error *local_err = NULL;
 
     if (!phb->dr_enabled) {
         return;
     }
 
-    chassis = chassis_from_bus(bus, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        return;
-    }
+    chassis = chassis_from_bus(bus);
 
     for (i = PCI_SLOT_MAX * PCI_FUNC_MAX - 1; i >= 0; i--) {
         SpaprDrc *drc = drc_from_devfn(phb, chassis, i);
@@ -1488,17 +1473,62 @@ int spapr_pci_dt_populate(SpaprDrc *drc, SpaprMachineState *spapr,
 }
 
 static void spapr_pci_bridge_plug(SpaprPhbState *phb,
-                                  PCIBridge *bridge,
-                                  Error **errp)
+                                  PCIBridge *bridge)
 {
-    Error *local_err = NULL;
     PCIBus *bus = pci_bridge_get_sec_bus(bridge);
 
-    add_drcs(phb, bus, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        return;
+    add_drcs(phb, bus);
+}
+
+/* Returns non-zero if the value of "chassis_nr" is already in use */
+static int check_chassis_nr(Object *obj, void *opaque)
+{
+    int new_chassis_nr =
+        object_property_get_uint(opaque, "chassis_nr", &error_abort);
+    int chassis_nr =
+        object_property_get_uint(obj, "chassis_nr", NULL);
+
+    if (!object_dynamic_cast(obj, TYPE_PCI_BRIDGE)) {
+        return 0;
     }
+
+    /* Skip unsupported bridge types */
+    if (!chassis_nr) {
+        return 0;
+    }
+
+    /* Skip self */
+    if (obj == opaque) {
+        return 0;
+    }
+
+    return chassis_nr == new_chassis_nr;
+}
+
+static bool bridge_has_valid_chassis_nr(Object *bridge, Error **errp)
+{
+    int chassis_nr =
+        object_property_get_uint(bridge, "chassis_nr", NULL);
+
+    /*
+     * slotid_cap_init() already ensures that "chassis_nr" isn't null for
+     * standard PCI bridges, so this really tells if "chassis_nr" is present
+     * or not.
+     */
+    if (!chassis_nr) {
+        error_setg(errp, "PCI Bridge lacks a \"chassis_nr\" property");
+        error_append_hint(errp, "Try -device pci-bridge instead.\n");
+        return false;
+    }
+
+    /* We want unique values for "chassis_nr" */
+    if (object_child_foreach_recursive(object_get_root(), check_chassis_nr,
+                                       bridge)) {
+        error_setg(errp, "Bridge chassis %d already in use", chassis_nr);
+        return false;
+    }
+
+    return true;
 }
 
 static void spapr_pci_plug(HotplugHandler *plug_handler,
@@ -1520,20 +1550,19 @@ static void spapr_pci_plug(HotplugHandler *plug_handler,
          * we need to let them know it's not enabled
          */
         if (plugged_dev->hotplugged) {
-            error_setg(&local_err, QERR_BUS_NO_HOTPLUG,
+            error_setg(errp, QERR_BUS_NO_HOTPLUG,
                        object_get_typename(OBJECT(phb)));
         }
-        goto out;
+        return;
     }
 
     g_assert(drc);
 
     if (pc->is_bridge) {
-        spapr_pci_bridge_plug(phb, PCI_BRIDGE(plugged_dev), &local_err);
-        if (local_err) {
-            error_propagate(errp, local_err);
+        if (!bridge_has_valid_chassis_nr(OBJECT(plugged_dev), errp)) {
             return;
         }
+        spapr_pci_bridge_plug(phb, PCI_BRIDGE(plugged_dev));
     }
 
     /* Following the QEMU convention used for PCIe multifunction
@@ -1542,15 +1571,16 @@ static void spapr_pci_plug(HotplugHandler *plug_handler,
      */
     if (plugged_dev->hotplugged && bus->devices[PCI_DEVFN(slotnr, 0)] &&
         PCI_FUNC(pdev->devfn) != 0) {
-        error_setg(&local_err, "PCI: slot %d function 0 already ocuppied by %s,"
+        error_setg(errp, "PCI: slot %d function 0 already ocuppied by %s,"
                    " additional functions can no longer be exposed to guest.",
                    slotnr, bus->devices[PCI_DEVFN(slotnr, 0)]->name);
-        goto out;
+        return;
     }
 
     spapr_drc_attach(drc, DEVICE(pdev), &local_err);
     if (local_err) {
-        goto out;
+        error_propagate(errp, local_err);
+        return;
     }
 
     /* If this is function 0, signal hotplug for all the device functions.
@@ -1560,12 +1590,7 @@ static void spapr_pci_plug(HotplugHandler *plug_handler,
         spapr_drc_reset(drc);
     } else if (PCI_FUNC(pdev->devfn) == 0) {
         int i;
-        uint8_t chassis = chassis_from_bus(pci_get_bus(pdev), &local_err);
-
-        if (local_err) {
-            error_propagate(errp, local_err);
-            return;
-        }
+        uint8_t chassis = chassis_from_bus(pci_get_bus(pdev));
 
         for (i = 0; i < 8; i++) {
             SpaprDrc *func_drc;
@@ -1581,23 +1606,14 @@ static void spapr_pci_plug(HotplugHandler *plug_handler,
             }
         }
     }
-
-out:
-    error_propagate(errp, local_err);
 }
 
 static void spapr_pci_bridge_unplug(SpaprPhbState *phb,
-                                    PCIBridge *bridge,
-                                    Error **errp)
+                                    PCIBridge *bridge)
 {
-    Error *local_err = NULL;
     PCIBus *bus = pci_bridge_get_sec_bus(bridge);
 
-    remove_drcs(phb, bus, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        return;
-    }
+    remove_drcs(phb, bus);
 }
 
 static void spapr_pci_unplug(HotplugHandler *plug_handler,
@@ -1619,15 +1635,11 @@ static void spapr_pci_unplug(HotplugHandler *plug_handler,
     pci_device_reset(PCI_DEVICE(plugged_dev));
 
     if (pc->is_bridge) {
-        Error *local_err = NULL;
-        spapr_pci_bridge_unplug(phb, PCI_BRIDGE(plugged_dev), &local_err);
-        if (local_err) {
-            error_propagate(errp, local_err);
-        }
+        spapr_pci_bridge_unplug(phb, PCI_BRIDGE(plugged_dev));
         return;
     }
 
-    object_property_set_bool(OBJECT(plugged_dev), false, "realized", NULL);
+    qdev_unrealize(plugged_dev);
 }
 
 static void spapr_pci_unplug_request(HotplugHandler *plug_handler,
@@ -1653,16 +1665,14 @@ static void spapr_pci_unplug_request(HotplugHandler *plug_handler,
         SpaprDrcClass *func_drck;
         SpaprDREntitySense state;
         int i;
-        Error *local_err = NULL;
-        uint8_t chassis = chassis_from_bus(pci_get_bus(pdev), &local_err);
-
-        if (local_err) {
-            error_propagate(errp, local_err);
-            return;
-        }
+        uint8_t chassis = chassis_from_bus(pci_get_bus(pdev));
 
         if (pc->is_bridge) {
             error_setg(errp, "PCI: Hot unplug of PCI bridges not supported");
+            return;
+        }
+        if (object_property_get_uint(OBJECT(pdev), "nvlink2-tgt", NULL)) {
+            error_setg(errp, "PCI: Cannot unplug NVLink2 devices");
             return;
         }
 
@@ -1711,7 +1721,7 @@ static void spapr_phb_finalizefn(Object *obj)
     sphb->dtbusname = NULL;
 }
 
-static void spapr_phb_unrealize(DeviceState *dev, Error **errp)
+static void spapr_phb_unrealize(DeviceState *dev)
 {
     SpaprMachineState *spapr = SPAPR_MACHINE(qdev_get_machine());
     SysBusDevice *s = SYS_BUS_DEVICE(dev);
@@ -1720,7 +1730,6 @@ static void spapr_phb_unrealize(DeviceState *dev, Error **errp)
     SpaprTceTable *tcet;
     int i;
     const unsigned windows_supported = spapr_phb_windows_supported(sphb);
-    Error *local_err = NULL;
 
     spapr_phb_nvgpu_free(sphb);
 
@@ -1741,11 +1750,7 @@ static void spapr_phb_unrealize(DeviceState *dev, Error **errp)
         }
     }
 
-    remove_drcs(sphb, phb->bus, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        return;
-    }
+    remove_drcs(sphb, phb->bus);
 
     for (i = PCI_NUM_PINS - 1; i >= 0; i--) {
         if (sphb->lsi_table[i].irq) {
@@ -1766,7 +1771,7 @@ static void spapr_phb_unrealize(DeviceState *dev, Error **errp)
     address_space_remove_listeners(&sphb->iommu_as);
     address_space_destroy(&sphb->iommu_as);
 
-    qbus_set_hotplug_handler(BUS(phb->bus), NULL, &error_abort);
+    qbus_set_hotplug_handler(BUS(phb->bus), NULL);
     pci_unregister_root_bus(phb->bus);
 
     memory_region_del_subregion(get_system_memory(), &sphb->iowindow);
@@ -1915,7 +1920,7 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
         bus->flags |= PCI_BUS_EXTENDED_CONFIG_SPACE;
     }
     phb->bus = bus;
-    qbus_set_hotplug_handler(BUS(phb->bus), OBJECT(sphb), NULL);
+    qbus_set_hotplug_handler(BUS(phb->bus), OBJECT(sphb));
 
     /*
      * Initialize PHB address space.
@@ -1984,11 +1989,7 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     }
 
     /* allocate connectors for child PCI devices */
-    add_drcs(sphb, phb->bus, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-        goto unrealize;
-    }
+    add_drcs(sphb, phb->bus);
 
     /* DMA setup */
     for (i = 0; i < windows_supported; ++i) {
@@ -2007,7 +2008,7 @@ static void spapr_phb_realize(DeviceState *dev, Error **errp)
     return;
 
 unrealize:
-    spapr_phb_unrealize(dev, NULL);
+    spapr_phb_unrealize(dev);
 }
 
 static int spapr_phb_children_reset(Object *child, void *opaque)
@@ -2088,6 +2089,8 @@ static Property spapr_phb_properties[] = {
                      pcie_ecs, true),
     DEFINE_PROP_UINT64("gpa", SpaprPhbState, nv2_gpa_win_addr, 0),
     DEFINE_PROP_UINT64("atsd", SpaprPhbState, nv2_atsd_win_addr, 0),
+    DEFINE_PROP_BOOL("pre-5.1-associativity", SpaprPhbState,
+                     pre_5_1_assoc, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -2469,7 +2472,7 @@ static int spapr_switch_one_vga(DeviceState *dev, void *opaque)
 
     if (object_dynamic_cast(OBJECT(dev), "VGA")
         || object_dynamic_cast(OBJECT(dev), "secondary-vga")) {
-        object_property_set_bool(OBJECT(dev), be, "big-endian-framebuffer",
+        object_property_set_bool(OBJECT(dev), "big-endian-framebuffer", be,
                                  &error_abort);
     }
     return 0;

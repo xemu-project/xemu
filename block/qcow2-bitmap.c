@@ -1562,8 +1562,19 @@ void qcow2_store_persistent_dirty_bitmaps(BlockDriverState *bs,
         Qcow2Bitmap *bm;
 
         if (!bdrv_dirty_bitmap_get_persistence(bitmap) ||
-            bdrv_dirty_bitmap_readonly(bitmap) ||
             bdrv_dirty_bitmap_inconsistent(bitmap)) {
+            continue;
+        }
+
+        if (bdrv_dirty_bitmap_readonly(bitmap)) {
+            /*
+             * Store the bitmap in the associated Qcow2Bitmap so it
+             * can be released later
+             */
+            bm = find_bitmap_by_name(bm_list, name);
+            if (bm) {
+                bm->dirty_bitmap = bitmap;
+            }
             continue;
         }
 
@@ -1618,7 +1629,9 @@ void qcow2_store_persistent_dirty_bitmaps(BlockDriverState *bs,
 
     /* allocate clusters and store bitmaps */
     QSIMPLEQ_FOREACH(bm, bm_list, entry) {
-        if (bm->dirty_bitmap == NULL) {
+        BdrvDirtyBitmap *bitmap = bm->dirty_bitmap;
+
+        if (bitmap == NULL || bdrv_dirty_bitmap_readonly(bitmap)) {
             continue;
         }
 
@@ -1641,6 +1654,7 @@ void qcow2_store_persistent_dirty_bitmaps(BlockDriverState *bs,
         g_free(tb);
     }
 
+success:
     if (release_stored) {
         QSIMPLEQ_FOREACH(bm, bm_list, entry) {
             if (bm->dirty_bitmap == NULL) {
@@ -1651,13 +1665,14 @@ void qcow2_store_persistent_dirty_bitmaps(BlockDriverState *bs,
         }
     }
 
-success:
     bitmap_list_free(bm_list);
     return;
 
 fail:
     QSIMPLEQ_FOREACH(bm, bm_list, entry) {
-        if (bm->dirty_bitmap == NULL || bm->table.offset == 0) {
+        if (bm->dirty_bitmap == NULL || bm->table.offset == 0 ||
+            bdrv_dirty_bitmap_readonly(bm->dirty_bitmap))
+        {
             continue;
         }
 
@@ -1747,4 +1762,48 @@ fail:
     error_prepend(errp, "Can't make bitmap '%s' persistent in '%s': ",
                   name, bdrv_get_device_or_node_name(bs));
     return false;
+}
+
+bool qcow2_supports_persistent_dirty_bitmap(BlockDriverState *bs)
+{
+    BDRVQcow2State *s = bs->opaque;
+
+    return s->qcow_version >= 3;
+}
+
+/*
+ * Compute the space required to copy bitmaps from @in_bs.
+ *
+ * The computation is based as if copying to a new image with the
+ * given @cluster_size, which may differ from the cluster size in
+ * @in_bs; in fact, @in_bs might be something other than qcow2.
+ */
+uint64_t qcow2_get_persistent_dirty_bitmap_size(BlockDriverState *in_bs,
+                                                uint32_t cluster_size)
+{
+    uint64_t bitmaps_size = 0;
+    BdrvDirtyBitmap *bm;
+    size_t bitmap_dir_size = 0;
+
+    FOR_EACH_DIRTY_BITMAP(in_bs, bm) {
+        if (bdrv_dirty_bitmap_get_persistence(bm)) {
+            const char *name = bdrv_dirty_bitmap_name(bm);
+            uint32_t granularity = bdrv_dirty_bitmap_granularity(bm);
+            uint64_t bmbytes =
+                get_bitmap_bytes_needed(bdrv_dirty_bitmap_size(bm),
+                                        granularity);
+            uint64_t bmclusters = DIV_ROUND_UP(bmbytes, cluster_size);
+
+            /* Assume the entire bitmap is allocated */
+            bitmaps_size += bmclusters * cluster_size;
+            /* Also reserve space for the bitmap table entries */
+            bitmaps_size += ROUND_UP(bmclusters * sizeof(uint64_t),
+                                     cluster_size);
+            /* And space for contribution to bitmap directory size */
+            bitmap_dir_size += calc_dir_entry_size(strlen(name), 0);
+        }
+    }
+    bitmaps_size += ROUND_UP(bitmap_dir_size, cluster_size);
+
+    return bitmaps_size;
 }

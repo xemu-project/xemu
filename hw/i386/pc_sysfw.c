@@ -85,15 +85,19 @@ static PFlashCFI01 *pc_pflash_create(PCMachineState *pcms,
                                      const char *name,
                                      const char *alias_prop_name)
 {
-    DeviceState *dev = qdev_create(NULL, TYPE_PFLASH_CFI01);
+    DeviceState *dev = qdev_new(TYPE_PFLASH_CFI01);
 
     qdev_prop_set_uint64(dev, "sector-length", FLASH_SECTOR_SIZE);
     qdev_prop_set_uint8(dev, "width", 1);
     qdev_prop_set_string(dev, "name", name);
-    object_property_add_child(OBJECT(pcms), name, OBJECT(dev),
-                              &error_abort);
+    object_property_add_child(OBJECT(pcms), name, OBJECT(dev));
     object_property_add_alias(OBJECT(pcms), alias_prop_name,
-                              OBJECT(dev), "drive", &error_abort);
+                              OBJECT(dev), "drive");
+    /*
+     * The returned reference is tied to the child property and
+     * will be removed with object_unparent.
+     */
+    object_unref(OBJECT(dev));
     return PFLASH_CFI01(dev);
 }
 
@@ -109,7 +113,7 @@ void pc_system_flash_create(PCMachineState *pcms)
     }
 }
 
-static void pc_system_flash_cleanup_unused(PCMachineState *pcms)
+void pc_system_flash_cleanup_unused(PCMachineState *pcms)
 {
     char *prop_name;
     int i;
@@ -121,7 +125,7 @@ static void pc_system_flash_cleanup_unused(PCMachineState *pcms)
         dev_obj = OBJECT(pcms->flash[i]);
         if (!object_property_get_bool(dev_obj, "realized", &error_abort)) {
             prop_name = g_strdup_printf("pflash%d", i);
-            object_property_del(OBJECT(pcms), prop_name, &error_abort);
+            object_property_del(OBJECT(pcms), prop_name);
             g_free(prop_name);
             object_unparent(dev_obj);
             pcms->flash[i] = NULL;
@@ -168,7 +172,7 @@ static void pc_system_flash_map(PCMachineState *pcms,
                          blk_name(blk), strerror(-size));
             exit(1);
         }
-        if (size == 0 || size % FLASH_SECTOR_SIZE != 0) {
+        if (size == 0 || !QEMU_IS_ALIGNED(size, FLASH_SECTOR_SIZE)) {
             error_report("system firmware block device %s has invalid size "
                          "%" PRId64,
                          blk_name(blk), size);
@@ -188,7 +192,7 @@ static void pc_system_flash_map(PCMachineState *pcms,
         total_size += size;
         qdev_prop_set_uint32(DEVICE(system_flash), "num-blocks",
                              size / FLASH_SECTOR_SIZE);
-        qdev_init_nofail(DEVICE(system_flash));
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(system_flash), &error_fatal);
         sysbus_mmio_map(SYS_BUS_DEVICE(system_flash), 0,
                         0x100000000ULL - total_size);
 

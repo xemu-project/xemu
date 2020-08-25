@@ -59,14 +59,12 @@ static void orangepi_init(MachineState *machine)
     }
 
     h3 = AW_H3(object_new(TYPE_AW_H3));
-    object_property_add_child(OBJECT(machine), "soc", OBJECT(h3),
-                              &error_abort);
+    object_property_add_child(OBJECT(machine), "soc", OBJECT(h3));
     object_unref(OBJECT(h3));
 
     /* Setup timer properties */
-    object_property_set_int(OBJECT(h3), 32768, "clk0-freq",
-                            &error_abort);
-    object_property_set_int(OBJECT(h3), 24 * 1000 * 1000, "clk1-freq",
+    object_property_set_int(OBJECT(h3), "clk0-freq", 32768, &error_abort);
+    object_property_set_int(OBJECT(h3), "clk1-freq", 24 * 1000 * 1000,
                             &error_abort);
 
     /* Setup SID properties. Currently using a default fixed SID identifier. */
@@ -78,16 +76,16 @@ static void orangepi_init(MachineState *machine)
     }
 
     /* Setup EMAC properties */
-    object_property_set_int(OBJECT(&h3->emac), 1, "phy-addr", &error_abort);
+    object_property_set_int(OBJECT(&h3->emac), "phy-addr", 1, &error_abort);
 
     /* DRAMC */
-    object_property_set_uint(OBJECT(h3), h3->memmap[AW_H3_SDRAM],
-                             "ram-addr", &error_abort);
-    object_property_set_int(OBJECT(h3), machine->ram_size / MiB, "ram-size",
+    object_property_set_uint(OBJECT(h3), "ram-addr", h3->memmap[AW_H3_SDRAM],
+                             &error_abort);
+    object_property_set_int(OBJECT(h3), "ram-size", machine->ram_size / MiB,
                             &error_abort);
 
     /* Mark H3 object realized */
-    object_property_set_bool(OBJECT(h3), true, "realized", &error_abort);
+    qdev_realize(DEVICE(h3), NULL, &error_abort);
 
     /* Retrieve SD bus */
     di = drive_get_next(IF_SD);
@@ -95,9 +93,9 @@ static void orangepi_init(MachineState *machine)
     bus = qdev_get_child_bus(DEVICE(h3), "sd-bus");
 
     /* Plug in SD card */
-    carddev = qdev_create(bus, TYPE_SD_CARD);
-    qdev_prop_set_drive(carddev, "drive", blk, &error_fatal);
-    object_property_set_bool(OBJECT(carddev), true, "realized", &error_fatal);
+    carddev = qdev_new(TYPE_SD_CARD);
+    qdev_prop_set_drive_err(carddev, "drive", blk, &error_fatal);
+    qdev_realize_and_unref(carddev, bus, &error_fatal);
 
     /* SDRAM */
     memory_region_add_subregion(get_system_memory(), h3->memmap[AW_H3_SDRAM],

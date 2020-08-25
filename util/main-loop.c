@@ -187,7 +187,6 @@ int qemu_init_main_loop(Error **errp)
 {
     int ret;
     GSource *src;
-    Error *local_error = NULL;
 
 #ifdef XBOX
     qemu_main_context = g_main_context_new();
@@ -203,9 +202,8 @@ int qemu_init_main_loop(Error **errp)
         return ret;
     }
 
-    qemu_aio_context = aio_context_new(&local_error);
+    qemu_aio_context = aio_context_new(errp);
     if (!qemu_aio_context) {
-        error_propagate(errp, local_error);
         return -EMFILE;
     }
     qemu_notify_bh = qemu_bh_new(notify_event_cb, NULL);

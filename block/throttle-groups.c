@@ -771,7 +771,7 @@ static void throttle_group_obj_complete(UserCreatable *obj, Error **errp)
 
     /* set group name to object id if it exists */
     if (!tg->name && tg->parent_obj.parent) {
-        tg->name = object_get_canonical_path_component(OBJECT(obj));
+        tg->name = g_strdup(object_get_canonical_path_component(OBJECT(obj)));
     }
     /* We must have a group name at this point */
     assert(tg->name);
@@ -811,7 +811,6 @@ static void throttle_group_set(Object *obj, Visitor *v, const char * name,
     ThrottleGroup *tg = THROTTLE_GROUP(obj);
     ThrottleConfig *cfg;
     ThrottleParamInfo *info = opaque;
-    Error *local_err = NULL;
     int64_t value;
 
     /* If we have finished initialization, don't accept individual property
@@ -819,17 +818,16 @@ static void throttle_group_set(Object *obj, Visitor *v, const char * name,
      * transaction, as certain combinations are invalid.
      */
     if (tg->is_initialized) {
-        error_setg(&local_err, "Property cannot be set after initialization");
-        goto ret;
+        error_setg(errp, "Property cannot be set after initialization");
+        return;
     }
 
-    visit_type_int64(v, name, &value, &local_err);
-    if (local_err) {
-        goto ret;
+    if (!visit_type_int64(v, name, &value, errp)) {
+        return;
     }
     if (value < 0) {
-        error_setg(&local_err, "Property values cannot be negative");
-        goto ret;
+        error_setg(errp, "Property values cannot be negative");
+        return;
     }
 
     cfg = &tg->ts.cfg;
@@ -842,9 +840,9 @@ static void throttle_group_set(Object *obj, Visitor *v, const char * name,
         break;
     case BURST_LENGTH:
         if (value > UINT_MAX) {
-            error_setg(&local_err, "%s value must be in the"
-                       "range [0, %u]", info->name, UINT_MAX);
-            goto ret;
+            error_setg(errp, "%s value must be in the" "range [0, %u]",
+                       info->name, UINT_MAX);
+            return;
         }
         cfg->buckets[info->type].burst_length = value;
         break;
@@ -852,11 +850,6 @@ static void throttle_group_set(Object *obj, Visitor *v, const char * name,
         cfg->op_size = value;
         break;
     }
-
-ret:
-    error_propagate(errp, local_err);
-    return;
-
 }
 
 static void throttle_group_get(Object *obj, Visitor *v, const char *name,
@@ -896,9 +889,8 @@ static void throttle_group_set_limits(Object *obj, Visitor *v,
     ThrottleLimits *argp;
     Error *local_err = NULL;
 
-    visit_type_ThrottleLimits(v, name, &argp, &local_err);
-    if (local_err) {
-        goto ret;
+    if (!visit_type_ThrottleLimits(v, name, &argp, errp)) {
+        return;
     }
     qemu_mutex_lock(&tg->lock);
     throttle_get_config(&tg->ts, &cfg);
@@ -910,7 +902,6 @@ static void throttle_group_set_limits(Object *obj, Visitor *v,
 
 unlock:
     qemu_mutex_unlock(&tg->lock);
-ret:
     qapi_free_ThrottleLimits(argp);
     error_propagate(errp, local_err);
     return;
@@ -954,8 +945,7 @@ static void throttle_group_obj_class_init(ObjectClass *klass, void *class_data)
                                   "int",
                                   throttle_group_get,
                                   throttle_group_set,
-                                  NULL, &properties[i],
-                                  &error_abort);
+                                  NULL, &properties[i]);
     }
 
     /* ThrottleLimits */
@@ -963,8 +953,7 @@ static void throttle_group_obj_class_init(ObjectClass *klass, void *class_data)
                               "limits", "ThrottleLimits",
                               throttle_group_get_limits,
                               throttle_group_set_limits,
-                              NULL, NULL,
-                              &error_abort);
+                              NULL, NULL);
 }
 
 static const TypeInfo throttle_group_info = {

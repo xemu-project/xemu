@@ -334,7 +334,6 @@ static int vdi_get_info(BlockDriverState *bs, BlockDriverInfo *bdi)
     logout("\n");
     bdi->cluster_size = s->block_size;
     bdi->vm_state_offset = 0;
-    bdi->unallocated_blocks_are_zero = true;
     return 0;
 }
 
@@ -375,11 +374,10 @@ static int vdi_open(BlockDriverState *bs, QDict *options, int flags,
     VdiHeader header;
     size_t bmap_size;
     int ret;
-    Error *local_err = NULL;
     QemuUUID uuid_link, uuid_parent;
 
-    bs->file = bdrv_open_child(NULL, options, "file", bs, &child_file,
-                               false, errp);
+    bs->file = bdrv_open_child(NULL, options, "file", bs, &child_of_bds,
+                               BDRV_CHILD_IMAGE, false, errp);
     if (!bs->file) {
         return -EINVAL;
     }
@@ -496,9 +494,8 @@ static int vdi_open(BlockDriverState *bs, QDict *options, int flags,
     error_setg(&s->migration_blocker, "The vdi format used by node '%s' "
                "does not support live migration",
                bdrv_get_device_or_node_name(bs));
-    ret = migrate_add_blocker(s->migration_blocker, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    ret = migrate_add_blocker(s->migration_blocker, errp);
+    if (ret < 0) {
         error_free(s->migration_blocker);
         goto fail_free_bmap;
     }
@@ -536,7 +533,7 @@ static int coroutine_fn vdi_co_block_status(BlockDriverState *bs,
     *pnum = MIN(s->block_size - index_in_block, bytes);
     result = VDI_IS_ALLOCATED(bmap_entry);
     if (!result) {
-        return 0;
+        return BDRV_BLOCK_ZERO;
     }
 
     *map = s->header.offset_data + (uint64_t)bmap_entry * s->block_size +
@@ -804,10 +801,10 @@ static int coroutine_fn vdi_co_do_create(BlockdevCreateOptions *create_options,
         goto exit;
     }
 
-    blk = blk_new(bdrv_get_aio_context(bs_file),
-                  BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL);
-    ret = blk_insert_bs(blk, bs_file, errp);
-    if (ret < 0) {
+    blk = blk_new_with_bs(bs_file, BLK_PERM_WRITE | BLK_PERM_RESIZE,
+                          BLK_PERM_ALL, errp);
+    if (!blk) {
+        ret = -EPERM;
         goto exit;
     }
 
@@ -875,7 +872,7 @@ static int coroutine_fn vdi_co_do_create(BlockdevCreateOptions *create_options,
 
     if (image_type == VDI_TYPE_STATIC) {
         ret = blk_truncate(blk, offset + blocks * block_size, false,
-                           PREALLOC_MODE_OFF, errp);
+                           PREALLOC_MODE_OFF, 0, errp);
         if (ret < 0) {
             error_prepend(errp, "Failed to statically allocate file");
             goto exit;
@@ -907,7 +904,6 @@ static int coroutine_fn vdi_co_create_opts(BlockDriver *drv,
     uint64_t block_size = DEFAULT_CLUSTER_SIZE;
     bool is_static = false;
     Visitor *v;
-    Error *local_err = NULL;
     int ret;
 
     /* Parse options and convert legacy syntax.
@@ -958,11 +954,9 @@ static int coroutine_fn vdi_co_create_opts(BlockDriver *drv,
         ret = -EINVAL;
         goto done;
     }
-    visit_type_BlockdevCreateOptions(v, NULL, &create_options, &local_err);
+    visit_type_BlockdevCreateOptions(v, NULL, &create_options, errp);
     visit_free(v);
-
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!create_options) {
         ret = -EINVAL;
         goto done;
     }
@@ -1039,7 +1033,7 @@ static BlockDriver bdrv_vdi = {
     .bdrv_open = vdi_open,
     .bdrv_close = vdi_close,
     .bdrv_reopen_prepare = vdi_reopen_prepare,
-    .bdrv_child_perm          = bdrv_format_default_perms,
+    .bdrv_child_perm          = bdrv_default_perms,
     .bdrv_co_create      = vdi_co_create,
     .bdrv_co_create_opts = vdi_co_create_opts,
     .bdrv_has_zero_init  = vdi_has_zero_init,
@@ -1053,6 +1047,7 @@ static BlockDriver bdrv_vdi = {
 
     .bdrv_get_info = vdi_get_info,
 
+    .is_format = true,
     .create_opts = &vdi_create_opts,
     .bdrv_co_check = vdi_co_check,
 };

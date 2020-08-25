@@ -18,6 +18,21 @@ target/arm/decode-sve.inc.c: $(SRC_PATH)/target/arm/sve.decode $(DECODETREE)
 	  $(PYTHON) $(DECODETREE) --decode disas_sve -o $@ $<,\
 	  "GEN", $(TARGET_DIR)$@)
 
+target/arm/decode-neon-shared.inc.c: $(SRC_PATH)/target/arm/neon-shared.decode $(DECODETREE)
+	$(call quiet-command,\
+	  $(PYTHON) $(DECODETREE) --static-decode disas_neon_shared -o $@ $<,\
+	  "GEN", $(TARGET_DIR)$@)
+
+target/arm/decode-neon-dp.inc.c: $(SRC_PATH)/target/arm/neon-dp.decode $(DECODETREE)
+	$(call quiet-command,\
+	  $(PYTHON) $(DECODETREE) --static-decode disas_neon_dp -o $@ $<,\
+	  "GEN", $(TARGET_DIR)$@)
+
+target/arm/decode-neon-ls.inc.c: $(SRC_PATH)/target/arm/neon-ls.decode $(DECODETREE)
+	$(call quiet-command,\
+	  $(PYTHON) $(DECODETREE) --static-decode disas_neon_ls -o $@ $<,\
+	  "GEN", $(TARGET_DIR)$@)
+
 target/arm/decode-vfp.inc.c: $(SRC_PATH)/target/arm/vfp.decode $(DECODETREE)
 	$(call quiet-command,\
 	  $(PYTHON) $(DECODETREE) --static-decode disas_vfp -o $@ $<,\
@@ -49,6 +64,9 @@ target/arm/decode-t16.inc.c: $(SRC_PATH)/target/arm/t16.decode $(DECODETREE)
 	  "GEN", $(TARGET_DIR)$@)
 
 target/arm/translate-sve.o: target/arm/decode-sve.inc.c
+target/arm/translate.o: target/arm/decode-neon-shared.inc.c
+target/arm/translate.o: target/arm/decode-neon-dp.inc.c
+target/arm/translate.o: target/arm/decode-neon-ls.inc.c
 target/arm/translate.o: target/arm/decode-vfp.inc.c
 target/arm/translate.o: target/arm/decode-vfp-uncond.inc.c
 target/arm/translate.o: target/arm/decode-a32.inc.c
@@ -61,9 +79,11 @@ obj-y += translate.o op_helper.o
 obj-y += crypto_helper.o
 obj-y += iwmmxt_helper.o vec_helper.o neon_helper.o
 obj-y += m_helper.o
+obj-y += cpu_tcg.o
 
 obj-$(CONFIG_SOFTMMU) += psci.o
 
 obj-$(TARGET_AARCH64) += translate-a64.o helper-a64.o
 obj-$(TARGET_AARCH64) += translate-sve.o sve_helper.o
 obj-$(TARGET_AARCH64) += pauth_helper.o
+obj-$(TARGET_AARCH64) += mte_helper.o

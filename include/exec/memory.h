@@ -50,11 +50,11 @@
 extern bool global_dirty_log;
 
 typedef struct MemoryRegionOps MemoryRegionOps;
-typedef struct MemoryRegionMmio MemoryRegionMmio;
 
-struct MemoryRegionMmio {
-    CPUReadMemoryFunc *read[3];
-    CPUWriteMemoryFunc *write[3];
+struct ReservedRegion {
+    hwaddr low;
+    hwaddr high;
+    unsigned type;
 };
 
 typedef struct IOMMUTLBEntry IOMMUTLBEntry;
@@ -743,6 +743,12 @@ void memory_region_init(MemoryRegion *mr,
                         struct Object *owner,
                         const char *name,
                         uint64_t size);
+
+/* XBOX */
+/**
+ * memory_region_destroy: Destroy a memory region
+ */
+void memory_region_destroy(MemoryRegion *mr);
 
 /**
  * memory_region_ref: Add 1 to a memory region's reference count
@@ -1473,15 +1479,26 @@ void *memory_region_get_ram_ptr(MemoryRegion *mr);
  */
 void memory_region_ram_resize(MemoryRegion *mr, ram_addr_t newsize,
                               Error **errp);
+
 /**
- * memory_region_do_writeback: Trigger cache writeback or msync for
+ * memory_region_msync: Synchronize selected address range of
+ * a memory mapped region
+ *
+ * @mr: the memory region to be msync
+ * @addr: the initial address of the range to be sync
+ * @size: the size of the range to be sync
+ */
+void memory_region_msync(MemoryRegion *mr, hwaddr addr, hwaddr size);
+
+/**
+ * memory_region_writeback: Trigger cache writeback for
  * selected address range
  *
  * @mr: the memory region to be updated
  * @addr: the initial address of the range to be written back
  * @size: the size of the range to be written back
  */
-void memory_region_do_writeback(MemoryRegion *mr, hwaddr addr, hwaddr size);
+void memory_region_writeback(MemoryRegion *mr, hwaddr addr, hwaddr size);
 
 /**
  * memory_region_set_log: Turn dirty logging on or off for a region.
@@ -1992,7 +2009,7 @@ void memory_global_dirty_log_start(void);
  */
 void memory_global_dirty_log_stop(void);
 
-void mtree_info(bool flatview, bool dispatch_tree, bool owner);
+void mtree_info(bool flatview, bool dispatch_tree, bool owner, bool disabled);
 
 /**
  * memory_region_dispatch_read: perform a read directly to the specified
@@ -2322,7 +2339,8 @@ bool address_space_access_valid(AddressSpace *as, hwaddr addr, hwaddr len,
 /* address_space_map: map a physical memory region into a host virtual address
  *
  * May map a subset of the requested range, given by and returned in @plen.
- * May return %NULL if resources needed to perform the mapping are exhausted.
+ * May return %NULL and set *@plen to zero(0), if resources needed to perform
+ * the mapping are exhausted.
  * Use only for reads OR writes - not for read-modify-write operations.
  * Use cpu_register_map_client() to know when retrying the map operation is
  * likely to succeed.
@@ -2362,10 +2380,11 @@ void *qemu_map_ram_ptr(RAMBlock *ram_block, ram_addr_t addr);
 
 /* Internal functions, part of the implementation of address_space_read_cached
  * and address_space_write_cached.  */
-void address_space_read_cached_slow(MemoryRegionCache *cache,
-                                    hwaddr addr, void *buf, hwaddr len);
-void address_space_write_cached_slow(MemoryRegionCache *cache,
-                                     hwaddr addr, const void *buf, hwaddr len);
+MemTxResult address_space_read_cached_slow(MemoryRegionCache *cache,
+                                           hwaddr addr, void *buf, hwaddr len);
+MemTxResult address_space_write_cached_slow(MemoryRegionCache *cache,
+                                            hwaddr addr, const void *buf,
+                                            hwaddr len);
 
 static inline bool memory_access_is_direct(MemoryRegion *mr, bool is_write)
 {
@@ -2430,15 +2449,16 @@ MemTxResult address_space_read(AddressSpace *as, hwaddr addr,
  * @buf: buffer with the data transferred
  * @len: length of the data transferred
  */
-static inline void
+static inline MemTxResult
 address_space_read_cached(MemoryRegionCache *cache, hwaddr addr,
                           void *buf, hwaddr len)
 {
     assert(addr < cache->len && len <= cache->len - addr);
     if (likely(cache->ptr)) {
         memcpy(buf, cache->ptr + addr, len);
+        return MEMTX_OK;
     } else {
-        address_space_read_cached_slow(cache, addr, buf, len);
+        return address_space_read_cached_slow(cache, addr, buf, len);
     }
 }
 
@@ -2450,15 +2470,16 @@ address_space_read_cached(MemoryRegionCache *cache, hwaddr addr,
  * @buf: buffer with the data transferred
  * @len: length of the data transferred
  */
-static inline void
+static inline MemTxResult
 address_space_write_cached(MemoryRegionCache *cache, hwaddr addr,
                            const void *buf, hwaddr len)
 {
     assert(addr < cache->len && len <= cache->len - addr);
     if (likely(cache->ptr)) {
         memcpy(cache->ptr + addr, buf, len);
+        return MEMTX_OK;
     } else {
-        address_space_write_cached_slow(cache, addr, buf, len);
+        return address_space_write_cached_slow(cache, addr, buf, len);
     }
 }
 
@@ -2482,7 +2503,46 @@ static inline MemOp devend_memop(enum device_endian end)
 }
 #endif
 
-void memory_region_destroy(MemoryRegion *mr);
+/*
+ * Inhibit technologies that require discarding of pages in RAM blocks, e.g.,
+ * to manage the actual amount of memory consumed by the VM (then, the memory
+ * provided by RAM blocks might be bigger than the desired memory consumption).
+ * This *must* be set if:
+ * - Discarding parts of a RAM blocks does not result in the change being
+ *   reflected in the VM and the pages getting freed.
+ * - All memory in RAM blocks is pinned or duplicated, invaldiating any previous
+ *   discards blindly.
+ * - Discarding parts of a RAM blocks will result in integrity issues (e.g.,
+ *   encrypted VMs).
+ * Technologies that only temporarily pin the current working set of a
+ * driver are fine, because we don't expect such pages to be discarded
+ * (esp. based on guest action like balloon inflation).
+ *
+ * This is *not* to be used to protect from concurrent discards (esp.,
+ * postcopy).
+ *
+ * Returns 0 if successful. Returns -EBUSY if a technology that relies on
+ * discards to work reliably is active.
+ */
+int ram_block_discard_disable(bool state);
+
+/*
+ * Inhibit technologies that disable discarding of pages in RAM blocks.
+ *
+ * Returns 0 if successful. Returns -EBUSY if discards are already set to
+ * broken.
+ */
+int ram_block_discard_require(bool state);
+
+/*
+ * Test if discarding of memory in ram blocks is disabled.
+ */
+bool ram_block_discard_is_disabled(void);
+
+/*
+ * Test if discarding of memory in ram blocks is required to work reliably.
+ */
+bool ram_block_discard_is_required(void);
 
 #endif
 

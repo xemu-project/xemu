@@ -27,6 +27,7 @@
 #include "qemu/cutils.h"
 #include "qemu/module.h"
 #include "qemu/bcd.h"
+#include "hw/acpi/aml-build.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
 #include "qemu/timer.h"
@@ -926,7 +927,6 @@ static void rtc_realizefn(DeviceState *dev, Error **errp)
 {
     ISADevice *isadev = ISA_DEVICE(dev);
     RTCState *s = MC146818_RTC(dev);
-    int base = 0x70;
 
     s->cmos_data[RTC_REG_A] = 0x26;
     s->cmos_data[RTC_REG_B] = 0x02;
@@ -969,7 +969,7 @@ static void rtc_realizefn(DeviceState *dev, Error **errp)
     qemu_register_suspend_notifier(&s->suspend_notifier);
 
     memory_region_init_io(&s->io, OBJECT(s), &cmos_ops, s, "rtc", 4);
-    isa_register_ioport(isadev, &s->io, base);
+    isa_register_ioport(isadev, &s->io, RTC_ISA_BASE);
 
     /* register rtc 0x70 port for coalesced_pio */
     memory_region_set_flush_coalesced(&s->io);
@@ -978,10 +978,10 @@ static void rtc_realizefn(DeviceState *dev, Error **errp)
     memory_region_add_subregion(&s->io, 0, &s->coalesced_io);
     memory_region_add_coalescing(&s->coalesced_io, 0, 1);
 
-    qdev_set_legacy_instance_id(dev, base, 3);
+    qdev_set_legacy_instance_id(dev, RTC_ISA_BASE, 3);
     qemu_register_reset(rtc_reset, s);
 
-    object_property_add_tm(OBJECT(s), "date", rtc_get_date, NULL);
+    object_property_add_tm(OBJECT(s), "date", rtc_get_date);
 
     qdev_init_gpio_out(dev, &s->irq, 1);
     QLIST_INSERT_HEAD(&rtc_devices, s, link);
@@ -992,10 +992,10 @@ ISADevice *mc146818_rtc_init(ISABus *bus, int base_year, qemu_irq intercept_irq)
     DeviceState *dev;
     ISADevice *isadev;
 
-    isadev = isa_create(bus, TYPE_MC146818_RTC);
+    isadev = isa_new(TYPE_MC146818_RTC);
     dev = DEVICE(isadev);
     qdev_prop_set_int32(dev, "base_year", base_year);
-    qdev_init_nofail(dev);
+    isa_realize_and_unref(isadev, bus, &error_fatal);
     if (intercept_irq) {
         qdev_connect_gpio_out(dev, 0, intercept_irq);
     } else {
@@ -1003,7 +1003,7 @@ ISADevice *mc146818_rtc_init(ISABus *bus, int base_year, qemu_irq intercept_irq)
     }
 
     object_property_add_alias(qdev_get_machine(), "rtc-time", OBJECT(isadev),
-                              "date", NULL);
+                              "date");
 
     return isadev;
 }
@@ -1026,13 +1026,36 @@ static void rtc_resetdev(DeviceState *d)
     }
 }
 
+static void rtc_build_aml(ISADevice *isadev, Aml *scope)
+{
+    Aml *dev;
+    Aml *crs;
+
+    /*
+     * Reserving 8 io ports here, following what physical hardware
+     * does, even though qemu only responds to the first two ports.
+     */
+    crs = aml_resource_template();
+    aml_append(crs, aml_io(AML_DECODE16, RTC_ISA_BASE, RTC_ISA_BASE,
+                           0x01, 0x08));
+    aml_append(crs, aml_irq_no_flags(RTC_ISA_IRQ));
+
+    dev = aml_device("RTC");
+    aml_append(dev, aml_name_decl("_HID", aml_eisaid("PNP0B00")));
+    aml_append(dev, aml_name_decl("_CRS", crs));
+
+    aml_append(scope, dev);
+}
+
 static void rtc_class_initfn(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    ISADeviceClass *isa = ISA_DEVICE_CLASS(klass);
 
     dc->realize = rtc_realizefn;
     dc->reset = rtc_resetdev;
     dc->vmsd = &vmstate_rtc;
+    isa->build_aml = rtc_build_aml;
     device_class_set_props(dc, mc146818rtc_properties);
 }
 

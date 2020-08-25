@@ -170,41 +170,8 @@ static void microvm_memory_init(MicrovmMachineState *mms)
     MemoryRegion *ram_below_4g, *ram_above_4g;
     MemoryRegion *system_memory = get_system_memory();
     FWCfgState *fw_cfg;
-    ram_addr_t lowmem;
+    ram_addr_t lowmem = 0xc0000000; /* 3G */
     int i;
-
-    /*
-     * Check whether RAM fits below 4G (leaving 1/2 GByte for IO memory
-     * and 256 Mbytes for PCI Express Enhanced Configuration Access Mapping
-     * also known as MMCFG).
-     * If it doesn't, we need to split it in chunks below and above 4G.
-     * In any case, try to make sure that guest addresses aligned at
-     * 1G boundaries get mapped to host addresses aligned at 1G boundaries.
-     */
-    if (machine->ram_size >= 0xb0000000) {
-        lowmem = 0x80000000;
-    } else {
-        lowmem = 0xb0000000;
-    }
-
-    /*
-     * Handle the machine opt max-ram-below-4g.  It is basically doing
-     * min(qemu limit, user limit).
-     */
-    if (!x86ms->max_ram_below_4g) {
-        x86ms->max_ram_below_4g = 4 * GiB;
-    }
-    if (lowmem > x86ms->max_ram_below_4g) {
-        lowmem = x86ms->max_ram_below_4g;
-        if (machine->ram_size - lowmem > lowmem &&
-            lowmem & (1 * GiB - 1)) {
-            warn_report("There is possibly poor performance as the ram size "
-                        " (0x%" PRIx64 ") is more then twice the size of"
-                        " max-ram-below-4g (%"PRIu64") and"
-                        " max-ram-below-4g is not a multiple of 1G.",
-                        (uint64_t)machine->ram_size, x86ms->max_ram_below_4g);
-        }
-    }
 
     if (machine->ram_size > lowmem) {
         x86ms->above_4g_mem_size = machine->ram_size - lowmem;
@@ -497,6 +464,7 @@ static void microvm_class_init(ObjectClass *oc, void *data)
     mc->max_cpus = 288;
     mc->has_hotpluggable_cpus = false;
     mc->auto_enable_numa_with_memhp = false;
+    mc->auto_enable_numa_with_memdev = false;
     mc->default_cpu_type = TARGET_DEFAULT_CPU_TYPE;
     mc->nvdimm_supported = false;
     mc->default_ram_id = "microvm.ram";
@@ -510,47 +478,42 @@ static void microvm_class_init(ObjectClass *oc, void *data)
     object_class_property_add(oc, MICROVM_MACHINE_PIC, "OnOffAuto",
                               microvm_machine_get_pic,
                               microvm_machine_set_pic,
-                              NULL, NULL, &error_abort);
+                              NULL, NULL);
     object_class_property_set_description(oc, MICROVM_MACHINE_PIC,
-        "Enable i8259 PIC", &error_abort);
+        "Enable i8259 PIC");
 
     object_class_property_add(oc, MICROVM_MACHINE_PIT, "OnOffAuto",
                               microvm_machine_get_pit,
                               microvm_machine_set_pit,
-                              NULL, NULL, &error_abort);
+                              NULL, NULL);
     object_class_property_set_description(oc, MICROVM_MACHINE_PIT,
-        "Enable i8254 PIT", &error_abort);
+        "Enable i8254 PIT");
 
     object_class_property_add(oc, MICROVM_MACHINE_RTC, "OnOffAuto",
                               microvm_machine_get_rtc,
                               microvm_machine_set_rtc,
-                              NULL, NULL, &error_abort);
+                              NULL, NULL);
     object_class_property_set_description(oc, MICROVM_MACHINE_RTC,
-        "Enable MC146818 RTC", &error_abort);
+        "Enable MC146818 RTC");
 
     object_class_property_add_bool(oc, MICROVM_MACHINE_ISA_SERIAL,
                                    microvm_machine_get_isa_serial,
-                                   microvm_machine_set_isa_serial,
-                                   &error_abort);
+                                   microvm_machine_set_isa_serial);
     object_class_property_set_description(oc, MICROVM_MACHINE_ISA_SERIAL,
-        "Set off to disable the instantiation an ISA serial port",
-        &error_abort);
+        "Set off to disable the instantiation an ISA serial port");
 
     object_class_property_add_bool(oc, MICROVM_MACHINE_OPTION_ROMS,
                                    microvm_machine_get_option_roms,
-                                   microvm_machine_set_option_roms,
-                                   &error_abort);
+                                   microvm_machine_set_option_roms);
     object_class_property_set_description(oc, MICROVM_MACHINE_OPTION_ROMS,
-        "Set off to disable loading option ROMs", &error_abort);
+        "Set off to disable loading option ROMs");
 
     object_class_property_add_bool(oc, MICROVM_MACHINE_AUTO_KERNEL_CMDLINE,
                                    microvm_machine_get_auto_kernel_cmdline,
-                                   microvm_machine_set_auto_kernel_cmdline,
-                                   &error_abort);
+                                   microvm_machine_set_auto_kernel_cmdline);
     object_class_property_set_description(oc,
         MICROVM_MACHINE_AUTO_KERNEL_CMDLINE,
-        "Set off to disable adding virtio-mmio devices to the kernel cmdline",
-        &error_abort);
+        "Set off to disable adding virtio-mmio devices to the kernel cmdline");
 }
 
 static const TypeInfo microvm_machine_info = {

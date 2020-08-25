@@ -458,9 +458,8 @@ static VncServerInfo2List *qmp_query_server_entry(QIOChannelSocket *ioc,
     Error *err = NULL;
     SocketAddress *addr;
 
-    addr = qio_channel_socket_get_local_address(ioc, &err);
+    addr = qio_channel_socket_get_local_address(ioc, NULL);
     if (!addr) {
-        error_free(err);
         return prev;
     }
 
@@ -569,7 +568,7 @@ VncInfo2List *qmp_query_vnc_servers(Error **errp)
                        &info->vencrypt, &info->has_vencrypt);
         if (vd->dcl.con) {
             dev = DEVICE(object_property_get_link(OBJECT(vd->dcl.con),
-                                                  "device", NULL));
+                                                  "device", &error_abort));
             info->has_display = true;
             info->display = g_strdup(dev->id);
         }
@@ -1177,7 +1176,7 @@ static void audio_capture_destroy(void *opaque)
 {
 }
 
-static void audio_capture(void *opaque, void *buf, int size)
+static void audio_capture(void *opaque, const void *buf, int size)
 {
     VncState *vs = opaque;
 
@@ -3275,13 +3274,12 @@ int vnc_display_pw_expire(const char *id, time_t expires)
 static void vnc_display_print_local_addr(VncDisplay *vd)
 {
     SocketAddress *addr;
-    Error *err = NULL;
 
     if (!vd->listener || !vd->listener->nsioc) {
         return;
     }
 
-    addr = qio_channel_socket_get_local_address(vd->listener->sioc[0], &err);
+    addr = qio_channel_socket_get_local_address(vd->listener->sioc[0], NULL);
     if (!addr) {
         return;
     }

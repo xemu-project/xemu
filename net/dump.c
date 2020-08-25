@@ -192,22 +192,17 @@ static void filter_dump_set_maxlen(Object *obj, Visitor *v, const char *name,
                                    void *opaque, Error **errp)
 {
     NetFilterDumpState *nfds = FILTER_DUMP(obj);
-    Error *local_err = NULL;
     uint32_t value;
 
-    visit_type_uint32(v, name, &value, &local_err);
-    if (local_err) {
-        goto out;
+    if (!visit_type_uint32(v, name, &value, errp)) {
+        return;
     }
     if (value == 0) {
-        error_setg(&local_err, "Property '%s.%s' doesn't take value '%u'",
+        error_setg(errp, "Property '%s.%s' doesn't take value '%u'",
                    object_get_typename(obj), name, value);
-        goto out;
+        return;
     }
     nfds->maxlen = value;
-
-out:
-    error_propagate(errp, local_err);
 }
 
 static char *file_dump_get_filename(Object *obj, Error **errp)
@@ -232,9 +227,9 @@ static void filter_dump_instance_init(Object *obj)
     nfds->maxlen = 65536;
 
     object_property_add(obj, "maxlen", "uint32", filter_dump_get_maxlen,
-                        filter_dump_set_maxlen, NULL, NULL, NULL);
+                        filter_dump_set_maxlen, NULL, NULL);
     object_property_add_str(obj, "file", file_dump_get_filename,
-                            file_dump_set_filename, NULL);
+                            file_dump_set_filename);
 }
 
 static void filter_dump_instance_finalize(Object *obj)

@@ -1552,13 +1552,12 @@ static int run_process_child(const char *command[], Error **errp)
 
 static bool systemd_supports_mode(SuspendMode mode, Error **errp)
 {
-    Error *local_err = NULL;
     const char *systemctl_args[3] = {"systemd-hibernate", "systemd-suspend",
                                      "systemd-hybrid-sleep"};
     const char *cmd[4] = {"systemctl", "status", systemctl_args[mode], NULL};
     int status;
 
-    status = run_process_child(cmd, &local_err);
+    status = run_process_child(cmd, errp);
 
     /*
      * systemctl status uses LSB return codes so we can expect
@@ -1572,7 +1571,6 @@ static bool systemd_supports_mode(SuspendMode mode, Error **errp)
         return true;
     }
 
-    error_propagate(errp, local_err);
     return false;
 }
 
@@ -2421,6 +2419,7 @@ static void transfer_memory_block(GuestMemoryBlock *mem_blk, bool sys2memblk,
             if (sys2memblk) {
                 error_propagate(errp, local_err);
             } else {
+                error_free(local_err);
                 result->response =
                     GUEST_MEMORY_BLOCK_RESPONSE_TYPE_OPERATION_FAILED;
             }
@@ -2518,6 +2517,9 @@ GuestMemoryBlockList *qmp_guest_get_memory_blocks(Error **errp)
         mem_blk->phys_index = strtoul(&de->d_name[6], NULL, 10);
         mem_blk->has_can_offline = true; /* lolspeak ftw */
         transfer_memory_block(mem_blk, true, NULL, &local_err);
+        if (local_err) {
+            break;
+        }
 
         entry = g_malloc0(sizeof *entry);
         entry->value = mem_blk;

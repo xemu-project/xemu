@@ -260,13 +260,10 @@ static void ppc_compat_prop_get(Object *obj, Visitor *v, const char *name,
 static void ppc_compat_prop_set(Object *obj, Visitor *v, const char *name,
                                 void *opaque, Error **errp)
 {
-    Error *local_err = NULL;
     char *value;
     uint32_t compat_pvr;
 
-    visit_type_str(v, name, &value, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_str(v, name, &value, errp)) {
         return;
     }
 
@@ -298,20 +295,15 @@ out:
 }
 
 void ppc_compat_add_property(Object *obj, const char *name,
-                             uint32_t *compat_pvr, const char *basedesc,
-                             Error **errp)
+                             uint32_t *compat_pvr, const char *basedesc)
 {
-    Error *local_err = NULL;
     gchar *namesv[ARRAY_SIZE(compat_table) + 1];
     gchar *names, *desc;
     int i;
 
     object_property_add(obj, name, "string",
                         ppc_compat_prop_get, ppc_compat_prop_set, NULL,
-                        compat_pvr, &local_err);
-    if (local_err) {
-        goto out;
-    }
+                        compat_pvr);
 
     for (i = 0; i < ARRAY_SIZE(compat_table); i++) {
         /*
@@ -324,11 +316,8 @@ void ppc_compat_add_property(Object *obj, const char *name,
 
     names = g_strjoinv(", ", namesv);
     desc = g_strdup_printf("%s. Valid values are %s.", basedesc, names);
-    object_property_set_description(obj, name, desc, &local_err);
+    object_property_set_description(obj, name, desc);
 
     g_free(names);
     g_free(desc);
-
-out:
-    error_propagate(errp, local_err);
 }

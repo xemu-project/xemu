@@ -112,9 +112,8 @@ static void virtio_pmem_realize(DeviceState *dev, Error **errp)
     }
 
     if (host_memory_backend_is_mapped(pmem->memdev)) {
-        char *path = object_get_canonical_path_component(OBJECT(pmem->memdev));
-        error_setg(errp, "can't use already busy memdev: %s", path);
-        g_free(path);
+        error_setg(errp, "can't use already busy memdev: %s",
+                   object_get_canonical_path_component(OBJECT(pmem->memdev)));
         return;
     }
 
@@ -124,7 +123,7 @@ static void virtio_pmem_realize(DeviceState *dev, Error **errp)
     pmem->rq_vq = virtio_add_queue(vdev, 128, virtio_pmem_flush);
 }
 
-static void virtio_pmem_unrealize(DeviceState *dev, Error **errp)
+static void virtio_pmem_unrealize(DeviceState *dev)
 {
     VirtIODevice *vdev = VIRTIO_DEVICE(dev);
     VirtIOPMEM *pmem = VIRTIO_PMEM(dev);

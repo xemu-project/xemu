@@ -5,7 +5,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License version 2 as published by the Free Software Foundation.
+ * License version 2.1 as published by the Free Software Foundation.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -18,11 +18,13 @@
 
 #ifndef QOS_EXTERNAL_H
 #define QOS_EXTERNAL_H
-#include "libqos/qgraph.h"
 
-void apply_to_node(const char *name, bool is_machine, bool is_abstract);
-void apply_to_qlist(QList *list, bool is_machine);
-QGuestAllocator *get_machine_allocator(QOSGraphObject *obj);
+#include "libqos/malloc.h"
+#include "qapi/qapi-types-machine.h"
+#include "qapi/qapi-types-qom.h"
+
+void machines_apply_to_node(MachineInfoList *mach_info);
+void types_apply_to_node(ObjectTypeInfoList *type_info);
 void *allocate_objects(QTestState *qts, char **path, QGuestAllocator **p_alloc);
 
 #endif

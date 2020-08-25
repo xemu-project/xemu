@@ -338,9 +338,7 @@ static int raw_open(BlockDriverState *bs, QDict *options, int flags,
     s->type = FTYPE_FILE;
 
     opts = qemu_opts_create(&raw_runtime_opts, NULL, 0, &error_abort);
-    qemu_opts_absorb_qdict(opts, options, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!qemu_opts_absorb_qdict(opts, options, errp)) {
         ret = -EINVAL;
         goto fail;
     }
@@ -408,6 +406,9 @@ static int raw_open(BlockDriverState *bs, QDict *options, int flags,
         win32_aio_attach_aio_context(s->aio, bdrv_get_aio_context(bs));
     }
 
+    /* When extending regular files, we get zeros from the OS */
+    bs->supported_truncate_flags = BDRV_REQ_ZERO_WRITE;
+
     ret = 0;
 fail:
     qemu_opts_del(opts);
@@ -469,7 +470,7 @@ static void raw_close(BlockDriverState *bs)
 
 static int coroutine_fn raw_co_truncate(BlockDriverState *bs, int64_t offset,
                                         bool exact, PreallocMode prealloc,
-                                        Error **errp)
+                                        BdrvRequestFlags flags, Error **errp)
 {
     BDRVRawState *s = bs->opaque;
     LONG low, high;
@@ -638,7 +639,6 @@ BlockDriver bdrv_file = {
     .bdrv_close         = raw_close,
     .bdrv_co_create_opts = raw_co_create_opts,
     .bdrv_has_zero_init = bdrv_has_zero_init_1,
-    .bdrv_has_zero_init_truncate = bdrv_has_zero_init_1,
 
     .bdrv_aio_preadv    = raw_aio_preadv,
     .bdrv_aio_pwritev   = raw_aio_pwritev,
@@ -737,9 +737,7 @@ static int hdev_open(BlockDriverState *bs, QDict *options, int flags,
 
     QemuOpts *opts = qemu_opts_create(&raw_runtime_opts, NULL, 0,
                                       &error_abort);
-    qemu_opts_absorb_qdict(opts, options, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!qemu_opts_absorb_qdict(opts, options, errp)) {
         ret = -EINVAL;
         goto done;
     }

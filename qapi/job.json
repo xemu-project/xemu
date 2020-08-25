@@ -1,4 +1,5 @@
 # -*- Mode: Python -*-
+# vim: filetype=python
 
 ##
 # == Background jobs
@@ -19,10 +20,12 @@
 #
 # @create: image creation job type, see "blockdev-create" (since 3.0)
 #
+# @amend: image options amend job type, see "x-blockdev-amend" (since 5.1)
+#
 # Since: 1.7
 ##
 { 'enum': 'JobType',
-  'data': ['commit', 'stream', 'mirror', 'backup', 'create'] }
+  'data': ['commit', 'stream', 'mirror', 'backup', 'create', 'amend'] }
 
 ##
 # @JobStatus:

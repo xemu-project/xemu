@@ -4,7 +4,7 @@
 check-help:
 	@echo "Regression testing targets:"
 	@echo
-	@echo " $(MAKE) check                Run unit, qapi-schema, qtest and decodetree"
+	@echo " $(MAKE) check                Run block, qapi-schema, unit, softfloat, qtest and decodetree tests"
 	@echo
 	@echo " $(MAKE) check-qtest-TARGET   Run qtest tests for given target"
 	@echo " $(MAKE) check-qtest          Run qtest tests"
@@ -12,14 +12,18 @@ check-help:
 	@echo " $(MAKE) check-speed          Run qobject speed tests"
 	@echo " $(MAKE) check-qapi-schema    Run QAPI schema tests"
 	@echo " $(MAKE) check-block          Run block tests"
+ifeq ($(CONFIG_TCG),y)
 	@echo " $(MAKE) check-tcg            Run TCG tests"
 	@echo " $(MAKE) check-softfloat      Run FPU emulation tests"
+endif
 	@echo " $(MAKE) check-acceptance     Run all acceptance (functional) tests"
 	@echo
 	@echo " $(MAKE) check-report.tap     Generates an aggregated TAP test report"
 	@echo " $(MAKE) check-venv           Creates a Python venv for tests"
 	@echo " $(MAKE) check-clean          Clean the tests and related data"
 	@echo
+	@echo "The following are useful for CI builds"
+	@echo " $(MAKE) check-build          Build most test binaris"
 	@echo " $(MAKE) get-vm-images        Downloads all images used by acceptance tests, according to configured targets (~350 MB each, 1.5 GB max)"
 	@echo
 	@echo
@@ -53,7 +57,6 @@ SYSEMU_TARGET_LIST := $(subst -softmmu.mak,,$(notdir \
 
 check-unit-y += tests/check-qdict$(EXESUF)
 check-unit-y += tests/check-block-qdict$(EXESUF)
-check-unit-$(CONFIG_SOFTMMU) += tests/test-char$(EXESUF)
 check-unit-y += tests/check-qnum$(EXESUF)
 check-unit-y += tests/check-qstring$(EXESUF)
 check-unit-y += tests/check-qlist$(EXESUF)
@@ -64,14 +67,14 @@ check-unit-y += tests/check-qlit$(EXESUF)
 check-unit-y += tests/test-qobject-output-visitor$(EXESUF)
 check-unit-y += tests/test-clone-visitor$(EXESUF)
 check-unit-y += tests/test-qobject-input-visitor$(EXESUF)
-check-unit-y += tests/test-qmp-cmds$(EXESUF)
+check-unit-$(CONFIG_SOFTMMU) += tests/test-qmp-cmds$(EXESUF)
 check-unit-y += tests/test-string-input-visitor$(EXESUF)
 check-unit-y += tests/test-string-output-visitor$(EXESUF)
 check-unit-y += tests/test-qmp-event$(EXESUF)
 check-unit-y += tests/test-opts-visitor$(EXESUF)
 check-unit-$(CONFIG_BLOCK) += tests/test-coroutine$(EXESUF)
 check-unit-y += tests/test-visitor-serialization$(EXESUF)
-check-unit-y += tests/test-iov$(EXESUF)
+check-unit-$(CONFIG_SOFTMMU) += tests/test-iov$(EXESUF)
 check-unit-y += tests/test-bitmap$(EXESUF)
 check-unit-$(CONFIG_BLOCK) += tests/test-aio$(EXESUF)
 check-unit-$(CONFIG_BLOCK) += tests/test-aio-multithread$(EXESUF)
@@ -106,7 +109,6 @@ check-unit-y += tests/test-qht$(EXESUF)
 check-unit-y += tests/test-qht-par$(EXESUF)
 check-unit-y += tests/test-bitops$(EXESUF)
 check-unit-y += tests/test-bitcnt$(EXESUF)
-check-unit-y += tests/test-qdev-global-props$(EXESUF)
 check-unit-y += tests/check-qom-interface$(EXESUF)
 check-unit-y += tests/check-qom-proplist$(EXESUF)
 check-unit-y += tests/test-qemu-opts$(EXESUF)
@@ -121,12 +123,19 @@ check-speed-$(CONFIG_BLOCK) += tests/benchmark-crypto-cipher$(EXESUF)
 check-unit-$(CONFIG_BLOCK) += tests/test-crypto-secret$(EXESUF)
 check-unit-$(call land,$(CONFIG_BLOCK),$(CONFIG_GNUTLS)) += tests/test-crypto-tlscredsx509$(EXESUF)
 check-unit-$(call land,$(CONFIG_BLOCK),$(CONFIG_GNUTLS)) += tests/test-crypto-tlssession$(EXESUF)
+ifndef CONFIG_TSAN
+# Some tests: test-char, test-qdev-global-props, and test-qga,
+# are not runnable under TSan due to a known issue.
+# https://github.com/google/sanitizers/issues/1116
+check-unit-$(CONFIG_SOFTMMU) += tests/test-char$(EXESUF)
+check-unit-$(CONFIG_SOFTMMU) += tests/test-qdev-global-props$(EXESUF)
 ifneq (,$(findstring qemu-ga,$(TOOLS)))
 check-unit-$(call land,$(CONFIG_LINUX),$(CONFIG_VIRTIO_SERIAL)) += tests/test-qga$(EXESUF)
 endif
-check-unit-y += tests/test-timed-average$(EXESUF)
-check-unit-$(CONFIG_INOTIFY1) += tests/test-util-filemonitor$(EXESUF)
-check-unit-y += tests/test-util-sockets$(EXESUF)
+endif
+check-unit-$(CONFIG_SOFTMMU) += tests/test-timed-average$(EXESUF)
+check-unit-$(call land,$(CONFIG_SOFTMMU),$(CONFIG_INOTIFY1)) += tests/test-util-filemonitor$(EXESUF)
+check-unit-$(CONFIG_SOFTMMU) += tests/test-util-sockets$(EXESUF)
 check-unit-$(CONFIG_BLOCK) += tests/test-authz-simple$(EXESUF)
 check-unit-$(CONFIG_BLOCK) += tests/test-authz-list$(EXESUF)
 check-unit-$(CONFIG_BLOCK) += tests/test-authz-listfile$(EXESUF)
@@ -137,7 +146,7 @@ check-unit-$(CONFIG_BLOCK) += tests/test-io-channel-file$(EXESUF)
 check-unit-$(call land,$(CONFIG_BLOCK),$(CONFIG_GNUTLS)) += tests/test-io-channel-tls$(EXESUF)
 check-unit-$(CONFIG_BLOCK) += tests/test-io-channel-command$(EXESUF)
 check-unit-$(CONFIG_BLOCK) += tests/test-io-channel-buffer$(EXESUF)
-check-unit-y += tests/test-base64$(EXESUF)
+check-unit-$(CONFIG_SOFTMMU) += tests/test-base64$(EXESUF)
 check-unit-$(call land,$(CONFIG_BLOCK),$(if $(CONFIG_NETTLE),y,$(CONFIG_GCRYPT))) += tests/test-crypto-pbkdf$(EXESUF)
 check-unit-$(CONFIG_BLOCK) += tests/test-crypto-ivgen$(EXESUF)
 check-unit-$(CONFIG_BLOCK)  += tests/test-crypto-afsplit$(EXESUF)
@@ -145,7 +154,7 @@ check-unit-$(call land,$(CONFIG_BLOCK),$(CONFIG_QEMU_PRIVATE_XTS)) += tests/test
 check-unit-$(CONFIG_BLOCK)  += tests/test-crypto-block$(EXESUF)
 check-unit-y += tests/test-logging$(EXESUF)
 check-unit-$(call land,$(CONFIG_BLOCK),$(CONFIG_REPLICATION)) += tests/test-replication$(EXESUF)
-check-unit-y += tests/test-bufferiszero$(EXESUF)
+check-unit-$(CONFIG_SOFTMMU) += tests/test-bufferiszero$(EXESUF)
 check-unit-y += tests/test-uuid$(EXESUF)
 check-unit-y += tests/ptimer-test$(EXESUF)
 check-unit-y += tests/test-qapi-util$(EXESUF)
@@ -439,6 +448,7 @@ tests/test-qdev-global-props$(EXESUF): tests/test-qdev-global-props.o \
 	hw/core/fw-path-provider.o \
 	hw/core/reset.o \
 	hw/core/vmstate-if.o \
+	hw/core/clock.o hw/core/qdev-clock.o \
 	$(test-qapi-obj-y)
 tests/test-vmstate$(EXESUF): tests/test-vmstate.o \
 	migration/vmstate.o migration/vmstate-types.o migration/qemu-file.o \
@@ -537,6 +547,10 @@ tests/benchmark-crypto-cipher$(EXESUF): tests/benchmark-crypto-cipher.o $(test-c
 tests/test-crypto-secret$(EXESUF): tests/test-crypto-secret.o $(test-crypto-obj-y)
 tests/test-crypto-xts$(EXESUF): tests/test-crypto-xts.o $(test-crypto-obj-y)
 
+ifeq ($(CONFIG_TEST_SECRET_KEYRING),y)
+tests/test-crypto-secret.o-libs := -lkeyutils
+endif
+
 tests/crypto-tls-x509-helpers.o-cflags := $(TASN1_CFLAGS)
 tests/crypto-tls-x509-helpers.o-libs := $(TASN1_LIBS)
 tests/pkix_asn1_tab.o-cflags := $(TASN1_CFLAGS)
@@ -625,7 +639,7 @@ define do_test_tap
           { export MALLOC_PERTURB_=$${MALLOC_PERTURB_:-$$(( $${RANDOM:-0} % 255 + 1))} $2; \
             $(foreach COMMAND, $1, \
 	      $(COMMAND) -m=$(SPEED) -k --tap < /dev/null \
-	      | sed "s/^[a-z][a-z]* [0-9]* /&$(notdir $(COMMAND)) /" || true; ) } \
+	      | sed "s/^\(not \)\?ok [0-9]* /&$(notdir $(COMMAND)) /" || true; ) } \
 	      | ./scripts/tap-merge.pl | tee "$@" \
 	      | ./scripts/tap-driver.pl $(if $(V),, --show-failures-only), \
 	  "TAP","$@")
@@ -636,6 +650,10 @@ $(patsubst %, check-qtest-%, $(QTEST_TARGETS)): check-qtest-%: %-softmmu/all $(c
 	$(call do_test_human,$(check-qtest-$*-y:%=tests/qtest/%$(EXESUF)) $(check-qtest-generic-y:%=tests/qtest/%$(EXESUF)), \
 	  QTEST_QEMU_BINARY=$*-softmmu/qemu-system-$* \
 	  QTEST_QEMU_IMG=qemu-img$(EXESUF))
+
+build-qtest: $(patsubst %, %-softmmu/all, $(QTEST_TARGETS)) $(check-qtest-y)
+
+build-unit: $(check-unit-y)
 
 check-unit: $(check-unit-y)
 	$(call do_test_human, $^)
@@ -668,7 +686,6 @@ check-report.tap: $(patsubst %,check-report-qtest-%.tap, $(QTEST_TARGETS)) check
 FP_TEST_BIN=$(BUILD_DIR)/tests/fp/fp-test
 
 # the build dir is created by configure
-.PHONY: $(FP_TEST_BIN)
 $(FP_TEST_BIN): config-host.h $(test-util-obj-y)
 	$(call quiet-command, \
 	 	$(MAKE) $(SUBDIR_MAKEFLAGS) -C $(dir $@) V="$(V)" $(notdir $@), \
@@ -686,11 +703,26 @@ test-softfloat = $(call quiet-command, \
 			(cat $2.out && exit 1;), \
 			"FLOAT TEST", $2)
 
-# Conversion Routines:
+# Conversion Routines: Float to Float
+# FIXME: f32_to_f128 (broken), f64_to_f128 (broken)
+# FIXME: f128_to_f32(broken), f128_to_f64 (broken)
+# FIXME: f128_to_extF80 (broken)
+check-softfloat-conv-f2f: $(FP_TEST_BIN)
+	$(call test-softfloat, \
+		f16_to_f32 f16_to_f64 \
+		f16_to_extF80 f16_to_f128 \
+		f32_to_f16 f32_to_f64 \
+		f32_to_extF80 \
+		f64_to_f16 f64_to_f32 \
+		extF80_to_f16 extF80_to_f32 \
+		extF80_to_f64 extF80_to_f128 \
+		f128_to_f16, \
+		float-to-float)
+
+# Conversion Routines: Int and Uint to Float
 # FIXME: i32_to_extF80 (broken), i64_to_extF80 (broken)
-#        ui32_to_f128 (not implemented), extF80_roundToInt (broken)
-#
-check-softfloat-conv: $(FP_TEST_BIN)
+#        ui32_to_f128 (not implemented)
+check-softfloat-conv-to-float: $(FP_TEST_BIN)
 	$(call test-softfloat, \
 		i32_to_f16 i64_to_f16 \
 		i32_to_f32 i64_to_f32 \
@@ -700,7 +732,12 @@ check-softfloat-conv: $(FP_TEST_BIN)
 		ui32_to_f16 ui64_to_f16 \
 		ui32_to_f32 ui64_to_f32 \
 		ui32_to_f64 ui64_to_f64 \
+		ui32_to_extF80 ui64_to_extF80 \
 		ui64_to_f128, uint-to-float)
+
+# Conversion Routines: Float to integers
+# FIXME: extF80_roundToInt (broken)
+check-softfloat-conv-to-int: $(FP_TEST_BIN)
 	$(call test-softfloat, \
 		f16_to_i32 f16_to_i32_r_minMag \
 		f32_to_i32 f32_to_i32_r_minMag \
@@ -717,10 +754,12 @@ check-softfloat-conv: $(FP_TEST_BIN)
 		f16_to_ui32 f16_to_ui32_r_minMag \
 		f32_to_ui32 f32_to_ui32_r_minMag \
 		f64_to_ui32 f64_to_ui32_r_minMag \
+		extF80_to_ui32 extF80_to_ui32_r_minMag \
 		f128_to_ui32 f128_to_ui32_r_minMag \
 		f16_to_ui64 f16_to_ui64_r_minMag \
 		f32_to_ui64 f32_to_ui64_r_minMag \
 		f64_to_ui64 f64_to_ui64_r_minMag \
+		extF80_to_ui64 extF80_to_ui64_r_minMag \
 		f128_to_ui64 f128_to_ui64_r_minMag, \
 		float-to-uint)
 	$(call test-softfloat, \
@@ -728,9 +767,14 @@ check-softfloat-conv: $(FP_TEST_BIN)
 		f64_roundToInt f128_roundToInt, \
 		round-to-integer)
 
+.PHONY: check-softfloat-conv
+check-softfloat-conv: check-softfloat-conv-f2f
+check-softfloat-conv: check-softfloat-conv-to-float
+check-softfloat-conv: check-softfloat-conv-to-int
+
 # Generic rule for all float operations
 #
-# Some patterns are overidden due to broken or missing tests.
+# Some patterns are overridden due to broken or missing tests.
 # Hopefully these can be removed over time.
 
 check-softfloat-%: $(FP_TEST_BIN)
@@ -739,13 +783,6 @@ check-softfloat-%: $(FP_TEST_BIN)
 # Float Compare routines
 SF_COMPARE_OPS=eq eq_signaling le le_quiet lt_quiet
 SF_COMPARE_RULES=$(patsubst %,check-softfloat-%, $(SF_COMPARE_OPS))
-
-# FIXME: extF80_le_quiet (broken)
-check-softfloat-le_quiet: $(FP_TEST_BIN)
-	$(call test-softfloat, 				\
-		f16_le_quiet f32_le_quiet f64_le_quiet  \
-		f128_le_quiet, 				\
-		le_quiet)
 
 # FIXME: extF80_lt_quiet (broken)
 check-softfloat-lt_quiet: $(FP_TEST_BIN)
@@ -782,9 +819,10 @@ check-softfloat-ops: $(SF_MATH_RULES)
 
 .PHONY: check-softfloat
 ifeq ($(CONFIG_TCG),y)
-check-softfloat: check-softfloat-conv check-softfloat-compare check-softfloat-ops
+build-softfloat: $(FP_TEST_BIN)
+check-softfloat: build-softfloat check-softfloat-conv check-softfloat-compare check-softfloat-ops
 else
-check-softfloat:
+build-softfloat check-softfloat:
 	$(call quiet-command, /bin/true, "FLOAT TEST", \
 		"SKIPPED for non-TCG builds")
 endif
@@ -912,7 +950,7 @@ check-acceptance: check-venv $(TESTS_RESULTS_DIR) get-vm-images
             --show=$(AVOCADO_SHOW) run --job-results-dir=$(TESTS_RESULTS_DIR) \
             --filter-by-tags-include-empty --filter-by-tags-include-empty-key \
             $(AVOCADO_TAGS) \
-            --failfast=on tests/acceptance, \
+            $(if $(GITLAB_CI),,--failfast=on) tests/acceptance, \
             "AVOCADO", "tests/acceptance")
 
 # Consolidated targets
@@ -923,13 +961,16 @@ check-qtest: $(patsubst %,check-qtest-%, $(QTEST_TARGETS))
 ifeq ($(CONFIG_TOOLS),y)
 check-block: $(patsubst %,check-%, $(check-block-y))
 endif
-check: check-block check-qapi-schema check-unit check-softfloat check-qtest check-decodetree
+check-build: build-unit build-softfloat build-qtest
+
 check-clean:
 	rm -rf $(check-unit-y) tests/*.o tests/*/*.o $(QEMU_IOTESTS_HELPERS-y)
 	rm -rf $(sort $(foreach target,$(SYSEMU_TARGET_LIST), $(check-qtest-$(target)-y:%=tests/qtest/%$(EXESUF))) $(check-qtest-generic-y:%=tests/qtest/%$(EXESUF)))
 	rm -f tests/test-qapi-gen-timestamp
 	rm -f tests/qtest/dbus-vmstate1-gen-timestamp
 	rm -rf $(TESTS_VENV_DIR) $(TESTS_RESULTS_DIR)
+
+check: check-block check-qapi-schema check-unit check-softfloat check-qtest check-decodetree
 
 clean: check-clean
 

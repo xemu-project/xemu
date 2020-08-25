@@ -898,9 +898,7 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     if (!ivshmem_is_master(s)) {
         error_setg(&s->migration_blocker,
                    "Migration is disabled when using feature 'peer mode' in device 'ivshmem'");
-        migrate_add_blocker(s->migration_blocker, &err);
-        if (err) {
-            error_propagate(errp, err);
+        if (migrate_add_blocker(s->migration_blocker, errp) < 0) {
             error_free(s->migration_blocker);
             return;
         }
@@ -1039,9 +1037,8 @@ static void ivshmem_plain_realize(PCIDevice *dev, Error **errp)
         error_setg(errp, "You must specify a 'memdev'");
         return;
     } else if (host_memory_backend_is_mapped(s->hostmem)) {
-        char *path = object_get_canonical_path_component(OBJECT(s->hostmem));
-        error_setg(errp, "can't use already busy memdev: %s", path);
-        g_free(path);
+        error_setg(errp, "can't use already busy memdev: %s",
+                   object_get_canonical_path_component(OBJECT(s->hostmem)));
         return;
     }
 

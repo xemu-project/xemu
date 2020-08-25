@@ -35,6 +35,7 @@
 #include "hw/pci-bridge/simba.h"
 #include "hw/pci-host/sabre.h"
 #include "exec/address-spaces.h"
+#include "qapi/error.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "sysemu/runstate.h"
@@ -405,17 +406,17 @@ static void sabre_realize(DeviceState *dev, Error **errp)
     pci_setup_iommu(phb->bus, sabre_pci_dma_iommu, s->iommu);
 
     /* APB secondary busses */
-    pci_dev = pci_create_multifunction(phb->bus, PCI_DEVFN(1, 0), true,
-                                       TYPE_SIMBA_PCI_BRIDGE);
+    pci_dev = pci_new_multifunction(PCI_DEVFN(1, 0), true,
+                                    TYPE_SIMBA_PCI_BRIDGE);
     s->bridgeB = PCI_BRIDGE(pci_dev);
     pci_bridge_map_irq(s->bridgeB, "pciB", pci_simbaB_map_irq);
-    qdev_init_nofail(&pci_dev->qdev);
+    pci_realize_and_unref(pci_dev, phb->bus, &error_fatal);
 
-    pci_dev = pci_create_multifunction(phb->bus, PCI_DEVFN(1, 1), true,
-                                       TYPE_SIMBA_PCI_BRIDGE);
+    pci_dev = pci_new_multifunction(PCI_DEVFN(1, 1), true,
+                                    TYPE_SIMBA_PCI_BRIDGE);
     s->bridgeA = PCI_BRIDGE(pci_dev);
     pci_bridge_map_irq(s->bridgeA, "pciA", pci_simbaA_map_irq);
-    qdev_init_nofail(&pci_dev->qdev);
+    pci_realize_and_unref(pci_dev, phb->bus, &error_fatal);
 }
 
 static void sabre_init(Object *obj)
@@ -442,7 +443,7 @@ static void sabre_init(Object *obj)
     object_property_add_link(obj, "iommu", TYPE_SUN4U_IOMMU,
                              (Object **) &s->iommu,
                              qdev_prop_allow_set_link_before_realize,
-                             0, NULL);
+                             0);
 
     /* sabre_config */
     memory_region_init_io(&s->sabre_config, OBJECT(s), &sabre_config_ops, s,

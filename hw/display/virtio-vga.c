@@ -93,7 +93,6 @@ static void virtio_vga_base_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
     VirtIOVGABase *vvga = VIRTIO_VGA_BASE(vpci_dev);
     VirtIOGPUBase *g = vvga->vgpu;
     VGACommonState *vga = &vvga->vga;
-    Error *err = NULL;
     uint32_t offset;
     int i;
 
@@ -114,6 +113,7 @@ static void virtio_vga_base_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
      */
     vpci_dev->modern_mem_bar_idx = 2;
     vpci_dev->msix_bar_idx = 4;
+    vpci_dev->modern_io_bar_idx = 5;
 
     if (!(vpci_dev->flags & VIRTIO_PCI_FLAG_PAGE_PER_VQ)) {
         /*
@@ -136,11 +136,8 @@ static void virtio_vga_base_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
     vpci_dev->common.offset = offset;
 
     /* init virtio bits */
-    qdev_set_parent_bus(DEVICE(g), BUS(&vpci_dev->bus));
     virtio_pci_force_virtio_1(vpci_dev);
-    object_property_set_bool(OBJECT(g), true, "realized", &err);
-    if (err) {
-        error_propagate(errp, err);
+    if (!qdev_realize(DEVICE(g), BUS(&vpci_dev->bus), errp)) {
         return;
     }
 
@@ -152,9 +149,8 @@ static void virtio_vga_base_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
     graphic_console_set_hwops(vga->con, &virtio_vga_base_ops, vvga);
 
     for (i = 0; i < g->conf.max_outputs; i++) {
-        object_property_set_link(OBJECT(g->scanout[i].con),
-                                 OBJECT(vpci_dev),
-                                 "device", errp);
+        object_property_set_link(OBJECT(g->scanout[i].con), "device",
+                                 OBJECT(vpci_dev), &error_abort);
     }
 }
 

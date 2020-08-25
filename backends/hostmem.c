@@ -33,7 +33,7 @@ char *
 host_memory_backend_get_name(HostMemoryBackend *backend)
 {
     if (!backend->use_canonical_path) {
-        return object_get_canonical_path_component(OBJECT(backend));
+        return g_strdup(object_get_canonical_path_component(OBJECT(backend)));
     }
 
     return object_get_canonical_path(OBJECT(backend));
@@ -54,28 +54,24 @@ host_memory_backend_set_size(Object *obj, Visitor *v, const char *name,
                              void *opaque, Error **errp)
 {
     HostMemoryBackend *backend = MEMORY_BACKEND(obj);
-    Error *local_err = NULL;
     uint64_t value;
 
     if (host_memory_backend_mr_inited(backend)) {
-        error_setg(&local_err, "cannot change property %s of %s ",
-                   name, object_get_typename(obj));
-        goto out;
+        error_setg(errp, "cannot change property %s of %s ", name,
+                   object_get_typename(obj));
+        return;
     }
 
-    visit_type_size(v, name, &value, &local_err);
-    if (local_err) {
-        goto out;
+    if (!visit_type_size(v, name, &value, errp)) {
+        return;
     }
     if (!value) {
-        error_setg(&local_err,
+        error_setg(errp,
                    "property '%s' of %s doesn't take value '%" PRIu64 "'",
                    name, object_get_typename(obj), value);
-        goto out;
+        return;
     }
     backend->size = value;
-out:
-    error_propagate(errp, local_err);
 }
 
 static void
@@ -254,22 +250,17 @@ static void host_memory_backend_set_prealloc_threads(Object *obj, Visitor *v,
     const char *name, void *opaque, Error **errp)
 {
     HostMemoryBackend *backend = MEMORY_BACKEND(obj);
-    Error *local_err = NULL;
     uint32_t value;
 
-    visit_type_uint32(v, name, &value, &local_err);
-    if (local_err) {
-        goto out;
+    if (!visit_type_uint32(v, name, &value, errp)) {
+        return;
     }
     if (value <= 0) {
-        error_setg(&local_err,
-                   "property '%s' of %s doesn't take value '%d'",
-                   name, object_get_typename(obj), value);
-        goto out;
+        error_setg(errp, "property '%s' of %s doesn't take value '%d'", name,
+                   object_get_typename(obj), value);
+        return;
     }
     backend->prealloc_threads = value;
-out:
-    error_propagate(errp, local_err);
 }
 
 static void host_memory_backend_init(Object *obj)
@@ -383,8 +374,10 @@ host_memory_backend_memory_complete(UserCreatable *uc, Error **errp)
         assert(sizeof(backend->host_nodes) >=
                BITS_TO_LONGS(MAX_NODES + 1) * sizeof(unsigned long));
         assert(maxnode <= MAX_NODES);
-        if (mbind(ptr, sz, backend->policy,
-                  maxnode ? backend->host_nodes : NULL, maxnode + 1, flags)) {
+
+        if (maxnode &&
+            mbind(ptr, sz, backend->policy, backend->host_nodes, maxnode + 1,
+                  flags)) {
             if (backend->policy != MPOL_DEFAULT || errno != ENOSYS) {
                 error_setg_errno(errp, errno,
                                  "cannot bind memory to host NUMA nodes");
@@ -463,51 +456,50 @@ host_memory_backend_class_init(ObjectClass *oc, void *data)
 
     object_class_property_add_bool(oc, "merge",
         host_memory_backend_get_merge,
-        host_memory_backend_set_merge, &error_abort);
+        host_memory_backend_set_merge);
     object_class_property_set_description(oc, "merge",
-        "Mark memory as mergeable", &error_abort);
+        "Mark memory as mergeable");
     object_class_property_add_bool(oc, "dump",
         host_memory_backend_get_dump,
-        host_memory_backend_set_dump, &error_abort);
+        host_memory_backend_set_dump);
     object_class_property_set_description(oc, "dump",
-        "Set to 'off' to exclude from core dump", &error_abort);
+        "Set to 'off' to exclude from core dump");
     object_class_property_add_bool(oc, "prealloc",
         host_memory_backend_get_prealloc,
-        host_memory_backend_set_prealloc, &error_abort);
+        host_memory_backend_set_prealloc);
     object_class_property_set_description(oc, "prealloc",
-        "Preallocate memory", &error_abort);
+        "Preallocate memory");
     object_class_property_add(oc, "prealloc-threads", "int",
         host_memory_backend_get_prealloc_threads,
         host_memory_backend_set_prealloc_threads,
-        NULL, NULL, &error_abort);
+        NULL, NULL);
     object_class_property_set_description(oc, "prealloc-threads",
-        "Number of CPU threads to use for prealloc", &error_abort);
+        "Number of CPU threads to use for prealloc");
     object_class_property_add(oc, "size", "int",
         host_memory_backend_get_size,
         host_memory_backend_set_size,
-        NULL, NULL, &error_abort);
+        NULL, NULL);
     object_class_property_set_description(oc, "size",
-        "Size of the memory region (ex: 500M)", &error_abort);
+        "Size of the memory region (ex: 500M)");
     object_class_property_add(oc, "host-nodes", "int",
         host_memory_backend_get_host_nodes,
         host_memory_backend_set_host_nodes,
-        NULL, NULL, &error_abort);
+        NULL, NULL);
     object_class_property_set_description(oc, "host-nodes",
-        "Binds memory to the list of NUMA host nodes", &error_abort);
+        "Binds memory to the list of NUMA host nodes");
     object_class_property_add_enum(oc, "policy", "HostMemPolicy",
         &HostMemPolicy_lookup,
         host_memory_backend_get_policy,
-        host_memory_backend_set_policy, &error_abort);
+        host_memory_backend_set_policy);
     object_class_property_set_description(oc, "policy",
-        "Set the NUMA policy", &error_abort);
+        "Set the NUMA policy");
     object_class_property_add_bool(oc, "share",
-        host_memory_backend_get_share, host_memory_backend_set_share,
-        &error_abort);
+        host_memory_backend_get_share, host_memory_backend_set_share);
     object_class_property_set_description(oc, "share",
-        "Mark the memory as private to QEMU or shared", &error_abort);
+        "Mark the memory as private to QEMU or shared");
     object_class_property_add_bool(oc, "x-use-canonical-path-for-ramblock-id",
         host_memory_backend_get_use_canonical_path,
-        host_memory_backend_set_use_canonical_path, &error_abort);
+        host_memory_backend_set_use_canonical_path);
 }
 
 static const TypeInfo host_memory_backend_info = {

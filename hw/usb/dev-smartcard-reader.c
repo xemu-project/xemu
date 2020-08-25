@@ -1146,7 +1146,7 @@ static void ccid_handle_data(USBDevice *dev, USBPacket *p)
     }
 }
 
-static void ccid_unrealize(USBDevice *dev, Error **errp)
+static void ccid_unrealize(USBDevice *dev)
 {
     USBCCIDState *s = USB_CCID_DEV(dev);
 
@@ -1269,23 +1269,18 @@ void ccid_card_card_inserted(CCIDCardState *card)
     ccid_on_slot_change(s, true);
 }
 
-static void ccid_card_unrealize(DeviceState *qdev, Error **errp)
+static void ccid_card_unrealize(DeviceState *qdev)
 {
     CCIDCardState *card = CCID_CARD(qdev);
     CCIDCardClass *cc = CCID_CARD_GET_CLASS(card);
     USBDevice *dev = USB_DEVICE(qdev->parent_bus->parent);
     USBCCIDState *s = USB_CCID_DEV(dev);
-    Error *local_err = NULL;
 
     if (ccid_card_inserted(s)) {
         ccid_card_card_removed(card);
     }
     if (cc->unrealize) {
-        cc->unrealize(card, &local_err);
-        if (local_err != NULL) {
-            error_propagate(errp, local_err);
-            return;
-        }
+        cc->unrealize(card);
     }
     s->card = NULL;
 }
@@ -1325,7 +1320,7 @@ static void ccid_realize(USBDevice *dev, Error **errp)
     usb_desc_init(dev);
     qbus_create_inplace(&s->bus, sizeof(s->bus), TYPE_CCID_BUS, DEVICE(dev),
                         NULL);
-    qbus_set_hotplug_handler(BUS(&s->bus), OBJECT(dev), &error_abort);
+    qbus_set_hotplug_handler(BUS(&s->bus), OBJECT(dev));
     s->intr = usb_ep_get(dev, USB_TOKEN_IN, CCID_INT_IN_EP);
     s->bulk = usb_ep_get(dev, USB_TOKEN_IN, CCID_BULK_IN_EP);
     s->card = NULL;

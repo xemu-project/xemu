@@ -3382,6 +3382,7 @@ static void init_excp_POWER9(CPUPPCState *env)
 
 #if !defined(CONFIG_USER_ONLY)
     env->excp_vectors[POWERPC_EXCP_HVIRT]    = 0x00000EA0;
+    env->excp_vectors[POWERPC_EXCP_SYSCALL_VECTORED] = 0x00000000;
 #endif
 }
 
@@ -5210,7 +5211,7 @@ POWERPC_FAMILY(e5500)(ObjectClass *oc, void *data)
                        PPC_FLOAT_STFIWX | PPC_WAIT |
                        PPC_MEM_TLBSYNC | PPC_TLBIVAX | PPC_MEM_SYNC |
                        PPC_64B | PPC_POPCNTB | PPC_POPCNTWD;
-    pcc->insns_flags2 = PPC2_BOOKE206 | PPC2_PRCNTL | PPC2_PERM_ISA206 | \
+    pcc->insns_flags2 = PPC2_BOOKE206 | PPC2_PRCNTL | PPC2_PERM_ISA206 |
                         PPC2_FP_CVT_S64;
     pcc->msr_mask = (1ull << MSR_CM) |
                     (1ull << MSR_GS) |
@@ -5258,7 +5259,7 @@ POWERPC_FAMILY(e6500)(ObjectClass *oc, void *data)
                        PPC_FLOAT_STFIWX | PPC_WAIT |
                        PPC_MEM_TLBSYNC | PPC_TLBIVAX | PPC_MEM_SYNC |
                        PPC_64B | PPC_POPCNTB | PPC_POPCNTWD | PPC_ALTIVEC;
-    pcc->insns_flags2 = PPC2_BOOKE206 | PPC2_PRCNTL | PPC2_PERM_ISA206 | \
+    pcc->insns_flags2 = PPC2_BOOKE206 | PPC2_PRCNTL | PPC2_PERM_ISA206 |
                         PPC2_FP_CVT_S64 | PPC2_ATOMIC_ISA206;
     pcc->msr_mask = (1ull << MSR_CM) |
                     (1ull << MSR_GS) |
@@ -9030,7 +9031,7 @@ POWERPC_FAMILY(POWER9)(ObjectClass *oc, void *data)
     pcc->flags = POWERPC_FLAG_VRE | POWERPC_FLAG_SE |
                  POWERPC_FLAG_BE | POWERPC_FLAG_PMM |
                  POWERPC_FLAG_BUS_CLK | POWERPC_FLAG_CFAR |
-                 POWERPC_FLAG_VSX | POWERPC_FLAG_TM;
+                 POWERPC_FLAG_VSX | POWERPC_FLAG_TM | POWERPC_FLAG_SCV;
     pcc->l1_dcache_size = 0x8000;
     pcc->l1_icache_size = 0x8000;
     pcc->interrupts_big_endian = ppc_cpu_interrupts_big_endian_lpcr;
@@ -9084,11 +9085,6 @@ static void init_proc_POWER10(CPUPPCState *env)
     gen_spr_power8_book4(env);
     gen_spr_power8_rpr(env);
     gen_spr_power9_mmu(env);
-
-    /* POWER9 Specific registers */
-    spr_register_kvm(env, SPR_TIDR, "TIDR", NULL, NULL,
-                     spr_read_generic, spr_write_generic,
-                     KVM_REG_PPC_TIDR, 0);
 
     /* FIXME: Filter fields properly based on privilege level */
     spr_register_kvm_hv(env, SPR_PSSCR, "PSSCR", NULL, NULL, NULL, NULL,
@@ -9881,7 +9877,7 @@ static int gdb_get_float_reg(CPUPPCState *env, GByteArray *buf, int n)
 {
     uint8_t *mem_buf;
     if (n < 32) {
-        gdb_get_reg64(buf, *cpu_fpr_ptr(env, n));
+        gdb_get_float64(buf, *cpu_fpr_ptr(env, n));
         mem_buf = gdb_get_reg_ptr(buf, 8);
         ppc_maybe_bswap_register(env, mem_buf, 8);
         return 8;
@@ -10293,19 +10289,14 @@ unrealize:
     cpu_exec_unrealizefn(cs);
 }
 
-static void ppc_cpu_unrealize(DeviceState *dev, Error **errp)
+static void ppc_cpu_unrealize(DeviceState *dev)
 {
     PowerPCCPU *cpu = POWERPC_CPU(dev);
     PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
-    Error *local_err = NULL;
     opc_handler_t **table, **table_2;
     int i, j, k;
 
-    pcc->parent_unrealize(dev, &local_err);
-    if (local_err != NULL) {
-        error_propagate(errp, local_err);
-        return;
-    }
+    pcc->parent_unrealize(dev);
 
     for (i = 0; i < PPC_CPU_OPCODES_LEN; i++) {
         if (cpu->opcodes[i] == &invalid_handler) {
@@ -10491,7 +10482,7 @@ static void ppc_cpu_parse_featurestr(const char *type, char *features,
 
         if (compat_str) {
             char *v = compat_str + strlen("compat=");
-            object_property_set_str(machine, v, "max-cpu-compat", &local_err);
+            object_property_set_str(machine, "max-cpu-compat", v, &local_err);
         }
         g_strfreev(inpieces);
         if (local_err) {
@@ -10946,16 +10937,20 @@ static const TypeInfo ppc_cpu_type_info = {
     .class_init = ppc_cpu_class_init,
 };
 
+#ifndef CONFIG_USER_ONLY
 static const TypeInfo ppc_vhyp_type_info = {
     .name = TYPE_PPC_VIRTUAL_HYPERVISOR,
     .parent = TYPE_INTERFACE,
     .class_size = sizeof(PPCVirtualHypervisorClass),
 };
+#endif
 
 static void ppc_cpu_register_types(void)
 {
     type_register_static(&ppc_cpu_type_info);
+#ifndef CONFIG_USER_ONLY
     type_register_static(&ppc_vhyp_type_info);
+#endif
 }
 
 type_init(ppc_cpu_register_types)

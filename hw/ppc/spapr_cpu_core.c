@@ -218,7 +218,7 @@ static void spapr_cpu_core_reset_handler(void *opaque)
     spapr_cpu_core_reset(opaque);
 }
 
-static void spapr_cpu_core_unrealize(DeviceState *dev, Error **errp)
+static void spapr_cpu_core_unrealize(DeviceState *dev)
 {
     SpaprCpuCore *sc = SPAPR_CPU_CORE(OBJECT(dev));
     CPUCore *cc = CPU_CORE(dev);
@@ -239,9 +239,8 @@ static void spapr_realize_vcpu(PowerPCCPU *cpu, SpaprMachineState *spapr,
     CPUState *cs = CPU(cpu);
     Error *local_err = NULL;
 
-    object_property_set_bool(OBJECT(cpu), true, "realized", &local_err);
-    if (local_err) {
-        goto error;
+    if (!qdev_realize(DEVICE(cpu), NULL, errp)) {
+        return;
     }
 
     /* Set time-base frequency to 512 MHz */
@@ -251,20 +250,14 @@ static void spapr_realize_vcpu(PowerPCCPU *cpu, SpaprMachineState *spapr,
     kvmppc_set_papr(cpu);
 
     if (spapr_irq_cpu_intc_create(spapr, cpu, &local_err) < 0) {
-        goto error_intc_create;
+        cpu_remove_sync(CPU(cpu));
+        return;
     }
 
     if (!sc->pre_3_0_migration) {
         vmstate_register(NULL, cs->cpu_index, &vmstate_spapr_cpu_state,
                          cpu->machine_data);
     }
-
-    return;
-
-error_intc_create:
-    cpu_remove_sync(CPU(cpu));
-error:
-    error_propagate(errp, local_err);
 }
 
 static PowerPCCPU *spapr_create_vcpu(SpaprCpuCore *sc, int i, Error **errp)
@@ -290,11 +283,8 @@ static PowerPCCPU *spapr_create_vcpu(SpaprCpuCore *sc, int i, Error **errp)
     cpu->node_id = sc->node_id;
 
     id = g_strdup_printf("thread[%d]", i);
-    object_property_add_child(OBJECT(sc), id, obj, &local_err);
+    object_property_add_child(OBJECT(sc), id, obj);
     g_free(id);
-    if (local_err) {
-        goto err;
-    }
 
     cpu->machine_data = g_new0(SpaprCpuState, 1);
 
@@ -410,6 +400,7 @@ static const TypeInfo spapr_cpu_core_type_infos[] = {
     DEFINE_SPAPR_CPU_CORE_TYPE("power8nvl_v1.0"),
     DEFINE_SPAPR_CPU_CORE_TYPE("power9_v1.0"),
     DEFINE_SPAPR_CPU_CORE_TYPE("power9_v2.0"),
+    DEFINE_SPAPR_CPU_CORE_TYPE("power10_v1.0"),
 #ifdef CONFIG_KVM
     DEFINE_SPAPR_CPU_CORE_TYPE("host"),
 #endif

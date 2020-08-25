@@ -14,7 +14,7 @@ static void usb_bus_dev_print(Monitor *mon, DeviceState *qdev, int indent);
 
 static char *usb_get_dev_path(DeviceState *dev);
 static char *usb_get_fw_dev_path(DeviceState *qdev);
-static void usb_qdev_unrealize(DeviceState *qdev, Error **errp);
+static void usb_qdev_unrealize(DeviceState *qdev);
 
 static Property usb_props[] = {
     DEFINE_PROP_STRING("port", USBDevice, port_path),
@@ -84,7 +84,7 @@ void usb_bus_new(USBBus *bus, size_t bus_size,
                  USBBusOps *ops, DeviceState *host)
 {
     qbus_create_inplace(bus, bus_size, TYPE_USB_BUS, host, NULL);
-    qbus_set_bus_hotplug_handler(BUS(bus), &error_abort);
+    qbus_set_bus_hotplug_handler(BUS(bus));
     bus->ops = ops;
     bus->busnr = next_usb_bus++;
     QTAILQ_INIT(&bus->free);
@@ -130,12 +130,12 @@ USBDevice *usb_device_find_device(USBDevice *dev, uint8_t addr)
     return NULL;
 }
 
-static void usb_device_unrealize(USBDevice *dev, Error **errp)
+static void usb_device_unrealize(USBDevice *dev)
 {
     USBDeviceClass *klass = USB_DEVICE_GET_CLASS(dev);
 
     if (klass->unrealize) {
-        klass->unrealize(dev, errp);
+        klass->unrealize(dev);
     }
 }
 
@@ -265,14 +265,14 @@ static void usb_qdev_realize(DeviceState *qdev, Error **errp)
     if (dev->auto_attach) {
         usb_device_attach(dev, &local_err);
         if (local_err) {
-            usb_qdev_unrealize(qdev, NULL);
+            usb_qdev_unrealize(qdev);
             error_propagate(errp, local_err);
             return;
         }
     }
 }
 
-static void usb_qdev_unrealize(DeviceState *qdev, Error **errp)
+static void usb_qdev_unrealize(DeviceState *qdev)
 {
     USBDevice *dev = USB_DEVICE(qdev);
     USBDescString *s, *next;
@@ -286,7 +286,7 @@ static void usb_qdev_unrealize(DeviceState *qdev, Error **errp)
     if (dev->attached) {
         usb_device_detach(dev);
     }
-    usb_device_unrealize(dev, errp);
+    usb_device_unrealize(dev);
     if (dev->port) {
         usb_release_port(dev);
     }
@@ -296,14 +296,13 @@ typedef struct LegacyUSBFactory
 {
     const char *name;
     const char *usbdevice_name;
-    USBDevice *(*usbdevice_init)(USBBus *bus, const char *params);
+    USBDevice *(*usbdevice_init)(const char *params);
 } LegacyUSBFactory;
 
 static GSList *legacy_usb_factory;
 
 void usb_legacy_register(const char *typename, const char *usbdevice_name,
-                         USBDevice *(*usbdevice_init)(USBBus *bus,
-                                                      const char *params))
+                         USBDevice *(*usbdevice_init)(const char *params))
 {
     if (usbdevice_name) {
         LegacyUSBFactory *f = g_malloc0(sizeof(*f));
@@ -314,38 +313,27 @@ void usb_legacy_register(const char *typename, const char *usbdevice_name,
     }
 }
 
-USBDevice *usb_create(USBBus *bus, const char *name)
+USBDevice *usb_new(const char *name)
 {
-    DeviceState *dev;
-
-    dev = qdev_create(&bus->qbus, name);
-    return USB_DEVICE(dev);
+    return USB_DEVICE(qdev_new(name));
 }
 
-static USBDevice *usb_try_create_simple(USBBus *bus, const char *name,
-                                        Error **errp)
+static USBDevice *usb_try_new(const char *name)
 {
-    Error *err = NULL;
-    USBDevice *dev;
+    return USB_DEVICE(qdev_try_new(name));
+}
 
-    dev = USB_DEVICE(qdev_try_create(&bus->qbus, name));
-    if (!dev) {
-        error_setg(errp, "Failed to create USB device '%s'", name);
-        return NULL;
-    }
-    object_property_set_bool(OBJECT(dev), true, "realized", &err);
-    if (err) {
-        error_propagate_prepend(errp, err,
-                                "Failed to initialize USB device '%s': ",
-                                name);
-        return NULL;
-    }
-    return dev;
+bool usb_realize_and_unref(USBDevice *dev, USBBus *bus, Error **errp)
+{
+    return qdev_realize_and_unref(&dev->qdev, &bus->qbus, errp);
 }
 
 USBDevice *usb_create_simple(USBBus *bus, const char *name)
 {
-    return usb_try_create_simple(bus, name, &error_abort);
+    USBDevice *dev = usb_new(name);
+
+    usb_realize_and_unref(dev, bus, &error_abort);
+    return dev;
 }
 
 static void usb_fill_port(USBPort *port, void *opaque, int index,
@@ -425,6 +413,7 @@ void usb_claim_port(USBDevice *dev, Error **errp)
 {
     USBBus *bus = usb_bus_from_device(dev);
     USBPort *port;
+    USBDevice *hub;
 
     assert(dev->port == NULL);
 
@@ -442,7 +431,10 @@ void usb_claim_port(USBDevice *dev, Error **errp)
     } else {
         if (bus->nfree == 1 && strcmp(object_get_typename(OBJECT(dev)), "usb-hub") != 0) {
             /* Create a new hub and chain it on */
-            usb_try_create_simple(bus, "usb-hub", NULL);
+            hub = usb_try_new("usb-hub");
+            if (hub) {
+                usb_realize_and_unref(hub, bus, NULL);
+            }
         }
         if (bus->nfree == 0) {
             error_setg(errp, "tried to attach usb device %s to a bus "
@@ -700,20 +692,19 @@ USBDevice *usbdevice_create(const char *cmdline)
     }
 
     if (f->usbdevice_init) {
-        dev = f->usbdevice_init(bus, params);
+        dev = f->usbdevice_init(params);
     } else {
         if (*params) {
             error_report("usbdevice %s accepts no params", driver);
             return NULL;
         }
-        dev = usb_create(bus, f->name);
+        dev = usb_new(f->name);
     }
     if (!dev) {
         error_report("Failed to create USB device '%s'", f->name);
         return NULL;
     }
-    object_property_set_bool(OBJECT(dev), true, "realized", &err);
-    if (err) {
+    if (!usb_realize_and_unref(dev, bus, &err)) {
         error_reportf_err(err, "Failed to initialize USB device '%s': ",
                           f->name);
         object_unparent(OBJECT(dev));
@@ -732,15 +723,13 @@ static bool usb_get_attached(Object *obj, Error **errp)
 static void usb_set_attached(Object *obj, bool value, Error **errp)
 {
     USBDevice *dev = USB_DEVICE(obj);
-    Error *err = NULL;
 
     if (dev->attached == value) {
         return;
     }
 
     if (value) {
-        usb_device_attach(dev, &err);
-        error_propagate(errp, err);
+        usb_device_attach(dev, errp);
     } else {
         usb_device_detach(dev);
     }
@@ -753,12 +742,10 @@ static void usb_device_instance_init(Object *obj)
 
     if (klass->attached_settable) {
         object_property_add_bool(obj, "attached",
-                                 usb_get_attached, usb_set_attached,
-                                 NULL);
+                                 usb_get_attached, usb_set_attached);
     } else {
         object_property_add_bool(obj, "attached",
-                                 usb_get_attached, NULL,
-                                 NULL);
+                                 usb_get_attached, NULL);
     }
 }
 

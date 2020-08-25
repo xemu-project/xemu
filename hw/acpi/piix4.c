@@ -30,6 +30,7 @@
 #include "hw/acpi/acpi.h"
 #include "sysemu/runstate.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/xen.h"
 #include "qapi/error.h"
 #include "qemu/range.h"
 #include "exec/address-spaces.h"
@@ -41,7 +42,6 @@
 #include "hw/mem/nvdimm.h"
 #include "hw/acpi/memory_hotplug.h"
 #include "hw/acpi/acpi_dev_interface.h"
-#include "hw/xen/xen.h"
 #include "migration/vmstate.h"
 #include "hw/core/cpu.h"
 #include "trace.h"
@@ -77,7 +77,7 @@ typedef struct PIIX4PMState {
     Notifier powerdown_notifier;
 
     AcpiPciHpState acpi_pci_hotplug;
-    bool use_acpi_pci_hotplug;
+    bool use_acpi_hotplug_bridge;
 
     uint8_t disable_s3;
     uint8_t disable_s4;
@@ -204,16 +204,17 @@ static const VMStateDescription vmstate_pci_status = {
     }
 };
 
-static bool vmstate_test_use_acpi_pci_hotplug(void *opaque, int version_id)
+static bool vmstate_test_use_acpi_hotplug_bridge(void *opaque, int version_id)
 {
     PIIX4PMState *s = opaque;
-    return s->use_acpi_pci_hotplug;
+    return s->use_acpi_hotplug_bridge;
 }
 
-static bool vmstate_test_no_use_acpi_pci_hotplug(void *opaque, int version_id)
+static bool vmstate_test_no_use_acpi_hotplug_bridge(void *opaque,
+                                                    int version_id)
 {
     PIIX4PMState *s = opaque;
-    return !s->use_acpi_pci_hotplug;
+    return !s->use_acpi_hotplug_bridge;
 }
 
 static bool vmstate_test_use_memhp(void *opaque)
@@ -243,7 +244,7 @@ static bool vmstate_test_use_cpuhp(void *opaque)
 static int vmstate_cpuhp_pre_load(void *opaque)
 {
     Object *obj = OBJECT(opaque);
-    object_property_set_bool(obj, false, "cpu-hotplug-legacy", &error_abort);
+    object_property_set_bool(obj, "cpu-hotplug-legacy", false, &error_abort);
     return 0;
 }
 
@@ -290,11 +291,11 @@ static const VMStateDescription vmstate_acpi = {
         VMSTATE_STRUCT_TEST(
             acpi_pci_hotplug.acpi_pcihp_pci_status[ACPI_PCIHP_BSEL_DEFAULT],
             PIIX4PMState,
-            vmstate_test_no_use_acpi_pci_hotplug,
+            vmstate_test_no_use_acpi_hotplug_bridge,
             2, vmstate_pci_status,
             struct AcpiPciHpPciStatus),
         VMSTATE_PCI_HOTPLUG(acpi_pci_hotplug, PIIX4PMState,
-                            vmstate_test_use_acpi_pci_hotplug),
+                            vmstate_test_use_acpi_hotplug_bridge),
         VMSTATE_END_OF_LIST()
     },
     .subsections = (const VMStateDescription*[]) {
@@ -444,17 +445,17 @@ static void piix4_pm_add_propeties(PIIX4PMState *s)
     static const uint16_t sci_int = 9;
 
     object_property_add_uint8_ptr(OBJECT(s), ACPI_PM_PROP_ACPI_ENABLE_CMD,
-                                  &acpi_enable_cmd, OBJ_PROP_FLAG_READ, NULL);
+                                  &acpi_enable_cmd, OBJ_PROP_FLAG_READ);
     object_property_add_uint8_ptr(OBJECT(s), ACPI_PM_PROP_ACPI_DISABLE_CMD,
-                                  &acpi_disable_cmd, OBJ_PROP_FLAG_READ, NULL);
+                                  &acpi_disable_cmd, OBJ_PROP_FLAG_READ);
     object_property_add_uint32_ptr(OBJECT(s), ACPI_PM_PROP_GPE0_BLK,
-                                  &gpe0_blk, OBJ_PROP_FLAG_READ, NULL);
+                                  &gpe0_blk, OBJ_PROP_FLAG_READ);
     object_property_add_uint32_ptr(OBJECT(s), ACPI_PM_PROP_GPE0_BLK_LEN,
-                                  &gpe0_blk_len, OBJ_PROP_FLAG_READ, NULL);
+                                  &gpe0_blk_len, OBJ_PROP_FLAG_READ);
     object_property_add_uint16_ptr(OBJECT(s), ACPI_PM_PROP_SCI_INT,
-                                  &sci_int, OBJ_PROP_FLAG_READ, NULL);
+                                  &sci_int, OBJ_PROP_FLAG_READ);
     object_property_add_uint32_ptr(OBJECT(s), ACPI_PM_PROP_PM_IO_BASE,
-                                  &s->io_base, OBJ_PROP_FLAG_READ, NULL);
+                                  &s->io_base, OBJ_PROP_FLAG_READ);
 }
 
 static void piix4_pm_realize(PCIDevice *dev, Error **errp)
@@ -505,7 +506,7 @@ static void piix4_pm_realize(PCIDevice *dev, Error **errp)
 
     piix4_acpi_system_hot_add_init(pci_address_space_io(dev),
                                    pci_get_bus(dev), s);
-    qbus_set_hotplug_handler(BUS(pci_get_bus(dev)), OBJECT(s), &error_abort);
+    qbus_set_hotplug_handler(BUS(pci_get_bus(dev)), OBJECT(s));
 
     piix4_pm_add_propeties(s);
 }
@@ -514,10 +515,12 @@ I2CBus *piix4_pm_init(PCIBus *bus, int devfn, uint32_t smb_io_base,
                       qemu_irq sci_irq, qemu_irq smi_irq,
                       int smm_enabled, DeviceState **piix4_pm)
 {
+    PCIDevice *pci_dev;
     DeviceState *dev;
     PIIX4PMState *s;
 
-    dev = DEVICE(pci_create(bus, devfn, TYPE_PIIX4_PM));
+    pci_dev = pci_new(devfn, TYPE_PIIX4_PM);
+    dev = DEVICE(pci_dev);
     qdev_prop_set_uint32(dev, "smb_io_base", smb_io_base);
     if (piix4_pm) {
         *piix4_pm = dev;
@@ -528,10 +531,10 @@ I2CBus *piix4_pm_init(PCIBus *bus, int devfn, uint32_t smb_io_base,
     s->smi_irq = smi_irq;
     s->smm_enabled = smm_enabled;
     if (xen_enabled()) {
-        s->use_acpi_pci_hotplug = false;
+        s->use_acpi_hotplug_bridge = false;
     }
 
-    qdev_init_nofail(dev);
+    pci_realize_and_unref(pci_dev, bus, &error_fatal);
 
     return s->smb.smbus;
 }
@@ -593,13 +596,12 @@ static void piix4_acpi_system_hot_add_init(MemoryRegion *parent,
     memory_region_add_subregion(parent, GPE_BASE, &s->io_gpe);
 
     acpi_pcihp_init(OBJECT(s), &s->acpi_pci_hotplug, bus, parent,
-                    s->use_acpi_pci_hotplug);
+                    s->use_acpi_hotplug_bridge);
 
     s->cpu_hotplug_legacy = true;
     object_property_add_bool(OBJECT(s), "cpu-hotplug-legacy",
                              piix4_get_cpu_hotplug_legacy,
-                             piix4_set_cpu_hotplug_legacy,
-                             NULL);
+                             piix4_set_cpu_hotplug_legacy);
     legacy_acpi_cpu_hotplug_init(parent, OBJECT(s), &s->gpe_cpu,
                                  PIIX4_CPU_HOTPLUG_IO_BASE);
 
@@ -632,7 +634,7 @@ static Property piix4_pm_properties[] = {
     DEFINE_PROP_UINT8(ACPI_PM_PROP_S4_DISABLED, PIIX4PMState, disable_s4, 0),
     DEFINE_PROP_UINT8(ACPI_PM_PROP_S4_VAL, PIIX4PMState, s4_val, 2),
     DEFINE_PROP_BOOL("acpi-pci-hotplug-with-bridge-support", PIIX4PMState,
-                     use_acpi_pci_hotplug, true),
+                     use_acpi_hotplug_bridge, true),
     DEFINE_PROP_BOOL("memory-hotplug-support", PIIX4PMState,
                      acpi_memory_hotplug.is_enabled, true),
     DEFINE_PROP_END_OF_LIST(),

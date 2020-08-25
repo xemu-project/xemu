@@ -28,7 +28,7 @@ void kvmppc_set_papr(PowerPCCPU *cpu);
 int kvmppc_set_compat(PowerPCCPU *cpu, uint32_t compat_pvr);
 void kvmppc_set_mpic_proxy(PowerPCCPU *cpu, int mpic_proxy);
 bool kvmppc_get_fwnmi(void);
-int kvmppc_set_fwnmi(void);
+int kvmppc_set_fwnmi(PowerPCCPU *cpu);
 int kvmppc_smt_threads(void);
 void kvmppc_error_append_smt_possible_hint(Error *const *errp);
 int kvmppc_set_smt_threads(int smt);
@@ -169,7 +169,7 @@ static inline bool kvmppc_get_fwnmi(void)
     return false;
 }
 
-static inline int kvmppc_set_fwnmi(void)
+static inline int kvmppc_set_fwnmi(PowerPCCPU *cpu)
 {
     return -1;
 }
@@ -280,6 +280,17 @@ static inline bool kvmppc_has_cap_spapr_vfio(void)
     return false;
 }
 
+static inline void kvmppc_read_hptes(ppc_hash_pte64_t *hptes,
+                                     hwaddr ptex, int n)
+{
+    abort();
+}
+
+static inline void kvmppc_write_hpte(hwaddr ptex, uint64_t pte0, uint64_t pte1)
+{
+    abort();
+}
+
 #endif /* !CONFIG_USER_ONLY */
 
 static inline bool kvmppc_has_cap_epr(void)
@@ -306,17 +317,6 @@ static inline int kvmppc_save_htab(QEMUFile *f, int fd, size_t bufsize,
 
 static inline int kvmppc_load_htab_chunk(QEMUFile *f, int fd, uint32_t index,
                                          uint16_t n_valid, uint16_t n_invalid)
-{
-    abort();
-}
-
-static inline void kvmppc_read_hptes(ppc_hash_pte64_t *hptes,
-                                     hwaddr ptex, int n)
-{
-    abort();
-}
-
-static inline void kvmppc_write_hpte(hwaddr ptex, uint64_t pte0, uint64_t pte1)
 {
     abort();
 }

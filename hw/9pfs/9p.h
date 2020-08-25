@@ -197,22 +197,22 @@ typedef struct V9fsXattr
 
 typedef struct V9fsDir {
     DIR *stream;
-    QemuMutex readdir_mutex;
+    CoMutex readdir_mutex;
 } V9fsDir;
 
 static inline void v9fs_readdir_lock(V9fsDir *dir)
 {
-    qemu_mutex_lock(&dir->readdir_mutex);
+    qemu_co_mutex_lock(&dir->readdir_mutex);
 }
 
 static inline void v9fs_readdir_unlock(V9fsDir *dir)
 {
-    qemu_mutex_unlock(&dir->readdir_mutex);
+    qemu_co_mutex_unlock(&dir->readdir_mutex);
 }
 
 static inline void v9fs_readdir_init(V9fsDir *dir)
 {
-    qemu_mutex_init(&dir->readdir_mutex);
+    qemu_co_mutex_init(&dir->readdir_mutex);
 }
 
 /*
@@ -423,7 +423,7 @@ int v9fs_name_to_path(V9fsState *s, V9fsPath *dirpath,
                       const char *name, V9fsPath *path);
 int v9fs_device_realize_common(V9fsState *s, const V9fsTransport *t,
                                Error **errp);
-void v9fs_device_unrealize_common(V9fsState *s, Error **errp);
+void v9fs_device_unrealize_common(V9fsState *s);
 
 V9fsPDU *pdu_alloc(V9fsState *s);
 void pdu_free(V9fsPDU *pdu);
@@ -436,7 +436,7 @@ struct V9fsTransport {
     ssize_t     (*pdu_vunmarshal)(V9fsPDU *pdu, size_t offset, const char *fmt,
                                   va_list ap);
     void        (*init_in_iov_from_pdu)(V9fsPDU *pdu, struct iovec **piov,
-                                        unsigned int *pniov, size_t *size);
+                                        unsigned int *pniov, size_t size);
     void        (*init_out_iov_from_pdu)(V9fsPDU *pdu, struct iovec **piov,
                                          unsigned int *pniov, size_t size);
     void        (*push_and_notify)(V9fsPDU *pdu);

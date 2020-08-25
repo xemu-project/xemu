@@ -359,7 +359,6 @@ static int blkdebug_parse_perm_list(uint64_t *dest, QDict *options,
     QObject *crumpled_subqdict = NULL;
     Visitor *v = NULL;
     BlockPermissionList *perm_list = NULL, *element;
-    Error *local_err = NULL;
 
     *dest = 0;
 
@@ -375,9 +374,7 @@ static int blkdebug_parse_perm_list(uint64_t *dest, QDict *options,
     }
 
     v = qobject_input_visitor_new(crumpled_subqdict);
-    visit_type_BlockPermissionList(v, NULL, &perm_list, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_BlockPermissionList(v, NULL, &perm_list, errp)) {
         ret = -EINVAL;
         goto out;
     }
@@ -472,9 +469,7 @@ static int blkdebug_open(BlockDriverState *bs, QDict *options, int flags,
     uint64_t align;
 
     opts = qemu_opts_create(&runtime_opts, NULL, 0, &error_abort);
-    qemu_opts_absorb_qdict(opts, options, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!qemu_opts_absorb_qdict(opts, options, errp)) {
         ret = -EINVAL;
         goto out;
     }
@@ -497,7 +492,9 @@ static int blkdebug_open(BlockDriverState *bs, QDict *options, int flags,
 
     /* Open the image file */
     bs->file = bdrv_open_child(qemu_opt_get(opts, "x-image"), options, "image",
-                               bs, &child_file, false, &local_err);
+                               bs, &child_of_bds,
+                               BDRV_CHILD_FILTERED | BDRV_CHILD_PRIMARY,
+                               false, &local_err);
     if (local_err) {
         ret = -EINVAL;
         error_propagate(errp, local_err);
@@ -993,15 +990,15 @@ static int blkdebug_reopen_prepare(BDRVReopenState *reopen_state,
 }
 
 static void blkdebug_child_perm(BlockDriverState *bs, BdrvChild *c,
-                                const BdrvChildRole *role,
+                                BdrvChildRole role,
                                 BlockReopenQueue *reopen_queue,
                                 uint64_t perm, uint64_t shared,
                                 uint64_t *nperm, uint64_t *nshared)
 {
     BDRVBlkdebugState *s = bs->opaque;
 
-    bdrv_filter_default_perms(bs, c, role, reopen_queue, perm, shared,
-                              nperm, nshared);
+    bdrv_default_perms(bs, c, role, reopen_queue,
+                       perm, shared, nperm, nshared);
 
     *nperm |= s->take_child_perms;
     *nshared &= ~s->unshare_child_perms;

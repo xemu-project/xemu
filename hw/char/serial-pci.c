@@ -47,11 +47,8 @@ static void serial_pci_realize(PCIDevice *dev, Error **errp)
 {
     PCISerialState *pci = DO_UPCAST(PCISerialState, dev, dev);
     SerialState *s = &pci->state;
-    Error *err = NULL;
 
-    object_property_set_bool(OBJECT(s), true, "realized", &err);
-    if (err != NULL) {
-        error_propagate(errp, err);
+    if (!qdev_realize(DEVICE(s), NULL, errp)) {
         return;
     }
 
@@ -68,7 +65,7 @@ static void serial_pci_exit(PCIDevice *dev)
     PCISerialState *pci = DO_UPCAST(PCISerialState, dev, dev);
     SerialState *s = &pci->state;
 
-    object_property_set_bool(OBJECT(s), false, "realized", NULL);
+    qdev_unrealize(DEVICE(s));
     qemu_free_irq(s->irq);
 }
 
@@ -108,8 +105,7 @@ static void serial_pci_init(Object *o)
 {
     PCISerialState *ps = PCI_SERIAL(o);
 
-    object_initialize_child(o, "serial", &ps->state, sizeof(ps->state),
-                            TYPE_SERIAL, &error_abort, NULL);
+    object_initialize_child(o, "serial", &ps->state, TYPE_SERIAL);
 }
 
 static const TypeInfo serial_pci_info = {

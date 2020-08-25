@@ -46,3 +46,9 @@ config SCLPCONSOLE
 
 config TERMINAL3270
     bool
+
+config RENESAS_SCI
+    bool
+
+config AVR_USART
+    bool

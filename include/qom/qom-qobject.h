@@ -13,8 +13,6 @@
 #ifndef QEMU_QOM_QOBJECT_H
 #define QEMU_QOM_QOBJECT_H
 
-#include "qom/object.h"
-
 /*
  * object_property_get_qobject:
  * @obj: the object
@@ -30,13 +28,16 @@ struct QObject *object_property_get_qobject(Object *obj, const char *name,
 /**
  * object_property_set_qobject:
  * @obj: the object
- * @ret: The value that will be written to the property.
  * @name: the name of the property
+ * @value: The value that will be written to the property.
  * @errp: returns an error if this function fails
  *
  * Writes a property to a object.
+ *
+ * Returns: %true on success, %false on failure.
  */
-void object_property_set_qobject(Object *obj, struct QObject *qobj,
-                                 const char *name, struct Error **errp);
+bool object_property_set_qobject(Object *obj,
+                                 const char *name, struct QObject *value,
+                                 struct Error **errp);
 
 #endif

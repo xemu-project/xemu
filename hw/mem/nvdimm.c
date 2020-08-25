@@ -45,28 +45,24 @@ static void nvdimm_set_label_size(Object *obj, Visitor *v, const char *name,
                                   void *opaque, Error **errp)
 {
     NVDIMMDevice *nvdimm = NVDIMM(obj);
-    Error *local_err = NULL;
     uint64_t value;
 
     if (nvdimm->nvdimm_mr) {
-        error_setg(&local_err, "cannot change property value");
-        goto out;
+        error_setg(errp, "cannot change property value");
+        return;
     }
 
-    visit_type_size(v, name, &value, &local_err);
-    if (local_err) {
-        goto out;
+    if (!visit_type_size(v, name, &value, errp)) {
+        return;
     }
     if (value < MIN_NAMESPACE_LABEL_SIZE) {
-        error_setg(&local_err, "Property '%s.%s' (0x%" PRIx64 ") is required"
-                   " at least 0x%lx", object_get_typename(obj),
-                   name, value, MIN_NAMESPACE_LABEL_SIZE);
-        goto out;
+        error_setg(errp, "Property '%s.%s' (0x%" PRIx64 ") is required"
+                   " at least 0x%lx", object_get_typename(obj), name, value,
+                   MIN_NAMESPACE_LABEL_SIZE);
+        return;
     }
 
     nvdimm->label_size = value;
-out:
-    error_propagate(errp, local_err);
 }
 
 static void nvdimm_get_uuid(Object *obj, Visitor *v, const char *name,
@@ -86,23 +82,18 @@ static void nvdimm_set_uuid(Object *obj, Visitor *v, const char *name,
                                   void *opaque, Error **errp)
 {
     NVDIMMDevice *nvdimm = NVDIMM(obj);
-    Error *local_err = NULL;
     char *value;
 
-    visit_type_str(v, name, &value, &local_err);
-    if (local_err) {
-        goto out;
+    if (!visit_type_str(v, name, &value, errp)) {
+        return;
     }
 
     if (qemu_uuid_parse(value, &nvdimm->uuid) != 0) {
         error_setg(errp, "Property '%s.%s' has invalid value",
                    object_get_typename(obj), name);
-        goto out;
     }
-    g_free(value);
 
-out:
-    error_propagate(errp, local_err);
+    g_free(value);
 }
 
 
@@ -110,10 +101,10 @@ static void nvdimm_init(Object *obj)
 {
     object_property_add(obj, NVDIMM_LABEL_SIZE_PROP, "int",
                         nvdimm_get_label_size, nvdimm_set_label_size, NULL,
-                        NULL, NULL);
+                        NULL);
 
     object_property_add(obj, NVDIMM_UUID_PROP, "QemuUUID", nvdimm_get_uuid,
-                        nvdimm_set_uuid, NULL, NULL, NULL);
+                        nvdimm_set_uuid, NULL, NULL);
 }
 
 static void nvdimm_finalize(Object *obj)
@@ -146,13 +137,12 @@ static void nvdimm_prepare_memory_region(NVDIMMDevice *nvdimm, Error **errp)
 
     if (size <= nvdimm->label_size || !pmem_size) {
         HostMemoryBackend *hostmem = dimm->hostmem;
-        char *path = object_get_canonical_path_component(OBJECT(hostmem));
 
         error_setg(errp, "the size of memdev %s (0x%" PRIx64 ") is too "
                    "small to contain nvdimm label (0x%" PRIx64 ") and "
                    "aligned PMEM (0x%" PRIx64 ")",
-                   path, memory_region_size(mr), nvdimm->label_size, align);
-        g_free(path);
+                   object_get_canonical_path_component(OBJECT(hostmem)),
+                   memory_region_size(mr), nvdimm->label_size, align);
         return;
     }
 

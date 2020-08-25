@@ -28,12 +28,9 @@ static void core_prop_set_core_id(Object *obj, Visitor *v, const char *name,
                                   void *opaque, Error **errp)
 {
     CPUCore *core = CPU_CORE(obj);
-    Error *local_err = NULL;
     int64_t value;
 
-    visit_type_int(v, name, &value, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_int(v, name, &value, errp)) {
         return;
     }
 
@@ -58,12 +55,9 @@ static void core_prop_set_nr_threads(Object *obj, Visitor *v, const char *name,
                                      void *opaque, Error **errp)
 {
     CPUCore *core = CPU_CORE(obj);
-    Error *local_err = NULL;
     int64_t value;
 
-    visit_type_int(v, name, &value, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_int(v, name, &value, errp)) {
         return;
     }
 
@@ -76,9 +70,9 @@ static void cpu_core_instance_init(Object *obj)
     CPUCore *core = CPU_CORE(obj);
 
     object_property_add(obj, "core-id", "int", core_prop_get_core_id,
-                        core_prop_set_core_id, NULL, NULL, NULL);
+                        core_prop_set_core_id, NULL, NULL);
     object_property_add(obj, "nr-threads", "int", core_prop_get_nr_threads,
-                        core_prop_set_nr_threads, NULL, NULL, NULL);
+                        core_prop_set_nr_threads, NULL, NULL);
     core->nr_threads = ms->smp.threads;
 }
 

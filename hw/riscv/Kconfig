@@ -4,6 +4,9 @@ config HTIF
 config HART
     bool
 
+config IBEX
+    bool
+
 config SIFIVE
     bool
     select MSI_NONBROKEN
@@ -26,6 +29,12 @@ config SPIKE
     select HART
     select HTIF
     select SIFIVE
+
+config OPENTITAN
+    bool
+    select IBEX
+    select HART
+    select UNIMP
 
 config RISCV_VIRT
     bool

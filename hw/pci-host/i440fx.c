@@ -23,6 +23,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/units.h"
 #include "qemu/range.h"
 #include "hw/i386/pc.h"
 #include "hw/pci/pci.h"
@@ -212,19 +213,19 @@ static void i440fx_pcihost_initfn(Object *obj)
 
     object_property_add(obj, PCI_HOST_PROP_PCI_HOLE_START, "uint32",
                         i440fx_pcihost_get_pci_hole_start,
-                        NULL, NULL, NULL, NULL);
+                        NULL, NULL, NULL);
 
     object_property_add(obj, PCI_HOST_PROP_PCI_HOLE_END, "uint32",
                         i440fx_pcihost_get_pci_hole_end,
-                        NULL, NULL, NULL, NULL);
+                        NULL, NULL, NULL);
 
     object_property_add(obj, PCI_HOST_PROP_PCI_HOLE64_START, "uint64",
                         i440fx_pcihost_get_pci_hole64_start,
-                        NULL, NULL, NULL, NULL);
+                        NULL, NULL, NULL);
 
     object_property_add(obj, PCI_HOST_PROP_PCI_HOLE64_END, "uint64",
                         i440fx_pcihost_get_pci_hole64_end,
-                        NULL, NULL, NULL, NULL);
+                        NULL, NULL, NULL);
 }
 
 static void i440fx_pcihost_realize(DeviceState *dev, Error **errp)
@@ -270,13 +271,13 @@ PCIBus *i440fx_init(const char *host_type, const char *pci_type,
     unsigned i;
     I440FXState *i440fx;
 
-    dev = qdev_create(NULL, host_type);
+    dev = qdev_new(host_type);
     s = PCI_HOST_BRIDGE(dev);
     b = pci_root_bus_new(dev, NULL, pci_address_space,
                          address_space_io, 0, TYPE_PCI_BUS);
     s->bus = b;
-    object_property_add_child(qdev_get_machine(), "i440fx", OBJECT(dev), NULL);
-    qdev_init_nofail(dev);
+    object_property_add_child(qdev_get_machine(), "i440fx", OBJECT(dev));
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
     d = pci_create_simple(b, 0, pci_type);
     *pi440fx_state = I440FX_PCI_DEVICE(d);
@@ -301,14 +302,14 @@ PCIBus *i440fx_init(const char *host_type, const char *pci_type,
     memory_region_set_enabled(&f->smram_region, true);
 
     /* smram, as seen by SMM CPUs */
-    memory_region_init(&f->smram, OBJECT(d), "smram", 1ull << 32);
+    memory_region_init(&f->smram, OBJECT(d), "smram", 4 * GiB);
     memory_region_set_enabled(&f->smram, true);
     memory_region_init_alias(&f->low_smram, OBJECT(d), "smram-low",
                              f->ram_memory, 0xa0000, 0x20000);
     memory_region_set_enabled(&f->low_smram, true);
     memory_region_add_subregion(&f->smram, 0xa0000, &f->low_smram);
     object_property_add_const_link(qdev_get_machine(), "smram",
-                                   OBJECT(&f->smram), &error_abort);
+                                   OBJECT(&f->smram));
 
     init_pam(dev, f->ram_memory, f->system_memory, f->pci_address_space,
              &f->pam_regions[0], PAM_BIOS_BASE, PAM_BIOS_SIZE);

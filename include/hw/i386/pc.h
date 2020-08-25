@@ -33,8 +33,10 @@ struct PCMachineState {
     PCIBus *bus;
     I2CBus *smbus;
     PFlashCFI01 *flash[2];
+    ISADevice *pcspk;
 
     /* Configuration options: */
+    uint64_t max_ram_below_4g;
     OnOffAuto vmport;
 
     bool acpi_build_enabled;
@@ -51,6 +53,7 @@ struct PCMachineState {
 };
 
 #define PC_MACHINE_ACPI_DEVICE_PROP "acpi-device"
+#define PC_MACHINE_MAX_RAM_BELOW_4G "max-ram-below-4g"
 #define PC_MACHINE_DEVMEM_REGION_SIZE "device-memory-region-size"
 #define PC_MACHINE_VMPORT           "vmport"
 #define PC_MACHINE_SMBUS            "smbus"
@@ -129,19 +132,6 @@ typedef struct PCMachineClass {
 
 GSIState *pc_gsi_create(qemu_irq **irqs, bool pci_enabled);
 
-/* vmport.c */
-#define TYPE_VMPORT "vmport"
-typedef uint32_t (VMPortReadFunc)(void *opaque, uint32_t address);
-
-static inline void vmport_init(ISABus *bus)
-{
-    isa_create_simple(bus, TYPE_VMPORT);
-}
-
-void vmport_register(unsigned char command, VMPortReadFunc *func, void *opaque);
-void vmmouse_get_data(uint32_t *data);
-void vmmouse_set_data(const uint32_t *data);
-
 /* pc.c */
 extern int fd_bootchk;
 
@@ -171,11 +161,10 @@ void pc_memory_init(PCMachineState *pcms,
                     MemoryRegion **ram_memory);
 uint64_t pc_pci_hole64_start(void);
 DeviceState *pc_vga_init(ISABus *isa_bus, PCIBus *pci_bus);
-void pc_basic_device_init(ISABus *isa_bus, qemu_irq *gsi,
+void pc_basic_device_init(struct PCMachineState *pcms,
+                          ISABus *isa_bus, qemu_irq *gsi,
                           ISADevice **rtc_state,
                           bool create_fdctrl,
-                          bool no_vmport,
-                          bool has_pit,
                           uint32_t hpet_irqs);
 void pc_init_ne2k_isa(ISABus *bus, NICInfo *nd);
 void pc_cmos_init(PCMachineState *pcms,
@@ -189,7 +178,6 @@ typedef void (*cpu_set_smm_t)(int smm, void *arg);
 void pc_i8259_create(ISABus *isa_bus, qemu_irq *i8259_irqs);
 
 ISADevice *pc_find_fdc0(void);
-int cmos_get_fd_drive_type(FloppyDriveType fd0);
 
 /* port92.c */
 #define PORT92_A20_LINE "a20"
@@ -198,11 +186,15 @@ int cmos_get_fd_drive_type(FloppyDriveType fd0);
 
 /* pc_sysfw.c */
 void pc_system_flash_create(PCMachineState *pcms);
+void pc_system_flash_cleanup_unused(PCMachineState *pcms);
 void pc_system_firmware_init(PCMachineState *pcms, MemoryRegion *rom_memory);
 
 /* acpi-build.c */
 void pc_madt_cpu_entry(AcpiDeviceIf *adev, int uid,
                        const CPUArchIdList *apic_ids, GArray *entry);
+
+extern GlobalProperty pc_compat_5_0[];
+extern const size_t pc_compat_5_0_len;
 
 extern GlobalProperty pc_compat_4_2[];
 extern const size_t pc_compat_4_2_len;

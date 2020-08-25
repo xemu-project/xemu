@@ -27,6 +27,7 @@
 #include "qapi/error.h"
 #include "qemu/module.h"
 #include "sysemu/sysemu.h"
+#include "hw/acpi/aml-build.h"
 #include "hw/char/serial.h"
 #include "hw/isa/isa.h"
 #include "hw/qdev-properties.h"
@@ -74,11 +75,30 @@ static void serial_isa_realizefn(DeviceState *dev, Error **errp)
     index++;
 
     isa_init_irq(isadev, &s->irq, isa->isairq);
-    object_property_set_bool(OBJECT(s), true, "realized", errp);
+    qdev_realize(DEVICE(s), NULL, errp);
     qdev_set_legacy_instance_id(dev, isa->iobase, 3);
 
     memory_region_init_io(&s->io, OBJECT(isa), &serial_io_ops, s, "serial", 8);
     isa_register_ioport(isadev, &s->io, isa->iobase);
+}
+
+static void serial_isa_build_aml(ISADevice *isadev, Aml *scope)
+{
+    ISASerialState *isa = ISA_SERIAL(isadev);
+    Aml *dev;
+    Aml *crs;
+
+    crs = aml_resource_template();
+    aml_append(crs, aml_io(AML_DECODE16, isa->iobase, isa->iobase, 0x00, 0x08));
+    aml_append(crs, aml_irq_no_flags(isa->isairq));
+
+    dev = aml_device("COM%d", isa->index + 1);
+    aml_append(dev, aml_name_decl("_HID", aml_eisaid("PNP0501")));
+    aml_append(dev, aml_name_decl("_UID", aml_int(isa->index + 1)));
+    aml_append(dev, aml_name_decl("_STA", aml_int(0xf)));
+    aml_append(dev, aml_name_decl("_CRS", crs));
+
+    aml_append(scope, dev);
 }
 
 static const VMStateDescription vmstate_isa_serial = {
@@ -103,9 +123,11 @@ static Property serial_isa_properties[] = {
 static void serial_isa_class_initfn(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    ISADeviceClass *isa = ISA_DEVICE_CLASS(klass);
 
     dc->realize = serial_isa_realizefn;
     dc->vmsd = &vmstate_isa_serial;
+    isa->build_aml = serial_isa_build_aml;
     device_class_set_props(dc, serial_isa_properties);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
 }
@@ -114,8 +136,7 @@ static void serial_isa_initfn(Object *o)
 {
     ISASerialState *self = ISA_SERIAL(o);
 
-    object_initialize_child(o, "serial", &self->state, sizeof(self->state),
-                            TYPE_SERIAL, &error_abort, NULL);
+    object_initialize_child(o, "serial", &self->state, TYPE_SERIAL);
 }
 
 static const TypeInfo serial_isa_info = {
@@ -138,11 +159,11 @@ static void serial_isa_init(ISABus *bus, int index, Chardev *chr)
     DeviceState *dev;
     ISADevice *isadev;
 
-    isadev = isa_create(bus, TYPE_ISA_SERIAL);
+    isadev = isa_new(TYPE_ISA_SERIAL);
     dev = DEVICE(isadev);
     qdev_prop_set_uint32(dev, "index", index);
     qdev_prop_set_chr(dev, "chardev", chr);
-    qdev_init_nofail(dev);
+    isa_realize_and_unref(isadev, bus, &error_fatal);
 }
 
 void serial_hds_isa_init(ISABus *bus, int from, int to)

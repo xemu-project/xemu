@@ -140,12 +140,12 @@ enum {
 struct lo_data {
     pthread_mutex_t mutex;
     int debug;
-    int norace;
     int writeback;
     int flock;
     int posix_lock;
     int xattr;
     char *source;
+    char *modcaps;
     double timeout;
     int cache;
     int timeout_set;
@@ -171,12 +171,12 @@ static const struct fuse_opt lo_opts[] = {
     { "no_posix_lock", offsetof(struct lo_data, posix_lock), 0 },
     { "xattr", offsetof(struct lo_data, xattr), 1 },
     { "no_xattr", offsetof(struct lo_data, xattr), 0 },
+    { "modcaps=%s", offsetof(struct lo_data, modcaps), 0 },
     { "timeout=%lf", offsetof(struct lo_data, timeout), 0 },
     { "timeout=", offsetof(struct lo_data, timeout_set), 1 },
     { "cache=none", offsetof(struct lo_data, cache), CACHE_NONE },
     { "cache=auto", offsetof(struct lo_data, cache), CACHE_AUTO },
     { "cache=always", offsetof(struct lo_data, cache), CACHE_ALWAYS },
-    { "norace", offsetof(struct lo_data, norace), 1 },
     { "readdirplus", offsetof(struct lo_data, readdirplus_set), 1 },
     { "no_readdirplus", offsetof(struct lo_data, readdirplus_clear), 1 },
     FUSE_OPT_END
@@ -592,136 +592,6 @@ static void lo_getattr(fuse_req_t req, fuse_ino_t ino,
     fuse_reply_attr(req, &buf, lo->timeout);
 }
 
-/*
- * Increments parent->nlookup and caller must release refcount using
- * lo_inode_put(&parent).
- */
-static int lo_parent_and_name(struct lo_data *lo, struct lo_inode *inode,
-                              char path[PATH_MAX], struct lo_inode **parent)
-{
-    char procname[64];
-    char *last;
-    struct stat stat;
-    struct lo_inode *p;
-    int retries = 2;
-    int res;
-
-retry:
-    sprintf(procname, "%i", inode->fd);
-
-    res = readlinkat(lo->proc_self_fd, procname, path, PATH_MAX);
-    if (res < 0) {
-        fuse_log(FUSE_LOG_WARNING, "%s: readlink failed: %m\n", __func__);
-        goto fail_noretry;
-    }
-
-    if (res >= PATH_MAX) {
-        fuse_log(FUSE_LOG_WARNING, "%s: readlink overflowed\n", __func__);
-        goto fail_noretry;
-    }
-    path[res] = '\0';
-
-    last = strrchr(path, '/');
-    if (last == NULL) {
-        /* Shouldn't happen */
-        fuse_log(
-            FUSE_LOG_WARNING,
-            "%s: INTERNAL ERROR: bad path read from proc\n", __func__);
-        goto fail_noretry;
-    }
-    if (last == path) {
-        p = &lo->root;
-        pthread_mutex_lock(&lo->mutex);
-        p->nlookup++;
-        g_atomic_int_inc(&p->refcount);
-        pthread_mutex_unlock(&lo->mutex);
-    } else {
-        *last = '\0';
-        res = fstatat(AT_FDCWD, last == path ? "/" : path, &stat, 0);
-        if (res == -1) {
-            if (!retries) {
-                fuse_log(FUSE_LOG_WARNING,
-                         "%s: failed to stat parent: %m\n", __func__);
-            }
-            goto fail;
-        }
-        p = lo_find(lo, &stat);
-        if (p == NULL) {
-            if (!retries) {
-                fuse_log(FUSE_LOG_WARNING,
-                         "%s: failed to find parent\n", __func__);
-            }
-            goto fail;
-        }
-    }
-    last++;
-    res = fstatat(p->fd, last, &stat, AT_SYMLINK_NOFOLLOW);
-    if (res == -1) {
-        if (!retries) {
-            fuse_log(FUSE_LOG_WARNING,
-                     "%s: failed to stat last\n", __func__);
-        }
-        goto fail_unref;
-    }
-    if (stat.st_dev != inode->key.dev || stat.st_ino != inode->key.ino) {
-        if (!retries) {
-            fuse_log(FUSE_LOG_WARNING,
-                     "%s: failed to match last\n", __func__);
-        }
-        goto fail_unref;
-    }
-    *parent = p;
-    memmove(path, last, strlen(last) + 1);
-
-    return 0;
-
-fail_unref:
-    unref_inode_lolocked(lo, p, 1);
-    lo_inode_put(lo, &p);
-fail:
-    if (retries) {
-        retries--;
-        goto retry;
-    }
-fail_noretry:
-    errno = EIO;
-    return -1;
-}
-
-static int utimensat_empty(struct lo_data *lo, struct lo_inode *inode,
-                           const struct timespec *tv)
-{
-    int res;
-    struct lo_inode *parent;
-    char path[PATH_MAX];
-
-    if (S_ISLNK(inode->filetype)) {
-        res = utimensat(inode->fd, "", tv, AT_EMPTY_PATH);
-        if (res == -1 && errno == EINVAL) {
-            /* Sorry, no race free way to set times on symlink. */
-            if (lo->norace) {
-                errno = EPERM;
-            } else {
-                goto fallback;
-            }
-        }
-        return res;
-    }
-    sprintf(path, "%i", inode->fd);
-
-    return utimensat(lo->proc_self_fd, path, tv, 0);
-
-fallback:
-    res = lo_parent_and_name(lo, inode, path, &parent);
-    if (res != -1) {
-        res = utimensat(parent->fd, path, tv, AT_SYMLINK_NOFOLLOW);
-        unref_inode_lolocked(lo, parent, 1);
-        lo_inode_put(lo, &parent);
-    }
-
-    return res;
-}
-
 static int lo_fi_fd(fuse_req_t req, struct fuse_file_info *fi)
 {
     struct lo_data *lo = lo_data(req);
@@ -828,7 +698,8 @@ static void lo_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
         if (fi) {
             res = futimens(fd, tv);
         } else {
-            res = utimensat_empty(lo, inode, tv);
+            sprintf(procname, "%i", inode->fd);
+            res = utimensat(lo->proc_self_fd, procname, tv, 0);
         }
         if (res == -1) {
             goto out_err;
@@ -1129,41 +1000,6 @@ static void lo_symlink(fuse_req_t req, const char *link, fuse_ino_t parent,
     lo_mknod_symlink(req, parent, name, S_IFLNK, 0, link);
 }
 
-static int linkat_empty_nofollow(struct lo_data *lo, struct lo_inode *inode,
-                                 int dfd, const char *name)
-{
-    int res;
-    struct lo_inode *parent;
-    char path[PATH_MAX];
-
-    if (S_ISLNK(inode->filetype)) {
-        res = linkat(inode->fd, "", dfd, name, AT_EMPTY_PATH);
-        if (res == -1 && (errno == ENOENT || errno == EINVAL)) {
-            /* Sorry, no race free way to hard-link a symlink. */
-            if (lo->norace) {
-                errno = EPERM;
-            } else {
-                goto fallback;
-            }
-        }
-        return res;
-    }
-
-    sprintf(path, "%i", inode->fd);
-
-    return linkat(lo->proc_self_fd, path, dfd, name, AT_SYMLINK_FOLLOW);
-
-fallback:
-    res = lo_parent_and_name(lo, inode, path, &parent);
-    if (res != -1) {
-        res = linkat(parent->fd, path, dfd, name, 0);
-        unref_inode_lolocked(lo, parent, 1);
-        lo_inode_put(lo, &parent);
-    }
-
-    return res;
-}
-
 static void lo_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t parent,
                     const char *name)
 {
@@ -1172,6 +1008,7 @@ static void lo_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t parent,
     struct lo_inode *parent_inode;
     struct lo_inode *inode;
     struct fuse_entry_param e;
+    char procname[64];
     int saverr;
 
     if (!is_safe_path_component(name)) {
@@ -1190,7 +1027,9 @@ static void lo_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t parent,
     e.attr_timeout = lo->timeout;
     e.entry_timeout = lo->timeout;
 
-    res = linkat_empty_nofollow(lo, inode, parent_inode->fd, name);
+    sprintf(procname, "%i", inode->fd);
+    res = linkat(lo->proc_self_fd, procname, parent_inode->fd, name,
+                 AT_SYMLINK_FOLLOW);
     if (res == -1) {
         goto out_err;
     }
@@ -2531,11 +2370,24 @@ static void print_capabilities(void)
 }
 
 /*
+ * Drop all Linux capabilities because the wait parent process only needs to
+ * sit in waitpid(2) and terminate.
+ */
+static void setup_wait_parent_capabilities(void)
+{
+    capng_setpid(syscall(SYS_gettid));
+    capng_clear(CAPNG_SELECT_BOTH);
+    capng_apply(CAPNG_SELECT_BOTH);
+}
+
+/*
  * Move to a new mount, net, and pid namespaces to isolate this process.
  */
 static void setup_namespaces(struct lo_data *lo, struct fuse_session *se)
 {
     pid_t child;
+    char template[] = "virtiofsd-XXXXXX";
+    char *tmpdir;
 
     /*
      * Create a new pid namespace for *child* processes.  We'll have to
@@ -2560,6 +2412,8 @@ static void setup_namespaces(struct lo_data *lo, struct fuse_session *se)
     if (child > 0) {
         pid_t waited;
         int wstatus;
+
+        setup_wait_parent_capabilities();
 
         /* The parent waits for the child */
         do {
@@ -2597,11 +2451,32 @@ static void setup_namespaces(struct lo_data *lo, struct fuse_session *se)
         exit(1);
     }
 
-    /* Now we can get our /proc/self/fd directory file descriptor */
-    lo->proc_self_fd = open("/proc/self/fd", O_PATH);
-    if (lo->proc_self_fd == -1) {
-        fuse_log(FUSE_LOG_ERR, "open(/proc/self/fd, O_PATH): %m\n");
+    tmpdir = mkdtemp(template);
+    if (!tmpdir) {
+        fuse_log(FUSE_LOG_ERR, "tmpdir(%s): %m\n", template);
         exit(1);
+    }
+
+    if (mount("/proc/self/fd", tmpdir, NULL, MS_BIND, NULL) < 0) {
+        fuse_log(FUSE_LOG_ERR, "mount(/proc/self/fd, %s, MS_BIND): %m\n",
+                 tmpdir);
+        exit(1);
+    }
+
+    /* Now we can get our /proc/self/fd directory file descriptor */
+    lo->proc_self_fd = open(tmpdir, O_PATH);
+    if (lo->proc_self_fd == -1) {
+        fuse_log(FUSE_LOG_ERR, "open(%s, O_PATH): %m\n", tmpdir);
+        exit(1);
+    }
+
+    if (umount2(tmpdir, MNT_DETACH) < 0) {
+        fuse_log(FUSE_LOG_ERR, "umount2(%s, MNT_DETACH): %m\n", tmpdir);
+        exit(1);
+    }
+
+    if (rmdir(tmpdir) < 0) {
+        fuse_log(FUSE_LOG_ERR, "rmdir(%s): %m\n", tmpdir);
     }
 }
 
@@ -2643,7 +2518,7 @@ static void setup_mounts(const char *source)
     int oldroot;
     int newroot;
 
-    if (mount(source, source, NULL, MS_BIND, NULL) < 0) {
+    if (mount(source, source, NULL, MS_BIND | MS_REC, NULL) < 0) {
         fuse_log(FUSE_LOG_ERR, "mount(%s, %s, MS_BIND): %m\n", source, source);
         exit(1);
     }
@@ -2696,6 +2571,102 @@ static void setup_mounts(const char *source)
 }
 
 /*
+ * Only keep whitelisted capabilities that are needed for file system operation
+ * The (possibly NULL) modcaps_in string passed in is free'd before exit.
+ */
+static void setup_capabilities(char *modcaps_in)
+{
+    char *modcaps = modcaps_in;
+    pthread_mutex_lock(&cap.mutex);
+    capng_restore_state(&cap.saved);
+
+    /*
+     * Whitelist file system-related capabilities that are needed for a file
+     * server to act like root.  Drop everything else like networking and
+     * sysadmin capabilities.
+     *
+     * Exclusions:
+     * 1. CAP_LINUX_IMMUTABLE is not included because it's only used via ioctl
+     *    and we don't support that.
+     * 2. CAP_MAC_OVERRIDE is not included because it only seems to be
+     *    used by the Smack LSM.  Omit it until there is demand for it.
+     */
+    capng_setpid(syscall(SYS_gettid));
+    capng_clear(CAPNG_SELECT_BOTH);
+    if (capng_updatev(CAPNG_ADD, CAPNG_PERMITTED | CAPNG_EFFECTIVE,
+            CAP_CHOWN,
+            CAP_DAC_OVERRIDE,
+            CAP_DAC_READ_SEARCH,
+            CAP_FOWNER,
+            CAP_FSETID,
+            CAP_SETGID,
+            CAP_SETUID,
+            CAP_MKNOD,
+            CAP_SETFCAP,
+            -1)) {
+        fuse_log(FUSE_LOG_ERR, "%s: capng_updatev failed\n", __func__);
+        exit(1);
+    }
+
+    /*
+     * The modcaps option is a colon separated list of caps,
+     * each preceded by either + or -.
+     */
+    while (modcaps) {
+        capng_act_t action;
+        int cap;
+
+        char *next = strchr(modcaps, ':');
+        if (next) {
+            *next = '\0';
+            next++;
+        }
+
+        switch (modcaps[0]) {
+        case '+':
+            action = CAPNG_ADD;
+            break;
+
+        case '-':
+            action = CAPNG_DROP;
+            break;
+
+        default:
+            fuse_log(FUSE_LOG_ERR,
+                     "%s: Expecting '+'/'-' in modcaps but found '%c'\n",
+                     __func__, modcaps[0]);
+            exit(1);
+        }
+        cap = capng_name_to_capability(modcaps + 1);
+        if (cap < 0) {
+            fuse_log(FUSE_LOG_ERR, "%s: Unknown capability '%s'\n", __func__,
+                     modcaps);
+            exit(1);
+        }
+        if (capng_update(action, CAPNG_PERMITTED | CAPNG_EFFECTIVE, cap)) {
+            fuse_log(FUSE_LOG_ERR, "%s: capng_update failed for '%s'\n",
+                     __func__, modcaps);
+            exit(1);
+        }
+
+        modcaps = next;
+    }
+    g_free(modcaps_in);
+
+    if (capng_apply(CAPNG_SELECT_BOTH)) {
+        fuse_log(FUSE_LOG_ERR, "%s: capng_apply failed\n", __func__);
+        exit(1);
+    }
+
+    cap.saved = capng_save_state();
+    if (!cap.saved) {
+        fuse_log(FUSE_LOG_ERR, "%s: capng_save_state failed\n", __func__);
+        exit(1);
+    }
+    pthread_mutex_unlock(&cap.mutex);
+}
+
+/*
  * Lock down this process to prevent access to other processes or files outside
  * source directory.  This reduces the impact of arbitrary code execution bugs.
  */
@@ -2705,25 +2676,20 @@ static void setup_sandbox(struct lo_data *lo, struct fuse_session *se,
     setup_namespaces(lo, se);
     setup_mounts(lo->source);
     setup_seccomp(enable_syslog);
+    setup_capabilities(g_strdup(lo->modcaps));
 }
 
-/* Raise the maximum number of open file descriptors */
-static void setup_nofile_rlimit(void)
+/* Set the maximum number of open file descriptors */
+static void setup_nofile_rlimit(unsigned long rlimit_nofile)
 {
-    const rlim_t max_fds = 1000000;
-    struct rlimit rlim;
+    struct rlimit rlim = {
+        .rlim_cur = rlimit_nofile,
+        .rlim_max = rlimit_nofile,
+    };
 
-    if (getrlimit(RLIMIT_NOFILE, &rlim) < 0) {
-        fuse_log(FUSE_LOG_ERR, "getrlimit(RLIMIT_NOFILE): %m\n");
-        exit(1);
-    }
-
-    if (rlim.rlim_cur >= max_fds) {
+    if (rlimit_nofile == 0) {
         return; /* nothing to do */
     }
-
-    rlim.rlim_cur = max_fds;
-    rlim.rlim_max = max_fds;
 
     if (setrlimit(RLIMIT_NOFILE, &rlim) < 0) {
         /* Ignore SELinux denials */
@@ -2977,7 +2943,7 @@ int main(int argc, char *argv[])
 
     fuse_daemonize(opts.foreground);
 
-    setup_nofile_rlimit();
+    setup_nofile_rlimit(opts.rlimit_nofile);
 
     /* Must be before sandbox since it wants /proc */
     setup_capng();

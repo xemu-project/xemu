@@ -18,3 +18,5 @@ Contents:
    target-m68k
    target-xtensa
    target-s390x
+   target-rx
+   target-avr

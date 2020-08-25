@@ -26,21 +26,12 @@
 #include "qemu/osdep.h"
 #include "dec.h"
 #include "hw/sysbus.h"
+#include "qapi/error.h"
 #include "qemu/module.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_host.h"
 #include "hw/pci/pci_bridge.h"
 #include "hw/pci/pci_bus.h"
-
-/* debug DEC */
-//#define DEBUG_DEC
-
-#ifdef DEBUG_DEC
-#define DEC_DPRINTF(fmt, ...)                               \
-    do { printf("DEC: " fmt , ## __VA_ARGS__); } while (0)
-#else
-#define DEC_DPRINTF(fmt, ...)
-#endif
 
 #define DEC_21154(obj) OBJECT_CHECK(DECState, (obj), TYPE_DEC_21154)
 
@@ -91,11 +82,10 @@ PCIBus *pci_dec_21154_init(PCIBus *parent_bus, int devfn)
     PCIDevice *dev;
     PCIBridge *br;
 
-    dev = pci_create_multifunction(parent_bus, devfn, false,
-                                   "dec-21154-p2p-bridge");
+    dev = pci_new_multifunction(devfn, false, "dec-21154-p2p-bridge");
     br = PCI_BRIDGE(dev);
     pci_bridge_map_irq(br, "DEC 21154 PCI-PCI bridge", dec_map_irq);
-    qdev_init_nofail(&dev->qdev);
+    pci_realize_and_unref(dev, parent_bus, &error_fatal);
     return pci_bridge_get_sec_bus(br);
 }
 

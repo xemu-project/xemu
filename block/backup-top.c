@@ -122,7 +122,7 @@ static void backup_top_refresh_filename(BlockDriverState *bs)
 }
 
 static void backup_top_child_perm(BlockDriverState *bs, BdrvChild *c,
-                                  const BdrvChildRole *role,
+                                  BdrvChildRole role,
                                   BlockReopenQueue *reopen_queue,
                                   uint64_t perm, uint64_t shared,
                                   uint64_t *nperm, uint64_t *nshared)
@@ -142,24 +142,26 @@ static void backup_top_child_perm(BlockDriverState *bs, BdrvChild *c,
         return;
     }
 
-    if (role == &child_file) {
+    if (!(role & BDRV_CHILD_FILTERED)) {
         /*
          * Target child
          *
          * Share write to target (child_file), to not interfere
          * with guest writes to its disk which may be in target backing chain.
+         * Can't resize during a backup block job because we check the size
+         * only upfront.
          */
-        *nshared = BLK_PERM_ALL;
+        *nshared = BLK_PERM_ALL & ~BLK_PERM_RESIZE;
         *nperm = BLK_PERM_WRITE;
     } else {
         /* Source child */
-        bdrv_filter_default_perms(bs, c, role, reopen_queue, perm, shared,
-                                  nperm, nshared);
+        bdrv_default_perms(bs, c, role, reopen_queue,
+                           perm, shared, nperm, nshared);
 
         if (perm & BLK_PERM_WRITE) {
             *nperm = *nperm | BLK_PERM_CONSISTENT_READ;
         }
-        *nshared &= ~BLK_PERM_WRITE;
+        *nshared &= ~(BLK_PERM_WRITE | BLK_PERM_RESIZE);
     }
 }
 
@@ -192,11 +194,13 @@ BlockDriverState *bdrv_backup_top_append(BlockDriverState *source,
 {
     Error *local_err = NULL;
     BDRVBackupTopState *state;
-    BlockDriverState *top = bdrv_new_open_driver(&bdrv_backup_top_filter,
-                                                 filter_node_name,
-                                                 BDRV_O_RDWR, errp);
+    BlockDriverState *top;
     bool appended = false;
 
+    assert(source->total_sectors == target->total_sectors);
+
+    top = bdrv_new_open_driver(&bdrv_backup_top_filter, filter_node_name,
+                               BDRV_O_RDWR, errp);
     if (!top) {
         return NULL;
     }
@@ -210,7 +214,8 @@ BlockDriverState *bdrv_backup_top_append(BlockDriverState *source,
              source->supported_zero_flags);
 
     bdrv_ref(target);
-    state->target = bdrv_attach_child(top, target, "target", &child_file, errp);
+    state->target = bdrv_attach_child(top, target, "target", &child_of_bds,
+                                      BDRV_CHILD_DATA, errp);
     if (!state->target) {
         bdrv_unref(target);
         bdrv_unref(top);

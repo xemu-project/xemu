@@ -20,6 +20,7 @@
 #include "exec/address-spaces.h"
 #include "sysemu/runstate.h"
 #include "sysemu/sysemu.h"
+#include "qemu/log.h"
 #include "qemu/error-report.h"
 #include "hw/char/pl011.h"
 #include "hw/hw.h"
@@ -144,8 +145,9 @@ static uint64_t integratorcm_read(void *opaque, hwaddr offset,
         /* ??? Voltage control unimplemented.  */
         return 0;
     default:
-        hw_error("integratorcm_read: Unimplemented offset 0x%x\n",
-                 (int)offset);
+        qemu_log_mask(LOG_UNIMP,
+                      "%s: Unimplemented offset 0x%" HWADDR_PRIX "\n",
+                      __func__, offset);
         return 0;
     }
 }
@@ -252,8 +254,9 @@ static void integratorcm_write(void *opaque, hwaddr offset,
         /* ??? Voltage control unimplemented.  */
         break;
     default:
-        hw_error("integratorcm_write: Unimplemented offset 0x%x\n",
-                 (int)offset);
+        qemu_log_mask(LOG_UNIMP,
+                      "%s: Unimplemented offset 0x%" HWADDR_PRIX "\n",
+                      __func__, offset);
         break;
     }
 }
@@ -394,7 +397,8 @@ static uint64_t icp_pic_read(void *opaque, hwaddr offset,
     case 5: /* INT_SOFTCLR */
     case 11: /* FRQ_ENABLECLR */
     default:
-        printf ("icp_pic_read: Bad register offset 0x%x\n", (int)offset);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIX "\n",
+                      __func__, offset);
         return 0;
     }
 }
@@ -430,7 +434,8 @@ static void icp_pic_write(void *opaque, hwaddr offset,
     case 8: /* FRQ_STATUS */
     case 9: /* FRQ_RAWSTAT */
     default:
-        printf ("icp_pic_write: Bad register offset 0x%x\n", (int)offset);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIX "\n",
+                      __func__, offset);
         return;
     }
     icp_pic_update(s);
@@ -504,7 +509,8 @@ static uint64_t icp_control_read(void *opaque, hwaddr offset,
     case 3: /* CP_DECODE */
         return 0x11;
     default:
-        hw_error("icp_control_read: Bad offset %x\n", (int)offset);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIX "\n",
+                      __func__, offset);
         return 0;
     }
 }
@@ -524,7 +530,8 @@ static void icp_control_write(void *opaque, hwaddr offset,
         /* Nothing interesting implemented yet.  */
         break;
     default:
-        hw_error("icp_control_write: Bad offset %x\n", (int)offset);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%" HWADDR_PRIX "\n",
+                      __func__, offset);
     }
 }
 
@@ -597,10 +604,10 @@ static void integratorcp_init(MachineState *machine)
      * realization.
      */
     if (object_property_find(cpuobj, "has_el3", NULL)) {
-        object_property_set_bool(cpuobj, false, "has_el3", &error_fatal);
+        object_property_set_bool(cpuobj, "has_el3", false, &error_fatal);
     }
 
-    object_property_set_bool(cpuobj, true, "realized", &error_fatal);
+    qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
 
     cpu = ARM_CPU(cpuobj);
 
@@ -613,9 +620,9 @@ static void integratorcp_init(MachineState *machine)
                              0, ram_size);
     memory_region_add_subregion(address_space_mem, 0x80000000, ram_alias);
 
-    dev = qdev_create(NULL, TYPE_INTEGRATOR_CM);
+    dev = qdev_new(TYPE_INTEGRATOR_CM);
     qdev_prop_set_uint32(dev, "memsz", ram_size >> 20);
-    qdev_init_nofail(dev);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     sysbus_mmio_map((SysBusDevice *)dev, 0, 0x10000000);
 
     dev = sysbus_create_varargs(TYPE_INTEGRATOR_PIC, 0x14000000,

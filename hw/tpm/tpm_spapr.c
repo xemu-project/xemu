@@ -20,8 +20,8 @@
 #include "migration/vmstate.h"
 
 #include "sysemu/tpm_backend.h"
-#include "tpm_int.h"
-#include "tpm_util.h"
+#include "sysemu/tpm_util.h"
+#include "tpm_prop.h"
 
 #include "hw/ppc/spapr.h"
 #include "hw/ppc/spapr_vio.h"
@@ -306,7 +306,10 @@ static void tpm_spapr_reset(SpaprVioDevice *dev)
                             TPM_SPAPR_BUFFER_MAX);
 
     tpm_backend_reset(s->be_driver);
-    tpm_spapr_do_startup_tpm(s, s->be_buffer_size);
+
+    if (tpm_spapr_do_startup_tpm(s, s->be_buffer_size) < 0) {
+        exit(1);
+    }
 }
 
 static enum TPMVersion tpm_spapr_get_version(TPMIf *ti)

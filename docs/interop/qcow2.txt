@@ -25,6 +25,9 @@ The first cluster of a qcow2 image contains the file header:
                     is stored (NB: The string is not null terminated). 0 if the
                     image doesn't have a backing file.
 
+                    Note: backing files are incompatible with raw external data
+                    files (auto-clear feature bit 1).
+
          16 - 19:   backing_file_size
                     Length of the backing file name in bytes. Must not be
                     longer than 1023 bytes. Undefined if the image doesn't have
@@ -209,6 +212,7 @@ version 2.
 
                     Available compression type values:
                         0: zlib <https://www.zlib.net/>
+                        1: zstd <http://github.com/facebook/zstd>
 
 
 === Header padding ===
@@ -227,7 +231,7 @@ be stored. Each extension has a structure like the following:
 
     Byte  0 -  3:   Header extension type:
                         0x00000000 - End of the header extension area
-                        0xE2792ACA - Backing file format name string
+                        0xe2792aca - Backing file format name string
                         0x6803f857 - Feature name table
                         0x23852875 - Bitmaps extension
                         0x0537be77 - Full disk encryption header pointer

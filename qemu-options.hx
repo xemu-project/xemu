@@ -239,10 +239,11 @@ SRST
         -numa node,nodeid=0 -numa node,nodeid=1 \
         -numa cpu,node-id=0,socket-id=0 -numa cpu,node-id=1,socket-id=1
 
-    '\ ``mem``\ ' assigns a given RAM amount to a node. '\ ``memdev``\ '
-    assigns RAM from a given memory backend device to a node. If
-    '\ ``mem``\ ' and '\ ``memdev``\ ' are omitted in all nodes, RAM is
-    split equally between them.
+    Legacy '\ ``mem``\ ' assigns a given RAM amount to a node (not supported
+    for 5.1 and newer machine types). '\ ``memdev``\ ' assigns RAM from
+    a given memory backend device to a node. If '\ ``mem``\ ' and
+    '\ ``memdev``\ ' are omitted in all nodes, RAM is split equally between them.
+
 
     '\ ``mem``\ ' and '\ ``memdev``\ ' are mutually exclusive.
     Furthermore, if one node uses '\ ``memdev``\ ', all of them have to
@@ -805,7 +806,7 @@ SRST
 
     Some drivers are:
 
-``-device ipmi-bmc-sim,id=id[,slave_addr=val][,sdrfile=file][,furareasize=val][,furdatafile=file][,guid=uuid]``
+``-device ipmi-bmc-sim,id=id[,prop[=value][,...]]``
     Add an IPMI BMC. This is a simulation of a hardware management
     interface processor that normally sits on a system. It provides a
     watchdog and the ability to reset and power control the system. You
@@ -875,6 +876,15 @@ SRST
 ``-device isa-ipmi-bt,bmc=id[,ioport=val][,irq=val]``
     Like the KCS interface, but defines a BT interface. The default port
     is 0xe4 and the default interrupt is 5.
+
+``-device pci-ipmi-kcs,bmc=id``
+    Add a KCS IPMI interafce on the PCI bus.
+
+    ``bmc=id``
+        The BMC to connect to, one of ipmi-bmc-sim or ipmi-bmc-extern above.
+
+``-device pci-ipmi-bt,bmc=id``
+    Like the KCS interface, but defines a BT interface on the PCI bus.
 ERST
 
 DEF("name", HAS_ARG, QEMU_OPTION_name,
@@ -1542,9 +1552,17 @@ SRST
 ``-virtfs proxy,sock_fd=sock_fd,mount_tag=mount_tag [,writeout=writeout][,readonly]``
   \
 ``-virtfs synth,mount_tag=mount_tag``
-    Define a new filesystem device and expose it to the guest using a
-    virtio-9p-device. The general form of a Virtual File system
-    pass-through options are:
+    Define a new virtual filesystem device and expose it to the guest using
+    a virtio-9p-device (a.k.a. 9pfs), which essentially means that a certain
+    directory on host is made directly accessible by guest as a pass-through
+    file system by using the 9P network protocol for communication between
+    host and guests, if desired even accessible, shared by several guests
+    simultaniously.
+
+    Note that ``-virtfs`` is actually just a convenience shortcut for its
+    generalized form ``-fsdev -device virtio-9p-pci``.
+
+    The general form of pass-through file system options are:
 
     ``local``
         Accesses to the filesystem are done by QEMU.
@@ -2410,6 +2428,10 @@ DEF("netdev", HAS_ARG, QEMU_OPTION_netdev,
     "-netdev vhost-user,id=str,chardev=dev[,vhostforce=on|off]\n"
     "                configure a vhost-user network, backed by a chardev 'dev'\n"
 #endif
+#ifdef __linux__
+    "-netdev vhost-vdpa,id=str,vhostdev=/path/to/dev\n"
+    "                configure a vhost-vdpa network,Establish a vhost-vdpa netdev\n"
+#endif
     "-netdev hubport,id=str,hubid=n[,netdev=nd]\n"
     "                configure a hub port on the hub with ID 'n'\n", QEMU_ARCH_ALL)
 DEF("nic", HAS_ARG, QEMU_OPTION_nic,
@@ -2888,6 +2910,14 @@ SRST
              -netdev type=vhost-user,id=net0,chardev=chr0 \
              -device virtio-net-pci,netdev=net0
 
+``-netdev vhost-vdpa,vhostdev=/path/to/dev``
+    Establish a vhost-vdpa netdev.
+
+    vDPA device is a device that uses a datapath which complies with
+    the virtio specifications with a vendor specific control path.
+    vDPA devices can be both physically located on the hardware or
+    emulated by software.
+
 ``-netdev hubport,id=id,hubid=hubid[,netdev=nd]``
     Create a hub port on the emulated hub with ID hubid.
 
@@ -2930,7 +2960,7 @@ DEF("chardev", HAS_ARG, QEMU_OPTION_chardev,
     "         [,server][,nowait][,telnet][,websocket][,reconnect=seconds][,mux=on|off]\n"
     "         [,logfile=PATH][,logappend=on|off][,tls-creds=ID][,tls-authz=ID] (tcp)\n"
     "-chardev socket,id=id,path=path[,server][,nowait][,telnet][,websocket][,reconnect=seconds]\n"
-    "         [,mux=on|off][,logfile=PATH][,logappend=on|off] (unix)\n"
+    "         [,mux=on|off][,logfile=PATH][,logappend=on|off][,abstract=on|off][,tight=on|off] (unix)\n"
     "-chardev udp,id=id[,host=host],port=port[,localaddr=localaddr]\n"
     "         [,localport=localport][,ipv4][,ipv6][,mux=on|off]\n"
     "         [,logfile=PATH][,logappend=on|off]\n"
@@ -3097,9 +3127,13 @@ The available backends are:
 
         ``nodelay`` disables the Nagle algorithm.
 
-    ``unix options: path=path``
+    ``unix options: path=path[,abstract=on|off][,tight=on|off]``
         ``path`` specifies the local path of the unix socket. ``path``
         is required.
+        ``abstract`` specifies the use of the abstract socket namespace,
+        rather than the filesystem.  Optional, defaults to false.
+        ``tight`` sets the socket length of abstract sockets to their minimum,
+        rather than the full sun_path length.  Optional, defaults to true.
 
 ``-chardev udp,id=id[,host=host],port=port[,localaddr=localaddr][,localport=localport][,ipv4][,ipv6]``
     Sends all traffic from the guest to a remote host over UDP.
@@ -4278,16 +4312,22 @@ HXCOMM Deprecated by -accel tcg
 DEF("no-kvm", 0, QEMU_OPTION_no_kvm, "", QEMU_ARCH_I386)
 
 DEF("msg", HAS_ARG, QEMU_OPTION_msg,
-    "-msg timestamp[=on|off]\n"
+    "-msg [timestamp[=on|off]][,guest-name=[on|off]]\n"
     "                control error message format\n"
-    "                timestamp=on enables timestamps (default: off)\n",
+    "                timestamp=on enables timestamps (default: off)\n"
+    "                guest-name=on enables guest name prefix but only if\n"
+    "                              -name guest option is set (default: off)\n",
     QEMU_ARCH_ALL)
 SRST
-``-msg timestamp[=on|off]``
+``-msg [timestamp[=on|off]][,guest-name[=on|off]]``
     Control error message format.
 
     ``timestamp=on|off``
         Prefix messages with a timestamp. Default is off.
+
+    ``guest-name=on|off``
+        Prefix messages with guest name but only if -name guest option is set
+        otherwise the option is ignored. Default is off.
 ERST
 
 DEF("dump-vmstate", HAS_ARG, QEMU_OPTION_dump_vmstate,
@@ -4554,6 +4594,43 @@ SRST
         string as described at
         https://gnutls.org/manual/html_node/Priority-Strings.html.
 
+    ``-object tls-cipher-suites,id=id,priority=priority``
+        Creates a TLS cipher suites object, which can be used to control
+        the TLS cipher/protocol algorithms that applications are permitted
+        to use.
+
+        The ``id`` parameter is a unique ID which frontends will use to
+        access the ordered list of permitted TLS cipher suites from the
+        host.
+
+        The ``priority`` parameter allows to override the global default
+        priority used by gnutls. This can be useful if the system
+        administrator needs to use a weaker set of crypto priorities for
+        QEMU without potentially forcing the weakness onto all
+        applications. Or conversely if one wants wants a stronger
+        default for QEMU than for all other applications, they can do
+        this through this parameter. Its format is a gnutls priority
+        string as described at
+        https://gnutls.org/manual/html_node/Priority-Strings.html.
+
+        An example of use of this object is to control UEFI HTTPS Boot.
+        The tls-cipher-suites object exposes the ordered list of permitted
+        TLS cipher suites from the host side to the guest firmware, via
+        fw_cfg. The list is represented as an array of IANA_TLS_CIPHER
+        objects. The firmware uses the IANA_TLS_CIPHER array for configuring
+        guest-side TLS.
+
+        In the following example, the priority at which the host-side policy
+        is retrieved is given by the ``priority`` property.
+        Given that QEMU uses GNUTLS, ``priority=@SYSTEM`` may be used to
+        refer to /etc/crypto-policies/back-ends/gnutls.config.
+
+        .. parsed-literal::
+
+             # |qemu_system| \
+                 -object tls-cipher-suites,id=mysuite0,priority=@SYSTEM \
+                 -fw_cfg name=etc/edk2/https/ciphers,gen_id=mysuite0
+
     ``-object filter-buffer,id=id,netdev=netdevid,interval=t[,queue=all|rx|tx][,status=on|off][,position=head|tail|id=<id>][,insert=behind|before]``
         Interval t can't be 0, this filter batches the packet delivery:
         all packets arriving in a given interval on netdev netdevid are
@@ -4627,24 +4704,25 @@ SRST
         stored. The file format is libpcap, so it can be analyzed with
         tools such as tcpdump or Wireshark.
 
-    ``-object colo-compare,id=id,primary_in=chardevid,secondary_in=chardevid,outdev=chardevid,iothread=id[,vnet_hdr_support][,notify_dev=id][,compare_timeout=@var{ms}][,expired_scan_cycle=@var{ms}``
-        Colo-compare gets packet from primary\_inchardevid and
-        secondary\_inchardevid, than compare primary packet with
-        secondary packet. If the packets are same, we will output
-        primary packet to outdevchardevid, else we will notify
-        colo-frame do checkpoint and send primary packet to
-        outdevchardevid. In order to improve efficiency, we need to put
-        the task of comparison in another thread. If it has the
-        vnet\_hdr\_support flag, colo compare will send/recv packet with
-        vnet\_hdr\_len. Then compare\_timeout=@var{ms} determines the
-        maximum delay colo-compare wait for the packet.
-        The expired\_scan\_cycle=@var{ms} to set the period of scanning
-        expired primary node network packets.
-        If you want to use Xen COLO, will need the notify\_dev to
+    ``-object colo-compare,id=id,primary_in=chardevid,secondary_in=chardevid,outdev=chardevid,iothread=id[,vnet_hdr_support][,notify_dev=id][,compare_timeout=@var{ms}][,expired_scan_cycle=@var{ms}][,max_queue_size=@var{size}]``
+        Colo-compare gets packet from primary\_in chardevid and
+        secondary\_in, then compare whether the payload of primary packet
+        and secondary packet are the same. If same, it will output
+        primary packet to out\_dev, else it will notify COLO-framework to do
+        checkpoint and send primary packet to out\_dev. In order to
+        improve efficiency, we need to put the task of comparison in
+        another iothread. If it has the vnet\_hdr\_support flag,
+        colo compare will send/recv packet with vnet\_hdr\_len.
+        The compare\_timeout=@var{ms} determines the maximum time of the
+        colo-compare hold the packet. The expired\_scan\_cycle=@var{ms}
+        is to set the period of scanning expired primary node network packets.
+        The max\_queue\_size=@var{size} is to set the max compare queue
+        size depend on user environment.
+        If user want to use Xen COLO, need to add the notify\_dev to
         notify Xen colo-frame to do checkpoint.
 
-        we must use it with the help of filter-mirror and
-        filter-redirector.
+        COLO-compare must be used with the help of filter-mirror,
+        filter-redirector and filter-rewriter.
 
         ::
 

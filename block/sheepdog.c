@@ -532,7 +532,6 @@ static SocketAddress *sd_server_config(QDict *options, Error **errp)
     QDict *server = NULL;
     Visitor *iv = NULL;
     SocketAddress *saddr = NULL;
-    Error *local_err = NULL;
 
     qdict_extract_subqdict(options, &server, "server.");
 
@@ -541,9 +540,7 @@ static SocketAddress *sd_server_config(QDict *options, Error **errp)
         goto done;
     }
 
-    visit_type_SocketAddress(iv, NULL, &saddr, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_SocketAddress(iv, NULL, &saddr, errp)) {
         goto done;
     }
 
@@ -1550,15 +1547,12 @@ static int sd_open(BlockDriverState *bs, QDict *options, int flags,
     uint64_t snap_id;
     char *buf = NULL;
     QemuOpts *opts;
-    Error *local_err = NULL;
 
     s->bs = bs;
     s->aio_context = bdrv_get_aio_context(bs);
 
     opts = qemu_opts_create(&runtime_opts, NULL, 0, &error_abort);
-    qemu_opts_absorb_qdict(opts, options, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!qemu_opts_absorb_qdict(opts, options, errp)) {
         ret = -EINVAL;
         goto err_no_fd;
     }
@@ -1654,6 +1648,7 @@ static int sd_open(BlockDriverState *bs, QDict *options, int flags,
     memcpy(&s->inode, buf, sizeof(s->inode));
 
     bs->total_sectors = s->inode.vdi_size / BDRV_SECTOR_SIZE;
+    bs->supported_truncate_flags = BDRV_REQ_ZERO_WRITE;
     pstrcpy(s->name, sizeof(s->name), vdi);
     qemu_co_mutex_init(&s->lock);
     qemu_co_mutex_init(&s->queue_lock);
@@ -1803,12 +1798,12 @@ static int sd_prealloc(BlockDriverState *bs, int64_t old_size, int64_t new_size,
     void *buf = NULL;
     int ret;
 
-    blk = blk_new(bdrv_get_aio_context(bs),
-                  BLK_PERM_CONSISTENT_READ | BLK_PERM_WRITE | BLK_PERM_RESIZE,
-                  BLK_PERM_ALL);
+    blk = blk_new_with_bs(bs,
+                          BLK_PERM_CONSISTENT_READ | BLK_PERM_WRITE | BLK_PERM_RESIZE,
+                          BLK_PERM_ALL, errp);
 
-    ret = blk_insert_bs(blk, bs, errp);
-    if (ret < 0) {
+    if (!blk) {
+        ret = -EPERM;
         goto out_with_err_set;
     }
 
@@ -1854,18 +1849,11 @@ static int sd_create_prealloc(BlockdevOptionsSheepdog *location, int64_t size,
     Visitor *v;
     QObject *obj = NULL;
     QDict *qdict;
-    Error *local_err = NULL;
     int ret;
 
     v = qobject_output_visitor_new(&obj);
-    visit_type_BlockdevOptionsSheepdog(v, NULL, &location, &local_err);
+    visit_type_BlockdevOptionsSheepdog(v, NULL, &location, &error_abort);
     visit_free(v);
-
-    if (local_err) {
-        error_propagate(errp, local_err);
-        qobject_unref(obj);
-        return -EINVAL;
-    }
 
     qdict = qobject_to(QDict, obj);
     qdict_flatten(qdict);
@@ -2163,13 +2151,21 @@ static int coroutine_fn sd_co_create_opts(BlockDriver *drv,
                                           Error **errp)
 {
     BlockdevCreateOptions *create_options = NULL;
-    QDict *qdict, *location_qdict;
+    QDict *qdict = NULL, *location_qdict;
     Visitor *v;
-    char *redundancy;
+    char *redundancy = NULL;
     Error *local_err = NULL;
     int ret;
+    char *backing_fmt = NULL;
 
     redundancy = qemu_opt_get_del(opts, BLOCK_OPT_REDUNDANCY);
+    backing_fmt = qemu_opt_get_del(opts, BLOCK_OPT_BACKING_FMT);
+
+    if (backing_fmt && strcmp(backing_fmt, "sheepdog") != 0) {
+        error_setg(errp, "backing_file must be a sheepdog image");
+        ret = -EINVAL;
+        goto fail;
+    }
 
     qdict = qemu_opts_to_qdict(opts, NULL);
     qdict_put_str(qdict, "driver", "sheepdog");
@@ -2205,11 +2201,9 @@ static int coroutine_fn sd_co_create_opts(BlockDriver *drv,
         goto fail;
     }
 
-    visit_type_BlockdevCreateOptions(v, NULL, &create_options, &local_err);
+    visit_type_BlockdevCreateOptions(v, NULL, &create_options, errp);
     visit_free(v);
-
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!create_options) {
         ret = -EINVAL;
         goto fail;
     }
@@ -2234,6 +2228,7 @@ fail:
     qapi_free_BlockdevCreateOptions(create_options);
     qobject_unref(qdict);
     g_free(redundancy);
+    g_free(backing_fmt);
     return ret;
 }
 
@@ -2288,7 +2283,7 @@ static int64_t sd_getlength(BlockDriverState *bs)
 
 static int coroutine_fn sd_co_truncate(BlockDriverState *bs, int64_t offset,
                                        bool exact, PreallocMode prealloc,
-                                       Error **errp)
+                                       BdrvRequestFlags flags, Error **errp)
 {
     BDRVSheepdogState *s = bs->opaque;
     int ret, fd;
@@ -2604,7 +2599,7 @@ static coroutine_fn int sd_co_writev(BlockDriverState *bs, int64_t sector_num,
 
     assert(!flags);
     if (offset > s->inode.vdi_size) {
-        ret = sd_co_truncate(bs, offset, false, PREALLOC_MODE_OFF, NULL);
+        ret = sd_co_truncate(bs, offset, false, PREALLOC_MODE_OFF, 0, NULL);
         if (ret < 0) {
             return ret;
         }
@@ -3192,6 +3187,11 @@ static QemuOptsList sd_create_opts = {
             .help = "File name of a base image"
         },
         {
+            .name = BLOCK_OPT_BACKING_FMT,
+            .type = QEMU_OPT_STRING,
+            .help = "Must be 'sheepdog' if present",
+        },
+        {
             .name = BLOCK_OPT_PREALLOC,
             .type = QEMU_OPT_STRING,
             .help = "Preallocation mode (allowed values: off, full)"
@@ -3232,7 +3232,6 @@ static BlockDriver bdrv_sheepdog = {
     .bdrv_co_create               = sd_co_create,
     .bdrv_co_create_opts          = sd_co_create_opts,
     .bdrv_has_zero_init           = bdrv_has_zero_init_1,
-    .bdrv_has_zero_init_truncate  = bdrv_has_zero_init_1,
     .bdrv_getlength               = sd_getlength,
     .bdrv_get_allocated_file_size = sd_get_allocated_file_size,
     .bdrv_co_truncate             = sd_co_truncate,
@@ -3271,7 +3270,6 @@ static BlockDriver bdrv_sheepdog_tcp = {
     .bdrv_co_create               = sd_co_create,
     .bdrv_co_create_opts          = sd_co_create_opts,
     .bdrv_has_zero_init           = bdrv_has_zero_init_1,
-    .bdrv_has_zero_init_truncate  = bdrv_has_zero_init_1,
     .bdrv_getlength               = sd_getlength,
     .bdrv_get_allocated_file_size = sd_get_allocated_file_size,
     .bdrv_co_truncate             = sd_co_truncate,
@@ -3310,7 +3308,6 @@ static BlockDriver bdrv_sheepdog_unix = {
     .bdrv_co_create               = sd_co_create,
     .bdrv_co_create_opts          = sd_co_create_opts,
     .bdrv_has_zero_init           = bdrv_has_zero_init_1,
-    .bdrv_has_zero_init_truncate  = bdrv_has_zero_init_1,
     .bdrv_getlength               = sd_getlength,
     .bdrv_get_allocated_file_size = sd_get_allocated_file_size,
     .bdrv_co_truncate             = sd_co_truncate,

@@ -61,3 +61,9 @@ config S390_FLIC_KVM
 
 config OMPIC
     bool
+
+config RX_ICU
+    bool
+
+config LOONGSON_LIOINTC
+    bool

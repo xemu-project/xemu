@@ -752,14 +752,14 @@ out_err:
     g_free(sch);
 }
 
-static void virtio_ccw_device_unrealize(VirtioCcwDevice *dev, Error **errp)
+static void virtio_ccw_device_unrealize(VirtioCcwDevice *dev)
 {
     VirtIOCCWDeviceClass *dc = VIRTIO_CCW_DEVICE_GET_CLASS(dev);
     CcwDevice *ccw_dev = CCW_DEVICE(dev);
     SubchDev *sch = ccw_dev->sch;
 
     if (dc->unrealize) {
-        dc->unrealize(dev, errp);
+        dc->unrealize(dev);
     }
 
     if (sch) {
@@ -786,9 +786,10 @@ static inline VirtioCcwDevice *to_virtio_ccw_dev_fast(DeviceState *d)
 static uint8_t virtio_set_ind_atomic(SubchDev *sch, uint64_t ind_loc,
                                      uint8_t to_be_set)
 {
-    uint8_t ind_old, ind_new;
+    uint8_t expected, actual;
     hwaddr len = 1;
-    uint8_t *ind_addr;
+    /* avoid  multiple fetches */
+    uint8_t volatile *ind_addr;
 
     ind_addr = cpu_physical_memory_map(ind_loc, &len, true);
     if (!ind_addr) {
@@ -796,14 +797,15 @@ static uint8_t virtio_set_ind_atomic(SubchDev *sch, uint64_t ind_loc,
                      __func__, sch->cssid, sch->ssid, sch->schid);
         return -1;
     }
+    actual = *ind_addr;
     do {
-        ind_old = *ind_addr;
-        ind_new = ind_old | to_be_set;
-    } while (atomic_cmpxchg(ind_addr, ind_old, ind_new) != ind_old);
-    trace_virtio_ccw_set_ind(ind_loc, ind_old, ind_new);
-    cpu_physical_memory_unmap(ind_addr, len, 1, len);
+        expected = actual;
+        actual = atomic_cmpxchg(ind_addr, expected, expected | to_be_set);
+    } while (actual != expected);
+    trace_virtio_ccw_set_ind(ind_loc, actual, actual | to_be_set);
+    cpu_physical_memory_unmap((void *)ind_addr, len, 1, len);
 
-    return ind_old;
+    return actual;
 }
 
 static void virtio_ccw_notify(DeviceState *d, uint16_t vector)
@@ -1119,6 +1121,12 @@ static void virtio_ccw_device_plugged(DeviceState *d, Error **errp)
         dev->max_rev = 0;
     }
 
+    if (!virtio_ccw_rev_max(dev) && !virtio_legacy_allowed(vdev)) {
+        error_setg(errp, "Invalid value of property max_rev "
+                   "(is %d expected >= 1)", virtio_ccw_rev_max(dev));
+        return;
+    }
+
     if (virtio_get_num_queues(vdev) > VIRTIO_QUEUE_MAX) {
         error_setg(errp, "The number of virtqueues %d "
                    "exceeds virtio limit %d", n,
@@ -1155,11 +1163,11 @@ static void virtio_ccw_busdev_realize(DeviceState *dev, Error **errp)
     virtio_ccw_device_realize(_dev, errp);
 }
 
-static void virtio_ccw_busdev_unrealize(DeviceState *dev, Error **errp)
+static void virtio_ccw_busdev_unrealize(DeviceState *dev)
 {
     VirtioCcwDevice *_dev = (VirtioCcwDevice *)dev;
 
-    virtio_ccw_device_unrealize(_dev, errp);
+    virtio_ccw_device_unrealize(_dev);
 }
 
 static void virtio_ccw_busdev_unplug(HotplugHandler *hotplug_dev,

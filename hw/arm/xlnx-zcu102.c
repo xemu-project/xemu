@@ -23,6 +23,7 @@
 #include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "sysemu/qtest.h"
+#include "sysemu/device_tree.h"
 
 typedef struct XlnxZCU102 {
     MachineState parent_obj;
@@ -31,13 +32,14 @@ typedef struct XlnxZCU102 {
 
     bool secure;
     bool virt;
+
+    struct arm_boot_info binfo;
 } XlnxZCU102;
 
 #define TYPE_ZCU102_MACHINE   MACHINE_TYPE_NAME("xlnx-zcu102")
 #define ZCU102_MACHINE(obj) \
     OBJECT_CHECK(XlnxZCU102, (obj), TYPE_ZCU102_MACHINE)
 
-static struct arm_boot_info xlnx_zcu102_binfo;
 
 static bool zcu102_get_secure(Object *obj, Error **errp)
 {
@@ -67,6 +69,34 @@ static void zcu102_set_virt(Object *obj, bool value, Error **errp)
     s->virt = value;
 }
 
+static void zcu102_modify_dtb(const struct arm_boot_info *binfo, void *fdt)
+{
+    XlnxZCU102 *s = container_of(binfo, XlnxZCU102, binfo);
+    bool method_is_hvc;
+    char **node_path;
+    const char *r;
+    int prop_len;
+    int i;
+
+    /* If EL3 is enabled, we keep all firmware nodes active.  */
+    if (!s->secure) {
+        node_path = qemu_fdt_node_path(fdt, NULL, "xlnx,zynqmp-firmware",
+                                       &error_fatal);
+
+        for (i = 0; node_path && node_path[i]; i++) {
+            r = qemu_fdt_getprop(fdt, node_path[i], "method", &prop_len, NULL);
+            method_is_hvc = r && !strcmp("hvc", r);
+
+            /* Allow HVC based firmware if EL2 is enabled.  */
+            if (method_is_hvc && s->virt) {
+                continue;
+            }
+            qemu_fdt_setprop_string(fdt, node_path[i], "status", "disabled");
+        }
+        g_strfreev(node_path);
+    }
+}
+
 static void xlnx_zcu102_init(MachineState *machine)
 {
     XlnxZCU102 *s = ZCU102_MACHINE(machine);
@@ -86,17 +116,16 @@ static void xlnx_zcu102_init(MachineState *machine)
                  ram_size);
     }
 
-    object_initialize_child(OBJECT(machine), "soc", &s->soc, sizeof(s->soc),
-                            TYPE_XLNX_ZYNQMP, &error_abort, NULL);
+    object_initialize_child(OBJECT(machine), "soc", &s->soc, TYPE_XLNX_ZYNQMP);
 
-    object_property_set_link(OBJECT(&s->soc), OBJECT(machine->ram),
-                         "ddr-ram", &error_abort);
-    object_property_set_bool(OBJECT(&s->soc), s->secure, "secure",
+    object_property_set_link(OBJECT(&s->soc), "ddr-ram", OBJECT(machine->ram),
+                             &error_abort);
+    object_property_set_bool(OBJECT(&s->soc), "secure", s->secure,
                              &error_fatal);
-    object_property_set_bool(OBJECT(&s->soc), s->virt, "virtualization",
+    object_property_set_bool(OBJECT(&s->soc), "virtualization", s->virt,
                              &error_fatal);
 
-    object_property_set_bool(OBJECT(&s->soc), true, "realized", &error_fatal);
+    qdev_realize(DEVICE(&s->soc), NULL, &error_fatal);
 
     /* Create and plug in the SD cards */
     for (i = 0; i < XLNX_ZYNQMP_NUM_SDHCI; i++) {
@@ -113,28 +142,27 @@ static void xlnx_zcu102_init(MachineState *machine)
             error_report("No SD bus found for SD card %d", i);
             exit(1);
         }
-        carddev = qdev_create(bus, TYPE_SD_CARD);
-        qdev_prop_set_drive(carddev, "drive", blk, &error_fatal);
-        object_property_set_bool(OBJECT(carddev), true, "realized",
-                                 &error_fatal);
+        carddev = qdev_new(TYPE_SD_CARD);
+        qdev_prop_set_drive_err(carddev, "drive", blk, &error_fatal);
+        qdev_realize_and_unref(carddev, bus, &error_fatal);
     }
 
     for (i = 0; i < XLNX_ZYNQMP_NUM_SPIS; i++) {
-        SSIBus *spi_bus;
+        BusState *spi_bus;
         DeviceState *flash_dev;
         qemu_irq cs_line;
         DriveInfo *dinfo = drive_get_next(IF_MTD);
         gchar *bus_name = g_strdup_printf("spi%d", i);
 
-        spi_bus = (SSIBus *)qdev_get_child_bus(DEVICE(&s->soc), bus_name);
+        spi_bus = qdev_get_child_bus(DEVICE(&s->soc), bus_name);
         g_free(bus_name);
 
-        flash_dev = ssi_create_slave_no_init(spi_bus, "sst25wf080");
+        flash_dev = qdev_new("sst25wf080");
         if (dinfo) {
-            qdev_prop_set_drive(flash_dev, "drive", blk_by_legacy_dinfo(dinfo),
-                                &error_fatal);
+            qdev_prop_set_drive_err(flash_dev, "drive",
+                                    blk_by_legacy_dinfo(dinfo), &error_fatal);
         }
-        qdev_init_nofail(flash_dev);
+        qdev_realize_and_unref(flash_dev, spi_bus, &error_fatal);
 
         cs_line = qdev_get_gpio_in_named(flash_dev, SSI_GPIO_CS, 0);
 
@@ -142,22 +170,22 @@ static void xlnx_zcu102_init(MachineState *machine)
     }
 
     for (i = 0; i < XLNX_ZYNQMP_NUM_QSPI_FLASH; i++) {
-        SSIBus *spi_bus;
+        BusState *spi_bus;
         DeviceState *flash_dev;
         qemu_irq cs_line;
         DriveInfo *dinfo = drive_get_next(IF_MTD);
         int bus = i / XLNX_ZYNQMP_NUM_QSPI_BUS_CS;
         gchar *bus_name = g_strdup_printf("qspi%d", bus);
 
-        spi_bus = (SSIBus *)qdev_get_child_bus(DEVICE(&s->soc), bus_name);
+        spi_bus = qdev_get_child_bus(DEVICE(&s->soc), bus_name);
         g_free(bus_name);
 
-        flash_dev = ssi_create_slave_no_init(spi_bus, "n25q512a11");
+        flash_dev = qdev_new("n25q512a11");
         if (dinfo) {
-            qdev_prop_set_drive(flash_dev, "drive", blk_by_legacy_dinfo(dinfo),
-                                &error_fatal);
+            qdev_prop_set_drive_err(flash_dev, "drive",
+                                    blk_by_legacy_dinfo(dinfo), &error_fatal);
         }
-        qdev_init_nofail(flash_dev);
+        qdev_realize_and_unref(flash_dev, spi_bus, &error_fatal);
 
         cs_line = qdev_get_gpio_in_named(flash_dev, SSI_GPIO_CS, 0);
 
@@ -166,9 +194,10 @@ static void xlnx_zcu102_init(MachineState *machine)
 
     /* TODO create and connect IDE devices for ide_drive_get() */
 
-    xlnx_zcu102_binfo.ram_size = ram_size;
-    xlnx_zcu102_binfo.loader_start = 0;
-    arm_load_kernel(s->soc.boot_cpu_ptr, machine, &xlnx_zcu102_binfo);
+    s->binfo.ram_size = ram_size;
+    s->binfo.loader_start = 0;
+    s->binfo.modify_dtb = zcu102_modify_dtb;
+    arm_load_kernel(s->soc.boot_cpu_ptr, machine, &s->binfo);
 }
 
 static void xlnx_zcu102_machine_instance_init(Object *obj)
@@ -178,21 +207,19 @@ static void xlnx_zcu102_machine_instance_init(Object *obj)
     /* Default to secure mode being disabled */
     s->secure = false;
     object_property_add_bool(obj, "secure", zcu102_get_secure,
-                             zcu102_set_secure, NULL);
+                             zcu102_set_secure);
     object_property_set_description(obj, "secure",
                                     "Set on/off to enable/disable the ARM "
-                                    "Security Extensions (TrustZone)",
-                                    NULL);
+                                    "Security Extensions (TrustZone)");
 
     /* Default to virt (EL2) being disabled */
     s->virt = false;
     object_property_add_bool(obj, "virtualization", zcu102_get_virt,
-                             zcu102_set_virt, NULL);
+                             zcu102_set_virt);
     object_property_set_description(obj, "virtualization",
                                     "Set on/off to enable/disable emulating a "
                                     "guest CPU which implements the ARM "
-                                    "Virtualization Extensions",
-                                    NULL);
+                                    "Virtualization Extensions");
 }
 
 static void xlnx_zcu102_machine_class_init(ObjectClass *oc, void *data)

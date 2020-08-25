@@ -1,7 +1,7 @@
 /*
  * SmartFusion2 SoC emulation.
  *
- * Copyright (c) 2017 Subbaraya Sundeep <sundeep.lkml@gmail.com>
+ * Copyright (c) 2017-2020 Subbaraya Sundeep <sundeep.lkml@gmail.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -30,15 +30,17 @@
 #include "hw/irq.h"
 #include "hw/arm/msf2-soc.h"
 #include "hw/misc/unimp.h"
-#include "sysemu/runstate.h"
 #include "sysemu/sysemu.h"
 
 #define MSF2_TIMER_BASE       0x40004000
 #define MSF2_SYSREG_BASE      0x40038000
+#define MSF2_EMAC_BASE        0x40041000
 
 #define ENVM_BASE_ADDRESS     0x60000000
 
 #define SRAM_BASE_ADDRESS     0x20000000
+
+#define MSF2_EMAC_IRQ         12
 
 #define MSF2_ENVM_MAX_SIZE    (512 * KiB)
 
@@ -56,31 +58,22 @@ static const int spi_irq[MSF2_NUM_SPIS] = { 2, 3 };
 static const int uart_irq[MSF2_NUM_UARTS] = { 10, 11 };
 static const int timer_irq[MSF2_NUM_TIMERS] = { 14, 15 };
 
-static void do_sys_reset(void *opaque, int n, int level)
-{
-    if (level) {
-        qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
-    }
-}
-
 static void m2sxxx_soc_initfn(Object *obj)
 {
     MSF2State *s = MSF2_SOC(obj);
     int i;
 
-    sysbus_init_child_obj(obj, "armv7m", &s->armv7m, sizeof(s->armv7m),
-                          TYPE_ARMV7M);
+    object_initialize_child(obj, "armv7m", &s->armv7m, TYPE_ARMV7M);
 
-    sysbus_init_child_obj(obj, "sysreg", &s->sysreg, sizeof(s->sysreg),
-                          TYPE_MSF2_SYSREG);
+    object_initialize_child(obj, "sysreg", &s->sysreg, TYPE_MSF2_SYSREG);
 
-    sysbus_init_child_obj(obj, "timer", &s->timer, sizeof(s->timer),
-                          TYPE_MSS_TIMER);
+    object_initialize_child(obj, "timer", &s->timer, TYPE_MSS_TIMER);
 
     for (i = 0; i < MSF2_NUM_SPIS; i++) {
-        sysbus_init_child_obj(obj, "spi[*]", &s->spi[i], sizeof(s->spi[i]),
-                          TYPE_MSS_SPI);
+        object_initialize_child(obj, "spi[*]", &s->spi[i], TYPE_MSS_SPI);
     }
+
+    object_initialize_child(obj, "emac", &s->emac, TYPE_MSS_EMAC);
 }
 
 static void m2sxxx_soc_realize(DeviceState *dev_soc, Error **errp)
@@ -88,7 +81,6 @@ static void m2sxxx_soc_realize(DeviceState *dev_soc, Error **errp)
     MSF2State *s = MSF2_SOC(dev_soc);
     DeviceState *dev, *armv7m;
     SysBusDevice *busdev;
-    Error *err = NULL;
     int i;
 
     MemoryRegion *system_memory = get_system_memory();
@@ -118,11 +110,9 @@ static void m2sxxx_soc_realize(DeviceState *dev_soc, Error **errp)
     qdev_prop_set_uint32(armv7m, "num-irq", 81);
     qdev_prop_set_string(armv7m, "cpu-type", s->cpu_type);
     qdev_prop_set_bit(armv7m, "enable-bitband", true);
-    object_property_set_link(OBJECT(&s->armv7m), OBJECT(get_system_memory()),
-                                     "memory", &error_abort);
-    object_property_set_bool(OBJECT(&s->armv7m), true, "realized", &err);
-    if (err != NULL) {
-        error_propagate(errp, err);
+    object_property_set_link(OBJECT(&s->armv7m), "memory",
+                             OBJECT(get_system_memory()), &error_abort);
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->armv7m), errp)) {
         return;
     }
 
@@ -131,9 +121,6 @@ static void m2sxxx_soc_realize(DeviceState *dev_soc, Error **errp)
         error_append_hint(errp, "m3clk can not be zero\n");
         return;
     }
-
-    qdev_connect_gpio_out_named(DEVICE(&s->armv7m.nvic), "SYSRESETREQ", 0,
-                                qemu_allocate_irq(&do_sys_reset, NULL, 0));
 
     system_clock_scale = NANOSECONDS_PER_SECOND / s->m3clk;
 
@@ -148,9 +135,7 @@ static void m2sxxx_soc_realize(DeviceState *dev_soc, Error **errp)
     dev = DEVICE(&s->timer);
     /* APB0 clock is the timer input clock */
     qdev_prop_set_uint32(dev, "clock-frequency", s->m3clk / s->apb0div);
-    object_property_set_bool(OBJECT(&s->timer), true, "realized", &err);
-    if (err != NULL) {
-        error_propagate(errp, err);
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->timer), errp)) {
         return;
     }
     busdev = SYS_BUS_DEVICE(dev);
@@ -163,9 +148,7 @@ static void m2sxxx_soc_realize(DeviceState *dev_soc, Error **errp)
     dev = DEVICE(&s->sysreg);
     qdev_prop_set_uint32(dev, "apb0divisor", s->apb0div);
     qdev_prop_set_uint32(dev, "apb1divisor", s->apb1div);
-    object_property_set_bool(OBJECT(&s->sysreg), true, "realized", &err);
-    if (err != NULL) {
-        error_propagate(errp, err);
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->sysreg), errp)) {
         return;
     }
     busdev = SYS_BUS_DEVICE(dev);
@@ -174,9 +157,7 @@ static void m2sxxx_soc_realize(DeviceState *dev_soc, Error **errp)
     for (i = 0; i < MSF2_NUM_SPIS; i++) {
         gchar *bus_name;
 
-        object_property_set_bool(OBJECT(&s->spi[i]), true, "realized", &err);
-        if (err != NULL) {
-            error_propagate(errp, err);
+        if (!sysbus_realize(SYS_BUS_DEVICE(&s->spi[i]), errp)) {
             return;
         }
 
@@ -187,10 +168,25 @@ static void m2sxxx_soc_realize(DeviceState *dev_soc, Error **errp)
         /* Alias controller SPI bus to the SoC itself */
         bus_name = g_strdup_printf("spi%d", i);
         object_property_add_alias(OBJECT(s), bus_name,
-                                  OBJECT(&s->spi[i]), "spi",
-                                  &error_abort);
+                                  OBJECT(&s->spi[i]), "spi");
         g_free(bus_name);
     }
+
+    /* FIXME use qdev NIC properties instead of nd_table[] */
+    if (nd_table[0].used) {
+        qemu_check_nic_model(&nd_table[0], TYPE_MSS_EMAC);
+        qdev_set_nic_properties(DEVICE(&s->emac), &nd_table[0]);
+    }
+    dev = DEVICE(&s->emac);
+    object_property_set_link(OBJECT(&s->emac), "ahb-bus",
+                             OBJECT(get_system_memory()), &error_abort);
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->emac), errp)) {
+        return;
+    }
+    busdev = SYS_BUS_DEVICE(dev);
+    sysbus_mmio_map(busdev, 0, MSF2_EMAC_BASE);
+    sysbus_connect_irq(busdev, 0,
+                       qdev_get_gpio_in(armv7m, MSF2_EMAC_IRQ));
 
     /* Below devices are not modelled yet. */
     create_unimplemented_device("i2c_0", 0x40002000, 0x1000);
@@ -202,7 +198,6 @@ static void m2sxxx_soc_realize(DeviceState *dev_soc, Error **errp)
     create_unimplemented_device("can", 0x40015000, 0x1000);
     create_unimplemented_device("rtc", 0x40017000, 0x1000);
     create_unimplemented_device("apb_config", 0x40020000, 0x10000);
-    create_unimplemented_device("emac", 0x40041000, 0x1000);
     create_unimplemented_device("usb", 0x40043000, 0x1000);
 }
 

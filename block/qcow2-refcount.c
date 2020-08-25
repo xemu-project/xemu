@@ -2018,7 +2018,7 @@ static int check_refblocks(BlockDriverState *bs, BdrvCheckResult *res,
                 }
 
                 ret = bdrv_truncate(bs->file, offset + s->cluster_size, false,
-                                    PREALLOC_MODE_OFF, &local_err);
+                                    PREALLOC_MODE_OFF, 0, &local_err);
                 if (ret < 0) {
                     error_report_err(local_err);
                     goto resize_fail;
@@ -2660,7 +2660,7 @@ fail:
  * - 0 if writing to this offset will not affect the mentioned metadata
  * - a positive QCow2MetadataOverlap value indicating one overlapping section
  * - a negative value (-errno) indicating an error while performing a check,
- *   e.g. when bdrv_read failed on QCOW2_OL_INACTIVE_L2
+ *   e.g. when bdrv_pread failed on QCOW2_OL_INACTIVE_L2
  */
 int qcow2_check_metadata_overlap(BlockDriverState *bs, int ign, int64_t offset,
                                  int64_t size)

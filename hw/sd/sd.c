@@ -32,6 +32,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/units.h"
+#include "qemu/cutils.h"
 #include "hw/irq.h"
 #include "hw/registerfields.h"
 #include "sysemu/block-backend.h"
@@ -83,6 +84,10 @@ enum SDCardStates {
 struct SDState {
     DeviceState parent_obj;
 
+    /* If true, created by sd_init() for a non-qdevified caller */
+    /* TODO purge them with fire */
+    bool me_no_qdev_me_kill_mammoth_with_rocks;
+
     /* SD Memory Card Registers */
     uint32_t ocr;
     uint8_t scr[8];
@@ -128,6 +133,8 @@ struct SDState {
     uint8_t dat_lines;
     bool cmd_line;
 };
+
+static void sd_realize(DeviceState *dev, Error **errp);
 
 static const char *sd_state_name(enum SDCardStates state)
 {
@@ -590,7 +597,7 @@ static void sd_cardchange(void *opaque, bool load, Error **errp)
 {
     SDState *sd = opaque;
     DeviceState *dev = DEVICE(sd);
-    SDBus *sdbus = SD_BUS(qdev_get_parent_bus(dev));
+    SDBus *sdbus;
     bool inserted = sd_get_inserted(sd);
     bool readonly = sd_get_readonly(sd);
 
@@ -601,18 +608,16 @@ static void sd_cardchange(void *opaque, bool load, Error **errp)
         trace_sdcard_ejected();
     }
 
-    /* The IRQ notification is for legacy non-QOM SD controller devices;
-     * QOMified controllers use the SDBus APIs.
-     */
-    if (sdbus) {
-        sdbus_set_inserted(sdbus, inserted);
-        if (inserted) {
-            sdbus_set_readonly(sdbus, readonly);
-        }
-    } else {
+    if (sd->me_no_qdev_me_kill_mammoth_with_rocks) {
         qemu_set_irq(sd->inserted_cb, inserted);
         if (inserted) {
             qemu_set_irq(sd->readonly_cb, readonly);
+        }
+    } else {
+        sdbus = SD_BUS(qdev_get_parent_bus(dev));
+        sdbus_set_inserted(sdbus, inserted);
+        if (inserted) {
+            sdbus_set_readonly(sdbus, readonly);
         }
     }
 }
@@ -697,23 +702,34 @@ SDState *sd_init(BlockBackend *blk, bool is_spi)
 {
     Object *obj;
     DeviceState *dev;
+    SDState *sd;
     Error *err = NULL;
 
     obj = object_new(TYPE_SD_CARD);
     dev = DEVICE(obj);
-    qdev_prop_set_drive(dev, "drive", blk, &err);
-    if (err) {
-        error_report("sd_init failed: %s", error_get_pretty(err));
+    if (!qdev_prop_set_drive_err(dev, "drive", blk, &err)) {
+        error_reportf_err(err, "sd_init failed: ");
         return NULL;
     }
     qdev_prop_set_bit(dev, "spi", is_spi);
-    object_property_set_bool(obj, true, "realized", &err);
+
+    /*
+     * Realizing the device properly would put it into the QOM
+     * composition tree even though it is not plugged into an
+     * appropriate bus.  That's a no-no.  Hide the device from
+     * QOM/qdev, and call its qdev realize callback directly.
+     */
+    object_ref(obj);
+    object_unparent(obj);
+    sd_realize(dev, &err);
     if (err) {
-        error_report("sd_init failed: %s", error_get_pretty(err));
+        error_reportf_err(err, "sd_init failed: ");
         return NULL;
     }
 
-    return SD_CARD(dev);
+    sd = SD_CARD(dev);
+    sd->me_no_qdev_me_kill_mammoth_with_rocks = true;
+    return sd;
 }
 
 void sd_set_cb(SDState *sd, qemu_irq readonly, qemu_irq insert)
@@ -903,6 +919,11 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
      * if not, its effects are cancelled */
     if (sd->multi_blk_cnt != 0 && !(req.cmd == 18 || req.cmd == 25)) {
         sd->multi_blk_cnt = 0;
+    }
+
+    if (sd_cmd_class[req.cmd] == 6 && FIELD_EX32(sd->ocr, OCR, CARD_CAPACITY)) {
+        /* Only Standard Capacity cards support class 6 commands */
+        return sd_illegal;
     }
 
     switch (req.cmd) {
@@ -1150,12 +1171,15 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
     case 17:	/* CMD17:  READ_SINGLE_BLOCK */
         switch (sd->state) {
         case sd_transfer_state:
+
+            if (addr + sd->blk_len > sd->size) {
+                sd->card_status |= ADDRESS_ERROR;
+                return sd_r1;
+            }
+
             sd->state = sd_sendingdata_state;
             sd->data_start = addr;
             sd->data_offset = 0;
-
-            if (sd->data_start + sd->blk_len > sd->size)
-                sd->card_status |= ADDRESS_ERROR;
             return sd_r1;
 
         default:
@@ -1166,12 +1190,15 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
     case 18:	/* CMD18:  READ_MULTIPLE_BLOCK */
         switch (sd->state) {
         case sd_transfer_state:
+
+            if (addr + sd->blk_len > sd->size) {
+                sd->card_status |= ADDRESS_ERROR;
+                return sd_r1;
+            }
+
             sd->state = sd_sendingdata_state;
             sd->data_start = addr;
             sd->data_offset = 0;
-
-            if (sd->data_start + sd->blk_len > sd->size)
-                sd->card_status |= ADDRESS_ERROR;
             return sd_r1;
 
         default:
@@ -1211,17 +1238,23 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
             /* Writing in SPI mode not implemented.  */
             if (sd->spi)
                 break;
+
+            if (addr + sd->blk_len > sd->size) {
+                sd->card_status |= ADDRESS_ERROR;
+                return sd_r1;
+            }
+
             sd->state = sd_receivingdata_state;
             sd->data_start = addr;
             sd->data_offset = 0;
             sd->blk_written = 0;
 
-            if (sd->data_start + sd->blk_len > sd->size)
-                sd->card_status |= ADDRESS_ERROR;
-            if (sd_wp_addr(sd, sd->data_start))
+            if (sd_wp_addr(sd, sd->data_start)) {
                 sd->card_status |= WP_VIOLATION;
-            if (sd->csd[14] & 0x30)
+            }
+            if (sd->csd[14] & 0x30) {
                 sd->card_status |= WP_VIOLATION;
+            }
             return sd_r1;
 
         default:
@@ -1235,17 +1268,23 @@ static sd_rsp_type_t sd_normal_command(SDState *sd, SDRequest req)
             /* Writing in SPI mode not implemented.  */
             if (sd->spi)
                 break;
+
+            if (addr + sd->blk_len > sd->size) {
+                sd->card_status |= ADDRESS_ERROR;
+                return sd_r1;
+            }
+
             sd->state = sd_receivingdata_state;
             sd->data_start = addr;
             sd->data_offset = 0;
             sd->blk_written = 0;
 
-            if (sd->data_start + sd->blk_len > sd->size)
-                sd->card_status |= ADDRESS_ERROR;
-            if (sd_wp_addr(sd, sd->data_start))
+            if (sd_wp_addr(sd, sd->data_start)) {
                 sd->card_status |= WP_VIOLATION;
-            if (sd->csd[14] & 0x30)
+            }
+            if (sd->csd[14] & 0x30) {
                 sd->card_status |= WP_VIOLATION;
+            }
             return sd_r1;
 
         default:
@@ -2085,12 +2124,36 @@ static void sd_realize(DeviceState *dev, Error **errp)
         return;
     }
 
-    if (sd->blk && blk_is_read_only(sd->blk)) {
-        error_setg(errp, "Cannot use read-only drive as SD card");
-        return;
-    }
-
     if (sd->blk) {
+        int64_t blk_size;
+
+        if (blk_is_read_only(sd->blk)) {
+            error_setg(errp, "Cannot use read-only drive as SD card");
+            return;
+        }
+
+        blk_size = blk_getlength(sd->blk);
+        if (blk_size > 0 && !is_power_of_2(blk_size)) {
+            int64_t blk_size_aligned = pow2ceil(blk_size);
+            char *blk_size_str;
+
+            blk_size_str = size_to_str(blk_size);
+            error_setg(errp, "Invalid SD card size: %s", blk_size_str);
+            g_free(blk_size_str);
+
+            blk_size_str = size_to_str(blk_size_aligned);
+            error_append_hint(errp,
+                              "SD card size has to be a power of 2, e.g. %s.\n"
+                              "You can resize disk images with"
+                              " 'qemu-img resize <imagefile> <new-size>'\n"
+                              "(note that this will lose data if you make the"
+                              " image smaller than it currently is).\n",
+                              blk_size_str);
+            g_free(blk_size_str);
+
+            return;
+        }
+
         ret = blk_set_perm(sd->blk, BLK_PERM_CONSISTENT_READ | BLK_PERM_WRITE,
                            BLK_PERM_ALL, errp);
         if (ret < 0) {

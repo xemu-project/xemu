@@ -140,48 +140,16 @@ static inline void* array_insert(array_t* array,unsigned int index,unsigned int 
     return array->pointer+index*array->item_size;
 }
 
-/* this performs a "roll", so that the element which was at index_from becomes
- * index_to, but the order of all other elements is preserved. */
-static inline int array_roll(array_t* array,int index_to,int index_from,int count)
-{
-    char* buf;
-    char* from;
-    char* to;
-    int is;
-
-    if(!array ||
-            index_to<0 || index_to>=array->next ||
-            index_from<0 || index_from>=array->next)
-        return -1;
-
-    if(index_to==index_from)
-        return 0;
-
-    is=array->item_size;
-    from=array->pointer+index_from*is;
-    to=array->pointer+index_to*is;
-    buf=g_malloc(is*count);
-    memcpy(buf,from,is*count);
-
-    if(index_to<index_from)
-        memmove(to+is*count,to,from-to);
-    else
-        memmove(from,from+is*count,to-from);
-
-    memcpy(to,buf,is*count);
-
-    g_free(buf);
-
-    return 0;
-}
-
 static inline int array_remove_slice(array_t* array,int index, int count)
 {
     assert(index >=0);
     assert(count > 0);
     assert(index + count <= array->next);
-    if(array_roll(array,array->next-1,index,count))
-        return -1;
+
+    memmove(array->pointer + index * array->item_size,
+            array->pointer + (index + count) * array->item_size,
+            (array->next - index - count) * array->item_size);
+
     array->next -= count;
     return 0;
 }
@@ -520,12 +488,31 @@ static void set_begin_of_direntry(direntry_t* direntry, uint32_t begin)
     direntry->begin_hi = cpu_to_le16((begin >> 16) & 0xffff);
 }
 
+static bool valid_filename(const unsigned char *name)
+{
+    unsigned char c;
+    if (!strcmp((const char*)name, ".") || !strcmp((const char*)name, "..")) {
+        return false;
+    }
+    for (; (c = *name); name++) {
+        if (!((c >= '0' && c <= '9') ||
+              (c >= 'A' && c <= 'Z') ||
+              (c >= 'a' && c <= 'z') ||
+              c > 127 ||
+              strchr("$%'-_@~`!(){}^#&.+,;=[]", c) != NULL))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 static uint8_t to_valid_short_char(gunichar c)
 {
     c = g_unichar_toupper(c);
     if ((c >= '0' && c <= '9') ||
         (c >= 'A' && c <= 'Z') ||
-        strchr("$%'-_@~`!(){}^#&", c) != 0) {
+        strchr("$%'-_@~`!(){}^#&", c) != NULL) {
         return c;
     } else {
         return 0;
@@ -1154,7 +1141,6 @@ static int vvfat_open(BlockDriverState *bs, QDict *options, int flags,
     bool floppy;
     const char *dirname, *label;
     QemuOpts *opts;
-    Error *local_err = NULL;
     int ret;
 
 #ifdef DEBUG
@@ -1162,9 +1148,7 @@ static int vvfat_open(BlockDriverState *bs, QDict *options, int flags,
 #endif
 
     opts = qemu_opts_create(&runtime_opts, NULL, 0, &error_abort);
-    qemu_opts_absorb_qdict(opts, options, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!qemu_opts_absorb_qdict(opts, options, errp)) {
         ret = -EINVAL;
         goto fail;
     }
@@ -1282,9 +1266,8 @@ static int vvfat_open(BlockDriverState *bs, QDict *options, int flags,
                    "The vvfat (rw) format used by node '%s' "
                    "does not support live migration",
                    bdrv_get_device_or_node_name(bs));
-        ret = migrate_add_blocker(s->migration_blocker, &local_err);
-        if (local_err) {
-            error_propagate(errp, local_err);
+        ret = migrate_add_blocker(s->migration_blocker, errp);
+        if (ret < 0) {
             error_free(s->migration_blocker);
             goto fail;
         }
@@ -2098,6 +2081,10 @@ DLOG(fprintf(stderr, "check direntry %d:\n", i); print_direntry(direntries + i))
             }
             lfn.checksum = 0x100; /* cannot use long name twice */
 
+            if (!valid_filename(lfn.name)) {
+                fprintf(stderr, "Invalid file name\n");
+                goto fail;
+            }
             if (path_len + 1 + lfn.len >= PATH_MAX) {
                 fprintf(stderr, "Name too long: %s/%s\n", path, lfn.name);
                 goto fail;
@@ -2148,7 +2135,7 @@ DLOG(checkpoint());
      * - get modified FAT
      * - compare the two FATs (TODO)
      * - get buffer for marking used clusters
-     * - recurse direntries from root (using bs->bdrv_read to make
+     * - recurse direntries from root (using bs->bdrv_pread to make
      *    sure to get the new data)
      *   - check that the FAT agrees with the size
      *   - count the number of clusters occupied by this directory and
@@ -2913,9 +2900,9 @@ static int handle_deletes(BDRVVVFATState* s)
 /*
  * synchronize mapping with new state:
  *
- * - copy FAT (with bdrv_read)
+ * - copy FAT (with bdrv_pread)
  * - mark all filenames corresponding to mappings as deleted
- * - recurse direntries from root (using bs->bdrv_read)
+ * - recurse direntries from root (using bs->bdrv_pread)
  * - delete files corresponding to mappings marked as deleted
  */
 static int do_commit(BDRVVVFATState* s)
@@ -2935,10 +2922,10 @@ static int do_commit(BDRVVVFATState* s)
         return ret;
     }
 
-    /* copy FAT (with bdrv_read) */
+    /* copy FAT (with bdrv_pread) */
     memcpy(s->fat.pointer, s->fat2, 0x200 * s->sectors_per_fat);
 
-    /* recurse direntries from root (using bs->bdrv_read) */
+    /* recurse direntries from root (using bs->bdrv_pread) */
     ret = commit_direntries(s, 0, -1);
     if (ret) {
         fprintf(stderr, "Fatal: error while committing (%d)\n", ret);
@@ -2960,9 +2947,7 @@ static int do_commit(BDRVVVFATState* s)
         return ret;
     }
 
-    if (s->qcow->bs->drv && s->qcow->bs->drv->bdrv_make_empty) {
-        s->qcow->bs->drv->bdrv_make_empty(s->qcow->bs);
-    }
+    bdrv_make_empty(s->qcow, NULL);
 
     memset(s->used_clusters, 0, sector2cluster(s, s->sector_count));
 
@@ -3130,7 +3115,8 @@ static BlockDriver vvfat_write_target = {
     .bdrv_co_pwritev    = write_target_commit,
 };
 
-static void vvfat_qcow_options(int *child_flags, QDict *child_options,
+static void vvfat_qcow_options(BdrvChildRole role, bool parent_is_format,
+                               int *child_flags, QDict *child_options,
                                int parent_flags, QDict *parent_options)
 {
     qdict_set_default_str(child_options, BDRV_OPT_READ_ONLY, "off");
@@ -3138,7 +3124,7 @@ static void vvfat_qcow_options(int *child_flags, QDict *child_options,
     qdict_set_default_str(child_options, BDRV_OPT_CACHE_NO_FLUSH, "on");
 }
 
-static const BdrvChildRole child_vvfat_qcow = {
+static const BdrvChildClass child_vvfat_qcow = {
     .parent_is_bds      = true,
     .inherit_options    = vvfat_qcow_options,
 };
@@ -3185,7 +3171,9 @@ static int enable_write_target(BlockDriverState *bs, Error **errp)
     options = qdict_new();
     qdict_put_str(options, "write-target.driver", "qcow");
     s->qcow = bdrv_open_child(s->qcow_filename, options, "write-target", bs,
-                              &child_vvfat_qcow, false, errp);
+                              &child_vvfat_qcow,
+                              BDRV_CHILD_DATA | BDRV_CHILD_METADATA,
+                              false, errp);
     qobject_unref(options);
     if (!s->qcow) {
         ret = -EINVAL;
@@ -3212,14 +3200,14 @@ err:
 }
 
 static void vvfat_child_perm(BlockDriverState *bs, BdrvChild *c,
-                             const BdrvChildRole *role,
+                             BdrvChildRole role,
                              BlockReopenQueue *reopen_queue,
                              uint64_t perm, uint64_t shared,
                              uint64_t *nperm, uint64_t *nshared)
 {
     BDRVVVFATState *s = bs->opaque;
 
-    assert(c == s->qcow || role == &child_backing);
+    assert(c == s->qcow || (role & BDRV_CHILD_COW));
 
     if (c == s->qcow) {
         /* This is a private node, nobody should try to attach to it */

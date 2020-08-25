@@ -12,7 +12,6 @@
 #include "hw/qdev-properties.h"
 #include "hw/virtio/virtio-input.h"
 
-#undef CONFIG_CURSES
 #include "ui/console.h"
 
 #include "standard-headers/linux/input.h"
@@ -165,7 +164,7 @@ static void virtio_input_hid_realize(DeviceState *dev, Error **errp)
     }
 }
 
-static void virtio_input_hid_unrealize(DeviceState *dev, Error **errp)
+static void virtio_input_hid_unrealize(DeviceState *dev)
 {
     VirtIOInputHID *vhid = VIRTIO_INPUT_HID(dev);
     qemu_input_handler_unregister(vhid->hs);

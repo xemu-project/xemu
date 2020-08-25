@@ -24,7 +24,7 @@
 #include "hw/misc/imx7_snvs.h"
 #include "hw/misc/imx7_gpr.h"
 #include "hw/intc/imx_gpcv2.h"
-#include "hw/misc/imx2_wdt.h"
+#include "hw/watchdog/wdt_imx2.h"
 #include "hw/gpio/imx_gpio.h"
 #include "hw/char/imx_serial.h"
 #include "hw/timer/imx_gpt.h"
@@ -87,6 +87,8 @@ typedef struct FslIMX6ULState {
     MemoryRegion       caam;
     MemoryRegion       ocram;
     MemoryRegion       ocram_alias;
+
+    uint32_t           phy_num[FSL_IMX6UL_NUM_ETHS];
 } FslIMX6ULState;
 
 enum FslIMX6ULMemoryMap {

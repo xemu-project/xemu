@@ -199,8 +199,8 @@ to be used with the passthrough backend or the swtpm backend.
 
 QEMU files related to TPM backends:
  - ``backends/tpm.c``
+ - ``include/sysemu/tpm.h``
  - ``include/sysemu/tpm_backend.h``
- - ``include/sysemu/tpm_backend_int.h``
 
 The QEMU TPM passthrough device
 -------------------------------
@@ -232,9 +232,9 @@ Integrity Measurement Architecture (IMA), are not expecting to share
 PCRs.
 
 QEMU files related to the TPM passthrough device:
- - ``hw/tpm/tpm_passthrough.c``
- - ``hw/tpm/tpm_util.c``
- - ``hw/tpm/tpm_util.h``
+ - ``backends/tpm/tpm_passthrough.c``
+ - ``backends/tpm/tpm_util.c``
+ - ``include/sysemu/tpm_util.h``
 
 
 Command line to start QEMU with the TPM passthrough device using the host's
@@ -292,9 +292,9 @@ instrumented to initialize a TPM 1.2 or TPM 2 device using this
 command.
 
 QEMU files related to the TPM emulator device:
- - ``hw/tpm/tpm_emulator.c``
- - ``hw/tpm/tpm_util.c``
- - ``hw/tpm/tpm_util.h``
+ - ``backends/tpm/tpm_emulator.c``
+ - ``backends/tpm/tpm_util.c``
+ - ``include/sysemu/tpm_util.h``
 
 The following commands start the swtpm with a UnixIO control channel over
 a socket interface. They do not need to be run as root.
@@ -345,8 +345,6 @@ In case an Arm virt machine is emulated, use the following command line:
     -drive format=qcow2,file=hda.qcow2,if=none,id=drv0 \
     -drive if=pflash,format=raw,file=flash0.img,readonly \
     -drive if=pflash,format=raw,file=flash1.img
-
-  On Arm, ACPI boot with TPM is not yet supported.
 
 In case SeaBIOS is used as firmware, it should show the TPM menu item
 after entering the menu with 'ESC'.

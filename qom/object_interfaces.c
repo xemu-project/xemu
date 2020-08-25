@@ -6,6 +6,7 @@
 #include "qapi/qmp/qerror.h"
 #include "qapi/qmp/qjson.h"
 #include "qapi/qmp/qstring.h"
+#include "qapi/qobject-input-visitor.h"
 #include "qom/object_interfaces.h"
 #include "qemu/help_option.h"
 #include "qemu/module.h"
@@ -13,13 +14,16 @@
 #include "qapi/opts-visitor.h"
 #include "qemu/config-file.h"
 
-void user_creatable_complete(UserCreatable *uc, Error **errp)
+bool user_creatable_complete(UserCreatable *uc, Error **errp)
 {
     UserCreatableClass *ucc = USER_CREATABLE_GET_CLASS(uc);
+    Error *err = NULL;
 
     if (ucc->complete) {
-        ucc->complete(uc, errp);
+        ucc->complete(uc, &err);
+        error_propagate(errp, err);
     }
+    return !err;
 }
 
 bool user_creatable_can_be_deleted(UserCreatable *uc)
@@ -62,13 +66,11 @@ Object *user_creatable_add_type(const char *type, const char *id,
 
     assert(qdict);
     obj = object_new(type);
-    visit_start_struct(v, NULL, NULL, 0, &local_err);
-    if (local_err) {
+    if (!visit_start_struct(v, NULL, NULL, 0, &local_err)) {
         goto out;
     }
     for (e = qdict_first(qdict); e; e = qdict_next(qdict, e)) {
-        object_property_set(obj, v, e->key, &local_err);
-        if (local_err) {
+        if (!object_property_set(obj, e->key, v, &local_err)) {
             break;
         }
     }
@@ -81,18 +83,16 @@ Object *user_creatable_add_type(const char *type, const char *id,
     }
 
     if (id != NULL) {
-        object_property_add_child(object_get_objects_root(),
-                                  id, obj, &local_err);
+        object_property_try_add_child(object_get_objects_root(),
+                                      id, obj, &local_err);
         if (local_err) {
             goto out;
         }
     }
 
-    user_creatable_complete(USER_CREATABLE(obj), &local_err);
-    if (local_err) {
+    if (!user_creatable_complete(USER_CREATABLE(obj), &local_err)) {
         if (id != NULL) {
-            object_property_del(object_get_objects_root(),
-                                id, &error_abort);
+            object_property_del(object_get_objects_root(), id);
         }
         goto out;
     }
@@ -105,6 +105,37 @@ out:
     return obj;
 }
 
+bool user_creatable_add_dict(QDict *qdict, bool keyval, Error **errp)
+{
+    Visitor *v;
+    Object *obj;
+    g_autofree char *type = NULL;
+    g_autofree char *id = NULL;
+
+    type = g_strdup(qdict_get_try_str(qdict, "qom-type"));
+    if (!type) {
+        error_setg(errp, QERR_MISSING_PARAMETER, "qom-type");
+        return false;
+    }
+    qdict_del(qdict, "qom-type");
+
+    id = g_strdup(qdict_get_try_str(qdict, "id"));
+    if (!id) {
+        error_setg(errp, QERR_MISSING_PARAMETER, "id");
+        return false;
+    }
+    qdict_del(qdict, "id");
+
+    if (keyval) {
+        v = qobject_input_visitor_new_keyval(QOBJECT(qdict));
+    } else {
+        v = qobject_input_visitor_new(QOBJECT(qdict));
+    }
+    obj = user_creatable_add_type(type, id, qdict, v, errp);
+    visit_free(v);
+    object_unref(obj);
+    return !!obj;
+}
 
 Object *user_creatable_add_opts(QemuOpts *opts, Error **errp)
 {
@@ -234,7 +265,7 @@ bool user_creatable_print_help(const char *type, QemuOpts *opts)
     return false;
 }
 
-void user_creatable_del(const char *id, Error **errp)
+bool user_creatable_del(const char *id, Error **errp)
 {
     Object *container;
     Object *obj;
@@ -243,12 +274,12 @@ void user_creatable_del(const char *id, Error **errp)
     obj = object_resolve_path_component(container, id);
     if (!obj) {
         error_setg(errp, "object '%s' not found", id);
-        return;
+        return false;
     }
 
     if (!user_creatable_can_be_deleted(USER_CREATABLE(obj))) {
         error_setg(errp, "object '%s' is in use, can not be deleted", id);
-        return;
+        return false;
     }
 
     /*
@@ -259,6 +290,7 @@ void user_creatable_del(const char *id, Error **errp)
                                  id));
 
     object_unparent(obj);
+    return true;
 }
 
 void user_creatable_cleanup(void)

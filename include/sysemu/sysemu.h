@@ -5,7 +5,6 @@
 #include "qemu/timer.h"
 #include "qemu/notify.h"
 #include "qemu/uuid.h"
-#include "qom/object.h"
 
 /* vl.c */
 
@@ -14,6 +13,8 @@ extern int only_migratable;
 extern const char *qemu_name;
 extern QemuUUID qemu_uuid;
 extern bool qemu_uuid_set;
+
+void qemu_add_data_dir(const char *path);
 
 void qemu_add_exit_notifier(Notifier *notify);
 void qemu_remove_exit_notifier(Notifier *notify);
@@ -92,7 +93,7 @@ void check_boot_index(int32_t bootindex, Error **errp);
 void del_boot_device_path(DeviceState *dev, const char *suffix);
 void device_add_bootindex_property(Object *obj, int32_t *bootindex,
                                    const char *name, const char *suffix,
-                                   DeviceState *dev, Error **errp);
+                                   DeviceState *dev);
 void restore_boot_order(void *opaque);
 void validate_bootdevices(const char *devices, Error **errp);
 void add_boot_device_lchs(DeviceState *dev, const char *suffix,

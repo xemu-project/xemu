@@ -59,30 +59,27 @@ static void cubieboard_init(MachineState *machine)
     }
 
     a10 = AW_A10(object_new(TYPE_AW_A10));
-    object_property_add_child(OBJECT(machine), "soc", OBJECT(a10),
-                              &error_abort);
+    object_property_add_child(OBJECT(machine), "soc", OBJECT(a10));
     object_unref(OBJECT(a10));
 
-    object_property_set_int(OBJECT(&a10->emac), 1, "phy-addr", &err);
-    if (err != NULL) {
+    if (!object_property_set_int(OBJECT(&a10->emac), "phy-addr", 1, &err)) {
         error_reportf_err(err, "Couldn't set phy address: ");
         exit(1);
     }
 
-    object_property_set_int(OBJECT(&a10->timer), 32768, "clk0-freq", &err);
-    if (err != NULL) {
+    if (!object_property_set_int(OBJECT(&a10->timer), "clk0-freq", 32768,
+                                 &err)) {
         error_reportf_err(err, "Couldn't set clk0 frequency: ");
         exit(1);
     }
 
-    object_property_set_int(OBJECT(&a10->timer), 24000000, "clk1-freq", &err);
-    if (err != NULL) {
+    if (!object_property_set_int(OBJECT(&a10->timer), "clk1-freq", 24000000,
+                                 &err)) {
         error_reportf_err(err, "Couldn't set clk1 frequency: ");
         exit(1);
     }
 
-    object_property_set_bool(OBJECT(a10), true, "realized", &err);
-    if (err != NULL) {
+    if (!qdev_realize(DEVICE(a10), NULL, &err)) {
         error_reportf_err(err, "Couldn't realize Allwinner A10: ");
         exit(1);
     }
@@ -93,9 +90,9 @@ static void cubieboard_init(MachineState *machine)
     bus = qdev_get_child_bus(DEVICE(a10), "sd-bus");
 
     /* Plug in SD card */
-    carddev = qdev_create(bus, TYPE_SD_CARD);
-    qdev_prop_set_drive(carddev, "drive", blk, &error_fatal);
-    object_property_set_bool(OBJECT(carddev), true, "realized", &error_fatal);
+    carddev = qdev_new(TYPE_SD_CARD);
+    qdev_prop_set_drive_err(carddev, "drive", blk, &error_fatal);
+    qdev_realize_and_unref(carddev, bus, &error_fatal);
 
     memory_region_add_subregion(get_system_memory(), AW_A10_SDRAM_BASE,
                                 machine->ram);

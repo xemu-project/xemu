@@ -8,6 +8,7 @@ common-obj-$(CONFIG_ACPI_NVDIMM) += nvdimm.o
 common-obj-$(CONFIG_ACPI_VMGENID) += vmgenid.o
 common-obj-$(CONFIG_ACPI_HW_REDUCED) += generic_event_device.o
 common-obj-$(CONFIG_ACPI_HMAT) += hmat.o
+common-obj-$(CONFIG_ACPI_APEI) += ghes.o
 common-obj-$(call lnot,$(CONFIG_ACPI_X86)) += acpi-stub.o
 common-obj-$(call lnot,$(CONFIG_PC)) += acpi-x86-stub.o
 
@@ -20,6 +21,6 @@ common-obj-$(CONFIG_TPM) += tpm.o
 common-obj-$(CONFIG_IPMI) += ipmi.o
 common-obj-$(call lnot,$(CONFIG_IPMI)) += ipmi-stub.o
 else
-common-obj-y += acpi-stub.o
+common-obj-y += acpi-stub.o aml-build-stub.o
 endif
-common-obj-$(CONFIG_ALL) += acpi-stub.o acpi-x86-stub.o ipmi-stub.o
+common-obj-$(CONFIG_ALL) += acpi-stub.o aml-build-stub.o acpi-x86-stub.o ipmi-stub.o

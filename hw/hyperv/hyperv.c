@@ -15,6 +15,7 @@
 #include "sysemu/kvm.h"
 #include "qemu/bitops.h"
 #include "qemu/error-report.h"
+#include "qemu/lockable.h"
 #include "qemu/queue.h"
 #include "qemu/rcu.h"
 #include "qemu/rcu_queue.h"
@@ -36,6 +37,13 @@ typedef struct SynICState {
 
 #define TYPE_SYNIC "hyperv-synic"
 #define SYNIC(obj) OBJECT_CHECK(SynICState, (obj), TYPE_SYNIC)
+
+static bool synic_enabled;
+
+bool hyperv_is_synic_enabled(void)
+{
+    return synic_enabled;
+}
 
 static SynICState *get_synic(CPUState *cs)
 {
@@ -130,9 +138,10 @@ void hyperv_synic_add(CPUState *cs)
     obj = object_new(TYPE_SYNIC);
     synic = SYNIC(obj);
     synic->cs = cs;
-    object_property_add_child(OBJECT(cs), "synic", obj, &error_abort);
+    object_property_add_child(OBJECT(cs), "synic", obj);
     object_unref(obj);
-    object_property_set_bool(obj, true, "realized", &error_abort);
+    qdev_realize(DEVICE(obj), NULL, &error_abort);
+    synic_enabled = true;
 }
 
 void hyperv_synic_reset(CPUState *cs)
@@ -491,7 +500,7 @@ int hyperv_set_msg_handler(uint32_t conn_id, HvMsgHandler handler, void *data)
     int ret;
     MsgHandler *mh;
 
-    qemu_mutex_lock(&handlers_mutex);
+    QEMU_LOCK_GUARD(&handlers_mutex);
     QLIST_FOREACH(mh, &msg_handlers, link) {
         if (mh->conn_id == conn_id) {
             if (handler) {
@@ -501,7 +510,7 @@ int hyperv_set_msg_handler(uint32_t conn_id, HvMsgHandler handler, void *data)
                 g_free_rcu(mh, rcu);
                 ret = 0;
             }
-            goto unlock;
+            return ret;
         }
     }
 
@@ -515,8 +524,7 @@ int hyperv_set_msg_handler(uint32_t conn_id, HvMsgHandler handler, void *data)
     } else {
         ret = -ENOENT;
     }
-unlock:
-    qemu_mutex_unlock(&handlers_mutex);
+
     return ret;
 }
 
@@ -565,7 +573,7 @@ static int set_event_flag_handler(uint32_t conn_id, EventNotifier *notifier)
     int ret;
     EventFlagHandler *handler;
 
-    qemu_mutex_lock(&handlers_mutex);
+    QEMU_LOCK_GUARD(&handlers_mutex);
     QLIST_FOREACH(handler, &event_flag_handlers, link) {
         if (handler->conn_id == conn_id) {
             if (notifier) {
@@ -575,7 +583,7 @@ static int set_event_flag_handler(uint32_t conn_id, EventNotifier *notifier)
                 g_free_rcu(handler, rcu);
                 ret = 0;
             }
-            goto unlock;
+            return ret;
         }
     }
 
@@ -588,8 +596,7 @@ static int set_event_flag_handler(uint32_t conn_id, EventNotifier *notifier)
     } else {
         ret = -ENOENT;
     }
-unlock:
-    qemu_mutex_unlock(&handlers_mutex);
+
     return ret;
 }
 

@@ -163,14 +163,14 @@ static void mb_cpu_realizefn(DeviceState *dev, Error **errp)
 
     qemu_init_vcpu(cs);
 
-    env->pvr.regs[0] = PVR0_USE_EXC_MASK \
-                       | PVR0_USE_ICACHE_MASK \
+    env->pvr.regs[0] = PVR0_USE_EXC_MASK
+                       | PVR0_USE_ICACHE_MASK
                        | PVR0_USE_DCACHE_MASK;
-    env->pvr.regs[2] = PVR2_D_OPB_MASK \
-                        | PVR2_D_LMB_MASK \
-                        | PVR2_I_OPB_MASK \
-                        | PVR2_I_LMB_MASK \
-                        | PVR2_FPU_EXC_MASK \
+    env->pvr.regs[2] = PVR2_D_OPB_MASK
+                        | PVR2_D_LMB_MASK
+                        | PVR2_I_OPB_MASK
+                        | PVR2_I_LMB_MASK
+                        | PVR2_FPU_EXC_MASK
                         | 0;
 
     version = cpu->cfg.version ? cpu->cfg.version : DEFAULT_CPU_VERSION;
@@ -193,8 +193,10 @@ static void mb_cpu_realizefn(DeviceState *dev, Error **errp)
                         (cpu->cfg.use_mmu ? PVR0_USE_MMU_MASK : 0) |
                         (cpu->cfg.endi ? PVR0_ENDI_MASK : 0) |
                         (version_code << PVR0_VERSION_SHIFT) |
-                        (cpu->cfg.pvr == C_PVR_FULL ? PVR0_PVR_FULL_MASK : 0);
+                        (cpu->cfg.pvr == C_PVR_FULL ? PVR0_PVR_FULL_MASK : 0) |
+                        cpu->cfg.pvr_user1;
 
+    env->pvr.regs[1] = cpu->cfg.pvr_user2;
     env->pvr.regs[2] |= (cpu->cfg.use_fpu ? PVR2_USE_FPU_MASK : 0) |
                         (cpu->cfg.use_fpu > 1 ? PVR2_USE_FPU2_MASK : 0) |
                         (cpu->cfg.use_hw_mul ? PVR2_USE_HW_MUL_MASK : 0) |
@@ -206,7 +208,15 @@ static void mb_cpu_realizefn(DeviceState *dev, Error **errp)
                         (cpu->cfg.dopb_bus_exception ?
                                                  PVR2_DOPB_BUS_EXC_MASK : 0) |
                         (cpu->cfg.iopb_bus_exception ?
-                                                 PVR2_IOPB_BUS_EXC_MASK : 0);
+                                                 PVR2_IOPB_BUS_EXC_MASK : 0) |
+                        (cpu->cfg.div_zero_exception ?
+                                                 PVR2_DIV_ZERO_EXC_MASK : 0) |
+                        (cpu->cfg.illegal_opcode_exception ?
+                                                PVR2_ILL_OPCODE_EXC_MASK : 0) |
+                        (cpu->cfg.unaligned_exceptions ?
+                                                PVR2_UNALIGNED_EXC_MASK : 0) |
+                        (cpu->cfg.opcode_0_illegal ?
+                                                 PVR2_OPCODE_0x0_ILL_MASK : 0);
 
     env->pvr.regs[5] |= cpu->cfg.dcache_writeback ?
                                         PVR5_DCACHE_WRITEBACK_MASK : 0;
@@ -274,8 +284,18 @@ static Property mb_properties[] = {
     /* Enables bus exceptions on failed instruction fetches.  */
     DEFINE_PROP_BOOL("iopb-bus-exception", MicroBlazeCPU,
                      cfg.iopb_bus_exception, false),
+    DEFINE_PROP_BOOL("ill-opcode-exception", MicroBlazeCPU,
+                     cfg.illegal_opcode_exception, false),
+    DEFINE_PROP_BOOL("div-zero-exception", MicroBlazeCPU,
+                     cfg.div_zero_exception, false),
+    DEFINE_PROP_BOOL("unaligned-exceptions", MicroBlazeCPU,
+                     cfg.unaligned_exceptions, false),
+    DEFINE_PROP_BOOL("opcode-0x0-illegal", MicroBlazeCPU,
+                     cfg.opcode_0_illegal, false),
     DEFINE_PROP_STRING("version", MicroBlazeCPU, cfg.version),
     DEFINE_PROP_UINT8("pvr", MicroBlazeCPU, cfg.pvr, C_PVR_FULL),
+    DEFINE_PROP_UINT8("pvr-user1", MicroBlazeCPU, cfg.pvr_user1, 0),
+    DEFINE_PROP_UINT32("pvr-user2", MicroBlazeCPU, cfg.pvr_user2, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -309,7 +329,7 @@ static void mb_cpu_class_init(ObjectClass *oc, void *data)
 #endif
     dc->vmsd = &vmstate_mb_cpu;
     device_class_set_props(dc, mb_properties);
-    cc->gdb_num_core_regs = 32 + 5;
+    cc->gdb_num_core_regs = 32 + 27;
 
     cc->disas_set_info = mb_disas_set_info;
     cc->tcg_initialize = mb_tcg_init;

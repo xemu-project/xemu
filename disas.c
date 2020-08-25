@@ -39,9 +39,11 @@ target_read_memory (bfd_vma memaddr,
                     struct disassemble_info *info)
 {
     CPUDebug *s = container_of(info, CPUDebug, info);
+    int r;
 
-    cpu_memory_rw_debug(s->cpu, memaddr, myaddr, length, 0);
-    return 0;
+    r = cpu_memory_rw_debug(s->cpu, memaddr, myaddr, length, 0);
+
+    return r ? EIO : 0;
 }
 
 /* Print an error message.  We can assume that this is in response to
@@ -260,7 +262,8 @@ static void cap_dump_insn_units(disassemble_info *info, cs_insn *insn,
     }
 }
 
-static void cap_dump_insn(disassemble_info *info, cs_insn *insn)
+static void cap_dump_insn(disassemble_info *info, cs_insn *insn,
+                          const char *note)
 {
     fprintf_function print = info->fprintf_func;
     int i, n, split;
@@ -281,7 +284,11 @@ static void cap_dump_insn(disassemble_info *info, cs_insn *insn)
     }
 
     /* Print the actual instruction.  */
-    print(info->stream, "  %-8s %s\n", insn->mnemonic, insn->op_str);
+    print(info->stream, "  %-8s %s", insn->mnemonic, insn->op_str);
+    if (note) {
+        print(info->stream, "\t\t%s", note);
+    }
+    print(info->stream, "\n");
 
     /* Dump any remaining part of the insn on subsequent lines.  */
     for (i = split; i < n; i += split) {
@@ -313,7 +320,7 @@ static bool cap_disas_target(disassemble_info *info, uint64_t pc, size_t size)
         size -= tsize;
 
         while (cs_disasm_iter(handle, &cbuf, &csize, &pc, insn)) {
-           cap_dump_insn(info, insn);
+            cap_dump_insn(info, insn, NULL);
         }
 
         /* If the target memory is not consumed, go back for more... */
@@ -342,7 +349,8 @@ static bool cap_disas_target(disassemble_info *info, uint64_t pc, size_t size)
 }
 
 /* Disassemble SIZE bytes at CODE for the host.  */
-static bool cap_disas_host(disassemble_info *info, void *code, size_t size)
+static bool cap_disas_host(disassemble_info *info, void *code, size_t size,
+                           const char *note)
 {
     csh handle;
     const uint8_t *cbuf;
@@ -358,7 +366,8 @@ static bool cap_disas_host(disassemble_info *info, void *code, size_t size)
     pc = (uintptr_t)code;
 
     while (cs_disasm_iter(handle, &cbuf, &size, &pc, insn)) {
-       cap_dump_insn(info, insn);
+        cap_dump_insn(info, insn, note);
+        note = NULL;
     }
     if (size != 0) {
         (*info->fprintf_func)(info->stream,
@@ -402,7 +411,7 @@ static bool cap_disas_monitor(disassemble_info *info, uint64_t pc, int count)
         csize += tsize;
 
         if (cs_disasm_iter(handle, &cbuf, &csize, &pc, insn)) {
-            cap_dump_insn(info, insn);
+            cap_dump_insn(info, insn, NULL);
             if (--count <= 0) {
                 break;
             }
@@ -416,7 +425,7 @@ static bool cap_disas_monitor(disassemble_info *info, uint64_t pc, int count)
 #endif /* !CONFIG_USER_ONLY */
 #else
 # define cap_disas_target(i, p, s)  false
-# define cap_disas_host(i, p, s)  false
+# define cap_disas_host(i, p, s, n)  false
 # define cap_disas_monitor(i, p, c)  false
 # define cap_disas_plugin(i, p, c) false
 #endif /* CONFIG_CAPSTONE */
@@ -586,7 +595,7 @@ char *plugin_disas(CPUState *cpu, uint64_t addr, size_t size)
 }
 
 /* Disassemble this for me please... (debugging). */
-void disas(FILE *out, void *code, unsigned long size)
+void disas(FILE *out, void *code, unsigned long size, const char *note)
 {
     uintptr_t pc;
     int count;
@@ -664,7 +673,7 @@ void disas(FILE *out, void *code, unsigned long size)
     print_insn = print_insn_hppa;
 #endif
 
-    if (s.info.cap_arch >= 0 && cap_disas_host(&s.info, code, size)) {
+    if (s.info.cap_arch >= 0 && cap_disas_host(&s.info, code, size, note)) {
         return;
     }
 
@@ -674,10 +683,16 @@ void disas(FILE *out, void *code, unsigned long size)
     for (pc = (uintptr_t)code; size > 0; pc += count, size -= count) {
         fprintf(out, "0x%08" PRIxPTR ":  ", pc);
         count = print_insn(pc, &s.info);
-	fprintf(out, "\n");
-	if (count < 0)
-	    break;
+        if (note) {
+            fprintf(out, "\t\t%s", note);
+            note = NULL;
+        }
+        fprintf(out, "\n");
+        if (count < 0) {
+            break;
+        }
     }
+
 }
 
 /* Look up symbol for debugging purpose.  Returns "" if unknown. */
@@ -705,10 +720,11 @@ physical_read_memory(bfd_vma memaddr, bfd_byte *myaddr, int length,
                      struct disassemble_info *info)
 {
     CPUDebug *s = container_of(info, CPUDebug, info);
+    MemTxResult res;
 
-    address_space_read(s->cpu->as, memaddr, MEMTXATTRS_UNSPECIFIED,
-                       myaddr, length);
-    return 0;
+    res = address_space_read(s->cpu->as, memaddr, MEMTXATTRS_UNSPECIFIED,
+                             myaddr, length);
+    return res == MEMTX_OK ? 0 : EIO;
 }
 
 /* Disassembler for the monitor.  */

@@ -166,7 +166,7 @@ static int64_t block_status(BDRVParallelsState *s, int64_t sector_num,
 static int64_t allocate_clusters(BlockDriverState *bs, int64_t sector_num,
                                  int nb_sectors, int *pnum)
 {
-    int ret;
+    int ret = 0;
     BDRVParallelsState *s = bs->opaque;
     int64_t pos, space, idx, to_allocate, i, len;
 
@@ -196,14 +196,24 @@ static int64_t allocate_clusters(BlockDriverState *bs, int64_t sector_num,
     }
     if (s->data_end + space > (len >> BDRV_SECTOR_BITS)) {
         space += s->prealloc_size;
+        /*
+         * We require the expanded size to read back as zero. If the
+         * user permitted truncation, we try that; but if it fails, we
+         * force the safer-but-slower fallocate.
+         */
+        if (s->prealloc_mode == PRL_PREALLOC_MODE_TRUNCATE) {
+            ret = bdrv_truncate(bs->file,
+                                (s->data_end + space) << BDRV_SECTOR_BITS,
+                                false, PREALLOC_MODE_OFF, BDRV_REQ_ZERO_WRITE,
+                                NULL);
+            if (ret == -ENOTSUP) {
+                s->prealloc_mode = PRL_PREALLOC_MODE_FALLOCATE;
+            }
+        }
         if (s->prealloc_mode == PRL_PREALLOC_MODE_FALLOCATE) {
             ret = bdrv_pwrite_zeroes(bs->file,
                                      s->data_end << BDRV_SECTOR_BITS,
                                      space << BDRV_SECTOR_BITS, 0);
-        } else {
-            ret = bdrv_truncate(bs->file,
-                                (s->data_end + space) << BDRV_SECTOR_BITS,
-                                false, PREALLOC_MODE_OFF, NULL);
         }
         if (ret < 0) {
             return ret;
@@ -493,7 +503,7 @@ static int coroutine_fn parallels_co_check(BlockDriverState *bs,
              * That means we have to pass exact=true.
              */
             ret = bdrv_truncate(bs->file, res->image_end_offset, true,
-                                PREALLOC_MODE_OFF, &local_err);
+                                PREALLOC_MODE_OFF, 0, &local_err);
             if (ret < 0) {
                 error_report_err(local_err);
                 res->check_errors++;
@@ -559,10 +569,10 @@ static int coroutine_fn parallels_co_create(BlockdevCreateOptions* opts,
         return -EIO;
     }
 
-    blk = blk_new(bdrv_get_aio_context(bs),
-                  BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL);
-    ret = blk_insert_bs(blk, bs, errp);
-    if (ret < 0) {
+    blk = blk_new_with_bs(bs, BLK_PERM_WRITE | BLK_PERM_RESIZE, BLK_PERM_ALL,
+                          errp);
+    if (!blk) {
+        ret = -EPERM;
         goto out;
     }
     blk_set_allow_write_beyond_eof(blk, true);
@@ -615,7 +625,6 @@ static int coroutine_fn parallels_co_create_opts(BlockDriver *drv,
                                                  Error **errp)
 {
     BlockdevCreateOptions *create_options = NULL;
-    Error *local_err = NULL;
     BlockDriverState *bs = NULL;
     QDict *qdict;
     Visitor *v;
@@ -636,9 +645,8 @@ static int coroutine_fn parallels_co_create_opts(BlockDriver *drv,
     }
 
     /* Create and open the file (protocol layer) */
-    ret = bdrv_create_file(filename, opts, &local_err);
+    ret = bdrv_create_file(filename, opts, errp);
     if (ret < 0) {
-        error_propagate(errp, local_err);
         goto done;
     }
 
@@ -659,11 +667,9 @@ static int coroutine_fn parallels_co_create_opts(BlockDriver *drv,
         goto done;
     }
 
-    visit_type_BlockdevCreateOptions(v, NULL, &create_options, &local_err);
+    visit_type_BlockdevCreateOptions(v, NULL, &create_options, errp);
     visit_free(v);
-
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!create_options) {
         ret = -EINVAL;
         goto done;
     }
@@ -729,8 +735,8 @@ static int parallels_open(BlockDriverState *bs, QDict *options, int flags,
     Error *local_err = NULL;
     char *buf;
 
-    bs->file = bdrv_open_child(NULL, options, "file", bs, &child_file,
-                               false, errp);
+    bs->file = bdrv_open_child(NULL, options, "file", bs, &child_of_bds,
+                               BDRV_CHILD_IMAGE, false, errp);
     if (!bs->file) {
         return -EINVAL;
     }
@@ -814,13 +820,12 @@ static int parallels_open(BlockDriverState *bs, QDict *options, int flags,
         }
     }
 
-    opts = qemu_opts_create(&parallels_runtime_opts, NULL, 0, &local_err);
-    if (local_err != NULL) {
+    opts = qemu_opts_create(&parallels_runtime_opts, NULL, 0, errp);
+    if (!opts) {
         goto fail_options;
     }
 
-    qemu_opts_absorb_qdict(opts, options, &local_err);
-    if (local_err != NULL) {
+    if (!qemu_opts_absorb_qdict(opts, options, errp)) {
         goto fail_options;
     }
 
@@ -828,16 +833,14 @@ static int parallels_open(BlockDriverState *bs, QDict *options, int flags,
         qemu_opt_get_size_del(opts, PARALLELS_OPT_PREALLOC_SIZE, 0);
     s->prealloc_size = MAX(s->tracks, s->prealloc_size >> BDRV_SECTOR_BITS);
     buf = qemu_opt_get_del(opts, PARALLELS_OPT_PREALLOC_MODE);
+    /* prealloc_mode can be downgraded later during allocate_clusters */
     s->prealloc_mode = qapi_enum_parse(&prealloc_mode_lookup, buf,
                                        PRL_PREALLOC_MODE_FALLOCATE,
                                        &local_err);
     g_free(buf);
     if (local_err != NULL) {
+        error_propagate(errp, local_err);
         goto fail_options;
-    }
-
-    if (!bdrv_has_zero_init_truncate(bs->file->bs)) {
-        s->prealloc_mode = PRL_PREALLOC_MODE_FALLOCATE;
     }
 
     if ((flags & BDRV_O_RDWR) && !(flags & BDRV_O_INACTIVE)) {
@@ -856,9 +859,8 @@ static int parallels_open(BlockDriverState *bs, QDict *options, int flags,
     error_setg(&s->migration_blocker, "The Parallels format used by node '%s' "
                "does not support live migration",
                bdrv_get_device_or_node_name(bs));
-    ret = migrate_add_blocker(s->migration_blocker, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    ret = migrate_add_blocker(s->migration_blocker, errp);
+    if (ret < 0) {
         error_free(s->migration_blocker);
         goto fail;
     }
@@ -867,15 +869,11 @@ static int parallels_open(BlockDriverState *bs, QDict *options, int flags,
 
 fail_format:
     error_setg(errp, "Image not in Parallels format");
+fail_options:
     ret = -EINVAL;
 fail:
     qemu_vfree(s->header);
     return ret;
-
-fail_options:
-    error_propagate(errp, local_err);
-    ret = -EINVAL;
-    goto fail;
 }
 
 
@@ -889,7 +887,7 @@ static void parallels_close(BlockDriverState *bs)
 
         /* errors are ignored, so we might as well pass exact=true */
         bdrv_truncate(bs->file, s->data_end << BDRV_SECTOR_BITS, true,
-                      PREALLOC_MODE_OFF, NULL);
+                      PREALLOC_MODE_OFF, 0, NULL);
     }
 
     g_free(s->bat_dirty_bmap);
@@ -905,12 +903,13 @@ static BlockDriver bdrv_parallels = {
     .bdrv_probe		= parallels_probe,
     .bdrv_open		= parallels_open,
     .bdrv_close		= parallels_close,
-    .bdrv_child_perm          = bdrv_format_default_perms,
+    .bdrv_child_perm          = bdrv_default_perms,
     .bdrv_co_block_status     = parallels_co_block_status,
     .bdrv_has_zero_init       = bdrv_has_zero_init_1,
     .bdrv_co_flush_to_os      = parallels_co_flush_to_os,
     .bdrv_co_readv  = parallels_co_readv,
     .bdrv_co_writev = parallels_co_writev,
+    .is_format      = true,
     .supports_backing = true,
     .bdrv_co_create      = parallels_co_create,
     .bdrv_co_create_opts = parallels_co_create_opts,

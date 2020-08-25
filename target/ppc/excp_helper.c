@@ -57,12 +57,41 @@ static void ppc_hw_interrupt(CPUPPCState *env)
 #else /* defined(CONFIG_USER_ONLY) */
 static inline void dump_syscall(CPUPPCState *env)
 {
-    qemu_log_mask(CPU_LOG_INT, "syscall r0=%016" PRIx64 " r3=%016" PRIx64
-                  " r4=%016" PRIx64 " r5=%016" PRIx64 " r6=%016" PRIx64
+    qemu_log_mask(CPU_LOG_INT, "syscall r0=%016" PRIx64
+                  " r3=%016" PRIx64 " r4=%016" PRIx64 " r5=%016" PRIx64
+                  " r6=%016" PRIx64 " r7=%016" PRIx64 " r8=%016" PRIx64
                   " nip=" TARGET_FMT_lx "\n",
                   ppc_dump_gpr(env, 0), ppc_dump_gpr(env, 3),
                   ppc_dump_gpr(env, 4), ppc_dump_gpr(env, 5),
-                  ppc_dump_gpr(env, 6), env->nip);
+                  ppc_dump_gpr(env, 6), ppc_dump_gpr(env, 7),
+                  ppc_dump_gpr(env, 8), env->nip);
+}
+
+static inline void dump_syscall_vectored(CPUPPCState *env)
+{
+    qemu_log_mask(CPU_LOG_INT, "syscall r0=%016" PRIx64
+                  " r3=%016" PRIx64 " r4=%016" PRIx64 " r5=%016" PRIx64
+                  " r6=%016" PRIx64 " r7=%016" PRIx64 " r8=%016" PRIx64
+                  " nip=" TARGET_FMT_lx "\n",
+                  ppc_dump_gpr(env, 0), ppc_dump_gpr(env, 3),
+                  ppc_dump_gpr(env, 4), ppc_dump_gpr(env, 5),
+                  ppc_dump_gpr(env, 6), ppc_dump_gpr(env, 7),
+                  ppc_dump_gpr(env, 8), env->nip);
+}
+
+static inline void dump_hcall(CPUPPCState *env)
+{
+    qemu_log_mask(CPU_LOG_INT, "hypercall r3=%016" PRIx64
+                  " r4=%016" PRIx64 " r5=%016" PRIx64 " r6=%016" PRIx64
+                  " r7=%016" PRIx64 " r8=%016" PRIx64 " r9=%016" PRIx64
+                  " r10=%016" PRIx64 " r11=%016" PRIx64 " r12=%016" PRIx64
+                  " nip=" TARGET_FMT_lx "\n",
+                  ppc_dump_gpr(env, 3), ppc_dump_gpr(env, 4),
+                  ppc_dump_gpr(env, 5), ppc_dump_gpr(env, 6),
+                  ppc_dump_gpr(env, 7), ppc_dump_gpr(env, 8),
+                  ppc_dump_gpr(env, 9), ppc_dump_gpr(env, 10),
+                  ppc_dump_gpr(env, 11), ppc_dump_gpr(env, 12),
+                  env->nip);
 }
 
 static int powerpc_reset_wakeup(CPUState *cs, CPUPPCState *env, int excp,
@@ -72,7 +101,7 @@ static int powerpc_reset_wakeup(CPUState *cs, CPUPPCState *env, int excp,
     env->resume_as_sreset = false;
 
     /* Pretend to be returning from doze always as we don't lose state */
-    *msr |= (0x1ull << (63 - 47));
+    *msr |= SRR1_WS_NOLOSS;
 
     /* Machine checks are sent normally */
     if (excp == POWERPC_EXCP_MCHECK) {
@@ -80,25 +109,25 @@ static int powerpc_reset_wakeup(CPUState *cs, CPUPPCState *env, int excp,
     }
     switch (excp) {
     case POWERPC_EXCP_RESET:
-        *msr |= 0x4ull << (63 - 45);
+        *msr |= SRR1_WAKERESET;
         break;
     case POWERPC_EXCP_EXTERNAL:
-        *msr |= 0x8ull << (63 - 45);
+        *msr |= SRR1_WAKEEE;
         break;
     case POWERPC_EXCP_DECR:
-        *msr |= 0x6ull << (63 - 45);
+        *msr |= SRR1_WAKEDEC;
         break;
     case POWERPC_EXCP_SDOOR:
-        *msr |= 0x5ull << (63 - 45);
+        *msr |= SRR1_WAKEDBELL;
         break;
     case POWERPC_EXCP_SDOOR_HV:
-        *msr |= 0x3ull << (63 - 45);
+        *msr |= SRR1_WAKEHDBELL;
         break;
     case POWERPC_EXCP_HV_MAINT:
-        *msr |= 0xaull << (63 - 45);
+        *msr |= SRR1_WAKEHMI;
         break;
     case POWERPC_EXCP_HVIRT:
-        *msr |= 0x9ull << (63 - 45);
+        *msr |= SRR1_WAKEHVI;
         break;
     default:
         cpu_abort(cs, "Unsupported exception %d in Power Save mode\n",
@@ -168,7 +197,7 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
     CPUState *cs = CPU(cpu);
     CPUPPCState *env = &cpu->env;
     target_ulong msr, new_msr, vector;
-    int srr0, srr1, asrr0, asrr1, lev, ail;
+    int srr0, srr1, asrr0, asrr1, lev = -1, ail;
     bool lpes0;
 
     qemu_log_mask(CPU_LOG_INT, "Raise exception at " TARGET_FMT_lx
@@ -379,8 +408,13 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
         }
         break;
     case POWERPC_EXCP_SYSCALL:   /* System call exception                    */
-        dump_syscall(env);
         lev = env->error_code;
+
+        if ((lev == 1) && cpu->vhyp) {
+            dump_hcall(env);
+        } else {
+            dump_syscall(env);
+        }
 
         /*
          * We need to correct the NIP which in this case is supposed
@@ -398,6 +432,13 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
         if (lev == 1) {
             new_msr |= (target_ulong)MSR_HVB;
         }
+        break;
+    case POWERPC_EXCP_SYSCALL_VECTORED: /* scv exception                     */
+        lev = env->error_code;
+        dump_syscall_vectored(env);
+        env->nip += 4;
+        new_msr |= env->msr & ((target_ulong)1 << MSR_EE);
+        new_msr |= env->msr & ((target_ulong)1 << MSR_RI);
         break;
     case POWERPC_EXCP_FPU:       /* Floating-point unavailable exception     */
     case POWERPC_EXCP_APU:       /* Auxiliary processor unavailable          */
@@ -484,9 +525,10 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
     case POWERPC_EXCP_ISEG:      /* Instruction segment exception            */
     case POWERPC_EXCP_TRACE:     /* Trace exception                          */
         break;
+    case POWERPC_EXCP_HISI:      /* Hypervisor instruction storage exception */
+        msr |= env->error_code;
     case POWERPC_EXCP_HDECR:     /* Hypervisor decrementer exception         */
     case POWERPC_EXCP_HDSI:      /* Hypervisor data storage exception        */
-    case POWERPC_EXCP_HISI:      /* Hypervisor instruction storage exception */
     case POWERPC_EXCP_HDSEG:     /* Hypervisor data segment exception        */
     case POWERPC_EXCP_HISEG:     /* Hypervisor instruction segment exception */
     case POWERPC_EXCP_SDOOR_HV:  /* Hypervisor Doorbell interrupt            */
@@ -701,12 +743,6 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
         break;
     }
 
-    /* Save PC */
-    env->spr[srr0] = env->nip;
-
-    /* Save MSR */
-    env->spr[srr1] = msr;
-
     /* Sanity check */
     if (!(env->msr_mask & MSR_HVB)) {
         if (new_msr & MSR_HVB) {
@@ -717,14 +753,6 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
             cpu_abort(cs, "Trying to deliver HV exception (HSRR) %d with "
                       "no HV support\n", excp);
         }
-    }
-
-    /* If any alternate SRR register are defined, duplicate saved values */
-    if (asrr0 != -1) {
-        env->spr[asrr0] = env->spr[srr0];
-    }
-    if (asrr1 != -1) {
-        env->spr[asrr1] = env->spr[srr1];
     }
 
     /*
@@ -761,14 +789,6 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
     }
 #endif
 
-    /* Jump to handler */
-    vector = env->excp_vectors[excp];
-    if (vector == (target_ulong)-1ULL) {
-        cpu_abort(cs, "Raised an exception without defined vector %d\n",
-                  excp);
-    }
-    vector |= env->excp_prefix;
-
     /*
      * AIL only works if there is no HV transition and we are running
      * with translations enabled
@@ -777,10 +797,21 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
         ((new_msr & MSR_HVB) && !(msr & MSR_HVB))) {
         ail = 0;
     }
-    /* Handle AIL */
-    if (ail) {
-        new_msr |= (1 << MSR_IR) | (1 << MSR_DR);
-        vector |= ppc_excp_vector_offset(cs, ail);
+
+    vector = env->excp_vectors[excp];
+    if (vector == (target_ulong)-1ULL) {
+        cpu_abort(cs, "Raised an exception without defined vector %d\n",
+                  excp);
+    }
+
+    vector |= env->excp_prefix;
+
+    /* If any alternate SRR register are defined, duplicate saved values */
+    if (asrr0 != -1) {
+        env->spr[asrr0] = env->nip;
+    }
+    if (asrr1 != -1) {
+        env->spr[asrr1] = msr;
     }
 
 #if defined(TARGET_PPC64)
@@ -799,6 +830,37 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
         }
     }
 #endif
+
+    if (excp != POWERPC_EXCP_SYSCALL_VECTORED) {
+        /* Save PC */
+        env->spr[srr0] = env->nip;
+
+        /* Save MSR */
+        env->spr[srr1] = msr;
+
+        /* Handle AIL */
+        if (ail) {
+            new_msr |= (1 << MSR_IR) | (1 << MSR_DR);
+            vector |= ppc_excp_vector_offset(cs, ail);
+        }
+
+#if defined(TARGET_PPC64)
+    } else {
+        /* scv AIL is a little different */
+        if (ail) {
+            new_msr |= (1 << MSR_IR) | (1 << MSR_DR);
+        }
+        if (ail == AIL_C000_0000_0000_4000) {
+            vector |= 0xc000000000003000ull;
+        } else {
+            vector |= 0x0000000000017000ull;
+        }
+        vector += lev * 0x20;
+
+        env->lr = env->nip;
+        env->ctr = msr;
+#endif
+    }
 
     powerpc_set_excp_state(cpu, vector, new_msr);
 }
@@ -961,15 +1023,12 @@ static void ppc_hw_interrupt(CPUPPCState *env)
     }
 }
 
-void ppc_cpu_do_system_reset(CPUState *cs, target_ulong vector)
+void ppc_cpu_do_system_reset(CPUState *cs)
 {
     PowerPCCPU *cpu = POWERPC_CPU(cs);
     CPUPPCState *env = &cpu->env;
 
     powerpc_excp(cpu, env->excp_model, POWERPC_EXCP_RESET);
-    if (vector != -1) {
-        env->nip = vector;
-    }
 }
 
 void ppc_cpu_do_fwnmi_machine_check(CPUState *cs, target_ulong vector)
@@ -1138,6 +1197,11 @@ void helper_rfid(CPUPPCState *env)
      * here
      */
     do_rfi(env, env->spr[SPR_SRR0], env->spr[SPR_SRR1]);
+}
+
+void helper_rfscv(CPUPPCState *env)
+{
+    do_rfi(env, env->lr, env->ctr);
 }
 
 void helper_hrfid(CPUPPCState *env)

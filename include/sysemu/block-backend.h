@@ -77,6 +77,8 @@ typedef struct BlockBackendPublic {
 } BlockBackendPublic;
 
 BlockBackend *blk_new(AioContext *ctx, uint64_t perm, uint64_t shared_perm);
+BlockBackend *blk_new_with_bs(BlockDriverState *bs, uint64_t perm,
+                              uint64_t shared_perm, Error **errp);
 BlockBackend *blk_new_open(const char *filename, const char *reference,
                            QDict *options, int flags, Error **errp);
 int blk_get_refcnt(BlockBackend *blk);
@@ -237,7 +239,7 @@ int coroutine_fn blk_co_pwrite_zeroes(BlockBackend *blk, int64_t offset,
 int blk_pwrite_compressed(BlockBackend *blk, int64_t offset, const void *buf,
                           int bytes);
 int blk_truncate(BlockBackend *blk, int64_t offset, bool exact,
-                 PreallocMode prealloc, Error **errp);
+                 PreallocMode prealloc, BdrvRequestFlags flags, Error **errp);
 int blk_pdiscard(BlockBackend *blk, int64_t offset, int bytes);
 int blk_save_vmstate(BlockBackend *blk, const uint8_t *buf,
                      int64_t pos, int size);
@@ -263,5 +265,7 @@ int coroutine_fn blk_co_copy_range(BlockBackend *blk_in, int64_t off_in,
                                    BdrvRequestFlags write_flags);
 
 const BdrvChild *blk_root(BlockBackend *blk);
+
+int blk_make_empty(BlockBackend *blk, Error **errp);
 
 #endif

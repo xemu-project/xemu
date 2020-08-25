@@ -41,7 +41,6 @@ static void sabrelite_reset_secondary(ARMCPU *cpu,
 static void sabrelite_init(MachineState *machine)
 {
     FslIMX6State *s;
-    Error *err = NULL;
 
     /* Check the amount of memory is compatible with the SOC */
     if (machine->ram_size > FSL_IMX6_MMDC_SIZE) {
@@ -51,12 +50,8 @@ static void sabrelite_init(MachineState *machine)
     }
 
     s = FSL_IMX6(object_new(TYPE_FSL_IMX6));
-    object_property_add_child(OBJECT(machine), "soc", OBJECT(s), &error_fatal);
-    object_property_set_bool(OBJECT(s), true, "realized", &err);
-    if (err != NULL) {
-        error_report("%s", error_get_pretty(err));
-        exit(1);
-    }
+    object_property_add_child(OBJECT(machine), "soc", OBJECT(s));
+    qdev_realize(DEVICE(s), NULL, &error_fatal);
 
     memory_region_add_subregion(get_system_memory(), FSL_IMX6_MMDC_ADDR,
                                 machine->ram);
@@ -80,13 +75,13 @@ static void sabrelite_init(MachineState *machine)
                 qemu_irq cs_line;
                 DriveInfo *dinfo = drive_get_next(IF_MTD);
 
-                flash_dev = ssi_create_slave_no_init(spi_bus, "sst25vf016b");
+                flash_dev = qdev_new("sst25vf016b");
                 if (dinfo) {
-                    qdev_prop_set_drive(flash_dev, "drive",
-                                        blk_by_legacy_dinfo(dinfo),
-                                        &error_fatal);
+                    qdev_prop_set_drive_err(flash_dev, "drive",
+                                            blk_by_legacy_dinfo(dinfo),
+                                            &error_fatal);
                 }
-                qdev_init_nofail(flash_dev);
+                qdev_realize_and_unref(flash_dev, BUS(spi_bus), &error_fatal);
 
                 cs_line = qdev_get_gpio_in_named(flash_dev, SSI_GPIO_CS, 0);
                 sysbus_connect_irq(SYS_BUS_DEVICE(spi_dev), 1, cs_line);

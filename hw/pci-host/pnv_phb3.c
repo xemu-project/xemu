@@ -968,23 +968,19 @@ static void pnv_phb3_instance_init(Object *obj)
     QLIST_INIT(&phb->dma_spaces);
 
     /* LSI sources */
-    object_initialize_child(obj, "lsi", &phb->lsis, sizeof(phb->lsis),
-                             TYPE_ICS, &error_abort, NULL);
+    object_initialize_child(obj, "lsi", &phb->lsis, TYPE_ICS);
 
     /* Default init ... will be fixed by HW inits */
     phb->lsis.offset = 0;
 
     /* MSI sources */
-    object_initialize_child(obj, "msi", &phb->msis, sizeof(phb->msis),
-                            TYPE_PHB3_MSI, &error_abort, NULL);
+    object_initialize_child(obj, "msi", &phb->msis, TYPE_PHB3_MSI);
 
     /* Power Bus Common Queue */
-    object_initialize_child(obj, "pbcq", &phb->pbcq, sizeof(phb->pbcq),
-                            TYPE_PNV_PBCQ, &error_abort, NULL);
+    object_initialize_child(obj, "pbcq", &phb->pbcq, TYPE_PNV_PBCQ);
 
     /* Root Port */
-    object_initialize_child(obj, "root", &phb->root, sizeof(phb->root),
-                            TYPE_PNV_PHB3_ROOT_PORT, &error_abort, NULL);
+    object_initialize_child(obj, "root", &phb->root, TYPE_PNV_PHB3_ROOT_PORT);
     qdev_prop_set_int32(DEVICE(&phb->root), "addr", PCI_DEVFN(0, 0));
     qdev_prop_set_bit(DEVICE(&phb->root), "multifunction", false);
 }
@@ -994,7 +990,6 @@ static void pnv_phb3_realize(DeviceState *dev, Error **errp)
     PnvPHB3 *phb = PNV_PHB3(dev);
     PCIHostState *pci = PCI_HOST_BRIDGE(dev);
     PnvMachineState *pnv = PNV_MACHINE(qdev_get_machine());
-    Error *local_err = NULL;
     int i;
 
     if (phb->phb_id >= PNV8_CHIP_PHB3_MAX) {
@@ -1003,13 +998,11 @@ static void pnv_phb3_realize(DeviceState *dev, Error **errp)
     }
 
     /* LSI sources */
-    object_property_set_link(OBJECT(&phb->lsis), OBJECT(pnv), "xics",
-                                   &error_abort);
-    object_property_set_int(OBJECT(&phb->lsis), PNV_PHB3_NUM_LSI, "nr-irqs",
+    object_property_set_link(OBJECT(&phb->lsis), "xics", OBJECT(pnv),
+                             &error_abort);
+    object_property_set_int(OBJECT(&phb->lsis), "nr-irqs", PNV_PHB3_NUM_LSI,
                             &error_abort);
-    object_property_set_bool(OBJECT(&phb->lsis), true, "realized", &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!qdev_realize(DEVICE(&phb->lsis), NULL, errp)) {
         return;
     }
 
@@ -1020,24 +1013,20 @@ static void pnv_phb3_realize(DeviceState *dev, Error **errp)
     phb->qirqs = qemu_allocate_irqs(ics_set_irq, &phb->lsis, phb->lsis.nr_irqs);
 
     /* MSI sources */
-    object_property_set_link(OBJECT(&phb->msis), OBJECT(phb), "phb",
-                                   &error_abort);
-    object_property_set_link(OBJECT(&phb->msis), OBJECT(pnv), "xics",
-                                   &error_abort);
-    object_property_set_int(OBJECT(&phb->msis), PHB3_MAX_MSI, "nr-irqs",
+    object_property_set_link(OBJECT(&phb->msis), "phb", OBJECT(phb),
+                             &error_abort);
+    object_property_set_link(OBJECT(&phb->msis), "xics", OBJECT(pnv),
+                             &error_abort);
+    object_property_set_int(OBJECT(&phb->msis), "nr-irqs", PHB3_MAX_MSI,
                             &error_abort);
-    object_property_set_bool(OBJECT(&phb->msis), true, "realized", &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!qdev_realize(DEVICE(&phb->msis), NULL, errp)) {
         return;
     }
 
     /* Power Bus Common Queue */
-    object_property_set_link(OBJECT(&phb->pbcq), OBJECT(phb), "phb",
-                                   &error_abort);
-    object_property_set_bool(OBJECT(&phb->pbcq), true, "realized", &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    object_property_set_link(OBJECT(&phb->pbcq), "phb", OBJECT(phb),
+                             &error_abort);
+    if (!qdev_realize(DEVICE(&phb->pbcq), NULL, errp)) {
         return;
     }
 
@@ -1064,8 +1053,7 @@ static void pnv_phb3_realize(DeviceState *dev, Error **errp)
     /* Add a single Root port */
     qdev_prop_set_uint8(DEVICE(&phb->root), "chassis", phb->chip_id);
     qdev_prop_set_uint16(DEVICE(&phb->root), "slot", phb->phb_id);
-    qdev_set_parent_bus(DEVICE(&phb->root), BUS(pci->bus));
-    qdev_init_nofail(DEVICE(&phb->root));
+    qdev_realize(DEVICE(&phb->root), BUS(pci->bus), &error_fatal);
 }
 
 void pnv_phb3_update_regions(PnvPHB3 *phb)

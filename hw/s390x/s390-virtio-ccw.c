@@ -1,9 +1,10 @@
 /*
  * virtio ccw machine
  *
- * Copyright 2012 IBM Corp.
+ * Copyright 2012, 2020 IBM Corp.
  * Copyright (c) 2009 Alexander Graf <agraf@suse.de>
  * Author(s): Cornelia Huck <cornelia.huck@de.ibm.com>
+ *            Janosch Frank <frankja@linux.ibm.com>
  *
  * This work is licensed under the terms of the GNU GPL, version 2 or (at
  * your option) any later version. See the COPYING file in the top-level
@@ -42,6 +43,10 @@
 #include "hw/qdev-properties.h"
 #include "hw/s390x/tod.h"
 #include "sysemu/sysemu.h"
+#include "hw/s390x/pv.h"
+#include "migration/blocker.h"
+
+static Error *pv_mig_blocker;
 
 S390CPU *s390_cpu_addr2state(uint16_t cpu_addr)
 {
@@ -63,21 +68,19 @@ static S390CPU *s390x_new_cpu(const char *typename, uint32_t core_id,
                               Error **errp)
 {
     S390CPU *cpu = S390_CPU(object_new(typename));
-    Error *err = NULL;
+    S390CPU *ret = NULL;
 
-    object_property_set_int(OBJECT(cpu), core_id, "core-id", &err);
-    if (err != NULL) {
+    if (!object_property_set_int(OBJECT(cpu), "core-id", core_id, errp)) {
         goto out;
     }
-    object_property_set_bool(OBJECT(cpu), true, "realized", &err);
+    if (!qdev_realize(DEVICE(cpu), NULL, errp)) {
+        goto out;
+    }
+    ret = cpu;
 
 out:
     object_unref(OBJECT(cpu));
-    if (err) {
-        error_propagate(errp, err);
-        cpu = NULL;
-    }
-    return cpu;
+    return ret;
 }
 
 static void s390_init_cpus(MachineState *machine)
@@ -202,9 +205,9 @@ static void s390_init_ipl_dev(const char *kernel_filename,
     }
     g_free(netboot_fw_prop);
     object_property_add_child(qdev_get_machine(), TYPE_S390_IPL,
-                              new, NULL);
+                              new);
     object_unref(new);
-    qdev_init_nofail(dev);
+    qdev_realize(dev, NULL, &error_fatal);
 }
 
 static void s390_create_virtio_net(BusState *bus, const char *name)
@@ -221,9 +224,9 @@ static void s390_create_virtio_net(BusState *bus, const char *name)
 
         qemu_check_nic_model(nd, "virtio");
 
-        dev = qdev_create(bus, name);
+        dev = qdev_new(name);
         qdev_set_nic_properties(dev, nd);
-        qdev_init_nofail(dev);
+        qdev_realize_and_unref(dev, bus, &error_fatal);
     }
 }
 
@@ -231,9 +234,9 @@ static void s390_create_sclpconsole(const char *type, Chardev *chardev)
 {
     DeviceState *dev;
 
-    dev = qdev_create(sclp_get_event_facility_bus(), type);
+    dev = qdev_new(type);
     qdev_prop_set_chr(dev, "chardev", chardev);
-    qdev_init_nofail(dev);
+    qdev_realize_and_unref(dev, sclp_get_event_facility_bus(), &error_fatal);
 }
 
 static void ccw_init(MachineState *machine)
@@ -263,10 +266,10 @@ static void ccw_init(MachineState *machine)
                       machine->initrd_filename, "s390-ccw.img",
                       "s390-netboot.img", true);
 
-    dev = qdev_create(NULL, TYPE_S390_PCI_HOST_BRIDGE);
+    dev = qdev_new(TYPE_S390_PCI_HOST_BRIDGE);
     object_property_add_child(qdev_get_machine(), TYPE_S390_PCI_HOST_BRIDGE,
-                              OBJECT(dev), NULL);
-    qdev_init_nofail(dev);
+                              OBJECT(dev));
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
     /* register hypercalls */
     virtio_ccw_register_hcalls();
@@ -317,10 +320,98 @@ static inline void s390_do_cpu_ipl(CPUState *cs, run_on_cpu_data arg)
     s390_cpu_set_state(S390_CPU_STATE_OPERATING, cpu);
 }
 
+static void s390_machine_unprotect(S390CcwMachineState *ms)
+{
+    s390_pv_vm_disable();
+    ms->pv = false;
+    migrate_del_blocker(pv_mig_blocker);
+    error_free_or_abort(&pv_mig_blocker);
+    ram_block_discard_disable(false);
+}
+
+static int s390_machine_protect(S390CcwMachineState *ms)
+{
+    Error *local_err = NULL;
+    int rc;
+
+   /*
+    * Discarding of memory in RAM blocks does not work as expected with
+    * protected VMs. Sharing and unsharing pages would be required. Disable
+    * it for now, until until we have a solution to make at least Linux
+    * guests either support it (e.g., virtio-balloon) or fail gracefully.
+    */
+    rc = ram_block_discard_disable(true);
+    if (rc) {
+        error_report("protected VMs: cannot disable RAM discard");
+        return rc;
+    }
+
+    error_setg(&pv_mig_blocker,
+               "protected VMs are currently not migrateable.");
+    rc = migrate_add_blocker(pv_mig_blocker, &local_err);
+    if (rc) {
+        ram_block_discard_disable(false);
+        error_report_err(local_err);
+        error_free_or_abort(&pv_mig_blocker);
+        return rc;
+    }
+
+    /* Create SE VM */
+    rc = s390_pv_vm_enable();
+    if (rc) {
+        ram_block_discard_disable(false);
+        migrate_del_blocker(pv_mig_blocker);
+        error_free_or_abort(&pv_mig_blocker);
+        return rc;
+    }
+
+    ms->pv = true;
+
+    /* Set SE header and unpack */
+    rc = s390_ipl_prepare_pv_header();
+    if (rc) {
+        goto out_err;
+    }
+
+    /* Decrypt image */
+    rc = s390_ipl_pv_unpack();
+    if (rc) {
+        goto out_err;
+    }
+
+    /* Verify integrity */
+    rc = s390_pv_verify();
+    if (rc) {
+        goto out_err;
+    }
+    return rc;
+
+out_err:
+    s390_machine_unprotect(ms);
+    return rc;
+}
+
+static void s390_pv_prepare_reset(S390CcwMachineState *ms)
+{
+    CPUState *cs;
+
+    if (!s390_is_pv()) {
+        return;
+    }
+    /* Unsharing requires all cpus to be stopped */
+    CPU_FOREACH(cs) {
+        s390_cpu_set_state(S390_CPU_STATE_STOPPED, S390_CPU(cs));
+    }
+    s390_pv_unshare();
+    s390_pv_prep_reset();
+}
+
 static void s390_machine_reset(MachineState *machine)
 {
+    S390CcwMachineState *ms = S390_CCW_MACHINE(machine);
     enum s390_reset reset_type;
     CPUState *cs, *t;
+    S390CPU *cpu;
 
     /* get the reset parameters, reset them once done */
     s390_ipl_get_reset_request(&cs, &reset_type);
@@ -328,9 +419,15 @@ static void s390_machine_reset(MachineState *machine)
     /* all CPUs are paused and synchronized at this point */
     s390_cmma_reset();
 
+    cpu = S390_CPU(cs);
+
     switch (reset_type) {
     case S390_RESET_EXTERNAL:
     case S390_RESET_REIPL:
+        if (s390_is_pv()) {
+            s390_machine_unprotect(ms);
+        }
+
         qemu_devices_reset();
         s390_crypto_reset();
 
@@ -338,22 +435,56 @@ static void s390_machine_reset(MachineState *machine)
         run_on_cpu(cs, s390_do_cpu_ipl, RUN_ON_CPU_NULL);
         break;
     case S390_RESET_MODIFIED_CLEAR:
+        /*
+         * Susbsystem reset needs to be done before we unshare memory
+         * and lose access to VIRTIO structures in guest memory.
+         */
+        subsystem_reset();
+        s390_crypto_reset();
+        s390_pv_prepare_reset(ms);
         CPU_FOREACH(t) {
             run_on_cpu(t, s390_do_cpu_full_reset, RUN_ON_CPU_NULL);
         }
-        subsystem_reset();
-        s390_crypto_reset();
         run_on_cpu(cs, s390_do_cpu_load_normal, RUN_ON_CPU_NULL);
         break;
     case S390_RESET_LOAD_NORMAL:
+        /*
+         * Susbsystem reset needs to be done before we unshare memory
+         * and lose access to VIRTIO structures in guest memory.
+         */
+        subsystem_reset();
+        s390_pv_prepare_reset(ms);
         CPU_FOREACH(t) {
             if (t == cs) {
                 continue;
             }
             run_on_cpu(t, s390_do_cpu_reset, RUN_ON_CPU_NULL);
         }
-        subsystem_reset();
         run_on_cpu(cs, s390_do_cpu_initial_reset, RUN_ON_CPU_NULL);
+        run_on_cpu(cs, s390_do_cpu_load_normal, RUN_ON_CPU_NULL);
+        break;
+    case S390_RESET_PV: /* Subcode 10 */
+        subsystem_reset();
+        s390_crypto_reset();
+
+        CPU_FOREACH(t) {
+            if (t == cs) {
+                continue;
+            }
+            run_on_cpu(t, s390_do_cpu_full_reset, RUN_ON_CPU_NULL);
+        }
+        run_on_cpu(cs, s390_do_cpu_reset, RUN_ON_CPU_NULL);
+
+        if (s390_machine_protect(ms)) {
+            s390_pv_inject_reset_error(cs);
+            /*
+             * Continue after the diag308 so the guest knows something
+             * went wrong.
+             */
+            s390_cpu_set_state(S390_CPU_STATE_OPERATING, cpu);
+            return;
+        }
+
         run_on_cpu(cs, s390_do_cpu_load_normal, RUN_ON_CPU_NULL);
         break;
     default:
@@ -571,7 +702,8 @@ static char *machine_get_loadparm(Object *obj, Error **errp)
 {
     S390CcwMachineState *ms = S390_CCW_MACHINE(obj);
 
-    return g_memdup(ms->loadparm, sizeof(ms->loadparm));
+    /* make a NUL-terminated string */
+    return g_strndup((char *) ms->loadparm, sizeof(ms->loadparm));
 }
 
 static void machine_set_loadparm(Object *obj, const char *val, Error **errp)
@@ -600,26 +732,23 @@ static inline void s390_machine_initfn(Object *obj)
 {
     object_property_add_bool(obj, "aes-key-wrap",
                              machine_get_aes_key_wrap,
-                             machine_set_aes_key_wrap, NULL);
+                             machine_set_aes_key_wrap);
     object_property_set_description(obj, "aes-key-wrap",
-            "enable/disable AES key wrapping using the CPACF wrapping key",
-            NULL);
-    object_property_set_bool(obj, true, "aes-key-wrap", NULL);
+            "enable/disable AES key wrapping using the CPACF wrapping key");
+    object_property_set_bool(obj, "aes-key-wrap", true, NULL);
 
     object_property_add_bool(obj, "dea-key-wrap",
                              machine_get_dea_key_wrap,
-                             machine_set_dea_key_wrap, NULL);
+                             machine_set_dea_key_wrap);
     object_property_set_description(obj, "dea-key-wrap",
-            "enable/disable DEA key wrapping using the CPACF wrapping key",
-            NULL);
-    object_property_set_bool(obj, true, "dea-key-wrap", NULL);
+            "enable/disable DEA key wrapping using the CPACF wrapping key");
+    object_property_set_bool(obj, "dea-key-wrap", true, NULL);
     object_property_add_str(obj, "loadparm",
-            machine_get_loadparm, machine_set_loadparm, NULL);
+            machine_get_loadparm, machine_set_loadparm);
     object_property_set_description(obj, "loadparm",
             "Up to 8 chars in set of [A-Za-z0-9. ] (lower case chars converted"
             " to upper case) to pass to machine loader, boot manager,"
-            " and guest kernel",
-            NULL);
+            " and guest kernel");
 }
 
 static const TypeInfo ccw_machine_info = {
@@ -672,14 +801,26 @@ bool css_migration_enabled(void)
     }                                                                         \
     type_init(ccw_machine_register_##suffix)
 
+static void ccw_machine_5_1_instance_options(MachineState *machine)
+{
+}
+
+static void ccw_machine_5_1_class_options(MachineClass *mc)
+{
+}
+DEFINE_CCW_MACHINE(5_1, "5.1", true);
+
 static void ccw_machine_5_0_instance_options(MachineState *machine)
 {
+    ccw_machine_5_1_instance_options(machine);
 }
 
 static void ccw_machine_5_0_class_options(MachineClass *mc)
 {
+    ccw_machine_5_1_class_options(mc);
+    compat_props_add(mc->compat_props, hw_compat_5_0, hw_compat_5_0_len);
 }
-DEFINE_CCW_MACHINE(5_0, "5.0", true);
+DEFINE_CCW_MACHINE(5_0, "5.0", false);
 
 static void ccw_machine_4_2_instance_options(MachineState *machine)
 {

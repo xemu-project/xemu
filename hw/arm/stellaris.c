@@ -18,7 +18,6 @@
 #include "hw/boards.h"
 #include "qemu/log.h"
 #include "exec/address-spaces.h"
-#include "sysemu/runstate.h"
 #include "sysemu/sysemu.h"
 #include "hw/arm/armv7m.h"
 #include "hw/char/pl011.h"
@@ -1206,14 +1205,6 @@ static void stellaris_adc_init(Object *obj)
     qdev_init_gpio_in(dev, stellaris_adc_trigger, 1);
 }
 
-static
-void do_sys_reset(void *opaque, int n, int level)
-{
-    if (level) {
-        qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
-    }
-}
-
 /* Board init.  */
 static stellaris_board_info stellaris_boards[] = {
   { "LM3S811EVB",
@@ -1308,17 +1299,14 @@ static void stellaris_init(MachineState *ms, stellaris_board_info *board)
                            &error_fatal);
     memory_region_add_subregion(system_memory, 0x20000000, sram);
 
-    nvic = qdev_create(NULL, TYPE_ARMV7M);
+    nvic = qdev_new(TYPE_ARMV7M);
     qdev_prop_set_uint32(nvic, "num-irq", NUM_IRQ_LINES);
     qdev_prop_set_string(nvic, "cpu-type", ms->cpu_type);
     qdev_prop_set_bit(nvic, "enable-bitband", true);
-    object_property_set_link(OBJECT(nvic), OBJECT(get_system_memory()),
-                                     "memory", &error_abort);
+    object_property_set_link(OBJECT(nvic), "memory",
+                             OBJECT(get_system_memory()), &error_abort);
     /* This will exit with an error if the user passed us a bad cpu_type */
-    qdev_init_nofail(nvic);
-
-    qdev_connect_gpio_out_named(nvic, "SYSRESETREQ", 0,
-                                qemu_allocate_irq(&do_sys_reset, NULL, 0));
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(nvic), &error_fatal);
 
     if (board->dc1 & (1 << 16)) {
         dev = sysbus_create_varargs(TYPE_STELLARIS_ADC, 0x40038000,
@@ -1347,13 +1335,13 @@ static void stellaris_init(MachineState *ms, stellaris_board_info *board)
 
 
     if (board->dc1 & (1 << 3)) { /* watchdog present */
-        dev = qdev_create(NULL, TYPE_LUMINARY_WATCHDOG);
+        dev = qdev_new(TYPE_LUMINARY_WATCHDOG);
 
         /* system_clock_scale is valid now */
         uint32_t mainclk = NANOSECONDS_PER_SECOND / system_clock_scale;
         qdev_prop_set_uint32(dev, "wdogclk-frq", mainclk);
 
-        qdev_init_nofail(dev);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
         sysbus_mmio_map(SYS_BUS_DEVICE(dev),
                         0,
                         0x40000000u);
@@ -1380,7 +1368,7 @@ static void stellaris_init(MachineState *ms, stellaris_board_info *board)
                                    qdev_get_gpio_in(nvic, 8));
         i2c = (I2CBus *)qdev_get_child_bus(dev, "i2c");
         if (board->peripherals & BP_OLED_I2C) {
-            i2c_create_slave(i2c, "ssd0303", 0x3d);
+            i2c_slave_create_simple(i2c, "ssd0303", 0x3d);
         }
     }
 
@@ -1425,9 +1413,9 @@ static void stellaris_init(MachineState *ms, stellaris_board_info *board)
 
         qemu_check_nic_model(&nd_table[0], "stellaris");
 
-        enet = qdev_create(NULL, "stellaris_enet");
+        enet = qdev_new("stellaris_enet");
         qdev_set_nic_properties(enet, &nd_table[0]);
-        qdev_init_nofail(enet);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(enet), &error_fatal);
         sysbus_mmio_map(SYS_BUS_DEVICE(enet), 0, 0x40048000);
         sysbus_connect_irq(SYS_BUS_DEVICE(enet), 0, qdev_get_gpio_in(nvic, 42));
     }

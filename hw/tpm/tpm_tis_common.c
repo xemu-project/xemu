@@ -33,8 +33,7 @@
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
 #include "sysemu/tpm_backend.h"
-#include "tpm_int.h"
-#include "tpm_util.h"
+#include "sysemu/tpm_util.h"
 #include "tpm_ppi.h"
 #include "trace.h"
 
@@ -79,9 +78,7 @@ static void tpm_tis_sts_set(TPMLocality *l, uint32_t flags)
  */
 static void tpm_tis_tpm_send(TPMState *s, uint8_t locty)
 {
-    if (trace_event_get_state_backends(TRACE_TPM_UTIL_SHOW_BUFFER)) {
-        tpm_util_show_buffer(s->buffer, s->be_buffer_size, "To TPM");
-    }
+    tpm_util_show_buffer(s->buffer, s->be_buffer_size, "To TPM");
 
     /*
      * rw_offset serves as length indicator for length of data;
@@ -247,9 +244,7 @@ void tpm_tis_request_completed(TPMState *s, int ret)
     s->loc[locty].state = TPM_TIS_STATE_COMPLETION;
     s->rw_offset = 0;
 
-    if (trace_event_get_state_backends(TRACE_TPM_UTIL_SHOW_BUFFER)) {
-        tpm_util_show_buffer(s->buffer, s->be_buffer_size, "From TPM");
-    }
+    tpm_util_show_buffer(s->buffer, s->be_buffer_size, "From TPM");
 
     if (TPM_TIS_IS_VALID_LOCTY(s->next_locty)) {
         tpm_tis_abort(s);
@@ -536,7 +531,7 @@ static void tpm_tis_mmio_write(void *opaque, hwaddr addr,
             while ((TPM_TIS_IS_VALID_LOCTY(s->active_locty) &&
                     locty > s->active_locty) ||
                     !TPM_TIS_IS_VALID_LOCTY(s->active_locty)) {
-                bool higher_seize = FALSE;
+                bool higher_seize = false;
 
                 /* already a pending SEIZE ? */
                 if ((s->loc[locty].access & TPM_TIS_ACCESS_SEIZE)) {
@@ -546,7 +541,7 @@ static void tpm_tis_mmio_write(void *opaque, hwaddr addr,
                 /* check for ongoing seize by a higher locality */
                 for (l = locty + 1; l < TPM_TIS_NUM_LOCALITIES; l++) {
                     if ((s->loc[l].access & TPM_TIS_ACCESS_SEIZE)) {
-                        higher_seize = TRUE;
+                        higher_seize = true;
                         break;
                     }
                 }

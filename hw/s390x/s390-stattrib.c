@@ -47,10 +47,10 @@ void s390_stattrib_init(void)
     }
 
     object_property_add_child(qdev_get_machine(), TYPE_S390_STATTRIB,
-                              obj, NULL);
+                              obj);
     object_unref(obj);
 
-    qdev_init_nofail(DEVICE(obj));
+    qdev_realize(DEVICE(obj), NULL, &error_fatal);
 }
 
 /* Console commands: */
@@ -387,8 +387,8 @@ static void s390_stattrib_instance_init(Object *obj)
 
     object_property_add_bool(obj, "migration-enabled",
                              s390_stattrib_get_migration_enabled,
-                             s390_stattrib_set_migration_enabled, NULL);
-    object_property_set_bool(obj, true, "migration-enabled", NULL);
+                             s390_stattrib_set_migration_enabled);
+    object_property_set_bool(obj, "migration-enabled", true, NULL);
     sas->migration_cur_gfn = 0;
 }
 

@@ -29,6 +29,7 @@
 #include "qemu/sockets.h"
 #include "qemu/bitmap.h"
 #include "qemu/coroutine.h"
+#include "exec/memory.h"
 #include <sys/socket.h>
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -3787,7 +3788,6 @@ static int qemu_rdma_registration_start(QEMUFile *f, void *opaque,
 static int qemu_rdma_registration_stop(QEMUFile *f, void *opaque,
                                        uint64_t flags, void *data)
 {
-    Error *local_err = NULL, **errp = &local_err;
     QIOChannelRDMA *rioc = QIO_CHANNEL_RDMA(opaque);
     RDMAContext *rdma;
     RDMAControlHeader head = { .len = 0, .repeat = 1 };
@@ -3832,7 +3832,7 @@ static int qemu_rdma_registration_stop(QEMUFile *f, void *opaque,
                     &reg_result_idx, rdma->pin_all ?
                     qemu_rdma_reg_whole_ram_blocks : NULL);
         if (ret < 0) {
-            ERROR(errp, "receiving remote info!");
+            fprintf(stderr, "receiving remote info!");
             return ret;
         }
 
@@ -3851,10 +3851,10 @@ static int qemu_rdma_registration_stop(QEMUFile *f, void *opaque,
          */
 
         if (local->nb_blocks != nb_dest_blocks) {
-            ERROR(errp, "ram blocks mismatch (Number of blocks %d vs %d) "
-                        "Your QEMU command line parameters are probably "
-                        "not identical on both the source and destination.",
-                        local->nb_blocks, nb_dest_blocks);
+            fprintf(stderr, "ram blocks mismatch (Number of blocks %d vs %d) "
+                    "Your QEMU command line parameters are probably "
+                    "not identical on both the source and destination.",
+                    local->nb_blocks, nb_dest_blocks);
             rdma->error_state = -EINVAL;
             return -EINVAL;
         }
@@ -3867,10 +3867,10 @@ static int qemu_rdma_registration_stop(QEMUFile *f, void *opaque,
 
             /* We require that the blocks are in the same order */
             if (rdma->dest_blocks[i].length != local->block[i].length) {
-                ERROR(errp, "Block %s/%d has a different length %" PRIu64
-                            "vs %" PRIu64, local->block[i].block_name, i,
-                            local->block[i].length,
-                            rdma->dest_blocks[i].length);
+                fprintf(stderr, "Block %s/%d has a different length %" PRIu64
+                        "vs %" PRIu64, local->block[i].block_name, i,
+                        local->block[i].length,
+                        rdma->dest_blocks[i].length);
                 rdma->error_state = -EINVAL;
                 return -EINVAL;
             }
@@ -4017,8 +4017,14 @@ void rdma_start_incoming_migration(const char *host_port, Error **errp)
     Error *local_err = NULL;
 
     trace_rdma_start_incoming_migration();
-    rdma = qemu_rdma_data_init(host_port, &local_err);
 
+    /* Avoid ram_block_discard_disable(), cannot change during migration. */
+    if (ram_block_discard_is_required()) {
+        error_setg(errp, "RDMA: cannot disable RAM discard");
+        return;
+    }
+
+    rdma = qemu_rdma_data_init(host_port, &local_err);
     if (rdma == NULL) {
         goto err;
     }
@@ -4056,6 +4062,9 @@ void rdma_start_incoming_migration(const char *host_port, Error **errp)
     return;
 err:
     error_propagate(errp, local_err);
+    if (rdma) {
+        g_free(rdma->host);
+    }
     g_free(rdma);
     g_free(rdma_return_path);
 }
@@ -4064,10 +4073,17 @@ void rdma_start_outgoing_migration(void *opaque,
                             const char *host_port, Error **errp)
 {
     MigrationState *s = opaque;
-    RDMAContext *rdma = qemu_rdma_data_init(host_port, errp);
     RDMAContext *rdma_return_path = NULL;
+    RDMAContext *rdma;
     int ret = 0;
 
+    /* Avoid ram_block_discard_disable(), cannot change during migration. */
+    if (ram_block_discard_is_required()) {
+        error_setg(errp, "RDMA: cannot disable RAM discard");
+        return;
+    }
+
+    rdma = qemu_rdma_data_init(host_port, errp);
     if (rdma == NULL) {
         goto err;
     }
@@ -4091,20 +4107,20 @@ void rdma_start_outgoing_migration(void *opaque,
         rdma_return_path = qemu_rdma_data_init(host_port, errp);
 
         if (rdma_return_path == NULL) {
-            goto err;
+            goto return_path_err;
         }
 
         ret = qemu_rdma_source_init(rdma_return_path,
             s->enabled_capabilities[MIGRATION_CAPABILITY_RDMA_PIN_ALL], errp);
 
         if (ret) {
-            goto err;
+            goto return_path_err;
         }
 
         ret = qemu_rdma_connect(rdma_return_path, errp);
 
         if (ret) {
-            goto err;
+            goto return_path_err;
         }
 
         rdma->return_path = rdma_return_path;
@@ -4117,6 +4133,8 @@ void rdma_start_outgoing_migration(void *opaque,
     s->to_dst_file = qemu_fopen_rdma(rdma, "wb");
     migrate_fd_connect(s, NULL);
     return;
+return_path_err:
+    qemu_rdma_cleanup(rdma);
 err:
     g_free(rdma);
     g_free(rdma_return_path);

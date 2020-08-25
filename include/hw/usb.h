@@ -272,7 +272,7 @@ struct USBDevice {
      OBJECT_GET_CLASS(USBDeviceClass, (obj), TYPE_USB_DEVICE)
 
 typedef void (*USBDeviceRealize)(USBDevice *dev, Error **errp);
-typedef void (*USBDeviceUnrealize)(USBDevice *dev, Error **errp);
+typedef void (*USBDeviceUnrealize)(USBDevice *dev);
 
 typedef struct USBDeviceClass {
     DeviceClass parent_class;
@@ -474,36 +474,6 @@ bool usb_host_dev_is_scsi_storage(USBDevice *usbdev);
 
 #define VM_USB_HUB_SIZE 8
 
-/* hw/usb/hdc-musb.c */
-
-enum musb_irq_source_e {
-    musb_irq_suspend = 0,
-    musb_irq_resume,
-    musb_irq_rst_babble,
-    musb_irq_sof,
-    musb_irq_connect,
-    musb_irq_disconnect,
-    musb_irq_vbus_request,
-    musb_irq_vbus_error,
-    musb_irq_rx,
-    musb_irq_tx,
-    musb_set_vbus,
-    musb_set_session,
-    /* Add new interrupts here */
-    musb_irq_max, /* total number of interrupts defined */
-};
-
-typedef struct MUSBState MUSBState;
-
-extern CPUReadMemoryFunc * const musb_read[];
-extern CPUWriteMemoryFunc * const musb_write[];
-
-MUSBState *musb_init(DeviceState *parent_device, int gpio_base);
-void musb_reset(MUSBState *s);
-uint32_t musb_core_intr_get(MUSBState *s);
-void musb_core_intr_clear(MUSBState *s, uint32_t mask);
-void musb_set_size(MUSBState *s, int epnum, int size, int is_tx);
-
 /* usb-bus.c */
 
 #define TYPE_USB_BUS "usb-bus"
@@ -532,9 +502,9 @@ void usb_bus_new(USBBus *bus, size_t bus_size,
 void usb_bus_release(USBBus *bus);
 USBBus *usb_bus_find(int busnr);
 void usb_legacy_register(const char *typename, const char *usbdevice_name,
-                         USBDevice *(*usbdevice_init)(USBBus *bus,
-                                                      const char *params));
-USBDevice *usb_create(USBBus *bus, const char *name);
+                         USBDevice *(*usbdevice_init)(const char *params));
+USBDevice *usb_new(const char *name);
+bool usb_realize_and_unref(USBDevice *dev, USBBus *bus, Error **errp);
 USBDevice *usb_create_simple(USBBus *bus, const char *name);
 USBDevice *usbdevice_create(const char *cmdline);
 void usb_register_port(USBBus *bus, USBPort *port, void *opaque, int index,

@@ -42,6 +42,7 @@
 #include "hw/char/pl011.h"
 #include "hw/cpu/a9mpcore.h"
 #include "hw/cpu/a15mpcore.h"
+#include "hw/i2c/arm_sbcon_i2c.h"
 
 #define VEXPRESS_BOARD_ID 0x8e0
 #define VEXPRESS_FLASH_SIZE (64 * 1024 * 1024)
@@ -217,29 +218,29 @@ static void init_cpus(MachineState *ms, const char *cpu_type,
         Object *cpuobj = object_new(cpu_type);
 
         if (!secure) {
-            object_property_set_bool(cpuobj, false, "has_el3", NULL);
+            object_property_set_bool(cpuobj, "has_el3", false, NULL);
         }
         if (!virt) {
             if (object_property_find(cpuobj, "has_el2", NULL)) {
-                object_property_set_bool(cpuobj, false, "has_el2", NULL);
+                object_property_set_bool(cpuobj, "has_el2", false, NULL);
             }
         }
 
         if (object_property_find(cpuobj, "reset-cbar", NULL)) {
-            object_property_set_int(cpuobj, periphbase,
-                                    "reset-cbar", &error_abort);
+            object_property_set_int(cpuobj, "reset-cbar", periphbase,
+                                    &error_abort);
         }
-        object_property_set_bool(cpuobj, true, "realized", &error_fatal);
+        qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
     }
 
     /* Create the private peripheral devices (including the GIC);
      * this must happen after the CPUs are created because a15mpcore_priv
      * wires itself up to the CPU's generic_timer gpio out lines.
      */
-    dev = qdev_create(NULL, privdev);
+    dev = qdev_new(privdev);
     qdev_prop_set_uint32(dev, "num-cpu", smp_cpus);
-    qdev_init_nofail(dev);
     busdev = SYS_BUS_DEVICE(dev);
+    sysbus_realize_and_unref(busdev, &error_fatal);
     sysbus_mmio_map(busdev, 0, periphbase);
 
     /* Interrupts [42:0] are from the motherboard;
@@ -514,11 +515,10 @@ static void vexpress_modify_dtb(const struct arm_boot_info *info, void *fdt)
 static PFlashCFI01 *ve_pflash_cfi01_register(hwaddr base, const char *name,
                                              DriveInfo *di)
 {
-    DeviceState *dev = qdev_create(NULL, TYPE_PFLASH_CFI01);
+    DeviceState *dev = qdev_new(TYPE_PFLASH_CFI01);
 
     if (di) {
-        qdev_prop_set_drive(dev, "drive", blk_by_legacy_dinfo(di),
-                            &error_abort);
+        qdev_prop_set_drive(dev, "drive", blk_by_legacy_dinfo(di));
     }
 
     qdev_prop_set_uint32(dev, "num-blocks",
@@ -532,7 +532,7 @@ static PFlashCFI01 *ve_pflash_cfi01_register(hwaddr base, const char *name,
     qdev_prop_set_uint16(dev, "id2", 0x00);
     qdev_prop_set_uint16(dev, "id3", 0x00);
     qdev_prop_set_string(dev, "name", name);
-    qdev_init_nofail(dev);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
     return PFLASH_CFI01(dev);
@@ -593,7 +593,7 @@ static void vexpress_common_init(MachineState *machine)
 
     sys_id = 0x1190f500;
 
-    sysctl = qdev_create(NULL, "realview_sysctl");
+    sysctl = qdev_new("realview_sysctl");
     qdev_prop_set_uint32(sysctl, "sys_id", sys_id);
     qdev_prop_set_uint32(sysctl, "proc_id", daughterboard->proc_id);
     qdev_prop_set_uint32(sysctl, "len-db-voltage",
@@ -610,15 +610,15 @@ static void vexpress_common_init(MachineState *machine)
         qdev_prop_set_uint32(sysctl, propname, daughterboard->clocks[i]);
         g_free(propname);
     }
-    qdev_init_nofail(sysctl);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(sysctl), &error_fatal);
     sysbus_mmio_map(SYS_BUS_DEVICE(sysctl), 0, map[VE_SYSREGS]);
 
     /* VE_SP810: not modelled */
     /* VE_SERIALPCI: not modelled */
 
-    pl041 = qdev_create(NULL, "pl041");
+    pl041 = qdev_new("pl041");
     qdev_prop_set_uint32(pl041, "nc_fifo_depth", 512);
-    qdev_init_nofail(pl041);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(pl041), &error_fatal);
     sysbus_mmio_map(SYS_BUS_DEVICE(pl041), 0, map[VE_PL041]);
     sysbus_connect_irq(SYS_BUS_DEVICE(pl041), 0, pic[11]);
 
@@ -640,9 +640,9 @@ static void vexpress_common_init(MachineState *machine)
     sysbus_create_simple("sp804", map[VE_TIMER01], pic[2]);
     sysbus_create_simple("sp804", map[VE_TIMER23], pic[3]);
 
-    dev = sysbus_create_simple("versatile_i2c", map[VE_SERIALDVI], NULL);
+    dev = sysbus_create_simple(TYPE_VERSATILE_I2C, map[VE_SERIALDVI], NULL);
     i2c = (I2CBus *)qdev_get_child_bus(dev, "i2c");
-    i2c_create_slave(i2c, "sii9022", 0x39);
+    i2c_slave_create_simple(i2c, "sii9022", 0x39);
 
     sysbus_create_simple("pl031", map[VE_RTC], pic[4]); /* RTC */
 
@@ -749,11 +749,10 @@ static void vexpress_instance_init(Object *obj)
     /* EL3 is enabled by default on vexpress */
     vms->secure = true;
     object_property_add_bool(obj, "secure", vexpress_get_secure,
-                             vexpress_set_secure, NULL);
+                             vexpress_set_secure);
     object_property_set_description(obj, "secure",
                                     "Set on/off to enable/disable the ARM "
-                                    "Security Extensions (TrustZone)",
-                                    NULL);
+                                    "Security Extensions (TrustZone)");
 }
 
 static void vexpress_a15_instance_init(Object *obj)
@@ -766,12 +765,11 @@ static void vexpress_a15_instance_init(Object *obj)
      */
     vms->virt = true;
     object_property_add_bool(obj, "virtualization", vexpress_get_virt,
-                             vexpress_set_virt, NULL);
+                             vexpress_set_virt);
     object_property_set_description(obj, "virtualization",
                                     "Set on/off to enable/disable the ARM "
                                     "Virtualization Extensions "
-                                    "(defaults to same as 'secure')",
-                                    NULL);
+                                    "(defaults to same as 'secure')");
 }
 
 static void vexpress_a9_instance_init(Object *obj)

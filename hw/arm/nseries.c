@@ -174,7 +174,7 @@ static void n8x0_nand_setup(struct n800_s *s)
     char *otp_region;
     DriveInfo *dinfo;
 
-    s->nand = qdev_create(NULL, "onenand");
+    s->nand = qdev_new("onenand");
     qdev_prop_set_uint16(s->nand, "manufacturer_id", NAND_MFR_SAMSUNG);
     /* Either 0x40 or 0x48 are OK for the device ID */
     qdev_prop_set_uint16(s->nand, "device_id", 0x48);
@@ -182,10 +182,10 @@ static void n8x0_nand_setup(struct n800_s *s)
     qdev_prop_set_int32(s->nand, "shift", 1);
     dinfo = drive_get(IF_MTD, 0, 0);
     if (dinfo) {
-        qdev_prop_set_drive(s->nand, "drive", blk_by_legacy_dinfo(dinfo),
-                            &error_fatal);
+        qdev_prop_set_drive_err(s->nand, "drive", blk_by_legacy_dinfo(dinfo),
+                                &error_fatal);
     }
-    qdev_init_nofail(s->nand);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(s->nand), &error_fatal);
     sysbus_connect_irq(SYS_BUS_DEVICE(s->nand), 0,
                        qdev_get_gpio_in(s->mpu->gpio, N8X0_ONENAND_GPIO));
     omap_gpmc_attach(s->mpu->gpmc, N8X0_ONENAND_CS,
@@ -215,7 +215,7 @@ static void n8x0_i2c_setup(struct n800_s *s)
     I2CBus *i2c = omap_i2c_bus(s->mpu->i2c[0]);
 
     /* Attach a menelaus PM chip */
-    dev = i2c_create_slave(i2c, "twl92230", N8X0_MENELAUS_ADDR);
+    dev = DEVICE(i2c_slave_create_simple(i2c, "twl92230", N8X0_MENELAUS_ADDR));
     qdev_connect_gpio_out(dev, 3,
                           qdev_get_gpio_in(s->mpu->ih[0],
                                            OMAP_INT_24XX_SYS_NIRQ));
@@ -224,7 +224,7 @@ static void n8x0_i2c_setup(struct n800_s *s)
     qemu_register_powerdown_notifier(&n8x0_system_powerdown_notifier);
 
     /* Attach a TMP105 PM chip (A0 wired to ground) */
-    dev = i2c_create_slave(i2c, TYPE_TMP105, N8X0_TMP105_ADDR);
+    dev = DEVICE(i2c_slave_create_simple(i2c, TYPE_TMP105, N8X0_TMP105_ADDR));
     qdev_connect_gpio_out(dev, 0, tmp_irq);
 }
 
@@ -416,8 +416,8 @@ static void n810_kbd_setup(struct n800_s *s)
 
     /* Attach the LM8322 keyboard to the I2C bus,
      * should happen in n8x0_i2c_setup and s->kbd be initialised here.  */
-    s->kbd = i2c_create_slave(omap_i2c_bus(s->mpu->i2c[0]),
-                           "lm8323", N810_LM8323_ADDR);
+    s->kbd = DEVICE(i2c_slave_create_simple(omap_i2c_bus(s->mpu->i2c[0]),
+                                            "lm8323", N810_LM8323_ADDR));
     qdev_connect_gpio_out(s->kbd, 0, kbd_irq);
 }
 
@@ -802,9 +802,9 @@ static void n8x0_uart_setup(struct n800_s *s)
 static void n8x0_usb_setup(struct n800_s *s)
 {
     SysBusDevice *dev;
-    s->usb = qdev_create(NULL, "tusb6010");
+    s->usb = qdev_new("tusb6010");
     dev = SYS_BUS_DEVICE(s->usb);
-    qdev_init_nofail(s->usb);
+    sysbus_realize_and_unref(dev, &error_fatal);
     sysbus_connect_irq(dev, 0,
                        qdev_get_gpio_in(s->mpu->gpio, N8X0_TUSB_INT_GPIO));
     /* Using the NOR interface */

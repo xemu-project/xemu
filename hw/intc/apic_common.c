@@ -189,6 +189,25 @@ bool apic_next_timer(APICCommonState *s, int64_t current_time)
     return true;
 }
 
+uint32_t apic_get_current_count(APICCommonState *s)
+{
+    int64_t d;
+    uint32_t val;
+    d = (qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) - s->initial_count_load_time) >>
+        s->count_shift;
+    if (s->lvt[APIC_LVT_TIMER] & APIC_LVT_TIMER_PERIODIC) {
+        /* periodic */
+        val = s->initial_count - (d % ((uint64_t)s->initial_count + 1));
+    } else {
+        if (d >= s->initial_count) {
+            val = 0;
+        } else {
+            val = s->initial_count - d;
+        }
+    }
+    return val;
+}
+
 void apic_init_reset(DeviceState *dev)
 {
     APICCommonState *s;
@@ -314,13 +333,13 @@ static void apic_common_realize(DeviceState *dev, Error **errp)
                                    s, -1, 0, NULL);
 }
 
-static void apic_common_unrealize(DeviceState *dev, Error **errp)
+static void apic_common_unrealize(DeviceState *dev)
 {
     APICCommonState *s = APIC_COMMON(dev);
     APICCommonClass *info = APIC_COMMON_GET_CLASS(s);
 
     vmstate_unregister(NULL, &vmstate_apic_common, s);
-    info->unrealize(dev, errp);
+    info->unrealize(dev);
 
     if (apic_report_tpr_access && info->enable_tpr_reporting) {
         info->enable_tpr_reporting(s, false);
@@ -441,7 +460,6 @@ static void apic_common_set_id(Object *obj, Visitor *v, const char *name,
 {
     APICCommonState *s = APIC_COMMON(obj);
     DeviceState *dev = DEVICE(obj);
-    Error *local_err = NULL;
     uint32_t value;
 
     if (dev->realized) {
@@ -449,9 +467,7 @@ static void apic_common_set_id(Object *obj, Visitor *v, const char *name,
         return;
     }
 
-    visit_type_uint32(v, name, &value, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_uint32(v, name, &value, errp)) {
         return;
     }
 
@@ -466,7 +482,7 @@ static void apic_common_initfn(Object *obj)
     s->id = s->initial_apic_id = -1;
     object_property_add(obj, "id", "uint32",
                         apic_common_get_id,
-                        apic_common_set_id, NULL, NULL, NULL);
+                        apic_common_set_id, NULL, NULL);
 }
 
 static void apic_common_class_init(ObjectClass *klass, void *data)

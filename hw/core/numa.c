@@ -117,6 +117,13 @@ static void parse_numa_node(MachineState *ms, NumaNodeOptions *node,
     }
 
     if (node->has_mem) {
+        if (!mc->numa_mem_supported) {
+            error_setg(errp, "Parameter -numa node,mem is not supported by this"
+                      " machine type");
+            error_append_hint(errp, "Use -numa node,memdev instead\n");
+            return;
+        }
+
         numa_info[nodenr].node_mem = node->mem;
         if (!qtest_enabled()) {
             warn_report("Parameter -numa node,mem is deprecated,"
@@ -449,40 +456,33 @@ void parse_numa_hmat_cache(MachineState *ms, NumaHmatCacheOptions *node,
 
 void set_numa_options(MachineState *ms, NumaOptions *object, Error **errp)
 {
-    Error *err = NULL;
-
     if (!ms->numa_state) {
         error_setg(errp, "NUMA is not supported by this machine-type");
-        goto end;
+        return;
     }
 
     switch (object->type) {
     case NUMA_OPTIONS_TYPE_NODE:
-        parse_numa_node(ms, &object->u.node, &err);
-        if (err) {
-            goto end;
-        }
+        parse_numa_node(ms, &object->u.node, errp);
         break;
     case NUMA_OPTIONS_TYPE_DIST:
-        parse_numa_distance(ms, &object->u.dist, &err);
-        if (err) {
-            goto end;
-        }
+        parse_numa_distance(ms, &object->u.dist, errp);
         break;
     case NUMA_OPTIONS_TYPE_CPU:
         if (!object->u.cpu.has_node_id) {
-            error_setg(&err, "Missing mandatory node-id property");
-            goto end;
+            error_setg(errp, "Missing mandatory node-id property");
+            return;
         }
         if (!ms->numa_state->nodes[object->u.cpu.node_id].present) {
-            error_setg(&err, "Invalid node-id=%" PRId64 ", NUMA node must be "
-                "defined with -numa node,nodeid=ID before it's used with "
-                "-numa cpu,node-id=ID", object->u.cpu.node_id);
-            goto end;
+            error_setg(errp, "Invalid node-id=%" PRId64 ", NUMA node must be "
+                       "defined with -numa node,nodeid=ID before it's used with "
+                       "-numa cpu,node-id=ID", object->u.cpu.node_id);
+            return;
         }
 
-        machine_set_cpu_numa_node(ms, qapi_NumaCpuOptions_base(&object->u.cpu),
-                                  &err);
+        machine_set_cpu_numa_node(ms,
+                                  qapi_NumaCpuOptions_base(&object->u.cpu),
+                                  errp);
         break;
     case NUMA_OPTIONS_TYPE_HMAT_LB:
         if (!ms->numa_state->hmat_enabled) {
@@ -492,10 +492,7 @@ void set_numa_options(MachineState *ms, NumaOptions *object, Error **errp)
             return;
         }
 
-        parse_numa_hmat_lb(ms->numa_state, &object->u.hmat_lb, &err);
-        if (err) {
-            goto end;
-        }
+        parse_numa_hmat_lb(ms->numa_state, &object->u.hmat_lb, errp);
         break;
     case NUMA_OPTIONS_TYPE_HMAT_CACHE:
         if (!ms->numa_state->hmat_enabled) {
@@ -505,17 +502,11 @@ void set_numa_options(MachineState *ms, NumaOptions *object, Error **errp)
             return;
         }
 
-        parse_numa_hmat_cache(ms, &object->u.hmat_cache, &err);
-        if (err) {
-            goto end;
-        }
+        parse_numa_hmat_cache(ms, &object->u.hmat_cache, errp);
         break;
     default:
         abort();
     }
-
-end:
-    error_propagate(errp, err);
 }
 
 static int parse_numa(void *opaque, QemuOpts *opts, Error **errp)
@@ -525,10 +516,10 @@ static int parse_numa(void *opaque, QemuOpts *opts, Error **errp)
     Error *err = NULL;
     Visitor *v = opts_visitor_new(opts);
 
-    visit_type_NumaOptions(v, NULL, &object, &err);
+    visit_type_NumaOptions(v, NULL, &object, errp);
     visit_free(v);
-    if (err) {
-        goto end;
+    if (!object) {
+        return -1;
     }
 
     /* Fix up legacy suffix-less format */
@@ -539,7 +530,6 @@ static int parse_numa(void *opaque, QemuOpts *opts, Error **errp)
 
     set_numa_options(ms, object, &err);
 
-end:
     qapi_free_NumaOptions(object);
     if (err) {
         error_propagate(errp, err);
@@ -681,8 +671,9 @@ void numa_complete_configuration(MachineState *ms)
     NodeInfo *numa_info = ms->numa_state->nodes;
 
     /*
-     * If memory hotplug is enabled (slots > 0) but without '-numa'
-     * options explicitly on CLI, guestes will break.
+     * If memory hotplug is enabled (slot > 0) or memory devices are enabled
+     * (ms->maxram_size > ram_size) but without '-numa' options explicitly on
+     * CLI, guests will break.
      *
      *   Windows: won't enable memory hotplug without SRAT table at all
      *
@@ -697,9 +688,9 @@ void numa_complete_configuration(MachineState *ms)
      * assume there is just one node with whole RAM.
      */
     if (ms->numa_state->num_nodes == 0 &&
-        ((ms->ram_slots > 0 &&
-        mc->auto_enable_numa_with_memhp) ||
-        mc->auto_enable_numa)) {
+        ((ms->ram_slots && mc->auto_enable_numa_with_memhp) ||
+         (ms->maxram_size > ms->ram_size && mc->auto_enable_numa_with_memdev) ||
+         mc->auto_enable_numa)) {
             NumaNodeOptions node = { };
             parse_numa_node(ms, &node, &error_abort);
             numa_info[0].node_mem = ram_size;
@@ -757,6 +748,11 @@ void numa_complete_configuration(MachineState *ms)
         }
 
         if (!numa_uses_legacy_mem() && mc->default_ram_id) {
+            if (ms->ram_memdev_id) {
+                error_report("'-machine memory-backend' and '-numa memdev'"
+                             " properties are mutually exclusive");
+                exit(1);
+            }
             ms->ram = g_new(MemoryRegion, 1);
             memory_region_init(ms->ram, OBJECT(ms), mc->default_ram_id,
                                ram_size);
@@ -797,8 +793,8 @@ void numa_cpu_pre_plug(const CPUArchId *slot, DeviceState *dev, Error **errp)
         /* due to bug in libvirt, it doesn't pass node-id from props on
          * device_add as expected, so we have to fix it up here */
         if (slot->props.has_node_id) {
-            object_property_set_int(OBJECT(dev), slot->props.node_id,
-                                    "node-id", errp);
+            object_property_set_int(OBJECT(dev), "node-id",
+                                    slot->props.node_id, errp);
         }
     } else if (node_id != slot->props.node_id) {
         error_setg(errp, "invalid node-id, must be %"PRId64,
@@ -812,6 +808,7 @@ static void numa_stat_memory_devices(NumaNodeMem node_mem[])
     MemoryDeviceInfoList *info;
     PCDIMMDeviceInfo     *pcdimm_info;
     VirtioPMEMDeviceInfo *vpi;
+    VirtioMEMDeviceInfo *vmi;
 
     for (info = info_list; info; info = info->next) {
         MemoryDeviceInfo *value = info->value;
@@ -831,6 +828,11 @@ static void numa_stat_memory_devices(NumaNodeMem node_mem[])
                 /* TODO: once we support numa, assign to right node */
                 node_mem[0].node_mem += vpi->size;
                 node_mem[0].node_plugged_mem += vpi->size;
+                break;
+            case MEMORY_DEVICE_INFO_KIND_VIRTIO_MEM:
+                vmi = value->u.virtio_mem.data;
+                node_mem[vmi->node].node_mem += vmi->size;
+                node_mem[vmi->node].node_plugged_mem += vmi->size;
                 break;
             default:
                 g_assert_not_reached();

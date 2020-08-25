@@ -71,11 +71,9 @@ static void test_visitor_out_int(TestOutputVisitorData *data,
                                  const void *unused)
 {
     int64_t value = 42;
-    Error *err = NULL;
     char *str;
 
-    visit_type_int(data->ov, NULL, &value, &err);
-    g_assert(!err);
+    visit_type_int(data->ov, NULL, &value, &error_abort);
 
     str = visitor_get(data);
     if (data->human) {
@@ -120,12 +118,10 @@ static void test_visitor_out_intList(TestOutputVisitorData *data,
 static void test_visitor_out_bool(TestOutputVisitorData *data,
                                   const void *unused)
 {
-    Error *err = NULL;
     bool value = true;
     char *str;
 
-    visit_type_bool(data->ov, NULL, &value, &err);
-    g_assert(!err);
+    visit_type_bool(data->ov, NULL, &value, &error_abort);
 
     str = visitor_get(data);
     g_assert_cmpstr(str, ==, "true");
@@ -135,11 +131,9 @@ static void test_visitor_out_number(TestOutputVisitorData *data,
                                     const void *unused)
 {
     double value = 3.14;
-    Error *err = NULL;
     char *str;
 
-    visit_type_number(data->ov, NULL, &value, &err);
-    g_assert(!err);
+    visit_type_number(data->ov, NULL, &value, &error_abort);
 
     str = visitor_get(data);
     g_assert_cmpstr(str, ==, "3.140000");
@@ -150,11 +144,9 @@ static void test_visitor_out_string(TestOutputVisitorData *data,
 {
     char *string = (char *) "Q E M U";
     const char *string_human = "\"Q E M U\"";
-    Error *err = NULL;
     char *str;
 
-    visit_type_str(data->ov, NULL, &string, &err);
-    g_assert(!err);
+    visit_type_str(data->ov, NULL, &string, &error_abort);
 
     str = visitor_get(data);
     if (data->human) {
@@ -203,19 +195,6 @@ static void test_visitor_out_enum(TestOutputVisitorData *data,
     }
 }
 
-static void test_visitor_out_enum_errors(TestOutputVisitorData *data,
-                                         const void *unused)
-{
-    EnumOne i, bad_values[] = { ENUM_ONE__MAX, -1 };
-
-    for (i = 0; i < ARRAY_SIZE(bad_values) ; i++) {
-        Error *err = NULL;
-
-        visit_type_EnumOne(data->ov, "unused", &bad_values[i], &err);
-        error_free_or_abort(&err);
-    }
-}
-
 static void
 output_visitor_test_add(const char *testpath,
                         TestOutputVisitorData *data,
@@ -260,12 +239,6 @@ int main(int argc, char **argv)
                             &out_visitor_data, test_visitor_out_enum, false);
     output_visitor_test_add("/string-visitor/output/enum-human",
                             &out_visitor_data, test_visitor_out_enum, true);
-    output_visitor_test_add("/string-visitor/output/enum-errors",
-                            &out_visitor_data, test_visitor_out_enum_errors,
-                            false);
-    output_visitor_test_add("/string-visitor/output/enum-errors-human",
-                            &out_visitor_data, test_visitor_out_enum_errors,
-                            true);
     output_visitor_test_add("/string-visitor/output/intList",
                             &out_visitor_data, test_visitor_out_intList, false);
     output_visitor_test_add("/string-visitor/output/intList-human",

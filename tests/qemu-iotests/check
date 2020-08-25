@@ -272,7 +272,6 @@ image protocol options
     -nbd                test nbd
     -ssh                test ssh
     -nfs                test nfs
-    -vxhs               test vxhs
 
 other options
     -xdiff              graphical mode diff
@@ -380,11 +379,6 @@ testlist options
 
         -nbd)
             IMGPROTO=nbd
-            xpand=false
-            ;;
-
-        -vxhs)
-            IMGPROTO=vxhs
             xpand=false
             ;;
 
@@ -546,6 +540,9 @@ fi
 if [ "$IMGFMT" == "luks" ] && ! (echo "$IMGOPTS" | grep "iter-time=" > /dev/null); then
     IMGOPTS=$(_optstr_add "$IMGOPTS" "iter-time=10")
 fi
+if [ "$IMGFMT" == "vmdk" ] && ! (echo "$IMGOPTS" | grep "zeroed_grain=" > /dev/null); then
+    IMGOPTS=$(_optstr_add "$IMGOPTS" "zeroed_grain=on")
+fi
 
 if [ -z "$SAMPLE_IMG_DIR" ]; then
         SAMPLE_IMG_DIR="$source_iotests/sample_images"
@@ -598,15 +595,19 @@ then
 fi
 export QEMU_PROG="$(type -p "$QEMU_PROG")"
 
+export QEMU_OPTIONS="-nodefaults -display none -accel qtest"
 case "$QEMU_PROG" in
     *qemu-system-arm|*qemu-system-aarch64)
-        export QEMU_OPTIONS="-nodefaults -display none -machine virt -accel qtest"
+        export QEMU_OPTIONS="$QEMU_OPTIONS -machine virt"
+        ;;
+    *qemu-system-avr)
+        export QEMU_OPTIONS="$QEMU_OPTIONS -machine mega2560"
+        ;;
+    *qemu-system-rx)
+        export QEMU_OPTIONS="$QEMU_OPTIONS -machine gdbsim-r5f562n8"
         ;;
     *qemu-system-tricore)
-        export QEMU_OPTIONS="-nodefaults -display none -machine tricore_testboard -accel qtest"
-        ;;
-    *)
-        export QEMU_OPTIONS="-nodefaults -display none -accel qtest"
+        export QEMU_OPTIONS="-$QEMU_OPTIONS -machine tricore_testboard"
         ;;
 esac
 
@@ -642,10 +643,6 @@ if [ -z $QEMU_NBD_PROG ]; then
     fi
 fi
 export QEMU_NBD_PROG="$(type -p "$QEMU_NBD_PROG")"
-
-if [ -z "$QEMU_VXHS_PROG" ]; then
-    export QEMU_VXHS_PROG="$(set_prog_path qnio_server)"
-fi
 
 if [ -x "$build_iotests/socket_scm_helper" ]
 then

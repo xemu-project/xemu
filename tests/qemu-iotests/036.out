@@ -25,8 +25,8 @@ incompatible_features     []
 compatible_features       []
 autoclear_features        [63]
 Header extension:
-magic                     0x6803f857
-length                    288
+magic                     0x6803f857 (Feature table)
+length                    336
 data                      <binary>
 
 
@@ -37,8 +37,8 @@ incompatible_features     []
 compatible_features       []
 autoclear_features        []
 Header extension:
-magic                     0x6803f857
-length                    288
+magic                     0x6803f857 (Feature table)
+length                    336
 data                      <binary>
 
 *** done

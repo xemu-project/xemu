@@ -1,4 +1,5 @@
 # -*- Mode: Python -*-
+# vim: filetype=python
 
 ##
 # == Block core (VM unrelated)
@@ -78,6 +79,8 @@
 #
 # @bitmaps: A list of qcow2 bitmap details (since 4.0)
 #
+# @compression-type: the image cluster compression method (since 5.1)
+#
 # Since: 1.7
 ##
 { 'struct': 'ImageInfoSpecificQCow2',
@@ -89,7 +92,8 @@
       '*corrupt': 'bool',
       'refcount-bits': 'int',
       '*encrypt': 'ImageInfoSpecificQCow2Encryption',
-      '*bitmaps': ['Qcow2BitmapInfo']
+      '*bitmaps': ['Qcow2BitmapInfo'],
+      'compression-type': 'Qcow2CompressionType'
   } }
 
 ##
@@ -633,18 +637,24 @@
 # efficiently so file size may be smaller than virtual disk size.
 #
 # The values are upper bounds that are guaranteed to fit the new image file.
-# Subsequent modification, such as internal snapshot or bitmap creation, may
-# require additional space and is not covered here.
+# Subsequent modification, such as internal snapshot or further bitmap
+# creation, may require additional space and is not covered here.
 #
-# @required: Size required for a new image file, in bytes.
+# @required: Size required for a new image file, in bytes, when copying just
+#            allocated guest-visible contents.
 #
 # @fully-allocated: Image file size, in bytes, once data has been written
-#                   to all sectors.
+#                   to all sectors, when copying just guest-visible contents.
+#
+# @bitmaps: Additional size required if all the top-level bitmap metadata
+#           in the source image were to be copied to the destination,
+#           present only when source and destination both support
+#           persistent bitmaps. (since 5.1)
 #
 # Since: 2.10
 ##
 { 'struct': 'BlockMeasureInfo',
-  'data': {'required': 'int', 'fully-allocated': 'int'} }
+  'data': {'required': 'int', 'fully-allocated': 'int', '*bitmaps': 'int'} }
 
 ##
 # @query-block:
@@ -1838,9 +1848,9 @@
 #
 # Since: 4.0
 ##
-  { 'enum': 'BlockPermission',
-    'data': [ 'consistent-read', 'write', 'write-unchanged', 'resize',
-              'graph-mod' ] }
+{ 'enum': 'BlockPermission',
+  'data': [ 'consistent-read', 'write', 'write-unchanged', 'resize',
+            'graph-mod' ] }
 ##
 # @XDbgBlockGraphEdge:
 #
@@ -2146,8 +2156,8 @@
 # <- { "return": {} }
 #
 ##
-  { 'command': 'block-dirty-bitmap-enable',
-    'data': 'BlockDirtyBitmap' }
+{ 'command': 'block-dirty-bitmap-enable',
+  'data': 'BlockDirtyBitmap' }
 
 ##
 # @block-dirty-bitmap-disable:
@@ -2167,8 +2177,8 @@
 # <- { "return": {} }
 #
 ##
-    { 'command': 'block-dirty-bitmap-disable',
-      'data': 'BlockDirtyBitmap' }
+{ 'command': 'block-dirty-bitmap-disable',
+  'data': 'BlockDirtyBitmap' }
 
 ##
 # @block-dirty-bitmap-merge:
@@ -2199,8 +2209,8 @@
 # <- { "return": {} }
 #
 ##
-      { 'command': 'block-dirty-bitmap-merge',
-        'data': 'BlockDirtyBitmapMerge' }
+{ 'command': 'block-dirty-bitmap-merge',
+  'data': 'BlockDirtyBitmapMerge' }
 
 ##
 # @BlockDirtyBitmapSha256:
@@ -2211,8 +2221,8 @@
 #
 # Since: 2.10
 ##
-  { 'struct': 'BlockDirtyBitmapSha256',
-    'data': {'sha256': 'str'} }
+{ 'struct': 'BlockDirtyBitmapSha256',
+  'data': {'sha256': 'str'} }
 
 ##
 # @x-debug-block-dirty-bitmap-sha256:
@@ -2226,8 +2236,8 @@
 #
 # Since: 2.10
 ##
-  { 'command': 'x-debug-block-dirty-bitmap-sha256',
-    'data': 'BlockDirtyBitmap', 'returns': 'BlockDirtyBitmapSha256' }
+{ 'command': 'x-debug-block-dirty-bitmap-sha256',
+  'data': 'BlockDirtyBitmap', 'returns': 'BlockDirtyBitmapSha256' }
 
 ##
 # @blockdev-mirror:
@@ -2781,7 +2791,6 @@
 #
 # Drivers that are supported in block device operations.
 #
-# @vxhs: Since 2.10
 # @throttle: Since 2.11
 # @nvme: Since 2.12
 # @copy-on-read: Since 3.0
@@ -2799,7 +2808,7 @@
             'qcow', 'qcow2', 'qed', 'quorum', 'raw', 'rbd',
             { 'name': 'replication', 'if': 'defined(CONFIG_REPLICATION)' },
             'sheepdog',
-            'ssh', 'throttle', 'vdi', 'vhdx', 'vmdk', 'vpc', 'vvfat', 'vxhs' ] }
+            'ssh', 'throttle', 'vdi', 'vhdx', 'vmdk', 'vpc', 'vvfat' ] }
 
 ##
 # @BlockdevOptionsFile:
@@ -3887,22 +3896,6 @@
   'data': { '*offset': 'int', '*size': 'int' } }
 
 ##
-# @BlockdevOptionsVxHS:
-#
-# Driver specific block device options for VxHS
-#
-# @vdisk-id: UUID of VxHS volume
-# @server: vxhs server IP, port
-# @tls-creds: TLS credentials ID
-#
-# Since: 2.10
-##
-{ 'struct': 'BlockdevOptionsVxHS',
-  'data': { 'vdisk-id': 'str',
-            'server': 'InetSocketAddressBase',
-            '*tls-creds': 'str' } }
-
-##
 # @BlockdevOptionsThrottle:
 #
 # Driver specific block device options for the throttle driver
@@ -4001,8 +3994,7 @@
       'vhdx':       'BlockdevOptionsGenericFormat',
       'vmdk':       'BlockdevOptionsGenericCOWFormat',
       'vpc':        'BlockdevOptionsGenericFormat',
-      'vvfat':      'BlockdevOptionsVVFAT',
-      'vxhs':       'BlockdevOptionsVxHS'
+      'vvfat':      'BlockdevOptionsVVFAT'
   } }
 
 ##
@@ -4176,14 +4168,17 @@
 #                 falloc (if defined CONFIG_POSIX_FALLOCATE),
 #                 full (if defined CONFIG_POSIX))
 # @nocow: Turn off copy-on-write (valid only on btrfs; default: off)
+# @extent-size-hint: Extent size hint to add to the image file; 0 for not
+#                    adding an extent size hint (default: 1 MB, since 5.1)
 #
 # Since: 2.12
 ##
 { 'struct': 'BlockdevCreateOptionsFile',
-  'data': { 'filename':         'str',
-            'size':             'size',
-            '*preallocation':   'PreallocMode',
-            '*nocow':           'bool' } }
+  'data': { 'filename':             'str',
+            'size':                 'size',
+            '*preallocation':       'PreallocMode',
+            '*nocow':               'bool',
+            '*extent-size-hint':    'size'} }
 
 ##
 # @BlockdevCreateOptionsGluster:
@@ -4285,6 +4280,19 @@
 
 
 ##
+# @Qcow2CompressionType:
+#
+# Compression type used in qcow2 image file
+#
+# @zlib: zlib compression, see <http://zlib.net/>
+# @zstd: zstd compression, see <http://github.com/facebook/zstd>
+#
+# Since: 5.1
+##
+{ 'enum': 'Qcow2CompressionType',
+  'data': [ 'zlib', { 'name': 'zstd', 'if': 'defined(CONFIG_ZSTD)' } ] }
+
+##
 # @BlockdevCreateOptionsQcow2:
 #
 # Driver specific image creation options for qcow2.
@@ -4307,6 +4315,8 @@
 #                 allowed values: off, falloc, full, metadata)
 # @lazy-refcounts: True if refcounts may be updated lazily (default: off)
 # @refcount-bits: Width of reference counts in bits (default: 16)
+# @compression-type: The image cluster compression method
+#                    (default: zlib, since 5.1)
 #
 # Since: 2.12
 ##
@@ -4322,7 +4332,8 @@
             '*cluster-size':    'size',
             '*preallocation':   'PreallocMode',
             '*lazy-refcounts':  'bool',
-            '*refcount-bits':   'int' } }
+            '*refcount-bits':   'int',
+            '*compression-type':'Qcow2CompressionType' } }
 
 ##
 # @BlockdevCreateOptionsQed:
@@ -4648,6 +4659,74 @@
 { 'command': 'blockdev-create',
   'data': { 'job-id': 'str',
             'options': 'BlockdevCreateOptions' } }
+
+##
+# @BlockdevAmendOptionsLUKS:
+#
+# Driver specific image amend options for LUKS.
+#
+# Since: 5.1
+##
+{ 'struct': 'BlockdevAmendOptionsLUKS',
+  'base': 'QCryptoBlockAmendOptionsLUKS',
+  'data': { }
+}
+
+##
+# @BlockdevAmendOptionsQcow2:
+#
+# Driver specific image amend options for qcow2.
+# For now, only encryption options can be amended
+#
+# @encrypt          Encryption options to be amended
+#
+# Since: 5.1
+##
+{ 'struct': 'BlockdevAmendOptionsQcow2',
+  'data': { '*encrypt':         'QCryptoBlockAmendOptions' } }
+
+##
+# @BlockdevAmendOptions:
+#
+# Options for amending an image format
+#
+# @driver:          Block driver of the node to amend.
+#
+# Since: 5.1
+##
+{ 'union': 'BlockdevAmendOptions',
+  'base': {
+      'driver':         'BlockdevDriver' },
+  'discriminator': 'driver',
+  'data': {
+      'luks':           'BlockdevAmendOptionsLUKS',
+      'qcow2':          'BlockdevAmendOptionsQcow2' } }
+
+##
+# @x-blockdev-amend:
+#
+# Starts a job to amend format specific options of an existing open block device
+# The job is automatically finalized, but a manual job-dismiss is required.
+#
+# @job-id:          Identifier for the newly created job.
+#
+# @node-name:       Name of the block node to work on
+#
+# @options:         Options (driver specific)
+#
+# @force:           Allow unsafe operations, format specific
+#                   For luks that allows erase of the last active keyslot
+#                   (permanent loss of data),
+#                   and replacement of an active keyslot
+#                   (possible loss of data if IO error happens)
+#
+# Since: 5.1
+##
+{ 'command': 'x-blockdev-amend',
+  'data': { 'job-id': 'str',
+            'node-name': 'str',
+            'options': 'BlockdevAmendOptions',
+            '*force': 'bool' } }
 
 ##
 # @BlockErrorAction:

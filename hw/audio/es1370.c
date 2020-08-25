@@ -643,6 +643,9 @@ static void es1370_transfer_audio (ES1370State *s, struct chan *d, int loop_sel,
     int csc_bytes = (csc + 1) << d->shift;
     int cnt = d->frame_cnt >> 16;
     int size = d->frame_cnt & 0xffff;
+    if (size < cnt) {
+        return;
+    }
     int left = ((size - cnt + 1) << 2) + d->leftover;
     int transferred = 0;
     int temp = MIN (max, MIN (left, csc_bytes));
@@ -651,7 +654,7 @@ static void es1370_transfer_audio (ES1370State *s, struct chan *d, int loop_sel,
     addr += (cnt << 2) + d->leftover;
 
     if (index == ADC_CHANNEL) {
-        while (temp) {
+        while (temp > 0) {
             int acquired, to_copy;
 
             to_copy = MIN ((size_t) temp, sizeof (tmpbuf));
@@ -669,7 +672,7 @@ static void es1370_transfer_audio (ES1370State *s, struct chan *d, int loop_sel,
     else {
         SWVoiceOut *voice = s->dac_voice[index];
 
-        while (temp) {
+        while (temp > 0) {
             int copied, to_copy;
 
             to_copy = MIN ((size_t) temp, sizeof (tmpbuf));
@@ -881,12 +884,6 @@ static void es1370_exit(PCIDevice *dev)
     AUD_remove_card(&s->card);
 }
 
-static int es1370_init (PCIBus *bus)
-{
-    pci_create_simple (bus, -1, TYPE_ES1370);
-    return 0;
-}
-
 static Property es1370_properties[] = {
     DEFINE_AUDIO_PROPERTIES(ES1370State, card),
     DEFINE_PROP_END_OF_LIST(),
@@ -925,7 +922,8 @@ static const TypeInfo es1370_info = {
 static void es1370_register_types (void)
 {
     type_register_static (&es1370_info);
-    pci_register_soundhw("es1370", "ENSONIQ AudioPCI ES1370", es1370_init);
+    deprecated_register_soundhw("es1370", "ENSONIQ AudioPCI ES1370",
+                                0, TYPE_ES1370);
 }
 
 type_init (es1370_register_types)

@@ -910,27 +910,25 @@ static int quorum_open(BlockDriverState *bs, QDict *options, int flags,
     /* count how many different children are present */
     s->num_children = qdict_array_entries(options, "children.");
     if (s->num_children < 0) {
-        error_setg(&local_err, "Option children is not a valid array");
+        error_setg(errp, "Option children is not a valid array");
         ret = -EINVAL;
         goto exit;
     }
     if (s->num_children < 1) {
-        error_setg(&local_err,
-                   "Number of provided children must be 1 or more");
+        error_setg(errp, "Number of provided children must be 1 or more");
         ret = -EINVAL;
         goto exit;
     }
 
     opts = qemu_opts_create(&quorum_runtime_opts, NULL, 0, &error_abort);
-    qemu_opts_absorb_qdict(opts, options, &local_err);
-    if (local_err) {
+    if (!qemu_opts_absorb_qdict(opts, options, errp)) {
         ret = -EINVAL;
         goto exit;
     }
 
     s->threshold = qemu_opt_get_number(opts, QUORUM_OPT_VOTE_THRESHOLD, 0);
     /* and validate it against s->num_children */
-    ret = quorum_valid_threshold(s->threshold, s->num_children, &local_err);
+    ret = quorum_valid_threshold(s->threshold, s->num_children, errp);
     if (ret < 0) {
         goto exit;
     }
@@ -943,7 +941,7 @@ static int quorum_open(BlockDriverState *bs, QDict *options, int flags,
                               -EINVAL, NULL);
     }
     if (ret < 0) {
-        error_setg(&local_err, "Please set read-pattern as fifo or quorum");
+        error_setg(errp, "Please set read-pattern as fifo or quorum");
         goto exit;
     }
     s->read_pattern = ret;
@@ -951,7 +949,7 @@ static int quorum_open(BlockDriverState *bs, QDict *options, int flags,
     if (s->read_pattern == QUORUM_READ_PATTERN_QUORUM) {
         s->is_blkverify = qemu_opt_get_bool(opts, QUORUM_OPT_BLKVERIFY, false);
         if (s->is_blkverify && (s->num_children != 2 || s->threshold != 2)) {
-            error_setg(&local_err, "blkverify=on can only be set if there are "
+            error_setg(errp, "blkverify=on can only be set if there are "
                        "exactly two files and vote-threshold is 2");
             ret = -EINVAL;
             goto exit;
@@ -960,7 +958,7 @@ static int quorum_open(BlockDriverState *bs, QDict *options, int flags,
         s->rewrite_corrupted = qemu_opt_get_bool(opts, QUORUM_OPT_REWRITE,
                                                  false);
         if (s->rewrite_corrupted && s->is_blkverify) {
-            error_setg(&local_err,
+            error_setg(errp,
                        "rewrite-corrupted=on cannot be used with blkverify=on");
             ret = -EINVAL;
             goto exit;
@@ -977,8 +975,10 @@ static int quorum_open(BlockDriverState *bs, QDict *options, int flags,
         assert(ret < 32);
 
         s->children[i] = bdrv_open_child(NULL, options, indexstr, bs,
-                                         &child_format, false, &local_err);
+                                         &child_of_bds, BDRV_CHILD_DATA, false,
+                                         &local_err);
         if (local_err) {
+            error_propagate(errp, local_err);
             ret = -EINVAL;
             goto close_exit;
         }
@@ -1004,8 +1004,6 @@ close_exit:
     g_free(opened);
 exit:
     qemu_opts_del(opts);
-    /* propagate error */
-    error_propagate(errp, local_err);
     return ret;
 }
 
@@ -1053,7 +1051,8 @@ static void quorum_add_child(BlockDriverState *bs, BlockDriverState *child_bs,
     /* We can safely add the child now */
     bdrv_ref(child_bs);
 
-    child = bdrv_attach_child(bs, child_bs, indexstr, &child_format, errp);
+    child = bdrv_attach_child(bs, child_bs, indexstr, &child_of_bds,
+                              BDRV_CHILD_DATA, errp);
     if (child == NULL) {
         s->next_child_index--;
         goto out;
@@ -1151,7 +1150,7 @@ static char *quorum_dirname(BlockDriverState *bs, Error **errp)
 }
 
 static void quorum_child_perm(BlockDriverState *bs, BdrvChild *c,
-                              const BdrvChildRole *role,
+                              BdrvChildRole role,
                               BlockReopenQueue *reopen_queue,
                               uint64_t perm, uint64_t shared,
                               uint64_t *nperm, uint64_t *nshared)

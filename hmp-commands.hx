@@ -1791,10 +1791,25 @@ SRST
 ERST
 
     {
+        .name       = "qom-get",
+        .args_type  = "path:s,property:s",
+        .params     = "path property",
+        .help       = "print QOM property",
+        .cmd        = hmp_qom_get,
+        .flags      = "p",
+    },
+
+SRST
+``qom-get`` *path* *property*
+  Print QOM property *property* of object at location *path*
+ERST
+
+    {
         .name       = "qom-set",
-        .args_type  = "path:s,property:s,value:s",
-        .params     = "path property value",
-        .help       = "set QOM property",
+        .args_type  = "json:-j,path:s,property:s,value:S",
+        .params     = "[-j] path property value",
+        .help       = "set QOM property.\n\t\t\t"
+                      "-j: the value is specified in json format.",
         .cmd        = hmp_qom_set,
         .flags      = "p",
     },

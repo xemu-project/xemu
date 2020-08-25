@@ -302,18 +302,15 @@ void spapr_irq_init(SpaprMachineState *spapr, Error **errp)
     spapr_irq_msi_init(spapr);
 
     if (spapr->irq->xics) {
-        Error *local_err = NULL;
         Object *obj;
 
         obj = object_new(TYPE_ICS_SPAPR);
 
-        object_property_add_child(OBJECT(spapr), "ics", obj, &error_abort);
-        object_property_set_link(obj, OBJECT(spapr), ICS_PROP_XICS,
+        object_property_add_child(OBJECT(spapr), "ics", obj);
+        object_property_set_link(obj, ICS_PROP_XICS, OBJECT(spapr),
                                  &error_abort);
-        object_property_set_int(obj, smc->nr_xirqs, "nr-irqs", &error_abort);
-        object_property_set_bool(obj, true, "realized", &local_err);
-        if (local_err) {
-            error_propagate(errp, local_err);
+        object_property_set_int(obj, "nr-irqs", smc->nr_xirqs, &error_abort);
+        if (!qdev_realize(DEVICE(obj), NULL, errp)) {
             return;
         }
 
@@ -325,16 +322,16 @@ void spapr_irq_init(SpaprMachineState *spapr, Error **errp)
         DeviceState *dev;
         int i;
 
-        dev = qdev_create(NULL, TYPE_SPAPR_XIVE);
+        dev = qdev_new(TYPE_SPAPR_XIVE);
         qdev_prop_set_uint32(dev, "nr-irqs", smc->nr_xirqs + SPAPR_XIRQ_BASE);
         /*
          * 8 XIVE END structures per CPU. One for each available
          * priority
          */
         qdev_prop_set_uint32(dev, "nr-ends", nr_servers << 3);
-        object_property_set_link(OBJECT(dev), OBJECT(spapr), "xive-fabric",
+        object_property_set_link(OBJECT(dev), "xive-fabric", OBJECT(spapr),
                                  &error_abort);
-        qdev_init_nofail(dev);
+        sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
         spapr->xive = SPAPR_XIVE(dev);
 

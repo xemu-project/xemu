@@ -616,15 +616,12 @@ static BlockdevOptionsSsh *ssh_parse_options(QDict *options, Error **errp)
 {
     BlockdevOptionsSsh *result = NULL;
     QemuOpts *opts = NULL;
-    Error *local_err = NULL;
     const QDictEntry *e;
     Visitor *v;
 
     /* Translate legacy options */
     opts = qemu_opts_create(&ssh_runtime_opts, NULL, 0, &error_abort);
-    qemu_opts_absorb_qdict(opts, options, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!qemu_opts_absorb_qdict(opts, options, errp)) {
         goto fail;
     }
 
@@ -638,11 +635,9 @@ static BlockdevOptionsSsh *ssh_parse_options(QDict *options, Error **errp)
         goto fail;
     }
 
-    visit_type_BlockdevOptionsSsh(v, NULL, &result, &local_err);
+    visit_type_BlockdevOptionsSsh(v, NULL, &result, errp);
     visit_free(v);
-
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!result) {
         goto fail;
     }
 
@@ -882,6 +877,10 @@ static int ssh_file_open(BlockDriverState *bs, QDict *options, int bdrv_flags,
 
     /* Go non-blocking. */
     ssh_set_blocking(s->session, 0);
+
+    if (s->attrs->type == SSH_FILEXFER_TYPE_REGULAR) {
+        bs->supported_truncate_flags = BDRV_REQ_ZERO_WRITE;
+    }
 
     qapi_free_BlockdevOptionsSsh(opts);
 
@@ -1298,7 +1297,7 @@ static int64_t ssh_getlength(BlockDriverState *bs)
 
 static int coroutine_fn ssh_co_truncate(BlockDriverState *bs, int64_t offset,
                                         bool exact, PreallocMode prealloc,
-                                        Error **errp)
+                                        BdrvRequestFlags flags, Error **errp)
 {
     BDRVSSHState *s = bs->opaque;
 
@@ -1393,7 +1392,6 @@ static BlockDriver bdrv_ssh = {
     .bdrv_co_create_opts          = ssh_co_create_opts,
     .bdrv_close                   = ssh_close,
     .bdrv_has_zero_init           = ssh_has_zero_init,
-    .bdrv_has_zero_init_truncate  = ssh_has_zero_init,
     .bdrv_co_readv                = ssh_co_readv,
     .bdrv_co_writev               = ssh_co_writev,
     .bdrv_getlength               = ssh_getlength,

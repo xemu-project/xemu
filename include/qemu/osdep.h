@@ -104,7 +104,7 @@ extern int daemon(int, int);
 #include <setjmp.h>
 #include <signal.h>
 
-#ifdef __OpenBSD__
+#ifdef HAVE_SYS_SIGNAL_H
 #include <sys/signal.h>
 #endif
 
@@ -173,6 +173,9 @@ extern int daemon(int, int);
 #ifndef MAP_ANONYMOUS
 #define MAP_ANONYMOUS MAP_ANON
 #endif
+#ifndef MAP_FIXED_NOREPLACE
+#define MAP_FIXED_NOREPLACE 0
+#endif
 #ifndef ENOMEDIUM
 #define ENOMEDIUM ENODEV
 #endif
@@ -236,18 +239,62 @@ extern int daemon(int, int);
 #define SIZE_MAX ((size_t)-1)
 #endif
 
-#ifndef MIN
-#define MIN(a, b) (((a) < (b)) ? (a) : (b))
-#endif
-#ifndef MAX
-#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+/*
+ * Two variations of MIN/MAX macros. The first is for runtime use, and
+ * evaluates arguments only once (so it is safe even with side
+ * effects), but will not work in constant contexts (such as array
+ * size declarations) because of the '{}'.  The second is for constant
+ * expression use, where evaluating arguments twice is safe because
+ * the result is going to be constant anyway, but will not work in a
+ * runtime context because of a void expression where a value is
+ * expected.  Thus, both gcc and clang will fail to compile if you use
+ * the wrong macro (even if the error may seem a bit cryptic).
+ *
+ * Note that neither form is usable as an #if condition; if you truly
+ * need to write conditional code that depends on a minimum or maximum
+ * determined by the pre-processor instead of the compiler, you'll
+ * have to open-code it.  Sadly, Coverity is severely confused by the
+ * constant variants, so we have to dumb things down there.
+ */
+#undef MIN
+#define MIN(a, b)                                       \
+    ({                                                  \
+        typeof(1 ? (a) : (b)) _a = (a), _b = (b);       \
+        _a < _b ? _a : _b;                              \
+    })
+#undef MAX
+#define MAX(a, b)                                       \
+    ({                                                  \
+        typeof(1 ? (a) : (b)) _a = (a), _b = (b);       \
+        _a > _b ? _a : _b;                              \
+    })
+
+#ifdef __COVERITY__
+# define MIN_CONST(a, b) ((a) < (b) ? (a) : (b))
+# define MAX_CONST(a, b) ((a) > (b) ? (a) : (b))
+#else
+# define MIN_CONST(a, b)                                        \
+    __builtin_choose_expr(                                      \
+        __builtin_constant_p(a) && __builtin_constant_p(b),     \
+        (a) < (b) ? (a) : (b),                                  \
+        ((void)0))
+# define MAX_CONST(a, b)                                        \
+    __builtin_choose_expr(                                      \
+        __builtin_constant_p(a) && __builtin_constant_p(b),     \
+        (a) > (b) ? (a) : (b),                                  \
+        ((void)0))
 #endif
 
-/* Minimum function that returns zero only iff both values are zero.
- * Intended for use with unsigned values only. */
+/*
+ * Minimum function that returns zero only if both values are zero.
+ * Intended for use with unsigned values only.
+ */
 #ifndef MIN_NON_ZERO
-#define MIN_NON_ZERO(a, b) ((a) == 0 ? (b) : \
-                                ((b) == 0 ? (a) : (MIN(a, b))))
+#define MIN_NON_ZERO(a, b)                              \
+    ({                                                  \
+        typeof(1 ? (a) : (b)) _a = (a), _b = (b);       \
+        _a == 0 ? _b : (_b == 0 || _b > _a) ? _a : _b;  \
+    })
 #endif
 
 /* Round number down to multiple */
@@ -379,13 +426,17 @@ void qemu_anon_ram_free(void *ptr, size_t size);
 #define HAVE_CHARDEV_SERIAL 1
 #elif defined(__linux__) || defined(__sun__) || defined(__FreeBSD__)    \
     || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) \
-    || defined(__GLIBC__)
+    || defined(__GLIBC__) || defined(__APPLE__)
 #define HAVE_CHARDEV_SERIAL 1
 #endif
 
 #if defined(__linux__) || defined(__FreeBSD__) ||               \
     defined(__FreeBSD_kernel__) || defined(__DragonFly__)
 #define HAVE_CHARDEV_PARPORT 1
+#endif
+
+#if defined(__HAIKU__)
+#define SIGIO SIGPOLL
 #endif
 
 #if defined(CONFIG_LINUX)
@@ -540,7 +591,10 @@ char *qemu_get_local_state_pathname(const char *relative_pathname);
 void qemu_init_exec_dir(const char *argv0);
 
 /* Get the saved exec dir.
- * Caller needs to release the returned string by g_free() */
+ *
+ * The caller is responsible for releasing the value returned with g_free()
+ * after use.
+ */
 char *qemu_get_exec_dir(void);
 
 /**
@@ -606,5 +660,27 @@ static inline void qemu_reset_optind(void)
     optind = 0;
 #endif
 }
+
+/**
+ * qemu_get_host_name:
+ * @errp: Error object
+ *
+ * Operating system agnostic way of querying host name.
+ *
+ * Returns allocated hostname (caller should free), NULL on failure.
+ */
+char *qemu_get_host_name(Error **errp);
+
+/**
+ * qemu_get_host_physmem:
+ *
+ * Operating system agnostic way of querying host memory.
+ *
+ * Returns amount of physical memory on the system. This is purely
+ * advisery and may return 0 if we can't work it out. At the other
+ * end we saturate to SIZE_MAX if you are lucky enough to have that
+ * much memory.
+ */
+size_t qemu_get_host_physmem(void);
 
 #endif

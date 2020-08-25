@@ -25,8 +25,10 @@ from iotests import log, qemu_img, filter_testfiles, filter_imgfmt, \
         filter_qmp_testfiles, filter_qmp_imgfmt
 
 # Need backing file and change-backing-file support
-iotests.verify_image_format(supported_fmts=['qcow2', 'qed'])
-iotests.verify_platform(['linux'])
+iotests.script_initialize(
+    supported_fmts=['qcow2', 'qed'],
+    supported_platforms=['linux'],
+)
 
 
 def log_node_info(node):
@@ -54,7 +56,8 @@ with iotests.FilePath('base.img') as base_img_path, \
     assert qemu_img('create', '-f', iotests.imgfmt, base_img_path, '64M') == 0
     # Choose a funny way to describe the backing filename
     assert qemu_img('create', '-f', iotests.imgfmt, '-b',
-                    'file:' + base_img_path, top_img_path) == 0
+                    'file:' + base_img_path, '-F', iotests.imgfmt,
+                    top_img_path) == 0
 
     vm.launch()
 
@@ -169,7 +172,7 @@ with iotests.FilePath('base.img') as base_img_path, \
     # filename unless the backing file is opened implicitly with the
     # overlay)
     assert qemu_img('create', '-f', iotests.imgfmt, '-b', base_img_path,
-                    top_img_path) == 0
+                    '-F', iotests.imgfmt, top_img_path) == 0
 
     # You can only reliably override backing options by using a node
     # reference (or by specifying file.filename, but, well...)

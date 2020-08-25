@@ -340,7 +340,7 @@ static void spapr_vlan_instance_init(Object *obj)
 
     device_add_bootindex_property(obj, &dev->nicconf.bootindex,
                                   "bootindex", "",
-                                  DEVICE(dev), NULL);
+                                  DEVICE(dev));
 
     if (dev->compat_flags & SPAPRVLAN_FLAG_RX_BUF_POOLS) {
         for (i = 0; i < RX_MAX_POOLS; i++) {
@@ -372,11 +372,11 @@ void spapr_vlan_create(SpaprVioBus *bus, NICInfo *nd)
 {
     DeviceState *dev;
 
-    dev = qdev_create(&bus->bus, "spapr-vlan");
+    dev = qdev_new("spapr-vlan");
 
     qdev_set_nic_properties(dev, nd);
 
-    qdev_init_nofail(dev);
+    qdev_realize_and_unref(dev, &bus->bus, &error_fatal);
 }
 
 static int spapr_vlan_devnode(SpaprVioDevice *dev, void *fdt, int node_off)

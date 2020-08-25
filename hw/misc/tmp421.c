@@ -141,15 +141,12 @@ static void tmp421_set_temperature(Object *obj, Visitor *v, const char *name,
                                    void *opaque, Error **errp)
 {
     TMP421State *s = TMP421(obj);
-    Error *local_err = NULL;
     int64_t temp;
     bool ext_range = (s->config[0] & TMP421_CONFIG_RANGE);
     int offset = ext_range * 64 * 256;
     int tempid;
 
-    visit_type_int(v, name, &temp, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_int(v, name, &temp, errp)) {
         return;
     }
 
@@ -347,16 +344,16 @@ static void tmp421_initfn(Object *obj)
 {
     object_property_add(obj, "temperature0", "int",
                         tmp421_get_temperature,
-                        tmp421_set_temperature, NULL, NULL, NULL);
+                        tmp421_set_temperature, NULL, NULL);
     object_property_add(obj, "temperature1", "int",
                         tmp421_get_temperature,
-                        tmp421_set_temperature, NULL, NULL, NULL);
+                        tmp421_set_temperature, NULL, NULL);
     object_property_add(obj, "temperature2", "int",
                         tmp421_get_temperature,
-                        tmp421_set_temperature, NULL, NULL, NULL);
+                        tmp421_set_temperature, NULL, NULL);
     object_property_add(obj, "temperature3", "int",
                         tmp421_get_temperature,
-                        tmp421_set_temperature, NULL, NULL, NULL);
+                        tmp421_set_temperature, NULL, NULL);
 }
 
 static void tmp421_class_init(ObjectClass *klass, void *data)

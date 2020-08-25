@@ -21,7 +21,6 @@
 #include "qapi/qapi-commands-qom.h"
 #include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qerror.h"
-#include "qapi/qobject-input-visitor.h"
 #include "qemu/cutils.h"
 #include "qom/object_interfaces.h"
 #include "qom/qom-qobject.h"
@@ -72,7 +71,7 @@ void qmp_qom_set(const char *path, const char *property, QObject *value,
         return;
     }
 
-    object_property_set_qobject(obj, value, property, errp);
+    object_property_set_qobject(obj, property, value, errp);
 }
 
 QObject *qmp_qom_get(const char *path, const char *property, Error **errp)
@@ -117,6 +116,7 @@ ObjectTypeInfoList *qmp_qom_list_types(bool has_implements,
 {
     ObjectTypeInfoList *ret = NULL;
 
+    module_load_qom_all();
     object_class_foreach(qom_list_types_tramp, implements, abstract, &ret);
 
     return ret;
@@ -131,7 +131,7 @@ ObjectPropertyInfoList *qmp_device_list_properties(const char *typename,
     ObjectPropertyIterator iter;
     ObjectPropertyInfoList *prop_list = NULL;
 
-    klass = object_class_by_name(typename);
+    klass = module_object_class_by_name(typename);
     if (klass == NULL) {
         error_set(errp, ERROR_CLASS_DEVICE_NOT_FOUND,
                   "Device '%s' not found", typename);
@@ -245,24 +245,6 @@ void qmp_object_add(QDict *qdict, QObject **ret_data, Error **errp)
 {
     QObject *props;
     QDict *pdict;
-    Visitor *v;
-    Object *obj;
-    g_autofree char *type = NULL;
-    g_autofree char *id = NULL;
-
-    type = g_strdup(qdict_get_try_str(qdict, "qom-type"));
-    if (!type) {
-        error_setg(errp, QERR_MISSING_PARAMETER, "qom-type");
-        return;
-    }
-    qdict_del(qdict, "qom-type");
-
-    id = g_strdup(qdict_get_try_str(qdict, "id"));
-    if (!id) {
-        error_setg(errp, QERR_MISSING_PARAMETER, "id");
-        return;
-    }
-    qdict_del(qdict, "id");
 
     props = qdict_get(qdict, "props");
     if (props) {
@@ -282,10 +264,7 @@ void qmp_object_add(QDict *qdict, QObject **ret_data, Error **errp)
         qobject_unref(pdict);
     }
 
-    v = qobject_input_visitor_new(QOBJECT(qdict));
-    obj = user_creatable_add_type(type, id, qdict, v, errp);
-    visit_free(v);
-    object_unref(obj);
+    user_creatable_add_dict(qdict, false, errp);
 }
 
 void qmp_object_del(const char *id, Error **errp)

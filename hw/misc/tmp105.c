@@ -72,12 +72,9 @@ static void tmp105_set_temperature(Object *obj, Visitor *v, const char *name,
                                    void *opaque, Error **errp)
 {
     TMP105State *s = TMP105(obj);
-    Error *local_err = NULL;
     int64_t temp;
 
-    visit_type_int(v, name, &temp, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_int(v, name, &temp, errp)) {
         return;
     }
     if (temp >= 128000 || temp < -128000) {
@@ -245,7 +242,7 @@ static void tmp105_initfn(Object *obj)
 {
     object_property_add(obj, "temperature", "int",
                         tmp105_get_temperature,
-                        tmp105_set_temperature, NULL, NULL, NULL);
+                        tmp105_set_temperature, NULL, NULL);
 }
 
 static void tmp105_class_init(ObjectClass *klass, void *data)

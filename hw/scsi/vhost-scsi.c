@@ -207,9 +207,7 @@ static void vhost_scsi_realize(DeviceState *dev, Error **errp)
                 "When external environment supports it (Orchestrator migrates "
                 "target SCSI device state or use shared storage over network), "
                 "set 'migratable' property to true to enable migration.");
-        migrate_add_blocker(vsc->migration_blocker, &err);
-        if (err) {
-            error_propagate(errp, err);
+        if (migrate_add_blocker(vsc->migration_blocker, errp) < 0) {
             error_free(vsc->migration_blocker);
             goto free_virtio;
         }
@@ -248,7 +246,7 @@ static void vhost_scsi_realize(DeviceState *dev, Error **errp)
     return;
 }
 
-static void vhost_scsi_unrealize(DeviceState *dev, Error **errp)
+static void vhost_scsi_unrealize(DeviceState *dev)
 {
     VirtIODevice *vdev = VIRTIO_DEVICE(dev);
     VHostSCSICommon *vsc = VHOST_SCSI_COMMON(dev);
@@ -311,7 +309,7 @@ static void vhost_scsi_instance_init(Object *obj)
     vsc->feature_bits = kernel_feature_bits;
 
     device_add_bootindex_property(obj, &vsc->bootindex, "bootindex", NULL,
-                                  DEVICE(vsc), NULL);
+                                  DEVICE(vsc));
 }
 
 static const TypeInfo vhost_scsi_info = {

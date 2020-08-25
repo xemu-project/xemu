@@ -537,11 +537,9 @@ static uint32_t nam_readb (void *opaque, uint32_t addr)
 static uint32_t nam_readw (void *opaque, uint32_t addr)
 {
     AC97LinkState *s = opaque;
-    uint32_t val = ~0U;
     uint32_t index = addr;
     s->cas = 0;
-    val = mixer_load (s, index);
-    return val;
+    return mixer_load(s, index);
 }
 
 static uint32_t nam_readl (void *opaque, uint32_t addr)
@@ -1409,12 +1407,6 @@ static void ac97_exit (PCIDevice *dev)
     memory_region_destroy (&s->io_nabm);
 }
 
-static int ac97_init (PCIBus *bus)
-{
-    pci_create_simple(bus, -1, TYPE_AC97);
-    return 0;
-}
-
 static Property ac97_properties[] = {
     DEFINE_AUDIO_PROPERTIES(AC97DeviceState, state.card),
     DEFINE_PROP_END_OF_LIST (),
@@ -1452,7 +1444,8 @@ static const TypeInfo ac97_info = {
 static void ac97_register_types (void)
 {
     type_register_static (&ac97_info);
-    pci_register_soundhw("ac97", "Intel 82801AA AC97 Audio", ac97_init);
+    deprecated_register_soundhw("ac97", "Intel 82801AA AC97 Audio",
+                                0, TYPE_AC97);
 }
 
 type_init (ac97_register_types)

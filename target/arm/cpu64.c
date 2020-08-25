@@ -29,16 +29,6 @@
 #include "kvm_arm.h"
 #include "qapi/visitor.h"
 
-static inline void set_feature(CPUARMState *env, int feature)
-{
-    env->features |= 1ULL << feature;
-}
-
-static inline void unset_feature(CPUARMState *env, int feature)
-{
-    env->features &= ~(1ULL << feature);
-}
-
 #ifndef CONFIG_USER_ONLY
 static uint64_t a57_a53_l2ctlr_read(CPUARMState *env, const ARMCPRegInfo *ri)
 {
@@ -276,7 +266,7 @@ void arm_cpu_sve_finalize(ARMCPU *cpu, Error **errp)
 
     /* Collect the set of vector lengths supported by KVM. */
     bitmap_zero(kvm_supported, ARM_MAX_VQ);
-    if (kvm_enabled() && kvm_arm_sve_supported(CPU(cpu))) {
+    if (kvm_enabled() && kvm_arm_sve_supported()) {
         kvm_arm_sve_get_vls(CPU(cpu), kvm_supported);
     } else if (kvm_enabled()) {
         assert(!cpu_isar_feature(aa64_sve, cpu));
@@ -474,16 +464,13 @@ static void cpu_max_set_sve_max_vq(Object *obj, Visitor *v, const char *name,
                                    void *opaque, Error **errp)
 {
     ARMCPU *cpu = ARM_CPU(obj);
-    Error *err = NULL;
     uint32_t max_vq;
 
-    visit_type_uint32(v, name, &max_vq, &err);
-    if (err) {
-        error_propagate(errp, err);
+    if (!visit_type_uint32(v, name, &max_vq, errp)) {
         return;
     }
 
-    if (kvm_enabled() && !kvm_arm_sve_supported(CPU(cpu))) {
+    if (kvm_enabled() && !kvm_arm_sve_supported()) {
         error_setg(errp, "cannot set sve-max-vq");
         error_append_hint(errp, "SVE not supported by KVM on this host\n");
         return;
@@ -520,16 +507,13 @@ static void cpu_arm_set_sve_vq(Object *obj, Visitor *v, const char *name,
 {
     ARMCPU *cpu = ARM_CPU(obj);
     uint32_t vq = atoi(&name[3]) / 128;
-    Error *err = NULL;
     bool value;
 
-    visit_type_bool(v, name, &value, &err);
-    if (err) {
-        error_propagate(errp, err);
+    if (!visit_type_bool(v, name, &value, errp)) {
         return;
     }
 
-    if (value && kvm_enabled() && !kvm_arm_sve_supported(CPU(cpu))) {
+    if (value && kvm_enabled() && !kvm_arm_sve_supported()) {
         error_setg(errp, "cannot enable %s", name);
         error_append_hint(errp, "SVE not supported by KVM on this host\n");
         return;
@@ -556,17 +540,14 @@ static void cpu_arm_set_sve(Object *obj, Visitor *v, const char *name,
                             void *opaque, Error **errp)
 {
     ARMCPU *cpu = ARM_CPU(obj);
-    Error *err = NULL;
     bool value;
     uint64_t t;
 
-    visit_type_bool(v, name, &value, &err);
-    if (err) {
-        error_propagate(errp, err);
+    if (!visit_type_bool(v, name, &value, errp)) {
         return;
     }
 
-    if (value && kvm_enabled() && !kvm_arm_sve_supported(CPU(cpu))) {
+    if (value && kvm_enabled() && !kvm_arm_sve_supported()) {
         error_setg(errp, "'sve' feature not supported by KVM on this host");
         return;
     }
@@ -581,13 +562,13 @@ void aarch64_add_sve_properties(Object *obj)
     uint32_t vq;
 
     object_property_add(obj, "sve", "bool", cpu_arm_get_sve,
-                        cpu_arm_set_sve, NULL, NULL, &error_fatal);
+                        cpu_arm_set_sve, NULL, NULL);
 
     for (vq = 1; vq <= ARM_MAX_VQ; ++vq) {
         char name[8];
         sprintf(name, "sve%d", vq * 128);
         object_property_add(obj, name, "bool", cpu_arm_get_sve_vq,
-                            cpu_arm_set_sve_vq, NULL, NULL, &error_fatal);
+                            cpu_arm_set_sve_vq, NULL, NULL);
     }
 }
 
@@ -602,7 +583,6 @@ static void aarch64_max_initfn(Object *obj)
 
     if (kvm_enabled()) {
         kvm_arm_set_cpu_features_from_host(cpu);
-        kvm_arm_add_vcpu_properties(obj);
     } else {
         uint64_t t;
         uint32_t u;
@@ -665,6 +645,12 @@ static void aarch64_max_initfn(Object *obj)
 
         t = cpu->isar.id_aa64pfr1;
         t = FIELD_DP64(t, ID_AA64PFR1, BT, 1);
+        /*
+         * Begin with full support for MTE. This will be downgraded to MTE=0
+         * during realize if the board provides no tag memory, much like
+         * we do for EL2 with the virtualization=on property.
+         */
+        t = FIELD_DP64(t, ID_AA64PFR1, MTE, 2);
         cpu->isar.id_aa64pfr1 = t;
 
         t = cpu->isar.id_aa64mmfr1;
@@ -673,6 +659,7 @@ static void aarch64_max_initfn(Object *obj)
         t = FIELD_DP64(t, ID_AA64MMFR1, VH, 1);
         t = FIELD_DP64(t, ID_AA64MMFR1, PAN, 2); /* ATS1E1 */
         t = FIELD_DP64(t, ID_AA64MMFR1, VMIDBITS, 2); /* VMID16 */
+        t = FIELD_DP64(t, ID_AA64MMFR1, XNX, 1); /* TTS2UXN */
         cpu->isar.id_aa64mmfr1 = t;
 
         t = cpu->isar.id_aa64mmfr2;
@@ -706,11 +693,12 @@ static void aarch64_max_initfn(Object *obj)
         u = FIELD_DP32(u, ID_MMFR4, HPDS, 1); /* AA32HPD */
         u = FIELD_DP32(u, ID_MMFR4, AC2, 1); /* ACTLR2, HACTLR2 */
         u = FIELD_DP32(u, ID_MMFR4, CNP, 1); /* TTCNP */
+        u = FIELD_DP32(u, ID_MMFR4, XNX, 1); /* TTS2UXN */
         cpu->isar.id_mmfr4 = u;
 
-        u = cpu->isar.id_aa64dfr0;
-        u = FIELD_DP64(u, ID_AA64DFR0, PMUVER, 5); /* v8.4-PMU */
-        cpu->isar.id_aa64dfr0 = u;
+        t = cpu->isar.id_aa64dfr0;
+        t = FIELD_DP64(t, ID_AA64DFR0, PMUVER, 5); /* v8.4-PMU */
+        cpu->isar.id_aa64dfr0 = t;
 
         u = cpu->isar.id_dfr0;
         u = FIELD_DP32(u, ID_DFR0, PERFMON, 5); /* v8.4-PMU */
@@ -734,21 +722,14 @@ static void aarch64_max_initfn(Object *obj)
 
     aarch64_add_sve_properties(obj);
     object_property_add(obj, "sve-max-vq", "uint32", cpu_max_get_sve_max_vq,
-                        cpu_max_set_sve_max_vq, NULL, NULL, &error_fatal);
+                        cpu_max_set_sve_max_vq, NULL, NULL);
 }
-
-struct ARMCPUInfo {
-    const char *name;
-    void (*initfn)(Object *obj);
-    void (*class_init)(ObjectClass *oc, void *data);
-};
 
 static const ARMCPUInfo aarch64_cpus[] = {
     { .name = "cortex-a57",         .initfn = aarch64_a57_initfn },
     { .name = "cortex-a53",         .initfn = aarch64_a53_initfn },
     { .name = "cortex-a72",         .initfn = aarch64_a72_initfn },
     { .name = "max",                .initfn = aarch64_max_initfn },
-    { .name = NULL }
 };
 
 static bool aarch64_cpu_get_aarch64(Object *obj, Error **errp)
@@ -767,7 +748,7 @@ static void aarch64_cpu_set_aarch64(Object *obj, bool value, Error **errp)
      * uniform execution state like do_interrupt.
      */
     if (value == false) {
-        if (!kvm_enabled() || !kvm_arm_aarch32_supported(CPU(cpu))) {
+        if (!kvm_enabled() || !kvm_arm_aarch32_supported()) {
             error_setg(errp, "'aarch64' feature cannot be disabled "
                              "unless KVM is enabled and 32-bit EL1 "
                              "is supported");
@@ -782,11 +763,10 @@ static void aarch64_cpu_set_aarch64(Object *obj, bool value, Error **errp)
 static void aarch64_cpu_initfn(Object *obj)
 {
     object_property_add_bool(obj, "aarch64", aarch64_cpu_get_aarch64,
-                             aarch64_cpu_set_aarch64, NULL);
+                             aarch64_cpu_set_aarch64);
     object_property_set_description(obj, "aarch64",
                                     "Set on/off to enable/disable aarch64 "
-                                    "execution state ",
-                                    NULL);
+                                    "execution state ");
 }
 
 static void aarch64_cpu_finalizefn(Object *obj)
@@ -825,7 +805,7 @@ static void cpu_register_class_init(ObjectClass *oc, void *data)
     acc->info = data;
 }
 
-static void aarch64_cpu_register(const ARMCPUInfo *info)
+void aarch64_cpu_register(const ARMCPUInfo *info)
 {
     TypeInfo type_info = {
         .parent = TYPE_AARCH64_CPU,
@@ -854,13 +834,12 @@ static const TypeInfo aarch64_cpu_type_info = {
 
 static void aarch64_cpu_register_types(void)
 {
-    const ARMCPUInfo *info = aarch64_cpus;
+    size_t i;
 
     type_register_static(&aarch64_cpu_type_info);
 
-    while (info->name) {
-        aarch64_cpu_register(info);
-        info++;
+    for (i = 0; i < ARRAY_SIZE(aarch64_cpus); ++i) {
+        aarch64_cpu_register(&aarch64_cpus[i]);
     }
 }
 

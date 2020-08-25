@@ -786,9 +786,8 @@ static void virtio_crypto_device_realize(DeviceState *dev, Error **errp)
         error_setg(errp, "'cryptodev' parameter expects a valid object");
         return;
     } else if (cryptodev_backend_is_used(vcrypto->cryptodev)) {
-        char *path = object_get_canonical_path_component(OBJECT(vcrypto->conf.cryptodev));
-        error_setg(errp, "can't use already used cryptodev backend: %s", path);
-        g_free(path);
+        error_setg(errp, "can't use already used cryptodev backend: %s",
+                   object_get_canonical_path_component(OBJECT(vcrypto->conf.cryptodev)));
         return;
     }
 
@@ -822,7 +821,7 @@ static void virtio_crypto_device_realize(DeviceState *dev, Error **errp)
     cryptodev_backend_set_used(vcrypto->cryptodev, true);
 }
 
-static void virtio_crypto_device_unrealize(DeviceState *dev, Error **errp)
+static void virtio_crypto_device_unrealize(DeviceState *dev)
 {
     VirtIODevice *vdev = VIRTIO_DEVICE(dev);
     VirtIOCrypto *vcrypto = VIRTIO_CRYPTO(dev);

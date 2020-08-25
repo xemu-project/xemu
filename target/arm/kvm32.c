@@ -22,11 +22,6 @@
 #include "internals.h"
 #include "qemu/log.h"
 
-static inline void set_feature(uint64_t *features, int feature)
-{
-    *features |= 1ULL << feature;
-}
-
 static int read_sys_reg32(int fd, uint32_t *pret, uint64_t id)
 {
     struct kvm_one_reg idreg = { .id = id, .addr = (uintptr_t)pret };
@@ -146,14 +141,14 @@ bool kvm_arm_get_host_cpu_features(ARMHostCPUFeatures *ahcf)
      * timers; this in turn implies most of the other feature
      * bits, but a few must be tested.
      */
-    set_feature(&features, ARM_FEATURE_V7VE);
-    set_feature(&features, ARM_FEATURE_GENERIC_TIMER);
+    features |= 1ULL << ARM_FEATURE_V7VE;
+    features |= 1ULL << ARM_FEATURE_GENERIC_TIMER;
 
     if (extract32(id_pfr0, 12, 4) == 1) {
-        set_feature(&features, ARM_FEATURE_THUMB2EE);
+        features |= 1ULL << ARM_FEATURE_THUMB2EE;
     }
     if (extract32(ahcf->isar.mvfr1, 12, 4) == 1) {
-        set_feature(&features, ARM_FEATURE_NEON);
+        features |= 1ULL << ARM_FEATURE_NEON;
     }
 
     ahcf->features = features;
@@ -563,4 +558,38 @@ void kvm_arm_pmu_set_irq(CPUState *cs, int irq)
 void kvm_arm_pmu_init(CPUState *cs)
 {
     qemu_log_mask(LOG_UNIMP, "%s: not implemented\n", __func__);
+}
+
+#define ARM_REG_DFSR  ARM_CP15_REG32(0, 5, 0, 0)
+#define ARM_REG_TTBCR ARM_CP15_REG32(0, 2, 0, 2)
+/*
+ *DFSR:
+ *      TTBCR.EAE == 0
+ *          FS[4]   - DFSR[10]
+ *          FS[3:0] - DFSR[3:0]
+ *      TTBCR.EAE == 1
+ *          FS, bits [5:0]
+ */
+#define DFSR_FSC(lpae, v) \
+    ((lpae) ? ((v) & 0x3F) : (((v) >> 6) | ((v) & 0x1F)))
+
+#define DFSC_EXTABT(lpae) ((lpae) ? 0x10 : 0x08)
+
+bool kvm_arm_verify_ext_dabt_pending(CPUState *cs)
+{
+    uint32_t dfsr_val;
+
+    if (!kvm_get_one_reg(cs, ARM_REG_DFSR, &dfsr_val)) {
+        ARMCPU *cpu = ARM_CPU(cs);
+        CPUARMState *env = &cpu->env;
+        uint32_t ttbcr;
+        int lpae = 0;
+
+        if (!kvm_get_one_reg(cs, ARM_REG_TTBCR, &ttbcr)) {
+            lpae = arm_feature(env, ARM_FEATURE_LPAE) && (ttbcr & TTBCR_EAE);
+        }
+        /* The verification is based on FS filed of the DFSR reg only*/
+        return (DFSR_FSC(lpae, dfsr_val) == DFSC_EXTABT(lpae));
+    }
+    return false;
 }

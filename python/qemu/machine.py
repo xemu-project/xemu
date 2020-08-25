@@ -22,12 +22,16 @@ import logging
 import os
 import subprocess
 import shutil
-import socket
+import signal
 import tempfile
+from typing import Optional, Type
+from types import TracebackType
+from . import console_socket
 
 from . import qmp
 
 LOG = logging.getLogger(__name__)
+
 
 class QEMUMachineError(Exception):
     """
@@ -45,24 +49,18 @@ class QEMUMachineAddDeviceError(QEMUMachineError):
     """
 
 
-class MonitorResponseError(qmp.QMPError):
+class AbnormalShutdown(QEMUMachineError):
     """
-    Represents erroneous QMP monitor reply
+    Exception raised when a graceful shutdown was requested, but not performed.
     """
-    def __init__(self, reply):
-        try:
-            desc = reply["error"]["desc"]
-        except KeyError:
-            desc = reply
-        super(MonitorResponseError, self).__init__(desc)
-        self.reply = reply
 
 
-class QEMUMachine(object):
+class QEMUMachine:
     """
     A QEMU VM
 
-    Use this object as a context manager to ensure the QEMU process terminates::
+    Use this object as a context manager to ensure
+    the QEMU process terminates::
 
         with VM(binary) as vm:
             ...
@@ -71,7 +69,8 @@ class QEMUMachine(object):
 
     def __init__(self, binary, args=None, wrapper=None, name=None,
                  test_dir="/var/tmp", monitor_address=None,
-                 socket_scm_helper=None, sock_dir=None):
+                 socket_scm_helper=None, sock_dir=None,
+                 drain_console=False, console_log=None):
         '''
         Initialize a QEMUMachine
 
@@ -82,6 +81,9 @@ class QEMUMachine(object):
         @param test_dir: where to create socket and log file
         @param monitor_address: address for QMP monitor
         @param socket_scm_helper: helper program, required for send_fd_scm()
+        @param sock_dir: where to create socket (overrides test_dir for sock)
+        @param console_log: (optional) path to console log file
+        @param drain_console: (optional) True to drain console socket to buffer
         @note: Qemu process is not started until launch() is used.
         '''
         if args is None:
@@ -118,16 +120,22 @@ class QEMUMachine(object):
         self._console_address = None
         self._console_socket = None
         self._remove_files = []
-
-        # just in case logging wasn't configured by the main script:
-        logging.basicConfig()
+        self._user_killed = False
+        self._console_log_path = console_log
+        if self._console_log_path:
+            # In order to log the console, buffering needs to be enabled.
+            self._drain_console = True
+        else:
+            self._drain_console = drain_console
 
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self,
+                 exc_type: Optional[Type[BaseException]],
+                 exc_val: Optional[BaseException],
+                 exc_tb: Optional[TracebackType]) -> None:
         self.shutdown()
-        return False
 
     def add_monitor_null(self):
         """
@@ -188,8 +196,10 @@ class QEMUMachine(object):
             fd_param.append(str(fd))
 
         devnull = open(os.path.devnull, 'rb')
-        proc = subprocess.Popen(fd_param, stdin=devnull, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, close_fds=False)
+        proc = subprocess.Popen(
+            fd_param, stdin=devnull, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, close_fds=False
+        )
         output = proc.communicate()[0]
         if output:
             LOG.debug(output)
@@ -242,7 +252,7 @@ class QEMUMachine(object):
                          'chardev=mon,mode=control'])
         if self._machine is not None:
             args.extend(['-machine', self._machine])
-        for i in range(self._console_index):
+        for _ in range(self._console_index):
             args.extend(['-serial', 'null'])
         if self._console_set:
             self._console_address = os.path.join(self._sock_dir,
@@ -278,6 +288,19 @@ class QEMUMachine(object):
             self._qmp.accept()
 
     def _post_shutdown(self):
+        """
+        Called to cleanup the VM instance after the process has exited.
+        May also be called after a failed launch.
+        """
+        # Comprehensive reset for the failed launch case:
+        self._early_cleanup()
+
+        if self._qmp:
+            self._qmp.close()
+            self._qmp = None
+
+        self._load_io_log()
+
         if self._qemu_log_file is not None:
             self._qemu_log_file.close()
             self._qemu_log_file = None
@@ -290,6 +313,19 @@ class QEMUMachine(object):
 
         while len(self._remove_files) > 0:
             self._remove_if_exists(self._remove_files.pop())
+
+        exitcode = self.exitcode()
+        if (exitcode is not None and exitcode < 0
+                and not (self._user_killed and exitcode == -signal.SIGKILL)):
+            msg = 'qemu received signal %i; command: "%s"'
+            if self._qemu_full_args:
+                command = ' '.join(self._qemu_full_args)
+            else:
+                command = ''
+            LOG.warning(msg, -int(exitcode), command)
+
+        self._user_killed = False
+        self._launched = False
 
     def launch(self):
         """
@@ -306,7 +342,7 @@ class QEMUMachine(object):
             self._launch()
             self._launched = True
         except:
-            self.shutdown()
+            self._post_shutdown()
 
             LOG.debug('Error launching VM')
             if self._qemu_full_args:
@@ -332,19 +368,12 @@ class QEMUMachine(object):
                                        close_fds=False)
         self._post_launch()
 
-    def wait(self):
+    def _early_cleanup(self) -> None:
         """
-        Wait for the VM to power off
-        """
-        self._popen.wait()
-        if self._qmp:
-            self._qmp.close()
-        self._load_io_log()
-        self._post_shutdown()
+        Perform any cleanup that needs to happen before the VM exits.
 
-    def shutdown(self, has_quit=False):
-        """
-        Terminate the VM and clean up
+        May be invoked by both soft and hard shutdown in failover scenarios.
+        Called additionally by _post_shutdown for comprehensive cleanup.
         """
         # If we keep the console socket open, we may deadlock waiting
         # for QEMU to exit, while QEMU is waiting for the socket to
@@ -353,30 +382,104 @@ class QEMUMachine(object):
             self._console_socket.close()
             self._console_socket = None
 
-        if self.is_running():
-            if self._qmp:
-                try:
-                    if not has_quit:
-                        self._qmp.cmd('quit')
-                    self._qmp.close()
-                    self._popen.wait(timeout=3)
-                except:
-                    self._popen.kill()
-            self._popen.wait()
+    def _hard_shutdown(self) -> None:
+        """
+        Perform early cleanup, kill the VM, and wait for it to terminate.
 
-        self._load_io_log()
-        self._post_shutdown()
+        :raise subprocess.Timeout: When timeout is exceeds 60 seconds
+            waiting for the QEMU process to terminate.
+        """
+        self._early_cleanup()
+        self._popen.kill()
+        self._popen.wait(timeout=60)
 
-        exitcode = self.exitcode()
-        if exitcode is not None and exitcode < 0:
-            msg = 'qemu received signal %i: %s'
-            if self._qemu_full_args:
-                command = ' '.join(self._qemu_full_args)
+    def _soft_shutdown(self, timeout: Optional[int],
+                       has_quit: bool = False) -> None:
+        """
+        Perform early cleanup, attempt to gracefully shut down the VM, and wait
+        for it to terminate.
+
+        :param timeout: Timeout in seconds for graceful shutdown.
+                        A value of None is an infinite wait.
+        :param has_quit: When True, don't attempt to issue 'quit' QMP command
+
+        :raise ConnectionReset: On QMP communication errors
+        :raise subprocess.TimeoutExpired: When timeout is exceeded waiting for
+            the QEMU process to terminate.
+        """
+        self._early_cleanup()
+
+        if self._qmp is not None:
+            if not has_quit:
+                # Might raise ConnectionReset
+                self._qmp.cmd('quit')
+
+        # May raise subprocess.TimeoutExpired
+        self._popen.wait(timeout=timeout)
+
+    def _do_shutdown(self, timeout: Optional[int],
+                     has_quit: bool = False) -> None:
+        """
+        Attempt to shutdown the VM gracefully; fallback to a hard shutdown.
+
+        :param timeout: Timeout in seconds for graceful shutdown.
+                        A value of None is an infinite wait.
+        :param has_quit: When True, don't attempt to issue 'quit' QMP command
+
+        :raise AbnormalShutdown: When the VM could not be shut down gracefully.
+            The inner exception will likely be ConnectionReset or
+            subprocess.TimeoutExpired. In rare cases, non-graceful termination
+            may result in its own exceptions, likely subprocess.TimeoutExpired.
+        """
+        try:
+            self._soft_shutdown(timeout, has_quit)
+        except Exception as exc:
+            self._hard_shutdown()
+            raise AbnormalShutdown("Could not perform graceful shutdown") \
+                from exc
+
+    def shutdown(self, has_quit: bool = False,
+                 hard: bool = False,
+                 timeout: Optional[int] = 30) -> None:
+        """
+        Terminate the VM (gracefully if possible) and perform cleanup.
+        Cleanup will always be performed.
+
+        If the VM has not yet been launched, or shutdown(), wait(), or kill()
+        have already been called, this method does nothing.
+
+        :param has_quit: When true, do not attempt to issue 'quit' QMP command.
+        :param hard: When true, do not attempt graceful shutdown, and
+                     suppress the SIGKILL warning log message.
+        :param timeout: Optional timeout in seconds for graceful shutdown.
+                        Default 30 seconds, A `None` value is an infinite wait.
+        """
+        if not self._launched:
+            return
+
+        try:
+            if hard:
+                self._user_killed = True
+                self._hard_shutdown()
             else:
-                command = ''
-            LOG.warning(msg, -exitcode, command)
+                self._do_shutdown(timeout, has_quit)
+        finally:
+            self._post_shutdown()
 
-        self._launched = False
+    def kill(self):
+        """
+        Terminate the VM forcefully, wait for it to exit, and perform cleanup.
+        """
+        self.shutdown(hard=True)
+
+    def wait(self, timeout: Optional[int] = 30) -> None:
+        """
+        Wait for the VM to power off and perform post-shutdown cleanup.
+
+        :param timeout: Optional timeout in seconds. Default 30 seconds.
+                        A value of `None` is an infinite wait.
+        """
+        self.shutdown(has_quit=True, timeout=timeout)
 
     def set_qmp_monitor(self, enabled=True):
         """
@@ -416,7 +519,7 @@ class QEMUMachine(object):
         if reply is None:
             raise qmp.QMPError("Monitor is closed")
         if "error" in reply:
-            raise MonitorResponseError(reply)
+            raise qmp.QMPResponseError(reply)
         return reply["return"]
 
     def get_qmp_event(self, wait=False):
@@ -482,7 +585,8 @@ class QEMUMachine(object):
 
     def events_wait(self, events, timeout=60.0):
         """
-        events_wait waits for and returns a named event from QMP with a timeout.
+        events_wait waits for and returns a named event
+        from QMP with a timeout.
 
         events: a sequence of (name, match_criteria) tuples.
                 The match criteria are optional and may be None.
@@ -568,7 +672,8 @@ class QEMUMachine(object):
         Returns a socket connected to the console
         """
         if self._console_socket is None:
-            self._console_socket = socket.socket(socket.AF_UNIX,
-                                                 socket.SOCK_STREAM)
-            self._console_socket.connect(self._console_address)
+            self._console_socket = console_socket.ConsoleSocket(
+                self._console_address,
+                file=self._console_log_path,
+                drain=self._drain_console)
         return self._console_socket

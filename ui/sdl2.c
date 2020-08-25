@@ -30,6 +30,7 @@
 #include "ui/sdl2.h"
 #include "sysemu/runstate.h"
 #include "sysemu/sysemu.h"
+#include "ui/win32-kbd-hook.h"
 
 static int sdl2_num_outputs;
 static struct sdl2_console *sdl2_console;
@@ -220,6 +221,7 @@ static void sdl_grab_start(struct sdl2_console *scon)
     }
     SDL_SetWindowGrab(scon->real_window, SDL_TRUE);
     gui_grab = 1;
+    win32_kbd_set_grab(true);
     sdl_update_caption(scon);
 }
 
@@ -227,6 +229,7 @@ static void sdl_grab_end(struct sdl2_console *scon)
 {
     SDL_SetWindowGrab(scon->real_window, SDL_FALSE);
     gui_grab = 0;
+    win32_kbd_set_grab(false);
     sdl_show_cursor(scon);
     sdl_update_caption(scon);
 }
@@ -325,12 +328,29 @@ static int get_mod_state(void)
     }
 }
 
+static void *sdl2_win32_get_hwnd(struct sdl2_console *scon)
+{
+#ifdef CONFIG_WIN32
+    SDL_SysWMinfo info;
+
+    SDL_VERSION(&info.version);
+    if (SDL_GetWindowWMInfo(scon->real_window, &info)) {
+        return info.info.win.window;
+    }
+#endif
+    return NULL;
+}
+
 static void handle_keydown(SDL_Event *ev)
 {
     int win;
     struct sdl2_console *scon = get_scon_from_window(ev->key.windowID);
     int gui_key_modifier_pressed = get_mod_state();
     int gui_keysym = 0;
+
+    if (!scon) {
+        return;
+    }
 
     if (!scon->ignore_hotkeys && gui_key_modifier_pressed && !ev->key.repeat) {
         switch (ev->key.keysym.scancode) {
@@ -412,6 +432,10 @@ static void handle_keyup(SDL_Event *ev)
 {
     struct sdl2_console *scon = get_scon_from_window(ev->key.windowID);
 
+    if (!scon) {
+        return;
+    }
+
     scon->ignore_hotkeys = false;
     sdl2_process_key(scon, &ev->key);
 }
@@ -420,6 +444,10 @@ static void handle_textinput(SDL_Event *ev)
 {
     struct sdl2_console *scon = get_scon_from_window(ev->text.windowID);
     QemuConsole *con = scon ? scon->dcl.con : NULL;
+
+    if (!con) {
+        return;
+    }
 
     if (qemu_console_is_graphic(con)) {
         return;
@@ -532,6 +560,11 @@ static void handle_windowevent(SDL_Event *ev)
         sdl2_redraw(scon);
         break;
     case SDL_WINDOWEVENT_FOCUS_GAINED:
+        win32_kbd_set_grab(gui_grab);
+        if (qemu_console_is_graphic(scon->dcl.con)) {
+            win32_kbd_set_window(sdl2_win32_get_hwnd(scon));
+        }
+        /* fall through */
     case SDL_WINDOWEVENT_ENTER:
         if (!gui_grab && (qemu_input_is_absolute() || absolute_enabled)) {
             absolute_mouse_grab(scon);
@@ -546,6 +579,9 @@ static void handle_windowevent(SDL_Event *ev)
         scon->ignore_hotkeys = get_mod_state();
         break;
     case SDL_WINDOWEVENT_FOCUS_LOST:
+        if (qemu_console_is_graphic(scon->dcl.con)) {
+            win32_kbd_set_window(NULL);
+        }
         if (gui_grab && !gui_fullscreen) {
             sdl_grab_end(scon);
         }
@@ -845,16 +881,15 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
         SDL_SetWindowIcon(sdl2_console[0].real_window, icon);
     }
 
-    gui_grab = 0;
-    if (gui_fullscreen) {
-        sdl_grab_start(0);
-    }
-
     mouse_mode_notifier.notify = sdl_mouse_mode_change;
     qemu_add_mouse_mode_change_notifier(&mouse_mode_notifier);
 
     sdl_cursor_hidden = SDL_CreateCursor(&data, &data, 8, 1, 0, 0);
     sdl_cursor_normal = SDL_GetCursor();
+
+    if (gui_fullscreen) {
+        sdl_grab_start(&sdl2_console[0]);
+    }
 
     atexit(sdl_cleanup);
 }

@@ -856,8 +856,7 @@ int main(int argc, char **argv)
         }
         tlscreds = nbd_get_tls_creds(tlscredsid, list, &local_err);
         if (local_err) {
-            error_report("Failed to get TLS creds %s",
-                         error_get_pretty(local_err));
+            error_reportf_err(local_err, "Failed to get TLS creds: ");
             exit(EXIT_FAILURE);
         }
     } else {
@@ -916,7 +915,11 @@ int main(int argc, char **argv)
         } else if (pid == 0) {
             close(stderr_fd[0]);
 
-            old_stderr = dup(STDERR_FILENO);
+            /* Remember parent's stderr if we will be restoring it. */
+            if (fork_process) {
+                old_stderr = dup(STDERR_FILENO);
+            }
+
             ret = qemu_daemon(1, 0);
 
             /* Temporarily redirect stderr to the parent's pipe...  */
@@ -979,8 +982,8 @@ int main(int argc, char **argv)
                                              &local_err);
             if (sioc == NULL) {
                 object_unref(OBJECT(server));
-                error_report("Failed to use socket activation: %s",
-                             error_get_pretty(local_err));
+                error_reportf_err(local_err,
+                                  "Failed to use socket activation: ");
                 exit(EXIT_FAILURE);
             }
             qio_net_listener_add(server, sioc);

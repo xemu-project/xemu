@@ -25,6 +25,7 @@
 #include "qemu/bitops.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
+#include "qemu/error-report.h"
 #include "hw/audio/soundhw.h"
 #include "intel-hda.h"
 #include "migration/vmstate.h"
@@ -74,7 +75,7 @@ static void hda_codec_dev_realize(DeviceState *qdev, Error **errp)
     }
 }
 
-static void hda_codec_dev_unrealize(DeviceState *qdev, Error **errp)
+static void hda_codec_dev_unrealize(DeviceState *qdev)
 {
     HDACodecDevice *dev = HDA_CODEC_DEVICE(qdev);
     HDACodecDeviceClass *cdc = HDA_CODEC_DEVICE_GET_CLASS(dev);
@@ -1307,10 +1308,12 @@ static int intel_hda_and_codec_init(PCIBus *bus)
     BusState *hdabus;
     DeviceState *codec;
 
+    warn_report("'-soundhw hda' is deprecated, "
+                "please use '-device intel-hda -device hda-duplex' instead");
     controller = DEVICE(pci_create_simple(bus, -1, "intel-hda"));
     hdabus = QLIST_FIRST(&controller->child_bus);
-    codec = qdev_create(hdabus, "hda-duplex");
-    qdev_init_nofail(codec);
+    codec = qdev_new("hda-duplex");
+    qdev_realize_and_unref(codec, hdabus, &error_fatal);
     return 0;
 }
 

@@ -42,7 +42,7 @@
 int singlestep;
 unsigned long mmap_min_addr;
 unsigned long guest_base;
-int have_guest_base;
+bool have_guest_base;
 unsigned long reserved_va;
 
 static const char *interp_prefix = CONFIG_QEMU_INTERP_PREFIX;
@@ -413,7 +413,11 @@ static void save_window(CPUSPARCState *env)
     save_window_offset(env, cpu_cwp_dec(env, env->cwp - 2));
     env->wim = new_wim;
 #else
-    save_window_offset(env, cpu_cwp_dec(env, env->cwp - 2));
+    /*
+     * cansave is zero if the spill trap handler is triggered by `save` and
+     * nonzero if triggered by a `flushw`
+     */
+    save_window_offset(env, cpu_cwp_dec(env, env->cwp - env->cansave - 2));
     env->cansave++;
     env->canrestore--;
 #endif
@@ -738,7 +742,7 @@ int main(int argc, char **argv)
     CPUState *cpu;
     int optind;
     const char *r;
-    int gdbstub_port = 0;
+    const char *gdbstub = NULL;
     char **target_environ, **wrk;
     envlist_t *envlist = NULL;
     char *trace_file = NULL;
@@ -814,7 +818,7 @@ int main(int argc, char **argv)
                 exit(1);
             }
         } else if (!strcmp(r, "g")) {
-            gdbstub_port = atoi(argv[optind++]);
+            gdbstub = g_strdup(argv[optind++]);
         } else if (!strcmp(r, "r")) {
             qemu_uname_release = argv[optind++];
         } else if (!strcmp(r, "cpu")) {
@@ -828,7 +832,7 @@ int main(int argc, char **argv)
             }
         } else if (!strcmp(r, "B")) {
            guest_base = strtol(argv[optind++], NULL, 0);
-           have_guest_base = 1;
+           have_guest_base = true;
         } else if (!strcmp(r, "drop-ld-preload")) {
             (void) envlist_unsetenv(envlist, "LD_PRELOAD");
         } else if (!strcmp(r, "bsd")) {
@@ -1124,8 +1128,8 @@ int main(int argc, char **argv)
 #error unsupported target CPU
 #endif
 
-    if (gdbstub_port) {
-        gdbserver_start (gdbstub_port);
+    if (gdbstub) {
+        gdbserver_start(gdbstub);
         gdb_handlesig(cpu, 0);
     }
     cpu_loop(env);

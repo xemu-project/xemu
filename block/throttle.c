@@ -46,12 +46,9 @@ static int throttle_parse_options(QDict *options, char **group, Error **errp)
 {
     int ret;
     const char *group_name;
-    Error *local_err = NULL;
     QemuOpts *opts = qemu_opts_create(&throttle_opts, NULL, 0, &error_abort);
 
-    qemu_opts_absorb_qdict(opts, options, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!qemu_opts_absorb_qdict(opts, options, errp)) {
         ret = -EINVAL;
         goto fin;
     }
@@ -81,8 +78,9 @@ static int throttle_open(BlockDriverState *bs, QDict *options,
     char *group;
     int ret;
 
-    bs->file = bdrv_open_child(NULL, options, "file", bs,
-                               &child_file, false, errp);
+    bs->file = bdrv_open_child(NULL, options, "file", bs, &child_of_bds,
+                               BDRV_CHILD_FILTERED | BDRV_CHILD_PRIMARY,
+                               false, errp);
     if (!bs->file) {
         return -EINVAL;
     }
@@ -236,7 +234,7 @@ static BlockDriver bdrv_throttle = {
     .bdrv_close                         =   throttle_close,
     .bdrv_co_flush                      =   throttle_co_flush,
 
-    .bdrv_child_perm                    =   bdrv_filter_default_perms,
+    .bdrv_child_perm                    =   bdrv_default_perms,
 
     .bdrv_getlength                     =   throttle_getlength,
 

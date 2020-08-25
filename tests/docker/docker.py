@@ -24,7 +24,7 @@ import tempfile
 import re
 import signal
 from tarfile import TarFile, TarInfo
-from io import StringIO
+from io import StringIO, BytesIO
 from shutil import copy, rmtree
 from pwd import getpwuid
 from datetime import datetime, timedelta
@@ -56,15 +56,19 @@ class EngineEnum(enum.IntEnum):
 
 USE_ENGINE = EngineEnum.AUTO
 
+def _bytes_checksum(bytes):
+    """Calculate a digest string unique to the text content"""
+    return hashlib.sha1(bytes).hexdigest()
+
 def _text_checksum(text):
     """Calculate a digest string unique to the text content"""
-    return hashlib.sha1(text.encode('utf-8')).hexdigest()
+    return _bytes_checksum(text.encode('utf-8'))
 
 def _read_dockerfile(path):
     return open(path, 'rt', encoding='utf-8').read()
 
 def _file_checksum(filename):
-    return _text_checksum(_read_dockerfile(filename))
+    return _bytes_checksum(open(filename, 'rb').read())
 
 
 def _guess_engine_command():
@@ -200,7 +204,7 @@ def _dockerfile_preprocess(df):
     for l in df.splitlines():
         if len(l.strip()) == 0 or l.startswith("#"):
             continue
-        from_pref = "FROM qemu:"
+        from_pref = "FROM qemu/"
         if l.startswith(from_pref):
             # TODO: Alternatively we could replace this line with "FROM $ID"
             # where $ID is the image's hex id obtained with
@@ -217,6 +221,13 @@ class Docker(object):
     """ Running Docker commands """
     def __init__(self):
         self._command = _guess_engine_command()
+
+        if "docker" in self._command and "TRAVIS" not in os.environ:
+            os.environ["DOCKER_BUILDKIT"] = "1"
+            self._buildkit = True
+        else:
+            self._buildkit = False
+
         self._instance = None
         atexit.register(self._kill_instances)
         signal.signal(signal.SIGTERM, self._kill_instances)
@@ -258,12 +269,13 @@ class Docker(object):
         return self._do_kill_instances(True)
 
     def _output(self, cmd, **kwargs):
-        if sys.version_info[1] >= 6:
+        try:
             return subprocess.check_output(self._command + cmd,
                                            stderr=subprocess.STDOUT,
                                            encoding='utf-8',
                                            **kwargs)
-        else:
+        except TypeError:
+            # 'encoding' argument was added in 3.6+
             return subprocess.check_output(self._command + cmd,
                                            stderr=subprocess.STDOUT,
                                            **kwargs).decode('utf-8')
@@ -284,9 +296,28 @@ class Docker(object):
         return labels.get("com.qemu.dockerfile-checksum", "")
 
     def build_image(self, tag, docker_dir, dockerfile,
-                    quiet=True, user=False, argv=None, extra_files_cksum=[]):
+                    quiet=True, user=False, argv=None, registry=None,
+                    extra_files_cksum=[]):
         if argv is None:
             argv = []
+
+        # pre-calculate the docker checksum before any
+        # substitutions we make for caching
+        checksum = _text_checksum(_dockerfile_preprocess(dockerfile))
+
+        if registry is not None:
+            sources = re.findall("FROM qemu\/(.*)", dockerfile)
+            # Fetch any cache layers we can, may fail
+            for s in sources:
+                pull_args = ["pull", "%s/qemu/%s" % (registry, s)]
+                if self._do(pull_args, quiet=quiet) != 0:
+                    registry = None
+                    break
+            # Make substitutions
+            if registry is not None:
+                dockerfile = dockerfile.replace("FROM qemu/",
+                                                "FROM %s/qemu/" %
+                                                (registry))
 
         tmp_df = tempfile.NamedTemporaryFile(mode="w+t",
                                              encoding='utf-8',
@@ -301,15 +332,25 @@ class Docker(object):
                          (uname, uid, uname))
 
         tmp_df.write("\n")
-        tmp_df.write("LABEL com.qemu.dockerfile-checksum=%s" %
-                     _text_checksum(_dockerfile_preprocess(dockerfile)))
+        tmp_df.write("LABEL com.qemu.dockerfile-checksum=%s" % (checksum))
         for f, c in extra_files_cksum:
             tmp_df.write("LABEL com.qemu.%s-checksum=%s" % (f, c))
 
         tmp_df.flush()
 
-        self._do_check(["build", "-t", tag, "-f", tmp_df.name] + argv +
-                       [docker_dir],
+        build_args = ["build", "-t", tag, "-f", tmp_df.name]
+        if self._buildkit:
+            build_args += ["--build-arg", "BUILDKIT_INLINE_CACHE=1"]
+
+        if registry is not None:
+            pull_args = ["pull", "%s/%s" % (registry, tag)]
+            self._do(pull_args, quiet=quiet)
+            cache = "%s/%s" % (registry, tag)
+            build_args += ["--cache-from", cache]
+        build_args += argv
+        build_args += [docker_dir]
+
+        self._do_check(build_args,
                        quiet=quiet)
 
     def update_image(self, tag, tarball, quiet=True):
@@ -391,16 +432,18 @@ class BuildCommand(SubCommand):
                             help="""Specify a binary that will be copied to the
                             container together with all its dependent
                             libraries""")
-        parser.add_argument("--extra-files", "-f", nargs='*',
+        parser.add_argument("--extra-files", nargs='*',
                             help="""Specify files that will be copied in the
                             Docker image, fulfilling the ADD directive from the
                             Dockerfile""")
         parser.add_argument("--add-current-user", "-u", dest="user",
                             action="store_true",
                             help="Add the current user to image's passwd")
-        parser.add_argument("tag",
+        parser.add_argument("--registry", "-r",
+                            help="cache from docker registry")
+        parser.add_argument("-t", dest="tag",
                             help="Image Tag")
-        parser.add_argument("dockerfile",
+        parser.add_argument("-f", dest="dockerfile",
                             help="Dockerfile name")
 
     def run(self, args, argv):
@@ -453,7 +496,8 @@ class BuildCommand(SubCommand):
                      for k, v in os.environ.items()
                      if k.lower() in FILTERED_ENV_NAMES]
             dkr.build_image(tag, docker_dir, dockerfile,
-                            quiet=args.quiet, user=args.user, argv=argv,
+                            quiet=args.quiet, user=args.user,
+                            argv=argv, registry=args.registry,
                             extra_files_cksum=cksum)
 
             rmtree(docker_dir)
@@ -497,13 +541,14 @@ class UpdateCommand(SubCommand):
 
         # Create a Docker buildfile
         df = StringIO()
-        df.write("FROM %s\n" % args.tag)
-        df.write("ADD . /\n")
-        df.seek(0)
+        df.write(u"FROM %s\n" % args.tag)
+        df.write(u"ADD . /\n")
+
+        df_bytes = BytesIO(bytes(df.getvalue(), "UTF-8"))
 
         df_tar = TarInfo(name="Dockerfile")
-        df_tar.size = len(df.buf)
-        tmp_tar.addfile(df_tar, fileobj=df)
+        df_tar.size = df_bytes.getbuffer().nbytes
+        tmp_tar.addfile(df_tar, fileobj=df_bytes)
 
         tmp_tar.close()
 

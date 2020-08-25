@@ -13,9 +13,8 @@ chardev-obj-y = chardev/
 
 authz-obj-y = authz/
 
-block-obj-y = nbd/
+block-obj-y = block/ nbd/ scsi/
 block-obj-y += block.o blockjob.o job.o
-block-obj-y += block/ scsi/
 block-obj-y += qemu-io-cmds.o
 block-obj-$(CONFIG_REPLICATION) += replication.o
 
@@ -60,6 +59,7 @@ common-obj-y += migration/
 common-obj-y += audio/
 common-obj-m += audio/
 common-obj-y += hw/
+common-obj-m += hw/
 
 common-obj-y += replay/
 
@@ -71,6 +71,7 @@ common-obj-$(CONFIG_TPM) += tpm.o
 
 common-obj-y += backends/
 common-obj-y += chardev/
+common-obj-m += chardev/
 
 common-obj-$(CONFIG_SECCOMP) += qemu-seccomp.o
 qemu-seccomp.o-cflags := $(SECCOMP_CFLAGS)
@@ -128,6 +129,7 @@ trace-events-subdirs =
 trace-events-subdirs += accel/kvm
 trace-events-subdirs += accel/tcg
 trace-events-subdirs += backends
+trace-events-subdirs += backends/tpm
 trace-events-subdirs += crypto
 trace-events-subdirs += monitor
 ifeq ($(CONFIG_USER_ONLY),y)
@@ -153,6 +155,7 @@ trace-events-subdirs += hw/block/dataplane
 trace-events-subdirs += hw/char
 trace-events-subdirs += hw/dma
 trace-events-subdirs += hw/hppa
+trace-events-subdirs += hw/hyperv
 trace-events-subdirs += hw/i2c
 trace-events-subdirs += hw/i386
 trace-events-subdirs += hw/i386/xen

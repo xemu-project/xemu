@@ -19,7 +19,7 @@ slavio_timer_mem_writel_invalid(uint64_t addr) "invalid write address 0x%"PRIx64
 grlib_gptimer_enable(int id, uint32_t count) "timer:%d set count 0x%x and run"
 grlib_gptimer_disabled(int id, uint32_t config) "timer:%d Timer disable config 0x%x"
 grlib_gptimer_restart(int id, uint32_t reload) "timer:%d reload val: 0x%x"
-grlib_gptimer_set_scaler(uint32_t scaler, uint32_t freq) "scaler:0x%x freq: 0x%x"
+grlib_gptimer_set_scaler(uint32_t scaler, uint32_t freq) "scaler:0x%x freq:%uHz"
 grlib_gptimer_hit(int id) "timer:%d HIT"
 grlib_gptimer_readl(int id, uint64_t addr, uint32_t val) "timer:%d addr 0x%"PRIx64" 0x%x"
 grlib_gptimer_writel(int id, uint64_t addr, uint32_t val) "timer:%d addr 0x%"PRIx64" 0x%x"
@@ -67,10 +67,23 @@ cmsdk_apb_dualtimer_write(uint64_t offset, uint64_t data, unsigned size) "CMSDK 
 cmsdk_apb_dualtimer_reset(void) "CMSDK APB dualtimer: reset"
 
 # nrf51_timer.c
-nrf51_timer_read(uint64_t addr, uint32_t value, unsigned size) "read addr 0x%" PRIx64 " data 0x%" PRIx32 " size %u"
-nrf51_timer_write(uint64_t addr, uint32_t value, unsigned size) "write addr 0x%" PRIx64 " data 0x%" PRIx32 " size %u"
+nrf51_timer_read(uint8_t timer_id, uint64_t addr, uint32_t value, unsigned size) "timer %u read addr 0x%" PRIx64 " data 0x%" PRIx32 " size %u"
+nrf51_timer_write(uint8_t timer_id, uint64_t addr, uint32_t value, unsigned size) "timer %u write addr 0x%" PRIx64 " data 0x%" PRIx32 " size %u"
+nrf51_timer_set_count(uint8_t timer_id, uint8_t counter_id, uint32_t value) "timer %u counter %u count 0x%" PRIx32
 
 # bcm2835_systmr.c
 bcm2835_systmr_irq(bool enable) "timer irq state %u"
 bcm2835_systmr_read(uint64_t offset, uint64_t data) "timer read: offset 0x%" PRIx64 " data 0x%" PRIx64
 bcm2835_systmr_write(uint64_t offset, uint64_t data) "timer write: offset 0x%" PRIx64 " data 0x%" PRIx64
+
+# avr_timer16.c
+avr_timer16_read(uint8_t addr, uint8_t value) "timer16 read addr:%u value:%u"
+avr_timer16_read_ifr(uint8_t value) "timer16 read addr:ifr value:%u"
+avr_timer16_read_imsk(uint8_t value) "timer16 read addr:imsk value:%u"
+avr_timer16_write(uint8_t addr, uint8_t value) "timer16 write addr:%u value:%u"
+avr_timer16_write_ifr(uint8_t value) "timer16 write addr:ifr value:%u"
+avr_timer16_write_imsk(uint8_t value) "timer16 write addr:imsk value:%u"
+avr_timer16_interrupt_count(uint8_t cnt) "count: %u"
+avr_timer16_interrupt_overflow(const char *reason) "overflow: %s"
+avr_timer16_next_alarm(uint64_t delay_ns) "next alarm: %" PRIu64 " ns from now"
+avr_timer16_clksrc_update(uint64_t freq_hz, uint64_t period_ns, uint64_t delay_s) "timer frequency: %" PRIu64 " Hz, period: %" PRIu64 " ns (%" PRId64 " us)"

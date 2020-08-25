@@ -41,9 +41,9 @@ trap "_cleanup; exit \$status" 0 1 2 3 15
 _supported_fmt vmdk
 _supported_proto file
 _supported_os Linux
-_unsupported_imgopts "subformat=monolithicFlat" \
-                     "subformat=twoGbMaxExtentFlat" \
-                     "subformat=twoGbMaxExtentSparse"
+
+# We test all kinds of VMDK options here, so ignore user-specified options
+IMGOPTS=""
 
 capacity_offset=16
 granularity_offset=20
@@ -82,7 +82,7 @@ _cleanup_test_img
 echo
 echo "=== Testing big twoGbMaxExtentFlat ==="
 _make_test_img -o "subformat=twoGbMaxExtentFlat" 1000G
-$QEMU_IMG info $TEST_IMG | _filter_testdir | sed -e 's/cid: [0-9]*/cid: XXXXXXXX/'
+_img_info --format-specific | _filter_img_info --format-specific
 _cleanup_test_img
 
 echo

@@ -56,7 +56,7 @@ static void multi_serial_pci_exit(PCIDevice *dev)
 
     for (i = 0; i < pci->ports; i++) {
         s = pci->state + i;
-        object_property_set_bool(OBJECT(s), false, "realized", NULL);
+        qdev_unrealize(DEVICE(s));
         memory_region_del_subregion(&pci->iobar, &s->io);
         g_free(pci->name[i]);
     }
@@ -95,7 +95,6 @@ static void multi_serial_pci_realize(PCIDevice *dev, Error **errp)
     PCIDeviceClass *pc = PCI_DEVICE_GET_CLASS(dev);
     PCIMultiSerialState *pci = DO_UPCAST(PCIMultiSerialState, dev, dev);
     SerialState *s;
-    Error *err = NULL;
     size_t i, nports = multi_serial_get_port_count(pc);
 
     pci->dev.config[PCI_CLASS_PROG] = pci->prog_if;
@@ -106,9 +105,7 @@ static void multi_serial_pci_realize(PCIDevice *dev, Error **errp)
 
     for (i = 0; i < nports; i++) {
         s = pci->state + i;
-        object_property_set_bool(OBJECT(s), true, "realized", &err);
-        if (err != NULL) {
-            error_propagate(errp, err);
+        if (!qdev_realize(DEVICE(s), NULL, errp)) {
             multi_serial_pci_exit(dev);
             return;
         }
@@ -187,9 +184,7 @@ static void multi_serial_init(Object *o)
     size_t i, nports = multi_serial_get_port_count(PCI_DEVICE_GET_CLASS(dev));
 
     for (i = 0; i < nports; i++) {
-        object_initialize_child(o, "serial[*]", &pms->state[i],
-                                sizeof(pms->state[i]),
-                                TYPE_SERIAL, &error_abort, NULL);
+        object_initialize_child(o, "serial[*]", &pms->state[i], TYPE_SERIAL);
     }
 }
 

@@ -77,26 +77,22 @@ memfd_backend_set_hugetlbsize(Object *obj, Visitor *v, const char *name,
                               void *opaque, Error **errp)
 {
     HostMemoryBackendMemfd *m = MEMORY_BACKEND_MEMFD(obj);
-    Error *local_err = NULL;
     uint64_t value;
 
     if (host_memory_backend_mr_inited(MEMORY_BACKEND(obj))) {
-        error_setg(&local_err, "cannot change property value");
-        goto out;
+        error_setg(errp, "cannot change property value");
+        return;
     }
 
-    visit_type_size(v, name, &value, &local_err);
-    if (local_err) {
-        goto out;
+    if (!visit_type_size(v, name, &value, errp)) {
+        return;
     }
     if (!value) {
-        error_setg(&local_err, "Property '%s.%s' doesn't take value '%"
-                   PRIu64 "'", object_get_typename(obj), name, value);
-        goto out;
+        error_setg(errp, "Property '%s.%s' doesn't take value '%" PRIu64 "'",
+                   object_get_typename(obj), name, value);
+        return;
     }
     m->hugetlbsize = value;
-out:
-    error_propagate(errp, local_err);
 }
 
 static void
@@ -141,26 +137,21 @@ memfd_backend_class_init(ObjectClass *oc, void *data)
     if (qemu_memfd_check(MFD_HUGETLB)) {
         object_class_property_add_bool(oc, "hugetlb",
                                        memfd_backend_get_hugetlb,
-                                       memfd_backend_set_hugetlb,
-                                       &error_abort);
+                                       memfd_backend_set_hugetlb);
         object_class_property_set_description(oc, "hugetlb",
-                                              "Use huge pages",
-                                              &error_abort);
+                                              "Use huge pages");
         object_class_property_add(oc, "hugetlbsize", "int",
                                   memfd_backend_get_hugetlbsize,
                                   memfd_backend_set_hugetlbsize,
-                                  NULL, NULL, &error_abort);
+                                  NULL, NULL);
         object_class_property_set_description(oc, "hugetlbsize",
-                                              "Huge pages size (ex: 2M, 1G)",
-                                              &error_abort);
+                                              "Huge pages size (ex: 2M, 1G)");
     }
     object_class_property_add_bool(oc, "seal",
                                    memfd_backend_get_seal,
-                                   memfd_backend_set_seal,
-                                   &error_abort);
+                                   memfd_backend_set_seal);
     object_class_property_set_description(oc, "seal",
-                                          "Seal growing & shrinking",
-                                          &error_abort);
+                                          "Seal growing & shrinking");
 }
 
 static const TypeInfo memfd_backend_info = {

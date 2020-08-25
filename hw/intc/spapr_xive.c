@@ -272,12 +272,10 @@ static void spapr_xive_instance_init(Object *obj)
 {
     SpaprXive *xive = SPAPR_XIVE(obj);
 
-    object_initialize_child(obj, "source", &xive->source, sizeof(xive->source),
-                            TYPE_XIVE_SOURCE, &error_abort, NULL);
+    object_initialize_child(obj, "source", &xive->source, TYPE_XIVE_SOURCE);
 
     object_initialize_child(obj, "end_source", &xive->end_source,
-                            sizeof(xive->end_source), TYPE_XIVE_END_SOURCE,
-                            &error_abort, NULL);
+                            TYPE_XIVE_END_SOURCE);
 
     /* Not connected to the KVM XIVE device */
     xive->fd = -1;
@@ -310,13 +308,10 @@ static void spapr_xive_realize(DeviceState *dev, Error **errp)
     /*
      * Initialize the internal sources, for IPIs and virtual devices.
      */
-    object_property_set_int(OBJECT(xsrc), xive->nr_irqs, "nr-irqs",
+    object_property_set_int(OBJECT(xsrc), "nr-irqs", xive->nr_irqs,
                             &error_fatal);
-    object_property_set_link(OBJECT(xsrc), OBJECT(xive), "xive",
-                             &error_abort);
-    object_property_set_bool(OBJECT(xsrc), true, "realized", &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    object_property_set_link(OBJECT(xsrc), "xive", OBJECT(xive), &error_abort);
+    if (!qdev_realize(DEVICE(xsrc), NULL, errp)) {
         return;
     }
     sysbus_init_mmio(SYS_BUS_DEVICE(xive), &xsrc->esb_mmio);
@@ -324,13 +319,11 @@ static void spapr_xive_realize(DeviceState *dev, Error **errp)
     /*
      * Initialize the END ESB source
      */
-    object_property_set_int(OBJECT(end_xsrc), xive->nr_irqs, "nr-ends",
+    object_property_set_int(OBJECT(end_xsrc), "nr-ends", xive->nr_irqs,
                             &error_fatal);
-    object_property_set_link(OBJECT(end_xsrc), OBJECT(xive), "xive",
+    object_property_set_link(OBJECT(end_xsrc), "xive", OBJECT(xive),
                              &error_abort);
-    object_property_set_bool(OBJECT(end_xsrc), true, "realized", &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!qdev_realize(DEVICE(end_xsrc), NULL, errp)) {
         return;
     }
     sysbus_init_mmio(SYS_BUS_DEVICE(xive), &end_xsrc->esb_mmio);

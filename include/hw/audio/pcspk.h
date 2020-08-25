@@ -27,21 +27,14 @@
 
 #include "hw/isa/isa.h"
 #include "hw/qdev-properties.h"
+#include "qapi/error.h"
 
 #define TYPE_PC_SPEAKER "isa-pcspk"
 
-static inline ISADevice *pcspk_init(ISABus *bus, ISADevice *pit)
+static inline void pcspk_init(ISADevice *isadev, ISABus *bus, ISADevice *pit)
 {
-    DeviceState *dev;
-    ISADevice *isadev;
-
-    isadev = isa_create(bus, TYPE_PC_SPEAKER);
-    dev = DEVICE(isadev);
-    qdev_prop_set_uint32(dev, "iobase", 0x61);
-    object_property_set_link(OBJECT(dev), OBJECT(pit), "pit", NULL);
-    qdev_init_nofail(dev);
-
-    return isadev;
+    object_property_set_link(OBJECT(isadev), "pit", OBJECT(pit), NULL);
+    isa_realize_and_unref(isadev, bus, &error_fatal);
 }
 
 #endif /* HW_PCSPK_H */

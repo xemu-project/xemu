@@ -236,10 +236,9 @@ static void raven_pcihost_realizefn(DeviceState *d, Error **errp)
         /* According to PReP specification section 6.1.6 "System Interrupt
          * Assignments", all PCI interrupts are routed via IRQ 15 */
         s->or_irq = OR_IRQ(object_new(TYPE_OR_IRQ));
-        object_property_set_int(OBJECT(s->or_irq), PCI_NUM_PINS, "num-lines",
+        object_property_set_int(OBJECT(s->or_irq), "num-lines", PCI_NUM_PINS,
                                 &error_fatal);
-        object_property_set_bool(OBJECT(s->or_irq), true, "realized",
-                                 &error_fatal);
+        qdev_realize(DEVICE(s->or_irq), NULL, &error_fatal);
         sysbus_init_irq(dev, &s->or_irq->out_irq);
 
         for (i = 0; i < PCI_NUM_PINS; i++) {
@@ -268,8 +267,7 @@ static void raven_pcihost_realizefn(DeviceState *d, Error **errp)
     memory_region_add_subregion(address_space_mem, 0xbffffff0, &s->pci_intack);
 
     /* TODO Remove once realize propagates to child devices. */
-    object_property_set_bool(OBJECT(&s->pci_bus), true, "realized", errp);
-    object_property_set_bool(OBJECT(&s->pci_dev), true, "realized", errp);
+    qdev_realize(DEVICE(&s->pci_dev), BUS(&s->pci_bus), errp);
 }
 
 static void raven_pcihost_initfn(Object *obj)
@@ -294,7 +292,7 @@ static void raven_pcihost_initfn(Object *obj)
                              &s->pci_memory, &s->pci_io, 0, TYPE_PCI_BUS);
 
     /* Bus master address space */
-    memory_region_init(&s->bm, obj, "bm-raven", UINT32_MAX);
+    memory_region_init(&s->bm, obj, "bm-raven", 4 * GiB);
     memory_region_init_alias(&s->bm_pci_memory_alias, obj, "bm-pci-memory",
                              &s->pci_memory, 0,
                              memory_region_size(&s->pci_memory));
@@ -309,8 +307,7 @@ static void raven_pcihost_initfn(Object *obj)
 
     object_initialize(&s->pci_dev, sizeof(s->pci_dev), TYPE_RAVEN_PCI_DEVICE);
     pci_dev = DEVICE(&s->pci_dev);
-    qdev_set_parent_bus(pci_dev, BUS(&s->pci_bus));
-    object_property_set_int(OBJECT(&s->pci_dev), PCI_DEVFN(0, 0), "addr",
+    object_property_set_int(OBJECT(&s->pci_dev), "addr", PCI_DEVFN(0, 0),
                             NULL);
     qdev_prop_set_bit(pci_dev, "multifunction", false);
 }

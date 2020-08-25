@@ -35,8 +35,6 @@ my $summary_file = 0;
 my $root;
 my %debug;
 my $help = 0;
-my $acpi_testexpected;
-my $acpi_nontestexpected;
 
 sub help {
 	my ($exitcode) = @_;
@@ -51,7 +49,7 @@ Version: $V
 
 Options:
   -q, --quiet                quiet
-  --no-tree                  run without a kernel tree
+  --no-tree                  run without a qemu tree
   --no-signoff               do not check for 'Signed-off-by' line
   --patch                    treat FILE as patchfile
   --branch                   treat args as GIT revision list
@@ -59,7 +57,7 @@ Options:
   --terse                    one line per report
   -f, --file                 treat FILE as regular source file
   --strict                   fail if only warnings are found
-  --root=PATH                PATH to the kernel tree root
+  --root=PATH                PATH to the qemu tree root
   --no-summary               suppress the per-file summary
   --mailback                 only produce a report in case of warnings/errors
   --summary-file             include the filename in summary
@@ -205,7 +203,7 @@ if ($tree) {
 	}
 
 	if (!defined $root) {
-		print "Must be run from the top-level dir. of a kernel tree\n";
+		print "Must be run from the top-level dir. of a qemu tree\n";
 		exit(2);
 	}
 }
@@ -1261,21 +1259,23 @@ sub WARN {
 # According to tests/qtest/bios-tables-test.c: do not
 # change expected file in the same commit with adding test
 sub checkfilename {
-	my ($name) = @_;
-	if ($name =~ m#^tests/data/acpi/# and
-		# make exception for a shell script that rebuilds the files
-		not $name =~ m#^\.sh$# or
-		$name =~ m#^tests/qtest/bios-tables-test-allowed-diff.h$#) {
-		$acpi_testexpected = $name;
-	} else {
-		$acpi_nontestexpected = $name;
+	my ($name, $acpi_testexpected, $acpi_nontestexpected) = @_;
+
+        # Note: shell script that rebuilds the expected files is in the same
+        # directory as files themselves.
+        # Note: allowed diff list can be changed both when changing expected
+        # files and when changing tests.
+	if ($name =~ m#^tests/data/acpi/# and not $name =~ m#^\.sh$#) {
+		$$acpi_testexpected = $name;
+	} elsif ($name !~ m#^tests/qtest/bios-tables-test-allowed-diff.h$#) {
+		$$acpi_nontestexpected = $name;
 	}
-	if (defined $acpi_testexpected and defined $acpi_nontestexpected) {
+	if (defined $$acpi_testexpected and defined $$acpi_nontestexpected) {
 		ERROR("Do not add expected files together with tests, " .
 		      "follow instructions in " .
 		      "tests/qtest/bios-tables-test.c: both " .
-		      $acpi_testexpected . " and " .
-		      $acpi_nontestexpected . " found\n");
+		      $$acpi_testexpected . " and " .
+		      $$acpi_nontestexpected . " found\n");
 	}
 }
 
@@ -1324,6 +1324,9 @@ sub process {
 	my %suppress_ifbraces;
 	my %suppress_whiletrailers;
 	my %suppress_export;
+
+        my $acpi_testexpected;
+        my $acpi_nontestexpected;
 
 	# Pre-scan the patch sanitizing the lines.
 
@@ -1454,11 +1457,11 @@ sub process {
 		if ($line =~ /^diff --git.*?(\S+)$/) {
 			$realfile = $1;
 			$realfile =~ s@^([^/]*)/@@ if (!$file);
-	                checkfilename($realfile);
+	                checkfilename($realfile, \$acpi_testexpected, \$acpi_nontestexpected);
 		} elsif ($line =~ /^\+\+\+\s+(\S+)/) {
 			$realfile = $1;
 			$realfile =~ s@^([^/]*)/@@ if (!$file);
-	                checkfilename($realfile);
+	                checkfilename($realfile, \$acpi_testexpected, \$acpi_nontestexpected);
 
 			$p1_prefix = $1;
 			if (!$file && $tree && $p1_prefix ne '' &&

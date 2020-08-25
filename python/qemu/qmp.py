@@ -11,6 +11,31 @@ import json
 import errno
 import socket
 import logging
+from typing import (
+    Any,
+    cast,
+    Dict,
+    Optional,
+    TextIO,
+    Type,
+    Tuple,
+    Union,
+)
+from types import TracebackType
+
+
+# QMPMessage is a QMP Message of any kind.
+# e.g. {'yee': 'haw'}
+#
+# QMPReturnValue is the inner value of return values only.
+# {'return': {}} is the QMPMessage,
+# {} is the QMPReturnValue.
+QMPMessage = Dict[str, Any]
+QMPReturnValue = Dict[str, Any]
+
+InternetAddrT = Tuple[str, str]
+UnixAddrT = str
+SocketAddrT = Union[InternetAddrT, UnixAddrT]
 
 
 class QMPError(Exception):
@@ -37,6 +62,25 @@ class QMPTimeoutError(QMPError):
     """
 
 
+class QMPProtocolError(QMPError):
+    """
+    QMP protocol error; unexpected response
+    """
+
+
+class QMPResponseError(QMPError):
+    """
+    Represents erroneous QMP monitor reply
+    """
+    def __init__(self, reply: QMPMessage):
+        try:
+            desc = reply['error']['desc']
+        except KeyError:
+            desc = reply
+        super().__init__(desc)
+        self.reply = reply
+
+
 class QEMUMonitorProtocol:
     """
     Provide an API to connect to QEMU via QEMU Monitor Protocol (QMP) and then
@@ -61,7 +105,7 @@ class QEMUMonitorProtocol:
         self.__events = []
         self.__address = address
         self.__sock = self.__get_sock()
-        self.__sockfile = None
+        self.__sockfile: Optional[TextIO] = None
         self._nickname = nickname
         if self._nickname:
             self.logger = logging.getLogger('QMP').getChild(self._nickname)
@@ -88,11 +132,15 @@ class QEMUMonitorProtocol:
         raise QMPCapabilitiesError
 
     def __json_read(self, only_event=False):
+        assert self.__sockfile is not None
         while True:
             data = self.__sockfile.readline()
             if not data:
                 return None
-            resp = json.loads(data)
+            # By definition, any JSON received from QMP is a QMPMessage,
+            # and we are asserting only at static analysis time that it
+            # has a particular shape.
+            resp: QMPMessage = json.loads(data)
             if 'event' in resp:
                 self.logger.debug("<<< %s", resp)
                 self.__events.append(resp)
@@ -114,14 +162,14 @@ class QEMUMonitorProtocol:
         """
 
         # Check for new events regardless and pull them into the cache:
-        self.__sock.setblocking(0)
+        self.__sock.setblocking(False)
         try:
             self.__json_read()
         except OSError as err:
             if err.errno == errno.EAGAIN:
                 # No data available
                 pass
-        self.__sock.setblocking(1)
+        self.__sock.setblocking(True)
 
         # Wait for new events, if needed.
         # if wait is 0.0, this means "no wait" and is also implicitly false.
@@ -142,10 +190,14 @@ class QEMUMonitorProtocol:
         # Implement context manager enter function.
         return self
 
-    def __exit__(self, exc_type, exc_value, exc_traceback):
+    def __exit__(self,
+                 # pylint: disable=duplicate-code
+                 # see https://github.com/PyCQA/pylint/issues/3619
+                 exc_type: Optional[Type[BaseException]],
+                 exc_val: Optional[BaseException],
+                 exc_tb: Optional[TracebackType]) -> None:
         # Implement context manager exit function.
         self.close()
-        return False
 
     def connect(self, negotiate=True):
         """
@@ -157,7 +209,7 @@ class QEMUMonitorProtocol:
         @raise QMPCapabilitiesError if fails to negotiate capabilities
         """
         self.__sock.connect(self.__address)
-        self.__sockfile = self.__sock.makefile()
+        self.__sockfile = self.__sock.makefile(mode='r')
         if negotiate:
             return self.__negotiate_capabilities()
         return None
@@ -168,8 +220,8 @@ class QEMUMonitorProtocol:
 
         @param timeout: timeout in seconds (nonnegative float number, or
                         None). The value passed will set the behavior of the
-                        underneath QMP socket as described in [1]. Default value
-                        is set to 15.0.
+                        underneath QMP socket as described in [1].
+                        Default value is set to 15.0.
         @return QMP greeting dict
         @raise OSError on socket connection errors
         @raise QMPConnectError if the greeting is not received
@@ -180,25 +232,21 @@ class QEMUMonitorProtocol:
         """
         self.__sock.settimeout(timeout)
         self.__sock, _ = self.__sock.accept()
-        self.__sockfile = self.__sock.makefile()
+        self.__sockfile = self.__sock.makefile(mode='r')
         return self.__negotiate_capabilities()
 
-    def cmd_obj(self, qmp_cmd):
+    def cmd_obj(self, qmp_cmd: QMPMessage) -> QMPMessage:
         """
         Send a QMP command to the QMP Monitor.
 
         @param qmp_cmd: QMP command to be sent as a Python dict
-        @return QMP response as a Python dict or None if the connection has
-                been closed
+        @return QMP response as a Python dict
         """
         self.logger.debug(">>> %s", qmp_cmd)
-        try:
-            self.__sock.sendall(json.dumps(qmp_cmd).encode('utf-8'))
-        except OSError as err:
-            if err.errno == errno.EPIPE:
-                return None
-            raise err
+        self.__sock.sendall(json.dumps(qmp_cmd).encode('utf-8'))
         resp = self.__json_read()
+        if resp is None:
+            raise QMPConnectError("Unexpected empty reply from server")
         self.logger.debug("<<< %s", resp)
         return resp
 
@@ -222,9 +270,13 @@ class QEMUMonitorProtocol:
         Build and send a QMP command to the monitor, report errors if any
         """
         ret = self.cmd(cmd, kwds)
-        if "error" in ret:
-            raise Exception(ret['error']['desc'])
-        return ret['return']
+        if 'error' in ret:
+            raise QMPResponseError(ret)
+        if 'return' not in ret:
+            raise QMPProtocolError(
+                "'return' key not found in QMP response '{}'".format(str(ret))
+            )
+        return cast(QMPReturnValue, ret['return'])
 
     def pull_event(self, wait=False):
         """

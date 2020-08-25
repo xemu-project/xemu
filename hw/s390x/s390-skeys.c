@@ -45,10 +45,10 @@ void s390_skeys_init(void)
         obj = object_new(TYPE_QEMU_S390_SKEYS);
     }
     object_property_add_child(qdev_get_machine(), TYPE_S390_SKEYS,
-                              obj, NULL);
+                              obj);
     object_unref(obj);
 
-    qdev_init_nofail(DEVICE(obj));
+    qdev_realize(DEVICE(obj), NULL, &error_fatal);
 }
 
 static void write_keys(FILE *f, uint8_t *keys, uint64_t startgfn,
@@ -400,8 +400,8 @@ static void s390_skeys_instance_init(Object *obj)
 {
     object_property_add_bool(obj, "migration-enabled",
                              s390_skeys_get_migration_enabled,
-                             s390_skeys_set_migration_enabled, NULL);
-    object_property_set_bool(obj, true, "migration-enabled", NULL);
+                             s390_skeys_set_migration_enabled);
+    object_property_set_bool(obj, "migration-enabled", true, NULL);
 }
 
 static void s390_skeys_class_init(ObjectClass *oc, void *data)

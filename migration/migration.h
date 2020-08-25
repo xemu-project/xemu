@@ -215,8 +215,8 @@ struct MigrationState
     /* The semaphore is used to notify COLO thread that failover is finished */
     QemuSemaphore colo_exit_sem;
 
-    /* The semaphore is used to notify COLO thread to do checkpoint */
-    QemuSemaphore colo_checkpoint_sem;
+    /* The event is used to notify COLO thread to do checkpoint */
+    QemuEvent colo_checkpoint_event;
     int64_t colo_checkpoint_time;
     QEMUTimer *colo_delay_timer;
 
@@ -335,7 +335,8 @@ void migrate_send_rp_recv_bitmap(MigrationIncomingState *mis,
 void migrate_send_rp_resume_ack(MigrationIncomingState *mis, uint32_t value);
 
 void dirty_bitmap_mig_before_vm_start(void);
-void init_dirty_bitmap_incoming_migration(void);
+void dirty_bitmap_mig_cancel_outgoing(void);
+void dirty_bitmap_mig_cancel_incoming(void);
 void migrate_add_address(SocketAddress *address);
 
 int foreach_not_ignored_block(RAMBlockIterFunc func, void *opaque);

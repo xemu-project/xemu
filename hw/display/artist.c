@@ -21,7 +21,7 @@
 #include "migration/vmstate.h"
 #include "ui/console.h"
 #include "trace.h"
-#include "hw/display/framebuffer.h"
+#include "framebuffer.h"
 
 #define TYPE_ARTIST "artist"
 #define ARTIST(obj) OBJECT_CHECK(ARTISTState, (obj), TYPE_ARTIST)
@@ -1353,7 +1353,7 @@ static void artist_realizefn(DeviceState *dev, Error **errp)
     s->cursor_height = 32;
     s->cursor_width = 32;
 
-    s->con = graphic_console_init(DEVICE(dev), 0, &artist_ops, s);
+    s->con = graphic_console_init(dev, 0, &artist_ops, s);
     qemu_console_resize(s->con, s->width, s->height);
 }
 

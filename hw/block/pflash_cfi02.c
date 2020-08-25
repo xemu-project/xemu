@@ -37,6 +37,7 @@
 #include "hw/block/flash.h"
 #include "hw/qdev-properties.h"
 #include "qapi/error.h"
+#include "qemu/error-report.h"
 #include "qemu/bitmap.h"
 #include "qemu/timer.h"
 #include "sysemu/block-backend.h"
@@ -393,13 +394,18 @@ static uint64_t pflash_read(void *opaque, hwaddr offset, unsigned int width)
 static void pflash_update(PFlashCFI02 *pfl, int offset, int size)
 {
     int offset_end;
+    int ret;
     if (pfl->blk) {
         offset_end = offset + size;
         /* widen to sector boundaries */
         offset = QEMU_ALIGN_DOWN(offset, BDRV_SECTOR_SIZE);
         offset_end = QEMU_ALIGN_UP(offset_end, BDRV_SECTOR_SIZE);
-        blk_pwrite(pfl->blk, offset, pfl->storage + offset,
+        ret = blk_pwrite(pfl->blk, offset, pfl->storage + offset,
                    offset_end - offset, 0);
+        if (ret < 0) {
+            /* TODO set error bit in status */
+            error_report("Could not update PFLASH: %s", strerror(-ret));
+        }
     }
 }
 
@@ -718,9 +724,9 @@ static const MemoryRegionOps pflash_cfi02_ops = {
 
 static void pflash_cfi02_realize(DeviceState *dev, Error **errp)
 {
+    ERRP_GUARD();
     PFlashCFI02 *pfl = PFLASH_CFI02(dev);
     int ret;
-    Error *local_err = NULL;
 
     if (pfl->uniform_sector_len == 0 && pfl->sector_len[0] == 0) {
         error_setg(errp, "attribute \"sector-length\" not specified or zero.");
@@ -786,9 +792,8 @@ static void pflash_cfi02_realize(DeviceState *dev, Error **errp)
 
     memory_region_init_rom_device(&pfl->orig_mem, OBJECT(pfl),
                                   &pflash_cfi02_ops, pfl, pfl->name,
-                                  pfl->chip_len, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+                                  pfl->chip_len, errp);
+    if (*errp) {
         return;
     }
 
@@ -949,7 +954,7 @@ static Property pflash_cfi02_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void pflash_cfi02_unrealize(DeviceState *dev, Error **errp)
+static void pflash_cfi02_unrealize(DeviceState *dev)
 {
     PFlashCFI02 *pfl = PFLASH_CFI02(dev);
     timer_del(&pfl->timer);
@@ -992,12 +997,12 @@ PFlashCFI02 *pflash_cfi02_register(hwaddr base,
                                    uint16_t unlock_addr1,
                                    int be)
 {
-    DeviceState *dev = qdev_create(NULL, TYPE_PFLASH_CFI02);
+    DeviceState *dev = qdev_new(TYPE_PFLASH_CFI02);
 
     if (blk) {
-        qdev_prop_set_drive(dev, "drive", blk, &error_abort);
+        qdev_prop_set_drive(dev, "drive", blk);
     }
-    assert(size % sector_len == 0);
+    assert(QEMU_IS_ALIGNED(size, sector_len));
     qdev_prop_set_uint32(dev, "num-blocks", size / sector_len);
     qdev_prop_set_uint32(dev, "sector-length", sector_len);
     qdev_prop_set_uint8(dev, "width", width);
@@ -1010,7 +1015,7 @@ PFlashCFI02 *pflash_cfi02_register(hwaddr base,
     qdev_prop_set_uint16(dev, "unlock-addr0", unlock_addr0);
     qdev_prop_set_uint16(dev, "unlock-addr1", unlock_addr1);
     qdev_prop_set_string(dev, "name", name);
-    qdev_init_nofail(dev);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
     return PFLASH_CFI02(dev);

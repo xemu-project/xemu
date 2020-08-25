@@ -47,12 +47,6 @@ The 'file' driver for drives is no longer appropriate for character or host
 devices and will only accept regular files (S_IFREG). The correct driver
 for these file types is 'host_cdrom' or 'host_device' as appropriate.
 
-``-net ...,name=``\ *name* (since 3.1)
-''''''''''''''''''''''''''''''''''''''
-
-The ``name`` parameter of the ``-net`` option is a synonym
-for the ``id`` parameter, which should now be used instead.
-
 ``-smp`` (invalid topologies) (since 3.1)
 '''''''''''''''''''''''''''''''''''''''''
 
@@ -88,6 +82,15 @@ should specify an ``audiodev=`` property.  Additionally, when using
 vnc, you should specify an ``audiodev=`` propery if you plan to
 transmit audio through the VNC protocol.
 
+Creating sound card devices using ``-soundhw`` (since 5.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Sound card devices should be created using ``-device`` instead.  The
+names are the same for most devices.  The exceptions are ``hda`` which
+needs two devices (``-device intel-hda -device hda-duplex``) and
+``pcspk`` which can be activated using ``-machine
+pcspk-audiodev=<name>``.
+
 ``-mon ...,control=readline,pretty=on|off`` (since 4.1)
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
@@ -100,23 +103,6 @@ error in the future.
 
 The ``-realtime mlock=on|off`` argument has been replaced by the
 ``-overcommit mem-lock=on|off`` argument.
-
-``-numa node,mem=``\ *size* (since 4.1)
-'''''''''''''''''''''''''''''''''''''''
-
-The parameter ``mem`` of ``-numa node`` is used to assign a part of
-guest RAM to a NUMA node. But when using it, it's impossible to manage specified
-RAM chunk on the host side (like bind it to a host node, setting bind policy, ...),
-so guest end-ups with the fake NUMA configuration with suboptiomal performance.
-However since 2014 there is an alternative way to assign RAM to a NUMA node
-using parameter ``memdev``, which does the same as ``mem`` and adds
-means to actualy manage node RAM on the host side. Use parameter ``memdev``
-with *memory-backend-ram* backend as an replacement for parameter ``mem``
-to achieve the same fake NUMA effect or a properly configured
-*memory-backend-file* backend to actually benefit from NUMA configuration.
-In future new machine versions will not accept the option but it will still
-work with old machine types. User can check QAPI schema to see if the legacy
-option is supported by looking at MachineInfo::numa-mem-supported property.
 
 ``-numa`` node (without memory specified) (since 4.1)
 '''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -138,25 +124,23 @@ the backing storage specified with ``-mem-path`` can actually provide
 the guest RAM configured with ``-m`` and QEMU will fail to start up if
 RAM allocation is unsuccessful.
 
-RISC-V ``-bios`` (since 4.1)
+RISC-V ``-bios`` (since 5.1)
 ''''''''''''''''''''''''''''
 
 QEMU 4.1 introduced support for the -bios option in QEMU for RISC-V for the
-RISC-V virt machine and sifive_u machine.
+RISC-V virt machine and sifive_u machine. QEMU 4.1 had no changes to the
+default behaviour to avoid breakages.
 
-QEMU 4.1 has no changes to the default behaviour to avoid breakages. This
-default will change in a future QEMU release, so please prepare now. All users
-of the virt or sifive_u machine must change their command line usage.
+QEMU 5.1 changes the default behaviour from ``-bios none`` to ``-bios default``.
 
-QEMU 4.1 has three options, please migrate to one of these three:
- 1. ``-bios none`` - This is the current default behavior if no -bios option
-      is included. QEMU will not automatically load any firmware. It is up
+QEMU 5.1 has three options:
+ 1. ``-bios default`` - This is the current default behavior if no -bios option
+      is included. This option will load the default OpenSBI firmware automatically.
+      The firmware is included with the QEMU release and no user interaction is
+      required. All a user needs to do is specify the kernel they want to boot
+      with the -kernel option
+ 2. ``-bios none`` - QEMU will not automatically load any firmware. It is up
       to the user to load all the images they need.
- 2. ``-bios default`` - In a future QEMU release this will become the default
-      behaviour if no -bios option is specified. This option will load the
-      default OpenSBI firmware automatically. The firmware is included with
-      the QEMU release and no user interaction is required. All a user needs
-      to do is specify the kernel they want to boot with the -kernel option
  3. ``-bios <file>`` - Tells QEMU to load the specified file as the firmwrae.
 
 ``-tb-size`` option (since 5.0)
@@ -171,6 +155,40 @@ previously available ``-tb-size`` option.
 
 Use ``-display sdl,show-cursor=on`` or
  ``-display gtk,show-cursor=on`` instead.
+
+``Configuring floppies with ``-global``
+'''''''''''''''''''''''''''''''''''''''
+
+Use ``-device floppy,...`` instead:
+::
+
+    -global isa-fdc.driveA=...
+    -global sysbus-fdc.driveA=...
+    -global SUNW,fdtwo.drive=...
+
+become
+::
+
+    -device floppy,unit=0,drive=...
+
+and
+::
+
+    -global isa-fdc.driveB=...
+    -global sysbus-fdc.driveB=...
+
+become
+::
+
+    -device floppy,unit=1,drive=...
+
+``-drive`` with bogus interface type
+''''''''''''''''''''''''''''''''''''
+
+Drives with interface types other than ``if=none`` are for onboard
+devices.  It is possible to use drives the board doesn't pick up with
+-device.  This usage is now deprecated.  Use ``if=none`` instead.
+
 
 QEMU Machine Protocol (QMP) commands
 ------------------------------------
@@ -301,33 +319,8 @@ The ``acl_show``, ``acl_reset``, ``acl_policy``, ``acl_add``, and
 ``acl_remove`` commands are deprecated with no replacement. Authorization
 for VNC should be performed using the pluggable QAuthZ objects.
 
-Guest Emulator ISAs
--------------------
-
-RISC-V ISA privledge specification version 1.09.1 (since 4.1)
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
-
-The RISC-V ISA privledge specification version 1.09.1 has been deprecated.
-QEMU supports both the newer version 1.10.0 and the ratified version 1.11.0, these
-should be used instead of the 1.09.1 version.
-
 System emulator CPUS
 --------------------
-
-RISC-V ISA CPUs (since 4.1)
-'''''''''''''''''''''''''''
-
-The RISC-V cpus with the ISA version in the CPU name have been depcreated. The
-four CPUs are: ``rv32gcsu-v1.9.1``, ``rv32gcsu-v1.10.0``, ``rv64gcsu-v1.9.1`` and
-``rv64gcsu-v1.10.0``. Instead the version can be specified via the CPU ``priv_spec``
-option when using the ``rv32`` or ``rv64`` CPUs.
-
-RISC-V ISA CPUs (since 4.1)
-'''''''''''''''''''''''''''
-
-The RISC-V no MMU cpus have been depcreated. The two CPUs: ``rv32imacu-nommu`` and
-``rv64imacu-nommu`` should no longer be used. Instead the MMU status can be specified
-via the CPU ``mmu`` option when using the ``rv32`` or ``rv64`` CPUs.
 
 ``compat`` property of server class POWER CPUs (since 5.0)
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -368,18 +361,16 @@ mips ``r4k`` platform (since 5.0)
 This machine type is very old and unmaintained. Users should use the ``malta``
 machine type instead.
 
+mips ``fulong2e`` machine (since 5.1)
+'''''''''''''''''''''''''''''''''''''
+
+This machine has been renamed ``fuloong2e``.
+
 ``pc-1.0``, ``pc-1.1``, ``pc-1.2`` and ``pc-1.3`` (since 5.0)
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 These machine types are very old and likely can not be used for live migration
 from old QEMU versions anymore. A newer machine type should be used instead.
-
-``spike_v1.9.1`` and ``spike_v1.10`` (since 4.1)
-''''''''''''''''''''''''''''''''''''''''''''''''
-
-The version specific Spike machines have been deprecated in favour of the
-generic ``spike`` machine. If you need to specify an older version of the RISC-V
-spec you can use the ``-cpu rv64gcsu,priv_spec=v1.9.1`` command line argument.
 
 Device options
 --------------
@@ -422,16 +413,51 @@ The above, converted to the current supported format::
 
   json:{"file.driver":"rbd", "file.pool":"rbd", "file.image":"name"}
 
+linux-user mode CPUs
+--------------------
+
+``tilegx`` CPUs (since 5.1.0)
+'''''''''''''''''''''''''''''
+
+The ``tilegx`` guest CPU support (which was only implemented in
+linux-user mode) is deprecated and will be removed in a future version
+of QEMU. Support for this CPU was removed from the upstream Linux
+kernel in 2018, and has also been dropped from glibc.
+
 Related binaries
 ----------------
 
-``qemu-img convert -n -o`` (since 4.2.0)
-''''''''''''''''''''''''''''''''''''''''
+qemu-img amend to adjust backing file (since 5.1)
+'''''''''''''''''''''''''''''''''''''''''''''''''
 
-All options specified in ``-o`` are image creation options, so
-they have no effect when used with ``-n`` to skip image creation.
-Silently ignored options can be confusing, so this combination of
-options will be made an error in future versions.
+The use of ``qemu-img amend`` to modify the name or format of a qcow2
+backing image is deprecated; this functionality was never fully
+documented or tested, and interferes with other amend operations that
+need access to the original backing image (such as deciding whether a
+v3 zero cluster may be left unallocated when converting to a v2
+image).  Rather, any changes to the backing chain should be performed
+with ``qemu-img rebase -u`` either before or after the remaining
+changes being performed by amend, as appropriate.
+
+qemu-img backing file without format (since 5.1)
+''''''''''''''''''''''''''''''''''''''''''''''''
+
+The use of ``qemu-img create``, ``qemu-img rebase``, or ``qemu-img
+convert`` to create or modify an image that depends on a backing file
+now recommends that an explicit backing format be provided.  This is
+for safety: if QEMU probes a different format than what you thought,
+the data presented to the guest will be corrupt; similarly, presenting
+a raw image to a guest allows a potential security exploit if a future
+probe sees a non-raw image based on guest writes.
+
+To avoid the warning message, or even future refusal to create an
+unsafe image, you must pass ``-o backing_fmt=`` (or the shorthand
+``-F`` during create) to specify the intended backing format.  You may
+use ``qemu-img rebase -u`` to retroactively add a backing format to an
+existing image.  However, be aware that there are already potential
+security risks to blindly using ``qemu-img info`` to probe the format
+of an untrusted backing image, when deciding what format to add into
+an existing image.
 
 Backwards compatibility
 -----------------------
@@ -470,6 +496,15 @@ What follows is a record of recently removed, formerly deprecated
 features that serves as a record for users who have encountered
 trouble after a recent upgrade.
 
+System emulator command line arguments
+--------------------------------------
+
+``-net ...,name=``\ *name* (removed in 5.1)
+'''''''''''''''''''''''''''''''''''''''''''
+
+The ``name`` parameter of the ``-net`` option was a synonym
+for the ``id`` parameter, which should now be used instead.
+
 QEMU Machine Protocol (QMP) commands
 ------------------------------------
 
@@ -488,11 +523,49 @@ The ``hub_id`` parameter of ``hostfwd_add`` / ``hostfwd_remove`` (removed in 5.0
 The ``[hub_id name]`` parameter tuple of the 'hostfwd_add' and
 'hostfwd_remove' HMP commands has been replaced by ``netdev_id``.
 
+Guest Emulator ISAs
+-------------------
+
+RISC-V ISA privledge specification version 1.09.1 (removed in 5.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+The RISC-V ISA privledge specification version 1.09.1 has been removed.
+QEMU supports both the newer version 1.10.0 and the ratified version 1.11.0, these
+should be used instead of the 1.09.1 version.
+
+System emulator CPUS
+--------------------
+
+RISC-V ISA Specific CPUs (removed in 5.1)
+'''''''''''''''''''''''''''''''''''''''''
+
+The RISC-V cpus with the ISA version in the CPU name have been removed. The
+four CPUs are: ``rv32gcsu-v1.9.1``, ``rv32gcsu-v1.10.0``, ``rv64gcsu-v1.9.1`` and
+``rv64gcsu-v1.10.0``. Instead the version can be specified via the CPU ``priv_spec``
+option when using the ``rv32`` or ``rv64`` CPUs.
+
+RISC-V no MMU CPUs (removed in 5.1)
+'''''''''''''''''''''''''''''''''''
+
+The RISC-V no MMU cpus have been removed. The two CPUs: ``rv32imacu-nommu`` and
+``rv64imacu-nommu`` can no longer be used. Instead the MMU status can be specified
+via the CPU ``mmu`` option when using the ``rv32`` or ``rv64`` CPUs.
+
+System emulator machines
+------------------------
+
+``spike_v1.9.1`` and ``spike_v1.10`` (removed in 5.1)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+The version specific Spike machines have been removed in favour of the
+generic ``spike`` machine. If you need to specify an older version of the RISC-V
+spec you can use the ``-cpu rv64gcsu,priv_spec=v1.10.0`` command line argument.
+
 Related binaries
 ----------------
 
-``qemu-nbd --partition`` (removed in 5.0.0)
-'''''''''''''''''''''''''''''''''''''''''''
+``qemu-nbd --partition`` (removed in 5.0)
+'''''''''''''''''''''''''''''''''''''''''
 
 The ``qemu-nbd --partition $digit`` code (also spelled ``-P``)
 could only handle MBR partitions, and never correctly handled logical
@@ -507,3 +580,49 @@ long starting at 1MiB, the old command::
 can be rewritten as::
 
   qemu-nbd -t --image-opts driver=raw,offset=1M,size=100M,file.driver=qcow2,file.file.driver=file,file.file.filename=file.qcow2
+
+``qemu-img convert -n -o`` (removed in 5.1)
+'''''''''''''''''''''''''''''''''''''''''''
+
+All options specified in ``-o`` are image creation options, so
+they are now rejected when used with ``-n`` to skip image creation.
+
+
+``qemu-img create -b bad file $size`` (removed in 5.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+When creating an image with a backing file that could not be opened,
+``qemu-img create`` used to issue a warning about the failure but
+proceed with the image creation if an explicit size was provided.
+However, as the ``-u`` option exists for this purpose, it is safer to
+enforce that any failure to open the backing image (including if the
+backing file is missing or an incorrect format was specified) is an
+error when ``-u`` is not used.
+
+Command line options
+--------------------
+
+``-numa node,mem=``\ *size* (removed in 5.1)
+''''''''''''''''''''''''''''''''''''''''''''
+
+The parameter ``mem`` of ``-numa node`` was used to assign a part of
+guest RAM to a NUMA node. But when using it, it's impossible to manage a specified
+RAM chunk on the host side (like bind it to a host node, setting bind policy, ...),
+so the guest ends up with the fake NUMA configuration with suboptiomal performance.
+However since 2014 there is an alternative way to assign RAM to a NUMA node
+using parameter ``memdev``, which does the same as ``mem`` and adds
+means to actually manage node RAM on the host side. Use parameter ``memdev``
+with *memory-backend-ram* backend as replacement for parameter ``mem``
+to achieve the same fake NUMA effect or a properly configured
+*memory-backend-file* backend to actually benefit from NUMA configuration.
+New machine versions (since 5.1) will not accept the option but it will still
+work with old machine types. User can check the QAPI schema to see if the legacy
+option is supported by looking at MachineInfo::numa-mem-supported property.
+
+Block devices
+-------------
+
+VXHS backend (removed in 5.1)
+'''''''''''''''''''''''''''''
+
+The VXHS code does not compile since v2.12.0. It was removed in 5.1.

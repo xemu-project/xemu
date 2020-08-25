@@ -273,15 +273,14 @@ static int coroutine_fn nfs_co_preadv(BlockDriverState *bs, uint64_t offset,
     nfs_co_init_task(bs, &task);
     task.iov = iov;
 
-    qemu_mutex_lock(&client->mutex);
-    if (nfs_pread_async(client->context, client->fh,
-                        offset, bytes, nfs_co_generic_cb, &task) != 0) {
-        qemu_mutex_unlock(&client->mutex);
-        return -ENOMEM;
-    }
+    WITH_QEMU_LOCK_GUARD(&client->mutex) {
+        if (nfs_pread_async(client->context, client->fh,
+                            offset, bytes, nfs_co_generic_cb, &task) != 0) {
+            return -ENOMEM;
+        }
 
-    nfs_set_events(client);
-    qemu_mutex_unlock(&client->mutex);
+        nfs_set_events(client);
+    }
     while (!task.complete) {
         qemu_coroutine_yield();
     }
@@ -320,19 +319,18 @@ static int coroutine_fn nfs_co_pwritev(BlockDriverState *bs, uint64_t offset,
         buf = iov->iov[0].iov_base;
     }
 
-    qemu_mutex_lock(&client->mutex);
-    if (nfs_pwrite_async(client->context, client->fh,
-                         offset, bytes, buf,
-                         nfs_co_generic_cb, &task) != 0) {
-        qemu_mutex_unlock(&client->mutex);
-        if (my_buffer) {
-            g_free(buf);
+    WITH_QEMU_LOCK_GUARD(&client->mutex) {
+        if (nfs_pwrite_async(client->context, client->fh,
+                             offset, bytes, buf,
+                             nfs_co_generic_cb, &task) != 0) {
+            if (my_buffer) {
+                g_free(buf);
+            }
+            return -ENOMEM;
         }
-        return -ENOMEM;
-    }
 
-    nfs_set_events(client);
-    qemu_mutex_unlock(&client->mutex);
+        nfs_set_events(client);
+    }
     while (!task.complete) {
         qemu_coroutine_yield();
     }
@@ -355,15 +353,14 @@ static int coroutine_fn nfs_co_flush(BlockDriverState *bs)
 
     nfs_co_init_task(bs, &task);
 
-    qemu_mutex_lock(&client->mutex);
-    if (nfs_fsync_async(client->context, client->fh, nfs_co_generic_cb,
-                        &task) != 0) {
-        qemu_mutex_unlock(&client->mutex);
-        return -ENOMEM;
-    }
+    WITH_QEMU_LOCK_GUARD(&client->mutex) {
+        if (nfs_fsync_async(client->context, client->fh, nfs_co_generic_cb,
+                            &task) != 0) {
+            return -ENOMEM;
+        }
 
-    nfs_set_events(client);
-    qemu_mutex_unlock(&client->mutex);
+        nfs_set_events(client);
+    }
     while (!task.complete) {
         qemu_coroutine_yield();
     }
@@ -566,18 +563,15 @@ static BlockdevOptionsNfs *nfs_options_qdict_to_qapi(QDict *options,
     BlockdevOptionsNfs *opts = NULL;
     Visitor *v;
     const QDictEntry *e;
-    Error *local_err = NULL;
 
     v = qobject_input_visitor_new_flat_confused(options, errp);
     if (!v) {
         return NULL;
     }
 
-    visit_type_BlockdevOptionsNfs(v, NULL, &opts, &local_err);
+    visit_type_BlockdevOptionsNfs(v, NULL, &opts, errp);
     visit_free(v);
-
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!opts) {
         return NULL;
     }
 
@@ -623,8 +617,10 @@ static int nfs_file_open(BlockDriverState *bs, QDict *options, int flags,
     }
 
     bs->total_sectors = ret;
-    ret = 0;
-    return ret;
+    if (client->has_zero_init) {
+        bs->supported_truncate_flags = BDRV_REQ_ZERO_WRITE;
+    }
+    return 0;
 }
 
 static QemuOptsList nfs_create_opts = {
@@ -755,7 +751,8 @@ static int64_t nfs_get_allocated_file_size(BlockDriverState *bs)
 
 static int coroutine_fn
 nfs_file_co_truncate(BlockDriverState *bs, int64_t offset, bool exact,
-                     PreallocMode prealloc, Error **errp)
+                     PreallocMode prealloc, BdrvRequestFlags flags,
+                     Error **errp)
 {
     NFSClient *client = bs->opaque;
     int ret;
@@ -872,7 +869,6 @@ static BlockDriver bdrv_nfs = {
     .create_opts                    = &nfs_create_opts,
 
     .bdrv_has_zero_init             = nfs_has_zero_init,
-    .bdrv_has_zero_init_truncate    = nfs_has_zero_init,
     .bdrv_get_allocated_file_size   = nfs_get_allocated_file_size,
     .bdrv_co_truncate               = nfs_file_co_truncate,
 

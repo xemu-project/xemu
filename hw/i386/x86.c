@@ -118,16 +118,15 @@ uint32_t x86_cpu_apic_id_from_index(X86MachineState *x86ms,
 
 void x86_cpu_new(X86MachineState *x86ms, int64_t apic_id, Error **errp)
 {
-    Object *cpu = NULL;
-    Error *local_err = NULL;
+    Object *cpu = object_new(MACHINE(x86ms)->cpu_type);
 
-    cpu = object_new(MACHINE(x86ms)->cpu_type);
+    if (!object_property_set_uint(cpu, "apic-id", apic_id, errp)) {
+        goto out;
+    }
+    qdev_realize(DEVICE(cpu), NULL, errp);
 
-    object_property_set_uint(cpu, apic_id, "apic-id", &local_err);
-    object_property_set_bool(cpu, true, "realized", &local_err);
-
+out:
     object_unref(cpu);
-    error_propagate(errp, local_err);
 }
 
 void x86_cpus_init(X86MachineState *x86ms, int default_cpu_version)
@@ -350,14 +349,14 @@ void ioapic_init_gsi(GSIState *gsi_state, const char *parent_name)
 
     assert(parent_name);
     if (kvm_ioapic_in_kernel()) {
-        dev = qdev_create(NULL, TYPE_KVM_IOAPIC);
+        dev = qdev_new(TYPE_KVM_IOAPIC);
     } else {
-        dev = qdev_create(NULL, TYPE_IOAPIC);
+        dev = qdev_new(TYPE_IOAPIC);
     }
     object_property_add_child(object_resolve_path(parent_name, NULL),
-                              "ioapic", OBJECT(dev), NULL);
-    qdev_init_nofail(dev);
+                              "ioapic", OBJECT(dev));
     d = SYS_BUS_DEVICE(dev);
+    sysbus_realize_and_unref(d, &error_fatal);
     sysbus_mmio_map(d, 0, IO_APIC_DEFAULT_ADDRESS);
 
     for (i = 0; i < IOAPIC_NUM_PINS; i++) {
@@ -851,45 +850,6 @@ void x86_bios_rom_init(MemoryRegion *rom_memory, bool isapc_ram_fw)
                                 bios);
 }
 
-static void x86_machine_get_max_ram_below_4g(Object *obj, Visitor *v,
-                                             const char *name, void *opaque,
-                                             Error **errp)
-{
-    X86MachineState *x86ms = X86_MACHINE(obj);
-    uint64_t value = x86ms->max_ram_below_4g;
-
-    visit_type_size(v, name, &value, errp);
-}
-
-static void x86_machine_set_max_ram_below_4g(Object *obj, Visitor *v,
-                                             const char *name, void *opaque,
-                                             Error **errp)
-{
-    X86MachineState *x86ms = X86_MACHINE(obj);
-    Error *error = NULL;
-    uint64_t value;
-
-    visit_type_size(v, name, &value, &error);
-    if (error) {
-        error_propagate(errp, error);
-        return;
-    }
-    if (value > 4 * GiB) {
-        error_setg(&error,
-                   "Machine option 'max-ram-below-4g=%"PRIu64
-                   "' expects size less than or equal to 4G", value);
-        error_propagate(errp, error);
-        return;
-    }
-
-    if (value < 1 * MiB) {
-        warn_report("Only %" PRIu64 " bytes of RAM below the 4GiB boundary,"
-                    "BIOS may not work with less than 1MiB", value);
-    }
-
-    x86ms->max_ram_below_4g = value;
-}
-
 bool x86_machine_is_smm_enabled(X86MachineState *x86ms)
 {
     bool smm_available = false;
@@ -963,7 +923,6 @@ static void x86_machine_initfn(Object *obj)
 
     x86ms->smm = ON_OFF_AUTO_AUTO;
     x86ms->acpi = ON_OFF_AUTO_AUTO;
-    x86ms->max_ram_below_4g = 0; /* use default */
     x86ms->smp_dies = 1;
 
     x86ms->apicid_from_cpu_idx = x86_apicid_from_cpu_idx;
@@ -985,23 +944,17 @@ static void x86_machine_class_init(ObjectClass *oc, void *data)
     x86mc->save_tsc_khz = true;
     nc->nmi_monitor_handler = x86_nmi;
 
-    object_class_property_add(oc, X86_MACHINE_MAX_RAM_BELOW_4G, "size",
-        x86_machine_get_max_ram_below_4g, x86_machine_set_max_ram_below_4g,
-        NULL, NULL, &error_abort);
-    object_class_property_set_description(oc, X86_MACHINE_MAX_RAM_BELOW_4G,
-        "Maximum ram below the 4G boundary (32bit boundary)", &error_abort);
-
     object_class_property_add(oc, X86_MACHINE_SMM, "OnOffAuto",
         x86_machine_get_smm, x86_machine_set_smm,
-        NULL, NULL, &error_abort);
+        NULL, NULL);
     object_class_property_set_description(oc, X86_MACHINE_SMM,
-        "Enable SMM", &error_abort);
+        "Enable SMM");
 
     object_class_property_add(oc, X86_MACHINE_ACPI, "OnOffAuto",
         x86_machine_get_acpi, x86_machine_set_acpi,
-        NULL, NULL, &error_abort);
+        NULL, NULL);
     object_class_property_set_description(oc, X86_MACHINE_ACPI,
-        "Enable ACPI", &error_abort);
+        "Enable ACPI");
 }
 
 static const TypeInfo x86_machine_info = {

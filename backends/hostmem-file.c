@@ -110,23 +110,18 @@ static void file_memory_backend_set_align(Object *o, Visitor *v,
 {
     HostMemoryBackend *backend = MEMORY_BACKEND(o);
     HostMemoryBackendFile *fb = MEMORY_BACKEND_FILE(o);
-    Error *local_err = NULL;
     uint64_t val;
 
     if (host_memory_backend_mr_inited(backend)) {
-        error_setg(&local_err, "cannot change property '%s' of %s",
-                   name, object_get_typename(o));
-        goto out;
+        error_setg(errp, "cannot change property '%s' of %s", name,
+                   object_get_typename(o));
+        return;
     }
 
-    visit_type_size(v, name, &val, &local_err);
-    if (local_err) {
-        goto out;
+    if (!visit_type_size(v, name, &val, errp)) {
+        return;
     }
     fb->align = val;
-
- out:
-    error_propagate(errp, local_err);
 }
 
 static bool file_memory_backend_get_pmem(Object *o, Error **errp)
@@ -140,7 +135,6 @@ static void file_memory_backend_set_pmem(Object *o, bool value, Error **errp)
     HostMemoryBackendFile *fb = MEMORY_BACKEND_FILE(o);
 
     if (host_memory_backend_mr_inited(backend)) {
-
         error_setg(errp, "cannot change property 'pmem' of %s.",
                    object_get_typename(o));
         return;
@@ -148,13 +142,9 @@ static void file_memory_backend_set_pmem(Object *o, bool value, Error **errp)
 
 #ifndef CONFIG_LIBPMEM
     if (value) {
-        Error *local_err = NULL;
-
-        error_setg(&local_err,
-                   "Lack of libpmem support while setting the 'pmem=on'"
+        error_setg(errp, "Lack of libpmem support while setting the 'pmem=on'"
                    " of %s. We can't ensure data persistence.",
                    object_get_typename(o));
-        error_propagate(errp, local_err);
         return;
     }
 #endif
@@ -184,18 +174,15 @@ file_backend_class_init(ObjectClass *oc, void *data)
     oc->unparent = file_backend_unparent;
 
     object_class_property_add_bool(oc, "discard-data",
-        file_memory_backend_get_discard_data, file_memory_backend_set_discard_data,
-        &error_abort);
+        file_memory_backend_get_discard_data, file_memory_backend_set_discard_data);
     object_class_property_add_str(oc, "mem-path",
-        get_mem_path, set_mem_path,
-        &error_abort);
+        get_mem_path, set_mem_path);
     object_class_property_add(oc, "align", "int",
         file_memory_backend_get_align,
         file_memory_backend_set_align,
-        NULL, NULL, &error_abort);
+        NULL, NULL);
     object_class_property_add_bool(oc, "pmem",
-        file_memory_backend_get_pmem, file_memory_backend_set_pmem,
-        &error_abort);
+        file_memory_backend_get_pmem, file_memory_backend_set_pmem);
 }
 
 static void file_backend_instance_finalize(Object *o)

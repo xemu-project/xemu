@@ -478,6 +478,15 @@ int bdrv_remove_persistent_dirty_bitmap(BlockDriverState *bs, const char *name,
     }
 }
 
+bool
+bdrv_supports_persistent_dirty_bitmap(BlockDriverState *bs)
+{
+    if (bs->drv && bs->drv->bdrv_supports_persistent_dirty_bitmap) {
+        return bs->drv->bdrv_supports_persistent_dirty_bitmap(bs);
+    }
+    return false;
+}
+
 static bool coroutine_fn
 bdrv_co_can_store_new_dirty_bitmap(BlockDriverState *bs, const char *name,
                                    uint32_t granularity, Error **errp)
@@ -802,6 +811,19 @@ bool bdrv_has_readonly_bitmaps(BlockDriverState *bs)
     BdrvDirtyBitmap *bm;
     QLIST_FOREACH(bm, &bs->dirty_bitmaps, list) {
         if (bm->readonly) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool bdrv_has_named_bitmaps(BlockDriverState *bs)
+{
+    BdrvDirtyBitmap *bm;
+
+    QLIST_FOREACH(bm, &bs->dirty_bitmaps, list) {
+        if (bdrv_dirty_bitmap_name(bm)) {
             return true;
         }
     }

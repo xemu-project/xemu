@@ -1297,10 +1297,9 @@ static QemuConsole *new_console(DisplayState *ds, console_type_t console_type,
     object_property_add_link(obj, "device", TYPE_DEVICE,
                              (Object **)&s->device,
                              object_property_allow_set_link,
-                             OBJ_PROP_LINK_STRONG,
-                             &error_abort);
+                             OBJ_PROP_LINK_STRONG);
     object_property_add_uint32_ptr(obj, "head", &s->head,
-                                   OBJ_PROP_FLAG_READ, &error_abort);
+                                   OBJ_PROP_FLAG_READ);
 
     if (!active_console || ((active_console->console_type != GRAPHIC_CONSOLE) &&
         (console_type == GRAPHIC_CONSOLE))) {
@@ -1868,7 +1867,7 @@ DisplayState *init_displaystate(void)
          * doesn't change any more */
         name = g_strdup_printf("console[%d]", con->index);
         object_property_add_child(container_get(object_get_root(), "/backend"),
-                                  name, OBJECT(con), &error_abort);
+                                  name, OBJECT(con));
         g_free(name);
     }
 
@@ -1911,7 +1910,7 @@ QemuConsole *graphic_console_init(DeviceState *dev, uint32_t head,
     }
     graphic_console_set_hwops(s, hw_ops, opaque);
     if (dev) {
-        object_property_set_link(OBJECT(s), OBJECT(dev), "device",
+        object_property_set_link(OBJECT(s), "device", OBJECT(dev),
                                  &error_abort);
     }
 
@@ -1938,7 +1937,7 @@ void graphic_console_close(QemuConsole *con)
     }
 
     trace_console_gfx_close(con->index);
-    object_property_set_link(OBJECT(con), NULL, "device", &error_abort);
+    object_property_set_link(OBJECT(con), "device", NULL, &error_abort);
     graphic_console_set_hwops(con, &unused_ops, NULL);
 
     if (con->gl) {
@@ -2185,12 +2184,12 @@ static void text_console_do_init(Chardev *chr, DisplayState *ds)
     text_console_resize(s);
 
     if (chr->label) {
-        char msg[128];
-        int len;
+        char *msg;
 
         s->t_attrib.bgcol = QEMU_COLOR_BLUE;
-        len = snprintf(msg, sizeof(msg), "%s console\r\n", chr->label);
-        vc_chr_write(chr, (uint8_t *)msg, len);
+        msg = g_strdup_printf("%s console\r\n", chr->label);
+        vc_chr_write(chr, (uint8_t *)msg, strlen(msg));
+        g_free(msg);
         s->t_attrib = s->t_attrib_default;
     }
 

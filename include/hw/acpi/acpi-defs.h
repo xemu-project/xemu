@@ -88,6 +88,8 @@ typedef struct AcpiFadtData {
     struct AcpiGenericAddress pm_tmr;    /* PM_TMR_BLK */
     struct AcpiGenericAddress gpe0_blk;  /* GPE0_BLK */
     struct AcpiGenericAddress reset_reg; /* RESET_REG */
+    struct AcpiGenericAddress sleep_ctl; /* SLEEP_CONTROL_REG */
+    struct AcpiGenericAddress sleep_sts; /* SLEEP_STATUS_REG */
     uint8_t reset_val;         /* RESET_VALUE */
     uint8_t  rev;              /* Revision */
     uint32_t flags;            /* Flags */
@@ -462,24 +464,6 @@ struct Acpi20Tcpa {
     uint64_t log_area_start_address;
 } QEMU_PACKED;
 typedef struct Acpi20Tcpa Acpi20Tcpa;
-
-/*
- * TPM2
- *
- * Following Version 1.2, Revision 8 of specs:
- * https://trustedcomputinggroup.org/tcg-acpi-specification/
- */
-struct Acpi20TPM2 {
-    ACPI_TABLE_HEADER_DEF
-    uint16_t platform_class;
-    uint16_t reserved;
-    uint64_t control_area_address;
-    uint32_t start_method;
-    uint8_t start_method_params[12];
-    uint32_t log_area_minimum_length;
-    uint64_t log_area_start_address;
-} QEMU_PACKED;
-typedef struct Acpi20TPM2 Acpi20TPM2;
 
 /* DMAR - DMA Remapping table r2.2 */
 struct AcpiTableDmar {

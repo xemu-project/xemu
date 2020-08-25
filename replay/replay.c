@@ -22,7 +22,7 @@
 
 /* Current version of the replay mechanism.
    Increase it when file format changes. */
-#define REPLAY_VERSION              0xe02009
+#define REPLAY_VERSION              0xe0200a
 /* Size of replay log header */
 #define HEADER_SIZE                 (sizeof(uint32_t) + sizeof(uint64_t))
 
@@ -366,6 +366,11 @@ void replay_finish(void)
     /* finalize the file */
     if (replay_file) {
         if (replay_mode == REPLAY_MODE_RECORD) {
+            /*
+             * Can't do it in the signal handler, therefore
+             * add shutdown event here for the case of Ctrl-C.
+             */
+            replay_shutdown_request(SHUTDOWN_CAUSE_HOST_SIGNAL);
             /* write end event */
             replay_put_event(EVENT_END);
 
