@@ -530,28 +530,27 @@ static bool machine_get_short_animation(Object *obj, Error **errp)
 static inline void xbox_machine_initfn(Object *obj)
 {
     object_property_add_str(obj, "bootrom", machine_get_bootrom,
-                            machine_set_bootrom, NULL);
+                            machine_set_bootrom);
     object_property_set_description(obj, "bootrom",
-                                    "Xbox bootrom file", NULL);
+                                    "Xbox bootrom file");
 
     object_property_add_str(obj, "eeprom", machine_get_eeprom,
-                            machine_set_eeprom, NULL);
+                            machine_set_eeprom);
     object_property_set_description(obj, "eeprom",
-                                    "Xbox EEPROM file", NULL);
+                                    "Xbox EEPROM file");
 
     object_property_add_str(obj, "avpack", machine_get_avpack,
-                            machine_set_avpack, NULL);
+                            machine_set_avpack);
     object_property_set_description(obj, "avpack",
-                                    "Xbox video connector: composite (default), scart, svideo, vga, rfu, hdtv, none", NULL);
-    object_property_set_str(obj, "composite", "avpack", NULL);
+                                    "Xbox video connector: composite (default), scart, svideo, vga, rfu, hdtv, none");
+    object_property_set_str(obj, "avpack", "composite", &error_fatal);
 
     object_property_add_bool(obj, "short-animation",
                              machine_get_short_animation,
-                             machine_set_short_animation, NULL);
+                             machine_set_short_animation);
     object_property_set_description(obj, "short-animation",
-                                    "Skip Xbox boot animation",
-                                    NULL);
-    object_property_set_bool(obj, false, "short-animation", NULL);
+                                    "Skip Xbox boot animation");
+    object_property_set_bool(obj, "short-animation", false, &error_fatal);
 
 }
 
