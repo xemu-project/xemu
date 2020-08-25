@@ -249,7 +249,7 @@ static void chihiro_an2131qc_realize(USBDevice *dev, Error **errp)
     usb_desc_init(dev);
 }
 
-static void chihiro_an2131qc_unrealize(USBDevice *dev, Error **errp)
+static void chihiro_an2131qc_unrealize(USBDevice *dev)
 {
 }
 
@@ -284,7 +284,7 @@ static void chihiro_an2131sc_realize(USBDevice *dev, Error **errp)
     usb_desc_init(dev);
 }
 
-static void chihiro_an2131sc_unrealize(USBDevice *dev, Error **errp)
+static void chihiro_an2131sc_unrealize(USBDevice *dev)
 {
 }
 

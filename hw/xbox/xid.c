@@ -405,7 +405,7 @@ static void usb_xid_handle_destroy(USBDevice *dev)
 }
 #endif
 
-static void usb_xbox_gamepad_unrealize(USBDevice *dev, Error **errp)
+static void usb_xbox_gamepad_unrealize(USBDevice *dev)
 {
 }
 
