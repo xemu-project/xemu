@@ -3822,6 +3822,7 @@ static void pgraph_bind_textures(NV2AState *d)
                 }
                 if (cubemap) {
                     assert(dimensionality == 2);
+                    length = (length + NV2A_CUBEMAP_FACE_ALIGNMENT - 1) & ~(NV2A_CUBEMAP_FACE_ALIGNMENT - 1);
                     length *= 6;
                 }
                 if (dimensionality >= 3) {
@@ -4414,15 +4415,29 @@ static TextureBinding* generate_texture(const TextureShape s,
 
     if (gl_target == GL_TEXTURE_CUBE_MAP) {
 
+        ColorFormatInfo f = kelvin_color_format_map[s.color_format];
+        unsigned int block_size;
+        if (f.gl_internal_format == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT) {
+            block_size = 8;
+        } else {
+            block_size = 16;
+        }
+
         size_t length = 0;
         unsigned int w = s.width, h = s.height;
         int level;
         for (level = 0; level < s.levels; level++) {
-            /* FIXME: This is wrong for compressed textures and textures with 1x? non-square mipmaps */
-            length += w * h * f.bytes_per_pixel;
+            if (f.gl_format == 0) {
+                length += w/4 * h/4 * block_size;
+            } else {
+                length += w * h * f.bytes_per_pixel;
+            }
+
             w /= 2;
             h /= 2;
         }
+
+        length = (length + NV2A_CUBEMAP_FACE_ALIGNMENT - 1) & ~(NV2A_CUBEMAP_FACE_ALIGNMENT - 1);
 
         upload_gl_texture(GL_TEXTURE_CUBE_MAP_POSITIVE_X,
                           s, texture_data + 0 * length, palette_data);
