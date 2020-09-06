@@ -3,6 +3,7 @@
  *
  * Copyright (c) 2015 espes
  * Copyright (c) 2015 Jannik Vogel
+ * Copyright (c) 2020 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -364,6 +365,7 @@ GLSL_DEFINE(eyePosition, GLSL_C(NV_IGRAPH_XF_XFCTX_EYEP))
     "ltc1[" stringify(NV_IGRAPH_XF_LTC1_r0) " + (i)].x\n"
 "\n"
 GLSL_DEFINE(sceneAmbientColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_FR_AMB) ".xyz")
+GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz")
 "\n"
 "uniform mat4 invViewport;\n"
 "\n");
@@ -484,7 +486,24 @@ GLSL_DEFINE(sceneAmbientColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_FR_AMB) ".xyz")
     if (state.lighting) {
 
         //FIXME: Do 2 passes if we want 2 sided-lighting?
-        qstring_append(body, "oD0 = vec4(sceneAmbientColor, diffuse.a);\n");
+
+        if (state.ambient_src == MATERIAL_COLOR_SRC_MATERIAL) {
+            qstring_append(body, "oD0 = vec4(sceneAmbientColor, diffuse.a);\n");
+        } else if (state.ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
+            qstring_append(body, "oD0 = vec4(diffuse.rgb, diffuse.a);\n");
+        } else if (state.ambient_src == MATERIAL_COLOR_SRC_SPECULAR) {
+            qstring_append(body, "oD0 = vec4(specular.rgb, diffuse.a);\n");
+        }
+
+        qstring_append(body, "oD0.rgb *= materialEmissionColor.rgb;\n");
+        if (state.emission_src == MATERIAL_COLOR_SRC_MATERIAL) {
+            qstring_append(body, "oD0.rgb += sceneAmbientColor;\n");
+        } else if (state.emission_src == MATERIAL_COLOR_SRC_DIFFUSE) {
+            qstring_append(body, "oD0.rgb += diffuse.rgb;\n");
+        } else if (state.emission_src == MATERIAL_COLOR_SRC_SPECULAR) {
+            qstring_append(body, "oD0.rgb += specular.rgb;\n");
+        }
+
         qstring_append(body, "oD1 = vec4(0.0, 0.0, 0.0, specular.a);\n");
 
         for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
