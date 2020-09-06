@@ -48,6 +48,12 @@ enum ShaderPolygonMode {
     POLY_MODE_LINE,
 };
 
+enum MaterialColorSource {
+    MATERIAL_COLOR_SRC_MATERIAL,
+    MATERIAL_COLOR_SRC_DIFFUSE,
+    MATERIAL_COLOR_SRC_SPECULAR,
+};
+
 typedef struct ShaderState {
     PshState psh;
 
@@ -61,6 +67,11 @@ typedef struct ShaderState {
     enum VshSkinning skinning;
 
     bool normalization;
+
+    enum MaterialColorSource emission_src;
+    enum MaterialColorSource ambient_src;
+    enum MaterialColorSource diffuse_src;
+    enum MaterialColorSource specular_src;
 
     bool lighting;
     enum VshLight light[NV2A_MAX_LIGHTS];

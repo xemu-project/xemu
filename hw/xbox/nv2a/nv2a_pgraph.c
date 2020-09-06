@@ -898,7 +898,12 @@ static void pgraph_method(NV2AState *d,
                  z_perspective);
         break;
     }
-
+    case NV097_SET_COLOR_MATERIAL:
+        SET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_EMISSION, (parameter >> 0) & 3);
+        SET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_AMBIENT,  (parameter >> 2) & 3);
+        SET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_DIFFUSE,  (parameter >> 4) & 3);
+        SET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_SPECULAR, (parameter >> 6) & 3);
+        break;
     case NV097_SET_FOG_MODE: {
         /* FIXME: There is also NV_PGRAPH_CSV0_D_FOG_MODE */
         unsigned int mode;
@@ -1267,6 +1272,14 @@ static void pgraph_method(NV2AState *d,
         SET_MASK(pg->regs[NV_PGRAPH_CSV0_C],
                  NV_PGRAPH_CSV0_C_NORMALIZATION_ENABLE,
                  parameter);
+        break;
+
+    case NV097_SET_MATERIAL_EMISSION ...
+            NV097_SET_MATERIAL_EMISSION + 8:
+        slot = (method - NV097_SET_MATERIAL_EMISSION) / 4;
+        // FIXME: Verify NV_IGRAPH_XF_LTCTXA_CM_COL is correct
+        pg->ltctxa[NV_IGRAPH_XF_LTCTXA_CM_COL][slot] = parameter;
+        pg->ltctxa_dirty[NV_IGRAPH_XF_LTCTXA_CM_COL] = true;
         break;
 
     case NV097_SET_LIGHT_ENABLE_MASK:
@@ -3058,6 +3071,12 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
                              NV_PGRAPH_CSV0_C_LIGHTING),
         .normalization = pg->regs[NV_PGRAPH_CSV0_C]
                            & NV_PGRAPH_CSV0_C_NORMALIZATION_ENABLE,
+
+        /* color material */
+        .emission_src = (enum MaterialColorSource)GET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_EMISSION),
+        .ambient_src = (enum MaterialColorSource)GET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_AMBIENT),
+        .diffuse_src = (enum MaterialColorSource)GET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_DIFFUSE),
+        .specular_src = (enum MaterialColorSource)GET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_SPECULAR),
 
         .fixed_function = fixed_function,
 
