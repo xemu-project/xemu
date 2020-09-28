@@ -156,7 +156,6 @@ jobs:
     - name: Install Dependencies
       run: |
         brew update
-        brew unlink python@2
         brew install \
           ccache \
           coreutils \
