@@ -663,7 +663,7 @@ public:
         FilePicker("###Flash", flash_path, sizeof(flash_path), rom_file_filters);
         ImGui::NextColumn();
 
-        ImGui::Text("BootROM File");
+        ImGui::Text("MCPX Boot ROM File");
         ImGui::NextColumn();
         ImGui::SetNextItemWidth(picker_width);
         FilePicker("###BootROM", bootrom_path, sizeof(bootrom_path), rom_file_filters);
