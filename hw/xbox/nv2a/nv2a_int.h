@@ -48,8 +48,6 @@
 #include "shaders.h"
 #include "nv2a_regs.h"
 
-#define USE_TEXTURE_CACHE 1
-
 #define GET_MASK(v, mask) (((v) & (mask)) >> ctz32(mask))
 
 #define SET_MASK(v, mask, val)                            \
