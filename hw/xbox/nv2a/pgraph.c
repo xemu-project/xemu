@@ -617,6 +617,8 @@ void pgraph_method(NV2AState *d,
 
             NV2A_GL_DPRINTF(true, "NV09F_SET_OPERATION_SRCCOPY");
 
+            pgraph_update_surface(d, false, true, true);
+
             ContextSurfaces2DState *context_surfaces = context_surfaces_2d;
             assert(context_surfaces->object_instance
                     == image_blit->context_surfaces);
