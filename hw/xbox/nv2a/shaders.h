@@ -24,9 +24,9 @@
 #include "qapi/qmp/qstring.h"
 #include "gl/gloffscreen.h"
 
-#include "nv2a_vsh.h"
-#include "nv2a_psh.h"
 #include "nv2a_regs.h"
+#include "vsh.h"
+#include "psh.h"
 
 enum ShaderPrimitiveMode {
     PRIM_TYPE_NONE,

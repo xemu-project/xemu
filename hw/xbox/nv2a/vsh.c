@@ -32,8 +32,8 @@
 #include <stdbool.h>
 #include <assert.h>
 
-#include "nv2a_shaders_common.h"
-#include "nv2a_vsh.h"
+#include "shaders_common.h"
+#include "vsh.h"
 
 #define VSH_D3DSCM_CORRECTION 96
 

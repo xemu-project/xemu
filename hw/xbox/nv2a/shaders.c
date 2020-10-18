@@ -21,8 +21,9 @@
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
-#include "nv2a_shaders_common.h"
-#include "nv2a_shaders.h"
+
+#include "shaders_common.h"
+#include "shaders.h"
 
 void qstring_append_fmt(QString *qstring, const char *fmt, ...)
 {

@@ -44,9 +44,8 @@
 #include "gl/gloffscreen.h"
 
 #include "nv2a.h"
-#include "nv2a_debug.h"
-#include "nv2a_shaders.h"
-#include "nv2a_debug.h"
+#include "debug.h"
+#include "shaders.h"
 #include "nv2a_regs.h"
 
 #define USE_TEXTURE_CACHE 1

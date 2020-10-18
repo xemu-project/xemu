@@ -1,26 +1,24 @@
-obj-y += lru.o
-obj-y += swizzle.o
-
 obj-y += nv2a.o
-obj-y += nv2a_debug.o
-obj-y += nv2a_pbus.o
-obj-y += nv2a_pcrtc.o
-obj-y += nv2a_pfb.o
-obj-y += nv2a_pfifo.o
-obj-y += nv2a_pgraph.o
-obj-y += nv2a_pmc.o
-obj-y += nv2a_pramdac.o
-obj-y += nv2a_prmcio.o
-obj-y += nv2a_prmvio.o
-obj-y += nv2a_psh.o
-obj-y += nv2a_ptimer.o
-obj-y += nv2a_pvideo.o
-obj-y += nv2a_shaders.o
-obj-y += nv2a_stubs.o
-obj-y += nv2a_user.o
-obj-y += nv2a_vsh.o
+obj-y += debug.o
+obj-y += pbus.o
+obj-y += pcrtc.o
+obj-y += pfb.o
+obj-y += pfifo.o
+obj-y += pgraph.o
+obj-y += pmc.o
+obj-y += pramdac.o
+obj-y += prmcio.o
+obj-y += prmvio.o
+obj-y += psh.o
+obj-y += ptimer.o
+obj-y += pvideo.o
+obj-y += shaders.o
+obj-y += stubs.o
+obj-y += user.o
+obj-y += vsh.o
 
 obj-y += gl/
-
+obj-y += lru.o
+obj-y += swizzle.o
 obj-y += xxhash.o
 xxhash.o-cflags := -O3 -DXXH_FORCE_MEMORY_ACCESS=2

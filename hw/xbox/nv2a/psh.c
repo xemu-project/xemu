@@ -35,8 +35,8 @@
 
 #include "qapi/qmp/qstring.h"
 
-#include "nv2a_shaders_common.h"
-#include "nv2a_psh.h"
+#include "shaders_common.h"
+#include "psh.h"
 
 /*
  * This implements translation of register combiners into glsl
