@@ -19,6 +19,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "nv2a_int.h"
+
 /* PMC - card master control */
 uint64_t pmc_read(void *opaque, hwaddr addr, unsigned int size)
 {
@@ -44,7 +46,7 @@ uint64_t pmc_read(void *opaque, hwaddr addr, unsigned int size)
         break;
     }
 
-    reg_log_read(NV_PMC, addr, r);
+    nv2a_reg_log_read(NV_PMC, addr, r);
     return r;
 }
 
@@ -52,17 +54,17 @@ void pmc_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
 
-    reg_log_write(NV_PMC, addr, val);
+    nv2a_reg_log_write(NV_PMC, addr, val);
 
     switch (addr) {
     case NV_PMC_INTR_0:
         /* the bits of the interrupts to clear are wrtten */
         d->pmc.pending_interrupts &= ~val;
-        update_irq(d);
+        nv2a_update_irq(d);
         break;
     case NV_PMC_INTR_EN_0:
         d->pmc.enabled_interrupts = val;
-        update_irq(d);
+        nv2a_update_irq(d);
         break;
     default:
         break;

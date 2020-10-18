@@ -19,6 +19,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "nv2a_int.h"
+
 /* PBUS - bus control */
 uint64_t pbus_read(void *opaque, hwaddr addr, unsigned int size)
 {
@@ -40,7 +42,7 @@ uint64_t pbus_read(void *opaque, hwaddr addr, unsigned int size)
         break;
     }
 
-    reg_log_read(NV_PBUS, addr, r);
+    nv2a_reg_log_read(NV_PBUS, addr, r);
     return r;
 }
 
@@ -49,7 +51,7 @@ void pbus_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     NV2AState *s = opaque;
     PCIDevice *d = PCI_DEVICE(s);
 
-    reg_log_write(NV_PBUS, addr, val);
+    nv2a_reg_log_write(NV_PBUS, addr, val);
 
     switch (addr) {
     case NV_PBUS_PCI_NV_1:

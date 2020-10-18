@@ -19,6 +19,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "nv2a_int.h"
+
 typedef struct RAMHTEntry {
     uint32_t handle;
     hwaddr instance;
@@ -56,7 +58,7 @@ uint64_t pfifo_read(void *opaque, hwaddr addr, unsigned int size)
 
     qemu_mutex_unlock(&d->pfifo.lock);
 
-    reg_log_read(NV_PFIFO, addr, r);
+    nv2a_reg_log_read(NV_PFIFO, addr, r);
     return r;
 }
 
@@ -64,18 +66,18 @@ void pfifo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
 
-    reg_log_write(NV_PFIFO, addr, val);
+    nv2a_reg_log_write(NV_PFIFO, addr, val);
 
     qemu_mutex_lock(&d->pfifo.lock);
 
     switch (addr) {
     case NV_PFIFO_INTR_0:
         d->pfifo.pending_interrupts &= ~val;
-        update_irq(d);
+        nv2a_update_irq(d);
         break;
     case NV_PFIFO_INTR_EN_0:
         d->pfifo.enabled_interrupts = val;
-        update_irq(d);
+        nv2a_update_irq(d);
         break;
     default:
         d->pfifo.regs[addr] = val;
@@ -91,6 +93,31 @@ void pfifo_kick(NV2AState *d)
 {
     d->pfifo.fifo_kick = true;
     qemu_cond_broadcast(&d->pfifo.fifo_cond);
+}
+
+static int pgraph_can_fifo_access(NV2AState *d) {
+    return !!(d->pgraph.regs[NV_PGRAPH_FIFO] & NV_PGRAPH_FIFO_ACCESS);
+}
+
+/* If NV097_FLIP_STALL was executed, check if the flip has completed.
+ * This will usually happen in the VSYNC interrupt handler.
+ */
+static int pgraph_is_flip_stall_complete(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+
+    NV2A_DPRINTF("flip stall read: %d, write: %d, modulo: %d\n",
+        GET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_READ_3D),
+        GET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_WRITE_3D),
+        GET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_MODULO_3D));
+
+    uint32_t s = pg->regs[NV_PGRAPH_SURFACE];
+    if (GET_MASK(s, NV_PGRAPH_SURFACE_READ_3D)
+        != GET_MASK(s, NV_PGRAPH_SURFACE_WRITE_3D)) {
+        return 1;
+    }
+
+    return 0;
 }
 
 static bool pfifo_stall_for_flip(NV2AState *d)
@@ -470,11 +497,11 @@ static void pfifo_run_pusher(NV2AState *d)
         SET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_STATUS, 1); /* suspended */
 
         // d->pfifo.pending_interrupts |= NV_PFIFO_INTR_0_DMA_PUSHER;
-        // update_irq(d);
+        // nv2a_update_irq(d);
     }
 }
 
-static void *pfifo_thread(void *arg)
+void *pfifo_thread(void *arg)
 {
     NV2AState *d = (NV2AState *)arg;
     glo_set_current(d->pgraph.gl_context);

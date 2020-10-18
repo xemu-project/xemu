@@ -19,6 +19,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "nv2a_int.h"
+
 uint64_t pcrtc_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
@@ -38,7 +40,7 @@ uint64_t pcrtc_read(void *opaque, hwaddr addr, unsigned int size)
             break;
     }
 
-    reg_log_read(NV_PCRTC, addr, r);
+    nv2a_reg_log_read(NV_PCRTC, addr, r);
     return r;
 }
 
@@ -46,16 +48,16 @@ void pcrtc_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
 
-    reg_log_write(NV_PCRTC, addr, val);
+    nv2a_reg_log_write(NV_PCRTC, addr, val);
 
     switch (addr) {
     case NV_PCRTC_INTR_0:
         d->pcrtc.pending_interrupts &= ~val;
-        update_irq(d);
+        nv2a_update_irq(d);
         break;
     case NV_PCRTC_INTR_EN_0:
         d->pcrtc.enabled_interrupts = val;
-        update_irq(d);
+        nv2a_update_irq(d);
         break;
     case NV_PCRTC_START:
         val &= 0x07FFFFFF;
