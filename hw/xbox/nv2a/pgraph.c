@@ -3839,7 +3839,6 @@ static void pgraph_bind_textures(NV2AState *d)
             .pitch = pitch,
         };
 
-#ifdef USE_TEXTURE_CACHE
         uint64_t texture_hash = fast_hash(texture_data, length, 5003)
                               ^ fnv_hash(palette_data, palette_length);
 
@@ -3854,10 +3853,6 @@ static void pgraph_bind_textures(NV2AState *d)
         assert((key_out != NULL) && (key_out->binding != NULL));
         TextureBinding *binding = key_out->binding;
         binding->refcnt++;
-#else
-        TextureBinding *binding = generate_texture(state,
-                                                   texture_data, palette_data);
-#endif
 
         glBindTexture(binding->gl_target, binding->gl_texture);
 
