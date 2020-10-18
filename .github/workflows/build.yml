@@ -9,7 +9,7 @@ jobs:
     - name: Create Build Tag
       run: |
         export BUILD_TAG=build-$(date -u +'%Y%m%d%H%M')
-        echo "::set-env name=BUILD_TAG::$BUILD_TAG"
+        echo "BUILD_TAG=$BUILD_TAG" >> $GITHUB_ENV
         mkdir -p dist
         echo -n $BUILD_TAG > dist/tag
     - name: Upload Artifacts
@@ -24,18 +24,14 @@ jobs:
     strategy:
       matrix:
         configuration: ["Debug", "Release"]
+        include:
+        - configuration: Debug
+          build_param: --debug
+          artifact_name: xemu-win-debug.zip
+        - configuration: Release
+          build_param:
+          artifact_name: xemu-win-release.zip
     steps:
-    - name: Define Build Options
-      shell: python
-      run: |
-        if "${{ matrix.configuration }}" == "Debug":
-          print('Configuring for Debug')
-          print('::set-env name=BUILD_PARAM::--debug')
-          print('::set-env name=ARTIFACT_NAME::xemu-win-debug.zip')
-        else:
-          print('Configuring for Release')
-          print('::set-env name=BUILD_PARAM::')
-          print('::set-env name=ARTIFACT_NAME::xemu-win-release.zip')
     - name: Clone Tree
       uses: actions/checkout@v2
     - name: Clone Tree (Unshallow)
@@ -65,16 +61,16 @@ jobs:
         # export CCACHE_MAXSIZE=250M
         # export PATH="/usr/lib/ccache/bin:/mingw64/bin:`$PATH"
         export PATH="/mingw64/bin:`$PATH"
-        ./build.sh ${{ env.BUILD_PARAM }}
+        ./build.sh ${{ matrix.build_param }}
         # echo -e '\nCompiler Cache Stats:'
         # ccache -s -c
         "@
-        7z a ${{env.ARTIFACT_NAME}} .\dist\*
+        7z a ${{ matrix.artifact_name }} .\dist\*
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v1
       with:
         name: dist
-        path: ${{env.ARTIFACT_NAME}}
+        path: ${{ matrix.artifact_name }}
 
   Ubuntu:
     runs-on: ubuntu-latest
@@ -82,18 +78,14 @@ jobs:
     strategy:
       matrix:
         configuration: ["Debug", "Release"]
+        include:
+        - configuration: Debug
+          build_param: --debug
+          artifact_name: xemu-ubuntu-debug.tgz
+        - configuration: Release
+          build_param:
+          artifact_name: xemu-ubuntu-release.tgz
     steps:
-    - name: Define Build Options
-      shell: python
-      run: |
-        if "${{ matrix.configuration }}" == "Debug":
-          print('Configuring for Debug')
-          print('::set-env name=BUILD_PARAM::--debug')
-          print('::set-env name=ARTIFACT_NAME::xemu-ubuntu-debug.tgz')
-        else:
-          print('Configuring for Release')
-          print('::set-env name=BUILD_PARAM::')
-          print('::set-env name=ARTIFACT_NAME::xemu-ubuntu-release.tgz')
     - name: Clone Tree
       uses: actions/checkout@v2
     - name: Clone Tree (Unshallow)
@@ -120,15 +112,15 @@ jobs:
         export CCACHE_DIR=/tmp/xemu-ccache
         export CCACHE_MAXSIZE=250M
         export PATH="/usr/lib/ccache:$PATH"
-        ./build.sh ${{ env.BUILD_PARAM }}
+        ./build.sh ${{ matrix.build_param }}
         echo -e "\nCompiler Cache Stats:"
         ccache -s -c
-        tar -czvf ${{env.ARTIFACT_NAME}} --transform "s#^dist#xemu#" dist
+        tar -czvf ${{ matrix.artifact_name }} --transform "s#^dist#xemu#" dist
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v1
       with:
         name: dist
-        path: ${{env.ARTIFACT_NAME}}
+        path: ${{ matrix.artifact_name }}
 
   macOS:
     runs-on: macOS-latest
@@ -136,18 +128,14 @@ jobs:
     strategy:
       matrix:
         configuration: ["Debug", "Release"]
+        include:
+        - configuration: Debug
+          build_param: --debug
+          artifact_name: xemu-macos-debug.zip
+        - configuration: Release
+          build_param:
+          artifact_name: xemu-macos-release.zip
     steps:
-    - name: Define Build Options
-      shell: python
-      run: |
-        if "${{ matrix.configuration }}" == "Debug":
-          print('Configuring for Debug')
-          print('::set-env name=BUILD_PARAM::--debug')
-          print('::set-env name=ARTIFACT_NAME::xemu-macos-debug.zip')
-        else:
-          print('Configuring for Release')
-          print('::set-env name=BUILD_PARAM::')
-          print('::set-env name=ARTIFACT_NAME::xemu-macos-release.zip')
     - name: Clone Tree
       uses: actions/checkout@v2
     - name: Clone Tree (Unshallow)
@@ -176,17 +164,17 @@ jobs:
         export CCACHE_DIR=/tmp/xemu-ccache
         export CCACHE_MAXSIZE=250M
         export PATH="/usr/local/opt/ccache/libexec:$PATH"
-        ./build.sh ${{ env.BUILD_PARAM }}
+        ./build.sh ${{ matrix.build_param }}
         echo -e "\nCompiler Cache Stats:"
         ccache -s -c
         pushd dist
-        zip -r ../${{env.ARTIFACT_NAME}} xemu.app
+        zip -r ../${{ matrix.artifact_name }} xemu.app
         popd
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v1
       with:
         name: dist
-        path: ${{env.ARTIFACT_NAME}}
+        path: ${{ matrix.artifact_name }}
 
   Release:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/xemu-v'))
@@ -201,7 +189,7 @@ jobs:
         name: dist
     - name: Get Package Info
       run: |
-        echo "::set-env name=BUILD_TAG::$(cat dist/tag)"
+        echo "BUILD_TAG=$(cat dist/tag)" >> $GITHUB_ENV
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
