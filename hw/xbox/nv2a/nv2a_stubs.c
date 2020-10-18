@@ -19,12 +19,14 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "nv2a_int.h"
+
 #define DEFINE_STUB(name, region_id) \
     uint64_t name ## _read(void *opaque, \
                            hwaddr addr, \
                            unsigned int size) \
     { \
-        reg_log_read(region_id, addr, 0); \
+        nv2a_reg_log_read(region_id, addr, 0); \
         return 0; \
     } \
     void name ## _write(void *opaque, \
@@ -32,7 +34,7 @@
                         uint64_t val, \
                         unsigned int size) \
     { \
-        reg_log_write(region_id, addr, val); \
+        nv2a_reg_log_write(region_id, addr, val); \
     } \
 
 DEFINE_STUB(prma, NV_PRMA)

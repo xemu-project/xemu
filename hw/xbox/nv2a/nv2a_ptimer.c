@@ -19,6 +19,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "nv2a_int.h"
+
 /* PTIMER - time measurement and time-based alarms */
 static uint64_t ptimer_get_clock(NV2AState *d)
 {
@@ -57,7 +59,7 @@ uint64_t ptimer_read(void *opaque, hwaddr addr, unsigned int size)
         break;
     }
 
-    reg_log_read(NV_PTIMER, addr, r);
+    nv2a_reg_log_read(NV_PTIMER, addr, r);
     return r;
 }
 
@@ -65,16 +67,16 @@ void ptimer_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     NV2AState *d = opaque;
 
-    reg_log_write(NV_PTIMER, addr, val);
+    nv2a_reg_log_write(NV_PTIMER, addr, val);
 
     switch (addr) {
     case NV_PTIMER_INTR_0:
         d->ptimer.pending_interrupts &= ~val;
-        update_irq(d);
+        nv2a_update_irq(d);
         break;
     case NV_PTIMER_INTR_EN_0:
         d->ptimer.enabled_interrupts = val;
-        update_irq(d);
+        nv2a_update_irq(d);
         break;
     case NV_PTIMER_DENOMINATOR:
         d->ptimer.denominator = val;

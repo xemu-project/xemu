@@ -3,27 +3,21 @@ obj-y += swizzle.o
 
 obj-y += nv2a.o
 obj-y += nv2a_debug.o
-obj-y += nv2a_shaders.o
-
-###
-# These are just #included into nv2a.c for build time savings
-#
-# obj-y += nv2a_pbus.o
-# obj-y += nv2a_pcrtc.o
-# obj-y += nv2a_pfb.o
-# obj-y += nv2a_pfifo.o
-# obj-y += nv2a_pgraph.o
-# obj-y += nv2a_pmc.o
-# obj-y += nv2a_pramdac.o
-# obj-y += nv2a_prmcio.o
-# obj-y += nv2a_prmvio.o
-# obj-y += nv2a_ptimer.o
-# obj-y += nv2a_pvideo.o
-# obj-y += nv2a_user.o
-# obj-y += nv2a_stubs.o
-###
-
+obj-y += nv2a_pbus.o
+obj-y += nv2a_pcrtc.o
+obj-y += nv2a_pfb.o
+obj-y += nv2a_pfifo.o
+obj-y += nv2a_pgraph.o
+obj-y += nv2a_pmc.o
+obj-y += nv2a_pramdac.o
+obj-y += nv2a_prmcio.o
+obj-y += nv2a_prmvio.o
 obj-y += nv2a_psh.o
+obj-y += nv2a_ptimer.o
+obj-y += nv2a_pvideo.o
+obj-y += nv2a_shaders.o
+obj-y += nv2a_stubs.o
+obj-y += nv2a_user.o
 obj-y += nv2a_vsh.o
 
 obj-y += gl/

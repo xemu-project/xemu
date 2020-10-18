@@ -19,6 +19,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "nv2a_int.h"
+
 static void pvideo_vga_invalidate(NV2AState *d)
 {
     int y1 = GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_OUT],
@@ -43,7 +45,7 @@ uint64_t pvideo_read(void *opaque, hwaddr addr, unsigned int size)
         break;
     }
 
-    reg_log_read(NV_PVIDEO, addr, r);
+    nv2a_reg_log_read(NV_PVIDEO, addr, r);
     return r;
 }
 
@@ -51,7 +53,7 @@ void pvideo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     NV2AState *d = opaque;
 
-    reg_log_write(NV_PVIDEO, addr, val);
+    nv2a_reg_log_write(NV_PVIDEO, addr, val);
 
     switch (addr) {
     case NV_PVIDEO_BUFFER:

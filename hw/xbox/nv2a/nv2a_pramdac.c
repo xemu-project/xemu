@@ -19,6 +19,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "nv2a_int.h"
+
 uint64_t pramdac_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
@@ -81,7 +83,7 @@ void pramdac_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     NV2AState *d = (NV2AState *)opaque;
     uint32_t m, n, p;
 
-    reg_log_write(NV_PRAMDAC, addr, val);
+    nv2a_reg_log_write(NV_PRAMDAC, addr, val);
 
     switch (addr) {
     case NV_PRAMDAC_NVPLL_COEFF:

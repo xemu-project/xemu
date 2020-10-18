@@ -19,6 +19,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "nv2a_int.h"
 #include "xxhash.h"
 
 static const GLenum pgraph_texture_min_filter_map[] = {
@@ -376,7 +377,7 @@ uint64_t pgraph_read(void *opaque, hwaddr addr, unsigned int size)
 
     qemu_mutex_unlock(&pg->lock);
 
-    reg_log_read(NV_PGRAPH, addr, r);
+    nv2a_reg_log_read(NV_PGRAPH, addr, r);
     return r;
 }
 
@@ -385,7 +386,7 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     NV2AState *d = (NV2AState *)opaque;
     PGRAPHState *pg = &d->pgraph;
 
-    reg_log_write(NV_PGRAPH, addr, val);
+    nv2a_reg_log_write(NV_PGRAPH, addr, val);
 
     qemu_mutex_lock(&d->pfifo.lock); // FIXME: Factor out fifo lock here
     qemu_mutex_lock(&pg->lock);
@@ -491,28 +492,7 @@ static void pgraph_flush(NV2AState *d)
     // FIXME: Flush more?
 }
 
-/* If NV097_FLIP_STALL was executed, check if the flip has completed.
- * This will usually happen in the VSYNC interrupt handler.
- */
-static int pgraph_is_flip_stall_complete(NV2AState *d)
-{
-    PGRAPHState *pg = &d->pgraph;
- 
-    NV2A_DPRINTF("flip stall read: %d, write: %d, modulo: %d\n",
-        GET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_READ_3D),
-        GET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_WRITE_3D),
-        GET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_MODULO_3D));
-
-    uint32_t s = pg->regs[NV_PGRAPH_SURFACE];
-    if (GET_MASK(s, NV_PGRAPH_SURFACE_READ_3D)
-        != GET_MASK(s, NV_PGRAPH_SURFACE_WRITE_3D)) {
-        return 1;
-    }
-
-    return 0;
-}
-
-static void pgraph_method(NV2AState *d,
+void pgraph_method(NV2AState *d,
                    unsigned int subchannel,
                    unsigned int method,
                    uint32_t parameter)
@@ -724,7 +704,7 @@ static void pgraph_method(NV2AState *d,
 
             qemu_mutex_unlock(&pg->lock);
             qemu_mutex_lock_iothread();
-            update_irq(d);
+            nv2a_update_irq(d);
             qemu_mutex_unlock_iothread();
             qemu_mutex_lock(&pg->lock);
         }
@@ -2624,7 +2604,7 @@ static void pgraph_method(NV2AState *d,
     }
 }
 
-static void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
+void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
 {
     bool channel_valid =
         d->pgraph.regs[NV_PGRAPH_CTX_CONTROL] & NV_PGRAPH_CTX_CONTROL_CHID;
@@ -2645,14 +2625,10 @@ static void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
         qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock_iothread();
         d->pgraph.pending_interrupts |= NV_PGRAPH_INTR_CONTEXT_SWITCH;
-        update_irq(d);
+        nv2a_update_irq(d);
         qemu_mutex_unlock_iothread();
         qemu_mutex_lock(&d->pgraph.lock);
     }
-}
-
-static int pgraph_can_fifo_access(NV2AState *d) {
-    return !!(d->pgraph.regs[NV_PGRAPH_FIFO] & NV_PGRAPH_FIFO_ACCESS);
 }
 
 // static const char* nv2a_method_names[] = {};
@@ -2738,7 +2714,7 @@ static void pgraph_finish_inline_buffer_vertex(PGRAPHState *pg)
     pg->inline_buffer_length++;
 }
 
-static void pgraph_init(NV2AState *d)
+void pgraph_init(NV2AState *d)
 {
     int i;
 
@@ -2818,7 +2794,7 @@ static void pgraph_init(NV2AState *d)
     glo_set_current(NULL);
 }
 
-static void pgraph_destroy(PGRAPHState *pg)
+void pgraph_destroy(PGRAPHState *pg)
 {
     qemu_mutex_destroy(&pg->lock);
 
