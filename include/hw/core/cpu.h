@@ -250,6 +250,19 @@ typedef struct CPUBreakpoint {
     QTAILQ_ENTRY(CPUBreakpoint) entry;
 } CPUBreakpoint;
 
+#ifdef XBOX
+typedef void (*MemAccessCallbackFunc)(void *opaque, MemoryRegion *mr, hwaddr addr, hwaddr len, bool write);
+
+typedef struct MemAccessCallback {
+    MemoryRegion *mr;
+    hwaddr addr;
+    hwaddr len;
+    MemAccessCallbackFunc func;
+    void *opaque;
+    QTAILQ_ENTRY(MemAccessCallback) entry;
+} MemAccessCallback;
+#endif
+
 struct CPUWatchpoint {
     vaddr vaddr;
     vaddr len;
@@ -411,6 +424,8 @@ struct CPUState {
 
     QTAILQ_HEAD(, CPUWatchpoint) watchpoints;
     CPUWatchpoint *watchpoint_hit;
+
+    QTAILQ_HEAD(, MemAccessCallback) mem_access_callbacks;
 
     void *opaque;
 
@@ -1110,6 +1125,28 @@ void cpu_check_watchpoint(CPUState *cpu, vaddr addr, vaddr len,
  * If no watchpoint is registered for the range, the result is 0.
  */
 int cpu_watchpoint_address_matches(CPUState *cpu, vaddr addr, vaddr len);
+
+#ifdef XBOX
+/**
+ * Access callbacks to facilitate lazy syncronization, specifically when
+ * emulating GPUs in an UMA system (e.g. Xbox).
+ *
+ * Note: Access to this watched memory can be slow: each access results in a
+ * callback. This can be made faster, but for now just accept that CPU blitting
+ * to a surface will be slower.
+ */
+
+int mem_access_callback_insert(CPUState *cpu, MemoryRegion *mr,
+                               hwaddr offset, hwaddr len,
+                               MemAccessCallback **cb,
+                               MemAccessCallbackFunc func, void *opaque);
+void mem_access_callback_remove_by_ref(CPUState *cpu, MemAccessCallback *cb);
+int mem_access_callback_address_matches(CPUState *cpu, hwaddr addr, hwaddr len);
+void mem_check_access_callback_ramaddr(CPUState *cpu,
+                                       hwaddr ram_addr, vaddr len, int flags);
+void mem_check_access_callback_vaddr(CPUState *cpu, vaddr addr, vaddr len,
+                                     int flags, void *iotlbentry);
+#endif
 #endif
 
 /**

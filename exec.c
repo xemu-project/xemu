@@ -1092,6 +1092,90 @@ void cpu_watchpoint_remove_all(CPUState *cpu, int mask)
     }
 }
 
+#ifdef XBOX
+
+static inline bool access_callback_address_matches(MemAccessCallback *cb,
+                                                   hwaddr addr, hwaddr len)
+{
+    hwaddr watch_end = cb->addr + cb->len - 1;
+    hwaddr access_end = addr + len - 1;
+
+    return !(addr > watch_end || cb->addr > access_end);
+}
+
+int mem_access_callback_address_matches(CPUState *cpu, hwaddr addr, hwaddr len)
+{
+    int ret = 0;
+
+    MemAccessCallback *cb;
+    QTAILQ_FOREACH(cb, &cpu->mem_access_callbacks, entry) {
+        if (access_callback_address_matches(cb, addr, len)) {
+            ret |= BP_MEM_READ | BP_MEM_WRITE;
+        }
+    }
+
+    return ret;
+}
+
+int mem_access_callback_insert(CPUState *cpu, MemoryRegion *mr, hwaddr offset,
+                               hwaddr len, MemAccessCallback **cb,
+                               MemAccessCallbackFunc func, void *opaque)
+{
+    assert(len > 0);
+
+    MemAccessCallback *cb_ = g_malloc(sizeof(*cb_));
+    cb_->mr = mr;
+    cb_->addr = memory_region_get_ram_addr(mr) + offset;
+    cb_->len = len;
+    cb_->func = func;
+    cb_->opaque = opaque;
+    QTAILQ_INSERT_TAIL(&cpu->mem_access_callbacks, cb_, entry);
+    if (cb) {
+        *cb = cb_;
+    }
+
+    // FIXME: flush only applicable pages
+    tlb_flush(cpu);
+
+    return 0;
+}
+
+void mem_access_callback_remove_by_ref(CPUState *cpu, MemAccessCallback *cb)
+{
+    QTAILQ_REMOVE(&cpu->mem_access_callbacks, cb, entry);
+    g_free(cb);
+
+    // FIXME: flush only applicable pages
+    tlb_flush(cpu);
+}
+
+void mem_check_access_callback_vaddr(CPUState *cpu,
+                                     vaddr addr, vaddr len, int flags,
+                                     void *iotlbentry)
+{
+    ram_addr_t ram_addr = (((CPUIOTLBEntry *)iotlbentry)->addr
+                           & TARGET_PAGE_MASK) + addr;
+    mem_check_access_callback_ramaddr(cpu, ram_addr, len, flags);
+}
+
+void mem_check_access_callback_ramaddr(CPUState *cpu,
+                                       hwaddr ram_addr, vaddr len, int flags)
+{
+    MemAccessCallback *cb;
+    QTAILQ_FOREACH(cb, &cpu->mem_access_callbacks, entry) {
+        if (access_callback_address_matches(cb, ram_addr, len)) {
+            ram_addr_t ram_addr_base = memory_region_get_ram_addr(cb->mr);
+            assert(ram_addr_base != RAM_ADDR_INVALID);
+            ram_addr_t hit_addr = MAX(ram_addr, cb->addr);
+            hwaddr mr_offset = hit_addr - ram_addr_base;
+            bool is_write = (flags & BP_MEM_WRITE) != 0;
+            cb->func(cb->opaque, cb->mr, mr_offset, len, is_write);
+        }
+    }
+}
+
+#endif // ifdef XBOX
+
 /* Return true if this watchpoint address matches the specified
  * access (ie the address range covered by the watchpoint overlaps
  * partially or completely with the address range covered by the
@@ -3166,6 +3250,12 @@ static MemTxResult flatview_write_continue(FlatView *fv, hwaddr addr,
     bool release_lock = false;
     const uint8_t *buf = ptr;
 
+#ifdef XBOX
+    CPUState *cpu = qemu_get_cpu(0);
+    ram_addr_t ram_addr = addr1 + memory_region_get_ram_addr(mr);
+    mem_check_access_callback_ramaddr(cpu, ram_addr, len, BP_MEM_WRITE);
+#endif
+
     for (;;) {
         if (!memory_access_is_direct(mr, true)) {
             release_lock |= prepare_mmio_access(mr);
@@ -3230,6 +3320,12 @@ MemTxResult flatview_read_continue(FlatView *fv, hwaddr addr,
     MemTxResult result = MEMTX_OK;
     bool release_lock = false;
     uint8_t *buf = ptr;
+
+#ifdef XBOX
+    CPUState *cpu = qemu_get_cpu(0);
+    ram_addr_t ram_addr = addr1 + memory_region_get_ram_addr(mr);
+    mem_check_access_callback_ramaddr(cpu, ram_addr, len, BP_MEM_READ);
+#endif
 
     for (;;) {
         if (!memory_access_is_direct(mr, false)) {

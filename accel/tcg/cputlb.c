@@ -909,6 +909,11 @@ void tlb_set_page_with_attrs(CPUState *cpu, target_ulong vaddr,
 
     wp_flags = cpu_watchpoint_address_matches(cpu, vaddr_page,
                                               TARGET_PAGE_SIZE);
+#ifdef XBOX
+    wp_flags |= mem_access_callback_address_matches(cpu,
+                                                    iotlb & TARGET_PAGE_MASK,
+                                                    TARGET_PAGE_SIZE);
+#endif
 
     index = tlb_index(env, mmu_idx, vaddr_page);
     te = tlb_entry(env, mmu_idx, vaddr_page);
@@ -1370,6 +1375,10 @@ void *probe_access(CPUArchState *env, target_ulong addr, int size,
         if (flags & TLB_WATCHPOINT) {
             int wp_access = (access_type == MMU_DATA_STORE
                              ? BP_MEM_WRITE : BP_MEM_READ);
+#ifdef XBOX
+            mem_check_access_callback_vaddr(env_cpu(env), addr, size, wp_access,
+                                            iotlbentry);
+#endif
             cpu_check_watchpoint(env_cpu(env), addr, size,
                                  iotlbentry->attrs, wp_access, retaddr);
         }
@@ -1603,6 +1612,11 @@ load_helper(CPUArchState *env, target_ulong addr, TCGMemOpIdx oi,
 
         /* Handle watchpoints.  */
         if (unlikely(tlb_addr & TLB_WATCHPOINT)) {
+#ifdef XBOX
+            mem_check_access_callback_vaddr(env_cpu(env), addr, size,
+                                            BP_MEM_READ, iotlbentry);
+#endif
+
             /* On watchpoint hit, this will longjmp out.  */
             cpu_check_watchpoint(env_cpu(env), addr, size,
                                  iotlbentry->attrs, BP_MEM_READ, retaddr);
@@ -2054,6 +2068,11 @@ store_helper(CPUArchState *env, target_ulong addr, uint64_t val,
 
         /* Handle watchpoints.  */
         if (unlikely(tlb_addr & TLB_WATCHPOINT)) {
+#ifdef XBOX
+            mem_check_access_callback_vaddr(env_cpu(env), addr, size,
+                                            BP_MEM_WRITE, iotlbentry);
+#endif
+
             /* On watchpoint hit, this will longjmp out.  */
             cpu_check_watchpoint(env_cpu(env), addr, size,
                                  iotlbentry->attrs, BP_MEM_WRITE, retaddr);
@@ -2109,19 +2128,26 @@ store_helper(CPUArchState *env, target_ulong addr, uint64_t val,
          * is already guaranteed to be filled, and that the second page
          * cannot evict the first.
          */
-        page2 = (addr + size) & TARGET_PAGE_MASK;
-        size2 = (addr + size) & ~TARGET_PAGE_MASK;
-        index2 = tlb_index(env, mmu_idx, page2);
-        entry2 = tlb_entry(env, mmu_idx, page2);
-        tlb_addr2 = tlb_addr_write(entry2);
-        if (!tlb_hit_page(tlb_addr2, page2)) {
-            if (!victim_tlb_hit(env, mmu_idx, index2, tlb_off, page2)) {
-                tlb_fill(env_cpu(env), page2, size2, MMU_DATA_STORE,
-                         mmu_idx, retaddr);
-                index2 = tlb_index(env, mmu_idx, page2);
-                entry2 = tlb_entry(env, mmu_idx, page2);
-            }
+
+        // FIXME: Upstream patch for this
+        if ((addr & ~TARGET_PAGE_MASK) + size - 1 >= TARGET_PAGE_SIZE) {
+            page2 = (addr + size) & TARGET_PAGE_MASK;
+            size2 = (addr + size) & ~TARGET_PAGE_MASK;
+            index2 = tlb_index(env, mmu_idx, page2);
+            entry2 = tlb_entry(env, mmu_idx, page2);
             tlb_addr2 = tlb_addr_write(entry2);
+            if (!tlb_hit_page(tlb_addr2, page2)) {
+                if (!victim_tlb_hit(env, mmu_idx, index2, tlb_off, page2)) {
+                    tlb_fill(env_cpu(env), page2, size2, MMU_DATA_STORE,
+                             mmu_idx, retaddr);
+                    index2 = tlb_index(env, mmu_idx, page2);
+                    entry2 = tlb_entry(env, mmu_idx, page2);
+                }
+                tlb_addr2 = tlb_addr_write(entry2);
+            }
+        } else {
+            /* The access happens on a single page */
+            size2 = 0;
         }
 
         /*
@@ -2129,11 +2155,19 @@ store_helper(CPUArchState *env, target_ulong addr, uint64_t val,
          * must happen before any store.
          */
         if (unlikely(tlb_addr & TLB_WATCHPOINT)) {
+#ifdef XBOX
+            mem_check_access_callback_vaddr(env_cpu(env), addr, size - size2,
+                BP_MEM_WRITE, &env_tlb(env)->d[mmu_idx].iotlb[index]);
+#endif
             cpu_check_watchpoint(env_cpu(env), addr, size - size2,
                                  env_tlb(env)->d[mmu_idx].iotlb[index].attrs,
                                  BP_MEM_WRITE, retaddr);
         }
-        if (unlikely(tlb_addr2 & TLB_WATCHPOINT)) {
+        if (size2 > 0 && unlikely(tlb_addr2 & TLB_WATCHPOINT)) {
+#ifdef XBOX
+            mem_check_access_callback_vaddr(env_cpu(env), page2, size2,
+                BP_MEM_WRITE, &env_tlb(env)->d[mmu_idx].iotlb[index2]);
+#endif
             cpu_check_watchpoint(env_cpu(env), page2, size2,
                                  env_tlb(env)->d[mmu_idx].iotlb[index2].attrs,
                                  BP_MEM_WRITE, retaddr);
