@@ -26,6 +26,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/thread.h"
+#include "qemu/queue.h"
 #include "qemu/main-loop.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
@@ -129,6 +130,37 @@ typedef struct SurfaceShape {
     unsigned int anti_aliasing;
 } SurfaceShape;
 
+typedef struct SurfaceBinding {
+    QTAILQ_ENTRY(SurfaceBinding) entry;
+    MemAccessCallback *access_cb;
+
+    hwaddr vram_addr;
+
+    SurfaceShape shape;
+    uintptr_t dma_addr;
+    uintptr_t dma_len;
+    bool color;
+    bool swizzle;
+
+    unsigned int width;
+    unsigned int height;
+    unsigned int pitch;
+    unsigned int bytes_per_pixel;
+    size_t size;
+
+    GLenum gl_attachment;
+    GLenum gl_internal_format;
+    GLenum gl_format;
+    GLenum gl_type;
+    GLuint gl_buffer;
+
+    int frame_time;
+    int draw_time;
+    bool draw_dirty;
+    bool download_pending;
+    bool upload_pending;
+} SurfaceBinding;
+
 typedef struct TextureShape {
     bool cubemap;
     unsigned int dimensionality;
@@ -144,14 +176,20 @@ typedef struct TextureBinding {
     GLenum gl_target;
     GLuint gl_texture;
     unsigned int refcnt;
+    int draw_time;
+    uint64_t data_hash;
 } TextureBinding;
 
 typedef struct TextureKey {
     struct lru_node node;
     TextureShape state;
-    uint8_t *texture_data;
-    uint8_t *palette_data;
     TextureBinding *binding;
+
+    hwaddr texture_vram_offset;
+    hwaddr texture_length;
+    hwaddr palette_vram_offset;
+    hwaddr palette_length;
+    bool possibly_dirty;
 } TextureKey;
 
 typedef struct KelvinState {
@@ -182,6 +220,19 @@ typedef struct PGRAPHState {
     uint32_t pending_interrupts;
     uint32_t enabled_interrupts;
 
+    int frame_time;
+    int draw_time;
+
+    struct s2t_rndr {
+        GLuint fbo, vao, vbo, prog;
+        GLuint tex_loc, surface_size_loc;
+    } s2t_rndr;
+
+    struct disp_rndr {
+        GLuint fbo, vao, vbo, prog;
+        GLuint tex_loc;
+    } disp_rndr;
+
     /* subchannels state we're not sure the location of... */
     ContextSurfaces2DState context_surfaces_2d;
     ImageBlitState image_blit;
@@ -192,6 +243,17 @@ typedef struct PGRAPHState {
     unsigned int surface_type;
     SurfaceShape surface_shape;
     SurfaceShape last_surface_shape;
+    QTAILQ_HEAD(, SurfaceBinding) surfaces;
+    SurfaceBinding *color_binding, *zeta_binding;
+    struct {
+        int clip_x;
+        int clip_width;
+        int clip_y;
+        int clip_height;
+        int width;
+        int height;
+    } surface_binding_dim; // FIXME: Refactor
+    bool downloads_pending;
 
     hwaddr dma_a, dma_b;
     struct lru texture_cache;
@@ -207,9 +269,8 @@ typedef struct PGRAPHState {
     /* FIXME: Move to NV_PGRAPH_BUMPMAT... */
     float bump_env_matrix[NV2A_MAX_TEXTURES - 1][4]; /* 3 allowed stages with 2x2 matrix each */
 
-    GloContext *gl_context;
     GLuint gl_framebuffer;
-    GLuint gl_color_buffer, gl_zeta_buffer;
+    GLuint gl_display_buffer;
 
     hwaddr dma_state;
     hwaddr dma_notifies;
@@ -275,6 +336,7 @@ typedef struct PGRAPHState {
     bool waiting_for_fifo_access;
     bool waiting_for_context_switch;
     bool flush_pending;
+    bool gl_sync_pending;
 } PGRAPHState;
 
 typedef struct NV2AState {
@@ -362,6 +424,9 @@ typedef struct NV2ABlockInfo {
     MemoryRegionOps ops;
 } NV2ABlockInfo;
 
+extern GloContext *g_nv2a_context_render;
+extern GloContext *g_nv2a_context_display;
+
 void nv2a_update_irq(NV2AState *d);
 
 #ifdef NV2A_DEBUG
@@ -406,6 +471,8 @@ void pgraph_destroy(PGRAPHState *pg);
 void pgraph_context_switch(NV2AState *d, unsigned int channel_id);
 void pgraph_method(NV2AState *d, unsigned int subchannel,
                    unsigned int method, uint32_t parameter);
+void pgraph_gl_sync(NV2AState *d);
+void pgraph_process_pending_downloads(NV2AState *d);
 
 void *pfifo_thread(void *arg);
 void pfifo_kick(NV2AState *d);

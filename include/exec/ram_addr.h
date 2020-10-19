@@ -237,11 +237,12 @@ static inline bool cpu_physical_memory_get_dirty_flag(ram_addr_t addr,
 static inline bool cpu_physical_memory_is_clean(ram_addr_t addr)
 {
     bool nv2a = cpu_physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_NV2A);
+    bool nv2a_tex = cpu_physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_NV2A_TEX);
     bool vga = cpu_physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_VGA);
     bool code = cpu_physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_CODE);
     bool migration =
         cpu_physical_memory_get_dirty_flag(addr, DIRTY_MEMORY_MIGRATION);
-    return !(nv2a && vga && code && migration);
+    return !(nv2a && nv2a_tex && vga && code && migration);
 }
 
 static inline uint8_t cpu_physical_memory_range_includes_clean(ram_addr_t start,
@@ -253,6 +254,10 @@ static inline uint8_t cpu_physical_memory_range_includes_clean(ram_addr_t start,
     if (mask & (1 << DIRTY_MEMORY_NV2A) &&
         !cpu_physical_memory_all_dirty(start, length, DIRTY_MEMORY_NV2A)) {
         ret |= (1 << DIRTY_MEMORY_NV2A);
+    }
+    if (mask & (1 << DIRTY_MEMORY_NV2A_TEX) &&
+        !cpu_physical_memory_all_dirty(start, length, DIRTY_MEMORY_NV2A_TEX)) {
+        ret |= (1 << DIRTY_MEMORY_NV2A_TEX);
     }
     if (mask & (1 << DIRTY_MEMORY_VGA) &&
         !cpu_physical_memory_all_dirty(start, length, DIRTY_MEMORY_VGA)) {
@@ -331,6 +336,10 @@ static inline void cpu_physical_memory_set_dirty_range(ram_addr_t start,
                 bitmap_set_atomic(blocks[DIRTY_MEMORY_NV2A]->blocks[idx],
                                   offset, next - page);
             }
+            if (unlikely(mask & (1 << DIRTY_MEMORY_NV2A_TEX))) {
+                bitmap_set_atomic(blocks[DIRTY_MEMORY_NV2A_TEX]->blocks[idx],
+                                  offset, next - page);
+            }
 
             page = next;
             idx++;
@@ -379,6 +388,7 @@ static inline void cpu_physical_memory_set_dirty_lebitmap(unsigned long *bitmap,
 
                     atomic_or(&blocks[DIRTY_MEMORY_VGA][idx][offset], temp);
                     atomic_or(&blocks[DIRTY_MEMORY_NV2A][idx][offset], temp);
+                    atomic_or(&blocks[DIRTY_MEMORY_NV2A_TEX][idx][offset], temp);
 
                     if (global_dirty_log) {
                         atomic_or(&blocks[DIRTY_MEMORY_MIGRATION][idx][offset],
@@ -445,6 +455,7 @@ static inline void cpu_physical_memory_clear_dirty_range(ram_addr_t start,
     cpu_physical_memory_test_and_clear_dirty(start, length, DIRTY_MEMORY_MIGRATION);
     cpu_physical_memory_test_and_clear_dirty(start, length, DIRTY_MEMORY_VGA);
     cpu_physical_memory_test_and_clear_dirty(start, length, DIRTY_MEMORY_NV2A);
+    cpu_physical_memory_test_and_clear_dirty(start, length, DIRTY_MEMORY_NV2A_TEX);
     cpu_physical_memory_test_and_clear_dirty(start, length, DIRTY_MEMORY_CODE);
 }
 
