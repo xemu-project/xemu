@@ -504,11 +504,23 @@ static void pfifo_run_pusher(NV2AState *d)
 void *pfifo_thread(void *arg)
 {
     NV2AState *d = (NV2AState *)arg;
-    glo_set_current(d->pgraph.gl_context);
+    glo_set_current(g_nv2a_context_render);
+
+    rcu_register_thread();
 
     qemu_mutex_lock(&d->pfifo.lock);
     while (true) {
         d->pfifo.fifo_kick = false;
+
+        if (atomic_read(&d->pgraph.downloads_pending)) {
+            pgraph_process_pending_downloads(d);
+            atomic_set(&d->pgraph.downloads_pending, false);
+        }
+
+        if (atomic_read(&d->pgraph.gl_sync_pending)) {
+            pgraph_gl_sync(d);
+            atomic_set(&d->pgraph.gl_sync_pending, false);
+        }
 
         pfifo_run_pusher(d);
         pfifo_run_puller(d);
@@ -525,6 +537,8 @@ void *pfifo_thread(void *arg)
         }
     }
     qemu_mutex_unlock(&d->pfifo.lock);
+
+    rcu_unregister_thread();
 
     return NULL;
 }

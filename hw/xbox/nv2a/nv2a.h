@@ -2,6 +2,7 @@
  * QEMU Geforce NV2A implementation
  *
  * Copyright (c) 2012 espes
+ * Copyright (c) 2020 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -21,5 +22,7 @@
 #define HW_NV2A_H
 
 void nv2a_init(PCIBus *bus, int devfn, MemoryRegion *ram);
+void nv2a_gl_context_init(void);
+int nv2a_get_framebuffer_surface(void);
 
 #endif

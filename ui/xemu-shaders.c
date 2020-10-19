@@ -301,8 +301,14 @@ struct fbo *create_fbo(int width, int height)
     return fbo;
 }
 
+static GLboolean m_blend;
+
 void render_to_default_fb(void)
 {
+    if (!m_blend) {
+        glDisable(GL_BLEND);
+    }
+
     // Restore default framebuffer, viewport, blending funciton
     glBindFramebuffer(GL_FRAMEBUFFER, main_fb);
     glViewport(vp[0], vp[1], vp[2], vp[3]);
@@ -311,10 +317,13 @@ void render_to_default_fb(void)
 
 GLuint render_to_fbo(struct fbo *fbo)
 {
-    glEnable(GL_BLEND);
+    m_blend = glIsEnabled(GL_BLEND);
+    if (!m_blend) {
+        glEnable(GL_BLEND);
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, fbo->fbo);
     glViewport(0, 0, fbo->w, fbo->h);
-    glClearColor(0, 0, 0, 0.0);
+    glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
     return fbo->tex;
 }

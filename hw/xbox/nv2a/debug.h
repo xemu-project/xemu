@@ -21,6 +21,12 @@
 #ifndef HW_NV2A_DEBUG_H
 #define HW_NV2A_DEBUG_H
 
+#define NV2A_XPRINTF(x, ...) do { \
+    if (x) { \
+        fprintf(stderr, "nv2a: " __VA_ARGS__); \
+    } \
+} while (0)
+
 // #define DEBUG_NV2A
 #ifdef DEBUG_NV2A
 # define NV2A_DPRINTF(format, ...)       printf("nv2a: " format, ## __VA_ARGS__)

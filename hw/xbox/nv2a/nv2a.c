@@ -346,6 +346,7 @@ static void nv2a_init_memory(NV2AState *d, MemoryRegion *ram)
     d->ramin_ptr = memory_region_get_ram_ptr(&d->ramin);
 
     memory_region_set_log(d->vram, true, DIRTY_MEMORY_NV2A);
+    memory_region_set_log(d->vram, true, DIRTY_MEMORY_NV2A_TEX);
     memory_region_set_dirty(d->vram, 0, memory_region_size(d->vram));
 
     /* hacky. swap out vga's vram */
@@ -401,7 +402,7 @@ static void nv2a_reset(NV2AState *d)
     d->pgraph.waiting_for_flip = false;
     d->pgraph.waiting_for_fifo_access = false;
     d->pgraph.waiting_for_context_switch = false;
-    d->pgraph.flush_pending = false;
+    d->pgraph.flush_pending = true;
 
     d->pmc.pending_interrupts = 0;
     d->pfifo.pending_interrupts = 0;
@@ -479,6 +480,7 @@ static void nv2a_vm_state_change(void *opaque, int running, RunState state)
 {
     NV2AState *d = opaque;
     if (state == RUN_STATE_SAVE_VM) {
+        // FIXME: writeback all surfaces to RAM before snapshot
         nv2a_lock_fifo(d);
     } else if (state == RUN_STATE_RESTORE_VM) {
         nv2a_reset(d); // Early reset to avoid changing any state during load
