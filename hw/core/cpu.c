@@ -372,6 +372,7 @@ static void cpu_common_initfn(Object *obj)
     QSIMPLEQ_INIT(&cpu->work_list);
     QTAILQ_INIT(&cpu->breakpoints);
     QTAILQ_INIT(&cpu->watchpoints);
+    QTAILQ_INIT(&cpu->mem_access_callbacks);
 
     cpu_exec_initfn(cpu);
 }
