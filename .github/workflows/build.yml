@@ -143,7 +143,8 @@ jobs:
         git fetch --prune --unshallow --tags -f
     - name: Install Dependencies
       run: |
-        brew update
+        brew doctor || true
+        brew update-reset
         brew install \
           ccache \
           coreutils \
