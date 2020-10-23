@@ -313,7 +313,7 @@ static void pgraph_set_surface_dirty(PGRAPHState *pg, bool color, bool zeta);
 static void pgraph_wait_for_surface_download(SurfaceBinding *e);
 static void pgraph_surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr, hwaddr len, bool write);
 static SurfaceBinding *pgraph_surface_put(NV2AState *d, hwaddr addr, SurfaceBinding *e);
-static SurfaceBinding *pgraph_surface_get(NV2AState *d, hwaddr addr);
+SurfaceBinding *pgraph_surface_get(NV2AState *d, hwaddr addr);
 static void pgraph_unbind_surface(NV2AState *d, bool color);
 static void pgraph_surface_invalidate(NV2AState *d, SurfaceBinding *e);
 static void pgraph_surface_evict_old(NV2AState *d);
@@ -3856,7 +3856,7 @@ static SurfaceBinding *pgraph_surface_put(NV2AState *d,
     return surface_out;
 }
 
-static SurfaceBinding *pgraph_surface_get(NV2AState *d, hwaddr addr)
+SurfaceBinding *pgraph_surface_get(NV2AState *d, hwaddr addr)
 {
     SurfaceBinding *surface;
     QTAILQ_FOREACH(surface, &d->pgraph.surfaces, entry) {

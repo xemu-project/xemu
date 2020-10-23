@@ -603,7 +603,7 @@
 #   define NV_PCRTC_INTR_EN_0_VBLANK                            (1 << 0)
 #define NV_PCRTC_START                                   0x00000800
 #define NV_PCRTC_CONFIG                                  0x00000804
-
+#define NV_PCRTC_RASTER                                  0x00000808
 
 #define NV_PVIDEO_INTR                                   0x00000100
 #   define NV_PVIDEO_INTR_BUFFER_0                              (1 << 0)

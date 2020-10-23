@@ -21,6 +21,8 @@
 
 #include "nv2a_int.h"
 
+extern SurfaceBinding *pgraph_surface_get(NV2AState *d, hwaddr addr);
+
 uint64_t pcrtc_read(void *opaque, hwaddr addr, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
@@ -36,6 +38,24 @@ uint64_t pcrtc_read(void *opaque, hwaddr addr, unsigned int size)
         case NV_PCRTC_START:
             r = d->pcrtc.start;
             break;
+        case NV_PCRTC_RASTER: {
+            static int stage = 0;
+            SurfaceBinding *surface = pgraph_surface_get(d, d->pcrtc.start);
+            if (surface != NULL) {
+                // HACK: Alternates between 0, mid-frame, and end-of-frame, enough to keep Alter Echo happy
+                // FIXME: This should return the scanline currently being scanned out to the display, including blanking lines
+                switch (stage++) {
+                    case 0: r = 0; break; // Start of frame
+                    case 1: r = surface->height / 2; break; // Mid-frame
+                    case 2: r = surface->height + 1; break; // In VBlank period
+                }
+
+                if (stage > 2) {
+                    stage = 0;
+                }
+            }
+            break;
+        }
         default:
             break;
     }
