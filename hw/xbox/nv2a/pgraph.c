@@ -314,6 +314,7 @@ static void pgraph_wait_for_surface_download(SurfaceBinding *e);
 static void pgraph_surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr, hwaddr len, bool write);
 static SurfaceBinding *pgraph_surface_put(NV2AState *d, hwaddr addr, SurfaceBinding *e);
 static SurfaceBinding *pgraph_surface_get(NV2AState *d, hwaddr addr);
+static void pgraph_unbind_surface(NV2AState *d, bool color);
 static void pgraph_surface_invalidate(NV2AState *d, SurfaceBinding *e);
 static void pgraph_surface_evict_old(NV2AState *d);
 static void pgraph_download_surface_data_if_dirty(NV2AState *d, SurfaceBinding *surface);
@@ -536,6 +537,8 @@ static void pgraph_flush(NV2AState *d)
     pg->surface_color.draw_dirty = false;
     pg->surface_zeta.draw_dirty = false;
     memset(&pg->last_surface_shape, 0, sizeof(pg->last_surface_shape));
+    pgraph_unbind_surface(d, true);
+    pgraph_unbind_surface(d, false);
 
     SurfaceBinding *s, *next;
     QTAILQ_FOREACH_SAFE(s, &d->pgraph.surfaces, entry, next) {
@@ -4377,6 +4380,26 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
     }
 }
 
+static void pgraph_unbind_surface(NV2AState *d, bool color)
+{
+    PGRAPHState *pg = &d->pgraph;
+
+    if (color) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER,
+                               GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_2D, 0, 0);
+        pg->color_binding = NULL;
+    } else {
+        glFramebufferTexture2D(GL_FRAMEBUFFER,
+                               GL_DEPTH_ATTACHMENT,
+                               GL_TEXTURE_2D, 0, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER,
+                               GL_DEPTH_STENCIL_ATTACHMENT,
+                               GL_TEXTURE_2D, 0, 0);
+        pg->zeta_binding = NULL;
+    }
+}
+
 static void pgraph_update_surface(NV2AState *d, bool upload,
                                   bool color_write, bool zeta_write)
 {
@@ -4398,23 +4421,11 @@ static void pgraph_update_surface(NV2AState *d, bool upload,
         pg->surface_zeta.buffer_dirty |= fb_dirty;
 
         if (pg->surface_color.buffer_dirty) {
-            glFramebufferTexture2D(GL_FRAMEBUFFER,
-                                   GL_COLOR_ATTACHMENT0,
-                                   GL_TEXTURE_2D,
-                                   0, 0);
-            pg->color_binding = NULL;
+            pgraph_unbind_surface(d, true);
         }
 
         if (pg->surface_zeta.buffer_dirty) {
-            glFramebufferTexture2D(GL_FRAMEBUFFER,
-                                   GL_DEPTH_ATTACHMENT,
-                                   GL_TEXTURE_2D,
-                                   0, 0);
-            glFramebufferTexture2D(GL_FRAMEBUFFER,
-                                   GL_DEPTH_STENCIL_ATTACHMENT,
-                                   GL_TEXTURE_2D,
-                                   0, 0);
-            pg->zeta_binding = NULL;
+            pgraph_unbind_surface(d, false);
         }
 
         if (fb_dirty) {
