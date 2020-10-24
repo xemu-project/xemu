@@ -6,4 +6,4 @@ Exec=xemu
 Name=xemu
 Comment=Emulator for the original Xbox console
 Icon=xemu
-Categories=Emulator;
+Categories=Game;Emulator;
