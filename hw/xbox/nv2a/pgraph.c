@@ -3873,6 +3873,9 @@ static void pgraph_surface_invalidate(NV2AState *d, SurfaceBinding *surface)
     NV2A_XPRINTF(DBG_SURFACES, "Removing Surface at %" HWADDR_PRIx "\n",
         surface->vram_addr);
 
+    assert(surface != d->pgraph.color_binding);
+    assert(surface != d->pgraph.zeta_binding);
+
     if (tcg_enabled()) {
         qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock_iothread();
@@ -4218,23 +4221,6 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
 
         assert(surface->pitch % bytes_per_pixel == 0);
 
-        if (!color) {
-            /* need to clear the depth_stencil and depth attachment for zeta */
-            glFramebufferTexture2D(GL_FRAMEBUFFER,
-                                   GL_DEPTH_ATTACHMENT,
-                                   GL_TEXTURE_2D,
-                                   0, 0);
-            glFramebufferTexture2D(GL_FRAMEBUFFER,
-                                   GL_DEPTH_STENCIL_ATTACHMENT,
-                                   GL_TEXTURE_2D,
-                                   0, 0);
-        }
-
-        glFramebufferTexture2D(GL_FRAMEBUFFER,
-                               gl_attachment,
-                               GL_TEXTURE_2D,
-                               0, 0);
-
         assert((dma.address & ~0x07FFFFFF) == 0);
 
         // FIXME: Refactor this entry structure creation out of here
@@ -4262,7 +4248,21 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
             .draw_time = pg->draw_time,
         };
 
+        pgraph_unbind_surface(d, color);
+
         SurfaceBinding *found = pgraph_surface_get(d, entry.vram_addr);
+
+        if (found != NULL) {
+            // FIXME: Support same color/zeta surface target. In the mean time,
+            // if the surface we just found is currently bound, just unbind it.
+            SurfaceBinding *other = (color ? pg->zeta_binding
+                                           : pg->color_binding);
+            if (found == other) {
+                NV2A_UNIMPLEMENTED("Same color & zeta surface offset");
+                pgraph_unbind_surface(d, !color);
+            }
+        }
+
         bool should_create = true;
 
         // FIXME: Refactor
