@@ -1553,7 +1553,7 @@ void xemu_hud_render(void)
         }
     }
 
-    // If the guide button is pressed, wake the up
+    // If the guide button is pressed, wake the ui
     bool menu_button = false;
     if (buttons & CONTROLLER_BUTTON_GUIDE) {
         ui_wakeup = true;
@@ -1609,7 +1609,6 @@ void xemu_hud_render(void)
     const int thumb_dead_zone = 8000;           // SDL_gamecontroller.h suggests using this value.
     MAP_BUTTON(ImGuiNavInput_Activate,      CONTROLLER_BUTTON_A);               // Cross / A
     MAP_BUTTON(ImGuiNavInput_Cancel,        CONTROLLER_BUTTON_B);               // Circle / B
-    MAP_BUTTON(ImGuiNavInput_Menu,          CONTROLLER_BUTTON_X);               // Square / X
     MAP_BUTTON(ImGuiNavInput_Input,         CONTROLLER_BUTTON_Y);               // Triangle / Y
     MAP_BUTTON(ImGuiNavInput_DpadLeft,      CONTROLLER_BUTTON_DPAD_LEFT);       // D-Pad Left
     MAP_BUTTON(ImGuiNavInput_DpadRight,     CONTROLLER_BUTTON_DPAD_RIGHT);      // D-Pad Right
@@ -1620,7 +1619,7 @@ void xemu_hud_render(void)
     MAP_BUTTON(ImGuiNavInput_TweakSlow,     CONTROLLER_BUTTON_WHITE);           // L1 / LB
     MAP_BUTTON(ImGuiNavInput_TweakFast,     CONTROLLER_BUTTON_BLACK);           // R1 / RB
 
-    // Allow Guide and "Back+Start" buttons to also act as Menu buttons
+    // Allow Guide and "Back+Start" buttons to act as Menu button
     if (menu_button) {
         io.NavInputs[ImGuiNavInput_Menu] = 1.0;
     }
