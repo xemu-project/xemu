@@ -398,6 +398,7 @@ typedef struct NV2AState {
         uint32_t pending_interrupts;
         uint32_t enabled_interrupts;
         hwaddr start;
+        uint32_t raster;
     } pcrtc;
 
     struct {

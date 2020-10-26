@@ -36,6 +36,9 @@ uint64_t pcrtc_read(void *opaque, hwaddr addr, unsigned int size)
         case NV_PCRTC_START:
             r = d->pcrtc.start;
             break;
+        case NV_PCRTC_RASTER:
+            r = d->pcrtc.raster++;
+            break;
         default:
             break;
     }
