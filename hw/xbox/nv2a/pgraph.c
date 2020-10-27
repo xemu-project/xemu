@@ -5346,34 +5346,53 @@ static void upload_gl_texture(GLenum gl_target,
 
         unsigned int width = s.width, height = s.height, depth = s.depth;
 
-        assert(f.gl_format != 0); /* FIXME: compressed not supported yet */
         assert(f.linear == false);
 
         int level;
         for (level = 0; level < s.levels; level++) {
+            if (f.gl_format == 0) { /* compressed */
 
-            unsigned int row_pitch = width * f.bytes_per_pixel;
-            unsigned int slice_pitch = row_pitch * height;
-            uint8_t *unswizzled = (uint8_t*)g_malloc(slice_pitch * depth);
-            unswizzle_box(texture_data, width, height, depth, unswizzled,
-                           row_pitch, slice_pitch, f.bytes_per_pixel);
+                width = MAX(width, 4); height = MAX(height, 4);
 
-            uint8_t *converted = convert_texture_data(s, unswizzled,
-                                                      palette_data,
-                                                      width, height, depth,
-                                                      row_pitch, slice_pitch);
+                unsigned int block_size;
+                unsigned int depth_block_size = MIN(depth, 4);
+                if (f.gl_internal_format == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT) {
+                    block_size = 8 * depth_block_size;
+                } else {
+                    block_size = 16 * depth_block_size;
+                }
 
-            glTexImage3D(gl_target, level, f.gl_internal_format,
-                         width, height, depth, 0,
-                         f.gl_format, f.gl_type,
-                         converted ? converted : unswizzled);
+                glCompressedTexImage3D(gl_target, level, f.gl_internal_format,
+                                       width, height, depth, 0,
+                                       width/4 * height/4 * depth/depth_block_size * block_size,
+                                       texture_data);
 
-            if (converted) {
-                g_free(converted);
+                texture_data += width/4 * height/4 * depth/4 * block_size;
+            } else {
+
+                unsigned int row_pitch = width * f.bytes_per_pixel;
+                unsigned int slice_pitch = row_pitch * height;
+                uint8_t *unswizzled = (uint8_t*)g_malloc(slice_pitch * depth);
+                unswizzle_box(texture_data, width, height, depth, unswizzled,
+                               row_pitch, slice_pitch, f.bytes_per_pixel);
+
+                uint8_t *converted = convert_texture_data(s, unswizzled,
+                                                          palette_data,
+                                                          width, height, depth,
+                                                          row_pitch, slice_pitch);
+
+                glTexImage3D(gl_target, level, f.gl_internal_format,
+                             width, height, depth, 0,
+                             f.gl_format, f.gl_type,
+                             converted ? converted : unswizzled);
+
+                if (converted) {
+                    g_free(converted);
+                }
+                g_free(unswizzled);
+
+                texture_data += width * height * depth * f.bytes_per_pixel;
             }
-            g_free(unswizzled);
-
-            texture_data += width * height * depth * f.bytes_per_pixel;
 
             width /= 2;
             height /= 2;
