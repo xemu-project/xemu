@@ -5352,22 +5352,24 @@ static void upload_gl_texture(GLenum gl_target,
         for (level = 0; level < s.levels; level++) {
             if (f.gl_format == 0) { /* compressed */
 
-                width = MAX(width, 4); height = MAX(height, 4);
+                width = MAX(width, 4);
+                height = MAX(height, 4);
+                depth = MAX(depth, 1);
 
                 unsigned int block_size;
-                unsigned int depth_block_size = MIN(depth, 4);
                 if (f.gl_internal_format == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT) {
-                    block_size = 8 * depth_block_size;
+                    block_size = 8;
                 } else {
-                    block_size = 16 * depth_block_size;
+                    block_size = 16;
                 }
 
+                size_t texture_size = width/4 * height/4 * depth * block_size;
                 glCompressedTexImage3D(gl_target, level, f.gl_internal_format,
                                        width, height, depth, 0,
-                                       width/4 * height/4 * depth/depth_block_size * block_size,
+                                       texture_size,
                                        texture_data);
 
-                texture_data += width/4 * height/4 * depth/4 * block_size;
+                texture_data += texture_size;
             } else {
 
                 unsigned int row_pitch = width * f.bytes_per_pixel;
