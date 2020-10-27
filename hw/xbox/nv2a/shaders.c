@@ -843,7 +843,7 @@ static GLuint create_gl_shader(GLenum gl_shader_type,
         glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &log_length);
         log = g_malloc(log_length * sizeof(GLchar));
         glGetShaderInfoLog(shader, log_length, NULL, log);
-        fprintf(stderr, "nv2a: %s compilation failed: %s\n", name, log);
+        fprintf(stderr, "%s\n\n" "nv2a: %s compilation failed: %s\n", code, name, log);
         g_free(log);
 
         NV2A_GL_DGROUP_END();

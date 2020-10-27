@@ -2668,8 +2668,14 @@ void pgraph_method(NV2AState *d,
         pg->regs[NV_PGRAPH_SHADERPROG] = parameter;
         break;
 
+    case NV097_SET_DOT_RGBMAPPING:
+        SET_MASK(pg->regs[NV_PGRAPH_SHADERCTL], 0xFFF,
+                 GET_MASK(parameter, 0xFFF));
+        break;
+
     case NV097_SET_SHADER_OTHER_STAGE_INPUT:
-        pg->regs[NV_PGRAPH_SHADERCTL] = parameter;
+        SET_MASK(pg->regs[NV_PGRAPH_SHADERCTL], 0xFFFF000,
+                 GET_MASK(parameter, 0xFFFF000));
         break;
 
     case NV097_SET_TRANSFORM_EXECUTION_MODE:
