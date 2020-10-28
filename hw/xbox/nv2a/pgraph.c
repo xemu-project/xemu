@@ -5364,10 +5364,12 @@ static void upload_gl_texture(GLenum gl_target,
                 }
 
                 size_t texture_size = width/4 * height/4 * depth * block_size;
+                assert(glGetError() == GL_NO_ERROR);
                 glCompressedTexImage3D(gl_target, level, f.gl_internal_format,
                                        width, height, depth, 0,
                                        texture_size,
                                        texture_data);
+                assert(glGetError() == GL_NO_ERROR);
 
                 texture_data += texture_size;
             } else {
