@@ -59,43 +59,6 @@
 
 #define MAX_IDE_BUS 2
 
-// XBOX_TODO: Should be passed in through configuration
-/* bunnie's eeprom */
-const uint8_t default_eeprom[] = {
-    0xe3, 0x1c, 0x5c, 0x23, 0x6a, 0x58, 0x68, 0x37,
-    0xb7, 0x12, 0x26, 0x6c, 0x99, 0x11, 0x30, 0xd1,
-    0xe2, 0x3e, 0x4d, 0x56, 0xf7, 0x73, 0x2b, 0x73,
-    0x85, 0xfe, 0x7f, 0x0a, 0x08, 0xef, 0x15, 0x3c,
-    0x77, 0xee, 0x6d, 0x4e, 0x93, 0x2f, 0x28, 0xee,
-    0xf8, 0x61, 0xf7, 0x94, 0x17, 0x1f, 0xfc, 0x11,
-    0x0b, 0x84, 0x44, 0xed, 0x31, 0x30, 0x35, 0x35,
-    0x38, 0x31, 0x31, 0x31, 0x34, 0x30, 0x30, 0x33,
-    0x00, 0x50, 0xf2, 0x4f, 0x65, 0x52, 0x00, 0x00,
-    0x0a, 0x1e, 0x35, 0x33, 0x71, 0x85, 0x31, 0x4d,
-    0x59, 0x12, 0x38, 0x48, 0x1c, 0x91, 0x53, 0x60,
-    0x00, 0x01, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x75, 0x61, 0x57, 0xfb, 0x2c, 0x01, 0x00, 0x00,
-    0x45, 0x53, 0x54, 0x00, 0x45, 0x44, 0x54, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x0a, 0x05, 0x00, 0x02, 0x04, 0x01, 0x00, 0x02,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0xc4, 0xff, 0xff, 0xff,
-    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-};
-
 /* FIXME: Clean this up and propagate errors to UI */
 static void xbox_flash_init(MemoryRegion *rom_memory)
 {
@@ -233,66 +196,13 @@ static void xbox_memory_init(PCMachineState *pcms,
     pc_system_flash_cleanup_unused(pcms);
 }
 
-uint8_t *load_eeprom(void)
-{
-    char *filename;
-    int fd;
-    int rc;
-    int eeprom_file_size;
-    const int eeprom_size = 256;
-
-    uint8_t *eeprom_data = g_malloc(eeprom_size);
-
-    const char *eeprom_file = object_property_get_str(qdev_get_machine(),
-                                                      "eeprom", NULL);
-    if ((eeprom_file != NULL) && *eeprom_file) {
-        filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, eeprom_file);
-        assert(filename);
-
-        eeprom_file_size = get_image_size(filename);
-        if (eeprom_size != eeprom_file_size) {
-            fprintf(stderr,
-                    "qemu: EEPROM file size != %d bytes. (Is %d bytes)\n",
-                    eeprom_size, eeprom_file_size);
-            g_free(filename);
-            exit(1);
-            return NULL;
-        }
-
-        fd = open(filename, O_RDONLY | O_BINARY);
-        if (fd < 0) {
-            fprintf(stderr, "qemu: EEPROM file '%s' could not be opened.\n", filename);
-            g_free(filename);
-            exit(1);
-            return NULL;
-        }
-
-        rc = read(fd, eeprom_data, eeprom_size);
-        if (rc != eeprom_size) {
-            fprintf(stderr, "qemu: Could not read the full EEPROM file.\n");
-            close(fd);
-            g_free(filename);
-            exit(1);
-            return NULL;
-        }
-
-        close(fd);
-        g_free(filename);
-    } else {
-        memcpy(eeprom_data, default_eeprom, eeprom_size);
-    }
-    return eeprom_data;
-}
-
 /* PC hardware initialisation */
 static void xbox_init(MachineState *machine)
 {
-    uint8_t *eeprom_data = load_eeprom();
-    xbox_init_common(machine, eeprom_data, NULL, NULL);
+    xbox_init_common(machine, NULL, NULL);
 }
 
 void xbox_init_common(MachineState *machine,
-                      const uint8_t *eeprom,
                       PCIBus **pci_bus_out,
                       ISABus **isa_bus_out)
 {
@@ -394,10 +304,6 @@ void xbox_init_common(MachineState *machine,
     }
 
     /* smbus devices */
-    uint8_t *eeprom_buf = g_malloc0(256);
-    memcpy(eeprom_buf, eeprom, 256);
-    smbus_eeprom_init_one(smbus, 0x54, eeprom_buf);
-
     smbus_xbox_smc_init(smbus, 0x10);
     smbus_cx25871_init(smbus, 0x45);
     smbus_adm1032_init(smbus, 0x4c);
@@ -475,22 +381,6 @@ static void machine_set_bootrom(Object *obj, const char *value,
     ms->bootrom = g_strdup(value);
 }
 
-static char *machine_get_eeprom(Object *obj, Error **errp)
-{
-    XboxMachineState *ms = XBOX_MACHINE(obj);
-
-    return g_strdup(ms->eeprom);
-}
-
-static void machine_set_eeprom(Object *obj, const char *value,
-                                        Error **errp)
-{
-    XboxMachineState *ms = XBOX_MACHINE(obj);
-
-    g_free(ms->eeprom);
-    ms->eeprom = g_strdup(value);
-}
-
 static char *machine_get_avpack(Object *obj, Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
@@ -533,11 +423,6 @@ static inline void xbox_machine_initfn(Object *obj)
                             machine_set_bootrom);
     object_property_set_description(obj, "bootrom",
                                     "Xbox bootrom file");
-
-    object_property_add_str(obj, "eeprom", machine_get_eeprom,
-                            machine_set_eeprom);
-    object_property_set_description(obj, "eeprom",
-                                    "Xbox EEPROM file");
 
     object_property_add_str(obj, "avpack", machine_get_avpack,
                             machine_set_avpack);
