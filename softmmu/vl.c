@@ -2917,24 +2917,44 @@ void qemu_init(int argc, char **argv, char **envp)
         bootrom_path = "";
     }
 
-    const char *eeprom_path;
-    xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_EEPROM_PATH, &eeprom_path);
-    if (strlen(eeprom_path) > 0 && xemu_check_file(eeprom_path)) {
-        char *msg = g_strdup_printf("Failed to open EEPROM file '%s'. Please check machine settings.", eeprom_path);
-        xemu_queue_error_message(msg);
-        g_free(msg);
-        eeprom_path = "";
-    }
-
     int short_animation;
     xemu_settings_get_bool(XEMU_SETTINGS_SYSTEM_SHORTANIM, &short_animation);
 
-    fake_argv[fake_argc++] = g_strdup_printf("xbox%s%s%s%s",
+    fake_argv[fake_argc++] = g_strdup_printf("xbox%s%s%s",
         strlen(bootrom_path) > 0 ? g_strdup_printf(",bootrom=%s", bootrom_path) : "", // Leak
-        strlen(eeprom_path) > 0 ? g_strdup_printf(",eeprom=%s", eeprom_path) : "", // Leak
         short_animation ? ",short-animation" : "",
         ",kernel-irqchip=off"
         );
+
+    const char *eeprom_path;
+    xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_EEPROM_PATH, &eeprom_path);
+
+    // Sanity check EEPROM file
+    if (strlen(eeprom_path) > 0) {
+        int eeprom_size = get_image_size(eeprom_path);
+        if (eeprom_size < 0) {
+            char *msg = g_strdup_printf("Failed to open EEPROM file '%s'. "
+                "Please check machine settings.", eeprom_path);
+            xemu_queue_error_message(msg);
+            g_free(msg);
+            eeprom_path = "";
+        } else if (eeprom_size != 256) {
+            char *msg = g_strdup_printf(
+                "Invalid EEPROM file '%s' size of %d; should be 256 bytes. "
+                "Please check machine settings.", eeprom_path, eeprom_size);
+            xemu_queue_error_message(msg);
+            g_free(msg);
+            eeprom_path = "";
+        }
+    }
+
+    fake_argv[fake_argc++] = strdup("-device");
+    if (strlen(eeprom_path) > 0) {
+        fake_argv[fake_argc++] = g_strdup_printf("smbus-storage,file=%s",
+                                                 eeprom_path);
+    } else {
+        fake_argv[fake_argc++] = strdup("smbus-storage");
+    }
 
     const char *flash_path;
     xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_FLASH_PATH, &flash_path);
