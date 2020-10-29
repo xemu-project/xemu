@@ -717,22 +717,30 @@ static QString* psh_convert(struct PixelShader *ps)
             assert(i >= 2);
             sampler_type = ps->state.rect_tex[i] ? "sampler2DRect" : "sampler2D";
             qstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_ST */\n");
-            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec2(t%d.r, dot(pT%d.xyz, %s(t%d.rgb))) );\n",
-                i, i, i-1, i, dotmap_func, ps->input_tex[i]);
+            qstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
+                i, i, dotmap_func, ps->input_tex[i]);
+            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec2(dot%d, dot%d));\n",
+                i, i, i-1, i);
             break;
         case PS_TEXTUREMODES_DOT_ZW:
             assert(i >= 2);
             qstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_ZW */\n");
-            qstring_append_fmt(vars, "vec3 t%d = vec3(t%d.x / dot(pT%d.rgb, %s(t%d.rgb))); \n",
-                i, i-1, i, dotmap_func, ps->input_tex[i]);
+            qstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
+                i, i, dotmap_func, ps->input_tex[i]);
+            qstring_append_fmt(vars, "vec4 t%d = vec4(0.0);\n", i);
             // FIXME: qstring_append_fmt(vars, "gl_FragDepth = t%d.x;\n", i);
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_DIFF:
             assert(i == 2);
             sampler_type = "samplerCube";
             qstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_RFLCT_DIFF */\n");
-            qstring_append_fmt(vars, "vec3 n_%d = vec3(t%d.x, dot(pT%d.xyz, %s(t%d.rgb)), t%d.x);\n",
-                i, i-1, i, dotmap_funcs[i], ps->input_tex[i], i-1);
+            qstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
+                i, i, dotmap_func, ps->input_tex[i]);
+            assert(ps->dot_map[i+1] < 8);
+            qstring_append_fmt(vars, "float dot%d_n = dot(pT%d.xyz, %s(t%d.rgb));\n",
+                i, i+1, dotmap_funcs[ps->dot_map[i+1]], ps->input_tex[i+1]);
+            qstring_append_fmt(vars, "vec3 n_%d = vec3(dot%d, dot%d, dot%d_n);\n",
+                i, i-1, i, i);
             qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, n_%d);\n",
                 i, i, i);
             break;
@@ -740,8 +748,10 @@ static QString* psh_convert(struct PixelShader *ps)
             assert(i == 3);
             sampler_type = "samplerCube";
             qstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_RFLCT_SPEC */\n");
-            qstring_append_fmt(vars, "vec3 n_%d = vec3(t%d.x, t%d.x, dot(pT%d.xyz, %s(t%d.rgb))); \n",
-                i, i-2, i-1, i, dotmap_func, ps->input_tex[i]);
+            qstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
+                i, i, dotmap_func, ps->input_tex[i]);
+            qstring_append_fmt(vars, "vec3 n_%d = vec3(dot%d, dot%d, dot%d);\n",
+                i, i-2, i-1, i);
             qstring_append_fmt(vars, "vec3 e_%d = vec3(pT%d.w, pT%d.w, pT%d.w);\n",
                 i, i-2, i-1, i);
             qstring_append_fmt(vars, "vec3 rv_%d = 2*n_%d*dot(n_%d,e_%d)/dot(n_%d,n_%d) - e_%d;\n",
@@ -753,37 +763,43 @@ static QString* psh_convert(struct PixelShader *ps)
             assert(i == 3);
             sampler_type = "sampler3D";
             qstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_3D */\n");
-            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(t%d.x, t%d.x, dot(pT%d.xyz, %s(t%d.rgb))));\n",
-                               i, i, i-2, i-1, i, dotmap_func, ps->input_tex[i]);
+            qstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
+                i, i, dotmap_func, ps->input_tex[i]);
+            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(dot%d, dot%d, dot%d));\n",
+                i, i, i-2, i-1, i);
             break;
         case PS_TEXTUREMODES_DOT_STR_CUBE:
             assert(i == 3);
             sampler_type = "samplerCube";
             qstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_CUBE */\n");
-            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(t%d.x, t%d.x, dot(pT%d.xyz, %s(t%d.rgb))));\n",
-                               i, i, i-2, i-1, i, dotmap_func, ps->input_tex[i]);
+            qstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
+                i, i, dotmap_func, ps->input_tex[i]);
+            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(dot%d, dot%d, dot%d));\n",
+                i, i, i-2, i-1, i);
             break;
         case PS_TEXTUREMODES_DPNDNT_AR:
             assert(i >= 1);
             assert(!ps->state.rect_tex[i]);
             sampler_type = "sampler2D";
             qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, t%d.ar);\n",
-                               i, i, ps->input_tex[i]);
+                i, i, ps->input_tex[i]);
             break;
         case PS_TEXTUREMODES_DPNDNT_GB:
             assert(i >= 1);
             assert(!ps->state.rect_tex[i]);
             sampler_type = "sampler2D";
             qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, t%d.gb);\n",
-                               i, i, ps->input_tex[i]);
+                i, i, ps->input_tex[i]);
             break;
         case PS_TEXTUREMODES_DOTPRODUCT:
             assert(i == 1 || i == 2);
             qstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOTPRODUCT */\n");
-            qstring_append_fmt(vars, "vec4 t%d = vec4(dot(pT%d.xyz, %s(t%d.rgb)));\n",
-                               i, i, dotmap_func, ps->input_tex[i]);
+            qstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
+                i, i, dotmap_func, ps->input_tex[i]);
+            qstring_append_fmt(vars, "vec4 t%d = vec4(0.0);\n", i);
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST:
+            assert(i == 3);
             qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST */\n",
                                i);
             NV2A_UNIMPLEMENTED("PS_TEXTUREMODES_DOT_RFLCT_SPEC_CONST");
