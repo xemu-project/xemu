@@ -3743,6 +3743,11 @@ static bool pgraph_check_surface_to_texture_compatibility(
         return false;
     }
 
+    if (shape->levels > 1) {
+        // FIXME: Support rendering surface to mip levels
+        return false;
+    }
+
     switch (surface_fmt) {
     case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_Z1R5G5B5:
         switch (texture_fmt) {
