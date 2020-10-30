@@ -22,3 +22,4 @@ obj-y += lru.o
 obj-y += swizzle.o
 obj-y += xxhash.o
 xxhash.o-cflags := -O3 -DXXH_FORCE_MEMORY_ACCESS=2
+obj-y += s3tc.o

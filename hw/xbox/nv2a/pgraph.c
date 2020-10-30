@@ -21,6 +21,7 @@
 
 #include "nv2a_int.h"
 #include "xxhash.h"
+#include "s3tc.h"
 
 #define DBG_SURFACES 0
 #define DBG_SURFACE_SYNC 0
@@ -5375,12 +5376,15 @@ static void upload_gl_texture(GLenum gl_target,
                 }
 
                 size_t texture_size = width/4 * height/4 * depth * block_size;
-                assert(glGetError() == GL_NO_ERROR);
-                glCompressedTexImage3D(gl_target, level, f.gl_internal_format,
-                                       width, height, depth, 0,
-                                       texture_size,
-                                       texture_data);
-                assert(glGetError() == GL_NO_ERROR);
+
+                uint8_t *converted = decompress_3d_texture_data(f.gl_internal_format, texture_data, width, height, depth);
+
+                glTexImage3D(gl_target, level,  GL_RGBA8,
+                             width, height, depth, 0,
+                             GL_RGBA, GL_UNSIGNED_INT_8_8_8_8,
+                             converted);
+
+                g_free(converted);
 
                 texture_data += texture_size;
             } else {
