@@ -2846,6 +2846,28 @@ static int xemu_check_file(const char *path)
     return 0;
 }
 
+// Duplicate commas to escape them
+static char *strdup_double_commas(const char *input) {
+    size_t length = 0;
+    for (const char *i = input; *i; i++) {
+        if (*i == ',') {
+            length++;
+        }
+        length++;
+    }
+    char *output = malloc(length + 1);
+    const char *in = input;
+    char *out = output;
+    while (*in) {
+        if (*in == ',') {
+                *(out++) = ',';
+        }
+        *(out++) = *(in++);
+    }
+    output[length] = 0;
+    return output;
+}
+
 void qemu_init(int argc, char **argv, char **envp)
 {
     int i;
@@ -2915,6 +2937,9 @@ void qemu_init(int argc, char **argv, char **envp)
     fake_argv[fake_argc++] = strdup("pentium3");
     fake_argv[fake_argc++] = strdup("-machine");
 
+    int short_animation;
+    xemu_settings_get_bool(XEMU_SETTINGS_SYSTEM_SHORTANIM, &short_animation);
+
     const char *bootrom_path;
     xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_BOOTROM_PATH, &bootrom_path);
     if (strlen(bootrom_path) > 0 && xemu_check_file(bootrom_path)) {
@@ -2924,14 +2949,22 @@ void qemu_init(int argc, char **argv, char **envp)
         bootrom_path = "";
     }
 
-    int short_animation;
-    xemu_settings_get_bool(XEMU_SETTINGS_SYSTEM_SHORTANIM, &short_animation);
+    char *bootrom_arg = NULL;
+    if (strlen(bootrom_path) > 0) {
+        char *escaped_bootrom_path = strdup_double_commas(bootrom_path);
+        bootrom_arg = g_strdup_printf(",bootrom=%s", escaped_bootrom_path);
+        free(escaped_bootrom_path);
+    }
 
     fake_argv[fake_argc++] = g_strdup_printf("xbox%s%s%s",
-        strlen(bootrom_path) > 0 ? g_strdup_printf(",bootrom=%s", bootrom_path) : "", // Leak
+        (bootrom_arg != NULL) ? bootrom_arg : "",
         short_animation ? ",short-animation" : "",
         ",kernel-irqchip=off"
         );
+
+    if (bootrom_arg != NULL) {
+        g_free(bootrom_arg);
+    }
 
     const char *eeprom_path;
     xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_EEPROM_PATH, &eeprom_path);
@@ -2956,7 +2989,10 @@ void qemu_init(int argc, char **argv, char **envp)
             eeprom_path = "";
         } else {
             fake_argv[fake_argc++] = strdup("-device");
-            fake_argv[fake_argc++] = g_strdup_printf("smbus-storage,file=%s", eeprom_path);
+            char *escaped_eeprom_path = strdup_double_commas(eeprom_path);
+            fake_argv[fake_argc++] = g_strdup_printf("smbus-storage,file=%s",
+                                                     escaped_eeprom_path);
+            free(escaped_eeprom_path);
         }
     }
 
@@ -2967,7 +3003,10 @@ void qemu_init(int argc, char **argv, char **envp)
             xemu_settings_set_string(XEMU_SETTINGS_SYSTEM_EEPROM_PATH, eeprom_path);
             xemu_settings_save();
             fake_argv[fake_argc++] = strdup("-device");
-            fake_argv[fake_argc++] = g_strdup_printf("smbus-storage,file=%s", eeprom_path);
+            char *escaped_eeprom_path = strdup_double_commas(eeprom_path);
+            fake_argv[fake_argc++] = g_strdup_printf("smbus-storage,file=%s",
+                                                     escaped_eeprom_path);
+            free(escaped_eeprom_path);
             free((char*)eeprom_path);
         } else {
             char *msg = g_strdup_printf("Failed to generate eeprom file '%s'. Please check machine settings.", eeprom_path);
@@ -2988,7 +3027,7 @@ void qemu_init(int argc, char **argv, char **envp)
         g_free(msg);
     } else {
         fake_argv[fake_argc++] = strdup("-bios");
-        fake_argv[fake_argc++] = strdup(flash_path);
+        fake_argv[fake_argc++] = strdup_double_commas(flash_path);
         autostart = 1;
     }
 
@@ -3006,9 +3045,11 @@ void qemu_init(int argc, char **argv, char **envp)
             g_free(msg);
         } else {
             fake_argv[fake_argc++] = strdup("-drive");
+            char *escaped_hdd_path = strdup_double_commas(hdd_path);
             fake_argv[fake_argc++] = g_strdup_printf("index=0,media=disk,file=%s%s",
-                hdd_path,
-                strlen(hdd_path) > 0 ? ",locked" : "");
+                escaped_hdd_path,
+                strlen(escaped_hdd_path) > 0 ? ",locked" : "");
+            free(escaped_hdd_path);
         }
     }
 
@@ -3026,8 +3067,10 @@ void qemu_init(int argc, char **argv, char **envp)
     // Always populate DVD drive. If disc path is the empty string, drive is
     // connected but no media present.
     fake_argv[fake_argc++] = strdup("-drive");
+    char *escaped_dvd_path = strdup_double_commas(dvd_path);
     fake_argv[fake_argc++] = g_strdup_printf("index=1,media=cdrom,file=%s",
-        dvd_path);
+        escaped_dvd_path);
+    free(escaped_dvd_path);
 
     fake_argv[fake_argc++] = strdup("-display");
     fake_argv[fake_argc++] = strdup("xemu");
