@@ -118,6 +118,7 @@
 #include "ui/xemu-notifications.h"
 #include "ui/xemu-net.h"
 #include "ui/xemu-input.h"
+#include "hw/xbox/eeprom_generation.h"
 
 #define MAX_VIRTIO_CONSOLES 1
 
@@ -2890,6 +2891,12 @@ void qemu_init(int argc, char **argv, char **envp)
     error_init(argv[0]);
     module_call_init(MODULE_INIT_TRACE);
 
+    // init earlier because it's needed for eeprom generation
+    if (qcrypto_init(&err) < 0) {
+        error_reportf_err(err, "cannot initialize crypto: ");
+        exit(1);
+    }
+
     //
     // FIXME: This is a hack to get QEMU to load correct machine and properties
     // very early, and handle some basic error cases without hooking QEMU error
@@ -2933,27 +2940,40 @@ void qemu_init(int argc, char **argv, char **envp)
     if (strlen(eeprom_path) > 0) {
         int eeprom_size = get_image_size(eeprom_path);
         if (eeprom_size < 0) {
-            char *msg = g_strdup_printf("Failed to open EEPROM file '%s'. "
-                "Please check machine settings.", eeprom_path);
+            char *msg = g_strdup_printf("Failed to open EEPROM file '%s'.\n\n"
+                "Automatically generating a new one instead. "
+                "Please check machine settings for the new path and move if desired.", eeprom_path);
             xemu_queue_error_message(msg);
             g_free(msg);
             eeprom_path = "";
         } else if (eeprom_size != 256) {
             char *msg = g_strdup_printf(
-                "Invalid EEPROM file '%s' size of %d; should be 256 bytes. "
-                "Please check machine settings.", eeprom_path, eeprom_size);
+                "Invalid EEPROM file '%s' size of %d; should be 256 bytes.\n\n"
+                "Automatically generating a new one instead. "
+                "Please check machine settings for the new path and move if desired.", eeprom_path, eeprom_size);
             xemu_queue_error_message(msg);
             g_free(msg);
             eeprom_path = "";
+        } else {
+            fake_argv[fake_argc++] = strdup("-device");
+            fake_argv[fake_argc++] = g_strdup_printf("smbus-storage,file=%s", eeprom_path);
         }
     }
 
-    fake_argv[fake_argc++] = strdup("-device");
-    if (strlen(eeprom_path) > 0) {
-        fake_argv[fake_argc++] = g_strdup_printf("smbus-storage,file=%s",
-                                                 eeprom_path);
-    } else {
-        fake_argv[fake_argc++] = strdup("smbus-storage");
+    // Generate a new EEPROM file if one isn't specified or contents are invalid
+    if (strlen(eeprom_path) == 0) {
+        eeprom_path = xemu_settings_get_default_eeprom_path();
+        if (xbox_eeprom_generate(eeprom_path, XBOX_EEPROM_VERSION_R1)) {
+            xemu_settings_set_string(XEMU_SETTINGS_SYSTEM_EEPROM_PATH, eeprom_path);
+            xemu_settings_save();
+            fake_argv[fake_argc++] = strdup("-device");
+            fake_argv[fake_argc++] = g_strdup_printf("smbus-storage,file=%s", eeprom_path);
+            free((char*)eeprom_path);
+        } else {
+            char *msg = g_strdup_printf("Failed to generate eeprom file '%s'. Please check machine settings.", eeprom_path);
+            xemu_queue_error_message(msg);
+            g_free(msg);
+        }
     }
 
     const char *flash_path;
@@ -3086,11 +3106,6 @@ void qemu_init(int argc, char **argv, char **envp)
     precopy_infrastructure_init();
     postcopy_infrastructure_init();
     monitor_init_globals();
-
-    if (qcrypto_init(&err) < 0) {
-        error_reportf_err(err, "cannot initialize crypto: ");
-        exit(1);
-    }
 
     QTAILQ_INIT(&vm_change_state_head);
     os_setup_early_signal_handling();
