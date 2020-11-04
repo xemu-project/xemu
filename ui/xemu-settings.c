@@ -216,6 +216,31 @@ const char *xemu_settings_get_path(void)
 	return settings_path;
 }
 
+const char *xemu_settings_get_default_eeprom_path(void)
+{
+	char *base = SDL_GetPrefPath("xemu", "xemu");
+	assert(base != NULL);
+	size_t base_len = strlen(base);
+
+	const char *name = "eeprom.bin";
+	size_t name_len = strlen(name);
+	size_t final_len = base_len + name_len;
+	final_len += 1; // Terminating null byte
+
+	char *path = malloc(final_len);
+	assert(path != NULL);
+
+	// Copy base part
+	memcpy(path, base, base_len);
+	free(base);
+
+	// Copy name part
+	memcpy(path+base_len, name, name_len);
+	path[final_len-1] = '\0';
+
+	return path;
+}
+
 static int xemu_enum_str_to_int(const struct enum_str_map *map, const char *str, int *value)
 {
 	for (int i = 0; map[i].str != NULL; i++) {
