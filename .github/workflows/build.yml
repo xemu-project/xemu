@@ -62,6 +62,7 @@ jobs:
         # export PATH="/usr/lib/ccache/bin:/mingw64/bin:`$PATH"
         export PATH="/mingw64/bin:`$PATH"
         ./build.sh ${{ matrix.build_param }}
+        cp LICENSE .\dist\
         # echo -e '\nCompiler Cache Stats:'
         # ccache -s -c
         "@
@@ -113,6 +114,7 @@ jobs:
         export CCACHE_MAXSIZE=250M
         export PATH="/usr/lib/ccache:$PATH"
         ./build.sh ${{ matrix.build_param }}
+        cp LICENSE ./dist/
         echo -e "\nCompiler Cache Stats:"
         ccache -s -c
         tar -czvf ${{ matrix.artifact_name }} --transform "s#^dist#xemu#" dist
@@ -166,6 +168,7 @@ jobs:
         export CCACHE_MAXSIZE=250M
         export PATH="/usr/local/opt/ccache/libexec:$PATH"
         ./build.sh ${{ matrix.build_param }}
+        cp LICENSE ./dist/
         echo -e "\nCompiler Cache Stats:"
         ccache -s -c
         pushd dist
