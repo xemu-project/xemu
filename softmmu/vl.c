@@ -3007,7 +3007,6 @@ void qemu_init(int argc, char **argv, char **envp)
             fake_argv[fake_argc++] = g_strdup_printf("smbus-storage,file=%s",
                                                      escaped_eeprom_path);
             free(escaped_eeprom_path);
-            free((char*)eeprom_path);
         } else {
             char *msg = g_strdup_printf("Failed to generate eeprom file '%s'. Please check machine settings.", eeprom_path);
             xemu_queue_error_message(msg);
