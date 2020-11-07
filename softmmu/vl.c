@@ -2937,24 +2937,36 @@ void qemu_init(int argc, char **argv, char **envp)
     fake_argv[fake_argc++] = strdup("pentium3");
     fake_argv[fake_argc++] = strdup("-machine");
 
-    int short_animation;
-    xemu_settings_get_bool(XEMU_SETTINGS_SYSTEM_SHORTANIM, &short_animation);
-
+    char *bootrom_arg = NULL;
     const char *bootrom_path;
     xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_BOOTROM_PATH, &bootrom_path);
-    if (strlen(bootrom_path) > 0 && xemu_check_file(bootrom_path)) {
-        char *msg = g_strdup_printf("Failed to open BootROM file '%s'. Please check machine settings.", bootrom_path);
-        xemu_queue_error_message(msg);
-        g_free(msg);
-        bootrom_path = "";
+
+    if (strlen(bootrom_path) > 0) {
+        int bootrom_size = get_image_size(bootrom_path);
+        if (bootrom_size < 0) {
+            char *msg = g_strdup_printf("Failed to open BootROM file '%s'. "
+                                        "Please check machine settings.",
+                                        bootrom_path);
+            xemu_queue_error_message(msg);
+            g_free(msg);
+            bootrom_path = "";
+        } else if (bootrom_size != 512) {
+            char *msg = g_strdup_printf("Invalid BootROM file '%s' size %d. "
+                                        "Expected 512 bytes. Please check "
+                                        "machine settings.",
+                                        bootrom_path, bootrom_size);
+            xemu_queue_error_message(msg);
+            g_free(msg);
+            bootrom_path = "";
+        } else {
+            char *escaped_bootrom_path = strdup_double_commas(bootrom_path);
+            bootrom_arg = g_strdup_printf(",bootrom=%s", escaped_bootrom_path);
+            free(escaped_bootrom_path);
+        }
     }
 
-    char *bootrom_arg = NULL;
-    if (strlen(bootrom_path) > 0) {
-        char *escaped_bootrom_path = strdup_double_commas(bootrom_path);
-        bootrom_arg = g_strdup_printf(",bootrom=%s", escaped_bootrom_path);
-        free(escaped_bootrom_path);
-    }
+    int short_animation;
+    xemu_settings_get_bool(XEMU_SETTINGS_SYSTEM_SHORTANIM, &short_animation);
 
     fake_argv[fake_argc++] = g_strdup_printf("xbox%s%s%s",
         (bootrom_arg != NULL) ? bootrom_arg : "",
