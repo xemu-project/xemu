@@ -3038,7 +3038,7 @@ void qemu_init(int argc, char **argv, char **envp)
         g_free(msg);
     } else {
         fake_argv[fake_argc++] = strdup("-bios");
-        fake_argv[fake_argc++] = strdup_double_commas(flash_path);
+        fake_argv[fake_argc++] = strdup(flash_path);
         autostart = 1;
     }
 
