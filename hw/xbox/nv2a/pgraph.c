@@ -3312,6 +3312,10 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
             GET_MASK(pg->regs[NV_PGRAPH_TEXFMT0 + i*4],
                      NV_PGRAPH_TEXFMT0_COLOR);
 
+        /* This is needed to detect cases where the wrong format for ds/dt textures is used
+         * and a remapping of the unsigned values to signed is needed (e.g. the boost dash in JSRF) */
+        state.psh.dsdt_tex[i] = kelvin_color_format_map[color_format].gl_type == GL_BYTE;
+
         if (enabled && kelvin_color_format_map[color_format].linear) {
             state.psh.rect_tex[i] = true;
         }
