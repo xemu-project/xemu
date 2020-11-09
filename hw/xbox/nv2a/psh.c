@@ -685,27 +685,55 @@ static QString* psh_convert(struct PixelShader *ps)
         }
         case PS_TEXTUREMODES_BUMPENVMAP:
             assert(i >= 1);
-            assert(!ps->state.rect_tex[i]);
-            sampler_type = "sampler2D";
+
+            if (!ps->state.dsdt_tex[ps->input_tex[i]]) {
+                /* Fix for cases using improper formats for the ds/dt offset texture,
+                 * like the boost dash effect in JSRF */
+                /* FIXME: Figure out why the green and blue channels arrive reversed */
+                qstring_append_fmt(vars, "t%d.bg = dotmap_minus1_to_1_gl(t%d.rgb).gb;\n",
+                                   ps->input_tex[i], ps->input_tex[i]);
+            }
+
+            sampler_type = ps->state.rect_tex[i] ? "sampler2DRect" : "sampler2D";
             qstring_append_fmt(preflight, "uniform mat2 bumpMat%d;\n", i);
+
             /* FIXME: Do bumpMat swizzle on CPU before upload */
-            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xy + t%d.rg * mat2(bumpMat%d[0].xy,bumpMat%d[1].yx));\n",
-                               i, i, i, ps->input_tex[i], i, i);
+            qstring_append_fmt(vars, "t%d.gb = mat2(bumpMat%d[0].xy, bumpMat%d[1].yx) * t%d.gb;\n",
+                               ps->input_tex[i], i, i, ps->input_tex[i]);
+
+            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xy + t%d.gb);\n",
+                               i, i, i, ps->input_tex[i]);
             break;
         case PS_TEXTUREMODES_BUMPENVMAP_LUM:
             assert(i >= 1);
+
             qstring_append_fmt(preflight, "uniform float bumpScale%d;\n", i);
             qstring_append_fmt(preflight, "uniform float bumpOffset%d;\n", i);
-            qstring_append_fmt(ps->code, "/* BUMPENVMAP_LUM for stage %d */\n", i);
-            qstring_append_fmt(ps->code, "t%d = t%d * (bumpScale%d * t%d.b + bumpOffset%d);\n",
-                               i, i, i, ps->input_tex[i], i);
+
+            if (!ps->state.dsdt_tex[ps->input_tex[i]]) {
+                /* Fix for cases using improper texture formats for the ds/dt offset texture */
+                /* FIXME: Figure out why the channels arrive reversed */
+                qstring_append_fmt(vars, "t%d.gbr = vec3(dotmap_minus1_to_1_gl(t%d.abg).gb, t%d.r);\n",
+                                   ps->input_tex[i], ps->input_tex[i], ps->input_tex[i]);
+            } else {
+                /* FIXME: Figure out why the green and blue channels arrive reversed */
+                qstring_append_fmt(vars, "t%d.rgb = vec3(t%d.rbg);\n",
+                                   ps->input_tex[i], ps->input_tex[i]);
+            }
+
             /* Now the same as BUMPENVMAP */
-            assert(!ps->state.rect_tex[i]);
-            sampler_type = "sampler2D";
+            sampler_type = ps->state.rect_tex[i] ? "sampler2DRect" : "sampler2D";
             qstring_append_fmt(preflight, "uniform mat2 bumpMat%d;\n", i);
+
             /* FIXME: Do bumpMat swizzle on CPU before upload */
-            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xy + t%d.rg * mat2(bumpMat%d[0].xy,bumpMat%d[1].yx));\n",
-                               i, i, i, ps->input_tex[i], i, i);
+            qstring_append_fmt(vars, "t%d.gb = mat2(bumpMat%d[0].xy, bumpMat%d[1].yx) * t%d.gb;\n",
+                               ps->input_tex[i], i, i, ps->input_tex[i]);
+
+            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xy + t%d.gb);\n",
+                               i, i, i, ps->input_tex[i]);
+
+            qstring_append_fmt(vars, "t%d = t%d * (bumpScale%d * t%d.r + bumpOffset%d);\n",
+                   i, i, i, ps->input_tex[i], i);
             break;
         case PS_TEXTUREMODES_BRDF:
             assert(i >= 2);

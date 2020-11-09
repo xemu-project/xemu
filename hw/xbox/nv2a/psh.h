@@ -45,6 +45,7 @@ typedef struct PshState {
     uint32_t alpha_inputs[8], alpha_outputs[8];
 
     bool rect_tex[4];
+    bool dsdt_tex[4];
     bool compare_mode[4][4];
     bool alphakill[4];
 
