@@ -734,7 +734,7 @@ public:
     AboutWindow()
     {
         snprintf(build_info_text, sizeof(build_info_text),
-            "Verson: %s\n" "Branch: %s\n" "Commit: %s\n" "Date:   %s",
+            "Version: %s\n" "Branch:  %s\n" "Commit:  %s\n" "Date:    %s",
             xemu_version,  xemu_branch,   xemu_commit,   xemu_date);
         // FIXME: Show platform
         // FIXME: Show driver
