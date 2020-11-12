@@ -143,12 +143,26 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
         g_free(filename);
     }
 
+    /* XBOX_FIXME: The "memory_region_set_readonly" calls below have been
+    * temporarily commented out due to MCPX 1.1-based kernels hanging
+    * in the first bootloader stage when doing RSA signature verification.
+    * 
+    * This is caused by code incorrectly using the flash memory range to
+    * store the following computation; luckily real hardware's writeback
+    * cache policy (verified against MTRR config) appears to allow this
+    * to succeed, but qemu's emulation of such isn't capable of this yet
+    * so the value is never updated in ROM unless readonly is unspecified.
+    * 
+    *   sub ds:0FFFFD52Ch, eax
+    *   mov eax, ds:0FFFFD52Ch
+    */
+
     /* Create BIOS region */
     MemoryRegion *bios;
     bios = g_malloc(sizeof(*bios));
     assert(bios != NULL);
     memory_region_init_ram(bios, NULL, "xbox.bios", bios_size, &error_fatal);
-    memory_region_set_readonly(bios, true);
+    //memory_region_set_readonly(bios, true);
     rom_add_blob_fixed("xbox.bios", bios_data, bios_size,
                        (uint32_t)(-2 * bios_size));
 
@@ -164,7 +178,7 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
         MemoryRegion *map_bios = g_malloc(sizeof(*map_bios));
         memory_region_init_alias(map_bios, NULL, "pci-bios", bios, 0, bios_size);
         memory_region_add_subregion(rom_memory, map_loc, map_bios);
-        memory_region_set_readonly(map_bios, true);
+        //memory_region_set_readonly(map_bios, true);
     }
 }
 
