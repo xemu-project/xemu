@@ -146,6 +146,7 @@ void xbox_pci_init(qemu_irq *pic,
                    MemoryRegion *address_space_io,
                    MemoryRegion *pci_memory,
                    MemoryRegion *ram_memory,
+                   MemoryRegion *rom_memory,
                    PCIBus **out_host_bus,
                    ISABus **out_isa_bus,
                    I2CBus **out_smbus,
@@ -188,6 +189,7 @@ void xbox_pci_init(qemu_irq *pic,
                                                      true, "xbox-lpc");
     XBOX_LPCState *lpc_state = XBOX_LPC_DEVICE(lpc);
     lpc_state->pic = pic;
+    lpc_state->rom_memory = rom_memory;
 
     pci_bus_irqs(host_bus, xbox_lpc_set_irq, xbox_lpc_map_irq, lpc_state,
                  XBOX_NUM_INT_IRQS + XBOX_NUM_PIRQS);
@@ -309,10 +311,34 @@ static void xbox_lpc_realize(PCIDevice *dev, Error **errp)
     d->isa_bus = isa_bus;
 }
 
+static void xbox_lpc_enable_mcpx_rom(PCIDevice *dev, bool enable) {
+    XBOX_LPCState *s = XBOX_LPC_DEVICE(dev);
+    MemoryRegion *subregion;
+    QTAILQ_FOREACH(subregion, &s->rom_memory->subregions, subregions_link) {
+        if (subregion->name != NULL && strcmp(subregion->name, "xbox.mcpx") == 0) {
+            memory_region_set_enabled(subregion, enable);
+            break;
+        }
+    }
+}
+
 static void xbox_lpc_reset(DeviceState *dev)
 {
-    // PCIDevice *d = PCI_DEVICE(dev);
-    // XBOX_LPCState *s = XBOX_LPC_DEVICE(d);
+    XBOXPCI_DPRINTF("ACTIVATING BOOT ROM\n");
+    xbox_lpc_enable_mcpx_rom(PCI_DEVICE(dev), true);
+}
+
+static void xbox_lpc_config_write(PCIDevice *dev,
+                                    uint32_t addr, uint32_t val, int len)
+{
+    pci_default_write_config(dev, addr, val, len);
+
+    if ((addr == 0x80) && (val & 2)) {
+        XBOXPCI_DPRINTF("DEACTIVATING BOOT ROM\n");
+        xbox_lpc_enable_mcpx_rom(dev, false);
+    }
+
+    XBOXPCI_DPRINTF("%s: %x %x %d\n", __func__, addr, val, len);
 }
 
 #if 0
@@ -389,7 +415,7 @@ static void xbox_lpc_class_init(ObjectClass *klass, void *data)
 
     dc->hotpluggable = false;
     k->realize = xbox_lpc_realize;
-    //k->config_write = xbox_lpc_config_write;
+    k->config_write = xbox_lpc_config_write;
     k->vendor_id = PCI_VENDOR_ID_NVIDIA;
     k->device_id = PCI_DEVICE_ID_NVIDIA_NFORCE_LPC;
     /* FIXME - correct revision for this is 0xB2 (178) for retail 1.0 Xbox, causes known USB bug */
