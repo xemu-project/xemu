@@ -560,6 +560,10 @@ static QString* psh_convert(struct PixelShader *ps)
         "    if (x >= 128.0) return (x-256.0)/127.0;\n"
         "               else return (x)/127.0;\n"
         "}\n"
+        "float sign3_to_0_to_1(float x) {\n"
+        "    if (x >= 0) return x/2;\n"
+        "           else return 1+x/2;\n"
+        "}\n"
         "vec3 dotmap_zero_to_one(vec3 col) {\n"
         "    return col;\n"
         "}\n"
@@ -685,55 +689,49 @@ static QString* psh_convert(struct PixelShader *ps)
         }
         case PS_TEXTUREMODES_BUMPENVMAP:
             assert(i >= 1);
-
-            if (!ps->state.dsdt_tex[ps->input_tex[i]]) {
-                /* Fix for cases using improper formats for the ds/dt offset texture,
-                 * like the boost dash effect in JSRF */
-                /* FIXME: Figure out why the green and blue channels arrive reversed */
-                qstring_append_fmt(vars, "t%d.bg = dotmap_minus1_to_1_gl(t%d.rgb).gb;\n",
-                                   ps->input_tex[i], ps->input_tex[i]);
-            }
-
             sampler_type = ps->state.rect_tex[i] ? "sampler2DRect" : "sampler2D";
             qstring_append_fmt(preflight, "uniform mat2 bumpMat%d;\n", i);
 
-            /* FIXME: Do bumpMat swizzle on CPU before upload */
-            qstring_append_fmt(vars, "t%d.gb = mat2(bumpMat%d[0].xy, bumpMat%d[1].yx) * t%d.gb;\n",
-                               ps->input_tex[i], i, i, ps->input_tex[i]);
+            if (ps->state.snorm_tex[ps->input_tex[i]]) {
+                /* Input color channels already signed (FIXME: May not always want signed textures in this case) */
+                qstring_append_fmt(vars, "vec2 dsdt%d = t%d.bg;\n",
+                                   i, ps->input_tex[i]);
+            } else {
+                /* Convert to signed (FIXME: loss of accuracy due to filtering/interpolation) */
+                qstring_append_fmt(vars, "vec2 dsdt%d = vec2(sign3(t%d.b), sign3(t%d.g));\n",
+                                   i, ps->input_tex[i], ps->input_tex[i]);
+            }
 
-            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xy + t%d.gb);\n",
-                               i, i, i, ps->input_tex[i]);
+            /* FIXME: Do bumpMat swizzle on CPU before upload */
+            qstring_append_fmt(vars, "dsdt%d = mat2(bumpMat%d[0].xy, bumpMat%d[1].yx) * dsdt%d;\n",
+                i, i, i, i);
+            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xy + dsdt%d);\n",
+                i, i, i, i);
             break;
         case PS_TEXTUREMODES_BUMPENVMAP_LUM:
             assert(i >= 1);
-
+            sampler_type = ps->state.rect_tex[i] ? "sampler2DRect" : "sampler2D";
             qstring_append_fmt(preflight, "uniform float bumpScale%d;\n", i);
             qstring_append_fmt(preflight, "uniform float bumpOffset%d;\n", i);
-
-            if (!ps->state.dsdt_tex[ps->input_tex[i]]) {
-                /* Fix for cases using improper texture formats for the ds/dt offset texture */
-                /* FIXME: Figure out why the channels arrive reversed */
-                qstring_append_fmt(vars, "t%d.gbr = vec3(dotmap_minus1_to_1_gl(t%d.abg).gb, t%d.r);\n",
-                                   ps->input_tex[i], ps->input_tex[i], ps->input_tex[i]);
-            } else {
-                /* FIXME: Figure out why the green and blue channels arrive reversed */
-                qstring_append_fmt(vars, "t%d.rgb = vec3(t%d.rbg);\n",
-                                   ps->input_tex[i], ps->input_tex[i]);
-            }
-
-            /* Now the same as BUMPENVMAP */
-            sampler_type = ps->state.rect_tex[i] ? "sampler2DRect" : "sampler2D";
             qstring_append_fmt(preflight, "uniform mat2 bumpMat%d;\n", i);
 
+            if (ps->state.snorm_tex[ps->input_tex[i]]) {
+                /* Input color channels already signed (FIXME: May not always want signed textures in this case) */
+                qstring_append_fmt(vars, "vec3 dsdtl%d = vec3(t%d.bg, sign3_to_0_to_1(t%d.r));\n",
+                                   i, ps->input_tex[i], ps->input_tex[i]);
+            } else {
+                /* Convert to signed (FIXME: loss of accuracy due to filtering/interpolation) */
+                qstring_append_fmt(vars, "vec3 dsdtl%d = vec3(sign3(t%d.b), sign3(t%d.g), t%d.r);\n",
+                                   i, ps->input_tex[i], ps->input_tex[i], ps->input_tex[i]);
+            }
+
             /* FIXME: Do bumpMat swizzle on CPU before upload */
-            qstring_append_fmt(vars, "t%d.gb = mat2(bumpMat%d[0].xy, bumpMat%d[1].yx) * t%d.gb;\n",
-                               ps->input_tex[i], i, i, ps->input_tex[i]);
-
-            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xy + t%d.gb);\n",
-                               i, i, i, ps->input_tex[i]);
-
-            qstring_append_fmt(vars, "t%d = t%d * (bumpScale%d * t%d.r + bumpOffset%d);\n",
-                   i, i, i, ps->input_tex[i], i);
+            qstring_append_fmt(vars, "dsdtl%d.st = mat2(bumpMat%d[0].xy, bumpMat%d[1].yx) * dsdtl%d.st;\n",
+                i, i, i, i);
+            qstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xy + dsdtl%d.st);\n",
+                i, i, i, i);
+            qstring_append_fmt(vars, "t%d = t%d * (bumpScale%d * dsdtl%d.p + bumpOffset%d);\n",
+                i, i, i, i, i);
             break;
         case PS_TEXTUREMODES_BRDF:
             assert(i >= 2);

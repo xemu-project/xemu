@@ -3305,27 +3305,37 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
     }
 
     for (i = 0; i < 4; i++) {
-        state.psh.rect_tex[i] = false;
-        bool enabled = pg->regs[NV_PGRAPH_TEXCTL0_0 + i*4]
-                         & NV_PGRAPH_TEXCTL0_0_ENABLE;
-        unsigned int color_format =
-            GET_MASK(pg->regs[NV_PGRAPH_TEXFMT0 + i*4],
-                     NV_PGRAPH_TEXFMT0_COLOR);
-
-        /* This is needed to detect cases where the wrong format for ds/dt textures is used
-         * and a remapping of the unsigned values to signed is needed (e.g. the boost dash in JSRF) */
-        state.psh.dsdt_tex[i] = kelvin_color_format_map[color_format].gl_type == GL_BYTE;
-
-        if (enabled && kelvin_color_format_map[color_format].linear) {
-            state.psh.rect_tex[i] = true;
-        }
-
         for (j = 0; j < 4; j++) {
             state.psh.compare_mode[i][j] =
                 (pg->regs[NV_PGRAPH_SHADERCLIPMODE] >> (4 * i + j)) & 1;
         }
         state.psh.alphakill[i] = pg->regs[NV_PGRAPH_TEXCTL0_0 + i*4]
                                & NV_PGRAPH_TEXCTL0_0_ALPHAKILLEN;
+
+        bool enabled = pg->regs[NV_PGRAPH_TEXCTL0_0 + i*4]
+                         & NV_PGRAPH_TEXCTL0_0_ENABLE;
+        if (!enabled) {
+            continue;
+        }
+
+        unsigned int color_format =
+            GET_MASK(pg->regs[NV_PGRAPH_TEXFMT0 + i*4],
+                     NV_PGRAPH_TEXFMT0_COLOR);
+        ColorFormatInfo f = kelvin_color_format_map[color_format];
+        state.psh.rect_tex[i] = f.linear;
+
+        /* Keep track of whether texture data has been loaded as signed
+         * normalized integers or not. This dictates whether or not we will need
+         * to re-map in fragment shader for certain texture modes (e.g.
+         * bumpenvmap).
+         *
+         * FIXME: When signed texture data is loaded as unsigned and remapped in
+         * fragment shader, there may be interpolation artifacts. Fix this to
+         * support signed textures more appropriately.
+         */
+        state.psh.snorm_tex[i] = (f.gl_internal_format == GL_RGB8_SNORM)
+                                 || (f.gl_internal_format == GL_RG8_SNORM);
+
     }
 
     ShaderBinding* cached_shader = (ShaderBinding*)g_hash_table_lookup(pg->shader_cache, &state);
