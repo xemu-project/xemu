@@ -1459,7 +1459,7 @@ int main(int argc, char **argv)
      * to just run functions to avoid TLS bugs and locking issues.
      */
     tcg_register_init_ctx();
-    rcu_register_thread();
+    // rcu_register_thread();
 
     DPRINTF("Main thread: initializing app\n");
 
@@ -1467,7 +1467,7 @@ int main(int argc, char **argv)
         sdl2_gl_refresh(&sdl2_console[0].dcl);
     }
 
-    rcu_unregister_thread();
+    // rcu_unregister_thread();
 }
 
 void xemu_eject_disc(void)
