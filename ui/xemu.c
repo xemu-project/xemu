@@ -31,6 +31,7 @@
 #include "qemu/module.h"
 #include "qemu/thread.h"
 #include "qemu/main-loop.h"
+#include "qemu/rcu.h"
 #include "qemu-version.h"
 #include "qemu-common.h"
 #include "qapi/error.h"
@@ -48,6 +49,8 @@
 
 #include "hw/xbox/smbus.h" // For eject, drive tray
 #include "hw/xbox/nv2a/nv2a.h"
+
+void tcg_register_init_ctx(void); // tcg.c
 
 // #define DEBUG_XEMU_C
 
@@ -1451,11 +1454,20 @@ int main(int argc, char **argv)
     DPRINTF("Main thread: waiting for display_init_sem\n");
     qemu_sem_wait(&display_init_sem);
 
+    /*
+     * FIXME: May want to create a callback mechanism for main QEMU thread
+     * to just run functions to avoid TLS bugs and locking issues.
+     */
+    tcg_register_init_ctx();
+    rcu_register_thread();
+
     DPRINTF("Main thread: initializing app\n");
 
     while (1) {
         sdl2_gl_refresh(&sdl2_console[0].dcl);
     }
+
+    rcu_unregister_thread();
 }
 
 void xemu_eject_disc(void)
