@@ -775,6 +775,21 @@ void tcg_register_thread(void)
     tcg_ctx = &tcg_init_ctx;
 }
 #else
+
+#ifdef XBOX
+void tcg_register_init_ctx(void)
+{
+    /*
+     * For xemu we may exercise functions on the UI thread that would otherwise
+     * run on the main thread following initialization. We retain the BQL when
+     * running such commands, which should make this safe, but there are some
+     * data stored in TLS which get initialized early on and may be required
+     * later.
+     */
+    tcg_ctx = &tcg_init_ctx;
+}
+#endif
+
 void tcg_register_thread(void)
 {
     MachineState *ms = MACHINE(qdev_get_machine());
