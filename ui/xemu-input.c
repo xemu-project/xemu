@@ -339,9 +339,9 @@ void xemu_input_update_rumble(struct controller_state *state)
 
     memset(&state->sdl_haptic_effect, 0, sizeof(state->sdl_haptic_effect));
     state->sdl_haptic_effect.type = SDL_HAPTIC_LEFTRIGHT;
-    state- sdl_haptic_effect.leftright.length = SDL_HAPTIC_INFINITY;
+    state->sdl_haptic_effect.leftright.length = SDL_HAPTIC_INFINITY;
     state->sdl_haptic_effect.leftright.large_magnitude = state->rumble_l >> 1;
-    +state->sdl_haptic_effect.leftright.small_magnitude = state->rumble_r >> 1;
+    state->sdl_haptic_effect.leftright.small_magnitude = state->rumble_r >> 1;
     if (state->sdl_haptic_effect_id == -1) {
         state->sdl_haptic_effect_id = SDL_HapticNewEffect(state->sdl_haptic, &state->sdl_haptic_effect);
         SDL_HapticRunEffect(state->sdl_haptic, state->sdl_haptic_effect_id, 1);
