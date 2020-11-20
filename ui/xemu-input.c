@@ -204,7 +204,12 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
                 num_available_controllers--;
 
                 // Deallocate
-                // FIXME: Check to release any SDL handles, etc
+                if (iter->sdl_haptic) {
+                    SDL_HapticClose(iter->sdl_haptic);
+                }
+                if (iter->sdl_gamecontroller) {
+                    SDL_GameControllerClose(iter->sdl_gamecontroller);
+                }
                 free(iter);
 
                 handled = 1;
