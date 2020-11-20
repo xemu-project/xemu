@@ -621,12 +621,12 @@ void sdl2_poll_events(struct sdl2_console *scon)
         sdl_update_caption(scon);
     }
 
+    int kbd = 0, mouse = 0;
+    xemu_hud_should_capture_kbd_mouse(&kbd, &mouse);
+
     while (SDL_PollEvent(ev)) {
-        int kbd = 0, mouse = 0;
         xemu_input_process_sdl_events(ev);
         xemu_hud_process_sdl_events(ev);
-        xemu_input_update_controllers();
-        xemu_hud_should_capture_kbd_mouse(&kbd, &mouse);
 
         switch (ev->type) {
         case SDL_KEYDOWN:
@@ -670,6 +670,8 @@ void sdl2_poll_events(struct sdl2_console *scon)
             break;
         }
     }
+
+    xemu_input_update_controllers();
 
     scon->idle_counter = 0;
     scon->dcl.update_interval = 16; // Ignored
