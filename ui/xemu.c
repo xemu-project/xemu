@@ -803,7 +803,6 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
         SDL_GL_CONTEXT_PROFILE_MASK,
         SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetSwapInterval(0);
 
     // Create main window
     m_window = SDL_CreateWindow(
@@ -853,6 +852,7 @@ static void sdl2_display_early_init(DisplayOptions *o)
     display_opengl = 1;
 
     SDL_GL_MakeCurrent(m_window, m_context);
+    SDL_GL_SetSwapInterval(0);
     xemu_hud_init(m_window, m_context);
     blit = create_decal_shader(SHADER_TYPE_BLIT);
 }
@@ -1184,7 +1184,7 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     // assert(result == GL_CONDITION_SATISFIED || result == GL_ALREADY_SIGNALED);
     // glDeleteSync(fence);
 
-    // Release BQL before swapping (which may sleep)
+    // Release BQL before swapping (which may sleep if swap interval is not immediate)
     qemu_mutex_unlock_iothread();
     qemu_mutex_unlock_main_loop();
 
