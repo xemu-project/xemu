@@ -56,6 +56,9 @@ void xemu_input_init(void)
         exit(1);
     }
 
+    // set background input event, eventual coding for an option is needed.(todo)
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    
     if (SDL_Init(SDL_INIT_HAPTIC) < 0) {
         fprintf(stderr, "Failed to initialize SDL haptic subsystem\n");
         exit(1);
