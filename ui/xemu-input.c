@@ -51,6 +51,8 @@ static const enum xemu_settings_keys port_index_to_settings_key_map[] = {
 
 void xemu_input_init(void)
 {
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+
     if (SDL_Init(SDL_INIT_GAMECONTROLLER) < 0) {
         fprintf(stderr, "Failed to initialize SDL gamecontroller subsystem\n");
         exit(1);
