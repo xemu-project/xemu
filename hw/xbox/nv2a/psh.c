@@ -588,6 +588,22 @@ static QString* psh_convert(struct PixelShader *ps)
         "vec3 dotmap_hilo_hemisphere(vec3 col) {\n"
         "    return col;\n" // FIXME
         "}\n"
+        "const float[9] gaussian3x3 = float[9](\n"
+        "    1.0/16.0, 2.0/16.0, 1.0/16.0,\n"
+        "    2.0/16.0, 4.0/16.0, 2.0/16.0,\n"
+        "    1.0/16.0, 2.0/16.0, 1.0/16.0);\n"
+        "const vec2[9] convolution3x3 = vec2[9](\n"
+        "    vec2(-1.0,-1.0),vec2(0.0,-1.0),vec2(1.0,-1.0),\n"
+        "    vec2(-1.0, 0.0),vec2(0.0, 0.0),vec2(1.0, 0.0),\n"
+        "    vec2(-1.0, 1.0),vec2(0.0, 1.0),vec2(1.0, 1.0));\n"
+        "vec4 gaussianFilter2DRectProj(sampler2DRect sampler, vec3 texCoord) {\n"
+        "    vec4 sum = vec4(0.0);\n"
+        "    for (int i = 0; i < 9; i++) {\n"
+        "        sum += gaussian3x3[i]*textureProj(sampler,\n"
+        "                   texCoord + vec3(convolution3x3[i], 0.0));\n"
+        "    }\n"
+        "    return sum;\n"
+        "}\n"
         );
 
     /* Window Clipping */
@@ -658,11 +674,25 @@ static QString* psh_convert(struct PixelShader *ps)
             qstring_append_fmt(vars, "vec4 t%d = vec4(0.0); /* PS_TEXTUREMODES_NONE */\n",
                                i);
             break;
-        case PS_TEXTUREMODES_PROJECT2D:
+        case PS_TEXTUREMODES_PROJECT2D: {
             sampler_type = ps->state.rect_tex[i] ? "sampler2DRect" : "sampler2D";
-            qstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, pT%d.xyw);\n",
-                               i, i, i);
+            const char *lookup = "textureProj";
+            if ((ps->state.conv_tex[i] == CONVOLUTION_FILTER_GAUSSIAN)
+                || (ps->state.conv_tex[i] == CONVOLUTION_FILTER_QUINCUNX)) {
+                /* FIXME: Quincunx looks better than Linear and costs less than
+                 * Gaussian, but Gaussian should be plenty fast so use it for
+                 * now.
+                 */
+                if (ps->state.rect_tex[i]) {
+                    lookup = "gaussianFilter2DRectProj";
+                } else {
+                    NV2A_UNIMPLEMENTED("Convolution for 2D textures");
+                }
+            }
+            qstring_append_fmt(vars, "vec4 t%d = %s(texSamp%d, pT%d.xyw);\n",
+                               i, lookup, i, i);
             break;
+        }
         case PS_TEXTUREMODES_PROJECT3D:
             sampler_type = "sampler3D";
             qstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, pT%d.xyzw);\n",

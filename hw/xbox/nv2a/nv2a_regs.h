@@ -517,6 +517,9 @@
 #define NV_PGRAPH_TEXCTL2_1                              0x000019F0
 #define NV_PGRAPH_TEXFILTER0                             0x000019F4
 #   define NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS                 0x00001FFF
+#   define NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL              0x0000E000
+#       define NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL_QUINCUNX     1
+#       define NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL_GAUSSIAN_3   2
 #   define NV_PGRAPH_TEXFILTER0_MIN                             0x003F0000
 #       define NV_PGRAPH_TEXFILTER0_MIN_BOX_LOD0                    1
 #       define NV_PGRAPH_TEXFILTER0_MIN_TENT_LOD0                   2
