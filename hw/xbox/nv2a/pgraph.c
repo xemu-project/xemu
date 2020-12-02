@@ -1087,6 +1087,14 @@ void pgraph_method(NV2AState *d,
         SET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_LIGHTING,
                  parameter);
         break;
+    case NV097_SET_LINE_SMOOTH_ENABLE:
+        SET_MASK(pg->regs[NV_PGRAPH_SETUPRASTER],
+                 NV_PGRAPH_SETUPRASTER_LINESMOOTHENABLE, parameter);
+        break;
+    case NV097_SET_POLY_SMOOTH_ENABLE:
+        SET_MASK(pg->regs[NV_PGRAPH_SETUPRASTER],
+                 NV_PGRAPH_SETUPRASTER_POLYSMOOTHENABLE, parameter);
+        break;
     case NV097_SET_SKIN_MODE:
         SET_MASK(pg->regs[NV_PGRAPH_CSV0_D], NV_PGRAPH_CSV0_D_SKIN,
                  parameter);
@@ -2147,6 +2155,20 @@ void pgraph_method(NV2AState *d,
                 glEnable(GL_DITHER);
             } else {
                 glDisable(GL_DITHER);
+            }
+
+            /* Edge Antialiasing */
+            if (pg->regs[NV_PGRAPH_SETUPRASTER] &
+                    NV_PGRAPH_SETUPRASTER_LINESMOOTHENABLE) {
+                glEnable(GL_LINE_SMOOTH);
+            } else {
+                glDisable(GL_LINE_SMOOTH);
+            }
+            if (pg->regs[NV_PGRAPH_SETUPRASTER] &
+                    NV_PGRAPH_SETUPRASTER_POLYSMOOTHENABLE) {
+                glEnable(GL_POLYGON_SMOOTH);
+            } else {
+                glDisable(GL_POLYGON_SMOOTH);
             }
 
             //glDisableVertexAttribArray(NV2A_VERTEX_ATTR_DIFFUSE);
