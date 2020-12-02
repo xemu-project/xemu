@@ -63,7 +63,7 @@ static const GLenum pgraph_texture_min_filter_map[] = {
     GL_LINEAR_MIPMAP_NEAREST,
     GL_NEAREST_MIPMAP_LINEAR,
     GL_LINEAR_MIPMAP_LINEAR,
-    GL_LINEAR, /* TODO: Convolution filter... */
+    GL_LINEAR,
 };
 
 static const GLenum pgraph_texture_mag_filter_map[] = {
@@ -3358,6 +3358,21 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
         state.psh.snorm_tex[i] = (f.gl_internal_format == GL_RGB8_SNORM)
                                  || (f.gl_internal_format == GL_RG8_SNORM);
 
+        uint32_t filter = pg->regs[NV_PGRAPH_TEXFILTER0 + i*4];
+        unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
+        enum ConvolutionFilter kernel = CONVOLUTION_FILTER_DISABLED;
+        /* FIXME: We do not distinguish between min and mag when
+         * performing convolution. Just use it if specified for min (common AA
+         * case).
+         */
+        if (min_filter == NV_PGRAPH_TEXFILTER0_MIN_CONVOLUTION_2D_LOD0) {
+            int k = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL);
+            assert(k == NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL_QUINCUNX ||
+                   k == NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL_GAUSSIAN_3);
+            kernel = (enum ConvolutionFilter)k;
+        }
+
+        state.psh.conv_tex[i] = kernel;
     }
 
     ShaderBinding* cached_shader = (ShaderBinding*)g_hash_table_lookup(pg->shader_cache, &state);
