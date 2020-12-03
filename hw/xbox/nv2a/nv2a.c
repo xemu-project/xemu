@@ -399,6 +399,8 @@ static void nv2a_reset(NV2AState *d)
     d->pfifo.regs[NV_PFIFO_CACHE1_STATUS] |= NV_PFIFO_CACHE1_STATUS_LOW_MARK;
 
     vga_common_reset(&d->vga);
+    /* seems to start in color mode */
+    d->vga.msr = VGA_MIS_COLOR;
 
     d->pgraph.waiting_for_nop = false;
     d->pgraph.waiting_for_flip = false;
@@ -426,8 +428,6 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
     /* legacy VGA shit */
     VGACommonState *vga = &d->vga;
     vga->vram_size_mb = 64;
-    /* seems to start in color mode */
-    vga->msr = VGA_MIS_COLOR;
 
     vga_common_init(vga, OBJECT(dev));
     vga->get_bpp = nv2a_get_bpp;
