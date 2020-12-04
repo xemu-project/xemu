@@ -255,19 +255,34 @@ static void nv2a_init_memory(NV2AState *d, MemoryRegion *ram)
     memory_region_set_log(d->vram, true, DIRTY_MEMORY_NV2A_TEX);
     memory_region_set_dirty(d->vram, 0, memory_region_size(d->vram));
 
-    /* hacky. swap out vga's vram */
-    memory_region_destroy(&d->vga.vram);
-    // memory_region_unref(&d->vga.vram); // FIXME: Is ths right?
-    memory_region_init_alias(&d->vga.vram, OBJECT(d), "vga.vram",
-                             d->vram, 0, memory_region_size(d->vram));
-    d->vga.vram_ptr = memory_region_get_ram_ptr(&d->vga.vram);
-    vga_dirty_log_start(&d->vga);
-
     pgraph_init(d);
 
     /* fire up pfifo */
     qemu_thread_create(&d->pfifo.thread, "nv2a.pfifo_thread",
                        pfifo_thread, d, QEMU_THREAD_JOINABLE);
+}
+
+static void nv2a_init_vga(NV2AState *d)
+{
+    VGACommonState *vga = &d->vga;
+    vga->vram_size_mb = memory_region_size(d->vram) / MiB;
+
+    vga_common_init(vga, OBJECT(d));
+    vga->get_bpp = nv2a_get_bpp;
+    vga->get_offsets = nv2a_get_offsets;
+    // vga->overlay_draw_line = nv2a_overlay_draw_line;
+
+    d->hw_ops = *vga->hw_ops;
+    d->hw_ops.gfx_update = nv2a_vga_gfx_update;
+    vga->con = graphic_console_init(DEVICE(d), 0, &d->hw_ops, vga);
+
+    /* hacky. swap out vga's vram */
+    memory_region_destroy(&vga->vram);
+    // memory_region_unref(&vga->vram); // FIXME: Is ths right?
+    memory_region_init_alias(&vga->vram, OBJECT(d), "vga.vram",
+                             d->vram, 0, memory_region_size(d->vram));
+    vga->vram_ptr = memory_region_get_ram_ptr(&vga->vram);
+    vga_dirty_log_start(vga);
 }
 
 static void nv2a_lock_fifo(NV2AState *d)
@@ -340,18 +355,6 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
     pci_set_word(dev->config + PCI_SUBSYSTEM_VENDOR_ID, 0);
     pci_set_word(dev->config + PCI_SUBSYSTEM_ID, 0);
     dev->config[PCI_INTERRUPT_PIN] = 0x01;
-
-    /* legacy VGA shit */
-    VGACommonState *vga = &d->vga;
-    vga->vram_size_mb = 64;
-
-    vga_common_init(vga, OBJECT(dev));
-    vga->get_bpp = nv2a_get_bpp;
-    vga->get_offsets = nv2a_get_offsets;
-
-    d->hw_ops = *vga->hw_ops;
-    d->hw_ops.gfx_update = nv2a_vga_gfx_update;
-    vga->con = graphic_console_init(DEVICE(dev), 0, &d->hw_ops, vga);
 
     /* mmio */
     memory_region_init(&d->mmio, OBJECT(dev), "nv2a-mmio", 0x1000000);
@@ -610,5 +613,6 @@ void nv2a_init(PCIBus *bus, int devfn, MemoryRegion *ram)
     PCIDevice *dev = pci_create_simple(bus, devfn, "nv2a");
     NV2AState *d = NV2A_DEVICE(dev);
     nv2a_init_memory(d, ram);
+    nv2a_init_vga(d);
     qemu_add_vm_change_state_handler(nv2a_vm_state_change, d);
 }

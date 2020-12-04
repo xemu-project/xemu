@@ -25,6 +25,7 @@
 #include <assert.h>
 
 #include "qemu/osdep.h"
+#include "qemu/units.h"
 #include "qemu/thread.h"
 #include "qemu/queue.h"
 #include "qemu/main-loop.h"
