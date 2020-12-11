@@ -80,17 +80,15 @@
 static void xbox_lpc_set_irq(void *opaque, int pirq, int level)
 {
     XBOX_LPCState *lpc = opaque;
+    int pic_irq;
 
     assert(pirq >= 0);
     assert(pirq < XBOX_NUM_INT_IRQS + XBOX_NUM_PIRQS);
-
-    int pic_irq = 0;
 
     if (pirq < XBOX_NUM_INT_IRQS) {
         /* devices on the internal bus */
         uint32_t routing = pci_get_long(lpc->dev.config + XBOX_LPC_INT_IRQ_ROUT);
         pic_irq = (routing >> (pirq * 4)) & 0xF;
-
         if (pic_irq == 0) {
             return;
         }
@@ -109,17 +107,37 @@ static void xbox_lpc_set_irq(void *opaque, int pirq, int level)
 static int xbox_lpc_map_irq(PCIDevice *pci_dev, int intx)
 {
     int slot = PCI_SLOT(pci_dev->devfn);
+
     switch (slot) {
     /* devices on the internal bus */
-    case 2: return 0; /* usb0 */
-    case 3: return 1; /* usb1 */
-    case 4: return 2; /* nic */
-    case 5: return 3; /* apu */
-    case 6: return 4; /* aci */
-    case 9: return 6; /* ide */
-
-    case 30: /* agp bridge -> PIRQC? */
-        return XBOX_NUM_INT_IRQS + 2;
+    /*
+     * Return the index of a nibble at LPC PCI config
+     * register XBOX_LPC_INT_IRQ_ROUT for the actual
+     * IRQ number of a given PCI device slot.
+     *
+     * This register is hardcoded on hardware as:
+     *
+     * 0x0e065491 @ XBOX_LPC_INT_IRQ_ROUT
+     */
+    case 0: return 5; /* hostbridge, no IRQ */
+    case 1: return 7; /* lpc, smbus, no IRQ */
+    case 2: return 0; /* usb0, IRQ 1 */
+    case 3: return 1; /* usb1, IRQ 9 */
+    case 4: return 2; /* nic, IRQ 4 */
+    case 5: return 3; /* apu, IRQ 5 */
+    case 6: return 4; /* aci, IRQ 6 */
+    case 9: return 6; /* ide, IRQ 14 */
+    /* pirqs */
+    /*
+     * Return the index of a byte at LPC PCI config
+     * register XBOX_LPC_PIRQ_ROUT for the actual
+     * IRQ number of a given PCI device slot.
+     *
+     * This register is hardcoded on hardware as:
+     *
+     * 0x00031000 @ XBOX_LPC_PIRQ_ROUT
+     */
+    case 30: return XBOX_NUM_INT_IRQS + 2; /* agp bridge -> PIRQC, IRQ 3 */
     default:
         /* don't actually know how this should work */
         assert(false);
