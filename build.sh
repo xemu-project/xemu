@@ -11,8 +11,8 @@ package_windows() {
     mkdir -p dist
     cp i386-softmmu/qemu-system-i386.exe dist/xemu.exe
     cp i386-softmmu/qemu-system-i386w.exe dist/xemuw.exe
-    cp -r data dist/
-    python3 ./get_deps.py dist/xemu.exe dist
+    cp -r "${project_source_dir}/data" dist/
+    python3 "${project_source_dir}/get_deps.py" dist/xemu.exe dist
     strip dist/xemu.exe
     strip dist/xemuw.exe
 }
@@ -35,11 +35,11 @@ package_macos() {
 
     # Copy in runtime resources
     mkdir -p dist/xemu.app/Contents/Resources
-    cp -r data dist/xemu.app/Contents/Resources
+    cp -r "${project_source_dir}/data" dist/xemu.app/Contents/Resources
 
     # Generate icon file
     mkdir -p xemu.iconset
-    for r in 16 32 128 256 512; do cp ui/icons/xemu_${r}x${r}.png xemu.iconset/icon_${r}x${r}.png; done
+    for r in 16 32 128 256 512; do cp "${project_source_dir}/ui/icons/xemu_${r}x${r}.png" "xemu.iconset/icon_${r}x${r}.png"; done
     iconutil --convert icns --output dist/xemu.app/Contents/Resources/xemu.icns xemu.iconset
 
     # Generate Info.plist file
@@ -85,7 +85,7 @@ package_linux() {
     rm -rf dist
     mkdir -p dist
     cp i386-softmmu/qemu-system-i386 dist/xemu
-    cp -r data dist
+    cp -r "${project_source_dir}/data" dist
 }
 
 postbuild=''
