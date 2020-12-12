@@ -2,6 +2,9 @@
 
 set -e # exit if a command fails
 set -o pipefail # Will return the exit status of make if it fails
+set -o physical # Resolve symlinks when changing directory
+
+project_source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
 package_windows() {
     rm -rf dist
@@ -144,8 +147,6 @@ do
     esac
 done
 
-readlink=$(command -v readlink)
-
 case "$(uname -s)" in # Adjust compilation options based on platform
     Linux)
         echo 'Compiling for Linux...'
@@ -162,13 +163,6 @@ case "$(uname -s)" in # Adjust compilation options based on platform
         export PKG_CONFIG_PATH="${PKG_CONFIG_PATH}/usr/local/opt/libffi/lib/pkgconfig"
         export PKG_CONFIG_PATH="/usr/local/opt/openssl@1.1/lib/pkgconfig:${PKG_CONFIG_PATH}"
         echo $PKG_CONFIG_PATH
-        # macOS needs greadlink for a GNU compatible version of readlink
-        if readlink=$(command -v greadlink); then
-            echo 'GNU compatible readlink detected'
-        else
-            echo 'Could not find a GNU compatible readlink. Please install coreutils with homebrew'
-            exit -1
-        fi
         postbuild='package_macos'
         ;;
     CYGWIN*|MINGW*|MSYS*)
@@ -184,7 +178,7 @@ case "$(uname -s)" in # Adjust compilation options based on platform
 esac
 
 # find absolute path (and resolve symlinks) to build out of tree
-configure="$(dirname "$($readlink -f "${0}")")/configure"
+configure="${project_source_dir}/configure"
 
 set -x # Print commands from now on
 
