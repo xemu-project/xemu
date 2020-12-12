@@ -88,8 +88,43 @@ package_linux() {
 postbuild=''
 debug_opts=''
 build_cflags='-O3'
-job_count='12'
+default_job_count='12'
 sys_ldflags=''
+
+get_job_count () {
+	if command -v 'nproc' >/dev/null
+	then
+		nproc
+	else
+		case "$(uname -s)" in
+			'Linux')
+				egrep "^processor" /proc/cpuinfo | wc -l
+				;;
+			'FreeBSD')
+				sysctl -n hw.ncpu
+				;;
+			'Darwin')
+				sysctl -n hw.logicalcpu 2>/dev/null \
+				|| sysctl -n hw.ncpu
+				;;
+			'MSYS_NT-'*|'CYGWIN_NT-'*|'MINGW'*'_NT-'*)
+				if command -v 'wmic' >/dev/null
+				then
+					wmic cpu get NumberOfLogicalProcessors/Format:List \
+						| grep -m1 '=' | cut -f2 -d'='
+				else
+					echo "${NUMBER_OF_PROCESSORS:-${default_job_count}}"
+				fi
+				;;
+			*)
+				echo "${default_job_count}"
+				;;
+		esac
+	fi
+}
+
+job_count="$(get_job_count)" 2>/dev/null
+job_count="${job_count:-${default_job_count}}"
 
 while [ ! -z "${1}" ]
 do
