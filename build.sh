@@ -179,6 +179,7 @@ esac
 
 # find absolute path (and resolve symlinks) to build out of tree
 configure="${project_source_dir}/configure"
+build_cflags="${build_cflags} -I${project_source_dir}/ui/imgui"
 
 set -x # Print commands from now on
 
