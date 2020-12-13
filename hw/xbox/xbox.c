@@ -137,8 +137,14 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
         /* Read in MCPX ROM over last 512 bytes of BIOS data */
         int fd = open(filename, O_RDONLY | O_BINARY);
         assert(fd >= 0);
-        int rc = read(fd, &bios_data[bios_size - bootrom_size], bootrom_size);
+        uint8_t mcpx_data[512];
+        int rc = read(fd, mcpx_data, bootrom_size);
         assert(rc == bootrom_size);
+        MemoryRegion *mcpx = g_malloc(sizeof(MemoryRegion));
+        memory_region_init_ram(mcpx, NULL, "xbox.mcpx", bootrom_size, &error_fatal);
+        rom_add_blob_fixed("xbox.mcpx", mcpx_data, bootrom_size, 0xFFFFFE00);
+        memory_region_add_subregion_overlap(rom_memory, 0xFFFFFE00, mcpx, 1);
+        memory_region_set_readonly(mcpx, true);
         close(fd);
         g_free(filename);
     }
