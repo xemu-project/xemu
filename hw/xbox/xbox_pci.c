@@ -146,6 +146,7 @@ void xbox_pci_init(qemu_irq *pic,
                    MemoryRegion *address_space_io,
                    MemoryRegion *pci_memory,
                    MemoryRegion *ram_memory,
+                   MemoryRegion *rom_memory,
                    PCIBus **out_host_bus,
                    ISABus **out_isa_bus,
                    I2CBus **out_smbus,
@@ -188,6 +189,7 @@ void xbox_pci_init(qemu_irq *pic,
                                                      true, "xbox-lpc");
     XBOX_LPCState *lpc_state = XBOX_LPC_DEVICE(lpc);
     lpc_state->pic = pic;
+    lpc_state->rom_memory = rom_memory;
 
     pci_bus_irqs(host_bus, xbox_lpc_set_irq, xbox_lpc_map_irq, lpc_state,
                  XBOX_NUM_INT_IRQS + XBOX_NUM_PIRQS);
@@ -315,6 +317,23 @@ static void xbox_lpc_reset(DeviceState *dev)
     // XBOX_LPCState *s = XBOX_LPC_DEVICE(d);
 }
 
+static void xbox_lpc_config_write(PCIDevice *dev,
+                                    uint32_t addr, uint32_t val, int len)
+{
+    XBOX_LPCState *s = XBOX_LPC_DEVICE(dev);
+
+    pci_default_write_config(dev, addr, val, len);
+    if ((addr == 0x80) && (val & 2)) {  // TODO: is this right?
+        XBOXPCI_DPRINTF("DEACTIVATING BOOT ROM\n");
+
+        // TODO: proper scan by name/address instead of relying on it being last added!
+        MemoryRegion *mcpx = s->rom_memory->subregions.tqh_first;
+        memory_region_set_enabled(mcpx, false);
+    }
+
+    XBOXPCI_DPRINTF("%s: %x %x %d\n", __func__, addr, val, len);
+}
+
 #if 0
 /* Xbox 1.1 uses a config register instead of a bar to set the pm base address */
 #define XBOX_LPC_PMBASE 0x84
@@ -389,7 +408,7 @@ static void xbox_lpc_class_init(ObjectClass *klass, void *data)
 
     dc->hotpluggable = false;
     k->realize = xbox_lpc_realize;
-    //k->config_write = xbox_lpc_config_write;
+    k->config_write = xbox_lpc_config_write;
     k->vendor_id = PCI_VENDOR_ID_NVIDIA;
     k->device_id = PCI_DEVICE_ID_NVIDIA_NFORCE_LPC;
     k->revision = 212;

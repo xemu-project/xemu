@@ -62,6 +62,8 @@
 /* FIXME: Clean this up and propagate errors to UI */
 static void xbox_flash_init(MemoryRegion *rom_memory)
 {
+    const uint32_t rom_start = 0xFF000000;
+
     /* Locate BIOS ROM image */
     if (bios_name == NULL) {
         bios_name = "bios.bin";
@@ -69,7 +71,7 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
 
     int failed_to_load_bios = 1;
     char *filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
-    int bios_size = 256*1024;
+    uint32_t bios_size = 256*1024;
 
     if (filename != NULL) {
         int bios_file_size = get_image_size(filename);
@@ -93,7 +95,6 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
             }
             close(fd);
         }
-
     }
 
     if (failed_to_load_bios) {
@@ -102,6 +103,24 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
     }
     if (filename != NULL) {
         g_free(filename);
+    }
+
+    /* Create BIOS region */
+    MemoryRegion *bios;
+    bios = g_malloc(sizeof(*bios));
+    assert(bios != NULL);
+    memory_region_init_rom(bios, NULL, "xbox.bios", bios_size, &error_fatal);
+    rom_add_blob_fixed("xbox.bios", bios_data, bios_size, rom_start);
+
+    /* Mirror ROM from 0xff000000 - 0xffffffff */
+    uint32_t map_loc;
+    for (map_loc = rom_start;
+         map_loc >= rom_start;
+         map_loc += bios_size) {
+        MemoryRegion *map_bios = g_malloc(sizeof(*map_bios));
+        memory_region_init_alias(map_bios, NULL, "pci-bios", bios, 0, bios_size);
+        memory_region_add_subregion(rom_memory, map_loc, map_bios);
+        memory_region_set_readonly(map_bios, true);
     }
 
     /* XBOX_FIXME: What follows is a big hack to overlay the MCPX ROM on the
@@ -134,58 +153,27 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
             return;
         }
 
-        /* Read in MCPX ROM over last 512 bytes of BIOS data */
         int fd = open(filename, O_RDONLY | O_BINARY);
         assert(fd >= 0);
-        uint8_t mcpx_data[512];
-        int rc = read(fd, mcpx_data, bootrom_size);
+        int rc = read(fd, bios_data + bios_size - bootrom_size, bootrom_size);
         assert(rc == bootrom_size);
-        MemoryRegion *mcpx = g_malloc(sizeof(MemoryRegion));
-        memory_region_init_ram(mcpx, NULL, "xbox.mcpx", bootrom_size, &error_fatal);
-        rom_add_blob_fixed("xbox.mcpx", mcpx_data, bootrom_size, 0xFFFFFE00);
-        memory_region_add_subregion_overlap(rom_memory, 0xFFFFFE00, mcpx, 1);
-        memory_region_set_readonly(mcpx, true);
         close(fd);
         g_free(filename);
     }
 
-    /* XBOX_FIXME: The "memory_region_set_readonly" calls below have been
-    * temporarily commented out due to MCPX 1.1-based kernels hanging
-    * in the first bootloader stage when doing RSA signature verification.
-    * 
-    * This is caused by code incorrectly using the flash memory range to
-    * store the following computation; luckily real hardware's writeback
-    * cache policy (verified against MTRR config) appears to allow this
-    * to succeed, but qemu's emulation of such isn't capable of this yet
-    * so the value is never updated in ROM unless readonly is unspecified.
-    * 
-    *   sub ds:0FFFFD52Ch, eax
-    *   mov eax, ds:0FFFFD52Ch
-    */
+    /* This last overlay instance is special with bios and MCPX combined.
+     * The overlay must be page-aligned or it will take a huge performance hit.
+     * Retail 1.1+ kernels rely on cached writes here so it's not marked readonly.
+     * Once the MCPX is disabled things should resort back to the readonly alias.
+     */ 
 
-    /* Create BIOS region */
-    MemoryRegion *bios;
-    bios = g_malloc(sizeof(*bios));
-    assert(bios != NULL);
-    memory_region_init_ram(bios, NULL, "xbox.bios", bios_size, &error_fatal);
-    //memory_region_set_readonly(bios, true);
-    rom_add_blob_fixed("xbox.bios", bios_data, bios_size,
-                       (uint32_t)(-2 * bios_size));
+    MemoryRegion *mcpx = g_malloc(sizeof(MemoryRegion));
+    memory_region_init_ram(mcpx, NULL, "xbox.mcpx", bios_size, &error_fatal);
+    rom_add_blob_fixed("xbox.mcpx", bios_data, bios_size, -bios_size);
+    memory_region_add_subregion_overlap(rom_memory, -bios_size, mcpx, 1);
 
-    /* Assuming bios_data will be needed for duration of execution
-     * so no free(bios) here.
-     */
-
-    /* Mirror ROM from 0xff000000 - 0xffffffff */
-    uint32_t map_loc;
-    for (map_loc = (uint32_t)(-bios_size);
-         map_loc >= 0xff000000;
-         map_loc -= bios_size) {
-        MemoryRegion *map_bios = g_malloc(sizeof(*map_bios));
-        memory_region_init_alias(map_bios, NULL, "pci-bios", bios, 0, bios_size);
-        memory_region_add_subregion(rom_memory, map_loc, map_bios);
-        //memory_region_set_readonly(map_bios, true);
-    }
+    // no longer needed, rom_add_blob_fixed results in a copy, not a reference
+    g_free(bios_data);
 }
 
 static void xbox_memory_init(PCMachineState *pcms,
@@ -276,7 +264,7 @@ void xbox_init_common(MachineState *machine,
 
     xbox_pci_init(x86ms->gsi,
                   get_system_memory(), get_system_io(),
-                  pci_memory, ram_memory,
+                  pci_memory, ram_memory, rom_memory,
                   &pci_bus,
                   &isa_bus,
                   &smbus,
