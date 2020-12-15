@@ -159,18 +159,18 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
         assert(rc == bootrom_size);
         close(fd);
         g_free(filename);
+
+        /* This last overlay instance is special with bios and MCPX combined.
+        * The overlay must be page-aligned or it will take a huge performance hit.
+        * Retail 1.1+ kernels rely on cached writes here so it's not marked readonly.
+        * Once the MCPX is disabled things should resort back to the readonly alias.
+        */ 
+
+        MemoryRegion *mcpx = g_malloc(sizeof(MemoryRegion));
+        memory_region_init_ram(mcpx, NULL, "xbox.mcpx", bios_size, &error_fatal);
+        rom_add_blob_fixed("xbox.mcpx", bios_data, bios_size, -bios_size);
+        memory_region_add_subregion_overlap(rom_memory, -bios_size, mcpx, 1);
     }
-
-    /* This last overlay instance is special with bios and MCPX combined.
-     * The overlay must be page-aligned or it will take a huge performance hit.
-     * Retail 1.1+ kernels rely on cached writes here so it's not marked readonly.
-     * Once the MCPX is disabled things should resort back to the readonly alias.
-     */ 
-
-    MemoryRegion *mcpx = g_malloc(sizeof(MemoryRegion));
-    memory_region_init_ram(mcpx, NULL, "xbox.mcpx", bios_size, &error_fatal);
-    rom_add_blob_fixed("xbox.mcpx", bios_data, bios_size, -bios_size);
-    memory_region_add_subregion_overlap(rom_memory, -bios_size, mcpx, 1);
 
     // no longer needed, rom_add_blob_fixed results in a copy, not a reference
     g_free(bios_data);
