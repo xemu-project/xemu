@@ -44,6 +44,9 @@ struct xemu_settings {
 	int   memory;
 	int   short_animation; // Boolean
 
+	// [audio]
+	int use_dsp; // Boolean
+
 	// [display]
 	int scale;
 	int ui_scale;
@@ -102,6 +105,8 @@ struct config_offset_table {
 	[XEMU_SETTINGS_SYSTEM_EEPROM_PATH]  = { CONFIG_TYPE_STRING, "system", "eeprom_path",  offsetof(struct xemu_settings, eeprom_path),     { .default_str  = "" } },
 	[XEMU_SETTINGS_SYSTEM_MEMORY]       = { CONFIG_TYPE_INT,    "system", "memory",       offsetof(struct xemu_settings, memory),          { .default_int  = 64 } },
 	[XEMU_SETTINGS_SYSTEM_SHORTANIM]    = { CONFIG_TYPE_BOOL,   "system", "shortanim",    offsetof(struct xemu_settings, short_animation), { .default_bool = 0  } },
+	
+	[XEMU_SETTINGS_AUDIO_USE_DSP] = { CONFIG_TYPE_BOOL, "audio", "use_dsp", offsetof(struct xemu_settings, use_dsp), { .default_bool = 0  } },
 
 	[XEMU_SETTINGS_DISPLAY_SCALE] =    { CONFIG_TYPE_ENUM, "display", "scale",    offsetof(struct xemu_settings, scale),    { .default_int = DISPLAY_SCALE_SCALE }, display_scale_map },
 	[XEMU_SETTINGS_DISPLAY_UI_SCALE] = { CONFIG_TYPE_INT,  "display", "ui_scale", offsetof(struct xemu_settings, ui_scale), { .default_int = 1                   }                    },

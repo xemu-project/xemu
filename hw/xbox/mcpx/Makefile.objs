@@ -1,0 +1,4 @@
+obj-y += apu.o aci.o
+apu.o-cflags := $(SDL_CFLAGS)
+
+obj-y += dsp/

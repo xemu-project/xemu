@@ -100,7 +100,8 @@ enum {
 #define GS_MINT  (1<<7)         /* ro */
 #define GS_POINT (1<<6)         /* ro */
 #define GS_PIINT (1<<5)         /* ro */
-#define GS_RSRVD ((1<<4)|(1<<3))
+#define GS_SOINT (1<<4)         /* ro */
+#define GS_RSRVD (1<<3)
 #define GS_MOINT (1<<2)         /* ro */
 #define GS_MIINT (1<<1)         /* ro */
 #define GS_GSCI  1              /* rwc */
@@ -112,6 +113,7 @@ enum {
                     GS_MINT|                    \
                     GS_POINT|                   \
                     GS_PIINT|                   \
+                    GS_SOINT|                   \
                     GS_RSRVD|                   \
                     GS_MOINT|                   \
                     GS_MIINT)
@@ -176,7 +178,7 @@ enum {
     CAS      = 0x34
 };
 
-#define GET_BM(index) (((index) >> 4) & 3)
+#define GET_BM(index) (((index) >> 4) & 7)
 
 static void po_callback (void *opaque, int free);
 static void pi_callback (void *opaque, int avail);
@@ -274,6 +276,9 @@ static void voice_set_active (AC97LinkState *s, int bm_index, int on)
         AUD_set_active_in (s->voice_mc, on);
         break;
 
+    case SO_INDEX:
+        break;
+
     default:
         AUD_log ("ac97", "invalid bm_index(%d) in voice_set_active\n", bm_index);
         break;
@@ -368,6 +373,9 @@ static void open_voice (AC97LinkState *s, int index, int freq)
                 &as
                 );
             break;
+
+        case SO_INDEX:
+            break;
         }
     }
     else {
@@ -386,6 +394,9 @@ static void open_voice (AC97LinkState *s, int index, int freq)
         case MC_INDEX:
             AUD_close_in (&s->card, s->voice_mc);
             s->voice_mc = NULL;
+            break;
+
+        case SO_INDEX:
             break;
         }
     }
@@ -659,6 +670,7 @@ static void nam_writew (void *opaque, uint32_t addr, uint32_t val)
     default:
         dolog ("U nam writew %#x <- %#x\n", addr, val);
         mixer_store (s, index, val);
+        assert(0);
         break;
     }
 }
@@ -729,6 +741,7 @@ static uint32_t nabm_readb (void *opaque, uint32_t addr)
         break;
     default:
         dolog ("U nabm readb %#x -> %#x\n", addr, val);
+        assert(0);
         break;
     }
     return val;
@@ -760,6 +773,7 @@ static uint32_t nabm_readw (void *opaque, uint32_t addr)
         break;
     default:
         dolog ("U nabm readw %#x -> %#x\n", addr, val);
+        val = nabm_readb(opaque, addr) | (nabm_readb(opaque, addr + 1) << 8);
         break;
     }
     return val;
@@ -809,6 +823,7 @@ static uint32_t nabm_readl (void *opaque, uint32_t addr)
         break;
     default:
         dolog ("U nabm readl %#x -> %#x\n", addr, val);
+        val = nabm_readw(opaque, addr) | (nabm_readw(opaque, addr + 2) << 16);
         break;
     }
     return val;
@@ -894,6 +909,8 @@ static void nabm_writew (void *opaque, uint32_t addr, uint32_t val)
         break;
     default:
         dolog ("U nabm writew %#x <- %#x\n", addr, val);
+        nabm_writeb(opaque, addr, val & 0xff);
+        nabm_writeb(opaque, addr + 1, (val >> 8) & 0xff);
         break;
     }
 }
@@ -929,6 +946,8 @@ static void nabm_writel (void *opaque, uint32_t addr, uint32_t val)
         break;
     default:
         dolog ("U nabm writel %#x <- %#x\n", addr, val);
+        nabm_writew(opaque, addr, val & 0xffff);
+        nabm_writew(opaque, addr + 2, (val >> 16) & 0xffff);
         break;
     }
 }

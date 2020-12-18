@@ -4565,6 +4565,15 @@ else
 fi
 
 ##########################################
+# libsamplerate probe
+if $pkg_config --exists samplerate; then
+    QEMU_CFLAGS="$QEMU_CFLAGS $($pkg_config --cflags samplerate)"
+    LIBS="$LIBS $($pkg_config --libs samplerate)"
+else
+    feature_not_found "samplerate" "Install libsamplerate0-dev"
+fi
+
+##########################################
 # libxml2 probe
 if test "$libxml2" != "no" ; then
     if $pkg_config --exists libxml-2.0; then

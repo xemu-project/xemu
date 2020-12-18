@@ -34,6 +34,8 @@ struct DSPState {
     int save_cycles;
 
     uint32_t interrupts;
+
+    bool is_gp;
 };
 
 #endif /* DSP_STATE_H */

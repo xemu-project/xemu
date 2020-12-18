@@ -44,7 +44,15 @@
 #define INTERRUPT_START_FRAME (1 << 1)
 #define INTERRUPT_DMA_EOL (1 << 7)
 
-#define DPRINTF(s, ...) printf(s, ## __VA_ARGS__)
+// #define DEBUG_DSP
+
+#ifdef DEBUG_DSP
+#define DPRINTF(fmt, ...) \
+    do { fprintf(stderr, fmt, ## __VA_ARGS__); } while (0)
+#else
+#define DPRINTF(fmt, ...) \
+    do { } while (0)
+#endif
 
 static uint32_t read_peripheral(dsp_core_t* core, uint32_t address);
 static void write_peripheral(dsp_core_t* core, uint32_t address, uint32_t value);
@@ -85,10 +93,13 @@ void dsp_destroy(DSPState* dsp)
 static uint32_t read_peripheral(dsp_core_t* core, uint32_t address) {
     DSPState* dsp = container_of(core, DSPState, core);
 
-    // printf("read_peripheral 0x%06x\n", address);
+    DPRINTF("read_peripheral 0x%06x", address);
 
     uint32_t v = 0xababa;
     switch(address) {
+    case 0xFFFFB3:
+        v = 0; // core->num_inst; // ??
+        break;
     case 0xFFFFC5:
         v = dsp->interrupts;
         if (dsp->dma.eol) {
@@ -109,16 +120,22 @@ static uint32_t read_peripheral(dsp_core_t* core, uint32_t address) {
         break;
     }
 
-    // printf(" -> 0x%06x\n", v);
+    DPRINTF(" -> 0x%06x\n", v);
     return v;
 }
 
 static void write_peripheral(dsp_core_t* core, uint32_t address, uint32_t value) {
     DSPState* dsp = container_of(core, DSPState, core);
 
-    // printf("write_peripheral [0x%06x] = 0x%06x\n", address, value);
+    DPRINTF("write_peripheral [0x%06x] = 0x%06x\n", address, value);
 
     switch(address) {
+    case 0xFFFFC4:
+        if (value & 1) {
+            core->is_idle = true;
+            break;
+        }
+        break;
     case 0xFFFFC5:
         dsp->interrupts &= ~value;
         if (value & INTERRUPT_DMA_EOL) {
@@ -137,6 +154,8 @@ static void write_peripheral(dsp_core_t* core, uint32_t address, uint32_t value)
     case 0xFFFFD7:
         dsp_dma_write(&dsp->dma, DMA_CONFIGURATION, value);
         break;
+    default:
+        break;
     }
 }
 
@@ -152,28 +171,48 @@ void dsp_run(DSPState* dsp, int cycles)
 
     if (dsp->save_cycles <= 0) return;
 
-    // if (unlikely(bDspDebugging)) {
-    //     while (dsp->core.save_cycles > 0)
-    //     {
-    //         dsp56k_execute_instruction();
-    //         dsp->core.save_cycles -= dsp->core.instr_cycle;
-    //         DebugDsp_Check();
-    //     }
-    // } else {
-    //  printf("--> %d\n", dsp->core.save_cycles);
+    int count = 0;
+    int dma_timer = 0;
+
     while (dsp->save_cycles > 0)
     {
         dsp56k_execute_instruction(&dsp->core);
         dsp->save_cycles -= dsp->core.instr_cycle;
+        dsp->core.cycle_count++;
+        count++;
+
+        if (dsp->dma.control & DMA_CONTROL_RUNNING) {
+            dma_timer++;
+        }
+
+        if (dma_timer > 2) {
+            dma_timer = 0;
+            dsp->dma.control &= ~DMA_CONTROL_RUNNING;
+            dsp->dma.control |= DMA_CONTROL_STOPPED;
+        }
+
+        if (dsp->core.is_idle) break;
     }
 
-} 
+    /* FIXME: DMA timing be done cleaner. Xbox enables running
+     * then polls to make sure its running. But we complete DMA instantaneously,
+     * so when is it supposed to be signaled that it stopped? Maybe just wait at
+     * least one cycle? How long does hardware wait?
+     */
+}
 
 void dsp_bootstrap(DSPState* dsp)
 {
     // scratch memory is dma'd in to pram by the bootrom
     dsp->dma.scratch_rw(dsp->dma.rw_opaque,
         (uint8_t*)dsp->core.pram, 0, 0x800*4, false);
+    for (int i = 0; i < 0x800; i++) {
+        if (dsp->core.pram[i] & 0xff000000) {
+            DPRINTF(stderr, "Bootstrap %04x: %08x\n", i, dsp->core.pram[i]);
+            dsp->core.pram[i] &= 0x00ffffff;
+        }
+    }
+    memset(dsp->core.pram_opcache, 0, sizeof(dsp->core.pram_opcache));
 }
 
 void dsp_start_frame(DSPState* dsp)
@@ -294,12 +333,12 @@ void dsp_print_registers(DSPState* dsp)
         dsp->core.registers[DSP_REG_A2], dsp->core.registers[DSP_REG_A1], dsp->core.registers[DSP_REG_A0]);
     printf("B: B2: %02x  B1: %06x  B0: %06x\n",
         dsp->core.registers[DSP_REG_B2], dsp->core.registers[DSP_REG_B1], dsp->core.registers[DSP_REG_B0]);
-    
+
     printf("X: X1: %06x  X0: %06x\n", dsp->core.registers[DSP_REG_X1], dsp->core.registers[DSP_REG_X0]);
     printf("Y: Y1: %06x  Y0: %06x\n", dsp->core.registers[DSP_REG_Y1], dsp->core.registers[DSP_REG_Y0]);
 
     for (i=0; i<8; i++) {
-        printf("R%01x: %04x   N%01x: %04x   M%01x: %04x\n", 
+        printf("R%01x: %04x   N%01x: %04x   M%01x: %04x\n",
             i, dsp->core.registers[DSP_REG_R0+i],
             i, dsp->core.registers[DSP_REG_N0+i],
             i, dsp->core.registers[DSP_REG_M0+i]);
@@ -307,7 +346,7 @@ void dsp_print_registers(DSPState* dsp)
 
     printf("LA: %04x   LC: %04x   PC: %04x\n", dsp->core.registers[DSP_REG_LA], dsp->core.registers[DSP_REG_LC], dsp->core.pc);
     printf("SR: %04x  OMR: %02x\n", dsp->core.registers[DSP_REG_SR], dsp->core.registers[DSP_REG_OMR]);
-    printf("SP: %02x    SSH: %04x  SSL: %04x\n", 
+    printf("SP: %02x    SSH: %04x  SSL: %04x\n",
         dsp->core.registers[DSP_REG_SP], dsp->core.registers[DSP_REG_SSH], dsp->core.registers[DSP_REG_SSL]);
 }
 
@@ -328,7 +367,7 @@ int dsp_get_register_address(DSPState* dsp, const char *regname, uint32_t **addr
         size_t bits;
         uint32_t mask;
     } reg_addr_t;
-    
+
     /* sorted by name so that this can be bisected */
     const reg_addr_t registers[] = {
 
@@ -409,7 +448,7 @@ int dsp_get_register_address(DSPState* dsp, const char *regname, uint32_t **addr
         return 0;
     }
     len = i;
-    
+
     /* bisect */
     l = 0;
     r = ARRAYSIZE(registers) - 1;
@@ -449,7 +488,7 @@ bool dsp_disasm_set_register(DSPState* dsp, const char *arg, uint32_t value)
     if (arg[0]=='S' || arg[0]=='s') {
         if (arg[1]=='P' || arg[1]=='p') {
             dsp->core.registers[DSP_REG_SP] = value & BITMASK(6);
-            value &= BITMASK(4); 
+            value &= BITMASK(4);
             dsp->core.registers[DSP_REG_SSH] = dsp->core.stack[0][value];
             dsp->core.registers[DSP_REG_SSL] = dsp->core.stack[1][value];
             return true;

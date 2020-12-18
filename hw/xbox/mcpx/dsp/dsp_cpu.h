@@ -154,6 +154,10 @@ typedef struct dsp_interrupt_s {
 typedef struct dsp_core_s dsp_core_t;
 
 struct dsp_core_s {
+    bool is_gp;
+    bool is_idle;
+    uint32_t cycle_count;
+
     /* DSP instruction Cycle counter */
     uint16_t instr_cycle;
 
@@ -167,6 +171,7 @@ struct dsp_core_s {
     uint32_t xram[DSP_XRAM_SIZE];
     uint32_t yram[DSP_YRAM_SIZE];
     uint32_t pram[DSP_PRAM_SIZE];
+    const void *pram_opcache[DSP_PRAM_SIZE];
 
     uint32_t mixbuffer[DSP_MIXBUFFER_SIZE];
 
@@ -227,8 +232,8 @@ struct dsp_core_s {
     uint16_t disasm_cur_inst_len;
 
     /* Current instruction */
-    char disasm_str_instr[128];
-    char disasm_str_instr2[128];
+    char disasm_str_instr[256];
+    char disasm_str_instr2[523];
     char disasm_parallelmove_name[64];
 
     /**********************************

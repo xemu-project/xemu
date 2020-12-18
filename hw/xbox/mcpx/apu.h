@@ -1,7 +1,9 @@
 /*
- * QEMU Geforce NV2A implementation
+ * QEMU MCPX Audio Processing Unit implementation
  *
- * Copyright (c) 2018 Jannik Vogel
+ * Copyright (c) 2012 espes
+ * Copyright (c) 2018-2019 Jannik Vogel
+ * Copyright (c) 2019-2021 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
