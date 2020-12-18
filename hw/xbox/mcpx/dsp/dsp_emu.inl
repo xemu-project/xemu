@@ -1689,6 +1689,17 @@ static void emu_lsl_b(dsp_core_t* dsp)
     dsp->registers[DSP_REG_SR] |= (dsp->registers[DSP_REG_B1]==0)<<DSP_SR_Z;
 }
 
+static void emu_lsl_imm(dsp_core_t* dsp)
+{
+    uint32_t D = dsp->cur_inst & 1;
+    uint32_t ii = (dsp->cur_inst >> 1) & BITMASK(5);
+    // FIXME
+    void (*func)(dsp_core_t *dsp) = D ? emu_lsl_b : emu_lsl_a;
+    while (ii--) {
+        func(dsp);
+    }
+}
+
 static void emu_lsr_a(dsp_core_t* dsp)
 {
     uint32_t newcarry = dsp->registers[DSP_REG_A1] & 1;

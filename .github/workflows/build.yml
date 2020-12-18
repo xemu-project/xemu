@@ -45,6 +45,7 @@ jobs:
         7z x -y msys64.7z "-oC:\tools\"
         echo "Updating MSYS2 environment..."
         C:\tools\msys64\usr\bin\bash.exe -lc "pacman -Syu --noconfirm"
+        C:\tools\msys64\usr\bin\bash.exe -lc "pacman --needed --noconfirm -S mingw-w64-x86_64-libsamplerate"
     # - name: Initialize Compiler Cache
     #   id: cache
     #   uses: actions/cache@v1
@@ -99,6 +100,7 @@ jobs:
           libgtk-3-dev \
           libpixman-1-dev \
           libsdl2-dev \
+          libsamplerate0-dev \
           ccache
     - name: Initialize Compiler Cache
       id: cache
@@ -152,6 +154,7 @@ jobs:
           libepoxy \
           pixman \
           pkg-config \
+          libsamplerate \
           sdl2
     - name: Initialize Compiler Cache
       id: cache

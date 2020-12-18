@@ -301,6 +301,15 @@ static void dis_asl_imm(dsp_core_t* dsp)
         registers_name[D ? DSP_REG_B : DSP_REG_A]);
 }
 
+static void dis_lsl_imm(dsp_core_t* dsp)
+{
+    uint32_t D = dsp->disasm_cur_inst & 1;
+    uint32_t ii = (dsp->disasm_cur_inst >> 1) & BITMASK(5);
+    sprintf(dsp->disasm_str_instr, "lsl #$%02x, %s",
+        ii,
+        registers_name[D ? DSP_REG_B : DSP_REG_A]);
+}
+
 static void dis_asr_imm(dsp_core_t* dsp)
 {
     uint32_t S = (dsp->disasm_cur_inst >> 7) & 1;

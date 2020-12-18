@@ -26,6 +26,9 @@
 #include "dsp.h"
 #include "dsp_cpu.h"
 
+#define DMA_CONTROL_RUNNING (1 << 4)
+#define DMA_CONTROL_STOPPED (1 << 5)
+
 typedef enum DSPDMARegister {
     DMA_CONFIGURATION,
     DMA_CONTROL,
