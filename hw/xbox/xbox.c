@@ -153,6 +153,7 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
             return;
         }
 
+        /* Read in MCPX ROM over last 512 bytes of BIOS data */
         int fd = open(filename, O_RDONLY | O_BINARY);
         assert(fd >= 0);
         int rc = read(fd, bios_data + bios_size - bootrom_size, bootrom_size);
