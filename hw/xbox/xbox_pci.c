@@ -323,12 +323,15 @@ static void xbox_lpc_config_write(PCIDevice *dev,
     XBOX_LPCState *s = XBOX_LPC_DEVICE(dev);
 
     pci_default_write_config(dev, addr, val, len);
-    if ((addr == 0x80) && (val & 2)) {  // TODO: is this right?
+    
+    if ((addr == 0x80) && (val & 2)) {
         XBOXPCI_DPRINTF("DEACTIVATING BOOT ROM\n");
-
-        // TODO: proper scan by name/address instead of relying on it being last added!
-        MemoryRegion *mcpx = s->rom_memory->subregions.tqh_first;
-        memory_region_set_enabled(mcpx, false);
+        MemoryRegion *subregion;
+        QTAILQ_FOREACH(subregion, &s->rom_memory->subregions, subregions_link) {
+            if (subregion->name != NULL && strcmp(subregion->name, "xbox.mcpx") == 0) {
+                memory_region_set_enabled(subregion, false);
+            }
+        }
     }
 
     XBOXPCI_DPRINTF("%s: %x %x %d\n", __func__, addr, val, len);
