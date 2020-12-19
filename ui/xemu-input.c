@@ -51,6 +51,8 @@ static const enum xemu_settings_keys port_index_to_settings_key_map[] = {
 
 void xemu_input_init(void)
 {
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+
     if (SDL_Init(SDL_INIT_GAMECONTROLLER) < 0) {
         fprintf(stderr, "Failed to initialize SDL gamecontroller subsystem\n");
         exit(1);
@@ -204,7 +206,12 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
                 num_available_controllers--;
 
                 // Deallocate
-                // FIXME: Check to release any SDL handles, etc
+                if (iter->sdl_haptic) {
+                    SDL_HapticClose(iter->sdl_haptic);
+                }
+                if (iter->sdl_gamecontroller) {
+                    SDL_GameControllerClose(iter->sdl_gamecontroller);
+                }
                 free(iter);
 
                 handled = 1;
@@ -339,9 +346,9 @@ void xemu_input_update_rumble(struct controller_state *state)
 
     memset(&state->sdl_haptic_effect, 0, sizeof(state->sdl_haptic_effect));
     state->sdl_haptic_effect.type = SDL_HAPTIC_LEFTRIGHT;
-    state->sdl_haptic_effect.periodic.length = 16;
-    state->sdl_haptic_effect.leftright.large_magnitude = state->rumble_l;
-    state->sdl_haptic_effect.leftright.small_magnitude = state->rumble_r;
+    state->sdl_haptic_effect.leftright.length = SDL_HAPTIC_INFINITY;
+    state->sdl_haptic_effect.leftright.large_magnitude = state->rumble_l >> 1;
+    state->sdl_haptic_effect.leftright.small_magnitude = state->rumble_r >> 1;
     if (state->sdl_haptic_effect_id == -1) {
         state->sdl_haptic_effect_id = SDL_HapticNewEffect(state->sdl_haptic, &state->sdl_haptic_effect);
         SDL_HapticRunEffect(state->sdl_haptic, state->sdl_haptic_effect_id, 1);

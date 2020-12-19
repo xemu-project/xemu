@@ -851,6 +851,10 @@ static inline void *tcg_malloc(int size)
     }
 }
 
+#ifdef XBOX
+void tcg_register_init_ctx(void);
+#endif
+
 void tcg_context_init(TCGContext *s);
 void tcg_register_thread(void);
 void tcg_prologue_init(TCGContext *s);

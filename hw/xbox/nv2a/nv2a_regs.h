@@ -467,6 +467,8 @@
 #   define NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE             (1 << 6)
 #   define NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE              (1 << 7)
 #   define NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE              (1 << 8)
+#   define NV_PGRAPH_SETUPRASTER_LINESMOOTHENABLE               (1 << 10)
+#   define NV_PGRAPH_SETUPRASTER_POLYSMOOTHENABLE               (1 << 11)
 #   define NV_PGRAPH_SETUPRASTER_CULLCTRL                       0x00600000
 #       define NV_PGRAPH_SETUPRASTER_CULLCTRL_FRONT                 1
 #       define NV_PGRAPH_SETUPRASTER_CULLCTRL_BACK                  2
@@ -515,6 +517,9 @@
 #define NV_PGRAPH_TEXCTL2_1                              0x000019F0
 #define NV_PGRAPH_TEXFILTER0                             0x000019F4
 #   define NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS                 0x00001FFF
+#   define NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL              0x0000E000
+#       define NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL_QUINCUNX     1
+#       define NV_PGRAPH_TEXFILTER0_CONVOLUTION_KERNEL_GAUSSIAN_3   2
 #   define NV_PGRAPH_TEXFILTER0_MIN                             0x003F0000
 #       define NV_PGRAPH_TEXFILTER0_MIN_BOX_LOD0                    1
 #       define NV_PGRAPH_TEXFILTER0_MIN_TENT_LOD0                   2
@@ -852,6 +857,8 @@
 #   define NV097_SET_DEPTH_TEST_ENABLE                        0x0000030C
 #   define NV097_SET_DITHER_ENABLE                            0x00000310
 #   define NV097_SET_LIGHTING_ENABLE                          0x00000314
+#   define NV097_SET_LINE_SMOOTH_ENABLE                       0x00000320
+#   define NV097_SET_POLY_SMOOTH_ENABLE                       0x00000324
 #   define NV097_SET_SKIN_MODE                                0x00000328
 #       define NV097_SET_SKIN_MODE_OFF                            0
 #       define NV097_SET_SKIN_MODE_2G                             1

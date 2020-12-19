@@ -33,6 +33,12 @@ enum PshAlphaFunc {
     ALPHA_FUNC_ALWAYS,
 };
 
+enum ConvolutionFilter {
+    CONVOLUTION_FILTER_DISABLED,
+    CONVOLUTION_FILTER_QUINCUNX,
+    CONVOLUTION_FILTER_GAUSSIAN,
+};
+
 typedef struct PshState {
     /* fragment shader - register combiner stuff */
     uint32_t combiner_control;
@@ -45,8 +51,10 @@ typedef struct PshState {
     uint32_t alpha_inputs[8], alpha_outputs[8];
 
     bool rect_tex[4];
+    bool snorm_tex[4];
     bool compare_mode[4][4];
     bool alphakill[4];
+    enum ConvolutionFilter conv_tex[4];
 
     bool alpha_test;
     enum PshAlphaFunc alpha_func;

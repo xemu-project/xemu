@@ -31,6 +31,7 @@
 #include "qemu/module.h"
 #include "qemu/thread.h"
 #include "qemu/main-loop.h"
+#include "qemu/rcu.h"
 #include "qemu-version.h"
 #include "qemu-common.h"
 #include "qapi/error.h"
@@ -48,6 +49,8 @@
 
 #include "hw/xbox/smbus.h" // For eject, drive tray
 #include "hw/xbox/nv2a/nv2a.h"
+
+void tcg_register_init_ctx(void); // tcg.c
 
 // #define DEBUG_XEMU_C
 
@@ -618,12 +621,12 @@ void sdl2_poll_events(struct sdl2_console *scon)
         sdl_update_caption(scon);
     }
 
+    int kbd = 0, mouse = 0;
+    xemu_hud_should_capture_kbd_mouse(&kbd, &mouse);
+
     while (SDL_PollEvent(ev)) {
-        int kbd = 0, mouse = 0;
         xemu_input_process_sdl_events(ev);
         xemu_hud_process_sdl_events(ev);
-        xemu_input_update_controllers();
-        xemu_hud_should_capture_kbd_mouse(&kbd, &mouse);
 
         switch (ev->type) {
         case SDL_KEYDOWN:
@@ -667,6 +670,8 @@ void sdl2_poll_events(struct sdl2_console *scon)
             break;
         }
     }
+
+    xemu_input_update_controllers();
 
     scon->idle_counter = 0;
     scon->dcl.update_interval = 16; // Ignored
@@ -798,7 +803,6 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
         SDL_GL_CONTEXT_PROFILE_MASK,
         SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetSwapInterval(0);
 
     // Create main window
     m_window = SDL_CreateWindow(
@@ -848,6 +852,7 @@ static void sdl2_display_early_init(DisplayOptions *o)
     display_opengl = 1;
 
     SDL_GL_MakeCurrent(m_window, m_context);
+    SDL_GL_SetSwapInterval(0);
     xemu_hud_init(m_window, m_context);
     blit = create_decal_shader(SHADER_TYPE_BLIT);
 }
@@ -1179,7 +1184,7 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     // assert(result == GL_CONDITION_SATISFIED || result == GL_ALREADY_SIGNALED);
     // glDeleteSync(fence);
 
-    // Release BQL before swapping (which may sleep)
+    // Release BQL before swapping (which may sleep if swap interval is not immediate)
     qemu_mutex_unlock_iothread();
     qemu_mutex_unlock_main_loop();
 
@@ -1451,11 +1456,20 @@ int main(int argc, char **argv)
     DPRINTF("Main thread: waiting for display_init_sem\n");
     qemu_sem_wait(&display_init_sem);
 
+    /*
+     * FIXME: May want to create a callback mechanism for main QEMU thread
+     * to just run functions to avoid TLS bugs and locking issues.
+     */
+    tcg_register_init_ctx();
+    // rcu_register_thread();
+
     DPRINTF("Main thread: initializing app\n");
 
     while (1) {
         sdl2_gl_refresh(&sdl2_console[0].dcl);
     }
+
+    // rcu_unregister_thread();
 }
 
 void xemu_eject_disc(void)
