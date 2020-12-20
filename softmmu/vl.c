@@ -3066,6 +3066,19 @@ void qemu_init(int argc, char **argv, char **envp)
 
     const char *dvd_path = "";
     xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_DVD_PATH, &dvd_path);
+
+    // Allow overriding the dvd path from command line
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-dvd_path") == 0) {
+            argv[i] = "";
+            if (i < argc - 1) {
+                dvd_path = argv[i+1];
+                argv[i+1] = "";
+            }
+            break;
+        }
+    }
+
     if (strlen(dvd_path) > 0) {
         if (xemu_check_file(dvd_path)) {
             char *msg = g_strdup_printf("Failed to open DVD image file '%s'. Please check machine settings.", dvd_path);
@@ -3093,7 +3106,9 @@ void qemu_init(int argc, char **argv, char **envp)
 #endif
 
     for (int i = 1; i < argc; i++) {
-        fake_argv[fake_argc++] = argv[i];
+        if (strcmp(argv[i], "") != 0) {
+            fake_argv[fake_argc++] = argv[i];
+        }
     }
 
     printf("Created QEMU launch parameters: ");
