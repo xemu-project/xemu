@@ -86,55 +86,80 @@ static void amd756_smb_transaction(AMD756SMBus *s)
     uint8_t cmd  = s->smb_cmd;
     uint8_t addr = (s->smb_addr >> 1) & 0x7f;
     I2CBus *bus  = s->smbus;
+    int ret;
 
     SMBUS_DPRINTF("SMBus trans addr=0x%02x prot=0x%02x\n", addr, prot);
 
     switch (prot) {
     case AMD756_QUICK:
-        smbus_quick_command(bus, addr, read);
+        ret = smbus_quick_command(bus, addr, read);
+        goto done;
         break;
     case AMD756_BYTE:
         if (read) {
-            s->smb_data0 = smbus_receive_byte(bus, addr);
+            ret = smbus_receive_byte(bus, addr);
+            goto data8;
         } else {
-            smbus_send_byte(bus, addr, cmd);
+            ret = smbus_send_byte(bus, addr, cmd);
+            goto done;
         }
         break;
     case AMD756_BYTE_DATA:
         if (read) {
-            s->smb_data0 = smbus_read_byte(bus, addr, cmd);
+            ret = smbus_read_byte(bus, addr, cmd);
+            goto data8;
         } else {
-            smbus_write_byte(bus, addr, cmd, s->smb_data0);
+            ret = smbus_write_byte(bus, addr, cmd, s->smb_data0);
+            goto done;
         }
         break;
     case AMD756_WORD_DATA:
         if (read) {
-            uint16_t val;
-            val = smbus_read_word(bus, addr, cmd);
-            s->smb_data0 = val;
-            s->smb_data1 = val >> 8;
+            ret = smbus_read_word(bus, addr, cmd);
+            goto data16;
         } else {
-            smbus_write_word(bus, addr, cmd, (s->smb_data1 << 8) | s->smb_data0);
+            ret = smbus_write_word(bus, addr, cmd, (s->smb_data1 << 8) | s->smb_data0);
+            goto done;
         }
         break;
     case AMD756_BLOCK_DATA:
         if (read) {
-            s->smb_data0 = smbus_read_block(bus, addr, cmd, s->smb_data,
+            ret = smbus_read_block(bus, addr, cmd, s->smb_data,
                                             sizeof(s->smb_data), true, true);
+            goto data8;
         } else {
-            smbus_write_block(bus, addr, cmd, s->smb_data, s->smb_data0,
+            ret = smbus_write_block(bus, addr, cmd, s->smb_data, s->smb_data0,
                               true);
+            goto done;
         }
         break;
     default:
         goto error;
     }
+    abort();
 
+data16:
+    if (ret < 0) {
+        goto error;
+    }
+    s->smb_data1 = ret >> 8;
+data8:
+    if (ret < 0) {
+        goto error;
+    }
+    s->smb_data0 = ret;
+done:
+    if (ret < 0) {
+        goto error;
+    }
     s->smb_stat |= GS_HCYC_STS;
+    goto out;
+out:
     return;
 
 error:
     s->smb_stat |= GS_PRERR_STS;
+    return;
 }
 
 void amd756_smb_ioport_writeb(void *opaque, uint32_t addr, uint32_t val)
