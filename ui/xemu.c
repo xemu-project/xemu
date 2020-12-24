@@ -46,6 +46,7 @@
 #include "xemu-input.h"
 #include "xemu-settings.h"
 #include "xemu-shaders.h"
+#include "xemu-version.h"
 
 #include "hw/xbox/smbus.h" // For eject, drive tray
 #include "hw/xbox/nv2a/nv2a.h"
@@ -804,18 +805,22 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
         SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
+    char *title = g_strdup_printf("xemu | v%s"
+#if XEMU_DEBUG_BUILD
+                                  " Debug"
+#endif
+                                  , xemu_version);
+
     // Create main window
     m_window = SDL_CreateWindow(
-        "xemu",
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
-        1024, 768,
+        title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1024, 768,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     if (m_window == NULL) {
         fprintf(stderr, "Failed to create main window\n");
         SDL_Quit();
         exit(1);
     }
+    g_free(title);
 
     m_context = SDL_GL_CreateContext(m_window);
     assert(m_context != NULL);

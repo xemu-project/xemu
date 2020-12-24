@@ -99,7 +99,7 @@ do
         shift
         ;;
     '--debug')
-        build_cflags='-O0 -g'
+        build_cflags='-O0 -g -DXEMU_DEBUG_BUILD=1'
         debug_opts='--enable-debug'
         shift
         ;;
