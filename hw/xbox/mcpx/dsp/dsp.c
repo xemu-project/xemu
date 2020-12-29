@@ -38,7 +38,6 @@
 
 /* Defines */
 #define BITMASK(x)  ((1<<(x))-1)
-#define ARRAYSIZE(x) (int)(sizeof(x)/sizeof(x[0]))
 
 #define INTERRUPT_ABORT_FRAME (1 << 0)
 #define INTERRUPT_START_FRAME (1 << 1)
@@ -133,7 +132,6 @@ static void write_peripheral(dsp_core_t* core, uint32_t address, uint32_t value)
     case 0xFFFFC4:
         if (value & 1) {
             core->is_idle = true;
-            break;
         }
         break;
     case 0xFFFFC5:
@@ -153,8 +151,6 @@ static void write_peripheral(dsp_core_t* core, uint32_t address, uint32_t value)
         break;
     case 0xFFFFD7:
         dsp_dma_write(&dsp->dma, DMA_CONFIGURATION, value);
-        break;
-    default:
         break;
     }
 }
@@ -249,6 +245,7 @@ uint32_t dsp_read_memory(DSPState* dsp, char space, uint32_t address)
         break;
     default:
         assert(false);
+        return 0;
     }
 
     return dsp56k_read_memory(&dsp->core, space_id, address);
@@ -270,6 +267,7 @@ void dsp_write_memory(DSPState* dsp, char space, uint32_t address, uint32_t valu
         break;
     default:
         assert(false);
+        return;
     }
 
     dsp56k_write_memory(&dsp->core, space_id, address, value);
@@ -301,22 +299,22 @@ void dsp_info(DSPState* dsp)
 
     printf("DSP core information:\n");
 
-    for (i = 0; i < ARRAYSIZE(stackname); i++) {
+    for (i = 0; i < ARRAY_SIZE(stackname); i++) {
         printf("- %s stack:", stackname[i]);
-        for (j = 0; j < ARRAYSIZE(dsp->core.stack[0]); j++) {
+        for (j = 0; j < ARRAY_SIZE(dsp->core.stack[0]); j++) {
             printf(" %04x", dsp->core.stack[i][j]);
         }
         printf("\n");
     }
 
     printf("- Interrupt IPL:");
-    for (i = 0; i < ARRAYSIZE(dsp->core.interrupt_ipl); i++) {
+    for (i = 0; i < ARRAY_SIZE(dsp->core.interrupt_ipl); i++) {
         printf(" %04x", dsp->core.interrupt_ipl[i]);
     }
     printf("\n");
 
     printf("- Pending ints: ");
-    for (i = 0; i < ARRAYSIZE(dsp->core.interrupt_is_pending); i++) {
+    for (i = 0; i < ARRAY_SIZE(dsp->core.interrupt_is_pending); i++) {
         printf(" %04hx", dsp->core.interrupt_is_pending[i]);
     }
     printf("\n");
@@ -451,7 +449,7 @@ int dsp_get_register_address(DSPState* dsp, const char *regname, uint32_t **addr
 
     /* bisect */
     l = 0;
-    r = ARRAYSIZE(registers) - 1;
+    r = ARRAY_SIZE(registers) - 1;
     do {
         m = (l+r) >> 1;
         for (i = 0; i < len; i++) {

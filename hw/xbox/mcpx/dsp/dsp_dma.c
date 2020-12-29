@@ -146,11 +146,9 @@ static void dsp_dma_run(DSPDMAState *s)
 
     while (!(s->next_block & NODE_POINTER_EOL)) {
         uint32_t addr = s->next_block & NODE_POINTER_VAL;
+        uint32_t block_addr = 0;
+        int block_space = DSP_SPACE_X;
 
-        // FIXME: Are these block addresses BYTE addresses or WORD addresses?
-        //        Need to understand this DMA engine better.
-        uint32_t block_addr;
-        int block_space;
         if (addr < 0x1800) {
             assert(addr+6 < 0x1800);
             block_space = DSP_SPACE_X;
@@ -199,19 +197,19 @@ static void dsp_dma_run(DSPDMAState *s)
         uint32_t channel_count = (count & 0xF) + 1;
         uint32_t block_count = count >> 4;
 
-        unsigned int item_size;
+        unsigned int item_size = 4;
         uint32_t item_mask = 0xffffffff;
         // bool lsb = (format == 6); // FIXME
 
         switch(format) {
         case 1:
             item_size = 2;
-            item_mask = 0x0000FFFF;
+            item_mask = 0x0000ffff;
             break;
         case 2:
         case 6:
             item_size = 4;
-            item_mask = 0x00FFFFFF;
+            item_mask = 0x00ffffff;
             break;
         default:
             fprintf(stderr, "Unknown dsp dma format: 0x%x\n", format);
@@ -220,9 +218,9 @@ static void dsp_dma_run(DSPDMAState *s)
         }
 
         size_t scratch_addr = scratch_base + scratch_offset;
+        uint32_t mem_address = 0;
+        int mem_space = DSP_SPACE_X;
 
-        uint32_t mem_address;
-        int mem_space;
         if (dsp_offset < 0x1800) {
             assert(dsp_offset+count < 0x1800);
             mem_space = DSP_SPACE_X;
@@ -274,7 +272,6 @@ static void dsp_dma_run(DSPDMAState *s)
                         }
                     }
                 }
-
             } else {
                 for (int i = 0; i < count; i++) {
                     uint32_t v = dsp56k_read_memory(s->core, mem_space, mem_address+i);
@@ -334,6 +331,7 @@ static void dsp_dma_run(DSPDMAState *s)
                     v = (*(uint32_t*)(scratch_buf + i*4)) & item_mask;
                     break;
                 default:
+                    v = 0;
                     assert(false);
                     break;
                 }
