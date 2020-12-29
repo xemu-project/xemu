@@ -22,14 +22,15 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include "qemu/osdep.h"
+
 #include <stdbool.h>
 #include <string.h>
 #include <assert.h>
 
-#include "qemu/osdep.h"
 #include "qemu/bswap.h"
-#include "dsp_cpu.h"
 
+#include "dsp_cpu.h"
 
 #define TRACE_DSP_DISASM 0
 #define TRACE_DSP_DISASM_REG 0
@@ -38,7 +39,6 @@
 #define DPRINTF(s, ...) printf(s, ## __VA_ARGS__)
 
 #define BITMASK(x)  ((1<<(x))-1)
-#define ARRAYSIZE(x) (sizeof(x)/sizeof(x[0]))
 
 // #define DSP_COUNT_IPS     /* Count instruction per seconds */
 
@@ -353,7 +353,7 @@ static const OpcodeEntry nonparallel_opcodes[] = {
 };
 
 static bool matches_initialised;
-static uint32_t nonparallel_matches[ARRAYSIZE(nonparallel_opcodes)][2];
+static uint32_t nonparallel_matches[ARRAY_SIZE(nonparallel_opcodes)][2];
 
 /**********************************
  *  Emulator kernel
@@ -364,7 +364,7 @@ void dsp56k_reset_cpu(dsp_core_t* dsp)
     int i;
     if (!matches_initialised) {
         matches_initialised = true;
-        for (i=0; i<ARRAYSIZE(nonparallel_opcodes); i++) {
+        for (i=0; i<ARRAY_SIZE(nonparallel_opcodes); i++) {
             const OpcodeEntry t = nonparallel_opcodes[i];
             assert(strlen(t.template) == 24);
 
@@ -424,7 +424,7 @@ void dsp56k_reset_cpu(dsp_core_t* dsp)
 }
 
 static const OpcodeEntry *lookup_opcode_slow(uint32_t op) {
-    for (int i = 0; i < ARRAYSIZE(nonparallel_opcodes); i++) {
+    for (int i = 0; i < ARRAY_SIZE(nonparallel_opcodes); i++) {
         if ((op & nonparallel_matches[i][0]) == nonparallel_matches[i][1]) {
             if (nonparallel_opcodes[i].match_func
                 && !nonparallel_opcodes[i].match_func(op)) continue;
@@ -594,20 +594,20 @@ static void disasm_reg_compare(dsp_core_t* dsp)
 
 static const char* disasm_get_instruction_text(dsp_core_t* dsp)
 {
-    const int len = sizeof(dsp->disasm_str_instr);
+    // const int len = sizeof(dsp->disasm_str_instr);
     // uint64_t count, cycles;
     // uint16_t cycle_diff;
     // float percentage;
-    int offset;
+    // int offset;
 
     if (dsp->disasm_is_looping) {
         dsp->disasm_str_instr2[0] = 0;
     }
-    if (dsp->disasm_cur_inst_len == 1) {
-        offset = sprintf(dsp->disasm_str_instr2, "p:%04x  %06x         (%02d cyc)  %-*s\n", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, dsp->instr_cycle, len, dsp->disasm_str_instr);
-    } else {
-        offset = sprintf(dsp->disasm_str_instr2, "p:%04x  %06x %06x  (%02d cyc)  %-*s\n", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, read_memory_p(dsp, dsp->disasm_prev_inst_pc + 1), dsp->instr_cycle, len, dsp->disasm_str_instr);
-    }
+    // if (dsp->disasm_cur_inst_len == 1) {
+    //     offset = sprintf(dsp->disasm_str_instr2, "p:%04x  %06x         (%02d cyc)  %-*s\n", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, dsp->instr_cycle, len, dsp->disasm_str_instr);
+    // } else {
+    //     offset = sprintf(dsp->disasm_str_instr2, "p:%04x  %06x %06x  (%02d cyc)  %-*s\n", dsp->disasm_prev_inst_pc, dsp->disasm_cur_inst, read_memory_p(dsp, dsp->disasm_prev_inst_pc + 1), dsp->instr_cycle, len, dsp->disasm_str_instr);
+    // }
     // if (offset > 2 && Profile_DspAddressData(dsp->disasm_prev_inst_pc, &percentage, &count, &cycles, &cycle_diff)) {
     //     offset -= 2;
     //     sprintf(str_instr2+offset, "%5.2f%% (%"PRId64", %"PRId64", %d)\n",
@@ -1089,7 +1089,7 @@ static void write_memory_disasm(dsp_core_t* dsp, int space, uint32_t address, ui
     }
 
     curvalue = read_memory_disasm(dsp, space, address);
-    if (dsp->disasm_memory_ptr < ARRAYSIZE(dsp->str_disasm_memory)) {
+    if (dsp->disasm_memory_ptr < ARRAY_SIZE(dsp->str_disasm_memory)) {
         sprintf(dsp->str_disasm_memory[dsp->disasm_memory_ptr], "Mem: %c:0x%04x  0x%06x -> 0x%06x", space_c, address, oldvalue, curvalue);
         dsp->disasm_memory_ptr ++;
     }
