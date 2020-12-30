@@ -3844,10 +3844,9 @@ static void pgraph_wait_for_surface_download(SurfaceBinding *e)
     NV2AState *d = g_nv2a;
 
     if (atomic_read(&e->draw_dirty)) {
+        qemu_mutex_lock(&d->pfifo.lock);
         atomic_set(&e->download_pending, true);
         atomic_set(&d->pgraph.downloads_pending, true);
-
-        qemu_mutex_lock(&d->pfifo.lock);
         do {
             qemu_cond_broadcast(&d->pfifo.fifo_cond);
             qemu_cond_wait(&d->pfifo.fifo_idle_cond, &d->pfifo.lock);
