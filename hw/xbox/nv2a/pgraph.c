@@ -112,6 +112,7 @@ static const GLenum pgraph_blend_equation_map[] = {
     GL_FUNC_ADD,
 };
 
+/* FIXME
 static const GLenum pgraph_blend_logicop_map[] = {
     GL_CLEAR,
     GL_AND,
@@ -130,6 +131,7 @@ static const GLenum pgraph_blend_logicop_map[] = {
     GL_NAND,
     GL_SET,
 };
+*/
 
 static const GLenum pgraph_cull_face_map[] = {
     0,
@@ -498,9 +500,10 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
                      NV_PGRAPH_CHANNEL_CTX_POINTER_INST) << 4;
 
         if (val & NV_PGRAPH_CHANNEL_CTX_TRIGGER_READ_IN) {
+#ifdef DEBUG_NV2A
             unsigned pgraph_channel_id =
                 GET_MASK(pg->regs[NV_PGRAPH_CTX_USER], NV_PGRAPH_CTX_USER_CHID);
-
+#endif
             NV2A_DPRINTF("PGRAPH: read channel %d context from %" HWADDR_PRIx "\n",
                          pgraph_channel_id, context_address);
 
@@ -3869,14 +3872,16 @@ static void pgraph_surface_access_callback(
     assert(offset < e->size);
 
     if (atomic_read(&e->draw_dirty)) {
-        NV2A_XPRINTF(DBG_SURFACE_SYNC, "Surface accessed at %08lx+%lx\n",
-            e->vram_addr, offset);
+        NV2A_XPRINTF(DBG_SURFACE_SYNC,
+                     "Surface accessed at %" HWADDR_PRIx "+%" HWADDR_PRIx "\n",
+                     e->vram_addr, offset);
         pgraph_wait_for_surface_download(e);
     }
 
     if (write && !atomic_read(&e->upload_pending)) {
-        NV2A_XPRINTF(DBG_SURFACE_SYNC, "Surface write at %08lx+%lx\n",
-            e->vram_addr, offset);
+        NV2A_XPRINTF(DBG_SURFACE_SYNC,
+                     "Surface write at %" HWADDR_PRIx "+%" HWADDR_PRIx "\n",
+                     e->vram_addr, offset);
         atomic_set(&e->upload_pending, true);
     }
 }
@@ -4012,11 +4017,12 @@ static void pgraph_download_surface_data(NV2AState *d,
     uint8_t *buf = data + surface->vram_addr;
 
     NV2A_XPRINTF(DBG_SURFACE_SYNC,
-        "[GPU->RAM] %s (%s) surface @ %lx (w=%d,h=%d,p=%d,bpp=%d)\n",
-        surface->color ? "COLOR" : "ZETA", surface->swizzle ? "sz" : "lin",
-        surface->vram_addr, surface->width, surface->height,
-        surface->pitch, surface->bytes_per_pixel
-        );
+                 "[GPU->RAM] %s (%s) surface @ %" HWADDR_PRIx
+                 " (w=%d,h=%d,p=%d,bpp=%d)\n",
+                 surface->color ? "COLOR" : "ZETA",
+                 surface->swizzle ? "sz" : "lin", surface->vram_addr,
+                 surface->width, surface->height, surface->pitch,
+                 surface->bytes_per_pixel);
 
     // Bind destination surface to framebuffer
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
@@ -4112,11 +4118,12 @@ static void pgraph_upload_surface_data(
     }
 
     NV2A_XPRINTF(DBG_SURFACE_SYNC,
-        "[RAM->GPU] %s (%s) surface @ %lx (w=%d,h=%d,p=%d,bpp=%d)\n",
-        surface->color ? "COLOR" : "ZETA", surface->swizzle ? "sz" : "lin",
-        surface->vram_addr, surface->width, surface->height,
-        surface->pitch, surface->bytes_per_pixel
-        );
+                 "[RAM->GPU] %s (%s) surface @ %" HWADDR_PRIx
+                 " (w=%d,h=%d,p=%d,bpp=%d)\n",
+                 surface->color ? "COLOR" : "ZETA",
+                 surface->swizzle ? "sz" : "lin", surface->vram_addr,
+                 surface->width, surface->height, surface->pitch,
+                 surface->bytes_per_pixel);
 
     PGRAPHState *pg = &d->pgraph;
 
