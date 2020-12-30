@@ -149,6 +149,7 @@ typedef struct VshOpcodeParams {
     bool C;
 } VshOpcodeParams;
 
+#if 0
 static const VshOpcodeParams ilu_opcode_params[] = {
     /* ILU OP       ParamA ParamB ParamC */
     /* ILU_NOP */ { false, false, false }, // Dxbx note : Unused
@@ -160,6 +161,7 @@ static const VshOpcodeParams ilu_opcode_params[] = {
     /* ILU_LOG */ { false, false, true  },
     /* ILU_LIT */ { false, false, true  },
 };
+#endif
 
 static const VshOpcodeParams mac_opcode_params[] = {
     /* MAC OP      ParamA  ParamB ParamC */
@@ -562,19 +564,19 @@ static const char* vsh_header =
     "}\n"
     "\n"
     "#define MUL(dest, mask, src0, src1) dest.mask = _MUL(_in(src0), _in(src1)).mask\n"
-    "vec4 _MUL(vec4 src0, vec4 src1)\n" 
+    "vec4 _MUL(vec4 src0, vec4 src1)\n"
     "{\n"
     "  return src0 * src1;\n"
     "}\n"
     "\n"
     "#define ADD(dest, mask, src0, src1) dest.mask = _ADD(_in(src0), _in(src1)).mask\n"
-    "vec4 _ADD(vec4 src0, vec4 src1)\n" 
+    "vec4 _ADD(vec4 src0, vec4 src1)\n"
     "{\n"
     "  return src0 + src1;\n"
     "}\n"
     "\n"
     "#define MAD(dest, mask, src0, src1, src2) dest.mask = _MAD(_in(src0), _in(src1), _in(src2)).mask\n"
-    "vec4 _MAD(vec4 src0, vec4 src1, vec4 src2)\n" 
+    "vec4 _MAD(vec4 src0, vec4 src1, vec4 src2)\n"
     "{\n"
     "  return src0 * src1 + src2;\n"
     "}\n"

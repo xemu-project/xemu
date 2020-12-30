@@ -49,7 +49,7 @@ static void generate_swizzle_masks(unsigned int width,
         if (bit < depth) { z |= mask_bit; mask_bit <<= 1; done = false; }
         bit <<= 1;
     } while(!done);
-    assert(x ^ y ^ z == (mask_bit - 1));
+    assert((x ^ y ^ z) == (mask_bit - 1));
     *mask_x = x;
     *mask_y = y;
     *mask_z = z;

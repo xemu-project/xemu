@@ -296,7 +296,7 @@ static QString* get_var(struct PixelShader *ps, int reg, bool is_dest)
                                 qstring_get_str(ps->varF));
     default:
         assert(false);
-        break;
+        return NULL;
     }
 }
 
@@ -865,7 +865,7 @@ static QString* psh_convert(struct PixelShader *ps)
             assert(false);
             break;
         }
-        
+
         if (sampler_type != NULL) {
             qstring_append_fmt(preflight, "uniform %s texSamp%d;\n", sampler_type, i);
 
