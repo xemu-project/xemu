@@ -3070,10 +3070,10 @@ void qemu_init(int argc, char **argv, char **envp)
     // Allow overriding the dvd path from command line
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-dvd_path") == 0) {
-            argv[i] = "";
+            argv[i] = NULL;
             if (i < argc - 1) {
                 dvd_path = argv[i+1];
-                argv[i+1] = "";
+                argv[i+1] = NULL;
             }
             break;
         }
@@ -3106,7 +3106,7 @@ void qemu_init(int argc, char **argv, char **envp)
 #endif
 
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "") != 0) {
+        if (argv[i] != NULL) {
             fake_argv[fake_argc++] = argv[i];
         }
     }
