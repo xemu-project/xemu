@@ -415,6 +415,7 @@ static uint32_t nvnet_get_reg(NvNetState *s, hwaddr addr, unsigned int size)
 
     default:
         assert(0); /* Unsupported register access. */
+        return 0;
     }
 }
 
