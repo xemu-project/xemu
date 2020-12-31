@@ -51,6 +51,14 @@
 #include "hw/xbox/smbus.h" // For eject, drive tray
 #include "hw/xbox/nv2a/nv2a.h"
 
+#ifdef _WIN32
+// Provide hint to prefer high-performance graphics for hybrid systems
+// https://gpuopen.com/learn/amdpowerxpressrequesthighperformance/
+__declspec(dllexport) DWORD AmdPowerXpressRequestHighPerformance = 1;
+// https://docs.nvidia.com/gameworks/content/technologies/desktop/optimus.htm
+__declspec(dllexport) DWORD NvOptimusEnablement = 1;
+#endif
+
 void tcg_register_init_ctx(void); // tcg.c
 
 // #define DEBUG_XEMU_C
