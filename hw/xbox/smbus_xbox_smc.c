@@ -91,7 +91,7 @@
 #define SMC_REG_SCRATCH             0x1b
 #define     SMC_REG_SCRATCH_SHORT_ANIMATION 0x04
 
-static const char *smc_version_string = "P01";
+static const char smc_version_string[] = "P01";
 
 typedef struct SMBusSMCDevice {
     SMBusDevice smbusdev;
