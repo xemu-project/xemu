@@ -940,12 +940,6 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
     sdl2_console[0].real_window = m_window;
     sdl2_console[0].winctx = m_context;
 
-    gui_grab = 0;
-    if (gui_fullscreen) {
-        sdl_grab_start(0);
-        set_full_screen(&sdl2_console[0], gui_fullscreen);
-    }
-
     mouse_mode_notifier.notify = sdl_mouse_mode_change;
     qemu_add_mouse_mode_change_notifier(&mouse_mode_notifier);
 
@@ -1478,6 +1472,12 @@ int main(int argc, char **argv)
 
     DPRINTF("Main thread: waiting for display_init_sem\n");
     qemu_sem_wait(&display_init_sem);
+
+    gui_grab = 0;
+    if (gui_fullscreen) {
+        sdl_grab_start(0);
+        set_full_screen(&sdl2_console[0], gui_fullscreen);
+    }
 
     /*
      * FIXME: May want to create a callback mechanism for main QEMU thread
