@@ -356,9 +356,10 @@ static void sdl_send_mouse_event(struct sdl2_console *scon, int dx, int dy,
     qemu_input_event_sync();
 }
 
-static void toggle_full_screen(struct sdl2_console *scon)
+static void set_full_screen(struct sdl2_console *scon, bool set)
 {
-    gui_fullscreen = !gui_fullscreen;
+    gui_fullscreen = set;
+
     if (gui_fullscreen) {
         SDL_SetWindowFullscreen(scon->real_window,
                                 SDL_WINDOW_FULLSCREEN_DESKTOP);
@@ -376,6 +377,11 @@ static void toggle_full_screen(struct sdl2_console *scon)
 #if 0
     sdl2_redraw(scon);
 #endif
+}
+
+static void toggle_full_screen(struct sdl2_console *scon)
+{
+    set_full_screen(scon, !gui_fullscreen);
 }
 
 static int get_mod_state(void)
@@ -931,9 +937,13 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
 #endif
     }
 
+    sdl2_console[0].real_window = m_window;
+    sdl2_console[0].winctx = m_context;
+
     gui_grab = 0;
     if (gui_fullscreen) {
         sdl_grab_start(0);
+        set_full_screen(&sdl2_console[0], gui_fullscreen);
     }
 
     mouse_mode_notifier.notify = sdl_mouse_mode_change;
