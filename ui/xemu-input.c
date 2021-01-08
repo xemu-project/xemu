@@ -42,7 +42,6 @@
     do { } while (0)
 #endif
 
-int num_available_controllers;
 struct controller_state *available_controllers;
 struct controller_state *bound_controllers[4] = { NULL, NULL, NULL, NULL };
 int test_mode;
@@ -85,7 +84,6 @@ void xemu_input_init(void)
     }
 
     available_controllers = new_con;
-    num_available_controllers = 1;
 }
 
 int xemu_input_get_controller_default_bind_port(struct controller_state *state, int start)
@@ -146,7 +144,6 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
             while (iter->next != NULL) iter = iter->next;
             iter->next = new_con;
         }
-        num_available_controllers++;
 
         // Do not replace binding for a currently bound device. In the case that
         // the same GUID is specified multiple times, on different ports, allow
@@ -208,7 +205,6 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
                 } else {
                     available_controllers = iter->next;
                 }
-                num_available_controllers--;
 
                 // Deallocate
                 if (iter->sdl_haptic) {
