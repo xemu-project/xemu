@@ -40,13 +40,13 @@ struct rect {
 };
 
 const struct rect tex_items[] = {
-    {   0, 148, 467, 364 }, // obj_controller 
-    {   0,  81,  67,  67 }, // obj_lstick 
-    {   0,  14,  67,  67 }, // obj_rstick 
-    {  67, 104,  68,  44 }, // obj_port_socket 
-    {  67,  76,  28,  28 }, // obj_port_lbl_1 
-    {  67,  48,  28,  28 }, // obj_port_lbl_2 
-    {  67,  20,  28,  28 }, // obj_port_lbl_3 
+    {   0, 148, 467, 364 }, // obj_controller
+    {   0,  81,  67,  67 }, // obj_lstick
+    {   0,  14,  67,  67 }, // obj_rstick
+    {  67, 104,  68,  44 }, // obj_port_socket
+    {  67,  76,  28,  28 }, // obj_port_lbl_1
+    {  67,  48,  28,  28 }, // obj_port_lbl_2
+    {  67,  20,  28,  28 }, // obj_port_lbl_3
     {  95,  76,  28,  28 }, // obj_port_lbl_4
 };
 
@@ -153,7 +153,7 @@ void render_controller(float frame_x, float frame_y, uint32_t primary_color, uin
     }
 
     // Render controller texture
-    render_decal(s, 
+    render_decal(s,
         frame_x+0, frame_y+0, tex_items[obj_controller].w, tex_items[obj_controller].h,
         tex_items[obj_controller].x, tex_items[obj_controller].y, tex_items[obj_controller].w, tex_items[obj_controller].h,
         primary_color, secondary_color, 0);
@@ -166,7 +166,7 @@ void render_controller(float frame_x, float frame_y, uint32_t primary_color, uin
     for (int i = 0; i < 12; i++) {
         bool enabled = !!(state->buttons & (1 << i));
         if (!enabled) continue;
-        render_decal(s, 
+        render_decal(s,
             frame_x+buttons[i].x, frame_y+buttons[i].y,
             buttons[i].w, buttons[i].h,
             0, 0, 1, 1,
@@ -182,7 +182,7 @@ void render_controller(float frame_x, float frame_y, uint32_t primary_color, uin
     float c_y = frame_y+lstick_ctr.y;
     float lstick_x = (float)state->axis[CONTROLLER_AXIS_LSTICK_X]/32768.0;
     float lstick_y = (float)state->axis[CONTROLLER_AXIS_LSTICK_Y]/32768.0;
-    render_decal(s, 
+    render_decal(s,
         (int)(c_x-w/2.0f+10.0f*lstick_x),
         (int)(c_y-h/2.0f+10.0f*lstick_y),
         w, h,
@@ -199,7 +199,7 @@ void render_controller(float frame_x, float frame_y, uint32_t primary_color, uin
     c_y = frame_y+rstick_ctr.y;
     float rstick_x = (float)state->axis[CONTROLLER_AXIS_RSTICK_X]/32768.0;
     float rstick_y = (float)state->axis[CONTROLLER_AXIS_RSTICK_Y]/32768.0;
-    render_decal(s, 
+    render_decal(s,
         (int)(c_x-w/2.0f+10.0f*rstick_x),
         (int)(c_y-h/2.0f+10.0f*rstick_y),
         w, h,
@@ -295,7 +295,7 @@ void render_logo(uint32_t time, uint32_t primary_color, uint32_t secondary_color
     glBlendFunc(GL_ONE, GL_ZERO);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, g_logo_tex);
-    render_decal( 
+    render_decal(
         s_logo,
         0, 0, 512, 512,
         0,
