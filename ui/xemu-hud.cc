@@ -437,7 +437,7 @@ public:
 
         // List available input devices
         const char *not_connected = "Not Connected";
-        struct controller_state *bound_state = xemu_input_get_bound(active);
+        ControllerState *bound_state = xemu_input_get_bound(active);
 
         // Get current controller name
         const char *name;
@@ -460,8 +460,8 @@ public:
             }
 
             // Handle all available input devices
-            struct controller_state *iter;
-            for (iter=available_controllers; iter != NULL; iter=iter->next) {
+            ControllerState *iter;
+            QTAILQ_FOREACH(iter, &available_controllers, entry) {
                 is_selected = bound_state == iter;
                 ImGui::PushID(iter);
                 const char *selectable_label = iter->name;
@@ -501,7 +501,7 @@ public:
             device_selected = true;
             render_controller(0, 0, 0x81dc8a00, 0x0f0f0f00, bound_state);
         } else {
-            static struct controller_state state = { 0 };
+            static ControllerState state = { 0 };
             render_controller(0, 0, 0x1f1f1f00, 0x0f0f0f00, &state);
         }
 
@@ -1753,12 +1753,13 @@ void xemu_hud_render(void)
 {
     uint32_t now = SDL_GetTicks();
     bool ui_wakeup = false;
-    struct controller_state *iter;
 
     // Combine all controller states to allow any controller to navigate
     uint32_t buttons = 0;
     int16_t axis[CONTROLLER_AXIS__COUNT] = {0};
-    for (iter=available_controllers; iter != NULL; iter=iter->next) {
+
+    ControllerState *iter;
+    QTAILQ_FOREACH(iter, &available_controllers, entry) {
         if (iter->type != INPUT_DEVICE_SDL_GAMECONTROLLER) continue;
         buttons |= iter->buttons;
         // We simply take any axis that is >10 % activation

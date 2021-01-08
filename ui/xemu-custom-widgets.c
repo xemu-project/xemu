@@ -85,7 +85,7 @@ void render_meter(
     render_decal(s, x, y, width*p, height ,0, 0, 1, 1, 0, 0, color_fg);
 }
 
-void render_controller(float frame_x, float frame_y, uint32_t primary_color, uint32_t secondary_color, struct controller_state *state)
+void render_controller(float frame_x, float frame_y, uint32_t primary_color, uint32_t secondary_color, ControllerState *state)
 {
     // Location within the controller texture of masked button locations,
     // relative to the origin of the controller
