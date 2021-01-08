@@ -17,9 +17,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "xemu-input.h"
-#include "xemu-notifications.h"
-#include "xemu-settings.h"
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
@@ -31,10 +28,18 @@
 #include "qemu/option.h"
 #include "qemu/config-file.h"
 
-#if 0
-#define DPRINTF printf
+#include "xemu-input.h"
+#include "xemu-notifications.h"
+#include "xemu-settings.h"
+
+// #define DEBUG_INPUT
+
+#ifdef DEBUG_INPUT
+#define DPRINTF(fmt, ...) \
+    do { fprintf(stderr, fmt, ## __VA_ARGS__); } while (0)
 #else
-#define DPRINTF(...)
+#define DPRINTF(fmt, ...) \
+    do { } while (0)
 #endif
 
 int num_available_controllers;
