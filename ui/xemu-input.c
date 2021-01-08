@@ -76,7 +76,7 @@ void xemu_input_init(void)
         xemu_input_bind(port, new_con, 0);
         char buf[128];
         snprintf(buf, sizeof(buf), "Connected '%s' to port %d", new_con->name, port+1);
-        xemu_queue_notification(buf);            
+        xemu_queue_notification(buf);
     }
 
     available_controllers = new_con;
@@ -128,11 +128,11 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         new_con->sdl_haptic           = SDL_HapticOpenFromJoystick(new_con->sdl_joystick);
         new_con->sdl_haptic_effect_id = -1;
         new_con->bound                = -1;
-        
+
         char guid_buf[35] = { 0 };
         SDL_JoystickGetGUIDString(new_con->sdl_joystick_guid, guid_buf, sizeof(guid_buf));
         DPRINTF("Opened %s (%s)\n", new_con->name, guid_buf);
-        
+
         // Add to the list of controllers
         if (available_controllers == NULL) {
             available_controllers = new_con;
@@ -179,7 +179,7 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         struct controller_state *iter, *prev;
         for (iter=available_controllers, prev=NULL; iter != NULL; prev = iter, iter = iter->next) {
             if (iter->type != INPUT_DEVICE_SDL_GAMECONTROLLER) continue;
-            
+
             if (iter->sdl_joystick_id == event->cdevice.which) {
                 DPRINTF("Device removed: %s\n", iter->name);
 
