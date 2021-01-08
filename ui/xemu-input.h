@@ -64,7 +64,7 @@ enum controller_input_device_type {
 
 struct controller_state {
     // Input state
-    uint32_t buttons;
+    uint16_t buttons;
     int16_t  axis[CONTROLLER_AXIS__COUNT];
 
     // Rendering state hacked on here for convenience but needs to be moved (FIXME)
