@@ -37,8 +37,8 @@
 #include "xemu-reporting.h"
 
 #include "imgui/imgui.h"
-#include "imgui/examples/imgui_impl_sdl.h"
-#include "imgui/examples/imgui_impl_opengl3.h"
+#include "imgui/backends/imgui_impl_sdl.h"
+#include "imgui/backends/imgui_impl_opengl3.h"
 
 extern "C" {
 #include "noc_file_dialog.h"
@@ -1631,6 +1631,7 @@ static void InitializeStyle()
     ImGui_ImplOpenGL3_CreateFontsTexture();
 
     ImGuiStyle style;
+    style.WindowRounding = 8.0;
     style.FrameRounding = 8.0;
     style.GrabRounding = 12.0;
     style.PopupRounding = 5.0;
