@@ -35,6 +35,9 @@ sdl.mo-objs := \
 	imgui/imgui_widgets.o \
 	imgui/backends/imgui_impl_opengl3.o \
 	imgui/backends/imgui_impl_sdl.o \
+	implot/implot.o \
+	implot/implot_demo.o \
+	implot/implot_items.o \
 	xemu.o \
 	xemu-custom-widgets.o \
 	xemu-data.o \
