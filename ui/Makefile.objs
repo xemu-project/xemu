@@ -30,9 +30,11 @@ endif
 sdl.mo-objs := \
 	imgui/imgui.o \
 	imgui/imgui_draw.o \
+	imgui/imgui_tables.o \
+	imgui/imgui_demo.o \
 	imgui/imgui_widgets.o \
-	imgui/examples/imgui_impl_opengl3.o \
-	imgui/examples/imgui_impl_sdl.o \
+	imgui/backends/imgui_impl_opengl3.o \
+	imgui/backends/imgui_impl_sdl.o \
 	xemu.o \
 	xemu-custom-widgets.o \
 	xemu-data.o \
