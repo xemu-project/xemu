@@ -164,6 +164,6 @@ trace-ust-all.h
 trace-ust-all.c
 /target/arm/decode-sve.inc.c
 
-
+/dist
 /xemu-version.c
 /xemu.ini
