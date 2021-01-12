@@ -874,7 +874,7 @@ public:
         ImGui::NextColumn();
         if (is_enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
         int temp_backend = backend; // Temporary to make backend combo read-only (FIXME: surely there's a nicer way)
-        if (ImGui::Combo("##backend", is_enabled ? &temp_backend : &backend, "User (NAT)\0Socket\0Tap\0") && !is_enabled) {
+        if (ImGui::Combo("##backend", is_enabled ? &temp_backend : &backend, "User (NAT)\0Socket\0TAP\0") && !is_enabled) {
             xemu_settings_set_enum(XEMU_SETTINGS_NETWORK_BACKEND, backend);
             xemu_settings_save();
         }
