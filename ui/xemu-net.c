@@ -4,6 +4,7 @@
  * Wrapper functions to configure network settings at runtime.
  *
  * Copyright (C) 2020 Matt Borgerson
+ 
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -48,9 +49,11 @@ void xemu_net_enable(void)
 
     int backend;
     const char *local_addr, *remote_addr;
+    const char *net_tap_iface;
     xemu_settings_get_enum(XEMU_SETTINGS_NETWORK_BACKEND, &backend);
     xemu_settings_get_string(XEMU_SETTINGS_NETWORK_REMOTE_ADDR, &remote_addr);
     xemu_settings_get_string(XEMU_SETTINGS_NETWORK_LOCAL_ADDR, &local_addr);
+    xemu_settings_get_string(XEMU_SETTINGS_NETWORK_TAP_INTERFACE, &net_tap_iface);
 
     // Create the netdev
     QDict *qdict;
@@ -64,6 +67,12 @@ void xemu_net_enable(void)
         qdict_put_str(qdict, "type",      "socket");
         qdict_put_str(qdict, "udp",       remote_addr);
         qdict_put_str(qdict, "localaddr", local_addr);
+    } else if (backend == XEMU_NET_BACKEND_TAP) {
+        qdict = qdict_new();
+        qdict_put_str(qdict, "id",        id);
+        qdict_put_str(qdict, "type",      "tap");
+        qdict_put_str(qdict, "ifname",     net_tap_iface);
+        
     } else {
         // Unsupported backend type
         return;

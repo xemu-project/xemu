@@ -60,6 +60,7 @@ struct xemu_settings {
 	// [network]
 	int   net_enabled; // Boolean
 	int   net_backend;
+    char *net_tap_iface;
 	char *net_local_addr;
 	char *net_remote_addr;
 
@@ -82,6 +83,7 @@ static const struct enum_str_map display_scale_map[DISPLAY_SCALE__COUNT+1] = {
 static const struct enum_str_map net_backend_map[XEMU_NET_BACKEND__COUNT+1] = {
 	{ XEMU_NET_BACKEND_USER,       "user" },
 	{ XEMU_NET_BACKEND_SOCKET_UDP, "udp"  },
+    { XEMU_NET_BACKEND_TAP, "tap"         },
 	{ 0,                           NULL   },
 };
 
@@ -120,6 +122,7 @@ struct config_offset_table {
 	[XEMU_SETTINGS_NETWORK_BACKEND]     = { CONFIG_TYPE_ENUM,   "network", "backend",     offsetof(struct xemu_settings, net_backend),     { .default_int = XEMU_NET_BACKEND_USER }, net_backend_map },
 	[XEMU_SETTINGS_NETWORK_LOCAL_ADDR]  = { CONFIG_TYPE_STRING, "network", "local_addr",  offsetof(struct xemu_settings, net_local_addr),  { .default_str  = "0.0.0.0:9368" } },
 	[XEMU_SETTINGS_NETWORK_REMOTE_ADDR] = { CONFIG_TYPE_STRING, "network", "remote_addr", offsetof(struct xemu_settings, net_remote_addr), { .default_str  = "1.2.3.4:9368" } },
+    [XEMU_SETTINGS_NETWORK_TAP_INTERFACE] = { CONFIG_TYPE_STRING,   "network", "net_tap_iface",     offsetof(struct xemu_settings, net_tap_iface),     { .default_str = "" } },
 
 	[XEMU_SETTINGS_MISC_USER_TOKEN] = { CONFIG_TYPE_STRING, "misc", "user_token", offsetof(struct xemu_settings, user_token), { .default_str  = "" } },
 };

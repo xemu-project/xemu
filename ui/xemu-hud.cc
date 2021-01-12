@@ -828,6 +828,7 @@ public:
     int  backend;
     char remote_addr[64];
     char local_addr[64];
+    char net_tap_iface[64];
 
     NetworkWindow()
     {
@@ -854,6 +855,8 @@ public:
             strncpy(remote_addr, tmp, sizeof(remote_addr)-1);
             xemu_settings_get_string(XEMU_SETTINGS_NETWORK_LOCAL_ADDR, &tmp);
             strncpy(local_addr, tmp, sizeof(local_addr)-1);
+            xemu_settings_get_string(XEMU_SETTINGS_NETWORK_TAP_INTERFACE, &tmp);
+            strncpy(net_tap_iface, tmp, sizeof(net_tap_iface)-1);
             xemu_settings_get_enum(XEMU_SETTINGS_NETWORK_BACKEND, &backend);
         }
 
@@ -871,7 +874,7 @@ public:
         ImGui::NextColumn();
         if (is_enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
         int temp_backend = backend; // Temporary to make backend combo read-only (FIXME: surely there's a nicer way)
-        if (ImGui::Combo("##backend", is_enabled ? &temp_backend : &backend, "User (NAT)\0Socket\0") && !is_enabled) {
+        if (ImGui::Combo("##backend", is_enabled ? &temp_backend : &backend, "User (NAT)\0Socket\0Tap\0") && !is_enabled) {
             xemu_settings_set_enum(XEMU_SETTINGS_NETWORK_BACKEND, backend);
             xemu_settings_save();
         }
@@ -881,6 +884,8 @@ public:
             HelpMarker("User-mode TCP/IP stack with a NAT'd network");
         } else if (backend == XEMU_NET_BACKEND_SOCKET_UDP) {
             HelpMarker("Encapsulates link-layer traffic in UDP packets");
+        } else if (backend == XEMU_NET_BACKEND_TAP) {
+            HelpMarker("Passes guest network traffic through to a TAP adapter");
         }
         ImGui::NextColumn();
 
@@ -904,6 +909,17 @@ public:
             if (is_enabled) ImGui::PopStyleVar();
             ImGui::NextColumn();
         }
+        if (backend == XEMU_NET_BACKEND_TAP) {
+            ImGui::Text("Network Adapter");
+            ImGui::SameLine(); HelpMarker("The network adapter to be used for TAP networking");
+            ImGui::NextColumn();
+            float w = ImGui::GetColumnWidth()-10*g_ui_scale;
+            ImGui::SetNextItemWidth(w);
+            if (is_enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
+            ImGui::InputText("###Interface", net_tap_iface, sizeof(net_tap_iface), flg);
+            if (is_enabled) ImGui::PopStyleVar();
+            ImGui::NextColumn();            
+        }
 
         ImGui::Columns(1);
 
@@ -920,6 +936,7 @@ public:
             if (!is_enabled) {
                 xemu_settings_set_string(XEMU_SETTINGS_NETWORK_REMOTE_ADDR, remote_addr);
                 xemu_settings_set_string(XEMU_SETTINGS_NETWORK_LOCAL_ADDR, local_addr);
+                xemu_settings_set_string(XEMU_SETTINGS_NETWORK_TAP_INTERFACE, net_tap_iface);
                 xemu_net_enable();
             } else {
                 xemu_net_disable();
