@@ -245,4 +245,4 @@ set -x # Print commands from now on
 
 time make -j"${job_count}" 2>&1 | tee build.log
 
-${postbuild} # call post build functions
+"${postbuild}" # call post build functions
