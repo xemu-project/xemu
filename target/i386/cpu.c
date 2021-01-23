@@ -2077,8 +2077,13 @@ static X86CPUDefinition builtin_x86_defs[] = {
         .level = 3,
         .vendor = CPUID_VENDOR_INTEL,
         .family = 6,
+#ifdef XBOX
+         .model = 8,
+         .stepping = 10,
+#else
         .model = 7,
         .stepping = 3,
+#endif
         .features[FEAT_1_EDX] =
             PENTIUM3_FEATURES,
         .xlevel = 0,
