@@ -2,14 +2,17 @@
 
 set -e # exit if a command fails
 set -o pipefail # Will return the exit status of make if it fails
+set -o physical # Resolve symlinks when changing directory
+
+project_source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
 package_windows() {
     rm -rf dist
     mkdir -p dist
     cp i386-softmmu/qemu-system-i386.exe dist/xemu.exe
     cp i386-softmmu/qemu-system-i386w.exe dist/xemuw.exe
-    cp -r data dist/
-    python3 ./get_deps.py dist/xemu.exe dist
+    cp -r "${project_source_dir}/data" dist/
+    python3 "${project_source_dir}/get_deps.py" dist/xemu.exe dist
     strip dist/xemu.exe
     strip dist/xemuw.exe
 }
@@ -32,11 +35,11 @@ package_macos() {
 
     # Copy in runtime resources
     mkdir -p dist/xemu.app/Contents/Resources
-    cp -r data dist/xemu.app/Contents/Resources
+    cp -r "${project_source_dir}/data" dist/xemu.app/Contents/Resources
 
     # Generate icon file
     mkdir -p xemu.iconset
-    for r in 16 32 128 256 512; do cp ui/icons/xemu_${r}x${r}.png xemu.iconset/icon_${r}x${r}.png; done
+    for r in 16 32 128 256 512; do cp "${project_source_dir}/ui/icons/xemu_${r}x${r}.png" "xemu.iconset/icon_${r}x${r}.png"; done
     iconutil --convert icns --output dist/xemu.app/Contents/Resources/xemu.icns xemu.iconset
 
     # Generate Info.plist file
@@ -82,14 +85,49 @@ package_linux() {
     rm -rf dist
     mkdir -p dist
     cp i386-softmmu/qemu-system-i386 dist/xemu
-    cp -r data dist
+    cp -r "${project_source_dir}/data" dist
 }
 
 postbuild=''
 debug_opts=''
 build_cflags='-O3'
-job_count='12'
+default_job_count='12'
 sys_ldflags=''
+
+get_job_count () {
+	if command -v 'nproc' >/dev/null
+	then
+		nproc
+	else
+		case "$(uname -s)" in
+			'Linux')
+				egrep "^processor" /proc/cpuinfo | wc -l
+				;;
+			'FreeBSD')
+				sysctl -n hw.ncpu
+				;;
+			'Darwin')
+				sysctl -n hw.logicalcpu 2>/dev/null \
+				|| sysctl -n hw.ncpu
+				;;
+			'MSYS_NT-'*|'CYGWIN_NT-'*|'MINGW'*'_NT-'*)
+				if command -v 'wmic' >/dev/null
+				then
+					wmic cpu get NumberOfLogicalProcessors/Format:List \
+						| grep -m1 '=' | cut -f2 -d'='
+				else
+					echo "${NUMBER_OF_PROCESSORS:-${default_job_count}}"
+				fi
+				;;
+			*)
+				echo "${default_job_count}"
+				;;
+		esac
+	fi
+}
+
+job_count="$(get_job_count)" 2>/dev/null
+job_count="${job_count:-${default_job_count}}"
 
 while [ ! -z "${1}" ]
 do
@@ -109,8 +147,6 @@ do
     esac
 done
 
-readlink=$(command -v readlink)
-
 case "$(uname -s)" in # Adjust compilation options based on platform
     Linux)
         echo 'Compiling for Linux...'
@@ -127,13 +163,6 @@ case "$(uname -s)" in # Adjust compilation options based on platform
         export PKG_CONFIG_PATH="${PKG_CONFIG_PATH}/usr/local/opt/libffi/lib/pkgconfig"
         export PKG_CONFIG_PATH="/usr/local/opt/openssl@1.1/lib/pkgconfig:${PKG_CONFIG_PATH}"
         echo $PKG_CONFIG_PATH
-        # macOS needs greadlink for a GNU compatible version of readlink
-        if readlink=$(command -v greadlink); then
-            echo 'GNU compatible readlink detected'
-        else
-            echo 'Could not find a GNU compatible readlink. Please install coreutils with homebrew'
-            exit -1
-        fi
         postbuild='package_macos'
         ;;
     CYGWIN*|MINGW*|MSYS*)
@@ -149,7 +178,8 @@ case "$(uname -s)" in # Adjust compilation options based on platform
 esac
 
 # find absolute path (and resolve symlinks) to build out of tree
-configure="$(dirname "$($readlink -f "${0}")")/configure"
+configure="${project_source_dir}/configure"
+build_cflags="${build_cflags} -I${project_source_dir}/ui/imgui"
 
 set -x # Print commands from now on
 
@@ -215,4 +245,4 @@ set -x # Print commands from now on
 
 time make -j"${job_count}" 2>&1 | tee build.log
 
-${postbuild} # call post build functions
+"${postbuild}" # call post build functions
