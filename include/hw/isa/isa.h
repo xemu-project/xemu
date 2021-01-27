@@ -118,6 +118,12 @@ void isa_build_aml(ISABus *bus, Aml *scope);
  */
 void isa_register_ioport(ISADevice *dev, MemoryRegion *io, uint16_t start);
 
+/* XBOX */
+/**
+ * isa_unregister_ioport: Uninstall an I/O port region on the ISA bus.
+ */
+void isa_unregister_ioport(ISADevice *dev, MemoryRegion *io);
+
 /**
  * isa_register_portio_list: Initialize a set of ISA io ports
  *
