@@ -131,6 +131,14 @@ void isa_register_ioport(ISADevice *dev, MemoryRegion *io, uint16_t start)
     isa_init_ioport(dev, start);
 }
 
+void isa_unregister_ioport(ISADevice *dev, MemoryRegion *io)
+{
+    if (dev) {
+        dev->ioport_id = 0;
+    }
+    memory_region_del_subregion(isabus->address_space_io, io);
+}
+
 void isa_register_portio_list(ISADevice *dev,
                               PortioList *piolist, uint16_t start,
                               const MemoryRegionPortio *pio_start,
