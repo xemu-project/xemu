@@ -221,6 +221,12 @@ bool xbox_eeprom_generate(const char *file, XboxEEPROMVersion ver) {
         e.serial[i] = '0' + (e.serial[i] % 10);
     }
     
+    // FIXME: temporarily set default London (GMT+0) time zone and English language
+    memcpy(e.user_section, "\x00\x00\x00\x00\x47\x4D\x54\x00\x42\x53\x54\x00" \
+    "\x00\x00\x00\x00\x00\x00\x00\x00\x0A\x05\x00\x02\x03\x05\x00\x01\x00\x00" \
+    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xC4\xFF\xFF\xFF", 44);
+    *(uint32_t*)(e.user_section + 0x2C) = cpu_to_le32(1);
+
     // update checksums
     e.checksum = cpu_to_le32(xbox_eeprom_crc(e.serial, 0x2C));
     e.user_checksum = cpu_to_le32(xbox_eeprom_crc(e.user_section, 0x5C));
