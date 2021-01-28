@@ -277,7 +277,7 @@ static void xbox_smbus_class_init(ObjectClass *klass, void *data)
     k->realize = xbox_smbus_realize;
     k->vendor_id = PCI_VENDOR_ID_NVIDIA;
     k->device_id = PCI_DEVICE_ID_NVIDIA_NFORCE_SMBUS;
-    k->revision = 161;
+    k->revision = 177;
     k->class_id = PCI_CLASS_SERIAL_SMBUS;
 
     dc->desc = "nForce PCI System Management";
