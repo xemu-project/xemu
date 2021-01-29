@@ -19,6 +19,7 @@
 
 #include <stdlib.h>
 #include <SDL_filesystem.h>
+#include <SDL_scancode.h>
 #include <string.h>
 #include <stddef.h>
 #include <assert.h>
@@ -56,6 +57,32 @@ struct xemu_settings {
 	char *controller_2_guid;
 	char *controller_3_guid;
 	char *controller_4_guid;
+
+	int controller_button_a_scancode;
+	int controller_button_b_scancode;
+	int controller_button_x_scancode;
+	int controller_button_y_scancode;
+	int controller_button_dpad_left_scancode;
+	int controller_button_dpad_up_scancode;
+	int controller_button_dpad_right_scancode;
+	int controller_button_dpad_down_scancode;
+	int controller_button_back_scancode;
+	int controller_button_start_scancode;
+	int controller_button_white_scancode;
+	int controller_button_black_scancode;
+	int controller_button_lstick_scancode;
+	int controller_button_rstick_scancode;
+	int controller_button_guide_scancode;
+	int controller_axis_left_trigger_scancode;
+	int controller_axis_right_trigger_scancode;
+	int controller_axis_lstick_x_positive_scancode;
+	int controller_axis_lstick_x_negative_scancode;
+	int controller_axis_lstick_y_positive_scancode;
+	int controller_axis_lstick_y_negative_scancode;
+	int controller_axis_rstick_x_positive_scancode;
+	int controller_axis_rstick_x_negative_scancode;
+	int controller_axis_rstick_y_positive_scancode;
+	int controller_axis_rstick_y_negative_scancode;
 
 	// [network]
 	int   net_enabled; // Boolean
@@ -115,6 +142,32 @@ struct config_offset_table {
 	[XEMU_SETTINGS_INPUT_CONTROLLER_2_GUID] = { CONFIG_TYPE_STRING,   "input", "controller_2_guid", offsetof(struct xemu_settings, controller_2_guid), { .default_str = "" } },
 	[XEMU_SETTINGS_INPUT_CONTROLLER_3_GUID] = { CONFIG_TYPE_STRING,   "input", "controller_3_guid", offsetof(struct xemu_settings, controller_3_guid), { .default_str = "" } },
 	[XEMU_SETTINGS_INPUT_CONTROLLER_4_GUID] = { CONFIG_TYPE_STRING,   "input", "controller_4_guid", offsetof(struct xemu_settings, controller_4_guid), { .default_str = "" } },
+	
+	[XEMU_SETTINGS_INPUT_CONTROLLER_BUTTON_A_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_button_a_scancode", offsetof(struct xemu_settings, controller_button_a_scancode), { .default_int = SDL_SCANCODE_A } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_BUTTON_B_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_button_b_scancode", offsetof(struct xemu_settings, controller_button_b_scancode), { .default_int = SDL_SCANCODE_B } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_BUTTON_X_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_button_x_scancode", offsetof(struct xemu_settings, controller_button_x_scancode), { .default_int = SDL_SCANCODE_X } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_BUTTON_Y_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_button_y_scancode", offsetof(struct xemu_settings, controller_button_y_scancode), { .default_int = SDL_SCANCODE_Y } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_BUTTON_DPAD_LEFT_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_button_dpad_left_scancode", offsetof(struct xemu_settings, controller_button_dpad_left_scancode), { .default_int = SDL_SCANCODE_LEFT } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_BUTTON_DPAD_UP_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_button_dpad_up_scancode", offsetof(struct xemu_settings, controller_button_dpad_up_scancode), { .default_int = SDL_SCANCODE_UP } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_BUTTON_DPAD_RIGHT_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_button_dpad_right_scancode", offsetof(struct xemu_settings, controller_button_dpad_right_scancode), { .default_int = SDL_SCANCODE_RIGHT } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_BUTTON_DPAD_DOWN_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_button_dpad_down_scancode", offsetof(struct xemu_settings, controller_button_dpad_down_scancode), { .default_int = SDL_SCANCODE_DOWN } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_BUTTON_BACK_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_button_back_scancode", offsetof(struct xemu_settings, controller_button_back_scancode), { .default_int = SDL_SCANCODE_BACKSPACE } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_BUTTON_START_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_button_start_scancode", offsetof(struct xemu_settings, controller_button_start_scancode), { .default_int = SDL_SCANCODE_RETURN } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_BUTTON_WHITE_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_button_white_scancode", offsetof(struct xemu_settings, controller_button_white_scancode), { .default_int = SDL_SCANCODE_1 } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_BUTTON_BLACK_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_button_black_scancode", offsetof(struct xemu_settings, controller_button_black_scancode), { .default_int = SDL_SCANCODE_2 } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_BUTTON_LSTICK_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_button_lstick_scancode", offsetof(struct xemu_settings, controller_button_lstick_scancode), { .default_int = SDL_SCANCODE_3 } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_BUTTON_RSTICK_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_button_rstick_scancode", offsetof(struct xemu_settings, controller_button_rstick_scancode), { .default_int = SDL_SCANCODE_4 } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_BUTTON_GUIDE_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_button_guide_scancode", offsetof(struct xemu_settings, controller_button_guide_scancode), { .default_int = SDL_SCANCODE_5 } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_AXIS_LTRIG_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_axis_left_trigger_scancode", offsetof(struct xemu_settings, controller_axis_left_trigger_scancode), { .default_int = SDL_SCANCODE_W } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_AXIS_RTRIG_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_axis_right_trigger_scancode", offsetof(struct xemu_settings, controller_axis_right_trigger_scancode), { .default_int = SDL_SCANCODE_O } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_AXIS_LSTICK_X_POSITIVE_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_axis_lstick_x_positive_scancode", offsetof(struct xemu_settings, controller_axis_lstick_x_positive_scancode), { .default_int = SDL_SCANCODE_F } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_AXIS_LSTICK_X_NEGATIVE_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_axis_lstick_x_negative_scancode", offsetof(struct xemu_settings, controller_axis_lstick_x_negative_scancode), { .default_int = SDL_SCANCODE_S } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_AXIS_LSTICK_Y_POSITIVE_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_axis_lstick_y_positive_scancode", offsetof(struct xemu_settings, controller_axis_lstick_y_positive_scancode), { .default_int = SDL_SCANCODE_E } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_AXIS_LSTICK_Y_NEGATIVE_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_axis_lstick_y_negative_scancode", offsetof(struct xemu_settings, controller_axis_lstick_y_negative_scancode), { .default_int = SDL_SCANCODE_D } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_AXIS_RSTICK_X_POSITIVE_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_axis_rstick_x_positive_scancode", offsetof(struct xemu_settings, controller_axis_rstick_x_positive_scancode), { .default_int = SDL_SCANCODE_L } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_AXIS_RSTICK_X_NEGATIVE_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_axis_rstick_x_negative_scancode", offsetof(struct xemu_settings, controller_axis_rstick_x_negative_scancode), { .default_int = SDL_SCANCODE_J } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_AXIS_RSTICK_Y_POSITIVE_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_axis_rstick_y_positive_scancode", offsetof(struct xemu_settings, controller_axis_rstick_y_positive_scancode), { .default_int = SDL_SCANCODE_I } },
+	[XEMU_SETTINGS_INPUT_CONTROLLER_AXIS_RSTICK_Y_NEGATIVE_SCANCODE] = { CONFIG_TYPE_INT, "input", "controller_axis_rstick_y_negative_scancode", offsetof(struct xemu_settings, controller_axis_rstick_y_negative_scancode), { .default_int = SDL_SCANCODE_K } },
 
 	[XEMU_SETTINGS_NETWORK_ENABLED]     = { CONFIG_TYPE_BOOL,   "network", "enabled",     offsetof(struct xemu_settings, net_enabled),     { .default_bool = 0              } },
 	[XEMU_SETTINGS_NETWORK_BACKEND]     = { CONFIG_TYPE_ENUM,   "network", "backend",     offsetof(struct xemu_settings, net_backend),     { .default_int = XEMU_NET_BACKEND_USER }, net_backend_map },
