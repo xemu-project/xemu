@@ -318,6 +318,9 @@ then
     git_submodules="ui/keycodemapdb"
     git_submodules="$git_submodules tests/fp/berkeley-testfloat-3"
     git_submodules="$git_submodules tests/fp/berkeley-softfloat-3"
+
+    # xemu extras
+    git_submodules="$git_submodules ui/imgui ui/implot"
 else
     git_update=no
     git_submodules=""
