@@ -27,6 +27,10 @@ sub_file="${sub_tdir}/submodule.tar"
 # in their checkout, because the build environment is completely
 # different to the host OS.
 submodules="dtc slirp ui/keycodemapdb tests/fp/berkeley-softfloat-3 tests/fp/berkeley-testfloat-3"
+
+# xemu extras
+submodules="$submodules ui/imgui ui/implot"
+
 sub_deinit=""
 
 function cleanup() {

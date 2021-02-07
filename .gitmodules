@@ -60,7 +60,9 @@
 	url = https://github.com/bonzini/qboot
 [submodule "ui/imgui"]
 	path = ui/imgui
-	url = https://github.com/ocornut/imgui
+	url = https://github.com/ocornut/imgui.git
+	ignore = untracked
 [submodule "ui/implot"]
 	path = ui/implot
-	url = https://github.com/epezent/implot
+	url = https://github.com/epezent/implot.git
+	ignore = untracked

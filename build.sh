@@ -243,6 +243,9 @@ set -x # Print commands from now on
     --disable-blobs \
     "$@"
 
+# Force imgui update now to work around annoying make issue
+./scripts/git-submodule.sh update ui/imgui
+
 time make -j"${job_count}" 2>&1 | tee build.log
 
 "${postbuild}" # call post build functions
