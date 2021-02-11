@@ -4517,7 +4517,7 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                            color ? "color" : "zeta",
                            color ? pg->surface_shape.color_format
                                  : pg->surface_shape.zeta_format,
-                           width, height, surface->vram_addr);
+                           width, height, surface->offset);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
