@@ -29,7 +29,7 @@ sub_file="${sub_tdir}/submodule.tar"
 submodules="dtc slirp ui/keycodemapdb tests/fp/berkeley-softfloat-3 tests/fp/berkeley-testfloat-3"
 
 # xemu extras
-submodules="$submodules ui/imgui ui/implot"
+submodules="$submodules ui/imgui ui/implot hw/xbox/nv2a/xxHash"
 
 sub_deinit=""
 
