@@ -241,6 +241,10 @@ set -x # Print commands from now on
     --disable-sheepdog \
     --without-default-devices \
     --disable-blobs \
+    --disable-kvm \
+    --disable-hax \
+    --disable-hvf \
+    --disable-whpx \
     "$@"
 
 # Force imgui update now to work around annoying make issue
