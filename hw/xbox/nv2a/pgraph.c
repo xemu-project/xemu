@@ -20,7 +20,7 @@
  */
 
 #include "nv2a_int.h"
-#include "xxhash.h"
+#include "xxHash/xxh3.h"
 #include "s3tc.h"
 
 #define DBG_SURFACES 0
@@ -5781,5 +5781,5 @@ static unsigned int kelvin_map_texgen(uint32_t parameter, unsigned int channel)
 
 static uint64_t fast_hash(const uint8_t *data, size_t len)
 {
-    return XXH64(data, len, 0);
+    return XXH3_64bits(data, len);
 }
