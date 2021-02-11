@@ -181,16 +181,19 @@ typedef struct TextureBinding {
 } TextureBinding;
 
 typedef struct TextureKey {
-    struct lru_node node;
     TextureShape state;
-    TextureBinding *binding;
-
     hwaddr texture_vram_offset;
     hwaddr texture_length;
     hwaddr palette_vram_offset;
     hwaddr palette_length;
-    bool possibly_dirty;
 } TextureKey;
+
+typedef struct TextureLruNode {
+    LruNode node;
+    TextureKey key;
+    TextureBinding *binding;
+    bool possibly_dirty;
+} TextureLruNode;
 
 typedef struct KelvinState {
     hwaddr object_instance;
@@ -256,8 +259,8 @@ typedef struct PGRAPHState {
     bool downloads_pending;
 
     hwaddr dma_a, dma_b;
-    struct lru texture_cache;
-    struct TextureKey *texture_cache_entries;
+    Lru texture_cache;
+    struct TextureLruNode *texture_cache_entries;
     bool texture_dirty[NV2A_MAX_TEXTURES];
     TextureBinding *texture_binding[NV2A_MAX_TEXTURES];
 

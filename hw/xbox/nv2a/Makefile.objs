@@ -18,6 +18,5 @@ obj-y += user.o
 obj-y += vsh.o
 
 obj-y += gl/
-obj-y += lru.o
 obj-y += swizzle.o
 obj-y += s3tc.o
