@@ -3134,7 +3134,6 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
 
     /* For each texture stage */
     for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
-        // char name[32];
         GLint loc;
 
         /* Bump luminance only during stages 1 - 3 */
@@ -3174,7 +3173,6 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
                     *(float*)&pg->regs[NV_PGRAPH_FOGPARAM1]);
     }
 
-
     float zclip_max = *(float*)&pg->regs[NV_PGRAPH_ZCLIPMAX];
     float zclip_min = *(float*)&pg->regs[NV_PGRAPH_ZCLIPMIN];
 
@@ -3205,7 +3203,6 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
                 lighting_dirty[j] = false;
             }
         }
-
 
         for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
             GLint loc;
@@ -3252,7 +3249,6 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
             glUniformMatrix4fv(binding->inv_viewport_loc,
                                1, GL_FALSE, &invViewport[0]);
         }
-
     }
 
     /* update vertex program constants */
@@ -3260,7 +3256,6 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
         if (!pg->vsh_constants_dirty[i] && !binding_changed) continue;
 
         GLint loc = binding->vsh_constant_loc[i];
-        //assert(loc != -1);
         if (loc != -1) {
             glUniform4fv(loc, 1, (const GLfloat*)pg->vsh_constants[i]);
         }
