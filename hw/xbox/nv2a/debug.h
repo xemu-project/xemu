@@ -21,6 +21,8 @@
 #ifndef HW_NV2A_DEBUG_H
 #define HW_NV2A_DEBUG_H
 
+#include <stdint.h>
+
 #define NV2A_XPRINTF(x, ...) do { \
     if (x) { \
         fprintf(stderr, "nv2a: " __VA_ARGS__); \
@@ -92,6 +94,59 @@ void gl_debug_frame_terminator(void);
 #define NV2A_UNCONFIRMED(...) do {} while (0)
 #define NV2A_UNIMPLEMENTED(...) do {} while (0)
 
+#endif
+
+#define NV2A_PROF_COUNTERS_XMAC \
+    _X(NV2A_PROF_BEGIN_ENDS) \
+    _X(NV2A_PROF_DRAW_ARRAYS) \
+    _X(NV2A_PROF_INLINE_BUFFERS) \
+    _X(NV2A_PROF_INLINE_ARRAYS) \
+    _X(NV2A_PROF_INLINE_ELEMENTS) \
+    _X(NV2A_PROF_QUERY) \
+    _X(NV2A_PROF_SHADER_GEN) \
+    _X(NV2A_PROF_SHADER_BIND) \
+    _X(NV2A_PROF_TEX_UPLOAD) \
+    _X(NV2A_PROF_TEX_BIND) \
+    _X(NV2A_PROF_GEOM_CONV) \
+    _X(NV2A_PROF_GEOM_BUFFER_UPDATE_1) \
+    _X(NV2A_PROF_GEOM_BUFFER_UPDATE_2) \
+    _X(NV2A_PROF_GEOM_BUFFER_UPDATE_3) \
+    _X(NV2A_PROF_GEOM_BUFFER_UPDATE_4) \
+    _X(NV2A_PROF_SURF_DOWNLOAD) \
+    _X(NV2A_PROF_SURF_UPLOAD) \
+    _X(NV2A_PROF_SURF_TO_TEX) \
+
+enum NV2A_PROF_COUNTERS_ENUM {
+    #define _X(x) x,
+    NV2A_PROF_COUNTERS_XMAC
+    #undef _X
+    NV2A_PROF__COUNT
+};
+
+#define NV2A_PROF_NUM_FRAMES 300
+
+typedef struct NV2AStats {
+    int64_t last_flip_time;
+    unsigned int frame_count;
+    unsigned int increment_fps;
+    struct {
+        int mspf;
+        int counters[NV2A_PROF__COUNT];
+    } frame_working, frame_history[NV2A_PROF_NUM_FRAMES];
+    unsigned int frame_ptr;
+} NV2AStats;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+extern NV2AStats g_nv2a_stats;
+
+const char *nv2a_profile_get_counter_name(unsigned int cnt);
+int nv2a_profile_get_counter_value(unsigned int cnt);
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif
