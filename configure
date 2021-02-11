@@ -320,7 +320,7 @@ then
     git_submodules="$git_submodules tests/fp/berkeley-softfloat-3"
 
     # xemu extras
-    git_submodules="$git_submodules ui/imgui ui/implot"
+    git_submodules="$git_submodules ui/imgui ui/implot hw/xbox/nv2a/xxHash"
 else
     git_update=no
     git_submodules=""
