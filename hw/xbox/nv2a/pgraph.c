@@ -25,34 +25,70 @@
 
 #define DBG_SURFACES 0
 #define DBG_SURFACE_SYNC 0
-#define DBG_FRAME_TIME 0
 
 static NV2AState *g_nv2a;
 GloContext *g_nv2a_context_render;
 GloContext *g_nv2a_context_display;
 
-#if DBG_FRAME_TIME
-static int64_t g_last_flip_time;
-#endif
+NV2AStats g_nv2a_stats;
 
 static void nv2a_profile_increment(void)
 {
-#if DBG_FRAME_TIME
-    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
-    g_last_flip_time = now;
-#endif
+    int64_t now = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+    const int64_t fps_update_interval = 250000;
+    g_nv2a_stats.last_flip_time = now;
+
+    static int64_t frame_count = 0;
+    frame_count++;
+
+    static int64_t ts = 0;
+    int64_t delta = now - ts;
+    if (delta >= fps_update_interval) {
+        g_nv2a_stats.increment_fps = frame_count * 1000000 / delta;
+        ts = now;
+        frame_count = 0;
+    }
 }
 
 static void nv2a_profile_flip_stall(void)
 {
-#if DBG_FRAME_TIME
     glFinish();
-    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
-    int64_t render_time = (now-g_last_flip_time)/1000000;
-    NV2A_XPRINTF(DBG_FRAME_TIME,
-        "**** Render Time = %ld ms (~%.2f FPS)\n",
-        render_time, 1000.0f/(float)(render_time > 0 ? render_time : 1));
-#endif
+
+    int64_t now = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+    int64_t render_time = (now-g_nv2a_stats.last_flip_time)/1000;
+
+    g_nv2a_stats.frame_working.mspf = render_time;
+    g_nv2a_stats.frame_history[g_nv2a_stats.frame_ptr] =
+        g_nv2a_stats.frame_working;
+    g_nv2a_stats.frame_ptr =
+        (g_nv2a_stats.frame_ptr + 1) % NV2A_PROF_NUM_FRAMES;
+    g_nv2a_stats.frame_count++;
+    memset(&g_nv2a_stats.frame_working, 0, sizeof(g_nv2a_stats.frame_working));
+}
+
+static void nv2a_profile_inc_counter(enum NV2A_PROF_COUNTERS_ENUM cnt)
+{
+    g_nv2a_stats.frame_working.counters[cnt] += 1;
+}
+
+const char *nv2a_profile_get_counter_name(unsigned int cnt)
+{
+    const char *default_names[NV2A_PROF__COUNT] = {
+        #define _X(x) stringify(x),
+        NV2A_PROF_COUNTERS_XMAC
+        #undef _X
+    };
+
+    assert(cnt < NV2A_PROF__COUNT);
+    return default_names[cnt] + 10; /* 'NV2A_PROF_' */
+}
+
+int nv2a_profile_get_counter_value(unsigned int cnt)
+{
+    assert(cnt < NV2A_PROF__COUNT);
+    unsigned int idx = (g_nv2a_stats.frame_ptr + NV2A_PROF_NUM_FRAMES - 1) %
+                       NV2A_PROF_NUM_FRAMES;
+    return g_nv2a_stats.frame_history[idx].counters[cnt];
 }
 
 static const GLenum pgraph_texture_min_filter_map[] = {
@@ -1908,9 +1944,12 @@ void pgraph_method(NV2AState *d,
 
         if (parameter == NV097_SET_BEGIN_END_OP_END) {
 
+            nv2a_profile_inc_counter(NV2A_PROF_BEGIN_ENDS);
+
             assert(pg->shader_binding);
 
             if (pg->draw_arrays_length) {
+                nv2a_profile_inc_counter(NV2A_PROF_DRAW_ARRAYS);
 
                 NV2A_GL_DPRINTF(false, "Draw Arrays");
 
@@ -1925,6 +1964,7 @@ void pgraph_method(NV2AState *d,
                                   pg->gl_draw_arrays_count,
                                   pg->draw_arrays_length);
             } else if (pg->inline_buffer_length) {
+                nv2a_profile_inc_counter(NV2A_PROF_INLINE_BUFFERS);
 
                 NV2A_GL_DPRINTF(false, "Inline Buffer");
 
@@ -1936,7 +1976,7 @@ void pgraph_method(NV2AState *d,
                     VertexAttribute *attribute = &pg->vertex_attributes[i];
 
                     if (attribute->inline_buffer) {
-
+                        nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_3);
                         glBindBuffer(GL_ARRAY_BUFFER,
                                      attribute->gl_inline_buffer);
                         glBufferData(GL_ARRAY_BUFFER,
@@ -1962,6 +2002,7 @@ void pgraph_method(NV2AState *d,
                 glDrawArrays(pg->shader_binding->gl_primitive_mode,
                              0, pg->inline_buffer_length);
             } else if (pg->inline_array_length) {
+                nv2a_profile_inc_counter(NV2A_PROF_INLINE_ARRAYS);
 
                 NV2A_GL_DPRINTF(false, "Inline Array");
 
@@ -1973,6 +2014,7 @@ void pgraph_method(NV2AState *d,
                 glDrawArrays(pg->shader_binding->gl_primitive_mode,
                              0, index_count);
             } else if (pg->inline_elements_length) {
+                nv2a_profile_inc_counter(NV2A_PROF_INLINE_ELEMENTS);
 
                 NV2A_GL_DPRINTF(false, "Inline Elements");
 
@@ -2008,6 +2050,7 @@ void pgraph_method(NV2AState *d,
 
             /* End of visibility testing */
             if (pg->zpass_pixel_count_enable) {
+                nv2a_profile_inc_counter(NV2A_PROF_QUERY);
                 glEndQuery(GL_SAMPLES_PASSED);
             }
 
@@ -3383,6 +3426,7 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
         pg->shader_binding = cached_shader;
     } else {
         pg->shader_binding = generate_shaders(state);
+        nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
 
         /* cache it */
         ShaderState *cache_state = (ShaderState *)g_malloc(sizeof(*cache_state));
@@ -3392,6 +3436,9 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
     }
 
     bool binding_changed = (pg->shader_binding != old_binding);
+    if (binding_changed) {
+        nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND);
+    }
 
     glUseProgram(pg->shader_binding->gl_program);
 
@@ -3576,6 +3623,8 @@ static void pgraph_render_surface_to_texture(NV2AState *d,
 {
     const ColorFormatInfo *f = &kelvin_color_format_map[texture_shape->color_format];
     assert(texture_shape->color_format < ARRAY_SIZE(kelvin_color_format_map));
+
+    nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
 
     glActiveTexture(GL_TEXTURE0 + texture_unit);
 
@@ -4011,6 +4060,8 @@ static void pgraph_download_surface_data(NV2AState *d,
 
     // FIXME: Respect write enable at last TOU?
 
+    nv2a_profile_inc_counter(NV2A_PROF_SURF_DOWNLOAD);
+
     PGRAPHState *pg = &d->pgraph;
     uint8_t *data = d->vram_ptr;
     uint8_t *buf = data + surface->vram_addr;
@@ -4115,6 +4166,8 @@ static void pgraph_upload_surface_data(
     if (!(surface->upload_pending || force)) {
         return;
     }
+
+    nv2a_profile_inc_counter(NV2A_PROF_SURF_UPLOAD);
 
     NV2A_XPRINTF(DBG_SURFACE_SYNC,
                  "[RAM->GPU] %s (%s) surface @ %" HWADDR_PRIx
@@ -4687,6 +4740,8 @@ static void pgraph_bind_textures(NV2AState *d)
             continue;
         }
 
+        nv2a_profile_inc_counter(NV2A_PROF_TEX_BIND);
+
         if (!pg->texture_dirty[i] && pg->texture_binding[i]) {
             glBindTexture(pg->texture_binding[i]->gl_target,
                           pg->texture_binding[i]->gl_texture);
@@ -5060,6 +5115,7 @@ static void pgraph_update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size,
                                                 addr,
                                                 end - addr,
                                                 DIRTY_MEMORY_NV2A)) {
+        nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_1);
         glBufferSubData(GL_ARRAY_BUFFER, addr, end - addr, d->vram_ptr + addr);
     }
 }
@@ -5104,6 +5160,7 @@ static void pgraph_bind_vertex_attributes(NV2AState *d,
 
             if (attribute->needs_conversion) {
                 NV2A_DPRINTF("converted %d\n", i);
+                nv2a_profile_inc_counter(NV2A_PROF_GEOM_CONV);
 
                 unsigned int out_stride = attribute->converted_size
                                         * attribute->converted_count;
@@ -5209,6 +5266,7 @@ static unsigned int pgraph_bind_inline_array(NV2AState *d)
 
     NV2A_DPRINTF("draw inline array %d, %d\n", vertex_size, index_count);
 
+    nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_2);
     glBindBuffer(GL_ARRAY_BUFFER, pg->gl_inline_array_buffer);
     glBufferData(GL_ARRAY_BUFFER, pg->inline_array_length*4, pg->inline_array,
                  GL_DYNAMIC_DRAW);
@@ -5321,6 +5379,7 @@ static void upload_gl_texture(GLenum gl_target,
                               const uint8_t *palette_data)
 {
     ColorFormatInfo f = kelvin_color_format_map[s.color_format];
+    nv2a_profile_inc_counter(NV2A_PROF_TEX_UPLOAD);
 
     switch(gl_target) {
     case GL_TEXTURE_1D:
