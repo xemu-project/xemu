@@ -107,7 +107,6 @@ typedef struct VertexAttribute {
     GLenum gl_type;
     GLboolean gl_normalize;
 
-    GLuint gl_converted_buffer;
     GLuint gl_inline_buffer;
 } VertexAttribute;
 
@@ -194,6 +193,20 @@ typedef struct TextureLruNode {
     TextureBinding *binding;
     bool possibly_dirty;
 } TextureLruNode;
+
+typedef struct VertexKey {
+    size_t count;
+    GLuint gl_type;
+    GLboolean gl_normalize;
+    size_t stride;
+} VertexKey;
+
+typedef struct VertexLruNode {
+    LruNode node;
+    VertexKey key;
+    GLuint gl_buffer;
+    bool initialized;
+} VertexLruNode;
 
 typedef struct KelvinState {
     hwaddr object_instance;
@@ -312,6 +325,9 @@ typedef struct PGRAPHState {
     float light_local_attenuation[NV2A_MAX_LIGHTS][3];
 
     VertexAttribute vertex_attributes[NV2A_VERTEXSHADER_ATTRIBUTES];
+
+    Lru vertex_cache;
+    struct VertexLruNode *vertex_cache_entries;
 
     unsigned int inline_array_length;
     uint32_t inline_array[NV2A_MAX_BATCH_LENGTH];
