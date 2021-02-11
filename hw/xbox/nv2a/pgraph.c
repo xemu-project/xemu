@@ -388,6 +388,19 @@ static void texture_cache_entry_init(Lru *lru, LruNode *node, void *key);
 static void texture_cache_entry_post_evict(Lru *lru, LruNode *node);
 static bool texture_cache_entry_compare(Lru *lru, LruNode *node, void *key);
 
+static void vertex_cache_entry_init(Lru *lru, LruNode *node, void *key)
+{
+    VertexLruNode *vnode = container_of(node, VertexLruNode, node);
+    memcpy(&vnode->key, key, sizeof(struct VertexKey));
+    vnode->initialized = false;
+}
+
+static bool vertex_cache_entry_compare(Lru *lru, LruNode *node, void *key)
+{
+    VertexLruNode *vnode = container_of(node, VertexLruNode, node);
+    return memcmp(&vnode->key, key, sizeof(VertexKey));
+}
+
 static void pgraph_mark_textures_possibly_dirty(NV2AState *d, hwaddr addr, hwaddr size);
 static bool pgraph_check_texture_dirty(NV2AState *d, hwaddr addr, hwaddr size);
 static guint shader_hash(gconstpointer key);
@@ -2957,11 +2970,24 @@ void pgraph_init(NV2AState *d)
     pg->texture_cache.compare_nodes = texture_cache_entry_compare;
     pg->texture_cache.post_node_evict = texture_cache_entry_post_evict;
 
+    // Initialize vertex cache
+    const size_t vertex_cache_size = 10*1024;
+    lru_init(&pg->vertex_cache);
+    pg->vertex_cache_entries = malloc(vertex_cache_size * sizeof(VertexLruNode));
+    assert(pg->vertex_cache_entries != NULL);
+    GLuint vertex_cache_buffers[vertex_cache_size];
+    glGenBuffers(vertex_cache_size, vertex_cache_buffers);
+    for (i = 0; i < vertex_cache_size; i++) {
+        pg->vertex_cache_entries[i].gl_buffer = vertex_cache_buffers[i];
+        lru_add_free(&pg->vertex_cache, &pg->vertex_cache_entries[i].node);
+    }
+
+    pg->vertex_cache.init_node = vertex_cache_entry_init;
+    pg->vertex_cache.compare_nodes = vertex_cache_entry_compare;
+
     pg->shader_cache = g_hash_table_new(shader_hash, shader_equal);
 
-
     for (i=0; i<NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
-        glGenBuffers(1, &pg->vertex_attributes[i].gl_converted_buffer);
         glGenBuffers(1, &pg->vertex_attributes[i].gl_inline_buffer);
     }
     glGenBuffers(1, &pg->gl_inline_array_buffer);
@@ -5179,49 +5205,55 @@ static void pgraph_bind_vertex_attributes(NV2AState *d,
 
             if (attribute->needs_conversion) {
                 NV2A_DPRINTF("converted %d\n", i);
-                nv2a_profile_inc_counter(NV2A_PROF_GEOM_CONV);
 
                 unsigned int out_stride = attribute->converted_size
                                         * attribute->converted_count;
 
-                if (num_elements > attribute->converted_elements) {
+                VertexKey k;
+                memset(&k, 0, sizeof(VertexKey));
+                k.count = num_elements;
+                k.gl_type = attribute->gl_type;
+                k.gl_normalize = attribute->gl_normalize;
+                k.stride = out_stride;
+                uint64_t h  = fast_hash(data, num_elements * in_stride);
+                LruNode *node = lru_lookup(&pg->vertex_cache, h, &k);
+                VertexLruNode *found = container_of(node, VertexLruNode, node);
+                glBindBuffer(GL_ARRAY_BUFFER, found->gl_buffer);
+
+                if (!found->initialized) {
+                    nv2a_profile_inc_counter(NV2A_PROF_GEOM_CONV);
                     attribute->converted_buffer = (uint8_t*)g_realloc(
                         attribute->converted_buffer,
                         num_elements * out_stride);
-                }
 
-                for (j=attribute->converted_elements; j<num_elements; j++) {
-                    uint8_t *in = data + j * in_stride;
-                    uint8_t *out = attribute->converted_buffer + j * out_stride;
+                    for (j=0; j < num_elements; j++) {
+                        uint8_t *in = data + j * in_stride;
+                        uint8_t *out = attribute->converted_buffer + j * out_stride;
 
-                    switch (attribute->format) {
-                    case NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_CMP: {
-                        uint32_t p = ldl_le_p((uint32_t*)in);
-                        float *xyz = (float*)out;
-                        xyz[0] = ((int32_t)(((p >>  0) & 0x7FF) << 21) >> 21)
-                                                                      / 1023.0f;
-                        xyz[1] = ((int32_t)(((p >> 11) & 0x7FF) << 21) >> 21)
-                                                                      / 1023.0f;
-                        xyz[2] = ((int32_t)(((p >> 22) & 0x3FF) << 22) >> 22)
-                                                                       / 511.0f;
-                        break;
+                        switch (attribute->format) {
+                        case NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_CMP: {
+                            uint32_t p = ldl_le_p((uint32_t*)in);
+                            float *xyz = (float*)out;
+                            xyz[0] = ((int32_t)(((p >>  0) & 0x7FF) << 21) >> 21)
+                                                                          / 1023.0f;
+                            xyz[1] = ((int32_t)(((p >> 11) & 0x7FF) << 21) >> 21)
+                                                                          / 1023.0f;
+                            xyz[2] = ((int32_t)(((p >> 22) & 0x3FF) << 22) >> 22)
+                                                                           / 511.0f;
+                            break;
+                        }
+                        default:
+                            assert(false);
+                            break;
+                        }
                     }
-                    default:
-                        assert(false);
-                        break;
-                    }
-                }
 
-
-                glBindBuffer(GL_ARRAY_BUFFER, attribute->gl_converted_buffer);
-                if (num_elements != attribute->converted_elements) {
                     glBufferData(GL_ARRAY_BUFFER,
                                  num_elements * out_stride,
                                  attribute->converted_buffer,
                                  GL_DYNAMIC_DRAW);
-                    attribute->converted_elements = num_elements;
+                    found->initialized = true;
                 }
-
 
                 glVertexAttribPointer(i,
                     attribute->converted_count,
