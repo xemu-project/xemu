@@ -614,13 +614,38 @@ static void pgraph_flush(NV2AState *d)
     // FIXME: Flush more?
 }
 
-void pgraph_method(NV2AState *d,
-                   unsigned int subchannel,
-                   unsigned int method,
-                   uint32_t parameter)
+/* Temp helpers to aide hot methods. */
+#define NON_INC_METHOD_LOOP_BEGIN \
+    for (size_t param_iter = 0; \
+         param_iter < num_words_available; \
+         param_iter++) { \
+        parameter = ldl_le_p(parameters + param_iter);
+
+#define NON_INC_METHOD_LOOP_END \
+        method += 4; \
+    } \
+    num_processed = num_words_available;
+
+#define INC_METHOD_LOOP_BEGIN(METHOD_END) \
+    for (size_t param_iter = 0; \
+         (param_iter < num_words_available) && (method <= METHOD_END); \
+         param_iter++) { \
+        parameter = ldl_le_p(parameters + param_iter);
+
+#define INC_METHOD_LOOP_END \
+        method += 4; \
+    } \
+    num_processed = num_words_available;
+
+int pgraph_method(NV2AState *d, unsigned int subchannel,
+                   unsigned int method, uint32_t parameter,
+                   uint32_t *parameters, size_t num_words_available)
 {
     int i;
     unsigned int slot;
+    int num_processed = 1;
+
+    assert(glGetError() == GL_NO_ERROR);
 
     PGRAPHState *pg = &d->pgraph;
 
@@ -1472,53 +1497,63 @@ void pgraph_method(NV2AState *d,
 
     case NV097_SET_PROJECTION_MATRIX ...
             NV097_SET_PROJECTION_MATRIX + 0x3c: {
+        INC_METHOD_LOOP_BEGIN(NV097_SET_PROJECTION_MATRIX + 0x3c)
         slot = (method - NV097_SET_PROJECTION_MATRIX) / 4;
         // pg->projection_matrix[slot] = *(float*)&parameter;
         unsigned int row = NV_IGRAPH_XF_XFCTX_PMAT0 + slot/4;
         pg->vsh_constants[row][slot%4] = parameter;
         pg->vsh_constants_dirty[row] = true;
+        INC_METHOD_LOOP_END
         break;
     }
 
     case NV097_SET_MODEL_VIEW_MATRIX ...
             NV097_SET_MODEL_VIEW_MATRIX + 0xfc: {
+        INC_METHOD_LOOP_BEGIN(NV097_SET_MODEL_VIEW_MATRIX + 0xfc)
         slot = (method - NV097_SET_MODEL_VIEW_MATRIX) / 4;
         unsigned int matnum = slot / 16;
         unsigned int entry = slot % 16;
         unsigned int row = NV_IGRAPH_XF_XFCTX_MMAT0 + matnum*8 + entry/4;
         pg->vsh_constants[row][entry % 4] = parameter;
         pg->vsh_constants_dirty[row] = true;
+        INC_METHOD_LOOP_END
         break;
     }
 
     case NV097_SET_INVERSE_MODEL_VIEW_MATRIX ...
             NV097_SET_INVERSE_MODEL_VIEW_MATRIX + 0xfc: {
+        INC_METHOD_LOOP_BEGIN(NV097_SET_INVERSE_MODEL_VIEW_MATRIX + 0xfc)
         slot = (method - NV097_SET_INVERSE_MODEL_VIEW_MATRIX) / 4;
         unsigned int matnum = slot / 16;
         unsigned int entry = slot % 16;
         unsigned int row = NV_IGRAPH_XF_XFCTX_IMMAT0 + matnum*8 + entry/4;
         pg->vsh_constants[row][entry % 4] = parameter;
         pg->vsh_constants_dirty[row] = true;
+        INC_METHOD_LOOP_END
         break;
     }
 
     case NV097_SET_COMPOSITE_MATRIX ...
             NV097_SET_COMPOSITE_MATRIX + 0x3c: {
+        INC_METHOD_LOOP_BEGIN(NV097_SET_COMPOSITE_MATRIX + 0x3c)
         slot = (method - NV097_SET_COMPOSITE_MATRIX) / 4;
         unsigned int row = NV_IGRAPH_XF_XFCTX_CMAT0 + slot/4;
         pg->vsh_constants[row][slot%4] = parameter;
         pg->vsh_constants_dirty[row] = true;
+        INC_METHOD_LOOP_END
         break;
     }
 
     case NV097_SET_TEXTURE_MATRIX ...
             NV097_SET_TEXTURE_MATRIX + 0xfc: {
+        INC_METHOD_LOOP_BEGIN(NV097_SET_TEXTURE_MATRIX + 0xfc)
         slot = (method - NV097_SET_TEXTURE_MATRIX) / 4;
         unsigned int tex = slot / 16;
         unsigned int entry = slot % 16;
         unsigned int row = NV_IGRAPH_XF_XFCTX_T0MAT + tex*8 + entry/4;
         pg->vsh_constants[row][entry%4] = parameter;
         pg->vsh_constants_dirty[row] = true;
+        INC_METHOD_LOOP_END
         break;
     }
 
@@ -1613,7 +1648,7 @@ void pgraph_method(NV2AState *d,
 
     case NV097_SET_TRANSFORM_PROGRAM ...
             NV097_SET_TRANSFORM_PROGRAM + 0x7c: {
-
+        INC_METHOD_LOOP_BEGIN(NV097_SET_TRANSFORM_PROGRAM + 0x7c)
         slot = (method - NV097_SET_TRANSFORM_PROGRAM) / 4;
 
         int program_load = GET_MASK(pg->regs[NV_PGRAPH_CHEOPS_OFFSET],
@@ -1626,15 +1661,14 @@ void pgraph_method(NV2AState *d,
             SET_MASK(pg->regs[NV_PGRAPH_CHEOPS_OFFSET],
                      NV_PGRAPH_CHEOPS_OFFSET_PROG_LD_PTR, program_load+1);
         }
-
+        INC_METHOD_LOOP_END
         break;
     }
 
     case NV097_SET_TRANSFORM_CONSTANT ...
             NV097_SET_TRANSFORM_CONSTANT + 0x7c: {
-
+        INC_METHOD_LOOP_BEGIN(NV097_SET_TRANSFORM_CONSTANT + 0x7c)
         slot = (method - NV097_SET_TRANSFORM_CONSTANT) / 4;
-
         int const_load = GET_MASK(pg->regs[NV_PGRAPH_CHEOPS_OFFSET],
                                   NV_PGRAPH_CHEOPS_OFFSET_CONST_LD_PTR);
 
@@ -1648,11 +1682,13 @@ void pgraph_method(NV2AState *d,
             SET_MASK(pg->regs[NV_PGRAPH_CHEOPS_OFFSET],
                      NV_PGRAPH_CHEOPS_OFFSET_CONST_LD_PTR, const_load+1);
         }
+        INC_METHOD_LOOP_END
         break;
     }
 
     case NV097_SET_VERTEX3F ...
             NV097_SET_VERTEX3F + 8: {
+        INC_METHOD_LOOP_BEGIN(NV097_SET_VERTEX3F + 8)
         slot = (method - NV097_SET_VERTEX3F) / 4;
         VertexAttribute *attribute =
             &pg->vertex_attributes[NV2A_VERTEX_ATTR_POSITION];
@@ -1662,6 +1698,7 @@ void pgraph_method(NV2AState *d,
         if (slot == 2) {
             pgraph_finish_inline_buffer_vertex(pg);
         }
+        INC_METHOD_LOOP_END
         break;
     }
 
@@ -1768,6 +1805,7 @@ void pgraph_method(NV2AState *d,
 
     case NV097_SET_VERTEX4F ...
             NV097_SET_VERTEX4F + 12: {
+        INC_METHOD_LOOP_BEGIN(NV097_SET_VERTEX4F + 12)
         slot = (method - NV097_SET_VERTEX4F) / 4;
         VertexAttribute *attribute =
             &pg->vertex_attributes[NV2A_VERTEX_ATTR_POSITION];
@@ -1776,11 +1814,13 @@ void pgraph_method(NV2AState *d,
         if (slot == 3) {
             pgraph_finish_inline_buffer_vertex(pg);
         }
+        INC_METHOD_LOOP_END
         break;
     }
 
     case NV097_SET_VERTEX_DATA_ARRAY_FORMAT ...
             NV097_SET_VERTEX_DATA_ARRAY_FORMAT + 0x3c: {
+        INC_METHOD_LOOP_BEGIN(NV097_SET_VERTEX_DATA_ARRAY_FORMAT + 0x3c)
 
         slot = (method - NV097_SET_VERTEX_DATA_ARRAY_FORMAT) / 4;
         VertexAttribute *vertex_attribute = &pg->vertex_attributes[slot];
@@ -1857,11 +1897,13 @@ void pgraph_method(NV2AState *d,
             }
         }
 
+        INC_METHOD_LOOP_END
         break;
     }
 
     case NV097_SET_VERTEX_DATA_ARRAY_OFFSET ...
             NV097_SET_VERTEX_DATA_ARRAY_OFFSET + 0x3c:
+        INC_METHOD_LOOP_BEGIN(NV097_SET_VERTEX_DATA_ARRAY_OFFSET + 0x3c)
 
         slot = (method - NV097_SET_VERTEX_DATA_ARRAY_OFFSET) / 4;
 
@@ -1872,6 +1914,7 @@ void pgraph_method(NV2AState *d,
 
         pg->vertex_attributes[slot].converted_elements = 0;
 
+        INC_METHOD_LOOP_END
         break;
 
     case NV097_SET_LOGIC_OP_ENABLE:
@@ -2380,16 +2423,20 @@ void pgraph_method(NV2AState *d,
         break;
 
     case NV097_ARRAY_ELEMENT16:
+        NON_INC_METHOD_LOOP_BEGIN
         assert(pg->inline_elements_length < NV2A_MAX_BATCH_LENGTH);
         pg->inline_elements[
             pg->inline_elements_length++] = parameter & 0xFFFF;
         pg->inline_elements[
             pg->inline_elements_length++] = parameter >> 16;
+        NON_INC_METHOD_LOOP_END
         break;
     case NV097_ARRAY_ELEMENT32:
+        NON_INC_METHOD_LOOP_BEGIN
         assert(pg->inline_elements_length < NV2A_MAX_BATCH_LENGTH);
         pg->inline_elements[
             pg->inline_elements_length++] = parameter;
+        NON_INC_METHOD_LOOP_END
         break;
     case NV097_DRAW_ARRAYS: {
 
@@ -2418,9 +2465,11 @@ void pgraph_method(NV2AState *d,
         break;
     }
     case NV097_INLINE_ARRAY:
+        NON_INC_METHOD_LOOP_BEGIN
         assert(pg->inline_array_length < NV2A_MAX_BATCH_LENGTH);
         pg->inline_array[
             pg->inline_array_length++] = parameter;
+        NON_INC_METHOD_LOOP_END
         break;
     case NV097_SET_EYE_VECTOR ...
             NV097_SET_EYE_VECTOR + 8:
@@ -2430,6 +2479,7 @@ void pgraph_method(NV2AState *d,
 
     case NV097_SET_VERTEX_DATA2F_M ...
             NV097_SET_VERTEX_DATA2F_M + 0x7c: {
+        INC_METHOD_LOOP_BEGIN(NV097_SET_VERTEX_DATA2F_M + 0x7c)
         slot = (method - NV097_SET_VERTEX_DATA2F_M) / 4;
         unsigned int part = slot % 2;
         slot /= 2;
@@ -2442,10 +2492,12 @@ void pgraph_method(NV2AState *d,
         if ((slot == 0) && (part == 1)) {
             pgraph_finish_inline_buffer_vertex(pg);
         }
+        INC_METHOD_LOOP_END
         break;
     }
     case NV097_SET_VERTEX_DATA4F_M ...
             NV097_SET_VERTEX_DATA4F_M + 0xfc: {
+        INC_METHOD_LOOP_BEGIN(NV097_SET_VERTEX_DATA4F_M + 0xfc)
         slot = (method - NV097_SET_VERTEX_DATA4F_M) / 4;
         unsigned int part = slot % 4;
         slot /= 4;
@@ -2455,10 +2507,12 @@ void pgraph_method(NV2AState *d,
         if ((slot == 0) && (part == 3)) {
             pgraph_finish_inline_buffer_vertex(pg);
         }
+        INC_METHOD_LOOP_END
         break;
     }
     case NV097_SET_VERTEX_DATA2S ...
             NV097_SET_VERTEX_DATA2S + 0x3c: {
+        INC_METHOD_LOOP_BEGIN(NV097_SET_VERTEX_DATA2S + 0x3c)
         slot = (method - NV097_SET_VERTEX_DATA2S) / 4;
         VertexAttribute *attribute = &pg->vertex_attributes[slot];
         pgraph_allocate_inline_buffer_vertices(pg, slot);
@@ -2469,10 +2523,12 @@ void pgraph_method(NV2AState *d,
         if (slot == 0) {
             pgraph_finish_inline_buffer_vertex(pg);
         }
+        INC_METHOD_LOOP_END
         break;
     }
     case NV097_SET_VERTEX_DATA4UB ...
             NV097_SET_VERTEX_DATA4UB + 0x3c: {
+        INC_METHOD_LOOP_BEGIN(NV097_SET_VERTEX_DATA4UB + 0x3c)
         slot = (method - NV097_SET_VERTEX_DATA4UB) / 4;
         VertexAttribute *attribute = &pg->vertex_attributes[slot];
         pgraph_allocate_inline_buffer_vertices(pg, slot);
@@ -2483,6 +2539,7 @@ void pgraph_method(NV2AState *d,
         if (slot == 0) {
             pgraph_finish_inline_buffer_vertex(pg);
         }
+        INC_METHOD_LOOP_END
         break;
     }
     case NV097_SET_VERTEX_DATA4S_M ...
@@ -2801,6 +2858,8 @@ void pgraph_method(NV2AState *d,
         break;
 
     }
+
+    return num_processed;
 }
 
 void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
