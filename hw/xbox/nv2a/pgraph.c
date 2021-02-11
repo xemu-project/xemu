@@ -384,9 +384,10 @@ static uint8_t* convert_texture_data(const TextureShape s, const uint8_t *data, 
 static void upload_gl_texture(GLenum gl_target, const TextureShape s, const uint8_t *texture_data, const uint8_t *palette_data);
 static TextureBinding* generate_texture(const TextureShape s, const uint8_t *texture_data, const uint8_t *palette_data);
 static void texture_binding_destroy(gpointer data);
-static struct lru_node *texture_cache_entry_init(struct lru_node *obj, void *key);
-static struct lru_node *texture_cache_entry_deinit(struct lru_node *obj);
-static int texture_cache_entry_compare(struct lru_node *obj, void *key);
+static void texture_cache_entry_init(Lru *lru, LruNode *node, void *key);
+static void texture_cache_entry_post_evict(Lru *lru, LruNode *node);
+static bool texture_cache_entry_compare(Lru *lru, LruNode *node, void *key);
+
 static void pgraph_mark_textures_possibly_dirty(NV2AState *d, hwaddr addr, hwaddr size);
 static bool pgraph_check_texture_dirty(NV2AState *d, hwaddr addr, hwaddr size);
 static guint shader_hash(gconstpointer key);
@@ -2945,15 +2946,16 @@ void pgraph_init(NV2AState *d)
 
     // Initialize texture cache
     const size_t texture_cache_size = 512;
-    lru_init(&pg->texture_cache,
-        &texture_cache_entry_init,
-        &texture_cache_entry_deinit,
-        &texture_cache_entry_compare);
-    pg->texture_cache_entries = malloc(texture_cache_size * sizeof(struct TextureKey));
+    lru_init(&pg->texture_cache);
+    pg->texture_cache_entries = malloc(texture_cache_size * sizeof(TextureLruNode));
     assert(pg->texture_cache_entries != NULL);
     for (i = 0; i < texture_cache_size; i++) {
         lru_add_free(&pg->texture_cache, &pg->texture_cache_entries[i].node);
     }
+
+    pg->texture_cache.init_node = texture_cache_entry_init;
+    pg->texture_cache.compare_nodes = texture_cache_entry_compare;
+    pg->texture_cache.post_node_evict = texture_cache_entry_post_evict;
 
     pg->shader_cache = g_hash_table_new(shader_hash, shader_equal);
 
@@ -4611,6 +4613,34 @@ static void pgraph_update_surface(NV2AState *d, bool upload,
     pgraph_surface_evict_old(d);
 }
 
+struct pgraph_texture_possibly_dirty_struct {
+    hwaddr addr, end;
+};
+
+static void pgraph_mark_textures_possibly_dirty_visitor(Lru *lru, LruNode *node, void *opaque)
+{
+    struct pgraph_texture_possibly_dirty_struct *test =
+        (struct pgraph_texture_possibly_dirty_struct *)opaque;
+
+    struct TextureLruNode *tnode = container_of(node, TextureLruNode, node);
+    if (tnode->binding == NULL || tnode->possibly_dirty) {
+        return;
+    }
+
+    uintptr_t k_tex_addr = tnode->key.texture_vram_offset;
+    uintptr_t k_tex_end = k_tex_addr + tnode->key.texture_length - 1;
+    bool overlapping = !(test->addr > k_tex_end || k_tex_addr > test->end);
+
+    if (tnode->key.palette_length > 0) {
+        uintptr_t k_pal_addr = tnode->key.palette_vram_offset;
+        uintptr_t k_pal_end = k_pal_addr + tnode->key.palette_length - 1;
+        overlapping |= !(test->addr > k_pal_end || k_pal_addr > test->end);
+    }
+
+    tnode->possibly_dirty |= overlapping;
+}
+
+
 static void pgraph_mark_textures_possibly_dirty(NV2AState *d,
     hwaddr addr, hwaddr size)
 {
@@ -4618,25 +4648,14 @@ static void pgraph_mark_textures_possibly_dirty(NV2AState *d,
     addr &= TARGET_PAGE_MASK;
     assert(end <= memory_region_size(d->vram));
 
-    struct lru_node *node = d->pgraph.texture_cache.active;
-    for (; node; node = node->next) {
-        struct TextureKey *k = container_of(node, struct TextureKey, node);
-        if (k->binding == NULL || k->possibly_dirty) {
-            continue;
-        }
+    struct pgraph_texture_possibly_dirty_struct test = {
+        .addr = addr,
+        .end = end,
+    };
 
-        uintptr_t k_tex_addr = k->texture_vram_offset;
-        uintptr_t k_tex_end = k_tex_addr + k->texture_length - 1;
-        bool overlapping = !(addr > k_tex_end || k_tex_addr > end);
-
-        if (k->palette_length > 0) {
-            uintptr_t k_pal_addr = k->palette_vram_offset;
-            uintptr_t k_pal_end = k_pal_addr + k->palette_length - 1;
-            overlapping |= !(addr > k_pal_end || k_pal_addr > end);
-        }
-
-        k->possibly_dirty |= overlapping;
-    }
+    lru_visit_active(&d->pgraph.texture_cache,
+                     pgraph_mark_textures_possibly_dirty_visitor,
+                     &test);
 }
 
 static bool pgraph_check_texture_dirty(NV2AState *d, hwaddr addr, hwaddr size)
@@ -4950,9 +4969,9 @@ static void pgraph_bind_textures(NV2AState *d)
 
         // Search for existing texture binding in cache
         uint64_t tex_binding_hash = fast_hash((uint8_t*)&key, sizeof(key));
-        struct lru_node *found = lru_lookup(&pg->texture_cache,
-                                            tex_binding_hash, &key);
-        TextureKey *key_out = container_of(found, struct TextureKey, node);
+        LruNode *found = lru_lookup(&pg->texture_cache,
+                                     tex_binding_hash, &key);
+        TextureLruNode *key_out = container_of(found, TextureLruNode, node);
         bool possibly_dirty = (key_out->binding == NULL)
                               || key_out->possibly_dirty;
 
@@ -5667,34 +5686,29 @@ static void texture_binding_destroy(gpointer data)
 }
 
 /* functions for texture LRU cache */
-static struct lru_node *texture_cache_entry_init(struct lru_node *obj, void *key)
+static void texture_cache_entry_init(Lru *lru, LruNode *node, void *key)
 {
-    struct TextureKey *k_out = container_of(obj, struct TextureKey, node);
-    struct TextureKey *k_in = (struct TextureKey *)key;
-    memcpy(k_out, k_in, sizeof(struct TextureKey));
-    k_out->binding = NULL;
-    return obj;
+    TextureLruNode *tnode = container_of(node, TextureLruNode, node);
+    memcpy(&tnode->key, key, sizeof(TextureKey));
+
+    tnode->binding = NULL;
+    tnode->possibly_dirty = false;
 }
 
-static struct lru_node *texture_cache_entry_deinit(struct lru_node *obj)
+static void texture_cache_entry_post_evict(Lru *lru, LruNode *node)
 {
-    struct TextureKey *a = container_of(obj, struct TextureKey, node);
-    if (a->binding) {
-        texture_binding_destroy(a->binding);
+    TextureLruNode *tnode = container_of(node, TextureLruNode, node);
+    if (tnode->binding) {
+        texture_binding_destroy(tnode->binding);
+        tnode->binding = NULL;
+        tnode->possibly_dirty = false;
     }
-    return obj;
 }
 
-static int texture_cache_entry_compare(struct lru_node *obj, void *key)
+static bool texture_cache_entry_compare(Lru *lru, LruNode *node, void *key)
 {
-    struct TextureKey *a = container_of(obj, struct TextureKey, node);
-    struct TextureKey *b = (struct TextureKey *)key;
-    return memcmp(&a->state, &b->state, sizeof(a->state))
-        || (a->texture_vram_offset != b->texture_vram_offset)
-        || (a->texture_length != b->texture_length)
-        || (a->palette_vram_offset != b->palette_vram_offset)
-        || (a->palette_length != b->palette_length)
-        ;
+    TextureLruNode *tnode = container_of(node, TextureLruNode, node);
+    return memcmp(&tnode->key, key, sizeof(TextureKey));
 }
 
 /* hash and equality for shader cache hash table */
