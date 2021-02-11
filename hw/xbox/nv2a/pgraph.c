@@ -4295,7 +4295,8 @@ static void pgraph_upload_surface_data(
     }
 
     // This is VRAM so we can't do this inplace!
-    uint8_t *flipped_buf = (uint8_t*)g_malloc(surface->size);
+    uint8_t *flipped_buf = (uint8_t *)g_malloc(
+        surface->height * surface->width * surface->bytes_per_pixel);
     unsigned int irow;
     for (irow = 0; irow < surface->height; irow++) {
         memcpy(&flipped_buf[surface->width * (surface->height - irow - 1)
