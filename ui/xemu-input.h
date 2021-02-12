@@ -26,6 +26,7 @@
 #define XEMU_INPUT_H
 
 #include <SDL2/SDL.h>
+#include "qemu/queue.h"
 
 enum controller_state_buttons_mask {
     CONTROLLER_BUTTON_A          = (1 << 0),
@@ -62,9 +63,11 @@ enum controller_input_device_type {
     INPUT_DEVICE_SDL_GAMECONTROLLER,
 };
 
-struct controller_state {
+typedef struct ControllerState {
+    QTAILQ_ENTRY(ControllerState) entry;
+
     // Input state
-    uint32_t buttons;
+    uint16_t buttons;
     int16_t  axis[CONTROLLER_AXIS__COUNT];
 
     // Rendering state hacked on here for convenience but needs to be moved (FIXME)
@@ -86,13 +89,11 @@ struct controller_state {
 
     int   bound;  // Which port this input device is bound to
     void *device; // DeviceState opaque
+} ControllerState;
 
-    struct controller_state *next;
-};
-
-extern int num_available_controllers;
-extern struct controller_state *available_controllers;
-extern struct controller_state *bound_controllers[4];
+typedef QTAILQ_HEAD(, ControllerState) ControllerStateList;
+extern ControllerStateList available_controllers;
+extern ControllerState *bound_controllers[4];
 
 #ifdef __cplusplus
 extern "C" {
@@ -101,12 +102,12 @@ extern "C" {
 void xemu_input_init(void);
 void xemu_input_process_sdl_events(const SDL_Event *event); // SDL_CONTROLLERDEVICEADDED, SDL_CONTROLLERDEVICEREMOVED
 void xemu_input_update_controllers(void);
-void xemu_input_update_sdl_kbd_controller_state(struct controller_state *state);
-void xemu_input_update_sdl_controller_state(struct controller_state *state);
-void xemu_input_update_rumble(struct controller_state *state);
-struct controller_state *xemu_input_get_bound(int index);
-void xemu_input_bind(int index, struct controller_state *state, int save);
-int xemu_input_get_controller_default_bind_port(struct controller_state *state, int start);
+void xemu_input_update_sdl_kbd_controller_state(ControllerState *state);
+void xemu_input_update_sdl_controller_state(ControllerState *state);
+void xemu_input_update_rumble(ControllerState *state);
+ControllerState *xemu_input_get_bound(int index);
+void xemu_input_bind(int index, ControllerState *state, int save);
+int xemu_input_get_controller_default_bind_port(ControllerState *state, int start);
 
 void xemu_input_set_test_mode(int enabled);
 int xemu_input_get_test_mode(void);

@@ -107,7 +107,6 @@ typedef struct VertexAttribute {
     GLenum gl_type;
     GLboolean gl_normalize;
 
-    GLuint gl_converted_buffer;
     GLuint gl_inline_buffer;
 } VertexAttribute;
 
@@ -181,16 +180,33 @@ typedef struct TextureBinding {
 } TextureBinding;
 
 typedef struct TextureKey {
-    struct lru_node node;
     TextureShape state;
-    TextureBinding *binding;
-
     hwaddr texture_vram_offset;
     hwaddr texture_length;
     hwaddr palette_vram_offset;
     hwaddr palette_length;
-    bool possibly_dirty;
 } TextureKey;
+
+typedef struct TextureLruNode {
+    LruNode node;
+    TextureKey key;
+    TextureBinding *binding;
+    bool possibly_dirty;
+} TextureLruNode;
+
+typedef struct VertexKey {
+    size_t count;
+    GLuint gl_type;
+    GLboolean gl_normalize;
+    size_t stride;
+} VertexKey;
+
+typedef struct VertexLruNode {
+    LruNode node;
+    VertexKey key;
+    GLuint gl_buffer;
+    bool initialized;
+} VertexLruNode;
 
 typedef struct KelvinState {
     hwaddr object_instance;
@@ -256,8 +272,8 @@ typedef struct PGRAPHState {
     bool downloads_pending;
 
     hwaddr dma_a, dma_b;
-    struct lru texture_cache;
-    struct TextureKey *texture_cache_entries;
+    Lru texture_cache;
+    struct TextureLruNode *texture_cache_entries;
     bool texture_dirty[NV2A_MAX_TEXTURES];
     TextureBinding *texture_binding[NV2A_MAX_TEXTURES];
 
@@ -309,6 +325,9 @@ typedef struct PGRAPHState {
     float light_local_attenuation[NV2A_MAX_LIGHTS][3];
 
     VertexAttribute vertex_attributes[NV2A_VERTEXSHADER_ATTRIBUTES];
+
+    Lru vertex_cache;
+    struct VertexLruNode *vertex_cache_entries;
 
     unsigned int inline_array_length;
     uint32_t inline_array[NV2A_MAX_BATCH_LENGTH];
@@ -470,8 +489,9 @@ void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len);
 void pgraph_init(NV2AState *d);
 void pgraph_destroy(PGRAPHState *pg);
 void pgraph_context_switch(NV2AState *d, unsigned int channel_id);
-void pgraph_method(NV2AState *d, unsigned int subchannel,
-                   unsigned int method, uint32_t parameter);
+int pgraph_method(NV2AState *d, unsigned int subchannel,
+                   unsigned int method, uint32_t parameter,
+                   uint32_t *parameters, size_t num_words_available);
 void pgraph_gl_sync(NV2AState *d);
 void pgraph_process_pending_downloads(NV2AState *d);
 

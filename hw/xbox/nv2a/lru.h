@@ -1,40 +1,7 @@
 /*
- * Simple LRU Object List
- * ======================
- * - Designed for pre-allocated array of objects which are accessed frequently
- * - Objects are identified by a hash and an opaque `key` data structure
- * - Lookups are first done by hash, then confirmed by callback compare function
- * - Two singly linked lists are maintained: a free list and an active list
- * - On cache miss, object is created from free list or by evicting the LRU
- * - When created, a callback function is called to fully initialize the object
+ * LRU object list
  *
- * Setup
- * -----
- * - Create an object data structure, embed in it `struct lru_node`
- * - Create an init, deinit, and compare function
- * - Call `lru_init`
- * - Allocate a number of these objects
- * - For each object, call `lru_add_free` to populate entries in the cache
- *
- * Runtime
- * -------
- * - Initialize custom key data structure (will be used for comparison)
- * - Create 64b hash of the object and/or key
- * - Call `lru_lookup` with the hash and key
- *   - The active list is searched, the compare callback will be called if an
- *     object with matching hash is found
- *   - If object is found in the cache, it will be moved to the front of the
- *     active list and returned
- *   - If object is not found in the cache:
- *     - If no free items are available, the LRU will be evicted, deinit
- *       callback will be called
- *     - An object is popped from the free list and the init callback is called
- *       on the object
- *     - The object is added to the front of the active list and returned
- *
- * ---
- *
- * Copyright (c) 2018 Matt Borgerson
+ * Copyright (c) 2021 Matt Borgerson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -58,44 +25,173 @@
 #ifndef LRU_H
 #define LRU_H
 
+#include <assert.h>
 #include <stdint.h>
-#include <string.h>
+#include "qemu/queue.h"
 
-struct lru_node;
+#define LRU_NUM_BINS (1<<8)
 
-typedef struct lru_node *(*lru_obj_init_func)(struct lru_node *obj, void *key);
-typedef struct lru_node *(*lru_obj_deinit_func)(struct lru_node *obj);
-typedef int              (*lru_obj_key_compare_func)(struct lru_node *obj, void *key);
-
-struct lru {
-	struct lru_node *active; /* Singly-linked list tracking recently active */
-	struct lru_node *free;   /* Singly-linked list tracking available objects */
-
-	lru_obj_init_func         obj_init;
-	lru_obj_deinit_func       obj_deinit;
-	lru_obj_key_compare_func  obj_key_compare;
-
-	size_t num_free;
-	size_t num_collisions;
-	size_t num_hit;
-	size_t num_miss;
-};
-
-/* This should be embedded in the object structure */
-struct lru_node {
+typedef struct LruNode {
+	QTAILQ_ENTRY(LruNode) next_global;
+	QTAILQ_ENTRY(LruNode) next_bin;
 	uint64_t hash;
-	struct lru_node *next;
+} LruNode;
+
+typedef struct Lru Lru;
+
+struct Lru {
+	QTAILQ_HEAD(, LruNode) global;
+	QTAILQ_HEAD(, LruNode) bins[LRU_NUM_BINS];
+
+	/* Initialize a node. */
+	void (*init_node)(Lru *lru, LruNode *node, void *key);
+
+	/* In case of hash collision. Return `true` if nodes differ. */
+	bool (*compare_nodes)(Lru *lru, LruNode *node, void *key);
+
+	/* Optional. Called before eviction. Return `false` to prevent eviction. */
+	bool (*pre_node_evict)(Lru *lru, LruNode *node);
+
+	/* Optional. Called after eviction. Reclaim any associated resources. */
+	void (*post_node_evict)(Lru *lru, LruNode *node);
 };
 
-struct lru *lru_init(
-	struct lru *lru,
-	lru_obj_init_func obj_init,
-	lru_obj_deinit_func obj_deinit,
-	lru_obj_key_compare_func obj_key_compare
-	);
+static inline
+void lru_init(Lru *lru)
+{
+	QTAILQ_INIT(&lru->global);
+	for (unsigned int i = 0; i < LRU_NUM_BINS; i++) {
+		QTAILQ_INIT(&lru->bins[i]);
+	}
+	lru->init_node = NULL;
+	lru->compare_nodes = NULL;
+	lru->pre_node_evict = NULL;
+	lru->post_node_evict = NULL;
+}
 
-struct lru_node *lru_add_free(struct lru *lru, struct lru_node *node);
-struct lru_node *lru_lookup(struct lru *lru, uint64_t hash, void *key);
-void lru_flush(struct lru *lru);
+static inline
+void lru_add_free(Lru *lru, LruNode *node)
+{
+	node->next_bin.tqe_circ.tql_prev = NULL;
+	QTAILQ_INSERT_TAIL(&lru->global, node, next_global);
+}
+
+static inline
+unsigned int lru_hash_to_bin(Lru *lru, uint64_t hash)
+{
+	return hash % LRU_NUM_BINS;
+}
+
+static inline
+unsigned int lru_get_node_bin(Lru *lru, LruNode *node)
+{
+	return lru_hash_to_bin(lru, node->hash);
+}
+
+static inline
+bool lru_is_node_in_use(Lru *lru, LruNode *node)
+{
+	return QTAILQ_IN_USE(node, next_bin);
+}
+
+static inline
+void lru_evict_node(Lru *lru, LruNode *node)
+{
+	if (!lru_is_node_in_use(lru, node)) {
+		return;
+	}
+
+	unsigned int bin = lru_get_node_bin(lru, node);
+	QTAILQ_REMOVE(&lru->bins[bin], node, next_bin);
+	if (lru->post_node_evict) {
+		lru->post_node_evict(lru, node);
+	}
+}
+
+static inline
+LruNode *lru_evict_one(Lru *lru)
+{
+	LruNode *found;
+
+	QTAILQ_FOREACH_REVERSE(found, &lru->global, next_global) {
+		bool can_evict = true;
+		if (lru_is_node_in_use(lru, found) && lru->pre_node_evict) {
+			can_evict = lru->pre_node_evict(lru, found);
+		}
+		if (can_evict) {
+			break;
+		}
+	}
+
+	assert(found != NULL); /* No evictable node! */
+
+	lru_evict_node(lru, found);
+	return found;
+}
+
+static inline
+LruNode *lru_lookup(Lru *lru, uint64_t hash, void *key)
+{
+	unsigned int bin = lru_hash_to_bin(lru, hash);
+	LruNode *iter, *found = NULL;
+
+	QTAILQ_FOREACH(iter, &lru->bins[bin], next_bin) {
+        if ((iter->hash == hash) && !lru->compare_nodes(lru, iter, key)) {
+            found = iter;
+            break;
+        }
+    }
+
+	if (found) {
+		QTAILQ_REMOVE(&lru->bins[bin], found, next_bin);
+	} else {
+		found = lru_evict_one(lru);
+		found->hash = hash;
+		if (lru->init_node) {
+			lru->init_node(lru, found, key);
+		}
+		assert(found->hash == hash);
+	}
+
+	QTAILQ_REMOVE(&lru->global, found, next_global);
+	QTAILQ_INSERT_HEAD(&lru->global, found, next_global);
+	QTAILQ_INSERT_HEAD(&lru->bins[bin], found, next_bin);
+
+	return found;
+}
+
+static inline
+void lru_flush(Lru *lru)
+{
+	LruNode *iter, *iter_next;
+
+	for (unsigned int bin = 0; bin < LRU_NUM_BINS; bin++) {
+		QTAILQ_FOREACH_SAFE(iter, &lru->bins[bin], next_bin, iter_next) {
+			bool can_evict = true;
+			if (lru->pre_node_evict) {
+				can_evict = lru->pre_node_evict(lru, iter);
+			}
+			if (can_evict) {
+				lru_evict_node(lru, iter);
+				QTAILQ_REMOVE(&lru->global, iter, next_global);
+				QTAILQ_INSERT_TAIL(&lru->global, iter, next_global);
+			}
+		}
+	}
+}
+
+typedef void (*LruNodeVisitorFunc)(Lru *lru, LruNode *node, void *opaque);
+
+static inline
+void lru_visit_active(Lru *lru, LruNodeVisitorFunc visitor_func, void *opaque)
+{
+	LruNode *iter, *iter_next;
+
+	for (unsigned int bin = 0; bin < LRU_NUM_BINS; bin++) {
+		QTAILQ_FOREACH_SAFE(iter, &lru->bins[bin], next_bin, iter_next) {
+			visitor_func(lru, iter, opaque);
+		}
+	}
+}
 
 #endif

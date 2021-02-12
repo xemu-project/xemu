@@ -37,8 +37,9 @@
 #include "xemu-reporting.h"
 
 #include "imgui/imgui.h"
-#include "imgui/examples/imgui_impl_sdl.h"
-#include "imgui/examples/imgui_impl_opengl3.h"
+#include "imgui/backends/imgui_impl_sdl.h"
+#include "imgui/backends/imgui_impl_opengl3.h"
+#include "implot/implot.h"
 
 extern "C" {
 #include "noc_file_dialog.h"
@@ -49,6 +50,7 @@ extern "C" {
 #include "sysemu/sysemu.h"
 #include "sysemu/runstate.h"
 #include "hw/xbox/mcpx/apu_debug.h"
+#include "hw/xbox/nv2a/debug.h"
 
 #undef typename
 #undef atomic_fetch_add
@@ -437,7 +439,7 @@ public:
 
         // List available input devices
         const char *not_connected = "Not Connected";
-        struct controller_state *bound_state = xemu_input_get_bound(active);
+        ControllerState *bound_state = xemu_input_get_bound(active);
 
         // Get current controller name
         const char *name;
@@ -460,8 +462,8 @@ public:
             }
 
             // Handle all available input devices
-            struct controller_state *iter;
-            for (iter=available_controllers; iter != NULL; iter=iter->next) {
+            ControllerState *iter;
+            QTAILQ_FOREACH(iter, &available_controllers, entry) {
                 is_selected = bound_state == iter;
                 ImGui::PushID(iter);
                 const char *selectable_label = iter->name;
@@ -501,7 +503,7 @@ public:
             device_selected = true;
             render_controller(0, 0, 0x81dc8a00, 0x0f0f0f00, bound_state);
         } else {
-            static struct controller_state state = { 0 };
+            static ControllerState state = { 0 };
             render_controller(0, 0, 0x1f1f1f00, 0x0f0f0f00, &state);
         }
 
@@ -1385,8 +1387,127 @@ public:
 };
 
 
+
+// utility structure for realtime plot
+struct ScrollingBuffer {
+    int MaxSize;
+    int Offset;
+    ImVector<ImVec2> Data;
+    ScrollingBuffer() {
+        MaxSize = 2000;
+        Offset  = 0;
+        Data.reserve(MaxSize);
+    }
+    void AddPoint(float x, float y) {
+        if (Data.size() < MaxSize)
+            Data.push_back(ImVec2(x,y));
+        else {
+            Data[Offset] = ImVec2(x,y);
+            Offset =  (Offset + 1) % MaxSize;
+        }
+    }
+    void Erase() {
+        if (Data.size() > 0) {
+            Data.shrink(0);
+            Offset  = 0;
+        }
+    }
+};
+
+class DebugVideoWindow
+{
+public:
+    bool is_open;
+
+    DebugVideoWindow()
+    {
+        is_open = false;
+    }
+
+    ~DebugVideoWindow()
+    {
+    }
+
+    void Draw()
+    {
+        if (!is_open) return;
+
+        float window_width = 800.0f*g_ui_scale;
+
+        // ImGui::SetNextWindowContentSize(ImVec2(window_width, 0.0f));
+        if (!ImGui::Begin("Video Debug", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::End();
+            return;
+        }
+
+        double x_start, x_end;
+        static ImPlotAxisFlags rt_axis = ImPlotAxisFlags_NoTickLabels;
+        ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(5,5));
+        ImPlot::PushStyleVar(ImPlotStyleVar_FillAlpha, 0.25f);
+        static ScrollingBuffer fps;
+        static float t = 0;
+        if (runstate_is_running()) {
+            t += ImGui::GetIO().DeltaTime;
+            fps.AddPoint(t, g_nv2a_stats.increment_fps);
+        }
+        x_start = t - 10.0;
+        x_end = t;
+        ImPlot::SetNextPlotLimitsX(x_start, x_end, ImGuiCond_Always);
+        ImPlot::SetNextPlotLimitsY(0, 65, ImGuiCond_Always);
+        if (ImPlot::BeginPlot("##ScrollingFPS", NULL, NULL, ImVec2(0.5*window_width,75), 0, rt_axis, rt_axis | ImPlotAxisFlags_Lock)) {
+            if (fps.Data.size() > 0) {
+                ImPlot::PlotShaded("##fps", &fps.Data[0].x, &fps.Data[0].y, fps.Data.size(), 0, fps.Offset, 2 * sizeof(float));
+                ImPlot::PlotLine("##fps", &fps.Data[0].x, &fps.Data[0].y, fps.Data.size(), fps.Offset, 2 * sizeof(float));
+            }
+            ImPlot::AnnotateClamped(x_start, 65, ImVec2(0,0), ImPlot::GetLastItemColor(), "FPS: %d", g_nv2a_stats.increment_fps);
+            ImPlot::EndPlot();
+        }
+
+        ImGui::SameLine();
+
+        x_end = g_nv2a_stats.frame_count;
+        x_start = x_end - NV2A_PROF_NUM_FRAMES;
+
+        ImPlot::SetNextPlotLimitsX(x_start, x_end, ImGuiCond_Always);
+        ImPlot::SetNextPlotLimitsY(0, 100, ImGuiCond_Always);
+        ImPlot::PushStyleColor(ImPlotCol_Line, ImPlot::GetColormapColor(1));
+        if (ImPlot::BeginPlot("##ScrollingMSPF", NULL, NULL, ImVec2(0.5*window_width,75), 0, rt_axis, rt_axis | ImPlotAxisFlags_Lock)) {
+            ImPlot::PlotShaded("##mspf", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 0, 1, x_start, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
+            ImPlot::PlotLine("##mspf", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 1, x_start, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
+            ImPlot::AnnotateClamped(x_start, 100, ImVec2(0,0), ImPlot::GetLastItemColor(), "MSPF: %d", g_nv2a_stats.frame_history[(g_nv2a_stats.frame_ptr - 1) % NV2A_PROF_NUM_FRAMES].mspf);
+            ImPlot::EndPlot();
+        }
+        ImPlot::PopStyleColor();
+
+        if (ImGui::TreeNode("Advanced")) {
+            ImPlot::SetNextPlotLimitsX(x_start, x_end, ImGuiCond_Always);
+            ImPlot::SetNextPlotLimitsY(0, 1500, ImGuiCond_Always);
+            if (ImPlot::BeginPlot("##ScrollingDraws", NULL, NULL, ImVec2(-1,500), 0, rt_axis, rt_axis | ImPlotAxisFlags_Lock)) {
+                for (int i = 0; i < NV2A_PROF__COUNT; i++) {
+                    ImGui::PushID(i);
+                    char title[64];
+                    snprintf(title, sizeof(title), "%s: %d",
+                        nv2a_profile_get_counter_name(i),
+                        nv2a_profile_get_counter_value(i));
+                    ImPlot::PushStyleColor(ImPlotCol_Line, ImPlot::GetColormapColor(i));
+                    ImPlot::PushStyleColor(ImPlotCol_Fill, ImPlot::GetColormapColor(i));
+                    ImPlot::PlotLine(title, &g_nv2a_stats.frame_history[0].counters[i], NV2A_PROF_NUM_FRAMES, 1, x_start, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
+                    ImPlot::PopStyleColor(2);
+                    ImGui::PopID();
+                }
+                ImPlot::EndPlot();
+            }
+            ImGui::TreePop();
+        }
+
+        ImPlot::PopStyleVar(2);
+        ImGui::End();
+    }
+};
+
 static MonitorWindow monitor_window;
 static DebugApuWindow apu_window;
+static DebugVideoWindow video_window;
 static InputWindow input_window;
 static NetworkWindow network_window;
 static AboutWindow about_window;
@@ -1618,6 +1739,7 @@ static void ShowMainMenu()
         {
             ImGui::MenuItem("Monitor", NULL, &monitor_window.is_open);
             ImGui::MenuItem("Audio", NULL, &apu_window.is_open);
+            ImGui::MenuItem("Video", NULL, &video_window.is_open);
             ImGui::EndMenu();
         }
 
@@ -1648,6 +1770,7 @@ static void InitializeStyle()
     ImGui_ImplOpenGL3_CreateFontsTexture();
 
     ImGuiStyle style;
+    style.WindowRounding = 8.0;
     style.FrameRounding = 8.0;
     style.GrabRounding = 12.0;
     style.PopupRounding = 5.0;
@@ -1745,6 +1868,8 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     g_ui_scale = ui_scale_int;
 
     g_sdl_window = window;
+
+    ImPlot::CreateContext();
 }
 
 void xemu_hud_cleanup(void)
@@ -1770,12 +1895,13 @@ void xemu_hud_render(void)
 {
     uint32_t now = SDL_GetTicks();
     bool ui_wakeup = false;
-    struct controller_state *iter;
 
     // Combine all controller states to allow any controller to navigate
     uint32_t buttons = 0;
     int16_t axis[CONTROLLER_AXIS__COUNT] = {0};
-    for (iter=available_controllers; iter != NULL; iter=iter->next) {
+
+    ControllerState *iter;
+    QTAILQ_FOREACH(iter, &available_controllers, entry) {
         if (iter->type != INPUT_DEVICE_SDL_GAMECONTROLLER) continue;
         buttons |= iter->buttons;
         // We simply take any axis that is >10 % activation
@@ -1904,6 +2030,7 @@ void xemu_hud_render(void)
     settings_window.Draw();
     monitor_window.Draw();
     apu_window.Draw();
+    video_window.Draw();
     about_window.Draw();
     network_window.Draw();
     compatibility_reporter_window.Draw();

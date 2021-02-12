@@ -17,9 +17,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "xemu-input.h"
-#include "xemu-notifications.h"
-#include "xemu-settings.h"
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
@@ -31,15 +28,23 @@
 #include "qemu/option.h"
 #include "qemu/config-file.h"
 
-#if 0
-#define DPRINTF printf
+#include "xemu-input.h"
+#include "xemu-notifications.h"
+#include "xemu-settings.h"
+
+// #define DEBUG_INPUT
+
+#ifdef DEBUG_INPUT
+#define DPRINTF(fmt, ...) \
+    do { fprintf(stderr, fmt, ## __VA_ARGS__); } while (0)
 #else
-#define DPRINTF(...)
+#define DPRINTF(fmt, ...) \
+    do { } while (0)
 #endif
 
-int num_available_controllers;
-struct controller_state *available_controllers;
-struct controller_state *bound_controllers[4] = { NULL, NULL, NULL, NULL };
+ControllerStateList available_controllers =
+    QTAILQ_HEAD_INITIALIZER(available_controllers);
+ControllerState *bound_controllers[4] = { NULL, NULL, NULL, NULL };
 int test_mode;
 
 static const enum xemu_settings_keys port_index_to_settings_key_map[] = {
@@ -64,8 +69,8 @@ void xemu_input_init(void)
     }
 
     // Create the keyboard input (always first)
-    struct controller_state *new_con = malloc(sizeof(struct controller_state));
-    memset(new_con, 0, sizeof(struct controller_state));
+    ControllerState *new_con = malloc(sizeof(ControllerState));
+    memset(new_con, 0, sizeof(ControllerState));
     new_con->type = INPUT_DEVICE_SDL_KEYBOARD;
     new_con->name = "Keyboard";
     new_con->bound = -1;
@@ -76,14 +81,13 @@ void xemu_input_init(void)
         xemu_input_bind(port, new_con, 0);
         char buf[128];
         snprintf(buf, sizeof(buf), "Connected '%s' to port %d", new_con->name, port+1);
-        xemu_queue_notification(buf);            
+        xemu_queue_notification(buf);
     }
 
-    available_controllers = new_con;
-    num_available_controllers = 1;
+    QTAILQ_INSERT_TAIL(&available_controllers, new_con, entry);
 }
 
-int xemu_input_get_controller_default_bind_port(struct controller_state *state, int start)
+int xemu_input_get_controller_default_bind_port(ControllerState *state, int start)
 {
     char guid[35] = { 0 };
     if (state->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
@@ -117,8 +121,8 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         }
 
         // Success! Create a new node to track this controller and continue init
-        struct controller_state *new_con = malloc(sizeof(struct controller_state));
-        memset(new_con, 0, sizeof(struct controller_state));
+        ControllerState *new_con = malloc(sizeof(ControllerState));
+        memset(new_con, 0, sizeof(ControllerState));
         new_con->type                 = INPUT_DEVICE_SDL_GAMECONTROLLER;
         new_con->name                 = SDL_GameControllerName(sdl_con);
         new_con->sdl_gamecontroller   = sdl_con;
@@ -128,20 +132,12 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         new_con->sdl_haptic           = SDL_HapticOpenFromJoystick(new_con->sdl_joystick);
         new_con->sdl_haptic_effect_id = -1;
         new_con->bound                = -1;
-        
+
         char guid_buf[35] = { 0 };
         SDL_JoystickGetGUIDString(new_con->sdl_joystick_guid, guid_buf, sizeof(guid_buf));
         DPRINTF("Opened %s (%s)\n", new_con->name, guid_buf);
-        
-        // Add to the list of controllers
-        if (available_controllers == NULL) {
-            available_controllers = new_con;
-        } else {
-            struct controller_state *iter = available_controllers;
-            while (iter->next != NULL) iter = iter->next;
-            iter->next = new_con;
-        }
-        num_available_controllers++;
+
+        QTAILQ_INSERT_TAIL(&available_controllers, new_con, entry);
 
         // Do not replace binding for a currently bound device. In the case that
         // the same GUID is specified multiple times, on different ports, allow
@@ -176,10 +172,10 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
     } else if (event->type == SDL_CONTROLLERDEVICEREMOVED) {
         DPRINTF("Controller Removed: %d\n", event->cdevice.which);
         int handled = 0;
-        struct controller_state *iter, *prev;
-        for (iter=available_controllers, prev=NULL; iter != NULL; prev = iter, iter = iter->next) {
+        ControllerState *iter, *next;
+        QTAILQ_FOREACH_SAFE(iter, &available_controllers, entry, next) {
             if (iter->type != INPUT_DEVICE_SDL_GAMECONTROLLER) continue;
-            
+
             if (iter->sdl_joystick_id == event->cdevice.which) {
                 DPRINTF("Device removed: %s\n", iter->name);
 
@@ -198,12 +194,7 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
                 }
 
                 // Unlink
-                if (prev) {
-                    prev->next = iter->next;
-                } else {
-                    available_controllers = iter->next;
-                }
-                num_available_controllers--;
+                QTAILQ_REMOVE(&available_controllers, iter, entry);
 
                 // Deallocate
                 if (iter->sdl_haptic) {
@@ -228,8 +219,8 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
 
 void xemu_input_update_controllers(void)
 {
-    struct controller_state *iter;
-    for (iter=available_controllers; iter != NULL; iter=iter->next) {
+    ControllerState *iter;
+    QTAILQ_FOREACH(iter, &available_controllers, entry) {
         if (iter->type == INPUT_DEVICE_SDL_KEYBOARD) {
             xemu_input_update_sdl_kbd_controller_state(iter);
         } else if (iter->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
@@ -239,7 +230,7 @@ void xemu_input_update_controllers(void)
     }
 }
 
-void xemu_input_update_sdl_kbd_controller_state(struct controller_state *state)
+void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
 {
     state->buttons = 0;
     memset(state->axis, 0, sizeof(state->axis));
@@ -292,7 +283,7 @@ void xemu_input_update_sdl_kbd_controller_state(struct controller_state *state)
     if (kbd[SDL_SCANCODE_O]) state->axis[CONTROLLER_AXIS_RTRIG] = 32767;
 }
 
-void xemu_input_update_sdl_controller_state(struct controller_state *state)
+void xemu_input_update_sdl_controller_state(ControllerState *state)
 {
     state->buttons = 0;
     memset(state->axis, 0, sizeof(state->axis));
@@ -337,7 +328,7 @@ void xemu_input_update_sdl_controller_state(struct controller_state *state)
     state->axis[CONTROLLER_AXIS_RSTICK_Y] = -1 - state->axis[CONTROLLER_AXIS_RSTICK_Y];
 }
 
-void xemu_input_update_rumble(struct controller_state *state)
+void xemu_input_update_rumble(ControllerState *state)
 {
     if (state->sdl_haptic == NULL) {
         // Haptic not supported for this joystick
@@ -357,12 +348,12 @@ void xemu_input_update_rumble(struct controller_state *state)
     }
 }
 
-struct controller_state *xemu_input_get_bound(int index)
+ControllerState *xemu_input_get_bound(int index)
 {
     return bound_controllers[index];
 }
 
-void xemu_input_bind(int index, struct controller_state *state, int save)
+void xemu_input_bind(int index, ControllerState *state, int save)
 {
     // FIXME: Attempt to disable rumble when unbinding so it's not left
     // in rumble mode
@@ -433,7 +424,7 @@ void xemu_input_bind(int index, struct controller_state *state, int save)
 }
 
 #if 0
-static void xemu_input_print_controller_state(struct controller_state *state)
+static void xemu_input_print_controller_state(ControllerState *state)
 {
     DPRINTF("     A = %d,      B = %d,     X = %d,     Y = %d\n"
            "  Left = %d,     Up = %d, Right = %d,  Down = %d\n"
