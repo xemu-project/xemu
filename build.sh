@@ -248,7 +248,9 @@ set -x # Print commands from now on
     "$@"
 
 # Force imgui update now to work around annoying make issue
-./scripts/git-submodule.sh update ui/imgui
+if ! test -f "${project_source_dir}/ui/imgui/imgui.cpp"; then
+    ./scripts/git-submodule.sh update ui/imgui
+fi
 
 time make -j"${job_count}" 2>&1 | tee build.log
 
