@@ -1438,8 +1438,10 @@ public:
         ImPlot::SetNextPlotLimitsX(x_start, x_end, ImGuiCond_Always);
         ImPlot::SetNextPlotLimitsY(0, 65, ImGuiCond_Always);
         if (ImPlot::BeginPlot("##ScrollingFPS", NULL, NULL, ImVec2(0.5*window_width,75), 0, rt_axis, rt_axis | ImPlotAxisFlags_Lock)) {
-            ImPlot::PlotShaded("##fps", &fps.Data[0].x, &fps.Data[0].y, fps.Data.size(), 0, fps.Offset, 2 * sizeof(float));
-            ImPlot::PlotLine("##fps", &fps.Data[0].x, &fps.Data[0].y, fps.Data.size(), fps.Offset, 2 * sizeof(float));
+            if (fps.Data.size() > 0) {
+                ImPlot::PlotShaded("##fps", &fps.Data[0].x, &fps.Data[0].y, fps.Data.size(), 0, fps.Offset, 2 * sizeof(float));
+                ImPlot::PlotLine("##fps", &fps.Data[0].x, &fps.Data[0].y, fps.Data.size(), fps.Offset, 2 * sizeof(float));
+            }
             ImPlot::AnnotateClamped(x_start, 65, ImVec2(0,0), ImPlot::GetLastItemColor(), "FPS: %d", g_nv2a_stats.increment_fps);
             ImPlot::EndPlot();
         }
