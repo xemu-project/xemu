@@ -2032,7 +2032,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
                 for (i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
                     VertexAttribute *attribute = &pg->vertex_attributes[i];
 
-                    if (attribute->inline_buffer) {
+                    if (attribute->inline_buffer_populated) {
                         nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_3);
                         glBindBuffer(GL_ARRAY_BUFFER,
                                      attribute->gl_inline_buffer);
@@ -2043,8 +2043,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
                                      GL_DYNAMIC_DRAW);
 
                         /* Clear buffer for next batch */
-                        g_free(attribute->inline_buffer);
-                        attribute->inline_buffer = NULL;
+                        attribute->inline_buffer_populated = false;
 
                         glVertexAttribPointer(i, 4, GL_FLOAT, GL_FALSE, 0, 0);
                         glEnableVertexAttribArray(i);
@@ -2939,13 +2938,12 @@ static void pgraph_allocate_inline_buffer_vertices(PGRAPHState *pg,
     int i;
     VertexAttribute *attribute = &pg->vertex_attributes[attr];
 
-    if (attribute->inline_buffer || pg->inline_buffer_length == 0) {
+    if (attribute->inline_buffer_populated || pg->inline_buffer_length == 0) {
         return;
     }
 
     /* Now upload the previous attribute value */
-    attribute->inline_buffer = (float*)g_malloc(NV2A_MAX_BATCH_LENGTH
-                                                  * sizeof(float) * 4);
+    attribute->inline_buffer_populated = true;
     for (i = 0; i < pg->inline_buffer_length; i++) {
         memcpy(&attribute->inline_buffer[i * 4],
                attribute->inline_value,
@@ -2961,7 +2959,7 @@ static void pgraph_finish_inline_buffer_vertex(PGRAPHState *pg)
 
     for (i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
         VertexAttribute *attribute = &pg->vertex_attributes[i];
-        if (attribute->inline_buffer) {
+        if (attribute->inline_buffer_populated) {
             memcpy(&attribute->inline_buffer[
                       pg->inline_buffer_length * 4],
                    attribute->inline_value,
@@ -3047,7 +3045,11 @@ void pgraph_init(NV2AState *d)
     pg->shader_cache = g_hash_table_new(shader_hash, shader_equal);
 
     for (i=0; i<NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
-        glGenBuffers(1, &pg->vertex_attributes[i].gl_inline_buffer);
+        VertexAttribute *attribute = &pg->vertex_attributes[i];
+        glGenBuffers(1, &attribute->gl_inline_buffer);
+        attribute->inline_buffer = (float*)g_malloc(NV2A_MAX_BATCH_LENGTH
+                                              * sizeof(float) * 4);
+        attribute->inline_buffer_populated = false;
     }
     glGenBuffers(1, &pg->gl_inline_array_buffer);
     glGenBuffers(1, &pg->gl_element_buffer);
