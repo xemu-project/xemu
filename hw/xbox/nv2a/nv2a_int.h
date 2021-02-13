@@ -102,6 +102,7 @@ typedef struct VertexAttribute {
     unsigned int converted_count;
 
     float *inline_buffer;
+    bool inline_buffer_populated;
 
     GLint gl_count;
     GLenum gl_type;
