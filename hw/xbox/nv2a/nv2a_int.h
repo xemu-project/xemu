@@ -357,6 +357,7 @@ typedef struct PGRAPHState {
     bool waiting_for_context_switch;
     bool flush_pending;
     bool gl_sync_pending;
+    QemuEvent gl_sync_complete;
 } PGRAPHState;
 
 typedef struct NV2AState {
