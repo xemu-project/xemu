@@ -1401,10 +1401,12 @@ class DebugVideoWindow
 {
 public:
     bool is_open;
+    bool transparent;
 
     DebugVideoWindow()
     {
         is_open = false;
+        transparent = false;
     }
 
     ~DebugVideoWindow()
@@ -1415,76 +1417,109 @@ public:
     {
         if (!is_open) return;
 
-        float window_width = 800.0f*g_ui_scale;
+        float alpha = transparent ? 0.2 : 1.0;
 
-        // ImGui::SetNextWindowContentSize(ImVec2(window_width, 0.0f));
-        if (!ImGui::Begin("Video Debug", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::End();
-            return;
-        }
+        ImVec4 c;
 
-        double x_start, x_end;
-        static ImPlotAxisFlags rt_axis = ImPlotAxisFlags_NoTickLabels;
-        ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(5,5));
-        ImPlot::PushStyleVar(ImPlotStyleVar_FillAlpha, 0.25f);
-        static ScrollingBuffer fps;
-        static float t = 0;
-        if (runstate_is_running()) {
-            t += ImGui::GetIO().DeltaTime;
-            fps.AddPoint(t, g_nv2a_stats.increment_fps);
-        }
-        x_start = t - 10.0;
-        x_end = t;
-        ImPlot::SetNextPlotLimitsX(x_start, x_end, ImGuiCond_Always);
-        ImPlot::SetNextPlotLimitsY(0, 65, ImGuiCond_Always);
-        if (ImPlot::BeginPlot("##ScrollingFPS", NULL, NULL, ImVec2(0.5*window_width,75), 0, rt_axis, rt_axis | ImPlotAxisFlags_Lock)) {
-            if (fps.Data.size() > 0) {
-                ImPlot::PlotShaded("##fps", &fps.Data[0].x, &fps.Data[0].y, fps.Data.size(), 0, fps.Offset, 2 * sizeof(float));
-                ImPlot::PlotLine("##fps", &fps.Data[0].x, &fps.Data[0].y, fps.Data.size(), fps.Offset, 2 * sizeof(float));
+        c = ImGui::GetStyle().Colors[transparent ? ImGuiCol_WindowBg : ImGuiCol_TitleBg];
+        c.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_TitleBg, c);
+
+        c = ImGui::GetStyle().Colors[transparent ? ImGuiCol_WindowBg : ImGuiCol_TitleBgActive];
+        c.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_TitleBgActive, c);
+
+        c = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+        c.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, c);
+
+        c = ImGui::GetStyle().Colors[ImGuiCol_Border];
+        c.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_Border, c);
+
+        c = ImGui::GetStyle().Colors[ImGuiCol_FrameBg];
+        c.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, c);
+
+        ImGui::SetNextWindowSize(ImVec2(600.0f*g_ui_scale, 150.0f*g_ui_scale), ImGuiCond_Once);
+        if (ImGui::Begin("Video Debug", &is_open)) {
+
+            double x_start, x_end;
+            static ImPlotAxisFlags rt_axis = ImPlotAxisFlags_NoTickLabels;
+            ImPlot::PushStyleVar(ImPlotStyleVar_PlotPadding, ImVec2(5,5));
+            ImPlot::PushStyleVar(ImPlotStyleVar_FillAlpha, 0.25f);
+            static ScrollingBuffer fps;
+            static float t = 0;
+            if (runstate_is_running()) {
+                t += ImGui::GetIO().DeltaTime;
+                fps.AddPoint(t, g_nv2a_stats.increment_fps);
             }
-            ImPlot::AnnotateClamped(x_start, 65, ImVec2(0,0), ImPlot::GetLastItemColor(), "FPS: %d", g_nv2a_stats.increment_fps);
-            ImPlot::EndPlot();
-        }
-
-        ImGui::SameLine();
-
-        x_end = g_nv2a_stats.frame_count;
-        x_start = x_end - NV2A_PROF_NUM_FRAMES;
-
-        ImPlot::SetNextPlotLimitsX(x_start, x_end, ImGuiCond_Always);
-        ImPlot::SetNextPlotLimitsY(0, 100, ImGuiCond_Always);
-        ImPlot::PushStyleColor(ImPlotCol_Line, ImPlot::GetColormapColor(1));
-        if (ImPlot::BeginPlot("##ScrollingMSPF", NULL, NULL, ImVec2(0.5*window_width,75), 0, rt_axis, rt_axis | ImPlotAxisFlags_Lock)) {
-            ImPlot::PlotShaded("##mspf", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 0, 1, x_start, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
-            ImPlot::PlotLine("##mspf", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 1, x_start, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
-            ImPlot::AnnotateClamped(x_start, 100, ImVec2(0,0), ImPlot::GetLastItemColor(), "MSPF: %d", g_nv2a_stats.frame_history[(g_nv2a_stats.frame_ptr - 1) % NV2A_PROF_NUM_FRAMES].mspf);
-            ImPlot::EndPlot();
-        }
-        ImPlot::PopStyleColor();
-
-        if (ImGui::TreeNode("Advanced")) {
+            x_start = t - 10.0;
+            x_end = t;
             ImPlot::SetNextPlotLimitsX(x_start, x_end, ImGuiCond_Always);
-            ImPlot::SetNextPlotLimitsY(0, 1500, ImGuiCond_Always);
-            if (ImPlot::BeginPlot("##ScrollingDraws", NULL, NULL, ImVec2(-1,500), 0, rt_axis, rt_axis | ImPlotAxisFlags_Lock)) {
-                for (int i = 0; i < NV2A_PROF__COUNT; i++) {
-                    ImGui::PushID(i);
-                    char title[64];
-                    snprintf(title, sizeof(title), "%s: %d",
-                        nv2a_profile_get_counter_name(i),
-                        nv2a_profile_get_counter_value(i));
-                    ImPlot::PushStyleColor(ImPlotCol_Line, ImPlot::GetColormapColor(i));
-                    ImPlot::PushStyleColor(ImPlotCol_Fill, ImPlot::GetColormapColor(i));
-                    ImPlot::PlotLine(title, &g_nv2a_stats.frame_history[0].counters[i], NV2A_PROF_NUM_FRAMES, 1, x_start, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
-                    ImPlot::PopStyleColor(2);
-                    ImGui::PopID();
+            ImPlot::SetNextPlotLimitsY(0, 65, ImGuiCond_Always);
+
+            float plot_width = 0.5 * (ImGui::GetWindowSize().x -
+                                      2 * ImGui::GetStyle().WindowPadding.x -
+                                      ImGui::GetStyle().ItemSpacing.x);
+
+            ImGui::SetNextWindowBgAlpha(alpha);
+            if (ImPlot::BeginPlot("##ScrollingFPS", NULL, NULL, ImVec2(plot_width,75*g_ui_scale), 0, rt_axis, rt_axis | ImPlotAxisFlags_Lock)) {
+                if (fps.Data.size() > 0) {
+                    ImPlot::PlotShaded("##fps", &fps.Data[0].x, &fps.Data[0].y, fps.Data.size(), 0, fps.Offset, 2 * sizeof(float));
+                    ImPlot::PlotLine("##fps", &fps.Data[0].x, &fps.Data[0].y, fps.Data.size(), fps.Offset, 2 * sizeof(float));
                 }
+                ImPlot::AnnotateClamped(x_start, 65, ImVec2(0,0), ImPlot::GetLastItemColor(), "FPS: %d", g_nv2a_stats.increment_fps);
                 ImPlot::EndPlot();
             }
-            ImGui::TreePop();
-        }
 
-        ImPlot::PopStyleVar(2);
+            ImGui::SameLine();
+
+            x_end = g_nv2a_stats.frame_count;
+            x_start = x_end - NV2A_PROF_NUM_FRAMES;
+
+            ImPlot::SetNextPlotLimitsX(x_start, x_end, ImGuiCond_Always);
+            ImPlot::SetNextPlotLimitsY(0, 100, ImGuiCond_Always);
+            ImPlot::PushStyleColor(ImPlotCol_Line, ImPlot::GetColormapColor(1));
+            ImGui::SetNextWindowBgAlpha(alpha);
+            if (ImPlot::BeginPlot("##ScrollingMSPF", NULL, NULL, ImVec2(plot_width,75*g_ui_scale), 0, rt_axis, rt_axis | ImPlotAxisFlags_Lock)) {
+                ImPlot::PlotShaded("##mspf", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 0, 1, x_start, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
+                ImPlot::PlotLine("##mspf", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 1, x_start, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
+                ImPlot::AnnotateClamped(x_start, 100, ImVec2(0,0), ImPlot::GetLastItemColor(), "MSPF: %d", g_nv2a_stats.frame_history[(g_nv2a_stats.frame_ptr - 1) % NV2A_PROF_NUM_FRAMES].mspf);
+                ImPlot::EndPlot();
+            }
+            ImPlot::PopStyleColor();
+
+            if (ImGui::TreeNode("Advanced")) {
+                ImPlot::SetNextPlotLimitsX(x_start, x_end, ImGuiCond_Always);
+                ImPlot::SetNextPlotLimitsY(0, 1500, ImGuiCond_Always);
+                ImGui::SetNextWindowBgAlpha(alpha);
+                if (ImPlot::BeginPlot("##ScrollingDraws", NULL, NULL, ImVec2(-1,500), 0, rt_axis, rt_axis | ImPlotAxisFlags_Lock)) {
+                    for (int i = 0; i < NV2A_PROF__COUNT; i++) {
+                        ImGui::PushID(i);
+                        char title[64];
+                        snprintf(title, sizeof(title), "%s: %d",
+                            nv2a_profile_get_counter_name(i),
+                            nv2a_profile_get_counter_value(i));
+                        ImPlot::PushStyleColor(ImPlotCol_Line, ImPlot::GetColormapColor(i));
+                        ImPlot::PushStyleColor(ImPlotCol_Fill, ImPlot::GetColormapColor(i));
+                        ImPlot::PlotLine(title, &g_nv2a_stats.frame_history[0].counters[i], NV2A_PROF_NUM_FRAMES, 1, x_start, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
+                        ImPlot::PopStyleColor(2);
+                        ImGui::PopID();
+                    }
+                    ImPlot::EndPlot();
+                }
+                ImGui::TreePop();
+            }
+
+            if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(2)) {
+                transparent = !transparent;
+            }
+
+            ImPlot::PopStyleVar(2);
+        }
         ImGui::End();
+        ImGui::PopStyleColor(5);
     }
 };
 
