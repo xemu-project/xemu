@@ -71,6 +71,9 @@ enum xemu_net_backend {
 // Determine whether settings were loaded or not
 int xemu_settings_did_fail_to_load(void);
 
+// Override the default config file paths
+void xemu_settings_set_path(const char *path);
+
 // Get path of the config file on disk
 const char *xemu_settings_get_path(void);
 

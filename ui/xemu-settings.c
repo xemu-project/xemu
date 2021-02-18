@@ -205,6 +205,14 @@ bool xemu_settings_detect_portable_mode(void)
 	return val;
 }
 
+void xemu_settings_set_path(const char *path)
+{
+	assert(path != NULL);
+	assert(settings_path == NULL);
+	settings_path = path;
+	fprintf(stderr, "%s: config path: %s\n", __func__, settings_path);
+}
+
 const char *xemu_settings_get_path(void)
 {
 	if (settings_path != NULL) {
