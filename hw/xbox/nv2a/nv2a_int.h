@@ -271,6 +271,7 @@ typedef struct PGRAPHState {
         int height;
     } surface_binding_dim; // FIXME: Refactor
     bool downloads_pending;
+    QemuEvent downloads_complete;
 
     hwaddr dma_a, dma_b;
     Lru texture_cache;
