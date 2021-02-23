@@ -21,7 +21,9 @@
 #include <SDL_filesystem.h>
 #include <string.h>
 #include <stddef.h>
+#include <stdbool.h>
 #include <assert.h>
+#include <glib.h>
 
 #include "xemu-settings.h"
 #include "inih/ini.c" // FIXME
@@ -192,6 +194,28 @@ int xemu_settings_get_enum(enum xemu_settings_keys key, int *val)
 	return 0;
 }
 
+bool xemu_settings_detect_portable_mode(void)
+{
+	bool val = false;
+	char *portable_path = g_strdup_printf("%s%s", SDL_GetBasePath(), filename);
+	FILE *tmpfile;
+	if ((tmpfile = fopen(portable_path, "r"))) {
+		fclose(tmpfile);
+		val = true;
+	}
+
+	free(portable_path);
+	return val;
+}
+
+void xemu_settings_set_path(const char *path)
+{
+	assert(path != NULL);
+	assert(settings_path == NULL);
+	settings_path = path;
+	fprintf(stderr, "%s: config path: %s\n", __func__, settings_path);
+}
+
 const char *xemu_settings_get_path(void)
 {
 	if (settings_path != NULL) {
@@ -200,6 +224,13 @@ const char *xemu_settings_get_path(void)
 
 	char *base = SDL_GetPrefPath("xemu", "xemu");
 	assert(base != NULL);
+
+	// Check for xemu.ini in xemu binary directory, "portable mode"
+	if (xemu_settings_detect_portable_mode()) {
+		base = SDL_GetBasePath();
+		assert(base != NULL);
+	}
+
 	size_t base_len = strlen(base);
 
 	size_t filename_len = strlen(filename);
@@ -233,6 +264,13 @@ const char *xemu_settings_get_default_eeprom_path(void)
 
 	char *base = SDL_GetPrefPath("xemu", "xemu");
 	assert(base != NULL);
+
+	// Check for xemu.ini in xemu binary directory, "portable mode"
+	if (xemu_settings_detect_portable_mode()) {
+		base = SDL_GetBasePath();
+		assert(base != NULL);
+	}
+
 	size_t base_len = strlen(base);
 
 	const char *name = "eeprom.bin";

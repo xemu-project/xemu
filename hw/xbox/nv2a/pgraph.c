@@ -2988,6 +2988,8 @@ void pgraph_init(NV2AState *d)
     pg->downloads_pending = false;
 
     qemu_mutex_init(&pg->lock);
+    qemu_event_init(&pg->gl_sync_complete, false);
+    qemu_event_init(&pg->downloads_complete, false);
 
     /* fire up opengl */
     glo_set_current(g_nv2a_context_render);
@@ -3866,21 +3868,21 @@ void pgraph_gl_sync(NV2AState *d)
 
     // Switch back to original context
     glo_set_current(g_nv2a_context_render);
+
+    qemu_event_set(&d->pgraph.gl_sync_complete);
 }
 
 int nv2a_get_framebuffer_surface(void)
 {
     NV2AState *d = g_nv2a;
     PGRAPHState *pg = &d->pgraph;
-    GLuint buffer = 0;
 
     qemu_mutex_lock(&d->pfifo.lock);
-
-    // Lookup surface in surface cache
     // FIXME: Possible race condition with pgraph, consider lock
     SurfaceBinding *surface = pgraph_surface_get(d, d->pcrtc.start);
     if (surface == NULL || !surface->color) {
-        goto done;
+        qemu_mutex_unlock(&d->pfifo.lock);
+        return 0;
     }
 
     assert(surface->color);
@@ -3892,18 +3894,13 @@ int nv2a_get_framebuffer_surface(void)
         );
 
     surface->frame_time = pg->frame_time;
-    pg->gl_sync_pending = true;
-    do {
-        d->pfifo.fifo_kick = true;
-        qemu_cond_broadcast(&d->pfifo.fifo_cond);
-        qemu_cond_wait(&d->pfifo.fifo_idle_cond, &d->pfifo.lock);
-    } while (pg->gl_sync_pending);
-
-    buffer = pg->gl_display_buffer;
-
-done:
+    qemu_event_reset(&d->pgraph.gl_sync_complete);
+    atomic_set(&pg->gl_sync_pending, true);
+    pfifo_kick(d);
     qemu_mutex_unlock(&d->pfifo.lock);
-    return buffer;
+    qemu_event_wait(&d->pgraph.gl_sync_complete);
+
+    return pg->gl_display_buffer;
 }
 
 static bool pgraph_check_surface_to_texture_compatibility(
@@ -3975,13 +3972,12 @@ static void pgraph_wait_for_surface_download(SurfaceBinding *e)
 
     if (atomic_read(&e->draw_dirty)) {
         qemu_mutex_lock(&d->pfifo.lock);
+        qemu_event_reset(&d->pgraph.downloads_complete);
         atomic_set(&e->download_pending, true);
         atomic_set(&d->pgraph.downloads_pending, true);
-        do {
-            qemu_cond_broadcast(&d->pfifo.fifo_cond);
-            qemu_cond_wait(&d->pfifo.fifo_idle_cond, &d->pfifo.lock);
-        } while (atomic_read(&e->download_pending));
+        pfifo_kick(d);
         qemu_mutex_unlock(&d->pfifo.lock);
+        qemu_event_wait(&d->pgraph.downloads_complete);
     }
 }
 
@@ -4234,6 +4230,8 @@ void pgraph_process_pending_downloads(NV2AState *d)
     QTAILQ_FOREACH(surface, &d->pgraph.surfaces, entry) {
         pgraph_download_surface_data(d, surface, false);
     }
+
+    qemu_event_set(&d->pgraph.downloads_complete);
 }
 
 static void pgraph_upload_surface_data(
