@@ -2040,7 +2040,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
                                      pg->inline_buffer_length
                                         * sizeof(float) * 4,
                                      attribute->inline_buffer,
-                                     GL_DYNAMIC_DRAW);
+                                     GL_STREAM_DRAW);
 
                         /* Clear buffer for next batch */
                         attribute->inline_buffer_populated = false;
@@ -5288,7 +5288,7 @@ static void pgraph_bind_vertex_attributes(NV2AState *d,
                     glBufferData(GL_ARRAY_BUFFER,
                                  num_elements * out_stride,
                                  attribute->converted_buffer,
-                                 GL_DYNAMIC_DRAW);
+                                 GL_STATIC_DRAW);
                     found->initialized = true;
                 }
 
@@ -5357,7 +5357,7 @@ static unsigned int pgraph_bind_inline_array(NV2AState *d)
     nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_2);
     glBindBuffer(GL_ARRAY_BUFFER, pg->gl_inline_array_buffer);
     glBufferData(GL_ARRAY_BUFFER, pg->inline_array_length*4, pg->inline_array,
-                 GL_DYNAMIC_DRAW);
+                 GL_STREAM_DRAW);
 
     pgraph_bind_vertex_attributes(d, index_count, true, vertex_size);
 
