@@ -2079,26 +2079,15 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
                 assert(pg->inline_array_length == 0);
 
                 uint32_t max_element = 0;
-                uint32_t min_element = (uint32_t)-1;
                 for (i=0; i<pg->inline_elements_length; i++) {
                     max_element = MAX(pg->inline_elements[i], max_element);
-                    min_element = MIN(pg->inline_elements[i], min_element);
                 }
 
                 pgraph_bind_vertex_attributes(d, max_element+1, false, 0);
 
-                glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pg->gl_element_buffer);
-                glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                             pg->inline_elements_length*4,
-                             pg->inline_elements,
-                             GL_DYNAMIC_DRAW);
-
-                glDrawRangeElements(pg->shader_binding->gl_primitive_mode,
-                                    min_element, max_element,
-                                    pg->inline_elements_length,
-                                    GL_UNSIGNED_INT,
-                                    (void*)0);
-
+                glDrawElements(pg->shader_binding->gl_primitive_mode,
+                               pg->inline_elements_length, GL_UNSIGNED_INT,
+                               (void *)pg->inline_elements);
             } else {
                 NV2A_GL_DPRINTF(true, "EMPTY NV097_SET_BEGIN_END");
                 NV2A_UNCONFIRMED("EMPTY NV097_SET_BEGIN_END");
@@ -3054,7 +3043,6 @@ void pgraph_init(NV2AState *d)
         attribute->inline_buffer_populated = false;
     }
     glGenBuffers(1, &pg->gl_inline_array_buffer);
-    glGenBuffers(1, &pg->gl_element_buffer);
 
     glGenBuffers(1, &pg->gl_memory_buffer);
     glBindBuffer(GL_ARRAY_BUFFER, pg->gl_memory_buffer);

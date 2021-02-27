@@ -346,7 +346,6 @@ typedef struct PGRAPHState {
     GLint gl_draw_arrays_start[1000];
     GLsizei gl_draw_arrays_count[1000];
 
-    GLuint gl_element_buffer;
     GLuint gl_memory_buffer;
     GLuint gl_vertex_array;
 
