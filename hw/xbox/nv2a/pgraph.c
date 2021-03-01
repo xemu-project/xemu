@@ -3773,19 +3773,35 @@ static void pgraph_init_display_renderer(NV2AState *d)
         "    gl_Position = vec4(x, y, 0, 1);\n"
         "}\n";
     // FIXME: gamma correction
-    // FIXME: video overlay
+
     const char *fs =
         "#version 330\n"
         "uniform sampler2D tex;\n"
+        "uniform bool pvideo_enable;\n"
+        "uniform sampler2D pvideo_tex;\n"
+        "uniform vec4 pvideo_pos;\n"
         "layout(location = 0) out vec4 out_Color;\n"
         "void main()\n"
         "{\n"
         "    vec2 texCoord = gl_FragCoord.xy/textureSize(tex,0).xy;\n"
         "    out_Color.rgba = texture(tex, texCoord);\n"
+        "    if (pvideo_enable) {\n"
+        "        vec4 extent = vec4(pvideo_pos.xy, pvideo_pos.xy + pvideo_pos.zw);\n"
+        "        bvec4 clip = bvec4(lessThan(gl_FragCoord.xy, extent.xy),\n"
+        "                           greaterThan(gl_FragCoord.xy, extent.zw));\n"
+        "        if (!any(clip)) {\n"
+        "            vec2 spos = vec2(gl_FragCoord.x, textureSize(tex,0).y-gl_FragCoord.y);\n"
+        "            vec2 coord = (spos-pvideo_pos.xy)/pvideo_pos.zw;\n"
+        "            out_Color.rgba = texture(pvideo_tex, coord);\n"
+        "        }\n"
+        "    }\n"
         "}\n";
 
     pg->disp_rndr.prog = pgraph_compile_shader(vs, fs);
     pg->disp_rndr.tex_loc = glGetUniformLocation(pg->disp_rndr.prog, "tex");
+    pg->disp_rndr.pvideo_enable_loc = glGetUniformLocation(pg->disp_rndr.prog, "pvideo_enable");
+    pg->disp_rndr.pvideo_tex_loc = glGetUniformLocation(pg->disp_rndr.prog, "pvideo_tex");
+    pg->disp_rndr.pvideo_pos_loc = glGetUniformLocation(pg->disp_rndr.prog, "pvideo_pos");
 
     glGenVertexArrays(1, &pg->disp_rndr.vao);
     glBindVertexArray(pg->disp_rndr.vao);
@@ -3793,7 +3809,88 @@ static void pgraph_init_display_renderer(NV2AState *d)
     glBindBuffer(GL_ARRAY_BUFFER, pg->disp_rndr.vbo);
     glBufferData(GL_ARRAY_BUFFER, 0, NULL, GL_STATIC_DRAW);
     glGenFramebuffers(1, &pg->disp_rndr.fbo);
+    glGenTextures(1, &pg->disp_rndr.pvideo_tex);
     assert(glGetError() == GL_NO_ERROR);
+}
+
+static uint8_t *convert_texture_data__CR8YB8CB8YA8(const uint8_t *data,
+                                                   unsigned int width,
+                                                   unsigned int height,
+                                                   unsigned int pitch)
+{
+    uint8_t *converted_data = (uint8_t *)g_malloc(width * height * 4);
+    int x, y;
+    for (y = 0; y < height; y++) {
+        const uint8_t *line = &data[y * pitch];
+        for (x = 0; x < width; x++) {
+            uint8_t *pixel = &converted_data[(y * width + x) * 4];
+            /* FIXME: Actually needs uyvy? */
+            convert_yuy2_to_rgb(line, x, &pixel[0], &pixel[1], &pixel[2]);
+            pixel[3] = 255;
+        }
+    }
+    return converted_data;
+}
+
+static void pgraph_render_display_pvideo_overlay(NV2AState *d)
+{
+    bool enabled = d->pvideo.regs[NV_PVIDEO_BUFFER] & NV_PVIDEO_BUFFER_0_USE;
+    glUniform1ui(d->pgraph.disp_rndr.pvideo_enable_loc, enabled);
+    if (!enabled) {
+        return;
+    }
+
+    hwaddr base = d->pvideo.regs[NV_PVIDEO_BASE];
+    hwaddr limit = d->pvideo.regs[NV_PVIDEO_LIMIT];
+    hwaddr offset = d->pvideo.regs[NV_PVIDEO_OFFSET];
+
+    int in_width =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_IN], NV_PVIDEO_SIZE_IN_WIDTH);
+    int in_height =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_IN], NV_PVIDEO_SIZE_IN_HEIGHT);
+
+    /* FIXME
+    int in_s = GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_IN],
+                        NV_PVIDEO_POINT_IN_S);
+    int in_t = GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_IN],
+                        NV_PVIDEO_POINT_IN_T);
+    */
+    int in_pitch =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_FORMAT], NV_PVIDEO_FORMAT_PITCH);
+    int in_color =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_FORMAT], NV_PVIDEO_FORMAT_COLOR);
+
+    /* TODO: support other color formats */
+    assert(in_color == NV_PVIDEO_FORMAT_COLOR_LE_CR8YB8CB8YA8);
+    assert(in_pitch >= in_width * 2);
+
+    int out_width =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_OUT], NV_PVIDEO_SIZE_OUT_WIDTH);
+    int out_height =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_OUT], NV_PVIDEO_SIZE_OUT_HEIGHT);
+    int out_x =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_OUT], NV_PVIDEO_POINT_OUT_X);
+    int out_y =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_OUT], NV_PVIDEO_POINT_OUT_Y);
+
+    /* TODO: color keys */
+    assert(offset + in_pitch * in_height <= limit);
+    hwaddr end = base + offset + in_pitch * in_height;
+    assert(end <= memory_region_size(d->vram));
+
+    glActiveTexture(GL_TEXTURE0 + 1);
+    glBindTexture(GL_TEXTURE_2D, g_nv2a->pgraph.disp_rndr.pvideo_tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    uint8_t *tex_rgba = convert_texture_data__CR8YB8CB8YA8(
+        d->vram_ptr + base + offset, in_width, in_height, in_pitch);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, in_width, in_height, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, tex_rgba);
+    g_free(tex_rgba);
+    glUniform1i(d->pgraph.disp_rndr.pvideo_tex_loc, 1);
+    glUniform4f(d->pgraph.disp_rndr.pvideo_pos_loc,
+                out_x, out_y, out_width, out_height);
 }
 
 static void pgraph_render_display(NV2AState *d, SurfaceBinding *surface)
@@ -3819,6 +3916,7 @@ static void pgraph_render_display(NV2AState *d, SurfaceBinding *surface)
     glBindBuffer(GL_ARRAY_BUFFER, d->pgraph.disp_rndr.vbo);
     glUseProgram(d->pgraph.disp_rndr.prog);
     glProgramUniform1i(d->pgraph.disp_rndr.prog, d->pgraph.disp_rndr.tex_loc, 0);
+    pgraph_render_display_pvideo_overlay(d);
 
     glViewport(0, 0, surface->width, surface->height);
     glColorMask(true, true, true, true);
