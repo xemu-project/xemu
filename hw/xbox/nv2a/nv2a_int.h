@@ -248,6 +248,10 @@ typedef struct PGRAPHState {
     struct disp_rndr {
         GLuint fbo, vao, vbo, prog;
         GLuint tex_loc;
+        GLuint pvideo_tex;
+        GLint pvideo_enable_loc;
+        GLint pvideo_tex_loc;
+        GLint pvideo_pos_loc;
     } disp_rndr;
 
     /* subchannels state we're not sure the location of... */

@@ -155,105 +155,6 @@ void nv2a_reg_log_write(int block, hwaddr addr, uint64_t val)
 }
 #endif
 
-#if 0
-/* FIXME: Probably totally wrong */
-static inline unsigned int rgb_to_pixel8(unsigned int r, unsigned int g,
-                                         unsigned int b)
-{
-    return ((r >> 5) << 5) | ((g >> 5) << 2) | (b >> 6);
-}
-static inline unsigned int rgb_to_pixel16(unsigned int r, unsigned int g,
-                                          unsigned int b)
-{
-    return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
-}
-static inline unsigned int rgb_to_pixel32(unsigned int r, unsigned int g,
-                                          unsigned int b)
-{
-    return (r << 16) | (g << 8) | b;
-}
-
-static void nv2a_overlay_draw_line(VGACommonState *vga, uint8_t *line, int y)
-{
-    NV2A_DPRINTF("nv2a_overlay_draw_line\n");
-
-    NV2AState *d = container_of(vga, NV2AState, vga);
-    DisplaySurface *surface = qemu_console_surface(d->vga.con);
-
-    int surf_bpp = surface_bytes_per_pixel(surface);
-    int surf_width = surface_width(surface);
-
-    if (!(d->pvideo.regs[NV_PVIDEO_BUFFER] & NV_PVIDEO_BUFFER_0_USE)) return;
-
-    hwaddr base = d->pvideo.regs[NV_PVIDEO_BASE];
-    hwaddr limit = d->pvideo.regs[NV_PVIDEO_LIMIT];
-    hwaddr offset = d->pvideo.regs[NV_PVIDEO_OFFSET];
-
-    int in_width = GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_IN],
-                            NV_PVIDEO_SIZE_IN_WIDTH);
-    int in_height = GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_IN],
-                             NV_PVIDEO_SIZE_IN_HEIGHT);
-    int in_s = GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_IN],
-                        NV_PVIDEO_POINT_IN_S);
-    int in_t = GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_IN],
-                        NV_PVIDEO_POINT_IN_T);
-    int in_pitch = GET_MASK(d->pvideo.regs[NV_PVIDEO_FORMAT],
-                            NV_PVIDEO_FORMAT_PITCH);
-    int in_color = GET_MASK(d->pvideo.regs[NV_PVIDEO_FORMAT],
-                            NV_PVIDEO_FORMAT_COLOR);
-
-    // TODO: support other color formats
-    assert(in_color == NV_PVIDEO_FORMAT_COLOR_LE_CR8YB8CB8YA8);
-
-    int out_width = GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_OUT],
-                             NV_PVIDEO_SIZE_OUT_WIDTH);
-    int out_height = GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_OUT],
-                             NV_PVIDEO_SIZE_OUT_HEIGHT);
-    int out_x = GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_OUT],
-                         NV_PVIDEO_POINT_OUT_X);
-    int out_y = GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_OUT],
-                         NV_PVIDEO_POINT_OUT_Y);
-
-
-    if (y < out_y || y >= out_y + out_height) return;
-
-    // TODO: scaling, color keys
-
-    int in_y = y - out_y;
-    if (in_y >= in_height) return;
-
-    assert(offset + in_pitch * (in_y + 1) <= limit);
-    uint8_t *in_line = d->vram_ptr + base + offset + in_pitch * in_y;
-
-    int x;
-    for (x=0; x<out_width; x++) {
-        int ox = out_x + x;
-        if (ox >= surf_width) break;
-        int ix = in_s + x;
-        if (ix >= in_width) break;
-
-        uint8_t r,g,b;
-        convert_yuy2_to_rgb(in_line, ix, &r, &g, &b);
-
-        // unsigned int pixel = vga->rgb_to_pixel(r, g, b);
-        switch (surf_bpp) {
-        case 1:
-            ((uint8_t*)line)[ox] = (uint8_t)rgb_to_pixel8(r,g,b);
-            break;
-        case 2:
-            ((uint16_t*)line)[ox] = (uint16_t)rgb_to_pixel16(r,g,b);
-            break;
-        case 4:
-            ((uint32_t*)line)[ox] = (uint32_t)rgb_to_pixel32(r,g,b);
-            break;
-        default:
-            assert(false);
-            break;
-        }
-    }
-}
-#endif
-
 static int nv2a_get_bpp(VGACommonState *s)
 {
     NV2AState *d = container_of(s, NV2AState, vga);
@@ -432,7 +333,6 @@ static void nv2a_realize(PCIDevice *dev, Error **errp)
     vga_common_init(vga, OBJECT(dev));
     vga->get_bpp = nv2a_get_bpp;
     vga->get_offsets = nv2a_get_offsets;
-    // vga->overlay_draw_line = nv2a_overlay_draw_line;
 
     d->hw_ops = *vga->hw_ops;
     d->hw_ops.gfx_update = nv2a_vga_gfx_update;
