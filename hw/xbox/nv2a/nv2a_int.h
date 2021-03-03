@@ -357,7 +357,6 @@ typedef struct PGRAPHState {
 
     bool waiting_for_nop;
     bool waiting_for_flip;
-    bool waiting_for_fifo_access;
     bool waiting_for_context_switch;
     bool flush_pending;
     bool gl_sync_pending;
