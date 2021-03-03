@@ -305,7 +305,6 @@ static void nv2a_reset(NV2AState *d)
 
     d->pgraph.waiting_for_nop = false;
     d->pgraph.waiting_for_flip = false;
-    d->pgraph.waiting_for_fifo_access = false;
     d->pgraph.waiting_for_context_switch = false;
     d->pgraph.flush_pending = true;
 
@@ -534,7 +533,7 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT32(pramdac.video_clock_coeff, NV2AState),
         VMSTATE_BOOL(pgraph.waiting_for_flip, NV2AState),
         VMSTATE_BOOL(pgraph.waiting_for_nop, NV2AState),
-        VMSTATE_BOOL(pgraph.waiting_for_fifo_access, NV2AState),
+        VMSTATE_UNUSED(1),
         VMSTATE_BOOL(pgraph.waiting_for_context_switch, NV2AState),
         VMSTATE_END_OF_LIST()
     },

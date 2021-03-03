@@ -95,14 +95,14 @@ void pfifo_kick(NV2AState *d)
     qemu_cond_broadcast(&d->pfifo.fifo_cond);
 }
 
-static int pgraph_can_fifo_access(NV2AState *d) {
-    return !!(d->pgraph.regs[NV_PGRAPH_FIFO] & NV_PGRAPH_FIFO_ACCESS);
+static bool pgraph_can_fifo_access(NV2AState *d) {
+    return atomic_read(&d->pgraph.regs[NV_PGRAPH_FIFO]) & NV_PGRAPH_FIFO_ACCESS;
 }
 
 /* If NV097_FLIP_STALL was executed, check if the flip has completed.
  * This will usually happen in the VSYNC interrupt handler.
  */
-static int pgraph_is_flip_stall_complete(NV2AState *d)
+static bool pgraph_is_flip_stall_complete(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
 
@@ -114,10 +114,10 @@ static int pgraph_is_flip_stall_complete(NV2AState *d)
     uint32_t s = pg->regs[NV_PGRAPH_SURFACE];
     if (GET_MASK(s, NV_PGRAPH_SURFACE_READ_3D)
         != GET_MASK(s, NV_PGRAPH_SURFACE_WRITE_3D)) {
-        return 1;
+        return true;
     }
 
-    return 0;
+    return false;
 }
 
 static bool pfifo_stall_for_flip(NV2AState *d)
@@ -137,35 +137,37 @@ static bool pfifo_stall_for_flip(NV2AState *d)
     return should_stall;
 }
 
+static bool pfifo_should_stall(NV2AState *d)
+{
+    return pfifo_stall_for_flip(d) || atomic_read(&d->pgraph.waiting_for_nop) ||
+           atomic_read(&d->pgraph.waiting_for_context_switch) ||
+           !pgraph_can_fifo_access(d);
+}
+
 static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
                                 uint32_t parameter, uint32_t *parameters,
                                 size_t num_words_available)
 {
-    if (pfifo_stall_for_flip(d) ||
-        atomic_read(&d->pgraph.waiting_for_nop) ||
-        atomic_read(&d->pgraph.waiting_for_context_switch)) {
+    if (pfifo_should_stall(d)) {
         return -1;
     }
-
-    d->pfifo.fifo_kick = true;
 
     uint32_t *pull0 = &d->pfifo.regs[NV_PFIFO_CACHE1_PULL0];
     uint32_t *pull1 = &d->pfifo.regs[NV_PFIFO_CACHE1_PULL1];
     uint32_t *engine_reg = &d->pfifo.regs[NV_PFIFO_CACHE1_ENGINE];
-
     uint32_t *status = &d->pfifo.regs[NV_PFIFO_CACHE1_STATUS];
-
-    int num_proc = 0;
+    ssize_t num_proc = -1;
 
     // TODO think more about locking
 
-    if (!GET_MASK(*pull0, NV_PFIFO_CACHE1_PULL0_ACCESS)) return -1;
-
-    /* empty cache1 */
-    if (*status & NV_PFIFO_CACHE1_STATUS_LOW_MARK) return -1;
+    if (!GET_MASK(*pull0, NV_PFIFO_CACHE1_PULL0_ACCESS) ||
+        (*status & NV_PFIFO_CACHE1_STATUS_LOW_MARK)) {
+        return -1;
+    }
 
     uint32_t method = method_entry & 0x1FFC;
-    uint32_t subchannel = GET_MASK(method_entry, NV_PFIFO_CACHE1_METHOD_SUBCHANNEL);
+    uint32_t subchannel =
+        GET_MASK(method_entry, NV_PFIFO_CACHE1_METHOD_SUBCHANNEL);
 
     if (method == 0) {
         RAMHTEntry entry = ramht_lookup(d, parameter);
@@ -181,27 +183,16 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         // TODO: this is fucked
         qemu_mutex_unlock(&d->pfifo.lock);
         qemu_mutex_lock(&d->pgraph.lock);
-        //make pgraph busy
-
-        if (!pgraph_can_fifo_access(d)) {
-            qemu_mutex_unlock(&d->pgraph.lock);
-            qemu_mutex_lock(&d->pfifo.lock);
-            // Wait for event
-            return -1;
-        }
 
         // Switch contexts if necessary
-        pgraph_context_switch(d, entry.channel_id);
-        if (d->pgraph.waiting_for_context_switch) {
-            qemu_mutex_unlock(&d->pgraph.lock);
-            qemu_mutex_lock(&d->pfifo.lock);
-            return -1;
+        if (pgraph_can_fifo_access(d)) {
+            pgraph_context_switch(d, entry.channel_id);
+            if (!d->pgraph.waiting_for_context_switch) {
+                num_proc = pgraph_method(d, subchannel, 0, entry.instance,
+                                         parameters, num_words_available);
+            }
         }
 
-        num_proc = pgraph_method(d, subchannel, 0, entry.instance, parameters,
-                                 num_words_available);
-
-        // make pgraph not busy
         qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock(&d->pfifo.lock);
 
@@ -226,27 +217,21 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         // TODO: this is fucked
         qemu_mutex_unlock(&d->pfifo.lock);
         qemu_mutex_lock(&d->pgraph.lock);
-        //make pgraph busy
 
-        if (!pgraph_can_fifo_access(d)) {
-            qemu_mutex_unlock(&d->pgraph.lock);
-            qemu_mutex_lock(&d->pfifo.lock);
-            return -1;
+        if (pgraph_can_fifo_access(d)) {
+            num_proc = pgraph_method(d, subchannel, method, parameter,
+                                     parameters, num_words_available);
         }
-        d->pgraph.waiting_for_fifo_access = false;
 
-        num_proc = pgraph_method(d, subchannel, method, parameter, parameters,
-                                 num_words_available);
-
-        // make pgraph not busy
         qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock(&d->pfifo.lock);
     } else {
         assert(false);
     }
 
-    // Instantly processed
-    *status = NV_PFIFO_CACHE1_STATUS_LOW_MARK;
+    if (num_proc > 0) {
+        *status |= NV_PFIFO_CACHE1_STATUS_LOW_MARK;
+    }
 
     return num_proc;
 }
@@ -263,15 +248,9 @@ static void pfifo_run_pusher(NV2AState *d)
     uint32_t *dma_dcount = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_DCOUNT];
     uint32_t *status = &d->pfifo.regs[NV_PFIFO_CACHE1_STATUS];
 
-    if (!GET_MASK(*push0, NV_PFIFO_CACHE1_PUSH0_ACCESS)) {
-        return;
-    }
-    if (!GET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_ACCESS)) {
-        return;
-    }
-
-    /* suspended */
-    if (GET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_STATUS)) {
+    if (!GET_MASK(*push0, NV_PFIFO_CACHE1_PUSH0_ACCESS) ||
+        !GET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_ACCESS) ||
+        GET_MASK(*dma_push, NV_PFIFO_CACHE1_DMA_PUSH_STATUS)) {
         return;
     }
 
@@ -300,7 +279,7 @@ static void pfifo_run_pusher(NV2AState *d)
     hwaddr dma_len;
     uint8_t *dma = nv_dma_map(d, dma_instance, &dma_len);
 
-    while (true) {
+    while (!pfifo_should_stall(d)) {
         uint32_t dma_get_v = *dma_get;
         uint32_t dma_put_v = *dma_put;
         if (dma_get_v == dma_put_v) break;
@@ -310,6 +289,10 @@ static void pfifo_run_pusher(NV2AState *d)
                      NV_PFIFO_CACHE1_DMA_STATE_ERROR_PROTECTION);
             break;
         }
+
+        size_t num_words_available = dma_put_v - dma_get_v;
+        assert(num_words_available % 4 == 0);
+        num_words_available /= 4;
 
         uint32_t *word_ptr = (uint32_t*)(dma + dma_get_v);
         uint32_t word = ldl_le_p(word_ptr);
@@ -335,17 +318,18 @@ static void pfifo_run_pusher(NV2AState *d)
             uint32_t method_entry = 0;
             SET_MASK(method_entry, NV_PFIFO_CACHE1_METHOD_ADDRESS, method >> 2);
             SET_MASK(method_entry, NV_PFIFO_CACHE1_METHOD_TYPE, method_type);
-            SET_MASK(method_entry, NV_PFIFO_CACHE1_METHOD_SUBCHANNEL, method_subchannel);
+            SET_MASK(method_entry, NV_PFIFO_CACHE1_METHOD_SUBCHANNEL,
+                     method_subchannel);
 
             *status &= ~NV_PFIFO_CACHE1_STATUS_LOW_MARK;
 
             ssize_t num_words_processed =
-                pfifo_run_puller(d, method_entry, word, word_ptr, method_count);
+                pfifo_run_puller(d, method_entry, word, word_ptr,
+                                 MIN(method_count, num_words_available));
             if (num_words_processed < 0) {
                 break;
             }
 
-            method_count -= num_words_processed;
             dma_get_v += (num_words_processed-1)*4;
 
             if (method_type == NV_PFIFO_CACHE1_DMA_STATE_METHOD_TYPE_INC) {
@@ -353,7 +337,7 @@ static void pfifo_run_pusher(NV2AState *d)
                          (method + 4*num_words_processed) >> 2);
             }
             SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
-                     method_count);
+                     method_count - num_words_processed);
 
             (*dma_dcount) += num_words_processed;
         } else {
