@@ -1,7 +1,7 @@
 /*
  * xemu User Interface Rendering Helpers
  *
- * Copyright (C) 2020 Matt Borgerson
+ * Copyright (C) 2020-2021 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -199,7 +199,7 @@ GLuint load_texture_from_file(const char *name)
 
     // Flip vertically so textures are loaded according to GL convention.
     stbi_set_flip_vertically_on_load(1);
-    
+
     // Read file into memory
     int width, height, channels = 0;
     unsigned char *data = stbi_load(name, &width, &height, &channels, 4);
@@ -212,7 +212,7 @@ GLuint load_texture_from_file(const char *name)
     return tex;
 }
 
-void render_decal( 
+void render_decal(
     struct decal_shader *s,
     float x,     float y,     float w,     float h,
     float tex_x, float tex_y, float tex_w, float tex_h,
@@ -251,7 +251,7 @@ void render_decal(
     glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
 }
 
-void render_decal_image( 
+void render_decal_image(
     struct decal_shader *s,
     float x,     float y,     float w,     float h,
     float tex_x, float tex_y, float tex_w, float tex_h
@@ -281,7 +281,7 @@ struct fbo *create_fbo(int width, int height)
     fbo->w = width;
     fbo->h = height;
 
-    // Allocate the texture    
+    // Allocate the texture
     glGenTextures(1, &fbo->tex);
     glBindTexture(GL_TEXTURE_2D, fbo->tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL,  0);

@@ -1,7 +1,7 @@
 /*
  * xemu User Interface Rendering Helpers
  *
- * Copyright (C) 2020 Matt Borgerson
+ * Copyright (C) 2020-2021 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -80,14 +80,14 @@ struct fbo *create_fbo(int width, int height);
 void render_to_default_fb(void);
 GLuint render_to_fbo(struct fbo *fbo);
 
-void render_decal( 
+void render_decal(
     struct decal_shader *s,
     float x,     float y,     float w,     float h,
     float tex_x, float tex_y, float tex_w, float tex_h,
     uint32_t primary, uint32_t secondary, uint32_t fill
     );
 
-void render_decal_image( 
+void render_decal_image(
     struct decal_shader *s,
     float x,     float y,     float w,     float h,
     float tex_x, float tex_y, float tex_w, float tex_h
@@ -95,6 +95,6 @@ void render_decal_image(
 
 #ifdef __cplusplus
 }
-#endif   
+#endif
 
 #endif
