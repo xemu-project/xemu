@@ -2,7 +2,7 @@
  * QEMU Xbox System Emulator
  *
  * Copyright (c) 2012 espes
- * Copyright (c) 2018 Matt Borgerson
+ * Copyright (c) 2018-2021 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -53,7 +53,7 @@
 #include "hw/i2c/smbus_eeprom.h"
 #include "hw/xbox/nv2a/nv2a.h"
 #include "hw/xbox/mcpx/apu.h"
- 
+
 #include "hw/xbox/xbox.h"
 #include "smbus.h"
 
@@ -146,13 +146,13 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
     /* XBOX_FIXME: The "memory_region_set_readonly" calls below have been
     * temporarily commented out due to MCPX 1.1-based kernels hanging
     * in the first bootloader stage when doing RSA signature verification.
-    * 
+    *
     * This is caused by code incorrectly using the flash memory range to
     * store the following computation; luckily real hardware's writeback
     * cache policy (verified against MTRR config) appears to allow this
     * to succeed, but qemu's emulation of such isn't capable of this yet
     * so the value is never updated in ROM unless readonly is unspecified.
-    * 
+    *
     *   sub ds:0FFFFD52Ch, eax
     *   mov eax, ds:0FFFFD52Ch
     */

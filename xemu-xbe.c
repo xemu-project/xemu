@@ -3,7 +3,7 @@
  *
  * Helper functions to get details about the currently running executable.
  *
- * Copyright (C) 2020 Matt Borgerson
+ * Copyright (C) 2020-2021 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -110,7 +110,7 @@ struct xbe *xemu_get_xbe_info(void)
 
     xbe.headers = malloc(xbe.headers_len);
     assert(xbe.headers != NULL);
-    
+
     // Read all XBE headers
     ssize_t bytes_read = virt_dma_memory_read(hdr_addr_virt,
                                               xbe.headers,

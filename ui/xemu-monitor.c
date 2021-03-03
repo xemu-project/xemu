@@ -1,7 +1,7 @@
 /*
  * xemu QEMU Monitor Interface
  *
- * Copyright (c) 2020 Matt Borgerson
+ * Copyright (c) 2020-2021 Matt Borgerson
  *
  * Based on gdbstub.c
  *

@@ -3,7 +3,7 @@
  *
  * Wrapper functions to configure network settings at runtime.
  *
- * Copyright (C) 2020 Matt Borgerson
+ * Copyright (C) 2020-2021 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -127,5 +127,5 @@ int xemu_net_is_enabled(void)
 {
     NetClientState *nc;
     nc = qemu_find_netdev(id);
-    return (nc != NULL); 
+    return (nc != NULL);
 }
