@@ -26,6 +26,7 @@
 #include "monitor/qdev.h"
 #include "qapi/qmp/qdict.h"
 #include "qemu/option.h"
+#include "qemu/timer.h"
 #include "qemu/config-file.h"
 
 #include "xemu-input.h"
@@ -41,6 +42,9 @@
 #define DPRINTF(fmt, ...) \
     do { } while (0)
 #endif
+
+#define XEMU_INPUT_MIN_INPUT_UPDATE_INTERVAL_US  2500
+#define XEMU_INPUT_MIN_HAPTIC_UPDATE_INTERVAL_US 2500
 
 ControllerStateList available_controllers =
     QTAILQ_HEAD_INITIALIZER(available_controllers);
@@ -217,16 +221,31 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
     }
 }
 
+void xemu_input_update_controller(ControllerState *state)
+{
+    int64_t now = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+    if (ABS(now - state->last_input_updated_ts) <
+        XEMU_INPUT_MIN_INPUT_UPDATE_INTERVAL_US) {
+        return;
+    }
+
+    if (state->type == INPUT_DEVICE_SDL_KEYBOARD) {
+        xemu_input_update_sdl_kbd_controller_state(state);
+    } else if (state->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
+        xemu_input_update_sdl_controller_state(state);
+    }
+
+    state->last_input_updated_ts = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+}
+
 void xemu_input_update_controllers(void)
 {
     ControllerState *iter;
     QTAILQ_FOREACH(iter, &available_controllers, entry) {
-        if (iter->type == INPUT_DEVICE_SDL_KEYBOARD) {
-            xemu_input_update_sdl_kbd_controller_state(iter);
-        } else if (iter->type == INPUT_DEVICE_SDL_GAMECONTROLLER) {
-            xemu_input_update_sdl_controller_state(iter);
-            xemu_input_update_rumble(iter);
-        }
+        xemu_input_update_controller(iter);
+    }
+    QTAILQ_FOREACH(iter, &available_controllers, entry) {
+        xemu_input_update_rumble(iter);
     }
 }
 
@@ -335,6 +354,12 @@ void xemu_input_update_rumble(ControllerState *state)
         return;
     }
 
+    int64_t now = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+    if (ABS(now - state->last_haptic_updated_ts) <
+        XEMU_INPUT_MIN_HAPTIC_UPDATE_INTERVAL_US) {
+        return;
+    }
+
     memset(&state->sdl_haptic_effect, 0, sizeof(state->sdl_haptic_effect));
     state->sdl_haptic_effect.type = SDL_HAPTIC_LEFTRIGHT;
     state->sdl_haptic_effect.leftright.length = SDL_HAPTIC_INFINITY;
@@ -346,6 +371,8 @@ void xemu_input_update_rumble(ControllerState *state)
     } else {
         SDL_HapticUpdateEffect(state->sdl_haptic, state->sdl_haptic_effect_id, &state->sdl_haptic_effect);
     }
+
+    state->last_haptic_updated_ts = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
 }
 
 ControllerState *xemu_input_get_bound(int index)
