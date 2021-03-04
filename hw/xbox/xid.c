@@ -214,6 +214,7 @@ static void update_input(USBXIDState *s)
 
     ControllerState *state = xemu_input_get_bound(s->device_index);
     assert(state);
+    xemu_input_update_controller(state);
 
     const int button_map_analog[6][2] = {
         { GAMEPAD_A,     CONTROLLER_BUTTON_A     },
