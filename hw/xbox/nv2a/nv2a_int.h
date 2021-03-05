@@ -59,12 +59,6 @@
         (v) |= ((__val) << ctz32(__mask)) & (__mask);     \
     })
 
-#define CASE_4(v, step)      \
-    case (v):                \
-    case ((v) + (step)):     \
-    case ((v) + (step) * 2): \
-    case ((v) + (step) * 3)
-
 #define NV2A_DEVICE(obj) OBJECT_CHECK(NV2AState, (obj), "nv2a")
 
 enum FIFOEngine {
