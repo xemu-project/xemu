@@ -137,7 +137,7 @@ static bool pfifo_stall_for_flip(NV2AState *d)
     return should_stall;
 }
 
-static bool pfifo_should_stall(NV2AState *d)
+static bool pfifo_puller_should_stall(NV2AState *d)
 {
     return pfifo_stall_for_flip(d) || atomic_read(&d->pgraph.waiting_for_nop) ||
            atomic_read(&d->pgraph.waiting_for_context_switch) ||
@@ -148,7 +148,7 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
                                 uint32_t parameter, uint32_t *parameters,
                                 size_t num_words_available)
 {
-    if (pfifo_should_stall(d)) {
+    if (pfifo_puller_should_stall(d)) {
         return -1;
     }
 
@@ -236,6 +236,12 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
     return num_proc;
 }
 
+static bool pfifo_pusher_should_stall(NV2AState *d)
+{
+    return !pgraph_can_fifo_access(d) ||
+           atomic_read(&d->pgraph.waiting_for_nop);
+}
+
 static void pfifo_run_pusher(NV2AState *d)
 {
     uint32_t *push0 = &d->pfifo.regs[NV_PFIFO_CACHE1_PUSH0];
@@ -279,7 +285,7 @@ static void pfifo_run_pusher(NV2AState *d)
     hwaddr dma_len;
     uint8_t *dma = nv_dma_map(d, dma_instance, &dma_len);
 
-    while (!pfifo_should_stall(d)) {
+    while (!pfifo_pusher_should_stall(d)) {
         uint32_t dma_get_v = *dma_get;
         uint32_t dma_put_v = *dma_put;
         if (dma_get_v == dma_put_v) break;
