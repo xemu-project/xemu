@@ -96,11 +96,24 @@ typedef uint64_t float64;
 #define const_float16(x) (x)
 #define const_float32(x) (x)
 #define const_float64(x) (x)
+#if defined(XBOX) && defined(__x86_64__)
+/* GCC produced x86-64 structure should be 16B packed */
+typedef struct {
+    union {
+        struct {
+            uint64_t low;
+            uint16_t high;
+        };
+        long double fval;
+    };
+} floatx80;
+#else
 typedef struct {
     uint64_t low;
     uint16_t high;
 } floatx80;
-#define make_floatx80(exp, mant) ((floatx80) { mant, exp })
+#endif
+#define make_floatx80(exp, mant) ((floatx80) { .low = mant, .high = exp })
 #define make_floatx80_init(exp, mant) { .low = mant, .high = exp }
 typedef struct {
 #ifdef HOST_WORDS_BIGENDIAN
