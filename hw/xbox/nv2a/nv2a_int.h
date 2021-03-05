@@ -341,6 +341,7 @@ typedef struct PGRAPHState {
 
     unsigned int inline_elements_length;
     uint32_t inline_elements[NV2A_MAX_BATCH_LENGTH];
+    GLuint gl_inline_elements_buffer;
 
     unsigned int inline_buffer_length;
 
