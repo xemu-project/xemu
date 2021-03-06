@@ -193,7 +193,7 @@ int xemu_settings_get_enum(enum xemu_settings_keys key, int *val)
 	return 0;
 }
 
-bool xemu_settings_detect_portable_mode(void)
+static bool xemu_settings_detect_portable_mode(void)
 {
 	bool val = false;
 	char *portable_path = g_strdup_printf("%s%s", SDL_GetBasePath(), filename);
