@@ -71,7 +71,7 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
 
     int failed_to_load_bios = 1;
     char *filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
-    uint32_t bios_size = 256*1024;
+    uint32_t bios_size = 256 * 1024;
 
     if (filename != NULL) {
         int bios_file_size = get_image_size(filename);
@@ -114,32 +114,34 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
 
     /* Mirror ROM from 0xff000000 - 0xffffffff */
     uint32_t map_loc;
-    for (map_loc = rom_start;
-         map_loc >= rom_start;
-         map_loc += bios_size) {
+    for (map_loc = rom_start; map_loc >= rom_start; map_loc += bios_size) {
         MemoryRegion *map_bios = g_malloc(sizeof(*map_bios));
-        memory_region_init_alias(map_bios, NULL, "pci-bios", bios, 0, bios_size);
+        memory_region_init_alias(map_bios, NULL, "pci-bios", bios, 0,
+                                 bios_size);
         memory_region_add_subregion(rom_memory, map_loc, map_bios);
         memory_region_set_readonly(map_bios, true);
     }
 
-    /* XBOX_FIXME: What follows is a big hack to overlay the MCPX ROM on the
-     * top 512 bytes of the ROM region. This differs from original XQEMU
-     * sources which copied it in at lpc init; new QEMU seems to be different
-     * now in that the BIOS images supplied to rom_add_file_fixed will be
-     * loaded *after* lpc init is called, so the MCPX ROM would get
-     * overwritten. Instead, let's just map it in right here while we map in
-     * BIOS.
+    /* Create MCPX Boot ROM memory region
      *
-     * Anyway it behaves the same as before--that is, wrongly. Really, we
-     * should let the CPU execute from MMIO emulating the TSOP access with
-     * bootrom overlay being controlled by the magic bit..but this is "good
-     * enough" for now ;).
+     * For performance reasons, the overlay region should be page-aligned.
+     * To do this, we simply make the memory region size equal to the size
+     * of the BIOS image, and then overlay the boot ROM contents on top.
+     *
+     * Additionally, retail 1.1+ kernels have a quirk in very early boot stage
+     * that depends on physical CPU WB caching behavior to briefly store a
+     * computed value to a location in ROM and read it back in the next
+     * instruction. Because we cannot emulate this cache behavior accurately,
+     * work around this quirk by making this MCPX ROM region writable. When the
+     * ROM is disabled during boot, any apparent writes to the region will be
+     * discarded.
+     *
+     * Offending code which writes to ROM:
+     *   sub ds:0FFFFD52Ch, eax
+     *   mov eax, ds:0FFFFD52Ch
      */
-
-    /* Locate and overlay MCPX ROM image into new copy of BIOS if provided */
-    const char *bootrom_file = object_property_get_str(qdev_get_machine(),
-                                                       "bootrom", NULL);
+    const char *bootrom_file =
+        object_property_get_str(qdev_get_machine(), "bootrom", NULL);
 
     if ((bootrom_file != NULL) && *bootrom_file) {
         filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bootrom_file);
@@ -161,20 +163,14 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
         close(fd);
         g_free(filename);
 
-        /* This last overlay instance is special with bios and MCPX combined.
-        * The overlay must be page-aligned or it will take a huge performance hit.
-        * Retail 1.1+ kernels rely on cached writes here so it's not marked readonly.
-        * Once the MCPX is disabled things should resort back to the readonly alias.
-        */ 
-
         MemoryRegion *mcpx = g_malloc(sizeof(MemoryRegion));
-        memory_region_init_ram(mcpx, NULL, "xbox.mcpx", bios_size, &error_fatal);
+        memory_region_init_ram(mcpx, NULL, "xbox.mcpx", bios_size,
+                               &error_fatal);
         rom_add_blob_fixed("xbox.mcpx", bios_data, bios_size, -bios_size);
         memory_region_add_subregion_overlap(rom_memory, -bios_size, mcpx, 1);
     }
 
-    // no longer needed, rom_add_blob_fixed results in a copy, not a reference
-    g_free(bios_data);
+    g_free(bios_data); /* duplicated by `rom_add_blob_fixed` */
 }
 
 static void xbox_memory_init(PCMachineState *pcms,
