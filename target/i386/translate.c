@@ -8537,7 +8537,9 @@ void tcg_x86_init(void)
                                      bnd_regu_names[i]);
     }
 
+#if defined(XBOX) && defined(__x86_64__)
     xemu_settings_get_bool(XEMU_SETTINGS_SYSTEM_HARD_FPU, &g_use_hard_fpu);
+#endif
 }
 
 static void i386_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cpu)
