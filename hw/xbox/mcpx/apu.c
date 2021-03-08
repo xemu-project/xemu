@@ -1868,8 +1868,14 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
             voice_set_mask(d, v, NV_PAVS_VOICE_PAR_OFFSET,
                            NV_PAVS_VOICE_PAR_OFFSET_CBO, 0);
             d->vp.ssl[v].ssl_seg = 0;
-            d->vp.ssl[v].ssl_index = 0;
-            voice_off(d, v);
+            if (!persist) {
+                d->vp.ssl[v].ssl_index = 0;
+                voice_off(d, v);
+            } else {
+                set_notify_status(
+                    d, v, MCPX_HW_NOTIFIER_SSLA_DONE + d->vp.ssl[v].ssl_index,
+                    NV1BA0_NOTIFICATION_STATUS_DONE_SUCCESS);
+            }
             return -1;
         }
 
@@ -2027,9 +2033,6 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
                 d->vp.ssl[v].ssl_seg = 0;
                 set_notify_status(d, v, MCPX_HW_NOTIFIER_SSLA_DONE + ssl_index,
                                   NV1BA0_NOTIFICATION_STATUS_DONE_SUCCESS);
-            }
-            if (d->vp.ssl[v].count[d->vp.ssl[v].ssl_index] == 0) {
-                voice_off(d, v);
             }
         } else {
             if (loop) {
