@@ -5709,6 +5709,7 @@ static void pgraph_bind_vertex_attributes(NV2AState *d,
             k.gl_type = attribute->gl_type;
             k.gl_normalize = attribute->gl_normalize;
             k.stride = out_stride;
+            k.addr = vert_data - d->vram_ptr;
 
             uint64_t h = fast_hash(vert_data, num_elements * in_stride);
             LruNode *node = lru_lookup(&pg->vertex_cache, h, &k);
