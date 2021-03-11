@@ -940,6 +940,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
                 LAMP(1, NV097_SET_BEGIN_END, pg->primitive_mode) &&
                 LAM(2, NV097_DRAW_ARRAYS)) {
                 num_words_consumed += 4;
+                pg->draw_arrays_prevent_connect = true;
             }
 
             #undef LAM
@@ -2755,7 +2756,7 @@ DEF_METHOD(NV097, DRAW_ARRAYS)
     assert(pg->draw_arrays_length < ARRAY_SIZE(pg->gl_draw_arrays_start));
 
     /* Attempt to connect primitives */
-    if (pg->draw_arrays_length > 0) {
+    if (!pg->draw_arrays_prevent_connect && pg->draw_arrays_length > 0) {
         unsigned int last_start =
             pg->gl_draw_arrays_start[pg->draw_arrays_length - 1];
         GLsizei* last_count =
@@ -2769,6 +2770,7 @@ DEF_METHOD(NV097, DRAW_ARRAYS)
     pg->gl_draw_arrays_start[pg->draw_arrays_length] = start;
     pg->gl_draw_arrays_count[pg->draw_arrays_length] = count;
     pg->draw_arrays_length++;
+    pg->draw_arrays_prevent_connect = false;
 }
 
 DEF_METHOD(NV097, INLINE_ARRAY)
