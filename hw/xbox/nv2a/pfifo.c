@@ -146,7 +146,8 @@ static bool pfifo_puller_should_stall(NV2AState *d)
 
 static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
                                 uint32_t parameter, uint32_t *parameters,
-                                size_t num_words_available)
+                                size_t num_words_available,
+                                size_t max_lookahead_words)
 {
     if (pfifo_puller_should_stall(d)) {
         return -1;
@@ -188,8 +189,9 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         if (pgraph_can_fifo_access(d)) {
             pgraph_context_switch(d, entry.channel_id);
             if (!d->pgraph.waiting_for_context_switch) {
-                num_proc = pgraph_method(d, subchannel, 0, entry.instance,
-                                         parameters, num_words_available);
+                num_proc =
+                    pgraph_method(d, subchannel, 0, entry.instance, parameters,
+                                  num_words_available, max_lookahead_words);
             }
         }
 
@@ -219,8 +221,9 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         qemu_mutex_lock(&d->pgraph.lock);
 
         if (pgraph_can_fifo_access(d)) {
-            num_proc = pgraph_method(d, subchannel, method, parameter,
-                                     parameters, num_words_available);
+            num_proc =
+                pgraph_method(d, subchannel, method, parameter, parameters,
+                              num_words_available, max_lookahead_words);
         }
 
         qemu_mutex_unlock(&d->pgraph.lock);
@@ -331,7 +334,8 @@ static void pfifo_run_pusher(NV2AState *d)
 
             ssize_t num_words_processed =
                 pfifo_run_puller(d, method_entry, word, word_ptr,
-                                 MIN(method_count, num_words_available));
+                                 MIN(method_count, num_words_available),
+                                 num_words_available);
             if (num_words_processed < 0) {
                 break;
             }
@@ -343,7 +347,7 @@ static void pfifo_run_pusher(NV2AState *d)
                          (method + 4*num_words_processed) >> 2);
             }
             SET_MASK(*dma_state, NV_PFIFO_CACHE1_DMA_STATE_METHOD_COUNT,
-                     method_count - num_words_processed);
+                     method_count - MIN(method_count, num_words_processed));
 
             (*dma_dcount) += num_words_processed;
         } else {
