@@ -192,6 +192,7 @@ typedef struct VertexKey {
     GLuint gl_type;
     GLboolean gl_normalize;
     size_t stride;
+    hwaddr addr;
 } VertexKey;
 
 typedef struct VertexLruNode {
