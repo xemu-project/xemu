@@ -709,7 +709,8 @@ static const MethodFunc pgraph_kelvin_method_handlers[0x800] = {
 
 int pgraph_method(NV2AState *d, unsigned int subchannel,
                    unsigned int method, uint32_t parameter,
-                   uint32_t *parameters, size_t num_words_available)
+                   uint32_t *parameters, size_t num_words_available,
+                   size_t max_lookahead_words)
 {
     int num_processed = 1;
 
@@ -924,10 +925,27 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
                             graphics_class, method);
         } else {
             size_t num_words_consumed = 1;
-            handler(d, pg,
-                subchannel, method,
-                parameter, parameters,
-                num_words_available, &num_words_consumed);
+            handler(d, pg, subchannel, method, parameter, parameters,
+                    num_words_available, &num_words_consumed);
+
+            /* Squash repeated BEGIN,DRAW_ARRAYS,END */
+            #define LAM(i, mthd) ((parameters[i*2+1] & 0x31fff) == (mthd))
+            #define LAP(i, prm) (parameters[i*2+2] == (prm))
+            #define LAMP(i, mthd, prm) (LAM(i, mthd) && LAP(i, prm))
+
+            if (method == NV097_DRAW_ARRAYS && (max_lookahead_words >= 7) &&
+                pg->draw_arrays_length <
+                    (ARRAY_SIZE(pg->gl_draw_arrays_start) - 1) &&
+                LAMP(0, NV097_SET_BEGIN_END, NV097_SET_BEGIN_END_OP_END) &&
+                LAMP(1, NV097_SET_BEGIN_END, pg->primitive_mode) &&
+                LAM(2, NV097_DRAW_ARRAYS)) {
+                num_words_consumed += 4;
+            }
+
+            #undef LAM
+            #undef LAP
+            #undef LAMP
+
             num_processed = num_words_consumed;
         }
     }
