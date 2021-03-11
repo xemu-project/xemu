@@ -3575,9 +3575,14 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
         if (!pg->vsh_constants_dirty[i] && !binding_changed) continue;
 
         GLint loc = binding->vsh_constant_loc[i];
-        if (loc != -1) {
-            glUniform4fv(loc, 1, (const GLfloat*)pg->vsh_constants[i]);
+        if ((loc != -1) &&
+            memcmp(binding->vsh_constants[i], pg->vsh_constants[i],
+                   sizeof(pg->vsh_constants[1]))) {
+            glUniform4fv(loc, 1, (const GLfloat *)pg->vsh_constants[i]);
+            memcpy(binding->vsh_constants[i], pg->vsh_constants[i],
+                   sizeof(pg->vsh_constants[i]));
         }
+
         pg->vsh_constants_dirty[i] = false;
     }
 
