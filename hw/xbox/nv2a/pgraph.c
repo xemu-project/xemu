@@ -2754,6 +2754,18 @@ DEF_METHOD(NV097, DRAW_ARRAYS)
 
     assert(pg->draw_arrays_length < ARRAY_SIZE(pg->gl_draw_arrays_start));
 
+    /* Attempt to connect primitives */
+    if (pg->draw_arrays_length > 0) {
+        unsigned int last_start =
+            pg->gl_draw_arrays_start[pg->draw_arrays_length - 1];
+        GLsizei* last_count =
+            &pg->gl_draw_arrays_count[pg->draw_arrays_length - 1];
+        if (start == (last_start + *last_count)) {
+            *last_count += count;
+            return;
+        }
+    }
+
     pg->gl_draw_arrays_start[pg->draw_arrays_length] = start;
     pg->gl_draw_arrays_count[pg->draw_arrays_length] = count;
     pg->draw_arrays_length++;
