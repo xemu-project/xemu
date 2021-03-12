@@ -5863,18 +5863,22 @@ static unsigned int pgraph_bind_inline_array(NV2AState *d)
     unsigned int offset = 0;
     for (i=0; i<NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
         VertexAttribute *attribute = &pg->vertex_attributes[i];
-        if (attribute->count) {
-            attribute->inline_array_offset = offset;
-
-            NV2A_DPRINTF("bind inline attribute %d size=%d, count=%d\n",
-                i, attribute->size, attribute->count);
-            offset += attribute->size * attribute->count;
-            assert(offset % 4 == 0);
+        if (attribute->count == 0) {
+            continue;
         }
+
+        /* FIXME: Double check */
+        offset = ROUND_UP(offset, attribute->size);
+        attribute->inline_array_offset = offset;
+        NV2A_DPRINTF("bind inline attribute %d size=%d, count=%d\n",
+            i, attribute->size, attribute->count);
+        offset += attribute->size * attribute->count;
+        offset = ROUND_UP(offset, attribute->size);
     }
 
     unsigned int vertex_size = offset;
     unsigned int index_count = pg->inline_array_length*4 / vertex_size;
+    assert((index_count*vertex_size) == (pg->inline_array_length*4));
 
     NV2A_DPRINTF("draw inline array %d, %d\n", vertex_size, index_count);
 
