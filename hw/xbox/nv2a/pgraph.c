@@ -1949,6 +1949,7 @@ DEF_METHOD(NV097, SET_TRANSFORM_PROGRAM)
 
     assert(program_load < NV2A_MAX_TRANSFORM_PROGRAM_LENGTH);
     pg->program_data[program_load][slot%4] = parameter;
+    pg->program_data_dirty = true;
 
     if (slot % 4 == 3) {
         SET_MASK(pg->regs[NV_PGRAPH_CHEOPS_OFFSET],
@@ -3609,6 +3610,108 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
     if (binding->clip_range_loc != -1) {
         glUniform2f(binding->clip_range_loc, zclip_min, zclip_max);
     }
+
+    /* Clipping regions */
+    for (i = 0; i < 8; i++) {
+        if (pg->shader_binding->clip_region_loc[i] == -1) {
+            break;
+        }
+
+        uint32_t x = pg->regs[NV_PGRAPH_WINDOWCLIPX0 + i * 4];
+        unsigned int x_min = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMIN);
+        unsigned int x_max = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMAX);
+
+        /* Adjust y-coordinates for the OpenGL viewport: translate coordinates
+         * to have the origin at the bottom-left of the surface (as opposed to
+         * top-left), and flip y-min and y-max accordingly.
+         */
+        // FIXME: Check
+        uint32_t y = pg->regs[NV_PGRAPH_WINDOWCLIPY0 + i * 4];
+        unsigned int y_min = pg->surface_binding_dim.clip_height
+                             + pg->surface_binding_dim.clip_y
+                             - 1
+                             - GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMAX);
+        unsigned int y_max = pg->surface_binding_dim.clip_height
+                             + pg->surface_binding_dim.clip_y
+                             - 1
+                             - GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMIN);
+
+        pgraph_apply_anti_aliasing_factor(pg, &x_min, &y_min);
+        pgraph_apply_anti_aliasing_factor(pg, &x_max, &y_max);
+
+        glUniform4i(pg->shader_binding->clip_region_loc[i],
+                    x_min, y_min, x_max + 1, y_max + 1);
+    }
+}
+
+static bool pgraph_bind_shaders_test_dirty(PGRAPHState *pg)
+{
+    #define CR_1(reg) CR_x(reg, 1)
+    #define CR_4(reg) CR_x(reg, 4)
+    #define CR_8(reg) CR_x(reg, 8)
+    #define CF(src, name)  CF_x(typeof(src), (&src), name, 1)
+    #define CFA(src, name) CF_x(typeof(src[0]), src, name, ARRAY_SIZE(src))
+    #define CNAME(name) reg_check__ ## name
+    #define CX_x__define(type, name, x) static type CNAME(name)[x];
+    #define CR_x__define(reg, x) CX_x__define(uint32_t, reg, x)
+    #define CF_x__define(type, src, name, x) CX_x__define(type, name, x)
+    #define CR_x__check(reg, x) \
+        for (int i = 0; i < x; i++) { if (pg->regs[reg+i*4] != CNAME(reg)[i]) goto dirty; }
+    #define CF_x__check(type, src, name, x) \
+        for (int i = 0; i < x; i++) { if (src[i] != CNAME(name)[i]) goto dirty; }
+    #define CR_x__update(reg, x) \
+        for (int i = 0; i < x; i++) { CNAME(reg)[i] = pg->regs[reg+i*4]; }
+    #define CF_x__update(type, src, name, x) \
+        for (int i = 0; i < x; i++) { CNAME(name)[i] = src[i]; }
+
+    #define DIRTY_REGS \
+        CR_1(NV_PGRAPH_COMBINECTL) \
+        CR_1(NV_PGRAPH_SHADERCTL) \
+        CR_1(NV_PGRAPH_COMBINESPECFOG0) \
+        CR_1(NV_PGRAPH_COMBINESPECFOG1) \
+        CR_1(NV_PGRAPH_CONTROL_0) \
+        CR_1(NV_PGRAPH_CONTROL_3) \
+        CR_1(NV_PGRAPH_CSV0_C) \
+        CR_1(NV_PGRAPH_CSV0_D) \
+        CR_1(NV_PGRAPH_CSV1_A) \
+        CR_1(NV_PGRAPH_CSV1_B) \
+        CR_1(NV_PGRAPH_SETUPRASTER) \
+        CR_1(NV_PGRAPH_SHADERPROG) \
+        CR_8(NV_PGRAPH_COMBINECOLORI0) \
+        CR_8(NV_PGRAPH_COMBINECOLORO0) \
+        CR_8(NV_PGRAPH_COMBINEALPHAI0) \
+        CR_8(NV_PGRAPH_COMBINEALPHAO0) \
+        CR_8(NV_PGRAPH_COMBINEFACTOR0) \
+        CR_8(NV_PGRAPH_COMBINEFACTOR1) \
+        CR_1(NV_PGRAPH_SHADERCLIPMODE) \
+        CR_4(NV_PGRAPH_TEXCTL0_0) \
+        CR_4(NV_PGRAPH_TEXFMT0) \
+        CR_4(NV_PGRAPH_TEXFILTER0) \
+        CR_8(NV_PGRAPH_WINDOWCLIPX0) \
+        CR_8(NV_PGRAPH_WINDOWCLIPY0) \
+        CF(pg->primitive_mode, primitive_mode) \
+        CFA(pg->texture_matrix_enable, texture_matrix_enable)
+
+    #define CR_x(reg, x) CR_x__define(reg, x)
+    #define CF_x(type, src, name, x) CF_x__define(type, src, name, x)
+    DIRTY_REGS
+    #undef CR_x
+    #undef CF_x
+
+    #define CR_x(reg, x) CR_x__check(reg, x)
+    #define CF_x(type, src, name, x) CF_x__check(type, src, name, x)
+    DIRTY_REGS
+    #undef CR_x
+    #undef CF_x
+    return false;
+
+dirty:
+    #define CR_x(reg, x) CR_x__update(reg, x)
+    #define CF_x(type, src, name, x) CF_x__update(type, src, name, x)
+    DIRTY_REGS
+    #undef CR_x
+    #undef CF_x
+    return true;
 }
 
 static void pgraph_bind_shaders(PGRAPHState *pg)
@@ -3627,6 +3730,13 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
     NV2A_GL_DGROUP_BEGIN("%s (VP: %s FFP: %s)", __func__,
                          vertex_program ? "yes" : "no",
                          fixed_function ? "yes" : "no");
+
+    bool binding_changed = false;
+    if (!pgraph_bind_shaders_test_dirty(pg) && !pg->program_data_dirty) {
+        nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND_NOTDIRTY);
+        goto update_constants;
+    }
+    pg->program_data_dirty = false;
 
     ShaderBinding* old_binding = pg->shader_binding;
 
@@ -3849,45 +3959,13 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
                             (gpointer)pg->shader_binding);
     }
 
-    bool binding_changed = (pg->shader_binding != old_binding);
+    binding_changed = (pg->shader_binding != old_binding);
     if (binding_changed) {
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND);
+        glUseProgram(pg->shader_binding->gl_program);
     }
 
-    glUseProgram(pg->shader_binding->gl_program);
-
-    /* Clipping regions */
-    for (i = 0; i < state.psh.window_clip_count; i++) {
-        if (pg->shader_binding->clip_region_loc[i] == -1) {
-            continue;
-        }
-
-        uint32_t x = pg->regs[NV_PGRAPH_WINDOWCLIPX0 + i * 4];
-        unsigned int x_min = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMIN);
-        unsigned int x_max = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMAX);
-
-        /* Adjust y-coordinates for the OpenGL viewport: translate coordinates
-         * to have the origin at the bottom-left of the surface (as opposed to
-         * top-left), and flip y-min and y-max accordingly.
-         */
-        // FIXME: Check
-        uint32_t y = pg->regs[NV_PGRAPH_WINDOWCLIPY0 + i * 4];
-        unsigned int y_min = pg->surface_binding_dim.clip_height
-                             + pg->surface_binding_dim.clip_y
-                             - 1
-                             - GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMAX);
-        unsigned int y_max = pg->surface_binding_dim.clip_height
-                             + pg->surface_binding_dim.clip_y
-                             - 1
-                             - GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMIN);
-
-        pgraph_apply_anti_aliasing_factor(pg, &x_min, &y_min);
-        pgraph_apply_anti_aliasing_factor(pg, &x_max, &y_max);
-
-        glUniform4i(pg->shader_binding->clip_region_loc[i],
-                    x_min, y_min, x_max + 1, y_max + 1);
-    }
-
+update_constants:
     pgraph_shader_update_constants(pg, pg->shader_binding, binding_changed,
                                    vertex_program, fixed_function);
 
@@ -4096,6 +4174,8 @@ static void pgraph_render_surface_to_texture(NV2AState *d,
     glBindVertexArray(d->pgraph.gl_vertex_array);
 
     glBindTexture(texture->gl_target, texture->gl_texture);
+    glUseProgram(
+        d->pgraph.shader_binding ? d->pgraph.shader_binding->gl_program : 0);
 }
 
 static void pgraph_gl_fence(void)

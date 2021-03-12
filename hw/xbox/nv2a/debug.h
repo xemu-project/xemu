@@ -105,6 +105,7 @@ void gl_debug_frame_terminator(void);
     _X(NV2A_PROF_QUERY) \
     _X(NV2A_PROF_SHADER_GEN) \
     _X(NV2A_PROF_SHADER_BIND) \
+    _X(NV2A_PROF_SHADER_BIND_NOTDIRTY) \
     _X(NV2A_PROF_TEX_UPLOAD) \
     _X(NV2A_PROF_TEX_BIND) \
     _X(NV2A_PROF_GEOM_CONV) \
