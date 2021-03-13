@@ -2999,7 +2999,6 @@ DEF_METHOD(NV097, CLEAR_SURFACE)
             red = ((clear_color >> 10) & 0x1F) / 31.0f;
             green = ((clear_color >> 5) & 0x1F) / 31.0f;
             blue = (clear_color & 0x1F) / 31.0f;
-            assert(false); /* Untested */
             break;
         case NV097_SET_SURFACE_FORMAT_COLOR_LE_R5G6B5:
             red = ((clear_color >> 11) & 0x1F) / 31.0f;
