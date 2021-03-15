@@ -327,8 +327,9 @@ typedef struct PGRAPHState {
     VertexAttribute vertex_attributes[NV2A_VERTEXSHADER_ATTRIBUTES];
     uint8_t *converted_buffer;
 
-    Lru vertex_cache;
+    Lru vertex_cache, element_cache;
     struct VertexLruNode *vertex_cache_entries;
+    struct VertexLruNode *element_cache_entries;
 
     unsigned int inline_array_length;
     uint32_t inline_array[NV2A_MAX_BATCH_LENGTH];
@@ -336,7 +337,6 @@ typedef struct PGRAPHState {
 
     unsigned int inline_elements_length;
     uint32_t inline_elements[NV2A_MAX_BATCH_LENGTH];
-    GLuint gl_inline_elements_buffer;
 
     unsigned int inline_buffer_length;
 
