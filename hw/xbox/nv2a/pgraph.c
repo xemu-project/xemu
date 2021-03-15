@@ -2381,10 +2381,25 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             pgraph_bind_vertex_attributes(d, min_element, max_element, false,
                                           0);
 
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pg->gl_inline_elements_buffer);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                         pg->inline_elements_length * sizeof(uint32_t),
-                         pg->inline_elements, GL_STREAM_DRAW);
+            VertexKey k;
+            memset(&k, 0, sizeof(VertexKey));
+            k.count = pg->inline_elements_length;
+            k.gl_type = GL_UNSIGNED_INT;
+            k.gl_normalize = GL_FALSE;
+            k.stride = sizeof(uint32_t);
+            uint64_t h = fast_hash((uint8_t*)pg->inline_elements,
+                                   pg->inline_elements_length * 4);
+
+            LruNode *node = lru_lookup(&pg->element_cache, h, &k);
+            VertexLruNode *found = container_of(node, VertexLruNode, node);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, found->gl_buffer);
+            if (!found->initialized) {
+                nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_5);
+                glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                             pg->inline_elements_length * 4,
+                             pg->inline_elements, GL_STATIC_DRAW);
+                found->initialized = true;
+            }
             glDrawElements(pg->shader_binding->gl_primitive_mode,
                            pg->inline_elements_length, GL_UNSIGNED_INT,
                            (void *)0);
@@ -3373,6 +3388,21 @@ void pgraph_init(NV2AState *d)
     pg->vertex_cache.init_node = vertex_cache_entry_init;
     pg->vertex_cache.compare_nodes = vertex_cache_entry_compare;
 
+    // Initialize element cache
+    const size_t element_cache_size = 50*1024;
+    lru_init(&pg->element_cache);
+    pg->element_cache_entries = malloc(element_cache_size * sizeof(VertexLruNode));
+    assert(pg->element_cache_entries != NULL);
+    GLuint element_cache_buffers[element_cache_size];
+    glGenBuffers(element_cache_size, element_cache_buffers);
+    for (i = 0; i < element_cache_size; i++) {
+        pg->element_cache_entries[i].gl_buffer = element_cache_buffers[i];
+        lru_add_free(&pg->element_cache, &pg->element_cache_entries[i].node);
+    }
+
+    pg->element_cache.init_node = vertex_cache_entry_init;
+    pg->element_cache.compare_nodes = vertex_cache_entry_compare;
+
     pg->shader_cache = g_hash_table_new(shader_hash, shader_equal);
 
     for (i=0; i<NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
@@ -3383,7 +3413,6 @@ void pgraph_init(NV2AState *d)
         attribute->inline_buffer_populated = false;
     }
     glGenBuffers(1, &pg->gl_inline_array_buffer);
-    glGenBuffers(1, &pg->gl_inline_elements_buffer);
 
     glGenBuffers(1, &pg->gl_memory_buffer);
     glBindBuffer(GL_ARRAY_BUFFER, pg->gl_memory_buffer);
