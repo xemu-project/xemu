@@ -90,8 +90,6 @@ typedef struct VertexAttribute {
     uint32_t stride;
 
     bool needs_conversion;
-    unsigned int converted_size;
-    unsigned int converted_count;
 
     float *inline_buffer;
     bool inline_buffer_populated;
@@ -325,10 +323,9 @@ typedef struct PGRAPHState {
     float light_local_attenuation[NV2A_MAX_LIGHTS][3];
 
     VertexAttribute vertex_attributes[NV2A_VERTEXSHADER_ATTRIBUTES];
-    uint8_t *converted_buffer;
+    uint16_t compressed_attrs;
 
-    Lru vertex_cache, element_cache;
-    struct VertexLruNode *vertex_cache_entries;
+    Lru element_cache;
     struct VertexLruNode *element_cache_entries;
 
     unsigned int inline_array_length;

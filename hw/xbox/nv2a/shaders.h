@@ -56,6 +56,7 @@ enum MaterialColorSource {
 
 typedef struct ShaderState {
     PshState psh;
+    uint16_t compressed_attrs;
 
     bool texture_matrix_enable[4];
     enum VshTexgen texgen[4][4];

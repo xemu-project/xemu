@@ -373,7 +373,7 @@ static void pgraph_update_surface(NV2AState *d, bool upload, bool color_write, b
 static void pgraph_bind_textures(NV2AState *d);
 static void pgraph_apply_anti_aliasing_factor(PGRAPHState *pg, unsigned int *width, unsigned int *height);
 static void pgraph_get_surface_dimensions(PGRAPHState *pg, unsigned int *width, unsigned int *height);
-static void pgraph_update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size, bool f);
+static void pgraph_update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size, bool quick);
 static void pgraph_bind_vertex_attributes(NV2AState *d, unsigned int min_element, unsigned int max_element, bool inline_data, unsigned int inline_stride);
 static unsigned int pgraph_bind_inline_array(NV2AState *d);
 static float convert_f16_to_float(uint16_t f16);
@@ -949,6 +949,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
 
             num_processed = num_words_consumed;
         }
+        break;
     }
 
     default:
@@ -2127,69 +2128,67 @@ DEF_METHOD(NV097, SET_VERTEX_DATA_ARRAY_FORMAT)
     INC_METHOD_LOOP_BEGIN(NV097, SET_VERTEX_DATA_ARRAY_FORMAT)
 
     int slot = (method - NV097_SET_VERTEX_DATA_ARRAY_FORMAT) / 4;
-    VertexAttribute *vertex_attribute = &pg->vertex_attributes[slot];
-
-    vertex_attribute->format =
-        GET_MASK(parameter, NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE);
-    vertex_attribute->count =
-        GET_MASK(parameter, NV097_SET_VERTEX_DATA_ARRAY_FORMAT_SIZE);
-    vertex_attribute->stride =
-        GET_MASK(parameter, NV097_SET_VERTEX_DATA_ARRAY_FORMAT_STRIDE);
+    VertexAttribute *attr = &pg->vertex_attributes[slot];
+    attr->format = GET_MASK(parameter, NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE);
+    attr->count = GET_MASK(parameter, NV097_SET_VERTEX_DATA_ARRAY_FORMAT_SIZE);
+    attr->stride = GET_MASK(parameter,
+                            NV097_SET_VERTEX_DATA_ARRAY_FORMAT_STRIDE);
+    attr->gl_count = attr->count;
 
     NV2A_DPRINTF("vertex data array format=%d, count=%d, stride=%d\n",
-        vertex_attribute->format,
-        vertex_attribute->count,
-        vertex_attribute->stride);
+                 attr->format, attr->count, attr->stride);
 
-    vertex_attribute->gl_count = vertex_attribute->count;
-
-    switch (vertex_attribute->format) {
+    switch (attr->format) {
     case NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_UB_D3D:
-        vertex_attribute->gl_type = GL_UNSIGNED_BYTE;
-        vertex_attribute->gl_normalize = GL_TRUE;
-        vertex_attribute->size = 1;
-        assert(vertex_attribute->count == 4);
+        attr->gl_type = GL_UNSIGNED_BYTE;
+        attr->gl_normalize = GL_TRUE;
+        attr->size = 1;
+        assert(attr->count == 4);
         // http://www.opengl.org/registry/specs/ARB/vertex_array_bgra.txt
-        vertex_attribute->gl_count = GL_BGRA;
-        vertex_attribute->needs_conversion = false;
+        attr->gl_count = GL_BGRA;
+        attr->needs_conversion = false;
         break;
     case NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_UB_OGL:
-        vertex_attribute->gl_type = GL_UNSIGNED_BYTE;
-        vertex_attribute->gl_normalize = GL_TRUE;
-        vertex_attribute->size = 1;
-        vertex_attribute->needs_conversion = false;
+        attr->gl_type = GL_UNSIGNED_BYTE;
+        attr->gl_normalize = GL_TRUE;
+        attr->size = 1;
+        attr->needs_conversion = false;
         break;
     case NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_S1:
-        vertex_attribute->gl_type = GL_SHORT;
-        vertex_attribute->gl_normalize = GL_TRUE;
-        vertex_attribute->size = 2;
-        vertex_attribute->needs_conversion = false;
+        attr->gl_type = GL_SHORT;
+        attr->gl_normalize = GL_TRUE;
+        attr->size = 2;
+        attr->needs_conversion = false;
         break;
     case NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_F:
-        vertex_attribute->gl_type = GL_FLOAT;
-        vertex_attribute->gl_normalize = GL_FALSE;
-        vertex_attribute->size = 4;
-        vertex_attribute->needs_conversion = false;
+        attr->gl_type = GL_FLOAT;
+        attr->gl_normalize = GL_FALSE;
+        attr->size = 4;
+        attr->needs_conversion = false;
         break;
     case NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_S32K:
-        vertex_attribute->gl_type = GL_SHORT;
-        vertex_attribute->gl_normalize = GL_FALSE;
-        vertex_attribute->size = 2;
-        vertex_attribute->needs_conversion = false;
+        attr->gl_type = GL_SHORT;
+        attr->gl_normalize = GL_FALSE;
+        attr->size = 2;
+        attr->needs_conversion = false;
         break;
     case NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_CMP:
         /* 3 signed, normalized components packed in 32-bits. (11,11,10) */
-        vertex_attribute->size = 4;
-        vertex_attribute->gl_type = GL_FLOAT;
-        vertex_attribute->gl_normalize = GL_FALSE;
-        vertex_attribute->needs_conversion = true;
-        vertex_attribute->converted_size = sizeof(float);
-        vertex_attribute->converted_count = 3 * vertex_attribute->count;
+        attr->gl_type = GL_INT;
+        attr->size = 4;
+        assert(attr->count == 1);
+        attr->needs_conversion = true;
         break;
     default:
-        fprintf(stderr, "Unknown vertex type: 0x%x\n", vertex_attribute->format);
+        fprintf(stderr, "Unknown vertex type: 0x%x\n", attr->format);
         assert(false);
         break;
+    }
+
+    if (attr->needs_conversion) {
+        pg->compressed_attrs |= (1 << slot);
+    } else {
+        pg->compressed_attrs &= ~(1 << slot);
     }
 
     INC_METHOD_LOOP_END
@@ -2322,30 +2321,26 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             assert(pg->inline_array_length == 0);
             assert(pg->inline_elements_length == 0);
 
+            if (pg->compressed_attrs) {
+                pg->compressed_attrs = 0;
+                pgraph_bind_shaders(pg);
+            }
+
             for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
-                VertexAttribute *attribute = &pg->vertex_attributes[i];
-
-                if (attribute->inline_buffer_populated) {
+                VertexAttribute *attr = &pg->vertex_attributes[i];
+                if (attr->inline_buffer_populated) {
                     nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_3);
-                    glBindBuffer(GL_ARRAY_BUFFER,
-                                 attribute->gl_inline_buffer);
+                    glBindBuffer(GL_ARRAY_BUFFER, attr->gl_inline_buffer);
                     glBufferData(GL_ARRAY_BUFFER,
-                                 pg->inline_buffer_length
-                                    * sizeof(float) * 4,
-                                 attribute->inline_buffer,
-                                 GL_STREAM_DRAW);
-
-                    /* Clear buffer for next batch */
-                    attribute->inline_buffer_populated = false;
-
+                                 pg->inline_buffer_length * sizeof(float) * 4,
+                                 attr->inline_buffer, GL_STREAM_DRAW);
                     glVertexAttribPointer(i, 4, GL_FLOAT, GL_FALSE, 0, 0);
                     glEnableVertexAttribArray(i);
+                    attr->inline_buffer_populated = false;
                 } else {
                     glDisableVertexAttribArray(i);
-
-                    glVertexAttrib4fv(i, attribute->inline_value);
+                    glVertexAttrib4fv(i, attr->inline_value);
                 }
-
             }
 
             glDrawArrays(pg->shader_binding->gl_primitive_mode,
@@ -2378,8 +2373,8 @@ DEF_METHOD(NV097, SET_BEGIN_END)
                 min_element = MIN(pg->inline_elements[i], min_element);
             }
 
-            pgraph_bind_vertex_attributes(d, min_element, max_element, false,
-                                          0);
+            pgraph_bind_vertex_attributes(
+                d, min_element, max_element, false, 0);
 
             VertexKey k;
             memset(&k, 0, sizeof(VertexKey));
@@ -2394,11 +2389,13 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             VertexLruNode *found = container_of(node, VertexLruNode, node);
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, found->gl_buffer);
             if (!found->initialized) {
-                nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_5);
+                nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_4);
                 glBufferData(GL_ELEMENT_ARRAY_BUFFER,
                              pg->inline_elements_length * 4,
                              pg->inline_elements, GL_STATIC_DRAW);
                 found->initialized = true;
+            } else {
+                nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_4_NOTDIRTY);
             }
             glDrawElements(pg->shader_binding->gl_primitive_mode,
                            pg->inline_elements_length, GL_UNSIGNED_INT,
@@ -3373,21 +3370,6 @@ void pgraph_init(NV2AState *d)
     pg->texture_cache.compare_nodes = texture_cache_entry_compare;
     pg->texture_cache.post_node_evict = texture_cache_entry_post_evict;
 
-    // Initialize vertex cache
-    const size_t vertex_cache_size = 10*1024;
-    lru_init(&pg->vertex_cache);
-    pg->vertex_cache_entries = malloc(vertex_cache_size * sizeof(VertexLruNode));
-    assert(pg->vertex_cache_entries != NULL);
-    GLuint vertex_cache_buffers[vertex_cache_size];
-    glGenBuffers(vertex_cache_size, vertex_cache_buffers);
-    for (i = 0; i < vertex_cache_size; i++) {
-        pg->vertex_cache_entries[i].gl_buffer = vertex_cache_buffers[i];
-        lru_add_free(&pg->vertex_cache, &pg->vertex_cache_entries[i].node);
-    }
-
-    pg->vertex_cache.init_node = vertex_cache_entry_init;
-    pg->vertex_cache.compare_nodes = vertex_cache_entry_compare;
-
     // Initialize element cache
     const size_t element_cache_size = 50*1024;
     lru_init(&pg->element_cache);
@@ -3416,10 +3398,8 @@ void pgraph_init(NV2AState *d)
 
     glGenBuffers(1, &pg->gl_memory_buffer);
     glBindBuffer(GL_ARRAY_BUFFER, pg->gl_memory_buffer);
-    glBufferData(GL_ARRAY_BUFFER,
-                 memory_region_size(d->vram),
-                 NULL,
-                 GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, memory_region_size(d->vram),
+                 NULL, GL_DYNAMIC_DRAW);
 
     glGenVertexArrays(1, &pg->gl_vertex_array);
     glBindVertexArray(pg->gl_vertex_array);
@@ -3718,6 +3698,7 @@ static bool pgraph_bind_shaders_test_dirty(PGRAPHState *pg)
         CR_8(NV_PGRAPH_WINDOWCLIPX0) \
         CR_8(NV_PGRAPH_WINDOWCLIPY0) \
         CF(pg->primitive_mode, primitive_mode) \
+        CF(pg->compressed_attrs, compressed_attrs) \
         CFA(pg->texture_matrix_enable, texture_matrix_enable)
 
     #define CR_x(reg, x) CR_x__define(reg, x)
@@ -3764,6 +3745,7 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND_NOTDIRTY);
         goto update_constants;
     }
+
     pg->program_data_dirty = false;
 
     ShaderBinding* old_binding = pg->shader_binding;
@@ -3771,7 +3753,9 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
     ShaderState state;
     memset(&state, 0, sizeof(ShaderState));
 
-            /* register combier stuff */
+    state.compressed_attrs = pg->compressed_attrs;
+
+    /* register combiner stuff */
     state.psh.window_clip_exclusive = pg->regs[NV_PGRAPH_SETUPRASTER]
                                        & NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE;
     state.psh.combiner_control = pg->regs[NV_PGRAPH_COMBINECTL];
@@ -5738,19 +5722,27 @@ static void pgraph_get_surface_dimensions(PGRAPHState *pg,
 }
 
 static void pgraph_update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size,
-                                        bool f)
+                                        bool quick)
 {
     glBindBuffer(GL_ARRAY_BUFFER, d->pgraph.gl_memory_buffer);
 
     hwaddr end = TARGET_PAGE_ALIGN(addr + size);
     addr &= TARGET_PAGE_MASK;
     assert(end < memory_region_size(d->vram));
-    if (f || memory_region_test_and_clear_dirty(d->vram,
-                                                addr,
-                                                end - addr,
-                                                DIRTY_MEMORY_NV2A)) {
+
+    static hwaddr last_addr, last_end;
+    if (quick && (addr >= last_addr) && (end <= last_end)) {
+        return;
+    }
+    last_addr = addr;
+    last_end = end;
+
+    size = end - addr;
+    if (memory_region_test_and_clear_dirty(d->vram, addr, size,
+                                           DIRTY_MEMORY_NV2A)) {
+        glBufferSubData(GL_ARRAY_BUFFER, addr, size,
+                        d->vram_ptr + addr);
         nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_1);
-        glBufferSubData(GL_ARRAY_BUFFER, addr, end - addr, d->vram_ptr + addr);
     }
 }
 
@@ -5760,9 +5752,8 @@ static void pgraph_bind_vertex_attributes(NV2AState *d,
                                           bool inline_data,
                                           unsigned int inline_stride)
 {
-    int i, j;
     PGRAPHState *pg = &d->pgraph;
-
+    bool updated_memory_buffer = false;
     unsigned int num_elements = max_element - min_element + 1;
 
     if (inline_data) {
@@ -5772,136 +5763,76 @@ static void pgraph_bind_vertex_attributes(NV2AState *d,
         NV2A_GL_DGROUP_BEGIN("%s (num_elements: %d)", __func__, num_elements);
     }
 
+    pg->compressed_attrs = 0;
 
-    for (i=0; i<NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
-        VertexAttribute *attribute = &pg->vertex_attributes[i];
-        if (!attribute->count) {
+    for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
+        VertexAttribute *attr = &pg->vertex_attributes[i];
+
+        if (!attr->count) {
             glDisableVertexAttribArray(i);
-            glVertexAttrib4fv(i, attribute->inline_value);
+            glVertexAttrib4fv(i, attr->inline_value);
             continue;
         }
 
-        uint8_t *attr_data, *vert_data;
-        unsigned int in_stride;
+        nv2a_profile_inc_counter(NV2A_PROF_ATTR_BIND);
+        hwaddr attrib_data_addr;
+        size_t stride;
 
-        if (inline_data && attribute->needs_conversion) {
-            attr_data =
-                (uint8_t *)pg->inline_array + attribute->inline_array_offset;
-            vert_data = attr_data;
-            in_stride = inline_stride;
+        if (attr->needs_conversion) {
+            pg->compressed_attrs |= (1 << i);
+        }
+
+        if (inline_data) {
+            glBindBuffer(GL_ARRAY_BUFFER, pg->gl_inline_array_buffer);
+            attrib_data_addr = attr->inline_array_offset;
+            stride = inline_stride;
         } else {
             hwaddr dma_len;
-            if (attribute->dma_select) {
-                attr_data =
-                    (uint8_t *)nv_dma_map(d, pg->dma_vertex_b, &dma_len);
-            } else {
-                attr_data =
-                    (uint8_t *)nv_dma_map(d, pg->dma_vertex_a, &dma_len);
-            }
-
-            assert(attribute->offset < dma_len);
-            attr_data += attribute->offset;
-            in_stride = attribute->stride;
-            vert_data = attr_data + min_element * in_stride;
+            uint8_t *attr_data = (uint8_t *)nv_dma_map(
+                d, attr->dma_select ? pg->dma_vertex_b : pg->dma_vertex_a,
+                &dma_len);
+            assert(attr->offset < dma_len);
+            attrib_data_addr = attr_data + attr->offset - d->vram_ptr;
+            stride = attr->stride;
+            hwaddr start = attrib_data_addr + min_element * stride;
+            pgraph_update_memory_buffer(d, start, num_elements * stride,
+                                        updated_memory_buffer);
+            updated_memory_buffer = true;
         }
 
-        if (attribute->needs_conversion) {
-            NV2A_DPRINTF("converted %d\n", i);
-
-            unsigned int out_stride =
-                attribute->converted_size * attribute->converted_count;
-
-            VertexKey k;
-            memset(&k, 0, sizeof(VertexKey));
-            k.count = num_elements;
-            k.gl_type = attribute->gl_type;
-            k.gl_normalize = attribute->gl_normalize;
-            k.stride = out_stride;
-            k.addr = vert_data - d->vram_ptr;
-
-            uint64_t h = fast_hash(vert_data, num_elements * in_stride);
-            LruNode *node = lru_lookup(&pg->vertex_cache, h, &k);
-            VertexLruNode *found = container_of(node, VertexLruNode, node);
-            glBindBuffer(GL_ARRAY_BUFFER, found->gl_buffer);
-
-            if (!found->initialized) {
-                nv2a_profile_inc_counter(NV2A_PROF_GEOM_CONV);
-
-                pg->converted_buffer = (uint8_t *)g_realloc(
-                    pg->converted_buffer, num_elements * out_stride);
-
-                for (j = 0; j < num_elements; j++) {
-                    uint8_t *in = vert_data + j * in_stride;
-                    uint8_t *out = pg->converted_buffer + j * out_stride;
-
-                    switch (attribute->format) {
-                    case NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_CMP: {
-                        uint32_t p = ldl_le_p((uint32_t *)in);
-                        float *xyz = (float *)out;
-                        xyz[0] = ((int32_t)(((p >> 0) & 0x7FF) << 21) >> 21) /
-                                 1023.0f;
-                        xyz[1] = ((int32_t)(((p >> 11) & 0x7FF) << 21) >> 21) /
-                                 1023.0f;
-                        xyz[2] = ((int32_t)(((p >> 22) & 0x3FF) << 22) >> 22) /
-                                 511.0f;
-                        break;
-                    }
-                    default:
-                        assert(false);
-                        break;
-                    }
-                }
-
-                glBufferData(GL_ARRAY_BUFFER, (max_element + 1) * out_stride,
-                             NULL, GL_DYNAMIC_DRAW);
-                glBufferSubData(GL_ARRAY_BUFFER, min_element * out_stride,
-                                num_elements * out_stride,
-                                pg->converted_buffer);
-                found->initialized = true;
-            }
-
-            glVertexAttribPointer(i, attribute->converted_count,
-                                  attribute->gl_type, attribute->gl_normalize,
-                                  out_stride, 0);
-        } else if (inline_data) {
-            glBindBuffer(GL_ARRAY_BUFFER, pg->gl_inline_array_buffer);
-            glVertexAttribPointer(
-                i, attribute->gl_count, attribute->gl_type,
-                attribute->gl_normalize, inline_stride,
-                (void *)(uintptr_t)attribute->inline_array_offset);
+        if (attr->needs_conversion) {
+            glVertexAttribIPointer(i, attr->gl_count, attr->gl_type, stride,
+                                   (void *)attrib_data_addr);
         } else {
-            pgraph_update_memory_buffer(d, vert_data - d->vram_ptr,
-                                        num_elements * attribute->stride,
-                                        false);
-            glVertexAttribPointer(i, attribute->gl_count, attribute->gl_type,
-                                  attribute->gl_normalize, attribute->stride,
-                                  (void *)(uint64_t)(attr_data - d->vram_ptr));
+            glVertexAttribPointer(i, attr->gl_count, attr->gl_type,
+                                  attr->gl_normalize, stride,
+                                  (void *)attrib_data_addr);
         }
+
         glEnableVertexAttribArray(i);
     }
+
     NV2A_GL_DGROUP_END();
 }
 
 static unsigned int pgraph_bind_inline_array(NV2AState *d)
 {
-    int i;
-
     PGRAPHState *pg = &d->pgraph;
 
     unsigned int offset = 0;
-    for (i=0; i<NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
-        VertexAttribute *attribute = &pg->vertex_attributes[i];
-        if (attribute->count == 0) {
+    for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
+        VertexAttribute *attr = &pg->vertex_attributes[i];
+        if (attr->count == 0) {
             continue;
         }
 
         /* FIXME: Double check */
-        offset = ROUND_UP(offset, attribute->size);
-        attribute->inline_array_offset = offset;
+        offset = ROUND_UP(offset, attr->size);
+        attr->inline_array_offset = offset;
         NV2A_DPRINTF("bind inline attribute %d size=%d, count=%d\n",
-            i, attribute->size, attribute->count);
-        offset += attribute->size * attribute->count;
-        offset = ROUND_UP(offset, attribute->size);
+            i, attr->size, attr->count);
+        offset += attr->size * attr->count;
+        offset = ROUND_UP(offset, attr->size);
     }
 
     unsigned int vertex_size = offset;
