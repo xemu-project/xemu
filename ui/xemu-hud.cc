@@ -1494,7 +1494,7 @@ public:
                 ImPlot::SetNextPlotLimitsX(x_start, x_end, ImGuiCond_Always);
                 ImPlot::SetNextPlotLimitsY(0, 1500, ImGuiCond_Always);
                 ImGui::SetNextWindowBgAlpha(alpha);
-                if (ImPlot::BeginPlot("##ScrollingDraws", NULL, NULL, ImVec2(-1,500), 0, rt_axis, rt_axis | ImPlotAxisFlags_Lock)) {
+                if (ImPlot::BeginPlot("##ScrollingDraws", NULL, NULL, ImVec2(-1,500*g_ui_scale), 0, rt_axis, rt_axis | ImPlotAxisFlags_Lock)) {
                     for (int i = 0; i < NV2A_PROF__COUNT; i++) {
                         ImGui::PushID(i);
                         char title[64];
