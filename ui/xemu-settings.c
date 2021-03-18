@@ -1,7 +1,7 @@
 /*
  * xemu Settings Management
  *
- * Copyright (C) 2020 Matt Borgerson
+ * Copyright (C) 2020-2021 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -45,6 +45,7 @@ struct xemu_settings {
 	char *eeprom_path;
 	int   memory;
 	int   short_animation; // Boolean
+	int   hard_fpu; // Boolean
 
 	// [audio]
 	int use_dsp; // Boolean
@@ -109,7 +110,8 @@ struct config_offset_table {
 	[XEMU_SETTINGS_SYSTEM_EEPROM_PATH]  = { CONFIG_TYPE_STRING, "system", "eeprom_path",  offsetof(struct xemu_settings, eeprom_path),     { .default_str  = "" } },
 	[XEMU_SETTINGS_SYSTEM_MEMORY]       = { CONFIG_TYPE_INT,    "system", "memory",       offsetof(struct xemu_settings, memory),          { .default_int  = 64 } },
 	[XEMU_SETTINGS_SYSTEM_SHORTANIM]    = { CONFIG_TYPE_BOOL,   "system", "shortanim",    offsetof(struct xemu_settings, short_animation), { .default_bool = 0  } },
-	
+	[XEMU_SETTINGS_SYSTEM_HARD_FPU]     = { CONFIG_TYPE_BOOL,   "system", "hard_fpu",     offsetof(struct xemu_settings, hard_fpu),        { .default_bool = 1  } },
+
 	[XEMU_SETTINGS_AUDIO_USE_DSP] = { CONFIG_TYPE_BOOL, "audio", "use_dsp", offsetof(struct xemu_settings, use_dsp), { .default_bool = 0  } },
 
 	[XEMU_SETTINGS_DISPLAY_SCALE] =    { CONFIG_TYPE_ENUM, "display", "scale",    offsetof(struct xemu_settings, scale),    { .default_int = DISPLAY_SCALE_SCALE }, display_scale_map },
@@ -194,7 +196,7 @@ int xemu_settings_get_enum(enum xemu_settings_keys key, int *val)
 	return 0;
 }
 
-bool xemu_settings_detect_portable_mode(void)
+static bool xemu_settings_detect_portable_mode(void)
 {
 	bool val = false;
 	char *portable_path = g_strdup_printf("%s%s", SDL_GetBasePath(), filename);

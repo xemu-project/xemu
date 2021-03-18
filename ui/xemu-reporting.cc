@@ -3,7 +3,7 @@
  *
  * Title compatibility and bug report submission.
  *
- * Copyright (C) 2020 Matt Borgerson
+ * Copyright (C) 2020-2021 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -57,7 +57,7 @@ const std::string &CompatibilityReport::GetSerializedReport()
 		{"compat_comments", compat_comments},
 		{"xbe_headers", xbe_headers},
 	};
-	serialized = report.dump(2); 
+	serialized = report.dump(2);
 	return serialized;
 }
 

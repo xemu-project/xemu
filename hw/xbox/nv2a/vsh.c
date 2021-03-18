@@ -405,13 +405,6 @@ static QString* decode_opcode(const uint32_t *shader_token,
         reg_num = 1;
     }
 
-    if (strcmp(opcode, mac_opcode[MAC_ARL]) == 0) {
-        qstring_append_fmt(ret, "  ARL(A0%s);\n", inputs);
-    } else if (mask > 0) {
-        qstring_append_fmt(ret, "  %s(R%d%s%s);\n",
-                           opcode, reg_num, mask_str[mask], inputs);
-    }
-
     /* See if we must add a muxed opcode too: */
     if (vsh_get_field(shader_token, FLD_OUT_MUX) == out_mux
         /* Only if it's not masked away: */
@@ -437,6 +430,13 @@ static QString* decode_opcode(const uint32_t *shader_token,
                 vsh_get_field(shader_token, FLD_OUT_O_MASK)]);
         qstring_append(ret, inputs);
         qstring_append(ret, ");\n");
+    }
+
+    if (strcmp(opcode, mac_opcode[MAC_ARL]) == 0) {
+        qstring_append_fmt(ret, "  ARL(A0%s);\n", inputs);
+    } else if (mask > 0) {
+        qstring_append_fmt(ret, "  %s(R%d%s%s);\n",
+                           opcode, reg_num, mask_str[mask], inputs);
     }
 
     return ret;
@@ -774,7 +774,7 @@ void vsh_translate(uint16_t version,
          * on OS X.
          */
         "  if (clipRange.y != clipRange.x) {\n"
-        "    oPos.z = (oPos.z - 0.5 * (clipRange.x + clipRange.y)) / (0.5 * (clipRange.y - clipRange.x));\n"
+        "    oPos.z = (oPos.z - clipRange.x)/(0.5*(clipRange.y - clipRange.x)) - 1;\n"
         "  }\n"
 
         /* Correct for the perspective divide */

@@ -1,7 +1,7 @@
 /*
  * OS-specific Helpers
  *
- * Copyright (C) 2020 Matt Borgerson
+ * Copyright (C) 2020-2021 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,7 +26,7 @@ extern "C" {
 
 const char *xemu_get_os_info(void);
 void xemu_open_web_browser(const char *url);
-	
+
 #ifdef __cplusplus
 }
 #endif

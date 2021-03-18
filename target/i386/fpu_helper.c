@@ -68,13 +68,208 @@
 #define floatx80_ln2_d make_floatx80(0x3ffe, 0xb17217f7d1cf79abLL)
 #define floatx80_pi_d make_floatx80(0x4000, 0xc90fdaa22168c234LL)
 
+#if defined(XBOX) && defined(__x86_64__)
+#ifdef USE_HARD_FPU
+/*
+ * FIXME: rounding and exceptions
+ */
+
+static inline
+floatx80 pack(floatx80 v, float_status *status)
+{
+    switch (status->floatx80_rounding_precision) {
+    case 32: return (floatx80){ .fval = (float)v.fval };
+    case 64: return (floatx80){ .fval = (double)v.fval };
+    default: return v; /* 80 */
+    }
+}
+
+static inline
+floatx80 floatx80_add__hard(floatx80 a, floatx80 b, float_status *status)
+{
+    return pack((floatx80){ .fval = (a.fval + b.fval) }, status);
+}
+
+static inline
+floatx80 floatx80_sub__hard(floatx80 a, floatx80 b, float_status *status)
+{
+    return pack((floatx80){ .fval = (a.fval - b.fval) }, status);
+}
+
+static inline
+floatx80 floatx80_mul__hard(floatx80 a, floatx80 b, float_status *status)
+{
+    return pack((floatx80){ .fval = (a.fval * b.fval) }, status);
+}
+
+static inline
+floatx80 floatx80_div__hard(floatx80 a, floatx80 b, float_status *status)
+{
+    /* FIXME: Exceptions */
+    return pack((floatx80){ .fval = (a.fval / b.fval) }, status);
+}
+
+static inline
+FloatRelation floatx80_compare__hard(floatx80 a, floatx80 b, float_status *status)
+{
+    if (a.fval < b.fval) return float_relation_less;
+    if (a.fval > b.fval) return float_relation_greater;
+    if (a.fval == b.fval) return float_relation_equal;
+    return float_relation_unordered;
+}
+
+static inline
+floatx80 float32_to_floatx80__hard(float32 val, float_status *status)
+{
+    return (floatx80){ .fval = *(float *)&val };
+}
+
+static inline
+float32 floatx80_to_float32__hard(floatx80 a, float_status *status)
+{
+    union {
+        float32 f32;
+        float f;
+    } x;
+
+    x.f = a.fval;
+    return x.f32;
+}
+
+static inline
+floatx80 float64_to_floatx80__hard(float64 val, float_status *status)
+{
+    return (floatx80){ .fval = *(double *)&val };
+}
+
+static inline
+float64 floatx80_to_float64__hard(floatx80 a, float_status *status)
+{
+    union {
+        float64 f64;
+        double d;
+    } x;
+
+    x.d = a.fval;
+    return x.f64;
+}
+
+static inline
+floatx80 int32_to_floatx80__hard(int32_t a, float_status *status)
+{
+    return (floatx80){ .fval = a };
+}
+
+#define floatx80_add          floatx80_add__hard
+#define floatx80_sub          floatx80_sub__hard
+#define floatx80_mul          floatx80_mul__hard
+#define floatx80_div          floatx80_div__hard
+#define floatx80_compare      floatx80_compare__hard
+#define float32_to_floatx80   float32_to_floatx80__hard
+#define floatx80_to_float32   floatx80_to_float32__hard
+#define float64_to_floatx80   float64_to_floatx80__hard
+#define floatx80_to_float64   floatx80_to_float64__hard
+#define int32_to_floatx80     int32_to_floatx80__hard
+#endif /* USE_HARD_FPU */
+
+#ifdef USE_HARD_FPU
+#define MAP_HELPER_SOFT_HARD(func) helper_ ## func ## __hard
+#else
+#define MAP_HELPER_SOFT_HARD(func) helper_ ## func ## __soft
+#endif
+
+#define helper_flds_FT0       MAP_HELPER_SOFT_HARD(flds_FT0)
+#define helper_fldl_FT0       MAP_HELPER_SOFT_HARD(fldl_FT0)
+#define helper_fildl_FT0      MAP_HELPER_SOFT_HARD(fildl_FT0)
+#define helper_flds_ST0       MAP_HELPER_SOFT_HARD(flds_ST0)
+#define helper_fldl_ST0       MAP_HELPER_SOFT_HARD(fldl_ST0)
+#define helper_fildl_ST0      MAP_HELPER_SOFT_HARD(fildl_ST0)
+#define helper_fildll_ST0     MAP_HELPER_SOFT_HARD(fildll_ST0)
+#define helper_fsts_ST0       MAP_HELPER_SOFT_HARD(fsts_ST0)
+#define helper_fstl_ST0       MAP_HELPER_SOFT_HARD(fstl_ST0)
+#define helper_fist_ST0       MAP_HELPER_SOFT_HARD(fist_ST0)
+#define helper_fistl_ST0      MAP_HELPER_SOFT_HARD(fistl_ST0)
+#define helper_fistll_ST0     MAP_HELPER_SOFT_HARD(fistll_ST0)
+#define helper_fistt_ST0      MAP_HELPER_SOFT_HARD(fistt_ST0)
+#define helper_fisttl_ST0     MAP_HELPER_SOFT_HARD(fisttl_ST0)
+#define helper_fisttll_ST0    MAP_HELPER_SOFT_HARD(fisttll_ST0)
+#define helper_fldt_ST0       MAP_HELPER_SOFT_HARD(fldt_ST0)
+#define helper_fstt_ST0       MAP_HELPER_SOFT_HARD(fstt_ST0)
+#define helper_fpush          MAP_HELPER_SOFT_HARD(fpush)
+#define helper_fpop           MAP_HELPER_SOFT_HARD(fpop)
+#define helper_fdecstp        MAP_HELPER_SOFT_HARD(fdecstp)
+#define helper_fincstp        MAP_HELPER_SOFT_HARD(fincstp)
+#define helper_ffree_STN      MAP_HELPER_SOFT_HARD(ffree_STN)
+#define helper_fmov_ST0_FT0   MAP_HELPER_SOFT_HARD(fmov_ST0_FT0)
+#define helper_fmov_FT0_STN   MAP_HELPER_SOFT_HARD(fmov_FT0_STN)
+#define helper_fmov_ST0_STN   MAP_HELPER_SOFT_HARD(fmov_ST0_STN)
+#define helper_fmov_STN_ST0   MAP_HELPER_SOFT_HARD(fmov_STN_ST0)
+#define helper_fxchg_ST0_STN  MAP_HELPER_SOFT_HARD(fxchg_ST0_STN)
+#define helper_fcom_ST0_FT0   MAP_HELPER_SOFT_HARD(fcom_ST0_FT0)
+#define helper_fucom_ST0_FT0  MAP_HELPER_SOFT_HARD(fucom_ST0_FT0)
+#define helper_fcomi_ST0_FT0  MAP_HELPER_SOFT_HARD(fcomi_ST0_FT0)
+#define helper_fucomi_ST0_FT0 MAP_HELPER_SOFT_HARD(fucomi_ST0_FT0)
+#define helper_fadd_ST0_FT0   MAP_HELPER_SOFT_HARD(fadd_ST0_FT0)
+#define helper_fmul_ST0_FT0   MAP_HELPER_SOFT_HARD(fmul_ST0_FT0)
+#define helper_fsub_ST0_FT0   MAP_HELPER_SOFT_HARD(fsub_ST0_FT0)
+#define helper_fsubr_ST0_FT0  MAP_HELPER_SOFT_HARD(fsubr_ST0_FT0)
+#define helper_fdiv_ST0_FT0   MAP_HELPER_SOFT_HARD(fdiv_ST0_FT0)
+#define helper_fdivr_ST0_FT0  MAP_HELPER_SOFT_HARD(fdivr_ST0_FT0)
+#define helper_fadd_STN_ST0   MAP_HELPER_SOFT_HARD(fadd_STN_ST0)
+#define helper_fmul_STN_ST0   MAP_HELPER_SOFT_HARD(fmul_STN_ST0)
+#define helper_fsub_STN_ST0   MAP_HELPER_SOFT_HARD(fsub_STN_ST0)
+#define helper_fsubr_STN_ST0  MAP_HELPER_SOFT_HARD(fsubr_STN_ST0)
+#define helper_fdiv_STN_ST0   MAP_HELPER_SOFT_HARD(fdiv_STN_ST0)
+#define helper_fdivr_STN_ST0  MAP_HELPER_SOFT_HARD(fdivr_STN_ST0)
+#define helper_fchs_ST0       MAP_HELPER_SOFT_HARD(fchs_ST0)
+#define helper_fabs_ST0       MAP_HELPER_SOFT_HARD(fabs_ST0)
+#define helper_fxam_ST0       MAP_HELPER_SOFT_HARD(fxam_ST0)
+#define helper_fld1_ST0       MAP_HELPER_SOFT_HARD(fld1_ST0)
+#define helper_fldl2t_ST0     MAP_HELPER_SOFT_HARD(fldl2t_ST0)
+#define helper_fldl2e_ST0     MAP_HELPER_SOFT_HARD(fldl2e_ST0)
+#define helper_fldpi_ST0      MAP_HELPER_SOFT_HARD(fldpi_ST0)
+#define helper_fldlg2_ST0     MAP_HELPER_SOFT_HARD(fldlg2_ST0)
+#define helper_fldln2_ST0     MAP_HELPER_SOFT_HARD(fldln2_ST0)
+#define helper_fldz_ST0       MAP_HELPER_SOFT_HARD(fldz_ST0)
+#define helper_fldz_FT0       MAP_HELPER_SOFT_HARD(fldz_FT0)
+#define helper_fnstsw         MAP_HELPER_SOFT_HARD(fnstsw)
+#define helper_fnstcw         MAP_HELPER_SOFT_HARD(fnstcw)
+#define helper_fldcw          MAP_HELPER_SOFT_HARD(fldcw)
+#define helper_fclex          MAP_HELPER_SOFT_HARD(fclex)
+#define helper_fwait          MAP_HELPER_SOFT_HARD(fwait)
+#define helper_fninit         MAP_HELPER_SOFT_HARD(fninit)
+#define helper_fbld_ST0       MAP_HELPER_SOFT_HARD(fbld_ST0)
+#define helper_fbst_ST0       MAP_HELPER_SOFT_HARD(fbst_ST0)
+#define helper_f2xm1          MAP_HELPER_SOFT_HARD(f2xm1)
+#define helper_fyl2x          MAP_HELPER_SOFT_HARD(fyl2x)
+#define helper_fptan          MAP_HELPER_SOFT_HARD(fptan)
+#define helper_fpatan         MAP_HELPER_SOFT_HARD(fpatan)
+#define helper_fxtract        MAP_HELPER_SOFT_HARD(fxtract)
+#define helper_fprem1         MAP_HELPER_SOFT_HARD(fprem1)
+#define helper_fprem          MAP_HELPER_SOFT_HARD(fprem)
+#define helper_fyl2xp1        MAP_HELPER_SOFT_HARD(fyl2xp1)
+#define helper_fsqrt          MAP_HELPER_SOFT_HARD(fsqrt)
+#define helper_fsincos        MAP_HELPER_SOFT_HARD(fsincos)
+#define helper_frndint        MAP_HELPER_SOFT_HARD(frndint)
+#define helper_fscale         MAP_HELPER_SOFT_HARD(fscale)
+#define helper_fsin           MAP_HELPER_SOFT_HARD(fsin)
+#define helper_fcos           MAP_HELPER_SOFT_HARD(fcos)
+#define helper_fstenv         MAP_HELPER_SOFT_HARD(fstenv)
+#define helper_fldenv         MAP_HELPER_SOFT_HARD(fldenv)
+#define helper_fsave          MAP_HELPER_SOFT_HARD(fsave)
+#define helper_frstor         MAP_HELPER_SOFT_HARD(frstor)
+
+#endif /* defined(XBOX) && defined(__x86_64__) */
+
 #if !defined(CONFIG_USER_ONLY)
 static qemu_irq ferr_irq;
 
+#ifndef USE_HARD_FPU
 void x86_register_ferr_irq(qemu_irq irq)
 {
     ferr_irq = irq;
 }
+#endif
 
 static void cpu_clear_ignne(void)
 {
@@ -82,6 +277,7 @@ static void cpu_clear_ignne(void)
     env->hflags2 &= ~HF2_IGNNE_MASK;
 }
 
+#ifndef USE_HARD_FPU
 void cpu_set_ignne(void)
 {
     CPUX86State *env = &X86_CPU(first_cpu)->env;
@@ -95,6 +291,7 @@ void cpu_set_ignne(void)
      */
     qemu_irq_lower(ferr_irq);
 }
+#endif
 #endif
 
 
@@ -154,6 +351,7 @@ static inline floatx80 double_to_floatx80(CPUX86State *env, double a)
     return float64_to_floatx80(u.f64, &env->fp_status);
 }
 
+#ifndef USE_HARD_FPU
 static void fpu_set_exception(CPUX86State *env, int mask)
 {
     env->fpus |= mask;
@@ -161,6 +359,7 @@ static void fpu_set_exception(CPUX86State *env, int mask)
         env->fpus |= FPUS_SE | FPUS_B;
     }
 }
+#endif
 
 static inline uint8_t save_exception_flags(CPUX86State *env)
 {
@@ -171,6 +370,7 @@ static inline uint8_t save_exception_flags(CPUX86State *env)
 
 static void merge_exception_flags(CPUX86State *env, uint8_t old_flags)
 {
+#ifndef USE_HARD_FPU
     uint8_t new_flags = get_float_exception_flags(&env->fp_status);
     float_raise(old_flags, &env->fp_status);
     fpu_set_exception(env,
@@ -180,6 +380,7 @@ static void merge_exception_flags(CPUX86State *env, uint8_t old_flags)
                        (new_flags & float_flag_underflow ? FPUS_UE : 0) |
                        (new_flags & float_flag_inexact ? FPUS_PE : 0) |
                        (new_flags & float_flag_input_denormal ? FPUS_DE : 0)));
+#endif
 }
 
 static inline floatx80 helper_fdiv(CPUX86State *env, floatx80 a, floatx80 b)
@@ -702,6 +903,7 @@ uint32_t helper_fnstcw(CPUX86State *env)
     return env->fpuc;
 }
 
+#ifndef USE_HARD_FPU
 void update_fp_status(CPUX86State *env)
 {
     int rnd_type;
@@ -737,6 +939,7 @@ void update_fp_status(CPUX86State *env)
     }
     set_floatx80_rounding_precision(rnd_type, &env->fp_status);
 }
+#endif
 
 void helper_fldcw(CPUX86State *env, uint32_t val)
 {
@@ -2494,6 +2697,9 @@ void helper_frstor(CPUX86State *env, target_ulong ptr, int data32)
     }
 }
 
+
+#ifndef USE_HARD_FPU
+
 #if defined(CONFIG_USER_ONLY)
 void cpu_x86_fsave(CPUX86State *env, target_ulong ptr, int data32)
 {
@@ -3040,3 +3246,4 @@ void helper_movq(CPUX86State *env, void *d, void *s)
 
 #define SHIFT 1
 #include "ops_sse.h"
+#endif

@@ -347,6 +347,22 @@ int qemu_poll_ns(GPollFD *fds, guint nfds, int64_t timeout)
         return ppoll((struct pollfd *)fds, nfds, &ts, NULL);
     }
 #else
+
+#ifdef XBOX
+    /* Timers are facilitated by this function. Busy-wait if the deadline is
+     * near, to avoid missing deadlines due to costly sleeps.
+     */
+    #define XBOX_BUSYWAIT_THRESHOLD_NS 1250000
+    if ((0 < timeout) && (timeout < XBOX_BUSYWAIT_THRESHOLD_NS)) {
+        int64_t now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+        int64_t end = now + timeout;
+        while (now < end) {
+            now = qemu_clock_get_ns(QEMU_CLOCK_REALTIME);
+        }
+        timeout = 0;
+    }
+#endif
+
     return g_poll(fds, nfds, qemu_timeout_ns_to_ms(timeout));
 #endif
 }

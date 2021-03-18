@@ -5,7 +5,7 @@
  * that gets saved to an INI file. All entries should be accessed through the
  * appropriate getter/setter functions.
  *
- * Copyright (C) 2020 Matt Borgerson
+ * Copyright (C) 2020-2021 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,6 +36,7 @@ enum xemu_settings_keys {
 	XEMU_SETTINGS_SYSTEM_DVD_PATH,
 	XEMU_SETTINGS_SYSTEM_MEMORY,
 	XEMU_SETTINGS_SYSTEM_SHORTANIM,
+	XEMU_SETTINGS_SYSTEM_HARD_FPU,
 	XEMU_SETTINGS_AUDIO_USE_DSP,
 	XEMU_SETTINGS_DISPLAY_SCALE,
 	XEMU_SETTINGS_DISPLAY_UI_SCALE,

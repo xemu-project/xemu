@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2015 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2020 Matt Borgerson
+ * Copyright (c) 2020-2021 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -651,7 +651,7 @@ static QString *generate_vertex_shader(const ShaderState state,
 {
     int i;
     QString *header = qstring_from_str(
-"#version 330\n"
+"#version 400\n"
 "\n"
 "uniform vec2 clipRange;\n"
 "uniform vec2 surfaceSize;\n"
@@ -696,6 +696,12 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
 "vec4 oT2 = vec4(0.0,0.0,0.0,1.0);\n"
 "vec4 oT3 = vec4(0.0,0.0,0.0,1.0);\n"
 "\n"
+"vec4 decompress_11_11_10(int cmp) {\n"
+"    float x = float(bitfieldExtract(cmp, 0,  11)) / 1023.0;\n"
+"    float y = float(bitfieldExtract(cmp, 11, 11)) / 1023.0;\n"
+"    float z = float(bitfieldExtract(cmp, 22, 10)) / 511.0;\n"
+"    return vec4(x, y, z, 1);\n"
+"}\n"
 STRUCT_VERTEX_DATA);
 
     qstring_append_fmt(header, "noperspective out VertexData %c_vtx;\n",
@@ -703,12 +709,25 @@ STRUCT_VERTEX_DATA);
     qstring_append_fmt(header, "#define vtx %c_vtx\n",
                        vtx_prefix);
     qstring_append(header, "\n");
-    for(i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
-        qstring_append_fmt(header, "in vec4 v%d;\n", i);
+    for (i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
+        if (state.compressed_attrs & (1 << i)) {
+            qstring_append_fmt(header,
+                               "layout(location = %d) in int v%d_cmp;\n", i, i);
+        } else {
+            qstring_append_fmt(header, "layout(location = %d) in vec4 v%d;\n",
+                               i, i);
+        }
     }
     qstring_append(header, "\n");
 
     QString *body = qstring_from_str("void main() {\n");
+
+    for (i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
+        if (state.compressed_attrs & (1 << i)) {
+            qstring_append_fmt(
+                body, "vec4 v%d = decompress_11_11_10(v%d_cmp);\n", i, i);
+        }
+    }
 
     if (state.fixed_function) {
         generate_fixed_function(state, header, body);
@@ -864,7 +883,6 @@ ShaderBinding* generate_shaders(const ShaderState state)
     GLuint program = glCreateProgram();
 
     /* Create an option geometry shader and find primitive type */
-
     GLenum gl_primitive_mode;
     QString* geometry_shader_code =
         generate_geometry_shader(state.polygon_front_mode,
@@ -874,21 +892,17 @@ ShaderBinding* generate_shaders(const ShaderState state)
     if (geometry_shader_code) {
         const char* geometry_shader_code_str =
              qstring_get_str(geometry_shader_code);
-
         GLuint geometry_shader = create_gl_shader(GL_GEOMETRY_SHADER,
                                                   geometry_shader_code_str,
                                                   "geometry shader");
         glAttachShader(program, geometry_shader);
-
         qobject_unref(geometry_shader_code);
-
         vtx_prefix = 'v';
     } else {
         vtx_prefix = 'g';
     }
 
     /* create the vertex shader */
-
     QString *vertex_shader_code = generate_vertex_shader(state, vtx_prefix);
     GLuint vertex_shader = create_gl_shader(GL_VERTEX_SHADER,
                                             qstring_get_str(vertex_shader_code),
@@ -896,27 +910,14 @@ ShaderBinding* generate_shaders(const ShaderState state)
     glAttachShader(program, vertex_shader);
     qobject_unref(vertex_shader_code);
 
-
-    /* Bind attributes for vertices */
-    for(i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
-        snprintf(tmp, sizeof(tmp), "v%d", i);
-        glBindAttribLocation(program, i, tmp);
-    }
-
-
     /* generate a fragment shader from register combiners */
-
     QString *fragment_shader_code = psh_translate(state.psh);
-
     const char *fragment_shader_code_str = qstring_get_str(fragment_shader_code);
-
     GLuint fragment_shader = create_gl_shader(GL_FRAGMENT_SHADER,
                                               fragment_shader_code_str,
                                               "fragment shader");
     glAttachShader(program, fragment_shader);
-
     qobject_unref(fragment_shader_code);
-
 
     /* link the program */
     glLinkProgram(program);

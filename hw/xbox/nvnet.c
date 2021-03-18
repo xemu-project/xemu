@@ -2,7 +2,7 @@
  * QEMU nForce Ethernet Controller implementation
  *
  * Copyright (c) 2013 espes
- * Copyright (c) 2015-2020 Matt Borgerson
+ * Copyright (c) 2015-2021 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -1116,7 +1116,7 @@ static void nvnet_class_init(ObjectClass *klass, void *data)
 
     k->vendor_id = PCI_VENDOR_ID_NVIDIA;
     k->device_id = PCI_DEVICE_ID_NVIDIA_NVENET_1;
-    k->revision = 210;
+    k->revision = 177;
     k->class_id = PCI_CLASS_NETWORK_ETHERNET;
     k->realize = nvnet_realize;
     k->exit = nvnet_uninit;

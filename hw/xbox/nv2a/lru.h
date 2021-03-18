@@ -29,7 +29,7 @@
 #include <stdint.h>
 #include "qemu/queue.h"
 
-#define LRU_NUM_BINS (1<<8)
+#define LRU_NUM_BINS (1<<16)
 
 typedef struct LruNode {
 	QTAILQ_ENTRY(LruNode) next_global;

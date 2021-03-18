@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2013 espes
  * Copyright (c) 2017 Jannik Vogel
- * Copyright (c) 2018-2020 Matt Borgerson
+ * Copyright (c) 2018-2021 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -214,6 +214,7 @@ static void update_input(USBXIDState *s)
 
     ControllerState *state = xemu_input_get_bound(s->device_index);
     assert(state);
+    xemu_input_update_controller(state);
 
     const int button_map_analog[6][2] = {
         { GAMEPAD_A,     CONTROLLER_BUTTON_A     },

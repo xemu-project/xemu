@@ -6,7 +6,7 @@
  * Xbox gamepad and support automatic binding, hotplugging, and removal at
  * runtime.
  *
- * Copyright (C) 2020 Matt Borgerson
+ * Copyright (C) 2020-2021 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -66,6 +66,9 @@ enum controller_input_device_type {
 typedef struct ControllerState {
     QTAILQ_ENTRY(ControllerState) entry;
 
+    int64_t last_input_updated_ts;
+    int64_t last_haptic_updated_ts;
+
     // Input state
     uint16_t buttons;
     int16_t  axis[CONTROLLER_AXIS__COUNT];
@@ -102,6 +105,7 @@ extern "C" {
 void xemu_input_init(void);
 void xemu_input_process_sdl_events(const SDL_Event *event); // SDL_CONTROLLERDEVICEADDED, SDL_CONTROLLERDEVICEREMOVED
 void xemu_input_update_controllers(void);
+void xemu_input_update_controller(ControllerState *state);
 void xemu_input_update_sdl_kbd_controller_state(ControllerState *state);
 void xemu_input_update_sdl_controller_state(ControllerState *state);
 void xemu_input_update_rumble(ControllerState *state);

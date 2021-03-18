@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2012 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2018-2020 Matt Borgerson
+ * Copyright (c) 2018-2021 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -59,12 +59,6 @@
         (v) |= ((__val) << ctz32(__mask)) & (__mask);     \
     })
 
-#define CASE_4(v, step)      \
-    case (v):                \
-    case ((v) + (step)):     \
-    case ((v) + (step) * 2): \
-    case ((v) + (step) * 3)
-
 #define NV2A_DEVICE(obj) OBJECT_CHECK(NV2AState, (obj), "nv2a")
 
 enum FIFOEngine {
@@ -96,10 +90,6 @@ typedef struct VertexAttribute {
     uint32_t stride;
 
     bool needs_conversion;
-    uint8_t *converted_buffer;
-    unsigned int converted_elements;
-    unsigned int converted_size;
-    unsigned int converted_count;
 
     float *inline_buffer;
     bool inline_buffer_populated;
@@ -200,6 +190,7 @@ typedef struct VertexKey {
     GLuint gl_type;
     GLboolean gl_normalize;
     size_t stride;
+    hwaddr addr;
 } VertexKey;
 
 typedef struct VertexLruNode {
@@ -248,6 +239,10 @@ typedef struct PGRAPHState {
     struct disp_rndr {
         GLuint fbo, vao, vbo, prog;
         GLuint tex_loc;
+        GLuint pvideo_tex;
+        GLint pvideo_enable_loc;
+        GLint pvideo_tex_loc;
+        GLint pvideo_pos_loc;
     } disp_rndr;
 
     /* subchannels state we're not sure the location of... */
@@ -308,6 +303,7 @@ typedef struct PGRAPHState {
     bool enable_vertex_program_write;
 
     uint32_t program_data[NV2A_MAX_TRANSFORM_PROGRAM_LENGTH][VSH_TOKEN_SIZE];
+    bool program_data_dirty;
 
     uint32_t vsh_constants[NV2A_VERTEXSHADER_CONSTANTS][4];
     bool vsh_constants_dirty[NV2A_VERTEXSHADER_CONSTANTS];
@@ -327,9 +323,10 @@ typedef struct PGRAPHState {
     float light_local_attenuation[NV2A_MAX_LIGHTS][3];
 
     VertexAttribute vertex_attributes[NV2A_VERTEXSHADER_ATTRIBUTES];
+    uint16_t compressed_attrs;
 
-    Lru vertex_cache;
-    struct VertexLruNode *vertex_cache_entries;
+    Lru element_cache;
+    struct VertexLruNode *element_cache_entries;
 
     unsigned int inline_array_length;
     uint32_t inline_array[NV2A_MAX_BATCH_LENGTH];
@@ -341,12 +338,13 @@ typedef struct PGRAPHState {
     unsigned int inline_buffer_length;
 
     unsigned int draw_arrays_length;
+    unsigned int draw_arrays_min_start;
     unsigned int draw_arrays_max_count;
     /* FIXME: Unknown size, possibly endless, 1000 will do for now */
     GLint gl_draw_arrays_start[1000];
     GLsizei gl_draw_arrays_count[1000];
+    bool draw_arrays_prevent_connect;
 
-    GLuint gl_element_buffer;
     GLuint gl_memory_buffer;
     GLuint gl_vertex_array;
 
@@ -354,7 +352,6 @@ typedef struct PGRAPHState {
 
     bool waiting_for_nop;
     bool waiting_for_flip;
-    bool waiting_for_fifo_access;
     bool waiting_for_context_switch;
     bool flush_pending;
     bool gl_sync_pending;
@@ -492,9 +489,9 @@ void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len);
 void pgraph_init(NV2AState *d);
 void pgraph_destroy(PGRAPHState *pg);
 void pgraph_context_switch(NV2AState *d, unsigned int channel_id);
-int pgraph_method(NV2AState *d, unsigned int subchannel,
-                   unsigned int method, uint32_t parameter,
-                   uint32_t *parameters, size_t num_words_available);
+int pgraph_method(NV2AState *d, unsigned int subchannel, unsigned int method,
+                  uint32_t parameter, uint32_t *parameters,
+                  size_t num_words_available, size_t max_lookahead_words);
 void pgraph_gl_sync(NV2AState *d);
 void pgraph_process_pending_downloads(NV2AState *d);
 
