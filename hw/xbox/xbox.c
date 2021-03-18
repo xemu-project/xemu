@@ -432,8 +432,8 @@ static inline void xbox_machine_initfn(Object *obj)
     object_property_add_str(obj, "avpack", machine_get_avpack,
                             machine_set_avpack);
     object_property_set_description(obj, "avpack",
-                                    "Xbox video connector: composite (default), scart, svideo, vga, rfu, hdtv, none");
-    object_property_set_str(obj, "avpack", "composite", &error_fatal);
+                                    "Xbox video connector: composite, scart, svideo, vga, rfu, hdtv (default), none");
+    object_property_set_str(obj, "avpack", "hdtv", &error_fatal);
 
     object_property_add_bool(obj, "short-animation",
                              machine_get_short_animation,
