@@ -721,11 +721,21 @@ public:
         ImGui::Separator();
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
 
+        if (ImGui::Button("Help", ImVec2(120*g_ui_scale, 0))) {
+            xemu_open_web_browser("https://github.com/mborgerson/xemu/wiki#getting-started");
+        }
+        ImGui::SameLine();
+
+        const char *msg = NULL;
         if (dirty) {
-            ImGui::Text("Warning: Unsaved changes!");
-            ImGui::SameLine();
+            msg = "Warning: Unsaved changes!";
         } else if (pending_restart) {
-            ImGui::Text("Restart to apply updates");
+            msg = "Restart to apply updates";
+        }
+
+        if (msg) {
+            ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2.0);
+            ImGui::Text(msg);
             ImGui::SameLine();
         }
 
@@ -913,8 +923,9 @@ public:
         ImGui::Separator();
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
 
-        ImGui::Text("Status: %sEnabled", is_enabled ? "" : "Not ");
-        ImGui::SameLine();
+        if (ImGui::Button("Help", ImVec2(120*g_ui_scale, 0))) {
+                xemu_open_web_browser("https://github.com/mborgerson/xemu/wiki/Networking");
+        }
 
         ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*g_ui_scale);
         ImGui::SetItemDefaultFocus();
@@ -1746,7 +1757,7 @@ static void ShowMainMenu()
                 xemu_settings_save();
             }
             ImGui::SameLine(); HelpMarker("Controls how the rendered content should be scaled into the window");
-            if (ImGui::MenuItem("Fullscreen", NULL, xemu_is_fullscreen(), true)) {
+            if (ImGui::MenuItem("Fullscreen", SHORTCUT_MENU_TEXT(Alt+F), xemu_is_fullscreen(), true)) {
                 xemu_toggle_fullscreen();
             }
 
@@ -1764,6 +1775,11 @@ static void ShowMainMenu()
         if (ImGui::BeginMenu("Help"))
         {
             ImGui::MenuItem("Report Compatibility", NULL, &compatibility_reporter_window.is_open);
+            if (ImGui::MenuItem("Help", NULL))
+            {
+                xemu_open_web_browser("https://github.com/mborgerson/xemu/wiki");
+            }
+
             ImGui::Separator();
             ImGui::MenuItem("About", NULL, &about_window.is_open);
             ImGui::EndMenu();
