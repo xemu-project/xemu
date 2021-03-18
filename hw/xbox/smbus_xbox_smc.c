@@ -230,7 +230,7 @@ bool xbox_smc_avpack_to_reg(const char *avpack, uint8_t *value)
 
 void xbox_smc_append_avpack_hint(Error **errp)
 {
-    error_append_hint(errp, "Valid options are: composite (default), scart, svideo, vga, rfu, hdtv, none\n");
+    error_append_hint(errp, "Valid options are: composite, scart, svideo, vga, rfu, hdtv (default), none\n");
 }
 
 static void smbus_smc_realize(DeviceState *dev, Error **errp)
