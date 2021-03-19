@@ -1,5 +1,13 @@
 #include <winver.h>
+#if 0
 #include "config-host.h"
+#endif
+
+/* FIXME: Automate */
+#define QEMU_VERSION "0.5.1"
+#define QEMU_VERSION_MAJOR 0
+#define QEMU_VERSION_MINOR 5
+#define QEMU_VERSION_MICRO 1
 
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION QEMU_VERSION_MAJOR,QEMU_VERSION_MINOR,QEMU_VERSION_MICRO,0
@@ -13,12 +21,12 @@ FILESUBTYPE VFT2_UNKNOWN
   {
     BLOCK "040904E4"
     {
-      VALUE "CompanyName", "https://www.qemu.org"
-      VALUE "FileDescription", "QEMU machine emulators and tools"
+      VALUE "CompanyName", "https://xemu.app"
+      VALUE "FileDescription", "xemu: Original Xbox Emulator"
       VALUE "FileVersion", QEMU_VERSION
       VALUE "LegalCopyright", "Copyright various authors. Released under the GNU General Public License."
       VALUE "LegalTrademarks", "QEMU is a trademark of Fabrice Bellard."
-      VALUE "ProductName", "QEMU"
+      VALUE "ProductName", "xemu"
     }
   }
   BLOCK "VarFileInfo"
@@ -27,4 +35,4 @@ FILESUBTYPE VFT2_UNKNOWN
   }
 }
 
-IDI_ICON1 ICON "pc-bios/qemu-nsis.ico"
+IDI_ICON1 ICON "ui/icons/xemu-icon.ico"
