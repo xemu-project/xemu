@@ -162,13 +162,13 @@ static void xbox_flash_init(MemoryRegion *rom_memory)
         assert(rc == bootrom_size);
         close(fd);
         g_free(filename);
-
-        MemoryRegion *mcpx = g_malloc(sizeof(MemoryRegion));
-        memory_region_init_ram(mcpx, NULL, "xbox.mcpx", bios_size,
-                               &error_fatal);
-        rom_add_blob_fixed("xbox.mcpx", bios_data, bios_size, -bios_size);
-        memory_region_add_subregion_overlap(rom_memory, -bios_size, mcpx, 1);
     }
+
+    // Leave last BIOS image overlay writeable to satisfy cache dependency
+    MemoryRegion *mcpx = g_malloc(sizeof(MemoryRegion));
+    memory_region_init_ram(mcpx, NULL, "xbox.mcpx", bios_size, &error_fatal);
+    rom_add_blob_fixed("xbox.mcpx", bios_data, bios_size, -bios_size);
+    memory_region_add_subregion_overlap(rom_memory, -bios_size, mcpx, 1);
 
     g_free(bios_data); /* duplicated by `rom_add_blob_fixed` */
 }
