@@ -1740,7 +1740,7 @@ static void ShowMainMenu()
                 xemu_settings_save();
                 g_trigger_style_update = true;
             }
-
+            ImGui::SameLine(); HelpMarker("Controls how the UI(Menu) is scaled. (Not Res Scaling)");
             if (ImGui::Combo("Scaling Mode", &scaling_mode, "Center\0Scale\0Stretch\0")) {
                 xemu_settings_set_enum(XEMU_SETTINGS_DISPLAY_SCALE, scaling_mode);
                 xemu_settings_save();
