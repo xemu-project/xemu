@@ -1734,7 +1734,7 @@ static void ShowMainMenu()
             int ui_scale_combo = g_ui_scale - 1.0;
             if (ui_scale_combo < 0) ui_scale_combo = 0;
             if (ui_scale_combo > 1) ui_scale_combo = 1;
-            if (ImGui::Combo("UI Scale", &ui_scale_combo, "1x\0" "2x\0")) {
+            if (ImGui::Combo("UI Scale", &ui_scale_combo, "1x\0" "2x\0" "3x\0" "4x\0")) {
                 g_ui_scale = ui_scale_combo + 1;
                 xemu_settings_set_int(XEMU_SETTINGS_DISPLAY_UI_SCALE, g_ui_scale);
                 xemu_settings_save();
