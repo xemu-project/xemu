@@ -1012,7 +1012,7 @@ public:
             "This title crashes very soon after launching, or displays nothing at all.",
             "This title displays an intro sequence, but fails to make it to gameplay.",
             "This title starts, but may crash or have significant issues.",
-            "This title is playable from start to finish, with only minor issues.",
+            "This title is playable, but may have minor issues.",
             "This title is playable from start to finish with no noticable issues."
         };
 
