@@ -10,7 +10,7 @@
 #define QEMU_KVM_INT_H
 
 #include "exec/memory.h"
-#include "sysemu/accel.h"
+#include "qemu/accel.h"
 #include "sysemu/kvm.h"
 
 typedef struct KVMSlot
@@ -32,11 +32,6 @@ typedef struct KVMMemoryListener {
     KVMSlot *slots;
     int as_id;
 } KVMMemoryListener;
-
-#define TYPE_KVM_ACCEL ACCEL_CLASS_NAME("kvm")
-
-#define KVM_STATE(obj) \
-    OBJECT_CHECK(KVMState, (obj), TYPE_KVM_ACCEL)
 
 void kvm_memory_listener_register(KVMState *s, KVMMemoryListener *kml,
                                   AddressSpace *as, int as_id);

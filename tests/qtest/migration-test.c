@@ -12,7 +12,7 @@
 
 #include "qemu/osdep.h"
 
-#include "libqtest.h"
+#include "libqos/libqtest.h"
 #include "qapi/error.h"
 #include "qapi/qmp/qdict.h"
 #include "qemu/module.h"
@@ -25,7 +25,7 @@
 #include "qapi/qobject-output-visitor.h"
 
 #include "migration-helpers.h"
-#include "migration/migration-test.h"
+#include "tests/migration/migration-test.h"
 
 /* TODO actually test the results and get rid of this */
 #define qtest_qmp_discard_response(...) qobject_unref(qtest_qmp(__VA_ARGS__))
@@ -33,6 +33,9 @@
 unsigned start_address;
 unsigned end_address;
 static bool uffd_feature_thread_id;
+
+/* A downtime where the test really should converge */
+#define CONVERGE_DOWNTIME 1000
 
 #if defined(__linux__)
 #include <sys/syscall.h>
@@ -461,6 +464,10 @@ static void migrate_postcopy_start(QTestState *from, QTestState *to)
 }
 
 typedef struct {
+    /*
+     * QTEST_LOG=1 may override this.  When QTEST_LOG=1, we always dump errors
+     * unconditionally, because it means the user would like to be verbose.
+     */
     bool hide_stderr;
     bool use_shmem;
     /* only launch the target process */
@@ -554,7 +561,7 @@ static int test_migrate_start(QTestState **from, QTestState **to,
 
     g_free(bootpath);
 
-    if (args->hide_stderr) {
+    if (!getenv("QTEST_LOG") && args->hide_stderr) {
         ignore_stderr = "2>/dev/null";
     } else {
         ignore_stderr = "";
@@ -649,53 +656,6 @@ static void test_migrate_end(QTestState *from, QTestState *to, bool test_dest)
     cleanup("migsocket");
     cleanup("src_serial");
     cleanup("dest_serial");
-}
-
-static void deprecated_set_downtime(QTestState *who, const double value)
-{
-    QDict *rsp;
-
-    rsp = qtest_qmp(who,
-                    "{ 'execute': 'migrate_set_downtime',"
-                    " 'arguments': { 'value': %f } }", value);
-    g_assert(qdict_haskey(rsp, "return"));
-    qobject_unref(rsp);
-    migrate_check_parameter_int(who, "downtime-limit", value * 1000);
-}
-
-static void deprecated_set_speed(QTestState *who, long long value)
-{
-    QDict *rsp;
-
-    rsp = qtest_qmp(who, "{ 'execute': 'migrate_set_speed',"
-                          "'arguments': { 'value': %lld } }", value);
-    g_assert(qdict_haskey(rsp, "return"));
-    qobject_unref(rsp);
-    migrate_check_parameter_int(who, "max-bandwidth", value);
-}
-
-static void deprecated_set_cache_size(QTestState *who, long long value)
-{
-    QDict *rsp;
-
-    rsp = qtest_qmp(who, "{ 'execute': 'migrate-set-cache-size',"
-                         "'arguments': { 'value': %lld } }", value);
-    g_assert(qdict_haskey(rsp, "return"));
-    qobject_unref(rsp);
-    migrate_check_parameter_int(who, "xbzrle-cache-size", value);
-}
-
-static void test_deprecated(void)
-{
-    QTestState *from;
-
-    from = qtest_init("-machine none");
-
-    deprecated_set_downtime(from, 0.12345);
-    deprecated_set_speed(from, 12345);
-    deprecated_set_cache_size(from, 4096);
-
-    qtest_quit(from);
 }
 
 static int migrate_postcopy_prepare(QTestState **from_ptr,
@@ -864,8 +824,7 @@ static void test_precopy_unix(void)
 
     wait_for_migration_pass(from);
 
-    /* 300 ms should converge */
-    migrate_set_parameter_int(from, "downtime-limit", 300);
+    migrate_set_parameter_int(from, "downtime-limit", CONVERGE_DOWNTIME);
 
     if (!got_stop) {
         qtest_qmp_eventwait(from, "STOP");
@@ -947,9 +906,11 @@ static void test_xbzrle(const char *uri)
     migrate_qmp(from, uri, "{}");
 
     wait_for_migration_pass(from);
+    /* Make sure we have 2 passes, so the xbzrle cache gets a workout */
+    wait_for_migration_pass(from);
 
-    /* 300ms should converge */
-    migrate_set_parameter_int(from, "downtime-limit", 300);
+    /* 1000ms should converge */
+    migrate_set_parameter_int(from, "downtime-limit", 1000);
 
     if (!got_stop) {
         qtest_qmp_eventwait(from, "STOP");
@@ -999,8 +960,7 @@ static void test_precopy_tcp(void)
 
     wait_for_migration_pass(from);
 
-    /* 300ms should converge */
-    migrate_set_parameter_int(from, "downtime-limit", 300);
+    migrate_set_parameter_int(from, "downtime-limit", CONVERGE_DOWNTIME);
 
     if (!got_stop) {
         qtest_qmp_eventwait(from, "STOP");
@@ -1068,8 +1028,7 @@ static void test_migrate_fd_proto(void)
 
     wait_for_migration_pass(from);
 
-    /* 300ms should converge */
-    migrate_set_parameter_int(from, "downtime-limit", 300);
+    migrate_set_parameter_int(from, "downtime-limit", CONVERGE_DOWNTIME);
 
     if (!got_stop) {
         qtest_qmp_eventwait(from, "STOP");
@@ -1304,8 +1263,7 @@ static void test_multifd_tcp(const char *method)
 
     wait_for_migration_pass(from);
 
-    /* 300ms it should converge */
-    migrate_set_parameter_int(from, "downtime-limit", 300);
+    migrate_set_parameter_int(from, "downtime-limit", CONVERGE_DOWNTIME);
 
     if (!got_stop) {
         qtest_qmp_eventwait(from, "STOP");
@@ -1481,7 +1439,6 @@ int main(int argc, char **argv)
 
     qtest_add_func("/migration/postcopy/unix", test_postcopy);
     qtest_add_func("/migration/postcopy/recovery", test_postcopy_recovery);
-    qtest_add_func("/migration/deprecated", test_deprecated);
     qtest_add_func("/migration/bad_dest", test_baddest);
     qtest_add_func("/migration/precopy/unix", test_precopy_unix);
     qtest_add_func("/migration/precopy/tcp", test_precopy_tcp);

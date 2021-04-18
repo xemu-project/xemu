@@ -22,20 +22,17 @@
 #include "sysemu/vhost-user-backend.h"
 
 #include "standard-headers/linux/virtio_gpu.h"
+#include "qom/object.h"
 
 #define TYPE_VIRTIO_GPU_BASE "virtio-gpu-base"
-#define VIRTIO_GPU_BASE(obj)                                                \
-    OBJECT_CHECK(VirtIOGPUBase, (obj), TYPE_VIRTIO_GPU_BASE)
-#define VIRTIO_GPU_BASE_GET_CLASS(obj)                                      \
-    OBJECT_GET_CLASS(VirtIOGPUBaseClass, obj, TYPE_VIRTIO_GPU_BASE)
-#define VIRTIO_GPU_BASE_CLASS(klass)                                        \
-    OBJECT_CLASS_CHECK(VirtIOGPUBaseClass, klass, TYPE_VIRTIO_GPU_BASE)
+OBJECT_DECLARE_TYPE(VirtIOGPUBase, VirtIOGPUBaseClass,
+                    VIRTIO_GPU_BASE)
 
 #define TYPE_VIRTIO_GPU "virtio-gpu-device"
-#define VIRTIO_GPU(obj)                                        \
-        OBJECT_CHECK(VirtIOGPU, (obj), TYPE_VIRTIO_GPU)
+OBJECT_DECLARE_SIMPLE_TYPE(VirtIOGPU, VIRTIO_GPU)
 
 #define TYPE_VHOST_USER_GPU "vhost-user-gpu"
+OBJECT_DECLARE_SIMPLE_TYPE(VhostUserGPU, VHOST_USER_GPU)
 
 #define VIRTIO_ID_GPU 16
 
@@ -65,6 +62,7 @@ struct virtio_gpu_scanout {
 };
 
 struct virtio_gpu_requested_state {
+    uint16_t width_mm, height_mm;
     uint32_t width, height;
     int x, y;
 };
@@ -73,6 +71,7 @@ enum virtio_gpu_base_conf_flags {
     VIRTIO_GPU_FLAG_VIRGL_ENABLED = 1,
     VIRTIO_GPU_FLAG_STATS_ENABLED,
     VIRTIO_GPU_FLAG_EDID_ENABLED,
+    VIRTIO_GPU_FLAG_DMABUF_ENABLED,
 };
 
 #define virtio_gpu_virgl_enabled(_cfg) \
@@ -81,6 +80,8 @@ enum virtio_gpu_base_conf_flags {
     (_cfg.flags & (1 << VIRTIO_GPU_FLAG_STATS_ENABLED))
 #define virtio_gpu_edid_enabled(_cfg) \
     (_cfg.flags & (1 << VIRTIO_GPU_FLAG_EDID_ENABLED))
+#define virtio_gpu_dmabuf_enabled(_cfg) \
+    (_cfg.flags & (1 << VIRTIO_GPU_FLAG_DMABUF_ENABLED))
 
 struct virtio_gpu_base_conf {
     uint32_t max_outputs;
@@ -98,13 +99,14 @@ struct virtio_gpu_ctrl_command {
     QTAILQ_ENTRY(virtio_gpu_ctrl_command) next;
 };
 
-typedef struct VirtIOGPUBase {
+struct VirtIOGPUBase {
     VirtIODevice parent_obj;
 
     Error *migration_blocker;
 
     struct virtio_gpu_base_conf conf;
     struct virtio_gpu_config virtio_config;
+    const GraphicHwOps *hw_ops;
 
     bool use_virgl_renderer;
     int renderer_blocked;
@@ -114,13 +116,13 @@ typedef struct VirtIOGPUBase {
 
     int enabled_output_bitmask;
     struct virtio_gpu_requested_state req_state[VIRTIO_GPU_MAX_SCANOUTS];
-} VirtIOGPUBase;
+};
 
-typedef struct VirtIOGPUBaseClass {
+struct VirtIOGPUBaseClass {
     VirtioDeviceClass parent;
 
-    void (*gl_unblock)(VirtIOGPUBase *g);
-} VirtIOGPUBaseClass;
+    void (*gl_flushed)(VirtIOGPUBase *g);
+};
 
 #define VIRTIO_GPU_BASE_PROPERTIES(_state, _conf)                       \
     DEFINE_PROP_UINT32("max_outputs", _state, _conf.max_outputs, 1),    \
@@ -129,7 +131,7 @@ typedef struct VirtIOGPUBaseClass {
     DEFINE_PROP_UINT32("xres", _state, _conf.xres, 1024), \
     DEFINE_PROP_UINT32("yres", _state, _conf.yres, 768)
 
-typedef struct VirtIOGPU {
+struct VirtIOGPU {
     VirtIOGPUBase parent_obj;
 
     uint64_t conf_max_hostmem;
@@ -146,6 +148,7 @@ typedef struct VirtIOGPU {
 
     uint64_t hostmem;
 
+    bool processing_cmdq;
     bool renderer_inited;
     bool renderer_reset;
     QEMUTimer *fence_poll;
@@ -158,9 +161,9 @@ typedef struct VirtIOGPU {
         uint32_t req_3d;
         uint32_t bytes_3d;
     } stats;
-} VirtIOGPU;
+};
 
-typedef struct VhostUserGPU {
+struct VhostUserGPU {
     VirtIOGPUBase parent_obj;
 
     VhostUserBackend *vhost;
@@ -168,9 +171,7 @@ typedef struct VhostUserGPU {
     CharBackend vhost_chr;
     QemuDmaBuf dmabuf[VIRTIO_GPU_MAX_SCANOUTS];
     bool backend_blocked;
-} VhostUserGPU;
-
-extern const GraphicHwOps virtio_gpu_ops;
+};
 
 #define VIRTIO_GPU_FILL_CMD(out) do {                                   \
         size_t s;                                                       \

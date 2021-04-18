@@ -30,6 +30,7 @@
 #include "qapi/error.h"
 #include "qapi/visitor.h"
 #include "qemu/module.h"
+#include "qom/object.h"
 
 /* Manufacturer / Device ID's */
 #define TMP421_MANUFACTURER_ID          0x55
@@ -48,7 +49,7 @@ static const DeviceInfo devices[] = {
     { TMP423_DEVICE_ID, "tmp423" },
 };
 
-typedef struct TMP421State {
+struct TMP421State {
     /*< private >*/
     I2CSlave i2c;
     /*< public >*/
@@ -63,20 +64,16 @@ typedef struct TMP421State {
     uint8_t buf[2];
     uint8_t pointer;
 
-} TMP421State;
+};
 
-typedef struct TMP421Class {
+struct TMP421Class {
     I2CSlaveClass parent_class;
     DeviceInfo *dev;
-} TMP421Class;
+};
 
 #define TYPE_TMP421 "tmp421-generic"
-#define TMP421(obj) OBJECT_CHECK(TMP421State, (obj), TYPE_TMP421)
+OBJECT_DECLARE_TYPE(TMP421State, TMP421Class, TMP421)
 
-#define TMP421_CLASS(klass) \
-     OBJECT_CLASS_CHECK(TMP421Class, (klass), TYPE_TMP421)
-#define TMP421_GET_CLASS(obj) \
-     OBJECT_GET_CLASS(TMP421Class, (obj), TYPE_TMP421)
 
 /* the TMP421 registers */
 #define TMP421_STATUS_REG               0x08
@@ -340,22 +337,6 @@ static void tmp421_realize(DeviceState *dev, Error **errp)
     tmp421_reset(&s->i2c);
 }
 
-static void tmp421_initfn(Object *obj)
-{
-    object_property_add(obj, "temperature0", "int",
-                        tmp421_get_temperature,
-                        tmp421_set_temperature, NULL, NULL);
-    object_property_add(obj, "temperature1", "int",
-                        tmp421_get_temperature,
-                        tmp421_set_temperature, NULL, NULL);
-    object_property_add(obj, "temperature2", "int",
-                        tmp421_get_temperature,
-                        tmp421_set_temperature, NULL, NULL);
-    object_property_add(obj, "temperature3", "int",
-                        tmp421_get_temperature,
-                        tmp421_set_temperature, NULL, NULL);
-}
-
 static void tmp421_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -368,6 +349,19 @@ static void tmp421_class_init(ObjectClass *klass, void *data)
     k->send = tmp421_tx;
     dc->vmsd = &vmstate_tmp421;
     sc->dev = (DeviceInfo *) data;
+
+    object_class_property_add(klass, "temperature0", "int",
+                              tmp421_get_temperature,
+                              tmp421_set_temperature, NULL, NULL);
+    object_class_property_add(klass, "temperature1", "int",
+                              tmp421_get_temperature,
+                              tmp421_set_temperature, NULL, NULL);
+    object_class_property_add(klass, "temperature2", "int",
+                              tmp421_get_temperature,
+                              tmp421_set_temperature, NULL, NULL);
+    object_class_property_add(klass, "temperature3", "int",
+                              tmp421_get_temperature,
+                              tmp421_set_temperature, NULL, NULL);
 }
 
 static const TypeInfo tmp421_info = {
@@ -375,7 +369,6 @@ static const TypeInfo tmp421_info = {
     .parent        = TYPE_I2C_SLAVE,
     .instance_size = sizeof(TMP421State),
     .class_size    = sizeof(TMP421Class),
-    .instance_init = tmp421_initfn,
     .abstract      = true,
 };
 

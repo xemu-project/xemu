@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -234,25 +234,20 @@ target_ulong helper_clcs(CPUPPCState *env, uint32_t arg)
     case 0x0CUL:
         /* Instruction cache line size */
         return env->icache_line_size;
-        break;
     case 0x0DUL:
         /* Data cache line size */
         return env->dcache_line_size;
-        break;
     case 0x0EUL:
         /* Minimum cache line size */
         return (env->icache_line_size < env->dcache_line_size) ?
             env->icache_line_size : env->dcache_line_size;
-        break;
     case 0x0FUL:
         /* Maximum cache line size */
         return (env->icache_line_size > env->dcache_line_size) ?
             env->icache_line_size : env->dcache_line_size;
-        break;
     default:
         /* Undefined */
         return 0;
-        break;
     }
 }
 

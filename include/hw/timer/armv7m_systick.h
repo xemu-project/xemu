@@ -13,12 +13,14 @@
 #define HW_TIMER_ARMV7M_SYSTICK_H
 
 #include "hw/sysbus.h"
+#include "qom/object.h"
+#include "hw/ptimer.h"
 
 #define TYPE_SYSTICK "armv7m_systick"
 
-#define SYSTICK(obj) OBJECT_CHECK(SysTickState, (obj), TYPE_SYSTICK)
+OBJECT_DECLARE_SIMPLE_TYPE(SysTickState, SYSTICK)
 
-typedef struct SysTickState {
+struct SysTickState {
     /*< private >*/
     SysBusDevice parent_obj;
     /*< public >*/
@@ -26,10 +28,10 @@ typedef struct SysTickState {
     uint32_t control;
     uint32_t reload;
     int64_t tick;
-    QEMUTimer *timer;
+    ptimer_state *ptimer;
     MemoryRegion iomem;
     qemu_irq irq;
-} SysTickState;
+};
 
 /*
  * Multiplication factor to convert from system clock ticks to qemu timer

@@ -9,7 +9,7 @@
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
 # License as published by the Free Software Foundation; either
-# version 2 of the License, or (at your option) any later version.
+# version 2.1 of the License, or (at your option) any later version.
 #
 # This library is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -246,7 +246,7 @@ class CascadelakeArchCapabilities(avocado_qemu.Test):
     :avocado: tags=arch:x86_64
     """
     def get_cpu_prop(self, prop):
-        cpu_path = self.vm.command('query-cpus')[0].get('qom_path')
+        cpu_path = self.vm.command('query-cpus-fast')[0].get('qom-path')
         return self.vm.command('qom-get', path=cpu_path, property=prop)
 
     def test_4_1(self):

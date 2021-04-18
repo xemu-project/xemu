@@ -18,6 +18,9 @@
 #include "trace.h"
 #include "qapi/error.h"
 #include "io/channel-tls.h"
+#include "io/channel-socket.h"
+#include "qemu/yank.h"
+#include "yank_functions.h"
 
 /**
  * @migration_channel_process_incoming - Create new incoming migration channel
@@ -34,6 +37,12 @@ void migration_channel_process_incoming(QIOChannel *ioc)
 
     trace_migration_set_incoming_channel(
         ioc, object_get_typename(OBJECT(ioc)));
+
+    if (object_dynamic_cast(OBJECT(ioc), TYPE_QIO_CHANNEL_SOCKET)) {
+        yank_register_function(MIGRATION_YANK_INSTANCE,
+                               migration_yank_iochannel,
+                               QIO_CHANNEL(ioc));
+    }
 
     if (s->parameters.tls_creds &&
         *s->parameters.tls_creds &&
@@ -67,6 +76,12 @@ void migration_channel_connect(MigrationState *s,
         ioc, object_get_typename(OBJECT(ioc)), hostname, error);
 
     if (!error) {
+        if (object_dynamic_cast(OBJECT(ioc), TYPE_QIO_CHANNEL_SOCKET)) {
+            yank_register_function(MIGRATION_YANK_INSTANCE,
+                                   migration_yank_iochannel,
+                                   QIO_CHANNEL(ioc));
+        }
+
         if (s->parameters.tls_creds &&
             *s->parameters.tls_creds &&
             !object_dynamic_cast(OBJECT(ioc),
@@ -90,5 +105,6 @@ void migration_channel_connect(MigrationState *s,
         }
     }
     migrate_fd_connect(s, error);
+    g_free(s->hostname);
     error_free(error);
 }

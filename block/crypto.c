@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -725,17 +725,8 @@ fail:
      * If an error occurred, delete 'filename'. Even if the file existed
      * beforehand, it has been truncated and corrupted in the process.
      */
-    if (ret && bs) {
-        Error *local_delete_err = NULL;
-        int r_del = bdrv_co_delete_file(bs, &local_delete_err);
-        /*
-         * ENOTSUP will happen if the block driver doesn't support
-         * the 'bdrv_co_delete_file' interface. This is a predictable
-         * scenario and shouldn't be reported back to the user.
-         */
-        if ((r_del < 0) && (r_del != -ENOTSUP)) {
-            error_report_err(local_delete_err);
-        }
+    if (ret) {
+        bdrv_co_delete_file_noerr(bs);
     }
 
     bdrv_unref(bs);

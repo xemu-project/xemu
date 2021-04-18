@@ -25,18 +25,19 @@ static const struct edid_mode {
     { .xres = 1920,   .yres = 1080,   .dta =  31 },
 
     /* additional standard timings 3 (all @ 60Hz) */
-    { .xres = 1920,   .yres = 1440,   .xtra3 = 11,   .bit = 5 },
     { .xres = 1920,   .yres = 1200,   .xtra3 = 10,   .bit = 0 },
-    { .xres = 1856,   .yres = 1392,   .xtra3 = 10,   .bit = 3 },
-    { .xres = 1792,   .yres = 1344,   .xtra3 = 10,   .bit = 5 },
     { .xres = 1600,   .yres = 1200,   .xtra3 =  9,   .bit = 2 },
     { .xres = 1680,   .yres = 1050,   .xtra3 =  9,   .bit = 5 },
-    { .xres = 1440,   .yres = 1050,   .xtra3 =  8,   .bit = 1 },
     { .xres = 1440,   .yres =  900,   .xtra3 =  8,   .bit = 5 },
-    { .xres = 1360,   .yres =  768,   .xtra3 =  8,   .bit = 7 },
     { .xres = 1280,   .yres = 1024,   .xtra3 =  7,   .bit = 1 },
     { .xres = 1280,   .yres =  960,   .xtra3 =  7,   .bit = 3 },
     { .xres = 1280,   .yres =  768,   .xtra3 =  7,   .bit = 6 },
+
+    { .xres = 1920,   .yres = 1440,   .xtra3 = 11,   .bit = 5 },
+    { .xres = 1856,   .yres = 1392,   .xtra3 = 10,   .bit = 3 },
+    { .xres = 1792,   .yres = 1344,   .xtra3 = 10,   .bit = 5 },
+    { .xres = 1440,   .yres = 1050,   .xtra3 =  8,   .bit = 1 },
+    { .xres = 1360,   .yres =  768,   .xtra3 =  8,   .bit = 7 },
 
     /* established timings (all @ 60Hz) */
     { .xres = 1024,   .yres =  768,   .byte  = 36,   .bit = 3 },
@@ -109,13 +110,13 @@ static void edid_fill_modes(uint8_t *edid, uint8_t *xtra3, uint8_t *dta,
 
         if (mode->byte) {
             edid[mode->byte] |= (1 << mode->bit);
-        } else if (mode->xtra3 && xtra3) {
-            xtra3[mode->xtra3] |= (1 << mode->bit);
         } else if (std < 54) {
             rc = edid_std_mode(edid + std, mode->xres, mode->yres);
             if (rc == 0) {
                 std += 2;
             }
+        } else if (mode->xtra3 && xtra3) {
+            xtra3[mode->xtra3] |= (1 << mode->bit);
         }
 
         if (dta && mode->dta) {
@@ -205,12 +206,8 @@ static void edid_desc_dummy(uint8_t *desc)
 
 static void edid_desc_timing(uint8_t *desc,
                              uint32_t xres, uint32_t yres,
-                             uint32_t dpi)
+                             uint32_t xmm, uint32_t ymm)
 {
-    /* physical display size */
-    uint32_t xmm = xres * dpi / 254;
-    uint32_t ymm = yres * dpi / 254;
-
     /* pull some realistic looking timings out of thin air */
     uint32_t xfront = xres * 25 / 100;
     uint32_t xsync  = xres *  3 / 100;
@@ -290,12 +287,24 @@ static void edid_colorspace(uint8_t *edid,
     edid[34] = white_y >> 2;
 }
 
+static uint32_t qemu_edid_dpi_from_mm(uint32_t mm, uint32_t res)
+{
+    return res * 254 / 10 / mm;
+}
+
+uint32_t qemu_edid_dpi_to_mm(uint32_t dpi, uint32_t res)
+{
+    return res * 254 / 10 / dpi;
+}
+
 void qemu_edid_generate(uint8_t *edid, size_t size,
                         qemu_edid_info *info)
 {
     uint32_t desc = 54;
     uint8_t *xtra3 = NULL;
     uint8_t *dta = NULL;
+    uint32_t width_mm, height_mm;
+    uint32_t dpi = 100; /* if no width_mm/height_mm */
 
     /* =============== set defaults  =============== */
 
@@ -305,14 +314,19 @@ void qemu_edid_generate(uint8_t *edid, size_t size,
     if (!info->name) {
         info->name = "QEMU Monitor";
     }
-    if (!info->dpi) {
-        info->dpi = 100;
-    }
     if (!info->prefx) {
         info->prefx = 1024;
     }
     if (!info->prefy) {
         info->prefy = 768;
+    }
+    if (info->width_mm && info->height_mm) {
+        width_mm = info->width_mm;
+        height_mm = info->height_mm;
+        dpi = qemu_edid_dpi_from_mm(width_mm, info->prefx);
+    } else {
+        width_mm = qemu_edid_dpi_to_mm(dpi, info->prefx);
+        height_mm = qemu_edid_dpi_to_mm(dpi, info->prefy);
     }
 
     /* =============== extensions  =============== */
@@ -360,8 +374,8 @@ void qemu_edid_generate(uint8_t *edid, size_t size,
     edid[20] = 0xa5;
 
     /* screen size: undefined */
-    edid[21] = info->prefx * 254 / 100 / info->dpi;
-    edid[22] = info->prefy * 254 / 100 / info->dpi;
+    edid[21] = width_mm / 10;
+    edid[22] = height_mm / 10;
 
     /* display gamma: 2.2 */
     edid[23] = 220 - 100;
@@ -387,7 +401,8 @@ void qemu_edid_generate(uint8_t *edid, size_t size,
 
     /* =============== descriptor blocks =============== */
 
-    edid_desc_timing(edid + desc, info->prefx, info->prefy, info->dpi);
+    edid_desc_timing(edid + desc, info->prefx, info->prefy,
+                     width_mm, height_mm);
     desc += 18;
 
     edid_desc_ranges(edid + desc);

@@ -22,6 +22,7 @@
 #include "qemu.h"
 #include "elf.h"
 #include "cpu_loop-common.h"
+#include "semihosting/common-semi.h"
 
 #define get_user_code_u32(x, gaddr, env)                \
     ({ abi_long __r = get_user_u32((x), (gaddr));       \
@@ -205,6 +206,24 @@ do_kernel_trap(CPUARMState *env)
     return 0;
 }
 
+static bool insn_is_linux_bkpt(uint32_t opcode, bool is_thumb)
+{
+    /*
+     * Return true if this insn is one of the three magic UDF insns
+     * which the kernel treats as breakpoint insns.
+     */
+    if (!is_thumb) {
+        return (opcode & 0x0fffffff) == 0x07f001f0;
+    } else {
+        /*
+         * Note that we get the two halves of the 32-bit T32 insn
+         * in the opposite order to the value the kernel uses in
+         * its undef_hook struct.
+         */
+        return ((opcode & 0xffff) == 0xde01) || (opcode == 0xa000f7f0);
+    }
+}
+
 void cpu_loop(CPUARMState *env)
 {
     CPUState *cs = env_cpu(env);
@@ -233,6 +252,16 @@ void cpu_loop(CPUARMState *env)
                 /* we get the opcode */
                 /* FIXME - what to do if get_user() fails? */
                 get_user_code_u32(opcode, env->regs[15], env);
+
+                /*
+                 * The Linux kernel treats some UDF patterns specially
+                 * to use as breakpoints (instead of the architectural
+                 * bkpt insn). These should trigger a SIGTRAP rather
+                 * than SIGILL.
+                 */
+                if (insn_is_linux_bkpt(opcode, env->thumb)) {
+                    goto excp_debug;
+                }
 
                 rc = EmulateAll(opcode, &ts->fpa, env);
                 if (rc == 0) { /* illegal instruction */
@@ -393,7 +422,7 @@ void cpu_loop(CPUARMState *env)
             }
             break;
         case EXCP_SEMIHOST:
-            env->regs[0] = do_arm_semihosting(env);
+            env->regs[0] = do_common_semihosting(cs);
             env->regs[15] += env->thumb ? 2 : 4;
             break;
         case EXCP_INTERRUPT:

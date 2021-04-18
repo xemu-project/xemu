@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -21,9 +21,10 @@
 #define MIPS_ITU_H
 
 #include "hw/sysbus.h"
+#include "qom/object.h"
 
 #define TYPE_MIPS_ITU "mips-itu"
-#define MIPS_ITU(obj) OBJECT_CHECK(MIPSITUState, (obj), TYPE_MIPS_ITU)
+OBJECT_DECLARE_SIMPLE_TYPE(MIPSITUState, MIPS_ITU)
 
 #define ITC_CELL_DEPTH_SHIFT 2
 #define ITC_CELL_DEPTH (1u << ITC_CELL_DEPTH_SHIFT)
@@ -51,7 +52,7 @@ typedef struct ITCStorageCell {
 
 #define ITC_ADDRESSMAP_NUM 2
 
-typedef struct MIPSITUState {
+struct MIPSITUState {
     /*< private >*/
     SysBusDevice parent_obj;
     /*< public >*/
@@ -74,7 +75,7 @@ typedef struct MIPSITUState {
     bool saar_present;
     void *saar;
 
-} MIPSITUState;
+};
 
 /* Get ITC Configuration Tag memory region. */
 MemoryRegion *mips_itu_get_tag_region(MIPSITUState *itu);

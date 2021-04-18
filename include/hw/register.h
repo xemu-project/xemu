@@ -14,6 +14,7 @@
 #include "hw/qdev-core.h"
 #include "exec/memory.h"
 #include "hw/registerfields.h"
+#include "qom/object.h"
 
 typedef struct RegisterInfo RegisterInfo;
 typedef struct RegisterAccessInfo RegisterAccessInfo;
@@ -86,8 +87,9 @@ struct RegisterInfo {
     void *opaque;
 };
 
-#define TYPE_REGISTER "qemu,register"
-#define REGISTER(obj) OBJECT_CHECK(RegisterInfo, (obj), TYPE_REGISTER)
+#define TYPE_REGISTER "qemu-register"
+DECLARE_INSTANCE_CHECKER(RegisterInfo, REGISTER,
+                         TYPE_REGISTER)
 
 /**
  * This structure is used to group all of the individual registers which are
@@ -181,6 +183,7 @@ uint64_t register_read_memory(void *opaque, hwaddr addr, unsigned size);
  * @data: Array to use for register data, must already be allocated
  * @ops: Memory region ops to access registers.
  * @debug enabled: turn on/off verbose debug information
+ * @memory_size: Size of the memory region
  * returns: A structure containing all of the registers and an initialized
  *          memory region (r_array->mem) the caller should add to a container.
  */

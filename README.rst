@@ -31,6 +31,17 @@ QEMU as a whole is released under the GNU General Public License,
 version 2. For full licensing details, consult the LICENSE file.
 
 
+Documentation
+=============
+
+Documentation can be found hosted online at
+`<https://www.qemu.org/documentation/>`_. The documentation for the
+current development version that is available at
+`<https://www.qemu.org/docs/master/>`_ is generated from the ``docs/``
+folder in the source tree, and is built by `Sphinx
+<https://www.sphinx-doc.org/en/master/>_`.
+
+
 Building
 ========
 
@@ -60,13 +71,15 @@ The QEMU source code is maintained under the GIT version control system.
 
 .. code-block:: shell
 
-   git clone https://git.qemu.org/git/qemu.git
+   git clone https://gitlab.com/qemu-project/qemu.git
 
 When submitting patches, one common approach is to use 'git
 format-patch' and/or 'git send-email' to format & send the mail to the
 qemu-devel@nongnu.org mailing list. All patches submitted must contain
 a 'Signed-off-by' line from the author. Patches should follow the
-guidelines set out in the CODING_STYLE.rst file.
+guidelines set out in the `style section
+<https://www.qemu.org/docs/master/devel/style.html>` of
+the Developers Guide.
 
 Additional information on submitting patches can be found online via
 the QEMU website
@@ -78,7 +91,7 @@ The QEMU website is also maintained under source control.
 
 .. code-block:: shell
 
-  git clone https://git.qemu.org/git/qemu-web.git
+  git clone https://gitlab.com/qemu-project/qemu-web.git
 
 * `<https://www.qemu.org/2017/02/04/the-new-qemu-website-is-up/>`_
 
@@ -132,6 +145,14 @@ reported via launchpad.
 For additional information on bug reporting consult:
 
 * `<https://qemu.org/Contribute/ReportABug>`_
+
+
+ChangeLog
+=========
+
+For version history and release notes, please visit
+`<https://wiki.qemu.org/ChangeLog/>`_ or look at the git history for
+more detailed information.
 
 
 Contact

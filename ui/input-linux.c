@@ -17,6 +17,7 @@
 
 #include <sys/ioctl.h>
 #include "standard-headers/linux/input.h"
+#include "qom/object.h"
 
 static bool linux_is_button(unsigned int lnx)
 {
@@ -30,15 +31,9 @@ static bool linux_is_button(unsigned int lnx)
 }
 
 #define TYPE_INPUT_LINUX "input-linux"
-#define INPUT_LINUX(obj) \
-    OBJECT_CHECK(InputLinux, (obj), TYPE_INPUT_LINUX)
-#define INPUT_LINUX_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(InputLinuxClass, (obj), TYPE_INPUT_LINUX)
-#define INPUT_LINUX_CLASS(klass) \
-    OBJECT_CLASS_CHECK(InputLinuxClass, (klass), TYPE_INPUT_LINUX)
+OBJECT_DECLARE_SIMPLE_TYPE(InputLinux,
+                           INPUT_LINUX)
 
-typedef struct InputLinux InputLinux;
-typedef struct InputLinuxClass InputLinuxClass;
 
 struct InputLinux {
     Object parent;
@@ -70,9 +65,6 @@ struct InputLinux {
     QTAILQ_ENTRY(InputLinux) next;
 };
 
-struct InputLinuxClass {
-    ObjectClass parent_class;
-};
 
 static QTAILQ_HEAD(, InputLinux) inputs = QTAILQ_HEAD_INITIALIZER(inputs);
 
@@ -426,6 +418,7 @@ static void input_linux_instance_finalize(Object *obj)
 
     if (il->initialized) {
         QTAILQ_REMOVE(&inputs, il, next);
+        qemu_set_fd_handler(il->fd, NULL, NULL, NULL);
         close(il->fd);
     }
     g_free(il->evdev);
@@ -497,19 +490,6 @@ static void input_linux_set_grab_toggle(Object *obj, int value,
 
 static void input_linux_instance_init(Object *obj)
 {
-    object_property_add_str(obj, "evdev",
-                            input_linux_get_evdev,
-                            input_linux_set_evdev);
-    object_property_add_bool(obj, "grab_all",
-                             input_linux_get_grab_all,
-                             input_linux_set_grab_all);
-    object_property_add_bool(obj, "repeat",
-                             input_linux_get_repeat,
-                             input_linux_set_repeat);
-    object_property_add_enum(obj, "grab-toggle", "GrabToggleKeys",
-                             &GrabToggleKeys_lookup,
-                             input_linux_get_grab_toggle,
-                             input_linux_set_grab_toggle);
 }
 
 static void input_linux_class_init(ObjectClass *oc, void *data)
@@ -517,12 +497,25 @@ static void input_linux_class_init(ObjectClass *oc, void *data)
     UserCreatableClass *ucc = USER_CREATABLE_CLASS(oc);
 
     ucc->complete = input_linux_complete;
+
+    object_class_property_add_str(oc, "evdev",
+                                  input_linux_get_evdev,
+                                  input_linux_set_evdev);
+    object_class_property_add_bool(oc, "grab_all",
+                                   input_linux_get_grab_all,
+                                   input_linux_set_grab_all);
+    object_class_property_add_bool(oc, "repeat",
+                                   input_linux_get_repeat,
+                                   input_linux_set_repeat);
+    object_class_property_add_enum(oc, "grab-toggle", "GrabToggleKeys",
+                                   &GrabToggleKeys_lookup,
+                                   input_linux_get_grab_toggle,
+                                   input_linux_set_grab_toggle);
 }
 
 static const TypeInfo input_linux_info = {
     .name = TYPE_INPUT_LINUX,
     .parent = TYPE_OBJECT,
-    .class_size = sizeof(InputLinuxClass),
     .class_init = input_linux_class_init,
     .instance_size = sizeof(InputLinux),
     .instance_init = input_linux_instance_init,

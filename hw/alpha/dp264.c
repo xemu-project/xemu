@@ -21,6 +21,7 @@
 #include "hw/dma/i8257.h"
 #include "net/net.h"
 #include "qemu/cutils.h"
+#include "qemu/datadir.h"
 #include "net/net.h"
 
 #define MAX_IDE_BUS 2
@@ -62,8 +63,8 @@ static void clipper_init(MachineState *machine)
     qemu_irq rtc_irq;
     long size, i;
     char *palcode_filename;
-    uint64_t palcode_entry, palcode_low, palcode_high;
-    uint64_t kernel_entry, kernel_low, kernel_high;
+    uint64_t palcode_entry;
+    uint64_t kernel_entry, kernel_low;
     unsigned int smp_cpus = machine->smp.cpus;
 
     /* Create up to 4 cpus.  */
@@ -107,13 +108,13 @@ static void clipper_init(MachineState *machine)
        but one explicitly written for the emulation, we might as
        well load it directly from and ELF image.  */
     palcode_filename = qemu_find_file(QEMU_FILE_TYPE_BIOS,
-                                bios_name ? bios_name : "palcode-clipper");
+                                      machine->firmware ?: "palcode-clipper");
     if (palcode_filename == NULL) {
         error_report("no palcode provided");
         exit(1);
     }
     size = load_elf(palcode_filename, NULL, cpu_alpha_superpage_to_phys,
-                    NULL, &palcode_entry, &palcode_low, &palcode_high, NULL,
+                    NULL, &palcode_entry, NULL, NULL, NULL,
                     0, EM_ALPHA, 0, 0);
     if (size < 0) {
         error_report("could not load palcode '%s'", palcode_filename);
@@ -132,7 +133,7 @@ static void clipper_init(MachineState *machine)
         uint64_t param_offset;
 
         size = load_elf(kernel_filename, NULL, cpu_alpha_superpage_to_phys,
-                        NULL, &kernel_entry, &kernel_low, &kernel_high, NULL,
+                        NULL, &kernel_entry, &kernel_low, NULL, NULL,
                         0, EM_ALPHA, 0, 0);
         if (size < 0) {
             error_report("could not load kernel '%s'", kernel_filename);

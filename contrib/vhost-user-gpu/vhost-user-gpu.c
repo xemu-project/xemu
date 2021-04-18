@@ -124,7 +124,7 @@ source_wait_cb(gint fd, GIOCondition condition, gpointer user_data)
     }
 
     /* resume */
-    g->wait_ok = 0;
+    g->wait_in = 0;
     vg_handle_ctrl(&g->dev.parent, 0);
 
     return G_SOURCE_REMOVE;
@@ -133,8 +133,8 @@ source_wait_cb(gint fd, GIOCondition condition, gpointer user_data)
 void
 vg_wait_ok(VuGpu *g)
 {
-    assert(g->wait_ok == 0);
-    g->wait_ok = g_unix_fd_add(g->sock_fd, G_IO_IN | G_IO_HUP,
+    assert(g->wait_in == 0);
+    g->wait_in = g_unix_fd_add(g->sock_fd, G_IO_IN | G_IO_HUP,
                                source_wait_cb, g);
 }
 
@@ -246,7 +246,7 @@ vg_ctrl_response(VuGpu *g,
     }
     vu_queue_push(&g->dev.parent, cmd->vq, &cmd->elem, s);
     vu_queue_notify(&g->dev.parent, cmd->vq);
-    cmd->finished = true;
+    cmd->state = VG_CMD_STATE_FINISHED;
 }
 
 void
@@ -261,23 +261,44 @@ vg_ctrl_response_nodata(VuGpu *g,
     vg_ctrl_response(g, cmd, &resp, sizeof(resp));
 }
 
+
+static gboolean
+get_display_info_cb(gint fd, GIOCondition condition, gpointer user_data)
+{
+    struct virtio_gpu_resp_display_info dpy_info = { {} };
+    VuGpu *vg = user_data;
+    struct virtio_gpu_ctrl_command *cmd = QTAILQ_LAST(&vg->fenceq);
+
+    g_debug("disp info cb");
+    assert(cmd->cmd_hdr.type == VIRTIO_GPU_CMD_GET_DISPLAY_INFO);
+    if (!vg_recv_msg(vg, VHOST_USER_GPU_GET_DISPLAY_INFO,
+                     sizeof(dpy_info), &dpy_info)) {
+        return G_SOURCE_CONTINUE;
+    }
+
+    QTAILQ_REMOVE(&vg->fenceq, cmd, next);
+    vg_ctrl_response(vg, cmd, &dpy_info.hdr, sizeof(dpy_info));
+
+    vg->wait_in = 0;
+    vg_handle_ctrl(&vg->dev.parent, 0);
+
+    return G_SOURCE_REMOVE;
+}
+
 void
 vg_get_display_info(VuGpu *vg, struct virtio_gpu_ctrl_command *cmd)
 {
-    struct virtio_gpu_resp_display_info dpy_info = { {} };
     VhostUserGpuMsg msg = {
         .request = VHOST_USER_GPU_GET_DISPLAY_INFO,
         .size = 0,
     };
 
-    assert(vg->wait_ok == 0);
+    assert(vg->wait_in == 0);
 
     vg_send_msg(vg, &msg, -1);
-    if (!vg_recv_msg(vg, msg.request, sizeof(dpy_info), &dpy_info)) {
-        return;
-    }
-
-    vg_ctrl_response(vg, cmd, &dpy_info.hdr, sizeof(dpy_info));
+    vg->wait_in = g_unix_fd_add(vg->sock_fd, G_IO_IN | G_IO_HUP,
+                               get_display_info_cb, vg);
+    cmd->state = VG_CMD_STATE_PENDING;
 }
 
 static void
@@ -800,7 +821,7 @@ vg_process_cmd(VuGpu *vg, struct virtio_gpu_ctrl_command *cmd)
         cmd->error = VIRTIO_GPU_RESP_ERR_UNSPEC;
         break;
     }
-    if (!cmd->finished) {
+    if (cmd->state == VG_CMD_STATE_NEW) {
         vg_ctrl_response_nodata(vg, cmd, cmd->error ? cmd->error :
                                 VIRTIO_GPU_RESP_OK_NODATA);
     }
@@ -815,7 +836,7 @@ vg_handle_ctrl(VuDev *dev, int qidx)
     size_t len;
 
     for (;;) {
-        if (vg->wait_ok != 0) {
+        if (vg->wait_in != 0) {
             return;
         }
 
@@ -825,7 +846,7 @@ vg_handle_ctrl(VuDev *dev, int qidx)
         }
         cmd->vq = vq;
         cmd->error = 0;
-        cmd->finished = false;
+        cmd->state = VG_CMD_STATE_NEW;
 
         len = iov_to_buf(cmd->elem.out_sg, cmd->elem.out_num,
                          0, &cmd->cmd_hdr, sizeof(cmd->cmd_hdr));
@@ -844,7 +865,7 @@ vg_handle_ctrl(VuDev *dev, int qidx)
             vg_process_cmd(vg, cmd);
         }
 
-        if (!cmd->finished) {
+        if (cmd->state != VG_CMD_STATE_FINISHED) {
             QTAILQ_INSERT_TAIL(&vg->fenceq, cmd, next);
             vg->inflight++;
         } else {
@@ -871,11 +892,8 @@ update_cursor_data_simple(VuGpu *g, uint32_t resource_id, gpointer data)
 static void
 vg_process_cursor_cmd(VuGpu *g, struct virtio_gpu_update_cursor *cursor)
 {
-    bool move = cursor->hdr.type != VIRTIO_GPU_CMD_MOVE_CURSOR;
-
-    g_debug("%s move:%d\n", G_STRFUNC, move);
-
-    if (move) {
+    switch (cursor->hdr.type) {
+    case VIRTIO_GPU_CMD_MOVE_CURSOR: {
         VhostUserGpuMsg msg = {
             .request = cursor->resource_id ?
                 VHOST_USER_GPU_CURSOR_POS : VHOST_USER_GPU_CURSOR_POS_HIDE,
@@ -886,8 +904,11 @@ vg_process_cursor_cmd(VuGpu *g, struct virtio_gpu_update_cursor *cursor)
                 .y = cursor->pos.y,
             }
         };
+        g_debug("%s: move", G_STRFUNC);
         vg_send_msg(g, &msg, -1);
-    } else {
+        break;
+    }
+    case VIRTIO_GPU_CMD_UPDATE_CURSOR: {
         VhostUserGpuMsg msg = {
             .request = VHOST_USER_GPU_CURSOR_UPDATE,
             .size = sizeof(VhostUserGpuCursorUpdate),
@@ -901,6 +922,7 @@ vg_process_cursor_cmd(VuGpu *g, struct virtio_gpu_update_cursor *cursor)
                 .hot_y = cursor->hot_y,
             }
         };
+        g_debug("%s: update", G_STRFUNC);
         if (g->virgl) {
             vg_virgl_update_cursor_data(g, cursor->resource_id,
                                         msg.payload.cursor_update.data);
@@ -909,6 +931,11 @@ vg_process_cursor_cmd(VuGpu *g, struct virtio_gpu_update_cursor *cursor)
                                       msg.payload.cursor_update.data);
         }
         vg_send_msg(g, &msg, -1);
+        break;
+    }
+    default:
+        g_debug("%s: unknown cmd %d", G_STRFUNC, cursor->hdr.type);
+        break;
     }
 }
 
@@ -969,18 +996,17 @@ vg_queue_set_started(VuDev *dev, int qidx, bool started)
     }
 }
 
-static void
-set_gpu_protocol_features(VuGpu *g)
+static gboolean
+protocol_features_cb(gint fd, GIOCondition condition, gpointer user_data)
 {
+    VuGpu *g = user_data;
     uint64_t u64;
     VhostUserGpuMsg msg = {
         .request = VHOST_USER_GPU_GET_PROTOCOL_FEATURES
     };
 
-    assert(g->wait_ok == 0);
-    vg_send_msg(g, &msg, -1);
     if (!vg_recv_msg(g, msg.request, sizeof(u64), &u64)) {
-        return;
+        return G_SOURCE_CONTINUE;
     }
 
     msg = (VhostUserGpuMsg) {
@@ -989,6 +1015,24 @@ set_gpu_protocol_features(VuGpu *g)
         .payload.u64 = 0
     };
     vg_send_msg(g, &msg, -1);
+
+    g->wait_in = 0;
+    vg_handle_ctrl(&g->dev.parent, 0);
+
+    return G_SOURCE_REMOVE;
+}
+
+static void
+set_gpu_protocol_features(VuGpu *g)
+{
+    VhostUserGpuMsg msg = {
+        .request = VHOST_USER_GPU_GET_PROTOCOL_FEATURES
+    };
+
+    vg_send_msg(g, &msg, -1);
+    assert(g->wait_in == 0);
+    g->wait_in = g_unix_fd_add(g->sock_fd, G_IO_IN | G_IO_HUP,
+                               protocol_features_cb, g);
 }
 
 static int
@@ -1044,7 +1088,9 @@ vg_get_config(VuDev *dev, uint8_t *config, uint32_t len)
 {
     VuGpu *g = container_of(dev, VuGpu, dev.parent);
 
-    g_return_val_if_fail(len <= sizeof(struct virtio_gpu_config), -1);
+    if (len > sizeof(struct virtio_gpu_config)) {
+        return -1;
+    }
 
     if (opt_virgl) {
         g->virtio_config.num_capsets = vg_virgl_get_num_capsets();
@@ -1146,11 +1192,7 @@ main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    if (g.drm_rnode_fd >= 0) {
-        if (!vugbm_device_init(&g.gdev, g.drm_rnode_fd)) {
-            g_warning("Failed to init DRM device, using fallback path");
-        }
-    }
+    vugbm_device_init(&g.gdev, g.drm_rnode_fd);
 
     if ((!!opt_socket_path + (opt_fdnum != -1)) != 1) {
         g_printerr("Please specify either --fd or --socket-path\n");

@@ -24,6 +24,7 @@
 #include "hw/block/flash.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "sysemu/block-backend.h"
 #include "exec/memory.h"
 #include "hw/sysbus.h"
@@ -31,6 +32,7 @@
 #include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
+#include "qom/object.h"
 
 /* 11 for 2kB-page OneNAND ("2nd generation") and 10 for 1kB-page chips */
 #define PAGE_SHIFT	11
@@ -39,9 +41,9 @@
 #define BLOCK_SHIFT	(PAGE_SHIFT + 6)
 
 #define TYPE_ONE_NAND "onenand"
-#define ONE_NAND(obj) OBJECT_CHECK(OneNANDState, (obj), TYPE_ONE_NAND)
+OBJECT_DECLARE_SIMPLE_TYPE(OneNANDState, ONE_NAND)
 
-typedef struct OneNANDState {
+struct OneNANDState {
     SysBusDevice parent_obj;
 
     struct {
@@ -85,7 +87,7 @@ typedef struct OneNANDState {
     int secs_cur;
     int blocks;
     uint8_t *blockwp;
-} OneNANDState;
+};
 
 enum {
     ONEN_BUF_BLOCK = 0,
@@ -795,7 +797,7 @@ static void onenand_realize(DeviceState *dev, Error **errp)
         s->image = memset(g_malloc(size + (size >> 5)),
                           0xff, size + (size >> 5));
     } else {
-        if (blk_is_read_only(s->blk)) {
+        if (!blk_supports_write_perm(s->blk)) {
             error_setg(errp, "Can't use a read-only drive");
             return;
         }

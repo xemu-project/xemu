@@ -22,12 +22,12 @@
 #include "hw/riscv/riscv_hart.h"
 #include "hw/intc/ibex_plic.h"
 #include "hw/char/ibex_uart.h"
+#include "qom/object.h"
 
 #define TYPE_RISCV_IBEX_SOC "riscv.lowrisc.ibex.soc"
-#define RISCV_IBEX_SOC(obj) \
-    OBJECT_CHECK(LowRISCIbexSoCState, (obj), TYPE_RISCV_IBEX_SOC)
+OBJECT_DECLARE_SIMPLE_TYPE(LowRISCIbexSoCState, RISCV_IBEX_SOC)
 
-typedef struct LowRISCIbexSoCState {
+struct LowRISCIbexSoCState {
     /*< private >*/
     SysBusDevice parent_obj;
 
@@ -38,7 +38,7 @@ typedef struct LowRISCIbexSoCState {
 
     MemoryRegion flash_mem;
     MemoryRegion rom;
-} LowRISCIbexSoCState;
+};
 
 typedef struct OpenTitanState {
     /*< private >*/
@@ -49,25 +49,36 @@ typedef struct OpenTitanState {
 } OpenTitanState;
 
 enum {
-    IBEX_ROM,
-    IBEX_RAM,
-    IBEX_FLASH,
-    IBEX_UART,
-    IBEX_GPIO,
-    IBEX_SPI,
-    IBEX_FLASH_CTRL,
-    IBEX_RV_TIMER,
-    IBEX_AES,
-    IBEX_HMAC,
-    IBEX_PLIC,
-    IBEX_PWRMGR,
-    IBEX_RSTMGR,
-    IBEX_CLKMGR,
-    IBEX_PINMUX,
-    IBEX_ALERT_HANDLER,
-    IBEX_NMI_GEN,
-    IBEX_USBDEV,
-    IBEX_PADCTRL,
+    IBEX_DEV_ROM,
+    IBEX_DEV_RAM,
+    IBEX_DEV_FLASH,
+    IBEX_DEV_UART,
+    IBEX_DEV_GPIO,
+    IBEX_DEV_SPI,
+    IBEX_DEV_I2C,
+    IBEX_DEV_PATTGEN,
+    IBEX_DEV_RV_TIMER,
+    IBEX_DEV_SENSOR_CTRL,
+    IBEX_DEV_OTP_CTRL,
+    IBEX_DEV_PWRMGR,
+    IBEX_DEV_RSTMGR,
+    IBEX_DEV_CLKMGR,
+    IBEX_DEV_PINMUX,
+    IBEX_DEV_PADCTRL,
+    IBEX_DEV_USBDEV,
+    IBEX_DEV_FLASH_CTRL,
+    IBEX_DEV_PLIC,
+    IBEX_DEV_AES,
+    IBEX_DEV_HMAC,
+    IBEX_DEV_KMAC,
+    IBEX_DEV_KEYMGR,
+    IBEX_DEV_CSRNG,
+    IBEX_DEV_ENTROPY,
+    IBEX_DEV_EDNO,
+    IBEX_DEV_EDN1,
+    IBEX_DEV_ALERT_HANDLER,
+    IBEX_DEV_NMI_GEN,
+    IBEX_DEV_OTBN,
 };
 
 enum {

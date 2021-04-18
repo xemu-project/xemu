@@ -568,19 +568,6 @@ SRST
 ERST
 
     {
-        .name       = "migrate_cache_size",
-        .args_type  = "",
-        .params     = "",
-        .help       = "show current migration xbzrle cache size",
-        .cmd        = hmp_info_migrate_cache_size,
-    },
-
-SRST
-  ``info migrate_cache_size``
-    Show current migration xbzrle cache size.
-ERST
-
-    {
         .name       = "balloon",
         .args_type  = "",
         .params     = "",
@@ -881,4 +868,15 @@ SRST
     Show SEV information.
 ERST
 
+    {
+        .name       = "replay",
+        .args_type  = "",
+        .params     = "",
+        .help       = "show record/replay information",
+        .cmd        = hmp_info_replay,
+    },
 
+SRST
+  ``info replay``
+    Display the record/replay information: mode and the current icount.
+ERST

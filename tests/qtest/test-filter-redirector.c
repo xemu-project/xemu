@@ -52,7 +52,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
-#include "libqtest.h"
+#include "libqos/libqtest.h"
 #include "qapi/qmp/qdict.h"
 #include "qemu/iov.h"
 #include "qemu/sockets.h"
@@ -95,8 +95,8 @@ static void test_redirector_tx(void)
     qts = qtest_initf(
         "-netdev socket,id=qtest-bn0,fd=%d "
         "-device %s,netdev=qtest-bn0,id=qtest-e0 "
-        "-chardev socket,id=redirector0,path=%s,server,nowait "
-        "-chardev socket,id=redirector1,path=%s,server,nowait "
+        "-chardev socket,id=redirector0,path=%s,server=on,wait=off "
+        "-chardev socket,id=redirector1,path=%s,server=on,wait=off "
         "-chardev socket,id=redirector2,path=%s "
         "-object filter-redirector,id=qtest-f0,netdev=qtest-bn0,"
         "queue=tx,outdev=redirector0 "
@@ -165,8 +165,8 @@ static void test_redirector_rx(void)
     qts = qtest_initf(
         "-netdev socket,id=qtest-bn0,fd=%d "
         "-device %s,netdev=qtest-bn0,id=qtest-e0 "
-        "-chardev socket,id=redirector0,path=%s,server,nowait "
-        "-chardev socket,id=redirector1,path=%s,server,nowait "
+        "-chardev socket,id=redirector0,path=%s,server=on,wait=off "
+        "-chardev socket,id=redirector1,path=%s,server=on,wait=off "
         "-chardev socket,id=redirector2,path=%s "
         "-object filter-redirector,id=qtest-f0,netdev=qtest-bn0,"
         "queue=rx,indev=redirector0 "

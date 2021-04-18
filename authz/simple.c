@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -66,10 +66,24 @@ qauthz_simple_finalize(Object *obj)
 
 
 static void
+qauthz_simple_complete(UserCreatable *uc, Error **errp)
+{
+    QAuthZSimple *sauthz = QAUTHZ_SIMPLE(uc);
+
+    if (!sauthz->identity) {
+        error_setg(errp, "The 'identity' property must be set");
+        return;
+    }
+}
+
+
+static void
 qauthz_simple_class_init(ObjectClass *oc, void *data)
 {
     QAuthZClass *authz = QAUTHZ_CLASS(oc);
+    UserCreatableClass *ucc = USER_CREATABLE_CLASS(oc);
 
+    ucc->complete = qauthz_simple_complete;
     authz->is_allowed = qauthz_simple_is_allowed;
 
     object_class_property_add_str(oc, "identity",
@@ -96,7 +110,6 @@ static const TypeInfo qauthz_simple_info = {
     .name = TYPE_QAUTHZ_SIMPLE,
     .instance_size = sizeof(QAuthZSimple),
     .instance_finalize = qauthz_simple_finalize,
-    .class_size = sizeof(QAuthZSimpleClass),
     .class_init = qauthz_simple_class_init,
     .interfaces = (InterfaceInfo[]) {
         { TYPE_USER_CREATABLE },

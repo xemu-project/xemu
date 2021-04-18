@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# group: rw auto quick
 #
 # Test qemu-img convert --salvage
 #
@@ -46,8 +47,11 @@ if [ "$IMGOPTSSYNTAX" = "true" ]; then
     # We use json:{} filenames here, so we cannot work with additional options.
     _unsupported_fmt $IMGFMT
 else
-    # With VDI, the output is ordered differently.  Just disable it.
-    _unsupported_fmt vdi
+    # - With VDI, the output is ordered differently.  Just disable it.
+    # - VHDX has large clusters; because qemu-img convert tries to
+    #   align the requests to the cluster size, the output is ordered
+    #   differently, so disable it, too.
+    _unsupported_fmt vdi vhdx
 fi
 
 

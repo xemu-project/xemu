@@ -60,3 +60,15 @@ config PCI_BONITO
     select PCI
     select UNIMP
     bool
+
+config PCI_POWERNV
+    select PCI_EXPRESS
+    select MSI_NONBROKEN
+    select PCIE_PORT
+
+config REMOTE_PCIHOST
+    bool
+
+config SH_PCI
+    bool
+    select PCI

@@ -45,7 +45,7 @@ static inline void qemu_plugin_add_opts(void)
 }
 
 void qemu_plugin_opt_parse(const char *optarg, QemuPluginList *head);
-int qemu_plugin_load_list(QemuPluginList *head);
+int qemu_plugin_load_list(QemuPluginList *head, Error **errp);
 
 union qemu_plugin_cb_sig {
     qemu_plugin_simple_cb_t          simple;
@@ -92,6 +92,7 @@ struct qemu_plugin_dyn_cb {
     };
 };
 
+/* Internal context for instrumenting an instruction */
 struct qemu_plugin_insn {
     GByteArray *data;
     uint64_t vaddr;
@@ -99,6 +100,7 @@ struct qemu_plugin_insn {
     GArray *cbs[PLUGIN_N_CB_TYPES][PLUGIN_N_CB_SUBTYPES];
     bool calls_helpers;
     bool mem_helper;
+    bool mem_only;
 };
 
 /*
@@ -128,6 +130,7 @@ static inline struct qemu_plugin_insn *qemu_plugin_insn_alloc(void)
     return insn;
 }
 
+/* Internal context for this TranslationBlock */
 struct qemu_plugin_tb {
     GPtrArray *insns;
     size_t n;
@@ -135,6 +138,7 @@ struct qemu_plugin_tb {
     uint64_t vaddr2;
     void *haddr1;
     void *haddr2;
+    bool mem_only;
     GArray *cbs[PLUGIN_N_CB_SUBTYPES];
 };
 
@@ -199,7 +203,7 @@ static inline void qemu_plugin_opt_parse(const char *optarg,
     exit(1);
 }
 
-static inline int qemu_plugin_load_list(QemuPluginList *head)
+static inline int qemu_plugin_load_list(QemuPluginList *head, Error **errp)
 {
     return 0;
 }

@@ -15,9 +15,8 @@
 #ifndef VUGPU_H
 #define VUGPU_H
 
-#include "qemu/osdep.h"
 
-#include "contrib/libvhost-user/libvhost-user-glib.h"
+#include "libvhost-user-glib.h"
 #include "standard-headers/linux/virtio_gpu.h"
 
 #include "qemu/queue.h"
@@ -119,7 +118,7 @@ typedef struct VuGpu {
     int sock_fd;
     int drm_rnode_fd;
     GSource *renderer_source;
-    guint wait_ok;
+    guint wait_in;
 
     bool virgl;
     bool virgl_inited;
@@ -130,12 +129,18 @@ typedef struct VuGpu {
     QTAILQ_HEAD(, virtio_gpu_ctrl_command) fenceq;
 } VuGpu;
 
+enum {
+    VG_CMD_STATE_NEW,
+    VG_CMD_STATE_PENDING,
+    VG_CMD_STATE_FINISHED,
+};
+
 struct virtio_gpu_ctrl_command {
     VuVirtqElement elem;
     VuVirtq *vq;
     struct virtio_gpu_ctrl_hdr cmd_hdr;
     uint32_t error;
-    bool finished;
+    int state;
     QTAILQ_ENTRY(virtio_gpu_ctrl_command) next;
 };
 

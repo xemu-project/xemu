@@ -20,7 +20,7 @@
 
 #define TYPE_IOTHREAD "iothread"
 
-typedef struct {
+struct IOThread {
     Object parent_obj;
 
     QemuThread thread;
@@ -37,10 +37,11 @@ typedef struct {
     int64_t poll_max_ns;
     int64_t poll_grow;
     int64_t poll_shrink;
-} IOThread;
+};
+typedef struct IOThread IOThread;
 
-#define IOTHREAD(obj) \
-   OBJECT_CHECK(IOThread, obj, TYPE_IOTHREAD)
+DECLARE_INSTANCE_CHECKER(IOThread, IOTHREAD,
+                         TYPE_IOTHREAD)
 
 char *iothread_get_id(IOThread *iothread);
 IOThread *iothread_by_id(const char *id);
@@ -55,5 +56,11 @@ GMainContext *iothread_get_g_main_context(IOThread *iothread);
 IOThread *iothread_create(const char *id, Error **errp);
 void iothread_stop(IOThread *iothread);
 void iothread_destroy(IOThread *iothread);
+
+/*
+ * Returns true if executing withing IOThread context,
+ * false otherwise.
+ */
+bool qemu_in_iothread(void);
 
 #endif /* IOTHREAD_H */

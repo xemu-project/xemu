@@ -1,4 +1,4 @@
-FROM fedora:32
+FROM fedora:33
 
 # Please keep this list sorted alphabetically
 ENV PACKAGES \
@@ -6,14 +6,17 @@ ENV PACKAGES \
     brlapi-devel \
     bzip2 \
     bzip2-devel \
+    capstone-devel \
     ccache \
     clang \
     cyrus-sasl-devel \
     dbus-daemon \
     device-mapper-multipath-devel \
+    diffutils \
     findutils \
     gcc \
     gcc-c++ \
+    genisoimage \
     gettext \
     git \
     glib2-devel \
@@ -35,6 +38,7 @@ ENV PACKAGES \
     libpng-devel \
     librbd-devel \
     libseccomp-devel \
+    libslirp-devel \
     libssh-devel \
     libubsan \
     libudev-devel \
@@ -44,6 +48,7 @@ ENV PACKAGES \
     llvm \
     lzo-devel \
     make \
+    meson \
     mingw32-bzip2 \
     mingw32-curl \
     mingw32-glib2 \
@@ -71,8 +76,10 @@ ENV PACKAGES \
     mingw64-pixman \
     mingw64-pkg-config \
     mingw64-SDL2 \
+    nmap-ncat \
     ncurses-devel \
     nettle-devel \
+    ninja-build \
     nss-devel \
     numactl-devel \
     perl \
@@ -96,7 +103,6 @@ ENV PACKAGES \
     tar \
     tesseract \
     tesseract-langpack-eng \
-    texinfo \
     usbredir-devel \
     virglrenderer-devel \
     vte291-devel \

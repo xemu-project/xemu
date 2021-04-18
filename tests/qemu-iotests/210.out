@@ -108,7 +108,7 @@ Format specific information:
 
 {"execute": "blockdev-create", "arguments": {"job-id": "job0", "options": {"driver": "luks", "file": "this doesn't exist", "size": 67108864}}}
 {"return": {}}
-Job failed: Cannot find device=this doesn't exist nor node_name=this doesn't exist
+Job failed: Cannot find device='this doesn't exist' nor node-name='this doesn't exist'
 {"execute": "job-dismiss", "arguments": {"id": "job0"}}
 {"return": {}}
 
@@ -182,7 +182,7 @@ Job failed: The requested file size is too large
 === Resize image with invalid sizes ===
 
 {"execute": "block_resize", "arguments": {"node-name": "node1", "size": 9223372036854775296}}
-{"error": {"class": "GenericError", "desc": "The requested file size is too large"}}
+{"error": {"class": "GenericError", "desc": "offset(9223372036854775296) exceeds maximum(9223372035781033984)"}}
 {"execute": "block_resize", "arguments": {"node-name": "node1", "size": 9223372036854775808}}
 {"error": {"class": "GenericError", "desc": "Invalid parameter type for 'size', expected: integer"}}
 {"execute": "block_resize", "arguments": {"node-name": "node1", "size": 18446744073709551104}}

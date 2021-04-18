@@ -1600,7 +1600,7 @@ static void amdvi_instance_init(Object *klass)
 static void amdvi_class_init(ObjectClass *klass, void* data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    X86IOMMUClass *dc_class = X86_IOMMU_CLASS(klass);
+    X86IOMMUClass *dc_class = X86_IOMMU_DEVICE_CLASS(klass);
 
     dc->reset = amdvi_reset;
     dc->vmsd = &vmstate_amdvi;
@@ -1622,7 +1622,7 @@ static const TypeInfo amdvi = {
 };
 
 static const TypeInfo amdviPCI = {
-    .name = "AMDVI-PCI",
+    .name = TYPE_AMD_IOMMU_PCI,
     .parent = TYPE_PCI_DEVICE,
     .instance_size = sizeof(AMDVIPCIState),
     .interfaces = (InterfaceInfo[]) {

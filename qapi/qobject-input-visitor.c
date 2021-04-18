@@ -14,6 +14,7 @@
 
 #include "qemu/osdep.h"
 #include <math.h>
+#include "qapi/compat-policy.h"
 #include "qapi/error.h"
 #include "qapi/qobject-input-visitor.h"
 #include "qapi/visitor-impl.h"
@@ -43,6 +44,7 @@ typedef struct StackObject {
 
 struct QObjectInputVisitor {
     Visitor visitor;
+    CompatPolicyInput deprecated_policy;
 
     /* Root of visit at visitor creation. */
     QObject *root;
@@ -512,11 +514,7 @@ static bool qobject_input_type_bool_keyval(Visitor *v, const char *name,
         return false;
     }
 
-    if (!strcmp(str, "on")) {
-        *obj = true;
-    } else if (!strcmp(str, "off")) {
-        *obj = false;
-    } else {
+    if (!qapi_bool_parse(name, str, obj, NULL)) {
         error_setg(errp, QERR_INVALID_PARAMETER_VALUE,
                    full_name(qiv, name), "'on' or 'off'");
         return false;
@@ -666,6 +664,24 @@ static void qobject_input_optional(Visitor *v, const char *name, bool *present)
     *present = true;
 }
 
+static bool qobject_input_deprecated_accept(Visitor *v, const char *name,
+                                            Error **errp)
+{
+    QObjectInputVisitor *qiv = to_qiv(v);
+
+    switch (qiv->deprecated_policy) {
+    case COMPAT_POLICY_INPUT_ACCEPT:
+        return true;
+    case COMPAT_POLICY_INPUT_REJECT:
+        error_setg(errp, "Deprecated parameter '%s' disabled by policy",
+                   name);
+        return false;
+    case COMPAT_POLICY_INPUT_CRASH:
+    default:
+        abort();
+    }
+}
+
 static void qobject_input_free(Visitor *v)
 {
     QObjectInputVisitor *qiv = to_qiv(v);
@@ -700,6 +716,7 @@ static QObjectInputVisitor *qobject_input_visitor_base_new(QObject *obj)
     v->visitor.end_list = qobject_input_end_list;
     v->visitor.start_alternate = qobject_input_start_alternate;
     v->visitor.optional = qobject_input_optional;
+    v->visitor.deprecated_accept = qobject_input_deprecated_accept;
     v->visitor.free = qobject_input_free;
 
     v->root = qobject_ref(obj);
@@ -720,6 +737,14 @@ Visitor *qobject_input_visitor_new(QObject *obj)
     v->visitor.type_null = qobject_input_type_null;
 
     return &v->visitor;
+}
+
+void qobject_input_visitor_set_policy(Visitor *v,
+                                       CompatPolicyInput deprecated)
+{
+    QObjectInputVisitor *qiv = to_qiv(v);
+
+    qiv->deprecated_policy = deprecated;
 }
 
 Visitor *qobject_input_visitor_new_keyval(QObject *obj)
@@ -757,7 +782,7 @@ Visitor *qobject_input_visitor_new_str(const char *str,
         assert(args);
         v = qobject_input_visitor_new(QOBJECT(args));
     } else {
-        args = keyval_parse(str, implied_key, errp);
+        args = keyval_parse(str, implied_key, NULL, errp);
         if (!args) {
             return NULL;
         }

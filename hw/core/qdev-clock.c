@@ -12,6 +12,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/error-report.h"
 #include "hw/qdev-clock.h"
 #include "hw/qdev-core.h"
 #include "qapi/error.h"
@@ -60,6 +61,14 @@ static NamedClockList *qdev_init_clocklist(DeviceState *dev, const char *name,
                                  object_get_typename(OBJECT(clk)),
                                  (Object **) &ncl->clock,
                                  NULL, OBJ_PROP_LINK_STRONG);
+        /*
+         * Since the link property has the OBJ_PROP_LINK_STRONG flag, the clk
+         * object reference count gets decremented on property deletion.
+         * However object_property_add_link does not increment it since it
+         * doesn't know the linked object. Increment it here to ensure the
+         * aliased clock stays alive during this device life-time.
+         */
+        object_ref(OBJECT(clk));
     }
 
     ncl->clock = clk;
@@ -102,7 +111,8 @@ Clock *qdev_init_clock_out(DeviceState *dev, const char *name)
 }
 
 Clock *qdev_init_clock_in(DeviceState *dev, const char *name,
-                            ClockCallback *callback, void *opaque)
+                          ClockCallback *callback, void *opaque,
+                          unsigned int events)
 {
     NamedClockList *ncl;
 
@@ -111,7 +121,7 @@ Clock *qdev_init_clock_in(DeviceState *dev, const char *name,
     ncl = qdev_init_clocklist(dev, name, false, NULL);
 
     if (callback) {
-        clock_set_callback(ncl->clock, callback, opaque);
+        clock_set_callback(ncl->clock, callback, opaque, events);
     }
     return ncl->clock;
 }
@@ -128,7 +138,8 @@ void qdev_init_clocks(DeviceState *dev, const ClockPortInitArray clocks)
         if (elem->is_output) {
             *clkp = qdev_init_clock_out(dev, elem->name);
         } else {
-            *clkp = qdev_init_clock_in(dev, elem->name, elem->callback, dev);
+            *clkp = qdev_init_clock_in(dev, elem->name, elem->callback, dev,
+                                       elem->callback_events);
         }
     }
 }
@@ -153,6 +164,11 @@ Clock *qdev_get_clock_in(DeviceState *dev, const char *name)
     assert(name);
 
     ncl = qdev_get_clocklist(dev, name);
+    if (!ncl) {
+        error_report("Can not find clock-in '%s' for device type '%s'",
+                     name, object_get_typename(OBJECT(dev)));
+        abort();
+    }
     assert(!ncl->output);
 
     return ncl->clock;
@@ -165,6 +181,11 @@ Clock *qdev_get_clock_out(DeviceState *dev, const char *name)
     assert(name);
 
     ncl = qdev_get_clocklist(dev, name);
+    if (!ncl) {
+        error_report("Can not find clock-out '%s' for device type '%s'",
+                     name, object_get_typename(OBJECT(dev)));
+        abort();
+    }
     assert(ncl->output);
 
     return ncl->clock;
@@ -182,4 +203,10 @@ Clock *qdev_alias_clock(DeviceState *dev, const char *name,
     qdev_init_clocklist(alias_dev, alias_name, ncl->output, ncl->clock);
 
     return ncl->clock;
+}
+
+void qdev_connect_clock_in(DeviceState *dev, const char *name, Clock *source)
+{
+    assert(!dev->realized);
+    clock_set_source(qdev_get_clock_in(dev, name), source);
 }

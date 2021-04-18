@@ -25,12 +25,13 @@
 #include "hw/char/pl011.h"
 #include "hw/hw.h"
 #include "hw/irq.h"
+#include "hw/sd/sd.h"
+#include "qom/object.h"
 
 #define TYPE_INTEGRATOR_CM "integrator_core"
-#define INTEGRATOR_CM(obj) \
-    OBJECT_CHECK(IntegratorCMState, (obj), TYPE_INTEGRATOR_CM)
+OBJECT_DECLARE_SIMPLE_TYPE(IntegratorCMState, INTEGRATOR_CM)
 
-typedef struct IntegratorCMState {
+struct IntegratorCMState {
     /*< private >*/
     SysBusDevice parent_obj;
     /*< public >*/
@@ -50,7 +51,7 @@ typedef struct IntegratorCMState {
     uint32_t int_level;
     uint32_t irq_enabled;
     uint32_t fiq_enabled;
-} IntegratorCMState;
+};
 
 static uint8_t integrator_spd[128] = {
    128, 8, 4, 11, 9, 1, 64, 0,  2, 0xa0, 0xa0, 0, 0, 8, 0, 1,
@@ -325,10 +326,9 @@ static void integratorcm_realize(DeviceState *d, Error **errp)
 /* Primary interrupt controller.  */
 
 #define TYPE_INTEGRATOR_PIC "integrator_pic"
-#define INTEGRATOR_PIC(obj) \
-   OBJECT_CHECK(icp_pic_state, (obj), TYPE_INTEGRATOR_PIC)
+OBJECT_DECLARE_SIMPLE_TYPE(icp_pic_state, INTEGRATOR_PIC)
 
-typedef struct icp_pic_state {
+struct icp_pic_state {
     /*< private >*/
     SysBusDevice parent_obj;
     /*< public >*/
@@ -339,7 +339,7 @@ typedef struct icp_pic_state {
     uint32_t fiq_enabled;
     qemu_irq parent_irq;
     qemu_irq parent_fiq;
-} icp_pic_state;
+};
 
 static const VMStateDescription vmstate_icp_pic = {
     .name = "icp_pic",
@@ -464,10 +464,9 @@ static void icp_pic_init(Object *obj)
 /* CP control registers.  */
 
 #define TYPE_ICP_CONTROL_REGS "icp-ctrl-regs"
-#define ICP_CONTROL_REGS(obj) \
-    OBJECT_CHECK(ICPCtrlRegsState, (obj), TYPE_ICP_CONTROL_REGS)
+OBJECT_DECLARE_SIMPLE_TYPE(ICPCtrlRegsState, ICP_CONTROL_REGS)
 
-typedef struct ICPCtrlRegsState {
+struct ICPCtrlRegsState {
     /*< private >*/
     SysBusDevice parent_obj;
     /*< public >*/
@@ -476,7 +475,7 @@ typedef struct ICPCtrlRegsState {
 
     qemu_irq mmc_irq;
     uint32_t intreg_state;
-} ICPCtrlRegsState;
+};
 
 #define ICP_GPIO_MMC_WPROT      "mmc-wprot"
 #define ICP_GPIO_MMC_CARDIN     "mmc-cardin"
@@ -595,6 +594,7 @@ static void integratorcp_init(MachineState *machine)
     MemoryRegion *ram_alias = g_new(MemoryRegion, 1);
     qemu_irq pic[32];
     DeviceState *dev, *sic, *icp;
+    DriveInfo *dinfo;
     int i;
 
     cpuobj = object_new(machine->cpu_type);
@@ -603,7 +603,7 @@ static void integratorcp_init(MachineState *machine)
      * currently support EL3 so the CPU EL3 property is disabled before
      * realization.
      */
-    if (object_property_find(cpuobj, "has_el3", NULL)) {
+    if (object_property_find(cpuobj, "has_el3")) {
         object_property_set_bool(cpuobj, "has_el3", false, &error_fatal);
     }
 
@@ -645,10 +645,21 @@ static void integratorcp_init(MachineState *machine)
     sysbus_create_simple(TYPE_INTEGRATOR_DEBUG, 0x1a000000, 0);
 
     dev = sysbus_create_varargs("pl181", 0x1c000000, pic[23], pic[24], NULL);
-    qdev_connect_gpio_out(dev, 0,
+    qdev_connect_gpio_out_named(dev, "card-read-only", 0,
                           qdev_get_gpio_in_named(icp, ICP_GPIO_MMC_WPROT, 0));
-    qdev_connect_gpio_out(dev, 1,
+    qdev_connect_gpio_out_named(dev, "card-inserted", 0,
                           qdev_get_gpio_in_named(icp, ICP_GPIO_MMC_CARDIN, 0));
+    dinfo = drive_get_next(IF_SD);
+    if (dinfo) {
+        DeviceState *card;
+
+        card = qdev_new(TYPE_SD_CARD);
+        qdev_prop_set_drive_err(card, "drive", blk_by_legacy_dinfo(dinfo),
+                                &error_fatal);
+        qdev_realize_and_unref(card, qdev_get_child_bus(dev, "sd-bus"),
+                               &error_fatal);
+    }
+
     sysbus_create_varargs("pl041", 0x1d000000, pic[25], NULL);
 
     if (nd_table[0].used)

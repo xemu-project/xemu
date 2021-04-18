@@ -18,19 +18,32 @@ test-i386-pcmpistri: CFLAGS += -msse4.2
 run-test-i386-pcmpistri: QEMU_OPTS += -cpu max
 run-plugin-test-i386-pcmpistri-%: QEMU_OPTS += -cpu max
 
+run-test-i386-bmi2: QEMU_OPTS += -cpu max
+run-plugin-test-i386-bmi2-%: QEMU_OPTS += -cpu max
+
 #
 # hello-i386 is a barebones app
 #
 hello-i386: CFLAGS+=-ffreestanding
 hello-i386: LDFLAGS+=-nostdlib
 
-#
-# test-386 includes a couple of additional objects that need to be linked together
-#
+# test-386 includes a couple of additional objects that need to be
+# linked together, we also need a no-pie capable compiler due to the
+# non-pic calls into 16-bit mode
+ifneq ($(DOCKER_IMAGE)$(CROSS_CC_HAS_I386_NOPIE),)
+test-i386: CFLAGS += -fno-pie
 
 test-i386: test-i386.c test-i386-code16.S test-i386-vm86.S test-i386.h test-i386-shift.h test-i386-muldiv.h
 	$(CC) $(CFLAGS) $(LDFLAGS) $(EXTRA_CFLAGS) -o $@ \
 	   $(<D)/test-i386.c $(<D)/test-i386-code16.S $(<D)/test-i386-vm86.S -lm
+else
+test-i386:
+	$(call skip-test, "BUILD of $@", "missing -no-pie compiler support")
+run-test-i386:
+	$(call skip-test, "RUN of test-i386", "not built")
+run-plugin-test-i386-with-%:
+	$(call skip-test, "RUN of test-i386 ($*)", "not built")
+endif
 
 ifeq ($(SPEED), slow)
 
@@ -44,6 +57,13 @@ run-test-i386-fprem: test-i386-fprem test-i386-fprem.ref
 else
 SKIP_I386_TESTS+=test-i386-fprem
 endif
+
+# non-inline runs will trigger the duplicate instruction heuristics in libinsn.so
+run-plugin-%-with-libinsn.so:
+	$(call run-test, $@, $(QEMU) $(QEMU_OPTS) \
+	       -plugin ../../plugin/libinsn.so$(COMMA)arg=inline \
+	       -d plugin -D $*-with-libinsn.so.pout $*, \
+		"$* (inline) on $(TARGET_NAME)")
 
 # Update TESTS
 I386_TESTS:=$(filter-out $(SKIP_I386_TESTS), $(ALL_X86_TESTS))

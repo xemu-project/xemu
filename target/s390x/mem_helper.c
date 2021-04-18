@@ -31,6 +31,7 @@
 
 #if !defined(CONFIG_USER_ONLY)
 #include "hw/s390x/storage-keys.h"
+#include "hw/boards.h"
 #endif
 
 /*****************************************************************************/
@@ -129,28 +130,103 @@ typedef struct S390Access {
     int mmu_idx;
 } S390Access;
 
+/*
+ * With nonfault=1, return the PGM_ exception that would have been injected
+ * into the guest; return 0 if no exception was detected.
+ *
+ * For !CONFIG_USER_ONLY, the TEC is stored stored to env->tlb_fill_tec.
+ * For CONFIG_USER_ONLY, the faulting address is stored to env->__excp_addr.
+ */
+static int s390_probe_access(CPUArchState *env, target_ulong addr, int size,
+                             MMUAccessType access_type, int mmu_idx,
+                             bool nonfault, void **phost, uintptr_t ra)
+{
+    int flags;
+
+#if defined(CONFIG_USER_ONLY)
+    flags = page_get_flags(addr);
+    if (!(flags & (access_type == MMU_DATA_LOAD ?  PAGE_READ : PAGE_WRITE))) {
+        env->__excp_addr = addr;
+        flags = (flags & PAGE_VALID) ? PGM_PROTECTION : PGM_ADDRESSING;
+        if (nonfault) {
+            return flags;
+        }
+        tcg_s390_program_interrupt(env, flags, ra);
+    }
+    *phost = g2h(env_cpu(env), addr);
+#else
+    /*
+     * For !CONFIG_USER_ONLY, we cannot rely on TLB_INVALID_MASK or haddr==NULL
+     * to detect if there was an exception during tlb_fill().
+     */
+    env->tlb_fill_exc = 0;
+    flags = probe_access_flags(env, addr, access_type, mmu_idx, nonfault, phost,
+                               ra);
+    if (env->tlb_fill_exc) {
+        return env->tlb_fill_exc;
+    }
+
+    if (unlikely(flags & TLB_WATCHPOINT)) {
+        /* S390 does not presently use transaction attributes. */
+        cpu_check_watchpoint(env_cpu(env), addr, size,
+                             MEMTXATTRS_UNSPECIFIED,
+                             (access_type == MMU_DATA_STORE
+                              ? BP_MEM_WRITE : BP_MEM_READ), ra);
+    }
+#endif
+    return 0;
+}
+
+static int access_prepare_nf(S390Access *access, CPUS390XState *env,
+                             bool nonfault, vaddr vaddr1, int size,
+                             MMUAccessType access_type,
+                             int mmu_idx, uintptr_t ra)
+{
+    void *haddr1, *haddr2 = NULL;
+    int size1, size2, exc;
+    vaddr vaddr2 = 0;
+
+    assert(size > 0 && size <= 4096);
+
+    size1 = MIN(size, -(vaddr1 | TARGET_PAGE_MASK)),
+    size2 = size - size1;
+
+    exc = s390_probe_access(env, vaddr1, size1, access_type, mmu_idx, nonfault,
+                            &haddr1, ra);
+    if (exc) {
+        return exc;
+    }
+    if (unlikely(size2)) {
+        /* The access crosses page boundaries. */
+        vaddr2 = wrap_address(env, vaddr1 + size1);
+        exc = s390_probe_access(env, vaddr2, size2, access_type, mmu_idx,
+                                nonfault, &haddr2, ra);
+        if (exc) {
+            return exc;
+        }
+    }
+
+    *access = (S390Access) {
+        .vaddr1 = vaddr1,
+        .vaddr2 = vaddr2,
+        .haddr1 = haddr1,
+        .haddr2 = haddr2,
+        .size1 = size1,
+        .size2 = size2,
+        .mmu_idx = mmu_idx
+    };
+    return 0;
+}
+
 static S390Access access_prepare(CPUS390XState *env, vaddr vaddr, int size,
                                  MMUAccessType access_type, int mmu_idx,
                                  uintptr_t ra)
 {
-    S390Access access = {
-        .vaddr1 = vaddr,
-        .size1 = MIN(size, -(vaddr | TARGET_PAGE_MASK)),
-        .mmu_idx = mmu_idx,
-    };
-
-    g_assert(size > 0 && size <= 4096);
-    access.haddr1 = probe_access(env, access.vaddr1, access.size1, access_type,
-                                 mmu_idx, ra);
-
-    if (unlikely(access.size1 != size)) {
-        /* The access crosses page boundaries. */
-        access.vaddr2 = wrap_address(env, vaddr + access.size1);
-        access.size2 = size - access.size1;
-        access.haddr2 = probe_access(env, access.vaddr2, access.size2,
-                                     access_type, mmu_idx, ra);
-    }
-    return access;
+    S390Access ret;
+    int exc = access_prepare_nf(&ret, env, false, vaddr, size,
+                                access_type, mmu_idx, ra);
+    assert(!exc);
+    return ret;
 }
 
 /* Helper to handle memset on a single page. */
@@ -839,33 +915,58 @@ uint64_t HELPER(clst)(CPUS390XState *env, uint64_t c, uint64_t s1, uint64_t s2)
 }
 
 /* move page */
-uint32_t HELPER(mvpg)(CPUS390XState *env, uint64_t r0, uint64_t r1, uint64_t r2)
+uint32_t HELPER(mvpg)(CPUS390XState *env, uint64_t r0, uint32_t r1, uint32_t r2)
 {
+    const uint64_t src = get_address(env, r2) & TARGET_PAGE_MASK;
+    const uint64_t dst = get_address(env, r1) & TARGET_PAGE_MASK;
     const int mmu_idx = cpu_mmu_index(env, false);
     const bool f = extract64(r0, 11, 1);
     const bool s = extract64(r0, 10, 1);
+    const bool cco = extract64(r0, 8, 1);
     uintptr_t ra = GETPC();
     S390Access srca, desta;
+    int exc;
 
     if ((f && s) || extract64(r0, 12, 4)) {
         tcg_s390_program_interrupt(env, PGM_SPECIFICATION, GETPC());
     }
 
-    r1 = wrap_address(env, r1 & TARGET_PAGE_MASK);
-    r2 = wrap_address(env, r2 & TARGET_PAGE_MASK);
-
     /*
-     * TODO:
-     * - Access key handling
-     * - CC-option with surpression of page-translation exceptions
-     * - Store r1/r2 register identifiers at real location 162
+     * We always manually handle exceptions such that we can properly store
+     * r1/r2 to the lowcore on page-translation exceptions.
+     *
+     * TODO: Access key handling
      */
-    srca = access_prepare(env, r2, TARGET_PAGE_SIZE, MMU_DATA_LOAD, mmu_idx,
-                          ra);
-    desta = access_prepare(env, r1, TARGET_PAGE_SIZE, MMU_DATA_STORE, mmu_idx,
-                           ra);
+    exc = access_prepare_nf(&srca, env, true, src, TARGET_PAGE_SIZE,
+                            MMU_DATA_LOAD, mmu_idx, ra);
+    if (exc) {
+        if (cco) {
+            return 2;
+        }
+        goto inject_exc;
+    }
+    exc = access_prepare_nf(&desta, env, true, dst, TARGET_PAGE_SIZE,
+                            MMU_DATA_STORE, mmu_idx, ra);
+    if (exc) {
+        if (cco && exc != PGM_PROTECTION) {
+            return 1;
+        }
+        goto inject_exc;
+    }
     access_memmove(env, &desta, &srca, ra);
     return 0; /* data moved */
+inject_exc:
+#if !defined(CONFIG_USER_ONLY)
+    if (exc != PGM_ADDRESSING) {
+        stq_phys(env_cpu(env)->as, env->psa + offsetof(LowCore, trans_exc_code),
+                 env->tlb_fill_tec);
+    }
+    if (exc == PGM_PAGE_TRANS) {
+        stb_phys(env_cpu(env)->as, env->psa + offsetof(LowCore, op_access_id),
+                 r1 << 4 | r2);
+    }
+#endif
+    tcg_s390_program_interrupt(env, exc, ra);
 }
 
 /* string copy */
@@ -1779,8 +1880,8 @@ static uint32_t do_csst(CPUS390XState *env, uint32_t r3, uint64_t a1,
 
             if (parallel) {
 #ifdef CONFIG_USER_ONLY
-                uint32_t *haddr = g2h(a1);
-                ov = atomic_cmpxchg__nocheck(haddr, cv, nv);
+                uint32_t *haddr = g2h(env_cpu(env), a1);
+                ov = qatomic_cmpxchg__nocheck(haddr, cv, nv);
 #else
                 TCGMemOpIdx oi = make_memop_idx(MO_TEUL | MO_ALIGN, mem_idx);
                 ov = helper_atomic_cmpxchgl_be_mmu(env, a1, cv, nv, oi, ra);
@@ -1803,8 +1904,8 @@ static uint32_t do_csst(CPUS390XState *env, uint32_t r3, uint64_t a1,
             if (parallel) {
 #ifdef CONFIG_ATOMIC64
 # ifdef CONFIG_USER_ONLY
-                uint64_t *haddr = g2h(a1);
-                ov = atomic_cmpxchg__nocheck(haddr, cv, nv);
+                uint64_t *haddr = g2h(env_cpu(env), a1);
+                ov = qatomic_cmpxchg__nocheck(haddr, cv, nv);
 # else
                 TCGMemOpIdx oi = make_memop_idx(MO_TEQ | MO_ALIGN, mem_idx);
                 ov = helper_atomic_cmpxchgq_be_mmu(env, a1, cv, nv, oi, ra);
@@ -2075,12 +2176,13 @@ uint32_t HELPER(tprot)(CPUS390XState *env, uint64_t a1, uint64_t a2)
 /* insert storage key extended */
 uint64_t HELPER(iske)(CPUS390XState *env, uint64_t r2)
 {
+    MachineState *ms = MACHINE(qdev_get_machine());
     static S390SKeysState *ss;
     static S390SKeysClass *skeyclass;
     uint64_t addr = wrap_address(env, r2);
     uint8_t key;
 
-    if (addr > ram_size) {
+    if (addr > ms->ram_size) {
         return 0;
     }
 
@@ -2098,12 +2200,13 @@ uint64_t HELPER(iske)(CPUS390XState *env, uint64_t r2)
 /* set storage key extended */
 void HELPER(sske)(CPUS390XState *env, uint64_t r1, uint64_t r2)
 {
+    MachineState *ms = MACHINE(qdev_get_machine());
     static S390SKeysState *ss;
     static S390SKeysClass *skeyclass;
     uint64_t addr = wrap_address(env, r2);
     uint8_t key;
 
-    if (addr > ram_size) {
+    if (addr > ms->ram_size) {
         return;
     }
 
@@ -2124,11 +2227,12 @@ void HELPER(sske)(CPUS390XState *env, uint64_t r1, uint64_t r2)
 /* reset reference bit extended */
 uint32_t HELPER(rrbe)(CPUS390XState *env, uint64_t r2)
 {
+    MachineState *ms = MACHINE(qdev_get_machine());
     static S390SKeysState *ss;
     static S390SKeysClass *skeyclass;
     uint8_t re, key;
 
-    if (r2 > ram_size) {
+    if (r2 > ms->ram_size) {
         return 0;
     }
 
@@ -2469,8 +2573,8 @@ void HELPER(ex)(CPUS390XState *env, uint32_t ilen, uint64_t r1, uint64_t addr)
             uint32_t d1 = extract64(insn, 32, 12);
             uint32_t b2 = extract64(insn, 28, 4);
             uint32_t d2 = extract64(insn, 16, 12);
-            uint64_t a1 = wrap_address(env, env->regs[b1] + d1);
-            uint64_t a2 = wrap_address(env, env->regs[b2] + d2);
+            uint64_t a1 = wrap_address(env, (b1 ? env->regs[b1] : 0) + d1);
+            uint64_t a2 = wrap_address(env, (b2 ? env->regs[b2] : 0) + d2);
 
             env->cc_op = helper(env, l, a1, a2, 0);
             env->psw.addr += ilen;

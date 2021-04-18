@@ -47,6 +47,8 @@ Supported devices
  * GPIO Controller (Master only)
  * UART
  * Ethernet controllers
+ * Front LEDs (PCA9552 on I2C bus)
+ * LPC Peripheral Controller (a subset of subdevices are supported)
 
 
 Missing devices
@@ -55,7 +57,6 @@ Missing devices
  * Coprocessor support
  * ADC (out of tree implementation)
  * PWM and Fan Controller
- * LPC Bus Controller
  * Slave GPIO Controller
  * Super I/O Controller
  * Hash/Crypto Engine
@@ -71,15 +72,37 @@ Missing devices
 Boot options
 ------------
 
-The Aspeed machines can be started using the -kernel option to load a
-Linux kernel or from a firmare image which can be downloaded from the
-OpenPOWER jenkins :
+The Aspeed machines can be started using the ``-kernel`` option to
+load a Linux kernel or from a firmware. Images can be downloaded from
+the OpenBMC jenkins :
 
-   https://openpower.xyz/
+   https://jenkins.openbmc.org/job/ci-openbmc/lastSuccessfulBuild/distro=ubuntu,label=docker-builder
+
+or directly from the OpenBMC GitHub release repository :
+
+   https://github.com/openbmc/openbmc/releases
 
 The image should be attached as an MTD drive. Run :
 
 .. code-block:: bash
 
   $ qemu-system-arm -M romulus-bmc -nic user \
-	-drive file=flash-romulus,format=raw,if=mtd -nographic
+	-drive file=obmc-phosphor-image-romulus.static.mtd,format=raw,if=mtd -nographic
+
+Options specific to Aspeed machines are :
+
+ * ``execute-in-place`` which emulates the boot from the CE0 flash
+   device by using the FMC controller to load the instructions, and
+   not simply from RAM. This takes a little longer.
+
+ * ``fmc-model`` to change the FMC Flash model. FW needs support for
+   the chip model to boot.
+
+ * ``spi-model`` to change the SPI Flash model.
+
+For instance, to start the ``ast2500-evb`` machine with a different
+FMC chip and a bigger (64M) SPI chip, use :
+
+.. code-block:: bash
+
+  -M ast2500-evb,fmc-model=mx25l25635e,spi-model=mx66u51235f

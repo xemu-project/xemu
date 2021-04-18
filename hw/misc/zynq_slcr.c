@@ -23,6 +23,7 @@
 #include "qemu/module.h"
 #include "hw/registerfields.h"
 #include "hw/qdev-clock.h"
+#include "qom/object.h"
 
 #ifndef ZYNQ_SLCR_ERR_DEBUG
 #define ZYNQ_SLCR_ERR_DEBUG 0
@@ -181,10 +182,10 @@ REG32(DDRIOB, 0xb40)
 #define ZYNQ_SLCR_MMIO_SIZE     0x1000
 #define ZYNQ_SLCR_NUM_REGS      (ZYNQ_SLCR_MMIO_SIZE / 4)
 
-#define TYPE_ZYNQ_SLCR "xilinx,zynq_slcr"
-#define ZYNQ_SLCR(obj) OBJECT_CHECK(ZynqSLCRState, (obj), TYPE_ZYNQ_SLCR)
+#define TYPE_ZYNQ_SLCR "xilinx-zynq_slcr"
+OBJECT_DECLARE_SIMPLE_TYPE(ZynqSLCRState, ZYNQ_SLCR)
 
-typedef struct ZynqSLCRState {
+struct ZynqSLCRState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
@@ -194,7 +195,7 @@ typedef struct ZynqSLCRState {
     Clock *ps_clk;
     Clock *uart0_ref_clk;
     Clock *uart1_ref_clk;
-} ZynqSLCRState;
+};
 
 /*
  * return the output frequency of ARM/DDR/IO pll
@@ -214,6 +215,11 @@ static uint64_t zynq_slcr_compute_pll(uint64_t input, uint32_t ctrl_reg)
     if (ctrl_reg & (R_xxx_PLL_CTRL_PLL_RESET_MASK |
                     R_xxx_PLL_CTRL_PLL_PWRDWN_MASK)) {
         return 0;
+    }
+
+    /* Consider zero feedback as maximum divide ratio possible */
+    if (!mult) {
+        mult = 1 << R_xxx_PLL_CTRL_PLL_FPDIV_LENGTH;
     }
 
     /* frequency multiplier -> period division */
@@ -301,9 +307,10 @@ static void zynq_slcr_propagate_clocks(ZynqSLCRState *s)
     clock_propagate(s->uart1_ref_clk);
 }
 
-static void zynq_slcr_ps_clk_callback(void *opaque)
+static void zynq_slcr_ps_clk_callback(void *opaque, ClockEvent event)
 {
     ZynqSLCRState *s = (ZynqSLCRState *) opaque;
+
     zynq_slcr_compute_clocks(s);
     zynq_slcr_propagate_clocks(s);
 }
@@ -570,7 +577,7 @@ static const MemoryRegionOps slcr_ops = {
 };
 
 static const ClockPortInitArray zynq_slcr_clocks = {
-    QDEV_CLOCK_IN(ZynqSLCRState, ps_clk, zynq_slcr_ps_clk_callback),
+    QDEV_CLOCK_IN(ZynqSLCRState, ps_clk, zynq_slcr_ps_clk_callback, ClockUpdate),
     QDEV_CLOCK_OUT(ZynqSLCRState, uart0_ref_clk),
     QDEV_CLOCK_OUT(ZynqSLCRState, uart1_ref_clk),
     QDEV_CLOCK_END

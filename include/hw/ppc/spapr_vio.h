@@ -11,7 +11,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -25,17 +25,14 @@
 #include "hw/ppc/spapr.h"
 #include "sysemu/dma.h"
 #include "hw/irq.h"
+#include "qom/object.h"
 
 #define TYPE_VIO_SPAPR_DEVICE "vio-spapr-device"
-#define VIO_SPAPR_DEVICE(obj) \
-     OBJECT_CHECK(SpaprVioDevice, (obj), TYPE_VIO_SPAPR_DEVICE)
-#define VIO_SPAPR_DEVICE_CLASS(klass) \
-     OBJECT_CLASS_CHECK(SpaprVioDeviceClass, (klass), TYPE_VIO_SPAPR_DEVICE)
-#define VIO_SPAPR_DEVICE_GET_CLASS(obj) \
-     OBJECT_GET_CLASS(SpaprVioDeviceClass, (obj), TYPE_VIO_SPAPR_DEVICE)
+OBJECT_DECLARE_TYPE(SpaprVioDevice, SpaprVioDeviceClass,
+                    VIO_SPAPR_DEVICE)
 
 #define TYPE_SPAPR_VIO_BUS "spapr-vio-bus"
-#define SPAPR_VIO_BUS(obj) OBJECT_CHECK(SpaprVioBus, (obj), TYPE_SPAPR_VIO_BUS)
+OBJECT_DECLARE_SIMPLE_TYPE(SpaprVioBus, SPAPR_VIO_BUS)
 
 #define TYPE_SPAPR_VIO_BRIDGE "spapr-vio-bridge"
 
@@ -46,10 +43,8 @@ typedef struct SpaprVioCrq {
     int(*SendFunc)(struct SpaprVioDevice *vdev, uint8_t *crq);
 } SpaprVioCrq;
 
-typedef struct SpaprVioDevice SpaprVioDevice;
-typedef struct SpaprVioBus SpaprVioBus;
 
-typedef struct SpaprVioDeviceClass {
+struct SpaprVioDeviceClass {
     DeviceClass parent_class;
 
     const char *dt_name, *dt_type, *dt_compatible;
@@ -59,7 +54,7 @@ typedef struct SpaprVioDeviceClass {
     void (*reset)(SpaprVioDevice *dev);
     int (*devnode)(SpaprVioDevice *dev, void *fdt, int node_off);
     const char *(*get_dt_compatible)(SpaprVioDevice *dev);
-} SpaprVioDeviceClass;
+};
 
 struct SpaprVioDevice {
     DeviceState qdev;

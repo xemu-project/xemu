@@ -35,7 +35,9 @@
 #include "chardev/char-fe.h"
 #include "hw/ipmi/ipmi.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "migration/vmstate.h"
+#include "qom/object.h"
 
 #define VM_MSG_CHAR        0xA0 /* Marks end of message */
 #define VM_CMD_CHAR        0xA1 /* Marks end of a command */
@@ -61,9 +63,8 @@
 #define VM_CMD_GRACEFUL_SHUTDOWN   0x09
 
 #define TYPE_IPMI_BMC_EXTERN "ipmi-bmc-extern"
-#define IPMI_BMC_EXTERN(obj) OBJECT_CHECK(IPMIBmcExtern, (obj), \
-                                        TYPE_IPMI_BMC_EXTERN)
-typedef struct IPMIBmcExtern {
+OBJECT_DECLARE_SIMPLE_TYPE(IPMIBmcExtern, IPMI_BMC_EXTERN)
+struct IPMIBmcExtern {
     IPMIBmc parent;
 
     CharBackend chr;
@@ -85,7 +86,7 @@ typedef struct IPMIBmcExtern {
 
     /* A reset event is pending to be sent upstream. */
     bool send_reset;
-} IPMIBmcExtern;
+};
 
 static unsigned char
 ipmb_checksum(const unsigned char *data, int size, unsigned char start)
@@ -510,7 +511,6 @@ static void ipmi_bmc_extern_finalize(Object *obj)
 {
     IPMIBmcExtern *ibe = IPMI_BMC_EXTERN(obj);
 
-    timer_del(ibe->extern_timer);
     timer_free(ibe->extern_timer);
 }
 

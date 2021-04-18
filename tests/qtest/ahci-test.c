@@ -25,7 +25,7 @@
 #include "qemu/osdep.h"
 #include <getopt.h>
 
-#include "libqtest.h"
+#include "libqos/libqtest.h"
 #include "libqos/libqos-pc.h"
 #include "libqos/ahci.h"
 #include "libqos/pci-pc.h"
@@ -1443,6 +1443,7 @@ static int prepare_iso(size_t size, unsigned char **buf, char **name)
     ssize_t ret;
     int fd = mkstemp(cdrom_path);
 
+    g_assert(fd != -1);
     g_assert(buf);
     g_assert(name);
     patt = g_malloc(size);

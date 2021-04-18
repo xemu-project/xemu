@@ -145,14 +145,11 @@ static struct PostcopyBlocktimeContext *blocktime_context_new(void)
 static uint32List *get_vcpu_blocktime_list(PostcopyBlocktimeContext *ctx)
 {
     MachineState *ms = MACHINE(qdev_get_machine());
-    uint32List *list = NULL, *entry = NULL;
+    uint32List *list = NULL;
     int i;
 
     for (i = ms->smp.cpus - 1; i >= 0; i--) {
-        entry = g_new0(uint32List, 1);
-        entry->value = ctx->vcpu_blocktime[i];
-        entry->next = list;
-        list = entry;
+        QAPI_LIST_PREPEND(list, ctx->vcpu_blocktime[i]);
     }
 
     return list;
@@ -237,7 +234,7 @@ release_ufd:
  * request_ufd_features: this function should be called only once on a newly
  * opened ufd, subsequent calls will lead to error.
  *
- * Returns: true on succes
+ * Returns: true on success
  *
  * @ufd: fd obtained from userfaultfd syscall
  * @features: bit mask see UFFD_API_FEATURES
@@ -403,7 +400,7 @@ bool postcopy_ram_supported_by_host(MigrationIncomingState *mis)
                      strerror(errno));
         goto out;
     }
-    g_assert(((size_t)testarea & (pagesize-1)) == 0);
+    g_assert(((size_t)testarea & (pagesize - 1)) == 0);
 
     reg_struct.range.start = (uintptr_t)testarea;
     reg_struct.range.len = pagesize;
@@ -530,7 +527,7 @@ int postcopy_ram_incoming_cleanup(MigrationIncomingState *mis)
         Error *local_err = NULL;
 
         /* Let the fault thread quit */
-        atomic_set(&mis->fault_thread_quit, 1);
+        qatomic_set(&mis->fault_thread_quit, 1);
         postcopy_fault_thread_notify(mis);
         trace_postcopy_ram_incoming_cleanup_join();
         qemu_thread_join(&mis->fault_thread);
@@ -684,14 +681,7 @@ int postcopy_request_shared_page(struct PostCopyFD *pcfd, RAMBlock *rb,
                                         qemu_ram_get_idstr(rb), rb_offset);
         return postcopy_wake_shared(pcfd, client_addr, rb);
     }
-    if (rb != mis->last_rb) {
-        mis->last_rb = rb;
-        migrate_send_rp_req_pages(mis, qemu_ram_get_idstr(rb),
-                                  aligned_rbo, pagesize);
-    } else {
-        /* Save some space */
-        migrate_send_rp_req_pages(mis, NULL, aligned_rbo, pagesize);
-    }
+    migrate_send_rp_req_pages(mis, rb, aligned_rbo, client_addr);
     return 0;
 }
 
@@ -742,12 +732,12 @@ static void mark_postcopy_blocktime_begin(uintptr_t addr, uint32_t ptid,
 
     low_time_offset = get_low_time_offset(dc);
     if (dc->vcpu_addr[cpu] == 0) {
-        atomic_inc(&dc->smp_cpus_down);
+        qatomic_inc(&dc->smp_cpus_down);
     }
 
-    atomic_xchg(&dc->last_begin, low_time_offset);
-    atomic_xchg(&dc->page_fault_vcpu_time[cpu], low_time_offset);
-    atomic_xchg(&dc->vcpu_addr[cpu], addr);
+    qatomic_xchg(&dc->last_begin, low_time_offset);
+    qatomic_xchg(&dc->page_fault_vcpu_time[cpu], low_time_offset);
+    qatomic_xchg(&dc->vcpu_addr[cpu], addr);
 
     /*
      * check it here, not at the beginning of the function,
@@ -756,9 +746,9 @@ static void mark_postcopy_blocktime_begin(uintptr_t addr, uint32_t ptid,
      */
     already_received = ramblock_recv_bitmap_test(rb, (void *)addr);
     if (already_received) {
-        atomic_xchg(&dc->vcpu_addr[cpu], 0);
-        atomic_xchg(&dc->page_fault_vcpu_time[cpu], 0);
-        atomic_dec(&dc->smp_cpus_down);
+        qatomic_xchg(&dc->vcpu_addr[cpu], 0);
+        qatomic_xchg(&dc->page_fault_vcpu_time[cpu], 0);
+        qatomic_dec(&dc->smp_cpus_down);
     }
     trace_mark_postcopy_blocktime_begin(addr, dc, dc->page_fault_vcpu_time[cpu],
                                         cpu, already_received);
@@ -807,34 +797,34 @@ static void mark_postcopy_blocktime_end(uintptr_t addr)
 
     low_time_offset = get_low_time_offset(dc);
     /* lookup cpu, to clear it,
-     * that algorithm looks straighforward, but it's not
+     * that algorithm looks straightforward, but it's not
      * optimal, more optimal algorithm is keeping tree or hash
      * where key is address value is a list of  */
     for (i = 0; i < smp_cpus; i++) {
         uint32_t vcpu_blocktime = 0;
 
-        read_vcpu_time = atomic_fetch_add(&dc->page_fault_vcpu_time[i], 0);
-        if (atomic_fetch_add(&dc->vcpu_addr[i], 0) != addr ||
+        read_vcpu_time = qatomic_fetch_add(&dc->page_fault_vcpu_time[i], 0);
+        if (qatomic_fetch_add(&dc->vcpu_addr[i], 0) != addr ||
             read_vcpu_time == 0) {
             continue;
         }
-        atomic_xchg(&dc->vcpu_addr[i], 0);
+        qatomic_xchg(&dc->vcpu_addr[i], 0);
         vcpu_blocktime = low_time_offset - read_vcpu_time;
         affected_cpu += 1;
         /* we need to know is that mark_postcopy_end was due to
          * faulted page, another possible case it's prefetched
          * page and in that case we shouldn't be here */
         if (!vcpu_total_blocktime &&
-            atomic_fetch_add(&dc->smp_cpus_down, 0) == smp_cpus) {
+            qatomic_fetch_add(&dc->smp_cpus_down, 0) == smp_cpus) {
             vcpu_total_blocktime = true;
         }
         /* continue cycle, due to one page could affect several vCPUs */
         dc->vcpu_blocktime[i] += vcpu_blocktime;
     }
 
-    atomic_sub(&dc->smp_cpus_down, affected_cpu);
+    qatomic_sub(&dc->smp_cpus_down, affected_cpu);
     if (vcpu_total_blocktime) {
-        dc->total_blocktime += low_time_offset - atomic_fetch_add(
+        dc->total_blocktime += low_time_offset - qatomic_fetch_add(
                 &dc->last_begin, 0);
     }
     trace_mark_postcopy_blocktime_end(addr, dc, dc->total_blocktime,
@@ -910,7 +900,6 @@ static void *postcopy_ram_fault_thread(void *opaque)
              * the channel is rebuilt.
              */
             if (postcopy_pause_fault_thread(mis)) {
-                mis->last_rb = NULL;
                 /* Continue to read the userfaultfd */
             } else {
                 error_report("%s: paused but don't allow to continue",
@@ -928,7 +917,7 @@ static void *postcopy_ram_fault_thread(void *opaque)
                 error_report("%s: read() failed", __func__);
             }
 
-            if (atomic_read(&mis->fault_thread_quit)) {
+            if (qatomic_read(&mis->fault_thread_quit)) {
                 trace_postcopy_ram_fault_thread_quit();
                 break;
             }
@@ -986,25 +975,12 @@ retry:
              * Send the request to the source - we want to request one
              * of our host page sizes (which is >= TPS)
              */
-            if (rb != mis->last_rb) {
-                mis->last_rb = rb;
-                ret = migrate_send_rp_req_pages(mis,
-                                                qemu_ram_get_idstr(rb),
-                                                rb_offset,
-                                                qemu_ram_pagesize(rb));
-            } else {
-                /* Save some space */
-                ret = migrate_send_rp_req_pages(mis,
-                                                NULL,
-                                                rb_offset,
-                                                qemu_ram_pagesize(rb));
-            }
-
+            ret = migrate_send_rp_req_pages(mis, rb, rb_offset,
+                                            msg.arg.pagefault.address);
             if (ret) {
                 /* May be network failure, try to wait for recovery */
                 if (ret == -EIO && postcopy_pause_fault_thread(mis)) {
                     /* We got reconnected somehow, try to continue */
-                    mis->last_rb = NULL;
                     goto retry;
                 } else {
                     /* This is a unavoidable fault */
@@ -1148,10 +1124,12 @@ int postcopy_ram_incoming_setup(MigrationIncomingState *mis)
     return 0;
 }
 
-static int qemu_ufd_copy_ioctl(int userfault_fd, void *host_addr,
+static int qemu_ufd_copy_ioctl(MigrationIncomingState *mis, void *host_addr,
                                void *from_addr, uint64_t pagesize, RAMBlock *rb)
 {
+    int userfault_fd = mis->userfault_fd;
     int ret;
+
     if (from_addr) {
         struct uffdio_copy copy_struct;
         copy_struct.dst = (uint64_t)(uintptr_t)host_addr;
@@ -1167,10 +1145,20 @@ static int qemu_ufd_copy_ioctl(int userfault_fd, void *host_addr,
         ret = ioctl(userfault_fd, UFFDIO_ZEROPAGE, &zero_struct);
     }
     if (!ret) {
+        qemu_mutex_lock(&mis->page_request_mutex);
         ramblock_recv_bitmap_set_range(rb, host_addr,
                                        pagesize / qemu_target_page_size());
+        /*
+         * If this page resolves a page fault for a previous recorded faulted
+         * address, take a special note to maintain the requested page list.
+         */
+        if (g_tree_lookup(mis->page_requested, host_addr)) {
+            g_tree_remove(mis->page_requested, host_addr);
+            mis->page_requested_count--;
+            trace_postcopy_page_req_del(host_addr, mis->page_requested_count);
+        }
+        qemu_mutex_unlock(&mis->page_request_mutex);
         mark_postcopy_blocktime_end((uintptr_t)host_addr);
-
     }
     return ret;
 }
@@ -1205,7 +1193,7 @@ int postcopy_place_page(MigrationIncomingState *mis, void *host, void *from,
      * which would be slightly cheaper, but we'd have to be careful
      * of the order of updating our page state.
      */
-    if (qemu_ufd_copy_ioctl(mis->userfault_fd, host, from, pagesize, rb)) {
+    if (qemu_ufd_copy_ioctl(mis, host, from, pagesize, rb)) {
         int e = errno;
         error_report("%s: %s copy host: %p from: %p (size: %zd)",
                      __func__, strerror(e), host, from, pagesize);
@@ -1232,7 +1220,7 @@ int postcopy_place_page_zero(MigrationIncomingState *mis, void *host,
      * but it's not available for everything (e.g. hugetlbpages)
      */
     if (qemu_ram_is_uf_zeroable(rb)) {
-        if (qemu_ufd_copy_ioctl(mis->userfault_fd, host, NULL, pagesize, rb)) {
+        if (qemu_ufd_copy_ioctl(mis, host, NULL, pagesize, rb)) {
             int e = errno;
             error_report("%s: %s zero host: %p",
                          __func__, strerror(e), host);
@@ -1410,13 +1398,13 @@ static PostcopyState incoming_postcopy_state;
 
 PostcopyState  postcopy_state_get(void)
 {
-    return atomic_mb_read(&incoming_postcopy_state);
+    return qatomic_mb_read(&incoming_postcopy_state);
 }
 
 /* Set the state and return the old state */
 PostcopyState postcopy_state_set(PostcopyState new_state)
 {
-    return atomic_xchg(&incoming_postcopy_state, new_state);
+    return qatomic_xchg(&incoming_postcopy_state, new_state);
 }
 
 /* Register a handler for external shared memory postcopy

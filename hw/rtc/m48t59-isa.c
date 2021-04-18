@@ -30,26 +30,25 @@
 #include "m48t59-internal.h"
 #include "qapi/error.h"
 #include "qemu/module.h"
+#include "qom/object.h"
 
 #define TYPE_M48TXX_ISA "isa-m48txx"
-#define M48TXX_ISA_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(M48txxISADeviceClass, (obj), TYPE_M48TXX_ISA)
-#define M48TXX_ISA_CLASS(klass) \
-    OBJECT_CLASS_CHECK(M48txxISADeviceClass, (klass), TYPE_M48TXX_ISA)
-#define M48TXX_ISA(obj) \
-    OBJECT_CHECK(M48txxISAState, (obj), TYPE_M48TXX_ISA)
+typedef struct M48txxISADeviceClass M48txxISADeviceClass;
+typedef struct M48txxISAState M48txxISAState;
+DECLARE_OBJ_CHECKERS(M48txxISAState, M48txxISADeviceClass,
+                     M48TXX_ISA, TYPE_M48TXX_ISA)
 
-typedef struct M48txxISAState {
+struct M48txxISAState {
     ISADevice parent_obj;
     M48t59State state;
     uint32_t io_base;
     MemoryRegion io;
-} M48txxISAState;
+};
 
-typedef struct M48txxISADeviceClass {
+struct M48txxISADeviceClass {
     ISADeviceClass parent_class;
     M48txxInfo info;
-} M48txxISADeviceClass;
+};
 
 static M48txxInfo m48txx_isa_info[] = {
     {
@@ -58,31 +57,6 @@ static M48txxInfo m48txx_isa_info[] = {
         .size = 0x2000,
     }
 };
-
-Nvram *m48t59_init_isa(ISABus *bus, uint32_t io_base, uint16_t size,
-                       int base_year, int model)
-{
-    ISADevice *isa_dev;
-    DeviceState *dev;
-    int i;
-
-    for (i = 0; i < ARRAY_SIZE(m48txx_isa_info); i++) {
-        if (m48txx_isa_info[i].size != size ||
-            m48txx_isa_info[i].model != model) {
-            continue;
-        }
-
-        isa_dev = isa_new(m48txx_isa_info[i].bus_name);
-        dev = DEVICE(isa_dev);
-        qdev_prop_set_uint32(dev, "iobase", io_base);
-        qdev_prop_set_int32(dev, "base-year", base_year);
-        isa_realize_and_unref(isa_dev, bus, &error_fatal);
-        return NVRAM(dev);
-    }
-
-    assert(false);
-    return NULL;
-}
 
 static uint32_t m48txx_isa_read(Nvram *obj, uint32_t addr)
 {

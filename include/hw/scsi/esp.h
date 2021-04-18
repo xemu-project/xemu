@@ -3,25 +3,25 @@
 
 #include "hw/scsi/scsi.h"
 #include "hw/sysbus.h"
+#include "qemu/fifo8.h"
+#include "qom/object.h"
 
 /* esp.c */
 #define ESP_MAX_DEVS 7
 typedef void (*ESPDMAMemoryReadWriteFunc)(void *opaque, uint8_t *buf, int len);
 
 #define ESP_REGS 16
-#define TI_BUFSZ 16
-#define ESP_CMDBUF_SZ 32
+#define ESP_FIFO_SZ 16
+#define ESP_CMDFIFO_SZ 32
 
 typedef struct ESPState ESPState;
 
-enum pdma_origin_id {
-    PDMA,
-    TI,
-    CMD,
-    ASYNC,
-};
+#define TYPE_ESP "esp"
+OBJECT_DECLARE_SIMPLE_TYPE(ESPState, ESP)
 
 struct ESPState {
+    DeviceState parent_obj;
+
     uint8_t rregs[ESP_REGS];
     uint8_t wregs[ESP_REGS];
     qemu_irq irq;
@@ -29,24 +29,18 @@ struct ESPState {
     uint8_t chip_id;
     bool tchi_written;
     int32_t ti_size;
-    uint32_t ti_rptr, ti_wptr;
     uint32_t status;
-    uint32_t deferred_status;
-    bool deferred_complete;
     uint32_t dma;
-    uint8_t ti_buf[TI_BUFSZ];
+    Fifo8 fifo;
     SCSIBus bus;
     SCSIDevice *current_dev;
     SCSIRequest *current_req;
-    uint8_t cmdbuf[ESP_CMDBUF_SZ];
-    uint32_t cmdlen;
+    Fifo8 cmdfifo;
+    uint8_t cmdfifo_cdb_offset;
     uint32_t do_cmd;
 
-    /* The amount of data left in the current DMA transfer.  */
-    uint32_t dma_left;
-    /* The size of the current DMA transfer.  Zero if no transfer is in
-       progress.  */
-    uint32_t dma_counter;
+    bool data_in_ready;
+    uint8_t ti_cmd;
     int dma_enabled;
 
     uint32_t async_len;
@@ -56,18 +50,24 @@ struct ESPState {
     ESPDMAMemoryReadWriteFunc dma_memory_write;
     void *dma_opaque;
     void (*dma_cb)(ESPState *s);
-    uint8_t pdma_buf[32];
-    int pdma_origin;
-    uint32_t pdma_len;
-    uint32_t pdma_start;
-    uint32_t pdma_cur;
     void (*pdma_cb)(ESPState *s);
+
+    uint8_t mig_version_id;
+
+    /* Legacy fields for vmstate_esp version < 5 */
+    uint32_t mig_dma_left;
+    uint32_t mig_deferred_status;
+    bool mig_deferred_complete;
+    uint32_t mig_ti_rptr, mig_ti_wptr;
+    uint8_t mig_ti_buf[ESP_FIFO_SZ];
+    uint8_t mig_cmdbuf[ESP_CMDFIFO_SZ];
+    uint32_t mig_cmdlen;
 };
 
-#define TYPE_ESP "esp"
-#define ESP_STATE(obj) OBJECT_CHECK(SysBusESPState, (obj), TYPE_ESP)
+#define TYPE_SYSBUS_ESP "sysbus-esp"
+OBJECT_DECLARE_SIMPLE_TYPE(SysBusESPState, SYSBUS_ESP)
 
-typedef struct {
+struct SysBusESPState {
     /*< private >*/
     SysBusDevice parent_obj;
     /*< public >*/
@@ -76,7 +76,7 @@ typedef struct {
     MemoryRegion pdma;
     uint32_t it_shift;
     ESPState esp;
-} SysBusESPState;
+};
 
 #define ESP_TCLO   0x0
 #define ESP_TCMID  0x1
@@ -141,6 +141,7 @@ typedef struct {
 #define INTR_RST 0x80
 
 #define SEQ_0 0x0
+#define SEQ_MO 0x1
 #define SEQ_CD 0x4
 
 #define CFG1_RESREPT 0x40
@@ -150,11 +151,12 @@ typedef struct {
 
 void esp_dma_enable(ESPState *s, int irq, int level);
 void esp_request_cancelled(SCSIRequest *req);
-void esp_command_complete(SCSIRequest *req, uint32_t status, size_t resid);
+void esp_command_complete(SCSIRequest *req, size_t resid);
 void esp_transfer_data(SCSIRequest *req, uint32_t len);
 void esp_hard_reset(ESPState *s);
 uint64_t esp_reg_read(ESPState *s, uint32_t saddr);
 void esp_reg_write(ESPState *s, uint32_t saddr, uint64_t val);
 extern const VMStateDescription vmstate_esp;
+int esp_pre_save(void *opaque);
 
 #endif

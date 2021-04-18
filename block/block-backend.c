@@ -163,7 +163,7 @@ static const char *blk_root_get_name(BdrvChild *child)
     return blk_name(child->opaque);
 }
 
-static void blk_vm_state_changed(void *opaque, int running, RunState state)
+static void blk_vm_state_changed(void *opaque, bool running, RunState state)
 {
     Error *local_err = NULL;
     BlockBackend *blk = opaque;
@@ -1353,12 +1353,12 @@ int blk_make_zero(BlockBackend *blk, BdrvRequestFlags flags)
 
 void blk_inc_in_flight(BlockBackend *blk)
 {
-    atomic_inc(&blk->in_flight);
+    qatomic_inc(&blk->in_flight);
 }
 
 void blk_dec_in_flight(BlockBackend *blk)
 {
-    atomic_dec(&blk->in_flight);
+    qatomic_dec(&blk->in_flight);
     aio_wait_kick();
 }
 
@@ -1720,7 +1720,7 @@ void blk_drain(BlockBackend *blk)
 
     /* We may have -ENOMEDIUM completions in flight */
     AIO_WAIT_WHILE(blk_get_aio_context(blk),
-                   atomic_mb_read(&blk->in_flight) > 0);
+                   qatomic_mb_read(&blk->in_flight) > 0);
 
     if (bs) {
         bdrv_drained_end(bs);
@@ -1739,7 +1739,7 @@ void blk_drain_all(void)
         aio_context_acquire(ctx);
 
         /* We may have -ENOMEDIUM completions in flight */
-        AIO_WAIT_WHILE(ctx, atomic_mb_read(&blk->in_flight) > 0);
+        AIO_WAIT_WHILE(ctx, qatomic_mb_read(&blk->in_flight) > 0);
 
         aio_context_release(ctx);
     }
@@ -1826,15 +1826,28 @@ void blk_error_action(BlockBackend *blk, BlockErrorAction action,
     }
 }
 
-bool blk_is_read_only(BlockBackend *blk)
+/*
+ * Returns true if the BlockBackend can support taking write permissions
+ * (because its root node is not read-only).
+ */
+bool blk_supports_write_perm(BlockBackend *blk)
 {
     BlockDriverState *bs = blk_bs(blk);
 
     if (bs) {
-        return bdrv_is_read_only(bs);
+        return !bdrv_is_read_only(bs);
     } else {
-        return blk->root_state.read_only;
+        return !blk->root_state.read_only;
     }
+}
+
+/*
+ * Returns true if the BlockBackend can be written to in its current
+ * configuration (i.e. if write permission have been requested)
+ */
+bool blk_is_writable(BlockBackend *blk)
+{
+    return blk->perm & BLK_PERM_WRITE;
 }
 
 bool blk_is_sg(BlockBackend *blk)
@@ -2279,10 +2292,13 @@ int blk_commit_all(void)
 
     while ((blk = blk_all_next(blk)) != NULL) {
         AioContext *aio_context = blk_get_aio_context(blk);
+        BlockDriverState *unfiltered_bs = bdrv_skip_filters(blk_bs(blk));
 
         aio_context_acquire(aio_context);
-        if (blk_is_inserted(blk) && blk->root->bs->backing) {
-            int ret = bdrv_commit(blk->root->bs);
+        if (blk_is_inserted(blk) && bdrv_cow_child(unfiltered_bs)) {
+            int ret;
+
+            ret = bdrv_commit(unfiltered_bs);
             if (ret < 0) {
                 aio_context_release(aio_context);
                 return ret;
@@ -2343,6 +2359,7 @@ void blk_io_limits_update_group(BlockBackend *blk, const char *group)
 static void blk_root_drained_begin(BdrvChild *child)
 {
     BlockBackend *blk = child->opaque;
+    ThrottleGroupMember *tgm = &blk->public.throttle_group_member;
 
     if (++blk->quiesce_counter == 1) {
         if (blk->dev_ops && blk->dev_ops->drained_begin) {
@@ -2353,8 +2370,8 @@ static void blk_root_drained_begin(BdrvChild *child)
     /* Note that blk->root may not be accessible here yet if we are just
      * attaching to a BlockDriverState that is drained. Use child instead. */
 
-    if (atomic_fetch_inc(&blk->public.throttle_group_member.io_limits_disabled) == 0) {
-        throttle_group_restart_tgm(&blk->public.throttle_group_member);
+    if (qatomic_fetch_inc(&tgm->io_limits_disabled) == 0) {
+        throttle_group_restart_tgm(tgm);
     }
 }
 
@@ -2371,7 +2388,7 @@ static void blk_root_drained_end(BdrvChild *child, int *drained_end_counter)
     assert(blk->quiesce_counter);
 
     assert(blk->public.throttle_group_member.io_limits_disabled);
-    atomic_dec(&blk->public.throttle_group_member.io_limits_disabled);
+    qatomic_dec(&blk->public.throttle_group_member.io_limits_disabled);
 
     if (--blk->quiesce_counter == 0) {
         if (blk->dev_ops && blk->dev_ops->drained_end) {

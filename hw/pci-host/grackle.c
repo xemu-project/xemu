@@ -28,25 +28,23 @@
 #include "hw/ppc/mac.h"
 #include "hw/qdev-properties.h"
 #include "hw/pci/pci.h"
-#include "hw/intc/heathrow_pic.h"
 #include "hw/irq.h"
 #include "qapi/error.h"
 #include "qemu/module.h"
 #include "trace.h"
+#include "qom/object.h"
 
-#define GRACKLE_PCI_HOST_BRIDGE(obj) \
-    OBJECT_CHECK(GrackleState, (obj), TYPE_GRACKLE_PCI_HOST_BRIDGE)
+OBJECT_DECLARE_SIMPLE_TYPE(GrackleState, GRACKLE_PCI_HOST_BRIDGE)
 
-typedef struct GrackleState {
+struct GrackleState {
     PCIHostState parent_obj;
 
     uint32_t ofw_addr;
-    HeathrowState *pic;
     qemu_irq irqs[4];
     MemoryRegion pci_mmio;
     MemoryRegion pci_hole;
     MemoryRegion pci_io;
-} GrackleState;
+};
 
 /* Don't know if this matches real hardware, but it agrees with OHW.  */
 static int pci_grackle_map_irq(PCIDevice *pci_dev, int irq_num)
@@ -60,15 +58,6 @@ static void pci_grackle_set_irq(void *opaque, int irq_num, int level)
 
     trace_grackle_set_irq(irq_num, level);
     qemu_set_irq(s->irqs[irq_num], level);
-}
-
-static void grackle_init_irqs(GrackleState *s)
-{
-    int i;
-
-    for (i = 0; i < ARRAY_SIZE(s->irqs); i++) {
-        s->irqs[i] = qdev_get_gpio_in(DEVICE(s->pic), 0x15 + i);
-    }
 }
 
 static void grackle_realize(DeviceState *dev, Error **errp)
@@ -85,7 +74,6 @@ static void grackle_realize(DeviceState *dev, Error **errp)
                                      0, 4, TYPE_PCI_BUS);
 
     pci_create_simple(phb->bus, 0, "grackle");
-    grackle_init_irqs(s);
 }
 
 static void grackle_init(Object *obj)
@@ -106,15 +94,12 @@ static void grackle_init(Object *obj)
     memory_region_init_io(&phb->data_mem, obj, &pci_host_data_le_ops,
                           DEVICE(obj), "pci-data-idx", 0x1000);
 
-    object_property_add_link(obj, "pic", TYPE_HEATHROW,
-                             (Object **) &s->pic,
-                             qdev_prop_allow_set_link_before_realize,
-                             0);
-
     sysbus_init_mmio(sbd, &phb->conf_mem);
     sysbus_init_mmio(sbd, &phb->data_mem);
     sysbus_init_mmio(sbd, &s->pci_hole);
     sysbus_init_mmio(sbd, &s->pci_io);
+
+    qdev_init_gpio_out(DEVICE(obj), s->irqs, ARRAY_SIZE(s->irqs));
 }
 
 static void grackle_pci_realize(PCIDevice *d, Error **errp)

@@ -27,6 +27,7 @@
 #include "qemu/module.h"
 #include "qemu/timer.h"
 #include <zlib.h>
+#include "qom/object.h"
 
 //#define DEBUG_SONIC
 
@@ -150,9 +151,9 @@ do { printf("sonic ERROR: %s: " fmt, __func__ , ## __VA_ARGS__); } while (0)
 #define SONIC_DESC_ADDR  0xFFFE
 
 #define TYPE_DP8393X "dp8393x"
-#define DP8393X(obj) OBJECT_CHECK(dp8393xState, (obj), TYPE_DP8393X)
+OBJECT_DECLARE_SIMPLE_TYPE(dp8393xState, DP8393X)
 
-typedef struct dp8393xState {
+struct dp8393xState {
     SysBusDevice parent_obj;
 
     /* Hardware */
@@ -182,7 +183,7 @@ typedef struct dp8393xState {
     /* Memory access */
     MemoryRegion *dma_mr;
     AddressSpace as;
-} dp8393xState;
+};
 
 /* Accessor functions for values which are formed by
  * concatenating two 16 bit device registers. By putting these
@@ -494,6 +495,10 @@ static void dp8393x_do_transmit_packets(dp8393xState *s)
         } else {
             /* Remove existing FCS */
             tx_len -= 4;
+            if (tx_len < 0) {
+                SONIC_ERROR("tx_len is %d\n", tx_len);
+                break;
+            }
         }
 
         if (s->regs[SONIC_RCR] & (SONIC_RCR_LB1 | SONIC_RCR_LB0)) {
@@ -501,7 +506,7 @@ static void dp8393x_do_transmit_packets(dp8393xState *s)
             s->regs[SONIC_TCR] |= SONIC_TCR_CRSL;
             if (nc->info->can_receive(nc)) {
                 s->loopback_packet = 1;
-                nc->info->receive(nc, s->tx_buffer, tx_len);
+                qemu_receive_packet(nc, s->tx_buffer, tx_len);
             }
         } else {
             /* Transmit packet */

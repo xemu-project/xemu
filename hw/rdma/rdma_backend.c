@@ -68,7 +68,7 @@ static void free_cqe_ctx(gpointer data, gpointer user_data)
     bctx = rdma_rm_get_cqe_ctx(rdma_dev_res, cqe_ctx_id);
     if (bctx) {
         rdma_rm_dealloc_cqe_ctx(rdma_dev_res, cqe_ctx_id);
-        atomic_dec(&rdma_dev_res->stats.missing_cqe);
+        qatomic_dec(&rdma_dev_res->stats.missing_cqe);
     }
     g_free(bctx);
 }
@@ -78,10 +78,10 @@ static void clean_recv_mads(RdmaBackendDev *backend_dev)
     unsigned long cqe_ctx_id;
 
     do {
-        cqe_ctx_id = rdma_protected_qlist_pop_int64(&backend_dev->
+        cqe_ctx_id = rdma_protected_gqueue_pop_int64(&backend_dev->
                                                     recv_mads_list);
         if (cqe_ctx_id != -ENOENT) {
-            atomic_inc(&backend_dev->rdma_dev_res->stats.missing_cqe);
+            qatomic_inc(&backend_dev->rdma_dev_res->stats.missing_cqe);
             free_cqe_ctx(GINT_TO_POINTER(cqe_ctx_id),
                          backend_dev->rdma_dev_res);
         }
@@ -123,7 +123,7 @@ static int rdma_poll_cq(RdmaDeviceResources *rdma_dev_res, struct ibv_cq *ibcq)
             }
             total_ne += ne;
         } while (ne > 0);
-        atomic_sub(&rdma_dev_res->stats.missing_cqe, total_ne);
+        qatomic_sub(&rdma_dev_res->stats.missing_cqe, total_ne);
     }
 
     if (ne < 0) {
@@ -195,17 +195,17 @@ static void *comp_handler_thread(void *arg)
 
 static inline void disable_rdmacm_mux_async(RdmaBackendDev *backend_dev)
 {
-    atomic_set(&backend_dev->rdmacm_mux.can_receive, 0);
+    qatomic_set(&backend_dev->rdmacm_mux.can_receive, 0);
 }
 
 static inline void enable_rdmacm_mux_async(RdmaBackendDev *backend_dev)
 {
-    atomic_set(&backend_dev->rdmacm_mux.can_receive, sizeof(RdmaCmMuxMsg));
+    qatomic_set(&backend_dev->rdmacm_mux.can_receive, sizeof(RdmaCmMuxMsg));
 }
 
 static inline int rdmacm_mux_can_process_async(RdmaBackendDev *backend_dev)
 {
-    return atomic_read(&backend_dev->rdmacm_mux.can_receive);
+    return qatomic_read(&backend_dev->rdmacm_mux.can_receive);
 }
 
 static int rdmacm_mux_check_op_status(CharBackend *mad_chr_be)
@@ -555,7 +555,7 @@ void rdma_backend_post_send(RdmaBackendDev *backend_dev,
         goto err_dealloc_cqe_ctx;
     }
 
-    atomic_inc(&backend_dev->rdma_dev_res->stats.missing_cqe);
+    qatomic_inc(&backend_dev->rdma_dev_res->stats.missing_cqe);
     backend_dev->rdma_dev_res->stats.tx++;
 
     return;
@@ -597,7 +597,7 @@ static unsigned int save_mad_recv_buffer(RdmaBackendDev *backend_dev,
     bctx->up_ctx = ctx;
     bctx->sge = *sge;
 
-    rdma_protected_qlist_append_int64(&backend_dev->recv_mads_list, bctx_id);
+    rdma_protected_gqueue_append_int64(&backend_dev->recv_mads_list, bctx_id);
 
     return 0;
 }
@@ -658,7 +658,7 @@ void rdma_backend_post_recv(RdmaBackendDev *backend_dev,
         goto err_dealloc_cqe_ctx;
     }
 
-    atomic_inc(&backend_dev->rdma_dev_res->stats.missing_cqe);
+    qatomic_inc(&backend_dev->rdma_dev_res->stats.missing_cqe);
     backend_dev->rdma_dev_res->stats.rx_bufs++;
 
     return;
@@ -710,7 +710,7 @@ void rdma_backend_post_srq_recv(RdmaBackendDev *backend_dev,
         goto err_dealloc_cqe_ctx;
     }
 
-    atomic_inc(&backend_dev->rdma_dev_res->stats.missing_cqe);
+    qatomic_inc(&backend_dev->rdma_dev_res->stats.missing_cqe);
     backend_dev->rdma_dev_res->stats.rx_bufs++;
     backend_dev->rdma_dev_res->stats.rx_srq++;
 
@@ -1111,7 +1111,7 @@ static void process_incoming_mad_req(RdmaBackendDev *backend_dev,
 
     trace_mad_message("recv", msg->umad.mad, msg->umad_len);
 
-    cqe_ctx_id = rdma_protected_qlist_pop_int64(&backend_dev->recv_mads_list);
+    cqe_ctx_id = rdma_protected_gqueue_pop_int64(&backend_dev->recv_mads_list);
     if (cqe_ctx_id == -ENOENT) {
         rdma_warn_report("No more free MADs buffers, waiting for a while");
         sleep(THR_POLL_TO);
@@ -1185,7 +1185,7 @@ static int mad_init(RdmaBackendDev *backend_dev, CharBackend *mad_chr_be)
         return -EIO;
     }
 
-    rdma_protected_qlist_init(&backend_dev->recv_mads_list);
+    rdma_protected_gqueue_init(&backend_dev->recv_mads_list);
 
     enable_rdmacm_mux_async(backend_dev);
 
@@ -1205,7 +1205,7 @@ static void mad_fini(RdmaBackendDev *backend_dev)
 {
     disable_rdmacm_mux_async(backend_dev);
     qemu_chr_fe_disconnect(backend_dev->rdmacm_mux.chr_be);
-    rdma_protected_qlist_destroy(&backend_dev->recv_mads_list);
+    rdma_protected_gqueue_destroy(&backend_dev->recv_mads_list);
 }
 
 int rdma_backend_get_gid_index(RdmaBackendDev *backend_dev,

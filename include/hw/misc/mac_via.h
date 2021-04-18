@@ -12,11 +12,12 @@
 #include "exec/memory.h"
 #include "hw/sysbus.h"
 #include "hw/misc/mos6522.h"
+#include "qom/object.h"
 
 
 /* VIA 1 */
 #define VIA1_IRQ_ONE_SECOND_BIT 0
-#define VIA1_IRQ_VBLANK_BIT     1
+#define VIA1_IRQ_60HZ_BIT       1
 #define VIA1_IRQ_ADB_READY_BIT  2
 #define VIA1_IRQ_ADB_DATA_BIT   3
 #define VIA1_IRQ_ADB_CLOCK_BIT  4
@@ -24,17 +25,16 @@
 #define VIA1_IRQ_NB             8
 
 #define VIA1_IRQ_ONE_SECOND (1 << VIA1_IRQ_ONE_SECOND_BIT)
-#define VIA1_IRQ_VBLANK     (1 << VIA1_IRQ_VBLANK_BIT)
+#define VIA1_IRQ_60HZ       (1 << VIA1_IRQ_60HZ_BIT)
 #define VIA1_IRQ_ADB_READY  (1 << VIA1_IRQ_ADB_READY_BIT)
 #define VIA1_IRQ_ADB_DATA   (1 << VIA1_IRQ_ADB_DATA_BIT)
 #define VIA1_IRQ_ADB_CLOCK  (1 << VIA1_IRQ_ADB_CLOCK_BIT)
 
 
 #define TYPE_MOS6522_Q800_VIA1 "mos6522-q800-via1"
-#define MOS6522_Q800_VIA1(obj)  OBJECT_CHECK(MOS6522Q800VIA1State, (obj), \
-                                    TYPE_MOS6522_Q800_VIA1)
+OBJECT_DECLARE_SIMPLE_TYPE(MOS6522Q800VIA1State, MOS6522_Q800_VIA1)
 
-typedef struct MOS6522Q800VIA1State {
+struct MOS6522Q800VIA1State {
     /*< private >*/
     MOS6522State parent_obj;
 
@@ -45,9 +45,9 @@ typedef struct MOS6522Q800VIA1State {
     /* external timers */
     QEMUTimer *one_second_timer;
     int64_t next_second;
-    QEMUTimer *VBL_timer;
-    int64_t next_VBL;
-} MOS6522Q800VIA1State;
+    QEMUTimer *sixty_hz_timer;
+    int64_t next_sixty_hz;
+};
 
 
 /* VIA 2 */
@@ -66,19 +66,18 @@ typedef struct MOS6522Q800VIA1State {
 #define VIA2_IRQ_ASC        (1 << VIA2_IRQ_ASC_BIT)
 
 #define TYPE_MOS6522_Q800_VIA2 "mos6522-q800-via2"
-#define MOS6522_Q800_VIA2(obj)  OBJECT_CHECK(MOS6522Q800VIA2State, (obj), \
-                                    TYPE_MOS6522_Q800_VIA2)
+OBJECT_DECLARE_SIMPLE_TYPE(MOS6522Q800VIA2State, MOS6522_Q800_VIA2)
 
-typedef struct MOS6522Q800VIA2State {
+struct MOS6522Q800VIA2State {
     /*< private >*/
     MOS6522State parent_obj;
-} MOS6522Q800VIA2State;
+};
 
 
 #define TYPE_MAC_VIA "mac_via"
-#define MAC_VIA(obj)   OBJECT_CHECK(MacVIAState, (obj), TYPE_MAC_VIA)
+OBJECT_DECLARE_SIMPLE_TYPE(MacVIAState, MAC_VIA)
 
-typedef struct MacVIAState {
+struct MacVIAState {
     SysBusDevice busdev;
 
     VMChangeStateEntry *vmstate;
@@ -113,6 +112,6 @@ typedef struct MacVIAState {
     uint8_t adb_data_in[128];
     uint8_t adb_data_out[16];
     uint8_t adb_autopoll_cmd;
-} MacVIAState;
+};
 
 #endif

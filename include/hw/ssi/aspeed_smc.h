@@ -27,6 +27,7 @@
 
 #include "hw/ssi/ssi.h"
 #include "hw/sysbus.h"
+#include "qom/object.h"
 
 typedef struct AspeedSegments {
     hwaddr addr;
@@ -42,7 +43,7 @@ typedef struct AspeedSMCController {
     uint8_t r_timings;
     uint8_t nregs_timings;
     uint8_t conf_enable_w0;
-    uint8_t max_slaves;
+    uint8_t max_peripherals;
     const AspeedSegments *segments;
     hwaddr flash_window_base;
     uint32_t flash_window_size;
@@ -67,20 +68,16 @@ typedef struct AspeedSMCFlash {
 } AspeedSMCFlash;
 
 #define TYPE_ASPEED_SMC "aspeed.smc"
-#define ASPEED_SMC(obj) OBJECT_CHECK(AspeedSMCState, (obj), TYPE_ASPEED_SMC)
-#define ASPEED_SMC_CLASS(klass) \
-     OBJECT_CLASS_CHECK(AspeedSMCClass, (klass), TYPE_ASPEED_SMC)
-#define ASPEED_SMC_GET_CLASS(obj) \
-     OBJECT_GET_CLASS(AspeedSMCClass, (obj), TYPE_ASPEED_SMC)
+OBJECT_DECLARE_TYPE(AspeedSMCState, AspeedSMCClass, ASPEED_SMC)
 
-typedef struct  AspeedSMCClass {
+struct AspeedSMCClass {
     SysBusDevice parent_obj;
     const AspeedSMCController *ctrl;
-}  AspeedSMCClass;
+};
 
 #define ASPEED_SMC_R_MAX        (0x100 / 4)
 
-typedef struct AspeedSMCState {
+struct AspeedSMCState {
     SysBusDevice parent_obj;
 
     const AspeedSMCController *ctrl;
@@ -117,6 +114,6 @@ typedef struct AspeedSMCState {
 
     uint8_t snoop_index;
     uint8_t snoop_dummies;
-} AspeedSMCState;
+};
 
 #endif /* ASPEED_SMC_H */

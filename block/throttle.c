@@ -151,6 +151,15 @@ static int coroutine_fn throttle_co_pdiscard(BlockDriverState *bs,
     return bdrv_co_pdiscard(bs->file, offset, bytes);
 }
 
+static int coroutine_fn throttle_co_pwritev_compressed(BlockDriverState *bs,
+                                                       uint64_t offset,
+                                                       uint64_t bytes,
+                                                       QEMUIOVector *qiov)
+{
+    return throttle_co_pwritev(bs, offset, bytes, qiov,
+                               BDRV_REQ_WRITE_COMPRESSED);
+}
+
 static int throttle_co_flush(BlockDriverState *bs)
 {
     return bdrv_co_flush(bs->file->bs);
@@ -208,7 +217,7 @@ static void throttle_reopen_abort(BDRVReopenState *reopen_state)
 static void coroutine_fn throttle_co_drain_begin(BlockDriverState *bs)
 {
     ThrottleGroupMember *tgm = bs->opaque;
-    if (atomic_fetch_inc(&tgm->io_limits_disabled) == 0) {
+    if (qatomic_fetch_inc(&tgm->io_limits_disabled) == 0) {
         throttle_group_restart_tgm(tgm);
     }
 }
@@ -217,7 +226,7 @@ static void coroutine_fn throttle_co_drain_end(BlockDriverState *bs)
 {
     ThrottleGroupMember *tgm = bs->opaque;
     assert(tgm->io_limits_disabled);
-    atomic_dec(&tgm->io_limits_disabled);
+    qatomic_dec(&tgm->io_limits_disabled);
 }
 
 static const char *const throttle_strong_runtime_opts[] = {
@@ -243,6 +252,7 @@ static BlockDriver bdrv_throttle = {
 
     .bdrv_co_pwrite_zeroes              =   throttle_co_pwrite_zeroes,
     .bdrv_co_pdiscard                   =   throttle_co_pdiscard,
+    .bdrv_co_pwritev_compressed         =   throttle_co_pwritev_compressed,
 
     .bdrv_attach_aio_context            =   throttle_attach_aio_context,
     .bdrv_detach_aio_context            =   throttle_detach_aio_context,
@@ -250,7 +260,6 @@ static BlockDriver bdrv_throttle = {
     .bdrv_reopen_prepare                =   throttle_reopen_prepare,
     .bdrv_reopen_commit                 =   throttle_reopen_commit,
     .bdrv_reopen_abort                  =   throttle_reopen_abort,
-    .bdrv_co_block_status               =   bdrv_co_block_status_from_file,
 
     .bdrv_co_drain_begin                =   throttle_co_drain_begin,
     .bdrv_co_drain_end                  =   throttle_co_drain_end,

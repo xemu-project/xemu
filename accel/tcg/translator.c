@@ -17,6 +17,7 @@
 #include "exec/log.h"
 #include "exec/translator.h"
 #include "exec/plugin-gen.h"
+#include "sysemu/replay.h"
 
 /* Pairs with tcg_clear_temp_count.
    To be called by #TranslatorOps.{translate_insn,tb_stop} if
@@ -57,7 +58,8 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
     ops->tb_start(db, cpu);
     tcg_debug_assert(db->is_jmp == DISAS_NEXT);  /* no early exit */
 
-    plugin_enabled = plugin_gen_tb_start(cpu, tb);
+    plugin_enabled = plugin_gen_tb_start(cpu, tb,
+                                         tb_cflags(db->tb) & CF_MEMI_ONLY);
 
     while (true) {
         db->num_insns++;
@@ -99,6 +101,8 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
             gen_io_start();
             ops->translate_insn(db, cpu);
         } else {
+            /* we should only see CF_MEMI_ONLY for io_recompile */
+            tcg_debug_assert(!(tb_cflags(db->tb) & CF_MEMI_ONLY));
             ops->translate_insn(db, cpu);
         }
 
@@ -132,8 +136,8 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
     }
 
     /* The disas_log hook may use these values rather than recompute.  */
-    db->tb->size = db->pc_next - db->pc_first;
-    db->tb->icount = db->num_insns;
+    tb->size = db->pc_next - db->pc_first;
+    tb->icount = db->num_insns;
 
 #ifdef DEBUG_DISAS
     if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)

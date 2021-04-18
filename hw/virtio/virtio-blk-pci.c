@@ -22,6 +22,7 @@
 #include "virtio-pci.h"
 #include "qapi/error.h"
 #include "qemu/module.h"
+#include "qom/object.h"
 
 typedef struct VirtIOBlkPCI VirtIOBlkPCI;
 
@@ -29,8 +30,8 @@ typedef struct VirtIOBlkPCI VirtIOBlkPCI;
  * virtio-blk-pci: This extends VirtioPCIProxy.
  */
 #define TYPE_VIRTIO_BLK_PCI "virtio-blk-pci-base"
-#define VIRTIO_BLK_PCI(obj) \
-        OBJECT_CHECK(VirtIOBlkPCI, (obj), TYPE_VIRTIO_BLK_PCI)
+DECLARE_INSTANCE_CHECKER(VirtIOBlkPCI, VIRTIO_BLK_PCI,
+                         TYPE_VIRTIO_BLK_PCI)
 
 struct VirtIOBlkPCI {
     VirtIOPCIProxy parent_obj;
@@ -50,9 +51,14 @@ static void virtio_blk_pci_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
 {
     VirtIOBlkPCI *dev = VIRTIO_BLK_PCI(vpci_dev);
     DeviceState *vdev = DEVICE(&dev->vdev);
+    VirtIOBlkConf *conf = &dev->vdev.conf;
+
+    if (conf->num_queues == VIRTIO_BLK_AUTO_NUM_QUEUES) {
+        conf->num_queues = virtio_pci_optimal_num_queues(0);
+    }
 
     if (vpci_dev->nvectors == DEV_NVECTORS_UNSPECIFIED) {
-        vpci_dev->nvectors = dev->vdev.conf.num_queues + 1;
+        vpci_dev->nvectors = conf->num_queues + 1;
     }
 
     qdev_realize(vdev, BUS(&vpci_dev->bus), errp);

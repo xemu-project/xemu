@@ -20,6 +20,7 @@
 #define ROCKER_H
 
 #include "qemu/sockets.h"
+#include "qom/object.h"
 
 #if defined(DEBUG_ROCKER)
 #  define DPRINTF(fmt, ...) \
@@ -66,10 +67,14 @@ static inline bool ipv6_addr_is_multicast(const Ipv6Addr *addr)
     return (addr->addr32[0] & htonl(0xFF000000)) == htonl(0xFF000000);
 }
 
-typedef struct rocker Rocker;
 typedef struct world World;
 typedef struct desc_info DescInfo;
 typedef struct desc_ring DescRing;
+
+#define TYPE_ROCKER "rocker"
+typedef struct rocker Rocker;
+DECLARE_INSTANCE_CHECKER(Rocker, ROCKER,
+                         TYPE_ROCKER)
 
 Rocker *rocker_find(const char *name);
 uint32_t rocker_fp_ports(Rocker *r);

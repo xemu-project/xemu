@@ -32,18 +32,14 @@
  */
 
 /* IRQMP */
-#define TYPE_GRLIB_IRQMP "grlib,irqmp"
-
-typedef void (*set_pil_in_fn) (void *opaque, uint32_t pil_in);
-
-void grlib_irqmp_set_irq(void *opaque, int irq, int level);
+#define TYPE_GRLIB_IRQMP "grlib-irqmp"
 
 void grlib_irqmp_ack(DeviceState *dev, int intno);
 
 /* GPTimer */
-#define TYPE_GRLIB_GPTIMER "grlib,gptimer"
+#define TYPE_GRLIB_GPTIMER "grlib-gptimer"
 
 /* APB UART */
-#define TYPE_GRLIB_APB_UART "grlib,apbuart"
+#define TYPE_GRLIB_APB_UART "grlib-apbuart"
 
 #endif /* GRLIB_H */

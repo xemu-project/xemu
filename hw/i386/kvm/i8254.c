@@ -25,38 +25,39 @@
 
 #include "qemu/osdep.h"
 #include <linux/kvm.h>
-#include "qapi/qapi-types-misc.h"
+#include "qapi/qapi-types-machine.h"
 #include "qapi/error.h"
 #include "qemu/module.h"
 #include "qemu/timer.h"
 #include "sysemu/runstate.h"
 #include "hw/timer/i8254.h"
 #include "hw/timer/i8254_internal.h"
+#include "hw/qdev-properties-system.h"
 #include "sysemu/kvm.h"
+#include "qom/object.h"
 
 #define KVM_PIT_REINJECT_BIT 0
 
 #define CALIBRATION_ROUNDS   3
 
-#define KVM_PIT(obj) OBJECT_CHECK(KVMPITState, (obj), TYPE_KVM_I8254)
-#define KVM_PIT_CLASS(class) \
-    OBJECT_CLASS_CHECK(KVMPITClass, (class), TYPE_KVM_I8254)
-#define KVM_PIT_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(KVMPITClass, (obj), TYPE_KVM_I8254)
+typedef struct KVMPITClass KVMPITClass;
+typedef struct KVMPITState KVMPITState;
+DECLARE_OBJ_CHECKERS(KVMPITState, KVMPITClass,
+                     KVM_PIT, TYPE_KVM_I8254)
 
-typedef struct KVMPITState {
+struct KVMPITState {
     PITCommonState parent_obj;
 
     LostTickPolicy lost_tick_policy;
     bool vm_stopped;
     int64_t kernel_clock_offset;
-} KVMPITState;
+};
 
-typedef struct KVMPITClass {
+struct KVMPITClass {
     PITCommonClass parent_class;
 
     DeviceRealize parent_realize;
-} KVMPITClass;
+};
 
 static int64_t abs64(int64_t v)
 {
@@ -238,7 +239,7 @@ static void kvm_pit_irq_control(void *opaque, int n, int enable)
     kvm_pit_put(pit);
 }
 
-static void kvm_pit_vm_state_change(void *opaque, int running,
+static void kvm_pit_vm_state_change(void *opaque, bool running,
                                     RunState state)
 {
     KVMPITState *s = opaque;

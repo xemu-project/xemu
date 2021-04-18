@@ -14,12 +14,14 @@
 #include <libcacard.h>
 #include "chardev/char-fe.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "migration/vmstate.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
 #include "qemu/sockets.h"
 #include "ccid.h"
 #include "qapi/error.h"
+#include "qom/object.h"
 
 #define DPRINTF(card, lvl, fmt, ...)                    \
 do {                                                    \
@@ -64,8 +66,8 @@ struct PassthruState {
 };
 
 #define TYPE_CCID_PASSTHRU "ccid-card-passthru"
-#define PASSTHRU_CCID_CARD(obj) \
-    OBJECT_CHECK(PassthruState, (obj), TYPE_CCID_PASSTHRU)
+DECLARE_INSTANCE_CHECKER(PassthruState, PASSTHRU_CCID_CARD,
+                         TYPE_CCID_PASSTHRU)
 
 /*
  * VSCard protocol over chardev
@@ -334,7 +336,7 @@ static void passthru_apdu_from_guest(
     PassthruState *card = PASSTHRU_CCID_CARD(base);
 
     if (!qemu_chr_fe_backend_connected(&card->cs)) {
-        printf("ccid-passthru: no chardev, discarding apdu length %d\n", len);
+        printf("ccid-passthru: no chardev, discarding apdu length %u\n", len);
         return;
     }
     ccid_card_vscard_send_apdu(card, apdu, len);

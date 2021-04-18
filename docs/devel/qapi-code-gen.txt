@@ -147,9 +147,11 @@ prevent incomplete include files.
 === Pragma directives ===
 
 Syntax:
-    PRAGMA = { 'pragma': { '*doc-required': BOOL,
-                           '*returns-whitelist': [ STRING, ... ],
-                           '*name-case-whitelist': [ STRING, ... ] } }
+    PRAGMA = { 'pragma': {
+                   '*doc-required': BOOL,
+                   '*command-name-exceptions': [ STRING, ... ],
+                   '*command-returns-exceptions': [ STRING, ... ],
+                   '*member-name-exceptions': [ STRING, ... ] } }
 
 The pragma directive lets you control optional generator behavior.
 
@@ -159,11 +161,15 @@ pragma to different values in parts of the schema doesn't work.
 Pragma 'doc-required' takes a boolean value.  If true, documentation
 is required.  Default is false.
 
-Pragma 'returns-whitelist' takes a list of command names that may
+Pragma 'command-name-exceptions' takes a list of commands whose names
+may contain '_' instead of '-'.  Default is none.
+
+Pragma 'command-returns-exceptions' takes a list of commands that may
 violate the rules on permitted return types.  Default is none.
 
-Pragma 'name-case-whitelist' takes a list of names that may violate
-rules on use of upper- vs. lower-case letters.  Default is none.
+Pragma 'member-name-exceptions' takes a list of types whose member
+names may contain uppercase letters, and '_' instead of '-'.  Default
+is none.
 
 
 === Enumeration types ===
@@ -393,7 +399,7 @@ is identical on the wire to:
  { 'enum': 'Enum', 'data': ['one', 'two'] }
  { 'struct': 'Branch1', 'data': { 'data': 'str' } }
  { 'struct': 'Branch2', 'data': { 'data': 'int' } }
- { 'union': 'Flat': 'base': { 'type': 'Enum' }, 'discriminator': 'type',
+ { 'union': 'Flat', 'base': { 'type': 'Enum' }, 'discriminator': 'type',
    'data': { 'one': 'Branch1', 'two': 'Branch2' } }
 
 The optional 'if' member specifies a conditional.  See "Configuring
@@ -472,6 +478,7 @@ Syntax:
                 '*gen': false,
                 '*allow-oob': true,
                 '*allow-preconfig': true,
+                '*coroutine': true,
                 '*if': COND,
                 '*features': FEATURES }
 
@@ -489,9 +496,9 @@ are the arguments.  A union type requires 'boxed': true.
 Member 'returns' defines the command's return type.  It defaults to an
 empty struct type.  It must normally be a complex type or an array of
 a complex type.  To return anything else, the command must be listed
-in pragma 'returns-whitelist'.  If you do this, extending the command
-to return additional information will be harder.  Use of
-'returns-whitelist' for new commands is strongly discouraged.
+in pragma 'commands-returns-exceptions'.  If you do this, extending
+the command to return additional information will be harder.  Use of
+the pragma for new commands is strongly discouraged.
 
 A command's error responses are not specified in the QAPI schema.
 Error conditions should be documented in comments.
@@ -589,12 +596,42 @@ When in doubt, do not implement OOB execution support.
 Member 'allow-preconfig' declares whether the command is available
 before the machine is built.  It defaults to false.  For example:
 
+ { 'enum': 'QMPCapability',
+   'data': [ 'oob' ] }
  { 'command': 'qmp_capabilities',
    'data': { '*enable': [ 'QMPCapability' ] },
    'allow-preconfig': true }
 
 QMP is available before the machine is built only when QEMU was
 started with --preconfig.
+
+Member 'coroutine' tells the QMP dispatcher whether the command handler
+is safe to be run in a coroutine.  It defaults to false.  If it is true,
+the command handler is called from coroutine context and may yield while
+waiting for an external event (such as I/O completion) in order to avoid
+blocking the guest and other background operations.
+
+Coroutine safety can be hard to prove, similar to thread safety.  Common
+pitfalls are:
+
+- The global mutex isn't held across qemu_coroutine_yield(), so
+  operations that used to assume that they execute atomically may have
+  to be more careful to protect against changes in the global state.
+
+- Nested event loops (AIO_WAIT_WHILE() etc.) are problematic in
+  coroutine context and can easily lead to deadlocks.  They should be
+  replaced by yielding and reentering the coroutine when the condition
+  becomes false.
+
+Since the command handler may assume coroutine context, any callers
+other than the QMP dispatcher must also call it in coroutine context.
+In particular, HMP commands calling such a QMP command handler must be
+marked .coroutine = true in hmp-commands.hx.
+
+It is an error to specify both 'coroutine': true and 'allow-oob': true
+for a command.  We don't currently have a use case for both together and
+without a use case, it's not entirely clear what the semantics should
+be.
 
 The optional 'if' member specifies a conditional.  See "Configuring
 the schema" below for more on this.
@@ -724,8 +761,8 @@ Any name (command, event, type, member, or enum value) beginning with
 "x-" is marked experimental, and may be withdrawn or changed
 incompatibly in a future release.
 
-Pragma 'name-case-whitelist' lets you violate the rules on use of
-upper and lower case.  Use for new code is strongly discouraged.
+Pragmas 'command-name-exceptions' and 'member-name-exceptions' let you
+violate naming rules.  Use for new code is strongly discouraged.
 
 
 === Downstream extensions ===
@@ -795,7 +832,7 @@ Example: a struct with conditional feature 'allow-negative-numbers'
 { 'struct': 'TestType',
   'data': { 'number': 'int' },
   'features': [ { 'name': 'allow-negative-numbers',
-                  'if' 'defined(IFCOND)' } ] }
+                  'if': 'defined(IFCOND)' } ] }
 
 Please note that you are responsible to ensure that the C code will
 compile with an arbitrary combination of conditions, since the
@@ -824,21 +861,37 @@ See below for more on definition documentation.
 Free-form documentation may be used to provide additional text and
 structuring content.
 
+==== Headings and subheadings ====
+
+A free-form documentation comment containing a line which starts with
+some '=' symbols and then a space defines a section heading:
+
+    ##
+    # = This is a top level heading
+    #
+    # This is a free-form comment which will go under the
+    # top level heading.
+    ##
+
+    ##
+    # == This is a second level heading
+    ##
+
+A heading line must be the first line of the documentation
+comment block.
+
+Section headings must always be correctly nested, so you can only
+define a third-level heading inside a second-level heading, and so on.
 
 ==== Documentation markup ====
 
-Comment text starting with '=' is a section title:
+Documentation comments can use most rST markup.  In particular,
+a '::' literal block can be used for examples:
 
-    # = Section title
-
-Double the '=' for a subsection title:
-
-    # == Subsection title
-
-'|' denotes examples:
-
-    # | Text of the example, may span
-    # | multiple lines
+    # ::
+    #
+    #   Text of the example, may span
+    #   multiple lines
 
 '*' starts an itemized list:
 
@@ -854,34 +907,33 @@ A decimal number followed by '.' starts a numbered list:
     #    multiple lines
     # 2. Second item
 
-The actual number doesn't matter.  You could even use '*' instead of
-'2.' for the second item.
+The actual number doesn't matter.
 
-Lists can't be nested.  Blank lines are currently not supported within
-lists.
+Lists of either kind must be preceded and followed by a blank line.
+If a list item's text spans multiple lines, then the second and
+subsequent lines must be correctly indented to line up with the
+first character of the first line.
 
-Additional whitespace between the initial '#' and the comment text is
-permitted.
-
-*foo* and _foo_ are for strong and emphasis styles respectively (they
-do not work over multiple lines).  @foo is used to reference a name in
-the schema.
+The usual '**strong**', '*emphasised*' and '``literal``' markup should
+be used.  If you need a single literal '*' you will need to
+backslash-escape it.  As an extension beyond the usual rST syntax, you
+can also use '@foo' to reference a name in the schema; this is
+rendered the same way as '``foo``'.
 
 Example:
 
 ##
-# = Section
-# == Subsection
-#
-# Some text foo with *strong* and _emphasis_
+# Some text foo with **bold** and *emphasis*
 # 1. with a list
 # 2. like that
 #
 # And some code:
-# | $ echo foo
-# | -> do this
-# | <- get that
 #
+# ::
+#
+#   $ echo foo
+#   -> do this
+#   <- get that
 ##
 
 
@@ -899,6 +951,22 @@ commands and events), member (for structs and unions), branch (for
 alternates), or value (for enums), and finally optional tagged
 sections.
 
+Descriptions of arguments can span multiple lines.  The description
+text can start on the line following the '@argname:', in which case it
+must not be indented at all.  It can also start on the same line as
+the '@argname:'.  In this case if it spans multiple lines then second
+and subsequent lines must be indented to line up with the first
+character of the first line of the description:
+
+# @argone:
+# This is a two line description
+# in the first style.
+#
+# @argtwo: This is a two line description
+#          in the second style.
+
+The number of spaces between the ':' and the text is not significant.
+
 FIXME: the parser accepts these things in almost any order.
 FIXME: union branches should be described, too.
 
@@ -909,8 +977,25 @@ A tagged section starts with one of the following words:
 "Note:"/"Notes:", "Since:", "Example"/"Examples", "Returns:", "TODO:".
 The section ends with the start of a new section.
 
+The text of a section can start on a new line, in
+which case it must not be indented at all.  It can also start
+on the same line as the 'Note:', 'Returns:', etc tag.  In this
+case if it spans multiple lines then second and subsequent
+lines must be indented to match the first, in the same way as
+multiline argument descriptions.
+
 A 'Since: x.y.z' tagged section lists the release that introduced the
 definition.
+
+The text of a section can start on a new line, in
+which case it must not be indented at all.  It can also start
+on the same line as the 'Note:', 'Returns:', etc tag.  In this
+case if it spans multiple lines then second and subsequent
+lines must be indented to match the first.
+
+An 'Example' or 'Examples' section is automatically rendered
+entirely as literal fixed-width text.  In other sections,
+the text is formatted, and rST markup can be used.
 
 For example:
 
@@ -1321,6 +1406,7 @@ Example:
     };
 
     void qapi_free_UserDefOne(UserDefOne *obj);
+    G_DEFINE_AUTOPTR_CLEANUP_FUNC(UserDefOne, qapi_free_UserDefOne)
 
     struct UserDefOneList {
         UserDefOneList *next;
@@ -1328,6 +1414,7 @@ Example:
     };
 
     void qapi_free_UserDefOneList(UserDefOneList *obj);
+    G_DEFINE_AUTOPTR_CLEANUP_FUNC(UserDefOneList, qapi_free_UserDefOneList)
 
     struct q_obj_my_command_arg {
         UserDefOneList *arg1;

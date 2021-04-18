@@ -12,7 +12,7 @@
 /*
  * This is a model of the "CPU_IDENTITY" register block which is part of the
  * Arm SSE-200 and documented in
- * http://infocenter.arm.com/help/topic/com.arm.doc.101104_0100_00_en/corelink_sse200_subsystem_for_embedded_technical_reference_manual_101104_0100_00_en.pdf
+ * https://developer.arm.com/documentation/101104/latest/
  *
  * QEMU interface:
  *  + QOM property "CPUID": the value to use for the CPUID register
@@ -23,11 +23,12 @@
 #define HW_MISC_ARMSSE_CPUID_H
 
 #include "hw/sysbus.h"
+#include "qom/object.h"
 
 #define TYPE_ARMSSE_CPUID "armsse-cpuid"
-#define ARMSSE_CPUID(obj) OBJECT_CHECK(ARMSSECPUID, (obj), TYPE_ARMSSE_CPUID)
+OBJECT_DECLARE_SIMPLE_TYPE(ARMSSECPUID, ARMSSE_CPUID)
 
-typedef struct ARMSSECPUID {
+struct ARMSSECPUID {
     /*< private >*/
     SysBusDevice parent_obj;
 
@@ -36,6 +37,6 @@ typedef struct ARMSSECPUID {
 
     /* Properties */
     uint32_t cpuid;
-} ARMSSECPUID;
+};
 
 #endif

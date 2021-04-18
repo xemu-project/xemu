@@ -19,7 +19,7 @@ static inline void log_cpu_state(CPUState *cpu, int flags)
 
     if (qemu_log_enabled()) {
         rcu_read_lock();
-        logfile = atomic_rcu_read(&qemu_logfile);
+        logfile = qatomic_rcu_read(&qemu_logfile);
         if (logfile) {
             cpu_dump_state(cpu, logfile->fd, flags);
         }
@@ -49,20 +49,20 @@ static inline void log_target_disas(CPUState *cpu, target_ulong start,
 {
     QemuLogFile *logfile;
     rcu_read_lock();
-    logfile = atomic_rcu_read(&qemu_logfile);
+    logfile = qatomic_rcu_read(&qemu_logfile);
     if (logfile) {
         target_disas(logfile->fd, cpu, start, len);
     }
     rcu_read_unlock();
 }
 
-static inline void log_disas(void *code, unsigned long size, const char *note)
+static inline void log_disas(const void *code, unsigned long size)
 {
     QemuLogFile *logfile;
     rcu_read_lock();
-    logfile = atomic_rcu_read(&qemu_logfile);
+    logfile = qatomic_rcu_read(&qemu_logfile);
     if (logfile) {
-        disas(logfile->fd, code, size, note);
+        disas(logfile->fd, code, size);
     }
     rcu_read_unlock();
 }

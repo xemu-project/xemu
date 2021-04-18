@@ -32,6 +32,7 @@
 #include "hw/char/cadence_uart.h"
 #include "hw/irq.h"
 #include "hw/qdev-clock.h"
+#include "hw/qdev-properties-system.h"
 #include "trace.h"
 
 #ifdef CADENCE_UART_ERR_DEBUG
@@ -518,7 +519,7 @@ static void cadence_uart_realize(DeviceState *dev, Error **errp)
                              uart_event, NULL, s, NULL, true);
 }
 
-static void cadence_uart_refclk_update(void *opaque)
+static void cadence_uart_refclk_update(void *opaque, ClockEvent event)
 {
     CadenceUARTState *s = opaque;
 
@@ -536,7 +537,7 @@ static void cadence_uart_init(Object *obj)
     sysbus_init_irq(sbd, &s->irq);
 
     s->refclk = qdev_init_clock_in(DEVICE(obj), "refclk",
-            cadence_uart_refclk_update, s);
+                                   cadence_uart_refclk_update, s, ClockUpdate);
     /* initialize the frequency in case the clock remains unconnected */
     clock_set_hz(s->refclk, UART_DEFAULT_REF_CLK);
 

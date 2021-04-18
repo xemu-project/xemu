@@ -32,14 +32,21 @@ config USB_EHCI_SYSBUS
 
 config USB_XHCI
     bool
+    select USB
+
+config USB_XHCI_PCI
+    bool
     default y if PCI_DEVICES
     depends on PCI
-    select USB
+    select USB_XHCI
 
 config USB_XHCI_NEC
     bool
     default y if PCI_DEVICES
-    depends on PCI
+    select USB_XHCI_PCI
+
+config USB_XHCI_SYSBUS
+    bool
     select USB_XHCI
 
 config USB_MUSB
@@ -59,11 +66,22 @@ config USB_TABLET_WACOM
     default y
     depends on USB
 
+config USB_STORAGE_CORE
+    bool
+    depends on USB
+    select SCSI
+
+config USB_STORAGE_CLASSIC
+    bool
+    default y
+    depends on USB
+    select USB_STORAGE_CORE
+
 config USB_STORAGE_BOT
     bool
     default y
     depends on USB
-    select SCSI
+    select USB_STORAGE_CORE
 
 config USB_STORAGE_UAS
     bool
@@ -96,7 +114,22 @@ config USB_STORAGE_MTP
     default y
     depends on USB
 
+config USB_U2F
+    bool
+    default y
+    depends on USB
+
 config IMX_USBPHY
     bool
     default y
     depends on USB
+
+config USB_DWC3
+    bool
+    select USB_XHCI_SYSBUS
+    select REGISTER
+
+config XLNX_USB_SUBSYS
+    bool
+    default y if XLNX_VERSAL
+    select USB_DWC3

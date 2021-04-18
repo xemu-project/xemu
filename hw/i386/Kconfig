@@ -14,7 +14,7 @@ config PC
     imply ISA_DEBUG
     imply PARALLEL
     imply PCI_DEVICES
-    imply PVPANIC
+    imply PVPANIC_ISA
     imply QXL
     imply SEV
     imply SGA
@@ -103,6 +103,9 @@ config MICROVM
     select I8259
     select MC146818RTC
     select VIRTIO_MMIO
+    select ACPI_HW_REDUCED
+    select PCI_EXPRESS_GENERIC_BRIDGE
+    select USB_XHCI_SYSBUS
 
 config X86_IOMMU
     bool

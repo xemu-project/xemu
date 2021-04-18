@@ -31,28 +31,29 @@
 #define HW_SD_H
 
 #include "hw/qdev-core.h"
+#include "qom/object.h"
 
-#define OUT_OF_RANGE		(1 << 31)
-#define ADDRESS_ERROR		(1 << 30)
-#define BLOCK_LEN_ERROR		(1 << 29)
-#define ERASE_SEQ_ERROR		(1 << 28)
-#define ERASE_PARAM		(1 << 27)
-#define WP_VIOLATION		(1 << 26)
-#define CARD_IS_LOCKED		(1 << 25)
-#define LOCK_UNLOCK_FAILED	(1 << 24)
-#define COM_CRC_ERROR		(1 << 23)
-#define ILLEGAL_COMMAND		(1 << 22)
-#define CARD_ECC_FAILED		(1 << 21)
-#define CC_ERROR		(1 << 20)
-#define SD_ERROR		(1 << 19)
-#define CID_CSD_OVERWRITE	(1 << 16)
-#define WP_ERASE_SKIP		(1 << 15)
-#define CARD_ECC_DISABLED	(1 << 14)
-#define ERASE_RESET		(1 << 13)
-#define CURRENT_STATE		(7 << 9)
-#define READY_FOR_DATA		(1 << 8)
-#define APP_CMD			(1 << 5)
-#define AKE_SEQ_ERROR		(1 << 3)
+#define OUT_OF_RANGE            (1 << 31)
+#define ADDRESS_ERROR           (1 << 30)
+#define BLOCK_LEN_ERROR         (1 << 29)
+#define ERASE_SEQ_ERROR         (1 << 28)
+#define ERASE_PARAM             (1 << 27)
+#define WP_VIOLATION            (1 << 26)
+#define CARD_IS_LOCKED          (1 << 25)
+#define LOCK_UNLOCK_FAILED      (1 << 24)
+#define COM_CRC_ERROR           (1 << 23)
+#define ILLEGAL_COMMAND         (1 << 22)
+#define CARD_ECC_FAILED         (1 << 21)
+#define CC_ERROR                (1 << 20)
+#define SD_ERROR                (1 << 19)
+#define CID_CSD_OVERWRITE       (1 << 16)
+#define WP_ERASE_SKIP           (1 << 15)
+#define CARD_ECC_DISABLED       (1 << 14)
+#define ERASE_RESET             (1 << 13)
+#define CURRENT_STATE           (7 << 9)
+#define READY_FOR_DATA          (1 << 8)
+#define APP_CMD                 (1 << 5)
+#define AKE_SEQ_ERROR           (1 << 3)
 
 enum SDPhySpecificationVersion {
     SD_PHY_SPECv1_10_VERS     = 1,
@@ -88,24 +89,34 @@ typedef struct {
     uint8_t crc;
 } SDRequest;
 
-typedef struct SDState SDState;
-typedef struct SDBus SDBus;
 
 #define TYPE_SD_CARD "sd-card"
-#define SD_CARD(obj) OBJECT_CHECK(SDState, (obj), TYPE_SD_CARD)
-#define SD_CARD_CLASS(klass) \
-    OBJECT_CLASS_CHECK(SDCardClass, (klass), TYPE_SD_CARD)
-#define SD_CARD_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(SDCardClass, (obj), TYPE_SD_CARD)
+OBJECT_DECLARE_TYPE(SDState, SDCardClass, SD_CARD)
 
-typedef struct {
+struct SDCardClass {
     /*< private >*/
     DeviceClass parent_class;
     /*< public >*/
 
     int (*do_command)(SDState *sd, SDRequest *req, uint8_t *response);
-    void (*write_data)(SDState *sd, uint8_t value);
-    uint8_t (*read_data)(SDState *sd);
+    /**
+     * Write a byte to a SD card.
+     * @sd: card
+     * @value: byte to write
+     *
+     * Write a byte on the data lines of a SD card.
+     */
+    void (*write_byte)(SDState *sd, uint8_t value);
+    /**
+     * Read a byte from a SD card.
+     * @sd: card
+     *
+     * Read a byte from the data lines of a SD card.
+     *
+     * Return: byte value read
+     */
+    uint8_t (*read_byte)(SDState *sd);
+    bool (*receive_ready)(SDState *sd);
     bool (*data_ready)(SDState *sd);
     void (*set_voltage)(SDState *sd, uint16_t millivolts);
     uint8_t (*get_dat_lines)(SDState *sd);
@@ -113,18 +124,17 @@ typedef struct {
     void (*enable)(SDState *sd, bool enable);
     bool (*get_inserted)(SDState *sd);
     bool (*get_readonly)(SDState *sd);
-} SDCardClass;
+};
 
 #define TYPE_SD_BUS "sd-bus"
-#define SD_BUS(obj) OBJECT_CHECK(SDBus, (obj), TYPE_SD_BUS)
-#define SD_BUS_CLASS(klass) OBJECT_CLASS_CHECK(SDBusClass, (klass), TYPE_SD_BUS)
-#define SD_BUS_GET_CLASS(obj) OBJECT_GET_CLASS(SDBusClass, (obj), TYPE_SD_BUS)
+OBJECT_DECLARE_TYPE(SDBus, SDBusClass,
+                    SD_BUS)
 
 struct SDBus {
     BusState qbus;
 };
 
-typedef struct {
+struct SDBusClass {
     /*< private >*/
     BusClass parent_class;
     /*< public >*/
@@ -134,24 +144,7 @@ typedef struct {
      */
     void (*set_inserted)(DeviceState *dev, bool inserted);
     void (*set_readonly)(DeviceState *dev, bool readonly);
-} SDBusClass;
-
-/* Legacy functions to be used only by non-qdevified callers */
-SDState *sd_init(BlockBackend *bs, bool is_spi);
-int sd_do_command(SDState *sd, SDRequest *req,
-                  uint8_t *response);
-void sd_write_data(SDState *sd, uint8_t value);
-uint8_t sd_read_data(SDState *sd);
-void sd_set_cb(SDState *sd, qemu_irq readonly, qemu_irq insert);
-bool sd_data_ready(SDState *sd);
-/* sd_enable should not be used -- it is only used on the nseries boards,
- * where it is part of a broken implementation of the MMC card slot switch
- * (there should be two card slots which are multiplexed to a single MMC
- * controller, but instead we model it with one card and controller and
- * disable the card when the second slot is selected, so it looks like the
- * second slot is always empty).
- */
-void sd_enable(SDState *sd, bool enable);
+};
 
 /* Functions to be used by qdevified callers (working via
  * an SDBus rather than directly with SDState)
@@ -160,8 +153,42 @@ void sdbus_set_voltage(SDBus *sdbus, uint16_t millivolts);
 uint8_t sdbus_get_dat_lines(SDBus *sdbus);
 bool sdbus_get_cmd_line(SDBus *sdbus);
 int sdbus_do_command(SDBus *sd, SDRequest *req, uint8_t *response);
-void sdbus_write_data(SDBus *sd, uint8_t value);
-uint8_t sdbus_read_data(SDBus *sd);
+/**
+ * Write a byte to a SD bus.
+ * @sd: bus
+ * @value: byte to write
+ *
+ * Write a byte on the data lines of a SD bus.
+ */
+void sdbus_write_byte(SDBus *sd, uint8_t value);
+/**
+ * Read a byte from a SD bus.
+ * @sd: bus
+ *
+ * Read a byte from the data lines of a SD bus.
+ *
+ * Return: byte value read
+ */
+uint8_t sdbus_read_byte(SDBus *sd);
+/**
+ * Write data to a SD bus.
+ * @sdbus: bus
+ * @buf: data to write
+ * @length: number of bytes to write
+ *
+ * Write multiple bytes of data on the data lines of a SD bus.
+ */
+void sdbus_write_data(SDBus *sdbus, const void *buf, size_t length);
+/**
+ * Read data from a SD bus.
+ * @sdbus: bus
+ * @buf: buffer to read data into
+ * @length: number of bytes to read
+ *
+ * Read multiple bytes of data on the data lines of a SD bus.
+ */
+void sdbus_read_data(SDBus *sdbus, void *buf, size_t length);
+bool sdbus_receive_ready(SDBus *sd);
 bool sdbus_data_ready(SDBus *sd);
 bool sdbus_get_inserted(SDBus *sd);
 bool sdbus_get_readonly(SDBus *sd);

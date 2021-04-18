@@ -29,6 +29,7 @@
 #include "internal.h"
 #include "kvm_s390x.h"
 #include "sysemu/kvm_int.h"
+#include "qemu/cutils.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/timer.h"
@@ -105,6 +106,7 @@
 
 #define DIAG_TIMEREVENT                 0x288
 #define DIAG_IPL                        0x308
+#define DIAG_SET_CONTROL_PROGRAM_CODES  0x318
 #define DIAG_KVM_HYPERCALL              0x500
 #define DIAG_KVM_BREAKPOINT             0x501
 
@@ -158,8 +160,6 @@ static int cap_vcpu_resets;
 static int cap_protected;
 
 static int active_cmma;
-
-static void *legacy_s390_alloc(size_t size, uint64_t *align, bool shared);
 
 static int kvm_s390_query_mem_limit(uint64_t *memory_limit)
 {
@@ -347,6 +347,11 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
                      "please use kernel 3.15 or newer");
         return -1;
     }
+    if (!kvm_check_extension(s, KVM_CAP_S390_COW)) {
+        error_report("KVM is missing capability KVM_CAP_S390_COW - "
+                     "unsupported environment");
+        return -1;
+    }
 
     cap_sync_regs = kvm_check_extension(s, KVM_CAP_SYNC_REGS);
     cap_async_pf = kvm_check_extension(s, KVM_CAP_ASYNC_PF);
@@ -354,11 +359,6 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
     cap_s390_irq = kvm_check_extension(s, KVM_CAP_S390_INJECT_IRQ);
     cap_vcpu_resets = kvm_check_extension(s, KVM_CAP_S390_VCPU_RESETS);
     cap_protected = kvm_check_extension(s, KVM_CAP_S390_PROTECTED);
-
-    if (!kvm_check_extension(s, KVM_CAP_S390_GMAP)
-        || !kvm_check_extension(s, KVM_CAP_S390_COW)) {
-        phys_mem_set_alloc(legacy_s390_alloc);
-    }
 
     kvm_vm_enable_cap(s, KVM_CAP_S390_USER_SIGP, 0);
     kvm_vm_enable_cap(s, KVM_CAP_S390_VECTOR_REGISTERS, 0);
@@ -602,6 +602,11 @@ int kvm_arch_put_registers(CPUState *cs, int level)
         cs->kvm_run->kvm_dirty_regs |= KVM_SYNC_ETOKEN;
     }
 
+    if (can_sync_regs(cs, KVM_SYNC_DIAG318)) {
+        cs->kvm_run->s.regs.diag318 = env->diag318_info;
+        cs->kvm_run->kvm_dirty_regs |= KVM_SYNC_DIAG318;
+    }
+
     /* Finally the prefix */
     if (can_sync_regs(cs, KVM_SYNC_PREFIX)) {
         cs->kvm_run->s.regs.prefix = env->psa;
@@ -741,6 +746,10 @@ int kvm_arch_get_registers(CPUState *cs)
         }
     }
 
+    if (can_sync_regs(cs, KVM_SYNC_DIAG318)) {
+        env->diag318_info = cs->kvm_run->s.regs.diag318;
+    }
+
     return 0;
 }
 
@@ -876,37 +885,6 @@ int kvm_s390_mem_op_pv(S390CPU *cpu, uint64_t offset, void *hostbuf,
         abort();
     }
     return ret;
-}
-
-/*
- * Legacy layout for s390:
- * Older S390 KVM requires the topmost vma of the RAM to be
- * smaller than an system defined value, which is at least 256GB.
- * Larger systems have larger values. We put the guest between
- * the end of data segment (system break) and this value. We
- * use 32GB as a base to have enough room for the system break
- * to grow. We also have to use MAP parameters that avoid
- * read-only mapping of guest pages.
- */
-static void *legacy_s390_alloc(size_t size, uint64_t *align, bool shared)
-{
-    static void *mem;
-
-    if (mem) {
-        /* we only support one allocation, which is enough for initial ram */
-        return NULL;
-    }
-
-    mem = mmap((void *) 0x800000000ULL, size,
-               PROT_EXEC|PROT_READ|PROT_WRITE,
-               MAP_SHARED | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
-    if (mem == MAP_FAILED) {
-        mem = NULL;
-    }
-    if (mem && align) {
-        *align = QEMU_VMALLOC_ALIGN;
-    }
-    return mem;
 }
 
 static uint8_t const *sw_bp_inst;
@@ -1601,6 +1579,39 @@ static int handle_sw_breakpoint(S390CPU *cpu, struct kvm_run *run)
     return -ENOENT;
 }
 
+void kvm_s390_set_diag318(CPUState *cs, uint64_t diag318_info)
+{
+    CPUS390XState *env = &S390_CPU(cs)->env;
+
+    /* Feat bit is set only if KVM supports sync for diag318 */
+    if (s390_has_feat(S390_FEAT_DIAG_318)) {
+        env->diag318_info = diag318_info;
+        cs->kvm_run->s.regs.diag318 = diag318_info;
+        cs->kvm_run->kvm_dirty_regs |= KVM_SYNC_DIAG318;
+    }
+}
+
+static void handle_diag_318(S390CPU *cpu, struct kvm_run *run)
+{
+    uint64_t reg = (run->s390_sieic.ipa & 0x00f0) >> 4;
+    uint64_t diag318_info = run->s.regs.gprs[reg];
+    CPUState *t;
+
+    /*
+     * DIAG 318 can only be enabled with KVM support. As such, let's
+     * ensure a guest cannot execute this instruction erroneously.
+     */
+    if (!s390_has_feat(S390_FEAT_DIAG_318)) {
+        kvm_s390_program_interrupt(cpu, PGM_SPECIFICATION);
+        return;
+    }
+
+    CPU_FOREACH(t) {
+        run_on_cpu(t, s390_do_cpu_set_diag318,
+                   RUN_ON_CPU_HOST_ULONG(diag318_info));
+    }
+}
+
 #define DIAG_KVM_CODE_MASK 0x000000000000ffff
 
 static int handle_diag(S390CPU *cpu, struct kvm_run *run, uint32_t ipb)
@@ -1619,6 +1630,9 @@ static int handle_diag(S390CPU *cpu, struct kvm_run *run, uint32_t ipb)
         break;
     case DIAG_IPL:
         kvm_handle_diag_308(cpu, run);
+        break;
+    case DIAG_SET_CONTROL_PROGRAM_CODES:
+        handle_diag_318(cpu, run);
         break;
     case DIAG_KVM_HYPERCALL:
         r = handle_hypercall(cpu, run);
@@ -1738,8 +1752,7 @@ static int handle_intercept(S390CPU *cpu)
     int icpt_code = run->s390_sieic.icptcode;
     int r = 0;
 
-    DPRINTF("intercept: 0x%x (at 0x%lx)\n", icpt_code,
-            (long)cs->kvm_run->psw_addr);
+    DPRINTF("intercept: 0x%x (at 0x%lx)\n", icpt_code, (long)run->psw_addr);
     switch (icpt_code) {
         case ICPT_INSTRUCTION:
         case ICPT_PV_INSTR:
@@ -1864,18 +1877,15 @@ static void insert_stsi_3_2_2(S390CPU *cpu, __u64 addr, uint8_t ar)
                                                     strlen(qemu_name)));
     }
     sysib.vm[0].ext_name_encoding = 2; /* 2 = UTF-8 */
-    memset(sysib.ext_names[0], 0, sizeof(sysib.ext_names[0]));
     /* If hypervisor specifies zero Extended Name in STSI322 SYSIB, it's
      * considered by s390 as not capable of providing any Extended Name.
      * Therefore if no name was specified on qemu invocation, we go with the
      * same "KVMguest" default, which KVM has filled into short name field.
      */
-    if (qemu_name) {
-        strncpy((char *)sysib.ext_names[0], qemu_name,
-                sizeof(sysib.ext_names[0]));
-    } else {
-        strcpy((char *)sysib.ext_names[0], "KVMguest");
-    }
+    strpadcpy((char *)sysib.ext_names[0],
+              sizeof(sysib.ext_names[0]),
+              qemu_name ?: "KVMguest", '\0');
+
     /* Insert UUID */
     memcpy(sysib.vm[0].uuid, &qemu_uuid, sizeof(sysib.vm[0].uuid));
 
@@ -2456,6 +2466,18 @@ void kvm_s390_get_host_cpu_model(S390CPUModel *model, Error **errp)
         KVM_S390_VM_CRYPTO_ENABLE_APIE)) {
         set_bit(S390_FEAT_AP, model->features);
     }
+
+    /*
+     * Extended-Length SCCB is handled entirely within QEMU.
+     * For PV guests this is completely fenced by the Ultravisor, as Service
+     * Call error checking and STFLE interpretation are handled via SIE.
+     */
+    set_bit(S390_FEAT_EXTENDED_LENGTH_SCCB, model->features);
+
+    if (kvm_check_extension(kvm_state, KVM_CAP_S390_DIAG318)) {
+        set_bit(S390_FEAT_DIAG_318, model->features);
+    }
+
     /* strip of features that are not part of the maximum model */
     bitmap_and(model->features, model->features, model->def->full_feat,
                S390_FEAT_MAX);
@@ -2542,4 +2564,9 @@ void kvm_s390_stop_interrupt(S390CPU *cpu)
     };
 
     kvm_s390_vcpu_interrupt(cpu, &irq);
+}
+
+bool kvm_arch_cpu_check_are_resettable(void)
+{
+    return true;
 }

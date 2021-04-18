@@ -12,8 +12,11 @@
  * See the COPYING file in the top-level directory.
  */
 
+#include "qemu/osdep.h"
 #include <virglrenderer.h>
 #include "virgl.h"
+
+#include <epoxy/gl.h>
 
 void
 vg_virgl_update_cursor_data(VuGpu *g, uint32_t resource_id,
@@ -371,6 +374,7 @@ virgl_cmd_resource_flush(VuGpu *g,
 
     VUGPU_FILL_CMD(rf);
 
+    glFlush();
     if (!rf.resource_id) {
         g_debug("bad resource id for flush..?");
         return;
@@ -481,7 +485,7 @@ void vg_virgl_process_cmd(VuGpu *g, struct virtio_gpu_ctrl_command *cmd)
         break;
     }
 
-    if (cmd->finished) {
+    if (cmd->state != VG_CMD_STATE_NEW) {
         return;
     }
 

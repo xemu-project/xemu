@@ -741,7 +741,6 @@ static void virtio_serial_post_load_timer_cb(void *opaque)
         }
     }
     g_free(s->post_load->connected);
-    timer_del(s->post_load->timer);
     timer_free(s->post_load->timer);
     g_free(s->post_load);
     s->post_load = NULL;
@@ -842,10 +841,6 @@ static Property virtser_props[] = {
     DEFINE_PROP_STRING("name", VirtIOSerialPort, name),
     DEFINE_PROP_END_OF_LIST()
 };
-
-#define TYPE_VIRTIO_SERIAL_BUS "virtio-serial-bus"
-#define VIRTIO_SERIAL_BUS(obj) \
-      OBJECT_CHECK(VirtIOSerialBus, (obj), TYPE_VIRTIO_SERIAL_BUS)
 
 static void virtser_bus_class_init(ObjectClass *klass, void *data)
 {
@@ -1142,7 +1137,6 @@ static void virtio_serial_device_unrealize(DeviceState *dev)
     g_free(vser->ports_map);
     if (vser->post_load) {
         g_free(vser->post_load->connected);
-        timer_del(vser->post_load->timer);
         timer_free(vser->post_load->timer);
         g_free(vser->post_load);
     }

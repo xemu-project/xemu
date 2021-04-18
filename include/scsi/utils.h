@@ -16,6 +16,22 @@ enum SCSIXferMode {
     SCSI_XFER_TO_DEV,    /*  WRITE, MODE_SELECT, ...         */
 };
 
+enum SCSIHostStatus {
+    SCSI_HOST_OK,
+    SCSI_HOST_NO_LUN,
+    SCSI_HOST_BUSY,
+    SCSI_HOST_TIME_OUT,
+    SCSI_HOST_BAD_RESPONSE,
+    SCSI_HOST_ABORTED,
+    SCSI_HOST_ERROR = 0x07,
+    SCSI_HOST_RESET = 0x08,
+    SCSI_HOST_TRANSPORT_DISRUPTED = 0xe,
+    SCSI_HOST_TARGET_FAILURE = 0x10,
+    SCSI_HOST_RESERVATION_ERROR = 0x11,
+    SCSI_HOST_ALLOCATION_FAILURE = 0x12,
+    SCSI_HOST_MEDIUM_ERROR = 0x13,
+};
+
 typedef struct SCSICommand {
     uint8_t buf[SCSI_CMD_BUF_SIZE];
     int len;
@@ -57,6 +73,8 @@ extern const struct SCSISense sense_code_LBA_OUT_OF_RANGE;
 extern const struct SCSISense sense_code_INVALID_FIELD;
 /* Illegal request, Invalid field in parameter list */
 extern const struct SCSISense sense_code_INVALID_PARAM;
+/* Illegal request, Invalid value in parameter list */
+extern const struct SCSISense sense_code_INVALID_PARAM_VALUE;
 /* Illegal request, Parameter list length error */
 extern const struct SCSISense sense_code_INVALID_PARAM_LEN;
 /* Illegal request, LUN not supported */
@@ -121,16 +139,9 @@ int scsi_cdb_length(uint8_t *buf);
 #ifdef CONFIG_LINUX
 #define SG_ERR_DRIVER_TIMEOUT  0x06
 #define SG_ERR_DRIVER_SENSE    0x08
-
-#define SG_ERR_DID_OK          0x00
-#define SG_ERR_DID_NO_CONNECT  0x01
-#define SG_ERR_DID_BUS_BUSY    0x02
-#define SG_ERR_DID_TIME_OUT    0x03
-
-#define SG_ERR_DRIVER_SENSE    0x08
-
-int sg_io_sense_from_errno(int errno_value, struct sg_io_hdr *io_hdr,
-                           SCSISense *sense);
 #endif
+
+int scsi_sense_from_errno(int errno_value, SCSISense *sense);
+int scsi_sense_from_host_status(uint8_t host_status, SCSISense *sense);
 
 #endif

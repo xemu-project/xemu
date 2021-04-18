@@ -9,9 +9,10 @@
  * (at your option) any later version.
  */
 
-/* This is a model of the Arm PrimeCell PL022 synchronous serial port.
+/*
+ * This is a model of the Arm PrimeCell PL022 synchronous serial port.
  * The PL022 TRM is:
- * http://infocenter.arm.com/help/topic/com.arm.doc.ddi0194h/DDI0194H_ssp_pl022_trm.pdf
+ * https://developer.arm.com/documentation/ddi0194/latest
  *
  * QEMU interface:
  * + sysbus IRQ: SSPINTR combined interrupt line
@@ -22,11 +23,12 @@
 #define HW_SSI_PL022_H
 
 #include "hw/sysbus.h"
+#include "qom/object.h"
 
 #define TYPE_PL022 "pl022"
-#define PL022(obj) OBJECT_CHECK(PL022State, (obj), TYPE_PL022)
+OBJECT_DECLARE_SIMPLE_TYPE(PL022State, PL022)
 
-typedef struct PL022State {
+struct PL022State {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
@@ -46,6 +48,6 @@ typedef struct PL022State {
     uint16_t rx_fifo[8];
     qemu_irq irq;
     SSIBus *ssi;
-} PL022State;
+};
 
 #endif

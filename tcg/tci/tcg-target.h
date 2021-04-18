@@ -87,7 +87,8 @@
 #define TCG_TARGET_HAS_muluh_i32        0
 #define TCG_TARGET_HAS_mulsh_i32        0
 #define TCG_TARGET_HAS_goto_ptr         0
-#define TCG_TARGET_HAS_direct_jump      1
+#define TCG_TARGET_HAS_direct_jump      0
+#define TCG_TARGET_HAS_qemu_st8_i32     0
 
 #if TCG_TARGET_REG_BITS == 64
 #define TCG_TARGET_HAS_extrl_i64_i32    0
@@ -99,8 +100,8 @@
 #define TCG_TARGET_HAS_extract_i64      0
 #define TCG_TARGET_HAS_sextract_i64     0
 #define TCG_TARGET_HAS_extract2_i64     0
-#define TCG_TARGET_HAS_div_i64          0
-#define TCG_TARGET_HAS_rem_i64          0
+#define TCG_TARGET_HAS_div_i64          1
+#define TCG_TARGET_HAS_rem_i64          1
 #define TCG_TARGET_HAS_ext8s_i64        1
 #define TCG_TARGET_HAS_ext16s_i64       1
 #define TCG_TARGET_HAS_ext32s_i64       1
@@ -132,11 +133,8 @@
 #define TCG_TARGET_HAS_mulu2_i32        1
 #endif /* TCG_TARGET_REG_BITS == 64 */
 
-/* Number of registers available.
-   For 32 bit hosts, we need more than 8 registers (call arguments). */
-/* #define TCG_TARGET_NB_REGS 8 */
+/* Number of registers available. */
 #define TCG_TARGET_NB_REGS 16
-/* #define TCG_TARGET_NB_REGS 32 */
 
 /* List of registers which are used by TCG. */
 typedef enum {
@@ -148,7 +146,6 @@ typedef enum {
     TCG_REG_R5,
     TCG_REG_R6,
     TCG_REG_R7,
-#if TCG_TARGET_NB_REGS >= 16
     TCG_REG_R8,
     TCG_REG_R9,
     TCG_REG_R10,
@@ -157,43 +154,16 @@ typedef enum {
     TCG_REG_R13,
     TCG_REG_R14,
     TCG_REG_R15,
-#if TCG_TARGET_NB_REGS >= 32
-    TCG_REG_R16,
-    TCG_REG_R17,
-    TCG_REG_R18,
-    TCG_REG_R19,
-    TCG_REG_R20,
-    TCG_REG_R21,
-    TCG_REG_R22,
-    TCG_REG_R23,
-    TCG_REG_R24,
-    TCG_REG_R25,
-    TCG_REG_R26,
-    TCG_REG_R27,
-    TCG_REG_R28,
-    TCG_REG_R29,
-    TCG_REG_R30,
-    TCG_REG_R31,
-#endif
-#endif
-    /* Special value UINT8_MAX is used by TCI to encode constant values. */
-    TCG_CONST = UINT8_MAX
+
+    TCG_AREG0 = TCG_REG_R14,
+    TCG_REG_CALL_STACK = TCG_REG_R15,
 } TCGReg;
 
-#define TCG_AREG0                       (TCG_TARGET_NB_REGS - 2)
-
 /* Used for function call generation. */
-#define TCG_REG_CALL_STACK              (TCG_TARGET_NB_REGS - 1)
 #define TCG_TARGET_CALL_STACK_OFFSET    0
 #define TCG_TARGET_STACK_ALIGN          16
 
-void tci_disas(uint8_t opc);
-
 #define HAVE_TCG_QEMU_TB_EXEC
-
-static inline void flush_icache_range(uintptr_t start, uintptr_t stop)
-{
-}
 
 /* We could notice __i386__ or __s390x__ and reduce the barriers depending
    on the host.  But if you want performance, you use the normal backend.
@@ -202,12 +172,7 @@ static inline void flush_icache_range(uintptr_t start, uintptr_t stop)
 
 #define TCG_TARGET_HAS_MEMORY_BSWAP     1
 
-static inline void tb_target_set_jmp_target(uintptr_t tc_ptr,
-                                            uintptr_t jmp_addr, uintptr_t addr)
-{
-    /* patch the branch destination */
-    atomic_set((int32_t *)jmp_addr, addr - (jmp_addr + 4));
-    /* no need to flush icache explicitly */
-}
+/* not defined -- call should be eliminated at compile time */
+void tb_target_set_jmp_target(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 
 #endif /* TCG_TARGET_H */

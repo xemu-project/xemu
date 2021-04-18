@@ -45,19 +45,14 @@
  * @{
  */
 
-#define AW_SDHOST(obj) \
-    OBJECT_CHECK(AwSdHostState, (obj), TYPE_AW_SDHOST)
-#define AW_SDHOST_CLASS(klass) \
-     OBJECT_CLASS_CHECK(AwSdHostClass, (klass), TYPE_AW_SDHOST)
-#define AW_SDHOST_GET_CLASS(obj) \
-     OBJECT_GET_CLASS(AwSdHostClass, (obj), TYPE_AW_SDHOST)
+OBJECT_DECLARE_TYPE(AwSdHostState, AwSdHostClass, AW_SDHOST)
 
 /** @} */
 
 /**
  * Allwinner SD Host Controller object instance state.
  */
-typedef struct AwSdHostState {
+struct AwSdHostState {
     /*< private >*/
     SysBusDevice busdev;
     /*< public >*/
@@ -70,6 +65,12 @@ typedef struct AwSdHostState {
 
     /** Interrupt output signal to notify CPU */
     qemu_irq irq;
+
+    /** Memory region where DMA transfers are done */
+    MemoryRegion *dma_mr;
+
+    /** Address space used internally for DMA transfers */
+    AddressSpace dma_as;
 
     /** Number of bytes left in current DMA transfer */
     uint32_t transfer_cnt;
@@ -113,7 +114,7 @@ typedef struct AwSdHostState {
 
     /** @} */
 
-} AwSdHostState;
+};
 
 /**
  * Allwinner SD Host Controller class-level struct.
@@ -122,7 +123,7 @@ typedef struct AwSdHostState {
  * such that the generic code can use this struct to support
  * all devices.
  */
-typedef struct AwSdHostClass {
+struct AwSdHostClass {
     /*< private >*/
     SysBusDeviceClass parent_class;
     /*< public >*/
@@ -130,6 +131,6 @@ typedef struct AwSdHostClass {
     /** Maximum buffer size in bytes per DMA descriptor */
     size_t max_desc_size;
 
-} AwSdHostClass;
+};
 
 #endif /* HW_SD_ALLWINNER_SDHOST_H */

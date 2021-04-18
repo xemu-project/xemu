@@ -78,8 +78,33 @@ static uint8_t *allocation_tag_mem(CPUARMState *env, int ptr_mmu_idx,
                                    int tag_size, uintptr_t ra)
 {
 #ifdef CONFIG_USER_ONLY
-    /* Tag storage not implemented.  */
-    return NULL;
+    uint64_t clean_ptr = useronly_clean_ptr(ptr);
+    int flags = page_get_flags(clean_ptr);
+    uint8_t *tags;
+    uintptr_t index;
+
+    if (!(flags & (ptr_access == MMU_DATA_STORE ? PAGE_WRITE_ORG : PAGE_READ))) {
+        /* SIGSEGV */
+        arm_cpu_tlb_fill(env_cpu(env), ptr, ptr_size, ptr_access,
+                         ptr_mmu_idx, false, ra);
+        g_assert_not_reached();
+    }
+
+    /* Require both MAP_ANON and PROT_MTE for the page. */
+    if (!(flags & PAGE_ANON) || !(flags & PAGE_MTE)) {
+        return NULL;
+    }
+
+    tags = page_get_target_data(clean_ptr);
+    if (tags == NULL) {
+        size_t alloc_size = TARGET_PAGE_SIZE >> (LOG2_TAG_GRANULE + 1);
+        tags = page_alloc_target_data(clean_ptr, alloc_size);
+        assert(tags != NULL);
+    }
+
+    index = extract32(ptr, LOG2_TAG_GRANULE + 1,
+                      TARGET_PAGE_BITS - LOG2_TAG_GRANULE - 1);
+    return tags + index;
 #else
     uintptr_t index;
     CPUIOTLBEntry *iotlbentry;
@@ -313,11 +338,11 @@ static void store_tag1(uint64_t ptr, uint8_t *mem, int tag)
 static void store_tag1_parallel(uint64_t ptr, uint8_t *mem, int tag)
 {
     int ofs = extract32(ptr, LOG2_TAG_GRANULE, 1) * 4;
-    uint8_t old = atomic_read(mem);
+    uint8_t old = qatomic_read(mem);
 
     while (1) {
         uint8_t new = deposit32(old, ofs, 4, tag);
-        uint8_t cmp = atomic_cmpxchg(mem, old, new);
+        uint8_t cmp = qatomic_cmpxchg(mem, old, new);
         if (likely(cmp == old)) {
             return;
         }
@@ -398,7 +423,7 @@ static inline void do_st2g(CPUARMState *env, uint64_t ptr, uint64_t xt,
                                   2 * TAG_GRANULE, MMU_DATA_STORE, 1, ra);
         if (mem1) {
             tag |= tag << 4;
-            atomic_set(mem1, tag);
+            qatomic_set(mem1, tag);
         }
     }
 }
@@ -514,11 +539,12 @@ void HELPER(stzgm_tags)(CPUARMState *env, uint64_t ptr, uint64_t val)
 }
 
 /* Record a tag check failure.  */
-static void mte_check_fail(CPUARMState *env, int mmu_idx,
+static void mte_check_fail(CPUARMState *env, uint32_t desc,
                            uint64_t dirty_ptr, uintptr_t ra)
 {
+    int mmu_idx = FIELD_EX32(desc, MTEDESC, MIDX);
     ARMMMUIdx arm_mmu_idx = core_to_aa64_mmu_idx(mmu_idx);
-    int el, reg_el, tcf, select;
+    int el, reg_el, tcf, select, is_write, syn;
     uint64_t sctlr;
 
     reg_el = regime_el(env, arm_mmu_idx);
@@ -546,9 +572,11 @@ static void mte_check_fail(CPUARMState *env, int mmu_idx,
          */
         cpu_restore_state(env_cpu(env), ra, true);
         env->exception.vaddress = dirty_ptr;
-        raise_exception(env, EXCP_DATA_ABORT,
-                        syn_data_abort_no_iss(el != 0, 0, 0, 0, 0, 0, 0x11),
-                        exception_target_el(env));
+
+        is_write = FIELD_EX32(desc, MTEDESC, WRITE);
+        syn = syn_data_abort_no_iss(arm_current_el(env) != 0, 0, 0, 0, 0,
+                                    is_write, 0x11);
+        raise_exception(env, EXCP_DATA_ABORT, syn, exception_target_el(env));
         /* noreturn, but fall through to the assert anyway */
 
     case 0:
@@ -561,13 +589,22 @@ static void mte_check_fail(CPUARMState *env, int mmu_idx,
 
     case 2:
         /* Tag check fail causes asynchronous flag set.  */
-        mmu_idx = arm_mmu_idx_el(env, el);
-        if (regime_has_2_ranges(mmu_idx)) {
+        if (regime_has_2_ranges(arm_mmu_idx)) {
             select = extract64(dirty_ptr, 55, 1);
         } else {
             select = 0;
         }
         env->cp15.tfsr_el[el] |= 1 << select;
+#ifdef CONFIG_USER_ONLY
+        /*
+         * Stand in for a timer irq, setting _TIF_MTE_ASYNC_FAULT,
+         * which then sends a SIGSEGV when the thread is next scheduled.
+         * This cpu will return to the main loop at the end of the TB,
+         * which is rather sooner than "normal".  But the alternative
+         * is waiting until the next syscall.
+         */
+        qemu_cpu_kick(env_cpu(env));
+#endif
         break;
 
     default:
@@ -639,8 +676,7 @@ uint64_t mte_check1(CPUARMState *env, uint32_t desc,
     }
 
     if (unlikely(!mte_probe1_int(env, desc, ptr, ra, bit55))) {
-        int mmu_idx = FIELD_EX32(desc, MTEDESC, MIDX);
-        mte_check_fail(env, mmu_idx, ptr, ra);
+        mte_check_fail(env, desc, ptr, ra);
     }
 
     return useronly_clean_ptr(ptr);
@@ -810,7 +846,7 @@ uint64_t mte_checkN(CPUARMState *env, uint32_t desc,
 
         fail_ofs = tag_first + n * TAG_GRANULE - ptr;
         fail_ofs = ROUND_UP(fail_ofs, esize);
-        mte_check_fail(env, mmu_idx, ptr + fail_ofs, ra);
+        mte_check_fail(env, desc, ptr + fail_ofs, ra);
     }
 
  done:
@@ -922,7 +958,7 @@ uint64_t HELPER(mte_check_zva)(CPUARMState *env, uint32_t desc, uint64_t ptr)
  fail:
     /* Locate the first nibble that differs. */
     i = ctz64(mem_tag ^ ptr_tag) >> 4;
-    mte_check_fail(env, mmu_idx, align_ptr + i * TAG_GRANULE, ra);
+    mte_check_fail(env, desc, align_ptr + i * TAG_GRANULE, ra);
 
  done:
     return useronly_clean_ptr(ptr);

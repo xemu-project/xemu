@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -27,6 +27,7 @@
 #include "trace.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
+#include "qom/object.h"
 
 enum {
     R_SYSTEM = 0,
@@ -43,8 +44,7 @@ enum {
 };
 
 #define TYPE_MILKYMIST_HPDMC "milkymist-hpdmc"
-#define MILKYMIST_HPDMC(obj) \
-    OBJECT_CHECK(MilkymistHpdmcState, (obj), TYPE_MILKYMIST_HPDMC)
+OBJECT_DECLARE_SIMPLE_TYPE(MilkymistHpdmcState, MILKYMIST_HPDMC)
 
 struct MilkymistHpdmcState {
     SysBusDevice parent_obj;
@@ -53,7 +53,6 @@ struct MilkymistHpdmcState {
 
     uint32_t regs[R_MAX];
 };
-typedef struct MilkymistHpdmcState MilkymistHpdmcState;
 
 static uint64_t hpdmc_read(void *opaque, hwaddr addr,
                            unsigned size)

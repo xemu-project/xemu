@@ -36,10 +36,20 @@ config CMSDK_APB_DUALTIMER
     bool
     select PTIMER
 
+config SH_TIMER
+    bool
+    select PTIMER
+
 config RENESAS_TMR
     bool
 
 config RENESAS_CMT
+    bool
+
+config SSE_COUNTER
+    bool
+
+config SSE_TIMER
     bool
 
 config AVR_TIMER16

@@ -91,7 +91,7 @@ the heartbeat stops responding, the secondary node will trigger a failover
 as soon as it determines the absence.
 
 COLO disk Manager:
-When primary VM writes data into image, the colo disk manger captures this data
+When primary VM writes data into image, the colo disk manager captures this data
 and sends it to secondary VM's which makes sure the context of secondary VM's
 image is consistent with the context of primary VM 's image.
 For more details, please refer to docs/block-replication.txt.
@@ -146,27 +146,27 @@ in test procedure.
 
 == Test procedure ==
 Note: Here we are running both instances on the same host for testing,
-change the IP Addresses if you want to run it on two hosts. Initally
+change the IP Addresses if you want to run it on two hosts. Initially
 127.0.0.1 is the Primary Host and 127.0.0.2 is the Secondary Host.
 
 == Startup qemu ==
 1. Primary:
-Note: Initally, $imagefolder/primary.qcow2 needs to be copied to all hosts.
+Note: Initially, $imagefolder/primary.qcow2 needs to be copied to all hosts.
 You don't need to change any IP's here, because 0.0.0.0 listens on any
 interface. The chardev's with 127.0.0.1 IP's loopback to the local qemu
 instance.
 
 # imagefolder="/mnt/vms/colo-test-primary"
 
-# qemu-system-x86_64 -enable-kvm -cpu qemu64,+kvmclock -m 512 -smp 1 -qmp stdio \
+# qemu-system-x86_64 -enable-kvm -cpu qemu64,kvmclock=on -m 512 -smp 1 -qmp stdio \
    -device piix3-usb-uhci -device usb-tablet -name primary \
    -netdev tap,id=hn0,vhost=off,helper=/usr/lib/qemu/qemu-bridge-helper \
    -device rtl8139,id=e0,netdev=hn0 \
-   -chardev socket,id=mirror0,host=0.0.0.0,port=9003,server,nowait \
-   -chardev socket,id=compare1,host=0.0.0.0,port=9004,server,wait \
-   -chardev socket,id=compare0,host=127.0.0.1,port=9001,server,nowait \
+   -chardev socket,id=mirror0,host=0.0.0.0,port=9003,server=on,wait=off \
+   -chardev socket,id=compare1,host=0.0.0.0,port=9004,server=on,wait=on \
+   -chardev socket,id=compare0,host=127.0.0.1,port=9001,server=on,wait=off \
    -chardev socket,id=compare0-0,host=127.0.0.1,port=9001 \
-   -chardev socket,id=compare_out,host=127.0.0.1,port=9005,server,nowait \
+   -chardev socket,id=compare_out,host=127.0.0.1,port=9005,server=on,wait=off \
    -chardev socket,id=compare_out0,host=127.0.0.1,port=9005 \
    -object filter-mirror,id=m0,netdev=hn0,queue=tx,outdev=mirror0 \
    -object filter-redirector,netdev=hn0,id=redire0,queue=rx,indev=compare_out \
@@ -189,7 +189,7 @@ any IP's here, except for the $primary_ip variable.
 
 # qemu-img create -f qcow2 $imagefolder/secondary-hidden.qcow2 10G
 
-# qemu-system-x86_64 -enable-kvm -cpu qemu64,+kvmclock -m 512 -smp 1 -qmp stdio \
+# qemu-system-x86_64 -enable-kvm -cpu qemu64,kvmclock=on -m 512 -smp 1 -qmp stdio \
    -device piix3-usb-uhci -device usb-tablet -name secondary \
    -netdev tap,id=hn0,vhost=off,helper=/usr/lib/qemu/qemu-bridge-helper \
    -device rtl8139,id=e0,netdev=hn0 \

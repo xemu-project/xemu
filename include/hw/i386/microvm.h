@@ -24,48 +24,89 @@
 
 #include "hw/boards.h"
 #include "hw/i386/x86.h"
+#include "hw/acpi/acpi_dev_interface.h"
+#include "hw/pci-host/gpex.h"
+#include "qom/object.h"
+
+/*
+ *  IRQ    |  pc        | microvm (acpi=on)
+ * --------+------------+------------------
+ *   0     |  pit       |
+ *   1     |  kbd       |
+ *   2     |  cascade   |
+ *   3     |  serial 1  |
+ *   4     |  serial 0  | serial
+ *   5     |  -         |
+ *   6     |  floppy    |
+ *   7     |  parallel  |
+ *   8     |  rtc       | rtc (rtc=on)
+ *   9     |  acpi      | acpi (ged)
+ *  10     |  pci lnk   | xhci (usb=on)
+ *  11     |  pci lnk   |
+ *  12     |  ps2       | pcie
+ *  13     |  fpu       | pcie
+ *  14     |  ide 0     | pcie
+ *  15     |  ide 1     | pcie
+ *  16-23  |  pci gsi   | virtio
+ */
 
 /* Platform virtio definitions */
 #define VIRTIO_MMIO_BASE      0xfeb00000
-#define VIRTIO_IRQ_BASE       5
-#define VIRTIO_NUM_TRANSPORTS 8
 #define VIRTIO_CMDLINE_MAXLEN 64
+
+#define GED_MMIO_BASE         0xfea00000
+#define GED_MMIO_BASE_MEMHP   (GED_MMIO_BASE + 0x100)
+#define GED_MMIO_BASE_REGS    (GED_MMIO_BASE + 0x200)
+#define GED_MMIO_IRQ          9
+
+#define MICROVM_XHCI_BASE     0xfe900000
+#define MICROVM_XHCI_IRQ      10
+
+#define PCIE_MMIO_BASE        0xc0000000
+#define PCIE_MMIO_SIZE        0x20000000
+#define PCIE_ECAM_BASE        0xe0000000
+#define PCIE_ECAM_SIZE        0x10000000
 
 /* Machine type options */
 #define MICROVM_MACHINE_PIT                 "pit"
 #define MICROVM_MACHINE_PIC                 "pic"
 #define MICROVM_MACHINE_RTC                 "rtc"
+#define MICROVM_MACHINE_PCIE                "pcie"
+#define MICROVM_MACHINE_IOAPIC2             "ioapic2"
 #define MICROVM_MACHINE_ISA_SERIAL          "isa-serial"
 #define MICROVM_MACHINE_OPTION_ROMS         "x-option-roms"
 #define MICROVM_MACHINE_AUTO_KERNEL_CMDLINE "auto-kernel-cmdline"
 
-typedef struct {
+struct MicrovmMachineClass {
     X86MachineClass parent;
     HotplugHandler *(*orig_hotplug_handler)(MachineState *machine,
                                            DeviceState *dev);
-} MicrovmMachineClass;
+};
 
-typedef struct {
+struct MicrovmMachineState {
     X86MachineState parent;
 
     /* Machine type options */
     OnOffAuto pic;
     OnOffAuto pit;
     OnOffAuto rtc;
+    OnOffAuto pcie;
+    OnOffAuto ioapic2;
     bool isa_serial;
     bool option_roms;
     bool auto_kernel_cmdline;
 
     /* Machine state */
+    uint32_t pcie_irq_base;
+    uint32_t virtio_irq_base;
+    uint32_t virtio_num_transports;
     bool kernel_cmdline_fixed;
-} MicrovmMachineState;
+    Notifier machine_done;
+    Notifier powerdown_req;
+    struct GPEXConfig gpex;
+};
 
 #define TYPE_MICROVM_MACHINE   MACHINE_TYPE_NAME("microvm")
-#define MICROVM_MACHINE(obj) \
-    OBJECT_CHECK(MicrovmMachineState, (obj), TYPE_MICROVM_MACHINE)
-#define MICROVM_MACHINE_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(MicrovmMachineClass, obj, TYPE_MICROVM_MACHINE)
-#define MICROVM_MACHINE_CLASS(class) \
-    OBJECT_CLASS_CHECK(MicrovmMachineClass, class, TYPE_MICROVM_MACHINE)
+OBJECT_DECLARE_TYPE(MicrovmMachineState, MicrovmMachineClass, MICROVM_MACHINE)
 
 #endif

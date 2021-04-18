@@ -1,8 +1,8 @@
 .. This is the top level page for the 'specs' manual
 
 
-QEMU System Emulation Guest Hardware Specifications
-===================================================
+System Emulation Guest Hardware Specifications
+==============================================
 
 
 Contents:
@@ -12,6 +12,7 @@ Contents:
 
    ppc-xive
    ppc-spapr-xive
+   ppc-spapr-numa
    acpi_hw_reduced_hotplug
    tpm
    acpi_hest_ghes

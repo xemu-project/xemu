@@ -30,6 +30,7 @@
 #include "hw/irq.h"
 #include "hw/qdev-clock.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "migration/vmstate.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
@@ -65,7 +66,8 @@ static int ibex_uart_can_receive(void *opaque)
 {
     IbexUartState *s = opaque;
 
-    if (s->uart_ctrl & R_CTRL_RX_ENABLE_MASK) {
+    if ((s->uart_ctrl & R_CTRL_RX_ENABLE_MASK)
+           && !(s->uart_status & R_STATUS_RXFULL_MASK)) {
         return 1;
     }
 
@@ -82,6 +84,11 @@ static void ibex_uart_receive(void *opaque, const uint8_t *buf, int size)
 
     s->uart_status &= ~R_STATUS_RXIDLE_MASK;
     s->uart_status &= ~R_STATUS_RXEMPTY_MASK;
+    /* The RXFULL is set after receiving a single byte
+     * as the FIFO buffers are not yet implemented.
+     */
+    s->uart_status |= R_STATUS_RXFULL_MASK;
+    s->rx_level += 1;
 
     if (size > rx_fifo_level) {
         s->uart_intr_state |= R_INTR_STATE_RX_WATERMARK_MASK;
@@ -198,6 +205,7 @@ static void ibex_uart_reset(DeviceState *dev)
     s->uart_timeout_ctrl = 0x00000000;
 
     s->tx_level = 0;
+    s->rx_level = 0;
 
     s->char_tx_time = (NANOSECONDS_PER_SECOND / 230400) * 10;
 
@@ -242,11 +250,15 @@ static uint64_t ibex_uart_read(void *opaque, hwaddr addr,
 
     case R_RDATA:
         retvalue = s->uart_rdata;
-        if (s->uart_ctrl & R_CTRL_RX_ENABLE_MASK) {
+        if ((s->uart_ctrl & R_CTRL_RX_ENABLE_MASK) && (s->rx_level > 0)) {
             qemu_chr_fe_accept_input(&s->chr);
 
-            s->uart_status |= R_STATUS_RXIDLE_MASK;
-            s->uart_status |= R_STATUS_RXEMPTY_MASK;
+            s->rx_level -= 1;
+            s->uart_status &= ~R_STATUS_RXFULL_MASK;
+            if (s->rx_level == 0) {
+                s->uart_status |= R_STATUS_RXIDLE_MASK;
+                s->uart_status |= R_STATUS_RXEMPTY_MASK;
+            }
         }
         break;
     case R_WDATA:
@@ -260,7 +272,8 @@ static uint64_t ibex_uart_read(void *opaque, hwaddr addr,
     case R_FIFO_STATUS:
         retvalue = s->uart_fifo_status;
 
-        retvalue |= s->tx_level & 0x1F;
+        retvalue |= (s->rx_level & 0x1F) << R_FIFO_STATUS_RXLVL_SHIFT;
+        retvalue |= (s->tx_level & 0x1F) << R_FIFO_STATUS_TXLVL_SHIFT;
 
         qemu_log_mask(LOG_UNIMP,
                       "%s: RX fifos are not supported\n", __func__);
@@ -363,6 +376,7 @@ static void ibex_uart_write(void *opaque, hwaddr addr,
         s->uart_fifo_ctrl = value;
 
         if (value & R_FIFO_CTRL_RXRST_MASK) {
+            s->rx_level = 0;
             qemu_log_mask(LOG_UNIMP,
                           "%s: RX fifos are not supported\n", __func__);
         }
@@ -395,7 +409,7 @@ static void ibex_uart_write(void *opaque, hwaddr addr,
     }
 }
 
-static void ibex_uart_clk_update(void *opaque)
+static void ibex_uart_clk_update(void *opaque, ClockEvent event)
 {
     IbexUartState *s = opaque;
 
@@ -465,7 +479,7 @@ static void ibex_uart_init(Object *obj)
     IbexUartState *s = IBEX_UART(obj);
 
     s->f_clk = qdev_init_clock_in(DEVICE(obj), "f_clock",
-                                  ibex_uart_clk_update, s);
+                                  ibex_uart_clk_update, s, ClockUpdate);
     clock_set_hz(s->f_clk, IBEX_UART_CLOCK);
 
     sysbus_init_irq(SYS_BUS_DEVICE(obj), &s->tx_watermark);

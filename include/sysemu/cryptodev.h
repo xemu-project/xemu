@@ -9,7 +9,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -37,15 +37,8 @@
 
 #define TYPE_CRYPTODEV_BACKEND "cryptodev-backend"
 
-#define CRYPTODEV_BACKEND(obj) \
-    OBJECT_CHECK(CryptoDevBackend, \
-                 (obj), TYPE_CRYPTODEV_BACKEND)
-#define CRYPTODEV_BACKEND_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(CryptoDevBackendClass, \
-                 (obj), TYPE_CRYPTODEV_BACKEND)
-#define CRYPTODEV_BACKEND_CLASS(klass) \
-    OBJECT_CLASS_CHECK(CryptoDevBackendClass, \
-                (klass), TYPE_CRYPTODEV_BACKEND)
+OBJECT_DECLARE_TYPE(CryptoDevBackend, CryptoDevBackendClass,
+                    CRYPTODEV_BACKEND)
 
 
 #define MAX_CRYPTO_QUEUE_NUM  64
@@ -54,7 +47,6 @@ typedef struct CryptoDevBackendConf CryptoDevBackendConf;
 typedef struct CryptoDevBackendPeers CryptoDevBackendPeers;
 typedef struct CryptoDevBackendClient
                      CryptoDevBackendClient;
-typedef struct CryptoDevBackend CryptoDevBackend;
 
 enum CryptoDevBackendAlgType {
     CRYPTODEV_BACKEND_ALG_SYM,
@@ -146,7 +138,7 @@ typedef struct CryptoDevBackendSymOpInfo {
     uint8_t data[];
 } CryptoDevBackendSymOpInfo;
 
-typedef struct CryptoDevBackendClass {
+struct CryptoDevBackendClass {
     ObjectClass parent_class;
 
     void (*init)(CryptoDevBackend *backend, Error **errp);
@@ -161,7 +153,7 @@ typedef struct CryptoDevBackendClass {
     int (*do_sym_op)(CryptoDevBackend *backend,
                      CryptoDevBackendSymOpInfo *op_info,
                      uint32_t queue_index, Error **errp);
-} CryptoDevBackendClass;
+};
 
 typedef enum CryptoDevBackendOptionsType {
     CRYPTODEV_BACKEND_TYPE_NONE = 0,

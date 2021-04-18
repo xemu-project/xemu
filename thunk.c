@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -404,19 +404,24 @@ const argtype *thunk_print(void *arg, const argtype *type_ptr)
             const int *arg_offsets;
 
             se = struct_entries + *type_ptr++;
-            a = arg;
 
-            field_types = se->field_types;
-            arg_offsets = se->field_offsets[0];
+            if (se->print != NULL) {
+                se->print(arg);
+            } else {
+                a = arg;
 
-            qemu_log("{");
-            for (i = 0; i < se->nb_fields; i++) {
-                if (i > 0) {
-                    qemu_log(",");
+                field_types = se->field_types;
+                arg_offsets = se->field_offsets[0];
+
+                qemu_log("{");
+                for (i = 0; i < se->nb_fields; i++) {
+                    if (i > 0) {
+                        qemu_log(",");
+                    }
+                    field_types = thunk_print(a + arg_offsets[i], field_types);
                 }
-                field_types = thunk_print(a + arg_offsets[i], field_types);
+                qemu_log("}");
             }
-            qemu_log("}");
         }
         break;
     default:

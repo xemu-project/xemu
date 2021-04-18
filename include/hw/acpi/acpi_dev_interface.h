@@ -1,7 +1,7 @@
 #ifndef ACPI_DEV_INTERFACE_H
 #define ACPI_DEV_INTERFACE_H
 
-#include "qapi/qapi-types-misc.h"
+#include "qapi/qapi-types-acpi.h"
 #include "qom/object.h"
 #include "hw/boards.h"
 #include "hw/qdev-core.h"
@@ -21,12 +21,9 @@ typedef enum {
 
 #define TYPE_ACPI_DEVICE_IF "acpi-device-interface"
 
-#define ACPI_DEVICE_IF_CLASS(klass) \
-     OBJECT_CLASS_CHECK(AcpiDeviceIfClass, (klass), \
-                        TYPE_ACPI_DEVICE_IF)
-#define ACPI_DEVICE_IF_GET_CLASS(obj) \
-     OBJECT_GET_CLASS(AcpiDeviceIfClass, (obj), \
-                      TYPE_ACPI_DEVICE_IF)
+typedef struct AcpiDeviceIfClass AcpiDeviceIfClass;
+DECLARE_CLASS_CHECKERS(AcpiDeviceIfClass, ACPI_DEVICE_IF,
+                       TYPE_ACPI_DEVICE_IF)
 #define ACPI_DEVICE_IF(obj) \
      INTERFACE_CHECK(AcpiDeviceIf, (obj), \
                      TYPE_ACPI_DEVICE_IF)
@@ -51,7 +48,7 @@ void acpi_send_event(DeviceState *dev, AcpiEventStatusBits event);
  * knowledge about internals of actual device that implements
  * ACPI interface.
  */
-typedef struct AcpiDeviceIfClass {
+struct AcpiDeviceIfClass {
     /* <private> */
     InterfaceClass parent_class;
 
@@ -60,5 +57,5 @@ typedef struct AcpiDeviceIfClass {
     void (*send_event)(AcpiDeviceIf *adev, AcpiEventStatusBits ev);
     void (*madt_cpu)(AcpiDeviceIf *adev, int uid,
                      const CPUArchIdList *apic_ids, GArray *entry);
-} AcpiDeviceIfClass;
+};
 #endif

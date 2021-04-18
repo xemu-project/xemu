@@ -24,6 +24,7 @@
 #include "sysemu/hostmem.h"
 #include "block/aio.h"
 #include "block/thread-pool.h"
+#include "trace.h"
 
 typedef struct VirtIODeviceRequest {
     VirtQueueElement elem;
@@ -41,11 +42,12 @@ static int worker_cb(void *opaque)
 
     /* flush raw backing image */
     err = fsync(req_data->fd);
+    trace_virtio_pmem_flush_done(err);
     if (err != 0) {
         err = 1;
     }
 
-    virtio_stw_p(req_data->vdev, &req_data->resp.ret, err);
+    virtio_stl_p(req_data->vdev, &req_data->resp.ret, err);
 
     return 0;
 }
@@ -59,6 +61,7 @@ static void done_cb(void *opaque, int ret)
     /* Callbacks are serialized, so no need to use atomic ops. */
     virtqueue_push(req_data->pmem->rq_vq, &req_data->elem, len);
     virtio_notify((VirtIODevice *)req_data->pmem, req_data->pmem->rq_vq);
+    trace_virtio_pmem_response();
     g_free(req_data);
 }
 
@@ -69,6 +72,7 @@ static void virtio_pmem_flush(VirtIODevice *vdev, VirtQueue *vq)
     HostMemoryBackend *backend = MEMORY_BACKEND(pmem->memdev);
     ThreadPool *pool = aio_get_thread_pool(qemu_get_aio_context());
 
+    trace_virtio_pmem_flush_request();
     req_data = virtqueue_pop(vq, sizeof(VirtIODeviceRequest));
     if (!req_data) {
         virtio_error(vdev, "virtio-pmem missing request data");
@@ -77,6 +81,7 @@ static void virtio_pmem_flush(VirtIODevice *vdev, VirtQueue *vq)
 
     if (req_data->elem.out_num < 1 || req_data->elem.in_num < 1) {
         virtio_error(vdev, "virtio-pmem request not proper");
+        virtqueue_detach_element(vq, (VirtQueueElement *)req_data, 0);
         g_free(req_data);
         return;
     }
@@ -174,6 +179,7 @@ static void virtio_pmem_class_init(ObjectClass *klass, void *data)
 
     vpc->fill_device_info = virtio_pmem_fill_device_info;
     vpc->get_memory_region = virtio_pmem_get_memory_region;
+    set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
 }
 
 static TypeInfo virtio_pmem_info = {

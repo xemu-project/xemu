@@ -22,7 +22,7 @@
 * This library is free software; you can redistribute it and/or
 * modify it under the terms of the GNU Lesser General Public
 * License as published by the Free Software Foundation; either
-* version 2 of the License, or (at your option) any later version.
+* version 2.1 of the License, or (at your option) any later version.
 *
 * This library is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -53,11 +53,12 @@
 
 #include "trace.h"
 #include "qapi/error.h"
+#include "qom/object.h"
 
 #define TYPE_E1000E "e1000e"
-#define E1000E(obj) OBJECT_CHECK(E1000EState, (obj), TYPE_E1000E)
+OBJECT_DECLARE_SIMPLE_TYPE(E1000EState, E1000E)
 
-typedef struct E1000EState {
+struct E1000EState {
     PCIDevice parent_obj;
     NICState *nic;
     NICConf conf;
@@ -79,7 +80,7 @@ typedef struct E1000EState {
 
     E1000ECore core;
 
-} E1000EState;
+};
 
 #define E1000E_MMIO_IDX     0
 #define E1000E_FLASH_IDX    1

@@ -18,18 +18,18 @@
 #include "hw/arm/nrf51_soc.h"
 #include "hw/i2c/microbit_i2c.h"
 #include "hw/qdev-properties.h"
+#include "qom/object.h"
 
-typedef struct {
+struct MicrobitMachineState {
     MachineState parent;
 
     NRF51State nrf51;
     MicrobitI2CState i2c;
-} MicrobitMachineState;
+};
 
 #define TYPE_MICROBIT_MACHINE MACHINE_TYPE_NAME("microbit")
 
-#define MICROBIT_MACHINE(obj) \
-    OBJECT_CHECK(MicrobitMachineState, obj, TYPE_MICROBIT_MACHINE)
+OBJECT_DECLARE_SIMPLE_TYPE(MicrobitMachineState, MICROBIT_MACHINE)
 
 static void microbit_init(MachineState *machine)
 {
@@ -64,7 +64,7 @@ static void microbit_machine_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
 
-    mc->desc = "BBC micro:bit";
+    mc->desc = "BBC micro:bit (Cortex-M0)";
     mc->init = microbit_init;
     mc->max_cpus = 1;
 }

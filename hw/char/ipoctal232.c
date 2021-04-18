@@ -12,10 +12,12 @@
 #include "hw/ipack/ipack.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "migration/vmstate.h"
 #include "qemu/bitops.h"
 #include "qemu/module.h"
 #include "chardev/char-fe.h"
+#include "qom/object.h"
 
 /* #define DEBUG_IPOCTAL */
 
@@ -122,8 +124,7 @@ struct IPOctalState {
 
 #define TYPE_IPOCTAL "ipoctal232"
 
-#define IPOCTAL(obj) \
-    OBJECT_CHECK(IPOctalState, (obj), TYPE_IPOCTAL)
+OBJECT_DECLARE_SIMPLE_TYPE(IPOctalState, IPOCTAL)
 
 static const VMStateDescription vmstate_scc2698_channel = {
     .name = "scc2698_channel",

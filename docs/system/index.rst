@@ -1,8 +1,8 @@
 .. This is the top level page for the 'system' manual.
 
 
-QEMU System Emulation User's Guide
-==================================
+System Emulation
+================
 
 This manual is the overall guide for users using QEMU
 for full system emulation (as opposed to user-mode emulation).
@@ -21,15 +21,24 @@ Contents:
    monitor
    images
    net
+   virtio-net-failover
    usb
+   nvme
    ivshmem
    linuxboot
+   generic-loader
+   guest-loader
    vnc-security
    tls
    gdb
    managed-startup
+   cpu-hotplug
+   virtio-pmem
+   pr-manager
    targets
    security
+   multi-process
    deprecated
+   removed-features
    build-platforms
    license

@@ -9,7 +9,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -26,6 +26,7 @@
 #include "qapi/error.h"
 #include "standard-headers/linux/virtio_crypto.h"
 #include "crypto/cipher.h"
+#include "qom/object.h"
 
 
 /**
@@ -34,12 +35,8 @@
  */
 #define TYPE_CRYPTODEV_BACKEND_BUILTIN "cryptodev-backend-builtin"
 
-#define CRYPTODEV_BACKEND_BUILTIN(obj) \
-    OBJECT_CHECK(CryptoDevBackendBuiltin, \
-                 (obj), TYPE_CRYPTODEV_BACKEND_BUILTIN)
+OBJECT_DECLARE_SIMPLE_TYPE(CryptoDevBackendBuiltin, CRYPTODEV_BACKEND_BUILTIN)
 
-typedef struct CryptoDevBackendBuiltin
-                         CryptoDevBackendBuiltin;
 
 typedef struct CryptoDevBackendBuiltinSession {
     QCryptoCipher *cipher;

@@ -3,9 +3,10 @@
 
 #include "qemu/units.h"
 #include "net/net.h"
+#include "qom/object.h"
 
 #define TYPE_TULIP "tulip"
-#define TULIP(obj) OBJECT_CHECK(TULIPState, (obj), TYPE_TULIP)
+OBJECT_DECLARE_SIMPLE_TYPE(TULIPState, TULIP)
 
 #define CSR(_x) ((_x) << 3)
 

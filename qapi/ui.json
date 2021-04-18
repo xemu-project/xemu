@@ -6,6 +6,7 @@
 # = Remote desktop
 ##
 
+{ 'include': 'common.json' }
 { 'include': 'sockets.json' }
 
 ##
@@ -27,7 +28,7 @@
 # Returns: - Nothing on success
 #          - If Spice is not enabled, DeviceNotFound
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -56,7 +57,7 @@
 # Returns: - Nothing on success
 #          - If @protocol is 'spice' and Spice is not active, DeviceNotFound
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Notes: Time is relative to the server and currently there is no way to
 #        coordinate server time with client time.  It is not recommended to
@@ -88,7 +89,7 @@
 #
 # Returns: Nothing on success
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -98,7 +99,8 @@
 #
 ##
 { 'command': 'screendump',
-  'data': {'filename': 'str', '*device': 'str', '*head': 'int'} }
+  'data': {'filename': 'str', '*device': 'str', '*head': 'int'},
+  'coroutine': true }
 
 ##
 # == Spice
@@ -155,7 +157,7 @@
 #
 # @tls: true if the channel is encrypted, false otherwise.
 #
-# Since: 0.14.0
+# Since: 0.14
 ##
 { 'struct': 'SpiceChannel',
   'base': 'SpiceBasicInfo',
@@ -214,7 +216,7 @@
 #
 # @channels: a list of @SpiceChannel for each active spice channel
 #
-# Since: 0.14.0
+# Since: 0.14
 ##
 { 'struct': 'SpiceInfo',
   'data': {'enabled': 'bool', 'migrated': 'bool', '*host': 'str', '*port': 'int',
@@ -229,7 +231,7 @@
 #
 # Returns: @SpiceInfo
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -277,7 +279,7 @@
 #
 # @client: client information
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -304,7 +306,7 @@
 #
 # @client: client information
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -332,7 +334,7 @@
 #
 # @client: client information
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -419,7 +421,7 @@
 # @sasl_username: If SASL authentication is in use, the SASL username
 #                 used for authentication.
 #
-# Since: 0.14.0
+# Since: 0.14
 ##
 { 'struct': 'VncClientInfo',
   'base': 'VncBasicInfo',
@@ -461,7 +463,7 @@
 #
 # @clients: a list of @VncClientInfo of all currently connected clients
 #
-# Since: 0.14.0
+# Since: 0.14
 ##
 { 'struct': 'VncInfo',
   'data': {'enabled': 'bool', '*host': 'str',
@@ -554,7 +556,7 @@
 #
 # Returns: @VncInfo
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -618,7 +620,7 @@
 # Note: This event is emitted before any authentication takes place, thus
 #       the authentication ID is not provided
 #
-# Since: 0.13.0
+# Since: 0.13
 #
 # Example:
 #
@@ -646,7 +648,7 @@
 #
 # @client: client information
 #
-# Since: 0.13.0
+# Since: 0.13
 #
 # Example:
 #
@@ -673,7 +675,7 @@
 #
 # @client: client information
 #
-# Since: 0.13.0
+# Since: 0.13
 #
 # Example:
 #
@@ -708,7 +710,7 @@
 #
 # @absolute: true if this device supports absolute coordinates as input
 #
-# Since: 0.14.0
+# Since: 0.14
 ##
 { 'struct': 'MouseInfo',
   'data': {'name': 'str', 'index': 'int', 'current': 'bool',
@@ -721,7 +723,7 @@
 #
 # Returns: a list of @MouseInfo for each device
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -791,7 +793,7 @@
 # 'sysrq' will be transparently changed to 'print', so they
 # are effectively synonyms.
 #
-# Since: 1.3.0
+# Since: 1.3
 #
 ##
 { 'enum': 'QKeyCode',
@@ -823,7 +825,7 @@
 #
 # Represents a keyboard key.
 #
-# Since: 1.3.0
+# Since: 1.3
 ##
 { 'union': 'KeyValue',
   'data': {
@@ -846,7 +848,7 @@
 # Returns: - Nothing on success
 #          - If key is unknown or redundant, InvalidParameter
 #
-# Since: 1.3.0
+# Since: 1.3
 #
 # Example:
 #
@@ -1021,18 +1023,6 @@
             'events' : [ 'InputEvent' ] } }
 
 ##
-# @GrabToggleKeys:
-#
-# Keys to toggle input-linux between host and guest.
-#
-# Since: 4.0
-#
-##
-{ 'enum': 'GrabToggleKeys',
-  'data': [ 'ctrl-ctrl', 'alt-alt', 'shift-shift','meta-meta', 'scrolllock',
-            'ctrl-scrolllock' ] }
-
-##
 # @DisplayGTK:
 #
 # GTK display options.
@@ -1178,3 +1168,64 @@
 ##
 { 'command': 'query-display-options',
   'returns': 'DisplayOptions' }
+
+##
+# @DisplayReloadType:
+#
+# Available DisplayReload types.
+#
+# @vnc: VNC display
+#
+# Since: 6.0
+#
+##
+{ 'enum': 'DisplayReloadType',
+  'data': ['vnc'] }
+
+##
+# @DisplayReloadOptionsVNC:
+#
+# Specify the VNC reload options.
+#
+# @tls-certs: reload tls certs or not.
+#
+# Since: 6.0
+#
+##
+{ 'struct': 'DisplayReloadOptionsVNC',
+  'data': { '*tls-certs': 'bool' } }
+
+##
+# @DisplayReloadOptions:
+#
+# Options of the display configuration reload.
+#
+# @type: Specify the display type.
+#
+# Since: 6.0
+#
+##
+{ 'union': 'DisplayReloadOptions',
+  'base': {'type': 'DisplayReloadType'},
+  'discriminator': 'type',
+  'data': { 'vnc': 'DisplayReloadOptionsVNC' } }
+
+##
+# @display-reload:
+#
+# Reload display configuration.
+#
+# Returns: Nothing on success.
+#
+# Since: 6.0
+#
+# Example:
+#
+# -> { "execute": "display-reload",
+#      "arguments": { "type": "vnc", "tls-certs": true  } }
+# <- { "return": {} }
+#
+##
+{ 'command': 'display-reload',
+  'data': 'DisplayReloadOptions',
+  'boxed' : true }

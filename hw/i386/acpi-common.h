@@ -10,6 +10,6 @@
 
 void acpi_build_madt(GArray *table_data, BIOSLinker *linker,
                      X86MachineState *x86ms, AcpiDeviceIf *adev,
-                     bool has_pci);
+                     const char *oem_id, const char *oem_table_id);
 
 #endif

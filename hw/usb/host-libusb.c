@@ -34,10 +34,16 @@
  */
 
 #include "qemu/osdep.h"
+#include "qom/object.h"
 #ifndef CONFIG_WIN32
 #include <poll.h>
 #endif
 #include <libusb.h>
+
+#ifdef CONFIG_LINUX
+#include <sys/ioctl.h>
+#include <linux/usbdevice_fs.h>
+#endif
 
 #include "qapi/error.h"
 #include "migration/vmstate.h"
@@ -55,10 +61,8 @@
 /* ------------------------------------------------------------------------ */
 
 #define TYPE_USB_HOST_DEVICE "usb-host"
-#define USB_HOST_DEVICE(obj) \
-     OBJECT_CHECK(USBHostDevice, (obj), TYPE_USB_HOST_DEVICE)
+OBJECT_DECLARE_SIMPLE_TYPE(USBHostDevice, USB_HOST_DEVICE)
 
-typedef struct USBHostDevice USBHostDevice;
 typedef struct USBHostRequest USBHostRequest;
 typedef struct USBHostIsoXfer USBHostIsoXfer;
 typedef struct USBHostIsoRing USBHostIsoRing;
@@ -175,6 +179,9 @@ static void usb_host_attach_kernel(USBHostDevice *s);
 #if LIBUSB_API_VERSION >= 0x01000103
 # define HAVE_STREAMS 1
 #endif
+#if LIBUSB_API_VERSION >= 0x01000106
+# define HAVE_SUPER_PLUS 1
+#endif
 
 static const char *speed_name[] = {
     [LIBUSB_SPEED_UNKNOWN] = "?",
@@ -182,6 +189,9 @@ static const char *speed_name[] = {
     [LIBUSB_SPEED_FULL]    = "12",
     [LIBUSB_SPEED_HIGH]    = "480",
     [LIBUSB_SPEED_SUPER]   = "5000",
+#ifdef HAVE_SUPER_PLUS
+    [LIBUSB_SPEED_SUPER_PLUS] = "5000+",
+#endif
 };
 
 static const unsigned int speed_map[] = {
@@ -189,6 +199,9 @@ static const unsigned int speed_map[] = {
     [LIBUSB_SPEED_FULL]    = USB_SPEED_FULL,
     [LIBUSB_SPEED_HIGH]    = USB_SPEED_HIGH,
     [LIBUSB_SPEED_SUPER]   = USB_SPEED_SUPER,
+#ifdef HAVE_SUPER_PLUS
+    [LIBUSB_SPEED_SUPER_PLUS] = USB_SPEED_SUPER,
+#endif
 };
 
 static const unsigned int status_map[] = {
@@ -823,7 +836,7 @@ static void usb_host_ep_update(USBHostDevice *s)
     struct libusb_ss_endpoint_companion_descriptor *endp_ss_comp;
 #endif
     uint8_t devep, type;
-    int pid, ep;
+    int pid, ep, alt;
     int rc, i, e;
 
     usb_ep_reset(udev);
@@ -835,8 +848,20 @@ static void usb_host_ep_update(USBHostDevice *s)
                                 conf->bConfigurationValue, true);
 
     for (i = 0; i < conf->bNumInterfaces; i++) {
-        assert(udev->altsetting[i] < conf->interface[i].num_altsetting);
-        intf = &conf->interface[i].altsetting[udev->altsetting[i]];
+        /*
+         * The udev->altsetting array indexes alternate settings
+         * by the interface number. Get the 0th alternate setting
+         * first so that we can grab the interface number, and
+         * then correct the alternate setting value if necessary.
+         */
+        intf = &conf->interface[i].altsetting[0];
+        alt = udev->altsetting[intf->bInterfaceNumber];
+
+        if (alt != 0) {
+            assert(alt < conf->interface[i].num_altsetting);
+            intf = &conf->interface[i].altsetting[alt];
+        }
+
         trace_usb_host_parse_interface(s->bus_num, s->addr,
                                        intf->bInterfaceNumber,
                                        intf->bAlternateSetting, true);
@@ -885,6 +910,7 @@ static void usb_host_ep_update(USBHostDevice *s)
 static int usb_host_open(USBHostDevice *s, libusb_device *dev, int hostfd)
 {
     USBDevice *udev = USB_DEVICE(s);
+    int libusb_speed;
     int bus_num = 0;
     int addr = 0;
     int rc;
@@ -935,7 +961,43 @@ static int usb_host_open(USBHostDevice *s, libusb_device *dev, int hostfd)
     usb_ep_init(udev);
     usb_host_ep_update(s);
 
-    udev->speed     = speed_map[libusb_get_device_speed(dev)];
+    libusb_speed = libusb_get_device_speed(dev);
+#if LIBUSB_API_VERSION >= 0x01000107 && defined(CONFIG_LINUX) && \
+        defined(USBDEVFS_GET_SPEED)
+    if (hostfd && libusb_speed == 0) {
+        /*
+         * Workaround libusb bug: libusb_get_device_speed() does not
+         * work for libusb_wrap_sys_device() devices in v1.0.23.
+         *
+         * Speeds are defined in linux/usb/ch9.h, file not included
+         * due to name conflicts.
+         */
+        int rc = ioctl(hostfd, USBDEVFS_GET_SPEED, NULL);
+        switch (rc) {
+        case 1: /* low */
+            libusb_speed = LIBUSB_SPEED_LOW;
+            break;
+        case 2: /* full */
+            libusb_speed = LIBUSB_SPEED_FULL;
+            break;
+        case 3: /* high */
+        case 4: /* wireless */
+            libusb_speed = LIBUSB_SPEED_HIGH;
+            break;
+        case 5: /* super */
+            libusb_speed = LIBUSB_SPEED_SUPER;
+            break;
+        case 6: /* super plus */
+#ifdef HAVE_SUPER_PLUS
+            libusb_speed = LIBUSB_SPEED_SUPER_PLUS;
+#else
+            libusb_speed = LIBUSB_SPEED_SUPER;
+#endif
+            break;
+        }
+    }
+#endif
+    udev->speed = speed_map[libusb_speed];
     usb_host_speed_compat(s);
 
     if (s->ddesc.iProduct) {
@@ -1111,7 +1173,7 @@ static void usb_host_realize(USBDevice *udev, Error **errp)
     if (s->hostdevice) {
         int fd;
         s->needs_autoscan = false;
-        fd = qemu_open(s->hostdevice, O_RDWR);
+        fd = qemu_open_old(s->hostdevice, O_RDWR);
         if (fd < 0) {
             error_setg_errno(errp, errno, "failed to open %s", s->hostdevice);
             return;
@@ -1721,7 +1783,7 @@ type_init(usb_host_register_types)
 static QEMUTimer *usb_auto_timer;
 static VMChangeStateEntry *usb_vmstate;
 
-static void usb_host_vm_state(void *unused, int running, RunState state)
+static void usb_host_vm_state(void *unused, bool running, RunState state)
 {
     if (running) {
         usb_host_auto_check(unused);

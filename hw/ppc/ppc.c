@@ -120,6 +120,7 @@ static void ppc6xx_set_irq(void *opaque, int pin, int level)
             } else {
                 cpu_ppc_tb_stop(env);
             }
+            break;
         case PPC6xx_INPUT_INT:
             /* Level sensitive - active high */
             LOG_IRQ("%s: set the external IRQ state to %d\n",
@@ -1026,7 +1027,8 @@ static void timebase_save(PPCTimebase *tb)
      */
     tb->guest_timebase = ticks + first_ppc_cpu->env.tb_env->tb_offset;
 
-    tb->runstate_paused = runstate_check(RUN_STATE_PAUSED);
+    tb->runstate_paused =
+        runstate_check(RUN_STATE_PAUSED) || runstate_check(RUN_STATE_SAVE_VM);
 }
 
 static void timebase_load(PPCTimebase *tb)
@@ -1057,7 +1059,7 @@ static void timebase_load(PPCTimebase *tb)
     }
 }
 
-void cpu_ppc_clock_vm_state_change(void *opaque, int running,
+void cpu_ppc_clock_vm_state_change(void *opaque, bool running,
                                    RunState state)
 {
     PPCTimebase *tb = opaque;
@@ -1087,7 +1089,7 @@ static int timebase_pre_save(void *opaque)
 {
     PPCTimebase *tb = opaque;
 
-    /* guest_timebase won't be overridden in case of paused guest */
+    /* guest_timebase won't be overridden in case of paused guest or savevm */
     if (!tb->runstate_paused) {
         timebase_save(tb);
     }

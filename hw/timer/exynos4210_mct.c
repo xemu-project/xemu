@@ -62,6 +62,7 @@
 
 #include "hw/arm/exynos4210.h"
 #include "hw/irq.h"
+#include "qom/object.h"
 
 //#define DEBUG_MCT
 
@@ -242,10 +243,9 @@ typedef struct {
 } Exynos4210MCTLT;
 
 #define TYPE_EXYNOS4210_MCT "exynos4210.mct"
-#define EXYNOS4210_MCT(obj) \
-    OBJECT_CHECK(Exynos4210MCTState, (obj), TYPE_EXYNOS4210_MCT)
+OBJECT_DECLARE_SIMPLE_TYPE(Exynos4210MCTState, EXYNOS4210_MCT)
 
-typedef struct Exynos4210MCTState {
+struct Exynos4210MCTState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
@@ -257,7 +257,7 @@ typedef struct Exynos4210MCTState {
     Exynos4210MCTGT g_timer;
 
     uint32_t    freq;                   /* all timers tick frequency, TCLK */
-} Exynos4210MCTState;
+};
 
 /*** VMState ***/
 static const VMStateDescription vmstate_tick_timer = {
@@ -537,7 +537,7 @@ static void exynos4210_gcomp_raise_irq(void *opaque, uint32_t id)
     /* If CSTAT is pending and IRQ is enabled */
     if ((s->reg.int_cstat & G_INT_CSTAT_COMP(id)) &&
             (s->reg.int_enb & G_INT_ENABLE(id))) {
-        DPRINTF("gcmp timer[%d] IRQ\n", id);
+        DPRINTF("gcmp timer[%u] IRQ\n", id);
         qemu_irq_raise(s->irq[id]);
     }
 }
@@ -1003,7 +1003,7 @@ static void exynos4210_mct_update_freq(Exynos4210MCTState *s)
                     MCT_CFG_GET_DIVIDER(s->reg_mct_cfg));
 
     if (freq != s->freq) {
-        DPRINTF("freq=%dHz\n", s->freq);
+        DPRINTF("freq=%uHz\n", s->freq);
 
         /* global timer */
         tx_ptimer_set_freq(s->g_timer.ptimer_frc, s->freq);
@@ -1530,6 +1530,19 @@ static void exynos4210_mct_init(Object *obj)
     sysbus_init_mmio(dev, &s->iomem);
 }
 
+static void exynos4210_mct_finalize(Object *obj)
+{
+    int i;
+    Exynos4210MCTState *s = EXYNOS4210_MCT(obj);
+
+    ptimer_free(s->g_timer.ptimer_frc);
+
+    for (i = 0; i < 2; i++) {
+        ptimer_free(s->l_timer[i].tick_timer.ptimer_tick);
+        ptimer_free(s->l_timer[i].ptimer_frc);
+    }
+}
+
 static void exynos4210_mct_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -1543,6 +1556,7 @@ static const TypeInfo exynos4210_mct_info = {
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(Exynos4210MCTState),
     .instance_init = exynos4210_mct_init,
+    .instance_finalize = exynos4210_mct_finalize,
     .class_init    = exynos4210_mct_class_init,
 };
 

@@ -49,7 +49,7 @@ more efficiently. In particular, this enlightenment allows paravirtualized
 ======================
 Enables paravirtualized spinlocks. The parameter indicates how many times
 spinlock acquisition should be attempted before indicating the situation to the
-hypervisor. A special value 0xffffffff indicates "never to retry".
+hypervisor. A special value 0xffffffff indicates "never notify".
 
 3.4. hv-vpindex
 ================
@@ -159,6 +159,11 @@ HV_X64_MSR_TSC_EMULATION_CONTROL (0x40000107)and HV_X64_MSR_TSC_EMULATION_STATUS
 the hypervisor) until it is ready to switch to the new one. This, in conjunction
 with hv-frequencies, allows Hyper-V on KVM to pass stable clocksource (Reference
 TSC page) to its own guests.
+
+Note, KVM doesn't fully support re-enlightenment notifications and doesn't
+emulate TSC accesses after migration so 'tsc-frequency=' CPU option also has to
+be specified to make migration succeed. The destination host has to either have
+the same TSC frequency or support TSC scaling CPU feature.
 
 Recommended: hv-frequencies
 

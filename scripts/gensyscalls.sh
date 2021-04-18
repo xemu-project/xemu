@@ -86,8 +86,7 @@ generate_syscall_nr()
     read_includes $arch $bits | filter_defines | rename_defines | \
                                 evaluate_values | sort -n -k 3
     echo
-    echo "#endif /* ${guard} */"
-    echo) > "$file"
+    echo "#endif /* ${guard} */") > "$file"
 }
 
 mkdir "$TMP/asm"
@@ -99,4 +98,5 @@ generate_syscall_nr openrisc 32 "$output/linux-user/openrisc/syscall_nr.h"
 
 generate_syscall_nr riscv 32 "$output/linux-user/riscv/syscall32_nr.h"
 generate_syscall_nr riscv 64 "$output/linux-user/riscv/syscall64_nr.h"
+generate_syscall_nr hexagon 32 "$output/linux-user/hexagon/syscall_nr.h"
 rm -fr "$TMP"

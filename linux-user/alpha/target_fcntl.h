@@ -23,6 +23,7 @@
 #define TARGET_O_CLOEXEC     010000000
 #define TARGET___O_SYNC      020000000
 #define TARGET_O_PATH        040000000
+#define TARGET___O_TMPFILE  0100000000
 
 #define TARGET_F_GETLK         7
 #define TARGET_F_SETLK         8
@@ -33,8 +34,6 @@
 #define TARGET_F_RDLCK         1
 #define TARGET_F_WRLCK         2
 #define TARGET_F_UNLCK         8
-#define TARGET_F_EXLCK         16
-#define TARGET_F_SHLCK         32
 
 #include "../generic/fcntl.h"
 #endif

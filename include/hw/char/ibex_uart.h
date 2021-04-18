@@ -29,6 +29,7 @@
 #include "hw/registerfields.h"
 #include "chardev/char-fe.h"
 #include "qemu/timer.h"
+#include "qom/object.h"
 
 REG32(INTR_STATE, 0x00)
     FIELD(INTR_STATE, TX_WATERMARK, 0, 1)
@@ -61,6 +62,8 @@ REG32(FIFO_CTRL, 0x1c)
     FIELD(FIFO_CTRL, RXILVL, 2, 3)
     FIELD(FIFO_CTRL, TXILVL, 5, 2)
 REG32(FIFO_STATUS, 0x20)
+    FIELD(FIFO_STATUS, TXLVL, 0, 5)
+    FIELD(FIFO_STATUS, RXLVL, 16, 5)
 REG32(OVRD, 0x24)
 REG32(VAL, 0x28)
 REG32(TIMEOUT_CTRL, 0x2c)
@@ -69,10 +72,9 @@ REG32(TIMEOUT_CTRL, 0x2c)
 #define IBEX_UART_CLOCK 50000000 /* 50MHz clock */
 
 #define TYPE_IBEX_UART "ibex-uart"
-#define IBEX_UART(obj) \
-    OBJECT_CHECK(IbexUartState, (obj), TYPE_IBEX_UART)
+OBJECT_DECLARE_SIMPLE_TYPE(IbexUartState, IBEX_UART)
 
-typedef struct {
+struct IbexUartState {
     /* <private> */
     SysBusDevice parent_obj;
 
@@ -81,6 +83,8 @@ typedef struct {
 
     uint8_t tx_fifo[IBEX_UART_TX_FIFO_SIZE];
     uint32_t tx_level;
+
+    uint32_t rx_level;
 
     QEMUTimer *fifo_trigger_handle;
     uint64_t char_tx_time;
@@ -103,5 +107,5 @@ typedef struct {
     qemu_irq rx_watermark;
     qemu_irq tx_empty;
     qemu_irq rx_overflow;
-} IbexUartState;
+};
 #endif /* HW_IBEX_UART_H */

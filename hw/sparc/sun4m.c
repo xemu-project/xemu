@@ -25,6 +25,7 @@
 #include "qemu/osdep.h"
 #include "qemu/units.h"
 #include "qapi/error.h"
+#include "qemu/datadir.h"
 #include "qemu-common.h"
 #include "cpu.h"
 #include "hw/sysbus.h"
@@ -49,9 +50,11 @@
 #include "hw/misc/empty_slot.h"
 #include "hw/misc/unimp.h"
 #include "hw/irq.h"
+#include "hw/or-irq.h"
 #include "hw/loader.h"
 #include "elf.h"
 #include "trace.h"
+#include "qom/object.h"
 
 /*
  * Sun4m architecture was used in the following machines:
@@ -143,7 +146,7 @@ static void nvram_init(Nvram *nvram, uint8_t *macaddr,
     memset(image, '\0', sizeof(image));
 
     /* OpenBIOS nvram variables partition */
-    sysp_end = chrp_nvram_create_system_partition(image, 0);
+    sysp_end = chrp_nvram_create_system_partition(image, 0, 0x1fd0);
 
     /* Free space partition */
     chrp_nvram_create_free_partition(&image[sysp_end], 0x1fd0 - sysp_end);
@@ -218,22 +221,12 @@ static void dummy_cpu_set_irq(void *opaque, int irq, int level)
 {
 }
 
-static void main_cpu_reset(void *opaque)
+static void sun4m_cpu_reset(void *opaque)
 {
     SPARCCPU *cpu = opaque;
     CPUState *cs = CPU(cpu);
 
     cpu_reset(cs);
-    cs->halted = 0;
-}
-
-static void secondary_cpu_reset(void *opaque)
-{
-    SPARCCPU *cpu = opaque;
-    CPUState *cs = CPU(cpu);
-
-    cpu_reset(cs);
-    cs->halted = 1;
 }
 
 static void cpu_halt_signal(void *opaque, int irq, int level)
@@ -328,7 +321,7 @@ static void *iommu_init(hwaddr addr, uint32_t version, qemu_irq irq)
 
 static void *sparc32_dma_init(hwaddr dma_base,
                               hwaddr esp_base, qemu_irq espdma_irq,
-                              hwaddr le_base, qemu_irq ledma_irq)
+                              hwaddr le_base, qemu_irq ledma_irq, NICInfo *nd)
 {
     DeviceState *dma;
     ESPDMADeviceState *espdma;
@@ -337,16 +330,11 @@ static void *sparc32_dma_init(hwaddr dma_base,
     SysBusPCNetState *lance;
 
     dma = qdev_new(TYPE_SPARC32_DMA);
-    sysbus_realize_and_unref(SYS_BUS_DEVICE(dma), &error_fatal);
-    sysbus_mmio_map(SYS_BUS_DEVICE(dma), 0, dma_base);
-
     espdma = SPARC32_ESPDMA_DEVICE(object_resolve_path_component(
                                    OBJECT(dma), "espdma"));
     sysbus_connect_irq(SYS_BUS_DEVICE(espdma), 0, espdma_irq);
 
-    esp = ESP_STATE(object_resolve_path_component(OBJECT(espdma), "esp"));
-    sysbus_mmio_map(SYS_BUS_DEVICE(esp), 0, esp_base);
-    scsi_bus_legacy_handle_cmdline(&esp->esp.bus);
+    esp = SYSBUS_ESP(object_resolve_path_component(OBJECT(espdma), "esp"));
 
     ledma = SPARC32_LEDMA_DEVICE(object_resolve_path_component(
                                  OBJECT(dma), "ledma"));
@@ -354,6 +342,14 @@ static void *sparc32_dma_init(hwaddr dma_base,
 
     lance = SYSBUS_PCNET(object_resolve_path_component(
                          OBJECT(ledma), "lance"));
+    qdev_set_nic_properties(DEVICE(lance), nd);
+
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dma), &error_fatal);
+    sysbus_mmio_map(SYS_BUS_DEVICE(dma), 0, dma_base);
+
+    sysbus_mmio_map(SYS_BUS_DEVICE(esp), 0, esp_base);
+    scsi_bus_legacy_handle_cmdline(&esp->esp.bus);
+
     sysbus_mmio_map(SYS_BUS_DEVICE(lance), 0, le_base);
 
     return dma;
@@ -500,7 +496,7 @@ static void tcx_init(hwaddr addr, qemu_irq irq, int vram_size, int width,
     DeviceState *dev;
     SysBusDevice *s;
 
-    dev = qdev_new("SUNW,tcx");
+    dev = qdev_new("sun-tcx");
     qdev_prop_set_uint32(dev, "vram_size", vram_size);
     qdev_prop_set_uint16(dev, "width", width);
     qdev_prop_set_uint16(dev, "height", height);
@@ -591,14 +587,13 @@ static void idreg_init(hwaddr addr)
                             idreg_data, sizeof(idreg_data));
 }
 
-#define MACIO_ID_REGISTER(obj) \
-    OBJECT_CHECK(IDRegState, (obj), TYPE_MACIO_ID_REGISTER)
+OBJECT_DECLARE_SIMPLE_TYPE(IDRegState, MACIO_ID_REGISTER)
 
-typedef struct IDRegState {
+struct IDRegState {
     SysBusDevice parent_obj;
 
     MemoryRegion mem;
-} IDRegState;
+};
 
 static void idreg_realize(DeviceState *ds, Error **errp)
 {
@@ -633,13 +628,13 @@ static const TypeInfo idreg_info = {
 };
 
 #define TYPE_TCX_AFX "tcx_afx"
-#define TCX_AFX(obj) OBJECT_CHECK(AFXState, (obj), TYPE_TCX_AFX)
+OBJECT_DECLARE_SIMPLE_TYPE(AFXState, TCX_AFX)
 
-typedef struct AFXState {
+struct AFXState {
     SysBusDevice parent_obj;
 
     MemoryRegion mem;
-} AFXState;
+};
 
 /* SS-5 TCX AFX register */
 static void afx_init(hwaddr addr)
@@ -686,13 +681,15 @@ static const TypeInfo afx_info = {
 };
 
 #define TYPE_OPENPROM "openprom"
-#define OPENPROM(obj) OBJECT_CHECK(PROMState, (obj), TYPE_OPENPROM)
+typedef struct PROMState PROMState;
+DECLARE_INSTANCE_CHECKER(PROMState, OPENPROM,
+                         TYPE_OPENPROM)
 
-typedef struct PROMState {
+struct PROMState {
     SysBusDevice parent_obj;
 
     MemoryRegion prom;
-} PROMState;
+};
 
 /* Boot PROM (OpenBIOS) */
 static uint64_t translate_prom_address(void *opaque, uint64_t addr)
@@ -774,12 +771,14 @@ static const TypeInfo prom_info = {
 };
 
 #define TYPE_SUN4M_MEMORY "memory"
-#define SUN4M_RAM(obj) OBJECT_CHECK(RamDevice, (obj), TYPE_SUN4M_MEMORY)
+typedef struct RamDevice RamDevice;
+DECLARE_INSTANCE_CHECKER(RamDevice, SUN4M_RAM,
+                         TYPE_SUN4M_MEMORY)
 
-typedef struct RamDevice {
+struct RamDevice {
     SysBusDevice parent_obj;
     HostMemoryBackend *memdev;
-} RamDevice;
+};
 
 /* System RAM */
 static void ram_realize(DeviceState *dev, Error **errp)
@@ -819,21 +818,17 @@ static const TypeInfo ram_info = {
 static void cpu_devinit(const char *cpu_type, unsigned int id,
                         uint64_t prom_addr, qemu_irq **cpu_irqs)
 {
-    CPUState *cs;
     SPARCCPU *cpu;
     CPUSPARCState *env;
 
-    cpu = SPARC_CPU(cpu_create(cpu_type));
+    cpu = SPARC_CPU(object_new(cpu_type));
     env = &cpu->env;
 
     cpu_sparc_set_id(env, id);
-    if (id == 0) {
-        qemu_register_reset(main_cpu_reset, cpu);
-    } else {
-        qemu_register_reset(secondary_cpu_reset, cpu);
-        cs = CPU(cpu);
-        cs->halted = 1;
-    }
+    qemu_register_reset(sun4m_cpu_reset, cpu);
+    object_property_set_bool(OBJECT(cpu), "start-powered-off", id != 0,
+                             &error_fatal);
+    qdev_realize_and_unref(DEVICE(cpu), NULL, &error_fatal);
     *cpu_irqs = qemu_allocate_irqs(cpu_set_irq, cpu, MAX_PILS);
     env->prom_addr = prom_addr;
 }
@@ -847,19 +842,20 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
 {
     DeviceState *slavio_intctl;
     unsigned int i;
-    void *nvram;
+    Nvram *nvram;
     qemu_irq *cpu_irqs[MAX_CPUS], slavio_irq[32], slavio_cpu_irq[MAX_CPUS];
     qemu_irq fdc_tc;
     unsigned long kernel_size;
     uint32_t initrd_size;
     DriveInfo *fd[MAX_FD];
     FWCfgState *fw_cfg;
-    DeviceState *dev;
+    DeviceState *dev, *ms_kb_orgate, *serial_orgate;
     SysBusDevice *s;
     unsigned int smp_cpus = machine->smp.cpus;
     unsigned int max_cpus = machine->smp.max_cpus;
     Object *ram_memdev = object_resolve_path_type(machine->ram_memdev_id,
                                                   TYPE_MEMORY_BACKEND, NULL);
+    NICInfo *nd = &nd_table[0];
 
     if (machine->ram_size > hwdef->max_mem) {
         error_report("Too much memory for this machine: %" PRId64 ","
@@ -888,7 +884,7 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
                         hwdef->max_mem - machine->ram_size);
     }
 
-    prom_init(hwdef->slavio_base, bios_name);
+    prom_init(hwdef->slavio_base, machine->firmware);
 
     slavio_intctl = slavio_intctl_init(hwdef->intctl_base,
                                        hwdef->intctl_base + 0x10000ULL,
@@ -920,9 +916,10 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
                         hwdef->iommu_pad_base, hwdef->iommu_pad_len);
     }
 
+    qemu_check_nic_model(nd, TYPE_LANCE);
     sparc32_dma_init(hwdef->dma_base,
                      hwdef->esp_base, slavio_irq[18],
-                     hwdef->le_base, slavio_irq[16]);
+                     hwdef->le_base, slavio_irq[16], nd);
 
     if (graphic_depth != 8 && graphic_depth != 24) {
         error_report("Unsupported depth: %d", graphic_depth);
@@ -973,10 +970,16 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
     }
 
     if (hwdef->sx_base) {
-        create_unimplemented_device("SUNW,sx", hwdef->sx_base, 0x2000);
+        create_unimplemented_device("sun-sx", hwdef->sx_base, 0x2000);
     }
 
-    nvram = m48t59_init(slavio_irq[0], hwdef->nvram_base, 0, 0x2000, 1968, 8);
+    dev = qdev_new("sysbus-m48t08");
+    qdev_prop_set_int32(dev, "base-year", 1968);
+    s = SYS_BUS_DEVICE(dev);
+    sysbus_realize_and_unref(s, &error_fatal);
+    sysbus_connect_irq(s, 0, slavio_irq[0]);
+    sysbus_mmio_map(s, 0, hwdef->nvram_base);
+    nvram = NVRAM(dev);
 
     slavio_timer_init_all(hwdef->counter_base, slavio_irq[19], slavio_cpu_irq, smp_cpus);
 
@@ -992,9 +995,15 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
     qdev_prop_set_uint32(dev, "chnAtype", escc_kbd);
     s = SYS_BUS_DEVICE(dev);
     sysbus_realize_and_unref(s, &error_fatal);
-    sysbus_connect_irq(s, 0, slavio_irq[14]);
-    sysbus_connect_irq(s, 1, slavio_irq[14]);
     sysbus_mmio_map(s, 0, hwdef->ms_kb_base);
+
+    /* Logically OR both its IRQs together */
+    ms_kb_orgate = DEVICE(object_new(TYPE_OR_IRQ));
+    object_property_set_int(OBJECT(ms_kb_orgate), "num-lines", 2, &error_fatal);
+    qdev_realize_and_unref(ms_kb_orgate, NULL, &error_fatal);
+    sysbus_connect_irq(s, 0, qdev_get_gpio_in(ms_kb_orgate, 0));
+    sysbus_connect_irq(s, 1, qdev_get_gpio_in(ms_kb_orgate, 1));
+    qdev_connect_gpio_out(DEVICE(ms_kb_orgate), 0, slavio_irq[14]);
 
     dev = qdev_new(TYPE_ESCC);
     qdev_prop_set_uint32(dev, "disabled", 0);
@@ -1007,9 +1016,16 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
 
     s = SYS_BUS_DEVICE(dev);
     sysbus_realize_and_unref(s, &error_fatal);
-    sysbus_connect_irq(s, 0, slavio_irq[15]);
-    sysbus_connect_irq(s, 1,  slavio_irq[15]);
     sysbus_mmio_map(s, 0, hwdef->serial_base);
+
+    /* Logically OR both its IRQs together */
+    serial_orgate = DEVICE(object_new(TYPE_OR_IRQ));
+    object_property_set_int(OBJECT(serial_orgate), "num-lines", 2,
+                            &error_fatal);
+    qdev_realize_and_unref(serial_orgate, NULL, &error_fatal);
+    sysbus_connect_irq(s, 0, qdev_get_gpio_in(serial_orgate, 0));
+    sysbus_connect_irq(s, 1, qdev_get_gpio_in(serial_orgate, 1));
+    qdev_connect_gpio_out(DEVICE(serial_orgate), 0, slavio_irq[15]);
 
     if (hwdef->apc_base) {
         apc_init(hwdef->apc_base, qemu_allocate_irq(cpu_halt_signal, NULL, 0));
@@ -1029,23 +1045,23 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
                      slavio_irq[30], fdc_tc);
 
     if (hwdef->cs_base) {
-        sysbus_create_simple("SUNW,CS4231", hwdef->cs_base,
+        sysbus_create_simple("sun-CS4231", hwdef->cs_base,
                              slavio_irq[5]);
     }
 
     if (hwdef->dbri_base) {
         /* ISDN chip with attached CS4215 audio codec */
         /* prom space */
-        create_unimplemented_device("SUNW,DBRI.prom",
+        create_unimplemented_device("sun-DBRI.prom",
                                     hwdef->dbri_base + 0x1000, 0x30);
         /* reg space */
-        create_unimplemented_device("SUNW,DBRI",
+        create_unimplemented_device("sun-DBRI",
                                     hwdef->dbri_base + 0x10000, 0x100);
     }
 
     if (hwdef->bpp_base) {
         /* parallel port */
-        create_unimplemented_device("SUNW,bpp", hwdef->bpp_base, 0x20);
+        create_unimplemented_device("sun-bpp", hwdef->bpp_base, 0x20);
     }
 
     initrd_size = 0;
@@ -1053,7 +1069,7 @@ static void sun4m_hw_init(const struct sun4m_hwdef *hwdef,
                                     machine->initrd_filename,
                                     machine->ram_size, &initrd_size);
 
-    nvram_init(nvram, (uint8_t *)&nd_table[0].macaddr, machine->kernel_cmdline,
+    nvram_init(nvram, (uint8_t *)&nd->macaddr, machine->kernel_cmdline,
                machine->boot_order, machine->ram_size, kernel_size,
                graphic_width, graphic_height, graphic_depth,
                hwdef->nvram_machine_id, "Sun4m");
