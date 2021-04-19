@@ -334,17 +334,17 @@ static void voice_set_mask(MCPXAPUState *d, uint16_t voice_handle,
 static void update_irq(MCPXAPUState *d)
 {
     if (d->regs[NV_PAPU_FECTL] & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) {
-        atomic_or(&d->regs[NV_PAPU_ISTS], NV_PAPU_ISTS_FETINTSTS);
+        qatomic_or(&d->regs[NV_PAPU_ISTS], NV_PAPU_ISTS_FETINTSTS);
     }
     if ((d->regs[NV_PAPU_IEN] & NV_PAPU_ISTS_GINTSTS) &&
         ((d->regs[NV_PAPU_ISTS] & ~NV_PAPU_ISTS_GINTSTS) &
          d->regs[NV_PAPU_IEN])) {
-        atomic_or(&d->regs[NV_PAPU_ISTS], NV_PAPU_ISTS_GINTSTS);
+        qatomic_or(&d->regs[NV_PAPU_ISTS], NV_PAPU_ISTS_GINTSTS);
         // fprintf(stderr, "mcpx irq raise ien=%08x ists=%08x\n",
         //         d->regs[NV_PAPU_IEN], d->regs[NV_PAPU_ISTS]);
         pci_irq_assert(&d->dev);
     } else {
-        atomic_and(&d->regs[NV_PAPU_ISTS], ~NV_PAPU_ISTS_GINTSTS);
+        qatomic_and(&d->regs[NV_PAPU_ISTS], ~NV_PAPU_ISTS_GINTSTS);
         // fprintf(stderr, "mcpx irq lower ien=%08x ists=%08x\n",
         //         d->regs[NV_PAPU_IEN], d->regs[NV_PAPU_ISTS]);
         pci_irq_deassert(&d->dev);
@@ -362,7 +362,7 @@ static uint64_t mcpx_apu_read(void *opaque, hwaddr addr, unsigned int size)
         break;
     default:
         if (addr < 0x20000) {
-            r = atomic_read(&d->regs[addr]);
+            r = qatomic_read(&d->regs[addr]);
         }
         break;
     }
@@ -384,13 +384,13 @@ static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
     switch (addr) {
     case NV_PAPU_ISTS:
         /* the bits of the interrupts to clear are written */
-        atomic_and(&d->regs[NV_PAPU_ISTS], ~val);
+        qatomic_and(&d->regs[NV_PAPU_ISTS], ~val);
         update_irq(d);
         qemu_cond_broadcast(&d->cond);
         break;
     case NV_PAPU_FECTL:
     case NV_PAPU_SECTL:
-        atomic_set(&d->regs[addr], val);
+        qatomic_set(&d->regs[addr], val);
         qemu_cond_broadcast(&d->cond);
         break;
     case NV_PAPU_FEMEMDATA:
@@ -399,11 +399,11 @@ static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
          * something to do with notifies. Just do it now :/ */
         stl_le_phys(&address_space_memory, d->regs[NV_PAPU_FEMEMADDR], val);
         // fprintf(stderr, "MAGIC WRITE\n");
-        atomic_set(&d->regs[addr], val);
+        qatomic_set(&d->regs[addr], val);
         break;
     default:
         if (addr < 0x20000) {
-            atomic_set(&d->regs[addr], val);
+            qatomic_set(&d->regs[addr], val);
         }
         break;
     }
@@ -448,7 +448,7 @@ static bool is_voice_locked(MCPXAPUState *d, uint16_t v)
 {
     assert(v < MCPX_HW_MAX_VOICES);
     uint64_t mask = 1LL << (v % 64);
-    return (atomic_read(&d->vp.voice_locked[v / 64]) & mask) != 0;
+    return (qatomic_read(&d->vp.voice_locked[v / 64]) & mask) != 0;
 }
 
 static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
@@ -1479,7 +1479,7 @@ static void set_notify_status(MCPXAPUState *d, uint32_t v, int notifier,
     // FIXME: Actually provied current envelope state
     stb_phys(&address_space_memory, notify_offset - 1, 1);
 
-    atomic_or(&d->regs[NV_PAPU_ISTS],
+    qatomic_or(&d->regs[NV_PAPU_ISTS],
               NV_PAPU_ISTS_FEVINTSTS | NV_PAPU_ISTS_FENINTSTS);
     d->set_irq = true;
 }
@@ -2517,10 +2517,10 @@ static void *mcpx_apu_frame_thread(void *arg)
 {
     MCPXAPUState *d = MCPX_APU_DEVICE(arg);
     qemu_mutex_lock(&d->lock);
-    while (!atomic_read(&d->exiting)) {
-        int xcntmode = GET_MASK(atomic_read(&d->regs[NV_PAPU_SECTL]),
+    while (!qatomic_read(&d->exiting)) {
+        int xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
                                 NV_PAPU_SECTL_XCNTMODE);
-        uint32_t fectl = atomic_read(&d->regs[NV_PAPU_FECTL]);
+        uint32_t fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
         if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
             (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
             (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
@@ -2536,9 +2536,9 @@ static void *mcpx_apu_frame_thread(void *arg)
             d->set_irq = false;
         }
 
-        xcntmode = GET_MASK(atomic_read(&d->regs[NV_PAPU_SECTL]),
+        xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
                             NV_PAPU_SECTL_XCNTMODE);
-        fectl = atomic_read(&d->regs[NV_PAPU_FECTL]);
+        fectl = qatomic_read(&d->regs[NV_PAPU_FECTL]);
         if (xcntmode == NV_PAPU_SECTL_XCNTMODE_OFF ||
             (fectl & NV_PAPU_FECTL_FEMETHMODE_TRAPPED) ||
             (fectl & NV_PAPU_FECTL_FEMETHMODE_HALTED)) {
