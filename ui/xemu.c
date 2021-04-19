@@ -70,6 +70,19 @@ void tcg_register_init_ctx(void); // tcg.c
 #define DPRINTF(...)
 #endif
 
+static bool xb_console_gl_check_format(DisplayChangeListener *dcl,
+                                       pixman_format_code_t format)
+{
+    switch (format) {
+    case PIXMAN_BE_b8g8r8x8:
+    case PIXMAN_BE_b8g8r8a8:
+    case PIXMAN_r5g6b5:
+        return true;
+    default:
+        return false;
+    }
+}
+
 void xb_surface_gl_create_texture(DisplaySurface *surface);
 void xb_surface_gl_update_texture(DisplaySurface *surface, int x, int y, int w, int h);
 void xb_surface_gl_destroy_texture(DisplaySurface *surface);
@@ -765,7 +778,7 @@ static const DisplayChangeListenerOps dcl_gl_ops = {
     .dpy_name                = "sdl2-gl",
     .dpy_gfx_update          = sdl2_gl_update,
     .dpy_gfx_switch          = sdl2_gl_switch,
-    .dpy_gfx_check_format    = console_gl_check_format,
+    .dpy_gfx_check_format    = xb_console_gl_check_format,
     // .dpy_refresh             = sdl2_gl_refresh,
     .dpy_mouse_set           = sdl_mouse_warp,
     .dpy_cursor_define       = sdl_mouse_define,
