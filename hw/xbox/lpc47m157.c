@@ -20,6 +20,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "migration/vmstate.h"
 #include "sysemu/sysemu.h"
 #include "hw/char/serial.h"
