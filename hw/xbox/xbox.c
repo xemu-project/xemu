@@ -61,14 +61,13 @@
 #define MAX_IDE_BUS 2
 
 /* FIXME: Clean this up and propagate errors to UI */
-static void xbox_flash_init(MemoryRegion *rom_memory)
+static void xbox_flash_init(MachineState *ms, MemoryRegion *rom_memory)
 {
     const uint32_t rom_start = 0xFF000000;
+    const char *bios_name;
 
     /* Locate BIOS ROM image */
-    if (bios_name == NULL) {
-        bios_name = "bios.bin";
-    }
+    bios_name = ms->firmware ?: "bios.bin";
 
     int failed_to_load_bios = 1;
     char *filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
@@ -198,7 +197,7 @@ static void xbox_memory_init(PCMachineState *pcms,
     *ram_memory = ram;
     memory_region_add_subregion(system_memory, 0, ram);
 
-    xbox_flash_init(rom_memory);
+    xbox_flash_init(machine, rom_memory);
     pc_system_flash_cleanup_unused(pcms);
 }
 
