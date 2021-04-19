@@ -96,7 +96,7 @@ void pfifo_kick(NV2AState *d)
 }
 
 static bool pgraph_can_fifo_access(NV2AState *d) {
-    return atomic_read(&d->pgraph.regs[NV_PGRAPH_FIFO]) & NV_PGRAPH_FIFO_ACCESS;
+    return qatomic_read(&d->pgraph.regs[NV_PGRAPH_FIFO]) & NV_PGRAPH_FIFO_ACCESS;
 }
 
 /* If NV097_FLIP_STALL was executed, check if the flip has completed.
@@ -124,7 +124,7 @@ static bool pfifo_stall_for_flip(NV2AState *d)
 {
     bool should_stall = false;
 
-    if (atomic_read(&d->pgraph.waiting_for_flip)) {
+    if (qatomic_read(&d->pgraph.waiting_for_flip)) {
         qemu_mutex_lock(&d->pgraph.lock);
         if (!pgraph_is_flip_stall_complete(d)) {
             should_stall = true;
@@ -139,8 +139,8 @@ static bool pfifo_stall_for_flip(NV2AState *d)
 
 static bool pfifo_puller_should_stall(NV2AState *d)
 {
-    return pfifo_stall_for_flip(d) || atomic_read(&d->pgraph.waiting_for_nop) ||
-           atomic_read(&d->pgraph.waiting_for_context_switch) ||
+    return pfifo_stall_for_flip(d) || qatomic_read(&d->pgraph.waiting_for_nop) ||
+           qatomic_read(&d->pgraph.waiting_for_context_switch) ||
            !pgraph_can_fifo_access(d);
 }
 
@@ -242,7 +242,7 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
 static bool pfifo_pusher_should_stall(NV2AState *d)
 {
     return !pgraph_can_fifo_access(d) ||
-           atomic_read(&d->pgraph.waiting_for_nop);
+           qatomic_read(&d->pgraph.waiting_for_nop);
 }
 
 static void pfifo_run_pusher(NV2AState *d)
@@ -457,14 +457,14 @@ void *pfifo_thread(void *arg)
     while (true) {
         d->pfifo.fifo_kick = false;
 
-        if (atomic_read(&d->pgraph.downloads_pending)) {
+        if (qatomic_read(&d->pgraph.downloads_pending)) {
             pgraph_process_pending_downloads(d);
-            atomic_set(&d->pgraph.downloads_pending, false);
+            qatomic_set(&d->pgraph.downloads_pending, false);
         }
 
-        if (atomic_read(&d->pgraph.gl_sync_pending)) {
+        if (qatomic_read(&d->pgraph.gl_sync_pending)) {
             pgraph_gl_sync(d);
-            atomic_set(&d->pgraph.gl_sync_pending, false);
+            qatomic_set(&d->pgraph.gl_sync_pending, false);
         }
 
         pfifo_run_pusher(d);

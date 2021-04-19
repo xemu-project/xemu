@@ -4419,7 +4419,7 @@ int nv2a_get_framebuffer_surface(void)
 
     surface->frame_time = pg->frame_time;
     qemu_event_reset(&d->pgraph.gl_sync_complete);
-    atomic_set(&pg->gl_sync_pending, true);
+    qatomic_set(&pg->gl_sync_pending, true);
     pfifo_kick(d);
     qemu_mutex_unlock(&d->pfifo.lock);
     qemu_event_wait(&d->pgraph.gl_sync_complete);
@@ -4494,11 +4494,11 @@ static void pgraph_wait_for_surface_download(SurfaceBinding *e)
 {
     NV2AState *d = g_nv2a;
 
-    if (atomic_read(&e->draw_dirty)) {
+    if (qatomic_read(&e->draw_dirty)) {
         qemu_mutex_lock(&d->pfifo.lock);
         qemu_event_reset(&d->pgraph.downloads_complete);
-        atomic_set(&e->download_pending, true);
-        atomic_set(&d->pgraph.downloads_pending, true);
+        qatomic_set(&e->download_pending, true);
+        qatomic_set(&d->pgraph.downloads_pending, true);
         pfifo_kick(d);
         qemu_mutex_unlock(&d->pfifo.lock);
         qemu_event_wait(&d->pgraph.downloads_complete);
@@ -4517,18 +4517,18 @@ static void pgraph_surface_access_callback(
     hwaddr offset = addr - e->vram_addr;
     assert(offset < e->size);
 
-    if (atomic_read(&e->draw_dirty)) {
+    if (qatomic_read(&e->draw_dirty)) {
         NV2A_XPRINTF(DBG_SURFACE_SYNC,
                      "Surface accessed at %" HWADDR_PRIx "+%" HWADDR_PRIx "\n",
                      e->vram_addr, offset);
         pgraph_wait_for_surface_download(e);
     }
 
-    if (write && !atomic_read(&e->upload_pending)) {
+    if (write && !qatomic_read(&e->upload_pending)) {
         NV2A_XPRINTF(DBG_SURFACE_SYNC,
                      "Surface write at %" HWADDR_PRIx "+%" HWADDR_PRIx "\n",
                      e->vram_addr, offset);
-        atomic_set(&e->upload_pending, true);
+        qatomic_set(&e->upload_pending, true);
     }
 }
 
