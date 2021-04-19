@@ -168,7 +168,7 @@ case "$(uname -s)" in # Adjust compilation options based on platform
     CYGWIN*|MINGW*|MSYS*)
         echo 'Compiling for Windows...'
         sys_cflags='-Wno-error'
-        sys_opts='--python=python3 --disable-cocoa --disable-opengl --disable-fortify-source'
+        sys_opts='--python=python3 --disable-cocoa --disable-fortify-source'
         postbuild='package_windows' # set the above function to be called after build
         ;;
     *)
