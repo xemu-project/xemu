@@ -3,6 +3,7 @@ i386_ss.add(when: 'CONFIG_TCG', if_true: files(
   'cc_helper.c',
   'excp_helper.c',
   'fpu_helper.c',
+  'fpu_helper_hard.c',
   'int_helper.c',
   'mem_helper.c',
   'misc_helper.c',

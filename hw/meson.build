@@ -38,6 +38,7 @@ subdir('usb')
 subdir('vfio')
 subdir('virtio')
 subdir('watchdog')
+subdir('xbox')
 subdir('xen')
 subdir('xenpv')
 

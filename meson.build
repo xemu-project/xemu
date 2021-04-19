@@ -813,6 +813,15 @@ if 'CONFIG_OPENGL' in config_host
                               link_args: config_host['OPENGL_LIBS'].split())
 endif
 
+xemu_gtk = declare_dependency(compile_args: config_host['XEMU_GTK_CFLAGS'].split(),
+                              link_args: config_host['XEMU_GTK_LIBS'].split())
+
+openssl = declare_dependency(compile_args: config_host['OPENSSL_CFLAGS'].split(),
+                             link_args: config_host['OPENSSL_LIBS'].split())
+
+libsamplerate = declare_dependency(compile_args: config_host['LIBSAMPLERATE_CFLAGS'].split(),
+                                   link_args: config_host['LIBSAMPLERATE_LIBS'].split())
+
 gtk = not_found
 gtkx11 = not_found
 if not get_option('gtk').auto() or (have_system and not cocoa.found())
@@ -1705,15 +1714,14 @@ qemu_version = custom_target('qemu-version.h',
 
 xemu_version_cmd = [find_program('scripts/xemu-version.sh'),
                     meson.current_source_dir()]
-xemu_version = custom_target('xemu-version.h',
-                             output: 'xemu-version.h',
+xemu_version = custom_target('xemu-version.c',
+                             output: 'xemu-version.c',
                              command: xemu_version_cmd,
                              capture: true,
                              build_by_default: true,
                              build_always_stale: true)
 
 genh += qemu_version
-genh += xemu_version
 
 hxdep = []
 hx_headers = [
@@ -1937,6 +1945,14 @@ if have_block
   blockdev_ss.add(when: 'CONFIG_POSIX', if_true: files('os-posix.c'))
   softmmu_ss.add(when: 'CONFIG_WIN32', if_true: [files('os-win32.c')])
 endif
+
+specific_ss.add(files('xemu-xbe.c'))
+
+libxemuver = static_library('xemuver', sources: xemu_version,
+                            name_suffix: 'fa',
+                            build_by_default: false)
+xemuver = declare_dependency(link_whole: libxemuver)
+common_ss.add(xemuver)
 
 common_ss.add(files('cpus-common.c'))
 

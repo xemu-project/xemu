@@ -12,6 +12,54 @@ softmmu_ss.add(files(
   'keymaps.c',
   'qemu-pixman.c',
 ))
+
+xemu_ss = ss.source_set()
+xemu_ss.add(files(
+  'imgui/imgui.cpp',
+  'imgui/imgui_draw.cpp',
+  'imgui/imgui_tables.cpp',
+  'imgui/imgui_demo.cpp',
+  'imgui/imgui_widgets.cpp',
+  'imgui/backends/imgui_impl_opengl3.cpp',
+  'imgui/backends/imgui_impl_sdl.cpp',
+  'implot/implot.cpp',
+  'implot/implot_demo.cpp',
+  'implot/implot_items.cpp',
+
+  'xemu.c',
+  'xemu-custom-widgets.c',
+  'xemu-data.c',
+  'xemu-input.c',
+  'xemu-monitor.c',
+  'xemu-net.c',
+  'xemu-settings.c',
+  'xemu-shaders.c',
+  'xemu-hud.cc',
+  'xemu-reporting.cc',
+))
+
+imgui_flags = ['-DIMGUI_IMPL_OPENGL_LOADER_CUSTOM="epoxy/gl.h"',
+               '-Iui/imgui']
+
+if 'CONFIG_WIN32' in config_host
+imgui_flags += ['-DWIN32', '-DMINGW32']
+endif
+
+if 'CONFIG_LINUX' in config_host
+imgui_flags += ['-DLINUX']
+endif
+
+if 'CONFIG_DARWIN' in config_host
+imgui_flags += ['-DAPPLE']
+endif
+
+imgui = declare_dependency(compile_args: imgui_flags)
+xemu_ss.add(sdl, opengl, openssl, imgui)
+xemu_ss.add(when: 'CONFIG_LINUX', if_true: [xemu_gtk, files('xemu-os-utils-linux.c', 'noc_file_dialog_gtk.c')])
+xemu_ss.add(when: 'CONFIG_WIN32', if_true: files('xemu-os-utils-windows.c', 'noc_file_dialog_win32.c'))
+xemu_ss.add(when: 'CONFIG_DARWIN', if_true: files('xemu-os-utils-macos.m', 'noc_file_dialog_macos.m'))
+softmmu_ss.add_all(xemu_ss)
+
 softmmu_ss.add([spice_headers, files('spice-module.c')])
 
 softmmu_ss.add(when: 'CONFIG_LINUX', if_true: files('input-linux.c'))
@@ -80,7 +128,7 @@ if sdl.found()
   ))
   sdl_ss.add(when: [opengl, 'CONFIG_OPENGL'], if_true: files('sdl2-gl.c'))
   sdl_ss.add(when: x11, if_true: files('x_keymap.c'))
-  ui_modules += {'sdl' : sdl_ss}
+  # ui_modules += {'sdl' : sdl_ss}
 endif
 
 if config_host.has_key('CONFIG_SPICE')

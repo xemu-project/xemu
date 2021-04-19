@@ -1,2 +1,0 @@
-obj-y += gloffscreen_common.o gloffscreen_sdl.o
-gloffscreen_sdl.o-cflags := $(SDL_CFLAGS)
