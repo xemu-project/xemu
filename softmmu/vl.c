@@ -2748,7 +2748,7 @@ void qemu_init(int argc, char **argv, char **envp)
 
     fake_argv[fake_argc++] = g_strdup_printf("xbox%s%s%s",
         (bootrom_arg != NULL) ? bootrom_arg : "",
-        short_animation ? ",short-animation" : "",
+        short_animation ? ",short-animation=on" : "",
         ",kernel-irqchip=off"
         );
 
@@ -2837,7 +2837,7 @@ void qemu_init(int argc, char **argv, char **envp)
             char *escaped_hdd_path = strdup_double_commas(hdd_path);
             fake_argv[fake_argc++] = g_strdup_printf("index=0,media=disk,file=%s%s",
                 escaped_hdd_path,
-                strlen(escaped_hdd_path) > 0 ? ",locked" : "");
+                strlen(escaped_hdd_path) > 0 ? ",locked=on" : "");
             free(escaped_hdd_path);
         }
     }
