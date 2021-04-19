@@ -3698,6 +3698,7 @@ if test "$linux" = "yes" ; then
     xemu_gtk="yes"
 fi
 
+# FIXME: Remove duplication with existing GTK detection
 if test "$xemu_gtk" != "no"; then
     gtkpackage="gtk+-3.0"
     gtkversion="3.14.0"
@@ -3705,10 +3706,6 @@ if test "$xemu_gtk" != "no"; then
         xemu_gtk_cflags=$($pkg_config --cflags $gtkpackage)
         xemu_gtk_libs=$($pkg_config --libs $gtkpackage)
         xemu_gtk_version=$($pkg_config --modversion $gtkpackage)
-        # Add GTK libraries/flags to SDL module. While this could be cleaner,
-        # it's only used for the xemu UI.
-        sdl_libs="$sdl_libs $xemu_gtk_libs"
-        sdl_cflags="$sdl_cflags $xemu_gtk_cflags"
     elif test "$xemu_gtk" = "yes"; then
         feature_not_found "gtk" "Install gtk3-devel"
     fi
@@ -6073,6 +6070,15 @@ fi
 if test "$have_rtnetlink" = "yes" ; then
   echo "CONFIG_RTNETLINK=y" >> $config_host_mak
 fi
+
+echo "XEMU_GTK_CFLAGS=$xemu_gtk_cflags" >> $config_host_mak
+echo "XEMU_GTK_LIBS=$xemu_gtk_libs" >> $config_host_mak
+
+echo "OPENSSL_CFLAGS=$openssl_cflags" >> $config_host_mak
+echo "OPENSSL_LIBS=$openssl_libs" >> $config_host_mak
+
+echo "LIBSAMPLERATE_CFLAGS=$libsamplerate_cflags" >> $config_host_mak
+echo "LIBSAMPLERATE_LIBS=$libsamplerate_libs" >> $config_host_mak
 
 if test "$libxml2" = "yes" ; then
   echo "CONFIG_LIBXML2=y" >> $config_host_mak
