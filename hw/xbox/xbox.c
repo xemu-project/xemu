@@ -20,6 +20,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/option.h"
+#include "qemu/datadir.h"
 #include "hw/hw.h"
 #include "hw/loader.h"
 #include "hw/i386/pc.h"
@@ -31,7 +32,7 @@
 #include "hw/ide/pci.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/kvm.h"
-#include "kvm_i386.h"
+#include "kvm/kvm_i386.h"
 #include "hw/kvm/clock.h"
 #include "hw/dma/i8257.h"
 
