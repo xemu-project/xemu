@@ -24,8 +24,8 @@
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "hw/pci/pci.h"
-#include "monitor/hmp-target.h"
 #include "sysemu/hw_accel.h"
+#include "cpu.h"
 
 static int virt_to_phys(vaddr vaddr, hwaddr *phys_addr)
 {
