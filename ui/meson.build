@@ -85,6 +85,10 @@ specific_ss.add(when: ['CONFIG_SOFTMMU'], if_true: opengl)
 
 ui_modules = {}
 
+xemu_enable_extra_ui_modules = false
+
+if xemu_enable_extra_ui_modules
+
 if curses.found()
   curses_ss = ss.source_set()
   curses_ss.add(when: [curses, iconv], if_true: [files('curses.c'), pixman])
@@ -128,7 +132,7 @@ if sdl.found()
   ))
   sdl_ss.add(when: [opengl, 'CONFIG_OPENGL'], if_true: files('sdl2-gl.c'))
   sdl_ss.add(when: x11, if_true: files('x_keymap.c'))
-  # ui_modules += {'sdl' : sdl_ss}
+  ui_modules += {'sdl' : sdl_ss}
 endif
 
 if config_host.has_key('CONFIG_SPICE')
@@ -146,6 +150,8 @@ if config_host.has_key('CONFIG_SPICE') and config_host.has_key('CONFIG_GIO')
   spice_ss.add(spice, gio, pixman, files('spice-app.c'))
   ui_modules += {'spice-app': spice_ss}
 endif
+
+endif # xemu_enable_extra_ui_modules
 
 keymap_gen = find_program('keycodemapdb/tools/keymap-gen')
 
