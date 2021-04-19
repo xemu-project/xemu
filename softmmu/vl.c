@@ -2682,10 +2682,7 @@ void qemu_init(int argc, char **argv, char **envp)
 /*****************************************************************************/
 
     // init earlier because it's needed for eeprom generation
-    if (qcrypto_init(&err) < 0) {
-        error_reportf_err(err, "cannot initialize crypto: ");
-        exit(1);
-    }
+    qcrypto_init(&error_fatal);
 
     //
     // FIXME: This is a hack to get QEMU to load correct machine and properties
