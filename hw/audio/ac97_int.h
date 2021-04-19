@@ -51,6 +51,7 @@ typedef struct AC97BusMasterRegs {
     BD bd;
 } AC97BusMasterRegs;
 
+#define TYPE_AC97 "AC97"
 OBJECT_DECLARE_SIMPLE_TYPE(AC97LinkState, AC97)
 
 struct AC97LinkState {

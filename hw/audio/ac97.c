@@ -131,9 +131,6 @@ enum {
 
 #define MUTE_SHIFT 15
 
-#define TYPE_AC97 "AC97"
-OBJECT_DECLARE_SIMPLE_TYPE(AC97LinkState, AC97)
-
 #define REC_MASK 7
 enum {
     REC_MIC = 0,
