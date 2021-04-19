@@ -43,7 +43,7 @@ jobs:
         Invoke-WebRequest -Uri "https://github.com/mborgerson/xemu-msys2/releases/latest/download/msys64.7z" -OutFile "msys64.7z"
         echo "Extracting MSYS2 environment..."
         7z x -y msys64.7z "-oC:\tools\"
-        C:\tools\msys64\usr\bin\bash.exe -lc "pacman --needed --noconfirm -S mingw-w64-x86_64-ninja"
+        C:\tools\msys64\usr\bin\bash.exe -lc "pacman --needed --noconfirm -S mingw-w64-x86_64-ninja mingw-w64-x86_64-diffutils"
     # - name: Initialize Compiler Cache
     #   id: cache
     #   uses: actions/cache@v1
