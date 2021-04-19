@@ -147,6 +147,8 @@ do
     esac
 done
 
+target="qemu-system-i386"
+
 case "$(uname -s)" in # Adjust compilation options based on platform
     Linux)
         echo 'Compiling for Linux...'
@@ -170,6 +172,7 @@ case "$(uname -s)" in # Adjust compilation options based on platform
         sys_cflags='-Wno-error'
         sys_opts='--python=python3 --disable-cocoa --disable-fortify-source'
         postbuild='package_windows' # set the above function to be called after build
+        target="qemu-system-i386.exe qemu-system-i386w.exe"
         ;;
     *)
         echo "could not detect OS $(uname -s), aborting" >&2
@@ -252,6 +255,6 @@ if ! test -f "${project_source_dir}/ui/imgui/imgui.cpp"; then
     ./scripts/git-submodule.sh update ui/imgui
 fi
 
-time make -j"${job_count}" 2>&1 | tee build.log
+time make -j"${job_count}" ${target} 2>&1 | tee build.log
 
 "${postbuild}" # call post build functions
