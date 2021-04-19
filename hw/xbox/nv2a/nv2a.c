@@ -377,7 +377,7 @@ static void qdev_nv2a_reset(DeviceState *dev)
 // Note: This is handled as a VM state change and not as a `pre_save` callback
 // because we want to halt the FIFO before any VM state is saved/restored to
 // avoid corruption.
-static void nv2a_vm_state_change(void *opaque, int running, RunState state)
+static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
 {
     NV2AState *d = opaque;
     if (state == RUN_STATE_SAVE_VM) {
