@@ -128,6 +128,8 @@ get_job_count () {
 
 job_count="$(get_job_count)" 2>/dev/null
 job_count="${job_count:-${default_job_count}}"
+debug=""
+opts=""
 
 while [ ! -z "${1}" ]
 do
@@ -137,8 +139,7 @@ do
         shift
         ;;
     '--debug')
-        build_cflags='-O0 -g -DXEMU_DEBUG_BUILD=1'
-        debug_opts='--enable-debug'
+        debug="y"
         shift
         ;;
     *)
@@ -148,19 +149,25 @@ do
 done
 
 target="qemu-system-i386"
+if test ! -z "$debug"; then
+    build_cflags='-O0 -g -DXEMU_DEBUG_BUILD=1'
+    opts="--enable-debug"
+else
+    opts="--enable-lto"
+fi
 
 case "$(uname -s)" in # Adjust compilation options based on platform
     Linux)
         echo 'Compiling for Linux...'
         sys_cflags='-Wno-error=redundant-decls -Wno-error=unused-but-set-variable'
-        sys_opts='--enable-kvm --disable-xen --disable-werror'
+        opts="$opts --disable-werror"
         postbuild='package_linux'
         ;;
     Darwin)
         echo 'Compiling for MacOS...'
         sys_cflags='-march=ivybridge'
         sys_ldflags='-headerpad_max_install_names'
-        sys_opts='--disable-cocoa'
+        opts="$opts --disable-cocoa"
         # necessary to find libffi, which is required by gobject
         export PKG_CONFIG_PATH="${PKG_CONFIG_PATH}/usr/local/opt/libffi/lib/pkgconfig"
         export PKG_CONFIG_PATH="/usr/local/opt/openssl@1.1/lib/pkgconfig:${PKG_CONFIG_PATH}"
@@ -170,7 +177,7 @@ case "$(uname -s)" in # Adjust compilation options based on platform
     CYGWIN*|MINGW*|MSYS*)
         echo 'Compiling for Windows...'
         sys_cflags='-Wno-error'
-        sys_opts='--python=python3 --disable-cocoa --disable-fortify-source'
+        opts="$opts --disable-fortify-source"
         postbuild='package_windows' # set the above function to be called after build
         target="qemu-system-i386.exe qemu-system-i386w.exe"
         ;;
@@ -189,8 +196,6 @@ set -x # Print commands from now on
 "${configure}" \
     --extra-cflags="-DXBOX=1 ${build_cflags} ${sys_cflags} ${CFLAGS}" \
     --extra-ldflags="${sys_ldflags}" \
-    ${debug_opts} \
-    ${sys_opts} \
     --target-list=i386-softmmu \
     --enable-trace-backends="nop" \
     --enable-sdl \
@@ -245,9 +250,11 @@ set -x # Print commands from now on
     --without-default-devices \
     --disable-blobs \
     --disable-kvm \
+    --disable-xen \
     --disable-hax \
     --disable-hvf \
     --disable-whpx \
+    ${opts} \
     "$@"
 
 # Force imgui update now to work around annoying make issue
