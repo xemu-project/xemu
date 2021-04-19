@@ -38,8 +38,7 @@ xemu_ss.add(files(
   'xemu-reporting.cc',
 ))
 
-imgui_flags = ['-DIMGUI_IMPL_OPENGL_LOADER_CUSTOM="epoxy/gl.h"',
-               '-Iui/imgui']
+imgui_flags = ['-DIMGUI_IMPL_OPENGL_LOADER_CUSTOM="epoxy/gl.h"']
 
 if 'CONFIG_WIN32' in config_host
 imgui_flags += ['-DWIN32', '-DMINGW32']
@@ -53,7 +52,7 @@ if 'CONFIG_DARWIN' in config_host
 imgui_flags += ['-DAPPLE']
 endif
 
-imgui = declare_dependency(compile_args: imgui_flags)
+imgui = declare_dependency(compile_args: imgui_flags, include_directories: 'imgui')
 xemu_ss.add(sdl, opengl, openssl, imgui)
 xemu_ss.add(when: 'CONFIG_LINUX', if_true: [xemu_gtk, files('xemu-os-utils-linux.c', 'noc_file_dialog_gtk.c')])
 xemu_ss.add(when: 'CONFIG_WIN32', if_true: files('xemu-os-utils-windows.c', 'noc_file_dialog_win32.c'))
