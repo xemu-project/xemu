@@ -9,8 +9,8 @@ project_source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd
 package_windows() {
     rm -rf dist
     mkdir -p dist
-    cp build/i386-softmmu/qemu-system-i386.exe dist/xemu.exe
-    cp build/i386-softmmu/qemu-system-i386w.exe dist/xemuw.exe
+    cp build/qemu-system-i386.exe dist/xemu.exe
+    cp build/qemu-system-i386w.exe dist/xemuw.exe
     cp -r "${project_source_dir}/data" dist/
     python3 "${project_source_dir}/get_deps.py" dist/xemu.exe dist
     strip dist/xemu.exe
@@ -25,7 +25,7 @@ package_macos() {
 
     # Copy in executable
     mkdir -p dist/xemu.app/Contents/MacOS/
-    cp build/i386-softmmu/qemu-system-i386 dist/xemu.app/Contents/MacOS/xemu
+    cp build/qemu-system-i386 dist/xemu.app/Contents/MacOS/xemu
 
     # Copy in in executable dylib dependencies
     mkdir -p dist/xemu.app/Contents/Frameworks
@@ -84,7 +84,7 @@ EOF
 package_linux() {
     rm -rf dist
     mkdir -p dist
-    cp build/i386-softmmu/qemu-system-i386 dist/xemu
+    cp build/qemu-system-i386 dist/xemu
     cp -r "${project_source_dir}/data" dist
 }
 
