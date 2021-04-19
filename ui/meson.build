@@ -50,6 +50,8 @@ endif
 
 if 'CONFIG_DARWIN' in config_host
 imgui_flags += ['-DAPPLE']
+xemu_cocoa = dependency('appleframeworks', modules: 'Cocoa')
+xemu_ss.add(xemu_cocoa) # FIXME: Use existing cocoa name
 endif
 
 imgui = declare_dependency(compile_args: imgui_flags, include_directories: 'imgui')
