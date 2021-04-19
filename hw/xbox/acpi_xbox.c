@@ -169,7 +169,7 @@ void xbox_pm_init(PCIDevice *dev, XBOX_PMRegs *pm, qemu_irq sci_irq)
 
     acpi_pm_tmr_init(&pm->acpi_regs, xbox_pm_update_sci_fn, &pm->io);
     acpi_pm1_evt_init(&pm->acpi_regs, xbox_pm_update_sci_fn, &pm->io);
-    acpi_pm1_cnt_init(&pm->acpi_regs, &pm->io, true, true, 2);
+    acpi_pm1_cnt_init(&pm->acpi_regs, &pm->io, true, true, 2, false);
     acpi_gpe_init(&pm->acpi_regs, XBOX_PM_GPE_LEN);
 
     memory_region_init_io(&pm->io_gpe, OBJECT(dev), &xbox_pm_gpe_ops, pm,
