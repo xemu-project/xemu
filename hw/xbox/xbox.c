@@ -245,7 +245,7 @@ void xbox_init_common(MachineState *machine,
     x86_cpus_init(x86ms, pcmc->default_cpu_version);
 
     if (kvm_enabled() && pcmc->kvmclock_enabled) {
-        kvmclock_create();
+        kvmclock_create(pcmc->kvmclock_create_always);
     }
 
     pci_memory = g_new(MemoryRegion, 1);
