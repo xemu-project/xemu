@@ -222,7 +222,7 @@ static void mcpx_vp_out_cb(void *opaque, uint8_t *stream, int free_b);
 static void mcpx_apu_realize(PCIDevice *dev, Error **errp);
 static void mcpx_apu_exitfn(PCIDevice *dev);
 static void mcpx_apu_reset(MCPXAPUState *d);
-static void mcpx_apu_vm_state_change(void *opaque, int running, RunState state);
+static void mcpx_apu_vm_state_change(void *opaque, bool running, RunState state);
 static int mcpx_apu_post_save(void *opaque);
 static int mcpx_apu_pre_load(void *opaque);
 static int mcpx_apu_post_load(void *opaque, int version_id);
@@ -2320,7 +2320,7 @@ static void mcpx_apu_reset(MCPXAPUState *d)
 // Note: This is handled as a VM state change and not as a `pre_save` callback
 // because we want to halt the FIFO before any VM state is saved/restored to
 // avoid corruption.
-static void mcpx_apu_vm_state_change(void *opaque, int running, RunState state)
+static void mcpx_apu_vm_state_change(void *opaque, bool running, RunState state)
 {
     MCPXAPUState *d = opaque;
 
