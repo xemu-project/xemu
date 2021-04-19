@@ -13,6 +13,7 @@ GTAGS
 *~
 *.ast_raw
 *.depend_raw
+build.log
 
 /dist
 /xemu-version.c
