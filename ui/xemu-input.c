@@ -429,7 +429,8 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         qdict_put_str(qdict, "driver", "usb-xbox-gamepad");
 
         // Specify device identifier
-        char *tmp = g_strdup_printf("gamepad_%d", index+1);
+        static int id_counter = 0;
+        char *tmp = g_strdup_printf("gamepad_%d", id_counter++);
         qdict_put_str(qdict, "id", tmp);
         g_free(tmp);
 
