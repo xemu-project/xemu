@@ -926,7 +926,8 @@ public:
         if (ImGui::Button("Help", ImVec2(120*g_ui_scale, 0))) {
                 xemu_open_web_browser("https://github.com/mborgerson/xemu/wiki/Networking");
         }
-
+        
+        ImGui::SameLine();
         ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*g_ui_scale);
         ImGui::SetItemDefaultFocus();
         if (ImGui::Button(is_enabled ? "Disable" : "Enable", ImVec2(120*g_ui_scale, 0))) {
