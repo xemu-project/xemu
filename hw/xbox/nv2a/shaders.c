@@ -575,7 +575,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                  *       In the example: 1-(-1.5) = 2.5, 2.6/2.5 = 1.04. This also scales the subsequent
                  *       dot product by the same amount, effectively increasing the spotlight radius.
                  */
-                qstring_append_fmt(body,
+                mstring_append_fmt(body,
                     "  vec3 dir = lightSpotDirection(%d).xyz / (1.0 - lightSpotDirection(%d).w);\n"
                     "  float rho = dot(dir, VP);\n"
                     "  float theta = lightSpotFalloff(%d).x;\n"
