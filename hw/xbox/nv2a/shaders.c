@@ -566,31 +566,21 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                 /* Everything done already */
                 break;
             case LIGHT_SPOT:
-                /* From: https://docs.microsoft.com/en-us/windows/win32/direct3d9/attenuation-and-spotlight-factor#spotlight-factor */
-                /* Note: normalizing the direction does not produce the same result as on hardware.
-                 *       Instead, dividing the direction by 1-w produces the same result as on hardware.
-                 *       Rationale: the w component is always close (but not equal to) the difference
-                 *       between 1 and the the direction vector length (e.g. 1.0-2.6=-1.6, with w=-1.5).
-                 *       So, dividing by 1-w is the same as normalizing the vector and scaling it a bit.
-                 *       In the example: 1-(-1.5) = 2.5, 2.6/2.5 = 1.04. This also scales the subsequent
-                 *       dot product by the same amount, effectively increasing the spotlight radius.
-                 */
+                /* https://docs.microsoft.com/en-us/windows/win32/direct3d9/attenuation-and-spotlight-factor#spotlight-factor */
                 mstring_append_fmt(body,
-                    "  vec3 dir = lightSpotDirection(%d).xyz / (1.0 - lightSpotDirection(%d).w);\n"
-                    "  float rho = dot(dir, VP);\n"
-                    "  float theta = lightSpotFalloff(%d).x;\n"
-                    "  float phi = lightSpotFalloff(%d).y;\n"
-                    "  float falloff = lightSpotFalloff(%d).z;\n"
-                    "  float cosHalfPhi = cos(phi * 0.5);\n"
-                    "  float cosHalfTheta = cos(theta * 0.5);\n"
-                    "  if (rho > cosHalfTheta) {\n" /* do nothing => spotlightFactor = 1 */
+                    "  vec4 spotDir = lightSpotDirection(%d);\n"
+                    "  float invScale = 1/length(spotDir.xyz);\n"
+                    "  float cosHalfPhi = -invScale*spotDir.w;\n"
+                    "  float cosHalfTheta = invScale + cosHalfPhi;\n"
+                    "  float spotDirDotVP = dot(spotDir.xyz, VP);\n"
+                    "  float rho = invScale*spotDirDotVP;\n"
+                    "  if (rho > cosHalfTheta) {\n"
                     "  } else if (rho <= cosHalfPhi) {\n"
-                    "    attenuation = 0.0;\n" /* spotlightFactor = 0 */
+                    "    attenuation = 0.0;\n"
                     "  } else {\n"
-                    "    float spotlightFactor = pow((rho - cosHalfPhi) / (cosHalfTheta - cosHalfPhi), falloff);\n"
-                    "    attenuation = attenuation * spotlightFactor;\n"
+                    "    attenuation *= spotDirDotVP + spotDir.w;\n" /* FIXME: lightSpotFalloff */
                     "  }\n",
-                    i, i, i, i, i);
+                    i);
                 break;
             default:
                 assert(false);
