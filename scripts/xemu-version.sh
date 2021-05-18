@@ -14,7 +14,7 @@ XEMU_COMMIT=$( \
 XEMU_BRANCH=$( \
   cd "$dir"; \
   if test -e .git; then \
-    git symbolic-ref --short HEAD; \
+    git symbolic-ref --short HEAD || echo $XEMU_COMMIT; \
   elif test -e XEMU_BRANCH; then \
     cat XEMU_BRANCH; \
   fi)
