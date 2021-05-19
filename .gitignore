@@ -16,5 +16,4 @@ GTAGS
 build.log
 
 /dist
-/xemu-version.c
 /xemu.ini
