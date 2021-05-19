@@ -1732,23 +1732,23 @@ static void ShowMainMenu()
         if (ImGui::BeginMenu("View"))
         {
             int ui_scale_combo = g_ui_scale - 1.0;
-            if (ui_scale_combo < 0) ui_scale_combo = 0;
-            if (ui_scale_combo > 1) ui_scale_combo = ui_scale_combo;
             if (ImGui::Combo("UI Scale", &ui_scale_combo, "1x\0" "2x\0" "3x\0" "4x\0")) {
                 g_ui_scale = ui_scale_combo + 1;
                 xemu_settings_set_int(XEMU_SETTINGS_DISPLAY_UI_SCALE, g_ui_scale);
                 xemu_settings_save();
                 g_trigger_style_update = true;
             }
-            ImGui::SameLine(); HelpMarker("Controls how the UI is scaled, not Surface Scaling");
+            
             if (ImGui::Combo("Scaling Mode", &scaling_mode, "Center\0Scale\0Stretch\0")) {
                 xemu_settings_set_enum(XEMU_SETTINGS_DISPLAY_SCALE, scaling_mode);
                 xemu_settings_save();
             }
+
             ImGui::SameLine(); HelpMarker("Controls how the rendered content should be scaled into the window");
             if (ImGui::MenuItem("Fullscreen", NULL, xemu_is_fullscreen(), true)) {
                 xemu_toggle_fullscreen();
             }
+
 
             ImGui::EndMenu();
         }
