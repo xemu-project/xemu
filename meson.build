@@ -150,6 +150,20 @@ if sparse.found()
 endif
 
 ###########################################
+# xemu Version
+###########################################
+
+xemu_version_cmd = [find_program('scripts/xemu-version.sh'),
+                    meson.current_source_dir()]
+xemu_version = custom_target('xemu-version-macro.h',
+                             output: 'xemu-version-macro.h',
+                             command: xemu_version_cmd,
+                             capture: true,
+                             build_by_default: true,
+                             build_always_stale: true)
+
+
+###########################################
 # Target-specific checks and dependencies #
 ###########################################
 
@@ -178,7 +192,8 @@ if targetos == 'windows'
   win = import('windows')
   version_res = win.compile_resources('version.rc',
                                       depend_files: files('pc-bios/qemu-nsis.ico'),
-                                      include_directories: include_directories('.'))
+                                      include_directories: include_directories('.'),
+                                      depends: xemu_version)
 elif targetos == 'darwin'
   coref = dependency('appleframeworks', modules: 'CoreFoundation')
   iokit = dependency('appleframeworks', modules: 'IOKit')
@@ -1712,16 +1727,8 @@ qemu_version = custom_target('qemu-version.h',
                              build_by_default: true,
                              build_always_stale: true)
 
-xemu_version_cmd = [find_program('scripts/xemu-version.sh'),
-                    meson.current_source_dir()]
-xemu_version = custom_target('xemu-version.c',
-                             output: 'xemu-version.c',
-                             command: xemu_version_cmd,
-                             capture: true,
-                             build_by_default: true,
-                             build_always_stale: true)
-
 genh += qemu_version
+genh += xemu_version
 
 hxdep = []
 hx_headers = [
@@ -1946,13 +1953,7 @@ if have_block
   softmmu_ss.add(when: 'CONFIG_WIN32', if_true: [files('os-win32.c')])
 endif
 
-specific_ss.add(files('xemu-xbe.c'))
-
-libxemuver = static_library('xemuver', sources: xemu_version,
-                            name_suffix: 'fa',
-                            build_by_default: false)
-xemuver = declare_dependency(link_whole: libxemuver)
-common_ss.add(xemuver)
+specific_ss.add(files('xemu-xbe.c', 'xemu-version.c'))
 
 common_ss.add(files('cpus-common.c'))
 

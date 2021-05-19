@@ -26,9 +26,26 @@ XEMU_VERSION=$( \
     cat XEMU_VERSION; \
   fi)
 
+get_version_field() {
+  echo ${XEMU_VERSION}-0 | cut -d- -f$1
+}
+
+get_version_dot () {
+  echo $(get_version_field 1) | cut -d. -f$1
+}
+
+XEMU_VERSION_MAJOR=$(get_version_dot 1)
+XEMU_VERSION_MINOR=$(get_version_dot 2)
+XEMU_VERSION_MICRO=$(get_version_dot 3)
+XEMU_VERSION_PATCH=$(get_version_field 2)
+
 cat <<EOF
-const char *xemu_version = "$XEMU_VERSION";
-const char *xemu_branch  = "$XEMU_BRANCH";
-const char *xemu_commit  = "$XEMU_COMMIT";
-const char *xemu_date    = "$XEMU_DATE";
+#define XEMU_VERSION       "$XEMU_VERSION"
+#define XEMU_VERSION_MAJOR $XEMU_VERSION_MAJOR
+#define XEMU_VERSION_MINOR $XEMU_VERSION_MINOR
+#define XEMU_VERSION_MICRO $XEMU_VERSION_MICRO
+#define XEMU_VERSION_PATCH $XEMU_VERSION_PATCH
+#define XEMU_BRANCH        "$XEMU_BRANCH"
+#define XEMU_COMMIT        "$XEMU_COMMIT"
+#define XEMU_DATE          "$XEMU_DATE"
 EOF
