@@ -827,7 +827,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
 
     // Create main window
     m_window = SDL_CreateWindow(
-        title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 800, 600,
+        title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1024, 768,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     if (m_window == NULL) {
         fprintf(stderr, "Failed to create main window\n");
@@ -882,6 +882,19 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
     int i;
     SDL_SysWMinfo info;
 
+    SDL_DisplayMode current;
+
+    for(i = 0; i < SDL_GetNumVideoDisplays(); ++i){
+
+        int window_query = SDL_GetCurrentDisplayMode(i, &current);
+
+        if(window_query != 0)
+            SDL_Log("Couldn't get display mode on your display #%d: %s", i, SDL_GetError());
+
+        else
+            SDL_Log("Display #%d: current display mode is %dx%dpx @ %dhz. ", i, current.w, current.h, current.refresh_rate);
+    }
+    
     assert(o->type == DISPLAY_TYPE_XEMU);
     SDL_GL_MakeCurrent(m_window, m_context);
 
