@@ -1,6 +1,6 @@
 ---
 name: Title Issue
-about: Report a specific issue with one or more titles/games in xemu.
+about: Report a specific issue with a title/game in xemu.
 title: 'Game Name: Brief Issue Description'
 labels: bug
 assignees: ''
@@ -11,8 +11,9 @@ assignees: ''
 
 !! BEFORE YOU SUBMIT AN ISSUE, PLEASE READ THE FOLLOWING !!
 
-This template is for reporting specific video, audio, or other issues with one
-or more titles.
+This template is for reporting specific video, audio, or other issues with
+a title. Generally an issue should be filed for one specific title, in some
+cases it does makes sense to tag multiple titles.
 
 Pre-submit checklist:
 - Have you read the getting started guide?
