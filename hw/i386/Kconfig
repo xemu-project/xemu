@@ -127,8 +127,16 @@ config VMMOUSE
     depends on VMPORT
 
 config XBOX
-    select PC
+    bool
+    select PC_PCI
+    select PC_ACPI
+    select ACPI_SMBUS
+    select PCI_I440FX
+    select PIIX3
+    select IDE_PIIX
+    select DIMM
+    select AC97
     select USB_OHCI
     select USB_OHCI_PCI
     select USB_STORAGE_BOT
-    select AC97
+    select VGA
