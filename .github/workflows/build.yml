@@ -109,7 +109,7 @@ jobs:
     - name: Compile
       run: |
         export CCACHE_DIR=/tmp/xemu-ccache
-        export CCACHE_MAXSIZE=250M
+        export CCACHE_MAXSIZE=512M
         export PATH="/usr/lib/ccache:$PATH"
         ./build.sh ${{ matrix.build_param }}
         echo -e "\nCompiler Cache Stats:"
@@ -175,7 +175,7 @@ jobs:
     - name: Compile
       run: |
         export CCACHE_DIR=/tmp/xemu-ccache
-        export CCACHE_MAXSIZE=250M
+        export CCACHE_MAXSIZE=512M
         export PATH="/usr/local/opt/ccache/libexec:$PATH"
         ./build.sh ${{ matrix.build_param }}
         echo -e "\nCompiler Cache Stats:"
