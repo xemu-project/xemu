@@ -159,7 +159,7 @@ fi
 case "$(uname -s)" in # Adjust compilation options based on platform
     Linux)
         echo 'Compiling for Linux...'
-        sys_cflags='-Wno-error=redundant-decls -Wno-error=unused-but-set-variable'
+        sys_cflags='-Wno-error=redundant-decls'
         opts="$opts --disable-werror"
         postbuild='package_linux'
         ;;
