@@ -101,7 +101,7 @@ jobs:
           ninja-build
     - name: Initialize Compiler Cache
       id: cache
-      uses: actions/cache@v1
+      uses: actions/cache@v2
       with:
         path: /tmp/xemu-ccache
         key: cache-${{ runner.os }}-${{ matrix.configuration }}-${{ github.sha }}
@@ -166,6 +166,7 @@ jobs:
           ninja
     - name: Initialize Compiler Cache
       id: cache
+      # FIXME: actions/cache@v2 broken on macOS?
       uses: actions/cache@v1
       with:
         path: /tmp/xemu-ccache
