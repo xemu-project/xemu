@@ -48,6 +48,11 @@ struct HIDState {
     QemuInputHandlerState *s;
 };
 
+#ifdef XBOX
+/* XXX: `hid_init` conflicts with SDL2 package. Redefine it here for now. */
+#define hid_init qemu_hid_init
+#endif
+
 void hid_init(HIDState *hs, int kind, HIDEventFunc event);
 void hid_reset(HIDState *hs);
 void hid_free(HIDState *hs);
