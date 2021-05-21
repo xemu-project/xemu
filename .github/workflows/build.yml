@@ -10,67 +10,15 @@ jobs:
       run: |
         export BUILD_TAG=build-$(date -u +'%Y%m%d%H%M')
         echo "BUILD_TAG=$BUILD_TAG" >> $GITHUB_ENV
-        mkdir -p dist
-        echo -n $BUILD_TAG > dist/tag
+        echo -n $BUILD_TAG > tag
     - name: Upload Artifacts
-      uses: actions/upload-artifact@v1
+      uses: actions/upload-artifact@v2
       with:
-        name: dist
-        path: dist
+        name: tag
+        path: tag
 
-  Windows:
-    runs-on: windows-latest
-    needs: Init
-    strategy:
-      matrix:
-        configuration: ["Debug", "Release"]
-        include:
-        - configuration: Debug
-          build_param: --debug
-          artifact_name: xemu-win-debug.zip
-        - configuration: Release
-          build_param:
-          artifact_name: xemu-win-release.zip
-    steps:
-    - name: Clone Tree
-      uses: actions/checkout@v2
-      with:
-        fetch-depth: 0
-    - name: Install Dependencies
-      run: |
-        echo "Downloading MSYS2 environment..."
-        Invoke-WebRequest -Uri "https://github.com/mborgerson/xemu-msys2/releases/latest/download/msys64.7z" -OutFile "msys64.7z"
-        echo "Extracting MSYS2 environment..."
-        7z x -y msys64.7z "-oC:\tools\"
-        C:\tools\msys64\usr\bin\bash.exe -lc "pacman --needed --noconfirm -S mingw-w64-x86_64-ninja mingw-w64-x86_64-diffutils"
-    # - name: Initialize Compiler Cache
-    #   id: cache
-    #   uses: actions/cache@v1
-    #   with:
-    #     path: C:\tools\msys64\tmp\xemu-ccache
-    #     key: cache-${{ runner.os }}-${{ matrix.configuration }}-${{ github.sha }}
-    #     restore-keys: cache-${{ runner.os }}-${{ matrix.configuration }}-
-    - name: Compile
-      run: |
-        C:\tools\msys64\usr\bin\bash.exe -lc @"
-        set -e
-        cd `$GITHUB_WORKSPACE
-        # export CCACHE_DIR=/tmp/xemu-ccache
-        # export CCACHE_MAXSIZE=250M
-        # export PATH="/usr/lib/ccache/bin:/mingw64/bin:`$PATH"
-        export PATH="/mingw64/bin:`$PATH"
-        ./build.sh ${{ matrix.build_param }}
-        # echo -e '\nCompiler Cache Stats:'
-        # ccache -s -c
-        "@
-        7z a ${{ matrix.artifact_name }} .\dist\*
-    - name: Upload Build Artifact
-      uses: actions/upload-artifact@v1
-      with:
-        name: dist
-        path: ${{ matrix.artifact_name }}
-
-  Ubuntu:
+  UbuntuWinCross:
+    name: Build for Windows (${{ matrix.configuration }}) on Ubuntu
     runs-on: ubuntu-latest
     needs: Init
     strategy:
@@ -79,10 +27,63 @@ jobs:
         include:
         - configuration: Debug
           build_param: --debug
-          artifact_name: xemu-ubuntu-debug.tgz
+          artifact_name: xemu-win-debug
+          artifact_filename: xemu-win-debug.zip
         - configuration: Release
           build_param:
-          artifact_name: xemu-ubuntu-release.tgz
+          artifact_name: xemu-win-release
+          artifact_filename: xemu-win-release.zip
+    env:
+      DOCKER_IMAGE_NAME: mborgerson/xemu-ubuntu-win64-cross:latest
+    steps:
+    - name: Clone Tree
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+    - name: Initialize Compiler Cache
+      id: cache
+      uses: actions/cache@v2
+      with:
+        path: /tmp/xemu-ccache
+        key: cache-wincross-${{ runner.os }}-${{ matrix.configuration }}-${{ github.sha }}
+        restore-keys: cache-wincross-${{ runner.os }}-${{ matrix.configuration }}-
+    - name: Pull Docker Image
+      run: docker pull $DOCKER_IMAGE_NAME
+    - name: Compile
+      run: |
+        mkdir -p /tmp/xemu-ccache
+        docker run --rm \
+          -v $PWD:/xemu -w /xemu \
+          -v /tmp/xemu-ccache:/tmp/xemu-ccache \
+          -e CCACHE_DIR=/tmp/xemu-ccache \
+          -e CCACHE_MAXSIZE=512M \
+          -u $(id -u):$(id -g) \
+          $DOCKER_IMAGE_NAME \
+            bash -c "./build.sh -p win64-cross ${{ matrix.build_param }} && ccache -sc"
+        cd dist
+        zip -r ../${{ matrix.artifact_filename }} *
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: ${{ matrix.artifact_name }}
+        path: ${{ matrix.artifact_filename }}
+
+  Ubuntu:
+    name: Build for Ubuntu
+    runs-on: ubuntu-latest
+    needs: Init
+    strategy:
+      matrix:
+        configuration: ["Debug", "Release"]
+        include:
+        - configuration: Debug
+          build_param: --debug
+          artifact_name: xemu-ubuntu-debug
+          artifact_filename: xemu-ubuntu-debug.tgz
+        - configuration: Release
+          build_param:
+          artifact_name: xemu-ubuntu-release
+          artifact_filename: xemu-ubuntu-release.tgz
     steps:
     - name: Clone Tree
       uses: actions/checkout@v2
@@ -111,17 +112,18 @@ jobs:
         export CCACHE_DIR=/tmp/xemu-ccache
         export CCACHE_MAXSIZE=512M
         export PATH="/usr/lib/ccache:$PATH"
-        ./build.sh ${{ matrix.build_param }}
+        ./build.sh ${{ matrix.build_param }} --extra-cflags="-fuse-ld=gold"
         echo -e "\nCompiler Cache Stats:"
         ccache -s -c
-        tar -czvf ${{ matrix.artifact_name }} --transform "s#^dist#xemu#" dist
+        tar -czvf ${{ matrix.artifact_filename }} --transform "s#^dist#xemu#" dist
     - name: Upload Build Artifact
-      uses: actions/upload-artifact@v1
+      uses: actions/upload-artifact@v2
       with:
-        name: dist
-        path: ${{ matrix.artifact_name }}
+        name: ${{ matrix.artifact_name }}
+        path: ${{ matrix.artifact_filename }}
 
   macOS:
+    name: Build for macOS
     runs-on: macOS-latest
     needs: Init
     strategy:
@@ -130,10 +132,12 @@ jobs:
         include:
         - configuration: Debug
           build_param: --debug
-          artifact_name: xemu-macos-debug.zip
+          artifact_name: xemu-macos-debug
+          artifact_filename: xemu-macos-debug.zip
         - configuration: Release
           build_param:
-          artifact_name: xemu-macos-release.zip
+          artifact_name: xemu-macos-release
+          artifact_filename: xemu-macos-release.zip
     steps:
     - name: Clone Tree
       uses: actions/checkout@v2
@@ -181,28 +185,28 @@ jobs:
         echo -e "\nCompiler Cache Stats:"
         ccache -s -c
         pushd dist
-        zip -r ../${{ matrix.artifact_name }} xemu.app
+        zip -r ../${{ matrix.artifact_filename }} xemu.app
         popd
     - name: Upload Build Artifact
-      uses: actions/upload-artifact@v1
+      uses: actions/upload-artifact@v2
       with:
-        name: dist
-        path: ${{ matrix.artifact_name }}
+        name: ${{ matrix.artifact_name }}
+        path: ${{ matrix.artifact_filename }}
 
   Release:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/xemu-v'))
     runs-on: ubuntu-latest
-    needs: [Ubuntu, Windows, macOS]
+    needs: [Ubuntu, macOS, UbuntuWinCross]
     env:
       BUILD_TAG:
     steps:
     - name: Download Artifacts
-      uses: actions/download-artifact@v1
+      uses: actions/download-artifact@v2
       with:
-        name: dist
+        name: ${{ matrix.artifact_name }}
     - name: Get Package Info
       run: |
-        echo "BUILD_TAG=$(cat dist/tag)" >> $GITHUB_ENV
+        echo "BUILD_TAG=$(cat dist/tag/tag)" >> $GITHUB_ENV
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
@@ -221,7 +225,7 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_name: xemu-win-debug.zip
-        asset_path: dist/xemu-win-debug.zip
+        asset_path: dist/xemu-win-debug/xemu-win-debug.zip
         asset_content_type: application/zip
     - name: Upload Release Assets (Windows Release Build)
       id: upload-release-asset-win-release
@@ -231,7 +235,7 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_name: xemu-win-release.zip
-        asset_path: dist/xemu-win-release.zip
+        asset_path: dist/xemu-win-release/xemu-win-release.zip
         asset_content_type: application/zip
     - name: Upload Release Assets (macOS Release Build)
       id: upload-release-asset-macos-release
@@ -241,7 +245,7 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_name: xemu-macos-release.zip
-        asset_path: dist/xemu-macos-release.zip
+        asset_path: dist/xemu-macos-release/xemu-macos-release.zip
         asset_content_type: application/zip
     - name: Upload Release Assets (macOS Debug Build)
       id: upload-release-asset-macos-debug
@@ -251,7 +255,7 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_name: xemu-macos-debug.zip
-        asset_path: dist/xemu-macos-debug.zip
+        asset_path: dist/xemu-macos-debug/xemu-macos-debug.zip
         asset_content_type: application/zip
 
   # Sync archive version of source (including submodule code) to the
@@ -260,7 +264,7 @@ jobs:
   # package creation.
   PushToPPA:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/xemu-v'))
-    needs: [Ubuntu, Windows, macOS]
+    needs: [Ubuntu, macOS, UbuntuWinCross]
     runs-on: ubuntu-latest
     steps:
     - name: Clone Tree

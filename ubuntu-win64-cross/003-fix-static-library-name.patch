@@ -1,0 +1,11 @@
+--- SDL2-2.0.12/CMakeLists.txt.orig	2020-04-13 09:22:12.737714600 +0300
++++ SDL2-2.0.12/CMakeLists.txt	2020-04-13 09:22:17.728045700 +0300
+@@ -2099,7 +2099,7 @@
+ if(SDL_STATIC)
+   set (BUILD_SHARED_LIBS FALSE)
+   add_library(SDL2-static STATIC ${SOURCE_FILES})
+-  if (NOT SDL_SHARED OR NOT WIN32)
++  if (NOT SDL_SHARED OR NOT MSVC)
+     set_target_properties(SDL2-static PROPERTIES OUTPUT_NAME "SDL2")
+     # Note: Apparently, OUTPUT_NAME must really be unique; even when
+     # CMAKE_IMPORT_LIBRARY_SUFFIX or the like are given. Otherwise

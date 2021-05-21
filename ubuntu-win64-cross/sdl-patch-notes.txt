@@ -1,0 +1,9 @@
+sdl2.mk is a copy of existing autotools based configuration, modified to instead
+use CMake, which appears to be the preferred method when building for Windows,
+msys2 project also uses the CMake system.
+
+These patches come from msys2:
+	- 001-fix-cmake-target-relocation.patch
+	- 003-fix-static-library-name.patch
+
+	Origin: https://github.com/msys2/MINGW-packages/tree/master/mingw-w64-SDL2
