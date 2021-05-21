@@ -203,7 +203,7 @@ jobs:
     - name: Download Artifacts
       uses: actions/download-artifact@v2
       with:
-        name: ${{ matrix.artifact_name }}
+        path: dist
     - name: Get Package Info
       run: |
         echo "BUILD_TAG=$(cat dist/tag/tag)" >> $GITHUB_ENV
