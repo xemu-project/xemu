@@ -11,7 +11,7 @@ package_windows() {
     mkdir -p dist
     cp build/qemu-system-i386.exe dist/xemu.exe
     cp build/qemu-system-i386w.exe dist/xemuw.exe
-    cp -r "${project_source_dir}/data" dist/
+    # cp -r "${project_source_dir}/data" dist/
     python3 "${project_source_dir}/get_deps.py" dist/xemu.exe dist
     strip dist/xemu.exe
     strip dist/xemuw.exe
@@ -23,7 +23,7 @@ package_wincross() {
     mkdir -p dist
     cp build/qemu-system-i386.exe dist/xemu.exe
     cp build/qemu-system-i386w.exe dist/xemuw.exe
-    cp -r "${project_source_dir}/data" dist/
+    # cp -r "${project_source_dir}/data" dist/
     $STRIP dist/xemu.exe
     $STRIP dist/xemuw.exe
 }
@@ -46,7 +46,7 @@ package_macos() {
 
     # Copy in runtime resources
     mkdir -p dist/xemu.app/Contents/Resources
-    cp -r "${project_source_dir}/data" dist/xemu.app/Contents/Resources
+    # cp -r "${project_source_dir}/data" dist/xemu.app/Contents/Resources
 
     # Generate icon file
     mkdir -p xemu.iconset
@@ -96,7 +96,7 @@ package_linux() {
     rm -rf dist
     mkdir -p dist
     cp build/qemu-system-i386 dist/xemu
-    cp -r "${project_source_dir}/data" dist
+    # cp -r "${project_source_dir}/data" dist
 }
 
 postbuild=''

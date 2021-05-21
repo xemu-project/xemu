@@ -30,11 +30,12 @@
 #include "xemu-custom-widgets.h"
 #include "xemu-monitor.h"
 #include "xemu-version.h"
-#include "xemu-data.h"
 #include "xemu-net.h"
 #include "xemu-os-utils.h"
 #include "xemu-xbe.h"
 #include "xemu-reporting.h"
+
+#include "data/roboto_medium.ttf.h"
 
 #include "imgui/imgui.h"
 #include "imgui/backends/imgui_impl_sdl.h"
@@ -926,7 +927,7 @@ public:
         if (ImGui::Button("Help", ImVec2(120*g_ui_scale, 0))) {
                 xemu_open_web_browser("https://github.com/mborgerson/xemu/wiki/Networking");
         }
-        
+
         ImGui::SameLine();
         ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*g_ui_scale);
         ImGui::SetItemDefaultFocus();
@@ -1796,12 +1797,17 @@ static void InitializeStyle()
     ImGuiIO& io = ImGui::GetIO();
 
     io.Fonts->Clear();
-    io.Fonts->AddFontFromFileTTF(xemu_get_resource_path("Roboto-Medium.ttf"), 16*g_ui_scale);
+
+    ImFontConfig roboto_font_cfg = ImFontConfig();
+    roboto_font_cfg.FontDataOwnedByAtlas = false;
+    io.Fonts->AddFontFromMemoryTTF((void*)roboto_medium_data, roboto_medium_size, 16*g_ui_scale, &roboto_font_cfg);
+
     ImFontConfig font_cfg = ImFontConfig();
     font_cfg.OversampleH = font_cfg.OversampleV = 1;
     font_cfg.PixelSnapH = true;
     font_cfg.SizePixels = 13.0f*g_ui_scale;
     g_fixed_width_font = io.Fonts->AddFontDefault(&font_cfg);
+
     ImGui_ImplOpenGL3_CreateFontsTexture();
 
     ImGuiStyle style;
