@@ -147,16 +147,16 @@ jobs:
       run: |
         export HOMEBREW_NO_AUTO_UPDATE=1
         export HOMEBREW_NO_INSTALL_CLEANUP=1
-        brew doctor || true
-        brew update-reset
+        # brew doctor || true
+        # brew update-reset
 
-        # Prevent updated packages from triggering PHP update
-        brew uninstall php || true
+        # # Prevent updated packages from triggering PHP update
+        # brew uninstall php || true
 
-        # Force update of Python, handle link issues
-        brew uninstall --ignore-dependencies python || true
-        brew install python@3.9 || true
-        brew link --overwrite python@3.9 || true
+        # # Force update of Python, handle link issues
+        # brew uninstall --ignore-dependencies python || true
+        # brew install python@3.9 || true
+        # brew link --overwrite python@3.9 || true
 
         brew install \
           ccache \
