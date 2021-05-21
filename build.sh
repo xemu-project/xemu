@@ -17,6 +17,17 @@ package_windows() {
     strip dist/xemuw.exe
 }
 
+package_wincross() {
+    STRIP=${CROSSPREFIX}strip
+    rm -rf dist
+    mkdir -p dist
+    cp build/qemu-system-i386.exe dist/xemu.exe
+    cp build/qemu-system-i386w.exe dist/xemuw.exe
+    cp -r "${project_source_dir}/data" dist/
+    $STRIP dist/xemu.exe
+    $STRIP dist/xemuw.exe
+}
+
 package_macos() {
     #
     # Create bundle
@@ -130,6 +141,7 @@ job_count="$(get_job_count)" 2>/dev/null
 job_count="${job_count:-${default_job_count}}"
 debug=""
 opts=""
+platform="$(uname -s)"
 
 while [ ! -z "${1}" ]
 do
@@ -141,6 +153,10 @@ do
     '--debug')
         debug="y"
         shift
+        ;;
+    '-p'*)
+        platform="${2}"
+        shift 2
         ;;
     *)
         break
@@ -156,7 +172,8 @@ else
     opts="--enable-lto"
 fi
 
-case "$(uname -s)" in # Adjust compilation options based on platform
+
+case "$platform" in # Adjust compilation options based on platform
     Linux)
         echo 'Compiling for Linux...'
         sys_cflags='-Wno-error=redundant-decls'
@@ -181,8 +198,16 @@ case "$(uname -s)" in # Adjust compilation options based on platform
         postbuild='package_windows' # set the above function to be called after build
         target="qemu-system-i386.exe qemu-system-i386w.exe"
         ;;
+    win64-cross)
+        echo 'Cross-compiling for Windows...'
+        export AR=${AR:-$CROSSAR}
+        sys_cflags='-Wno-error'
+        opts="$opts --cross-prefix=$CROSSPREFIX --static --disable-fortify-source"
+        postbuild='package_wincross' # set the above function to be called after build
+        target="qemu-system-i386.exe qemu-system-i386w.exe"
+        ;;
     *)
-        echo "could not detect OS $(uname -s), aborting" >&2
+        echo "Unsupported platform $platform, aborting" >&2
         exit -1
         ;;
 esac
