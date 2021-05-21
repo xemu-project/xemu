@@ -49,6 +49,8 @@
 #include "xemu-shaders.h"
 #include "xemu-version.h"
 
+#include "data/xemu_64x64.png.h"
+
 #include "hw/xbox/smbus.h" // For eject, drive tray
 #include "hw/xbox/nv2a/nv2a.h"
 
@@ -860,7 +862,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
 
     int width, height, channels = 0;
     stbi_set_flip_vertically_on_load(0);
-    unsigned char *icon_data = stbi_load("./data/xemu_64x64.png", &width, &height, &channels, 4);
+    unsigned char *icon_data = stbi_load_from_memory(xemu_64x64_data, xemu_64x64_size, &width, &height, &channels, 4);
     if (icon_data) {
         SDL_Surface *icon = SDL_CreateRGBSurfaceFrom(icon_data, width, height, 32, width*4,
             0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);

@@ -1687,6 +1687,8 @@ qapi_gen_depends = [ meson.source_root() / 'scripts/qapi/__init__.py',
                      meson.source_root() / 'scripts/qapi-gen.py'
 ]
 
+packfile = find_program('scripts/pack-file.py')
+
 tracetool = [
   python, files('scripts/tracetool.py'),
    '--backend=' + config_host['TRACE_BACKENDS']
@@ -1896,6 +1898,7 @@ subdir('qom')
 subdir('authz')
 subdir('crypto')
 subdir('ui')
+subdir('data')
 
 
 if enable_modules

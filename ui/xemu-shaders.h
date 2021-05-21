@@ -75,6 +75,7 @@ struct decal_shader *create_decal_shader(enum SHADER_TYPE type);
 void delete_decal_shader(struct decal_shader *s);
 
 GLuint load_texture_from_file(const char *name);
+GLuint load_texture_from_memory(const unsigned char *buf, unsigned int size);
 
 struct fbo *create_fbo(int width, int height);
 void render_to_default_fb(void);

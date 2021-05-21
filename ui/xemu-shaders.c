@@ -185,7 +185,7 @@ struct decal_shader *create_decal_shader(enum SHADER_TYPE type)
     return s;
 }
 
-GLuint load_texture_from_file(const char *name)
+static GLuint load_texture(unsigned char *data, int width, int height, int channels)
 {
     GLuint tex;
     glGenTextures(1, &tex);
@@ -196,7 +196,12 @@ GLuint load_texture_from_file(const char *name)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_BORDER);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    return tex;
+}
 
+GLuint load_texture_from_file(const char *name)
+{
     // Flip vertically so textures are loaded according to GL convention.
     stbi_set_flip_vertically_on_load(1);
 
@@ -205,8 +210,22 @@ GLuint load_texture_from_file(const char *name)
     unsigned char *data = stbi_load(name, &width, &height, &channels, 4);
     assert(data != NULL);
 
-    // Upload texture data
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    GLuint tex = load_texture(data, width, height, channels);
+    stbi_image_free(data);
+
+    return tex;
+}
+
+GLuint load_texture_from_memory(const unsigned char *buf, unsigned int size)
+{
+    // Flip vertically so textures are loaded according to GL convention.
+    stbi_set_flip_vertically_on_load(1);
+
+    int width, height, channels = 0;
+    unsigned char *data = stbi_load_from_memory(buf, size, &width, &height, &channels, 4);
+    assert(data != NULL);
+
+    GLuint tex = load_texture(data, width, height, channels);
     stbi_image_free(data);
 
     return tex;
