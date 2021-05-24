@@ -22,6 +22,7 @@ package_wincross() {
     cp build/qemu-system-i386w.exe dist/xemu.exe
     # cp -r "${project_source_dir}/data" dist/
     $STRIP dist/xemu.exe
+    python3 ./scripts/gen-license.py --platform windows > dist/LICENSE.txt
 }
 
 package_macos() {
@@ -86,6 +87,8 @@ package_macos() {
 </dict>
 </plist>
 EOF
+
+    python3 ./scripts/gen-license.py > dist/LICENSE.txt
 }
 
 package_linux() {
@@ -93,6 +96,7 @@ package_linux() {
     mkdir -p dist
     cp build/qemu-system-i386 dist/xemu
     # cp -r "${project_source_dir}/data" dist
+    python3 ./scripts/gen-license.py > dist/LICENSE.txt
 }
 
 postbuild=''
