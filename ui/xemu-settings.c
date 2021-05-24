@@ -221,36 +221,13 @@ const char *xemu_settings_get_path(void)
 		return settings_path;
 	}
 
-	char *base = SDL_GetPrefPath("xemu", "xemu");
+	char *base = xemu_settings_detect_portable_mode()
+	             ? SDL_GetBasePath()
+	             : SDL_GetPrefPath("xemu", "xemu");
 	assert(base != NULL);
-
-	// Check for xemu.ini in xemu binary directory, "portable mode"
-	if (xemu_settings_detect_portable_mode()) {
-		base = SDL_GetBasePath();
-		assert(base != NULL);
-	}
-
-	size_t base_len = strlen(base);
-
-	size_t filename_len = strlen(filename);
-	size_t final_len = base_len + filename_len;
-	final_len += 1; // Terminating null byte
-
-	char *path = malloc(final_len);
-	assert(path != NULL);
-
-	// Copy base part
-	memcpy(path, base, base_len);
-	free(base);
-
-	// Copy filename part
-	memcpy(path+base_len, filename, strlen(filename));
-	path[final_len-1] = '\0';
-
-	settings_path = path;
-
+	settings_path = g_strdup_printf("%s%s", base, filename);
+	SDL_free(base);
 	fprintf(stderr, "%s: config path: %s\n", __func__, settings_path);
-
 	return settings_path;
 }
 
@@ -261,34 +238,12 @@ const char *xemu_settings_get_default_eeprom_path(void)
 		return eeprom_path;
 	}
 
-	char *base = SDL_GetPrefPath("xemu", "xemu");
+	char *base = xemu_settings_detect_portable_mode()
+	             ? SDL_GetBasePath()
+	             : SDL_GetPrefPath("xemu", "xemu");
 	assert(base != NULL);
-
-	// Check for xemu.ini in xemu binary directory, "portable mode"
-	if (xemu_settings_detect_portable_mode()) {
-		base = SDL_GetBasePath();
-		assert(base != NULL);
-	}
-
-	size_t base_len = strlen(base);
-
-	const char *name = "eeprom.bin";
-	size_t name_len = strlen(name);
-	size_t final_len = base_len + name_len;
-	final_len += 1; // Terminating null byte
-
-	char *path = malloc(final_len);
-	assert(path != NULL);
-
-	// Copy base part
-	memcpy(path, base, base_len);
-	free(base);
-
-	// Copy name part
-	memcpy(path+base_len, name, name_len);
-	path[final_len-1] = '\0';
-
-	eeprom_path = path;
+	eeprom_path = g_strdup_printf("%s%s", base, "eeprom.bin");
+	SDL_free(base);
 	return eeprom_path;
 }
 
