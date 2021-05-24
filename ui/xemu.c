@@ -1475,6 +1475,28 @@ int main(int argc, char **argv)
 {
     QemuThread thread;
 
+#ifdef _WIN32
+    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        // Launched with a console. If stdout and stderr are not associated with
+        // an output stream, redirect to parent console.
+        if (_fileno(stdout) == -2) {
+            freopen("CONOUT$", "w+", stdout);
+        }
+        if (_fileno(stderr) == -2) {
+            freopen("CONOUT$", "w+", stderr);
+        }
+    } else {
+        // Launched without a console. Redirect stdout and stderr to a log file.
+        HANDLE logfile = CreateFileA("xemu.log",
+            GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,
+            NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (logfile != INVALID_HANDLE_VALUE) {
+            freopen("xemu.log", "a", stdout);
+            freopen("xemu.log", "a", stderr);
+        }
+    }
+#endif
+
     DPRINTF("Entered main()\n");
     gArgc = argc;
     gArgv = argv;

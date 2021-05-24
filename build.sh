@@ -9,23 +9,19 @@ project_source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd
 package_windows() {
     rm -rf dist
     mkdir -p dist
-    cp build/qemu-system-i386.exe dist/xemu.exe
-    cp build/qemu-system-i386w.exe dist/xemuw.exe
+    cp build/qemu-system-i386w.exe dist/xemu.exe
     # cp -r "${project_source_dir}/data" dist/
     python3 "${project_source_dir}/get_deps.py" dist/xemu.exe dist
     strip dist/xemu.exe
-    strip dist/xemuw.exe
 }
 
 package_wincross() {
     STRIP=${CROSSPREFIX}strip
     rm -rf dist
     mkdir -p dist
-    cp build/qemu-system-i386.exe dist/xemu.exe
-    cp build/qemu-system-i386w.exe dist/xemuw.exe
+    cp build/qemu-system-i386w.exe dist/xemu.exe
     # cp -r "${project_source_dir}/data" dist/
     $STRIP dist/xemu.exe
-    $STRIP dist/xemuw.exe
 }
 
 package_macos() {
@@ -196,7 +192,7 @@ case "$platform" in # Adjust compilation options based on platform
         sys_cflags='-Wno-error'
         opts="$opts --disable-fortify-source"
         postbuild='package_windows' # set the above function to be called after build
-        target="qemu-system-i386.exe qemu-system-i386w.exe"
+        target="qemu-system-i386w.exe"
         ;;
     win64-cross)
         echo 'Cross-compiling for Windows...'
@@ -204,7 +200,7 @@ case "$platform" in # Adjust compilation options based on platform
         sys_cflags='-Wno-error'
         opts="$opts --cross-prefix=$CROSSPREFIX --static --disable-fortify-source"
         postbuild='package_wincross' # set the above function to be called after build
-        target="qemu-system-i386.exe qemu-system-i386w.exe"
+        target="qemu-system-i386w.exe"
         ;;
     *)
         echo "Unsupported platform $platform, aborting" >&2
