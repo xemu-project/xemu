@@ -185,7 +185,7 @@ jobs:
         echo -e "\nCompiler Cache Stats:"
         ccache -s -c
         pushd dist
-        zip -r ../${{ matrix.artifact_filename }} xemu.app
+        zip -r ../${{ matrix.artifact_filename }} *
         popd
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v2
