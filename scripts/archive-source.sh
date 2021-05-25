@@ -72,9 +72,10 @@ for sm in $submodules; do
     test $? -ne 0 && error "failed append submodule $sm to $tar_file"
 done
 
+python3 ./scripts/gen-license.py > XEMU_LICENSE
 git rev-parse HEAD 2>/dev/null | tr -d '\n' > XEMU_COMMIT
 git symbolic-ref --short HEAD > XEMU_BRANCH
 git describe --match 'xemu-v*' | cut -c 7- | tr -d '\n' > XEMU_VERSION
-tar -r --file "$tar_file" XEMU_COMMIT XEMU_BRANCH XEMU_VERSION
+tar -r --file "$tar_file" XEMU_COMMIT XEMU_BRANCH XEMU_VERSION XEMU_LICENSE
 
 exit 0
