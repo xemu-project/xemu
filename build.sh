@@ -96,7 +96,11 @@ package_linux() {
     mkdir -p dist
     cp build/qemu-system-i386 dist/xemu
     # cp -r "${project_source_dir}/data" dist
-    python3 ./scripts/gen-license.py > dist/LICENSE.txt
+    if test -e "${project_source_dir}/XEMU_LICENSE" ]]; then
+      cp "${project_source_dir}/XEMU_LICENSE" dist/LICENSE.txt
+    else
+      python3 ./scripts/gen-license.py > dist/LICENSE.txt
+    fi
 }
 
 postbuild=''
