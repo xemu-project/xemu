@@ -29,6 +29,7 @@ linux = 'linux'
 all_platforms = { windows, macos, linux }
 current_platform = linux
 
+versions = {}
 
 def banner(s):
 	space = 1
@@ -81,9 +82,7 @@ class Lib:
 	                 check=True).stdout.decode('utf-8').strip()
 			return self._version
 		elif current_platform == macos and self.pkg_mac:
-			self._version = subprocess.run(r"brew info " + self.pkg_mac + " | head -n1",
-	                 capture_output=True, shell=True,
-	                 check=True).stdout.decode('utf-8').strip()
+			self._version = versions[self.pkg_mac]
 			return self._version
 		elif current_platform == linux and self.pkg_ubuntu:
 			self._version = subprocess.run(r"dpkg -s " + self.pkg_ubuntu + " | grep Version | cut -d: -f2",
@@ -246,15 +245,15 @@ Lib('pcre', 'http://pcre.org/',
 # glib dep
 Lib('gettext', 'https://www.gnu.org/software/gettext/',
 	lgplv2_1, 'https://git.savannah.gnu.org/gitweb/?p=gettext.git;a=blob_plain;f=gettext-runtime/intl/COPYING.LIB;hb=HEAD',
-	ships_static={windows}, ships_dynamic={macos}, platform={windows},
+	ships_static={windows}, ships_dynamic={macos},
 	pkg_win='gettext', pkg_mac='gettext',
 	),
 
 # glib dep
 Lib('iconv', 'https://www.gnu.org/software/libiconv/',
 	lgplv2_1, 'https://git.savannah.gnu.org/gitweb/?p=libiconv.git;a=blob_plain;f=COPYING.LIB;hb=HEAD',
-	ships_static={windows}, platform={windows},
-	pkg_win='libiconv'
+	ships_static={windows}, ships_dynamic={macos},
+	pkg_win='libiconv', pkg_mac='libiconv'
 	),
 
 Lib('libepoxy', 'https://github.com/anholt/libepoxy',
@@ -292,7 +291,7 @@ Lib('openssl', 'https://www.openssl.org/',
 # openssl dep
 Lib('zlib', 'https://zlib.net/',
 	zlib, 'https://raw.githubusercontent.com/madler/zlib/master/README', license_lines=(87,106),
-	ships_static={windows},
+	ships_static={windows}, ships_dynamic={macos},
 	pkgconfig=PkgConfig('zlib'), pkg_win='zlib', pkg_mac='zlib', pkg_ubuntu='zlib1g-dev'
 	),
 
@@ -304,7 +303,7 @@ Lib('libmingw32', 'http://mingw-w64.org/',
 
 Lib('gtk', 'https://www.gtk.org/',
 	lgplv2_1, 'https://gitlab.gnome.org/GNOME/gtk/-/raw/master/COPYING',
-	platform=linux,
+	platform={linux},
 	pkgconfig=PkgConfig('gtk+-3.0'), pkg_ubuntu='libgtk-3-dev'
 	),
 ]
@@ -344,12 +343,18 @@ def main():
 	import argparse
 	ap = argparse.ArgumentParser()
 	ap.add_argument('--platform', default='')
+	ap.add_argument('--version-file', default='')
 	args = ap.parse_args()
 
 	if args.platform == '':
 		args.platform = sys.platform.lower()
 	global current_platform
 	current_platform = args.platform
+	if args.version_file != '':
+		with open(args.version_file, 'r') as f:
+			global versions
+			versions = {pkg: ver
+				for pkg, ver in map(lambda l: l.strip().split('='), f.readlines())}
 	gen_license()
 
 if __name__ == '__main__':

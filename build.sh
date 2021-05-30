@@ -6,6 +6,8 @@ set -o physical # Resolve symlinks when changing directory
 
 project_source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
+target_arch=$(uname -m)
+
 package_windows() {
     rm -rf dist
     mkdir -p dist
@@ -26,20 +28,37 @@ package_wincross() {
 }
 
 package_macos() {
-    #
-    # Create bundle
-    #
     rm -rf dist
 
     # Copy in executable
     mkdir -p dist/xemu.app/Contents/MacOS/
-    cp build/qemu-system-i386 dist/xemu.app/Contents/MacOS/xemu
+    exe_path=dist/xemu.app/Contents/MacOS/xemu
+    lib_path=dist/xemu.app/Contents/Libraries/${target_arch}
+    lib_rpath=../Libraries/${target_arch}
+    cp build/qemu-system-i386 ${exe_path}
 
     # Copy in in executable dylib dependencies
-    mkdir -p dist/xemu.app/Contents/Frameworks
     dylibbundler -cd -of -b -x dist/xemu.app/Contents/MacOS/xemu \
-        -d dist/xemu.app/Contents/Frameworks/ \
-        -p '@executable_path/../Frameworks/'
+        -d ${lib_path}/ \
+        -p "@executable_path/${lib_rpath}/" \
+        -s ${PWD}/macos-libs/${target_arch}/opt/local/lib/openssl-1.0/ \
+        -s ${PWD}/macos-libs/${target_arch}/opt/local/lib/
+
+    # Fixup some paths dylibbundler missed
+    for dep in $(otool -L "$exe_path" | grep -e '/opt/local/' | cut -d' ' -f1); do
+      dep_basename="$(basename $dep)"
+      new_path="@executable_path/${lib_rpath}/${dep_basename}"
+      echo "Fixing $exe_path dependency $dep_basename -> $new_path"
+      install_name_tool -change "$dep" "$new_path" "$exe_path"
+    done
+    for lib_path in ${lib_path}/*.dylib; do
+      for dep in $(otool -L "$lib_path" | grep -e '/opt/local/' | cut -d' ' -f1); do
+        dep_basename="$(basename $dep)"
+        new_path="@rpath/${dep_basename}"
+        echo "Fixing $lib_path dependency $dep_basename -> $new_path"
+        install_name_tool -change "$dep" "$new_path" "$lib_path"
+      done
+    done
 
     # Copy in runtime resources
     mkdir -p dist/xemu.app/Contents/Resources
@@ -50,45 +69,8 @@ package_macos() {
     for r in 16 32 128 256 512; do cp "${project_source_dir}/ui/icons/xemu_${r}x${r}.png" "xemu.iconset/icon_${r}x${r}.png"; done
     iconutil --convert icns --output dist/xemu.app/Contents/Resources/xemu.icns xemu.iconset
 
-    # Generate Info.plist file
-    cat <<EOF > dist/xemu.app/Contents/Info.plist
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDevelopmentRegion</key>
-  <string>en</string>
-  <key>CFBundleExecutable</key>
-  <string>xemu</string>
-  <key>CFBundleIconFile</key>
-  <string>xemu.icns</string>
-  <key>CFBundleIdentifier</key>
-  <string>xemu.app.0</string>
-  <key>CFBundleInfoDictionaryVersion</key>
-  <string>6.0</string>
-  <key>CFBundleName</key>
-  <string>xemu</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleShortVersionString</key>
-  <string>1</string>
-  <key>CFBundleSignature</key>
-  <string>xemu</string>
-  <key>CFBundleVersion</key>
-  <string>1</string>
-  <key>LSApplicationCategoryType</key>
-  <string>public.app-category.games</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>10.6</string>
-  <key>NSPrincipalClass</key>
-  <string>NSApplication</string>
-  <key>NSHighResolutionCapable</key>
-  <true/>
-</dict>
-</plist>
-EOF
-
-    python3 ./scripts/gen-license.py > dist/LICENSE.txt
+    cp Info.plist dist/xemu.app/Contents/
+    python3 ./scripts/gen-license.py --version-file=macos-libs/$target_arch/INSTALLED > dist/LICENSE.txt
 }
 
 package_linux() {
@@ -162,6 +144,10 @@ do
         platform="${2}"
         shift 2
         ;;
+    '-a'*)
+        target_arch="${2}"
+        shift 2
+        ;;
     *)
         break
         ;;
@@ -185,14 +171,51 @@ case "$platform" in # Adjust compilation options based on platform
         postbuild='package_linux'
         ;;
     Darwin)
-        echo 'Compiling for MacOS...'
-        sys_cflags='-march=ivybridge'
+        echo "Compiling for MacOS for $target_arch..."
+        sdk_base=/Library/Developer/CommandLineTools/SDKs/
+        sdk_macos_10_14="${sdk_base}/MacOSX10.14.sdk"
+        sdk_macos_10_15="${sdk_base}/MacOSX10.15.sdk"
+        sdk_macos_11_1="${sdk_base}/MacOSX11.1.sdk"
+        if [ "$target_arch" == "arm64" ]; then
+            macos_min_ver=11.1
+            if test -d "$sdk_macos_11_1"; then
+                sdk="$sdk_macos_11_1"
+            else
+                echo "SDK not found. Install Xcode Command Line Tools"
+                exit 1
+            fi
+        elif [ "$target_arch" == "x86_64" ]; then
+            macos_min_ver=10.13
+            if test -d "$sdk_macos_11_1"; then
+                sdk="$sdk_macos_11_1"
+            elif test -d "$sdk_macos_10_15"; then
+                sdk="$sdk_macos_10_15"
+            elif test -d "$sdk_macos_10_14"; then
+                sdk="$sdk_macos_10_14"
+            else
+                echo "SDK not found. Install Xcode Command Line Tools"
+                exit 1
+            fi
+        else
+            echo "Unsupported arch $target_arch"
+            exit 1
+        fi
+        python3 ./scripts/download-macos-libs.py ${target_arch}
+        lib_prefix=${PWD}/macos-libs/${target_arch}/opt/local
+        export CFLAGS="-arch ${target_arch} \
+                       -target ${target_arch}-apple-macos${macos_min_ver} \
+                       -isysroot ${sdk} \
+                       -I${lib_prefix}/include \
+                       -mmacosx-version-min=$macos_min_ver"
+        export LDFLAGS="-arch ${target_arch} \
+                        -isysroot ${sdk}"
+        if [ "$target_arch" == "x86_64" ]; then
+            sys_cflags='-march=ivybridge'
+        fi
         sys_ldflags='-headerpad_max_install_names'
-        opts="$opts --disable-cocoa"
-        # necessary to find libffi, which is required by gobject
-        export PKG_CONFIG_PATH="${PKG_CONFIG_PATH}/usr/local/opt/libffi/lib/pkgconfig"
-        export PKG_CONFIG_PATH="/usr/local/opt/openssl@1.1/lib/pkgconfig:${PKG_CONFIG_PATH}"
-        echo $PKG_CONFIG_PATH
+        export PKG_CONFIG_PATH="${lib_prefix}/lib/pkgconfig"
+        export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:${lib_prefix}/lib/openssl-1.0/pkgconfig/"
+        opts="$opts --disable-cocoa --cross-prefix="
         postbuild='package_macos'
         ;;
     CYGWIN*|MINGW*|MSYS*)
