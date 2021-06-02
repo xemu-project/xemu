@@ -60,7 +60,6 @@ typedef struct PshState {
     enum PshAlphaFunc alpha_func;
 
     bool window_clip_exclusive;
-    unsigned int window_clip_count;
 } PshState;
 
 MString *psh_translate(const PshState state);
