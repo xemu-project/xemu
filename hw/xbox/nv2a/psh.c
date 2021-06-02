@@ -609,38 +609,31 @@ static MString* psh_convert(struct PixelShader *ps)
 
     /* Window Clipping */
     MString *clip = mstring_new();
-    if (ps->state.window_clip_count != 0) {
-        mstring_append_fmt(preflight, "uniform ivec4 clipRegion[%d];\n",
-                           ps->state.window_clip_count);
-        mstring_append_fmt(clip, "/*  Window-clip (%s) */\n",
-                           ps->state.window_clip_exclusive ?
-                               "Exclusive" : "Inclusive");
-        if (!ps->state.window_clip_exclusive) {
-            mstring_append(clip, "bool clipContained = false;\n");
-        }
-        mstring_append_fmt(clip, "for (int i = 0; i < %d; i++) {\n",
-                           ps->state.window_clip_count);
-        mstring_append(clip, "  bvec4 clipTest = bvec4(lessThan(gl_FragCoord.xy, clipRegion[i].xy),\n"
-                             "                         greaterThan(gl_FragCoord.xy, clipRegion[i].zw));\n"
-                             "  if (!any(clipTest)) {\n");
-        if (ps->state.window_clip_exclusive) {
-            /* Pixel in clip region = exclude by discarding */
-            mstring_append(clip, "    discard;\n");
-            assert(false); /* Untested */
-        } else {
-            /* Pixel in clip region = mark pixel as contained and leave */
-            mstring_append(clip, "    clipContained = true;\n"
-                                 "    break;\n");
-        }
-        mstring_append(clip, "  }\n"
-                             "}\n");
-        /* Check for inclusive window clip */
-        if (!ps->state.window_clip_exclusive) {
-            mstring_append(clip, "if (!clipContained) { discard; }\n");
-        }
-    } else if (ps->state.window_clip_exclusive) {
-        /* Clip everything */
-        mstring_append(clip, "discard;\n");
+    mstring_append(preflight, "uniform ivec4 clipRegion[8];\n");
+    mstring_append_fmt(clip, "/*  Window-clip (%s) */\n",
+                       ps->state.window_clip_exclusive ?
+                           "Exclusive" : "Inclusive");
+    if (!ps->state.window_clip_exclusive) {
+        mstring_append(clip, "bool clipContained = false;\n");
+    }
+    mstring_append(clip, "for (int i = 0; i < 8; i++) {\n"
+                         "  bvec4 clipTest = bvec4(lessThan(gl_FragCoord.xy-0.5, clipRegion[i].xy),\n"
+                         "                         greaterThan(gl_FragCoord.xy-0.5, clipRegion[i].zw));\n"
+                         "  if (!any(clipTest)) {\n");
+    if (ps->state.window_clip_exclusive) {
+        /* Pixel in clip region = exclude by discarding */
+        mstring_append(clip, "    discard;\n");
+        assert(false); /* Untested */
+    } else {
+        /* Pixel in clip region = mark pixel as contained and leave */
+        mstring_append(clip, "    clipContained = true;\n"
+                             "    break;\n");
+    }
+    mstring_append(clip, "  }\n"
+                         "}\n");
+    /* Check for inclusive window clip */
+    if (!ps->state.window_clip_exclusive) {
+        mstring_append(clip, "if (!clipContained) { discard; }\n");
     }
 
     /* calculate perspective-correct inputs */

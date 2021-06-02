@@ -3622,34 +3622,22 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
 
     /* Clipping regions */
     for (i = 0; i < 8; i++) {
-        if (pg->shader_binding->clip_region_loc[i] == -1) {
-            break;
-        }
-
         uint32_t x = pg->regs[NV_PGRAPH_WINDOWCLIPX0 + i * 4];
         unsigned int x_min = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMIN);
         unsigned int x_max = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMAX);
-
-        /* Adjust y-coordinates for the OpenGL viewport: translate coordinates
-         * to have the origin at the bottom-left of the surface (as opposed to
-         * top-left), and flip y-min and y-max accordingly.
-         */
-        // FIXME: Check
         uint32_t y = pg->regs[NV_PGRAPH_WINDOWCLIPY0 + i * 4];
-        unsigned int y_min = pg->surface_binding_dim.clip_height
-                             + pg->surface_binding_dim.clip_y
-                             - 1
-                             - GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMAX);
-        unsigned int y_max = pg->surface_binding_dim.clip_height
-                             + pg->surface_binding_dim.clip_y
-                             - 1
-                             - GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMIN);
-
+        unsigned int y_min = GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMIN);
+        unsigned int y_max = GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMAX);
         pgraph_apply_anti_aliasing_factor(pg, &x_min, &y_min);
         pgraph_apply_anti_aliasing_factor(pg, &x_max, &y_max);
 
+        /* Translate for the GL viewport origin */
+        unsigned int y_min_xlat = MAX(pg->surface_binding_dim.height - y_max - 1, 0);
+        unsigned int y_max_xlat = MIN(pg->surface_binding_dim.height - y_min - 1,
+                                      pg->surface_binding_dim.height);
+
         glUniform4i(pg->shader_binding->clip_region_loc[i],
-                    x_min, y_min, x_max + 1, y_max + 1);
+                    x_min, y_min_xlat, x_max, y_max_xlat);
     }
 }
 
@@ -3759,6 +3747,7 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
     /* register combiner stuff */
     state.psh.window_clip_exclusive = pg->regs[NV_PGRAPH_SETUPRASTER]
                                        & NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE;
+    assert(!state.psh.window_clip_exclusive); /* FIXME: Untested */
     state.psh.combiner_control = pg->regs[NV_PGRAPH_COMBINECTL];
     state.psh.shader_stage_program = pg->regs[NV_PGRAPH_SHADERPROG];
     state.psh.other_stage_input = pg->regs[NV_PGRAPH_SHADERCTL];
@@ -3857,45 +3846,6 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
             state.light[i] = (enum VshLight)GET_MASK(pg->regs[NV_PGRAPH_CSV0_D],
                                       NV_PGRAPH_CSV0_D_LIGHT0 << (i * 2));
         }
-    }
-
-    /* Window clip
-     *
-     * Optimization note: very quickly check to ignore any repeated or zero-size
-     * clipping regions. Note that if region number 7 is valid, but the rest are
-     * not, we will still add all of them. Clip regions seem to be typically
-     * front-loaded (meaning the first one or two regions are populated, and the
-     * following are zeroed-out), so let's avoid adding any more complicated
-     * masking or copying logic here for now unless we discover a valid case.
-     */
-    assert(!state.psh.window_clip_exclusive); /* FIXME: Untested */
-    state.psh.window_clip_count = 0;
-    uint32_t last_x = 0, last_y = 0;
-
-    for (i = 0; i < 8; i++) {
-        const uint32_t x = pg->regs[NV_PGRAPH_WINDOWCLIPX0 + i * 4];
-        const uint32_t y = pg->regs[NV_PGRAPH_WINDOWCLIPY0 + i * 4];
-        const uint32_t x_min = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMIN);
-        const uint32_t x_max = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMAX);
-        const uint32_t y_min = GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMIN);
-        const uint32_t y_max = GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMAX);
-
-        /* Check for zero width or height clipping region */
-        if ((x_min == x_max) || (y_min == y_max)) {
-            continue;
-        }
-
-        /* Check for in-order duplicate regions */
-        if ((x == last_x) && (y == last_y)) {
-            continue;
-        }
-
-        NV2A_DPRINTF("Clipping Region %d: min=(%d, %d) max=(%d, %d)\n",
-            i, x_min, y_min, x_max, y_max);
-
-        state.psh.window_clip_count = i + 1;
-        last_x = x;
-        last_y = y;
     }
 
     /* Copy content of enabled combiner stages */
