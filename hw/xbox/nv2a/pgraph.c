@@ -3747,7 +3747,6 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
     /* register combiner stuff */
     state.psh.window_clip_exclusive = pg->regs[NV_PGRAPH_SETUPRASTER]
                                        & NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE;
-    assert(!state.psh.window_clip_exclusive); /* FIXME: Untested */
     state.psh.combiner_control = pg->regs[NV_PGRAPH_COMBINECTL];
     state.psh.shader_stage_program = pg->regs[NV_PGRAPH_SHADERPROG];
     state.psh.other_stage_input = pg->regs[NV_PGRAPH_SHADERCTL];

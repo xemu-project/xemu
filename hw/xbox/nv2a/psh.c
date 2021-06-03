@@ -621,19 +621,17 @@ static MString* psh_convert(struct PixelShader *ps)
                          "                         greaterThan(gl_FragCoord.xy-0.5, clipRegion[i].zw));\n"
                          "  if (!any(clipTest)) {\n");
     if (ps->state.window_clip_exclusive) {
-        /* Pixel in clip region = exclude by discarding */
         mstring_append(clip, "    discard;\n");
-        assert(false); /* Untested */
     } else {
-        /* Pixel in clip region = mark pixel as contained and leave */
         mstring_append(clip, "    clipContained = true;\n"
                              "    break;\n");
     }
     mstring_append(clip, "  }\n"
                          "}\n");
-    /* Check for inclusive window clip */
     if (!ps->state.window_clip_exclusive) {
-        mstring_append(clip, "if (!clipContained) { discard; }\n");
+        mstring_append(clip, "if (!clipContained) {\n"
+                             "  discard;\n"
+                             "}\n");
     }
 
     /* calculate perspective-correct inputs */
