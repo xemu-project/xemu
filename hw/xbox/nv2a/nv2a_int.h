@@ -101,6 +101,14 @@ typedef struct VertexAttribute {
     GLuint gl_inline_buffer;
 } VertexAttribute;
 
+typedef struct SurfaceFormatInfo {
+    unsigned int bytes_per_pixel;
+    GLint gl_internal_format;
+    GLenum gl_format;
+    GLenum gl_type;
+    GLenum gl_attachment;
+} SurfaceFormatInfo;
+
 typedef struct Surface {
     bool draw_dirty;
     bool buffer_dirty;
@@ -126,6 +134,7 @@ typedef struct SurfaceBinding {
 
     hwaddr vram_addr;
 
+    SurfaceFormatInfo fmt;
     SurfaceShape shape;
     uintptr_t dma_addr;
     uintptr_t dma_len;
@@ -135,13 +144,8 @@ typedef struct SurfaceBinding {
     unsigned int width;
     unsigned int height;
     unsigned int pitch;
-    unsigned int bytes_per_pixel;
     size_t size;
 
-    GLenum gl_attachment;
-    GLenum gl_internal_format;
-    GLenum gl_format;
-    GLenum gl_type;
     GLuint gl_buffer;
 
     int frame_time;

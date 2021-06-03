@@ -317,29 +317,37 @@ static const ColorFormatInfo kelvin_color_format_map[66] = {
         {4, true, GL_RGBA8, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8}
 };
 
-typedef struct SurfaceColorFormatInfo {
-    unsigned int bytes_per_pixel;
-    GLint gl_internal_format;
-    GLenum gl_format;
-    GLenum gl_type;
-} SurfaceColorFormatInfo;
-
-static const SurfaceColorFormatInfo kelvin_surface_color_format_map[] = {
+static const SurfaceFormatInfo kelvin_surface_color_format_map[] = {
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_Z1R5G5B5] =
-        {2, GL_RGB5_A1, GL_BGRA, GL_UNSIGNED_SHORT_1_5_5_5_REV},
+        {2, GL_RGB5_A1, GL_BGRA, GL_UNSIGNED_SHORT_1_5_5_5_REV, GL_COLOR_ATTACHMENT0},
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_R5G6B5] =
-        {2, GL_RGB565, GL_RGB, GL_UNSIGNED_SHORT_5_6_5},
+        {2, GL_RGB565, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, GL_COLOR_ATTACHMENT0},
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_X8R8G8B8_Z8R8G8B8] =
-        {4, GL_RGBA8, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV},
+        {4, GL_RGBA8, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, GL_COLOR_ATTACHMENT0},
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8] =
-        {4, GL_RGBA8, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV},
+        {4, GL_RGBA8, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, GL_COLOR_ATTACHMENT0},
 
     // FIXME: Map channel color
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_B8] =
-        {1, GL_R8, GL_RED, GL_UNSIGNED_BYTE},
+        {1, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_COLOR_ATTACHMENT0},
     [NV097_SET_SURFACE_FORMAT_COLOR_LE_G8B8] =
-        {2, GL_RG8, GL_RG, GL_UNSIGNED_SHORT},
+        {2, GL_RG8, GL_RG, GL_UNSIGNED_SHORT, GL_COLOR_ATTACHMENT0},
 };
+
+static const SurfaceFormatInfo kelvin_surface_zeta_float_format_map[] = {
+    [NV097_SET_SURFACE_FORMAT_ZETA_Z16] =
+        {2, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_HALF_FLOAT, GL_DEPTH_ATTACHMENT},
+    [NV097_SET_SURFACE_FORMAT_ZETA_Z24S8] =
+        {4, GL_DEPTH32F_STENCIL8, GL_DEPTH_STENCIL, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, GL_DEPTH_STENCIL_ATTACHMENT},
+};
+
+static const SurfaceFormatInfo kelvin_surface_zeta_int_format_map[] = {
+    [NV097_SET_SURFACE_FORMAT_ZETA_Z16] =
+        {2, GL_DEPTH_COMPONENT16, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT, GL_DEPTH_ATTACHMENT},
+    [NV097_SET_SURFACE_FORMAT_ZETA_Z24S8] =
+        {4, GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, GL_DEPTH_STENCIL_ATTACHMENT},
+};
+
 
 // static void pgraph_set_context_user(NV2AState *d, uint32_t val);
 static void pgraph_gl_fence(void);
@@ -4297,11 +4305,11 @@ static void pgraph_render_display(NV2AState *d, SurfaceBinding *surface)
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, pg->gl_display_buffer);
     bool recreate = (
-        surface->gl_internal_format != pg->gl_display_buffer_internal_format
+        surface->fmt.gl_internal_format != pg->gl_display_buffer_internal_format
         || surface->width != pg->gl_display_buffer_width
         || surface->height != pg->gl_display_buffer_height
-        || surface->gl_format != pg->gl_display_buffer_format
-        || surface->gl_type != pg->gl_display_buffer_type
+        || surface->fmt.gl_format != pg->gl_display_buffer_format
+        || surface->fmt.gl_type != pg->gl_display_buffer_type
         );
 
     if (recreate) {
@@ -4316,11 +4324,11 @@ static void pgraph_render_display(NV2AState *d, SurfaceBinding *surface)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        pg->gl_display_buffer_internal_format = surface->gl_internal_format;
+        pg->gl_display_buffer_internal_format = surface->fmt.gl_internal_format;
         pg->gl_display_buffer_width = surface->width;
         pg->gl_display_buffer_height = surface->height;
-        pg->gl_display_buffer_format = surface->gl_format;
-        pg->gl_display_buffer_type = surface->gl_type;
+        pg->gl_display_buffer_format = surface->fmt.gl_format;
+        pg->gl_display_buffer_type = surface->fmt.gl_type;
         glTexImage2D(GL_TEXTURE_2D, 0,
             pg->gl_display_buffer_internal_format,
             pg->gl_display_buffer_width,
@@ -4399,11 +4407,11 @@ int nv2a_get_framebuffer_surface(void)
     }
 
     assert(surface->color);
-    assert(surface->gl_attachment == GL_COLOR_ATTACHMENT0);
-    assert(surface->gl_format == GL_RGBA
-        || surface->gl_format == GL_RGB
-        || surface->gl_format == GL_BGR
-        || surface->gl_format == GL_BGRA
+    assert(surface->fmt.gl_attachment == GL_COLOR_ATTACHMENT0);
+    assert(surface->fmt.gl_format == GL_RGBA
+        || surface->fmt.gl_format == GL_RGB
+        || surface->fmt.gl_format == GL_BGR
+        || surface->fmt.gl_format == GL_BGRA
         );
 
     surface->frame_time = pg->frame_time;
@@ -4619,8 +4627,8 @@ static bool pgraph_check_surface_compatibility(
     SurfaceBinding *s2)
 {
     bool format_compatible = (s1->color == s2->color)
-                          && (s1->gl_attachment == s2->gl_attachment)
-                          && (s1->gl_internal_format == s2->gl_internal_format);
+                          && (s1->fmt.gl_attachment == s2->fmt.gl_attachment)
+                          && (s1->fmt.gl_internal_format == s2->fmt.gl_internal_format);
     if (!format_compatible) {
         return false;
     }
@@ -4662,7 +4670,7 @@ static void pgraph_download_surface_data(NV2AState *d,
                  surface->color ? "COLOR" : "ZETA",
                  surface->swizzle ? "sz" : "lin", surface->vram_addr,
                  surface->width, surface->height, surface->pitch,
-                 surface->bytes_per_pixel);
+                 surface->fmt.bytes_per_pixel);
 
     // Bind destination surface to framebuffer
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
@@ -4672,7 +4680,7 @@ static void pgraph_download_surface_data(NV2AState *d,
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
         GL_TEXTURE_2D, 0, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER,
-                           surface->gl_attachment,
+                           surface->fmt.gl_attachment,
                            GL_TEXTURE_2D,
                            surface->gl_buffer, 0);
 
@@ -4687,8 +4695,8 @@ static void pgraph_download_surface_data(NV2AState *d,
     }
 
     // Read surface into memory
-    glo_readpixels(surface->gl_format, surface->gl_type,
-                   surface->bytes_per_pixel, surface->pitch,
+    glo_readpixels(surface->fmt.gl_format, surface->fmt.gl_type,
+                   surface->fmt.bytes_per_pixel, surface->pitch,
                    surface->width, surface->height,
                    buf);
     assert(glGetError() == GL_NO_ERROR);
@@ -4698,26 +4706,26 @@ static void pgraph_download_surface_data(NV2AState *d,
                      surface->width, surface->height,
                      data + surface->vram_addr,
                      surface->pitch,
-                     surface->bytes_per_pixel);
+                     surface->fmt.bytes_per_pixel);
         g_free(buf);
     }
 
     // Re-bind original framebuffer target
     glFramebufferTexture2D(GL_FRAMEBUFFER,
-                           surface->gl_attachment,
+                           surface->fmt.gl_attachment,
                            GL_TEXTURE_2D,
                            0, 0);
 
     if (pg->color_binding) {
         glFramebufferTexture2D(GL_FRAMEBUFFER,
-                               pg->color_binding->gl_attachment,
+                               pg->color_binding->fmt.gl_attachment,
                                GL_TEXTURE_2D,
                                pg->color_binding->gl_buffer, 0);
     }
 
     if (pg->zeta_binding) {
         glFramebufferTexture2D(GL_FRAMEBUFFER,
-                               pg->zeta_binding->gl_attachment,
+                               pg->zeta_binding->fmt.gl_attachment,
                                GL_TEXTURE_2D,
                                pg->zeta_binding->gl_buffer, 0);
     }
@@ -4767,7 +4775,7 @@ static void pgraph_upload_surface_data(
                  surface->color ? "COLOR" : "ZETA",
                  surface->swizzle ? "sz" : "lin", surface->vram_addr,
                  surface->width, surface->height, surface->pitch,
-                 surface->bytes_per_pixel);
+                 surface->fmt.bytes_per_pixel);
 
     PGRAPHState *pg = &d->pgraph;
 
@@ -4784,7 +4792,7 @@ static void pgraph_upload_surface_data(
         GL_TEXTURE_2D, 0, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
         GL_TEXTURE_2D, 0, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, surface->gl_attachment,
+    glFramebufferTexture2D(GL_FRAMEBUFFER, surface->fmt.gl_attachment,
         GL_TEXTURE_2D, 0, 0);
 
     uint8_t *data = d->vram_ptr;
@@ -4796,24 +4804,24 @@ static void pgraph_upload_surface_data(
                        surface->width, surface->height,
                        buf,
                        surface->pitch,
-                       surface->bytes_per_pixel);
+                       surface->fmt.bytes_per_pixel);
     }
 
     // This is VRAM so we can't do this inplace!
     uint8_t *flipped_buf = (uint8_t *)g_malloc(
-        surface->height * surface->width * surface->bytes_per_pixel);
+        surface->height * surface->width * surface->fmt.bytes_per_pixel);
     unsigned int irow;
     for (irow = 0; irow < surface->height; irow++) {
         memcpy(&flipped_buf[surface->width * (surface->height - irow - 1)
-                                 * surface->bytes_per_pixel],
+                                 * surface->fmt.bytes_per_pixel],
                &buf[surface->pitch * irow],
-               surface->width * surface->bytes_per_pixel);
+               surface->width * surface->fmt.bytes_per_pixel);
     }
 
     glBindTexture(GL_TEXTURE_2D, surface->gl_buffer);
-    glTexImage2D(GL_TEXTURE_2D, 0, surface->gl_internal_format,
+    glTexImage2D(GL_TEXTURE_2D, 0, surface->fmt.gl_internal_format,
                  surface->width, surface->height, 0,
-                 surface->gl_format, surface->gl_type,
+                 surface->fmt.gl_format, surface->fmt.gl_type,
                  flipped_buf);
     g_free(flipped_buf);
     if (surface->swizzle) {
@@ -4824,11 +4832,11 @@ static void pgraph_upload_surface_data(
     glBindTexture(GL_TEXTURE_2D, last_texture_binding);
 
     if (pg->color_binding) {
-        glFramebufferTexture2D(GL_FRAMEBUFFER, pg->color_binding->gl_attachment,
+        glFramebufferTexture2D(GL_FRAMEBUFFER, pg->color_binding->fmt.gl_attachment,
                                GL_TEXTURE_2D, pg->color_binding->gl_buffer, 0);
     }
     if (pg->zeta_binding) {
-        glFramebufferTexture2D(GL_FRAMEBUFFER, pg->zeta_binding->gl_attachment,
+        glFramebufferTexture2D(GL_FRAMEBUFFER, pg->zeta_binding->fmt.gl_attachment,
                                GL_TEXTURE_2D, pg->zeta_binding->gl_buffer, 0);
     }
     if (pg->color_binding || pg->zeta_binding) {
@@ -4848,16 +4856,16 @@ static void pgraph_compare_surfaces(SurfaceBinding *s1, SurfaceBinding *s2)
     DO_CMP(shape.clip_y)
     DO_CMP(shape.clip_height)
     DO_CMP(gl_buffer)
-    DO_CMP(gl_attachment)
-    DO_CMP(gl_internal_format)
-    DO_CMP(gl_format)
-    DO_CMP(gl_type)
+    DO_CMP(fmt.bytes_per_pixel)
+    DO_CMP(fmt.gl_attachment)
+    DO_CMP(fmt.gl_internal_format)
+    DO_CMP(fmt.gl_format)
+    DO_CMP(fmt.gl_type)
     DO_CMP(color)
     DO_CMP(swizzle)
     DO_CMP(vram_addr)
     DO_CMP(width)
     DO_CMP(height)
-    DO_CMP(bytes_per_pixel)
     DO_CMP(pitch)
     DO_CMP(size)
     DO_CMP(dma_addr)
@@ -4887,67 +4895,34 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
 
     Surface *surface;
     hwaddr dma_address;
-    unsigned int bytes_per_pixel;
-    GLenum gl_internal_format, gl_format, gl_type, gl_attachment;
+    SurfaceFormatInfo fmt;
 
     if (color) {
         surface = &pg->surface_color;
         dma_address = pg->dma_color;
-
         assert(pg->surface_shape.color_format != 0);
-        assert(pg->surface_shape.color_format
-                < ARRAY_SIZE(kelvin_surface_color_format_map));
-        SurfaceColorFormatInfo f =
-            kelvin_surface_color_format_map[pg->surface_shape.color_format];
-        if (f.bytes_per_pixel == 0) {
+        assert(pg->surface_shape.color_format <
+               ARRAY_SIZE(kelvin_surface_color_format_map));
+        fmt = kelvin_surface_color_format_map[pg->surface_shape.color_format];
+        if (fmt.bytes_per_pixel == 0) {
             fprintf(stderr, "nv2a: unimplemented color surface format 0x%x\n",
                     pg->surface_shape.color_format);
             abort();
         }
-
-        bytes_per_pixel = f.bytes_per_pixel;
-        gl_internal_format = f.gl_internal_format;
-        gl_format = f.gl_format;
-        gl_type = f.gl_type;
-        gl_attachment = GL_COLOR_ATTACHMENT0;
-
     } else {
         surface = &pg->surface_zeta;
         dma_address = pg->dma_zeta;
-
         assert(pg->surface_shape.zeta_format != 0);
-        switch (pg->surface_shape.zeta_format) {
-        case NV097_SET_SURFACE_FORMAT_ZETA_Z16:
-            bytes_per_pixel = 2;
-            gl_format = GL_DEPTH_COMPONENT;
-            gl_attachment = GL_DEPTH_ATTACHMENT;
-            if (pg->surface_shape.z_format) {
-                gl_type = GL_HALF_FLOAT;
-                gl_internal_format = GL_DEPTH_COMPONENT32F;
-            } else {
-                gl_type = GL_UNSIGNED_SHORT;
-                gl_internal_format = GL_DEPTH_COMPONENT16;
-            }
-            break;
-        case NV097_SET_SURFACE_FORMAT_ZETA_Z24S8:
-            bytes_per_pixel = 4;
-            gl_format = GL_DEPTH_STENCIL;
-            gl_attachment = GL_DEPTH_STENCIL_ATTACHMENT;
-            if (pg->surface_shape.z_format) {
-                assert(false);
-                gl_type = GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
-                gl_internal_format = GL_DEPTH32F_STENCIL8;
-            } else {
-                gl_type = GL_UNSIGNED_INT_24_8;
-                gl_internal_format = GL_DEPTH24_STENCIL8;
-            }
-            break;
-        default:
-            assert(false);
-            break;
-        }
+        assert(pg->surface_shape.zeta_format <
+               ARRAY_SIZE(kelvin_surface_zeta_float_format_map));
+        const SurfaceFormatInfo *map =
+            pg->surface_shape.z_format ? kelvin_surface_zeta_float_format_map :
+                                         kelvin_surface_zeta_int_format_map;
+        fmt = map[pg->surface_shape.zeta_format];
+        assert(!(pg->surface_shape.zeta_format ==
+                     NV097_SET_SURFACE_FORMAT_ZETA_Z24S8 &&
+                 pg->surface_shape.z_format)); /* FIXME */
     }
-
 
     DMAObject dma = nv_dma_load(d, dma_address);
     /* There's a bunch of bugs that could cause us to hit this function
@@ -4975,7 +4950,7 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
          * copy it into the opengl renderbuffer */
         // assert(!surface->draw_dirty);
 
-        assert(surface->pitch % bytes_per_pixel == 0);
+        assert(surface->pitch % fmt.bytes_per_pixel == 0);
 
         assert((dma.address & ~0x07FFFFFF) == 0);
 
@@ -4984,16 +4959,12 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
             .shape = (color || !pg->color_binding) ? pg->surface_shape
                                                    : pg->color_binding->shape,
             .gl_buffer = 0,
-            .gl_attachment = gl_attachment,
-            .gl_internal_format = gl_internal_format,
-            .gl_format = gl_format,
-            .gl_type = gl_type,
+            .fmt = fmt,
             .color = color,
             .swizzle = swizzle,
             .vram_addr = dma.address + surface->offset,
             .width = width,
             .height = height,
-            .bytes_per_pixel = bytes_per_pixel,
             .pitch = surface->pitch,
             .size = height * surface->pitch,
             .upload_pending = true,
@@ -5097,13 +5068,13 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
         }
 
         if (should_create) {
-            glTexImage2D(GL_TEXTURE_2D, 0, gl_internal_format,
+            glTexImage2D(GL_TEXTURE_2D, 0, fmt.gl_internal_format,
                          width, height, 0,
-                         gl_format, gl_type,
+                         fmt.gl_format, fmt.gl_type,
                          NULL);
         }
 
-        glFramebufferTexture2D(GL_FRAMEBUFFER, gl_attachment,
+        glFramebufferTexture2D(GL_FRAMEBUFFER, fmt.gl_attachment,
                                GL_TEXTURE_2D, found->gl_buffer, 0);
 
         assert(glCheckFramebufferStatus(GL_FRAMEBUFFER)
