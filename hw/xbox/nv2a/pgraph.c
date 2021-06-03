@@ -5080,19 +5080,6 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
         assert(glCheckFramebufferStatus(GL_FRAMEBUFFER)
             == GL_FRAMEBUFFER_COMPLETE);
 
-        NV2A_GL_DPRINTF(true, "upload_surface %s "
-                      "0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx ", "
-                      "(0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx ", "
-                        "%d %d, %d %d, %d)",
-            color ? "color" : "zeta",
-            dma.address, dma.address + dma.limit,
-            dma.address + surface->offset,
-            dma.address + surface->pitch * height,
-            pg->surface_shape.clip_x, pg->surface_shape.clip_y,
-            pg->surface_shape.clip_width,
-            pg->surface_shape.clip_height,
-            surface->pitch);
-
         surface->buffer_dirty = false;
     }
 
@@ -5103,21 +5090,8 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                 color ? pg->color_binding : pg->zeta_binding, true);
         }
 
-        /* read the opengl framebuffer into the surface */
         surface->write_enabled_cache = false;
         surface->draw_dirty = false;
-
-        NV2A_GL_DPRINTF(true, "read_surface %s "
-                      "0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx ", "
-                      "(0x%" HWADDR_PRIx " - 0x%" HWADDR_PRIx ", "
-                        "%d %d, %d %d, %d)",
-            color ? "color" : "zeta",
-            dma.address, dma.address + dma.limit,
-            dma.address + surface->offset,
-            dma.address + surface->pitch * pg->surface_shape.clip_height,
-            pg->surface_shape.clip_x, pg->surface_shape.clip_y,
-            pg->surface_shape.clip_width, pg->surface_shape.clip_height,
-            surface->pitch);
     }
 }
 
