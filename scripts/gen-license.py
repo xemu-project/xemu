@@ -306,6 +306,12 @@ Lib('gtk', 'https://www.gtk.org/',
 	platform={linux},
 	pkgconfig=PkgConfig('gtk+-3.0'), pkg_ubuntu='libgtk-3-dev'
 	),
+
+Lib('miniz', 'https://github.com/richgel999/miniz',
+	lgplv2_1, 'https://raw.githubusercontent.com/richgel999/miniz/master/LICENSE',
+	ships_static={windows},	platform={windows},
+	version='2.1.0'
+	),
 ]
 
 def gen_license():
