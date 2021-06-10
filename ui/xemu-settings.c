@@ -68,6 +68,7 @@ struct xemu_settings {
 
 	// [misc]
 	char *user_token;
+	int check_for_update; // Boolean
 };
 
 struct enum_str_map {
@@ -125,7 +126,8 @@ struct config_offset_table {
 	[XEMU_SETTINGS_NETWORK_LOCAL_ADDR]  = { CONFIG_TYPE_STRING, "network", "local_addr",  offsetof(struct xemu_settings, net_local_addr),  { .default_str  = "0.0.0.0:9368" } },
 	[XEMU_SETTINGS_NETWORK_REMOTE_ADDR] = { CONFIG_TYPE_STRING, "network", "remote_addr", offsetof(struct xemu_settings, net_remote_addr), { .default_str  = "1.2.3.4:9368" } },
 
-	[XEMU_SETTINGS_MISC_USER_TOKEN] = { CONFIG_TYPE_STRING, "misc", "user_token", offsetof(struct xemu_settings, user_token), { .default_str  = "" } },
+	[XEMU_SETTINGS_MISC_USER_TOKEN]       = { CONFIG_TYPE_STRING, "misc", "user_token", offsetof(struct xemu_settings, user_token), { .default_str  = "" } },
+	[XEMU_SETTINGS_MISC_CHECK_FOR_UPDATE] = { CONFIG_TYPE_BOOL,   "misc", "check_for_update", offsetof(struct xemu_settings, check_for_update), { .default_bool = -1  } },
 };
 
 static const char *settings_path;
@@ -312,6 +314,8 @@ static int config_parse_callback(void *user, const char *section, const char *na
 			int_val = 1;
 		} else if (strcmp(value, "false") == 0) {
 			int_val = 0;
+		} else if (strcmp(value, "") == 0) {
+			return 1;
 		} else {
 			fprintf(stderr, "Error parsing %s.%s as boolean. Got '%s'\n", section, name, value);
 			return 0;
@@ -401,7 +405,11 @@ int xemu_settings_save(void)
 		} else if (config_items[i].type == CONFIG_TYPE_BOOL) {
 			int v;
 			xemu_settings_get_bool(i, &v);
-			fprintf(fd, "%s\n", !!(v) ? "true" : "false");
+			if (v == 0 || v == 1) {
+				fprintf(fd, "%s\n", !!(v) ? "true" : "false");
+			} else {
+				// Other values are considered unset
+			}
 		} else if (config_items[i].type == CONFIG_TYPE_ENUM) {
 			int v;
 			xemu_settings_get_enum(i, &v);

@@ -37,6 +37,7 @@ xemu_ss.add(files(
   'xemu-hud.cc',
   'xemu-reporting.cc',
 ))
+xemu_ss.add(when: 'CONFIG_WIN32', if_true: files('xemu-update.cc'))
 
 imgui_flags = ['-DIMGUI_IMPL_OPENGL_LOADER_CUSTOM="epoxy/gl.h"']
 
