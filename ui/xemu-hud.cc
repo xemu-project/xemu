@@ -35,6 +35,10 @@
 #include "xemu-xbe.h"
 #include "xemu-reporting.h"
 
+#if defined(_WIN32)
+#include "xemu-update.h"
+#endif
+
 #include "data/roboto_medium.ttf.h"
 
 #include "imgui/imgui.h"
@@ -570,6 +574,9 @@ private:
     char eeprom_path[MAX_STRING_LEN];
     int  memory_idx;
     bool short_animation;
+#if defined(_WIN32)
+    bool check_for_update;
+#endif
 
 public:
     SettingsWindow()
@@ -622,6 +629,11 @@ public:
         xemu_settings_get_bool(XEMU_SETTINGS_SYSTEM_SHORTANIM, &tmp_int);
         short_animation = !!tmp_int;
 
+#if defined(_WIN32)
+        xemu_settings_get_bool(XEMU_SETTINGS_MISC_CHECK_FOR_UPDATE, &tmp_int);
+        check_for_update = !!tmp_int;
+#endif
+
         dirty = false;
     }
 
@@ -633,6 +645,9 @@ public:
         xemu_settings_set_string(XEMU_SETTINGS_SYSTEM_EEPROM_PATH, eeprom_path);
         xemu_settings_set_int(XEMU_SETTINGS_SYSTEM_MEMORY, 64+memory_idx*64);
         xemu_settings_set_bool(XEMU_SETTINGS_SYSTEM_SHORTANIM, short_animation);
+#if defined(_WIN32)
+        xemu_settings_set_bool(XEMU_SETTINGS_MISC_CHECK_FOR_UPDATE, check_for_update);
+#endif
         xemu_settings_save();
         xemu_queue_notification("Settings saved! Restart to apply updates.");
         pending_restart = true;
@@ -715,6 +730,15 @@ public:
             dirty = true;
         }
         ImGui::NextColumn();
+
+#if defined(_WIN32)
+        ImGui::Dummy(ImVec2(0,0));
+        ImGui::NextColumn();
+        if (ImGui::Checkbox("Check for updates on startup", &check_for_update)) {
+            dirty = true;
+        }
+        ImGui::NextColumn();
+#endif
 
         ImGui::Columns(1);
 
@@ -1536,6 +1560,140 @@ public:
     }
 };
 
+#if defined(_WIN32)
+class AutoUpdateWindow
+{
+protected:
+    Updater updater;
+
+public:
+    bool is_open;
+    bool should_prompt_auto_update_selection;
+
+    AutoUpdateWindow()
+    {
+        is_open = false;
+        should_prompt_auto_update_selection = false;
+    }
+
+    ~AutoUpdateWindow()
+    {
+    }
+
+    void save_auto_update_selection(bool preference)
+    {
+        xemu_settings_set_bool(XEMU_SETTINGS_MISC_CHECK_FOR_UPDATE, preference);
+        xemu_settings_save();
+        should_prompt_auto_update_selection = false;
+    }
+
+    void prompt_auto_update_selection()
+    {
+        ImGui::Text("Would you like xemu to check for updates on startup?");
+        ImGui::SetNextItemWidth(-1.0f);
+
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+        ImGui::Separator();
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+
+        float w = (130)*g_ui_scale;
+        float bw = w + (10)*g_ui_scale;
+        ImGui::SetCursorPosX(ImGui::GetWindowWidth()-2*bw);
+
+        if (ImGui::Button("No", ImVec2(w, 0))) {
+            save_auto_update_selection(false);
+            is_open = false;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Yes", ImVec2(w, 0))) {
+            save_auto_update_selection(true);
+            check_for_updates_and_prompt_if_available();
+        }
+    }
+
+    void check_for_updates_and_prompt_if_available()
+    {
+        updater.check_for_update([this](){
+            is_open |= updater.is_update_available();
+        });
+    }
+
+    void Draw()
+    {
+        if (!is_open) return;
+        ImGui::SetNextWindowContentSize(ImVec2(550.0f*g_ui_scale, 0.0f));
+        if (!ImGui::Begin("Update", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::End();
+            return;
+        }
+
+        if (should_prompt_auto_update_selection) {
+            prompt_auto_update_selection();
+            ImGui::End();
+            return;
+        }
+
+        if (ImGui::IsWindowAppearing() && !updater.is_update_available()) {
+            updater.check_for_update();
+        }
+
+        const char *status_msg[] = {
+            "",
+            "An error has occured. Try again.",
+            "Checking for update...",
+            "Downloading update...",
+            "Update successful! Restart to launch updated version of xemu."
+        };
+        const char *available_msg[] = {
+            "Update availability unknown.",
+            "This version of xemu is up to date.",
+            "An updated version of xemu is available!",
+        };
+
+        if (updater.get_status() == UPDATER_IDLE) {
+            ImGui::Text(available_msg[updater.get_update_availability()]);
+        } else {
+            ImGui::Text(status_msg[updater.get_status()]);
+        }
+
+        if (updater.is_updating()) {
+            ImGui::ProgressBar(updater.get_update_progress_percentage()/100.0f,
+                               ImVec2(-1.0f, 0.0f));
+        }
+
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+        ImGui::Separator();
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+
+        float w = (130)*g_ui_scale;
+        float bw = w + (10)*g_ui_scale;
+        ImGui::SetCursorPosX(ImGui::GetWindowWidth()-bw);
+
+        if (updater.is_checking_for_update() || updater.is_updating()) {
+            if (ImGui::Button("Cancel", ImVec2(w, 0))) {
+                updater.cancel();
+            }
+        } else {
+            if (updater.is_pending_restart()) {
+                if (ImGui::Button("Restart", ImVec2(w, 0))) {
+                    updater.restart_to_updated();
+                }
+            } else if (updater.is_update_available()) {
+                if (ImGui::Button("Update", ImVec2(w, 0))) {
+                    updater.update();
+                }
+            } else {
+                if (ImGui::Button("Check for Update", ImVec2(w, 0))) {
+                    updater.check_for_update();
+                }
+            }
+        }
+
+        ImGui::End();
+    }
+};
+#endif
+
 static MonitorWindow monitor_window;
 static DebugApuWindow apu_window;
 static DebugVideoWindow video_window;
@@ -1545,6 +1703,9 @@ static AboutWindow about_window;
 static SettingsWindow settings_window;
 static CompatibilityReporter compatibility_reporter_window;
 static NotificationManager notification_manager;
+#if defined(_WIN32)
+static AutoUpdateWindow update_window;
+#endif
 static std::deque<const char *> g_errors;
 
 class FirstBootWindow
@@ -1776,11 +1937,15 @@ static void ShowMainMenu()
 
         if (ImGui::BeginMenu("Help"))
         {
-            ImGui::MenuItem("Report Compatibility", NULL, &compatibility_reporter_window.is_open);
             if (ImGui::MenuItem("Help", NULL))
             {
                 xemu_open_web_browser("https://github.com/mborgerson/xemu/wiki");
             }
+
+            ImGui::MenuItem("Report Compatibility...", NULL, &compatibility_reporter_window.is_open);
+#if defined(_WIN32)
+            ImGui::MenuItem("Check for Updates...", NULL, &update_window.is_open);
+#endif
 
             ImGui::Separator();
             ImGui::MenuItem("About", NULL, &about_window.is_open);
@@ -1911,6 +2076,18 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     g_sdl_window = window;
 
     ImPlot::CreateContext();
+
+#if defined(_WIN32)
+    int should_check_for_update;
+    xemu_settings_get_bool(XEMU_SETTINGS_MISC_CHECK_FOR_UPDATE, &should_check_for_update);
+    if (should_check_for_update == -1) {
+        update_window.should_prompt_auto_update_selection =
+            update_window.is_open = !xemu_settings_did_fail_to_load();
+
+    } else if (should_check_for_update) {
+        update_window.check_for_updates_and_prompt_if_available();
+    }
+#endif
 }
 
 void xemu_hud_cleanup(void)
@@ -2076,6 +2253,9 @@ void xemu_hud_render(void)
     network_window.Draw();
     compatibility_reporter_window.Draw();
     notification_manager.Draw();
+#if defined(_WIN32)
+    update_window.Draw();
+#endif
 
     // Very rudimentary error notification API
     if (g_errors.size() > 0) {
