@@ -3723,6 +3723,20 @@ else
 fi
 
 ##########################################
+# libpcap probe
+if test "$mingw32" = "yes"; then
+  libpcap_cflags="-I$source_path/winpcap-loader/include"
+  libpcap_libs="-lws2_32"
+else
+  if $pkg_config --exists "libpcap"; then
+    libpcap_cflags=$($pkg_config --cflags libpcap)
+    libpcap_libs=$($pkg_config --libs libpcap)
+  else
+    feature_not_found "libpcap" "Install libpcap"
+  fi
+fi
+
+##########################################
 # libsamplerate probe
 if $pkg_config --exists samplerate; then
     libsamplerate_cflags=$($pkg_config --cflags samplerate)
@@ -6078,6 +6092,9 @@ echo "XEMU_GTK_LIBS=$xemu_gtk_libs" >> $config_host_mak
 
 echo "OPENSSL_CFLAGS=$openssl_cflags" >> $config_host_mak
 echo "OPENSSL_LIBS=$openssl_libs" >> $config_host_mak
+
+echo "LIBPCAP_CFLAGS=$libpcap_cflags" >> $config_host_mak
+echo "LIBPCAP_LIBS=$libpcap_libs" >> $config_host_mak
 
 echo "LIBSAMPLERATE_CFLAGS=$libsamplerate_cflags" >> $config_host_mak
 echo "LIBSAMPLERATE_LIBS=$libsamplerate_libs" >> $config_host_mak
