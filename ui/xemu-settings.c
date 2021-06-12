@@ -145,7 +145,9 @@ static void *xemu_settings_get_field(enum xemu_settings_keys key, enum config_ty
 int xemu_settings_set_string(enum xemu_settings_keys key, const char *str)
 {
 	char **field_str = (char **)xemu_settings_get_field(key, CONFIG_TYPE_STRING);
-	free(*field_str);
+	if (*field_str) {
+		free(*field_str);
+	}
 	*field_str = strdup(str);
 	return 0;
 }
@@ -369,6 +371,7 @@ void xemu_settings_load(void)
 
 	g_settings = malloc(sizeof(struct xemu_settings));
 	assert(g_settings != NULL);
+	memset(g_settings, 0, sizeof(struct xemu_settings));
 	xemu_settings_init_default(g_settings);
 
 	// Parse configuration file
