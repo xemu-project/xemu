@@ -4874,10 +4874,12 @@ static void pgraph_compare_surfaces(SurfaceBinding *s1, SurfaceBinding *s2)
     DO_CMP(draw_time)
 }
 
-static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
+static void pgraph_populate_surface_binding_entry(NV2AState *d, bool color, SurfaceBinding *entry)
 {
     PGRAPHState *pg = &d->pgraph;
-
+    Surface *surface;
+    hwaddr dma_address;
+    SurfaceFormatInfo fmt;
     unsigned int width, height;
 
     if (color || !pg->color_binding) {
@@ -4892,10 +4894,6 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
         width = pg->color_binding->width;
         height = pg->color_binding->height;
     }
-
-    Surface *surface;
-    hwaddr dma_address;
-    SurfaceFormatInfo fmt;
 
     if (color) {
         surface = &pg->surface_color;
@@ -4932,54 +4930,47 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
     // assert(dma.address + surface->offset != 0);
     assert(surface->offset <= dma.limit);
     assert(surface->offset + surface->pitch * height <= dma.limit + 1);
+    assert(surface->pitch % fmt.bytes_per_pixel == 0);
+    assert((dma.address & ~0x07FFFFFF) == 0);
 
-    bool swizzle = (pg->surface_type == NV097_SET_SURFACE_FORMAT_TYPE_SWIZZLE);
-    bool dirty = surface->buffer_dirty;
+    entry->shape = (color || !pg->color_binding) ? pg->surface_shape : pg->color_binding->shape;
+    entry->gl_buffer = 0;
+    entry->fmt = fmt;
+    entry->color = color;
+    entry->swizzle = (pg->surface_type == NV097_SET_SURFACE_FORMAT_TYPE_SWIZZLE);
+    entry->vram_addr = dma.address + surface->offset;
+    entry->width = width;
+    entry->height = height;
+    entry->pitch = surface->pitch;
+    entry->size = height * surface->pitch;
+    entry->upload_pending = true;
+    entry->download_pending = false;
+    entry->draw_dirty = false;
+    entry->dma_addr = dma.address;
+    entry->dma_len = dma.limit;
+    entry->frame_time = pg->frame_time;
+    entry->draw_time = pg->draw_time;
+}
 
-    bool mem_dirty = false;
-    if (!tcg_enabled()) {
-        mem_dirty |= memory_region_test_and_clear_dirty(d->vram,
-                                                        dma.address + surface->offset,
-                                                        surface->pitch * height,
-                                                        DIRTY_MEMORY_NV2A);
-        dirty |= mem_dirty;
-    }
+static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
+{
+    PGRAPHState *pg = &d->pgraph;
 
-    if (upload && dirty) {
+    SurfaceBinding entry;
+    pgraph_populate_surface_binding_entry(d, color, &entry);
+
+    Surface *surface = color ? &pg->surface_color : &pg->surface_zeta;
+
+    bool mem_dirty = !tcg_enabled() && memory_region_test_and_clear_dirty(
+                                           d->vram, entry.vram_addr, entry.size,
+                                           DIRTY_MEMORY_NV2A);
+
+    if (upload && (surface->buffer_dirty || mem_dirty)) {
         /* surface modified (or moved) by the cpu.
          * copy it into the opengl renderbuffer */
-        // assert(!surface->draw_dirty);
-
-        assert(surface->pitch % fmt.bytes_per_pixel == 0);
-
-        assert((dma.address & ~0x07FFFFFF) == 0);
-
-        // FIXME: Refactor this entry structure creation out of here
-        SurfaceBinding entry = {
-            .shape = (color || !pg->color_binding) ? pg->surface_shape
-                                                   : pg->color_binding->shape,
-            .gl_buffer = 0,
-            .fmt = fmt,
-            .color = color,
-            .swizzle = swizzle,
-            .vram_addr = dma.address + surface->offset,
-            .width = width,
-            .height = height,
-            .pitch = surface->pitch,
-            .size = height * surface->pitch,
-            .upload_pending = true,
-            .download_pending = false,
-            .draw_dirty = false,
-            .dma_addr = dma.address,
-            .dma_len = dma.limit,
-            .frame_time = pg->frame_time,
-            .draw_time = pg->draw_time,
-        };
-
         pgraph_unbind_surface(d, color);
 
         SurfaceBinding *found = pgraph_surface_get(d, entry.vram_addr);
-
         if (found != NULL) {
             // FIXME: Support same color/zeta surface target. In the mean time,
             // if the surface we just found is currently bound, just unbind it.
@@ -4994,22 +4985,21 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
         bool should_create = true;
 
         // FIXME: Refactor
-        pg->surface_binding_dim.width = width;
+        pg->surface_binding_dim.width = entry.width;
         pg->surface_binding_dim.clip_x = entry.shape.clip_x;
         pg->surface_binding_dim.clip_width = entry.shape.clip_width;
-        pg->surface_binding_dim.height = height;
+        pg->surface_binding_dim.height = entry.height;
         pg->surface_binding_dim.clip_y = entry.shape.clip_y;
         pg->surface_binding_dim.clip_height = entry.shape.clip_height;
 
         NV2A_XPRINTF(DBG_SURFACES,
-            "Target: [%5s @ %" HWADDR_PRIx "] (%s) "
-            "aa:%d clip:x=%d,w=%d,y=%d,h=%d\n",
-            color ? "COLOR" : "ZETA",
-            entry.vram_addr,
-            swizzle ? "sz" : "ln",
-            pg->surface_shape.anti_aliasing,
-            pg->surface_shape.clip_x, pg->surface_shape.clip_width,
-            pg->surface_shape.clip_y, pg->surface_shape.clip_height);
+                     "Target: [%5s @ %" HWADDR_PRIx "] (%s) "
+                     "aa:%d clip:x=%d,w=%d,y=%d,h=%d\n",
+                     color ? "COLOR" : "ZETA", entry.vram_addr,
+                     entry.swizzle ? "sz" : "ln",
+                     pg->surface_shape.anti_aliasing, pg->surface_shape.clip_x,
+                     pg->surface_shape.clip_width, pg->surface_shape.clip_y,
+                     pg->surface_shape.clip_height);
 
         if (found != NULL) {
             bool is_compatible =
@@ -5026,6 +5016,10 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                 should_create = false;
                 pg->surface_zeta.buffer_dirty |= color;
                 // FIXME: Check to see if one surface will overlap the other
+
+                if (color) {
+
+                }
             } else {
                 NV2A_XPRINTF(DBG_SURFACES, "Evicting incompatible surface\n");
                 pgraph_compare_surfaces(found, &entry);
@@ -5043,7 +5037,7 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                            color ? "color" : "zeta",
                            color ? pg->surface_shape.color_format
                                  : pg->surface_shape.zeta_format,
-                           width, height, surface->offset);
+                           entry.width, entry.height, surface->offset);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -5051,15 +5045,13 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
         }
 
         NV2A_XPRINTF(DBG_SURFACES,
-                "%6s: [%5s @ %" HWADDR_PRIx " (%dx%d)] (%s) "
-                "aa:%d, clip:x=%d,w=%d,y=%d,h=%d\n",
-                should_create ? "Create" : "Hit",
-                color ? "COLOR" : "ZETA",
-                found->vram_addr, found->width, found->height,
-                found->swizzle ? "sz" : "ln",
-                found->shape.anti_aliasing,
-                found->shape.clip_x, found->shape.clip_width,
-                found->shape.clip_y, found->shape.clip_height);
+                     "%6s: [%5s @ %" HWADDR_PRIx " (%dx%d)] (%s) "
+                     "aa:%d, clip:x=%d,w=%d,y=%d,h=%d\n",
+                     should_create ? "Create" : "Hit", color ? "COLOR" : "ZETA",
+                     found->vram_addr, found->width, found->height,
+                     found->swizzle ? "sz" : "ln", found->shape.anti_aliasing,
+                     found->shape.clip_x, found->shape.clip_width,
+                     found->shape.clip_y, found->shape.clip_height);
 
         if (color) {
             pg->color_binding = found;
@@ -5068,17 +5060,15 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
         }
 
         if (should_create) {
-            glTexImage2D(GL_TEXTURE_2D, 0, fmt.gl_internal_format,
-                         width, height, 0,
-                         fmt.gl_format, fmt.gl_type,
-                         NULL);
+            glTexImage2D(GL_TEXTURE_2D, 0, entry.fmt.gl_internal_format,
+                         entry.width, entry.height, 0, entry.fmt.gl_format,
+                         entry.fmt.gl_type, NULL);
         }
 
-        glFramebufferTexture2D(GL_FRAMEBUFFER, fmt.gl_attachment,
+        glFramebufferTexture2D(GL_FRAMEBUFFER, entry.fmt.gl_attachment,
                                GL_TEXTURE_2D, found->gl_buffer, 0);
-
-        assert(glCheckFramebufferStatus(GL_FRAMEBUFFER)
-            == GL_FRAMEBUFFER_COMPLETE);
+        assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) ==
+               GL_FRAMEBUFFER_COMPLETE);
 
         surface->buffer_dirty = false;
     }
