@@ -36,6 +36,7 @@
 #if defined(_WIN32)
 #include <pcap/pcap.h>
 #endif
+#include "xemu-notifications.h"
 
 static const char *id = "xemu-netdev";
 static const char *id_hubport = "xemu-netdev-hubport";
@@ -89,8 +90,9 @@ void xemu_net_enable(void)
     netdev_add(opts, &local_err);
     if (local_err) {
         qemu_opts_del(opts);
-        error_report_err(local_err);
         // error_propagate(errp, local_err);
+        xemu_queue_error_message(error_get_pretty(local_err));
+        error_report_err(local_err);
         return;
     }
 
@@ -105,8 +107,9 @@ void xemu_net_enable(void)
     netdev_add(opts, &local_err);
     if (local_err) {
         qemu_opts_del(opts);
-        error_report_err(local_err);
         // error_propagate(errp, local_err);
+        xemu_queue_error_message(error_get_pretty(local_err));
+        error_report_err(local_err);
     }
 }
 
