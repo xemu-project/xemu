@@ -652,6 +652,11 @@ static ssize_t nvnet_receive(NetClientState *nc,
     return nvnet_receive_iov(nc, &iov, 1);
 }
 
+static bool nvnet_is_packet_oversized(size_t size)
+{
+    return size > RX_ALLOC_BUFSIZE;
+}
+
 static ssize_t nvnet_receive_iov(NetClientState *nc,
                                  const struct iovec *iov, int iovcnt)
 {
@@ -660,10 +665,10 @@ static ssize_t nvnet_receive_iov(NetClientState *nc,
 
     NVNET_DPRINTF("nvnet: Packet received!\n");
 
-    if (size > sizeof(s->rx_dma_buf)) {
-        NVNET_DPRINTF("nvnet_receive_iov packet too large!\n");
-        assert(0);
-        return -1;
+    if (nvnet_is_packet_oversized(size)) {
+        /* Drop */
+        NVNET_DPRINTF("%s packet too large!\n", __func__);
+        return size;
     }
 
     iov_to_buf(iov, iovcnt, 0, s->rx_dma_buf, size);
