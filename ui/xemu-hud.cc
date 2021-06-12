@@ -21,6 +21,9 @@
 #include <epoxy/gl.h>
 #include <stdio.h>
 #include <deque>
+#include <vector>
+#include <string>
+#include <memory>
 
 #include "xemu-hud.h"
 #include "xemu-input.h"
@@ -56,6 +59,7 @@ extern "C" {
 #include "sysemu/runstate.h"
 #include "hw/xbox/mcpx/apu_debug.h"
 #include "hw/xbox/nv2a/debug.h"
+#include "net/pcap.h"
 
 #undef typename
 #undef atomic_fetch_add
@@ -858,6 +862,100 @@ public:
     }
 };
 
+class NetworkInterface
+{
+public:
+    std::string pcap_name;
+    std::string description;
+    std::string friendlyname;
+
+    NetworkInterface(pcap_if_t *pcap_desc, char *_friendlyname = NULL)
+    {
+        pcap_name = pcap_desc->name;
+        description = pcap_desc->description ?: pcap_desc->name;
+        if (_friendlyname) {
+            char *tmp = g_strdup_printf("%s (%s)", _friendlyname, description.c_str());
+            friendlyname = tmp;
+            g_free((gpointer)tmp);
+        } else {
+            friendlyname = description;
+        }
+    }
+};
+
+class NetworkInterfaceManager
+{
+public:
+    std::vector<std::unique_ptr<NetworkInterface>> ifaces;
+    NetworkInterface *current_iface;
+    const char *current_iface_name;
+    bool failed_to_load_lib;
+
+    NetworkInterfaceManager()
+    {
+        current_iface = NULL;
+        xemu_settings_get_string(XEMU_SETTINGS_NETWORK_PCAP_INTERFACE,
+                                 &current_iface_name);
+        failed_to_load_lib = false;
+    }
+
+    void refresh(void)
+    {
+        pcap_if_t *alldevs, *iter;
+        char err[PCAP_ERRBUF_SIZE];
+
+        if (xemu_net_is_enabled()) {
+            return;
+        }
+
+#if defined(_WIN32)
+        if (pcap_load_library()) {
+            failed_to_load_lib = true;
+            return;
+        }
+#endif
+
+        ifaces.clear();
+        current_iface = NULL;
+
+        if (pcap_findalldevs(&alldevs, err)) {
+            return;
+        }
+
+        for (iter=alldevs; iter != NULL; iter=iter->next) {
+#if defined(_WIN32)
+            char *friendlyname = get_windows_interface_friendly_name(iter->name);
+            ifaces.emplace_back(new NetworkInterface(iter, friendlyname));
+            if (friendlyname) {
+                g_free((gpointer)friendlyname);
+            }
+#else
+            ifaces.emplace_back(new NetworkInterface(iter));
+#endif
+            if (!strcmp(current_iface_name, iter->name)) {
+                current_iface = ifaces.back().get();
+            }
+        }
+
+        pcap_freealldevs(alldevs);
+    }
+
+    void select(NetworkInterface &iface)
+    {
+        current_iface = &iface;
+        xemu_settings_set_string(XEMU_SETTINGS_NETWORK_PCAP_INTERFACE,
+                                 iface.pcap_name.c_str());
+        xemu_settings_get_string(XEMU_SETTINGS_NETWORK_PCAP_INTERFACE,
+                                 &current_iface_name);
+    }
+
+    bool is_current(NetworkInterface &iface)
+    {
+        return &iface == current_iface;
+    }
+};
+
+
 class NetworkWindow
 {
 public:
@@ -865,6 +963,7 @@ public:
     int  backend;
     char remote_addr[64];
     char local_addr[64];
+    std::unique_ptr<NetworkInterfaceManager> iface_mgr;
 
     NetworkWindow()
     {
@@ -879,7 +978,7 @@ public:
     {
         if (!is_open) return;
 
-        ImGui::SetNextWindowContentSize(ImVec2(400.0f*g_ui_scale, 0.0f));
+        ImGui::SetNextWindowContentSize(ImVec2(500.0f*g_ui_scale, 0.0f));
         if (!ImGui::Begin("Network", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::End();
             return;
@@ -908,16 +1007,18 @@ public:
         ImGui::NextColumn();
         if (is_enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
         int temp_backend = backend; // Temporary to make backend combo read-only (FIXME: surely there's a nicer way)
-        if (ImGui::Combo("##backend", is_enabled ? &temp_backend : &backend, "User (NAT)\0Socket\0") && !is_enabled) {
+        if (ImGui::Combo("##backend", is_enabled ? &temp_backend : &backend, "NAT\0UDP Tunnel\0Bridged Adapter\0") && !is_enabled) {
             xemu_settings_set_enum(XEMU_SETTINGS_NETWORK_BACKEND, backend);
             xemu_settings_save();
         }
         if (is_enabled) ImGui::PopStyleVar();
         ImGui::SameLine();
         if (backend == XEMU_NET_BACKEND_USER) {
-            HelpMarker("User-mode TCP/IP stack with a NAT'd network");
+            HelpMarker("User-mode TCP/IP stack with network address translation");
         } else if (backend == XEMU_NET_BACKEND_SOCKET_UDP) {
-            HelpMarker("Encapsulates link-layer traffic in UDP packets");
+            HelpMarker("Tunnels link-layer traffic to a remote host via UDP");
+        } else if (backend == XEMU_NET_BACKEND_PCAP) {
+            HelpMarker("Bridges with a host network interface");
         }
         ImGui::NextColumn();
 
@@ -940,6 +1041,64 @@ public:
             ImGui::InputText("###local_host", local_addr, sizeof(local_addr), flg);
             if (is_enabled) ImGui::PopStyleVar();
             ImGui::NextColumn();
+        } else if (backend == XEMU_NET_BACKEND_PCAP) {
+            static bool should_refresh = true;
+            if (iface_mgr.get() == nullptr) {
+                iface_mgr.reset(new NetworkInterfaceManager());
+                iface_mgr->refresh();
+            }
+
+            if (iface_mgr->failed_to_load_lib) {
+#if defined(_WIN32)
+                ImGui::Columns(1);
+                ImGui::Dummy(ImVec2(0,20*g_ui_scale));
+                const char *msg = "WinPcap/npcap library could not be loaded.\n"
+                                  "To use this attachment, please install npcap.";
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (ImGui::GetColumnWidth() - g_ui_scale*ImGui::CalcTextSize(msg).x)/2);
+                ImGui::Text("%s", msg);
+                ImGui::Dummy(ImVec2(0,10*g_ui_scale));
+                ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120*g_ui_scale)/2);
+                if (ImGui::Button("Install npcap", ImVec2(120*g_ui_scale, 0))) {
+                    xemu_open_web_browser("https://nmap.org/npcap/");
+                }
+                ImGui::Dummy(ImVec2(0,10*g_ui_scale));
+#endif
+            } else {
+                ImGui::Text("Network Interface");
+                ImGui::SameLine(); HelpMarker("Host network interface to bridge with");
+                ImGui::NextColumn();
+
+                float w = ImGui::GetColumnWidth()-10*g_ui_scale;
+                ImGui::SetNextItemWidth(w);
+                const char *selected_display_name = (
+                    iface_mgr->current_iface
+                    ? iface_mgr->current_iface->friendlyname.c_str()
+                    : iface_mgr->current_iface_name
+                    );
+                if (is_enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
+                if (ImGui::BeginCombo("###network_iface", selected_display_name)) {
+                    if (should_refresh) {
+                        iface_mgr->refresh();
+                        should_refresh = false;
+                    }
+                    int i = 0;
+                    for (auto& iface : iface_mgr->ifaces) {
+                        bool is_selected = iface_mgr->is_current((*iface));
+                        ImGui::PushID(i++);
+                        if (ImGui::Selectable(iface->friendlyname.c_str(), is_selected)) {
+                            if (!is_enabled) iface_mgr->select((*iface));
+                        }
+                        if (is_selected) ImGui::SetItemDefaultFocus();
+                        ImGui::PopID();
+                    }
+                    ImGui::EndCombo();
+                } else {
+                    should_refresh = true;
+                }
+                if (is_enabled) ImGui::PopStyleVar();
+
+                ImGui::NextColumn();
+            }
         }
 
         ImGui::Columns(1);
