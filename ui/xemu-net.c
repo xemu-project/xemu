@@ -33,6 +33,9 @@
 #include "qemu/config-file.h"
 #include "net/net.h"
 #include "net/hub.h"
+#if defined(_WIN32)
+#include <pcap/pcap.h>
+#endif
 
 static const char *id = "xemu-netdev";
 static const char *id_hubport = "xemu-netdev-hubport";
@@ -64,6 +67,18 @@ void xemu_net_enable(void)
         qdict_put_str(qdict, "type",      "socket");
         qdict_put_str(qdict, "udp",       remote_addr);
         qdict_put_str(qdict, "localaddr", local_addr);
+    } else if (backend == XEMU_NET_BACKEND_PCAP) {
+#if defined(_WIN32)
+        if (pcap_load_library()) {
+            return;
+        }
+#endif
+        const char *iface;
+        xemu_settings_get_string(XEMU_SETTINGS_NETWORK_PCAP_INTERFACE, &iface);
+        qdict = qdict_new();
+        qdict_put_str(qdict, "id",        id);
+        qdict_put_str(qdict, "type",      "pcap");
+        qdict_put_str(qdict, "ifname",    iface);
     } else {
         // Unsupported backend type
         return;
