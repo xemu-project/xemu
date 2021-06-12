@@ -167,7 +167,8 @@ def main():
 		'libsamplerate',
 		'libpixman',
 		'libepoxy',
-		'openssl10'])
+		'openssl10',
+		'libpcap'])
 
 if __name__ == '__main__':
 	main()

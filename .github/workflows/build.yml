@@ -98,6 +98,7 @@ jobs:
           libpixman-1-dev \
           libsdl2-dev \
           libsamplerate0-dev \
+          libpcap-dev \
           ccache \
           ninja-build
     - name: Initialize Compiler Cache

@@ -834,6 +834,9 @@ xemu_gtk = declare_dependency(compile_args: config_host['XEMU_GTK_CFLAGS'].split
 openssl = declare_dependency(compile_args: config_host['OPENSSL_CFLAGS'].split(),
                              link_args: config_host['OPENSSL_LIBS'].split())
 
+libpcap = declare_dependency(compile_args: config_host['LIBPCAP_CFLAGS'].split(),
+                             link_args: config_host['LIBPCAP_LIBS'].split())
+
 libsamplerate = declare_dependency(compile_args: config_host['LIBSAMPLERATE_CFLAGS'].split(),
                                    link_args: config_host['LIBSAMPLERATE_LIBS'].split())
 
@@ -1899,6 +1902,7 @@ subdir('authz')
 subdir('crypto')
 subdir('ui')
 subdir('data')
+subdir('winpcap-loader')
 
 
 if enable_modules
