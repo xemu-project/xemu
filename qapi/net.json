@@ -451,6 +451,19 @@
     '*queues':       'int' } }
 
 ##
+# @NetdevPcapOptions:
+#
+# Connect a client to a libpcap interface
+#
+# @ifname: Name of host interface
+#
+# Since: 6.0
+##
+{ 'struct': 'NetdevPcapOptions',
+  'data': {
+    'ifname':     'str' } }
+
+##
 # @NetClientDriver:
 #
 # Available netdev drivers.
@@ -461,7 +474,8 @@
 ##
 { 'enum': 'NetClientDriver',
   'data': [ 'none', 'nic', 'user', 'tap', 'l2tpv3', 'socket', 'vde',
-            'bridge', 'hubport', 'netmap', 'vhost-user', 'vhost-vdpa' ] }
+            'bridge', 'hubport', 'netmap', 'vhost-user', 'vhost-vdpa',
+            'pcap' ] }
 
 ##
 # @Netdev:
@@ -490,7 +504,8 @@
     'hubport':  'NetdevHubPortOptions',
     'netmap':   'NetdevNetmapOptions',
     'vhost-user': 'NetdevVhostUserOptions',
-    'vhost-vdpa': 'NetdevVhostVDPAOptions' } }
+    'vhost-vdpa': 'NetdevVhostVDPAOptions',
+    'pcap':     'NetdevPcapOptions' } }
 
 ##
 # @RxState:
