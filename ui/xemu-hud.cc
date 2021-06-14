@@ -751,7 +751,7 @@ public:
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
 
         if (ImGui::Button("Help", ImVec2(120*g_ui_scale, 0))) {
-            xemu_open_web_browser("https://github.com/mborgerson/xemu/wiki#getting-started");
+            xemu_open_web_browser("https://xemu.app/docs/getting-started/");
         }
         ImGui::SameLine();
 
@@ -1108,7 +1108,7 @@ public:
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
 
         if (ImGui::Button("Help", ImVec2(120*g_ui_scale, 0))) {
-                xemu_open_web_browser("https://github.com/mborgerson/xemu/wiki/Networking");
+                xemu_open_web_browser("https://xemu.app/docs/networking/");
         }
 
         ImGui::SameLine();
@@ -2098,7 +2098,7 @@ static void ShowMainMenu()
         {
             if (ImGui::MenuItem("Help", NULL))
             {
-                xemu_open_web_browser("https://github.com/mborgerson/xemu/wiki");
+                xemu_open_web_browser("https://xemu.app/docs/getting-started/");
             }
 
             ImGui::MenuItem("Report Compatibility...", NULL, &compatibility_reporter_window.is_open);
