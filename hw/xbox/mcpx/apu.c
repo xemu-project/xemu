@@ -2601,7 +2601,10 @@ void mcpx_apu_init(PCIBus *bus, int devfn, MemoryRegion *ram)
         .userdata = d,
     };
 
-    assert(SDL_Init(SDL_INIT_AUDIO) >= 0);
+    if (SDL_Init(SDL_INIT_AUDIO) < 0)  {
+        fprintf(stderr, "Failed to initialize SDL audio subsystem: %s\n", SDL_GetError());
+        exit(1);
+    }
 
     SDL_AudioDeviceID sdl_audio_dev;
     sdl_audio_dev = SDL_OpenAudioDevice(NULL, 0, &sdl_audio_spec, NULL, 0);
