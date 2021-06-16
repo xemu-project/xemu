@@ -809,7 +809,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
 #endif
 
     if (SDL_Init(SDL_INIT_VIDEO)) {
-        fprintf(stderr, "Could not initialize SDL(%s) - exiting\n",
+        fprintf(stderr, "Failed to initialize SDL video subsystem: %s\n",
                 SDL_GetError());
         exit(1);
     }
