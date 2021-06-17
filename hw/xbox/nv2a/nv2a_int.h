@@ -283,7 +283,13 @@ typedef struct PGRAPHState {
     float bump_env_matrix[NV2A_MAX_TEXTURES - 1][4]; /* 3 allowed stages with 2x2 matrix each */
 
     GLuint gl_framebuffer;
+
     GLuint gl_display_buffer;
+    GLint gl_display_buffer_internal_format;
+    GLsizei gl_display_buffer_width;
+    GLsizei gl_display_buffer_height;
+    GLenum gl_display_buffer_format;
+    GLenum gl_display_buffer_type;
 
     hwaddr dma_state;
     hwaddr dma_notifies;
