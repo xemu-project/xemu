@@ -1008,8 +1008,9 @@ void xb_surface_gl_create_texture(DisplaySurface *surface)
         g_assert_not_reached();
     }
 
-    glGenTextures(1, &surface->texture);
-    // glEnable(GL_TEXTURE_2D);
+    if (!surface->texture) {
+        glGenTextures(1, &surface->texture);
+    }
     glBindTexture(GL_TEXTURE_2D, surface->texture);
     glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT,
                   surface_stride(surface) / surface_bytes_per_pixel(surface));
@@ -1022,24 +1023,6 @@ void xb_surface_gl_create_texture(DisplaySurface *surface)
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-}
-
-void xb_surface_gl_update_texture(DisplaySurface *surface, int x, int y, int w, int h)
-{
-    uint8_t *data = (void *)surface_data(surface);
-
-    if (surface->texture) {
-        glBindTexture(GL_TEXTURE_2D, surface->texture);
-        glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT,
-                      surface_stride(surface)
-                      / surface_bytes_per_pixel(surface));
-        glTexSubImage2D(GL_TEXTURE_2D, 0,
-                        x, y, w, h,
-                        surface->glformat, surface->gltype,
-                        data + surface_stride(surface) * y
-                        + surface_bytes_per_pixel(surface) * x);
-        glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
-    }
 }
 
 void xb_surface_gl_destroy_texture(DisplaySurface *surface)
@@ -1082,32 +1065,18 @@ void sdl2_gl_switch(DisplayChangeListener *dcl,
                     DisplaySurface *new_surface)
 {
     struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
-    DisplaySurface *old_surface = scon->surface;
-
     assert(scon->opengl);
-
     SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
-
+    xb_surface_gl_destroy_texture(scon->surface);
     scon->surface = new_surface;
-
     if (!new_surface) {
-        // qemu_gl_fini_shader(scon->gls);
-        // scon->gls = NULL;
-        // sdl2_window_destroy(scon);
         return;
     }
 
     if (!scon->real_window) {
-        // sdl2_window_create(scon);
         scon->real_window = m_window;
         scon->winctx = m_context;
         SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
-
-        // scon->gls = qemu_gl_init_shader();
-    } else if (old_surface &&
-               ((surface_width(old_surface)  != surface_width(new_surface)) ||
-                (surface_height(old_surface) != surface_height(new_surface)))) {
-        // sdl2_window_resize(scon);
     }
 }
 
@@ -1132,6 +1101,7 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     assert(scon->opengl);
     bool flip_required = false;
 
+    SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
     update_fps();
 
     /* XXX: Note that this bypasses the usual VGA path in order to quickly
@@ -1146,9 +1116,6 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
      */
     GLuint tex = nv2a_get_framebuffer_surface();
     if (tex == 0) {
-        if (scon->surface) {
-            xb_surface_gl_destroy_texture(scon->surface);
-        }
         xb_surface_gl_create_texture(scon->surface);
         scon->updates++;
         tex = scon->surface->texture;
@@ -1163,8 +1130,6 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     qemu_mutex_lock_main_loop();
     qemu_mutex_lock_iothread();
     sdl2_poll_events(scon);
-
-    SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -1214,12 +1179,8 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
     glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
-    xemu_hud_render();
 
-    // GLsync fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-    // int result = glClientWaitSync(fence, GL_SYNC_FLUSH_COMMANDS_BIT, (GLuint64)(5000000000));
-    // assert(result == GL_CONDITION_SATISFIED || result == GL_ALREADY_SIGNALED);
-    // glDeleteSync(fence);
+    xemu_hud_render();
 
     // Release BQL before swapping (which may sleep if swap interval is not immediate)
     qemu_mutex_unlock_iothread();
