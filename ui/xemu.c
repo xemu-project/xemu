@@ -859,6 +859,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
         SDL_Quit();
         exit(1);
     }
+    SDL_GL_MakeCurrent(m_window, m_context);
 
     int width, height, channels = 0;
     stbi_set_flip_vertically_on_load(0);
@@ -872,6 +873,11 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
         // Note: Retaining the memory allocated by stbi_load. It's used in place
         // by the SDL surface.
     }
+
+    fprintf(stderr, "GL_VENDOR: %s\n", glGetString(GL_VENDOR));
+    fprintf(stderr, "GL_RENDERER: %s\n", glGetString(GL_RENDERER));
+    fprintf(stderr, "GL_VERSION: %s\n", glGetString(GL_VERSION));
+    fprintf(stderr, "GL_SHADING_LANGUAGE_VERSION: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
 
     // Initialize offscreen rendering context now
     nv2a_gl_context_init();
@@ -981,7 +987,6 @@ type_init(register_sdl1);
 
 void xb_surface_gl_create_texture(DisplaySurface *surface)
 {
-    // assert(gls);
     assert(QEMU_IS_ALIGNED(surface_stride(surface), surface_bytes_per_pixel(surface)));
 
     switch (surface->format) {
@@ -1496,6 +1501,11 @@ int main(int argc, char **argv)
         }
     }
 #endif
+
+    fprintf(stderr, "xemu_version: %s\n", xemu_version);
+    fprintf(stderr, "xemu_branch: %s\n", xemu_branch);
+    fprintf(stderr, "xemu_commit: %s\n", xemu_commit);
+    fprintf(stderr, "xemu_date: %s\n", xemu_date);
 
     DPRINTF("Entered main()\n");
     gArgc = argc;
