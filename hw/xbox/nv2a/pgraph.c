@@ -3408,7 +3408,6 @@ void pgraph_init(NV2AState *d)
     assert(glGetError() == GL_NO_ERROR);
 
     glo_set_current(g_nv2a_context_display);
-    glGenTextures(1, &pg->gl_display_buffer);
     pgraph_init_display_renderer(d);
 
     glo_set_current(NULL);
@@ -4152,6 +4151,14 @@ static void pgraph_gl_fence(void)
 static void pgraph_init_display_renderer(NV2AState *d)
 {
     struct PGRAPHState *pg = &d->pgraph;
+
+    glGenTextures(1, &pg->gl_display_buffer);
+    pg->gl_display_buffer_internal_format = 0;
+    pg->gl_display_buffer_width = 0;
+    pg->gl_display_buffer_height = 0;
+    pg->gl_display_buffer_format = 0;
+    pg->gl_display_buffer_type = 0;
+
     const char *vs =
         "#version 330\n"
         "void main()\n"
@@ -4283,27 +4290,57 @@ static void pgraph_render_display_pvideo_overlay(NV2AState *d)
 
 static void pgraph_render_display(NV2AState *d, SurfaceBinding *surface)
 {
-    glActiveTexture(GL_TEXTURE0);
+    struct PGRAPHState *pg = &d->pgraph;
+
     glBindFramebuffer(GL_FRAMEBUFFER, d->pgraph.disp_rndr.fbo);
-    glBindTexture(GL_TEXTURE_2D, g_nv2a->pgraph.gl_display_buffer);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, surface->gl_internal_format,
-        surface->width, surface->height, 0,
-        surface->gl_format, surface->gl_type, NULL);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, pg->gl_display_buffer);
+    bool recreate = (
+        surface->gl_internal_format != pg->gl_display_buffer_internal_format
+        || surface->width != pg->gl_display_buffer_width
+        || surface->height != pg->gl_display_buffer_height
+        || surface->gl_format != pg->gl_display_buffer_format
+        || surface->gl_type != pg->gl_display_buffer_type
+        );
+
+    if (recreate) {
+        /* XXX: There's apparently a bug in some Intel OpenGL drivers for
+         * Windows that will leak this texture when its orphaned after use in
+         * another context, apparently regardless of which thread it's created
+         * or released on.
+         *
+         * Driver: 27.20.100.8729 9/11/2020 W10 x64
+         * Track: https://community.intel.com/t5/Graphics/OpenGL-Windows-drivers-for-Intel-HD-630-leaking-GPU-memory-when/td-p/1274423
+         */
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        pg->gl_display_buffer_internal_format = surface->gl_internal_format;
+        pg->gl_display_buffer_width = surface->width;
+        pg->gl_display_buffer_height = surface->height;
+        pg->gl_display_buffer_format = surface->gl_format;
+        pg->gl_display_buffer_type = surface->gl_type;
+        glTexImage2D(GL_TEXTURE_2D, 0,
+            pg->gl_display_buffer_internal_format,
+            pg->gl_display_buffer_width,
+            pg->gl_display_buffer_height,
+            0,
+            pg->gl_display_buffer_format,
+            pg->gl_display_buffer_type,
+            NULL);
+    }
 
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-        GL_TEXTURE_2D, g_nv2a->pgraph.gl_display_buffer, 0);
+        GL_TEXTURE_2D, pg->gl_display_buffer, 0);
     GLenum DrawBuffers[1] = {GL_COLOR_ATTACHMENT0};
     glDrawBuffers(1, DrawBuffers);
     assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 
     glBindTexture(GL_TEXTURE_2D, surface->gl_buffer);
-    glBindVertexArray(d->pgraph.disp_rndr.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, d->pgraph.disp_rndr.vbo);
-    glUseProgram(d->pgraph.disp_rndr.prog);
-    glProgramUniform1i(d->pgraph.disp_rndr.prog, d->pgraph.disp_rndr.tex_loc, 0);
+    glBindVertexArray(pg->disp_rndr.vao);
+    glBindBuffer(GL_ARRAY_BUFFER, pg->disp_rndr.vbo);
+    glUseProgram(pg->disp_rndr.prog);
+    glProgramUniform1i(pg->disp_rndr.prog, pg->disp_rndr.tex_loc, 0);
     pgraph_render_display_pvideo_overlay(d);
 
     glViewport(0, 0, surface->width, surface->height);
@@ -4326,6 +4363,7 @@ void pgraph_gl_sync(NV2AState *d)
 {
     SurfaceBinding *surface = pgraph_surface_get(d, d->pcrtc.start);
     if (surface == NULL) {
+        qemu_event_set(&d->pgraph.gl_sync_complete);
         return;
     }
 
