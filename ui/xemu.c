@@ -1186,6 +1186,7 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     qemu_mutex_unlock_iothread();
     qemu_mutex_unlock_main_loop();
 
+    glFinish();
     SDL_GL_SwapWindow(scon->real_window);
 
     /* VGA update (see note above) + vblank */
