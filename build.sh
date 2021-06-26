@@ -14,7 +14,9 @@ package_windows() {
     cp build/qemu-system-i386w.exe dist/xemu.exe
     # cp -r "${project_source_dir}/data" dist/
     python3 "${project_source_dir}/get_deps.py" dist/xemu.exe dist
-    strip dist/xemu.exe
+    if [ "$debug" != "y" ]; then
+        strip dist/xemu.exe
+    fi
 }
 
 package_wincross() {
@@ -23,7 +25,9 @@ package_wincross() {
     mkdir -p dist
     cp build/qemu-system-i386w.exe dist/xemu.exe
     # cp -r "${project_source_dir}/data" dist/
-    $STRIP dist/xemu.exe
+    if [ "$debug" != "y" ]; then
+        $STRIP dist/xemu.exe
+    fi
     python3 ./scripts/gen-license.py --platform windows > dist/LICENSE.txt
 }
 
