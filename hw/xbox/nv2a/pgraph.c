@@ -367,6 +367,7 @@ static void pgraph_wait_for_surface_download(SurfaceBinding *e);
 static void pgraph_surface_access_callback(void *opaque, MemoryRegion *mr, hwaddr addr, hwaddr len, bool write);
 static SurfaceBinding *pgraph_surface_put(NV2AState *d, hwaddr addr, SurfaceBinding *e);
 static SurfaceBinding *pgraph_surface_get(NV2AState *d, hwaddr addr);
+static SurfaceBinding *pgraph_surface_get_within(NV2AState *d, hwaddr addr);
 static void pgraph_unbind_surface(NV2AState *d, bool color);
 static void pgraph_surface_invalidate(NV2AState *d, SurfaceBinding *e);
 static void pgraph_surface_evict_old(NV2AState *d);
@@ -417,8 +418,6 @@ static unsigned int kelvin_map_stencil_op(uint32_t parameter);
 static unsigned int kelvin_map_polygon_mode(uint32_t parameter);
 static unsigned int kelvin_map_texgen(uint32_t parameter, unsigned int channel);
 static uint64_t fast_hash(const uint8_t *data, size_t len);
-
-/* PGRAPH - accelerated 2d/3d drawing engine */
 
 static uint32_t pgraph_rdi_read(PGRAPHState *pg,
                                 unsigned int select, unsigned int address)
@@ -4176,7 +4175,8 @@ static void pgraph_init_display_renderer(NV2AState *d)
         "    float y = -1.0 + float((gl_VertexID & 2) << 1);\n"
         "    gl_Position = vec4(x, y, 0, 1);\n"
         "}\n";
-    // FIXME: gamma correction
+    /* FIXME: gamma correction */
+    /* FIXME: improve interlace handling, pvideo */
 
     const char *fs =
         "#version 330\n"
@@ -4184,10 +4184,14 @@ static void pgraph_init_display_renderer(NV2AState *d)
         "uniform bool pvideo_enable;\n"
         "uniform sampler2D pvideo_tex;\n"
         "uniform vec4 pvideo_pos;\n"
+        "uniform vec2 display_size;\n"
+        "uniform float line_offset;\n"
         "layout(location = 0) out vec4 out_Color;\n"
         "void main()\n"
         "{\n"
-        "    vec2 texCoord = gl_FragCoord.xy/textureSize(tex,0).xy;\n"
+        "    vec2 texCoord = gl_FragCoord.xy/display_size;\n"
+        "    float rel = display_size.y/textureSize(tex, 0).y/line_offset;\n"
+        "    texCoord.y = 1 + rel*(texCoord.y - 1);"
         "    out_Color.rgba = texture(tex, texCoord);\n"
         "    if (pvideo_enable) {\n"
         "        vec4 extent = vec4(pvideo_pos.xy, pvideo_pos.xy + pvideo_pos.zw);\n"
@@ -4206,6 +4210,8 @@ static void pgraph_init_display_renderer(NV2AState *d)
     pg->disp_rndr.pvideo_enable_loc = glGetUniformLocation(pg->disp_rndr.prog, "pvideo_enable");
     pg->disp_rndr.pvideo_tex_loc = glGetUniformLocation(pg->disp_rndr.prog, "pvideo_tex");
     pg->disp_rndr.pvideo_pos_loc = glGetUniformLocation(pg->disp_rndr.prog, "pvideo_pos");
+    pg->disp_rndr.display_size_loc = glGetUniformLocation(pg->disp_rndr.prog, "display_size");
+    pg->disp_rndr.line_offset_loc = glGetUniformLocation(pg->disp_rndr.prog, "line_offset");
 
     glGenVertexArrays(1, &pg->disp_rndr.vao);
     glBindVertexArray(pg->disp_rndr.vao);
@@ -4301,13 +4307,19 @@ static void pgraph_render_display(NV2AState *d, SurfaceBinding *surface)
 {
     struct PGRAPHState *pg = &d->pgraph;
 
+    int width, height;
+    uint32_t pline_offset, pstart_addr, pline_compare;
+    d->vga.get_resolution(&d->vga, &width, &height);
+    d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
+    int line_offset = surface->pitch / pline_offset;
+
     glBindFramebuffer(GL_FRAMEBUFFER, d->pgraph.disp_rndr.fbo);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, pg->gl_display_buffer);
     bool recreate = (
         surface->fmt.gl_internal_format != pg->gl_display_buffer_internal_format
-        || surface->width != pg->gl_display_buffer_width
-        || surface->height != pg->gl_display_buffer_height
+        || width != pg->gl_display_buffer_width
+        || height != pg->gl_display_buffer_height
         || surface->fmt.gl_format != pg->gl_display_buffer_format
         || surface->fmt.gl_type != pg->gl_display_buffer_type
         );
@@ -4325,8 +4337,8 @@ static void pgraph_render_display(NV2AState *d, SurfaceBinding *surface)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         pg->gl_display_buffer_internal_format = surface->fmt.gl_internal_format;
-        pg->gl_display_buffer_width = surface->width;
-        pg->gl_display_buffer_height = surface->height;
+        pg->gl_display_buffer_width = width;
+        pg->gl_display_buffer_height = height;
         pg->gl_display_buffer_format = surface->fmt.gl_format;
         pg->gl_display_buffer_type = surface->fmt.gl_type;
         glTexImage2D(GL_TEXTURE_2D, 0,
@@ -4350,9 +4362,11 @@ static void pgraph_render_display(NV2AState *d, SurfaceBinding *surface)
     glBindBuffer(GL_ARRAY_BUFFER, pg->disp_rndr.vbo);
     glUseProgram(pg->disp_rndr.prog);
     glProgramUniform1i(pg->disp_rndr.prog, pg->disp_rndr.tex_loc, 0);
+    glUniform2f(d->pgraph.disp_rndr.display_size_loc, width, height);
+    glUniform1f(d->pgraph.disp_rndr.line_offset_loc, line_offset);
     pgraph_render_display_pvideo_overlay(d);
 
-    glViewport(0, 0, surface->width, surface->height);
+    glViewport(0, 0, width, height);
     glColorMask(true, true, true, true);
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_BLEND);
@@ -4370,24 +4384,28 @@ static void pgraph_render_display(NV2AState *d, SurfaceBinding *surface)
 
 void pgraph_gl_sync(NV2AState *d)
 {
-    SurfaceBinding *surface = pgraph_surface_get(d, d->pcrtc.start);
+    uint32_t pline_offset, pstart_addr, pline_compare;
+    d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
+    SurfaceBinding *surface = pgraph_surface_get_within(d, d->pcrtc.start + pline_offset);
     if (surface == NULL) {
         qemu_event_set(&d->pgraph.gl_sync_complete);
         return;
     }
 
-    // Wait for queued commands to complete
+    /* FIXME: Sanity check surface dimensions */
+
+    /* Wait for queued commands to complete */
     pgraph_upload_surface_data(d, surface, !tcg_enabled());
     pgraph_gl_fence();
     assert(glGetError() == GL_NO_ERROR);
 
-    // Render framebuffer in display context
+    /* Render framebuffer in display context */
     glo_set_current(g_nv2a_context_display);
     pgraph_render_display(d, surface);
     pgraph_gl_fence();
     assert(glGetError() == GL_NO_ERROR);
 
-    // Switch back to original context
+    /* Switch back to original context */
     glo_set_current(g_nv2a_context_render);
 
     qemu_event_set(&d->pgraph.gl_sync_complete);
@@ -4400,7 +4418,9 @@ int nv2a_get_framebuffer_surface(void)
 
     qemu_mutex_lock(&d->pfifo.lock);
     // FIXME: Possible race condition with pgraph, consider lock
-    SurfaceBinding *surface = pgraph_surface_get(d, d->pcrtc.start);
+    uint32_t pline_offset, pstart_addr, pline_compare;
+    d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
+    SurfaceBinding *surface = pgraph_surface_get_within(d, d->pcrtc.start + pline_offset);
     if (surface == NULL || !surface->color) {
         qemu_mutex_unlock(&d->pfifo.lock);
         return 0;
@@ -4576,8 +4596,21 @@ static SurfaceBinding *pgraph_surface_put(NV2AState *d,
 static SurfaceBinding *pgraph_surface_get(NV2AState *d, hwaddr addr)
 {
     SurfaceBinding *surface;
-    QTAILQ_FOREACH(surface, &d->pgraph.surfaces, entry) {
+    QTAILQ_FOREACH (surface, &d->pgraph.surfaces, entry) {
         if (surface->vram_addr == addr) {
+            return surface;
+        }
+    }
+
+    return NULL;
+}
+
+static SurfaceBinding *pgraph_surface_get_within(NV2AState *d, hwaddr addr)
+{
+    SurfaceBinding *surface;
+    QTAILQ_FOREACH (surface, &d->pgraph.surfaces, entry) {
+        if (addr >= surface->vram_addr &&
+            addr < (surface->vram_addr + surface->size)) {
             return surface;
         }
     }
@@ -4759,10 +4792,8 @@ void pgraph_process_pending_downloads(NV2AState *d)
     qemu_event_set(&d->pgraph.downloads_complete);
 }
 
-static void pgraph_upload_surface_data(
-    NV2AState *d,
-    SurfaceBinding *surface,
-    bool force)
+static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
+                                       bool force)
 {
     if (!(surface->upload_pending || force)) {
         return;
