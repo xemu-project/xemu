@@ -242,6 +242,8 @@ typedef struct PGRAPHState {
 
     struct disp_rndr {
         GLuint fbo, vao, vbo, prog;
+        GLuint display_size_loc;
+        GLuint line_offset_loc;
         GLuint tex_loc;
         GLuint pvideo_tex;
         GLint pvideo_enable_loc;
