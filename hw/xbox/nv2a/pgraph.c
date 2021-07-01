@@ -373,7 +373,7 @@ static void pgraph_surface_evict_old(NV2AState *d);
 static void pgraph_download_surface_data_if_dirty(NV2AState *d, SurfaceBinding *surface);
 static void pgraph_download_surface_data(NV2AState *d, SurfaceBinding *surface, bool force);
 static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface, bool force);
-static bool pgraph_check_surface_compatibility(SurfaceBinding *s1, SurfaceBinding *s2);
+static bool pgraph_check_surface_compatibility(SurfaceBinding *s1, SurfaceBinding *s2, bool strict);
 static bool pgraph_check_surface_to_texture_compatibility(SurfaceBinding *surface, TextureShape *shape);
 static void pgraph_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface, TextureBinding *texture, TextureShape *texture_shape, int texture_unit);
 static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color);
@@ -4622,18 +4622,19 @@ static void pgraph_surface_evict_old(NV2AState *d)
     }
 }
 
-static bool pgraph_check_surface_compatibility(
-    SurfaceBinding *s1,
-    SurfaceBinding *s2)
+static bool pgraph_check_surface_compatibility(SurfaceBinding *s1,
+                                               SurfaceBinding *s2, bool strict)
 {
-    bool format_compatible = (s1->color == s2->color)
-                          && (s1->fmt.gl_attachment == s2->fmt.gl_attachment)
-                          && (s1->fmt.gl_internal_format == s2->fmt.gl_internal_format);
+    bool format_compatible =
+        (s1->color == s2->color) &&
+        (s1->fmt.gl_attachment == s2->fmt.gl_attachment) &&
+        (s1->fmt.gl_internal_format == s2->fmt.gl_internal_format) &&
+        (s1->pitch == s2->pitch);
     if (!format_compatible) {
         return false;
     }
 
-    if (s2->color) {
+    if (s2->color && !strict) {
         return (s1->width >= s2->width) && (s1->height >= s2->height);
     } else {
         return (s1->width == s2->width) && (s1->height == s2->height);
@@ -4874,26 +4875,16 @@ static void pgraph_compare_surfaces(SurfaceBinding *s1, SurfaceBinding *s2)
     DO_CMP(draw_time)
 }
 
-static void pgraph_populate_surface_binding_entry(NV2AState *d, bool color, SurfaceBinding *entry)
+static void pgraph_populate_surface_binding_entry_sized(NV2AState *d,
+                                                        bool color,
+                                                        unsigned int width,
+                                                        unsigned int height,
+                                                        SurfaceBinding *entry)
 {
     PGRAPHState *pg = &d->pgraph;
     Surface *surface;
     hwaddr dma_address;
     SurfaceFormatInfo fmt;
-    unsigned int width, height;
-
-    if (color || !pg->color_binding) {
-        pgraph_get_surface_dimensions(pg, &width, &height);
-        pgraph_apply_anti_aliasing_factor(pg, &width, &height);
-
-        // Since we determine surface dimensions based on the clipping rectangle,
-        // make sure to include the surface offset as well.
-        width += pg->surface_shape.clip_x;
-        height += pg->surface_shape.clip_y;
-    } else {
-        width = pg->color_binding->width;
-        height = pg->color_binding->height;
-    }
 
     if (color) {
         surface = &pg->surface_color;
@@ -4933,11 +4924,13 @@ static void pgraph_populate_surface_binding_entry(NV2AState *d, bool color, Surf
     assert(surface->pitch % fmt.bytes_per_pixel == 0);
     assert((dma.address & ~0x07FFFFFF) == 0);
 
-    entry->shape = (color || !pg->color_binding) ? pg->surface_shape : pg->color_binding->shape;
+    entry->shape = (color || !pg->color_binding) ? pg->surface_shape :
+                                                   pg->color_binding->shape;
     entry->gl_buffer = 0;
     entry->fmt = fmt;
     entry->color = color;
-    entry->swizzle = (pg->surface_type == NV097_SET_SURFACE_FORMAT_TYPE_SWIZZLE);
+    entry->swizzle =
+        (pg->surface_type == NV097_SET_SURFACE_FORMAT_TYPE_SWIZZLE);
     entry->vram_addr = dma.address + surface->offset;
     entry->width = width;
     entry->height = height;
@@ -4950,6 +4943,29 @@ static void pgraph_populate_surface_binding_entry(NV2AState *d, bool color, Surf
     entry->dma_len = dma.limit;
     entry->frame_time = pg->frame_time;
     entry->draw_time = pg->draw_time;
+}
+
+static void pgraph_populate_surface_binding_entry(NV2AState *d, bool color,
+                                                  SurfaceBinding *entry)
+{
+    PGRAPHState *pg = &d->pgraph;
+    unsigned int width, height;
+
+    if (color || !pg->color_binding) {
+        pgraph_get_surface_dimensions(pg, &width, &height);
+        pgraph_apply_anti_aliasing_factor(pg, &width, &height);
+
+        /* Since we determine surface dimensions based on the clipping
+         * rectangle, make sure to include the surface offset as well.
+         */
+        width += pg->surface_shape.clip_x;
+        height += pg->surface_shape.clip_y;
+    } else {
+        width = pg->color_binding->width;
+        height = pg->color_binding->height;
+    }
+
+    pgraph_populate_surface_binding_entry_sized(d, color, width, height, entry);
 }
 
 static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
@@ -4972,8 +4988,9 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
 
         SurfaceBinding *found = pgraph_surface_get(d, entry.vram_addr);
         if (found != NULL) {
-            // FIXME: Support same color/zeta surface target. In the mean time,
-            // if the surface we just found is currently bound, just unbind it.
+            /* FIXME: Support same color/zeta surface target. In the mean time,
+             * if the surface we just found is currently bound, just unbind it.
+             */
             SurfaceBinding *other = (color ? pg->zeta_binding
                                            : pg->color_binding);
             if (found == other) {
@@ -4984,7 +5001,7 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
 
         bool should_create = true;
 
-        // FIXME: Refactor
+        /* FIXME: Refactor */
         pg->surface_binding_dim.width = entry.width;
         pg->surface_binding_dim.clip_x = entry.shape.clip_x;
         pg->surface_binding_dim.clip_width = entry.shape.clip_width;
@@ -5003,9 +5020,30 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
 
         if (found != NULL) {
             bool is_compatible =
-                pgraph_check_surface_compatibility(found, &entry);
+                pgraph_check_surface_compatibility(found, &entry, false);
+            NV2A_XPRINTF(DBG_SURFACES,
+                         "%6s: [%5s @ %" HWADDR_PRIx " (%dx%d)] (%s) "
+                         "aa:%d, clip:x=%d,w=%d,y=%d,h=%d\n",
+                         "Match", found->color ? "COLOR" : "ZETA",
+                         found->vram_addr, found->width, found->height,
+                         found->swizzle ? "sz" : "ln",
+                         found->shape.anti_aliasing, found->shape.clip_x,
+                         found->shape.clip_width, found->shape.clip_y,
+                         found->shape.clip_height);
+
+            if (is_compatible && color &&
+                !pgraph_check_surface_compatibility(found, &entry, true)) {
+                SurfaceBinding zeta_entry;
+                pgraph_populate_surface_binding_entry_sized(
+                    d, !color, found->width, found->height, &zeta_entry);
+                hwaddr color_end = found->vram_addr + found->size;
+                hwaddr zeta_end = zeta_entry.vram_addr + zeta_entry.size;
+                is_compatible &= found->vram_addr >= zeta_end ||
+                                 zeta_entry.vram_addr >= color_end;
+            }
+
             if (is_compatible) {
-                // FIXME: Refactor
+                /* FIXME: Refactor */
                 pg->surface_binding_dim.width = found->width;
                 pg->surface_binding_dim.clip_x = found->shape.clip_x;
                 pg->surface_binding_dim.clip_width = found->shape.clip_width;
@@ -5015,11 +5053,6 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                 found->upload_pending |= mem_dirty;
                 should_create = false;
                 pg->surface_zeta.buffer_dirty |= color;
-                // FIXME: Check to see if one surface will overlap the other
-
-                if (color) {
-
-                }
             } else {
                 NV2A_XPRINTF(DBG_SURFACES, "Evicting incompatible surface\n");
                 pgraph_compare_surfaces(found, &entry);
@@ -5075,7 +5108,7 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
 
     if (!upload && surface->draw_dirty) {
         if (!tcg_enabled()) {
-            // FIXME: Cannot monitor for reads/writes; flush now
+            /* FIXME: Cannot monitor for reads/writes; flush now */
             pgraph_download_surface_data(d,
                 color ? pg->color_binding : pg->zeta_binding, true);
         }
@@ -5518,8 +5551,8 @@ static void pgraph_bind_textures(NV2AState *d)
             hwaddr tex_vram_end = texture_vram_offset + length - 1;
             QTAILQ_FOREACH(surface, &d->pgraph.surfaces, entry) {
                 hwaddr surf_vram_end = surface->vram_addr + surface->size - 1;
-                bool overlapping = !(surface->vram_addr > tex_vram_end
-                                     || texture_vram_offset > surf_vram_end);
+                bool overlapping = !(surface->vram_addr >= tex_vram_end
+                                     || texture_vram_offset >= surf_vram_end);
                 if (overlapping) {
                     pgraph_download_surface_data_if_dirty(d, surface);
                 }
