@@ -2586,22 +2586,23 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         //glDisableVertexAttribArray(NV2A_VERTEX_ATTR_DIFFUSE);
         //glVertexAttrib4f(NV2A_VERTEX_ATTR_DIFFUSE, 1.0, 1.0, 1.0, 1.0);
 
-
-        unsigned int width, height;
-        pgraph_get_surface_dimensions(pg, &width, &height);
-        pgraph_apply_anti_aliasing_factor(pg, &width, &height);
         glViewport(0, 0, pg->surface_binding_dim.width, pg->surface_binding_dim.height);
 
         /* Surface clip */
         /* FIXME: Consider moving to PSH w/ window clip */
-        glEnable(GL_SCISSOR_TEST);
-        int scissor_x = pg->surface_shape.clip_x;
-        int scissor_y = pg->surface_binding_dim.height - height - pg->surface_shape.clip_y;
-        assert(scissor_y >= 0);
-        unsigned int scissor_width = pg->surface_shape.clip_width;
-        unsigned int scissor_height = pg->surface_shape.clip_height;
+        unsigned int xmin = pg->surface_shape.clip_x - pg->surface_binding_dim.clip_x,
+                     ymin = pg->surface_shape.clip_y - pg->surface_binding_dim.clip_y;
+        unsigned int xmax = xmin + pg->surface_shape.clip_width - 1,
+                     ymax = ymin + pg->surface_shape.clip_height - 1;
+
+        unsigned int scissor_width = xmax - xmin + 1,
+                     scissor_height = ymax - ymin + 1;
+        pgraph_apply_anti_aliasing_factor(pg, &xmin, &ymin);
         pgraph_apply_anti_aliasing_factor(pg, &scissor_width, &scissor_height);
-        glScissor(scissor_x, scissor_y, scissor_width, scissor_height);
+        ymin = pg->surface_binding_dim.height - (ymin + scissor_height);
+
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(xmin, ymin, scissor_width, scissor_height);
 
         pg->inline_elements_length = 0;
         pg->inline_array_length = 0;
@@ -3618,8 +3619,9 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
     if (binding->surface_size_loc != -1) {
         unsigned int aa_width = 1, aa_height = 1;
         pgraph_apply_anti_aliasing_factor(pg, &aa_width, &aa_height);
-        glUniform2f(binding->surface_size_loc, pg->surface_binding_dim.width/aa_width,
-                                               pg->surface_binding_dim.height/aa_height);
+        glUniform2f(binding->surface_size_loc,
+                    pg->surface_binding_dim.width / aa_width,
+                    pg->surface_binding_dim.height / aa_height);
     }
 
     if (binding->clip_range_loc != -1) {
