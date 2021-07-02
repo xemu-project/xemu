@@ -3575,23 +3575,24 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
         }
 
         /* estimate the viewport by assuming it matches the surface ... */
-        //FIXME: Get surface dimensions?
-        float m11 = 0.5 * pg->surface_shape.clip_width;
-        float m22 = -0.5 * pg->surface_shape.clip_height;
-        float m33 = zclip_max - zclip_min;
-        //float m41 = m11;
-        //float m42 = -m22;
-        float m43 = zclip_min;
-        //float m44 = 1.0;
+        unsigned int aa_width = 1, aa_height = 1;
+        pgraph_apply_anti_aliasing_factor(pg, &aa_width, &aa_height);
 
+        float m11 = 0.5 * (pg->surface_binding_dim.width/aa_width);
+        float m22 = -0.5 * (pg->surface_binding_dim.height/aa_height);
+        float m33 = zclip_max - zclip_min;
+        float m41 = *(float*)&pg->vsh_constants[NV_IGRAPH_XF_XFCTX_VPOFF][0];
+        float m42 = *(float*)&pg->vsh_constants[NV_IGRAPH_XF_XFCTX_VPOFF][1];
+        float m43 = zclip_min;
         if (m33 == 0.0) {
             m33 = 1.0;
         }
+
         float invViewport[16] = {
             1.0/m11, 0, 0, 0,
             0, 1.0/m22, 0, 0,
             0, 0, 1.0/m33, 0,
-            -1.0, 1.0, -m43/m33, 1.0
+            -1.0+m41/m11, 1.0+m42/m22, -m43/m33, 1.0
         };
 
         if (binding->inv_viewport_loc != -1) {
