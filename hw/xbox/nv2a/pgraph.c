@@ -3073,39 +3073,37 @@ DEF_METHOD(NV097, CLEAR_SURFACE)
     }
     pgraph_update_surface(d, true, write_color, write_zeta);
 
-    glEnable(GL_SCISSOR_TEST);
+    /* FIXME: Needs confirmation */
+    unsigned int xmin =
+        GET_MASK(pg->regs[NV_PGRAPH_CLEARRECTX], NV_PGRAPH_CLEARRECTX_XMIN);
+    unsigned int xmax =
+        GET_MASK(pg->regs[NV_PGRAPH_CLEARRECTX], NV_PGRAPH_CLEARRECTX_XMAX);
+    unsigned int ymin =
+        GET_MASK(pg->regs[NV_PGRAPH_CLEARRECTY], NV_PGRAPH_CLEARRECTY_YMIN);
+    unsigned int ymax =
+        GET_MASK(pg->regs[NV_PGRAPH_CLEARRECTY], NV_PGRAPH_CLEARRECTY_YMAX);
 
-    unsigned int xmin = GET_MASK(pg->regs[NV_PGRAPH_CLEARRECTX],
-            NV_PGRAPH_CLEARRECTX_XMIN);
-    unsigned int xmax = GET_MASK(pg->regs[NV_PGRAPH_CLEARRECTX],
-            NV_PGRAPH_CLEARRECTX_XMAX);
-    unsigned int ymin = GET_MASK(pg->regs[NV_PGRAPH_CLEARRECTY],
-            NV_PGRAPH_CLEARRECTY_YMIN);
-    unsigned int ymax = GET_MASK(pg->regs[NV_PGRAPH_CLEARRECTY],
-            NV_PGRAPH_CLEARRECTY_YMAX);
+    NV2A_DPRINTF(
+        "------------------CLEAR 0x%x %d,%d - %d,%d  %x---------------\n",
+        parameter, xmin, ymin, xmax, ymax,
+        d->pgraph.regs[NV_PGRAPH_COLORCLEARVALUE]);
 
-    unsigned int scissor_x = xmin;
-    unsigned int scissor_y = pg->surface_binding_dim.clip_height
-                             + pg->surface_binding_dim.clip_y - ymax - 1;
-
-    unsigned int scissor_width = xmax - xmin + 1;
-    unsigned int scissor_height = ymax - ymin + 1;
-
-    pgraph_apply_anti_aliasing_factor(pg, &scissor_x, &scissor_y);
+    unsigned int scissor_width = xmax - xmin + 1,
+                 scissor_height = ymax - ymin + 1;
+    pgraph_apply_anti_aliasing_factor(pg, &xmin, &ymin);
     pgraph_apply_anti_aliasing_factor(pg, &scissor_width, &scissor_height);
+    ymin = pg->surface_binding_dim.height - (ymin + scissor_height);
 
-    /* FIXME: Should this really be inverted instead of ymin? */
-    glScissor(scissor_x, scissor_y, scissor_width, scissor_height);
+    NV2A_DPRINTF("Translated clear rect to %d,%d - %d,%d\n", xmin, ymin,
+                 xmin + scissor_width - 1, ymin + scissor_height - 1);
 
     /* FIXME: Respect window clip?!?! */
-
-    NV2A_DPRINTF("------------------CLEAR 0x%x %d,%d - %d,%d  %x---------------\n",
-        parameter, xmin, ymin, xmax, ymax, d->pgraph.regs[NV_PGRAPH_COLORCLEARVALUE]);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(xmin, ymin, scissor_width, scissor_height);
 
     /* Dither */
     /* FIXME: Maybe also disable it here? + GL implementation dependent */
-    if (pg->regs[NV_PGRAPH_CONTROL_0] &
-            NV_PGRAPH_CONTROL_0_DITHERENABLE) {
+    if (pg->regs[NV_PGRAPH_CONTROL_0] & NV_PGRAPH_CONTROL_0_DITHERENABLE) {
         glEnable(GL_DITHER);
     } else {
         glDisable(GL_DITHER);
