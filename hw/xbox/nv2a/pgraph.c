@@ -2425,6 +2425,7 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         assert(parameter <= NV097_SET_BEGIN_END_OP_POLYGON);
 
         pgraph_update_surface(d, true, true, depth_test || stencil_test);
+        assert(pg->color_binding || pg->zeta_binding);
 
         pg->primitive_mode = parameter;
         pgraph_bind_textures(d);
@@ -5013,13 +5014,11 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                                            DIRTY_MEMORY_NV2A);
 
     if (upload && (surface->buffer_dirty || mem_dirty)) {
-        /* surface modified (or moved) by the cpu.
-         * copy it into the opengl renderbuffer */
         pgraph_unbind_surface(d, color);
 
         SurfaceBinding *found = pgraph_surface_get(d, entry.vram_addr);
         if (found != NULL) {
-            /* FIXME: Support same color/zeta surface target. In the mean time,
+            /* FIXME: Support same color/zeta surface target? In the mean time,
              * if the surface we just found is currently bound, just unbind it.
              */
             SurfaceBinding *other = (color ? pg->zeta_binding
@@ -5154,18 +5153,22 @@ static void pgraph_unbind_surface(NV2AState *d, bool color)
     PGRAPHState *pg = &d->pgraph;
 
     if (color) {
-        glFramebufferTexture2D(GL_FRAMEBUFFER,
-                               GL_COLOR_ATTACHMENT0,
-                               GL_TEXTURE_2D, 0, 0);
-        pg->color_binding = NULL;
+        if (pg->color_binding) {
+            glFramebufferTexture2D(GL_FRAMEBUFFER,
+                                   GL_COLOR_ATTACHMENT0,
+                                   GL_TEXTURE_2D, 0, 0);
+            pg->color_binding = NULL;
+        }
     } else {
-        glFramebufferTexture2D(GL_FRAMEBUFFER,
-                               GL_DEPTH_ATTACHMENT,
-                               GL_TEXTURE_2D, 0, 0);
-        glFramebufferTexture2D(GL_FRAMEBUFFER,
-                               GL_DEPTH_STENCIL_ATTACHMENT,
-                               GL_TEXTURE_2D, 0, 0);
-        pg->zeta_binding = NULL;
+        if (pg->zeta_binding) {
+            glFramebufferTexture2D(GL_FRAMEBUFFER,
+                                   GL_DEPTH_ATTACHMENT,
+                                   GL_TEXTURE_2D, 0, 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER,
+                                   GL_DEPTH_STENCIL_ATTACHMENT,
+                                   GL_TEXTURE_2D, 0, 0);
+            pg->zeta_binding = NULL;
+        }
     }
 }
 
@@ -5186,25 +5189,25 @@ static void pgraph_update_surface(NV2AState *d, bool upload,
 
     if (upload) {
         bool fb_dirty = pgraph_framebuffer_dirty(pg);
-        pg->surface_color.buffer_dirty |= fb_dirty;
-        pg->surface_zeta.buffer_dirty |= fb_dirty;
+        if (fb_dirty) {
+            memcpy(&pg->last_surface_shape, &pg->surface_shape,
+                   sizeof(SurfaceShape));
+            pg->surface_color.buffer_dirty = true;
+            pg->surface_zeta.buffer_dirty = true;
+        }
 
         if (pg->surface_color.buffer_dirty) {
             pgraph_unbind_surface(d, true);
+        }
+
+        if (color_write) {
+            pgraph_update_surface_part(d, true, true);
         }
 
         if (pg->surface_zeta.buffer_dirty) {
             pgraph_unbind_surface(d, false);
         }
 
-        if (fb_dirty) {
-            memcpy(&pg->last_surface_shape, &pg->surface_shape,
-                   sizeof(SurfaceShape));
-        }
-
-        if (color_write) {
-            pgraph_update_surface_part(d, true, true);
-        }
         if (zeta_write) {
             pgraph_update_surface_part(d, true, false);
         }
