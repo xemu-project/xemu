@@ -306,7 +306,7 @@ static const ColorFormatInfo kelvin_color_format_map[66] = {
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8B8G8R8] =
         {4, false, GL_RGBA8, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV},
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_B8G8R8A8] =
-        {4, false, GL_RGBA8, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8},
+        {4, false, GL_RGBA8, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8},
 
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R8G8B8A8] =
         {4, false, GL_RGBA8, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8},
