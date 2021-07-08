@@ -852,6 +852,13 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
     g_free(title);
 
     m_context = SDL_GL_CreateContext(m_window);
+
+    if (m_context != NULL && epoxy_gl_version() < 40) {
+        SDL_GL_MakeCurrent(NULL, NULL);
+        SDL_GL_DeleteContext(m_context);
+        m_context = NULL;
+    }
+
     if (m_context == NULL) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
             "Unable to create OpenGL context",
@@ -864,7 +871,6 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
         SDL_Quit();
         exit(1);
     }
-    SDL_GL_MakeCurrent(m_window, m_context);
 
     int width, height, channels = 0;
     stbi_set_flip_vertically_on_load(0);
