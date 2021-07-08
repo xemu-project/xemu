@@ -852,9 +852,14 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
     g_free(title);
 
     m_context = SDL_GL_CreateContext(m_window);
-    assert(m_context != NULL);
     if (m_context == NULL) {
-        fprintf(stderr, "%s: Failed to create GL context\n", __func__);
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+            "Unable to create OpenGL context",
+            "Unable to create OpenGL context. This usually means the\r\n"
+            "graphics device on this system does not support OpenGL 4.0.\r\n"
+            "\r\n"
+            "xemu cannot continue and will now exit.",
+            m_window);
         SDL_DestroyWindow(m_window);
         SDL_Quit();
         exit(1);
