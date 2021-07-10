@@ -50,6 +50,7 @@ typedef struct PshState {
     uint32_t rgb_inputs[8], rgb_outputs[8];
     uint32_t alpha_inputs[8], alpha_outputs[8];
 
+    bool point_sprite;
     bool rect_tex[4];
     bool snorm_tex[4];
     bool compare_mode[4][4];
