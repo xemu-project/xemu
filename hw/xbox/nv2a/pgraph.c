@@ -1364,6 +1364,20 @@ DEF_METHOD(NV097, SET_LIGHTING_ENABLE)
              parameter);
 }
 
+DEF_METHOD(NV097, SET_POINT_PARAMS_ENABLE)
+{
+    SET_MASK(pg->regs[NV_PGRAPH_CSV0_D], NV_PGRAPH_CSV0_D_POINTPARAMSENABLE,
+             parameter);
+    SET_MASK(pg->regs[NV_PGRAPH_CONTROL_3],
+             NV_PGRAPH_CONTROL_3_POINTPARAMSENABLE, parameter);
+}
+
+DEF_METHOD(NV097, SET_POINT_SMOOTH_ENABLE)
+{
+    SET_MASK(pg->regs[NV_PGRAPH_SETUPRASTER],
+             NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE, parameter);
+}
+
 DEF_METHOD(NV097, SET_LINE_SMOOTH_ENABLE)
 {
     SET_MASK(pg->regs[NV_PGRAPH_SETUPRASTER],
@@ -1748,6 +1762,11 @@ DEF_METHOD(NV097, SET_TEXTURE_MATRIX_ENABLE)
     pg->texture_matrix_enable[slot] = parameter;
 }
 
+DEF_METHOD(NV097, SET_POINT_SIZE)
+{
+    SET_MASK(pg->regs[NV_PGRAPH_POINTSIZE], NV097_SET_POINT_SIZE_V, parameter);
+}
+
 DEF_METHOD(NV097, SET_PROJECTION_MATRIX)
 {
     INC_METHOD_LOOP_BEGIN(NV097, SET_PROJECTION_MATRIX)
@@ -1883,6 +1902,16 @@ DEF_METHOD(NV097, SET_VIEWPORT_OFFSET)
     int slot = (method - NV097_SET_VIEWPORT_OFFSET) / 4;
     pg->vsh_constants[NV_IGRAPH_XF_XFCTX_VPOFF][slot] = parameter;
     pg->vsh_constants_dirty[NV_IGRAPH_XF_XFCTX_VPOFF] = true;
+
+    INC_METHOD_LOOP_END
+}
+
+DEF_METHOD(NV097, SET_POINT_PARAMS)
+{
+    INC_METHOD_LOOP_BEGIN(NV097, SET_POINT_PARAMS)
+
+    int slot = (method - NV097_SET_POINT_PARAMS) / 4;
+    pg->point_params[slot] = *(float *)&parameter; /* FIXME: Where? */
 
     INC_METHOD_LOOP_END
 }
@@ -2570,6 +2599,8 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         } else {
             glDisable(GL_DITHER);
         }
+
+        glEnable(GL_PROGRAM_POINT_SIZE);
 
         /* Edge Antialiasing */
         if (pg->regs[NV_PGRAPH_SETUPRASTER] &
@@ -3769,6 +3800,9 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
     state.psh.alpha_func = (enum PshAlphaFunc)GET_MASK(pg->regs[NV_PGRAPH_CONTROL_0],
                                    NV_PGRAPH_CONTROL_0_ALPHAFUNC);
 
+    state.psh.point_sprite = pg->regs[NV_PGRAPH_SETUPRASTER] &
+                                 NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE;
+
     state.fixed_function = fixed_function;
 
     /* fixed function stuff */
@@ -3791,6 +3825,16 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
     state.vertex_program = vertex_program,
     state.z_perspective = pg->regs[NV_PGRAPH_CONTROL_0]
                         & NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
+
+    state.point_params_enable = GET_MASK(pg->regs[NV_PGRAPH_CSV0_D],
+                                         NV_PGRAPH_CSV0_D_POINTPARAMSENABLE);
+    state.point_size =
+        GET_MASK(pg->regs[NV_PGRAPH_POINTSIZE], NV097_SET_POINT_SIZE_V) / 8.0f;
+    if (state.point_params_enable) {
+        for (int i = 0; i < 8; i++) {
+            state.point_params[i] = pg->point_params[i];
+        }
+    }
 
     /* geometry shader stuff */
     state.primitive_mode = (enum ShaderPrimitiveMode)pg->primitive_mode;

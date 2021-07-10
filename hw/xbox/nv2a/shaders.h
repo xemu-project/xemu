@@ -89,6 +89,10 @@ typedef struct ShaderState {
     enum ShaderPolygonMode polygon_front_mode;
     enum ShaderPolygonMode polygon_back_mode;
     enum ShaderPrimitiveMode primitive_mode;
+
+    bool point_params_enable;
+    float point_size;
+    float point_params[8];
 } ShaderState;
 
 typedef struct ShaderBinding {

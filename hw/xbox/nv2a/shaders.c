@@ -655,6 +655,20 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     "   oPos = invViewport * (tPosition * compositeMat);\n"
     "   oPos.z = oPos.z * 2.0 - oPos.w;\n");
 
+    /* FIXME: Testing */
+    if (state.point_params_enable) {
+        mstring_append_fmt(
+            body,
+            "  float d_e = length(position * modelViewMat0);\n"
+            "  oPts.x = 1/sqrt(%f + %f*d_e + %f*d_e*d_e) + %f;\n",
+            state.point_params[0], state.point_params[1], state.point_params[2],
+            state.point_params[6]);
+        mstring_append_fmt(body, "  oPts.x = min(oPts.x*%f + %f, 64.0);\n",
+                           state.point_params[3], state.point_params[7]);
+    } else {
+        mstring_append_fmt(body, "  oPts.x = %f;\n", state.point_size);
+    }
+
     mstring_append(body, "  vtx.inv_w = 1.0 / oPos.w;\n");
 
 }

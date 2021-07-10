@@ -644,7 +644,12 @@ static MString* psh_convert(struct PixelShader *ps)
     mstring_append(vars, "vec4 pT0 = vtx.T0 / vtx.inv_w;\n");
     mstring_append(vars, "vec4 pT1 = vtx.T1 / vtx.inv_w;\n");
     mstring_append(vars, "vec4 pT2 = vtx.T2 / vtx.inv_w;\n");
-    mstring_append(vars, "vec4 pT3 = vtx.T3 / vtx.inv_w;\n");
+    if (ps->state.point_sprite) {
+        assert(!ps->state.rect_tex[3]);
+        mstring_append(vars, "vec4 pT3 = vec4(gl_PointCoord, 1.0, 1.0);\n");
+    } else {
+        mstring_append(vars, "vec4 pT3 = vtx.T3 / vtx.inv_w;\n");
+    }
     mstring_append(vars, "\n");
     mstring_append(vars, "vec4 v0 = pD0;\n");
     mstring_append(vars, "vec4 v1 = pD1;\n");
