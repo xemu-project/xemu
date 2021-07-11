@@ -294,9 +294,9 @@ static const ColorFormatInfo kelvin_color_format_map[66] = {
         {2, false, GL_RG8_SNORM, GL_RG, GL_BYTE, /* FIXME: This might be signed */
          {GL_GREEN, GL_ONE, GL_RED, GL_ONE}},
 
-
-    /* TODO: format conversion */
     [NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8] =
+        {2, true, GL_RGBA8,  GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV},
+    [NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_YB8CR8YA8CB8] =
         {2, true, GL_RGBA8,  GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV},
     [NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_X8_Y24_FIXED] =
         {4, true, GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8},
@@ -395,6 +395,7 @@ static float convert_f16_to_float(uint16_t f16);
 static float convert_f24_to_float(uint32_t f24);
 static uint8_t cliptobyte(int x);
 static void convert_yuy2_to_rgb(const uint8_t *line, unsigned int ix, uint8_t *r, uint8_t *g, uint8_t* b);
+static void convert_uyvy_to_rgb(const uint8_t *line, unsigned int ix, uint8_t *r, uint8_t *g, uint8_t* b);
 static uint8_t* convert_texture_data(const TextureShape s, const uint8_t *data, const uint8_t *palette_data, unsigned int width, unsigned int height, unsigned int depth, unsigned int row_pitch, unsigned int slice_pitch);
 static void upload_gl_texture(GLenum gl_target, const TextureShape s, const uint8_t *texture_data, const uint8_t *palette_data);
 static TextureBinding* generate_texture(const TextureShape s, const uint8_t *texture_data, const uint8_t *palette_data);
@@ -4286,7 +4287,6 @@ static uint8_t *convert_texture_data__CR8YB8CB8YA8(const uint8_t *data,
         const uint8_t *line = &data[y * pitch];
         for (x = 0; x < width; x++) {
             uint8_t *pixel = &converted_data[(y * width + x) * 4];
-            /* FIXME: Actually needs uyvy? */
             convert_yuy2_to_rgb(line, x, &pixel[0], &pixel[1], &pixel[2]);
             pixel[3] = 255;
         }
@@ -5984,6 +5984,22 @@ static void convert_yuy2_to_rgb(const uint8_t *line, unsigned int ix,
     *b = cliptobyte((298 * c + 516 * d + 128) >> 8);
 }
 
+static void convert_uyvy_to_rgb(const uint8_t *line, unsigned int ix,
+                                uint8_t *r, uint8_t *g, uint8_t* b) {
+    int c, d, e;
+    c = (int)line[ix * 2 + 1] - 16;
+    if (ix % 2) {
+        d = (int)line[ix * 2 - 2] - 128;
+        e = (int)line[ix * 2 + 0] - 128;
+    } else {
+        d = (int)line[ix * 2 + 0] - 128;
+        e = (int)line[ix * 2 + 2] - 128;
+    }
+    *r = cliptobyte((298 * c + 409 * e + 128) >> 8);
+    *g = cliptobyte((298 * c - 100 * d - 208 * e + 128) >> 8);
+    *b = cliptobyte((298 * c + 516 * d + 128) >> 8);
+}
+
 static uint8_t* convert_texture_data(const TextureShape s,
                                      const uint8_t *data,
                                      const uint8_t *palette_data,
@@ -6006,16 +6022,23 @@ static uint8_t* convert_texture_data(const TextureShape s,
         }
         return converted_data;
     } else if (s.color_format
-                   == NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8) {
+                   == NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8 ||
+                   s.color_format
+                   == NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_YB8CR8YA8CB8) {
         assert(depth == 1); /* FIXME */
+        // FIXME: only valid if control0 register allows for colorspace conversion
         uint8_t* converted_data = (uint8_t*)g_malloc(width * height * 4);
         int x, y;
         for (y = 0; y < height; y++) {
             const uint8_t* line = &data[y * s.width * 2];
             for (x = 0; x < width; x++) {
                 uint8_t* pixel = &converted_data[(y * s.width + x) * 4];
-                /* FIXME: Actually needs uyvy? */
-                convert_yuy2_to_rgb(line, x, &pixel[0], &pixel[1], &pixel[2]);
+                if (s.color_format
+                    == NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8) {
+                    convert_yuy2_to_rgb(line, x, &pixel[0], &pixel[1], &pixel[2]);
+                } else {
+                    convert_uyvy_to_rgb(line, x, &pixel[0], &pixel[1], &pixel[2]);
+                }
                 pixel[3] = 255;
           }
         }
