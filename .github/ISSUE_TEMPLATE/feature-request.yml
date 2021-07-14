@@ -1,0 +1,34 @@
+name: Feature Request
+description: Request a new feature for xemu
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this feature request!
+
+        Before submitting this request, please check the pre-submission checklist:
+        - Have you read the [documentation](https://xemu.app/docs)?
+        - Have you checked the [FAQ](https://xemu.app/docs/faq/)?
+        - Have you searched to see if this feature has been requested before?
+
+        If you have questions about how to provide the information below, join the Discord server to get help from the community.
+  - type: textarea
+    attributes:
+      label: Feature Request
+      description: |
+        A brief description of the requested feature. If appropriate, include screenshots or videos.
+
+        Tip: You can attach images by clicking this area to highlight it and then dragging files in.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Alternatives
+      description: Possible alternative options that you have considered.
+    validations:
+      required: false
+  - type: textarea
+    attributes:
+      label: Additional Context
+      description: Any other context or screenshots about the feature request.
