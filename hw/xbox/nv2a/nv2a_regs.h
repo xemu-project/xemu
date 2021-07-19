@@ -756,6 +756,7 @@
 #       define NV062_SET_COLOR_FORMAT_LE_R5G6B5                0x04
 #       define NV062_SET_COLOR_FORMAT_LE_X8R8G8B8              0x07
 #       define NV062_SET_COLOR_FORMAT_LE_A8R8G8B8              0x0A
+#       define NV062_SET_COLOR_FORMAT_LE_Y32                   0x0B
 #   define NV062_SET_PITCH                                    0x00000304
 #   define NV062_SET_OFFSET_SOURCE                            0x00000308
 #   define NV062_SET_OFFSET_DESTIN                            0x0000030C
