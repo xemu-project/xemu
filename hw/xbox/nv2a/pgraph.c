@@ -862,6 +862,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
                 break;
             case NV062_SET_COLOR_FORMAT_LE_A8R8G8B8:
             case NV062_SET_COLOR_FORMAT_LE_X8R8G8B8:
+            case NV062_SET_COLOR_FORMAT_LE_Y32:
                 bytes_per_pixel = 4;
                 break;
             default:
