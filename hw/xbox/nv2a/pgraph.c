@@ -3845,6 +3845,8 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
     ShaderState state;
     memset(&state, 0, sizeof(ShaderState));
 
+    state.surface_scale_factor = pg->surface_scale_factor;
+
     state.compressed_attrs = pg->compressed_attrs;
 
     /* register combiner stuff */
