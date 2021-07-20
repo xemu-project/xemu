@@ -2076,7 +2076,7 @@ static void ShowMainMenu()
             }
 
             int rendering_scale = nv2a_get_surface_scale_factor() - 1;
-            if (ImGui::Combo("Rendering Scale", &rendering_scale, "1x\0" "2x\0" "3x\0" "4x\0")) {
+            if (ImGui::Combo("Rendering Scale", &rendering_scale, "1x\0" "2x\0" "3x\0" "4x\0" "5x\0" "6x\0" "7x\0" "8x\0" "9x\0" "10x\0")) {
                 nv2a_set_surface_scale_factor(rendering_scale+1);
             }
 
