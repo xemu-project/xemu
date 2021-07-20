@@ -172,6 +172,7 @@ typedef struct TextureBinding {
     unsigned int refcnt;
     int draw_time;
     uint64_t data_hash;
+    unsigned int scale;
 } TextureBinding;
 
 typedef struct TextureKey {
@@ -370,6 +371,8 @@ typedef struct PGRAPHState {
     bool flush_pending;
     bool gl_sync_pending;
     QemuEvent gl_sync_complete;
+    unsigned int surface_scale_factor;
+    uint8_t *scale_buf;
 } PGRAPHState;
 
 typedef struct NV2AState {
