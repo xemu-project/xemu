@@ -33,7 +33,8 @@
 
 void glo_readpixels(GLenum gl_format, GLenum gl_type,
                     unsigned int bytes_per_pixel, unsigned int stride,
-                    unsigned int width, unsigned int height, void *data)
+                    unsigned int width, unsigned int height, bool vflip,
+                    void *data)
 {
     /* TODO: weird strides */
     assert(stride % bytes_per_pixel == 0);
@@ -45,32 +46,21 @@ void glo_readpixels(GLenum gl_format, GLenum gl_type,
     glPixelStorei(GL_PACK_ROW_LENGTH, stride / bytes_per_pixel);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
 
-#ifdef GETCONTENTS_INDIVIDUAL
-    GLubyte *b = (GLubyte *) data;
-    int irow;
-
-    for (irow = height - 1; irow >= 0; irow--) {
-        glReadPixels(0, irow, width, 1, gl_format, gl_type, b);
-        b += stride;
-    }
-#else
-    /* Faster buffer flip */
-    GLubyte *b = (GLubyte *) data;
-    GLubyte *c = &((GLubyte *) data)[stride * (height - 1)];
-    GLubyte *tmp = (GLubyte *) malloc(width * bytes_per_pixel);
-    int irow;
-
     glReadPixels(0, 0, width, height, gl_format, gl_type, data);
 
-    for (irow = 0; irow < height / 2; irow++) {
-        memcpy(tmp, b, width * bytes_per_pixel);
-        memcpy(b, c, width * bytes_per_pixel);
-        memcpy(c, tmp, width * bytes_per_pixel);
-        b += stride;
-        c -= stride;
+    if (vflip) {
+        GLubyte *b = (GLubyte *) data;
+        GLubyte *c = &((GLubyte *) data)[stride * (height - 1)];
+        GLubyte *tmp = (GLubyte *) malloc(width * bytes_per_pixel);
+            for (int irow = 0; irow < height / 2; irow++) {
+            memcpy(tmp, b, width * bytes_per_pixel);
+            memcpy(b, c, width * bytes_per_pixel);
+            memcpy(c, tmp, width * bytes_per_pixel);
+            b += stride;
+            c -= stride;
+        }
+        free(tmp);
     }
-    free(tmp);
-#endif
 
     /* Restore GL state */
     glPixelStorei(GL_PACK_ROW_LENGTH, rl);
