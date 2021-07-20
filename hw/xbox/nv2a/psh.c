@@ -686,6 +686,7 @@ static MString* psh_convert(struct PixelShader *ps)
                     NV2A_UNIMPLEMENTED("Convolution for 2D textures");
                 }
             }
+            mstring_append_fmt(vars, "pT%d.xy = texScale%d * pT%d.xy;\n", i, i, i);
             mstring_append_fmt(vars, "vec4 t%d = %s(texSamp%d, pT%d.xyw);\n",
                                i, lookup, i, i);
             break;
@@ -732,8 +733,8 @@ static MString* psh_convert(struct PixelShader *ps)
             /* FIXME: Do bumpMat swizzle on CPU before upload */
             mstring_append_fmt(vars, "dsdt%d = mat2(bumpMat%d[0].xy, bumpMat%d[1].yx) * dsdt%d;\n",
                 i, i, i, i);
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xy + dsdt%d);\n",
-                i, i, i, i);
+            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, texScale%d * (pT%d.xy + dsdt%d));\n",
+                i, i, i, i, i);
             break;
         case PS_TEXTUREMODES_BUMPENVMAP_LUM:
             assert(i >= 1);
@@ -755,8 +756,8 @@ static MString* psh_convert(struct PixelShader *ps)
             /* FIXME: Do bumpMat swizzle on CPU before upload */
             mstring_append_fmt(vars, "dsdtl%d.st = mat2(bumpMat%d[0].xy, bumpMat%d[1].yx) * dsdtl%d.st;\n",
                 i, i, i, i);
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xy + dsdtl%d.st);\n",
-                i, i, i, i);
+            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, texScale%d * (pT%d.xy + dsdtl%d.st));\n",
+                i, i, i, i, i);
             mstring_append_fmt(vars, "t%d = t%d * (bumpScale%d * dsdtl%d.p + bumpOffset%d);\n",
                 i, i, i, i, i);
             break;
@@ -772,8 +773,8 @@ static MString* psh_convert(struct PixelShader *ps)
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_ST */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec2(dot%d, dot%d));\n",
-                i, i, i-1, i);
+            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, texScale%d * vec2(dot%d, dot%d));\n",
+                i, i, i, i-1, i);
             break;
         case PS_TEXTUREMODES_DOT_ZW:
             assert(i >= 2);
@@ -863,6 +864,7 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         }
 
+        mstring_append_fmt(preflight, "uniform float texScale%d;\n", i);
         if (sampler_type != NULL) {
             mstring_append_fmt(preflight, "uniform %s texSamp%d;\n", sampler_type, i);
 

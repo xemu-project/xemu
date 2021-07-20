@@ -1001,6 +1001,11 @@ ShaderBinding* generate_shaders(const ShaderState state)
         ret->bump_offset_loc[i] = glGetUniformLocation(program, tmp);
     }
 
+    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
+        snprintf(tmp, sizeof(tmp), "texScale%d", i);
+        ret->tex_scale_loc[i] = glGetUniformLocation(program, tmp);
+    }
+
     /* lookup vertex shader uniforms */
     for(i = 0; i < NV2A_VERTEXSHADER_CONSTANTS; i++) {
         snprintf(tmp, sizeof(tmp), "c[%d]", i);

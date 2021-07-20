@@ -22,6 +22,7 @@
 #include "nv2a_int.h"
 #include "xxHash/xxh3.h"
 #include "s3tc.h"
+#include "ui/xemu-settings.h"
 
 #define DBG_SURFACES 0
 #define DBG_SURFACE_SYNC 0
@@ -389,6 +390,7 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color);
 static void pgraph_update_surface(NV2AState *d, bool upload, bool color_write, bool zeta_write);
 static void pgraph_bind_textures(NV2AState *d);
 static void pgraph_apply_anti_aliasing_factor(PGRAPHState *pg, unsigned int *width, unsigned int *height);
+static void pgraph_apply_scaling_factor(PGRAPHState *pg, unsigned int *width, unsigned int *height);
 static void pgraph_get_surface_dimensions(PGRAPHState *pg, unsigned int *width, unsigned int *height);
 static void pgraph_update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size, bool quick);
 static void pgraph_bind_vertex_attributes(NV2AState *d, unsigned int min_element, unsigned int max_element, bool inline_data, unsigned int inline_stride);
@@ -427,6 +429,7 @@ static unsigned int kelvin_map_stencil_op(uint32_t parameter);
 static unsigned int kelvin_map_polygon_mode(uint32_t parameter);
 static unsigned int kelvin_map_texgen(uint32_t parameter, unsigned int channel);
 static uint64_t fast_hash(const uint8_t *data, size_t len);
+static void pgraph_reload_surface_scale_factor(NV2AState *d);
 
 static uint32_t pgraph_rdi_read(PGRAPHState *pg,
                                 unsigned int select, unsigned int address)
@@ -628,6 +631,8 @@ static void pgraph_flush(NV2AState *d)
     glBufferSubData(GL_ARRAY_BUFFER, 0, memory_region_size(d->vram), d->vram_ptr);
 
     // FIXME: Flush more?
+
+    pgraph_reload_surface_scale_factor(d);
 }
 
 #define METHOD_ADDR(gclass, name) \
@@ -2307,6 +2312,10 @@ DEF_METHOD(NV097, GET_REPORT)
                             GL_QUERY_RESULT, &gl_query_result);
         pg->zpass_pixel_count_result += gl_query_result;
     }
+
+    pg->zpass_pixel_count_result /=
+        pg->surface_scale_factor * pg->surface_scale_factor;
+
     if (pg->gl_zpass_pixel_count_query_count) {
         glDeleteQueries(pg->gl_zpass_pixel_count_query_count,
                         pg->gl_zpass_pixel_count_queries);
@@ -2627,7 +2636,10 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         //glDisableVertexAttribArray(NV2A_VERTEX_ATTR_DIFFUSE);
         //glVertexAttrib4f(NV2A_VERTEX_ATTR_DIFFUSE, 1.0, 1.0, 1.0, 1.0);
 
-        glViewport(0, 0, pg->surface_binding_dim.width, pg->surface_binding_dim.height);
+        unsigned int vp_width = pg->surface_binding_dim.width,
+                     vp_height = pg->surface_binding_dim.height;
+        pgraph_apply_scaling_factor(pg, &vp_width, &vp_height);
+        glViewport(0, 0, vp_width, vp_height);
 
         /* Surface clip */
         /* FIXME: Consider moving to PSH w/ window clip */
@@ -2641,6 +2653,8 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         pgraph_apply_anti_aliasing_factor(pg, &xmin, &ymin);
         pgraph_apply_anti_aliasing_factor(pg, &scissor_width, &scissor_height);
         ymin = pg->surface_binding_dim.height - (ymin + scissor_height);
+        pgraph_apply_scaling_factor(pg, &xmin, &ymin);
+        pgraph_apply_scaling_factor(pg, &scissor_width, &scissor_height);
 
         glEnable(GL_SCISSOR_TEST);
         glScissor(xmin, ymin, scissor_width, scissor_height);
@@ -3139,6 +3153,9 @@ DEF_METHOD(NV097, CLEAR_SURFACE)
     NV2A_DPRINTF("Translated clear rect to %d,%d - %d,%d\n", xmin, ymin,
                  xmin + scissor_width - 1, ymin + scissor_height - 1);
 
+    pgraph_apply_scaling_factor(pg, &xmin, &ymin);
+    pgraph_apply_scaling_factor(pg, &scissor_width, &scissor_height);
+
     /* FIXME: Respect window clip?!?! */
     glEnable(GL_SCISSOR_TEST);
     glScissor(xmin, ymin, scissor_width, scissor_height);
@@ -3366,12 +3383,39 @@ void nv2a_gl_context_init(void)
     g_nv2a_context_display = glo_context_create();
 }
 
+void nv2a_set_surface_scale_factor(unsigned int scale)
+{
+    PGRAPHState *pg = &g_nv2a->pgraph;
+
+    xemu_settings_set_int(XEMU_SETTINGS_DISPLAY_RENDER_SCALE,
+                          scale < 1 ? 1 : scale);
+    xemu_settings_save();
+
+    qemu_mutex_lock(&pg->lock);
+    pg->flush_pending = true;
+    qemu_mutex_unlock(&pg->lock);
+}
+
+unsigned int nv2a_get_surface_scale_factor(void)
+{
+    return g_nv2a->pgraph.surface_scale_factor;
+}
+
+static void pgraph_reload_surface_scale_factor(NV2AState *d)
+{
+    int factor;
+    xemu_settings_get_int(XEMU_SETTINGS_DISPLAY_RENDER_SCALE, &factor);
+    d->pgraph.surface_scale_factor = factor < 1 ? 1 : factor;
+}
+
 void pgraph_init(NV2AState *d)
 {
     int i;
 
     g_nv2a = d;
     PGRAPHState *pg = &d->pgraph;
+
+    pgraph_reload_surface_scale_factor(d);
 
     pg->frame_time = 0;
     pg->draw_time = 0;
@@ -3544,6 +3588,11 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
             }
         }
 
+        loc = pg->shader_binding->tex_scale_loc[i];
+        if (loc != -1) {
+            assert(pg->texture_binding[i] != NULL);
+            glUniform1f(loc, (float)pg->texture_binding[i]->scale);
+        }
     }
 
     if (binding->fog_color_loc != -1) {
@@ -3685,6 +3734,8 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
         unsigned int y_min_xlat = MAX(pg->surface_binding_dim.height - y_max - 1, 0);
         unsigned int y_max_xlat = MIN(pg->surface_binding_dim.height - y_min - 1,
                                       pg->surface_binding_dim.height);
+        pgraph_apply_scaling_factor(pg, &x_min, &y_min_xlat);
+        pgraph_apply_scaling_factor(pg, &x_max, &y_max_xlat);
 
         glUniform4i(pg->shader_binding->clip_region_loc[i],
                     x_min, y_min_xlat, x_max, y_max_xlat);
@@ -3737,6 +3788,7 @@ static bool pgraph_bind_shaders_test_dirty(PGRAPHState *pg)
         CR_8(NV_PGRAPH_WINDOWCLIPX0) \
         CR_8(NV_PGRAPH_WINDOWCLIPY0) \
         CF(pg->primitive_mode, primitive_mode) \
+        CF(pg->surface_scale_factor, surface_scale_factor) \
         CF(pg->compressed_attrs, compressed_attrs) \
         CFA(pg->texture_matrix_enable, texture_matrix_enable)
 
@@ -4128,58 +4180,84 @@ static void pgraph_init_render_to_texture(NV2AState *d)
     glGenFramebuffers(1, &pg->s2t_rndr.fbo);
 }
 
-// Note: This function is intended to be called before PGRAPH configures GL
-// state for rendering; it will configure GL state here but only restore a
-// couple of items.
-static void pgraph_render_surface_to_texture(NV2AState *d,
-    SurfaceBinding *surface,
-    TextureBinding *texture,
-    TextureShape *texture_shape,
-    int texture_unit
-    )
+static bool pgraph_surface_to_texture_can_fastpath(SurfaceBinding *surface,
+                                                   TextureShape *shape)
 {
-    const ColorFormatInfo *f = &kelvin_color_format_map[texture_shape->color_format];
-    assert(texture_shape->color_format < ARRAY_SIZE(kelvin_color_format_map));
+    // FIXME: Better checks/handling on formats and surface-texture compat
 
-    nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
+    int surface_fmt = surface->shape.color_format;
+    int texture_fmt = shape->color_format;
 
+    if (!surface->color) {
+        // FIXME: Support zeta to color
+        return false;
+    }
+
+    switch (surface_fmt) {
+    case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_Z1R5G5B5: switch (texture_fmt) {
+        case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X1R5G5B5: return true;
+        default: break;
+        }
+        break;
+    case NV097_SET_SURFACE_FORMAT_COLOR_LE_R5G6B5: switch (texture_fmt) {
+        case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5: return true;
+        case NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R5G6B5: return true;
+        default: break;
+        }
+        break;
+    case NV097_SET_SURFACE_FORMAT_COLOR_LE_X8R8G8B8_Z8R8G8B8: switch(texture_fmt) {
+        case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X8R8G8B8: return true;
+        case NV097_SET_TEXTURE_FORMAT_COLOR_SZ_X8R8G8B8: return true;
+        default: break;
+        }
+        break;
+    case NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8: switch (texture_fmt) {
+        case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8B8G8R8: return true;
+        case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R8G8B8A8: return true;
+        case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8R8G8B8: return true;
+        case NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8R8G8B8: return true;
+        default: break;
+        }
+        break;
+    default: break;
+    }
+
+    NV2A_XPRINTF(DBG_SURFACES, "Surface->Texture compat failed: %x to %x\n",
+        surface_fmt, texture_fmt);
+    return false;
+}
+
+
+static void pgraph_render_surface_to(NV2AState *d, SurfaceBinding *surface,
+                                     int texture_unit, GLuint gl_target,
+                                     GLuint gl_texture, unsigned int width,
+                                     unsigned int height)
+{
     glActiveTexture(GL_TEXTURE0 + texture_unit);
-
-    // Reallocate space for new texture, bind as render target
     glBindFramebuffer(GL_FRAMEBUFFER, d->pgraph.s2t_rndr.fbo);
-    glBindTexture(texture->gl_target, texture->gl_texture);
-    glTexParameteri(texture->gl_target, GL_TEXTURE_BASE_LEVEL, 0);
-    glTexParameteri(texture->gl_target, GL_TEXTURE_MAX_LEVEL, 0);
-    glTexParameteri(texture->gl_target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexImage2D(texture->gl_target, 0, f->gl_internal_format,
-        texture_shape->width, texture_shape->height,
-        0, f->gl_format, f->gl_type, NULL);
-    glBindTexture(texture->gl_target, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-        texture->gl_target, texture->gl_texture, 0);
-    GLenum DrawBuffers[1] = {GL_COLOR_ATTACHMENT0};
-    glDrawBuffers(1, DrawBuffers);
+
+    GLenum draw_buffers[1] = { GL_COLOR_ATTACHMENT0 };
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, gl_target,
+                           gl_texture, 0);
+    glDrawBuffers(1, draw_buffers);
     assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
     assert(glGetError() == GL_NO_ERROR);
 
-    // Bind surface as source texture
+    float color[] = { 0.0f, 0.0f, 0.0f, 0.0f };
     glBindTexture(GL_TEXTURE_2D, surface->gl_buffer);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    float color[] = { 0.0f, 0.0f, 0.0f, 0.0f };
     glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color);
 
-    // Bind render to texture program and update shader uniforms
     glBindVertexArray(d->pgraph.s2t_rndr.vao);
     glBindBuffer(GL_ARRAY_BUFFER, d->pgraph.s2t_rndr.vbo);
     glUseProgram(d->pgraph.s2t_rndr.prog);
     glProgramUniform1i(d->pgraph.s2t_rndr.prog, d->pgraph.s2t_rndr.tex_loc,
-        texture_unit);
-    glProgramUniform2f(d->pgraph.s2t_rndr.prog, d->pgraph.s2t_rndr.surface_size_loc,
-        texture_shape->width, texture_shape->height);
+                       texture_unit);
+    glProgramUniform2f(d->pgraph.s2t_rndr.prog,
+                       d->pgraph.s2t_rndr.surface_size_loc, width, height);
 
-    // Configure additional state and render
-    glViewport(0, 0, texture_shape->width, texture_shape->height);
+    glViewport(0, 0, width, height);
     glColorMask(true, true, true, true);
     glDisable(GL_DITHER);
     glDisable(GL_SCISSOR_TEST);
@@ -4192,11 +4270,90 @@ static void pgraph_render_surface_to_texture(NV2AState *d,
     glClear(GL_COLOR_BUFFER_BIT);
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
-    // Restore state
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-        texture->gl_target, 0, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, gl_target, 0,
+                           0);
     glBindFramebuffer(GL_FRAMEBUFFER, d->pgraph.gl_framebuffer);
     glBindVertexArray(d->pgraph.gl_vertex_array);
+    glBindTexture(gl_target, gl_texture);
+    glUseProgram(
+        d->pgraph.shader_binding ? d->pgraph.shader_binding->gl_program : 0);
+}
+
+static void pgraph_download_surface_data_to_buffer(NV2AState *d,
+                                                   SurfaceBinding *surface,
+                                                   bool swizzle, bool flip,
+                                                   bool downscale,
+                                                   uint8_t *pixels);
+
+static void pgraph_render_surface_to_texture_slow(
+    NV2AState *d, SurfaceBinding *surface, TextureBinding *texture,
+    TextureShape *texture_shape, int texture_unit)
+{
+    PGRAPHState *pg = &d->pgraph;
+
+    const ColorFormatInfo *f = &kelvin_color_format_map[texture_shape->color_format];
+    assert(texture_shape->color_format < ARRAY_SIZE(kelvin_color_format_map));
+    nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX_FALLBACK);
+
+    glActiveTexture(GL_TEXTURE0 + texture_unit);
+    glBindTexture(texture->gl_target, texture->gl_texture);
+
+    unsigned int width = surface->width,
+                 height = surface->height;
+    pgraph_apply_scaling_factor(pg, &width, &height);
+
+    size_t bufsize = width * height * surface->fmt.bytes_per_pixel;
+
+    uint8_t *buf = g_malloc(bufsize);
+    pgraph_download_surface_data_to_buffer(d, surface, false, true, false, buf);
+
+    width = texture_shape->width;
+    height = texture_shape->height;
+    pgraph_apply_scaling_factor(pg, &width, &height);
+
+    glTexImage2D(texture->gl_target, 0, f->gl_internal_format, width, height, 0,
+                 f->gl_format, f->gl_type, buf);
+    g_free(buf);
+    glBindTexture(texture->gl_target, texture->gl_texture);
+}
+
+/* Note: This function is intended to be called before PGRAPH configures GL
+ * state for rendering; it will configure GL state here but only restore a
+ * couple of items.
+ */
+static void pgraph_render_surface_to_texture(NV2AState *d,
+                                             SurfaceBinding *surface,
+                                             TextureBinding *texture,
+                                             TextureShape *texture_shape,
+                                             int texture_unit)
+{
+    const ColorFormatInfo *f =
+        &kelvin_color_format_map[texture_shape->color_format];
+    assert(texture_shape->color_format < ARRAY_SIZE(kelvin_color_format_map));
+
+    nv2a_profile_inc_counter(NV2A_PROF_SURF_TO_TEX);
+
+    if (!pgraph_surface_to_texture_can_fastpath(surface, texture_shape)) {
+        pgraph_render_surface_to_texture_slow(d, surface, texture,
+                                              texture_shape, texture_unit);
+        return;
+    }
+
+    glActiveTexture(GL_TEXTURE0 + texture_unit);
+    glBindTexture(texture->gl_target, texture->gl_texture);
+    glTexParameteri(texture->gl_target, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(texture->gl_target, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(texture->gl_target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexImage2D(texture->gl_target, 0, f->gl_internal_format,
+                 texture_shape->width * g_nv2a->pgraph.surface_scale_factor,
+                 texture_shape->height * g_nv2a->pgraph.surface_scale_factor, 0,
+                 f->gl_format, f->gl_type, NULL);
+    glBindTexture(texture->gl_target, 0);
+
+    pgraph_render_surface_to(
+        d, surface, texture_unit, texture->gl_target, texture->gl_texture,
+        texture_shape->width * g_nv2a->pgraph.surface_scale_factor,
+        texture_shape->height * g_nv2a->pgraph.surface_scale_factor);
 
     glBindTexture(texture->gl_target, texture->gl_texture);
     glUseProgram(
@@ -4343,6 +4500,11 @@ static void pgraph_render_display_pvideo_overlay(NV2AState *d)
     hwaddr end = base + offset + in_pitch * in_height;
     assert(end <= memory_region_size(d->vram));
 
+    out_width *= d->pgraph.surface_scale_factor;
+    out_height *= d->pgraph.surface_scale_factor;
+    out_x *= d->pgraph.surface_scale_factor;
+    out_y *= d->pgraph.surface_scale_factor;
+
     glActiveTexture(GL_TEXTURE0 + 1);
     glBindTexture(GL_TEXTURE_2D, g_nv2a->pgraph.disp_rndr.pvideo_tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
@@ -4367,6 +4529,9 @@ static void pgraph_render_display(NV2AState *d, SurfaceBinding *surface)
     d->vga.get_resolution(&d->vga, &width, &height);
     d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
     int line_offset = surface->pitch / pline_offset;
+
+    width *= d->pgraph.surface_scale_factor;
+    height *= d->pgraph.surface_scale_factor;
 
     glBindFramebuffer(GL_FRAMEBUFFER, d->pgraph.disp_rndr.fbo);
     glActiveTexture(GL_TEXTURE0);
@@ -4524,39 +4689,35 @@ static bool pgraph_check_surface_to_texture_compatibility(
     }
 
     switch (surface_fmt) {
-    case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_Z1R5G5B5:
-        switch (texture_fmt) {
+    case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_Z1R5G5B5: switch (texture_fmt) {
         case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X1R5G5B5: return true;
-        default: goto err;
+        default: break;
         }
-    // case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_O1R5G5B5:
+        break;
     case NV097_SET_SURFACE_FORMAT_COLOR_LE_R5G6B5: switch (texture_fmt) {
         case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5: return true;
         case NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R5G6B5: return true;
-        default: goto err;
+        default: break;
         }
-    case NV097_SET_SURFACE_FORMAT_COLOR_LE_X8R8G8B8_Z8R8G8B8:
-        switch(texture_fmt) {
+        break;
+    case NV097_SET_SURFACE_FORMAT_COLOR_LE_X8R8G8B8_Z8R8G8B8: switch(texture_fmt) {
         case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_X8R8G8B8: return true;
         case NV097_SET_TEXTURE_FORMAT_COLOR_SZ_X8R8G8B8: return true;
-        default: goto err;
+        default: break;
         }
-    // case NV097_SET_SURFACE_FORMAT_COLOR_LE_X8R8G8B8_O8R8G8B8:
-    // case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1A7R8G8B8_Z1A7R8G8B8:
-    // case NV097_SET_SURFACE_FORMAT_COLOR_LE_X1A7R8G8B8_O1A7R8G8B8:
+        break;
     case NV097_SET_SURFACE_FORMAT_COLOR_LE_A8R8G8B8: switch (texture_fmt) {
         case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8B8G8R8: return true;
         case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R8G8B8A8: return true;
         case NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8R8G8B8: return true;
         case NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8R8G8B8: return true;
-        default: goto err;
+        default: break;
         }
-    // case NV097_SET_SURFACE_FORMAT_COLOR_LE_B8:
-    // case NV097_SET_SURFACE_FORMAT_COLOR_LE_G8B8:
-    default: goto err;
+        break;
+    default:
+        break;
     }
 
-err:
     NV2A_XPRINTF(DBG_SURFACES, "Surface->Texture compat failed: %x to %x\n",
         surface_fmt, texture_fmt);
     return false;
@@ -4724,7 +4885,7 @@ static bool pgraph_check_surface_compatibility(SurfaceBinding *s1,
         return false;
     }
 
-    if (s2->color && !strict) {
+    if (!strict) {
         return (s1->width >= s2->width) && (s1->height >= s2->height);
     } else {
         return (s1->width == s2->width) && (s1->height == s2->height);
@@ -4739,21 +4900,62 @@ static void pgraph_download_surface_data_if_dirty(NV2AState *d,
     }
 }
 
-static void pgraph_download_surface_data(NV2AState *d,
-    SurfaceBinding *surface,
-    bool force)
+static void pgraph_bind_current_surface(NV2AState *d)
 {
-    if (!(surface->download_pending || force)) {
-        return;
+    PGRAPHState *pg = &d->pgraph;
+
+    if (pg->color_binding) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, pg->color_binding->fmt.gl_attachment,
+                               GL_TEXTURE_2D, pg->color_binding->gl_buffer, 0);
     }
 
-    // FIXME: Respect write enable at last TOU?
+    if (pg->zeta_binding) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, pg->zeta_binding->fmt.gl_attachment,
+                               GL_TEXTURE_2D, pg->zeta_binding->gl_buffer, 0);
+    }
 
-    nv2a_profile_inc_counter(NV2A_PROF_SURF_DOWNLOAD);
+    if (pg->color_binding || pg->zeta_binding) {
+        assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) ==
+               GL_FRAMEBUFFER_COMPLETE);
+    }
+}
 
+static void surface_copy_shrink_row(uint8_t *out, uint8_t *in,
+                                    unsigned int width,
+                                    unsigned int bytes_per_pixel,
+                                    unsigned int factor)
+{
+    if (bytes_per_pixel == 4) {
+        for (unsigned int x = 0; x < width; x++) {
+            *(uint32_t *)out = *(uint32_t *)in;
+            out += 4;
+            in += 4 * factor;
+        }
+    } else if (bytes_per_pixel == 2) {
+        for (unsigned int x = 0; x < width; x++) {
+            *(uint16_t *)out = *(uint16_t *)in;
+            out += 2;
+            in += 2 * factor;
+        }
+    } else {
+        for (unsigned int x = 0; x < width; x++) {
+            memcpy(out, in, bytes_per_pixel);
+            out += bytes_per_pixel;
+            in += bytes_per_pixel * factor;
+        }
+    }
+}
+
+
+static void pgraph_download_surface_data_to_buffer(NV2AState *d,
+                                                   SurfaceBinding *surface,
+                                                   bool swizzle, bool flip,
+                                                   bool downscale,
+                                                   uint8_t *pixels)
+{
     PGRAPHState *pg = &d->pgraph;
-    uint8_t *data = d->vram_ptr;
-    uint8_t *buf = data + surface->vram_addr;
+    swizzle &= surface->swizzle;
+    downscale &= (pg->surface_scale_factor != 1);
 
     NV2A_XPRINTF(DBG_SURFACE_SYNC,
                  "[GPU->RAM] %s (%s) surface @ %" HWADDR_PRIx
@@ -4763,75 +4965,89 @@ static void pgraph_download_surface_data(NV2AState *d,
                  surface->width, surface->height, surface->pitch,
                  surface->fmt.bytes_per_pixel);
 
-    // Bind destination surface to framebuffer
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-        GL_TEXTURE_2D, 0, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-        GL_TEXTURE_2D, 0, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-        GL_TEXTURE_2D, 0, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER,
-                           surface->fmt.gl_attachment,
-                           GL_TEXTURE_2D,
-                           surface->gl_buffer, 0);
-
-    assert(glCheckFramebufferStatus(GL_FRAMEBUFFER)
-        == GL_FRAMEBUFFER_COMPLETE);
-
-    if (surface->swizzle) {
-        // Allocate space to swizzle surface data
-        // FIXME: Allocate big buffer up front and re-alloc if necessary.
-        // FIXME: Consider swizzle in shader
-        buf = (uint8_t*)g_malloc(surface->height * surface->pitch);
-    }
-
-    // Read surface into memory
-    glo_readpixels(surface->fmt.gl_format, surface->fmt.gl_type,
-                   surface->fmt.bytes_per_pixel, surface->pitch,
-                   surface->width, surface->height,
-                   buf);
-    assert(glGetError() == GL_NO_ERROR);
-
-    if (surface->swizzle) {
-        swizzle_rect(buf,
-                     surface->width, surface->height,
-                     data + surface->vram_addr,
-                     surface->pitch,
-                     surface->fmt.bytes_per_pixel);
-        g_free(buf);
-    }
-
-    // Re-bind original framebuffer target
-    glFramebufferTexture2D(GL_FRAMEBUFFER,
-                           surface->fmt.gl_attachment,
-                           GL_TEXTURE_2D,
+    /*  Bind destination surface to framebuffer */
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
                            0, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+                           0, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+                           GL_TEXTURE_2D, 0, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, surface->fmt.gl_attachment,
+                           GL_TEXTURE_2D, surface->gl_buffer, 0);
 
-    if (pg->color_binding) {
-        glFramebufferTexture2D(GL_FRAMEBUFFER,
-                               pg->color_binding->fmt.gl_attachment,
-                               GL_TEXTURE_2D,
-                               pg->color_binding->gl_buffer, 0);
+    assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+
+    /* Read surface into memory */
+    uint8_t *gl_read_buf = pixels;
+
+    uint8_t *swizzle_buf = pixels;
+    if (swizzle) {
+        /* FIXME: Allocate big buffer up front and re-alloc if necessary.
+         * FIXME: Consider swizzle in shader
+         */
+        assert(pg->surface_scale_factor == 1 || downscale);
+        swizzle_buf = (uint8_t *)g_malloc(surface->height * surface->pitch);
+        gl_read_buf = swizzle_buf;
     }
 
-    if (pg->zeta_binding) {
-        glFramebufferTexture2D(GL_FRAMEBUFFER,
-                               pg->zeta_binding->fmt.gl_attachment,
-                               GL_TEXTURE_2D,
-                               pg->zeta_binding->gl_buffer, 0);
+    if (downscale) {
+        pg->scale_buf = (uint8_t *)g_realloc(
+            pg->scale_buf, pg->surface_scale_factor * pg->surface_scale_factor *
+                               surface->height * surface->pitch *
+                               surface->fmt.bytes_per_pixel);
+        gl_read_buf = pg->scale_buf;
     }
 
-    if (pg->color_binding || pg->zeta_binding) {
-        assert(glCheckFramebufferStatus(GL_FRAMEBUFFER)
-            == GL_FRAMEBUFFER_COMPLETE);
+    glo_readpixels(
+        surface->fmt.gl_format, surface->fmt.gl_type, surface->fmt.bytes_per_pixel,
+        pg->surface_scale_factor * surface->pitch,
+        pg->surface_scale_factor * surface->width,
+        pg->surface_scale_factor * surface->height, flip, gl_read_buf);
+
+    /* FIXME: Replace this with a hw accelerated version */
+    if (downscale) {
+        assert(surface->pitch >= (surface->width * surface->fmt.bytes_per_pixel));
+        uint8_t *out = swizzle_buf, *in = pg->scale_buf;
+        for (unsigned int y = 0; y < surface->height; y++) {
+            surface_copy_shrink_row(out, in, surface->width,
+                                    surface->fmt.bytes_per_pixel,
+                                    pg->surface_scale_factor);
+            in += surface->pitch * pg->surface_scale_factor *
+                  pg->surface_scale_factor;
+            out += surface->pitch;
+        }
     }
 
-    memory_region_set_client_dirty(d->vram,
-                                   surface->vram_addr,
+    if (swizzle) {
+        swizzle_rect(swizzle_buf, surface->width, surface->height, pixels,
+                     surface->pitch, surface->fmt.bytes_per_pixel);
+        g_free(swizzle_buf);
+    }
+
+    /* Re-bind original framebuffer target */
+    glFramebufferTexture2D(GL_FRAMEBUFFER, surface->fmt.gl_attachment,
+                           GL_TEXTURE_2D, 0, 0);
+    pgraph_bind_current_surface(d);
+}
+
+static void pgraph_download_surface_data(NV2AState *d, SurfaceBinding *surface,
+    bool force)
+{
+    if (!(surface->download_pending || force)) {
+        return;
+    }
+
+    /* FIXME: Respect write enable at last TOU? */
+
+    nv2a_profile_inc_counter(NV2A_PROF_SURF_DOWNLOAD);
+
+    pgraph_download_surface_data_to_buffer(
+        d, surface, true, true, true, d->vram_ptr + surface->vram_addr);
+
+    memory_region_set_client_dirty(d->vram, surface->vram_addr,
                                    surface->pitch * surface->height,
                                    DIRTY_MEMORY_VGA);
-    memory_region_set_client_dirty(d->vram,
-                                   surface->vram_addr,
+    memory_region_set_client_dirty(d->vram, surface->vram_addr,
                                    surface->pitch * surface->height,
                                    DIRTY_MEMORY_NV2A_TEX);
 
@@ -4847,6 +5063,57 @@ void pgraph_process_pending_downloads(NV2AState *d)
     }
 
     qemu_event_set(&d->pgraph.downloads_complete);
+}
+
+static void surface_copy_expand_row(uint8_t *out, uint8_t *in,
+                                    unsigned int width,
+                                    unsigned int bytes_per_pixel,
+                                    unsigned int factor)
+{
+    if (bytes_per_pixel == 4) {
+        for (unsigned int x = 0; x < width; x++) {
+            for (unsigned int i = 0; i < factor; i++) {
+                *(uint32_t *)out = *(uint32_t *)in;
+                out += bytes_per_pixel;
+            }
+            in += bytes_per_pixel;
+        }
+    } else if (bytes_per_pixel == 2) {
+        for (unsigned int x = 0; x < width; x++) {
+            for (unsigned int i = 0; i < factor; i++) {
+                *(uint16_t *)out = *(uint16_t *)in;
+                out += bytes_per_pixel;
+            }
+            in += bytes_per_pixel;
+        }
+    } else {
+        for (unsigned int x = 0; x < width; x++) {
+            for (unsigned int i = 0; i < factor; i++) {
+                memcpy(out, in, bytes_per_pixel);
+                out += bytes_per_pixel;
+            }
+            in += bytes_per_pixel;
+        }
+    }
+}
+
+static void surface_copy_expand(uint8_t *out, uint8_t *in, unsigned int width,
+                                unsigned int height,
+                                unsigned int bytes_per_pixel,
+                                unsigned int factor)
+{
+    size_t out_pitch = width * bytes_per_pixel * factor;
+
+    for (unsigned int y = 0; y < height; y++) {
+        surface_copy_expand_row(out, in, width, bytes_per_pixel, factor);
+        uint8_t *row_in = out;
+        for (unsigned int i = 1; i < factor; i++) {
+            out += out_pitch;
+            memcpy(out, row_in, out_pitch);
+        }
+        in += width * bytes_per_pixel;
+        out += out_pitch;
+    }
 }
 
 static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
@@ -4875,14 +5142,12 @@ static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture_binding);
 
     // FIXME: Replace with FBO to not disturb current state
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-        GL_TEXTURE_2D, 0, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-        GL_TEXTURE_2D, 0, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                           0, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+                           0, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-        GL_TEXTURE_2D, 0, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, surface->fmt.gl_attachment,
-        GL_TEXTURE_2D, 0, 0);
+                           GL_TEXTURE_2D, 0, 0);
 
     uint8_t *data = d->vram_ptr;
     uint8_t *buf = data + surface->vram_addr;
@@ -4896,6 +5161,8 @@ static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                        surface->fmt.bytes_per_pixel);
     }
 
+    /* FIXME: Replace this flip/scaling */
+
     // This is VRAM so we can't do this inplace!
     uint8_t *flipped_buf = (uint8_t *)g_malloc(
         surface->height * surface->width * surface->fmt.bytes_per_pixel);
@@ -4907,11 +5174,25 @@ static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                surface->width * surface->fmt.bytes_per_pixel);
     }
 
+    bool upscale = pg->surface_scale_factor != 1;
+    uint8_t *gl_read_buf = flipped_buf;
+
+    if (upscale) {
+        pg->scale_buf = (uint8_t *)g_realloc(pg->scale_buf,
+            surface->width * pg->surface_scale_factor * surface->height *
+            pg->surface_scale_factor * surface->fmt.bytes_per_pixel);
+        gl_read_buf = pg->scale_buf;
+        uint8_t *out = gl_read_buf, *in = flipped_buf;
+        surface_copy_expand(out, in, surface->width, surface->height,
+            surface->fmt.bytes_per_pixel, d->pgraph.surface_scale_factor);
+    }
+
     glBindTexture(GL_TEXTURE_2D, surface->gl_buffer);
     glTexImage2D(GL_TEXTURE_2D, 0, surface->fmt.gl_internal_format,
-                 surface->width, surface->height, 0,
+                 surface->width * pg->surface_scale_factor,
+                 surface->height * pg->surface_scale_factor, 0,
                  surface->fmt.gl_format, surface->fmt.gl_type,
-                 flipped_buf);
+                 gl_read_buf);
     g_free(flipped_buf);
     if (surface->swizzle) {
         g_free(buf);
@@ -4920,18 +5201,7 @@ static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
     // Rebind previous framebuffer binding
     glBindTexture(GL_TEXTURE_2D, last_texture_binding);
 
-    if (pg->color_binding) {
-        glFramebufferTexture2D(GL_FRAMEBUFFER, pg->color_binding->fmt.gl_attachment,
-                               GL_TEXTURE_2D, pg->color_binding->gl_buffer, 0);
-    }
-    if (pg->zeta_binding) {
-        glFramebufferTexture2D(GL_FRAMEBUFFER, pg->zeta_binding->fmt.gl_attachment,
-                               GL_TEXTURE_2D, pg->zeta_binding->gl_buffer, 0);
-    }
-    if (pg->color_binding || pg->zeta_binding) {
-        assert(glCheckFramebufferStatus(GL_FRAMEBUFFER)
-               == GL_FRAMEBUFFER_COMPLETE);
-    }
+    pgraph_bind_current_surface(d);
 }
 
 static void pgraph_compare_surfaces(SurfaceBinding *s1, SurfaceBinding *s2)
@@ -4961,6 +5231,7 @@ static void pgraph_compare_surfaces(SurfaceBinding *s1, SurfaceBinding *s2)
     DO_CMP(dma_len)
     DO_CMP(frame_time)
     DO_CMP(draw_time)
+    #undef DO_CMP
 }
 
 static void pgraph_populate_surface_binding_entry_sized(NV2AState *d,
@@ -5128,6 +5399,12 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                                  zeta_entry.vram_addr >= color_end;
             }
 
+            if (is_compatible && !color && pg->color_binding) {
+                is_compatible &= (found->width == pg->color_binding->width) &&
+                                 (found->height == pg->color_binding->height) &&
+                                 (found->pitch == pg->color_binding->pitch);
+            }
+
             if (is_compatible) {
                 /* FIXME: Refactor */
                 pg->surface_binding_dim.width = found->width;
@@ -5180,7 +5457,8 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
 
         if (should_create) {
             glTexImage2D(GL_TEXTURE_2D, 0, entry.fmt.gl_internal_format,
-                         entry.width, entry.height, 0, entry.fmt.gl_format,
+                         entry.width * pg->surface_scale_factor,
+                         entry.height * pg->surface_scale_factor, 0, entry.fmt.gl_format,
                          entry.fmt.gl_type, NULL);
         }
 
@@ -5708,6 +5986,7 @@ static void pgraph_bind_textures(NV2AState *d)
             // Must create the texture
             key_out->binding = generate_texture(state, texture_data, palette_data);
             key_out->binding->data_hash = tex_data_hash;
+            key_out->binding->scale = 1;
         } else {
             // Saved an upload! Reuse existing texture in graphics memory.
             glBindTexture(key_out->binding->gl_target,
@@ -5724,6 +6003,11 @@ static void pgraph_bind_textures(NV2AState *d)
                 surface->vram_addr, surface->width, surface->height);
             pgraph_render_surface_to_texture(d, surface, binding, &state, i);
             binding->draw_time = surface->draw_time;
+            if (binding->gl_target == GL_TEXTURE_RECTANGLE) {
+                binding->scale = pg->surface_scale_factor;
+            } else {
+                binding->scale = 1;
+            }
         }
 
         if (f.linear) {
@@ -5804,6 +6088,14 @@ static void pgraph_apply_anti_aliasing_factor(PGRAPHState *pg,
         assert(false);
         break;
     }
+}
+
+static void pgraph_apply_scaling_factor(PGRAPHState *pg,
+                                        unsigned int *width,
+                                        unsigned int *height)
+{
+    *width *= pg->surface_scale_factor;
+    *height *= pg->surface_scale_factor;
 }
 
 static void pgraph_get_surface_dimensions(PGRAPHState *pg,
