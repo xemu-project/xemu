@@ -4882,7 +4882,8 @@ static bool pgraph_check_surface_compatibility(SurfaceBinding *s1,
         (s1->fmt.gl_internal_format == s2->fmt.gl_internal_format) &&
         (s1->pitch == s2->pitch) &&
         (s1->shape.clip_x <= s2->shape.clip_x) &&
-        (s1->shape.clip_y <= s2->shape.clip_y);
+        (s1->shape.clip_y <= s2->shape.clip_y) &&
+        (s1->swizzle == s2->swizzle);
     if (!format_compatible) {
         return false;
     }
