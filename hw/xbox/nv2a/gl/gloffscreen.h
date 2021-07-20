@@ -55,12 +55,12 @@ bool glo_check_extension(const char* ext_name);
 /* Create an OpenGL context */
 GloContext *glo_context_create(void);
 
-/* Destroy a previouslu created OpenGL context */
+/* Destroy a previously created OpenGL context */
 void glo_context_destroy(GloContext *context);
 
- /* Note that this is top-down, not bottom-up as glReadPixels would do. */
 void glo_readpixels(GLenum gl_format, GLenum gl_type,
                     unsigned int bytes_per_pixel, unsigned int stride,
-                    unsigned int width, unsigned int height, void *data);
+                    unsigned int width, unsigned int height, bool vflip,
+                    void *data);
  
 #endif /* GLOFFSCREEN_H_ */
