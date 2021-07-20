@@ -3127,6 +3127,7 @@ DEF_METHOD(NV097, CLEAR_SURFACE)
 
         glClearColor(red, green, blue, alpha);
     }
+
     pgraph_update_surface(d, true, write_color, write_zeta);
 
     /* FIXME: Needs confirmation */
@@ -5374,7 +5375,11 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                      pg->surface_shape.clip_width, pg->surface_shape.clip_y,
                      pg->surface_shape.clip_height);
 
+        bool surface_type_changed = false;
+
         if (found != NULL) {
+            surface_type_changed = (entry.color != found->color);
+
             bool is_compatible =
                 pgraph_check_surface_compatibility(found, &entry, false);
             NV2A_XPRINTF(DBG_SURFACES,
@@ -5400,8 +5405,7 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
 
             if (is_compatible && !color && pg->color_binding) {
                 is_compatible &= (found->width == pg->color_binding->width) &&
-                                 (found->height == pg->color_binding->height) &&
-                                 (found->pitch == pg->color_binding->pitch);
+                                 (found->height == pg->color_binding->height);
             }
 
             if (is_compatible) {
@@ -5413,12 +5417,14 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                 pg->surface_binding_dim.clip_y = found->shape.clip_y;
                 pg->surface_binding_dim.clip_height = found->shape.clip_height;
                 found->upload_pending |= mem_dirty;
-                should_create = false;
                 pg->surface_zeta.buffer_dirty |= color;
+                should_create = false;
             } else {
                 NV2A_XPRINTF(DBG_SURFACES, "Evicting incompatible surface\n");
                 pgraph_compare_surfaces(found, &entry);
-                pgraph_download_surface_data_if_dirty(d, found);
+                if (!surface_type_changed) {
+                    pgraph_download_surface_data_if_dirty(d, found);
+                }
                 pgraph_surface_invalidate(d, found);
             }
         }
@@ -5443,6 +5449,15 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                          NULL);
             found = pgraph_surface_put(d, entry.vram_addr, &entry);
         }
+
+        /*
+         * Assume moving from color to zeta, or zeta to color, will clear the
+         * surface and in this case avoid syncronization.
+         *
+         * FIXME: It's possible that this assumption is too broad, especially if
+         * dimensions differ. For now keep things simple.
+         */
+        found->upload_pending &= !surface_type_changed;
 
         NV2A_XPRINTF(DBG_SURFACES,
                      "%6s: [%5s @ %" HWADDR_PRIx " (%dx%d)] (%s) "
