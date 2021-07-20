@@ -55,6 +55,8 @@ enum MaterialColorSource {
 };
 
 typedef struct ShaderState {
+    unsigned int surface_scale_factor;
+
     PshState psh;
     uint16_t compressed_attrs;
 
