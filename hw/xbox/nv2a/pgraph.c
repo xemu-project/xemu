@@ -382,6 +382,11 @@ static void pgraph_surface_invalidate(NV2AState *d, SurfaceBinding *e);
 static void pgraph_surface_evict_old(NV2AState *d);
 static void pgraph_download_surface_data_if_dirty(NV2AState *d, SurfaceBinding *surface);
 static void pgraph_download_surface_data(NV2AState *d, SurfaceBinding *surface, bool force);
+static void pgraph_download_surface_data_to_buffer(NV2AState *d,
+                                                   SurfaceBinding *surface,
+                                                   bool swizzle, bool flip,
+                                                   bool downscale,
+                                                   uint8_t *pixels);
 static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface, bool force);
 static bool pgraph_check_surface_compatibility(SurfaceBinding *s1, SurfaceBinding *s2, bool strict);
 static bool pgraph_check_surface_to_texture_compatibility(SurfaceBinding *surface, TextureShape *shape);
@@ -4282,12 +4287,6 @@ static void pgraph_render_surface_to(NV2AState *d, SurfaceBinding *surface,
         d->pgraph.shader_binding ? d->pgraph.shader_binding->gl_program : 0);
 }
 
-static void pgraph_download_surface_data_to_buffer(NV2AState *d,
-                                                   SurfaceBinding *surface,
-                                                   bool swizzle, bool flip,
-                                                   bool downscale,
-                                                   uint8_t *pixels);
-
 static void pgraph_render_surface_to_texture_slow(
     NV2AState *d, SurfaceBinding *surface, TextureBinding *texture,
     TextureShape *texture_shape, int texture_unit)
@@ -5358,16 +5357,6 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
             }
         }
 
-        bool should_create = true;
-
-        /* FIXME: Refactor */
-        pg->surface_binding_dim.width = entry.width;
-        pg->surface_binding_dim.clip_x = entry.shape.clip_x;
-        pg->surface_binding_dim.clip_width = entry.shape.clip_width;
-        pg->surface_binding_dim.height = entry.height;
-        pg->surface_binding_dim.clip_y = entry.shape.clip_y;
-        pg->surface_binding_dim.clip_height = entry.shape.clip_height;
-
         NV2A_XPRINTF(DBG_SURFACES,
                      "Target: [%5s @ %" HWADDR_PRIx "] (%s) "
                      "aa:%d clip:x=%d,w=%d,y=%d,h=%d\n",
@@ -5377,6 +5366,7 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                      pg->surface_shape.clip_width, pg->surface_shape.clip_y,
                      pg->surface_shape.clip_height);
 
+        bool should_create = true;
         bool surface_type_changed = false;
 
         if (found != NULL) {
@@ -5450,6 +5440,14 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                          height, 0, entry.fmt.gl_format, entry.fmt.gl_type,
                          NULL);
             found = pgraph_surface_put(d, entry.vram_addr, &entry);
+
+            /* FIXME: Refactor */
+            pg->surface_binding_dim.width = entry.width;
+            pg->surface_binding_dim.clip_x = entry.shape.clip_x;
+            pg->surface_binding_dim.clip_width = entry.shape.clip_width;
+            pg->surface_binding_dim.height = entry.height;
+            pg->surface_binding_dim.clip_y = entry.shape.clip_y;
+            pg->surface_binding_dim.clip_height = entry.shape.clip_height;
         }
 
         /*
