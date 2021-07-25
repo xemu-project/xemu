@@ -253,6 +253,35 @@ static void Hyperlink(const char *text, const char *url)
     }
 }
 
+static int PushWindowTransparencySettings(bool transparent, float alpha_transparent = 0.4, float alpha_opaque = 1.0)
+{
+        float alpha = transparent ? alpha_transparent : alpha_opaque;
+
+        ImVec4 c;
+
+        c = ImGui::GetStyle().Colors[transparent ? ImGuiCol_WindowBg : ImGuiCol_TitleBg];
+        c.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_TitleBg, c);
+
+        c = ImGui::GetStyle().Colors[transparent ? ImGuiCol_WindowBg : ImGuiCol_TitleBgActive];
+        c.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_TitleBgActive, c);
+
+        c = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+        c.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, c);
+
+        c = ImGui::GetStyle().Colors[ImGuiCol_Border];
+        c.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_Border, c);
+
+        c = ImGui::GetStyle().Colors[ImGuiCol_FrameBg];
+        c.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, c);
+
+        return 5;
+}
+
 class MonitorWindow
 {
 public:
@@ -289,51 +318,57 @@ public:
     void Draw()
     {
         if (!is_open) return;
+        int style_pop_cnt = PushWindowTransparencySettings(true);
+        ImGuiIO& io = ImGui::GetIO();
+        ImVec2 window_pos = ImVec2(0,io.DisplaySize.y/2);
+        ImGui::SetNextWindowPos(window_pos, ImGuiCond_Appearing);
+        ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, io.DisplaySize.y/2), ImGuiCond_Appearing);
+        if (ImGui::Begin("Monitor", &is_open, ImGuiWindowFlags_NoCollapse)) {
+            const float footer_height_to_reserve = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing(); // 1 separator, 1 input text
+            ImGui::BeginChild("ScrollingRegion", ImVec2(0, -footer_height_to_reserve), false, ImGuiWindowFlags_HorizontalScrollbar); // Leave room for 1 separator + 1 InputText
 
-        ImGui::SetNextWindowSize(ImVec2(520*g_ui_scale, 600*g_ui_scale), ImGuiCond_FirstUseEver);
-        if (!ImGui::Begin("Monitor", &is_open))
-        {
-            ImGui::End();
-            return;
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4,1)); // Tighten spacing
+            ImGui::PushFont(g_fixed_width_font);
+            ImGui::TextUnformatted(xemu_get_monitor_buffer());
+            ImGui::PopFont();
+
+            if (ScrollToBottom || (AutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())) {
+                ImGui::SetScrollHereY(1.0f);
+            }
+            ScrollToBottom = false;
+
+            ImGui::PopStyleVar();
+            ImGui::EndChild();
+            ImGui::Separator();
+
+            // Command-line
+            bool reclaim_focus = ImGui::IsWindowAppearing();
+
+            ImGui::SetNextItemWidth(-1);
+            ImGui::PushFont(g_fixed_width_font);
+            if (ImGui::InputText("", InputBuf, IM_ARRAYSIZE(InputBuf), ImGuiInputTextFlags_EnterReturnsTrue|ImGuiInputTextFlags_CallbackCompletion|ImGuiInputTextFlags_CallbackHistory, &TextEditCallbackStub, (void*)this)) {
+                char* s = InputBuf;
+                Strtrim(s);
+                if (s[0])
+                    ExecCommand(s);
+                strcpy(s, "");
+                reclaim_focus = true;
+            }
+            ImGui::PopFont();
+
+            // Auto-focus on window apparition
+            ImGui::SetItemDefaultFocus();
+            if (reclaim_focus) {
+                ImGui::SetKeyboardFocusHere(-1); // Auto focus previous widget
+            }
         }
-
-        const float footer_height_to_reserve = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing(); // 1 separator, 1 input text
-        ImGui::BeginChild("ScrollingRegion", ImVec2(0, -footer_height_to_reserve), false, ImGuiWindowFlags_HorizontalScrollbar); // Leave room for 1 separator + 1 InputText
-
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4,1)); // Tighten spacing
-        ImGui::PushFont(g_fixed_width_font);
-        ImGui::TextUnformatted(xemu_get_monitor_buffer());
-        ImGui::PopFont();
-
-        if (ScrollToBottom || (AutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()))
-            ImGui::SetScrollHereY(1.0f);
-        ScrollToBottom = false;
-
-        ImGui::PopStyleVar();
-        ImGui::EndChild();
-        ImGui::Separator();
-
-        // Command-line
-        bool reclaim_focus = false;
-        ImGui::SetNextItemWidth(-1);
-        ImGui::PushFont(g_fixed_width_font);
-        if (ImGui::InputText("", InputBuf, IM_ARRAYSIZE(InputBuf), ImGuiInputTextFlags_EnterReturnsTrue|ImGuiInputTextFlags_CallbackCompletion|ImGuiInputTextFlags_CallbackHistory, &TextEditCallbackStub, (void*)this))
-        {
-            char* s = InputBuf;
-            Strtrim(s);
-            if (s[0])
-                ExecCommand(s);
-            strcpy(s, "");
-            reclaim_focus = true;
-        }
-        ImGui::PopFont();
-
-        // Auto-focus on window apparition
-        ImGui::SetItemDefaultFocus();
-        if (reclaim_focus)
-            ImGui::SetKeyboardFocusHere(-1); // Auto focus previous widget
-
         ImGui::End();
+        ImGui::PopStyleColor(style_pop_cnt);
+    }
+
+    void toggle_open(void)
+    {
+        is_open = !is_open;
     }
 
 private:
@@ -1665,29 +1700,7 @@ public:
         if (!is_open) return;
 
         float alpha = transparent ? 0.2 : 1.0;
-
-        ImVec4 c;
-
-        c = ImGui::GetStyle().Colors[transparent ? ImGuiCol_WindowBg : ImGuiCol_TitleBg];
-        c.w *= alpha;
-        ImGui::PushStyleColor(ImGuiCol_TitleBg, c);
-
-        c = ImGui::GetStyle().Colors[transparent ? ImGuiCol_WindowBg : ImGuiCol_TitleBgActive];
-        c.w *= alpha;
-        ImGui::PushStyleColor(ImGuiCol_TitleBgActive, c);
-
-        c = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
-        c.w *= alpha;
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, c);
-
-        c = ImGui::GetStyle().Colors[ImGuiCol_Border];
-        c.w *= alpha;
-        ImGui::PushStyleColor(ImGuiCol_Border, c);
-
-        c = ImGui::GetStyle().Colors[ImGuiCol_FrameBg];
-        c.w *= alpha;
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, c);
-
+        PushWindowTransparencySettings(transparent, 0.2);
         ImGui::SetNextWindowSize(ImVec2(600.0f*g_ui_scale, 150.0f*g_ui_scale), ImGuiCond_Once);
         if (ImGui::Begin("Video Debug", &is_open)) {
 
@@ -2046,6 +2059,13 @@ static void action_shutdown(void)
     qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_UI);
 }
 
+
+static bool is_key_pressed(int scancode)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    return io.KeysDown[scancode] && (io.KeysDownDuration[scancode] == 0.0);
+}
+
 static void process_keyboard_shortcuts(void)
 {
     if (is_shortcut_key_pressed(SDL_SCANCODE_E)) {
@@ -2066,6 +2086,10 @@ static void process_keyboard_shortcuts(void)
 
     if (is_shortcut_key_pressed(SDL_SCANCODE_Q)) {
         action_shutdown();
+    }
+
+    if (is_key_pressed(SDL_SCANCODE_GRAVE)) {
+        monitor_window.toggle_open();
     }
 }
 
