@@ -75,6 +75,38 @@ float g_main_menu_height;
 float g_ui_scale = 1.0;
 bool g_trigger_style_update = true;
 
+class CursorManager
+{
+protected:
+    SDL_Cursor *m_arrowCursor;
+    SDL_Cursor *m_handCursor;
+    SDL_Cursor *m_nextCursor;
+
+public:
+    CursorManager()
+    {
+        m_arrowCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_ARROW);
+        m_handCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_HAND);
+        m_nextCursor = m_arrowCursor;
+    }
+
+    ~CursorManager()
+    {
+        SDL_FreeCursor(m_arrowCursor);
+        SDL_FreeCursor(m_handCursor);
+    }
+
+    void SetHandCursor() { m_nextCursor = m_handCursor; }
+    void SetArrowCursor() { m_nextCursor = m_arrowCursor; }
+
+    void ApplyChanges()
+    {
+        SDL_SetCursor(m_nextCursor);
+    }
+};
+
+CursorManager *g_cursorManager;
+
 class NotificationManager
 {
 private:
@@ -193,6 +225,31 @@ static void HelpMarker(const char* desc)
         ImGui::TextUnformatted(desc);
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
+    }
+}
+
+static void Hyperlink(const char *text, const char *url)
+{
+    ImGui::Text("%s", text);
+    bool hover = ImGui::IsItemHovered();
+
+    ImColor col;
+    if (hover) {
+        col = IM_COL32_WHITE;
+        g_cursorManager->SetHandCursor();
+    } else {
+        col = ImColor(127, 127, 127, 255);
+    }
+
+    ImVec2 max = ImGui::GetItemRectMax();
+    ImVec2 min = ImGui::GetItemRectMin();
+    min.x -= 1 * g_ui_scale;
+    min.y = max.y;
+    max.x -= 1 * g_ui_scale;
+    ImGui::GetWindowDrawList()->AddLine(min, max, col, 1.0 * g_ui_scale);
+
+    if (ImGui::IsItemClicked()) {
+        xemu_open_web_browser(url);
     }
 }
 
@@ -751,9 +808,7 @@ public:
         ImGui::Separator();
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
 
-        if (ImGui::Button("Help", ImVec2(120*g_ui_scale, 0))) {
-            xemu_open_web_browser("https://xemu.app/docs/getting-started/");
-        }
+        Hyperlink("Help", "https://xemu.app/docs/getting-started/");
         ImGui::SameLine();
 
         const char *msg = NULL;
@@ -848,10 +903,7 @@ public:
 
         const char *msg = "Visit https://xemu.app for more information";
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
-        ImGui::Text("%s", msg);
-        if (ImGui::IsItemClicked()) {
-            xemu_open_web_browser("https://xemu.app");
-        }
+        Hyperlink(msg, "https://xemu.app");
 
         ImGui::Dummy(ImVec2(0,40*g_ui_scale));
 
@@ -1108,9 +1160,7 @@ public:
         ImGui::Separator();
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
 
-        if (ImGui::Button("Help", ImVec2(120*g_ui_scale, 0))) {
-                xemu_open_web_browser("https://xemu.app/docs/networking/");
-        }
+        Hyperlink("Help", "https://xemu.app/docs/networking/");
 
         ImGui::SameLine();
         ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*g_ui_scale);
@@ -1941,10 +1991,7 @@ public:
 
         msg = "Visit https://xemu.app for more information";
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
-        ImGui::Text("%s", msg);
-        if (ImGui::IsItemClicked()) {
-            xemu_open_web_browser("https://xemu.app");
-        }
+        Hyperlink(msg, "https://xemu.app");
 
         ImGui::End();
     }
@@ -2253,6 +2300,8 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
         update_window.check_for_updates_and_prompt_if_available();
     }
 #endif
+
+    g_cursorManager = new CursorManager();
 }
 
 void xemu_hud_cleanup(void)
@@ -2373,6 +2422,7 @@ void xemu_hud_render(void)
 
     ImGui::NewFrame();
     process_keyboard_shortcuts();
+    g_cursorManager->SetArrowCursor();
 
     bool show_main_menu = true;
 
@@ -2442,6 +2492,7 @@ void xemu_hud_render(void)
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    g_cursorManager->ApplyChanges();
 }
 
 /* External interface, exposed via xemu-notifications.h */
