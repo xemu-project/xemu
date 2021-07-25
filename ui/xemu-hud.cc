@@ -75,38 +75,6 @@ float g_main_menu_height;
 float g_ui_scale = 1.0;
 bool g_trigger_style_update = true;
 
-class CursorManager
-{
-protected:
-    SDL_Cursor *m_arrowCursor;
-    SDL_Cursor *m_handCursor;
-    SDL_Cursor *m_nextCursor;
-
-public:
-    CursorManager()
-    {
-        m_arrowCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_ARROW);
-        m_handCursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_HAND);
-        m_nextCursor = m_arrowCursor;
-    }
-
-    ~CursorManager()
-    {
-        SDL_FreeCursor(m_arrowCursor);
-        SDL_FreeCursor(m_handCursor);
-    }
-
-    void SetHandCursor() { m_nextCursor = m_handCursor; }
-    void SetArrowCursor() { m_nextCursor = m_arrowCursor; }
-
-    void ApplyChanges()
-    {
-        SDL_SetCursor(m_nextCursor);
-    }
-};
-
-CursorManager *g_cursorManager;
-
 class NotificationManager
 {
 private:
@@ -230,13 +198,12 @@ static void HelpMarker(const char* desc)
 
 static void Hyperlink(const char *text, const char *url)
 {
-    ImGui::Text("%s", text);
-    bool hover = ImGui::IsItemHovered();
-
+    // FIXME: Color text when hovered
     ImColor col;
-    if (hover) {
+    ImGui::Text("%s", text);
+    if (ImGui::IsItemHovered()) {
         col = IM_COL32_WHITE;
-        g_cursorManager->SetHandCursor();
+        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     } else {
         col = ImColor(127, 127, 127, 255);
     }
@@ -2324,8 +2291,6 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
         update_window.check_for_updates_and_prompt_if_available();
     }
 #endif
-
-    g_cursorManager = new CursorManager();
 }
 
 void xemu_hud_cleanup(void)
@@ -2446,7 +2411,6 @@ void xemu_hud_render(void)
 
     ImGui::NewFrame();
     process_keyboard_shortcuts();
-    g_cursorManager->SetArrowCursor();
 
     bool show_main_menu = true;
 
@@ -2516,7 +2480,6 @@ void xemu_hud_render(void)
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-    g_cursorManager->ApplyChanges();
 }
 
 /* External interface, exposed via xemu-notifications.h */
