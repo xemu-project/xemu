@@ -5319,8 +5319,8 @@ static void pgraph_populate_surface_binding_entry(NV2AState *d, bool color,
         /* Since we determine surface dimensions based on the clipping
          * rectangle, make sure to include the surface offset as well.
          */
-        width += pg->surface_shape.clip_x;
-        height += pg->surface_shape.clip_y;
+        width -= width % ( 1 << pg->surface_shape.clip_x);
+        height -= height % ( 1 << pg->surface_shape.clip_y);
     } else {
         width = pg->color_binding->width;
         height = pg->color_binding->height;
