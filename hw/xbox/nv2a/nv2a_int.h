@@ -272,8 +272,6 @@ typedef struct PGRAPHState {
         int width;
         int height;
     } surface_binding_dim; // FIXME: Refactor
-    bool downloads_pending;
-    QemuEvent downloads_complete;
 
     hwaddr dma_a, dma_b;
     Lru texture_cache;
@@ -368,9 +366,15 @@ typedef struct PGRAPHState {
     bool waiting_for_nop;
     bool waiting_for_flip;
     bool waiting_for_context_switch;
+    bool downloads_pending;
+    bool download_dirty_surfaces_pending;
     bool flush_pending;
     bool gl_sync_pending;
+    QemuEvent downloads_complete;
+    QemuEvent dirty_surfaces_download_complete;
+    QemuEvent flush_complete;
     QemuEvent gl_sync_complete;
+
     unsigned int surface_scale_factor;
     uint8_t *scale_buf;
 } PGRAPHState;
@@ -410,6 +414,7 @@ typedef struct NV2AState {
         QemuCond fifo_cond;
         QemuCond fifo_idle_cond;
         bool fifo_kick;
+        bool halt;
     } pfifo;
 
     struct {
@@ -511,6 +516,8 @@ int pgraph_method(NV2AState *d, unsigned int subchannel, unsigned int method,
                   size_t num_words_available, size_t max_lookahead_words);
 void pgraph_gl_sync(NV2AState *d);
 void pgraph_process_pending_downloads(NV2AState *d);
+void pgraph_download_dirty_surfaces(NV2AState *d);
+void pgraph_flush(NV2AState *d);
 
 void *pfifo_thread(void *arg);
 void pfifo_kick(NV2AState *d);
