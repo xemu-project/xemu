@@ -613,11 +613,13 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     qemu_mutex_unlock(&d->pfifo.lock);
 }
 
-static void pgraph_flush(NV2AState *d)
+void pgraph_flush(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
 
-    // Clear last surface shape to force recreation of buffers at next draw
+    bool update_surface = (pg->color_binding || pg->zeta_binding);
+
+    /* Clear last surface shape to force recreation of buffers at next draw */
     pg->surface_color.draw_dirty = false;
     pg->surface_zeta.draw_dirty = false;
     memset(&pg->last_surface_shape, 0, sizeof(pg->last_surface_shape));
@@ -631,13 +633,20 @@ static void pgraph_flush(NV2AState *d)
 
     pgraph_mark_textures_possibly_dirty(d, 0, memory_region_size(d->vram));
 
-    // Sync all RAM
+    /* Sync all RAM */
     glBindBuffer(GL_ARRAY_BUFFER, d->pgraph.gl_memory_buffer);
     glBufferSubData(GL_ARRAY_BUFFER, 0, memory_region_size(d->vram), d->vram_ptr);
 
-    // FIXME: Flush more?
+    /* FIXME: Flush more? */
 
     pgraph_reload_surface_scale_factor(d);
+
+    if (update_surface) {
+        pgraph_update_surface(d, true, true, true);
+    }
+
+    qatomic_set(&d->pgraph.flush_pending, false);
+    qemu_event_set(&d->pgraph.flush_complete);
 }
 
 #define METHOD_ADDR(gclass, name) \
@@ -743,11 +752,6 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
     assert(glGetError() == GL_NO_ERROR);
 
     PGRAPHState *pg = &d->pgraph;
-
-    if (pg->flush_pending) {
-        pgraph_flush(d);
-        pg->flush_pending = false;
-    }
 
     bool channel_valid =
         d->pgraph.regs[NV_PGRAPH_CTX_CONTROL] & NV_PGRAPH_CTX_CONTROL_CHID;
@@ -3391,15 +3395,42 @@ void nv2a_gl_context_init(void)
 
 void nv2a_set_surface_scale_factor(unsigned int scale)
 {
-    PGRAPHState *pg = &g_nv2a->pgraph;
+    NV2AState *d = g_nv2a;
 
     xemu_settings_set_int(XEMU_SETTINGS_DISPLAY_RENDER_SCALE,
                           scale < 1 ? 1 : scale);
     xemu_settings_save();
 
-    qemu_mutex_lock(&pg->lock);
-    pg->flush_pending = true;
-    qemu_mutex_unlock(&pg->lock);
+    qemu_mutex_unlock_iothread();
+
+    qemu_mutex_lock(&d->pfifo.lock);
+    qatomic_set(&d->pfifo.halt, true);
+    qemu_mutex_unlock(&d->pfifo.lock);
+
+    qemu_mutex_lock(&d->pgraph.lock);
+    qemu_event_reset(&d->pgraph.dirty_surfaces_download_complete);
+    qatomic_set(&d->pgraph.download_dirty_surfaces_pending, true);
+    qemu_mutex_unlock(&d->pgraph.lock);
+    qemu_mutex_lock(&d->pfifo.lock);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+    qemu_event_wait(&d->pgraph.dirty_surfaces_download_complete);
+
+    qemu_mutex_lock(&d->pgraph.lock);
+    qemu_event_reset(&d->pgraph.flush_complete);
+    qatomic_set(&d->pgraph.flush_pending, true);
+    qemu_mutex_unlock(&d->pgraph.lock);
+    qemu_mutex_lock(&d->pfifo.lock);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+    qemu_event_wait(&d->pgraph.flush_complete);
+
+    qemu_mutex_lock(&d->pfifo.lock);
+    qatomic_set(&d->pfifo.halt, false);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+
+    qemu_mutex_lock_iothread();
 }
 
 unsigned int nv2a_get_surface_scale_factor(void)
@@ -3430,6 +3461,8 @@ void pgraph_init(NV2AState *d)
     qemu_mutex_init(&pg->lock);
     qemu_event_init(&pg->gl_sync_complete, false);
     qemu_event_init(&pg->downloads_complete, false);
+    qemu_event_init(&pg->dirty_surfaces_download_complete, false);
+    qemu_event_init(&pg->flush_complete, false);
 
     /* fire up opengl */
     glo_set_current(g_nv2a_context_render);
@@ -4630,6 +4663,7 @@ void pgraph_gl_sync(NV2AState *d)
     /* Switch back to original context */
     glo_set_current(g_nv2a_context_render);
 
+    qatomic_set(&d->pgraph.gl_sync_pending, false);
     qemu_event_set(&d->pgraph.gl_sync_complete);
 }
 
@@ -5065,8 +5099,21 @@ void pgraph_process_pending_downloads(NV2AState *d)
         pgraph_download_surface_data(d, surface, false);
     }
 
+    qatomic_set(&d->pgraph.downloads_pending, false);
     qemu_event_set(&d->pgraph.downloads_complete);
 }
+
+void pgraph_download_dirty_surfaces(NV2AState *d)
+{
+    SurfaceBinding *surface;
+    QTAILQ_FOREACH(surface, &d->pgraph.surfaces, entry) {
+        pgraph_download_surface_data_if_dirty(d, surface);
+    }
+
+    qatomic_set(&d->pgraph.download_dirty_surfaces_pending, false);
+    qemu_event_set(&d->pgraph.dirty_surfaces_download_complete);
+}
+
 
 static void surface_copy_expand_row(uint8_t *out, uint8_t *in,
                                     unsigned int width,

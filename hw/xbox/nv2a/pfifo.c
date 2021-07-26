@@ -446,6 +446,31 @@ static void pfifo_run_pusher(NV2AState *d)
     }
 }
 
+static void process_requests(NV2AState *d)
+{
+    if (qatomic_read(&d->pgraph.downloads_pending) ||
+        qatomic_read(&d->pgraph.download_dirty_surfaces_pending) ||
+        qatomic_read(&d->pgraph.gl_sync_pending) ||
+        qatomic_read(&d->pgraph.flush_pending)) {
+        qemu_mutex_unlock(&d->pfifo.lock);
+        qemu_mutex_lock(&d->pgraph.lock);
+        if (qatomic_read(&d->pgraph.downloads_pending)) {
+            pgraph_process_pending_downloads(d);
+        }
+        if (qatomic_read(&d->pgraph.download_dirty_surfaces_pending)) {
+            pgraph_download_dirty_surfaces(d);
+        }
+        if (qatomic_read(&d->pgraph.gl_sync_pending)) {
+            pgraph_gl_sync(d);
+        }
+        if (qatomic_read(&d->pgraph.flush_pending)) {
+            pgraph_flush(d);
+        }
+        qemu_mutex_unlock(&d->pgraph.lock);
+        qemu_mutex_lock(&d->pfifo.lock);
+    }
+}
+
 void *pfifo_thread(void *arg)
 {
     NV2AState *d = (NV2AState *)arg;
@@ -457,17 +482,11 @@ void *pfifo_thread(void *arg)
     while (true) {
         d->pfifo.fifo_kick = false;
 
-        if (qatomic_read(&d->pgraph.downloads_pending)) {
-            pgraph_process_pending_downloads(d);
-            qatomic_set(&d->pgraph.downloads_pending, false);
-        }
+        process_requests(d);
 
-        if (qatomic_read(&d->pgraph.gl_sync_pending)) {
-            pgraph_gl_sync(d);
-            qatomic_set(&d->pgraph.gl_sync_pending, false);
+        if (!d->pfifo.halt) {
+            pfifo_run_pusher(d);
         }
-
-        pfifo_run_pusher(d);
 
         if (!d->pfifo.fifo_kick) {
             qemu_cond_broadcast(&d->pfifo.fifo_idle_cond);
