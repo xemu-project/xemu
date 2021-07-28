@@ -2134,7 +2134,7 @@ static void ShowMainMenu()
 
         if (ImGui::BeginMenu("Debug"))
         {
-            ImGui::MenuItem("Monitor", NULL, &monitor_window.is_open);
+            ImGui::MenuItem("Monitor", SHORTCUT_MENU_KEY(~), &monitor_window.is_open);
             ImGui::MenuItem("Audio", NULL, &apu_window.is_open);
             ImGui::MenuItem("Video", NULL, &video_window.is_open);
             ImGui::EndMenu();
