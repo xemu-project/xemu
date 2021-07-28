@@ -2066,6 +2066,8 @@ static void process_keyboard_shortcuts(void)
 #define SHORTCUT_MENU_TEXT(c) "Ctrl+" #c
 #endif
 
+#define SHORTCUT_MENU_KEY(c) "" #c
+
 static void ShowMainMenu()
 {
     bool running = runstate_is_running();
