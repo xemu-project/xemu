@@ -1165,8 +1165,15 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
         scale[0] = (float)tw/(float)ww;
         scale[1] = (float)th/(float)wh;
     } else {
-        // Scale to fit
-        float t_ratio = (float)tw/(float)th;
+        float t_ratio;
+        if (scaling_mode == DISPLAY_SCALE_WS169) {
+            // Scale to fit window using a fixed 16:9 aspect ratio
+            t_ratio = 16.0f/9.0f;
+        } else {
+            // Scale to fit, preserving framebuffer aspect ratio
+            t_ratio = (float)tw/(float)th;
+        }
+
         float w_ratio = (float)ww/(float)wh;
         if (w_ratio >= t_ratio) {
             scale[0] = t_ratio/w_ratio;
