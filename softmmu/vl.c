@@ -2700,7 +2700,11 @@ void qemu_init(int argc, char **argv, char **envp)
             break;
         }
     }
-    xemu_settings_load();
+
+    /* Loading the settings here has been moved in favor of parsing them before the
+       window is created so that window size can be maintained across reboots. */
+    /*xemu_settings_load();*/
+
     int first_boot = xemu_settings_did_fail_to_load();
     int fake_argc = 32 + argc;
     char **fake_argv = malloc(sizeof(char*)*fake_argc);

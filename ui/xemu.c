@@ -626,6 +626,7 @@ static void handle_windowevent(SDL_Event *ev)
             }
             if (allow_close) {
                 shutdown_action = SHUTDOWN_ACTION_POWEROFF;
+                xemu_save_window_size();
                 qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_UI);
             }
         } else {
@@ -678,6 +679,7 @@ void sdl2_poll_events(struct sdl2_console *scon)
             }
             if (allow_close) {
                 shutdown_action = SHUTDOWN_ACTION_POWEROFF;
+                xemu_save_window_size();
                 qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_UI);
             }
             break;
@@ -840,9 +842,19 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
 #endif
                                   , xemu_version);
 
+
+    int local_ini_win_width = 1024;
+    int local_ini_win_height = 768;
+
+    if(FALSE == xemu_settings_did_fail_to_load())
+    {
+        xemu_settings_get_int(XEMU_SETTINGS_DISPLAY_WIN_WIDTH, &local_ini_win_width);
+        xemu_settings_get_int(XEMU_SETTINGS_DISPLAY_WIN_HEIGHT, &local_ini_win_height);
+    }
+
     // Create main window
     m_window = SDL_CreateWindow(
-        title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1024, 768,
+        title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, local_ini_win_width, local_ini_win_height,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     if (m_window == NULL) {
         fprintf(stderr, "Failed to create main window\n");
@@ -1484,6 +1496,8 @@ int main(int argc, char **argv)
     gArgc = argc;
     gArgv = argv;
 
+    xemu_settings_load();
+
     sdl2_display_very_early_init(NULL);
 
     qemu_sem_init(&display_init_sem, 0);
@@ -1537,4 +1551,9 @@ void xemu_load_disc(const char *path)
                                &err);
 
     xbox_smc_update_tray_state();
+}
+
+SDL_Window* xemu_get_winid(void)
+{
+    return(m_window);
 }

@@ -54,6 +54,8 @@ struct xemu_settings {
 	int scale;
 	int ui_scale;
 	int render_scale;
+	int win_width;
+	int win_height;
 
 	// [input]
 	char *controller_1_guid;
@@ -119,6 +121,8 @@ struct config_offset_table {
 	[XEMU_SETTINGS_DISPLAY_SCALE]        = { CONFIG_TYPE_ENUM, "display", "scale",        offsetof(struct xemu_settings, scale),        { .default_int = DISPLAY_SCALE_SCALE }, display_scale_map },
 	[XEMU_SETTINGS_DISPLAY_UI_SCALE]     = { CONFIG_TYPE_INT,  "display", "ui_scale",     offsetof(struct xemu_settings, ui_scale),     { .default_int = 1                   }                    },
 	[XEMU_SETTINGS_DISPLAY_RENDER_SCALE] = { CONFIG_TYPE_INT,  "display", "render_scale", offsetof(struct xemu_settings, render_scale), { .default_int = 1                   }                    },
+	[XEMU_SETTINGS_DISPLAY_WIN_WIDTH] = { CONFIG_TYPE_INT,  "display", "win_width", offsetof(struct xemu_settings, win_width),    { .default_int = 1024                  }                    },
+	[XEMU_SETTINGS_DISPLAY_WIN_HEIGHT] = { CONFIG_TYPE_INT,  "display", "win_height", offsetof(struct xemu_settings, win_height), { .default_int = 768                   }                    },
 
 	[XEMU_SETTINGS_INPUT_CONTROLLER_1_GUID] = { CONFIG_TYPE_STRING,   "input", "controller_1_guid", offsetof(struct xemu_settings, controller_1_guid), { .default_str = "" } },
 	[XEMU_SETTINGS_INPUT_CONTROLLER_2_GUID] = { CONFIG_TYPE_STRING,   "input", "controller_2_guid", offsetof(struct xemu_settings, controller_2_guid), { .default_str = "" } },
