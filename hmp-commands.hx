@@ -1725,3 +1725,18 @@ ERST
         .flags      = "p",
     },
 
+
+    {
+        .name       = "showfps",
+        .args_type  = "value:i",
+        .params     = "[0|1]",
+        .help       = "Enable / Disable the basic FPS monitor",
+        .cmd        = hmp_showfps,
+    },
+
+SRST
+``showfps`` *value*
+  A value of 0 will disable the basic FPS monitor.
+  A value of 1 will enable the basic FPS monitor
+
+ERST

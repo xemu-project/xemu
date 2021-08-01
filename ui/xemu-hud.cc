@@ -75,6 +75,74 @@ float g_main_menu_height;
 float g_ui_scale = 1.0;
 bool g_trigger_style_update = true;
 
+class FPSManager
+{
+private:
+    bool active;
+
+public:
+
+    FPSManager()
+    {
+        active = true;
+    }
+
+    ~FPSManager()
+    {
+
+    }
+
+    void Draw()
+    {
+        if(active)
+        {
+            DrawFPS();
+        }
+    }
+
+private:
+    void DrawFPS()
+    {
+        const float DISTANCE = 10.0f;
+        static int corner = 0;
+        ImGuiIO& io = ImGui::GetIO();
+        if (corner != -1)
+        {
+            ImVec2 window_pos = ImVec2((corner & 1) ? io.DisplaySize.x - DISTANCE : DISTANCE, (corner & 2) ? io.DisplaySize.y - DISTANCE : DISTANCE);
+            window_pos.y = g_main_menu_height + DISTANCE;
+            ImVec2 window_pos_pivot = ImVec2((corner & 1) ? 1.0f : 0.0f, (corner & 2) ? 1.0f : 0.0f);
+            ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, window_pos_pivot);
+        }
+
+        float fade = 1.0;
+
+        ImVec4 color = ImGui::GetStyle().Colors[ImGuiCol_ButtonActive];
+        color.w *= fade;
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1);
+        ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0,0,0,fade*0.9f));
+        ImGui::PushStyleColor(ImGuiCol_Border, color);
+        ImGui::PushStyleColor(ImGuiCol_Text, color);
+        ImGui::SetNextWindowBgAlpha(0.90f * fade);
+        if (ImGui::Begin("FPSOverlay", NULL,
+            ImGuiWindowFlags_NoMove |
+            ImGuiWindowFlags_AlwaysAutoResize |
+            ImGuiWindowFlags_NoDecoration |
+            ImGuiWindowFlags_NoSavedSettings |
+            ImGuiWindowFlags_NoFocusOnAppearing |
+            ImGuiWindowFlags_NoNav |
+            ImGuiWindowFlags_NoInputs
+            ))
+        {
+            ImGui::Text("FPS %d", g_nv2a_stats.increment_fps);
+        }
+        ImGui::PopStyleColor();
+        ImGui::PopStyleColor();
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar();
+        ImGui::End();
+    }
+};
+
 class NotificationManager
 {
 private:
@@ -1897,6 +1965,7 @@ static NotificationManager notification_manager;
 static AutoUpdateWindow update_window;
 #endif
 static std::deque<const char *> g_errors;
+static FPSManager fps_manager;
 
 class FirstBootWindow
 {
@@ -2411,6 +2480,13 @@ void xemu_hud_render(void)
 
     ImGui::NewFrame();
     process_keyboard_shortcuts();
+
+    int ui_show_fps_bool;
+    xemu_settings_get_bool(XEMU_SETTINGS_DISPLAY_SHOW_FPS, &ui_show_fps_bool);
+    if(ui_show_fps_bool) {
+    	// Draw the FPS before the menu
+    	fps_manager.Draw();
+    }
 
     bool show_main_menu = true;
 

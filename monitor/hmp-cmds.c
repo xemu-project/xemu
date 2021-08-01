@@ -57,6 +57,7 @@
 #include "hw/rdma/rdma.h"
 #include "migration/snapshot.h"
 #include "migration/misc.h"
+#include "ui/xemu-settings.h"
 
 #ifdef CONFIG_SPICE
 #include <spice/enums.h>
@@ -2225,4 +2226,18 @@ void hmp_info_memory_size_summary(Monitor *mon, const QDict *qdict)
         qapi_free_MemoryInfo(info);
     }
     hmp_handle_error(mon, err);
+}
+
+void hmp_showfps(Monitor *mon, const QDict *qdict)
+{
+    int value = qdict_get_try_int(qdict, "value", 0);
+
+    //if we did not get a value of 1 it was either out of range or 0
+    //assume 0 in all cases.
+    if ( value != 1 ) {
+        value = 0;
+    }
+
+    xemu_settings_set_bool(XEMU_SETTINGS_DISPLAY_SHOW_FPS, value);
+    xemu_settings_save();
 }
