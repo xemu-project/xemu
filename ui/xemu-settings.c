@@ -61,6 +61,33 @@ struct xemu_settings {
 	char *controller_3_guid;
 	char *controller_4_guid;
 
+	// [keyboard]
+	int key_button_a;
+	int key_button_b;
+	int key_button_x;
+	int key_button_y;
+	int key_button_left;
+	int key_button_up;
+	int key_button_right;
+	int key_button_down;
+	int key_button_back;
+	int key_button_start;
+	int key_button_white;
+	int key_button_black;
+	int key_button_lstick;
+	int key_button_rstick;
+	int key_button_guide;
+	int key_axis_lstick_right;
+	int key_axis_lstick_left;
+	int key_axis_lstick_up;
+	int key_axis_lstick_down;
+	int key_axis_rstick_right;
+	int key_axis_rstick_left;
+	int key_axis_rstick_up;
+	int key_axis_rstick_down;
+	int key_axis_ltrig;
+	int key_axis_rtrig;
+
 	// [network]
 	int   net_enabled; // Boolean
 	int   net_backend;
@@ -124,6 +151,33 @@ struct config_offset_table {
 	[XEMU_SETTINGS_INPUT_CONTROLLER_2_GUID] = { CONFIG_TYPE_STRING,   "input", "controller_2_guid", offsetof(struct xemu_settings, controller_2_guid), { .default_str = "" } },
 	[XEMU_SETTINGS_INPUT_CONTROLLER_3_GUID] = { CONFIG_TYPE_STRING,   "input", "controller_3_guid", offsetof(struct xemu_settings, controller_3_guid), { .default_str = "" } },
 	[XEMU_SETTINGS_INPUT_CONTROLLER_4_GUID] = { CONFIG_TYPE_STRING,   "input", "controller_4_guid", offsetof(struct xemu_settings, controller_4_guid), { .default_str = "" } },
+
+	[XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_A]      = { CONFIG_TYPE_INT, "keyboard", "key_button_a",      offsetof(struct xemu_settings, key_button_a),      { .default_int = SDL_SCANCODE_A         } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_B]      = { CONFIG_TYPE_INT, "keyboard", "key_button_b",      offsetof(struct xemu_settings, key_button_b),      { .default_int = SDL_SCANCODE_B         } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_X]      = { CONFIG_TYPE_INT, "keyboard", "key_button_x",      offsetof(struct xemu_settings, key_button_x),      { .default_int = SDL_SCANCODE_X         } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_Y]      = { CONFIG_TYPE_INT, "keyboard", "key_button_y",      offsetof(struct xemu_settings, key_button_y),      { .default_int = SDL_SCANCODE_Y         } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_LEFT]   = { CONFIG_TYPE_INT, "keyboard", "key_button_left",   offsetof(struct xemu_settings, key_button_left),   { .default_int = SDL_SCANCODE_LEFT      } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_UP]     = { CONFIG_TYPE_INT, "keyboard", "key_button_up",     offsetof(struct xemu_settings, key_button_up),     { .default_int = SDL_SCANCODE_UP        } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_RIGHT]  = { CONFIG_TYPE_INT, "keyboard", "key_button_right",  offsetof(struct xemu_settings, key_button_right),  { .default_int = SDL_SCANCODE_RIGHT     } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_DOWN]   = { CONFIG_TYPE_INT, "keyboard", "key_button_down",   offsetof(struct xemu_settings, key_button_down),   { .default_int = SDL_SCANCODE_DOWN      } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_BACK]   = { CONFIG_TYPE_INT, "keyboard", "key_button_back",   offsetof(struct xemu_settings, key_button_back),   { .default_int = SDL_SCANCODE_BACKSPACE } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_START]  = { CONFIG_TYPE_INT, "keyboard", "key_button_start",  offsetof(struct xemu_settings, key_button_start),  { .default_int = SDL_SCANCODE_RETURN    } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_WHITE]  = { CONFIG_TYPE_INT, "keyboard", "key_button_white",  offsetof(struct xemu_settings, key_button_white),  { .default_int = SDL_SCANCODE_1         } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_BLACK]  = { CONFIG_TYPE_INT, "keyboard", "key_button_black",  offsetof(struct xemu_settings, key_button_black),  { .default_int = SDL_SCANCODE_2         } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_LSTICK] = { CONFIG_TYPE_INT, "keyboard", "key_button_lstick", offsetof(struct xemu_settings, key_button_lstick), { .default_int = SDL_SCANCODE_3         } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_RSTICK] = { CONFIG_TYPE_INT, "keyboard", "key_button_rstick", offsetof(struct xemu_settings, key_button_rstick), { .default_int = SDL_SCANCODE_4         } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_GUIDE]  = { CONFIG_TYPE_INT, "keyboard", "key_button_guide",  offsetof(struct xemu_settings, key_button_guide),  { .default_int = SDL_SCANCODE_5         } },
+
+	[XEMU_SETTINGS_KEYBOARD_KEY_AXIS_LSTICK_RIGHT] = { CONFIG_TYPE_INT, "keyboard", "key_axis_lstick_right", offsetof(struct xemu_settings, key_axis_lstick_right), { .default_int = SDL_SCANCODE_F } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_AXIS_LSTICK_LEFT]  = { CONFIG_TYPE_INT, "keyboard", "key_axis_lstick_left",  offsetof(struct xemu_settings, key_axis_lstick_left),  { .default_int = SDL_SCANCODE_S } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_AXIS_LSTICK_UP]    = { CONFIG_TYPE_INT, "keyboard", "key_axis_lstick_up",    offsetof(struct xemu_settings, key_axis_lstick_up),    { .default_int = SDL_SCANCODE_E } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_AXIS_LSTICK_DOWN]  = { CONFIG_TYPE_INT, "keyboard", "key_axis_lstick_down",  offsetof(struct xemu_settings, key_axis_lstick_down),  { .default_int = SDL_SCANCODE_D } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_AXIS_RSTICK_RIGHT] = { CONFIG_TYPE_INT, "keyboard", "key_axis_rstick_right", offsetof(struct xemu_settings, key_axis_rstick_right), { .default_int = SDL_SCANCODE_L } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_AXIS_RSTICK_LEFT]  = { CONFIG_TYPE_INT, "keyboard", "key_axis_rstick_left",  offsetof(struct xemu_settings, key_axis_rstick_left),  { .default_int = SDL_SCANCODE_J } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_AXIS_RSTICK_UP]    = { CONFIG_TYPE_INT, "keyboard", "key_axis_rstick_up",    offsetof(struct xemu_settings, key_axis_rstick_up),    { .default_int = SDL_SCANCODE_I } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_AXIS_RSTICK_DOWN]  = { CONFIG_TYPE_INT, "keyboard", "key_axis_rstick_down",  offsetof(struct xemu_settings, key_axis_rstick_down),  { .default_int = SDL_SCANCODE_K } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_AXIS_LTRIG]        = { CONFIG_TYPE_INT, "keyboard", "key_axis_ltrig",        offsetof(struct xemu_settings, key_axis_ltrig),        { .default_int = SDL_SCANCODE_W } },
+	[XEMU_SETTINGS_KEYBOARD_KEY_AXIS_RTRIG]        = { CONFIG_TYPE_INT, "keyboard", "key_axis_rtrig",        offsetof(struct xemu_settings, key_axis_rtrig),        { .default_int = SDL_SCANCODE_O } },
 
 	[XEMU_SETTINGS_NETWORK_ENABLED]     = { CONFIG_TYPE_BOOL,   "network", "enabled",     offsetof(struct xemu_settings, net_enabled),     { .default_bool = 0              } },
 	[XEMU_SETTINGS_NETWORK_BACKEND]     = { CONFIG_TYPE_ENUM,   "network", "backend",     offsetof(struct xemu_settings, net_backend),     { .default_int = XEMU_NET_BACKEND_USER }, net_backend_map },

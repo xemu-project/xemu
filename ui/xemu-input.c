@@ -255,51 +255,61 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
     memset(state->axis, 0, sizeof(state->axis));
 
     const uint8_t *kbd = SDL_GetKeyboardState(NULL);
-    const int sdl_kbd_button_map[15] = {
-        SDL_SCANCODE_A,
-        SDL_SCANCODE_B,
-        SDL_SCANCODE_X,
-        SDL_SCANCODE_Y,
-        SDL_SCANCODE_LEFT,
-        SDL_SCANCODE_UP,
-        SDL_SCANCODE_RIGHT,
-        SDL_SCANCODE_DOWN,
-        SDL_SCANCODE_BACKSPACE,
-        SDL_SCANCODE_RETURN,
-        SDL_SCANCODE_1,
-        SDL_SCANCODE_2,
-        SDL_SCANCODE_3,
-        SDL_SCANCODE_4,
-        SDL_SCANCODE_5
+    const int button_list[15] = {
+        XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_A,
+        XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_B,
+        XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_X,
+        XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_Y,
+        XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_LEFT,
+        XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_UP,
+        XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_RIGHT,
+        XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_DOWN,
+        XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_BACK,
+        XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_START,
+        XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_WHITE,
+        XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_BLACK,
+        XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_LSTICK,
+        XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_RSTICK,
+        XEMU_SETTINGS_KEYBOARD_KEY_BUTTON_GUIDE,
     };
 
     for (int i = 0; i < 15; i++) {
-        state->buttons |= kbd[sdl_kbd_button_map[i]] << i;
+        int scancode;
+        xemu_settings_get_int(xemu_kbd_button_list[i], &scancode);
+        state->buttons |= kbd[scancode] << i;
     }
 
-    /*
-    W = LTrig
-       E
-    S     F
-       D
-    */
-    if (kbd[SDL_SCANCODE_E]) state->axis[CONTROLLER_AXIS_LSTICK_Y] = 32767;
-    if (kbd[SDL_SCANCODE_S]) state->axis[CONTROLLER_AXIS_LSTICK_X] = -32768;
-    if (kbd[SDL_SCANCODE_F]) state->axis[CONTROLLER_AXIS_LSTICK_X] = 32767;
-    if (kbd[SDL_SCANCODE_D]) state->axis[CONTROLLER_AXIS_LSTICK_Y] = -32768;
-    if (kbd[SDL_SCANCODE_W]) state->axis[CONTROLLER_AXIS_LTRIG] = 32767;
+    const int key_axis_list[10] {
+        XEMU_SETTINGS_KEYBOARD_KEY_AXIS_LSTICK_RIGHT,
+        XEMU_SETTINGS_KEYBOARD_KEY_AXIS_LSTICK_LEFT,
+        XEMU_SETTINGS_KEYBOARD_KEY_AXIS_LSTICK_UP,
+        XEMU_SETTINGS_KEYBOARD_KEY_AXIS_LSTICK_DOWN,
+        XEMU_SETTINGS_KEYBOARD_KEY_AXIS_RSTICK_RIGHT,
+        XEMU_SETTINGS_KEYBOARD_KEY_AXIS_RSTICK_LEFT,
+        XEMU_SETTINGS_KEYBOARD_KEY_AXIS_RSTICK_UP,
+        XEMU_SETTINGS_KEYBOARD_KEY_AXIS_RSTICK_DOWN,
+        XEMU_SETTINGS_KEYBOARD_KEY_AXIS_LTRIG,
+        XEMU_SETTINGS_KEYBOARD_KEY_AXIS_RTRIG,
+    };
 
-    /*
-          O = RTrig
-       I
-    J     L
-       K
-    */
-    if (kbd[SDL_SCANCODE_I]) state->axis[CONTROLLER_AXIS_RSTICK_Y] = 32767;
-    if (kbd[SDL_SCANCODE_J]) state->axis[CONTROLLER_AXIS_RSTICK_X] = -32768;
-    if (kbd[SDL_SCANCODE_L]) state->axis[CONTROLLER_AXIS_RSTICK_X] = 32767;
-    if (kbd[SDL_SCANCODE_K]) state->axis[CONTROLLER_AXIS_RSTICK_Y] = -32768;
-    if (kbd[SDL_SCANCODE_O]) state->axis[CONTROLLER_AXIS_RTRIG] = 32767;
+    int axis_scancode_list[10];
+
+    for (int i = 0; i < 10; i++) {
+        xemu_settings_get_int(xemu_kbd_button_list[i], &axis_scancode_list[i]);
+    }
+
+    if (kbd[axis_scancode_list[0]]) state->axis[CONTROLLER_AXIS_LSTICK_X] = 32767;
+    if (kbd[axis_scancode_list[1]]) state->axis[CONTROLLER_AXIS_LSTICK_X] = -32768;
+    if (kbd[axis_scancode_list[2]]) state->axis[CONTROLLER_AXIS_LSTICK_Y] = 32767;
+    if (kbd[axis_scancode_list[3]]) state->axis[CONTROLLER_AXIS_LSTICK_Y] = -32768;
+
+    if (kbd[axis_scancode_list[6]]) state->axis[CONTROLLER_AXIS_RSTICK_X] = 32767;
+    if (kbd[axis_scancode_list[5]]) state->axis[CONTROLLER_AXIS_RSTICK_X] = -32768;
+    if (kbd[axis_scancode_list[4]]) state->axis[CONTROLLER_AXIS_RSTICK_Y] = 32767;
+    if (kbd[axis_scancode_list[7]]) state->axis[CONTROLLER_AXIS_RSTICK_Y] = -32768;
+
+    if (kbd[axis_scancode_list[8]]) state->axis[CONTROLLER_AXIS_LTRIG] = 32767;
+    if (kbd[axis_scancode_list[9]]) state->axis[CONTROLLER_AXIS_RTRIG] = 32767;
 }
 
 void xemu_input_update_sdl_controller_state(ControllerState *state)
