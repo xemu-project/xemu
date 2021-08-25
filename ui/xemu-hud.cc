@@ -1738,12 +1738,10 @@ static void ShowMainMenu()
                 xemu_settings_save();
                 g_trigger_style_update = true;
             }
-            
             if (ImGui::Combo("Scaling Mode", &scaling_mode, "Center\0Scale\0Stretch\0")) {
                 xemu_settings_set_enum(XEMU_SETTINGS_DISPLAY_SCALE, scaling_mode);
                 xemu_settings_save();
             }
-
             ImGui::SameLine(); HelpMarker("Controls how the rendered content should be scaled into the window");
             if (ImGui::MenuItem("Fullscreen", NULL, xemu_is_fullscreen(), true)) {
                 xemu_toggle_fullscreen();
@@ -1883,6 +1881,7 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     int ui_scale_int = 1;
     xemu_settings_get_int(XEMU_SETTINGS_DISPLAY_UI_SCALE, &ui_scale_int);
     if (ui_scale_int < 1) ui_scale_int = 1;
+    if (ui_scale_int > 1) ui_scale_int = g_ui_scale;
     g_ui_scale = ui_scale_int;
 
     g_sdl_window = window;
