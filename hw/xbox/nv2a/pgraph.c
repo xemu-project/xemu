@@ -3550,12 +3550,13 @@ void pgraph_destroy(PGRAPHState *pg)
 
     glo_set_current(g_nv2a_context_render);
 
-    // TODO: clear out surfaces
-
+    // Clear out surfaces
+    lru_flush(&pg->surface);
     glDeleteFramebuffers(1, &pg->gl_framebuffer);
 
-    // TODO: clear out shader cached
-
+    // Clear out shader cache
+    lru_flush(&pg->shader_cache);
+    
     // Clear out texture cache
     lru_flush(&pg->texture_cache);
     free(pg->texture_cache_entries);
