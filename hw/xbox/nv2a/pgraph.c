@@ -1,4 +1,4 @@
-/*
+sudo apt update/*
  * QEMU Geforce NV2A implementation
  *
  * Copyright (c) 2012 espes
@@ -3551,7 +3551,7 @@ void pgraph_destroy(PGRAPHState *pg)
     glo_set_current(g_nv2a_context_render);
 
     // Clear out surfaces
-    lru_flush(&pg->surface);
+    lru_flush(&pg->surfaces);
     glDeleteFramebuffers(1, &pg->gl_framebuffer);
 
     // Clear out shader cache
