@@ -79,9 +79,9 @@ static inline
 floatx80 pack(floatx80 v, float_status *status)
 {
     switch (status->floatx80_rounding_precision) {
-    case 32: return (floatx80){ .fval = (float)v.fval };
-    case 64: return (floatx80){ .fval = (double)v.fval };
-    default: return v; /* 80 */
+    case floatx80_precision_s: return (floatx80){ .fval = (float)v.fval };
+    case floatx80_precision_d: return (floatx80){ .fval = (double)v.fval };
+    default: return v; /* floatx80_precision_x */
     }
 }
 
