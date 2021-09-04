@@ -227,10 +227,13 @@ void *qemu_memalign(size_t alignment, size_t size)
 }
 
 /* alloc shared memory pages */
-void *qemu_anon_ram_alloc(size_t size, uint64_t *alignment, bool shared)
+void *qemu_anon_ram_alloc(size_t size, uint64_t *alignment, bool shared,
+                          bool noreserve)
 {
+    const uint32_t qemu_map_flags = (shared ? QEMU_MAP_SHARED : 0) |
+                                    (noreserve ? QEMU_MAP_NORESERVE : 0);
     size_t align = QEMU_VMALLOC_ALIGN;
-    void *ptr = qemu_ram_mmap(-1, size, align, false, shared, false, 0);
+    void *ptr = qemu_ram_mmap(-1, size, align, qemu_map_flags, 0);
 
     if (ptr == MAP_FAILED) {
         return NULL;
@@ -273,17 +276,6 @@ int qemu_try_set_nonblock(int fd)
         return -errno;
     }
     if (fcntl(fd, F_SETFL, f | O_NONBLOCK) == -1) {
-#ifdef __OpenBSD__
-        /*
-         * Previous to OpenBSD 6.3, fcntl(F_SETFL) is not permitted on
-         * memory devices and sets errno to ENODEV.
-         * It's OK if we fail to set O_NONBLOCK on devices like /dev/null,
-         * because they will never block anyway.
-         */
-        if (errno == ENODEV) {
-            return 0;
-        }
-#endif
         return -errno;
     }
     return 0;

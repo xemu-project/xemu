@@ -18,6 +18,7 @@
 #include "hw/virtio/vhost-backend.h"
 #include "hw/virtio/virtio-net.h"
 #include "hw/virtio/vhost-vdpa.h"
+#include "exec/address-spaces.h"
 #include "qemu/main-loop.h"
 #include "cpu.h"
 #include "trace.h"
@@ -27,6 +28,8 @@ static bool vhost_vdpa_listener_skipped_section(MemoryRegionSection *section)
 {
     return (!memory_region_is_ram(section->mr) &&
             !memory_region_is_iommu(section->mr)) ||
+           /* vhost-vDPA doesn't allow MMIO to be mapped  */
+            memory_region_is_ram_device(section->mr) ||
            /*
             * Sizing an enabled 64-bit BAR can cause spurious mappings to
             * addresses in the upper part of the 64-bit address space.  These
@@ -171,22 +174,12 @@ static void vhost_vdpa_listener_region_add(MemoryListener *listener,
                              vaddr, section->readonly);
     if (ret) {
         error_report("vhost vdpa map fail!");
-        if (memory_region_is_ram_device(section->mr)) {
-            /* Allow unexpected mappings not to be fatal for RAM devices */
-            error_report("map ram fail!");
-          return ;
-        }
         goto fail;
     }
 
     return;
 
 fail:
-    if (memory_region_is_ram_device(section->mr)) {
-        error_report("failed to vdpa_dma_map. pci p2p may not work");
-        return;
-
-    }
     /*
      * On the initfn path, store the first error in the container so we
      * can gracefully fail.  Runtime, there's not much we can do other
@@ -252,10 +245,12 @@ static int vhost_vdpa_call(struct vhost_dev *dev, unsigned long int request,
 {
     struct vhost_vdpa *v = dev->opaque;
     int fd = v->device_fd;
+    int ret;
 
     assert(dev->vhost_ops->backend_type == VHOST_BACKEND_TYPE_VDPA);
 
-    return ioctl(fd, request, arg);
+    ret = ioctl(fd, request, arg);
+    return ret < 0 ? -errno : ret;
 }
 
 static void vhost_vdpa_add_status(struct vhost_dev *dev, uint8_t status)
@@ -272,18 +267,15 @@ static void vhost_vdpa_add_status(struct vhost_dev *dev, uint8_t status)
     vhost_vdpa_call(dev, VHOST_VDPA_SET_STATUS, &s);
 }
 
-static int vhost_vdpa_init(struct vhost_dev *dev, void *opaque)
+static int vhost_vdpa_init(struct vhost_dev *dev, void *opaque, Error **errp)
 {
     struct vhost_vdpa *v;
-    uint64_t features;
     assert(dev->vhost_ops->backend_type == VHOST_BACKEND_TYPE_VDPA);
     trace_vhost_vdpa_init(dev, opaque);
 
     v = opaque;
     v->dev = dev;
     dev->opaque =  opaque ;
-    vhost_vdpa_call(dev, VHOST_GET_FEATURES, &features);
-    dev->backend_features = features;
     v->listener = vhost_vdpa_memory_listener;
     v->msg_type = VHOST_IOTLB_MSG_V2;
 
@@ -293,12 +285,95 @@ static int vhost_vdpa_init(struct vhost_dev *dev, void *opaque)
     return 0;
 }
 
+static void vhost_vdpa_host_notifier_uninit(struct vhost_dev *dev,
+                                            int queue_index)
+{
+    size_t page_size = qemu_real_host_page_size;
+    struct vhost_vdpa *v = dev->opaque;
+    VirtIODevice *vdev = dev->vdev;
+    VhostVDPAHostNotifier *n;
+
+    n = &v->notifier[queue_index];
+
+    if (n->addr) {
+        virtio_queue_set_host_notifier_mr(vdev, queue_index, &n->mr, false);
+        object_unparent(OBJECT(&n->mr));
+        munmap(n->addr, page_size);
+        n->addr = NULL;
+    }
+}
+
+static void vhost_vdpa_host_notifiers_uninit(struct vhost_dev *dev, int n)
+{
+    int i;
+
+    for (i = 0; i < n; i++) {
+        vhost_vdpa_host_notifier_uninit(dev, i);
+    }
+}
+
+static int vhost_vdpa_host_notifier_init(struct vhost_dev *dev, int queue_index)
+{
+    size_t page_size = qemu_real_host_page_size;
+    struct vhost_vdpa *v = dev->opaque;
+    VirtIODevice *vdev = dev->vdev;
+    VhostVDPAHostNotifier *n;
+    int fd = v->device_fd;
+    void *addr;
+    char *name;
+
+    vhost_vdpa_host_notifier_uninit(dev, queue_index);
+
+    n = &v->notifier[queue_index];
+
+    addr = mmap(NULL, page_size, PROT_WRITE, MAP_SHARED, fd,
+                queue_index * page_size);
+    if (addr == MAP_FAILED) {
+        goto err;
+    }
+
+    name = g_strdup_printf("vhost-vdpa/host-notifier@%p mmaps[%d]",
+                           v, queue_index);
+    memory_region_init_ram_device_ptr(&n->mr, OBJECT(vdev), name,
+                                      page_size, addr);
+    g_free(name);
+
+    if (virtio_queue_set_host_notifier_mr(vdev, queue_index, &n->mr, true)) {
+        munmap(addr, page_size);
+        goto err;
+    }
+    n->addr = addr;
+
+    return 0;
+
+err:
+    return -1;
+}
+
+static void vhost_vdpa_host_notifiers_init(struct vhost_dev *dev)
+{
+    int i;
+
+    for (i = dev->vq_index; i < dev->vq_index + dev->nvqs; i++) {
+        if (vhost_vdpa_host_notifier_init(dev, i)) {
+            goto err;
+        }
+    }
+
+    return;
+
+err:
+    vhost_vdpa_host_notifiers_uninit(dev, i);
+    return;
+}
+
 static int vhost_vdpa_cleanup(struct vhost_dev *dev)
 {
     struct vhost_vdpa *v;
     assert(dev->vhost_ops->backend_type == VHOST_BACKEND_TYPE_VDPA);
     v = dev->opaque;
     trace_vhost_vdpa_cleanup(dev, v);
+    vhost_vdpa_host_notifiers_uninit(dev, dev->nvqs);
     memory_listener_unregister(&v->listener);
 
     dev->opaque = NULL;
@@ -371,8 +446,8 @@ static int vhost_vdpa_set_backend_cap(struct vhost_dev *dev)
     return 0;
 }
 
-int vhost_vdpa_get_device_id(struct vhost_dev *dev,
-                                   uint32_t *device_id)
+static int vhost_vdpa_get_device_id(struct vhost_dev *dev,
+                                    uint32_t *device_id)
 {
     int ret;
     ret = vhost_vdpa_call(dev, VHOST_VDPA_GET_DEVICE_ID, device_id);
@@ -448,7 +523,7 @@ static int vhost_vdpa_set_config(struct vhost_dev *dev, const uint8_t *data,
 }
 
 static int vhost_vdpa_get_config(struct vhost_dev *dev, uint8_t *config,
-                                   uint32_t config_len)
+                                   uint32_t config_len, Error **errp)
 {
     struct vhost_vdpa_config *v_config;
     unsigned long config_size = offsetof(struct vhost_vdpa_config, buf);
@@ -475,6 +550,7 @@ static int vhost_vdpa_dev_start(struct vhost_dev *dev, bool started)
     if (started) {
         uint8_t status = 0;
         memory_listener_register(&v->listener, &address_space_memory);
+        vhost_vdpa_host_notifiers_init(dev);
         vhost_vdpa_set_vring_ready(dev);
         vhost_vdpa_add_status(dev, VIRTIO_CONFIG_S_DRIVER_OK);
         vhost_vdpa_call(dev, VHOST_VDPA_GET_STATUS, &status);
@@ -484,6 +560,7 @@ static int vhost_vdpa_dev_start(struct vhost_dev *dev, bool started)
         vhost_vdpa_reset_device(dev);
         vhost_vdpa_add_status(dev, VIRTIO_CONFIG_S_ACKNOWLEDGE |
                                    VIRTIO_CONFIG_S_DRIVER);
+        vhost_vdpa_host_notifiers_uninit(dev, dev->nvqs);
         memory_listener_unregister(&v->listener);
 
         return 0;

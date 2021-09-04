@@ -574,6 +574,18 @@ WRAP_MULADD(qemu_f32_mulAdd, float32_muladd, float32)
 WRAP_MULADD(qemu_f64_mulAdd, float64_muladd, float64)
 #undef WRAP_MULADD
 
+static void qemu_f128M_mulAdd(const float128_t *ap, const float128_t *bp,
+                              const float128_t *cp, float128_t *res)
+{
+    float128 a, b, c, ret;
+
+    a = soft_to_qemu128(*ap);
+    b = soft_to_qemu128(*bp);
+    c = soft_to_qemu128(*cp);
+    ret = float128_muladd(a, b, c, 0, &qsf);
+    *res = qemu_to_soft128(ret);
+}
+
 #define WRAP_CMP16(name, func, retcond)         \
     static bool name(float16_t a, float16_t b)  \
     {                                           \
@@ -631,7 +643,7 @@ WRAP_CMP80(qemu_extF80M_eq, floatx80_eq_quiet)
 WRAP_CMP80(qemu_extF80M_le, floatx80_le)
 WRAP_CMP80(qemu_extF80M_lt, floatx80_lt)
 WRAP_CMP80(qemu_extF80M_le_quiet, floatx80_le_quiet)
-WRAP_CMP80(qemu_extF80M_lt_quiet, floatx80_le_quiet)
+WRAP_CMP80(qemu_extF80M_lt_quiet, floatx80_lt_quiet)
 #undef WRAP_CMP80
 
 #define WRAP_CMP128(name, func)                                         \

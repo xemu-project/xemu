@@ -13,7 +13,9 @@ GTAGS
 *~
 *.ast_raw
 *.depend_raw
-build.log
+*.swp
+*.patch
 
+build.log
 /dist
 /xemu.ini

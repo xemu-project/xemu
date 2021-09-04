@@ -1269,6 +1269,7 @@ ERST
         .help       = "add host network device",
         .cmd        = hmp_netdev_add,
         .command_completion = netdev_add_completion,
+        .flags      = "p",
     },
 
 SRST
@@ -1283,6 +1284,7 @@ ERST
         .help       = "remove host network device",
         .cmd        = hmp_netdev_del,
         .command_completion = netdev_del_completion,
+        .flags      = "p",
     },
 
 SRST
@@ -1297,6 +1299,7 @@ ERST
         .help       = "create QOM object",
         .cmd        = hmp_object_add,
         .command_completion = object_add_completion,
+        .flags      = "p",
     },
 
 SRST
@@ -1311,6 +1314,7 @@ ERST
         .help       = "destroy QOM object",
         .cmd        = hmp_object_del,
         .command_completion = object_del_completion,
+        .flags      = "p",
     },
 
 SRST
@@ -1667,7 +1671,7 @@ ERST
 
     {
         .name       = "replay_break",
-        .args_type  = "icount:i",
+        .args_type  = "icount:l",
         .params     = "icount",
         .help       = "set breakpoint at the specified instruction count",
         .cmd        = hmp_replay_break,
@@ -1699,7 +1703,7 @@ ERST
 
     {
         .name       = "replay_seek",
-        .args_type  = "icount:i",
+        .args_type  = "icount:l",
         .params     = "icount",
         .help       = "replay execution to the specified instruction count",
         .cmd        = hmp_replay_seek,
@@ -1725,3 +1729,17 @@ ERST
         .flags      = "p",
     },
 
+SRST
+``calc_dirty_rate`` *second*
+  Start a round of dirty rate measurement with the period specified in *second*.
+  The result of the dirty rate measurement may be observed with ``info
+  dirty_rate`` command.
+ERST
+
+    {
+        .name       = "calc_dirty_rate",
+        .args_type  = "second:l,sample_pages_per_GB:l?",
+        .params     = "second [sample_pages_per_GB]",
+        .help       = "start a round of guest dirty rate measurement",
+        .cmd        = hmp_calc_dirty_rate,
+    },

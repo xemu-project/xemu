@@ -1,23 +1,24 @@
-Nuvoton iBMC boards (``npcm750-evb``, ``quanta-gsj``)
-=====================================================
+Nuvoton iBMC boards (``*-bmc``, ``npcm750-evb``, ``quanta-gsj``)
+================================================================
 
 The `Nuvoton iBMC`_ chips (NPCM7xx) are a family of ARM-based SoCs that are
 designed to be used as Baseboard Management Controllers (BMCs) in various
-servers. They all feature one or two ARM Cortex A9 CPU cores, as well as an
+servers. They all feature one or two ARM Cortex-A9 CPU cores, as well as an
 assortment of peripherals targeted for either Enterprise or Data Center /
 Hyperscale applications. The former is a superset of the latter, so NPCM750 has
 all the peripherals of NPCM730 and more.
 
 .. _Nuvoton iBMC: https://www.nuvoton.com/products/cloud-computing/ibmc/
 
-The NPCM750 SoC has two Cortex A9 cores and is targeted for the Enterprise
+The NPCM750 SoC has two Cortex-A9 cores and is targeted for the Enterprise
 segment. The following machines are based on this chip :
 
 - ``npcm750-evb``       Nuvoton NPCM750 Evaluation board
 
-The NPCM730 SoC has two Cortex A9 cores and is targeted for Data Center and
+The NPCM730 SoC has two Cortex-A9 cores and is targeted for Data Center and
 Hyperscale applications. The following machines are based on this chip :
 
+- ``quanta-gbs-bmc``    Quanta GBS server BMC
 - ``quanta-gsj``        Quanta GSJ server BMC
 
 There are also two more SoCs, NPCM710 and NPCM705, which are single-core
@@ -78,7 +79,7 @@ Boot options
 ------------
 
 The Nuvoton machines can boot from an OpenBMC firmware image, or directly into
-a kernel using the ``-kernel`` option. OpenBMC images for `quanta-gsj` and
+a kernel using the ``-kernel`` option. OpenBMC images for ``quanta-gsj`` and
 possibly others can be downloaded from the OpenPOWER jenkins :
 
    https://openpower.xyz/

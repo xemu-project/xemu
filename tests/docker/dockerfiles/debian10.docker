@@ -7,7 +7,7 @@
 # On its own you can't build much but the docker-foo-cross targets
 # build on top of the base debian image.
 #
-FROM debian:buster-slim
+FROM docker.io/library/debian:buster-slim
 
 # Duplicate deb line as deb-src
 RUN cat /etc/apt/sources.list | sed "s/^deb\ /deb-src /" >> /etc/apt/sources.list
@@ -26,12 +26,12 @@ RUN apt update && \
         gdb-multiarch \
         gettext \
         git \
+        libffi-dev \
         libncurses5-dev \
         ninja-build \
         pkg-config \
         psmisc \
         python3 \
         python3-sphinx \
+        python3-sphinx-rtd-theme \
         $(apt-get -s build-dep --arch-only qemu | egrep ^Inst | fgrep '[all]' | cut -d\  -f2)
-
-ENV FEATURES docs

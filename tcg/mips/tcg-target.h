@@ -39,6 +39,12 @@
 #define TCG_TARGET_TLB_DISPLACEMENT_BITS 16
 #define TCG_TARGET_NB_REGS 32
 
+/*
+ * We have a 256MB branch region, but leave room to make sure the
+ * main executable is also within that region.
+ */
+#define MAX_CODE_GEN_BUFFER_SIZE  (128 * MiB)
+
 typedef enum {
     TCG_REG_ZERO = 0,
     TCG_REG_AT,
@@ -130,7 +136,6 @@ extern bool use_mips32r2_instructions;
 #define TCG_TARGET_HAS_muluh_i32        1
 #define TCG_TARGET_HAS_mulsh_i32        1
 #define TCG_TARGET_HAS_bswap32_i32      1
-#define TCG_TARGET_HAS_goto_ptr         1
 #define TCG_TARGET_HAS_direct_jump      1
 
 #if TCG_TARGET_REG_BITS == 64

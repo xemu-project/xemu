@@ -10,7 +10,7 @@
 #include "qemu/host-utils.h"
 #include "qemu/log.h"
 #include "hw/gpio/aspeed_gpio.h"
-#include "include/hw/misc/aspeed_scu.h"
+#include "hw/misc/aspeed_scu.h"
 #include "qapi/error.h"
 #include "qapi/visitor.h"
 #include "hw/irq.h"
@@ -170,7 +170,7 @@
 /* AST2600 only - 1.8V gpios */
 /*
  * The AST2600 has same 3.6V gpios as the AST2400 (memory offsets 0x0-0x198)
- * and addtional 1.8V gpios (memory offsets 0x800-0x9D4).
+ * and additional 1.8V gpios (memory offsets 0x800-0x9D4).
  */
 #define GPIO_1_8V_REG_OFFSET          0x800
 #define GPIO_1_8V_ABCD_DATA_VALUE     ((0x800 - GPIO_1_8V_REG_OFFSET) >> 2)
@@ -207,7 +207,6 @@
 #define GPIO_1_8V_MEM_SIZE            0x9D8
 #define GPIO_1_8V_REG_ARRAY_SIZE      ((GPIO_1_8V_MEM_SIZE - \
                                       GPIO_1_8V_REG_OFFSET) >> 2)
-#define GPIO_MAX_MEM_SIZE           MAX(GPIO_3_6V_MEM_SIZE, GPIO_1_8V_MEM_SIZE)
 
 static int aspeed_evaluate_irq(GPIOSets *regs, int gpio_prev_high, int gpio)
 {
@@ -849,7 +848,7 @@ static void aspeed_gpio_realize(DeviceState *dev, Error **errp)
     }
 
     memory_region_init_io(&s->iomem, OBJECT(s), &aspeed_gpio_ops, s,
-            TYPE_ASPEED_GPIO, GPIO_MAX_MEM_SIZE);
+            TYPE_ASPEED_GPIO, 0x800);
 
     sysbus_init_mmio(sbd, &s->iomem);
 }
