@@ -1505,6 +1505,7 @@ int main(int argc, char **argv)
      */
     tcg_register_init_ctx();
     // rcu_register_thread();
+    qemu_set_current_aio_context(qemu_get_aio_context());
 
     DPRINTF("Main thread: initializing app\n");
 
