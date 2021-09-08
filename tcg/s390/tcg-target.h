@@ -28,6 +28,9 @@
 #define TCG_TARGET_INSN_UNIT_SIZE 2
 #define TCG_TARGET_TLB_DISPLACEMENT_BITS 19
 
+/* We have a +- 4GB range on the branches; leave some slop.  */
+#define MAX_CODE_GEN_BUFFER_SIZE  (3 * GiB)
+
 typedef enum TCGReg {
     TCG_REG_R0 = 0,
     TCG_REG_R1,
@@ -95,7 +98,6 @@ extern uint64_t s390_facilities;
 #define TCG_TARGET_HAS_mulsh_i32      0
 #define TCG_TARGET_HAS_extrl_i64_i32  0
 #define TCG_TARGET_HAS_extrh_i64_i32  0
-#define TCG_TARGET_HAS_goto_ptr       1
 #define TCG_TARGET_HAS_direct_jump    (s390_facilities & FACILITY_GEN_INST_EXT)
 #define TCG_TARGET_HAS_qemu_st8_i32   0
 

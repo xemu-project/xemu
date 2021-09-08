@@ -38,7 +38,6 @@
 #include "qemu/help_option.h"
 #include "qemu/module.h"
 #include "qemu/plugin.h"
-#include "cpu.h"
 #include "exec/exec-all.h"
 #include "tcg/tcg.h"
 #include "qemu/timer.h"
@@ -49,6 +48,7 @@
 #include "target_elf.h"
 #include "cpu_loop-common.h"
 #include "crypto/init.h"
+#include "fd-trans.h"
 
 #ifndef AT_FLAGS_PRESERVE_ARGV0
 #define AT_FLAGS_PRESERVE_ARGV0_BIT 0
@@ -206,7 +206,6 @@ CPUArchState *cpu_copy(CPUArchState *env)
     CPUState *new_cpu = cpu_create(cpu_type);
     CPUArchState *new_env = new_cpu->env_ptr;
     CPUBreakpoint *bp;
-    CPUWatchpoint *wp;
 
     /* Reset non arch specific state */
     cpu_reset(new_cpu);
@@ -218,12 +217,8 @@ CPUArchState *cpu_copy(CPUArchState *env)
        Note: Once we support ptrace with hw-debug register access, make sure
        BP_CPU break/watchpoints are handled correctly on clone. */
     QTAILQ_INIT(&new_cpu->breakpoints);
-    QTAILQ_INIT(&new_cpu->watchpoints);
     QTAILQ_FOREACH(bp, &cpu->breakpoints, entry) {
         cpu_breakpoint_insert(new_cpu, bp->pc, bp->flags, NULL);
-    }
-    QTAILQ_FOREACH(wp, &cpu->watchpoints, entry) {
-        cpu_watchpoint_insert(new_cpu, wp->vaddr, wp->len, wp->flags, NULL);
     }
 
     return new_env;
@@ -730,8 +725,8 @@ int main(int argc, char **argv, char **envp)
     {
         AccelClass *ac = ACCEL_GET_CLASS(current_accel());
 
-        ac->init_machine(NULL);
         accel_init_interfaces(ac);
+        ac->init_machine(NULL);
     }
     cpu = cpu_create(cpu_type);
     env = cpu->env_ptr;
@@ -835,6 +830,8 @@ int main(int argc, char **argv, char **envp)
     cpu->opaque = ts;
     task_settid(ts);
 
+    fd_trans_init();
+
     ret = loader_exec(execfd, exec_path, target_argv, target_environ, regs,
         info, &bprm);
     if (ret != 0) {
@@ -874,7 +871,6 @@ int main(int argc, char **argv, char **envp)
        generating the prologue until now so that the prologue can take
        the real value of GUEST_BASE into account.  */
     tcg_prologue_init(tcg_ctx);
-    tcg_region_init();
 
     target_cpu_copy_regs(env, regs);
 

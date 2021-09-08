@@ -254,6 +254,29 @@ static void usb_host_del_fd(int fd, void *user_data)
     qemu_set_fd_handler(fd, NULL, NULL, NULL);
 }
 
+#else
+
+static QEMUTimer *poll_timer;
+static uint32_t request_count;
+
+static void usb_host_timer_kick(void)
+{
+    int64_t delay_ns;
+
+    delay_ns = request_count
+        ? (NANOSECONDS_PER_SECOND / 100)  /* 10 ms interval with active req */
+        : (NANOSECONDS_PER_SECOND);       /* 1 sec interval otherwise */
+    timer_mod(poll_timer, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + delay_ns);
+}
+
+static void usb_host_timer(void *opaque)
+{
+    struct timeval tv = { 0, 0 };
+
+    libusb_handle_events_timeout(ctx, &tv);
+    usb_host_timer_kick();
+}
+
 #endif /* !CONFIG_WIN32 */
 
 static int usb_host_init(void)
@@ -276,7 +299,8 @@ static int usb_host_init(void)
     libusb_set_debug(ctx, loglevel);
 #endif
 #ifdef CONFIG_WIN32
-    /* FIXME: add support for Windows. */
+    poll_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, usb_host_timer, NULL);
+    usb_host_timer_kick();
 #else
     libusb_set_pollfd_notifiers(ctx, usb_host_add_fd,
                                 usb_host_del_fd,
@@ -364,11 +388,18 @@ static USBHostRequest *usb_host_req_alloc(USBHostDevice *s, USBPacket *p,
         r->buffer = g_malloc(bufsize);
     }
     QTAILQ_INSERT_TAIL(&s->requests, r, next);
+#ifdef CONFIG_WIN32
+    request_count++;
+    usb_host_timer_kick();
+#endif
     return r;
 }
 
 static void usb_host_req_free(USBHostRequest *r)
 {
+#ifdef CONFIG_WIN32
+    request_count--;
+#endif
     QTAILQ_REMOVE(&r->host->requests, r, next);
     libusb_free_transfer(r->xfer);
     g_free(r->buffer);
@@ -770,6 +801,13 @@ static void usb_host_speed_compat(USBHostDevice *s)
         for (i = 0; i < conf->bNumInterfaces; i++) {
             for (a = 0; a < conf->interface[i].num_altsetting; a++) {
                 intf = &conf->interface[i].altsetting[a];
+
+                if (intf->bInterfaceClass == LIBUSB_CLASS_MASS_STORAGE &&
+                    intf->bInterfaceSubClass == 6) { /* SCSI */
+                    udev->flags |= (1 << USB_DEV_FLAG_IS_SCSI_STORAGE);
+                    break;
+                }
+
                 for (e = 0; e < intf->bNumEndpoints; e++) {
                     endp = &intf->endpoint[e];
                     type = endp->bmAttributes & 0x3;
@@ -1770,10 +1808,12 @@ static TypeInfo usb_host_dev_info = {
     .class_init    = usb_host_class_initfn,
     .instance_init = usb_host_instance_init,
 };
+module_obj(TYPE_USB_HOST_DEVICE);
 
 static void usb_host_register_types(void)
 {
     type_register_static(&usb_host_dev_info);
+    monitor_register_hmp("usbhost", true, hmp_info_usbhost);
 }
 
 type_init(usb_host_register_types)
@@ -1891,35 +1931,6 @@ static void usb_host_auto_check(void *unused)
         trace_usb_host_auto_scan_enabled();
     }
     timer_mod(usb_auto_timer, qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + 2000);
-}
-
-/**
- * Check whether USB host device has a USB mass storage SCSI interface
- */
-bool usb_host_dev_is_scsi_storage(USBDevice *ud)
-{
-    USBHostDevice *uhd = USB_HOST_DEVICE(ud);
-    struct libusb_config_descriptor *conf;
-    const struct libusb_interface_descriptor *intf;
-    bool is_scsi_storage = false;
-    int i;
-
-    if (!uhd || libusb_get_active_config_descriptor(uhd->dev, &conf) != 0) {
-        return false;
-    }
-
-    for (i = 0; i < conf->bNumInterfaces; i++) {
-        intf = &conf->interface[i].altsetting[ud->altsetting[i]];
-        if (intf->bInterfaceClass == LIBUSB_CLASS_MASS_STORAGE &&
-            intf->bInterfaceSubClass == 6) {                 /* 6 means SCSI */
-            is_scsi_storage = true;
-            break;
-        }
-    }
-
-    libusb_free_config_descriptor(conf);
-
-    return is_scsi_storage;
 }
 
 void hmp_info_usbhost(Monitor *mon, const QDict *qdict)

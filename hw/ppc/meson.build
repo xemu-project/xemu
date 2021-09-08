@@ -29,6 +29,9 @@ ppc_ss.add(when: 'CONFIG_PSERIES', if_true: files(
   'spapr_numa.c',
   'pef.c',
 ))
+ppc_ss.add(when: ['CONFIG_PSERIES', 'CONFIG_TCG'], if_true: files(
+  'spapr_softmmu.c',
+))
 ppc_ss.add(when: 'CONFIG_SPAPR_RNG', if_true: files('spapr_rng.c'))
 ppc_ss.add(when: ['CONFIG_PSERIES', 'CONFIG_LINUX'], if_true: files(
   'spapr_pci_vfio.c',
@@ -78,5 +81,10 @@ ppc_ss.add(when: 'CONFIG_E500', if_true: files(
 ))
 # PowerPC 440 Xilinx ML507 reference board.
 ppc_ss.add(when: 'CONFIG_VIRTEX', if_true: files('virtex_ml507.c'))
+# Pegasos2
+ppc_ss.add(when: 'CONFIG_PEGASOS2', if_true: files('pegasos2.c'))
+
+ppc_ss.add(when: 'CONFIG_VOF', if_true: files('vof.c'))
+ppc_ss.add(when: ['CONFIG_VOF', 'CONFIG_PSERIES'], if_true: files('spapr_vof.c'))
 
 hw_arch += {'ppc': ppc_ss}

@@ -415,14 +415,16 @@ vhost_user_gpu_get_config(VirtIODevice *vdev, uint8_t *config_data)
     VirtIOGPUBase *b = VIRTIO_GPU_BASE(vdev);
     struct virtio_gpu_config *vgconfig =
         (struct virtio_gpu_config *)config_data;
+    Error *local_err = NULL;
     int ret;
 
     memset(config_data, 0, sizeof(struct virtio_gpu_config));
 
     ret = vhost_dev_get_config(&g->vhost->dev,
-                               config_data, sizeof(struct virtio_gpu_config));
+                               config_data, sizeof(struct virtio_gpu_config),
+                               &local_err);
     if (ret) {
-        error_report("vhost-user-gpu: get device config space failed");
+        error_report_err(local_err);
         return;
     }
 
@@ -596,6 +598,7 @@ static const TypeInfo vhost_user_gpu_info = {
     .instance_finalize = vhost_user_gpu_instance_finalize,
     .class_init = vhost_user_gpu_class_init,
 };
+module_obj(TYPE_VHOST_USER_GPU);
 
 static void vhost_user_gpu_register_types(void)
 {

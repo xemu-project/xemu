@@ -11,7 +11,6 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "exec/address-spaces.h"
 #include "hw/acpi/acpi.h"
 #include "hw/acpi/generic_event_device.h"
 #include "hw/irq.h"
@@ -208,7 +207,7 @@ static void ged_regs_write(void *opaque, hwaddr addr, uint64_t data,
         return;
     case ACPI_GED_REG_RESET:
         if (data == ACPI_GED_RESET_VALUE) {
-            qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
+            qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
         }
         return;
     }

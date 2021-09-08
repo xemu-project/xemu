@@ -22,6 +22,7 @@
 #include "internal.h"
 #include "qemu/host-utils.h"
 #include "qemu/main-loop.h"
+#include "qemu/log.h"
 #include "exec/helper-proto.h"
 #include "crypto/aes.h"
 #include "fpu/softfloat.h"
@@ -319,6 +320,68 @@ target_ulong helper_popcntb(target_ulong val)
 }
 #endif
 
+uint64_t helper_cfuged(uint64_t src, uint64_t mask)
+{
+    /*
+     * Instead of processing the mask bit-by-bit from the most significant to
+     * the least significant bit, as described in PowerISA, we'll handle it in
+     * blocks of 'n' zeros/ones from LSB to MSB. To avoid the decision to use
+     * ctz or cto, we negate the mask at the end of the loop.
+     */
+    target_ulong m, left = 0, right = 0;
+    unsigned int n, i = 64;
+    bool bit = false; /* tracks if we are processing zeros or ones */
+
+    if (mask == 0 || mask == -1) {
+        return src;
+    }
+
+    /* Processes the mask in blocks, from LSB to MSB */
+    while (i) {
+        /* Find how many bits we should take */
+        n = ctz64(mask);
+        if (n > i) {
+            n = i;
+        }
+
+        /*
+         * Extracts 'n' trailing bits of src and put them on the leading 'n'
+         * bits of 'right' or 'left', pushing down the previously extracted
+         * values.
+         */
+        m = (1ll << n) - 1;
+        if (bit) {
+            right = ror64(right | (src & m), n);
+        } else {
+            left = ror64(left | (src & m), n);
+        }
+
+        /*
+         * Discards the processed bits from 'src' and 'mask'. Note that we are
+         * removing 'n' trailing zeros from 'mask', but the logical shift will
+         * add 'n' leading zeros back, so the population count of 'mask' is kept
+         * the same.
+         */
+        src >>= n;
+        mask >>= n;
+        i -= n;
+        bit = !bit;
+        mask = ~mask;
+    }
+
+    /*
+     * At the end, right was ror'ed ctpop(mask) times. To put it back in place,
+     * we'll shift it more 64-ctpop(mask) times.
+     */
+    if (bit) {
+        n = ctpop64(mask);
+    } else {
+        n = 64 - ctpop64(mask);
+    }
+
+    return left | (right >> n);
+}
+
 /*****************************************************************************/
 /* PowerPC 601 specific instructions (POWER bridge) */
 target_ulong helper_div(CPUPPCState *env, target_ulong arg1, target_ulong arg2)
@@ -461,17 +524,12 @@ SATCVT(sd, uw, int64_t, uint32_t, 0, UINT32_MAX)
 
 void helper_mtvscr(CPUPPCState *env, uint32_t vscr)
 {
-    env->vscr = vscr & ~(1u << VSCR_SAT);
-    /* Which bit we set is completely arbitrary, but clear the rest.  */
-    env->vscr_sat.u64[0] = vscr & (1u << VSCR_SAT);
-    env->vscr_sat.u64[1] = 0;
-    set_flush_to_zero((vscr >> VSCR_NJ) & 1, &env->vec_status);
+    ppc_store_vscr(env, vscr);
 }
 
 uint32_t helper_mfvscr(CPUPPCState *env)
 {
-    uint32_t sat = (env->vscr_sat.u64[0] | env->vscr_sat.u64[1]) != 0;
-    return env->vscr | (sat << VSCR_SAT);
+    return ppc_get_vscr(env);
 }
 
 static inline void set_vscr_sat(CPUPPCState *env)

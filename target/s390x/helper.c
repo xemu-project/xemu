@@ -1,5 +1,5 @@
 /*
- *  S/390 helpers
+ *  S/390 helpers - sysemu only
  *
  *  Copyright (c) 2009 Ulrich Hecht
  *  Copyright (c) 2011 Alexander Graf
@@ -20,19 +20,15 @@
 
 #include "qemu/osdep.h"
 #include "cpu.h"
-#include "internal.h"
+#include "s390x-internal.h"
 #include "exec/gdbstub.h"
 #include "qemu/timer.h"
-#include "qemu/qemu-print.h"
 #include "hw/s390x/ioinst.h"
 #include "hw/s390x/pv.h"
 #include "sysemu/hw_accel.h"
 #include "sysemu/runstate.h"
-#ifndef CONFIG_USER_ONLY
 #include "sysemu/tcg.h"
-#endif
 
-#ifndef CONFIG_USER_ONLY
 void s390x_tod_timer(void *opaque)
 {
     cpu_inject_clock_comparator((S390CPU *) opaque);
@@ -104,44 +100,6 @@ void s390_handle_wait(S390CPU *cpu)
     }
 }
 
-void load_psw(CPUS390XState *env, uint64_t mask, uint64_t addr)
-{
-    uint64_t old_mask = env->psw.mask;
-
-    env->psw.addr = addr;
-    env->psw.mask = mask;
-
-    /* KVM will handle all WAITs and trigger a WAIT exit on disabled_wait */
-    if (!tcg_enabled()) {
-        return;
-    }
-    env->cc_op = (mask >> 44) & 3;
-
-    if ((old_mask ^ mask) & PSW_MASK_PER) {
-        s390_cpu_recompute_watchpoints(env_cpu(env));
-    }
-
-    if (mask & PSW_MASK_WAIT) {
-        s390_handle_wait(env_archcpu(env));
-    }
-}
-
-uint64_t get_psw_mask(CPUS390XState *env)
-{
-    uint64_t r = env->psw.mask;
-
-    if (tcg_enabled()) {
-        env->cc_op = calc_cc(env, env->cc_op, env->cc_src, env->cc_dst,
-                             env->cc_vr);
-
-        r &= ~PSW_MASK_CC;
-        assert(!(env->cc_op & ~3));
-        r |= (uint64_t)env->cc_op << 44;
-    }
-
-    return r;
-}
-
 LowCore *cpu_map_lowcore(CPUS390XState *env)
 {
     LowCore *lowcore;
@@ -168,7 +126,7 @@ void do_restart_interrupt(CPUS390XState *env)
 
     lowcore = cpu_map_lowcore(env);
 
-    lowcore->restart_old_psw.mask = cpu_to_be64(get_psw_mask(env));
+    lowcore->restart_old_psw.mask = cpu_to_be64(s390_cpu_get_psw_mask(env));
     lowcore->restart_old_psw.addr = cpu_to_be64(env->psw.addr);
     mask = be64_to_cpu(lowcore->restart_new_psw.mask);
     addr = be64_to_cpu(lowcore->restart_new_psw.addr);
@@ -176,7 +134,7 @@ void do_restart_interrupt(CPUS390XState *env)
     cpu_unmap_lowcore(lowcore);
     env->pending_int &= ~INTERRUPT_RESTART;
 
-    load_psw(env, mask, addr);
+    s390_cpu_set_psw(env, mask, addr);
 }
 
 void s390_cpu_recompute_watchpoints(CPUState *cs)
@@ -266,7 +224,7 @@ int s390_store_status(S390CPU *cpu, hwaddr addr, bool store_arch)
         sa->grs[i] = cpu_to_be64(cpu->env.regs[i]);
     }
     sa->psw.addr = cpu_to_be64(cpu->env.psw.addr);
-    sa->psw.mask = cpu_to_be64(get_psw_mask(&cpu->env));
+    sa->psw.mask = cpu_to_be64(s390_cpu_get_psw_mask(&cpu->env));
     sa->prefix = cpu_to_be32(cpu->env.psa);
     sa->fpc = cpu_to_be32(cpu->env.fpc);
     sa->todpr = cpu_to_be32(cpu->env.todpr);
@@ -322,111 +280,4 @@ int s390_store_adtl_status(S390CPU *cpu, hwaddr addr, hwaddr len)
 
     cpu_physical_memory_unmap(sa, len, 1, len);
     return 0;
-}
-#endif /* CONFIG_USER_ONLY */
-
-void s390_cpu_dump_state(CPUState *cs, FILE *f, int flags)
-{
-    S390CPU *cpu = S390_CPU(cs);
-    CPUS390XState *env = &cpu->env;
-    int i;
-
-    if (env->cc_op > 3) {
-        qemu_fprintf(f, "PSW=mask %016" PRIx64 " addr %016" PRIx64 " cc %15s\n",
-                     env->psw.mask, env->psw.addr, cc_name(env->cc_op));
-    } else {
-        qemu_fprintf(f, "PSW=mask %016" PRIx64 " addr %016" PRIx64 " cc %02x\n",
-                     env->psw.mask, env->psw.addr, env->cc_op);
-    }
-
-    for (i = 0; i < 16; i++) {
-        qemu_fprintf(f, "R%02d=%016" PRIx64, i, env->regs[i]);
-        if ((i % 4) == 3) {
-            qemu_fprintf(f, "\n");
-        } else {
-            qemu_fprintf(f, " ");
-        }
-    }
-
-    if (flags & CPU_DUMP_FPU) {
-        if (s390_has_feat(S390_FEAT_VECTOR)) {
-            for (i = 0; i < 32; i++) {
-                qemu_fprintf(f, "V%02d=%016" PRIx64 "%016" PRIx64 "%c",
-                             i, env->vregs[i][0], env->vregs[i][1],
-                             i % 2 ? '\n' : ' ');
-            }
-        } else {
-            for (i = 0; i < 16; i++) {
-                qemu_fprintf(f, "F%02d=%016" PRIx64 "%c",
-                             i, *get_freg(env, i),
-                             (i % 4) == 3 ? '\n' : ' ');
-            }
-        }
-    }
-
-#ifndef CONFIG_USER_ONLY
-    for (i = 0; i < 16; i++) {
-        qemu_fprintf(f, "C%02d=%016" PRIx64, i, env->cregs[i]);
-        if ((i % 4) == 3) {
-            qemu_fprintf(f, "\n");
-        } else {
-            qemu_fprintf(f, " ");
-        }
-    }
-#endif
-
-#ifdef DEBUG_INLINE_BRANCHES
-    for (i = 0; i < CC_OP_MAX; i++) {
-        qemu_fprintf(f, "  %15s = %10ld\t%10ld\n", cc_name(i),
-                     inline_branch_miss[i], inline_branch_hit[i]);
-    }
-#endif
-
-    qemu_fprintf(f, "\n");
-}
-
-const char *cc_name(enum cc_op cc_op)
-{
-    static const char * const cc_names[] = {
-        [CC_OP_CONST0]    = "CC_OP_CONST0",
-        [CC_OP_CONST1]    = "CC_OP_CONST1",
-        [CC_OP_CONST2]    = "CC_OP_CONST2",
-        [CC_OP_CONST3]    = "CC_OP_CONST3",
-        [CC_OP_DYNAMIC]   = "CC_OP_DYNAMIC",
-        [CC_OP_STATIC]    = "CC_OP_STATIC",
-        [CC_OP_NZ]        = "CC_OP_NZ",
-        [CC_OP_ADDU]      = "CC_OP_ADDU",
-        [CC_OP_SUBU]      = "CC_OP_SUBU",
-        [CC_OP_LTGT_32]   = "CC_OP_LTGT_32",
-        [CC_OP_LTGT_64]   = "CC_OP_LTGT_64",
-        [CC_OP_LTUGTU_32] = "CC_OP_LTUGTU_32",
-        [CC_OP_LTUGTU_64] = "CC_OP_LTUGTU_64",
-        [CC_OP_LTGT0_32]  = "CC_OP_LTGT0_32",
-        [CC_OP_LTGT0_64]  = "CC_OP_LTGT0_64",
-        [CC_OP_ADD_64]    = "CC_OP_ADD_64",
-        [CC_OP_SUB_64]    = "CC_OP_SUB_64",
-        [CC_OP_ABS_64]    = "CC_OP_ABS_64",
-        [CC_OP_NABS_64]   = "CC_OP_NABS_64",
-        [CC_OP_ADD_32]    = "CC_OP_ADD_32",
-        [CC_OP_SUB_32]    = "CC_OP_SUB_32",
-        [CC_OP_ABS_32]    = "CC_OP_ABS_32",
-        [CC_OP_NABS_32]   = "CC_OP_NABS_32",
-        [CC_OP_COMP_32]   = "CC_OP_COMP_32",
-        [CC_OP_COMP_64]   = "CC_OP_COMP_64",
-        [CC_OP_TM_32]     = "CC_OP_TM_32",
-        [CC_OP_TM_64]     = "CC_OP_TM_64",
-        [CC_OP_NZ_F32]    = "CC_OP_NZ_F32",
-        [CC_OP_NZ_F64]    = "CC_OP_NZ_F64",
-        [CC_OP_NZ_F128]   = "CC_OP_NZ_F128",
-        [CC_OP_ICM]       = "CC_OP_ICM",
-        [CC_OP_SLA_32]    = "CC_OP_SLA_32",
-        [CC_OP_SLA_64]    = "CC_OP_SLA_64",
-        [CC_OP_FLOGR]     = "CC_OP_FLOGR",
-        [CC_OP_LCBB]      = "CC_OP_LCBB",
-        [CC_OP_VC]        = "CC_OP_VC",
-        [CC_OP_MULS_32]   = "CC_OP_MULS_32",
-        [CC_OP_MULS_64]   = "CC_OP_MULS_64",
-    };
-
-    return cc_names[cc_op];
 }

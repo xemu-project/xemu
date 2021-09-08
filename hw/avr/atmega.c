@@ -18,7 +18,6 @@
 #include "hw/qdev-properties.h"
 #include "hw/sysbus.h"
 #include "qom/object.h"
-#include "hw/boards.h" /* FIXME memory_region_allocate_system_memory for sram */
 #include "hw/misc/unimp.h"
 #include "atmega.h"
 
@@ -402,7 +401,7 @@ static void atmega1280_class_init(ObjectClass *oc, void *data)
 {
     AtmegaMcuClass *amc = ATMEGA_MCU_CLASS(oc);
 
-    amc->cpu_type = AVR_CPU_TYPE_NAME("avr6");
+    amc->cpu_type = AVR_CPU_TYPE_NAME("avr51");
     amc->flash_size = 128 * KiB;
     amc->eeprom_size = 4 * KiB;
     amc->sram_size = 8 * KiB;

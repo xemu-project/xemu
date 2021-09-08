@@ -13,6 +13,7 @@ block_ss.add(files(
   'commit.c',
   'copy-on-read.c',
   'preallocate.c',
+  'progress_meter.c',
   'create.c',
   'crypto.c',
   'dirty-bitmap.c',
@@ -64,27 +65,26 @@ block_ss.add(when: 'CONFIG_POSIX', if_true: [files('file-posix.c'), coref, iokit
 block_ss.add(when: libiscsi, if_true: files('iscsi-opts.c'))
 block_ss.add(when: 'CONFIG_LINUX', if_true: files('nvme.c'))
 block_ss.add(when: 'CONFIG_REPLICATION', if_true: files('replication.c'))
-block_ss.add(when: 'CONFIG_SHEEPDOG', if_true: files('sheepdog.c'))
 block_ss.add(when: ['CONFIG_LINUX_AIO', libaio], if_true: files('linux-aio.c'))
-block_ss.add(when: ['CONFIG_LINUX_IO_URING', linux_io_uring], if_true: files('io_uring.c'))
+block_ss.add(when: linux_io_uring, if_true: files('io_uring.c'))
 
 block_modules = {}
 
 modsrc = []
 foreach m : [
-  [curl, 'curl', [curl, glib], 'curl.c'],
-  [glusterfs, 'gluster', glusterfs, 'gluster.c'],
-  [libiscsi, 'iscsi', libiscsi, 'iscsi.c'],
-  [libnfs, 'nfs', libnfs, 'nfs.c'],
-  [libssh, 'ssh', libssh, 'ssh.c'],
-  [rbd, 'rbd', rbd, 'rbd.c'],
+  [curl, 'curl', files('curl.c')],
+  [glusterfs, 'gluster', files('gluster.c')],
+  [libiscsi, 'iscsi', [files('iscsi.c'), libm]],
+  [libnfs, 'nfs', files('nfs.c')],
+  [libssh, 'ssh', files('ssh.c')],
+  [rbd, 'rbd', files('rbd.c')],
 ]
   if m[0].found()
-    if enable_modules
-      modsrc += files(m[3])
-    endif
     module_ss = ss.source_set()
-    module_ss.add(when: m[2], if_true: files(m[3]))
+    module_ss.add(when: m[0], if_true: m[2])
+    if enable_modules
+      modsrc += module_ss.all_sources()
+    endif
     block_modules += {m[1] : module_ss}
   endif
 endforeach

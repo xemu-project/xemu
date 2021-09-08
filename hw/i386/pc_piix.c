@@ -42,15 +42,12 @@
 #include "hw/irq.h"
 #include "sysemu/kvm.h"
 #include "hw/kvm/clock.h"
-#include "sysemu/sysemu.h"
 #include "hw/sysbus.h"
 #include "sysemu/arch_init.h"
 #include "hw/i2c/smbus_eeprom.h"
 #include "hw/xen/xen-x86.h"
 #include "exec/memory.h"
-#include "exec/address-spaces.h"
 #include "hw/acpi/acpi.h"
-#include "cpu.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "sysemu/xen.h"
@@ -64,6 +61,7 @@
 #include "hw/hyperv/vmbus-bridge.h"
 #include "hw/mem/nvdimm.h"
 #include "hw/i386/acpi-build.h"
+#include "kvm/kvm-cpu.h"
 
 #define MAX_IDE_BUS 2
 
@@ -415,13 +413,25 @@ static void pc_i440fx_machine_options(MachineClass *m)
     machine_class_allow_dynamic_sysbus_dev(m, TYPE_VMBUS_BRIDGE);
 }
 
-static void pc_i440fx_6_0_machine_options(MachineClass *m)
+static void pc_i440fx_6_1_machine_options(MachineClass *m)
 {
     PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
     pc_i440fx_machine_options(m);
     m->alias = "pc";
     m->is_default = true;
     pcmc->default_cpu_version = 1;
+}
+
+DEFINE_I440FX_MACHINE(v6_1, "pc-i440fx-6.1", NULL,
+                      pc_i440fx_6_1_machine_options);
+
+static void pc_i440fx_6_0_machine_options(MachineClass *m)
+{
+    pc_i440fx_6_1_machine_options(m);
+    m->alias = NULL;
+    m->is_default = false;
+    compat_props_add(m->compat_props, hw_compat_6_0, hw_compat_6_0_len);
+    compat_props_add(m->compat_props, pc_compat_6_0, pc_compat_6_0_len);
 }
 
 DEFINE_I440FX_MACHINE(v6_0, "pc-i440fx-6.0", NULL,

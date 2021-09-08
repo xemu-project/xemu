@@ -16,9 +16,7 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "qapi/error.h"
-#include "cpu.h"
 #include "exec/memory.h"
-#include "exec/address-spaces.h"
 #include "qapi/visitor.h"
 #include "qemu/bitops.h"
 #include "qemu/error-report.h"
@@ -444,7 +442,8 @@ static MemTxResult  memory_region_read_accessor(MemoryRegion *mr,
         trace_memory_region_subpage_read(get_cpu_index(), mr, addr, tmp, size);
     } else if (trace_event_get_state_backends(TRACE_MEMORY_REGION_OPS_READ)) {
         hwaddr abs_addr = memory_region_to_absolute_addr(mr, addr);
-        trace_memory_region_ops_read(get_cpu_index(), mr, abs_addr, tmp, size);
+        trace_memory_region_ops_read(get_cpu_index(), mr, abs_addr, tmp, size,
+                                     memory_region_name(mr));
     }
     memory_region_shift_read_access(value, shift, mask, tmp);
     return MEMTX_OK;
@@ -466,7 +465,8 @@ static MemTxResult memory_region_read_with_attrs_accessor(MemoryRegion *mr,
         trace_memory_region_subpage_read(get_cpu_index(), mr, addr, tmp, size);
     } else if (trace_event_get_state_backends(TRACE_MEMORY_REGION_OPS_READ)) {
         hwaddr abs_addr = memory_region_to_absolute_addr(mr, addr);
-        trace_memory_region_ops_read(get_cpu_index(), mr, abs_addr, tmp, size);
+        trace_memory_region_ops_read(get_cpu_index(), mr, abs_addr, tmp, size,
+                                     memory_region_name(mr));
     }
     memory_region_shift_read_access(value, shift, mask, tmp);
     return r;
@@ -486,7 +486,8 @@ static MemTxResult memory_region_write_accessor(MemoryRegion *mr,
         trace_memory_region_subpage_write(get_cpu_index(), mr, addr, tmp, size);
     } else if (trace_event_get_state_backends(TRACE_MEMORY_REGION_OPS_WRITE)) {
         hwaddr abs_addr = memory_region_to_absolute_addr(mr, addr);
-        trace_memory_region_ops_write(get_cpu_index(), mr, abs_addr, tmp, size);
+        trace_memory_region_ops_write(get_cpu_index(), mr, abs_addr, tmp, size,
+                                      memory_region_name(mr));
     }
     mr->ops->write(mr->opaque, addr, tmp, size);
     return MEMTX_OK;
@@ -506,7 +507,8 @@ static MemTxResult memory_region_write_with_attrs_accessor(MemoryRegion *mr,
         trace_memory_region_subpage_write(get_cpu_index(), mr, addr, tmp, size);
     } else if (trace_event_get_state_backends(TRACE_MEMORY_REGION_OPS_WRITE)) {
         hwaddr abs_addr = memory_region_to_absolute_addr(mr, addr);
-        trace_memory_region_ops_write(get_cpu_index(), mr, abs_addr, tmp, size);
+        trace_memory_region_ops_write(get_cpu_index(), mr, abs_addr, tmp, size,
+                                      memory_region_name(mr));
     }
     return mr->ops->write_with_attrs(mr->opaque, addr, tmp, size, attrs);
 }
@@ -1533,22 +1535,22 @@ void memory_region_init_ram_nomigrate(MemoryRegion *mr,
                                       uint64_t size,
                                       Error **errp)
 {
-    memory_region_init_ram_shared_nomigrate(mr, owner, name, size, false, errp);
+    memory_region_init_ram_flags_nomigrate(mr, owner, name, size, 0, errp);
 }
 
-void memory_region_init_ram_shared_nomigrate(MemoryRegion *mr,
-                                             Object *owner,
-                                             const char *name,
-                                             uint64_t size,
-                                             bool share,
-                                             Error **errp)
+void memory_region_init_ram_flags_nomigrate(MemoryRegion *mr,
+                                            Object *owner,
+                                            const char *name,
+                                            uint64_t size,
+                                            uint32_t ram_flags,
+                                            Error **errp)
 {
     Error *err = NULL;
     memory_region_init(mr, owner, name, size);
     mr->ram = true;
     mr->terminates = true;
     mr->destructor = memory_region_destructor_ram;
-    mr->ram_block = qemu_ram_alloc(size, share, mr, &err);
+    mr->ram_block = qemu_ram_alloc(size, ram_flags, mr, &err);
     if (err) {
         mr->size = int128_zero();
         object_unparent(OBJECT(mr));
@@ -1611,7 +1613,7 @@ void memory_region_init_ram_from_fd(MemoryRegion *mr,
                                     Object *owner,
                                     const char *name,
                                     uint64_t size,
-                                    bool share,
+                                    uint32_t ram_flags,
                                     int fd,
                                     ram_addr_t offset,
                                     Error **errp)
@@ -1621,9 +1623,8 @@ void memory_region_init_ram_from_fd(MemoryRegion *mr,
     mr->ram = true;
     mr->terminates = true;
     mr->destructor = memory_region_destructor_ram;
-    mr->ram_block = qemu_ram_alloc_from_fd(size, mr,
-                                           share ? RAM_SHARED : 0,
-                                           fd, offset, false, &err);
+    mr->ram_block = qemu_ram_alloc_from_fd(size, mr, ram_flags, fd, offset,
+                                           false, &err);
     if (err) {
         mr->size = int128_zero();
         object_unparent(OBJECT(mr));
@@ -1685,7 +1686,7 @@ void memory_region_init_rom_nomigrate(MemoryRegion *mr,
                                       uint64_t size,
                                       Error **errp)
 {
-    memory_region_init_ram_shared_nomigrate(mr, owner, name, size, false, errp);
+    memory_region_init_ram_flags_nomigrate(mr, owner, name, size, 0, errp);
     mr->readonly = true;
 }
 
@@ -1705,7 +1706,7 @@ void memory_region_init_rom_device_nomigrate(MemoryRegion *mr,
     mr->terminates = true;
     mr->rom_device = true;
     mr->destructor = memory_region_destructor_ram;
-    mr->ram_block = qemu_ram_alloc(size, false,  mr, &err);
+    mr->ram_block = qemu_ram_alloc(size, 0, mr, &err);
     if (err) {
         mr->size = int128_zero();
         object_unparent(OBJECT(mr));
@@ -2040,6 +2041,70 @@ int memory_region_iommu_num_indexes(IOMMUMemoryRegion *iommu_mr)
     return imrc->num_indexes(iommu_mr);
 }
 
+RamDiscardManager *memory_region_get_ram_discard_manager(MemoryRegion *mr)
+{
+    if (!memory_region_is_mapped(mr) || !memory_region_is_ram(mr)) {
+        return NULL;
+    }
+    return mr->rdm;
+}
+
+void memory_region_set_ram_discard_manager(MemoryRegion *mr,
+                                           RamDiscardManager *rdm)
+{
+    g_assert(memory_region_is_ram(mr) && !memory_region_is_mapped(mr));
+    g_assert(!rdm || !mr->rdm);
+    mr->rdm = rdm;
+}
+
+uint64_t ram_discard_manager_get_min_granularity(const RamDiscardManager *rdm,
+                                                 const MemoryRegion *mr)
+{
+    RamDiscardManagerClass *rdmc = RAM_DISCARD_MANAGER_GET_CLASS(rdm);
+
+    g_assert(rdmc->get_min_granularity);
+    return rdmc->get_min_granularity(rdm, mr);
+}
+
+bool ram_discard_manager_is_populated(const RamDiscardManager *rdm,
+                                      const MemoryRegionSection *section)
+{
+    RamDiscardManagerClass *rdmc = RAM_DISCARD_MANAGER_GET_CLASS(rdm);
+
+    g_assert(rdmc->is_populated);
+    return rdmc->is_populated(rdm, section);
+}
+
+int ram_discard_manager_replay_populated(const RamDiscardManager *rdm,
+                                         MemoryRegionSection *section,
+                                         ReplayRamPopulate replay_fn,
+                                         void *opaque)
+{
+    RamDiscardManagerClass *rdmc = RAM_DISCARD_MANAGER_GET_CLASS(rdm);
+
+    g_assert(rdmc->replay_populated);
+    return rdmc->replay_populated(rdm, section, replay_fn, opaque);
+}
+
+void ram_discard_manager_register_listener(RamDiscardManager *rdm,
+                                           RamDiscardListener *rdl,
+                                           MemoryRegionSection *section)
+{
+    RamDiscardManagerClass *rdmc = RAM_DISCARD_MANAGER_GET_CLASS(rdm);
+
+    g_assert(rdmc->register_listener);
+    rdmc->register_listener(rdm, rdl, section);
+}
+
+void ram_discard_manager_unregister_listener(RamDiscardManager *rdm,
+                                             RamDiscardListener *rdl)
+{
+    RamDiscardManagerClass *rdmc = RAM_DISCARD_MANAGER_GET_CLASS(rdm);
+
+    g_assert(rdmc->unregister_listener);
+    rdmc->unregister_listener(rdm, rdl);
+}
+
 void memory_region_set_log(MemoryRegion *mr, bool log, unsigned client)
 {
     uint8_t mask = 1 << client;
@@ -2096,6 +2161,10 @@ void memory_region_set_client_dirty(MemoryRegion *mr, hwaddr addr,
                                                size, 1 << client);
 }
 
+/*
+ * If memory region `mr' is NULL, do global sync.  Otherwise, sync
+ * dirty bitmap for the specified memory region.
+ */
 static void memory_region_sync_dirty_bitmap(MemoryRegion *mr)
 {
     MemoryListener *listener;
@@ -2109,18 +2178,24 @@ static void memory_region_sync_dirty_bitmap(MemoryRegion *mr)
      * address space once.
      */
     QTAILQ_FOREACH(listener, &memory_listeners, link) {
-        if (!listener->log_sync) {
-            continue;
-        }
-        as = listener->address_space;
-        view = address_space_get_flatview(as);
-        FOR_EACH_FLAT_RANGE(fr, view) {
-            if (fr->dirty_log_mask && (!mr || fr->mr == mr)) {
-                MemoryRegionSection mrs = section_from_flat_range(fr, view);
-                listener->log_sync(listener, &mrs);
+        if (listener->log_sync) {
+            as = listener->address_space;
+            view = address_space_get_flatview(as);
+            FOR_EACH_FLAT_RANGE(fr, view) {
+                if (fr->dirty_log_mask && (!mr || fr->mr == mr)) {
+                    MemoryRegionSection mrs = section_from_flat_range(fr, view);
+                    listener->log_sync(listener, &mrs);
+                }
             }
+            flatview_unref(view);
+        } else if (listener->log_sync_global) {
+            /*
+             * No matter whether MR is specified, what we can do here
+             * is to do a global sync, because we are not capable to
+             * sync in a finer granularity.
+             */
+            listener->log_sync_global(listener);
         }
-        flatview_unref(view);
     }
 }
 
@@ -2699,6 +2774,33 @@ MemoryRegionSection memory_region_find(MemoryRegion *mr,
     return ret;
 }
 
+MemoryRegionSection *memory_region_section_new_copy(MemoryRegionSection *s)
+{
+    MemoryRegionSection *tmp = g_new(MemoryRegionSection, 1);
+
+    *tmp = *s;
+    if (tmp->mr) {
+        memory_region_ref(tmp->mr);
+    }
+    if (tmp->fv) {
+        bool ret  = flatview_ref(tmp->fv);
+
+        g_assert(ret);
+    }
+    return tmp;
+}
+
+void memory_region_section_free_copy(MemoryRegionSection *s)
+{
+    if (s->fv) {
+        flatview_unref(s->fv);
+    }
+    if (s->mr) {
+        memory_region_unref(s->mr);
+    }
+    g_free(s);
+}
+
 bool memory_region_present(MemoryRegion *container, hwaddr addr)
 {
     MemoryRegion *mr;
@@ -2837,6 +2939,9 @@ static void listener_del_address_space(MemoryListener *listener,
 void memory_listener_register(MemoryListener *listener, AddressSpace *as)
 {
     MemoryListener *other = NULL;
+
+    /* Only one of them can be defined for a listener */
+    assert(!(listener->log_sync && listener->log_sync_global));
 
     listener->address_space = as;
     if (QTAILQ_EMPTY(&memory_listeners)
@@ -3379,10 +3484,17 @@ static const TypeInfo iommu_memory_region_info = {
     .abstract           = true,
 };
 
+static const TypeInfo ram_discard_manager_info = {
+    .parent             = TYPE_INTERFACE,
+    .name               = TYPE_RAM_DISCARD_MANAGER,
+    .class_size         = sizeof(RamDiscardManagerClass),
+};
+
 static void memory_register_types(void)
 {
     type_register_static(&memory_region_info);
     type_register_static(&iommu_memory_region_info);
+    type_register_static(&ram_discard_manager_info);
 }
 
 type_init(memory_register_types)

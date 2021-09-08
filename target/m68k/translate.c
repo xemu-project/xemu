@@ -31,7 +31,6 @@
 #include "exec/helper-proto.h"
 #include "exec/helper-gen.h"
 
-#include "trace-tcg.h"
 #include "exec/log.h"
 #include "fpu/softfloat.h"
 
@@ -124,6 +123,7 @@ typedef struct DisasContext {
 #define MAX_TO_RELEASE 8
     int release_count;
     TCGv release[MAX_TO_RELEASE];
+    bool ss_active;
 } DisasContext;
 
 static void init_release_array(DisasContext *s)
@@ -192,6 +192,18 @@ static void do_writebacks(DisasContext *s)
             mask &= mask - 1;
         } while (mask);
     }
+}
+
+static bool is_singlestepping(DisasContext *s)
+{
+    /*
+     * Return true if we are singlestepping either because of
+     * architectural singlestep or QEMU gdbstub singlestep. This does
+     * not include the command line '-singlestep' mode which is rather
+     * misnamed as it only means "one instruction per TB" and doesn't
+     * affect the code we generate.
+     */
+    return s->base.singlestep_enabled || s->ss_active;
 }
 
 /* is_jmp field values */
@@ -306,6 +318,20 @@ static void gen_exception(DisasContext *s, uint32_t dest, int nr)
     gen_raise_exception(nr);
 
     s->base.is_jmp = DISAS_NORETURN;
+}
+
+static void gen_singlestep_exception(DisasContext *s)
+{
+    /*
+     * Generate the right kind of exception for singlestep, which is
+     * either the architectural singlestep or EXCP_DEBUG for QEMU's
+     * gdb singlestepping.
+     */
+    if (s->ss_active) {
+        gen_raise_exception(EXCP_TRACE);
+    } else {
+        gen_raise_exception(EXCP_DEBUG);
+    }
 }
 
 static inline void gen_addr_fault(DisasContext *s)
@@ -1493,22 +1519,14 @@ static void gen_exit_tb(DisasContext *s)
         }                                                               \
     } while (0)
 
-static inline bool use_goto_tb(DisasContext *s, uint32_t dest)
-{
-#ifndef CONFIG_USER_ONLY
-    return (s->base.pc_first & TARGET_PAGE_MASK) == (dest & TARGET_PAGE_MASK)
-        || (s->base.pc_next & TARGET_PAGE_MASK) == (dest & TARGET_PAGE_MASK);
-#else
-    return true;
-#endif
-}
-
 /* Generate a jump to an immediate address.  */
 static void gen_jmp_tb(DisasContext *s, int n, uint32_t dest)
 {
-    if (unlikely(s->base.singlestep_enabled)) {
-        gen_exception(s, dest, EXCP_DEBUG);
-    } else if (use_goto_tb(s, dest)) {
+    if (unlikely(is_singlestepping(s))) {
+        update_cc_op(s);
+        tcg_gen_movi_i32(QREG_PC, dest);
+        gen_singlestep_exception(s);
+    } else if (translator_use_goto_tb(&s->base, dest)) {
         tcg_gen_goto_tb(n);
         tcg_gen_movi_i32(QREG_PC, dest);
         tcg_gen_exit_tb(s->base.tb, n);
@@ -6172,6 +6190,12 @@ static void m68k_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cpu)
     dc->done_mac = 0;
     dc->writeback_mask = 0;
     init_release_array(dc);
+
+    dc->ss_active = (M68K_SR_TRACE(env->sr) == M68K_SR_TRACE_ANY_INS);
+    /* If architectural single step active, limit to 1 */
+    if (is_singlestepping(dc)) {
+        dc->base.max_insns = 1;
+    }
 }
 
 static void m68k_tr_tb_start(DisasContextBase *dcbase, CPUState *cpu)
@@ -6182,23 +6206,6 @@ static void m68k_tr_insn_start(DisasContextBase *dcbase, CPUState *cpu)
 {
     DisasContext *dc = container_of(dcbase, DisasContext, base);
     tcg_gen_insn_start(dc->base.pc_next, dc->cc_op);
-}
-
-static bool m68k_tr_breakpoint_check(DisasContextBase *dcbase, CPUState *cpu,
-                                     const CPUBreakpoint *bp)
-{
-    DisasContext *dc = container_of(dcbase, DisasContext, base);
-
-    gen_exception(dc, dc->base.pc_next, EXCP_DEBUG);
-    /*
-     * The address covered by the breakpoint must be included in
-     * [tb->pc, tb->pc + tb->size) in order to for it to be
-     * properly cleared -- thus we increment the PC here so that
-     * the logic setting tb->size below does the right thing.
-     */
-    dc->base.pc_next += 2;
-
-    return true;
 }
 
 static void m68k_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
@@ -6245,17 +6252,17 @@ static void m68k_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
         break;
     case DISAS_TOO_MANY:
         update_cc_op(dc);
-        if (dc->base.singlestep_enabled) {
+        if (is_singlestepping(dc)) {
             tcg_gen_movi_i32(QREG_PC, dc->pc);
-            gen_raise_exception(EXCP_DEBUG);
+            gen_singlestep_exception(dc);
         } else {
             gen_jmp_tb(dc, 0, dc->pc);
         }
         break;
     case DISAS_JUMP:
         /* We updated CC_OP and PC in gen_jmp/gen_jmp_im.  */
-        if (dc->base.singlestep_enabled) {
-            gen_raise_exception(EXCP_DEBUG);
+        if (is_singlestepping(dc)) {
+            gen_singlestep_exception(dc);
         } else {
             tcg_gen_lookup_and_goto_ptr();
         }
@@ -6265,8 +6272,8 @@ static void m68k_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
          * We updated CC_OP and PC in gen_exit_tb, but also modified
          * other state that may require returning to the main loop.
          */
-        if (dc->base.singlestep_enabled) {
-            gen_raise_exception(EXCP_DEBUG);
+        if (is_singlestepping(dc)) {
+            gen_singlestep_exception(dc);
         } else {
             tcg_gen_exit_tb(NULL, 0);
         }
@@ -6286,7 +6293,6 @@ static const TranslatorOps m68k_tr_ops = {
     .init_disas_context = m68k_tr_init_disas_context,
     .tb_start           = m68k_tr_tb_start,
     .insn_start         = m68k_tr_insn_start,
-    .breakpoint_check   = m68k_tr_breakpoint_check,
     .translate_insn     = m68k_tr_translate_insn,
     .tb_stop            = m68k_tr_tb_stop,
     .disas_log          = m68k_tr_disas_log,

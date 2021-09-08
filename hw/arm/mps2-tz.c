@@ -55,6 +55,7 @@
 #include "hw/boards.h"
 #include "exec/address-spaces.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/reset.h"
 #include "hw/misc/unimp.h"
 #include "hw/char/cmsdk-apb-uart.h"
 #include "hw/timer/cmsdk-apb-timer.h"
@@ -72,6 +73,7 @@
 #include "hw/core/split-irq.h"
 #include "hw/qdev-clock.h"
 #include "qom/object.h"
+#include "hw/irq.h"
 
 #define MPS2TZ_NUMIRQ_MAX 96
 #define MPS2TZ_RAM_MAX 5
@@ -121,8 +123,10 @@ struct MPS2TZMachineClass {
     int numirq; /* Number of external interrupts */
     int uart_overflow_irq; /* number of the combined UART overflow IRQ */
     uint32_t init_svtor; /* init-svtor setting for SSE */
+    uint32_t sram_addr_width; /* SRAM_ADDR_WIDTH setting for SSE */
     const RAMInfo *raminfo;
     const char *armsse_type;
+    uint32_t boot_ram_size; /* size of ram at address 0; 0 == find in raminfo */
 };
 
 struct MPS2TZMachineState {
@@ -153,6 +157,9 @@ struct MPS2TZMachineState {
     SplitIRQ cpu_irq_splitter[MPS2TZ_NUMIRQ_MAX];
     Clock *sysclk;
     Clock *s32kclk;
+
+    bool remap;
+    qemu_irq remap_irq;
 };
 
 #define TYPE_MPS2TZ_MACHINE "mps2tz"
@@ -228,6 +235,10 @@ static const RAMInfo an505_raminfo[] = { {
     },
 };
 
+/*
+ * Note that the addresses and MPC numbering here should match up
+ * with those used in remap_memory(), which can swap the BRAM and QSPI.
+ */
 static const RAMInfo an524_raminfo[] = { {
         .name = "bram",
         .base = 0x00000000,
@@ -235,18 +246,12 @@ static const RAMInfo an524_raminfo[] = { {
         .mpc = 0,
         .mrindex = 0,
     }, {
-        .name = "sram",
-        .base = 0x20000000,
-        .size = 32 * 4 * KiB,
-        .mpc = -1,
-        .mrindex = 1,
-    }, {
         /* We don't model QSPI flash yet; for now expose it as simple ROM */
         .name = "QSPI",
         .base = 0x28000000,
         .size = 8 * MiB,
         .mpc = 1,
-        .mrindex = 2,
+        .mrindex = 1,
         .flags = IS_ROM,
     }, {
         .name = "DDR",
@@ -260,23 +265,11 @@ static const RAMInfo an524_raminfo[] = { {
 };
 
 static const RAMInfo an547_raminfo[] = { {
-        .name = "itcm",
-        .base = 0x00000000,
-        .size = 512 * KiB,
-        .mpc = -1,
-        .mrindex = 0,
-    }, {
         .name = "sram",
         .base = 0x01000000,
         .size = 2 * MiB,
         .mpc = 0,
         .mrindex = 1,
-    }, {
-        .name = "dtcm",
-        .base = 0x20000000,
-        .size = 4 * 128 * KiB,
-        .mpc = -1,
-        .mrindex = 2,
     }, {
         .name = "sram 2",
         .base = 0x21000000,
@@ -457,6 +450,7 @@ static MemoryRegion *make_scc(MPS2TZMachineState *mms, void *opaque,
 
     object_initialize_child(OBJECT(mms), "scc", scc, TYPE_MPS2_SCC);
     sccdev = DEVICE(scc);
+    qdev_prop_set_uint32(sccdev, "scc-cfg0", mms->remap ? 1 : 0);
     qdev_prop_set_uint32(sccdev, "scc-cfg4", 0x2);
     qdev_prop_set_uint32(sccdev, "scc-aid", 0x00200008);
     qdev_prop_set_uint32(sccdev, "scc-id", mmc->scc_id);
@@ -571,6 +565,52 @@ static MemoryRegion *make_mpc(MPS2TZMachineState *mms, void *opaque,
 
     /* Return the register interface MR for our caller to map behind the PPC */
     return sysbus_mmio_get_region(SYS_BUS_DEVICE(mpc), 0);
+}
+
+static hwaddr boot_mem_base(MPS2TZMachineState *mms)
+{
+    /*
+     * Return the canonical address of the block which will be mapped
+     * at address 0x0 (i.e. where the vector table is).
+     * This is usually 0, but if the AN524 alternate memory map is
+     * enabled it will be the base address of the QSPI block.
+     */
+    return mms->remap ? 0x28000000 : 0;
+}
+
+static void remap_memory(MPS2TZMachineState *mms, int map)
+{
+    /*
+     * Remap the memory for the AN524. 'map' is the value of
+     * SCC CFG_REG0 bit 0, i.e. 0 for the default map and 1
+     * for the "option 1" mapping where QSPI is at address 0.
+     *
+     * Effectively we need to swap around the "upstream" ends of
+     * MPC 0 and MPC 1.
+     */
+    MPS2TZMachineClass *mmc = MPS2TZ_MACHINE_GET_CLASS(mms);
+    int i;
+
+    if (mmc->fpga_type != FPGA_AN524) {
+        return;
+    }
+
+    memory_region_transaction_begin();
+    for (i = 0; i < 2; i++) {
+        TZMPC *mpc = &mms->mpc[i];
+        MemoryRegion *upstream = sysbus_mmio_get_region(SYS_BUS_DEVICE(mpc), 1);
+        hwaddr addr = (i ^ map) ? 0x28000000 : 0;
+
+        memory_region_set_address(upstream, addr);
+    }
+    memory_region_transaction_commit();
+}
+
+static void remap_irq_fn(void *opaque, int n, int level)
+{
+    MPS2TZMachineState *mms = opaque;
+
+    remap_memory(mms, level);
 }
 
 static MemoryRegion *make_dma(MPS2TZMachineState *mms, void *opaque,
@@ -710,8 +750,16 @@ static uint32_t boot_ram_size(MPS2TZMachineState *mms)
     const RAMInfo *p;
     MPS2TZMachineClass *mmc = MPS2TZ_MACHINE_GET_CLASS(mms);
 
+    /*
+     * Use a per-board specification (for when the boot RAM is in
+     * the SSE and so doesn't have a RAMInfo list entry)
+     */
+    if (mmc->boot_ram_size) {
+        return mmc->boot_ram_size;
+    }
+
     for (p = mmc->raminfo; p->name; p++) {
-        if (p->base == 0) {
+        if (p->base == boot_mem_base(mms)) {
             return p->size;
         }
     }
@@ -756,6 +804,7 @@ static void mps2tz_common_init(MachineState *machine)
                              OBJECT(system_memory), &error_abort);
     qdev_prop_set_uint32(iotkitdev, "EXP_NUMIRQ", mmc->numirq);
     qdev_prop_set_uint32(iotkitdev, "init-svtor", mmc->init_svtor);
+    qdev_prop_set_uint32(iotkitdev, "SRAM_ADDR_WIDTH", mmc->sram_addr_width);
     qdev_connect_clock_in(iotkitdev, "MAINCLK", mms->sysclk);
     qdev_connect_clock_in(iotkitdev, "S32KCLK", mms->s32kclk);
     sysbus_realize(SYS_BUS_DEVICE(&mms->iotkit), &error_fatal);
@@ -1095,6 +1144,16 @@ static void mps2tz_common_init(MachineState *machine)
 
     create_non_mpc_ram(mms);
 
+    if (mmc->fpga_type == FPGA_AN524) {
+        /*
+         * Connect the line from the SCC so that we can remap when the
+         * guest updates that register.
+         */
+        mms->remap_irq = qemu_allocate_irq(remap_irq_fn, mms, 0);
+        qdev_connect_gpio_out_named(DEVICE(&mms->scc), "remap", 0,
+                                    mms->remap_irq);
+    }
+
     armv7m_load_kernel(ARM_CPU(first_cpu), machine->kernel_filename,
                        boot_ram_size(mms));
 }
@@ -1117,12 +1176,47 @@ static void mps2_tz_idau_check(IDAUInterface *ii, uint32_t address,
     *iregion = region;
 }
 
+static char *mps2_get_remap(Object *obj, Error **errp)
+{
+    MPS2TZMachineState *mms = MPS2TZ_MACHINE(obj);
+    const char *val = mms->remap ? "QSPI" : "BRAM";
+    return g_strdup(val);
+}
+
+static void mps2_set_remap(Object *obj, const char *value, Error **errp)
+{
+    MPS2TZMachineState *mms = MPS2TZ_MACHINE(obj);
+
+    if (!strcmp(value, "BRAM")) {
+        mms->remap = false;
+    } else if (!strcmp(value, "QSPI")) {
+        mms->remap = true;
+    } else {
+        error_setg(errp, "Invalid remap value");
+        error_append_hint(errp, "Valid values are BRAM and QSPI.\n");
+    }
+}
+
+static void mps2_machine_reset(MachineState *machine)
+{
+    MPS2TZMachineState *mms = MPS2TZ_MACHINE(machine);
+
+    /*
+     * Set the initial memory mapping before triggering the reset of
+     * the rest of the system, so that the guest image loader and CPU
+     * reset see the correct mapping.
+     */
+    remap_memory(mms, mms->remap);
+    qemu_devices_reset();
+}
+
 static void mps2tz_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
     IDAUInterfaceClass *iic = IDAU_INTERFACE_CLASS(oc);
 
     mc->init = mps2tz_common_init;
+    mc->reset = mps2_machine_reset;
     iic->check = mps2_tz_idau_check;
 }
 
@@ -1168,8 +1262,10 @@ static void mps2tz_an505_class_init(ObjectClass *oc, void *data)
     mmc->numirq = 92;
     mmc->uart_overflow_irq = 47;
     mmc->init_svtor = 0x10000000;
+    mmc->sram_addr_width = 15;
     mmc->raminfo = an505_raminfo;
     mmc->armsse_type = TYPE_IOTKIT;
+    mmc->boot_ram_size = 0;
     mps2tz_set_default_ram_info(mmc);
 }
 
@@ -1195,8 +1291,10 @@ static void mps2tz_an521_class_init(ObjectClass *oc, void *data)
     mmc->numirq = 92;
     mmc->uart_overflow_irq = 47;
     mmc->init_svtor = 0x10000000;
+    mmc->sram_addr_width = 15;
     mmc->raminfo = an505_raminfo; /* AN521 is the same as AN505 here */
     mmc->armsse_type = TYPE_SSE200;
+    mmc->boot_ram_size = 0;
     mps2tz_set_default_ram_info(mmc);
 }
 
@@ -1222,9 +1320,16 @@ static void mps3tz_an524_class_init(ObjectClass *oc, void *data)
     mmc->numirq = 95;
     mmc->uart_overflow_irq = 47;
     mmc->init_svtor = 0x10000000;
+    mmc->sram_addr_width = 15;
     mmc->raminfo = an524_raminfo;
     mmc->armsse_type = TYPE_SSE200;
+    mmc->boot_ram_size = 0;
     mps2tz_set_default_ram_info(mmc);
+
+    object_class_property_add_str(oc, "remap", mps2_get_remap, mps2_set_remap);
+    object_class_property_set_description(oc, "remap",
+                                          "Set memory mapping. Valid values "
+                                          "are BRAM (default) and QSPI.");
 }
 
 static void mps3tz_an547_class_init(ObjectClass *oc, void *data)
@@ -1249,8 +1354,10 @@ static void mps3tz_an547_class_init(ObjectClass *oc, void *data)
     mmc->numirq = 96;
     mmc->uart_overflow_irq = 48;
     mmc->init_svtor = 0x00000000;
+    mmc->sram_addr_width = 21;
     mmc->raminfo = an547_raminfo;
     mmc->armsse_type = TYPE_SSE300;
+    mmc->boot_ram_size = 512 * KiB;
     mps2tz_set_default_ram_info(mmc);
 }
 

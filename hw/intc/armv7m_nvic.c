@@ -12,7 +12,6 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "cpu.h"
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "qemu/timer.h"
@@ -128,14 +127,13 @@ static bool nvic_isrpending(NVICState *s)
 {
     int irq;
 
-    /* We can shortcut if the highest priority pending interrupt
-     * happens to be external or if there is nothing pending.
+    /*
+     * We can shortcut if the highest priority pending interrupt
+     * happens to be external; if not we need to check the whole
+     * vectors[] array.
      */
     if (s->vectpending > NVIC_FIRST_IRQ) {
         return true;
-    }
-    if (s->vectpending == 0) {
-        return false;
     }
 
     for (irq = NVIC_FIRST_IRQ; irq < s->num_irq; irq++) {
@@ -806,6 +804,16 @@ void armv7m_nvic_acknowledge_irq(void *opaque)
     nvic_irq_update(s);
 }
 
+static bool vectpending_targets_secure(NVICState *s)
+{
+    /* Return true if s->vectpending targets Secure state */
+    if (s->vectpending_is_s_banked) {
+        return true;
+    }
+    return !exc_is_banked(s->vectpending) &&
+        exc_targets_secure(s, s->vectpending);
+}
+
 void armv7m_nvic_get_pending_irq_info(void *opaque,
                                       int *pirq, bool *ptargets_secure)
 {
@@ -815,12 +823,7 @@ void armv7m_nvic_get_pending_irq_info(void *opaque,
 
     assert(pending > ARMV7M_EXCP_RESET && pending < s->num_irq);
 
-    if (s->vectpending_is_s_banked) {
-        targets_secure = true;
-    } else {
-        targets_secure = !exc_is_banked(pending) &&
-            exc_targets_secure(s, pending);
-    }
+    targets_secure = vectpending_targets_secure(s);
 
     trace_nvic_get_pending_irq_info(pending, targets_secure);
 
@@ -1041,7 +1044,19 @@ static uint32_t nvic_readl(NVICState *s, uint32_t offset, MemTxAttrs attrs)
         /* VECTACTIVE */
         val = cpu->env.v7m.exception;
         /* VECTPENDING */
-        val |= (s->vectpending & 0xff) << 12;
+        if (s->vectpending) {
+            /*
+             * From v8.1M VECTPENDING must read as 1 if accessed as
+             * NonSecure and the highest priority pending and enabled
+             * exception targets Secure.
+             */
+            int vp = s->vectpending;
+            if (!attrs.secure && arm_feature(&cpu->env, ARM_FEATURE_V8_1M) &&
+                vectpending_targets_secure(s)) {
+                vp = 1;
+            }
+            val |= (vp & 0x1ff) << 12;
+        }
         /* ISRPENDING - set if any external IRQ is pending */
         if (nvic_isrpending(s)) {
             val |= (1 << 22);
@@ -2942,12 +2957,6 @@ static void armv7m_nvic_realize(DeviceState *dev, Error **errp)
 
 static void armv7m_nvic_instance_init(Object *obj)
 {
-    /* We have a different default value for the num-irq property
-     * than our superclass. This function runs after qdev init
-     * has set the defaults from the Property array and before
-     * any user-specified property setting, so just modify the
-     * value in the GICState struct.
-     */
     DeviceState *dev = DEVICE(obj);
     NVICState *nvic = NVIC(obj);
     SysBusDevice *sbd = SYS_BUS_DEVICE(obj);

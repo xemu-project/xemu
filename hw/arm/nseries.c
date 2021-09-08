@@ -34,16 +34,16 @@
 #include "hw/boards.h"
 #include "hw/i2c/i2c.h"
 #include "hw/display/blizzard.h"
+#include "hw/input/lm832x.h"
 #include "hw/input/tsc2xxx.h"
 #include "hw/misc/cbus.h"
-#include "hw/misc/tmp105.h"
+#include "hw/sensor/tmp105.h"
 #include "hw/qdev-properties.h"
 #include "hw/block/flash.h"
 #include "hw/hw.h"
 #include "hw/loader.h"
 #include "hw/sysbus.h"
 #include "qemu/log.h"
-#include "exec/address-spaces.h"
 
 /* Nokia N8x0 support */
 struct n800_s {
@@ -417,7 +417,7 @@ static void n810_kbd_setup(struct n800_s *s)
     /* Attach the LM8322 keyboard to the I2C bus,
      * should happen in n8x0_i2c_setup and s->kbd be initialised here.  */
     s->kbd = DEVICE(i2c_slave_create_simple(omap_i2c_bus(s->mpu->i2c[0]),
-                                            "lm8323", N810_LM8323_ADDR));
+                                            TYPE_LM8323, N810_LM8323_ADDR));
     qdev_connect_gpio_out(s->kbd, 0, kbd_irq);
 }
 
@@ -692,7 +692,7 @@ static uint32_t mipid_txrx(void *opaque, uint32_t cmd, int len)
     default:
     bad_cmd:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: unknown command %02x\n", __func__, s->cmd);
+                      "%s: unknown command 0x%02x\n", __func__, s->cmd);
         break;
     }
 

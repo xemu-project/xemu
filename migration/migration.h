@@ -49,6 +49,10 @@ struct PostcopyBlocktimeContext;
 struct MigrationIncomingState {
     QEMUFile *from_src_file;
 
+    /* A hook to allow cleanup at the end of incoming migration */
+    void *transport_data;
+    void (*transport_cleanup)(void *data);
+
     /*
      * Free at the start of the main state load, set as the main thread finishes
      * loading state.
@@ -150,12 +154,13 @@ struct MigrationState {
     QemuThread thread;
     QEMUBH *vm_start_bh;
     QEMUBH *cleanup_bh;
+    /* Protected by qemu_file_lock */
     QEMUFile *to_dst_file;
     QIOChannelBuffer *bioc;
     /*
-     * Protects to_dst_file pointer.  We need to make sure we won't
-     * yield or hang during the critical section, since this lock will
-     * be used in OOB command handler.
+     * Protects to_dst_file/from_dst_file pointers.  We need to make sure we
+     * won't yield or hang during the critical section, since this lock will be
+     * used in OOB command handler.
      */
     QemuMutex qemu_file_lock;
 
@@ -188,9 +193,17 @@ struct MigrationState {
 
     /* State related to return path */
     struct {
+        /* Protected by qemu_file_lock */
         QEMUFile     *from_dst_file;
         QemuThread    rp_thread;
         bool          error;
+        /*
+         * We can also check non-zero of rp_thread, but there's no "official"
+         * way to do this, so this bool makes it slightly more elegant.
+         * Checking from_dst_file for this is racy because from_dst_file will
+         * be cleared in the rp_thread!
+         */
+        bool          rp_thread_created;
         QemuSemaphore rp_sem;
     } rp_state;
 
@@ -375,5 +388,8 @@ int foreach_not_ignored_block(RAMBlockIterFunc func, void *opaque);
 void migration_make_urgent_request(void);
 void migration_consume_urgent_request(void);
 bool migration_rate_limit(void);
+void migration_cancel(void);
+
+void populate_vfio_info(MigrationInfo *info);
 
 #endif

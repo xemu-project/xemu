@@ -64,8 +64,8 @@ void jump_to_IPL_code(uint64_t address)
      * We use the load normal reset to keep r15 unchanged. jump_to_IPL_2
      * can then use r15 as its stack pointer.
      */
-    asm volatile("lghi 1,1\n\t"
-                 "diag 1,1,0x308\n\t"
+    asm volatile("lghi %%r1,1\n\t"
+                 "diag %%r1,%%r1,0x308\n\t"
                  : : : "1", "memory");
     panic("\n! IPL returns !\n");
 }
@@ -82,8 +82,8 @@ void jump_to_low_kernel(void)
         jump_to_IPL_code(KERN_IMAGE_START);
     }
 
-    /* Trying to get PSW at zero address */
-    if (*((uint64_t *)0) & RESET_PSW_MASK) {
+    /* Trying to get PSW at zero address (pointed to by reset_psw) */
+    if (*reset_psw & RESET_PSW_MASK) {
         /*
          * Surely nobody will try running directly from lowcore, so
          * let's use 0 as an indication that we want to load the reset

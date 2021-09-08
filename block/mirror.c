@@ -107,6 +107,7 @@ struct MirrorOp {
     bool is_in_flight;
     CoQueue waiting_requests;
     Coroutine *co;
+    MirrorOp *waiting_for_op;
 
     QTAILQ_ENTRY(MirrorOp) next;
 };
@@ -159,7 +160,18 @@ static void coroutine_fn mirror_wait_on_conflicts(MirrorOp *self,
             if (ranges_overlap(self_start_chunk, self_nb_chunks,
                                op_start_chunk, op_nb_chunks))
             {
+                /*
+                 * If the operation is already (indirectly) waiting for us, or
+                 * will wait for us as soon as it wakes up, then just go on
+                 * (instead of producing a deadlock in the former case).
+                 */
+                if (op->waiting_for_op) {
+                    continue;
+                }
+
+                self->waiting_for_op = op;
                 qemu_co_queue_wait(&op->waiting_requests, NULL);
+                self->waiting_for_op = NULL;
                 break;
             }
         }
@@ -1178,12 +1190,14 @@ static bool mirror_drained_poll(BlockJob *job)
     return !!s->in_flight;
 }
 
-static void mirror_cancel(Job *job)
+static void mirror_cancel(Job *job, bool force)
 {
     MirrorBlockJob *s = container_of(job, MirrorBlockJob, common.job);
     BlockDriverState *target = blk_bs(s->target);
 
-    bdrv_cancel_in_flight(target);
+    if (force || !job_is_ready(job)) {
+        bdrv_cancel_in_flight(target);
+    }
 }
 
 static const BlockJobDriver mirror_job_driver = {
@@ -1341,6 +1355,7 @@ static MirrorOp *coroutine_fn active_write_prepare(MirrorBlockJob *s,
         .bytes              = bytes,
         .is_active_write    = true,
         .is_in_flight       = true,
+        .co                 = qemu_coroutine_self(),
     };
     qemu_co_queue_init(&op->waiting_requests);
     QTAILQ_INSERT_TAIL(&s->ops_in_flight, op, next);
@@ -1630,9 +1645,6 @@ static BlockJob *mirror_start_job(
 
     bs_opaque->is_commit = target_is_backing;
 
-    /* bdrv_append takes ownership of the mirror_top_bs reference, need to keep
-     * it alive until block_job_create() succeeds even if bs has no parent. */
-    bdrv_ref(mirror_top_bs);
     bdrv_drained_begin(bs);
     ret = bdrv_append(mirror_top_bs, bs, errp);
     bdrv_drained_end(bs);

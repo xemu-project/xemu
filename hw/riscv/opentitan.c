@@ -24,7 +24,6 @@
 #include "hw/boards.h"
 #include "hw/misc/unimp.h"
 #include "hw/riscv/boot.h"
-#include "exec/address-spaces.h"
 #include "qemu/units.h"
 #include "sysemu/sysemu.h"
 
@@ -37,7 +36,7 @@ static const MemMapEntry ibex_memmap[] = {
     [IBEX_DEV_SPI] =            {  0x40050000,  0x1000  },
     [IBEX_DEV_I2C] =            {  0x40080000,  0x1000  },
     [IBEX_DEV_PATTGEN] =        {  0x400e0000,  0x1000  },
-    [IBEX_DEV_RV_TIMER] =       {  0x40100000,  0x1000  },
+    [IBEX_DEV_TIMER] =          {  0x40100000,  0x1000  },
     [IBEX_DEV_SENSOR_CTRL] =    {  0x40110000,  0x1000  },
     [IBEX_DEV_OTP_CTRL] =       {  0x40130000,  0x4000  },
     [IBEX_DEV_PWRMGR] =         {  0x40400000,  0x1000  },
@@ -59,6 +58,8 @@ static const MemMapEntry ibex_memmap[] = {
     [IBEX_DEV_ALERT_HANDLER] =  {  0x411b0000,  0x1000  },
     [IBEX_DEV_NMI_GEN] =        {  0x411c0000,  0x1000  },
     [IBEX_DEV_OTBN] =           {  0x411d0000,  0x10000 },
+    [IBEX_DEV_PERI] =           {  0x411f0000,  0x10000 },
+    [IBEX_DEV_FLASH_VIRTUAL] =  {  0x80000000,  0x80000 },
 };
 
 static void opentitan_board_init(MachineState *machine)
@@ -107,6 +108,8 @@ static void lowrisc_ibex_soc_init(Object *obj)
     object_initialize_child(obj, "plic", &s->plic, TYPE_IBEX_PLIC);
 
     object_initialize_child(obj, "uart", &s->uart, TYPE_IBEX_UART);
+
+    object_initialize_child(obj, "timer", &s->timer, TYPE_IBEX_TIMER);
 }
 
 static void lowrisc_ibex_soc_realize(DeviceState *dev_soc, Error **errp)
@@ -120,7 +123,7 @@ static void lowrisc_ibex_soc_realize(DeviceState *dev_soc, Error **errp)
                             &error_abort);
     object_property_set_int(OBJECT(&s->cpus), "num-harts", ms->smp.cpus,
                             &error_abort);
-    object_property_set_int(OBJECT(&s->cpus), "resetvec", 0x8090, &error_abort);
+    object_property_set_int(OBJECT(&s->cpus), "resetvec", 0x8080, &error_abort);
     sysbus_realize(SYS_BUS_DEVICE(&s->cpus), &error_abort);
 
     /* Boot ROM */
@@ -132,8 +135,13 @@ static void lowrisc_ibex_soc_realize(DeviceState *dev_soc, Error **errp)
     /* Flash memory */
     memory_region_init_rom(&s->flash_mem, OBJECT(dev_soc), "riscv.lowrisc.ibex.flash",
                            memmap[IBEX_DEV_FLASH].size, &error_fatal);
+    memory_region_init_alias(&s->flash_alias, OBJECT(dev_soc),
+                             "riscv.lowrisc.ibex.flash_virtual", &s->flash_mem, 0,
+                             memmap[IBEX_DEV_FLASH_VIRTUAL].size);
     memory_region_add_subregion(sys_mem, memmap[IBEX_DEV_FLASH].base,
                                 &s->flash_mem);
+    memory_region_add_subregion(sys_mem, memmap[IBEX_DEV_FLASH_VIRTUAL].base,
+                                &s->flash_alias);
 
     /* PLIC */
     if (!sysbus_realize(SYS_BUS_DEVICE(&s->plic), errp)) {
@@ -149,16 +157,24 @@ static void lowrisc_ibex_soc_realize(DeviceState *dev_soc, Error **errp)
     sysbus_mmio_map(SYS_BUS_DEVICE(&s->uart), 0, memmap[IBEX_DEV_UART].base);
     sysbus_connect_irq(SYS_BUS_DEVICE(&s->uart),
                        0, qdev_get_gpio_in(DEVICE(&s->plic),
-                       IBEX_UART_TX_WATERMARK_IRQ));
+                       IBEX_UART0_TX_WATERMARK_IRQ));
     sysbus_connect_irq(SYS_BUS_DEVICE(&s->uart),
                        1, qdev_get_gpio_in(DEVICE(&s->plic),
-                       IBEX_UART_RX_WATERMARK_IRQ));
+                       IBEX_UART0_RX_WATERMARK_IRQ));
     sysbus_connect_irq(SYS_BUS_DEVICE(&s->uart),
                        2, qdev_get_gpio_in(DEVICE(&s->plic),
-                       IBEX_UART_TX_EMPTY_IRQ));
+                       IBEX_UART0_TX_EMPTY_IRQ));
     sysbus_connect_irq(SYS_BUS_DEVICE(&s->uart),
                        3, qdev_get_gpio_in(DEVICE(&s->plic),
-                       IBEX_UART_RX_OVERFLOW_IRQ));
+                       IBEX_UART0_RX_OVERFLOW_IRQ));
+
+    if (!sysbus_realize(SYS_BUS_DEVICE(&s->timer), errp)) {
+        return;
+    }
+    sysbus_mmio_map(SYS_BUS_DEVICE(&s->timer), 0, memmap[IBEX_DEV_TIMER].base);
+    sysbus_connect_irq(SYS_BUS_DEVICE(&s->timer),
+                       0, qdev_get_gpio_in(DEVICE(&s->plic),
+                       IBEX_TIMER_TIMEREXPIRED0_0));
 
     create_unimplemented_device("riscv.lowrisc.ibex.gpio",
         memmap[IBEX_DEV_GPIO].base, memmap[IBEX_DEV_GPIO].size);
@@ -168,8 +184,6 @@ static void lowrisc_ibex_soc_realize(DeviceState *dev_soc, Error **errp)
         memmap[IBEX_DEV_I2C].base, memmap[IBEX_DEV_I2C].size);
     create_unimplemented_device("riscv.lowrisc.ibex.pattgen",
         memmap[IBEX_DEV_PATTGEN].base, memmap[IBEX_DEV_PATTGEN].size);
-    create_unimplemented_device("riscv.lowrisc.ibex.rv_timer",
-        memmap[IBEX_DEV_RV_TIMER].base, memmap[IBEX_DEV_RV_TIMER].size);
     create_unimplemented_device("riscv.lowrisc.ibex.sensor_ctrl",
         memmap[IBEX_DEV_SENSOR_CTRL].base, memmap[IBEX_DEV_SENSOR_CTRL].size);
     create_unimplemented_device("riscv.lowrisc.ibex.otp_ctrl",
@@ -210,6 +224,8 @@ static void lowrisc_ibex_soc_realize(DeviceState *dev_soc, Error **errp)
         memmap[IBEX_DEV_NMI_GEN].base, memmap[IBEX_DEV_NMI_GEN].size);
     create_unimplemented_device("riscv.lowrisc.ibex.otbn",
         memmap[IBEX_DEV_OTBN].base, memmap[IBEX_DEV_OTBN].size);
+    create_unimplemented_device("riscv.lowrisc.ibex.peri",
+        memmap[IBEX_DEV_PERI].base, memmap[IBEX_DEV_PERI].size);
 }
 
 static void lowrisc_ibex_soc_class_init(ObjectClass *oc, void *data)

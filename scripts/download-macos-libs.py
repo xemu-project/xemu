@@ -84,8 +84,15 @@ class LibInstaller:
 			                  f'-signature "{sig_path}" "{pkg_path}"',
 	                            shell=True, check=True)
 
+	def is_pkg_skipped(self, pkg_name):
+		return pkg_name.startswith('python')
+
 	def install_pkg(self, pkg_name):
 		if self.is_pkg_installed(pkg_name):
+			return
+
+		if self.is_pkg_skipped(pkg_name):
+			print(f'[*] Skipping package {pkg_name}')
 			return
 
 		print(f'[*] Fetching {pkg_name}')
@@ -109,10 +116,6 @@ class LibInstaller:
 			print(f'        [>] {dep}')
 			dep = dep.split('-')[0]
 			self._queue.append(dep)
-		for dep in re.findall(r'@pkgdep (.+)', pkg_contents_file):
-			print(f'        [>] {dep}')
-			dep = dep.split('-')[0]
-			self._queue.append(dep)
 
 		print(f'    [*] Checking tarball...')
 
@@ -124,6 +127,7 @@ class LibInstaller:
 		tb.extractall(self._extract_path, numeric_owner=True)
 
 		for fpath in tb.getnames():
+			# FIXME: Symlinks
 			extracted_path = os.path.realpath(os.path.join(self._extract_path, fpath))
 			if extracted_path.endswith('.pc'):
 				print(f'    [*] Fixing {extracted_path}')

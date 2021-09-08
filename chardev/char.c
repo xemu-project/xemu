@@ -25,7 +25,6 @@
 #include "qemu/osdep.h"
 #include "qemu/cutils.h"
 #include "monitor/monitor.h"
-#include "sysemu/sysemu.h"
 #include "qemu/config-file.h"
 #include "qemu/error-report.h"
 #include "qemu/qemu-print.h"
@@ -952,6 +951,12 @@ QemuOptsList qemu_chardev_opts = {
         },{
             .name = "logappend",
             .type = QEMU_OPT_BOOL,
+        },{
+            .name = "mouse",
+            .type = QEMU_OPT_BOOL,
+        },{
+            .name = "clipboard",
+            .type = QEMU_OPT_BOOL,
 #ifdef CONFIG_LINUX
         },{
             .name = "tight",
@@ -1055,27 +1060,31 @@ Chardev *qemu_chardev_new(const char *id, const char *typename,
 ChardevReturn *qmp_chardev_add(const char *id, ChardevBackend *backend,
                                Error **errp)
 {
+    ERRP_GUARD();
     const ChardevClass *cc;
     ChardevReturn *ret;
-    Chardev *chr;
+    g_autoptr(Chardev) chr = NULL;
+
+    if (qemu_chr_find(id)) {
+        error_setg(errp, "Chardev with id '%s' already exists", id);
+        return NULL;
+    }
 
     cc = char_get_class(ChardevBackendKind_str(backend->type), errp);
     if (!cc) {
-        return NULL;
+        goto err;
     }
 
     chr = chardev_new(id, object_class_get_name(OBJECT_CLASS(cc)),
                       backend, NULL, false, errp);
     if (!chr) {
-        return NULL;
+        goto err;
     }
 
     if (!object_property_try_add_child(get_chardevs_root(), id, OBJECT(chr),
                                        errp)) {
-        object_unref(OBJECT(chr));
-        return NULL;
+        goto err;
     }
-    object_unref(OBJECT(chr));
 
     ret = g_new0(ChardevReturn, 1);
     if (CHARDEV_IS_PTY(chr)) {
@@ -1084,6 +1093,10 @@ ChardevReturn *qmp_chardev_add(const char *id, ChardevBackend *backend,
     }
 
     return ret;
+
+err:
+    error_prepend(errp, "Failed to add chardev '%s': ", id);
+    return NULL;
 }
 
 ChardevReturn *qmp_chardev_change(const char *id, ChardevBackend *backend,

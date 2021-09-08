@@ -1,8 +1,8 @@
 ..
    Copyright (c) 2016, Xilinx Inc.
 
-This work is licensed under the terms of the GNU GPL, version 2 or later.  See
-the COPYING file in the top-level directory.
+   This work is licensed under the terms of the GNU GPL, version 2 or later.  See
+   the COPYING file in the top-level directory.
 
 Generic Loader
 --------------
@@ -92,9 +92,12 @@ shown below:
   specified in the executable format header. This option should only
   be used for the boot image. This will also cause the image to be
   written to the specified CPU's address space. If not specified, the
-  default is CPU 0. <force-raw> - Setting force-raw=on forces the file
-  to be treated as a raw image. This can be used to load supported
-  executable formats as if they were raw.
+  default is CPU 0.
+
+``<force-raw>``
+  Setting 'force-raw=on' forces the file to be treated as a raw image.
+  This can be used to load supported executable formats as if they
+  were raw.
 
 All values are parsed using the standard QemuOpts parsing. This allows the user
 to specify any values in any format supported. By default the values

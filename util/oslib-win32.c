@@ -34,11 +34,11 @@
 #include <windows.h>
 #include "qemu-common.h"
 #include "qapi/error.h"
-#include "sysemu/sysemu.h"
 #include "qemu/main-loop.h"
 #include "trace.h"
 #include "qemu/sockets.h"
 #include "qemu/cutils.h"
+#include "qemu/error-report.h"
 #include <malloc.h>
 
 /* this must come after including "trace.h" */
@@ -58,7 +58,11 @@ void *qemu_try_memalign(size_t alignment, size_t size)
     void *ptr;
 
     g_assert(size != 0);
-    g_assert(is_power_of_2(alignment));
+    if (alignment < sizeof(void *)) {
+        alignment = sizeof(void *);
+    } else {
+        g_assert(is_power_of_2(alignment));
+    }
     ptr = _aligned_malloc(size, alignment);
     trace_qemu_memalign(alignment, size, ptr);
     return ptr;
@@ -77,9 +81,19 @@ static int get_allocation_granularity(void)
     return system_info.dwAllocationGranularity;
 }
 
-void *qemu_anon_ram_alloc(size_t size, uint64_t *align, bool shared)
+void *qemu_anon_ram_alloc(size_t size, uint64_t *align, bool shared,
+                          bool noreserve)
 {
     void *ptr;
+
+    if (noreserve) {
+        /*
+         * We need a MEM_COMMIT before accessing any memory in a MEM_RESERVE
+         * area; we cannot easily mimic POSIX MAP_NORESERVE semantics.
+         */
+        error_report("Skipping reservation of swap space is not supported.");
+        return NULL;
+    }
 
     ptr = VirtualAlloc(NULL, size, MEM_COMMIT, PAGE_READWRITE);
     trace_qemu_anon_ram_alloc(size, ptr);
@@ -472,7 +486,7 @@ static int poll_rest(gboolean poll_msgs, HANDLE *handles, gint nhandles,
     return 0;
 }
 
-gint g_poll(GPollFD *fds, guint nfds, gint timeout)
+gint g_poll_fixed(GPollFD *fds, guint nfds, gint timeout)
 {
     HANDLE handles[MAXIMUM_WAIT_OBJECTS];
     gboolean poll_msgs = FALSE;

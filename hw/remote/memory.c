@@ -12,7 +12,6 @@
 #include "qemu-common.h"
 
 #include "hw/remote/memory.h"
-#include "exec/address-spaces.h"
 #include "exec/ram_addr.h"
 #include "qapi/error.h"
 
@@ -42,13 +41,12 @@ void remote_sysmem_reconfig(MPQemuMsg *msg, Error **errp)
 
     remote_sysmem_reset();
 
-    for (region = 0; region < msg->num_fds; region++) {
-        g_autofree char *name;
+    for (region = 0; region < msg->num_fds; region++, suffix++) {
+        g_autofree char *name = g_strdup_printf("remote-mem-%u", suffix);
         subregion = g_new(MemoryRegion, 1);
-        name = g_strdup_printf("remote-mem-%u", suffix++);
         memory_region_init_ram_from_fd(subregion, NULL,
                                        name, sysmem_info->sizes[region],
-                                       true, msg->fds[region],
+                                       RAM_SHARED, msg->fds[region],
                                        sysmem_info->offsets[region],
                                        errp);
 
