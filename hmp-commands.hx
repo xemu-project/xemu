@@ -450,6 +450,33 @@ SRST
   Start gdbserver session (default *port*\=1234)
 ERST
 
+
+    {
+        .name       = "s",
+        .args_type  = "start:l,end:l,data:s,type:s,",
+        .params     = "start end data type",
+        .help       = "search virtual memory between 'start' and 'end' for 'data' (which is of 'type').",
+        .cmd = hmp_memory_search,
+    },
+
+SRST
+``s/``\ *fmt* *addr* *data*
+  Search virtual memory starting at *addr* for *data*.
+ERST
+
+    {
+        .name       = "sp",
+        .args_type  = "start:l,end:l,data:s,type:s,",
+        .params     = "start end data type",
+        .help       = "search physical memory between 'start' and 'end' for 'data' (which is of 'type').",
+        .cmd = hmp_physical_memory_search,
+    },
+
+SRST
+``s/``\ *fmt* *addr* *data*
+  Search physical memory starting at *addr* for *data*.
+ERST
+
     {
         .name       = "x",
         .args_type  = "fmt:/,addr:l",
