@@ -120,6 +120,229 @@ void hmp_info_registers(Monitor *mon, const QDict *qdict)
     }
 }
 
+static void monitor_print_addr(Monitor *mon, hwaddr addr, bool is_physical)
+{
+    if (is_physical)
+        monitor_printf(mon, HWADDR_FMT_plx "\n", addr);
+    else
+        monitor_printf(mon, TARGET_FMT_lx "\n", (target_ulong)addr);
+}
+
+/* Parses the given string as a list of hexadecimal values and returns them
+ * in a newly allocated buffer.
+ * Returns NULL if the values could not be parsed for any reason.
+ */
+static char *parse_hex_string(const char *data_str, int *buffer_size) {
+    int data_str_len;
+    int i;
+    char *buffer;
+
+    if (!data_str) {
+        return NULL;
+    }
+
+    data_str_len = strlen(data_str);
+    if (data_str_len & 0x01) {
+        return NULL;
+    }
+
+    /* Skip over any leading 0x. */
+    if (data_str[0] == '0' && (data_str[1] == 'x' || data_str[1] == 'X')) {
+        data_str += 2;
+        data_str_len -= 2;
+    }
+
+    *buffer_size = data_str_len >> 1;
+    buffer = (char *)g_malloc0(*buffer_size);
+
+    for( i = 0; i < *buffer_size; ++ i) {
+        sscanf(data_str, "%2hhx", buffer + i);
+        data_str += 2;
+    }
+
+    return buffer;
+}
+
+
+#ifdef _WIN32
+void *memmem(const void *haystack, int haystack_size, const void *needle, int needle_size)
+{
+    unsigned char *search_array = (unsigned char *)haystack;
+    unsigned char *needle_array = (unsigned char *)needle;
+    int searchlen, start_index=0;
+
+    while (start_index <= haystack_size) {
+        unsigned char *search_region = &search_array[start_index];
+
+        if ((searchlen = haystack_size - start_index - needle_size + 1) <= 0) {
+            return NULL;
+        }
+
+        unsigned char *byte_match = memchr(search_region, *needle_array, searchlen);
+        if (!byte_match) {
+            return NULL;
+        }
+
+        if (!memcmp(byte_match, needle_array, needle_size)) {
+            return byte_match;
+        }
+
+        start_index += byte_match - search_region + 1;
+    }
+
+    return NULL;
+}
+#endif
+
+/* simple memory search for a byte sequence. The sequence is generated from
+ * a numeric value to look for in guest memory, or from a string.
+ */
+static void memory_search(Monitor *mon, hwaddr start, hwaddr end,
+                          const char *data_str, const char *data_type,
+                          bool is_physical)
+{
+    int pos, len;           /* pos in the search area, len of area */
+    char *hay;              /* buffer for haystack */
+    int hay_size;           /* haystack size. */
+    int needle_size = 0;
+    const char *needle;     /* needle to search in the haystack */
+    int needle_needs_free = 0;
+    hwaddr addr;
+    CPUState *cs = mon_get_cpu(mon);
+
+    if (end <= start) {
+        monitor_printf(mon, "'end' address must be higher than 'start'.\n");
+        return;
+    }
+
+#define MONITOR_S_CHUNK_SIZE 16000
+
+    switch (data_type[0]) {
+        case 'c':
+            needle = data_str;
+            needle_size = strlen(data_str);
+            if (needle_size > MONITOR_S_CHUNK_SIZE) {
+                monitor_printf(mon, "search string too long [max %d].\n",
+                               MONITOR_S_CHUNK_SIZE);
+                return;
+            }
+            break;
+
+        /* Parse as a hex string */
+        case 'x':
+            needle = parse_hex_string(data_str, &needle_size);
+            if (!needle) {
+                monitor_printf(mon, "search string is not a valid hex string.\n");
+                return;
+            }
+            needle_needs_free = 1;
+            break;
+
+        default:
+            monitor_printf(mon, "invalid data format '%c'.\n", data_type[0]);
+            return;
+    }
+
+    len = end - start;
+    if (len < needle_size) {
+        monitor_printf(mon, "search criteria is larger than memory region "
+                       "(%d > %d).\n", needle_size, len);
+        if (needle_needs_free) {
+            g_free((void *)needle);
+        }
+        return;
+    }
+
+    {
+        char needle_dump[64] = {0};
+        char *write_head = needle_dump;
+        int counter = 0;
+        for (; counter < needle_size && counter < 16; ++counter) {
+            sprintf(write_head, "%2.2x", (unsigned char)needle[counter]);
+            write_head += 2;
+        }
+        if (needle_size >= 16) {
+            strcat(write_head, "...");
+        }
+
+        monitor_printf(mon, "searching for %d bytes (%s) in memory area ",
+                       needle_size, needle_dump);
+    }
+    if (is_physical)
+        monitor_printf(mon, "[" HWADDR_FMT_plx "-" HWADDR_FMT_plx "]\n",
+                       start, end);
+    else
+        monitor_printf(mon, "[" TARGET_FMT_lx "-" TARGET_FMT_lx "]\n",
+                       (target_ulong)start, (target_ulong)end);
+
+    hay_size = len < MONITOR_S_CHUNK_SIZE ? len : MONITOR_S_CHUNK_SIZE;
+    hay = (char *)g_malloc0(hay_size);
+
+    addr = start;
+    for (pos = 0; pos < len;) {
+        char *mark, *match; /* mark new starting position, eventual match */
+        int chunk_len, remaining; /* total length to be processed in current chunk */
+        chunk_len = len - pos;
+        if (chunk_len > hay_size) {
+            chunk_len = hay_size;
+        }
+
+        if (is_physical) {
+            cpu_physical_memory_read(addr, hay, chunk_len);
+        } else if (cpu_memory_rw_debug(cs,
+                                       addr,
+                                       (uint8_t *)hay,
+                                       chunk_len, 0) < 0) {
+            monitor_printf(mon, " Cannot access memory\n");
+            break;
+        }
+
+        for (mark = hay, remaining = chunk_len; remaining >= needle_size;) {
+            if (!(match = memmem(mark, remaining, needle, needle_size))) {
+                break;
+            }
+            monitor_print_addr(mon, addr + (match - hay), is_physical);
+            mark = match + needle_size;
+            remaining = chunk_len - (mark - hay);
+        }
+
+        if (pos + chunk_len < len) {
+            /* catch potential matches across chunks. */
+            pos += chunk_len - (needle_size - 1);
+            addr += chunk_len - (needle_size - 1);
+        } else {
+            pos += chunk_len;
+            addr += chunk_len;
+        }
+    }
+
+    g_free(hay);
+
+    if (needle_needs_free) {
+        g_free((void *)needle);
+    }
+}
+
+void hmp_memory_search(Monitor *mon, const QDict *qdict)
+{
+    target_long addr_start = qdict_get_int(qdict, "start");
+    target_long addr_end = qdict_get_int(qdict, "end");
+    const char *data_str = qdict_get_str(qdict, "data");
+    const char *data_type_str = qdict_get_str(qdict, "type");
+
+    memory_search(mon, addr_start, addr_end, data_str, data_type_str, false);
+}
+
+void hmp_physical_memory_search(Monitor *mon, const QDict *qdict)
+{
+    hwaddr addr_start = qdict_get_int(qdict, "start");
+    hwaddr addr_end = qdict_get_int(qdict, "end");
+    const char *data_str = qdict_get_str(qdict, "data");
+    const char *data_type_str = qdict_get_str(qdict, "type");
+
+    memory_search(mon, addr_start, addr_end, data_str, data_type_str, true);
+}
+
 static void memory_dump(Monitor *mon, int count, int format, int wsize,
                         hwaddr addr, int is_physical)
 {
