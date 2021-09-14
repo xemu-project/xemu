@@ -1,6 +1,16 @@
 name: Build
 
-on: [push, pull_request]
+on:
+  push:
+    paths-ignore:
+      - '.github/**'
+      - '!.github/workflows/**'
+      - 'README.md'
+  pull_request:
+    paths-ignore:
+      - '.github/**'
+      - '!.github/workflows/**'
+      - 'README.md'
 
 jobs:
   Init:
