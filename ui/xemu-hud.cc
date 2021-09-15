@@ -822,7 +822,7 @@ public:
 
         if (msg) {
             ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2.0);
-            ImGui::Text(msg);
+            ImGui::Text("%s", msg);
             ImGui::SameLine();
         }
 
