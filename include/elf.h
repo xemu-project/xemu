@@ -174,9 +174,8 @@ typedef struct mips_elf_abiflags_v0 {
 
 #define EM_OPENRISC     92        /* OpenCores OpenRISC */
 
-#define EM_UNICORE32    110     /* UniCore32 */
-
 #define EM_HEXAGON      164     /* Qualcomm Hexagon */
+
 #define EM_RX           173     /* Renesas RX family */
 
 #define EM_RISCV        243     /* RISC-V */
@@ -205,9 +204,6 @@ typedef struct mips_elf_abiflags_v0 {
 #define EM_XTENSA   94      /* Tensilica Xtensa */
 
 #define EM_AARCH64  183
-
-#define EM_MOXIE           223     /* Moxie processor family */
-#define EM_MOXIE_OLD       0xFEED
 
 #define EF_AVR_MACH     0x7F       /* Mask for AVR e_flags to get core type */
 
@@ -609,6 +605,13 @@ typedef struct {
 #define HWCAP_S390_HIGH_GPRS    512
 #define HWCAP_S390_TE           1024
 #define HWCAP_S390_VXRS         2048
+#define HWCAP_S390_VXRS_BCD     4096
+#define HWCAP_S390_VXRS_EXT     8192
+#define HWCAP_S390_GS           16384
+#define HWCAP_S390_VXRS_EXT2    32768
+#define HWCAP_S390_VXRS_PDE     65536
+#define HWCAP_S390_SORT         131072
+#define HWCAP_S390_DFLT         262144
 
 /* M68K specific definitions. */
 /* We use the top 24 bits to encode information about the

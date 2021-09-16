@@ -60,7 +60,6 @@
 #include "chardev/char.h"
 #include "qom/object.h"
 
-#define MAX_VCS 10
 #define VC_WINDOW_X_MIN  320
 #define VC_WINDOW_Y_MIN  240
 #define VC_TERM_X_MIN     80
@@ -118,60 +117,6 @@
 
 static const guint16 *keycode_map;
 static size_t keycode_maplen;
-
-struct GtkDisplayState {
-    GtkWidget *window;
-
-    GtkWidget *menu_bar;
-
-    GtkAccelGroup *accel_group;
-
-    GtkWidget *machine_menu_item;
-    GtkWidget *machine_menu;
-    GtkWidget *pause_item;
-    GtkWidget *reset_item;
-    GtkWidget *powerdown_item;
-    GtkWidget *quit_item;
-
-    GtkWidget *view_menu_item;
-    GtkWidget *view_menu;
-    GtkWidget *full_screen_item;
-    GtkWidget *copy_item;
-    GtkWidget *zoom_in_item;
-    GtkWidget *zoom_out_item;
-    GtkWidget *zoom_fixed_item;
-    GtkWidget *zoom_fit_item;
-    GtkWidget *grab_item;
-    GtkWidget *grab_on_hover_item;
-
-    int nb_vcs;
-    VirtualConsole vc[MAX_VCS];
-
-    GtkWidget *show_tabs_item;
-    GtkWidget *untabify_item;
-    GtkWidget *show_menubar_item;
-
-    GtkWidget *vbox;
-    GtkWidget *notebook;
-    int button_mask;
-    gboolean last_set;
-    int last_x;
-    int last_y;
-    int grab_x_root;
-    int grab_y_root;
-    VirtualConsole *kbd_owner;
-    VirtualConsole *ptr_owner;
-
-    gboolean full_screen;
-
-    GdkCursor *null_cursor;
-    Notifier mouse_mode_notifier;
-    gboolean free_scale;
-
-    bool external_pause_update;
-
-    DisplayOptions *opts;
-};
 
 struct VCChardev {
     Chardev parent;
@@ -920,37 +865,25 @@ static gboolean gd_motion_event(GtkWidget *widget, GdkEventMotion *motion,
         GdkWindow *win = gtk_widget_get_window(widget);
         GdkMonitor *monitor = gdk_display_get_monitor_at_window(dpy, win);
         GdkRectangle geometry;
-        int screen_width, screen_height;
 
         int x = (int)motion->x_root;
         int y = (int)motion->y_root;
 
         gdk_monitor_get_geometry(monitor, &geometry);
-        screen_width = geometry.width;
-        screen_height = geometry.height;
 
         /* In relative mode check to see if client pointer hit
-         * one of the screen edges, and if so move it back by
-         * 200 pixels. This is important because the pointer
+         * one of the monitor edges, and if so move it back to the
+         * center of the monitor. This is important because the pointer
          * in the server doesn't correspond 1-for-1, and so
          * may still be only half way across the screen. Without
          * this warp, the server pointer would thus appear to hit
          * an invisible wall */
-        if (x == 0) {
-            x += 200;
-        }
-        if (y == 0) {
-            y += 200;
-        }
-        if (x == (screen_width - 1)) {
-            x -= 200;
-        }
-        if (y == (screen_height - 1)) {
-            y -= 200;
-        }
-
-        if (x != (int)motion->x_root || y != (int)motion->y_root) {
+        if (x <= geometry.x || x - geometry.x >= geometry.width - 1 ||
+            y <= geometry.y || y - geometry.y >= geometry.height - 1) {
             GdkDevice *dev = gdk_event_get_device((GdkEvent *)motion);
+            x = geometry.x + geometry.width / 2;
+            y = geometry.y + geometry.height / 2;
+
             gdk_device_warp(dev, screen, x, y);
             s->last_set = FALSE;
             return FALSE;
@@ -1707,6 +1640,23 @@ static void gd_vc_adjustment_changed(GtkAdjustment *adjustment, void *opaque)
     }
 }
 
+static void gd_vc_send_chars(VirtualConsole *vc)
+{
+    uint32_t len, avail;
+
+    len = qemu_chr_be_can_write(vc->vte.chr);
+    avail = fifo8_num_used(&vc->vte.out_fifo);
+    while (len > 0 && avail > 0) {
+        const uint8_t *buf;
+        uint32_t size;
+
+        buf = fifo8_pop_buf(&vc->vte.out_fifo, MIN(len, avail), &size);
+        qemu_chr_be_write(vc->vte.chr, (uint8_t *)buf, size);
+        len = qemu_chr_be_can_write(vc->vte.chr);
+        avail -= size;
+    }
+}
+
 static int gd_vc_chr_write(Chardev *chr, const uint8_t *buf, int len)
 {
     VCChardev *vcd = VC_CHARDEV(chr);
@@ -1714,6 +1664,14 @@ static int gd_vc_chr_write(Chardev *chr, const uint8_t *buf, int len)
 
     vte_terminal_feed(VTE_TERMINAL(vc->vte.terminal), (const char *)buf, len);
     return len;
+}
+
+static void gd_vc_chr_accept_input(Chardev *chr)
+{
+    VCChardev *vcd = VC_CHARDEV(chr);
+    VirtualConsole *vc = vcd->console;
+
+    gd_vc_send_chars(vc);
 }
 
 static void gd_vc_chr_set_echo(Chardev *chr, bool echo)
@@ -1755,6 +1713,7 @@ static void char_gd_vc_class_init(ObjectClass *oc, void *data)
     cc->parse = qemu_chr_parse_vc;
     cc->open = gd_vc_open;
     cc->chr_write = gd_vc_chr_write;
+    cc->chr_accept_input = gd_vc_chr_accept_input;
     cc->chr_set_echo = gd_vc_chr_set_echo;
 }
 
@@ -1769,6 +1728,7 @@ static gboolean gd_vc_in(VteTerminal *terminal, gchar *text, guint size,
                          gpointer user_data)
 {
     VirtualConsole *vc = user_data;
+    uint32_t free;
 
     if (vc->vte.echo) {
         VteTerminal *term = VTE_TERMINAL(vc->vte.terminal);
@@ -1788,16 +1748,10 @@ static gboolean gd_vc_in(VteTerminal *terminal, gchar *text, guint size,
         }
     }
 
-    int remaining = size;
-    uint8_t* p = (uint8_t *)text;
-    while (remaining > 0) {
-        int can_write = qemu_chr_be_can_write(vc->vte.chr);
-        int written = MIN(remaining, can_write);
-        qemu_chr_be_write(vc->vte.chr, p, written);
+    free = fifo8_num_free(&vc->vte.out_fifo);
+    fifo8_push_all(&vc->vte.out_fifo, (uint8_t *)text, MIN(free, size));
+    gd_vc_send_chars(vc);
 
-        remaining -= written;
-        p += written;
-    }
     return TRUE;
 }
 
@@ -1814,6 +1768,7 @@ static GSList *gd_vc_vte_init(GtkDisplayState *s, VirtualConsole *vc,
     vc->s = s;
     vc->vte.echo = vcd->echo;
     vc->vte.chr = chr;
+    fifo8_create(&vc->vte.out_fifo, 4096);
     vcd->console = vc;
 
     snprintf(buffer, sizeof(buffer), "vc%d", idx);
@@ -2322,6 +2277,7 @@ static void gtk_display_init(DisplayState *ds, DisplayOptions *opts)
         opts->u.gtk.grab_on_hover) {
         gtk_menu_item_activate(GTK_MENU_ITEM(s->grab_on_hover_item));
     }
+    gd_clipboard_init(s);
 }
 
 static void early_gtk_display_init(DisplayOptions *opts)
@@ -2387,3 +2343,7 @@ static void register_gtk(void)
 }
 
 type_init(register_gtk);
+
+#ifdef CONFIG_OPENGL
+module_dep("ui-opengl");
+#endif

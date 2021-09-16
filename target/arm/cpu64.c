@@ -559,6 +559,59 @@ static void cpu_arm_set_sve(Object *obj, bool value, Error **errp)
     cpu->isar.id_aa64pfr0 = t;
 }
 
+#ifdef CONFIG_USER_ONLY
+/* Mirror linux /proc/sys/abi/sve_default_vector_length. */
+static void cpu_arm_set_sve_default_vec_len(Object *obj, Visitor *v,
+                                            const char *name, void *opaque,
+                                            Error **errp)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+    int32_t default_len, default_vq, remainder;
+
+    if (!visit_type_int32(v, name, &default_len, errp)) {
+        return;
+    }
+
+    /* Undocumented, but the kernel allows -1 to indicate "maximum". */
+    if (default_len == -1) {
+        cpu->sve_default_vq = ARM_MAX_VQ;
+        return;
+    }
+
+    default_vq = default_len / 16;
+    remainder = default_len % 16;
+
+    /*
+     * Note that the 512 max comes from include/uapi/asm/sve_context.h
+     * and is the maximum architectural width of ZCR_ELx.LEN.
+     */
+    if (remainder || default_vq < 1 || default_vq > 512) {
+        error_setg(errp, "cannot set sve-default-vector-length");
+        if (remainder) {
+            error_append_hint(errp, "Vector length not a multiple of 16\n");
+        } else if (default_vq < 1) {
+            error_append_hint(errp, "Vector length smaller than 16\n");
+        } else {
+            error_append_hint(errp, "Vector length larger than %d\n",
+                              512 * 16);
+        }
+        return;
+    }
+
+    cpu->sve_default_vq = default_vq;
+}
+
+static void cpu_arm_get_sve_default_vec_len(Object *obj, Visitor *v,
+                                            const char *name, void *opaque,
+                                            Error **errp)
+{
+    ARMCPU *cpu = ARM_CPU(obj);
+    int32_t value = cpu->sve_default_vq * 16;
+
+    visit_type_int32(v, name, &value, errp);
+}
+#endif
+
 void aarch64_add_sve_properties(Object *obj)
 {
     uint32_t vq;
@@ -571,6 +624,13 @@ void aarch64_add_sve_properties(Object *obj)
         object_property_add(obj, name, "bool", cpu_arm_get_sve_vq,
                             cpu_arm_set_sve_vq, NULL, NULL);
     }
+
+#ifdef CONFIG_USER_ONLY
+    /* Mirror linux /proc/sys/abi/sve_default_vector_length. */
+    object_property_add(obj, "sve-default-vector-length", "int32",
+                        cpu_arm_get_sve_default_vec_len,
+                        cpu_arm_set_sve_default_vec_len, NULL, NULL);
+#endif
 }
 
 void arm_cpu_pauth_finalize(ARMCPU *cpu, Error **errp)
@@ -651,6 +711,7 @@ static void aarch64_max_initfn(Object *obj)
         t = FIELD_DP64(t, ID_AA64ISAR0, DP, 1);
         t = FIELD_DP64(t, ID_AA64ISAR0, FHM, 1);
         t = FIELD_DP64(t, ID_AA64ISAR0, TS, 2); /* v8.5-CondM */
+        t = FIELD_DP64(t, ID_AA64ISAR0, TLB, 2); /* FEAT_TLBIRANGE */
         t = FIELD_DP64(t, ID_AA64ISAR0, RNDR, 1);
         cpu->isar.id_aa64isar0 = t;
 
@@ -660,8 +721,10 @@ static void aarch64_max_initfn(Object *obj)
         t = FIELD_DP64(t, ID_AA64ISAR1, FCMA, 1);
         t = FIELD_DP64(t, ID_AA64ISAR1, SB, 1);
         t = FIELD_DP64(t, ID_AA64ISAR1, SPECRES, 1);
+        t = FIELD_DP64(t, ID_AA64ISAR1, BF16, 1);
         t = FIELD_DP64(t, ID_AA64ISAR1, FRINTTS, 1);
         t = FIELD_DP64(t, ID_AA64ISAR1, LRCPC, 2); /* ARMv8.4-RCPC */
+        t = FIELD_DP64(t, ID_AA64ISAR1, I8MM, 1);
         cpu->isar.id_aa64isar1 = t;
 
         t = cpu->isar.id_aa64pfr0;
@@ -680,7 +743,7 @@ static void aarch64_max_initfn(Object *obj)
          * during realize if the board provides no tag memory, much like
          * we do for EL2 with the virtualization=on property.
          */
-        t = FIELD_DP64(t, ID_AA64PFR1, MTE, 2);
+        t = FIELD_DP64(t, ID_AA64PFR1, MTE, 3);
         cpu->isar.id_aa64pfr1 = t;
 
         t = cpu->isar.id_aa64mmfr0;
@@ -702,6 +765,18 @@ static void aarch64_max_initfn(Object *obj)
         t = FIELD_DP64(t, ID_AA64MMFR2, ST, 1); /* TTST */
         cpu->isar.id_aa64mmfr2 = t;
 
+        t = cpu->isar.id_aa64zfr0;
+        t = FIELD_DP64(t, ID_AA64ZFR0, SVEVER, 1);
+        t = FIELD_DP64(t, ID_AA64ZFR0, AES, 2);  /* PMULL */
+        t = FIELD_DP64(t, ID_AA64ZFR0, BITPERM, 1);
+        t = FIELD_DP64(t, ID_AA64ZFR0, BFLOAT16, 1);
+        t = FIELD_DP64(t, ID_AA64ZFR0, SHA3, 1);
+        t = FIELD_DP64(t, ID_AA64ZFR0, SM4, 1);
+        t = FIELD_DP64(t, ID_AA64ZFR0, I8MM, 1);
+        t = FIELD_DP64(t, ID_AA64ZFR0, F32MM, 1);
+        t = FIELD_DP64(t, ID_AA64ZFR0, F64MM, 1);
+        cpu->isar.id_aa64zfr0 = t;
+
         /* Replicate the same data to the 32-bit id registers.  */
         u = cpu->isar.id_isar5;
         u = FIELD_DP32(u, ID_ISAR5, AES, 2); /* AES + PMULL */
@@ -718,6 +793,8 @@ static void aarch64_max_initfn(Object *obj)
         u = FIELD_DP32(u, ID_ISAR6, FHM, 1);
         u = FIELD_DP32(u, ID_ISAR6, SB, 1);
         u = FIELD_DP32(u, ID_ISAR6, SPECRES, 1);
+        u = FIELD_DP32(u, ID_ISAR6, BF16, 1);
+        u = FIELD_DP32(u, ID_ISAR6, I8MM, 1);
         cpu->isar.id_isar6 = u;
 
         u = cpu->isar.id_pfr0;

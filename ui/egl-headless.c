@@ -213,3 +213,5 @@ static void register_egl(void)
 }
 
 type_init(register_egl);
+
+module_dep("ui-opengl");

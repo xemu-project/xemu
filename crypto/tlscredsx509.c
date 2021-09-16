@@ -30,6 +30,7 @@
 
 #ifdef CONFIG_GNUTLS
 
+#include <gnutls/gnutls.h>
 #include <gnutls/x509.h>
 
 
@@ -354,11 +355,9 @@ qcrypto_tls_creds_check_cert_pair(gnutls_x509_crt_t cert,
             reason = "The certificate has been revoked";
         }
 
-#ifndef GNUTLS_1_0_COMPAT
         if (status & GNUTLS_CERT_INSECURE_ALGORITHM) {
             reason = "The certificate uses an insecure algorithm";
         }
-#endif
 
         error_setg(errp,
                    "Our own certificate %s failed validation against %s: %s",

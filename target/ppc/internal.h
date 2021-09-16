@@ -215,4 +215,34 @@ void helper_compute_fprf_float128(CPUPPCState *env, float128 arg);
 void ppc_cpu_do_unaligned_access(CPUState *cs, vaddr addr,
                                  MMUAccessType access_type,
                                  int mmu_idx, uintptr_t retaddr);
+
+/* translate.c */
+
+int ppc_fixup_cpu(PowerPCCPU *cpu);
+void create_ppc_opcodes(PowerPCCPU *cpu, Error **errp);
+void destroy_ppc_opcodes(PowerPCCPU *cpu);
+
+/* gdbstub.c */
+void ppc_gdb_init(CPUState *cs, PowerPCCPUClass *ppc);
+gchar *ppc_gdb_arch_name(CPUState *cs);
+
+/**
+ * prot_for_access_type:
+ * @access_type: Access type
+ *
+ * Return the protection bit required for the given access type.
+ */
+static inline int prot_for_access_type(MMUAccessType access_type)
+{
+    switch (access_type) {
+    case MMU_INST_FETCH:
+        return PAGE_EXEC;
+    case MMU_DATA_LOAD:
+        return PAGE_READ;
+    case MMU_DATA_STORE:
+        return PAGE_WRITE;
+    }
+    g_assert_not_reached();
+}
+
 #endif /* PPC_INTERNAL_H */

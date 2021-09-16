@@ -1,17 +1,13 @@
-.. This is the top level page for the 'interop' manual.
-
-
 System Emulation Management and Interoperability
 ================================================
 
-This manual contains documents and specifications that are useful
-for making QEMU interoperate with other software.
-
-Contents:
+This section of the manual contains documents and specifications that
+are useful for making QEMU interoperate with other software.
 
 .. toctree::
    :maxdepth: 2
 
+   barrier
    bitmaps
    dbus
    dbus-vmstate

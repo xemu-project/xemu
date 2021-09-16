@@ -24,7 +24,6 @@
 
 #include "qemu/osdep.h"
 #include "monitor-internal.h"
-#include "cpu.h"
 #include "monitor/qdev.h"
 #include "hw/usb.h"
 #include "hw/pci/pci.h"
@@ -321,24 +320,6 @@ static void hmp_info_registers(Monitor *mon, const QDict *qdict)
     }
 }
 
-#ifdef CONFIG_TCG
-static void hmp_info_jit(Monitor *mon, const QDict *qdict)
-{
-    if (!tcg_enabled()) {
-        error_report("JIT information is only available with accel=tcg");
-        return;
-    }
-
-    dump_exec_info();
-    dump_drift_info();
-}
-
-static void hmp_info_opcount(Monitor *mon, const QDict *qdict)
-{
-    dump_opcount_info();
-}
-#endif
-
 static void hmp_info_sync_profile(Monitor *mon, const QDict *qdict)
 {
     int64_t max = qdict_get_try_int(qdict, "max", 10);
@@ -368,17 +349,6 @@ static void hmp_info_history(Monitor *mon, const QDict *qdict)
         monitor_printf(mon, "%d: '%s'\n", i, str);
         i++;
     }
-}
-
-static void hmp_info_cpustats(Monitor *mon, const QDict *qdict)
-{
-    CPUState *cs = mon_get_cpu(mon);
-
-    if (!cs) {
-        monitor_printf(mon, "No CPU available\n");
-        return;
-    }
-    cpu_dump_statistics(cs, 0);
 }
 
 static void hmp_info_trace_events(Monitor *mon, const QDict *qdict)
@@ -1834,7 +1804,7 @@ void info_trace_events_completion(ReadLineState *rs, int nb_args, const char *st
         TraceEventIter iter;
         TraceEvent *ev;
         char *pattern = g_strdup_printf("%s*", str);
-        trace_event_iter_init(&iter, pattern);
+        trace_event_iter_init_pattern(&iter, pattern);
         while ((ev = trace_event_iter_next(&iter)) != NULL) {
             readline_add_completion(rs, trace_event_get_name(ev));
         }
@@ -1852,7 +1822,7 @@ void trace_event_completion(ReadLineState *rs, int nb_args, const char *str)
         TraceEventIter iter;
         TraceEvent *ev;
         char *pattern = g_strdup_printf("%s*", str);
-        trace_event_iter_init(&iter, pattern);
+        trace_event_iter_init_pattern(&iter, pattern);
         while ((ev = trace_event_iter_next(&iter)) != NULL) {
             readline_add_completion(rs, trace_event_get_name(ev));
         }
@@ -1984,6 +1954,22 @@ static void sortcmdlist(void)
     qsort(hmp_info_cmds, ARRAY_SIZE(hmp_info_cmds) - 1,
           sizeof(*hmp_info_cmds),
           compare_mon_cmd);
+}
+
+void monitor_register_hmp(const char *name, bool info,
+                          void (*cmd)(Monitor *mon, const QDict *qdict))
+{
+    HMPCommand *table = info ? hmp_info_cmds : hmp_cmds;
+
+    while (table->name != NULL) {
+        if (strcmp(table->name, name) == 0) {
+            g_assert(table->cmd == NULL);
+            table->cmd = cmd;
+            return;
+        }
+        table++;
+    }
+    g_assert_not_reached();
 }
 
 void monitor_init_globals(void)

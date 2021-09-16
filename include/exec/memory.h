@@ -42,6 +42,12 @@ typedef struct IOMMUMemoryRegionClass IOMMUMemoryRegionClass;
 DECLARE_OBJ_CHECKERS(IOMMUMemoryRegion, IOMMUMemoryRegionClass,
                      IOMMU_MEMORY_REGION, TYPE_IOMMU_MEMORY_REGION)
 
+#define TYPE_RAM_DISCARD_MANAGER "qemu:ram-discard-manager"
+typedef struct RamDiscardManagerClass RamDiscardManagerClass;
+typedef struct RamDiscardManager RamDiscardManager;
+DECLARE_OBJ_CHECKERS(RamDiscardManager, RamDiscardManagerClass,
+                     RAM_DISCARD_MANAGER, TYPE_RAM_DISCARD_MANAGER);
+
 #ifdef CONFIG_FUZZ
 void fuzz_dma_read_cb(size_t addr,
                       size_t len,
@@ -63,6 +69,28 @@ struct ReservedRegion {
     hwaddr low;
     hwaddr high;
     unsigned type;
+};
+
+/**
+ * struct MemoryRegionSection: describes a fragment of a #MemoryRegion
+ *
+ * @mr: the region, or %NULL if empty
+ * @fv: the flat view of the address space the region is mapped in
+ * @offset_within_region: the beginning of the section, relative to @mr's start
+ * @size: the size of the section; will not exceed @mr's boundaries
+ * @offset_within_address_space: the address of the first byte of the section
+ *     relative to the region's address space
+ * @readonly: writes to this section are ignored
+ * @nonvolatile: this section is non-volatile
+ */
+struct MemoryRegionSection {
+    Int128 size;
+    MemoryRegion *mr;
+    FlatView *fv;
+    hwaddr offset_within_region;
+    hwaddr offset_within_address_space;
+    bool readonly;
+    bool nonvolatile;
 };
 
 typedef struct IOMMUTLBEntry IOMMUTLBEntry;
@@ -131,7 +159,7 @@ typedef struct IOMMUTLBEvent {
 #define RAM_SHARED     (1 << 1)
 
 /* Only a portion of RAM (used_length) is actually used, and migrated.
- * This used_length size can change across reboots.
+ * Resizing RAM while migrating can result in the migration being canceled.
  */
 #define RAM_RESIZEABLE (1 << 2)
 
@@ -154,6 +182,13 @@ typedef struct IOMMUTLBEvent {
  * Implies ram_state->ram_wt_enabled.
  */
 #define RAM_UF_WRITEPROTECT (1 << 6)
+
+/*
+ * RAM is mmap-ed with MAP_NORESERVE. When set, reserving swap space (or huge
+ * pages if applicable) is skipped: will bail out if not supported. When not
+ * set, the OS will do the reservation, if supported for the memory type.
+ */
+#define RAM_NORESERVE (1 << 7)
 
 static inline void iommu_notifier_init(IOMMUNotifier *n, IOMMUNotify fn,
                                        IOMMUNotifierFlag flags,
@@ -441,6 +476,206 @@ struct IOMMUMemoryRegionClass {
                                      Error **errp);
 };
 
+typedef struct RamDiscardListener RamDiscardListener;
+typedef int (*NotifyRamPopulate)(RamDiscardListener *rdl,
+                                 MemoryRegionSection *section);
+typedef void (*NotifyRamDiscard)(RamDiscardListener *rdl,
+                                 MemoryRegionSection *section);
+
+struct RamDiscardListener {
+    /*
+     * @notify_populate:
+     *
+     * Notification that previously discarded memory is about to get populated.
+     * Listeners are able to object. If any listener objects, already
+     * successfully notified listeners are notified about a discard again.
+     *
+     * @rdl: the #RamDiscardListener getting notified
+     * @section: the #MemoryRegionSection to get populated. The section
+     *           is aligned within the memory region to the minimum granularity
+     *           unless it would exceed the registered section.
+     *
+     * Returns 0 on success. If the notification is rejected by the listener,
+     * an error is returned.
+     */
+    NotifyRamPopulate notify_populate;
+
+    /*
+     * @notify_discard:
+     *
+     * Notification that previously populated memory was discarded successfully
+     * and listeners should drop all references to such memory and prevent
+     * new population (e.g., unmap).
+     *
+     * @rdl: the #RamDiscardListener getting notified
+     * @section: the #MemoryRegionSection to get populated. The section
+     *           is aligned within the memory region to the minimum granularity
+     *           unless it would exceed the registered section.
+     */
+    NotifyRamDiscard notify_discard;
+
+    /*
+     * @double_discard_supported:
+     *
+     * The listener suppors getting @notify_discard notifications that span
+     * already discarded parts.
+     */
+    bool double_discard_supported;
+
+    MemoryRegionSection *section;
+    QLIST_ENTRY(RamDiscardListener) next;
+};
+
+static inline void ram_discard_listener_init(RamDiscardListener *rdl,
+                                             NotifyRamPopulate populate_fn,
+                                             NotifyRamDiscard discard_fn,
+                                             bool double_discard_supported)
+{
+    rdl->notify_populate = populate_fn;
+    rdl->notify_discard = discard_fn;
+    rdl->double_discard_supported = double_discard_supported;
+}
+
+typedef int (*ReplayRamPopulate)(MemoryRegionSection *section, void *opaque);
+
+/*
+ * RamDiscardManagerClass:
+ *
+ * A #RamDiscardManager coordinates which parts of specific RAM #MemoryRegion
+ * regions are currently populated to be used/accessed by the VM, notifying
+ * after parts were discarded (freeing up memory) and before parts will be
+ * populated (consuming memory), to be used/acessed by the VM.
+ *
+ * A #RamDiscardManager can only be set for a RAM #MemoryRegion while the
+ * #MemoryRegion isn't mapped yet; it cannot change while the #MemoryRegion is
+ * mapped.
+ *
+ * The #RamDiscardManager is intended to be used by technologies that are
+ * incompatible with discarding of RAM (e.g., VFIO, which may pin all
+ * memory inside a #MemoryRegion), and require proper coordination to only
+ * map the currently populated parts, to hinder parts that are expected to
+ * remain discarded from silently getting populated and consuming memory.
+ * Technologies that support discarding of RAM don't have to bother and can
+ * simply map the whole #MemoryRegion.
+ *
+ * An example #RamDiscardManager is virtio-mem, which logically (un)plugs
+ * memory within an assigned RAM #MemoryRegion, coordinated with the VM.
+ * Logically unplugging memory consists of discarding RAM. The VM agreed to not
+ * access unplugged (discarded) memory - especially via DMA. virtio-mem will
+ * properly coordinate with listeners before memory is plugged (populated),
+ * and after memory is unplugged (discarded).
+ *
+ * Listeners are called in multiples of the minimum granularity (unless it
+ * would exceed the registered range) and changes are aligned to the minimum
+ * granularity within the #MemoryRegion. Listeners have to prepare for memory
+ * becomming discarded in a different granularity than it was populated and the
+ * other way around.
+ */
+struct RamDiscardManagerClass {
+    /* private */
+    InterfaceClass parent_class;
+
+    /* public */
+
+    /**
+     * @get_min_granularity:
+     *
+     * Get the minimum granularity in which listeners will get notified
+     * about changes within the #MemoryRegion via the #RamDiscardManager.
+     *
+     * @rdm: the #RamDiscardManager
+     * @mr: the #MemoryRegion
+     *
+     * Returns the minimum granularity.
+     */
+    uint64_t (*get_min_granularity)(const RamDiscardManager *rdm,
+                                    const MemoryRegion *mr);
+
+    /**
+     * @is_populated:
+     *
+     * Check whether the given #MemoryRegionSection is completely populated
+     * (i.e., no parts are currently discarded) via the #RamDiscardManager.
+     * There are no alignment requirements.
+     *
+     * @rdm: the #RamDiscardManager
+     * @section: the #MemoryRegionSection
+     *
+     * Returns whether the given range is completely populated.
+     */
+    bool (*is_populated)(const RamDiscardManager *rdm,
+                         const MemoryRegionSection *section);
+
+    /**
+     * @replay_populated:
+     *
+     * Call the #ReplayRamPopulate callback for all populated parts within the
+     * #MemoryRegionSection via the #RamDiscardManager.
+     *
+     * In case any call fails, no further calls are made.
+     *
+     * @rdm: the #RamDiscardManager
+     * @section: the #MemoryRegionSection
+     * @replay_fn: the #ReplayRamPopulate callback
+     * @opaque: pointer to forward to the callback
+     *
+     * Returns 0 on success, or a negative error if any notification failed.
+     */
+    int (*replay_populated)(const RamDiscardManager *rdm,
+                            MemoryRegionSection *section,
+                            ReplayRamPopulate replay_fn, void *opaque);
+
+    /**
+     * @register_listener:
+     *
+     * Register a #RamDiscardListener for the given #MemoryRegionSection and
+     * immediately notify the #RamDiscardListener about all populated parts
+     * within the #MemoryRegionSection via the #RamDiscardManager.
+     *
+     * In case any notification fails, no further notifications are triggered
+     * and an error is logged.
+     *
+     * @rdm: the #RamDiscardManager
+     * @rdl: the #RamDiscardListener
+     * @section: the #MemoryRegionSection
+     */
+    void (*register_listener)(RamDiscardManager *rdm,
+                              RamDiscardListener *rdl,
+                              MemoryRegionSection *section);
+
+    /**
+     * @unregister_listener:
+     *
+     * Unregister a previously registered #RamDiscardListener via the
+     * #RamDiscardManager after notifying the #RamDiscardListener about all
+     * populated parts becoming unpopulated within the registered
+     * #MemoryRegionSection.
+     *
+     * @rdm: the #RamDiscardManager
+     * @rdl: the #RamDiscardListener
+     */
+    void (*unregister_listener)(RamDiscardManager *rdm,
+                                RamDiscardListener *rdl);
+};
+
+uint64_t ram_discard_manager_get_min_granularity(const RamDiscardManager *rdm,
+                                                 const MemoryRegion *mr);
+
+bool ram_discard_manager_is_populated(const RamDiscardManager *rdm,
+                                      const MemoryRegionSection *section);
+
+int ram_discard_manager_replay_populated(const RamDiscardManager *rdm,
+                                         MemoryRegionSection *section,
+                                         ReplayRamPopulate replay_fn,
+                                         void *opaque);
+
+void ram_discard_manager_register_listener(RamDiscardManager *rdm,
+                                           RamDiscardListener *rdl,
+                                           MemoryRegionSection *section);
+
+void ram_discard_manager_unregister_listener(RamDiscardManager *rdm,
+                                             RamDiscardListener *rdl);
+
 typedef struct CoalescedMemoryRange CoalescedMemoryRange;
 typedef struct MemoryRegionIoeventfd MemoryRegionIoeventfd;
 
@@ -487,6 +722,7 @@ struct MemoryRegion {
     const char *name;
     unsigned ioeventfd_nb;
     MemoryRegionIoeventfd *ioeventfds;
+    RamDiscardManager *rdm; /* Only for RAM */
 };
 
 struct IOMMUMemoryRegion {
@@ -571,7 +807,7 @@ struct MemoryListener {
      * @log_start:
      *
      * Called during an address space update transaction, after
-     * one of #MemoryListener.region_add(),#MemoryListener.region_del() or
+     * one of #MemoryListener.region_add(), #MemoryListener.region_del() or
      * #MemoryListener.region_nop(), if dirty memory logging clients have
      * become active since the last transaction.
      *
@@ -615,6 +851,18 @@ struct MemoryListener {
      * @section: The #MemoryRegionSection.
      */
     void (*log_sync)(MemoryListener *listener, MemoryRegionSection *section);
+
+    /**
+     * @log_sync_global:
+     *
+     * This is the global version of @log_sync when the listener does
+     * not have a way to synchronize the log with finer granularity.
+     * When the listener registers with @log_sync_global defined, then
+     * its @log_sync must be NULL.  Vice versa.
+     *
+     * @listener: The #MemoryListener.
+     */
+    void (*log_sync_global)(MemoryListener *listener);
 
     /**
      * @log_clear:
@@ -806,28 +1054,6 @@ typedef bool (*flatview_cb)(Int128 start,
  */
 void flatview_for_each_range(FlatView *fv, flatview_cb cb, void *opaque);
 
-/**
- * struct MemoryRegionSection: describes a fragment of a #MemoryRegion
- *
- * @mr: the region, or %NULL if empty
- * @fv: the flat view of the address space the region is mapped in
- * @offset_within_region: the beginning of the section, relative to @mr's start
- * @size: the size of the section; will not exceed @mr's boundaries
- * @offset_within_address_space: the address of the first byte of the section
- *     relative to the region's address space
- * @readonly: writes to this section are ignored
- * @nonvolatile: this section is non-volatile
- */
-struct MemoryRegionSection {
-    Int128 size;
-    MemoryRegion *mr;
-    FlatView *fv;
-    hwaddr offset_within_region;
-    hwaddr offset_within_address_space;
-    bool readonly;
-    bool nonvolatile;
-};
-
 static inline bool MemoryRegionSection_eq(MemoryRegionSection *a,
                                           MemoryRegionSection *b)
 {
@@ -839,6 +1065,26 @@ static inline bool MemoryRegionSection_eq(MemoryRegionSection *a,
            a->readonly == b->readonly &&
            a->nonvolatile == b->nonvolatile;
 }
+
+/**
+ * memory_region_section_new_copy: Copy a memory region section
+ *
+ * Allocate memory for a new copy, copy the memory region section, and
+ * properly take a reference on all relevant members.
+ *
+ * @s: the #MemoryRegionSection to copy
+ */
+MemoryRegionSection *memory_region_section_new_copy(MemoryRegionSection *s);
+
+/**
+ * memory_region_section_new_copy: Free a copied memory region section
+ *
+ * Free a copy of a memory section created via memory_region_section_new_copy().
+ * properly dropping references on all relevant members.
+ *
+ * @s: the #MemoryRegionSection to copy
+ */
+void memory_region_section_free_copy(MemoryRegionSection *s);
 
 /**
  * memory_region_init: Initialize a memory region
@@ -934,34 +1180,36 @@ void memory_region_init_ram_nomigrate(MemoryRegion *mr,
                                       Error **errp);
 
 /**
- * memory_region_init_ram_shared_nomigrate:  Initialize RAM memory region.
- *                                           Accesses into the region will
- *                                           modify memory directly.
+ * memory_region_init_ram_flags_nomigrate:  Initialize RAM memory region.
+ *                                          Accesses into the region will
+ *                                          modify memory directly.
  *
  * @mr: the #MemoryRegion to be initialized.
  * @owner: the object that tracks the region's reference count
  * @name: Region name, becomes part of RAMBlock name used in migration stream
  *        must be unique within any device
  * @size: size of the region.
- * @share: allow remapping RAM to different addresses
+ * @ram_flags: RamBlock flags. Supported flags: RAM_SHARED, RAM_NORESERVE.
  * @errp: pointer to Error*, to store an error if it happens.
  *
- * Note that this function is similar to memory_region_init_ram_nomigrate.
- * The only difference is part of the RAM region can be remapped.
+ * Note that this function does not do anything to cause the data in the
+ * RAM memory region to be migrated; that is the responsibility of the caller.
  */
-void memory_region_init_ram_shared_nomigrate(MemoryRegion *mr,
-                                             Object *owner,
-                                             const char *name,
-                                             uint64_t size,
-                                             bool share,
-                                             Error **errp);
+void memory_region_init_ram_flags_nomigrate(MemoryRegion *mr,
+                                            Object *owner,
+                                            const char *name,
+                                            uint64_t size,
+                                            uint32_t ram_flags,
+                                            Error **errp);
 
 /**
  * memory_region_init_resizeable_ram:  Initialize memory region with resizeable
  *                                     RAM.  Accesses into the region will
  *                                     modify memory directly.  Only an initial
  *                                     portion of this RAM is actually used.
- *                                     The used size can change across reboots.
+ *                                     Changing the size while migrating
+ *                                     can result in the migration being
+ *                                     canceled.
  *
  * @mr: the #MemoryRegion to be initialized.
  * @owner: the object that tracks the region's reference count
@@ -997,10 +1245,8 @@ void memory_region_init_resizeable_ram(MemoryRegion *mr,
  * @size: size of the region.
  * @align: alignment of the region base address; if 0, the default alignment
  *         (getpagesize()) will be used.
- * @ram_flags: Memory region features:
- *             - RAM_SHARED: memory must be mmaped with the MAP_SHARED flag
- *             - RAM_PMEM: the memory is persistent memory
- *             Other bits are ignored now.
+ * @ram_flags: RamBlock flags. Supported flags: RAM_SHARED, RAM_PMEM,
+ *             RAM_NORESERVE,
  * @path: the path in which to allocate the RAM.
  * @readonly: true to open @path for reading, false for read/write.
  * @errp: pointer to Error*, to store an error if it happens.
@@ -1026,7 +1272,8 @@ void memory_region_init_ram_from_file(MemoryRegion *mr,
  * @owner: the object that tracks the region's reference count
  * @name: the name of the region.
  * @size: size of the region.
- * @share: %true if memory must be mmaped with the MAP_SHARED flag
+ * @ram_flags: RamBlock flags. Supported flags: RAM_SHARED, RAM_PMEM,
+ *             RAM_NORESERVE.
  * @fd: the fd to mmap.
  * @offset: offset within the file referenced by fd
  * @errp: pointer to Error*, to store an error if it happens.
@@ -1038,7 +1285,7 @@ void memory_region_init_ram_from_fd(MemoryRegion *mr,
                                     Object *owner,
                                     const char *name,
                                     uint64_t size,
-                                    bool share,
+                                    uint32_t ram_flags,
                                     int fd,
                                     ram_addr_t offset,
                                     Error **errp);
@@ -1592,8 +1839,8 @@ void *memory_region_get_ram_ptr(MemoryRegion *mr);
 
 /* memory_region_ram_resize: Resize a RAM region.
  *
- * Only legal before guest might have detected the memory size: e.g. on
- * incoming migration, or right after reset.
+ * Resizing RAM while migrating can result in the migration being canceled.
+ * Care has to be taken if the guest might have already detected the memory.
  *
  * @mr: a memory region created with @memory_region_init_resizeable_ram.
  * @newsize: the new size the region
@@ -2029,6 +2276,41 @@ bool memory_region_present(MemoryRegion *container, hwaddr addr);
 bool memory_region_is_mapped(MemoryRegion *mr);
 
 /**
+ * memory_region_get_ram_discard_manager: get the #RamDiscardManager for a
+ * #MemoryRegion
+ *
+ * The #RamDiscardManager cannot change while a memory region is mapped.
+ *
+ * @mr: the #MemoryRegion
+ */
+RamDiscardManager *memory_region_get_ram_discard_manager(MemoryRegion *mr);
+
+/**
+ * memory_region_has_ram_discard_manager: check whether a #MemoryRegion has a
+ * #RamDiscardManager assigned
+ *
+ * @mr: the #MemoryRegion
+ */
+static inline bool memory_region_has_ram_discard_manager(MemoryRegion *mr)
+{
+    return !!memory_region_get_ram_discard_manager(mr);
+}
+
+/**
+ * memory_region_set_ram_discard_manager: set the #RamDiscardManager for a
+ * #MemoryRegion
+ *
+ * This function must not be called for a mapped #MemoryRegion, a #MemoryRegion
+ * that does not cover RAM, or a #MemoryRegion that already has a
+ * #RamDiscardManager assigned.
+ *
+ * @mr: the #MemoryRegion
+ * @rdm: #RamDiscardManager to set
+ */
+void memory_region_set_ram_discard_manager(MemoryRegion *mr,
+                                           RamDiscardManager *rdm);
+
+/**
  * memory_region_find: translate an address/size relative to a
  * MemoryRegion into a #MemoryRegionSection.
  *
@@ -2328,7 +2610,7 @@ static inline uint8_t address_space_ldub_cached(MemoryRegionCache *cache,
 }
 
 static inline void address_space_stb_cached(MemoryRegionCache *cache,
-    hwaddr addr, uint32_t val, MemTxAttrs attrs, MemTxResult *result)
+    hwaddr addr, uint8_t val, MemTxAttrs attrs, MemTxResult *result)
 {
     assert(addr < cache->len);
     if (likely(cache->ptr)) {
@@ -2637,6 +2919,12 @@ static inline MemOp devend_memop(enum device_endian end)
 int ram_block_discard_disable(bool state);
 
 /*
+ * See ram_block_discard_disable(): only disable uncoordinated discards,
+ * keeping coordinated discards (via the RamDiscardManager) enabled.
+ */
+int ram_block_uncoordinated_discard_disable(bool state);
+
+/*
  * Inhibit technologies that disable discarding of pages in RAM blocks.
  *
  * Returns 0 if successful. Returns -EBUSY if discards are already set to
@@ -2645,12 +2933,20 @@ int ram_block_discard_disable(bool state);
 int ram_block_discard_require(bool state);
 
 /*
- * Test if discarding of memory in ram blocks is disabled.
+ * See ram_block_discard_require(): only inhibit technologies that disable
+ * uncoordinated discarding of pages in RAM blocks, allowing co-existance with
+ * technologies that only inhibit uncoordinated discards (via the
+ * RamDiscardManager).
+ */
+int ram_block_coordinated_discard_require(bool state);
+
+/*
+ * Test if any discarding of memory in ram blocks is disabled.
  */
 bool ram_block_discard_is_disabled(void);
 
 /*
- * Test if discarding of memory in ram blocks is required to work reliably.
+ * Test if any discarding of memory in ram blocks is required to work reliably.
  */
 bool ram_block_discard_is_required(void);
 

@@ -172,6 +172,9 @@ void fuse_cmdline_help(void)
            "                               default: no_writeback\n"
            "    -o xattr|no_xattr          enable/disable xattr\n"
            "                               default: no_xattr\n"
+           "    -o xattrmap=<mapping>      Enable xattr mapping (enables xattr)\n"
+           "                               <mapping> is a string consists of a series of rules\n"
+           "                               e.g. -o xattrmap=:map::user.virtiofs.:\n"
            "    -o modcaps=CAPLIST         Modify the list of capabilities\n"
            "                               e.g. -o modcaps=+sys_admin:-chown\n"
            "    --rlimit-nofile=<num>      set maximum number of file descriptors\n"
@@ -183,6 +186,7 @@ void fuse_cmdline_help(void)
            "                               to virtiofsd from guest applications.\n"
            "                               default: no_allow_direct_io\n"
            "    -o announce_submounts      Announce sub-mount points to the guest\n"
+           "    -o posix_acl/no_posix_acl  Enable/Disable posix_acl. (default: disabled)\n"
            );
 }
 

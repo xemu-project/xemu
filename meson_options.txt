@@ -33,6 +33,8 @@ option('whpx', type: 'feature', value: 'auto',
        description: 'WHPX acceleration support')
 option('hvf', type: 'feature', value: 'auto',
        description: 'HVF acceleration support')
+option('nvmm', type: 'feature', value: 'auto',
+       description: 'NVMM acceleration support')
 option('xen', type: 'feature', value: 'auto',
        description: 'Xen backend support')
 option('xen_pci_passthrough', type: 'feature', value: 'auto',
@@ -50,12 +52,16 @@ option('multiprocess', type: 'feature', value: 'auto',
 
 option('attr', type : 'feature', value : 'auto',
        description: 'attr/xattr support')
+option('auth_pam', type : 'feature', value : 'auto',
+       description: 'PAM access control')
 option('brlapi', type : 'feature', value : 'auto',
        description: 'brlapi character device driver')
 option('bzip2', type : 'feature', value : 'auto',
        description: 'bzip2 support for DMG images')
 option('cap_ng', type : 'feature', value : 'auto',
        description: 'cap_ng support')
+option('bpf', type : 'feature', value : 'auto',
+        description: 'eBPF support')
 option('cocoa', type : 'feature', value : 'auto',
        description: 'Cocoa user interface (macOS only)')
 option('curl', type : 'feature', value : 'auto',
@@ -72,8 +78,24 @@ option('iconv', type : 'feature', value : 'auto',
        description: 'Font glyph conversion support')
 option('curses', type : 'feature', value : 'auto',
        description: 'curses UI')
+option('gnutls', type : 'feature', value : 'auto',
+       description: 'GNUTLS cryptography support')
+option('nettle', type : 'feature', value : 'auto',
+       description: 'nettle cryptography support')
+option('gcrypt', type : 'feature', value : 'auto',
+       description: 'libgcrypt cryptography support')
+option('libdaxctl', type : 'feature', value : 'auto',
+       description: 'libdaxctl support')
+option('libpmem', type : 'feature', value : 'auto',
+       description: 'libpmem support')
 option('libudev', type : 'feature', value : 'auto',
        description: 'Use libudev to enumerate host devices')
+option('libusb', type : 'feature', value : 'auto',
+       description: 'libusb support for USB passthrough')
+option('libxml2', type : 'feature', value : 'auto',
+       description: 'libxml2 support for Parallels image format')
+option('linux_io_uring', type : 'feature', value : 'auto',
+       description: 'Linux io_uring support')
 option('lzfse', type : 'feature', value : 'auto',
        description: 'lzfse support for DMG images')
 option('lzo', type : 'feature', value : 'auto',
@@ -88,10 +110,16 @@ option('sdl_image', type : 'feature', value : 'auto',
        description: 'SDL Image support for icons')
 option('seccomp', type : 'feature', value : 'auto',
        description: 'seccomp support')
+option('smartcard', type : 'feature', value : 'auto',
+       description: 'CA smartcard emulation support')
 option('snappy', type : 'feature', value : 'auto',
        description: 'snappy compression support')
 option('u2f', type : 'feature', value : 'auto',
        description: 'U2F emulation support')
+option('usb_redir', type : 'feature', value : 'auto',
+       description: 'libusbredir support')
+option('virglrenderer', type : 'feature', value : 'auto',
+       description: 'virgl rendering support')
 option('vnc', type : 'feature', value : 'enabled',
        description: 'VNC server')
 option('vnc_jpeg', type : 'feature', value : 'auto',
@@ -100,6 +128,8 @@ option('vnc_png', type : 'feature', value : 'auto',
        description: 'PNG compression for VNC server')
 option('vnc_sasl', type : 'feature', value : 'auto',
        description: 'SASL authentication for VNC server')
+option('vte', type : 'feature', value : 'auto',
+       description: 'vte support for the gtk UI')
 option('xkbcommon', type : 'feature', value : 'auto',
        description: 'xkbcommon support')
 option('zstd', type : 'feature', value : 'auto',

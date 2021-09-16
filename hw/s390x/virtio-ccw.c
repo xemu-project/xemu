@@ -17,7 +17,6 @@
 #include "hw/virtio/virtio.h"
 #include "migration/qemu-file-types.h"
 #include "hw/virtio/virtio-net.h"
-#include "hw/sysbus.h"
 #include "qemu/bitops.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
@@ -32,6 +31,7 @@
 #include "trace.h"
 #include "hw/s390x/css-bridge.h"
 #include "hw/s390x/s390-virtio-ccw.h"
+#include "sysemu/replay.h"
 
 #define NR_CLASSIC_INDICATOR_BITS 64
 
@@ -754,6 +754,7 @@ static void virtio_ccw_device_realize(VirtioCcwDevice *dev, Error **errp)
     sch->id.reserved = 0xff;
     sch->id.cu_type = VIRTIO_CCW_CU_TYPE;
     sch->do_subchannel_work = do_subchannel_work_virtual;
+    sch->irb_cb = build_irb_virtual;
     ccw_dev->sch = sch;
     dev->indicators = NULL;
     dev->revision = -1;
@@ -767,6 +768,11 @@ static void virtio_ccw_device_realize(VirtioCcwDevice *dev, Error **errp)
         ccw_dev->devno.valid ? "user-configured" : "auto-configured");
 
     if (kvm_enabled() && !kvm_eventfds_enabled()) {
+        dev->flags &= ~VIRTIO_CCW_FLAG_USE_IOEVENTFD;
+    }
+
+    /* fd-based ioevents can't be synchronized in record/replay */
+    if (replay_mode != REPLAY_MODE_NONE) {
         dev->flags &= ~VIRTIO_CCW_FLAG_USE_IOEVENTFD;
     }
 
@@ -1235,7 +1241,6 @@ static void virtio_ccw_device_class_init(ObjectClass *klass, void *data)
     k->unplug = virtio_ccw_busdev_unplug;
     dc->realize = virtio_ccw_busdev_realize;
     dc->unrealize = virtio_ccw_busdev_unrealize;
-    dc->bus_type = TYPE_VIRTUAL_CSS_BUS;
     device_class_set_parent_reset(dc, virtio_ccw_reset, &vdc->parent_reset);
 }
 

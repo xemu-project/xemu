@@ -21,13 +21,14 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "exec/exec-all.h"
-#include "exec/helper-proto.h"
 #include "sysemu/kvm.h"
 #include "kvm_ppc.h"
+#include "internal.h"
 #include "mmu-hash32.h"
+#include "mmu-books.h"
 #include "exec/log.h"
 
-/* #define DEBUG_BAT */
+/* #define DEBUG_BATS */
 
 #ifdef DEBUG_BATS
 #  define LOG_BATS(...) qemu_log_mask(CPU_LOG_MMU, __VA_ARGS__)
@@ -86,25 +87,22 @@ static int ppc_hash32_pp_prot(int key, int pp, int nx)
     return prot;
 }
 
-static int ppc_hash32_pte_prot(PowerPCCPU *cpu,
+static int ppc_hash32_pte_prot(int mmu_idx,
                                target_ulong sr, ppc_hash_pte32_t pte)
 {
-    CPUPPCState *env = &cpu->env;
     unsigned pp, key;
 
-    key = !!(msr_pr ? (sr & SR32_KP) : (sr & SR32_KS));
+    key = !!(mmuidx_pr(mmu_idx) ? (sr & SR32_KP) : (sr & SR32_KS));
     pp = pte.pte1 & HPTE32_R_PP;
 
     return ppc_hash32_pp_prot(key, pp, !!(sr & SR32_NX));
 }
 
-static target_ulong hash32_bat_size(PowerPCCPU *cpu,
+static target_ulong hash32_bat_size(int mmu_idx,
                                     target_ulong batu, target_ulong batl)
 {
-    CPUPPCState *env = &cpu->env;
-
-    if ((msr_pr && !(batu & BATU32_VP))
-        || (!msr_pr && !(batu & BATU32_VS))) {
+    if ((mmuidx_pr(mmu_idx) && !(batu & BATU32_VP))
+        || (!mmuidx_pr(mmu_idx) && !(batu & BATU32_VS))) {
         return 0;
     }
 
@@ -137,14 +135,13 @@ static target_ulong hash32_bat_601_size(PowerPCCPU *cpu,
     return BATU32_BEPI & ~((batl & BATL32_601_BL) << 17);
 }
 
-static int hash32_bat_601_prot(PowerPCCPU *cpu,
+static int hash32_bat_601_prot(int mmu_idx,
                                target_ulong batu, target_ulong batl)
 {
-    CPUPPCState *env = &cpu->env;
     int key, pp;
 
     pp = batu & BATU32_601_PP;
-    if (msr_pr == 0) {
+    if (mmuidx_pr(mmu_idx) == 0) {
         key = !!(batu & BATU32_601_KS);
     } else {
         key = !!(batu & BATU32_601_KP);
@@ -152,16 +149,18 @@ static int hash32_bat_601_prot(PowerPCCPU *cpu,
     return ppc_hash32_pp_prot(key, pp, 0);
 }
 
-static hwaddr ppc_hash32_bat_lookup(PowerPCCPU *cpu, target_ulong ea, int rwx,
-                                    int *prot)
+static hwaddr ppc_hash32_bat_lookup(PowerPCCPU *cpu, target_ulong ea,
+                                    MMUAccessType access_type, int *prot,
+                                    int mmu_idx)
 {
     CPUPPCState *env = &cpu->env;
     target_ulong *BATlt, *BATut;
+    bool ifetch = access_type == MMU_INST_FETCH;
     int i;
 
     LOG_BATS("%s: %cBAT v " TARGET_FMT_lx "\n", __func__,
-             rwx == 2 ? 'I' : 'D', ea);
-    if (rwx == 2) {
+             ifetch ? 'I' : 'D', ea);
+    if (ifetch) {
         BATlt = env->IBAT[1];
         BATut = env->IBAT[0];
     } else {
@@ -176,17 +175,17 @@ static hwaddr ppc_hash32_bat_lookup(PowerPCCPU *cpu, target_ulong ea, int rwx,
         if (unlikely(env->mmu_model == POWERPC_MMU_601)) {
             mask = hash32_bat_601_size(cpu, batu, batl);
         } else {
-            mask = hash32_bat_size(cpu, batu, batl);
+            mask = hash32_bat_size(mmu_idx, batu, batl);
         }
         LOG_BATS("%s: %cBAT%d v " TARGET_FMT_lx " BATu " TARGET_FMT_lx
                  " BATl " TARGET_FMT_lx "\n", __func__,
-                 type == ACCESS_CODE ? 'I' : 'D', i, ea, batu, batl);
+                 ifetch ? 'I' : 'D', i, ea, batu, batl);
 
         if (mask && ((ea & mask) == (batu & BATU32_BEPI))) {
             hwaddr raddr = (batl & mask) | (ea & ~mask);
 
             if (unlikely(env->mmu_model == POWERPC_MMU_601)) {
-                *prot = hash32_bat_601_prot(cpu, batu, batl);
+                *prot = hash32_bat_601_prot(mmu_idx, batu, batl);
             } else {
                 *prot = hash32_bat_prot(cpu, batu, batl);
             }
@@ -198,6 +197,9 @@ static hwaddr ppc_hash32_bat_lookup(PowerPCCPU *cpu, target_ulong ea, int rwx,
     /* No hit */
 #if defined(DEBUG_BATS)
     if (qemu_log_enabled()) {
+        target_ulong *BATu, *BATl;
+        target_ulong BEPIl, BEPIu, bl;
+
         LOG_BATS("no BAT match for " TARGET_FMT_lx ":\n", ea);
         for (i = 0; i < 4; i++) {
             BATu = &BATut[i];
@@ -208,7 +210,7 @@ static hwaddr ppc_hash32_bat_lookup(PowerPCCPU *cpu, target_ulong ea, int rwx,
             LOG_BATS("%s: %cBAT%d v " TARGET_FMT_lx " BATu " TARGET_FMT_lx
                      " BATl " TARGET_FMT_lx "\n\t" TARGET_FMT_lx " "
                      TARGET_FMT_lx " " TARGET_FMT_lx "\n",
-                     __func__, type == ACCESS_CODE ? 'I' : 'D', i, ea,
+                     __func__, ifetch ? 'I' : 'D', i, ea,
                      *BATu, *BATl, BEPIu, BEPIl, bl);
         }
     }
@@ -217,13 +219,15 @@ static hwaddr ppc_hash32_bat_lookup(PowerPCCPU *cpu, target_ulong ea, int rwx,
     return -1;
 }
 
-static int ppc_hash32_direct_store(PowerPCCPU *cpu, target_ulong sr,
-                                   target_ulong eaddr, int rwx,
-                                   hwaddr *raddr, int *prot)
+static bool ppc_hash32_direct_store(PowerPCCPU *cpu, target_ulong sr,
+                                    target_ulong eaddr,
+                                    MMUAccessType access_type,
+                                    hwaddr *raddr, int *prot, int mmu_idx,
+                                    bool guest_visible)
 {
     CPUState *cs = CPU(cpu);
     CPUPPCState *env = &cpu->env;
-    int key = !!(msr_pr ? (sr & SR32_KP) : (sr & SR32_KS));
+    int key = !!(mmuidx_pr(mmu_idx) ? (sr & SR32_KP) : (sr & SR32_KS));
 
     qemu_log_mask(CPU_LOG_MMU, "direct store...\n");
 
@@ -236,17 +240,23 @@ static int ppc_hash32_direct_store(PowerPCCPU *cpu, target_ulong sr,
          */
         *raddr = ((sr & 0xF) << 28) | (eaddr & 0x0FFFFFFF);
         *prot = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
-        return 0;
+        return true;
     }
 
-    if (rwx == 2) {
+    if (access_type == MMU_INST_FETCH) {
         /* No code fetch is allowed in direct-store areas */
-        cs->exception_index = POWERPC_EXCP_ISI;
-        env->error_code = 0x10000000;
-        return 1;
+        if (guest_visible) {
+            cs->exception_index = POWERPC_EXCP_ISI;
+            env->error_code = 0x10000000;
+        }
+        return false;
     }
 
-    switch (env->access_type) {
+    /*
+     * From ppc_cpu_get_phys_page_debug, env->access_type is not set.
+     * Assume ACCESS_INT for that case.
+     */
+    switch (guest_visible ? env->access_type : ACCESS_INT) {
     case ACCESS_INT:
         /* Integer load/store : only access allowed */
         break;
@@ -255,17 +265,17 @@ static int ppc_hash32_direct_store(PowerPCCPU *cpu, target_ulong sr,
         cs->exception_index = POWERPC_EXCP_ALIGN;
         env->error_code = POWERPC_EXCP_ALIGN_FP;
         env->spr[SPR_DAR] = eaddr;
-        return 1;
+        return false;
     case ACCESS_RES:
         /* lwarx, ldarx or srwcx. */
         env->error_code = 0;
         env->spr[SPR_DAR] = eaddr;
-        if (rwx == 1) {
+        if (access_type == MMU_DATA_STORE) {
             env->spr[SPR_DSISR] = 0x06000000;
         } else {
             env->spr[SPR_DSISR] = 0x04000000;
         }
-        return 1;
+        return false;
     case ACCESS_CACHE:
         /*
          * dcba, dcbt, dcbtst, dcbf, dcbi, dcbst, dcbz, or icbi
@@ -274,36 +284,39 @@ static int ppc_hash32_direct_store(PowerPCCPU *cpu, target_ulong sr,
          * no-op, it's quite easy :-)
          */
         *raddr = eaddr;
-        return 0;
+        return true;
     case ACCESS_EXT:
         /* eciwx or ecowx */
         cs->exception_index = POWERPC_EXCP_DSI;
         env->error_code = 0;
         env->spr[SPR_DAR] = eaddr;
-        if (rwx == 1) {
+        if (access_type == MMU_DATA_STORE) {
             env->spr[SPR_DSISR] = 0x06100000;
         } else {
             env->spr[SPR_DSISR] = 0x04100000;
         }
-        return 1;
+        return false;
     default:
-        cpu_abort(cs, "ERROR: instruction should not need "
-                 "address translation\n");
+        cpu_abort(cs, "ERROR: insn should not need address translation\n");
     }
-    if ((rwx == 1 || key != 1) && (rwx == 0 || key != 0)) {
+
+    *prot = key ? PAGE_READ | PAGE_WRITE : PAGE_READ;
+    if (*prot & prot_for_access_type(access_type)) {
         *raddr = eaddr;
-        return 0;
-    } else {
+        return true;
+    }
+
+    if (guest_visible) {
         cs->exception_index = POWERPC_EXCP_DSI;
         env->error_code = 0;
         env->spr[SPR_DAR] = eaddr;
-        if (rwx == 1) {
+        if (access_type == MMU_DATA_STORE) {
             env->spr[SPR_DSISR] = 0x0a000000;
         } else {
             env->spr[SPR_DSISR] = 0x08000000;
         }
-        return 1;
     }
+    return false;
 }
 
 hwaddr get_pteg_offset32(PowerPCCPU *cpu, hwaddr hash)
@@ -412,8 +425,9 @@ static hwaddr ppc_hash32_pte_raddr(target_ulong sr, ppc_hash_pte32_t pte,
     return (rpn & ~mask) | (eaddr & mask);
 }
 
-int ppc_hash32_handle_mmu_fault(PowerPCCPU *cpu, vaddr eaddr, int rwx,
-                                int mmu_idx)
+bool ppc_hash32_xlate(PowerPCCPU *cpu, vaddr eaddr, MMUAccessType access_type,
+                      hwaddr *raddrp, int *psizep, int *protp, int mmu_idx,
+                      bool guest_visible)
 {
     CPUState *cs = CPU(cpu);
     CPUPPCState *env = &cpu->env;
@@ -421,46 +435,46 @@ int ppc_hash32_handle_mmu_fault(PowerPCCPU *cpu, vaddr eaddr, int rwx,
     hwaddr pte_offset;
     ppc_hash_pte32_t pte;
     int prot;
-    const int need_prot[] = {PAGE_READ, PAGE_WRITE, PAGE_EXEC};
+    int need_prot;
     hwaddr raddr;
 
-    assert((rwx == 0) || (rwx == 1) || (rwx == 2));
+    /* There are no hash32 large pages. */
+    *psizep = TARGET_PAGE_BITS;
 
     /* 1. Handle real mode accesses */
-    if (((rwx == 2) && (msr_ir == 0)) || ((rwx != 2) && (msr_dr == 0))) {
+    if (mmuidx_real(mmu_idx)) {
         /* Translation is off */
-        raddr = eaddr;
-        tlb_set_page(cs, eaddr & TARGET_PAGE_MASK, raddr & TARGET_PAGE_MASK,
-                     PAGE_READ | PAGE_WRITE | PAGE_EXEC, mmu_idx,
-                     TARGET_PAGE_SIZE);
-        return 0;
+        *raddrp = eaddr;
+        *protp = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
+        return true;
     }
+
+    need_prot = prot_for_access_type(access_type);
 
     /* 2. Check Block Address Translation entries (BATs) */
     if (env->nb_BATs != 0) {
-        raddr = ppc_hash32_bat_lookup(cpu, eaddr, rwx, &prot);
+        raddr = ppc_hash32_bat_lookup(cpu, eaddr, access_type, protp, mmu_idx);
         if (raddr != -1) {
-            if (need_prot[rwx] & ~prot) {
-                if (rwx == 2) {
-                    cs->exception_index = POWERPC_EXCP_ISI;
-                    env->error_code = 0x08000000;
-                } else {
-                    cs->exception_index = POWERPC_EXCP_DSI;
-                    env->error_code = 0;
-                    env->spr[SPR_DAR] = eaddr;
-                    if (rwx == 1) {
-                        env->spr[SPR_DSISR] = 0x0a000000;
+            if (need_prot & ~*protp) {
+                if (guest_visible) {
+                    if (access_type == MMU_INST_FETCH) {
+                        cs->exception_index = POWERPC_EXCP_ISI;
+                        env->error_code = 0x08000000;
                     } else {
-                        env->spr[SPR_DSISR] = 0x08000000;
+                        cs->exception_index = POWERPC_EXCP_DSI;
+                        env->error_code = 0;
+                        env->spr[SPR_DAR] = eaddr;
+                        if (access_type == MMU_DATA_STORE) {
+                            env->spr[SPR_DSISR] = 0x0a000000;
+                        } else {
+                            env->spr[SPR_DSISR] = 0x08000000;
+                        }
                     }
                 }
-                return 1;
+                return false;
             }
-
-            tlb_set_page(cs, eaddr & TARGET_PAGE_MASK,
-                         raddr & TARGET_PAGE_MASK, prot, mmu_idx,
-                         TARGET_PAGE_SIZE);
-            return 0;
+            *raddrp = raddr;
+            return true;
         }
     }
 
@@ -469,67 +483,65 @@ int ppc_hash32_handle_mmu_fault(PowerPCCPU *cpu, vaddr eaddr, int rwx,
 
     /* 4. Handle direct store segments */
     if (sr & SR32_T) {
-        if (ppc_hash32_direct_store(cpu, sr, eaddr, rwx,
-                                    &raddr, &prot) == 0) {
-            tlb_set_page(cs, eaddr & TARGET_PAGE_MASK,
-                         raddr & TARGET_PAGE_MASK, prot, mmu_idx,
-                         TARGET_PAGE_SIZE);
-            return 0;
-        } else {
-            return 1;
-        }
+        return ppc_hash32_direct_store(cpu, sr, eaddr, access_type,
+                                       raddrp, protp, mmu_idx, guest_visible);
     }
 
     /* 5. Check for segment level no-execute violation */
-    if ((rwx == 2) && (sr & SR32_NX)) {
-        cs->exception_index = POWERPC_EXCP_ISI;
-        env->error_code = 0x10000000;
-        return 1;
+    if (access_type == MMU_INST_FETCH && (sr & SR32_NX)) {
+        if (guest_visible) {
+            cs->exception_index = POWERPC_EXCP_ISI;
+            env->error_code = 0x10000000;
+        }
+        return false;
     }
 
     /* 6. Locate the PTE in the hash table */
     pte_offset = ppc_hash32_htab_lookup(cpu, sr, eaddr, &pte);
     if (pte_offset == -1) {
-        if (rwx == 2) {
-            cs->exception_index = POWERPC_EXCP_ISI;
-            env->error_code = 0x40000000;
-        } else {
-            cs->exception_index = POWERPC_EXCP_DSI;
-            env->error_code = 0;
-            env->spr[SPR_DAR] = eaddr;
-            if (rwx == 1) {
-                env->spr[SPR_DSISR] = 0x42000000;
+        if (guest_visible) {
+            if (access_type == MMU_INST_FETCH) {
+                cs->exception_index = POWERPC_EXCP_ISI;
+                env->error_code = 0x40000000;
             } else {
-                env->spr[SPR_DSISR] = 0x40000000;
+                cs->exception_index = POWERPC_EXCP_DSI;
+                env->error_code = 0;
+                env->spr[SPR_DAR] = eaddr;
+                if (access_type == MMU_DATA_STORE) {
+                    env->spr[SPR_DSISR] = 0x42000000;
+                } else {
+                    env->spr[SPR_DSISR] = 0x40000000;
+                }
             }
         }
-
-        return 1;
+        return false;
     }
     qemu_log_mask(CPU_LOG_MMU,
                 "found PTE at offset %08" HWADDR_PRIx "\n", pte_offset);
 
     /* 7. Check access permissions */
 
-    prot = ppc_hash32_pte_prot(cpu, sr, pte);
+    prot = ppc_hash32_pte_prot(mmu_idx, sr, pte);
 
-    if (need_prot[rwx] & ~prot) {
+    if (need_prot & ~prot) {
         /* Access right violation */
         qemu_log_mask(CPU_LOG_MMU, "PTE access rejected\n");
-        if (rwx == 2) {
-            cs->exception_index = POWERPC_EXCP_ISI;
-            env->error_code = 0x08000000;
-        } else {
-            cs->exception_index = POWERPC_EXCP_DSI;
-            env->error_code = 0;
-            env->spr[SPR_DAR] = eaddr;
-            if (rwx == 1) {
-                env->spr[SPR_DSISR] = 0x0a000000;
+        if (guest_visible) {
+            if (access_type == MMU_INST_FETCH) {
+                cs->exception_index = POWERPC_EXCP_ISI;
+                env->error_code = 0x08000000;
             } else {
-                env->spr[SPR_DSISR] = 0x08000000;
+                cs->exception_index = POWERPC_EXCP_DSI;
+                env->error_code = 0;
+                env->spr[SPR_DAR] = eaddr;
+                if (access_type == MMU_DATA_STORE) {
+                    env->spr[SPR_DSISR] = 0x0a000000;
+                } else {
+                    env->spr[SPR_DSISR] = 0x08000000;
+                }
             }
         }
-        return 1;
+        return false;
     }
 
     qemu_log_mask(CPU_LOG_MMU, "PTE access granted !\n");
@@ -540,7 +552,7 @@ int ppc_hash32_handle_mmu_fault(PowerPCCPU *cpu, vaddr eaddr, int rwx,
         ppc_hash32_set_r(cpu, pte_offset, pte.pte1);
     }
     if (!(pte.pte1 & HPTE32_R_C)) {
-        if (rwx == 1) {
+        if (access_type == MMU_DATA_STORE) {
             ppc_hash32_set_c(cpu, pte_offset, pte.pte1);
         } else {
             /*
@@ -553,45 +565,7 @@ int ppc_hash32_handle_mmu_fault(PowerPCCPU *cpu, vaddr eaddr, int rwx,
 
     /* 9. Determine the real address from the PTE */
 
-    raddr = ppc_hash32_pte_raddr(sr, pte, eaddr);
-
-    tlb_set_page(cs, eaddr & TARGET_PAGE_MASK, raddr & TARGET_PAGE_MASK,
-                 prot, mmu_idx, TARGET_PAGE_SIZE);
-
-    return 0;
-}
-
-hwaddr ppc_hash32_get_phys_page_debug(PowerPCCPU *cpu, target_ulong eaddr)
-{
-    CPUPPCState *env = &cpu->env;
-    target_ulong sr;
-    hwaddr pte_offset;
-    ppc_hash_pte32_t pte;
-    int prot;
-
-    if (msr_dr == 0) {
-        /* Translation is off */
-        return eaddr;
-    }
-
-    if (env->nb_BATs != 0) {
-        hwaddr raddr = ppc_hash32_bat_lookup(cpu, eaddr, 0, &prot);
-        if (raddr != -1) {
-            return raddr;
-        }
-    }
-
-    sr = env->sr[eaddr >> 28];
-
-    if (sr & SR32_T) {
-        /* FIXME: Add suitable debug support for Direct Store segments */
-        return -1;
-    }
-
-    pte_offset = ppc_hash32_htab_lookup(cpu, sr, eaddr, &pte);
-    if (pte_offset == -1) {
-        return -1;
-    }
-
-    return ppc_hash32_pte_raddr(sr, pte, eaddr) & TARGET_PAGE_MASK;
+    *raddrp = ppc_hash32_pte_raddr(sr, pte, eaddr);
+    *protp = prot;
+    return true;
 }

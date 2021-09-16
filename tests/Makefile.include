@@ -36,7 +36,7 @@ export SRC_PATH
 
 # Get the list of all supported sysemu targets
 SYSEMU_TARGET_LIST := $(subst -softmmu.mak,,$(notdir \
-   $(wildcard $(SRC_PATH)/default-configs/*-softmmu.mak)))
+   $(wildcard $(SRC_PATH)/configs/*-softmmu.mak)))
 
 SPEED = quick
 
@@ -96,7 +96,7 @@ AVOCADO_TAGS=$(patsubst %-softmmu,-t arch:%, $(filter %-softmmu,$(TARGETS)))
 
 $(TESTS_VENV_DIR): $(TESTS_VENV_REQ)
 	$(call quiet-command, \
-            $(PYTHON) -m venv --system-site-packages $@, \
+            $(PYTHON) -m venv $@, \
             VENV, $@)
 	$(call quiet-command, \
             $(TESTS_VENV_DIR)/bin/python -m pip -q install -r $(TESTS_VENV_REQ), \

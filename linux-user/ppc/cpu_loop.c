@@ -423,12 +423,6 @@ void cpu_loop(CPUPPCState *env)
             cpu_abort(cs, "Maintenance exception while in user mode. "
                       "Aborting\n");
             break;
-        case POWERPC_EXCP_STOP:     /* stop translation                      */
-            /* We did invalidate the instruction cache. Go on */
-            break;
-        case POWERPC_EXCP_BRANCH:   /* branch instruction:                   */
-            /* We just stopped because of a branch. Go on */
-            break;
         case POWERPC_EXCP_SYSCALL_USER:
             /* system call in user-mode emulation */
             /* WARNING:
@@ -492,11 +486,12 @@ void target_cpu_copy_regs(CPUArchState *env, struct target_pt_regs *regs)
 #if defined(TARGET_PPC64)
     int flag = (env->insns_flags2 & PPC2_BOOKE206) ? MSR_CM : MSR_SF;
 #if defined(TARGET_ABI32)
-    env->msr &= ~((target_ulong)1 << flag);
+    ppc_store_msr(env, env->msr & ~((target_ulong)1 << flag));
 #else
-    env->msr |= (target_ulong)1 << flag;
+    ppc_store_msr(env, env->msr | (target_ulong)1 << flag);
 #endif
 #endif
+
     env->nip = regs->nip;
     for(i = 0; i < 32; i++) {
         env->gpr[i] = regs->gpr[i];

@@ -2,9 +2,7 @@
 
 # Add files or directories matching the regex patterns to the ignore list.
 # The regex matches against base names, not paths.
-ignore-patterns=error.py,
-                expr.py,
-                parser.py,
+ignore-patterns=parser.py,
                 schema.py,
 
 
@@ -45,6 +43,7 @@ good-names=i,
            _,
            fp,  # fp = open(...)
            fd,  # fd = os.open(...)
+           ch,
 
 [VARIABLES]
 

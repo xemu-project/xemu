@@ -34,47 +34,6 @@
 #include <nettle/xts.h>
 #endif
 
-typedef void (*QCryptoCipherNettleFuncWrapper)(const void *ctx,
-                                               size_t length,
-                                               uint8_t *dst,
-                                               const uint8_t *src);
-
-#if CONFIG_NETTLE_VERSION_MAJOR < 3
-typedef nettle_crypt_func * QCryptoCipherNettleFuncNative;
-typedef void *       cipher_ctx_t;
-typedef unsigned     cipher_length_t;
-#define CONST_CTX
-
-#define cast5_set_key cast128_set_key
-
-#define aes128_ctx aes_ctx
-#define aes192_ctx aes_ctx
-#define aes256_ctx aes_ctx
-#define aes128_set_encrypt_key(c, k) \
-    aes_set_encrypt_key(c, 16, k)
-#define aes192_set_encrypt_key(c, k) \
-    aes_set_encrypt_key(c, 24, k)
-#define aes256_set_encrypt_key(c, k) \
-    aes_set_encrypt_key(c, 32, k)
-#define aes128_set_decrypt_key(c, k) \
-    aes_set_decrypt_key(c, 16, k)
-#define aes192_set_decrypt_key(c, k) \
-    aes_set_decrypt_key(c, 24, k)
-#define aes256_set_decrypt_key(c, k) \
-    aes_set_decrypt_key(c, 32, k)
-#define aes128_encrypt aes_encrypt
-#define aes192_encrypt aes_encrypt
-#define aes256_encrypt aes_encrypt
-#define aes128_decrypt aes_decrypt
-#define aes192_decrypt aes_decrypt
-#define aes256_decrypt aes_decrypt
-#else
-typedef nettle_cipher_func * QCryptoCipherNettleFuncNative;
-typedef const void * cipher_ctx_t;
-typedef size_t       cipher_length_t;
-#define CONST_CTX    const
-#endif
-
 static inline bool qcrypto_length_check(size_t len, size_t blocksize,
                                         Error **errp)
 {
@@ -197,12 +156,12 @@ static const struct QCryptoCipherDriver NAME##_driver_ctr = {           \
 static void NAME##_xts_wrape(const void *ctx, size_t length,            \
                              uint8_t *dst, const uint8_t *src)          \
 {                                                                       \
-    ENCRYPT((cipher_ctx_t)ctx, length, dst, src);                       \
+    ENCRYPT((const void *)ctx, length, dst, src);                       \
 }                                                                       \
 static void NAME##_xts_wrapd(const void *ctx, size_t length,            \
                              uint8_t *dst, const uint8_t *src)          \
 {                                                                       \
-    DECRYPT((cipher_ctx_t)ctx, length, dst, src);                       \
+    DECRYPT((const void *)ctx, length, dst, src);                       \
 }                                                                       \
 static int NAME##_encrypt_xts(QCryptoCipher *cipher, const void *in,    \
                               void *out, size_t len, Error **errp)      \
@@ -276,25 +235,25 @@ static const struct QCryptoCipherDriver NAME##_driver_xts = {   \
     DEFINE_XTS(NAME, TYPE, BLEN, ENCRYPT, DECRYPT)
 
 
-typedef struct QCryptoNettleDESRFB {
+typedef struct QCryptoNettleDES {
     QCryptoCipher base;
     struct des_ctx key;
     uint8_t iv[DES_BLOCK_SIZE];
-} QCryptoNettleDESRFB;
+} QCryptoNettleDES;
 
-static void des_encrypt_native(cipher_ctx_t ctx, cipher_length_t length,
+static void des_encrypt_native(const void *ctx, size_t length,
                                uint8_t *dst, const uint8_t *src)
 {
     des_encrypt(ctx, length, dst, src);
 }
 
-static void des_decrypt_native(cipher_ctx_t ctx, cipher_length_t length,
+static void des_decrypt_native(const void *ctx, size_t length,
                                uint8_t *dst, const uint8_t *src)
 {
     des_decrypt(ctx, length, dst, src);
 }
 
-DEFINE_ECB_CBC_CTR(qcrypto_nettle_des_rfb, QCryptoNettleDESRFB,
+DEFINE_ECB_CBC_CTR(qcrypto_nettle_des, QCryptoNettleDES,
                    DES_BLOCK_SIZE, des_encrypt_native, des_decrypt_native)
 
 
@@ -304,13 +263,13 @@ typedef struct QCryptoNettleDES3 {
     uint8_t iv[DES3_BLOCK_SIZE];
 } QCryptoNettleDES3;
 
-static void des3_encrypt_native(cipher_ctx_t ctx, cipher_length_t length,
+static void des3_encrypt_native(const void *ctx, size_t length,
                                 uint8_t *dst, const uint8_t *src)
 {
     des3_encrypt(ctx, length, dst, src);
 }
 
-static void des3_decrypt_native(cipher_ctx_t ctx, cipher_length_t length,
+static void des3_decrypt_native(const void *ctx, size_t length,
                                 uint8_t *dst, const uint8_t *src)
 {
     des3_decrypt(ctx, length, dst, src);
@@ -327,17 +286,17 @@ typedef struct QCryptoNettleAES128 {
     struct aes128_ctx key[2], key_xts[2];
 } QCryptoNettleAES128;
 
-static void aes128_encrypt_native(cipher_ctx_t ctx, cipher_length_t length,
+static void aes128_encrypt_native(const void *ctx, size_t length,
                                   uint8_t *dst, const uint8_t *src)
 {
-    CONST_CTX struct aes128_ctx *keys = ctx;
+    const struct aes128_ctx *keys = ctx;
     aes128_encrypt(&keys[0], length, dst, src);
 }
 
-static void aes128_decrypt_native(cipher_ctx_t ctx, cipher_length_t length,
+static void aes128_decrypt_native(const void *ctx, size_t length,
                                   uint8_t *dst, const uint8_t *src)
 {
-    CONST_CTX struct aes128_ctx *keys = ctx;
+    const struct aes128_ctx *keys = ctx;
     aes128_decrypt(&keys[1], length, dst, src);
 }
 
@@ -353,17 +312,17 @@ typedef struct QCryptoNettleAES192 {
     struct aes192_ctx key[2], key_xts[2];
 } QCryptoNettleAES192;
 
-static void aes192_encrypt_native(cipher_ctx_t ctx, cipher_length_t length,
+static void aes192_encrypt_native(const void *ctx, size_t length,
                                   uint8_t *dst, const uint8_t *src)
 {
-    CONST_CTX struct aes192_ctx *keys = ctx;
+    const struct aes192_ctx *keys = ctx;
     aes192_encrypt(&keys[0], length, dst, src);
 }
 
-static void aes192_decrypt_native(cipher_ctx_t ctx, cipher_length_t length,
+static void aes192_decrypt_native(const void *ctx, size_t length,
                                   uint8_t *dst, const uint8_t *src)
 {
-    CONST_CTX struct aes192_ctx *keys = ctx;
+    const struct aes192_ctx *keys = ctx;
     aes192_decrypt(&keys[1], length, dst, src);
 }
 
@@ -379,17 +338,17 @@ typedef struct QCryptoNettleAES256 {
     struct aes256_ctx key[2], key_xts[2];
 } QCryptoNettleAES256;
 
-static void aes256_encrypt_native(cipher_ctx_t ctx, cipher_length_t length,
+static void aes256_encrypt_native(const void *ctx, size_t length,
                                   uint8_t *dst, const uint8_t *src)
 {
-    CONST_CTX struct aes256_ctx *keys = ctx;
+    const struct aes256_ctx *keys = ctx;
     aes256_encrypt(&keys[0], length, dst, src);
 }
 
-static void aes256_decrypt_native(cipher_ctx_t ctx, cipher_length_t length,
-                               uint8_t *dst, const uint8_t *src)
+static void aes256_decrypt_native(const void *ctx, size_t length,
+                                  uint8_t *dst, const uint8_t *src)
 {
-    CONST_CTX struct aes256_ctx *keys = ctx;
+    const struct aes256_ctx *keys = ctx;
     aes256_decrypt(&keys[1], length, dst, src);
 }
 
@@ -404,13 +363,13 @@ typedef struct QCryptoNettleCAST128 {
     struct cast128_ctx key, key_xts;
 } QCryptoNettleCAST128;
 
-static void cast128_encrypt_native(cipher_ctx_t ctx, cipher_length_t length,
+static void cast128_encrypt_native(const void *ctx, size_t length,
                                    uint8_t *dst, const uint8_t *src)
 {
     cast128_encrypt(ctx, length, dst, src);
 }
 
-static void cast128_decrypt_native(cipher_ctx_t ctx, cipher_length_t length,
+static void cast128_decrypt_native(const void *ctx, size_t length,
                                    uint8_t *dst, const uint8_t *src)
 {
     cast128_decrypt(ctx, length, dst, src);
@@ -428,13 +387,13 @@ typedef struct QCryptoNettleSerpent {
 } QCryptoNettleSerpent;
 
 
-static void serpent_encrypt_native(cipher_ctx_t ctx, cipher_length_t length,
+static void serpent_encrypt_native(const void *ctx, size_t length,
                                    uint8_t *dst, const uint8_t *src)
 {
     serpent_encrypt(ctx, length, dst, src);
 }
 
-static void serpent_decrypt_native(cipher_ctx_t ctx, cipher_length_t length,
+static void serpent_decrypt_native(const void *ctx, size_t length,
                                    uint8_t *dst, const uint8_t *src)
 {
     serpent_decrypt(ctx, length, dst, src);
@@ -451,13 +410,13 @@ typedef struct QCryptoNettleTwofish {
     struct twofish_ctx key, key_xts;
 } QCryptoNettleTwofish;
 
-static void twofish_encrypt_native(cipher_ctx_t ctx, cipher_length_t length,
+static void twofish_encrypt_native(const void *ctx, size_t length,
                                    uint8_t *dst, const uint8_t *src)
 {
     twofish_encrypt(ctx, length, dst, src);
 }
 
-static void twofish_decrypt_native(cipher_ctx_t ctx, cipher_length_t length,
+static void twofish_decrypt_native(const void *ctx, size_t length,
                                    uint8_t *dst, const uint8_t *src)
 {
     twofish_decrypt(ctx, length, dst, src);
@@ -472,7 +431,7 @@ bool qcrypto_cipher_supports(QCryptoCipherAlgorithm alg,
                              QCryptoCipherMode mode)
 {
     switch (alg) {
-    case QCRYPTO_CIPHER_ALG_DES_RFB:
+    case QCRYPTO_CIPHER_ALG_DES:
     case QCRYPTO_CIPHER_ALG_3DES:
     case QCRYPTO_CIPHER_ALG_AES_128:
     case QCRYPTO_CIPHER_ALG_AES_192:
@@ -521,32 +480,28 @@ static QCryptoCipher *qcrypto_cipher_ctx_new(QCryptoCipherAlgorithm alg,
     }
 
     switch (alg) {
-    case QCRYPTO_CIPHER_ALG_DES_RFB:
+    case QCRYPTO_CIPHER_ALG_DES:
         {
-            QCryptoNettleDESRFB *ctx;
+            QCryptoNettleDES *ctx;
             const QCryptoCipherDriver *drv;
-            uint8_t *rfbkey;
 
             switch (mode) {
             case QCRYPTO_CIPHER_MODE_ECB:
-                drv = &qcrypto_nettle_des_rfb_driver_ecb;
+                drv = &qcrypto_nettle_des_driver_ecb;
                 break;
             case QCRYPTO_CIPHER_MODE_CBC:
-                drv = &qcrypto_nettle_des_rfb_driver_cbc;
+                drv = &qcrypto_nettle_des_driver_cbc;
                 break;
             case QCRYPTO_CIPHER_MODE_CTR:
-                drv = &qcrypto_nettle_des_rfb_driver_ctr;
+                drv = &qcrypto_nettle_des_driver_ctr;
                 break;
             default:
                 goto bad_cipher_mode;
             }
 
-            ctx = g_new0(QCryptoNettleDESRFB, 1);
+            ctx = g_new0(QCryptoNettleDES, 1);
             ctx->base.driver = drv;
-
-            rfbkey = qcrypto_cipher_munge_des_rfb_key(key, nkey);
-            des_set_key(&ctx->key, rfbkey);
-            g_free(rfbkey);
+            des_set_key(&ctx->key, key);
 
             return &ctx->base;
         }
