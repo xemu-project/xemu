@@ -2500,7 +2500,7 @@ void xemu_save_window_size(void)
     int win_h = 0;
     int win_w = 0;
 
-    if(xemu_is_fullscreen() == FALSE)
+    if (!xemu_is_fullscreen())
     {
 
         SDL_GetWindowSize(xemu_get_winid(), &win_w, &win_h);

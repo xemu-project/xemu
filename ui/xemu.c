@@ -842,14 +842,31 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
 #endif
                                   , xemu_version);
 
+    /* We need safe defaults as a fallback should the stored values be out
+       of range. As windowed mode is adjustable, it could be anything so
+       set it to something reasonable (320x240) */
+    #define MIN_WIN_WIDTH    ( 320 )
+    #define MIN_WIN_HEIGHT   ( 240 )
 
-    int local_ini_win_width = 1024;
-    int local_ini_win_height = 768;
+    int local_ini_win_width;
+    int local_ini_win_height;
 
-    if(FALSE == xemu_settings_did_fail_to_load())
+    // Check if the settings did not load and report to the user
+    if (xemu_settings_did_fail_to_load())
     {
-        xemu_settings_get_int(XEMU_SETTINGS_DISPLAY_WIN_WIDTH, &local_ini_win_width);
-        xemu_settings_get_int(XEMU_SETTINGS_DISPLAY_WIN_HEIGHT, &local_ini_win_height);
+        fprintf(stderr, "Window Validation: Settings failed to load. Using default screen resolution\n");
+    }
+
+    // Fetch Previous window size
+    xemu_settings_get_int(XEMU_SETTINGS_DISPLAY_WIN_WIDTH, &local_ini_win_width);
+    xemu_settings_get_int(XEMU_SETTINGS_DISPLAY_WIN_HEIGHT, &local_ini_win_height);
+
+    // Check for sane inputs before attempting to create the window
+    if ( (local_ini_win_width < MIN_WIN_WIDTH) || (local_ini_win_width < MIN_WIN_HEIGHT) )
+    {
+        local_ini_win_width = MIN_WIN_WIDTH;
+        local_ini_win_height = MIN_WIN_HEIGHT;
+        fprintf(stderr, "Window Validation: Window width or height out of range. Forcing safe settings\n");
     }
 
     // Create main window
@@ -1561,7 +1578,7 @@ void xemu_load_disc(const char *path)
     xbox_smc_update_tray_state();
 }
 
-SDL_Window* xemu_get_winid(void)
+SDL_Window *xemu_get_winid(void)
 {
-    return(m_window);
+    return m_window;
 }
