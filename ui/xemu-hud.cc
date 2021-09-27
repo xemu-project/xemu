@@ -2066,8 +2066,6 @@ static void process_keyboard_shortcuts(void)
 #define SHORTCUT_MENU_TEXT(c) "Ctrl+" #c
 #endif
 
-#define SHORTCUT_MENU_KEY(c) "" #c
-
 static void ShowMainMenu()
 {
     bool running = runstate_is_running();
@@ -2134,7 +2132,7 @@ static void ShowMainMenu()
 
         if (ImGui::BeginMenu("Debug"))
         {
-            ImGui::MenuItem("Monitor", SHORTCUT_MENU_KEY(~), &monitor_window.is_open);
+            ImGui::MenuItem("Monitor", ~, &monitor_window.is_open);
             ImGui::MenuItem("Audio", NULL, &apu_window.is_open);
             ImGui::MenuItem("Video", NULL, &video_window.is_open);
             ImGui::EndMenu();
