@@ -2290,6 +2290,11 @@ static TCGOp *tcg_op_alloc(TCGOpcode opc)
 
 TCGOp *tcg_emit_op(TCGOpcode opc)
 {
+    /* FIXME: Ugly opcode hook should be moved elsewhere */
+    if (tcg_op_defs[opc].flags & TCG_OPF_BB_END) {
+        gen_bb_epilogue();
+    }
+
     TCGOp *op = tcg_op_alloc(opc);
     QTAILQ_INSERT_TAIL(&tcg_ctx->ops, op, link);
     return op;
