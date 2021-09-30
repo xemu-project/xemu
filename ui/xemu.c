@@ -48,6 +48,7 @@
 #include "xemu-settings.h"
 #include "xemu-shaders.h"
 #include "xemu-version.h"
+#include "xemu-os-utils.h"
 
 #include "data/xemu_64x64.png.h"
 
@@ -885,6 +886,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
         // by the SDL surface.
     }
 
+    fprintf(stderr, "OS_Version: %s\n", xemu_get_os_info());
     fprintf(stderr, "GL_VENDOR: %s\n", glGetString(GL_VENDOR));
     fprintf(stderr, "GL_RENDERER: %s\n", glGetString(GL_RENDERER));
     fprintf(stderr, "GL_VERSION: %s\n", glGetString(GL_VERSION));
