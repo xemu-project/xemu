@@ -207,6 +207,10 @@ typedef uint64_t TCGRegSet;
 #define TCG_TARGET_HAS_v256             0
 #endif
 
+#ifndef TCG_TARGET_HAS_fpu
+#define TCG_TARGET_HAS_fpu              0
+#endif
+
 #ifndef TARGET_INSN_START_EXTRA_WORDS
 # define TARGET_INSN_START_WORDS 1
 #else
@@ -287,6 +291,9 @@ typedef enum TCGType {
     TCG_TYPE_I32,
     TCG_TYPE_I64,
 
+    TCG_TYPE_F32,
+    TCG_TYPE_F64,
+
     TCG_TYPE_V64,
     TCG_TYPE_V128,
     TCG_TYPE_V256,
@@ -355,6 +362,8 @@ typedef tcg_target_ulong TCGArg;
     * TCGv_ptr : a host pointer type
     * TCGv_vec : a host vector type; the exact size is not exposed
                  to the CPU front-end code.
+    * TCGv_f32 : 32 bit floating point type
+    * TCGv_f64 : 64 bit floating point type
     * TCGv : an integer type the same size as target_ulong
              (an alias for either TCGv_i32 or TCGv_i64)
    The compiler's type checking will complain if you mix them
@@ -378,6 +387,8 @@ typedef struct TCGv_i32_d *TCGv_i32;
 typedef struct TCGv_i64_d *TCGv_i64;
 typedef struct TCGv_ptr_d *TCGv_ptr;
 typedef struct TCGv_vec_d *TCGv_vec;
+typedef struct TCGv_f32_d *TCGv_f32;
+typedef struct TCGv_f64_d *TCGv_f64;
 typedef TCGv_ptr TCGv_env;
 #if TARGET_LONG_BITS == 32
 #define TCGv TCGv_i32
@@ -625,6 +636,8 @@ struct TCGContext {
 
     /* Exit to translator on overflow. */
     sigjmp_buf jmp_trans;
+
+    void *disas_ctx;
 };
 
 static inline bool temp_readonly(TCGTemp *ts)
@@ -697,6 +710,16 @@ static inline TCGTemp *tcgv_vec_temp(TCGv_vec v)
     return tcgv_i32_temp((TCGv_i32)v);
 }
 
+static inline TCGTemp *tcgv_f32_temp(TCGv_f32 v)
+{
+    return tcgv_i32_temp((TCGv_i32)v);
+}
+
+static inline TCGTemp *tcgv_f64_temp(TCGv_f64 v)
+{
+    return tcgv_i32_temp((TCGv_i32)v);
+}
+
 static inline TCGArg tcgv_i32_arg(TCGv_i32 v)
 {
     return temp_arg(tcgv_i32_temp(v));
@@ -715,6 +738,16 @@ static inline TCGArg tcgv_ptr_arg(TCGv_ptr v)
 static inline TCGArg tcgv_vec_arg(TCGv_vec v)
 {
     return temp_arg(tcgv_vec_temp(v));
+}
+
+static inline TCGArg tcgv_f32_arg(TCGv_f32 v)
+{
+    return temp_arg(tcgv_f32_temp(v));
+}
+
+static inline TCGArg tcgv_f64_arg(TCGv_f64 v)
+{
+    return temp_arg(tcgv_f64_temp(v));
 }
 
 static inline TCGv_i32 temp_tcgv_i32(TCGTemp *t)
@@ -736,6 +769,16 @@ static inline TCGv_ptr temp_tcgv_ptr(TCGTemp *t)
 static inline TCGv_vec temp_tcgv_vec(TCGTemp *t)
 {
     return (TCGv_vec)temp_tcgv_i32(t);
+}
+
+static inline TCGv_f32 temp_tcgv_f32(TCGTemp *t)
+{
+    return (TCGv_f32)temp_tcgv_i32(t);
+}
+
+static inline TCGv_f64 temp_tcgv_f64(TCGTemp *t)
+{
+    return (TCGv_f64)temp_tcgv_i32(t);
 }
 
 #if TCG_TARGET_REG_BITS == 32
@@ -876,6 +919,16 @@ static inline void tcg_temp_free_vec(TCGv_vec arg)
     tcg_temp_free_internal(tcgv_vec_temp(arg));
 }
 
+static inline void tcg_temp_free_f32(TCGv_f32 arg)
+{
+    tcg_temp_free_internal(tcgv_f32_temp(arg));
+}
+
+static inline void tcg_temp_free_f64(TCGv_f64 arg)
+{
+    tcg_temp_free_internal(tcgv_f64_temp(arg));
+}
+
 static inline TCGv_i32 tcg_global_mem_new_i32(TCGv_ptr reg, intptr_t offset,
                                               const char *name)
 {
@@ -931,6 +984,44 @@ static inline TCGv_ptr tcg_temp_local_new_ptr(void)
 {
     TCGTemp *t = tcg_temp_new_internal(TCG_TYPE_PTR, true);
     return temp_tcgv_ptr(t);
+}
+
+static inline TCGv_f32 tcg_global_mem_new_f32(TCGv_ptr reg, intptr_t offset,
+                                              const char *name)
+{
+    TCGTemp *t = tcg_global_mem_new_internal(TCG_TYPE_F32, reg, offset, name);
+    return temp_tcgv_f32(t);
+}
+
+static inline TCGv_f32 tcg_temp_new_f32(void)
+{
+    TCGTemp *t = tcg_temp_new_internal(TCG_TYPE_F32, false);
+    return temp_tcgv_f32(t);
+}
+
+static inline TCGv_f32 tcg_temp_local_new_f32(void)
+{
+    TCGTemp *t = tcg_temp_new_internal(TCG_TYPE_F32, true);
+    return temp_tcgv_f32(t);
+}
+
+static inline TCGv_f64 tcg_global_mem_new_f64(TCGv_ptr reg, intptr_t offset,
+                                              const char *name)
+{
+    TCGTemp *t = tcg_global_mem_new_internal(TCG_TYPE_F64, reg, offset, name);
+    return temp_tcgv_f64(t);
+}
+
+static inline TCGv_f64 tcg_temp_new_f64(void)
+{
+    TCGTemp *t = tcg_temp_new_internal(TCG_TYPE_F64, false);
+    return temp_tcgv_f64(t);
+}
+
+static inline TCGv_f64 tcg_temp_local_new_f64(void)
+{
+    TCGTemp *t = tcg_temp_new_internal(TCG_TYPE_F64, true);
+    return temp_tcgv_f64(t);
 }
 
 #if defined(CONFIG_DEBUG_TCG)
@@ -1451,5 +1542,7 @@ static inline const TCGOpcode *tcg_swap_vecop_list(const TCGOpcode *n)
 }
 
 bool tcg_can_emit_vecop_list(const TCGOpcode *, TCGType, unsigned);
+
+void gen_bb_epilogue(void); /* translate.c */
 
 #endif /* TCG_H */

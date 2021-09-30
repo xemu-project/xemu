@@ -223,6 +223,8 @@ void tcg_gen_sari_i32(TCGv_i32 ret, TCGv_i32 arg1, int32_t arg2)
 
 void tcg_gen_brcond_i32(TCGCond cond, TCGv_i32 arg1, TCGv_i32 arg2, TCGLabel *l)
 {
+    gen_bb_epilogue();
+
     if (cond == TCG_COND_ALWAYS) {
         tcg_gen_br(l);
     } else if (cond != TCG_COND_NEVER) {
@@ -233,6 +235,8 @@ void tcg_gen_brcond_i32(TCGCond cond, TCGv_i32 arg1, TCGv_i32 arg2, TCGLabel *l)
 
 void tcg_gen_brcondi_i32(TCGCond cond, TCGv_i32 arg1, int32_t arg2, TCGLabel *l)
 {
+    gen_bb_epilogue();
+
     if (cond == TCG_COND_ALWAYS) {
         tcg_gen_br(l);
     } else if (cond != TCG_COND_NEVER) {
@@ -1446,6 +1450,8 @@ void tcg_gen_sari_i64(TCGv_i64 ret, TCGv_i64 arg1, int64_t arg2)
 
 void tcg_gen_brcond_i64(TCGCond cond, TCGv_i64 arg1, TCGv_i64 arg2, TCGLabel *l)
 {
+    gen_bb_epilogue();
+
     if (cond == TCG_COND_ALWAYS) {
         tcg_gen_br(l);
     } else if (cond != TCG_COND_NEVER) {
@@ -1463,6 +1469,8 @@ void tcg_gen_brcond_i64(TCGCond cond, TCGv_i64 arg1, TCGv_i64 arg2, TCGLabel *l)
 
 void tcg_gen_brcondi_i64(TCGCond cond, TCGv_i64 arg1, int64_t arg2, TCGLabel *l)
 {
+    gen_bb_epilogue();
+
     if (TCG_TARGET_REG_BITS == 64) {
         tcg_gen_brcond_i64(cond, arg1, tcg_constant_i64(arg2), l);
     } else if (cond == TCG_COND_ALWAYS) {
@@ -2713,6 +2721,9 @@ void tcg_gen_exit_tb(const TranslationBlock *tb, unsigned idx)
      * This requires coordination with targets that do not use
      * the translator_loop.
      */
+
+    gen_bb_epilogue();
+
     uintptr_t val = (uintptr_t)tcg_splitwx_to_rx((void *)tb) + idx;
 
     if (tb == NULL) {
@@ -2734,6 +2745,8 @@ void tcg_gen_exit_tb(const TranslationBlock *tb, unsigned idx)
 
 void tcg_gen_goto_tb(unsigned idx)
 {
+    gen_bb_epilogue();
+
     /* We tested CF_NO_GOTO_TB in translator_use_goto_tb. */
     tcg_debug_assert(!(tcg_ctx->tb_cflags & CF_NO_GOTO_TB));
     /* We only support two chained exits.  */
@@ -2755,6 +2768,8 @@ void tcg_gen_lookup_and_goto_ptr(void)
         tcg_gen_exit_tb(NULL, 0);
         return;
     }
+
+    gen_bb_epilogue();
 
     plugin_gen_disable_mem_helpers();
     ptr = tcg_temp_new_ptr();
