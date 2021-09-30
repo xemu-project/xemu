@@ -1456,6 +1456,49 @@ bool tcg_op_supported(TCGOpcode op)
     case INDEX_op_cmpsel_vec:
         return have_vec && TCG_TARGET_HAS_cmpsel_vec;
 
+    case INDEX_op_flcr:
+    case INDEX_op_ld80f_f32:
+    case INDEX_op_ld80f_f64:
+    case INDEX_op_st80f_f32:
+    case INDEX_op_st80f_f64:
+    case INDEX_op_abs_f32:
+    case INDEX_op_abs_f64:
+    case INDEX_op_add_f32:
+    case INDEX_op_add_f64:
+    case INDEX_op_chs_f32:
+    case INDEX_op_chs_f64:
+    case INDEX_op_com_f32:
+    case INDEX_op_com_f64:
+    case INDEX_op_cos_f32:
+    case INDEX_op_cos_f64:
+    case INDEX_op_cvt32f_f64:
+    case INDEX_op_cvt32f_i32:
+    case INDEX_op_cvt32f_i64:
+    case INDEX_op_cvt32i_f32:
+    case INDEX_op_cvt32i_f64:
+    case INDEX_op_cvt64f_f32:
+    case INDEX_op_cvt64f_i32:
+    case INDEX_op_cvt64f_i64:
+    case INDEX_op_cvt64i_f32:
+    case INDEX_op_cvt64i_f64:
+    case INDEX_op_div_f32:
+    case INDEX_op_div_f64:
+    case INDEX_op_mov32f_i32:
+    case INDEX_op_mov32i_f32:
+    case INDEX_op_mov64f_i64:
+    case INDEX_op_mov64i_f64:
+    case INDEX_op_mov_f32:
+    case INDEX_op_mov_f64:
+    case INDEX_op_mul_f32:
+    case INDEX_op_mul_f64:
+    case INDEX_op_sin_f32:
+    case INDEX_op_sin_f64:
+    case INDEX_op_sqrt_f32:
+    case INDEX_op_sqrt_f64:
+    case INDEX_op_sub_f32:
+    case INDEX_op_sub_f64:
+        return TCG_TARGET_HAS_fpu;
+
     default:
         tcg_debug_assert(op > INDEX_op_last_generic && op < NB_OPS);
         return true;
@@ -1471,6 +1514,8 @@ void tcg_gen_callN(void *func, TCGTemp *ret, int nargs, TCGTemp **args)
     unsigned typemask;
     const TCGHelperInfo *info;
     TCGOp *op;
+
+    gen_bb_epilogue();
 
     info = g_hash_table_lookup(helper_table, (gpointer)func);
     typemask = info->typemask;
@@ -1721,6 +1766,12 @@ static char *tcg_get_arg_str_ptr(TCGContext *s, char *buf, int buf_size,
             snprintf(buf, buf_size, "$0x%" PRIx64, ts->val);
             break;
 #endif
+        case TCG_TYPE_F32:
+            snprintf(buf, buf_size, "$%f", *(float *)&ts->val);
+            break;
+        case TCG_TYPE_F64:
+            snprintf(buf, buf_size, "$%g", *(double *)&ts->val);
+            break;
         case TCG_TYPE_V64:
         case TCG_TYPE_V128:
         case TCG_TYPE_V256:
@@ -3058,9 +3109,11 @@ static void temp_allocate_frame(TCGContext *s, TCGTemp *ts)
 
     switch (ts->type) {
     case TCG_TYPE_I32:
+    case TCG_TYPE_F32:
         size = align = 4;
         break;
     case TCG_TYPE_I64:
+    case TCG_TYPE_F64:
     case TCG_TYPE_V64:
         size = align = 8;
         break;
@@ -3268,6 +3321,8 @@ static void temp_load(TCGContext *s, TCGTemp *ts, TCGRegSet desired_regs,
                             preferred_regs, ts->indirect_base);
         if (ts->type <= TCG_TYPE_I64) {
             tcg_out_movi(s, ts->type, reg, ts->val);
+        } else if (ts->type == TCG_TYPE_F32 || ts->type == TCG_TYPE_F64) {
+            assert(0); /* FIXME */
         } else {
             uint64_t val = ts->val;
             MemOp vece = MO_64;

@@ -167,6 +167,7 @@ typedef enum X86Seg {
 #define HF_IOBPT_SHIFT      24 /* an io breakpoint enabled */
 #define HF_MPX_EN_SHIFT     25 /* MPX Enabled (CR4+XCR0+BNDCFGx) */
 #define HF_MPX_IU_SHIFT     26 /* BND registers in-use */
+#define HF_FPU_PC_SHIFT     27 /* FPU Precision Control */
 
 #define HF_CPL_MASK          (3 << HF_CPL_SHIFT)
 #define HF_INHIBIT_IRQ_MASK  (1 << HF_INHIBIT_IRQ_SHIFT)
@@ -192,6 +193,7 @@ typedef enum X86Seg {
 #define HF_IOBPT_MASK        (1 << HF_IOBPT_SHIFT)
 #define HF_MPX_EN_MASK       (1 << HF_MPX_EN_SHIFT)
 #define HF_MPX_IU_MASK       (1 << HF_MPX_IU_SHIFT)
+#define HF_FPU_PC_MASK       (1 << HF_FPU_PC_SHIFT)
 
 /* hflags2 */
 
@@ -2145,6 +2147,13 @@ static inline void cpu_set_fpuc(CPUX86State *env, uint16_t fpuc)
      if (tcg_enabled()) {
         update_fp_status(env);
      }
+
+    /*
+     * XXX: Currently emulating double extended precision with double precision
+     * when using hard floats.
+     */
+    env->hflags &= ~HF_FPU_PC_MASK;
+    env->hflags |= ((env->fpuc >> 9) & 1) << HF_FPU_PC_SHIFT;
 }
 
 /* mem_helper.c */
