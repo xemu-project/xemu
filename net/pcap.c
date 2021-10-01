@@ -141,6 +141,13 @@ int net_init_pcap(const Netdev *netdev, const char *name, NetClientState *peer,
     const int promisc = 1;
     int status;
 
+#ifdef WIN32
+    if (pcap_load_library()) {
+        error_setg(errp, "failed to load winpcap library");
+        return -1;
+    }
+#endif
+
     pcap_t *p = pcap_open_live(pcap_opts->ifname, 65536, promisc, 1, err);
     if (p == NULL) {
         error_setg(errp, "failed to open interface '%s' for capture: %s",
