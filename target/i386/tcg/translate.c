@@ -32,9 +32,10 @@
 
 #include "exec/log.h"
 
+static int g_use_hard_fpu;
+
 #if defined(XBOX) && defined(__x86_64__)
 #include "ui/xemu-settings.h"
-static int g_use_hard_fpu;
 #define MAP_GEN_HELPER_SOFT_HARD(name) \
     (g_use_hard_fpu ? gen_helper_##name##__hard : gen_helper_##name##__soft)
 #define gen_helper_flds_FT0       MAP_GEN_HELPER_SOFT_HARD(flds_FT0)
@@ -156,8 +157,12 @@ static TCGv cpu_regs[CPU_NB_REGS];
 static TCGv cpu_seg_base[6];
 static TCGv_i64 cpu_bndl[4];
 static TCGv_i64 cpu_bndu[4];
+static TCGv_i32 fpstt;
+
 
 #include "exec/gen-icount.h"
+
+typedef struct TCGv_fp_d *TCGv_fp;
 
 typedef struct DisasContext {
     DisasContextBase base;
@@ -217,6 +222,12 @@ typedef struct DisasContext {
     TCGv_i64 tmp1_i64;
 
     sigjmp_buf jmpbuf;
+
+    /* Floating point */
+    bool flcr_set;
+    int fpstt_delta;
+    TCGv_fp fpregs[8];
+    TCGv_fp ft0;
 } DisasContext;
 
 /* The environment in which user-only runs is constrained. */
@@ -1363,60 +1374,448 @@ GEN_REPZ(outs)
 GEN_REPZ2(scas)
 GEN_REPZ2(cmps)
 
-static void gen_helper_fp_arith_ST0_FT0(int op)
+static TCGv_ptr gen_stn_ptr(int opreg)
 {
-    switch (op) {
-    case 0:
-        gen_helper_fadd_ST0_FT0(cpu_env);
-        break;
-    case 1:
-        gen_helper_fmul_ST0_FT0(cpu_env);
-        break;
-    case 2:
-        gen_helper_fcom_ST0_FT0(cpu_env);
-        break;
-    case 3:
-        gen_helper_fcom_ST0_FT0(cpu_env);
-        break;
-    case 4:
-        gen_helper_fsub_ST0_FT0(cpu_env);
-        break;
-    case 5:
-        gen_helper_fsubr_ST0_FT0(cpu_env);
-        break;
-    case 6:
-        gen_helper_fdiv_ST0_FT0(cpu_env);
-        break;
-    case 7:
-        gen_helper_fdivr_ST0_FT0(cpu_env);
-        break;
+    TCGv_i32 offset = tcg_temp_new_i32();
+    tcg_gen_mov_i32(offset, fpstt);
+
+    if (opreg != 0) {
+        tcg_gen_addi_i32(offset, offset, opreg);
+        tcg_gen_andi_i32(offset, offset, 7);
+    }
+
+    tcg_gen_muli_i32(offset, offset, sizeof(FPReg));
+    tcg_gen_addi_i32(offset, offset, offsetof(CPUX86State, fpregs[0].d));
+    TCGv_ptr ptr = tcg_temp_new_ptr();
+    tcg_gen_ext_i32_ptr(ptr, offset);
+    tcg_gen_add_ptr(ptr, ptr, cpu_env);
+
+    tcg_temp_free_i32(offset);
+    return ptr;
+}
+
+static TCGv_ptr gen_ft0_ptr(void)
+{
+    TCGv_ptr ft0 = tcg_temp_new_ptr();
+    tcg_gen_addi_ptr(ft0, cpu_env, offsetof(CPUX86State, ft0));
+    return ft0;
+}
+
+static void gen_set_fptag(int offs, int value)
+{
+    TCGv_ptr p = tcg_temp_new_ptr();
+    tcg_gen_ext_i32_ptr(p, fpstt);
+    tcg_gen_add_ptr(p, cpu_env, p);
+    TCGv_i32 tmp = tcg_const_i32(value);
+    tcg_gen_st8_i32(tmp, p, offsetof(CPUX86State, fptags[0]) + offs);
+    tcg_temp_free_i32(tmp);
+    tcg_temp_free_ptr(p);
+}
+
+static bool fpu_using_double_precision(DisasContext *s)
+{
+    /*
+     * XXX: Currently emulating double extended precision with double precision
+     * when using hard floats.
+     */
+    return s->flags & HF_FPU_PC_MASK;
+}
+
+static void gen_movi_f32(DisasContext *s, TCGv_f32 ret, float arg)
+{
+    tcg_gen_mov32i_f32(ret, tcg_constant_i32(*(uint32_t *)&arg));
+}
+
+static void gen_movi_f64(DisasContext *s, TCGv_f64 ret, double arg)
+{
+    tcg_gen_mov64i_f64(ret, tcg_constant_i64(*(uint64_t *)&arg));
+}
+
+static void gen_flcr(DisasContext *s)
+{
+    /* TODO: Oversynchronized */
+    if (s->flcr_set) {
+        return;
+    }
+
+    TCGv_i32 v = tcg_temp_new_i32();
+    tcg_gen_ld16u_i32(v, cpu_env, offsetof(CPUX86State, fpuc));
+    tcg_gen_andi_i32(v, v, 0xc00);
+    tcg_gen_shli_i32(v, v, 3);
+    tcg_gen_ori_i32(v, v, 0x1f80);
+    tcg_gen_flcr(v);
+    tcg_temp_free_i32(v);
+    s->flcr_set = true;
+}
+
+static void gen_mov32f_i64(TCGv_i64 ret, TCGv_f32 arg)
+{
+    TCGv_f64 t = tcg_temp_new_f64();
+    tcg_gen_cvt32f_f64(t, arg);
+    tcg_gen_mov64f_i64(ret, t);
+    tcg_temp_free_f64(t);
+}
+
+static void gen_mov32f_i32(TCGv_i32 ret, TCGv_f32 arg)
+{
+    tcg_gen_mov32f_i32(ret, arg);
+}
+
+static void gen_mov32i_f64(TCGv_f64 ret, TCGv_i32 arg)
+{
+    TCGv_f32 t = tcg_temp_new_f32();
+    tcg_gen_mov32i_f32(t, arg);
+    tcg_gen_cvt32f_f64(ret, t);
+    tcg_temp_free_f32(t);
+}
+
+static void gen_mov32i_f32(TCGv_f32 ret, TCGv_i32 arg)
+{
+    tcg_gen_mov32i_f32(ret, arg);
+}
+
+static void gen_mov64f_i32(TCGv_i32 ret, TCGv_f64 arg)
+{
+    TCGv_f32 t = tcg_temp_new_f32();
+    tcg_gen_cvt64f_f32(t, arg);
+    tcg_gen_mov32f_i32(ret, t);
+    tcg_temp_free_f32(t);
+}
+
+static void gen_mov64f_i64(TCGv_i64 ret, TCGv_f64 arg)
+{
+    tcg_gen_mov64f_i64(ret, arg);
+}
+
+static void gen_mov64i_f32(TCGv_f32 ret, TCGv_i64 arg)
+{
+    TCGv_f64 t = tcg_temp_new_f64();
+    tcg_gen_mov64i_f64(t, arg);
+    tcg_gen_cvt64f_f32(ret, t);
+    tcg_temp_free_f64(t);
+}
+
+static void gen_mov64i_f64(TCGv_f64 ret, TCGv_i64 arg)
+{
+    tcg_gen_mov64i_f64(ret, arg);
+}
+
+#define PREC 32
+#include "ops_fpu.h"
+#undef PREC
+
+#define PREC 64
+#include "ops_fpu.h"
+#undef PREC
+
+#define fp_pc_wrapper(f) \
+    (fpu_using_double_precision(s) ? glue(f, _f64) : glue(f, _f32))
+
+static void gen_flush_fp(DisasContext *s)
+{
+    fp_pc_wrapper(flush_fp_regs)(s);
+    s->fpstt_delta = 0;
+    s->flcr_set = false;
+}
+
+/*
+ * Ugly macros to handle soft FPU helper generation
+ */
+#define GEN_HELPER_FALLBACK_v_v(func) do { \
+        if (!g_use_hard_fpu) { \
+            gen_helper_ ## func(cpu_env); \
+            return; \
+        }} while(0)
+
+#define GEN_HELPER_FALLBACK_v_i(func, arg) do { \
+        if (!g_use_hard_fpu) { \
+            gen_helper_ ## func(cpu_env, tcg_const_i32(arg)); \
+            return; \
+        }} while(0)
+
+#define GEN_HELPER_FALLBACK_v_T(func, arg) do { \
+        if (!g_use_hard_fpu) { \
+            gen_helper_ ## func(cpu_env, arg); \
+            return; \
+        }} while(0)
+
+#define GEN_HELPER_FALLBACK_T_v(func, arg) do { \
+        if (!g_use_hard_fpu) { \
+            gen_helper_ ## func(arg, cpu_env); \
+            return; \
+        }} while(0)
+
+static void gen_fpush(DisasContext *s)
+{
+    GEN_HELPER_FALLBACK_v_v(fpush);
+
+    tcg_gen_subi_i32(fpstt, fpstt, 1);
+    tcg_gen_andi_i32(fpstt, fpstt, 7);
+    gen_set_fptag(0, 0); /* validate stack entry */
+
+    s->fpstt_delta -= 1;
+}
+
+static void gen_fpop(DisasContext *s)
+{
+    GEN_HELPER_FALLBACK_v_v(fpop);
+
+    gen_set_fptag(0, 1); /* invalidate stack entry */
+    tcg_gen_addi_i32(fpstt, fpstt, 1);
+    tcg_gen_andi_i32(fpstt, fpstt, 7);
+
+    fp_pc_wrapper(gen_fpop)(s);
+    s->fpstt_delta += 1;
+}
+
+static void gen_fmov_FT0_STN(DisasContext *s, int st_index)
+{
+    GEN_HELPER_FALLBACK_v_i(fmov_FT0_STN, st_index);
+    fp_pc_wrapper(gen_fmov_FT0_STN)(s, st_index);
+}
+
+static void gen_fmov_ST0_STN(DisasContext *s, int st_index)
+{
+    GEN_HELPER_FALLBACK_v_i(fmov_ST0_STN, st_index);
+    fp_pc_wrapper(gen_fmov_ST0_STN)(s, st_index);
+}
+
+static void gen_fmov_STN_ST0(DisasContext *s, int st_index)
+{
+    GEN_HELPER_FALLBACK_v_i(fmov_STN_ST0, st_index);
+    fp_pc_wrapper(gen_fmov_STN_ST0)(s, st_index);
+}
+
+static void gen_fxchg_ST0_STN(DisasContext *s, int st_index)
+{
+    GEN_HELPER_FALLBACK_v_i(fxchg_ST0_STN, st_index);
+
+    /* Ensure ST0, STN are loaded */
+    if (fpu_using_double_precision(s)) {
+        get_stn_f64(s, 0);
+        get_stn_f64(s, st_index);
+    } else {
+        get_stn_f32(s, 0);
+        get_stn_f32(s, st_index);
+    }
+    TCGv_fp i = s->fpregs[(s->fpstt_delta + 0) & 7];
+    s->fpregs[(s->fpstt_delta + 0) & 7] =
+        s->fpregs[(s->fpstt_delta + st_index) & 7];
+    s->fpregs[(s->fpstt_delta + st_index) & 7] = i;
+}
+
+static void gen_enter_mmx(DisasContext *s)
+{
+    GEN_HELPER_FALLBACK_v_v(enter_mmx);
+
+    gen_flush_fp((DisasContext *)tcg_ctx->disas_ctx);
+
+    tcg_gen_movi_i32(fpstt, 0);
+
+    TCGv_i32 v = tcg_const_i32(0);
+    for (int i = 0; i < 8; i++) {
+        tcg_gen_st8_i32(v, cpu_env, offsetof(CPUX86State, fptags[0]) + i);
+    }
+    tcg_temp_free_i32(v);
+}
+
+static void gen_flds_FT0(DisasContext *s, TCGv_i32 arg)
+{
+    GEN_HELPER_FALLBACK_v_T(flds_FT0, arg);
+    fp_pc_wrapper(gen_flds_FT0)(s, arg);
+}
+
+static void gen_flds_ST0(DisasContext *s, TCGv_i32 arg)
+{
+    GEN_HELPER_FALLBACK_v_T(flds_ST0, arg);
+    gen_fpush(s);
+    fp_pc_wrapper(gen_flds_ST0)(s, arg);
+}
+
+static void gen_fldl_FT0(DisasContext *s, TCGv_i64 arg)
+{
+    GEN_HELPER_FALLBACK_v_T(fldl_FT0, arg);
+    fp_pc_wrapper(gen_fldl_FT0)(s, arg);
+}
+
+static void gen_fldl_ST0(DisasContext *s, TCGv_i64 arg)
+{
+    GEN_HELPER_FALLBACK_v_T(fldl_ST0, arg);
+    gen_fpush(s);
+    fp_pc_wrapper(gen_fldl_ST0)(s, arg);
+}
+
+static void gen_fildl_FT0(DisasContext *s, TCGv_i32 arg)
+{
+    GEN_HELPER_FALLBACK_v_T(fildl_FT0, arg);
+    fp_pc_wrapper(gen_fildl_FT0)(s, arg);
+}
+
+static void gen_fildl_ST0(DisasContext *s, TCGv_i32 arg)
+{
+    GEN_HELPER_FALLBACK_v_T(fildl_ST0, arg);
+    gen_fpush(s);
+    fp_pc_wrapper(gen_fildl_ST0)(s, arg);
+}
+
+static void gen_fildll_ST0(DisasContext *s, TCGv_i64 arg)
+{
+    GEN_HELPER_FALLBACK_v_T(fildll_ST0, arg);
+    gen_fpush(s);
+    fp_pc_wrapper(gen_fildll_ST0)(s, arg);
+}
+
+static void gen_fsts_ST0(DisasContext *s, TCGv_i32 arg)
+{
+    GEN_HELPER_FALLBACK_T_v(fsts_ST0, arg);
+    fp_pc_wrapper(gen_fsts_ST0)(s, arg);
+}
+
+static void gen_fstl_ST0(DisasContext *s, TCGv_i64 arg)
+{
+    GEN_HELPER_FALLBACK_T_v(fstl_ST0, arg);
+    fp_pc_wrapper(gen_fstl_ST0)(s, arg);
+}
+
+static void gen_fistl_ST0(DisasContext *s, TCGv_i32 arg)
+{
+    GEN_HELPER_FALLBACK_T_v(fistl_ST0, arg);
+    fp_pc_wrapper(gen_fistl_ST0)(s, arg);
+}
+
+static void gen_fistll_ST0(DisasContext *s, TCGv_i64 arg)
+{
+    GEN_HELPER_FALLBACK_T_v(fistll_ST0, arg);
+    fp_pc_wrapper(gen_fistll_ST0)(s, arg);
+}
+
+static void gen_fchs_ST0(DisasContext *s)
+{
+    GEN_HELPER_FALLBACK_v_v(fchs_ST0);
+    fp_pc_wrapper(gen_fchs_ST0)(s);
+}
+
+static void gen_fabs_ST0(DisasContext *s)
+{
+    GEN_HELPER_FALLBACK_v_v(fabs_ST0);
+    fp_pc_wrapper(gen_fabs_ST0)(s);
+}
+
+static void gen_fsqrt(DisasContext *s)
+{
+    GEN_HELPER_FALLBACK_v_v(fsqrt);
+    fp_pc_wrapper(gen_fsqrt)(s);
+}
+
+static void gen_clear_fpus_c2(DisasContext *s)
+{
+    TCGv_i32 v = tcg_temp_new_i32();
+    tcg_gen_ld16u_i32(v, cpu_env, offsetof(CPUX86State, fpus));
+    tcg_gen_andi_i32(v, v, ~0x400); /* C2 <-- 0 */
+    tcg_gen_st16_i32(v, cpu_env, offsetof(CPUX86State, fpus));
+}
+
+static void gen_fsin(DisasContext *s)
+{
+    GEN_HELPER_FALLBACK_v_v(fsin);
+    fp_pc_wrapper(gen_fsin)(s);
+    gen_clear_fpus_c2(s); /* FIXME: Does not check range correctly */
+}
+
+static void gen_fcos(DisasContext *s)
+{
+    GEN_HELPER_FALLBACK_v_v(fcos);
+    fp_pc_wrapper(gen_fcos)(s);
+    gen_clear_fpus_c2(s); /* FIXME: Does not check range correctly */
+}
+
+static void gen_helper_fp_arith_ST0_FT0(DisasContext *s, int op)
+{
+    if (g_use_hard_fpu) {
+        fp_pc_wrapper(gen_helper_fp_arith_ST0_FT0)(s, op);
+    } else {
+        switch (op) {
+        case 0:
+            gen_helper_fadd_ST0_FT0(cpu_env);
+            break;
+        case 1:
+            gen_helper_fmul_ST0_FT0(cpu_env);
+            break;
+        case 2:
+            gen_helper_fcom_ST0_FT0(cpu_env);
+            break;
+        case 3:
+            gen_helper_fcom_ST0_FT0(cpu_env);
+            break;
+        case 4:
+            gen_helper_fsub_ST0_FT0(cpu_env);
+            break;
+        case 5:
+            gen_helper_fsubr_ST0_FT0(cpu_env);
+            break;
+        case 6:
+            gen_helper_fdiv_ST0_FT0(cpu_env);
+            break;
+        case 7:
+            gen_helper_fdivr_ST0_FT0(cpu_env);
+            break;
+        }
     }
 }
 
-/* NOTE the exception in "r" op ordering */
-static void gen_helper_fp_arith_STN_ST0(int op, int opreg)
+static void gen_fcom_ST0_FT0(DisasContext *s)
 {
-    TCGv_i32 tmp = tcg_const_i32(opreg);
-    switch (op) {
-    case 0:
-        gen_helper_fadd_STN_ST0(cpu_env, tmp);
-        break;
-    case 1:
-        gen_helper_fmul_STN_ST0(cpu_env, tmp);
-        break;
-    case 4:
-        gen_helper_fsubr_STN_ST0(cpu_env, tmp);
-        break;
-    case 5:
-        gen_helper_fsub_STN_ST0(cpu_env, tmp);
-        break;
-    case 6:
-        gen_helper_fdivr_STN_ST0(cpu_env, tmp);
-        break;
-    case 7:
-        gen_helper_fdiv_STN_ST0(cpu_env, tmp);
-        break;
+    gen_helper_fp_arith_ST0_FT0(s, 2);
+}
+
+/* NOTE the exception in "r" op ordering */
+static void gen_helper_fp_arith_STN_ST0(DisasContext *s, int op, int opreg)
+{
+    if (g_use_hard_fpu) {
+        fp_pc_wrapper(gen_helper_fp_arith_STN_ST0)(s, op, opreg);
+    } else {
+        TCGv_i32 tmp = tcg_const_i32(opreg);
+
+        switch (op) {
+        case 0:
+            gen_helper_fadd_STN_ST0(cpu_env, tmp);
+            break;
+        case 1:
+            gen_helper_fmul_STN_ST0(cpu_env, tmp);
+            break;
+        case 4:
+            gen_helper_fsubr_STN_ST0(cpu_env, tmp);
+            break;
+        case 5:
+            gen_helper_fsub_STN_ST0(cpu_env, tmp);
+            break;
+        case 6:
+            gen_helper_fdivr_STN_ST0(cpu_env, tmp);
+            break;
+        case 7:
+            gen_helper_fdiv_STN_ST0(cpu_env, tmp);
+            break;
+        }
     }
+}
+
+static void gen_fld1_ST0(DisasContext *s)
+{
+    GEN_HELPER_FALLBACK_v_v(fld1_ST0);
+    fp_pc_wrapper(gen_fld1_ST0)(s);
+}
+
+static void gen_fldz_ST0(DisasContext *s)
+{
+    GEN_HELPER_FALLBACK_v_v(fldz_ST0);
+    fp_pc_wrapper(gen_fldz_ST0)(s);
+    /* FIXME: Set tag word */
+}
+
+static void gen_fldz_FT0(DisasContext *s)
+{
+    GEN_HELPER_FALLBACK_v_v(fldz_FT0);
+    fp_pc_wrapper(gen_fldz_FT0)(s);
 }
 
 static void gen_exception(DisasContext *s, int trapno, target_ulong cur_eip)
@@ -3260,7 +3659,7 @@ static void gen_sse(CPUX86State *env, DisasContext *s, int b,
     /* prepare MMX state (XXX: optimize by storing fptt and fptags in
        the static cpu state) */
     if (!is_xmm) {
-        gen_helper_enter_mmx(cpu_env);
+        gen_enter_mmx(s);
     }
 
     modrm = x86_ldub_code(env, s);
@@ -3661,7 +4060,7 @@ static void gen_sse(CPUX86State *env, DisasContext *s, int b,
             break;
         case 0x02a: /* cvtpi2ps */
         case 0x12a: /* cvtpi2pd */
-            gen_helper_enter_mmx(cpu_env);
+            gen_enter_mmx(s);
             if (mod != 3) {
                 gen_lea_modrm(env, s, modrm);
                 op2_offset = offsetof(CPUX86State,mmx_t0);
@@ -3706,7 +4105,7 @@ static void gen_sse(CPUX86State *env, DisasContext *s, int b,
         case 0x12c: /* cvttpd2pi */
         case 0x02d: /* cvtps2pi */
         case 0x12d: /* cvtpd2pi */
-            gen_helper_enter_mmx(cpu_env);
+            gen_enter_mmx(s);
             if (mod != 3) {
                 gen_lea_modrm(env, s, modrm);
                 op2_offset = offsetof(CPUX86State,xmm_t0);
@@ -3818,14 +4217,14 @@ static void gen_sse(CPUX86State *env, DisasContext *s, int b,
             }
             break;
         case 0x2d6: /* movq2dq */
-            gen_helper_enter_mmx(cpu_env);
+            gen_enter_mmx(s);
             rm = (modrm & 7);
             gen_op_movq(s, offsetof(CPUX86State, xmm_regs[reg].ZMM_Q(0)),
                         offsetof(CPUX86State,fpregs[rm].mmx));
             gen_op_movq_env_0(s, offsetof(CPUX86State, xmm_regs[reg].ZMM_Q(1)));
             break;
         case 0x3d6: /* movdq2q */
-            gen_helper_enter_mmx(cpu_env);
+            gen_enter_mmx(s);
             rm = (modrm & 7) | REX_B(s);
             gen_op_movq(s, offsetof(CPUX86State, fpregs[reg & 7].mmx),
                         offsetof(CPUX86State,xmm_regs[rm].ZMM_Q(0)));
@@ -6034,30 +6433,30 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                         case 0:
                             tcg_gen_qemu_ld_i32(s->tmp2_i32, s->A0,
                                                 s->mem_index, MO_LEUL);
-                            gen_helper_flds_FT0(cpu_env, s->tmp2_i32);
+                            gen_flds_FT0(s, s->tmp2_i32);
                             break;
                         case 1:
                             tcg_gen_qemu_ld_i32(s->tmp2_i32, s->A0,
                                                 s->mem_index, MO_LEUL);
-                            gen_helper_fildl_FT0(cpu_env, s->tmp2_i32);
+                            gen_fildl_FT0(s, s->tmp2_i32);
                             break;
                         case 2:
                             tcg_gen_qemu_ld_i64(s->tmp1_i64, s->A0,
                                                 s->mem_index, MO_LEQ);
-                            gen_helper_fldl_FT0(cpu_env, s->tmp1_i64);
+                            gen_fldl_FT0(s, s->tmp1_i64);
                             break;
                         case 3:
                         default:
                             tcg_gen_qemu_ld_i32(s->tmp2_i32, s->A0,
                                                 s->mem_index, MO_LESW);
-                            gen_helper_fildl_FT0(cpu_env, s->tmp2_i32);
+                            gen_fildl_FT0(s, s->tmp2_i32);
                             break;
                         }
 
-                        gen_helper_fp_arith_ST0_FT0(op1);
+                        gen_helper_fp_arith_ST0_FT0(s, op1);
                         if (op1 == 3) {
                             /* fcomp needs pop */
-                            gen_helper_fpop(cpu_env);
+                            gen_fpop(s);
                         }
                     }
                     break;
@@ -6073,23 +6472,23 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                         case 0:
                             tcg_gen_qemu_ld_i32(s->tmp2_i32, s->A0,
                                                 s->mem_index, MO_LEUL);
-                            gen_helper_flds_ST0(cpu_env, s->tmp2_i32);
+                            gen_flds_ST0(s, s->tmp2_i32);
                             break;
                         case 1:
                             tcg_gen_qemu_ld_i32(s->tmp2_i32, s->A0,
                                                 s->mem_index, MO_LEUL);
-                            gen_helper_fildl_ST0(cpu_env, s->tmp2_i32);
+                            gen_fildl_ST0(s, s->tmp2_i32);
                             break;
                         case 2:
                             tcg_gen_qemu_ld_i64(s->tmp1_i64, s->A0,
                                                 s->mem_index, MO_LEQ);
-                            gen_helper_fldl_ST0(cpu_env, s->tmp1_i64);
+                            gen_fldl_ST0(s, s->tmp1_i64);
                             break;
                         case 3:
                         default:
                             tcg_gen_qemu_ld_i32(s->tmp2_i32, s->A0,
                                                 s->mem_index, MO_LESW);
-                            gen_helper_fildl_ST0(cpu_env, s->tmp2_i32);
+                            gen_fildl_ST0(s, s->tmp2_i32);
                             break;
                         }
                         break;
@@ -6113,22 +6512,22 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                                                 s->mem_index, MO_LEUW);
                             break;
                         }
-                        gen_helper_fpop(cpu_env);
+                        gen_fpop(s);
                         break;
                     default:
                         switch (op >> 4) {
                         case 0:
-                            gen_helper_fsts_ST0(s->tmp2_i32, cpu_env);
+                            gen_fsts_ST0(s, s->tmp2_i32);
                             tcg_gen_qemu_st_i32(s->tmp2_i32, s->A0,
                                                 s->mem_index, MO_LEUL);
                             break;
                         case 1:
-                            gen_helper_fistl_ST0(s->tmp2_i32, cpu_env);
+                            gen_fistl_ST0(s, s->tmp2_i32);
                             tcg_gen_qemu_st_i32(s->tmp2_i32, s->A0,
                                                 s->mem_index, MO_LEUL);
                             break;
                         case 2:
-                            gen_helper_fstl_ST0(s->tmp1_i64, cpu_env);
+                            gen_fstl_ST0(s, s->tmp1_i64);
                             tcg_gen_qemu_st_i64(s->tmp1_i64, s->A0,
                                                 s->mem_index, MO_LEQ);
                             break;
@@ -6140,7 +6539,7 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                             break;
                         }
                         if ((op & 7) == 3) {
-                            gen_helper_fpop(cpu_env);
+                            gen_fpop(s);
                         }
                         break;
                     }
@@ -6149,12 +6548,16 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                     gen_helper_fldenv(cpu_env, s->A0,
                                       tcg_const_i32(dflag - 1));
                     update_fip = update_fdp = false;
+                    gen_jmp_im(s, s->pc - s->cs_base);
+                    gen_eob(s);
                     break;
                 case 0x0d: /* fldcw mem */
                     tcg_gen_qemu_ld_i32(s->tmp2_i32, s->A0,
                                         s->mem_index, MO_LEUW);
                     gen_helper_fldcw(cpu_env, s->tmp2_i32);
                     update_fip = update_fdp = false;
+                    gen_jmp_im(s, s->pc - s->cs_base);
+                    gen_eob(s);
                     break;
                 case 0x0e: /* fnstenv mem */
                     gen_helper_fstenv(cpu_env, s->A0,
@@ -6172,7 +6575,7 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                     break;
                 case 0x1f: /* fstpt mem */
                     gen_helper_fstt_ST0(cpu_env, s->A0);
-                    gen_helper_fpop(cpu_env);
+                    gen_fpop(s);
                     break;
                 case 0x2c: /* frstor mem */
                     gen_helper_frstor(cpu_env, s->A0,
@@ -6195,18 +6598,18 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                     break;
                 case 0x3e: /* fbstp */
                     gen_helper_fbst_ST0(cpu_env, s->A0);
-                    gen_helper_fpop(cpu_env);
+                    gen_fpop(s);
                     break;
                 case 0x3d: /* fildll */
                     tcg_gen_qemu_ld_i64(s->tmp1_i64, s->A0,
                                         s->mem_index, MO_LEQ);
-                    gen_helper_fildll_ST0(cpu_env, s->tmp1_i64);
+                    gen_fildll_ST0(s, s->tmp1_i64);
                     break;
                 case 0x3f: /* fistpll */
-                    gen_helper_fistll_ST0(s->tmp1_i64, cpu_env);
+                    gen_fistll_ST0(s, s->tmp1_i64);
                     tcg_gen_qemu_st_i64(s->tmp1_i64, s->A0,
                                         s->mem_index, MO_LEQ);
-                    gen_helper_fpop(cpu_env);
+                    gen_fpop(s);
                     break;
                 default:
                     goto unknown_op;
@@ -6230,14 +6633,13 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
 
                 switch (op) {
                 case 0x08: /* fld sti */
-                    gen_helper_fpush(cpu_env);
-                    gen_helper_fmov_ST0_STN(cpu_env,
-                                            tcg_const_i32((opreg + 1) & 7));
+                    gen_fpush(s);
+                    gen_fmov_ST0_STN(s, (opreg + 1) & 7);
                     break;
                 case 0x09: /* fxchg sti */
                 case 0x29: /* fxchg4 sti, undocumented op */
                 case 0x39: /* fxchg7 sti, undocumented op */
-                    gen_helper_fxchg_ST0_STN(cpu_env, tcg_const_i32(opreg));
+                    gen_fxchg_ST0_STN(s, opreg);
                     break;
                 case 0x0a: /* grp d9/2 */
                     switch (rm) {
@@ -6253,14 +6655,14 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                 case 0x0c: /* grp d9/4 */
                     switch (rm) {
                     case 0: /* fchs */
-                        gen_helper_fchs_ST0(cpu_env);
+                        gen_fchs_ST0(s);
                         break;
                     case 1: /* fabs */
-                        gen_helper_fabs_ST0(cpu_env);
+                        gen_fabs_ST0(s);
                         break;
                     case 4: /* ftst */
-                        gen_helper_fldz_FT0(cpu_env);
-                        gen_helper_fcom_ST0_FT0(cpu_env);
+                        gen_fldz_FT0(s);
+                        gen_fcom_ST0_FT0(s);
                         break;
                     case 5: /* fxam */
                         gen_helper_fxam_ST0(cpu_env);
@@ -6273,32 +6675,32 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                     {
                         switch (rm) {
                         case 0:
-                            gen_helper_fpush(cpu_env);
-                            gen_helper_fld1_ST0(cpu_env);
+                            gen_fpush(s);
+                            gen_fld1_ST0(s);
                             break;
                         case 1:
-                            gen_helper_fpush(cpu_env);
+                            gen_fpush(s);
                             gen_helper_fldl2t_ST0(cpu_env);
                             break;
                         case 2:
-                            gen_helper_fpush(cpu_env);
+                            gen_fpush(s);
                             gen_helper_fldl2e_ST0(cpu_env);
                             break;
                         case 3:
-                            gen_helper_fpush(cpu_env);
+                            gen_fpush(s);
                             gen_helper_fldpi_ST0(cpu_env);
                             break;
                         case 4:
-                            gen_helper_fpush(cpu_env);
+                            gen_fpush(s);
                             gen_helper_fldlg2_ST0(cpu_env);
                             break;
                         case 5:
-                            gen_helper_fpush(cpu_env);
+                            gen_fpush(s);
                             gen_helper_fldln2_ST0(cpu_env);
                             break;
                         case 6:
-                            gen_helper_fpush(cpu_env);
-                            gen_helper_fldz_ST0(cpu_env);
+                            gen_fpush(s);
+                            gen_fldz_ST0(s);
                             break;
                         default:
                             goto unknown_op;
@@ -6343,7 +6745,7 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                         gen_helper_fyl2xp1(cpu_env);
                         break;
                     case 2: /* fsqrt */
-                        gen_helper_fsqrt(cpu_env);
+                        gen_fsqrt(s);
                         break;
                     case 3: /* fsincos */
                         gen_helper_fsincos(cpu_env);
@@ -6355,11 +6757,11 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                         gen_helper_frndint(cpu_env);
                         break;
                     case 6: /* fsin */
-                        gen_helper_fsin(cpu_env);
+                        gen_fsin(s);
                         break;
                     default:
                     case 7: /* fcos */
-                        gen_helper_fcos(cpu_env);
+                        gen_fcos(s);
                         break;
                     }
                     break;
@@ -6371,36 +6773,35 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
 
                         op1 = op & 7;
                         if (op >= 0x20) {
-                            gen_helper_fp_arith_STN_ST0(op1, opreg);
+                            gen_helper_fp_arith_STN_ST0(s, op1, opreg);
                             if (op >= 0x30) {
-                                gen_helper_fpop(cpu_env);
+                                gen_fpop(s);
                             }
                         } else {
-                            gen_helper_fmov_FT0_STN(cpu_env,
-                                                    tcg_const_i32(opreg));
-                            gen_helper_fp_arith_ST0_FT0(op1);
+                            gen_fmov_FT0_STN(s, opreg);
+                            gen_helper_fp_arith_ST0_FT0(s, op1);
                         }
                     }
                     break;
                 case 0x02: /* fcom */
                 case 0x22: /* fcom2, undocumented op */
-                    gen_helper_fmov_FT0_STN(cpu_env, tcg_const_i32(opreg));
-                    gen_helper_fcom_ST0_FT0(cpu_env);
+                    gen_fmov_FT0_STN(s, opreg);
+                    gen_fcom_ST0_FT0(s);
                     break;
                 case 0x03: /* fcomp */
                 case 0x23: /* fcomp3, undocumented op */
                 case 0x32: /* fcomp5, undocumented op */
-                    gen_helper_fmov_FT0_STN(cpu_env, tcg_const_i32(opreg));
-                    gen_helper_fcom_ST0_FT0(cpu_env);
-                    gen_helper_fpop(cpu_env);
+                    gen_fmov_FT0_STN(s, opreg);
+                    gen_fcom_ST0_FT0(s);
+                    gen_fpop(s);
                     break;
                 case 0x15: /* da/5 */
                     switch (rm) {
                     case 1: /* fucompp */
-                        gen_helper_fmov_FT0_STN(cpu_env, tcg_const_i32(1));
+                        gen_fmov_FT0_STN(s, 1);
                         gen_helper_fucom_ST0_FT0(cpu_env);
-                        gen_helper_fpop(cpu_env);
-                        gen_helper_fpop(cpu_env);
+                        gen_fpop(s);
+                        gen_fpop(s);
                         break;
                     default:
                         goto unknown_op;
@@ -6419,6 +6820,8 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                     case 3: /* fninit */
                         gen_helper_fninit(cpu_env);
                         update_fip = false;
+                        gen_jmp_im(s, s->pc - s->cs_base);
+                        gen_eob(s);
                         break;
                     case 4: /* fsetpm (287 only, just do nop here) */
                         break;
@@ -6431,7 +6834,7 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                         goto illegal_op;
                     }
                     gen_update_cc_op(s);
-                    gen_helper_fmov_FT0_STN(cpu_env, tcg_const_i32(opreg));
+                    gen_fmov_FT0_STN(s, opreg);
                     gen_helper_fucomi_ST0_FT0(cpu_env);
                     set_cc_op(s, CC_OP_EFLAGS);
                     break;
@@ -6440,7 +6843,7 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                         goto illegal_op;
                     }
                     gen_update_cc_op(s);
-                    gen_helper_fmov_FT0_STN(cpu_env, tcg_const_i32(opreg));
+                    gen_fmov_FT0_STN(s, opreg);
                     gen_helper_fcomi_ST0_FT0(cpu_env);
                     set_cc_op(s, CC_OP_EFLAGS);
                     break;
@@ -6448,31 +6851,31 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                     gen_helper_ffree_STN(cpu_env, tcg_const_i32(opreg));
                     break;
                 case 0x2a: /* fst sti */
-                    gen_helper_fmov_STN_ST0(cpu_env, tcg_const_i32(opreg));
+                    gen_fmov_STN_ST0(s, opreg);
                     break;
                 case 0x2b: /* fstp sti */
                 case 0x0b: /* fstp1 sti, undocumented op */
                 case 0x3a: /* fstp8 sti, undocumented op */
                 case 0x3b: /* fstp9 sti, undocumented op */
-                    gen_helper_fmov_STN_ST0(cpu_env, tcg_const_i32(opreg));
-                    gen_helper_fpop(cpu_env);
+                    gen_fmov_STN_ST0(s, opreg);
+                    gen_fpop(s);
                     break;
                 case 0x2c: /* fucom st(i) */
-                    gen_helper_fmov_FT0_STN(cpu_env, tcg_const_i32(opreg));
+                    gen_fmov_FT0_STN(s, opreg);
                     gen_helper_fucom_ST0_FT0(cpu_env);
                     break;
                 case 0x2d: /* fucomp st(i) */
-                    gen_helper_fmov_FT0_STN(cpu_env, tcg_const_i32(opreg));
+                    gen_fmov_FT0_STN(s, opreg);
                     gen_helper_fucom_ST0_FT0(cpu_env);
-                    gen_helper_fpop(cpu_env);
+                    gen_fpop(s);
                     break;
                 case 0x33: /* de/3 */
                     switch (rm) {
                     case 1: /* fcompp */
-                        gen_helper_fmov_FT0_STN(cpu_env, tcg_const_i32(1));
-                        gen_helper_fcom_ST0_FT0(cpu_env);
-                        gen_helper_fpop(cpu_env);
-                        gen_helper_fpop(cpu_env);
+                        gen_fmov_FT0_STN(s, 1);
+                        gen_fcom_ST0_FT0(s);
+                        gen_fpop(s);
+                        gen_fpop(s);
                         break;
                     default:
                         goto unknown_op;
@@ -6480,7 +6883,7 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                     break;
                 case 0x38: /* ffreep sti, undocumented op */
                     gen_helper_ffree_STN(cpu_env, tcg_const_i32(opreg));
-                    gen_helper_fpop(cpu_env);
+                    gen_fpop(s);
                     break;
                 case 0x3c: /* df/4 */
                     switch (rm) {
@@ -6498,9 +6901,9 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                         goto illegal_op;
                     }
                     gen_update_cc_op(s);
-                    gen_helper_fmov_FT0_STN(cpu_env, tcg_const_i32(opreg));
+                    gen_fmov_FT0_STN(s, opreg);
                     gen_helper_fucomi_ST0_FT0(cpu_env);
-                    gen_helper_fpop(cpu_env);
+                    gen_fpop(s);
                     set_cc_op(s, CC_OP_EFLAGS);
                     break;
                 case 0x3e: /* fcomip */
@@ -6508,9 +6911,9 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                         goto illegal_op;
                     }
                     gen_update_cc_op(s);
-                    gen_helper_fmov_FT0_STN(cpu_env, tcg_const_i32(opreg));
+                    gen_fmov_FT0_STN(s, opreg);
                     gen_helper_fcomi_ST0_FT0(cpu_env);
-                    gen_helper_fpop(cpu_env);
+                    gen_fpop(s);
                     set_cc_op(s, CC_OP_EFLAGS);
                     break;
                 case 0x10 ... 0x13: /* fcmovxx */
@@ -6531,7 +6934,7 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
                         op1 = fcmov_cc[op & 3] | (((op >> 3) & 1) ^ 1);
                         l1 = gen_new_label();
                         gen_jcc1_noeob(s, op1, l1);
-                        gen_helper_fmov_ST0_STN(cpu_env, tcg_const_i32(opreg));
+                        gen_fmov_ST0_STN(s, opreg);
                         gen_set_label(l1);
                     }
                     break;
@@ -8314,6 +8717,8 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
             }
             gen_lea_modrm(env, s, modrm);
             gen_helper_fxrstor(cpu_env, s->A0);
+            gen_jmp_im(s, s->pc - s->cs_base);
+            gen_eob(s);
             break;
 
         CASE_MODRM_MEM_OP(2): /* ldmxcsr */
@@ -8637,6 +9042,9 @@ void tcg_x86_init(void)
                                      bnd_regu_names[i]);
     }
 
+    fpstt = tcg_global_mem_new_i32(cpu_env,
+                                   offsetof(CPUX86State, fpstt), "fpstt");
+
 #if defined(XBOX) && defined(__x86_64__)
     xemu_settings_get_bool(XEMU_SETTINGS_SYSTEM_HARD_FPU, &g_use_hard_fpu);
 #endif
@@ -8705,6 +9113,13 @@ static void i386_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cpu)
     dc->ptr0 = tcg_temp_new_ptr();
     dc->ptr1 = tcg_temp_new_ptr();
     dc->cc_srcT = tcg_temp_local_new();
+
+    for (int i = 0; i < 8; i++) {
+        dc->fpregs[i] = NULL;
+    }
+    dc->fpstt_delta = 0;
+    dc->ft0 = NULL;
+    dc->flcr_set = false;
 }
 
 static void i386_tr_tb_start(DisasContextBase *db, CPUState *cpu)
@@ -8766,6 +9181,8 @@ static void i386_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
 {
     DisasContext *dc = container_of(dcbase, DisasContext, base);
 
+    gen_flush_fp(dc);
+
     if (dc->base.is_jmp == DISAS_TOO_MANY) {
         gen_jmp_im(dc, dc->base.pc_next - dc->cs_base);
         gen_eob(dc);
@@ -8795,7 +9212,9 @@ void gen_intermediate_code(CPUState *cpu, TranslationBlock *tb, int max_insns)
 {
     DisasContext dc;
 
+    tcg_ctx->disas_ctx = &dc;
     translator_loop(&i386_tr_ops, &dc.base, cpu, tb, max_insns);
+    tcg_ctx->disas_ctx = NULL;
 }
 
 void restore_state_to_opc(CPUX86State *env, TranslationBlock *tb,
@@ -8806,4 +9225,9 @@ void restore_state_to_opc(CPUX86State *env, TranslationBlock *tb,
     if (cc_op != CC_OP_DYNAMIC) {
         env->cc_op = cc_op;
     }
+}
+
+void gen_bb_epilogue(void)
+{
+    gen_flush_fp((DisasContext *)tcg_ctx->disas_ctx);
 }
