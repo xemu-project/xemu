@@ -74,7 +74,6 @@ UuidInfo *qmp_query_uuid(Error **errp)
 
 void qmp_quit(Error **errp)
 {
-    xemu_save_window_size();
     shutdown_action = SHUTDOWN_ACTION_POWEROFF;
     qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_QMP_QUIT);
 }

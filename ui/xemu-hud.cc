@@ -2023,7 +2023,6 @@ static void action_reset(void)
 
 static void action_shutdown(void)
 {
-    xemu_save_window_size();
     qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_UI);
 }
 
@@ -2495,18 +2494,3 @@ void xemu_queue_error_message(const char *msg)
     g_errors.push_back(strdup(msg));
 }
 
-void xemu_save_window_size(void)
-{
-    int win_h = 0;
-    int win_w = 0;
-
-    if (!xemu_is_fullscreen())
-    {
-
-        SDL_GetWindowSize(xemu_get_winid(), &win_w, &win_h);
-
-        xemu_settings_set_int(XEMU_SETTINGS_DISPLAY_WIN_WIDTH, win_w);
-        xemu_settings_set_int(XEMU_SETTINGS_DISPLAY_WIN_HEIGHT, win_h);
-        xemu_settings_save();
-    }
-}
