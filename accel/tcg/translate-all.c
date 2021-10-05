@@ -1689,7 +1689,9 @@ tb_invalidate_phys_page_range__locked(struct page_collection *pages,
                                       uintptr_t retaddr)
 {
     TranslationBlock *tb;
+#ifndef XBOX
     tb_page_addr_t tb_start, tb_end;
+#endif
     int n;
 #ifdef TARGET_HAS_PRECISE_SMC
     CPUState *cpu = current_cpu;
@@ -1715,6 +1717,7 @@ tb_invalidate_phys_page_range__locked(struct page_collection *pages,
        the code */
     PAGE_FOR_EACH_TB(p, tb, n) {
         assert_page_locked(p);
+#ifndef XBOX
         /* NOTE: this is subtle as a TB may span two physical pages */
         if (n == 0) {
             /* NOTE: tb_end may be after the end of the page, but
@@ -1726,6 +1729,9 @@ tb_invalidate_phys_page_range__locked(struct page_collection *pages,
             tb_end = tb_start + ((tb->pc + tb->size) & ~TARGET_PAGE_MASK);
         }
         if (!(tb_end <= start || tb_start >= end)) {
+#else
+        {
+#endif
 #ifdef TARGET_HAS_PRECISE_SMC
             if (current_tb_not_found) {
                 current_tb_not_found = false;
