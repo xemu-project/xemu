@@ -523,8 +523,6 @@ static void tcg_out_opc(TCGContext *s, int opc, int r, int rm, int x)
         tcg_out8(s, 0x65);
     }
     if (opc & P_DATA16) {
-        /* We should never be asking for both 16 and 64-bit operation.  */
-        tcg_debug_assert((opc & P_REXW) == 0);
         tcg_out8(s, 0x66);
     }
     if (opc & P_SIMDF3) {
@@ -797,11 +795,9 @@ static bool tcg_out_mov(TCGContext *s, TCGType type, TCGReg ret, TCGReg arg)
     }
     switch (type) {
     case TCG_TYPE_I64:
-    case TCG_TYPE_F64:
         rexw = P_REXW;
         /* fallthru */
     case TCG_TYPE_I32:
-    case TCG_TYPE_F32:
         if (ret < 16) {
             if (arg < 16) {
                 tcg_out_modrm(s, OPC_MOVL_GvEv + rexw, ret, arg);
@@ -816,7 +812,21 @@ static bool tcg_out_mov(TCGContext *s, TCGType type, TCGReg ret, TCGReg arg)
             }
         }
         break;
-
+    case TCG_TYPE_F64:
+        rexw = P_REXW;
+        /* fallthru */
+    case TCG_TYPE_F32:
+        if (ret < 16) {
+            tcg_debug_assert(arg >= 16);
+            tcg_out_modrm(s, OPC_MOVD_EyVy + rexw, arg, ret);
+        } else {
+            if (arg < 16) {
+                tcg_out_modrm(s, OPC_MOVD_VyEy + rexw, ret, arg);
+            } else {
+                tcg_out_modrm(s, OPC_MOVQ_VqWq, ret, arg);
+            }
+        }
+        break;
     case TCG_TYPE_V64:
         tcg_debug_assert(ret >= 16 && arg >= 16);
         tcg_out_vex_modrm(s, OPC_MOVQ_VqWq, ret, 0, arg);
@@ -1053,9 +1063,17 @@ static inline void tcg_out_pop(TCGContext *s, int reg)
 static void tcg_out_ld(TCGContext *s, TCGType type, TCGReg ret,
                        TCGReg arg1, intptr_t arg2)
 {
+    int rexw = 0;
+
     switch (type) {
-    case TCG_TYPE_I32:
+    case TCG_TYPE_F64:
+        rexw = P_REXW;
+        /* FALLTHRU */
     case TCG_TYPE_F32:
+        tcg_debug_assert(ret >= 16);
+        tcg_out_modrm_offset(s, OPC_MOVD_VyEy + rexw, ret, arg1, arg2);
+        break;
+    case TCG_TYPE_I32:
         if (ret < 16) {
             tcg_out_modrm_offset(s, OPC_MOVL_GvEv, ret, arg1, arg2);
         } else {
@@ -1063,7 +1081,6 @@ static void tcg_out_ld(TCGContext *s, TCGType type, TCGReg ret,
         }
         break;
     case TCG_TYPE_I64:
-    case TCG_TYPE_F64:
         if (ret < 16) {
             tcg_out_modrm_offset(s, OPC_MOVL_GvEv | P_REXW, ret, arg1, arg2);
             break;
@@ -1100,9 +1117,17 @@ static void tcg_out_ld(TCGContext *s, TCGType type, TCGReg ret,
 static void tcg_out_st(TCGContext *s, TCGType type, TCGReg arg,
                        TCGReg arg1, intptr_t arg2)
 {
+    int rexw = 0;
+
     switch (type) {
-    case TCG_TYPE_I32:
+    case TCG_TYPE_F64:
+        rexw = P_REXW;
+        /* FALLTHRU */
     case TCG_TYPE_F32:
+        tcg_debug_assert(arg >= 16);
+        tcg_out_modrm_offset(s, OPC_MOVD_EyVy + rexw, arg, arg1, arg2);
+        break;
+    case TCG_TYPE_I32:
         if (arg < 16) {
             tcg_out_modrm_offset(s, OPC_MOVL_EvGv, arg, arg1, arg2);
         } else {
@@ -1110,7 +1135,6 @@ static void tcg_out_st(TCGContext *s, TCGType type, TCGReg arg,
         }
         break;
     case TCG_TYPE_I64:
-    case TCG_TYPE_F64:
         if (arg < 16) {
             tcg_out_modrm_offset(s, OPC_MOVL_EvGv | P_REXW, arg, arg1, arg2);
             break;
