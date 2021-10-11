@@ -3555,7 +3555,6 @@ void pgraph_destroy(PGRAPHState *pg)
     glDeleteFramebuffers(1, &pg->gl_framebuffer);
 
     // Clear out shader cache
-    lru_flush(&pg->shader_cache);
     
     // Clear out texture cache
     lru_flush(&pg->texture_cache);
