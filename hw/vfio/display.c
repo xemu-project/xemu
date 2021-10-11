@@ -14,7 +14,6 @@
 #include <linux/vfio.h>
 #include <sys/ioctl.h>
 
-#include "sysemu/sysemu.h"
 #include "hw/display/edid.h"
 #include "ui/console.h"
 #include "qapi/error.h"
@@ -186,7 +185,6 @@ static void vfio_display_edid_exit(VFIODisplay *dpy)
 
     g_free(dpy->edid_regs);
     g_free(dpy->edid_blob);
-    timer_del(dpy->edid_link_timer);
     timer_free(dpy->edid_link_timer);
 }
 
@@ -336,7 +334,13 @@ static void vfio_display_dmabuf_update(void *opaque)
     }
 }
 
+static int vfio_display_get_flags(void *opaque)
+{
+    return GRAPHIC_FLAGS_GL | GRAPHIC_FLAGS_DMABUF;
+}
+
 static const GraphicHwOps vfio_display_dmabuf_ops = {
+    .get_flags  = vfio_display_get_flags,
     .gfx_update = vfio_display_dmabuf_update,
     .ui_info    = vfio_display_edid_ui_info,
 };

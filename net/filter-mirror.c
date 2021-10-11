@@ -21,17 +21,18 @@
 #include "qemu/iov.h"
 #include "qemu/sockets.h"
 
-#define FILTER_MIRROR(obj) \
-    OBJECT_CHECK(MirrorState, (obj), TYPE_FILTER_MIRROR)
-
-#define FILTER_REDIRECTOR(obj) \
-    OBJECT_CHECK(MirrorState, (obj), TYPE_FILTER_REDIRECTOR)
-
 #define TYPE_FILTER_MIRROR "filter-mirror"
+typedef struct MirrorState MirrorState;
+DECLARE_INSTANCE_CHECKER(MirrorState, FILTER_MIRROR,
+                         TYPE_FILTER_MIRROR)
+
 #define TYPE_FILTER_REDIRECTOR "filter-redirector"
+DECLARE_INSTANCE_CHECKER(MirrorState, FILTER_REDIRECTOR,
+                         TYPE_FILTER_REDIRECTOR)
+
 #define REDIRECTOR_MAX_LEN NET_BUFSIZE
 
-typedef struct MirrorState {
+struct MirrorState {
     NetFilterState parent_obj;
     char *indev;
     char *outdev;
@@ -39,7 +40,7 @@ typedef struct MirrorState {
     CharBackend chr_out;
     SocketReadState rs;
     bool vnet_hdr;
-} MirrorState;
+};
 
 static int filter_send(MirrorState *s,
                        const struct iovec *iov,
@@ -87,7 +88,7 @@ static int filter_send(MirrorState *s,
         goto err;
     }
 
-    return 0;
+    return size;
 
 err:
     return ret < 0 ? ret : -EIO;
@@ -158,7 +159,7 @@ static ssize_t filter_mirror_receive_iov(NetFilterState *nf,
     int ret;
 
     ret = filter_send(s, iov, iovcnt);
-    if (ret) {
+    if (ret < 0) {
         error_report("filter mirror send failed(%s)", strerror(-ret));
     }
 
@@ -181,10 +182,10 @@ static ssize_t filter_redirector_receive_iov(NetFilterState *nf,
 
     if (qemu_chr_fe_backend_connected(&s->chr_out)) {
         ret = filter_send(s, iov, iovcnt);
-        if (ret) {
+        if (ret < 0) {
             error_report("filter redirector send failed(%s)", strerror(-ret));
         }
-        return iov_size(iov, iovcnt);
+        return ret;
     } else {
         return 0;
     }
@@ -283,24 +284,6 @@ static void filter_redirector_setup(NetFilterState *nf, Error **errp)
     }
 }
 
-static void filter_mirror_class_init(ObjectClass *oc, void *data)
-{
-    NetFilterClass *nfc = NETFILTER_CLASS(oc);
-
-    nfc->setup = filter_mirror_setup;
-    nfc->cleanup = filter_mirror_cleanup;
-    nfc->receive_iov = filter_mirror_receive_iov;
-}
-
-static void filter_redirector_class_init(ObjectClass *oc, void *data)
-{
-    NetFilterClass *nfc = NETFILTER_CLASS(oc);
-
-    nfc->setup = filter_redirector_setup;
-    nfc->cleanup = filter_redirector_cleanup;
-    nfc->receive_iov = filter_redirector_receive_iov;
-}
-
 static char *filter_redirector_get_indev(Object *obj, Error **errp)
 {
     MirrorState *s = FILTER_REDIRECTOR(obj);
@@ -387,32 +370,50 @@ static void filter_redirector_set_vnet_hdr(Object *obj,
     s->vnet_hdr = value;
 }
 
+static void filter_mirror_class_init(ObjectClass *oc, void *data)
+{
+    NetFilterClass *nfc = NETFILTER_CLASS(oc);
+
+    object_class_property_add_str(oc, "outdev", filter_mirror_get_outdev,
+                                  filter_mirror_set_outdev);
+    object_class_property_add_bool(oc, "vnet_hdr_support",
+                                   filter_mirror_get_vnet_hdr,
+                                   filter_mirror_set_vnet_hdr);
+
+    nfc->setup = filter_mirror_setup;
+    nfc->cleanup = filter_mirror_cleanup;
+    nfc->receive_iov = filter_mirror_receive_iov;
+}
+
+static void filter_redirector_class_init(ObjectClass *oc, void *data)
+{
+    NetFilterClass *nfc = NETFILTER_CLASS(oc);
+
+    object_class_property_add_str(oc, "indev", filter_redirector_get_indev,
+                                  filter_redirector_set_indev);
+    object_class_property_add_str(oc, "outdev", filter_redirector_get_outdev,
+                                  filter_redirector_set_outdev);
+    object_class_property_add_bool(oc, "vnet_hdr_support",
+                                   filter_redirector_get_vnet_hdr,
+                                   filter_redirector_set_vnet_hdr);
+
+    nfc->setup = filter_redirector_setup;
+    nfc->cleanup = filter_redirector_cleanup;
+    nfc->receive_iov = filter_redirector_receive_iov;
+}
+
 static void filter_mirror_init(Object *obj)
 {
     MirrorState *s = FILTER_MIRROR(obj);
 
-    object_property_add_str(obj, "outdev", filter_mirror_get_outdev,
-                            filter_mirror_set_outdev);
-
     s->vnet_hdr = false;
-    object_property_add_bool(obj, "vnet_hdr_support",
-                             filter_mirror_get_vnet_hdr,
-                             filter_mirror_set_vnet_hdr);
 }
 
 static void filter_redirector_init(Object *obj)
 {
     MirrorState *s = FILTER_REDIRECTOR(obj);
 
-    object_property_add_str(obj, "indev", filter_redirector_get_indev,
-                            filter_redirector_set_indev);
-    object_property_add_str(obj, "outdev", filter_redirector_get_outdev,
-                            filter_redirector_set_outdev);
-
     s->vnet_hdr = false;
-    object_property_add_bool(obj, "vnet_hdr_support",
-                             filter_redirector_get_vnet_hdr,
-                             filter_redirector_set_vnet_hdr);
 }
 
 static void filter_mirror_fini(Object *obj)

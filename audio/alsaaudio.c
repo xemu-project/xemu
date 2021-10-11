@@ -34,6 +34,8 @@
 #define AUDIO_CAP "alsa"
 #include "audio_int.h"
 
+#define DEBUG_ALSA 0
+
 struct pollhlp {
     snd_pcm_t *handle;
     struct pollfd *pfds;
@@ -278,32 +280,28 @@ static snd_pcm_format_t aud_to_alsafmt (AudioFormat fmt, int endianness)
     case AUDIO_FORMAT_S16:
         if (endianness) {
             return SND_PCM_FORMAT_S16_BE;
-        }
-        else {
+        } else {
             return SND_PCM_FORMAT_S16_LE;
         }
 
     case AUDIO_FORMAT_U16:
         if (endianness) {
             return SND_PCM_FORMAT_U16_BE;
-        }
-        else {
+        } else {
             return SND_PCM_FORMAT_U16_LE;
         }
 
     case AUDIO_FORMAT_S32:
         if (endianness) {
             return SND_PCM_FORMAT_S32_BE;
-        }
-        else {
+        } else {
             return SND_PCM_FORMAT_S32_LE;
         }
 
     case AUDIO_FORMAT_U32:
         if (endianness) {
             return SND_PCM_FORMAT_U32_BE;
-        }
-        else {
+        } else {
             return SND_PCM_FORMAT_U32_LE;
         }
 
@@ -591,16 +589,12 @@ static int alsa_open(bool in, struct alsa_params_req *req,
 
     *handlep = handle;
 
-    if (obtfmt != req->fmt ||
-         obt->nchannels != req->nchannels ||
-         obt->freq != req->freq) {
+    if (DEBUG_ALSA || obtfmt != req->fmt ||
+        obt->nchannels != req->nchannels || obt->freq != req->freq) {
         dolog ("Audio parameters for %s\n", typ);
         alsa_dump_info(req, obt, obtfmt, apdo);
     }
 
-#ifdef DEBUG
-    alsa_dump_info(req, obt, obtfmt, pdo);
-#endif
     return 0;
 
  err:
@@ -722,8 +716,7 @@ static int alsa_voice_ctl (snd_pcm_t *handle, const char *typ, int ctl)
             alsa_logerr (err, "Could not stop %s\n", typ);
             return -1;
         }
-    }
-    else {
+    } else {
         err = snd_pcm_prepare (handle);
         if (err < 0) {
             alsa_logerr (err, "Could not prepare handle for %s\n", typ);
@@ -929,6 +922,7 @@ static struct audio_pcm_ops alsa_pcm_ops = {
     .init_in  = alsa_init_in,
     .fini_in  = alsa_fini_in,
     .read     = alsa_read,
+    .run_buffer_in = audio_generic_run_buffer_in,
     .enable_in = alsa_enable_in,
 };
 

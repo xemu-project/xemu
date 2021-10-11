@@ -11,30 +11,29 @@
  */
 
 #include "qemu/osdep.h"
-#include "cpu.h"
-#include "kvm_s390x.h"
+#include "kvm/kvm_s390x.h"
 #include <sys/ioctl.h>
 #include "qemu/error-report.h"
 #include "qemu/module.h"
 #include "qapi/error.h"
-#include "hw/sysbus.h"
 #include "sysemu/kvm.h"
 #include "hw/s390x/s390_flic.h"
 #include "hw/s390x/adapter.h"
 #include "hw/s390x/css.h"
 #include "migration/qemu-file-types.h"
 #include "trace.h"
+#include "qom/object.h"
 
 #define FLIC_SAVE_INITIAL_SIZE qemu_real_host_page_size
 #define FLIC_FAILED (-1UL)
 #define FLIC_SAVEVM_VERSION 1
 
-typedef struct KVMS390FLICState {
+struct KVMS390FLICState{
     S390FLICState parent_obj;
 
     uint32_t fd;
     bool clear_io_supported;
-} KVMS390FLICState;
+};
 
 static KVMS390FLICState *s390_get_kvm_flic(S390FLICState *fs)
 {
@@ -385,7 +384,7 @@ static void kvm_s390_release_adapter_routes(S390FLICState *fs,
  * reached
  */
 static int kvm_flic_save(QEMUFile *f, void *opaque, size_t size,
-                         const VMStateField *field, QJSON *vmdesc)
+                         const VMStateField *field, JSONWriter *vmdesc)
 {
     KVMS390FLICState *flic = opaque;
     int len = FLIC_SAVE_INITIAL_SIZE;
@@ -569,16 +568,15 @@ static const VMStateDescription kvm_s390_flic_vmstate = {
     }
 };
 
-typedef struct KVMS390FLICStateClass {
+struct KVMS390FLICStateClass {
     S390FLICStateClass parent_class;
     DeviceRealize parent_realize;
-} KVMS390FLICStateClass;
+};
+typedef struct KVMS390FLICStateClass KVMS390FLICStateClass;
 
-#define KVM_S390_FLIC_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(KVMS390FLICStateClass, (obj), TYPE_KVM_S390_FLIC)
+DECLARE_CLASS_CHECKERS(KVMS390FLICStateClass, KVM_S390_FLIC,
+                       TYPE_KVM_S390_FLIC)
 
-#define KVM_S390_FLIC_CLASS(klass) \
-    OBJECT_CLASS_CHECK(KVMS390FLICStateClass, (klass), TYPE_KVM_S390_FLIC)
 
 static void kvm_s390_flic_realize(DeviceState *dev, Error **errp)
 {

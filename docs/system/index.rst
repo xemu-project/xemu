@@ -1,35 +1,35 @@
-.. This is the top level page for the 'system' manual.
+System Emulation
+================
 
-
-QEMU System Emulation User's Guide
-==================================
-
-This manual is the overall guide for users using QEMU
+This section of the manual is the overall guide for users using QEMU
 for full system emulation (as opposed to user-mode emulation).
 This includes working with hypervisors such as KVM, Xen, Hax
 or Hypervisor.Framework.
-
-Contents:
 
 .. toctree::
    :maxdepth: 3
 
    quickstart
    invocation
+   device-emulation
    keys
    mux-chardev
    monitor
    images
-   net
-   usb
-   ivshmem
+   virtio-net-failover
    linuxboot
+   generic-loader
+   guest-loader
+   barrier
    vnc-security
    tls
+   secrets
+   authz
    gdb
    managed-startup
+   bootindex
+   cpu-hotplug
+   pr-manager
    targets
    security
-   deprecated
-   build-platforms
-   license
+   multi-process

@@ -27,6 +27,8 @@
 #ifndef QEMU_PROGRESS_METER_H
 #define QEMU_PROGRESS_METER_H
 
+#include "qemu/lockable.h"
+
 typedef struct ProgressMeter {
     /**
      * Current progress. The unit is arbitrary as long as the ratio between
@@ -37,22 +39,24 @@ typedef struct ProgressMeter {
 
     /** Estimated current value at the completion of the process */
     uint64_t total;
+
+    QemuMutex lock; /* protects concurrent access to above fields */
 } ProgressMeter;
 
-static inline void progress_work_done(ProgressMeter *pm, uint64_t done)
-{
-    pm->current += done;
-}
+void progress_init(ProgressMeter *pm);
+void progress_destroy(ProgressMeter *pm);
 
-static inline void progress_set_remaining(ProgressMeter *pm, uint64_t remaining)
-{
-    pm->total = pm->current + remaining;
-}
+/* Get a snapshot of internal current and total values  */
+void progress_get_snapshot(ProgressMeter *pm, uint64_t *current,
+                           uint64_t *total);
 
-static inline void progress_increase_remaining(ProgressMeter *pm,
-                                               uint64_t delta)
-{
-    pm->total += delta;
-}
+/* Increases the amount of work done so far by @done */
+void progress_work_done(ProgressMeter *pm, uint64_t done);
+
+/* Sets how much work has to be done to complete to @remaining */
+void progress_set_remaining(ProgressMeter *pm, uint64_t remaining);
+
+/* Increases the total work to do by @delta */
+void progress_increase_remaining(ProgressMeter *pm, uint64_t delta);
 
 #endif /* QEMU_PROGRESS_METER_H */

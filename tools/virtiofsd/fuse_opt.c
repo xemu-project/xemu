@@ -14,10 +14,6 @@
 #include "fuse_i.h"
 #include "fuse_misc.h"
 
-#include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 struct fuse_opt_context {
     void *data;
@@ -276,7 +272,7 @@ static int process_opt_sep_arg(struct fuse_opt_context *ctx,
     }
 
     param = ctx->argv[ctx->argctr];
-    newarg = malloc(sep + strlen(param) + 1);
+    newarg = g_try_malloc(sep + strlen(param) + 1);
     if (!newarg) {
         return alloc_failed();
     }
@@ -284,7 +280,7 @@ static int process_opt_sep_arg(struct fuse_opt_context *ctx,
     memcpy(newarg, arg, sep);
     strcpy(newarg + sep, param);
     res = process_opt(ctx, opt, sep, newarg, iso);
-    free(newarg);
+    g_free(newarg);
 
     return res;
 }

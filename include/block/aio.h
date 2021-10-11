@@ -17,6 +17,7 @@
 #ifdef CONFIG_LINUX_IO_URING
 #include <liburing.h>
 #endif
+#include "qemu/coroutine.h"
 #include "qemu/queue.h"
 #include "qemu/event_notifier.h"
 #include "qemu/thread.h"
@@ -231,6 +232,9 @@ struct AioContext {
     int64_t poll_grow;      /* polling time growth factor */
     int64_t poll_shrink;    /* polling time shrink factor */
 
+    /* AIO engine parameters */
+    int64_t aio_max_batch;  /* maximum number of requests in a batch */
+
     /*
      * List of handlers participating in userspace polling.  Protected by
      * ctx->list_lock.  Iterated and modified mostly by the event loop thread
@@ -291,19 +295,44 @@ void aio_context_acquire(AioContext *ctx);
 void aio_context_release(AioContext *ctx);
 
 /**
- * aio_bh_schedule_oneshot: Allocate a new bottom half structure that will run
- * only once and as soon as possible.
+ * aio_bh_schedule_oneshot_full: Allocate a new bottom half structure that will
+ * run only once and as soon as possible.
+ *
+ * @name: A human-readable identifier for debugging purposes.
  */
-void aio_bh_schedule_oneshot(AioContext *ctx, QEMUBHFunc *cb, void *opaque);
+void aio_bh_schedule_oneshot_full(AioContext *ctx, QEMUBHFunc *cb, void *opaque,
+                                  const char *name);
 
 /**
- * aio_bh_new: Allocate a new bottom half structure.
+ * aio_bh_schedule_oneshot: Allocate a new bottom half structure that will run
+ * only once and as soon as possible.
+ *
+ * A convenience wrapper for aio_bh_schedule_oneshot_full() that uses cb as the
+ * name string.
+ */
+#define aio_bh_schedule_oneshot(ctx, cb, opaque) \
+    aio_bh_schedule_oneshot_full((ctx), (cb), (opaque), (stringify(cb)))
+
+/**
+ * aio_bh_new_full: Allocate a new bottom half structure.
  *
  * Bottom halves are lightweight callbacks whose invocation is guaranteed
  * to be wait-free, thread-safe and signal-safe.  The #QEMUBH structure
  * is opaque and must be allocated prior to its use.
+ *
+ * @name: A human-readable identifier for debugging purposes.
  */
-QEMUBH *aio_bh_new(AioContext *ctx, QEMUBHFunc *cb, void *opaque);
+QEMUBH *aio_bh_new_full(AioContext *ctx, QEMUBHFunc *cb, void *opaque,
+                        const char *name);
+
+/**
+ * aio_bh_new: Allocate a new bottom half structure
+ *
+ * A convenience wrapper for aio_bh_new_full() that uses the cb as the name
+ * string.
+ */
+#define aio_bh_new(ctx, cb, opaque) \
+    aio_bh_new_full((ctx), (cb), (opaque), (stringify(cb)))
 
 /**
  * aio_notify: Force processing of pending events.
@@ -595,7 +624,7 @@ int64_t aio_compute_timeout(AioContext *ctx);
  */
 static inline void aio_disable_external(AioContext *ctx)
 {
-    atomic_inc(&ctx->external_disable_cnt);
+    qatomic_inc(&ctx->external_disable_cnt);
 }
 
 /**
@@ -608,7 +637,7 @@ static inline void aio_enable_external(AioContext *ctx)
 {
     int old;
 
-    old = atomic_fetch_dec(&ctx->external_disable_cnt);
+    old = qatomic_fetch_dec(&ctx->external_disable_cnt);
     assert(old > 0);
     if (old == 1) {
         /* Kick event loop so it re-arms file descriptors */
@@ -624,7 +653,7 @@ static inline void aio_enable_external(AioContext *ctx)
  */
 static inline bool aio_external_disabled(AioContext *ctx)
 {
-    return atomic_read(&ctx->external_disable_cnt);
+    return qatomic_read(&ctx->external_disable_cnt);
 }
 
 /**
@@ -637,7 +666,7 @@ static inline bool aio_external_disabled(AioContext *ctx)
  */
 static inline bool aio_node_check(AioContext *ctx, bool is_external)
 {
-    return !is_external || !atomic_read(&ctx->external_disable_cnt);
+    return !is_external || !qatomic_read(&ctx->external_disable_cnt);
 }
 
 /**
@@ -653,6 +682,15 @@ static inline bool aio_node_check(AioContext *ctx, bool is_external)
  * qemu_get_current_aio_context() from the coroutine itself).
  */
 void aio_co_schedule(AioContext *ctx, struct Coroutine *co);
+
+/**
+ * aio_co_reschedule_self:
+ * @new_ctx: the new context
+ *
+ * Move the currently running coroutine to new_ctx. If the coroutine is already
+ * running in new_ctx, do nothing.
+ */
+void coroutine_fn aio_co_reschedule_self(AioContext *new_ctx);
 
 /**
  * aio_co_wake:
@@ -681,9 +719,12 @@ void aio_co_enter(AioContext *ctx, struct Coroutine *co);
  * Return the AioContext whose event loop runs in the current thread.
  *
  * If called from an IOThread this will be the IOThread's AioContext.  If
- * called from another thread it will be the main loop AioContext.
+ * called from the main thread or with the "big QEMU lock" taken it
+ * will be the main loop AioContext.
  */
 AioContext *qemu_get_current_aio_context(void);
+
+void qemu_set_current_aio_context(AioContext *ctx);
 
 /**
  * aio_context_setup:
@@ -716,5 +757,14 @@ void aio_context_use_g_source(AioContext *ctx);
 void aio_context_set_poll_params(AioContext *ctx, int64_t max_ns,
                                  int64_t grow, int64_t shrink,
                                  Error **errp);
+
+/**
+ * aio_context_set_aio_params:
+ * @ctx: the aio context
+ * @max_batch: maximum number of requests in a batch, 0 means that the
+ *             engine will use its default
+ */
+void aio_context_set_aio_params(AioContext *ctx, int64_t max_batch,
+                                Error **errp);
 
 #endif

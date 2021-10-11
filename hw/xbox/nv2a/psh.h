@@ -20,7 +20,7 @@
 #ifndef HW_NV2A_PSH_H
 #define HW_NV2A_PSH_H
 
-#include "qapi/qmp/qstring.h"
+#include "shaders_common.h"
 
 enum PshAlphaFunc {
     ALPHA_FUNC_NEVER,
@@ -50,6 +50,7 @@ typedef struct PshState {
     uint32_t rgb_inputs[8], rgb_outputs[8];
     uint32_t alpha_inputs[8], alpha_outputs[8];
 
+    bool point_sprite;
     bool rect_tex[4];
     bool snorm_tex[4];
     bool compare_mode[4][4];
@@ -60,9 +61,8 @@ typedef struct PshState {
     enum PshAlphaFunc alpha_func;
 
     bool window_clip_exclusive;
-    unsigned int window_clip_count;
 } PshState;
 
-QString *psh_translate(const PshState state);
+MString *psh_translate(const PshState state);
 
 #endif

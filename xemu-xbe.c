@@ -24,8 +24,8 @@
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "hw/pci/pci.h"
-#include "monitor/hmp-target.h"
 #include "sysemu/hw_accel.h"
+#include "cpu.h"
 
 static int virt_to_phys(vaddr vaddr, hwaddr *phys_addr)
 {
@@ -103,7 +103,7 @@ struct xbe *xemu_get_xbe_info(void)
     // Determine full length of headers
     xbe.headers_len = ldl_le_phys(&address_space_memory,
         hdr_addr_phys + offsetof(struct xbe_header, m_sizeof_headers));
-    if (xbe.headers_len > 4*TARGET_PAGE_SIZE) {
+    if (xbe.headers_len > 8*TARGET_PAGE_SIZE) {
         // Headers are unusually large
         return NULL;
     }

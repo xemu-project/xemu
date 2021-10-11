@@ -24,11 +24,20 @@ DEF_HELPER_FLAGS_1(clrsb_i64, TCG_CALL_NO_RWG_SE, i64, i64)
 DEF_HELPER_FLAGS_1(ctpop_i32, TCG_CALL_NO_RWG_SE, i32, i32)
 DEF_HELPER_FLAGS_1(ctpop_i64, TCG_CALL_NO_RWG_SE, i64, i64)
 
-DEF_HELPER_FLAGS_1(lookup_tb_ptr, TCG_CALL_NO_WG_SE, ptr, env)
+DEF_HELPER_FLAGS_1(lookup_tb_ptr, TCG_CALL_NO_WG_SE, cptr, env)
 
 DEF_HELPER_FLAGS_1(exit_atomic, TCG_CALL_NO_WG, noreturn, env)
 
-#ifdef CONFIG_SOFTMMU
+#ifndef IN_HELPER_PROTO
+/*
+ * Pass calls to memset directly to libc, without a thunk in qemu.
+ * Do not re-declare memset, especially since we fudge the type here;
+ * we assume sizeof(void *) == sizeof(size_t), which is true for
+ * all supported hosts.
+ */
+#define helper_memset memset
+DEF_HELPER_FLAGS_3(memset, TCG_CALL_NO_RWG, ptr, ptr, int, ptr)
+#endif /* IN_HELPER_PROTO */
 
 DEF_HELPER_FLAGS_5(atomic_cmpxchgb, TCG_CALL_NO_WG,
                    i32, env, tl, i32, i32, i32)
@@ -76,50 +85,6 @@ DEF_HELPER_FLAGS_5(atomic_cmpxchgq_le, TCG_CALL_NO_WG,
     DEF_HELPER_FLAGS_4(glue(glue(atomic_, NAME), l_be),           \
                        TCG_CALL_NO_WG, i32, env, tl, i32, i32)
 #endif /* CONFIG_ATOMIC64 */
-
-#else
-
-DEF_HELPER_FLAGS_4(atomic_cmpxchgb, TCG_CALL_NO_WG, i32, env, tl, i32, i32)
-DEF_HELPER_FLAGS_4(atomic_cmpxchgw_be, TCG_CALL_NO_WG, i32, env, tl, i32, i32)
-DEF_HELPER_FLAGS_4(atomic_cmpxchgw_le, TCG_CALL_NO_WG, i32, env, tl, i32, i32)
-DEF_HELPER_FLAGS_4(atomic_cmpxchgl_be, TCG_CALL_NO_WG, i32, env, tl, i32, i32)
-DEF_HELPER_FLAGS_4(atomic_cmpxchgl_le, TCG_CALL_NO_WG, i32, env, tl, i32, i32)
-#ifdef CONFIG_ATOMIC64
-DEF_HELPER_FLAGS_4(atomic_cmpxchgq_be, TCG_CALL_NO_WG, i64, env, tl, i64, i64)
-DEF_HELPER_FLAGS_4(atomic_cmpxchgq_le, TCG_CALL_NO_WG, i64, env, tl, i64, i64)
-#endif
-
-#ifdef CONFIG_ATOMIC64
-#define GEN_ATOMIC_HELPERS(NAME)                             \
-    DEF_HELPER_FLAGS_3(glue(glue(atomic_, NAME), b),         \
-                       TCG_CALL_NO_WG, i32, env, tl, i32)    \
-    DEF_HELPER_FLAGS_3(glue(glue(atomic_, NAME), w_le),      \
-                       TCG_CALL_NO_WG, i32, env, tl, i32)    \
-    DEF_HELPER_FLAGS_3(glue(glue(atomic_, NAME), w_be),      \
-                       TCG_CALL_NO_WG, i32, env, tl, i32)    \
-    DEF_HELPER_FLAGS_3(glue(glue(atomic_, NAME), l_le),      \
-                       TCG_CALL_NO_WG, i32, env, tl, i32)    \
-    DEF_HELPER_FLAGS_3(glue(glue(atomic_, NAME), l_be),      \
-                       TCG_CALL_NO_WG, i32, env, tl, i32)    \
-    DEF_HELPER_FLAGS_3(glue(glue(atomic_, NAME), q_le),      \
-                       TCG_CALL_NO_WG, i64, env, tl, i64)    \
-    DEF_HELPER_FLAGS_3(glue(glue(atomic_, NAME), q_be),      \
-                       TCG_CALL_NO_WG, i64, env, tl, i64)
-#else
-#define GEN_ATOMIC_HELPERS(NAME)                             \
-    DEF_HELPER_FLAGS_3(glue(glue(atomic_, NAME), b),         \
-                       TCG_CALL_NO_WG, i32, env, tl, i32)    \
-    DEF_HELPER_FLAGS_3(glue(glue(atomic_, NAME), w_le),      \
-                       TCG_CALL_NO_WG, i32, env, tl, i32)    \
-    DEF_HELPER_FLAGS_3(glue(glue(atomic_, NAME), w_be),      \
-                       TCG_CALL_NO_WG, i32, env, tl, i32)    \
-    DEF_HELPER_FLAGS_3(glue(glue(atomic_, NAME), l_le),      \
-                       TCG_CALL_NO_WG, i32, env, tl, i32)    \
-    DEF_HELPER_FLAGS_3(glue(glue(atomic_, NAME), l_be),      \
-                       TCG_CALL_NO_WG, i32, env, tl, i32)
-#endif /* CONFIG_ATOMIC64 */
-
-#endif /* CONFIG_SOFTMMU */
 
 GEN_ATOMIC_HELPERS(fetch_add)
 GEN_ATOMIC_HELPERS(fetch_and)

@@ -93,27 +93,28 @@ int target_mprotect(abi_ulong start, abi_ulong len, int prot)
     if (start > host_start) {
         /* handle host page containing start */
         prot1 = prot;
-        for(addr = host_start; addr < start; addr += TARGET_PAGE_SIZE) {
+        for (addr = host_start; addr < start; addr += TARGET_PAGE_SIZE) {
             prot1 |= page_get_flags(addr);
         }
         if (host_end == host_start + qemu_host_page_size) {
-            for(addr = end; addr < host_end; addr += TARGET_PAGE_SIZE) {
+            for (addr = end; addr < host_end; addr += TARGET_PAGE_SIZE) {
                 prot1 |= page_get_flags(addr);
             }
             end = host_end;
         }
-        ret = mprotect(g2h(host_start), qemu_host_page_size, prot1 & PAGE_BITS);
+        ret = mprotect(g2h_untagged(host_start),
+                       qemu_host_page_size, prot1 & PAGE_BITS);
         if (ret != 0)
             goto error;
         host_start += qemu_host_page_size;
     }
     if (end < host_end) {
         prot1 = prot;
-        for(addr = end; addr < host_end; addr += TARGET_PAGE_SIZE) {
+        for (addr = end; addr < host_end; addr += TARGET_PAGE_SIZE) {
             prot1 |= page_get_flags(addr);
         }
-        ret = mprotect(g2h(host_end - qemu_host_page_size), qemu_host_page_size,
-                       prot1 & PAGE_BITS);
+        ret = mprotect(g2h_untagged(host_end - qemu_host_page_size),
+                       qemu_host_page_size, prot1 & PAGE_BITS);
         if (ret != 0)
             goto error;
         host_end -= qemu_host_page_size;
@@ -121,7 +122,7 @@ int target_mprotect(abi_ulong start, abi_ulong len, int prot)
 
     /* handle the pages in the middle */
     if (host_start < host_end) {
-        ret = mprotect(g2h(host_start), host_end - host_start, prot);
+        ret = mprotect(g2h_untagged(host_start), host_end - host_start, prot);
         if (ret != 0)
             goto error;
     }
@@ -143,11 +144,11 @@ static int mmap_frag(abi_ulong real_start,
     int prot1, prot_new;
 
     real_end = real_start + qemu_host_page_size;
-    host_start = g2h(real_start);
+    host_start = g2h_untagged(real_start);
 
     /* get the protection of the target pages outside the mapping */
     prot1 = 0;
-    for(addr = real_start; addr < real_end; addr++) {
+    for (addr = real_start; addr < real_end; addr++) {
         if (addr < start || addr >= end)
             prot1 |= page_get_flags(addr);
     }
@@ -175,7 +176,7 @@ static int mmap_frag(abi_ulong real_start,
             mprotect(host_start, qemu_host_page_size, prot1 | PROT_WRITE);
 
         /* read the corresponding file data */
-        pread(fd, g2h(start), end - start, offset);
+        pread(fd, g2h_untagged(start), end - start, offset);
 
         /* put final protection */
         if (prot_new != (prot1 | PROT_WRITE))
@@ -224,9 +225,9 @@ static abi_ulong mmap_find_vma(abi_ulong start, abi_ulong size)
     if (addr == 0)
         addr = mmap_next_start;
     addr_start = addr;
-    for(;;) {
+    for (;;) {
         prot = 0;
-        for(addr1 = addr; addr1 < (addr + size); addr1 += TARGET_PAGE_SIZE) {
+        for (addr1 = addr; addr1 < (addr + size); addr1 += TARGET_PAGE_SIZE) {
             prot |= page_get_flags(addr1);
         }
         if (prot == 0)
@@ -261,7 +262,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int prot,
             printf("MAP_FIXED ");
         if (flags & MAP_ANON)
             printf("MAP_ANON ");
-        switch(flags & TARGET_BSD_MAP_FLAGMASK) {
+        switch (flags & TARGET_BSD_MAP_FLAGMASK) {
         case MAP_PRIVATE:
             printf("MAP_PRIVATE ");
             break;
@@ -300,7 +301,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int prot,
         /* Note: we prefer to control the mapping address. It is
            especially important if qemu_host_page_size >
            qemu_real_host_page_size */
-        p = mmap(g2h(mmap_start),
+        p = mmap(g2h_untagged(mmap_start),
                  host_len, prot, flags | MAP_FIXED, fd, host_offset);
         if (p == MAP_FAILED)
             goto fail;
@@ -320,7 +321,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int prot,
         end = start + len;
         real_end = HOST_PAGE_ALIGN(end);
 
-        for(addr = real_start; addr < real_end; addr += TARGET_PAGE_SIZE) {
+        for (addr = real_start; addr < real_end; addr += TARGET_PAGE_SIZE) {
             flg = page_get_flags(addr);
             if (flg & PAGE_RESERVED) {
                 errno = ENXIO;
@@ -344,7 +345,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int prot,
                                   -1, 0);
             if (retaddr == -1)
                 goto fail;
-            pread(fd, g2h(start), len, offset);
+            pread(fd, g2h_untagged(start), len, offset);
             if (!(prot & PROT_WRITE)) {
                 ret = target_mprotect(start, len, prot);
                 if (ret != 0) {
@@ -390,7 +391,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int prot,
                 offset1 = 0;
             else
                 offset1 = offset + real_start - start;
-            p = mmap(g2h(real_start), real_end - real_start,
+            p = mmap(g2h_untagged(real_start), real_end - real_start,
                      prot, flags, fd, offset1);
             if (p == MAP_FAILED)
                 goto fail;
@@ -432,11 +433,11 @@ int target_munmap(abi_ulong start, abi_ulong len)
     if (start > real_start) {
         /* handle host page containing start */
         prot = 0;
-        for(addr = real_start; addr < start; addr += TARGET_PAGE_SIZE) {
+        for (addr = real_start; addr < start; addr += TARGET_PAGE_SIZE) {
             prot |= page_get_flags(addr);
         }
         if (real_end == real_start + qemu_host_page_size) {
-            for(addr = end; addr < real_end; addr += TARGET_PAGE_SIZE) {
+            for (addr = end; addr < real_end; addr += TARGET_PAGE_SIZE) {
                 prot |= page_get_flags(addr);
             }
             end = real_end;
@@ -446,7 +447,7 @@ int target_munmap(abi_ulong start, abi_ulong len)
     }
     if (end < real_end) {
         prot = 0;
-        for(addr = end; addr < real_end; addr += TARGET_PAGE_SIZE) {
+        for (addr = end; addr < real_end; addr += TARGET_PAGE_SIZE) {
             prot |= page_get_flags(addr);
         }
         if (prot != 0)
@@ -456,7 +457,7 @@ int target_munmap(abi_ulong start, abi_ulong len)
     ret = 0;
     /* unmap what we can */
     if (real_start < real_end) {
-        ret = munmap(g2h(real_start), real_end - real_start);
+        ret = munmap(g2h_untagged(real_start), real_end - real_start);
     }
 
     if (ret == 0)
@@ -479,5 +480,5 @@ int target_msync(abi_ulong start, abi_ulong len, int flags)
         return 0;
 
     start &= qemu_host_page_mask;
-    return msync(g2h(start), end - start, flags);
+    return msync(g2h_untagged(start), end - start, flags);
 }

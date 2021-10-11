@@ -28,11 +28,11 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/iov.h"
-#include "qemu/log.h"
 #include "qemu/module.h"
 #include "qemu/timer.h"
 #include "qapi/visitor.h"
 #include "net/filter.h"
+#include "qom/object.h"
 
 typedef struct DumpState {
     int64_t start_ts;
@@ -139,8 +139,7 @@ static int net_dump_state_init(DumpState *s, const char *filename,
 
 #define TYPE_FILTER_DUMP "filter-dump"
 
-#define FILTER_DUMP(obj) \
-    OBJECT_CHECK(NetFilterDumpState, (obj), TYPE_FILTER_DUMP)
+OBJECT_DECLARE_SIMPLE_TYPE(NetFilterDumpState, FILTER_DUMP)
 
 struct NetFilterDumpState {
     NetFilterState nfs;
@@ -148,7 +147,6 @@ struct NetFilterDumpState {
     char *filename;
     uint32_t maxlen;
 };
-typedef struct NetFilterDumpState NetFilterDumpState;
 
 static ssize_t filter_dump_receive_iov(NetFilterState *nf, NetClientState *sndr,
                                        unsigned flags, const struct iovec *iov,
@@ -225,11 +223,6 @@ static void filter_dump_instance_init(Object *obj)
     NetFilterDumpState *nfds = FILTER_DUMP(obj);
 
     nfds->maxlen = 65536;
-
-    object_property_add(obj, "maxlen", "uint32", filter_dump_get_maxlen,
-                        filter_dump_set_maxlen, NULL, NULL);
-    object_property_add_str(obj, "file", file_dump_get_filename,
-                            file_dump_set_filename);
 }
 
 static void filter_dump_instance_finalize(Object *obj)
@@ -242,6 +235,11 @@ static void filter_dump_instance_finalize(Object *obj)
 static void filter_dump_class_init(ObjectClass *oc, void *data)
 {
     NetFilterClass *nfc = NETFILTER_CLASS(oc);
+
+    object_class_property_add(oc, "maxlen", "uint32", filter_dump_get_maxlen,
+                              filter_dump_set_maxlen, NULL, NULL);
+    object_class_property_add_str(oc, "file", file_dump_get_filename,
+                                  file_dump_set_filename);
 
     nfc->setup = filter_dump_setup;
     nfc->cleanup = filter_dump_cleanup;

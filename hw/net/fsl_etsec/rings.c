@@ -22,6 +22,7 @@
  * THE SOFTWARE.
  */
 #include "qemu/osdep.h"
+#include "qemu-common.h"
 #include "net/checksum.h"
 #include "qemu/log.h"
 #include "etsec.h"
@@ -183,13 +184,11 @@ static void process_tx_fcb(eTSEC *etsec)
     uint8_t *l3_header = etsec->tx_buffer + 8 + l3_header_offset;
     /* L4 header */
     uint8_t *l4_header = l3_header + l4_header_offset;
+    int csum = 0;
 
     /* if packet is IP4 and IP checksum is requested */
     if (flags & FCB_TX_IP && flags & FCB_TX_CIP) {
-        /* do IP4 checksum (TODO This function does TCP/UDP checksum
-         * but not sure if it also does IP4 checksum.) */
-        net_checksum_calculate(etsec->tx_buffer + 8,
-                etsec->tx_buffer_len - 8);
+        csum |= CSUM_IP;
     }
     /* TODO Check the correct usage of the PHCS field of the FCB in case the NPH
      * flag is on */
@@ -201,9 +200,7 @@ static void process_tx_fcb(eTSEC *etsec)
             /* if checksum is requested */
             if (flags & FCB_TX_CTU) {
                 /* do UDP checksum */
-
-                net_checksum_calculate(etsec->tx_buffer + 8,
-                        etsec->tx_buffer_len - 8);
+                csum |= CSUM_UDP;
             } else {
                 /* set checksum field to 0 */
                 l4_header[6] = 0;
@@ -211,9 +208,13 @@ static void process_tx_fcb(eTSEC *etsec)
             }
         } else if (flags & FCB_TX_CTU) { /* if TCP and checksum is requested */
             /* do TCP checksum */
-            net_checksum_calculate(etsec->tx_buffer + 8,
-                                   etsec->tx_buffer_len - 8);
+            csum |= CSUM_TCP;
         }
+    }
+
+    if (csum) {
+        net_checksum_calculate(etsec->tx_buffer + 8,
+                               etsec->tx_buffer_len - 8, csum);
     }
 }
 
@@ -258,7 +259,7 @@ static void process_tx_bd(eTSEC         *etsec,
                 || etsec->regs[MACCFG2].value & MACCFG2_PADCRC) {
 
                 /* Padding and CRC (Padding implies CRC) */
-                tx_padding_and_crc(etsec, 64);
+                tx_padding_and_crc(etsec, 60);
 
             } else if (etsec->first_bd.flags & BD_TX_TC
                        || etsec->regs[MACCFG2].value & MACCFG2_CRC_EN) {
@@ -269,7 +270,7 @@ static void process_tx_bd(eTSEC         *etsec,
 
 #if defined(HEX_DUMP)
             qemu_log("eTSEC Send packet size:%d\n", etsec->tx_buffer_len);
-            qemu_hexdump(etsec->tx_buffer, stderr, "", etsec->tx_buffer_len);
+            qemu_hexdump(stderr, "", etsec->tx_buffer, etsec->tx_buffer_len);
 #endif  /* ETSEC_RING_DEBUG */
 
             if (etsec->first_bd.flags & BD_TX_TOEUN) {
@@ -502,7 +503,7 @@ ssize_t etsec_rx_ring_write(eTSEC *etsec, const uint8_t *buf, size_t size)
         return -1;
     }
 
-    if ((etsec->regs[RCTRL].value & RCTRL_RSF) && (size < 60)) {
+    if (!(etsec->regs[RCTRL].value & RCTRL_RSF) && (size < 60)) {
         /* CRC is not in the packet yet, so short frame is below 60 bytes */
         RING_DEBUG("%s: Drop short frame\n", __func__);
         return -1;

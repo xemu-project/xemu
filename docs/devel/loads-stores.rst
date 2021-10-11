@@ -24,16 +24,12 @@ potentially unaligned pointer values.
 
 Function names follow the pattern:
 
-load: ``ld{type}{sign}{size}_{endian}_p(ptr)``
+load: ``ld{sign}{size}_{endian}_p(ptr)``
 
-store: ``st{type}{size}_{endian}_p(ptr, val)``
-
-``type``
- - (empty) : integer access
- - ``f`` : float access
+store: ``st{size}_{endian}_p(ptr, val)``
 
 ``sign``
- - (empty) : for 32 or 64 bit sizes (including floats and doubles)
+ - (empty) : for 32 or 64 bit sizes
  - ``u`` : unsigned
  - ``s`` : signed
 
@@ -67,8 +63,8 @@ of size ``sz`` bytes.
 
 
 Regexes for git grep
- - ``\<ldf\?[us]\?[bwlq]\(_[hbl]e\)\?_p\>``
- - ``\<stf\?[bwlq]\(_[hbl]e\)\?_p\>``
+ - ``\<ld[us]\?[bwlq]\(_[hbl]e\)\?_p\>``
+ - ``\<st[bwlq]\(_[hbl]e\)\?_p\>``
  - ``\<ldn_\([hbl]e\)?_p\>``
  - ``\<stn_\([hbl]e\)?_p\>``
 
@@ -93,7 +89,13 @@ guest CPU state in case of a guest CPU exception.  This is passed
 to ``cpu_restore_state()``.  Therefore the value should either be 0,
 to indicate that the guest CPU state is already synchronized, or
 the result of ``GETPC()`` from the top level ``HELPER(foo)``
-function, which is a return address into the generated code.
+function, which is a return address into the generated code [#gpc]_.
+
+.. [#gpc] Note that ``GETPC()`` should be used with great care: calling
+          it in other functions that are *not* the top level
+          ``HELPER(foo)`` will cause unexpected behavior. Instead, the
+          value of ``GETPC()`` should be read from the helper and passed
+          if needed to the functions that the helper calls.
 
 Function names follow the pattern:
 
@@ -477,6 +479,8 @@ make sure our existing code is doing things correctly.
 
 Regexes for git grep
  - ``\<dma_memory_\(read\|write\|rw\)\>``
+ - ``\<ldu\?[bwlq]\(_[bl]e\)\?_dma\>``
+ - ``\<st[bwlq]\(_[bl]e\)\?_dma\>``
 
 ``pci_dma_*`` and ``{ld,st}*_pci_dma``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

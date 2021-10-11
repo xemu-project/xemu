@@ -44,6 +44,7 @@
 #include "migration/vmstate.h"
 #include "ui/pixel_ops.h"
 #include "cirrus_vga_internal.h"
+#include "qom/object.h"
 
 /*
  * TODO:
@@ -178,14 +179,13 @@ typedef void (*cirrus_fill_t)(struct CirrusVGAState *s,
                               uint32_t dstaddr, int dst_pitch,
                               int width, int height);
 
-typedef struct PCICirrusVGAState {
+struct PCICirrusVGAState {
     PCIDevice dev;
     CirrusVGAState cirrus_vga;
-} PCICirrusVGAState;
+};
 
 #define TYPE_PCI_CIRRUS_VGA "cirrus-vga"
-#define PCI_CIRRUS_VGA(obj) \
-    OBJECT_CHECK(PCICirrusVGAState, (obj), TYPE_PCI_CIRRUS_VGA)
+OBJECT_DECLARE_SIMPLE_TYPE(PCICirrusVGAState, PCI_CIRRUS_VGA)
 
 static uint8_t rop_to_index[256];
 
@@ -640,10 +640,16 @@ static void cirrus_invalidate_region(CirrusVGAState * s, int off_begin,
     }
 
     for (y = 0; y < lines; y++) {
-        off_cur = off_begin;
+        off_cur = off_begin & s->cirrus_addr_mask;
         off_cur_end = ((off_cur + bytesperline - 1) & s->cirrus_addr_mask) + 1;
-        assert(off_cur_end >= off_cur);
-        memory_region_set_dirty(&s->vga.vram, off_cur, off_cur_end - off_cur);
+        if (off_cur_end >= off_cur) {
+            memory_region_set_dirty(&s->vga.vram, off_cur, off_cur_end - off_cur);
+        } else {
+            /* wraparound */
+            memory_region_set_dirty(&s->vga.vram, off_cur,
+                                    s->cirrus_addr_mask + 1 - off_cur);
+            memory_region_set_dirty(&s->vga.vram, 0, off_cur_end);
+        }
         off_begin += off_pitch;
     }
 }
@@ -1637,7 +1643,6 @@ static int cirrus_vga_read_cr(CirrusVGAState * s, unsigned reg_index)
 	return s->vga.cr[s->vga.cr_index];
     case 0x26:			// Attribute Controller Index Readback (R)
 	return s->vga.ar_index & 0x3f;
-	break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
                       "cirrus: inport cr_index 0x%02x\n", reg_index);
@@ -2100,7 +2105,7 @@ static void cirrus_vga_mem_write(void *opaque,
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "cirrus: mem_writeb 0x" TARGET_FMT_plx " "
-                      "value 0x%02" PRIu64 "\n", addr, mem_value);
+                      "value 0x%02" PRIx64 "\n", addr, mem_value);
     }
 }
 
@@ -2527,9 +2532,6 @@ static uint64_t cirrus_vga_ioport_read(void *opaque, hwaddr addr,
 	case 0x3c5:
 	    val = cirrus_vga_read_sr(c);
             break;
-#ifdef DEBUG_VGA_REG
-	    printf("vga: read SR%x = 0x%02x\n", s->sr_index, val);
-#endif
 	    break;
 	case 0x3c6:
 	    val = cirrus_read_hidden_dac(c);
@@ -2555,9 +2557,6 @@ static uint64_t cirrus_vga_ioport_read(void *opaque, hwaddr addr,
 	    break;
 	case 0x3cf:
 	    val = cirrus_vga_read_gr(c, s->gr_index);
-#ifdef DEBUG_VGA_REG
-	    printf("vga: read GR%x = 0x%02x\n", s->gr_index, val);
-#endif
 	    break;
 	case 0x3b4:
 	case 0x3d4:
@@ -2566,9 +2565,6 @@ static uint64_t cirrus_vga_ioport_read(void *opaque, hwaddr addr,
 	case 0x3b5:
 	case 0x3d5:
             val = cirrus_vga_read_cr(c, s->cr_index);
-#ifdef DEBUG_VGA_REG
-	    printf("vga: read CR%x = 0x%02x\n", s->cr_index, val);
-#endif
 	    break;
 	case 0x3ba:
 	case 0x3da:
@@ -2640,9 +2636,6 @@ static void cirrus_vga_ioport_write(void *opaque, hwaddr addr, uint64_t val,
 	s->sr_index = val;
 	break;
     case 0x3c5:
-#ifdef DEBUG_VGA_REG
-	printf("vga: write SR%x = 0x%02" PRIu64 "\n", s->sr_index, val);
-#endif
 	cirrus_vga_write_sr(c, val);
         break;
     case 0x3c6:
@@ -2665,9 +2658,6 @@ static void cirrus_vga_ioport_write(void *opaque, hwaddr addr, uint64_t val,
 	s->gr_index = val;
 	break;
     case 0x3cf:
-#ifdef DEBUG_VGA_REG
-	printf("vga: write GR%x = 0x%02" PRIu64 "\n", s->gr_index, val);
-#endif
 	cirrus_vga_write_gr(c, s->gr_index, val);
 	break;
     case 0x3b4:
@@ -2676,9 +2666,6 @@ static void cirrus_vga_ioport_write(void *opaque, hwaddr addr, uint64_t val,
 	break;
     case 0x3b5:
     case 0x3d5:
-#ifdef DEBUG_VGA_REG
-	printf("vga: write CR%x = 0x%02"PRIu64"\n", s->cr_index, val);
-#endif
 	cirrus_vga_write_cr(c, val);
 	break;
     case 0x3ba:

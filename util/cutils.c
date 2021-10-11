@@ -241,52 +241,127 @@ static int64_t suffix_mul(char suffix, int64_t unit)
 }
 
 /*
- * Convert string to bytes, allowing either B/b for bytes, K/k for KB,
- * M/m for MB, G/g for GB or T/t for TB. End pointer will be returned
- * in *end, if not NULL. Return -ERANGE on overflow, and -EINVAL on
- * other error.
+ * Convert size string to bytes.
+ *
+ * The size parsing supports the following syntaxes
+ * - 12345 - decimal, scale determined by @default_suffix and @unit
+ * - 12345{bBkKmMgGtTpPeE} - decimal, scale determined by suffix and @unit
+ * - 12345.678{kKmMgGtTpPeE} - decimal, scale determined by suffix, and
+ *   fractional portion is truncated to byte
+ * - 0x7fEE - hexadecimal, unit determined by @default_suffix
+ *
+ * The following cause a deprecation warning, and may be removed in the future
+ * - 0xabc{kKmMgGtTpP} - hex with scaling suffix
+ *
+ * The following are intentionally not supported
+ * - octal, such as 08
+ * - fractional hex, such as 0x1.8
+ * - floating point exponents, such as 1e3
+ *
+ * The end pointer will be returned in *end, if not NULL.  If there is
+ * no fraction, the input can be decimal or hexadecimal; if there is a
+ * fraction, then the input must be decimal and there must be a suffix
+ * (possibly by @default_suffix) larger than Byte, and the fractional
+ * portion may suffer from precision loss or rounding.  The input must
+ * be positive.
+ *
+ * Return -ERANGE on overflow (with *@end advanced), and -EINVAL on
+ * other error (with *@end left unchanged).
  */
 static int do_strtosz(const char *nptr, const char **end,
                       const char default_suffix, int64_t unit,
                       uint64_t *result)
 {
     int retval;
-    const char *endptr;
+    const char *endptr, *f;
     unsigned char c;
-    int mul_required = 0;
-    double val, mul, integral, fraction;
+    bool hex = false;
+    uint64_t val, valf = 0;
+    int64_t mul;
 
-    retval = qemu_strtod_finite(nptr, &endptr, &val);
+    /* Parse integral portion as decimal. */
+    retval = qemu_strtou64(nptr, &endptr, 10, &val);
     if (retval) {
         goto out;
     }
-    fraction = modf(val, &integral);
-    if (fraction != 0) {
-        mul_required = 1;
-    }
-    c = *endptr;
-    mul = suffix_mul(c, unit);
-    if (mul >= 0) {
-        endptr++;
-    } else {
-        mul = suffix_mul(default_suffix, unit);
-        assert(mul >= 0);
-    }
-    if (mul == 1 && mul_required) {
+    if (memchr(nptr, '-', endptr - nptr) != NULL) {
+        endptr = nptr;
         retval = -EINVAL;
         goto out;
     }
-    /*
-     * Values near UINT64_MAX overflow to 2**64 when converting to double
-     * precision.  Compare against the maximum representable double precision
-     * value below 2**64, computed as "the next value after 2**64 (0x1p64) in
-     * the direction of 0".
-     */
-    if ((val * mul > nextafter(0x1p64, 0)) || val < 0) {
-        retval = -ERANGE;
-        goto out;
+    if (val == 0 && (*endptr == 'x' || *endptr == 'X')) {
+        /* Input looks like hex, reparse, and insist on no fraction. */
+        retval = qemu_strtou64(nptr, &endptr, 16, &val);
+        if (retval) {
+            goto out;
+        }
+        if (*endptr == '.') {
+            endptr = nptr;
+            retval = -EINVAL;
+            goto out;
+        }
+        hex = true;
+    } else if (*endptr == '.') {
+        /*
+         * Input looks like a fraction.  Make sure even 1.k works
+         * without fractional digits.  If we see an exponent, treat
+         * the entire input as invalid instead.
+         */
+        double fraction;
+
+        f = endptr;
+        retval = qemu_strtod_finite(f, &endptr, &fraction);
+        if (retval) {
+            endptr++;
+        } else if (memchr(f, 'e', endptr - f) || memchr(f, 'E', endptr - f)) {
+            endptr = nptr;
+            retval = -EINVAL;
+            goto out;
+        } else {
+            /* Extract into a 64-bit fixed-point fraction. */
+            valf = (uint64_t)(fraction * 0x1p64);
+        }
     }
-    *result = val * mul;
+    c = *endptr;
+    mul = suffix_mul(c, unit);
+    if (mul > 0) {
+        if (hex) {
+            warn_report("Using a multiplier suffix on hex numbers "
+                        "is deprecated: %s", nptr);
+        }
+        endptr++;
+    } else {
+        mul = suffix_mul(default_suffix, unit);
+        assert(mul > 0);
+    }
+    if (mul == 1) {
+        /* When a fraction is present, a scale is required. */
+        if (valf != 0) {
+            endptr = nptr;
+            retval = -EINVAL;
+            goto out;
+        }
+    } else {
+        uint64_t valh, tmp;
+
+        /* Compute exact result: 64.64 x 64.0 -> 128.64 fixed point */
+        mulu64(&val, &valh, val, mul);
+        mulu64(&valf, &tmp, valf, mul);
+        val += tmp;
+        valh += val < tmp;
+
+        /* Round 0.5 upward. */
+        tmp = valf >> 63;
+        val += tmp;
+        valh += val < tmp;
+
+        /* Report overflow. */
+        if (valh != 0) {
+            retval = -ERANGE;
+            goto out;
+        }
+    }
+
     retval = 0;
 
 out:
@@ -294,6 +369,9 @@ out:
         *end = endptr;
     } else if (*endptr) {
         retval = -EINVAL;
+    }
+    if (retval == 0) {
+        *result = val;
     }
 
     return retval;
@@ -318,9 +396,22 @@ int qemu_strtosz_metric(const char *nptr, const char **end, uint64_t *result)
  * Helper function for error checking after strtol() and the like
  */
 static int check_strtox_error(const char *nptr, char *ep,
-                              const char **endptr, int libc_errno)
+                              const char **endptr, bool check_zero,
+                              int libc_errno)
 {
     assert(ep >= nptr);
+
+    /* Windows has a bug in that it fails to parse 0 from "0x" in base 16 */
+    if (check_zero && ep == nptr && libc_errno == 0) {
+        char *tmp;
+
+        errno = 0;
+        if (strtol(nptr, &tmp, 10) == 0 && errno == 0 &&
+            (*tmp == 'x' || *tmp == 'X')) {
+            ep = tmp;
+        }
+    }
+
     if (endptr) {
         *endptr = ep;
     }
@@ -387,7 +478,7 @@ int qemu_strtoi(const char *nptr, const char **endptr, int base,
     } else {
         *result = lresult;
     }
-    return check_strtox_error(nptr, ep, endptr, errno);
+    return check_strtox_error(nptr, ep, endptr, lresult == 0, errno);
 }
 
 /**
@@ -446,7 +537,7 @@ int qemu_strtoui(const char *nptr, const char **endptr, int base,
             *result = lresult;
         }
     }
-    return check_strtox_error(nptr, ep, endptr, errno);
+    return check_strtox_error(nptr, ep, endptr, lresult == 0, errno);
 }
 
 /**
@@ -488,7 +579,7 @@ int qemu_strtol(const char *nptr, const char **endptr, int base,
 
     errno = 0;
     *result = strtol(nptr, &ep, base);
-    return check_strtox_error(nptr, ep, endptr, errno);
+    return check_strtox_error(nptr, ep, endptr, *result == 0, errno);
 }
 
 /**
@@ -535,7 +626,7 @@ int qemu_strtoul(const char *nptr, const char **endptr, int base,
     if (errno == ERANGE) {
         *result = -1;
     }
-    return check_strtox_error(nptr, ep, endptr, errno);
+    return check_strtox_error(nptr, ep, endptr, *result == 0, errno);
 }
 
 /**
@@ -561,7 +652,7 @@ int qemu_strtoi64(const char *nptr, const char **endptr, int base,
     QEMU_BUILD_BUG_ON(sizeof(int64_t) != sizeof(long long));
     errno = 0;
     *result = strtoll(nptr, &ep, base);
-    return check_strtox_error(nptr, ep, endptr, errno);
+    return check_strtox_error(nptr, ep, endptr, *result == 0, errno);
 }
 
 /**
@@ -590,7 +681,7 @@ int qemu_strtou64(const char *nptr, const char **endptr, int base,
     if (errno == ERANGE) {
         *result = -1;
     }
-    return check_strtox_error(nptr, ep, endptr, errno);
+    return check_strtox_error(nptr, ep, endptr, *result == 0, errno);
 }
 
 /**
@@ -630,7 +721,7 @@ int qemu_strtod(const char *nptr, const char **endptr, double *result)
 
     errno = 0;
     *result = strtod(nptr, &ep);
-    return check_strtox_error(nptr, ep, endptr, errno);
+    return check_strtox_error(nptr, ep, endptr, false, errno);
 }
 
 /**
@@ -885,7 +976,84 @@ char *size_to_str(uint64_t val)
     return g_strdup_printf("%0.3g %sB", (double)val / div, suffixes[i]);
 }
 
+char *freq_to_str(uint64_t freq_hz)
+{
+    static const char *const suffixes[] = { "", "K", "M", "G", "T", "P", "E" };
+    double freq = freq_hz;
+    size_t idx = 0;
+
+    while (freq >= 1000.0) {
+        freq /= 1000.0;
+        idx++;
+    }
+    assert(idx < ARRAY_SIZE(suffixes));
+
+    return g_strdup_printf("%0.3g %sHz", freq, suffixes[idx]);
+}
+
 int qemu_pstrcmp0(const char **str1, const char **str2)
 {
     return g_strcmp0(*str1, *str2);
+}
+
+static inline bool starts_with_prefix(const char *dir)
+{
+    size_t prefix_len = strlen(CONFIG_PREFIX);
+    return !memcmp(dir, CONFIG_PREFIX, prefix_len) &&
+        (!dir[prefix_len] || G_IS_DIR_SEPARATOR(dir[prefix_len]));
+}
+
+/* Return the next path component in dir, and store its length in *p_len.  */
+static inline const char *next_component(const char *dir, int *p_len)
+{
+    int len;
+    while ((*dir && G_IS_DIR_SEPARATOR(*dir)) ||
+           (*dir == '.' && (G_IS_DIR_SEPARATOR(dir[1]) || dir[1] == '\0'))) {
+        dir++;
+    }
+    len = 0;
+    while (dir[len] && !G_IS_DIR_SEPARATOR(dir[len])) {
+        len++;
+    }
+    *p_len = len;
+    return dir;
+}
+
+char *get_relocated_path(const char *dir)
+{
+    size_t prefix_len = strlen(CONFIG_PREFIX);
+    const char *bindir = CONFIG_BINDIR;
+    const char *exec_dir = qemu_get_exec_dir();
+    GString *result;
+    int len_dir, len_bindir;
+
+    /* Fail if qemu_init_exec_dir was not called.  */
+    assert(exec_dir[0]);
+    if (!starts_with_prefix(dir) || !starts_with_prefix(bindir)) {
+        return g_strdup(dir);
+    }
+
+    result = g_string_new(exec_dir);
+
+    /* Advance over common components.  */
+    len_dir = len_bindir = prefix_len;
+    do {
+        dir += len_dir;
+        bindir += len_bindir;
+        dir = next_component(dir, &len_dir);
+        bindir = next_component(bindir, &len_bindir);
+    } while (len_dir && len_dir == len_bindir && !memcmp(dir, bindir, len_dir));
+
+    /* Ascend from bindir to the common prefix with dir.  */
+    while (len_bindir) {
+        bindir += len_bindir;
+        g_string_append(result, "/..");
+        bindir = next_component(bindir, &len_bindir);
+    }
+
+    if (*dir) {
+        assert(G_IS_DIR_SEPARATOR(dir[-1]));
+        g_string_append(result, dir - 1);
+    }
+    return g_string_free(result, false);
 }

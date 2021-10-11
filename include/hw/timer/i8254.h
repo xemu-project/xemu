@@ -28,6 +28,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/isa/isa.h"
 #include "qapi/error.h"
+#include "qom/object.h"
 
 #ifdef XBOX
 /* FIXME: As 8254 code is written, this cannot be exactly 1125000, as counter
@@ -47,12 +48,7 @@ typedef struct PITChannelInfo {
 } PITChannelInfo;
 
 #define TYPE_PIT_COMMON "pit-common"
-#define PIT_COMMON(obj) \
-     OBJECT_CHECK(PITCommonState, (obj), TYPE_PIT_COMMON)
-#define PIT_COMMON_CLASS(klass) \
-     OBJECT_CLASS_CHECK(PITCommonClass, (klass), TYPE_PIT_COMMON)
-#define PIT_COMMON_GET_CLASS(obj) \
-     OBJECT_GET_CLASS(PITCommonClass, (obj), TYPE_PIT_COMMON)
+OBJECT_DECLARE_TYPE(PITCommonState, PITCommonClass, PIT_COMMON)
 
 #define TYPE_I8254 "isa-pit"
 #define TYPE_KVM_I8254 "kvm-pit"

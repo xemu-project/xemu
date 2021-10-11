@@ -249,7 +249,7 @@
 316	common	mlockall			sys_mlockall
 317	common	munlockall			sys_munlockall
 318	common	sysinfo				sys_sysinfo
-319	common	_sysctl				sys_sysctl
+319	common	_sysctl				sys_ni_syscall
 # 320 was sys_idle
 321	common	oldumount			sys_oldumount
 322	common	swapon				sys_swapon
@@ -475,5 +475,14 @@
 543	common	fspick				sys_fspick
 544	common	pidfd_open			sys_pidfd_open
 # 545 reserved for clone3
+546	common	close_range			sys_close_range
 547	common	openat2				sys_openat2
 548	common	pidfd_getfd			sys_pidfd_getfd
+549	common	faccessat2			sys_faccessat2
+550	common	process_madvise			sys_process_madvise
+551	common	epoll_pwait2			sys_epoll_pwait2
+552	common	mount_setattr			sys_mount_setattr
+# 553 reserved for quotactl_path
+554	common	landlock_create_ruleset		sys_landlock_create_ruleset
+555	common	landlock_add_rule		sys_landlock_add_rule
+556	common	landlock_restrict_self		sys_landlock_restrict_self

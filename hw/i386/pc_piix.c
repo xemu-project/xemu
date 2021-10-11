@@ -23,7 +23,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "config-devices.h"
+#include CONFIG_DEVICES
 
 #include "qemu/units.h"
 #include "hw/loader.h"
@@ -42,15 +42,12 @@
 #include "hw/irq.h"
 #include "sysemu/kvm.h"
 #include "hw/kvm/clock.h"
-#include "sysemu/sysemu.h"
 #include "hw/sysbus.h"
 #include "sysemu/arch_init.h"
 #include "hw/i2c/smbus_eeprom.h"
-#include "hw/xen/xen.h"
+#include "hw/xen/xen-x86.h"
 #include "exec/memory.h"
-#include "exec/address-spaces.h"
 #include "hw/acpi/acpi.h"
-#include "cpu.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "sysemu/xen.h"
@@ -64,6 +61,7 @@
 #include "hw/hyperv/vmbus-bridge.h"
 #include "hw/mem/nvdimm.h"
 #include "hw/i386/acpi-build.h"
+#include "kvm/kvm-cpu.h"
 
 #define MAX_IDE_BUS 2
 
@@ -117,8 +115,8 @@ static void pc_init1(MachineState *machine,
      *    so legacy non-PAE guests can get as much memory as possible in
      *    the 32bit address space below 4G.
      *
-     *  - Note that Xen has its own ram setp code in xen_ram_init(),
-     *    called via xen_hvm_init().
+     *  - Note that Xen has its own ram setup code in xen_ram_init(),
+     *    called via xen_hvm_init_pc().
      *
      * Examples:
      *    qemu -M pc-1.7 -m 4G    (old default)    -> 3584M low,  512M high
@@ -127,7 +125,7 @@ static void pc_init1(MachineState *machine,
      *    qemu -M pc,max-ram-below-4g=4G -m 3968M  -> 3968M low (=4G-128M)
      */
     if (xen_enabled()) {
-        xen_hvm_init(pcms, &ram_memory);
+        xen_hvm_init_pc(pcms, &ram_memory);
     } else {
         if (!pcms->max_ram_below_4g) {
             pcms->max_ram_below_4g = 0xe0000000; /* default: 3.5G */
@@ -158,8 +156,8 @@ static void pc_init1(MachineState *machine,
 
     x86_cpus_init(x86ms, pcmc->default_cpu_version);
 
-    if (kvm_enabled() && pcmc->kvmclock_enabled) {
-        kvmclock_create();
+    if (pcmc->kvmclock_enabled) {
+        kvmclock_create(pcmc->kvmclock_create_always);
     }
 
     if (pcmc->pci_enabled) {
@@ -216,7 +214,7 @@ static void pc_init1(MachineState *machine,
         i440fx_state = NULL;
         isa_bus = isa_bus_new(NULL, get_system_memory(), system_io,
                               &error_abort);
-        no_hpet = 1;
+        pcms->hpet_enabled = false;
     }
     isa_bus_irqs(isa_bus, x86ms->gsi);
 
@@ -293,7 +291,7 @@ static void pc_init1(MachineState *machine,
 
         object_property_add_link(OBJECT(machine), PC_MACHINE_ACPI_DEVICE_PROP,
                                  TYPE_HOTPLUG_HANDLER,
-                                 (Object **)&pcms->acpi_dev,
+                                 (Object **)&x86ms->acpi_dev,
                                  object_property_allow_set_link,
                                  OBJ_PROP_LINK_STRONG);
         object_property_set_link(OBJECT(machine), PC_MACHINE_ACPI_DEVICE_PROP,
@@ -359,18 +357,6 @@ static void pc_compat_1_4_fn(MachineState *machine)
     pc_compat_1_5_fn(machine);
 }
 
-static void pc_compat_1_3(MachineState *machine)
-{
-    pc_compat_1_4_fn(machine);
-}
-
-/* PC compat function for pc-1.0 to pc-1.2 */
-static void pc_compat_1_2(MachineState *machine)
-{
-    pc_compat_1_3(machine);
-    x86_cpu_change_kvm_default("kvm-pv-eoi", NULL);
-}
-
 static void pc_init_isa(MachineState *machine)
 {
     pc_init1(machine, TYPE_I440FX_PCI_HOST_BRIDGE, TYPE_I440FX_PCI_DEVICE);
@@ -417,6 +403,7 @@ static void pc_i440fx_machine_options(MachineClass *m)
 {
     PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
     pcmc->default_nic_model = "e1000";
+    pcmc->pci_root_uid = 0;
 
     m->family = "pc_piix";
     m->desc = "Standard PC (i440FX + PIIX, 1996)";
@@ -426,13 +413,53 @@ static void pc_i440fx_machine_options(MachineClass *m)
     machine_class_allow_dynamic_sysbus_dev(m, TYPE_VMBUS_BRIDGE);
 }
 
-static void pc_i440fx_5_1_machine_options(MachineClass *m)
+static void pc_i440fx_6_1_machine_options(MachineClass *m)
 {
     PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
     pc_i440fx_machine_options(m);
     m->alias = "pc";
     m->is_default = true;
     pcmc->default_cpu_version = 1;
+}
+
+DEFINE_I440FX_MACHINE(v6_1, "pc-i440fx-6.1", NULL,
+                      pc_i440fx_6_1_machine_options);
+
+static void pc_i440fx_6_0_machine_options(MachineClass *m)
+{
+    pc_i440fx_6_1_machine_options(m);
+    m->alias = NULL;
+    m->is_default = false;
+    compat_props_add(m->compat_props, hw_compat_6_0, hw_compat_6_0_len);
+    compat_props_add(m->compat_props, pc_compat_6_0, pc_compat_6_0_len);
+}
+
+DEFINE_I440FX_MACHINE(v6_0, "pc-i440fx-6.0", NULL,
+                      pc_i440fx_6_0_machine_options);
+
+static void pc_i440fx_5_2_machine_options(MachineClass *m)
+{
+    pc_i440fx_6_0_machine_options(m);
+    m->alias = NULL;
+    m->is_default = false;
+    compat_props_add(m->compat_props, hw_compat_5_2, hw_compat_5_2_len);
+    compat_props_add(m->compat_props, pc_compat_5_2, pc_compat_5_2_len);
+}
+
+DEFINE_I440FX_MACHINE(v5_2, "pc-i440fx-5.2", NULL,
+                      pc_i440fx_5_2_machine_options);
+
+static void pc_i440fx_5_1_machine_options(MachineClass *m)
+{
+    PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
+
+    pc_i440fx_5_2_machine_options(m);
+    m->alias = NULL;
+    m->is_default = false;
+    compat_props_add(m->compat_props, hw_compat_5_1, hw_compat_5_1_len);
+    compat_props_add(m->compat_props, pc_compat_5_1, pc_compat_5_1_len);
+    pcmc->kvmclock_create_always = false;
+    pcmc->pci_root_uid = 1;
 }
 
 DEFINE_I440FX_MACHINE(v5_1, "pc-i440fx-5.1", NULL,
@@ -553,7 +580,6 @@ static void pc_i440fx_2_9_machine_options(MachineClass *m)
     pc_i440fx_2_10_machine_options(m);
     compat_props_add(m->compat_props, hw_compat_2_9, hw_compat_2_9_len);
     compat_props_add(m->compat_props, pc_compat_2_9, pc_compat_2_9_len);
-    m->numa_auto_assign_ram = numa_legacy_auto_assign_ram;
 }
 
 DEFINE_I440FX_MACHINE(v2_9, "pc-i440fx-2.9", NULL,
@@ -740,94 +766,11 @@ static void pc_i440fx_1_4_machine_options(MachineClass *m)
 {
     pc_i440fx_1_5_machine_options(m);
     m->hw_version = "1.4.0";
-    m->hot_add_cpu = NULL;
     compat_props_add(m->compat_props, pc_compat_1_4, pc_compat_1_4_len);
 }
 
 DEFINE_I440FX_MACHINE(v1_4, "pc-i440fx-1.4", pc_compat_1_4_fn,
                       pc_i440fx_1_4_machine_options);
-
-static void pc_i440fx_1_3_machine_options(MachineClass *m)
-{
-    X86MachineClass *x86mc = X86_MACHINE_CLASS(m);
-    static GlobalProperty compat[] = {
-        PC_CPU_MODEL_IDS("1.3.0")
-        { "usb-tablet", "usb_version", "1" },
-        { "virtio-net-pci", "ctrl_mac_addr", "off" },
-        { "virtio-net-pci", "mq", "off" },
-        { "e1000", "autonegotiation", "off" },
-    };
-
-    pc_i440fx_1_4_machine_options(m);
-    m->hw_version = "1.3.0";
-    m->deprecation_reason = "use a newer machine type instead";
-    x86mc->compat_apic_id_mode = true;
-    compat_props_add(m->compat_props, compat, G_N_ELEMENTS(compat));
-}
-
-DEFINE_I440FX_MACHINE(v1_3, "pc-1.3", pc_compat_1_3,
-                      pc_i440fx_1_3_machine_options);
-
-
-static void pc_i440fx_1_2_machine_options(MachineClass *m)
-{
-    static GlobalProperty compat[] = {
-        PC_CPU_MODEL_IDS("1.2.0")
-        { "nec-usb-xhci", "msi", "off" },
-        { "nec-usb-xhci", "msix", "off" },
-        { "qxl", "revision", "3" },
-        { "qxl-vga", "revision", "3" },
-        { "VGA", "mmio", "off" },
-    };
-
-    pc_i440fx_1_3_machine_options(m);
-    m->hw_version = "1.2.0";
-    compat_props_add(m->compat_props, compat, G_N_ELEMENTS(compat));
-}
-
-DEFINE_I440FX_MACHINE(v1_2, "pc-1.2", pc_compat_1_2,
-                      pc_i440fx_1_2_machine_options);
-
-
-static void pc_i440fx_1_1_machine_options(MachineClass *m)
-{
-    static GlobalProperty compat[] = {
-        PC_CPU_MODEL_IDS("1.1.0")
-        { "virtio-scsi-pci", "hotplug", "off" },
-        { "virtio-scsi-pci", "param_change", "off" },
-        { "VGA", "vgamem_mb", "8" },
-        { "vmware-svga", "vgamem_mb", "8" },
-        { "qxl-vga", "vgamem_mb", "8" },
-        { "qxl", "vgamem_mb", "8" },
-        { "virtio-blk-pci", "config-wce", "off" },
-    };
-
-    pc_i440fx_1_2_machine_options(m);
-    m->hw_version = "1.1.0";
-    compat_props_add(m->compat_props, compat, G_N_ELEMENTS(compat));
-}
-
-DEFINE_I440FX_MACHINE(v1_1, "pc-1.1", pc_compat_1_2,
-                      pc_i440fx_1_1_machine_options);
-
-static void pc_i440fx_1_0_machine_options(MachineClass *m)
-{
-    static GlobalProperty compat[] = {
-        PC_CPU_MODEL_IDS("1.0")
-        { TYPE_ISA_FDC, "check_media_rate", "off" },
-        { "virtio-balloon-pci", "class", stringify(PCI_CLASS_MEMORY_RAM) },
-        { "apic-common", "vapic", "off" },
-        { TYPE_USB_DEVICE, "full-path", "no" },
-    };
-
-    pc_i440fx_1_1_machine_options(m);
-    m->hw_version = "1.0";
-    compat_props_add(m->compat_props, compat, G_N_ELEMENTS(compat));
-}
-
-DEFINE_I440FX_MACHINE(v1_0, "pc-1.0", pc_compat_1_2,
-                      pc_i440fx_1_0_machine_options);
-
 
 typedef struct {
     uint16_t gpu_device_id;
@@ -918,7 +861,7 @@ void igd_passthrough_isa_bridge_create(PCIBus *bus, uint16_t gpu_dev_id)
     struct PCIDevice *bridge_dev;
     int i, num;
     uint16_t pch_dev_id = 0xffff;
-    uint8_t pch_rev_id;
+    uint8_t pch_rev_id = 0;
 
     num = ARRAY_SIZE(igd_combo_id_infos);
     for (i = 0; i < num; i++) {
@@ -974,7 +917,7 @@ static void xenfv_4_2_machine_options(MachineClass *m)
     pc_i440fx_4_2_machine_options(m);
     m->desc = "Xen Fully-virtualized PC";
     m->max_cpus = HVM_MAX_VCPUS;
-    m->default_machine_opts = "accel=xen";
+    m->default_machine_opts = "accel=xen,suppress-vmdesc=on";
 }
 
 DEFINE_PC_MACHINE(xenfv_4_2, "xenfv-4.2", pc_xen_hvm_init,
@@ -986,7 +929,7 @@ static void xenfv_3_1_machine_options(MachineClass *m)
     m->desc = "Xen Fully-virtualized PC";
     m->alias = "xenfv";
     m->max_cpus = HVM_MAX_VCPUS;
-    m->default_machine_opts = "accel=xen";
+    m->default_machine_opts = "accel=xen,suppress-vmdesc=on";
 }
 
 DEFINE_PC_MACHINE(xenfv, "xenfv-3.1", pc_xen_hvm_init,

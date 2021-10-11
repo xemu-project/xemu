@@ -16,6 +16,7 @@
 #include "cpu.h"
 #include "exec/address-spaces.h"
 #include "hw/qdev-core.h"
+#include "qom/object.h"
 
 struct IPLBlockPVComp {
     uint64_t tweak_pref;
@@ -31,7 +32,7 @@ struct IPLBlockPV {
     uint32_t num_comp;          /* 0x74 */
     uint64_t pv_header_addr;    /* 0x78 */
     uint64_t pv_header_len;     /* 0x80 */
-    struct IPLBlockPVComp components[];
+    struct IPLBlockPVComp components[0];
 } QEMU_PACKED;
 typedef struct IPLBlockPV IPLBlockPV;
 
@@ -62,7 +63,7 @@ struct IplBlockFcp {
     uint64_t br_lba;
     uint32_t scp_data_len;
     uint8_t  reserved6[260];
-    uint8_t  scp_data[];
+    uint8_t  scp_data[0];
 } QEMU_PACKED;
 typedef struct IplBlockFcp IplBlockFcp;
 
@@ -152,7 +153,7 @@ struct QemuIplParameters {
 typedef struct QemuIplParameters QemuIplParameters;
 
 #define TYPE_S390_IPL "s390-ipl"
-#define S390_IPL(obj) OBJECT_CHECK(S390IPLState, (obj), TYPE_S390_IPL)
+OBJECT_DECLARE_SIMPLE_TYPE(S390IPLState, S390_IPL)
 
 struct S390IPLState {
     /*< private >*/
@@ -183,7 +184,6 @@ struct S390IPLState {
     uint16_t devno;
     bool iplbext_migration;
 };
-typedef struct S390IPLState S390IPLState;
 QEMU_BUILD_BUG_MSG(offsetof(S390IPLState, iplb) & 3, "alignment of iplb wrong");
 
 #define DIAG_308_RC_OK              0x0001

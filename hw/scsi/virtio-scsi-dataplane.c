@@ -52,12 +52,14 @@ void virtio_scsi_dataplane_setup(VirtIOSCSI *s, Error **errp)
 static bool virtio_scsi_data_plane_handle_cmd(VirtIODevice *vdev,
                                               VirtQueue *vq)
 {
-    bool progress;
+    bool progress = false;
     VirtIOSCSI *s = VIRTIO_SCSI(vdev);
 
     virtio_scsi_acquire(s);
-    assert(s->ctx && s->dataplane_started);
-    progress = virtio_scsi_handle_cmd_vq(s, vq);
+    if (!s->dataplane_fenced) {
+        assert(s->ctx && s->dataplane_started);
+        progress = virtio_scsi_handle_cmd_vq(s, vq);
+    }
     virtio_scsi_release(s);
     return progress;
 }
@@ -65,12 +67,14 @@ static bool virtio_scsi_data_plane_handle_cmd(VirtIODevice *vdev,
 static bool virtio_scsi_data_plane_handle_ctrl(VirtIODevice *vdev,
                                                VirtQueue *vq)
 {
-    bool progress;
+    bool progress = false;
     VirtIOSCSI *s = VIRTIO_SCSI(vdev);
 
     virtio_scsi_acquire(s);
-    assert(s->ctx && s->dataplane_started);
-    progress = virtio_scsi_handle_ctrl_vq(s, vq);
+    if (!s->dataplane_fenced) {
+        assert(s->ctx && s->dataplane_started);
+        progress = virtio_scsi_handle_ctrl_vq(s, vq);
+    }
     virtio_scsi_release(s);
     return progress;
 }
@@ -78,18 +82,19 @@ static bool virtio_scsi_data_plane_handle_ctrl(VirtIODevice *vdev,
 static bool virtio_scsi_data_plane_handle_event(VirtIODevice *vdev,
                                                 VirtQueue *vq)
 {
-    bool progress;
+    bool progress = false;
     VirtIOSCSI *s = VIRTIO_SCSI(vdev);
 
     virtio_scsi_acquire(s);
-    assert(s->ctx && s->dataplane_started);
-    progress = virtio_scsi_handle_event_vq(s, vq);
+    if (!s->dataplane_fenced) {
+        assert(s->ctx && s->dataplane_started);
+        progress = virtio_scsi_handle_event_vq(s, vq);
+    }
     virtio_scsi_release(s);
     return progress;
 }
 
-static int virtio_scsi_vring_init(VirtIOSCSI *s, VirtQueue *vq, int n,
-                                  VirtIOHandleAIOOutput fn)
+static int virtio_scsi_set_host_notifier(VirtIOSCSI *s, VirtQueue *vq, int n)
 {
     BusState *qbus = BUS(qdev_get_parent_bus(DEVICE(s)));
     int rc;
@@ -103,7 +108,6 @@ static int virtio_scsi_vring_init(VirtIOSCSI *s, VirtQueue *vq, int n,
         return rc;
     }
 
-    virtio_queue_aio_set_host_notifier_handler(vq, s->ctx, fn);
     return 0;
 }
 
@@ -126,6 +130,7 @@ int virtio_scsi_dataplane_start(VirtIODevice *vdev)
 {
     int i;
     int rc;
+    int vq_init_count = 0;
     BusState *qbus = qdev_get_parent_bus(DEVICE(vdev));
     VirtioBusClass *k = VIRTIO_BUS_GET_CLASS(qbus);
     VirtIOSCSICommon *vs = VIRTIO_SCSI_COMMON(vdev);
@@ -147,23 +152,44 @@ int virtio_scsi_dataplane_start(VirtIODevice *vdev)
         goto fail_guest_notifiers;
     }
 
-    aio_context_acquire(s->ctx);
-    rc = virtio_scsi_vring_init(s, vs->ctrl_vq, 0,
-                                virtio_scsi_data_plane_handle_ctrl);
-    if (rc) {
-        goto fail_vrings;
+    /*
+     * Batch all the host notifiers in a single transaction to avoid
+     * quadratic time complexity in address_space_update_ioeventfds().
+     */
+    memory_region_transaction_begin();
+
+    rc = virtio_scsi_set_host_notifier(s, vs->ctrl_vq, 0);
+    if (rc != 0) {
+        goto fail_host_notifiers;
     }
-    rc = virtio_scsi_vring_init(s, vs->event_vq, 1,
-                                virtio_scsi_data_plane_handle_event);
-    if (rc) {
-        goto fail_vrings;
+
+    vq_init_count++;
+    rc = virtio_scsi_set_host_notifier(s, vs->event_vq, 1);
+    if (rc != 0) {
+        goto fail_host_notifiers;
     }
+
+    vq_init_count++;
+
     for (i = 0; i < vs->conf.num_queues; i++) {
-        rc = virtio_scsi_vring_init(s, vs->cmd_vqs[i], i + 2,
-                                    virtio_scsi_data_plane_handle_cmd);
+        rc = virtio_scsi_set_host_notifier(s, vs->cmd_vqs[i], i + 2);
         if (rc) {
-            goto fail_vrings;
+            goto fail_host_notifiers;
         }
+        vq_init_count++;
+    }
+
+    memory_region_transaction_commit();
+
+    aio_context_acquire(s->ctx);
+    virtio_queue_aio_set_host_notifier_handler(vs->ctrl_vq, s->ctx,
+                                            virtio_scsi_data_plane_handle_ctrl);
+    virtio_queue_aio_set_host_notifier_handler(vs->event_vq, s->ctx,
+                                           virtio_scsi_data_plane_handle_event);
+
+    for (i = 0; i < vs->conf.num_queues; i++) {
+        virtio_queue_aio_set_host_notifier_handler(vs->cmd_vqs[i], s->ctx,
+                                             virtio_scsi_data_plane_handle_cmd);
     }
 
     s->dataplane_starting = false;
@@ -171,11 +197,18 @@ int virtio_scsi_dataplane_start(VirtIODevice *vdev)
     aio_context_release(s->ctx);
     return 0;
 
-fail_vrings:
-    aio_wait_bh_oneshot(s->ctx, virtio_scsi_dataplane_stop_bh, s);
-    aio_context_release(s->ctx);
-    for (i = 0; i < vs->conf.num_queues + 2; i++) {
+fail_host_notifiers:
+    for (i = 0; i < vq_init_count; i++) {
         virtio_bus_set_host_notifier(VIRTIO_BUS(qbus), i, false);
+    }
+
+    /*
+     * The transaction expects the ioeventfds to be open when it
+     * commits. Do it now, before the cleanup loop.
+     */
+    memory_region_transaction_commit();
+
+    for (i = 0; i < vq_init_count; i++) {
         virtio_bus_cleanup_host_notifier(VIRTIO_BUS(qbus), i);
     }
     k->set_guest_notifiers(qbus->parent, vs->conf.num_queues + 2, false);
@@ -213,8 +246,23 @@ void virtio_scsi_dataplane_stop(VirtIODevice *vdev)
 
     blk_drain_all(); /* ensure there are no in-flight requests */
 
+    /*
+     * Batch all the host notifiers in a single transaction to avoid
+     * quadratic time complexity in address_space_update_ioeventfds().
+     */
+    memory_region_transaction_begin();
+
     for (i = 0; i < vs->conf.num_queues + 2; i++) {
         virtio_bus_set_host_notifier(VIRTIO_BUS(qbus), i, false);
+    }
+
+    /*
+     * The transaction expects the ioeventfds to be open when it
+     * commits. Do it now, before the cleanup loop.
+     */
+    memory_region_transaction_commit();
+
+    for (i = 0; i < vs->conf.num_queues + 2; i++) {
         virtio_bus_cleanup_host_notifier(VIRTIO_BUS(qbus), i);
     }
 

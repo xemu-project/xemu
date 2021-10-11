@@ -13,7 +13,7 @@
 #include "qemu/module.h"
 #include "sysemu/runstate.h"
 #include "hw/s390x/tod.h"
-#include "kvm_s390x.h"
+#include "kvm/kvm_s390x.h"
 
 static void kvm_s390_get_tod_raw(S390TOD *tod, Error **errp)
 {
@@ -78,7 +78,7 @@ static void kvm_s390_tod_set(S390TODState *td, const S390TOD *tod, Error **errp)
     }
 }
 
-static void kvm_s390_tod_vm_state_change(void *opaque, int running,
+static void kvm_s390_tod_vm_state_change(void *opaque, bool running,
                                          RunState state)
 {
     S390TODState *td = opaque;

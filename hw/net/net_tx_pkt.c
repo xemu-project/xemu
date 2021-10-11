@@ -450,11 +450,13 @@ void net_tx_pkt_reset(struct NetTxPkt *pkt)
     pkt->payload_len = 0;
     pkt->payload_frags = 0;
 
-    assert(pkt->raw);
-    for (i = 0; i < pkt->raw_frags; i++) {
-        assert(pkt->raw[i].iov_base);
-        pci_dma_unmap(pkt->pci_dev, pkt->raw[i].iov_base, pkt->raw[i].iov_len,
-                      DMA_DIRECTION_TO_DEVICE, 0);
+    if (pkt->max_raw_frags > 0) {
+        assert(pkt->raw);
+        for (i = 0; i < pkt->raw_frags; i++) {
+            assert(pkt->raw[i].iov_base);
+            pci_dma_unmap(pkt->pci_dev, pkt->raw[i].iov_base,
+                          pkt->raw[i].iov_len, DMA_DIRECTION_TO_DEVICE, 0);
+        }
     }
     pkt->raw_frags = 0;
 
@@ -553,7 +555,7 @@ static inline void net_tx_pkt_sendv(struct NetTxPkt *pkt,
     NetClientState *nc, const struct iovec *iov, int iov_cnt)
 {
     if (pkt->is_loopback) {
-        nc->info->receive_iov(nc, iov, iov_cnt);
+        qemu_receive_packet_iov(nc, iov, iov_cnt);
     } else {
         qemu_sendv_packet(nc, iov, iov_cnt);
     }

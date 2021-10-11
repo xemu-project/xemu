@@ -34,6 +34,7 @@
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "qapi/error.h"
+#include "qom/object.h"
 
 #define dolog(...) AUD_log ("sb16", __VA_ARGS__)
 
@@ -49,9 +50,9 @@
 static const char e3[] = "COPYRIGHT (C) CREATIVE TECHNOLOGY LTD, 1992.";
 
 #define TYPE_SB16 "sb16"
-#define SB16(obj) OBJECT_CHECK (SB16State, (obj), TYPE_SB16)
+OBJECT_DECLARE_SIMPLE_TYPE(SB16State, SB16)
 
-typedef struct SB16State {
+struct SB16State {
     ISADevice parent_obj;
 
     QEMUSoundCard card;
@@ -112,7 +113,10 @@ typedef struct SB16State {
     int mixer_nreg;
     uint8_t mixer_regs[256];
     PortioList portio_list;
-} SB16State;
+};
+
+#define SAMPLE_RATE_MIN 5000
+#define SAMPLE_RATE_MAX 45000
 
 static void SB_audio_callback (void *opaque, int free);
 
@@ -225,6 +229,23 @@ static void continue_dma8 (SB16State *s)
     control (s, 1);
 }
 
+static inline int restrict_sampling_rate(int freq)
+{
+    if (freq < SAMPLE_RATE_MIN) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "sampling range too low: %d, increasing to %u\n",
+                      freq, SAMPLE_RATE_MIN);
+        return SAMPLE_RATE_MIN;
+    } else if (freq > SAMPLE_RATE_MAX) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "sampling range too high: %d, decreasing to %u\n",
+                      freq, SAMPLE_RATE_MAX);
+        return SAMPLE_RATE_MAX;
+    } else {
+        return freq;
+    }
+}
+
 static void dma_cmd8 (SB16State *s, int mask, int dma_len)
 {
     s->fmt = AUDIO_FORMAT_U8;
@@ -240,6 +261,7 @@ static void dma_cmd8 (SB16State *s, int mask, int dma_len)
         int tmp = (256 - s->time_const);
         s->freq = (1000000 + (tmp / 2)) / tmp;
     }
+    s->freq = restrict_sampling_rate(s->freq);
 
     if (dma_len != -1) {
         s->block_size = dma_len << s->fmt_stereo;
@@ -753,7 +775,7 @@ static void complete (SB16State *s)
              * and FT2 sets output freq with this (go figure).  Compare:
              * http://homepages.cae.wisc.edu/~brodskye/sb16doc/sb16doc.html#SamplingRate
              */
-            s->freq = dsp_get_hilo (s);
+            s->freq = restrict_sampling_rate(dsp_get_hilo(s));
             ldebug ("set freq %d\n", s->freq);
             break;
 

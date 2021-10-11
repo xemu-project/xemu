@@ -547,75 +547,6 @@ also available.  Here are some example of the older syntax:
   |qemu_system| linux2.img -hdb nbd:unix:/tmp/my_socket
   |qemu_system| -cdrom nbd:localhost:10809:exportname=debian-500-ppc-netinst
 
-
-
-Sheepdog disk images
-~~~~~~~~~~~~~~~~~~~~
-
-Sheepdog is a distributed storage system for QEMU.  It provides highly
-available block level storage volumes that can be attached to
-QEMU-based virtual machines.
-
-You can create a Sheepdog disk image with the command:
-
-.. parsed-literal::
-
-  qemu-img create sheepdog:///IMAGE SIZE
-
-where *IMAGE* is the Sheepdog image name and *SIZE* is its
-size.
-
-To import the existing *FILENAME* to Sheepdog, you can use a
-convert command.
-
-.. parsed-literal::
-
-  qemu-img convert FILENAME sheepdog:///IMAGE
-
-You can boot from the Sheepdog disk image with the command:
-
-.. parsed-literal::
-
-  |qemu_system| sheepdog:///IMAGE
-
-You can also create a snapshot of the Sheepdog image like qcow2.
-
-.. parsed-literal::
-
-  qemu-img snapshot -c TAG sheepdog:///IMAGE
-
-where *TAG* is a tag name of the newly created snapshot.
-
-To boot from the Sheepdog snapshot, specify the tag name of the
-snapshot.
-
-.. parsed-literal::
-
-  |qemu_system| sheepdog:///IMAGE#TAG
-
-You can create a cloned image from the existing snapshot.
-
-.. parsed-literal::
-
-  qemu-img create -b sheepdog:///BASE#TAG sheepdog:///IMAGE
-
-where *BASE* is an image name of the source snapshot and *TAG*
-is its tag name.
-
-You can use an unix socket instead of an inet socket:
-
-.. parsed-literal::
-
-  |qemu_system| sheepdog+unix:///IMAGE?socket=PATH
-
-If the Sheepdog daemon doesn't run on the local host, you need to
-specify one of the Sheepdog servers to connect to.
-
-.. parsed-literal::
-
-  qemu-img create sheepdog://HOSTNAME:PORT/IMAGE SIZE
-  |qemu_system| sheepdog://HOSTNAME:PORT/IMAGE
-
 iSCSI LUNs
 ~~~~~~~~~~
 
@@ -952,3 +883,29 @@ on host and see if there are locks held by the QEMU process on the image file.
 More than one byte could be locked by the QEMU instance, each byte of which
 reflects a particular permission that is acquired or protected by the running
 block driver.
+
+Filter drivers
+~~~~~~~~~~~~~~
+
+QEMU supports several filter drivers, which don't store any data, but perform
+some additional tasks, hooking io requests.
+
+.. program:: filter-drivers
+.. option:: preallocate
+
+  The preallocate filter driver is intended to be inserted between format
+  and protocol nodes and preallocates some additional space
+  (expanding the protocol file) when writing past the file’s end. This can be
+  useful for file-systems with slow allocation.
+
+  Supported options:
+
+  .. program:: preallocate
+  .. option:: prealloc-align
+
+    On preallocation, align the file length to this value (in bytes), default 1M.
+
+  .. program:: preallocate
+  .. option:: prealloc-size
+
+    How much to preallocate (in bytes), default 128M.

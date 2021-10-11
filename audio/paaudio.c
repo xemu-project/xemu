@@ -2,7 +2,6 @@
 
 #include "qemu/osdep.h"
 #include "qemu/module.h"
-#include "qemu-common.h"
 #include "audio.h"
 #include "qapi/opts-visitor.h"
 
@@ -207,6 +206,46 @@ static void *qpa_get_buffer_out(HWVoiceOut *hw, size_t *size)
     PAVoiceOut *p = (PAVoiceOut *) hw;
     PAConnection *c = p->g->conn;
     void *ret;
+    size_t l;
+    int r;
+
+    pa_threaded_mainloop_lock(c->mainloop);
+
+    CHECK_DEAD_GOTO(c, p->stream, unlock_and_fail,
+                    "pa_threaded_mainloop_lock failed\n");
+    if (pa_stream_get_state(p->stream) != PA_STREAM_READY) {
+        /* wait for stream to become ready */
+        l = 0;
+        ret = NULL;
+        goto unlock;
+    }
+
+    l = pa_stream_writable_size(p->stream);
+    CHECK_SUCCESS_GOTO(c, l != (size_t) -1, unlock_and_fail,
+                       "pa_stream_writable_size failed\n");
+
+    *size = -1;
+    r = pa_stream_begin_write(p->stream, &ret, size);
+    CHECK_SUCCESS_GOTO(c, r >= 0, unlock_and_fail,
+                       "pa_stream_begin_write failed\n");
+
+unlock:
+    pa_threaded_mainloop_unlock(c->mainloop);
+    if (*size > l) {
+        *size = l;
+    }
+    return ret;
+
+unlock_and_fail:
+    pa_threaded_mainloop_unlock(c->mainloop);
+    *size = 0;
+    return NULL;
+}
+
+static size_t qpa_put_buffer_out(HWVoiceOut *hw, void *data, size_t length)
+{
+    PAVoiceOut *p = (PAVoiceOut *)hw;
+    PAConnection *c = p->g->conn;
     int r;
 
     pa_threaded_mainloop_lock(c->mainloop);
@@ -214,18 +253,15 @@ static void *qpa_get_buffer_out(HWVoiceOut *hw, size_t *size)
     CHECK_DEAD_GOTO(c, p->stream, unlock_and_fail,
                     "pa_threaded_mainloop_lock failed\n");
 
-    *size = -1;
-    r = pa_stream_begin_write(p->stream, &ret, size);
-    CHECK_SUCCESS_GOTO(c, r >= 0, unlock_and_fail,
-                       "pa_stream_begin_write failed\n");
+    r = pa_stream_write(p->stream, data, length, NULL, 0LL, PA_SEEK_RELATIVE);
+    CHECK_SUCCESS_GOTO(c, r >= 0, unlock_and_fail, "pa_stream_write failed\n");
 
     pa_threaded_mainloop_unlock(c->mainloop);
-    return ret;
+    return length;
 
 unlock_and_fail:
     pa_threaded_mainloop_unlock(c->mainloop);
-    *size = 0;
-    return NULL;
+    return 0;
 }
 
 static size_t qpa_write(HWVoiceOut *hw, void *data, size_t length)
@@ -239,6 +275,11 @@ static size_t qpa_write(HWVoiceOut *hw, void *data, size_t length)
 
     CHECK_DEAD_GOTO(c, p->stream, unlock_and_fail,
                     "pa_threaded_mainloop_lock failed\n");
+    if (pa_stream_get_state(p->stream) != PA_STREAM_READY) {
+        /* wait for stream to become ready */
+        l = 0;
+        goto unlock;
+    }
 
     l = pa_stream_writable_size(p->stream);
 
@@ -252,6 +293,7 @@ static size_t qpa_write(HWVoiceOut *hw, void *data, size_t length)
     r = pa_stream_write(p->stream, data, l, NULL, 0LL, PA_SEEK_RELATIVE);
     CHECK_SUCCESS_GOTO(c, r >= 0, unlock_and_fail, "pa_stream_write failed\n");
 
+unlock:
     pa_threaded_mainloop_unlock(c->mainloop);
     return l;
 
@@ -420,10 +462,7 @@ static pa_stream *qpa_simple_new (
 
     pa_stream_set_state_callback(stream, stream_state_cb, c);
 
-    flags =
-        PA_STREAM_INTERPOLATE_TIMING
-        | PA_STREAM_AUTO_TIMING_UPDATE
-        | PA_STREAM_EARLY_REQUESTS;
+    flags = PA_STREAM_EARLY_REQUESTS;
 
     if (dev) {
         /* don't move the stream if the user specified a sink/source */
@@ -437,7 +476,7 @@ static pa_stream *qpa_simple_new (
     }
 
     if (r < 0) {
-      goto fail;
+        goto fail;
     }
 
     pa_threaded_mainloop_unlock(c->mainloop);
@@ -474,7 +513,8 @@ static int qpa_init_out(HWVoiceOut *hw, struct audsettings *as,
     ss.rate = as->freq;
 
     ba.tlength = pa_usec_to_bytes(ppdo->latency, &ss);
-    ba.minreq = -1;
+    ba.minreq = pa_usec_to_bytes(MIN(ppdo->latency >> 2,
+                                     (g->dev->timer_period >> 2) * 3), &ss);
     ba.maxlength = -1;
     ba.prebuf = -1;
 
@@ -495,9 +535,12 @@ static int qpa_init_out(HWVoiceOut *hw, struct audsettings *as,
     }
 
     audio_pcm_init_info (&hw->info, &obt_as);
+    /*
+     * This is wrong. hw->samples counts in frames. hw->samples will be
+     * number of channels times larger than expected.
+     */
     hw->samples = audio_buffer_samples(
-        qapi_AudiodevPaPerDirectionOptions_base(ppdo),
-        &obt_as, ppdo->buffer_length);
+        qapi_AudiodevPaPerDirectionOptions_base(ppdo), &obt_as, 46440);
 
     return 0;
 
@@ -521,8 +564,9 @@ static int qpa_init_in(HWVoiceIn *hw, struct audsettings *as, void *drv_opaque)
     ss.channels = as->nchannels;
     ss.rate = as->freq;
 
-    ba.fragsize = pa_usec_to_bytes(ppdo->latency, &ss);
-    ba.maxlength = pa_usec_to_bytes(ppdo->latency * 2, &ss);
+    ba.fragsize = pa_usec_to_bytes((g->dev->timer_period >> 1) * 3, &ss);
+    ba.maxlength = pa_usec_to_bytes(
+        MAX(ppdo->latency, g->dev->timer_period * 3), &ss);
     ba.minreq = -1;
     ba.prebuf = -1;
 
@@ -543,9 +587,12 @@ static int qpa_init_in(HWVoiceIn *hw, struct audsettings *as, void *drv_opaque)
     }
 
     audio_pcm_init_info (&hw->info, &obt_as);
+    /*
+     * This is wrong. hw->samples counts in frames. hw->samples will be
+     * number of channels times larger than expected.
+     */
     hw->samples = audio_buffer_samples(
-        qapi_AudiodevPaPerDirectionOptions_base(ppdo),
-        &obt_as, ppdo->buffer_length);
+        qapi_AudiodevPaPerDirectionOptions_base(ppdo), &obt_as, 46440);
 
     return 0;
 
@@ -695,10 +742,6 @@ static void qpa_volume_in(HWVoiceIn *hw, Volume *vol)
 static int qpa_validate_per_direction_opts(Audiodev *dev,
                                            AudiodevPaPerDirectionOptions *pdo)
 {
-    if (!pdo->has_buffer_length) {
-        pdo->has_buffer_length = true;
-        pdo->buffer_length = 46440;
-    }
     if (!pdo->has_latency) {
         pdo->has_latency = true;
         pdo->latency = 15000;
@@ -709,7 +752,6 @@ static int qpa_validate_per_direction_opts(Audiodev *dev,
 /* common */
 static void *qpa_conn_init(const char *server)
 {
-    const char *vm_name;
     PAConnection *c = g_malloc0(sizeof(PAConnection));
     QTAILQ_INSERT_TAIL(&pa_conns, c, list);
 
@@ -718,9 +760,8 @@ static void *qpa_conn_init(const char *server)
         goto fail;
     }
 
-    vm_name = qemu_get_vm_name();
     c->context = pa_context_new(pa_threaded_mainloop_get_api(c->mainloop),
-                                vm_name ? vm_name : "qemu");
+                                audio_application_name());
     if (!c->context) {
         goto fail;
     }
@@ -861,7 +902,7 @@ static struct audio_pcm_ops qpa_pcm_ops = {
     .fini_out = qpa_fini_out,
     .write    = qpa_write,
     .get_buffer_out = qpa_get_buffer_out,
-    .put_buffer_out = qpa_write, /* pa handles it */
+    .put_buffer_out = qpa_put_buffer_out,
     .volume_out = qpa_volume_out,
 
     .init_in  = qpa_init_in,

@@ -47,7 +47,7 @@ BlockDeviceInfo *bdrv_block_device_info(BlockBackend *blk,
                                         Error **errp)
 {
     ImageInfo **p_image_info;
-    BlockDriverState *bs0;
+    BlockDriverState *bs0, *backing;
     BlockDeviceInfo *info;
 
     if (!bs->drv) {
@@ -59,10 +59,9 @@ BlockDeviceInfo *bdrv_block_device_info(BlockBackend *blk,
 
     info = g_malloc0(sizeof(*info));
     info->file                   = g_strdup(bs->filename);
-    info->ro                     = bs->read_only;
+    info->ro                     = bdrv_is_read_only(bs);
     info->drv                    = g_strdup(bs->drv->format_name);
     info->encrypted              = bs->encrypted;
-    info->encryption_key_missing = false;
 
     info->cache = g_new(BlockdevCacheInfo, 1);
     *info->cache = (BlockdevCacheInfo) {
@@ -76,9 +75,10 @@ BlockDeviceInfo *bdrv_block_device_info(BlockBackend *blk,
         info->node_name = g_strdup(bs->node_name);
     }
 
-    if (bs->backing_file[0]) {
+    backing = bdrv_cow_bs(bs);
+    if (backing) {
         info->has_backing_file = true;
-        info->backing_file = g_strdup(bs->backing_file);
+        info->backing_file = g_strdup(backing->filename);
     }
 
     if (!QLIST_EMPTY(&bs->dirty_bitmaps)) {
@@ -163,9 +163,13 @@ BlockDeviceInfo *bdrv_block_device_info(BlockBackend *blk,
             break;
         }
 
-        if (bs0->drv && bs0->backing) {
+        if (bs0->drv && bdrv_filter_or_cow_child(bs0)) {
+            /*
+             * Put any filtered child here (for backwards compatibility to when
+             * we put bs0->backing here, which might be any filtered child).
+             */
             info->backing_file_depth++;
-            bs0 = bs0->backing->bs;
+            bs0 = bdrv_filter_or_cow_bs(bs0);
             (*p_image_info)->has_backing_image = true;
             p_image_info = &((*p_image_info)->backing_image);
         } else {
@@ -174,9 +178,8 @@ BlockDeviceInfo *bdrv_block_device_info(BlockBackend *blk,
 
         /* Skip automatically inserted nodes that the user isn't aware of for
          * query-block (blk != NULL), but not for query-named-block-nodes */
-        while (blk && bs0->drv && bs0->implicit) {
-            bs0 = backing_bs(bs0);
-            assert(bs0);
+        if (blk) {
+            bs0 = bdrv_skip_implicit_filters(bs0);
         }
     }
 
@@ -194,7 +197,7 @@ int bdrv_query_snapshot_info_list(BlockDriverState *bs,
 {
     int i, sn_count;
     QEMUSnapshotInfo *sn_tab = NULL;
-    SnapshotInfoList *info_list, *cur_item = NULL, *head = NULL;
+    SnapshotInfoList *head = NULL, **tail = &head;
     SnapshotInfo *info;
 
     sn_count = bdrv_snapshot_list(bs, &sn_tab);
@@ -226,18 +229,10 @@ int bdrv_query_snapshot_info_list(BlockDriverState *bs,
         info->date_nsec     = sn_tab[i].date_nsec;
         info->vm_clock_sec  = sn_tab[i].vm_clock_nsec / 1000000000;
         info->vm_clock_nsec = sn_tab[i].vm_clock_nsec % 1000000000;
+        info->icount        = sn_tab[i].icount;
+        info->has_icount    = sn_tab[i].icount != -1ULL;
 
-        info_list = g_new0(SnapshotInfoList, 1);
-        info_list->value = info;
-
-        /* XXX: waiting for the qapi to support qemu-queue.h types */
-        if (!cur_item) {
-            head = cur_item = info_list;
-        } else {
-            cur_item->next = info_list;
-            cur_item = info_list;
-        }
-
+        QAPI_LIST_APPEND(tail, info);
     }
 
     g_free(sn_tab);
@@ -288,7 +283,7 @@ void bdrv_query_image_info(BlockDriverState *bs,
     info->virtual_size    = size;
     info->actual_size     = bdrv_get_allocated_file_size(bs);
     info->has_actual_size = info->actual_size >= 0;
-    if (bdrv_is_encrypted(bs)) {
+    if (bs->encrypted) {
         info->encrypted = true;
         info->has_encrypted = true;
     }
@@ -311,6 +306,7 @@ void bdrv_query_image_info(BlockDriverState *bs,
     backing_filename = bs->backing_file;
     if (backing_filename[0] != '\0') {
         char *backing_filename2;
+
         info->backing_filename = g_strdup(backing_filename);
         info->has_backing_filename = true;
         backing_filename2 = bdrv_get_full_backing_filename(bs, NULL);
@@ -362,9 +358,7 @@ static void bdrv_query_info(BlockBackend *blk, BlockInfo **p_info,
     char *qdev;
 
     /* Skip automatically inserted nodes that the user isn't aware of */
-    while (bs && bs->drv && bs->implicit) {
-        bs = backing_bs(bs);
-    }
+    bs = bdrv_skip_implicit_filters(bs);
 
     info->device = g_strdup(blk_name(blk));
     info->type = g_strdup("unknown");
@@ -389,11 +383,6 @@ static void bdrv_query_info(BlockBackend *blk, BlockInfo **p_info,
         info->io_status = blk_iostatus(blk);
     }
 
-    if (bs && !QLIST_EMPTY(&bs->dirty_bitmaps)) {
-        info->has_dirty_bitmaps = true;
-        info->dirty_bitmaps = bdrv_query_dirty_bitmaps(bs);
-    }
-
     if (bs && bs->drv) {
         info->has_inserted = true;
         info->inserted = bdrv_block_device_info(blk, bs, false, errp);
@@ -413,16 +402,11 @@ static uint64List *uint64_list(uint64_t *list, int size)
 {
     int i;
     uint64List *out_list = NULL;
-    uint64List **pout_list = &out_list;
+    uint64List **tail = &out_list;
 
     for (i = 0; i < size; i++) {
-        uint64List *entry = g_new(uint64List, 1);
-        entry->value = list[i];
-        *pout_list = entry;
-        pout_list = &entry->next;
+        QAPI_LIST_APPEND(tail, list[i]);
     }
-
-    *pout_list = NULL;
 
     return out_list;
 }
@@ -481,12 +465,7 @@ static void bdrv_query_blk_stats(BlockDeviceStats *ds, BlockBackend *blk)
     ds->account_failed = stats->account_failed;
 
     while ((ts = block_acct_interval_next(stats, ts))) {
-        BlockDeviceTimedStatsList *timed_stats =
-            g_malloc0(sizeof(*timed_stats));
         BlockDeviceTimedStats *dev_stats = g_malloc0(sizeof(*dev_stats));
-        timed_stats->next = ds->timed_stats;
-        timed_stats->value = dev_stats;
-        ds->timed_stats = timed_stats;
 
         TimedAverage *rd = &ts->latency[BLOCK_ACCT_READ];
         TimedAverage *wr = &ts->latency[BLOCK_ACCT_WRITE];
@@ -510,6 +489,8 @@ static void bdrv_query_blk_stats(BlockDeviceStats *ds, BlockBackend *blk)
             block_acct_queue_depth(ts, BLOCK_ACCT_READ);
         dev_stats->avg_wr_queue_depth =
             block_acct_queue_depth(ts, BLOCK_ACCT_WRITE);
+
+        QAPI_LIST_PREPEND(ds->timed_stats, dev_stats);
     }
 
     bdrv_latency_histogram_stats(&stats->latency_histogram[BLOCK_ACCT_READ],
@@ -526,6 +507,8 @@ static void bdrv_query_blk_stats(BlockDeviceStats *ds, BlockBackend *blk)
 static BlockStats *bdrv_query_bds_stats(BlockDriverState *bs,
                                         bool blk_level)
 {
+    BdrvChild *parent_child;
+    BlockDriverState *filter_or_cow_bs;
     BlockStats *s = NULL;
 
     s = g_malloc0(sizeof(*s));
@@ -538,9 +521,8 @@ static BlockStats *bdrv_query_bds_stats(BlockDriverState *bs,
     /* Skip automatically inserted nodes that the user isn't aware of in
      * a BlockBackend-level command. Stay at the exact node for a node-level
      * command. */
-    while (blk_level && bs->drv && bs->implicit) {
-        bs = backing_bs(bs);
-        assert(bs);
+    if (blk_level) {
+        bs = bdrv_skip_implicit_filters(bs);
     }
 
     if (bdrv_get_node_name(bs)[0]) {
@@ -555,14 +537,46 @@ static BlockStats *bdrv_query_bds_stats(BlockDriverState *bs,
         s->has_driver_specific = true;
     }
 
-    if (bs->file) {
+    parent_child = bdrv_primary_child(bs);
+    if (!parent_child ||
+        !(parent_child->role & (BDRV_CHILD_DATA | BDRV_CHILD_FILTERED)))
+    {
+        BdrvChild *c;
+
+        /*
+         * Look for a unique data-storing child.  We do not need to look for
+         * filtered children, as there would be only one and it would have been
+         * the primary child.
+         */
+        parent_child = NULL;
+        QLIST_FOREACH(c, &bs->children, next) {
+            if (c->role & BDRV_CHILD_DATA) {
+                if (parent_child) {
+                    /*
+                     * There are multiple data-storing children and we cannot
+                     * choose between them.
+                     */
+                    parent_child = NULL;
+                    break;
+                }
+                parent_child = c;
+            }
+        }
+    }
+    if (parent_child) {
         s->has_parent = true;
-        s->parent = bdrv_query_bds_stats(bs->file->bs, blk_level);
+        s->parent = bdrv_query_bds_stats(parent_child->bs, blk_level);
     }
 
-    if (blk_level && bs->backing) {
+    filter_or_cow_bs = bdrv_filter_or_cow_bs(bs);
+    if (blk_level && filter_or_cow_bs) {
+        /*
+         * Put any filtered or COW child here (for backwards
+         * compatibility to when we put bs0->backing here, which might
+         * be either)
+         */
         s->has_backing = true;
-        s->backing = bdrv_query_bds_stats(bs->backing->bs, blk_level);
+        s->backing = bdrv_query_bds_stats(filter_or_cow_bs, blk_level);
     }
 
     return s;
@@ -601,26 +615,21 @@ BlockStatsList *qmp_query_blockstats(bool has_query_nodes,
                                      bool query_nodes,
                                      Error **errp)
 {
-    BlockStatsList *head = NULL, **p_next = &head;
+    BlockStatsList *head = NULL, **tail = &head;
     BlockBackend *blk;
     BlockDriverState *bs;
 
     /* Just to be safe if query_nodes is not always initialized */
     if (has_query_nodes && query_nodes) {
         for (bs = bdrv_next_node(NULL); bs; bs = bdrv_next_node(bs)) {
-            BlockStatsList *info = g_malloc0(sizeof(*info));
             AioContext *ctx = bdrv_get_aio_context(bs);
 
             aio_context_acquire(ctx);
-            info->value = bdrv_query_bds_stats(bs, false);
+            QAPI_LIST_APPEND(tail, bdrv_query_bds_stats(bs, false));
             aio_context_release(ctx);
-
-            *p_next = info;
-            p_next = &info->next;
         }
     } else {
         for (blk = blk_all_next(NULL); blk; blk = blk_all_next(blk)) {
-            BlockStatsList *info;
             AioContext *ctx = blk_get_aio_context(blk);
             BlockStats *s;
             char *qdev;
@@ -645,10 +654,7 @@ BlockStatsList *qmp_query_blockstats(bool has_query_nodes,
             bdrv_query_blk_stats(s->stats, blk);
             aio_context_release(ctx);
 
-            info = g_malloc0(sizeof(*info));
-            info->value = s;
-            *p_next = info;
-            p_next = &info->next;
+            QAPI_LIST_APPEND(tail, s);
         }
     }
 
@@ -657,20 +663,18 @@ BlockStatsList *qmp_query_blockstats(bool has_query_nodes,
 
 void bdrv_snapshot_dump(QEMUSnapshotInfo *sn)
 {
-    char date_buf[128], clock_buf[128];
-    struct tm tm;
-    time_t ti;
+    char clock_buf[128];
+    char icount_buf[128] = {0};
     int64_t secs;
     char *sizing = NULL;
 
     if (!sn) {
-        qemu_printf("%-10s%-20s%11s%20s%15s",
-                    "ID", "TAG", "VM SIZE", "DATE", "VM CLOCK");
+        qemu_printf("%-10s%-17s%8s%20s%13s%11s",
+                    "ID", "TAG", "VM SIZE", "DATE", "VM CLOCK", "ICOUNT");
     } else {
-        ti = sn->date_sec;
-        localtime_r(&ti, &tm);
-        strftime(date_buf, sizeof(date_buf),
-                 "%Y-%m-%d %H:%M:%S", &tm);
+        g_autoptr(GDateTime) date = g_date_time_new_from_unix_local(sn->date_sec);
+        g_autofree char *date_buf = g_date_time_format(date, "%Y-%m-%d %H:%M:%S");
+
         secs = sn->vm_clock_nsec / 1000000000;
         snprintf(clock_buf, sizeof(clock_buf),
                  "%02d:%02d:%02d.%03d",
@@ -679,11 +683,16 @@ void bdrv_snapshot_dump(QEMUSnapshotInfo *sn)
                  (int)(secs % 60),
                  (int)((sn->vm_clock_nsec / 1000000) % 1000));
         sizing = size_to_str(sn->vm_state_size);
-        qemu_printf("%-10s%-20s%11s%20s%15s",
+        if (sn->icount != -1ULL) {
+            snprintf(icount_buf, sizeof(icount_buf),
+                "%"PRId64, sn->icount);
+        }
+        qemu_printf("%-9s %-16s %8s%20s%13s%11s",
                     sn->id_str, sn->name,
                     sizing,
                     date_buf,
-                    clock_buf);
+                    clock_buf,
+                    icount_buf);
     }
     g_free(sizing);
 }
@@ -845,6 +854,8 @@ void bdrv_image_info_dump(ImageInfo *info)
                 .date_nsec = elem->value->date_nsec,
                 .vm_clock_nsec = elem->value->vm_clock_sec * 1000000000ULL +
                                  elem->value->vm_clock_nsec,
+                .icount = elem->value->has_icount ?
+                          elem->value->icount : -1ULL,
             };
 
             pstrcpy(sn.id_str, sizeof(sn.id_str), elem->value->id);

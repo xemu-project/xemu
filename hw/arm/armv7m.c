@@ -10,17 +10,14 @@
 #include "qemu/osdep.h"
 #include "hw/arm/armv7m.h"
 #include "qapi/error.h"
-#include "cpu.h"
 #include "hw/sysbus.h"
 #include "hw/arm/boot.h"
 #include "hw/loader.h"
 #include "hw/qdev-properties.h"
 #include "elf.h"
-#include "sysemu/qtest.h"
 #include "sysemu/reset.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
-#include "exec/address-spaces.h"
 #include "target/arm/idau.h"
 
 /* Bitbanded IO.  Each word corresponds to a single bit.  */
@@ -136,7 +133,7 @@ static void armv7m_instance_init(Object *obj)
 
     memory_region_init(&s->container, obj, "armv7m-container", UINT64_MAX);
 
-    object_initialize_child(obj, "nvnic", &s->nvic, TYPE_NVIC);
+    object_initialize_child(obj, "nvic", &s->nvic, TYPE_NVIC);
     object_property_add_alias(obj, "num-irq",
                               OBJECT(&s->nvic), "num-irq");
 
@@ -169,28 +166,34 @@ static void armv7m_realize(DeviceState *dev, Error **errp)
 
     object_property_set_link(OBJECT(s->cpu), "memory", OBJECT(&s->container),
                              &error_abort);
-    if (object_property_find(OBJECT(s->cpu), "idau", NULL)) {
+    if (object_property_find(OBJECT(s->cpu), "idau")) {
         object_property_set_link(OBJECT(s->cpu), "idau", s->idau,
                                  &error_abort);
     }
-    if (object_property_find(OBJECT(s->cpu), "init-svtor", NULL)) {
+    if (object_property_find(OBJECT(s->cpu), "init-svtor")) {
         if (!object_property_set_uint(OBJECT(s->cpu), "init-svtor",
                                       s->init_svtor, errp)) {
             return;
         }
     }
-    if (object_property_find(OBJECT(s->cpu), "start-powered-off", NULL)) {
+    if (object_property_find(OBJECT(s->cpu), "init-nsvtor")) {
+        if (!object_property_set_uint(OBJECT(s->cpu), "init-nsvtor",
+                                      s->init_nsvtor, errp)) {
+            return;
+        }
+    }
+    if (object_property_find(OBJECT(s->cpu), "start-powered-off")) {
         if (!object_property_set_bool(OBJECT(s->cpu), "start-powered-off",
                                       s->start_powered_off, errp)) {
             return;
         }
     }
-    if (object_property_find(OBJECT(s->cpu), "vfp", NULL)) {
+    if (object_property_find(OBJECT(s->cpu), "vfp")) {
         if (!object_property_set_bool(OBJECT(s->cpu), "vfp", s->vfp, errp)) {
             return;
         }
     }
-    if (object_property_find(OBJECT(s->cpu), "dsp", NULL)) {
+    if (object_property_find(OBJECT(s->cpu), "dsp")) {
         if (!object_property_set_bool(OBJECT(s->cpu), "dsp", s->dsp, errp)) {
             return;
         }
@@ -225,7 +228,7 @@ static void armv7m_realize(DeviceState *dev, Error **errp)
     sysbus_connect_irq(sbd, 0,
                        qdev_get_gpio_in(DEVICE(s->cpu), ARM_CPU_IRQ));
 
-    memory_region_add_subregion(&s->container, 0xe000e000,
+    memory_region_add_subregion(&s->container, 0xe0000000,
                                 sysbus_mmio_get_region(sbd, 0));
 
     for (i = 0; i < ARRAY_SIZE(s->bitband); i++) {
@@ -257,6 +260,7 @@ static Property armv7m_properties[] = {
                      MemoryRegion *),
     DEFINE_PROP_LINK("idau", ARMv7MState, idau, TYPE_IDAU_INTERFACE, Object *),
     DEFINE_PROP_UINT32("init-svtor", ARMv7MState, init_svtor, 0),
+    DEFINE_PROP_UINT32("init-nsvtor", ARMv7MState, init_nsvtor, 0),
     DEFINE_PROP_BOOL("enable-bitband", ARMv7MState, enable_bitband, false),
     DEFINE_PROP_BOOL("start-powered-off", ARMv7MState, start_powered_off,
                      false),
@@ -292,7 +296,6 @@ void armv7m_load_kernel(ARMCPU *cpu, const char *kernel_filename, int mem_size)
 {
     int image_size;
     uint64_t entry;
-    uint64_t lowaddr;
     int big_endian;
     AddressSpace *as;
     int asidx;
@@ -313,12 +316,11 @@ void armv7m_load_kernel(ARMCPU *cpu, const char *kernel_filename, int mem_size)
 
     if (kernel_filename) {
         image_size = load_elf_as(kernel_filename, NULL, NULL, NULL,
-                                 &entry, &lowaddr, NULL,
+                                 &entry, NULL, NULL,
                                  NULL, big_endian, EM_ARM, 1, 0, as);
         if (image_size < 0) {
             image_size = load_image_targphys_as(kernel_filename, 0,
                                                 mem_size, as);
-            lowaddr = 0;
         }
         if (image_size < 0) {
             error_report("Could not load kernel '%s'", kernel_filename);

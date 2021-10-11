@@ -11,17 +11,16 @@
 #ifndef HW_PCI_I440FX_H
 #define HW_PCI_I440FX_H
 
-#include "hw/hw.h"
 #include "hw/pci/pci_bus.h"
 #include "hw/pci-host/pam.h"
+#include "qom/object.h"
 
 #define TYPE_I440FX_PCI_HOST_BRIDGE "i440FX-pcihost"
 #define TYPE_I440FX_PCI_DEVICE "i440FX"
 
-#define I440FX_PCI_DEVICE(obj) \
-    OBJECT_CHECK(PCII440FXState, (obj), TYPE_I440FX_PCI_DEVICE)
+OBJECT_DECLARE_SIMPLE_TYPE(PCII440FXState, I440FX_PCI_DEVICE)
 
-typedef struct PCII440FXState {
+struct PCII440FXState {
     /*< private >*/
     PCIDevice parent_obj;
     /*< public >*/
@@ -29,10 +28,10 @@ typedef struct PCII440FXState {
     MemoryRegion *system_memory;
     MemoryRegion *pci_address_space;
     MemoryRegion *ram_memory;
-    PAMMemoryRegion pam_regions[13];
+    PAMMemoryRegion pam_regions[PAM_REGIONS_COUNT];
     MemoryRegion smram_region;
     MemoryRegion smram, low_smram;
-} PCII440FXState;
+};
 
 #define TYPE_IGD_PASSTHROUGH_I440FX_PCI_DEVICE "igd-passthrough-i440FX"
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# group: rw
 #
 # Test case for encryption key management versus image sharing
 #
@@ -42,7 +43,7 @@ class Secret:
 
     def to_qmp_object(self):
         return { "qom_type" : "secret", "id": self.id(),
-                 "props": { "data": self.secret() } }
+                 "data": self.secret() }
 
 ################################################################################
 
@@ -117,10 +118,9 @@ class EncryptionSetupTestCase(iotests.QMPTestCase):
     def openImageQmp(self, vm, id, file, secret,
                      readOnly = False, reOpen = False):
 
-        command = 'x-blockdev-reopen' if reOpen else 'blockdev-add'
+        command = 'blockdev-reopen' if reOpen else 'blockdev-add'
 
-        result = vm.qmp(command, **
-            {
+        opts = {
                 'driver': iotests.imgfmt,
                 'node-name': id,
                 'read-only': readOnly,
@@ -130,7 +130,11 @@ class EncryptionSetupTestCase(iotests.QMPTestCase):
                     'filename': test_img,
                 }
             }
-        )
+
+        if reOpen:
+            result = vm.qmp(command, options=[opts])
+        else:
+            result = vm.qmp(command, **opts)
         self.assert_qmp(result, 'return', {})
 
 

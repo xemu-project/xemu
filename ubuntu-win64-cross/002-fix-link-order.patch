@@ -1,0 +1,35 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 7dfd3538..2ac95eff 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -233,9 +233,17 @@ endif()
+ 
+ # Those are used for pkg-config and friends, so that the SDL2.pc, sdl2-config,
+ # etc. are created correctly.
+-set(SDL_LIBS "-lSDL2")
++set(SDL_LIBS "")
+ set(SDL_CFLAGS "")
+ 
++if(MINGW OR CYGWIN)
++  list(APPEND SDL_LIBS "-mwindows")
++endif()
++list(APPEND SDL_LIBS "-lSDL2")
++if(MINGW OR CYGWIN)
++  list(APPEND SDL_LIBS "-lSDL2main" "-lmingw32")
++endif()
++
+ # When building shared lib for Windows with MinGW,
+ # avoid the DLL having a "lib" prefix
+ if(WINDOWS)
+@@ -1505,10 +1513,9 @@ elseif(WINDOWS)
+   file(GLOB VERSION_SOURCES ${SDL2_SOURCE_DIR}/src/main/windows/*.rc)
+   file(GLOB SDLMAIN_SOURCES ${SDL2_SOURCE_DIR}/src/main/windows/*.c)
+   if(MINGW OR CYGWIN)
+-    list(APPEND EXTRA_LIBS mingw32)
++    list(APPEND EXTRA_LIBS SDL2main mingw32)
+     list(APPEND EXTRA_LDFLAGS "-mwindows")
+     set(SDL_CFLAGS "${SDL_CFLAGS} -Dmain=SDL_main")
+-    list(APPEND SDL_LIBS "-lmingw32" "-lSDL2main" "-mwindows")
+   endif()
+ 
+ elseif(APPLE)

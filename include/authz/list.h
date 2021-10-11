@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -23,21 +23,13 @@
 
 #include "authz/base.h"
 #include "qapi/qapi-types-authz.h"
+#include "qom/object.h"
 
 #define TYPE_QAUTHZ_LIST "authz-list"
 
-#define QAUTHZ_LIST_CLASS(klass)                        \
-    OBJECT_CLASS_CHECK(QAuthZListClass, (klass),        \
-                       TYPE_QAUTHZ_LIST)
-#define QAUTHZ_LIST_GET_CLASS(obj)              \
-    OBJECT_GET_CLASS(QAuthZListClass, (obj),    \
-                      TYPE_QAUTHZ_LIST)
-#define QAUTHZ_LIST(obj) \
-    OBJECT_CHECK(QAuthZList, (obj), \
-                 TYPE_QAUTHZ_LIST)
+OBJECT_DECLARE_SIMPLE_TYPE(QAuthZList,
+                           QAUTHZ_LIST)
 
-typedef struct QAuthZList QAuthZList;
-typedef struct QAuthZListClass QAuthZListClass;
 
 
 /**
@@ -76,9 +68,6 @@ struct QAuthZList {
 };
 
 
-struct QAuthZListClass {
-    QAuthZClass parent_class;
-};
 
 
 QAuthZList *qauthz_list_new(const char *id,

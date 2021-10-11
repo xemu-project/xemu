@@ -16,7 +16,9 @@
 #include "qemu/module.h"
 #include "chardev/char-fe.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "hw/s390x/3270-ccw.h"
+#include "qom/object.h"
 
 /* Enough spaces for different window sizes. */
 #define INPUT_BUFFER_SIZE  1000
@@ -26,7 +28,7 @@
  */
 #define OUTPUT_BUFFER_SIZE 2051
 
-typedef struct Terminal3270 {
+struct Terminal3270 {
     EmulatedCcw3270Device cdev;
     CharBackend chr;
     uint8_t inv[INPUT_BUFFER_SIZE];
@@ -34,11 +36,12 @@ typedef struct Terminal3270 {
     int in_len;
     bool handshake_done;
     guint timer_tag;
-} Terminal3270;
+};
+typedef struct Terminal3270 Terminal3270;
 
 #define TYPE_TERMINAL_3270 "x-terminal3270"
-#define TERMINAL_3270(obj) \
-        OBJECT_CHECK(Terminal3270, (obj), TYPE_TERMINAL_3270)
+DECLARE_INSTANCE_CHECKER(Terminal3270, TERMINAL_3270,
+                         TYPE_TERMINAL_3270)
 
 static int terminal_can_read(void *opaque)
 {
@@ -197,9 +200,13 @@ static int read_payload_3270(EmulatedCcw3270Device *dev)
 {
     Terminal3270 *t = TERMINAL_3270(dev);
     int len;
+    int ret;
 
     len = MIN(ccw_dstream_avail(get_cds(t)), t->in_len);
-    ccw_dstream_write_buf(get_cds(t), t->inv, len);
+    ret = ccw_dstream_write_buf(get_cds(t), t->inv, len);
+    if (ret < 0) {
+        return ret;
+    }
     t->in_len -= len;
 
     return len;
@@ -257,7 +264,10 @@ static int write_payload_3270(EmulatedCcw3270Device *dev, uint8_t cmd)
 
     t->outv[out_len++] = cmd;
     do {
-        ccw_dstream_read_buf(get_cds(t), &t->outv[out_len], len);
+        retval = ccw_dstream_read_buf(get_cds(t), &t->outv[out_len], len);
+        if (retval < 0) {
+            return retval;
+        }
         count = ccw_dstream_avail(get_cds(t));
         out_len += len;
 

@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -17,7 +17,6 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>
  */
 #include "qemu/osdep.h"
-#include "cpu.h"
 #include "qemu/thread.h"
 #include "hw/i386/apic_internal.h"
 #include "hw/i386/apic.h"
@@ -25,9 +24,11 @@
 #include "hw/intc/i8259.h"
 #include "hw/pci/msi.h"
 #include "qemu/host-utils.h"
+#include "sysemu/kvm.h"
 #include "trace.h"
 #include "hw/i386/apic-msidef.h"
 #include "qapi/error.h"
+#include "qom/object.h"
 
 #define MAX_APICS 255
 #define MAX_APIC_WORDS 8
@@ -39,8 +40,9 @@
 static APICCommonState *local_apics[MAX_APICS + 1];
 
 #define TYPE_APIC "apic"
-#define APIC(obj) \
-    OBJECT_CHECK(APICCommonState, (obj), TYPE_APIC)
+/*This is reusing the APICCommonState typedef from APIC_COMMON */
+DECLARE_INSTANCE_CHECKER(APICCommonState, APIC,
+                         TYPE_APIC)
 
 static void apic_set_irq(APICCommonState *s, int vector_num, int trigger_mode);
 static void apic_update_irq(APICCommonState *s);
@@ -873,6 +875,11 @@ static void apic_realize(DeviceState *dev, Error **errp)
         return;
     }
 
+    if (kvm_enabled()) {
+        warn_report("Userspace local APIC is deprecated for KVM.");
+        warn_report("Do not use kernel-irqchip except for the -M isapc machine type.");
+    }
+
     memory_region_init_io(&s->io_memory, OBJECT(s), &apic_io_ops, s, "apic-msi",
                           APIC_SPACE_SIZE);
 
@@ -886,7 +893,6 @@ static void apic_unrealize(DeviceState *dev)
 {
     APICCommonState *s = APIC(dev);
 
-    timer_del(s->timer);
     timer_free(s->timer);
     local_apics[s->id] = NULL;
 }

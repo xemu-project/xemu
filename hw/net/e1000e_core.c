@@ -22,7 +22,7 @@
 * This library is free software; you can redistribute it and/or
 * modify it under the terms of the GNU Lesser General Public
 * License as published by the Free Software Foundation; either
-* version 2 of the License, or (at your option) any later version.
+* version 2.1 of the License, or (at your option) any later version.
 *
 * This library is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -434,23 +434,16 @@ e1000e_intrmgr_pci_unint(E1000ECore *core)
 {
     int i;
 
-    timer_del(core->radv.timer);
     timer_free(core->radv.timer);
-    timer_del(core->rdtr.timer);
     timer_free(core->rdtr.timer);
-    timer_del(core->raid.timer);
     timer_free(core->raid.timer);
 
-    timer_del(core->tadv.timer);
     timer_free(core->tadv.timer);
-    timer_del(core->tidv.timer);
     timer_free(core->tidv.timer);
 
-    timer_del(core->itr.timer);
     timer_free(core->itr.timer);
 
     for (i = 0; i < E1000E_MSIX_VEC_NUM; i++) {
-        timer_del(core->eitr[i].timer);
         timer_free(core->eitr[i].timer);
     }
 }
@@ -738,7 +731,7 @@ e1000e_process_tx_desc(E1000ECore *core,
             if (e1000x_vlan_enabled(core->mac) &&
                 e1000x_is_vlan_txd(txd_lower)) {
                 net_tx_pkt_setup_vlan_header_ex(tx->tx_pkt,
-                    le16_to_cpu(dp->upper.fields.special), core->vet);
+                    le16_to_cpu(dp->upper.fields.special), core->mac[VET]);
             }
             if (e1000e_tx_pkt_send(core, tx, queue_index)) {
                 e1000e_on_tx_done_update_stats(core, tx->tx_pkt);
@@ -1019,7 +1012,7 @@ e1000e_receive_filter(E1000ECore *core, const uint8_t *buf, int size)
 {
     uint32_t rctl = core->mac[RCTL];
 
-    if (e1000x_is_vlan_packet(buf, core->vet) &&
+    if (e1000x_is_vlan_packet(buf, core->mac[VET]) &&
         e1000x_vlan_rx_filter_enabled(core->mac)) {
         uint16_t vid = lduw_be_p(buf + 14);
         uint32_t vfta = ldl_le_p((uint32_t *)(core->mac + VFTA) +
@@ -1292,7 +1285,6 @@ e1000e_write_lgcy_rx_descr(E1000ECore *core, uint8_t *desc,
                              &d->special);
     d->errors = (uint8_t) (le32_to_cpu(status_flags) >> 24);
     d->status = (uint8_t) le32_to_cpu(status_flags);
-    d->special = 0;
 }
 
 static inline void
@@ -1596,12 +1588,12 @@ e1000e_write_packet_to_guest(E1000ECore *core, struct NetRxPkt *pkt,
                           (const char *) &fcs_pad, e1000x_fcs_len(core->mac));
                 }
             }
-            desc_offset += desc_size;
-            if (desc_offset >= total_size) {
-                is_last = true;
-            }
         } else { /* as per intel docs; skip descriptors with null buf addr */
             trace_e1000e_rx_null_descriptor();
+        }
+        desc_offset += desc_size;
+        if (desc_offset >= total_size) {
+            is_last = true;
         }
 
         e1000e_write_rx_descr(core, desc, is_last ? core->rx_pkt : NULL,
@@ -1693,7 +1685,7 @@ e1000e_receive_iov(E1000ECore *core, const struct iovec *iov, int iovcnt)
     }
 
     net_rx_pkt_attach_iovec_ex(core->rx_pkt, iov, iovcnt, iov_ofs,
-                               e1000x_vlan_enabled(core->mac), core->vet);
+                               e1000x_vlan_enabled(core->mac), core->mac[VET]);
 
     e1000e_rss_parse_packet(core, core->rx_pkt, &rss_info);
     e1000e_rx_ring_init(core, &rxr, rss_info.queue);
@@ -2404,8 +2396,7 @@ static void
 e1000e_set_vet(E1000ECore *core, int index, uint32_t val)
 {
     core->mac[VET] = val & 0xffff;
-    core->vet = le16_to_cpu(core->mac[VET]);
-    trace_e1000e_vlan_vet(core->vet);
+    trace_e1000e_vlan_vet(core->mac[VET]);
 }
 
 static void
@@ -2916,7 +2907,6 @@ static const readops e1000e_macreg_readops[] = {
     e1000e_getreg(TSYNCRXCTL),
     e1000e_getreg(TDH),
     e1000e_getreg(LEDCTL),
-    e1000e_getreg(STATUS),
     e1000e_getreg(TCTL),
     e1000e_getreg(TDBAL),
     e1000e_getreg(TDLEN),
@@ -3142,7 +3132,6 @@ static const writeops e1000e_macreg_writeops[] = {
     e1000e_putreg(RXCFGL),
     e1000e_putreg(TSYNCRXCTL),
     e1000e_putreg(TSYNCTXCTL),
-    e1000e_putreg(FLSWDATA),
     e1000e_putreg(EXTCNF_SIZE),
     e1000e_putreg(EEMNGCTL),
     e1000e_putreg(RA),
@@ -3307,7 +3296,7 @@ e1000e_autoneg_resume(E1000ECore *core)
 }
 
 static void
-e1000e_vm_state_change(void *opaque, int running, RunState state)
+e1000e_vm_state_change(void *opaque, bool running, RunState state)
 {
     E1000ECore *core = opaque;
 
@@ -3357,7 +3346,6 @@ e1000e_core_pci_uninit(E1000ECore *core)
 {
     int i;
 
-    timer_del(core->autoneg_timer);
     timer_free(core->autoneg_timer);
 
     e1000e_intrmgr_pci_unint(core);

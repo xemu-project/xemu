@@ -158,6 +158,18 @@ int qemu_strtosz_metric(const char *nptr, const char **end, uint64_t *result);
 
 char *size_to_str(uint64_t val);
 
+/**
+ * freq_to_str:
+ * @freq_hz: frequency to stringify
+ *
+ * Return human readable string for frequency @freq_hz.
+ * Use SI units like KHz, MHz, and so forth.
+ *
+ * The caller is responsible for releasing the value returned
+ * with g_free() after use.
+ */
+char *freq_to_str(uint64_t freq_hz);
+
 /* used to print char* safely */
 #define STR_OR_NULL(str) ((str) ? (str) : "null")
 
@@ -183,5 +195,18 @@ int uleb128_decode_small(const uint8_t *in, uint32_t *n);
  * *str1 is <, == or > than *str2.
  */
 int qemu_pstrcmp0(const char **str1, const char **str2);
+
+
+/**
+ * get_relocated_path:
+ * @dir: the directory (typically a `CONFIG_*DIR` variable) to be relocated.
+ *
+ * Returns a path for @dir that uses the directory of the running executable
+ * as the prefix.  For example, if `bindir` is `/usr/bin` and @dir is
+ * `/usr/share/qemu`, the function will append `../share/qemu` to the
+ * directory that contains the running executable and return the result.
+ * The returned string should be freed by the caller.
+ */
+char *get_relocated_path(const char *dir);
 
 #endif

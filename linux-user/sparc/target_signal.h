@@ -42,9 +42,9 @@
 /* this struct defines a stack used during syscall handling */
 
 typedef struct target_sigaltstack {
-	abi_ulong ss_sp;
-	abi_long ss_flags;
-	abi_ulong ss_size;
+    abi_ulong ss_sp;
+    abi_int ss_flags;
+    abi_ulong ss_size;
 } target_stack_t;
 
 
@@ -67,5 +67,13 @@ typedef struct target_sigaltstack {
 #define TARGET_MINSIGSTKSZ	4096
 #define TARGET_SIGSTKSZ		16384
 
+#ifdef TARGET_ABI32
 #define TARGET_ARCH_HAS_SETUP_FRAME
+#endif
+
+/* bit-flags */
+#define TARGET_SS_AUTODISARM (1U << 31) /* disable sas during sighandling */
+/* mask for all SS_xxx flags */
+#define TARGET_SS_FLAG_BITS  TARGET_SS_AUTODISARM
+
 #endif /* SPARC_TARGET_SIGNAL_H */

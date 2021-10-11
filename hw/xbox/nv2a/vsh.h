@@ -21,7 +21,7 @@
 #define HW_NV2A_VSH_H
 
 #include <stdbool.h>
-#include "qapi/qmp/qstring.h"
+#include "shaders_common.h"
 
 enum VshLight {
     LIGHT_OFF,
@@ -134,7 +134,7 @@ void vsh_translate(uint16_t version,
                    const uint32_t *tokens,
                    unsigned int length,
                    bool z_perspective,
-                   QString *header, QString *body);
+                   MString *header, MString *body);
 
 
 #endif

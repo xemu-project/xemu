@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2016-2019 Red Hat, Inc.
+ *  Copyright (C) 2016-2020 Red Hat, Inc.
  *  Copyright (C) 2005  Anthony Liguori <anthony@codemonkey.ws>
  *
  *  Network Block Device
@@ -20,10 +20,12 @@
 #ifndef NBD_H
 #define NBD_H
 
-#include "qapi/qapi-types-block.h"
+#include "block/export.h"
 #include "io/channel-socket.h"
 #include "crypto/tlscreds.h"
 #include "qapi/error.h"
+
+extern const BlockExportDriver blk_exp_nbd;
 
 /* Handshake phase structs - this struct is passed on the wire */
 
@@ -45,7 +47,7 @@ typedef struct NBDOptionReply NBDOptionReply;
 typedef struct NBDOptionReplyMetaContext {
     NBDOptionReply h; /* h.type = NBD_REP_META_CONTEXT, h.length > 4 */
     uint32_t context_id;
-    /* meta context name follows */
+    /* metadata context name follows */
 } QEMU_PACKED NBDOptionReplyMetaContext;
 
 /* Transmission phase structs
@@ -227,7 +229,7 @@ enum {
 #define NBD_MAX_BUFFER_SIZE (32 * 1024 * 1024)
 
 /*
- * Maximum size of a protocol string (export name, meta context name,
+ * Maximum size of a protocol string (export name, metadata context name,
  * etc.).  Use malloc rather than stack allocation for storage of a
  * string.
  */
@@ -256,6 +258,8 @@ enum {
 
 /* Extent flags for qemu:dirty-bitmap in NBD_REPLY_TYPE_BLOCK_STATUS */
 #define NBD_STATE_DIRTY (1 << 0)
+
+/* No flags needed for qemu:allocation-depth in NBD_REPLY_TYPE_BLOCK_STATUS */
 
 static inline bool nbd_reply_type_is_error(int type)
 {
@@ -328,21 +332,10 @@ int nbd_errno_to_system_errno(int err);
 typedef struct NBDExport NBDExport;
 typedef struct NBDClient NBDClient;
 
-NBDExport *nbd_export_new(BlockDriverState *bs, uint64_t dev_offset,
-                          uint64_t size, const char *name, const char *desc,
-                          const char *bitmap, bool readonly, bool shared,
-                          void (*close)(NBDExport *), bool writethrough,
-                          BlockBackend *on_eject_blk, Error **errp);
-void nbd_export_close(NBDExport *exp);
-void nbd_export_remove(NBDExport *exp, NbdServerRemoveMode mode, Error **errp);
-void nbd_export_get(NBDExport *exp);
-void nbd_export_put(NBDExport *exp);
-
-BlockBackend *nbd_export_get_blockdev(NBDExport *exp);
+void nbd_export_set_on_eject_blk(BlockExport *exp, BlockBackend *blk);
 
 AioContext *nbd_export_aio_context(NBDExport *exp);
 NBDExport *nbd_export_find(const char *name);
-void nbd_export_close_all(void);
 
 void nbd_client_new(QIOChannelSocket *sioc,
                     QCryptoTLSCreds *tlscreds,
@@ -351,8 +344,11 @@ void nbd_client_new(QIOChannelSocket *sioc,
 void nbd_client_get(NBDClient *client);
 void nbd_client_put(NBDClient *client);
 
+void nbd_server_is_qemu_nbd(bool value);
+bool nbd_server_is_running(void);
 void nbd_server_start(SocketAddress *addr, const char *tls_creds,
-                      const char *tls_authz, Error **errp);
+                      const char *tls_authz, uint32_t max_connections,
+                      Error **errp);
 void nbd_server_start_options(NbdServerOptions *arg, Error **errp);
 
 /* nbd_read
@@ -368,7 +364,7 @@ static inline int nbd_read(QIOChannel *ioc, void *buffer, size_t size,
         if (desc) {
             error_prepend(errp, "Failed to read %s: ", desc);
         }
-        return -1;
+        return ret;
     }
 
     return 0;
@@ -379,8 +375,9 @@ static inline int nbd_read##bits(QIOChannel *ioc,                       \
                                  uint##bits##_t *val,                   \
                                  const char *desc, Error **errp)        \
 {                                                                       \
-    if (nbd_read(ioc, val, sizeof(*val), desc, errp) < 0) {             \
-        return -1;                                                      \
+    int ret = nbd_read(ioc, val, sizeof(*val), desc, errp);             \
+    if (ret < 0) {                                                      \
+        return ret;                                                     \
     }                                                                   \
     *val = be##bits##_to_cpu(*val);                                     \
     return 0;                                                           \
@@ -408,5 +405,23 @@ const char *nbd_rep_lookup(uint32_t rep);
 const char *nbd_info_lookup(uint16_t info);
 const char *nbd_cmd_lookup(uint16_t info);
 const char *nbd_err_lookup(int err);
+
+/* nbd/client-connection.c */
+typedef struct NBDClientConnection NBDClientConnection;
+
+void nbd_client_connection_enable_retry(NBDClientConnection *conn);
+
+NBDClientConnection *nbd_client_connection_new(const SocketAddress *saddr,
+                                               bool do_negotiation,
+                                               const char *export_name,
+                                               const char *x_dirty_bitmap,
+                                               QCryptoTLSCreds *tlscreds);
+void nbd_client_connection_release(NBDClientConnection *conn);
+
+QIOChannel *coroutine_fn
+nbd_co_establish_connection(NBDClientConnection *conn, NBDExportInfo *info,
+                            bool blocking, Error **errp);
+
+void coroutine_fn nbd_co_establish_connection_cancel(NBDClientConnection *conn);
 
 #endif

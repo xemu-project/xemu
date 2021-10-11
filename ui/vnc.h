@@ -29,6 +29,7 @@
 
 #include "qemu/queue.h"
 #include "qemu/thread.h"
+#include "ui/clipboard.h"
 #include "ui/console.h"
 #include "audio/audio.h"
 #include "qemu/bitmap.h"
@@ -164,6 +165,7 @@ struct VncDisplay
 
     struct VncSurface guest;   /* guest visible surface (aka ds->surface) */
     pixman_image_t *server;    /* vnc server surface */
+    int true_width; /* server surface width before rounding up */
 
     const char *id;
     QTAILQ_ENTRY(VncDisplay) next;
@@ -176,6 +178,7 @@ struct VncDisplay
     int ws_subauth; /* Used by websockets */
     bool lossy;
     bool non_adaptive;
+    bool power_control;
     QCryptoTLSCreds *tlscreds;
     QAuthZ *tlsauthz;
     char *tlsauthzid;
@@ -346,6 +349,10 @@ struct VncState
 
     Notifier mouse_mode_notifier;
 
+    QemuClipboardPeer cbpeer;
+    QemuClipboardInfo *cbinfo;
+    uint32_t cbpending;
+
     QTAILQ_ENTRY(VncState) next;
 };
 
@@ -411,7 +418,11 @@ enum {
 #define VNC_ENCODING_AUDIO                0XFFFFFEFD /* -259 */
 #define VNC_ENCODING_TIGHT_PNG            0xFFFFFEFC /* -260 */
 #define VNC_ENCODING_LED_STATE            0XFFFFFEFB /* -261 */
+#define VNC_ENCODING_DESKTOP_RESIZE_EXT   0XFFFFFECC /* -308 */
+#define VNC_ENCODING_XVP                  0XFFFFFECB /* -309 */
+#define VNC_ENCODING_ALPHA_CURSOR         0XFFFFFEC6 /* -314 */
 #define VNC_ENCODING_WMVi                 0x574D5669
+#define VNC_ENCODING_CLIPBOARD_EXT        0xc0a1e5ce
 
 /*****************************************************************************
  *
@@ -438,31 +449,39 @@ enum {
  *
  *****************************************************************************/
 
-#define VNC_FEATURE_RESIZE                   0
-#define VNC_FEATURE_HEXTILE                  1
-#define VNC_FEATURE_POINTER_TYPE_CHANGE      2
-#define VNC_FEATURE_WMVI                     3
-#define VNC_FEATURE_TIGHT                    4
-#define VNC_FEATURE_ZLIB                     5
-#define VNC_FEATURE_COPYRECT                 6
-#define VNC_FEATURE_RICH_CURSOR              7
-#define VNC_FEATURE_TIGHT_PNG                8
-#define VNC_FEATURE_ZRLE                     9
-#define VNC_FEATURE_ZYWRLE                  10
-#define VNC_FEATURE_LED_STATE               11
+enum VncFeatures {
+    VNC_FEATURE_RESIZE,
+    VNC_FEATURE_RESIZE_EXT,
+    VNC_FEATURE_HEXTILE,
+    VNC_FEATURE_POINTER_TYPE_CHANGE,
+    VNC_FEATURE_WMVI,
+    VNC_FEATURE_TIGHT,
+    VNC_FEATURE_ZLIB,
+    VNC_FEATURE_RICH_CURSOR,
+    VNC_FEATURE_ALPHA_CURSOR,
+    VNC_FEATURE_TIGHT_PNG,
+    VNC_FEATURE_ZRLE,
+    VNC_FEATURE_ZYWRLE,
+    VNC_FEATURE_LED_STATE,
+    VNC_FEATURE_XVP,
+    VNC_FEATURE_CLIPBOARD_EXT,
+};
 
 #define VNC_FEATURE_RESIZE_MASK              (1 << VNC_FEATURE_RESIZE)
+#define VNC_FEATURE_RESIZE_EXT_MASK          (1 << VNC_FEATURE_RESIZE_EXT)
 #define VNC_FEATURE_HEXTILE_MASK             (1 << VNC_FEATURE_HEXTILE)
 #define VNC_FEATURE_POINTER_TYPE_CHANGE_MASK (1 << VNC_FEATURE_POINTER_TYPE_CHANGE)
 #define VNC_FEATURE_WMVI_MASK                (1 << VNC_FEATURE_WMVI)
 #define VNC_FEATURE_TIGHT_MASK               (1 << VNC_FEATURE_TIGHT)
 #define VNC_FEATURE_ZLIB_MASK                (1 << VNC_FEATURE_ZLIB)
-#define VNC_FEATURE_COPYRECT_MASK            (1 << VNC_FEATURE_COPYRECT)
 #define VNC_FEATURE_RICH_CURSOR_MASK         (1 << VNC_FEATURE_RICH_CURSOR)
+#define VNC_FEATURE_ALPHA_CURSOR_MASK        (1 << VNC_FEATURE_ALPHA_CURSOR)
 #define VNC_FEATURE_TIGHT_PNG_MASK           (1 << VNC_FEATURE_TIGHT_PNG)
 #define VNC_FEATURE_ZRLE_MASK                (1 << VNC_FEATURE_ZRLE)
 #define VNC_FEATURE_ZYWRLE_MASK              (1 << VNC_FEATURE_ZYWRLE)
 #define VNC_FEATURE_LED_STATE_MASK           (1 << VNC_FEATURE_LED_STATE)
+#define VNC_FEATURE_XVP_MASK                 (1 << VNC_FEATURE_XVP)
+#define VNC_FEATURE_CLIPBOARD_EXT_MASK       (1 <<  VNC_FEATURE_CLIPBOARD_EXT)
 
 
 /* Client -> Server message IDs */
@@ -515,6 +534,26 @@ enum {
 #define VNC_MSG_SERVER_QEMU_AUDIO_BEGIN           1
 #define VNC_MSG_SERVER_QEMU_AUDIO_DATA            2
 
+/* XVP server -> client status code */
+#define VNC_XVP_CODE_FAIL 0
+#define VNC_XVP_CODE_INIT 1
+
+/* XVP client -> server action request  */
+#define VNC_XVP_ACTION_SHUTDOWN 2
+#define VNC_XVP_ACTION_REBOOT 3
+#define VNC_XVP_ACTION_RESET 4
+
+/* extended clipboard flags  */
+#define VNC_CLIPBOARD_TEXT     (1 << 0)
+#define VNC_CLIPBOARD_RTF      (1 << 1)
+#define VNC_CLIPBOARD_HTML     (1 << 2)
+#define VNC_CLIPBOARD_DIB      (1 << 3)
+#define VNC_CLIPBOARD_FILES    (1 << 4)
+#define VNC_CLIPBOARD_CAPS     (1 << 24)
+#define VNC_CLIPBOARD_REQUEST  (1 << 25)
+#define VNC_CLIPBOARD_PEEK     (1 << 26)
+#define VNC_CLIPBOARD_NOTIFY   (1 << 27)
+#define VNC_CLIPBOARD_PROVIDE  (1 << 28)
 
 /*****************************************************************************
  *
@@ -597,5 +636,10 @@ void vnc_tight_clear(VncState *vs);
 int vnc_zrle_send_framebuffer_update(VncState *vs, int x, int y, int w, int h);
 int vnc_zywrle_send_framebuffer_update(VncState *vs, int x, int y, int w, int h);
 void vnc_zrle_clear(VncState *vs);
+
+/* vnc-clipboard.c */
+void vnc_server_cut_text_caps(VncState *vs);
+void vnc_client_cut_text(VncState *vs, size_t len, uint8_t *text);
+void vnc_client_cut_text_ext(VncState *vs, int32_t len, uint32_t flags, uint8_t *data);
 
 #endif /* QEMU_VNC_H */

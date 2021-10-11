@@ -40,7 +40,7 @@
  * Starting from the discard feature, we can use this array to properly
  * set the config size depending on the features enabled.
  */
-static VirtIOFeature feature_sizes[] = {
+static const VirtIOFeature feature_sizes[] = {
     {.flags = 1ULL << VIRTIO_BLK_F_DISCARD,
      .end = endof(struct virtio_blk_config, discard_sector_alignment)},
     {.flags = 1ULL << VIRTIO_BLK_F_WRITE_ZEROES,
@@ -80,6 +80,8 @@ static void virtio_blk_req_complete(VirtIOBlockReq *req, unsigned char status)
     trace_virtio_blk_req_complete(vdev, req, status);
 
     stb_p(&req->in->status, status);
+    iov_discard_undo(&req->inhdr_undo);
+    iov_discard_undo(&req->outhdr_undo);
     virtqueue_push(req->vq, &req->elem, req->in_len);
     if (s->dataplane_started && !s->dataplane_disabled) {
         virtio_blk_data_plane_notify(s->dataplane, req->vq);
@@ -632,10 +634,12 @@ static int virtio_blk_handle_request(VirtIOBlockReq *req, MultiReqBuffer *mrb)
         return -1;
     }
 
-    iov_discard_front(&out_iov, &out_num, sizeof(req->out));
+    iov_discard_front_undoable(&out_iov, &out_num, sizeof(req->out),
+                               &req->outhdr_undo);
 
     if (in_iov[in_num - 1].iov_len < sizeof(struct virtio_blk_inhdr)) {
         virtio_error(vdev, "virtio-blk request inhdr too short");
+        iov_discard_undo(&req->outhdr_undo);
         return -1;
     }
 
@@ -644,7 +648,8 @@ static int virtio_blk_handle_request(VirtIOBlockReq *req, MultiReqBuffer *mrb)
     req->in = (void *)in_iov[in_num - 1].iov_base
               + in_iov[in_num - 1].iov_len
               - sizeof(struct virtio_blk_inhdr);
-    iov_discard_back(in_iov, &in_num, sizeof(struct virtio_blk_inhdr));
+    iov_discard_back_undoable(in_iov, &in_num, sizeof(struct virtio_blk_inhdr),
+                              &req->inhdr_undo);
 
     type = virtio_ldl_p(vdev, &req->out.type);
 
@@ -739,6 +744,8 @@ static int virtio_blk_handle_request(VirtIOBlockReq *req, MultiReqBuffer *mrb)
 
         if (unlikely(iov_to_buf(out_iov, out_num, 0, &dwz_hdr,
                                 sizeof(dwz_hdr)) != sizeof(dwz_hdr))) {
+            iov_discard_undo(&req->inhdr_undo);
+            iov_discard_undo(&req->outhdr_undo);
             virtio_error(vdev, "virtio-blk discard/write_zeroes header"
                          " too short");
             return -1;
@@ -863,7 +870,7 @@ static void virtio_blk_dma_restart_bh(void *opaque)
     virtio_blk_process_queued_requests(s, true);
 }
 
-static void virtio_blk_dma_restart_cb(void *opaque, int running,
+static void virtio_blk_dma_restart_cb(void *opaque, bool running,
                                       RunState state)
 {
     VirtIOBlock *s = opaque;
@@ -955,10 +962,14 @@ static void virtio_blk_update_config(VirtIODevice *vdev, uint8_t *config)
     blkcfg.wce = blk_enable_write_cache(s->blk);
     virtio_stw_p(vdev, &blkcfg.num_queues, s->conf.num_queues);
     if (virtio_has_feature(s->host_features, VIRTIO_BLK_F_DISCARD)) {
+        uint32_t discard_granularity = conf->discard_granularity;
+        if (discard_granularity == -1 || !s->conf.report_discard_granularity) {
+            discard_granularity = blk_size;
+        }
         virtio_stl_p(vdev, &blkcfg.max_discard_sectors,
                      s->conf.max_discard_sectors);
         virtio_stl_p(vdev, &blkcfg.discard_sector_alignment,
-                     blk_size >> BDRV_SECTOR_BITS);
+                     discard_granularity >> BDRV_SECTOR_BITS);
         /*
          * We support only one segment per request since multiple segments
          * are not widely used and there are no userspace APIs that allow
@@ -1014,7 +1025,7 @@ static uint64_t virtio_blk_get_features(VirtIODevice *vdev, uint64_t features,
          virtio_has_feature(features, VIRTIO_BLK_F_CONFIG_WCE))) {
         virtio_add_feature(&features, VIRTIO_BLK_F_WCE);
     }
-    if (blk_is_read_only(s->blk)) {
+    if (!blk_is_writable(s->blk)) {
         virtio_add_feature(&features, VIRTIO_BLK_F_RO);
     }
     if (s->conf.num_queues > 1) {
@@ -1147,6 +1158,9 @@ static void virtio_blk_device_realize(DeviceState *dev, Error **errp)
         error_setg(errp, "Device needs media, but drive is empty");
         return;
     }
+    if (conf->num_queues == VIRTIO_BLK_AUTO_NUM_QUEUES) {
+        conf->num_queues = 1;
+    }
     if (!conf->num_queues) {
         error_setg(errp, "num-queues property must be larger than 0");
         return;
@@ -1165,8 +1179,8 @@ static void virtio_blk_device_realize(DeviceState *dev, Error **errp)
     }
 
     if (!blkconf_apply_backend_options(&conf->conf,
-                                       blk_is_read_only(conf->conf.blk), true,
-                                       errp)) {
+                                       !blk_supports_write_perm(conf->conf.blk),
+                                       true, errp)) {
         return;
     }
     s->original_wce = blk_enable_write_cache(conf->conf.blk);
@@ -1281,13 +1295,16 @@ static Property virtio_blk_properties[] = {
 #endif
     DEFINE_PROP_BIT("request-merging", VirtIOBlock, conf.request_merging, 0,
                     true),
-    DEFINE_PROP_UINT16("num-queues", VirtIOBlock, conf.num_queues, 1),
+    DEFINE_PROP_UINT16("num-queues", VirtIOBlock, conf.num_queues,
+                       VIRTIO_BLK_AUTO_NUM_QUEUES),
     DEFINE_PROP_UINT16("queue-size", VirtIOBlock, conf.queue_size, 256),
     DEFINE_PROP_BOOL("seg-max-adjust", VirtIOBlock, conf.seg_max_adjust, true),
     DEFINE_PROP_LINK("iothread", VirtIOBlock, conf.iothread, TYPE_IOTHREAD,
                      IOThread *),
     DEFINE_PROP_BIT64("discard", VirtIOBlock, host_features,
                       VIRTIO_BLK_F_DISCARD, true),
+    DEFINE_PROP_BOOL("report-discard-granularity", VirtIOBlock,
+                     conf.report_discard_granularity, true),
     DEFINE_PROP_BIT64("write-zeroes", VirtIOBlock, host_features,
                       VIRTIO_BLK_F_WRITE_ZEROES, true),
     DEFINE_PROP_UINT32("max-discard-sectors", VirtIOBlock,

@@ -27,6 +27,7 @@
 #include "qemu/module.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
+#include "qom/object.h"
 
 #define D(x)
 
@@ -37,9 +38,9 @@
 #define R_R_GURU    4
 #define R_MAX       5
 
-#define TYPE_ETRAX_FS_PIC "etraxfs,pic"
-#define ETRAX_FS_PIC(obj) \
-    OBJECT_CHECK(struct etrax_pic, (obj), TYPE_ETRAX_FS_PIC)
+#define TYPE_ETRAX_FS_PIC "etraxfs-pic"
+DECLARE_INSTANCE_CHECKER(struct etrax_pic, ETRAX_FS_PIC,
+                         TYPE_ETRAX_FS_PIC)
 
 struct etrax_pic
 {

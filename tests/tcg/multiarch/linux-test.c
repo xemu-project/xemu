@@ -296,7 +296,7 @@ static void test_socket(void)
     server_fd = server_socket();
     /* find out what port we got */
     socklen = sizeof(server_addr);
-    ret = getsockname(server_fd, &server_addr, &socklen);
+    ret = getsockname(server_fd, (struct sockaddr *)&server_addr, &socklen);
     chk_error(ret);
     server_port = ntohs(server_addr.sin_port);
 
@@ -496,6 +496,15 @@ static void test_signal(void)
     sigemptyset(&act.sa_mask);
     act.sa_flags = 0;
     chk_error(sigaction(SIGSEGV, &act, NULL));
+
+    if (sigaction(SIGKILL, &act, NULL) == 0) {
+        error("sigaction(SIGKILL, &act, NULL) must not succeed");
+    }
+    if (sigaction(SIGSTOP, &act, NULL) == 0) {
+        error("sigaction(SIGSTOP, &act, NULL) must not succeed");
+    }
+    chk_error(sigaction(SIGKILL, NULL, &act));
+    chk_error(sigaction(SIGSTOP, NULL, &act));
 }
 
 #define SHM_SIZE 32768

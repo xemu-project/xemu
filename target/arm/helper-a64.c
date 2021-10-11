@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -179,38 +179,6 @@ float64 HELPER(vfp_mulxd)(float64 a, float64 b, void *fpstp)
     return float64_mul(a, b, fpst);
 }
 
-uint64_t HELPER(simd_tbl)(CPUARMState *env, uint64_t result, uint64_t indices,
-                          uint32_t rn, uint32_t numregs)
-{
-    /* Helper function for SIMD TBL and TBX. We have to do the table
-     * lookup part for the 64 bits worth of indices we're passed in.
-     * result is the initial results vector (either zeroes for TBL
-     * or some guest values for TBX), rn the register number where
-     * the table starts, and numregs the number of registers in the table.
-     * We return the results of the lookups.
-     */
-    int shift;
-
-    for (shift = 0; shift < 64; shift += 8) {
-        int index = extract64(indices, shift, 8);
-        if (index < 16 * numregs) {
-            /* Convert index (a byte offset into the virtual table
-             * which is a series of 128-bit vectors concatenated)
-             * into the correct register element plus a bit offset
-             * into that element, bearing in mind that the table
-             * can wrap around from V31 to V0.
-             */
-            int elt = (rn * 2 + (index >> 3)) % 64;
-            int bitidx = (index & 7) * 8;
-            uint64_t *q = aa64_vfp_qreg(env, elt >> 1);
-            uint64_t val = extract64(q[elt & 1], bitidx, 8);
-
-            result = deposit64(result, shift, 8, val);
-        }
-    }
-    return result;
-}
-
 /* 64bit/double versions of the neon float compare functions */
 uint64_t HELPER(neon_ceq_f64)(float64 a, float64 b, void *fpstp)
 {
@@ -234,17 +202,6 @@ uint64_t HELPER(neon_cgt_f64)(float64 a, float64 b, void *fpstp)
  * versions, these do a fully fused multiply-add or
  * multiply-add-and-halve.
  */
-#define float16_two make_float16(0x4000)
-#define float16_three make_float16(0x4200)
-#define float16_one_point_five make_float16(0x3e00)
-
-#define float32_two make_float32(0x40000000)
-#define float32_three make_float32(0x40400000)
-#define float32_one_point_five make_float32(0x3fc00000)
-
-#define float64_two make_float64(0x4000000000000000ULL)
-#define float64_three make_float64(0x4008000000000000ULL)
-#define float64_one_point_five make_float64(0x3FF8000000000000ULL)
 
 uint32_t HELPER(recpsf_f16)(uint32_t a, uint32_t b, void *fpstp)
 {
@@ -408,7 +365,9 @@ uint32_t HELPER(frecpx_f16)(uint32_t a, void *fpstp)
         float16 nan = a;
         if (float16_is_signaling_nan(a, fpst)) {
             float_raise(float_flag_invalid, fpst);
-            nan = float16_silence_nan(a, fpst);
+            if (!fpst->default_nan_mode) {
+                nan = float16_silence_nan(a, fpst);
+            }
         }
         if (fpst->default_nan_mode) {
             nan = float16_default_nan(fpst);
@@ -439,7 +398,9 @@ float32 HELPER(frecpx_f32)(float32 a, void *fpstp)
         float32 nan = a;
         if (float32_is_signaling_nan(a, fpst)) {
             float_raise(float_flag_invalid, fpst);
-            nan = float32_silence_nan(a, fpst);
+            if (!fpst->default_nan_mode) {
+                nan = float32_silence_nan(a, fpst);
+            }
         }
         if (fpst->default_nan_mode) {
             nan = float32_default_nan(fpst);
@@ -470,7 +431,9 @@ float64 HELPER(frecpx_f64)(float64 a, void *fpstp)
         float64 nan = a;
         if (float64_is_signaling_nan(a, fpst)) {
             float_raise(float_flag_invalid, fpst);
-            nan = float64_silence_nan(a, fpst);
+            if (!fpst->default_nan_mode) {
+                nan = float64_silence_nan(a, fpst);
+            }
         }
         if (fpst->default_nan_mode) {
             nan = float64_default_nan(fpst);
@@ -553,7 +516,7 @@ uint64_t HELPER(paired_cmpxchg64_le)(CPUARMState *env, uint64_t addr,
 
 #ifdef CONFIG_USER_ONLY
     /* ??? Enforce alignment.  */
-    uint64_t *haddr = g2h(addr);
+    uint64_t *haddr = g2h(env_cpu(env), addr);
 
     set_helper_retaddr(ra);
     o0 = ldq_le_p(haddr + 0);
@@ -601,7 +564,7 @@ uint64_t HELPER(paired_cmpxchg64_le_parallel)(CPUARMState *env, uint64_t addr,
 
     cmpv = int128_make128(env->exclusive_val, env->exclusive_high);
     newv = int128_make128(new_lo, new_hi);
-    oldv = helper_atomic_cmpxchgo_le_mmu(env, addr, cmpv, newv, oi, ra);
+    oldv = cpu_atomic_cmpxchgo_le_mmu(env, addr, cmpv, newv, oi, ra);
 
     success = int128_eq(oldv, cmpv);
     return !success;
@@ -623,7 +586,7 @@ uint64_t HELPER(paired_cmpxchg64_be)(CPUARMState *env, uint64_t addr,
 
 #ifdef CONFIG_USER_ONLY
     /* ??? Enforce alignment.  */
-    uint64_t *haddr = g2h(addr);
+    uint64_t *haddr = g2h(env_cpu(env), addr);
 
     set_helper_retaddr(ra);
     o1 = ldq_be_p(haddr + 0);
@@ -675,7 +638,7 @@ uint64_t HELPER(paired_cmpxchg64_be_parallel)(CPUARMState *env, uint64_t addr,
      */
     cmpv = int128_make128(env->exclusive_high, env->exclusive_val);
     newv = int128_make128(new_hi, new_lo);
-    oldv = helper_atomic_cmpxchgo_be_mmu(env, addr, cmpv, newv, oi, ra);
+    oldv = cpu_atomic_cmpxchgo_be_mmu(env, addr, cmpv, newv, oi, ra);
 
     success = int128_eq(oldv, cmpv);
     return !success;
@@ -697,7 +660,7 @@ void HELPER(casp_le_parallel)(CPUARMState *env, uint32_t rs, uint64_t addr,
 
     cmpv = int128_make128(env->xregs[rs], env->xregs[rs + 1]);
     newv = int128_make128(new_lo, new_hi);
-    oldv = helper_atomic_cmpxchgo_le_mmu(env, addr, cmpv, newv, oi, ra);
+    oldv = cpu_atomic_cmpxchgo_le_mmu(env, addr, cmpv, newv, oi, ra);
 
     env->xregs[rs] = int128_getlo(oldv);
     env->xregs[rs + 1] = int128_gethi(oldv);
@@ -718,7 +681,7 @@ void HELPER(casp_be_parallel)(CPUARMState *env, uint32_t rs, uint64_t addr,
 
     cmpv = int128_make128(env->xregs[rs + 1], env->xregs[rs]);
     newv = int128_make128(new_lo, new_hi);
-    oldv = helper_atomic_cmpxchgo_be_mmu(env, addr, cmpv, newv, oi, ra);
+    oldv = cpu_atomic_cmpxchgo_be_mmu(env, addr, cmpv, newv, oi, ra);
 
     env->xregs[rs + 1] = int128_getlo(oldv);
     env->xregs[rs] = int128_gethi(oldv);
@@ -956,11 +919,31 @@ static int el_from_spsr(uint32_t spsr)
     }
 }
 
+static void cpsr_write_from_spsr_elx(CPUARMState *env,
+                                     uint32_t val)
+{
+    uint32_t mask;
+
+    /* Save SPSR_ELx.SS into PSTATE. */
+    env->pstate = (env->pstate & ~PSTATE_SS) | (val & PSTATE_SS);
+    val &= ~PSTATE_SS;
+
+    /* Move DIT to the correct location for CPSR */
+    if (val & PSTATE_DIT) {
+        val &= ~PSTATE_DIT;
+        val |= CPSR_DIT;
+    }
+
+    mask = aarch32_cpsr_valid_mask(env->features, \
+        &env_archcpu(env)->isar);
+    cpsr_write(env, val, mask, CPSRWriteRaw);
+}
+
 void HELPER(exception_return)(CPUARMState *env, uint64_t new_pc)
 {
     int cur_el = arm_current_el(env);
     unsigned int spsr_idx = aarch64_banked_spsr_index(cur_el);
-    uint32_t mask, spsr = env->banked_spsr[spsr_idx];
+    uint32_t spsr = env->banked_spsr[spsr_idx];
     int new_el;
     bool return_to_aa64 = (spsr & PSTATE_nRW) == 0;
 
@@ -983,8 +966,7 @@ void HELPER(exception_return)(CPUARMState *env, uint64_t new_pc)
     if (new_el == -1) {
         goto illegal_return;
     }
-    if (new_el > cur_el
-        || (new_el == 2 && !arm_feature(env, ARM_FEATURE_EL2))) {
+    if (new_el > cur_el || (new_el == 2 && !arm_is_el2_enabled(env))) {
         /* Disallow return to an EL which is unimplemented or higher
          * than the current one.
          */
@@ -993,11 +975,6 @@ void HELPER(exception_return)(CPUARMState *env, uint64_t new_pc)
 
     if (new_el != 0 && arm_el_is_aa64(env, new_el) != return_to_aa64) {
         /* Return to an EL which is configured for a different register width */
-        goto illegal_return;
-    }
-
-    if (new_el == 2 && arm_is_secure_below_el3(env)) {
-        /* Return to the non-existent secure-EL2 */
         goto illegal_return;
     }
 
@@ -1015,10 +992,9 @@ void HELPER(exception_return)(CPUARMState *env, uint64_t new_pc)
          * will sort the register banks out for us, and we've already
          * caught all the bad-mode cases in el_from_spsr().
          */
-        mask = aarch32_cpsr_valid_mask(env->features, &env_archcpu(env)->isar);
-        cpsr_write(env, spsr, mask, CPSRWriteRaw);
+        cpsr_write_from_spsr_elx(env, spsr);
         if (!arm_singlestep_active(env)) {
-            env->uncached_cpsr &= ~PSTATE_SS;
+            env->pstate &= ~PSTATE_SS;
         }
         aarch64_sync_64_to_32(env);
 
@@ -1050,7 +1026,7 @@ void HELPER(exception_return)(CPUARMState *env, uint64_t new_pc)
          * the hflags rebuild, since we can pull the composite TBII field
          * from there.
          */
-        tbii = FIELD_EX32(env->hflags, TBFLAG_A64, TBII);
+        tbii = EX_TBFLAG_A64(env->hflags, TBII);
         if ((tbii >> extract64(new_pc, 55, 1)) & 1) {
             /* TBI is enabled. */
             int core_mmu_idx = cpu_mmu_index(env, false);

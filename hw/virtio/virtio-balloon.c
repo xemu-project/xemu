@@ -20,11 +20,12 @@
 #include "hw/virtio/virtio.h"
 #include "hw/mem/pc-dimm.h"
 #include "hw/qdev-properties.h"
+#include "hw/boards.h"
 #include "sysemu/balloon.h"
 #include "hw/virtio/virtio-balloon.h"
 #include "exec/address-spaces.h"
 #include "qapi/error.h"
-#include "qapi/qapi-events-misc.h"
+#include "qapi/qapi-events-machine.h"
 #include "qapi/visitor.h"
 #include "trace.h"
 #include "qemu/error-report.h"
@@ -65,8 +66,12 @@ static bool virtio_balloon_pbp_matches(PartiallyBalloonedPage *pbp,
 
 static bool virtio_balloon_inhibited(void)
 {
-    /* Postcopy cannot deal with concurrent discards, so it's special. */
-    return ram_block_discard_is_disabled() || migration_in_incoming_postcopy();
+    /*
+     * Postcopy cannot deal with concurrent discards,
+     * so it's special, as well as background snapshots.
+     */
+    return ram_block_discard_is_disabled() || migration_in_incoming_postcopy() ||
+            migration_in_bg_snapshot();
 }
 
 static void balloon_inflate_page(VirtIOBalloon *balloon,
@@ -203,7 +208,6 @@ static bool balloon_stats_enabled(const VirtIOBalloon *s)
 static void balloon_stats_destroy_timer(VirtIOBalloon *s)
 {
     if (balloon_stats_enabled(s)) {
-        timer_del(s->stats_timer);
         timer_free(s->stats_timer);
         s->stats_timer = NULL;
         s->stats_poll_interval = 0;
@@ -659,9 +663,6 @@ virtio_balloon_free_page_hint_notify(NotifierWithReturn *n, void *data)
     }
 
     switch (pnd->reason) {
-    case PRECOPY_NOTIFY_SETUP:
-        precopy_enable_free_page_optimization();
-        break;
     case PRECOPY_NOTIFY_BEFORE_BITMAP_SYNC:
         virtio_balloon_free_page_stop(dev);
         break;
@@ -681,6 +682,7 @@ virtio_balloon_free_page_hint_notify(NotifierWithReturn *n, void *data)
          */
         virtio_balloon_free_page_done(dev);
         break;
+    case PRECOPY_NOTIFY_SETUP:
     case PRECOPY_NOTIFY_COMPLETE:
         break;
     default:
@@ -748,7 +750,7 @@ static int build_dimm_list(Object *obj, void *opaque)
 static ram_addr_t get_current_ram_size(void)
 {
     GSList *list = NULL, *item;
-    ram_addr_t size = ram_size;
+    ram_addr_t size = current_machine->ram_size;
 
     build_dimm_list(qdev_get_machine(), &list);
     for (item = list; item; item = g_slist_next(item)) {

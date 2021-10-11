@@ -19,6 +19,7 @@
 #include "hw/virtio/virtio-scsi.h"
 #include "qemu/module.h"
 #include "virtio-pci.h"
+#include "qom/object.h"
 
 typedef struct VirtIOSCSIPCI VirtIOSCSIPCI;
 
@@ -26,8 +27,8 @@ typedef struct VirtIOSCSIPCI VirtIOSCSIPCI;
  * virtio-scsi-pci: This extends VirtioPCIProxy.
  */
 #define TYPE_VIRTIO_SCSI_PCI "virtio-scsi-pci-base"
-#define VIRTIO_SCSI_PCI(obj) \
-        OBJECT_CHECK(VirtIOSCSIPCI, (obj), TYPE_VIRTIO_SCSI_PCI)
+DECLARE_INSTANCE_CHECKER(VirtIOSCSIPCI, VIRTIO_SCSI_PCI,
+                         TYPE_VIRTIO_SCSI_PCI)
 
 struct VirtIOSCSIPCI {
     VirtIOPCIProxy parent_obj;
@@ -46,12 +47,17 @@ static void virtio_scsi_pci_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
 {
     VirtIOSCSIPCI *dev = VIRTIO_SCSI_PCI(vpci_dev);
     DeviceState *vdev = DEVICE(&dev->vdev);
-    VirtIOSCSICommon *vs = VIRTIO_SCSI_COMMON(vdev);
     DeviceState *proxy = DEVICE(vpci_dev);
+    VirtIOSCSIConf *conf = &dev->vdev.parent_obj.conf;
     char *bus_name;
 
+    if (conf->num_queues == VIRTIO_SCSI_AUTO_NUM_QUEUES) {
+        conf->num_queues =
+            virtio_pci_optimal_num_queues(VIRTIO_SCSI_VQ_NUM_FIXED);
+    }
+
     if (vpci_dev->nvectors == DEV_NVECTORS_UNSPECIFIED) {
-        vpci_dev->nvectors = vs->conf.num_queues + 3;
+        vpci_dev->nvectors = conf->num_queues + VIRTIO_SCSI_VQ_NUM_FIXED + 1;
     }
 
     /*

@@ -19,7 +19,7 @@
 #include "qemu-common.h"
 #include "qemu/bswap.h"
 #include "qapi/qmp/qlist.h"
-#include "libqtest.h"
+#include "libqos/libqtest.h"
 #include "libqos/fw_cfg.h"
 #include "libqos/libqos.h"
 #include "standard-headers/linux/qemu_fw_cfg.h"
@@ -464,7 +464,7 @@ static char *create_qcow2_with_mbr(MBRpartitions mbr, uint64_t sectors)
     }
 
     fd = mkstemp(raw_path);
-    g_assert(fd);
+    g_assert(fd >= 0);
     close(fd);
 
     fd = open(raw_path, O_WRONLY);
@@ -474,7 +474,7 @@ static char *create_qcow2_with_mbr(MBRpartitions mbr, uint64_t sectors)
     close(fd);
 
     fd = mkstemp(qcow2_path);
-    g_assert(fd);
+    g_assert(fd >= 0);
     close(fd);
 
     qemu_img_path = getenv("QTEST_QEMU_IMG");

@@ -287,6 +287,20 @@ static void nv2a_unlock_fifo(NV2AState *d)
 static void nv2a_reset(NV2AState *d)
 {
     nv2a_lock_fifo(d);
+    bool halted = qatomic_read(&d->pfifo.halt);
+    if (!halted) {
+        qatomic_set(&d->pfifo.halt, true);
+    }
+    qemu_event_reset(&d->pgraph.flush_complete);
+    qatomic_set(&d->pgraph.flush_pending, true);
+    nv2a_unlock_fifo(d);
+    qemu_mutex_unlock_iothread();
+    qemu_event_wait(&d->pgraph.flush_complete);
+    qemu_mutex_lock_iothread();
+    nv2a_lock_fifo(d);
+    if (!halted) {
+        qatomic_set(&d->pfifo.halt, false);
+    }
 
     memset(d->pfifo.regs, 0, sizeof(d->pfifo.regs));
     memset(d->pgraph.regs, 0, sizeof(d->pgraph.regs));
@@ -306,7 +320,6 @@ static void nv2a_reset(NV2AState *d)
     d->pgraph.waiting_for_nop = false;
     d->pgraph.waiting_for_flip = false;
     d->pgraph.waiting_for_context_switch = false;
-    d->pgraph.flush_pending = true;
 
     d->pmc.pending_interrupts = 0;
     d->pfifo.pending_interrupts = 0;
@@ -377,20 +390,30 @@ static void qdev_nv2a_reset(DeviceState *dev)
 // Note: This is handled as a VM state change and not as a `pre_save` callback
 // because we want to halt the FIFO before any VM state is saved/restored to
 // avoid corruption.
-static void nv2a_vm_state_change(void *opaque, int running, RunState state)
+static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
 {
     NV2AState *d = opaque;
     if (state == RUN_STATE_SAVE_VM) {
-        // FIXME: writeback all surfaces to RAM before snapshot
+        nv2a_lock_fifo(d);
+        qatomic_set(&d->pfifo.halt, true);
+        qatomic_set(&d->pgraph.download_dirty_surfaces_pending, true);
+        qemu_event_reset(&d->pgraph.dirty_surfaces_download_complete);
+        nv2a_unlock_fifo(d);
+        qemu_mutex_unlock_iothread();
+        qemu_event_wait(&d->pgraph.dirty_surfaces_download_complete);
+        qemu_mutex_lock_iothread();
         nv2a_lock_fifo(d);
     } else if (state == RUN_STATE_RESTORE_VM) {
-        nv2a_reset(d); // Early reset to avoid changing any state during load
+        nv2a_lock_fifo(d);
+        qatomic_set(&d->pfifo.halt, true);
+        nv2a_unlock_fifo(d);
     }
 }
 
 static int nv2a_post_save(void *opaque)
 {
     NV2AState *d = opaque;
+    qatomic_set(&d->pfifo.halt, false);
     nv2a_unlock_fifo(d);
     return 0;
 }
@@ -405,7 +428,8 @@ static int nv2a_pre_load(void *opaque)
 static int nv2a_post_load(void *opaque, int version_id)
 {
     NV2AState *d = opaque;
-    d->pgraph.flush_pending = true;
+    qatomic_set(&d->pfifo.halt, false);
+    qatomic_set(&d->pgraph.flush_pending, true);
     nv2a_unlock_fifo(d);
     return 0;
 }

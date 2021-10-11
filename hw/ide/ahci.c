@@ -9,7 +9,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -250,7 +250,7 @@ static void map_page(AddressSpace *as, uint8_t **ptr, uint64_t addr,
     }
 
     *ptr = dma_memory_map(as, addr, &len, DMA_DIRECTION_FROM_DEVICE);
-    if (len < wanted) {
+    if (len < wanted && *ptr) {
         dma_memory_unmap(as, *ptr, len, DMA_DIRECTION_FROM_DEVICE, len);
         *ptr = NULL;
     }
@@ -465,8 +465,9 @@ static void ahci_mem_write(void *opaque, hwaddr addr,
 
     /* Only aligned reads are allowed on AHCI */
     if (addr & 3) {
-        fprintf(stderr, "ahci: Mis-aligned write to addr 0x"
-                TARGET_FMT_plx "\n", addr);
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "ahci: Mis-aligned write to addr 0x%03" HWADDR_PRIX "\n",
+                      addr);
         return;
     }
 
@@ -699,7 +700,7 @@ static void ahci_reset_port(AHCIState *s, int port)
 }
 
 /* Buffer pretty output based on a raw FIS structure. */
-static char *ahci_pretty_buffer_fis(uint8_t *fis, int cmd_len)
+static char *ahci_pretty_buffer_fis(const uint8_t *fis, int cmd_len)
 {
     int i;
     GString *s = g_string_new("FIS:");
@@ -1099,11 +1100,11 @@ static void execute_ncq_command(NCQTransferState *ncq_tfs)
 }
 
 
-static void process_ncq_command(AHCIState *s, int port, uint8_t *cmd_fis,
+static void process_ncq_command(AHCIState *s, int port, const uint8_t *cmd_fis,
                                 uint8_t slot)
 {
     AHCIDevice *ad = &s->dev[port];
-    NCQFrame *ncq_fis = (NCQFrame*)cmd_fis;
+    const NCQFrame *ncq_fis = (NCQFrame *)cmd_fis;
     uint8_t tag = ncq_fis->tag >> 3;
     NCQTransferState *ncq_tfs = &ad->ncq_tfs[tag];
     size_t size;
@@ -1111,7 +1112,8 @@ static void process_ncq_command(AHCIState *s, int port, uint8_t *cmd_fis,
     g_assert(is_ncq(ncq_fis->command));
     if (ncq_tfs->used) {
         /* error - already in use */
-        fprintf(stderr, "%s: tag %d already used\n", __func__, tag);
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: tag %d already used\n",
+                      __func__, tag);
         return;
     }
 
@@ -1151,7 +1153,7 @@ static void process_ncq_command(AHCIState *s, int port, uint8_t *cmd_fis,
     if (!ncq_tfs->sector_count) {
         ncq_tfs->sector_count = 0x10000;
     }
-    size = ncq_tfs->sector_count * 512;
+    size = ncq_tfs->sector_count * BDRV_SECTOR_SIZE;
     ahci_populate_sglist(ad, &ncq_tfs->sglist, ncq_tfs->cmdh, size, 0);
 
     if (ncq_tfs->sglist.size < size) {
@@ -1183,7 +1185,7 @@ static AHCICmdHdr *get_cmd_header(AHCIState *s, uint8_t port, uint8_t slot)
 }
 
 static void handle_reg_h2d_fis(AHCIState *s, int port,
-                               uint8_t slot, uint8_t *cmd_fis)
+                               uint8_t slot, const uint8_t *cmd_fis)
 {
     IDEState *ide_state = &s->dev[port].port.ifs[0];
     AHCICmdHdr *cmd = get_cmd_header(s, port, slot);
@@ -1299,7 +1301,7 @@ static int handle_cmd(AHCIState *s, int port, uint8_t slot)
     tbl_addr = le64_to_cpu(cmd->tbl_addr);
     cmd_len = 0x80;
     cmd_fis = dma_memory_map(s->as, tbl_addr, &cmd_len,
-                             DMA_DIRECTION_FROM_DEVICE);
+                             DMA_DIRECTION_TO_DEVICE);
     if (!cmd_fis) {
         trace_handle_cmd_badfis(s, port);
         return -1;
@@ -1324,7 +1326,7 @@ static int handle_cmd(AHCIState *s, int port, uint8_t slot)
     }
 
 out:
-    dma_memory_unmap(s->as, cmd_fis, cmd_len, DMA_DIRECTION_FROM_DEVICE,
+    dma_memory_unmap(s->as, cmd_fis, cmd_len, DMA_DIRECTION_TO_DEVICE,
                      cmd_len);
 
     if (s->dev[port].port.ifs[0].status & (BUSY_STAT|DRQ_STAT)) {
@@ -1703,7 +1705,8 @@ static int ahci_state_post_load(void *opaque, int version_id)
                 return -1;
             }
             ahci_populate_sglist(ncq_tfs->drive, &ncq_tfs->sglist,
-                                 ncq_tfs->cmdh, ncq_tfs->sector_count * 512,
+                                 ncq_tfs->cmdh,
+                                 ncq_tfs->sector_count * BDRV_SECTOR_SIZE,
                                  0);
             if (ncq_tfs->sector_count != ncq_tfs->sglist.size >> 9) {
                 return -1;
@@ -1818,7 +1821,7 @@ type_init(sysbus_ahci_register_types)
 
 int32_t ahci_get_num_ports(PCIDevice *dev)
 {
-    AHCIPCIState *d = ICH_AHCI(dev);
+    AHCIPCIState *d = ICH9_AHCI(dev);
     AHCIState *ahci = &d->ahci;
 
     return ahci->ports;
@@ -1826,7 +1829,7 @@ int32_t ahci_get_num_ports(PCIDevice *dev)
 
 void ahci_ide_create_devs(PCIDevice *dev, DriveInfo **hd)
 {
-    AHCIPCIState *d = ICH_AHCI(dev);
+    AHCIPCIState *d = ICH9_AHCI(dev);
     AHCIState *ahci = &d->ahci;
     int i;
 

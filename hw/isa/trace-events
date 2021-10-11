@@ -1,4 +1,4 @@
-# See docs/devel/tracing.txt for syntax documentation.
+# See docs/devel/tracing.rst for syntax documentation.
 
 # isa-superio.c
 superio_create_parallel(int id, uint16_t base, unsigned int irq) "id=%d, base 0x%03x, irq %u"
@@ -13,3 +13,11 @@ pc87312_io_write(uint32_t addr, uint32_t val) "write addr=0x%x val=0x%x"
 # apm.c
 apm_io_read(uint8_t addr, uint8_t val) "read addr=0x%x val=0x%02x"
 apm_io_write(uint8_t addr, uint8_t val) "write addr=0x%x val=0x%02x"
+
+# vt82c686.c
+via_isa_write(uint32_t addr, uint32_t val, int len) "addr 0x%x val 0x%x len 0x%x"
+via_pm_write(uint32_t addr, uint32_t val, int len) "addr 0x%x val 0x%x len 0x%x"
+via_pm_io_read(uint32_t addr, uint32_t val, int len) "addr 0x%x val 0x%x len 0x%x"
+via_pm_io_write(uint32_t addr, uint32_t val, int len) "addr 0x%x val 0x%x len 0x%x"
+via_superio_read(uint8_t addr, uint8_t val) "addr 0x%x val 0x%x"
+via_superio_write(uint8_t addr, uint32_t val) "addr 0x%x val 0x%x"

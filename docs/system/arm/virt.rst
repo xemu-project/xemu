@@ -1,7 +1,7 @@
 'virt' generic virtual platform (``virt``)
 ==========================================
 
-The `virt` board is a platform which does not correspond to any
+The ``virt`` board is a platform which does not correspond to any
 real hardware; it is designed for use in virtual machines.
 It is the recommended board type if you simply want to run
 a guest such as Linux and do not care about reproducing the
@@ -43,6 +43,8 @@ The virt board supports:
 - Secure-World-only devices if the CPU has TrustZone:
 
   - A second PL011 UART
+  - A second PL061 GPIO controller, with GPIO lines for triggering
+    a system reset or system poweroff
   - A secure flash memory
   - 16MB of secure RAM
 

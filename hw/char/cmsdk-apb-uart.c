@@ -27,6 +27,7 @@
 #include "chardev/char-serial.h"
 #include "hw/char/cmsdk-apb-uart.h"
 #include "hw/irq.h"
+#include "hw/qdev-properties-system.h"
 
 REG32(DATA, 0)
 REG32(STATE, 4)
@@ -190,7 +191,7 @@ static uint64_t uart_read(void *opaque, hwaddr offset, unsigned size)
 /* Try to send tx data, and arrange to be called back later if
  * we can't (ie the char backend is busy/blocking).
  */
-static gboolean uart_transmit(GIOChannel *chan, GIOCondition cond, void *opaque)
+static gboolean uart_transmit(void *do_not_use, GIOCondition cond, void *opaque)
 {
     CMSDKAPBUART *s = CMSDK_APB_UART(opaque);
     int ret;

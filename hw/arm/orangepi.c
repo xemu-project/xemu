@@ -21,12 +21,9 @@
 #include "qemu/units.h"
 #include "exec/address-spaces.h"
 #include "qapi/error.h"
-#include "cpu.h"
-#include "hw/sysbus.h"
 #include "hw/boards.h"
 #include "hw/qdev-properties.h"
 #include "hw/arm/allwinner-h3.h"
-#include "sysemu/sysemu.h"
 
 static struct arm_boot_info orangepi_binfo = {
     .nb_cpus = AW_H3_NUM_CPUS,
@@ -41,7 +38,7 @@ static void orangepi_init(MachineState *machine)
     DeviceState *carddev;
 
     /* BIOS is not supported by this board */
-    if (bios_name) {
+    if (machine->firmware) {
         error_report("BIOS not supported for this machine");
         exit(1);
     }
@@ -79,7 +76,7 @@ static void orangepi_init(MachineState *machine)
     object_property_set_int(OBJECT(&h3->emac), "phy-addr", 1, &error_abort);
 
     /* DRAMC */
-    object_property_set_uint(OBJECT(h3), "ram-addr", h3->memmap[AW_H3_SDRAM],
+    object_property_set_uint(OBJECT(h3), "ram-addr", h3->memmap[AW_H3_DEV_SDRAM],
                              &error_abort);
     object_property_set_int(OBJECT(h3), "ram-size", machine->ram_size / MiB,
                             &error_abort);
@@ -98,7 +95,7 @@ static void orangepi_init(MachineState *machine)
     qdev_realize_and_unref(carddev, bus, &error_fatal);
 
     /* SDRAM */
-    memory_region_add_subregion(get_system_memory(), h3->memmap[AW_H3_SDRAM],
+    memory_region_add_subregion(get_system_memory(), h3->memmap[AW_H3_DEV_SDRAM],
                                 machine->ram);
 
     /* Load target kernel or start using BootROM */
@@ -106,14 +103,14 @@ static void orangepi_init(MachineState *machine)
         /* Use Boot ROM to copy data from SD card to SRAM */
         allwinner_h3_bootrom_setup(h3, blk);
     }
-    orangepi_binfo.loader_start = h3->memmap[AW_H3_SDRAM];
+    orangepi_binfo.loader_start = h3->memmap[AW_H3_DEV_SDRAM];
     orangepi_binfo.ram_size = machine->ram_size;
     arm_load_kernel(ARM_CPU(first_cpu), machine, &orangepi_binfo);
 }
 
 static void orangepi_machine_init(MachineClass *mc)
 {
-    mc->desc = "Orange Pi PC";
+    mc->desc = "Orange Pi PC (Cortex-A7)";
     mc->init = orangepi_init;
     mc->block_default_type = IF_SD;
     mc->units_per_default_bus = 1;

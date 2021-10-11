@@ -11,16 +11,18 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "hw/virtio/virtio-gpu-pci.h"
+#include "qom/object.h"
 
 #define TYPE_VHOST_USER_GPU_PCI "vhost-user-gpu-pci"
-#define VHOST_USER_GPU_PCI(obj)                                     \
-    OBJECT_CHECK(VhostUserGPUPCI, (obj), TYPE_VHOST_USER_GPU_PCI)
+typedef struct VhostUserGPUPCI VhostUserGPUPCI;
+DECLARE_INSTANCE_CHECKER(VhostUserGPUPCI, VHOST_USER_GPU_PCI,
+                         TYPE_VHOST_USER_GPU_PCI)
 
-typedef struct VhostUserGPUPCI {
+struct VhostUserGPUPCI {
     VirtIOGPUPCIBase parent_obj;
 
     VhostUserGPU vdev;
-} VhostUserGPUPCI;
+};
 
 static void vhost_user_gpu_pci_initfn(Object *obj)
 {
@@ -41,6 +43,7 @@ static const VirtioPCIDeviceTypeInfo vhost_user_gpu_pci_info = {
     .instance_size = sizeof(VhostUserGPUPCI),
     .instance_init = vhost_user_gpu_pci_initfn,
 };
+module_obj(TYPE_VHOST_USER_GPU_PCI);
 
 static void vhost_user_gpu_pci_register_types(void)
 {

@@ -1,0 +1,4 @@
+The header files in this directory originate from the WinPcap 4.1.3 release
+provided at:
+
+    https://www.winpcap.org/devel.htm

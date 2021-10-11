@@ -30,6 +30,7 @@
 #define TCG_TARGET_INSN_UNIT_SIZE 4
 #define TCG_TARGET_TLB_DISPLACEMENT_BITS 32
 #define TCG_TARGET_NB_REGS 32
+#define MAX_CODE_GEN_BUFFER_SIZE  (2 * GiB)
 
 typedef enum {
     TCG_REG_G0 = 0,
@@ -65,10 +66,6 @@ typedef enum {
     TCG_REG_I6,
     TCG_REG_I7,
 } TCGReg;
-
-#define TCG_CT_CONST_S11  0x100
-#define TCG_CT_CONST_S13  0x200
-#define TCG_CT_CONST_ZERO 0x400
 
 /* used for function call generation */
 #define TCG_REG_CALL_STACK TCG_REG_O6
@@ -124,8 +121,8 @@ extern bool use_vis3_instructions;
 #define TCG_TARGET_HAS_muls2_i32        1
 #define TCG_TARGET_HAS_muluh_i32        0
 #define TCG_TARGET_HAS_mulsh_i32        0
-#define TCG_TARGET_HAS_goto_ptr         1
 #define TCG_TARGET_HAS_direct_jump      1
+#define TCG_TARGET_HAS_qemu_st8_i32     0
 
 #define TCG_TARGET_HAS_extrl_i64_i32    1
 #define TCG_TARGET_HAS_extrh_i64_i32    1
@@ -168,15 +165,7 @@ extern bool use_vis3_instructions;
 #define TCG_TARGET_DEFAULT_MO (0)
 #define TCG_TARGET_HAS_MEMORY_BSWAP     1
 
-static inline void flush_icache_range(uintptr_t start, uintptr_t stop)
-{
-    uintptr_t p;
-    for (p = start & -8; p < ((stop + 7) & -8); p += 8) {
-        __asm__ __volatile__("flush\t%0" : : "r" (p));
-    }
-}
-
-void tb_target_set_jmp_target(uintptr_t, uintptr_t, uintptr_t);
+void tb_target_set_jmp_target(uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 
 #define TCG_TARGET_NEED_POOL_LABELS
 

@@ -1,5 +1,9 @@
+config X86_FW_OVMF
+    bool
+
 config SEV
     bool
+    select X86_FW_OVMF
     depends on KVM
 
 config PC
@@ -14,7 +18,7 @@ config PC
     imply ISA_DEBUG
     imply PARALLEL
     imply PCI_DEVICES
-    imply PVPANIC
+    imply PVPANIC_ISA
     imply QXL
     imply SEV
     imply SGA
@@ -23,7 +27,8 @@ config PC
     imply TPM_TIS_ISA
     imply VGA_PCI
     imply VIRTIO_VGA
-    select FDC
+    imply NVDIMM
+    select FDC_ISA
     select I8259
     select I8254
     select PCKBD
@@ -103,6 +108,10 @@ config MICROVM
     select I8259
     select MC146818RTC
     select VIRTIO_MMIO
+    select ACPI_HW_REDUCED
+    select PCI_EXPRESS_GENERIC_BRIDGE
+    select USB_XHCI_SYSBUS
+    select I8254
 
 config X86_IOMMU
     bool
@@ -124,8 +133,16 @@ config VMMOUSE
     depends on VMPORT
 
 config XBOX
-    select PC
+    bool
+    select PC_PCI
+    select PC_ACPI
+    select ACPI_SMBUS
+    select PCI_I440FX
+    select PIIX3
+    select IDE_PIIX
+    select DIMM
+    select AC97
     select USB_OHCI
     select USB_OHCI_PCI
     select USB_STORAGE_BOT
-    select AC97
+    select VGA

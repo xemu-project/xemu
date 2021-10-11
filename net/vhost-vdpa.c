@@ -54,7 +54,10 @@ const int vdpa_feature_bits[] = {
     VIRTIO_NET_F_MTU,
     VIRTIO_F_IOMMU_PLATFORM,
     VIRTIO_F_RING_PACKED,
+    VIRTIO_NET_F_RSS,
+    VIRTIO_NET_F_HASH_REPORT,
     VIRTIO_NET_F_GUEST_ANNOUNCE,
+    VIRTIO_NET_F_STATUS,
     VHOST_INVALID_FEATURE_BIT
 };
 
@@ -63,15 +66,6 @@ VHostNetState *vhost_vdpa_get_vhost_net(NetClientState *nc)
     VhostVDPAState *s = DO_UPCAST(VhostVDPAState, nc, nc);
     assert(nc->info->type == NET_CLIENT_DRIVER_VHOST_VDPA);
     return s->vhost_net;
-}
-
-uint64_t vhost_vdpa_get_acked_features(NetClientState *nc)
-{
-    VhostVDPAState *s = DO_UPCAST(VhostVDPAState, nc, nc);
-    assert(nc->info->type == NET_CLIENT_DRIVER_VHOST_VDPA);
-    s->acked_features = vhost_net_get_acked_features(s->vhost_net);
-
-    return s->acked_features;
 }
 
 static int vhost_vdpa_net_check_device_id(struct vhost_net *net)
@@ -144,6 +138,10 @@ static void vhost_vdpa_cleanup(NetClientState *nc)
         g_free(s->vhost_net);
         s->vhost_net = NULL;
     }
+     if (s->vhost_vdpa.device_fd >= 0) {
+        qemu_close(s->vhost_vdpa.device_fd);
+        s->vhost_vdpa.device_fd = -1;
+    }
 }
 
 static bool vhost_vdpa_has_vnet_hdr(NetClientState *nc)
@@ -184,7 +182,7 @@ static int net_vhost_vdpa_init(NetClientState *peer, const char *device,
     snprintf(nc->info_str, sizeof(nc->info_str), TYPE_VHOST_VDPA);
     nc->queue_index = 0;
     s = DO_UPCAST(VhostVDPAState, nc, nc);
-    vdpa_device_fd = qemu_open(vhostdev, O_RDWR);
+    vdpa_device_fd = qemu_open_old(vhostdev, O_RDWR);
     if (vdpa_device_fd == -1) {
         return -errno;
     }

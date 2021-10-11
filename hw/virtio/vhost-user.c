@@ -16,6 +16,7 @@
 #include "hw/virtio/virtio.h"
 #include "hw/virtio/virtio-net.h"
 #include "chardev/char-fe.h"
+#include "io/channel-socket.h"
 #include "sysemu/kvm.h"
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
@@ -149,7 +150,7 @@ typedef struct VhostUserMemory {
 } VhostUserMemory;
 
 typedef struct VhostUserMemRegMsg {
-    uint32_t padding;
+    uint64_t padding;
     VhostUserMemoryRegion region;
 } VhostUserMemRegMsg;
 
@@ -237,7 +238,8 @@ struct vhost_user {
     struct vhost_dev *dev;
     /* Shared between vhost devs of the same virtio device */
     VhostUserState *user;
-    int slave_fd;
+    QIOChannel *slave_ioc;
+    GSource *slave_src;
     NotifierWithReturn postcopy_notifier;
     struct PostCopyFD  postcopy_fd;
     uint64_t           postcopy_client_bases[VHOST_USER_MAX_RAM_SLOTS];
@@ -294,15 +296,27 @@ static int vhost_user_read_header(struct vhost_dev *dev, VhostUserMsg *msg)
     return 0;
 }
 
-static int vhost_user_read(struct vhost_dev *dev, VhostUserMsg *msg)
+struct vhost_user_read_cb_data {
+    struct vhost_dev *dev;
+    VhostUserMsg *msg;
+    GMainLoop *loop;
+    int ret;
+};
+
+static gboolean vhost_user_read_cb(void *do_not_use, GIOCondition condition,
+                                   gpointer opaque)
 {
+    struct vhost_user_read_cb_data *data = opaque;
+    struct vhost_dev *dev = data->dev;
+    VhostUserMsg *msg = data->msg;
     struct vhost_user *u = dev->opaque;
     CharBackend *chr = u->user->chr;
     uint8_t *p = (uint8_t *) msg;
     int r, size;
 
     if (vhost_user_read_header(dev, msg) < 0) {
-        return -1;
+        data->ret = -1;
+        goto end;
     }
 
     /* validate message size is sane */
@@ -310,7 +324,8 @@ static int vhost_user_read(struct vhost_dev *dev, VhostUserMsg *msg)
         error_report("Failed to read msg header."
                 " Size %d exceeds the maximum %zu.", msg->hdr.size,
                 VHOST_USER_PAYLOAD_SIZE);
-        return -1;
+        data->ret = -1;
+        goto end;
     }
 
     if (msg->hdr.size) {
@@ -320,11 +335,84 @@ static int vhost_user_read(struct vhost_dev *dev, VhostUserMsg *msg)
         if (r != size) {
             error_report("Failed to read msg payload."
                          " Read %d instead of %d.", r, msg->hdr.size);
-            return -1;
+            data->ret = -1;
+            goto end;
         }
     }
 
-    return 0;
+end:
+    g_main_loop_quit(data->loop);
+    return G_SOURCE_REMOVE;
+}
+
+static gboolean slave_read(QIOChannel *ioc, GIOCondition condition,
+                           gpointer opaque);
+
+/*
+ * This updates the read handler to use a new event loop context.
+ * Event sources are removed from the previous context : this ensures
+ * that events detected in the previous context are purged. They will
+ * be re-detected and processed in the new context.
+ */
+static void slave_update_read_handler(struct vhost_dev *dev,
+                                      GMainContext *ctxt)
+{
+    struct vhost_user *u = dev->opaque;
+
+    if (!u->slave_ioc) {
+        return;
+    }
+
+    if (u->slave_src) {
+        g_source_destroy(u->slave_src);
+        g_source_unref(u->slave_src);
+    }
+
+    u->slave_src = qio_channel_add_watch_source(u->slave_ioc,
+                                                G_IO_IN | G_IO_HUP,
+                                                slave_read, dev, NULL,
+                                                ctxt);
+}
+
+static int vhost_user_read(struct vhost_dev *dev, VhostUserMsg *msg)
+{
+    struct vhost_user *u = dev->opaque;
+    CharBackend *chr = u->user->chr;
+    GMainContext *prev_ctxt = chr->chr->gcontext;
+    GMainContext *ctxt = g_main_context_new();
+    GMainLoop *loop = g_main_loop_new(ctxt, FALSE);
+    struct vhost_user_read_cb_data data = {
+        .dev = dev,
+        .loop = loop,
+        .msg = msg,
+        .ret = 0
+    };
+
+    /*
+     * We want to be able to monitor the slave channel fd while waiting
+     * for chr I/O. This requires an event loop, but we can't nest the
+     * one to which chr is currently attached : its fd handlers might not
+     * be prepared for re-entrancy. So we create a new one and switch chr
+     * to use it.
+     */
+    slave_update_read_handler(dev, ctxt);
+    qemu_chr_be_update_read_handlers(chr->chr, ctxt);
+    qemu_chr_fe_add_watch(chr, G_IO_IN | G_IO_HUP, vhost_user_read_cb, &data);
+
+    g_main_loop_run(loop);
+
+    /*
+     * Restore the previous event loop context. This also destroys/recreates
+     * event sources : this guarantees that all pending events in the original
+     * context that have been processed by the nested loop are purged.
+     */
+    qemu_chr_be_update_read_handlers(chr->chr, prev_ctxt);
+    slave_update_read_handler(dev, NULL);
+
+    g_main_loop_unref(loop);
+    g_main_context_unref(ctxt);
+
+    return data.ret;
 }
 
 static int process_message_reply(struct vhost_dev *dev,
@@ -603,7 +691,7 @@ static void scrub_shadow_regions(struct vhost_dev *dev,
      */
     for (i = 0; i < dev->mem->nregions; i++) {
         reg = &dev->mem->regions[i];
-        mr = vhost_user_get_mr_data(reg->userspace_addr, &offset, &fd);
+        vhost_user_get_mr_data(reg->userspace_addr, &offset, &fd);
         if (fd > 0) {
             ++fd_num;
         }
@@ -800,8 +888,7 @@ static int vhost_user_add_remove_regions(struct vhost_dev *dev,
     uint64_t shadow_pcb[VHOST_USER_MAX_RAM_SLOTS] = {};
     int nr_add_reg, nr_rem_reg;
 
-    msg->hdr.size = sizeof(msg->payload.mem_reg.padding) +
-        sizeof(VhostUserMemoryRegion);
+    msg->hdr.size = sizeof(msg->payload.mem_reg);
 
     /* Find the regions which need to be removed or added. */
     scrub_shadow_regions(dev, add_reg, &nr_add_reg, rem_reg, &nr_rem_reg,
@@ -1266,7 +1353,11 @@ static int vhost_user_get_u64(struct vhost_dev *dev, int request, uint64_t *u64)
 
 static int vhost_user_get_features(struct vhost_dev *dev, uint64_t *features)
 {
-    return vhost_user_get_u64(dev, VHOST_USER_GET_FEATURES, features);
+    if (vhost_user_get_u64(dev, VHOST_USER_GET_FEATURES, features) < 0) {
+        return -EPROTO;
+    }
+
+    return 0;
 }
 
 static int vhost_user_set_owner(struct vhost_dev *dev)
@@ -1277,7 +1368,7 @@ static int vhost_user_set_owner(struct vhost_dev *dev)
     };
 
     if (vhost_user_write(dev, &msg, NULL, 0) < 0) {
-        return -1;
+        return -EPROTO;
     }
 
     return 0;
@@ -1393,54 +1484,37 @@ static int vhost_user_slave_handle_vring_host_notifier(struct vhost_dev *dev,
     return 0;
 }
 
-static void slave_read(void *opaque)
+static void close_slave_channel(struct vhost_user *u)
+{
+    g_source_destroy(u->slave_src);
+    g_source_unref(u->slave_src);
+    u->slave_src = NULL;
+    object_unref(OBJECT(u->slave_ioc));
+    u->slave_ioc = NULL;
+}
+
+static gboolean slave_read(QIOChannel *ioc, GIOCondition condition,
+                           gpointer opaque)
 {
     struct vhost_dev *dev = opaque;
     struct vhost_user *u = dev->opaque;
     VhostUserHeader hdr = { 0, };
     VhostUserPayload payload = { 0, };
-    int size, ret = 0;
+    Error *local_err = NULL;
+    gboolean rc = G_SOURCE_CONTINUE;
+    int ret = 0;
     struct iovec iov;
-    struct msghdr msgh;
-    int fd[VHOST_USER_SLAVE_MAX_FDS];
-    char control[CMSG_SPACE(sizeof(fd))];
-    struct cmsghdr *cmsg;
-    int i, fdsize = 0;
-
-    memset(&msgh, 0, sizeof(msgh));
-    msgh.msg_iov = &iov;
-    msgh.msg_iovlen = 1;
-    msgh.msg_control = control;
-    msgh.msg_controllen = sizeof(control);
-
-    memset(fd, -1, sizeof(fd));
+    g_autofree int *fd = NULL;
+    size_t fdsize = 0;
+    int i;
 
     /* Read header */
     iov.iov_base = &hdr;
     iov.iov_len = VHOST_USER_HDR_SIZE;
 
-    do {
-        size = recvmsg(u->slave_fd, &msgh, 0);
-    } while (size < 0 && (errno == EINTR || errno == EAGAIN));
-
-    if (size != VHOST_USER_HDR_SIZE) {
-        error_report("Failed to read from slave.");
+    if (qio_channel_readv_full_all(ioc, &iov, 1, &fd, &fdsize, &local_err)) {
+        error_report_err(local_err);
         goto err;
-    }
-
-    if (msgh.msg_flags & MSG_CTRUNC) {
-        error_report("Truncated message.");
-        goto err;
-    }
-
-    for (cmsg = CMSG_FIRSTHDR(&msgh); cmsg != NULL;
-         cmsg = CMSG_NXTHDR(&msgh, cmsg)) {
-            if (cmsg->cmsg_level == SOL_SOCKET &&
-                cmsg->cmsg_type == SCM_RIGHTS) {
-                    fdsize = cmsg->cmsg_len - CMSG_LEN(0);
-                    memcpy(fd, CMSG_DATA(cmsg), fdsize);
-                    break;
-            }
     }
 
     if (hdr.size > VHOST_USER_PAYLOAD_SIZE) {
@@ -1451,12 +1525,8 @@ static void slave_read(void *opaque)
     }
 
     /* Read payload */
-    do {
-        size = read(u->slave_fd, &payload, hdr.size);
-    } while (size < 0 && (errno == EINTR || errno == EAGAIN));
-
-    if (size != hdr.size) {
-        error_report("Failed to read payload from slave.");
+    if (qio_channel_read_all(ioc, (char *) &payload, hdr.size, &local_err)) {
+        error_report_err(local_err);
         goto err;
     }
 
@@ -1469,18 +1539,11 @@ static void slave_read(void *opaque)
         break;
     case VHOST_USER_SLAVE_VRING_HOST_NOTIFIER_MSG:
         ret = vhost_user_slave_handle_vring_host_notifier(dev, &payload.area,
-                                                          fd[0]);
+                                                          fd ? fd[0] : -1);
         break;
     default:
         error_report("Received unexpected msg type: %d.", hdr.request);
         ret = -EINVAL;
-    }
-
-    /* Close the remaining file descriptors. */
-    for (i = 0; i < fdsize; i++) {
-        if (fd[i] != -1) {
-            close(fd[i]);
-        }
     }
 
     /*
@@ -1502,28 +1565,25 @@ static void slave_read(void *opaque)
         iovec[1].iov_base = &payload;
         iovec[1].iov_len = hdr.size;
 
-        do {
-            size = writev(u->slave_fd, iovec, ARRAY_SIZE(iovec));
-        } while (size < 0 && (errno == EINTR || errno == EAGAIN));
-
-        if (size != VHOST_USER_HDR_SIZE + hdr.size) {
-            error_report("Failed to send msg reply to slave.");
+        if (qio_channel_writev_all(ioc, iovec, ARRAY_SIZE(iovec), &local_err)) {
+            error_report_err(local_err);
             goto err;
         }
     }
 
-    return;
+    goto fdcleanup;
 
 err:
-    qemu_set_fd_handler(u->slave_fd, NULL, NULL, NULL);
-    close(u->slave_fd);
-    u->slave_fd = -1;
-    for (i = 0; i < fdsize; i++) {
-        if (fd[i] != -1) {
+    close_slave_channel(u);
+    rc = G_SOURCE_REMOVE;
+
+fdcleanup:
+    if (fd) {
+        for (i = 0; i < fdsize; i++) {
             close(fd[i]);
         }
     }
-    return;
+    return rc;
 }
 
 static int vhost_setup_slave_channel(struct vhost_dev *dev)
@@ -1536,6 +1596,8 @@ static int vhost_setup_slave_channel(struct vhost_dev *dev)
     int sv[2], ret = 0;
     bool reply_supported = virtio_has_feature(dev->protocol_features,
                                               VHOST_USER_PROTOCOL_F_REPLY_ACK);
+    Error *local_err = NULL;
+    QIOChannel *ioc;
 
     if (!virtio_has_feature(dev->protocol_features,
                             VHOST_USER_PROTOCOL_F_SLAVE_REQ)) {
@@ -1547,8 +1609,13 @@ static int vhost_setup_slave_channel(struct vhost_dev *dev)
         return -1;
     }
 
-    u->slave_fd = sv[0];
-    qemu_set_fd_handler(u->slave_fd, slave_read, NULL, dev);
+    ioc = QIO_CHANNEL(qio_channel_socket_new_fd(sv[0], &local_err));
+    if (!ioc) {
+        error_report_err(local_err);
+        return -1;
+    }
+    u->slave_ioc = ioc;
+    slave_update_read_handler(dev, NULL);
 
     if (reply_supported) {
         msg.hdr.flags |= VHOST_USER_NEED_REPLY_MASK;
@@ -1566,9 +1633,7 @@ static int vhost_setup_slave_channel(struct vhost_dev *dev)
 out:
     close(sv[1]);
     if (ret) {
-        qemu_set_fd_handler(u->slave_fd, NULL, NULL, NULL);
-        close(u->slave_fd);
-        u->slave_fd = -1;
+        close_slave_channel(u);
     }
 
     return ret;
@@ -1795,7 +1860,8 @@ static int vhost_user_postcopy_notifier(NotifierWithReturn *notifier,
     return 0;
 }
 
-static int vhost_user_backend_init(struct vhost_dev *dev, void *opaque)
+static int vhost_user_backend_init(struct vhost_dev *dev, void *opaque,
+                                   Error **errp)
 {
     uint64_t features, protocol_features, ram_slots;
     struct vhost_user *u;
@@ -1805,7 +1871,6 @@ static int vhost_user_backend_init(struct vhost_dev *dev, void *opaque)
 
     u = g_new0(struct vhost_user, 1);
     u->user = opaque;
-    u->slave_fd = -1;
     u->dev = dev;
     dev->opaque = u;
 
@@ -1820,7 +1885,7 @@ static int vhost_user_backend_init(struct vhost_dev *dev, void *opaque)
         err = vhost_user_get_u64(dev, VHOST_USER_GET_PROTOCOL_FEATURES,
                                  &protocol_features);
         if (err < 0) {
-            return err;
+            return -EPROTO;
         }
 
         dev->protocol_features =
@@ -1831,14 +1896,14 @@ static int vhost_user_backend_init(struct vhost_dev *dev, void *opaque)
             dev->protocol_features &= ~(1ULL << VHOST_USER_PROTOCOL_F_CONFIG);
         } else if (!(protocol_features &
                     (1ULL << VHOST_USER_PROTOCOL_F_CONFIG))) {
-            error_report("Device expects VHOST_USER_PROTOCOL_F_CONFIG "
-                    "but backend does not support it.");
-            return -1;
+            error_setg(errp, "Device expects VHOST_USER_PROTOCOL_F_CONFIG "
+                       "but backend does not support it.");
+            return -EINVAL;
         }
 
         err = vhost_user_set_protocol_features(dev, dev->protocol_features);
         if (err < 0) {
-            return err;
+            return -EPROTO;
         }
 
         /* query the max queues we support if backend supports Multiple Queue */
@@ -1846,8 +1911,16 @@ static int vhost_user_backend_init(struct vhost_dev *dev, void *opaque)
             err = vhost_user_get_u64(dev, VHOST_USER_GET_QUEUE_NUM,
                                      &dev->max_queues);
             if (err < 0) {
-                return err;
+                return -EPROTO;
             }
+        } else {
+            dev->max_queues = 1;
+        }
+
+        if (dev->num_queues && dev->max_queues < dev->num_queues) {
+            error_setg(errp, "The maximum number of queues supported by the "
+                       "backend is %" PRIu64, dev->max_queues);
+            return -EINVAL;
         }
 
         if (virtio_has_feature(features, VIRTIO_F_IOMMU_PLATFORM) &&
@@ -1855,9 +1928,9 @@ static int vhost_user_backend_init(struct vhost_dev *dev, void *opaque)
                     VHOST_USER_PROTOCOL_F_SLAVE_REQ) &&
                  virtio_has_feature(dev->protocol_features,
                     VHOST_USER_PROTOCOL_F_REPLY_ACK))) {
-            error_report("IOMMU support requires reply-ack and "
-                         "slave-req protocol features.");
-            return -1;
+            error_setg(errp, "IOMMU support requires reply-ack and "
+                       "slave-req protocol features.");
+            return -EINVAL;
         }
 
         /* get max memory regions if backend supports configurable RAM slots */
@@ -1867,15 +1940,15 @@ static int vhost_user_backend_init(struct vhost_dev *dev, void *opaque)
         } else {
             err = vhost_user_get_max_memslots(dev, &ram_slots);
             if (err < 0) {
-                return err;
+                return -EPROTO;
             }
 
             if (ram_slots < u->user->memory_slots) {
-                error_report("The backend specified a max ram slots limit "
-                             "of %" PRIu64", when the prior validated limit was %d. "
-                             "This limit should never decrease.", ram_slots,
-                             u->user->memory_slots);
-                return -1;
+                error_setg(errp, "The backend specified a max ram slots limit "
+                           "of %" PRIu64", when the prior validated limit was "
+                           "%d. This limit should never decrease.", ram_slots,
+                           u->user->memory_slots);
+                return -EINVAL;
             }
 
             u->user->memory_slots = MIN(ram_slots, VHOST_USER_MAX_RAM_SLOTS);
@@ -1893,7 +1966,7 @@ static int vhost_user_backend_init(struct vhost_dev *dev, void *opaque)
     if (dev->vq_index == 0) {
         err = vhost_setup_slave_channel(dev);
         if (err < 0) {
-            return err;
+            return -EPROTO;
         }
     }
 
@@ -1920,10 +1993,8 @@ static int vhost_user_backend_cleanup(struct vhost_dev *dev)
         close(u->postcopy_fd.fd);
         u->postcopy_fd.handler = NULL;
     }
-    if (u->slave_fd >= 0) {
-        qemu_set_fd_handler(u->slave_fd, NULL, NULL, NULL);
-        close(u->slave_fd);
-        u->slave_fd = -1;
+    if (u->slave_ioc) {
+        close_slave_channel(u);
     }
     g_free(u->region_rb);
     u->region_rb = NULL;
@@ -2049,7 +2120,7 @@ static void vhost_user_set_iotlb_callback(struct vhost_dev *dev, int enabled)
 }
 
 static int vhost_user_get_config(struct vhost_dev *dev, uint8_t *config,
-                                 uint32_t config_len)
+                                 uint32_t config_len, Error **errp)
 {
     VhostUserMsg msg = {
         .hdr.request = VHOST_USER_GET_CONFIG,
@@ -2059,32 +2130,32 @@ static int vhost_user_get_config(struct vhost_dev *dev, uint8_t *config,
 
     if (!virtio_has_feature(dev->protocol_features,
                 VHOST_USER_PROTOCOL_F_CONFIG)) {
-        return -1;
+        error_setg(errp, "VHOST_USER_PROTOCOL_F_CONFIG not supported");
+        return -EINVAL;
     }
 
-    if (config_len > VHOST_USER_MAX_CONFIG_SIZE) {
-        return -1;
-    }
+    assert(config_len <= VHOST_USER_MAX_CONFIG_SIZE);
 
     msg.payload.config.offset = 0;
     msg.payload.config.size = config_len;
     if (vhost_user_write(dev, &msg, NULL, 0) < 0) {
-        return -1;
+        return -EPROTO;
     }
 
     if (vhost_user_read(dev, &msg) < 0) {
-        return -1;
+        return -EPROTO;
     }
 
     if (msg.hdr.request != VHOST_USER_GET_CONFIG) {
-        error_report("Received unexpected msg type. Expected %d received %d",
-                     VHOST_USER_GET_CONFIG, msg.hdr.request);
-        return -1;
+        error_setg(errp,
+                   "Received unexpected msg type. Expected %d received %d",
+                   VHOST_USER_GET_CONFIG, msg.hdr.request);
+        return -EINVAL;
     }
 
     if (msg.hdr.size != VHOST_USER_CONFIG_HDR_SIZE + config_len) {
-        error_report("Received bad msg size.");
-        return -1;
+        error_setg(errp, "Received bad msg size.");
+        return -EINVAL;
     }
 
     memcpy(config, msg.payload.config.region, config_len);

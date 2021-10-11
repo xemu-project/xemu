@@ -14,20 +14,21 @@
 
 # TODO catching name collisions in generated code would be nice
 
+from collections import OrderedDict
 import os
 import re
-from collections import OrderedDict
+from typing import Optional
 
-from qapi.common import c_name, pointer_suffix
-from qapi.error import QAPIError, QAPISemError
-from qapi.expr import check_exprs
-from qapi.parser import QAPISchemaParser
+from .common import POINTER_SUFFIX, c_name
+from .error import QAPIError, QAPISemError, QAPISourceError
+from .expr import check_exprs
+from .parser import QAPISchemaParser
 
 
 class QAPISchemaEntity:
-    meta = None
+    meta: Optional[str] = None
 
-    def __init__(self, name, info, doc, ifcond=None, features=None):
+    def __init__(self, name: str, info, doc, ifcond=None, features=None):
         assert name is None or isinstance(name, str)
         for f in features or []:
             assert isinstance(f, QAPISchemaFeature)
@@ -67,7 +68,8 @@ class QAPISchemaEntity:
 
     def _set_module(self, schema, info):
         assert self._checked
-        self._module = schema.module_by_fname(info and info.fname)
+        fname = info.fname if info else QAPISchemaModule.BUILTIN_MODULE_NAME
+        self._module = schema.module_by_fname(fname)
         self._module.add_entity(self)
 
     def set_module(self, schema):
@@ -128,7 +130,7 @@ class QAPISchemaVisitor:
 
     def visit_command(self, name, info, ifcond, features,
                       arg_type, ret_type, gen, success_response, boxed,
-                      allow_oob, allow_preconfig):
+                      allow_oob, allow_preconfig, coroutine):
         pass
 
     def visit_event(self, name, info, ifcond, features, arg_type, boxed):
@@ -136,9 +138,39 @@ class QAPISchemaVisitor:
 
 
 class QAPISchemaModule:
+
+    BUILTIN_MODULE_NAME = './builtin'
+
     def __init__(self, name):
         self.name = name
         self._entity_list = []
+
+    @staticmethod
+    def is_system_module(name: str) -> bool:
+        """
+        System modules are internally defined modules.
+
+        Their names start with the "./" prefix.
+        """
+        return name.startswith('./')
+
+    @classmethod
+    def is_user_module(cls, name: str) -> bool:
+        """
+        User modules are those defined by the user in qapi JSON files.
+
+        They do not start with the "./" prefix.
+        """
+        return not cls.is_system_module(name)
+
+    @classmethod
+    def is_builtin_module(cls, name: str) -> bool:
+        """
+        The built-in module is a single System module for the built-in types.
+
+        It is always "./builtin".
+        """
+        return name == cls.BUILTIN_MODULE_NAME
 
     def add_entity(self, ent):
         self._entity_list.append(ent)
@@ -309,7 +341,7 @@ class QAPISchemaArrayType(QAPISchemaType):
         return True
 
     def c_type(self):
-        return c_name(self.name) + pointer_suffix
+        return c_name(self.name) + POINTER_SUFFIX
 
     def json_type(self):
         return 'array'
@@ -430,7 +462,7 @@ class QAPISchemaObjectType(QAPISchemaType):
 
     def c_type(self):
         assert not self.is_implicit()
-        return c_name(self.name) + pointer_suffix
+        return c_name(self.name) + POINTER_SUFFIX
 
     def c_unboxed_type(self):
         return c_name(self.name)
@@ -504,7 +536,7 @@ class QAPISchemaAlternateType(QAPISchemaType):
             v.connect_doc(doc)
 
     def c_type(self):
-        return c_name(self.name) + pointer_suffix
+        return c_name(self.name) + POINTER_SUFFIX
 
     def json_type(self):
         return 'value'
@@ -536,7 +568,7 @@ class QAPISchemaVariants:
             v.set_defined_in(name)
 
     def check(self, schema, seen):
-        if not self.tag_member: # flat union
+        if not self.tag_member:  # flat union
             self.tag_member = seen.get(c_name(self._tag_name))
             base = "'base'"
             # Pointing to the base type when not implicit would be
@@ -713,7 +745,8 @@ class QAPISchemaCommand(QAPISchemaEntity):
 
     def __init__(self, name, info, doc, ifcond, features,
                  arg_type, ret_type,
-                 gen, success_response, boxed, allow_oob, allow_preconfig):
+                 gen, success_response, boxed, allow_oob, allow_preconfig,
+                 coroutine):
         super().__init__(name, info, doc, ifcond, features)
         assert not arg_type or isinstance(arg_type, str)
         assert not ret_type or isinstance(ret_type, str)
@@ -726,6 +759,7 @@ class QAPISchemaCommand(QAPISchemaEntity):
         self.boxed = boxed
         self.allow_oob = allow_oob
         self.allow_preconfig = allow_preconfig
+        self.coroutine = coroutine
 
     def check(self, schema):
         super().check(schema)
@@ -745,7 +779,7 @@ class QAPISchemaCommand(QAPISchemaEntity):
         if self._ret_type_name:
             self.ret_type = schema.resolve_type(
                 self._ret_type_name, self.info, "command's 'returns'")
-            if self.name not in self.info.pragma.returns_whitelist:
+            if self.name not in self.info.pragma.command_returns_exceptions:
                 typ = self.ret_type
                 if isinstance(typ, QAPISchemaArrayType):
                     typ = self.ret_type.element_type
@@ -768,7 +802,8 @@ class QAPISchemaCommand(QAPISchemaEntity):
         visitor.visit_command(
             self.name, self.info, self.ifcond, self.features,
             self.arg_type, self.ret_type, self.gen, self.success_response,
-            self.boxed, self.allow_oob, self.allow_preconfig)
+            self.boxed, self.allow_oob, self.allow_preconfig,
+            self.coroutine)
 
 
 class QAPISchemaEvent(QAPISchemaEntity):
@@ -814,14 +849,21 @@ class QAPISchemaEvent(QAPISchemaEntity):
 class QAPISchema:
     def __init__(self, fname):
         self.fname = fname
-        parser = QAPISchemaParser(fname)
+
+        try:
+            parser = QAPISchemaParser(fname)
+        except OSError as err:
+            raise QAPIError(
+                f"can't read schema file '{fname}': {err.strerror}"
+            ) from err
+
         exprs = check_exprs(parser.exprs)
         self.docs = parser.docs
         self._entity_list = []
         self._entity_dict = {}
         self._module_dict = OrderedDict()
         self._schema_dir = os.path.dirname(fname)
-        self._make_module(None) # built-ins
+        self._make_module(QAPISchemaModule.BUILTIN_MODULE_NAME)
         self._make_module(fname)
         self._predefining = True
         self._def_predefineds()
@@ -840,7 +882,7 @@ class QAPISchema:
         other_ent = self._entity_dict.get(ent.name)
         if other_ent:
             if other_ent.info:
-                where = QAPIError(other_ent.info, None, "previous definition")
+                where = QAPISourceError(other_ent.info, "previous definition")
                 raise QAPISemError(
                     ent.info,
                     "'%s' is already defined\n%s" % (ent.name, where))
@@ -866,9 +908,9 @@ class QAPISchema:
                 info, "%s uses unknown type '%s'" % (what, name))
         return typ
 
-    def _module_name(self, fname):
-        if fname is None:
-            return None
+    def _module_name(self, fname: str) -> str:
+        if QAPISchemaModule.is_system_module(fname):
+            return fname
         return os.path.relpath(fname, self._schema_dir)
 
     def _make_module(self, fname):
@@ -879,7 +921,6 @@ class QAPISchema:
 
     def module_by_fname(self, fname):
         name = self._module_name(fname)
-        assert name in self._module_dict
         return self._module_dict[name]
 
     def _def_include(self, expr, info, doc):
@@ -896,7 +937,7 @@ class QAPISchema:
         self._make_array_type(name, None)
 
     def _def_predefineds(self):
-        for t in [('str',    'string',  'char' + pointer_suffix),
+        for t in [('str',    'string',  'char' + POINTER_SUFFIX),
                   ('number', 'number',  'double'),
                   ('int',    'int',     'int64_t'),
                   ('int8',   'int',     'int8_t'),
@@ -909,8 +950,8 @@ class QAPISchema:
                   ('uint64', 'int',     'uint64_t'),
                   ('size',   'int',     'uint64_t'),
                   ('bool',   'boolean', 'bool'),
-                  ('any',    'value',   'QObject' + pointer_suffix),
-                  ('null',   'null',    'QNull' + pointer_suffix)]:
+                  ('any',    'value',   'QObject' + POINTER_SUFFIX),
+                  ('null',   'null',    'QNull' + POINTER_SUFFIX)]:
             self._def_builtin_type(*t)
         self.the_empty_object_type = QAPISchemaObjectType(
             'q_empty', None, None, None, None, None, [], None)
@@ -965,7 +1006,9 @@ class QAPISchema:
             # But it's not tight: the disjunction need not imply it.  We
             # may end up compiling useless wrapper types.
             # TODO kill simple unions or implement the disjunction
-            assert (ifcond or []) == typ._ifcond # pylint: disable=protected-access
+
+            # pylint: disable=protected-access
+            assert (ifcond or []) == typ._ifcond
         else:
             self._def_entity(QAPISchemaObjectType(
                 name, info, None, ifcond, None, None, members, None))
@@ -1074,6 +1117,7 @@ class QAPISchema:
         boxed = expr.get('boxed', False)
         allow_oob = expr.get('allow-oob', False)
         allow_preconfig = expr.get('allow-preconfig', False)
+        coroutine = expr.get('coroutine', False)
         ifcond = expr.get('if')
         features = self._make_features(expr.get('features'), info)
         if isinstance(data, OrderedDict):
@@ -1086,7 +1130,8 @@ class QAPISchema:
         self._def_entity(QAPISchemaCommand(name, info, doc, ifcond, features,
                                            data, rets,
                                            gen, success_response,
-                                           boxed, allow_oob, allow_preconfig))
+                                           boxed, allow_oob, allow_preconfig,
+                                           coroutine))
 
     def _def_event(self, expr, info, doc):
         name = expr['event']

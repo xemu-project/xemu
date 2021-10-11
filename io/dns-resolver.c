@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -122,6 +122,10 @@ static int qio_dns_resolver_lookup_sync_inet(QIODNSResolver *resolver,
             .ipv4 = iaddr->ipv4,
             .has_ipv6 = iaddr->has_ipv6,
             .ipv6 = iaddr->ipv6,
+#ifdef IPPROTO_MPTCP
+            .has_mptcp = iaddr->has_mptcp,
+            .mptcp = iaddr->mptcp,
+#endif
         };
 
         (*addrs)[i] = newaddr;
@@ -267,7 +271,6 @@ static const TypeInfo qio_dns_resolver_info = {
     .parent = TYPE_OBJECT,
     .name = TYPE_QIO_DNS_RESOLVER,
     .instance_size = sizeof(QIODNSResolver),
-    .class_size = sizeof(QIODNSResolverClass),
 };
 
 

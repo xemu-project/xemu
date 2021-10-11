@@ -17,16 +17,16 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 #include "qemu/osdep.h"
-#include "cpu.h"
+#include "hw/core/tcg-cpu-ops.h"
 #include "disas/disas.h"
 #include "exec/exec-all.h"
 #include "tcg/tcg.h"
 #include "qemu/bitops.h"
 #include "exec/cpu_ldst.h"
-#include "translate-all.h"
+#include "exec/translate-all.h"
 #include "exec/helper-proto.h"
 #include "qemu/atomic128.h"
-#include "trace-root.h"
+#include "trace/trace-root.h"
 #include "trace/mem.h"
 
 #undef EAX
@@ -49,7 +49,8 @@ __thread uintptr_t helper_retaddr;
 /* exit the current TB from a signal handler. The host registers are
    restored in a state compatible with the CPU emulator
  */
-static void cpu_exit_tb_from_sighandler(CPUState *cpu, sigset_t *old_set)
+static void QEMU_NORETURN cpu_exit_tb_from_sighandler(CPUState *cpu,
+                                                      sigset_t *old_set)
 {
     /* XXX: use siglongjmp ? */
     sigprocmask(SIG_SETMASK, old_set, NULL);
@@ -88,7 +89,7 @@ static inline int handle_cpu_signal(uintptr_t pc, siginfo_t *info,
          * use that value directly.  Within cpu_restore_state_from_tb, we
          * assume PC comes from GETPC(), as used by the helper functions,
          * so we adjust the address by -GETPC_ADJ to form an address that
-         * is within the call insn, so that the address does not accidentially
+         * is within the call insn, so that the address does not accidentally
          * match the beginning of the next guest insn.  However, when the
          * pc comes from the signal frame it points to the actual faulting
          * host memory insn and not the return from a call insn.
@@ -186,7 +187,8 @@ static inline int handle_cpu_signal(uintptr_t pc, siginfo_t *info,
     clear_helper_retaddr();
 
     cc = CPU_GET_CLASS(cpu);
-    cc->tlb_fill(cpu, address, 0, access_type, MMU_USER_IDX, false, pc);
+    cc->tcg_ops->tlb_fill(cpu, address, 0, access_type,
+                          MMU_USER_IDX, false, pc);
     g_assert_not_reached();
 }
 
@@ -210,14 +212,15 @@ static int probe_access_internal(CPUArchState *env, target_ulong addr,
         g_assert_not_reached();
     }
 
-    if (!guest_addr_valid(addr) || page_check_range(addr, 1, flags) < 0) {
+    if (!guest_addr_valid_untagged(addr) ||
+        page_check_range(addr, 1, flags) < 0) {
         if (nonfault) {
             return TLB_INVALID_MASK;
         } else {
             CPUState *cpu = env_cpu(env);
             CPUClass *cc = CPU_GET_CLASS(cpu);
-            cc->tlb_fill(cpu, addr, fault_size, access_type,
-                         MMU_USER_IDX, false, ra);
+            cc->tcg_ops->tlb_fill(cpu, addr, fault_size, access_type,
+                                  MMU_USER_IDX, false, ra);
             g_assert_not_reached();
         }
     }
@@ -231,7 +234,7 @@ int probe_access_flags(CPUArchState *env, target_ulong addr,
     int flags;
 
     flags = probe_access_internal(env, addr, 0, access_type, nonfault, ra);
-    *phost = flags ? NULL : g2h(addr);
+    *phost = flags ? NULL : g2h(env_cpu(env), addr);
     return flags;
 }
 
@@ -244,35 +247,42 @@ void *probe_access(CPUArchState *env, target_ulong addr, int size,
     flags = probe_access_internal(env, addr, size, access_type, false, ra);
     g_assert(flags == 0);
 
-    return size ? g2h(addr) : NULL;
+    return size ? g2h(env_cpu(env), addr) : NULL;
 }
 
 #if defined(__i386__)
 
 #if defined(__NetBSD__)
 #include <ucontext.h>
+#include <machine/trap.h>
 
 #define EIP_sig(context)     ((context)->uc_mcontext.__gregs[_REG_EIP])
 #define TRAP_sig(context)    ((context)->uc_mcontext.__gregs[_REG_TRAPNO])
 #define ERROR_sig(context)   ((context)->uc_mcontext.__gregs[_REG_ERR])
 #define MASK_sig(context)    ((context)->uc_sigmask)
+#define PAGE_FAULT_TRAP      T_PAGEFLT
 #elif defined(__FreeBSD__) || defined(__DragonFly__)
 #include <ucontext.h>
+#include <machine/trap.h>
 
 #define EIP_sig(context)  (*((unsigned long *)&(context)->uc_mcontext.mc_eip))
 #define TRAP_sig(context)    ((context)->uc_mcontext.mc_trapno)
 #define ERROR_sig(context)   ((context)->uc_mcontext.mc_err)
 #define MASK_sig(context)    ((context)->uc_sigmask)
+#define PAGE_FAULT_TRAP      T_PAGEFLT
 #elif defined(__OpenBSD__)
+#include <machine/trap.h>
 #define EIP_sig(context)     ((context)->sc_eip)
 #define TRAP_sig(context)    ((context)->sc_trapno)
 #define ERROR_sig(context)   ((context)->sc_err)
 #define MASK_sig(context)    ((context)->sc_mask)
+#define PAGE_FAULT_TRAP      T_PAGEFLT
 #else
 #define EIP_sig(context)     ((context)->uc_mcontext.gregs[REG_EIP])
 #define TRAP_sig(context)    ((context)->uc_mcontext.gregs[REG_TRAPNO])
 #define ERROR_sig(context)   ((context)->uc_mcontext.gregs[REG_ERR])
 #define MASK_sig(context)    ((context)->uc_sigmask)
+#define PAGE_FAULT_TRAP      0xe
 #endif
 
 int cpu_signal_handler(int host_signum, void *pinfo,
@@ -298,34 +308,42 @@ int cpu_signal_handler(int host_signum, void *pinfo,
     pc = EIP_sig(uc);
     trapno = TRAP_sig(uc);
     return handle_cpu_signal(pc, info,
-                             trapno == 0xe ? (ERROR_sig(uc) >> 1) & 1 : 0,
+                             trapno == PAGE_FAULT_TRAP ?
+                             (ERROR_sig(uc) >> 1) & 1 : 0,
                              &MASK_sig(uc));
 }
 
 #elif defined(__x86_64__)
 
 #ifdef __NetBSD__
+#include <machine/trap.h>
 #define PC_sig(context)       _UC_MACHINE_PC(context)
 #define TRAP_sig(context)     ((context)->uc_mcontext.__gregs[_REG_TRAPNO])
 #define ERROR_sig(context)    ((context)->uc_mcontext.__gregs[_REG_ERR])
 #define MASK_sig(context)     ((context)->uc_sigmask)
+#define PAGE_FAULT_TRAP       T_PAGEFLT
 #elif defined(__OpenBSD__)
+#include <machine/trap.h>
 #define PC_sig(context)       ((context)->sc_rip)
 #define TRAP_sig(context)     ((context)->sc_trapno)
 #define ERROR_sig(context)    ((context)->sc_err)
 #define MASK_sig(context)     ((context)->sc_mask)
+#define PAGE_FAULT_TRAP       T_PAGEFLT
 #elif defined(__FreeBSD__) || defined(__DragonFly__)
 #include <ucontext.h>
+#include <machine/trap.h>
 
 #define PC_sig(context)  (*((unsigned long *)&(context)->uc_mcontext.mc_rip))
 #define TRAP_sig(context)     ((context)->uc_mcontext.mc_trapno)
 #define ERROR_sig(context)    ((context)->uc_mcontext.mc_err)
 #define MASK_sig(context)     ((context)->uc_sigmask)
+#define PAGE_FAULT_TRAP       T_PAGEFLT
 #else
 #define PC_sig(context)       ((context)->uc_mcontext.gregs[REG_RIP])
 #define TRAP_sig(context)     ((context)->uc_mcontext.gregs[REG_TRAPNO])
 #define ERROR_sig(context)    ((context)->uc_mcontext.gregs[REG_ERR])
 #define MASK_sig(context)     ((context)->uc_sigmask)
+#define PAGE_FAULT_TRAP       0xe
 #endif
 
 int cpu_signal_handler(int host_signum, void *pinfo,
@@ -343,7 +361,8 @@ int cpu_signal_handler(int host_signum, void *pinfo,
 
     pc = PC_sig(uc);
     return handle_cpu_signal(pc, info,
-                             TRAP_sig(uc) == 0xe ? (ERROR_sig(uc) >> 1) & 1 : 0,
+                             TRAP_sig(uc) == PAGE_FAULT_TRAP ?
+                             (ERROR_sig(uc) >> 1) & 1 : 0,
                              &MASK_sig(uc));
 }
 
@@ -702,16 +721,51 @@ int cpu_signal_handler(int host_signum, void *pinfo,
 
 #elif defined(__mips__)
 
+#if defined(__misp16) || defined(__mips_micromips)
+#error "Unsupported encoding"
+#endif
+
 int cpu_signal_handler(int host_signum, void *pinfo,
                        void *puc)
 {
     siginfo_t *info = pinfo;
     ucontext_t *uc = puc;
-    greg_t pc = uc->uc_mcontext.pc;
-    int is_write;
+    uintptr_t pc = uc->uc_mcontext.pc;
+    uint32_t insn = *(uint32_t *)pc;
+    int is_write = 0;
 
-    /* XXX: compute is_write */
-    is_write = 0;
+    /* Detect all store instructions at program counter. */
+    switch((insn >> 26) & 077) {
+    case 050: /* SB */
+    case 051: /* SH */
+    case 052: /* SWL */
+    case 053: /* SW */
+    case 054: /* SDL */
+    case 055: /* SDR */
+    case 056: /* SWR */
+    case 070: /* SC */
+    case 071: /* SWC1 */
+    case 074: /* SCD */
+    case 075: /* SDC1 */
+    case 077: /* SD */
+#if !defined(__mips_isa_rev) || __mips_isa_rev < 6
+    case 072: /* SWC2 */
+    case 076: /* SDC2 */
+#endif
+        is_write = 1;
+        break;
+    case 023: /* COP1X */
+        /* Required in all versions of MIPS64 since
+           MIPS64r1 and subsequent versions of MIPS32r2. */
+        switch (insn & 077) {
+        case 010: /* SWXC1 */
+        case 011: /* SDXC1 */
+        case 015: /* SUXC1 */
+            is_write = 1;
+        }
+        break;
+    }
+
     return handle_cpu_signal(pc, info, is_write, &uc->uc_sigmask);
 }
 
@@ -804,7 +858,7 @@ uint32_t cpu_ldub_data(CPUArchState *env, abi_ptr ptr)
     uint16_t meminfo = trace_mem_get_info(MO_UB, MMU_USER_IDX, false);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    ret = ldub_p(g2h(ptr));
+    ret = ldub_p(g2h(env_cpu(env), ptr));
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
     return ret;
 }
@@ -815,7 +869,7 @@ int cpu_ldsb_data(CPUArchState *env, abi_ptr ptr)
     uint16_t meminfo = trace_mem_get_info(MO_SB, MMU_USER_IDX, false);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    ret = ldsb_p(g2h(ptr));
+    ret = ldsb_p(g2h(env_cpu(env), ptr));
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
     return ret;
 }
@@ -826,7 +880,7 @@ uint32_t cpu_lduw_be_data(CPUArchState *env, abi_ptr ptr)
     uint16_t meminfo = trace_mem_get_info(MO_BEUW, MMU_USER_IDX, false);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    ret = lduw_be_p(g2h(ptr));
+    ret = lduw_be_p(g2h(env_cpu(env), ptr));
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
     return ret;
 }
@@ -837,7 +891,7 @@ int cpu_ldsw_be_data(CPUArchState *env, abi_ptr ptr)
     uint16_t meminfo = trace_mem_get_info(MO_BESW, MMU_USER_IDX, false);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    ret = ldsw_be_p(g2h(ptr));
+    ret = ldsw_be_p(g2h(env_cpu(env), ptr));
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
     return ret;
 }
@@ -848,7 +902,7 @@ uint32_t cpu_ldl_be_data(CPUArchState *env, abi_ptr ptr)
     uint16_t meminfo = trace_mem_get_info(MO_BEUL, MMU_USER_IDX, false);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    ret = ldl_be_p(g2h(ptr));
+    ret = ldl_be_p(g2h(env_cpu(env), ptr));
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
     return ret;
 }
@@ -859,7 +913,7 @@ uint64_t cpu_ldq_be_data(CPUArchState *env, abi_ptr ptr)
     uint16_t meminfo = trace_mem_get_info(MO_BEQ, MMU_USER_IDX, false);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    ret = ldq_be_p(g2h(ptr));
+    ret = ldq_be_p(g2h(env_cpu(env), ptr));
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
     return ret;
 }
@@ -870,7 +924,7 @@ uint32_t cpu_lduw_le_data(CPUArchState *env, abi_ptr ptr)
     uint16_t meminfo = trace_mem_get_info(MO_LEUW, MMU_USER_IDX, false);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    ret = lduw_le_p(g2h(ptr));
+    ret = lduw_le_p(g2h(env_cpu(env), ptr));
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
     return ret;
 }
@@ -881,7 +935,7 @@ int cpu_ldsw_le_data(CPUArchState *env, abi_ptr ptr)
     uint16_t meminfo = trace_mem_get_info(MO_LESW, MMU_USER_IDX, false);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    ret = ldsw_le_p(g2h(ptr));
+    ret = ldsw_le_p(g2h(env_cpu(env), ptr));
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
     return ret;
 }
@@ -892,7 +946,7 @@ uint32_t cpu_ldl_le_data(CPUArchState *env, abi_ptr ptr)
     uint16_t meminfo = trace_mem_get_info(MO_LEUL, MMU_USER_IDX, false);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    ret = ldl_le_p(g2h(ptr));
+    ret = ldl_le_p(g2h(env_cpu(env), ptr));
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
     return ret;
 }
@@ -903,7 +957,7 @@ uint64_t cpu_ldq_le_data(CPUArchState *env, abi_ptr ptr)
     uint16_t meminfo = trace_mem_get_info(MO_LEQ, MMU_USER_IDX, false);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    ret = ldq_le_p(g2h(ptr));
+    ret = ldq_le_p(g2h(env_cpu(env), ptr));
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
     return ret;
 }
@@ -1013,7 +1067,7 @@ void cpu_stb_data(CPUArchState *env, abi_ptr ptr, uint32_t val)
     uint16_t meminfo = trace_mem_get_info(MO_UB, MMU_USER_IDX, true);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    stb_p(g2h(ptr), val);
+    stb_p(g2h(env_cpu(env), ptr), val);
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
 }
 
@@ -1022,7 +1076,7 @@ void cpu_stw_be_data(CPUArchState *env, abi_ptr ptr, uint32_t val)
     uint16_t meminfo = trace_mem_get_info(MO_BEUW, MMU_USER_IDX, true);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    stw_be_p(g2h(ptr), val);
+    stw_be_p(g2h(env_cpu(env), ptr), val);
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
 }
 
@@ -1031,7 +1085,7 @@ void cpu_stl_be_data(CPUArchState *env, abi_ptr ptr, uint32_t val)
     uint16_t meminfo = trace_mem_get_info(MO_BEUL, MMU_USER_IDX, true);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    stl_be_p(g2h(ptr), val);
+    stl_be_p(g2h(env_cpu(env), ptr), val);
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
 }
 
@@ -1040,7 +1094,7 @@ void cpu_stq_be_data(CPUArchState *env, abi_ptr ptr, uint64_t val)
     uint16_t meminfo = trace_mem_get_info(MO_BEQ, MMU_USER_IDX, true);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    stq_be_p(g2h(ptr), val);
+    stq_be_p(g2h(env_cpu(env), ptr), val);
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
 }
 
@@ -1049,7 +1103,7 @@ void cpu_stw_le_data(CPUArchState *env, abi_ptr ptr, uint32_t val)
     uint16_t meminfo = trace_mem_get_info(MO_LEUW, MMU_USER_IDX, true);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    stw_le_p(g2h(ptr), val);
+    stw_le_p(g2h(env_cpu(env), ptr), val);
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
 }
 
@@ -1058,7 +1112,7 @@ void cpu_stl_le_data(CPUArchState *env, abi_ptr ptr, uint32_t val)
     uint16_t meminfo = trace_mem_get_info(MO_LEUL, MMU_USER_IDX, true);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    stl_le_p(g2h(ptr), val);
+    stl_le_p(g2h(env_cpu(env), ptr), val);
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
 }
 
@@ -1067,7 +1121,7 @@ void cpu_stq_le_data(CPUArchState *env, abi_ptr ptr, uint64_t val)
     uint16_t meminfo = trace_mem_get_info(MO_LEQ, MMU_USER_IDX, true);
 
     trace_guest_mem_before_exec(env_cpu(env), ptr, meminfo);
-    stq_le_p(g2h(ptr), val);
+    stq_le_p(g2h(env_cpu(env), ptr), val);
     qemu_plugin_vcpu_mem_cb(env_cpu(env), ptr, meminfo);
 }
 
@@ -1132,7 +1186,7 @@ uint32_t cpu_ldub_code(CPUArchState *env, abi_ptr ptr)
     uint32_t ret;
 
     set_helper_retaddr(1);
-    ret = ldub_p(g2h(ptr));
+    ret = ldub_p(g2h_untagged(ptr));
     clear_helper_retaddr();
     return ret;
 }
@@ -1142,7 +1196,7 @@ uint32_t cpu_lduw_code(CPUArchState *env, abi_ptr ptr)
     uint32_t ret;
 
     set_helper_retaddr(1);
-    ret = lduw_p(g2h(ptr));
+    ret = lduw_p(g2h_untagged(ptr));
     clear_helper_retaddr();
     return ret;
 }
@@ -1152,7 +1206,7 @@ uint32_t cpu_ldl_code(CPUArchState *env, abi_ptr ptr)
     uint32_t ret;
 
     set_helper_retaddr(1);
-    ret = ldl_p(g2h(ptr));
+    ret = ldl_p(g2h_untagged(ptr));
     clear_helper_retaddr();
     return ret;
 }
@@ -1162,34 +1216,40 @@ uint64_t cpu_ldq_code(CPUArchState *env, abi_ptr ptr)
     uint64_t ret;
 
     set_helper_retaddr(1);
-    ret = ldq_p(g2h(ptr));
+    ret = ldq_p(g2h_untagged(ptr));
     clear_helper_retaddr();
     return ret;
 }
 
-/* Do not allow unaligned operations to proceed.  Return the host address.  */
+/*
+ * Do not allow unaligned operations to proceed.  Return the host address.
+ *
+ * @prot may be PAGE_READ, PAGE_WRITE, or PAGE_READ|PAGE_WRITE.
+ */
 static void *atomic_mmu_lookup(CPUArchState *env, target_ulong addr,
-                               int size, uintptr_t retaddr)
+                               TCGMemOpIdx oi, int size, int prot,
+                               uintptr_t retaddr)
 {
     /* Enforce qemu required alignment.  */
     if (unlikely(addr & (size - 1))) {
         cpu_loop_exit_atomic(env_cpu(env), retaddr);
     }
-    void *ret = g2h(addr);
+    void *ret = g2h(env_cpu(env), addr);
     set_helper_retaddr(retaddr);
     return ret;
 }
 
-/* Macro to call the above, with local variables from the use context.  */
-#define ATOMIC_MMU_DECLS do {} while (0)
-#define ATOMIC_MMU_LOOKUP  atomic_mmu_lookup(env, addr, DATA_SIZE, GETPC())
+#include "atomic_common.c.inc"
+
+/*
+ * First set of functions passes in OI and RETADDR.
+ * This makes them callable from other helpers.
+ */
+
+#define ATOMIC_NAME(X) \
+    glue(glue(glue(cpu_atomic_ ## X, SUFFIX), END), _mmu)
 #define ATOMIC_MMU_CLEANUP do { clear_helper_retaddr(); } while (0)
 #define ATOMIC_MMU_IDX MMU_USER_IDX
-
-#define ATOMIC_NAME(X)   HELPER(glue(glue(atomic_ ## X, SUFFIX), END))
-#define EXTRA_ARGS
-
-#include "atomic_common.inc.c"
 
 #define DATA_SIZE 1
 #include "atomic_template.h"
@@ -1205,20 +1265,7 @@ static void *atomic_mmu_lookup(CPUArchState *env, target_ulong addr,
 #include "atomic_template.h"
 #endif
 
-/* The following is only callable from other helpers, and matches up
-   with the softmmu version.  */
-
 #if HAVE_ATOMIC128 || HAVE_CMPXCHG128
-
-#undef EXTRA_ARGS
-#undef ATOMIC_NAME
-#undef ATOMIC_MMU_LOOKUP
-
-#define EXTRA_ARGS     , TCGMemOpIdx oi, uintptr_t retaddr
-#define ATOMIC_NAME(X) \
-    HELPER(glue(glue(glue(atomic_ ## X, SUFFIX), END), _mmu))
-#define ATOMIC_MMU_LOOKUP  atomic_mmu_lookup(env, addr, DATA_SIZE, retaddr)
-
 #define DATA_SIZE 16
 #include "atomic_template.h"
 #endif

@@ -7,7 +7,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -91,14 +91,14 @@ static const VMStateDescription vmstate_ich9_ahci = {
 
 static void pci_ich9_reset(DeviceState *dev)
 {
-    AHCIPCIState *d = ICH_AHCI(dev);
+    AHCIPCIState *d = ICH9_AHCI(dev);
 
     ahci_reset(&d->ahci);
 }
 
 static void pci_ich9_ahci_init(Object *obj)
 {
-    struct AHCIPCIState *d = ICH_AHCI(obj);
+    struct AHCIPCIState *d = ICH9_AHCI(obj);
 
     ahci_init(&d->ahci, DEVICE(obj));
 }
@@ -108,7 +108,7 @@ static void pci_ich9_ahci_realize(PCIDevice *dev, Error **errp)
     struct AHCIPCIState *d;
     int sata_cap_offset;
     uint8_t *sata_cap;
-    d = ICH_AHCI(dev);
+    d = ICH9_AHCI(dev);
     int ret;
 
     ahci_realize(&d->ahci, DEVICE(dev), pci_get_address_space(dev), 6);
@@ -154,7 +154,7 @@ static void pci_ich9_ahci_realize(PCIDevice *dev, Error **errp)
 static void pci_ich9_uninit(PCIDevice *dev)
 {
     struct AHCIPCIState *d;
-    d = ICH_AHCI(dev);
+    d = ICH9_AHCI(dev);
 
     msi_uninit(dev);
     ahci_uninit(&d->ahci);

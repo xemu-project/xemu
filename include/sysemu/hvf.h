@@ -13,6 +13,11 @@
 #ifndef HVF_H
 #define HVF_H
 
+#include "qemu/accel.h"
+#include "qom/object.h"
+
+#ifdef NEED_CPU_H
+
 #ifdef CONFIG_HVF
 uint32_t hvf_get_supported_cpuid(uint32_t func, uint32_t idx,
                                  int reg);
@@ -23,17 +28,12 @@ extern bool hvf_allowed;
 #define hvf_get_supported_cpuid(func, idx, reg) 0
 #endif /* !CONFIG_HVF */
 
-int hvf_init_vcpu(CPUState *);
-int hvf_vcpu_exec(CPUState *);
-void hvf_cpu_synchronize_state(CPUState *);
-void hvf_cpu_synchronize_post_reset(CPUState *);
-void hvf_cpu_synchronize_post_init(CPUState *);
-void hvf_cpu_synchronize_pre_loadvm(CPUState *);
-void hvf_vcpu_destroy(CPUState *);
+#endif /* NEED_CPU_H */
 
 #define TYPE_HVF_ACCEL ACCEL_CLASS_NAME("hvf")
 
-#define HVF_STATE(obj) \
-    OBJECT_CHECK(HVFState, (obj), TYPE_HVF_ACCEL)
+typedef struct HVFState HVFState;
+DECLARE_INSTANCE_CHECKER(HVFState, HVF_STATE,
+                         TYPE_HVF_ACCEL)
 
 #endif

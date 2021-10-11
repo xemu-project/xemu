@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -73,7 +73,8 @@ qauthz_list_file_load(QAuthZListFile *fauthz, Error **errp)
 
     pdict = qobject_to(QDict, obj);
     if (!pdict) {
-        error_setg(errp, QERR_INVALID_PARAMETER_TYPE, "obj", "dict");
+        error_setg(errp, "File '%s' must contain a JSON object",
+                   fauthz->filename);
         goto cleanup;
     }
 
@@ -122,7 +123,15 @@ qauthz_list_file_complete(UserCreatable *uc, Error **errp)
     QAuthZListFile *fauthz = QAUTHZ_LIST_FILE(uc);
     gchar *dir = NULL, *file = NULL;
 
+    if (!fauthz->filename) {
+        error_setg(errp, "filename not provided");
+        return;
+    }
+
     fauthz->list = qauthz_list_file_load(fauthz, errp);
+    if (!fauthz->list) {
+        return;
+    }
 
     if (!fauthz->refresh) {
         return;
@@ -263,7 +272,6 @@ static const TypeInfo qauthz_list_file_info = {
     .instance_init = qauthz_list_file_init,
     .instance_size = sizeof(QAuthZListFile),
     .instance_finalize = qauthz_list_file_finalize,
-    .class_size = sizeof(QAuthZListFileClass),
     .class_init = qauthz_list_file_class_init,
     .interfaces = (InterfaceInfo[]) {
         { TYPE_USER_CREATABLE },

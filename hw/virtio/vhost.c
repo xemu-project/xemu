@@ -21,7 +21,6 @@
 #include "qemu/error-report.h"
 #include "qemu/memfd.h"
 #include "standard-headers/linux/vhost_types.h"
-#include "exec/address-spaces.h"
 #include "hw/virtio/virtio-bus.h"
 #include "hw/virtio/virtio-access.h"
 #include "migration/blocker.h"
@@ -90,7 +89,7 @@ static void vhost_dev_sync_region(struct vhost_dev *dev,
         }
         /* Data must be read atomically. We don't really need barrier semantics
          * but it's easier to use atomic_* than roll our own. */
-        log = atomic_xchg(from, 0);
+        log = qatomic_xchg(from, 0);
         while (log) {
             int bit = ctzl(log);
             hwaddr page_addr;
@@ -170,16 +169,6 @@ static uint64_t vhost_get_log_size(struct vhost_dev *dev)
         struct vhost_memory_region *reg = dev->mem->regions + i;
         uint64_t last = range_get_last(reg->guest_phys_addr,
                                        reg->memory_size);
-        log_size = MAX(log_size, last / VHOST_LOG_CHUNK + 1);
-    }
-    for (i = 0; i < dev->nvqs; ++i) {
-        struct vhost_virtqueue *vq = dev->vqs + i;
-
-        if (!vq->used_phys && !vq->used_size) {
-            continue;
-        }
-
-        uint64_t last = vq->used_phys + vq->used_size - 1;
         log_size = MAX(log_size, last / VHOST_LOG_CHUNK + 1);
     }
     return log_size;
@@ -712,9 +701,9 @@ static void vhost_iommu_region_add(MemoryListener *listener,
                                          iommu_listener);
     struct vhost_iommu *iommu;
     Int128 end;
-    int iommu_idx, ret;
+    int iommu_idx;
     IOMMUMemoryRegion *iommu_mr;
-    Error *err = NULL;
+    int ret;
 
     if (!memory_region_is_iommu(section->mr)) {
         return;
@@ -729,7 +718,7 @@ static void vhost_iommu_region_add(MemoryListener *listener,
     iommu_idx = memory_region_iommu_attrs_to_index(iommu_mr,
                                                    MEMTXATTRS_UNSPECIFIED);
     iommu_notifier_init(&iommu->n, vhost_iommu_unmap_notify,
-                        IOMMU_NOTIFIER_UNMAP,
+                        IOMMU_NOTIFIER_DEVIOTLB_UNMAP,
                         section->offset_within_region,
                         int128_get64(end),
                         iommu_idx);
@@ -737,10 +726,15 @@ static void vhost_iommu_region_add(MemoryListener *listener,
     iommu->iommu_offset = section->offset_within_address_space -
                           section->offset_within_region;
     iommu->hdev = dev;
-    ret = memory_region_register_iommu_notifier(section->mr, &iommu->n, &err);
+    ret = memory_region_register_iommu_notifier(section->mr, &iommu->n, NULL);
     if (ret) {
-        error_report_err(err);
-        exit(1);
+        /*
+         * Some vIOMMUs do not support dev-iotlb yet.  If so, try to use the
+         * UNMAP legacy message
+         */
+        iommu->n.notifier_flags = IOMMU_NOTIFIER_UNMAP;
+        memory_region_register_iommu_notifier(section->mr, &iommu->n,
+                                              &error_fatal);
     }
     QLIST_INSERT_HEAD(&dev->iommu_list, iommu, iommu_next);
     /* TODO: can replay help performance here? */
@@ -818,19 +812,41 @@ static int vhost_dev_set_features(struct vhost_dev *dev,
     r = dev->vhost_ops->vhost_set_features(dev, features);
     if (r < 0) {
         VHOST_OPS_DEBUG("vhost_set_features failed");
+        goto out;
     }
+    if (dev->vhost_ops->vhost_set_backend_cap) {
+        r = dev->vhost_ops->vhost_set_backend_cap(dev);
+        if (r < 0) {
+            VHOST_OPS_DEBUG("vhost_set_backend_cap failed");
+            goto out;
+        }
+    }
+
+out:
     return r < 0 ? -errno : 0;
 }
 
 static int vhost_dev_set_log(struct vhost_dev *dev, bool enable_log)
 {
     int r, i, idx;
+    hwaddr addr;
+
     r = vhost_dev_set_features(dev, enable_log);
     if (r < 0) {
         goto err_features;
     }
     for (i = 0; i < dev->nvqs; ++i) {
         idx = dev->vhost_ops->vhost_get_vq_index(dev, dev->vq_index + i);
+        addr = virtio_queue_get_desc_addr(dev->vdev, idx);
+        if (!addr) {
+            /*
+             * The queue might not be ready for start. If this
+             * is the case there is no reason to continue the process.
+             * The similar logic is used by the vhost_virtqueue_start()
+             * routine.
+             */
+            continue;
+        }
         r = vhost_virtqueue_set_addr(dev, dev->vqs + i, idx,
                                      enable_log);
         if (r < 0) {
@@ -861,21 +877,42 @@ static int vhost_migration_log(MemoryListener *listener, bool enable)
         dev->log_enabled = enable;
         return 0;
     }
+
+    r = 0;
     if (!enable) {
         r = vhost_dev_set_log(dev, false);
         if (r < 0) {
-            return r;
+            goto check_dev_state;
         }
         vhost_log_put(dev, false);
     } else {
         vhost_dev_log_resize(dev, vhost_get_log_size(dev));
         r = vhost_dev_set_log(dev, true);
         if (r < 0) {
-            return r;
+            goto check_dev_state;
         }
     }
+
+check_dev_state:
     dev->log_enabled = enable;
-    return 0;
+    /*
+     * vhost-user-* devices could change their state during log
+     * initialization due to disconnect. So check dev state after
+     * vhost communication.
+     */
+    if (!dev->started) {
+        /*
+         * Since device is in the stopped state, it is okay for
+         * migration. Return success.
+         */
+        r = 0;
+    }
+    if (r) {
+        /* An error occurred. */
+        dev->log_enabled = false;
+    }
+
+    return r;
 }
 
 static void vhost_log_global_start(MemoryListener *listener)
@@ -1249,11 +1286,12 @@ static void vhost_virtqueue_cleanup(struct vhost_virtqueue *vq)
 }
 
 int vhost_dev_init(struct vhost_dev *hdev, void *opaque,
-                   VhostBackendType backend_type, uint32_t busyloop_timeout)
+                   VhostBackendType backend_type, uint32_t busyloop_timeout,
+                   Error **errp)
 {
+    ERRP_GUARD();
     uint64_t features;
     int i, r, n_initialized_vqs = 0;
-    Error *local_err = NULL;
 
     hdev->vdev = NULL;
     hdev->migration_blocker = NULL;
@@ -1261,26 +1299,30 @@ int vhost_dev_init(struct vhost_dev *hdev, void *opaque,
     r = vhost_set_backend_type(hdev, backend_type);
     assert(r >= 0);
 
-    r = hdev->vhost_ops->vhost_backend_init(hdev, opaque);
+    r = hdev->vhost_ops->vhost_backend_init(hdev, opaque, errp);
     if (r < 0) {
+        if (!*errp) {
+            error_setg_errno(errp, -r, "vhost_backend_init failed");
+        }
         goto fail;
     }
 
     r = hdev->vhost_ops->vhost_set_owner(hdev);
     if (r < 0) {
-        VHOST_OPS_DEBUG("vhost_set_owner failed");
+        error_setg_errno(errp, -r, "vhost_set_owner failed");
         goto fail;
     }
 
     r = hdev->vhost_ops->vhost_get_features(hdev, &features);
     if (r < 0) {
-        VHOST_OPS_DEBUG("vhost_get_features failed");
+        error_setg_errno(errp, -r, "vhost_get_features failed");
         goto fail;
     }
 
     for (i = 0; i < hdev->nvqs; ++i, ++n_initialized_vqs) {
         r = vhost_virtqueue_init(hdev, hdev->vqs + i, hdev->vq_index + i);
         if (r < 0) {
+            error_setg_errno(errp, -r, "Failed to initialize virtqueue %d", i);
             goto fail;
         }
     }
@@ -1290,6 +1332,7 @@ int vhost_dev_init(struct vhost_dev *hdev, void *opaque,
             r = vhost_virtqueue_set_busyloop_timeout(hdev, hdev->vq_index + i,
                                                      busyloop_timeout);
             if (r < 0) {
+                error_setg_errno(errp, -r, "Failed to set busyloop timeout");
                 goto fail_busyloop;
             }
         }
@@ -1328,9 +1371,8 @@ int vhost_dev_init(struct vhost_dev *hdev, void *opaque,
     }
 
     if (hdev->migration_blocker != NULL) {
-        r = migrate_add_blocker(hdev->migration_blocker, &local_err);
-        if (local_err) {
-            error_report_err(local_err);
+        r = migrate_add_blocker(hdev->migration_blocker, errp);
+        if (*errp) {
             error_free(hdev->migration_blocker);
             goto fail_busyloop;
         }
@@ -1347,21 +1389,19 @@ int vhost_dev_init(struct vhost_dev *hdev, void *opaque,
     QLIST_INSERT_HEAD(&vhost_devices, hdev, entry);
 
     if (used_memslots > hdev->vhost_ops->vhost_backend_memslots_limit(hdev)) {
-        error_report("vhost backend memory slots limit is less"
-                " than current number of present memory slots");
-        r = -1;
-        if (busyloop_timeout) {
-            goto fail_busyloop;
-        } else {
-            goto fail;
-        }
+        error_setg(errp, "vhost backend memory slots limit is less"
+                   " than current number of present memory slots");
+        r = -EINVAL;
+        goto fail_busyloop;
     }
 
     return 0;
 
 fail_busyloop:
-    while (--i >= 0) {
-        vhost_virtqueue_set_busyloop_timeout(hdev, hdev->vq_index + i, 0);
+    if (busyloop_timeout) {
+        while (--i >= 0) {
+            vhost_virtqueue_set_busyloop_timeout(hdev, hdev->vq_index + i, 0);
+        }
     }
 fail:
     hdev->nvqs = n_initialized_vqs;
@@ -1522,15 +1562,23 @@ void vhost_ack_features(struct vhost_dev *hdev, const int *feature_bits,
 }
 
 int vhost_dev_get_config(struct vhost_dev *hdev, uint8_t *config,
-                         uint32_t config_len)
+                         uint32_t config_len, Error **errp)
 {
+    ERRP_GUARD();
+    int ret;
+
     assert(hdev->vhost_ops);
 
     if (hdev->vhost_ops->vhost_get_config) {
-        return hdev->vhost_ops->vhost_get_config(hdev, config, config_len);
+        ret = hdev->vhost_ops->vhost_get_config(hdev, config, config_len, errp);
+        if (ret < 0 && !*errp) {
+            error_setg_errno(errp, -ret, "vhost_get_config failed");
+        }
+        return ret;
     }
 
-    return -1;
+    error_setg(errp, "vhost_get_config not implemented");
+    return -ENOTSUP;
 }
 
 int vhost_dev_set_config(struct vhost_dev *hdev, const uint8_t *data,
@@ -1612,6 +1660,26 @@ int vhost_dev_load_inflight(struct vhost_inflight *inflight, QEMUFile *f)
     inflight->queue_size = qemu_get_be16(f);
 
     qemu_get_buffer(f, inflight->addr, size);
+
+    return 0;
+}
+
+int vhost_dev_prepare_inflight(struct vhost_dev *hdev, VirtIODevice *vdev)
+{
+    int r;
+
+    if (hdev->vhost_ops->vhost_get_inflight_fd == NULL ||
+        hdev->vhost_ops->vhost_set_inflight_fd == NULL) {
+        return 0;
+    }
+
+    hdev->vdev = vdev;
+
+    r = vhost_dev_set_features(hdev, hdev->log_enabled);
+    if (r < 0) {
+        VHOST_OPS_DEBUG("vhost_dev_prepare_inflight failed");
+        return r;
+    }
 
     return 0;
 }

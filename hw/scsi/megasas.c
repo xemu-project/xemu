@@ -7,7 +7,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -34,6 +34,7 @@
 #include "qapi/error.h"
 #include "mfi.h"
 #include "migration/vmstate.h"
+#include "qom/object.h"
 
 #define MEGASAS_VERSION_GEN1 "1.70"
 #define MEGASAS_VERSION_GEN2 "1.80"
@@ -72,7 +73,7 @@ typedef struct MegasasCmd {
     struct MegasasState *state;
 } MegasasCmd;
 
-typedef struct MegasasState {
+struct MegasasState {
     /*< private >*/
     PCIDevice parent_obj;
     /*< public >*/
@@ -116,28 +117,26 @@ typedef struct MegasasState {
     MegasasCmd frames[MEGASAS_MAX_FRAMES];
     DECLARE_BITMAP(frame_map, MEGASAS_MAX_FRAMES);
     SCSIBus bus;
-} MegasasState;
+};
+typedef struct MegasasState MegasasState;
 
-typedef struct MegasasBaseClass {
+struct MegasasBaseClass {
     PCIDeviceClass parent_class;
     const char *product_name;
     const char *product_version;
     int mmio_bar;
     int ioport_bar;
     int osts;
-} MegasasBaseClass;
+};
+typedef struct MegasasBaseClass MegasasBaseClass;
 
 #define TYPE_MEGASAS_BASE "megasas-base"
 #define TYPE_MEGASAS_GEN1 "megasas"
 #define TYPE_MEGASAS_GEN2 "megasas-gen2"
 
-#define MEGASAS(obj) \
-    OBJECT_CHECK(MegasasState, (obj), TYPE_MEGASAS_BASE)
+DECLARE_OBJ_CHECKERS(MegasasState, MegasasBaseClass,
+                     MEGASAS, TYPE_MEGASAS_BASE)
 
-#define MEGASAS_DEVICE_CLASS(oc) \
-    OBJECT_CLASS_CHECK(MegasasBaseClass, (oc), TYPE_MEGASAS_BASE)
-#define MEGASAS_DEVICE_GET_CLASS(oc) \
-    OBJECT_GET_CLASS(MegasasBaseClass, (oc), TYPE_MEGASAS_BASE)
 
 #define MEGASAS_INTR_DISABLED_MASK 0xFFFFFFFF
 
@@ -278,10 +277,10 @@ static int megasas_map_sgl(MegasasState *s, MegasasCmd *cmd, union mfi_sgl *sgl)
 
     cmd->flags = le16_to_cpu(cmd->frame->header.flags);
     iov_count = cmd->frame->header.sge_count;
-    if (iov_count > MEGASAS_MAX_SGE) {
+    if (!iov_count || iov_count > MEGASAS_MAX_SGE) {
         trace_megasas_iovec_sgl_overflow(cmd->index, iov_count,
                                          MEGASAS_MAX_SGE);
-        return iov_count;
+        return -1;
     }
     pci_dma_sglist_init(&cmd->qsg, PCI_DEVICE(s), iov_count);
     for (i = 0; i < iov_count; i++) {
@@ -311,7 +310,7 @@ static int megasas_map_sgl(MegasasState *s, MegasasCmd *cmd, union mfi_sgl *sgl)
     return 0;
 unmap:
     qemu_sglist_destroy(&cmd->qsg);
-    return iov_count - i;
+    return -1;
 }
 
 /*
@@ -733,7 +732,7 @@ static int megasas_ctrl_get_info(MegasasState *s, MegasasCmd *cmd)
 {
     PCIDevice *pci_dev = PCI_DEVICE(s);
     PCIDeviceClass *pci_class = PCI_DEVICE_GET_CLASS(pci_dev);
-    MegasasBaseClass *base_class = MEGASAS_DEVICE_GET_CLASS(s);
+    MegasasBaseClass *base_class = MEGASAS_GET_CLASS(s);
     struct mfi_ctrl_info info;
     size_t dcmd_size = sizeof(info);
     BusChild *kid;
@@ -1853,13 +1852,12 @@ static void megasas_xfer_complete(SCSIRequest *req, uint32_t len)
     }
 }
 
-static void megasas_command_complete(SCSIRequest *req, uint32_t status,
-                                     size_t resid)
+static void megasas_command_complete(SCSIRequest *req, size_t resid)
 {
     MegasasCmd *cmd = req->hba_private;
     uint8_t cmd_status = MFI_STAT_OK;
 
-    trace_megasas_command_complete(cmd->index, status, resid);
+    trace_megasas_command_complete(cmd->index, req->status, resid);
 
     if (req->io_canceled) {
         return;
@@ -1874,7 +1872,6 @@ static void megasas_command_complete(SCSIRequest *req, uint32_t status,
             return;
         }
     } else {
-        req->status = status;
         trace_megasas_scsi_complete(cmd->index, req->status,
                                     cmd->iov_size, req->cmd.xfer);
         if (req->status != GOOD) {
@@ -1999,7 +1996,7 @@ static uint64_t megasas_mmio_read(void *opaque, hwaddr addr,
 {
     MegasasState *s = opaque;
     PCIDevice *pci_dev = PCI_DEVICE(s);
-    MegasasBaseClass *base_class = MEGASAS_DEVICE_GET_CLASS(s);
+    MegasasBaseClass *base_class = MEGASAS_GET_CLASS(s);
     uint32_t retval = 0;
 
     switch (addr) {
@@ -2322,7 +2319,7 @@ static const struct SCSIBusInfo megasas_scsi_info = {
 static void megasas_scsi_realize(PCIDevice *dev, Error **errp)
 {
     MegasasState *s = MEGASAS(dev);
-    MegasasBaseClass *b = MEGASAS_DEVICE_GET_CLASS(s);
+    MegasasBaseClass *b = MEGASAS_GET_CLASS(s);
     uint8_t *pci_conf;
     int i, bar_type;
     Error *err = NULL;
@@ -2385,8 +2382,8 @@ static void megasas_scsi_realize(PCIDevice *dev, Error **errp)
     if (!s->sas_addr) {
         s->sas_addr = ((NAA_LOCALLY_ASSIGNED_ID << 24) |
                        IEEE_COMPANY_LOCALLY_ASSIGNED) << 36;
-        s->sas_addr |= (pci_dev_bus_num(dev) << 16);
-        s->sas_addr |= (PCI_SLOT(dev->devfn) << 8);
+        s->sas_addr |= pci_dev_bus_num(dev) << 16;
+        s->sas_addr |= PCI_SLOT(dev->devfn) << 8;
         s->sas_addr |= PCI_FUNC(dev->devfn);
     }
     if (!s->hba_serial) {
@@ -2506,7 +2503,7 @@ static void megasas_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
     PCIDeviceClass *pc = PCI_DEVICE_CLASS(oc);
-    MegasasBaseClass *e = MEGASAS_DEVICE_CLASS(oc);
+    MegasasBaseClass *e = MEGASAS_CLASS(oc);
     const MegasasInfo *info = data;
 
     pc->realize = megasas_scsi_realize;

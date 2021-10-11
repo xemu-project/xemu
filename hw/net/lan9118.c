@@ -25,6 +25,7 @@
 #include "qemu/module.h"
 /* For crc32 */
 #include <zlib.h>
+#include "qom/object.h"
 
 //#define DEBUG_LAN9118
 
@@ -38,6 +39,17 @@ do { hw_error("lan9118: error: " fmt , ## __VA_ARGS__);} while (0)
 #define BADF(fmt, ...) \
 do { fprintf(stderr, "lan9118: error: " fmt , ## __VA_ARGS__);} while (0)
 #endif
+
+/* The tx and rx fifo ports are a range of aliased 32-bit registers */
+#define RX_DATA_FIFO_PORT_FIRST 0x00
+#define RX_DATA_FIFO_PORT_LAST 0x1f
+#define TX_DATA_FIFO_PORT_FIRST 0x20
+#define TX_DATA_FIFO_PORT_LAST 0x3f
+
+#define RX_STATUS_FIFO_PORT 0x40
+#define RX_STATUS_FIFO_PEEK 0x44
+#define TX_STATUS_FIFO_PORT 0x48
+#define TX_STATUS_FIFO_PEEK 0x4c
 
 #define CSR_ID_REV      0x50
 #define CSR_IRQ_CFG     0x54
@@ -180,9 +192,9 @@ static const VMStateDescription vmstate_lan9118_packet = {
     }
 };
 
-#define LAN9118(obj) OBJECT_CHECK(lan9118_state, (obj), TYPE_LAN9118)
+OBJECT_DECLARE_SIMPLE_TYPE(lan9118_state, LAN9118)
 
-typedef struct {
+struct lan9118_state {
     SysBusDevice parent_obj;
 
     NICState *nic;
@@ -258,7 +270,7 @@ typedef struct {
     uint32_t read_long;
 
     uint32_t mode_16bit;
-} lan9118_state;
+};
 
 static const VMStateDescription vmstate_lan9118 = {
     .name = "lan9118",
@@ -668,7 +680,7 @@ static void do_tx_packet(lan9118_state *s)
     /* FIXME: Honor TX disable, and allow queueing of packets.  */
     if (s->phy_control & 0x4000)  {
         /* This assumes the receive routine doesn't touch the VLANClient.  */
-        lan9118_receive(qemu_get_queue(s->nic), s->txp->data, s->txp->len);
+        qemu_receive_packet(qemu_get_queue(s->nic), s->txp->data, s->txp->len);
     } else {
         qemu_send_packet(qemu_get_queue(s->nic), s->txp->data, s->txp->len);
     }
@@ -931,10 +943,8 @@ static uint32_t do_mac_read(lan9118_state *s, int reg)
                | (s->conf.macaddr.a[2] << 16) | (s->conf.macaddr.a[3] << 24);
     case MAC_HASHH:
         return s->mac_hashh;
-        break;
     case MAC_HASHL:
         return s->mac_hashl;
-        break;
     case MAC_MII_ACC:
         return s->mac_mii_acc;
     case MAC_MII_DATA:
@@ -1021,7 +1031,8 @@ static void lan9118_writel(void *opaque, hwaddr offset,
     offset &= 0xff;
 
     //DPRINTF("Write reg 0x%02x = 0x%08x\n", (int)offset, val);
-    if (offset >= 0x20 && offset < 0x40) {
+    if (offset >= TX_DATA_FIFO_PORT_FIRST &&
+        offset <= TX_DATA_FIFO_PORT_LAST) {
         /* TX FIFO */
         tx_fifo_push(s, val);
         return;
@@ -1199,18 +1210,18 @@ static uint64_t lan9118_readl(void *opaque, hwaddr offset,
     lan9118_state *s = (lan9118_state *)opaque;
 
     //DPRINTF("Read reg 0x%02x\n", (int)offset);
-    if (offset < 0x20) {
+    if (offset <= RX_DATA_FIFO_PORT_LAST) {
         /* RX FIFO */
         return rx_fifo_pop(s);
     }
     switch (offset) {
-    case 0x40:
+    case RX_STATUS_FIFO_PORT:
         return rx_status_fifo_pop(s);
-    case 0x44:
-        return s->rx_status_fifo[s->tx_status_fifo_head];
-    case 0x48:
+    case RX_STATUS_FIFO_PEEK:
+        return s->rx_status_fifo[s->rx_status_fifo_head];
+    case TX_STATUS_FIFO_PORT:
         return tx_status_fifo_pop(s);
-    case 0x4c:
+    case TX_STATUS_FIFO_PEEK:
         return s->tx_status_fifo[s->tx_status_fifo_head];
     case CSR_ID_REV:
         return 0x01180001;

@@ -12,7 +12,7 @@ use Term::ANSIColor qw(:constants);
 my $P = $0;
 $P =~ s@.*/@@g;
 
-our $SrcFile    = qr{\.(?:h|c|cpp|s|S|pl|py|sh)$};
+our $SrcFile    = qr{\.(?:(h|c)(\.inc)?|cpp|s|S|pl|py|sh)$};
 
 my $V = '0.31';
 
@@ -392,14 +392,19 @@ if ($chk_branch) {
 
 	close $HASH;
 
-	die "$P: no revisions returned for revlist '$chk_branch'\n"
+	die "$P: no revisions returned for revlist '$ARGV[0]'\n"
 	    unless @patches;
 
 	my $i = 1;
 	my $num_patches = @patches;
 	for my $hash (@patches) {
 		my $FILE;
-		open($FILE, '-|', "git", "show", $hash) ||
+		open($FILE, '-|', "git",
+                     "-c", "diff.renamelimit=0",
+                     "-c", "diff.renames=True",
+                     "-c", "diff.algorithm=histogram",
+                     "show",
+                     "--patch-with-stat", $hash) ||
 			die "$P: git show $hash - $!\n";
 		while (<$FILE>) {
 			chomp;
@@ -1499,7 +1504,7 @@ sub process {
 			$is_patch = 1;
 		}
 
-		if ($line =~ /^Author: .*via Qemu-devel.*<qemu-devel\@nongnu.org>/) {
+		if ($line =~ /^(Author|From): .* via .*<qemu-devel\@nongnu.org>/) {
 		    ERROR("Author email address is mangled by the mailing list\n" . $herecurr);
 		}
 
@@ -1530,7 +1535,10 @@ sub process {
 		    ($line =~ /^(?:new|deleted) file mode\s*\d+\s*$/ ||
 		     $line =~ /^rename (?:from|to) [\w\/\.\-]+\s*$/ ||
 		     ($line =~ /\{\s*([\w\/\.\-]*)\s*\=\>\s*([\w\/\.\-]*)\s*\}/ &&
-		      (defined($1) || defined($2))))) {
+		      (defined($1) || defined($2)))) &&
+                      !(($realfile ne '') &&
+                        defined($acpi_testexpected) &&
+                        ($realfile eq $acpi_testexpected))) {
 			$reported_maintainer_file = 1;
 			WARN("added, moved or deleted file(s), does MAINTAINERS need updating?\n" . $herecurr);
 		}
@@ -1659,7 +1667,7 @@ sub process {
 # tabs are only allowed in assembly source code, and in
 # some scripts we imported from other projects.
 		next if ($realfile =~ /\.(s|S)$/);
-		next if ($realfile =~ /(checkpatch|get_maintainer|texi2pod)\.pl$/);
+		next if ($realfile =~ /(checkpatch|get_maintainer)\.pl$/);
 
 		if ($rawline =~ /^\+.*\t/) {
 			my $herevet = "$here\n" . cat_vet($rawline) . "\n";
@@ -1668,7 +1676,7 @@ sub process {
 		}
 
 # check we are in a valid C source file if not then ignore this hunk
-		next if ($realfile !~ /\.(h|c|cpp)$/);
+		next if ($realfile !~ /\.((h|c)(\.inc)?|cpp)$/);
 
 # Block comment styles
 
@@ -1870,7 +1878,7 @@ sub process {
 			substr($s, 0, length($c), '');
 
 			# Make sure we remove the line prefixes as we have
-			# none on the first line, and are going to readd them
+			# none on the first line, and are going to re-add them
 			# where necessary.
 			$s =~ s/\n./\n/gs;
 
@@ -2880,14 +2888,20 @@ sub process {
 				$herecurr);
 		}
 
-# check for %L{u,d,i} in strings
+# format strings checks
 		my $string;
 		while ($line =~ /(?:^|")([X\t]*)(?:"|$)/g) {
 			$string = substr($rawline, $-[1], $+[1] - $-[1]);
 			$string =~ s/%%/__/g;
+			# check for %L{u,d,i} in strings
 			if ($string =~ /(?<!%)%L[udi]/) {
 				ERROR("\%Ld/%Lu are not-standard C, use %lld/%llu\n" . $herecurr);
-				last;
+			}
+			# check for %# or %0# in printf-style format strings
+			if ($string =~ /(?<!%)%0?#/) {
+				ERROR("Don't use '#' flag of printf format " .
+				      "('%#') in format strings, use '0x' " .
+				      "prefix instead\n" . $herecurr);
 			}
 		}
 
@@ -3005,7 +3019,7 @@ sub process {
 		return 1;
 	}
 
-	if (!$is_patch) {
+	if (!$is_patch && $filename !~ /cover-letter\.patch$/) {
 		ERROR("Does not appear to be a unified-diff format patch\n");
 	}
 

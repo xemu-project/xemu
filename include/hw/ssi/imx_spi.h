@@ -14,6 +14,7 @@
 #include "hw/ssi/ssi.h"
 #include "qemu/bitops.h"
 #include "qemu/fifo32.h"
+#include "qom/object.h"
 
 #define ECSPI_FIFO_SIZE 64
 
@@ -76,10 +77,13 @@
 
 #define EXTRACT(value, name) extract32(value, name##_SHIFT, name##_LENGTH)
 
-#define TYPE_IMX_SPI "imx.spi"
-#define IMX_SPI(obj) OBJECT_CHECK(IMXSPIState, (obj), TYPE_IMX_SPI)
+/* number of chip selects supported */
+#define ECSPI_NUM_CS 4
 
-typedef struct IMXSPIState {
+#define TYPE_IMX_SPI "imx.spi"
+OBJECT_DECLARE_SIMPLE_TYPE(IMXSPIState, IMX_SPI)
+
+struct IMXSPIState {
     /* <private> */
     SysBusDevice parent_obj;
 
@@ -88,7 +92,7 @@ typedef struct IMXSPIState {
 
     qemu_irq irq;
 
-    qemu_irq cs_lines[4];
+    qemu_irq cs_lines[ECSPI_NUM_CS];
 
     SSIBus *bus;
 
@@ -98,6 +102,6 @@ typedef struct IMXSPIState {
     Fifo32 tx_fifo;
 
     int16_t burst_length;
-} IMXSPIState;
+};
 
 #endif /* IMX_SPI_H */

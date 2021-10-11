@@ -35,18 +35,9 @@
 #include "hw/i386/pc.h"
 #include "hw/loader.h"
 #include "hw/qdev-properties.h"
-#include "sysemu/sysemu.h"
 #include "hw/block/flash.h"
 #include "sysemu/kvm.h"
-
-/*
- * We don't have a theoretically justifiable exact lower bound on the base
- * address of any flash mapping. In practice, the IO-APIC MMIO range is
- * [0xFEE00000..0xFEE01000] -- see IO_APIC_DEFAULT_ADDRESS --, leaving free
- * only 18MB-4KB below 4G. For now, restrict the cumulative mapping to 8MB in
- * size.
- */
-#define FLASH_SIZE_LIMIT (8 * MiB)
+#include "sysemu/sev.h"
 
 #define FLASH_SECTOR_SIZE 4096
 
@@ -140,7 +131,7 @@ void pc_system_flash_cleanup_unused(PCMachineState *pcms)
  * Stop at the first pcms->flash[0] lacking a block backend.
  * Set each flash's size from its block backend.  Fatal error if the
  * size isn't a non-zero multiple of 4KiB, or the total size exceeds
- * FLASH_SIZE_LIMIT.
+ * pcms->max_fw_size.
  *
  * If pcms->flash[0] has a block backend, its memory is passed to
  * pc_isa_bios_init().  Merging several flash devices for isa-bios is
@@ -156,7 +147,8 @@ static void pc_system_flash_map(PCMachineState *pcms,
     PFlashCFI01 *system_flash;
     MemoryRegion *flash_mem;
     void *flash_ptr;
-    int ret, flash_size;
+    int flash_size;
+    int ret;
 
     assert(PC_MACHINE_GET_CLASS(pcms)->pci_enabled);
 
@@ -182,10 +174,10 @@ static void pc_system_flash_map(PCMachineState *pcms,
         }
         if ((hwaddr)size != size
             || total_size > HWADDR_MAX - size
-            || total_size + size > FLASH_SIZE_LIMIT) {
+            || total_size + size > pcms->max_fw_size) {
             error_report("combined size of system firmware exceeds "
                          "%" PRIu64 " bytes",
-                         FLASH_SIZE_LIMIT);
+                         pcms->max_fw_size);
             exit(1);
         }
 
@@ -201,14 +193,22 @@ static void pc_system_flash_map(PCMachineState *pcms,
             pc_isa_bios_init(rom_memory, flash_mem, size);
 
             /* Encrypt the pflash boot ROM */
-            if (kvm_memcrypt_enabled()) {
+            if (sev_enabled()) {
                 flash_ptr = memory_region_get_ram_ptr(flash_mem);
                 flash_size = memory_region_size(flash_mem);
-                ret = kvm_memcrypt_encrypt_data(flash_ptr, flash_size);
+                /*
+                 * OVMF places a GUIDed structures in the flash, so
+                 * search for them
+                 */
+                pc_system_parse_ovmf_flash(flash_ptr, flash_size);
+
+                ret = sev_es_save_reset_vector(flash_ptr, flash_size);
                 if (ret) {
-                    error_report("failed to encrypt pflash rom");
+                    error_report("failed to locate and/or save reset vector");
                     exit(1);
                 }
+
+                sev_encrypt_flash(flash_ptr, flash_size, &error_fatal);
             }
         }
     }
@@ -222,7 +222,7 @@ void pc_system_firmware_init(PCMachineState *pcms,
     BlockBackend *pflash_blk[ARRAY_SIZE(pcms->flash)];
 
     if (!pcmc->pci_enabled) {
-        x86_bios_rom_init(rom_memory, true);
+        x86_bios_rom_init(MACHINE(pcms), "bios.bin", rom_memory, true);
         return;
     }
 
@@ -243,7 +243,7 @@ void pc_system_firmware_init(PCMachineState *pcms,
 
     if (!pflash_blk[0]) {
         /* Machine property pflash0 not set, use ROM mode */
-        x86_bios_rom_init(rom_memory, false);
+        x86_bios_rom_init(MACHINE(pcms), "bios.bin", rom_memory, false);
     } else {
         if (kvm_enabled() && !kvm_readonly_mem_enabled()) {
             /*

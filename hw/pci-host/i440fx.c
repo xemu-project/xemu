@@ -35,22 +35,22 @@
 #include "migration/vmstate.h"
 #include "qapi/visitor.h"
 #include "qemu/error-report.h"
+#include "qom/object.h"
 
 /*
  * I440FX chipset data sheet.
  * https://wiki.qemu.org/File:29054901.pdf
  */
 
-#define I440FX_PCI_HOST_BRIDGE(obj) \
-    OBJECT_CHECK(I440FXState, (obj), TYPE_I440FX_PCI_HOST_BRIDGE)
+OBJECT_DECLARE_SIMPLE_TYPE(I440FXState, I440FX_PCI_HOST_BRIDGE)
 
-typedef struct I440FXState {
+struct I440FXState {
     PCIHostState parent_obj;
     Range pci_hole;
     uint64_t pci_hole64_size;
     bool pci_hole64_fix;
     uint32_t short_root_bus;
-} I440FXState;
+};
 
 #define I440FX_PAM      0x59
 #define I440FX_PAM_SIZE 7
@@ -210,22 +210,6 @@ static void i440fx_pcihost_initfn(Object *obj)
                           "pci-conf-idx", 4);
     memory_region_init_io(&s->data_mem, obj, &pci_host_data_le_ops, s,
                           "pci-conf-data", 4);
-
-    object_property_add(obj, PCI_HOST_PROP_PCI_HOLE_START, "uint32",
-                        i440fx_pcihost_get_pci_hole_start,
-                        NULL, NULL, NULL);
-
-    object_property_add(obj, PCI_HOST_PROP_PCI_HOLE_END, "uint32",
-                        i440fx_pcihost_get_pci_hole_end,
-                        NULL, NULL, NULL);
-
-    object_property_add(obj, PCI_HOST_PROP_PCI_HOLE64_START, "uint64",
-                        i440fx_pcihost_get_pci_hole64_start,
-                        NULL, NULL, NULL);
-
-    object_property_add(obj, PCI_HOST_PROP_PCI_HOLE64_END, "uint64",
-                        i440fx_pcihost_get_pci_hole64_end,
-                        NULL, NULL, NULL);
 }
 
 static void i440fx_pcihost_realize(DeviceState *dev, Error **errp)
@@ -401,6 +385,22 @@ static void i440fx_pcihost_class_init(ObjectClass *klass, void *data)
     device_class_set_props(dc, i440fx_props);
     /* Reason: needs to be wired up by pc_init1 */
     dc->user_creatable = false;
+
+    object_class_property_add(klass, PCI_HOST_PROP_PCI_HOLE_START, "uint32",
+                              i440fx_pcihost_get_pci_hole_start,
+                              NULL, NULL, NULL);
+
+    object_class_property_add(klass, PCI_HOST_PROP_PCI_HOLE_END, "uint32",
+                              i440fx_pcihost_get_pci_hole_end,
+                              NULL, NULL, NULL);
+
+    object_class_property_add(klass, PCI_HOST_PROP_PCI_HOLE64_START, "uint64",
+                              i440fx_pcihost_get_pci_hole64_start,
+                              NULL, NULL, NULL);
+
+    object_class_property_add(klass, PCI_HOST_PROP_PCI_HOLE64_END, "uint64",
+                              i440fx_pcihost_get_pci_hole64_end,
+                              NULL, NULL, NULL);
 }
 
 static const TypeInfo i440fx_pcihost_info = {

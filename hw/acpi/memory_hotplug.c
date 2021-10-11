@@ -2,12 +2,12 @@
 #include "hw/acpi/memory_hotplug.h"
 #include "hw/acpi/pc-hotplug.h"
 #include "hw/mem/pc-dimm.h"
-#include "hw/boards.h"
 #include "hw/qdev-core.h"
 #include "migration/vmstate.h"
 #include "trace.h"
 #include "qapi/error.h"
-#include "qapi/qapi-events-misc.h"
+#include "qapi/qapi-events-acpi.h"
+#include "qapi/qapi-events-machine.h"
 
 #define MEMORY_SLOTS_NUMBER          "MDNR"
 #define MEMORY_HOTPLUG_IO_REGION     "HPMR"
@@ -52,14 +52,12 @@ static ACPIOSTInfo *acpi_memory_device_status(int slot, MemStatus *mdev)
 
 void acpi_memory_ospm_status(MemHotplugState *mem_st, ACPIOSTInfoList ***list)
 {
+    ACPIOSTInfoList ***tail = list;
     int i;
 
     for (i = 0; i < mem_st->dev_count; i++) {
-        ACPIOSTInfoList *elem = g_new0(ACPIOSTInfoList, 1);
-        elem->value = acpi_memory_device_status(i, &mem_st->devs[i]);
-        elem->next = NULL;
-        **list = elem;
-        *list = &elem->next;
+        QAPI_LIST_APPEND(*tail,
+                         acpi_memory_device_status(i, &mem_st->devs[i]));
     }
 }
 

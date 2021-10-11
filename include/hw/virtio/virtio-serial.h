@@ -18,6 +18,7 @@
 
 #include "standard-headers/linux/virtio_console.h"
 #include "hw/virtio/virtio.h"
+#include "qom/object.h"
 
 struct virtio_serial_conf {
     /* Max. number of ports we can have for a virtio-serial device */
@@ -25,18 +26,16 @@ struct virtio_serial_conf {
 };
 
 #define TYPE_VIRTIO_SERIAL_PORT "virtio-serial-port"
-#define VIRTIO_SERIAL_PORT(obj) \
-     OBJECT_CHECK(VirtIOSerialPort, (obj), TYPE_VIRTIO_SERIAL_PORT)
-#define VIRTIO_SERIAL_PORT_CLASS(klass) \
-     OBJECT_CLASS_CHECK(VirtIOSerialPortClass, (klass), TYPE_VIRTIO_SERIAL_PORT)
-#define VIRTIO_SERIAL_PORT_GET_CLASS(obj) \
-     OBJECT_GET_CLASS(VirtIOSerialPortClass, (obj), TYPE_VIRTIO_SERIAL_PORT)
+OBJECT_DECLARE_TYPE(VirtIOSerialPort, VirtIOSerialPortClass,
+                    VIRTIO_SERIAL_PORT)
 
 typedef struct VirtIOSerial VirtIOSerial;
-typedef struct VirtIOSerialBus VirtIOSerialBus;
-typedef struct VirtIOSerialPort VirtIOSerialPort;
 
-typedef struct VirtIOSerialPortClass {
+#define TYPE_VIRTIO_SERIAL_BUS "virtio-serial-bus"
+OBJECT_DECLARE_SIMPLE_TYPE(VirtIOSerialBus, VIRTIO_SERIAL_BUS)
+
+
+struct VirtIOSerialPortClass {
     DeviceClass parent_class;
 
     /* Is this a device that binds with hvc in the guest? */
@@ -81,7 +80,7 @@ typedef struct VirtIOSerialPortClass {
      */
     ssize_t (*have_data)(VirtIOSerialPort *port, const uint8_t *buf,
                          ssize_t len);
-} VirtIOSerialPortClass;
+};
 
 /*
  * This is the state that's shared between all the ports.  Some of the
@@ -223,7 +222,6 @@ size_t virtio_serial_guest_ready(VirtIOSerialPort *port);
 void virtio_serial_throttle_port(VirtIOSerialPort *port, bool throttle);
 
 #define TYPE_VIRTIO_SERIAL "virtio-serial-device"
-#define VIRTIO_SERIAL(obj) \
-        OBJECT_CHECK(VirtIOSerial, (obj), TYPE_VIRTIO_SERIAL)
+OBJECT_DECLARE_SIMPLE_TYPE(VirtIOSerial, VIRTIO_SERIAL)
 
 #endif

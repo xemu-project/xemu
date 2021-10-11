@@ -27,7 +27,6 @@
 #include <windows.h>
 #include <mmsystem.h>
 #include "qemu-common.h"
-#include "qemu-options.h"
 #include "sysemu/runstate.h"
 
 static BOOL WINAPI qemu_ctrl_handler(DWORD type)
@@ -55,17 +54,6 @@ void os_setup_early_signal_handling(void)
     timeGetDevCaps(&mm_tc, sizeof(mm_tc));
     timeBeginPeriod(mm_tc.wPeriodMin);
     atexit(os_undo_timer_resolution);
-}
-
-/*
- * Look for support files in the same directory as the executable.
- *
- * The caller must use g_free() to free the returned data when it is
- * no longer required.
- */
-char *os_find_datadir(void)
-{
-    return qemu_get_exec_dir();
 }
 
 void os_set_line_buffering(void)

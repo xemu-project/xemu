@@ -14,6 +14,9 @@ void cpu_list_unlock(void);
 
 void tcg_flush_softmmu_tlb(CPUState *cs);
 
+void tcg_iommu_init_notifier_list(CPUState *cpu);
+void tcg_iommu_free_notifier_list(CPUState *cpu);
+
 #if !defined(CONFIG_USER_ONLY)
 
 enum device_endian {
@@ -39,8 +42,6 @@ typedef uintptr_t ram_addr_t;
 #  define RAM_ADDR_FMT "%" PRIxPTR
 #endif
 
-extern ram_addr_t ram_size;
-
 /* memory API */
 
 void qemu_ram_remap(ram_addr_t addr, ram_addr_t length);
@@ -56,7 +57,9 @@ const char *qemu_ram_get_idstr(RAMBlock *rb);
 void *qemu_ram_get_host_addr(RAMBlock *rb);
 ram_addr_t qemu_ram_get_offset(RAMBlock *rb);
 ram_addr_t qemu_ram_get_used_length(RAMBlock *rb);
+ram_addr_t qemu_ram_get_max_length(RAMBlock *rb);
 bool qemu_ram_is_shared(RAMBlock *rb);
+bool qemu_ram_is_noreserve(RAMBlock *rb);
 bool qemu_ram_is_uf_zeroable(RAMBlock *rb);
 void qemu_ram_set_uf_zeroable(RAMBlock *rb);
 bool qemu_ram_is_migratable(RAMBlock *rb);
@@ -103,5 +106,8 @@ int qemu_ram_foreach_block(RAMBlockIterFunc func, void *opaque);
 int ram_block_discard_range(RAMBlock *rb, uint64_t start, size_t length);
 
 #endif
+
+/* vl.c */
+extern int singlestep;
 
 #endif /* CPU_COMMON_H */

@@ -292,7 +292,7 @@ static int16_t convert_c_register(const int16_t c_reg)
 
 
 
-static QString* decode_swizzle(const uint32_t *shader_token,
+static MString* decode_swizzle(const uint32_t *shader_token,
                                VshFieldName swizzle_field)
 {
     const char* swizzle_str = "xyzw";
@@ -312,25 +312,25 @@ static QString* decode_swizzle(const uint32_t *shader_token,
     if (x == SWIZZLE_X && y == SWIZZLE_Y
         && z == SWIZZLE_Z && w == SWIZZLE_W) {
         /* Don't print the swizzle if it's .xyzw */
-        return qstring_from_str(""); // Will turn ".xyzw" into "."
+        return mstring_from_str(""); // Will turn ".xyzw" into "."
     /* Don't print duplicates */
     } else if (x == y && y == z && z == w) {
-        return qstring_from_str((char[]){'.', swizzle_str[x], '\0'});
+        return mstring_from_str((char[]){'.', swizzle_str[x], '\0'});
     } else if (y == z && z == w) {
-        return qstring_from_str((char[]){'.',
+        return mstring_from_str((char[]){'.',
             swizzle_str[x], swizzle_str[y], '\0'});
     } else if (z == w) {
-        return qstring_from_str((char[]){'.',
+        return mstring_from_str((char[]){'.',
             swizzle_str[x], swizzle_str[y], swizzle_str[z], '\0'});
     } else {
-        return qstring_from_str((char[]){'.',
+        return mstring_from_str((char[]){'.',
                                        swizzle_str[x], swizzle_str[y],
                                        swizzle_str[z], swizzle_str[w],
                                        '\0'}); // Normal swizzle mask
     }
 }
 
-static QString* decode_opcode_input(const uint32_t *shader_token,
+static MString* decode_opcode_input(const uint32_t *shader_token,
                                     VshParameterType param,
                                     VshFieldName neg_field,
                                     int reg_num)
@@ -339,11 +339,11 @@ static QString* decode_opcode_input(const uint32_t *shader_token,
      * Input A, B or C is controlled via the Param and NEG fieldnames,
      * the R-register address for each input is already given by caller. */
 
-    QString *ret_str = qstring_new();
+    MString *ret_str = mstring_new();
 
 
     if (vsh_get_field(shader_token, neg_field) > 0) {
-        qstring_append_chr(ret_str, '-');
+        mstring_append_chr(ret_str, '-');
     }
 
     /* PARAM_R uses the supplied reg_num, but the other two need to be
@@ -371,26 +371,26 @@ static QString* decode_opcode_input(const uint32_t *shader_token,
         assert(false);
         break;
     }
-    qstring_append(ret_str, tmp);
+    mstring_append(ret_str, tmp);
 
     {
         /* swizzle bits are next to the neg bit */
-        QString *swizzle_str = decode_swizzle(shader_token, neg_field+1);
-        qstring_append(ret_str, qstring_get_str(swizzle_str));
-        qobject_unref(swizzle_str);
+        MString *swizzle_str = decode_swizzle(shader_token, neg_field+1);
+        mstring_append(ret_str, mstring_get_str(swizzle_str));
+        mstring_unref(swizzle_str);
     }
 
     return ret_str;
 }
 
 
-static QString* decode_opcode(const uint32_t *shader_token,
+static MString* decode_opcode(const uint32_t *shader_token,
                               VshOutputMux out_mux,
                               uint32_t mask,
                               const char *opcode,
                               const char *inputs)
 {
-    QString *ret = qstring_new();
+    MString *ret = mstring_new();
     int reg_num = vsh_get_field(shader_token, FLD_OUT_R);
 
     /* Test for paired opcodes (in other words : Are both <> NOP?) */
@@ -410,32 +410,32 @@ static QString* decode_opcode(const uint32_t *shader_token,
         /* Only if it's not masked away: */
         && vsh_get_field(shader_token, FLD_OUT_O_MASK) != 0) {
 
-        qstring_append(ret, "  ");
-        qstring_append(ret, opcode);
-        qstring_append(ret, "(");
+        mstring_append(ret, "  ");
+        mstring_append(ret, opcode);
+        mstring_append(ret, "(");
 
         if (vsh_get_field(shader_token, FLD_OUT_ORB) == OUTPUT_C) {
             /* TODO : Emulate writeable const registers */
-            qstring_append(ret, "c");
-            qstring_append_int(ret,
+            mstring_append(ret, "c");
+            mstring_append_int(ret,
                 convert_c_register(
                     vsh_get_field(shader_token, FLD_OUT_ADDRESS)));
         } else {
-            qstring_append(ret,
+            mstring_append(ret,
                 out_reg_name[
                     vsh_get_field(shader_token, FLD_OUT_ADDRESS) & 0xF]);
         }
-        qstring_append(ret,
+        mstring_append(ret,
             mask_str[
                 vsh_get_field(shader_token, FLD_OUT_O_MASK)]);
-        qstring_append(ret, inputs);
-        qstring_append(ret, ");\n");
+        mstring_append(ret, inputs);
+        mstring_append(ret, ");\n");
     }
 
     if (strcmp(opcode, mac_opcode[MAC_ARL]) == 0) {
-        qstring_append_fmt(ret, "  ARL(A0%s);\n", inputs);
+        mstring_append_fmt(ret, "  ARL(A0%s);\n", inputs);
     } else if (mask > 0) {
-        qstring_append_fmt(ret, "  %s(R%d%s%s);\n",
+        mstring_append_fmt(ret, "  %s(R%d%s%s);\n",
                            opcode, reg_num, mask_str[mask], inputs);
     }
 
@@ -443,12 +443,12 @@ static QString* decode_opcode(const uint32_t *shader_token,
 }
 
 
-static QString* decode_token(const uint32_t *shader_token)
+static MString* decode_token(const uint32_t *shader_token)
 {
-    QString *ret;
+    MString *ret;
 
     /* Since it's potentially used twice, decode input C once: */
-    QString *input_c =
+    MString *input_c =
         decode_opcode_input(shader_token,
                             vsh_get_field(shader_token, FLD_C_MUX),
                             FLD_C_NEG,
@@ -458,30 +458,30 @@ static QString* decode_token(const uint32_t *shader_token)
     /* See what MAC opcode is written to (if not masked away): */
     VshMAC mac = vsh_get_field(shader_token, FLD_MAC);
     if (mac != MAC_NOP) {
-        QString *inputs_mac = qstring_new();
+        MString *inputs_mac = mstring_new();
         if (mac_opcode_params[mac].A) {
-            QString *input_a =
+            MString *input_a =
                 decode_opcode_input(shader_token,
                                     vsh_get_field(shader_token, FLD_A_MUX),
                                     FLD_A_NEG,
                                     vsh_get_field(shader_token, FLD_A_R));
-            qstring_append(inputs_mac, ", ");
-            qstring_append(inputs_mac, qstring_get_str(input_a));
-            qobject_unref(input_a);
+            mstring_append(inputs_mac, ", ");
+            mstring_append(inputs_mac, mstring_get_str(input_a));
+            mstring_unref(input_a);
         }
         if (mac_opcode_params[mac].B) {
-            QString *input_b =
+            MString *input_b =
                 decode_opcode_input(shader_token,
                                     vsh_get_field(shader_token, FLD_B_MUX),
                                     FLD_B_NEG,
                                     vsh_get_field(shader_token, FLD_B_R));
-            qstring_append(inputs_mac, ", ");
-            qstring_append(inputs_mac, qstring_get_str(input_b));
-            qobject_unref(input_b);
+            mstring_append(inputs_mac, ", ");
+            mstring_append(inputs_mac, mstring_get_str(input_b));
+            mstring_unref(input_b);
         }
         if (mac_opcode_params[mac].C) {
-            qstring_append(inputs_mac, ", ");
-            qstring_append(inputs_mac, qstring_get_str(input_c));
+            mstring_append(inputs_mac, ", ");
+            mstring_append(inputs_mac, mstring_get_str(input_c));
         }
 
         /* Then prepend these inputs with the actual opcode, mask, and input : */
@@ -489,33 +489,33 @@ static QString* decode_token(const uint32_t *shader_token)
                             OMUX_MAC,
                             vsh_get_field(shader_token, FLD_OUT_MAC_MASK),
                             mac_opcode[mac],
-                            qstring_get_str(inputs_mac));
-        qobject_unref(inputs_mac);
+                            mstring_get_str(inputs_mac));
+        mstring_unref(inputs_mac);
     } else {
-        ret = qstring_new();
+        ret = mstring_new();
     }
 
     /* See if a ILU opcode is present too: */
     VshILU ilu = vsh_get_field(shader_token, FLD_ILU);
     if (ilu != ILU_NOP) {
-        QString *inputs_c = qstring_from_str(", ");
-        qstring_append(inputs_c, qstring_get_str(input_c));
+        MString *inputs_c = mstring_from_str(", ");
+        mstring_append(inputs_c, mstring_get_str(input_c));
 
         /* Append the ILU opcode, mask and (the already determined) input C: */
-        QString *ilu_op =
+        MString *ilu_op =
             decode_opcode(shader_token,
                           OMUX_ILU,
                           vsh_get_field(shader_token, FLD_OUT_ILU_MASK),
                           ilu_opcode[ilu],
-                          qstring_get_str(inputs_c));
+                          mstring_get_str(inputs_c));
 
-        qstring_append(ret, qstring_get_str(ilu_op));
+        mstring_append(ret, mstring_get_str(ilu_op));
 
-        qobject_unref(inputs_c);
-        qobject_unref(ilu_op);
+        mstring_unref(inputs_c);
+        mstring_unref(ilu_op);
     }
 
-    qobject_unref(input_c);
+    mstring_unref(input_c);
 
     return ret;
 }
@@ -719,24 +719,24 @@ void vsh_translate(uint16_t version,
                    const uint32_t *tokens,
                    unsigned int length,
                    bool z_perspective,
-                   QString *header, QString *body)
+                   MString *header, MString *body)
 {
 
-    qstring_append(header, vsh_header);
+    mstring_append(header, vsh_header);
 
     bool has_final = false;
     int slot;
     for (slot=0; slot < length; slot++) {
         const uint32_t* cur_token = &tokens[slot * VSH_TOKEN_SIZE];
-        QString *token_str = decode_token(cur_token);
-        qstring_append_fmt(body,
+        MString *token_str = decode_token(cur_token);
+        mstring_append_fmt(body,
                            "  /* Slot %d: 0x%08X 0x%08X 0x%08X 0x%08X */",
                            slot,
                            cur_token[0],cur_token[1],cur_token[2],cur_token[3]);
-        qstring_append(body, "\n");
-        qstring_append(body, qstring_get_str(token_str));
-        qstring_append(body, "\n");
-        qobject_unref(token_str);
+        mstring_append(body, "\n");
+        mstring_append(body, mstring_get_str(token_str));
+        mstring_append(body, "\n");
+        mstring_unref(token_str);
 
         if (vsh_get_field(cur_token, FLD_FINAL)) {
             has_final = true;
@@ -748,7 +748,7 @@ void vsh_translate(uint16_t version,
     /* pre-divide and output the generated W so we can do persepctive correct
      * interpolation manually. OpenGL can't, since we give it a W of 1 to work
      * around the perspective divide */
-    qstring_append(body,
+    mstring_append(body,
         "  if (oPos.w == 0.0 || isinf(oPos.w)) {\n"
         "    vtx.inv_w = 1.0;\n"
         "  } else {\n"
@@ -756,7 +756,7 @@ void vsh_translate(uint16_t version,
         "  }\n"
     );
 
-    qstring_append(body,
+    mstring_append(body,
         /* the shaders leave the result in screen space, while
          * opengl expects it in clip space.
          * TODO: the pixel-center co-ordinate differences should handled
@@ -765,9 +765,9 @@ void vsh_translate(uint16_t version,
         "  oPos.y = -2.0 * (oPos.y - surfaceSize.y * 0.5) / surfaceSize.y;\n"
     );
     if (z_perspective) {
-        qstring_append(body, "  oPos.z = oPos.w;\n");
+        mstring_append(body, "  oPos.z = oPos.w;\n");
     }
-    qstring_append(body,
+    mstring_append(body,
         /* Map the clip range into clip space so z is clipped correctly.
          * Note this makes the values in the depth buffer wrong. This should be
          * handled with gl_ClipDistance instead, but that has performance issues

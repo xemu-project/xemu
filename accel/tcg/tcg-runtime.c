@@ -27,7 +27,6 @@
 #include "exec/helper-proto.h"
 #include "exec/cpu_ldst.h"
 #include "exec/exec-all.h"
-#include "exec/tb-lookup.h"
 #include "disas/disas.h"
 #include "exec/log.h"
 #include "tcg/tcg.h"
@@ -143,25 +142,6 @@ uint32_t HELPER(ctpop_i32)(uint32_t arg)
 uint64_t HELPER(ctpop_i64)(uint64_t arg)
 {
     return ctpop64(arg);
-}
-
-void *HELPER(lookup_tb_ptr)(CPUArchState *env)
-{
-    CPUState *cpu = env_cpu(env);
-    TranslationBlock *tb;
-    target_ulong cs_base, pc;
-    uint32_t flags;
-
-    tb = tb_lookup__cpu_state(cpu, &pc, &cs_base, &flags, curr_cflags());
-    if (tb == NULL) {
-        return tcg_ctx->code_gen_epilogue;
-    }
-    qemu_log_mask_and_addr(CPU_LOG_EXEC, pc,
-                           "Chain %d: %p ["
-                           TARGET_FMT_lx "/" TARGET_FMT_lx "/%#x] %s\n",
-                           cpu->cpu_index, tb->tc.ptr, cs_base, pc, flags,
-                           lookup_symbol(pc));
-    return tb->tc.ptr;
 }
 
 void HELPER(exit_atomic)(CPUArchState *env)

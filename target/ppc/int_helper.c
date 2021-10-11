@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -22,6 +22,7 @@
 #include "internal.h"
 #include "qemu/host-utils.h"
 #include "qemu/main-loop.h"
+#include "qemu/log.h"
 #include "exec/helper-proto.h"
 #include "crypto/aes.h"
 #include "fpu/softfloat.h"
@@ -319,6 +320,68 @@ target_ulong helper_popcntb(target_ulong val)
 }
 #endif
 
+uint64_t helper_cfuged(uint64_t src, uint64_t mask)
+{
+    /*
+     * Instead of processing the mask bit-by-bit from the most significant to
+     * the least significant bit, as described in PowerISA, we'll handle it in
+     * blocks of 'n' zeros/ones from LSB to MSB. To avoid the decision to use
+     * ctz or cto, we negate the mask at the end of the loop.
+     */
+    target_ulong m, left = 0, right = 0;
+    unsigned int n, i = 64;
+    bool bit = false; /* tracks if we are processing zeros or ones */
+
+    if (mask == 0 || mask == -1) {
+        return src;
+    }
+
+    /* Processes the mask in blocks, from LSB to MSB */
+    while (i) {
+        /* Find how many bits we should take */
+        n = ctz64(mask);
+        if (n > i) {
+            n = i;
+        }
+
+        /*
+         * Extracts 'n' trailing bits of src and put them on the leading 'n'
+         * bits of 'right' or 'left', pushing down the previously extracted
+         * values.
+         */
+        m = (1ll << n) - 1;
+        if (bit) {
+            right = ror64(right | (src & m), n);
+        } else {
+            left = ror64(left | (src & m), n);
+        }
+
+        /*
+         * Discards the processed bits from 'src' and 'mask'. Note that we are
+         * removing 'n' trailing zeros from 'mask', but the logical shift will
+         * add 'n' leading zeros back, so the population count of 'mask' is kept
+         * the same.
+         */
+        src >>= n;
+        mask >>= n;
+        i -= n;
+        bit = !bit;
+        mask = ~mask;
+    }
+
+    /*
+     * At the end, right was ror'ed ctpop(mask) times. To put it back in place,
+     * we'll shift it more 64-ctpop(mask) times.
+     */
+    if (bit) {
+        n = ctpop64(mask);
+    } else {
+        n = 64 - ctpop64(mask);
+    }
+
+    return left | (right >> n);
+}
+
 /*****************************************************************************/
 /* PowerPC 601 specific instructions (POWER bridge) */
 target_ulong helper_div(CPUPPCState *env, target_ulong arg1, target_ulong arg2)
@@ -398,7 +461,7 @@ target_ulong helper_divso(CPUPPCState *env, target_ulong arg1,
 target_ulong helper_602_mfrom(target_ulong arg)
 {
     if (likely(arg < 602)) {
-#include "mfrom_table.inc.c"
+#include "mfrom_table.c.inc"
         return mfrom_ROM_table[arg];
     } else {
         return 0;
@@ -461,17 +524,12 @@ SATCVT(sd, uw, int64_t, uint32_t, 0, UINT32_MAX)
 
 void helper_mtvscr(CPUPPCState *env, uint32_t vscr)
 {
-    env->vscr = vscr & ~(1u << VSCR_SAT);
-    /* Which bit we set is completely arbitrary, but clear the rest.  */
-    env->vscr_sat.u64[0] = vscr & (1u << VSCR_SAT);
-    env->vscr_sat.u64[1] = 0;
-    set_flush_to_zero((vscr >> VSCR_NJ) & 1, &env->vec_status);
+    ppc_store_vscr(env, vscr);
 }
 
 uint32_t helper_mfvscr(CPUPPCState *env)
 {
-    uint32_t sat = (env->vscr_sat.u64[0] | env->vscr_sat.u64[1]) != 0;
-    return env->vscr | (sat << VSCR_SAT);
+    return ppc_get_vscr(env);
 }
 
 static inline void set_vscr_sat(CPUPPCState *env)
@@ -522,19 +580,6 @@ void helper_vprtybq(ppc_avr_t *r, ppc_avr_t *b)
     r->VsrD(1) = res & 1;
     r->VsrD(0) = 0;
 }
-
-#define VARITH_DO(name, op, element)                                    \
-    void helper_v##name(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)       \
-    {                                                                   \
-        int i;                                                          \
-                                                                        \
-        for (i = 0; i < ARRAY_SIZE(r->element); i++) {                  \
-            r->element[i] = a->element[i] op b->element[i];             \
-        }                                                               \
-    }
-VARITH_DO(muluwm, *, u32)
-#undef VARITH_DO
-#undef VARITH
 
 #define VARITHFP(suffix, func)                                          \
     void helper_v##suffix(CPUPPCState *env, ppc_avr_t *r, ppc_avr_t *a, \
@@ -1098,6 +1143,41 @@ VMUL(uw, u32, VsrW, VsrD, uint64_t)
 #undef VMUL_DO_EVN
 #undef VMUL_DO_ODD
 #undef VMUL
+
+void helper_vmulhsw(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
+{
+    int i;
+
+    for (i = 0; i < 4; i++) {
+        r->s32[i] = (int32_t)(((int64_t)a->s32[i] * (int64_t)b->s32[i]) >> 32);
+    }
+}
+
+void helper_vmulhuw(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
+{
+    int i;
+
+    for (i = 0; i < 4; i++) {
+        r->u32[i] = (uint32_t)(((uint64_t)a->u32[i] *
+                               (uint64_t)b->u32[i]) >> 32);
+    }
+}
+
+void helper_vmulhsd(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
+{
+    uint64_t discard;
+
+    muls64(&discard, &r->u64[0], a->s64[0], b->s64[0]);
+    muls64(&discard, &r->u64[1], a->s64[1], b->s64[1]);
+}
+
+void helper_vmulhud(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
+{
+    uint64_t discard;
+
+    mulu64(&discard, &r->u64[0], a->u64[0], b->u64[0]);
+    mulu64(&discard, &r->u64[1], a->u64[1], b->u64[1]);
+}
 
 void helper_vperm(CPUPPCState *env, ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b,
                   ppc_avr_t *c)
@@ -2153,14 +2233,17 @@ static int bcd_cmp_mag(ppc_avr_t *a, ppc_avr_t *b)
     return 0;
 }
 
-static void bcd_add_mag(ppc_avr_t *t, ppc_avr_t *a, ppc_avr_t *b, int *invalid,
+static int bcd_add_mag(ppc_avr_t *t, ppc_avr_t *a, ppc_avr_t *b, int *invalid,
                        int *overflow)
 {
     int carry = 0;
     int i;
+    int is_zero = 1;
+
     for (i = 1; i <= 31; i++) {
         uint8_t digit = bcd_get_digit(a, i, invalid) +
                         bcd_get_digit(b, i, invalid) + carry;
+        is_zero &= (digit == 0);
         if (digit > 9) {
             carry = 1;
             digit -= 10;
@@ -2172,6 +2255,7 @@ static void bcd_add_mag(ppc_avr_t *t, ppc_avr_t *a, ppc_avr_t *b, int *invalid,
     }
 
     *overflow = carry;
+    return is_zero;
 }
 
 static void bcd_sub_mag(ppc_avr_t *t, ppc_avr_t *a, ppc_avr_t *b, int *invalid,
@@ -2203,14 +2287,15 @@ uint32_t helper_bcdadd(ppc_avr_t *r,  ppc_avr_t *a, ppc_avr_t *b, uint32_t ps)
     int sgnb = bcd_get_sgn(b);
     int invalid = (sgna == 0) || (sgnb == 0);
     int overflow = 0;
+    int zero = 0;
     uint32_t cr = 0;
     ppc_avr_t result = { .u64 = { 0, 0 } };
 
     if (!invalid) {
         if (sgna == sgnb) {
             result.VsrB(BCD_DIG_BYTE(0)) = bcd_preferred_sgn(sgna, ps);
-            bcd_add_mag(&result, a, b, &invalid, &overflow);
-            cr = bcd_cmp_zero(&result);
+            zero = bcd_add_mag(&result, a, b, &invalid, &overflow);
+            cr = (sgna > 0) ? CRF_GT : CRF_LT;
         } else {
             int magnitude = bcd_cmp_mag(a, b);
             if (magnitude > 0) {
@@ -2233,6 +2318,8 @@ uint32_t helper_bcdadd(ppc_avr_t *r,  ppc_avr_t *a, ppc_avr_t *b, uint32_t ps)
         cr = CRF_SO;
     } else if (overflow) {
         cr |= CRF_SO;
+    } else if (zero) {
+        cr |= CRF_EQ;
     }
 
     *r = result;

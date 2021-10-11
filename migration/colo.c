@@ -28,7 +28,7 @@
 #include "migration/failover.h"
 #include "migration/ram.h"
 #ifdef CONFIG_REPLICATION
-#include "replication.h"
+#include "block/replication.h"
 #endif
 #include "net/colo-compare.h"
 #include "net/colo.h"
@@ -435,12 +435,6 @@ static int colo_do_checkpoint_transaction(MigrationState *s,
     if (failover_get_state() != FAILOVER_STATUS_NONE) {
         goto out;
     }
-
-    /* Disable block migration */
-    migrate_set_block_enabled(false, &local_err);
-    if (local_err) {
-        goto out;
-    }
     qemu_mutex_lock_iothread();
 
 #ifdef CONFIG_REPLICATION
@@ -632,11 +626,10 @@ out:
     /*
      * It is safe to unregister notifier after failover finished.
      * Besides, colo_delay_timer and colo_checkpoint_sem can't be
-     * released befor unregister notifier, or there will be use-after-free
+     * released before unregister notifier, or there will be use-after-free
      * error.
      */
     colo_compare_unregister_notifier(&packets_compare_notifier);
-    timer_del(s->colo_delay_timer);
     timer_free(s->colo_delay_timer);
     qemu_event_destroy(&s->colo_checkpoint_event);
 
@@ -798,9 +791,7 @@ static void colo_incoming_process_checkpoint(MigrationIncomingState *mis,
 
     colo_send_message(mis->to_src_file, COLO_MESSAGE_VMSTATE_LOADED,
                  &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
-    }
+    error_propagate(errp, local_err);
 }
 
 static void colo_wait_handle_message(MigrationIncomingState *mis,

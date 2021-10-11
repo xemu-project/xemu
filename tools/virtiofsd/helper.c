@@ -16,16 +16,8 @@
 #include "fuse_misc.h"
 #include "fuse_opt.h"
 
-#include <errno.h>
-#include <limits.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/param.h>
-#include <sys/time.h>
 #include <sys/resource.h>
-#include <unistd.h>
 
 #define FUSE_HELPER_OPT(t, p)                       \
     {                                               \
@@ -159,27 +151,42 @@ void fuse_cmdline_help(void)
            "    -o max_idle_threads        the maximum number of idle worker "
            "threads\n"
            "                               allowed (default: 10)\n"
-           "    -o norace                  disable racy fallback\n"
-           "                               default: false\n"
            "    -o posix_lock|no_posix_lock\n"
            "                               enable/disable remote posix lock\n"
-           "                               default: posix_lock\n"
+           "                               default: no_posix_lock\n"
            "    -o readdirplus|no_readdirplus\n"
            "                               enable/disable readirplus\n"
            "                               default: readdirplus except with "
            "cache=none\n"
+           "    -o sandbox=namespace|chroot\n"
+           "                               sandboxing mode:\n"
+           "                               - namespace: mount, pid, and net\n"
+           "                                 namespaces with pivot_root(2)\n"
+           "                                 into shared directory\n"
+           "                               - chroot: chroot(2) into shared\n"
+           "                                 directory (use in containers)\n"
+           "                               default: namespace\n"
            "    -o timeout=<number>        I/O timeout (seconds)\n"
            "                               default: depends on cache= option.\n"
            "    -o writeback|no_writeback  enable/disable writeback cache\n"
            "                               default: no_writeback\n"
            "    -o xattr|no_xattr          enable/disable xattr\n"
            "                               default: no_xattr\n"
+           "    -o xattrmap=<mapping>      Enable xattr mapping (enables xattr)\n"
+           "                               <mapping> is a string consists of a series of rules\n"
+           "                               e.g. -o xattrmap=:map::user.virtiofs.:\n"
            "    -o modcaps=CAPLIST         Modify the list of capabilities\n"
            "                               e.g. -o modcaps=+sys_admin:-chown\n"
            "    --rlimit-nofile=<num>      set maximum number of file descriptors\n"
            "                               (0 leaves rlimit unchanged)\n"
            "                               default: min(1000000, fs.file-max - 16384)\n"
            "                                        if the current rlimit is lower\n"
+           "    -o allow_direct_io|no_allow_direct_io\n"
+           "                               retain/discard O_DIRECT flags passed down\n"
+           "                               to virtiofsd from guest applications.\n"
+           "                               default: no_allow_direct_io\n"
+           "    -o announce_submounts      Announce sub-mount points to the guest\n"
+           "    -o posix_acl/no_posix_acl  Enable/Disable posix_acl. (default: disabled)\n"
            );
 }
 

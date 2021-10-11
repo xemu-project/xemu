@@ -27,18 +27,15 @@
 #include "qapi/error.h"
 #include "hw/ide.h"
 #include "hw/pci/pci.h"
-#include "hw/irq.h"
 #include "hw/xen/xen_common.h"
 #include "migration/vmstate.h"
 #include "hw/xen/xen-legacy-backend.h"
 #include "trace.h"
-#include "exec/address-spaces.h"
 #include "sysemu/xen.h"
 #include "sysemu/block-backend.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
-
-#include <xenguest.h>
+#include "qom/object.h"
 
 //#define DEBUG_PLATFORM
 
@@ -52,7 +49,7 @@
 
 #define PFFLAG_ROM_LOCK 1 /* Sets whether ROM memory area is RW or RO */
 
-typedef struct PCIXenPlatformState {
+struct PCIXenPlatformState {
     /*< private >*/
     PCIDevice parent_obj;
     /*< public >*/
@@ -61,17 +58,15 @@ typedef struct PCIXenPlatformState {
     MemoryRegion bar;
     MemoryRegion mmio_bar;
     uint8_t flags; /* used only for version_id == 2 */
-    int drivers_blacklisted;
     uint16_t driver_product_version;
 
     /* Log from guest drivers */
     char log_buffer[4096];
     int log_buffer_off;
-} PCIXenPlatformState;
+};
 
 #define TYPE_XEN_PLATFORM "xen-platform"
-#define XEN_PLATFORM(obj) \
-    OBJECT_CHECK(PCIXenPlatformState, (obj), TYPE_XEN_PLATFORM)
+OBJECT_DECLARE_SIMPLE_TYPE(PCIXenPlatformState, XEN_PLATFORM)
 
 #define XEN_PLATFORM_IOPORT 0x10
 
@@ -247,18 +242,10 @@ static void platform_fixed_ioport_writeb(void *opaque, uint32_t addr, uint32_t v
 
 static uint32_t platform_fixed_ioport_readw(void *opaque, uint32_t addr)
 {
-    PCIXenPlatformState *s = opaque;
-
     switch (addr) {
     case 0:
-        if (s->drivers_blacklisted) {
-            /* The drivers will recognise this magic number and refuse
-             * to do anything. */
-            return 0xd249;
-        } else {
-            /* Magic value so that you can identify the interface. */
-            return 0x49d2;
-        }
+        /* Magic value so that you can identify the interface. */
+        return 0x49d2;
     default:
         return 0xffff;
     }

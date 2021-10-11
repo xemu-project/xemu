@@ -20,6 +20,7 @@
 
 #include "qemu/osdep.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "migration/vmstate.h"
 #include "sysemu/sysemu.h"
 #include "hw/char/serial.h"
@@ -36,6 +37,10 @@
 #define DEVICE_PME              0xA
 #define DEVICE_MPU_401          0xB
 
+#define CONFIG_PORT 0x00
+#define INDEX_PORT  CONFIG_PORT
+#define DATA_PORT   0x01
+
 #define ENTER_CONFIG_KEY    0x55
 #define EXIT_CONFIG_KEY     0xAA
 
@@ -51,6 +56,10 @@
 #define CONFIG_DEVICE_BASE_ADDRESS_LOW      0x61
 #define CONFIG_DEVICE_INTERRUPT             0x70
 
+#define TYPE_ISA_LPC47M157_DEVICE "lpc47m157"
+#define ISA_LPC47M157_DEVICE(obj) \
+    OBJECT_CHECK(ISALPC47M157State, (obj), TYPE_ISA_LPC47M157_DEVICE)
+
 // #define DEBUG
 #ifdef DEBUG
 # define DPRINTF(format, ...) printf(format, ## __VA_ARGS__)
@@ -58,50 +67,72 @@
 # define DPRINTF(format, ...) do { } while (0)
 #endif
 
-typedef struct LPC47M157State {
-    ISADevice dev;
+typedef struct LPC47M157State_Serial {
+    bool active;
+    uint16_t iobase;
+    uint8_t irq;
 
+    SerialState state;
+} LPC47M157State_Serial;
+
+typedef struct LPC47M157State {
     MemoryRegion io;
 
     bool configuration_mode;
     uint32_t selected_reg;
-
     uint8_t config_regs[MAX_CONFIG_REG];
     uint8_t device_regs[MAX_DEVICE][MAX_DEVICE_REGS];
 
-    struct {
-        bool active;
-        SerialState state;
-    } serial[2];
+    LPC47M157State_Serial serial[2];
 } LPC47M157State;
 
-#define LPC47M157_DEVICE(obj) \
-    OBJECT_CHECK(LPC47M157State, (obj), "lpc47m157")
+typedef struct ISALPC47M157State {
+    ISADevice parent_obj;
 
-static void update_devices(LPC47M157State *s)
+    bool sysopt;
+    uint16_t iobase;
+    LPC47M157State state;
+} ISALPC47M157State;
+
+static void update_devices(ISALPC47M157State *isa)
 {
-    ISADevice *isadev = ISA_DEVICE(s);
+    LPC47M157State *s = &isa->state;
+    LPC47M157State_Serial *serial;
+    SerialState *ss;
+    uint8_t *dev;
+    uint16_t iobase;
+    uint8_t irq;
     int i;
 
-    /* init serial devices */
-    for (i = 0; i < 2; i++) {
-        uint8_t *dev = s->device_regs[DEVICE_SERIAL_PORT_1 + i];
-        if (dev[CONFIG_DEVICE_ACTIVATE] && !s->serial[i].active) {
-            uint32_t iobase = (dev[CONFIG_DEVICE_BASE_ADDRESS_HIGH] << 8)
-                                | dev[CONFIG_DEVICE_BASE_ADDRESS_LOW];
-            uint32_t irq = dev[CONFIG_DEVICE_INTERRUPT];
-
-            SerialState *ss = &s->serial[i].state;
-            if (irq != 0) {
-                isa_init_irq(isadev, &ss->irq, irq);
-            }
-            object_property_set_bool(OBJECT(ss), "realized", true, &error_fatal);
-
+    /* update serial devices */
+    for (i = 0; i < ARRAY_SIZE(s->serial); i++) {
+        serial = &s->serial[i];
+        ss = &serial->state;
+        dev = s->device_regs[DEVICE_SERIAL_PORT_1 + i];
+        iobase = (dev[CONFIG_DEVICE_BASE_ADDRESS_HIGH] << 8)
+                  | dev[CONFIG_DEVICE_BASE_ADDRESS_LOW];
+        irq = dev[CONFIG_DEVICE_INTERRUPT] & 0x0f;
+        if (serial->active && (!dev[CONFIG_DEVICE_ACTIVATE]
+                               || serial->iobase != iobase
+                               || serial->irq != irq)) {
+            isa_unregister_ioport(NULL, &ss->io);
+            memory_region_destroy(&ss->io);
+            ss->irq = NULL;
+            serial->active = false;
+            DPRINTF("lpc47m157 COM%d disabled @ iobase=0x%x irq=%u\n",
+                    i + 1, serial->iobase, serial->irq);
+        }
+        if (!serial->active && dev[CONFIG_DEVICE_ACTIVATE]) {
+            ss->irq = irq != 0 ? isa_get_irq(&isa->parent_obj, irq) : NULL;
             memory_region_init_io(&ss->io, OBJECT(s),
                                   &serial_io_ops, ss, "serial", 8);
-            isa_register_ioport(isadev, &ss->io, iobase);
-
-            s->serial[i].active = true;
+            isa_register_ioport(NULL, &ss->io, iobase);
+            serial_set_frequency(ss, 115200);
+            serial->iobase = iobase;
+            serial->irq = irq;
+            serial->active = true;
+            DPRINTF("lpc47m157 COM%d enabled @ iobase=0x%x irq=%u\n",
+                    i + 1, serial->iobase, serial->irq);
         }
     }
 }
@@ -109,68 +140,74 @@ static void update_devices(LPC47M157State *s)
 static void lpc47m157_io_write(void *opaque, hwaddr addr, uint64_t val,
                                unsigned int size)
 {
-    LPC47M157State *s = opaque;
+    ISALPC47M157State *isa = ISA_LPC47M157_DEVICE(opaque);
+    LPC47M157State *s = &isa->state;
+    uint8_t *dev;
 
-    DPRINTF("lpc47m157 io write 0x%" HWADDR_PRIx " = 0x%" PRIx64 "\n", addr, val);
+    DPRINTF("lpc47m157 io write 0x%02" HWADDR_PRIx " = 0x%02" PRIx64 "\n", addr, val);
 
-    if (addr == 0) {
-        /* INDEX_PORT */
+    if (addr == CONFIG_PORT && (val == ENTER_CONFIG_KEY || val == EXIT_CONFIG_KEY)) {
         if (val == ENTER_CONFIG_KEY) {
-            assert(!s->configuration_mode);
             s->configuration_mode = true;
+            DPRINTF("lpc47m157 enter configuration mode\n");
         } else if (val == EXIT_CONFIG_KEY) {
-            assert(s->configuration_mode);
+            if (s->configuration_mode) {
+                update_devices(isa);
+            }
             s->configuration_mode = false;
-
-            update_devices(s);
-        } else {
+            DPRINTF("lpc47m157 exit configuration mode\n");
+        }
+    } else if (s->configuration_mode) {
+        if (addr == INDEX_PORT) {
             s->selected_reg = val;
-        }
-    } else if (addr == 1) {
-        /* DATA_PORT */
-        if (s->selected_reg < MAX_CONFIG_REG) {
-            /* global configuration register */
-            s->config_regs[s->selected_reg] = val;
+        } else if (addr == DATA_PORT) {
+            if (s->selected_reg < MAX_CONFIG_REG) {
+                /* global configuration register */
+                s->config_regs[s->selected_reg] = val;
+            } else {
+                /* device register */
+                assert(s->config_regs[CONFIG_DEVICE_NUMBER] < MAX_DEVICE);
+                dev = s->device_regs[s->config_regs[CONFIG_DEVICE_NUMBER]];
+                dev[s->selected_reg] = val;
+                DPRINTF("lpc47m157 dev 0x%02x . 0x%02x = 0x%02" PRIx64 "\n",
+                        s->config_regs[CONFIG_DEVICE_NUMBER], s->selected_reg, val);
+            }
         } else {
-            /* device register */
-            assert(s->config_regs[CONFIG_DEVICE_NUMBER] < MAX_DEVICE);
-            uint8_t *dev = s->device_regs[s->config_regs[CONFIG_DEVICE_NUMBER]];
-            dev[s->selected_reg] = val;
-            DPRINTF("lpc47m157 dev %x . %x = %"PRIx64"\n",
-                s->config_regs[CONFIG_DEVICE_NUMBER],
-                s->selected_reg, val);
+            assert(false);
         }
-    } else {
-        assert(false);
     }
 }
 
 static uint64_t lpc47m157_io_read(void *opaque, hwaddr addr, unsigned int size)
 {
-    LPC47M157State *s = opaque;
+    ISALPC47M157State *isa = ISA_LPC47M157_DEVICE(opaque);
+    LPC47M157State *s = &isa->state;
+    uint8_t *dev;
     uint32_t val = 0;
 
-    if (addr == 0) {
-        /* INDEX_PORT */
-    } else if (addr == 1) {
-        /* DATA_PORT */
-        if (s->selected_reg < MAX_CONFIG_REG) {
-            val = s->config_regs[s->selected_reg];
-        } else {
-            assert(s->config_regs[CONFIG_DEVICE_NUMBER] < MAX_DEVICE);
-            uint8_t *dev = s->device_regs[s->config_regs[CONFIG_DEVICE_NUMBER]];
-            val = dev[s->selected_reg];
+    if (s->configuration_mode) {
+        if (addr == DATA_PORT) {
+            if (s->selected_reg < MAX_CONFIG_REG) {
+                /* global configuration register */
+                val = s->config_regs[s->selected_reg];
+            } else {
+                /* device register */
+                assert(s->config_regs[CONFIG_DEVICE_NUMBER] < MAX_DEVICE);
+                dev = s->device_regs[s->config_regs[CONFIG_DEVICE_NUMBER]];
+                val = dev[s->selected_reg];
+            }
+        } else if (addr != INDEX_PORT) {
+            assert(false);
         }
-    } else {
-        assert(false);
     }
 
-    DPRINTF("lpc47m157 io read 0x%"HWADDR_PRIx" -> 0x%x\n", addr, val);
+    DPRINTF("lpc47m157 io read 0x%02" HWADDR_PRIx " -> 0x%02x\n", addr, val);
+
     return val;
 }
 
 static const MemoryRegionOps lpc47m157_io_ops = {
-    .read  = lpc47m157_io_read,
+    .read = lpc47m157_io_read,
     .write = lpc47m157_io_write,
     .valid = {
         .min_access_size = 1,
@@ -178,52 +215,73 @@ static const MemoryRegionOps lpc47m157_io_ops = {
     },
 };
 
-static Property lpc47m157_properties[] = {
-    DEFINE_PROP_CHR("chardev0", LPC47M157State, serial[0].state.chr),
-    DEFINE_PROP_CHR("chardev1", LPC47M157State, serial[1].state.chr),
-    DEFINE_PROP_END_OF_LIST(),
-};
-
 static void lpc47m157_realize(DeviceState *dev, Error **errp)
 {
-    LPC47M157State *s = LPC47M157_DEVICE(dev);
-    ISADevice *isa = ISA_DEVICE(dev);
+    ISADevice *isadev = ISA_DEVICE(dev);
+    ISALPC47M157State *isa = ISA_LPC47M157_DEVICE(isadev);
+    LPC47M157State *s = &isa->state;
+    SerialState *ss;
+    Chardev *chr;
+    char *name;
     int i;
 
-    const uint32_t iobase = 0x2e; //0x4e if SYSOPT pin, make it a property
-    s->config_regs[CONFIG_PORT_LOW] = iobase & 0xFF;
-    s->config_regs[CONFIG_PORT_HIGH] = iobase >> 8;
+    isa->iobase = isa->sysopt ? 0x4e : 0x2e;
+    s->config_regs[CONFIG_PORT_LOW] = isa->iobase & 0xff;
+    s->config_regs[CONFIG_PORT_HIGH] = isa->iobase >> 8;
 
     memory_region_init_io(&s->io, OBJECT(s),
-                          &lpc47m157_io_ops, s, "lpc47m157", 2);
-    isa_register_ioport(isa, &s->io, iobase);
+                          &lpc47m157_io_ops, isa, TYPE_ISA_LPC47M157_DEVICE, 2);
+    isa_register_ioport(isadev, &s->io, isa->iobase);
 
     /* init serial cores */
-    for (i = 0; i < 2; i++) {
-        Chardev *chr = serial_hd(i);
+    for (i = 0; i < ARRAY_SIZE(s->serial); i++) {
+        ss = &s->serial[i].state;
+        chr = serial_hd(i);
         if (chr == NULL) {
-            char name[5];
-            snprintf(name, sizeof(name), "ser%d", i);
+            name = g_strdup_printf("ser%d", i);
             chr = qemu_chr_new(name, "null", NULL);
+            g_free(name);
         }
-
-        SerialState *ss = &s->serial[i].state;
-        ss->baudbase = 115200;
         qdev_prop_set_chr(dev, i == 0 ? "chardev0" : "chardev1", chr);
+        qdev_realize(DEVICE(ss), NULL, errp);
     }
+}
+
+static int lpc47m157_post_load(void *opaque, int version_id)
+{
+    ISALPC47M157State *isa = ISA_LPC47M157_DEVICE(opaque);
+
+    /* reconfigure devices */
+    update_devices(isa);
+
+    return 0;
 }
 
 static const VMStateDescription vmstate_lpc47m157 = {
     .name = "lpc47m157",
     .version_id = 1,
     .minimum_version_id = 1,
+    .post_load = lpc47m157_post_load,
     .fields = (VMStateField[]) {
-        VMSTATE_STRUCT(serial[0].state, LPC47M157State, 0,
+        VMSTATE_BOOL(sysopt, ISALPC47M157State),
+        VMSTATE_UINT16(iobase, ISALPC47M157State),
+        VMSTATE_BOOL(state.configuration_mode, ISALPC47M157State),
+        VMSTATE_UINT32(state.selected_reg, ISALPC47M157State),
+        VMSTATE_UINT8_ARRAY(state.config_regs, ISALPC47M157State, MAX_CONFIG_REG),
+        VMSTATE_UINT8_2DARRAY(state.device_regs, ISALPC47M157State, MAX_DEVICE, MAX_DEVICE_REGS),
+        VMSTATE_STRUCT(state.serial[0].state, ISALPC47M157State, 0,
                        vmstate_serial, SerialState),
-        VMSTATE_STRUCT(serial[1].state, LPC47M157State, 0,
+        VMSTATE_STRUCT(state.serial[1].state, ISALPC47M157State, 0,
                        vmstate_serial, SerialState),
         VMSTATE_END_OF_LIST()
     }
+};
+
+static Property lpc47m157_properties[] = {
+    DEFINE_PROP_BOOL("sysopt", ISALPC47M157State, sysopt, false),
+    DEFINE_PROP_CHR("chardev0", ISALPC47M157State, state.serial[0].state.chr),
+    DEFINE_PROP_CHR("chardev1", ISALPC47M157State, state.serial[1].state.chr),
+    DEFINE_PROP_END_OF_LIST(),
 };
 
 static void lpc47m157_class_init(ObjectClass *klass, void *data)
@@ -238,17 +296,17 @@ static void lpc47m157_class_init(ObjectClass *klass, void *data)
 
 static void lpc47m157_initfn(Object *o)
 {
-    LPC47M157State *self = LPC47M157_DEVICE(o);
+    ISALPC47M157State *self = ISA_LPC47M157_DEVICE(o);
 
-    object_initialize_child(o, "serial0", &self->serial[0].state, TYPE_SERIAL);
-    object_initialize_child(o, "serial1", &self->serial[1].state, TYPE_SERIAL);
+    object_initialize_child(o, "serial0", &self->state.serial[0].state, TYPE_SERIAL);
+    object_initialize_child(o, "serial1", &self->state.serial[1].state, TYPE_SERIAL);
 }
 
 static const TypeInfo lpc47m157_type_info = {
-    .name          = "lpc47m157",
+    .name          = TYPE_ISA_LPC47M157_DEVICE,
     .parent        = TYPE_ISA_DEVICE,
-    .instance_size = sizeof(LPC47M157State),
     .instance_init = lpc47m157_initfn,
+    .instance_size = sizeof(ISALPC47M157State),
     .class_init    = lpc47m157_class_init,
 };
 

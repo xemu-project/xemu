@@ -48,8 +48,8 @@ this code that are retained.
 ===============================================================================
 */
 
-#ifndef _SOFTFLOAT_HELPERS_H_
-#define _SOFTFLOAT_HELPERS_H_
+#ifndef SOFTFLOAT_HELPERS_H
+#define SOFTFLOAT_HELPERS_H
 
 #include "fpu/softfloat-types.h"
 
@@ -69,7 +69,7 @@ static inline void set_float_exception_flags(int val, float_status *status)
     status->float_exception_flags = val;
 }
 
-static inline void set_floatx80_rounding_precision(int val,
+static inline void set_floatx80_rounding_precision(FloatX80RoundPrec val,
                                                    float_status *status)
 {
     status->floatx80_rounding_precision = val;
@@ -95,6 +95,16 @@ static inline void set_snan_bit_is_one(bool val, float_status *status)
     status->snan_bit_is_one = val;
 }
 
+static inline void set_use_first_nan(bool val, float_status *status)
+{
+    status->use_first_nan = val;
+}
+
+static inline void set_no_signaling_nans(bool val, float_status *status)
+{
+    status->no_signaling_nans = val;
+}
+
 static inline bool get_float_detect_tininess(float_status *status)
 {
     return status->tininess_before_rounding;
@@ -110,7 +120,8 @@ static inline int get_float_exception_flags(float_status *status)
     return status->float_exception_flags;
 }
 
-static inline int get_floatx80_rounding_precision(float_status *status)
+static inline FloatX80RoundPrec
+get_floatx80_rounding_precision(float_status *status)
 {
     return status->floatx80_rounding_precision;
 }

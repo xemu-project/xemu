@@ -19,6 +19,7 @@
 #include "hw/scsi/scsi.h"
 #include "migration/qemu-file-types.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "hw/scsi/emulation.h"
 #include "sysemu/block-backend.h"
 #include "trace.h"
@@ -74,6 +75,7 @@ static void scsi_command_complete_noio(SCSIGenericReq *r, int ret)
 {
     int status;
     SCSISense sense;
+    sg_io_hdr_t *io_hdr = &r->io_header;
 
     assert(r->req.aiocb == NULL);
 
@@ -81,15 +83,22 @@ static void scsi_command_complete_noio(SCSIGenericReq *r, int ret)
         scsi_req_cancel_complete(&r->req);
         goto done;
     }
-    status = sg_io_sense_from_errno(-ret, &r->io_header, &sense);
-    if (status == CHECK_CONDITION) {
-        if (r->io_header.driver_status & SG_ERR_DRIVER_SENSE) {
-            r->req.sense_len = r->io_header.sb_len_wr;
-        } else {
+    if (ret < 0) {
+        status = scsi_sense_from_errno(-ret, &sense);
+        if (status == CHECK_CONDITION) {
             scsi_req_build_sense(&r->req, sense);
         }
+    } else if (io_hdr->host_status != SCSI_HOST_OK) {
+        scsi_req_complete_failed(&r->req, io_hdr->host_status);
+        goto done;
+    } else if (io_hdr->driver_status & SG_ERR_DRIVER_TIMEOUT) {
+        status = BUSY;
+    } else {
+        status = io_hdr->status;
+        if (io_hdr->driver_status & SG_ERR_DRIVER_SENSE) {
+            r->req.sense_len = io_hdr->sb_len_wr;
+        }
     }
-
     trace_scsi_generic_command_complete_noio(r, r->req.tag, status);
 
     scsi_req_complete(&r->req, status);
@@ -114,6 +123,8 @@ static int execute_command(BlockBackend *blk,
                            SCSIGenericReq *r, int direction,
                            BlockCompletionFunc *complete)
 {
+    SCSIDevice *s = r->req.dev;
+
     r->io_header.interface_id = 'S';
     r->io_header.dxfer_direction = direction;
     r->io_header.dxferp = r->buf;
@@ -122,10 +133,12 @@ static int execute_command(BlockBackend *blk,
     r->io_header.cmd_len = r->req.cmd.len;
     r->io_header.mx_sb_len = sizeof(r->req.sense);
     r->io_header.sbp = r->req.sense;
-    r->io_header.timeout = MAX_UINT;
+    r->io_header.timeout = s->io_timeout * 1000;
     r->io_header.usr_ptr = r;
     r->io_header.flags |= SG_FLAG_DIRECT_IO;
 
+    trace_scsi_generic_aio_sgio_command(r->req.tag, r->req.cmd.buf[0],
+                                        r->io_header.timeout);
     r->req.aiocb = blk_aio_ioctl(blk, SG_IO, &r->io_header, complete, r);
     if (r->req.aiocb == NULL) {
         return -EIO;
@@ -134,7 +147,7 @@ static int execute_command(BlockBackend *blk,
     return 0;
 }
 
-static void scsi_handle_inquiry_reply(SCSIGenericReq *r, SCSIDevice *s)
+static int scsi_handle_inquiry_reply(SCSIGenericReq *r, SCSIDevice *s, int len)
 {
     uint8_t page, page_idx;
 
@@ -162,13 +175,16 @@ static void scsi_handle_inquiry_reply(SCSIGenericReq *r, SCSIDevice *s)
         }
     }
 
-    if (s->type == TYPE_DISK && (r->req.cmd.buf[1] & 0x01)) {
+    if ((s->type == TYPE_DISK || s->type == TYPE_ZBC) &&
+        (r->req.cmd.buf[1] & 0x01)) {
         page = r->req.cmd.buf[2];
         if (page == 0xb0) {
-            uint32_t max_transfer =
-                blk_get_max_transfer(s->conf.blk) / s->blocksize;
+            uint64_t max_transfer = blk_get_max_hw_transfer(s->conf.blk);
+            uint32_t max_iov = blk_get_max_iov(s->conf.blk);
 
             assert(max_transfer);
+            max_transfer = MIN_NON_ZERO(max_transfer, max_iov * qemu_real_host_page_size)
+                / s->blocksize;
             stl_be_p(&r->buf[8], max_transfer);
             /* Also take care of the opt xfer len. */
             stl_be_p(&r->buf[12],
@@ -199,8 +215,13 @@ static void scsi_handle_inquiry_reply(SCSIGenericReq *r, SCSIDevice *s)
                 r->buf[page_idx] = 0xb0;
             }
             stw_be_p(r->buf + 2, lduw_be_p(r->buf + 2) + 1);
+
+            if (len < r->buflen) {
+                len++;
+            }
         }
     }
+    return len;
 }
 
 static int scsi_generic_emulate_block_limits(SCSIGenericReq *r, SCSIDevice *s)
@@ -282,7 +303,10 @@ static void scsi_read_complete(void * opaque, int ret)
         }
     }
 
-    if (len == 0) {
+    if (r->io_header.host_status != SCSI_HOST_OK ||
+        (r->io_header.driver_status & SG_ERR_DRIVER_TIMEOUT) ||
+        r->io_header.status != GOOD ||
+        len == 0) {
         scsi_command_complete_noio(r, 0);
         goto done;
     }
@@ -299,11 +323,12 @@ static void scsi_read_complete(void * opaque, int ret)
     }
     blk_set_guest_block_size(s->conf.blk, s->blocksize);
 
-    /* Patch MODE SENSE device specific parameters if the BDS is opened
+    /*
+     * Patch MODE SENSE device specific parameters if the BDS is opened
      * readonly.
      */
-    if ((s->type == TYPE_DISK || s->type == TYPE_TAPE) &&
-        blk_is_read_only(s->conf.blk) &&
+    if ((s->type == TYPE_DISK || s->type == TYPE_TAPE || s->type == TYPE_ZBC) &&
+        !blk_is_writable(s->conf.blk) &&
         (r->req.cmd.buf[0] == MODE_SENSE ||
          r->req.cmd.buf[0] == MODE_SENSE_10) &&
         (r->req.cmd.buf[1] & 0x8) == 0) {
@@ -314,7 +339,7 @@ static void scsi_read_complete(void * opaque, int ret)
         }
     }
     if (r->req.cmd.buf[0] == INQUIRY) {
-        scsi_handle_inquiry_reply(r, s);
+        len = scsi_handle_inquiry_reply(r, s, len);
     }
 
 req_complete:
@@ -503,7 +528,7 @@ static int read_naa_id(const uint8_t *p, uint64_t *p_wwn)
 }
 
 int scsi_SG_IO_FROM_DEV(BlockBackend *blk, uint8_t *cmd, uint8_t cmd_size,
-                        uint8_t *buf, uint8_t buf_size)
+                        uint8_t *buf, uint8_t buf_size, uint32_t timeout)
 {
     sg_io_hdr_t io_header;
     uint8_t sensebuf[8];
@@ -518,10 +543,14 @@ int scsi_SG_IO_FROM_DEV(BlockBackend *blk, uint8_t *cmd, uint8_t cmd_size,
     io_header.cmd_len = cmd_size;
     io_header.mx_sb_len = sizeof(sensebuf);
     io_header.sbp = sensebuf;
-    io_header.timeout = 6000; /* XXX */
+    io_header.timeout = timeout * 1000;
 
+    trace_scsi_generic_ioctl_sgio_command(cmd[0], io_header.timeout);
     ret = blk_ioctl(blk, SG_IO, &io_header);
-    if (ret < 0 || io_header.driver_status || io_header.host_status) {
+    if (ret < 0 || io_header.status ||
+        io_header.driver_status || io_header.host_status) {
+        trace_scsi_generic_ioctl_sgio_done(cmd[0], ret, io_header.status,
+                                           io_header.host_status);
         return -1;
     }
     return 0;
@@ -548,7 +577,7 @@ static void scsi_generic_set_vpd_bl_emulation(SCSIDevice *s)
     cmd[4] = sizeof(buf);
 
     ret = scsi_SG_IO_FROM_DEV(s->conf.blk, cmd, sizeof(cmd),
-                              buf, sizeof(buf));
+                              buf, sizeof(buf), s->io_timeout);
     if (ret < 0) {
         /*
          * Do not assume anything if we can't retrieve the
@@ -584,7 +613,7 @@ static void scsi_generic_read_device_identification(SCSIDevice *s)
     cmd[4] = sizeof(buf);
 
     ret = scsi_SG_IO_FROM_DEV(s->conf.blk, cmd, sizeof(cmd),
-                              buf, sizeof(buf));
+                              buf, sizeof(buf), s->io_timeout);
     if (ret < 0) {
         return;
     }
@@ -617,7 +646,7 @@ static void scsi_generic_read_device_identification(SCSIDevice *s)
 void scsi_generic_read_device_inquiry(SCSIDevice *s)
 {
     scsi_generic_read_device_identification(s);
-    if (s->type == TYPE_DISK) {
+    if (s->type == TYPE_DISK || s->type == TYPE_ZBC) {
         scsi_generic_set_vpd_bl_emulation(s);
     } else {
         s->needs_vpd_bl_emulation = false;
@@ -635,7 +664,7 @@ static int get_stream_blocksize(BlockBackend *blk)
     cmd[0] = MODE_SENSE;
     cmd[4] = sizeof(buf);
 
-    ret = scsi_SG_IO_FROM_DEV(blk, cmd, sizeof(cmd), buf, sizeof(buf));
+    ret = scsi_SG_IO_FROM_DEV(blk, cmd, sizeof(cmd), buf, sizeof(buf), 6);
     if (ret < 0) {
         return -1;
     }
@@ -662,7 +691,8 @@ static void scsi_generic_realize(SCSIDevice *s, Error **errp)
         return;
     }
 
-    if (blk_get_on_error(s->conf.blk, 0) != BLOCKDEV_ON_ERROR_ENOSPC) {
+    if (blk_get_on_error(s->conf.blk, 0) != BLOCKDEV_ON_ERROR_ENOSPC &&
+        blk_get_on_error(s->conf.blk, 0) != BLOCKDEV_ON_ERROR_REPORT) {
         error_setg(errp, "Device doesn't support drive option werror");
         return;
     }
@@ -691,7 +721,7 @@ static void scsi_generic_realize(SCSIDevice *s, Error **errp)
         return;
     }
     if (!blkconf_apply_backend_options(&s->conf,
-                                       blk_is_read_only(s->conf.blk),
+                                       !blk_supports_write_perm(s->conf.blk),
                                        true, errp)) {
         return;
     }
@@ -725,6 +755,7 @@ static void scsi_generic_realize(SCSIDevice *s, Error **errp)
 
     /* Only used by scsi-block, but initialize it nevertheless to be clean.  */
     s->default_scsi_version = -1;
+    s->io_timeout = DEFAULT_IO_TIMEOUT;
     scsi_generic_read_device_inquiry(s);
 }
 
@@ -748,6 +779,8 @@ static SCSIRequest *scsi_new_request(SCSIDevice *d, uint32_t tag, uint32_t lun,
 static Property scsi_generic_properties[] = {
     DEFINE_PROP_DRIVE("drive", SCSIDevice, conf.blk),
     DEFINE_PROP_BOOL("share-rw", SCSIDevice, conf.share_rw, false),
+    DEFINE_PROP_UINT32("io_timeout", SCSIDevice, io_timeout,
+                       DEFAULT_IO_TIMEOUT),
     DEFINE_PROP_END_OF_LIST(),
 };
 

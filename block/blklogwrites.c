@@ -157,19 +157,17 @@ static int blk_log_writes_open(BlockDriverState *bs, QDict *options, int flags,
     /* Open the file */
     bs->file = bdrv_open_child(NULL, options, "file", bs, &child_of_bds,
                                BDRV_CHILD_FILTERED | BDRV_CHILD_PRIMARY, false,
-                               &local_err);
-    if (local_err) {
+                               errp);
+    if (!bs->file) {
         ret = -EINVAL;
-        error_propagate(errp, local_err);
         goto fail;
     }
 
     /* Open the log file */
     s->log_file = bdrv_open_child(NULL, options, "log", bs, &child_of_bds,
-                                  BDRV_CHILD_METADATA, false, &local_err);
-    if (local_err) {
+                                  BDRV_CHILD_METADATA, false, errp);
+    if (!s->log_file) {
         ret = -EINVAL;
-        error_propagate(errp, local_err);
         goto fail;
     }
 
@@ -515,7 +513,6 @@ static BlockDriver bdrv_blk_log_writes = {
     .bdrv_co_pwrite_zeroes  = blk_log_writes_co_pwrite_zeroes,
     .bdrv_co_flush_to_disk  = blk_log_writes_co_flush_to_disk,
     .bdrv_co_pdiscard       = blk_log_writes_co_pdiscard,
-    .bdrv_co_block_status   = bdrv_co_block_status_from_file,
 
     .is_filter              = true,
     .strong_runtime_opts    = blk_log_writes_strong_runtime_opts,

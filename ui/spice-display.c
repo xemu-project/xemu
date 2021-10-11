@@ -388,7 +388,7 @@ void qemu_spice_display_switch(SimpleSpiceDisplay *ssd,
     SimpleSpiceUpdate *update;
     bool need_destroy;
 
-    if (surface && ssd->surface &&
+    if (ssd->surface &&
         surface_width(surface) == pixman_image_get_width(ssd->surface) &&
         surface_height(surface) == pixman_image_get_height(ssd->surface) &&
         surface_format(surface) == pixman_image_get_format(ssd->surface)) {
@@ -410,8 +410,8 @@ void qemu_spice_display_switch(SimpleSpiceDisplay *ssd,
 
     /* full mode switch */
     trace_qemu_spice_display_surface(ssd->qxl.id,
-                                     surface ? surface_width(surface)  : 0,
-                                     surface ? surface_height(surface) : 0,
+                                     surface_width(surface),
+                                     surface_height(surface),
                                      false);
 
     memset(&ssd->dirty, 0, sizeof(ssd->dirty));
@@ -561,6 +561,10 @@ static void interface_release_resource(QXLInstance *sin,
     SimpleSpiceCursor *cursor;
     QXLCommandExt *ext;
 
+    if (!rext.info) {
+        return;
+    }
+
     ext = (void *)(intptr_t)(rext.info->id);
     switch (ext->cmd.type) {
     case QXL_CMD_DRAW:
@@ -672,30 +676,19 @@ static int interface_client_monitors_config(QXLInstance *sin,
         return 1;
     }
 
-    memset(&info, 0, sizeof(info));
+    info = *dpy_get_ui_info(ssd->dcl.con);
 
-    if (mc->num_of_monitors == 1) {
-        /*
-         * New spice-server version which filters the list of monitors
-         * to only include those that belong to our display channel.
-         *
-         * single-head configuration (where filtering doesn't matter)
-         * takes this code path too.
-         */
-        info.width  = mc->monitors[0].width;
-        info.height = mc->monitors[0].height;
-    } else {
-        /*
-         * Old spice-server which gives us all monitors, so we have to
-         * figure ourself which entry we need.  Array index is the
-         * channel_id, which is the qemu console index, see
-         * qemu_spice_add_display_interface().
-         */
-        head = qemu_console_get_index(ssd->dcl.con);
-        if (mc->num_of_monitors > head) {
-            info.width  = mc->monitors[head].width;
-            info.height = mc->monitors[head].height;
+    head = qemu_console_get_index(ssd->dcl.con);
+    if (mc->num_of_monitors > head) {
+        info.width  = mc->monitors[head].width;
+        info.height = mc->monitors[head].height;
+#if SPICE_SERVER_VERSION >= 0x000e04 /* release 0.14.4 */
+        if (mc->flags & VD_AGENT_CONFIG_MONITORS_FLAG_PHYSICAL_SIZE) {
+            VDAgentMonitorMM *mm = (void *)&mc->monitors[mc->num_of_monitors];
+            info.width_mm = mm[head].width;
+            info.height_mm = mm[head].height;
         }
+#endif
     }
 
     trace_qemu_spice_ui_info(ssd->qxl.id, info.width, info.height);
@@ -837,6 +830,7 @@ static void qemu_spice_gl_unblock_bh(void *opaque)
     SimpleSpiceDisplay *ssd = opaque;
 
     qemu_spice_gl_block(ssd, false);
+    graphic_hw_gl_flushed(ssd->dcl.con);
 }
 
 static void qemu_spice_gl_block_timer(void *opaque)
@@ -856,6 +850,7 @@ static void spice_gl_refresh(DisplayChangeListener *dcl)
     graphic_hw_update(dcl->con);
     if (ssd->gl_updates && ssd->have_surface) {
         qemu_spice_gl_block(ssd, true);
+        glFlush();
         cookie = (uintptr_t)qxl_cookie_new(QXL_COOKIE_TYPE_GL_DRAW_DONE, 0);
         spice_qxl_gl_draw_async(&ssd->qxl, 0, 0,
                                 surface_width(ssd->ds),
@@ -1097,6 +1092,7 @@ static void qemu_spice_gl_update(DisplayChangeListener *dcl,
 
     trace_qemu_spice_gl_update(ssd->qxl.id, w, h, x, y);
     qemu_spice_gl_block(ssd, true);
+    glFlush();
     cookie = (uintptr_t)qxl_cookie_new(QXL_COOKIE_TYPE_GL_DRAW_DONE, 0);
     spice_qxl_gl_draw_async(&ssd->qxl, x, y, w, h, cookie);
 }
@@ -1113,7 +1109,6 @@ static const DisplayChangeListenerOps display_listener_gl_ops = {
     .dpy_gl_ctx_create       = qemu_spice_gl_create_context,
     .dpy_gl_ctx_destroy      = qemu_egl_destroy_context,
     .dpy_gl_ctx_make_current = qemu_egl_make_context_current,
-    .dpy_gl_ctx_get_current  = qemu_egl_get_current_context,
 
     .dpy_gl_scanout_disable  = qemu_spice_gl_scanout_disable,
     .dpy_gl_scanout_texture  = qemu_spice_gl_scanout_texture,
@@ -1199,4 +1194,6 @@ void qemu_spice_display_init(void)
         }
         qemu_spice_display_init_one(con);
     }
+
+    qemu_spice_display_init_done();
 }

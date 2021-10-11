@@ -92,9 +92,19 @@ static int command(BlockBackend *blk, const cmdinfo_t *ct, int argc,
         return -EINVAL;
     }
 
-    /* Request additional permissions if necessary for this command. The caller
+    /*
+     * Request additional permissions if necessary for this command. The caller
      * is responsible for restoring the original permissions afterwards if this
-     * is what it wants. */
+     * is what it wants.
+     *
+     * Coverity thinks that blk may be NULL in the following if condition. It's
+     * not so: in init_check_command() we fail if blk is NULL for command with
+     * both CMD_FLAG_GLOBAL and CMD_NOFILE_OK flags unset. And in
+     * qemuio_add_command() we assert that command with non-zero .perm field
+     * doesn't set this flags. So, the following assertion is to silence
+     * Coverity:
+     */
+    assert(blk || !ct->perm);
     if (ct->perm && blk_is_available(blk)) {
         uint64_t orig_perm, orig_shared_perm;
         blk_get_perm(blk, &orig_perm, &orig_shared_perm);
@@ -1698,13 +1708,42 @@ static const cmdinfo_t flush_cmd = {
     .oneline    = "flush all in-core file state to disk",
 };
 
+static int truncate_f(BlockBackend *blk, int argc, char **argv);
+static const cmdinfo_t truncate_cmd = {
+    .name       = "truncate",
+    .altname    = "t",
+    .cfunc      = truncate_f,
+    .perm       = BLK_PERM_WRITE | BLK_PERM_RESIZE,
+    .argmin     = 1,
+    .argmax     = 3,
+    .args       = "[-m prealloc_mode] off",
+    .oneline    = "truncates the current file at the given offset",
+};
+
 static int truncate_f(BlockBackend *blk, int argc, char **argv)
 {
     Error *local_err = NULL;
     int64_t offset;
-    int ret;
+    int c, ret;
+    PreallocMode prealloc = PREALLOC_MODE_OFF;
 
-    offset = cvtnum(argv[1]);
+    while ((c = getopt(argc, argv, "m:")) != -1) {
+        switch (c) {
+        case 'm':
+            prealloc = qapi_enum_parse(&PreallocMode_lookup, optarg,
+                                       PREALLOC_MODE__MAX, NULL);
+            if (prealloc == PREALLOC_MODE__MAX) {
+                error_report("Invalid preallocation mode '%s'", optarg);
+                return -EINVAL;
+            }
+            break;
+        default:
+            qemuio_command_usage(&truncate_cmd);
+            return -EINVAL;
+        }
+    }
+
+    offset = cvtnum(argv[optind]);
     if (offset < 0) {
         print_cvtnum_err(offset, argv[1]);
         return offset;
@@ -1715,7 +1754,7 @@ static int truncate_f(BlockBackend *blk, int argc, char **argv)
      * exact=true.  It is better to err on the "emit more errors" side
      * than to be overly permissive.
      */
-    ret = blk_truncate(blk, offset, false, PREALLOC_MODE_OFF, 0, &local_err);
+    ret = blk_truncate(blk, offset, false, prealloc, 0, &local_err);
     if (ret < 0) {
         error_report_err(local_err);
         return ret;
@@ -1723,17 +1762,6 @@ static int truncate_f(BlockBackend *blk, int argc, char **argv)
 
     return 0;
 }
-
-static const cmdinfo_t truncate_cmd = {
-    .name       = "truncate",
-    .altname    = "t",
-    .cfunc      = truncate_f,
-    .perm       = BLK_PERM_WRITE | BLK_PERM_RESIZE,
-    .argmin     = 1,
-    .argmax     = 1,
-    .args       = "off",
-    .oneline    = "truncates the current file at the given offset",
-};
 
 static int length_f(BlockBackend *blk, int argc, char **argv)
 {
@@ -2088,8 +2116,6 @@ static int reopen_f(BlockBackend *blk, int argc, char **argv)
     bool writethrough = !blk_enable_write_cache(blk);
     bool has_rw_option = false;
     bool has_cache_option = false;
-
-    BlockReopenQueue *brq;
     Error *local_err = NULL;
 
     while ((c = getopt(argc, argv, "c:o:rw")) != -1) {
@@ -2182,10 +2208,7 @@ static int reopen_f(BlockBackend *blk, int argc, char **argv)
         qdict_put_bool(opts, BDRV_OPT_CACHE_NO_FLUSH, flags & BDRV_O_NO_FLUSH);
     }
 
-    bdrv_subtree_drained_begin(bs);
-    brq = bdrv_reopen_queue(NULL, bs, opts, true);
-    bdrv_reopen_multiple(brq, &local_err);
-    bdrv_subtree_drained_end(bs);
+    bdrv_reopen(bs, opts, true, &local_err);
 
     if (local_err) {
         error_report_err(local_err);
@@ -2383,14 +2406,7 @@ static const cmdinfo_t sleep_cmd = {
 
 static void help_oneline(const char *cmd, const cmdinfo_t *ct)
 {
-    if (cmd) {
-        printf("%s ", cmd);
-    } else {
-        printf("%s ", ct->name);
-        if (ct->altname) {
-            printf("(or %s) ", ct->altname);
-        }
-    }
+    printf("%s ", cmd);
 
     if (ct->args) {
         printf("%s ", ct->args);
@@ -2420,7 +2436,7 @@ static int help_f(BlockBackend *blk, int argc, char **argv)
 {
     const cmdinfo_t *ct;
 
-    if (argc == 1) {
+    if (argc < 2) {
         help_all();
         return 0;
     }
@@ -2446,9 +2462,12 @@ static const cmdinfo_t help_cmd = {
     .oneline    = "help for one or all commands",
 };
 
+/*
+ * Called with aio context of blk acquired. Or with qemu_get_aio_context()
+ * context acquired if blk is NULL.
+ */
 int qemuio_command(BlockBackend *blk, const char *cmd)
 {
-    AioContext *ctx;
     char *input;
     const cmdinfo_t *ct;
     char **v;
@@ -2460,10 +2479,7 @@ int qemuio_command(BlockBackend *blk, const char *cmd)
     if (c) {
         ct = find_command(v[0]);
         if (ct) {
-            ctx = blk ? blk_get_aio_context(blk) : qemu_get_aio_context();
-            aio_context_acquire(ctx);
             ret = command(blk, ct, c, v);
-            aio_context_release(ctx);
         } else {
             fprintf(stderr, "command \"%s\" not found\n", v[0]);
             ret = -EINVAL;

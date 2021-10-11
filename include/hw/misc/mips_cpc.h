@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -21,6 +21,7 @@
 #define MIPS_CPC_H
 
 #include "hw/sysbus.h"
+#include "qom/object.h"
 
 #define CPC_ADDRSPACE_SZ    0x6000
 
@@ -34,9 +35,9 @@
 #define CPC_VP_RUNNING_OFS  0x30
 
 #define TYPE_MIPS_CPC "mips-cpc"
-#define MIPS_CPC(obj) OBJECT_CHECK(MIPSCPCState, (obj), TYPE_MIPS_CPC)
+OBJECT_DECLARE_SIMPLE_TYPE(MIPSCPCState, MIPS_CPC)
 
-typedef struct MIPSCPCState {
+struct MIPSCPCState {
     SysBusDevice parent_obj;
 
     uint32_t num_vp;
@@ -44,6 +45,6 @@ typedef struct MIPSCPCState {
 
     MemoryRegion mr;
     uint64_t vp_running; /* Indicates which VPs are in the run state */
-} MIPSCPCState;
+};
 
 #endif /* MIPS_CPC_H */

@@ -20,8 +20,7 @@
 #include <sys/syscall.h>
 #endif
 
-struct sigfd_compat_info
-{
+struct sigfd_compat_info {
     sigset_t mask;
     int fd;
 };
@@ -53,8 +52,9 @@ static void *sigwait_compat(void *opaque)
 
                 len = write(info->fd, (char *)&buffer + offset,
                             sizeof(buffer) - offset);
-                if (len == -1 && errno == EINTR)
+                if (len == -1 && errno == EINTR) {
                     continue;
+                }
 
                 if (len <= 0) {
                     return NULL;
@@ -72,14 +72,10 @@ static int qemu_signalfd_compat(const sigset_t *mask)
     QemuThread thread;
     int fds[2];
 
-    info = malloc(sizeof(*info));
-    if (info == NULL) {
-        errno = ENOMEM;
-        return -1;
-    }
+    info = g_malloc(sizeof(*info));
 
     if (pipe(fds) == -1) {
-        free(info);
+        g_free(info);
         return -1;
     }
 

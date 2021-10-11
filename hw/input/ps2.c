@@ -33,12 +33,6 @@
 
 #include "trace.h"
 
-/* debug PC keyboard */
-//#define DEBUG_KBD
-
-/* debug PC keyboard : only mouse */
-//#define DEBUG_MOUSE
-
 /* Keyboard Commands */
 #define KBD_CMD_SET_LEDS	0xED	/* Set keyboard leds */
 #define KBD_CMD_ECHO     	0xEE
@@ -218,8 +212,12 @@ void ps2_raise_irq(PS2State *s)
 
 void ps2_queue(PS2State *s, int b)
 {
+    if (PS2_QUEUE_SIZE - s->queue.count < 1) {
+        return;
+    }
+
     ps2_queue_noirq(s, b);
-    s->update_irq(s->update_arg, 1);
+    ps2_raise_irq(s);
 }
 
 void ps2_queue_2(PS2State *s, int b1, int b2)
@@ -230,7 +228,7 @@ void ps2_queue_2(PS2State *s, int b1, int b2)
 
     ps2_queue_noirq(s, b1);
     ps2_queue_noirq(s, b2);
-    s->update_irq(s->update_arg, 1);
+    ps2_raise_irq(s);
 }
 
 void ps2_queue_3(PS2State *s, int b1, int b2, int b3)
@@ -242,7 +240,7 @@ void ps2_queue_3(PS2State *s, int b1, int b2, int b3)
     ps2_queue_noirq(s, b1);
     ps2_queue_noirq(s, b2);
     ps2_queue_noirq(s, b3);
-    s->update_irq(s->update_arg, 1);
+    ps2_raise_irq(s);
 }
 
 void ps2_queue_4(PS2State *s, int b1, int b2, int b3, int b4)
@@ -255,7 +253,7 @@ void ps2_queue_4(PS2State *s, int b1, int b2, int b3, int b4)
     ps2_queue_noirq(s, b2);
     ps2_queue_noirq(s, b3);
     ps2_queue_noirq(s, b4);
-    s->update_irq(s->update_arg, 1);
+    ps2_raise_irq(s);
 }
 
 /* keycode is the untranslated scancode in the current scancode set. */
@@ -299,7 +297,8 @@ static void ps2_keyboard_event(DeviceState *dev, QemuConsole *src,
     qcode = qemu_input_key_value_to_qcode(key->key);
 
     mod = ps2_modifier_bit(qcode);
-    trace_ps2_keyboard_event(s, qcode, key->down, mod, s->modifiers);
+    trace_ps2_keyboard_event(s, qcode, key->down, mod,
+                             s->modifiers, s->scancode_set, s->translate);
     if (key->down) {
         s->modifiers |= mod;
     } else {
@@ -521,7 +520,9 @@ uint32_t ps2_read_data(PS2State *s)
         /* reading deasserts IRQ */
         s->update_irq(s->update_arg, 0);
         /* reassert IRQs if data left */
-        s->update_irq(s->update_arg, q->count != 0);
+        if (q->count) {
+            s->update_irq(s->update_arg, 1);
+        }
     }
     return val;
 }
@@ -651,7 +652,8 @@ void ps2_keyboard_set_translation(void *opaque, int mode)
 
 static int ps2_mouse_send_packet(PS2MouseState *s)
 {
-    const int needed = 3 + (s->mouse_type - 2);
+    /* IMPS/2 and IMEX send 4 bytes, PS2 sends 3 bytes */
+    const int needed = s->mouse_type ? 4 : 3;
     unsigned int b;
     int dx1, dy1, dz1;
 
@@ -790,9 +792,6 @@ void ps2_write_mouse(void *opaque, int val)
     PS2MouseState *s = (PS2MouseState *)opaque;
 
     trace_ps2_write_mouse(opaque, val);
-#ifdef DEBUG_MOUSE
-    printf("kbd: write mouse 0x%02x\n", val);
-#endif
     switch(s->common.write_cmd) {
     default:
     case -1:

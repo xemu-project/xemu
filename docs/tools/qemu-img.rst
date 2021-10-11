@@ -188,6 +188,10 @@ Parameters to convert subcommand:
   allocated target image depending on the host support for getting allocation
   information.
 
+.. option:: -r
+
+   Rate limit for the convert process
+
 .. option:: --salvage
 
   Try to ignore I/O errors when reading.  Unless in quiet mode (``-q``), errors
@@ -349,7 +353,7 @@ Command description:
   state after (the attempt at) repairing it. That is, a successful ``-r all``
   will yield the exit code 0, independently of the image state before.
 
-.. option:: commit [--object OBJECTDEF] [--image-opts] [-q] [-f FMT] [-t CACHE] [-b BASE] [-d] [-p] FILENAME
+.. option:: commit [--object OBJECTDEF] [--image-opts] [-q] [-f FMT] [-t CACHE] [-b BASE] [-r RATE_LIMIT] [-d] [-p] FILENAME
 
   Commit the changes recorded in *FILENAME* in its base image or backing file.
   If the backing file is smaller than the snapshot, then the backing file will be
@@ -370,6 +374,8 @@ Command description:
   all images between *BASE* and the top image will be invalid and may return
   garbage data when read. For this reason, ``-b`` implies ``-d`` (so that
   the top image stays valid).
+
+  The rate limit for the commit process is specified by ``-r``.
 
 .. option:: compare [--object OBJECTDEF] [--image-opts] [-f FMT] [-F FMT] [-T SRC_CACHE] [-p] [-q] [-s] [-U] FILENAME1 FILENAME2
 
@@ -398,7 +404,7 @@ Command description:
   The following table sumarizes all exit codes of the compare subcommand:
 
   0
-    Images are identical
+    Images are identical (or requested help was printed)
   1
     Images differ
   2
@@ -408,7 +414,7 @@ Command description:
   4
     Error on reading data
 
-.. option:: convert [--object OBJECTDEF] [--image-opts] [--target-image-opts] [--target-is-zero] [--bitmaps] [-U] [-C] [-c] [-p] [-q] [-n] [-f FMT] [-t CACHE] [-T SRC_CACHE] [-O OUTPUT_FMT] [-B BACKING_FILE] [-o OPTIONS] [-l SNAPSHOT_PARAM] [-S SPARSE_SIZE] [-m NUM_COROUTINES] [-W] FILENAME [FILENAME2 [...]] OUTPUT_FILENAME
+.. option:: convert [--object OBJECTDEF] [--image-opts] [--target-image-opts] [--target-is-zero] [--bitmaps [--skip-broken-bitmaps]] [-U] [-C] [-c] [-p] [-q] [-n] [-f FMT] [-t CACHE] [-T SRC_CACHE] [-O OUTPUT_FMT] [-B BACKING_FILE] [-o OPTIONS] [-l SNAPSHOT_PARAM] [-S SPARSE_SIZE] [-r RATE_LIMIT] [-m NUM_COROUTINES] [-W] FILENAME [FILENAME2 [...]] OUTPUT_FILENAME
 
   Convert the disk image *FILENAME* or a snapshot *SNAPSHOT_PARAM*
   to disk image *OUTPUT_FILENAME* using format *OUTPUT_FMT*. It can
@@ -449,6 +455,12 @@ Command description:
 
   *NUM_COROUTINES* specifies how many coroutines work in parallel during
   the convert process (defaults to 8).
+
+  Use of ``--bitmaps`` requests that any persistent bitmaps present in
+  the original are also copied to the destination.  If any bitmap is
+  inconsistent in the source, the conversion will fail unless
+  ``--skip-broken-bitmaps`` is also specified to copy only the
+  consistent bitmaps.
 
 .. option:: create [--object OBJECTDEF] [-q] [-f FMT] [-b BACKING_FILE] [-F BACKING_FMT] [-u] [-o OPTIONS] FILENAME [SIZE]
 
@@ -587,13 +599,16 @@ Command description:
   the ``start``, ``length``, ``offset`` fields;
   it will also include other more specific information:
 
-  - whether the sectors contain actual data or not (boolean field ``data``;
-    if false, the sectors are either unallocated or stored as optimized
-    all-zero clusters);
-  - whether the data is known to read as zero (boolean field ``zero``);
-  - in order to make the output shorter, the target file is expressed as
-    a ``depth``; for example, a depth of 2 refers to the backing file
-    of the backing file of *FILENAME*.
+  - boolean field ``data``: true if the sectors contain actual data,
+    false if the sectors are either unallocated or stored as optimized
+    all-zero clusters
+  - boolean field ``zero``: true if the data is known to read as zero
+  - boolean field ``present``: true if the data belongs to the backing
+    chain, false if rebasing the backing chain onto a deeper file
+    would pick up data from the deeper file;
+  - integer field ``depth``: the depth within the backing chain at
+    which the data was resolved; for example, a depth of 2 refers to
+    the backing file of the backing file of *FILENAME*.
 
   In JSON format, the ``offset`` field is optional; it is absent in
   cases where ``human`` format would omit the entry or exit with an error.
@@ -859,6 +874,37 @@ Supported image file formats:
     couldn't be changed to NOCOW by setting ``nocow=on``. One can
     issue ``lsattr filename`` to check if the NOCOW flag is set or not
     (Capital 'C' is NOCOW flag).
+
+  ``data_file``
+    Filename where all guest data will be stored. If this option is used,
+    the qcow2 file will only contain the image's metadata.
+
+    Note: Data loss will occur if the given filename already exists when
+    using this option with ``qemu-img create`` since ``qemu-img`` will create
+    the data file anew, overwriting the file's original contents. To simply
+    update the reference to point to the given pre-existing file, use
+    ``qemu-img amend``.
+
+  ``data_file_raw``
+    If this option is set to ``on``, QEMU will always keep the external data
+    file consistent as a standalone read-only raw image.
+
+    It does this by forwarding all write accesses to the qcow2 file through to
+    the raw data file, including their offsets. Therefore, data that is visible
+    on the qcow2 node (i.e., to the guest) at some offset is visible at the same
+    offset in the raw data file. This results in a read-only raw image. Writes
+    that bypass the qcow2 metadata may corrupt the qcow2 metadata because the
+    out-of-band writes may result in the metadata falling out of sync with the
+    raw image.
+
+    If this option is ``off``, QEMU will use the data file to store data in an
+    arbitrary manner. The file’s content will not make sense without the
+    accompanying qcow2 metadata. Where data is written will have no relation to
+    its offset as seen by the guest, and some writes (specifically zero writes)
+    may not be forwarded to the data file at all, but will only be handled by
+    modifying qcow2 metadata.
+
+    This option can only be enabled if ``data_file`` is set.
 
 ``Other``
 

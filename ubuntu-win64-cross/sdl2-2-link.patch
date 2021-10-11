@@ -1,0 +1,17 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b9b9eb62..5d92e60d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1636,10 +1636,10 @@ elseif(WINDOWS)
+   file(GLOB VERSION_SOURCES ${SDL2_SOURCE_DIR}/src/main/windows/*.rc)
+   file(GLOB SDLMAIN_SOURCES ${SDL2_SOURCE_DIR}/src/main/windows/*.c)
+   if(MINGW OR CYGWIN)
+-    list(APPEND EXTRA_LIBS mingw32)
++    list(APPEND EXTRA_LIBS SDL2main mingw32)
+     list(APPEND EXTRA_LDFLAGS "-mwindows")
+     set(SDL_CFLAGS "${SDL_CFLAGS} -Dmain=SDL_main")
+-    list(APPEND SDL_LIBS "-lmingw32" "-lSDL2main" "-mwindows")
++    list(APPEND SDL_LIBS "-lSDL2main" "-lmingw32" "-mwindows")
+   endif()
+ 
+ elseif(APPLE)

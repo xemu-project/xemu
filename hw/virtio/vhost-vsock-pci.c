@@ -17,6 +17,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/virtio/vhost-vsock.h"
 #include "qemu/module.h"
+#include "qom/object.h"
 
 typedef struct VHostVSockPCI VHostVSockPCI;
 
@@ -24,8 +25,8 @@ typedef struct VHostVSockPCI VHostVSockPCI;
  * vhost-vsock-pci: This extends VirtioPCIProxy.
  */
 #define TYPE_VHOST_VSOCK_PCI "vhost-vsock-pci-base"
-#define VHOST_VSOCK_PCI(obj) \
-        OBJECT_CHECK(VHostVSockPCI, (obj), TYPE_VHOST_VSOCK_PCI)
+DECLARE_INSTANCE_CHECKER(VHostVSockPCI, VHOST_VSOCK_PCI,
+                         TYPE_VHOST_VSOCK_PCI)
 
 struct VHostVSockPCI {
     VirtIOPCIProxy parent_obj;
@@ -43,6 +44,15 @@ static void vhost_vsock_pci_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
 {
     VHostVSockPCI *dev = VHOST_VSOCK_PCI(vpci_dev);
     DeviceState *vdev = DEVICE(&dev->vdev);
+    VirtIODevice *virtio_dev = VIRTIO_DEVICE(vdev);
+
+    /*
+     * To avoid migration issues, we force virtio version 1 only when
+     * legacy check is enabled in the new machine types (>= 5.1).
+     */
+    if (!virtio_legacy_check_disabled(virtio_dev)) {
+        virtio_pci_force_virtio_1(vpci_dev);
+    }
 
     qdev_realize(vdev, BUS(&vpci_dev->bus), errp);
 }
@@ -72,7 +82,6 @@ static void vhost_vsock_pci_instance_init(Object *obj)
 static const VirtioPCIDeviceTypeInfo vhost_vsock_pci_info = {
     .base_name             = TYPE_VHOST_VSOCK_PCI,
     .generic_name          = "vhost-vsock-pci",
-    .transitional_name     = "vhost-vsock-pci-transitional",
     .non_transitional_name = "vhost-vsock-pci-non-transitional",
     .instance_size = sizeof(VHostVSockPCI),
     .instance_init = vhost_vsock_pci_instance_init,

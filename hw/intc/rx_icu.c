@@ -81,8 +81,8 @@ static void rxicu_request(RXICUState *icu, int n_IRQ)
     int enable;
 
     enable = icu->ier[n_IRQ / 8] & (1 << (n_IRQ & 7));
-    if (n_IRQ > 0 && enable != 0 && atomic_read(&icu->req_irq) < 0) {
-        atomic_set(&icu->req_irq, n_IRQ);
+    if (n_IRQ > 0 && enable != 0 && qatomic_read(&icu->req_irq) < 0) {
+        qatomic_set(&icu->req_irq, n_IRQ);
         set_irq(icu, n_IRQ, rxicu_level(icu, n_IRQ));
     }
 }
@@ -124,10 +124,10 @@ static void rxicu_set_irq(void *opaque, int n_IRQ, int level)
     }
     if (issue == 0 && src->sense == TRG_LEVEL) {
         icu->ir[n_IRQ] = 0;
-        if (atomic_read(&icu->req_irq) == n_IRQ) {
+        if (qatomic_read(&icu->req_irq) == n_IRQ) {
             /* clear request */
             set_irq(icu, n_IRQ, 0);
-            atomic_set(&icu->req_irq, -1);
+            qatomic_set(&icu->req_irq, -1);
         }
         return;
     }
@@ -144,11 +144,11 @@ static void rxicu_ack_irq(void *opaque, int no, int level)
     int n_IRQ;
     int max_pri;
 
-    n_IRQ = atomic_read(&icu->req_irq);
+    n_IRQ = qatomic_read(&icu->req_irq);
     if (n_IRQ < 0) {
         return;
     }
-    atomic_set(&icu->req_irq, -1);
+    qatomic_set(&icu->req_irq, -1);
     if (icu->src[n_IRQ].sense != TRG_LEVEL) {
         icu->ir[n_IRQ] = 0;
     }
@@ -300,22 +300,20 @@ static const MemoryRegionOps icu_ops = {
 static void rxicu_realize(DeviceState *dev, Error **errp)
 {
     RXICUState *icu = RX_ICU(dev);
-    int i, j;
+    int i;
 
     if (icu->init_sense == NULL) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "rx_icu: trigger-level property must be set.");
         return;
     }
-    for (i = j = 0; i < NR_IRQS; i++) {
-        if (icu->init_sense[j] == i) {
-            icu->src[i].sense = TRG_LEVEL;
-            if (j < icu->nr_sense) {
-                j++;
-            }
-        } else {
-            icu->src[i].sense = TRG_PEDGE;
-        }
+
+    for (i = 0; i < NR_IRQS; i++) {
+        icu->src[i].sense = TRG_PEDGE;
+    }
+    for (i = 0; i < icu->nr_sense; i++) {
+        uint8_t irqno = icu->init_sense[i];
+        icu->src[irqno].sense = TRG_LEVEL;
     }
     icu->req_irq = -1;
 }

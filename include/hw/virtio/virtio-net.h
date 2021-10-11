@@ -19,10 +19,12 @@
 #include "hw/virtio/virtio.h"
 #include "net/announce.h"
 #include "qemu/option_int.h"
+#include "qom/object.h"
+
+#include "ebpf/ebpf_rss.h"
 
 #define TYPE_VIRTIO_NET "virtio-net-device"
-#define VIRTIO_NET(obj) \
-        OBJECT_CHECK(VirtIONet, (obj), TYPE_VIRTIO_NET)
+OBJECT_DECLARE_SIMPLE_TYPE(VirtIONet, VIRTIO_NET)
 
 #define TX_TIMER_INTERVAL 150000 /* 150 us */
 
@@ -109,7 +111,6 @@ typedef struct VirtioNetRscSeg {
     NetClientState *nc;
 } VirtioNetRscSeg;
 
-typedef struct VirtIONet VirtIONet;
 
 /* Chain is divided by protocol(ipv4/v6) and NetClientInfo */
 typedef struct VirtioNetRscChain {
@@ -131,6 +132,7 @@ typedef struct VirtioNetRscChain {
 
 typedef struct VirtioNetRssData {
     bool    enabled;
+    bool    enabled_software_rss;
     bool    redirect;
     bool    populate_hash;
     uint32_t hash_types;
@@ -203,18 +205,14 @@ struct VirtIONet {
     AnnounceTimer announce_timer;
     bool needs_vnet_hdr_swap;
     bool mtu_bypass_backend;
-    QemuOpts *primary_device_opts;
-    QDict *primary_device_dict;
-    DeviceState *primary_dev;
-    BusState *primary_bus;
-    char *primary_device_id;
-    char *standby_id;
-    bool primary_should_be_hidden;
+    /* primary failover device is hidden*/
+    bool failover_primary_hidden;
     bool failover;
     DeviceListener primary_listener;
     Notifier migration_state;
     VirtioNetRssData rss_data;
     struct NetRxPkt *rx_pkt;
+    struct EBPFRSSContext ebpf_rss;
 };
 
 void virtio_net_set_netclient_name(VirtIONet *n, const char *name,

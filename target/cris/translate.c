@@ -7,7 +7,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -37,7 +37,6 @@
 
 #include "exec/helper-gen.h"
 
-#include "trace-tcg.h"
 #include "exec/log.h"
 
 
@@ -52,11 +51,17 @@
 #define BUG() (gen_BUG(dc, __FILE__, __LINE__))
 #define BUG_ON(x) ({if (x) BUG();})
 
-/* is_jmp field values */
-#define DISAS_JUMP    DISAS_TARGET_0 /* only pc was modified dynamically */
-#define DISAS_UPDATE  DISAS_TARGET_1 /* cpu state was modified dynamically */
-#define DISAS_TB_JUMP DISAS_TARGET_2 /* only pc was modified statically */
-#define DISAS_SWI     DISAS_TARGET_3
+/*
+ * Target-specific is_jmp field values
+ */
+/* Only pc was modified dynamically */
+#define DISAS_JUMP          DISAS_TARGET_0
+/* Cpu state was modified dynamically, including pc */
+#define DISAS_UPDATE        DISAS_TARGET_1
+/* Cpu state was modified dynamically, excluding pc -- use npc */
+#define DISAS_UPDATE_NEXT   DISAS_TARGET_2
+/* PC update for delayed branch, see cpustate_changed otherwise */
+#define DISAS_DBRANCH       DISAS_TARGET_3
 
 /* Used by the decoder.  */
 #define EXTRACT_FIELD(src, start, end) \
@@ -85,6 +90,8 @@ static TCGv env_pc;
 
 /* This is the state at translation time.  */
 typedef struct DisasContext {
+    DisasContextBase base;
+
     CRISCPU *cpu;
     target_ulong pc, ppc;
 
@@ -112,8 +119,6 @@ typedef struct DisasContext {
 
     int cc_x_uptodate;  /* 1 - ccs, 2 - known | X_FLAG. 0 not up-to-date.  */
     int flags_uptodate; /* Whether or not $ccs is up-to-date.  */
-    int flagx_known; /* Whether or not flags_x has the x flag known at
-                translation time.  */
     int flags_x;
 
     int clear_x; /* Clear x after this insn?  */
@@ -121,7 +126,6 @@ typedef struct DisasContext {
     int clear_locked_irq; /* Clear the irq lockout.  */
     int cpustate_changed;
     unsigned int tb_flags; /* tb dependent flags.  */
-    int is_jmp;
 
 #define JMP_NOJMP     0
 #define JMP_DIRECT    1
@@ -131,9 +135,6 @@ typedef struct DisasContext {
     uint32_t jmp_pc;
 
     int delayed_branch;
-
-    struct TranslationBlock *tb;
-    int singlestep_enabled;
 } DisasContext;
 
 static void gen_BUG(DisasContext *dc, const char *file, int line)
@@ -141,14 +142,15 @@ static void gen_BUG(DisasContext *dc, const char *file, int line)
     cpu_abort(CPU(dc->cpu), "%s:%d pc=%x\n", file, line, dc->pc);
 }
 
-static const char *regnames_v32[] =
+static const char * const regnames_v32[] =
 {
     "$r0", "$r1", "$r2", "$r3",
     "$r4", "$r5", "$r6", "$r7",
     "$r8", "$r9", "$r10", "$r11",
     "$r12", "$r13", "$sp", "$acr",
 };
-static const char *pregnames_v32[] =
+
+static const char * const pregnames_v32[] =
 {
     "$bz", "$vr", "$pid", "$srs",
     "$wz", "$exs", "$eda", "$mof",
@@ -157,7 +159,7 @@ static const char *pregnames_v32[] =
 };
 
 /* We need this table to handle preg-moves with implicit width.  */
-static int preg_sizes[] = {
+static const int preg_sizes[] = {
     1, /* bz.  */
     1, /* vr.  */
     4, /* pid.  */
@@ -172,14 +174,20 @@ static int preg_sizes[] = {
     tcg_gen_ld_tl(tn, cpu_env, offsetof(CPUCRISState, member))
 #define t_gen_mov_env_TN(member, tn) \
     tcg_gen_st_tl(tn, cpu_env, offsetof(CPUCRISState, member))
+#define t_gen_movi_env_TN(member, c) \
+    do { \
+        TCGv tc = tcg_const_tl(c); \
+        t_gen_mov_env_TN(member, tc); \
+        tcg_temp_free(tc); \
+    } while (0)
 
 static inline void t_gen_mov_TN_preg(TCGv tn, int r)
 {
     assert(r >= 0 && r <= 15);
     if (r == PR_BZ || r == PR_WZ || r == PR_DZ) {
-        tcg_gen_mov_tl(tn, tcg_const_tl(0));
+        tcg_gen_movi_tl(tn, 0);
     } else if (r == PR_VR) {
-        tcg_gen_mov_tl(tn, tcg_const_tl(32));
+        tcg_gen_movi_tl(tn, 32);
     } else {
         tcg_gen_mov_tl(tn, cpu_PR[r]);
     }
@@ -256,7 +264,7 @@ static int cris_fetch(CPUCRISState *env, DisasContext *dc, uint32_t addr,
 static void cris_lock_irq(DisasContext *dc)
 {
     dc->clear_locked_irq = 0;
-    t_gen_mov_env_TN(locked_irq, tcg_const_tl(1));
+    t_gen_movi_env_TN(locked_irq, 1);
 }
 
 static inline void t_gen_raise_exception(uint32_t index)
@@ -366,66 +374,26 @@ static inline void t_gen_add_flag(TCGv d, int flag)
 
 static inline void t_gen_addx_carry(DisasContext *dc, TCGv d)
 {
-    if (dc->flagx_known) {
-        if (dc->flags_x) {
-            TCGv c;
-            
-            c = tcg_temp_new();
-            t_gen_mov_TN_preg(c, PR_CCS);
-            /* C flag is already at bit 0.  */
-            tcg_gen_andi_tl(c, c, C_FLAG);
-            tcg_gen_add_tl(d, d, c);
-            tcg_temp_free(c);
-        }
-    } else {
-        TCGv x, c;
+    if (dc->flags_x) {
+        TCGv c = tcg_temp_new();
 
-        x = tcg_temp_new();
-        c = tcg_temp_new();
-        t_gen_mov_TN_preg(x, PR_CCS);
-        tcg_gen_mov_tl(c, x);
-
-        /* Propagate carry into d if X is set. Branch free.  */
+        t_gen_mov_TN_preg(c, PR_CCS);
+        /* C flag is already at bit 0.  */
         tcg_gen_andi_tl(c, c, C_FLAG);
-        tcg_gen_andi_tl(x, x, X_FLAG);
-        tcg_gen_shri_tl(x, x, 4);
-
-        tcg_gen_and_tl(x, x, c);
-        tcg_gen_add_tl(d, d, x);
-        tcg_temp_free(x);
+        tcg_gen_add_tl(d, d, c);
         tcg_temp_free(c);
     }
 }
 
 static inline void t_gen_subx_carry(DisasContext *dc, TCGv d)
 {
-    if (dc->flagx_known) {
-        if (dc->flags_x) {
-            TCGv c;
-            
-            c = tcg_temp_new();
-            t_gen_mov_TN_preg(c, PR_CCS);
-            /* C flag is already at bit 0.  */
-            tcg_gen_andi_tl(c, c, C_FLAG);
-            tcg_gen_sub_tl(d, d, c);
-            tcg_temp_free(c);
-        }
-    } else {
-        TCGv x, c;
+    if (dc->flags_x) {
+        TCGv c = tcg_temp_new();
 
-        x = tcg_temp_new();
-        c = tcg_temp_new();
-        t_gen_mov_TN_preg(x, PR_CCS);
-        tcg_gen_mov_tl(c, x);
-
-        /* Propagate carry into d if X is set. Branch free.  */
+        t_gen_mov_TN_preg(c, PR_CCS);
+        /* C flag is already at bit 0.  */
         tcg_gen_andi_tl(c, c, C_FLAG);
-        tcg_gen_andi_tl(x, x, X_FLAG);
-        tcg_gen_shri_tl(x, x, 4);
-
-        tcg_gen_and_tl(x, x, c);
-        tcg_gen_sub_tl(d, d, x);
-        tcg_temp_free(x);
+        tcg_gen_sub_tl(d, d, c);
         tcg_temp_free(c);
     }
 }
@@ -473,9 +441,9 @@ static inline void t_gen_swapw(TCGv d, TCGv s)
    ((T0 >> 5) & 0x02020202) |
    ((T0 >> 7) & 0x01010101));
  */
-static inline void t_gen_swapr(TCGv d, TCGv s)
+static void t_gen_swapr(TCGv d, TCGv s)
 {
-    struct {
+    static const struct {
         int shift; /* LSL when positive, LSR when negative.  */
         uint32_t mask;
     } bitrev[] = {
@@ -511,25 +479,9 @@ static inline void t_gen_swapr(TCGv d, TCGv s)
     tcg_temp_free(org_s);
 }
 
-static void t_gen_cc_jmp(TCGv pc_true, TCGv pc_false)
+static bool use_goto_tb(DisasContext *dc, target_ulong dest)
 {
-    TCGLabel *l1 = gen_new_label();
-
-    /* Conditional jmp.  */
-    tcg_gen_mov_tl(env_pc, pc_false);
-    tcg_gen_brcondi_tl(TCG_COND_EQ, env_btaken, 0, l1);
-    tcg_gen_mov_tl(env_pc, pc_true);
-    gen_set_label(l1);
-}
-
-static inline bool use_goto_tb(DisasContext *dc, target_ulong dest)
-{
-#ifndef CONFIG_USER_ONLY
-    return (dc->tb->pc & TARGET_PAGE_MASK) == (dest & TARGET_PAGE_MASK) ||
-           (dc->ppc & TARGET_PAGE_MASK) == (dest & TARGET_PAGE_MASK);
-#else
-    return true;
-#endif
+    return translator_use_goto_tb(&dc->base, dest);
 }
 
 static void gen_goto_tb(DisasContext *dc, int n, target_ulong dest)
@@ -537,20 +489,18 @@ static void gen_goto_tb(DisasContext *dc, int n, target_ulong dest)
     if (use_goto_tb(dc, dest)) {
         tcg_gen_goto_tb(n);
         tcg_gen_movi_tl(env_pc, dest);
-        tcg_gen_exit_tb(dc->tb, n);
+        tcg_gen_exit_tb(dc->base.tb, n);
     } else {
         tcg_gen_movi_tl(env_pc, dest);
-        tcg_gen_exit_tb(NULL, 0);
+        tcg_gen_lookup_and_goto_ptr();
     }
 }
 
 static inline void cris_clear_x_flag(DisasContext *dc)
 {
-    if (dc->flagx_known && dc->flags_x) {
+    if (dc->flags_x) {
         dc->flags_uptodate = 0;
     }
-
-    dc->flagx_known = 1;
     dc->flags_x = 0;
 }
 
@@ -635,12 +585,10 @@ static void cris_evaluate_flags(DisasContext *dc)
         break;
     }
 
-    if (dc->flagx_known) {
-        if (dc->flags_x) {
-            tcg_gen_ori_tl(cpu_PR[PR_CCS], cpu_PR[PR_CCS], X_FLAG);
-        } else if (dc->cc_op == CC_OP_FLAGS) {
-            tcg_gen_andi_tl(cpu_PR[PR_CCS], cpu_PR[PR_CCS], ~X_FLAG);
-        }
+    if (dc->flags_x) {
+        tcg_gen_ori_tl(cpu_PR[PR_CCS], cpu_PR[PR_CCS], X_FLAG);
+    } else if (dc->cc_op == CC_OP_FLAGS) {
+        tcg_gen_andi_tl(cpu_PR[PR_CCS], cpu_PR[PR_CCS], ~X_FLAG);
     }
     dc->flags_uptodate = 1;
 }
@@ -675,16 +623,11 @@ static void cris_update_cc_op(DisasContext *dc, int op, int size)
 static inline void cris_update_cc_x(DisasContext *dc)
 {
     /* Save the x flag state at the time of the cc snapshot.  */
-    if (dc->flagx_known) {
-        if (dc->cc_x_uptodate == (2 | dc->flags_x)) {
-            return;
-        }
-        tcg_gen_movi_tl(cc_x, dc->flags_x);
-        dc->cc_x_uptodate = 2 | dc->flags_x;
-    } else {
-        tcg_gen_andi_tl(cc_x, cpu_PR[PR_CCS], X_FLAG);
-        dc->cc_x_uptodate = 1;
+    if (dc->cc_x_uptodate == (2 | dc->flags_x)) {
+        return;
     }
+    tcg_gen_movi_tl(cc_x, dc->flags_x);
+    dc->cc_x_uptodate = 2 | dc->flags_x;
 }
 
 /* Update cc prior to executing ALU op. Needs source operands untouched.  */
@@ -885,8 +828,7 @@ static void gen_tst_cc (DisasContext *dc, TCGv cc, int cond)
     case CC_EQ:
         if ((arith_opt || move_opt)
                 && dc->cc_x_uptodate != (2 | X_FLAG)) {
-            tcg_gen_setcond_tl(TCG_COND_EQ, cc,
-                    cc_result, tcg_const_tl(0));
+            tcg_gen_setcondi_tl(TCG_COND_EQ, cc, cc_result, 0);
         } else {
             cris_evaluate_flags(dc);
             tcg_gen_andi_tl(cc,
@@ -1137,7 +1079,7 @@ static void gen_store (DisasContext *dc, TCGv addr, TCGv val,
 
     /* Conditional writes. We only support the kind were X and P are known
        at translation time.  */
-    if (dc->flagx_known && dc->flags_x && (dc->tb_flags & P_FLAG)) {
+    if (dc->flags_x && (dc->tb_flags & P_FLAG)) {
         dc->postinc = 0;
         cris_evaluate_flags(dc);
         tcg_gen_ori_tl(cpu_PR[PR_CCS], cpu_PR[PR_CCS], C_FLAG);
@@ -1146,7 +1088,7 @@ static void gen_store (DisasContext *dc, TCGv addr, TCGv val,
 
     tcg_gen_qemu_st_tl(val, addr, mem_index, MO_TE + ctz32(size));
 
-    if (dc->flagx_known && dc->flags_x) {
+    if (dc->flags_x) {
         cris_evaluate_flags(dc);
         tcg_gen_andi_tl(cpu_PR[PR_CCS], cpu_PR[PR_CCS], ~C_FLAG);
     }
@@ -1178,12 +1120,11 @@ static inline void t_gen_zext(TCGv d, TCGv s, int size)
 static char memsize_char(int size)
 {
     switch (size) {
-    case 1: return 'b';  break;
-    case 2: return 'w';  break;
-    case 4: return 'd';  break;
+    case 1: return 'b';
+    case 2: return 'w';
+    case 4: return 'd';
     default:
         return 'x';
-        break;
     }
 }
 #endif
@@ -1284,7 +1225,7 @@ static int dec_prep_alu_m(CPUCRISState *env, DisasContext *dc,
 #if DISAS_CRIS
 static const char *cc_name(int cc)
 {
-    static const char *cc_names[16] = {
+    static const char * const cc_names[16] = {
         "cc", "cs", "ne", "eq", "vc", "vs", "pl", "mi",
         "ls", "hi", "ge", "lt", "gt", "le", "a", "p"
     };
@@ -1331,14 +1272,17 @@ static int dec_addoq(CPUCRISState *env, DisasContext *dc)
 }
 static int dec_addq(CPUCRISState *env, DisasContext *dc)
 {
+    TCGv c;
     LOG_DIS("addq %u, $r%u\n", dc->op1, dc->op2);
 
     dc->op1 = EXTRACT_FIELD(dc->ir, 0, 5);
 
     cris_cc_mask(dc, CC_MASK_NZVC);
 
+    c = tcg_const_tl(dc->op1);
     cris_alu(dc, CC_OP_ADD,
-            cpu_R[dc->op2], cpu_R[dc->op2], tcg_const_tl(dc->op1), 4);
+            cpu_R[dc->op2], cpu_R[dc->op2], c, 4);
+    tcg_temp_free(c);
     return 2;
 }
 static int dec_moveq(CPUCRISState *env, DisasContext *dc)
@@ -1354,62 +1298,77 @@ static int dec_moveq(CPUCRISState *env, DisasContext *dc)
 }
 static int dec_subq(CPUCRISState *env, DisasContext *dc)
 {
+    TCGv c;
     dc->op1 = EXTRACT_FIELD(dc->ir, 0, 5);
 
     LOG_DIS("subq %u, $r%u\n", dc->op1, dc->op2);
 
     cris_cc_mask(dc, CC_MASK_NZVC);
+    c = tcg_const_tl(dc->op1);
     cris_alu(dc, CC_OP_SUB,
-            cpu_R[dc->op2], cpu_R[dc->op2], tcg_const_tl(dc->op1), 4);
+            cpu_R[dc->op2], cpu_R[dc->op2], c, 4);
+    tcg_temp_free(c);
     return 2;
 }
 static int dec_cmpq(CPUCRISState *env, DisasContext *dc)
 {
     uint32_t imm;
+    TCGv c;
     dc->op1 = EXTRACT_FIELD(dc->ir, 0, 5);
     imm = sign_extend(dc->op1, 5);
 
     LOG_DIS("cmpq %d, $r%d\n", imm, dc->op2);
     cris_cc_mask(dc, CC_MASK_NZVC);
 
+    c = tcg_const_tl(imm);
     cris_alu(dc, CC_OP_CMP,
-            cpu_R[dc->op2], cpu_R[dc->op2], tcg_const_tl(imm), 4);
+            cpu_R[dc->op2], cpu_R[dc->op2], c, 4);
+    tcg_temp_free(c);
     return 2;
 }
 static int dec_andq(CPUCRISState *env, DisasContext *dc)
 {
     uint32_t imm;
+    TCGv c;
     dc->op1 = EXTRACT_FIELD(dc->ir, 0, 5);
     imm = sign_extend(dc->op1, 5);
 
     LOG_DIS("andq %d, $r%d\n", imm, dc->op2);
     cris_cc_mask(dc, CC_MASK_NZ);
 
+    c = tcg_const_tl(imm);
     cris_alu(dc, CC_OP_AND,
-            cpu_R[dc->op2], cpu_R[dc->op2], tcg_const_tl(imm), 4);
+            cpu_R[dc->op2], cpu_R[dc->op2], c, 4);
+    tcg_temp_free(c);
     return 2;
 }
 static int dec_orq(CPUCRISState *env, DisasContext *dc)
 {
     uint32_t imm;
+    TCGv c;
     dc->op1 = EXTRACT_FIELD(dc->ir, 0, 5);
     imm = sign_extend(dc->op1, 5);
     LOG_DIS("orq %d, $r%d\n", imm, dc->op2);
     cris_cc_mask(dc, CC_MASK_NZ);
 
+    c = tcg_const_tl(imm);
     cris_alu(dc, CC_OP_OR,
-            cpu_R[dc->op2], cpu_R[dc->op2], tcg_const_tl(imm), 4);
+            cpu_R[dc->op2], cpu_R[dc->op2], c, 4);
+    tcg_temp_free(c);
     return 2;
 }
 static int dec_btstq(CPUCRISState *env, DisasContext *dc)
 {
+    TCGv c;
     dc->op1 = EXTRACT_FIELD(dc->ir, 0, 4);
     LOG_DIS("btstq %u, $r%d\n", dc->op1, dc->op2);
 
     cris_cc_mask(dc, CC_MASK_NZ);
+    c = tcg_const_tl(dc->op1);
     cris_evaluate_flags(dc);
-        gen_helper_btst(cpu_PR[PR_CCS], cpu_env, cpu_R[dc->op2],
-            tcg_const_tl(dc->op1), cpu_PR[PR_CCS]);
+    gen_helper_btst(cpu_PR[PR_CCS], cpu_env, cpu_R[dc->op2],
+            c, cpu_PR[PR_CCS]);
+    tcg_temp_free(c);
     cris_alu(dc, CC_OP_MOVE,
          cpu_R[dc->op2], cpu_R[dc->op2], cpu_R[dc->op2], 4);
     cris_update_cc_op(dc, CC_OP_FLAGS, 4);
@@ -1559,7 +1518,7 @@ static int dec_lsl_r(CPUCRISState *env, DisasContext *dc)
     dec_prep_alu_r(dc, dc->op1, dc->op2, size, 0, t[0], t[1]);
     tcg_gen_andi_tl(t[1], t[1], 63);
     cris_alu(dc, CC_OP_LSL, cpu_R[dc->op2], t[0], t[1], size);
-    cris_alu_alloc_temps(dc, size, t);
+    cris_alu_free_temps(dc, size, t);
     return 2;
 }
 
@@ -1625,7 +1584,7 @@ static int dec_mulu_r(CPUCRISState *env, DisasContext *dc)
     dec_prep_alu_r(dc, dc->op1, dc->op2, size, 0, t[0], t[1]);
 
     cris_alu(dc, CC_OP_MULU, cpu_R[dc->op2], t[0], t[1], 4);
-    cris_alu_alloc_temps(dc, size, t);
+    cris_alu_free_temps(dc, size, t);
     return 2;
 }
 
@@ -1716,8 +1675,8 @@ static int dec_addc_r(CPUCRISState *env, DisasContext *dc)
     LOG_DIS("addc $r%u, $r%u\n",
             dc->op1, dc->op2);
     cris_evaluate_flags(dc);
+
     /* Set for this insn.  */
-    dc->flagx_known = 1;
     dc->flags_x = X_FLAG;
 
     cris_cc_mask(dc, CC_MASK_NZVC);
@@ -1807,7 +1766,7 @@ static int dec_addi_r(CPUCRISState *env, DisasContext *dc)
             memsize_char(memsize_zz(dc)), dc->op2, dc->op1);
     cris_cc_mask(dc, 0);
     t0 = tcg_temp_new();
-    tcg_gen_shl_tl(t0, cpu_R[dc->op2], tcg_const_tl(dc->zzsize));
+    tcg_gen_shli_tl(t0, cpu_R[dc->op2], dc->zzsize);
     tcg_gen_add_tl(cpu_R[dc->op1], cpu_R[dc->op1], t0);
     tcg_temp_free(t0);
     return 2;
@@ -1820,7 +1779,7 @@ static int dec_addi_acr(CPUCRISState *env, DisasContext *dc)
           memsize_char(memsize_zz(dc)), dc->op2, dc->op1);
     cris_cc_mask(dc, 0);
     t0 = tcg_temp_new();
-    tcg_gen_shl_tl(t0, cpu_R[dc->op2], tcg_const_tl(dc->zzsize));
+    tcg_gen_shli_tl(t0, cpu_R[dc->op2], dc->zzsize);
     tcg_gen_add_tl(cpu_R[R_ACR], cpu_R[dc->op1], t0);
     tcg_temp_free(t0);
     return 2;
@@ -2004,7 +1963,6 @@ static int dec_setclrf(CPUCRISState *env, DisasContext *dc)
     }
 
     if (flags & X_FLAG) {
-        dc->flagx_known = 1;
         if (set) {
             dc->flags_x = X_FLAG;
         } else {
@@ -2015,14 +1973,14 @@ static int dec_setclrf(CPUCRISState *env, DisasContext *dc)
     /* Break the TB if any of the SPI flag changes.  */
     if (flags & (P_FLAG | S_FLAG)) {
         tcg_gen_movi_tl(env_pc, dc->pc + 2);
-        dc->is_jmp = DISAS_UPDATE;
+        dc->base.is_jmp = DISAS_UPDATE;
         dc->cpustate_changed = 1;
     }
 
     /* For the I flag, only act on posedge.  */
     if ((flags & I_FLAG)) {
         tcg_gen_movi_tl(env_pc, dc->pc + 2);
-        dc->is_jmp = DISAS_UPDATE;
+        dc->base.is_jmp = DISAS_UPDATE;
         dc->cpustate_changed = 1;
     }
 
@@ -2052,18 +2010,26 @@ static int dec_setclrf(CPUCRISState *env, DisasContext *dc)
 
 static int dec_move_rs(CPUCRISState *env, DisasContext *dc)
 {
+    TCGv c2, c1;
     LOG_DIS("move $r%u, $s%u\n", dc->op1, dc->op2);
+    c1 = tcg_const_tl(dc->op1);
+    c2 = tcg_const_tl(dc->op2);
     cris_cc_mask(dc, 0);
-        gen_helper_movl_sreg_reg(cpu_env, tcg_const_tl(dc->op2),
-                                 tcg_const_tl(dc->op1));
+    gen_helper_movl_sreg_reg(cpu_env, c2, c1);
+    tcg_temp_free(c1);
+    tcg_temp_free(c2);
     return 2;
 }
 static int dec_move_sr(CPUCRISState *env, DisasContext *dc)
 {
+    TCGv c2, c1;
     LOG_DIS("move $s%u, $r%u\n", dc->op2, dc->op1);
+    c1 = tcg_const_tl(dc->op1);
+    c2 = tcg_const_tl(dc->op2);
     cris_cc_mask(dc, 0);
-        gen_helper_movl_reg_sreg(cpu_env, tcg_const_tl(dc->op1),
-                                 tcg_const_tl(dc->op2));
+    gen_helper_movl_reg_sreg(cpu_env, c1, c2);
+    tcg_temp_free(c1);
+    tcg_temp_free(c2);
     return 2;
 }
 
@@ -2346,7 +2312,7 @@ static int dec_cmp_m(CPUCRISState *env, DisasContext *dc)
 
 static int dec_test_m(CPUCRISState *env, DisasContext *dc)
 {
-    TCGv t[2];
+    TCGv t[2], c;
     int memsize = memsize_zz(dc);
     int insn_len;
     LOG_DIS("test.%c [$r%u%s] op2=%x\n",
@@ -2361,8 +2327,10 @@ static int dec_test_m(CPUCRISState *env, DisasContext *dc)
     cris_cc_mask(dc, CC_MASK_NZ);
     tcg_gen_andi_tl(cpu_PR[PR_CCS], cpu_PR[PR_CCS], ~3);
 
+    c = tcg_const_tl(0);
     cris_alu(dc, CC_OP_CMP,
-         cpu_R[dc->op2], t[1], tcg_const_tl(0), memsize_zz(dc));
+         cpu_R[dc->op2], t[1], c, memsize_zz(dc));
+    tcg_temp_free(c);
     do_postinc(dc, memsize);
     cris_alu_m_free_temps(t);
     return insn_len;
@@ -2458,7 +2426,6 @@ static int dec_addc_mr(CPUCRISState *env, DisasContext *dc)
     cris_evaluate_flags(dc);
 
     /* Set for this insn.  */
-    dc->flagx_known = 1;
     dc->flags_x = X_FLAG;
 
     cris_alu_m_alloc_temps(t);
@@ -2714,6 +2681,7 @@ static int dec_jump_p(CPUCRISState *env, DisasContext *dc)
 /* Jump and save.  */
 static int dec_jas_r(CPUCRISState *env, DisasContext *dc)
 {
+    TCGv c;
     LOG_DIS("jas $r%u, $p%u\n", dc->op1, dc->op2);
     cris_cc_mask(dc, 0);
     /* Store the return address in Pd.  */
@@ -2721,7 +2689,9 @@ static int dec_jas_r(CPUCRISState *env, DisasContext *dc)
     if (dc->op2 > 15) {
         abort();
     }
-    t_gen_mov_preg_TN(dc, dc->op2, tcg_const_tl(dc->pc + 4));
+    c = tcg_const_tl(dc->pc + 4);
+    t_gen_mov_preg_TN(dc, dc->op2, c);
+    tcg_temp_free(c);
 
     cris_prepare_jmp(dc, JMP_INDIRECT);
     return 2;
@@ -2730,13 +2700,16 @@ static int dec_jas_r(CPUCRISState *env, DisasContext *dc)
 static int dec_jas_im(CPUCRISState *env, DisasContext *dc)
 {
     uint32_t imm;
+    TCGv c;
 
     imm = cris_fetch(env, dc, dc->pc + 2, 4, 0);
 
     LOG_DIS("jas 0x%x\n", imm);
     cris_cc_mask(dc, 0);
+    c = tcg_const_tl(dc->pc + 8);
     /* Store the return address in Pd.  */
-    t_gen_mov_preg_TN(dc, dc->op2, tcg_const_tl(dc->pc + 8));
+    t_gen_mov_preg_TN(dc, dc->op2, c);
+    tcg_temp_free(c);
 
     dc->jmp_pc = imm;
     cris_prepare_jmp(dc, JMP_DIRECT);
@@ -2746,13 +2719,16 @@ static int dec_jas_im(CPUCRISState *env, DisasContext *dc)
 static int dec_jasc_im(CPUCRISState *env, DisasContext *dc)
 {
     uint32_t imm;
+    TCGv c;
 
     imm = cris_fetch(env, dc, dc->pc + 2, 4, 0);
 
     LOG_DIS("jasc 0x%x\n", imm);
     cris_cc_mask(dc, 0);
+    c = tcg_const_tl(dc->pc + 8 + 4);
     /* Store the return address in Pd.  */
-    t_gen_mov_preg_TN(dc, dc->op2, tcg_const_tl(dc->pc + 8 + 4));
+    t_gen_mov_preg_TN(dc, dc->op2, c);
+    tcg_temp_free(c);
 
     dc->jmp_pc = imm;
     cris_prepare_jmp(dc, JMP_DIRECT);
@@ -2761,11 +2737,14 @@ static int dec_jasc_im(CPUCRISState *env, DisasContext *dc)
 
 static int dec_jasc_r(CPUCRISState *env, DisasContext *dc)
 {
+    TCGv c;
     LOG_DIS("jasc_r $r%u, $p%u\n", dc->op1, dc->op2);
     cris_cc_mask(dc, 0);
     /* Store the return address in Pd.  */
     tcg_gen_mov_tl(env_btarget, cpu_R[dc->op1]);
-    t_gen_mov_preg_TN(dc, dc->op2, tcg_const_tl(dc->pc + 4 + 4));
+    c = tcg_const_tl(dc->pc + 4 + 4);
+    t_gen_mov_preg_TN(dc, dc->op2, c);
+    tcg_temp_free(c);
     cris_prepare_jmp(dc, JMP_INDIRECT);
     return 2;
 }
@@ -2790,13 +2769,16 @@ static int dec_bcc_im(CPUCRISState *env, DisasContext *dc)
 static int dec_bas_im(CPUCRISState *env, DisasContext *dc)
 {
     int32_t simm;
+    TCGv c;
 
     simm = cris_fetch(env, dc, dc->pc + 2, 4, 0);
 
     LOG_DIS("bas 0x%x, $p%u\n", dc->pc + simm, dc->op2);
     cris_cc_mask(dc, 0);
+    c = tcg_const_tl(dc->pc + 8);
     /* Store the return address in Pd.  */
-    t_gen_mov_preg_TN(dc, dc->op2, tcg_const_tl(dc->pc + 8));
+    t_gen_mov_preg_TN(dc, dc->op2, c);
+    tcg_temp_free(c);
 
     dc->jmp_pc = dc->pc + simm;
     cris_prepare_jmp(dc, JMP_DIRECT);
@@ -2806,12 +2788,15 @@ static int dec_bas_im(CPUCRISState *env, DisasContext *dc)
 static int dec_basc_im(CPUCRISState *env, DisasContext *dc)
 {
     int32_t simm;
+    TCGv c;
     simm = cris_fetch(env, dc, dc->pc + 2, 4, 0);
 
     LOG_DIS("basc 0x%x, $p%u\n", dc->pc + simm, dc->op2);
     cris_cc_mask(dc, 0);
+    c = tcg_const_tl(dc->pc + 12);
     /* Store the return address in Pd.  */
-    t_gen_mov_preg_TN(dc, dc->op2, tcg_const_tl(dc->pc + 12));
+    t_gen_mov_preg_TN(dc, dc->op2, c);
+    tcg_temp_free(c);
 
     dc->jmp_pc = dc->pc + simm;
     cris_prepare_jmp(dc, JMP_DIRECT);
@@ -2827,6 +2812,7 @@ static int dec_rfe_etc(CPUCRISState *env, DisasContext *dc)
                        -offsetof(CRISCPU, env) + offsetof(CPUState, halted));
         tcg_gen_movi_tl(env_pc, dc->pc + 2);
         t_gen_raise_exception(EXCP_HLT);
+        dc->base.is_jmp = DISAS_NORETURN;
         return 2;
     }
 
@@ -2836,14 +2822,16 @@ static int dec_rfe_etc(CPUCRISState *env, DisasContext *dc)
         LOG_DIS("rfe\n");
         cris_evaluate_flags(dc);
         gen_helper_rfe(cpu_env);
-        dc->is_jmp = DISAS_UPDATE;
+        dc->base.is_jmp = DISAS_UPDATE;
+        dc->cpustate_changed = true;
         break;
     case 5:
         /* rfn.  */
         LOG_DIS("rfn\n");
         cris_evaluate_flags(dc);
         gen_helper_rfn(cpu_env);
-        dc->is_jmp = DISAS_UPDATE;
+        dc->base.is_jmp = DISAS_UPDATE;
+        dc->cpustate_changed = true;
         break;
     case 6:
         LOG_DIS("break %d\n", dc->op1);
@@ -2852,10 +2840,9 @@ static int dec_rfe_etc(CPUCRISState *env, DisasContext *dc)
         tcg_gen_movi_tl(env_pc, dc->pc + 2);
 
         /* Breaks start at 16 in the exception vector.  */
-        t_gen_mov_env_TN(trap_vector,
-                tcg_const_tl(dc->op1 + 16));
+        t_gen_movi_env_TN(trap_vector, dc->op1 + 16);
         t_gen_raise_exception(EXCP_BREAK);
-        dc->is_jmp = DISAS_UPDATE;
+        dc->base.is_jmp = DISAS_NORETURN;
         break;
     default:
         printf("op2=%x\n", dc->op2);
@@ -2885,7 +2872,7 @@ static int dec_null(CPUCRISState *env, DisasContext *dc)
     return 2;
 }
 
-static struct decoder_info {
+static const struct decoder_info {
     struct {
         uint32_t bits;
         uint32_t mask;
@@ -3027,7 +3014,7 @@ static unsigned int crisv32_decoder(CPUCRISState *env, DisasContext *dc)
         tcg_gen_brcondi_tl(TCG_COND_NE, cpu_PR[PR_SPC], dc->pc, l1);
         /* We treat SPC as a break with an odd trap vector.  */
         cris_evaluate_flags(dc);
-        t_gen_mov_env_TN(trap_vector, tcg_const_tl(3));
+        t_gen_movi_env_TN(trap_vector, 3);
         tcg_gen_movi_tl(env_pc, dc->pc + insn_len);
         tcg_gen_movi_tl(cpu_PR[PR_SPC], dc->pc + insn_len);
         t_gen_raise_exception(EXCP_BREAK);
@@ -3037,7 +3024,7 @@ static unsigned int crisv32_decoder(CPUCRISState *env, DisasContext *dc)
     return insn_len;
 }
 
-#include "translate_v10.inc.c"
+#include "translate_v10.c.inc"
 
 /*
  * Delay slots on QEMU/CRIS.
@@ -3073,17 +3060,12 @@ static unsigned int crisv32_decoder(CPUCRISState *env, DisasContext *dc)
  *
  */
 
-/* generate intermediate code for basic block 'tb'.  */
-void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
+static void cris_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cs)
 {
+    DisasContext *dc = container_of(dcbase, DisasContext, base);
     CPUCRISState *env = cs->env_ptr;
+    uint32_t tb_flags = dc->base.tb->flags;
     uint32_t pc_start;
-    unsigned int insn_len;
-    struct DisasContext ctx;
-    struct DisasContext *dc = &ctx;
-    uint32_t page_start;
-    target_ulong npc;
-    int num_insns;
 
     if (env->pregs[PR_VR] == 32) {
         dc->decoder = crisv32_decoder;
@@ -3093,202 +3075,244 @@ void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
         dc->clear_locked_irq = 1;
     }
 
-    /* Odd PC indicates that branch is rexecuting due to exception in the
+    /*
+     * Odd PC indicates that branch is rexecuting due to exception in the
      * delayslot, like in real hw.
      */
-    pc_start = tb->pc & ~1;
-    dc->cpu = env_archcpu(env);
-    dc->tb = tb;
+    pc_start = dc->base.pc_first & ~1;
+    dc->base.pc_first = pc_start;
+    dc->base.pc_next = pc_start;
 
-    dc->is_jmp = DISAS_NEXT;
+    dc->cpu = env_archcpu(env);
     dc->ppc = pc_start;
     dc->pc = pc_start;
-    dc->singlestep_enabled = cs->singlestep_enabled;
     dc->flags_uptodate = 1;
-    dc->flagx_known = 1;
-    dc->flags_x = tb->flags & X_FLAG;
+    dc->flags_x = tb_flags & X_FLAG;
     dc->cc_x_uptodate = 0;
     dc->cc_mask = 0;
     dc->update_cc = 0;
     dc->clear_prefix = 0;
+    dc->cpustate_changed = 0;
 
     cris_update_cc_op(dc, CC_OP_FLAGS, 4);
     dc->cc_size_uptodate = -1;
 
     /* Decode TB flags.  */
-    dc->tb_flags = tb->flags & (S_FLAG | P_FLAG | U_FLAG \
-            | X_FLAG | PFIX_FLAG);
-    dc->delayed_branch = !!(tb->flags & 7);
+    dc->tb_flags = tb_flags & (S_FLAG | P_FLAG | U_FLAG | X_FLAG | PFIX_FLAG);
+    dc->delayed_branch = !!(tb_flags & 7);
     if (dc->delayed_branch) {
         dc->jmp = JMP_INDIRECT;
     } else {
         dc->jmp = JMP_NOJMP;
     }
+}
 
-    dc->cpustate_changed = 0;
+static void cris_tr_tb_start(DisasContextBase *db, CPUState *cpu)
+{
+}
 
-    page_start = pc_start & TARGET_PAGE_MASK;
-    num_insns = 0;
+static void cris_tr_insn_start(DisasContextBase *dcbase, CPUState *cpu)
+{
+    DisasContext *dc = container_of(dcbase, DisasContext, base);
 
-    gen_tb_start(tb);
-    do {
-        tcg_gen_insn_start(dc->delayed_branch == 1
-                           ? dc->ppc | 1 : dc->pc);
-        num_insns++;
+    tcg_gen_insn_start(dc->delayed_branch == 1 ? dc->ppc | 1 : dc->pc);
+}
 
-        if (unlikely(cpu_breakpoint_test(cs, dc->pc, BP_ANY))) {
-            cris_evaluate_flags(dc);
-            tcg_gen_movi_tl(env_pc, dc->pc);
-            t_gen_raise_exception(EXCP_DEBUG);
-            dc->is_jmp = DISAS_UPDATE;
-            /* The address covered by the breakpoint must be included in
-               [tb->pc, tb->pc + tb->size) in order to for it to be
-               properly cleared -- thus we increment the PC here so that
-               the logic setting tb->size below does the right thing.  */
-            dc->pc += 2;
-            break;
-        }
+static void cris_tr_translate_insn(DisasContextBase *dcbase, CPUState *cs)
+{
+    DisasContext *dc = container_of(dcbase, DisasContext, base);
+    CPUCRISState *env = cs->env_ptr;
+    unsigned int insn_len;
 
-        /* Pretty disas.  */
-        LOG_DIS("%8.8x:\t", dc->pc);
+    /* Pretty disas.  */
+    LOG_DIS("%8.8x:\t", dc->pc);
 
-        if (num_insns == max_insns && (tb_cflags(tb) & CF_LAST_IO)) {
-            gen_io_start();
-        }
-        dc->clear_x = 1;
+    dc->clear_x = 1;
 
-        insn_len = dc->decoder(env, dc);
-        dc->ppc = dc->pc;
-        dc->pc += insn_len;
-        if (dc->clear_x) {
-            cris_clear_x_flag(dc);
-        }
+    insn_len = dc->decoder(env, dc);
+    dc->ppc = dc->pc;
+    dc->pc += insn_len;
+    dc->base.pc_next += insn_len;
 
-        /* Check for delayed branches here. If we do it before
-           actually generating any host code, the simulator will just
-           loop doing nothing for on this program location.  */
-        if (dc->delayed_branch) {
-            dc->delayed_branch--;
-            if (dc->delayed_branch == 0) {
-                if (tb->flags & 7) {
-                    t_gen_mov_env_TN(dslot, tcg_const_tl(0));
-                }
-                if (dc->cpustate_changed || !dc->flagx_known
-                    || (dc->flags_x != (tb->flags & X_FLAG))) {
-                    cris_store_direct_jmp(dc);
-                }
-
-                if (dc->clear_locked_irq) {
-                    dc->clear_locked_irq = 0;
-                    t_gen_mov_env_TN(locked_irq, tcg_const_tl(0));
-                }
-
-                if (dc->jmp == JMP_DIRECT_CC) {
-                    TCGLabel *l1 = gen_new_label();
-                    cris_evaluate_flags(dc);
-
-                    /* Conditional jmp.  */
-                    tcg_gen_brcondi_tl(TCG_COND_EQ,
-                               env_btaken, 0, l1);
-                    gen_goto_tb(dc, 1, dc->jmp_pc);
-                    gen_set_label(l1);
-                    gen_goto_tb(dc, 0, dc->pc);
-                    dc->is_jmp = DISAS_TB_JUMP;
-                    dc->jmp = JMP_NOJMP;
-                } else if (dc->jmp == JMP_DIRECT) {
-                    cris_evaluate_flags(dc);
-                    gen_goto_tb(dc, 0, dc->jmp_pc);
-                    dc->is_jmp = DISAS_TB_JUMP;
-                    dc->jmp = JMP_NOJMP;
-                } else {
-                    t_gen_cc_jmp(env_btarget, tcg_const_tl(dc->pc));
-                    dc->is_jmp = DISAS_JUMP;
-                }
-                break;
-            }
-        }
-
-        /* If we are rexecuting a branch due to exceptions on
-           delay slots don't break.  */
-        if (!(tb->pc & 1) && cs->singlestep_enabled) {
-            break;
-        }
-    } while (!dc->is_jmp && !dc->cpustate_changed
-            && !tcg_op_buf_full()
-            && !singlestep
-            && (dc->pc - page_start < TARGET_PAGE_SIZE)
-            && num_insns < max_insns);
-
-    if (dc->clear_locked_irq) {
-        t_gen_mov_env_TN(locked_irq, tcg_const_tl(0));
+    if (dc->base.is_jmp == DISAS_NORETURN) {
+        return;
     }
 
-    npc = dc->pc;
+    if (dc->clear_x) {
+        cris_clear_x_flag(dc);
+    }
+
+    /*
+     * All branches are delayed branches, handled immediately below.
+     * We don't expect to see odd combinations of exit conditions.
+     */
+    assert(dc->base.is_jmp == DISAS_NEXT || dc->cpustate_changed);
+
+    if (dc->delayed_branch && --dc->delayed_branch == 0) {
+        dc->base.is_jmp = DISAS_DBRANCH;
+        return;
+    }
+
+    if (dc->base.is_jmp != DISAS_NEXT) {
+        return;
+    }
 
     /* Force an update if the per-tb cpu state has changed.  */
-    if (dc->is_jmp == DISAS_NEXT
-        && (dc->cpustate_changed || !dc->flagx_known
-        || (dc->flags_x != (tb->flags & X_FLAG)))) {
-        dc->is_jmp = DISAS_UPDATE;
-        tcg_gen_movi_tl(env_pc, npc);
+    if (dc->cpustate_changed) {
+        dc->base.is_jmp = DISAS_UPDATE_NEXT;
+        return;
     }
+
+    /*
+     * FIXME: Only the first insn in the TB should cross a page boundary.
+     * If we can detect the length of the next insn easily, we should.
+     * In the meantime, simply stop when we do cross.
+     */
+    if ((dc->pc ^ dc->base.pc_first) & TARGET_PAGE_MASK) {
+        dc->base.is_jmp = DISAS_TOO_MANY;
+    }
+}
+
+static void cris_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
+{
+    DisasContext *dc = container_of(dcbase, DisasContext, base);
+    DisasJumpType is_jmp = dc->base.is_jmp;
+    target_ulong npc = dc->pc;
+
+    if (is_jmp == DISAS_NORETURN) {
+        /* If we have a broken branch+delayslot sequence, it's too late. */
+        assert(dc->delayed_branch != 1);
+        return;
+    }
+
+    if (dc->clear_locked_irq) {
+        t_gen_movi_env_TN(locked_irq, 0);
+    }
+
     /* Broken branch+delayslot sequence.  */
     if (dc->delayed_branch == 1) {
         /* Set env->dslot to the size of the branch insn.  */
-        t_gen_mov_env_TN(dslot, tcg_const_tl(dc->pc - dc->ppc));
+        t_gen_movi_env_TN(dslot, dc->pc - dc->ppc);
         cris_store_direct_jmp(dc);
     }
 
     cris_evaluate_flags(dc);
 
-    if (unlikely(cs->singlestep_enabled)) {
-        if (dc->is_jmp == DISAS_NEXT) {
-            tcg_gen_movi_tl(env_pc, npc);
+    /* Evaluate delayed branch destination and fold to another is_jmp case. */
+    if (is_jmp == DISAS_DBRANCH) {
+        if (dc->base.tb->flags & 7) {
+            t_gen_movi_env_TN(dslot, 0);
         }
-        t_gen_raise_exception(EXCP_DEBUG);
-    } else {
-        switch (dc->is_jmp) {
-        case DISAS_NEXT:
-            gen_goto_tb(dc, 1, npc);
+
+        switch (dc->jmp) {
+        case JMP_DIRECT:
+            npc = dc->jmp_pc;
+            is_jmp = dc->cpustate_changed ? DISAS_UPDATE_NEXT : DISAS_TOO_MANY;
             break;
+
+        case JMP_DIRECT_CC:
+            /*
+             * Use a conditional branch if either taken or not-taken path
+             * can use goto_tb.  If neither can, then treat it as indirect.
+             */
+            if (likely(!dc->cpustate_changed)
+                && (use_goto_tb(dc, dc->jmp_pc) || use_goto_tb(dc, npc))) {
+                TCGLabel *not_taken = gen_new_label();
+
+                tcg_gen_brcondi_tl(TCG_COND_EQ, env_btaken, 0, not_taken);
+                gen_goto_tb(dc, 1, dc->jmp_pc);
+                gen_set_label(not_taken);
+
+                /* not-taken case handled below. */
+                is_jmp = DISAS_TOO_MANY;
+                break;
+            }
+            tcg_gen_movi_tl(env_btarget, dc->jmp_pc);
+            /* fall through */
+
+        case JMP_INDIRECT:
+            tcg_gen_movcond_tl(TCG_COND_NE, env_pc,
+                               env_btaken, tcg_constant_tl(0),
+                               env_btarget, tcg_constant_tl(npc));
+            is_jmp = dc->cpustate_changed ? DISAS_UPDATE : DISAS_JUMP;
+
+            /*
+             * We have now consumed btaken and btarget.  Hint to the
+             * tcg compiler that the writeback to env may be dropped.
+             */
+            tcg_gen_discard_tl(env_btaken);
+            tcg_gen_discard_tl(env_btarget);
+            break;
+
         default:
+            g_assert_not_reached();
+        }
+    }
+
+    if (unlikely(dc->base.singlestep_enabled)) {
+        switch (is_jmp) {
+        case DISAS_TOO_MANY:
+        case DISAS_UPDATE_NEXT:
+            tcg_gen_movi_tl(env_pc, npc);
+            /* fall through */
         case DISAS_JUMP:
         case DISAS_UPDATE:
-            /* indicate that the hash table must be used
-                   to find the next TB */
-            tcg_gen_exit_tb(NULL, 0);
-            break;
-        case DISAS_SWI:
-        case DISAS_TB_JUMP:
-            /* nothing more to generate */
+            t_gen_raise_exception(EXCP_DEBUG);
+            return;
+        default:
             break;
         }
+        g_assert_not_reached();
     }
-    gen_tb_end(tb, num_insns);
 
-    tb->size = dc->pc - pc_start;
-    tb->icount = num_insns;
-
-#ifdef DEBUG_DISAS
-#if !DISAS_CRIS
-    if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)
-        && qemu_log_in_addr_range(pc_start)) {
-        FILE *logfile = qemu_log_lock();
-        qemu_log("--------------\n");
-        qemu_log("IN: %s\n", lookup_symbol(pc_start));
-        log_target_disas(cs, pc_start, dc->pc - pc_start);
-        qemu_log_unlock(logfile);
+    switch (is_jmp) {
+    case DISAS_TOO_MANY:
+        gen_goto_tb(dc, 0, npc);
+        break;
+    case DISAS_UPDATE_NEXT:
+        tcg_gen_movi_tl(env_pc, npc);
+        /* fall through */
+    case DISAS_JUMP:
+        tcg_gen_lookup_and_goto_ptr();
+        break;
+    case DISAS_UPDATE:
+        /* Indicate that interupts must be re-evaluated before the next TB. */
+        tcg_gen_exit_tb(NULL, 0);
+        break;
+    default:
+        g_assert_not_reached();
     }
-#endif
-#endif
+}
+
+static void cris_tr_disas_log(const DisasContextBase *dcbase, CPUState *cpu)
+{
+    if (!DISAS_CRIS) {
+        qemu_log("IN: %s\n", lookup_symbol(dcbase->pc_first));
+        log_target_disas(cpu, dcbase->pc_first, dcbase->tb->size);
+    }
+}
+
+static const TranslatorOps cris_tr_ops = {
+    .init_disas_context = cris_tr_init_disas_context,
+    .tb_start           = cris_tr_tb_start,
+    .insn_start         = cris_tr_insn_start,
+    .translate_insn     = cris_tr_translate_insn,
+    .tb_stop            = cris_tr_tb_stop,
+    .disas_log          = cris_tr_disas_log,
+};
+
+void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
+{
+    DisasContext dc;
+    translator_loop(&cris_tr_ops, &dc.base, cs, tb, max_insns);
 }
 
 void cris_cpu_dump_state(CPUState *cs, FILE *f, int flags)
 {
     CRISCPU *cpu = CRIS_CPU(cs);
     CPUCRISState *env = &cpu->env;
-    const char **regnames;
-    const char **pregnames;
+    const char * const *regnames;
+    const char * const *pregnames;
     int i;
 
     if (!env) {

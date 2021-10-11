@@ -20,12 +20,8 @@
 #include "qemu/bitmap.h"
 
 #define TYPE_MEMORY_BACKEND "memory-backend"
-#define MEMORY_BACKEND(obj) \
-    OBJECT_CHECK(HostMemoryBackend, (obj), TYPE_MEMORY_BACKEND)
-#define MEMORY_BACKEND_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(HostMemoryBackendClass, (obj), TYPE_MEMORY_BACKEND)
-#define MEMORY_BACKEND_CLASS(klass) \
-    OBJECT_CLASS_CHECK(HostMemoryBackendClass, (klass), TYPE_MEMORY_BACKEND)
+OBJECT_DECLARE_TYPE(HostMemoryBackend, HostMemoryBackendClass,
+                    MEMORY_BACKEND)
 
 /* hostmem-ram.c */
 /**
@@ -42,8 +38,6 @@
  */
 #define TYPE_MEMORY_BACKEND_FILE "memory-backend-file"
 
-typedef struct HostMemoryBackend HostMemoryBackend;
-typedef struct HostMemoryBackendClass HostMemoryBackendClass;
 
 /**
  * HostMemoryBackendClass:
@@ -70,7 +64,7 @@ struct HostMemoryBackend {
     /* protected */
     uint64_t size;
     bool merge, dump, use_canonical_path;
-    bool prealloc, is_mapped, share;
+    bool prealloc, is_mapped, share, reserve;
     uint32_t prealloc_threads;
     DECLARE_BITMAP(host_nodes, MAX_NODES + 1);
     HostMemPolicy policy;

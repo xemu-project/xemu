@@ -2,25 +2,25 @@
 #include "qemu/error-report.h"
 #include "qemu/module.h"
 #include "qapi/error.h"
-#include "cpu.h"
 #include "migration/vmstate.h"
 #include "chardev/char-fe.h"
 #include "hw/ppc/spapr.h"
 #include "hw/ppc/spapr_vio.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
+#include "qom/object.h"
 
 #define VTERM_BUFSIZE   16
 
-typedef struct SpaprVioVty {
+struct SpaprVioVty {
     SpaprVioDevice sdev;
     CharBackend chardev;
     uint32_t in, out;
     uint8_t buf[VTERM_BUFSIZE];
-} SpaprVioVty;
+};
 
 #define TYPE_VIO_SPAPR_VTY_DEVICE "spapr-vty"
-#define VIO_SPAPR_VTY_DEVICE(obj) \
-     OBJECT_CHECK(SpaprVioVty, (obj), TYPE_VIO_SPAPR_VTY_DEVICE)
+OBJECT_DECLARE_SIMPLE_TYPE(SpaprVioVty, VIO_SPAPR_VTY_DEVICE)
 
 static int vty_can_receive(void *opaque)
 {

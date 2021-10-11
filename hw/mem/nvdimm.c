@@ -11,7 +11,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -146,6 +146,15 @@ static void nvdimm_prepare_memory_region(NVDIMMDevice *nvdimm, Error **errp)
         return;
     }
 
+    if (!nvdimm->unarmed && memory_region_is_rom(mr)) {
+        HostMemoryBackend *hostmem = dimm->hostmem;
+
+        error_setg(errp, "'unarmed' property must be off since memdev %s "
+                   "is read-only",
+                   object_get_canonical_path_component(OBJECT(hostmem)));
+        return;
+    }
+
     nvdimm->nvdimm_mr = g_new(MemoryRegion, 1);
     memory_region_init_alias(nvdimm->nvdimm_mr, OBJECT(dimm),
                              "nvdimm-memory", mr, 0, pmem_size);
@@ -236,6 +245,7 @@ static void nvdimm_class_init(ObjectClass *oc, void *data)
 
     nvc->read_label_data = nvdimm_read_label_data;
     nvc->write_label_data = nvdimm_write_label_data;
+    set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
 }
 
 static TypeInfo nvdimm_info = {

@@ -18,6 +18,7 @@
 #include "hw/char/nrf51_uart.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "migration/vmstate.h"
 #include "trace.h"
 
@@ -74,7 +75,7 @@ static uint64_t uart_read(void *opaque, hwaddr addr, unsigned int size)
     return r;
 }
 
-static gboolean uart_transmit(GIOChannel *chan, GIOCondition cond, void *opaque)
+static gboolean uart_transmit(void *do_not_use, GIOCondition cond, void *opaque)
 {
     NRF51UARTState *s = NRF51_UART(opaque);
     int r;

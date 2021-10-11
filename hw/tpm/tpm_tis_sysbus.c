@@ -29,16 +29,17 @@
 #include "tpm_prop.h"
 #include "hw/sysbus.h"
 #include "tpm_tis.h"
+#include "qom/object.h"
 
-typedef struct TPMStateSysBus {
+struct TPMStateSysBus {
     /*< private >*/
     SysBusDevice parent_obj;
 
     /*< public >*/
     TPMState state; /* not a QOM object */
-} TPMStateSysBus;
+};
 
-#define TPM_TIS_SYSBUS(obj) OBJECT_CHECK(TPMStateSysBus, (obj), TYPE_TPM_TIS_SYSBUS)
+OBJECT_DECLARE_SIMPLE_TYPE(TPMStateSysBus, TPM_TIS_SYSBUS)
 
 static int tpm_tis_pre_save_sysbus(void *opaque)
 {
@@ -138,6 +139,7 @@ static void tpm_tis_sysbus_class_init(ObjectClass *klass, void *data)
     dc->reset = tpm_tis_sysbus_reset;
     tc->request_completed = tpm_tis_sysbus_request_completed;
     tc->get_version = tpm_tis_sysbus_get_tpm_version;
+    set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 
 static const TypeInfo tpm_tis_sysbus_info = {

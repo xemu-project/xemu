@@ -3,9 +3,9 @@
 #include "exec/exec-all.h"
 #include "hw/isa/isa.h"
 #include "migration/cpu.h"
-#include "hyperv.h"
+#include "kvm/hyperv.h"
 #include "hw/i386/x86.h"
-#include "kvm_i386.h"
+#include "kvm/kvm_i386.h"
 
 #include "sysemu/kvm.h"
 #include "sysemu/tcg.h"
@@ -394,6 +394,13 @@ static bool async_pf_msr_needed(void *opaque)
     return cpu->env.async_pf_en_msr != 0;
 }
 
+static bool async_pf_int_msr_needed(void *opaque)
+{
+    X86CPU *cpu = opaque;
+
+    return cpu->env.async_pf_int_msr != 0;
+}
+
 static bool pv_eoi_msr_needed(void *opaque)
 {
     X86CPU *cpu = opaque;
@@ -463,6 +470,17 @@ static const VMStateDescription vmstate_async_pf_msr = {
     .needed = async_pf_msr_needed,
     .fields = (VMStateField[]) {
         VMSTATE_UINT64(env.async_pf_en_msr, X86CPU),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
+static const VMStateDescription vmstate_async_pf_int_msr = {
+    .name = "cpu/async_pf_int_msr",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = async_pf_int_msr_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT64(env.async_pf_int_msr, X86CPU),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -687,7 +705,7 @@ static bool hyperv_hypercall_enable_needed(void *opaque)
     return env->msr_hv_hypercall != 0 || env->msr_hv_guest_os_id != 0;
 }
 
-static const VMStateDescription vmstate_msr_hypercall_hypercall = {
+static const VMStateDescription vmstate_msr_hyperv_hypercall = {
     .name = "cpu/msr_hyperv_hypercall",
     .version_id = 1,
     .minimum_version_id = 1,
@@ -865,11 +883,31 @@ static bool hyperv_reenlightenment_enable_needed(void *opaque)
         env->msr_hv_tsc_emulation_status != 0;
 }
 
+static int hyperv_reenlightenment_post_load(void *opaque, int version_id)
+{
+    X86CPU *cpu = opaque;
+    CPUX86State *env = &cpu->env;
+
+    /*
+     * KVM doesn't fully support re-enlightenment notifications so we need to
+     * make sure TSC frequency doesn't change upon migration.
+     */
+    if ((env->msr_hv_reenlightenment_control & HV_REENLIGHTENMENT_ENABLE_BIT) &&
+        !env->user_tsc_khz) {
+        error_report("Guest enabled re-enlightenment notifications, "
+                     "'tsc-frequency=' has to be specified");
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
 static const VMStateDescription vmstate_msr_hyperv_reenlightenment = {
     .name = "cpu/msr_hyperv_reenlightenment",
     .version_id = 1,
     .minimum_version_id = 1,
     .needed = hyperv_reenlightenment_enable_needed,
+    .post_load = hyperv_reenlightenment_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_UINT64(env.msr_hv_reenlightenment_control, X86CPU),
         VMSTATE_UINT64(env.msr_hv_tsc_emulation_control, X86CPU),
@@ -962,7 +1000,6 @@ static const VMStateDescription vmstate_umwait = {
     }
 };
 
-#ifdef TARGET_X86_64
 static bool pkru_needed(void *opaque)
 {
     X86CPU *cpu = opaque;
@@ -981,7 +1018,25 @@ static const VMStateDescription vmstate_pkru = {
         VMSTATE_END_OF_LIST()
     }
 };
-#endif
+
+static bool pkrs_needed(void *opaque)
+{
+    X86CPU *cpu = opaque;
+    CPUX86State *env = &cpu->env;
+
+    return env->pkrs != 0;
+}
+
+static const VMStateDescription vmstate_pkrs = {
+    .name = "cpu/pkrs",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = pkrs_needed,
+    .fields = (VMStateField[]){
+        VMSTATE_UINT32(env.pkrs, X86CPU),
+        VMSTATE_END_OF_LIST()
+    }
+};
 
 static bool tsc_khz_needed(void *opaque)
 {
@@ -1138,7 +1193,7 @@ static int nested_state_post_load(void *opaque, int version_id)
         return -EINVAL;
     }
     if (nested_state->size > max_nested_state_len) {
-        error_report("Recieved unsupported nested state size: "
+        error_report("Received unsupported nested state size: "
                      "nested_state->size=%d, max=%d",
                      nested_state->size, max_nested_state_len);
         return -EINVAL;
@@ -1341,7 +1396,7 @@ static const VMStateDescription vmstate_msr_tsx_ctrl = {
     }
 };
 
-VMStateDescription vmstate_x86_cpu = {
+const VMStateDescription vmstate_x86_cpu = {
     .name = "cpu",
     .version_id = 12,
     .minimum_version_id = 11,
@@ -1438,6 +1493,7 @@ VMStateDescription vmstate_x86_cpu = {
     .subsections = (const VMStateDescription*[]) {
         &vmstate_exception_info,
         &vmstate_async_pf_msr,
+        &vmstate_async_pf_int_msr,
         &vmstate_pv_eoi_msr,
         &vmstate_steal_time_msr,
         &vmstate_poll_control_msr,
@@ -1448,7 +1504,7 @@ VMStateDescription vmstate_x86_cpu = {
         &vmstate_msr_ia32_feature_control,
         &vmstate_msr_architectural_pmu,
         &vmstate_mpx,
-        &vmstate_msr_hypercall_hypercall,
+        &vmstate_msr_hyperv_hypercall,
         &vmstate_msr_hyperv_vapic,
         &vmstate_msr_hyperv_time,
         &vmstate_msr_hyperv_crash,
@@ -1461,9 +1517,8 @@ VMStateDescription vmstate_x86_cpu = {
         &vmstate_umwait,
         &vmstate_tsc_khz,
         &vmstate_msr_smi_count,
-#ifdef TARGET_X86_64
         &vmstate_pkru,
-#endif
+        &vmstate_pkrs,
         &vmstate_spec_ctrl,
         &vmstate_mcg_ext_ctl,
         &vmstate_msr_intel_pt,

@@ -11,7 +11,6 @@
 
 #include "qemu/osdep.h"
 #include "qemu/module.h"
-#include "cpu.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/cpus.h"
 #include "sysemu/hw_accel.h"
@@ -21,7 +20,7 @@
 #include "hw/sysbus.h"
 #include "hw/boards.h"
 #include "migration/vmstate.h"
-#include "tcg/tcg.h"
+#include "qom/object.h"
 
 #define VAPIC_IO_PORT           0x7e
 
@@ -56,7 +55,7 @@ typedef struct GuestROMState {
     VAPICHandlers mp;
 } QEMU_PACKED GuestROMState;
 
-typedef struct VAPICROMState {
+struct VAPICROMState {
     SysBusDevice busdev;
     MemoryRegion io;
     MemoryRegion rom;
@@ -69,10 +68,10 @@ typedef struct VAPICROMState {
     size_t rom_size;
     bool rom_mapped_writable;
     VMChangeStateEntry *vmsentry;
-} VAPICROMState;
+};
 
 #define TYPE_VAPIC "kvmvapic"
-#define VAPIC(obj) OBJECT_CHECK(VAPICROMState, (obj), TYPE_VAPIC)
+OBJECT_DECLARE_SIMPLE_TYPE(VAPICROMState, VAPIC)
 
 #define TPR_INSTR_ABS_MODRM             0x1
 #define TPR_INSTR_MATCH_MODRM_REG       0x2
@@ -748,7 +747,7 @@ static void do_vapic_enable(CPUState *cs, run_on_cpu_data data)
     s->state = VAPIC_ACTIVE;
 }
 
-static void kvmvapic_vm_state_change(void *opaque, int running,
+static void kvmvapic_vm_state_change(void *opaque, bool running,
                                      RunState state)
 {
     MachineState *ms = MACHINE(qdev_get_machine());

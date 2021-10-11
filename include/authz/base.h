@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -27,18 +27,9 @@
 
 #define TYPE_QAUTHZ "authz"
 
-#define QAUTHZ_CLASS(klass) \
-     OBJECT_CLASS_CHECK(QAuthZClass, (klass), \
-                        TYPE_QAUTHZ)
-#define QAUTHZ_GET_CLASS(obj) \
-     OBJECT_GET_CLASS(QAuthZClass, (obj), \
-                      TYPE_QAUTHZ)
-#define QAUTHZ(obj) \
-     OBJECT_CHECK(QAuthZ, (obj), \
-                  TYPE_QAUTHZ)
+OBJECT_DECLARE_TYPE(QAuthZ, QAuthZClass,
+                    QAUTHZ)
 
-typedef struct QAuthZ QAuthZ;
-typedef struct QAuthZClass QAuthZClass;
 
 /**
  * QAuthZ:

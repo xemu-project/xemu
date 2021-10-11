@@ -20,8 +20,10 @@
 #include "hw/s390x/sclp.h"
 #include "migration/vmstate.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "hw/s390x/event-facility.h"
 #include "chardev/char-fe.h"
+#include "qom/object.h"
 
 typedef struct ASCIIConsoleData {
     EventBufferHeader ebh;
@@ -31,7 +33,7 @@ typedef struct ASCIIConsoleData {
 /* max size for ASCII data in 4K SCCB page */
 #define SIZE_BUFFER_VT220 4080
 
-typedef struct SCLPConsole {
+struct SCLPConsole {
     SCLPEvent event;
     CharBackend chr;
     uint8_t iov[SIZE_BUFFER_VT220];
@@ -40,11 +42,12 @@ typedef struct SCLPConsole {
     uint32_t iov_data_len;  /* length of byte stream in buffer             */
     uint32_t iov_sclp_rest; /* length of byte stream not read via SCLP     */
     bool notify;            /* qemu_notify_event() req'd if true           */
-} SCLPConsole;
+};
+typedef struct SCLPConsole SCLPConsole;
 
 #define TYPE_SCLP_CONSOLE "sclpconsole"
-#define SCLP_CONSOLE(obj) \
-    OBJECT_CHECK(SCLPConsole, (obj), TYPE_SCLP_CONSOLE)
+DECLARE_INSTANCE_CHECKER(SCLPConsole, SCLP_CONSOLE,
+                         TYPE_SCLP_CONSOLE)
 
 /* character layer call-back functions */
 
@@ -271,7 +274,7 @@ static void console_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo sclp_console_info = {
-    .name          = "sclpconsole",
+    .name          = TYPE_SCLP_CONSOLE,
     .parent        = TYPE_SCLP_EVENT,
     .instance_size = sizeof(SCLPConsole),
     .class_init    = console_class_init,

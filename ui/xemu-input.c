@@ -63,12 +63,12 @@ void xemu_input_init(void)
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
     if (SDL_Init(SDL_INIT_GAMECONTROLLER) < 0) {
-        fprintf(stderr, "Failed to initialize SDL gamecontroller subsystem\n");
+        fprintf(stderr, "Failed to initialize SDL gamecontroller subsystem: %s\n", SDL_GetError());
         exit(1);
     }
 
     if (SDL_Init(SDL_INIT_HAPTIC) < 0) {
-        fprintf(stderr, "Failed to initialize SDL haptic subsystem\n");
+        fprintf(stderr, "Failed to initialize SDL haptic subsystem: %s\n", SDL_GetError());
         exit(1);
     }
 
@@ -429,7 +429,8 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         qdict_put_str(qdict, "driver", "usb-xbox-gamepad");
 
         // Specify device identifier
-        char *tmp = g_strdup_printf("gamepad_%d", index+1);
+        static int id_counter = 0;
+        char *tmp = g_strdup_printf("gamepad_%d", id_counter++);
         qdict_put_str(qdict, "id", tmp);
         g_free(tmp);
 

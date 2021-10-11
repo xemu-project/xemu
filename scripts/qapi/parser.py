@@ -14,49 +14,115 @@
 # This work is licensed under the terms of the GNU GPL, version 2.
 # See the COPYING file in the top-level directory.
 
+from collections import OrderedDict
 import os
 import re
-from collections import OrderedDict
+from typing import (
+    Dict,
+    List,
+    Optional,
+    Set,
+    Union,
+)
 
-from qapi.error import QAPIParseError, QAPISemError
-from qapi.source import QAPISourceInfo
+from .common import must_match
+from .error import QAPISemError, QAPISourceError
+from .source import QAPISourceInfo
+
+
+# Return value alias for get_expr().
+_ExprValue = Union[List[object], Dict[str, object], str, bool]
+
+
+class QAPIParseError(QAPISourceError):
+    """Error class for all QAPI schema parsing errors."""
+    def __init__(self, parser: 'QAPISchemaParser', msg: str):
+        col = 1
+        for ch in parser.src[parser.line_pos:parser.pos]:
+            if ch == '\t':
+                col = (col + 7) % 8 + 1
+            else:
+                col += 1
+        super().__init__(parser.info, msg, col)
 
 
 class QAPISchemaParser:
+    """
+    Parse QAPI schema source.
 
-    def __init__(self, fname, previously_included=None, incl_info=None):
-        previously_included = previously_included or set()
-        previously_included.add(os.path.abspath(fname))
+    Parse a JSON-esque schema file and process directives.  See
+    qapi-code-gen.txt section "Schema Syntax" for the exact syntax.
+    Grammatical validation is handled later by `expr.check_exprs()`.
 
-        try:
-            fp = open(fname, 'r', encoding='utf-8')
-            self.src = fp.read()
-        except IOError as e:
-            raise QAPISemError(incl_info or QAPISourceInfo(None, None, None),
-                               "can't read %s file '%s': %s"
-                               % ("include" if incl_info else "schema",
-                                  fname,
-                                  e.strerror))
+    :param fname: Source file name.
+    :param previously_included:
+        The absolute names of previously included source files,
+        if being invoked from another parser.
+    :param incl_info:
+       `QAPISourceInfo` belonging to the parent module.
+       ``None`` implies this is the root module.
 
-        if self.src == '' or self.src[-1] != '\n':
-            self.src += '\n'
+    :ivar exprs: Resulting parsed expressions.
+    :ivar docs: Resulting parsed documentation blocks.
+
+    :raise OSError: For problems reading the root schema document.
+    :raise QAPIError: For errors in the schema source.
+    """
+    def __init__(self,
+                 fname: str,
+                 previously_included: Optional[Set[str]] = None,
+                 incl_info: Optional[QAPISourceInfo] = None):
+        self._fname = fname
+        self._included = previously_included or set()
+        self._included.add(os.path.abspath(self._fname))
+        self.src = ''
+
+        # Lexer state (see `accept` for details):
+        self.info = QAPISourceInfo(self._fname, incl_info)
+        self.tok: Union[None, str] = None
+        self.pos = 0
         self.cursor = 0
-        self.info = QAPISourceInfo(fname, 1, incl_info)
+        self.val: Optional[Union[bool, str]] = None
         self.line_pos = 0
-        self.exprs = []
-        self.docs = []
-        self.accept()
+
+        # Parser output:
+        self.exprs: List[Dict[str, object]] = []
+        self.docs: List[QAPIDoc] = []
+
+        # Showtime!
+        self._parse()
+
+    def _parse(self) -> None:
+        """
+        Parse the QAPI schema document.
+
+        :return: None.  Results are stored in ``.exprs`` and ``.docs``.
+        """
         cur_doc = None
 
+        # May raise OSError; allow the caller to handle it.
+        with open(self._fname, 'r', encoding='utf-8') as fp:
+            self.src = fp.read()
+        if self.src == '' or self.src[-1] != '\n':
+            self.src += '\n'
+
+        # Prime the lexer:
+        self.accept()
+
+        # Parse until done:
         while self.tok is not None:
             info = self.info
             if self.tok == '#':
                 self.reject_expr_doc(cur_doc)
-                cur_doc = self.get_doc(info)
-                self.docs.append(cur_doc)
+                for cur_doc in self.get_doc(info):
+                    self.docs.append(cur_doc)
                 continue
 
-            expr = self.get_expr(False)
+            expr = self.get_expr()
+            if not isinstance(expr, dict):
+                raise QAPISemError(
+                    info, "top-level expression must be an object")
+
             if 'include' in expr:
                 self.reject_expr_doc(cur_doc)
                 if len(expr) != 1:
@@ -65,12 +131,12 @@ class QAPISchemaParser:
                 if not isinstance(include, str):
                     raise QAPISemError(info,
                                        "value of 'include' must be a string")
-                incl_fname = os.path.join(os.path.dirname(fname),
+                incl_fname = os.path.join(os.path.dirname(self._fname),
                                           include)
                 self.exprs.append({'expr': {'include': incl_fname},
                                    'info': info})
                 exprs_include = self._include(include, info, incl_fname,
-                                              previously_included)
+                                              self._included)
                 if exprs_include:
                     self.exprs.extend(exprs_include.exprs)
                     self.docs.extend(exprs_include.docs)
@@ -97,17 +163,22 @@ class QAPISchemaParser:
         self.reject_expr_doc(cur_doc)
 
     @staticmethod
-    def reject_expr_doc(doc):
+    def reject_expr_doc(doc: Optional['QAPIDoc']) -> None:
         if doc and doc.symbol:
             raise QAPISemError(
                 doc.info,
                 "documentation for '%s' is not followed by the definition"
                 % doc.symbol)
 
-    def _include(self, include, info, incl_fname, previously_included):
+    @staticmethod
+    def _include(include: str,
+                 info: QAPISourceInfo,
+                 incl_fname: str,
+                 previously_included: Set[str]
+                 ) -> Optional['QAPISchemaParser']:
         incl_abs_fname = os.path.abspath(incl_fname)
         # catch inclusion cycle
-        inf = info
+        inf: Optional[QAPISourceInfo] = info
         while inf:
             if incl_abs_fname == os.path.abspath(inf.fname):
                 raise QAPISemError(info, "inclusion loop for %s" % include)
@@ -117,32 +188,86 @@ class QAPISchemaParser:
         if incl_abs_fname in previously_included:
             return None
 
-        return QAPISchemaParser(incl_fname, previously_included, info)
+        try:
+            return QAPISchemaParser(incl_fname, previously_included, info)
+        except OSError as err:
+            raise QAPISemError(
+                info,
+                f"can't read include file '{incl_fname}': {err.strerror}"
+            ) from err
 
-    def _pragma(self, name, value, info):
+    @staticmethod
+    def _pragma(name: str, value: object, info: QAPISourceInfo) -> None:
+
+        def check_list_str(name: str, value: object) -> List[str]:
+            if (not isinstance(value, list) or
+                    any(not isinstance(elt, str) for elt in value)):
+                raise QAPISemError(
+                    info,
+                    "pragma %s must be a list of strings" % name)
+            return value
+
+        pragma = info.pragma
+
         if name == 'doc-required':
             if not isinstance(value, bool):
                 raise QAPISemError(info,
                                    "pragma 'doc-required' must be boolean")
-            info.pragma.doc_required = value
-        elif name == 'returns-whitelist':
-            if (not isinstance(value, list)
-                    or any([not isinstance(elt, str) for elt in value])):
-                raise QAPISemError(
-                    info,
-                    "pragma returns-whitelist must be a list of strings")
-            info.pragma.returns_whitelist = value
-        elif name == 'name-case-whitelist':
-            if (not isinstance(value, list)
-                    or any([not isinstance(elt, str) for elt in value])):
-                raise QAPISemError(
-                    info,
-                    "pragma name-case-whitelist must be a list of strings")
-            info.pragma.name_case_whitelist = value
+            pragma.doc_required = value
+        elif name == 'command-name-exceptions':
+            pragma.command_name_exceptions = check_list_str(name, value)
+        elif name == 'command-returns-exceptions':
+            pragma.command_returns_exceptions = check_list_str(name, value)
+        elif name == 'member-name-exceptions':
+            pragma.member_name_exceptions = check_list_str(name, value)
         else:
             raise QAPISemError(info, "unknown pragma '%s'" % name)
 
-    def accept(self, skip_comment=True):
+    def accept(self, skip_comment: bool = True) -> None:
+        """
+        Read and store the next token.
+
+        :param skip_comment:
+            When false, return COMMENT tokens ("#").
+            This is used when reading documentation blocks.
+
+        :return:
+            None.  Several instance attributes are updated instead:
+
+            - ``.tok`` represents the token type.  See below for values.
+            - ``.info`` describes the token's source location.
+            - ``.val`` is the token's value, if any.  See below.
+            - ``.pos`` is the buffer index of the first character of
+              the token.
+
+        * Single-character tokens:
+
+            These are "{", "}", ":", ",", "[", and "]".
+            ``.tok`` holds the single character and ``.val`` is None.
+
+        * Multi-character tokens:
+
+          * COMMENT:
+
+            This token is not normally returned by the lexer, but it can
+            be when ``skip_comment`` is False.  ``.tok`` is "#", and
+            ``.val`` is a string including all chars until end-of-line,
+            including the "#" itself.
+
+          * STRING:
+
+            ``.tok`` is "'", the single quote.  ``.val`` contains the
+            string, excluding the surrounding quotes.
+
+          * TRUE and FALSE:
+
+            ``.tok`` is either "t" or "f", ``.val`` will be the
+            corresponding bool value.
+
+          * EOF:
+
+            ``.tok`` and ``.val`` will both be None at EOF.
+        """
         while True:
             self.tok = self.src[self.cursor]
             self.pos = self.cursor
@@ -202,12 +327,12 @@ class QAPISchemaParser:
             elif not self.tok.isspace():
                 # Show up to next structural, whitespace or quote
                 # character
-                match = re.match('[^[\\]{}:,\\s\'"]+',
-                                 self.src[self.cursor-1:])
+                match = must_match('[^[\\]{}:,\\s\'"]+',
+                                   self.src[self.cursor-1:])
                 raise QAPIParseError(self, "stray '%s'" % match.group(0))
 
-    def get_members(self):
-        expr = OrderedDict()
+    def get_members(self) -> Dict[str, object]:
+        expr: Dict[str, object] = OrderedDict()
         if self.tok == '}':
             self.accept()
             return expr
@@ -215,13 +340,15 @@ class QAPISchemaParser:
             raise QAPIParseError(self, "expected string or '}'")
         while True:
             key = self.val
+            assert isinstance(key, str)  # Guaranteed by tok == "'"
+
             self.accept()
             if self.tok != ':':
                 raise QAPIParseError(self, "expected ':'")
             self.accept()
             if key in expr:
                 raise QAPIParseError(self, "duplicate key '%s'" % key)
-            expr[key] = self.get_expr(True)
+            expr[key] = self.get_expr()
             if self.tok == '}':
                 self.accept()
                 return expr
@@ -231,16 +358,16 @@ class QAPISchemaParser:
             if self.tok != "'":
                 raise QAPIParseError(self, "expected string")
 
-    def get_values(self):
-        expr = []
+    def get_values(self) -> List[object]:
+        expr: List[object] = []
         if self.tok == ']':
             self.accept()
             return expr
-        if self.tok not in "{['tfn":
+        if self.tok not in tuple("{['tf"):
             raise QAPIParseError(
-                self, "expected '{', '[', ']', string, boolean or 'null'")
+                self, "expected '{', '[', ']', string, or boolean")
         while True:
-            expr.append(self.get_expr(True))
+            expr.append(self.get_expr())
             if self.tok == ']':
                 self.accept()
                 return expr
@@ -248,41 +375,53 @@ class QAPISchemaParser:
                 raise QAPIParseError(self, "expected ',' or ']'")
             self.accept()
 
-    def get_expr(self, nested):
-        if self.tok != '{' and not nested:
-            raise QAPIParseError(self, "expected '{'")
+    def get_expr(self) -> _ExprValue:
+        expr: _ExprValue
         if self.tok == '{':
             self.accept()
             expr = self.get_members()
         elif self.tok == '[':
             self.accept()
             expr = self.get_values()
-        elif self.tok in "'tfn":
+        elif self.tok in tuple("'tf"):
+            assert isinstance(self.val, (str, bool))
             expr = self.val
             self.accept()
         else:
             raise QAPIParseError(
-                self, "expected '{', '[', string, boolean or 'null'")
+                self, "expected '{', '[', string, or boolean")
         return expr
 
-    def get_doc(self, info):
+    def get_doc(self, info: QAPISourceInfo) -> List['QAPIDoc']:
         if self.val != '##':
             raise QAPIParseError(
                 self, "junk after '##' at start of documentation comment")
 
-        doc = QAPIDoc(self, info)
+        docs = []
+        cur_doc = QAPIDoc(self, info)
         self.accept(False)
         while self.tok == '#':
+            assert isinstance(self.val, str)
             if self.val.startswith('##'):
                 # End of doc comment
                 if self.val != '##':
                     raise QAPIParseError(
                         self,
                         "junk after '##' at end of documentation comment")
-                doc.end_comment()
+                cur_doc.end_comment()
+                docs.append(cur_doc)
                 self.accept()
-                return doc
-            doc.append(self.val)
+                return docs
+            if self.val.startswith('# ='):
+                if cur_doc.symbol:
+                    raise QAPIParseError(
+                        self,
+                        "unexpected '=' markup in definition documentation")
+                if cur_doc.body.text:
+                    cur_doc.end_comment()
+                    docs.append(cur_doc)
+                    cur_doc = QAPIDoc(self, info)
+            cur_doc.append(self.val)
             self.accept(False)
 
         raise QAPIParseError(self, "documentation comment must end with '##'")
@@ -308,18 +447,32 @@ class QAPIDoc:
     """
 
     class Section:
-        def __init__(self, name=None):
+        def __init__(self, parser, name=None, indent=0):
+            # parser, for error messages about indentation
+            self._parser = parser
             # optional section name (argument/member or section name)
             self.name = name
-            # the list of lines for this section
             self.text = ''
+            # the expected indent level of the text of this section
+            self._indent = indent
 
         def append(self, line):
+            # Strip leading spaces corresponding to the expected indent level
+            # Blank lines are always OK.
+            if line:
+                indent = must_match(r'\s*', line).end()
+                if indent < self._indent:
+                    raise QAPIParseError(
+                        self._parser,
+                        "unexpected de-indent (expected at least %d spaces)" %
+                        self._indent)
+                line = line[self._indent:]
+
             self.text += line.rstrip() + '\n'
 
     class ArgSection(Section):
-        def __init__(self, name):
-            super().__init__(name)
+        def __init__(self, parser, name, indent=0):
+            super().__init__(parser, name, indent)
             self.member = None
 
         def connect(self, member):
@@ -333,7 +486,7 @@ class QAPIDoc:
         self._parser = parser
         self.info = info
         self.symbol = None
-        self.body = QAPIDoc.Section()
+        self.body = QAPIDoc.Section(parser)
         # dict mapping parameter name to ArgSection
         self.args = OrderedDict()
         self.features = OrderedDict()
@@ -417,10 +570,10 @@ class QAPIDoc:
                 self._append_line = self._append_various_line
                 self._append_various_line(line)
             else:
-                self._append_freeform(line.strip())
+                self._append_freeform(line)
         else:
             # This is a free-form documentation block
-            self._append_freeform(line.strip())
+            self._append_freeform(line)
 
     def _append_args_line(self, line):
         """
@@ -437,8 +590,21 @@ class QAPIDoc:
         name = line.split(' ', 1)[0]
 
         if name.startswith('@') and name.endswith(':'):
-            line = line[len(name)+1:]
-            self._start_args_section(name[1:-1])
+            # If line is "@arg:   first line of description", find
+            # the index of 'f', which is the indent we expect for any
+            # following lines.  We then remove the leading "@arg:"
+            # from line and replace it with spaces so that 'f' has the
+            # same index as it did in the original line and can be
+            # handled the same way we will handle following lines.
+            indent = must_match(r'@\S*:\s*', line).end()
+            line = line[indent:]
+            if not line:
+                # Line was just the "@arg:" header; following lines
+                # are not indented
+                indent = 0
+            else:
+                line = ' ' * indent + line
+            self._start_args_section(name[1:-1], indent)
         elif self._is_section_tag(name):
             self._append_line = self._append_various_line
             self._append_various_line(line)
@@ -453,14 +619,27 @@ class QAPIDoc:
                 self._append_various_line(line)
             return
 
-        self._append_freeform(line.strip())
+        self._append_freeform(line)
 
     def _append_features_line(self, line):
         name = line.split(' ', 1)[0]
 
         if name.startswith('@') and name.endswith(':'):
-            line = line[len(name)+1:]
-            self._start_features_section(name[1:-1])
+            # If line is "@arg:   first line of description", find
+            # the index of 'f', which is the indent we expect for any
+            # following lines.  We then remove the leading "@arg:"
+            # from line and replace it with spaces so that 'f' has the
+            # same index as it did in the original line and can be
+            # handled the same way we will handle following lines.
+            indent = must_match(r'@\S*:\s*', line).end()
+            line = line[indent:]
+            if not line:
+                # Line was just the "@arg:" header; following lines
+                # are not indented
+                indent = 0
+            else:
+                line = ' ' * indent + line
+            self._start_features_section(name[1:-1], indent)
         elif self._is_section_tag(name):
             self._append_line = self._append_various_line
             self._append_various_line(line)
@@ -472,7 +651,7 @@ class QAPIDoc:
             self._append_various_line(line)
             return
 
-        self._append_freeform(line.strip())
+        self._append_freeform(line)
 
     def _append_various_line(self, line):
         """
@@ -492,16 +671,25 @@ class QAPIDoc:
                                  "'%s' can't follow '%s' section"
                                  % (name, self.sections[0].name))
         if self._is_section_tag(name):
-            line = line[len(name)+1:]
-            self._start_section(name[:-1])
-
-        if (not self._section.name or
-                not self._section.name.startswith('Example')):
-            line = line.strip()
+            # If line is "Section:   first line of description", find
+            # the index of 'f', which is the indent we expect for any
+            # following lines.  We then remove the leading "Section:"
+            # from line and replace it with spaces so that 'f' has the
+            # same index as it did in the original line and can be
+            # handled the same way we will handle following lines.
+            indent = must_match(r'\S*:\s*', line).end()
+            line = line[indent:]
+            if not line:
+                # Line was just the "Section:" header; following lines
+                # are not indented
+                indent = 0
+            else:
+                line = ' ' * indent + line
+            self._start_section(name[:-1], indent)
 
         self._append_freeform(line)
 
-    def _start_symbol_section(self, symbols_dict, name):
+    def _start_symbol_section(self, symbols_dict, name, indent):
         # FIXME invalid names other than the empty string aren't flagged
         if not name:
             raise QAPIParseError(self._parser, "invalid parameter name")
@@ -510,21 +698,21 @@ class QAPIDoc:
                                  "'%s' parameter name duplicated" % name)
         assert not self.sections
         self._end_section()
-        self._section = QAPIDoc.ArgSection(name)
+        self._section = QAPIDoc.ArgSection(self._parser, name, indent)
         symbols_dict[name] = self._section
 
-    def _start_args_section(self, name):
-        self._start_symbol_section(self.args, name)
+    def _start_args_section(self, name, indent):
+        self._start_symbol_section(self.args, name, indent)
 
-    def _start_features_section(self, name):
-        self._start_symbol_section(self.features, name)
+    def _start_features_section(self, name, indent):
+        self._start_symbol_section(self.features, name, indent)
 
-    def _start_section(self, name=None):
+    def _start_section(self, name=None, indent=0):
         if name in ('Returns', 'Since') and self.has_section(name):
             raise QAPIParseError(self._parser,
                                  "duplicated '%s' section" % name)
         self._end_section()
-        self._section = QAPIDoc.Section(name)
+        self._section = QAPIDoc.Section(self._parser, name, indent)
         self.sections.append(self._section)
 
     def _end_section(self):
@@ -547,7 +735,8 @@ class QAPIDoc:
     def connect_member(self, member):
         if member.name not in self.args:
             # Undocumented TODO outlaw
-            self.args[member.name] = QAPIDoc.ArgSection(member.name)
+            self.args[member.name] = QAPIDoc.ArgSection(self._parser,
+                                                        member.name)
         self.args[member.name].connect(member)
 
     def connect_feature(self, feature):

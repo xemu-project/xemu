@@ -29,15 +29,13 @@
 
 #include "qemu/osdep.h"
 #include "qemu/log.h"
-#include "exec/address-spaces.h"
-#include "hw/hw.h"
 #include "hw/sysbus.h"
 #include "hw/m68k/next-cube.h"
 #include "ui/console.h"
-#include "sysemu/sysemu.h"
 #include "migration/vmstate.h"
+#include "qom/object.h"
 
-#define NEXTKBD(obj) OBJECT_CHECK(NextKBDState, (obj), TYPE_NEXTKBD)
+OBJECT_DECLARE_SIMPLE_TYPE(NextKBDState, NEXTKBD)
 
 /* following defintions from next68k netbsd */
 #define CSR_INT 0x00800000
@@ -63,12 +61,12 @@ typedef struct {
 } KBDQueue;
 
 
-typedef struct NextKBDState {
+struct NextKBDState {
     SysBusDevice sbd;
     MemoryRegion mr;
     KBDQueue queue;
     uint16_t shift;
-} NextKBDState;
+};
 
 static void queue_code(void *opaque, int code);
 

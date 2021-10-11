@@ -16,19 +16,21 @@
 #include "hw/pci/msix.h"
 #include "hw/pci/pcie_port.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "migration/vmstate.h"
+#include "qom/object.h"
 
 #define TYPE_GEN_PCIE_ROOT_PORT                "pcie-root-port"
-#define GEN_PCIE_ROOT_PORT(obj) \
-        OBJECT_CHECK(GenPCIERootPort, (obj), TYPE_GEN_PCIE_ROOT_PORT)
+OBJECT_DECLARE_SIMPLE_TYPE(GenPCIERootPort, GEN_PCIE_ROOT_PORT)
 
 #define GEN_PCIE_ROOT_PORT_AER_OFFSET           0x100
 #define GEN_PCIE_ROOT_PORT_ACS_OFFSET \
         (GEN_PCIE_ROOT_PORT_AER_OFFSET + PCI_ERR_SIZEOF)
 
 #define GEN_PCIE_ROOT_PORT_MSIX_NR_VECTOR       1
+#define GEN_PCIE_ROOT_DEFAULT_IO_RANGE          4096
 
-typedef struct GenPCIERootPort {
+struct GenPCIERootPort {
     /*< private >*/
     PCIESlot parent_obj;
     /*< public >*/
@@ -37,7 +39,7 @@ typedef struct GenPCIERootPort {
 
     /* additional resources to reserve */
     PCIResReserve res_reserve;
-} GenPCIERootPort;
+};
 
 static uint8_t gen_rp_aer_vector(const PCIDevice *d)
 {
@@ -74,6 +76,7 @@ static bool gen_rp_test_migrate_msix(void *opaque, int version_id)
 static void gen_rp_realize(DeviceState *dev, Error **errp)
 {
     PCIDevice *d = PCI_DEVICE(dev);
+    PCIESlot *s = PCIE_SLOT(d);
     GenPCIERootPort *grp = GEN_PCIE_ROOT_PORT(d);
     PCIERootPortClass *rpc = PCIE_ROOT_PORT_GET_CLASS(d);
     Error *local_err = NULL;
@@ -84,6 +87,9 @@ static void gen_rp_realize(DeviceState *dev, Error **errp)
         return;
     }
 
+    if (grp->res_reserve.io == -1 && s->hotplug && !s->native_hotplug) {
+        grp->res_reserve.io = GEN_PCIE_ROOT_DEFAULT_IO_RANGE;
+    }
     int rc = pci_bridge_qemu_reserve_cap_init(d, 0,
                                               grp->res_reserve, errp);
 

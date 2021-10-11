@@ -19,6 +19,7 @@
 #include "hw/virtio/virtio.h"
 #include "hw/virtio/virtio-bus.h"
 #include "hw/virtio/virtio-gpu-pci.h"
+#include "qom/object.h"
 
 static Property virtio_gpu_pci_base_properties[] = {
     DEFINE_VIRTIO_GPU_PCI_PROPERTIES(VirtIOPCIProxy),
@@ -63,15 +64,17 @@ static const TypeInfo virtio_gpu_pci_base_info = {
     .class_init = virtio_gpu_pci_base_class_init,
     .abstract = true
 };
+module_obj(TYPE_VIRTIO_GPU_PCI_BASE);
 
 #define TYPE_VIRTIO_GPU_PCI "virtio-gpu-pci"
-#define VIRTIO_GPU_PCI(obj)                                 \
-    OBJECT_CHECK(VirtIOGPUPCI, (obj), TYPE_VIRTIO_GPU_PCI)
+typedef struct VirtIOGPUPCI VirtIOGPUPCI;
+DECLARE_INSTANCE_CHECKER(VirtIOGPUPCI, VIRTIO_GPU_PCI,
+                         TYPE_VIRTIO_GPU_PCI)
 
-typedef struct VirtIOGPUPCI {
+struct VirtIOGPUPCI {
     VirtIOGPUPCIBase parent_obj;
     VirtIOGPU vdev;
-} VirtIOGPUPCI;
+};
 
 static void virtio_gpu_initfn(Object *obj)
 {
@@ -88,6 +91,7 @@ static const VirtioPCIDeviceTypeInfo virtio_gpu_pci_info = {
     .instance_size = sizeof(VirtIOGPUPCI),
     .instance_init = virtio_gpu_initfn,
 };
+module_obj(TYPE_VIRTIO_GPU_PCI);
 
 static void virtio_gpu_pci_register_types(void)
 {

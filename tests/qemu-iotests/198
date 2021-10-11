@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# group: rw
 #
 # Test commit of encrypted qcow2 files
 #
@@ -63,7 +64,7 @@ echo "== writing whole image base =="
 $QEMU_IO --object $SECRET0 -c "write -P 0xa 0 $size" --image-opts $IMGSPECBASE | _filter_qemu_io | _filter_testdir
 
 echo "== create overlay =="
-_make_test_img --object $SECRET1 -o "encrypt.format=luks,encrypt.key-secret=sec1,encrypt.iter-time=10" -u -b "$TEST_IMG_BASE" -F $IMGFMT $size
+_make_test_img --object $SECRET1 -o "encrypt.format=luks,encrypt.key-secret=sec1,encrypt.iter-time=10" -b "$TEST_IMG_BASE" -F $IMGFMT
 
 echo
 echo "== writing whole image layer =="
@@ -94,6 +95,7 @@ echo "== checking image base =="
 $QEMU_IMG info --image-opts $IMGSPECBASE | _filter_img_info --format-specific \
     | sed -e "/^disk size:/ D" -e '/refcount bits:/ D' -e '/compat:/ D' \
           -e '/lazy refcounts:/ D' -e '/corrupt:/ D' -e '/^\s*data file/ D' \
+          -e '/extended l2:/ D' \
     | _filter_json_filename
 
 echo
@@ -101,6 +103,7 @@ echo "== checking image layer =="
 $QEMU_IMG info --image-opts $IMGSPECLAYER | _filter_img_info --format-specific \
     | sed -e "/^disk size:/ D" -e '/refcount bits:/ D' -e '/compat:/ D' \
           -e '/lazy refcounts:/ D' -e '/corrupt:/ D' -e '/^\s*data file/ D' \
+          -e '/extended l2:/ D' \
     | _filter_json_filename
 
 

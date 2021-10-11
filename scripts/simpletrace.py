@@ -7,7 +7,7 @@
 # This work is licensed under the terms of the GNU GPL, version 2.  See
 # the COPYING file in the top-level directory.
 #
-# For help see docs/devel/tracing.txt
+# For help see docs/devel/tracing.rst
 
 import struct
 import inspect
@@ -174,7 +174,9 @@ def process(events, log, analyzer, read_header=True):
     if read_header:
         read_trace_header(log)
 
-    dropped_event = Event.build("Dropped_Event(uint64_t num_events_dropped)")
+    frameinfo = inspect.getframeinfo(inspect.currentframe())
+    dropped_event = Event.build("Dropped_Event(uint64_t num_events_dropped)",
+                                frameinfo.lineno + 1, frameinfo.filename)
     edict = {"dropped": dropped_event}
     idtoname = {dropped_event_id: "dropped"}
 

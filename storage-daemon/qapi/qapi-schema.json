@@ -15,13 +15,18 @@
 
 { 'include': '../../qapi/pragma.json' }
 
+##
+# = Block devices
+##
 { 'include': '../../qapi/block-core.json' }
+{ 'include': '../../qapi/block-export.json' }
 { 'include': '../../qapi/char.json' }
 { 'include': '../../qapi/common.json' }
 { 'include': '../../qapi/control.json' }
 { 'include': '../../qapi/crypto.json' }
 { 'include': '../../qapi/introspect.json' }
 { 'include': '../../qapi/job.json' }
+{ 'include': '../../qapi/authz.json' }
 { 'include': '../../qapi/qom.json' }
 { 'include': '../../qapi/sockets.json' }
 { 'include': '../../qapi/transaction.json' }

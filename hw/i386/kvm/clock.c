@@ -14,13 +14,12 @@
  */
 
 #include "qemu/osdep.h"
-#include "cpu.h"
 #include "qemu/host-utils.h"
 #include "qemu/module.h"
 #include "sysemu/kvm.h"
 #include "sysemu/runstate.h"
 #include "sysemu/hw_accel.h"
-#include "kvm_i386.h"
+#include "kvm/kvm_i386.h"
 #include "migration/vmstate.h"
 #include "hw/sysbus.h"
 #include "hw/kvm/clock.h"
@@ -29,11 +28,12 @@
 
 #include <linux/kvm.h>
 #include "standard-headers/asm-x86/kvm_para.h"
+#include "qom/object.h"
 
 #define TYPE_KVM_CLOCK "kvmclock"
-#define KVM_CLOCK(obj) OBJECT_CHECK(KVMClockState, (obj), TYPE_KVM_CLOCK)
+OBJECT_DECLARE_SIMPLE_TYPE(KVMClockState, KVM_CLOCK)
 
-typedef struct KVMClockState {
+struct KVMClockState {
     /*< private >*/
     SysBusDevice busdev;
     /*< public >*/
@@ -50,7 +50,7 @@ typedef struct KVMClockState {
     /* whether the 'clock' value was obtained in a host with
      * reliable KVM_GET_CLOCK */
     bool clock_is_reliable;
-} KVMClockState;
+};
 
 struct pvclock_vcpu_time_info {
     uint32_t   version;
@@ -105,7 +105,7 @@ static void kvm_update_clock(KVMClockState *s)
 
     ret = kvm_vm_ioctl(kvm_state, KVM_GET_CLOCK, &data);
     if (ret < 0) {
-        fprintf(stderr, "KVM_GET_CLOCK failed: %s\n", strerror(ret));
+        fprintf(stderr, "KVM_GET_CLOCK failed: %s\n", strerror(-ret));
                 abort();
     }
     s->clock = data.clock;
@@ -161,7 +161,7 @@ static void do_kvmclock_ctrl(CPUState *cpu, run_on_cpu_data data)
     }
 }
 
-static void kvmclock_vm_state_change(void *opaque, int running,
+static void kvmclock_vm_state_change(void *opaque, bool running,
                                      RunState state)
 {
     KVMClockState *s = opaque;
@@ -189,7 +189,7 @@ static void kvmclock_vm_state_change(void *opaque, int running,
         data.clock = s->clock;
         ret = kvm_vm_ioctl(kvm_state, KVM_SET_CLOCK, &data);
         if (ret < 0) {
-            fprintf(stderr, "KVM_SET_CLOCK failed: %s\n", strerror(ret));
+            fprintf(stderr, "KVM_SET_CLOCK failed: %s\n", strerror(-ret));
             abort();
         }
 
@@ -328,11 +328,14 @@ static const TypeInfo kvmclock_info = {
 };
 
 /* Note: Must be called after VCPU initialization. */
-void kvmclock_create(void)
+void kvmclock_create(bool create_always)
 {
     X86CPU *cpu = X86_CPU(first_cpu);
 
-    if (kvm_enabled() &&
+    if (!kvm_enabled() || !kvm_has_adjust_clock())
+        return;
+
+    if (create_always ||
         cpu->env.features[FEAT_KVM] & ((1ULL << KVM_FEATURE_CLOCKSOURCE) |
                                        (1ULL << KVM_FEATURE_CLOCKSOURCE2))) {
         sysbus_create_simple(TYPE_KVM_CLOCK, -1, NULL);

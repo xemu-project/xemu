@@ -2,6 +2,7 @@
 #define MPTSAS_H
 
 #include "mpi.h"
+#include "qom/object.h"
 
 #define MPTSAS_NUM_PORTS 8
 #define MPTSAS_MAX_FRAMES 2048     /* Firmware limit at 65535 */
@@ -11,8 +12,12 @@
 
 #define MPTSAS_MAXIMUM_CHAIN_DEPTH 0x22
 
-typedef struct MPTSASState MPTSASState;
 typedef struct MPTSASRequest MPTSASRequest;
+
+#define TYPE_MPTSAS1068 "mptsas1068"
+typedef struct MPTSASState MPTSASState;
+DECLARE_INSTANCE_CHECKER(MPTSASState, MPT_SAS,
+                         TYPE_MPTSAS1068)
 
 enum {
     DOORBELL_NONE,
@@ -74,7 +79,6 @@ struct MPTSASState {
     uint16_t reply_frame_size;
 
     SCSIBus bus;
-    QTAILQ_HEAD(, MPTSASRequest) pending;
 };
 
 void mptsas_fix_scsi_io_endianness(MPIMsgSCSIIORequest *req);

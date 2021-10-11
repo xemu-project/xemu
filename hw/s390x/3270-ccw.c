@@ -13,7 +13,6 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu/module.h"
-#include "cpu.h"
 #include "hw/s390x/css.h"
 #include "hw/s390x/css-bridge.h"
 #include "hw/qdev-properties.h"
@@ -31,6 +30,9 @@ static int handle_payload_3270_read(EmulatedCcw3270Device *dev, CCW1 *ccw)
     }
 
     len = ck->read_payload_3270(dev);
+    if (len < 0) {
+        return len;
+    }
     ccw_dev->sch->curr_status.scsw.count = ccw->count - len;
 
     return 0;
@@ -50,7 +52,7 @@ static int handle_payload_3270_write(EmulatedCcw3270Device *dev, CCW1 *ccw)
     len = ck->write_payload_3270(dev, ccw->cmd_code);
 
     if (len <= 0) {
-        return -EIO;
+        return len ? len : -EIO;
     }
 
     ccw_dev->sch->curr_status.scsw.count = ccw->count - len;
@@ -127,6 +129,7 @@ static void emulated_ccw_3270_realize(DeviceState *ds, Error **errp)
                                 EMULATED_CCW_3270_CHPID_TYPE);
     sch->do_subchannel_work = do_subchannel_work_virtual;
     sch->ccw_cb = emulated_ccw_3270_cb;
+    sch->irb_cb = build_irb_virtual;
 
     ck->init(dev, &err);
     if (err) {
@@ -156,7 +159,6 @@ static void emulated_ccw_3270_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     device_class_set_props(dc, emulated_ccw_3270_properties);
-    dc->bus_type = TYPE_VIRTUAL_CSS_BUS;
     dc->realize = emulated_ccw_3270_realize;
     dc->hotpluggable = false;
     set_bit(DEVICE_CATEGORY_DISPLAY, dc->categories);

@@ -1,0 +1,40 @@
+--- SDL2-2.0.12/CMakeLists.txt.orig	2020-04-11 16:44:16.343880000 +0300
++++ SDL2-2.0.12/CMakeLists.txt	2020-04-11 16:48:12.677114500 +0300
+@@ -1916,12 +1916,12 @@
+ set(EXTRA_CFLAGS ${_EXTRA_CFLAGS})
+ 
+ # Compat helpers for the configuration files
+-if(NOT CMAKE_HOST_WIN32)
++if(NOT MSVC OR CYGWIN)
+   # TODO: we need a Windows script, too
+   execute_process(COMMAND sh ${SDL2_SOURCE_DIR}/build-scripts/updaterev.sh
+     WORKING_DIRECTORY ${SDL2_BINARY_DIR})
+ endif()
+-if(NOT WINDOWS OR CYGWIN)
++if(NOT MSVC)
+   set(prefix ${CMAKE_INSTALL_PREFIX})
+   set(exec_prefix "\${prefix}")
+   set(libdir "\${exec_prefix}/lib${LIB_SUFFIX}")
+@@ -2134,7 +2134,7 @@
+   RUNTIME DESTINATION bin)
+ 
+ ##### Export files #####
+-if (WINDOWS)
++if (MSVC)
+   set(PKG_PREFIX "cmake")
+ else ()
+   set(PKG_PREFIX "lib${LIB_SUFFIX}/cmake/SDL2")
+@@ -2175,11 +2175,11 @@
+   set(SOPOSTFIX "")
+ endif()
+ 
+-if(NOT (WINDOWS OR CYGWIN))
++if(NOT (MSVC OR CYGWIN))
+   if(SDL_SHARED)
+     set(SOEXT ${CMAKE_SHARED_LIBRARY_SUFFIX}) # ".so", ".dylib", etc.
+     get_target_property(SONAME SDL2 OUTPUT_NAME)
+-    if(NOT ANDROID)
++    if(NOT ANDROID AND NOT MINGW)
+         install(CODE "
+           execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
+             \"lib${SONAME}${SOPOSTFIX}${SOEXT}\" \"libSDL2${SOPOSTFIX}${SOEXT}\"

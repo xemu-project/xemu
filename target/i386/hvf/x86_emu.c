@@ -5,7 +5,7 @@
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -23,7 +23,7 @@
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
 //  License as published by the Free Software Foundation; either
-//  version 2 of the License, or (at your option) any later version.
+//  version 2.1 of the License, or (at your option) any later version.
 //
 //  This library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -668,12 +668,13 @@ void simulate_rdmsr(struct CPUState *cpu)
 {
     X86CPU *x86_cpu = X86_CPU(cpu);
     CPUX86State *env = &x86_cpu->env;
+    CPUState *cs = env_cpu(env);
     uint32_t msr = ECX(env);
     uint64_t val = 0;
 
     switch (msr) {
     case MSR_IA32_TSC:
-        val = rdtscp() + rvmcs(cpu->hvf_fd, VMCS_TSC_OFFSET);
+        val = rdtscp() + rvmcs(cpu->hvf->fd, VMCS_TSC_OFFSET);
         break;
     case MSR_IA32_APICBASE:
         val = cpu_get_apic_base(X86_CPU(cpu)->apic_state);
@@ -682,16 +683,16 @@ void simulate_rdmsr(struct CPUState *cpu)
         val = x86_cpu->ucode_rev;
         break;
     case MSR_EFER:
-        val = rvmcs(cpu->hvf_fd, VMCS_GUEST_IA32_EFER);
+        val = rvmcs(cpu->hvf->fd, VMCS_GUEST_IA32_EFER);
         break;
     case MSR_FSBASE:
-        val = rvmcs(cpu->hvf_fd, VMCS_GUEST_FS_BASE);
+        val = rvmcs(cpu->hvf->fd, VMCS_GUEST_FS_BASE);
         break;
     case MSR_GSBASE:
-        val = rvmcs(cpu->hvf_fd, VMCS_GUEST_GS_BASE);
+        val = rvmcs(cpu->hvf->fd, VMCS_GUEST_GS_BASE);
         break;
     case MSR_KERNELGSBASE:
-        val = rvmcs(cpu->hvf_fd, VMCS_HOST_FS_BASE);
+        val = rvmcs(cpu->hvf->fd, VMCS_HOST_FS_BASE);
         break;
     case MSR_STAR:
         abort();
@@ -748,6 +749,10 @@ void simulate_rdmsr(struct CPUState *cpu)
     case MSR_MTRRdefType:
         val = env->mtrr_deftype;
         break;
+    case MSR_CORE_THREAD_COUNT:
+        val = cs->nr_threads * cs->nr_cores; /* thread count, bits 15..0 */
+        val |= ((uint32_t)cs->nr_cores << 16); /* core count, bits 31..16 */
+        break;
     default:
         fprintf(stderr, "%s: unknown msr 0x%x\n", __func__, msr);
         val = 0;
@@ -778,13 +783,13 @@ void simulate_wrmsr(struct CPUState *cpu)
         cpu_set_apic_base(X86_CPU(cpu)->apic_state, data);
         break;
     case MSR_FSBASE:
-        wvmcs(cpu->hvf_fd, VMCS_GUEST_FS_BASE, data);
+        wvmcs(cpu->hvf->fd, VMCS_GUEST_FS_BASE, data);
         break;
     case MSR_GSBASE:
-        wvmcs(cpu->hvf_fd, VMCS_GUEST_GS_BASE, data);
+        wvmcs(cpu->hvf->fd, VMCS_GUEST_GS_BASE, data);
         break;
     case MSR_KERNELGSBASE:
-        wvmcs(cpu->hvf_fd, VMCS_HOST_FS_BASE, data);
+        wvmcs(cpu->hvf->fd, VMCS_HOST_FS_BASE, data);
         break;
     case MSR_STAR:
         abort();
@@ -797,9 +802,9 @@ void simulate_wrmsr(struct CPUState *cpu)
         break;
     case MSR_EFER:
         /*printf("new efer %llx\n", EFER(cpu));*/
-        wvmcs(cpu->hvf_fd, VMCS_GUEST_IA32_EFER, data);
+        wvmcs(cpu->hvf->fd, VMCS_GUEST_IA32_EFER, data);
         if (data & MSR_EFER_NXE) {
-            hv_vcpu_invalidate_tlb(cpu->hvf_fd);
+            hv_vcpu_invalidate_tlb(cpu->hvf->fd);
         }
         break;
     case MSR_PAT:
@@ -1426,21 +1431,21 @@ void load_regs(struct CPUState *cpu)
     CPUX86State *env = &x86_cpu->env;
 
     int i = 0;
-    RRX(env, R_EAX) = rreg(cpu->hvf_fd, HV_X86_RAX);
-    RRX(env, R_EBX) = rreg(cpu->hvf_fd, HV_X86_RBX);
-    RRX(env, R_ECX) = rreg(cpu->hvf_fd, HV_X86_RCX);
-    RRX(env, R_EDX) = rreg(cpu->hvf_fd, HV_X86_RDX);
-    RRX(env, R_ESI) = rreg(cpu->hvf_fd, HV_X86_RSI);
-    RRX(env, R_EDI) = rreg(cpu->hvf_fd, HV_X86_RDI);
-    RRX(env, R_ESP) = rreg(cpu->hvf_fd, HV_X86_RSP);
-    RRX(env, R_EBP) = rreg(cpu->hvf_fd, HV_X86_RBP);
+    RRX(env, R_EAX) = rreg(cpu->hvf->fd, HV_X86_RAX);
+    RRX(env, R_EBX) = rreg(cpu->hvf->fd, HV_X86_RBX);
+    RRX(env, R_ECX) = rreg(cpu->hvf->fd, HV_X86_RCX);
+    RRX(env, R_EDX) = rreg(cpu->hvf->fd, HV_X86_RDX);
+    RRX(env, R_ESI) = rreg(cpu->hvf->fd, HV_X86_RSI);
+    RRX(env, R_EDI) = rreg(cpu->hvf->fd, HV_X86_RDI);
+    RRX(env, R_ESP) = rreg(cpu->hvf->fd, HV_X86_RSP);
+    RRX(env, R_EBP) = rreg(cpu->hvf->fd, HV_X86_RBP);
     for (i = 8; i < 16; i++) {
-        RRX(env, i) = rreg(cpu->hvf_fd, HV_X86_RAX + i);
+        RRX(env, i) = rreg(cpu->hvf->fd, HV_X86_RAX + i);
     }
 
-    env->eflags = rreg(cpu->hvf_fd, HV_X86_RFLAGS);
+    env->eflags = rreg(cpu->hvf->fd, HV_X86_RFLAGS);
     rflags_to_lflags(env);
-    env->eip = rreg(cpu->hvf_fd, HV_X86_RIP);
+    env->eip = rreg(cpu->hvf->fd, HV_X86_RIP);
 }
 
 void store_regs(struct CPUState *cpu)
@@ -1449,20 +1454,20 @@ void store_regs(struct CPUState *cpu)
     CPUX86State *env = &x86_cpu->env;
 
     int i = 0;
-    wreg(cpu->hvf_fd, HV_X86_RAX, RAX(env));
-    wreg(cpu->hvf_fd, HV_X86_RBX, RBX(env));
-    wreg(cpu->hvf_fd, HV_X86_RCX, RCX(env));
-    wreg(cpu->hvf_fd, HV_X86_RDX, RDX(env));
-    wreg(cpu->hvf_fd, HV_X86_RSI, RSI(env));
-    wreg(cpu->hvf_fd, HV_X86_RDI, RDI(env));
-    wreg(cpu->hvf_fd, HV_X86_RBP, RBP(env));
-    wreg(cpu->hvf_fd, HV_X86_RSP, RSP(env));
+    wreg(cpu->hvf->fd, HV_X86_RAX, RAX(env));
+    wreg(cpu->hvf->fd, HV_X86_RBX, RBX(env));
+    wreg(cpu->hvf->fd, HV_X86_RCX, RCX(env));
+    wreg(cpu->hvf->fd, HV_X86_RDX, RDX(env));
+    wreg(cpu->hvf->fd, HV_X86_RSI, RSI(env));
+    wreg(cpu->hvf->fd, HV_X86_RDI, RDI(env));
+    wreg(cpu->hvf->fd, HV_X86_RBP, RBP(env));
+    wreg(cpu->hvf->fd, HV_X86_RSP, RSP(env));
     for (i = 8; i < 16; i++) {
-        wreg(cpu->hvf_fd, HV_X86_RAX + i, RRX(env, i));
+        wreg(cpu->hvf->fd, HV_X86_RAX + i, RRX(env, i));
     }
 
     lflags_to_rflags(env);
-    wreg(cpu->hvf_fd, HV_X86_RFLAGS, env->eflags);
+    wreg(cpu->hvf->fd, HV_X86_RFLAGS, env->eflags);
     macvm_set_rip(cpu, env->eip);
 }
 

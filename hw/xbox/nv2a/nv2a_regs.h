@@ -290,6 +290,7 @@
 #       define NV_PGRAPH_CSV0_D_FOGGENMODE_ABS_PLANAR               3
 #       define NV_PGRAPH_CSV0_D_FOGGENMODE_FOG_X                    4
 #   define NV_PGRAPH_CSV0_D_MODE                                0xC0000000
+#   define NV_PGRAPH_CSV0_D_POINTPARAMSENABLE                   0x02000000
 #   define NV_PGRAPH_CSV0_D_SKIN                                0x1C000000
 #       define NV_PGRAPH_CSV0_D_SKIN_OFF                            0
 #       define NV_PGRAPH_CSV0_D_SKIN_2G                             1
@@ -451,6 +452,7 @@
 #       define NV_PGRAPH_CONTROL_3_FOG_MODE_EXP_ABS                 5
 #       define NV_PGRAPH_CONTROL_3_FOG_MODE_EXP2_ABS                7
 #       define NV_PGRAPH_CONTROL_3_FOG_MODE_LINEAR_ABS              4
+#   define NV_PGRAPH_CONTROL_3_POINTPARAMSENABLE                (1 << 9)
 #define NV_PGRAPH_FOGCOLOR                               0x00001980
 #   define NV_PGRAPH_FOGCOLOR_RED                               0x00FF0000
 #   define NV_PGRAPH_FOGCOLOR_GREEN                             0x0000FF00
@@ -458,6 +460,7 @@
 #   define NV_PGRAPH_FOGCOLOR_ALPHA                             0xFF000000
 #define NV_PGRAPH_FOGPARAM0                              0x00001984
 #define NV_PGRAPH_FOGPARAM1                              0x00001988
+#define NV_PGRAPH_POINTSIZE                              0x0000198C
 #define NV_PGRAPH_SETUPRASTER                            0x00001990
 #   define NV_PGRAPH_SETUPRASTER_FRONTFACEMODE                  0x00000003
 #       define NV_PGRAPH_SETUPRASTER_FRONTFACEMODE_FILL             0
@@ -467,6 +470,7 @@
 #   define NV_PGRAPH_SETUPRASTER_POFFSETPOINTENABLE             (1 << 6)
 #   define NV_PGRAPH_SETUPRASTER_POFFSETLINEENABLE              (1 << 7)
 #   define NV_PGRAPH_SETUPRASTER_POFFSETFILLENABLE              (1 << 8)
+#   define NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE              (1 << 9)
 #   define NV_PGRAPH_SETUPRASTER_LINESMOOTHENABLE               (1 << 10)
 #   define NV_PGRAPH_SETUPRASTER_POLYSMOOTHENABLE               (1 << 11)
 #   define NV_PGRAPH_SETUPRASTER_CULLCTRL                       0x00600000
@@ -750,7 +754,9 @@
 #   define NV062_SET_COLOR_FORMAT                             0x00000300
 #       define NV062_SET_COLOR_FORMAT_LE_Y8                    0x01
 #       define NV062_SET_COLOR_FORMAT_LE_R5G6B5                0x04
+#       define NV062_SET_COLOR_FORMAT_LE_X8R8G8B8              0x07
 #       define NV062_SET_COLOR_FORMAT_LE_A8R8G8B8              0x0A
+#       define NV062_SET_COLOR_FORMAT_LE_Y32                   0x0B
 #   define NV062_SET_PITCH                                    0x00000304
 #   define NV062_SET_OFFSET_SOURCE                            0x00000308
 #   define NV062_SET_OFFSET_DESTIN                            0x0000030C
@@ -857,6 +863,8 @@
 #   define NV097_SET_DEPTH_TEST_ENABLE                        0x0000030C
 #   define NV097_SET_DITHER_ENABLE                            0x00000310
 #   define NV097_SET_LIGHTING_ENABLE                          0x00000314
+#   define NV097_SET_POINT_PARAMS_ENABLE                      0x00000318
+#   define NV097_SET_POINT_SMOOTH_ENABLE                      0x0000031C
 #   define NV097_SET_LINE_SMOOTH_ENABLE                       0x00000320
 #   define NV097_SET_POLY_SMOOTH_ENABLE                       0x00000324
 #   define NV097_SET_SKIN_MODE                                0x00000328
@@ -970,6 +978,8 @@
 #   define NV097_SET_TEXGEN_R                                 0x000003C8
 #   define NV097_SET_TEXGEN_Q                                 0x000003CC
 #   define NV097_SET_TEXTURE_MATRIX_ENABLE                    0x00000420
+#   define NV097_SET_POINT_SIZE                               0x0000043C
+#        define NV097_SET_POINT_SIZE_V                            0x000001FF
 #   define NV097_SET_PROJECTION_MATRIX                        0x00000440
 #   define NV097_SET_MODEL_VIEW_MATRIX                        0x00000480
 #   define NV097_SET_INVERSE_MODEL_VIEW_MATRIX                0x00000580
@@ -986,6 +996,7 @@
 #   define NV097_SET_FOG_PLANE                                0x000009D0
 #   define NV097_SET_SCENE_AMBIENT_COLOR                      0x00000A10
 #   define NV097_SET_VIEWPORT_OFFSET                          0x00000A20
+#   define NV097_SET_POINT_PARAMS                             0x00000A30
 #   define NV097_SET_EYE_POSITION                             0x00000A50
 #   define NV097_SET_COMBINER_FACTOR0                         0x00000A60
 #   define NV097_SET_COMBINER_FACTOR1                         0x00000A80
@@ -1081,6 +1092,7 @@
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_R5G6B5   0x11
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8R8G8B8 0x12
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_Y8       0x13
+#           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_G8B8     0x17
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8             0x19
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8Y8           0x1A
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_AY8      0x1B
@@ -1090,14 +1102,17 @@
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8       0x1F
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8Y8     0x20
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8 0x24
+#           define NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_YB8CR8YA8CB8 0x25
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5         0x27
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8           0x28
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R8B8           0x29
+#           define NV097_SET_TEXTURE_FORMAT_COLOR_SZ_DEPTH_Y16_FIXED 0x2C
 # define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_X8_Y24_FIXED 0x2E
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FIXED 0x30
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FLOAT 0x31
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_Y16      0x35
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_SZ_A8B8G8R8       0x3A
+#           define NV097_SET_TEXTURE_FORMAT_COLOR_SZ_B8G8R8A8       0x3B
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R8G8B8A8       0x3C
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_A8B8G8R8 0x3F
 #           define NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_B8G8R8A8 0x40

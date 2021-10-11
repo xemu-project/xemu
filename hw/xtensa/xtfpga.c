@@ -35,7 +35,6 @@
 #include "hw/qdev-properties.h"
 #include "elf.h"
 #include "exec/memory.h"
-#include "exec/address-spaces.h"
 #include "hw/char/serial.h"
 #include "net/net.h"
 #include "hw/sysbus.h"
@@ -233,11 +232,10 @@ static void xtfpga_init(const XtfpgaBoardDesc *board, MachineState *machine)
     qemu_irq *extints;
     DriveInfo *dinfo;
     PFlashCFI01 *flash = NULL;
-    QemuOpts *machine_opts = qemu_get_machine_opts();
-    const char *kernel_filename = qemu_opt_get(machine_opts, "kernel");
-    const char *kernel_cmdline = qemu_opt_get(machine_opts, "append");
-    const char *dtb_filename = qemu_opt_get(machine_opts, "dtb");
-    const char *initrd_filename = qemu_opt_get(machine_opts, "initrd");
+    const char *kernel_filename = machine->kernel_filename;
+    const char *kernel_cmdline = machine->kernel_cmdline;
+    const char *dtb_filename = machine->dtb;
+    const char *initrd_filename = machine->initrd_filename;
     const unsigned system_io_size = 224 * MiB;
     uint32_t freq = 10000000;
     int n;
@@ -413,9 +411,8 @@ static void xtfpga_init(const XtfpgaBoardDesc *board, MachineState *machine)
         env->regs[2] = tagptr;
 
         uint64_t elf_entry;
-        uint64_t elf_lowaddr;
         int success = load_elf(kernel_filename, NULL, translate_phys_addr, cpu,
-                &elf_entry, &elf_lowaddr, NULL, NULL, be, EM_XTENSA, 0, 0);
+                &elf_entry, NULL, NULL, NULL, be, EM_XTENSA, 0, 0);
         if (success > 0) {
             entry_point = elf_entry;
         } else {

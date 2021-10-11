@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# group: img auto quick
 #
 # Make sure qemu-img can create 5TB images
 #
@@ -49,11 +50,6 @@ _unsupported_imgopts "subformat=twoGbMaxExtentFlat" \
 # vpc is limited to 127GB, so we can't test it here
 if [ "$IMGFMT" = "vpc" ]; then
     _notrun "image format $IMGFMT does not support large image sizes"
-fi
-
-# sheepdog image is limited to 4TB, so we can't test it here
-if [ "$IMGPROTO" = "sheepdog" ]; then
-    _notrun "image protocol $IMGPROTO does not support large image sizes"
 fi
 
 # Sanity check: For raw, we require a file system that permits the creation

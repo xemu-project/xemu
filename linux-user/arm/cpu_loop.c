@@ -22,6 +22,7 @@
 #include "qemu.h"
 #include "elf.h"
 #include "cpu_loop-common.h"
+#include "semihosting/common-semi.h"
 
 #define get_user_code_u32(x, gaddr, env)                \
     ({ abi_long __r = get_user_u32((x), (gaddr));       \
@@ -205,6 +206,82 @@ do_kernel_trap(CPUARMState *env)
     return 0;
 }
 
+static bool insn_is_linux_bkpt(uint32_t opcode, bool is_thumb)
+{
+    /*
+     * Return true if this insn is one of the three magic UDF insns
+     * which the kernel treats as breakpoint insns.
+     */
+    if (!is_thumb) {
+        return (opcode & 0x0fffffff) == 0x07f001f0;
+    } else {
+        /*
+         * Note that we get the two halves of the 32-bit T32 insn
+         * in the opposite order to the value the kernel uses in
+         * its undef_hook struct.
+         */
+        return ((opcode & 0xffff) == 0xde01) || (opcode == 0xa000f7f0);
+    }
+}
+
+static bool emulate_arm_fpa11(CPUARMState *env, uint32_t opcode)
+{
+    TaskState *ts = env_cpu(env)->opaque;
+    int rc = EmulateAll(opcode, &ts->fpa, env);
+    int raise, enabled;
+
+    if (rc == 0) {
+        /* Illegal instruction */
+        return false;
+    }
+    if (rc > 0) {
+        /* Everything ok. */
+        env->regs[15] += 4;
+        return true;
+    }
+
+    /* FP exception */
+    rc = -rc;
+    raise = 0;
+
+    /* Translate softfloat flags to FPSR flags */
+    if (rc & float_flag_invalid) {
+        raise |= BIT_IOC;
+    }
+    if (rc & float_flag_divbyzero) {
+        raise |= BIT_DZC;
+    }
+    if (rc & float_flag_overflow) {
+        raise |= BIT_OFC;
+    }
+    if (rc & float_flag_underflow) {
+        raise |= BIT_UFC;
+    }
+    if (rc & float_flag_inexact) {
+        raise |= BIT_IXC;
+    }
+
+    /* Accumulate unenabled exceptions */
+    enabled = ts->fpa.fpsr >> 16;
+    ts->fpa.fpsr |= raise & ~enabled;
+
+    if (raise & enabled) {
+        target_siginfo_t info = { };
+
+        /*
+         * The kernel's nwfpe emulator does not pass a real si_code.
+         * It merely uses send_sig(SIGFPE, current, 1).
+         */
+        info.si_signo = TARGET_SIGFPE;
+        info.si_code = TARGET_SI_KERNEL;
+
+        queue_signal(env, info.si_signo, QEMU_SI_FAULT, &info);
+    } else {
+        env->regs[15] += 4;
+    }
+    return true;
+}
+
 void cpu_loop(CPUARMState *env)
 {
     CPUState *cs = env_cpu(env);
@@ -225,73 +302,32 @@ void cpu_loop(CPUARMState *env)
         case EXCP_NOCP:
         case EXCP_INVSTATE:
             {
-                TaskState *ts = cs->opaque;
                 uint32_t opcode;
-                int rc;
 
                 /* we handle the FPU emulation here, as Linux */
                 /* we get the opcode */
                 /* FIXME - what to do if get_user() fails? */
                 get_user_code_u32(opcode, env->regs[15], env);
 
-                rc = EmulateAll(opcode, &ts->fpa, env);
-                if (rc == 0) { /* illegal instruction */
-                    info.si_signo = TARGET_SIGILL;
-                    info.si_errno = 0;
-                    info.si_code = TARGET_ILL_ILLOPN;
-                    info._sifields._sigfault._addr = env->regs[15];
-                    queue_signal(env, info.si_signo, QEMU_SI_FAULT, &info);
-                } else if (rc < 0) { /* FP exception */
-                    int arm_fpe=0;
-
-                    /* translate softfloat flags to FPSR flags */
-                    if (-rc & float_flag_invalid)
-                      arm_fpe |= BIT_IOC;
-                    if (-rc & float_flag_divbyzero)
-                      arm_fpe |= BIT_DZC;
-                    if (-rc & float_flag_overflow)
-                      arm_fpe |= BIT_OFC;
-                    if (-rc & float_flag_underflow)
-                      arm_fpe |= BIT_UFC;
-                    if (-rc & float_flag_inexact)
-                      arm_fpe |= BIT_IXC;
-
-                    FPSR fpsr = ts->fpa.fpsr;
-                    //printf("fpsr 0x%x, arm_fpe 0x%x\n",fpsr,arm_fpe);
-
-                    if (fpsr & (arm_fpe << 16)) { /* exception enabled? */
-                      info.si_signo = TARGET_SIGFPE;
-                      info.si_errno = 0;
-
-                      /* ordered by priority, least first */
-                      if (arm_fpe & BIT_IXC) info.si_code = TARGET_FPE_FLTRES;
-                      if (arm_fpe & BIT_UFC) info.si_code = TARGET_FPE_FLTUND;
-                      if (arm_fpe & BIT_OFC) info.si_code = TARGET_FPE_FLTOVF;
-                      if (arm_fpe & BIT_DZC) info.si_code = TARGET_FPE_FLTDIV;
-                      if (arm_fpe & BIT_IOC) info.si_code = TARGET_FPE_FLTINV;
-
-                      info._sifields._sigfault._addr = env->regs[15];
-                      queue_signal(env, info.si_signo, QEMU_SI_FAULT, &info);
-                    } else {
-                      env->regs[15] += 4;
-                    }
-
-                    /* accumulate unenabled exceptions */
-                    if ((!(fpsr & BIT_IXE)) && (arm_fpe & BIT_IXC))
-                      fpsr |= BIT_IXC;
-                    if ((!(fpsr & BIT_UFE)) && (arm_fpe & BIT_UFC))
-                      fpsr |= BIT_UFC;
-                    if ((!(fpsr & BIT_OFE)) && (arm_fpe & BIT_OFC))
-                      fpsr |= BIT_OFC;
-                    if ((!(fpsr & BIT_DZE)) && (arm_fpe & BIT_DZC))
-                      fpsr |= BIT_DZC;
-                    if ((!(fpsr & BIT_IOE)) && (arm_fpe & BIT_IOC))
-                      fpsr |= BIT_IOC;
-                    ts->fpa.fpsr=fpsr;
-                } else { /* everything OK */
-                    /* increment PC */
-                    env->regs[15] += 4;
+                /*
+                 * The Linux kernel treats some UDF patterns specially
+                 * to use as breakpoints (instead of the architectural
+                 * bkpt insn). These should trigger a SIGTRAP rather
+                 * than SIGILL.
+                 */
+                if (insn_is_linux_bkpt(opcode, env->thumb)) {
+                    goto excp_debug;
                 }
+
+                if (!env->thumb && emulate_arm_fpa11(env, opcode)) {
+                    break;
+                }
+
+                info.si_signo = TARGET_SIGILL;
+                info.si_errno = 0;
+                info.si_code = TARGET_ILL_ILLOPN;
+                info._sifields._sigfault._addr = env->regs[15];
+                queue_signal(env, info.si_signo, QEMU_SI_FAULT, &info);
             }
             break;
         case EXCP_SWI:
@@ -393,7 +429,7 @@ void cpu_loop(CPUARMState *env)
             }
             break;
         case EXCP_SEMIHOST:
-            env->regs[0] = do_arm_semihosting(env);
+            env->regs[0] = do_common_semihosting(cs);
             env->regs[15] += env->thumb ? 2 : 4;
             break;
         case EXCP_INTERRUPT:

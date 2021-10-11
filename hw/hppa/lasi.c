@@ -11,10 +11,9 @@
 
 #include "qemu/osdep.h"
 #include "qemu/units.h"
+#include "qemu/log.h"
 #include "qapi/error.h"
-#include "cpu.h"
 #include "trace.h"
-#include "hw/hw.h"
 #include "hw/irq.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/runstate.h"
@@ -23,8 +22,8 @@
 #include "hw/char/parallel.h"
 #include "hw/char/serial.h"
 #include "hw/input/lasips2.h"
-#include "exec/address-spaces.h"
 #include "migration/vmstate.h"
+#include "qom/object.h"
 
 #define TYPE_LASI_CHIP "lasi-chip"
 
@@ -51,12 +50,9 @@
 #define ICR_BUS_ERROR_BIT  LASI_BIT(8)  /* bit 8 in ICR */
 #define ICR_TOC_BIT        LASI_BIT(1)  /* bit 1 in ICR */
 
-#define LASI_CHIP(obj) \
-    OBJECT_CHECK(LasiState, (obj), TYPE_LASI_CHIP)
+OBJECT_DECLARE_SIMPLE_TYPE(LasiState, LASI_CHIP)
 
-#define LASI_RTC_HPA    (LASI_HPA + 0x9000)
-
-typedef struct LasiState {
+struct LasiState {
     PCIHostState parent_obj;
 
     uint32_t irr;
@@ -71,7 +67,7 @@ typedef struct LasiState {
     time_t rtc_ref;
 
     MemoryRegion this_mem;
-} LasiState;
+};
 
 static bool lasi_chip_mem_valid(void *opaque, hwaddr addr,
                                 unsigned size, bool is_write,
@@ -172,8 +168,11 @@ static MemTxResult lasi_chip_write_with_attrs(void *opaque, hwaddr addr,
         /* read-only.  */
         break;
     case LASI_IMR:
-        s->imr = val;  /* 0x20 ?? */
-        assert((val & LASI_IRQ_BITS) == val);
+        s->imr = val;
+        if (((val & LASI_IRQ_BITS) != val) && (val != 0xffffffff))
+            qemu_log_mask(LOG_GUEST_ERROR,
+                "LASI: tried to set invalid %lx IMR value.\n",
+                (unsigned long) val);
         break;
     case LASI_IPR:
         /* Any write to IPR clears the register. */

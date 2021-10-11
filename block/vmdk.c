@@ -595,7 +595,7 @@ static int vmdk_open_vmfs_sparse(BlockDriverState *bs,
     int ret;
     uint32_t magic;
     VMDK3Header header;
-    VmdkExtent *extent;
+    VmdkExtent *extent = NULL;
 
     ret = bdrv_pread(file, sizeof(magic), &header, sizeof(header));
     if (ret < 0) {
@@ -751,7 +751,7 @@ static int vmdk_open_se_sparse(BlockDriverState *bs,
     int ret;
     VMDKSESparseConstHeader const_header;
     VMDKSESparseVolatileHeader volatile_header;
-    VmdkExtent *extent;
+    VmdkExtent *extent = NULL;
 
     ret = bdrv_apply_auto_read_only(bs,
             "No write support for seSparse images available", errp);
@@ -869,7 +869,7 @@ static int vmdk_open_vmdk4(BlockDriverState *bs,
     uint32_t magic;
     uint32_t l1_size, l1_entry_sectors;
     VMDK4Header header;
-    VmdkExtent *extent;
+    VmdkExtent *extent = NULL;
     BDRVVmdkState *s = bs->opaque;
     int64_t l1_backup_offset = 0;
     bool compressed;
@@ -1053,14 +1053,11 @@ static int vmdk_open_sparse(BlockDriverState *bs, BdrvChild *file, int flags,
     switch (magic) {
         case VMDK3_MAGIC:
             return vmdk_open_vmfs_sparse(bs, file, flags, errp);
-            break;
         case VMDK4_MAGIC:
             return vmdk_open_vmdk4(bs, file, flags, options, errp);
-            break;
         default:
             error_setg(errp, "Image not in VMDK format");
             return -EINVAL;
-            break;
     }
 }
 
@@ -1091,7 +1088,7 @@ static int vmdk_parse_extents(const char *desc, BlockDriverState *bs,
     BdrvChild *extent_file;
     BdrvChildRole extent_role;
     BDRVVmdkState *s = bs->opaque;
-    VmdkExtent *extent;
+    VmdkExtent *extent = NULL;
     char extent_opt_prefix[32];
     Error *local_err = NULL;
 
@@ -2806,21 +2803,6 @@ static void vmdk_close(BlockDriverState *bs)
     error_free(s->migration_blocker);
 }
 
-static coroutine_fn int vmdk_co_flush(BlockDriverState *bs)
-{
-    BDRVVmdkState *s = bs->opaque;
-    int i, err;
-    int ret = 0;
-
-    for (i = 0; i < s->num_extents; i++) {
-        err = bdrv_co_flush(s->extents[i].file->bs);
-        if (err < 0) {
-            ret = err;
-        }
-    }
-    return ret;
-}
-
 static int64_t vmdk_get_allocated_file_size(BlockDriverState *bs)
 {
     int i;
@@ -2946,7 +2928,7 @@ static ImageInfoSpecific *vmdk_get_specific_info(BlockDriverState *bs,
     int i;
     BDRVVmdkState *s = bs->opaque;
     ImageInfoSpecific *spec_info = g_new0(ImageInfoSpecific, 1);
-    ImageInfoList **next;
+    ImageInfoList **tail;
 
     *spec_info = (ImageInfoSpecific){
         .type = IMAGE_INFO_SPECIFIC_KIND_VMDK,
@@ -2961,12 +2943,9 @@ static ImageInfoSpecific *vmdk_get_specific_info(BlockDriverState *bs,
         .parent_cid = s->parent_cid,
     };
 
-    next = &spec_info->u.vmdk.data->extents;
+    tail = &spec_info->u.vmdk.data->extents;
     for (i = 0; i < s->num_extents; i++) {
-        *next = g_new0(ImageInfoList, 1);
-        (*next)->value = vmdk_get_extent_info(&s->extents[i]);
-        (*next)->next = NULL;
-        next = &(*next)->next;
+        QAPI_LIST_APPEND(tail, vmdk_get_extent_info(&s->extents[i]));
     }
 
     return spec_info;
@@ -3084,7 +3063,6 @@ static BlockDriver bdrv_vmdk = {
     .bdrv_close                   = vmdk_close,
     .bdrv_co_create_opts          = vmdk_co_create_opts,
     .bdrv_co_create               = vmdk_co_create,
-    .bdrv_co_flush_to_disk        = vmdk_co_flush,
     .bdrv_co_block_status         = vmdk_co_block_status,
     .bdrv_get_allocated_file_size = vmdk_get_allocated_file_size,
     .bdrv_has_zero_init           = vmdk_has_zero_init,

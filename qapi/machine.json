@@ -8,12 +8,14 @@
 # = Machines
 ##
 
+{ 'include': 'common.json' }
+
 ##
 # @SysEmuTarget:
 #
 # The comprehensive enumeration of QEMU system emulation ("softmmu")
 # targets. Run "./configure --help" in the project root directory, and
-# look for the *-softmmu targets near the "--target-list" option. The
+# look for the \*-softmmu targets near the "--target-list" option. The
 # individual target constants are not documented here, for the time
 # being.
 #
@@ -27,135 +29,12 @@
 # Since: 3.0
 ##
 { 'enum' : 'SysEmuTarget',
-  'data' : [ 'aarch64', 'alpha', 'arm', 'avr', 'cris', 'hppa', 'i386', 'lm32',
+  'data' : [ 'aarch64', 'alpha', 'arm', 'avr', 'cris', 'hppa', 'i386',
              'm68k', 'microblaze', 'microblazeel', 'mips', 'mips64',
-             'mips64el', 'mipsel', 'moxie', 'nios2', 'or1k', 'ppc',
+             'mips64el', 'mipsel', 'nios2', 'or1k', 'ppc',
              'ppc64', 'riscv32', 'riscv64', 'rx', 's390x', 'sh4',
-             'sh4eb', 'sparc', 'sparc64', 'tricore', 'unicore32',
+             'sh4eb', 'sparc', 'sparc64', 'tricore',
              'x86_64', 'xtensa', 'xtensaeb' ] }
-
-##
-# @CpuInfoArch:
-#
-# An enumeration of cpu types that enable additional information during
-# @query-cpus and @query-cpus-fast.
-#
-# @s390: since 2.12
-#
-# @riscv: since 2.12
-#
-# Since: 2.6
-##
-{ 'enum': 'CpuInfoArch',
-  'data': ['x86', 'sparc', 'ppc', 'mips', 'tricore', 's390', 'riscv', 'other' ] }
-
-##
-# @CpuInfo:
-#
-# Information about a virtual CPU
-#
-# @CPU: the index of the virtual CPU
-#
-# @current: this only exists for backwards compatibility and should be ignored
-#
-# @halted: true if the virtual CPU is in the halt state.  Halt usually refers
-#          to a processor specific low power mode.
-#
-# @qom_path: path to the CPU object in the QOM tree (since 2.4)
-#
-# @thread_id: ID of the underlying host thread
-#
-# @props: properties describing to which node/socket/core/thread
-#         virtual CPU belongs to, provided if supported by board (since 2.10)
-#
-# @arch: architecture of the cpu, which determines which additional fields
-#        will be listed (since 2.6)
-#
-# Since: 0.14.0
-#
-# Notes: @halted is a transient state that changes frequently.  By the time the
-#        data is sent to the client, the guest may no longer be halted.
-##
-{ 'union': 'CpuInfo',
-  'base': {'CPU': 'int', 'current': 'bool', 'halted': 'bool',
-           'qom_path': 'str', 'thread_id': 'int',
-           '*props': 'CpuInstanceProperties', 'arch': 'CpuInfoArch' },
-  'discriminator': 'arch',
-  'data': { 'x86': 'CpuInfoX86',
-            'sparc': 'CpuInfoSPARC',
-            'ppc': 'CpuInfoPPC',
-            'mips': 'CpuInfoMIPS',
-            'tricore': 'CpuInfoTricore',
-            's390': 'CpuInfoS390',
-            'riscv': 'CpuInfoRISCV' } }
-
-##
-# @CpuInfoX86:
-#
-# Additional information about a virtual i386 or x86_64 CPU
-#
-# @pc: the 64-bit instruction pointer
-#
-# Since: 2.6
-##
-{ 'struct': 'CpuInfoX86', 'data': { 'pc': 'int' } }
-
-##
-# @CpuInfoSPARC:
-#
-# Additional information about a virtual SPARC CPU
-#
-# @pc: the PC component of the instruction pointer
-#
-# @npc: the NPC component of the instruction pointer
-#
-# Since: 2.6
-##
-{ 'struct': 'CpuInfoSPARC', 'data': { 'pc': 'int', 'npc': 'int' } }
-
-##
-# @CpuInfoPPC:
-#
-# Additional information about a virtual PPC CPU
-#
-# @nip: the instruction pointer
-#
-# Since: 2.6
-##
-{ 'struct': 'CpuInfoPPC', 'data': { 'nip': 'int' } }
-
-##
-# @CpuInfoMIPS:
-#
-# Additional information about a virtual MIPS CPU
-#
-# @PC: the instruction pointer
-#
-# Since: 2.6
-##
-{ 'struct': 'CpuInfoMIPS', 'data': { 'PC': 'int' } }
-
-##
-# @CpuInfoTricore:
-#
-# Additional information about a virtual Tricore CPU
-#
-# @PC: the instruction pointer
-#
-# Since: 2.6
-##
-{ 'struct': 'CpuInfoTricore', 'data': { 'PC': 'int' } }
-
-##
-# @CpuInfoRISCV:
-#
-# Additional information about a virtual RISCV CPU
-#
-# @pc: the instruction pointer
-#
-# Since 2.12
-##
-{ 'struct': 'CpuInfoRISCV', 'data': { 'pc': 'int' } }
 
 ##
 # @CpuS390State:
@@ -181,53 +60,6 @@
 { 'struct': 'CpuInfoS390', 'data': { 'cpu-state': 'CpuS390State' } }
 
 ##
-# @query-cpus:
-#
-# Returns a list of information about each virtual CPU.
-#
-# This command causes vCPU threads to exit to userspace, which causes
-# a small interruption to guest CPU execution. This will have a negative
-# impact on realtime guests and other latency sensitive guest workloads.
-#
-# Features:
-# @deprecated: This command is deprecated, because it interferes with
-#     the guest.  Use 'query-cpus-fast' instead to avoid the vCPU
-#     interruption.
-#
-# Returns: a list of @CpuInfo for each virtual CPU
-#
-# Since: 0.14.0
-#
-# Example:
-#
-# -> { "execute": "query-cpus" }
-# <- { "return": [
-#          {
-#             "CPU":0,
-#             "current":true,
-#             "halted":false,
-#             "qom_path":"/machine/unattached/device[0]",
-#             "arch":"x86",
-#             "pc":3227107138,
-#             "thread_id":3134
-#          },
-#          {
-#             "CPU":1,
-#             "current":false,
-#             "halted":true,
-#             "qom_path":"/machine/unattached/device[2]",
-#             "arch":"x86",
-#             "pc":7108165,
-#             "thread_id":3135
-#          }
-#       ]
-#    }
-#
-##
-{ 'command': 'query-cpus', 'returns': ['CpuInfo'],
-  'features': [ 'deprecated' ] }
-
-##
 # @CpuInfoFast:
 #
 # Information about a virtual CPU
@@ -241,13 +73,8 @@
 # @props: properties describing to which node/socket/core/thread
 #         virtual CPU belongs to, provided if supported by board
 #
-# @arch: base architecture of the cpu
-#
 # @target: the QEMU system emulation target, which determines which
 #          additional fields will be listed (since 3.0)
-#
-# Features:
-# @deprecated: Member @arch is deprecated.  Use @target instead.
 #
 # Since: 2.12
 #
@@ -257,8 +84,6 @@
                       'qom-path'     : 'str',
                       'thread-id'    : 'int',
                       '*props'       : 'CpuInstanceProperties',
-                      'arch'         : { 'type': 'CpuInfoArch',
-                                         'features': [ 'deprecated' ] },
                       'target'       : 'SysEmuTarget' },
   'discriminator' : 'target',
   'data'          : { 's390x'        : 'CpuInfoS390' } }
@@ -266,9 +91,7 @@
 ##
 # @query-cpus-fast:
 #
-# Returns information about all virtual CPUs. This command does not
-# incur a performance penalty and should be used in production
-# instead of query-cpus.
+# Returns information about all virtual CPUs.
 #
 # Returns: list of @CpuInfoFast
 #
@@ -308,30 +131,6 @@
 { 'command': 'query-cpus-fast', 'returns': [ 'CpuInfoFast' ] }
 
 ##
-# @cpu-add:
-#
-# Adds CPU with specified ID.
-#
-# @id: ID of CPU to be created, valid values [0..max_cpus)
-#
-# Features:
-# @deprecated: This command is deprecated.  Use `device_add` instead.
-#     See the `query-hotpluggable-cpus` command for details.
-#
-# Returns: Nothing on success
-#
-# Since: 1.5
-#
-# Example:
-#
-# -> { "execute": "cpu-add", "arguments": { "id": 2 } }
-# <- { "return": {} }
-#
-##
-{ 'command': 'cpu-add', 'data': {'id': 'int'},
-  'features': [ 'deprecated' ] }
-
-##
 # @MachineInfo:
 #
 # Information describing a machine.
@@ -343,27 +142,30 @@
 # @is-default: whether the machine is default
 #
 # @cpu-max: maximum number of CPUs supported by the machine type
-#           (since 1.5.0)
+#           (since 1.5)
 #
-# @hotpluggable-cpus: cpu hotplug via -device is supported (since 2.7.0)
+# @hotpluggable-cpus: cpu hotplug via -device is supported (since 2.7)
 #
 # @numa-mem-supported: true if '-numa node,mem' option is supported by
 #                      the machine type and false otherwise (since 4.1)
 #
 # @deprecated: if true, the machine type is deprecated and may be removed
 #              in future versions of QEMU according to the QEMU deprecation
-#              policy (since 4.1.0)
+#              policy (since 4.1)
 #
 # @default-cpu-type: default CPU model typename if none is requested via
 #                    the -cpu argument. (since 4.2)
 #
-# Since: 1.2.0
+# @default-ram-id: the default ID of initial RAM memory backend (since 5.2)
+#
+# Since: 1.2
 ##
 { 'struct': 'MachineInfo',
   'data': { 'name': 'str', '*alias': 'str',
             '*is-default': 'bool', 'cpu-max': 'int',
             'hotpluggable-cpus': 'bool',  'numa-mem-supported': 'bool',
-            'deprecated': 'bool', '*default-cpu-type': 'str' } }
+            'deprecated': 'bool', '*default-cpu-type': 'str',
+            '*default-ram-id': 'str' } }
 
 ##
 # @query-machines:
@@ -372,7 +174,7 @@
 #
 # Returns: a list of MachineInfo
 #
-# Since: 1.2.0
+# Since: 1.2
 ##
 { 'command': 'query-machines', 'returns': ['MachineInfo'] }
 
@@ -407,7 +209,7 @@
 #
 # @arch: the target architecture
 #
-# Since: 1.2.0
+# Since: 1.2
 ##
 { 'struct': 'TargetInfo',
   'data': { 'arch': 'SysEmuTarget' } }
@@ -419,9 +221,198 @@
 #
 # Returns: TargetInfo
 #
-# Since: 1.2.0
+# Since: 1.2
 ##
 { 'command': 'query-target', 'returns': 'TargetInfo' }
+
+##
+# @UuidInfo:
+#
+# Guest UUID information (Universally Unique Identifier).
+#
+# @UUID: the UUID of the guest
+#
+# Since: 0.14
+#
+# Notes: If no UUID was specified for the guest, a null UUID is returned.
+##
+{ 'struct': 'UuidInfo', 'data': {'UUID': 'str'} }
+
+##
+# @query-uuid:
+#
+# Query the guest UUID information.
+#
+# Returns: The @UuidInfo for the guest
+#
+# Since: 0.14
+#
+# Example:
+#
+# -> { "execute": "query-uuid" }
+# <- { "return": { "UUID": "550e8400-e29b-41d4-a716-446655440000" } }
+#
+##
+{ 'command': 'query-uuid', 'returns': 'UuidInfo', 'allow-preconfig': true }
+
+##
+# @GuidInfo:
+#
+# GUID information.
+#
+# @guid: the globally unique identifier
+#
+# Since: 2.9
+##
+{ 'struct': 'GuidInfo', 'data': {'guid': 'str'} }
+
+##
+# @query-vm-generation-id:
+#
+# Show Virtual Machine Generation ID
+#
+# Since: 2.9
+##
+{ 'command': 'query-vm-generation-id', 'returns': 'GuidInfo' }
+
+##
+# @system_reset:
+#
+# Performs a hard reset of a guest.
+#
+# Since: 0.14
+#
+# Example:
+#
+# -> { "execute": "system_reset" }
+# <- { "return": {} }
+#
+##
+{ 'command': 'system_reset' }
+
+##
+# @system_powerdown:
+#
+# Requests that a guest perform a powerdown operation.
+#
+# Since: 0.14
+#
+# Notes: A guest may or may not respond to this command.  This command
+#        returning does not indicate that a guest has accepted the request or
+#        that it has shut down.  Many guests will respond to this command by
+#        prompting the user in some way.
+# Example:
+#
+# -> { "execute": "system_powerdown" }
+# <- { "return": {} }
+#
+##
+{ 'command': 'system_powerdown' }
+
+##
+# @system_wakeup:
+#
+# Wake up guest from suspend. If the guest has wake-up from suspend
+# support enabled (wakeup-suspend-support flag from
+# query-current-machine), wake-up guest from suspend if the guest is
+# in SUSPENDED state. Return an error otherwise.
+#
+# Since:  1.1
+#
+# Returns:  nothing.
+#
+# Note: prior to 4.0, this command does nothing in case the guest
+#       isn't suspended.
+#
+# Example:
+#
+# -> { "execute": "system_wakeup" }
+# <- { "return": {} }
+#
+##
+{ 'command': 'system_wakeup' }
+
+##
+# @LostTickPolicy:
+#
+# Policy for handling lost ticks in timer devices.  Ticks end up getting
+# lost when, for example, the guest is paused.
+#
+# @discard: throw away the missed ticks and continue with future injection
+#           normally.  The guest OS will see the timer jump ahead by a
+#           potentially quite significant amount all at once, as if the
+#           intervening chunk of time had simply not existed; needless to
+#           say, such a sudden jump can easily confuse a guest OS which is
+#           not specifically prepared to deal with it.  Assuming the guest
+#           OS can deal correctly with the time jump, the time in the guest
+#           and in the host should now match.
+#
+# @delay: continue to deliver ticks at the normal rate.  The guest OS will
+#         not notice anything is amiss, as from its point of view time will
+#         have continued to flow normally.  The time in the guest should now
+#         be behind the time in the host by exactly the amount of time during
+#         which ticks have been missed.
+#
+# @slew: deliver ticks at a higher rate to catch up with the missed ticks.
+#        The guest OS will not notice anything is amiss, as from its point
+#        of view time will have continued to flow normally.  Once the timer
+#        has managed to catch up with all the missing ticks, the time in
+#        the guest and in the host should match.
+#
+# Since: 2.0
+##
+{ 'enum': 'LostTickPolicy',
+  'data': ['discard', 'delay', 'slew' ] }
+
+##
+# @inject-nmi:
+#
+# Injects a Non-Maskable Interrupt into the default CPU (x86/s390) or all CPUs (ppc64).
+# The command fails when the guest doesn't support injecting.
+#
+# Returns:  If successful, nothing
+#
+# Since:  0.14
+#
+# Note: prior to 2.1, this command was only supported for x86 and s390 VMs
+#
+# Example:
+#
+# -> { "execute": "inject-nmi" }
+# <- { "return": {} }
+#
+##
+{ 'command': 'inject-nmi' }
+
+##
+# @KvmInfo:
+#
+# Information about support for KVM acceleration
+#
+# @enabled: true if KVM acceleration is active
+#
+# @present: true if KVM acceleration is built into this executable
+#
+# Since: 0.14
+##
+{ 'struct': 'KvmInfo', 'data': {'enabled': 'bool', 'present': 'bool'} }
+
+##
+# @query-kvm:
+#
+# Returns information about KVM acceleration
+#
+# Returns: @KvmInfo
+#
+# Since: 0.14
+#
+# Example:
+#
+# -> { "execute": "query-kvm" }
+# <- { "return": { "enabled": true, "present": true } }
+#
+##
+{ 'command': 'query-kvm', 'returns': 'KvmInfo' }
 
 ##
 # @NumaOptionsType:
@@ -730,24 +721,65 @@
    'line': 'uint16' }}
 
 ##
-# @HostMemPolicy:
+# @memsave:
 #
-# Host memory policy types
+# Save a portion of guest memory to a file.
 #
-# @default: restore default policy, remove any nondefault policy
+# @val: the virtual address of the guest to start from
 #
-# @preferred: set the preferred host nodes for allocation
+# @size: the size of memory region to save
 #
-# @bind: a strict policy that restricts memory allocation to the
-#        host nodes specified
+# @filename: the file to save the memory to as binary data
 #
-# @interleave: memory allocations are interleaved across the set
-#              of host nodes specified
+# @cpu-index: the index of the virtual CPU to use for translating the
+#             virtual address (defaults to CPU 0)
 #
-# Since: 2.1
+# Returns: Nothing on success
+#
+# Since: 0.14
+#
+# Notes: Errors were not reliably returned until 1.1
+#
+# Example:
+#
+# -> { "execute": "memsave",
+#      "arguments": { "val": 10,
+#                     "size": 100,
+#                     "filename": "/tmp/virtual-mem-dump" } }
+# <- { "return": {} }
+#
 ##
-{ 'enum': 'HostMemPolicy',
-  'data': [ 'default', 'preferred', 'bind', 'interleave' ] }
+{ 'command': 'memsave',
+  'data': {'val': 'int', 'size': 'int', 'filename': 'str', '*cpu-index': 'int'} }
+
+##
+# @pmemsave:
+#
+# Save a portion of guest physical memory to a file.
+#
+# @val: the physical address of the guest to start from
+#
+# @size: the size of memory region to save
+#
+# @filename: the file to save the memory to as binary data
+#
+# Returns: Nothing on success
+#
+# Since: 0.14
+#
+# Notes: Errors were not reliably returned until 1.1
+#
+# Example:
+#
+# -> { "execute": "pmemsave",
+#      "arguments": { "val": 10,
+#                     "size": 100,
+#                     "filename": "/tmp/physical-mem-dump" } }
+# <- { "return": {} }
+#
+##
+{ 'command': 'pmemsave',
+  'data': {'val': 'int', 'size': 'int', 'filename': 'str'} }
 
 ##
 # @Memdev:
@@ -758,11 +790,19 @@
 #
 # @size: memory backend size
 #
-# @merge: enables or disables memory merge support
+# @merge: whether memory merge support is enabled
 #
-# @dump: includes memory backend's memory in a core dump or not
+# @dump: whether memory backend's memory is included in a core dump
 #
-# @prealloc: enables or disables memory preallocation
+# @prealloc: whether memory was preallocated
+#
+# @share: whether memory is private to QEMU or shared (since 6.1)
+#
+# @reserve: whether swap space (or huge pages) was reserved if applicable.
+#           This corresponds to the user configuration and not the actual
+#           behavior implemented in the OS to perform the reservation.
+#           For example, Linux will never reserve swap space for shared
+#           file mappings. (since 6.1)
 #
 # @host-nodes: host nodes for its memory policy
 #
@@ -777,6 +817,8 @@
     'merge':      'bool',
     'dump':       'bool',
     'prealloc':   'bool',
+    'share':      'bool',
+    '*reserve':    'bool',
     'host-nodes': ['uint16'],
     'policy':     'HostMemPolicy' }}
 
@@ -934,3 +976,339 @@
   'data': 'NumaOptions',
   'allow-preconfig': true
 }
+
+##
+# @balloon:
+#
+# Request the balloon driver to change its balloon size.
+#
+# @value: the target logical size of the VM in bytes.
+#         We can deduce the size of the balloon using this formula:
+#
+#            logical_vm_size = vm_ram_size - balloon_size
+#
+#         From it we have: balloon_size = vm_ram_size - @value
+#
+# Returns: - Nothing on success
+#          - If the balloon driver is enabled but not functional because the KVM
+#            kernel module cannot support it, KvmMissingCap
+#          - If no balloon device is present, DeviceNotActive
+#
+# Notes: This command just issues a request to the guest.  When it returns,
+#        the balloon size may not have changed.  A guest can change the balloon
+#        size independent of this command.
+#
+# Since: 0.14
+#
+# Example:
+#
+# -> { "execute": "balloon", "arguments": { "value": 536870912 } }
+# <- { "return": {} }
+#
+# With a 2.5GiB guest this command inflated the ballon to 3GiB.
+#
+##
+{ 'command': 'balloon', 'data': {'value': 'int'} }
+
+##
+# @BalloonInfo:
+#
+# Information about the guest balloon device.
+#
+# @actual: the logical size of the VM in bytes
+#          Formula used: logical_vm_size = vm_ram_size - balloon_size
+#
+# Since: 0.14
+#
+##
+{ 'struct': 'BalloonInfo', 'data': {'actual': 'int' } }
+
+##
+# @query-balloon:
+#
+# Return information about the balloon device.
+#
+# Returns: - @BalloonInfo on success
+#          - If the balloon driver is enabled but not functional because the KVM
+#            kernel module cannot support it, KvmMissingCap
+#          - If no balloon device is present, DeviceNotActive
+#
+# Since: 0.14
+#
+# Example:
+#
+# -> { "execute": "query-balloon" }
+# <- { "return": {
+#          "actual": 1073741824,
+#       }
+#    }
+#
+##
+{ 'command': 'query-balloon', 'returns': 'BalloonInfo' }
+
+##
+# @BALLOON_CHANGE:
+#
+# Emitted when the guest changes the actual BALLOON level. This value is
+# equivalent to the @actual field return by the 'query-balloon' command
+#
+# @actual: the logical size of the VM in bytes
+#          Formula used: logical_vm_size = vm_ram_size - balloon_size
+#
+# Note: this event is rate-limited.
+#
+# Since: 1.2
+#
+# Example:
+#
+# <- { "event": "BALLOON_CHANGE",
+#      "data": { "actual": 944766976 },
+#      "timestamp": { "seconds": 1267020223, "microseconds": 435656 } }
+#
+##
+{ 'event': 'BALLOON_CHANGE',
+  'data': { 'actual': 'int' } }
+
+##
+# @MemoryInfo:
+#
+# Actual memory information in bytes.
+#
+# @base-memory: size of "base" memory specified with command line
+#               option -m.
+#
+# @plugged-memory: size of memory that can be hot-unplugged. This field
+#                  is omitted if target doesn't support memory hotplug
+#                  (i.e. CONFIG_MEM_DEVICE not defined at build time).
+#
+# Since: 2.11
+##
+{ 'struct': 'MemoryInfo',
+  'data'  : { 'base-memory': 'size', '*plugged-memory': 'size' } }
+
+##
+# @query-memory-size-summary:
+#
+# Return the amount of initially allocated and present hotpluggable (if
+# enabled) memory in bytes.
+#
+# Example:
+#
+# -> { "execute": "query-memory-size-summary" }
+# <- { "return": { "base-memory": 4294967296, "plugged-memory": 0 } }
+#
+# Since: 2.11
+##
+{ 'command': 'query-memory-size-summary', 'returns': 'MemoryInfo' }
+
+##
+# @PCDIMMDeviceInfo:
+#
+# PCDIMMDevice state information
+#
+# @id: device's ID
+#
+# @addr: physical address, where device is mapped
+#
+# @size: size of memory that the device provides
+#
+# @slot: slot number at which device is plugged in
+#
+# @node: NUMA node number where device is plugged in
+#
+# @memdev: memory backend linked with device
+#
+# @hotplugged: true if device was hotplugged
+#
+# @hotpluggable: true if device if could be added/removed while machine is running
+#
+# Since: 2.1
+##
+{ 'struct': 'PCDIMMDeviceInfo',
+  'data': { '*id': 'str',
+            'addr': 'int',
+            'size': 'int',
+            'slot': 'int',
+            'node': 'int',
+            'memdev': 'str',
+            'hotplugged': 'bool',
+            'hotpluggable': 'bool'
+          }
+}
+
+##
+# @VirtioPMEMDeviceInfo:
+#
+# VirtioPMEM state information
+#
+# @id: device's ID
+#
+# @memaddr: physical address in memory, where device is mapped
+#
+# @size: size of memory that the device provides
+#
+# @memdev: memory backend linked with device
+#
+# Since: 4.1
+##
+{ 'struct': 'VirtioPMEMDeviceInfo',
+  'data': { '*id': 'str',
+            'memaddr': 'size',
+            'size': 'size',
+            'memdev': 'str'
+          }
+}
+
+##
+# @VirtioMEMDeviceInfo:
+#
+# VirtioMEMDevice state information
+#
+# @id: device's ID
+#
+# @memaddr: physical address in memory, where device is mapped
+#
+# @requested-size: the user requested size of the device
+#
+# @size: the (current) size of memory that the device provides
+#
+# @max-size: the maximum size of memory that the device can provide
+#
+# @block-size: the block size of memory that the device provides
+#
+# @node: NUMA node number where device is assigned to
+#
+# @memdev: memory backend linked with the region
+#
+# Since: 5.1
+##
+{ 'struct': 'VirtioMEMDeviceInfo',
+  'data': { '*id': 'str',
+            'memaddr': 'size',
+            'requested-size': 'size',
+            'size': 'size',
+            'max-size': 'size',
+            'block-size': 'size',
+            'node': 'int',
+            'memdev': 'str'
+          }
+}
+
+##
+# @MemoryDeviceInfo:
+#
+# Union containing information about a memory device
+#
+# nvdimm is included since 2.12. virtio-pmem is included since 4.1.
+# virtio-mem is included since 5.1.
+#
+# Since: 2.1
+##
+{ 'union': 'MemoryDeviceInfo',
+  'data': { 'dimm': 'PCDIMMDeviceInfo',
+            'nvdimm': 'PCDIMMDeviceInfo',
+            'virtio-pmem': 'VirtioPMEMDeviceInfo',
+            'virtio-mem': 'VirtioMEMDeviceInfo'
+          }
+}
+
+##
+# @query-memory-devices:
+#
+# Lists available memory devices and their state
+#
+# Since: 2.1
+#
+# Example:
+#
+# -> { "execute": "query-memory-devices" }
+# <- { "return": [ { "data":
+#                       { "addr": 5368709120,
+#                         "hotpluggable": true,
+#                         "hotplugged": true,
+#                         "id": "d1",
+#                         "memdev": "/objects/memX",
+#                         "node": 0,
+#                         "size": 1073741824,
+#                         "slot": 0},
+#                    "type": "dimm"
+#                  } ] }
+#
+##
+{ 'command': 'query-memory-devices', 'returns': ['MemoryDeviceInfo'] }
+
+##
+# @MEMORY_DEVICE_SIZE_CHANGE:
+#
+# Emitted when the size of a memory device changes. Only emitted for memory
+# devices that can actually change the size (e.g., virtio-mem due to guest
+# action).
+#
+# @id: device's ID
+# @size: the new size of memory that the device provides
+#
+# Note: this event is rate-limited.
+#
+# Since: 5.1
+#
+# Example:
+#
+# <- { "event": "MEMORY_DEVICE_SIZE_CHANGE",
+#      "data": { "id": "vm0", "size": 1073741824},
+#      "timestamp": { "seconds": 1588168529, "microseconds": 201316 } }
+#
+##
+{ 'event': 'MEMORY_DEVICE_SIZE_CHANGE',
+  'data': { '*id': 'str', 'size': 'size' } }
+
+
+##
+# @MEM_UNPLUG_ERROR:
+#
+# Emitted when memory hot unplug error occurs.
+#
+# @device: device name
+#
+# @msg: Informative message
+#
+# Since: 2.4
+#
+# Example:
+#
+# <- { "event": "MEM_UNPLUG_ERROR"
+#      "data": { "device": "dimm1",
+#                "msg": "acpi: device unplug for unsupported device"
+#      },
+#      "timestamp": { "seconds": 1265044230, "microseconds": 450486 } }
+#
+##
+{ 'event': 'MEM_UNPLUG_ERROR',
+  'data': { 'device': 'str', 'msg': 'str' } }
+
+##
+# @SMPConfiguration:
+#
+# Schema for CPU topology configuration.  A missing value lets
+# QEMU figure out a suitable value based on the ones that are provided.
+#
+# @cpus: number of virtual CPUs in the virtual machine
+#
+# @sockets: number of sockets in the CPU topology
+#
+# @dies: number of dies per socket in the CPU topology
+#
+# @cores: number of cores per thread in the CPU topology
+#
+# @threads: number of threads per core in the CPU topology
+#
+# @maxcpus: maximum number of hotpluggable virtual CPUs in the virtual machine
+#
+# Since: 6.1
+##
+{ 'struct': 'SMPConfiguration', 'data': {
+     '*cpus': 'int',
+     '*sockets': 'int',
+     '*dies': 'int',
+     '*cores': 'int',
+     '*threads': 'int',
+     '*maxcpus': 'int' } }

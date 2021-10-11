@@ -20,18 +20,14 @@
 #define ROCKER_H
 
 #include "qemu/sockets.h"
+#include "qom/object.h"
 
 #if defined(DEBUG_ROCKER)
 #  define DPRINTF(fmt, ...) \
     do {                                                           \
-        struct timeval tv;                                         \
-        char timestr[64];                                          \
-        time_t now;                                                \
-        gettimeofday(&tv, NULL);                                   \
-        now = tv.tv_sec;                                           \
-        strftime(timestr, sizeof(timestr), "%T", localtime(&now)); \
-        fprintf(stderr, "%s.%06ld ", timestr, tv.tv_usec);         \
-        fprintf(stderr, "ROCKER: " fmt, ## __VA_ARGS__);           \
+        g_autoptr(GDateTime) now = g_date_time_new_now_local();    \
+        g_autofree char *nowstr = g_date_time_format(now, "%T.%f");\
+        fprintf(stderr, "%s ROCKER: " fmt, nowstr, ## __VA_ARGS__);\
     } while (0)
 #else
 static inline GCC_FMT_ATTR(1, 2) int DPRINTF(const char *fmt, ...)
@@ -66,10 +62,14 @@ static inline bool ipv6_addr_is_multicast(const Ipv6Addr *addr)
     return (addr->addr32[0] & htonl(0xFF000000)) == htonl(0xFF000000);
 }
 
-typedef struct rocker Rocker;
 typedef struct world World;
 typedef struct desc_info DescInfo;
 typedef struct desc_ring DescRing;
+
+#define TYPE_ROCKER "rocker"
+typedef struct rocker Rocker;
+DECLARE_INSTANCE_CHECKER(Rocker, ROCKER,
+                         TYPE_ROCKER)
 
 Rocker *rocker_find(const char *name);
 uint32_t rocker_fp_ports(Rocker *r);

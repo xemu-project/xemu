@@ -10,7 +10,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -52,6 +52,7 @@ cryptodev_vhost_init(
 {
     int r;
     CryptoDevBackendVhost *crypto;
+    Error *local_err = NULL;
 
     crypto = g_new(CryptoDevBackendVhost, 1);
     crypto->dev.max_queues = 1;
@@ -66,8 +67,10 @@ cryptodev_vhost_init(
     /* vhost-user needs vq_index to initiate a specific queue pair */
     crypto->dev.vq_index = crypto->cc->queue_index * crypto->dev.nvqs;
 
-    r = vhost_dev_init(&crypto->dev, options->opaque, options->backend_type, 0);
+    r = vhost_dev_init(&crypto->dev, options->opaque, options->backend_type, 0,
+                       &local_err);
     if (r < 0) {
+        error_report_err(local_err);
         goto fail;
     }
 

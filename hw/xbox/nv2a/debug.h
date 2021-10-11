@@ -117,6 +117,7 @@ void gl_debug_frame_terminator(void);
     _X(NV2A_PROF_SURF_DOWNLOAD) \
     _X(NV2A_PROF_SURF_UPLOAD) \
     _X(NV2A_PROF_SURF_TO_TEX) \
+    _X(NV2A_PROF_SURF_TO_TEX_FALLBACK) \
 
 enum NV2A_PROF_COUNTERS_ENUM {
     #define _X(x) x,

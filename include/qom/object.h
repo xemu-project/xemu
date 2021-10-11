@@ -21,6 +21,7 @@
 
 #include "qapi/qapi-builtin-types.h"
 #include "qemu/module.h"
+#include "qom/object.h"
 
 struct TypeImpl;
 typedef struct TypeImpl *Type;
@@ -32,290 +33,10 @@ typedef struct InterfaceInfo InterfaceInfo;
 
 #define TYPE_OBJECT "object"
 
-/**
- * SECTION:object.h
- * @title:Base Object Type System
- * @short_description: interfaces for creating new types and objects
- *
- * The QEMU Object Model provides a framework for registering user creatable
- * types and instantiating objects from those types.  QOM provides the following
- * features:
- *
- *  - System for dynamically registering types
- *  - Support for single-inheritance of types
- *  - Multiple inheritance of stateless interfaces
- *
- * <example>
- *   <title>Creating a minimal type</title>
- *   <programlisting>
- * #include "qdev.h"
- *
- * #define TYPE_MY_DEVICE "my-device"
- *
- * // No new virtual functions: we can reuse the typedef for the
- * // superclass.
- * typedef DeviceClass MyDeviceClass;
- * typedef struct MyDevice
- * {
- *     DeviceState parent;
- *
- *     int reg0, reg1, reg2;
- * } MyDevice;
- *
- * static const TypeInfo my_device_info = {
- *     .name = TYPE_MY_DEVICE,
- *     .parent = TYPE_DEVICE,
- *     .instance_size = sizeof(MyDevice),
- * };
- *
- * static void my_device_register_types(void)
- * {
- *     type_register_static(&my_device_info);
- * }
- *
- * type_init(my_device_register_types)
- *   </programlisting>
- * </example>
- *
- * In the above example, we create a simple type that is described by #TypeInfo.
- * #TypeInfo describes information about the type including what it inherits
- * from, the instance and class size, and constructor/destructor hooks.
- *
- * Alternatively several static types could be registered using helper macro
- * DEFINE_TYPES()
- *
- * <example>
- *   <programlisting>
- * static const TypeInfo device_types_info[] = {
- *     {
- *         .name = TYPE_MY_DEVICE_A,
- *         .parent = TYPE_DEVICE,
- *         .instance_size = sizeof(MyDeviceA),
- *     },
- *     {
- *         .name = TYPE_MY_DEVICE_B,
- *         .parent = TYPE_DEVICE,
- *         .instance_size = sizeof(MyDeviceB),
- *     },
- * };
- *
- * DEFINE_TYPES(device_types_info)
- *   </programlisting>
- * </example>
- *
- * Every type has an #ObjectClass associated with it.  #ObjectClass derivatives
- * are instantiated dynamically but there is only ever one instance for any
- * given type.  The #ObjectClass typically holds a table of function pointers
- * for the virtual methods implemented by this type.
- *
- * Using object_new(), a new #Object derivative will be instantiated.  You can
- * cast an #Object to a subclass (or base-class) type using
- * object_dynamic_cast().  You typically want to define macro wrappers around
- * OBJECT_CHECK() and OBJECT_CLASS_CHECK() to make it easier to convert to a
- * specific type:
- *
- * <example>
- *   <title>Typecasting macros</title>
- *   <programlisting>
- *    #define MY_DEVICE_GET_CLASS(obj) \
- *       OBJECT_GET_CLASS(MyDeviceClass, obj, TYPE_MY_DEVICE)
- *    #define MY_DEVICE_CLASS(klass) \
- *       OBJECT_CLASS_CHECK(MyDeviceClass, klass, TYPE_MY_DEVICE)
- *    #define MY_DEVICE(obj) \
- *       OBJECT_CHECK(MyDevice, obj, TYPE_MY_DEVICE)
- *   </programlisting>
- * </example>
- *
- * # Class Initialization #
- *
- * Before an object is initialized, the class for the object must be
- * initialized.  There is only one class object for all instance objects
- * that is created lazily.
- *
- * Classes are initialized by first initializing any parent classes (if
- * necessary).  After the parent class object has initialized, it will be
- * copied into the current class object and any additional storage in the
- * class object is zero filled.
- *
- * The effect of this is that classes automatically inherit any virtual
- * function pointers that the parent class has already initialized.  All
- * other fields will be zero filled.
- *
- * Once all of the parent classes have been initialized, #TypeInfo::class_init
- * is called to let the class being instantiated provide default initialize for
- * its virtual functions.  Here is how the above example might be modified
- * to introduce an overridden virtual function:
- *
- * <example>
- *   <title>Overriding a virtual function</title>
- *   <programlisting>
- * #include "qdev.h"
- *
- * void my_device_class_init(ObjectClass *klass, void *class_data)
- * {
- *     DeviceClass *dc = DEVICE_CLASS(klass);
- *     dc->reset = my_device_reset;
- * }
- *
- * static const TypeInfo my_device_info = {
- *     .name = TYPE_MY_DEVICE,
- *     .parent = TYPE_DEVICE,
- *     .instance_size = sizeof(MyDevice),
- *     .class_init = my_device_class_init,
- * };
- *   </programlisting>
- * </example>
- *
- * Introducing new virtual methods requires a class to define its own
- * struct and to add a .class_size member to the #TypeInfo.  Each method
- * will also have a wrapper function to call it easily:
- *
- * <example>
- *   <title>Defining an abstract class</title>
- *   <programlisting>
- * #include "qdev.h"
- *
- * typedef struct MyDeviceClass
- * {
- *     DeviceClass parent;
- *
- *     void (*frobnicate) (MyDevice *obj);
- * } MyDeviceClass;
- *
- * static const TypeInfo my_device_info = {
- *     .name = TYPE_MY_DEVICE,
- *     .parent = TYPE_DEVICE,
- *     .instance_size = sizeof(MyDevice),
- *     .abstract = true, // or set a default in my_device_class_init
- *     .class_size = sizeof(MyDeviceClass),
- * };
- *
- * void my_device_frobnicate(MyDevice *obj)
- * {
- *     MyDeviceClass *klass = MY_DEVICE_GET_CLASS(obj);
- *
- *     klass->frobnicate(obj);
- * }
- *   </programlisting>
- * </example>
- *
- * # Interfaces #
- *
- * Interfaces allow a limited form of multiple inheritance.  Instances are
- * similar to normal types except for the fact that are only defined by
- * their classes and never carry any state.  As a consequence, a pointer to
- * an interface instance should always be of incomplete type in order to be
- * sure it cannot be dereferenced.  That is, you should define the
- * 'typedef struct SomethingIf SomethingIf' so that you can pass around
- * 'SomethingIf *si' arguments, but not define a 'struct SomethingIf { ... }'.
- * The only things you can validly do with a 'SomethingIf *' are to pass it as
- * an argument to a method on its corresponding SomethingIfClass, or to
- * dynamically cast it to an object that implements the interface.
- *
- * # Methods #
- *
- * A <emphasis>method</emphasis> is a function within the namespace scope of
- * a class. It usually operates on the object instance by passing it as a
- * strongly-typed first argument.
- * If it does not operate on an object instance, it is dubbed
- * <emphasis>class method</emphasis>.
- *
- * Methods cannot be overloaded. That is, the #ObjectClass and method name
- * uniquely identity the function to be called; the signature does not vary
- * except for trailing varargs.
- *
- * Methods are always <emphasis>virtual</emphasis>. Overriding a method in
- * #TypeInfo.class_init of a subclass leads to any user of the class obtained
- * via OBJECT_GET_CLASS() accessing the overridden function.
- * The original function is not automatically invoked. It is the responsibility
- * of the overriding class to determine whether and when to invoke the method
- * being overridden.
- *
- * To invoke the method being overridden, the preferred solution is to store
- * the original value in the overriding class before overriding the method.
- * This corresponds to |[ {super,base}.method(...) ]| in Java and C#
- * respectively; this frees the overriding class from hardcoding its parent
- * class, which someone might choose to change at some point.
- *
- * <example>
- *   <title>Overriding a virtual method</title>
- *   <programlisting>
- * typedef struct MyState MyState;
- *
- * typedef void (*MyDoSomething)(MyState *obj);
- *
- * typedef struct MyClass {
- *     ObjectClass parent_class;
- *
- *     MyDoSomething do_something;
- * } MyClass;
- *
- * static void my_do_something(MyState *obj)
- * {
- *     // do something
- * }
- *
- * static void my_class_init(ObjectClass *oc, void *data)
- * {
- *     MyClass *mc = MY_CLASS(oc);
- *
- *     mc->do_something = my_do_something;
- * }
- *
- * static const TypeInfo my_type_info = {
- *     .name = TYPE_MY,
- *     .parent = TYPE_OBJECT,
- *     .instance_size = sizeof(MyState),
- *     .class_size = sizeof(MyClass),
- *     .class_init = my_class_init,
- * };
- *
- * typedef struct DerivedClass {
- *     MyClass parent_class;
- *
- *     MyDoSomething parent_do_something;
- * } DerivedClass;
- *
- * static void derived_do_something(MyState *obj)
- * {
- *     DerivedClass *dc = DERIVED_GET_CLASS(obj);
- *
- *     // do something here
- *     dc->parent_do_something(obj);
- *     // do something else here
- * }
- *
- * static void derived_class_init(ObjectClass *oc, void *data)
- * {
- *     MyClass *mc = MY_CLASS(oc);
- *     DerivedClass *dc = DERIVED_CLASS(oc);
- *
- *     dc->parent_do_something = mc->do_something;
- *     mc->do_something = derived_do_something;
- * }
- *
- * static const TypeInfo derived_type_info = {
- *     .name = TYPE_DERIVED,
- *     .parent = TYPE_MY,
- *     .class_size = sizeof(DerivedClass),
- *     .class_init = derived_class_init,
- * };
- *   </programlisting>
- * </example>
- *
- * Alternatively, object_class_by_name() can be used to obtain the class and
- * its non-overridden methods for a specific type. This would correspond to
- * |[ MyClass::method(...) ]| in C++.
- *
- * The first example of such a QOM method was #CPUClass.reset,
- * another example is #DeviceClass.realize.
- */
-
-
 typedef struct ObjectProperty ObjectProperty;
 
 /**
- * ObjectPropertyAccessor:
+ * typedef ObjectPropertyAccessor:
  * @obj: the object that owns the property
  * @v: the visitor that contains the property data
  * @name: the name of the property
@@ -331,7 +52,7 @@ typedef void (ObjectPropertyAccessor)(Object *obj,
                                       Error **errp);
 
 /**
- * ObjectPropertyResolve:
+ * typedef ObjectPropertyResolve:
  * @obj: the object that owns the property
  * @opaque: the opaque registered with the property
  * @part: the name of the property
@@ -350,7 +71,7 @@ typedef Object *(ObjectPropertyResolve)(Object *obj,
                                         const char *part);
 
 /**
- * ObjectPropertyRelease:
+ * typedef ObjectPropertyRelease:
  * @obj: the object that owns the property
  * @name: the name of the property
  * @opaque: the opaque registered with the property
@@ -362,7 +83,7 @@ typedef void (ObjectPropertyRelease)(Object *obj,
                                      void *opaque);
 
 /**
- * ObjectPropertyInit:
+ * typedef ObjectPropertyInit:
  * @obj: the object that owns the property
  * @prop: the property to set
  *
@@ -385,7 +106,7 @@ struct ObjectProperty
 };
 
 /**
- * ObjectUnparent:
+ * typedef ObjectUnparent:
  * @obj: the object that is being removed from the composition tree
  *
  * Called when an object is being removed from the QOM composition tree.
@@ -394,7 +115,7 @@ struct ObjectProperty
 typedef void (ObjectUnparent)(Object *obj);
 
 /**
- * ObjectFree:
+ * typedef ObjectFree:
  * @obj: the object being freed
  *
  * Called when an object's last reference is removed.
@@ -404,14 +125,14 @@ typedef void (ObjectFree)(void *obj);
 #define OBJECT_CLASS_CAST_CACHE 4
 
 /**
- * ObjectClass:
+ * struct ObjectClass:
  *
  * The base for all classes.  The only thing that #ObjectClass contains is an
  * integer type handle.
  */
 struct ObjectClass
 {
-    /*< private >*/
+    /* private: */
     Type type;
     GSList *interfaces;
 
@@ -424,7 +145,7 @@ struct ObjectClass
 };
 
 /**
- * Object:
+ * struct Object:
  *
  * The base for all objects.  The first member of this object is a pointer to
  * a #ObjectClass.  Since C guarantees that the first member of a structure
@@ -437,7 +158,7 @@ struct ObjectClass
  */
 struct Object
 {
-    /*< private >*/
+    /* private: */
     ObjectClass *class;
     ObjectFree *free;
     GHashTable *properties;
@@ -446,12 +167,223 @@ struct Object
 };
 
 /**
- * TypeInfo:
+ * DECLARE_INSTANCE_CHECKER:
+ * @InstanceType: instance struct name
+ * @OBJ_NAME: the object name in uppercase with underscore separators
+ * @TYPENAME: type name
+ *
+ * Direct usage of this macro should be avoided, and the complete
+ * OBJECT_DECLARE_TYPE macro is recommended instead.
+ *
+ * This macro will provide the instance type cast functions for a
+ * QOM type.
+ */
+#define DECLARE_INSTANCE_CHECKER(InstanceType, OBJ_NAME, TYPENAME) \
+    static inline G_GNUC_UNUSED InstanceType * \
+    OBJ_NAME(const void *obj) \
+    { return OBJECT_CHECK(InstanceType, obj, TYPENAME); }
+
+/**
+ * DECLARE_CLASS_CHECKERS:
+ * @ClassType: class struct name
+ * @OBJ_NAME: the object name in uppercase with underscore separators
+ * @TYPENAME: type name
+ *
+ * Direct usage of this macro should be avoided, and the complete
+ * OBJECT_DECLARE_TYPE macro is recommended instead.
+ *
+ * This macro will provide the class type cast functions for a
+ * QOM type.
+ */
+#define DECLARE_CLASS_CHECKERS(ClassType, OBJ_NAME, TYPENAME) \
+    static inline G_GNUC_UNUSED ClassType * \
+    OBJ_NAME##_GET_CLASS(const void *obj) \
+    { return OBJECT_GET_CLASS(ClassType, obj, TYPENAME); } \
+    \
+    static inline G_GNUC_UNUSED ClassType * \
+    OBJ_NAME##_CLASS(const void *klass) \
+    { return OBJECT_CLASS_CHECK(ClassType, klass, TYPENAME); }
+
+/**
+ * DECLARE_OBJ_CHECKERS:
+ * @InstanceType: instance struct name
+ * @ClassType: class struct name
+ * @OBJ_NAME: the object name in uppercase with underscore separators
+ * @TYPENAME: type name
+ *
+ * Direct usage of this macro should be avoided, and the complete
+ * OBJECT_DECLARE_TYPE macro is recommended instead.
+ *
+ * This macro will provide the three standard type cast functions for a
+ * QOM type.
+ */
+#define DECLARE_OBJ_CHECKERS(InstanceType, ClassType, OBJ_NAME, TYPENAME) \
+    DECLARE_INSTANCE_CHECKER(InstanceType, OBJ_NAME, TYPENAME) \
+    \
+    DECLARE_CLASS_CHECKERS(ClassType, OBJ_NAME, TYPENAME)
+
+/**
+ * OBJECT_DECLARE_TYPE:
+ * @InstanceType: instance struct name
+ * @ClassType: class struct name
+ * @MODULE_OBJ_NAME: the object name in uppercase with underscore separators
+ *
+ * This macro is typically used in a header file, and will:
+ *
+ *   - create the typedefs for the object and class structs
+ *   - register the type for use with g_autoptr
+ *   - provide three standard type cast functions
+ *
+ * The object struct and class struct need to be declared manually.
+ */
+#define OBJECT_DECLARE_TYPE(InstanceType, ClassType, MODULE_OBJ_NAME) \
+    typedef struct InstanceType InstanceType; \
+    typedef struct ClassType ClassType; \
+    \
+    G_DEFINE_AUTOPTR_CLEANUP_FUNC(InstanceType, object_unref) \
+    \
+    DECLARE_OBJ_CHECKERS(InstanceType, ClassType, \
+                         MODULE_OBJ_NAME, TYPE_##MODULE_OBJ_NAME)
+
+/**
+ * OBJECT_DECLARE_SIMPLE_TYPE:
+ * @InstanceType: instance struct name
+ * @MODULE_OBJ_NAME: the object name in uppercase with underscore separators
+ *
+ * This does the same as OBJECT_DECLARE_TYPE(), but with no class struct
+ * declared.
+ *
+ * This macro should be used unless the class struct needs to have
+ * virtual methods declared.
+ */
+#define OBJECT_DECLARE_SIMPLE_TYPE(InstanceType, MODULE_OBJ_NAME) \
+    typedef struct InstanceType InstanceType; \
+    \
+    G_DEFINE_AUTOPTR_CLEANUP_FUNC(InstanceType, object_unref) \
+    \
+    DECLARE_INSTANCE_CHECKER(InstanceType, MODULE_OBJ_NAME, TYPE_##MODULE_OBJ_NAME)
+
+
+/**
+ * OBJECT_DEFINE_TYPE_EXTENDED:
+ * @ModuleObjName: the object name with initial caps
+ * @module_obj_name: the object name in lowercase with underscore separators
+ * @MODULE_OBJ_NAME: the object name in uppercase with underscore separators
+ * @PARENT_MODULE_OBJ_NAME: the parent object name in uppercase with underscore
+ *                          separators
+ * @ABSTRACT: boolean flag to indicate whether the object can be instantiated
+ * @...: list of initializers for "InterfaceInfo" to declare implemented interfaces
+ *
+ * This macro is typically used in a source file, and will:
+ *
+ *   - declare prototypes for _finalize, _class_init and _init methods
+ *   - declare the TypeInfo struct instance
+ *   - provide the constructor to register the type
+ *
+ * After using this macro, implementations of the _finalize, _class_init,
+ * and _init methods need to be written. Any of these can be zero-line
+ * no-op impls if no special logic is required for a given type.
+ *
+ * This macro should rarely be used, instead one of the more specialized
+ * macros is usually a better choice.
+ */
+#define OBJECT_DEFINE_TYPE_EXTENDED(ModuleObjName, module_obj_name, \
+                                    MODULE_OBJ_NAME, PARENT_MODULE_OBJ_NAME, \
+                                    ABSTRACT, ...) \
+    static void \
+    module_obj_name##_finalize(Object *obj); \
+    static void \
+    module_obj_name##_class_init(ObjectClass *oc, void *data); \
+    static void \
+    module_obj_name##_init(Object *obj); \
+    \
+    static const TypeInfo module_obj_name##_info = { \
+        .parent = TYPE_##PARENT_MODULE_OBJ_NAME, \
+        .name = TYPE_##MODULE_OBJ_NAME, \
+        .instance_size = sizeof(ModuleObjName), \
+        .instance_align = __alignof__(ModuleObjName), \
+        .instance_init = module_obj_name##_init, \
+        .instance_finalize = module_obj_name##_finalize, \
+        .class_size = sizeof(ModuleObjName##Class), \
+        .class_init = module_obj_name##_class_init, \
+        .abstract = ABSTRACT, \
+        .interfaces = (InterfaceInfo[]) { __VA_ARGS__ } , \
+    }; \
+    \
+    static void \
+    module_obj_name##_register_types(void) \
+    { \
+        type_register_static(&module_obj_name##_info); \
+    } \
+    type_init(module_obj_name##_register_types);
+
+/**
+ * OBJECT_DEFINE_TYPE:
+ * @ModuleObjName: the object name with initial caps
+ * @module_obj_name: the object name in lowercase with underscore separators
+ * @MODULE_OBJ_NAME: the object name in uppercase with underscore separators
+ * @PARENT_MODULE_OBJ_NAME: the parent object name in uppercase with underscore
+ *                          separators
+ *
+ * This is a specialization of OBJECT_DEFINE_TYPE_EXTENDED, which is suitable
+ * for the common case of a non-abstract type, without any interfaces.
+ */
+#define OBJECT_DEFINE_TYPE(ModuleObjName, module_obj_name, MODULE_OBJ_NAME, \
+                           PARENT_MODULE_OBJ_NAME) \
+    OBJECT_DEFINE_TYPE_EXTENDED(ModuleObjName, module_obj_name, \
+                                MODULE_OBJ_NAME, PARENT_MODULE_OBJ_NAME, \
+                                false, { NULL })
+
+/**
+ * OBJECT_DEFINE_TYPE_WITH_INTERFACES:
+ * @ModuleObjName: the object name with initial caps
+ * @module_obj_name: the object name in lowercase with underscore separators
+ * @MODULE_OBJ_NAME: the object name in uppercase with underscore separators
+ * @PARENT_MODULE_OBJ_NAME: the parent object name in uppercase with underscore
+ *                          separators
+ * @...: list of initializers for "InterfaceInfo" to declare implemented interfaces
+ *
+ * This is a specialization of OBJECT_DEFINE_TYPE_EXTENDED, which is suitable
+ * for the common case of a non-abstract type, with one or more implemented
+ * interfaces.
+ *
+ * Note when passing the list of interfaces, be sure to include the final
+ * NULL entry, e.g.  { TYPE_USER_CREATABLE }, { NULL }
+ */
+#define OBJECT_DEFINE_TYPE_WITH_INTERFACES(ModuleObjName, module_obj_name, \
+                                           MODULE_OBJ_NAME, \
+                                           PARENT_MODULE_OBJ_NAME, ...) \
+    OBJECT_DEFINE_TYPE_EXTENDED(ModuleObjName, module_obj_name, \
+                                MODULE_OBJ_NAME, PARENT_MODULE_OBJ_NAME, \
+                                false, __VA_ARGS__)
+
+/**
+ * OBJECT_DEFINE_ABSTRACT_TYPE:
+ * @ModuleObjName: the object name with initial caps
+ * @module_obj_name: the object name in lowercase with underscore separators
+ * @MODULE_OBJ_NAME: the object name in uppercase with underscore separators
+ * @PARENT_MODULE_OBJ_NAME: the parent object name in uppercase with underscore
+ *                          separators
+ *
+ * This is a specialization of OBJECT_DEFINE_TYPE_EXTENDED, which is suitable
+ * for defining an abstract type, without any interfaces.
+ */
+#define OBJECT_DEFINE_ABSTRACT_TYPE(ModuleObjName, module_obj_name, \
+                                    MODULE_OBJ_NAME, PARENT_MODULE_OBJ_NAME) \
+    OBJECT_DEFINE_TYPE_EXTENDED(ModuleObjName, module_obj_name, \
+                                MODULE_OBJ_NAME, PARENT_MODULE_OBJ_NAME, \
+                                true, { NULL })
+
+/**
+ * struct TypeInfo:
  * @name: The name of the type.
  * @parent: The name of the parent type.
  * @instance_size: The size of the object (derivative of #Object).  If
  *   @instance_size is 0, then the size of the object will be the size of the
  *   parent object.
+ * @instance_align: The required alignment of the object.  If @instance_align
+ *   is 0, then normal malloc alignment is sufficient; if non-zero, then we
+ *   must use qemu_memalign for allocation.
  * @instance_init: This function is called to initialize an object.  The parent
  *   class will have already been initialized so the type is only responsible
  *   for initializing its own members.
@@ -489,6 +421,7 @@ struct TypeInfo
     const char *parent;
 
     size_t instance_size;
+    size_t instance_align;
     void (*instance_init)(Object *obj);
     void (*instance_post_init)(Object *obj);
     void (*instance_finalize)(Object *obj);
@@ -568,7 +501,7 @@ struct TypeInfo
     OBJECT_CLASS_CHECK(class, object_get_class(OBJECT(obj)), name)
 
 /**
- * InterfaceInfo:
+ * struct InterfaceInfo:
  * @type: The name of the interface.
  *
  * The information associated with an interface.
@@ -578,7 +511,7 @@ struct InterfaceInfo {
 };
 
 /**
- * InterfaceClass:
+ * struct InterfaceClass:
  * @parent_class: the base class
  *
  * The class for all interfaces.  Subclasses of this class should only add
@@ -587,7 +520,7 @@ struct InterfaceInfo {
 struct InterfaceClass
 {
     ObjectClass parent_class;
-    /*< private >*/
+    /* private: */
     ObjectClass *concrete_class;
     Type interface_type;
 };
@@ -659,27 +592,25 @@ Object *object_new(const char *typename);
  * object will be marked complete once all the properties have been
  * processed.
  *
- * <example>
- *   <title>Creating an object with properties</title>
- *   <programlisting>
- *   Error *err = NULL;
- *   Object *obj;
+ * .. code-block:: c
+ *    :caption: Creating an object with properties
  *
- *   obj = object_new_with_props(TYPE_MEMORY_BACKEND_FILE,
- *                               object_get_objects_root(),
- *                               "hostmem0",
- *                               &err,
- *                               "share", "yes",
- *                               "mem-path", "/dev/shm/somefile",
- *                               "prealloc", "yes",
- *                               "size", "1048576",
- *                               NULL);
+ *      Error *err = NULL;
+ *      Object *obj;
  *
- *   if (!obj) {
- *     error_reportf_err(err, "Cannot create memory backend: ");
- *   }
- *   </programlisting>
- * </example>
+ *      obj = object_new_with_props(TYPE_MEMORY_BACKEND_FILE,
+ *                                  object_get_objects_root(),
+ *                                  "hostmem0",
+ *                                  &err,
+ *                                  "share", "yes",
+ *                                  "mem-path", "/dev/shm/somefile",
+ *                                  "prealloc", "yes",
+ *                                  "size", "1048576",
+ *                                  NULL);
+ *
+ *      if (!obj) {
+ *        error_reportf_err(err, "Cannot create memory backend: ");
+ *      }
  *
  * The returned object will have one stable reference maintained
  * for as long as it is present in the object hierarchy.
@@ -712,7 +643,8 @@ bool object_apply_global_props(Object *obj, const GPtrArray *props,
                                Error **errp);
 void object_set_machine_compat_props(GPtrArray *compat_props);
 void object_set_accelerator_compat_props(GPtrArray *compat_props);
-void object_register_sugar_prop(const char *driver, const char *prop, const char *value);
+void object_register_sugar_prop(const char *driver, const char *prop,
+                                const char *value, bool optional);
 void object_apply_compat_props(Object *obj);
 
 /**
@@ -728,23 +660,21 @@ void object_apply_compat_props(Object *obj);
  * strings. The propname of %NULL indicates the end of the property
  * list.
  *
- * <example>
- *   <title>Update an object's properties</title>
- *   <programlisting>
- *   Error *err = NULL;
- *   Object *obj = ...get / create object...;
+ * .. code-block:: c
+ *    :caption: Update an object's properties
  *
- *   if (!object_set_props(obj,
- *                         &err,
- *                         "share", "yes",
- *                         "mem-path", "/dev/shm/somefile",
- *                         "prealloc", "yes",
- *                         "size", "1048576",
- *                         NULL)) {
- *     error_reportf_err(err, "Cannot set properties: ");
- *   }
- *   </programlisting>
- * </example>
+ *      Error *err = NULL;
+ *      Object *obj = ...get / create object...;
+ *
+ *      if (!object_set_props(obj,
+ *                            &err,
+ *                            "share", "yes",
+ *                            "mem-path", "/dev/shm/somefile",
+ *                            "prealloc", "yes",
+ *                            "size", "1048576",
+ *                            NULL)) {
+ *        error_reportf_err(err, "Cannot set properties: ");
+ *      }
  *
  * The returned object will have one stable reference maintained
  * for as long as it is present in the object hierarchy.
@@ -832,10 +762,11 @@ bool object_initialize_child_with_propsv(Object *parentobj,
  * object.
  * @type: The name of the type of the object to instantiate.
  *
- * This is like
- * object_initialize_child_with_props(parent, propname,
- *                                    child, sizeof(*child), type,
- *                                    &error_abort, NULL)
+ * This is like::
+ *
+ *   object_initialize_child_with_props(parent, propname,
+ *                                      child, sizeof(*child), type,
+ *                                      &error_abort, NULL)
  */
 #define object_initialize_child(parent, propname, child, type)          \
     object_initialize_child_internal((parent), (propname),              \
@@ -858,6 +789,11 @@ Object *object_dynamic_cast(Object *obj, const char *typename);
 
 /**
  * object_dynamic_cast_assert:
+ * @obj: The object to cast.
+ * @typename: The @typename to cast to.
+ * @file: Source code file where function was called
+ * @line: Source code line where function was called
+ * @func: Name of function where this function was called
  *
  * See object_dynamic_cast() for a description of the parameters of this
  * function.  The only difference in behavior is that this function asserts
@@ -931,15 +867,41 @@ static void do_qemu_init_ ## type_array(void)                               \
 type_init(do_qemu_init_ ## type_array)
 
 /**
+ * type_print_class_properties:
+ * @type: a QOM class name
+ *
+ * Print the object's class properties to stdout or the monitor.
+ * Return whether an object was found.
+ */
+bool type_print_class_properties(const char *type);
+
+/**
+ * object_set_properties_from_keyval:
+ * @obj: a QOM object
+ * @qdict: a dictionary with the properties to be set
+ * @from_json: true if leaf values of @qdict are typed, false if they
+ * are strings
+ * @errp: pointer to error object
+ *
+ * For each key in the dictionary, parse the value string if needed,
+ * then set the corresponding property in @obj.
+ */
+void object_set_properties_from_keyval(Object *obj, const QDict *qdict,
+                                       bool from_json, Error **errp);
+
+/**
  * object_class_dynamic_cast_assert:
  * @klass: The #ObjectClass to attempt to cast.
  * @typename: The QOM typename of the class to cast to.
+ * @file: Source code file where function was called
+ * @line: Source code line where function was called
+ * @func: Name of function where this function was called
  *
  * See object_class_dynamic_cast() for a description of the parameters
  * of this function.  The only difference in behavior is that this function
  * asserts instead of returning #NULL on failure if QOM cast debugging is
  * enabled.  This function is not meant to be called directly, but only through
- * the wrapper macros OBJECT_CLASS_CHECK and INTERFACE_CHECK.
+ * the wrapper macro OBJECT_CLASS_CHECK.
  */
 ObjectClass *object_class_dynamic_cast_assert(ObjectClass *klass,
                                               const char *typename,
@@ -1040,7 +1002,7 @@ GSList *object_class_get_list_sorted(const char *implements_type,
  * as its reference count is greater than zero.
  * Returns: @obj
  */
-Object *object_ref(Object *obj);
+Object *object_ref(void *obj);
 
 /**
  * object_unref:
@@ -1049,7 +1011,7 @@ Object *object_ref(Object *obj);
  * Decrease the reference count of a object.  A object cannot be freed as long
  * as its reference count is greater than zero.
  */
-void object_unref(Object *obj);
+void object_unref(void *obj);
 
 /**
  * object_property_try_add:
@@ -1085,6 +1047,23 @@ ObjectProperty *object_property_try_add(Object *obj, const char *name,
  * object_property_add:
  * Same as object_property_try_add() with @errp hardcoded to
  * &error_abort.
+ *
+ * @obj: the object to add a property to
+ * @name: the name of the property.  This can contain any character except for
+ *  a forward slash.  In general, you should use hyphens '-' instead of
+ *  underscores '_' when naming properties.
+ * @type: the type name of the property.  This namespace is pretty loosely
+ *   defined.  Sub namespaces are constructed by using a prefix and then
+ *   to angle brackets.  For instance, the type 'virtio-net-pci' in the
+ *   'link' namespace would be 'link<virtio-net-pci>'.
+ * @get: The getter to be called to read a property.  If this is NULL, then
+ *   the property cannot be read.
+ * @set: the setter to be called to write a property.  If this is NULL,
+ *   then the property cannot be written.
+ * @release: called when the property is removed from the object.  This is
+ *   meant to allow a property to free its opaque upon object
+ *   destruction.  This may be NULL.
+ * @opaque: an opaque pointer to pass to the callbacks for the property
  */
 ObjectProperty *object_property_add(Object *obj, const char *name,
                                     const char *type,
@@ -1142,14 +1121,52 @@ void object_property_set_default_uint(ObjectProperty *prop, uint64_t value);
  * object_property_find:
  * @obj: the object
  * @name: the name of the property
+ *
+ * Look up a property for an object.
+ *
+ * Return its #ObjectProperty if found, or NULL.
+ */
+ObjectProperty *object_property_find(Object *obj, const char *name);
+
+/**
+ * object_property_find_err:
+ * @obj: the object
+ * @name: the name of the property
  * @errp: returns an error if this function fails
  *
- * Look up a property for an object and return its #ObjectProperty if found.
+ * Look up a property for an object.
+ *
+ * Return its #ObjectProperty if found, or NULL.
  */
-ObjectProperty *object_property_find(Object *obj, const char *name,
-                                     Error **errp);
-ObjectProperty *object_class_property_find(ObjectClass *klass, const char *name,
-                                           Error **errp);
+ObjectProperty *object_property_find_err(Object *obj,
+                                         const char *name,
+                                         Error **errp);
+
+/**
+ * object_class_property_find:
+ * @klass: the object class
+ * @name: the name of the property
+ *
+ * Look up a property for an object class.
+ *
+ * Return its #ObjectProperty if found, or NULL.
+ */
+ObjectProperty *object_class_property_find(ObjectClass *klass,
+                                           const char *name);
+
+/**
+ * object_class_property_find_err:
+ * @klass: the object class
+ * @name: the name of the property
+ * @errp: returns an error if this function fails
+ *
+ * Look up a property for an object class.
+ *
+ * Return its #ObjectProperty if found, or NULL.
+ */
+ObjectProperty *object_class_property_find_err(ObjectClass *klass,
+                                               const char *name,
+                                               Error **errp);
 
 typedef struct ObjectPropertyIterator {
     ObjectClass *nextclass;
@@ -1158,6 +1175,7 @@ typedef struct ObjectPropertyIterator {
 
 /**
  * object_property_iter_init:
+ * @iter: the iterator instance
  * @obj: the object
  *
  * Initializes an iterator for traversing all properties
@@ -1168,24 +1186,23 @@ typedef struct ObjectPropertyIterator {
  *
  * Typical usage pattern would be
  *
- * <example>
- *   <title>Using object property iterators</title>
- *   <programlisting>
- *   ObjectProperty *prop;
- *   ObjectPropertyIterator iter;
+ * .. code-block:: c
+ *    :caption: Using object property iterators
  *
- *   object_property_iter_init(&iter, obj);
- *   while ((prop = object_property_iter_next(&iter))) {
- *     ... do something with prop ...
- *   }
- *   </programlisting>
- * </example>
+ *      ObjectProperty *prop;
+ *      ObjectPropertyIterator iter;
+ *
+ *      object_property_iter_init(&iter, obj);
+ *      while ((prop = object_property_iter_next(&iter))) {
+ *        ... do something with prop ...
+ *      }
  */
 void object_property_iter_init(ObjectPropertyIterator *iter,
                                Object *obj);
 
 /**
  * object_class_property_iter_init:
+ * @iter: the iterator instance
  * @klass: the class
  *
  * Initializes an iterator for traversing all properties
@@ -1233,6 +1250,7 @@ bool object_property_get(Object *obj, const char *name, Visitor *v,
 
 /**
  * object_property_set_str:
+ * @obj: the object
  * @name: the name of the property
  * @value: the value to be written to the property
  * @errp: returns an error if this function fails
@@ -1259,6 +1277,7 @@ char *object_property_get_str(Object *obj, const char *name,
 
 /**
  * object_property_set_link:
+ * @obj: the object
  * @name: the name of the property
  * @value: the value to be written to the property
  * @errp: returns an error if this function fails
@@ -1266,7 +1285,7 @@ char *object_property_get_str(Object *obj, const char *name,
  * Writes an object's canonical path to a property.
  *
  * If the link property was created with
- * <code>OBJ_PROP_LINK_STRONG</code> bit, the old target object is
+ * %OBJ_PROP_LINK_STRONG bit, the old target object is
  * unreferenced, and a reference is added to the new target object.
  *
  * Returns: %true on success, %false on failure.
@@ -1289,6 +1308,7 @@ Object *object_property_get_link(Object *obj, const char *name,
 
 /**
  * object_property_set_bool:
+ * @obj: the object
  * @name: the name of the property
  * @value: the value to be written to the property
  * @errp: returns an error if this function fails
@@ -1306,7 +1326,7 @@ bool object_property_set_bool(Object *obj, const char *name,
  * @name: the name of the property
  * @errp: returns an error if this function fails
  *
- * Returns: the value of the property, converted to a boolean, or NULL if
+ * Returns: the value of the property, converted to a boolean, or false if
  * an error occurs (including when the property value is not a bool).
  */
 bool object_property_get_bool(Object *obj, const char *name,
@@ -1314,6 +1334,7 @@ bool object_property_get_bool(Object *obj, const char *name,
 
 /**
  * object_property_set_int:
+ * @obj: the object
  * @name: the name of the property
  * @value: the value to be written to the property
  * @errp: returns an error if this function fails
@@ -1331,7 +1352,7 @@ bool object_property_set_int(Object *obj, const char *name,
  * @name: the name of the property
  * @errp: returns an error if this function fails
  *
- * Returns: the value of the property, converted to an integer, or negative if
+ * Returns: the value of the property, converted to an integer, or -1 if
  * an error occurs (including when the property value is not an integer).
  */
 int64_t object_property_get_int(Object *obj, const char *name,
@@ -1339,6 +1360,7 @@ int64_t object_property_get_int(Object *obj, const char *name,
 
 /**
  * object_property_set_uint:
+ * @obj: the object
  * @name: the name of the property
  * @value: the value to be written to the property
  * @errp: returns an error if this function fails
@@ -1369,9 +1391,9 @@ uint64_t object_property_get_uint(Object *obj, const char *name,
  * @typename: the name of the enum data type
  * @errp: returns an error if this function fails
  *
- * Returns: the value of the property, converted to an integer, or
- * undefined if an error occurs (including when the property value is not
- * an enum).
+ * Returns: the value of the property, converted to an integer (which
+ * can't be negative), or -1 on error (including when the property
+ * value is not an enum).
  */
 int object_property_get_enum(Object *obj, const char *name,
                              const char *typename, Error **errp);
@@ -1462,6 +1484,7 @@ Object *object_get_internal_root(void);
 
 /**
  * object_get_canonical_path_component:
+ * @obj: the object
  *
  * Returns: The final component in the object's canonical path.  The canonical
  * path is the path within the composition tree starting from the root.
@@ -1471,6 +1494,7 @@ const char *object_get_canonical_path_component(const Object *obj);
 
 /**
  * object_get_canonical_path:
+ * @obj: the object
  *
  * Returns: The canonical path for a object, newly allocated.  This is
  * the path within the composition tree starting from the root.  Use
@@ -1560,6 +1584,10 @@ ObjectProperty *object_property_try_add_child(Object *obj, const char *name,
 
 /**
  * object_property_add_child:
+ * @obj: the object to add a property to
+ * @name: the name of the property
+ * @child: the child object
+ *
  * Same as object_property_try_add_child() with @errp hardcoded to
  * &error_abort
  */
@@ -1577,13 +1605,17 @@ typedef enum {
 
 /**
  * object_property_allow_set_link:
+ * @obj: the object to add a property to
+ * @name: the name of the property
+ * @child: the child object
+ * @errp: pointer to error object
  *
  * The default implementation of the object_property_add_link() check()
  * callback function.  It allows the link property to be set and never returns
  * an error.
  */
-void object_property_allow_set_link(const Object *, const char *,
-                                    Object *, Error **);
+void object_property_allow_set_link(const Object *obj, const char *name,
+                                    Object *child, Error **errp);
 
 /**
  * object_property_add_link:
@@ -1600,16 +1632,16 @@ void object_property_allow_set_link(const Object *, const char *,
  *
  * Links form the graph in the object model.
  *
- * The <code>@check()</code> callback is invoked when
+ * The @check() callback is invoked when
  * object_property_set_link() is called and can raise an error to prevent the
- * link being set.  If <code>@check</code> is NULL, the property is read-only
+ * link being set.  If @check is NULL, the property is read-only
  * and cannot be set.
  *
  * Ownership of the pointer that @child points to is transferred to the
- * link property.  The reference count for <code>*@child</code> is
+ * link property.  The reference count for *@child is
  * managed by the property from after the function returns till the
  * property is deleted with object_property_del().  If the
- * <code>@flags</code> <code>OBJ_PROP_LINK_STRONG</code> bit is set,
+ * @flags %OBJ_PROP_LINK_STRONG bit is set,
  * the reference count is decremented when the property is deleted or
  * modified.
  *
@@ -1677,6 +1709,7 @@ ObjectProperty *object_class_property_add_bool(ObjectClass *klass,
  * @obj: the object to add a property to
  * @name: the name of the property
  * @typename: the name of the enum data type
+ * @lookup: enum value namelookup table
  * @get: the getter or %NULL if the property is write-only.
  * @set: the setter or %NULL if the property is read-only
  *
@@ -1819,7 +1852,7 @@ ObjectProperty *object_class_property_add_uint64_ptr(ObjectClass *klass,
  * Add an alias for a property on an object.  This function will add a property
  * of the same type as the forwarded property.
  *
- * The caller must ensure that <code>@target_obj</code> stays alive as long as
+ * The caller must ensure that @target_obj stays alive as long as
  * this property exists.  In the case of a child object or an alias on the same
  * object this will be the case.  For aliases to other objects the caller is
  * responsible for taking a reference.

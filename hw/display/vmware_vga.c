@@ -29,10 +29,10 @@
 #include "qemu/log.h"
 #include "hw/loader.h"
 #include "trace.h"
-#include "ui/vnc.h"
 #include "hw/pci/pci.h"
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
+#include "qom/object.h"
 
 #undef VERBOSE
 #define HW_RECT_ACCEL
@@ -85,8 +85,8 @@ struct vmsvga_state_s {
 
 #define TYPE_VMWARE_SVGA "vmware-svga"
 
-#define VMWARE_SVGA(obj) \
-    OBJECT_CHECK(struct pci_vmsvga_state_s, (obj), TYPE_VMWARE_SVGA)
+DECLARE_INSTANCE_CHECKER(struct pci_vmsvga_state_s, VMWARE_SVGA,
+                         TYPE_VMWARE_SVGA)
 
 struct pci_vmsvga_state_s {
     /*< private >*/
@@ -219,7 +219,7 @@ enum {
 
 /* These values can probably be changed arbitrarily.  */
 #define SVGA_SCRATCH_SIZE               0x8000
-#define SVGA_MAX_WIDTH                  ROUND_UP(2360, VNC_DIRTY_PIXELS_PER_BIT)
+#define SVGA_MAX_WIDTH                  2368
 #define SVGA_MAX_HEIGHT                 1770
 
 #ifdef VERBOSE

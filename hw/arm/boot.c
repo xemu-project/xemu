@@ -9,6 +9,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
+#include "qemu/datadir.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 #include <libfdt.h>
@@ -24,7 +25,6 @@
 #include "sysemu/device_tree.h"
 #include "qemu/config-file.h"
 #include "qemu/option.h"
-#include "exec/address-spaces.h"
 #include "qemu/units.h"
 
 /* Kernel boot protocol is specified in the kernel docs
@@ -742,6 +742,9 @@ static void do_cpu_reset(void *opaque)
                     if (cpu_isar_feature(aa64_mte, cpu)) {
                         env->cp15.scr_el3 |= SCR_ATA;
                     }
+                    if (cpu_isar_feature(aa64_sve, cpu)) {
+                        env->cp15.cptr_el[3] |= CPTR_EZ;
+                    }
                     /* AArch64 kernels never boot in secure mode */
                     assert(!info->secure_boot);
                     /* This hook is only supported for AArch32 currently:
@@ -1240,6 +1243,15 @@ static void arm_setup_firmware_boot(ARMCPU *cpu, struct arm_boot_info *info)
         bool try_decompressing_kernel;
 
         fw_cfg = fw_cfg_find();
+
+        if (!fw_cfg) {
+            error_report("This machine type does not support loading both "
+                         "a guest firmware/BIOS image and a guest kernel at "
+                         "the same time. You should change your QEMU command "
+                         "line to specify one or the other, but not both.");
+            exit(1);
+        }
+
         try_decompressing_kernel = arm_feature(&cpu->env,
                                                ARM_FEATURE_AARCH64);
 
@@ -1295,7 +1307,7 @@ void arm_load_kernel(ARMCPU *cpu, MachineState *ms, struct arm_boot_info *info)
     info->kernel_filename = ms->kernel_filename;
     info->kernel_cmdline = ms->kernel_cmdline;
     info->initrd_filename = ms->initrd_filename;
-    info->dtb_filename = qemu_opt_get(qemu_get_machine_opts(), "dtb");
+    info->dtb_filename = ms->dtb;
     info->dtb_limit = 0;
 
     /* Load the kernel.  */

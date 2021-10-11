@@ -18,14 +18,7 @@
 #include "qapi/error.h"
 #include "qemu/host-utils.h"
 #include "page_cache.h"
-
-#ifdef DEBUG_CACHE
-#define DPRINTF(fmt, ...) \
-    do { fprintf(stdout, "cache: " fmt, ## __VA_ARGS__); } while (0)
-#else
-#define DPRINTF(fmt, ...) \
-    do { } while (0)
-#endif
+#include "trace.h"
 
 /* the page in cache will not be replaced in two cycles */
 #define CACHED_PAGE_LIFETIME 2
@@ -45,7 +38,7 @@ struct PageCache {
     size_t num_items;
 };
 
-PageCache *cache_init(int64_t new_size, size_t page_size, Error **errp)
+PageCache *cache_init(uint64_t new_size, size_t page_size, Error **errp)
 {
     int64_t i;
     size_t num_pages = new_size / page_size;
@@ -67,22 +60,20 @@ PageCache *cache_init(int64_t new_size, size_t page_size, Error **errp)
     /* We prefer not to abort if there is no memory */
     cache = g_try_malloc(sizeof(*cache));
     if (!cache) {
-        error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "cache size",
-                   "Failed to allocate cache");
+        error_setg(errp, "Failed to allocate cache");
         return NULL;
     }
     cache->page_size = page_size;
     cache->num_items = 0;
     cache->max_num_items = num_pages;
 
-    DPRINTF("Setting cache buckets to %" PRId64 "\n", cache->max_num_items);
+    trace_migration_pagecache_init(cache->max_num_items);
 
     /* We prefer not to abort if there is no memory */
     cache->page_cache = g_try_malloc((cache->max_num_items) *
                                      sizeof(*cache->page_cache));
     if (!cache->page_cache) {
-        error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "cache size",
-                   "Failed to allocate page cache");
+        error_setg(errp, "Failed to allocate page cache");
         g_free(cache);
         return NULL;
     }
@@ -169,7 +160,7 @@ int cache_insert(PageCache *cache, uint64_t addr, const uint8_t *pdata,
     if (!it->it_data) {
         it->it_data = g_try_malloc(cache->page_size);
         if (!it->it_data) {
-            DPRINTF("Error allocating page\n");
+            trace_migration_pagecache_insert();
             return -1;
         }
         cache->num_items++;

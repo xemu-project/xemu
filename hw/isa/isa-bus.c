@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -21,7 +21,6 @@
 #include "qemu/error-report.h"
 #include "qemu/module.h"
 #include "qapi/error.h"
-#include "hw/hw.h"
 #include "monitor/monitor.h"
 #include "hw/sysbus.h"
 #include "sysemu/sysemu.h"
@@ -85,18 +84,14 @@ void isa_bus_irqs(ISABus *bus, qemu_irq *irqs)
 qemu_irq isa_get_irq(ISADevice *dev, unsigned isairq)
 {
     assert(!dev || ISA_BUS(qdev_get_parent_bus(DEVICE(dev))) == isabus);
-    if (isairq >= ISA_NUM_IRQS) {
-        hw_error("isa irq %d invalid", isairq);
-    }
+    assert(isairq < ISA_NUM_IRQS);
     return isabus->irqs[isairq];
 }
 
 void isa_init_irq(ISADevice *dev, qemu_irq *p, unsigned isairq)
 {
     assert(dev->nirqs < ARRAY_SIZE(dev->isairq));
-    if (isairq >= ISA_NUM_IRQS) {
-        hw_error("isa irq %d invalid", isairq);
-    }
+    assert(isairq < ISA_NUM_IRQS);
     dev->isairq[dev->nirqs] = isairq;
     *p = isa_get_irq(dev, isairq);
     dev->nirqs++;
@@ -136,12 +131,24 @@ void isa_register_ioport(ISADevice *dev, MemoryRegion *io, uint16_t start)
     isa_init_ioport(dev, start);
 }
 
-void isa_register_portio_list(ISADevice *dev,
-                              PortioList *piolist, uint16_t start,
-                              const MemoryRegionPortio *pio_start,
-                              void *opaque, const char *name)
+void isa_unregister_ioport(ISADevice *dev, MemoryRegion *io)
+{
+    if (dev) {
+        dev->ioport_id = 0;
+    }
+    memory_region_del_subregion(isabus->address_space_io, io);
+}
+
+int isa_register_portio_list(ISADevice *dev,
+                             PortioList *piolist, uint16_t start,
+                             const MemoryRegionPortio *pio_start,
+                             void *opaque, const char *name)
 {
     assert(piolist && !piolist->owner);
+
+    if (!isabus) {
+        return -ENODEV;
+    }
 
     /* START is how we should treat DEV, regardless of the actual
        contents of the portio array.  This is how the old code
@@ -150,6 +157,8 @@ void isa_register_portio_list(ISADevice *dev,
 
     portio_list_init(piolist, OBJECT(dev), pio_start, opaque, name);
     portio_list_add(piolist, isabus->address_space_io, start);
+
+    return 0;
 }
 
 static void isa_device_init(Object *obj)

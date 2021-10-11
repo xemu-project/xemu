@@ -23,7 +23,7 @@ import aarch64vm
 DEFAULT_CONFIG = {
     'cpu'          : "max",
     'machine'      : "virt,gic-version=max",
-    'install_cmds' : "yum install -y make git python3 gcc gcc-c++ flex bison, "\
+    'install_cmds' : "yum install -y make ninja-build git python3 gcc gcc-c++ flex bison, "\
         "yum install -y glib2-devel pixman-devel zlib-devel, "\
         "yum install -y perl-Test-Harness, "\
         "alternatives --set python /usr/bin/python3, "\
@@ -64,7 +64,7 @@ class CentosAarch64VM(basevm.BaseVM):
     def create_kickstart(self):
         """Generate the kickstart file used to generate the centos image."""
         # Start with the template for the kickstart.
-        ks_file = "../tests/vm/centos-8-aarch64.ks"
+        ks_file = self._source_path + "/tests/vm/centos-8-aarch64.ks"
         subprocess.check_call("cp {} ./ks.cfg".format(ks_file), shell=True)
         # Append the ssh keys to the kickstart file
         # as the post processing phase of installation.

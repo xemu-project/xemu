@@ -22,6 +22,7 @@
 #include "hw/hw.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
+#include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
 #include "ui/console.h"
@@ -29,10 +30,10 @@
 #include "trace.h"
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
+#include "qom/object.h"
 
 typedef struct G364State {
     /* hardware */
-    uint8_t *vram;
     uint32_t vram_size;
     qemu_irq irq;
     MemoryRegion mem_vram;
@@ -124,7 +125,7 @@ static void g364fb_draw_graphic8(G364State *s)
         xcursor = ycursor = -65;
     }
 
-    vram = s->vram + s->top_of_screen;
+    vram = memory_region_get_ram_ptr(&s->mem_vram) + s->top_of_screen;
     /* XXX: out of range in vram? */
     data_display = dd = surface_data(surface);
     snap = memory_region_snapshot_and_clear_dirty(&s->mem_vram, 0, s->vram_size,
@@ -273,6 +274,8 @@ static inline void g364fb_invalidate_display(void *opaque)
 
 static void g364fb_reset(G364State *s)
 {
+    uint8_t *vram = memory_region_get_ram_ptr(&s->mem_vram);
+
     qemu_irq_lower(s->irq);
 
     memset(s->color_palette, 0, sizeof(s->color_palette));
@@ -282,7 +285,7 @@ static void g364fb_reset(G364State *s)
     s->ctla = 0;
     s->top_of_screen = 0;
     s->width = s->height = 0;
-    memset(s->vram, 0, s->vram_size);
+    memset(vram, 0, s->vram_size);
     g364fb_invalidate_display(s);
 }
 
@@ -449,11 +452,10 @@ static int g364fb_post_load(void *opaque, int version_id)
 
 static const VMStateDescription vmstate_g364fb = {
     .name = "g364fb",
-    .version_id = 1,
-    .minimum_version_id = 1,
+    .version_id = 2,
+    .minimum_version_id = 2,
     .post_load = g364fb_post_load,
     .fields = (VMStateField[]) {
-        VMSTATE_VBUFFER_UINT32(vram, G364State, 1, NULL, vram_size),
         VMSTATE_BUFFER_UNSAFE(color_palette, G364State, 0, 256 * 3),
         VMSTATE_BUFFER_UNSAFE(cursor_palette, G364State, 0, 9),
         VMSTATE_UINT16_ARRAY(cursor, G364State, 512),
@@ -473,26 +475,23 @@ static const GraphicHwOps g364fb_ops = {
 
 static void g364fb_init(DeviceState *dev, G364State *s)
 {
-    s->vram = g_malloc0(s->vram_size);
-
     s->con = graphic_console_init(dev, 0, &g364fb_ops, s);
 
     memory_region_init_io(&s->mem_ctrl, OBJECT(dev), &g364fb_ctrl_ops, s,
                           "ctrl", 0x180000);
-    memory_region_init_ram_ptr(&s->mem_vram, NULL, "vram",
-                               s->vram_size, s->vram);
-    vmstate_register_ram(&s->mem_vram, dev);
+    memory_region_init_ram(&s->mem_vram, NULL, "g364fb.vram", s->vram_size,
+                           &error_fatal);
     memory_region_set_log(&s->mem_vram, true, DIRTY_MEMORY_VGA);
 }
 
 #define TYPE_G364 "sysbus-g364"
-#define G364(obj) OBJECT_CHECK(G364SysBusState, (obj), TYPE_G364)
+OBJECT_DECLARE_SIMPLE_TYPE(G364SysBusState, G364)
 
-typedef struct {
+struct G364SysBusState {
     SysBusDevice parent_obj;
 
     G364State g364;
-} G364SysBusState;
+};
 
 static void g364fb_sysbus_realize(DeviceState *dev, Error **errp)
 {
@@ -518,6 +517,16 @@ static Property g364fb_sysbus_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
+static const VMStateDescription vmstate_g364fb_sysbus = {
+    .name = "g364fb-sysbus",
+    .version_id = 2,
+    .minimum_version_id = 2,
+    .fields = (VMStateField[]) {
+        VMSTATE_STRUCT(g364, G364SysBusState, 2, vmstate_g364fb, G364State),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 static void g364fb_sysbus_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -526,7 +535,7 @@ static void g364fb_sysbus_class_init(ObjectClass *klass, void *data)
     set_bit(DEVICE_CATEGORY_DISPLAY, dc->categories);
     dc->desc = "G364 framebuffer";
     dc->reset = g364fb_sysbus_reset;
-    dc->vmsd = &vmstate_g364fb;
+    dc->vmsd = &vmstate_g364fb_sysbus;
     device_class_set_props(dc, g364fb_sysbus_properties);
 }
 

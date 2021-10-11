@@ -24,6 +24,7 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu-common.h"
+#include "qemu/datadir.h"
 #include "cpu.h"
 #include "hw/sysbus.h"
 #include "hw/arm/boot.h"
@@ -34,7 +35,6 @@
 #include "sysemu/sysemu.h"
 #include "hw/boards.h"
 #include "hw/loader.h"
-#include "exec/address-spaces.h"
 #include "hw/block/flash.h"
 #include "sysemu/device_tree.h"
 #include "qemu/error-report.h"
@@ -43,6 +43,8 @@
 #include "hw/cpu/a9mpcore.h"
 #include "hw/cpu/a15mpcore.h"
 #include "hw/i2c/arm_sbcon_i2c.h"
+#include "hw/sd/sd.h"
+#include "qom/object.h"
 
 #define VEXPRESS_BOARD_ID 0x8e0
 #define VEXPRESS_FLASH_SIZE (64 * 1024 * 1024)
@@ -165,26 +167,21 @@ static hwaddr motherboard_aseries_map[] = {
 
 typedef struct VEDBoardInfo VEDBoardInfo;
 
-typedef struct {
+struct VexpressMachineClass {
     MachineClass parent;
     VEDBoardInfo *daughterboard;
-} VexpressMachineClass;
+};
 
-typedef struct {
+struct VexpressMachineState {
     MachineState parent;
     bool secure;
     bool virt;
-} VexpressMachineState;
+};
 
 #define TYPE_VEXPRESS_MACHINE   "vexpress"
 #define TYPE_VEXPRESS_A9_MACHINE   MACHINE_TYPE_NAME("vexpress-a9")
 #define TYPE_VEXPRESS_A15_MACHINE   MACHINE_TYPE_NAME("vexpress-a15")
-#define VEXPRESS_MACHINE(obj) \
-    OBJECT_CHECK(VexpressMachineState, (obj), TYPE_VEXPRESS_MACHINE)
-#define VEXPRESS_MACHINE_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(VexpressMachineClass, obj, TYPE_VEXPRESS_MACHINE)
-#define VEXPRESS_MACHINE_CLASS(klass) \
-    OBJECT_CLASS_CHECK(VexpressMachineClass, klass, TYPE_VEXPRESS_MACHINE)
+OBJECT_DECLARE_TYPE(VexpressMachineState, VexpressMachineClass, VEXPRESS_MACHINE)
 
 typedef void DBoardInitFn(const VexpressMachineState *machine,
                           ram_addr_t ram_size,
@@ -221,12 +218,12 @@ static void init_cpus(MachineState *ms, const char *cpu_type,
             object_property_set_bool(cpuobj, "has_el3", false, NULL);
         }
         if (!virt) {
-            if (object_property_find(cpuobj, "has_el2", NULL)) {
+            if (object_property_find(cpuobj, "has_el2")) {
                 object_property_set_bool(cpuobj, "has_el2", false, NULL);
             }
         }
 
-        if (object_property_find(cpuobj, "reset-cbar", NULL)) {
+        if (object_property_find(cpuobj, "reset-cbar")) {
             object_property_set_int(cpuobj, "reset-cbar", periphbase,
                                     &error_abort);
         }
@@ -563,7 +560,7 @@ static void vexpress_common_init(MachineState *machine)
     /*
      * If a bios file was provided, attempt to map it into memory
      */
-    if (bios_name) {
+    if (machine->firmware) {
         char *fn;
         int image_size;
 
@@ -573,16 +570,16 @@ static void vexpress_common_init(MachineState *machine)
                          "but you cannot use both options at once");
             exit(1);
         }
-        fn = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
+        fn = qemu_find_file(QEMU_FILE_TYPE_BIOS, machine->firmware);
         if (!fn) {
-            error_report("Could not find ROM image '%s'", bios_name);
+            error_report("Could not find ROM image '%s'", machine->firmware);
             exit(1);
         }
         image_size = load_image_targphys(fn, map[VE_NORFLASH0],
                                          VEXPRESS_FLASH_SIZE);
         g_free(fn);
         if (image_size < 0) {
-            error_report("Could not load ROM image '%s'", bios_name);
+            error_report("Could not load ROM image '%s'", machine->firmware);
             exit(1);
         }
     }
@@ -624,10 +621,20 @@ static void vexpress_common_init(MachineState *machine)
 
     dev = sysbus_create_varargs("pl181", map[VE_MMCI], pic[9], pic[10], NULL);
     /* Wire up MMC card detect and read-only signals */
-    qdev_connect_gpio_out(dev, 0,
+    qdev_connect_gpio_out_named(dev, "card-read-only", 0,
                           qdev_get_gpio_in(sysctl, ARM_SYSCTL_GPIO_MMC_WPROT));
-    qdev_connect_gpio_out(dev, 1,
+    qdev_connect_gpio_out_named(dev, "card-inserted", 0,
                           qdev_get_gpio_in(sysctl, ARM_SYSCTL_GPIO_MMC_CARDIN));
+    dinfo = drive_get_next(IF_SD);
+    if (dinfo) {
+        DeviceState *card;
+
+        card = qdev_new(TYPE_SD_CARD);
+        qdev_prop_set_drive_err(card, "drive", blk_by_legacy_dinfo(dinfo),
+                                &error_fatal);
+        qdev_realize_and_unref(card, qdev_get_child_bus(dev, "sd-bus"),
+                               &error_fatal);
+    }
 
     sysbus_create_simple("pl050_keyboard", map[VE_KMI0], pic[12]);
     sysbus_create_simple("pl050_mouse", map[VE_KMI1], pic[13]);
@@ -748,11 +755,6 @@ static void vexpress_instance_init(Object *obj)
 
     /* EL3 is enabled by default on vexpress */
     vms->secure = true;
-    object_property_add_bool(obj, "secure", vexpress_get_secure,
-                             vexpress_set_secure);
-    object_property_set_description(obj, "secure",
-                                    "Set on/off to enable/disable the ARM "
-                                    "Security Extensions (TrustZone)");
 }
 
 static void vexpress_a15_instance_init(Object *obj)
@@ -764,12 +766,6 @@ static void vexpress_a15_instance_init(Object *obj)
      * but can also be specifically set to on or off.
      */
     vms->virt = true;
-    object_property_add_bool(obj, "virtualization", vexpress_get_virt,
-                             vexpress_set_virt);
-    object_property_set_description(obj, "virtualization",
-                                    "Set on/off to enable/disable the ARM "
-                                    "Virtualization Extensions "
-                                    "(defaults to same as 'secure')");
 }
 
 static void vexpress_a9_instance_init(Object *obj)
@@ -789,6 +785,12 @@ static void vexpress_class_init(ObjectClass *oc, void *data)
     mc->max_cpus = 4;
     mc->ignore_memory_transaction_failures = true;
     mc->default_ram_id = "vexpress.highmem";
+
+    object_class_property_add_bool(oc, "secure", vexpress_get_secure,
+                                   vexpress_set_secure);
+    object_class_property_set_description(oc, "secure",
+                                          "Set on/off to enable/disable the ARM "
+                                          "Security Extensions (TrustZone)");
 }
 
 static void vexpress_a9_class_init(ObjectClass *oc, void *data)
@@ -811,6 +813,14 @@ static void vexpress_a15_class_init(ObjectClass *oc, void *data)
     mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-a15");
 
     vmc->daughterboard = &a15_daughterboard;
+
+    object_class_property_add_bool(oc, "virtualization", vexpress_get_virt,
+                                   vexpress_set_virt);
+    object_class_property_set_description(oc, "virtualization",
+                                          "Set on/off to enable/disable the ARM "
+                                          "Virtualization Extensions "
+                                          "(defaults to same as 'secure')");
+
 }
 
 static const TypeInfo vexpress_info = {

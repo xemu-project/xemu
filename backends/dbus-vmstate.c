@@ -19,21 +19,13 @@
 #include "qapi/qmp/qerror.h"
 #include "migration/vmstate.h"
 #include "trace.h"
+#include "qom/object.h"
 
-typedef struct DBusVMState DBusVMState;
-typedef struct DBusVMStateClass DBusVMStateClass;
 
 #define TYPE_DBUS_VMSTATE "dbus-vmstate"
-#define DBUS_VMSTATE(obj)                                \
-    OBJECT_CHECK(DBusVMState, (obj), TYPE_DBUS_VMSTATE)
-#define DBUS_VMSTATE_GET_CLASS(obj)                              \
-    OBJECT_GET_CLASS(DBusVMStateClass, (obj), TYPE_DBUS_VMSTATE)
-#define DBUS_VMSTATE_CLASS(klass)                                    \
-    OBJECT_CLASS_CHECK(DBusVMStateClass, (klass), TYPE_DBUS_VMSTATE)
+OBJECT_DECLARE_SIMPLE_TYPE(DBusVMState,
+                           DBUS_VMSTATE)
 
-struct DBusVMStateClass {
-    ObjectClass parent_class;
-};
 
 struct DBusVMState {
     Object parent;
@@ -212,6 +204,8 @@ static int dbus_vmstate_post_load(void *opaque, int version_id)
     m = g_memory_input_stream_new_from_data(self->data, self->data_size, NULL);
     s = g_data_input_stream_new(m);
     g_data_input_stream_set_byte_order(s, G_DATA_STREAM_BYTE_ORDER_BIG_ENDIAN);
+    g_buffered_input_stream_set_buffer_size(G_BUFFERED_INPUT_STREAM(s),
+                                            DBUS_VMSTATE_SIZE_LIMIT);
 
     nelem = g_data_input_stream_read_uint32(s, NULL, &err);
     if (err) {
@@ -237,7 +231,10 @@ static int dbus_vmstate_post_load(void *opaque, int version_id)
                                      &bytes_read, NULL, &err)) {
             goto error;
         }
-        g_return_val_if_fail(bytes_read == len, -1);
+        if (bytes_read != len) {
+            error_report("%s: Short read", __func__);
+            return -1;
+        }
         id[len] = 0;
 
         trace_dbus_vmstate_loading(id);
@@ -249,11 +246,23 @@ static int dbus_vmstate_post_load(void *opaque, int version_id)
         }
 
         len = g_data_input_stream_read_uint32(s, NULL, &err);
+        if (len > DBUS_VMSTATE_SIZE_LIMIT) {
+            error_report("%s: Invalid vmstate size: %u", __func__, len);
+            return -1;
+        }
+
+        g_buffered_input_stream_fill(G_BUFFERED_INPUT_STREAM(s), len, NULL,
+                                     &err);
+        if (err) {
+            goto error;
+        }
+
         avail = g_buffered_input_stream_get_available(
             G_BUFFERED_INPUT_STREAM(s));
-
-        if (len > DBUS_VMSTATE_SIZE_LIMIT || len > avail) {
-            error_report("%s: Invalid vmstate size: %u", __func__, len);
+        if (len > avail) {
+            error_report("%s: Not enough data available to load for Id: '%s'. "
+                "Available data size: %zu, Actual vmstate size: %u",
+                __func__, id, avail, len);
             return -1;
         }
 
@@ -491,7 +500,6 @@ static const TypeInfo dbus_vmstate_info = {
     .parent = TYPE_OBJECT,
     .instance_size = sizeof(DBusVMState),
     .instance_finalize = dbus_vmstate_finalize,
-    .class_size = sizeof(DBusVMStateClass),
     .class_init = dbus_vmstate_class_init,
     .interfaces = (InterfaceInfo[]) {
         { TYPE_USER_CREATABLE },

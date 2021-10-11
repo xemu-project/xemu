@@ -1,0 +1,80 @@
+name: Title Issue
+description: Report a specific issue with a title/game in xemu
+title: "Title Name: Short Description"
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! This template is for reporting specific video, audio, or other types of issues with one or more titles.
+
+        Before submitting this bug report, please check the pre-submission checklist:
+        - Have you read the [documentation](https://xemu.app/docs)?
+        - Have you checked the [FAQ](https://xemu.app/docs/faq/)?
+        - Have you checked to see if this issue has already been submitted?
+        - Are you using the latest version of xemu?
+        - Have you tried updating your platform drivers?
+        - Have you ruled out a bad dump of your game disc?
+
+        If you have questions about how to provide the information below, join the Discord server to get help from the community.
+  - type: textarea
+    attributes:
+      label: Title
+      description: Affected title URL and version information. You can find the title URL by searching for the title by name on [the compatibility tracking system](https://xemu.app/#compatibility).
+      placeholder: |
+        https://xemu.app/titles/4d530004/#Halo-Combat-Evolved
+
+        NTSC MS-004 v1.01
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Bug Description
+      description: |
+        A brief description of the problem, including steps to reproduce the issue and any relevant screenshots of the problem.
+
+        Tip: You can attach images by clicking this area to highlight it and then dragging files in.
+      placeholder: |
+        HUD elements in campaign missions are not visible. See attached screenshot for example.
+
+        Steps to reproduce this issue:
+        1. Launch game
+        2. Select campaign
+        3. Expected HUD elements are not shown
+
+        <Screenshot>
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Expected Behavior
+      description: A brief description of the expected behavior.
+      placeholder: |
+        When playing campaign missions, HUD elements are expected in all four corners. See attached screenshot for example.
+
+        <Screenshot>
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: xemu Version
+      description: Affected xemu version. You can find the xemu version within xemu by navigating to <kbd>Help</kbd>&rarr;<kbd>About</kbd>. If known, include the last known-working version of xemu.
+      placeholder: |
+        0.0.0-00-g0000000000
+
+        Last working in: 0.0.0-00-g0000000000
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: System Information
+      description: Basic information about your system.
+      placeholder: |
+        OS: Windows 10
+        CPU: Intel(R) Core(TM) i7-8850H CPU @ 2.60GHz
+        GPU: NVIDIA Quadro P2000
+        GPU Driver: 3.3.0 NVIDIA 450.119.03
+  - type: textarea
+    attributes:
+      label: Additional Context
+      description: Any additional information or log output.

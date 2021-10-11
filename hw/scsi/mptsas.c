@@ -11,7 +11,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -41,11 +41,6 @@
 
 #define NAA_LOCALLY_ASSIGNED_ID 0x3ULL
 #define IEEE_COMPANY_LOCALLY_ASSIGNED 0x525400
-
-#define TYPE_MPTSAS1068 "mptsas1068"
-
-#define MPT_SAS(obj) \
-    OBJECT_CHECK(MPTSASState, (obj), TYPE_MPTSAS1068)
 
 #define MPTSAS1068_PRODUCT_ID                  \
     (MPI_FW_HEADER_PID_FAMILY_1068_SAS |       \
@@ -256,13 +251,10 @@ static int mptsas_build_sgl(MPTSASState *s, MPTSASRequest *req, hwaddr addr)
 
 static void mptsas_free_request(MPTSASRequest *req)
 {
-    MPTSASState *s = req->dev;
-
     if (req->sreq != NULL) {
         req->sreq->hba_private = NULL;
         scsi_req_unref(req->sreq);
         req->sreq = NULL;
-        QTAILQ_REMOVE(&s->pending, req, next);
     }
     qemu_sglist_destroy(&req->qsg);
     g_free(req);
@@ -308,7 +300,6 @@ static int mptsas_process_scsi_io_request(MPTSASState *s,
     }
 
     req = g_new0(MPTSASRequest, 1);
-    QTAILQ_INSERT_TAIL(&s->pending, req, next);
     req->scsi_io = *scsi_io;
     req->dev = s;
 
@@ -1138,7 +1129,7 @@ static QEMUSGList *mptsas_get_sg_list(SCSIRequest *sreq)
 }
 
 static void mptsas_command_complete(SCSIRequest *sreq,
-        uint32_t status, size_t resid)
+        size_t resid)
 {
     MPTSASRequest *req = sreq->hba_private;
     MPTSASState *s = req->dev;
@@ -1148,7 +1139,8 @@ static void mptsas_command_complete(SCSIRequest *sreq,
     hwaddr sense_buffer_addr = req->dev->sense_buffer_high_addr |
             req->scsi_io.SenseBufferLowAddr;
 
-    trace_mptsas_command_complete(s, req->scsi_io.MsgContext, status, resid);
+    trace_mptsas_command_complete(s, req->scsi_io.MsgContext,
+                                  sreq->status, resid);
 
     sense_len = scsi_req_get_sense(sreq, sense_buf, SCSI_SENSE_BUF_SIZE);
     if (sense_len > 0) {
@@ -1322,8 +1314,6 @@ static void mptsas_scsi_realize(PCIDevice *dev, Error **errp)
     s->max_devices = MPTSAS_NUM_PORTS;
 
     s->request_bh = qemu_bh_new(mptsas_fetch_requests, s);
-
-    QTAILQ_INIT(&s->pending);
 
     scsi_bus_new(&s->bus, sizeof(s->bus), &dev->qdev, &mptsas_scsi_info, NULL);
 }

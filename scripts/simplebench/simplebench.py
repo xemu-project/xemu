@@ -18,63 +18,89 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+import statistics
+import subprocess
+import time
 
-def bench_one(test_func, test_env, test_case, count=5, initial_run=True):
+
+def do_drop_caches():
+    subprocess.run('sync; echo 3 > /proc/sys/vm/drop_caches', shell=True,
+                   check=True)
+
+
+def bench_one(test_func, test_env, test_case, count=5, initial_run=True,
+              slow_limit=100, drop_caches=False):
     """Benchmark one test-case
 
     test_func   -- benchmarking function with prototype
                    test_func(env, case), which takes test_env and test_case
-                   arguments and returns {'seconds': int} (which is benchmark
-                   result) on success and {'error': str} on error. Returned
-                   dict may contain any other additional fields.
+                   arguments and on success returns dict with 'seconds' or
+                   'iops' (or both) fields, specifying the benchmark result.
+                   If both 'iops' and 'seconds' provided, the 'iops' is
+                   considered the main, and 'seconds' is just an additional
+                   info. On failure test_func should return {'error': str}.
+                   Returned dict may contain any other additional fields.
     test_env    -- test environment - opaque first argument for test_func
     test_case   -- test case - opaque second argument for test_func
     count       -- how many times to call test_func, to calculate average
     initial_run -- do initial run of test_func, which don't get into result
+    slow_limit  -- stop at slow run (that exceedes the slow_limit by seconds).
+                   (initial run is not measured)
+    drop_caches -- drop caches before each run
 
     Returns dict with the following fields:
         'runs':     list of test_func results
-        'average':  average seconds per run (exists only if at least one run
-                    succeeded)
-        'delta':    maximum delta between test_func result and the average
+        'dimension': dimension of results, may be 'seconds' or 'iops'
+        'average':  average value (iops or seconds) per run (exists only if at
+                    least one run succeeded)
+        'stdev':    standard deviation of results
                     (exists only if at least one run succeeded)
         'n-failed': number of failed runs (exists only if at least one run
                     failed)
     """
     if initial_run:
         print('  #initial run:')
+        do_drop_caches()
         print('   ', test_func(test_env, test_case))
 
     runs = []
     for i in range(count):
+        t = time.time()
+
         print('  #run {}'.format(i+1))
+        do_drop_caches()
         res = test_func(test_env, test_case)
         print('   ', res)
         runs.append(res)
 
+        if time.time() - t > slow_limit:
+            print('    - run is too slow, stop here')
+            break
+
+    count = len(runs)
+
     result = {'runs': runs}
 
-    successed = [r for r in runs if ('seconds' in r)]
-    if successed:
-        avg = sum(r['seconds'] for r in successed) / len(successed)
-        result['average'] = avg
-        result['delta'] = max(abs(r['seconds'] - avg) for r in successed)
+    succeeded = [r for r in runs if ('seconds' in r or 'iops' in r)]
+    if succeeded:
+        if 'iops' in succeeded[0]:
+            assert all('iops' in r for r in succeeded)
+            dim = 'iops'
+        else:
+            assert all('seconds' in r for r in succeeded)
+            assert all('iops' not in r for r in succeeded)
+            dim = 'seconds'
+        result['dimension'] = dim
+        result['average'] = statistics.mean(r[dim] for r in succeeded)
+        if len(succeeded) == 1:
+            result['stdev'] = 0
+        else:
+            result['stdev'] = statistics.stdev(r[dim] for r in succeeded)
 
-    if len(successed) < count:
-        result['n-failed'] = count - len(successed)
+    if len(succeeded) < count:
+        result['n-failed'] = count - len(succeeded)
 
     return result
-
-
-def ascii_one(result):
-    """Return ASCII representation of bench_one() returned dict."""
-    if 'average' in result:
-        s = '{:.2f} +- {:.2f}'.format(result['average'], result['delta'])
-        if 'n-failed' in result:
-            s += '\n({} failed)'.format(result['n-failed'])
-        return s
-    else:
-        return 'FAILED'
 
 
 def bench(test_func, test_envs, test_cases, *args, **vargs):
@@ -112,17 +138,3 @@ def bench(test_func, test_envs, test_cases, *args, **vargs):
 
     print('Done')
     return results
-
-
-def ascii(results):
-    """Return ASCII representation of bench() returned dict."""
-    from tabulate import tabulate
-
-    tab = [[""] + [c['id'] for c in results['envs']]]
-    for case in results['cases']:
-        row = [case['id']]
-        for env in results['envs']:
-            row.append(ascii_one(results['tab'][case['id']][env['id']]))
-        tab.append(row)
-
-    return tabulate(tab)

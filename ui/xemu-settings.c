@@ -53,6 +53,7 @@ struct xemu_settings {
 	// [display]
 	int scale;
 	int ui_scale;
+	int render_scale;
 
 	// [input]
 	char *controller_1_guid;
@@ -65,9 +66,11 @@ struct xemu_settings {
 	int   net_backend;
 	char *net_local_addr;
 	char *net_remote_addr;
+	char *net_pcap_iface;
 
 	// [misc]
 	char *user_token;
+	int check_for_update; // Boolean
 };
 
 struct enum_str_map {
@@ -78,6 +81,7 @@ struct enum_str_map {
 static const struct enum_str_map display_scale_map[DISPLAY_SCALE__COUNT+1] = {
 	{ DISPLAY_SCALE_CENTER,  "center"  },
 	{ DISPLAY_SCALE_SCALE,   "scale"   },
+	{ DISPLAY_SCALE_WS169,   "scale_ws169" },
 	{ DISPLAY_SCALE_STRETCH, "stretch" },
 	{ 0,                     NULL      },
 };
@@ -85,6 +89,7 @@ static const struct enum_str_map display_scale_map[DISPLAY_SCALE__COUNT+1] = {
 static const struct enum_str_map net_backend_map[XEMU_NET_BACKEND__COUNT+1] = {
 	{ XEMU_NET_BACKEND_USER,       "user" },
 	{ XEMU_NET_BACKEND_SOCKET_UDP, "udp"  },
+	{ XEMU_NET_BACKEND_PCAP,       "pcap"  },
 	{ 0,                           NULL   },
 };
 
@@ -112,8 +117,9 @@ struct config_offset_table {
 
 	[XEMU_SETTINGS_AUDIO_USE_DSP] = { CONFIG_TYPE_BOOL, "audio", "use_dsp", offsetof(struct xemu_settings, use_dsp), { .default_bool = 0  } },
 
-	[XEMU_SETTINGS_DISPLAY_SCALE] =    { CONFIG_TYPE_ENUM, "display", "scale",    offsetof(struct xemu_settings, scale),    { .default_int = DISPLAY_SCALE_SCALE }, display_scale_map },
-	[XEMU_SETTINGS_DISPLAY_UI_SCALE] = { CONFIG_TYPE_INT,  "display", "ui_scale", offsetof(struct xemu_settings, ui_scale), { .default_int = 1                   }                    },
+	[XEMU_SETTINGS_DISPLAY_SCALE]        = { CONFIG_TYPE_ENUM, "display", "scale",        offsetof(struct xemu_settings, scale),        { .default_int = DISPLAY_SCALE_SCALE }, display_scale_map },
+	[XEMU_SETTINGS_DISPLAY_UI_SCALE]     = { CONFIG_TYPE_INT,  "display", "ui_scale",     offsetof(struct xemu_settings, ui_scale),     { .default_int = 1                   }                    },
+	[XEMU_SETTINGS_DISPLAY_RENDER_SCALE] = { CONFIG_TYPE_INT,  "display", "render_scale", offsetof(struct xemu_settings, render_scale), { .default_int = 1                   }                    },
 
 	[XEMU_SETTINGS_INPUT_CONTROLLER_1_GUID] = { CONFIG_TYPE_STRING,   "input", "controller_1_guid", offsetof(struct xemu_settings, controller_1_guid), { .default_str = "" } },
 	[XEMU_SETTINGS_INPUT_CONTROLLER_2_GUID] = { CONFIG_TYPE_STRING,   "input", "controller_2_guid", offsetof(struct xemu_settings, controller_2_guid), { .default_str = "" } },
@@ -124,8 +130,10 @@ struct config_offset_table {
 	[XEMU_SETTINGS_NETWORK_BACKEND]     = { CONFIG_TYPE_ENUM,   "network", "backend",     offsetof(struct xemu_settings, net_backend),     { .default_int = XEMU_NET_BACKEND_USER }, net_backend_map },
 	[XEMU_SETTINGS_NETWORK_LOCAL_ADDR]  = { CONFIG_TYPE_STRING, "network", "local_addr",  offsetof(struct xemu_settings, net_local_addr),  { .default_str  = "0.0.0.0:9368" } },
 	[XEMU_SETTINGS_NETWORK_REMOTE_ADDR] = { CONFIG_TYPE_STRING, "network", "remote_addr", offsetof(struct xemu_settings, net_remote_addr), { .default_str  = "1.2.3.4:9368" } },
+	[XEMU_SETTINGS_NETWORK_PCAP_INTERFACE] = { CONFIG_TYPE_STRING, "network", "pcap_iface", offsetof(struct xemu_settings, net_pcap_iface), { .default_str  = "" } },
 
-	[XEMU_SETTINGS_MISC_USER_TOKEN] = { CONFIG_TYPE_STRING, "misc", "user_token", offsetof(struct xemu_settings, user_token), { .default_str  = "" } },
+	[XEMU_SETTINGS_MISC_USER_TOKEN]       = { CONFIG_TYPE_STRING, "misc", "user_token", offsetof(struct xemu_settings, user_token), { .default_str  = "" } },
+	[XEMU_SETTINGS_MISC_CHECK_FOR_UPDATE] = { CONFIG_TYPE_BOOL,   "misc", "check_for_update", offsetof(struct xemu_settings, check_for_update), { .default_bool = -1  } },
 };
 
 static const char *settings_path;
@@ -143,7 +151,9 @@ static void *xemu_settings_get_field(enum xemu_settings_keys key, enum config_ty
 int xemu_settings_set_string(enum xemu_settings_keys key, const char *str)
 {
 	char **field_str = (char **)xemu_settings_get_field(key, CONFIG_TYPE_STRING);
-	free(*field_str);
+	if (*field_str) {
+		free(*field_str);
+	}
 	*field_str = strdup(str);
 	return 0;
 }
@@ -221,36 +231,13 @@ const char *xemu_settings_get_path(void)
 		return settings_path;
 	}
 
-	char *base = SDL_GetPrefPath("xemu", "xemu");
+	char *base = xemu_settings_detect_portable_mode()
+	             ? SDL_GetBasePath()
+	             : SDL_GetPrefPath("xemu", "xemu");
 	assert(base != NULL);
-
-	// Check for xemu.ini in xemu binary directory, "portable mode"
-	if (xemu_settings_detect_portable_mode()) {
-		base = SDL_GetBasePath();
-		assert(base != NULL);
-	}
-
-	size_t base_len = strlen(base);
-
-	size_t filename_len = strlen(filename);
-	size_t final_len = base_len + filename_len;
-	final_len += 1; // Terminating null byte
-
-	char *path = malloc(final_len);
-	assert(path != NULL);
-
-	// Copy base part
-	memcpy(path, base, base_len);
-	free(base);
-
-	// Copy filename part
-	memcpy(path+base_len, filename, strlen(filename));
-	path[final_len-1] = '\0';
-
-	settings_path = path;
-
+	settings_path = g_strdup_printf("%s%s", base, filename);
+	SDL_free(base);
 	fprintf(stderr, "%s: config path: %s\n", __func__, settings_path);
-
 	return settings_path;
 }
 
@@ -261,34 +248,12 @@ const char *xemu_settings_get_default_eeprom_path(void)
 		return eeprom_path;
 	}
 
-	char *base = SDL_GetPrefPath("xemu", "xemu");
+	char *base = xemu_settings_detect_portable_mode()
+	             ? SDL_GetBasePath()
+	             : SDL_GetPrefPath("xemu", "xemu");
 	assert(base != NULL);
-
-	// Check for xemu.ini in xemu binary directory, "portable mode"
-	if (xemu_settings_detect_portable_mode()) {
-		base = SDL_GetBasePath();
-		assert(base != NULL);
-	}
-
-	size_t base_len = strlen(base);
-
-	const char *name = "eeprom.bin";
-	size_t name_len = strlen(name);
-	size_t final_len = base_len + name_len;
-	final_len += 1; // Terminating null byte
-
-	char *path = malloc(final_len);
-	assert(path != NULL);
-
-	// Copy base part
-	memcpy(path, base, base_len);
-	free(base);
-
-	// Copy name part
-	memcpy(path+base_len, name, name_len);
-	path[final_len-1] = '\0';
-
-	eeprom_path = path;
+	eeprom_path = g_strdup_printf("%s%s", base, "eeprom.bin");
+	SDL_free(base);
 	return eeprom_path;
 }
 
@@ -357,6 +322,8 @@ static int config_parse_callback(void *user, const char *section, const char *na
 			int_val = 1;
 		} else if (strcmp(value, "false") == 0) {
 			int_val = 0;
+		} else if (strcmp(value, "") == 0) {
+			return 1;
 		} else {
 			fprintf(stderr, "Error parsing %s.%s as boolean. Got '%s'\n", section, name, value);
 			return 0;
@@ -410,6 +377,7 @@ void xemu_settings_load(void)
 
 	g_settings = malloc(sizeof(struct xemu_settings));
 	assert(g_settings != NULL);
+	memset(g_settings, 0, sizeof(struct xemu_settings));
 	xemu_settings_init_default(g_settings);
 
 	// Parse configuration file
@@ -446,7 +414,11 @@ int xemu_settings_save(void)
 		} else if (config_items[i].type == CONFIG_TYPE_BOOL) {
 			int v;
 			xemu_settings_get_bool(i, &v);
-			fprintf(fd, "%s\n", !!(v) ? "true" : "false");
+			if (v == 0 || v == 1) {
+				fprintf(fd, "%s\n", !!(v) ? "true" : "false");
+			} else {
+				// Other values are considered unset
+			}
 		} else if (config_items[i].type == CONFIG_TYPE_ENUM) {
 			int v;
 			xemu_settings_get_enum(i, &v);

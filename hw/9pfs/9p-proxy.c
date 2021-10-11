@@ -10,6 +10,11 @@
  * the COPYING file in the top-level directory.
  */
 
+/*
+ * Not so fast! You might want to read the 9p developer docs first:
+ * https://wiki.qemu.org/Documentation/9p
+ */
+
 #include "qemu/osdep.h"
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -537,7 +542,8 @@ static int v9fs_request(V9fsProxy *proxy, int type, void *response, ...)
     }
 
     /* marshal the header details */
-    proxy_marshal(iovec, 0, "dd", header.type, header.size);
+    retval = proxy_marshal(iovec, 0, "dd", header.type, header.size);
+    assert(retval == 4 * 2);
     header.size += PROXY_HDR_SZ;
 
     retval = qemu_write_full(proxy->sockfd, iovec->iov_base, header.size);

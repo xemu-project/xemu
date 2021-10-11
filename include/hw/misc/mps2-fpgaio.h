@@ -12,7 +12,7 @@
 /* This is a model of the FPGAIO register block in the AN505
  * FPGA image for the MPS2 dev board; it is documented in the
  * application note:
- * http://infocenter.arm.com/help/topic/com.arm.doc.dai0505b/index.html
+ * https://developer.arm.com/documentation/dai0505/latest/
  *
  * QEMU interface:
  *  + sysbus MMIO region 0: the register bank
@@ -22,20 +22,29 @@
 #define MPS2_FPGAIO_H
 
 #include "hw/sysbus.h"
+#include "hw/misc/led.h"
+#include "qom/object.h"
 
 #define TYPE_MPS2_FPGAIO "mps2-fpgaio"
-#define MPS2_FPGAIO(obj) OBJECT_CHECK(MPS2FPGAIO, (obj), TYPE_MPS2_FPGAIO)
+OBJECT_DECLARE_SIMPLE_TYPE(MPS2FPGAIO, MPS2_FPGAIO)
 
-typedef struct {
+#define MPS2FPGAIO_MAX_LEDS 32
+
+struct MPS2FPGAIO {
     /*< private >*/
     SysBusDevice parent_obj;
 
     /*< public >*/
     MemoryRegion iomem;
+    LEDState *led[MPS2FPGAIO_MAX_LEDS];
+    uint32_t num_leds;
+    bool has_switches;
+    bool has_dbgctrl;
 
     uint32_t led0;
     uint32_t prescale;
     uint32_t misc;
+    uint32_t dbgctrl;
 
     /* QEMU_CLOCK_VIRTUAL time at which counter and pscntr were last synced */
     int64_t pscntr_sync_ticks;
@@ -48,6 +57,6 @@ typedef struct {
     /* These hold the CLOCK_VIRTUAL ns tick when the CLK1HZ/CLK100HZ was zero */
     int64_t clk1hz_tick_offset;
     int64_t clk100hz_tick_offset;
-} MPS2FPGAIO;
+};
 
 #endif

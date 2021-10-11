@@ -36,6 +36,7 @@
 #include "hw/qdev-properties.h"
 #include "vmw_pvscsi.h"
 #include "trace.h"
+#include "qom/object.h"
 
 
 #define PVSCSI_USE_64BIT         (true)
@@ -56,18 +57,14 @@
     (stl_le_pci_dma(&container_of(m, PVSCSIState, rings)->parent_obj, \
                  (m)->rs_pa + offsetof(struct PVSCSIRingsState, field), val))
 
-typedef struct PVSCSIClass {
+struct PVSCSIClass {
     PCIDeviceClass parent_class;
     DeviceRealize parent_dc_realize;
-} PVSCSIClass;
+};
 
 #define TYPE_PVSCSI "pvscsi"
-#define PVSCSI(obj) OBJECT_CHECK(PVSCSIState, (obj), TYPE_PVSCSI)
+OBJECT_DECLARE_TYPE(PVSCSIState, PVSCSIClass, PVSCSI)
 
-#define PVSCSI_DEVICE_CLASS(klass) \
-    OBJECT_CLASS_CHECK(PVSCSIClass, (klass), TYPE_PVSCSI)
-#define PVSCSI_DEVICE_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(PVSCSIClass, (obj), TYPE_PVSCSI)
 
 /* Compatibility flags for migration */
 #define PVSCSI_COMPAT_OLD_PCI_CONFIGURATION_BIT 0
@@ -104,7 +101,7 @@ typedef struct PVSCSISGState {
 
 typedef QTAILQ_HEAD(, PVSCSIRequest) PVSCSIRequestList;
 
-typedef struct {
+struct PVSCSIState {
     PCIDevice parent_obj;
     MemoryRegion io_space;
     SCSIBus bus;
@@ -132,7 +129,7 @@ typedef struct {
     uint32_t resetting;                  /* Reset in progress                */
 
     uint32_t compat_flags;
-} PVSCSIState;
+};
 
 typedef struct PVSCSIRequest {
     SCSIRequest *sreq;
@@ -514,7 +511,45 @@ pvscsi_write_sense(PVSCSIRequest *r, uint8_t *sense, int len)
 }
 
 static void
-pvscsi_command_complete(SCSIRequest *req, uint32_t status, size_t resid)
+pvscsi_command_failed(SCSIRequest *req)
+{
+    PVSCSIRequest *pvscsi_req = req->hba_private;
+    PVSCSIState *s;
+
+    if (!pvscsi_req) {
+        trace_pvscsi_command_complete_not_found(req->tag);
+        return;
+    }
+    s = pvscsi_req->dev;
+
+    switch (req->host_status) {
+    case SCSI_HOST_NO_LUN:
+        pvscsi_req->cmp.hostStatus = BTSTAT_LUNMISMATCH;
+        break;
+    case SCSI_HOST_BUSY:
+        pvscsi_req->cmp.hostStatus = BTSTAT_ABORTQUEUE;
+        break;
+    case SCSI_HOST_TIME_OUT:
+    case SCSI_HOST_ABORTED:
+        pvscsi_req->cmp.hostStatus = BTSTAT_SENTRST;
+        break;
+    case SCSI_HOST_BAD_RESPONSE:
+        pvscsi_req->cmp.hostStatus = BTSTAT_SELTIMEO;
+        break;
+    case SCSI_HOST_RESET:
+        pvscsi_req->cmp.hostStatus = BTSTAT_BUSRESET;
+        break;
+    default:
+        pvscsi_req->cmp.hostStatus = BTSTAT_HASOFTWARE;
+        break;
+    }
+    pvscsi_req->cmp.scsiStatus = GOOD;
+    qemu_sglist_destroy(&pvscsi_req->sgl);
+    pvscsi_complete_request(s, pvscsi_req);
+}
+
+static void
+pvscsi_command_complete(SCSIRequest *req, size_t resid)
 {
     PVSCSIRequest *pvscsi_req = req->hba_private;
     PVSCSIState *s;
@@ -531,7 +566,7 @@ pvscsi_command_complete(SCSIRequest *req, uint32_t status, size_t resid)
         pvscsi_req->cmp.hostStatus = BTSTAT_DATARUN;
     }
 
-    pvscsi_req->cmp.scsiStatus = status;
+    pvscsi_req->cmp.scsiStatus = req->status;
     if (pvscsi_req->cmp.scsiStatus == CHECK_CONDITION) {
         uint8_t sense[SCSI_SENSE_BUF_SIZE];
         int sense_len =
@@ -1106,6 +1141,7 @@ static const struct SCSIBusInfo pvscsi_scsi_info = {
         .get_sg_list = pvscsi_get_sg_list,
         .complete = pvscsi_command_complete,
         .cancel = pvscsi_request_cancelled,
+        .fail = pvscsi_command_failed,
 };
 
 static void
@@ -1265,7 +1301,7 @@ static Property pvscsi_properties[] = {
 
 static void pvscsi_realize(DeviceState *qdev, Error **errp)
 {
-    PVSCSIClass *pvs_c = PVSCSI_DEVICE_GET_CLASS(qdev);
+    PVSCSIClass *pvs_c = PVSCSI_GET_CLASS(qdev);
     PCIDevice *pci_dev = PCI_DEVICE(qdev);
     PVSCSIState *s = PVSCSI(qdev);
 
@@ -1280,7 +1316,7 @@ static void pvscsi_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
-    PVSCSIClass *pvs_k = PVSCSI_DEVICE_CLASS(klass);
+    PVSCSIClass *pvs_k = PVSCSI_CLASS(klass);
     HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(klass);
 
     k->realize = pvscsi_realizefn;

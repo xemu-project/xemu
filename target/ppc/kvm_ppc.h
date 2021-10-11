@@ -24,6 +24,7 @@ void kvmppc_enable_logical_ci_hcalls(void);
 void kvmppc_enable_set_mode_hcall(void);
 void kvmppc_enable_clear_ref_mod_hcalls(void);
 void kvmppc_enable_h_page_init(void);
+void kvmppc_enable_h_rpt_invalidate(void);
 void kvmppc_set_papr(PowerPCCPU *cpu);
 int kvmppc_set_compat(PowerPCCPU *cpu, uint32_t compat_pvr);
 void kvmppc_set_mpic_proxy(PowerPCCPU *cpu, int mpic_proxy);
@@ -39,7 +40,6 @@ int kvmppc_booke_watchdog_enable(PowerPCCPU *cpu);
 target_ulong kvmppc_configure_v3_mmu(PowerPCCPU *cpu,
                                      bool radix, bool gtse,
                                      uint64_t proc_tbl);
-void kvmppc_svm_off(Error **errp);
 #ifndef CONFIG_USER_ONLY
 bool kvmppc_spapr_use_multitce(void);
 int kvmppc_spapr_enable_inkernel_multitce(void);
@@ -56,7 +56,7 @@ int kvmppc_define_rtas_kernel_token(uint32_t token, const char *function);
 int kvmppc_get_htab_fd(bool write, uint64_t index, Error **errp);
 int kvmppc_save_htab(QEMUFile *f, int fd, size_t bufsize, int64_t max_ns);
 int kvmppc_load_htab_chunk(QEMUFile *f, int fd, uint32_t index,
-                           uint16_t n_valid, uint16_t n_invalid);
+                           uint16_t n_valid, uint16_t n_invalid, Error **errp);
 void kvmppc_read_hptes(ppc_hash_pte64_t *hptes, hwaddr ptex, int n);
 void kvmppc_write_hpte(hwaddr ptex, uint64_t pte0, uint64_t pte1);
 bool kvmppc_has_cap_fixup_hcalls(void);
@@ -72,6 +72,7 @@ bool kvmppc_has_cap_nested_kvm_hv(void);
 int kvmppc_set_cap_nested_kvm_hv(int enable);
 int kvmppc_get_cap_large_decr(void);
 int kvmppc_enable_cap_large_decr(PowerPCCPU *cpu, int enable);
+int kvmppc_has_cap_rpt_invalidate(void);
 int kvmppc_enable_hwrng(void);
 int kvmppc_put_books_sregs(PowerPCCPU *cpu);
 PowerPCCPUClass *kvm_ppc_get_host_cpu_class(void);
@@ -151,6 +152,11 @@ static inline void kvmppc_enable_h_page_init(void)
 {
 }
 
+static inline void kvmppc_enable_h_rpt_invalidate(void)
+{
+    g_assert_not_reached();
+}
+
 static inline void kvmppc_set_papr(PowerPCCPU *cpu)
 {
 }
@@ -214,11 +220,6 @@ static inline target_ulong kvmppc_configure_v3_mmu(PowerPCCPU *cpu,
                                      uint64_t proc_tbl)
 {
     return 0;
-}
-
-static inline void kvmppc_svm_off(Error **errp)
-{
-    return;
 }
 
 static inline void kvmppc_set_reg_ppc_online(PowerPCCPU *cpu,
@@ -316,7 +317,8 @@ static inline int kvmppc_save_htab(QEMUFile *f, int fd, size_t bufsize,
 }
 
 static inline int kvmppc_load_htab_chunk(QEMUFile *f, int fd, uint32_t index,
-                                         uint16_t n_valid, uint16_t n_invalid)
+                                         uint16_t n_valid, uint16_t n_invalid,
+                                         Error **errp)
 {
     abort();
 }
@@ -384,6 +386,11 @@ static inline int kvmppc_get_cap_large_decr(void)
 static inline int kvmppc_enable_cap_large_decr(PowerPCCPU *cpu, int enable)
 {
     return -1;
+}
+
+static inline int kvmppc_has_cap_rpt_invalidate(void)
+{
+    return false;
 }
 
 static inline int kvmppc_enable_hwrng(void)

@@ -55,6 +55,8 @@ enum MaterialColorSource {
 };
 
 typedef struct ShaderState {
+    unsigned int surface_scale_factor;
+
     PshState psh;
     uint16_t compressed_attrs;
 
@@ -89,6 +91,10 @@ typedef struct ShaderState {
     enum ShaderPolygonMode polygon_front_mode;
     enum ShaderPolygonMode polygon_back_mode;
     enum ShaderPrimitiveMode primitive_mode;
+
+    bool point_params_enable;
+    float point_size;
+    float point_params[8];
 } ShaderState;
 
 typedef struct ShaderBinding {
@@ -101,6 +107,7 @@ typedef struct ShaderBinding {
     GLint bump_mat_loc[NV2A_MAX_TEXTURES];
     GLint bump_scale_loc[NV2A_MAX_TEXTURES];
     GLint bump_offset_loc[NV2A_MAX_TEXTURES];
+    GLint tex_scale_loc[NV2A_MAX_TEXTURES];
 
     GLint surface_size_loc;
     GLint clip_range_loc;

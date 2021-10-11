@@ -15,7 +15,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "libqtest.h"
+#include "libqos/libqtest.h"
 
 static int verbose;
 
@@ -27,7 +27,6 @@ static const char *hmp_cmds[] = {
     "chardev-change testchardev1 ringbuf",
     "chardev-remove testchardev1",
     "commit all",
-    "cpu-add 1",
     "cpu 0",
     "device_add ?",
     "device_add usb-mouse,id=mouse1",
@@ -46,9 +45,9 @@ static const char *hmp_cmds[] = {
     "log all",
     "log none",
     "memsave 0 4096 \"/dev/null\"",
-    "migrate_set_cache_size 1",
-    "migrate_set_downtime 1",
-    "migrate_set_speed 1",
+    "migrate_set_parameter xbzrle_cache_size 1",
+    "migrate_set_parameter downtime_limit 1",
+    "migrate_set_parameter max_bandwidth 1",
     "netdev_add user,id=net1",
     "set_link net1 off",
     "set_link net1 on",

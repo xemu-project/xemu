@@ -34,7 +34,7 @@ static int get_sreg(QEMUFile *f, void *opaque, size_t size,
 }
 
 static int put_sreg(QEMUFile *f, void *opaque, size_t size,
-                    const VMStateField *field, QJSON *vmdesc)
+                    const VMStateField *field, JSONWriter *vmdesc)
 {
     CPUAVRState *env = opaque;
     uint8_t sreg = cpu_get_sreg(env);
@@ -61,7 +61,7 @@ static int get_segment(QEMUFile *f, void *opaque, size_t size,
 }
 
 static int put_segment(QEMUFile *f, void *opaque, size_t size,
-                       const VMStateField *field, QJSON *vmdesc)
+                       const VMStateField *field, JSONWriter *vmdesc)
 {
     uint32_t *ramp = opaque;
     uint8_t temp = *ramp >> 16;
@@ -98,8 +98,8 @@ static const VMStateInfo vms_eind = {
 
 const VMStateDescription vms_avr_cpu = {
     .name = "cpu",
-    .version_id = 0,
-    .minimum_version_id = 0,
+    .version_id = 1,
+    .minimum_version_id = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32(env.pc_w, AVRCPU),
         VMSTATE_UINT32(env.sp, AVRCPU),

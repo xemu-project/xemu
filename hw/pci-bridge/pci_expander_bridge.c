@@ -22,35 +22,43 @@
 #include "qemu/module.h"
 #include "sysemu/numa.h"
 #include "hw/boards.h"
+#include "qom/object.h"
 
 #define TYPE_PXB_BUS "pxb-bus"
-#define PXB_BUS(obj) OBJECT_CHECK(PXBBus, (obj), TYPE_PXB_BUS)
+typedef struct PXBBus PXBBus;
+DECLARE_INSTANCE_CHECKER(PXBBus, PXB_BUS,
+                         TYPE_PXB_BUS)
 
 #define TYPE_PXB_PCIE_BUS "pxb-pcie-bus"
-#define PXB_PCIE_BUS(obj) OBJECT_CHECK(PXBBus, (obj), TYPE_PXB_PCIE_BUS)
+DECLARE_INSTANCE_CHECKER(PXBBus, PXB_PCIE_BUS,
+                         TYPE_PXB_PCIE_BUS)
 
-typedef struct PXBBus {
+struct PXBBus {
     /*< private >*/
     PCIBus parent_obj;
     /*< public >*/
 
     char bus_path[8];
-} PXBBus;
+};
 
 #define TYPE_PXB_DEVICE "pxb"
-#define PXB_DEV(obj) OBJECT_CHECK(PXBDev, (obj), TYPE_PXB_DEVICE)
+typedef struct PXBDev PXBDev;
+DECLARE_INSTANCE_CHECKER(PXBDev, PXB_DEV,
+                         TYPE_PXB_DEVICE)
 
 #define TYPE_PXB_PCIE_DEVICE "pxb-pcie"
-#define PXB_PCIE_DEV(obj) OBJECT_CHECK(PXBDev, (obj), TYPE_PXB_PCIE_DEVICE)
+DECLARE_INSTANCE_CHECKER(PXBDev, PXB_PCIE_DEV,
+                         TYPE_PXB_PCIE_DEVICE)
 
-typedef struct PXBDev {
+struct PXBDev {
     /*< private >*/
     PCIDevice parent_obj;
     /*< public >*/
 
     uint8_t bus_nr;
     uint16_t numa_node;
-} PXBDev;
+    bool bypass_iommu;
+};
 
 static PXBDev *convert_to_pxb(PCIDevice *dev)
 {
@@ -248,6 +256,7 @@ static void pxb_dev_realize_common(PCIDevice *dev, bool pcie, Error **errp)
     bus->map_irq = pxb_map_irq_fn;
 
     PCI_HOST_BRIDGE(ds)->bus = bus;
+    PCI_HOST_BRIDGE(ds)->bypass_iommu = pxb->bypass_iommu;
 
     pxb_register_bus(dev, bus, &local_err);
     if (local_err) {
@@ -294,6 +303,7 @@ static Property pxb_dev_properties[] = {
     /* Note: 0 is not a legal PXB bus number. */
     DEFINE_PROP_UINT8("bus_nr", PXBDev, bus_nr, 0),
     DEFINE_PROP_UINT16("numa_node", PXBDev, numa_node, NUMA_NODE_UNASSIGNED),
+    DEFINE_PROP_BOOL("bypass_iommu", PXBDev, bypass_iommu, false),
     DEFINE_PROP_END_OF_LIST(),
 };
 

@@ -1,0 +1,23 @@
+specific_ss.add(files(
+	'nv2a.c',
+	'debug.c',
+	'pbus.c',
+	'pcrtc.c',
+	'pfb.c',
+	'pfifo.c',
+	'pgraph.c',
+	'pmc.c',
+	'pramdac.c',
+	'prmcio.c',
+	'prmvio.c',
+	'psh.c',
+	'ptimer.c',
+	'pvideo.c',
+	'shaders.c',
+	'stubs.c',
+	'user.c',
+	'vsh.c',
+	'swizzle.c',
+	's3tc.c',
+	))
+subdir('gl')

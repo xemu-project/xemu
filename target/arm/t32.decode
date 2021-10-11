@@ -5,7 +5,7 @@
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
 # License as published by the Free Software Foundation; either
-# version 2 of the License, or (at your option) any later version.
+# version 2.1 of the License, or (at your option) any later version.
 #
 # This library is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -45,6 +45,18 @@
 &sat             !extern rd rn satimm imm sh
 &pkh             !extern rd rn rm imm tb
 &cps             !extern mode imod M A I F
+&mcr             !extern cp opc1 crn crm opc2 rt
+&mcrr            !extern cp opc1 crm rt rt2
+
+&mve_shl_ri      rdalo rdahi shim
+&mve_shl_rr      rdalo rdahi rm
+&mve_sh_ri       rda shim
+&mve_sh_rr       rda rm
+
+# rdahi: bits [3:1] from insn, bit 0 is 1
+# rdalo: bits [3:1] from insn, bit 0 is 0
+%rdahi_9 9:3 !function=times_2_plus_1
+%rdalo_17 17:3 !function=times_2
 
 # Data-processing (register)
 
@@ -57,14 +69,72 @@
 @S_xrr_shi       ....... .... .   rn:4 .... .... .. shty:2 rm:4 \
                  &s_rrr_shi shim=%imm5_12_6 s=1 rd=0
 
+@mve_shl_ri      ....... .... . ... . . ... ... . .. .. .... \
+                 &mve_shl_ri shim=%imm5_12_6 rdalo=%rdalo_17 rdahi=%rdahi_9
+@mve_shl_rr      ....... .... . ... . rm:4  ... . .. .. .... \
+                 &mve_shl_rr rdalo=%rdalo_17 rdahi=%rdahi_9
+@mve_sh_ri       ....... .... . rda:4 . ... ... . .. .. .... \
+                 &mve_sh_ri shim=%imm5_12_6
+@mve_sh_rr       ....... .... . rda:4 rm:4 .... .... .... &mve_sh_rr
+
 {
   TST_xrri       1110101 0000 1 .... 0 ... 1111 .... ....     @S_xrr_shi
   AND_rrri       1110101 0000 . .... 0 ... .... .... ....     @s_rrr_shi
 }
 BIC_rrri         1110101 0001 . .... 0 ... .... .... ....     @s_rrr_shi
 {
+  # The v8.1M MVE shift insns overlap in encoding with MOVS/ORRS
+  # and are distinguished by having Rm==13 or 15. Those are UNPREDICTABLE
+  # cases for MOVS/ORRS. We decode the MVE cases first, ensuring that
+  # they explicitly call unallocated_encoding() for cases that must UNDEF
+  # (eg "using a new shift insn on a v8.1M CPU without MVE"), and letting
+  # the rest fall through (where ORR_rrri and MOV_rxri will end up
+  # handling them as r13 and r15 accesses with the same semantics as A32).
+  [
+    {
+      UQSHL_ri   1110101 0010 1 ....  0 ...  1111 .. 00 1111  @mve_sh_ri
+      LSLL_ri    1110101 0010 1 ... 0 0 ... ... 1 .. 00 1111  @mve_shl_ri
+      UQSHLL_ri  1110101 0010 1 ... 1 0 ... ... 1 .. 00 1111  @mve_shl_ri
+    }
+
+    {
+      URSHR_ri   1110101 0010 1 ....  0 ...  1111 .. 01 1111  @mve_sh_ri
+      LSRL_ri    1110101 0010 1 ... 0 0 ... ... 1 .. 01 1111  @mve_shl_ri
+      URSHRL_ri  1110101 0010 1 ... 1 0 ... ... 1 .. 01 1111  @mve_shl_ri
+    }
+
+    {
+      SRSHR_ri   1110101 0010 1 ....  0 ...  1111 .. 10 1111  @mve_sh_ri
+      ASRL_ri    1110101 0010 1 ... 0 0 ... ... 1 .. 10 1111  @mve_shl_ri
+      SRSHRL_ri  1110101 0010 1 ... 1 0 ... ... 1 .. 10 1111  @mve_shl_ri
+    }
+
+    {
+      SQSHL_ri   1110101 0010 1 ....  0 ...  1111 .. 11 1111  @mve_sh_ri
+      SQSHLL_ri  1110101 0010 1 ... 1 0 ... ... 1 .. 11 1111  @mve_shl_ri
+    }
+
+    {
+      UQRSHL_rr    1110101 0010 1 ....  ....  1111 0000 1101  @mve_sh_rr
+      LSLL_rr      1110101 0010 1 ... 0 .... ... 1 0000 1101  @mve_shl_rr
+      UQRSHLL64_rr 1110101 0010 1 ... 1 .... ... 1 0000 1101  @mve_shl_rr
+    }
+
+    {
+      SQRSHR_rr    1110101 0010 1 ....  ....  1111 0010 1101  @mve_sh_rr
+      ASRL_rr      1110101 0010 1 ... 0 .... ... 1 0010 1101  @mve_shl_rr
+      SQRSHRL64_rr 1110101 0010 1 ... 1 .... ... 1 0010 1101  @mve_shl_rr
+    }
+
+    UQRSHLL48_rr 1110101 0010 1 ... 1 ....  ... 1  1000 1101  @mve_shl_rr
+    SQRSHRL48_rr 1110101 0010 1 ... 1 ....  ... 1  1010 1101  @mve_shl_rr
+  ]
+
   MOV_rxri       1110101 0010 . 1111 0 ... .... .... ....     @s_rxr_shi
   ORR_rrri       1110101 0010 . .... 0 ... .... .... ....     @s_rrr_shi
+
+  # v8.1M CSEL and friends
+  CSEL           1110101 0010 1 rn:4 10 op:2 rd:4 fcond:4 rm:4
 }
 {
   MVN_rxri       1110101 0011 . 1111 0 ... .... .... ....     @s_rxr_shi
@@ -291,8 +361,8 @@ CLZ              1111 1010 1011 ---- 1111 .... 1000 ....      @rdm
 {
   # Group insn[25:23] = 111, which is cond=111x for the branch below,
   # or unconditional, which would be illegal for the branch.
-  {
-    # Hints
+  [
+    # Hints, and CPS
     {
       YIELD      1111 0011 1010 1111 1000 0000 0000 0001
       WFE        1111 0011 1010 1111 1000 0000 0000 0010
@@ -302,23 +372,25 @@ CLZ              1111 1010 1011 ---- 1111 .... 1000 ....      @rdm
       # SEV      1111 0011 1010 1111 1000 0000 0000 0100
       # SEVL     1111 0011 1010 1111 1000 0000 0000 0101
 
+      # For M-profile minimal-RAS ESB can be a NOP, which is the
+      # default behaviour since it is in the hint space.
+      # ESB      1111 0011 1010 1111 1000 0000 0001 0000
+
       # The canonical nop ends in 0000 0000, but the whole rest
       # of the space is "reserved hint, behaves as nop".
       NOP        1111 0011 1010 1111 1000 0000 ---- ----
+
+      # If imod == '00' && M == '0' then SEE "Hint instructions", above.
+      CPS        1111 0011 1010 1111 1000 0 imod:2 M:1 A:1 I:1 F:1 mode:5 \
+                 &cps
     }
 
-    # If imod == '00' && M == '0' then SEE "Hint instructions", above.
-    CPS          1111 0011 1010 1111 1000 0 imod:2 M:1 A:1 I:1 F:1 mode:5 \
-                 &cps
-
     # Miscellaneous control
-    [
-      CLREX      1111 0011 1011 1111 1000 1111 0010 1111
-      DSB        1111 0011 1011 1111 1000 1111 0100 ----
-      DMB        1111 0011 1011 1111 1000 1111 0101 ----
-      ISB        1111 0011 1011 1111 1000 1111 0110 ----
-      SB         1111 0011 1011 1111 1000 1111 0111 0000
-    ]
+    CLREX        1111 0011 1011 1111 1000 1111 0010 1111
+    DSB          1111 0011 1011 1111 1000 1111 0100 ----
+    DMB          1111 0011 1011 1111 1000 1111 0101 ----
+    ISB          1111 0011 1011 1111 1000 1111 0110 ----
+    SB           1111 0011 1011 1111 1000 1111 0111 0000
 
     # Note that the v7m insn overlaps both the normal and banked insn.
     {
@@ -346,7 +418,7 @@ CLZ              1111 1010 1011 ---- 1111 .... 1000 ....      @rdm
     HVC          1111 0111 1110 ....  1000 .... .... ....     \
                  &i imm=%imm16_16_0
     UDF          1111 0111 1111 ----  1010 ---- ---- ----
-  }
+  ]
   B_cond_thumb   1111 0. cond:4 ...... 10.0 ............      &ci imm=%imm21
 }
 
@@ -606,7 +678,11 @@ UXTAB            1111 1010 0101 .... 1111 .... 10.. ....      @rrr_rot
 
 STM_t32          1110 1000 10.0 .... ................         @ldstm i=1 b=0
 STM_t32          1110 1001 00.0 .... ................         @ldstm i=0 b=1
-LDM_t32          1110 1000 10.1 .... ................         @ldstm i=1 b=0
+{
+  # Rn=15 UNDEFs for LDM; M-profile CLRM uses that encoding
+  CLRM           1110 1000 1001 1111 list:16
+  LDM_t32        1110 1000 10.1 .... ................         @ldstm i=1 b=0
+}
 LDM_t32          1110 1001 00.1 .... ................         @ldstm i=0 b=1
 
 &rfe             !extern rn w pu
@@ -621,6 +697,23 @@ RFE              1110 1001 10.1 .... 1100000000000000         @rfe pu=1
 SRS              1110 1000 00.0 1101 1100 0000 000. ....      @srs pu=2
 SRS              1110 1001 10.0 1101 1100 0000 000. ....      @srs pu=1
 
+# Coprocessor instructions
+
+# We decode MCR, MCR, MRRC and MCRR only, because for QEMU the
+# other coprocessor instructions always UNDEF.
+# The trans_ functions for these will ignore cp values 8..13 for v7 or
+# earlier, and 0..13 for v8 and later, because those areas of the
+# encoding space may be used for other things, such as VFP or Neon.
+
+@mcr             .... .... opc1:3 . crn:4 rt:4 cp:4 opc2:3 . crm:4
+@mcrr            .... .... .... rt2:4 rt:4 cp:4 opc1:4 crm:4
+
+MCRR             1110 1100 0100 .... .... .... .... .... @mcrr
+MRRC             1110 1100 0101 .... .... .... .... .... @mcrr
+
+MCR              1110 1110 ... 0 .... .... .... ... 1 .... @mcr
+MRC              1110 1110 ... 1 .... .... .... ... 1 .... @mcr
+
 # Branches
 
 %imm24           26:s1 13:1 11:1 16:10 0:11 !function=t32_branch24
@@ -628,4 +721,32 @@ SRS              1110 1001 10.0 1101 1100 0000 000. ....      @srs pu=1
 
 B                1111 0. .......... 10.1 ............         @branch24
 BL               1111 0. .......... 11.1 ............         @branch24
-BLX_i            1111 0. .......... 11.0 ............         @branch24
+{
+  # BLX_i is non-M-profile only
+  BLX_i          1111 0. .......... 11.0 ............         @branch24
+  # M-profile only: loop and branch insns
+  [
+    # All these BF insns have boff != 0b0000; we NOP them all
+    BF           1111 0 boff:4  ------- 1100 - ---------- 1    # BFL
+    BF           1111 0 boff:4 0 ------ 1110 - ---------- 1    # BFCSEL
+    BF           1111 0 boff:4 10 ----- 1110 - ---------- 1    # BF
+    BF           1111 0 boff:4 11 ----- 1110 0 0000000000 1    # BFX, BFLX
+  ]
+  [
+    # LE and WLS immediate
+    %lob_imm 1:10 11:1 !function=times_2
+
+    DLS          1111 0 0000 100     rn:4 1110 0000 0000 0001 size=4
+    WLS          1111 0 0000 100     rn:4 1100 . .......... 1 imm=%lob_imm size=4
+    {
+      LE         1111 0 0000 0 f:1 tp:1 1111 1100 . .......... 1 imm=%lob_imm
+      # This is WLSTP
+      WLS        1111 0 0000 0 size:2 rn:4 1100 . .......... 1 imm=%lob_imm
+    }
+    {
+      LCTP       1111 0 0000 000     1111 1110 0000 0000 0001
+      # This is DLSTP
+      DLS        1111 0 0000 0 size:2 rn:4 1110 0000 0000 0001
+    }
+  ]
+}

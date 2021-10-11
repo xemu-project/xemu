@@ -22,33 +22,20 @@
 #ifndef QEMU_HAX_H
 #define QEMU_HAX_H
 
-
 int hax_sync_vcpus(void);
-int hax_init_vcpu(CPUState *cpu);
-int hax_smp_cpu_exec(CPUState *cpu);
-int hax_populate_ram(uint64_t va, uint64_t size);
 
-void hax_cpu_synchronize_state(CPUState *cpu);
-void hax_cpu_synchronize_post_reset(CPUState *cpu);
-void hax_cpu_synchronize_post_init(CPUState *cpu);
-void hax_cpu_synchronize_pre_loadvm(CPUState *cpu);
+#ifdef NEED_CPU_H
 
 #ifdef CONFIG_HAX
 
 int hax_enabled(void);
-
-#include "qemu/bitops.h"
-#include "exec/memory.h"
-int hax_vcpu_destroy(CPUState *cpu);
-void hax_raise_event(CPUState *cpu);
-void hax_reset_vcpu_state(void *opaque);
-#include "target/i386/hax-interface.h"
-#include "target/i386/hax-i386.h"
 
 #else /* CONFIG_HAX */
 
 #define hax_enabled() (0)
 
 #endif /* CONFIG_HAX */
+
+#endif /* NEED_CPU_H */
 
 #endif /* QEMU_HAX_H */

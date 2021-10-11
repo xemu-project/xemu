@@ -27,10 +27,8 @@
  *      Reference Manual", Revision 01.01, April 27, 2018
  */
 
-extern "C" {
 #include "qemu/osdep.h"
 #include "disas/dis-asm.h"
-}
 
 #include <cstring>
 #include <stdexcept>
@@ -837,7 +835,7 @@ int NMD::Disassemble(const uint16 * data, std::string & dis,
                                  * an ASE attribute and the requested version
                                  * not having that attribute
                                  */
-                                dis = "ASE attribute missmatch";
+                                dis = "ASE attribute mismatch";
                                 return -5;
                             }
                             disassembly_function dis_fn = table[i].disassembly;

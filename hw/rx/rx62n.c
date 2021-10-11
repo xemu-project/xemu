@@ -23,14 +23,12 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
-#include "hw/hw.h"
 #include "hw/rx/rx62n.h"
 #include "hw/loader.h"
 #include "hw/sysbus.h"
 #include "hw/qdev-properties.h"
 #include "sysemu/sysemu.h"
-#include "sysemu/qtest.h"
-#include "cpu.h"
+#include "qom/object.h"
 
 /*
  * RX62N Internal Memory
@@ -60,7 +58,7 @@
 #define RX62N_XTAL_MAX_HZ (14 * 1000 * 1000)
 #define RX62N_PCLK_MAX_HZ (50 * 1000 * 1000)
 
-typedef struct RX62NClass {
+struct RX62NClass {
     /*< private >*/
     DeviceClass parent_class;
     /*< public >*/
@@ -68,12 +66,11 @@ typedef struct RX62NClass {
     uint64_t ram_size;
     uint64_t rom_flash_size;
     uint64_t data_flash_size;
-} RX62NClass;
+};
+typedef struct RX62NClass RX62NClass;
 
-#define RX62N_MCU_CLASS(klass) \
-    OBJECT_CLASS_CHECK(RX62NClass, (klass), TYPE_RX62N_MCU)
-#define RX62N_MCU_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(RX62NClass, (obj), TYPE_RX62N_MCU)
+DECLARE_CLASS_CHECKERS(RX62NClass, RX62N_MCU,
+                       TYPE_RX62N_MCU)
 
 /*
  * IRQ -> IPR mapping table
@@ -244,15 +241,6 @@ static void rx62n_realize(DeviceState *dev, Error **errp)
     memory_region_init_rom(&s->c_flash, OBJECT(dev), "flash-code",
                            rxc->rom_flash_size, &error_abort);
     memory_region_add_subregion(s->sysmem, RX62N_CFLASH_BASE, &s->c_flash);
-
-    if (!s->kernel) {
-        if (bios_name) {
-            rom_add_file_fixed(bios_name, RX62N_CFLASH_BASE, 0);
-        }  else if (!qtest_enabled()) {
-            error_report("No bios or kernel specified");
-            exit(1);
-        }
-    }
 
     /* Initialize CPU */
     object_initialize_child(OBJECT(s), "cpu", &s->cpu, TYPE_RX62N_CPU);

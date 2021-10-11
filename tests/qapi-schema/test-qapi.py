@@ -68,12 +68,13 @@ class QAPISchemaTestVisitor(QAPISchemaVisitor):
 
     def visit_command(self, name, info, ifcond, features,
                       arg_type, ret_type, gen, success_response, boxed,
-                      allow_oob, allow_preconfig):
+                      allow_oob, allow_preconfig, coroutine):
         print('command %s %s -> %s'
               % (name, arg_type and arg_type.name,
                  ret_type and ret_type.name))
-        print('    gen=%s success_response=%s boxed=%s oob=%s preconfig=%s'
-              % (gen, success_response, boxed, allow_oob, allow_preconfig))
+        print('    gen=%s success_response=%s boxed=%s oob=%s preconfig=%s%s'
+              % (gen, success_response, boxed, allow_oob, allow_preconfig,
+                 " coroutine=True" if coroutine else ""))
         self._print_if(ifcond)
         self._print_features(features)
 
@@ -127,9 +128,6 @@ def test_and_diff(test_name, dir_name, update):
     try:
         test_frontend(os.path.join(dir_name, test_name + '.json'))
     except QAPIError as err:
-        if err.info.fname is None:
-            print("%s" % err, file=sys.stderr)
-            return 2
         errstr = str(err) + '\n'
         if dir_name:
             errstr = errstr.replace(dir_name + '/', '')

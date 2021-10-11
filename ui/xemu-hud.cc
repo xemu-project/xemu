@@ -21,6 +21,9 @@
 #include <epoxy/gl.h>
 #include <stdio.h>
 #include <deque>
+#include <vector>
+#include <string>
+#include <memory>
 
 #include "xemu-hud.h"
 #include "xemu-input.h"
@@ -30,11 +33,16 @@
 #include "xemu-custom-widgets.h"
 #include "xemu-monitor.h"
 #include "xemu-version.h"
-#include "xemu-data.h"
 #include "xemu-net.h"
 #include "xemu-os-utils.h"
 #include "xemu-xbe.h"
 #include "xemu-reporting.h"
+
+#if defined(_WIN32)
+#include "xemu-update.h"
+#endif
+
+#include "data/roboto_medium.ttf.h"
 
 #include "imgui/imgui.h"
 #include "imgui/backends/imgui_impl_sdl.h"
@@ -51,6 +59,8 @@ extern "C" {
 #include "sysemu/runstate.h"
 #include "hw/xbox/mcpx/apu_debug.h"
 #include "hw/xbox/nv2a/debug.h"
+#include "hw/xbox/nv2a/nv2a.h"
+#include "net/pcap.h"
 
 #undef typename
 #undef atomic_fetch_add
@@ -186,6 +196,59 @@ static void HelpMarker(const char* desc)
     }
 }
 
+static void Hyperlink(const char *text, const char *url)
+{
+    // FIXME: Color text when hovered
+    ImColor col;
+    ImGui::Text("%s", text);
+    if (ImGui::IsItemHovered()) {
+        col = IM_COL32_WHITE;
+        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    } else {
+        col = ImColor(127, 127, 127, 255);
+    }
+
+    ImVec2 max = ImGui::GetItemRectMax();
+    ImVec2 min = ImGui::GetItemRectMin();
+    min.x -= 1 * g_ui_scale;
+    min.y = max.y;
+    max.x -= 1 * g_ui_scale;
+    ImGui::GetWindowDrawList()->AddLine(min, max, col, 1.0 * g_ui_scale);
+
+    if (ImGui::IsItemClicked()) {
+        xemu_open_web_browser(url);
+    }
+}
+
+static int PushWindowTransparencySettings(bool transparent, float alpha_transparent = 0.4, float alpha_opaque = 1.0)
+{
+        float alpha = transparent ? alpha_transparent : alpha_opaque;
+
+        ImVec4 c;
+
+        c = ImGui::GetStyle().Colors[transparent ? ImGuiCol_WindowBg : ImGuiCol_TitleBg];
+        c.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_TitleBg, c);
+
+        c = ImGui::GetStyle().Colors[transparent ? ImGuiCol_WindowBg : ImGuiCol_TitleBgActive];
+        c.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_TitleBgActive, c);
+
+        c = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+        c.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, c);
+
+        c = ImGui::GetStyle().Colors[ImGuiCol_Border];
+        c.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_Border, c);
+
+        c = ImGui::GetStyle().Colors[ImGuiCol_FrameBg];
+        c.w *= alpha;
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, c);
+
+        return 5;
+}
+
 class MonitorWindow
 {
 public:
@@ -222,51 +285,57 @@ public:
     void Draw()
     {
         if (!is_open) return;
+        int style_pop_cnt = PushWindowTransparencySettings(true);
+        ImGuiIO& io = ImGui::GetIO();
+        ImVec2 window_pos = ImVec2(0,io.DisplaySize.y/2);
+        ImGui::SetNextWindowPos(window_pos, ImGuiCond_Appearing);
+        ImGui::SetNextWindowSize(ImVec2(io.DisplaySize.x, io.DisplaySize.y/2), ImGuiCond_Appearing);
+        if (ImGui::Begin("Monitor", &is_open, ImGuiWindowFlags_NoCollapse)) {
+            const float footer_height_to_reserve = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing(); // 1 separator, 1 input text
+            ImGui::BeginChild("ScrollingRegion", ImVec2(0, -footer_height_to_reserve), false, ImGuiWindowFlags_HorizontalScrollbar); // Leave room for 1 separator + 1 InputText
 
-        ImGui::SetNextWindowSize(ImVec2(520*g_ui_scale, 600*g_ui_scale), ImGuiCond_FirstUseEver);
-        if (!ImGui::Begin("Monitor", &is_open))
-        {
-            ImGui::End();
-            return;
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4,1)); // Tighten spacing
+            ImGui::PushFont(g_fixed_width_font);
+            ImGui::TextUnformatted(xemu_get_monitor_buffer());
+            ImGui::PopFont();
+
+            if (ScrollToBottom || (AutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())) {
+                ImGui::SetScrollHereY(1.0f);
+            }
+            ScrollToBottom = false;
+
+            ImGui::PopStyleVar();
+            ImGui::EndChild();
+            ImGui::Separator();
+
+            // Command-line
+            bool reclaim_focus = ImGui::IsWindowAppearing();
+
+            ImGui::SetNextItemWidth(-1);
+            ImGui::PushFont(g_fixed_width_font);
+            if (ImGui::InputText("", InputBuf, IM_ARRAYSIZE(InputBuf), ImGuiInputTextFlags_EnterReturnsTrue|ImGuiInputTextFlags_CallbackCompletion|ImGuiInputTextFlags_CallbackHistory, &TextEditCallbackStub, (void*)this)) {
+                char* s = InputBuf;
+                Strtrim(s);
+                if (s[0])
+                    ExecCommand(s);
+                strcpy(s, "");
+                reclaim_focus = true;
+            }
+            ImGui::PopFont();
+
+            // Auto-focus on window apparition
+            ImGui::SetItemDefaultFocus();
+            if (reclaim_focus) {
+                ImGui::SetKeyboardFocusHere(-1); // Auto focus previous widget
+            }
         }
-
-        const float footer_height_to_reserve = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing(); // 1 separator, 1 input text
-        ImGui::BeginChild("ScrollingRegion", ImVec2(0, -footer_height_to_reserve), false, ImGuiWindowFlags_HorizontalScrollbar); // Leave room for 1 separator + 1 InputText
-
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4,1)); // Tighten spacing
-        ImGui::PushFont(g_fixed_width_font);
-        ImGui::TextUnformatted(xemu_get_monitor_buffer());
-        ImGui::PopFont();
-
-        if (ScrollToBottom || (AutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY()))
-            ImGui::SetScrollHereY(1.0f);
-        ScrollToBottom = false;
-
-        ImGui::PopStyleVar();
-        ImGui::EndChild();
-        ImGui::Separator();
-
-        // Command-line
-        bool reclaim_focus = false;
-        ImGui::SetNextItemWidth(-1);
-        ImGui::PushFont(g_fixed_width_font);
-        if (ImGui::InputText("", InputBuf, IM_ARRAYSIZE(InputBuf), ImGuiInputTextFlags_EnterReturnsTrue|ImGuiInputTextFlags_CallbackCompletion|ImGuiInputTextFlags_CallbackHistory, &TextEditCallbackStub, (void*)this))
-        {
-            char* s = InputBuf;
-            Strtrim(s);
-            if (s[0])
-                ExecCommand(s);
-            strcpy(s, "");
-            reclaim_focus = true;
-        }
-        ImGui::PopFont();
-
-        // Auto-focus on window apparition
-        ImGui::SetItemDefaultFocus();
-        if (reclaim_focus)
-            ImGui::SetKeyboardFocusHere(-1); // Auto focus previous widget
-
         ImGui::End();
+        ImGui::PopStyleColor(style_pop_cnt);
+    }
+
+    void toggle_open(void)
+    {
+        is_open = !is_open;
     }
 
 private:
@@ -569,6 +638,9 @@ private:
     char eeprom_path[MAX_STRING_LEN];
     int  memory_idx;
     bool short_animation;
+#if defined(_WIN32)
+    bool check_for_update;
+#endif
 
 public:
     SettingsWindow()
@@ -621,6 +693,11 @@ public:
         xemu_settings_get_bool(XEMU_SETTINGS_SYSTEM_SHORTANIM, &tmp_int);
         short_animation = !!tmp_int;
 
+#if defined(_WIN32)
+        xemu_settings_get_bool(XEMU_SETTINGS_MISC_CHECK_FOR_UPDATE, &tmp_int);
+        check_for_update = !!tmp_int;
+#endif
+
         dirty = false;
     }
 
@@ -632,6 +709,9 @@ public:
         xemu_settings_set_string(XEMU_SETTINGS_SYSTEM_EEPROM_PATH, eeprom_path);
         xemu_settings_set_int(XEMU_SETTINGS_SYSTEM_MEMORY, 64+memory_idx*64);
         xemu_settings_set_bool(XEMU_SETTINGS_SYSTEM_SHORTANIM, short_animation);
+#if defined(_WIN32)
+        xemu_settings_set_bool(XEMU_SETTINGS_MISC_CHECK_FOR_UPDATE, check_for_update);
+#endif
         xemu_settings_save();
         xemu_queue_notification("Settings saved! Restart to apply updates.");
         pending_restart = true;
@@ -715,17 +795,34 @@ public:
         }
         ImGui::NextColumn();
 
+#if defined(_WIN32)
+        ImGui::Dummy(ImVec2(0,0));
+        ImGui::NextColumn();
+        if (ImGui::Checkbox("Check for updates on startup", &check_for_update)) {
+            dirty = true;
+        }
+        ImGui::NextColumn();
+#endif
+
         ImGui::Columns(1);
 
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
         ImGui::Separator();
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
 
+        Hyperlink("Help", "https://xemu.app/docs/getting-started/");
+        ImGui::SameLine();
+
+        const char *msg = NULL;
         if (dirty) {
-            ImGui::Text("Warning: Unsaved changes!");
-            ImGui::SameLine();
+            msg = "Warning: Unsaved changes!";
         } else if (pending_restart) {
-            ImGui::Text("Restart to apply updates");
+            msg = "Restart to apply updates";
+        }
+
+        if (msg) {
+            ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2.0);
+            ImGui::Text("%s", msg);
             ImGui::SameLine();
         }
 
@@ -808,10 +905,7 @@ public:
 
         const char *msg = "Visit https://xemu.app for more information";
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
-        ImGui::Text("%s", msg);
-        if (ImGui::IsItemClicked()) {
-            xemu_open_web_browser("https://xemu.app");
-        }
+        Hyperlink(msg, "https://xemu.app");
 
         ImGui::Dummy(ImVec2(0,40*g_ui_scale));
 
@@ -823,6 +917,100 @@ public:
     }
 };
 
+class NetworkInterface
+{
+public:
+    std::string pcap_name;
+    std::string description;
+    std::string friendlyname;
+
+    NetworkInterface(pcap_if_t *pcap_desc, char *_friendlyname = NULL)
+    {
+        pcap_name = pcap_desc->name;
+        description = pcap_desc->description ?: pcap_desc->name;
+        if (_friendlyname) {
+            char *tmp = g_strdup_printf("%s (%s)", _friendlyname, description.c_str());
+            friendlyname = tmp;
+            g_free((gpointer)tmp);
+        } else {
+            friendlyname = description;
+        }
+    }
+};
+
+class NetworkInterfaceManager
+{
+public:
+    std::vector<std::unique_ptr<NetworkInterface>> ifaces;
+    NetworkInterface *current_iface;
+    const char *current_iface_name;
+    bool failed_to_load_lib;
+
+    NetworkInterfaceManager()
+    {
+        current_iface = NULL;
+        xemu_settings_get_string(XEMU_SETTINGS_NETWORK_PCAP_INTERFACE,
+                                 &current_iface_name);
+        failed_to_load_lib = false;
+    }
+
+    void refresh(void)
+    {
+        pcap_if_t *alldevs, *iter;
+        char err[PCAP_ERRBUF_SIZE];
+
+        if (xemu_net_is_enabled()) {
+            return;
+        }
+
+#if defined(_WIN32)
+        if (pcap_load_library()) {
+            failed_to_load_lib = true;
+            return;
+        }
+#endif
+
+        ifaces.clear();
+        current_iface = NULL;
+
+        if (pcap_findalldevs(&alldevs, err)) {
+            return;
+        }
+
+        for (iter=alldevs; iter != NULL; iter=iter->next) {
+#if defined(_WIN32)
+            char *friendlyname = get_windows_interface_friendly_name(iter->name);
+            ifaces.emplace_back(new NetworkInterface(iter, friendlyname));
+            if (friendlyname) {
+                g_free((gpointer)friendlyname);
+            }
+#else
+            ifaces.emplace_back(new NetworkInterface(iter));
+#endif
+            if (!strcmp(current_iface_name, iter->name)) {
+                current_iface = ifaces.back().get();
+            }
+        }
+
+        pcap_freealldevs(alldevs);
+    }
+
+    void select(NetworkInterface &iface)
+    {
+        current_iface = &iface;
+        xemu_settings_set_string(XEMU_SETTINGS_NETWORK_PCAP_INTERFACE,
+                                 iface.pcap_name.c_str());
+        xemu_settings_get_string(XEMU_SETTINGS_NETWORK_PCAP_INTERFACE,
+                                 &current_iface_name);
+    }
+
+    bool is_current(NetworkInterface &iface)
+    {
+        return &iface == current_iface;
+    }
+};
+
+
 class NetworkWindow
 {
 public:
@@ -830,6 +1018,7 @@ public:
     int  backend;
     char remote_addr[64];
     char local_addr[64];
+    std::unique_ptr<NetworkInterfaceManager> iface_mgr;
 
     NetworkWindow()
     {
@@ -844,7 +1033,7 @@ public:
     {
         if (!is_open) return;
 
-        ImGui::SetNextWindowContentSize(ImVec2(400.0f*g_ui_scale, 0.0f));
+        ImGui::SetNextWindowContentSize(ImVec2(500.0f*g_ui_scale, 0.0f));
         if (!ImGui::Begin("Network", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::End();
             return;
@@ -873,16 +1062,18 @@ public:
         ImGui::NextColumn();
         if (is_enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
         int temp_backend = backend; // Temporary to make backend combo read-only (FIXME: surely there's a nicer way)
-        if (ImGui::Combo("##backend", is_enabled ? &temp_backend : &backend, "User (NAT)\0Socket\0") && !is_enabled) {
+        if (ImGui::Combo("##backend", is_enabled ? &temp_backend : &backend, "NAT\0UDP Tunnel\0Bridged Adapter\0") && !is_enabled) {
             xemu_settings_set_enum(XEMU_SETTINGS_NETWORK_BACKEND, backend);
             xemu_settings_save();
         }
         if (is_enabled) ImGui::PopStyleVar();
         ImGui::SameLine();
         if (backend == XEMU_NET_BACKEND_USER) {
-            HelpMarker("User-mode TCP/IP stack with a NAT'd network");
+            HelpMarker("User-mode TCP/IP stack with network address translation");
         } else if (backend == XEMU_NET_BACKEND_SOCKET_UDP) {
-            HelpMarker("Encapsulates link-layer traffic in UDP packets");
+            HelpMarker("Tunnels link-layer traffic to a remote host via UDP");
+        } else if (backend == XEMU_NET_BACKEND_PCAP) {
+            HelpMarker("Bridges with a host network interface");
         }
         ImGui::NextColumn();
 
@@ -905,6 +1096,64 @@ public:
             ImGui::InputText("###local_host", local_addr, sizeof(local_addr), flg);
             if (is_enabled) ImGui::PopStyleVar();
             ImGui::NextColumn();
+        } else if (backend == XEMU_NET_BACKEND_PCAP) {
+            static bool should_refresh = true;
+            if (iface_mgr.get() == nullptr) {
+                iface_mgr.reset(new NetworkInterfaceManager());
+                iface_mgr->refresh();
+            }
+
+            if (iface_mgr->failed_to_load_lib) {
+#if defined(_WIN32)
+                ImGui::Columns(1);
+                ImGui::Dummy(ImVec2(0,20*g_ui_scale));
+                const char *msg = "WinPcap/npcap library could not be loaded.\n"
+                                  "To use this attachment, please install npcap.";
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (ImGui::GetColumnWidth() - g_ui_scale*ImGui::CalcTextSize(msg).x)/2);
+                ImGui::Text("%s", msg);
+                ImGui::Dummy(ImVec2(0,10*g_ui_scale));
+                ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120*g_ui_scale)/2);
+                if (ImGui::Button("Install npcap", ImVec2(120*g_ui_scale, 0))) {
+                    xemu_open_web_browser("https://nmap.org/npcap/");
+                }
+                ImGui::Dummy(ImVec2(0,10*g_ui_scale));
+#endif
+            } else {
+                ImGui::Text("Network Interface");
+                ImGui::SameLine(); HelpMarker("Host network interface to bridge with");
+                ImGui::NextColumn();
+
+                float w = ImGui::GetColumnWidth()-10*g_ui_scale;
+                ImGui::SetNextItemWidth(w);
+                const char *selected_display_name = (
+                    iface_mgr->current_iface
+                    ? iface_mgr->current_iface->friendlyname.c_str()
+                    : iface_mgr->current_iface_name
+                    );
+                if (is_enabled) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.6f);
+                if (ImGui::BeginCombo("###network_iface", selected_display_name)) {
+                    if (should_refresh) {
+                        iface_mgr->refresh();
+                        should_refresh = false;
+                    }
+                    int i = 0;
+                    for (auto& iface : iface_mgr->ifaces) {
+                        bool is_selected = iface_mgr->is_current((*iface));
+                        ImGui::PushID(i++);
+                        if (ImGui::Selectable(iface->friendlyname.c_str(), is_selected)) {
+                            if (!is_enabled) iface_mgr->select((*iface));
+                        }
+                        if (is_selected) ImGui::SetItemDefaultFocus();
+                        ImGui::PopID();
+                    }
+                    ImGui::EndCombo();
+                } else {
+                    should_refresh = true;
+                }
+                if (is_enabled) ImGui::PopStyleVar();
+
+                ImGui::NextColumn();
+            }
         }
 
         ImGui::Columns(1);
@@ -913,9 +1162,9 @@ public:
         ImGui::Separator();
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
 
-        ImGui::Text("Status: %sEnabled", is_enabled ? "" : "Not ");
-        ImGui::SameLine();
+        Hyperlink("Help", "https://xemu.app/docs/networking/");
 
+        ImGui::SameLine();
         ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*g_ui_scale);
         ImGui::SetItemDefaultFocus();
         if (ImGui::Button(is_enabled ? "Disable" : "Enable", ImVec2(120*g_ui_scale, 0))) {
@@ -1012,7 +1261,7 @@ public:
             "This title crashes very soon after launching, or displays nothing at all.",
             "This title displays an intro sequence, but fails to make it to gameplay.",
             "This title starts, but may crash or have significant issues.",
-            "This title is playable from start to finish, with only minor issues.",
+            "This title is playable, but may have minor issues.",
             "This title is playable from start to finish with no noticable issues."
         };
 
@@ -1418,29 +1667,7 @@ public:
         if (!is_open) return;
 
         float alpha = transparent ? 0.2 : 1.0;
-
-        ImVec4 c;
-
-        c = ImGui::GetStyle().Colors[transparent ? ImGuiCol_WindowBg : ImGuiCol_TitleBg];
-        c.w *= alpha;
-        ImGui::PushStyleColor(ImGuiCol_TitleBg, c);
-
-        c = ImGui::GetStyle().Colors[transparent ? ImGuiCol_WindowBg : ImGuiCol_TitleBgActive];
-        c.w *= alpha;
-        ImGui::PushStyleColor(ImGuiCol_TitleBgActive, c);
-
-        c = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
-        c.w *= alpha;
-        ImGui::PushStyleColor(ImGuiCol_WindowBg, c);
-
-        c = ImGui::GetStyle().Colors[ImGuiCol_Border];
-        c.w *= alpha;
-        ImGui::PushStyleColor(ImGuiCol_Border, c);
-
-        c = ImGui::GetStyle().Colors[ImGuiCol_FrameBg];
-        c.w *= alpha;
-        ImGui::PushStyleColor(ImGuiCol_FrameBg, c);
-
+        PushWindowTransparencySettings(transparent, 0.2);
         ImGui::SetNextWindowSize(ImVec2(600.0f*g_ui_scale, 150.0f*g_ui_scale), ImGuiCond_Once);
         if (ImGui::Begin("Video Debug", &is_open)) {
 
@@ -1523,6 +1750,140 @@ public:
     }
 };
 
+#if defined(_WIN32)
+class AutoUpdateWindow
+{
+protected:
+    Updater updater;
+
+public:
+    bool is_open;
+    bool should_prompt_auto_update_selection;
+
+    AutoUpdateWindow()
+    {
+        is_open = false;
+        should_prompt_auto_update_selection = false;
+    }
+
+    ~AutoUpdateWindow()
+    {
+    }
+
+    void save_auto_update_selection(bool preference)
+    {
+        xemu_settings_set_bool(XEMU_SETTINGS_MISC_CHECK_FOR_UPDATE, preference);
+        xemu_settings_save();
+        should_prompt_auto_update_selection = false;
+    }
+
+    void prompt_auto_update_selection()
+    {
+        ImGui::Text("Would you like xemu to check for updates on startup?");
+        ImGui::SetNextItemWidth(-1.0f);
+
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+        ImGui::Separator();
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+
+        float w = (130)*g_ui_scale;
+        float bw = w + (10)*g_ui_scale;
+        ImGui::SetCursorPosX(ImGui::GetWindowWidth()-2*bw);
+
+        if (ImGui::Button("No", ImVec2(w, 0))) {
+            save_auto_update_selection(false);
+            is_open = false;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Yes", ImVec2(w, 0))) {
+            save_auto_update_selection(true);
+            check_for_updates_and_prompt_if_available();
+        }
+    }
+
+    void check_for_updates_and_prompt_if_available()
+    {
+        updater.check_for_update([this](){
+            is_open |= updater.is_update_available();
+        });
+    }
+
+    void Draw()
+    {
+        if (!is_open) return;
+        ImGui::SetNextWindowContentSize(ImVec2(550.0f*g_ui_scale, 0.0f));
+        if (!ImGui::Begin("Update", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::End();
+            return;
+        }
+
+        if (should_prompt_auto_update_selection) {
+            prompt_auto_update_selection();
+            ImGui::End();
+            return;
+        }
+
+        if (ImGui::IsWindowAppearing() && !updater.is_update_available()) {
+            updater.check_for_update();
+        }
+
+        const char *status_msg[] = {
+            "",
+            "An error has occured. Try again.",
+            "Checking for update...",
+            "Downloading update...",
+            "Update successful! Restart to launch updated version of xemu."
+        };
+        const char *available_msg[] = {
+            "Update availability unknown.",
+            "This version of xemu is up to date.",
+            "An updated version of xemu is available!",
+        };
+
+        if (updater.get_status() == UPDATER_IDLE) {
+            ImGui::Text(available_msg[updater.get_update_availability()]);
+        } else {
+            ImGui::Text(status_msg[updater.get_status()]);
+        }
+
+        if (updater.is_updating()) {
+            ImGui::ProgressBar(updater.get_update_progress_percentage()/100.0f,
+                               ImVec2(-1.0f, 0.0f));
+        }
+
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+        ImGui::Separator();
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+
+        float w = (130)*g_ui_scale;
+        float bw = w + (10)*g_ui_scale;
+        ImGui::SetCursorPosX(ImGui::GetWindowWidth()-bw);
+
+        if (updater.is_checking_for_update() || updater.is_updating()) {
+            if (ImGui::Button("Cancel", ImVec2(w, 0))) {
+                updater.cancel();
+            }
+        } else {
+            if (updater.is_pending_restart()) {
+                if (ImGui::Button("Restart", ImVec2(w, 0))) {
+                    updater.restart_to_updated();
+                }
+            } else if (updater.is_update_available()) {
+                if (ImGui::Button("Update", ImVec2(w, 0))) {
+                    updater.update();
+                }
+            } else {
+                if (ImGui::Button("Check for Update", ImVec2(w, 0))) {
+                    updater.check_for_update();
+                }
+            }
+        }
+
+        ImGui::End();
+    }
+};
+#endif
+
 static MonitorWindow monitor_window;
 static DebugApuWindow apu_window;
 static DebugVideoWindow video_window;
@@ -1532,6 +1893,9 @@ static AboutWindow about_window;
 static SettingsWindow settings_window;
 static CompatibilityReporter compatibility_reporter_window;
 static NotificationManager notification_manager;
+#if defined(_WIN32)
+static AutoUpdateWindow update_window;
+#endif
 static std::deque<const char *> g_errors;
 
 class FirstBootWindow
@@ -1607,10 +1971,7 @@ public:
 
         msg = "Visit https://xemu.app for more information";
         ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
-        ImGui::Text("%s", msg);
-        if (ImGui::IsItemClicked()) {
-            xemu_open_web_browser("https://xemu.app");
-        }
+        Hyperlink(msg, "https://xemu.app");
 
         ImGui::End();
     }
@@ -1665,6 +2026,13 @@ static void action_shutdown(void)
     qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_UI);
 }
 
+
+static bool is_key_pressed(int scancode)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    return io.KeysDown[scancode] && (io.KeysDownDuration[scancode] == 0.0);
+}
+
 static void process_keyboard_shortcuts(void)
 {
     if (is_shortcut_key_pressed(SDL_SCANCODE_E)) {
@@ -1685,6 +2053,10 @@ static void process_keyboard_shortcuts(void)
 
     if (is_shortcut_key_pressed(SDL_SCANCODE_Q)) {
         action_shutdown();
+    }
+
+    if (is_key_pressed(SDL_SCANCODE_GRAVE)) {
+        monitor_window.toggle_open();
     }
 }
 
@@ -1738,12 +2110,18 @@ static void ShowMainMenu()
                 xemu_settings_save();
                 g_trigger_style_update = true;
             }
-            if (ImGui::Combo("Scaling Mode", &scaling_mode, "Center\0Scale\0Stretch\0")) {
+
+            int rendering_scale = nv2a_get_surface_scale_factor() - 1;
+            if (ImGui::Combo("Rendering Scale", &rendering_scale, "1x\0" "2x\0" "3x\0" "4x\0" "5x\0" "6x\0" "7x\0" "8x\0" "9x\0" "10x\0")) {
+                nv2a_set_surface_scale_factor(rendering_scale+1);
+            }
+
+            if (ImGui::Combo("Scaling Mode", &scaling_mode, "Center\0Scale\0Scale (Widescreen 16:9)\0Stretch\0")) {
                 xemu_settings_set_enum(XEMU_SETTINGS_DISPLAY_SCALE, scaling_mode);
                 xemu_settings_save();
             }
             ImGui::SameLine(); HelpMarker("Controls how the rendered content should be scaled into the window");
-            if (ImGui::MenuItem("Fullscreen", NULL, xemu_is_fullscreen(), true)) {
+            if (ImGui::MenuItem("Fullscreen", SHORTCUT_MENU_TEXT(Alt+F), xemu_is_fullscreen(), true)) {
                 xemu_toggle_fullscreen();
             }
 
@@ -1753,7 +2131,7 @@ static void ShowMainMenu()
 
         if (ImGui::BeginMenu("Debug"))
         {
-            ImGui::MenuItem("Monitor", NULL, &monitor_window.is_open);
+            ImGui::MenuItem("Monitor", "~", &monitor_window.is_open);
             ImGui::MenuItem("Audio", NULL, &apu_window.is_open);
             ImGui::MenuItem("Video", NULL, &video_window.is_open);
             ImGui::EndMenu();
@@ -1761,7 +2139,16 @@ static void ShowMainMenu()
 
         if (ImGui::BeginMenu("Help"))
         {
-            ImGui::MenuItem("Report Compatibility", NULL, &compatibility_reporter_window.is_open);
+            if (ImGui::MenuItem("Help", NULL))
+            {
+                xemu_open_web_browser("https://xemu.app/docs/getting-started/");
+            }
+
+            ImGui::MenuItem("Report Compatibility...", NULL, &compatibility_reporter_window.is_open);
+#if defined(_WIN32)
+            ImGui::MenuItem("Check for Updates...", NULL, &update_window.is_open);
+#endif
+
             ImGui::Separator();
             ImGui::MenuItem("About", NULL, &about_window.is_open);
             ImGui::EndMenu();
@@ -1777,12 +2164,17 @@ static void InitializeStyle()
     ImGuiIO& io = ImGui::GetIO();
 
     io.Fonts->Clear();
-    io.Fonts->AddFontFromFileTTF(xemu_get_resource_path("Roboto-Medium.ttf"), 16*g_ui_scale);
+
+    ImFontConfig roboto_font_cfg = ImFontConfig();
+    roboto_font_cfg.FontDataOwnedByAtlas = false;
+    io.Fonts->AddFontFromMemoryTTF((void*)roboto_medium_data, roboto_medium_size, 16*g_ui_scale, &roboto_font_cfg);
+
     ImFontConfig font_cfg = ImFontConfig();
     font_cfg.OversampleH = font_cfg.OversampleV = 1;
     font_cfg.PixelSnapH = true;
     font_cfg.SizePixels = 13.0f*g_ui_scale;
     g_fixed_width_font = io.Fonts->AddFontDefault(&font_cfg);
+
     ImGui_ImplOpenGL3_CreateFontsTexture();
 
     ImGuiStyle style;
@@ -1887,6 +2279,18 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     g_sdl_window = window;
 
     ImPlot::CreateContext();
+
+#if defined(_WIN32)
+    int should_check_for_update;
+    xemu_settings_get_bool(XEMU_SETTINGS_MISC_CHECK_FOR_UPDATE, &should_check_for_update);
+    if (should_check_for_update == -1) {
+        update_window.should_prompt_auto_update_selection =
+            update_window.is_open = !xemu_settings_did_fail_to_load();
+
+    } else if (should_check_for_update) {
+        update_window.check_for_updates_and_prompt_if_available();
+    }
+#endif
 }
 
 void xemu_hud_cleanup(void)
@@ -2052,6 +2456,9 @@ void xemu_hud_render(void)
     network_window.Draw();
     compatibility_reporter_window.Draw();
     notification_manager.Draw();
+#if defined(_WIN32)
+    update_window.Draw();
+#endif
 
     // Very rudimentary error notification API
     if (g_errors.size() > 0) {

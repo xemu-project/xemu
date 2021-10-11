@@ -11,17 +11,15 @@
 #ifndef SWIM_H
 #define SWIM_H
 
-#include "qemu/osdep.h"
 #include "hw/sysbus.h"
+#include "qom/object.h"
 
 #define SWIM_MAX_FD            2
 
-typedef struct SWIMDrive SWIMDrive;
-typedef struct SWIMBus SWIMBus;
 typedef struct SWIMCtrl SWIMCtrl;
 
 #define TYPE_SWIM_DRIVE "swim-drive"
-#define SWIM_DRIVE(obj) OBJECT_CHECK(SWIMDrive, (obj), TYPE_SWIM_DRIVE)
+OBJECT_DECLARE_SIMPLE_TYPE(SWIMDrive, SWIM_DRIVE)
 
 struct SWIMDrive {
     DeviceState qdev;
@@ -30,7 +28,7 @@ struct SWIMDrive {
 };
 
 #define TYPE_SWIM_BUS "swim-bus"
-#define SWIM_BUS(obj) OBJECT_CHECK(SWIMBus, (obj), TYPE_SWIM_BUS)
+OBJECT_DECLARE_SIMPLE_TYPE(SWIMBus, SWIM_BUS)
 
 struct SWIMBus {
     BusState bus;
@@ -67,10 +65,10 @@ struct SWIMCtrl {
 };
 
 #define TYPE_SWIM "swim"
-#define SWIM(obj) OBJECT_CHECK(SWIM, (obj), TYPE_SWIM)
+OBJECT_DECLARE_SIMPLE_TYPE(Swim, SWIM)
 
-typedef struct SWIM {
+struct Swim {
     SysBusDevice parent_obj;
     SWIMCtrl     ctrl;
-} SWIM;
+};
 #endif

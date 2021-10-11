@@ -1,6 +1,7 @@
 /*
  * QEMU Loongson Local I/O interrupt controler.
  *
+ * Copyright (c) 2020 Huacai Chen <chenhc@lemote.com>
  * Copyright (c) 2020 Jiaxun Yang <jiaxun.yang@flygoat.com>
  *
  * This program is free software: you can redistribute it and/or modify
@@ -19,12 +20,11 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/sysbus.h"
 #include "qemu/module.h"
+#include "qemu/log.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
-
-#define D(x)
+#include "hw/intc/loongson_liointc.h"
 
 #define NUM_IRQS                32
 
@@ -39,12 +39,9 @@
 #define R_IEN                   0x24
 #define R_IEN_SET               0x28
 #define R_IEN_CLR               0x2c
-#define R_PERCORE_ISR(x)        (0x40 + 0x8 * x)
-#define R_END                   0x64
-
-#define TYPE_LOONGSON_LIOINTC "loongson.liointc"
-#define LOONGSON_LIOINTC(obj) \
-        OBJECT_CHECK(struct loongson_liointc, (obj), TYPE_LOONGSON_LIOINTC)
+#define R_ISR_SIZE              0x8
+#define R_START                 0x40
+#define R_END                   (R_START + R_ISR_SIZE * NUM_CORES)
 
 struct loongson_liointc {
     SysBusDevice parent_obj;
@@ -122,14 +119,18 @@ liointc_read(void *opaque, hwaddr addr, unsigned int size)
         goto out;
     }
 
-    /* Rest is 4 byte */
+    /* Rest are 4 bytes */
     if (size != 4 || (addr % 4)) {
         goto out;
     }
 
-    if (addr >= R_PERCORE_ISR(0) &&
-        addr < R_PERCORE_ISR(NUM_CORES)) {
-        int core = (addr - R_PERCORE_ISR(0)) / 4;
+    if (addr >= R_START && addr < R_END) {
+        hwaddr offset = addr - R_START;
+        int core = offset / R_ISR_SIZE;
+
+        if (offset % R_ISR_SIZE) {
+            goto out;
+        }
         r = p->per_core_isr[core];
         goto out;
     }
@@ -146,7 +147,8 @@ liointc_read(void *opaque, hwaddr addr, unsigned int size)
     }
 
 out:
-    D(qemu_log("%s: size=%d addr=%lx val=%x\n", __func__, size, addr, r));
+    qemu_log_mask(CPU_LOG_INT, "%s: size=%d, addr=%"HWADDR_PRIx", val=%x\n",
+                  __func__, size, addr, r);
     return r;
 }
 
@@ -157,7 +159,8 @@ liointc_write(void *opaque, hwaddr addr,
     struct loongson_liointc *p = opaque;
     uint32_t value = val64;
 
-    D(qemu_log("%s: size=%d, addr=%lx val=%x\n", __func__, size, addr, value));
+    qemu_log_mask(CPU_LOG_INT, "%s: size=%d, addr=%"HWADDR_PRIx", val=%x\n",
+                  __func__, size, addr, value);
 
     /* Mapper is 1 byte */
     if (size == 1 && addr < R_MAPPER_END) {
@@ -165,14 +168,18 @@ liointc_write(void *opaque, hwaddr addr,
         goto out;
     }
 
-    /* Rest is 4 byte */
+    /* Rest are 4 bytes */
     if (size != 4 || (addr % 4)) {
         goto out;
     }
 
-    if (addr >= R_PERCORE_ISR(0) &&
-        addr < R_PERCORE_ISR(NUM_CORES)) {
-        int core = (addr - R_PERCORE_ISR(0)) / 4;
+    if (addr >= R_START && addr < R_END) {
+        hwaddr offset = addr - R_START;
+        int core = offset / R_ISR_SIZE;
+
+        if (offset % R_ISR_SIZE) {
+            goto out;
+        }
         p->per_core_isr[core] = value;
         goto out;
     }
@@ -223,7 +230,7 @@ static void loongson_liointc_init(Object *obj)
     }
 
     memory_region_init_io(&p->mmio, obj, &pic_ops, p,
-                         "loongson.liointc", R_END);
+                         TYPE_LOONGSON_LIOINTC, R_END);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &p->mmio);
 }
 

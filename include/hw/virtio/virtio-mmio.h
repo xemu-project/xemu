@@ -23,21 +23,18 @@
 #define HW_VIRTIO_MMIO_H
 
 #include "hw/virtio/virtio-bus.h"
+#include "qom/object.h"
 
 /* QOM macros */
 /* virtio-mmio-bus */
 #define TYPE_VIRTIO_MMIO_BUS "virtio-mmio-bus"
-#define VIRTIO_MMIO_BUS(obj) \
-        OBJECT_CHECK(VirtioBusState, (obj), TYPE_VIRTIO_MMIO_BUS)
-#define VIRTIO_MMIO_BUS_GET_CLASS(obj) \
-        OBJECT_GET_CLASS(VirtioBusClass, (obj), TYPE_VIRTIO_MMIO_BUS)
-#define VIRTIO_MMIO_BUS_CLASS(klass) \
-        OBJECT_CLASS_CHECK(VirtioBusClass, (klass), TYPE_VIRTIO_MMIO_BUS)
+/* This is reusing the VirtioBusState typedef from TYPE_VIRTIO_BUS */
+DECLARE_OBJ_CHECKERS(VirtioBusState, VirtioBusClass,
+                     VIRTIO_MMIO_BUS, TYPE_VIRTIO_MMIO_BUS)
 
 /* virtio-mmio */
 #define TYPE_VIRTIO_MMIO "virtio-mmio"
-#define VIRTIO_MMIO(obj) \
-        OBJECT_CHECK(VirtIOMMIOProxy, (obj), TYPE_VIRTIO_MMIO)
+OBJECT_DECLARE_SIMPLE_TYPE(VirtIOMMIOProxy, VIRTIO_MMIO)
 
 #define VIRT_MAGIC 0x74726976 /* 'virt' */
 #define VIRT_VERSION 2
@@ -52,12 +49,17 @@ typedef struct VirtIOMMIOQueue {
     uint32_t used[2];
 } VirtIOMMIOQueue;
 
-typedef struct {
+#define VIRTIO_IOMMIO_FLAG_USE_IOEVENTFD_BIT 1
+#define VIRTIO_IOMMIO_FLAG_USE_IOEVENTFD \
+        (1 << VIRTIO_IOMMIO_FLAG_USE_IOEVENTFD_BIT)
+
+struct VirtIOMMIOProxy {
     /* Generic */
     SysBusDevice parent_obj;
     MemoryRegion iomem;
     qemu_irq irq;
     bool legacy;
+    uint32_t flags;
     /* Guest accessible state needing migration and reset */
     uint32_t host_features_sel;
     uint32_t guest_features_sel;
@@ -68,6 +70,6 @@ typedef struct {
     /* Fields only used for non-legacy (v2) devices */
     uint32_t guest_features[2];
     VirtIOMMIOQueue vqs[VIRTIO_QUEUE_MAX];
-} VirtIOMMIOProxy;
+};
 
 #endif

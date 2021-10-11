@@ -101,6 +101,14 @@ typedef struct VertexAttribute {
     GLuint gl_inline_buffer;
 } VertexAttribute;
 
+typedef struct SurfaceFormatInfo {
+    unsigned int bytes_per_pixel;
+    GLint gl_internal_format;
+    GLenum gl_format;
+    GLenum gl_type;
+    GLenum gl_attachment;
+} SurfaceFormatInfo;
+
 typedef struct Surface {
     bool draw_dirty;
     bool buffer_dirty;
@@ -126,6 +134,7 @@ typedef struct SurfaceBinding {
 
     hwaddr vram_addr;
 
+    SurfaceFormatInfo fmt;
     SurfaceShape shape;
     uintptr_t dma_addr;
     uintptr_t dma_len;
@@ -135,13 +144,8 @@ typedef struct SurfaceBinding {
     unsigned int width;
     unsigned int height;
     unsigned int pitch;
-    unsigned int bytes_per_pixel;
     size_t size;
 
-    GLenum gl_attachment;
-    GLenum gl_internal_format;
-    GLenum gl_format;
-    GLenum gl_type;
     GLuint gl_buffer;
 
     int frame_time;
@@ -168,6 +172,7 @@ typedef struct TextureBinding {
     unsigned int refcnt;
     int draw_time;
     uint64_t data_hash;
+    unsigned int scale;
 } TextureBinding;
 
 typedef struct TextureKey {
@@ -238,6 +243,8 @@ typedef struct PGRAPHState {
 
     struct disp_rndr {
         GLuint fbo, vao, vbo, prog;
+        GLuint display_size_loc;
+        GLuint line_offset_loc;
         GLuint tex_loc;
         GLuint pvideo_tex;
         GLint pvideo_enable_loc;
@@ -265,8 +272,6 @@ typedef struct PGRAPHState {
         int width;
         int height;
     } surface_binding_dim; // FIXME: Refactor
-    bool downloads_pending;
-    QemuEvent downloads_complete;
 
     hwaddr dma_a, dma_b;
     Lru texture_cache;
@@ -283,7 +288,13 @@ typedef struct PGRAPHState {
     float bump_env_matrix[NV2A_MAX_TEXTURES - 1][4]; /* 3 allowed stages with 2x2 matrix each */
 
     GLuint gl_framebuffer;
+
     GLuint gl_display_buffer;
+    GLint gl_display_buffer_internal_format;
+    GLsizei gl_display_buffer_width;
+    GLsizei gl_display_buffer_height;
+    GLenum gl_display_buffer_format;
+    GLenum gl_display_buffer_type;
 
     hwaddr dma_state;
     hwaddr dma_notifies;
@@ -322,6 +333,8 @@ typedef struct PGRAPHState {
     float light_local_position[NV2A_MAX_LIGHTS][3];
     float light_local_attenuation[NV2A_MAX_LIGHTS][3];
 
+    float point_params[8];
+
     VertexAttribute vertex_attributes[NV2A_VERTEXSHADER_ATTRIBUTES];
     uint16_t compressed_attrs;
 
@@ -353,9 +366,17 @@ typedef struct PGRAPHState {
     bool waiting_for_nop;
     bool waiting_for_flip;
     bool waiting_for_context_switch;
+    bool downloads_pending;
+    bool download_dirty_surfaces_pending;
     bool flush_pending;
     bool gl_sync_pending;
+    QemuEvent downloads_complete;
+    QemuEvent dirty_surfaces_download_complete;
+    QemuEvent flush_complete;
     QemuEvent gl_sync_complete;
+
+    unsigned int surface_scale_factor;
+    uint8_t *scale_buf;
 } PGRAPHState;
 
 typedef struct NV2AState {
@@ -393,6 +414,7 @@ typedef struct NV2AState {
         QemuCond fifo_cond;
         QemuCond fifo_idle_cond;
         bool fifo_kick;
+        bool halt;
     } pfifo;
 
     struct {
@@ -494,6 +516,8 @@ int pgraph_method(NV2AState *d, unsigned int subchannel, unsigned int method,
                   size_t num_words_available, size_t max_lookahead_words);
 void pgraph_gl_sync(NV2AState *d);
 void pgraph_process_pending_downloads(NV2AState *d);
+void pgraph_download_dirty_surfaces(NV2AState *d);
+void pgraph_flush(NV2AState *d);
 
 void *pfifo_thread(void *arg);
 void pfifo_kick(NV2AState *d);

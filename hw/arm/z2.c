@@ -24,8 +24,8 @@
 #include "hw/audio/wm8750.h"
 #include "audio/audio.h"
 #include "exec/address-spaces.h"
-#include "sysemu/qtest.h"
 #include "cpu.h"
+#include "qom/object.h"
 
 #ifdef DEBUG_Z2
 #define DPRINTF(fmt, ...) \
@@ -102,19 +102,19 @@ static struct arm_boot_info z2_binfo = {
 #define Z2_GPIO_KEY_ON      1
 #define Z2_GPIO_LCD_CS      88
 
-typedef struct {
-    SSISlave ssidev;
+struct ZipitLCD {
+    SSIPeripheral ssidev;
     int32_t selected;
     int32_t enabled;
     uint8_t buf[3];
     uint32_t cur_reg;
     int pos;
-} ZipitLCD;
+};
 
 #define TYPE_ZIPIT_LCD "zipit-lcd"
-#define ZIPIT_LCD(obj) OBJECT_CHECK(ZipitLCD, (obj), TYPE_ZIPIT_LCD)
+OBJECT_DECLARE_SIMPLE_TYPE(ZipitLCD, ZIPIT_LCD)
 
-static uint32_t zipit_lcd_transfer(SSISlave *dev, uint32_t value)
+static uint32_t zipit_lcd_transfer(SSIPeripheral *dev, uint32_t value)
 {
     ZipitLCD *z = ZIPIT_LCD(dev);
     uint16_t val;
@@ -154,7 +154,7 @@ static void z2_lcd_cs(void *opaque, int line, int level)
     z2_lcd->selected = !level;
 }
 
-static void zipit_lcd_realize(SSISlave *dev, Error **errp)
+static void zipit_lcd_realize(SSIPeripheral *dev, Error **errp)
 {
     ZipitLCD *z = ZIPIT_LCD(dev);
     z->selected = 0;
@@ -162,12 +162,12 @@ static void zipit_lcd_realize(SSISlave *dev, Error **errp)
     z->pos = 0;
 }
 
-static VMStateDescription vmstate_zipit_lcd_state = {
+static const VMStateDescription vmstate_zipit_lcd_state = {
     .name = "zipit-lcd",
     .version_id = 2,
     .minimum_version_id = 2,
     .fields = (VMStateField[]) {
-        VMSTATE_SSI_SLAVE(ssidev, ZipitLCD),
+        VMSTATE_SSI_PERIPHERAL(ssidev, ZipitLCD),
         VMSTATE_INT32(selected, ZipitLCD),
         VMSTATE_INT32(enabled, ZipitLCD),
         VMSTATE_BUFFER(buf, ZipitLCD),
@@ -180,7 +180,7 @@ static VMStateDescription vmstate_zipit_lcd_state = {
 static void zipit_lcd_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SSISlaveClass *k = SSI_SLAVE_CLASS(klass);
+    SSIPeripheralClass *k = SSI_PERIPHERAL_CLASS(klass);
 
     k->realize = zipit_lcd_realize;
     k->transfer = zipit_lcd_transfer;
@@ -189,20 +189,20 @@ static void zipit_lcd_class_init(ObjectClass *klass, void *data)
 
 static const TypeInfo zipit_lcd_info = {
     .name          = TYPE_ZIPIT_LCD,
-    .parent        = TYPE_SSI_SLAVE,
+    .parent        = TYPE_SSI_PERIPHERAL,
     .instance_size = sizeof(ZipitLCD),
     .class_init    = zipit_lcd_class_init,
 };
 
 #define TYPE_AER915 "aer915"
-#define AER915(obj) OBJECT_CHECK(AER915State, (obj), TYPE_AER915)
+OBJECT_DECLARE_SIMPLE_TYPE(AER915State, AER915)
 
-typedef struct AER915State {
+struct AER915State {
     I2CSlave parent_obj;
 
     int len;
     uint8_t buf[3];
-} AER915State;
+};
 
 static int aer915_send(I2CSlave *i2c, uint8_t data)
 {
@@ -268,7 +268,7 @@ static uint8_t aer915_recv(I2CSlave *slave)
     return retval;
 }
 
-static VMStateDescription vmstate_aer915_state = {
+static const VMStateDescription vmstate_aer915_state = {
     .name = "aer915",
     .version_id = 1,
     .minimum_version_id = 1,
@@ -328,7 +328,7 @@ static void z2_init(MachineState *machine)
 
     type_register_static(&zipit_lcd_info);
     type_register_static(&aer915_info);
-    z2_lcd = ssi_create_slave(mpu->ssp[1], TYPE_ZIPIT_LCD);
+    z2_lcd = ssi_create_peripheral(mpu->ssp[1], TYPE_ZIPIT_LCD);
     bus = pxa2xx_i2c_bus(mpu->i2c[0]);
     i2c_slave_create_simple(bus, TYPE_AER915, 0x55);
     wm = DEVICE(i2c_slave_create_simple(bus, TYPE_WM8750, 0x1b));

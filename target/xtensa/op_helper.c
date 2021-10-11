@@ -32,7 +32,6 @@
 #include "qemu/host-utils.h"
 #include "exec/exec-all.h"
 #include "exec/cpu_ldst.h"
-#include "exec/address-spaces.h"
 #include "qemu/timer.h"
 
 #ifndef CONFIG_USER_ONLY
@@ -62,7 +61,7 @@ void HELPER(update_ccompare)(CPUXtensaState *env, uint32_t i)
 {
     uint64_t dcc;
 
-    atomic_and(&env->sregs[INTSET],
+    qatomic_and(&env->sregs[INTSET],
                ~(1u << env->config->timerint[i]));
     HELPER(update_ccount)(env);
     dcc = (uint64_t)(env->sregs[CCOMPARE + i] - env->sregs[CCOUNT] - 1) + 1;

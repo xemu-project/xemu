@@ -26,8 +26,12 @@ typedef int64_t  Elf64_Sxword;
 #define PT_NOTE    4
 #define PT_SHLIB   5
 #define PT_PHDR    6
+#define PT_LOOS    0x60000000
+#define PT_HIOS    0x6fffffff
 #define PT_LOPROC  0x70000000
 #define PT_HIPROC  0x7fffffff
+
+#define PT_GNU_PROPERTY   (PT_LOOS + 0x474e553)
 
 #define PT_MIPS_REGINFO   0x70000000
 #define PT_MIPS_RTPROC    0x70000001
@@ -170,7 +174,9 @@ typedef struct mips_elf_abiflags_v0 {
 
 #define EM_OPENRISC     92        /* OpenCores OpenRISC */
 
-#define EM_UNICORE32    110     /* UniCore32 */
+#define EM_HEXAGON      164     /* Qualcomm Hexagon */
+
+#define EM_RX           173     /* Renesas RX family */
 
 #define EM_RISCV        243     /* RISC-V */
 
@@ -198,11 +204,6 @@ typedef struct mips_elf_abiflags_v0 {
 #define EM_XTENSA   94      /* Tensilica Xtensa */
 
 #define EM_AARCH64  183
-
-#define EM_TILEGX   191 /* TILE-Gx */
-
-#define EM_MOXIE           223     /* Moxie processor family */
-#define EM_MOXIE_OLD       0xFEED
 
 #define EF_AVR_MACH     0x7F       /* Mask for AVR e_flags to get core type */
 
@@ -558,6 +559,7 @@ typedef struct {
 #define PPC_FEATURE2_HTM_NOSC           0x01000000
 #define PPC_FEATURE2_ARCH_3_00          0x00800000
 #define PPC_FEATURE2_HAS_IEEE128        0x00400000
+#define PPC_FEATURE2_ARCH_3_10          0x00040000
 
 /* Bits present in AT_HWCAP for Sparc.  */
 
@@ -603,6 +605,13 @@ typedef struct {
 #define HWCAP_S390_HIGH_GPRS    512
 #define HWCAP_S390_TE           1024
 #define HWCAP_S390_VXRS         2048
+#define HWCAP_S390_VXRS_BCD     4096
+#define HWCAP_S390_VXRS_EXT     8192
+#define HWCAP_S390_GS           16384
+#define HWCAP_S390_VXRS_EXT2    32768
+#define HWCAP_S390_VXRS_PDE     65536
+#define HWCAP_S390_SORT         131072
+#define HWCAP_S390_DFLT         262144
 
 /* M68K specific definitions. */
 /* We use the top 24 bits to encode information about the
@@ -1655,6 +1664,24 @@ typedef struct elf64_shdr {
 #define NT_ARM_HW_WATCH 0x403           /* ARM hardware watchpoint registers */
 #define NT_ARM_SYSTEM_CALL      0x404   /* ARM system call number */
 #define NT_ARM_SVE      0x405           /* ARM Scalable Vector Extension regs */
+
+/* Defined note types for GNU systems.  */
+
+#define NT_GNU_PROPERTY_TYPE_0  5       /* Program property */
+
+/* Values used in GNU .note.gnu.property notes (NT_GNU_PROPERTY_TYPE_0).  */
+
+#define GNU_PROPERTY_STACK_SIZE                 1
+#define GNU_PROPERTY_NO_COPY_ON_PROTECTED       2
+
+#define GNU_PROPERTY_LOPROC                     0xc0000000
+#define GNU_PROPERTY_HIPROC                     0xdfffffff
+#define GNU_PROPERTY_LOUSER                     0xe0000000
+#define GNU_PROPERTY_HIUSER                     0xffffffff
+
+#define GNU_PROPERTY_AARCH64_FEATURE_1_AND      0xc0000000
+#define GNU_PROPERTY_AARCH64_FEATURE_1_BTI      (1u << 0)
+#define GNU_PROPERTY_AARCH64_FEATURE_1_PAC      (1u << 1)
 
 /*
  * Physical entry point into the kernel.

@@ -22,13 +22,14 @@
 #define QCRYPTO_TLSCREDSANON_H
 
 #include "crypto/tlscreds.h"
+#include "qom/object.h"
 
 #define TYPE_QCRYPTO_TLS_CREDS_ANON "tls-creds-anon"
-#define QCRYPTO_TLS_CREDS_ANON(obj)                  \
-    OBJECT_CHECK(QCryptoTLSCredsAnon, (obj), TYPE_QCRYPTO_TLS_CREDS_ANON)
-
-
 typedef struct QCryptoTLSCredsAnon QCryptoTLSCredsAnon;
+DECLARE_INSTANCE_CHECKER(QCryptoTLSCredsAnon, QCRYPTO_TLS_CREDS_ANON,
+                         TYPE_QCRYPTO_TLS_CREDS_ANON)
+
+
 typedef struct QCryptoTLSCredsAnonClass QCryptoTLSCredsAnonClass;
 
 /**
@@ -90,18 +91,6 @@ typedef struct QCryptoTLSCredsAnonClass QCryptoTLSCredsAnonClass;
  * </example>
  *
  */
-
-
-struct QCryptoTLSCredsAnon {
-    QCryptoTLSCreds parent_obj;
-#ifdef CONFIG_GNUTLS
-    union {
-        gnutls_anon_server_credentials_t server;
-        gnutls_anon_client_credentials_t client;
-    } data;
-#endif
-};
-
 
 struct QCryptoTLSCredsAnonClass {
     QCryptoTLSCredsClass parent_class;

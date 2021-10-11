@@ -29,6 +29,7 @@
 #include "hw/qdev-core.h"
 #include "qemu/iov.h"
 #include "qemu/queue.h"
+#include "qom/object.h"
 
 /* Constants related to the USB / PCI interaction */
 #define USB_SBRN    0x60 /* Serial Bus Release Number Register */
@@ -174,7 +175,6 @@
 
 #define USB_INTERFACE_INVALID         255
 
-typedef struct USBBus USBBus;
 typedef struct USBBusOps USBBusOps;
 typedef struct USBPort USBPort;
 typedef struct USBDevice USBDevice;
@@ -216,10 +216,10 @@ struct USBEndpoint {
 };
 
 enum USBDeviceFlags {
-    USB_DEV_FLAG_FULL_PATH,
     USB_DEV_FLAG_IS_HOST,
     USB_DEV_FLAG_MSOS_DESC_ENABLE,
     USB_DEV_FLAG_MSOS_DESC_IN_USE,
+    USB_DEV_FLAG_IS_SCSI_STORAGE,
 };
 
 /* definition of a USB device */
@@ -230,6 +230,9 @@ struct USBDevice {
     char *serial;
     void *opaque;
     uint32_t flags;
+
+    char *pcap_filename;
+    FILE *pcap;
 
     /* Actual connected speed */
     int speed;
@@ -264,17 +267,12 @@ struct USBDevice {
 };
 
 #define TYPE_USB_DEVICE "usb-device"
-#define USB_DEVICE(obj) \
-     OBJECT_CHECK(USBDevice, (obj), TYPE_USB_DEVICE)
-#define USB_DEVICE_CLASS(klass) \
-     OBJECT_CLASS_CHECK(USBDeviceClass, (klass), TYPE_USB_DEVICE)
-#define USB_DEVICE_GET_CLASS(obj) \
-     OBJECT_GET_CLASS(USBDeviceClass, (obj), TYPE_USB_DEVICE)
+OBJECT_DECLARE_TYPE(USBDevice, USBDeviceClass, USB_DEVICE)
 
 typedef void (*USBDeviceRealize)(USBDevice *dev, Error **errp);
 typedef void (*USBDeviceUnrealize)(USBDevice *dev);
 
-typedef struct USBDeviceClass {
+struct USBDeviceClass {
     DeviceClass parent_class;
 
     USBDeviceRealize realize;
@@ -346,7 +344,7 @@ typedef struct USBDeviceClass {
     const char *product_desc;
     const USBDesc *usb_desc;
     bool attached_settable;
-} USBDeviceClass;
+};
 
 typedef struct USBPortOps {
     void (*attach)(USBPort *port);
@@ -468,7 +466,6 @@ void usb_generic_async_ctrl_complete(USBDevice *s, USBPacket *p);
 
 /* usb-linux.c */
 void hmp_info_usbhost(Monitor *mon, const QDict *qdict);
-bool usb_host_dev_is_scsi_storage(USBDevice *usbdev);
 
 /* usb ports of the VM */
 
@@ -477,7 +474,7 @@ bool usb_host_dev_is_scsi_storage(USBDevice *usbdev);
 /* usb-bus.c */
 
 #define TYPE_USB_BUS "usb-bus"
-#define USB_BUS(obj) OBJECT_CHECK(USBBus, (obj), TYPE_USB_BUS)
+OBJECT_DECLARE_SIMPLE_TYPE(USBBus, USB_BUS)
 
 struct USBBus {
     BusState qbus;
@@ -502,7 +499,7 @@ void usb_bus_new(USBBus *bus, size_t bus_size,
 void usb_bus_release(USBBus *bus);
 USBBus *usb_bus_find(int busnr);
 void usb_legacy_register(const char *typename, const char *usbdevice_name,
-                         USBDevice *(*usbdevice_init)(const char *params));
+                         USBDevice *(*usbdevice_init)(void));
 USBDevice *usb_new(const char *name);
 bool usb_realize_and_unref(USBDevice *dev, USBBus *bus, Error **errp);
 USBDevice *usb_create_simple(USBBus *bus, const char *name);
@@ -564,6 +561,11 @@ const char *usb_device_get_product_desc(USBDevice *dev);
 
 const USBDesc *usb_device_get_usb_desc(USBDevice *dev);
 
+static inline bool usb_device_is_scsi_storage(USBDevice *dev)
+{
+    return dev->flags & (1 << USB_DEV_FLAG_IS_SCSI_STORAGE);
+}
+
 /* quirks.c */
 
 /* In bulk endpoints are streaming data sources (iow behave like isoc eps) */
@@ -574,5 +576,10 @@ const USBDesc *usb_device_get_usb_desc(USBDevice *dev);
 int usb_get_quirks(uint16_t vendor_id, uint16_t product_id,
                    uint8_t interface_class, uint8_t interface_subclass,
                    uint8_t interface_protocol);
+
+/* pcap.c */
+void usb_pcap_init(FILE *fp);
+void usb_pcap_ctrl(USBPacket *p, bool setup);
+void usb_pcap_data(USBPacket *p, bool setup);
 
 #endif

@@ -13,7 +13,7 @@
 #define TFR(expr) do { if ((expr) != -1) break; } while (errno == EINTR)
 
 /* Copyright string for -version arguments, About dialogs, etc */
-#define QEMU_COPYRIGHT "Copyright (c) 2003-2020 " \
+#define QEMU_COPYRIGHT "Copyright (c) 2003-2021 " \
     "Fabrice Bellard and the QEMU Project developers"
 
 /* Bug reporting information for --help arguments, About dialogs, etc */
@@ -108,37 +108,24 @@ void qemu_progress_end(void);
 void qemu_progress_print(float delta, int max);
 const char *qemu_get_vm_name(void);
 
-#define QEMU_FILE_TYPE_BIOS   0
-#define QEMU_FILE_TYPE_KEYMAP 1
-/**
- * qemu_find_file:
- * @type: QEMU_FILE_TYPE_BIOS (for BIOS, VGA BIOS)
- *        or QEMU_FILE_TYPE_KEYMAP (for keymaps).
- * @name: Relative or absolute file name
- *
- * If @name exists on disk as an absolute path, or a path relative
- * to the current directory, then returns @name unchanged.
- * Otherwise searches for @name file in the data directories, either
- * configured at build time (DATADIR) or registered with the -L command
- * line option.
- *
- * The caller must use g_free() to free the returned data when it is
- * no longer required.
- *
- * Returns: a path that can access @name, or NULL if no matching file exists.
- */
-char *qemu_find_file(int type, const char *name);
-
 /* OS specific functions */
 void os_setup_early_signal_handling(void);
-char *os_find_datadir(void);
 int os_parse_cmd_args(int index, const char *optarg);
+
+/*
+ * Hexdump a line of a byte buffer into a hexadecimal/ASCII buffer
+ */
+#define QEMU_HEXDUMP_LINE_BYTES 16 /* Number of bytes to dump */
+#define QEMU_HEXDUMP_LINE_LEN 75   /* Number of characters in line */
+void qemu_hexdump_line(char *line, unsigned int b, const void *bufptr,
+                       unsigned int len, bool ascii);
 
 /*
  * Hexdump a buffer to a file. An optional string prefix is added to every line
  */
 
-void qemu_hexdump(const char *buf, FILE *fp, const char *prefix, size_t size);
+void qemu_hexdump(FILE *fp, const char *prefix,
+                  const void *bufptr, size_t size);
 
 /*
  * helper to parse debug environment variables

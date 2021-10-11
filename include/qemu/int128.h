@@ -11,6 +11,11 @@ static inline Int128 int128_make64(uint64_t a)
     return a;
 }
 
+static inline Int128 int128_makes64(int64_t a)
+{
+    return a;
+}
+
 static inline Int128 int128_make128(uint64_t lo, uint64_t hi)
 {
     return (__uint128_t)hi << 64 | lo;
@@ -58,9 +63,19 @@ static inline Int128 int128_and(Int128 a, Int128 b)
     return a & b;
 }
 
+static inline Int128 int128_or(Int128 a, Int128 b)
+{
+    return a | b;
+}
+
 static inline Int128 int128_rshift(Int128 a, int n)
 {
     return a >> n;
+}
+
+static inline Int128 int128_lshift(Int128 a, int n)
+{
+    return a << n;
 }
 
 static inline Int128 int128_add(Int128 a, Int128 b)
@@ -157,6 +172,11 @@ static inline Int128 int128_make64(uint64_t a)
     return (Int128) { a, 0 };
 }
 
+static inline Int128 int128_makes64(int64_t a)
+{
+    return (Int128) { a, a >> 63 };
+}
+
 static inline Int128 int128_make128(uint64_t lo, uint64_t hi)
 {
     return (Int128) { lo, hi };
@@ -203,6 +223,11 @@ static inline Int128 int128_and(Int128 a, Int128 b)
     return (Int128) { a.lo & b.lo, a.hi & b.hi };
 }
 
+static inline Int128 int128_or(Int128 a, Int128 b)
+{
+    return (Int128) { a.lo | b.lo, a.hi | b.hi };
+}
+
 static inline Int128 int128_rshift(Int128 a, int n)
 {
     int64_t h;
@@ -215,6 +240,17 @@ static inline Int128 int128_rshift(Int128 a, int n)
     } else {
         return int128_make128((a.lo >> n) | ((uint64_t)a.hi << (64 - n)), h);
     }
+}
+
+static inline Int128 int128_lshift(Int128 a, int n)
+{
+    uint64_t l = a.lo << (n & 63);
+    if (n >= 64) {
+        return int128_make128(0, l);
+    } else if (n > 0) {
+        return int128_make128(l, (a.hi << n) | (a.lo >> (64 - n)));
+    }
+    return a;
 }
 
 static inline Int128 int128_add(Int128 a, Int128 b)

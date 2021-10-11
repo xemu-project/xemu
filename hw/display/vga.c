@@ -39,6 +39,8 @@
 //#define DEBUG_VGA_MEM
 //#define DEBUG_VGA_REG
 
+bool have_vga = true;
+
 /* 16 state changes per vertical frame @60 Hz */
 #define VGA_TEXT_CURSOR_PERIOD_MS       (1000 * 2 * 16 / 60)
 
@@ -750,7 +752,8 @@ void vbe_ioport_write_data(void *opaque, uint32_t addr, uint32_t val)
                 val == VBE_DISPI_ID1 ||
                 val == VBE_DISPI_ID2 ||
                 val == VBE_DISPI_ID3 ||
-                val == VBE_DISPI_ID4) {
+                val == VBE_DISPI_ID4 ||
+                val == VBE_DISPI_ID5) {
                 s->vbe_regs[s->vbe_index] = val;
             }
             break;
@@ -1674,7 +1677,6 @@ static void vga_draw_graphic(VGACommonState *s, int full_update)
         if (!(s->cr[VGA_CRTC_MODE] & 2)) {
             addr = (addr & ~0x8000) | ((y1 & 2) << 14);
         }
-        update = full_update;
         page0 = addr & s->vbe_size_mask;
         page1 = (addr + bwidth - 1) & s->vbe_size_mask;
         if (full_update) {

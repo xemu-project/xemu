@@ -17,7 +17,7 @@
 #include "sysemu/sysemu.h"
 #include "hw/qdev-properties.h"
 #include "hw/sysbus.h"
-#include "hw/boards.h" /* FIXME memory_region_allocate_system_memory for sram */
+#include "qom/object.h"
 #include "hw/misc/unimp.h"
 #include "atmega.h"
 
@@ -45,7 +45,7 @@ typedef struct {
     bool is_timer16;
 } peripheral_cfg;
 
-typedef struct AtmegaMcuClass {
+struct AtmegaMcuClass {
     /*< private >*/
     SysBusDeviceClass parent_class;
     /*< public >*/
@@ -59,12 +59,11 @@ typedef struct AtmegaMcuClass {
     size_t adc_count;
     const uint8_t *irq;
     const peripheral_cfg *dev;
-} AtmegaMcuClass;
+};
+typedef struct AtmegaMcuClass AtmegaMcuClass;
 
-#define ATMEGA_MCU_CLASS(klass) \
-    OBJECT_CLASS_CHECK(AtmegaMcuClass, (klass), TYPE_ATMEGA_MCU)
-#define ATMEGA_MCU_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(AtmegaMcuClass, (obj), TYPE_ATMEGA_MCU)
+DECLARE_CLASS_CHECKERS(AtmegaMcuClass, ATMEGA_MCU,
+                       TYPE_ATMEGA_MCU)
 
 static const peripheral_cfg dev168_328[PERIFMAX] = {
     [USART0]        = {  0xc0, POWER0, 1 },
@@ -402,7 +401,7 @@ static void atmega1280_class_init(ObjectClass *oc, void *data)
 {
     AtmegaMcuClass *amc = ATMEGA_MCU_CLASS(oc);
 
-    amc->cpu_type = AVR_CPU_TYPE_NAME("avr6");
+    amc->cpu_type = AVR_CPU_TYPE_NAME("avr51");
     amc->flash_size = 128 * KiB;
     amc->eeprom_size = 4 * KiB;
     amc->sram_size = 8 * KiB;

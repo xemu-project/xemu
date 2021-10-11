@@ -30,20 +30,21 @@
 #include "audio/audio.h"
 #include "hw/boards.h"
 #include "hw/sysbus.h"
-#include "hw/misc/max111x.h"
+#include "hw/adc/max111x.h"
 #include "migration/vmstate.h"
 #include "exec/address-spaces.h"
 #include "cpu.h"
+#include "qom/object.h"
 
 enum spitz_model_e { spitz, akita, borzoi, terrier };
 
-typedef struct {
+struct SpitzMachineClass {
     MachineClass parent;
     enum spitz_model_e model;
     int arm_id;
-} SpitzMachineClass;
+};
 
-typedef struct {
+struct SpitzMachineState {
     MachineState parent;
     PXA2xxState *mpu;
     DeviceState *mux;
@@ -53,15 +54,10 @@ typedef struct {
     DeviceState *scp0;
     DeviceState *scp1;
     DeviceState *misc_gpio;
-} SpitzMachineState;
+};
 
 #define TYPE_SPITZ_MACHINE "spitz-common"
-#define SPITZ_MACHINE(obj) \
-    OBJECT_CHECK(SpitzMachineState, obj, TYPE_SPITZ_MACHINE)
-#define SPITZ_MACHINE_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(SpitzMachineClass, obj, TYPE_SPITZ_MACHINE)
-#define SPITZ_MACHINE_CLASS(klass) \
-    OBJECT_CLASS_CHECK(SpitzMachineClass, klass, TYPE_SPITZ_MACHINE)
+OBJECT_DECLARE_TYPE(SpitzMachineState, SpitzMachineClass, SPITZ_MACHINE)
 
 #define zaurus_printf(format, ...)                              \
     fprintf(stderr, "%s: " format, __func__, ##__VA_ARGS__)
@@ -85,9 +81,9 @@ typedef struct {
 #define FLASHCTL_NCE            (FLASHCTL_CE0 | FLASHCTL_CE1)
 
 #define TYPE_SL_NAND "sl-nand"
-#define SL_NAND(obj) OBJECT_CHECK(SLNANDState, (obj), TYPE_SL_NAND)
+OBJECT_DECLARE_SIMPLE_TYPE(SLNANDState, SL_NAND)
 
-typedef struct {
+struct SLNANDState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
@@ -96,7 +92,7 @@ typedef struct {
     uint8_t manf_id;
     uint8_t chip_id;
     ECCState ecc;
-} SLNANDState;
+};
 
 static uint64_t sl_read(void *opaque, hwaddr addr, unsigned size)
 {
@@ -261,10 +257,9 @@ static const int spitz_gpiomap[5] = {
 };
 
 #define TYPE_SPITZ_KEYBOARD "spitz-keyboard"
-#define SPITZ_KEYBOARD(obj) \
-    OBJECT_CHECK(SpitzKeyboardState, (obj), TYPE_SPITZ_KEYBOARD)
+OBJECT_DECLARE_SIMPLE_TYPE(SpitzKeyboardState, SPITZ_KEYBOARD)
 
-typedef struct {
+struct SpitzKeyboardState {
     SysBusDevice parent_obj;
 
     qemu_irq sense[SPITZ_KEY_SENSE_NUM];
@@ -280,7 +275,7 @@ typedef struct {
     uint8_t fifo[16];
     int fifopos, fifolen;
     QEMUTimer *kbdtimer;
-} SpitzKeyboardState;
+};
 
 static void spitz_keyboard_sense_update(SpitzKeyboardState *s)
 {
@@ -580,18 +575,18 @@ static void spitz_keyboard_realize(DeviceState *dev, Error **errp)
 #define LCDTG_POLCTRL   0x07
 
 #define TYPE_SPITZ_LCDTG "spitz-lcdtg"
-#define SPITZ_LCDTG(obj) OBJECT_CHECK(SpitzLCDTG, (obj), TYPE_SPITZ_LCDTG)
+OBJECT_DECLARE_SIMPLE_TYPE(SpitzLCDTG, SPITZ_LCDTG)
 
-typedef struct {
-    SSISlave ssidev;
+struct SpitzLCDTG {
+    SSIPeripheral ssidev;
     uint32_t bl_intensity;
     uint32_t bl_power;
-} SpitzLCDTG;
+};
 
 static void spitz_bl_update(SpitzLCDTG *s)
 {
     if (s->bl_power && s->bl_intensity)
-        zaurus_printf("LCD Backlight now at %i/63\n", s->bl_intensity);
+        zaurus_printf("LCD Backlight now at %u/63\n", s->bl_intensity);
     else
         zaurus_printf("LCD Backlight now off\n");
 }
@@ -617,7 +612,7 @@ static inline void spitz_bl_power(void *opaque, int line, int level)
     spitz_bl_update(s);
 }
 
-static uint32_t spitz_lcdtg_transfer(SSISlave *dev, uint32_t value)
+static uint32_t spitz_lcdtg_transfer(SSIPeripheral *dev, uint32_t value)
 {
     SpitzLCDTG *s = SPITZ_LCDTG(dev);
     int addr;
@@ -646,7 +641,7 @@ static uint32_t spitz_lcdtg_transfer(SSISlave *dev, uint32_t value)
     return 0;
 }
 
-static void spitz_lcdtg_realize(SSISlave *ssi, Error **errp)
+static void spitz_lcdtg_realize(SSIPeripheral *ssi, Error **errp)
 {
     SpitzLCDTG *s = SPITZ_LCDTG(ssi);
     DeviceState *dev = DEVICE(s);
@@ -668,16 +663,16 @@ static void spitz_lcdtg_realize(SSISlave *ssi, Error **errp)
 #define SPITZ_GPIO_TP_INT       11
 
 #define TYPE_CORGI_SSP "corgi-ssp"
-#define CORGI_SSP(obj) OBJECT_CHECK(CorgiSSPState, (obj), TYPE_CORGI_SSP)
+OBJECT_DECLARE_SIMPLE_TYPE(CorgiSSPState, CORGI_SSP)
 
 /* "Demux" the signal based on current chipselect */
-typedef struct {
-    SSISlave ssidev;
+struct CorgiSSPState {
+    SSIPeripheral ssidev;
     SSIBus *bus[3];
     uint32_t enable[3];
-} CorgiSSPState;
+};
 
-static uint32_t corgi_ssp_transfer(SSISlave *dev, uint32_t value)
+static uint32_t corgi_ssp_transfer(SSIPeripheral *dev, uint32_t value)
 {
     CorgiSSPState *s = CORGI_SSP(dev);
     int i;
@@ -705,7 +700,7 @@ static void corgi_ssp_gpio_cs(void *opaque, int line, int level)
 #define SPITZ_BATTERY_VOLT      0xd0    /* About 4.0V */
 #define SPITZ_CHARGEON_ACIN     0x80    /* About 5.0V */
 
-static void corgi_ssp_realize(SSISlave *d, Error **errp)
+static void corgi_ssp_realize(SSIPeripheral *d, Error **errp)
 {
     DeviceState *dev = DEVICE(d);
     CorgiSSPState *s = CORGI_SSP(d);
@@ -720,14 +715,14 @@ static void spitz_ssp_attach(SpitzMachineState *sms)
 {
     void *bus;
 
-    sms->mux = ssi_create_slave(sms->mpu->ssp[CORGI_SSP_PORT - 1],
-                                TYPE_CORGI_SSP);
+    sms->mux = ssi_create_peripheral(sms->mpu->ssp[CORGI_SSP_PORT - 1],
+                                     TYPE_CORGI_SSP);
 
     bus = qdev_get_child_bus(sms->mux, "ssi0");
-    sms->lcdtg = ssi_create_slave(bus, TYPE_SPITZ_LCDTG);
+    sms->lcdtg = ssi_create_peripheral(bus, TYPE_SPITZ_LCDTG);
 
     bus = qdev_get_child_bus(sms->mux, "ssi1");
-    sms->ads7846 = ssi_create_slave(bus, "ads7846");
+    sms->ads7846 = ssi_create_peripheral(bus, "ads7846");
     qdev_connect_gpio_out(sms->ads7846, 0,
                           qdev_get_gpio_in(sms->mpu->gpio, SPITZ_GPIO_TP_INT));
 
@@ -774,9 +769,9 @@ static void spitz_wm8750_addr(void *opaque, int line, int level)
 {
     I2CSlave *wm = (I2CSlave *) opaque;
     if (level)
-        i2c_set_slave_address(wm, SPITZ_WM_ADDRH);
+        i2c_slave_set_address(wm, SPITZ_WM_ADDRH);
     else
-        i2c_set_slave_address(wm, SPITZ_WM_ADDRL);
+        i2c_slave_set_address(wm, SPITZ_WM_ADDRL);
 }
 
 static void spitz_i2c_setup(PXA2xxState *cpu)
@@ -819,14 +814,13 @@ static void spitz_akita_i2c_setup(PXA2xxState *cpu)
  *  + named GPIO output "adc-temp": the ADC value, to be wired up to the max111x
  */
 #define TYPE_SPITZ_MISC_GPIO "spitz-misc-gpio"
-#define SPITZ_MISC_GPIO(obj) \
-    OBJECT_CHECK(SpitzMiscGPIOState, (obj), TYPE_SPITZ_MISC_GPIO)
+OBJECT_DECLARE_SIMPLE_TYPE(SpitzMiscGPIOState, SPITZ_MISC_GPIO)
 
-typedef struct SpitzMiscGPIOState {
+struct SpitzMiscGPIOState {
     SysBusDevice parent_obj;
 
     qemu_irq adc_value;
-} SpitzMiscGPIOState;
+};
 
 static void spitz_misc_charging(void *opaque, int n, int level)
 {
@@ -1140,7 +1134,7 @@ static bool is_version_0(void *opaque, int version_id)
     return version_id == 0;
 }
 
-static VMStateDescription vmstate_sl_nand_info = {
+static const VMStateDescription vmstate_sl_nand_info = {
     .name = "sl-nand",
     .version_id = 0,
     .minimum_version_id = 0,
@@ -1176,7 +1170,7 @@ static const TypeInfo sl_nand_info = {
     .class_init    = sl_nand_class_init,
 };
 
-static VMStateDescription vmstate_spitz_kbd = {
+static const VMStateDescription vmstate_spitz_kbd = {
     .name = "spitz-keyboard",
     .version_id = 1,
     .minimum_version_id = 0,
@@ -1210,7 +1204,7 @@ static const VMStateDescription vmstate_corgi_ssp_regs = {
     .version_id = 2,
     .minimum_version_id = 2,
     .fields = (VMStateField[]) {
-        VMSTATE_SSI_SLAVE(ssidev, CorgiSSPState),
+        VMSTATE_SSI_PERIPHERAL(ssidev, CorgiSSPState),
         VMSTATE_UINT32_ARRAY(enable, CorgiSSPState, 3),
         VMSTATE_END_OF_LIST(),
     }
@@ -1219,7 +1213,7 @@ static const VMStateDescription vmstate_corgi_ssp_regs = {
 static void corgi_ssp_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SSISlaveClass *k = SSI_SLAVE_CLASS(klass);
+    SSIPeripheralClass *k = SSI_PERIPHERAL_CLASS(klass);
 
     k->realize = corgi_ssp_realize;
     k->transfer = corgi_ssp_transfer;
@@ -1228,7 +1222,7 @@ static void corgi_ssp_class_init(ObjectClass *klass, void *data)
 
 static const TypeInfo corgi_ssp_info = {
     .name          = TYPE_CORGI_SSP,
-    .parent        = TYPE_SSI_SLAVE,
+    .parent        = TYPE_SSI_PERIPHERAL,
     .instance_size = sizeof(CorgiSSPState),
     .class_init    = corgi_ssp_class_init,
 };
@@ -1238,7 +1232,7 @@ static const VMStateDescription vmstate_spitz_lcdtg_regs = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_SSI_SLAVE(ssidev, SpitzLCDTG),
+        VMSTATE_SSI_PERIPHERAL(ssidev, SpitzLCDTG),
         VMSTATE_UINT32(bl_intensity, SpitzLCDTG),
         VMSTATE_UINT32(bl_power, SpitzLCDTG),
         VMSTATE_END_OF_LIST(),
@@ -1248,7 +1242,7 @@ static const VMStateDescription vmstate_spitz_lcdtg_regs = {
 static void spitz_lcdtg_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
-    SSISlaveClass *k = SSI_SLAVE_CLASS(klass);
+    SSIPeripheralClass *k = SSI_PERIPHERAL_CLASS(klass);
 
     k->realize = spitz_lcdtg_realize;
     k->transfer = spitz_lcdtg_transfer;
@@ -1257,7 +1251,7 @@ static void spitz_lcdtg_class_init(ObjectClass *klass, void *data)
 
 static const TypeInfo spitz_lcdtg_info = {
     .name          = TYPE_SPITZ_LCDTG,
-    .parent        = TYPE_SSI_SLAVE,
+    .parent        = TYPE_SSI_PERIPHERAL,
     .instance_size = sizeof(SpitzLCDTG),
     .class_init    = spitz_lcdtg_class_init,
 };

@@ -10,11 +10,13 @@
 #include "qemu/error-report.h"
 #include "qemu/log.h"
 #include "cpu.h"
+#include "hw/boards.h"
 #include "hw/irq.h"
 #include "hw/m68k/mcf.h"
 #include "qemu/timer.h"
 #include "hw/ptimer.h"
 #include "sysemu/sysemu.h"
+#include "hw/sysbus.h"
 
 /* General purpose timer module.  */
 typedef struct {
@@ -159,8 +161,11 @@ static m5206_timer_state *m5206_timer_init(qemu_irq irq)
 /* System Integration Module.  */
 
 typedef struct {
+    SysBusDevice parent_obj;
+
     M68kCPU *cpu;
     MemoryRegion iomem;
+    qemu_irq *pic;
     m5206_timer_state *timer[2];
     void *uart[2];
     uint8_t scr;
@@ -173,6 +178,8 @@ typedef struct {
     /* Include the UART vector registers here.  */
     uint8_t uivr[2];
 } m5206_mbar_state;
+
+#define MCF5206_MBAR(obj) OBJECT_CHECK(m5206_mbar_state, (obj), TYPE_MCF5206_MBAR)
 
 /* Interrupt controller.  */
 
@@ -257,8 +264,10 @@ static void m5206_mbar_set_irq(void *opaque, int irq, int level)
 
 /* System Integration Module.  */
 
-static void m5206_mbar_reset(m5206_mbar_state *s)
+static void m5206_mbar_reset(DeviceState *dev)
 {
+    m5206_mbar_state *s = MCF5206_MBAR(dev);
+
     s->scr = 0xc0;
     s->icr[1] = 0x04;
     s->icr[2] = 0x08;
@@ -304,8 +313,9 @@ static uint64_t m5206_mbar_read(m5206_mbar_state *s,
         /* FIXME: currently hardcoded to 128Mb.  */
         {
             uint32_t mask = ~0;
-            while (mask > ram_size)
+            while (mask > current_machine->ram_size) {
                 mask >>= 1;
+            }
             return mask & 0x0ffe0000;
         }
     case 0x5c: return 1; /* DRAM bank 1 empty.  */
@@ -578,24 +588,42 @@ static const MemoryRegionOps m5206_mbar_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
-qemu_irq *mcf5206_init(MemoryRegion *sysmem, uint32_t base, M68kCPU *cpu)
+static void mcf5206_mbar_realize(DeviceState *dev, Error **errp)
 {
-    m5206_mbar_state *s;
-    qemu_irq *pic;
-
-    s = g_new0(m5206_mbar_state, 1);
+    m5206_mbar_state *s = MCF5206_MBAR(dev);
 
     memory_region_init_io(&s->iomem, NULL, &m5206_mbar_ops, s,
                           "mbar", 0x00001000);
-    memory_region_add_subregion(sysmem, base, &s->iomem);
+    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->iomem);
 
-    pic = qemu_allocate_irqs(m5206_mbar_set_irq, s, 14);
-    s->timer[0] = m5206_timer_init(pic[9]);
-    s->timer[1] = m5206_timer_init(pic[10]);
-    s->uart[0] = mcf_uart_init(pic[12], serial_hd(0));
-    s->uart[1] = mcf_uart_init(pic[13], serial_hd(1));
-    s->cpu = cpu;
-
-    m5206_mbar_reset(s);
-    return pic;
+    s->pic = qemu_allocate_irqs(m5206_mbar_set_irq, s, 14);
+    s->timer[0] = m5206_timer_init(s->pic[9]);
+    s->timer[1] = m5206_timer_init(s->pic[10]);
+    s->uart[0] = mcf_uart_init(s->pic[12], serial_hd(0));
+    s->uart[1] = mcf_uart_init(s->pic[13], serial_hd(1));
+    s->cpu = M68K_CPU(qemu_get_cpu(0));
 }
+
+static void mcf5206_mbar_class_init(ObjectClass *oc, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(oc);
+
+    set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+    dc->desc = "MCF5206 system integration module";
+    dc->realize = mcf5206_mbar_realize;
+    dc->reset = m5206_mbar_reset;
+}
+
+static const TypeInfo mcf5206_mbar_info = {
+    .name          = TYPE_MCF5206_MBAR,
+    .parent        = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(m5206_mbar_state),
+    .class_init    = mcf5206_mbar_class_init,
+};
+
+static void mcf5206_mbar_register_types(void)
+{
+    type_register_static(&mcf5206_mbar_info);
+}
+
+type_init(mcf5206_mbar_register_types)

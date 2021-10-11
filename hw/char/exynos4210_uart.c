@@ -32,8 +32,10 @@
 #include "hw/arm/exynos4210.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 
 #include "trace.h"
+#include "qom/object.h"
 
 /*
  *  Offsets for UART registers relative to SFR base address
@@ -138,10 +140,9 @@ typedef struct {
 } Exynos4210UartFIFO;
 
 #define TYPE_EXYNOS4210_UART "exynos4210.uart"
-#define EXYNOS4210_UART(obj) \
-    OBJECT_CHECK(Exynos4210UartState, (obj), TYPE_EXYNOS4210_UART)
+OBJECT_DECLARE_SIMPLE_TYPE(Exynos4210UartState, EXYNOS4210_UART)
 
-typedef struct Exynos4210UartState {
+struct Exynos4210UartState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
@@ -159,7 +160,7 @@ typedef struct Exynos4210UartState {
 
     uint32_t channel;
 
-} Exynos4210UartState;
+};
 
 
 /* Used only for tracing */
@@ -518,6 +519,7 @@ static uint64_t exynos4210_uart_read(void *opaque, hwaddr offset,
             s->reg[I_(UTRSTAT)] &= ~UTRSTAT_Rx_BUFFER_DATA_READY;
             res = s->reg[I_(URXH)];
         }
+        qemu_chr_fe_accept_input(&s->chr);
         exynos4210_uart_update_dmabusy(s);
         trace_exynos_uart_read(s->channel, offset,
                                exynos4210_uart_regname(offset), res);
@@ -552,7 +554,11 @@ static int exynos4210_uart_can_receive(void *opaque)
 {
     Exynos4210UartState *s = (Exynos4210UartState *)opaque;
 
-    return fifo_empty_elements_number(&s->rx);
+    if (s->reg[I_(UFCON)] & UFCON_FIFO_ENABLE) {
+        return fifo_empty_elements_number(&s->rx);
+    } else {
+        return !(s->reg[I_(UTRSTAT)] & UTRSTAT_Rx_BUFFER_DATA_READY);
+    }
 }
 
 static void exynos4210_uart_receive(void *opaque, const uint8_t *buf, int size)

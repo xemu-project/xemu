@@ -11,6 +11,7 @@
 #include "hw/acpi/acpi.h"
 #include "hw/acpi/ich9.h"
 #include "hw/pci/pci_bus.h"
+#include "qom/object.h"
 
 void ich9_lpc_set_irq(void *opaque, int irq_num, int level);
 int ich9_lpc_map_irq(PCIDevice *pci_dev, int intx);
@@ -23,10 +24,9 @@ void ich9_generate_smi(void);
 #define ICH9_CC_SIZE (16 * 1024) /* 16KB. Chipset configuration registers */
 
 #define TYPE_ICH9_LPC_DEVICE "ICH9-LPC"
-#define ICH9_LPC_DEVICE(obj) \
-     OBJECT_CHECK(ICH9LPCState, (obj), TYPE_ICH9_LPC_DEVICE)
+OBJECT_DECLARE_SIMPLE_TYPE(ICH9LPCState, ICH9_LPC_DEVICE)
 
-typedef struct ICH9LPCState {
+struct ICH9LPCState {
     /* ICH9 LPC PCI to ISA bridge */
     PCIDevice d;
 
@@ -77,7 +77,7 @@ typedef struct ICH9LPCState {
     Notifier machine_ready;
 
     qemu_irq gsi[GSI_NUM_PINS];
-} ICH9LPCState;
+};
 
 #define Q35_MASK(bit, ms_bit, ls_bit) \
 ((uint##bit##_t)(((1ULL << ((ms_bit) + 1)) - 1) & ~((1ULL << ls_bit) - 1)))
@@ -144,6 +144,7 @@ typedef struct ICH9LPCState {
 #define ICH9_LPC_PMBASE_BASE_ADDRESS_MASK       Q35_MASK(32, 15, 7)
 #define ICH9_LPC_PMBASE_RTE                     0x1
 #define ICH9_LPC_PMBASE_DEFAULT                 0x1
+
 #define ICH9_LPC_ACPI_CTRL                      0x44
 #define ICH9_LPC_ACPI_CTRL_ACPI_EN              0x80
 #define ICH9_LPC_ACPI_CTRL_SCI_IRQ_SEL_MASK     Q35_MASK(8, 2, 0)
@@ -215,7 +216,7 @@ typedef struct ICH9LPCState {
 
 
 /* D31:F3 SMBus controller */
-#define TYPE_ICH9_SMB_DEVICE "ICH9 SMB"
+#define TYPE_ICH9_SMB_DEVICE "ICH9-SMB"
 
 #define ICH9_A2_SMB_REVISION                    0x02
 #define ICH9_SMB_PI                             0x00
@@ -245,7 +246,11 @@ typedef struct ICH9LPCState {
 #define ICH9_SMB_HST_D1                         0x06
 #define ICH9_SMB_HOST_BLOCK_DB                  0x07
 
+#define ICH9_LPC_SMI_NEGOTIATED_FEAT_PROP "x-smi-negotiated-features"
+
 /* bit positions used in fw_cfg SMI feature negotiation */
 #define ICH9_LPC_SMI_F_BROADCAST_BIT            0
+#define ICH9_LPC_SMI_F_CPU_HOTPLUG_BIT          1
+#define ICH9_LPC_SMI_F_CPU_HOT_UNPLUG_BIT       2
 
 #endif /* HW_ICH9_H */

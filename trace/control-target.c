@@ -9,7 +9,7 @@
 
 #include "qemu/osdep.h"
 #include "cpu.h"
-#include "trace-root.h"
+#include "trace/trace-root.h"
 #include "trace/control.h"
 
 
@@ -127,7 +127,7 @@ void trace_init_vcpu(CPUState *vcpu)
 {
     TraceEventIter iter;
     TraceEvent *ev;
-    trace_event_iter_init(&iter, NULL);
+    trace_event_iter_init_all(&iter);
     while ((ev = trace_event_iter_next(&iter)) != NULL) {
         if (trace_event_is_vcpu(ev) &&
             trace_event_get_state_static(ev) &&

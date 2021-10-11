@@ -11,9 +11,10 @@
  */
 
 #include "qemu/osdep.h"
-#include "config-devices.h"
+#include CONFIG_DEVICES
 #include "exec/memop.h"
 #include "qemu/units.h"
+#include "qemu/log.h"
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
 #include "qemu/module.h"
@@ -21,7 +22,6 @@
 #include "qapi/error.h"
 #include "qapi/visitor.h"
 #include <sys/ioctl.h>
-#include "hw/hw.h"
 #include "hw/nvram/fw_cfg.h"
 #include "hw/qdev-properties.h"
 #include "pci.h"
@@ -43,19 +43,19 @@
 static const struct {
     uint32_t vendor;
     uint32_t device;
-} romblacklist[] = {
+} rom_denylist[] = {
     { 0x14e4, 0x168e }, /* Broadcom BCM 57810 */
 };
 
-bool vfio_blacklist_opt_rom(VFIOPCIDevice *vdev)
+bool vfio_opt_rom_in_denylist(VFIOPCIDevice *vdev)
 {
     int i;
 
-    for (i = 0 ; i < ARRAY_SIZE(romblacklist); i++) {
-        if (vfio_pci_is(vdev, romblacklist[i].vendor, romblacklist[i].device)) {
-            trace_vfio_quirk_rom_blacklisted(vdev->vbasedev.name,
-                                             romblacklist[i].vendor,
-                                             romblacklist[i].device);
+    for (i = 0 ; i < ARRAY_SIZE(rom_denylist); i++) {
+        if (vfio_pci_is(vdev, rom_denylist[i].vendor, rom_denylist[i].device)) {
+            trace_vfio_quirk_rom_in_denylist(vdev->vbasedev.name,
+                                             rom_denylist[i].vendor,
+                                             rom_denylist[i].device);
             return true;
         }
     }
@@ -264,8 +264,15 @@ static uint64_t vfio_ati_3c3_quirk_read(void *opaque,
     return data;
 }
 
+static void vfio_ati_3c3_quirk_write(void *opaque, hwaddr addr,
+                                        uint64_t data, unsigned size)
+{
+    qemu_log_mask(LOG_GUEST_ERROR, "%s: invalid access\n", __func__);
+}
+
 static const MemoryRegionOps vfio_ati_3c3_quirk = {
     .read = vfio_ati_3c3_quirk_read,
+    .write = vfio_ati_3c3_quirk_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
@@ -1488,9 +1495,8 @@ static void get_nv_gpudirect_clique_id(Object *obj, Visitor *v,
                                        const char *name, void *opaque,
                                        Error **errp)
 {
-    DeviceState *dev = DEVICE(obj);
     Property *prop = opaque;
-    uint8_t *ptr = qdev_get_prop_ptr(dev, prop);
+    uint8_t *ptr = object_field_prop_ptr(obj, prop);
 
     visit_type_uint8(v, name, ptr, errp);
 }
@@ -1499,14 +1505,8 @@ static void set_nv_gpudirect_clique_id(Object *obj, Visitor *v,
                                        const char *name, void *opaque,
                                        Error **errp)
 {
-    DeviceState *dev = DEVICE(obj);
     Property *prop = opaque;
-    uint8_t value, *ptr = qdev_get_prop_ptr(dev, prop);
-
-    if (dev->realized) {
-        qdev_prop_set_after_realize(dev, name, errp);
-        return;
-    }
+    uint8_t value, *ptr = object_field_prop_ptr(obj, prop);
 
     if (!visit_type_uint8(v, name, &value, errp)) {
         return;

@@ -19,9 +19,9 @@
 #ifndef TESTS_LIBQOS_VIRTIO_9P_H
 #define TESTS_LIBQOS_VIRTIO_9P_H
 
-#include "libqos/qgraph.h"
-#include "libqos/virtio.h"
-#include "libqos/virtio-pci.h"
+#include "qgraph.h"
+#include "virtio.h"
+#include "virtio-pci.h"
 
 typedef struct QVirtio9P QVirtio9P;
 typedef struct QVirtio9PPCI QVirtio9PPCI;
@@ -43,5 +43,25 @@ struct QVirtio9PDevice {
     QOSGraphObject obj;
     QVirtio9P v9p;
 };
+
+/**
+ * Creates the directory for the 9pfs 'local' filesystem driver to access.
+ */
+void virtio_9p_create_local_test_dir(void);
+
+/**
+ * Deletes directory previously created by virtio_9p_create_local_test_dir().
+ */
+void virtio_9p_remove_local_test_dir(void);
+
+/**
+ * Prepares QEMU command line for 9pfs tests using the 'local' fs driver.
+ */
+void virtio_9p_assign_local_driver(GString *cmd_line, const char *args);
+
+/**
+ * Returns path on host to the passed guest path. Result must be freed.
+ */
+char *virtio_9p_test_path(const char *path);
 
 #endif

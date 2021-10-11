@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -19,11 +19,14 @@
 #include "qemu/osdep.h"
 #include "qemu/main-loop.h"
 #include "cpu.h"
-#include "exec/helper-proto.h"
 #include "exec/exec-all.h"
-#include "exec/cpu_ldst.h"
 #include "internal.h"
 #include "helper_regs.h"
+
+#ifdef CONFIG_TCG
+#include "exec/helper-proto.h"
+#include "exec/cpu_ldst.h"
+#endif
 
 /* #define DEBUG_OP */
 /* #define DEBUG_SOFTWARE_TLB */
@@ -56,18 +59,6 @@ static void ppc_hw_interrupt(CPUPPCState *env)
 }
 #else /* defined(CONFIG_USER_ONLY) */
 static inline void dump_syscall(CPUPPCState *env)
-{
-    qemu_log_mask(CPU_LOG_INT, "syscall r0=%016" PRIx64
-                  " r3=%016" PRIx64 " r4=%016" PRIx64 " r5=%016" PRIx64
-                  " r6=%016" PRIx64 " r7=%016" PRIx64 " r8=%016" PRIx64
-                  " nip=" TARGET_FMT_lx "\n",
-                  ppc_dump_gpr(env, 0), ppc_dump_gpr(env, 3),
-                  ppc_dump_gpr(env, 4), ppc_dump_gpr(env, 5),
-                  ppc_dump_gpr(env, 6), ppc_dump_gpr(env, 7),
-                  ppc_dump_gpr(env, 8), env->nip);
-}
-
-static inline void dump_syscall_vectored(CPUPPCState *env)
 {
     qemu_log_mask(CPU_LOG_INT, "syscall r0=%016" PRIx64
                   " r3=%016" PRIx64 " r4=%016" PRIx64 " r5=%016" PRIx64
@@ -136,25 +127,157 @@ static int powerpc_reset_wakeup(CPUState *cs, CPUPPCState *env, int excp,
     return POWERPC_EXCP_RESET;
 }
 
-static uint64_t ppc_excp_vector_offset(CPUState *cs, int ail)
+/*
+ * AIL - Alternate Interrupt Location, a mode that allows interrupts to be
+ * taken with the MMU on, and which uses an alternate location (e.g., so the
+ * kernel/hv can map the vectors there with an effective address).
+ *
+ * An interrupt is considered to be taken "with AIL" or "AIL applies" if they
+ * are delivered in this way. AIL requires the LPCR to be set to enable this
+ * mode, and then a number of conditions have to be true for AIL to apply.
+ *
+ * First of all, SRESET, MCE, and HMI are always delivered without AIL, because
+ * they specifically want to be in real mode (e.g., the MCE might be signaling
+ * a SLB multi-hit which requires SLB flush before the MMU can be enabled).
+ *
+ * After that, behaviour depends on the current MSR[IR], MSR[DR], MSR[HV],
+ * whether or not the interrupt changes MSR[HV] from 0 to 1, and the current
+ * radix mode (LPCR[HR]).
+ *
+ * POWER8, POWER9 with LPCR[HR]=0
+ * | LPCR[AIL] | MSR[IR||DR] | MSR[HV] | new MSR[HV] | AIL |
+ * +-----------+-------------+---------+-------------+-----+
+ * | a         | 00/01/10    | x       | x           | 0   |
+ * | a         | 11          | 0       | 1           | 0   |
+ * | a         | 11          | 1       | 1           | a   |
+ * | a         | 11          | 0       | 0           | a   |
+ * +-------------------------------------------------------+
+ *
+ * POWER9 with LPCR[HR]=1
+ * | LPCR[AIL] | MSR[IR||DR] | MSR[HV] | new MSR[HV] | AIL |
+ * +-----------+-------------+---------+-------------+-----+
+ * | a         | 00/01/10    | x       | x           | 0   |
+ * | a         | 11          | x       | x           | a   |
+ * +-------------------------------------------------------+
+ *
+ * The difference with POWER9 being that MSR[HV] 0->1 interrupts can be sent to
+ * the hypervisor in AIL mode if the guest is radix. This is good for
+ * performance but allows the guest to influence the AIL of hypervisor
+ * interrupts using its MSR, and also the hypervisor must disallow guest
+ * interrupts (MSR[HV] 0->0) from using AIL if the hypervisor does not want to
+ * use AIL for its MSR[HV] 0->1 interrupts.
+ *
+ * POWER10 addresses those issues with a new LPCR[HAIL] bit that is applied to
+ * interrupts that begin execution with MSR[HV]=1 (so both MSR[HV] 0->1 and
+ * MSR[HV] 1->1).
+ *
+ * HAIL=1 is equivalent to AIL=3, for interrupts delivered with MSR[HV]=1.
+ *
+ * POWER10 behaviour is
+ * | LPCR[AIL] | LPCR[HAIL] | MSR[IR||DR] | MSR[HV] | new MSR[HV] | AIL |
+ * +-----------+------------+-------------+---------+-------------+-----+
+ * | a         | h          | 00/01/10    | 0       | 0           | 0   |
+ * | a         | h          | 11          | 0       | 0           | a   |
+ * | a         | h          | x           | 0       | 1           | h   |
+ * | a         | h          | 00/01/10    | 1       | 1           | 0   |
+ * | a         | h          | 11          | 1       | 1           | h   |
+ * +--------------------------------------------------------------------+
+ */
+static inline void ppc_excp_apply_ail(PowerPCCPU *cpu, int excp_model, int excp,
+                                      target_ulong msr,
+                                      target_ulong *new_msr,
+                                      target_ulong *vector)
 {
-    uint64_t offset = 0;
+#if defined(TARGET_PPC64)
+    CPUPPCState *env = &cpu->env;
+    bool mmu_all_on = ((msr >> MSR_IR) & 1) && ((msr >> MSR_DR) & 1);
+    bool hv_escalation = !(msr & MSR_HVB) && (*new_msr & MSR_HVB);
+    int ail = 0;
 
-    switch (ail) {
-    case AIL_NONE:
-        break;
-    case AIL_0001_8000:
-        offset = 0x18000;
-        break;
-    case AIL_C000_0000_0000_4000:
-        offset = 0xc000000000004000ull;
-        break;
-    default:
-        cpu_abort(cs, "Invalid AIL combination %d\n", ail);
-        break;
+    if (excp == POWERPC_EXCP_MCHECK ||
+        excp == POWERPC_EXCP_RESET ||
+        excp == POWERPC_EXCP_HV_MAINT) {
+        /* SRESET, MCE, HMI never apply AIL */
+        return;
     }
 
-    return offset;
+    if (excp_model == POWERPC_EXCP_POWER8 ||
+        excp_model == POWERPC_EXCP_POWER9) {
+        if (!mmu_all_on) {
+            /* AIL only works if MSR[IR] and MSR[DR] are both enabled. */
+            return;
+        }
+        if (hv_escalation && !(env->spr[SPR_LPCR] & LPCR_HR)) {
+            /*
+             * AIL does not work if there is a MSR[HV] 0->1 transition and the
+             * partition is in HPT mode. For radix guests, such interrupts are
+             * allowed to be delivered to the hypervisor in ail mode.
+             */
+            return;
+        }
+
+        ail = (env->spr[SPR_LPCR] & LPCR_AIL) >> LPCR_AIL_SHIFT;
+        if (ail == 0) {
+            return;
+        }
+        if (ail == 1) {
+            /* AIL=1 is reserved, treat it like AIL=0 */
+            return;
+        }
+
+    } else if (excp_model == POWERPC_EXCP_POWER10) {
+        if (!mmu_all_on && !hv_escalation) {
+            /*
+             * AIL works for HV interrupts even with guest MSR[IR/DR] disabled.
+             * Guest->guest and HV->HV interrupts do require MMU on.
+             */
+            return;
+        }
+
+        if (*new_msr & MSR_HVB) {
+            if (!(env->spr[SPR_LPCR] & LPCR_HAIL)) {
+                /* HV interrupts depend on LPCR[HAIL] */
+                return;
+            }
+            ail = 3; /* HAIL=1 gives AIL=3 behaviour for HV interrupts */
+        } else {
+            ail = (env->spr[SPR_LPCR] & LPCR_AIL) >> LPCR_AIL_SHIFT;
+        }
+        if (ail == 0) {
+            return;
+        }
+        if (ail == 1 || ail == 2) {
+            /* AIL=1 and AIL=2 are reserved, treat them like AIL=0 */
+            return;
+        }
+    } else {
+        /* Other processors do not support AIL */
+        return;
+    }
+
+    /*
+     * AIL applies, so the new MSR gets IR and DR set, and an offset applied
+     * to the new IP.
+     */
+    *new_msr |= (1 << MSR_IR) | (1 << MSR_DR);
+
+    if (excp != POWERPC_EXCP_SYSCALL_VECTORED) {
+        if (ail == 2) {
+            *vector |= 0x0000000000018000ull;
+        } else if (ail == 3) {
+            *vector |= 0xc000000000004000ull;
+        }
+    } else {
+        /*
+         * scv AIL is a little different. AIL=2 does not change the address,
+         * only the MSR. AIL=3 replaces the 0x17000 base with 0xc...3000.
+         */
+        if (ail == 3) {
+            *vector &= ~0x0000000000017000ull; /* Un-apply the base offset */
+            *vector |= 0xc000000000003000ull; /* Apply scv's AIL=3 offset */
+        }
+    }
+#endif
 }
 
 static inline void powerpc_set_excp_state(PowerPCCPU *cpu,
@@ -197,8 +320,7 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
     CPUState *cs = CPU(cpu);
     CPUPPCState *env = &cpu->env;
     target_ulong msr, new_msr, vector;
-    int srr0, srr1, asrr0, asrr1, lev = -1, ail;
-    bool lpes0;
+    int srr0, srr1, asrr0, asrr1, lev = -1;
 
     qemu_log_mask(CPU_LOG_INT, "Raise exception at " TARGET_FMT_lx
                   " => %08x (%02x)\n", env->nip, excp, env->error_code);
@@ -231,42 +353,13 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
     }
 
     /*
-     * Exception targetting modifiers
-     *
-     * LPES0 is supported on POWER7/8/9
-     * LPES1 is not supported (old iSeries mode)
-     *
-     * On anything else, we behave as if LPES0 is 1
-     * (externals don't alter MSR:HV)
-     *
-     * AIL is initialized here but can be cleared by
-     * selected exceptions
-     */
-#if defined(TARGET_PPC64)
-    if (excp_model == POWERPC_EXCP_POWER7 ||
-        excp_model == POWERPC_EXCP_POWER8 ||
-        excp_model == POWERPC_EXCP_POWER9) {
-        lpes0 = !!(env->spr[SPR_LPCR] & LPCR_LPES0);
-        if (excp_model != POWERPC_EXCP_POWER7) {
-            ail = (env->spr[SPR_LPCR] & LPCR_AIL) >> LPCR_AIL_SHIFT;
-        } else {
-            ail = 0;
-        }
-    } else
-#endif /* defined(TARGET_PPC64) */
-    {
-        lpes0 = true;
-        ail = 0;
-    }
-
-    /*
      * Hypervisor emulation assistance interrupt only exists on server
      * arch 2.05 server or later. We also don't want to generate it if
      * we don't have HVB in msr_mask (PAPR mode).
      */
     if (excp == POWERPC_EXCP_HV_EMU
 #if defined(TARGET_PPC64)
-        && !((env->mmu_model & POWERPC_MMU_64) && (env->msr_mask & MSR_HVB))
+        && !(mmu_is_64bit(env->mmu_model) && (env->msr_mask & MSR_HVB))
 #endif /* defined(TARGET_PPC64) */
 
     ) {
@@ -315,7 +408,6 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
              */
             new_msr |= (target_ulong)MSR_HVB;
         }
-        ail = 0;
 
         /* machine check exceptions don't have ME set */
         new_msr &= ~((target_ulong)1 << MSR_ME);
@@ -347,7 +439,31 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
         msr |= env->error_code;
         break;
     case POWERPC_EXCP_EXTERNAL:  /* External input                           */
+    {
+        bool lpes0;
+
         cs = CPU(cpu);
+
+        /*
+         * Exception targeting modifiers
+         *
+         * LPES0 is supported on POWER7/8/9
+         * LPES1 is not supported (old iSeries mode)
+         *
+         * On anything else, we behave as if LPES0 is 1
+         * (externals don't alter MSR:HV)
+         */
+#if defined(TARGET_PPC64)
+        if (excp_model == POWERPC_EXCP_POWER7 ||
+            excp_model == POWERPC_EXCP_POWER8 ||
+            excp_model == POWERPC_EXCP_POWER9 ||
+            excp_model == POWERPC_EXCP_POWER10) {
+            lpes0 = !!(env->spr[SPR_LPCR] & LPCR_LPES0);
+        } else
+#endif /* defined(TARGET_PPC64) */
+        {
+            lpes0 = true;
+        }
 
         if (!lpes0) {
             new_msr |= (target_ulong)MSR_HVB;
@@ -360,6 +476,7 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
             env->spr[SPR_BOOKE_EPR] = ldl_phys(cs->as, env->mpic_iack);
         }
         break;
+    }
     case POWERPC_EXCP_ALIGN:     /* Alignment exception                      */
         /* Get rS/rD and rA from faulting opcode */
         /*
@@ -435,7 +552,7 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
         break;
     case POWERPC_EXCP_SYSCALL_VECTORED: /* scv exception                     */
         lev = env->error_code;
-        dump_syscall_vectored(env);
+        dump_syscall(env);
         env->nip += 4;
         new_msr |= env->msr & ((target_ulong)1 << MSR_EE);
         new_msr |= env->msr & ((target_ulong)1 << MSR_RI);
@@ -519,7 +636,6 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
                           "exception %d with no HV support\n", excp);
             }
         }
-        ail = 0;
         break;
     case POWERPC_EXCP_DSEG:      /* Data segment exception                   */
     case POWERPC_EXCP_ISEG:      /* Instruction segment exception            */
@@ -527,6 +643,7 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
         break;
     case POWERPC_EXCP_HISI:      /* Hypervisor instruction storage exception */
         msr |= env->error_code;
+        /* fall through */
     case POWERPC_EXCP_HDECR:     /* Hypervisor decrementer exception         */
     case POWERPC_EXCP_HDSI:      /* Hypervisor data storage exception        */
     case POWERPC_EXCP_HDSEG:     /* Hypervisor data segment exception        */
@@ -572,52 +689,20 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
                   "is not implemented yet !\n");
         break;
     case POWERPC_EXCP_IFTLB:     /* Instruction fetch TLB error              */
-        switch (excp_model) {
-        case POWERPC_EXCP_602:
-        case POWERPC_EXCP_603:
-        case POWERPC_EXCP_603E:
-        case POWERPC_EXCP_G2:
-            goto tlb_miss_tgpr;
-        case POWERPC_EXCP_7x5:
-            goto tlb_miss;
-        case POWERPC_EXCP_74xx:
-            goto tlb_miss_74xx;
-        default:
-            cpu_abort(cs, "Invalid instruction TLB miss exception\n");
-            break;
-        }
-        break;
     case POWERPC_EXCP_DLTLB:     /* Data load TLB miss                       */
-        switch (excp_model) {
-        case POWERPC_EXCP_602:
-        case POWERPC_EXCP_603:
-        case POWERPC_EXCP_603E:
-        case POWERPC_EXCP_G2:
-            goto tlb_miss_tgpr;
-        case POWERPC_EXCP_7x5:
-            goto tlb_miss;
-        case POWERPC_EXCP_74xx:
-            goto tlb_miss_74xx;
-        default:
-            cpu_abort(cs, "Invalid data load TLB miss exception\n");
-            break;
-        }
-        break;
     case POWERPC_EXCP_DSTLB:     /* Data store TLB miss                      */
         switch (excp_model) {
         case POWERPC_EXCP_602:
         case POWERPC_EXCP_603:
         case POWERPC_EXCP_603E:
         case POWERPC_EXCP_G2:
-        tlb_miss_tgpr:
             /* Swap temporary saved registers with GPRs */
             if (!(new_msr & ((target_ulong)1 << MSR_TGPR))) {
                 new_msr |= (target_ulong)1 << MSR_TGPR;
                 hreg_swap_gpr_tgpr(env);
             }
-            goto tlb_miss;
+            /* fall through */
         case POWERPC_EXCP_7x5:
-        tlb_miss:
 #if defined(DEBUG_SOFTWARE_TLB)
             if (qemu_log_enabled()) {
                 const char *es;
@@ -652,7 +737,6 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
             msr |= ((env->last_way + 1) & (env->nb_ways - 1)) << 17;
             break;
         case POWERPC_EXCP_74xx:
-        tlb_miss_74xx:
 #if defined(DEBUG_SOFTWARE_TLB)
             if (qemu_log_enabled()) {
                 const char *es;
@@ -682,7 +766,7 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
             msr |= env->error_code; /* key bit */
             break;
         default:
-            cpu_abort(cs, "Invalid data store TLB miss exception\n");
+            cpu_abort(cs, "Invalid TLB miss exception\n");
             break;
         }
         break;
@@ -772,7 +856,8 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
         } else if (env->spr[SPR_LPCR] & LPCR_ILE) {
             new_msr |= (target_ulong)1 << MSR_LE;
         }
-    } else if (excp_model == POWERPC_EXCP_POWER9) {
+    } else if (excp_model == POWERPC_EXCP_POWER9 ||
+               excp_model == POWERPC_EXCP_POWER10) {
         if (new_msr & MSR_HVB) {
             if (env->spr[SPR_HID0] & HID0_POWER9_HILE) {
                 new_msr |= (target_ulong)1 << MSR_LE;
@@ -788,15 +873,6 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
         new_msr |= (target_ulong)1 << MSR_LE;
     }
 #endif
-
-    /*
-     * AIL only works if there is no HV transition and we are running
-     * with translations enabled
-     */
-    if (!((msr >> MSR_IR) & 1) || !((msr >> MSR_DR) & 1) ||
-        ((new_msr & MSR_HVB) && !(msr & MSR_HVB))) {
-        ail = 0;
-    }
 
     vector = env->excp_vectors[excp];
     if (vector == (target_ulong)-1ULL) {
@@ -823,7 +899,7 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
             vector = (uint32_t)vector;
         }
     } else {
-        if (!msr_isf && !(env->mmu_model & POWERPC_MMU_64)) {
+        if (!msr_isf && !mmu_is_64bit(env->mmu_model)) {
             vector = (uint32_t)vector;
         } else {
             new_msr |= (target_ulong)1 << MSR_SF;
@@ -838,29 +914,17 @@ static inline void powerpc_excp(PowerPCCPU *cpu, int excp_model, int excp)
         /* Save MSR */
         env->spr[srr1] = msr;
 
-        /* Handle AIL */
-        if (ail) {
-            new_msr |= (1 << MSR_IR) | (1 << MSR_DR);
-            vector |= ppc_excp_vector_offset(cs, ail);
-        }
-
 #if defined(TARGET_PPC64)
     } else {
-        /* scv AIL is a little different */
-        if (ail) {
-            new_msr |= (1 << MSR_IR) | (1 << MSR_DR);
-        }
-        if (ail == AIL_C000_0000_0000_4000) {
-            vector |= 0xc000000000003000ull;
-        } else {
-            vector |= 0x0000000000017000ull;
-        }
         vector += lev * 0x20;
 
         env->lr = env->nip;
         env->ctr = msr;
 #endif
     }
+
+    /* This can update new_msr and vector if AIL applies */
+    ppc_excp_apply_ail(cpu, excp_model, excp, msr, &new_msr, &vector);
 
     powerpc_set_excp_state(cpu, vector, new_msr);
 }
@@ -1015,7 +1079,7 @@ static void ppc_hw_interrupt(CPUPPCState *env)
          * This means we will incorrectly execute past the power management
          * instruction instead of triggering a reset.
          *
-         * It generally means a discrepancy between the wakup conditions in the
+         * It generally means a discrepancy between the wakeup conditions in the
          * processor has_work implementation and the logic in this function.
          */
         cpu_abort(env_cpu(env),
@@ -1035,7 +1099,6 @@ void ppc_cpu_do_fwnmi_machine_check(CPUState *cs, target_ulong vector)
 {
     PowerPCCPU *cpu = POWERPC_CPU(cs);
     CPUPPCState *env = &cpu->env;
-    PowerPCCPUClass *pcc = POWERPC_CPU_GET_CLASS(cpu);
     target_ulong msr = 0;
 
     /*
@@ -1044,7 +1107,7 @@ void ppc_cpu_do_fwnmi_machine_check(CPUState *cs, target_ulong vector)
      */
     msr = (1ULL << MSR_ME);
     msr |= env->msr & (1ULL << MSR_SF);
-    if (!(*pcc->interrupts_big_endian)(cpu)) {
+    if (ppc_interrupts_little_endian(cpu)) {
         msr |= (1ULL << MSR_LE);
     }
 
@@ -1105,6 +1168,7 @@ void raise_exception_ra(CPUPPCState *env, uint32_t exception,
     raise_exception_err_ra(env, exception, 0, raddr);
 }
 
+#ifdef CONFIG_TCG
 void helper_raise_exception_err(CPUPPCState *env, uint32_t exception,
                                 uint32_t error_code)
 {
@@ -1115,8 +1179,10 @@ void helper_raise_exception(CPUPPCState *env, uint32_t exception)
 {
     raise_exception_err_ra(env, exception, 0, 0);
 }
+#endif
 
 #if !defined(CONFIG_USER_ONLY)
+#ifdef CONFIG_TCG
 void helper_store_msr(CPUPPCState *env, target_ulong val)
 {
     uint32_t excp = hreg_store_msr(env, val, 0);
@@ -1129,6 +1195,15 @@ void helper_store_msr(CPUPPCState *env, target_ulong val)
 }
 
 #if defined(TARGET_PPC64)
+void helper_scv(CPUPPCState *env, uint32_t lev)
+{
+    if (env->spr[SPR_FSCR] & (1ull << FSCR_SCV)) {
+        raise_exception_err(env, POWERPC_EXCP_SYSCALL_VECTORED, lev);
+    } else {
+        raise_exception_err(env, POWERPC_EXCP_FU, FSCR_IC_SCV);
+    }
+}
+
 void helper_pminsn(CPUPPCState *env, powerpc_pm_insn_t insn)
 {
     CPUState *cs;
@@ -1147,6 +1222,7 @@ void helper_pminsn(CPUPPCState *env, powerpc_pm_insn_t insn)
         (env->spr[SPR_PSSCR] & PSSCR_EC);
 }
 #endif /* defined(TARGET_PPC64) */
+#endif /* CONFIG_TCG */
 
 static inline void do_rfi(CPUPPCState *env, target_ulong nip, target_ulong msr)
 {
@@ -1181,6 +1257,7 @@ static inline void do_rfi(CPUPPCState *env, target_ulong nip, target_ulong msr)
     check_tlb_flush(env, false);
 }
 
+#ifdef CONFIG_TCG
 void helper_rfi(CPUPPCState *env)
 {
     do_rfi(env, env->spr[SPR_SRR0], env->spr[SPR_SRR1] & 0xfffffffful);
@@ -1191,7 +1268,7 @@ void helper_rfi(CPUPPCState *env)
 void helper_rfid(CPUPPCState *env)
 {
     /*
-     * The architeture defines a number of rules for which bits can
+     * The architecture defines a number of rules for which bits can
      * change but in practice, we handle this in hreg_store_msr()
      * which will be called by do_rfi(), so there is no need to filter
      * here
@@ -1233,8 +1310,10 @@ void helper_rfmci(CPUPPCState *env)
     /* FIXME: choose CSRR1 or MCSRR1 based on cpu type */
     do_rfi(env, env->spr[SPR_BOOKE_MCSRR0], env->spr[SPR_BOOKE_MCSRR1]);
 }
-#endif
+#endif /* CONFIG_TCG */
+#endif /* !defined(CONFIG_USER_ONLY) */
 
+#ifdef CONFIG_TCG
 void helper_tw(CPUPPCState *env, target_ulong arg1, target_ulong arg2,
                uint32_t flags)
 {
@@ -1262,11 +1341,13 @@ void helper_td(CPUPPCState *env, target_ulong arg1, target_ulong arg2,
     }
 }
 #endif
+#endif
 
 #if !defined(CONFIG_USER_ONLY)
 /*****************************************************************************/
 /* PowerPC 601 specific instructions (POWER bridge) */
 
+#ifdef CONFIG_TCG
 void helper_rfsvc(CPUPPCState *env)
 {
     do_rfi(env, env->lr, env->ctr & 0x0000FFFF);
@@ -1411,8 +1492,10 @@ void helper_book3s_msgsndp(CPUPPCState *env, target_ulong rb)
     book3s_msgsnd_common(pir, PPC_INTERRUPT_DOORBELL);
 }
 #endif
+#endif /* CONFIG_TCG */
 #endif
 
+#ifdef CONFIG_TCG
 void ppc_cpu_do_unaligned_access(CPUState *cs, vaddr vaddr,
                                  MMUAccessType access_type,
                                  int mmu_idx, uintptr_t retaddr)
@@ -1428,3 +1511,4 @@ void ppc_cpu_do_unaligned_access(CPUState *cs, vaddr vaddr,
     env->error_code = insn & 0x03FF0000;
     cpu_loop_exit(cs);
 }
+#endif

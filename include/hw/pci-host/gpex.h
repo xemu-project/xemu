@@ -20,27 +20,27 @@
 #ifndef HW_GPEX_H
 #define HW_GPEX_H
 
+#include "exec/hwaddr.h"
 #include "hw/sysbus.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pcie_host.h"
+#include "qom/object.h"
 
 #define TYPE_GPEX_HOST "gpex-pcihost"
-#define GPEX_HOST(obj) \
-     OBJECT_CHECK(GPEXHost, (obj), TYPE_GPEX_HOST)
+OBJECT_DECLARE_SIMPLE_TYPE(GPEXHost, GPEX_HOST)
 
 #define TYPE_GPEX_ROOT_DEVICE "gpex-root"
-#define MCH_PCI_DEVICE(obj) \
-     OBJECT_CHECK(GPEXRootState, (obj), TYPE_GPEX_ROOT_DEVICE)
+OBJECT_DECLARE_SIMPLE_TYPE(GPEXRootState, GPEX_ROOT_DEVICE)
 
 #define GPEX_NUM_IRQS 4
 
-typedef struct GPEXRootState {
+struct GPEXRootState {
     /*< private >*/
     PCIDevice parent_obj;
     /*< public >*/
-} GPEXRootState;
+};
 
-typedef struct GPEXHost {
+struct GPEXHost {
     /*< private >*/
     PCIExpressHost parent_obj;
     /*< public >*/
@@ -49,10 +49,25 @@ typedef struct GPEXHost {
 
     MemoryRegion io_ioport;
     MemoryRegion io_mmio;
+    MemoryRegion io_ioport_window;
+    MemoryRegion io_mmio_window;
     qemu_irq irq[GPEX_NUM_IRQS];
     int irq_num[GPEX_NUM_IRQS];
-} GPEXHost;
+
+    bool allow_unmapped_accesses;
+};
+
+struct GPEXConfig {
+    MemMapEntry ecam;
+    MemMapEntry mmio32;
+    MemMapEntry mmio64;
+    MemMapEntry pio;
+    int         irq;
+    PCIBus      *bus;
+};
 
 int gpex_set_irq_num(GPEXHost *s, int index, int gsi);
+
+void acpi_dsdt_add_gpex(Aml *scope, struct GPEXConfig *cfg);
 
 #endif /* HW_GPEX_H */

@@ -3,6 +3,7 @@
 
 #include "qemu/notify.h"
 #include "qapi/qapi-types-common.h"
+#include "qemu/uuid.h"
 #include "hw/boards.h"
 #include "hw/block/fdc.h"
 #include "hw/block/flash.h"
@@ -10,6 +11,7 @@
 
 #include "hw/acpi/acpi_dev_interface.h"
 #include "hw/hotplug.h"
+#include "qom/object.h"
 
 #define HPET_INTCAP "hpet-intcap"
 
@@ -17,9 +19,8 @@
  * PCMachineState:
  * @acpi_dev: link to ACPI PM device that performs ACPI hotplug handling
  * @boot_cpus: number of present VCPUs
- * @smp_dies: number of dies per one package
  */
-struct PCMachineState {
+typedef struct PCMachineState {
     /*< private >*/
     X86MachineState parent_obj;
 
@@ -29,7 +30,6 @@ struct PCMachineState {
     Notifier machine_done;
 
     /* Pointers to devices and objects: */
-    HotplugHandler *acpi_dev;
     PCIBus *bus;
     I2CBus *smbus;
     PFlashCFI01 *flash[2];
@@ -43,6 +43,9 @@ struct PCMachineState {
     bool smbus_enabled;
     bool sata_enabled;
     bool pit_enabled;
+    bool hpet_enabled;
+    bool default_bus_bypass_iommu;
+    uint64_t max_fw_size;
 
     /* NUMA information: */
     uint64_t numa_nodes;
@@ -50,7 +53,7 @@ struct PCMachineState {
 
     /* ACPI Memory hotplug IO base address */
     hwaddr memhp_io_base;
-};
+} PCMachineState;
 
 #define PC_MACHINE_ACPI_DEVICE_PROP "acpi-device"
 #define PC_MACHINE_MAX_RAM_BELOW_4G "max-ram-below-4g"
@@ -59,7 +62,7 @@ struct PCMachineState {
 #define PC_MACHINE_SMBUS            "smbus"
 #define PC_MACHINE_SATA             "sata"
 #define PC_MACHINE_PIT              "pit"
-
+#define PC_MACHINE_MAX_FW_SIZE      "max-fw-size"
 /**
  * PCMachineClass:
  *
@@ -76,7 +79,7 @@ struct PCMachineState {
  *                  way we can use 1GByte pages in the host.
  *
  */
-typedef struct PCMachineClass {
+struct PCMachineClass {
     /*< private >*/
     X86MachineClass parent_class;
 
@@ -98,6 +101,7 @@ typedef struct PCMachineClass {
     int legacy_acpi_table_size;
     unsigned acpi_data_size;
     bool do_not_add_smb_acpi;
+    int pci_root_uid;
 
     /* SMBIOS compat: */
     bool smbios_defaults;
@@ -118,15 +122,13 @@ typedef struct PCMachineClass {
 
     /* use PVH to load kernels that support this feature */
     bool pvh_enabled;
-} PCMachineClass;
+
+    /* create kvmclock device even when KVM PV features are not exposed */
+    bool kvmclock_create_always;
+};
 
 #define TYPE_PC_MACHINE "generic-pc-machine"
-#define PC_MACHINE(obj) \
-    OBJECT_CHECK(PCMachineState, (obj), TYPE_PC_MACHINE)
-#define PC_MACHINE_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(PCMachineClass, (obj), TYPE_PC_MACHINE)
-#define PC_MACHINE_CLASS(klass) \
-    OBJECT_CLASS_CHECK(PCMachineClass, (klass), TYPE_PC_MACHINE)
+OBJECT_DECLARE_TYPE(PCMachineState, PCMachineClass, PC_MACHINE)
 
 /* ioapic.c */
 
@@ -136,9 +138,6 @@ GSIState *pc_gsi_create(qemu_irq **irqs, bool pci_enabled);
 extern int fd_bootchk;
 
 void pc_acpi_smi_interrupt(void *opaque, int irq, int level);
-
-void pc_hot_add_cpu(MachineState *ms, const int64_t id, Error **errp);
-void pc_smp_parse(MachineState *ms, QemuOpts *opts);
 
 void pc_guest_info_init(PCMachineState *pcms);
 
@@ -188,10 +187,23 @@ ISADevice *pc_find_fdc0(void);
 void pc_system_flash_create(PCMachineState *pcms);
 void pc_system_flash_cleanup_unused(PCMachineState *pcms);
 void pc_system_firmware_init(PCMachineState *pcms, MemoryRegion *rom_memory);
+bool pc_system_ovmf_table_find(const char *entry, uint8_t **data,
+                               int *data_len);
+void pc_system_parse_ovmf_flash(uint8_t *flash_ptr, size_t flash_size);
+
 
 /* acpi-build.c */
 void pc_madt_cpu_entry(AcpiDeviceIf *adev, int uid,
                        const CPUArchIdList *apic_ids, GArray *entry);
+
+extern GlobalProperty pc_compat_6_0[];
+extern const size_t pc_compat_6_0_len;
+
+extern GlobalProperty pc_compat_5_2[];
+extern const size_t pc_compat_5_2_len;
+
+extern GlobalProperty pc_compat_5_1[];
+extern const size_t pc_compat_5_1_len;
 
 extern GlobalProperty pc_compat_5_0[];
 extern const size_t pc_compat_5_0_len;

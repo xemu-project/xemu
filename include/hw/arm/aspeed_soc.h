@@ -21,12 +21,15 @@
 #include "hw/rtc/aspeed_rtc.h"
 #include "hw/i2c/aspeed_i2c.h"
 #include "hw/ssi/aspeed_smc.h"
+#include "hw/misc/aspeed_hace.h"
 #include "hw/watchdog/wdt_aspeed.h"
 #include "hw/net/ftgmac100.h"
 #include "target/arm/cpu.h"
 #include "hw/gpio/aspeed_gpio.h"
 #include "hw/sd/aspeed_sdhci.h"
 #include "hw/usb/hcd-ehci.h"
+#include "qom/object.h"
+#include "hw/misc/aspeed_lpc.h"
 
 #define ASPEED_SPIS_NUM  2
 #define ASPEED_EHCIS_NUM 2
@@ -34,7 +37,7 @@
 #define ASPEED_CPUS_NUM  2
 #define ASPEED_MACS_NUM  4
 
-typedef struct AspeedSoCState {
+struct AspeedSoCState {
     /*< private >*/
     DeviceState parent;
 
@@ -48,6 +51,7 @@ typedef struct AspeedSoCState {
     AspeedTimerCtrlState timerctrl;
     AspeedI2CState i2c;
     AspeedSCUState scu;
+    AspeedHACEState hace;
     AspeedXDMAState xdma;
     AspeedSMCState fmc;
     AspeedSMCState spi[ASPEED_SPIS_NUM];
@@ -60,12 +64,13 @@ typedef struct AspeedSoCState {
     AspeedGPIOState gpio_1_8v;
     AspeedSDHCIState sdhci;
     AspeedSDHCIState emmc;
-} AspeedSoCState;
+    AspeedLPCState lpc;
+};
 
 #define TYPE_ASPEED_SOC "aspeed-soc"
-#define ASPEED_SOC(obj) OBJECT_CHECK(AspeedSoCState, (obj), TYPE_ASPEED_SOC)
+OBJECT_DECLARE_TYPE(AspeedSoCState, AspeedSoCClass, ASPEED_SOC)
 
-typedef struct AspeedSoCClass {
+struct AspeedSoCClass {
     DeviceClass parent_class;
 
     const char *name;
@@ -79,60 +84,58 @@ typedef struct AspeedSoCClass {
     const int *irqmap;
     const hwaddr *memmap;
     uint32_t num_cpus;
-} AspeedSoCClass;
+};
 
-#define ASPEED_SOC_CLASS(klass)                                         \
-    OBJECT_CLASS_CHECK(AspeedSoCClass, (klass), TYPE_ASPEED_SOC)
-#define ASPEED_SOC_GET_CLASS(obj)                               \
-    OBJECT_GET_CLASS(AspeedSoCClass, (obj), TYPE_ASPEED_SOC)
 
 enum {
-    ASPEED_IOMEM,
-    ASPEED_UART1,
-    ASPEED_UART2,
-    ASPEED_UART3,
-    ASPEED_UART4,
-    ASPEED_UART5,
-    ASPEED_VUART,
-    ASPEED_FMC,
-    ASPEED_SPI1,
-    ASPEED_SPI2,
-    ASPEED_EHCI1,
-    ASPEED_EHCI2,
-    ASPEED_VIC,
-    ASPEED_SDMC,
-    ASPEED_SCU,
-    ASPEED_ADC,
-    ASPEED_VIDEO,
-    ASPEED_SRAM,
-    ASPEED_SDHCI,
-    ASPEED_GPIO,
-    ASPEED_GPIO_1_8V,
-    ASPEED_RTC,
-    ASPEED_TIMER1,
-    ASPEED_TIMER2,
-    ASPEED_TIMER3,
-    ASPEED_TIMER4,
-    ASPEED_TIMER5,
-    ASPEED_TIMER6,
-    ASPEED_TIMER7,
-    ASPEED_TIMER8,
-    ASPEED_WDT,
-    ASPEED_PWM,
-    ASPEED_LPC,
-    ASPEED_IBT,
-    ASPEED_I2C,
-    ASPEED_ETH1,
-    ASPEED_ETH2,
-    ASPEED_ETH3,
-    ASPEED_ETH4,
-    ASPEED_MII1,
-    ASPEED_MII2,
-    ASPEED_MII3,
-    ASPEED_MII4,
-    ASPEED_SDRAM,
-    ASPEED_XDMA,
-    ASPEED_EMMC,
+    ASPEED_DEV_IOMEM,
+    ASPEED_DEV_UART1,
+    ASPEED_DEV_UART2,
+    ASPEED_DEV_UART3,
+    ASPEED_DEV_UART4,
+    ASPEED_DEV_UART5,
+    ASPEED_DEV_VUART,
+    ASPEED_DEV_FMC,
+    ASPEED_DEV_SPI1,
+    ASPEED_DEV_SPI2,
+    ASPEED_DEV_EHCI1,
+    ASPEED_DEV_EHCI2,
+    ASPEED_DEV_VIC,
+    ASPEED_DEV_SDMC,
+    ASPEED_DEV_SCU,
+    ASPEED_DEV_ADC,
+    ASPEED_DEV_VIDEO,
+    ASPEED_DEV_SRAM,
+    ASPEED_DEV_SDHCI,
+    ASPEED_DEV_GPIO,
+    ASPEED_DEV_GPIO_1_8V,
+    ASPEED_DEV_RTC,
+    ASPEED_DEV_TIMER1,
+    ASPEED_DEV_TIMER2,
+    ASPEED_DEV_TIMER3,
+    ASPEED_DEV_TIMER4,
+    ASPEED_DEV_TIMER5,
+    ASPEED_DEV_TIMER6,
+    ASPEED_DEV_TIMER7,
+    ASPEED_DEV_TIMER8,
+    ASPEED_DEV_WDT,
+    ASPEED_DEV_PWM,
+    ASPEED_DEV_LPC,
+    ASPEED_DEV_IBT,
+    ASPEED_DEV_I2C,
+    ASPEED_DEV_ETH1,
+    ASPEED_DEV_ETH2,
+    ASPEED_DEV_ETH3,
+    ASPEED_DEV_ETH4,
+    ASPEED_DEV_MII1,
+    ASPEED_DEV_MII2,
+    ASPEED_DEV_MII3,
+    ASPEED_DEV_MII4,
+    ASPEED_DEV_SDRAM,
+    ASPEED_DEV_XDMA,
+    ASPEED_DEV_EMMC,
+    ASPEED_DEV_KCS,
+    ASPEED_DEV_HACE,
 };
 
 #endif /* ASPEED_SOC_H */

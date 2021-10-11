@@ -29,6 +29,8 @@
 
 #ifdef CONFIG_GNUTLS
 
+#include <gnutls/gnutls.h>
+
 static int
 lookup_key(const char *pskfile, const char *username, gnutls_datum_t *key,
            Error **errp)
@@ -192,10 +194,9 @@ qcrypto_tls_creds_psk_prop_set_loaded(Object *obj,
 {
     QCryptoTLSCredsPSK *creds = QCRYPTO_TLS_CREDS_PSK(obj);
 
+    qcrypto_tls_creds_psk_unload(creds);
     if (value) {
         qcrypto_tls_creds_psk_load(creds, errp);
-    } else {
-        qcrypto_tls_creds_psk_unload(creds);
     }
 }
 

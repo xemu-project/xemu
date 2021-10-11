@@ -12,12 +12,13 @@
 # Documentation
 docs/*
 *.rst
-*.texi
+*.rst.inc
 
 # build system
 configure
 Makefile*
 *.mak
+meson.build
 
 # qapi schema
 qapi/*.json
@@ -28,9 +29,11 @@ qga/*.json
 
 # headers
 *.h
+*.h.inc
 
 # decoding tree specification
 *.decode
 
 # code
 *.c
+*.c.inc

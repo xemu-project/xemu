@@ -20,20 +20,12 @@
 #include "fuse_opt.h"
 #include "fuse_virtio.h"
 
-#include <assert.h>
-#include <errno.h>
-#include <glib.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/eventfd.h>
 #include <sys/socket.h>
-#include <sys/types.h>
 #include <sys/un.h>
-#include <unistd.h>
+#include <grp.h>
 
-#include "contrib/libvhost-user/libvhost-user.h"
+#include "libvhost-user.h"
 
 struct fv_VuDev;
 struct fv_QueueInfo {
@@ -137,18 +129,55 @@ static void fv_panic(VuDev *dev, const char *err)
  * Copy from an iovec into a fuse_buf (memory only)
  * Caller must ensure there is space
  */
-static void copy_from_iov(struct fuse_buf *buf, size_t out_num,
-                          const struct iovec *out_sg)
+static size_t copy_from_iov(struct fuse_buf *buf, size_t out_num,
+                            const struct iovec *out_sg,
+                            size_t max)
 {
     void *dest = buf->mem;
+    size_t copied = 0;
 
-    while (out_num) {
+    while (out_num && max) {
         size_t onelen = out_sg->iov_len;
+        onelen = MIN(onelen, max);
         memcpy(dest, out_sg->iov_base, onelen);
         dest += onelen;
+        copied += onelen;
         out_sg++;
         out_num--;
+        max -= onelen;
     }
+
+    return copied;
+}
+
+/*
+ * Skip 'skip' bytes in the iov; 'sg_1stindex' is set as
+ * the index for the 1st iovec to read data from, and
+ * 'sg_1stskip' is the number of bytes to skip in that entry.
+ *
+ * Returns True if there are at least 'skip' bytes in the iovec
+ *
+ */
+static bool skip_iov(const struct iovec *sg, size_t sg_size,
+                     size_t skip,
+                     size_t *sg_1stindex, size_t *sg_1stskip)
+{
+    size_t vec;
+
+    for (vec = 0; vec < sg_size; vec++) {
+        if (sg[vec].iov_len > skip) {
+            *sg_1stskip = skip;
+            *sg_1stindex = vec;
+
+            return true;
+        }
+
+        skip -= sg[vec].iov_len;
+    }
+
+    *sg_1stindex = vec;
+    *sg_1stskip = 0;
+    return skip == 0;
 }
 
 /*
@@ -193,6 +222,31 @@ static void copy_iov(struct iovec *src_iov, int src_count,
         src_iov++;
         src_count--;
     }
+}
+
+/*
+ * pthread_rwlock_rdlock() and pthread_rwlock_wrlock can fail if
+ * a deadlock condition is detected or the current thread already
+ * owns the lock. They can also fail, like pthread_rwlock_unlock(),
+ * if the mutex wasn't properly initialized. None of these are ever
+ * expected to happen.
+ */
+static void vu_dispatch_rdlock(struct fv_VuDev *vud)
+{
+    int ret = pthread_rwlock_rdlock(&vud->vu_dispatch_rwlock);
+    assert(ret == 0);
+}
+
+static void vu_dispatch_wrlock(struct fv_VuDev *vud)
+{
+    int ret = pthread_rwlock_wrlock(&vud->vu_dispatch_rwlock);
+    assert(ret == 0);
+}
+
+static void vu_dispatch_unlock(struct fv_VuDev *vud)
+{
+    int ret = pthread_rwlock_unlock(&vud->vu_dispatch_rwlock);
+    assert(ret == 0);
 }
 
 /*
@@ -248,12 +302,12 @@ int virtio_send_msg(struct fuse_session *se, struct fuse_chan *ch,
 
     copy_iov(iov, count, in_sg, in_num, tosend_len);
 
-    pthread_rwlock_rdlock(&qi->virtio_dev->vu_dispatch_rwlock);
+    vu_dispatch_rdlock(qi->virtio_dev);
     pthread_mutex_lock(&qi->vq_lock);
     vu_queue_push(dev, q, elem, tosend_len);
     vu_queue_notify(dev, q);
     pthread_mutex_unlock(&qi->vq_lock);
-    pthread_rwlock_unlock(&qi->virtio_dev->vu_dispatch_rwlock);
+    vu_dispatch_unlock(qi->virtio_dev);
 
     req->reply_sent = true;
 
@@ -277,6 +331,7 @@ int virtio_send_data_iov(struct fuse_session *se, struct fuse_chan *ch,
     VuVirtq *q = vu_get_queue(dev, qi->qidx);
     VuVirtqElement *elem = &req->elem;
     int ret = 0;
+    g_autofree struct iovec *in_sg_cpy = NULL;
 
     assert(count >= 1);
     assert(iov[0].iov_len >= sizeof(struct fuse_out_header));
@@ -311,14 +366,12 @@ int virtio_send_data_iov(struct fuse_session *se, struct fuse_chan *ch,
     if (in_len < sizeof(struct fuse_out_header)) {
         fuse_log(FUSE_LOG_ERR, "%s: elem %d too short for out_header\n",
                  __func__, elem->index);
-        ret = E2BIG;
-        goto err;
+        return E2BIG;
     }
     if (in_len < tosend_len) {
         fuse_log(FUSE_LOG_ERR, "%s: elem %d too small for data len %zd\n",
                  __func__, elem->index, tosend_len);
-        ret = E2BIG;
-        goto err;
+        return E2BIG;
     }
 
     /* TODO: Limit to 'len' */
@@ -330,76 +383,50 @@ int virtio_send_data_iov(struct fuse_session *se, struct fuse_chan *ch,
      * Build a copy of the the in_sg iov so we can skip bits in it,
      * including changing the offsets
      */
-    struct iovec *in_sg_cpy = calloc(sizeof(struct iovec), in_num);
-    assert(in_sg_cpy);
+    in_sg_cpy = g_new(struct iovec, in_num);
     memcpy(in_sg_cpy, in_sg, sizeof(struct iovec) * in_num);
     /* These get updated as we skip */
     struct iovec *in_sg_ptr = in_sg_cpy;
-    int in_sg_cpy_count = in_num;
+    unsigned int in_sg_cpy_count = in_num;
 
     /* skip over parts of in_sg that contained the header iov */
-    size_t skip_size = iov_len;
+    iov_discard_front(&in_sg_ptr, &in_sg_cpy_count, iov_len);
 
-    size_t in_sg_left = 0;
     do {
-        while (skip_size != 0 && in_sg_cpy_count) {
-            if (skip_size >= in_sg_ptr[0].iov_len) {
-                skip_size -= in_sg_ptr[0].iov_len;
-                in_sg_ptr++;
-                in_sg_cpy_count--;
-            } else {
-                in_sg_ptr[0].iov_len -= skip_size;
-                in_sg_ptr[0].iov_base += skip_size;
-                break;
-            }
-        }
+        fuse_log(FUSE_LOG_DEBUG, "%s: in_sg_cpy_count=%d len remaining=%zd\n",
+                 __func__, in_sg_cpy_count, len);
 
-        int i;
-        for (i = 0, in_sg_left = 0; i < in_sg_cpy_count; i++) {
-            in_sg_left += in_sg_ptr[i].iov_len;
-        }
-        fuse_log(FUSE_LOG_DEBUG,
-                 "%s: after skip skip_size=%zd in_sg_cpy_count=%d "
-                 "in_sg_left=%zd\n",
-                 __func__, skip_size, in_sg_cpy_count, in_sg_left);
         ret = preadv(buf->buf[0].fd, in_sg_ptr, in_sg_cpy_count,
                      buf->buf[0].pos);
 
         if (ret == -1) {
             ret = errno;
+            if (ret == EINTR) {
+                continue;
+            }
             fuse_log(FUSE_LOG_DEBUG, "%s: preadv failed (%m) len=%zd\n",
                      __func__, len);
-            free(in_sg_cpy);
-            goto err;
+            return ret;
+        }
+
+        if (!ret) {
+            /* EOF case? */
+            fuse_log(FUSE_LOG_DEBUG, "%s: !ret len remaining=%zd\n", __func__,
+                     len);
+            break;
         }
         fuse_log(FUSE_LOG_DEBUG, "%s: preadv ret=%d len=%zd\n", __func__,
                  ret, len);
-        if (ret < len && ret) {
+
+        len -= ret;
+        /* Short read. Retry reading remaining bytes */
+        if (len) {
             fuse_log(FUSE_LOG_DEBUG, "%s: ret < len\n", __func__);
             /* Skip over this much next time around */
-            skip_size = ret;
+            iov_discard_front(&in_sg_ptr, &in_sg_cpy_count, ret);
             buf->buf[0].pos += ret;
-            len -= ret;
-
-            /* Lets do another read */
-            continue;
         }
-        if (!ret) {
-            /* EOF case? */
-            fuse_log(FUSE_LOG_DEBUG, "%s: !ret in_sg_left=%zd\n", __func__,
-                     in_sg_left);
-            break;
-        }
-        if (ret != len) {
-            fuse_log(FUSE_LOG_DEBUG, "%s: ret!=len\n", __func__);
-            ret = EIO;
-            free(in_sg_cpy);
-            goto err;
-        }
-        in_sg_left -= ret;
-        len -= ret;
-    } while (in_sg_left);
-    free(in_sg_cpy);
+    } while (len);
 
     /* Need to fix out->len on EOF */
     if (len) {
@@ -409,21 +436,14 @@ int virtio_send_data_iov(struct fuse_session *se, struct fuse_chan *ch,
         out_sg->len = tosend_len;
     }
 
-    ret = 0;
-
-    pthread_rwlock_rdlock(&qi->virtio_dev->vu_dispatch_rwlock);
+    vu_dispatch_rdlock(qi->virtio_dev);
     pthread_mutex_lock(&qi->vq_lock);
     vu_queue_push(dev, q, elem, tosend_len);
     vu_queue_notify(dev, q);
     pthread_mutex_unlock(&qi->vq_lock);
-    pthread_rwlock_unlock(&qi->virtio_dev->vu_dispatch_rwlock);
-
-err:
-    if (ret == 0) {
-        req->reply_sent = true;
-    }
-
-    return ret;
+    vu_dispatch_unlock(qi->virtio_dev);
+    req->reply_sent = true;
+    return 0;
 }
 
 static __thread bool clone_fs_called;
@@ -440,6 +460,7 @@ static void fv_queue_worker(gpointer data, gpointer user_data)
     bool allocated_bufv = false;
     struct fuse_bufvec bufv;
     struct fuse_bufvec *pbufv;
+    struct fuse_in_header inh;
 
     assert(se->bufsize > sizeof(struct fuse_in_header));
 
@@ -459,8 +480,7 @@ static void fv_queue_worker(gpointer data, gpointer user_data)
      * They're spread over multiple descriptors in a scatter/gather set
      * and we can't trust the guest to keep them still; so copy in/out.
      */
-    fbuf.mem = malloc(se->bufsize);
-    assert(fbuf.mem);
+    fbuf.mem = g_malloc(se->bufsize);
 
     fuse_mutex_init(&req->ch.lock);
     req->ch.fd = -1;
@@ -488,14 +508,15 @@ static void fv_queue_worker(gpointer data, gpointer user_data)
                  elem->index);
         assert(0); /* TODO */
     }
-    /* Copy just the first element and look at it */
-    copy_from_iov(&fbuf, 1, out_sg);
+    /* Copy just the fuse_in_header and look at it */
+    copy_from_iov(&fbuf, out_num, out_sg,
+                  sizeof(struct fuse_in_header));
+    memcpy(&inh, fbuf.mem, sizeof(struct fuse_in_header));
 
     pbufv = NULL; /* Compiler thinks an unitialised path */
-    if (out_num > 2 &&
-        out_sg[0].iov_len == sizeof(struct fuse_in_header) &&
-        ((struct fuse_in_header *)fbuf.mem)->opcode == FUSE_WRITE &&
-        out_sg[1].iov_len == sizeof(struct fuse_write_in)) {
+    if (inh.opcode == FUSE_WRITE &&
+        out_len >= (sizeof(struct fuse_in_header) +
+                    sizeof(struct fuse_write_in))) {
         /*
          * For a write we don't actually need to copy the
          * data, we can just do it straight out of guest memory
@@ -504,15 +525,15 @@ static void fv_queue_worker(gpointer data, gpointer user_data)
          */
         fuse_log(FUSE_LOG_DEBUG, "%s: Write special case\n", __func__);
 
-        /* copy the fuse_write_in header afte rthe fuse_in_header */
-        fbuf.mem += out_sg->iov_len;
-        copy_from_iov(&fbuf, 1, out_sg + 1);
-        fbuf.mem -= out_sg->iov_len;
-        fbuf.size = out_sg[0].iov_len + out_sg[1].iov_len;
+        fbuf.size = copy_from_iov(&fbuf, out_num, out_sg,
+                                  sizeof(struct fuse_in_header) +
+                                  sizeof(struct fuse_write_in));
+        /* That copy reread the in_header, make sure we use the original */
+        memcpy(fbuf.mem, &inh, sizeof(struct fuse_in_header));
 
         /* Allocate the bufv, with space for the rest of the iov */
-        pbufv = malloc(sizeof(struct fuse_bufvec) +
-                       sizeof(struct fuse_buf) * (out_num - 2));
+        pbufv = g_try_malloc(sizeof(struct fuse_bufvec) +
+                             sizeof(struct fuse_buf) * out_num);
         if (!pbufv) {
             fuse_log(FUSE_LOG_ERR, "%s: pbufv malloc failed\n",
                     __func__);
@@ -523,9 +544,17 @@ static void fv_queue_worker(gpointer data, gpointer user_data)
         pbufv->count = 1;
         pbufv->buf[0] = fbuf;
 
-        size_t iovindex, pbufvindex;
-        iovindex = 2; /* 2 headers, separate iovs */
+        size_t iovindex, pbufvindex, iov_bytes_skip;
         pbufvindex = 1; /* 2 headers, 1 fusebuf */
+
+        if (!skip_iov(out_sg, out_num,
+                      sizeof(struct fuse_in_header) +
+                      sizeof(struct fuse_write_in),
+                      &iovindex, &iov_bytes_skip)) {
+            fuse_log(FUSE_LOG_ERR, "%s: skip failed\n",
+                    __func__);
+            goto out;
+        }
 
         for (; iovindex < out_num; iovindex++, pbufvindex++) {
             pbufv->count++;
@@ -533,14 +562,19 @@ static void fv_queue_worker(gpointer data, gpointer user_data)
             pbufv->buf[pbufvindex].flags = 0;
             pbufv->buf[pbufvindex].mem = out_sg[iovindex].iov_base;
             pbufv->buf[pbufvindex].size = out_sg[iovindex].iov_len;
+
+            if (iov_bytes_skip) {
+                pbufv->buf[pbufvindex].mem += iov_bytes_skip;
+                pbufv->buf[pbufvindex].size -= iov_bytes_skip;
+                iov_bytes_skip = 0;
+            }
         }
     } else {
         /* Normal (non fast write) path */
 
-        /* Copy the rest of the buffer */
-        fbuf.mem += out_sg->iov_len;
-        copy_from_iov(&fbuf, out_num - 1, out_sg + 1);
-        fbuf.mem -= out_sg->iov_len;
+        copy_from_iov(&fbuf, out_num, out_sg, se->bufsize);
+        /* That copy reread the in_header, make sure we use the original */
+        memcpy(fbuf.mem, &inh, sizeof(struct fuse_in_header));
         fbuf.size = out_len;
 
         /* TODO! Endianness of header */
@@ -556,7 +590,7 @@ static void fv_queue_worker(gpointer data, gpointer user_data)
 
 out:
     if (allocated_bufv) {
-        free(pbufv);
+        g_free(pbufv);
     }
 
     /* If the request has no reply, still recycle the virtqueue element */
@@ -566,16 +600,16 @@ out:
         fuse_log(FUSE_LOG_DEBUG, "%s: elem %d no reply sent\n", __func__,
                  elem->index);
 
-        pthread_rwlock_rdlock(&qi->virtio_dev->vu_dispatch_rwlock);
+        vu_dispatch_rdlock(qi->virtio_dev);
         pthread_mutex_lock(&qi->vq_lock);
         vu_queue_push(dev, q, elem, 0);
         vu_queue_notify(dev, q);
         pthread_mutex_unlock(&qi->vq_lock);
-        pthread_rwlock_unlock(&qi->virtio_dev->vu_dispatch_rwlock);
+        vu_dispatch_unlock(qi->virtio_dev);
     }
 
     pthread_mutex_destroy(&req->ch.lock);
-    free(fbuf.mem);
+    g_free(fbuf.mem);
     free(req);
 }
 
@@ -586,20 +620,24 @@ static void *fv_queue_thread(void *opaque)
     struct VuDev *dev = &qi->virtio_dev->dev;
     struct VuVirtq *q = vu_get_queue(dev, qi->qidx);
     struct fuse_session *se = qi->virtio_dev->se;
-    GThreadPool *pool;
+    GThreadPool *pool = NULL;
+    GList *req_list = NULL;
 
-    pool = g_thread_pool_new(fv_queue_worker, qi, se->thread_pool_size, TRUE,
-                             NULL);
-    if (!pool) {
-        fuse_log(FUSE_LOG_ERR, "%s: g_thread_pool_new failed\n", __func__);
-        return NULL;
+    if (se->thread_pool_size) {
+        fuse_log(FUSE_LOG_DEBUG, "%s: Creating thread pool for Queue %d\n",
+                 __func__, qi->qidx);
+        pool = g_thread_pool_new(fv_queue_worker, qi, se->thread_pool_size,
+                                 FALSE, NULL);
+        if (!pool) {
+            fuse_log(FUSE_LOG_ERR, "%s: g_thread_pool_new failed\n", __func__);
+            return NULL;
+        }
     }
 
     fuse_log(FUSE_LOG_INFO, "%s: Start for queue %d kick_fd %d\n", __func__,
              qi->qidx, qi->kick_fd);
     while (1) {
         struct pollfd pf[2];
-        int ret;
 
         pf[0].fd = qi->kick_fd;
         pf[0].events = POLLIN;
@@ -648,8 +686,7 @@ static void *fv_queue_thread(void *opaque)
             break;
         }
         /* Mutual exclusion with virtio_loop() */
-        ret = pthread_rwlock_rdlock(&qi->virtio_dev->vu_dispatch_rwlock);
-        assert(ret == 0); /* there is no possible error case */
+        vu_dispatch_rdlock(qi->virtio_dev);
         pthread_mutex_lock(&qi->vq_lock);
         /* out is from guest, in is too guest */
         unsigned int in_bytes, out_bytes;
@@ -667,14 +704,27 @@ static void *fv_queue_thread(void *opaque)
 
             req->reply_sent = false;
 
-            g_thread_pool_push(pool, req, NULL);
+            if (!se->thread_pool_size) {
+                req_list = g_list_prepend(req_list, req);
+            } else {
+                g_thread_pool_push(pool, req, NULL);
+            }
         }
 
         pthread_mutex_unlock(&qi->vq_lock);
-        pthread_rwlock_unlock(&qi->virtio_dev->vu_dispatch_rwlock);
+        vu_dispatch_unlock(qi->virtio_dev);
+
+        /* Process all the requests. */
+        if (!se->thread_pool_size && req_list != NULL) {
+            g_list_foreach(req_list, fv_queue_worker, qi);
+            g_list_free(req_list);
+            req_list = NULL;
+        }
     }
 
-    g_thread_pool_free(pool, FALSE, TRUE);
+    if (pool) {
+        g_thread_pool_free(pool, FALSE, TRUE);
+    }
 
     return NULL;
 }
@@ -700,7 +750,7 @@ static void fv_queue_cleanup_thread(struct fv_VuDev *vud, int qidx)
     pthread_mutex_destroy(&ourqi->vq_lock);
     close(ourqi->kill_fd);
     ourqi->kick_fd = -1;
-    free(vud->qi[qidx]);
+    g_free(vud->qi[qidx]);
     vud->qi[qidx] = NULL;
 }
 
@@ -731,15 +781,13 @@ static void fv_queue_set_started(VuDev *dev, int qidx, bool started)
     if (started) {
         /* Fire up a thread to watch this queue */
         if (qidx >= vud->nqueues) {
-            vud->qi = realloc(vud->qi, (qidx + 1) * sizeof(vud->qi[0]));
-            assert(vud->qi);
+            vud->qi = g_realloc_n(vud->qi, qidx + 1, sizeof(vud->qi[0]));
             memset(vud->qi + vud->nqueues, 0,
                    sizeof(vud->qi[0]) * (1 + (qidx - vud->nqueues)));
             vud->nqueues = qidx + 1;
         }
         if (!vud->qi[qidx]) {
-            vud->qi[qidx] = calloc(sizeof(struct fv_QueueInfo), 1);
-            assert(vud->qi[qidx]);
+            vud->qi[qidx] = g_new0(struct fv_QueueInfo, 1);
             vud->qi[qidx]->virtio_dev = vud;
             vud->qi[qidx]->qidx = qidx;
         } else {
@@ -759,7 +807,13 @@ static void fv_queue_set_started(VuDev *dev, int qidx, bool started)
             assert(0);
         }
     } else {
+        /*
+         * Temporarily drop write-lock taken in virtio_loop() so that
+         * the queue thread doesn't block in virtio_send_msg().
+         */
+        vu_dispatch_unlock(vud);
         fv_queue_cleanup_thread(vud, qidx);
+        vu_dispatch_wrlock(vud);
     }
 }
 
@@ -789,7 +843,6 @@ int virtio_loop(struct fuse_session *se)
     while (!fuse_session_exited(se)) {
         struct pollfd pf[1];
         bool ok;
-        int ret;
         pf[0].fd = se->vu_socketfd;
         pf[0].events = POLLIN;
         pf[0].revents = 0;
@@ -815,12 +868,11 @@ int virtio_loop(struct fuse_session *se)
         assert(pf[0].revents & POLLIN);
         fuse_log(FUSE_LOG_DEBUG, "%s: Got VU event\n", __func__);
         /* Mutual exclusion with fv_queue_thread() */
-        ret = pthread_rwlock_wrlock(&se->virtio_dev->vu_dispatch_rwlock);
-        assert(ret == 0); /* there is no possible error case */
+        vu_dispatch_wrlock(se->virtio_dev);
 
         ok = vu_dispatch(&se->virtio_dev->dev);
 
-        pthread_rwlock_unlock(&se->virtio_dev->vu_dispatch_rwlock);
+        vu_dispatch_unlock(se->virtio_dev);
 
         if (!ok) {
             fuse_log(FUSE_LOG_ERR, "%s: vu_dispatch failed\n", __func__);
@@ -865,7 +917,7 @@ static bool fv_socket_lock(struct fuse_session *se)
     dir = qemu_get_local_state_pathname("run/virtiofsd");
 
     if (g_mkdir_with_parents(dir, S_IRWXU) < 0) {
-        fuse_log(FUSE_LOG_ERR, "%s: Failed to create directory %s: %s",
+        fuse_log(FUSE_LOG_ERR, "%s: Failed to create directory %s: %s\n",
                  __func__, dir, strerror(errno));
         return false;
     }
@@ -924,14 +976,29 @@ static int fv_create_listen_socket(struct fuse_session *se)
 
     /*
      * Unfortunately bind doesn't let you set the mask on the socket,
-     * so set umask to 077 and restore it later.
+     * so set umask appropriately and restore it later.
      */
-    old_umask = umask(0077);
+    if (se->vu_socket_group) {
+        old_umask = umask(S_IROTH | S_IWOTH | S_IXOTH);
+    } else {
+        old_umask = umask(S_IRGRP | S_IWGRP | S_IXGRP |
+                          S_IROTH | S_IWOTH | S_IXOTH);
+    }
     if (bind(listen_sock, (struct sockaddr *)&un, addr_len) == -1) {
         fuse_log(FUSE_LOG_ERR, "vhost socket bind: %m\n");
         close(listen_sock);
         umask(old_umask);
         return -1;
+    }
+    if (se->vu_socket_group) {
+        struct group *g = getgrnam(se->vu_socket_group);
+        if (g) {
+            if (chown(se->vu_socket_path, -1, g->gr_gid) == -1) {
+                fuse_log(FUSE_LOG_WARNING,
+                         "vhost socket failed to set group to %s (%d): %m\n",
+                         se->vu_socket_group, g->gr_gid);
+            }
+        }
     }
     umask(old_umask);
 
@@ -948,6 +1015,22 @@ static int fv_create_listen_socket(struct fuse_session *se)
 int virtio_session_mount(struct fuse_session *se)
 {
     int ret;
+
+    /*
+     * Test that unshare(CLONE_FS) works. fv_queue_worker() will need it. It's
+     * an unprivileged system call but some Docker/Moby versions are known to
+     * reject it via seccomp when CAP_SYS_ADMIN is not given.
+     *
+     * Note that the program is single-threaded here so this syscall has no
+     * visible effect and is safe to make.
+     */
+    ret = unshare(CLONE_FS);
+    if (ret == -1 && errno == EPERM) {
+        fuse_log(FUSE_LOG_ERR, "unshare(CLONE_FS) failed with EPERM. If "
+                "running in a container please check that the container "
+                "runtime seccomp policy allows unshare.\n");
+        return -1;
+    }
 
     ret = fv_create_listen_socket(se);
     if (ret < 0) {
@@ -970,18 +1053,16 @@ int virtio_session_mount(struct fuse_session *se)
              __func__);
 
     /* TODO: Some cleanup/deallocation! */
-    se->virtio_dev = calloc(sizeof(struct fv_VuDev), 1);
-    if (!se->virtio_dev) {
-        fuse_log(FUSE_LOG_ERR, "%s: virtio_dev calloc failed\n", __func__);
-        close(data_sock);
-        return -1;
-    }
+    se->virtio_dev = g_new0(struct fv_VuDev, 1);
 
     se->vu_socketfd = data_sock;
     se->virtio_dev->se = se;
     pthread_rwlock_init(&se->virtio_dev->vu_dispatch_rwlock, NULL);
-    vu_init(&se->virtio_dev->dev, 2, se->vu_socketfd, fv_panic, fv_set_watch,
-            fv_remove_watch, &fv_iface);
+    if (!vu_init(&se->virtio_dev->dev, 2, se->vu_socketfd, fv_panic, NULL,
+                 fv_set_watch, fv_remove_watch, &fv_iface)) {
+        fuse_log(FUSE_LOG_ERR, "%s: vu_init failed\n", __func__);
+        return -1;
+    }
 
     return 0;
 }
@@ -994,8 +1075,8 @@ void virtio_session_close(struct fuse_session *se)
         return;
     }
 
-    free(se->virtio_dev->qi);
+    g_free(se->virtio_dev->qi);
     pthread_rwlock_destroy(&se->virtio_dev->vu_dispatch_rwlock);
-    free(se->virtio_dev);
+    g_free(se->virtio_dev);
     se->virtio_dev = NULL;
 }

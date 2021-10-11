@@ -5,13 +5,14 @@
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
+#include "qemu/datadir.h"
 #include "cpu.h"
 #include "elf.h"
 #include "hw/loader.h"
-#include "hw/boards.h"
 #include "qemu/error-report.h"
 #include "sysemu/reset.h"
 #include "sysemu/sysemu.h"
+#include "sysemu/runstate.h"
 #include "hw/rtc/mc146818rtc.h"
 #include "hw/timer/i8254.h"
 #include "hw/char/serial.h"
@@ -24,6 +25,32 @@
 #include "net/net.h"
 
 #define MAX_IDE_BUS 2
+
+#define MIN_SEABIOS_HPPA_VERSION 1 /* require at least this fw version */
+
+#define HPA_POWER_BUTTON (FIRMWARE_END - 0x10)
+
+static void hppa_powerdown_req(Notifier *n, void *opaque)
+{
+    hwaddr soft_power_reg = HPA_POWER_BUTTON;
+    uint32_t val;
+
+    val = ldl_be_phys(&address_space_memory, soft_power_reg);
+    if ((val >> 8) == 0) {
+        /* immediately shut down when under hardware control */
+        qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
+        return;
+    }
+
+    /* clear bit 31 to indicate that the power switch was pressed. */
+    val &= ~1;
+    stl_be_phys(&address_space_memory, soft_power_reg, val);
+}
+
+static Notifier hppa_system_powerdown_notifier = {
+    .notify = hppa_powerdown_req
+};
+
 
 static ISABus *hppa_isa_bus(void)
 {
@@ -55,6 +82,44 @@ static uint64_t cpu_hppa_to_phys(void *opaque, uint64_t addr)
 
 static HPPACPU *cpu[HPPA_MAX_CPUS];
 static uint64_t firmware_entry;
+
+static void fw_cfg_boot_set(void *opaque, const char *boot_device,
+                            Error **errp)
+{
+    fw_cfg_modify_i16(opaque, FW_CFG_BOOT_DEVICE, boot_device[0]);
+}
+
+static FWCfgState *create_fw_cfg(MachineState *ms)
+{
+    FWCfgState *fw_cfg;
+    uint64_t val;
+
+    fw_cfg = fw_cfg_init_mem(FW_CFG_IO_BASE, FW_CFG_IO_BASE + 4);
+    fw_cfg_add_i16(fw_cfg, FW_CFG_NB_CPUS, ms->smp.cpus);
+    fw_cfg_add_i16(fw_cfg, FW_CFG_MAX_CPUS, HPPA_MAX_CPUS);
+    fw_cfg_add_i64(fw_cfg, FW_CFG_RAM_SIZE, ms->ram_size);
+
+    val = cpu_to_le64(MIN_SEABIOS_HPPA_VERSION);
+    fw_cfg_add_file(fw_cfg, "/etc/firmware-min-version",
+                    g_memdup(&val, sizeof(val)), sizeof(val));
+
+    val = cpu_to_le64(HPPA_TLB_ENTRIES);
+    fw_cfg_add_file(fw_cfg, "/etc/cpu/tlb_entries",
+                    g_memdup(&val, sizeof(val)), sizeof(val));
+
+    val = cpu_to_le64(HPPA_BTLB_ENTRIES);
+    fw_cfg_add_file(fw_cfg, "/etc/cpu/btlb_entries",
+                    g_memdup(&val, sizeof(val)), sizeof(val));
+
+    val = cpu_to_le64(HPA_POWER_BUTTON);
+    fw_cfg_add_file(fw_cfg, "/etc/power-button-addr",
+                    g_memdup(&val, sizeof(val)), sizeof(val));
+
+    fw_cfg_add_i16(fw_cfg, FW_CFG_BOOT_DEVICE, ms->boot_order[0]);
+    qemu_register_boot_set(fw_cfg_boot_set, fw_cfg);
+
+    return fw_cfg;
+}
 
 static void machine_hppa_init(MachineState *machine)
 {
@@ -118,6 +183,9 @@ static void machine_hppa_init(MachineState *machine)
                        115200, serial_hd(0), DEVICE_BIG_ENDIAN);
     }
 
+    /* fw_cfg configuration interface */
+    create_fw_cfg(machine);
+
     /* SCSI disk setup. */
     dev = DEVICE(pci_create_simple(pci_bus, -1, "lsi53c895a"));
     lsi53c8xx_handle_legacy_cmdline(dev);
@@ -138,12 +206,14 @@ static void machine_hppa_init(MachineState *machine)
         }
     }
 
+    /* register power switch emulation */
+    qemu_register_powerdown_notifier(&hppa_system_powerdown_notifier);
+
     /* Load firmware.  Given that this is not "real" firmware,
        but one explicitly written for the emulation, we might as
        well load it directly from an ELF image.  */
     firmware_filename = qemu_find_file(QEMU_FILE_TYPE_BIOS,
-                                       bios_name ? bios_name :
-                                       "hppa-firmware.img");
+                                       machine->firmware ?: "hppa-firmware.img");
     if (firmware_filename == NULL) {
         error_report("no firmware provided");
         exit(1);
@@ -218,7 +288,7 @@ static void machine_hppa_init(MachineState *machine)
                (1) Due to sign-extension problems and PDC,
                put the initrd no higher than 1G.
                (2) Reserve 64k for stack.  */
-            initrd_base = MIN(ram_size, 1 * GiB);
+            initrd_base = MIN(machine->ram_size, 1 * GiB);
             initrd_base = initrd_base - 64 * KiB;
             initrd_base = (initrd_base - initrd_size) & TARGET_PAGE_MASK;
 
@@ -246,11 +316,14 @@ static void machine_hppa_init(MachineState *machine)
      * various parameters in registers. After firmware initialization,
      * firmware will start the Linux kernel with ramdisk and cmdline.
      */
-    cpu[0]->env.gr[26] = ram_size;
+    cpu[0]->env.gr[26] = machine->ram_size;
     cpu[0]->env.gr[25] = kernel_entry;
 
     /* tell firmware how many SMP CPUs to present in inventory table */
     cpu[0]->env.gr[21] = smp_cpus;
+
+    /* tell firmware fw_cfg port */
+    cpu[0]->env.gr[19] = FW_CFG_IO_BASE;
 }
 
 static void hppa_machine_reset(MachineState *ms)
@@ -269,15 +342,17 @@ static void hppa_machine_reset(MachineState *ms)
     }
 
     /* already initialized by machine_hppa_init()? */
-    if (cpu[0]->env.gr[26] == ram_size) {
+    if (cpu[0]->env.gr[26] == ms->ram_size) {
         return;
     }
 
-    cpu[0]->env.gr[26] = ram_size;
+    cpu[0]->env.gr[26] = ms->ram_size;
     cpu[0]->env.gr[25] = 0; /* no firmware boot menu */
     cpu[0]->env.gr[24] = 'c';
     /* gr22/gr23 unused, no initrd while reboot. */
     cpu[0]->env.gr[21] = smp_cpus;
+    /* tell firmware fw_cfg port */
+    cpu[0]->env.gr[19] = FW_CFG_IO_BASE;
 }
 
 

@@ -34,7 +34,6 @@
 #include "hw/loader.h"
 #include "elf.h"
 #include "boot.h"
-#include "exec/address-spaces.h"
 #include "sysemu/qtest.h"
 #include "sysemu/sysemu.h"
 
@@ -289,7 +288,7 @@ void axisdev88_init(MachineState *machine)
                                 &gpio_state.iomem);
 
 
-    dev = qdev_new("etraxfs,pic");
+    dev = qdev_new("etraxfs-pic");
     s = SYS_BUS_DEVICE(dev);
     sysbus_realize_and_unref(s, &error_fatal);
     sysbus_mmio_map(s, 0, 0x3001c000);
@@ -323,8 +322,8 @@ void axisdev88_init(MachineState *machine)
     }
 
     /* 2 timers.  */
-    sysbus_create_varargs("etraxfs,timer", 0x3001e000, irq[0x1b], nmi[1], NULL);
-    sysbus_create_varargs("etraxfs,timer", 0x3005e000, irq[0x1b], nmi[1], NULL);
+    sysbus_create_varargs("etraxfs-timer", 0x3001e000, irq[0x1b], nmi[1], NULL);
+    sysbus_create_varargs("etraxfs-timer", 0x3005e000, irq[0x1b], nmi[1], NULL);
 
     for (i = 0; i < 4; i++) {
         etraxfs_ser_create(0x30026000 + i * 0x2000, irq[0x14 + i], serial_hd(i));
@@ -333,6 +332,7 @@ void axisdev88_init(MachineState *machine)
     if (kernel_filename) {
         li.image_filename = kernel_filename;
         li.cmdline = kernel_cmdline;
+        li.ram_size = machine->ram_size;
         cris_load_image(cpu, &li);
     } else if (!qtest_enabled()) {
         fprintf(stderr, "Kernel image must be specified\n");

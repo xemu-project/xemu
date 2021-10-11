@@ -23,30 +23,63 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "cpu.h"
-#include "internal.h"
-#include "kvm_s390x.h"
+#include "s390x-internal.h"
+#include "kvm/kvm_s390x.h"
 #include "sysemu/kvm.h"
 #include "sysemu/reset.h"
-#include "qemu/timer.h"
-#include "qemu/error-report.h"
 #include "qemu/module.h"
 #include "trace.h"
-#include "qapi/visitor.h"
 #include "qapi/qapi-types-machine.h"
-#include "qapi/qapi-visit-run-state.h"
 #include "sysemu/hw_accel.h"
 #include "hw/qdev-properties.h"
-#ifndef CONFIG_USER_ONLY
-#include "hw/s390x/pv.h"
-#include "hw/boards.h"
-#include "sysemu/arch_init.h"
-#include "sysemu/sysemu.h"
-#include "sysemu/tcg.h"
-#endif
 #include "fpu/softfloat-helpers.h"
+#include "disas/capstone.h"
+#include "sysemu/tcg.h"
 
 #define CR0_RESET       0xE0UL
 #define CR14_RESET      0xC2000000UL;
+
+void s390_cpu_set_psw(CPUS390XState *env, uint64_t mask, uint64_t addr)
+{
+#ifndef CONFIG_USER_ONLY
+    uint64_t old_mask = env->psw.mask;
+#endif
+
+    env->psw.addr = addr;
+    env->psw.mask = mask;
+
+    /* KVM will handle all WAITs and trigger a WAIT exit on disabled_wait */
+    if (!tcg_enabled()) {
+        return;
+    }
+    env->cc_op = (mask >> 44) & 3;
+
+#ifndef CONFIG_USER_ONLY
+    if ((old_mask ^ mask) & PSW_MASK_PER) {
+        s390_cpu_recompute_watchpoints(env_cpu(env));
+    }
+
+    if (mask & PSW_MASK_WAIT) {
+        s390_handle_wait(env_archcpu(env));
+    }
+#endif
+}
+
+uint64_t s390_cpu_get_psw_mask(CPUS390XState *env)
+{
+    uint64_t r = env->psw.mask;
+
+    if (tcg_enabled()) {
+        uint64_t cc = calc_cc(env, env->cc_op, env->cc_src,
+                              env->cc_dst, env->cc_vr);
+
+        assert(cc <= 3);
+        r &= ~PSW_MASK_CC;
+        r |= cc << 44;
+    }
+
+    return r;
+}
 
 static void s390_cpu_set_pc(CPUState *cs, vaddr value)
 {
@@ -71,33 +104,6 @@ static bool s390_cpu_has_work(CPUState *cs)
 
     return s390_cpu_has_int(cpu);
 }
-
-#if !defined(CONFIG_USER_ONLY)
-/* S390CPUClass::load_normal() */
-static void s390_cpu_load_normal(CPUState *s)
-{
-    S390CPU *cpu = S390_CPU(s);
-    uint64_t spsw;
-
-    if (!s390_is_pv()) {
-        spsw = ldq_phys(s->as, 0);
-        cpu->env.psw.mask = spsw & PSW_MASK_SHORT_CTRL;
-        /*
-         * Invert short psw indication, so SIE will report a specification
-         * exception if it was not set.
-         */
-        cpu->env.psw.mask ^= PSW_MASK_SHORTPSW;
-        cpu->env.psw.addr = spsw & PSW_MASK_SHORT_ADDR;
-    } else {
-        /*
-         * Firmware requires us to set the load state before we set
-         * the cpu to operating on protected guests.
-         */
-        s390_cpu_set_state(S390_CPU_STATE_LOAD, cpu);
-    }
-    s390_cpu_set_state(S390_CPU_STATE_OPERATING, cpu);
-}
-#endif
 
 /* S390CPUClass::reset() */
 static void s390_cpu_reset(CPUState *s, cpu_reset_type type)
@@ -169,28 +175,19 @@ static void s390_cpu_reset(CPUState *s, cpu_reset_type type)
     }
 }
 
-#if !defined(CONFIG_USER_ONLY)
-static void s390_cpu_machine_reset_cb(void *opaque)
-{
-    S390CPU *cpu = opaque;
-
-    run_on_cpu(CPU(cpu), s390_do_cpu_full_reset, RUN_ON_CPU_NULL);
-}
-#endif
-
 static void s390_cpu_disas_set_info(CPUState *cpu, disassemble_info *info)
 {
     info->mach = bfd_mach_s390_64;
     info->print_insn = print_insn_s390;
+    info->cap_arch = CS_ARCH_SYSZ;
+    info->cap_insn_unit = 2;
+    info->cap_insn_split = 6;
 }
 
 static void s390_cpu_realizefn(DeviceState *dev, Error **errp)
 {
     CPUState *cs = CPU(dev);
     S390CPUClass *scc = S390_CPU_GET_CLASS(dev);
-#if !defined(CONFIG_USER_ONLY)
-    S390CPU *cpu = S390_CPU(dev);
-#endif
     Error *err = NULL;
 
     /* the model has to be realized before qemu_init_vcpu() due to kvm */
@@ -200,23 +197,9 @@ static void s390_cpu_realizefn(DeviceState *dev, Error **errp)
     }
 
 #if !defined(CONFIG_USER_ONLY)
-    MachineState *ms = MACHINE(qdev_get_machine());
-    unsigned int max_cpus = ms->smp.max_cpus;
-    if (cpu->env.core_id >= max_cpus) {
-        error_setg(&err, "Unable to add CPU with core-id: %" PRIu32
-                   ", maximum core-id: %d", cpu->env.core_id,
-                   max_cpus - 1);
+    if (!s390_cpu_realize_sysemu(dev, &err)) {
         goto out;
     }
-
-    if (cpu_exists(cpu->env.core_id)) {
-        error_setg(&err, "Unable to add CPU with core-id: %" PRIu32
-                   ", it already exists", cpu->env.core_id);
-        goto out;
-    }
-
-    /* sync cs->cpu_index and env->core_id. The latter is needed for TCG. */
-    cs->cpu_index = cpu->env.core_id;
 #endif
 
     cpu_exec_realizefn(cs, &err);
@@ -225,7 +208,7 @@ static void s390_cpu_realizefn(DeviceState *dev, Error **errp)
     }
 
 #if !defined(CONFIG_USER_ONLY)
-    qemu_register_reset(s390_cpu_machine_reset_cb, cpu);
+    qemu_register_reset(s390_cpu_machine_reset_cb, S390_CPU(dev));
 #endif
     s390_cpu_gdb_init(cs);
     qemu_init_vcpu(cs);
@@ -247,204 +230,18 @@ out:
     error_propagate(errp, err);
 }
 
-#if !defined(CONFIG_USER_ONLY)
-static GuestPanicInformation *s390_cpu_get_crash_info(CPUState *cs)
-{
-    GuestPanicInformation *panic_info;
-    S390CPU *cpu = S390_CPU(cs);
-
-    cpu_synchronize_state(cs);
-    panic_info = g_malloc0(sizeof(GuestPanicInformation));
-
-    panic_info->type = GUEST_PANIC_INFORMATION_TYPE_S390;
-    panic_info->u.s390.core = cpu->env.core_id;
-    panic_info->u.s390.psw_mask = cpu->env.psw.mask;
-    panic_info->u.s390.psw_addr = cpu->env.psw.addr;
-    panic_info->u.s390.reason = cpu->env.crash_reason;
-
-    return panic_info;
-}
-
-static void s390_cpu_get_crash_info_qom(Object *obj, Visitor *v,
-                                        const char *name, void *opaque,
-                                        Error **errp)
-{
-    CPUState *cs = CPU(obj);
-    GuestPanicInformation *panic_info;
-
-    if (!cs->crash_occurred) {
-        error_setg(errp, "No crash occurred");
-        return;
-    }
-
-    panic_info = s390_cpu_get_crash_info(cs);
-
-    visit_type_GuestPanicInformation(v, "crash-information", &panic_info,
-                                     errp);
-    qapi_free_GuestPanicInformation(panic_info);
-}
-#endif
-
 static void s390_cpu_initfn(Object *obj)
 {
     CPUState *cs = CPU(obj);
     S390CPU *cpu = S390_CPU(obj);
 
     cpu_set_cpustate_pointers(cpu);
-    cs->halted = 1;
     cs->exception_index = EXCP_HLT;
-#if !defined(CONFIG_USER_ONLY)
-    object_property_add(obj, "crash-information", "GuestPanicInformation",
-                        s390_cpu_get_crash_info_qom, NULL, NULL, NULL);
-    cpu->env.tod_timer =
-        timer_new_ns(QEMU_CLOCK_VIRTUAL, s390x_tod_timer, cpu);
-    cpu->env.cpu_timer =
-        timer_new_ns(QEMU_CLOCK_VIRTUAL, s390x_cpu_timer, cpu);
-    s390_cpu_set_state(S390_CPU_STATE_STOPPED, cpu);
-#endif
-    s390_cpu_model_register_props(obj);
-}
-
-static void s390_cpu_finalize(Object *obj)
-{
-#if !defined(CONFIG_USER_ONLY)
-    S390CPU *cpu = S390_CPU(obj);
-
-    qemu_unregister_reset(s390_cpu_machine_reset_cb, cpu);
-    g_free(cpu->irqstate);
-#endif
-}
 
 #if !defined(CONFIG_USER_ONLY)
-static bool disabled_wait(CPUState *cpu)
-{
-    return cpu->halted && !(S390_CPU(cpu)->env.psw.mask &
-                            (PSW_MASK_IO | PSW_MASK_EXT | PSW_MASK_MCHECK));
-}
-
-static unsigned s390_count_running_cpus(void)
-{
-    CPUState *cpu;
-    int nr_running = 0;
-
-    CPU_FOREACH(cpu) {
-        uint8_t state = S390_CPU(cpu)->env.cpu_state;
-        if (state == S390_CPU_STATE_OPERATING ||
-            state == S390_CPU_STATE_LOAD) {
-            if (!disabled_wait(cpu)) {
-                nr_running++;
-            }
-        }
-    }
-
-    return nr_running;
-}
-
-unsigned int s390_cpu_halt(S390CPU *cpu)
-{
-    CPUState *cs = CPU(cpu);
-    trace_cpu_halt(cs->cpu_index);
-
-    if (!cs->halted) {
-        cs->halted = 1;
-        cs->exception_index = EXCP_HLT;
-    }
-
-    return s390_count_running_cpus();
-}
-
-void s390_cpu_unhalt(S390CPU *cpu)
-{
-    CPUState *cs = CPU(cpu);
-    trace_cpu_unhalt(cs->cpu_index);
-
-    if (cs->halted) {
-        cs->halted = 0;
-        cs->exception_index = -1;
-    }
-}
-
-unsigned int s390_cpu_set_state(uint8_t cpu_state, S390CPU *cpu)
- {
-    trace_cpu_set_state(CPU(cpu)->cpu_index, cpu_state);
-
-    switch (cpu_state) {
-    case S390_CPU_STATE_STOPPED:
-    case S390_CPU_STATE_CHECK_STOP:
-        /* halt the cpu for common infrastructure */
-        s390_cpu_halt(cpu);
-        break;
-    case S390_CPU_STATE_OPERATING:
-    case S390_CPU_STATE_LOAD:
-        /*
-         * Starting a CPU with a PSW WAIT bit set:
-         * KVM: handles this internally and triggers another WAIT exit.
-         * TCG: will actually try to continue to run. Don't unhalt, will
-         *      be done when the CPU actually has work (an interrupt).
-         */
-        if (!tcg_enabled() || !(cpu->env.psw.mask & PSW_MASK_WAIT)) {
-            s390_cpu_unhalt(cpu);
-        }
-        break;
-    default:
-        error_report("Requested CPU state is not a valid S390 CPU state: %u",
-                     cpu_state);
-        exit(1);
-    }
-    if (kvm_enabled() && cpu->env.cpu_state != cpu_state) {
-        kvm_s390_set_cpu_state(cpu, cpu_state);
-    }
-    cpu->env.cpu_state = cpu_state;
-
-    return s390_count_running_cpus();
-}
-
-int s390_set_memory_limit(uint64_t new_limit, uint64_t *hw_limit)
-{
-    if (kvm_enabled()) {
-        return kvm_s390_set_mem_limit(new_limit, hw_limit);
-    }
-    return 0;
-}
-
-void s390_set_max_pagesize(uint64_t pagesize, Error **errp)
-{
-    if (kvm_enabled()) {
-        kvm_s390_set_max_pagesize(pagesize, errp);
-    }
-}
-
-void s390_cmma_reset(void)
-{
-    if (kvm_enabled()) {
-        kvm_s390_cmma_reset();
-    }
-}
-
-int s390_assign_subch_ioeventfd(EventNotifier *notifier, uint32_t sch_id,
-                                int vq, bool assign)
-{
-    if (kvm_enabled()) {
-        return kvm_s390_assign_subch_ioeventfd(notifier, sch_id, vq, assign);
-    } else {
-        return 0;
-    }
-}
-
-void s390_crypto_reset(void)
-{
-    if (kvm_enabled()) {
-        kvm_s390_crypto_reset();
-    }
-}
-
-void s390_enable_css_support(S390CPU *cpu)
-{
-    if (kvm_enabled()) {
-        kvm_s390_enable_css_support(cpu);
-    }
-}
+    s390_cpu_init_sysemu(obj);
 #endif
+}
 
 static gchar *s390_gdb_arch_name(CPUState *cs)
 {
@@ -464,6 +261,22 @@ static void s390_cpu_reset_full(DeviceState *dev)
     return s390_cpu_reset(s, S390_CPU_RESET_CLEAR);
 }
 
+#ifdef CONFIG_TCG
+#include "hw/core/tcg-cpu-ops.h"
+
+static const struct TCGCPUOps s390_tcg_ops = {
+    .initialize = s390x_translate_init,
+    .tlb_fill = s390_cpu_tlb_fill,
+
+#if !defined(CONFIG_USER_ONLY)
+    .cpu_exec_interrupt = s390_cpu_exec_interrupt,
+    .do_interrupt = s390_cpu_do_interrupt,
+    .debug_excp_handler = s390x_cpu_debug_excp_handler,
+    .do_unaligned_access = s390x_cpu_do_unaligned_access,
+#endif /* !CONFIG_USER_ONLY */
+};
+#endif /* CONFIG_TCG */
+
 static void s390_cpu_class_init(ObjectClass *oc, void *data)
 {
     S390CPUClass *scc = S390_CPU_CLASS(oc);
@@ -476,49 +289,40 @@ static void s390_cpu_class_init(ObjectClass *oc, void *data)
     dc->user_creatable = true;
 
     device_class_set_parent_reset(dc, s390_cpu_reset_full, &scc->parent_reset);
-#if !defined(CONFIG_USER_ONLY)
-    scc->load_normal = s390_cpu_load_normal;
-#endif
+
     scc->reset = s390_cpu_reset;
     cc->class_by_name = s390_cpu_class_by_name,
     cc->has_work = s390_cpu_has_work;
-#ifdef CONFIG_TCG
-    cc->do_interrupt = s390_cpu_do_interrupt;
-#endif
     cc->dump_state = s390_cpu_dump_state;
     cc->set_pc = s390_cpu_set_pc;
     cc->gdb_read_register = s390_cpu_gdb_read_register;
     cc->gdb_write_register = s390_cpu_gdb_write_register;
 #ifndef CONFIG_USER_ONLY
-    cc->get_phys_page_debug = s390_cpu_get_phys_page_debug;
-    cc->vmsd = &vmstate_s390_cpu;
-    cc->get_crash_info = s390_cpu_get_crash_info;
-    cc->write_elf64_note = s390_cpu_write_elf64_note;
-#ifdef CONFIG_TCG
-    cc->cpu_exec_interrupt = s390_cpu_exec_interrupt;
-    cc->debug_excp_handler = s390x_cpu_debug_excp_handler;
-    cc->do_unaligned_access = s390x_cpu_do_unaligned_access;
-#endif
+    s390_cpu_class_init_sysemu(cc);
 #endif
     cc->disas_set_info = s390_cpu_disas_set_info;
-#ifdef CONFIG_TCG
-    cc->tcg_initialize = s390x_translate_init;
-    cc->tlb_fill = s390_cpu_tlb_fill;
-#endif
-
     cc->gdb_num_core_regs = S390_NUM_CORE_REGS;
     cc->gdb_core_xml_file = "s390x-core64.xml";
     cc->gdb_arch_name = s390_gdb_arch_name;
 
     s390_cpu_model_class_register_props(oc);
+
+#ifdef CONFIG_TCG
+    cc->tcg_ops = &s390_tcg_ops;
+#endif /* CONFIG_TCG */
 }
 
 static const TypeInfo s390_cpu_type_info = {
     .name = TYPE_S390_CPU,
     .parent = TYPE_CPU,
     .instance_size = sizeof(S390CPU),
+    .instance_align = __alignof__(S390CPU),
     .instance_init = s390_cpu_initfn,
+
+#ifndef CONFIG_USER_ONLY
     .instance_finalize = s390_cpu_finalize,
+#endif /* !CONFIG_USER_ONLY */
+
     .abstract = true,
     .class_size = sizeof(S390CPUClass),
     .class_init = s390_cpu_class_init,

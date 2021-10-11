@@ -26,13 +26,13 @@
 #include "qapi/error.h"
 #include "qemu/cutils.h"
 #include "qemu/timer.h"
-#include "sysemu/qtest.h"
-#include "sysemu/cpus.h"
+#include "sysemu/cpu-timers.h"
 #include "sysemu/replay.h"
 #include "qemu/main-loop.h"
 #include "block/aio.h"
 #include "qemu/error-report.h"
 #include "qemu/queue.h"
+#include "qemu/compiler.h"
 
 #ifdef XBOX
 /* FIXME: This is a slightly incomplete implementation of moving
@@ -66,6 +66,16 @@ QemuMutex qemu_main_loop_lock;
  * use signalfd to listen for them.  We rely on whatever the current signal
  * handler is to dispatch the signals when we receive them.
  */
+/*
+ * Disable CFI checks.
+ * We are going to call a signal hander directly. Such handler may or may not
+ * have been defined in our binary, so there's no guarantee that the pointer
+ * used to set the handler is a cfi-valid pointer. Since the handlers are
+ * stored in kernel memory, changing the handler to an attacker-defined
+ * function requires being able to call a sigaction() syscall,
+ * which is not as easy as overwriting a pointer in memory.
+ */
+QEMU_DISABLE_CFI
 static void sigfd_handler(void *opaque)
 {
     int fd = (intptr_t)opaque;
@@ -206,6 +216,7 @@ int qemu_init_main_loop(Error **errp)
     if (!qemu_aio_context) {
         return -EMFILE;
     }
+    qemu_set_current_aio_context(qemu_aio_context);
     qemu_notify_bh = qemu_bh_new(notify_event_cb, NULL);
     gpollfds = g_array_new(FALSE, FALSE, sizeof(GPollFD));
     src = aio_get_g_source(qemu_aio_context);
@@ -232,6 +243,10 @@ static int max_priority;
 #ifndef _WIN32
 static int glib_pollfds_idx;
 static int glib_n_poll_fds;
+
+void qemu_fd_register(int fd)
+{
+}
 
 static void glib_pollfds_fill(int64_t *cur_timeout)
 {
@@ -599,17 +614,21 @@ void main_loop_wait(int nonblocking)
     mlpoll.state = ret < 0 ? MAIN_LOOP_POLL_ERR : MAIN_LOOP_POLL_OK;
     notifier_list_notify(&main_loop_poll_notifiers, &mlpoll);
 
-    /* CPU thread can infinitely wait for event after
-       missing the warp */
-    qemu_start_warp_timer();
+    if (icount_enabled()) {
+        /*
+         * CPU thread can infinitely wait for event after
+         * missing the warp
+         */
+        icount_start_warp_timer();
+    }
     qemu_clock_run_all_timers();
 }
 
 /* Functions to operate on the main QEMU AioContext.  */
 
-QEMUBH *qemu_bh_new(QEMUBHFunc *cb, void *opaque)
+QEMUBH *qemu_bh_new_full(QEMUBHFunc *cb, void *opaque, const char *name)
 {
-    return aio_bh_new(qemu_aio_context, cb, opaque);
+    return aio_bh_new_full(qemu_aio_context, cb, opaque, name);
 }
 
 /*
@@ -655,64 +674,3 @@ void event_notifier_set_handler(EventNotifier *e,
     aio_set_event_notifier(iohandler_ctx, e, false,
                            handler, NULL);
 }
-
-/* reaping of zombies.  right now we're not passing the status to
-   anyone, but it would be possible to add a callback.  */
-#ifndef _WIN32
-typedef struct ChildProcessRecord {
-    int pid;
-    QLIST_ENTRY(ChildProcessRecord) next;
-} ChildProcessRecord;
-
-static QLIST_HEAD(, ChildProcessRecord) child_watches =
-    QLIST_HEAD_INITIALIZER(child_watches);
-
-static QEMUBH *sigchld_bh;
-
-static void sigchld_handler(int signal)
-{
-    qemu_bh_schedule(sigchld_bh);
-}
-
-static void sigchld_bh_handler(void *opaque)
-{
-    ChildProcessRecord *rec, *next;
-
-    QLIST_FOREACH_SAFE(rec, &child_watches, next, next) {
-        if (waitpid(rec->pid, NULL, WNOHANG) == rec->pid) {
-            QLIST_REMOVE(rec, next);
-            g_free(rec);
-        }
-    }
-}
-
-static void qemu_init_child_watch(void)
-{
-    struct sigaction act;
-    sigchld_bh = qemu_bh_new(sigchld_bh_handler, NULL);
-
-    memset(&act, 0, sizeof(act));
-    act.sa_handler = sigchld_handler;
-    act.sa_flags = SA_NOCLDSTOP;
-    sigaction(SIGCHLD, &act, NULL);
-}
-
-int qemu_add_child_watch(pid_t pid)
-{
-    ChildProcessRecord *rec;
-
-    if (!sigchld_bh) {
-        qemu_init_child_watch();
-    }
-
-    QLIST_FOREACH(rec, &child_watches, next) {
-        if (rec->pid == pid) {
-            return 1;
-        }
-    }
-    rec = g_malloc0(sizeof(ChildProcessRecord));
-    rec->pid = pid;
-    QLIST_INSERT_HEAD(&child_watches, rec, next);
-    return 0;
-}
-#endif

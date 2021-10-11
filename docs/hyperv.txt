@@ -49,7 +49,7 @@ more efficiently. In particular, this enlightenment allows paravirtualized
 ======================
 Enables paravirtualized spinlocks. The parameter indicates how many times
 spinlock acquisition should be attempted before indicating the situation to the
-hypervisor. A special value 0xffffffff indicates "never to retry".
+hypervisor. A special value 0xffffffff indicates "never notify".
 
 3.4. hv-vpindex
 ================
@@ -160,12 +160,17 @@ the hypervisor) until it is ready to switch to the new one. This, in conjunction
 with hv-frequencies, allows Hyper-V on KVM to pass stable clocksource (Reference
 TSC page) to its own guests.
 
+Note, KVM doesn't fully support re-enlightenment notifications and doesn't
+emulate TSC accesses after migration so 'tsc-frequency=' CPU option also has to
+be specified to make migration succeed. The destination host has to either have
+the same TSC frequency or support TSC scaling CPU feature.
+
 Recommended: hv-frequencies
 
 3.16. hv-evmcs
 ===============
 The enlightenment is nested specific, it targets Hyper-V on KVM guests. When
-enabled, it provides Enlightened VMCS feature to the guest. The feature
+enabled, it provides Enlightened VMCS version 1 feature to the guest. The feature
 implements paravirtualized protocol between L0 (KVM) and L1 (Hyper-V)
 hypervisors making L2 exits to the hypervisor faster. The feature is Intel-only.
 Note: some virtualization features (e.g. Posted Interrupts) are disabled when
@@ -204,8 +209,11 @@ In some cases (e.g. during development) it may make sense to use QEMU in
 'pass-through' mode and give Windows guests all enlightenments currently
 supported by KVM. This pass-through mode is enabled by "hv-passthrough" CPU
 flag.
-Note: enabling this flag effectively prevents migration as supported features
-may differ between target and destination.
+Note: "hv-passthrough" flag only enables enlightenments which are known to QEMU
+(have corresponding "hv-*" flag) and copies "hv-spinlocks="/"hv-vendor-id="
+values from KVM to QEMU. "hv-passthrough" overrides all other "hv-*" settings on
+the command line. Also, enabling this flag effectively prevents migration as the
+list of enabled enlightenments may differ between target and destination hosts.
 
 
 4. Useful links

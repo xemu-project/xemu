@@ -100,6 +100,9 @@ static void make_readipl(void)
 {
     Ccw0 *ccwIplRead = (Ccw0 *)0x00;
 
+    /* Clear out any existing data */
+    memset(ccwIplRead, 0, sizeof(Ccw0));
+
     /* Create Read IPL ccw at address 0 */
     ccwIplRead->cmd_code = CCW_CMD_READ_IPL;
     ccwIplRead->cda = 0x00; /* Read into address 0x00 in main memory */
@@ -202,7 +205,7 @@ static void run_ipl2(SubChannelId schid, uint16_t cutype, uint32_t addr)
 
 /*
  * Limitations in vfio-ccw support complicate the IPL process. Details can
- * be found in docs/devel/s390-dasd-ipl.txt
+ * be found in docs/devel/s390-dasd-ipl.rst
  */
 void dasd_ipl(SubChannelId schid, uint16_t cutype)
 {

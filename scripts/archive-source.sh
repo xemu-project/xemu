@@ -26,11 +26,9 @@ sub_file="${sub_tdir}/submodule.tar"
 # independent of what the developer currently has initialized
 # in their checkout, because the build environment is completely
 # different to the host OS.
-submodules="dtc slirp ui/keycodemapdb tests/fp/berkeley-softfloat-3 tests/fp/berkeley-testfloat-3"
-
-# xemu extras
-submodules="$submodules ui/imgui ui/implot hw/xbox/nv2a/xxHash"
-
+submodules="dtc slirp meson ui/keycodemapdb"
+submodules="$submodules tests/fp/berkeley-softfloat-3 tests/fp/berkeley-testfloat-3"
+submodules="$submodules ui/imgui ui/implot hw/xbox/nv2a/xxHash" # xemu extras
 sub_deinit=""
 
 function cleanup() {
@@ -74,9 +72,10 @@ for sm in $submodules; do
     test $? -ne 0 && error "failed append submodule $sm to $tar_file"
 done
 
+python3 ./scripts/gen-license.py > XEMU_LICENSE
 git rev-parse HEAD 2>/dev/null | tr -d '\n' > XEMU_COMMIT
 git symbolic-ref --short HEAD > XEMU_BRANCH
 git describe --match 'xemu-v*' | cut -c 7- | tr -d '\n' > XEMU_VERSION
-tar -r --file "$tar_file" XEMU_COMMIT XEMU_BRANCH XEMU_VERSION
+tar -r --file "$tar_file" XEMU_COMMIT XEMU_BRANCH XEMU_VERSION XEMU_LICENSE
 
 exit 0

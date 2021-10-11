@@ -26,31 +26,30 @@
 #include "qemu/module.h"
 #include "qemu/units.h"
 #include "qapi/error.h"
-#include "cpu.h"
 #include <libfdt.h>
 
 #include "sysemu/block-backend.h"
 #include "sysemu/device_tree.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/runstate.h"
-#include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "hw/nvram/chrp_nvram.h"
 #include "hw/ppc/spapr.h"
 #include "hw/ppc/spapr_vio.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
+#include "qom/object.h"
 
-typedef struct SpaprNvram {
+struct SpaprNvram {
     SpaprVioDevice sdev;
     uint32_t size;
     uint8_t *buf;
     BlockBackend *blk;
     VMChangeStateEntry *vmstate;
-} SpaprNvram;
+};
 
 #define TYPE_VIO_SPAPR_NVRAM "spapr-nvram"
-#define VIO_SPAPR_NVRAM(obj) \
-     OBJECT_CHECK(SpaprNvram, (obj), TYPE_VIO_SPAPR_NVRAM)
+OBJECT_DECLARE_SIMPLE_TYPE(SpaprNvram, VIO_SPAPR_NVRAM)
 
 #define MIN_NVRAM_SIZE      (8 * KiB)
 #define DEFAULT_NVRAM_SIZE  (64 * KiB)
@@ -188,7 +187,8 @@ static void spapr_nvram_realize(SpaprVioDevice *dev, Error **errp)
         }
     } else if (nb_prom_envs > 0) {
         /* Create a system partition to pass the -prom-env variables */
-        chrp_nvram_create_system_partition(nvram->buf, MIN_NVRAM_SIZE / 4);
+        chrp_nvram_create_system_partition(nvram->buf, MIN_NVRAM_SIZE / 4,
+                                           nvram->size);
         chrp_nvram_create_free_partition(&nvram->buf[MIN_NVRAM_SIZE / 4],
                                          nvram->size - MIN_NVRAM_SIZE / 4);
     }
@@ -215,7 +215,7 @@ static int spapr_nvram_pre_load(void *opaque)
     return 0;
 }
 
-static void postload_update_cb(void *opaque, int running, RunState state)
+static void postload_update_cb(void *opaque, bool running, RunState state)
 {
     SpaprNvram *nvram = opaque;
 

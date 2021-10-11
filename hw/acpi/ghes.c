@@ -359,7 +359,8 @@ static void build_ghes_v2(GArray *table_data, int source_id, BIOSLinker *linker)
 }
 
 /* Build Hardware Error Source Table */
-void acpi_build_hest(GArray *table_data, BIOSLinker *linker)
+void acpi_build_hest(GArray *table_data, BIOSLinker *linker,
+                     const char *oem_id, const char *oem_table_id)
 {
     uint64_t hest_start = table_data->len;
 
@@ -372,7 +373,7 @@ void acpi_build_hest(GArray *table_data, BIOSLinker *linker)
     build_ghes_v2(table_data, ACPI_HEST_SRC_ID_SEA, linker);
 
     build_header(linker, table_data, (void *)(table_data->data + hest_start),
-        "HEST", table_data->len - hest_start, 1, NULL, NULL);
+                 "HEST", table_data->len - hest_start, 1, oem_id, oem_table_id);
 }
 
 void acpi_ghes_add_fw_cfg(AcpiGhesState *ags, FWCfgState *s,
@@ -385,6 +386,8 @@ void acpi_ghes_add_fw_cfg(AcpiGhesState *ags, FWCfgState *s,
     /* Create a read-write fw_cfg file for Address */
     fw_cfg_add_file_callback(s, ACPI_GHES_DATA_ADDR_FW_CFG_FILE, NULL, NULL,
         NULL, &(ags->ghes_addr_le), sizeof(ags->ghes_addr_le), false);
+
+    ags->present = true;
 }
 
 int acpi_ghes_record_errors(uint8_t source_id, uint64_t physical_address)
@@ -441,4 +444,19 @@ int acpi_ghes_record_errors(uint8_t source_id, uint64_t physical_address)
     }
 
     return ret;
+}
+
+bool acpi_ghes_present(void)
+{
+    AcpiGedState *acpi_ged_state;
+    AcpiGhesState *ags;
+
+    acpi_ged_state = ACPI_GED(object_resolve_path_type("", TYPE_ACPI_GED,
+                                                       NULL));
+
+    if (!acpi_ged_state) {
+        return false;
+    }
+    ags = &acpi_ged_state->ghes_state;
+    return ags->present;
 }

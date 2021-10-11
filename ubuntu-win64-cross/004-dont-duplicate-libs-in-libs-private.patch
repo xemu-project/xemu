@@ -1,0 +1,62 @@
+# Based on SDL hg changeset fc03d19926ed, tweaked to apply here
+
+# HG changeset patch
+# User James Le Cuirot <chewi@gentoo.org>
+# Date 1586694276 -3600
+# Node ID fc03d19926ed02c5e96033a22e0a1956cb7d2968
+# Parent  89a457159af48f83585adab9ab9ea1d21be9505c
+build: Don't duplicate Libs in Libs.private in pkg-config file
+
+pkg-config already prepends Libs to Libs.private when you specify
+--static so there's no need to duplicate them. Most other projects
+don't do this.
+
+diff -r 89a457159af4 -r fc03d19926ed CMakeLists.txt
+--- a/CMakeLists.txt	Sat Apr 11 23:38:34 2020 +0100
++++ b/CMakeLists.txt	Sun Apr 12 13:24:36 2020 +0100
+@@ -1962,7 +1962,7 @@
+ 
+   # Clean up the different lists
+   listtostr(EXTRA_LIBS _EXTRA_LIBS "-l")
+-  set(SDL_STATIC_LIBS ${SDL_LIBS} ${EXTRA_LDFLAGS} ${_EXTRA_LIBS})
++  set(SDL_STATIC_LIBS ${EXTRA_LDFLAGS} ${_EXTRA_LIBS})
+   list(REMOVE_DUPLICATES SDL_STATIC_LIBS)
+   listtostr(SDL_STATIC_LIBS _SDL_STATIC_LIBS)
+   set(SDL_STATIC_LIBS ${_SDL_STATIC_LIBS})
+diff -r 89a457159af4 -r fc03d19926ed configure
+--- a/configure	Sat Apr 11 23:38:34 2020 +0100
++++ b/configure	Sun Apr 12 13:24:36 2020 +0100
+@@ -25717,7 +25717,7 @@
+   SDL_RLD_FLAGS=""
+ fi
+ 
+-SDL_STATIC_LIBS="$SDL_LIBS $EXTRA_LDFLAGS"
++SDL_STATIC_LIBS="$EXTRA_LDFLAGS"
+ 
+ 
+ 
+diff -r 89a457159af4 -r fc03d19926ed configure.ac
+--- a/configure.ac	Sat Apr 11 23:38:34 2020 +0100
++++ b/configure.ac	Sun Apr 12 13:24:36 2020 +0100
+@@ -4271,7 +4271,7 @@
+   SDL_RLD_FLAGS=""
+ fi
+ 
+-SDL_STATIC_LIBS="$SDL_LIBS $EXTRA_LDFLAGS"
++SDL_STATIC_LIBS="$EXTRA_LDFLAGS"
+ 
+ dnl Expand the cflags and libraries needed by apps using SDL
+ AC_SUBST(SDL_CFLAGS)
+diff -r 89a457159af4 -r fc03d19926ed sdl2-config.in
+--- a/sdl2-config.in	Sat Apr 11 23:38:34 2020 +0100
++++ b/sdl2-config.in	Sun Apr 12 13:24:36 2020 +0100
+@@ -49,7 +49,7 @@
+ @ENABLE_SHARED_TRUE@      ;;
+ @ENABLE_STATIC_TRUE@@ENABLE_SHARED_TRUE@    --static-libs)
+ @ENABLE_STATIC_TRUE@@ENABLE_SHARED_FALSE@    --libs|--static-libs)
+-@ENABLE_STATIC_TRUE@      echo -L@libdir@ @SDL_RLD_FLAGS@ @SDL_STATIC_LIBS@
++@ENABLE_STATIC_TRUE@      echo -L@libdir@ @SDL_RLD_FLAGS@ @SDL_LIBS@ @SDL_STATIC_LIBS@
+ @ENABLE_STATIC_TRUE@      ;;
+     *)
+       echo "${usage}" 1>&2
+

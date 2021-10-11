@@ -13,9 +13,9 @@
 #ifndef MACFB_H
 #define MACFB_H
 
-#include "qemu/osdep.h"
 #include "exec/memory.h"
 #include "ui/console.h"
+#include "qom/object.h"
 
 typedef struct MacfbState {
     MemoryRegion mem_vram;
@@ -31,34 +31,28 @@ typedef struct MacfbState {
 } MacfbState;
 
 #define TYPE_MACFB "sysbus-macfb"
-#define MACFB(obj) \
-    OBJECT_CHECK(MacfbSysBusState, (obj), TYPE_MACFB)
+OBJECT_DECLARE_SIMPLE_TYPE(MacfbSysBusState, MACFB)
 
-typedef struct {
+struct MacfbSysBusState {
     SysBusDevice busdev;
 
     MacfbState macfb;
-} MacfbSysBusState;
+};
 
-#define MACFB_NUBUS_DEVICE_CLASS(class) \
-    OBJECT_CLASS_CHECK(MacfbNubusDeviceClass, (class), TYPE_NUBUS_MACFB)
-#define MACFB_NUBUS_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(MacfbNubusDeviceClass, (obj), TYPE_NUBUS_MACFB)
+#define TYPE_NUBUS_MACFB "nubus-macfb"
+OBJECT_DECLARE_TYPE(MacfbNubusState, MacfbNubusDeviceClass, NUBUS_MACFB)
 
-typedef struct MacfbNubusDeviceClass {
+struct MacfbNubusDeviceClass {
     DeviceClass parent_class;
 
     DeviceRealize parent_realize;
-} MacfbNubusDeviceClass;
+};
 
-#define TYPE_NUBUS_MACFB "nubus-macfb"
-#define NUBUS_MACFB(obj) \
-    OBJECT_CHECK(MacfbNubusState, (obj), TYPE_NUBUS_MACFB)
 
-typedef struct {
+struct MacfbNubusState {
     NubusDevice busdev;
 
     MacfbState macfb;
-} MacfbNubusState;
+};
 
 #endif

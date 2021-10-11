@@ -23,7 +23,6 @@
 #include "exec/exec-all.h"
 #include "exec/helper-proto.h"
 #include "exception.h"
-#include "sysemu/sysemu.h"
 #ifndef CONFIG_USER_ONLY
 #include "hw/boards.h"
 #endif
@@ -176,9 +175,6 @@ void HELPER(mtspr)(CPUOpenRISCState *env, target_ulong spr, target_ulong rb)
 
     case TO_SPR(10, 1): /* TTCR */
         cpu_openrisc_count_set(cpu, rb);
-        if (env->ttmr & TIMER_NONE) {
-            return;
-        }
         cpu_openrisc_timer_update(cpu);
         break;
 #endif

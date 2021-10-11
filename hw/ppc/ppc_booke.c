@@ -28,7 +28,6 @@
 #include "qemu/timer.h"
 #include "sysemu/reset.h"
 #include "sysemu/runstate.h"
-#include "qemu/log.h"
 #include "hw/loader.h"
 #include "kvm_ppc.h"
 
@@ -317,7 +316,7 @@ static void ppc_booke_timer_reset_handle(void *opaque)
  * action will be taken. To avoid this we always clear the watchdog state when
  * state changes to running.
  */
-static void cpu_state_change_handler(void *opaque, int running, RunState state)
+static void cpu_state_change_handler(void *opaque, bool running, RunState state)
 {
     PowerPCCPU *cpu = opaque;
     CPUPPCState *env = &cpu->env;

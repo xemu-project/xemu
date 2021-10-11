@@ -25,6 +25,8 @@
 #include "migration/vmstate.h"
 #include "qemu/module.h"
 #include "sysemu/dma.h"
+#include "qom/object.h"
+
 #include "ac97_int.h"
 
 enum {
@@ -128,10 +130,6 @@ enum {
 #define EACS_VRM 8
 
 #define MUTE_SHIFT 15
-
-#define TYPE_AC97 "AC97"
-#define AC97(obj) \
-    OBJECT_CHECK(AC97LinkState, (obj), TYPE_AC97)
 
 #define REC_MASK 7
 enum {

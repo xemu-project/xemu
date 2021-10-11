@@ -28,9 +28,29 @@
 #include "vnc.h"
 #include "trace.h"
 
+/*
+ * Apple has deprecated sasl.h functions in OS X 10.11.  Therefore,
+ * files that use SASL API need to disable -Wdeprecated-declarations.
+ */
+#ifdef CONFIG_DARWIN
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 /* Max amount of data we send/recv for SASL steps to prevent DOS */
 #define SASL_DATA_MAX_LEN (1024 * 1024)
 
+
+bool vnc_sasl_server_init(Error **errp)
+{
+    int saslErr = sasl_server_init(NULL, "qemu");
+
+    if (saslErr != SASL_OK) {
+        error_setg(errp, "Failed to initialize SASL auth: %s",
+                   sasl_errstring(saslErr, NULL, NULL));
+        return false;
+    }
+    return true;
+}
 
 void vnc_sasl_client_cleanup(VncState *vs)
 {
@@ -111,7 +131,8 @@ size_t vnc_client_write_sasl(VncState *vs)
             g_source_remove(vs->ioc_tag);
         }
         vs->ioc_tag = qio_channel_add_watch(
-            vs->ioc, G_IO_IN, vnc_client_io, vs, NULL);
+            vs->ioc, G_IO_IN | G_IO_HUP | G_IO_ERR,
+            vnc_client_io, vs, NULL);
     }
 
     return ret;
@@ -287,7 +308,7 @@ static int protocol_client_auth_sasl_step(VncState *vs, uint8_t *data, size_t le
             goto authreject;
         }
 
-        /* Check username whitelist ACL */
+        /* Check the username access control list */
         if (vnc_auth_sasl_check_access(vs) < 0) {
             goto authreject;
         }
@@ -408,7 +429,7 @@ static int protocol_client_auth_sasl_start(VncState *vs, uint8_t *data, size_t l
             goto authreject;
         }
 
-        /* Check username whitelist ACL */
+        /* Check the username access control list */
         if (vnc_auth_sasl_check_access(vs) < 0) {
             goto authreject;
         }
@@ -522,6 +543,7 @@ vnc_socket_ip_addr_string(QIOChannelSocket *ioc,
 
     if (addr->type != SOCKET_ADDRESS_TYPE_INET) {
         error_setg(errp, "Not an inet socket type");
+        qapi_free_SocketAddress(addr);
         return NULL;
     }
     ret = g_strdup_printf("%s;%s", addr->u.inet.host, addr->u.inet.port);

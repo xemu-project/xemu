@@ -30,6 +30,7 @@
 #include "qemu/module.h"
 #include "hw/loader.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "migration/vmstate.h"
 
 #define IPMI_NETFN_CHASSIS            0x00
@@ -188,7 +189,7 @@ struct IPMIBmcSim {
     uint8_t  watchdog_use;
     uint8_t  watchdog_action;
     uint8_t  watchdog_pretimeout; /* In seconds */
-    bool     watchdog_expired;
+    uint8_t  watchdog_expired;
     uint16_t watchdog_timeout; /* in 100's of milliseconds */
 
     bool     watchdog_running;
@@ -2109,7 +2110,7 @@ static const VMStateDescription vmstate_ipmi_sim = {
         VMSTATE_UINT8(watchdog_use, IPMIBmcSim),
         VMSTATE_UINT8(watchdog_action, IPMIBmcSim),
         VMSTATE_UINT8(watchdog_pretimeout, IPMIBmcSim),
-        VMSTATE_BOOL(watchdog_expired, IPMIBmcSim),
+        VMSTATE_UINT8(watchdog_expired, IPMIBmcSim),
         VMSTATE_UINT16(watchdog_timeout, IPMIBmcSim),
         VMSTATE_BOOL(watchdog_running, IPMIBmcSim),
         VMSTATE_BOOL(watchdog_preaction_ran, IPMIBmcSim),

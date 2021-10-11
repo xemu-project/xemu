@@ -12,33 +12,31 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "hw/boards.h"
 #include "atmega.h"
 #include "boot.h"
+#include "qom/object.h"
 
-typedef struct ArduinoMachineState {
+struct ArduinoMachineState {
     /*< private >*/
     MachineState parent_obj;
     /*< public >*/
     AtmegaMcuState mcu;
-} ArduinoMachineState;
+};
+typedef struct ArduinoMachineState ArduinoMachineState;
 
-typedef struct ArduinoMachineClass {
+struct ArduinoMachineClass {
     /*< private >*/
     MachineClass parent_class;
     /*< public >*/
     const char *mcu_type;
     uint64_t xtal_hz;
-} ArduinoMachineClass;
+};
+typedef struct ArduinoMachineClass ArduinoMachineClass;
 
 #define TYPE_ARDUINO_MACHINE \
         MACHINE_TYPE_NAME("arduino")
-#define ARDUINO_MACHINE(obj) \
-        OBJECT_CHECK(ArduinoMachineState, (obj), TYPE_ARDUINO_MACHINE)
-#define ARDUINO_MACHINE_CLASS(klass) \
-        OBJECT_CLASS_CHECK(ArduinoMachineClass, (klass), TYPE_ARDUINO_MACHINE)
-#define ARDUINO_MACHINE_GET_CLASS(obj) \
-        OBJECT_GET_CLASS(ArduinoMachineClass, (obj), TYPE_ARDUINO_MACHINE)
+DECLARE_OBJ_CHECKERS(ArduinoMachineState, ArduinoMachineClass,
+                     ARDUINO_MACHINE, TYPE_ARDUINO_MACHINE)
 
 static void arduino_machine_init(MachineState *machine)
 {
@@ -76,7 +74,10 @@ static void arduino_duemilanove_class_init(ObjectClass *oc, void *data)
     MachineClass *mc = MACHINE_CLASS(oc);
     ArduinoMachineClass *amc = ARDUINO_MACHINE_CLASS(oc);
 
-    /* https://www.arduino.cc/en/Main/ArduinoBoardDuemilanove */
+    /*
+     * https://www.arduino.cc/en/Main/ArduinoBoardDuemilanove
+     * https://www.arduino.cc/en/uploads/Main/arduino-duemilanove-schematic.pdf
+     */
     mc->desc        = "Arduino Duemilanove (ATmega168)",
     mc->alias       = "2009";
     amc->mcu_type   = TYPE_ATMEGA168_MCU;
@@ -88,7 +89,10 @@ static void arduino_uno_class_init(ObjectClass *oc, void *data)
     MachineClass *mc = MACHINE_CLASS(oc);
     ArduinoMachineClass *amc = ARDUINO_MACHINE_CLASS(oc);
 
-    /* https://store.arduino.cc/arduino-uno-rev3 */
+    /*
+     * https://store.arduino.cc/arduino-uno-rev3
+     * https://www.arduino.cc/en/uploads/Main/arduino-uno-schematic.pdf
+     */
     mc->desc        = "Arduino UNO (ATmega328P)";
     mc->alias       = "uno";
     amc->mcu_type   = TYPE_ATMEGA328_MCU;
@@ -100,7 +104,10 @@ static void arduino_mega_class_init(ObjectClass *oc, void *data)
     MachineClass *mc = MACHINE_CLASS(oc);
     ArduinoMachineClass *amc = ARDUINO_MACHINE_CLASS(oc);
 
-    /* https://www.arduino.cc/en/Main/ArduinoBoardMega */
+    /*
+     * https://www.arduino.cc/en/Main/ArduinoBoardMega
+     * https://www.arduino.cc/en/uploads/Main/arduino-mega2560-schematic.pdf
+     */
     mc->desc        = "Arduino Mega (ATmega1280)";
     mc->alias       = "mega";
     amc->mcu_type   = TYPE_ATMEGA1280_MCU;
@@ -112,7 +119,10 @@ static void arduino_mega2560_class_init(ObjectClass *oc, void *data)
     MachineClass *mc = MACHINE_CLASS(oc);
     ArduinoMachineClass *amc = ARDUINO_MACHINE_CLASS(oc);
 
-    /* https://store.arduino.cc/arduino-mega-2560-rev3 */
+    /*
+     * https://store.arduino.cc/arduino-mega-2560-rev3
+     * https://www.arduino.cc/en/uploads/Main/arduino-mega2560_R3-sch.pdf
+     */
     mc->desc        = "Arduino Mega 2560 (ATmega2560)";
     mc->alias       = "mega2560";
     amc->mcu_type   = TYPE_ATMEGA2560_MCU;

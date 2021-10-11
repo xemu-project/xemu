@@ -26,7 +26,6 @@
 #include "qemu/units.h"
 #include "sysemu/hostmem.h"
 #include "sysemu/numa.h"
-#include "sysemu/sysemu.h"
 #include "exec/cpu-common.h"
 #include "exec/ramlist.h"
 #include "qemu/bitmap.h"
@@ -89,6 +88,29 @@ static void parse_numa_node(MachineState *ms, NumaNodeOptions *node,
         return;
     }
 
+    /*
+     * If not set the initiator, set it to MAX_NODES. And if
+     * HMAT is enabled and this node has no cpus, QEMU will raise error.
+     */
+    numa_info[nodenr].initiator = MAX_NODES;
+    if (node->has_initiator) {
+        if (!ms->numa_state->hmat_enabled) {
+            error_setg(errp, "ACPI Heterogeneous Memory Attribute Table "
+                       "(HMAT) is disabled, enable it with -machine hmat=on "
+                       "before using any of hmat specific options");
+            return;
+        }
+
+        if (node->initiator >= MAX_NODES) {
+            error_report("The initiator id %" PRIu16 " expects an integer "
+                         "between 0 and %d", node->initiator,
+                         MAX_NODES - 1);
+            return;
+        }
+
+        numa_info[nodenr].initiator = node->initiator;
+    }
+
     for (cpus = node->cpus; cpus; cpus = cpus->next) {
         CpuInstanceProperties props;
         if (cpus->value >= max_cpus) {
@@ -143,28 +165,6 @@ static void parse_numa_node(MachineState *ms, NumaNodeOptions *node,
         numa_info[nodenr].node_memdev = MEMORY_BACKEND(o);
     }
 
-    /*
-     * If not set the initiator, set it to MAX_NODES. And if
-     * HMAT is enabled and this node has no cpus, QEMU will raise error.
-     */
-    numa_info[nodenr].initiator = MAX_NODES;
-    if (node->has_initiator) {
-        if (!ms->numa_state->hmat_enabled) {
-            error_setg(errp, "ACPI Heterogeneous Memory Attribute Table "
-                       "(HMAT) is disabled, enable it with -machine hmat=on "
-                       "before using any of hmat specific options");
-            return;
-        }
-
-        if (node->initiator >= MAX_NODES) {
-            error_report("The initiator id %" PRIu16 " expects an integer "
-                         "between 0 and %d", node->initiator,
-                         MAX_NODES - 1);
-            return;
-        }
-
-        numa_info[nodenr].initiator = node->initiator;
-    }
     numa_info[nodenr].present = true;
     max_numa_nodeid = MAX(max_numa_nodeid, nodenr + 1);
     ms->numa_state->num_nodes++;
@@ -424,11 +424,17 @@ void parse_numa_hmat_cache(MachineState *ms, NumaHmatCacheOptions *node,
     }
 
     if ((node->level > 1) &&
-        ms->numa_state->hmat_cache[node->node_id][node->level - 1] &&
-        (node->size >=
+        ms->numa_state->hmat_cache[node->node_id][node->level - 1] == NULL) {
+        error_setg(errp, "Cache level=%u shall be defined first",
+                   node->level - 1);
+        return;
+    }
+
+    if ((node->level > 1) &&
+        (node->size <=
             ms->numa_state->hmat_cache[node->node_id][node->level - 1]->size)) {
         error_setg(errp, "Invalid size=%" PRIu64 ", the size of level=%" PRIu8
-                   " should be less than the size(%" PRIu64 ") of "
+                   " should be larger than the size(%" PRIu64 ") of "
                    "level=%u", node->size, node->level,
                    ms->numa_state->hmat_cache[node->node_id]
                                              [node->level - 1]->size,
@@ -438,10 +444,10 @@ void parse_numa_hmat_cache(MachineState *ms, NumaHmatCacheOptions *node,
 
     if ((node->level < HMAT_LB_LEVELS - 1) &&
         ms->numa_state->hmat_cache[node->node_id][node->level + 1] &&
-        (node->size <=
+        (node->size >=
             ms->numa_state->hmat_cache[node->node_id][node->level + 1]->size)) {
         error_setg(errp, "Invalid size=%" PRIu64 ", the size of level=%" PRIu8
-                   " should be larger than the size(%" PRIu64 ") of "
+                   " should be less than the size(%" PRIu64 ") of "
                    "level=%u", node->size, node->level,
                    ms->numa_state->hmat_cache[node->node_id]
                                              [node->level + 1]->size,
@@ -611,42 +617,6 @@ static void complete_init_numa_distance(MachineState *ms)
     }
 }
 
-void numa_legacy_auto_assign_ram(MachineClass *mc, NodeInfo *nodes,
-                                 int nb_nodes, ram_addr_t size)
-{
-    int i;
-    uint64_t usedmem = 0;
-
-    /* Align each node according to the alignment
-     * requirements of the machine class
-     */
-
-    for (i = 0; i < nb_nodes - 1; i++) {
-        nodes[i].node_mem = (size / nb_nodes) &
-                            ~((1 << mc->numa_mem_align_shift) - 1);
-        usedmem += nodes[i].node_mem;
-    }
-    nodes[i].node_mem = size - usedmem;
-}
-
-void numa_default_auto_assign_ram(MachineClass *mc, NodeInfo *nodes,
-                                  int nb_nodes, ram_addr_t size)
-{
-    int i;
-    uint64_t usedmem = 0, node_mem;
-    uint64_t granularity = size / nb_nodes;
-    uint64_t propagate = 0;
-
-    for (i = 0; i < nb_nodes - 1; i++) {
-        node_mem = (granularity + propagate) &
-                   ~((1 << mc->numa_mem_align_shift) - 1);
-        propagate = granularity + propagate - node_mem;
-        nodes[i].node_mem = node_mem;
-        usedmem += node_mem;
-    }
-    nodes[i].node_mem = size - usedmem;
-}
-
 static void numa_init_memdev_container(MachineState *ms, MemoryRegion *ram)
 {
     int i;
@@ -672,7 +642,7 @@ void numa_complete_configuration(MachineState *ms)
 
     /*
      * If memory hotplug is enabled (slot > 0) or memory devices are enabled
-     * (ms->maxram_size > ram_size) but without '-numa' options explicitly on
+     * (ms->maxram_size > ms->ram_size) but without '-numa' options explicitly on
      * CLI, guests will break.
      *
      *   Windows: won't enable memory hotplug without SRAT table at all
@@ -693,7 +663,7 @@ void numa_complete_configuration(MachineState *ms)
          mc->auto_enable_numa)) {
             NumaNodeOptions node = { };
             parse_numa_node(ms, &node, &error_abort);
-            numa_info[0].node_mem = ram_size;
+            numa_info[0].node_mem = ms->ram_size;
     }
 
     assert(max_numa_nodeid <= MAX_NODES);
@@ -713,37 +683,14 @@ void numa_complete_configuration(MachineState *ms)
     if (ms->numa_state->num_nodes > 0) {
         uint64_t numa_total;
 
-        if (ms->numa_state->num_nodes > MAX_NODES) {
-            ms->numa_state->num_nodes = MAX_NODES;
-        }
-
-        /* If no memory size is given for any node, assume the default case
-         * and distribute the available memory equally across all nodes
-         */
-        for (i = 0; i < ms->numa_state->num_nodes; i++) {
-            if (numa_info[i].node_mem != 0) {
-                break;
-            }
-        }
-        if (i == ms->numa_state->num_nodes) {
-            assert(mc->numa_auto_assign_ram);
-            mc->numa_auto_assign_ram(mc, numa_info,
-                                     ms->numa_state->num_nodes, ram_size);
-            if (!qtest_enabled()) {
-                warn_report("Default splitting of RAM between nodes is deprecated,"
-                            " Use '-numa node,memdev' to explictly define RAM"
-                            " allocation per node");
-            }
-        }
-
         numa_total = 0;
         for (i = 0; i < ms->numa_state->num_nodes; i++) {
             numa_total += numa_info[i].node_mem;
         }
-        if (numa_total != ram_size) {
+        if (numa_total != ms->ram_size) {
             error_report("total memory for NUMA nodes (0x%" PRIx64 ")"
                          " should equal RAM size (0x" RAM_ADDR_FMT ")",
-                         numa_total, ram_size);
+                         numa_total, ms->ram_size);
             exit(1);
         }
 
@@ -755,7 +702,7 @@ void numa_complete_configuration(MachineState *ms)
             }
             ms->ram = g_new(MemoryRegion, 1);
             memory_region_init(ms->ram, OBJECT(ms), mc->default_ram_id,
-                               ram_size);
+                               ms->ram_size);
             numa_init_memdev_container(ms, ms->ram);
         }
         /* QEMU needs at least all unique node pair distances to build
@@ -856,9 +803,27 @@ void query_numa_node_mem(NumaNodeMem node_mem[], MachineState *ms)
     }
 }
 
+static int ram_block_notify_add_single(RAMBlock *rb, void *opaque)
+{
+    const ram_addr_t max_size = qemu_ram_get_max_length(rb);
+    const ram_addr_t size = qemu_ram_get_used_length(rb);
+    void *host = qemu_ram_get_host_addr(rb);
+    RAMBlockNotifier *notifier = opaque;
+
+    if (host) {
+        notifier->ram_block_added(notifier, host, size, max_size);
+    }
+    return 0;
+}
+
 void ram_block_notifier_add(RAMBlockNotifier *n)
 {
     QLIST_INSERT_HEAD(&ram_list.ramblock_notifiers, n, next);
+
+    /* Notify about all existing ram blocks. */
+    if (n->ram_block_added) {
+        qemu_ram_foreach_block(ram_block_notify_add_single, n);
+    }
 }
 
 void ram_block_notifier_remove(RAMBlockNotifier *n)
@@ -866,20 +831,35 @@ void ram_block_notifier_remove(RAMBlockNotifier *n)
     QLIST_REMOVE(n, next);
 }
 
-void ram_block_notify_add(void *host, size_t size)
+void ram_block_notify_add(void *host, size_t size, size_t max_size)
 {
     RAMBlockNotifier *notifier;
 
     QLIST_FOREACH(notifier, &ram_list.ramblock_notifiers, next) {
-        notifier->ram_block_added(notifier, host, size);
+        if (notifier->ram_block_added) {
+            notifier->ram_block_added(notifier, host, size, max_size);
+        }
     }
 }
 
-void ram_block_notify_remove(void *host, size_t size)
+void ram_block_notify_remove(void *host, size_t size, size_t max_size)
 {
     RAMBlockNotifier *notifier;
 
     QLIST_FOREACH(notifier, &ram_list.ramblock_notifiers, next) {
-        notifier->ram_block_removed(notifier, host, size);
+        if (notifier->ram_block_removed) {
+            notifier->ram_block_removed(notifier, host, size, max_size);
+        }
+    }
+}
+
+void ram_block_notify_resize(void *host, size_t old_size, size_t new_size)
+{
+    RAMBlockNotifier *notifier;
+
+    QLIST_FOREACH(notifier, &ram_list.ramblock_notifiers, next) {
+        if (notifier->ram_block_resized) {
+            notifier->ram_block_resized(notifier, host, old_size, new_size);
+        }
     }
 }

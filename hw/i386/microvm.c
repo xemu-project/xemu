@@ -26,6 +26,8 @@
 #include "sysemu/cpus.h"
 #include "sysemu/numa.h"
 #include "sysemu/reset.h"
+#include "sysemu/runstate.h"
+#include "acpi-microvm.h"
 
 #include "hw/loader.h"
 #include "hw/irq.h"
@@ -37,17 +39,22 @@
 #include "hw/timer/i8254.h"
 #include "hw/rtc/mc146818rtc.h"
 #include "hw/char/serial.h"
+#include "hw/display/ramfb.h"
 #include "hw/i386/topology.h"
 #include "hw/i386/e820_memory_layout.h"
 #include "hw/i386/fw_cfg.h"
 #include "hw/virtio/virtio-mmio.h"
+#include "hw/acpi/acpi.h"
+#include "hw/acpi/generic_event_device.h"
+#include "hw/pci-host/gpex.h"
+#include "hw/usb/xhci.h"
 
-#include "cpu.h"
 #include "elf.h"
-#include "kvm_i386.h"
+#include "kvm/kvm_i386.h"
 #include "hw/xen/start_info.h"
 
-#define MICROVM_BIOS_FILENAME "bios-microvm.bin"
+#define MICROVM_QBOOT_FILENAME "qboot.rom"
+#define MICROVM_BIOS_FILENAME  "bios-microvm.bin"
 
 static void microvm_set_rtc(MicrovmMachineState *mms, ISADevice *s)
 {
@@ -88,46 +95,156 @@ static void microvm_set_rtc(MicrovmMachineState *mms, ISADevice *s)
     rtc_set_memory(s, 0x5d, val >> 16);
 }
 
-static void microvm_gsi_handler(void *opaque, int n, int level)
+static void create_gpex(MicrovmMachineState *mms)
 {
-    GSIState *s = opaque;
+    X86MachineState *x86ms = X86_MACHINE(mms);
+    MemoryRegion *mmio32_alias;
+    MemoryRegion *mmio64_alias;
+    MemoryRegion *mmio_reg;
+    MemoryRegion *ecam_alias;
+    MemoryRegion *ecam_reg;
+    DeviceState *dev;
+    int i;
 
-    qemu_set_irq(s->ioapic_irq[n], level);
+    dev = qdev_new(TYPE_GPEX_HOST);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
+
+    /* Map only the first size_ecam bytes of ECAM space */
+    ecam_alias = g_new0(MemoryRegion, 1);
+    ecam_reg = sysbus_mmio_get_region(SYS_BUS_DEVICE(dev), 0);
+    memory_region_init_alias(ecam_alias, OBJECT(dev), "pcie-ecam",
+                             ecam_reg, 0, mms->gpex.ecam.size);
+    memory_region_add_subregion(get_system_memory(),
+                                mms->gpex.ecam.base, ecam_alias);
+
+    /* Map the MMIO window into system address space so as to expose
+     * the section of PCI MMIO space which starts at the same base address
+     * (ie 1:1 mapping for that part of PCI MMIO space visible through
+     * the window).
+     */
+    mmio_reg = sysbus_mmio_get_region(SYS_BUS_DEVICE(dev), 1);
+    if (mms->gpex.mmio32.size) {
+        mmio32_alias = g_new0(MemoryRegion, 1);
+        memory_region_init_alias(mmio32_alias, OBJECT(dev), "pcie-mmio32", mmio_reg,
+                                 mms->gpex.mmio32.base, mms->gpex.mmio32.size);
+        memory_region_add_subregion(get_system_memory(),
+                                    mms->gpex.mmio32.base, mmio32_alias);
+    }
+    if (mms->gpex.mmio64.size) {
+        mmio64_alias = g_new0(MemoryRegion, 1);
+        memory_region_init_alias(mmio64_alias, OBJECT(dev), "pcie-mmio64", mmio_reg,
+                                 mms->gpex.mmio64.base, mms->gpex.mmio64.size);
+        memory_region_add_subregion(get_system_memory(),
+                                    mms->gpex.mmio64.base, mmio64_alias);
+    }
+
+    for (i = 0; i < GPEX_NUM_IRQS; i++) {
+        sysbus_connect_irq(SYS_BUS_DEVICE(dev), i,
+                           x86ms->gsi[mms->gpex.irq + i]);
+    }
+}
+
+static int microvm_ioapics(MicrovmMachineState *mms)
+{
+    if (!x86_machine_is_acpi_enabled(X86_MACHINE(mms))) {
+        return 1;
+    }
+    if (mms->ioapic2 == ON_OFF_AUTO_OFF) {
+        return 1;
+    }
+    return 2;
 }
 
 static void microvm_devices_init(MicrovmMachineState *mms)
 {
+    const char *default_firmware;
     X86MachineState *x86ms = X86_MACHINE(mms);
     ISABus *isa_bus;
     ISADevice *rtc_state;
     GSIState *gsi_state;
+    int ioapics;
     int i;
 
     /* Core components */
-
+    ioapics = microvm_ioapics(mms);
     gsi_state = g_malloc0(sizeof(*gsi_state));
-    if (mms->pic == ON_OFF_AUTO_ON || mms->pic == ON_OFF_AUTO_AUTO) {
-        x86ms->gsi = qemu_allocate_irqs(gsi_handler, gsi_state, GSI_NUM_PINS);
-    } else {
-        x86ms->gsi = qemu_allocate_irqs(microvm_gsi_handler,
-                                        gsi_state, GSI_NUM_PINS);
-    }
+    x86ms->gsi = qemu_allocate_irqs(gsi_handler, gsi_state,
+                                    IOAPIC_NUM_PINS * ioapics);
 
     isa_bus = isa_bus_new(NULL, get_system_memory(), get_system_io(),
                           &error_abort);
     isa_bus_irqs(isa_bus, x86ms->gsi);
 
     ioapic_init_gsi(gsi_state, "machine");
+    if (ioapics > 1) {
+        x86ms->ioapic2 = ioapic_init_secondary(gsi_state);
+    }
 
-    kvmclock_create();
+    kvmclock_create(true);
 
-    for (i = 0; i < VIRTIO_NUM_TRANSPORTS; i++) {
+    mms->virtio_irq_base = 5;
+    mms->virtio_num_transports = 8;
+    if (x86ms->ioapic2) {
+        mms->pcie_irq_base = 16;    /* 16 -> 19 */
+        /* use second ioapic (24 -> 47) for virtio-mmio irq lines */
+        mms->virtio_irq_base = IO_APIC_SECONDARY_IRQBASE;
+        mms->virtio_num_transports = IOAPIC_NUM_PINS;
+    } else if (x86_machine_is_acpi_enabled(x86ms)) {
+        mms->pcie_irq_base = 12;    /* 12 -> 15 */
+        mms->virtio_irq_base = 16;  /* 16 -> 23 */
+    }
+
+    for (i = 0; i < mms->virtio_num_transports; i++) {
         sysbus_create_simple("virtio-mmio",
                              VIRTIO_MMIO_BASE + i * 512,
-                             x86ms->gsi[VIRTIO_IRQ_BASE + i]);
+                             x86ms->gsi[mms->virtio_irq_base + i]);
     }
 
     /* Optional and legacy devices */
+    if (x86_machine_is_acpi_enabled(x86ms)) {
+        DeviceState *dev = qdev_new(TYPE_ACPI_GED_X86);
+        qdev_prop_set_uint32(dev, "ged-event", ACPI_GED_PWR_DOWN_EVT);
+        sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, GED_MMIO_BASE);
+        /* sysbus_mmio_map(SYS_BUS_DEVICE(dev), 1, GED_MMIO_BASE_MEMHP); */
+        sysbus_mmio_map(SYS_BUS_DEVICE(dev), 2, GED_MMIO_BASE_REGS);
+        sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0,
+                           x86ms->gsi[GED_MMIO_IRQ]);
+        sysbus_realize(SYS_BUS_DEVICE(dev), &error_fatal);
+        x86ms->acpi_dev = HOTPLUG_HANDLER(dev);
+    }
+
+    if (x86_machine_is_acpi_enabled(x86ms) && machine_usb(MACHINE(mms))) {
+        DeviceState *dev = qdev_new(TYPE_XHCI_SYSBUS);
+        qdev_prop_set_uint32(dev, "intrs", 1);
+        qdev_prop_set_uint32(dev, "slots", XHCI_MAXSLOTS);
+        qdev_prop_set_uint32(dev, "p2", 8);
+        qdev_prop_set_uint32(dev, "p3", 8);
+        sysbus_realize(SYS_BUS_DEVICE(dev), &error_fatal);
+        sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, MICROVM_XHCI_BASE);
+        sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0,
+                           x86ms->gsi[MICROVM_XHCI_IRQ]);
+    }
+
+    if (x86_machine_is_acpi_enabled(x86ms) && mms->pcie == ON_OFF_AUTO_ON) {
+        /* use topmost 25% of the address space available */
+        hwaddr phys_size = (hwaddr)1 << X86_CPU(first_cpu)->phys_bits;
+        if (phys_size > 0x1000000ll) {
+            mms->gpex.mmio64.size = phys_size / 4;
+            mms->gpex.mmio64.base = phys_size - mms->gpex.mmio64.size;
+        }
+        mms->gpex.mmio32.base = PCIE_MMIO_BASE;
+        mms->gpex.mmio32.size = PCIE_MMIO_SIZE;
+        mms->gpex.ecam.base   = PCIE_ECAM_BASE;
+        mms->gpex.ecam.size   = PCIE_ECAM_SIZE;
+        mms->gpex.irq         = mms->pcie_irq_base;
+        create_gpex(mms);
+        x86ms->pci_irq_mask = ((1 << (mms->pcie_irq_base + 0)) |
+                               (1 << (mms->pcie_irq_base + 1)) |
+                               (1 << (mms->pcie_irq_base + 2)) |
+                               (1 << (mms->pcie_irq_base + 3)));
+    } else {
+        x86ms->pci_irq_mask = 0;
+    }
 
     if (mms->pic == ON_OFF_AUTO_ON || mms->pic == ON_OFF_AUTO_AUTO) {
         qemu_irq *i8259;
@@ -157,10 +274,10 @@ static void microvm_devices_init(MicrovmMachineState *mms)
         serial_hds_isa_init(isa_bus, 0, 1);
     }
 
-    if (bios_name == NULL) {
-        bios_name = MICROVM_BIOS_FILENAME;
-    }
-    x86_bios_rom_init(get_system_memory(), true);
+    default_firmware = x86_machine_is_acpi_enabled(x86ms)
+            ? MICROVM_BIOS_FILENAME
+            : MICROVM_QBOOT_FILENAME;
+    x86_bios_rom_init(MACHINE(mms), default_firmware, get_system_memory(), true);
 }
 
 static void microvm_memory_init(MicrovmMachineState *mms)
@@ -205,7 +322,7 @@ static void microvm_memory_init(MicrovmMachineState *mms)
     fw_cfg_add_i16(fw_cfg, FW_CFG_NB_CPUS, machine->smp.cpus);
     fw_cfg_add_i16(fw_cfg, FW_CFG_MAX_CPUS, machine->smp.max_cpus);
     fw_cfg_add_i64(fw_cfg, FW_CFG_RAM_SIZE, (uint64_t)machine->ram_size);
-    fw_cfg_add_i32(fw_cfg, FW_CFG_IRQ0_OVERRIDE, kvm_allows_irq0_override());
+    fw_cfg_add_i32(fw_cfg, FW_CFG_IRQ0_OVERRIDE, 1);
     fw_cfg_add_bytes(fw_cfg, FW_CFG_E820_TABLE,
                      &e820_reserve, sizeof(e820_reserve));
     fw_cfg_add_file(fw_cfg, "etc/e820", e820_table,
@@ -227,7 +344,7 @@ static void microvm_memory_init(MicrovmMachineState *mms)
     x86ms->ioapic_as = &address_space_memory;
 }
 
-static gchar *microvm_get_mmio_cmdline(gchar *name)
+static gchar *microvm_get_mmio_cmdline(gchar *name, uint32_t virtio_irq_base)
 {
     gchar *cmdline;
     gchar *separator;
@@ -247,7 +364,7 @@ static gchar *microvm_get_mmio_cmdline(gchar *name)
     ret = g_snprintf(cmdline, VIRTIO_CMDLINE_MAXLEN,
                      " virtio_mmio.device=512@0x%lx:%ld",
                      VIRTIO_MMIO_BASE + index * 512,
-                     VIRTIO_IRQ_BASE + index);
+                     virtio_irq_base + index);
     if (ret < 0 || ret >= VIRTIO_CMDLINE_MAXLEN) {
         g_free(cmdline);
         return NULL;
@@ -259,6 +376,7 @@ static gchar *microvm_get_mmio_cmdline(gchar *name)
 static void microvm_fix_kernel_cmdline(MachineState *machine)
 {
     X86MachineState *x86ms = X86_MACHINE(machine);
+    MicrovmMachineState *mms = MICROVM_MACHINE(machine);
     BusState *bus;
     BusChild *kid;
     char *cmdline;
@@ -282,7 +400,8 @@ static void microvm_fix_kernel_cmdline(MachineState *machine)
             BusState *mmio_bus = &mmio_virtio_bus->parent_obj;
 
             if (!QTAILQ_EMPTY(&mmio_bus->children)) {
-                gchar *mmio_cmdline = microvm_get_mmio_cmdline(mmio_bus->name);
+                gchar *mmio_cmdline = microvm_get_mmio_cmdline
+                    (mmio_bus->name, mms->virtio_irq_base);
                 if (mmio_cmdline) {
                     char *newcmd = g_strjoin(NULL, cmdline, mmio_cmdline, NULL);
                     g_free(mmio_cmdline);
@@ -297,6 +416,42 @@ static void microvm_fix_kernel_cmdline(MachineState *machine)
     fw_cfg_modify_string(x86ms->fw_cfg, FW_CFG_CMDLINE_DATA, cmdline);
 
     g_free(cmdline);
+}
+
+static void microvm_device_pre_plug_cb(HotplugHandler *hotplug_dev,
+                                       DeviceState *dev, Error **errp)
+{
+    X86CPU *cpu = X86_CPU(dev);
+
+    cpu->host_phys_bits = true; /* need reliable phys-bits */
+    x86_cpu_pre_plug(hotplug_dev, dev, errp);
+}
+
+static void microvm_device_plug_cb(HotplugHandler *hotplug_dev,
+                                   DeviceState *dev, Error **errp)
+{
+    x86_cpu_plug(hotplug_dev, dev, errp);
+}
+
+static void microvm_device_unplug_request_cb(HotplugHandler *hotplug_dev,
+                                             DeviceState *dev, Error **errp)
+{
+    error_setg(errp, "unplug not supported by microvm");
+}
+
+static void microvm_device_unplug_cb(HotplugHandler *hotplug_dev,
+                                     DeviceState *dev, Error **errp)
+{
+    error_setg(errp, "unplug not supported by microvm");
+}
+
+static HotplugHandler *microvm_get_hotplug_handler(MachineState *machine,
+                                                   DeviceState *dev)
+{
+    if (object_dynamic_cast(OBJECT(dev), TYPE_CPU)) {
+        return HOTPLUG_HANDLER(machine);
+    }
+    return NULL;
 }
 
 static void microvm_machine_state_init(MachineState *machine)
@@ -322,7 +477,8 @@ static void microvm_machine_reset(MachineState *machine)
     CPUState *cs;
     X86CPU *cpu;
 
-    if (machine->kernel_filename != NULL &&
+    if (!x86_machine_is_acpi_enabled(X86_MACHINE(machine)) &&
+        machine->kernel_filename != NULL &&
         mms->auto_kernel_cmdline && !mms->kernel_cmdline_fixed) {
         microvm_fix_kernel_cmdline(machine);
         mms->kernel_cmdline_fixed = true;
@@ -390,6 +546,40 @@ static void microvm_machine_set_rtc(Object *obj, Visitor *v, const char *name,
     visit_type_OnOffAuto(v, name, &mms->rtc, errp);
 }
 
+static void microvm_machine_get_pcie(Object *obj, Visitor *v, const char *name,
+                                     void *opaque, Error **errp)
+{
+    MicrovmMachineState *mms = MICROVM_MACHINE(obj);
+    OnOffAuto pcie = mms->pcie;
+
+    visit_type_OnOffAuto(v, name, &pcie, errp);
+}
+
+static void microvm_machine_set_pcie(Object *obj, Visitor *v, const char *name,
+                                     void *opaque, Error **errp)
+{
+    MicrovmMachineState *mms = MICROVM_MACHINE(obj);
+
+    visit_type_OnOffAuto(v, name, &mms->pcie, errp);
+}
+
+static void microvm_machine_get_ioapic2(Object *obj, Visitor *v, const char *name,
+                                        void *opaque, Error **errp)
+{
+    MicrovmMachineState *mms = MICROVM_MACHINE(obj);
+    OnOffAuto ioapic2 = mms->ioapic2;
+
+    visit_type_OnOffAuto(v, name, &ioapic2, errp);
+}
+
+static void microvm_machine_set_ioapic2(Object *obj, Visitor *v, const char *name,
+                                        void *opaque, Error **errp)
+{
+    MicrovmMachineState *mms = MICROVM_MACHINE(obj);
+
+    visit_type_OnOffAuto(v, name, &mms->ioapic2, errp);
+}
+
 static bool microvm_machine_get_isa_serial(Object *obj, Error **errp)
 {
     MicrovmMachineState *mms = MICROVM_MACHINE(obj);
@@ -435,6 +625,28 @@ static void microvm_machine_set_auto_kernel_cmdline(Object *obj, bool value,
     mms->auto_kernel_cmdline = value;
 }
 
+static void microvm_machine_done(Notifier *notifier, void *data)
+{
+    MicrovmMachineState *mms = container_of(notifier, MicrovmMachineState,
+                                            machine_done);
+
+    acpi_setup_microvm(mms);
+}
+
+static void microvm_powerdown_req(Notifier *notifier, void *data)
+{
+    MicrovmMachineState *mms = container_of(notifier, MicrovmMachineState,
+                                            powerdown_req);
+    X86MachineState *x86ms = X86_MACHINE(mms);
+
+    if (x86ms->acpi_dev) {
+        Object *obj = OBJECT(x86ms->acpi_dev);
+        AcpiDeviceIfClass *adevc = ACPI_DEVICE_IF_GET_CLASS(obj);
+        adevc->send_event(ACPI_DEVICE_IF(x86ms->acpi_dev),
+                          ACPI_POWER_DOWN_STATUS);
+    }
+}
+
 static void microvm_machine_initfn(Object *obj)
 {
     MicrovmMachineState *mms = MICROVM_MACHINE(obj);
@@ -443,17 +655,25 @@ static void microvm_machine_initfn(Object *obj)
     mms->pic = ON_OFF_AUTO_AUTO;
     mms->pit = ON_OFF_AUTO_AUTO;
     mms->rtc = ON_OFF_AUTO_AUTO;
+    mms->pcie = ON_OFF_AUTO_AUTO;
+    mms->ioapic2 = ON_OFF_AUTO_AUTO;
     mms->isa_serial = true;
     mms->option_roms = true;
     mms->auto_kernel_cmdline = true;
 
     /* State */
     mms->kernel_cmdline_fixed = false;
+
+    mms->machine_done.notify = microvm_machine_done;
+    qemu_add_machine_init_done_notifier(&mms->machine_done);
+    mms->powerdown_req.notify = microvm_powerdown_req;
+    qemu_register_powerdown_notifier(&mms->powerdown_req);
 }
 
 static void microvm_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
+    HotplugHandlerClass *hc = HOTPLUG_HANDLER_CLASS(oc);
 
     mc->init = microvm_machine_state_init;
 
@@ -474,6 +694,13 @@ static void microvm_class_init(ObjectClass *oc, void *data)
 
     /* Machine class handlers */
     mc->reset = microvm_machine_reset;
+
+    /* hotplug (for cpu coldplug) */
+    mc->get_hotplug_handler = microvm_get_hotplug_handler;
+    hc->pre_plug = microvm_device_pre_plug_cb;
+    hc->plug = microvm_device_plug_cb;
+    hc->unplug_request = microvm_device_unplug_request_cb;
+    hc->unplug = microvm_device_unplug_cb;
 
     object_class_property_add(oc, MICROVM_MACHINE_PIC, "OnOffAuto",
                               microvm_machine_get_pic,
@@ -496,6 +723,20 @@ static void microvm_class_init(ObjectClass *oc, void *data)
     object_class_property_set_description(oc, MICROVM_MACHINE_RTC,
         "Enable MC146818 RTC");
 
+    object_class_property_add(oc, MICROVM_MACHINE_PCIE, "OnOffAuto",
+                              microvm_machine_get_pcie,
+                              microvm_machine_set_pcie,
+                              NULL, NULL);
+    object_class_property_set_description(oc, MICROVM_MACHINE_PCIE,
+        "Enable PCIe");
+
+    object_class_property_add(oc, MICROVM_MACHINE_IOAPIC2, "OnOffAuto",
+                              microvm_machine_get_ioapic2,
+                              microvm_machine_set_ioapic2,
+                              NULL, NULL);
+    object_class_property_set_description(oc, MICROVM_MACHINE_IOAPIC2,
+        "Enable second IO-APIC");
+
     object_class_property_add_bool(oc, MICROVM_MACHINE_ISA_SERIAL,
                                    microvm_machine_get_isa_serial,
                                    microvm_machine_set_isa_serial);
@@ -514,6 +755,8 @@ static void microvm_class_init(ObjectClass *oc, void *data)
     object_class_property_set_description(oc,
         MICROVM_MACHINE_AUTO_KERNEL_CMDLINE,
         "Set off to disable adding virtio-mmio devices to the kernel cmdline");
+
+    machine_class_allow_dynamic_sysbus_dev(mc, TYPE_RAMFB_DEVICE);
 }
 
 static const TypeInfo microvm_machine_info = {
@@ -524,6 +767,7 @@ static const TypeInfo microvm_machine_info = {
     .class_size    = sizeof(MicrovmMachineClass),
     .class_init    = microvm_class_init,
     .interfaces = (InterfaceInfo[]) {
+         { TYPE_HOTPLUG_HANDLER },
          { }
     },
 };

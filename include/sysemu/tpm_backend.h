@@ -18,16 +18,12 @@
 #include "sysemu/tpm.h"
 #include "qapi/error.h"
 
-#define TYPE_TPM_BACKEND "tpm-backend"
-#define TPM_BACKEND(obj) \
-    OBJECT_CHECK(TPMBackend, (obj), TYPE_TPM_BACKEND)
-#define TPM_BACKEND_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(TPMBackendClass, (obj), TYPE_TPM_BACKEND)
-#define TPM_BACKEND_CLASS(klass) \
-    OBJECT_CLASS_CHECK(TPMBackendClass, (klass), TYPE_TPM_BACKEND)
+#ifdef CONFIG_TPM
 
-typedef struct TPMBackendClass TPMBackendClass;
-typedef struct TPMBackend TPMBackend;
+#define TYPE_TPM_BACKEND "tpm-backend"
+OBJECT_DECLARE_TYPE(TPMBackend, TPMBackendClass,
+                    TPM_BACKEND)
+
 
 typedef struct TPMBackendCmd {
     uint8_t locty;
@@ -215,4 +211,6 @@ TPMInfo *tpm_backend_query_tpm(TPMBackend *s);
 
 TPMBackend *qemu_find_tpm_be(const char *id);
 
-#endif
+#endif /* CONFIG_TPM */
+
+#endif /* TPM_BACKEND_H */

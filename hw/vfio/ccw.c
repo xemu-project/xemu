@@ -20,7 +20,6 @@
 #include <sys/ioctl.h>
 
 #include "qapi/error.h"
-#include "hw/sysbus.h"
 #include "hw/vfio/vfio.h"
 #include "hw/vfio/vfio-common.h"
 #include "hw/s390x/s390-ccw.h"
@@ -49,6 +48,7 @@ struct VFIOCCWDevice {
     struct ccw_crw_region *crw_region;
     EventNotifier io_notifier;
     EventNotifier crw_notifier;
+    EventNotifier req_notifier;
     bool force_orb_pfch;
     bool warned_orb_pfch;
 };
@@ -103,9 +103,9 @@ again:
             goto again;
         }
         error_report("vfio-ccw: write I/O region failed with errno=%d", errno);
-        ret = -errno;
+        ret = errno ? -errno : -EFAULT;
     } else {
-        ret = region->ret_code;
+        ret = 0;
     }
     switch (ret) {
     case 0:
@@ -191,9 +191,9 @@ again:
             goto again;
         }
         error_report("vfio-ccw: write cmd region failed with errno=%d", errno);
-        ret = -errno;
+        ret = errno ? -errno : -EFAULT;
     } else {
-        ret = region->ret_code;
+        ret = 0;
     }
     switch (ret) {
     case 0:
@@ -231,9 +231,9 @@ again:
             goto again;
         }
         error_report("vfio-ccw: write cmd region failed with errno=%d", errno);
-        ret = -errno;
+        ret = errno ? -errno : -EFAULT;
     } else {
-        ret = region->ret_code;
+        ret = 0;
     }
     switch (ret) {
     case 0:
@@ -287,6 +287,21 @@ static void vfio_ccw_crw_read(VFIOCCWDevice *vcdev)
     } while (1);
 }
 
+static void vfio_ccw_req_notifier_handler(void *opaque)
+{
+    VFIOCCWDevice *vcdev = opaque;
+    Error *err = NULL;
+
+    if (!event_notifier_test_and_clear(&vcdev->req_notifier)) {
+        return;
+    }
+
+    qdev_unplug(DEVICE(vcdev), &err);
+    if (err) {
+        warn_reportf_err(err, VFIO_MSG_PREFIX, vcdev->vdev.name);
+    }
+}
+
 static void vfio_ccw_crw_notifier_handler(void *opaque)
 {
     VFIOCCWDevice *vcdev = opaque;
@@ -306,6 +321,7 @@ static void vfio_ccw_io_notifier_handler(void *opaque)
     SCHIB *schib = &sch->curr_status;
     SCSW s;
     IRB irb;
+    ESW esw;
     int size;
 
     if (!event_notifier_test_and_clear(&vcdev->io_notifier)) {
@@ -356,6 +372,9 @@ static void vfio_ccw_io_notifier_handler(void *opaque)
     copy_scsw_to_guest(&s, &irb.scsw);
     schib->scsw = s;
 
+    copy_esw_to_guest(&esw, &irb.esw);
+    sch->esw = esw;
+
     /* If a uint check is pending, copy sense data. */
     if ((schib->scsw.dstat & SCSW_DSTAT_UNIT_CHECK) &&
         (schib->pmcw.chars & PMCW_CHARS_MASK_CSENSE)) {
@@ -386,14 +405,18 @@ static void vfio_ccw_register_irq_notifier(VFIOCCWDevice *vcdev,
         notifier = &vcdev->crw_notifier;
         fd_read = vfio_ccw_crw_notifier_handler;
         break;
+    case VFIO_CCW_REQ_IRQ_INDEX:
+        notifier = &vcdev->req_notifier;
+        fd_read = vfio_ccw_req_notifier_handler;
+        break;
     default:
         error_setg(errp, "vfio: Unsupported device irq(%d)", irq);
         return;
     }
 
     if (vdev->num_irqs < irq + 1) {
-        error_setg(errp, "vfio: unexpected number of irqs %u",
-                   vdev->num_irqs);
+        error_setg(errp, "vfio: IRQ %u not available (number of irqs %u)",
+                   irq, vdev->num_irqs);
         return;
     }
 
@@ -440,6 +463,9 @@ static void vfio_ccw_unregister_irq_notifier(VFIOCCWDevice *vcdev,
     case VFIO_CCW_CRW_IRQ_INDEX:
         notifier = &vcdev->crw_notifier;
         break;
+    case VFIO_CCW_REQ_IRQ_INDEX:
+        notifier = &vcdev->req_notifier;
+        break;
     default:
         error_report("vfio: Unsupported device irq(%d)", irq);
         return;
@@ -447,7 +473,7 @@ static void vfio_ccw_unregister_irq_notifier(VFIOCCWDevice *vcdev,
 
     if (vfio_set_irq_signaling(&vcdev->vdev, irq, 0,
                                VFIO_IRQ_SET_ACTION_TRIGGER, -1, &err)) {
-        error_reportf_err(err, VFIO_MSG_PREFIX, vcdev->vdev.name);
+        warn_reportf_err(err, VFIO_MSG_PREFIX, vcdev->vdev.name);
     }
 
     qemu_set_fd_handler(event_notifier_get_fd(notifier),
@@ -491,6 +517,7 @@ static void vfio_ccw_get_region(VFIOCCWDevice *vcdev, Error **errp)
 
     vcdev->io_region_offset = info->offset;
     vcdev->io_region = g_malloc0(info->size);
+    g_free(info);
 
     /* check for the optional async command region */
     ret = vfio_get_dev_region_info(vdev, VFIO_REGION_TYPE_CCW,
@@ -503,6 +530,7 @@ static void vfio_ccw_get_region(VFIOCCWDevice *vcdev, Error **errp)
         }
         vcdev->async_cmd_region_offset = info->offset;
         vcdev->async_cmd_region = g_malloc0(info->size);
+        g_free(info);
     }
 
     ret = vfio_get_dev_region_info(vdev, VFIO_REGION_TYPE_CCW,
@@ -515,6 +543,7 @@ static void vfio_ccw_get_region(VFIOCCWDevice *vcdev, Error **errp)
         }
         vcdev->schib_region_offset = info->offset;
         vcdev->schib_region = g_malloc(info->size);
+        g_free(info);
     }
 
     ret = vfio_get_dev_region_info(vdev, VFIO_REGION_TYPE_CCW,
@@ -528,9 +557,9 @@ static void vfio_ccw_get_region(VFIOCCWDevice *vcdev, Error **errp)
         }
         vcdev->crw_region_offset = info->offset;
         vcdev->crw_region = g_malloc(info->size);
+        g_free(info);
     }
 
-    g_free(info);
     return;
 
 out_err:
@@ -658,20 +687,32 @@ static void vfio_ccw_realize(DeviceState *dev, Error **errp)
 
     vfio_ccw_register_irq_notifier(vcdev, VFIO_CCW_IO_IRQ_INDEX, &err);
     if (err) {
-        goto out_notifier_err;
+        goto out_io_notifier_err;
     }
 
     if (vcdev->crw_region) {
         vfio_ccw_register_irq_notifier(vcdev, VFIO_CCW_CRW_IRQ_INDEX, &err);
         if (err) {
-            vfio_ccw_unregister_irq_notifier(vcdev, VFIO_CCW_IO_IRQ_INDEX);
-            goto out_notifier_err;
+            goto out_irq_notifier_err;
         }
+    }
+
+    vfio_ccw_register_irq_notifier(vcdev, VFIO_CCW_REQ_IRQ_INDEX, &err);
+    if (err) {
+        /*
+         * Report this error, but do not make it a failing condition.
+         * Lack of this IRQ in the host does not prevent normal operation.
+         */
+        error_report_err(err);
     }
 
     return;
 
-out_notifier_err:
+out_irq_notifier_err:
+    vfio_ccw_unregister_irq_notifier(vcdev, VFIO_CCW_REQ_IRQ_INDEX);
+    vfio_ccw_unregister_irq_notifier(vcdev, VFIO_CCW_CRW_IRQ_INDEX);
+    vfio_ccw_unregister_irq_notifier(vcdev, VFIO_CCW_IO_IRQ_INDEX);
+out_io_notifier_err:
     vfio_ccw_put_region(vcdev);
 out_region_err:
     vfio_ccw_put_device(vcdev);
@@ -693,6 +734,7 @@ static void vfio_ccw_unrealize(DeviceState *dev)
     S390CCWDeviceClass *cdc = S390_CCW_DEVICE_GET_CLASS(cdev);
     VFIOGroup *group = vcdev->vdev.group;
 
+    vfio_ccw_unregister_irq_notifier(vcdev, VFIO_CCW_REQ_IRQ_INDEX);
     vfio_ccw_unregister_irq_notifier(vcdev, VFIO_CCW_CRW_IRQ_INDEX);
     vfio_ccw_unregister_irq_notifier(vcdev, VFIO_CCW_IO_IRQ_INDEX);
     vfio_ccw_put_region(vcdev);

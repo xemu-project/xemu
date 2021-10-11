@@ -178,9 +178,10 @@ void xbox_pci_init(qemu_irq *pic,
     memory_region_init_alias(&bridge_state->pci_hole, OBJECT(bridge),
                              "pci-hole",
                              bridge_state->pci_address_space,
-                             ram_size,
-                             0x100000000ULL - ram_size);
-    memory_region_add_subregion(bridge_state->system_memory, ram_size,
+                             memory_region_size(ram_memory),
+                             0x100000000ULL - memory_region_size(ram_memory));
+    memory_region_add_subregion(bridge_state->system_memory,
+                                memory_region_size(ram_memory),
                                 &bridge_state->pci_hole);
 
 

@@ -16,6 +16,7 @@
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
 #include "qemu/module.h"
+#include "qemu/log.h"
 
 #include "hw/usb.h"
 #include "migration/vmstate.h"
@@ -23,6 +24,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/scsi/scsi.h"
 #include "scsi/constants.h"
+#include "qom/object.h"
 
 /* --------------------------------------------------------------------- */
 
@@ -69,7 +71,7 @@ typedef struct {
     uint8_t    reserved_2;
     uint64_t   lun;
     uint8_t    cdb[16];
-    uint8_t    add_cdb[];
+    uint8_t    add_cdb[1];      /* not supported by QEMU */
 } QEMU_PACKED  uas_iu_command;
 
 typedef struct {
@@ -132,7 +134,7 @@ struct UASDevice {
 };
 
 #define TYPE_USB_UAS "usb-uas"
-#define USB_UAS(obj) OBJECT_CHECK(UASDevice, (obj), TYPE_USB_UAS)
+OBJECT_DECLARE_SIMPLE_TYPE(UASDevice, USB_UAS)
 
 struct UASRequest {
     uint16_t     tag;
@@ -596,17 +598,16 @@ static void usb_uas_scsi_transfer_data(SCSIRequest *r, uint32_t len)
     }
 }
 
-static void usb_uas_scsi_command_complete(SCSIRequest *r,
-                                          uint32_t status, size_t resid)
+static void usb_uas_scsi_command_complete(SCSIRequest *r, size_t resid)
 {
     UASRequest *req = r->hba_private;
 
-    trace_usb_uas_scsi_complete(req->uas->dev.addr, req->tag, status, resid);
+    trace_usb_uas_scsi_complete(req->uas->dev.addr, req->tag, r->status, resid);
     req->complete = true;
     if (req->data) {
         usb_uas_complete_data_packet(req);
     }
-    usb_uas_queue_sense(req, status);
+    usb_uas_queue_sense(req, r->status);
     scsi_req_unref(req->req);
 }
 
@@ -699,6 +700,11 @@ static void usb_uas_command(UASDevice *uas, uas_iu *iu)
     uint32_t len;
     uint16_t tag = be16_to_cpu(iu->hdr.tag);
 
+    if (iu->command.add_cdb_length > 0) {
+        qemu_log_mask(LOG_UNIMP, "additional adb length not yet supported\n");
+        goto unsupported_len;
+    }
+
     if (uas_using_streams(uas) && tag > UAS_MAX_STREAMS) {
         goto invalid_tag;
     }
@@ -732,6 +738,10 @@ static void usb_uas_command(UASDevice *uas, uas_iu *iu)
         req->data_size = len;
         scsi_req_continue(req->req);
     }
+    return;
+
+unsupported_len:
+    usb_uas_queue_fake_sense(uas, tag, sense_code_INVALID_PARAM_VALUE);
     return;
 
 invalid_tag:
@@ -916,6 +926,7 @@ static void usb_uas_realize(USBDevice *dev, Error **errp)
     QTAILQ_INIT(&uas->requests);
     uas->status_bh = qemu_bh_new(usb_uas_send_status_bh, uas);
 
+    dev->flags |= (1 << USB_DEV_FLAG_IS_SCSI_STORAGE);
     scsi_bus_new(&uas->bus, sizeof(uas->bus), DEVICE(dev),
                  &usb_uas_scsi_info, NULL);
 }

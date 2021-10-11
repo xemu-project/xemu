@@ -19,10 +19,12 @@
 #include "hw/sd/bcm2835_sdhost.h"
 #include "migration/vmstate.h"
 #include "trace.h"
+#include "qom/object.h"
 
 #define TYPE_BCM2835_SDHOST_BUS "bcm2835-sdhost-bus"
-#define BCM2835_SDHOST_BUS(obj) \
-    OBJECT_CHECK(SDBus, (obj), TYPE_BCM2835_SDHOST_BUS)
+/* This is reusing the SDBus typedef from SD_BUS */
+DECLARE_INSTANCE_CHECKER(SDBus, BCM2835_SDHOST_BUS,
+                         TYPE_BCM2835_SDHOST_BUS)
 
 #define SDCMD  0x00 /* Command to SD card              - 16 R/W */
 #define SDARG  0x04 /* Argument to SD card             - 32 R/W */
@@ -190,7 +192,7 @@ static void bcm2835_sdhost_fifo_run(BCM2835SDHostState *s)
         if (is_read) {
             n = 0;
             while (s->datacnt && s->fifo_len < BCM2835_SDHOST_FIFO_LEN) {
-                value |= (uint32_t)sdbus_read_data(&s->sdbus) << (n * 8);
+                value |= (uint32_t)sdbus_read_byte(&s->sdbus) << (n * 8);
                 s->datacnt--;
                 n++;
                 if (n == 4) {
@@ -223,7 +225,7 @@ static void bcm2835_sdhost_fifo_run(BCM2835SDHostState *s)
                 }
                 n--;
                 s->datacnt--;
-                sdbus_write_data(&s->sdbus, value & 0xff);
+                sdbus_write_byte(&s->sdbus, value & 0xff);
                 value >>= 8;
             }
         }

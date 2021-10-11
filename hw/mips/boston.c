@@ -6,7 +6,7 @@
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 2 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -20,16 +20,16 @@
 #include "qemu/osdep.h"
 #include "qemu/units.h"
 
-#include "exec/address-spaces.h"
 #include "hw/boards.h"
 #include "hw/char/serial.h"
 #include "hw/ide/pci.h"
 #include "hw/ide/ahci.h"
 #include "hw/loader.h"
 #include "hw/loader-fit.h"
+#include "hw/mips/bootloader.h"
 #include "hw/mips/cps.h"
-#include "hw/mips/cpudevs.h"
 #include "hw/pci-host/xilinx-pcie.h"
+#include "hw/qdev-clock.h"
 #include "hw/qdev-properties.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
@@ -41,16 +41,20 @@
 #include "sysemu/runstate.h"
 
 #include <libfdt.h>
+#include "qom/object.h"
 
-#define TYPE_MIPS_BOSTON "mips-boston"
-#define BOSTON(obj) OBJECT_CHECK(BostonState, (obj), TYPE_MIPS_BOSTON)
+#define TYPE_BOSTON "mips-boston"
+typedef struct BostonState BostonState;
+DECLARE_INSTANCE_CHECKER(BostonState, BOSTON,
+                         TYPE_BOSTON)
 
-typedef struct {
+struct BostonState {
     SysBusDevice parent_obj;
 
     MachineState *mach;
     MIPSCPSState cps;
     SerialMM *uart;
+    Clock *cpuclk;
 
     CharBackend lcd_display;
     char lcd_content[8];
@@ -58,7 +62,7 @@ typedef struct {
 
     hwaddr kernel_entry;
     hwaddr fdt_base;
-} BostonState;
+};
 
 enum boston_plat_reg {
     PLAT_FPGA_BUILD     = 0x00,
@@ -248,10 +252,19 @@ static const MemoryRegionOps boston_platreg_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
+static void mips_boston_instance_init(Object *obj)
+{
+    BostonState *s = BOSTON(obj);
+
+    s->cpuclk = qdev_init_clock_out(DEVICE(obj), "cpu-refclk");
+    clock_set_hz(s->cpuclk, 1000000000); /* 1 GHz */
+}
+
 static const TypeInfo boston_device = {
-    .name          = TYPE_MIPS_BOSTON,
+    .name          = TYPE_BOSTON,
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(BostonState),
+    .instance_init = mips_boston_instance_init,
 };
 
 static void boston_register_types(void)
@@ -260,48 +273,26 @@ static void boston_register_types(void)
 }
 type_init(boston_register_types)
 
-static void gen_firmware(uint32_t *p, hwaddr kernel_entry, hwaddr fdt_addr,
-                         bool is_64b)
+static void gen_firmware(uint32_t *p, hwaddr kernel_entry, hwaddr fdt_addr)
 {
     const uint32_t cm_base = 0x16100000;
     const uint32_t gic_base = 0x16120000;
     const uint32_t cpc_base = 0x16200000;
 
     /* Move CM GCRs */
-    if (is_64b) {
-        stl_p(p++, 0x40287803);                 /* dmfc0 $8, CMGCRBase */
-        stl_p(p++, 0x00084138);                 /* dsll $8, $8, 4 */
-    } else {
-        stl_p(p++, 0x40087803);                 /* mfc0 $8, CMGCRBase */
-        stl_p(p++, 0x00084100);                 /* sll  $8, $8, 4 */
-    }
-    stl_p(p++, 0x3c09a000);                     /* lui  $9, 0xa000 */
-    stl_p(p++, 0x01094025);                     /* or   $8, $9 */
-    stl_p(p++, 0x3c0a0000 | (cm_base >> 16));   /* lui  $10, cm_base >> 16 */
-    if (is_64b) {
-        stl_p(p++, 0xfd0a0008);                 /* sd   $10, 0x8($8) */
-    } else {
-        stl_p(p++, 0xad0a0008);                 /* sw   $10, 0x8($8) */
-    }
-    stl_p(p++, 0x012a4025);                     /* or   $8, $10 */
+    bl_gen_write_ulong(&p,
+                       cpu_mips_phys_to_kseg1(NULL, GCR_BASE_ADDR + GCR_BASE_OFS),
+                       cm_base);
 
     /* Move & enable GIC GCRs */
-    stl_p(p++, 0x3c090000 | (gic_base >> 16));  /* lui  $9, gic_base >> 16 */
-    stl_p(p++, 0x35290001);                     /* ori  $9, 0x1 */
-    if (is_64b) {
-        stl_p(p++, 0xfd090080);                 /* sd   $9, 0x80($8) */
-    } else {
-        stl_p(p++, 0xad090080);                 /* sw   $9, 0x80($8) */
-    }
+    bl_gen_write_ulong(&p,
+                       cpu_mips_phys_to_kseg1(NULL, cm_base + GCR_GIC_BASE_OFS),
+                       gic_base | GCR_GIC_BASE_GICEN_MSK);
 
     /* Move & enable CPC GCRs */
-    stl_p(p++, 0x3c090000 | (cpc_base >> 16));  /* lui  $9, cpc_base >> 16 */
-    stl_p(p++, 0x35290001);                     /* ori  $9, 0x1 */
-    if (is_64b) {
-        stl_p(p++, 0xfd090088);                 /* sd   $9, 0x88($8) */
-    } else {
-        stl_p(p++, 0xad090088);                 /* sw   $9, 0x88($8) */
-    }
+    bl_gen_write_ulong(&p,
+                       cpu_mips_phys_to_kseg1(NULL, cm_base + GCR_CPC_BASE_OFS),
+                       cpc_base | GCR_CPC_BASE_CPCEN_MSK);
 
     /*
      * Setup argument registers to follow the UHI boot protocol:
@@ -311,21 +302,7 @@ static void gen_firmware(uint32_t *p, hwaddr kernel_entry, hwaddr fdt_addr,
      * a2/$6 = 0
      * a3/$7 = 0
      */
-    stl_p(p++, 0x2404fffe);                     /* li   $4, -2 */
-                                                /* lui  $5, hi(fdt_addr) */
-    stl_p(p++, 0x3c050000 | ((fdt_addr >> 16) & 0xffff));
-    if (fdt_addr & 0xffff) {                    /* ori  $5, lo(fdt_addr) */
-        stl_p(p++, 0x34a50000 | (fdt_addr & 0xffff));
-    }
-    stl_p(p++, 0x34060000);                     /* li   $6, 0 */
-    stl_p(p++, 0x34070000);                     /* li   $7, 0 */
-
-    /* Load kernel entry address & jump to it */
-                                                /* lui  $25, hi(kernel_entry) */
-    stl_p(p++, 0x3c190000 | ((kernel_entry >> 16) & 0xffff));
-                                                /* ori  $25, lo(kernel_entry) */
-    stl_p(p++, 0x37390000 | (kernel_entry & 0xffff));
-    stl_p(p++, 0x03200009);                     /* jr   $25 */
+    bl_gen_jump_kernel(&p, 0, (int32_t)-2, fdt_addr, 0, 0, kernel_entry);
 }
 
 static const void *boston_fdt_filter(void *opaque, const void *fdt_orig,
@@ -335,11 +312,9 @@ static const void *boston_fdt_filter(void *opaque, const void *fdt_orig,
     MachineState *machine = s->mach;
     const char *cmdline;
     int err;
-    void *fdt;
-    size_t fdt_sz, ram_low_sz, ram_high_sz;
-
-    fdt_sz = fdt_totalsize(fdt_orig) * 2;
-    fdt = g_malloc0(fdt_sz);
+    size_t ram_low_sz, ram_high_sz;
+    size_t fdt_sz = fdt_totalsize(fdt_orig) * 2;
+    g_autofree void *fdt = g_malloc0(fdt_sz);
 
     err = fdt_open_into(fdt_orig, fdt, fdt_sz);
     if (err) {
@@ -366,7 +341,7 @@ static const void *boston_fdt_filter(void *opaque, const void *fdt_orig,
 
     s->fdt_base = *load_addr;
 
-    return fdt;
+    return g_steal_pointer(&fdt);
 }
 
 static const void *boston_kernel_filter(void *opaque, const void *kernel,
@@ -433,7 +408,6 @@ static void boston_mach_init(MachineState *machine)
     DriveInfo *hd[6];
     Chardev *chr;
     int fw_size, fit_err;
-    bool is_64b;
 
     if ((machine->ram_size % GiB) ||
         (machine->ram_size > (2 * GiB))) {
@@ -441,24 +415,24 @@ static void boston_mach_init(MachineState *machine)
         exit(1);
     }
 
-    dev = qdev_new(TYPE_MIPS_BOSTON);
+    dev = qdev_new(TYPE_BOSTON);
     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
     s = BOSTON(dev);
     s->mach = machine;
 
-    if (!cpu_supports_cps_smp(machine->cpu_type)) {
+    if (!cpu_type_supports_cps_smp(machine->cpu_type)) {
         error_report("Boston requires CPUs which support CPS");
         exit(1);
     }
-
-    is_64b = cpu_supports_isa(machine->cpu_type, ISA_MIPS64);
 
     object_initialize_child(OBJECT(machine), "cps", &s->cps, TYPE_MIPS_CPS);
     object_property_set_str(OBJECT(&s->cps), "cpu-type", machine->cpu_type,
                             &error_fatal);
     object_property_set_int(OBJECT(&s->cps), "num-vp", machine->smp.cpus,
                             &error_fatal);
+    qdev_connect_clock_in(DEVICE(&s->cps), "clk-in",
+                          qdev_get_clock_out(dev, "cpu-refclk"));
     sysbus_realize(SYS_BUS_DEVICE(&s->cps), &error_fatal);
 
     sysbus_mmio_map_overlap(SYS_BUS_DEVICE(&s->cps), 0, 0, 1);
@@ -532,7 +506,7 @@ static void boston_mach_init(MachineState *machine)
         }
 
         gen_firmware(memory_region_get_ram_ptr(flash) + 0x7c00000,
-                     s->kernel_entry, s->fdt_base, is_64b);
+                     s->kernel_entry, s->fdt_base);
     } else if (!qtest_enabled()) {
         error_report("Please provide either a -kernel or -bios argument");
         exit(1);

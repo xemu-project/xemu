@@ -8,7 +8,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "libqtest.h"
+#include "libqos/libqtest.h"
 
 /*
  * To test the pflash_cfi02 device, we run QEMU with the musicpal machine with
@@ -261,7 +261,7 @@ static void test_geometry(const void *opaque)
     const FlashConfig *config = opaque;
     QTestState *qtest;
     qtest = qtest_initf("-M musicpal"
-                        " -drive if=pflash,file=%s,format=raw,copy-on-read"
+                        " -drive if=pflash,file=%s,format=raw,copy-on-read=on"
                         /* Device geometry properties. */
                         " -global driver=cfi.pflash02,"
                         "property=num-blocks0,value=%d"
@@ -406,7 +406,7 @@ static void test_geometry(const void *opaque)
 
     for (int region = 0; region < nb_erase_regions; ++region) {
         for (uint32_t i = 0; i < c->nb_blocs[region]; ++i) {
-            uint64_t byte_addr = i * c->sector_len[region];
+            uint64_t byte_addr = (uint64_t)i * c->sector_len[region];
             g_assert_cmphex(flash_read(c, byte_addr), ==, bank_mask(c));
         }
     }
@@ -581,7 +581,7 @@ static void test_cfi_in_autoselect(const void *opaque)
     const FlashConfig *config = opaque;
     QTestState *qtest;
     qtest = qtest_initf("-M musicpal"
-                        " -drive if=pflash,file=%s,format=raw,copy-on-read",
+                        " -drive if=pflash,file=%s,format=raw,copy-on-read=on",
                         image_path);
     FlashConfig explicit_config = expand_config_defaults(config);
     explicit_config.qtest = qtest;

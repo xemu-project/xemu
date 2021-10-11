@@ -14,7 +14,14 @@
 #include "crypto/tlscreds.h"
 #include "crypto/tls-cipher-suites.h"
 #include "hw/nvram/fw_cfg.h"
+#include "tlscredspriv.h"
 #include "trace.h"
+
+struct QCryptoTLSCipherSuites {
+    /* <private> */
+    QCryptoTLSCreds parent_obj;
+    /* <public> */
+};
 
 /*
  * IANA registered TLS ciphers:
@@ -108,7 +115,7 @@ static void qcrypto_tls_cipher_suites_class_init(ObjectClass *oc, void *data)
 static const TypeInfo qcrypto_tls_cipher_suites_info = {
     .parent = TYPE_QCRYPTO_TLS_CREDS,
     .name = TYPE_QCRYPTO_TLS_CIPHER_SUITES,
-    .instance_size = sizeof(QCryptoTLSCreds),
+    .instance_size = sizeof(QCryptoTLSCipherSuites),
     .class_size = sizeof(QCryptoTLSCredsClass),
     .class_init = qcrypto_tls_cipher_suites_class_init,
     .interfaces = (InterfaceInfo[]) {

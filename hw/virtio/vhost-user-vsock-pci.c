@@ -13,6 +13,7 @@
 #include "virtio-pci.h"
 #include "hw/qdev-properties.h"
 #include "hw/virtio/vhost-user-vsock.h"
+#include "qom/object.h"
 
 typedef struct VHostUserVSockPCI VHostUserVSockPCI;
 
@@ -20,8 +21,8 @@ typedef struct VHostUserVSockPCI VHostUserVSockPCI;
  * vhost-user-vsock-pci: This extends VirtioPCIProxy.
  */
 #define TYPE_VHOST_USER_VSOCK_PCI "vhost-user-vsock-pci-base"
-#define VHOST_USER_VSOCK_PCI(obj) \
-        OBJECT_CHECK(VHostUserVSockPCI, (obj), TYPE_VHOST_USER_VSOCK_PCI)
+DECLARE_INSTANCE_CHECKER(VHostUserVSockPCI, VHOST_USER_VSOCK_PCI,
+                         TYPE_VHOST_USER_VSOCK_PCI)
 
 struct VHostUserVSockPCI {
     VirtIOPCIProxy parent_obj;
@@ -39,6 +40,9 @@ static void vhost_user_vsock_pci_realize(VirtIOPCIProxy *vpci_dev, Error **errp)
 {
     VHostUserVSockPCI *dev = VHOST_USER_VSOCK_PCI(vpci_dev);
     DeviceState *vdev = DEVICE(&dev->vdev);
+
+    /* unlike vhost-vsock, we do not need to care about pre-5.1 compat */
+    virtio_pci_force_virtio_1(vpci_dev);
 
     qdev_realize(vdev, BUS(&vpci_dev->bus), errp);
 }
@@ -68,7 +72,6 @@ static void vhost_user_vsock_pci_instance_init(Object *obj)
 static const VirtioPCIDeviceTypeInfo vhost_user_vsock_pci_info = {
     .base_name             = TYPE_VHOST_USER_VSOCK_PCI,
     .generic_name          = "vhost-user-vsock-pci",
-    .transitional_name     = "vhost-user-vsock-pci-transitional",
     .non_transitional_name = "vhost-user-vsock-pci-non-transitional",
     .instance_size = sizeof(VHostUserVSockPCI),
     .instance_init = vhost_user_vsock_pci_instance_init,

@@ -87,6 +87,7 @@ void block_job_free(Job *job)
 
     block_job_remove_all_bdrv(bjob);
     blk_unref(bjob->blk);
+    ratelimit_destroy(&bjob->limit);
     error_free(bjob->blocker);
 }
 
@@ -163,6 +164,13 @@ static void child_job_set_aio_ctx(BdrvChild *c, AioContext *ctx,
     job->job.aio_context = ctx;
 }
 
+static AioContext *child_job_get_parent_aio_context(BdrvChild *c)
+{
+    BlockJob *job = c->opaque;
+
+    return job->job.aio_context;
+}
+
 static const BdrvChildClass child_job = {
     .get_parent_desc    = child_job_get_parent_desc,
     .drained_begin      = child_job_drained_begin,
@@ -171,6 +179,7 @@ static const BdrvChildClass child_job = {
     .can_set_aio_ctx    = child_job_can_set_aio_ctx,
     .set_aio_ctx        = child_job_set_aio_ctx,
     .stay_at_node       = true,
+    .get_parent_aio_context = child_job_get_parent_aio_context,
 };
 
 void block_job_remove_all_bdrv(BlockJob *job)
@@ -212,15 +221,18 @@ int block_job_add_bdrv(BlockJob *job, const char *name, BlockDriverState *bs,
                        uint64_t perm, uint64_t shared_perm, Error **errp)
 {
     BdrvChild *c;
+    bool need_context_ops;
 
     bdrv_ref(bs);
-    if (job->job.aio_context != qemu_get_aio_context()) {
+
+    need_context_ops = bdrv_get_aio_context(bs) != job->job.aio_context;
+
+    if (need_context_ops && job->job.aio_context != qemu_get_aio_context()) {
         aio_context_release(job->job.aio_context);
     }
-    c = bdrv_root_attach_child(bs, name, &child_job, 0,
-                               job->job.aio_context, perm, shared_perm, job,
+    c = bdrv_root_attach_child(bs, name, &child_job, 0, perm, shared_perm, job,
                                errp);
-    if (job->job.aio_context != qemu_get_aio_context()) {
+    if (need_context_ops && job->job.aio_context != qemu_get_aio_context()) {
         aio_context_acquire(job->job.aio_context);
     }
     if (c == NULL) {
@@ -254,62 +266,75 @@ static bool job_timer_pending(Job *job)
     return timer_pending(&job->sleep_timer);
 }
 
-void block_job_set_speed(BlockJob *job, int64_t speed, Error **errp)
+bool block_job_set_speed(BlockJob *job, int64_t speed, Error **errp)
 {
+    const BlockJobDriver *drv = block_job_driver(job);
     int64_t old_speed = job->speed;
 
-    if (job_apply_verb(&job->job, JOB_VERB_SET_SPEED, errp)) {
-        return;
+    if (job_apply_verb(&job->job, JOB_VERB_SET_SPEED, errp) < 0) {
+        return false;
     }
     if (speed < 0) {
         error_setg(errp, QERR_INVALID_PARAMETER_VALUE, "speed",
                    "a non-negative value");
-        return;
+        return false;
     }
 
     ratelimit_set_speed(&job->limit, speed, BLOCK_JOB_SLICE_TIME);
 
     job->speed = speed;
+
+    if (drv->set_speed) {
+        drv->set_speed(job, speed);
+    }
+
     if (speed && speed <= old_speed) {
-        return;
+        return true;
     }
 
     /* kick only if a timer is pending */
     job_enter_cond(&job->job, job_timer_pending);
+
+    return true;
 }
 
 int64_t block_job_ratelimit_get_delay(BlockJob *job, uint64_t n)
 {
-    if (!job->speed) {
-        return 0;
-    }
-
     return ratelimit_calculate_delay(&job->limit, n);
 }
 
 BlockJobInfo *block_job_query(BlockJob *job, Error **errp)
 {
     BlockJobInfo *info;
+    uint64_t progress_current, progress_total;
 
     if (block_job_is_internal(job)) {
         error_setg(errp, "Cannot query QEMU internal jobs");
         return NULL;
     }
+
+    progress_get_snapshot(&job->job.progress, &progress_current,
+                          &progress_total);
+
     info = g_new0(BlockJobInfo, 1);
     info->type      = g_strdup(job_type_str(&job->job));
     info->device    = g_strdup(job->job.id);
-    info->busy      = atomic_read(&job->job.busy);
+    info->busy      = qatomic_read(&job->job.busy);
     info->paused    = job->job.pause_count > 0;
-    info->offset    = job->job.progress.current;
-    info->len       = job->job.progress.total;
+    info->offset    = progress_current;
+    info->len       = progress_total;
     info->speed     = job->speed;
     info->io_status = job->iostatus;
     info->ready     = job_is_ready(&job->job),
     info->status    = job->job.status;
     info->auto_finalize = job->job.auto_finalize;
     info->auto_dismiss  = job->job.auto_dismiss;
-    info->has_error = job->job.ret != 0;
-    info->error     = job->job.ret ? g_strdup(strerror(-job->job.ret)) : NULL;
+    if (job->job.ret) {
+        info->has_error = true;
+        info->error = job->job.err ?
+                        g_strdup(error_get_pretty(job->job.err)) :
+                        g_strdup(strerror(-job->job.ret));
+    }
     return info;
 }
 
@@ -324,15 +349,19 @@ static void block_job_iostatus_set_err(BlockJob *job, int error)
 static void block_job_event_cancelled(Notifier *n, void *opaque)
 {
     BlockJob *job = opaque;
+    uint64_t progress_current, progress_total;
 
     if (block_job_is_internal(job)) {
         return;
     }
 
+    progress_get_snapshot(&job->job.progress, &progress_current,
+                          &progress_total);
+
     qapi_event_send_block_job_cancelled(job_type(&job->job),
                                         job->job.id,
-                                        job->job.progress.total,
-                                        job->job.progress.current,
+                                        progress_total,
+                                        progress_current,
                                         job->speed);
 }
 
@@ -340,19 +369,23 @@ static void block_job_event_completed(Notifier *n, void *opaque)
 {
     BlockJob *job = opaque;
     const char *msg = NULL;
+    uint64_t progress_current, progress_total;
 
     if (block_job_is_internal(job)) {
         return;
     }
 
     if (job->job.ret < 0) {
-        msg = strerror(-job->job.ret);
+        msg = error_get_pretty(job->job.err);
     }
+
+    progress_get_snapshot(&job->job.progress, &progress_current,
+                          &progress_total);
 
     qapi_event_send_block_job_completed(job_type(&job->job),
                                         job->job.id,
-                                        job->job.progress.total,
-                                        job->job.progress.current,
+                                        progress_total,
+                                        progress_current,
                                         job->speed,
                                         !!msg,
                                         msg);
@@ -373,15 +406,19 @@ static void block_job_event_pending(Notifier *n, void *opaque)
 static void block_job_event_ready(Notifier *n, void *opaque)
 {
     BlockJob *job = opaque;
+    uint64_t progress_current, progress_total;
 
     if (block_job_is_internal(job)) {
         return;
     }
 
+    progress_get_snapshot(&job->job.progress, &progress_current,
+                          &progress_total);
+
     qapi_event_send_block_job_ready(job_type(&job->job),
                                     job->job.id,
-                                    job->job.progress.total,
-                                    job->job.progress.current,
+                                    progress_total,
+                                    progress_current,
                                     job->speed);
 }
 
@@ -419,6 +456,8 @@ void *block_job_create(const char *job_id, const BlockJobDriver *driver,
     assert(job->job.driver->free == &block_job_free);
     assert(job->job.driver->user_resume == &block_job_user_resume);
 
+    ratelimit_init(&job->limit);
+
     job->blk = blk;
 
     job->finalize_cancelled_notifier.notify = block_job_event_cancelled;
@@ -446,16 +485,9 @@ void *block_job_create(const char *job_id, const BlockJobDriver *driver,
     blk_set_disable_request_queuing(blk, true);
     blk_set_allow_aio_context_change(blk, true);
 
-    /* Only set speed when necessary to avoid NotSupported error */
-    if (speed != 0) {
-        Error *local_err = NULL;
-
-        block_job_set_speed(job, speed, &local_err);
-        if (local_err) {
-            job_early_fail(&job->job);
-            error_propagate(errp, local_err);
-            return NULL;
-        }
+    if (!block_job_set_speed(job, speed, errp)) {
+        job_early_fail(&job->job);
+        return NULL;
     }
 
     return job;

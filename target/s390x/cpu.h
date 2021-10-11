@@ -40,6 +40,12 @@
 
 #define S390_MAX_CPUS 248
 
+#ifndef CONFIG_KVM
+#define S390_ADAPTER_SUPPRESSIBLE 0x01
+#else
+#define S390_ADAPTER_SUPPRESSIBLE KVM_S390_ADAPTER_SUPPRESSIBLE
+#endif
+
 typedef struct PSW {
     uint64_t mask;
     uint64_t addr;
@@ -111,6 +117,13 @@ struct CPUS390XState {
     int pending_int;
     uint16_t external_call_addr;
     DECLARE_BITMAP(emergency_signals, S390_MAX_CPUS);
+
+    uint64_t diag318_info;
+
+#if !defined(CONFIG_USER_ONLY)
+    uint64_t tlb_fill_tec;   /* translation exception code during tlb_fill */
+    int tlb_fill_exc;        /* exception number seen during tlb_fill */
+#endif
 
     /* Fields up to this point are cleared by a CPU reset */
     struct {} end_reset_fields;
@@ -767,6 +780,7 @@ int s390_set_memory_limit(uint64_t new_limit, uint64_t *hw_limit);
 void s390_set_max_pagesize(uint64_t pagesize, Error **errp);
 void s390_cmma_reset(void);
 void s390_enable_css_support(S390CPU *cpu);
+void s390_do_cpu_set_diag318(CPUState *cs, run_on_cpu_data arg);
 int s390_assign_subch_ioeventfd(EventNotifier *notifier, uint32_t sch_id,
                                 int vq, bool assign);
 #ifndef CONFIG_USER_ONLY
@@ -803,9 +817,6 @@ int cpu_s390x_signal_handler(int host_signum, void *pinfo, void *puc);
 
 
 /* interrupt.c */
-void s390_crw_mchk(void);
-void s390_io_interrupt(uint16_t subchannel_id, uint16_t subchannel_nr,
-                       uint32_t io_int_parm, uint32_t io_int_word);
 #define RA_IGNORED                  0
 void s390_program_interrupt(CPUS390XState *env, uint32_t code, uintptr_t ra);
 /* service interrupts are floating therefore we must not pass an cpustate */
@@ -834,6 +845,9 @@ int s390_cpu_pv_mem_rw(S390CPU *cpu, unsigned int offset, void *hostbuf,
 int s390_cpu_restart(S390CPU *cpu);
 void s390_init_sigp(void);
 
+/* helper.c */
+void s390_cpu_set_psw(CPUS390XState *env, uint64_t mask, uint64_t addr);
+uint64_t s390_cpu_get_psw_mask(CPUS390XState *env);
 
 /* outside of target/s390x/ */
 S390CPU *s390_cpu_addr2state(uint16_t cpu_addr);

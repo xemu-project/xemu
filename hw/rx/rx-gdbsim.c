@@ -21,43 +21,38 @@
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "qemu-common.h"
-#include "cpu.h"
-#include "hw/hw.h"
-#include "hw/sysbus.h"
 #include "hw/loader.h"
 #include "hw/rx/rx62n.h"
-#include "sysemu/sysemu.h"
 #include "sysemu/qtest.h"
 #include "sysemu/device_tree.h"
 #include "hw/boards.h"
+#include "qom/object.h"
 
 /* Same address of GDB integrated simulator */
 #define SDRAM_BASE  EXT_CS_BASE
 
-typedef struct RxGdbSimMachineClass {
+struct RxGdbSimMachineClass {
     /*< private >*/
     MachineClass parent_class;
     /*< public >*/
     const char *mcu_name;
     uint32_t xtal_freq_hz;
-} RxGdbSimMachineClass;
+};
+typedef struct RxGdbSimMachineClass RxGdbSimMachineClass;
 
-typedef struct RxGdbSimMachineState {
+struct RxGdbSimMachineState {
     /*< private >*/
     MachineState parent_obj;
     /*< public >*/
     RX62NState mcu;
-} RxGdbSimMachineState;
+};
+typedef struct RxGdbSimMachineState RxGdbSimMachineState;
 
 #define TYPE_RX_GDBSIM_MACHINE MACHINE_TYPE_NAME("rx62n-common")
 
-#define RX_GDBSIM_MACHINE(obj) \
-    OBJECT_CHECK(RxGdbSimMachineState, (obj), TYPE_RX_GDBSIM_MACHINE)
+DECLARE_OBJ_CHECKERS(RxGdbSimMachineState, RxGdbSimMachineClass,
+                     RX_GDBSIM_MACHINE, TYPE_RX_GDBSIM_MACHINE)
 
-#define RX_GDBSIM_MACHINE_CLASS(klass) \
-    OBJECT_CLASS_CHECK(RxGdbSimMachineClass, (klass), TYPE_RX_GDBSIM_MACHINE)
-#define RX_GDBSIM_MACHINE_GET_CLASS(obj) \
-    OBJECT_GET_CLASS(RxGdbSimMachineClass, (obj), TYPE_RX_GDBSIM_MACHINE)
 
 static void rx_load_image(RXCPU *cpu, const char *filename,
                           uint32_t start, uint32_t size)
@@ -94,6 +89,7 @@ static void rx_gdbsim_init(MachineState *machine)
         char *sz = size_to_str(mc->default_ram_size);
         error_report("Invalid RAM size, should be more than %s", sz);
         g_free(sz);
+        exit(1);
     }
 
     /* Allocate memory space */
@@ -107,6 +103,16 @@ static void rx_gdbsim_init(MachineState *machine)
                              rxc->xtal_freq_hz, &error_abort);
     object_property_set_bool(OBJECT(&s->mcu), "load-kernel",
                              kernel_filename != NULL, &error_abort);
+
+    if (!kernel_filename) {
+        if (machine->firmware) {
+            rom_add_file_fixed(machine->firmware, RX62N_CFLASH_BASE, 0);
+        } else if (!qtest_enabled()) {
+            error_report("No bios or kernel specified");
+            exit(1);
+        }
+    }
+
     qdev_realize(DEVICE(&s->mcu), NULL, &error_abort);
 
     /* Load kernel and dtb */
@@ -118,14 +124,13 @@ static void rx_gdbsim_init(MachineState *machine)
          * the latter half of the SDRAM space.
          */
         kernel_offset = machine->ram_size / 2;
-        rx_load_image(RXCPU(first_cpu), kernel_filename,
+        rx_load_image(RX_CPU(first_cpu), kernel_filename,
                       SDRAM_BASE + kernel_offset, kernel_offset);
         if (dtb_filename) {
             ram_addr_t dtb_offset;
             int dtb_size;
-            void *dtb;
+            g_autofree void *dtb = load_device_tree(dtb_filename, &dtb_size);
 
-            dtb = load_device_tree(dtb_filename, &dtb_size);
             if (dtb == NULL) {
                 error_report("Couldn't open dtb file %s", dtb_filename);
                 exit(1);
@@ -141,7 +146,7 @@ static void rx_gdbsim_init(MachineState *machine)
             rom_add_blob_fixed("dtb", dtb, dtb_size,
                                SDRAM_BASE + dtb_offset);
             /* Set dtb address to R1 */
-            RXCPU(first_cpu)->env.regs[1] = SDRAM_BASE + dtb_offset;
+            RX_CPU(first_cpu)->env.regs[1] = SDRAM_BASE + dtb_offset;
         }
     }
 }

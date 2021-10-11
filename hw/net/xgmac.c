@@ -29,9 +29,9 @@
 #include "hw/qdev-properties.h"
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
-#include "qemu/log.h"
 #include "qemu/module.h"
 #include "net/net.h"
+#include "qom/object.h"
 
 #ifdef DEBUG_XGMAC
 #define DEBUGF_BRK(message, args...) do { \
@@ -139,9 +139,9 @@ typedef struct RxTxStats {
 } RxTxStats;
 
 #define TYPE_XGMAC "xgmac"
-#define XGMAC(obj) OBJECT_CHECK(XgmacState, (obj), TYPE_XGMAC)
+OBJECT_DECLARE_SIMPLE_TYPE(XgmacState, XGMAC)
 
-typedef struct XgmacState {
+struct XgmacState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
@@ -153,7 +153,7 @@ typedef struct XgmacState {
 
     struct RxTxStats stats;
     uint32_t regs[R_MAX];
-} XgmacState;
+};
 
 static const VMStateDescription vmstate_rxtx_stats = {
     .name = "xgmac_stats",

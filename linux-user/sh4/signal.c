@@ -82,9 +82,11 @@ static abi_ulong get_sigframe(struct target_sigaction *ka,
     return (sp - frame_size) & -8ul;
 }
 
-/* Notice when we're in the middle of a gUSA region and reset.
-   Note that this will only occur for !parallel_cpus, as we will
-   translate such sequences differently in a parallel context.  */
+/*
+ * Notice when we're in the middle of a gUSA region and reset.
+ * Note that this will only occur when #CF_PARALLEL is unset, as we
+ * will translate such sequences differently in a parallel context.
+ */
 static void unwind_gusa(CPUSH4State *regs)
 {
     /* If the stack pointer is sufficiently negative, and we haven't
@@ -321,12 +323,7 @@ long do_rt_sigreturn(CPUSH4State *regs)
     set_sigmask(&blocked);
 
     restore_sigcontext(regs, &frame->uc.tuc_mcontext);
-
-    if (do_sigaltstack(frame_addr +
-                       offsetof(struct target_rt_sigframe, uc.tuc_stack),
-                       0, get_sp_from_cpustate(regs)) == -EFAULT) {
-        goto badframe;
-    }
+    target_restore_altstack(&frame->uc.tuc_stack, regs);
 
     unlock_user_struct(frame, frame_addr, 0);
     return -TARGET_QEMU_ESIGRETURN;

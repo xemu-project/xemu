@@ -26,7 +26,8 @@
 #include "hw/watchdog/cmsdk-apb-watchdog.h"
 #include "migration/vmstate.h"
 #include "hw/misc/unimp.h"
-#include "cpu.h"
+#include "hw/qdev-clock.h"
+#include "qom/object.h"
 
 #define GPIO_A 0
 #define GPIO_B 1
@@ -57,10 +58,9 @@ typedef const struct {
 /* General purpose timer module.  */
 
 #define TYPE_STELLARIS_GPTM "stellaris-gptm"
-#define STELLARIS_GPTM(obj) \
-    OBJECT_CHECK(gptm_state, (obj), TYPE_STELLARIS_GPTM)
+OBJECT_DECLARE_SIMPLE_TYPE(gptm_state, STELLARIS_GPTM)
 
-typedef struct gptm_state {
+struct gptm_state {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
@@ -80,7 +80,7 @@ typedef struct gptm_state {
     /* The timers have an alternate output used to trigger the ADC.  */
     qemu_irq trigger;
     qemu_irq irq;
-} gptm_state;
+};
 
 static void gptm_update_irq(gptm_state *s)
 {
@@ -357,7 +357,12 @@ static void stellaris_gptm_realize(DeviceState *dev, Error **errp)
 
 /* System controller.  */
 
-typedef struct {
+#define TYPE_STELLARIS_SYS "stellaris-sys"
+OBJECT_DECLARE_SIMPLE_TYPE(ssys_state, STELLARIS_SYS)
+
+struct ssys_state {
+    SysBusDevice parent_obj;
+
     MemoryRegion iomem;
     uint32_t pborctl;
     uint32_t ldopctl;
@@ -371,11 +376,19 @@ typedef struct {
     uint32_t dcgc[3];
     uint32_t clkvclr;
     uint32_t ldoarst;
+    qemu_irq irq;
+    Clock *sysclk;
+    /* Properties (all read-only registers) */
     uint32_t user0;
     uint32_t user1;
-    qemu_irq irq;
-    stellaris_board_info *board;
-} ssys_state;
+    uint32_t did0;
+    uint32_t did1;
+    uint32_t dc0;
+    uint32_t dc1;
+    uint32_t dc2;
+    uint32_t dc3;
+    uint32_t dc4;
+};
 
 static void ssys_update(ssys_state *s)
 {
@@ -430,7 +443,7 @@ static uint32_t pllcfg_fury[16] = {
 
 static int ssys_board_class(const ssys_state *s)
 {
-    uint32_t did0 = s->board->did0;
+    uint32_t did0 = s->did0;
     switch (did0 & DID0_VER_MASK) {
     case DID0_VER_0:
         return DID0_CLASS_SANDSTORM;
@@ -456,19 +469,19 @@ static uint64_t ssys_read(void *opaque, hwaddr offset,
 
     switch (offset) {
     case 0x000: /* DID0 */
-        return s->board->did0;
+        return s->did0;
     case 0x004: /* DID1 */
-        return s->board->did1;
+        return s->did1;
     case 0x008: /* DC0 */
-        return s->board->dc0;
+        return s->dc0;
     case 0x010: /* DC1 */
-        return s->board->dc1;
+        return s->dc1;
     case 0x014: /* DC2 */
-        return s->board->dc2;
+        return s->dc2;
     case 0x018: /* DC3 */
-        return s->board->dc3;
+        return s->dc3;
     case 0x01c: /* DC4 */
-        return s->board->dc4;
+        return s->dc4;
     case 0x030: /* PBORCTL */
         return s->pborctl;
     case 0x034: /* LDOPCTL */
@@ -543,14 +556,25 @@ static bool ssys_use_rcc2(ssys_state *s)
 }
 
 /*
- * Caculate the sys. clock period in ms.
+ * Calculate the system clock period. We only want to propagate
+ * this change to the rest of the system if we're not being called
+ * from migration post-load.
  */
-static void ssys_calculate_system_clock(ssys_state *s)
+static void ssys_calculate_system_clock(ssys_state *s, bool propagate_clock)
 {
+    /*
+     * SYSDIV field specifies divisor: 0 == /1, 1 == /2, etc.  Input
+     * clock is 200MHz, which is a period of 5 ns. Dividing the clock
+     * frequency by X is the same as multiplying the period by X.
+     */
     if (ssys_use_rcc2(s)) {
         system_clock_scale = 5 * (((s->rcc2 >> 23) & 0x3f) + 1);
     } else {
         system_clock_scale = 5 * (((s->rcc >> 23) & 0xf) + 1);
+    }
+    clock_set_ns(s->sysclk, system_clock_scale);
+    if (propagate_clock) {
+        clock_propagate(s->sysclk);
     }
 }
 
@@ -586,7 +610,7 @@ static void ssys_write(void *opaque, hwaddr offset,
             s->int_status |= (1 << 6);
         }
         s->rcc = value;
-        ssys_calculate_system_clock(s);
+        ssys_calculate_system_clock(s, true);
         break;
     case 0x070: /* RCC2 */
         if (ssys_board_class(s) == DID0_CLASS_SANDSTORM) {
@@ -598,7 +622,7 @@ static void ssys_write(void *opaque, hwaddr offset,
             s->int_status |= (1 << 6);
         }
         s->rcc2 = value;
-        ssys_calculate_system_clock(s);
+        ssys_calculate_system_clock(s, true);
         break;
     case 0x100: /* RCGC0 */
         s->rcgc[0] = value;
@@ -646,9 +670,9 @@ static const MemoryRegionOps ssys_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
-static void ssys_reset(void *opaque)
+static void stellaris_sys_reset_enter(Object *obj, ResetType type)
 {
-    ssys_state *s = (ssys_state *)opaque;
+    ssys_state *s = STELLARIS_SYS(obj);
 
     s->pborctl = 0x7ffd;
     s->rcc = 0x078e3ac0;
@@ -661,14 +685,25 @@ static void ssys_reset(void *opaque)
     s->rcgc[0] = 1;
     s->scgc[0] = 1;
     s->dcgc[0] = 1;
-    ssys_calculate_system_clock(s);
+}
+
+static void stellaris_sys_reset_hold(Object *obj)
+{
+    ssys_state *s = STELLARIS_SYS(obj);
+
+    /* OK to propagate clocks from the hold phase */
+    ssys_calculate_system_clock(s, true);
+}
+
+static void stellaris_sys_reset_exit(Object *obj)
+{
 }
 
 static int stellaris_sys_post_load(void *opaque, int version_id)
 {
     ssys_state *s = opaque;
 
-    ssys_calculate_system_clock(s);
+    ssys_calculate_system_clock(s, false);
 
     return 0;
 }
@@ -691,38 +726,68 @@ static const VMStateDescription vmstate_stellaris_sys = {
         VMSTATE_UINT32_ARRAY(dcgc, ssys_state, 3),
         VMSTATE_UINT32(clkvclr, ssys_state),
         VMSTATE_UINT32(ldoarst, ssys_state),
+        /* No field for sysclk -- handled in post-load instead */
         VMSTATE_END_OF_LIST()
     }
 };
 
-static int stellaris_sys_init(uint32_t base, qemu_irq irq,
-                              stellaris_board_info * board,
-                              uint8_t *macaddr)
+static Property stellaris_sys_properties[] = {
+    DEFINE_PROP_UINT32("user0", ssys_state, user0, 0),
+    DEFINE_PROP_UINT32("user1", ssys_state, user1, 0),
+    DEFINE_PROP_UINT32("did0", ssys_state, did0, 0),
+    DEFINE_PROP_UINT32("did1", ssys_state, did1, 0),
+    DEFINE_PROP_UINT32("dc0", ssys_state, dc0, 0),
+    DEFINE_PROP_UINT32("dc1", ssys_state, dc1, 0),
+    DEFINE_PROP_UINT32("dc2", ssys_state, dc2, 0),
+    DEFINE_PROP_UINT32("dc3", ssys_state, dc3, 0),
+    DEFINE_PROP_UINT32("dc4", ssys_state, dc4, 0),
+    DEFINE_PROP_END_OF_LIST()
+};
+
+static void stellaris_sys_instance_init(Object *obj)
 {
-    ssys_state *s;
+    ssys_state *s = STELLARIS_SYS(obj);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(s);
 
-    s = g_new0(ssys_state, 1);
-    s->irq = irq;
-    s->board = board;
-    /* Most devices come preprogrammed with a MAC address in the user data. */
-    s->user0 = macaddr[0] | (macaddr[1] << 8) | (macaddr[2] << 16);
-    s->user1 = macaddr[3] | (macaddr[4] << 8) | (macaddr[5] << 16);
-
-    memory_region_init_io(&s->iomem, NULL, &ssys_ops, s, "ssys", 0x00001000);
-    memory_region_add_subregion(get_system_memory(), base, &s->iomem);
-    ssys_reset(s);
-    vmstate_register(NULL, VMSTATE_INSTANCE_ID_ANY, &vmstate_stellaris_sys, s);
-    return 0;
+    memory_region_init_io(&s->iomem, obj, &ssys_ops, s, "ssys", 0x00001000);
+    sysbus_init_mmio(sbd, &s->iomem);
+    sysbus_init_irq(sbd, &s->irq);
+    s->sysclk = qdev_init_clock_out(DEVICE(s), "SYSCLK");
 }
 
+static DeviceState *stellaris_sys_init(uint32_t base, qemu_irq irq,
+                                       stellaris_board_info *board,
+                                       uint8_t *macaddr)
+{
+    DeviceState *dev = qdev_new(TYPE_STELLARIS_SYS);
+    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
+
+    /* Most devices come preprogrammed with a MAC address in the user data. */
+    qdev_prop_set_uint32(dev, "user0",
+                         macaddr[0] | (macaddr[1] << 8) | (macaddr[2] << 16));
+    qdev_prop_set_uint32(dev, "user1",
+                         macaddr[3] | (macaddr[4] << 8) | (macaddr[5] << 16));
+    qdev_prop_set_uint32(dev, "did0", board->did0);
+    qdev_prop_set_uint32(dev, "did1", board->did1);
+    qdev_prop_set_uint32(dev, "dc0", board->dc0);
+    qdev_prop_set_uint32(dev, "dc1", board->dc1);
+    qdev_prop_set_uint32(dev, "dc2", board->dc2);
+    qdev_prop_set_uint32(dev, "dc3", board->dc3);
+    qdev_prop_set_uint32(dev, "dc4", board->dc4);
+
+    sysbus_realize_and_unref(sbd, &error_fatal);
+    sysbus_mmio_map(sbd, 0, base);
+    sysbus_connect_irq(sbd, 0, irq);
+
+    return dev;
+}
 
 /* I2C controller.  */
 
 #define TYPE_STELLARIS_I2C "stellaris-i2c"
-#define STELLARIS_I2C(obj) \
-    OBJECT_CHECK(stellaris_i2c_state, (obj), TYPE_STELLARIS_I2C)
+OBJECT_DECLARE_SIMPLE_TYPE(stellaris_i2c_state, STELLARIS_I2C)
 
-typedef struct {
+struct stellaris_i2c_state {
     SysBusDevice parent_obj;
 
     I2CBus *bus;
@@ -735,7 +800,7 @@ typedef struct {
     uint32_t mimr;
     uint32_t mris;
     uint32_t mcr;
-} stellaris_i2c_state;
+};
 
 #define STELLARIS_I2C_MCS_BUSY    0x01
 #define STELLARIS_I2C_MCS_ERROR   0x02
@@ -932,10 +997,11 @@ static void stellaris_i2c_init(Object *obj)
 #define STELLARIS_ADC_FIFO_FULL     0x1000
 
 #define TYPE_STELLARIS_ADC "stellaris-adc"
-#define STELLARIS_ADC(obj) \
-    OBJECT_CHECK(stellaris_adc_state, (obj), TYPE_STELLARIS_ADC)
+typedef struct StellarisADCState stellaris_adc_state;
+DECLARE_INSTANCE_CHECKER(stellaris_adc_state, STELLARIS_ADC,
+                         TYPE_STELLARIS_ADC)
 
-typedef struct StellarisADCState {
+struct StellarisADCState {
     SysBusDevice parent_obj;
 
     MemoryRegion iomem;
@@ -955,7 +1021,7 @@ typedef struct StellarisADCState {
     uint32_t ssctl[4];
     uint32_t noise;
     qemu_irq irq[4];
-} stellaris_adc_state;
+};
 
 static uint32_t stellaris_adc_fifo_read(stellaris_adc_state *s, int n)
 {
@@ -1280,6 +1346,7 @@ static void stellaris_init(MachineState *ms, stellaris_board_info *board)
     int flash_size;
     I2CBus *i2c;
     DeviceState *dev;
+    DeviceState *ssys_dev;
     int i;
     int j;
 
@@ -1330,16 +1397,15 @@ static void stellaris_init(MachineState *ms, stellaris_board_info *board)
         }
     }
 
-    stellaris_sys_init(0x400fe000, qdev_get_gpio_in(nvic, 28),
-                       board, nd_table[0].macaddr.a);
+    ssys_dev = stellaris_sys_init(0x400fe000, qdev_get_gpio_in(nvic, 28),
+                                  board, nd_table[0].macaddr.a);
 
 
     if (board->dc1 & (1 << 3)) { /* watchdog present */
         dev = qdev_new(TYPE_LUMINARY_WATCHDOG);
 
-        /* system_clock_scale is valid now */
-        uint32_t mainclk = NANOSECONDS_PER_SECOND / system_clock_scale;
-        qdev_prop_set_uint32(dev, "wdogclk-frq", mainclk);
+        qdev_connect_clock_in(dev, "WDOGCLK",
+                              qdev_get_clock_out(ssys_dev, "SYSCLK"));
 
         sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
         sysbus_mmio_map(SYS_BUS_DEVICE(dev),
@@ -1387,18 +1453,72 @@ static void stellaris_init(MachineState *ms, stellaris_board_info *board)
             DeviceState *sddev;
             DeviceState *ssddev;
 
-            /* Some boards have both an OLED controller and SD card connected to
+            /*
+             * Some boards have both an OLED controller and SD card connected to
              * the same SSI port, with the SD card chip select connected to a
              * GPIO pin.  Technically the OLED chip select is connected to the
              * SSI Fss pin.  We do not bother emulating that as both devices
              * should never be selected simultaneously, and our OLED controller
              * ignores stray 0xff commands that occur when deselecting the SD
              * card.
+             *
+             * The h/w wiring is:
+             *  - GPIO pin D0 is wired to the active-low SD card chip select
+             *  - GPIO pin A3 is wired to the active-low OLED chip select
+             *  - The SoC wiring of the PL061 "auxiliary function" for A3 is
+             *    SSI0Fss ("frame signal"), which is an output from the SoC's
+             *    SSI controller. The SSI controller takes SSI0Fss low when it
+             *    transmits a frame, so it can work as a chip-select signal.
+             *  - GPIO A4 is aux-function SSI0Rx, and wired to the SD card Tx
+             *    (the OLED never sends data to the CPU, so no wiring needed)
+             *  - GPIO A5 is aux-function SSI0Tx, and wired to the SD card Rx
+             *    and the OLED display-data-in
+             *  - GPIO A2 is aux-function SSI0Clk, wired to SD card and OLED
+             *    serial-clock input
+             * So a guest that wants to use the OLED can configure the PL061
+             * to make pins A2, A3, A5 aux-function, so they are connected
+             * directly to the SSI controller. When the SSI controller sends
+             * data it asserts SSI0Fss which selects the OLED.
+             * A guest that wants to use the SD card configures A2, A4 and A5
+             * as aux-function, but leaves A3 as a software-controlled GPIO
+             * line. It asserts the SD card chip-select by using the PL061
+             * to control pin D0, and lets the SSI controller handle Clk, Tx
+             * and Rx. (The SSI controller asserts Fss during tx cycles as
+             * usual, but because A3 is not set to aux-function this is not
+             * forwarded to the OLED, and so the OLED stays unselected.)
+             *
+             * The QEMU implementation instead is:
+             *  - GPIO pin D0 is wired to the active-low SD card chip select,
+             *    and also to the OLED chip-select which is implemented
+             *    as *active-high*
+             *  - SSI controller signals go to the devices regardless of
+             *    whether the guest programs A2, A4, A5 as aux-function or not
+             *
+             * The problem with this implementation is if the guest doesn't
+             * care about the SD card and only uses the OLED. In that case it
+             * may choose never to do anything with D0 (leaving it in its
+             * default floating state, which reliably leaves the card disabled
+             * because an SD card has a pullup on CS within the card itself),
+             * and only set up A2, A3, A5. This for us would mean the OLED
+             * never gets the chip-select assert it needs. We work around
+             * this with a manual raise of D0 here (despite board creation
+             * code being the wrong place to raise IRQ lines) to put the OLED
+             * into an initially selected state.
+             *
+             * In theory the right way to model this would be:
+             *  - Implement aux-function support in the PL061, with an
+             *    extra set of AFIN and AFOUT GPIO lines (set up so that
+             *    if a GPIO line is in auxfn mode the main GPIO in and out
+             *    track the AFIN and AFOUT lines)
+             *  - Wire the AFOUT for D0 up to either a line from the
+             *    SSI controller that's pulled low around every transmit,
+             *    or at least to an always-0 line here on the board
+             *  - Make the ssd0323 OLED controller chipselect active-low
              */
             bus = qdev_get_child_bus(dev, "ssi");
 
-            sddev = ssi_create_slave(bus, "ssi-sd");
-            ssddev = ssi_create_slave(bus, "ssd0323");
+            sddev = ssi_create_peripheral(bus, "ssi-sd");
+            ssddev = ssi_create_peripheral(bus, "ssd0323");
             gpio_out[GPIO_D][0] = qemu_irq_split(
                     qdev_get_gpio_in_named(sddev, SSI_GPIO_CS, 0),
                     qdev_get_gpio_in_named(ssddev, SSI_GPIO_CS, 0));
@@ -1471,7 +1591,7 @@ static void lm3s811evb_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
 
-    mc->desc = "Stellaris LM3S811EVB";
+    mc->desc = "Stellaris LM3S811EVB (Cortex-M3)";
     mc->init = lm3s811evb_init;
     mc->ignore_memory_transaction_failures = true;
     mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-m3");
@@ -1487,7 +1607,7 @@ static void lm3s6965evb_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
 
-    mc->desc = "Stellaris LM3S6965EVB";
+    mc->desc = "Stellaris LM3S6965EVB (Cortex-M3)";
     mc->init = lm3s6965evb_init;
     mc->ignore_memory_transaction_failures = true;
     mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-m3");
@@ -1553,11 +1673,32 @@ static const TypeInfo stellaris_adc_info = {
     .class_init    = stellaris_adc_class_init,
 };
 
+static void stellaris_sys_class_init(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
+
+    dc->vmsd = &vmstate_stellaris_sys;
+    rc->phases.enter = stellaris_sys_reset_enter;
+    rc->phases.hold = stellaris_sys_reset_hold;
+    rc->phases.exit = stellaris_sys_reset_exit;
+    device_class_set_props(dc, stellaris_sys_properties);
+}
+
+static const TypeInfo stellaris_sys_info = {
+    .name = TYPE_STELLARIS_SYS,
+    .parent = TYPE_SYS_BUS_DEVICE,
+    .instance_size = sizeof(ssys_state),
+    .instance_init = stellaris_sys_instance_init,
+    .class_init = stellaris_sys_class_init,
+};
+
 static void stellaris_register_types(void)
 {
     type_register_static(&stellaris_i2c_info);
     type_register_static(&stellaris_gptm_info);
     type_register_static(&stellaris_adc_info);
+    type_register_static(&stellaris_sys_info);
 }
 
 type_init(stellaris_register_types)

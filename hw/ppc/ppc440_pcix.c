@@ -28,8 +28,8 @@
 #include "hw/ppc/ppc4xx.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_host.h"
-#include "exec/address-spaces.h"
 #include "trace.h"
+#include "qom/object.h"
 
 struct PLBOutMap {
     uint64_t la;
@@ -45,13 +45,12 @@ struct PLBInMap {
 };
 
 #define TYPE_PPC440_PCIX_HOST_BRIDGE "ppc440-pcix-host"
-#define PPC440_PCIX_HOST_BRIDGE(obj) \
-    OBJECT_CHECK(PPC440PCIXState, (obj), TYPE_PPC440_PCIX_HOST_BRIDGE)
+OBJECT_DECLARE_SIMPLE_TYPE(PPC440PCIXState, PPC440_PCIX_HOST_BRIDGE)
 
 #define PPC440_PCIX_NR_POMS 3
 #define PPC440_PCIX_NR_PIMS 3
 
-typedef struct PPC440PCIXState {
+struct PPC440PCIXState {
     PCIHostState parent_obj;
 
     PCIDevice *dev;
@@ -65,7 +64,7 @@ typedef struct PPC440PCIXState {
     MemoryRegion container;
     MemoryRegion iomem;
     MemoryRegion busmem;
-} PPC440PCIXState;
+};
 
 #define PPC440_REG_BASE     0x80000
 #define PPC440_REG_SIZE     0xff
@@ -169,7 +168,7 @@ static void ppc440_pcix_reg_write4(void *opaque, hwaddr addr,
 {
     struct PPC440PCIXState *s = opaque;
 
-    trace_ppc440_pcix_reg_read(addr, val);
+    trace_ppc440_pcix_reg_write(addr, val, size);
     switch (addr) {
     case PCI_VENDOR_ID ... PCI_MAX_LAT:
         stl_le_p(s->dev->config + addr, val);
@@ -415,8 +414,15 @@ static void ppc440_pcix_reset(DeviceState *dev)
     s->sts = 0;
 }
 
-/* All pins from each slot are tied to a single board IRQ.
- * This may need further refactoring for other boards. */
+/*
+ * All four IRQ[ABCD] pins from all slots are tied to a single board
+ * IRQ, so our mapping function here maps everything to IRQ 0.
+ * The code in pci_change_irq_level() tracks the number of times
+ * the mapped IRQ is asserted and deasserted, so if multiple devices
+ * assert an IRQ at the same time the behaviour is correct.
+ *
+ * This may need further refactoring for boards that use multiple IRQ lines.
+ */
 static int ppc440_pcix_map_irq(PCIDevice *pci_dev, int irq_num)
 {
     trace_ppc440_pcix_map_irq(pci_dev->devfn, irq_num, 0);
@@ -442,28 +448,35 @@ static AddressSpace *ppc440_pcix_set_iommu(PCIBus *b, void *opaque, int devfn)
     return &s->bm_as;
 }
 
-/* The default pci_host_data_{read,write} functions in pci/pci_host.c
- * deny access to registers without bit 31 set but our clients want
- * this to work so we have to override these here */
-static void pci_host_data_write(void *opaque, hwaddr addr,
-                                uint64_t val, unsigned len)
+/*
+ * Some guests on sam460ex write all kinds of garbage here such as
+ * missing enable bit and low bits set and still expect this to work
+ * (apparently it does on real hardware because these boot there) so
+ * we have to override these ops here and fix it up
+ */
+static void pci_host_config_write(void *opaque, hwaddr addr,
+                                  uint64_t val, unsigned len)
 {
     PCIHostState *s = opaque;
-    pci_data_write(s->bus, s->config_reg | (addr & 3), val, len);
+
+    if (addr != 0 || len != 4) {
+        return;
+    }
+    s->config_reg = (val & 0xfffffffcULL) | (1UL << 31);
 }
 
-static uint64_t pci_host_data_read(void *opaque,
-                                   hwaddr addr, unsigned len)
+static uint64_t pci_host_config_read(void *opaque, hwaddr addr,
+                                     unsigned len)
 {
     PCIHostState *s = opaque;
-    uint32_t val;
-    val = pci_data_read(s->bus, s->config_reg | (addr & 3), len);
+    uint32_t val = s->config_reg;
+
     return val;
 }
 
-const MemoryRegionOps ppc440_pcix_host_data_ops = {
-    .read = pci_host_data_read,
-    .write = pci_host_data_write,
+const MemoryRegionOps ppc440_pcix_host_conf_ops = {
+    .read = pci_host_config_read,
+    .write = pci_host_config_write,
     .endianness = DEVICE_LITTLE_ENDIAN,
 };
 
@@ -490,9 +503,9 @@ static void ppc440_pcix_realize(DeviceState *dev, Error **errp)
     pci_setup_iommu(h->bus, ppc440_pcix_set_iommu, s);
 
     memory_region_init(&s->container, OBJECT(s), "pci-container", PCI_ALL_SIZE);
-    memory_region_init_io(&h->conf_mem, OBJECT(s), &pci_host_conf_le_ops,
+    memory_region_init_io(&h->conf_mem, OBJECT(s), &ppc440_pcix_host_conf_ops,
                           h, "pci-conf-idx", 4);
-    memory_region_init_io(&h->data_mem, OBJECT(s), &ppc440_pcix_host_data_ops,
+    memory_region_init_io(&h->data_mem, OBJECT(s), &pci_host_data_le_ops,
                           h, "pci-conf-data", 4);
     memory_region_init_io(&s->iomem, OBJECT(s), &pci_reg_ops, s,
                           "pci.reg", PPC440_REG_SIZE);

@@ -2,9 +2,10 @@
 Vhost-user-gpu Protocol
 =======================
 
-:Licence: This work is licensed under the terms of the GNU GPL,
-          version 2 or later. See the COPYING file in the top-level
-          directory.
+..
+  Licence: This work is licensed under the terms of the GNU GPL,
+           version 2 or later. See the COPYING file in the top-level
+           directory.
 
 .. contents:: Table of Contents
 
@@ -66,7 +67,7 @@ VhostUserGpuCursorPos
 
 :scanout-id: ``u32``, the scanout where the cursor is located
 
-:x/y: ``u32``, the cursor postion
+:x/y: ``u32``, the cursor position
 
 VhostUserGpuCursorUpdate
 ^^^^^^^^^^^^^^^^^^^^^^^^

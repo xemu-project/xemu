@@ -15,7 +15,6 @@
 #include "qemu/bitops.h"
 #include "qemu/error-report.h"
 #include "exec/address-spaces.h"
-#include "cpu.h"
 #include "hw/s390x/ioinst.h"
 #include "hw/qdev-properties.h"
 #include "hw/s390x/css.h"
@@ -353,7 +352,6 @@ static ChannelSubSys channel_subsys = {
     .pending_crws = QTAILQ_HEAD_INITIALIZER(channel_subsys.pending_crws),
     .do_crw_mchk = true,
     .sei_pending = false,
-    .do_crw_mchk = true,
     .crws_lost = false,
     .chnmon_active = false,
     .indicator_addresses =
@@ -1056,10 +1054,11 @@ static int css_interpret_ccw(SubchDev *sch, hwaddr ccw_addr,
             }
         }
         len = MIN(ccw.count, sizeof(sch->sense_data));
-        ccw_dstream_write_buf(&sch->cds, sch->sense_data, len);
+        ret = ccw_dstream_write_buf(&sch->cds, sch->sense_data, len);
         sch->curr_status.scsw.count = ccw_dstream_residual_count(&sch->cds);
-        memset(sch->sense_data, 0, sizeof(sch->sense_data));
-        ret = 0;
+        if (!ret) {
+            memset(sch->sense_data, 0, sizeof(sch->sense_data));
+        }
         break;
     case CCW_CMD_SENSE_ID:
     {
@@ -1084,9 +1083,10 @@ static int css_interpret_ccw(SubchDev *sch, hwaddr ccw_addr,
         } else {
             sense_id[0] = 0;
         }
-        ccw_dstream_write_buf(&sch->cds, sense_id, len);
-        sch->curr_status.scsw.count = ccw_dstream_residual_count(&sch->cds);
-        ret = 0;
+        ret = ccw_dstream_write_buf(&sch->cds, sense_id, len);
+        if (!ret) {
+            sch->curr_status.scsw.count = ccw_dstream_residual_count(&sch->cds);
+        }
         break;
     }
     case CCW_CMD_TIC:
@@ -1333,6 +1333,14 @@ static void copy_schib_to_guest(SCHIB *dest, const SCHIB *src)
     for (i = 0; i < ARRAY_SIZE(dest->mda); i++) {
         dest->mda[i] = src->mda[i];
     }
+}
+
+void copy_esw_to_guest(ESW *dest, const ESW *src)
+{
+    dest->word0 = cpu_to_be32(src->word0);
+    dest->erw = cpu_to_be32(src->erw);
+    dest->word2 = cpu_to_be64(src->word2);
+    dest->word4 = cpu_to_be32(src->word4);
 }
 
 IOInstEnding css_do_stsch(SubchDev *sch, SCHIB *schib)
@@ -1604,9 +1612,8 @@ static void copy_irb_to_guest(IRB *dest, const IRB *src, const PMCW *pmcw,
 
     copy_scsw_to_guest(&dest->scsw, &src->scsw);
 
-    for (i = 0; i < ARRAY_SIZE(dest->esw); i++) {
-        dest->esw[i] = cpu_to_be32(src->esw[i]);
-    }
+    copy_esw_to_guest(&dest->esw, &src->esw);
+
     for (i = 0; i < ARRAY_SIZE(dest->ecw); i++) {
         dest->ecw[i] = cpu_to_be32(src->ecw[i]);
     }
@@ -1632,6 +1639,55 @@ static void copy_irb_to_guest(IRB *dest, const IRB *src, const PMCW *pmcw,
     *irb_len = sizeof(*dest);
 }
 
+static void build_irb_sense_data(SubchDev *sch, IRB *irb)
+{
+    int i;
+
+    /* Attention: sense_data is already BE! */
+    memcpy(irb->ecw, sch->sense_data, sizeof(sch->sense_data));
+    for (i = 0; i < ARRAY_SIZE(irb->ecw); i++) {
+        irb->ecw[i] = be32_to_cpu(irb->ecw[i]);
+    }
+}
+
+void build_irb_passthrough(SubchDev *sch, IRB *irb)
+{
+    /* Copy ESW from hardware */
+    irb->esw = sch->esw;
+
+    /*
+     * If (irb->esw.erw & ESW_ERW_SENSE) is true, then the contents
+     * of the ECW is sense data. If false, then it is model-dependent
+     * information. Either way, copy it into the IRB for the guest to
+     * read/decide what to do with.
+     */
+    build_irb_sense_data(sch, irb);
+}
+
+void build_irb_virtual(SubchDev *sch, IRB *irb)
+{
+    SCHIB *schib = &sch->curr_status;
+    uint16_t stctl = schib->scsw.ctrl & SCSW_CTRL_MASK_STCTL;
+
+    if (stctl & SCSW_STCTL_STATUS_PEND) {
+        if (schib->scsw.cstat & (SCSW_CSTAT_DATA_CHECK |
+                        SCSW_CSTAT_CHN_CTRL_CHK |
+                        SCSW_CSTAT_INTF_CTRL_CHK)) {
+            irb->scsw.flags |= SCSW_FLAGS_MASK_ESWF;
+            irb->esw.word0 = 0x04804000;
+        } else {
+            irb->esw.word0 = 0x00800000;
+        }
+        /* If a unit check is pending, copy sense data. */
+        if ((schib->scsw.dstat & SCSW_DSTAT_UNIT_CHECK) &&
+            (schib->pmcw.chars & PMCW_CHARS_MASK_CSENSE)) {
+            irb->scsw.flags |= SCSW_FLAGS_MASK_ESWF | SCSW_FLAGS_MASK_ECTL;
+            build_irb_sense_data(sch, irb);
+            irb->esw.erw = ESW_ERW_SENSE | (sizeof(sch->sense_data) << 8);
+        }
+    }
+}
+
 int css_do_tsch_get_irb(SubchDev *sch, IRB *target_irb, int *irb_len)
 {
     SCHIB *schib = &sch->curr_status;
@@ -1650,29 +1706,12 @@ int css_do_tsch_get_irb(SubchDev *sch, IRB *target_irb, int *irb_len)
 
     /* Copy scsw from current status. */
     irb.scsw = schib->scsw;
-    if (stctl & SCSW_STCTL_STATUS_PEND) {
-        if (schib->scsw.cstat & (SCSW_CSTAT_DATA_CHECK |
-                        SCSW_CSTAT_CHN_CTRL_CHK |
-                        SCSW_CSTAT_INTF_CTRL_CHK)) {
-            irb.scsw.flags |= SCSW_FLAGS_MASK_ESWF;
-            irb.esw[0] = 0x04804000;
-        } else {
-            irb.esw[0] = 0x00800000;
-        }
-        /* If a unit check is pending, copy sense data. */
-        if ((schib->scsw.dstat & SCSW_DSTAT_UNIT_CHECK) &&
-            (schib->pmcw.chars & PMCW_CHARS_MASK_CSENSE)) {
-            int i;
 
-            irb.scsw.flags |= SCSW_FLAGS_MASK_ESWF | SCSW_FLAGS_MASK_ECTL;
-            /* Attention: sense_data is already BE! */
-            memcpy(irb.ecw, sch->sense_data, sizeof(sch->sense_data));
-            for (i = 0; i < ARRAY_SIZE(irb.ecw); i++) {
-                irb.ecw[i] = be32_to_cpu(irb.ecw[i]);
-            }
-            irb.esw[1] = 0x01000000 | (sizeof(sch->sense_data) << 8);
-        }
+    /* Build other IRB data, if necessary */
+    if (sch->irb_cb) {
+        sch->irb_cb(sch, &irb);
     }
+
     /* Store the irb to the guest. */
     p = schib->pmcw;
     copy_irb_to_guest(target_irb, &irb, &p, irb_len);
@@ -2344,9 +2383,8 @@ void css_reset(void)
 static void get_css_devid(Object *obj, Visitor *v, const char *name,
                           void *opaque, Error **errp)
 {
-    DeviceState *dev = DEVICE(obj);
     Property *prop = opaque;
-    CssDevId *dev_id = qdev_get_prop_ptr(dev, prop);
+    CssDevId *dev_id = object_field_prop_ptr(obj, prop);
     char buffer[] = "xx.x.xxxx";
     char *p = buffer;
     int r;
@@ -2374,17 +2412,11 @@ static void get_css_devid(Object *obj, Visitor *v, const char *name,
 static void set_css_devid(Object *obj, Visitor *v, const char *name,
                           void *opaque, Error **errp)
 {
-    DeviceState *dev = DEVICE(obj);
     Property *prop = opaque;
-    CssDevId *dev_id = qdev_get_prop_ptr(dev, prop);
+    CssDevId *dev_id = object_field_prop_ptr(obj, prop);
     char *str;
     int num, n1, n2;
     unsigned int cssid, ssid, devid;
-
-    if (dev->realized) {
-        qdev_prop_set_after_realize(dev, name, errp);
-        return;
-    }
 
     if (!visit_type_str(v, name, &str, errp)) {
         return;
@@ -2392,7 +2424,7 @@ static void set_css_devid(Object *obj, Visitor *v, const char *name,
 
     num = sscanf(str, "%2x.%1x%n.%4x%n", &cssid, &ssid, &n1, &devid, &n2);
     if (num != 3 || (n2 - n1) != 5 || strlen(str) != n2) {
-        error_set_from_qdev_prop_error(errp, EINVAL, dev, prop, str);
+        error_set_from_qdev_prop_error(errp, EINVAL, obj, name, str);
         goto out;
     }
     if ((cssid > MAX_CSSID) || (ssid > MAX_SSID)) {

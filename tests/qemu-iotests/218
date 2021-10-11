@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# group: rw quick
 #
 # This test covers what happens when a mirror block job is cancelled
 # in various phases of its existence.
@@ -151,7 +152,7 @@ with iotests.VM() as vm, \
     vm.launch()
 
     ret = vm.qmp('object-add', qom_type='throttle-group', id='tg',
-                 props={'x-bps-read': 4096})
+                 limits={'bps-read': 4096})
     assert ret['return'] == {}
 
     ret = vm.qmp('blockdev-add',

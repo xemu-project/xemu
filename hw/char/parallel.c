@@ -32,11 +32,13 @@
 #include "hw/irq.h"
 #include "hw/isa/isa.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
 #include "migration/vmstate.h"
 #include "hw/char/parallel.h"
 #include "sysemu/reset.h"
 #include "sysemu/sysemu.h"
 #include "trace.h"
+#include "qom/object.h"
 
 //#define DEBUG_PARALLEL
 
@@ -92,17 +94,16 @@ typedef struct ParallelState {
 } ParallelState;
 
 #define TYPE_ISA_PARALLEL "isa-parallel"
-#define ISA_PARALLEL(obj) \
-    OBJECT_CHECK(ISAParallelState, (obj), TYPE_ISA_PARALLEL)
+OBJECT_DECLARE_SIMPLE_TYPE(ISAParallelState, ISA_PARALLEL)
 
-typedef struct ISAParallelState {
+struct ISAParallelState {
     ISADevice parent_obj;
 
     uint32_t index;
     uint32_t iobase;
     uint32_t isairq;
     ParallelState state;
-} ISAParallelState;
+};
 
 static void parallel_update_irq(ParallelState *s)
 {

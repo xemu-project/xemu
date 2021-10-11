@@ -28,6 +28,7 @@
 #include "migration/vmstate.h"
 #include "desc.h"
 #include "qemu/units.h"
+#include "qom/object.h"
 
 /* ----------------------------------------------------------------------- */
 
@@ -237,7 +238,7 @@ typedef struct {
 } QEMU_PACKED ObjectInfo;
 
 #define TYPE_USB_MTP "usb-mtp"
-#define USB_MTP(obj) OBJECT_CHECK(MTPState, (obj), TYPE_USB_MTP)
+OBJECT_DECLARE_SIMPLE_TYPE(MTPState, USB_MTP)
 
 #define QEMU_STORAGE_ID 0x00010001
 
@@ -771,12 +772,9 @@ static void usb_mtp_add_str(MTPData *data, const char *str)
 
 static void usb_mtp_add_time(MTPData *data, time_t time)
 {
-    char buf[16];
-    struct tm tm;
-
-    gmtime_r(&time, &tm);
-    strftime(buf, sizeof(buf), "%Y%m%dT%H%M%S", &tm);
-    usb_mtp_add_str(data, buf);
+    g_autoptr(GDateTime) then = g_date_time_new_from_unix_utc(time);
+    g_autofree char *thenstr = g_date_time_format(then, "%Y%m%dT%H%M%S");
+    usb_mtp_add_str(data, thenstr);
 }
 
 /* ----------------------------------------------------------------------- */
@@ -906,7 +904,8 @@ static MTPData *usb_mtp_get_object_handles(MTPState *s, MTPControl *c,
                                            MTPObject *o)
 {
     MTPData *d = usb_mtp_data_alloc(c);
-    uint32_t i = 0, handles[o->nchildren];
+    uint32_t i = 0;
+    g_autofree uint32_t *handles = g_new(uint32_t, o->nchildren);
     MTPObject *iter;
 
     trace_usb_mtp_op_get_object_handles(s->dev.addr, o->handle, o->path);

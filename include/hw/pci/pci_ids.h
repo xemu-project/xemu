@@ -192,6 +192,9 @@
 #define PCI_DEVICE_ID_SUN_SIMBA          0x5000
 #define PCI_DEVICE_ID_SUN_SABRE          0xa000
 
+#define PCI_VENDOR_ID_ORACLE             0x108e
+#define PCI_DEVICE_ID_REMOTE_IOHUB       0xb000
+
 #define PCI_VENDOR_ID_CMD                0x1095
 #define PCI_DEVICE_ID_CMD_646            0x0646
 
@@ -201,14 +204,17 @@
 #define PCI_VENDOR_ID_XILINX             0x10ee
 
 #define PCI_VENDOR_ID_VIA                0x1106
-#define PCI_DEVICE_ID_VIA_ISA_BRIDGE     0x0686
+#define PCI_DEVICE_ID_VIA_82C686B_ISA    0x0686
 #define PCI_DEVICE_ID_VIA_IDE            0x0571
 #define PCI_DEVICE_ID_VIA_UHCI           0x3038
-#define PCI_DEVICE_ID_VIA_ACPI           0x3057
+#define PCI_DEVICE_ID_VIA_82C686B_PM     0x3057
 #define PCI_DEVICE_ID_VIA_AC97           0x3058
 #define PCI_DEVICE_ID_VIA_MC97           0x3068
+#define PCI_DEVICE_ID_VIA_8231_ISA       0x8231
+#define PCI_DEVICE_ID_VIA_8231_PM        0x8235
 
 #define PCI_VENDOR_ID_MARVELL            0x11ab
+#define PCI_DEVICE_ID_MARVELL_MV6436X    0x6460
 
 #define PCI_VENDOR_ID_SILICON_MOTION     0x126f
 #define PCI_DEVICE_ID_SM501              0x0501
@@ -220,6 +226,9 @@
 
 #define PCI_VENDOR_ID_FREESCALE          0x1957
 #define PCI_DEVICE_ID_MPC8533E           0x0030
+
+#define PCI_VENDOR_ID_BAIDU              0x1d22
+#define PCI_DEVICE_ID_KUNLUN_VF          0x3685
 
 #define PCI_VENDOR_ID_INTEL              0x8086
 #define PCI_DEVICE_ID_INTEL_82378        0x0484

@@ -41,12 +41,15 @@
 #include "ui/input.h"
 #include "ui/xemu-display.h"
 #include "sysemu/runstate.h"
+#include "sysemu/runstate-action.h"
 #include "sysemu/sysemu.h"
 #include "xemu-hud.h"
 #include "xemu-input.h"
 #include "xemu-settings.h"
 #include "xemu-shaders.h"
 #include "xemu-version.h"
+
+#include "data/xemu_64x64.png.h"
 
 #include "hw/xbox/smbus.h" // For eject, drive tray
 #include "hw/xbox/nv2a/nv2a.h"
@@ -68,6 +71,19 @@ void tcg_register_init_ctx(void); // tcg.c
 #else
 #define DPRINTF(...)
 #endif
+
+static bool xb_console_gl_check_format(DisplayChangeListener *dcl,
+                                       pixman_format_code_t format)
+{
+    switch (format) {
+    case PIXMAN_BE_b8g8r8x8:
+    case PIXMAN_BE_b8g8r8a8:
+    case PIXMAN_r5g6b5:
+        return true;
+    default:
+        return false;
+    }
+}
 
 void xb_surface_gl_create_texture(DisplaySurface *surface);
 void xb_surface_gl_update_texture(DisplaySurface *surface, int x, int y, int w, int h);
@@ -609,7 +625,7 @@ static void handle_windowevent(SDL_Event *ev)
                 allow_close = false;
             }
             if (allow_close) {
-                no_shutdown = 0;
+                shutdown_action = SHUTDOWN_ACTION_POWEROFF;
                 qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_UI);
             }
         } else {
@@ -661,7 +677,7 @@ void sdl2_poll_events(struct sdl2_console *scon)
                 allow_close = false;
             }
             if (allow_close) {
-                no_shutdown = 0;
+                shutdown_action = SHUTDOWN_ACTION_POWEROFF;
                 qemu_system_shutdown_request(SHUTDOWN_CAUSE_HOST_UI);
             }
             break;
@@ -764,7 +780,7 @@ static const DisplayChangeListenerOps dcl_gl_ops = {
     .dpy_name                = "sdl2-gl",
     .dpy_gfx_update          = sdl2_gl_update,
     .dpy_gfx_switch          = sdl2_gl_switch,
-    .dpy_gfx_check_format    = console_gl_check_format,
+    .dpy_gfx_check_format    = xb_console_gl_check_format,
     // .dpy_refresh             = sdl2_gl_refresh,
     .dpy_mouse_set           = sdl_mouse_warp,
     .dpy_cursor_define       = sdl_mouse_define,
@@ -772,7 +788,6 @@ static const DisplayChangeListenerOps dcl_gl_ops = {
     .dpy_gl_ctx_create       = sdl2_gl_create_context,
     .dpy_gl_ctx_destroy      = sdl2_gl_destroy_context,
     .dpy_gl_ctx_make_current = sdl2_gl_make_context_current,
-    .dpy_gl_ctx_get_current  = sdl2_gl_get_current_context,
     .dpy_gl_scanout_disable  = sdl2_gl_scanout_disable,
     .dpy_gl_scanout_texture  = sdl2_gl_scanout_texture,
     .dpy_gl_update           = sdl2_gl_scanout_flush,
@@ -794,7 +809,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
 #endif
 
     if (SDL_Init(SDL_INIT_VIDEO)) {
-        fprintf(stderr, "Could not initialize SDL(%s) - exiting\n",
+        fprintf(stderr, "Failed to initialize SDL video subsystem: %s\n",
                 SDL_GetError());
         exit(1);
     }
@@ -837,9 +852,21 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
     g_free(title);
 
     m_context = SDL_GL_CreateContext(m_window);
-    assert(m_context != NULL);
+
+    if (m_context != NULL && epoxy_gl_version() < 40) {
+        SDL_GL_MakeCurrent(NULL, NULL);
+        SDL_GL_DeleteContext(m_context);
+        m_context = NULL;
+    }
+
     if (m_context == NULL) {
-        fprintf(stderr, "%s: Failed to create GL context\n", __func__);
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+            "Unable to create OpenGL context",
+            "Unable to create OpenGL context. This usually means the\r\n"
+            "graphics device on this system does not support OpenGL 4.0.\r\n"
+            "\r\n"
+            "xemu cannot continue and will now exit.",
+            m_window);
         SDL_DestroyWindow(m_window);
         SDL_Quit();
         exit(1);
@@ -847,7 +874,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
 
     int width, height, channels = 0;
     stbi_set_flip_vertically_on_load(0);
-    unsigned char *icon_data = stbi_load("./data/xemu_64x64.png", &width, &height, &channels, 4);
+    unsigned char *icon_data = stbi_load_from_memory(xemu_64x64_data, xemu_64x64_size, &width, &height, &channels, 4);
     if (icon_data) {
         SDL_Surface *icon = SDL_CreateRGBSurfaceFrom(icon_data, width, height, 32, width*4,
             0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000);
@@ -857,6 +884,11 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
         // Note: Retaining the memory allocated by stbi_load. It's used in place
         // by the SDL surface.
     }
+
+    fprintf(stderr, "GL_VENDOR: %s\n", glGetString(GL_VENDOR));
+    fprintf(stderr, "GL_RENDERER: %s\n", glGetString(GL_RENDERER));
+    fprintf(stderr, "GL_VERSION: %s\n", glGetString(GL_VERSION));
+    fprintf(stderr, "GL_SHADING_LANGUAGE_VERSION: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
 
     // Initialize offscreen rendering context now
     nv2a_gl_context_init();
@@ -966,7 +998,6 @@ type_init(register_sdl1);
 
 void xb_surface_gl_create_texture(DisplaySurface *surface)
 {
-    // assert(gls);
     assert(QEMU_IS_ALIGNED(surface_stride(surface), surface_bytes_per_pixel(surface)));
 
     switch (surface->format) {
@@ -988,8 +1019,9 @@ void xb_surface_gl_create_texture(DisplaySurface *surface)
         g_assert_not_reached();
     }
 
-    glGenTextures(1, &surface->texture);
-    // glEnable(GL_TEXTURE_2D);
+    if (!surface->texture) {
+        glGenTextures(1, &surface->texture);
+    }
     glBindTexture(GL_TEXTURE_2D, surface->texture);
     glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT,
                   surface_stride(surface) / surface_bytes_per_pixel(surface));
@@ -1002,24 +1034,6 @@ void xb_surface_gl_create_texture(DisplaySurface *surface)
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-}
-
-void xb_surface_gl_update_texture(DisplaySurface *surface, int x, int y, int w, int h)
-{
-    uint8_t *data = (void *)surface_data(surface);
-
-    if (surface->texture) {
-        glBindTexture(GL_TEXTURE_2D, surface->texture);
-        glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT,
-                      surface_stride(surface)
-                      / surface_bytes_per_pixel(surface));
-        glTexSubImage2D(GL_TEXTURE_2D, 0,
-                        x, y, w, h,
-                        surface->glformat, surface->gltype,
-                        data + surface_stride(surface) * y
-                        + surface_bytes_per_pixel(surface) * x);
-        glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
-    }
 }
 
 void xb_surface_gl_destroy_texture(DisplaySurface *surface)
@@ -1062,32 +1076,18 @@ void sdl2_gl_switch(DisplayChangeListener *dcl,
                     DisplaySurface *new_surface)
 {
     struct sdl2_console *scon = container_of(dcl, struct sdl2_console, dcl);
-    DisplaySurface *old_surface = scon->surface;
-
     assert(scon->opengl);
-
     SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
-
+    xb_surface_gl_destroy_texture(scon->surface);
     scon->surface = new_surface;
-
     if (!new_surface) {
-        // qemu_gl_fini_shader(scon->gls);
-        // scon->gls = NULL;
-        // sdl2_window_destroy(scon);
         return;
     }
 
     if (!scon->real_window) {
-        // sdl2_window_create(scon);
         scon->real_window = m_window;
         scon->winctx = m_context;
         SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
-
-        // scon->gls = qemu_gl_init_shader();
-    } else if (old_surface &&
-               ((surface_width(old_surface)  != surface_width(new_surface)) ||
-                (surface_height(old_surface) != surface_height(new_surface)))) {
-        // sdl2_window_resize(scon);
     }
 }
 
@@ -1112,6 +1112,7 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     assert(scon->opengl);
     bool flip_required = false;
 
+    SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
     update_fps();
 
     /* XXX: Note that this bypasses the usual VGA path in order to quickly
@@ -1126,9 +1127,6 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
      */
     GLuint tex = nv2a_get_framebuffer_surface();
     if (tex == 0) {
-        if (scon->surface) {
-            xb_surface_gl_destroy_texture(scon->surface);
-        }
         xb_surface_gl_create_texture(scon->surface);
         scon->updates++;
         tex = scon->surface->texture;
@@ -1143,8 +1141,6 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     qemu_mutex_lock_main_loop();
     qemu_mutex_lock_iothread();
     sdl2_poll_events(scon);
-
-    SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -1169,8 +1165,15 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
         scale[0] = (float)tw/(float)ww;
         scale[1] = (float)th/(float)wh;
     } else {
-        // Scale to fit
-        float t_ratio = (float)tw/(float)th;
+        float t_ratio;
+        if (scaling_mode == DISPLAY_SCALE_WS169) {
+            // Scale to fit window using a fixed 16:9 aspect ratio
+            t_ratio = 16.0f/9.0f;
+        } else {
+            // Scale to fit, preserving framebuffer aspect ratio
+            t_ratio = (float)tw/(float)th;
+        }
+
         float w_ratio = (float)ww/(float)wh;
         if (w_ratio >= t_ratio) {
             scale[0] = t_ratio/w_ratio;
@@ -1194,17 +1197,14 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
     glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
-    xemu_hud_render();
 
-    // GLsync fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-    // int result = glClientWaitSync(fence, GL_SYNC_FLUSH_COMMANDS_BIT, (GLuint64)(5000000000));
-    // assert(result == GL_CONDITION_SATISFIED || result == GL_ALREADY_SIGNALED);
-    // glDeleteSync(fence);
+    xemu_hud_render();
 
     // Release BQL before swapping (which may sleep if swap interval is not immediate)
     qemu_mutex_unlock_iothread();
     qemu_mutex_unlock_main_loop();
 
+    glFinish();
     SDL_GL_SwapWindow(scon->real_window);
 
     /* VGA update (see note above) + vblank */
@@ -1460,6 +1460,33 @@ int main(int argc, char **argv)
 {
     QemuThread thread;
 
+#ifdef _WIN32
+    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        // Launched with a console. If stdout and stderr are not associated with
+        // an output stream, redirect to parent console.
+        if (_fileno(stdout) == -2) {
+            freopen("CONOUT$", "w+", stdout);
+        }
+        if (_fileno(stderr) == -2) {
+            freopen("CONOUT$", "w+", stderr);
+        }
+    } else {
+        // Launched without a console. Redirect stdout and stderr to a log file.
+        HANDLE logfile = CreateFileA("xemu.log",
+            GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,
+            NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (logfile != INVALID_HANDLE_VALUE) {
+            freopen("xemu.log", "a", stdout);
+            freopen("xemu.log", "a", stderr);
+        }
+    }
+#endif
+
+    fprintf(stderr, "xemu_version: %s\n", xemu_version);
+    fprintf(stderr, "xemu_branch: %s\n", xemu_branch);
+    fprintf(stderr, "xemu_commit: %s\n", xemu_commit);
+    fprintf(stderr, "xemu_date: %s\n", xemu_date);
+
     DPRINTF("Entered main()\n");
     gArgc = argc;
     gArgv = argv;
@@ -1485,6 +1512,7 @@ int main(int argc, char **argv)
      */
     tcg_register_init_ctx();
     // rcu_register_thread();
+    qemu_set_current_aio_context(qemu_get_aio_context());
 
     DPRINTF("Main thread: initializing app\n");
 

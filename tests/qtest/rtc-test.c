@@ -292,7 +292,7 @@ static void alarm_time(void)
             break;
         }
 
-        clock_step(1000000000);
+        clock_step(NANOSECONDS_PER_SECOND);
     }
 
     g_assert(get_irq(RTC_ISA_IRQ));
@@ -686,7 +686,7 @@ static void periodic_timer(void)
 
 int main(int argc, char **argv)
 {
-    QTestState *s = NULL;
+    QTestState *s;
     int ret;
 
     g_test_init(&argc, &argv, NULL);
@@ -712,9 +712,7 @@ int main(int argc, char **argv)
 
     ret = g_test_run();
 
-    if (s) {
-        qtest_quit(s);
-    }
+    qtest_quit(s);
 
     return ret;
 }

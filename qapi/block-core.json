@@ -27,13 +27,19 @@
 #
 # @vm-clock-nsec: fractional part in nano seconds to be used with vm-clock-sec
 #
+# @icount: Current instruction count. Appears when execution record/replay
+#          is enabled. Used for "time-traveling" to match the moment
+#          in the recorded execution with the snapshots. This counter may
+#          be obtained through @query-replay command (since 5.2)
+#
 # Since: 1.3
 #
 ##
 { 'struct': 'SnapshotInfo',
   'data': { 'id': 'str', 'name': 'str', 'vm-state-size': 'int',
             'date-sec': 'int', 'date-nsec': 'int',
-            'vm-clock-sec': 'int', 'vm-clock-nsec': 'int' } }
+            'vm-clock-sec': 'int', 'vm-clock-nsec': 'int',
+            '*icount': 'int' } }
 
 ##
 # @ImageInfoSpecificQCow2EncryptionBase:
@@ -67,6 +73,9 @@
 #                 standalone (read-only) raw image without looking at qcow2
 #                 metadata (since: 4.0)
 #
+# @extended-l2: true if the image has extended L2 entries; only valid for
+#               compat >= 1.1 (since 5.2)
+#
 # @lazy-refcounts: on or off; only valid for compat >= 1.1
 #
 # @corrupt: true if the image has been marked corrupt; only valid for
@@ -88,6 +97,7 @@
       'compat': 'str',
       '*data-file': 'str',
       '*data-file-raw': 'bool',
+      '*extended-l2': 'bool',
       '*lazy-refcounts': 'bool',
       '*corrupt': 'bool',
       'refcount-bits': 'int',
@@ -118,6 +128,18 @@
   } }
 
 ##
+# @ImageInfoSpecificRbd:
+#
+# @encryption-format: Image encryption format
+#
+# Since: 6.1
+##
+{ 'struct': 'ImageInfoSpecificRbd',
+  'data': {
+      '*encryption-format': 'RbdImageEncryptionFormat'
+  } }
+
+##
 # @ImageInfoSpecific:
 #
 # A discriminated record of image format specific information structures.
@@ -131,7 +153,8 @@
       # If we need to add block driver specific parameters for
       # LUKS in future, then we'll subclass QCryptoBlockInfoLUKS
       # to define a ImageInfoSpecificLUKS
-      'luks': 'QCryptoBlockInfoLUKS'
+      'luks': 'QCryptoBlockInfoLUKS',
+      'rbd': 'ImageInfoSpecificRbd'
   } }
 
 ##
@@ -234,17 +257,28 @@
 #
 # Mapping information from a virtual block range to a host file range
 #
-# @start: the start byte of the mapped virtual range
+# @start: virtual (guest) offset of the first byte described by this
+#         entry
 #
 # @length: the number of bytes of the mapped virtual range
 #
-# @data: whether the mapped range has data
+# @data: reading the image will actually read data from a file (in
+#        particular, if @offset is present this means that the sectors
+#        are not simply preallocated, but contain actual data in raw
+#        format)
 #
-# @zero: whether the virtual blocks are zeroed
+# @zero: whether the virtual blocks read as zeroes
 #
-# @depth: the depth of the mapping
+# @depth: number of layers (0 = top image, 1 = top image's backing
+#         file, ..., n - 1 = bottom image (where n is the number of
+#         images in the chain)) before reaching one for which the
+#         range is allocated
 #
-# @offset: the offset in file that the virtual sectors are mapped to
+# @present: true if this layer provides the data, false if adding a backing
+#           layer could impact this region (since 6.1)
+#
+# @offset: if present, the image file stores the data for this range
+#          in raw format at the given (host) offset
 #
 # @filename: filename that is referred to by @offset
 #
@@ -253,8 +287,8 @@
 ##
 { 'struct': 'MapEntry',
   'data': {'start': 'int', 'length': 'int', 'data': 'bool',
-           'zero': 'bool', 'depth': 'int', '*offset': 'int',
-           '*filename': 'str' } }
+           'zero': 'bool', 'depth': 'int', 'present': 'bool',
+           '*offset': 'int', '*filename': 'str' } }
 
 ##
 # @BlockdevCacheInfo:
@@ -284,7 +318,7 @@
 # @ro: true if the backing device was open read-only
 #
 # @drv: the name of the block format used to open the backing device. As of
-#       0.14.0 this can be: 'blkdebug', 'bochs', 'cloop', 'cow', 'dmg',
+#       0.14 this can be: 'blkdebug', 'bochs', 'cloop', 'cow', 'dmg',
 #       'file', 'file', 'ftp', 'ftps', 'host_cdrom', 'host_device',
 #       'http', 'https', 'luks', 'nbd', 'parallels', 'qcow',
 #       'qcow2', 'raw', 'vdi', 'vmdk', 'vpc', 'vvfat'
@@ -300,8 +334,6 @@
 # @backing_file_depth: number of files in the backing file chain (since: 1.2)
 #
 # @encrypted: true if the backing device is encrypted
-#
-# @encryption_key_missing: always false
 #
 # @detect_zeroes: detect and optimize zero writes (Since 2.1)
 #
@@ -367,19 +399,13 @@
 # @dirty-bitmaps: dirty bitmaps information (only present if node
 #                 has one or more dirty bitmaps) (Since 4.2)
 #
-# Features:
-# @deprecated: Member @encryption_key_missing is deprecated.  It is
-#     always false.
-#
-# Since: 0.14.0
+# Since: 0.14
 #
 ##
 { 'struct': 'BlockDeviceInfo',
   'data': { 'file': 'str', '*node-name': 'str', 'ro': 'bool', 'drv': 'str',
             '*backing_file': 'str', 'backing_file_depth': 'int',
             'encrypted': 'bool',
-            'encryption_key_missing': { 'type': 'bool',
-                                        'features': [ 'deprecated' ] },
             'detect_zeroes': 'BlockdevDetectZeroesOptions',
             'bps': 'int', 'bps_rd': 'int', 'bps_wr': 'int',
             'iops': 'int', 'iops_rd': 'int', 'iops_wr': 'int',
@@ -409,72 +435,6 @@
 { 'enum': 'BlockDeviceIoStatus', 'data': [ 'ok', 'failed', 'nospace' ] }
 
 ##
-# @BlockDeviceMapEntry:
-#
-# Entry in the metadata map of the device (returned by "qemu-img map")
-#
-# @start: Offset in the image of the first byte described by this entry
-#         (in bytes)
-#
-# @length: Length of the range described by this entry (in bytes)
-#
-# @depth: Number of layers (0 = top image, 1 = top image's backing file, etc.)
-#         before reaching one for which the range is allocated.  The value is
-#         in the range 0 to the depth of the image chain - 1.
-#
-# @zero: the sectors in this range read as zeros
-#
-# @data: reading the image will actually read data from a file (in particular,
-#        if @offset is present this means that the sectors are not simply
-#        preallocated, but contain actual data in raw format)
-#
-# @offset: if present, the image file stores the data for this range in
-#          raw format at the given offset.
-#
-# Since: 1.7
-##
-{ 'struct': 'BlockDeviceMapEntry',
-  'data': { 'start': 'int', 'length': 'int', 'depth': 'int', 'zero': 'bool',
-            'data': 'bool', '*offset': 'int' } }
-
-##
-# @DirtyBitmapStatus:
-#
-# An enumeration of possible states that a dirty bitmap can report to the user.
-#
-# @frozen: The bitmap is currently in-use by some operation and is immutable.
-#          If the bitmap was @active prior to the operation, new writes by the
-#          guest are being recorded in a temporary buffer, and will not be lost.
-#          Generally, bitmaps are cleared on successful use in an operation and
-#          the temporary buffer is committed into the bitmap. On failure, the
-#          temporary buffer is merged back into the bitmap without first
-#          clearing it.
-#          Please refer to the documentation for each bitmap-using operation,
-#          See also @blockdev-backup, @drive-backup.
-#
-# @disabled: The bitmap is not currently recording new writes by the guest.
-#            This is requested explicitly via @block-dirty-bitmap-disable.
-#            It can still be cleared, deleted, or used for backup operations.
-#
-# @active: The bitmap is actively monitoring for new writes, and can be cleared,
-#          deleted, or used for backup operations.
-#
-# @locked: The bitmap is currently in-use by some operation and is immutable.
-#          If the bitmap was @active prior to the operation, it is still
-#          recording new writes. If the bitmap was @disabled, it is not
-#          recording new writes. (Since 2.12)
-#
-# @inconsistent: This is a persistent dirty bitmap that was marked in-use on
-#                disk, and is unusable by QEMU. It can only be deleted.
-#                Please rely on the inconsistent field in @BlockDirtyInfo
-#                instead, as the status field is deprecated. (Since 4.0)
-#
-# Since: 2.4
-##
-{ 'enum': 'DirtyBitmapStatus',
-  'data': ['active', 'disabled', 'frozen', 'locked', 'inconsistent'] }
-
-##
 # @BlockDirtyInfo:
 #
 # Block dirty bitmap information.
@@ -484,8 +444,6 @@
 # @count: number of dirty bytes according to the dirty bitmap
 #
 # @granularity: granularity of the dirty bitmap in bytes (since 1.4)
-#
-# @status: current status of the dirty bitmap (since 2.4)
 #
 # @recording: true if the bitmap is recording new writes from the guest.
 #             Replaces `active` and `disabled` statuses. (since 4.0)
@@ -502,17 +460,11 @@
 #                @busy to be false. This bitmap cannot be used. To remove
 #                it, use @block-dirty-bitmap-remove. (Since 4.0)
 #
-# Features:
-# @deprecated: Member @status is deprecated.  Use @recording and
-#     @locked instead.
-#
 # Since: 1.3
 ##
 { 'struct': 'BlockDirtyInfo',
   'data': {'*name': 'str', 'count': 'int', 'granularity': 'uint32',
            'recording': 'bool', 'busy': 'bool',
-           'status': { 'type': 'DirtyBitmapStatus',
-                       'features': [ 'deprecated' ] },
            'persistent': 'bool', '*inconsistent': 'bool' } }
 
 ##
@@ -566,13 +518,15 @@
 #        For the example above, @bins may be something like [3, 1, 5, 2],
 #        and corresponding histogram looks like:
 #
-# |      5|           *
-# |      4|           *
-# |      3| *         *
-# |      2| *         *    *
-# |      1| *    *    *    *
-# |       +------------------
-# |           10   50   100
+# ::
+#
+#        5|           *
+#        4|           *
+#        3| *         *
+#        2| *         *    *
+#        1| *    *    *    *
+#         +------------------
+#             10   50   100
 #
 # Since: 4.0
 ##
@@ -601,9 +555,6 @@
 # @tray_open: True if the device's tray is open
 #             (only present if it has a tray)
 #
-# @dirty-bitmaps: dirty bitmaps information (only present if the
-#                 driver has one or more dirty bitmaps) (Since 2.0)
-#
 # @io-status: @BlockDeviceIoStatus. Only present if the device
 #             supports it and the VM is configured to stop on errors
 #             (supported device models: virtio-blk, IDE, SCSI except
@@ -612,18 +563,12 @@
 # @inserted: @BlockDeviceInfo describing the device if media is
 #            present
 #
-# Features:
-# @deprecated: Member @dirty-bitmaps is deprecated.  Use @inserted
-#     member @dirty-bitmaps instead.
-#
-# Since:  0.14.0
+# Since:  0.14
 ##
 { 'struct': 'BlockInfo',
   'data': {'device': 'str', '*qdev': 'str', 'type': 'str', 'removable': 'bool',
            'locked': 'bool', '*inserted': 'BlockDeviceInfo',
-           '*tray_open': 'bool', '*io-status': 'BlockDeviceIoStatus',
-           '*dirty-bitmaps': { 'type': ['BlockDirtyInfo'],
-                               'features': [ 'deprecated' ] } } }
+           '*tray_open': 'bool', '*io-status': 'BlockDeviceIoStatus' } }
 
 ##
 # @BlockMeasureInfo:
@@ -664,7 +609,7 @@
 # Returns: a list of @BlockInfo describing each virtual block device. Filter
 #          nodes that were created implicitly are skipped over.
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -821,17 +766,17 @@
 # @wr_operations: The number of write operations performed by the device.
 #
 # @flush_operations: The number of cache flush operations performed by the
-#                    device (since 0.15.0)
+#                    device (since 0.15)
 #
 # @unmap_operations: The number of unmap operations performed by the device
 #                    (Since 4.2)
 #
-# @rd_total_time_ns: Total time spent on reads in nanoseconds (since 0.15.0).
+# @rd_total_time_ns: Total time spent on reads in nanoseconds (since 0.15).
 #
-# @wr_total_time_ns: Total time spent on writes in nanoseconds (since 0.15.0).
+# @wr_total_time_ns: Total time spent on writes in nanoseconds (since 0.15).
 #
 # @flush_total_time_ns: Total time spent on cache flushes in nanoseconds
-#                       (since 0.15.0).
+#                       (since 0.15).
 #
 # @unmap_total_time_ns: Total time spent on unmap operations in nanoseconds
 #                       (Since 4.2)
@@ -893,7 +838,7 @@
 #
 # @flush_latency_histogram: @BlockLatencyHistogramInfo. (Since 4.0)
 #
-# Since: 0.14.0
+# Since: 0.14
 ##
 { 'struct': 'BlockDeviceStats',
   'data': {'rd_bytes': 'int', 'wr_bytes': 'int', 'unmap_bytes' : 'int',
@@ -936,6 +881,27 @@
       'discard-bytes-ok': 'uint64' } }
 
 ##
+# @BlockStatsSpecificNvme:
+#
+# NVMe driver statistics
+#
+# @completion-errors: The number of completion errors.
+#
+# @aligned-accesses: The number of aligned accesses performed by
+#                    the driver.
+#
+# @unaligned-accesses: The number of unaligned accesses performed by
+#                      the driver.
+#
+# Since: 5.2
+##
+{ 'struct': 'BlockStatsSpecificNvme',
+  'data': {
+      'completion-errors': 'uint64',
+      'aligned-accesses': 'uint64',
+      'unaligned-accesses': 'uint64' } }
+
+##
 # @BlockStatsSpecific:
 #
 # Block driver specific statistics
@@ -947,7 +913,9 @@
   'discriminator': 'driver',
   'data': {
       'file': 'BlockStatsSpecificFile',
-      'host_device': 'BlockStatsSpecificFile' } }
+      'host_device': { 'type': 'BlockStatsSpecificFile',
+                       'if': 'defined(HAVE_HOST_BLOCK_DEVICE)' },
+      'nvme': 'BlockStatsSpecificNvme' } }
 
 ##
 # @BlockStats:
@@ -974,7 +942,7 @@
 # @backing: This describes the backing block device if it has one.
 #           (Since 2.0)
 #
-# Since: 0.14.0
+# Since: 0.14
 ##
 { 'struct': 'BlockStats',
   'data': {'*device': 'str', '*qdev': 'str', '*node-name': 'str',
@@ -998,7 +966,7 @@
 #
 # Returns: A list of @BlockStats for each virtual block devices.
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -1257,20 +1225,6 @@
 { 'command': 'query-block-jobs', 'returns': ['BlockJobInfo'] }
 
 ##
-# @block_passwd:
-#
-# This command sets the password of a block device that has not been open
-# with a password and requires one.
-#
-# This command is now obsolete and will always return an error since 2.10
-#
-##
-{ 'command': 'block_passwd',
-  'data': { '*device': 'str',
-            '*node-name': 'str',
-            'password': 'str' } }
-
-##
 # @block_resize:
 #
 # Resize a block image while a guest is running.
@@ -1286,7 +1240,7 @@
 # Returns: - nothing on success
 #          - If @device is not a valid block device, DeviceNotFound
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -1298,7 +1252,8 @@
 { 'command': 'block_resize',
   'data': { '*device': 'str',
             '*node-name': 'str',
-            'size': 'int' } }
+            'size': 'int' },
+  'coroutine': true }
 
 ##
 # @NewImageMode:
@@ -1358,6 +1313,30 @@
   'data': { 'node': 'str', 'overlay': 'str' } }
 
 ##
+# @BackupPerf:
+#
+# Optional parameters for backup. These parameters don't affect
+# functionality, but may significantly affect performance.
+#
+# @use-copy-range: Use copy offloading. Default false.
+#
+# @max-workers: Maximum number of parallel requests for the sustained background
+#               copying process. Doesn't influence copy-before-write operations.
+#               Default 64.
+#
+# @max-chunk: Maximum request length for the sustained background copying
+#             process. Doesn't influence copy-before-write operations.
+#             0 means unlimited. If max-chunk is non-zero then it should not be
+#             less than job cluster size which is calculated as maximum of
+#             target image cluster size and 64k. Default 0.
+#
+# Since: 6.0
+##
+{ 'struct': 'BackupPerf',
+  'data': { '*use-copy-range': 'bool',
+            '*max-workers': 'int', '*max-chunk': 'int64' } }
+
+##
 # @BackupCommon:
 #
 # @job-id: identifier for the newly-created block job. If
@@ -1412,6 +1391,8 @@
 #                    above node specified by @drive. If this option is not given,
 #                    a node name is autogenerated. (Since: 4.2)
 #
+# @x-perf: Performance options. (Since 6.0)
+#
 # Note: @on-source-error and @on-target-error only affect background
 #       I/O.  If an error occurs during a guest write request, the device's
 #       rerror/werror actions will be used.
@@ -1426,7 +1407,7 @@
             '*on-source-error': 'BlockdevOnError',
             '*on-target-error': 'BlockdevOnError',
             '*auto-finalize': 'bool', '*auto-dismiss': 'bool',
-            '*filter-node-name': 'str' } }
+            '*filter-node-name': 'str', '*x-perf': 'BackupPerf'  } }
 
 ##
 # @DriveBackup:
@@ -1470,7 +1451,7 @@
 # Returns: - nothing on success
 #          - If @device is not a valid block device, DeviceNotFound
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -1565,6 +1546,18 @@
 # Live commit of data from overlay image nodes into backing nodes - i.e.,
 # writes data between 'top' and 'base' into 'base'.
 #
+# If top == base, that is an error.
+# If top has no overlays on top of it, or if it is in use by a writer,
+# the job will not be completed by itself.  The user needs to complete
+# the job with the block-job-complete command after getting the ready
+# event. (Since 2.0)
+#
+# If the base image is smaller than top, then the base image will be
+# resized to be the same size as top.  If top is smaller than the base
+# image, the base will not be truncated.  If you want the base image
+# size to match the size of the smaller top, you can safely truncate
+# it yourself once the commit operation successfully completes.
+#
 # @job-id: identifier for the newly-created block job. If
 #          omitted, the device name will be used. (Since 2.7)
 #
@@ -1589,14 +1582,15 @@
 #       accepted
 #
 # @backing-file: The backing file string to write into the overlay
-#                image of 'top'.  If 'top' is the active layer,
-#                specifying a backing file string is an error. This
-#                filename is not validated.
+#                image of 'top'.  If 'top' does not have an overlay
+#                image, or if 'top' is in use by a writer, specifying
+#                a backing file string is an error.
 #
-#                If a pathname string is such that it cannot be
-#                resolved by QEMU, that means that subsequent QMP or
-#                HMP commands must use node-names for the image in
-#                question, as filename lookup methods will fail.
+#                This filename is not validated.  If a pathname string
+#                is such that it cannot be resolved by QEMU, that
+#                means that subsequent QMP or HMP commands must use
+#                node-names for the image in question, as filename
+#                lookup methods will fail.
 #
 #                If not specified, QEMU will automatically determine
 #                the backing file string to use, or error out if
@@ -1604,18 +1598,6 @@
 #                when specifying the string, to specify a valid
 #                filename or protocol.
 #                (Since 2.1)
-#
-#                If top == base, that is an error.
-#                If top == active, the job will not be completed by itself,
-#                user needs to complete the job with the block-job-complete
-#                command after getting the ready event. (Since 2.0)
-#
-#                If the base image is smaller than top, then the base image
-#                will be resized to be the same size as top.  If top is
-#                smaller than the base image, the base will not be
-#                truncated.  If you want the base image size to match the
-#                size of the smaller top, you can safely truncate it
-#                yourself once the commit operation successfully completes.
 #
 # @speed: the maximum speed, in bytes per second
 #
@@ -1642,7 +1624,7 @@
 #
 # Features:
 # @deprecated: Members @base and @top are deprecated.  Use @base-node
-#     and @top-node instead.
+#              and @top-node instead.
 #
 # Returns: - Nothing on success
 #          - If @device does not exist, DeviceNotFound
@@ -1790,7 +1772,7 @@
 #
 # @block-backend: corresponds to BlockBackend
 #
-# @block-job: corresonds to BlockJob
+# @block-job: corresponds to BlockJob
 #
 # @block-driver: corresponds to BlockDriverState
 #
@@ -1944,7 +1926,8 @@
 #
 # @replaces: with sync=full graph node name to be replaced by the new
 #            image when a whole image copy is done. This can be used to repair
-#            broken Quorum files. (Since 2.1)
+#            broken Quorum files.  By default, @device is replaced, although
+#            implicitly created filters on it are kept. (Since 2.1)
 #
 # @mode: whether and how QEMU should create a new image, default is
 #        'absolute-paths'.
@@ -2061,7 +2044,7 @@
 # @target: name of the destination dirty bitmap
 #
 # @bitmaps: name(s) of the source dirty bitmap(s) at @node and/or fully
-#           specifed BlockDirtyBitmap elements. The latter are supported
+#           specified BlockDirtyBitmap elements. The latter are supported
 #           since 4.1.
 #
 # Since: 4.0
@@ -2255,7 +2238,8 @@
 #
 # @replaces: with sync=full graph node name to be replaced by the new
 #            image when a whole image copy is done. This can be used to repair
-#            broken Quorum files.
+#            broken Quorum files.  By default, @device is replaced, although
+#            implicitly created filters on it are kept.
 #
 # @speed:  the maximum speed, in bytes per second
 #
@@ -2462,6 +2446,33 @@
             '*iops-size' : 'int' } }
 
 ##
+# @ThrottleGroupProperties:
+#
+# Properties for throttle-group objects.
+#
+# The options starting with x- are aliases for the same key without x- in
+# the @limits object. As indicated by the x- prefix, this is not a stable
+# interface and may be removed or changed incompatibly in the future. Use
+# @limits for a supported stable interface.
+#
+# @limits: limits to apply for this throttle group
+#
+# Since: 2.11
+##
+{ 'struct': 'ThrottleGroupProperties',
+  'data': { '*limits': 'ThrottleLimits',
+            '*x-iops-total' : 'int', '*x-iops-total-max' : 'int',
+            '*x-iops-total-max-length' : 'int', '*x-iops-read' : 'int',
+            '*x-iops-read-max' : 'int', '*x-iops-read-max-length' : 'int',
+            '*x-iops-write' : 'int', '*x-iops-write-max' : 'int',
+            '*x-iops-write-max-length' : 'int', '*x-bps-total' : 'int',
+            '*x-bps-total-max' : 'int', '*x-bps-total-max-length' : 'int',
+            '*x-bps-read' : 'int', '*x-bps-read-max' : 'int',
+            '*x-bps-read-max-length' : 'int', '*x-bps-write' : 'int',
+            '*x-bps-write-max' : 'int', '*x-bps-write-max-length' : 'int',
+            '*x-iops-size' : 'int' } }
+
+##
 # @block-stream:
 #
 # Copy data from a backing file into a block device.
@@ -2480,12 +2491,19 @@
 # of 'device'.
 #
 # If a base file is specified then sectors are not copied from that base file and
-# its backing chain.  When streaming completes the image file will have the base
-# file as its backing file.  This can be used to stream a subset of the backing
-# file chain instead of flattening the entire image.
+# its backing chain.  This can be used to stream a subset of the backing file
+# chain instead of flattening the entire image.
+# When streaming completes the image file will have the base file as its backing
+# file, unless that node was changed while the job was running.  In that case,
+# base's parent's backing (or filtered, whichever exists) child (i.e., base at
+# the beginning of the job) will be the new backing file.
 #
 # On successful completion the image file is updated to drop the backing file
 # and the BLOCK_JOB_COMPLETED event is emitted.
+#
+# In case @device is a filter node, block-stream modifies the first non-filter
+# overlay node below it to point to the new backing node instead of modifying
+# @device itself.
 #
 # @job-id: identifier for the newly-created block job. If
 #          omitted, the device name will be used. (Since 2.7)
@@ -2493,10 +2511,14 @@
 # @device: the device or node name of the top image
 #
 # @base: the common backing file name.
-#        It cannot be set if @base-node is also set.
+#        It cannot be set if @base-node or @bottom is also set.
 #
 # @base-node: the node name of the backing file.
-#             It cannot be set if @base is also set. (Since 2.8)
+#             It cannot be set if @base or @bottom is also set. (Since 2.8)
+#
+# @bottom: the last node in the chain that should be streamed into
+#          top. It cannot be set if @base or @base-node is also set.
+#          It cannot be filter node. (Since 6.0)
 #
 # @backing-file: The backing file string to write into the top
 #                image. This filename is not validated.
@@ -2518,6 +2540,11 @@
 # @on-error: the action to take on an error (default report).
 #            'stop' and 'enospc' can only be used if the block device
 #            supports io-status (see BlockInfo).  Since 1.3.
+#
+# @filter-node-name: the node name that should be assigned to the
+#                    filter driver that the stream job inserts into the graph
+#                    above @device. If this option is not given, a node name is
+#                    autogenerated. (Since: 6.0)
 #
 # @auto-finalize: When false, this job will wait in a PENDING state after it has
 #                 finished its work, waiting for @block-job-finalize before
@@ -2547,8 +2574,9 @@
 ##
 { 'command': 'block-stream',
   'data': { '*job-id': 'str', 'device': 'str', '*base': 'str',
-            '*base-node': 'str', '*backing-file': 'str', '*speed': 'int',
-            '*on-error': 'BlockdevOnError',
+            '*base-node': 'str', '*backing-file': 'str', '*bottom': 'str',
+            '*speed': 'int', '*on-error': 'BlockdevOnError',
+            '*filter-node-name': 'str',
             '*auto-finalize': 'bool', '*auto-dismiss': 'bool' } }
 
 ##
@@ -2803,11 +2831,13 @@
 { 'enum': 'BlockdevDriver',
   'data': [ 'blkdebug', 'blklogwrites', 'blkreplay', 'blkverify', 'bochs',
             'cloop', 'compress', 'copy-on-read', 'dmg', 'file', 'ftp', 'ftps',
-            'gluster', 'host_cdrom', 'host_device', 'http', 'https', 'iscsi',
+            'gluster',
+            {'name': 'host_cdrom', 'if': 'defined(HAVE_HOST_BLOCK_DEVICE)' },
+            {'name': 'host_device', 'if': 'defined(HAVE_HOST_BLOCK_DEVICE)' },
+            'http', 'https', 'iscsi',
             'luks', 'nbd', 'nfs', 'null-aio', 'null-co', 'nvme', 'parallels',
-            'qcow', 'qcow2', 'qed', 'quorum', 'raw', 'rbd',
+            'preallocate', 'qcow', 'qcow2', 'qed', 'quorum', 'raw', 'rbd',
             { 'name': 'replication', 'if': 'defined(CONFIG_REPLICATION)' },
-            'sheepdog',
             'ssh', 'throttle', 'vdi', 'vhdx', 'vmdk', 'vpc', 'vvfat' ] }
 
 ##
@@ -3075,6 +3105,23 @@
             'luks': 'QCryptoBlockOptionsLUKS'} }
 
 ##
+# @BlockdevOptionsPreallocate:
+#
+# Filter driver intended to be inserted between format and protocol node
+# and do preallocation in protocol node on write.
+#
+# @prealloc-align: on preallocation, align file length to this number,
+#                  default 1048576 (1M)
+#
+# @prealloc-size: how much to preallocate, default 134217728 (128M)
+#
+# Since: 6.0
+##
+{ 'struct': 'BlockdevOptionsPreallocate',
+  'base': 'BlockdevOptionsGenericFormat',
+  'data': { '*prealloc-align': 'int', '*prealloc-size': 'int' } }
+
+##
 # @BlockdevOptionsQcow2:
 #
 # Driver specific block device options for qcow2.
@@ -3159,11 +3206,12 @@
 #
 # @md5: The given hash is an md5 hash
 # @sha1: The given hash is an sha1 hash
+# @sha256: The given hash is an sha256 hash
 #
 # Since: 2.12
 ##
 { 'enum': 'SshHostKeyCheckHashType',
-  'data': [ 'md5', 'sha1' ] }
+  'data': [ 'md5', 'sha1', 'sha256' ] }
 
 ##
 # @SshHostKeyHash:
@@ -3582,6 +3630,94 @@
   'data': [ 'cephx', 'none' ] }
 
 ##
+# @RbdImageEncryptionFormat:
+#
+# Since: 6.1
+##
+{ 'enum': 'RbdImageEncryptionFormat',
+  'data': [ 'luks', 'luks2' ] }
+
+##
+# @RbdEncryptionOptionsLUKSBase:
+#
+# @key-secret: ID of a QCryptoSecret object providing a passphrase
+#              for unlocking the encryption
+#
+# Since: 6.1
+##
+{ 'struct': 'RbdEncryptionOptionsLUKSBase',
+  'data': { 'key-secret': 'str' } }
+
+##
+# @RbdEncryptionCreateOptionsLUKSBase:
+#
+# @cipher-alg: The encryption algorithm
+#
+# Since: 6.1
+##
+{ 'struct': 'RbdEncryptionCreateOptionsLUKSBase',
+  'base': 'RbdEncryptionOptionsLUKSBase',
+  'data': { '*cipher-alg': 'QCryptoCipherAlgorithm' } }
+
+##
+# @RbdEncryptionOptionsLUKS:
+#
+# Since: 6.1
+##
+{ 'struct': 'RbdEncryptionOptionsLUKS',
+  'base': 'RbdEncryptionOptionsLUKSBase',
+  'data': { } }
+
+##
+# @RbdEncryptionOptionsLUKS2:
+#
+# Since: 6.1
+##
+{ 'struct': 'RbdEncryptionOptionsLUKS2',
+  'base': 'RbdEncryptionOptionsLUKSBase',
+  'data': { } }
+
+##
+# @RbdEncryptionCreateOptionsLUKS:
+#
+# Since: 6.1
+##
+{ 'struct': 'RbdEncryptionCreateOptionsLUKS',
+  'base': 'RbdEncryptionCreateOptionsLUKSBase',
+  'data': { } }
+
+##
+# @RbdEncryptionCreateOptionsLUKS2:
+#
+# Since: 6.1
+##
+{ 'struct': 'RbdEncryptionCreateOptionsLUKS2',
+  'base': 'RbdEncryptionCreateOptionsLUKSBase',
+  'data': { } }
+
+##
+# @RbdEncryptionOptions:
+#
+# Since: 6.1
+##
+{ 'union': 'RbdEncryptionOptions',
+  'base': { 'format': 'RbdImageEncryptionFormat' },
+  'discriminator': 'format',
+  'data': { 'luks': 'RbdEncryptionOptionsLUKS',
+            'luks2': 'RbdEncryptionOptionsLUKS2' } }
+
+##
+# @RbdEncryptionCreateOptions:
+#
+# Since: 6.1
+##
+{ 'union': 'RbdEncryptionCreateOptions',
+  'base': { 'format': 'RbdImageEncryptionFormat' },
+  'discriminator': 'format',
+  'data': { 'luks': 'RbdEncryptionCreateOptionsLUKS',
+            'luks2': 'RbdEncryptionCreateOptionsLUKS2' } }
+
+##
 # @BlockdevOptionsRbd:
 #
 # @pool: Ceph pool name.
@@ -3595,6 +3731,8 @@
 #        options specified via QAPI.
 #
 # @snapshot: Ceph snapshot name.
+#
+# @encrypt: Image encryption options. (Since 6.1)
 #
 # @user: Ceph id name.
 #
@@ -3618,30 +3756,11 @@
             'image': 'str',
             '*conf': 'str',
             '*snapshot': 'str',
+            '*encrypt': 'RbdEncryptionOptions',
             '*user': 'str',
             '*auth-client-required': ['RbdAuthMode'],
             '*key-secret': 'str',
             '*server': ['InetSocketAddressBase'] } }
-
-##
-# @BlockdevOptionsSheepdog:
-#
-# Driver specific block device options for sheepdog
-#
-# @vdi: Virtual disk image name
-# @server: The Sheepdog server to connect to
-# @snap-id: Snapshot ID
-# @tag: Snapshot tag name
-#
-# Only one of @snap-id and @tag may be present.
-#
-# Since: 2.9
-##
-{ 'struct': 'BlockdevOptionsSheepdog',
-  'data': { 'server': 'SocketAddress',
-            'vdi': 'str',
-            '*snap-id': 'uint32',
-            '*tag': 'str' } }
 
 ##
 # @ReplicationMode:
@@ -3860,9 +3979,12 @@
 #
 # @tls-creds: TLS credentials ID
 #
-# @x-dirty-bitmap: A "qemu:dirty-bitmap:NAME" string to query in place of
+# @x-dirty-bitmap: A metadata context name such as "qemu:dirty-bitmap:NAME"
+#                  or "qemu:allocation-depth" to query in place of the
 #                  traditional "base:allocation" block status (see
-#                  NBD_OPT_LIST_META_CONTEXT in the NBD protocol) (since 3.0)
+#                  NBD_OPT_LIST_META_CONTEXT in the NBD protocol; and
+#                  yes, naming this option x-context would have made
+#                  more sense) (since 3.0)
 #
 # @reconnect-delay: On an unexpected disconnect, the nbd client tries to
 #                   connect again until succeeding or encountering a serious
@@ -3909,6 +4031,24 @@
   'data': { 'throttle-group': 'str',
             'file' : 'BlockdevRef'
              } }
+
+##
+# @BlockdevOptionsCor:
+#
+# Driver specific block device options for the copy-on-read driver.
+#
+# @bottom: The name of a non-filter node (allocation-bearing layer) that
+#          limits the COR operations in the backing chain (inclusive), so
+#          that no data below this node will be copied by this filter.
+#          If option is absent, the limit is not applied, so that data
+#          from all backing layers may be copied.
+#
+# Since: 6.0
+##
+{ 'struct': 'BlockdevOptionsCor',
+  'base': 'BlockdevOptionsGenericFormat',
+  'data': { '*bottom': 'str' } }
+
 ##
 # @BlockdevOptions:
 #
@@ -3961,14 +4101,16 @@
       'bochs':      'BlockdevOptionsGenericFormat',
       'cloop':      'BlockdevOptionsGenericFormat',
       'compress':   'BlockdevOptionsGenericFormat',
-      'copy-on-read':'BlockdevOptionsGenericFormat',
+      'copy-on-read':'BlockdevOptionsCor',
       'dmg':        'BlockdevOptionsGenericFormat',
       'file':       'BlockdevOptionsFile',
       'ftp':        'BlockdevOptionsCurlFtp',
       'ftps':       'BlockdevOptionsCurlFtps',
       'gluster':    'BlockdevOptionsGluster',
-      'host_cdrom': 'BlockdevOptionsFile',
-      'host_device':'BlockdevOptionsFile',
+      'host_cdrom':  { 'type': 'BlockdevOptionsFile',
+                       'if': 'defined(HAVE_HOST_BLOCK_DEVICE)' },
+      'host_device': { 'type': 'BlockdevOptionsFile',
+                       'if': 'defined(HAVE_HOST_BLOCK_DEVICE)' },
       'http':       'BlockdevOptionsCurlHttp',
       'https':      'BlockdevOptionsCurlHttps',
       'iscsi':      'BlockdevOptionsIscsi',
@@ -3979,6 +4121,7 @@
       'null-co':    'BlockdevOptionsNull',
       'nvme':       'BlockdevOptionsNVMe',
       'parallels':  'BlockdevOptionsGenericFormat',
+      'preallocate':'BlockdevOptionsPreallocate',
       'qcow2':      'BlockdevOptionsQcow2',
       'qcow':       'BlockdevOptionsQcow',
       'qed':        'BlockdevOptionsGenericCOWFormat',
@@ -3987,7 +4130,6 @@
       'rbd':        'BlockdevOptionsRbd',
       'replication': { 'type': 'BlockdevOptionsReplication',
                        'if': 'defined(CONFIG_REPLICATION)' },
-      'sheepdog':   'BlockdevOptionsSheepdog',
       'ssh':        'BlockdevOptionsSsh',
       'throttle':   'BlockdevOptionsThrottle',
       'vdi':        'BlockdevOptionsGenericFormat',
@@ -4032,9 +4174,7 @@
 ##
 # @blockdev-add:
 #
-# Creates a new block device. If the @id option is given at the top level, a
-# BlockBackend will be created; otherwise, @node-name is mandatory at the top
-# level and no BlockBackend will be created.
+# Creates a new block device.
 #
 # Since: 2.9
 #
@@ -4082,15 +4222,17 @@
 { 'command': 'blockdev-add', 'data': 'BlockdevOptions', 'boxed': true }
 
 ##
-# @x-blockdev-reopen:
+# @blockdev-reopen:
 #
-# Reopens a block device using the given set of options. Any option
-# not specified will be reset to its default value regardless of its
-# previous status. If an option cannot be changed or a particular
+# Reopens one or more block devices using the given set of options.
+# Any option not specified will be reset to its default value regardless
+# of its previous status. If an option cannot be changed or a particular
 # driver does not support reopening then the command will return an
-# error.
+# error. All devices in the list are reopened in one transaction, so
+# if one of them fails then the whole transaction is cancelled.
 #
-# The top-level @node-name option (from BlockdevOptions) must be
+# The command receives a list of block devices to reopen. For each one
+# of them, the top-level @node-name option (from BlockdevOptions) must be
 # specified and is used to select the block device to be reopened.
 # Other @node-name options must be either omitted or set to the
 # current name of the appropriate node. This command won't change any
@@ -4110,18 +4252,18 @@
 #
 #  4) NULL: the current child (if any) is detached.
 #
-# Options (1) and (2) are supported in all cases, but at the moment
-# only @backing allows replacing or detaching an existing child.
+# Options (1) and (2) are supported in all cases. Option (3) is
+# supported for @file and @backing, and option (4) for @backing only.
 #
 # Unlike with blockdev-add, the @backing option must always be present
 # unless the node being reopened does not have a backing file and its
 # image does not have a default backing file name as part of its
 # metadata.
 #
-# Since: 4.0
+# Since: 6.1
 ##
-{ 'command': 'x-blockdev-reopen',
-  'data': 'BlockdevOptions', 'boxed': true }
+{ 'command': 'blockdev-reopen',
+  'data': { 'options': ['BlockdevOptions'] } }
 
 ##
 # @blockdev-del:
@@ -4304,6 +4446,8 @@
 # @data-file-raw: True if the external data file must stay valid as a
 #                 standalone (read-only) raw image without looking at qcow2
 #                 metadata (default: false; since: 4.0)
+# @extended-l2: True to make the image have extended L2 entries
+#               (default: false; since 5.2)
 # @size: Size of the virtual disk in bytes
 # @version: Compatibility level (default: v3)
 # @backing-file: File name of the backing file if a backing file
@@ -4324,6 +4468,7 @@
   'data': { 'file':             'BlockdevRef',
             '*data-file':       'BlockdevRef',
             '*data-file-raw':   'bool',
+            '*extended-l2':     'bool',
             'size':             'size',
             '*version':         'BlockdevQcow2Version',
             '*backing-file':    'str',
@@ -4367,13 +4512,15 @@
 #            point to a snapshot.
 # @size: Size of the virtual disk in bytes
 # @cluster-size: RBD object size
+# @encrypt: Image encryption options. (Since 6.1)
 #
 # Since: 2.12
 ##
 { 'struct': 'BlockdevCreateOptionsRbd',
   'data': { 'location':         'BlockdevOptionsRbd',
             'size':             'size',
-            '*cluster-size' :   'size' } }
+            '*cluster-size' :   'size',
+            '*encrypt' :        'RbdEncryptionCreateOptions' } }
 
 ##
 # @BlockdevVmdkSubformat:
@@ -4444,74 +4591,6 @@
             '*hwversion':       'str',
             '*zeroed-grain':    'bool' } }
 
-
-##
-# @SheepdogRedundancyType:
-#
-# @full: Create a fully replicated vdi with x copies
-# @erasure-coded: Create an erasure coded vdi with x data strips and
-#                 y parity strips
-#
-# Since: 2.12
-##
-{ 'enum': 'SheepdogRedundancyType',
-  'data': [ 'full', 'erasure-coded' ] }
-
-##
-# @SheepdogRedundancyFull:
-#
-# @copies: Number of copies to use (between 1 and 31)
-#
-# Since: 2.12
-##
-{ 'struct': 'SheepdogRedundancyFull',
-  'data': { 'copies': 'int' }}
-
-##
-# @SheepdogRedundancyErasureCoded:
-#
-# @data-strips: Number of data strips to use (one of {2,4,8,16})
-# @parity-strips: Number of parity strips to use (between 1 and 15)
-#
-# Since: 2.12
-##
-{ 'struct': 'SheepdogRedundancyErasureCoded',
-  'data': { 'data-strips': 'int',
-            'parity-strips': 'int' }}
-
-##
-# @SheepdogRedundancy:
-#
-# Since: 2.12
-##
-{ 'union': 'SheepdogRedundancy',
-  'base': { 'type': 'SheepdogRedundancyType' },
-  'discriminator': 'type',
-  'data': { 'full': 'SheepdogRedundancyFull',
-            'erasure-coded': 'SheepdogRedundancyErasureCoded' } }
-
-##
-# @BlockdevCreateOptionsSheepdog:
-#
-# Driver specific image creation options for Sheepdog.
-#
-# @location: Where to store the new image file
-# @size: Size of the virtual disk in bytes
-# @backing-file: File name of a base image
-# @preallocation: Preallocation mode for the new image (default: off;
-#                 allowed values: off, full)
-# @redundancy: Redundancy of the image
-# @object-size: Object size of the image
-#
-# Since: 2.12
-##
-{ 'struct': 'BlockdevCreateOptionsSheepdog',
-  'data': { 'location':         'BlockdevOptionsSheepdog',
-            'size':             'size',
-            '*backing-file':    'str',
-            '*preallocation':   'PreallocMode',
-            '*redundancy':      'SheepdogRedundancy',
-            '*object-size':     'size' } }
 
 ##
 # @BlockdevCreateOptionsSsh:
@@ -4636,7 +4715,6 @@
       'qcow2':          'BlockdevCreateOptionsQcow2',
       'qed':            'BlockdevCreateOptionsQed',
       'rbd':            'BlockdevCreateOptionsRbd',
-      'sheepdog':       'BlockdevCreateOptionsSheepdog',
       'ssh':            'BlockdevCreateOptionsSsh',
       'vdi':            'BlockdevCreateOptionsVdi',
       'vhdx':           'BlockdevCreateOptionsVhdx',
@@ -4824,7 +4902,7 @@
 # Note: If action is "stop", a STOP event will eventually follow the
 #       BLOCK_IO_ERROR event
 #
-# Since: 0.13.0
+# Since: 0.13
 #
 # Example:
 #
@@ -5178,172 +5256,6 @@
              '*force': 'bool' } }
 
 ##
-# @NbdServerOptions:
-#
-# @addr: Address on which to listen.
-# @tls-creds: ID of the TLS credentials object (since 2.6).
-# @tls-authz: ID of the QAuthZ authorization object used to validate
-#             the client's x509 distinguished name. This object is
-#             is only resolved at time of use, so can be deleted and
-#             recreated on the fly while the NBD server is active.
-#             If missing, it will default to denying access (since 4.0).
-#
-# Keep this type consistent with the nbd-server-start arguments. The only
-# intended difference is using SocketAddress instead of SocketAddressLegacy.
-#
-# Since: 4.2
-##
-{ 'struct': 'NbdServerOptions',
-  'data': { 'addr': 'SocketAddress',
-            '*tls-creds': 'str',
-            '*tls-authz': 'str'} }
-
-##
-# @nbd-server-start:
-#
-# Start an NBD server listening on the given host and port.  Block
-# devices can then be exported using @nbd-server-add.  The NBD
-# server will present them as named exports; for example, another
-# QEMU instance could refer to them as "nbd:HOST:PORT:exportname=NAME".
-#
-# @addr: Address on which to listen.
-# @tls-creds: ID of the TLS credentials object (since 2.6).
-# @tls-authz: ID of the QAuthZ authorization object used to validate
-#             the client's x509 distinguished name. This object is
-#             is only resolved at time of use, so can be deleted and
-#             recreated on the fly while the NBD server is active.
-#             If missing, it will default to denying access (since 4.0).
-#
-# Returns: error if the server is already running.
-#
-# Keep this type consistent with the NbdServerOptions type. The only intended
-# difference is using SocketAddressLegacy instead of SocketAddress.
-#
-# Since: 1.3.0
-##
-{ 'command': 'nbd-server-start',
-  'data': { 'addr': 'SocketAddressLegacy',
-            '*tls-creds': 'str',
-            '*tls-authz': 'str'} }
-
-##
-# @BlockExportNbd:
-#
-# An NBD block export.
-#
-# @device: The device name or node name of the node to be exported
-#
-# @name: Export name. If unspecified, the @device parameter is used as the
-#        export name. (Since 2.12)
-#
-# @description: Free-form description of the export, up to 4096 bytes.
-#               (Since 5.0)
-#
-# @writable: Whether clients should be able to write to the device via the
-#            NBD connection (default false).
-#
-# @bitmap: Also export the dirty bitmap reachable from @device, so the
-#          NBD client can use NBD_OPT_SET_META_CONTEXT with
-#          "qemu:dirty-bitmap:NAME" to inspect the bitmap. (since 4.0)
-#
-# Since: 5.0
-##
-{ 'struct': 'BlockExportNbd',
-  'data': {'device': 'str', '*name': 'str', '*description': 'str',
-           '*writable': 'bool', '*bitmap': 'str' } }
-
-##
-# @nbd-server-add:
-#
-# Export a block node to QEMU's embedded NBD server.
-#
-# Returns: error if the server is not running, or export with the same name
-#          already exists.
-#
-# Since: 1.3.0
-##
-{ 'command': 'nbd-server-add',
-  'data': 'BlockExportNbd', 'boxed': true }
-
-##
-# @NbdServerRemoveMode:
-#
-# Mode for removing an NBD export.
-#
-# @safe: Remove export if there are no existing connections, fail otherwise.
-#
-# @hard: Drop all connections immediately and remove export.
-#
-# Potential additional modes to be added in the future:
-#
-# hide: Just hide export from new clients, leave existing connections as is.
-# Remove export after all clients are disconnected.
-#
-# soft: Hide export from new clients, answer with ESHUTDOWN for all further
-# requests from existing clients.
-#
-# Since: 2.12
-##
-{'enum': 'NbdServerRemoveMode', 'data': ['safe', 'hard']}
-
-##
-# @nbd-server-remove:
-#
-# Remove NBD export by name.
-#
-# @name: Export name.
-#
-# @mode: Mode of command operation. See @NbdServerRemoveMode description.
-#        Default is 'safe'.
-#
-# Returns: error if
-#            - the server is not running
-#            - export is not found
-#            - mode is 'safe' and there are existing connections
-#
-# Since: 2.12
-##
-{ 'command': 'nbd-server-remove',
-  'data': {'name': 'str', '*mode': 'NbdServerRemoveMode'} }
-
-##
-# @nbd-server-stop:
-#
-# Stop QEMU's embedded NBD server, and unregister all devices previously
-# added via @nbd-server-add.
-#
-# Since: 1.3.0
-##
-{ 'command': 'nbd-server-stop' }
-
-##
-# @BlockExportType:
-#
-# An enumeration of block export types
-#
-# @nbd: NBD export
-#
-# Since: 4.2
-##
-{ 'enum': 'BlockExportType',
-  'data': [ 'nbd' ] }
-
-##
-# @BlockExport:
-#
-# Describes a block export, i.e. how single node should be exported on an
-# external interface.
-#
-# Since: 4.2
-##
-{ 'union': 'BlockExport',
-  'base': { 'type': 'BlockExportType' },
-  'discriminator': 'type',
-  'data': {
-      'nbd': 'BlockExportNbd'
-   } }
-
-##
 # @QuorumOpType:
 #
 # An enumeration of the quorum operation types
@@ -5437,7 +5349,7 @@
 #
 # Notes: In transaction, if @name is empty, or any snapshot matching @name
 #        exists, the operation will fail. Only some image formats support it,
-#        for example, qcow2, rbd, and sheepdog.
+#        for example, qcow2, and rbd.
 #
 # Since: 1.7
 ##
@@ -5512,7 +5424,8 @@
 #                    "date-sec": 1000012,
 #                    "date-nsec": 10,
 #                    "vm-clock-sec": 100,
-#                    "vm-clock-nsec": 20
+#                    "vm-clock-nsec": 20,
+#                    "icount": 220414
 #      }
 #    }
 #

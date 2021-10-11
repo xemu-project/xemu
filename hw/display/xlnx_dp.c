@@ -1253,11 +1253,19 @@ static void xlnx_dp_init(Object *obj)
     object_property_add_child(OBJECT(s), "dpcd", OBJECT(s->dpcd));
 
     s->edid = I2CDDC(qdev_new("i2c-ddc"));
-    i2c_set_slave_address(I2C_SLAVE(s->edid), 0x50);
+    i2c_slave_set_address(I2C_SLAVE(s->edid), 0x50);
     object_property_add_child(OBJECT(s), "edid", OBJECT(s->edid));
 
     fifo8_create(&s->rx_fifo, 16);
     fifo8_create(&s->tx_fifo, 16);
+}
+
+static void xlnx_dp_finalize(Object *obj)
+{
+    XlnxDPState *s = XLNX_DP(obj);
+
+    fifo8_destroy(&s->tx_fifo);
+    fifo8_destroy(&s->rx_fifo);
 }
 
 static void xlnx_dp_realize(DeviceState *dev, Error **errp)
@@ -1359,6 +1367,7 @@ static const TypeInfo xlnx_dp_info = {
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(XlnxDPState),
     .instance_init = xlnx_dp_init,
+    .instance_finalize = xlnx_dp_finalize,
     .class_init    = xlnx_dp_class_init,
 };
 

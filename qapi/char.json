@@ -24,7 +24,7 @@
 # Notes: @filename is encoded using the QEMU command line character device
 #        encoding.  See the QEMU man page for details.
 #
-# Since: 0.14.0
+# Since: 0.14
 ##
 { 'struct': 'ChardevInfo',
   'data': { 'label': 'str',
@@ -38,7 +38,7 @@
 #
 # Returns: a list of @ChardevInfo
 #
-# Since: 0.14.0
+# Since: 0.14
 #
 # Example:
 #
@@ -47,12 +47,12 @@
 #       "return": [
 #          {
 #             "label": "charchannel0",
-#             "filename": "unix:/var/lib/libvirt/qemu/seabios.rhel6.agent,server",
+#             "filename": "unix:/var/lib/libvirt/qemu/seabios.rhel6.agent,server=on",
 #             "frontend-open": false
 #          },
 #          {
 #             "label": "charmonitor",
-#             "filename": "unix:/var/lib/libvirt/qemu/seabios.rhel6.monitor,server",
+#             "filename": "unix:/var/lib/libvirt/qemu/seabios.rhel6.monitor,server=on",
 #             "frontend-open": true
 #          },
 #          {
@@ -321,8 +321,7 @@
 # Configuration info for stdio chardevs.
 #
 # @signal: Allow signals (such as SIGINT triggered by ^C)
-#          be delivered to qemu.  Default: true in -nographic mode,
-#          false otherwise.
+#          be delivered to qemu.  Default: true.
 #
 # Since: 1.5
 ##
@@ -392,11 +391,28 @@
   'base': 'ChardevCommon' }
 
 ##
+# @ChardevQemuVDAgent:
+#
+# Configuration info for qemu vdagent implementation.
+#
+# @mouse: enable/disable mouse, default is enabled.
+# @clipboard: enable/disable clipboard, default is disabled.
+#
+# Since: 6.1
+#
+##
+{ 'struct': 'ChardevQemuVDAgent',
+  'data': { '*mouse': 'bool',
+            '*clipboard': 'bool' },
+  'base': 'ChardevCommon',
+  'if': 'defined(CONFIG_SPICE_PROTOCOL)' }
+
+##
 # @ChardevBackend:
 #
 # Configuration info for the new chardev backend.
 #
-# Since: 1.4 (testdev since 2.2, wctablet since 2.9)
+# Since: 1.4 (testdev since 2.2, wctablet since 2.9, vdagent since 6.1)
 ##
 { 'union': 'ChardevBackend',
   'data': { 'file': 'ChardevFile',
@@ -418,6 +434,8 @@
                           'if': 'defined(CONFIG_SPICE)' },
             'spiceport': { 'type': 'ChardevSpicePort',
                            'if': 'defined(CONFIG_SPICE)' },
+            'qemu-vdagent': { 'type': 'ChardevQemuVDAgent',
+                              'if': 'defined(CONFIG_SPICE_PROTOCOL)' },
             'vc': 'ChardevVC',
             'ringbuf': 'ChardevRingbuf',
             # next one is just for compatibility
@@ -561,6 +579,8 @@
 # @id: device identifier of the virtio-serial port
 #
 # @open: true if the guest has opened the virtio-serial port
+#
+# Note: This event is rate-limited.
 #
 # Since: 2.1
 #

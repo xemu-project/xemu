@@ -9,7 +9,6 @@ enum {
     QEMU_ARCH_CRIS = (1 << 2),
     QEMU_ARCH_I386 = (1 << 3),
     QEMU_ARCH_M68K = (1 << 4),
-    QEMU_ARCH_LM32 = (1 << 5),
     QEMU_ARCH_MICROBLAZE = (1 << 6),
     QEMU_ARCH_MIPS = (1 << 7),
     QEMU_ARCH_PPC = (1 << 8),
@@ -18,8 +17,6 @@ enum {
     QEMU_ARCH_SPARC = (1 << 11),
     QEMU_ARCH_XTENSA = (1 << 12),
     QEMU_ARCH_OPENRISC = (1 << 13),
-    QEMU_ARCH_UNICORE32 = (1 << 14),
-    QEMU_ARCH_MOXIE = (1 << 15),
     QEMU_ARCH_TRICORE = (1 << 16),
     QEMU_ARCH_NIOS2 = (1 << 17),
     QEMU_ARCH_HPPA = (1 << 18),
@@ -34,5 +31,14 @@ extern const uint32_t arch_type;
 
 int kvm_available(void);
 int xen_available(void);
+
+/* default virtio transport per architecture */
+#define QEMU_ARCH_VIRTIO_PCI (QEMU_ARCH_ALPHA | QEMU_ARCH_ARM | \
+                              QEMU_ARCH_HPPA | QEMU_ARCH_I386 | \
+                              QEMU_ARCH_MIPS | QEMU_ARCH_PPC |  \
+                              QEMU_ARCH_RISCV | QEMU_ARCH_SH4 | \
+                              QEMU_ARCH_SPARC | QEMU_ARCH_XTENSA)
+#define QEMU_ARCH_VIRTIO_CCW (QEMU_ARCH_S390X)
+#define QEMU_ARCH_VIRTIO_MMIO (QEMU_ARCH_M68K)
 
 #endif

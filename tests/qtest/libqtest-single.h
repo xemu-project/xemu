@@ -11,7 +11,7 @@
 #ifndef LIBQTEST_SINGLE_H
 #define LIBQTEST_SINGLE_H
 
-#include "libqtest.h"
+#include "libqos/libqtest.h"
 
 QTestState *global_qtest __attribute__((common, weak));
 
@@ -47,7 +47,7 @@ static inline void qtest_end(void)
 /**
  * qmp:
  * @fmt...: QMP message to send to qemu, formatted like
- * qobject_from_jsonf_nofail().  See parse_escape() for what's
+ * qobject_from_jsonf_nofail().  See parse_interpolation() for what's
  * supported after '%'.
  *
  * Sends a QMP message to QEMU and returns the response.
