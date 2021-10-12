@@ -2796,7 +2796,9 @@ DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_MAT)
     }
 
     slot -= 16;
-    pg->bump_env_matrix[slot / 16][slot % 4] = *(float*)&parameter;
+    const int swizzle[4] = { NV_PGRAPH_BUMPMAT00, NV_PGRAPH_BUMPMAT01,
+                             NV_PGRAPH_BUMPMAT11, NV_PGRAPH_BUMPMAT10 };
+    pg->regs[swizzle[slot % 4] + slot / 4] = parameter;
 }
 
 DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_SCALE)
@@ -3625,7 +3627,12 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
         if (i > 0) {
             loc = binding->bump_mat_loc[i];
             if (loc != -1) {
-                glUniformMatrix2fv(loc, 1, GL_FALSE, pg->bump_env_matrix[i - 1]);
+                float m[4];
+                m[0] = *(float*)&pg->regs[NV_PGRAPH_BUMPMAT00 + 4 * (i - 1)];
+                m[1] = *(float*)&pg->regs[NV_PGRAPH_BUMPMAT01 + 4 * (i - 1)];
+                m[2] = *(float*)&pg->regs[NV_PGRAPH_BUMPMAT10 + 4 * (i - 1)];
+                m[3] = *(float*)&pg->regs[NV_PGRAPH_BUMPMAT11 + 4 * (i - 1)];
+                glUniformMatrix2fv(loc, 1, GL_FALSE, m);
             }
             loc = binding->bump_scale_loc[i];
             if (loc != -1) {

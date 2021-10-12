@@ -377,6 +377,10 @@
 #define NV_PGRAPH_BORDERCOLOR1                           0x00001810
 #define NV_PGRAPH_BORDERCOLOR2                           0x00001814
 #define NV_PGRAPH_BORDERCOLOR3                           0x00001818
+#define NV_PGRAPH_BUMPMAT00                              0x0000181C
+#define NV_PGRAPH_BUMPMAT01                              0x00001828
+#define NV_PGRAPH_BUMPMAT10                              0x00001834
+#define NV_PGRAPH_BUMPMAT11                              0x00001840
 #define NV_PGRAPH_BUMPOFFSET1                            0x0000184C
 #define NV_PGRAPH_BUMPSCALE1                             0x00001858
 #define NV_PGRAPH_CLEARRECTX                             0x00001864
