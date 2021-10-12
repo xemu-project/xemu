@@ -2790,7 +2790,11 @@ DEF_METHOD(NV097, SET_TEXTURE_BORDER_COLOR)
 DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_MAT)
 {
     int slot = (method - NV097_SET_TEXTURE_SET_BUMP_ENV_MAT) / 4;
-    assert((slot / 16) > 0);
+    if (slot < 16) {
+        /* discard */
+        return;
+    }
+
     slot -= 16;
     pg->bump_env_matrix[slot / 16][slot % 4] = *(float*)&parameter;
 }
@@ -2798,7 +2802,11 @@ DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_MAT)
 DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_SCALE)
 {
     int slot = (method - NV097_SET_TEXTURE_SET_BUMP_ENV_SCALE) / 64;
-    assert(slot > 0);
+    if (slot == 0) {
+        /* discard */
+        return;
+    }
+
     slot--;
     pg->regs[NV_PGRAPH_BUMPSCALE1 + slot * 4] = parameter;
 }
@@ -2806,7 +2814,11 @@ DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_SCALE)
 DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_OFFSET)
 {
     int slot = (method - NV097_SET_TEXTURE_SET_BUMP_ENV_OFFSET) / 64;
-    assert(slot > 0);
+    if (slot == 0) {
+        /* discard */
+        return;
+    }
+
     slot--;
     pg->regs[NV_PGRAPH_BUMPOFFSET1 + slot * 4] = parameter;
 }
