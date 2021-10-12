@@ -177,12 +177,13 @@ jobs:
           dylibbundler \
           pkg-config \
           ninja
-    - name: Initialize compiler cache
+    - name: Initialize compiler, library cache
       id: cache
-      # FIXME: actions/cache@v2 broken on macOS?
-      uses: actions/cache@v1
+      uses: actions/cache@v2.1.6
       with:
-        path: /tmp/xemu-ccache
+        path: |
+          /tmp/xemu-ccache
+          macos-pkgs
         key: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
     - name: Compile
