@@ -1489,9 +1489,8 @@ DEF_METHOD(NV097, SET_BLEND_FUNC_SFACTOR)
     case NV097_SET_BLEND_FUNC_SFACTOR_V_ONE_MINUS_CONSTANT_ALPHA:
         factor = NV_PGRAPH_BLEND_SFACTOR_ONE_MINUS_CONSTANT_ALPHA; break;
     default:
-        fprintf(stderr, "Unknown blend source factor: 0x%x\n", parameter);
-        assert(false);
-        break;
+        NV2A_DPRINTF("Unknown blend source factor: 0x%08x\n", parameter);
+        return; /* discard */
     }
     SET_MASK(pg->regs[NV_PGRAPH_BLEND], NV_PGRAPH_BLEND_SFACTOR, factor);
 }
@@ -1531,9 +1530,8 @@ DEF_METHOD(NV097, SET_BLEND_FUNC_DFACTOR)
     case NV097_SET_BLEND_FUNC_DFACTOR_V_ONE_MINUS_CONSTANT_ALPHA:
         factor = NV_PGRAPH_BLEND_DFACTOR_ONE_MINUS_CONSTANT_ALPHA; break;
     default:
-        fprintf(stderr, "Unknown blend destination factor: 0x%x\n", parameter);
-        assert(false);
-        break;
+        NV2A_DPRINTF("Unknown blend destination factor: 0x%08x\n", parameter);
+        return; /* discard */
     }
     SET_MASK(pg->regs[NV_PGRAPH_BLEND], NV_PGRAPH_BLEND_DFACTOR, factor);
 }
