@@ -1560,8 +1560,8 @@ DEF_METHOD(NV097, SET_BLEND_EQUATION)
     case NV097_SET_BLEND_EQUATION_V_FUNC_ADD_SIGNED:
         equation = 6; break;
     default:
-        assert(false);
-        break;
+        NV2A_DPRINTF("Unknown blend equation: 0x%08x\n", parameter);
+        return; /* discard */
     }
     SET_MASK(pg->regs[NV_PGRAPH_BLEND], NV_PGRAPH_BLEND_EQN, equation);
 }
