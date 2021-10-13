@@ -45,7 +45,7 @@ package_macos() {
     dylibbundler -cd -of -b -x dist/xemu.app/Contents/MacOS/xemu \
         -d ${lib_path}/ \
         -p "@executable_path/${lib_rpath}/" \
-        -s ${PWD}/macos-libs/${target_arch}/opt/local/lib/openssl-1.0/ \
+        -s ${PWD}/macos-libs/${target_arch}/opt/local/libexec/openssl11/lib/ \
         -s ${PWD}/macos-libs/${target_arch}/opt/local/lib/
 
     # Fixup some paths dylibbundler missed
@@ -228,7 +228,7 @@ case "$platform" in # Adjust compilation options based on platform
         fi
         sys_ldflags='-headerpad_max_install_names'
         export PKG_CONFIG_PATH="${lib_prefix}/lib/pkgconfig"
-        export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:${lib_prefix}/lib/openssl-1.0/pkgconfig/"
+        export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:${lib_prefix}/libexec/openssl11/lib/pkgconfig"
         opts="$opts --disable-cocoa --cross-prefix="
         postbuild='package_macos'
         ;;
