@@ -422,6 +422,28 @@ static bool machine_get_short_animation(Object *obj, Error **errp)
     return ms->short_animation;
 }
 
+static char *machine_get_smc_version(Object *obj, Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+
+    return g_strdup(ms->smc_version);
+}
+
+static void machine_set_smc_version(Object *obj, const char *value,
+                               Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+
+    if (strlen(value) != 3) {
+        error_setg(errp, "-machine smc-version=%s: unsupported option", value);
+        xbox_smc_append_smc_version_hint(errp);
+        return;
+    }
+
+    g_free(ms->smc_version);
+    ms->smc_version = g_strdup(value);
+}
+
 static inline void xbox_machine_initfn(Object *obj)
 {
     object_property_add_str(obj, "bootrom", machine_get_bootrom,
@@ -441,6 +463,12 @@ static inline void xbox_machine_initfn(Object *obj)
     object_property_set_description(obj, "short-animation",
                                     "Skip Xbox boot animation");
     object_property_set_bool(obj, "short-animation", false, &error_fatal);
+
+    object_property_add_str(obj, "smc-version", machine_get_smc_version,
+                            machine_set_smc_version);
+    object_property_set_description(obj, "smc-version",
+                                    "Set the SMC version number, default is P01");
+    object_property_set_str(obj, "smc-version", "P01", &error_fatal);
 
 }
 
