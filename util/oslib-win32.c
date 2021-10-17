@@ -294,17 +294,28 @@ char *
 qemu_get_local_state_pathname(const char *relative_pathname)
 {
     HRESULT result;
-    char base_path[MAX_PATH+1] = "";
+    char *ret;
+    wchar_t wbase_path[MAX_PATH];
+    char *base_path;
 
-    result = SHGetFolderPath(NULL, CSIDL_COMMON_APPDATA, NULL,
-                             /* SHGFP_TYPE_CURRENT */ 0, base_path);
+    result = SHGetFolderPathW(NULL, CSIDL_COMMON_APPDATA, NULL,
+                              /* SHGFP_TYPE_CURRENT */ 0, wbase_path);
     if (result != S_OK) {
         /* misconfigured environment */
         g_critical("CSIDL_COMMON_APPDATA unavailable: %ld", (long)result);
         abort();
     }
-    return g_strdup_printf("%s" G_DIR_SEPARATOR_S "%s", base_path,
+    base_path = g_utf16_to_utf8(wbase_path, -1, NULL, NULL, NULL);
+    if (!base_path) {
+        g_critical("Failed to convert local_state_pathname to UTF-8");
+        abort();
+    }
+
+    ret = g_strdup_printf("%s" G_DIR_SEPARATOR_S "%s", base_path,
                            relative_pathname);
+    g_free(base_path);
+
+    return ret;
 }
 
 void qemu_set_tty_echo(int fd, bool echo)
@@ -331,27 +342,27 @@ static const char *exec_dir;
 void qemu_init_exec_dir(const char *argv0)
 {
 
-    char *p;
-    char buf[MAX_PATH];
+    wchar_t *p;
+    wchar_t buf[MAX_PATH];
     DWORD len;
 
     if (exec_dir) {
         return;
     }
 
-    len = GetModuleFileName(NULL, buf, sizeof(buf) - 1);
+    len = GetModuleFileNameW(NULL, buf, G_N_ELEMENTS(buf) - 1);
     if (len == 0) {
         return;
     }
 
     buf[len] = 0;
     p = buf + len - 1;
-    while (p != buf && *p != '\\') {
+    while (p != buf && *p != L'\\') {
         p--;
     }
     *p = 0;
-    if (access(buf, R_OK) == 0) {
-        exec_dir = g_strdup(buf);
+    if (_waccess(buf, R_OK) == 0) {
+        exec_dir = g_utf16_to_utf8(buf, -1, NULL, NULL, NULL);
     } else {
         exec_dir = CONFIG_BINDIR;
     }
@@ -813,11 +824,19 @@ bool qemu_write_pidfile(const char *filename, Error **errp)
     HANDLE file;
     OVERLAPPED overlap;
     BOOL ret;
+    wchar_t *wfilename;
     memset(&overlap, 0, sizeof(overlap));
 
-    file = CreateFile(filename, GENERIC_WRITE, FILE_SHARE_READ, NULL,
+    wfilename = g_utf8_to_utf16(filename, -1, NULL, NULL, NULL);
+    if (!wfilename) {
+        error_setg(errp, "Failed to convert PID file's filename");
+        return false;     
+    }
+
+    file = CreateFileW(wfilename, GENERIC_WRITE, FILE_SHARE_READ, NULL,
                       OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
+    g_free(wfilename);
     if (file == INVALID_HANDLE_VALUE) {
         error_setg(errp, "Failed to create PID file");
         return false;
@@ -855,4 +874,45 @@ size_t qemu_get_host_physmem(void)
         return statex.ullTotalPhys;
     }
     return 0;
+}
+
+FILE *qemu_fopen(const char *filename, const char *mode)
+{
+    wchar_t *wfilename;
+    wchar_t *wmode = NULL;
+    FILE *file = NULL;
+
+    wfilename = g_utf8_to_utf16(filename, -1, NULL, NULL, NULL);
+    if (!wfilename) {
+        goto done;
+    }
+    
+    wmode = g_utf8_to_utf16(mode, -1, NULL, NULL, NULL);
+    if (!wmode) {
+        goto done;
+    }
+
+    file = _wfopen(wfilename, wmode);
+
+done:
+    g_free(wfilename);
+    g_free(wmode);
+    return file;
+}
+
+int qemu_access(const char *pathname, int mode)
+{
+    wchar_t *wpathname;
+    int ret = -1;
+
+    wpathname = g_utf8_to_utf16(pathname, -1, NULL, NULL, NULL);
+    if (!wpathname) {
+        goto done;
+    }
+
+    ret = _waccess(wpathname, mode);
+
+done:
+    g_free(wpathname);
+    return ret;
 }

@@ -593,6 +593,21 @@ int qemu_lock_fd_test(int fd, int64_t start, int64_t len, bool exclusive);
 bool qemu_has_ofd_lock(void);
 #endif
 
+#ifdef _WIN32
+FILE *qemu_fopen(const char *filename, const char *mode);
+int qemu_access(const char *pathname, int mode);
+#else
+static inline FILE *qemu_fopen(const char *filename, const char *mode)
+{
+    return fopen(filename, mode);
+}
+
+static inline int qemu_access(const char *pathname, int mode)
+{
+    return access(pathname, mode);
+}
+#endif
+
 #if defined(__HAIKU__) && defined(__i386__)
 #define FMT_pid "%ld"
 #elif defined(WIN64)
