@@ -134,11 +134,21 @@ static void ohci_pci_class_init(ObjectClass *klass, void *data)
 
     k->realize = usb_ohci_realize_pci;
     k->exit = usb_ohci_exit;
+#ifdef XBOX
+    k->vendor_id = PCI_VENDOR_ID_NVIDIA;
+    k->device_id = PCI_DEVICE_ID_NVIDIA_NFORCE_USB;
+    k->revision  = 0xB1;
+#else
     k->vendor_id = PCI_VENDOR_ID_APPLE;
     k->device_id = PCI_DEVICE_ID_APPLE_IPID_USB;
+#endif
     k->class_id = PCI_CLASS_SERIAL_USB;
     set_bit(DEVICE_CATEGORY_USB, dc->categories);
+#ifdef XBOX
+    dc->desc = "nForce USB Controller";
+#else
     dc->desc = "Apple USB Controller";
+#endif
     device_class_set_props(dc, ohci_pci_properties);
     dc->hotpluggable = false;
     dc->vmsd = &vmstate_ohci;

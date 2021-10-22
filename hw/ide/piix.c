@@ -228,8 +228,14 @@ static void piix3_ide_class_init(ObjectClass *klass, void *data)
     dc->reset = piix_ide_reset;
     k->realize = pci_piix_ide_realize;
     k->exit = pci_piix_ide_exitfn;
+#ifdef XBOX
+    k->vendor_id = PCI_VENDOR_ID_NVIDIA;
+    k->device_id = PCI_DEVICE_ID_NVIDIA_NFORCE_IDE;
+    k->revision = 0xB1;
+#else
     k->vendor_id = PCI_VENDOR_ID_INTEL;
     k->device_id = PCI_DEVICE_ID_INTEL_82371SB_1;
+#endif
     k->class_id = PCI_CLASS_STORAGE_IDE;
     set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
     dc->hotpluggable = false;
