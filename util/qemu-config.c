@@ -452,7 +452,7 @@ int qemu_config_parse(FILE *fp, QemuOptsList **lists, const char *fname, Error *
 
 int qemu_read_config_file(const char *filename, QEMUConfigCB *cb, Error **errp)
 {
-    FILE *f = fopen(filename, "r");
+    FILE *f = qemu_fopen(filename, "r");
     int ret;
 
     if (f == NULL) {

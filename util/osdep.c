@@ -289,13 +289,29 @@ int qemu_lock_fd_test(int fd, int64_t start, int64_t len, bool exclusive)
 }
 #endif
 
+static int qemu_open_cloexec_internal(const char *name, int flags, mode_t mode)
+{
+    int ret;
+#ifdef _WIN32
+    wchar_t *wname = g_utf8_to_utf16(name, -1, NULL, NULL, NULL);
+    if (!wname) {
+        return -1;
+    }
+    ret = _wopen(wname, flags, mode);
+    g_free(wname);
+#else
+    ret = open(name, flags, mode);
+#endif
+    return ret;
+}
+
 static int qemu_open_cloexec(const char *name, int flags, mode_t mode)
 {
     int ret;
 #ifdef O_CLOEXEC
-    ret = open(name, flags | O_CLOEXEC, mode);
+    ret = qemu_open_cloexec_internal(name, flags | O_CLOEXEC, mode);
 #else
-    ret = open(name, flags, mode);
+    ret = qemu_open_cloexec_internal(name, flags, mode);
     if (ret >= 0) {
         qemu_set_cloexec(ret);
     }

@@ -18,6 +18,7 @@ https://github.com/benhoyt/inih
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
+#include "qemu/osdep.h"
 
 #include "ini.h"
 
@@ -238,7 +239,7 @@ int ini_parse(const char* filename, ini_handler handler, void* user)
     FILE* file;
     int error;
 
-    file = fopen(filename, "r");
+    file = qemu_fopen(filename, "r");
     if (!file)
         return -1;
     error = ini_parse_file(file, handler, user);

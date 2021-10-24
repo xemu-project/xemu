@@ -68,7 +68,7 @@ static void smbus_storage_realize(DeviceState *dev, Error **errp)
             return;
         }
 
-        int fd = open(s->file, O_RDONLY | O_BINARY);
+        int fd = qemu_open(s->file, O_RDONLY | O_BINARY, NULL);
         if (fd < 0) {
             error_setg(errp, "%s: file '%s' could not be opened\n",
                 __func__, s->file);
@@ -109,7 +109,7 @@ static int smbus_storage_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
     }
 
     if (changed && s->file && s->persist) {
-        int fd = open(s->file, O_WRONLY | O_BINARY);
+        int fd = qemu_open(s->file, O_WRONLY | O_BINARY, NULL);
         if (fd < 0) {
             DPRINTF("%s: file '%s' could not be opened\n", __func__, s->file);
             return -1;

@@ -87,7 +87,7 @@ static void xbox_flash_init(MachineState *ms, MemoryRegion *rom_memory)
     if (!failed_to_load_bios && (filename != NULL)) {
         /* Read BIOS ROM into memory */
         failed_to_load_bios = 1;
-        int fd = open(filename, O_RDONLY | O_BINARY);
+        int fd = qemu_open(filename, O_RDONLY | O_BINARY, NULL);
         if (fd >= 0) {
             int rc = read(fd, bios_data, bios_size);
             if (rc == bios_size) {
@@ -156,7 +156,7 @@ static void xbox_flash_init(MachineState *ms, MemoryRegion *rom_memory)
         }
 
         /* Read in MCPX ROM over last 512 bytes of BIOS data */
-        int fd = open(filename, O_RDONLY | O_BINARY);
+        int fd = qemu_open(filename, O_RDONLY | O_BINARY, NULL);
         assert(fd >= 0);
         int rc = read(fd, bios_data + bios_size - bootrom_size, bootrom_size);
         assert(rc == bootrom_size);

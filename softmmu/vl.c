@@ -2436,7 +2436,7 @@ static void create_default_memdev(MachineState *ms, const char *path)
 /* Return 1 if file fails to open */
 static int xemu_check_file(const char *path)
 {
-    FILE *fd = fopen(path, "rb");
+    FILE *fd = qemu_fopen(path, "rb");
     if (fd == NULL) {
         return 1;
     }
@@ -3768,7 +3768,7 @@ void qemu_init(int argc, char **argv, char **envp)
                     if (strcmp(optarg, "-") == 0) {
                         fp = stdout;
                     } else {
-                        fp = fopen(optarg, "w");
+                        fp = qemu_fopen(optarg, "w");
                         if (fp == NULL) {
                             error_report("open %s: %s", optarg,
                                          strerror(errno));
@@ -3856,7 +3856,7 @@ void qemu_init(int argc, char **argv, char **envp)
                                  "option may be given");
                     exit(1);
                 }
-                vmstate_dump_file = fopen(optarg, "w");
+                vmstate_dump_file = qemu_fopen(optarg, "w");
                 if (vmstate_dump_file == NULL) {
                     error_report("open %s: %s", optarg, strerror(errno));
                     exit(1);
