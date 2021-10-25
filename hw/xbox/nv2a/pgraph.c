@@ -20,7 +20,7 @@
  */
 
 #include "nv2a_int.h"
-#include "xxHash/xxh3.h"
+#include "util/xxHash/xxh3.h"
 #include "s3tc.h"
 #include "ui/xemu-settings.h"
 
