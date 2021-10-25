@@ -47,6 +47,7 @@ util_ss.add(when: 'CONFIG_POSIX', if_true: files('drm.c'))
 util_ss.add(files('guest-random.c'))
 util_ss.add(files('yank.c'))
 util_ss.add(when: 'CONFIG_WIN32', if_true: files('miniz/miniz.c'))
+util_ss.add(files('fast-hash.c'))
 
 if have_user
   util_ss.add(files('selfmap.c'))

@@ -20,9 +20,9 @@
  */
 
 #include "nv2a_int.h"
-#include "util/xxHash/xxh3.h"
 #include "s3tc.h"
 #include "ui/xemu-settings.h"
+#include "qemu/fast-hash.h"
 
 #define DBG_SURFACES 0
 #define DBG_SURFACE_SYNC 0
@@ -433,7 +433,6 @@ static gboolean shader_equal(gconstpointer a, gconstpointer b);
 static unsigned int kelvin_map_stencil_op(uint32_t parameter);
 static unsigned int kelvin_map_polygon_mode(uint32_t parameter);
 static unsigned int kelvin_map_texgen(uint32_t parameter, unsigned int channel);
-static uint64_t fast_hash(const uint8_t *data, size_t len);
 static void pgraph_reload_surface_scale_factor(NV2AState *d);
 
 static uint32_t pgraph_rdi_read(PGRAPHState *pg,
@@ -6824,9 +6823,4 @@ static unsigned int kelvin_map_texgen(uint32_t parameter, unsigned int channel)
         break;
     }
     return texgen;
-}
-
-static uint64_t fast_hash(const uint8_t *data, size_t len)
-{
-    return XXH3_64bits(data, len);
 }
