@@ -17,6 +17,7 @@
 #include "exec/translator.h"
 #include "exec/plugin-gen.h"
 #include "sysemu/replay.h"
+#include "accel/tcg/tb-hash.h"
 
 /* Pairs with tcg_clear_temp_count.
    To be called by #TranslatorOps.{translate_insn,tb_stop} if
@@ -125,6 +126,7 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
     /* The disas_log hook may use these values rather than recompute.  */
     tb->size = db->pc_next - db->pc_first;
     tb->icount = db->num_insns;
+    tb->ihash = tb_code_hash_func(cpu->env_ptr, tb->pc, tb->size);
 
 #ifdef DEBUG_DISAS
     if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)

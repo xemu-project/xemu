@@ -23,6 +23,7 @@
 #include "exec/cpu-defs.h"
 #include "exec/exec-all.h"
 #include "qemu/xxhash.h"
+#include "qemu/fast-hash.h"
 
 #ifdef CONFIG_SOFTMMU
 
@@ -64,6 +65,15 @@ uint32_t tb_hash_func(tb_page_addr_t phys_pc, target_ulong pc, uint32_t flags,
                       uint32_t cf_mask, uint32_t trace_vcpu_dstate)
 {
     return qemu_xxhash7(phys_pc, pc, flags, cf_mask, trace_vcpu_dstate);
+}
+
+static inline
+uint64_t tb_code_hash_func(CPUArchState *env, target_ulong pc, size_t size)
+{
+    assert(size < 4096);
+    uint8_t code[size];
+    cpu_ld_code(env, pc, size, code); /* Speed, error handling */
+    return fast_hash(code, size);
 }
 
 #endif

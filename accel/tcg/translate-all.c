@@ -899,11 +899,18 @@ static bool tb_cmp(const void *ap, const void *bp)
         a->page_addr[1] == b->page_addr[1];
 }
 
+static bool inv_tb_cmp(const void *ap, const void *bp)
+{
+    const TranslationBlock *a = ap, *b = bp;
+    return tb_cmp(ap, bp) && a->ihash == b->ihash;
+}
+
 void tb_htable_init(void)
 {
     unsigned int mode = QHT_MODE_AUTO_RESIZE;
 
     qht_init(&tb_ctx.htable, tb_cmp, CODE_GEN_HTABLE_SIZE, mode);
+    qht_init(&tb_ctx.inv_htable, inv_tb_cmp, CODE_GEN_HTABLE_SIZE, mode);
 }
 
 /* call with @p->lock held */
@@ -989,6 +996,8 @@ static void do_tb_flush(CPUState *cpu, run_on_cpu_data tb_flush_count)
     }
 
     qht_reset_size(&tb_ctx.htable, CODE_GEN_HTABLE_SIZE);
+    qht_reset_size(&tb_ctx.inv_htable, CODE_GEN_HTABLE_SIZE);
+
     page_flush_tb();
 
     tcg_region_reset_all();
@@ -1176,6 +1185,7 @@ static void do_tb_phys_invalidate(TranslationBlock *tb, bool rm_from_page_list)
     uint32_t h;
     tb_page_addr_t phys_pc;
     uint32_t orig_cflags = tb_cflags(tb);
+    void *existing = NULL;
 
     assert_memory_lock();
 
@@ -1191,6 +1201,9 @@ static void do_tb_phys_invalidate(TranslationBlock *tb, bool rm_from_page_list)
     if (!qht_remove(&tb_ctx.htable, tb, h)) {
         return;
     }
+
+    qht_insert(&tb_ctx.inv_htable, tb, h, &existing);
+    g_assert(existing == NULL);
 
     /* remove the TB from the page list */
     if (rm_from_page_list) {
@@ -1432,6 +1445,18 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
     }
     QEMU_BUILD_BUG_ON(CF_COUNT_MASK + 1 != TCG_MAX_INSNS);
 
+    tb = inv_tb_htable_lookup(cpu, pc, cs_base, flags, cflags);
+    if (tb) {
+        qemu_spin_lock(&tb->jmp_lock);
+        qatomic_set(&tb->cflags, tb->cflags & ~CF_INVALID);
+        qemu_spin_unlock(&tb->jmp_lock);
+        uint32_t h = tb_hash_func(phys_pc, tb->pc, tb->flags, tb_cflags(tb),
+                                  tb->trace_vcpu_dstate);
+        bool removed = qht_remove(&tb_ctx.inv_htable, tb, h);
+        g_assert(removed);
+        goto recycle_tb;
+    }
+
  buffer_overflow:
     tb = tcg_tb_alloc(tcg_ctx);
     if (unlikely(!tb)) {
@@ -1622,6 +1647,8 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
 
     /* init jump list */
     qemu_spin_init(&tb->jmp_lock);
+
+recycle_tb:
     tb->jmp_list_head = (uintptr_t)NULL;
     tb->jmp_list_next[0] = (uintptr_t)NULL;
     tb->jmp_list_next[1] = (uintptr_t)NULL;
