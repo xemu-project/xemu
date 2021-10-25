@@ -206,7 +206,7 @@ Lib('inih', 'https://github.com/benhoyt/inih',
 Lib('xxHash', 'https://github.com/Cyan4973/xxHash.git',
 	bsd, 'https://raw.githubusercontent.com/Cyan4973/xxHash/dev/LICENSE', license_lines=(1,26),
 	ships_static=all_platforms,
-	submodule=Submodule('hw/xbox/nv2a/xxHash')
+	submodule=Submodule('util/xxHash')
 	),
 
 #

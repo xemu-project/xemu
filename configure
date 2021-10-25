@@ -261,7 +261,7 @@ else
     git_submodules_action="ignore"
 fi
 
-git_submodules="ui/keycodemapdb ui/imgui ui/implot hw/xbox/nv2a/xxHash"
+git_submodules="ui/keycodemapdb ui/imgui ui/implot util/xxHash"
 git="git"
 
 # Don't accept a target_list environment variable.
