@@ -491,7 +491,7 @@ static bool tb_lookup_cmp(const void *p, const void *d)
         tb->cs_base == desc->cs_base &&
         tb->flags == desc->flags &&
         tb->trace_vcpu_dstate == desc->trace_vcpu_dstate &&
-        tb_cflags(tb) == desc->cflags) {
+        (tb_cflags(tb) & ~CF_INVALID) == desc->cflags) {
         /* check next page if needed */
         if (tb->page_addr[1] == -1) {
             return true;
@@ -509,9 +509,19 @@ static bool tb_lookup_cmp(const void *p, const void *d)
     return false;
 }
 
-TranslationBlock *tb_htable_lookup(CPUState *cpu, target_ulong pc,
-                                   target_ulong cs_base, uint32_t flags,
-                                   uint32_t cflags)
+static bool inv_tb_lookup_cmp(const void *p, const void *d)
+{
+    const TranslationBlock *tb = p;
+    const struct tb_desc *desc = d;
+
+    return tb_lookup_cmp(p, d) &&
+           tb->ihash == tb_code_hash_func(desc->env, tb->pc, tb->size);
+}
+
+static TranslationBlock *
+tb_htable_lookup_common(CPUState *cpu, target_ulong pc, target_ulong cs_base,
+                        uint32_t flags, uint32_t cflags, const struct qht *ht,
+                        qht_lookup_func_t func)
 {
     tb_page_addr_t phys_pc;
     struct tb_desc desc;
@@ -529,7 +539,23 @@ TranslationBlock *tb_htable_lookup(CPUState *cpu, target_ulong pc,
     }
     desc.phys_page1 = phys_pc & TARGET_PAGE_MASK;
     h = tb_hash_func(phys_pc, pc, flags, cflags, *cpu->trace_dstate);
-    return qht_lookup_custom(&tb_ctx.htable, &desc, h, tb_lookup_cmp);
+    return qht_lookup_custom(ht, &desc, h, func);
+}
+
+TranslationBlock *tb_htable_lookup(CPUState *cpu, target_ulong pc,
+                                   target_ulong cs_base, uint32_t flags,
+                                   uint32_t cflags)
+{
+    return tb_htable_lookup_common(cpu, pc, cs_base, flags, cflags,
+                                   &tb_ctx.htable, tb_lookup_cmp);
+}
+
+TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, target_ulong pc,
+                                       target_ulong cs_base, uint32_t flags,
+                                       uint32_t cflags)
+{
+    return tb_htable_lookup_common(cpu, pc, cs_base, flags, cflags,
+                                   &tb_ctx.inv_htable, inv_tb_lookup_cmp);
 }
 
 void tb_set_jmp_target(TranslationBlock *tb, int n, uintptr_t addr)

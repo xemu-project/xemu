@@ -428,6 +428,7 @@ uint32_t cpu_ldub_code(CPUArchState *env, abi_ptr addr);
 uint32_t cpu_lduw_code(CPUArchState *env, abi_ptr addr);
 uint32_t cpu_ldl_code(CPUArchState *env, abi_ptr addr);
 uint64_t cpu_ldq_code(CPUArchState *env, abi_ptr addr);
+void cpu_ld_code(CPUArchState *env, abi_ptr addr, size_t len, uint8_t *out);
 
 static inline int cpu_ldsb_code(CPUArchState *env, abi_ptr addr)
 {

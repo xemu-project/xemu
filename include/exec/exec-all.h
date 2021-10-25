@@ -516,6 +516,7 @@ struct TranslationBlock {
     /* size of target code for this block (1 <= size <= TARGET_PAGE_SIZE) */
     uint16_t size;
     uint16_t icount;
+    uint64_t ihash;
 
     struct tb_tc tc;
 
@@ -582,6 +583,9 @@ void tb_phys_invalidate(TranslationBlock *tb, tb_page_addr_t page_addr);
 TranslationBlock *tb_htable_lookup(CPUState *cpu, target_ulong pc,
                                    target_ulong cs_base, uint32_t flags,
                                    uint32_t cflags);
+TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, target_ulong pc,
+                                       target_ulong cs_base, uint32_t flags,
+                                       uint32_t cflags);
 void tb_set_jmp_target(TranslationBlock *tb, int n, uintptr_t addr);
 
 /* GETPC is the true target of the return instruction that we'll execute.  */
