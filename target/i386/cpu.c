@@ -5112,6 +5112,38 @@ static void x86_register_cpudef_types(const X86CPUDefinition *def)
 
 }
 
+#if XBOX
+void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
+                   uint32_t *eax, uint32_t *ebx,
+                   uint32_t *ecx, uint32_t *edx)
+{
+  // See http://datasheets.chipdb.org/Intel/x86/CPUID/24161821.pdf
+  // These values were retrieved from a v1.0 XBOX.
+  switch(index) {
+    case 0x00000000:
+      *eax = 0x00000002;
+      *ebx = 0x756E6547;
+      *ecx = 0x6C65746E;
+      *edx = 0x49656E69;
+      break;
+
+    case 0x00000001:
+      *eax = 0x0000068A;
+      *ebx = 0x00000000;
+      *ecx = 0x00000000;
+      *edx = 0x0383F9FF;
+      break;
+
+    case 0x00000002:
+    default:
+      *eax = 0x03020101;
+      *ebx = 0x00000000;
+      *ecx = 0x00000000;
+      *edx = 0x0C040841;
+      break;
+  }
+}
+#else
 void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
                    uint32_t *eax, uint32_t *ebx,
                    uint32_t *ecx, uint32_t *edx)
@@ -5630,6 +5662,7 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
         break;
     }
 }
+#endif // #if XBOX
 
 static void x86_cpu_reset(DeviceState *dev)
 {
