@@ -2812,8 +2812,6 @@ void qemu_init(int argc, char **argv, char **envp)
 
     fake_argc = 0;
     fake_argv[fake_argc++] = argv[0];
-    fake_argv[fake_argc++] = strdup("-cpu");
-    fake_argv[fake_argc++] = strdup("pentium3");
     fake_argv[fake_argc++] = strdup("-machine");
 
     char *bootrom_arg = NULL;
