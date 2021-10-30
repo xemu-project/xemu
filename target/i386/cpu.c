@@ -176,6 +176,8 @@ struct CPUID2CacheDescriptorInfo cpuid2_cache_descriptors[] = {
                .associativity = 24, .line_size = 64, },
 };
 
+#ifndef XBOX
+
 /*
  * "CPUID leaf 2 does not report cache descriptor information,
  * use CPUID leaf 4 to query cache parameters"
@@ -410,6 +412,8 @@ static void encode_topo_cpuid8000001e(X86CPU *cpu, X86CPUTopoInfo *topo_info,
 
     *edx = 0;
 }
+
+#endif /* XBOX */
 
 /*
  * Definitions of the hardcoded cache entries we expose:
@@ -1338,6 +1342,8 @@ ExtSaveArea x86_ext_save_areas[XSAVE_STATE_AREA_COUNT] = {
             .size = sizeof(XSavePKRU) },
 };
 
+#ifndef XBOX
+
 static uint32_t xsave_area_size(uint64_t mask)
 {
     int i;
@@ -1351,6 +1357,8 @@ static uint32_t xsave_area_size(uint64_t mask)
     }
     return ret;
 }
+
+#endif /* XBOX */
 
 static inline bool accel_uses_host_cpuid(void)
 {
@@ -1516,6 +1524,8 @@ x86_cpu_def_get_versions(const X86CPUDefinition *def)
     return def->versions ?: default_version_list;
 }
 
+#ifndef XBOX
+
 static const CPUCaches epyc_cache_info = {
     .l1d_cache = &(CPUCacheInfo) {
         .type = DATA_CACHE,
@@ -1666,6 +1676,8 @@ static const CPUCaches epyc_milan_cache_info = {
     },
 };
 
+#endif /* XBOX */
+
 /* The following VMX features are not supported by KVM and are left out in the
  * CPU definitions:
  *
@@ -1695,6 +1707,7 @@ static const CPUCaches epyc_milan_cache_info = {
  */
 
 static const X86CPUDefinition builtin_x86_defs[] = {
+#ifndef XBOX
     {
         .name = "qemu64",
         .level = 0xd,
@@ -1943,9 +1956,10 @@ static const X86CPUDefinition builtin_x86_defs[] = {
         .xlevel = 0,
         .model_id = "",
     },
+#endif
     {
         .name = "pentium3",
-        .level = 3,
+        .level = 2,
         .vendor = CPUID_VENDOR_INTEL,
         .family = 6,
 #ifdef XBOX
@@ -1960,6 +1974,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
         .xlevel = 0,
         .model_id = "",
     },
+#ifndef XBOX
     {
         .name = "athlon",
         .level = 2,
@@ -4108,6 +4123,7 @@ static const X86CPUDefinition builtin_x86_defs[] = {
         .model_id = "AMD EPYC-Milan Processor",
         .cache_info = &epyc_milan_cache_info,
     },
+#endif
 };
 
 /*
@@ -5006,7 +5022,9 @@ static void x86_cpu_load_model(X86CPU *cpu, X86CPUModel *model)
     /* legacy-cache defaults to 'off' if CPU model provides cache info */
     cpu->legacy_cache = !def->cache_info;
 
+#ifndef XBOX
     env->features[FEAT_1_ECX] |= CPUID_EXT_HYPERVISOR;
+#endif
 
     /* sysenter isn't supported in compatibility mode on AMD,
      * syscall isn't supported in compatibility mode on Intel.
@@ -5118,14 +5136,16 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
 {
     X86CPU *cpu = env_archcpu(env);
     CPUState *cs = env_cpu(env);
-    uint32_t die_offset;
     uint32_t limit;
+#ifndef XBOX
+    uint32_t die_offset;
     uint32_t signature[3];
     X86CPUTopoInfo topo_info;
 
     topo_info.dies_per_pkg = env->nr_dies;
     topo_info.cores_per_die = cs->nr_cores;
     topo_info.threads_per_core = cs->nr_threads;
+#endif
 
     /* Calculate & apply limits for different index ranges */
     if (index >= 0xC0000000) {
@@ -5155,8 +5175,12 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
         break;
     case 1:
         *eax = env->cpuid_version;
+#ifdef XBOX
+        *ebx = 0;
+#else
         *ebx = (cpu->apic_id << 24) |
                8 << 8; /* CLFLUSH size in quad words, Linux wants it. */
+#endif
         *ecx = env->features[FEAT_1_ECX];
         if ((*ecx & CPUID_EXT_XSAVE) && (env->cr[4] & CR4_OSXSAVE_MASK)) {
             *ecx |= CPUID_EXT_OSXSAVE;
@@ -5171,6 +5195,13 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
         }
         break;
     case 2:
+#ifdef XBOX
+        /* Fake cache info as reported on Xbox 1.0, Pentium III */
+        *eax = 0x03020101;
+        *ebx = 0x00000000;
+        *ecx = 0x00000000;
+        *edx = 0x0c040841;
+#else
         /* cache info: needed for Pentium Pro compatibility */
         if (cpu->cache_info_passthrough) {
             host_cpuid(index, 0, eax, ebx, ecx, edx);
@@ -5189,7 +5220,9 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
         *edx = (cpuid2_cache_descriptor(env->cache_info_cpuid2.l1d_cache) << 16) |
                (cpuid2_cache_descriptor(env->cache_info_cpuid2.l1i_cache) <<  8) |
                (cpuid2_cache_descriptor(env->cache_info_cpuid2.l2_cache));
+#endif
         break;
+#ifndef XBOX
     case 4:
         /* cache info: needed for Core compatibility */
         if (cpu->cache_info_passthrough) {
@@ -5621,6 +5654,7 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
         *ecx = 0;
         *edx = 0;
         break;
+#endif /* XBOX */
     default:
         /* reserved values: zero */
         *eax = 0;
