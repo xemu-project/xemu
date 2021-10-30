@@ -360,6 +360,7 @@ static void xbox_machine_options(MachineClass *m)
     m->no_cdrom          = 1,
     m->no_sdcard         = 1,
     m->default_cpu_type  = X86_CPU_TYPE_NAME("pentium3");
+    m->is_default        = true;
 
     pcmc->pci_enabled         = true;
     pcmc->has_acpi_build      = false;
