@@ -27,6 +27,8 @@
 
 enum SHADER_TYPE {
     SHADER_TYPE_BLIT,
+    SHADER_TYPE_BLIT_DEPTH,
+    SHADER_TYPE_BLIT_STENCIL,
     SHADER_TYPE_MASK,
     SHADER_TYPE_LOGO,
 };
@@ -48,6 +50,7 @@ struct decal_shader
     GLint tex_loc;
     GLint ScaleOffset_loc;
     GLint TexScaleOffset_loc;
+    GLint StencilBit_loc;
 
     GLint ColorPrimary_loc;
     GLint ColorSecondary_loc;

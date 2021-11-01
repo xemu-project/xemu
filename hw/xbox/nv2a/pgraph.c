@@ -29,6 +29,7 @@
 
 static NV2AState *g_nv2a;
 GloContext *g_nv2a_context_render;
+GloContext *g_nv2a_context_scale;
 GloContext *g_nv2a_context_display;
 
 NV2AStats g_nv2a_stats;
@@ -359,6 +360,7 @@ static const SurfaceFormatInfo kelvin_surface_zeta_int_format_map[] = {
 
 
 // static void pgraph_set_context_user(NV2AState *d, uint32_t val);
+static void pgraph_init_scaler(NV2AState *d);
 static void pgraph_gl_fence(void);
 static GLuint pgraph_compile_shader(const char *vs_src, const char *fs_src);
 static void pgraph_init_render_to_texture(NV2AState *d);
@@ -616,7 +618,7 @@ void pgraph_flush(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
 
-    bool update_surface = (pg->color_binding || pg->zeta_binding);
+    bool update_surface = false;//(pg->color_binding || pg->zeta_binding);
 
     /* Clear last surface shape to force recreation of buffers at next draw */
     pg->surface_color.draw_dirty = false;
@@ -3148,7 +3150,10 @@ DEF_METHOD(NV097, CLEAR_SURFACE)
         glClearColor(red, green, blue, alpha);
     }
 
+    pg->clearing = true;
     pgraph_update_surface(d, true, write_color, write_zeta);
+    pg->clearing = false;
+
 
     /* FIXME: Needs confirmation */
     unsigned int xmin =
@@ -3401,6 +3406,7 @@ static void pgraph_finish_inline_buffer_vertex(PGRAPHState *pg)
 void nv2a_gl_context_init(void)
 {
     g_nv2a_context_render = glo_context_create();
+    g_nv2a_context_scale = glo_context_create();
     g_nv2a_context_display = glo_context_create();
 }
 
@@ -3468,6 +3474,7 @@ void pgraph_init(NV2AState *d)
     pg->frame_time = 0;
     pg->draw_time = 0;
     pg->downloads_pending = false;
+    pg->clearing = false;
 
     qemu_mutex_init(&pg->lock);
     qemu_event_init(&pg->gl_sync_complete, false);
@@ -3551,6 +3558,9 @@ void pgraph_init(NV2AState *d)
 
     glo_set_current(g_nv2a_context_display);
     pgraph_init_display_renderer(d);
+
+    glo_set_current(g_nv2a_context_scale);
+    pgraph_init_scaler(d);
 
     glo_set_current(NULL);
 }
@@ -4488,6 +4498,16 @@ static void pgraph_init_display_renderer(NV2AState *d)
     assert(glGetError() == GL_NO_ERROR);
 }
 
+static void pgraph_init_scaler(NV2AState *d)
+{
+    struct PGRAPHState *pg = &d->pgraph;
+    pg->blit_shader = create_decal_shader(SHADER_TYPE_BLIT);
+    pg->depth_blit_shader = create_decal_shader(SHADER_TYPE_BLIT_DEPTH);
+    pg->stencil_blit_shader = create_decal_shader(SHADER_TYPE_BLIT_STENCIL);
+    glGenFramebuffers(1, &pg->scale_fbo);
+    assert(glGetError() == GL_NO_ERROR);
+}
+
 static uint8_t *convert_texture_data__CR8YB8CB8YA8(const uint8_t *data,
                                                    unsigned int width,
                                                    unsigned int height,
@@ -4973,52 +4993,13 @@ static void pgraph_bind_current_surface(NV2AState *d)
     }
 }
 
-static void surface_copy_shrink_row(uint8_t *out, uint8_t *in,
-                                    unsigned int width,
-                                    unsigned int bytes_per_pixel,
-                                    unsigned int factor)
-{
-    if (bytes_per_pixel == 4) {
-        for (unsigned int x = 0; x < width; x++) {
-            *(uint32_t *)out = *(uint32_t *)in;
-            out += 4;
-            in += 4 * factor;
-        }
-    } else if (bytes_per_pixel == 2) {
-        for (unsigned int x = 0; x < width; x++) {
-            *(uint16_t *)out = *(uint16_t *)in;
-            out += 2;
-            in += 2 * factor;
-        }
-    } else {
-        for (unsigned int x = 0; x < width; x++) {
-            memcpy(out, in, bytes_per_pixel);
-            out += bytes_per_pixel;
-            in += bytes_per_pixel * factor;
-        }
-    }
-}
-
-
-static void pgraph_download_surface_data_to_buffer(NV2AState *d,
-                                                   SurfaceBinding *surface,
-                                                   bool swizzle, bool flip,
-                                                   bool downscale,
-                                                   uint8_t *pixels)
+static void pgraph_download_surface_data_to_buffer_no_scale(
+    NV2AState *d, SurfaceBinding *surface, bool swizzle, bool flip,
+    uint8_t *pixels)
 {
     PGRAPHState *pg = &d->pgraph;
-    swizzle &= surface->swizzle;
-    downscale &= (pg->surface_scale_factor != 1);
 
-    NV2A_XPRINTF(DBG_SURFACE_SYNC,
-                 "[GPU->RAM] %s (%s) surface @ %" HWADDR_PRIx
-                 " (w=%d,h=%d,p=%d,bpp=%d)\n",
-                 surface->color ? "COLOR" : "ZETA",
-                 surface->swizzle ? "sz" : "lin", surface->vram_addr,
-                 surface->width, surface->height, surface->pitch,
-                 surface->fmt.bytes_per_pixel);
-
-    /*  Bind destination surface to framebuffer */
+    /*  Bind target surface to framebuffer */
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
                            0, 0);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
@@ -5033,54 +5014,195 @@ static void pgraph_download_surface_data_to_buffer(NV2AState *d,
     /* Read surface into memory */
     uint8_t *gl_read_buf = pixels;
 
-    uint8_t *swizzle_buf = pixels;
     if (swizzle) {
         /* FIXME: Allocate big buffer up front and re-alloc if necessary.
          * FIXME: Consider swizzle in shader
          */
-        assert(pg->surface_scale_factor == 1 || downscale);
-        swizzle_buf = (uint8_t *)g_malloc(surface->height * surface->pitch);
-        gl_read_buf = swizzle_buf;
+        assert(pg->surface_scale_factor == 1);
+        gl_read_buf = (uint8_t *)g_malloc(surface->height * surface->pitch);
     }
 
-    if (downscale) {
-        pg->scale_buf = (uint8_t *)g_realloc(
-            pg->scale_buf, pg->surface_scale_factor * pg->surface_scale_factor *
-                               surface->height * surface->pitch *
-                               surface->fmt.bytes_per_pixel);
-        gl_read_buf = pg->scale_buf;
-    }
-
-    glo_readpixels(
-        surface->fmt.gl_format, surface->fmt.gl_type, surface->fmt.bytes_per_pixel,
-        pg->surface_scale_factor * surface->pitch,
-        pg->surface_scale_factor * surface->width,
-        pg->surface_scale_factor * surface->height, flip, gl_read_buf);
-
-    /* FIXME: Replace this with a hw accelerated version */
-    if (downscale) {
-        assert(surface->pitch >= (surface->width * surface->fmt.bytes_per_pixel));
-        uint8_t *out = swizzle_buf, *in = pg->scale_buf;
-        for (unsigned int y = 0; y < surface->height; y++) {
-            surface_copy_shrink_row(out, in, surface->width,
-                                    surface->fmt.bytes_per_pixel,
-                                    pg->surface_scale_factor);
-            in += surface->pitch * pg->surface_scale_factor *
-                  pg->surface_scale_factor;
-            out += surface->pitch;
-        }
-    }
+    glo_readpixels(surface->fmt.gl_format, surface->fmt.gl_type,
+                   surface->fmt.bytes_per_pixel,
+                   surface->pitch * pg->surface_scale_factor,
+                   surface->width * pg->surface_scale_factor,
+                   surface->height * pg->surface_scale_factor,
+                   flip, gl_read_buf);
 
     if (swizzle) {
-        swizzle_rect(swizzle_buf, surface->width, surface->height, pixels,
+        swizzle_rect(gl_read_buf, surface->width, surface->height, pixels,
                      surface->pitch, surface->fmt.bytes_per_pixel);
-        g_free(swizzle_buf);
+        g_free(gl_read_buf);
     }
 
     /* Re-bind original framebuffer target */
     glFramebufferTexture2D(GL_FRAMEBUFFER, surface->fmt.gl_attachment,
                            GL_TEXTURE_2D, 0, 0);
     pgraph_bind_current_surface(d);
+}
+
+/*
+ * TODO: Eliminate code duplication here
+ */
+static void pgraph_download_surface_data_to_buffer(NV2AState *d,
+                                                   SurfaceBinding *surface,
+                                                   bool swizzle, bool flip,
+                                                   bool downscale,
+                                                   uint8_t *pixels)
+{
+    NV2A_XPRINTF(DBG_SURFACE_SYNC,
+                 "[GPU->RAM] %s (%s) surface @ %" HWADDR_PRIx
+                 " (w=%d,h=%d,p=%d,bpp=%d)\n",
+                 surface->color ? "COLOR" : "ZETA",
+                 surface->swizzle ? "sz" : "lin", surface->vram_addr,
+                 surface->width, surface->height, surface->pitch,
+                 surface->fmt.bytes_per_pixel);
+
+    PGRAPHState *pg = &d->pgraph;
+    swizzle &= surface->swizzle;
+    downscale &= (pg->surface_scale_factor != 1);
+
+    if (!downscale) {
+        pgraph_download_surface_data_to_buffer_no_scale(d, surface, swizzle,
+                                                        flip, pixels);
+        return;
+    }
+
+    /* XXX: May need to adjust this to run in a single context for Intel  */
+    pgraph_gl_fence(); /* XXX: We don't need client sync here */
+    glo_set_current(g_nv2a_context_scale);
+    assert(glGetError() == GL_NO_ERROR);
+
+    unsigned int width = surface->width,
+                 height = surface->height,
+                 pitch = surface->pitch;
+    if (!downscale) {
+        pgraph_apply_scaling_factor(pg, &width, &height);
+        pitch *= pg->surface_scale_factor;
+    }
+
+    /* Create intermediate texture for transformed surface */
+    GLuint dest_tex;
+    glGenTextures(1, &dest_tex);
+    glBindTexture(GL_TEXTURE_2D, dest_tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, surface->fmt.gl_internal_format,
+                 width, height, 0, surface->fmt.gl_format,
+                 surface->fmt.gl_type, NULL);
+
+    /* Target intermediate texture */
+    glBindFramebuffer(GL_FRAMEBUFFER, d->pgraph.scale_fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, surface->fmt.gl_attachment, GL_TEXTURE_2D, dest_tex, 0);
+    if (surface->color) {
+        GLenum DrawBuffers[1];
+        DrawBuffers[0] = surface->fmt.gl_attachment;
+        glDrawBuffers(1, DrawBuffers);
+    }
+    assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+
+    /* Bind source surface to texture */
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, surface->gl_buffer);
+
+    struct decal_shader *s;
+    switch (surface->fmt.gl_attachment) {
+    case GL_COLOR_ATTACHMENT0:
+        s = pg->blit_shader;
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        break;
+    case GL_DEPTH_ATTACHMENT:
+    case GL_DEPTH_STENCIL_ATTACHMENT:
+        s = pg->depth_blit_shader;
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        glTexParameteri(GL_TEXTURE_2D, GL_DEPTH_STENCIL_TEXTURE_MODE, GL_DEPTH_COMPONENT);
+        break;
+    default:
+        assert(0);
+    }
+
+    /* Color or depth pass */
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_STENCIL_TEST);
+    glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_ALWAYS);
+
+    glViewport(0, 0, width, height);
+    glUseProgram(s->prog);
+    glBindVertexArray(s->vao);
+    glUniform1i(s->FlipY_loc, flip);
+    glUniform4f(s->ScaleOffset_loc, 1.0, 1.0, 0, 0);
+    glUniform4f(s->TexScaleOffset_loc, 1.0, 1.0, 0, 0);
+    glUniform1i(s->tex_loc, 0);
+    if (surface->color) {
+        glClearColor(0, 1, 0, 0);
+    } else {
+        glClearStencil(0);
+    }
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    glStencilFunc(GL_ALWAYS, 0, 0xff);
+    glStencilMask(0xff);
+    glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
+    assert(glGetError() == GL_NO_ERROR);
+
+    /* Stencil pass */
+    if (surface->fmt.gl_attachment == GL_DEPTH_STENCIL_ATTACHMENT) {
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+        s = pg->stencil_blit_shader;
+        glUseProgram(s->prog);
+        glUniform1i(s->FlipY_loc, flip);
+        glUniform4f(s->ScaleOffset_loc, 1.0, 1.0, 0, 0);
+        glUniform4f(s->TexScaleOffset_loc, 1.0, 1.0, 0, 0);
+        glUniform1i(s->tex_loc, 0);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_ALWAYS);
+        glEnable(GL_STENCIL_TEST);
+        glDepthMask(GL_FALSE);
+        glTexParameteri(GL_TEXTURE_2D, GL_DEPTH_STENCIL_TEXTURE_MODE, GL_STENCIL_INDEX);
+
+        for (int i = 0; i < 8; i++) {
+            glStencilFunc(GL_ALWAYS, 0xff, 0xff);
+            glStencilMask(1 << i);
+            glUniform1ui(s->StencilBit_loc, i);
+            glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
+        }
+    }
+
+    /* Read framebuffer data into buffer */
+    uint8_t *gl_read_buf = pixels;
+    uint8_t *swizzle_buf;
+
+    if (swizzle) {
+        /* FIXME: Allocate big buffer up front and re-alloc if necessary.
+         * FIXME: Consider swizzle in shader
+         */
+        assert(pg->surface_scale_factor == 1 || downscale);
+        swizzle_buf = (uint8_t *)g_malloc(height * pitch);
+        gl_read_buf = swizzle_buf;
+    }
+
+    glo_readpixels(surface->fmt.gl_format, surface->fmt.gl_type,
+                   surface->fmt.bytes_per_pixel, pitch, width, height, false,
+                   gl_read_buf);
+
+    if (swizzle) {
+        swizzle_rect(swizzle_buf, width, height, pixels, pitch,
+                     surface->fmt.bytes_per_pixel);
+        g_free(swizzle_buf);
+    }
+
+    /* Cleanup */
+    glFramebufferTexture2D(GL_FRAMEBUFFER, surface->fmt.gl_attachment, GL_TEXTURE_2D, 0, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glDeleteTextures(1, &dest_tex);
+    assert(glGetError() == GL_NO_ERROR);
+
+    pgraph_gl_fence();
+    glo_set_current(g_nv2a_context_render);
+    assert(glGetError() == GL_NO_ERROR);
 }
 
 static void pgraph_download_surface_data(NV2AState *d, SurfaceBinding *surface,
@@ -5130,56 +5252,55 @@ void pgraph_download_dirty_surfaces(NV2AState *d)
     qemu_event_set(&d->pgraph.dirty_surfaces_download_complete);
 }
 
-
-static void surface_copy_expand_row(uint8_t *out, uint8_t *in,
-                                    unsigned int width,
-                                    unsigned int bytes_per_pixel,
-                                    unsigned int factor)
+static void pgraph_upload_surface_data_no_scale(NV2AState *d,
+                                                SurfaceBinding *surface,
+                                                bool force)
 {
-    if (bytes_per_pixel == 4) {
-        for (unsigned int x = 0; x < width; x++) {
-            for (unsigned int i = 0; i < factor; i++) {
-                *(uint32_t *)out = *(uint32_t *)in;
-                out += bytes_per_pixel;
-            }
-            in += bytes_per_pixel;
-        }
-    } else if (bytes_per_pixel == 2) {
-        for (unsigned int x = 0; x < width; x++) {
-            for (unsigned int i = 0; i < factor; i++) {
-                *(uint16_t *)out = *(uint16_t *)in;
-                out += bytes_per_pixel;
-            }
-            in += bytes_per_pixel;
-        }
-    } else {
-        for (unsigned int x = 0; x < width; x++) {
-            for (unsigned int i = 0; i < factor; i++) {
-                memcpy(out, in, bytes_per_pixel);
-                out += bytes_per_pixel;
-            }
-            in += bytes_per_pixel;
-        }
-    }
-}
+    // FIXME: Don't query GL for texture binding
+    GLint last_texture_binding;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture_binding);
 
-static void surface_copy_expand(uint8_t *out, uint8_t *in, unsigned int width,
-                                unsigned int height,
-                                unsigned int bytes_per_pixel,
-                                unsigned int factor)
-{
-    size_t out_pitch = width * bytes_per_pixel * factor;
+    // FIXME: Replace with FBO to not disturb current state
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                           0, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+                           0, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+                           GL_TEXTURE_2D, 0, 0);
 
-    for (unsigned int y = 0; y < height; y++) {
-        surface_copy_expand_row(out, in, width, bytes_per_pixel, factor);
-        uint8_t *row_in = out;
-        for (unsigned int i = 1; i < factor; i++) {
-            out += out_pitch;
-            memcpy(out, row_in, out_pitch);
-        }
-        in += width * bytes_per_pixel;
-        out += out_pitch;
+    uint8_t *data = d->vram_ptr;
+    uint8_t *buf = data + surface->vram_addr;
+
+    if (surface->swizzle) {
+        buf = (uint8_t *)g_malloc(surface->size);
+        unswizzle_rect(data + surface->vram_addr, surface->width,
+                       surface->height, buf, surface->pitch,
+                       surface->fmt.bytes_per_pixel);
     }
+
+    uint8_t *flipped_buf = (uint8_t *)g_malloc(
+        surface->height * surface->width * surface->fmt.bytes_per_pixel);
+    unsigned int irow;
+    for (irow = 0; irow < surface->height; irow++) {
+        memcpy(&flipped_buf[surface->width * (surface->height - irow - 1) *
+                            surface->fmt.bytes_per_pixel],
+               &buf[surface->pitch * irow],
+               surface->width * surface->fmt.bytes_per_pixel);
+    }
+
+    glBindTexture(GL_TEXTURE_2D, surface->gl_buffer);
+    glTexImage2D(GL_TEXTURE_2D, 0, surface->fmt.gl_internal_format,
+                 surface->width, surface->height, 0, surface->fmt.gl_format,
+                 surface->fmt.gl_type, flipped_buf);
+
+    if (surface->swizzle) {
+        g_free(buf);
+    }
+
+    // Rebind previous framebuffer binding
+    glBindTexture(GL_TEXTURE_2D, last_texture_binding);
+
+    pgraph_bind_current_surface(d);
 }
 
 static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
@@ -5203,68 +5324,136 @@ static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
 
     surface->upload_pending = false;
 
-    // FIXME: Don't query GL for texture binding
-    GLint last_texture_binding;
-    glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture_binding);
+    if (pg->surface_scale_factor == 1) {
+        pgraph_upload_surface_data_no_scale(d, surface, force);
+        return;
+    }
 
-    // FIXME: Replace with FBO to not disturb current state
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-                           0, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
-                           0, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-                           GL_TEXTURE_2D, 0, 0);
+    /* Go to scale context */
+    pgraph_gl_fence(); /* XXX: We don't need client sync here */
+    glo_set_current(g_nv2a_context_scale);
+    assert(glGetError() == GL_NO_ERROR);
 
-    uint8_t *data = d->vram_ptr;
-    uint8_t *buf = data + surface->vram_addr;
+    /* Create intermediate texture for pre-transformed surface */
+    GLuint src_tex;
+    glGenTextures(1, &src_tex);
+    glBindTexture(GL_TEXTURE_2D, src_tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, surface->color ? GL_LINEAR : GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, surface->color ? GL_LINEAR : GL_NEAREST);
 
+    /* Load surface data */
+    uint8_t *surface_data = d->vram_ptr + surface->vram_addr;
     if (surface->swizzle) {
-        buf = (uint8_t*)g_malloc(surface->size);
-        unswizzle_rect(data + surface->vram_addr,
+        surface_data = (uint8_t*)g_malloc(surface->size);
+        unswizzle_rect(d->vram_ptr + surface->vram_addr,
                        surface->width, surface->height,
-                       buf,
+                       surface_data,
                        surface->pitch,
                        surface->fmt.bytes_per_pixel);
     }
 
-    /* FIXME: Replace this flip/scaling */
+    glTexImage2D(GL_TEXTURE_2D, 0, surface->fmt.gl_internal_format,
+                 surface->width, surface->height, 0, surface->fmt.gl_format,
+                 surface->fmt.gl_type, surface_data);
 
-    // This is VRAM so we can't do this inplace!
-    uint8_t *flipped_buf = (uint8_t *)g_malloc(
-        surface->height * surface->width * surface->fmt.bytes_per_pixel);
-    unsigned int irow;
-    for (irow = 0; irow < surface->height; irow++) {
-        memcpy(&flipped_buf[surface->width * (surface->height - irow - 1)
-                                 * surface->fmt.bytes_per_pixel],
-               &buf[surface->pitch * irow],
-               surface->width * surface->fmt.bytes_per_pixel);
-    }
-
-    uint8_t *gl_read_buf = flipped_buf;
-    unsigned int width = surface->width, height = surface->height;
-
-    if (pg->surface_scale_factor > 1) {
-        pgraph_apply_scaling_factor(pg, &width, &height);
-        pg->scale_buf = (uint8_t *)g_realloc(
-            pg->scale_buf, width * height * surface->fmt.bytes_per_pixel);
-        gl_read_buf = pg->scale_buf;
-        uint8_t *out = gl_read_buf, *in = flipped_buf;
-        surface_copy_expand(out, in, surface->width, surface->height,
-                            surface->fmt.bytes_per_pixel,
-                            d->pgraph.surface_scale_factor);
-    }
-
-    glBindTexture(GL_TEXTURE_2D, surface->gl_buffer);
-    glTexImage2D(GL_TEXTURE_2D, 0, surface->fmt.gl_internal_format, width,
-                 height, 0, surface->fmt.gl_format, surface->fmt.gl_type,
-                 gl_read_buf);
-    g_free(flipped_buf);
     if (surface->swizzle) {
-        g_free(buf);
+        g_free(surface_data);
     }
 
-    // Rebind previous framebuffer binding
-    glBindTexture(GL_TEXTURE_2D, last_texture_binding);
+    /* Target destination surface texture */
+    glBindFramebuffer(GL_FRAMEBUFFER, d->pgraph.scale_fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, surface->fmt.gl_attachment, GL_TEXTURE_2D, surface->gl_buffer, 0);
+    if (surface->color) {
+        GLenum DrawBuffers[1] = {GL_COLOR_ATTACHMENT0};
+        glDrawBuffers(1, DrawBuffers);
+    }
+    assert(glGetError() == GL_NO_ERROR);
+    assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+
+    /* Bind source surface to texture */
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, src_tex);
+
+    struct decal_shader *s;
+    switch (surface->fmt.gl_attachment) {
+    case GL_COLOR_ATTACHMENT0:
+        s = pg->blit_shader;
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        break;
+    case GL_DEPTH_ATTACHMENT:
+    case GL_DEPTH_STENCIL_ATTACHMENT:
+        s = pg->depth_blit_shader;
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+        glTexParameteri(GL_TEXTURE_2D, GL_DEPTH_STENCIL_TEXTURE_MODE, GL_DEPTH_COMPONENT);
+        break;
+    default:
+        assert(0);
+    }
+
+    /* Render scaled, flipped surface */
+    unsigned int width = surface->width, height = surface->height;
+    pgraph_apply_scaling_factor(pg, &width, &height);
+
+    /* Color or depth pass */
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_STENCIL_TEST);
+    glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_ALWAYS);
+
+    glViewport(0, 0, width, height);
+    glUseProgram(s->prog);
+    glBindVertexArray(s->vao);
+    glUniform1i(s->FlipY_loc, 1);
+    glUniform4f(s->ScaleOffset_loc, 1.0, 1.0, 0, 0);
+    glUniform4f(s->TexScaleOffset_loc, 1.0, 1.0, 0, 0);
+    glUniform1i(s->tex_loc, 0);
+    if (surface->color) {
+        glClearColor(0, 1, 0, 0);
+    } else {
+        glClearStencil(0);
+    }
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    glStencilFunc(GL_ALWAYS, 0, 0xff);
+    glStencilMask(0xff);
+    glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
+    assert(glGetError() == GL_NO_ERROR);
+
+    /* Stencil pass */
+    if (surface->fmt.gl_attachment == GL_DEPTH_STENCIL_ATTACHMENT) {
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+        s = pg->stencil_blit_shader;
+        glUseProgram(s->prog);
+        glUniform1i(s->FlipY_loc, 1);
+        glUniform4f(s->ScaleOffset_loc, 1.0, 1.0, 0, 0);
+        glUniform4f(s->TexScaleOffset_loc, 1.0, 1.0, 0, 0);
+        glUniform1i(s->tex_loc, 0);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_ALWAYS);
+        glEnable(GL_STENCIL_TEST);
+        glDepthMask(GL_FALSE);
+        glTexParameteri(GL_TEXTURE_2D, GL_DEPTH_STENCIL_TEXTURE_MODE, GL_STENCIL_INDEX);
+
+        for (int i = 0; i < 8; i++) {
+            glStencilFunc(GL_ALWAYS, 0xff, 0xff);
+            glStencilMask(1 << i);
+            glUniform1ui(s->StencilBit_loc, i);
+            glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
+        }
+    }
+
+    /* Cleanup */
+    glFramebufferTexture2D(GL_FRAMEBUFFER, surface->fmt.gl_attachment, GL_TEXTURE_2D, 0, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glDeleteTextures(1, &src_tex);
+    assert(glGetError() == GL_NO_ERROR);
+
+    /* Return to rendering context */
+    pgraph_gl_fence();
+    glo_set_current(g_nv2a_context_render);
+    assert(glGetError() == GL_NO_ERROR);
 
     pgraph_bind_current_surface(d);
 }
@@ -5272,13 +5461,16 @@ static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
 static void pgraph_compare_surfaces(SurfaceBinding *s1, SurfaceBinding *s2)
 {
     #define DO_CMP(fld) \
-        if (s1->fld != s2->fld) \
-            NV2A_XPRINTF(DBG_SURFACES, "%20s -- %8ld vs %8ld\n", \
-                #fld, (long int)s1->fld, (long int)s2->fld);
+            NV2A_XPRINTF(DBG_SURFACES, "%25s -- %8lx vs %8lx%s\n", \
+                #fld, (long int)s1->fld, (long int)s2->fld, \
+                 s1->fld != s2->fld ? " ***" : "");
     DO_CMP(shape.clip_x)
     DO_CMP(shape.clip_width)
     DO_CMP(shape.clip_y)
     DO_CMP(shape.clip_height)
+    DO_CMP(shape.color_format)
+    DO_CMP(shape.zeta_format)
+    DO_CMP(shape.z_format)
     DO_CMP(gl_buffer)
     DO_CMP(fmt.bytes_per_pixel)
     DO_CMP(fmt.gl_attachment)
@@ -5308,7 +5500,7 @@ static void pgraph_populate_surface_binding_entry_sized(NV2AState *d,
     PGRAPHState *pg = &d->pgraph;
     Surface *surface;
     hwaddr dma_address;
-    SurfaceFormatInfo fmt;
+    SurfaceFormatInfo fmt; /* FIXME: Pointer */
 
     if (color) {
         surface = &pg->surface_color;
@@ -5358,7 +5550,8 @@ static void pgraph_populate_surface_binding_entry_sized(NV2AState *d,
     entry->vram_addr = dma.address + surface->offset;
     entry->width = width;
     entry->height = height;
-    entry->pitch = surface->pitch;
+    entry->pitch = entry->swizzle ? (entry->width * entry->fmt.bytes_per_pixel)
+                                  : surface->pitch;
     entry->size = height * surface->pitch;
     entry->upload_pending = true;
     entry->download_pending = false;
@@ -5367,6 +5560,8 @@ static void pgraph_populate_surface_binding_entry_sized(NV2AState *d,
     entry->dma_len = dma.limit;
     entry->frame_time = pg->frame_time;
     entry->draw_time = pg->draw_time;
+
+    assert(entry->pitch >= (entry->width * entry->fmt.bytes_per_pixel));
 }
 
 static void pgraph_populate_surface_binding_entry(NV2AState *d, bool color,
@@ -5382,8 +5577,10 @@ static void pgraph_populate_surface_binding_entry(NV2AState *d, bool color,
         /* Since we determine surface dimensions based on the clipping
          * rectangle, make sure to include the surface offset as well.
          */
-        width += pg->surface_shape.clip_x;
-        height += pg->surface_shape.clip_y;
+        if (pg->surface_type != NV097_SET_SURFACE_FORMAT_TYPE_SWIZZLE) {
+            width += pg->surface_shape.clip_x;
+            height += pg->surface_shape.clip_y;
+        }
     } else {
         width = pg->color_binding->width;
         height = pg->color_binding->height;
@@ -5431,6 +5628,7 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                      pg->surface_shape.clip_height);
 
         bool should_create = true;
+        bool skip_sync = pg->clearing; /* FIXME: Incorrect if partial. */
 
         if (found != NULL) {
             bool is_compatible =
@@ -5475,7 +5673,9 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
             } else {
                 NV2A_XPRINTF(DBG_SURFACES, "Evicting incompatible surface\n");
                 pgraph_compare_surfaces(found, &entry);
-                pgraph_download_surface_data_if_dirty(d, found);
+                if (!skip_sync) {
+                    pgraph_download_surface_data_if_dirty(d, found);
+                }
                 pgraph_surface_invalidate(d, found);
             }
         }
@@ -5492,7 +5692,8 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                            entry.width, entry.height, surface->offset);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, color ? GL_LINEAR : GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, color ? GL_LINEAR : GL_NEAREST);
             unsigned int width = entry.width, height = entry.height;
             pgraph_apply_scaling_factor(pg, &width, &height);
             glTexImage2D(GL_TEXTURE_2D, 0, entry.fmt.gl_internal_format, width,
@@ -5508,6 +5709,8 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
             pg->surface_binding_dim.clip_y = entry.shape.clip_y;
             pg->surface_binding_dim.clip_height = entry.shape.clip_height;
         }
+
+        found->upload_pending &= !skip_sync;
 
         NV2A_XPRINTF(DBG_SURFACES,
                      "%6s: [%5s @ %" HWADDR_PRIx " (%dx%d)] (%s) "
