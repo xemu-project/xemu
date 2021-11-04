@@ -7696,6 +7696,43 @@ static target_ulong disas_insn(DisasContext *s, CPUState *cpu)
             gen_jmp_im(s, s->pc - s->cs_base);
             gen_eob_inhibit_irq(s, true);
         }
+
+#if 1
+        /*
+            0x8001b02e:  sti
+            0x8001b02f:  nop
+            0x8001b030:  nop
+            0x8001b031:  cli
+            0x8001b032:  cmp    0x0(%ebp),%ebp
+            0x8001b035:  je     0x8001b043
+            0x8001b037:  mov    $0x2,%cl
+            0x8001b039:  call   0x8001415c
+            0x8001b03e:  call   0x8001b08f
+            0x8001b043:  cmpl   $0x0,0x2c(%ebx)
+            0x8001b047:  je     0x8001b02e
+            0x8001b049:  sti
+            0x8001b04a:  mov    0x2c(%ebx),%esi
+            0x8001b04d:  mov    0x28(%ebx),%edi
+            0x8001b050:  movl   $0x0,0x2c(%ebx)
+        */
+        /* Shitty peek to see if this is the idle loop */
+        if (translator_ldub(env, s->pc+0) == 0x90 &&
+            translator_ldub(env, s->pc+1) == 0x90 &&
+            translator_ldub(env, s->pc+2) == 0xfa
+            ) {
+            fprintf(stderr, "idle loop at @ %x\n", s->pc);
+
+#if 0
+            /* Insert a HLT to exit CPU loop */
+            if (check_cpl0(s)) {
+                gen_update_cc_op(s);
+                gen_jmp_im(s, pc_start - s->cs_base);
+                gen_helper_hlt(cpu_env, tcg_const_i32(s->pc - pc_start));
+                s->base.is_jmp = DISAS_NORETURN;
+            }
+#endif
+        }
+#endif
         break;
     case 0x62: /* bound */
         if (CODE64(s))
@@ -9124,6 +9161,45 @@ static void i386_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cpu)
 
 static void i386_tr_tb_start(DisasContextBase *db, CPUState *cpu)
 {
+    /* XXX: Don't need all this logic here..can periodically check instead */
+
+    // DisasContext *s = container_of(db, DisasContext, base);
+    TranslationBlock *tb = db->tb;
+
+    if (tb->hot) {
+        tb->xcount = 1ULL<<63;
+        TCGv_i64 val = tcg_temp_local_new_i64();
+        TCGv_ptr ptr = tcg_const_local_ptr(&tb->xcount);
+        tcg_gen_ld_i64(val, ptr, 0);
+        tcg_gen_addi_i64(val, val, 1);
+        tcg_gen_st_i64(val, ptr, 0);
+        tcg_temp_free_ptr(ptr);
+        tcg_temp_free_i64(val);
+        return;
+    }
+
+    tb->xcount = 0;
+
+    TCGLabel *l_doblock = gen_new_label();
+    TCGv_i64 val = tcg_temp_local_new_i64();
+    TCGv_ptr ptr = tcg_const_local_ptr(&tb->xcount);
+
+    /* Increment exec counter */
+    tcg_gen_ld_i64(val, ptr, 0);
+    tcg_gen_addi_i64(val, val, 1);
+    tcg_gen_st_i64(val, ptr, 0);
+
+    tcg_gen_brcondi_i64(TCG_COND_LTU, val, 100000000, l_doblock); /* Still cold */
+    tcg_gen_brcondi_i64(TCG_COND_GTU, val, 1ULL << 63, l_doblock); /* Already flagged */
+
+    /* Flag it */
+    tcg_gen_ori_i64(val, val, 1ULL << 63);
+    tcg_gen_st_i64(val, ptr, 0);
+    gen_helper_hotblock(cpu_env, tcg_const_ptr(tb));
+
+    gen_set_label(l_doblock);
+    tcg_temp_free_ptr(ptr);
+    tcg_temp_free_i64(val);
 }
 
 static void i386_tr_insn_start(DisasContextBase *dcbase, CPUState *cpu)

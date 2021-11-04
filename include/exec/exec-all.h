@@ -492,6 +492,8 @@ struct TranslationBlock {
     target_ulong cs_base; /* CS base for this block */
     uint32_t flags; /* flags defining in which context the code was generated */
     uint32_t cflags;    /* compile flags */
+    uint64_t xcount;
+    bool hot;
 
 /* Note that TCG_MAX_INSNS is 512; we validate this match elsewhere. */
 #define CF_COUNT_MASK    0x000001ff

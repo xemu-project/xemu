@@ -879,6 +879,22 @@ static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
 
 /* main execution loop */
 
+
+
+/* Note: only supports millisecond resolution on Windows */
+static void sleep_ns(int64_t ns)
+{
+#ifndef _WIN32
+        struct timespec sleep_delay, rem_delay;
+        sleep_delay.tv_sec = ns / 1000000000LL;
+        sleep_delay.tv_nsec = ns % 1000000000LL;
+        nanosleep(&sleep_delay, &rem_delay);
+#else
+        Sleep(ns / SCALE_MS);
+#endif
+}
+
+
 int cpu_exec(CPUState *cpu)
 {
     int ret;
@@ -935,6 +951,8 @@ int cpu_exec(CPUState *cpu)
         assert_no_pages_locked();
     }
 
+    int hotblocks = 0;
+
     /* if an exception is pending, we execute it here */
     while (!cpu_handle_exception(cpu, &ret)) {
         TranslationBlock *last_tb = NULL;
@@ -989,11 +1007,42 @@ int cpu_exec(CPUState *cpu)
             }
 #endif
             /* See if we can patch the calling TB. */
-            if (last_tb) {
+            if (last_tb && !tb->hot) {
                 tb_add_jump(last_tb, tb_exit, tb);
             }
 
             cpu_loop_exec_tb(cpu, tb, &last_tb, &tb_exit);
+
+            if (tb->hot) {
+                hotblocks += 1;
+            } else {
+                hotblocks = 0;
+            }
+
+            /* Chill */
+            if (hotblocks > 100) {
+                /* XXX: Eventually all regularly executed blocks will be
+                 *      considired 'hot' with current dumb counter.
+                 *
+                 * - Decayed binning
+                 * - Temporal distance from vsync to estimate callback
+                 *   probability
+                 * - See if cooling impacts cycles (if yes, then probably
+                 *   interrupt bound; if no, then probably false positive)
+                 * - Regular sampling to measure which ones are most hot
+                 * - Global exec counter for delta
+                 */
+
+                hotblocks = 0;
+                /* XXX: Replace with schedule. Don't hold locks */
+#if 1
+                sleep_ns(1000000);
+#else
+                cpu->halted = 1;
+                cpu->exception_index = EXCP_HALTED;
+                qatomic_set(&cpu->exit_request, 1);
+#endif
+            }
 
             /* Try to align the host and virtual clocks
                if the guest is in advance */

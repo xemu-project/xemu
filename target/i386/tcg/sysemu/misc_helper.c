@@ -481,6 +481,22 @@ void QEMU_NORETURN helper_hlt(CPUX86State *env, int next_eip_addend)
     do_hlt(env);
 }
 
+#include "exec/translate-all.h"
+
+void /*QEMU_NORETURN*/ helper_hotblock(CPUX86State *env, void *opaque)
+{
+    TranslationBlock *tb = opaque;
+    fprintf(stderr, "hotblock %x (%ld iterations)\n", tb->pc, tb->xcount & ~(1ULL << 63));
+
+#if 1
+    /* Re-translate */
+    CPUState *cpu = env_cpu(env);
+    tb_invalidate_phys_page_range(tb->page_addr[0], tb->page_addr[0]);
+#else
+    tb->hot = true;
+#endif
+}
+
 void helper_monitor(CPUX86State *env, target_ulong ptr)
 {
     if ((uint32_t)env->regs[R_ECX] != 0) {

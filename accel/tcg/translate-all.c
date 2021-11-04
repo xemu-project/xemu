@@ -1445,8 +1445,24 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
     }
     QEMU_BUILD_BUG_ON(CF_COUNT_MASK + 1 != TCG_MAX_INSNS);
 
+    bool tb_hot = false;
+
     tb = inv_tb_htable_lookup(cpu, pc, cs_base, flags, cflags);
     if (tb) {
+#if 1
+        if ((tb->xcount & (1ULL << 63)) && !tb->hot) {
+            fprintf(stderr, "hotblock re-translate %x\n", tb->pc);
+
+            qemu_spin_lock(&tb->jmp_lock);
+            qatomic_set(&tb->cflags, tb->cflags & ~CF_INVALID);
+            qemu_spin_unlock(&tb->jmp_lock);
+            uint32_t h = tb_hash_func(phys_pc, tb->pc, tb->flags, tb_cflags(tb),
+                                  tb->trace_vcpu_dstate);
+            qht_remove(&tb_ctx.inv_htable, tb, h);
+            tb_hot = true;
+        } else {
+#endif
+
         qemu_spin_lock(&tb->jmp_lock);
         qatomic_set(&tb->cflags, tb->cflags & ~CF_INVALID);
         qemu_spin_unlock(&tb->jmp_lock);
@@ -1455,6 +1471,10 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
         bool removed = qht_remove(&tb_ctx.inv_htable, tb, h);
         g_assert(removed);
         goto recycle_tb;
+
+#if 1
+        }
+#endif
     }
 
  buffer_overflow:
@@ -1469,6 +1489,7 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
     }
 
     gen_code_buf = tcg_ctx->code_gen_ptr;
+    tb->hot = tb_hot;
     tb->tc.ptr = tcg_splitwx_to_rx(gen_code_buf);
     tb->pc = pc;
     tb->cs_base = cs_base;
