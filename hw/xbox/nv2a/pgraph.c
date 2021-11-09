@@ -1212,6 +1212,8 @@ DEF_METHOD(NV097, SET_CONTEXT_DMA_SEMAPHORE)
 
 DEF_METHOD(NV097, SET_CONTEXT_DMA_REPORT)
 {
+    pgraph_process_pending_reports(d);
+
     pg->dma_report = parameter;
 }
 
@@ -2354,6 +2356,62 @@ DEF_METHOD(NV097, SET_LOGIC_OP)
              parameter & 0xF);
 }
 
+static void pgraph_process_pending_report(NV2AState *d, QueryReport *r)
+{
+    PGRAPHState *pg = &d->pgraph;
+
+    if (r->clear) {
+        pg->zpass_pixel_count_result = 0;
+        return;
+    }
+
+    uint8_t type = GET_MASK(r->parameter, NV097_GET_REPORT_TYPE);
+    assert(type == NV097_GET_REPORT_TYPE_ZPASS_PIXEL_CNT);
+
+    /* FIXME: Multisampling affects this (both: OGL and Xbox GPU),
+     *        not sure if CLEARs also count
+     */
+    /* FIXME: What about clipping regions etc? */
+    for (int i = 0; i < r->query_count; i++) {
+        GLuint gl_query_result = 0;
+        glGetQueryObjectuiv(r->queries[i], GL_QUERY_RESULT, &gl_query_result);
+        gl_query_result /= pg->surface_scale_factor * pg->surface_scale_factor;
+        pg->zpass_pixel_count_result += gl_query_result;
+    }
+
+    if (r->query_count) {
+        glDeleteQueries(r->query_count, r->queries);
+        g_free(r->queries);
+    }
+
+    uint64_t timestamp = 0x0011223344556677; /* FIXME: Update timestamp?! */
+    uint32_t done = 0;
+
+    hwaddr report_dma_len;
+    uint8_t *report_data =
+        (uint8_t *)nv_dma_map(d, pg->dma_report, &report_dma_len);
+
+    hwaddr offset = GET_MASK(r->parameter, NV097_GET_REPORT_OFFSET);
+    assert(offset < report_dma_len);
+    report_data += offset;
+
+    stq_le_p((uint64_t *)&report_data[0], timestamp);
+    stl_le_p((uint32_t *)&report_data[8], pg->zpass_pixel_count_result);
+    stl_le_p((uint32_t *)&report_data[12], done);
+}
+
+void pgraph_process_pending_reports(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    QueryReport *r, *next;
+
+    QSIMPLEQ_FOREACH_SAFE(r, &pg->report_queue, entry, next) {
+        pgraph_process_pending_report(d, r);
+        QSIMPLEQ_REMOVE_HEAD(&pg->report_queue, entry);
+        g_free(r);
+    }
+}
+
 DEF_METHOD(NV097, CLEAR_REPORT_VALUE)
 {
     /* FIXME: Does this have a value in parameter? Also does this (also?) modify
@@ -2364,7 +2422,10 @@ DEF_METHOD(NV097, CLEAR_REPORT_VALUE)
                         pg->gl_zpass_pixel_count_queries);
         pg->gl_zpass_pixel_count_query_count = 0;
     }
-    pg->zpass_pixel_count_result = 0;
+
+    QueryReport *r = g_malloc(sizeof(QueryReport));
+    r->clear = true;
+    QSIMPLEQ_INSERT_TAIL(&pg->report_queue, r, entry);
 }
 
 DEF_METHOD(NV097, SET_ZPASS_PIXEL_COUNT_ENABLE)
@@ -2374,47 +2435,18 @@ DEF_METHOD(NV097, SET_ZPASS_PIXEL_COUNT_ENABLE)
 
 DEF_METHOD(NV097, GET_REPORT)
 {
-    /* FIXME: This was first intended to be watchpoint-based. However,
-     *        qemu / kvm only supports virtual-address watchpoints.
-     *        This'll do for now, but accuracy and performance with other
-     *        approaches could be better
-     */
     uint8_t type = GET_MASK(parameter, NV097_GET_REPORT_TYPE);
     assert(type == NV097_GET_REPORT_TYPE_ZPASS_PIXEL_CNT);
-    hwaddr offset = GET_MASK(parameter, NV097_GET_REPORT_OFFSET);
 
-    uint64_t timestamp = 0x0011223344556677; /* FIXME: Update timestamp?! */
-    uint32_t done = 0;
+    QueryReport *r = g_malloc(sizeof(QueryReport));
+    r->clear = false;
+    r->parameter = parameter;
+    r->query_count = pg->gl_zpass_pixel_count_query_count;
+    r->queries = pg->gl_zpass_pixel_count_queries;
+    QSIMPLEQ_INSERT_TAIL(&pg->report_queue, r, entry);
 
-    /* FIXME: Multisampling affects this (both: OGL and Xbox GPU),
-     *        not sure if CLEARs also count
-     */
-    /* FIXME: What about clipping regions etc? */
-    for (int i = 0; i < pg->gl_zpass_pixel_count_query_count; i++) {
-        GLuint gl_query_result;
-        glGetQueryObjectuiv(pg->gl_zpass_pixel_count_queries[i],
-                            GL_QUERY_RESULT, &gl_query_result);
-        pg->zpass_pixel_count_result += gl_query_result;
-    }
-
-    pg->zpass_pixel_count_result /=
-        pg->surface_scale_factor * pg->surface_scale_factor;
-
-    if (pg->gl_zpass_pixel_count_query_count) {
-        glDeleteQueries(pg->gl_zpass_pixel_count_query_count,
-                        pg->gl_zpass_pixel_count_queries);
-    }
     pg->gl_zpass_pixel_count_query_count = 0;
-
-    hwaddr report_dma_len;
-    uint8_t *report_data =
-        (uint8_t *)nv_dma_map(d, pg->dma_report, &report_dma_len);
-    assert(offset < report_dma_len);
-    report_data += offset;
-
-    stq_le_p((uint64_t *)&report_data[0], timestamp);
-    stl_le_p((uint32_t *)&report_data[8], pg->zpass_pixel_count_result);
-    stl_le_p((uint32_t *)&report_data[12], done);
+    pg->gl_zpass_pixel_count_queries = NULL;
 }
 
 DEF_METHOD(NV097, SET_EYE_DIRECTION)
@@ -2752,17 +2784,17 @@ DEF_METHOD(NV097, SET_BEGIN_END)
 
         /* Visibility testing */
         if (pg->zpass_pixel_count_enable) {
-            GLuint gl_query;
-            glGenQueries(1, &gl_query);
             pg->gl_zpass_pixel_count_query_count++;
             pg->gl_zpass_pixel_count_queries = (GLuint*)g_realloc(
                 pg->gl_zpass_pixel_count_queries,
                 sizeof(GLuint) * pg->gl_zpass_pixel_count_query_count);
+
+            GLuint gl_query;
+            glGenQueries(1, &gl_query);
             pg->gl_zpass_pixel_count_queries[
                 pg->gl_zpass_pixel_count_query_count - 1] = gl_query;
             glBeginQuery(GL_SAMPLES_PASSED, gl_query);
         }
-
     }
 
     pgraph_set_surface_dirty(pg, true, depth_test || stencil_test);
@@ -3589,6 +3621,8 @@ void pgraph_init(NV2AState *d)
 
     pgraph_init_render_to_texture(d);
     QTAILQ_INIT(&pg->surfaces);
+
+    QSIMPLEQ_INIT(&pg->report_queue);
 
     //glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 
