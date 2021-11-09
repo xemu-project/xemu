@@ -488,6 +488,8 @@ void *pfifo_thread(void *arg)
             pfifo_run_pusher(d);
         }
 
+        pgraph_process_pending_reports(d);
+
         if (!d->pfifo.fifo_kick) {
             qemu_cond_broadcast(&d->pfifo.fifo_idle_cond);
 
