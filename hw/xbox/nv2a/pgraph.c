@@ -6386,10 +6386,10 @@ static uint8_t* convert_texture_data(const TextureShape s,
         // FIXME: only valid if control0 register allows for colorspace conversion
         uint8_t* converted_data = (uint8_t*)g_malloc(width * height * 4);
         int x, y;
+        uint8_t* pixel = converted_data;
         for (y = 0; y < height; y++) {
-            const uint8_t* line = &data[y * s.width * 2];
-            for (x = 0; x < width; x++) {
-                uint8_t* pixel = &converted_data[(y * s.width + x) * 4];
+            const uint8_t* line = &data[y * row_pitch * depth];
+            for (x = 0; x < width; x++, pixel += 4) {
                 if (s.color_format
                     == NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8) {
                     convert_yuy2_to_rgb(line, x, &pixel[0], &pixel[1], &pixel[2]);
@@ -6439,14 +6439,12 @@ static void upload_gl_texture(GLenum gl_target,
     case GL_TEXTURE_RECTANGLE: {
         /* Can't handle strides unaligned to pixels */
         assert(s.pitch % f.bytes_per_pixel == 0);
-        glPixelStorei(GL_UNPACK_ROW_LENGTH,
-                      s.pitch / f.bytes_per_pixel);
 
         uint8_t *converted = convert_texture_data(s, texture_data,
                                                   palette_data,
                                                   s.width, s.height, 1,
                                                   s.pitch, 0);
-
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, converted ? 0 : s.pitch / f.bytes_per_pixel);
         glTexImage2D(gl_target, 0, f.gl_internal_format,
                      s.width, s.height, 0,
                      f.gl_format, f.gl_type,
