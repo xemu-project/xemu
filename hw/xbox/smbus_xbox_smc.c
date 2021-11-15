@@ -91,10 +91,11 @@
 #define SMC_REG_SCRATCH             0x1b
 #define     SMC_REG_SCRATCH_SHORT_ANIMATION 0x04
 
-static const char smc_version_string[] = "P01";
+#define SMC_VERSION_LENGTH 3
 
 typedef struct SMBusSMCDevice {
     SMBusDevice smbusdev;
+    char *version_string;
     int version_string_index;
     uint8_t cmd;
     uint8_t traystate_reg;
@@ -164,8 +165,8 @@ static uint8_t smc_receive_byte(SMBusDevice *dev)
 
     switch (cmd) {
     case SMC_REG_VER:
-        return smc_version_string[
-            smc->version_string_index++ % (sizeof(smc_version_string) - 1)];
+        return smc->version_string[
+            smc->version_string_index++ % SMC_VERSION_LENGTH];
 
     case SMC_REG_TRAYSTATE:
         return smc->traystate_reg;
@@ -233,11 +234,18 @@ void xbox_smc_append_avpack_hint(Error **errp)
     error_append_hint(errp, "Valid options are: composite, scart, svideo, vga, rfu, hdtv (default), none\n");
 }
 
+void xbox_smc_append_smc_version_hint(Error **errp)
+{
+    error_append_hint(errp, "Valid versions must have 3 characters total\n");
+}
+
 static void smbus_smc_realize(DeviceState *dev, Error **errp)
 {
     SMBusSMCDevice *smc = XBOX_SMC(dev);
     char *avpack;
+    char *smc_version;
 
+    smc->version_string = NULL;
     smc->version_string_index = 0;
     smc->traystate_reg = 0;
     smc->avpack_reg = 0; /* Default value for Chihiro machine */
@@ -257,6 +265,16 @@ static void smbus_smc_realize(DeviceState *dev, Error **errp)
         }
 
         g_free(avpack);
+    }
+
+    smc_version = object_property_get_str(qdev_get_machine(), "smc-version", NULL);
+    if (smc_version) {
+        if (strlen(smc_version) != SMC_VERSION_LENGTH) {
+            error_setg(errp, "Unsupported SMC version string '%s'", smc_version);
+            xbox_smc_append_smc_version_hint(errp);
+        }
+        smc->version_string = g_strdup(smc_version);
+        g_free(smc_version);
     }
 
     xbox_smc_update_tray_state();

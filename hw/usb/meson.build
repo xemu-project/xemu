@@ -1,17 +1,14 @@
 hw_usb_modules = {}
 
 # usb subsystem core
-softmmu_ss.add(files(
+softmmu_ss.add(when: 'CONFIG_USB', if_true: files(
   'bus.c',
   'combined-packet.c',
   'core.c',
-  'pcap.c',
-  'libhw.c'
-))
-
-softmmu_ss.add(when: 'CONFIG_USB', if_true: files(
   'desc.c',
   'desc-msos.c',
+  'libhw.c',
+  'pcap.c',
 ))
 
 # usb host adapters
@@ -52,7 +49,7 @@ softmmu_ss.add(when: ['CONFIG_POSIX', 'CONFIG_USB_STORAGE_MTP'], if_true: files(
 # smartcard
 softmmu_ss.add(when: 'CONFIG_USB_SMARTCARD', if_true: files('dev-smartcard-reader.c'))
 
-if config_host.has_key('CONFIG_SMARTCARD')
+if cacard.found()
   usbsmartcard_ss = ss.source_set()
   usbsmartcard_ss.add(when: 'CONFIG_USB_SMARTCARD',
                       if_true: [cacard, files('ccid-card-emulated.c', 'ccid-card-passthru.c')])
@@ -67,7 +64,7 @@ if u2f.found()
 endif
 
 # usb redirect
-if config_host.has_key('CONFIG_USB_REDIR')
+if usbredir.found()
   usbredir_ss = ss.source_set()
   usbredir_ss.add(when: 'CONFIG_USB',
                   if_true: [usbredir, files('redirect.c', 'quirks.c')])
@@ -75,10 +72,12 @@ if config_host.has_key('CONFIG_USB_REDIR')
 endif
 
 # usb pass-through
-softmmu_ss.add(when: ['CONFIG_USB', 'CONFIG_USB_LIBUSB', libusb],
-               if_true: files('host-libusb.c'),
-               if_false: files('host-stub.c'))
-softmmu_ss.add(when: 'CONFIG_ALL', if_true: files('host-stub.c'))
+if libusb.found()
+  usbhost_ss = ss.source_set()
+  usbhost_ss.add(when: ['CONFIG_USB', libusb],
+                 if_true: files('host-libusb.c'))
+  hw_usb_modules += {'host': usbhost_ss}
+endif
 
 softmmu_ss.add(when: ['CONFIG_USB', 'CONFIG_XEN', libusb], if_true: files('xen-usb.c'))
 

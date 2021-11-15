@@ -50,7 +50,7 @@ body:
       label: Expected Behavior
       description: A brief description of the expected behavior.
       placeholder: |
-        When playing campaign missions, HUD elements are expected in all four courners. See attached screenshot for example.
+        When playing campaign missions, HUD elements are expected in all four corners. See attached screenshot for example.
 
         <Screenshot>
     validations:

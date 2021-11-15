@@ -10,9 +10,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "cpu.h"
 #include "exec/hwaddr.h"
-#include "exec/address-spaces.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/qtest.h"
 #include "hw/irq.h"
@@ -986,8 +984,8 @@ static void next_cube_init(MachineState *machine)
     sysbus_mmio_map(SYS_BUS_DEVICE(pcdev), 1, 0x02100000);
 
     /* BMAP memory */
-    memory_region_init_ram_shared_nomigrate(bmapm1, NULL, "next.bmapmem", 64,
-                                            true, &error_fatal);
+    memory_region_init_ram_flags_nomigrate(bmapm1, NULL, "next.bmapmem", 64,
+                                           RAM_SHARED, &error_fatal);
     memory_region_add_subregion(sysmem, 0x020c0000, bmapm1);
     /* The Rev_2.5_v66.bin firmware accesses it at 0x820c0020, too */
     memory_region_init_alias(bmapm2, NULL, "next.bmapmem2", bmapm1, 0x0, 64);

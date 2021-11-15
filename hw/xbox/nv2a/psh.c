@@ -730,8 +730,7 @@ static MString* psh_convert(struct PixelShader *ps)
                                    i, ps->input_tex[i], ps->input_tex[i]);
             }
 
-            /* FIXME: Do bumpMat swizzle on CPU before upload */
-            mstring_append_fmt(vars, "dsdt%d = mat2(bumpMat%d[0].xy, bumpMat%d[1].yx) * dsdt%d;\n",
+            mstring_append_fmt(vars, "dsdt%d = bumpMat%d * dsdt%d;\n",
                 i, i, i, i);
             mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, texScale%d * (pT%d.xy + dsdt%d));\n",
                 i, i, i, i, i);
@@ -753,8 +752,7 @@ static MString* psh_convert(struct PixelShader *ps)
                                    i, ps->input_tex[i], ps->input_tex[i], ps->input_tex[i]);
             }
 
-            /* FIXME: Do bumpMat swizzle on CPU before upload */
-            mstring_append_fmt(vars, "dsdtl%d.st = mat2(bumpMat%d[0].xy, bumpMat%d[1].yx) * dsdtl%d.st;\n",
+            mstring_append_fmt(vars, "dsdtl%d.st = bumpMat%d * dsdtl%d.st;\n",
                 i, i, i, i);
             mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, texScale%d * (pT%d.xy + dsdtl%d.st));\n",
                 i, i, i, i, i);

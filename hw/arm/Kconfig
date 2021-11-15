@@ -6,6 +6,7 @@ config ARM_VIRT
     imply VFIO_PLATFORM
     imply VFIO_XGMAC
     imply TPM_TIS_SYSBUS
+    imply NVDIMM
     select ARM_GIC
     select ACPI
     select ARM_SMMUV3
@@ -142,6 +143,7 @@ config PXA2XX
     select SD
     select SSI
     select USB_OHCI
+    select PCMCIA
 
 config GUMSTIX
     bool
@@ -237,6 +239,10 @@ config STELLARIS
     select STELLARIS_ENET # ethernet
     select UNIMP
 
+config STM32VLDISCOVERY
+    bool
+    select STM32F100_SOC
+
 config STRONGARM
     bool
     select PXA2XX
@@ -294,7 +300,10 @@ config ZYNQ
 
 config ARM_V7M
     bool
+    # currently v7M must be included in a TCG build due to translate.c
+    default y if TCG && (ARM || AARCH64)
     select PTIMER
+    select ARM_COMPATIBLE_SEMIHOSTING
 
 config ALLWINNER_A10
     bool
@@ -323,6 +332,12 @@ config RASPI
     select PL011 # UART
     select SDHCI
     select USB_DWC2
+
+config STM32F100_SOC
+    bool
+    select ARM_V7M
+    select STM32F2XX_USART
+    select STM32F2XX_SPI
 
 config STM32F205_SOC
     bool
@@ -366,16 +381,22 @@ config XLNX_VERSAL
     select UNIMP
     select XLNX_ZDMA
     select XLNX_ZYNQMP
+    select OR_IRQ
 
 config NPCM7XX
     bool
     select A9MPCORE
+    select ADM1272
     select ARM_GIC
+    select SMBUS
     select AT24C  # EEPROM
+    select MAX34451
     select PL310  # cache controller
+    select PMBUS
     select SERIAL
     select SSI
     select UNIMP
+    select PCA954X
 
 config FSL_IMX25
     bool
@@ -383,7 +404,7 @@ config FSL_IMX25
     select IMX_FEC
     select IMX_I2C
     select WDT_IMX2
-    select DS1338
+    select SDHCI
 
 config FSL_IMX31
     bool
@@ -411,6 +432,7 @@ config ASPEED_SOC
     select PCA9552
     select SERIAL
     select SMBUS_EEPROM
+    select PCA954X
     select SSI
     select SSI_M25P80
     select TMP105

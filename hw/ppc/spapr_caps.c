@@ -371,6 +371,65 @@ static bool spapr_pagesize_cb(void *opaque, uint32_t seg_pshift,
     return true;
 }
 
+static void ppc_hash64_filter_pagesizes(PowerPCCPU *cpu,
+                                 bool (*cb)(void *, uint32_t, uint32_t),
+                                 void *opaque)
+{
+    PPCHash64Options *opts = cpu->hash64_opts;
+    int i;
+    int n = 0;
+    bool ci_largepage = false;
+
+    assert(opts);
+
+    n = 0;
+    for (i = 0; i < ARRAY_SIZE(opts->sps); i++) {
+        PPCHash64SegmentPageSizes *sps = &opts->sps[i];
+        int j;
+        int m = 0;
+
+        assert(n <= i);
+
+        if (!sps->page_shift) {
+            break;
+        }
+
+        for (j = 0; j < ARRAY_SIZE(sps->enc); j++) {
+            PPCHash64PageSize *ps = &sps->enc[j];
+
+            assert(m <= j);
+            if (!ps->page_shift) {
+                break;
+            }
+
+            if (cb(opaque, sps->page_shift, ps->page_shift)) {
+                if (ps->page_shift >= 16) {
+                    ci_largepage = true;
+                }
+                sps->enc[m++] = *ps;
+            }
+        }
+
+        /* Clear rest of the row */
+        for (j = m; j < ARRAY_SIZE(sps->enc); j++) {
+            memset(&sps->enc[j], 0, sizeof(sps->enc[j]));
+        }
+
+        if (m) {
+            n++;
+        }
+    }
+
+    /* Clear the rest of the table */
+    for (i = n; i < ARRAY_SIZE(opts->sps); i++) {
+        memset(&opts->sps[i], 0, sizeof(opts->sps[i]));
+    }
+
+    if (!ci_largepage) {
+        opts->flags &= ~PPC_HASH64_CI_LARGEPAGE;
+    }
+}
+
 static void cap_hpt_maxpagesize_cpu_apply(SpaprMachineState *spapr,
                                           PowerPCCPU *cpu,
                                           uint8_t val, Error **errp)
@@ -523,6 +582,37 @@ static void cap_fwnmi_apply(SpaprMachineState *spapr, uint8_t val,
     }
 }
 
+static void cap_rpt_invalidate_apply(SpaprMachineState *spapr,
+                                     uint8_t val, Error **errp)
+{
+    ERRP_GUARD();
+
+    if (!val) {
+        /* capability disabled by default */
+        return;
+    }
+
+    if (tcg_enabled()) {
+        error_setg(errp, "No H_RPT_INVALIDATE support in TCG");
+        error_append_hint(errp,
+                          "Try appending -machine cap-rpt-invalidate=off\n");
+    } else if (kvm_enabled()) {
+        if (!kvmppc_has_cap_mmu_radix()) {
+            error_setg(errp, "H_RPT_INVALIDATE only supported on Radix");
+            return;
+        }
+
+        if (!kvmppc_has_cap_rpt_invalidate()) {
+            error_setg(errp,
+                       "KVM implementation does not support H_RPT_INVALIDATE");
+            error_append_hint(errp,
+                              "Try appending -machine cap-rpt-invalidate=off\n");
+        } else {
+            kvmppc_enable_h_rpt_invalidate();
+        }
+    }
+}
+
 SpaprCapabilityInfo capability_table[SPAPR_CAP_NUM] = {
     [SPAPR_CAP_HTM] = {
         .name = "htm",
@@ -630,6 +720,15 @@ SpaprCapabilityInfo capability_table[SPAPR_CAP_NUM] = {
         .set = spapr_cap_set_bool,
         .type = "bool",
         .apply = cap_fwnmi_apply,
+    },
+    [SPAPR_CAP_RPT_INVALIDATE] = {
+        .name = "rpt-invalidate",
+        .description = "Allow H_RPT_INVALIDATE",
+        .index = SPAPR_CAP_RPT_INVALIDATE,
+        .get = spapr_cap_get_bool,
+        .set = spapr_cap_set_bool,
+        .type = "bool",
+        .apply = cap_rpt_invalidate_apply,
     },
 };
 
@@ -771,6 +870,7 @@ SPAPR_CAP_MIG_STATE(nested_kvm_hv, SPAPR_CAP_NESTED_KVM_HV);
 SPAPR_CAP_MIG_STATE(large_decr, SPAPR_CAP_LARGE_DECREMENTER);
 SPAPR_CAP_MIG_STATE(ccf_assist, SPAPR_CAP_CCF_ASSIST);
 SPAPR_CAP_MIG_STATE(fwnmi, SPAPR_CAP_FWNMI);
+SPAPR_CAP_MIG_STATE(rpt_invalidate, SPAPR_CAP_RPT_INVALIDATE);
 
 void spapr_caps_init(SpaprMachineState *spapr)
 {

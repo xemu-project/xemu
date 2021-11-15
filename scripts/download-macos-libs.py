@@ -13,6 +13,10 @@ import subprocess
 # MIRROR = 'http://packages.macports.org/macports/packages'
 MIRROR = 'http://nue.de.packages.macports.org/macports/packages'
 
+# FIXME: Inline macports key
+# FIXME: Move packages to archive directory to track used vs unused
+# FIXME: Support multiple mirrors
+
 class LibInstaller:
 	DARWIN_TARGET_X64="darwin_17" # macOS 10.13
 	DARWIN_TARGET_ARM64="darwin_20" # macOS 11.x
@@ -84,8 +88,15 @@ class LibInstaller:
 			                  f'-signature "{sig_path}" "{pkg_path}"',
 	                            shell=True, check=True)
 
+	def is_pkg_skipped(self, pkg_name):
+		return any(pkg_name.startswith(n) for n in ('python', 'ncurses'))
+
 	def install_pkg(self, pkg_name):
 		if self.is_pkg_installed(pkg_name):
+			return
+
+		if self.is_pkg_skipped(pkg_name):
+			print(f'[*] Skipping package {pkg_name}')
 			return
 
 		print(f'[*] Fetching {pkg_name}')
@@ -109,10 +120,6 @@ class LibInstaller:
 			print(f'        [>] {dep}')
 			dep = dep.split('-')[0]
 			self._queue.append(dep)
-		for dep in re.findall(r'@pkgdep (.+)', pkg_contents_file):
-			print(f'        [>] {dep}')
-			dep = dep.split('-')[0]
-			self._queue.append(dep)
 
 		print(f'    [*] Checking tarball...')
 
@@ -124,6 +131,7 @@ class LibInstaller:
 		tb.extractall(self._extract_path, numeric_owner=True)
 
 		for fpath in tb.getnames():
+			# FIXME: Symlinks
 			extracted_path = os.path.realpath(os.path.join(self._extract_path, fpath))
 			if extracted_path.endswith('.pc'):
 				print(f'    [*] Fixing {extracted_path}')
@@ -131,7 +139,10 @@ class LibInstaller:
 					lines = f.readlines()
 				for i, l in enumerate(lines):
 					if l.strip().startswith('prefix'):
-						lines[i] = f'prefix={self._extract_path}/opt/local\n'
+						new_prefix = f'prefix={self._extract_path}/opt/local\n'
+						if pkg_name.startswith('openssl'): # FIXME
+							new_prefix = f'prefix={self._extract_path}/opt/local/libexec/openssl11\n'
+						lines[i] = new_prefix
 						break
 				with open(extracted_path, 'w') as f:
 					f.write(''.join(lines))
@@ -167,7 +178,7 @@ def main():
 		'libsamplerate',
 		'libpixman',
 		'libepoxy',
-		'openssl10',
+		'openssl11',
 		'libpcap'])
 
 if __name__ == '__main__':

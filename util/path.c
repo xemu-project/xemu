@@ -53,7 +53,7 @@ const char *path(const char *name)
         char *full = g_build_filename(base, name, NULL);
 
         /* Look for the path; record the result, pass or fail.  */
-        if (access(full, F_OK) == 0) {
+        if (qemu_access(full, F_OK) == 0) {
             /* Exists.  */
             g_hash_table_insert(hash, save, full);
             ret = full;

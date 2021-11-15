@@ -7,9 +7,9 @@ typedef struct QEMU_PACKED NvmeBar {
     uint32_t    intms;
     uint32_t    intmc;
     uint32_t    cc;
-    uint32_t    rsvd1;
+    uint8_t     rsvd24[4];
     uint32_t    csts;
-    uint32_t    nssrc;
+    uint32_t    nssr;
     uint32_t    aqa;
     uint64_t    asq;
     uint64_t    acq;
@@ -26,9 +26,37 @@ typedef struct QEMU_PACKED NvmeBar {
     uint32_t    pmrsts;
     uint32_t    pmrebs;
     uint32_t    pmrswtp;
-    uint64_t    pmrmsc;
+    uint32_t    pmrmscl;
+    uint32_t    pmrmscu;
     uint8_t     css[484];
 } NvmeBar;
+
+enum NvmeBarRegs {
+    NVME_REG_CAP     = offsetof(NvmeBar, cap),
+    NVME_REG_VS      = offsetof(NvmeBar, vs),
+    NVME_REG_INTMS   = offsetof(NvmeBar, intms),
+    NVME_REG_INTMC   = offsetof(NvmeBar, intmc),
+    NVME_REG_CC      = offsetof(NvmeBar, cc),
+    NVME_REG_CSTS    = offsetof(NvmeBar, csts),
+    NVME_REG_NSSR    = offsetof(NvmeBar, nssr),
+    NVME_REG_AQA     = offsetof(NvmeBar, aqa),
+    NVME_REG_ASQ     = offsetof(NvmeBar, asq),
+    NVME_REG_ACQ     = offsetof(NvmeBar, acq),
+    NVME_REG_CMBLOC  = offsetof(NvmeBar, cmbloc),
+    NVME_REG_CMBSZ   = offsetof(NvmeBar, cmbsz),
+    NVME_REG_BPINFO  = offsetof(NvmeBar, bpinfo),
+    NVME_REG_BPRSEL  = offsetof(NvmeBar, bprsel),
+    NVME_REG_BPMBL   = offsetof(NvmeBar, bpmbl),
+    NVME_REG_CMBMSC  = offsetof(NvmeBar, cmbmsc),
+    NVME_REG_CMBSTS  = offsetof(NvmeBar, cmbsts),
+    NVME_REG_PMRCAP  = offsetof(NvmeBar, pmrcap),
+    NVME_REG_PMRCTL  = offsetof(NvmeBar, pmrctl),
+    NVME_REG_PMRSTS  = offsetof(NvmeBar, pmrsts),
+    NVME_REG_PMREBS  = offsetof(NvmeBar, pmrebs),
+    NVME_REG_PMRSWTP = offsetof(NvmeBar, pmrswtp),
+    NVME_REG_PMRMSCL = offsetof(NvmeBar, pmrmscl),
+    NVME_REG_PMRMSCU = offsetof(NvmeBar, pmrmscu),
+};
 
 enum NvmeCapShift {
     CAP_MQES_SHIFT     = 0,
@@ -475,25 +503,25 @@ enum NvmePmrswtpMask {
 #define NVME_PMRSWTP_SET_PMRSWTV(pmrswtp, val)   \
     (pmrswtp |= (uint64_t)(val & PMRSWTP_PMRSWTV_MASK) << PMRSWTP_PMRSWTV_SHIFT)
 
-enum NvmePmrmscShift {
-    PMRMSC_CMSE_SHIFT   = 1,
-    PMRMSC_CBA_SHIFT    = 12,
+enum NvmePmrmsclShift {
+    PMRMSCL_CMSE_SHIFT   = 1,
+    PMRMSCL_CBA_SHIFT    = 12,
 };
 
-enum NvmePmrmscMask {
-    PMRMSC_CMSE_MASK   = 0x1,
-    PMRMSC_CBA_MASK    = 0xfffffffffffff,
+enum NvmePmrmsclMask {
+    PMRMSCL_CMSE_MASK   = 0x1,
+    PMRMSCL_CBA_MASK    = 0xfffff,
 };
 
-#define NVME_PMRMSC_CMSE(pmrmsc)    \
-    ((pmrmsc >> PMRMSC_CMSE_SHIFT)   & PMRMSC_CMSE_MASK)
-#define NVME_PMRMSC_CBA(pmrmsc)     \
-    ((pmrmsc >> PMRMSC_CBA_SHIFT)   & PMRMSC_CBA_MASK)
+#define NVME_PMRMSCL_CMSE(pmrmscl)    \
+    ((pmrmscl >> PMRMSCL_CMSE_SHIFT)   & PMRMSCL_CMSE_MASK)
+#define NVME_PMRMSCL_CBA(pmrmscl)     \
+    ((pmrmscl >> PMRMSCL_CBA_SHIFT)   & PMRMSCL_CBA_MASK)
 
-#define NVME_PMRMSC_SET_CMSE(pmrmsc, val)   \
-    (pmrmsc |= (uint64_t)(val & PMRMSC_CMSE_MASK) << PMRMSC_CMSE_SHIFT)
-#define NVME_PMRMSC_SET_CBA(pmrmsc, val)   \
-    (pmrmsc |= (uint64_t)(val & PMRMSC_CBA_MASK) << PMRMSC_CBA_SHIFT)
+#define NVME_PMRMSCL_SET_CMSE(pmrmscl, val)   \
+    (pmrmscl |= (uint32_t)(val & PMRMSCL_CMSE_MASK) << PMRMSCL_CMSE_SHIFT)
+#define NVME_PMRMSCL_SET_CBA(pmrmscl, val)   \
+    (pmrmscl |= (uint32_t)(val & PMRMSCL_CBA_MASK) << PMRMSCL_CBA_SHIFT)
 
 enum NvmeSglDescriptorType {
     NVME_SGL_DESCR_TYPE_DATA_BLOCK          = 0x0,
@@ -708,6 +736,14 @@ enum {
 
 #define NVME_RW_PRINFO(control) ((control >> 10) & 0xf)
 
+enum {
+    NVME_PRINFO_PRACT       = 1 << 3,
+    NVME_PRINFO_PRCHK_GUARD = 1 << 2,
+    NVME_PRINFO_PRCHK_APP   = 1 << 1,
+    NVME_PRINFO_PRCHK_REF   = 1 << 0,
+    NVME_PRINFO_PRCHK_MASK  = 7 << 0,
+};
+
 typedef struct QEMU_PACKED NvmeDsmCmd {
     uint8_t     opcode;
     uint8_t     flags;
@@ -848,8 +884,8 @@ enum NvmeStatusCodes {
     NVME_FW_REQ_SUSYSTEM_RESET  = 0x0110,
     NVME_NS_ALREADY_ATTACHED    = 0x0118,
     NVME_NS_PRIVATE             = 0x0119,
-    NVME_NS_NOT_ATTACHED        = 0x011A,
-    NVME_NS_CTRL_LIST_INVALID   = 0x011C,
+    NVME_NS_NOT_ATTACHED        = 0x011a,
+    NVME_NS_CTRL_LIST_INVALID   = 0x011c,
     NVME_CONFLICTING_ATTRS      = 0x0180,
     NVME_INVALID_PROT_INFO      = 0x0181,
     NVME_WRITE_TO_RO            = 0x0182,
@@ -980,6 +1016,7 @@ enum NvmeIdCns {
     NVME_ID_CNS_NS_PRESENT_LIST       = 0x10,
     NVME_ID_CNS_NS_PRESENT            = 0x11,
     NVME_ID_CNS_NS_ATTACHED_CTRL_LIST = 0x12,
+    NVME_ID_CNS_CTRL_LIST             = 0x13,
     NVME_ID_CNS_CS_NS_PRESENT_LIST    = 0x1a,
     NVME_ID_CNS_CS_NS_PRESENT         = 0x1b,
     NVME_ID_CNS_IO_COMMAND_SET        = 0x1c,
@@ -1341,6 +1378,15 @@ enum NvmeIdNsDps {
     NVME_ID_NS_DPS_FIRST_EIGHT = 8,
 };
 
+enum NvmeIdNsFlbas {
+    NVME_ID_NS_FLBAS_EXTENDED = 1 << 4,
+};
+
+enum NvmeIdNsMc {
+    NVME_ID_NS_MC_EXTENDED = 1 << 0,
+    NVME_ID_NS_MC_SEPARATE = 1 << 1,
+};
+
 #define NVME_ID_NS_DPS_TYPE(dps) (dps & NVME_ID_NS_DPS_TYPE_MASK)
 
 typedef struct NvmeDifTuple {
@@ -1409,9 +1455,9 @@ typedef enum NvmeZoneState {
     NVME_ZONE_STATE_IMPLICITLY_OPEN  = 0x02,
     NVME_ZONE_STATE_EXPLICITLY_OPEN  = 0x03,
     NVME_ZONE_STATE_CLOSED           = 0x04,
-    NVME_ZONE_STATE_READ_ONLY        = 0x0D,
-    NVME_ZONE_STATE_FULL             = 0x0E,
-    NVME_ZONE_STATE_OFFLINE          = 0x0F,
+    NVME_ZONE_STATE_READ_ONLY        = 0x0d,
+    NVME_ZONE_STATE_FULL             = 0x0e,
+    NVME_ZONE_STATE_OFFLINE          = 0x0f,
 } NvmeZoneState;
 
 static inline void _nvme_check_size(void)

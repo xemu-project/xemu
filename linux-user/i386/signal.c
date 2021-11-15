@@ -436,13 +436,13 @@ void setup_rt_frame(int sig, struct target_sigaction *ka,
 
 #ifndef TARGET_X86_64
     env->regs[R_EAX] = sig;
-    env->regs[R_EDX] = (unsigned long)&frame->info;
-    env->regs[R_ECX] = (unsigned long)&frame->uc;
+    env->regs[R_EDX] = frame_addr + offsetof(struct rt_sigframe, info);
+    env->regs[R_ECX] = frame_addr + offsetof(struct rt_sigframe, uc);
 #else
     env->regs[R_EAX] = 0;
     env->regs[R_EDI] = sig;
-    env->regs[R_ESI] = (unsigned long)&frame->info;
-    env->regs[R_EDX] = (unsigned long)&frame->uc;
+    env->regs[R_ESI] = frame_addr + offsetof(struct rt_sigframe, info);
+    env->regs[R_EDX] = frame_addr + offsetof(struct rt_sigframe, uc);
 #endif
 
     cpu_x86_load_seg(env, R_DS, __USER_DS);
@@ -581,10 +581,7 @@ long do_rt_sigreturn(CPUX86State *env)
         goto badframe;
     }
 
-    if (do_sigaltstack(frame_addr + offsetof(struct rt_sigframe, uc.tuc_stack), 0,
-                       get_sp_from_cpustate(env)) == -EFAULT) {
-        goto badframe;
-    }
+    target_restore_altstack(&frame->uc.tuc_stack, env);
 
     unlock_user_struct(frame, frame_addr, 0);
     return -TARGET_QEMU_ESIGRETURN;

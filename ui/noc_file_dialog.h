@@ -164,48 +164,91 @@ const char *noc_file_dialog_open(int flags,
 
 #include <windows.h>
 #include <commdlg.h>
+#include <glib.h>
+#include <stdio.h>
 
 const char *noc_file_dialog_open(int flags,
                                  const char *filters,
                                  const char *default_path,
                                  const char *default_name)
 {
-    OPENFILENAME ofn;       // common dialog box structure
-    char szFile[_MAX_PATH]; // buffer for file name
-    char initialDir[_MAX_PATH];
-    char drive[_MAX_DRIVE];
-    char dir[_MAX_DIR];
-    char fname[_MAX_FNAME];
-    char ext[_MAX_EXT];
-    int ret;
+    OPENFILENAMEW ofn;         // common dialog box structure
+    wchar_t szFile[_MAX_PATH]; // buffer for file name
+    wchar_t initialDir[_MAX_PATH];
+    wchar_t drive[_MAX_DRIVE];
+    wchar_t dir[_MAX_DIR];
+    wchar_t fname[_MAX_FNAME];
+    wchar_t ext[_MAX_EXT];
+    int ret = 0;
+    wchar_t *wfilters = NULL;
+    wchar_t *wdefault_path = NULL;
+    wchar_t *wdefault_name = NULL;
+    size_t filters_length = 0;
+
+    if (filters) {
+        // 'filters' is a null-terminated list of null-terminated strings,
+        // so the buffer length must be provided explicitly
+        while (filters[filters_length]) {
+            filters_length += strlen(filters + filters_length) + 1;
+        }
+        wfilters = (wchar_t*)g_convert(filters, filters_length + 1, "UTF-16", "UTF-8", NULL, NULL, NULL);
+        if (!wfilters) {
+            fprintf(stderr, "Failed to convert UTF-8 string to UTF-16\n");
+            goto done;
+        }
+    }
+    if (default_path) {
+        wdefault_path = g_utf8_to_utf16(default_path, -1, NULL, NULL, NULL);
+        if (!wdefault_path) {
+            fprintf(stderr, "Failed to convert UTF-8 string to UTF-16\n");
+            goto done;
+        }
+    }
+    if (default_name) {
+        wdefault_name = g_utf8_to_utf16(default_name, -1, NULL, NULL, NULL);
+        if (!wdefault_name) {
+            fprintf(stderr, "Failed to convert UTF-8 string to UTF-16\n");
+            goto done;
+        }
+    }
 
     // init default dir and file name
-    _splitpath_s(default_path, drive, _MAX_DRIVE, dir, _MAX_DIR, fname,
-                 _MAX_FNAME, ext, _MAX_EXT );
-    _makepath_s(initialDir, _MAX_PATH, drive, dir, NULL, NULL);
-    if (default_name)
-        strncpy(szFile, default_name, sizeof(szFile) - 1);
+    _wsplitpath_s(wdefault_path, drive, G_N_ELEMENTS(drive), dir, G_N_ELEMENTS(dir), fname,
+                 G_N_ELEMENTS(fname), ext, G_N_ELEMENTS(ext) ); 
+    _wmakepath_s(initialDir, G_N_ELEMENTS(initialDir), drive, dir, NULL, NULL);
+    if (wdefault_name)
+        wcscpy_s(szFile, G_N_ELEMENTS(szFile), wdefault_name);
     else
-        _makepath_s(szFile, _MAX_PATH, NULL, NULL, fname, ext);
+        _wmakepath_s(szFile, G_N_ELEMENTS(szFile), NULL, NULL, fname, ext);
 
     ZeroMemory(&ofn, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
     ofn.lpstrFile = szFile;
-    ofn.nMaxFile = sizeof(szFile);
-    ofn.lpstrFilter = filters;
+    ofn.nMaxFile = G_N_ELEMENTS(szFile);
+    ofn.lpstrFilter = wfilters;
     ofn.nFilterIndex = 1;
     ofn.lpstrFileTitle = NULL;
     ofn.nMaxFileTitle = 0;
     ofn.lpstrInitialDir = initialDir;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
 
-    if (flags & NOC_FILE_DIALOG_OPEN)
-        ret = GetOpenFileName(&ofn);
-    else
-        ret = GetSaveFileName(&ofn);
+    if (flags & NOC_FILE_DIALOG_OPEN) {
+        ret = GetOpenFileNameW(&ofn);
+    } else {
+        ret = GetSaveFileNameW(&ofn);
+    }
 
-    free(g_noc_file_dialog_ret);
-    g_noc_file_dialog_ret = ret ? strdup(szFile) : NULL;
+done:
+    g_free(wdefault_name);
+    g_free(wdefault_path);
+    g_free(wfilters);
+
+    g_free(g_noc_file_dialog_ret);
+    if (ret) {
+        g_noc_file_dialog_ret = g_utf16_to_utf8(szFile, -1, NULL, NULL, NULL);
+    } else {
+        g_noc_file_dialog_ret = NULL;
+    }
     return g_noc_file_dialog_ret;
 }
 

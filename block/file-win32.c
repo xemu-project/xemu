@@ -337,6 +337,7 @@ static int raw_open(BlockDriverState *bs, QDict *options, int flags,
     QemuOpts *opts;
     Error *local_err = NULL;
     const char *filename;
+    wchar_t *wfilename;
     bool use_aio;
     OnOffAuto locking;
     int ret;
@@ -391,9 +392,14 @@ static int raw_open(BlockDriverState *bs, QDict *options, int flags,
         snprintf(s->drive_path, sizeof(s->drive_path), "%c:\\", buf[0]);
     }
 
-    s->hfile = CreateFile(filename, access_flags,
+    wfilename = g_utf8_to_utf16(filename, -1, NULL, NULL, NULL);
+    if (!filename) {
+        goto fail;
+    }
+    s->hfile = CreateFileW(wfilename, access_flags,
                           FILE_SHARE_READ, NULL,
                           OPEN_EXISTING, overlapped, NULL);
+    g_free(wfilename);
     if (s->hfile == INVALID_HANDLE_VALUE) {
         int err = GetLastError();
 
@@ -556,27 +562,35 @@ static int64_t raw_getlength(BlockDriverState *bs)
 
 static int64_t raw_get_allocated_file_size(BlockDriverState *bs)
 {
-    typedef DWORD (WINAPI * get_compressed_t)(const char *filename,
+    typedef DWORD (WINAPI * get_compressed_t)(const wchar_t *filename,
                                               DWORD * high);
+    int64_t size = -1;
     get_compressed_t get_compressed;
     struct _stati64 st;
-    const char *filename = bs->filename;
+    wchar_t *wfilename = g_utf8_to_utf16(bs->filename, -1, NULL, NULL, NULL);
+    if (!wfilename) {
+        goto done;
+    }
     /* WinNT support GetCompressedFileSize to determine allocate size */
     get_compressed =
         (get_compressed_t) GetProcAddress(GetModuleHandle("kernel32"),
-                                            "GetCompressedFileSizeA");
+                                            "GetCompressedFileSizeW");
     if (get_compressed) {
         DWORD high, low;
-        low = get_compressed(filename, &high);
+        low = get_compressed(wfilename, &high);
         if (low != 0xFFFFFFFFlu || GetLastError() == NO_ERROR) {
-            return (((int64_t) high) << 32) + low;
+            size = (((int64_t) high) << 32) + low;
+            goto done;
         }
     }
 
-    if (_stati64(filename, &st) < 0) {
-        return -1;
+    if (_wstati64(wfilename, &st) >= 0) {
+        size = st.st_size;
     }
-    return st.st_size;
+
+done:
+    g_free(wfilename);
+    return size;
 }
 
 static int raw_co_create(BlockdevCreateOptions *options, Error **errp)
@@ -752,6 +766,7 @@ static int hdev_open(BlockDriverState *bs, QDict *options, int flags,
 
     Error *local_err = NULL;
     const char *filename;
+    wchar_t *wfilename;
     bool use_aio;
 
     QemuOpts *opts = qemu_opts_create(&raw_runtime_opts, NULL, 0,
@@ -795,9 +810,14 @@ static int hdev_open(BlockDriverState *bs, QDict *options, int flags,
 
     create_flags = OPEN_EXISTING;
 
-    s->hfile = CreateFile(filename, access_flags,
-                          FILE_SHARE_READ, NULL,
-                          create_flags, overlapped, NULL);
+    wfilename = g_utf8_to_utf16(filename, -1, NULL, NULL, NULL);
+    if (!filename) {
+        goto done;
+    }
+    s->hfile = CreateFileW(wfilename, access_flags,
+                           FILE_SHARE_READ, NULL,
+                           create_flags, overlapped, NULL);
+    g_free(wfilename);
     if (s->hfile == INVALID_HANDLE_VALUE) {
         int err = GetLastError();
 

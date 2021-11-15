@@ -76,16 +76,27 @@ extern const uint8_t parity_table[256];
 
 /* misc_helper.c */
 void cpu_load_eflags(CPUX86State *env, int eflags, int update_mask);
+void do_pause(CPUX86State *env) QEMU_NORETURN;
 
-/* svm_helper.c */
+/* sysemu/svm_helper.c */
+#ifndef CONFIG_USER_ONLY
 void QEMU_NORETURN cpu_vmexit(CPUX86State *nenv, uint32_t exit_code,
                               uint64_t exit_info_1, uintptr_t retaddr);
 void do_vmexit(CPUX86State *env);
+#endif
 
 /* seg_helper.c */
 void do_interrupt_x86_hardirq(CPUX86State *env, int intno, int is_hw);
+void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
+                      int error_code, target_ulong next_eip, int is_hw);
+void handle_even_inj(CPUX86State *env, int intno, int is_int,
+                     int error_code, int is_hw, int rm);
+int exception_has_error_code(int intno);
 
 /* smm_helper.c */
 void do_smm_enter(X86CPU *cpu);
+
+/* bpt_helper.c */
+bool check_hw_breakpoints(CPUX86State *env, bool force_dr6_update);
 
 #endif /* I386_HELPER_TCG_H */

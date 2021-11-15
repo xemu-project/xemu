@@ -96,8 +96,8 @@ DEF(ext8s_i32, 1, 1, 0, IMPL(TCG_TARGET_HAS_ext8s_i32))
 DEF(ext16s_i32, 1, 1, 0, IMPL(TCG_TARGET_HAS_ext16s_i32))
 DEF(ext8u_i32, 1, 1, 0, IMPL(TCG_TARGET_HAS_ext8u_i32))
 DEF(ext16u_i32, 1, 1, 0, IMPL(TCG_TARGET_HAS_ext16u_i32))
-DEF(bswap16_i32, 1, 1, 0, IMPL(TCG_TARGET_HAS_bswap16_i32))
-DEF(bswap32_i32, 1, 1, 0, IMPL(TCG_TARGET_HAS_bswap32_i32))
+DEF(bswap16_i32, 1, 1, 1, IMPL(TCG_TARGET_HAS_bswap16_i32))
+DEF(bswap32_i32, 1, 1, 1, IMPL(TCG_TARGET_HAS_bswap32_i32))
 DEF(not_i32, 1, 1, 0, IMPL(TCG_TARGET_HAS_not_i32))
 DEF(neg_i32, 1, 1, 0, IMPL(TCG_TARGET_HAS_neg_i32))
 DEF(andc_i32, 1, 2, 0, IMPL(TCG_TARGET_HAS_andc_i32))
@@ -165,9 +165,9 @@ DEF(ext32s_i64, 1, 1, 0, IMPL64 | IMPL(TCG_TARGET_HAS_ext32s_i64))
 DEF(ext8u_i64, 1, 1, 0, IMPL64 | IMPL(TCG_TARGET_HAS_ext8u_i64))
 DEF(ext16u_i64, 1, 1, 0, IMPL64 | IMPL(TCG_TARGET_HAS_ext16u_i64))
 DEF(ext32u_i64, 1, 1, 0, IMPL64 | IMPL(TCG_TARGET_HAS_ext32u_i64))
-DEF(bswap16_i64, 1, 1, 0, IMPL64 | IMPL(TCG_TARGET_HAS_bswap16_i64))
-DEF(bswap32_i64, 1, 1, 0, IMPL64 | IMPL(TCG_TARGET_HAS_bswap32_i64))
-DEF(bswap64_i64, 1, 1, 0, IMPL64 | IMPL(TCG_TARGET_HAS_bswap64_i64))
+DEF(bswap16_i64, 1, 1, 1, IMPL64 | IMPL(TCG_TARGET_HAS_bswap16_i64))
+DEF(bswap32_i64, 1, 1, 1, IMPL64 | IMPL(TCG_TARGET_HAS_bswap32_i64))
+DEF(bswap64_i64, 1, 1, 1, IMPL64 | IMPL(TCG_TARGET_HAS_bswap64_i64))
 DEF(not_i64, 1, 1, 0, IMPL64 | IMPL(TCG_TARGET_HAS_not_i64))
 DEF(neg_i64, 1, 1, 0, IMPL64 | IMPL(TCG_TARGET_HAS_neg_i64))
 DEF(andc_i64, 1, 2, 0, IMPL64 | IMPL(TCG_TARGET_HAS_andc_i64))
@@ -194,10 +194,9 @@ DEF(insn_start, 0, 0, TLADDR_ARGS * TARGET_INSN_START_WORDS,
     TCG_OPF_NOT_PRESENT)
 DEF(exit_tb, 0, 0, 1, TCG_OPF_BB_EXIT | TCG_OPF_BB_END)
 DEF(goto_tb, 0, 0, 1, TCG_OPF_BB_EXIT | TCG_OPF_BB_END)
-DEF(goto_ptr, 0, 1, 0,
-    TCG_OPF_BB_EXIT | TCG_OPF_BB_END | IMPL(TCG_TARGET_HAS_goto_ptr))
+DEF(goto_ptr, 0, 1, 0, TCG_OPF_BB_EXIT | TCG_OPF_BB_END)
 
-DEF(plugin_cb_start, 0, 0, 3, TCG_OPF_NOT_PRESENT)
+DEF(plugin_cb_start, 0, 0, 3, TCG_OPF_NOT_PRESENT | TCG_OPF_BB_END)
 DEF(plugin_cb_end, 0, 0, 0, TCG_OPF_NOT_PRESENT)
 
 DEF(qemu_ld_i32, 1, TLADDR_ARGS, 1,
@@ -213,6 +212,49 @@ DEF(qemu_st_i64, 0, TLADDR_ARGS + DATA64_ARGS, 1,
 DEF(qemu_st8_i32, 0, TLADDR_ARGS + 1, 1,
     TCG_OPF_CALL_CLOBBER | TCG_OPF_SIDE_EFFECTS |
     IMPL(TCG_TARGET_HAS_qemu_st8_i32))
+
+/* Host floating point support. */
+DEF(flcr, 0, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(ld80f_f32, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(ld80f_f64, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(st80f_f32, 0, 2, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(st80f_f64, 0, 2, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(abs_f32, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(abs_f64, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(add_f32, 1, 2, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(add_f64, 1, 2, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(chs_f32, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(chs_f64, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(com_f32, 1, 2, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(com_f64, 1, 2, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(cos_f32, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(cos_f64, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(cvt32f_f64, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(cvt32f_i32, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(cvt32f_i64, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(cvt32i_f32, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(cvt32i_f64, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(cvt64f_f32, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(cvt64f_i32, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(cvt64f_i64, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(cvt64i_f32, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(cvt64i_f64, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(div_f32, 1, 2, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(div_f64, 1, 2, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(mov32f_i32, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(mov32i_f32, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(mov64f_i64, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(mov64i_f64, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(mov_f32, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(mov_f64, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(mul_f32, 1, 2, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(mul_f64, 1, 2, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(sin_f32, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(sin_f64, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(sqrt_f32, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(sqrt_f64, 1, 1, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(sub_f32, 1, 2, 0, IMPL(TCG_TARGET_HAS_fpu))
+DEF(sub_f64, 1, 2, 0, IMPL(TCG_TARGET_HAS_fpu))
 
 /* Host vector support.  */
 
@@ -277,8 +319,8 @@ DEF(last_generic, 0, 0, 0, TCG_OPF_NOT_PRESENT)
 
 #ifdef TCG_TARGET_INTERPRETER
 /* These opcodes are only for use between the tci generator and interpreter. */
-DEF(tci_movi_i32, 1, 0, 1, TCG_OPF_NOT_PRESENT)
-DEF(tci_movi_i64, 1, 0, 1, TCG_OPF_64BIT | TCG_OPF_NOT_PRESENT)
+DEF(tci_movi, 1, 0, 1, TCG_OPF_NOT_PRESENT)
+DEF(tci_movl, 1, 0, 1, TCG_OPF_NOT_PRESENT)
 #endif
 
 #undef TLADDR_ARGS

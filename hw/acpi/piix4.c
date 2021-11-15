@@ -33,7 +33,6 @@
 #include "sysemu/xen.h"
 #include "qapi/error.h"
 #include "qemu/range.h"
-#include "exec/address-spaces.h"
 #include "hw/acpi/pcihp.h"
 #include "hw/acpi/cpu_hotplug.h"
 #include "hw/acpi/cpu.h"
@@ -49,6 +48,8 @@
 
 #define GPE_BASE 0xafe0
 #define GPE_LEN 4
+
+#define ACPI_PCIHP_ADDR_PIIX4 0xae00
 
 struct pci_status {
     uint32_t up; /* deprecated, maintained for migration compatibility */
@@ -608,7 +609,7 @@ static void piix4_acpi_system_hot_add_init(MemoryRegion *parent,
 
     if (s->use_acpi_hotplug_bridge || s->use_acpi_root_pci_hotplug) {
         acpi_pcihp_init(OBJECT(s), &s->acpi_pci_hotplug, bus, parent,
-                        s->use_acpi_hotplug_bridge);
+                        s->use_acpi_hotplug_bridge, ACPI_PCIHP_ADDR_PIIX4);
     }
 
     s->cpu_hotplug_legacy = true;

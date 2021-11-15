@@ -26,49 +26,7 @@
 #include "exec/cpu_ldst.h"
 #include "exec/log.h"
 #include "helper-tcg.h"
-
-//#define DEBUG_PCALL
-
-#ifdef DEBUG_PCALL
-# define LOG_PCALL(...) qemu_log_mask(CPU_LOG_PCALL, ## __VA_ARGS__)
-# define LOG_PCALL_STATE(cpu)                                  \
-    log_cpu_state_mask(CPU_LOG_PCALL, (cpu), CPU_DUMP_CCOP)
-#else
-# define LOG_PCALL(...) do { } while (0)
-# define LOG_PCALL_STATE(cpu) do { } while (0)
-#endif
-
-/*
- * TODO: Convert callers to compute cpu_mmu_index_kernel once
- * and use *_mmuidx_ra directly.
- */
-#define cpu_ldub_kernel_ra(e, p, r) \
-    cpu_ldub_mmuidx_ra(e, p, cpu_mmu_index_kernel(e), r)
-#define cpu_lduw_kernel_ra(e, p, r) \
-    cpu_lduw_mmuidx_ra(e, p, cpu_mmu_index_kernel(e), r)
-#define cpu_ldl_kernel_ra(e, p, r) \
-    cpu_ldl_mmuidx_ra(e, p, cpu_mmu_index_kernel(e), r)
-#define cpu_ldq_kernel_ra(e, p, r) \
-    cpu_ldq_mmuidx_ra(e, p, cpu_mmu_index_kernel(e), r)
-
-#define cpu_stb_kernel_ra(e, p, v, r) \
-    cpu_stb_mmuidx_ra(e, p, v, cpu_mmu_index_kernel(e), r)
-#define cpu_stw_kernel_ra(e, p, v, r) \
-    cpu_stw_mmuidx_ra(e, p, v, cpu_mmu_index_kernel(e), r)
-#define cpu_stl_kernel_ra(e, p, v, r) \
-    cpu_stl_mmuidx_ra(e, p, v, cpu_mmu_index_kernel(e), r)
-#define cpu_stq_kernel_ra(e, p, v, r) \
-    cpu_stq_mmuidx_ra(e, p, v, cpu_mmu_index_kernel(e), r)
-
-#define cpu_ldub_kernel(e, p)    cpu_ldub_kernel_ra(e, p, 0)
-#define cpu_lduw_kernel(e, p)    cpu_lduw_kernel_ra(e, p, 0)
-#define cpu_ldl_kernel(e, p)     cpu_ldl_kernel_ra(e, p, 0)
-#define cpu_ldq_kernel(e, p)     cpu_ldq_kernel_ra(e, p, 0)
-
-#define cpu_stb_kernel(e, p, v)  cpu_stb_kernel_ra(e, p, v, 0)
-#define cpu_stw_kernel(e, p, v)  cpu_stw_kernel_ra(e, p, v, 0)
-#define cpu_stl_kernel(e, p, v)  cpu_stl_kernel_ra(e, p, v, 0)
-#define cpu_stq_kernel(e, p, v)  cpu_stq_kernel_ra(e, p, v, 0)
+#include "seg_helper.h"
 
 /* return non zero if error */
 static inline int load_segment_ra(CPUX86State *env, uint32_t *e1_ptr,
@@ -319,11 +277,10 @@ static void switch_tss_ra(CPUX86State *env, int tss_selector,
         new_eip = cpu_lduw_kernel_ra(env, tss_base + 0x0e, retaddr);
         new_eflags = cpu_lduw_kernel_ra(env, tss_base + 0x10, retaddr);
         for (i = 0; i < 8; i++) {
-            new_regs[i] = cpu_lduw_kernel_ra(env, tss_base + (0x12 + i * 2),
-                                             retaddr) | 0xffff0000;
+            new_regs[i] = cpu_lduw_kernel_ra(env, tss_base + (0x12 + i * 2), retaddr);
         }
         for (i = 0; i < 4; i++) {
-            new_segs[i] = cpu_lduw_kernel_ra(env, tss_base + (0x22 + i * 4),
+            new_segs[i] = cpu_lduw_kernel_ra(env, tss_base + (0x22 + i * 2),
                                              retaddr);
         }
         new_ldt = cpu_lduw_kernel_ra(env, tss_base + 0x2a, retaddr);
@@ -362,7 +319,7 @@ static void switch_tss_ra(CPUX86State *env, int tss_selector,
     }
 
     /* save the current state in the old TSS */
-    if (type & 8) {
+    if (old_type & 8) {
         /* 32 bit */
         cpu_stl_kernel_ra(env, env->tr.base + 0x20, next_eip, retaddr);
         cpu_stl_kernel_ra(env, env->tr.base + 0x24, old_eflags, retaddr);
@@ -391,7 +348,7 @@ static void switch_tss_ra(CPUX86State *env, int tss_selector,
         cpu_stw_kernel_ra(env, env->tr.base + (0x12 + 6 * 2), env->regs[R_ESI], retaddr);
         cpu_stw_kernel_ra(env, env->tr.base + (0x12 + 7 * 2), env->regs[R_EDI], retaddr);
         for (i = 0; i < 4; i++) {
-            cpu_stw_kernel_ra(env, env->tr.base + (0x22 + i * 4),
+            cpu_stw_kernel_ra(env, env->tr.base + (0x22 + i * 2),
                               env->segs[i].selector, retaddr);
         }
     }
@@ -433,19 +390,17 @@ static void switch_tss_ra(CPUX86State *env, int tss_selector,
     env->eip = new_eip;
     eflags_mask = TF_MASK | AC_MASK | ID_MASK |
         IF_MASK | IOPL_MASK | VM_MASK | RF_MASK | NT_MASK;
-    if (!(type & 8)) {
-        eflags_mask &= 0xffff;
+    if (type & 8) {
+        cpu_load_eflags(env, new_eflags, eflags_mask);
+        for (i = 0; i < 8; i++) {
+            env->regs[i] = new_regs[i];
+        }
+    } else {
+        cpu_load_eflags(env, new_eflags, eflags_mask & 0xffff);
+        for (i = 0; i < 8; i++) {
+            env->regs[i] = (env->regs[i] & 0xffff0000) | new_regs[i];
+        }
     }
-    cpu_load_eflags(env, new_eflags, eflags_mask);
-    /* XXX: what to do in 16 bit case? */
-    env->regs[R_EAX] = new_regs[0];
-    env->regs[R_ECX] = new_regs[1];
-    env->regs[R_EDX] = new_regs[2];
-    env->regs[R_EBX] = new_regs[3];
-    env->regs[R_ESP] = new_regs[4];
-    env->regs[R_EBP] = new_regs[5];
-    env->regs[R_ESI] = new_regs[6];
-    env->regs[R_EDI] = new_regs[7];
     if (new_eflags & VM_MASK) {
         for (i = 0; i < 6; i++) {
             load_seg_vm(env, i, new_segs[i]);
@@ -531,7 +486,7 @@ static inline unsigned int get_sp_mask(unsigned int e2)
     }
 }
 
-static int exception_has_error_code(int intno)
+int exception_has_error_code(int intno)
 {
     switch (intno) {
     case 8:
@@ -977,72 +932,6 @@ static void do_interrupt64(CPUX86State *env, int intno, int is_int,
 #endif
 
 #ifdef TARGET_X86_64
-#if defined(CONFIG_USER_ONLY)
-void helper_syscall(CPUX86State *env, int next_eip_addend)
-{
-    CPUState *cs = env_cpu(env);
-
-    cs->exception_index = EXCP_SYSCALL;
-    env->exception_is_int = 0;
-    env->exception_next_eip = env->eip + next_eip_addend;
-    cpu_loop_exit(cs);
-}
-#else
-void helper_syscall(CPUX86State *env, int next_eip_addend)
-{
-    int selector;
-
-    if (!(env->efer & MSR_EFER_SCE)) {
-        raise_exception_err_ra(env, EXCP06_ILLOP, 0, GETPC());
-    }
-    selector = (env->star >> 32) & 0xffff;
-    if (env->hflags & HF_LMA_MASK) {
-        int code64;
-
-        env->regs[R_ECX] = env->eip + next_eip_addend;
-        env->regs[11] = cpu_compute_eflags(env) & ~RF_MASK;
-
-        code64 = env->hflags & HF_CS64_MASK;
-
-        env->eflags &= ~(env->fmask | RF_MASK);
-        cpu_load_eflags(env, env->eflags, 0);
-        cpu_x86_load_seg_cache(env, R_CS, selector & 0xfffc,
-                           0, 0xffffffff,
-                               DESC_G_MASK | DESC_P_MASK |
-                               DESC_S_MASK |
-                               DESC_CS_MASK | DESC_R_MASK | DESC_A_MASK |
-                               DESC_L_MASK);
-        cpu_x86_load_seg_cache(env, R_SS, (selector + 8) & 0xfffc,
-                               0, 0xffffffff,
-                               DESC_G_MASK | DESC_B_MASK | DESC_P_MASK |
-                               DESC_S_MASK |
-                               DESC_W_MASK | DESC_A_MASK);
-        if (code64) {
-            env->eip = env->lstar;
-        } else {
-            env->eip = env->cstar;
-        }
-    } else {
-        env->regs[R_ECX] = (uint32_t)(env->eip + next_eip_addend);
-
-        env->eflags &= ~(IF_MASK | RF_MASK | VM_MASK);
-        cpu_x86_load_seg_cache(env, R_CS, selector & 0xfffc,
-                           0, 0xffffffff,
-                               DESC_G_MASK | DESC_B_MASK | DESC_P_MASK |
-                               DESC_S_MASK |
-                               DESC_CS_MASK | DESC_R_MASK | DESC_A_MASK);
-        cpu_x86_load_seg_cache(env, R_SS, (selector + 8) & 0xfffc,
-                               0, 0xffffffff,
-                               DESC_G_MASK | DESC_B_MASK | DESC_P_MASK |
-                               DESC_S_MASK |
-                               DESC_W_MASK | DESC_A_MASK);
-        env->eip = (uint32_t)env->star;
-    }
-}
-#endif
-#endif
-
-#ifdef TARGET_X86_64
 void helper_sysret(CPUX86State *env, int dflag)
 {
     int cpl, selector;
@@ -1136,84 +1025,13 @@ static void do_interrupt_real(CPUX86State *env, int intno, int is_int,
     env->eflags &= ~(IF_MASK | TF_MASK | AC_MASK | RF_MASK);
 }
 
-#if defined(CONFIG_USER_ONLY)
-/* fake user mode interrupt. is_int is TRUE if coming from the int
- * instruction. next_eip is the env->eip value AFTER the interrupt
- * instruction. It is only relevant if is_int is TRUE or if intno
- * is EXCP_SYSCALL.
- */
-static void do_interrupt_user(CPUX86State *env, int intno, int is_int,
-                              int error_code, target_ulong next_eip)
-{
-    if (is_int) {
-        SegmentCache *dt;
-        target_ulong ptr;
-        int dpl, cpl, shift;
-        uint32_t e2;
-
-        dt = &env->idt;
-        if (env->hflags & HF_LMA_MASK) {
-            shift = 4;
-        } else {
-            shift = 3;
-        }
-        ptr = dt->base + (intno << shift);
-        e2 = cpu_ldl_kernel(env, ptr + 4);
-
-        dpl = (e2 >> DESC_DPL_SHIFT) & 3;
-        cpl = env->hflags & HF_CPL_MASK;
-        /* check privilege if software int */
-        if (dpl < cpl) {
-            raise_exception_err(env, EXCP0D_GPF, (intno << shift) + 2);
-        }
-    }
-
-    /* Since we emulate only user space, we cannot do more than
-       exiting the emulation with the suitable exception and error
-       code. So update EIP for INT 0x80 and EXCP_SYSCALL. */
-    if (is_int || intno == EXCP_SYSCALL) {
-        env->eip = next_eip;
-    }
-}
-
-#else
-
-static void handle_even_inj(CPUX86State *env, int intno, int is_int,
-                            int error_code, int is_hw, int rm)
-{
-    CPUState *cs = env_cpu(env);
-    uint32_t event_inj = x86_ldl_phys(cs, env->vm_vmcb + offsetof(struct vmcb,
-                                                          control.event_inj));
-
-    if (!(event_inj & SVM_EVTINJ_VALID)) {
-        int type;
-
-        if (is_int) {
-            type = SVM_EVTINJ_TYPE_SOFT;
-        } else {
-            type = SVM_EVTINJ_TYPE_EXEPT;
-        }
-        event_inj = intno | type | SVM_EVTINJ_VALID;
-        if (!rm && exception_has_error_code(intno)) {
-            event_inj |= SVM_EVTINJ_VALID_ERR;
-            x86_stl_phys(cs, env->vm_vmcb + offsetof(struct vmcb,
-                                             control.event_inj_err),
-                     error_code);
-        }
-        x86_stl_phys(cs,
-                 env->vm_vmcb + offsetof(struct vmcb, control.event_inj),
-                 event_inj);
-    }
-}
-#endif
-
 /*
  * Begin execution of an interruption. is_int is TRUE if coming from
  * the int instruction. next_eip is the env->eip value AFTER the interrupt
  * instruction. It is only relevant if is_int is TRUE.
  */
-static void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
-                             int error_code, target_ulong next_eip, int is_hw)
+void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
+                      int error_code, target_ulong next_eip, int is_hw)
 {
     CPUX86State *env = &cpu->env;
 
@@ -1289,36 +1107,6 @@ static void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
 #endif
 }
 
-void x86_cpu_do_interrupt(CPUState *cs)
-{
-    X86CPU *cpu = X86_CPU(cs);
-    CPUX86State *env = &cpu->env;
-
-#if defined(CONFIG_USER_ONLY)
-    /* if user mode only, we simulate a fake exception
-       which will be handled outside the cpu execution
-       loop */
-    do_interrupt_user(env, cs->exception_index,
-                      env->exception_is_int,
-                      env->error_code,
-                      env->exception_next_eip);
-    /* successfully delivered */
-    env->old_exception = -1;
-#else
-    if (cs->exception_index == EXCP_VMEXIT) {
-        assert(env->old_exception == -1);
-        do_vmexit(env);
-    } else {
-        do_interrupt_all(cpu, cs->exception_index,
-                         env->exception_is_int,
-                         env->error_code,
-                         env->exception_next_eip, 0);
-        /* successfully delivered */
-        env->old_exception = -1;
-    }
-#endif
-}
-
 void do_interrupt_x86_hardirq(CPUX86State *env, int intno, int is_hw)
 {
     do_interrupt_all(env_archcpu(env), intno, 0, 0, 0, is_hw);
@@ -1351,7 +1139,11 @@ bool x86_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
     case CPU_INTERRUPT_SMI:
         cpu_svm_check_intercept_param(env, SVM_EXIT_SMI, 0, 0);
         cs->interrupt_request &= ~CPU_INTERRUPT_SMI;
+#ifdef CONFIG_USER_ONLY
+        cpu_abort(CPU(cpu), "SMI interrupt: cannot enter SMM in user-mode");
+#else
         do_smm_enter(cpu);
+#endif /* CONFIG_USER_ONLY */
         break;
     case CPU_INTERRUPT_NMI:
         cpu_svm_check_intercept_param(env, SVM_EXIT_NMI, 0, 0);
@@ -2620,63 +2412,4 @@ void helper_verw(CPUX86State *env, target_ulong selector1)
         }
     }
     CC_SRC = eflags | CC_Z;
-}
-
-#if defined(CONFIG_USER_ONLY)
-void cpu_x86_load_seg(CPUX86State *env, X86Seg seg_reg, int selector)
-{
-    if (!(env->cr[0] & CR0_PE_MASK) || (env->eflags & VM_MASK)) {
-        int dpl = (env->eflags & VM_MASK) ? 3 : 0;
-        selector &= 0xffff;
-        cpu_x86_load_seg_cache(env, seg_reg, selector,
-                               (selector << 4), 0xffff,
-                               DESC_P_MASK | DESC_S_MASK | DESC_W_MASK |
-                               DESC_A_MASK | (dpl << DESC_DPL_SHIFT));
-    } else {
-        helper_load_seg(env, seg_reg, selector);
-    }
-}
-#endif
-
-/* check if Port I/O is allowed in TSS */
-static inline void check_io(CPUX86State *env, int addr, int size,
-                            uintptr_t retaddr)
-{
-    int io_offset, val, mask;
-
-    /* TSS must be a valid 32 bit one */
-    if (!(env->tr.flags & DESC_P_MASK) ||
-        ((env->tr.flags >> DESC_TYPE_SHIFT) & 0xf) != 9 ||
-        env->tr.limit < 103) {
-        goto fail;
-    }
-    io_offset = cpu_lduw_kernel_ra(env, env->tr.base + 0x66, retaddr);
-    io_offset += (addr >> 3);
-    /* Note: the check needs two bytes */
-    if ((io_offset + 1) > env->tr.limit) {
-        goto fail;
-    }
-    val = cpu_lduw_kernel_ra(env, env->tr.base + io_offset, retaddr);
-    val >>= (addr & 7);
-    mask = (1 << size) - 1;
-    /* all bits must be zero to allow the I/O */
-    if ((val & mask) != 0) {
-    fail:
-        raise_exception_err_ra(env, EXCP0D_GPF, 0, retaddr);
-    }
-}
-
-void helper_check_iob(CPUX86State *env, uint32_t t0)
-{
-    check_io(env, t0, 1, GETPC());
-}
-
-void helper_check_iow(CPUX86State *env, uint32_t t0)
-{
-    check_io(env, t0, 2, GETPC());
-}
-
-void helper_check_iol(CPUX86State *env, uint32_t t0)
-{
-    check_io(env, t0, 4, GETPC());
 }

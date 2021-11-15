@@ -122,6 +122,7 @@ struct lo_inode {
 struct lo_cred {
     uid_t euid;
     gid_t egid;
+    mode_t umask;
 };
 
 enum {
@@ -172,6 +173,9 @@ struct lo_data {
     /* An O_PATH file descriptor to /proc/self/fd/ */
     int proc_self_fd;
     int user_killpriv_v2, killpriv_v2;
+    /* If set, virtiofsd is responsible for setting umask during creation */
+    bool change_umask;
+    int user_posix_acl, posix_acl;
 };
 
 static const struct fuse_opt lo_opts[] = {
@@ -204,6 +208,8 @@ static const struct fuse_opt lo_opts[] = {
     { "announce_submounts", offsetof(struct lo_data, announce_submounts), 1 },
     { "killpriv_v2", offsetof(struct lo_data, user_killpriv_v2), 1 },
     { "no_killpriv_v2", offsetof(struct lo_data, user_killpriv_v2), 0 },
+    { "posix_acl", offsetof(struct lo_data, user_posix_acl), 1 },
+    { "no_posix_acl", offsetof(struct lo_data, user_posix_acl), 0 },
     FUSE_OPT_END
 };
 static bool use_syslog = false;
@@ -406,7 +412,7 @@ static void lo_map_init(struct lo_map *map)
 
 static void lo_map_destroy(struct lo_map *map)
 {
-    free(map->elems);
+    g_free(map->elems);
 }
 
 static int lo_map_grow(struct lo_map *map, size_t new_nelems)
@@ -418,7 +424,7 @@ static int lo_map_grow(struct lo_map *map, size_t new_nelems)
         return 1;
     }
 
-    new_elems = realloc(map->elems, sizeof(map->elems[0]) * new_nelems);
+    new_elems = g_try_realloc_n(map->elems, new_nelems, sizeof(map->elems[0]));
     if (!new_elems) {
         return 0;
     }
@@ -701,6 +707,32 @@ static void lo_init(void *userdata, struct fuse_conn_info *conn)
         fuse_log(FUSE_LOG_DEBUG, "lo_init: disabling killpriv_v2\n");
         conn->want &= ~FUSE_CAP_HANDLE_KILLPRIV_V2;
         lo->killpriv_v2 = 0;
+    }
+
+    if (lo->user_posix_acl == 1) {
+        /*
+         * User explicitly asked for this option. Enable it unconditionally.
+         * If connection does not have this capability, print error message
+         * now. It will fail later in fuse_lowlevel.c
+         */
+        if (!(conn->capable & FUSE_CAP_POSIX_ACL) ||
+            !(conn->capable & FUSE_CAP_DONT_MASK) ||
+            !(conn->capable & FUSE_CAP_SETXATTR_EXT)) {
+            fuse_log(FUSE_LOG_ERR, "lo_init: Can not enable posix acl."
+                     " kernel does not support FUSE_POSIX_ACL, FUSE_DONT_MASK"
+                     " or FUSE_SETXATTR_EXT capability.\n");
+        } else {
+            fuse_log(FUSE_LOG_DEBUG, "lo_init: enabling posix acl\n");
+        }
+
+        conn->want |= FUSE_CAP_POSIX_ACL | FUSE_CAP_DONT_MASK |
+                      FUSE_CAP_SETXATTR_EXT;
+        lo->change_umask = true;
+        lo->posix_acl = true;
+    } else {
+        /* User either did not specify anything or wants it disabled */
+        fuse_log(FUSE_LOG_DEBUG, "lo_init: disabling posix_acl\n");
+        conn->want &= ~FUSE_CAP_POSIX_ACL;
     }
 }
 
@@ -1134,7 +1166,8 @@ static void lo_lookup(fuse_req_t req, fuse_ino_t parent, const char *name)
  * ownership of caller.
  * TODO: What about selinux context?
  */
-static int lo_change_cred(fuse_req_t req, struct lo_cred *old)
+static int lo_change_cred(fuse_req_t req, struct lo_cred *old,
+                          bool change_umask)
 {
     int res;
 
@@ -1154,11 +1187,14 @@ static int lo_change_cred(fuse_req_t req, struct lo_cred *old)
         return errno_save;
     }
 
+    if (change_umask) {
+        old->umask = umask(req->ctx.umask);
+    }
     return 0;
 }
 
 /* Regain Privileges */
-static void lo_restore_cred(struct lo_cred *old)
+static void lo_restore_cred(struct lo_cred *old, bool restore_umask)
 {
     int res;
 
@@ -1172,6 +1208,54 @@ static void lo_restore_cred(struct lo_cred *old)
     if (res == -1) {
         fuse_log(FUSE_LOG_ERR, "setegid(%u): %m\n", old->egid);
         exit(1);
+    }
+
+    if (restore_umask)
+        umask(old->umask);
+}
+
+/*
+ * A helper to change cred and drop capability. Returns 0 on success and
+ * errno on error
+ */
+static int lo_drop_cap_change_cred(fuse_req_t req, struct lo_cred *old,
+                                   bool change_umask, const char *cap_name,
+                                   bool *cap_dropped)
+{
+    int ret;
+    bool __cap_dropped;
+
+    assert(cap_name);
+
+    ret = drop_effective_cap(cap_name, &__cap_dropped);
+    if (ret) {
+        return ret;
+    }
+
+    ret = lo_change_cred(req, old, change_umask);
+    if (ret) {
+        if (__cap_dropped) {
+            if (gain_effective_cap(cap_name)) {
+                fuse_log(FUSE_LOG_ERR, "Failed to gain CAP_%s\n", cap_name);
+            }
+        }
+    }
+
+    if (cap_dropped) {
+        *cap_dropped = __cap_dropped;
+    }
+    return ret;
+}
+
+static void lo_restore_cred_gain_cap(struct lo_cred *old, bool restore_umask,
+                                     const char *cap_name)
+{
+    assert(cap_name);
+
+    lo_restore_cred(old, restore_umask);
+
+    if (gain_effective_cap(cap_name)) {
+        fuse_log(FUSE_LOG_ERR, "Failed to gain CAP_%s\n", cap_name);
     }
 }
 
@@ -1202,7 +1286,7 @@ static void lo_mknod_symlink(fuse_req_t req, fuse_ino_t parent,
         return;
     }
 
-    saverr = lo_change_cred(req, &old);
+    saverr = lo_change_cred(req, &old, lo->change_umask && !S_ISLNK(mode));
     if (saverr) {
         goto out;
     }
@@ -1211,7 +1295,7 @@ static void lo_mknod_symlink(fuse_req_t req, fuse_ino_t parent,
 
     saverr = errno;
 
-    lo_restore_cred(&old);
+    lo_restore_cred(&old, lo->change_umask && !S_ISLNK(mode));
 
     if (res == -1) {
         goto out;
@@ -1653,7 +1737,7 @@ static void lo_do_readdir(fuse_req_t req, fuse_ino_t ino, size_t size,
     struct lo_data *lo = lo_data(req);
     struct lo_dirp *d = NULL;
     struct lo_inode *dinode;
-    char *buf = NULL;
+    g_autofree char *buf = NULL;
     char *p;
     size_t rem = size;
     int err = EBADF;
@@ -1669,7 +1753,7 @@ static void lo_do_readdir(fuse_req_t req, fuse_ino_t ino, size_t size,
     }
 
     err = ENOMEM;
-    buf = calloc(1, size);
+    buf = g_try_malloc0(size);
     if (!buf) {
         goto error;
     }
@@ -1755,7 +1839,6 @@ error:
     } else {
         fuse_reply_buf(req, buf, size - rem);
     }
-    free(buf);
 }
 
 static void lo_readdir(fuse_req_t req, fuse_ino_t ino, size_t size,
@@ -1918,7 +2001,7 @@ static void lo_create(fuse_req_t req, fuse_ino_t parent, const char *name,
         return;
     }
 
-    err = lo_change_cred(req, &old);
+    err = lo_change_cred(req, &old, lo->change_umask);
     if (err) {
         goto out;
     }
@@ -1929,7 +2012,7 @@ static void lo_create(fuse_req_t req, fuse_ino_t parent, const char *name,
     fd = openat(parent_inode->fd, name, fi->flags | O_CREAT | O_EXCL, mode);
     err = fd == -1 ? errno : 0;
 
-    lo_restore_cred(&old);
+    lo_restore_cred(&old, lo->change_umask);
 
     /* Ignore the error if file exists and O_EXCL was not given */
     if (err && (err != EEXIST || (fi->flags & O_EXCL))) {
@@ -2011,10 +2094,10 @@ static void lo_getlk(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi,
 
     fuse_log(FUSE_LOG_DEBUG,
              "lo_getlk(ino=%" PRIu64 ", flags=%d)"
-             " owner=0x%lx, l_type=%d l_start=0x%lx"
-             " l_len=0x%lx\n",
-             ino, fi->flags, fi->lock_owner, lock->l_type, lock->l_start,
-             lock->l_len);
+             " owner=0x%" PRIx64 ", l_type=%d l_start=0x%" PRIx64
+             " l_len=0x%" PRIx64 "\n",
+             ino, fi->flags, fi->lock_owner, lock->l_type,
+             (uint64_t)lock->l_start, (uint64_t)lock->l_len);
 
     if (!lo->posix_lock) {
         fuse_reply_err(req, ENOSYS);
@@ -2061,10 +2144,10 @@ static void lo_setlk(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi,
 
     fuse_log(FUSE_LOG_DEBUG,
              "lo_setlk(ino=%" PRIu64 ", flags=%d)"
-             " cmd=%d pid=%d owner=0x%lx sleep=%d l_whence=%d"
-             " l_start=0x%lx l_len=0x%lx\n",
+             " cmd=%d pid=%d owner=0x%" PRIx64 " sleep=%d l_whence=%d"
+             " l_start=0x%" PRIx64 " l_len=0x%" PRIx64 "\n",
              ino, fi->flags, lock->l_type, lock->l_pid, fi->lock_owner, sleep,
-             lock->l_whence, lock->l_start, lock->l_len);
+             lock->l_whence, (uint64_t)lock->l_start, (uint64_t)lock->l_len);
 
     if (!lo->posix_lock) {
         fuse_reply_err(req, ENOSYS);
@@ -2723,11 +2806,73 @@ static int xattr_map_server(const struct lo_data *lo, const char *server_name,
     return -ENODATA;
 }
 
+#define FCHDIR_NOFAIL(fd) do {                         \
+        int fchdir_res = fchdir(fd);                   \
+        assert(fchdir_res == 0);                       \
+    } while (0)
+
+static bool block_xattr(struct lo_data *lo, const char *name)
+{
+    /*
+     * If user explicitly enabled posix_acl or did not provide any option,
+     * do not block acl. Otherwise block system.posix_acl_access and
+     * system.posix_acl_default xattrs.
+     */
+    if (lo->user_posix_acl) {
+        return false;
+    }
+    if (!strcmp(name, "system.posix_acl_access") ||
+        !strcmp(name, "system.posix_acl_default"))
+            return true;
+
+    return false;
+}
+
+/*
+ * Returns number of bytes in xattr_list after filtering on success. This
+ * could be zero as well if nothing is left after filtering.
+ *
+ * Returns negative error code on failure.
+ * xattr_list is modified in place.
+ */
+static int remove_blocked_xattrs(struct lo_data *lo, char *xattr_list,
+                                 unsigned in_size)
+{
+    size_t out_index, in_index;
+
+    /*
+     * As of now we only filter out acl xattrs. If acls are enabled or
+     * they have not been explicitly disabled, there is nothing to
+     * filter.
+     */
+    if (lo->user_posix_acl) {
+        return in_size;
+    }
+
+    out_index = 0;
+    in_index = 0;
+    while (in_index < in_size) {
+        char *in_ptr = xattr_list + in_index;
+
+        /* Length of current attribute name */
+        size_t in_len = strlen(xattr_list + in_index) + 1;
+
+        if (!block_xattr(lo, in_ptr)) {
+            if (in_index != out_index) {
+                memmove(xattr_list + out_index, xattr_list + in_index, in_len);
+            }
+            out_index += in_len;
+        }
+        in_index += in_len;
+     }
+    return out_index;
+}
+
 static void lo_getxattr(fuse_req_t req, fuse_ino_t ino, const char *in_name,
                         size_t size)
 {
     struct lo_data *lo = lo_data(req);
-    char *value = NULL;
+    g_autofree char *value = NULL;
     char procname[64];
     const char *name;
     char *mapped_name;
@@ -2735,6 +2880,11 @@ static void lo_getxattr(fuse_req_t req, fuse_ino_t ino, const char *in_name,
     ssize_t ret;
     int saverr;
     int fd = -1;
+
+    if (block_xattr(lo, in_name)) {
+        fuse_reply_err(req, EOPNOTSUPP);
+        return;
+    }
 
     mapped_name = NULL;
     name = in_name;
@@ -2768,7 +2918,7 @@ static void lo_getxattr(fuse_req_t req, fuse_ino_t ino, const char *in_name,
              ino, name, size);
 
     if (size) {
-        value = malloc(size);
+        value = g_try_malloc(size);
         if (!value) {
             goto out_err;
         }
@@ -2787,15 +2937,17 @@ static void lo_getxattr(fuse_req_t req, fuse_ino_t ino, const char *in_name,
             goto out_err;
         }
         ret = fgetxattr(fd, name, value, size);
+        saverr = ret == -1 ? errno : 0;
     } else {
         /* fchdir should not fail here */
-        assert(fchdir(lo->proc_self_fd) == 0);
+        FCHDIR_NOFAIL(lo->proc_self_fd);
         ret = getxattr(procname, name, value, size);
-        assert(fchdir(lo->root.fd) == 0);
+        saverr = ret == -1 ? errno : 0;
+        FCHDIR_NOFAIL(lo->root.fd);
     }
 
     if (ret == -1) {
-        goto out_err;
+        goto out;
     }
     if (size) {
         saverr = 0;
@@ -2807,8 +2959,6 @@ static void lo_getxattr(fuse_req_t req, fuse_ino_t ino, const char *in_name,
         fuse_reply_xattr(req, ret);
     }
 out_free:
-    free(value);
-
     if (fd >= 0) {
         close(fd);
     }
@@ -2827,7 +2977,7 @@ out:
 static void lo_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size)
 {
     struct lo_data *lo = lo_data(req);
-    char *value = NULL;
+    g_autofree char *value = NULL;
     char procname[64];
     struct lo_inode *inode;
     ssize_t ret;
@@ -2849,7 +2999,7 @@ static void lo_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size)
              size);
 
     if (size) {
-        value = malloc(size);
+        value = g_try_malloc(size);
         if (!value) {
             goto out_err;
         }
@@ -2862,15 +3012,17 @@ static void lo_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size)
             goto out_err;
         }
         ret = flistxattr(fd, value, size);
+        saverr = ret == -1 ? errno : 0;
     } else {
         /* fchdir should not fail here */
-        assert(fchdir(lo->proc_self_fd) == 0);
+        FCHDIR_NOFAIL(lo->proc_self_fd);
         ret = listxattr(procname, value, size);
-        assert(fchdir(lo->root.fd) == 0);
+        saverr = ret == -1 ? errno : 0;
+        FCHDIR_NOFAIL(lo->root.fd);
     }
 
     if (ret == -1) {
-        goto out_err;
+        goto out;
     }
     if (size) {
         saverr = 0;
@@ -2924,6 +3076,12 @@ static void lo_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size)
                 goto out;
             }
         }
+
+        ret = remove_blocked_xattrs(lo, value, ret);
+        if (ret <= 0) {
+            saverr = -ret;
+            goto out;
+        }
         fuse_reply_buf(req, value, ret);
     } else {
         /*
@@ -2934,8 +3092,6 @@ static void lo_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size)
         fuse_reply_xattr(req, ret);
     }
 out_free:
-    free(value);
-
     if (fd >= 0) {
         close(fd);
     }
@@ -2951,7 +3107,8 @@ out:
 }
 
 static void lo_setxattr(fuse_req_t req, fuse_ino_t ino, const char *in_name,
-                        const char *value, size_t size, int flags)
+                        const char *value, size_t size, int flags,
+                        uint32_t extra_flags)
 {
     char procname[64];
     const char *name;
@@ -2961,6 +3118,14 @@ static void lo_setxattr(fuse_req_t req, fuse_ino_t ino, const char *in_name,
     ssize_t ret;
     int saverr;
     int fd = -1;
+    bool switched_creds = false;
+    bool cap_fsetid_dropped = false;
+    struct lo_cred old = {};
+
+    if (block_xattr(lo, in_name)) {
+        fuse_reply_err(req, EOPNOTSUPP);
+        return;
+    }
 
     mapped_name = NULL;
     name = in_name;
@@ -2991,6 +3156,26 @@ static void lo_setxattr(fuse_req_t req, fuse_ino_t ino, const char *in_name,
              ", name=%s value=%s size=%zd)\n", ino, name, value, size);
 
     sprintf(procname, "%i", inode->fd);
+    /*
+     * If we are setting posix access acl and if SGID needs to be
+     * cleared, then switch to caller's gid and drop CAP_FSETID
+     * and that should make sure host kernel clears SGID.
+     *
+     * This probably will not work when we support idmapped mounts.
+     * In that case we will need to find a non-root gid and switch
+     * to it. (Instead of gid in request). Fix it when we support
+     * idmapped mounts.
+     */
+    if (lo->posix_acl && !strcmp(name, "system.posix_acl_access")
+        && (extra_flags & FUSE_SETXATTR_ACL_KILL_SGID)) {
+        ret = lo_drop_cap_change_cred(req, &old, false, "FSETID",
+                                      &cap_fsetid_dropped);
+        if (ret) {
+            saverr = ret;
+            goto out;
+        }
+        switched_creds = true;
+    }
     if (S_ISREG(inode->filetype) || S_ISDIR(inode->filetype)) {
         fd = openat(lo->proc_self_fd, procname, O_RDONLY);
         if (fd < 0) {
@@ -2998,14 +3183,20 @@ static void lo_setxattr(fuse_req_t req, fuse_ino_t ino, const char *in_name,
             goto out;
         }
         ret = fsetxattr(fd, name, value, size, flags);
+        saverr = ret == -1 ? errno : 0;
     } else {
         /* fchdir should not fail here */
-        assert(fchdir(lo->proc_self_fd) == 0);
+        FCHDIR_NOFAIL(lo->proc_self_fd);
         ret = setxattr(procname, name, value, size, flags);
-        assert(fchdir(lo->root.fd) == 0);
+        saverr = ret == -1 ? errno : 0;
+        FCHDIR_NOFAIL(lo->root.fd);
     }
-
-    saverr = ret == -1 ? errno : 0;
+    if (switched_creds) {
+        if (cap_fsetid_dropped)
+            lo_restore_cred_gain_cap(&old, false, "FSETID");
+        else
+            lo_restore_cred(&old, false);
+    }
 
 out:
     if (fd >= 0) {
@@ -3027,6 +3218,11 @@ static void lo_removexattr(fuse_req_t req, fuse_ino_t ino, const char *in_name)
     ssize_t ret;
     int saverr;
     int fd = -1;
+
+    if (block_xattr(lo, in_name)) {
+        fuse_reply_err(req, EOPNOTSUPP);
+        return;
+    }
 
     mapped_name = NULL;
     name = in_name;
@@ -3064,14 +3260,14 @@ static void lo_removexattr(fuse_req_t req, fuse_ino_t ino, const char *in_name)
             goto out;
         }
         ret = fremovexattr(fd, name);
+        saverr = ret == -1 ? errno : 0;
     } else {
         /* fchdir should not fail here */
-        assert(fchdir(lo->proc_self_fd) == 0);
+        FCHDIR_NOFAIL(lo->proc_self_fd);
         ret = removexattr(procname, name);
-        assert(fchdir(lo->root.fd) == 0);
+        saverr = ret == -1 ? errno : 0;
+        FCHDIR_NOFAIL(lo->root.fd);
     }
-
-    saverr = ret == -1 ? errno : 0;
 
 out:
     if (fd >= 0) {
@@ -3097,9 +3293,10 @@ static void lo_copy_file_range(fuse_req_t req, fuse_ino_t ino_in, off_t off_in,
 
     fuse_log(FUSE_LOG_DEBUG,
              "lo_copy_file_range(ino=%" PRIu64 "/fd=%d, "
-             "off=%lu, ino=%" PRIu64 "/fd=%d, "
-             "off=%lu, size=%zd, flags=0x%x)\n",
-             ino_in, in_fd, off_in, ino_out, out_fd, off_out, len, flags);
+             "off=%ju, ino=%" PRIu64 "/fd=%d, "
+             "off=%ju, size=%zd, flags=0x%x)\n",
+             ino_in, in_fd, (intmax_t)off_in,
+             ino_out, out_fd, (intmax_t)off_out, len, flags);
 
     res = copy_file_range(in_fd, &off_in, out_fd, &off_out, len, flags);
     if (res < 0) {
@@ -3558,10 +3755,6 @@ static void setup_nofile_rlimit(unsigned long rlimit_nofile)
 static void log_func(enum fuse_log_level level, const char *fmt, va_list ap)
 {
     g_autofree char *localfmt = NULL;
-    struct timespec ts;
-    struct tm tm;
-    char sec_fmt[sizeof "2020-12-07 18:17:54"];
-    char zone_fmt[sizeof "+0100"];
 
     if (current_log_level < level) {
         return;
@@ -3573,23 +3766,10 @@ static void log_func(enum fuse_log_level level, const char *fmt, va_list ap)
             localfmt = g_strdup_printf("[ID: %08ld] %s", syscall(__NR_gettid),
                                        fmt);
         } else {
-            /* try formatting a broken-down timestamp */
-            if (clock_gettime(CLOCK_REALTIME, &ts) != -1 &&
-                localtime_r(&ts.tv_sec, &tm) != NULL &&
-                strftime(sec_fmt, sizeof sec_fmt, "%Y-%m-%d %H:%M:%S",
-                         &tm) != 0 &&
-                strftime(zone_fmt, sizeof zone_fmt, "%z", &tm) != 0) {
-                localfmt = g_strdup_printf("[%s.%02ld%s] [ID: %08ld] %s",
-                                           sec_fmt,
-                                           ts.tv_nsec / (10L * 1000 * 1000),
-                                           zone_fmt, syscall(__NR_gettid),
-                                           fmt);
-            } else {
-                /* fall back to a flat timestamp */
-                localfmt = g_strdup_printf("[%" PRId64 "] [ID: %08ld] %s",
-                                           get_clock(), syscall(__NR_gettid),
-                                           fmt);
-            }
+            g_autoptr(GDateTime) now = g_date_time_new_now_utc();
+            g_autofree char *nowstr = g_date_time_format(now, "%Y-%m-%d %H:%M:%S.%f%z");
+            localfmt = g_strdup_printf("[%s] [ID: %08ld] %s",
+                                       nowstr, syscall(__NR_gettid), fmt);
         }
         fmt = localfmt;
     }
@@ -3721,6 +3901,7 @@ int main(int argc, char *argv[])
         .allow_direct_io = 0,
         .proc_self_fd = -1,
         .user_killpriv_v2 = -1,
+        .user_posix_acl = -1,
     };
     struct lo_map_elem *root_elem;
     struct lo_map_elem *reserve_elem;
@@ -3826,6 +4007,7 @@ int main(int argc, char *argv[])
     }
 
     if (lo.xattrmap) {
+        lo.xattr = 1;
         parse_xattrmap(&lo);
     }
 
@@ -3845,6 +4027,12 @@ int main(int argc, char *argv[])
         }
     } else if (lo.timeout < 0) {
         fuse_log(FUSE_LOG_ERR, "timeout is negative (%lf)\n", lo.timeout);
+        exit(1);
+    }
+
+    if (lo.user_posix_acl == 1 && !lo.xattr) {
+        fuse_log(FUSE_LOG_ERR, "Can't enable posix ACLs. xattrs are disabled."
+                 "\n");
         exit(1);
     }
 

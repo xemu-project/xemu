@@ -890,7 +890,7 @@ public:
 
         if (msg) {
             ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2.0);
-            ImGui::Text(msg);
+            ImGui::Text("%s", msg);
             ImGui::SameLine();
         }
 
@@ -2187,7 +2187,7 @@ static void ShowMainMenu()
                 nv2a_set_surface_scale_factor(rendering_scale+1);
             }
 
-            if (ImGui::Combo("Scaling Mode", &scaling_mode, "Center\0Scale\0Stretch\0")) {
+            if (ImGui::Combo("Scaling Mode", &scaling_mode, "Center\0Scale\0Scale (Widescreen 16:9)\0Stretch\0")) {
                 xemu_settings_set_enum(XEMU_SETTINGS_DISPLAY_SCALE, scaling_mode);
                 xemu_settings_save();
             }
@@ -2201,7 +2201,7 @@ static void ShowMainMenu()
 
         if (ImGui::BeginMenu("Debug"))
         {
-            ImGui::MenuItem("Monitor", NULL, &monitor_window.is_open);
+            ImGui::MenuItem("Monitor", "~", &monitor_window.is_open);
             ImGui::MenuItem("Audio", NULL, &apu_window.is_open);
             ImGui::MenuItem("Video", NULL, &video_window.is_open);
             ImGui::EndMenu();

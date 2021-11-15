@@ -20,9 +20,9 @@
  */
 
 #include "nv2a_int.h"
-#include "xxHash/xxh3.h"
 #include "s3tc.h"
 #include "ui/xemu-settings.h"
+#include "qemu/fast-hash.h"
 
 #define DBG_SURFACES 0
 #define DBG_SURFACE_SYNC 0
@@ -433,7 +433,6 @@ static gboolean shader_equal(gconstpointer a, gconstpointer b);
 static unsigned int kelvin_map_stencil_op(uint32_t parameter);
 static unsigned int kelvin_map_polygon_mode(uint32_t parameter);
 static unsigned int kelvin_map_texgen(uint32_t parameter, unsigned int channel);
-static uint64_t fast_hash(const uint8_t *data, size_t len);
 static void pgraph_reload_surface_scale_factor(NV2AState *d);
 
 static uint32_t pgraph_rdi_read(PGRAPHState *pg,
@@ -1489,9 +1488,8 @@ DEF_METHOD(NV097, SET_BLEND_FUNC_SFACTOR)
     case NV097_SET_BLEND_FUNC_SFACTOR_V_ONE_MINUS_CONSTANT_ALPHA:
         factor = NV_PGRAPH_BLEND_SFACTOR_ONE_MINUS_CONSTANT_ALPHA; break;
     default:
-        fprintf(stderr, "Unknown blend source factor: 0x%x\n", parameter);
-        assert(false);
-        break;
+        NV2A_DPRINTF("Unknown blend source factor: 0x%08x\n", parameter);
+        return; /* discard */
     }
     SET_MASK(pg->regs[NV_PGRAPH_BLEND], NV_PGRAPH_BLEND_SFACTOR, factor);
 }
@@ -1531,9 +1529,8 @@ DEF_METHOD(NV097, SET_BLEND_FUNC_DFACTOR)
     case NV097_SET_BLEND_FUNC_DFACTOR_V_ONE_MINUS_CONSTANT_ALPHA:
         factor = NV_PGRAPH_BLEND_DFACTOR_ONE_MINUS_CONSTANT_ALPHA; break;
     default:
-        fprintf(stderr, "Unknown blend destination factor: 0x%x\n", parameter);
-        assert(false);
-        break;
+        NV2A_DPRINTF("Unknown blend destination factor: 0x%08x\n", parameter);
+        return; /* discard */
     }
     SET_MASK(pg->regs[NV_PGRAPH_BLEND], NV_PGRAPH_BLEND_DFACTOR, factor);
 }
@@ -1562,8 +1559,8 @@ DEF_METHOD(NV097, SET_BLEND_EQUATION)
     case NV097_SET_BLEND_EQUATION_V_FUNC_ADD_SIGNED:
         equation = 6; break;
     default:
-        assert(false);
-        break;
+        NV2A_DPRINTF("Unknown blend equation: 0x%08x\n", parameter);
+        return; /* discard */
     }
     SET_MASK(pg->regs[NV_PGRAPH_BLEND], NV_PGRAPH_BLEND_EQN, equation);
 }
@@ -2790,15 +2787,25 @@ DEF_METHOD(NV097, SET_TEXTURE_BORDER_COLOR)
 DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_MAT)
 {
     int slot = (method - NV097_SET_TEXTURE_SET_BUMP_ENV_MAT) / 4;
-    assert((slot / 16) > 0);
+    if (slot < 16) {
+        /* discard */
+        return;
+    }
+
     slot -= 16;
-    pg->bump_env_matrix[slot / 16][slot % 4] = *(float*)&parameter;
+    const int swizzle[4] = { NV_PGRAPH_BUMPMAT00, NV_PGRAPH_BUMPMAT01,
+                             NV_PGRAPH_BUMPMAT11, NV_PGRAPH_BUMPMAT10 };
+    pg->regs[swizzle[slot % 4] + slot / 4] = parameter;
 }
 
 DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_SCALE)
 {
     int slot = (method - NV097_SET_TEXTURE_SET_BUMP_ENV_SCALE) / 64;
-    assert(slot > 0);
+    if (slot == 0) {
+        /* discard */
+        return;
+    }
+
     slot--;
     pg->regs[NV_PGRAPH_BUMPSCALE1 + slot * 4] = parameter;
 }
@@ -2806,7 +2813,11 @@ DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_SCALE)
 DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_OFFSET)
 {
     int slot = (method - NV097_SET_TEXTURE_SET_BUMP_ENV_OFFSET) / 64;
-    assert(slot > 0);
+    if (slot == 0) {
+        /* discard */
+        return;
+    }
+
     slot--;
     pg->regs[NV_PGRAPH_BUMPOFFSET1 + slot * 4] = parameter;
 }
@@ -3613,7 +3624,12 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
         if (i > 0) {
             loc = binding->bump_mat_loc[i];
             if (loc != -1) {
-                glUniformMatrix2fv(loc, 1, GL_FALSE, pg->bump_env_matrix[i - 1]);
+                float m[4];
+                m[0] = *(float*)&pg->regs[NV_PGRAPH_BUMPMAT00 + 4 * (i - 1)];
+                m[1] = *(float*)&pg->regs[NV_PGRAPH_BUMPMAT01 + 4 * (i - 1)];
+                m[2] = *(float*)&pg->regs[NV_PGRAPH_BUMPMAT10 + 4 * (i - 1)];
+                m[3] = *(float*)&pg->regs[NV_PGRAPH_BUMPMAT11 + 4 * (i - 1)];
+                glUniformMatrix2fv(loc, 1, GL_FALSE, m);
             }
             loc = binding->bump_scale_loc[i];
             if (loc != -1) {
@@ -5415,11 +5431,8 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                      pg->surface_shape.clip_height);
 
         bool should_create = true;
-        bool surface_type_changed = false;
 
         if (found != NULL) {
-            surface_type_changed = (entry.color != found->color);
-
             bool is_compatible =
                 pgraph_check_surface_compatibility(found, &entry, false);
             NV2A_XPRINTF(DBG_SURFACES,
@@ -5462,9 +5475,7 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
             } else {
                 NV2A_XPRINTF(DBG_SURFACES, "Evicting incompatible surface\n");
                 pgraph_compare_surfaces(found, &entry);
-                if (!surface_type_changed) {
-                    pgraph_download_surface_data_if_dirty(d, found);
-                }
+                pgraph_download_surface_data_if_dirty(d, found);
                 pgraph_surface_invalidate(d, found);
             }
         }
@@ -5497,15 +5508,6 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
             pg->surface_binding_dim.clip_y = entry.shape.clip_y;
             pg->surface_binding_dim.clip_height = entry.shape.clip_height;
         }
-
-        /*
-         * Assume moving from color to zeta, or zeta to color, will clear the
-         * surface and in this case avoid syncronization.
-         *
-         * FIXME: It's possible that this assumption is too broad, especially if
-         * dimensions differ. For now keep things simple.
-         */
-        found->upload_pending &= !surface_type_changed;
 
         NV2A_XPRINTF(DBG_SURFACES,
                      "%6s: [%5s @ %" HWADDR_PRIx " (%dx%d)] (%s) "
@@ -6384,10 +6386,10 @@ static uint8_t* convert_texture_data(const TextureShape s,
         // FIXME: only valid if control0 register allows for colorspace conversion
         uint8_t* converted_data = (uint8_t*)g_malloc(width * height * 4);
         int x, y;
+        uint8_t* pixel = converted_data;
         for (y = 0; y < height; y++) {
-            const uint8_t* line = &data[y * s.width * 2];
-            for (x = 0; x < width; x++) {
-                uint8_t* pixel = &converted_data[(y * s.width + x) * 4];
+            const uint8_t* line = &data[y * row_pitch * depth];
+            for (x = 0; x < width; x++, pixel += 4) {
                 if (s.color_format
                     == NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8) {
                     convert_yuy2_to_rgb(line, x, &pixel[0], &pixel[1], &pixel[2]);
@@ -6437,14 +6439,12 @@ static void upload_gl_texture(GLenum gl_target,
     case GL_TEXTURE_RECTANGLE: {
         /* Can't handle strides unaligned to pixels */
         assert(s.pitch % f.bytes_per_pixel == 0);
-        glPixelStorei(GL_UNPACK_ROW_LENGTH,
-                      s.pitch / f.bytes_per_pixel);
 
         uint8_t *converted = convert_texture_data(s, texture_data,
                                                   palette_data,
                                                   s.width, s.height, 1,
                                                   s.pitch, 0);
-
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, converted ? 0 : s.pitch / f.bytes_per_pixel);
         glTexImage2D(gl_target, 0, f.gl_internal_format,
                      s.width, s.height, 0,
                      f.gl_format, f.gl_type,
@@ -6821,9 +6821,4 @@ static unsigned int kelvin_map_texgen(uint32_t parameter, unsigned int channel)
         break;
     }
     return texgen;
-}
-
-static uint64_t fast_hash(const uint8_t *data, size_t len)
-{
-    return XXH3_64bits(data, len);
 }

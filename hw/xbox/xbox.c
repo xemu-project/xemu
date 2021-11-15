@@ -87,7 +87,7 @@ static void xbox_flash_init(MachineState *ms, MemoryRegion *rom_memory)
     if (!failed_to_load_bios && (filename != NULL)) {
         /* Read BIOS ROM into memory */
         failed_to_load_bios = 1;
-        int fd = open(filename, O_RDONLY | O_BINARY);
+        int fd = qemu_open(filename, O_RDONLY | O_BINARY, NULL);
         if (fd >= 0) {
             int rc = read(fd, bios_data, bios_size);
             if (rc == bios_size) {
@@ -156,7 +156,7 @@ static void xbox_flash_init(MachineState *ms, MemoryRegion *rom_memory)
         }
 
         /* Read in MCPX ROM over last 512 bytes of BIOS data */
-        int fd = open(filename, O_RDONLY | O_BINARY);
+        int fd = qemu_open(filename, O_RDONLY | O_BINARY, NULL);
         assert(fd >= 0);
         int rc = read(fd, bios_data + bios_size - bootrom_size, bootrom_size);
         assert(rc == bootrom_size);
@@ -360,6 +360,7 @@ static void xbox_machine_options(MachineClass *m)
     m->no_cdrom          = 1,
     m->no_sdcard         = 1,
     m->default_cpu_type  = X86_CPU_TYPE_NAME("pentium3");
+    m->is_default        = true;
 
     pcmc->pci_enabled         = true;
     pcmc->has_acpi_build      = false;
@@ -422,6 +423,28 @@ static bool machine_get_short_animation(Object *obj, Error **errp)
     return ms->short_animation;
 }
 
+static char *machine_get_smc_version(Object *obj, Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+
+    return g_strdup(ms->smc_version);
+}
+
+static void machine_set_smc_version(Object *obj, const char *value,
+                               Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+
+    if (strlen(value) != 3) {
+        error_setg(errp, "-machine smc-version=%s: unsupported option", value);
+        xbox_smc_append_smc_version_hint(errp);
+        return;
+    }
+
+    g_free(ms->smc_version);
+    ms->smc_version = g_strdup(value);
+}
+
 static inline void xbox_machine_initfn(Object *obj)
 {
     object_property_add_str(obj, "bootrom", machine_get_bootrom,
@@ -441,6 +464,12 @@ static inline void xbox_machine_initfn(Object *obj)
     object_property_set_description(obj, "short-animation",
                                     "Skip Xbox boot animation");
     object_property_set_bool(obj, "short-animation", false, &error_fatal);
+
+    object_property_add_str(obj, "smc-version", machine_get_smc_version,
+                            machine_set_smc_version);
+    object_property_set_description(obj, "smc-version",
+                                    "Set the SMC version number, default is P01");
+    object_property_set_str(obj, "smc-version", "P01", &error_fatal);
 
 }
 

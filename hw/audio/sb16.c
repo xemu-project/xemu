@@ -115,6 +115,9 @@ struct SB16State {
     PortioList portio_list;
 };
 
+#define SAMPLE_RATE_MIN 5000
+#define SAMPLE_RATE_MAX 45000
+
 static void SB_audio_callback (void *opaque, int free);
 
 static int magic_of_irq (int irq)
@@ -226,6 +229,23 @@ static void continue_dma8 (SB16State *s)
     control (s, 1);
 }
 
+static inline int restrict_sampling_rate(int freq)
+{
+    if (freq < SAMPLE_RATE_MIN) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "sampling range too low: %d, increasing to %u\n",
+                      freq, SAMPLE_RATE_MIN);
+        return SAMPLE_RATE_MIN;
+    } else if (freq > SAMPLE_RATE_MAX) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "sampling range too high: %d, decreasing to %u\n",
+                      freq, SAMPLE_RATE_MAX);
+        return SAMPLE_RATE_MAX;
+    } else {
+        return freq;
+    }
+}
+
 static void dma_cmd8 (SB16State *s, int mask, int dma_len)
 {
     s->fmt = AUDIO_FORMAT_U8;
@@ -241,6 +261,7 @@ static void dma_cmd8 (SB16State *s, int mask, int dma_len)
         int tmp = (256 - s->time_const);
         s->freq = (1000000 + (tmp / 2)) / tmp;
     }
+    s->freq = restrict_sampling_rate(s->freq);
 
     if (dma_len != -1) {
         s->block_size = dma_len << s->fmt_stereo;
@@ -754,7 +775,7 @@ static void complete (SB16State *s)
              * and FT2 sets output freq with this (go figure).  Compare:
              * http://homepages.cae.wisc.edu/~brodskye/sb16doc/sb16doc.html#SamplingRate
              */
-            s->freq = dsp_get_hilo (s);
+            s->freq = restrict_sampling_rate(dsp_get_hilo(s));
             ldebug ("set freq %d\n", s->freq);
             break;
 

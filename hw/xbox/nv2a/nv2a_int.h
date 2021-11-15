@@ -284,9 +284,6 @@ typedef struct PGRAPHState {
 
     bool texture_matrix_enable[NV2A_MAX_TEXTURES];
 
-    /* FIXME: Move to NV_PGRAPH_BUMPMAT... */
-    float bump_env_matrix[NV2A_MAX_TEXTURES - 1][4]; /* 3 allowed stages with 2x2 matrix each */
-
     GLuint gl_framebuffer;
 
     GLuint gl_display_buffer;
