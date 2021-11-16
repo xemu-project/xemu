@@ -431,7 +431,19 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         bound_controllers[index]->bound = index;
 
         const int port_map[4] = {3, 4, 1, 2};
+        char *tmp;
 
+        // Create controller's internal USB hub.
+        QDict *usbhub_qdict = qdict_new();
+        qdict_put_str(usbhub_qdict, "driver", "usb-hub");
+        tmp = g_strdup_printf("1.%d", port_map[index]);
+        qdict_put_str(usbhub_qdict, "port", tmp);
+        qdict_put_int(usbhub_qdict, "ports", 3);
+        QemuOpts *usbhub_opts = qemu_opts_from_qdict(qemu_find_opts("device"), usbhub_qdict, &error_abort);
+        DeviceState *usbhub_dev = qdev_device_add(usbhub_opts, &error_abort);
+        g_free(tmp);
+
+        // Create XID controller. This is connected to Port 1 of the controller's internal USB Hub
         QDict *qdict = qdict_new();
 
         // Specify device driver
@@ -439,13 +451,13 @@ void xemu_input_bind(int index, ControllerState *state, int save)
 
         // Specify device identifier
         static int id_counter = 0;
-        char *tmp = g_strdup_printf("gamepad_%d", id_counter++);
+        tmp = g_strdup_printf("gamepad_%d", id_counter++);
         qdict_put_str(qdict, "id", tmp);
         g_free(tmp);
 
         // Specify index/port
         qdict_put_int(qdict, "index", index);
-        tmp = g_strdup_printf("1.%d", port_map[index]);
+        tmp = g_strdup_printf("1.%d.1", port_map[index]);
         qdict_put_str(qdict, "port", tmp);
         g_free(tmp);
 
@@ -455,10 +467,12 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         assert(dev);
 
         // Unref for eventual cleanup
+        qobject_unref(usbhub_qdict);
+        object_unref(OBJECT(usbhub_dev));
         qobject_unref(qdict);
         object_unref(OBJECT(dev));
 
-        state->device = dev;
+        state->device = usbhub_dev;
     }
 }
 
