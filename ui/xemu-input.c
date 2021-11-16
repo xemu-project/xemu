@@ -79,6 +79,15 @@ void xemu_input_init(void)
     new_con->name = "Keyboard";
     new_con->bound = -1;
 
+    // Create USB Daughterboard for 1.0 Xbox. This is connected to Port 1 of the Root hub.
+    QDict *usbhub_qdict = qdict_new();
+    qdict_put_str(usbhub_qdict, "driver", "usb-hub");
+    qdict_put_int(usbhub_qdict, "port", 1);
+    qdict_put_int(usbhub_qdict, "ports", 4);
+    QemuOpts *usbhub_opts = qemu_opts_from_qdict(qemu_find_opts("device"), usbhub_qdict, &error_fatal);
+    DeviceState *usbhub_dev = qdev_device_add(usbhub_opts, &error_fatal);
+    assert(usbhub_dev);
+
     // Check to see if we should auto-bind the keyboard
     int port = xemu_input_get_controller_default_bind_port(new_con, 0);
     if (port >= 0) {
@@ -436,7 +445,9 @@ void xemu_input_bind(int index, ControllerState *state, int save)
 
         // Specify index/port
         qdict_put_int(qdict, "index", index);
-        qdict_put_int(qdict, "port", port_map[index]);
+        tmp = g_strdup_printf("1.%d", port_map[index]);
+        qdict_put_str(qdict, "port", tmp);
+        g_free(tmp);
 
         // Create the device
         QemuOpts *opts = qemu_opts_from_qdict(qemu_find_opts("device"), qdict, &error_abort);
