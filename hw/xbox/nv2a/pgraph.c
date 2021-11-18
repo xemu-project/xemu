@@ -3043,7 +3043,6 @@ DEF_METHOD(NV097, CLEAR_SURFACE)
             /* FIXME: Remove bit for stencil clear? */
             if (pg->surface_shape.z_format) {
                 gl_clear_depth = convert_f16_to_float(z) / f16_max;
-                assert(false); /* FIXME: Untested */
             } else {
                 gl_clear_depth = z / (float)0xFFFF;
             }
