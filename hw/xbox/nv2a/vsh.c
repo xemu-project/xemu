@@ -781,10 +781,7 @@ void vsh_translate(uint16_t version,
          * clipping in the Xbox z24s8 floating point mode.
          */
         "  if (clipRange.y != clipRange.x) {\n"
-        "    double work = double(oPos.z - clipRange.x);\n"
-        "    double half_full_distance = 0.5 * double(clipRange.y - clipRange.x);\n"
-        "    oPos.z = float(work / half_full_distance);\n"
-        "    oPos.z = oPos.z - 1;\n"
+        "    oPos.z = (oPos.z - clipRange.x) / clipRange.y - 1.0;\n"
         "  }\n"
 
         /* Correct for the perspective divide */

@@ -3770,7 +3770,8 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
     }
 
     if (binding->clip_range_loc != -1) {
-        glUniform2f(binding->clip_range_loc, zclip_min, zclip_max);
+        double precomputed_depth = (double)(zclip_max - zclip_min) * 0.5;
+        glUniform2f(binding->clip_range_loc, zclip_min, (float)precomputed_depth);
     }
 
     /* Clipping regions */

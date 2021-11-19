@@ -682,6 +682,8 @@ static MString *generate_vertex_shader(const ShaderState state,
     MString *header = mstring_from_str(
 "#version 400\n"
 "\n"
+// Holds an offset (the near plane) and a precomputed 1/2 (far - near) suitable
+// for converting Xbox coordinates into GL.
 "uniform vec2 clipRange;\n"
 "uniform vec2 surfaceSize;\n"
 "\n"
