@@ -1704,9 +1704,8 @@ DEF_METHOD(NV097, SET_FRONT_FACE)
     case NV097_SET_FRONT_FACE_V_CCW:
         ccw = true; break;
     default:
-        fprintf(stderr, "Unknown front face: 0x%x\n", parameter);
-        assert(false);
-        break;
+        NV2A_DPRINTF("Unknown front face: 0x%08x\n", parameter);
+        return; /* discard */
     }
     SET_MASK(pg->regs[NV_PGRAPH_SETUPRASTER],
              NV_PGRAPH_SETUPRASTER_FRONTFACE,
