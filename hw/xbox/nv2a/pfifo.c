@@ -527,6 +527,17 @@ static uint32_t ramht_hash(NV2AState *d, uint32_t handle)
     return hash;
 }
 
+unsigned int nv2a_get_ramht_offset(void)
+{
+    return GET_MASK(g_nv2a_stats.pfifo_regs[NV_PFIFO_RAMHT],
+                    NV_PFIFO_RAMHT_BASE_ADDRESS) << 12;
+}
+
+unsigned int nv2a_get_ramht_size(void)
+{
+    return 1 << (GET_MASK(g_nv2a_stats.pfifo_regs[NV_PFIFO_RAMHT],
+                          NV_PFIFO_RAMHT_SIZE) + 12);
+}
 
 static RAMHTEntry ramht_lookup(NV2AState *d, uint32_t handle)
 {

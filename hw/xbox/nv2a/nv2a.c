@@ -248,6 +248,10 @@ static void nv2a_init_memory(NV2AState *d, MemoryRegion *ram)
     d->vram_ptr = memory_region_get_ram_ptr(d->vram);
     d->ramin_ptr = memory_region_get_ram_ptr(&d->ramin);
 
+    g_nv2a_stats.vram_ptr = d->vram_ptr;
+    g_nv2a_stats.ramin_ptr = d->ramin_ptr;
+    g_nv2a_stats.pfifo_regs = d->pfifo.regs;
+
     memory_region_set_log(d->vram, true, DIRTY_MEMORY_NV2A);
     memory_region_set_log(d->vram, true, DIRTY_MEMORY_NV2A_TEX);
     memory_region_set_dirty(d->vram, 0, memory_region_size(d->vram));

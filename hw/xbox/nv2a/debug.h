@@ -137,6 +137,10 @@ typedef struct NV2AStats {
         int counters[NV2A_PROF__COUNT];
     } frame_working, frame_history[NV2A_PROF_NUM_FRAMES];
     unsigned int frame_ptr;
+
+    const unsigned char *vram_ptr;
+    const unsigned char *ramin_ptr;
+    const unsigned int *pfifo_regs;
 } NV2AStats;
 
 #ifdef __cplusplus
@@ -147,6 +151,9 @@ extern NV2AStats g_nv2a_stats;
 
 const char *nv2a_profile_get_counter_name(unsigned int cnt);
 int nv2a_profile_get_counter_value(unsigned int cnt);
+
+unsigned int nv2a_get_ramht_offset(void);
+unsigned int nv2a_get_ramht_size(void);
 
 #ifdef __cplusplus
 }

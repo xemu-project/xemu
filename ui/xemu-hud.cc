@@ -1750,6 +1750,106 @@ public:
     }
 };
 
+class DebugNV2AWindow
+{
+public:
+    bool is_open;
+    bool transparent;
+
+    DebugNV2AWindow()
+    {
+        is_open = false;
+        transparent = false;
+    }
+
+    ~DebugNV2AWindow()
+    {
+    }
+
+    void Draw()
+    {
+        if (!is_open) return;
+
+        float alpha = transparent ? 0.2 : 1.0;
+        PushWindowTransparencySettings(transparent, 0.2);
+        ImGui::SetNextWindowSize(ImVec2(470.0f*g_ui_scale, 430.0f*g_ui_scale), ImGuiCond_Once);
+        if (ImGui::Begin("nv2a Debug", &is_open)) {
+            const uint8_t *instance_ram = g_nv2a_stats.ramin_ptr;
+
+            uint32_t hashtable_offset = nv2a_get_ramht_offset();
+            const uint8_t *hashtable_ram = instance_ram + hashtable_offset;
+
+            ImGui::PushFont(g_fixed_width_font);
+
+            const uint32_t *ramht = (uint32_t*)hashtable_ram;
+            uint32_t max_entries = nv2a_get_ramht_size() / 8;
+
+            ImGui::Text("Hash table");
+
+            for (uint32_t i = 0; i < max_entries; ++i) {
+              uint32_t channel = *ramht++;
+              uint32_t data = *ramht++;
+
+              if (!channel && !data) {
+                continue;
+              }
+
+              bool is_graphics = (data >> 16) & 0x0F;
+              uint32_t context_object_offset = (data & 0xFFFF) << 4;
+
+              char buf[256] = {0};
+              snprintf(buf, 255, "Channel: %3d Subchannel: %3d IsGR: %s InstanceOffset: 0x%05x",
+                       channel,
+                       (data >> 24) & 0xFF,
+                       is_graphics ? "Y" : "N",
+                       context_object_offset);
+              ImGui::Button(buf);
+
+              if (ImGui::IsItemHovered()) {
+                  ImGui::BeginTooltip();
+                  const uint32_t *context_object = (uint32_t*)(instance_ram + context_object_offset);
+                  if (is_graphics) {
+                      // Graphics related context.
+                      uint32_t flags = *context_object++;
+                      uint32_t flags_3d = *context_object++;
+
+                      uint32_t class_id = flags & 0xFF;
+                      ImGui::Text("Class: %02x", class_id);
+                      ImGui::Text("Flags3d: 0x%08x", flags_3d);
+                  } else {
+                      // Raw DMA context.
+                      uint32_t flags = *context_object++;
+                      uint32_t limit = *context_object++;
+                      uint32_t addr_1 = *context_object++;
+                      uint32_t addr_2 = *context_object++;
+
+                      uint32_t class_id = flags & 0xFF;
+                      bool is_agp = (flags & 0x00030000) == 0x00030000;
+                      bool is_system = flags & 0x00020000;
+
+                      ImGui::Text("Class: %02x", class_id);
+                      ImGui::Text("Flags: 0x%08x", flags);
+                      if (is_agp) {
+                        ImGui::Text("[AGP Mem]");
+                      } else if (is_system) {
+                        ImGui::Text("[System Mem]");
+                      }
+
+                      ImGui::Text("Limit: 0x%08x", limit);
+                      ImGui::Text("Address 1: 0x%08x", addr_1);
+                      ImGui::Text("Address 2: 0x%08x", addr_2);
+                  }
+                  ImGui::EndTooltip();
+                }
+            }
+
+            ImGui::PopFont();
+        }
+        ImGui::End();
+        ImGui::PopStyleColor(5);
+    }
+};
+
 #if defined(_WIN32)
 class AutoUpdateWindow
 {
@@ -1887,6 +1987,7 @@ public:
 static MonitorWindow monitor_window;
 static DebugApuWindow apu_window;
 static DebugVideoWindow video_window;
+static DebugNV2AWindow nv2a_window;
 static InputWindow input_window;
 static NetworkWindow network_window;
 static AboutWindow about_window;
@@ -2135,6 +2236,7 @@ static void ShowMainMenu()
             ImGui::MenuItem("Monitor", "~", &monitor_window.is_open);
             ImGui::MenuItem("Audio", NULL, &apu_window.is_open);
             ImGui::MenuItem("Video", NULL, &video_window.is_open);
+            ImGui::MenuItem("nv2a", NULL, &nv2a_window.is_open);
             ImGui::EndMenu();
         }
 
@@ -2452,6 +2554,7 @@ void xemu_hud_render(void)
     monitor_window.Draw();
     apu_window.Draw();
     video_window.Draw();
+    nv2a_window.Draw();
     about_window.Draw();
     network_window.Draw();
     compatibility_reporter_window.Draw();
