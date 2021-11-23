@@ -706,6 +706,10 @@
 #define NV_PRAMDAC_FP_HCRTC                              0x00000828
 #define NV_PRAMDAC_FP_HVALID_END                         0x00000838
 
+#define NV_USER_DAC_WRITE_MODE_ADDRESS                   0x000003C8
+#define NV_USER_DAC_PALETTE_DATA                         0x000003C9
+
+
 #define NV_USER_DMA_PUT                                  0x40
 #define NV_USER_DMA_GET                                  0x44
 #define NV_USER_REF                                      0x48
