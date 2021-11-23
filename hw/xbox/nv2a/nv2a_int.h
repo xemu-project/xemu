@@ -250,6 +250,7 @@ typedef struct PGRAPHState {
         GLint pvideo_enable_loc;
         GLint pvideo_tex_loc;
         GLint pvideo_pos_loc;
+        GLint palette_loc[256];
     } disp_rndr;
 
     /* subchannels state we're not sure the location of... */
@@ -453,6 +454,11 @@ typedef struct NV2AState {
         uint32_t fp_hcrtc;
         uint32_t fp_hvalid_end;
     } pramdac;
+
+    struct {
+        uint16_t write_mode_address;
+        uint8_t palette[256*3];
+    } puserdac;
 
 } NV2AState;
 

@@ -27,6 +27,7 @@
 
 enum SHADER_TYPE {
     SHADER_TYPE_BLIT,
+    SHADER_TYPE_BLIT_GAMMA,
     SHADER_TYPE_MASK,
     SHADER_TYPE_LOGO,
 };
@@ -52,8 +53,9 @@ struct decal_shader
     GLint ColorPrimary_loc;
     GLint ColorSecondary_loc;
     GLint ColorFill_loc;
-	GLint time_loc;
-	GLint scale_loc;
+    GLint time_loc;
+    GLint scale_loc;
+    GLint palette_loc[256];
 };
 
 struct fbo {

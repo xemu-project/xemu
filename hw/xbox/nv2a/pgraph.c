@@ -4438,7 +4438,6 @@ static void pgraph_init_display_renderer(NV2AState *d)
         "    float y = -1.0 + float((gl_VertexID & 2) << 1);\n"
         "    gl_Position = vec4(x, y, 0, 1);\n"
         "}\n";
-    /* FIXME: gamma correction */
     /* FIXME: improve interlace handling, pvideo */
 
     const char *fs =
@@ -4679,6 +4678,11 @@ void pgraph_gl_sync(NV2AState *d)
 
     qatomic_set(&d->pgraph.gl_sync_pending, false);
     qemu_event_set(&d->pgraph.gl_sync_complete);
+}
+
+const uint8_t *nv2a_get_dac_palette(void)
+{
+    return g_nv2a->puserdac.palette;
 }
 
 int nv2a_get_framebuffer_surface(void)
