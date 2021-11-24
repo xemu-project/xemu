@@ -228,6 +228,12 @@ typedef struct ImageBlitState {
     unsigned int width, height;
 } ImageBlitState;
 
+typedef struct BetaState {
+  hwaddr object_instance;
+  // signed fixed-point number with a sign bit and 31 fractional bits.
+  unsigned int beta;
+} BetaState;
+
 typedef struct PGRAPHState {
     QemuMutex lock;
 
@@ -258,6 +264,7 @@ typedef struct PGRAPHState {
     ContextSurfaces2DState context_surfaces_2d;
     ImageBlitState image_blit;
     KelvinState kelvin;
+    BetaState beta;
 
     hwaddr dma_color, dma_zeta;
     Surface surface_color, surface_zeta;
