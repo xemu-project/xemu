@@ -741,6 +741,180 @@ static const MethodFunc pgraph_kelvin_method_handlers[0x800] = {
     } \
     *num_words_consumed = param_iter;
 
+// TODO: Optimize. Ideally this should all be done via OpenGL.
+static void pgraph_image_blit(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    ContextSurfaces2DState *context_surfaces = &pg->context_surfaces_2d;
+    ImageBlitState *image_blit = &pg->image_blit;
+    BetaState *beta = &pg->beta;
+
+    pgraph_update_surface(d, false, true, true);
+
+    assert(context_surfaces->object_instance == image_blit->context_surfaces);
+
+    unsigned int bytes_per_pixel;
+    switch (context_surfaces->color_format) {
+        case NV062_SET_COLOR_FORMAT_LE_Y8:
+            bytes_per_pixel = 1;
+            break;
+        case NV062_SET_COLOR_FORMAT_LE_R5G6B5:
+            bytes_per_pixel = 2;
+            break;
+        case NV062_SET_COLOR_FORMAT_LE_A8R8G8B8:
+        case NV062_SET_COLOR_FORMAT_LE_X8R8G8B8:
+        case NV062_SET_COLOR_FORMAT_LE_Y32:
+            bytes_per_pixel = 4;
+            break;
+        default:
+            fprintf(stderr, "Unknown blit surface format: 0x%x\n",
+                    context_surfaces->color_format);
+            assert(false);
+            break;
+    }
+
+    hwaddr source_dma_len, dest_dma_len;
+    uint8_t *source, *dest;
+
+    source = (uint8_t *) nv_dma_map(d, context_surfaces->dma_image_source,
+                                    &source_dma_len);
+    assert(context_surfaces->source_offset < source_dma_len);
+    source += context_surfaces->source_offset;
+
+    dest = (uint8_t *) nv_dma_map(d, context_surfaces->dma_image_dest,
+                                  &dest_dma_len);
+    assert(context_surfaces->dest_offset < dest_dma_len);
+    dest += context_surfaces->dest_offset;
+
+    SurfaceBinding *surf_src = pgraph_surface_get(d, source - d->vram_ptr);
+    if (surf_src) {
+        pgraph_download_surface_data(d, surf_src, true);
+    }
+
+    SurfaceBinding *surf_dest = pgraph_surface_get(d, dest - d->vram_ptr);
+    if (surf_dest) {
+        if (image_blit->height < surf_dest->height ||
+            image_blit->width < surf_dest->width) {
+            pgraph_download_surface_data_if_dirty(d, surf_dest);
+        }
+        surf_dest->upload_pending = true;
+    }
+
+    uint32_t color_format = context_surfaces->color_format;
+    if (image_blit->operation == NV09F_SET_OPERATION_SRCCOPY) {
+        NV2A_GL_DPRINTF(true, "NV09F_SET_OPERATION_SRCCOPY");
+        NV2A_DPRINTF("  - 0x%tx -> 0x%tx\n", source - d->vram_ptr,
+                     dest - d->vram_ptr);
+
+        uint32_t bytes_per_row = image_blit->width * bytes_per_pixel;
+        for (int y = 0; y < image_blit->height; y++) {
+            uint8_t *source_row = source
+                    + (image_blit->in_y + y) * context_surfaces->source_pitch
+                    + image_blit->in_x * bytes_per_pixel;
+
+            uint8_t *dest_row = dest
+                    + (image_blit->out_y + y) * context_surfaces->dest_pitch
+                    + image_blit->out_x * bytes_per_pixel;
+
+            memmove(dest_row, source_row, bytes_per_row);
+        }
+
+        if (color_format == NV062_SET_COLOR_FORMAT_LE_X8R8G8B8) {
+            // XBOX hardware forces alpha to 0xFF for any pixel modified by the
+            // blit.
+            for (int y = 0; y < image_blit->height; y++) {
+                uint8_t *dest_row =
+                    dest
+                    + (image_blit->out_y + y) * context_surfaces->dest_pitch
+                    + image_blit->out_x * bytes_per_pixel;
+                dest_row += 3;
+                for (int x = 0; x < image_blit->width; x++) {
+                    *dest_row = 0xFF;
+                    dest_row += 4;
+                }
+            }
+        }
+    } else if (image_blit->operation == NV09F_SET_OPERATION_BLEND_AND) {
+        NV2A_GL_DPRINTF(true, "NV09F_SET_OPERATION_BLEND_AND");
+        NV2A_DPRINTF("  - 0x%tx -> 0x%tx\n", source - d->vram_ptr,
+                     dest - d->vram_ptr);
+
+        uint32_t bytes_per_row = image_blit->width * bytes_per_pixel;
+        static const uint32_t max_beta_mult = 0x7f80;
+        uint32_t beta_mult = beta->beta >> 16;
+        uint32_t inv_beta_mult = max_beta_mult - beta_mult;
+
+        if (color_format == NV062_SET_COLOR_FORMAT_LE_X8R8G8B8) {
+            for (int y = 0; y < image_blit->height; y++) {
+                uint8_t *source_row =
+                    source
+                    + (image_blit->in_y + y) * context_surfaces->source_pitch
+                    + image_blit->in_x * bytes_per_pixel;
+
+                uint8_t *dest_row =
+                    dest
+                    + (image_blit->out_y + y) * context_surfaces->dest_pitch
+                    + image_blit->out_x * bytes_per_pixel;
+
+                for (int x = 0; x < image_blit->width; ++x) {
+                    uint32_t a;
+                    uint32_t b;
+                    a = *source_row++ * beta_mult;
+                    b = *dest_row * inv_beta_mult;
+                    *dest_row++ = (a + b) / max_beta_mult;
+
+                    a = *source_row++ * beta_mult;
+                    b = *dest_row * inv_beta_mult;
+                    *dest_row++ = (a + b) / max_beta_mult;
+
+                    a = *source_row++ * beta_mult;
+                    b = *dest_row * inv_beta_mult;
+                    *dest_row++ = (a + b) / max_beta_mult;
+
+                    *dest_row++ = 0xFF;
+                    ++source_row;
+                }
+            }
+        } else {
+            for (int y = 0; y < image_blit->height; y++) {
+                uint8_t *source_row =
+                    source
+                    + (image_blit->in_y + y) * context_surfaces->source_pitch
+                    + image_blit->in_x * bytes_per_pixel;
+
+                uint8_t *dest_row =
+                    dest
+                    + (image_blit->out_y + y) * context_surfaces->dest_pitch
+                    + image_blit->out_x * bytes_per_pixel;
+
+                for (int x = 0; x < bytes_per_row; ++x, ++source_row) {
+                    uint32_t a = *source_row * beta_mult;
+                    uint32_t b = *dest_row * inv_beta_mult;
+                    *dest_row = (a + b) / max_beta_mult;
+                }
+            }
+        }
+    } else {
+        fprintf(stderr, "Unknown blit operation: 0x%x\n", image_blit->operation);
+        assert(false && "Unknown blit operation");
+    }
+
+    uint32_t dest_start = image_blit->out_y * context_surfaces->dest_pitch
+        + image_blit->out_x;
+
+    uint32_t dirty_size =
+        ((image_blit->height - 1) * context_surfaces->dest_pitch)
+        + image_blit->width * bytes_per_pixel;
+    memory_region_set_client_dirty(d->vram,
+                                   (dest - d->vram_ptr + dest_start),
+                                   dirty_size,
+                                   DIRTY_MEMORY_VGA);
+    memory_region_set_client_dirty(d->vram,
+                                   (dest - d->vram_ptr + dest_start),
+                                   dirty_size,
+                                   DIRTY_MEMORY_NV2A_TEX);
+}
+
 int pgraph_method(NV2AState *d, unsigned int subchannel,
                    unsigned int method, uint32_t parameter,
                    uint32_t *parameters, size_t num_words_available,
@@ -758,6 +932,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
 
     ContextSurfaces2DState *context_surfaces_2d = &pg->context_surfaces_2d;
     ImageBlitState *image_blit = &pg->image_blit;
+    BetaState *beta = &pg->beta;
 
     assert(subchannel < 8);
 
@@ -798,6 +973,23 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
 
     /* ugly switch for now */
     switch (graphics_class) {
+
+    case NV_BETA: { switch (method) {
+    case NV012_SET_OBJECT:
+        beta->object_instance = parameter;
+        break;
+
+    case NV012_SET_BETA:
+        if (parameter & 0x80000000) {
+            beta->beta = 0;
+        } else {
+            // The parameter is a signed fixed-point number with a sign bit and
+            // 31 fractional bits. Note that negative values are clamped to 0,
+            // and only 8 fractional bits are actually implemented in hardware.
+            beta->beta = parameter & 0x7f800000;
+        }
+        break;
+    } break; }
 
     case NV_CONTEXT_PATTERN: { switch (method) {
     case NV044_SET_MONOCHROME_COLOR0:
@@ -855,109 +1047,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
         image_blit->height = parameter >> 16;
 
         if (image_blit->width && image_blit->height) {
-            if (image_blit->operation == NV09F_SET_OPERATION_SRCCOPY) {
-
-                NV2A_GL_DPRINTF(true, "NV09F_SET_OPERATION_SRCCOPY");
-
-                pgraph_update_surface(d,
-                                      false,
-                                      true,
-                                      true);
-
-                ContextSurfaces2DState *context_surfaces = context_surfaces_2d;
-                assert(context_surfaces->object_instance
-                               == image_blit->context_surfaces);
-
-                unsigned int bytes_per_pixel;
-                switch (context_surfaces->color_format) {
-                    case NV062_SET_COLOR_FORMAT_LE_Y8:bytes_per_pixel = 1;
-                        break;
-                    case NV062_SET_COLOR_FORMAT_LE_R5G6B5:bytes_per_pixel = 2;
-                        break;
-                    case NV062_SET_COLOR_FORMAT_LE_A8R8G8B8:
-                    case NV062_SET_COLOR_FORMAT_LE_X8R8G8B8:
-                    case NV062_SET_COLOR_FORMAT_LE_Y32:bytes_per_pixel = 4;
-                        break;
-                    default:
-                        fprintf(stderr,
-                                "Unknown blit surface format: 0x%x\n",
-                                context_surfaces->color_format);
-                        assert(false);
-                        break;
-                }
-
-                hwaddr source_dma_len, dest_dma_len;
-                uint8_t *source, *dest;
-
-                source = (uint8_t *) nv_dma_map(
-                        d, context_surfaces->dma_image_source, &source_dma_len);
-                assert(context_surfaces->source_offset < source_dma_len);
-                source += context_surfaces->source_offset;
-
-                dest = (uint8_t *) nv_dma_map(d,
-                                              context_surfaces->dma_image_dest,
-                                              &dest_dma_len);
-                assert(context_surfaces->dest_offset < dest_dma_len);
-                dest += context_surfaces->dest_offset;
-
-                NV2A_DPRINTF("  - 0x%tx -> 0x%tx\n", source - d->vram_ptr,
-                             dest - d->vram_ptr);
-
-
-                // FIXME: Blitting from part of a surface
-
-                SurfaceBinding *surf_src = pgraph_surface_get(
-                        d, source - d->vram_ptr);
-                if (surf_src) {
-                    pgraph_download_surface_data(d, surf_src, true);
-                }
-
-                SurfaceBinding *surf_dest = pgraph_surface_get(
-                        d, dest - d->vram_ptr);
-                if (surf_dest) {
-                    if (image_blit->height < surf_dest->height ||
-                            image_blit->width < surf_dest->width) {
-
-                        pgraph_download_surface_data_if_dirty(d, surf_dest);
-                    }
-                    surf_dest->upload_pending = true;
-                }
-
-                uint32_t bytes_per_row = image_blit->width * bytes_per_pixel;
-                int y;
-                unsigned int source_pitch = context_surfaces->source_pitch;
-                unsigned int dest_pitch = context_surfaces->dest_pitch;
-                for (y = 0; y < image_blit->height; y++) {
-                    uint8_t *source_row = source
-                            + (image_blit->in_y + y) * source_pitch
-                            + image_blit->in_x * bytes_per_pixel;
-
-                    uint8_t *dest_row = dest
-                            + (image_blit->out_y + y) * dest_pitch
-                            + image_blit->out_x * bytes_per_pixel;
-
-                    memmove(dest_row, source_row, bytes_per_row);
-                }
-
-                hwaddr dest_start = image_blit->out_x +
-                        image_blit->out_y * context_surfaces->dest_pitch;
-                hwaddr dirty_start = dest - d->vram_ptr + dest_start;
-                uint32_t dirty_size = image_blit->width * bytes_per_pixel +
-                        (image_blit->height - 1) * context_surfaces->dest_pitch;
-                memory_region_set_client_dirty(d->vram,
-                                               dirty_start,
-                                               dirty_size,
-                                               DIRTY_MEMORY_VGA);
-                memory_region_set_client_dirty(d->vram,
-                                               dirty_start,
-                                               dirty_size,
-                                               DIRTY_MEMORY_NV2A_TEX);
-            } else {
-                fprintf(stderr,
-                        "Unknown blit operation: 0x%x\n",
-                        image_blit->operation);
-                assert(false);
-            }
+            pgraph_image_blit(d);
         }
         break;
     } break; }
