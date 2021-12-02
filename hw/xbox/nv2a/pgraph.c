@@ -763,6 +763,7 @@ static void pgraph_image_blit(NV2AState *d)
             break;
         case NV062_SET_COLOR_FORMAT_LE_A8R8G8B8:
         case NV062_SET_COLOR_FORMAT_LE_X8R8G8B8:
+        case NV062_SET_COLOR_FORMAT_LE_X8R8G8B8_Z8R8G8B8:
         case NV062_SET_COLOR_FORMAT_LE_Y32:
             bytes_per_pixel = 4;
             break;
@@ -801,6 +802,17 @@ static void pgraph_image_blit(NV2AState *d)
     }
 
     uint32_t color_format = context_surfaces->color_format;
+    uint8_t alpha_override = 0;
+    bool needs_alpha_patching = false;
+    if (color_format == NV062_SET_COLOR_FORMAT_LE_X8R8G8B8) {
+        // XBOX hardware forces alpha to 0xFF for any pixel modified by the blit.
+        alpha_override = 0xFF;
+        needs_alpha_patching = true;
+    } else if (color_format == NV062_SET_COLOR_FORMAT_LE_X8R8G8B8_Z8R8G8B8) {
+        alpha_override = 0x00;
+        needs_alpha_patching = true;
+    }
+
     if (image_blit->operation == NV09F_SET_OPERATION_SRCCOPY) {
         NV2A_GL_DPRINTF(true, "NV09F_SET_OPERATION_SRCCOPY");
         NV2A_DPRINTF("  - 0x%tx -> 0x%tx\n", source - d->vram_ptr,
@@ -819,9 +831,7 @@ static void pgraph_image_blit(NV2AState *d)
             memmove(dest_row, source_row, bytes_per_row);
         }
 
-        if (color_format == NV062_SET_COLOR_FORMAT_LE_X8R8G8B8) {
-            // XBOX hardware forces alpha to 0xFF for any pixel modified by the
-            // blit.
+        if (needs_alpha_patching) {
             for (int y = 0; y < image_blit->height; y++) {
                 uint8_t *dest_row =
                     dest
@@ -829,7 +839,7 @@ static void pgraph_image_blit(NV2AState *d)
                     + image_blit->out_x * bytes_per_pixel;
                 dest_row += 3;
                 for (int x = 0; x < image_blit->width; x++) {
-                    *dest_row = 0xFF;
+                    *dest_row = alpha_override;
                     dest_row += 4;
                 }
             }
@@ -844,7 +854,7 @@ static void pgraph_image_blit(NV2AState *d)
         uint32_t beta_mult = beta->beta >> 16;
         uint32_t inv_beta_mult = max_beta_mult - beta_mult;
 
-        if (color_format == NV062_SET_COLOR_FORMAT_LE_X8R8G8B8) {
+        if (needs_alpha_patching) {
             for (int y = 0; y < image_blit->height; y++) {
                 uint8_t *source_row =
                     source
@@ -871,7 +881,7 @@ static void pgraph_image_blit(NV2AState *d)
                     b = *dest_row * inv_beta_mult;
                     *dest_row++ = (a + b) / max_beta_mult;
 
-                    *dest_row++ = 0xFF;
+                    *dest_row++ = alpha_override;
                     ++source_row;
                 }
             }
