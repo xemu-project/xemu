@@ -646,6 +646,16 @@ bool x86_cpu_tlb_fill(CPUState *cs, vaddr addr, int size,
     } else {
         env->cr[2] = err.cr2;
     }
+
+#ifdef XBOX
+    fprintf(stderr,
+            "MMU fault: ExceptionIndex: EXCP%02X ErrorCode: %d ReturnAddr: %lX EIP: %X\n",
+            cs->exception_index,
+            env->error_code,
+            retaddr,
+            env->eip);
+#endif
+
     raise_exception_err_ra(env, err.exception_index, err.error_code, retaddr);
 }
 
