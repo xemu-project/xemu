@@ -41,8 +41,7 @@ class LibInstaller:
 			os.makedirs(self._pkgs_path)
 
 	def get_latest_pkg_filename_url(self, pkg_name):
-		pkg_base_name = pkg_name.split('-')[0]
-		pkg_base_url = f'{MIRROR}/{pkg_base_name}'
+		pkg_base_url = f'{MIRROR}/{pkg_name}'
 		pkg_list = urlopen(pkg_base_url).read().decode('utf-8')
 		pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.' + self._darwin_target + r'\.' + self._arch + r'\.tbz2', pkg_list)
 		pkg_filename = pkgs[-1]
@@ -93,6 +92,7 @@ class LibInstaller:
 
 	def install_pkg(self, pkg_name):
 		if self.is_pkg_installed(pkg_name):
+			print(f'[*] Package {pkg_name} already installed')
 			return
 
 		if self.is_pkg_skipped(pkg_name):
@@ -101,7 +101,8 @@ class LibInstaller:
 
 		print(f'[*] Fetching {pkg_name}')
 		pkg_filename, pkg_url = self.get_latest_pkg_filename_url(pkg_name)
-		pkg_version = re.match(r'^[\w_]+-([\w\.\-\_\+]*?)\.' + self._darwin_target, pkg_filename).groups(1)[0]
+		pkg_version = pkg_filename[re.search(r'-\d', pkg_filename).span()[0]+1:]
+		pkg_version = pkg_version[:pkg_version.find('.'+self._darwin_target)]
 		dst_pkg_filename = os.path.join(self._pkgs_path, pkg_filename)
 		print(f'    [*] Found package {pkg_filename}')
 		self.download_file(pkg_filename, pkg_url, dst_pkg_filename)
@@ -118,7 +119,9 @@ class LibInstaller:
 		pkg_contents_file = tb.extractfile('./+CONTENTS').read().decode('utf-8')
 		for dep in re.findall(r'@pkgdep (.+)', pkg_contents_file):
 			print(f'        [>] {dep}')
-			dep = dep.split('-')[0]
+			s = re.search(r'-\d', dep)
+			if s:
+				dep = dep[0:s.span()[0]]
 			self._queue.append(dep)
 
 		print(f'    [*] Checking tarball...')
