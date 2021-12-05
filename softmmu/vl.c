@@ -2916,6 +2916,8 @@ void qemu_init(int argc, char **argv, char **envp)
 
     const char *hdd_path;
     xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_HDD_PATH, &hdd_path);
+    int hdd_drive_speed;
+    xemu_settings_get_int(XEMU_SETTINGS_SYSTEM_HDD_SPEED, &hdd_drive_speed);
     if (strlen(hdd_path) > 0) {
         if (xemu_check_file(hdd_path)) {
             char *msg = g_strdup_printf("Failed to open hard disk image file '%s'. Please check machine settings.", hdd_path);
@@ -2924,15 +2926,18 @@ void qemu_init(int argc, char **argv, char **envp)
         } else {
             fake_argv[fake_argc++] = strdup("-drive");
             char *escaped_hdd_path = strdup_double_commas(hdd_path);
-            fake_argv[fake_argc++] = g_strdup_printf("index=0,media=disk,file=%s%s",
+            fake_argv[fake_argc++] = g_strdup_printf("index=0,media=disk,file=%s%s,throttling.bps-total=%d",
                 escaped_hdd_path,
-                strlen(escaped_hdd_path) > 0 ? ",locked=on" : "");
+                strlen(escaped_hdd_path) > 0 ? ",locked=on" : "",
+                hdd_drive_speed);
             free(escaped_hdd_path);
         }
     }
 
     const char *dvd_path = "";
     xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_DVD_PATH, &dvd_path);
+    int dvd_drive_speed;
+    xemu_settings_get_int(XEMU_SETTINGS_SYSTEM_DVD_SPEED, &dvd_drive_speed);
 
     // Allow overriding the dvd path from command line
     for (int i = 1; i < argc; i++) {
@@ -2959,8 +2964,9 @@ void qemu_init(int argc, char **argv, char **envp)
     // connected but no media present.
     fake_argv[fake_argc++] = strdup("-drive");
     char *escaped_dvd_path = strdup_double_commas(dvd_path);
-    fake_argv[fake_argc++] = g_strdup_printf("index=1,media=cdrom,file=%s",
-        escaped_dvd_path);
+    fake_argv[fake_argc++] = g_strdup_printf("index=1,media=cdrom,file=%s,throttling.bps-total=%d",
+        escaped_dvd_path,
+        dvd_drive_speed);
     free(escaped_dvd_path);
 
     fake_argv[fake_argc++] = strdup("-display");

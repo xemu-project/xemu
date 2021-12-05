@@ -47,6 +47,8 @@ struct xemu_settings {
 	int   memory;
 	int   short_animation; // Boolean
 	int   hard_fpu; // Boolean
+	int	  dvd_speed;
+	int	  hdd_speed;
 
 	// [audio]
 	int use_dsp; // Boolean
@@ -118,6 +120,8 @@ struct config_offset_table {
 	[XEMU_SETTINGS_SYSTEM_MEMORY]       = { CONFIG_TYPE_INT,    "system", "memory",       offsetof(struct xemu_settings, memory),          { .default_int  = 64 } },
 	[XEMU_SETTINGS_SYSTEM_SHORTANIM]    = { CONFIG_TYPE_BOOL,   "system", "shortanim",    offsetof(struct xemu_settings, short_animation), { .default_bool = 0  } },
 	[XEMU_SETTINGS_SYSTEM_HARD_FPU]     = { CONFIG_TYPE_BOOL,   "system", "hard_fpu",     offsetof(struct xemu_settings, hard_fpu),        { .default_bool = 1  } },
+	[XEMU_SETTINGS_SYSTEM_DVD_SPEED]    = { CONFIG_TYPE_INT,    "system", "dvd_speed",    offsetof(struct xemu_settings, dvd_speed),       { .default_int  = 0  } },
+	[XEMU_SETTINGS_SYSTEM_HDD_SPEED]    = { CONFIG_TYPE_INT,    "system", "hdd_speed",    offsetof(struct xemu_settings, hdd_speed),       { .default_int  = 0  } },
 
 	[XEMU_SETTINGS_AUDIO_USE_DSP] = { CONFIG_TYPE_BOOL, "audio", "use_dsp", offsetof(struct xemu_settings, use_dsp), { .default_bool = 0  } },
 
