@@ -83,6 +83,7 @@ static const struct enum_str_map display_scale_map[DISPLAY_SCALE__COUNT+1] = {
 	{ DISPLAY_SCALE_CENTER,  "center"  },
 	{ DISPLAY_SCALE_SCALE,   "scale"   },
 	{ DISPLAY_SCALE_WS169,   "scale_ws169" },
+	{ DISPLAY_SCALE_FS43,    "scale_fs43" },
 	{ DISPLAY_SCALE_STRETCH, "stretch" },
 	{ 0,                     NULL      },
 };
