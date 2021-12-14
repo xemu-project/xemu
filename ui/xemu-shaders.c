@@ -83,15 +83,31 @@ struct decal_shader *create_decal_shader(enum SHADER_TYPE type)
     const char *image_frag_src =
         "#version 150 core\n"
         "uniform sampler2D tex;\n"
-        "uniform vec4 in_ColorPrimary;\n"
-        "uniform vec4 in_ColorSecondary;\n"
-        "uniform vec4 in_ColorFill;\n"
         "in  vec2 Texcoord;\n"
         "out vec4 out_Color;\n"
         "void main() {\n"
-        "    vec4 t = texture(tex, Texcoord);\n"
-        "    out_Color.rgba = t;\n"
+        "    out_Color.rgba = texture(tex, Texcoord);\n"
         "}\n";
+
+    const char *image_gamma_frag_src =
+        "#version 400 core\n"
+        "uniform sampler2D tex;\n"
+        "uniform uint palette[256];\n"
+        "float gamma_ch(int ch, float col)\n"
+        "{\n"
+        "    return float(bitfieldExtract(palette[uint(col * 255.0)], ch*8, 8)) / 255.0;\n"
+        "}\n"
+        "\n"
+        "vec4 gamma(vec4 col)\n"
+        "{\n"
+        "    return vec4(gamma_ch(0, col.r), gamma_ch(1, col.g), gamma_ch(2, col.b), col.a);\n"
+        "}\n"
+        "in  vec2 Texcoord;\n"
+        "out vec4 out_Color;\n"
+        "void main() {\n"
+        "    out_Color.rgba = gamma(texture(tex, Texcoord));\n"
+        "}\n";
+
     // Simple 2-color decal shader
     // - in_ColorFill is first pass
     // - Red channel of the texture is used as primary color, mixed with 1-Red for
@@ -118,6 +134,8 @@ struct decal_shader *create_decal_shader(enum SHADER_TYPE type)
         frag_src = mask_frag_src;
     } else if (type == SHADER_TYPE_BLIT) {
         frag_src = image_frag_src;
+    } else if (type == SHADER_TYPE_BLIT_GAMMA) {
+        frag_src = image_gamma_frag_src;
     } else if (type == SHADER_TYPE_LOGO) {
         frag_src = xemu_logo_frag_src;
     } else {
@@ -147,6 +165,11 @@ struct decal_shader *create_decal_shader(enum SHADER_TYPE type)
     s->ColorFill_loc      = glGetUniformLocation(s->prog, "in_ColorFill");
     s->time_loc           = glGetUniformLocation(s->prog, "iTime");
     s->scale_loc          = glGetUniformLocation(s->prog, "scale");
+    for (int i = 0; i < 256; i++) {
+        char name[64];
+        snprintf(name, sizeof(name), "palette[%d]", i);
+        s->palette_loc[i] = glGetUniformLocation(s->prog, name);
+    }
 
     // Create a vertex array object
     glGenVertexArrays(1, &s->vao);

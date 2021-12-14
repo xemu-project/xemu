@@ -9,6 +9,12 @@
 #ifndef DISAS_DIS_ASM_H
 #define DISAS_DIS_ASM_H
 
+#include "qemu/bswap.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef void *PTR;
 typedef uint64_t bfd_vma;
 typedef int64_t bfd_signed_vma;
@@ -243,8 +249,6 @@ enum bfd_architecture
 #define bfd_mach_nios2          0
 #define bfd_mach_nios2r1        1
 #define bfd_mach_nios2r2        2
-  bfd_arch_lm32,       /* Lattice Mico32 */
-#define bfd_mach_lm32 1
   bfd_arch_rx,       /* Renesas RX */
 #define bfd_mach_rx            0x75
 #define bfd_mach_rx_v2         0x76
@@ -437,7 +441,6 @@ int print_insn_m32r             (bfd_vma, disassemble_info*);
 int print_insn_m88k             (bfd_vma, disassemble_info*);
 int print_insn_mn10200          (bfd_vma, disassemble_info*);
 int print_insn_mn10300          (bfd_vma, disassemble_info*);
-int print_insn_moxie            (bfd_vma, disassemble_info*);
 int print_insn_ns32k            (bfd_vma, disassemble_info*);
 int print_insn_big_powerpc      (bfd_vma, disassemble_info*);
 int print_insn_little_powerpc   (bfd_vma, disassemble_info*);
@@ -452,7 +455,6 @@ int print_insn_crisv32          (bfd_vma, disassemble_info*);
 int print_insn_crisv10          (bfd_vma, disassemble_info*);
 int print_insn_microblaze       (bfd_vma, disassemble_info*);
 int print_insn_ia64             (bfd_vma, disassemble_info*);
-int print_insn_lm32             (bfd_vma, disassemble_info*);
 int print_insn_big_nios2        (bfd_vma, disassemble_info*);
 int print_insn_little_nios2     (bfd_vma, disassemble_info*);
 int print_insn_xtensa           (bfd_vma, disassemble_info*);
@@ -478,8 +480,6 @@ bool cap_disas_plugin(disassemble_info *info, uint64_t pc, size_t size);
 #endif
 
 /* from libbfd */
-
-#include "qemu/bswap.h"
 
 static inline bfd_vma bfd_getl64(const bfd_byte *addr)
 {
@@ -507,5 +507,9 @@ static inline bfd_vma bfd_getb16(const bfd_byte *addr)
 }
 
 typedef bool bfd_boolean;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* DISAS_DIS_ASM_H */

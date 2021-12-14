@@ -82,6 +82,7 @@ enum {
     OPTION_MERGE = 274,
     OPTION_BITMAPS = 275,
     OPTION_FORCE = 276,
+    OPTION_SKIP_BROKEN = 277,
 };
 
 typedef enum OutputFormat {
@@ -900,6 +901,7 @@ static void common_block_job_cb(void *opaque, int ret)
 
 static void run_block_job(BlockJob *job, Error **errp)
 {
+    uint64_t progress_current, progress_total;
     AioContext *aio_context = blk_get_aio_context(job->blk);
     int ret = 0;
 
@@ -908,9 +910,11 @@ static void run_block_job(BlockJob *job, Error **errp)
     do {
         float progress = 0.0f;
         aio_poll(aio_context, true);
-        if (job->job.progress.total) {
-            progress = (float)job->job.progress.current /
-                       job->job.progress.total * 100.f;
+
+        progress_get_snapshot(&job->job.progress, &progress_current,
+                              &progress_total);
+        if (progress_total) {
+            progress = (float)progress_current / progress_total * 100.f;
         }
         qemu_progress_print(progress, 0);
     } while (!job_is_ready(&job->job) && !job_is_completed(&job->job));
@@ -2098,7 +2102,32 @@ static int convert_do_copy(ImgConvertState *s)
     return s->ret;
 }
 
-static int convert_copy_bitmaps(BlockDriverState *src, BlockDriverState *dst)
+/* Check that bitmaps can be copied, or output an error */
+static int convert_check_bitmaps(BlockDriverState *src, bool skip_broken)
+{
+    BdrvDirtyBitmap *bm;
+
+    if (!bdrv_supports_persistent_dirty_bitmap(src)) {
+        error_report("Source lacks bitmap support");
+        return -1;
+    }
+    FOR_EACH_DIRTY_BITMAP(src, bm) {
+        if (!bdrv_dirty_bitmap_get_persistence(bm)) {
+            continue;
+        }
+        if (!skip_broken && bdrv_dirty_bitmap_inconsistent(bm)) {
+            error_report("Cannot copy inconsistent bitmap '%s'",
+                         bdrv_dirty_bitmap_name(bm));
+            error_printf("Try --skip-broken-bitmaps, or "
+                         "use 'qemu-img bitmap --remove' to delete it\n");
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int convert_copy_bitmaps(BlockDriverState *src, BlockDriverState *dst,
+                                bool skip_broken)
 {
     BdrvDirtyBitmap *bm;
     Error *err = NULL;
@@ -2110,6 +2139,10 @@ static int convert_copy_bitmaps(BlockDriverState *src, BlockDriverState *dst)
             continue;
         }
         name = bdrv_dirty_bitmap_name(bm);
+        if (skip_broken && bdrv_dirty_bitmap_inconsistent(bm)) {
+            warn_report("Skipping inconsistent bitmap '%s'", name);
+            continue;
+        }
         qmp_block_dirty_bitmap_add(dst->node_name, name,
                                    true, bdrv_dirty_bitmap_granularity(bm),
                                    true, true,
@@ -2124,6 +2157,7 @@ static int convert_copy_bitmaps(BlockDriverState *src, BlockDriverState *dst)
                               &err);
         if (err) {
             error_reportf_err(err, "Failed to populate bitmap %s: ", name);
+            qmp_block_dirty_bitmap_remove(dst->node_name, name, NULL);
             return -1;
         }
     }
@@ -2146,7 +2180,7 @@ static void set_rate_limit(BlockBackend *blk, int64_t rate_limit)
 
 static int img_convert(int argc, char **argv)
 {
-    int c, bs_i, flags, src_flags = 0;
+    int c, bs_i, flags, src_flags = BDRV_O_NO_SHARE;
     const char *fmt = NULL, *out_fmt = NULL, *cache = "unsafe",
                *src_cache = BDRV_DEFAULT_CACHE, *out_baseimg = NULL,
                *out_filename, *out_baseimg_param, *snapshot_name = NULL;
@@ -2164,6 +2198,7 @@ static int img_convert(int argc, char **argv)
     bool force_share = false;
     bool explict_min_sparse = false;
     bool bitmaps = false;
+    bool skip_broken = false;
     int64_t rate_limit = 0;
 
     ImgConvertState s = (ImgConvertState) {
@@ -2185,6 +2220,7 @@ static int img_convert(int argc, char **argv)
             {"salvage", no_argument, 0, OPTION_SALVAGE},
             {"target-is-zero", no_argument, 0, OPTION_TARGET_IS_ZERO},
             {"bitmaps", no_argument, 0, OPTION_BITMAPS},
+            {"skip-broken-bitmaps", no_argument, 0, OPTION_SKIP_BROKEN},
             {0, 0, 0, 0}
         };
         c = getopt_long(argc, argv, ":hf:O:B:Cco:l:S:pt:T:qnm:WUr:",
@@ -2313,11 +2349,19 @@ static int img_convert(int argc, char **argv)
         case OPTION_BITMAPS:
             bitmaps = true;
             break;
+        case OPTION_SKIP_BROKEN:
+            skip_broken = true;
+            break;
         }
     }
 
     if (!out_fmt && !tgt_image_opts) {
         out_fmt = "raw";
+    }
+
+    if (skip_broken && !bitmaps) {
+        error_report("Use of --skip-broken-bitmaps requires --bitmaps");
+        goto fail_getopt;
     }
 
     if (s.compressed && s.copy_range) {
@@ -2505,8 +2549,10 @@ static int img_convert(int argc, char **argv)
 
     if (out_baseimg_param) {
         if (!qemu_opt_get(opts, BLOCK_OPT_BACKING_FMT)) {
-            warn_report("Deprecated use of backing file without explicit "
-                        "backing format");
+            error_report("Use of backing file requires explicit "
+                         "backing format");
+            ret = -1;
+            goto out;
         }
     }
 
@@ -2549,9 +2595,8 @@ static int img_convert(int argc, char **argv)
             ret = -1;
             goto out;
         }
-        if (!bdrv_supports_persistent_dirty_bitmap(blk_bs(s.src[0]))) {
-            error_report("Source lacks bitmap support");
-            ret = -1;
+        ret = convert_check_bitmaps(blk_bs(s.src[0]), skip_broken);
+        if (ret < 0) {
             goto out;
         }
     }
@@ -2675,7 +2720,7 @@ static int img_convert(int argc, char **argv)
 
     /* Now copy the bitmaps */
     if (bitmaps && ret == 0) {
-        ret = convert_copy_bitmaps(blk_bs(s.src[0]), out_bs);
+        ret = convert_copy_bitmaps(blk_bs(s.src[0]), out_bs, skip_broken);
     }
 
 out:
@@ -2977,8 +3022,9 @@ static int dump_map_entry(OutputFormat output_format, MapEntry *e,
         break;
     case OFORMAT_JSON:
         printf("{ \"start\": %"PRId64", \"length\": %"PRId64","
-               " \"depth\": %"PRId64", \"zero\": %s, \"data\": %s",
-               e->start, e->length, e->depth,
+               " \"depth\": %"PRId64", \"present\": %s, \"zero\": %s,"
+               " \"data\": %s", e->start, e->length, e->depth,
+               e->present ? "true" : "false",
                e->zero ? "true" : "false",
                e->data ? "true" : "false");
         if (e->has_offset) {
@@ -3044,6 +3090,7 @@ static int get_block_status(BlockDriverState *bs, int64_t offset,
         .offset = map,
         .has_offset = has_offset,
         .depth = depth,
+        .present = !!(ret & BDRV_BLOCK_ALLOCATED),
         .has_filename = filename,
         .filename = filename,
     };
@@ -3059,6 +3106,7 @@ static inline bool entry_mergeable(const MapEntry *curr, const MapEntry *next)
     if (curr->zero != next->zero ||
         curr->data != next->data ||
         curr->depth != next->depth ||
+        curr->present != next->present ||
         curr->has_filename != next->has_filename ||
         curr->has_offset != next->has_offset) {
         return false;
@@ -3762,6 +3810,9 @@ static int img_rebase(int argc, char **argv)
     if (ret == -ENOSPC) {
         error_report("Could not change the backing file to '%s': No "
                      "space left in the file header", out_baseimg);
+    } else if (ret == -EINVAL && out_baseimg && !out_basefmt) {
+        error_report("Could not change the backing file to '%s': backing "
+                     "format must be specified", out_baseimg);
     } else if (ret < 0) {
         error_report("Could not change the backing file to '%s': %s",
             out_baseimg, strerror(-ret));

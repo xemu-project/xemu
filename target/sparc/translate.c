@@ -29,7 +29,6 @@
 
 #include "exec/helper-gen.h"
 
-#include "trace-tcg.h"
 #include "exec/translator.h"
 #include "exec/log.h"
 #include "asi.h"
@@ -339,23 +338,14 @@ static inline TCGv gen_dest_gpr(DisasContext *dc, int reg)
     }
 }
 
-static inline bool use_goto_tb(DisasContext *s, target_ulong pc,
-                               target_ulong npc)
+static bool use_goto_tb(DisasContext *s, target_ulong pc, target_ulong npc)
 {
-    if (unlikely(s->base.singlestep_enabled || singlestep)) {
-        return false;
-    }
-
-#ifndef CONFIG_USER_ONLY
-    return (pc & TARGET_PAGE_MASK) == (s->base.tb->pc & TARGET_PAGE_MASK) &&
-           (npc & TARGET_PAGE_MASK) == (s->base.tb->pc & TARGET_PAGE_MASK);
-#else
-    return true;
-#endif
+    return translator_use_goto_tb(&s->base, pc) &&
+           translator_use_goto_tb(&s->base, npc);
 }
 
-static inline void gen_goto_tb(DisasContext *s, int tb_num,
-                               target_ulong pc, target_ulong npc)
+static void gen_goto_tb(DisasContext *s, int tb_num,
+                        target_ulong pc, target_ulong npc)
 {
     if (use_goto_tb(s, pc, npc))  {
         /* jump to same page: we can use a direct jump */
@@ -5864,22 +5854,6 @@ static void sparc_tr_insn_start(DisasContextBase *dcbase, CPUState *cs)
     }
 }
 
-static bool sparc_tr_breakpoint_check(DisasContextBase *dcbase, CPUState *cs,
-                                      const CPUBreakpoint *bp)
-{
-    DisasContext *dc = container_of(dcbase, DisasContext, base);
-
-    if (dc->pc != dc->base.pc_first) {
-        save_state(dc);
-    }
-    gen_helper_debug(cpu_env);
-    tcg_gen_exit_tb(NULL, 0);
-    dc->base.is_jmp = DISAS_NORETURN;
-    /* update pc_next so that the current instruction is included in tb->size */
-    dc->base.pc_next += 4;
-    return true;
-}
-
 static void sparc_tr_translate_insn(DisasContextBase *dcbase, CPUState *cs)
 {
     DisasContext *dc = container_of(dcbase, DisasContext, base);
@@ -5942,7 +5916,6 @@ static const TranslatorOps sparc_tr_ops = {
     .init_disas_context = sparc_tr_init_disas_context,
     .tb_start           = sparc_tr_tb_start,
     .insn_start         = sparc_tr_insn_start,
-    .breakpoint_check   = sparc_tr_breakpoint_check,
     .translate_insn     = sparc_tr_translate_insn,
     .tb_stop            = sparc_tr_tb_stop,
     .disas_log          = sparc_tr_disas_log,

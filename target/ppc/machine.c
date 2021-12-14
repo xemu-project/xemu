@@ -8,7 +8,18 @@
 #include "qapi/error.h"
 #include "qemu/main-loop.h"
 #include "kvm_ppc.h"
-#include "exec/helper-proto.h"
+
+static void post_load_update_msr(CPUPPCState *env)
+{
+    target_ulong msr = env->msr;
+
+    /*
+     * Invalidate all supported msr bits except MSR_TGPR/MSR_HVB
+     * before restoring.  Note that this recomputes hflags.
+     */
+    env->msr ^= env->msr_mask & ~((1ULL << MSR_TGPR) | MSR_HVB);
+    ppc_store_msr(env, msr);
+}
 
 static int cpu_load_old(QEMUFile *f, void *opaque, int version_id)
 {
@@ -95,7 +106,7 @@ static int cpu_load_old(QEMUFile *f, void *opaque, int version_id)
         ppc_store_sdr1(env, sdr1);
     }
     qemu_get_be32s(f, &vscr);
-    helper_mtvscr(env, vscr);
+    ppc_store_vscr(env, vscr);
     qemu_get_be64s(f, &env->spe_acc);
     qemu_get_be32s(f, &env->spe_fscr);
     qemu_get_betls(f, &env->msr_mask);
@@ -111,13 +122,12 @@ static int cpu_load_old(QEMUFile *f, void *opaque, int version_id)
     qemu_get_betls(f, &env->ivpr_mask);
     qemu_get_betls(f, &env->hreset_vector);
     qemu_get_betls(f, &env->nip);
-    qemu_get_betls(f, &env->hflags);
-    qemu_get_betls(f, &env->hflags_nmsr);
+    qemu_get_sbetl(f); /* Discard unused hflags */
+    qemu_get_sbetl(f); /* Discard unused hflags_nmsr */
     qemu_get_sbe32(f); /* Discard unused mmu_idx */
     qemu_get_sbe32(f); /* Discard unused power_mode */
 
-    /* Recompute mmu indices */
-    hreg_compute_mem_idx(env);
+    post_load_update_msr(env);
 
     return 0;
 }
@@ -304,6 +314,10 @@ static int cpu_pre_save(void *opaque)
         }
     }
 
+    /* Retain migration compatibility for pre 6.0 for 601 machines. */
+    env->hflags_compat_nmsr = (env->flags & POWERPC_FLAG_HID0_LE
+                               ? env->hflags & MSR_LE : 0);
+
     return 0;
 }
 
@@ -333,7 +347,6 @@ static int cpu_post_load(void *opaque, int version_id)
     PowerPCCPU *cpu = opaque;
     CPUPPCState *env = &cpu->env;
     int i;
-    target_ulong msr;
 
     /*
      * If we're operating in compat mode, we should be ok as long as
@@ -407,15 +420,7 @@ static int cpu_post_load(void *opaque, int version_id)
         ppc_store_sdr1(env, env->spr[SPR_SDR1]);
     }
 
-    /*
-     * Invalidate all supported msr bits except MSR_TGPR/MSR_HVB
-     * before restoring
-     */
-    msr = env->msr;
-    env->msr ^= env->msr_mask & ~((1ULL << MSR_TGPR) | MSR_HVB);
-    ppc_store_msr(env, msr);
-
-    hreg_compute_mem_idx(env);
+    post_load_update_msr(env);
 
     return 0;
 }
@@ -450,7 +455,7 @@ static int get_vscr(QEMUFile *f, void *opaque, size_t size,
                     const VMStateField *field)
 {
     PowerPCCPU *cpu = opaque;
-    helper_mtvscr(&cpu->env, qemu_get_be32(f));
+    ppc_store_vscr(&cpu->env, qemu_get_be32(f));
     return 0;
 }
 
@@ -458,7 +463,7 @@ static int put_vscr(QEMUFile *f, void *opaque, size_t size,
                     const VMStateField *field, JSONWriter *vmdesc)
 {
     PowerPCCPU *cpu = opaque;
-    qemu_put_be32(f, helper_mfvscr(&cpu->env));
+    qemu_put_be32(f, ppc_get_vscr(&cpu->env));
     return 0;
 }
 
@@ -825,9 +830,8 @@ const VMStateDescription vmstate_ppc_cpu = {
         /* Supervisor mode architected state */
         VMSTATE_UINTTL(env.msr, PowerPCCPU),
 
-        /* Internal state */
-        VMSTATE_UINTTL(env.hflags_nmsr, PowerPCCPU),
-        /* FIXME: access_type? */
+        /* Backward compatible internal state */
+        VMSTATE_UINTTL(env.hflags_compat_nmsr, PowerPCCPU),
 
         /* Sanity checking */
         VMSTATE_UINTTL_TEST(mig_msr_mask, PowerPCCPU, cpu_pre_2_8_migration),

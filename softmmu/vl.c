@@ -27,11 +27,11 @@
 #include "qemu/datadir.h"
 #include "qemu/units.h"
 #include "exec/cpu-common.h"
-#include "hw/boards.h"
 #include "hw/qdev-properties.h"
 #include "qapi/compat-policy.h"
 #include "qapi/error.h"
 #include "qapi/qmp/qdict.h"
+#include "qapi/qmp/qstring.h"
 #include "qapi/qmp/qjson.h"
 #include "qemu-version.h"
 #include "qemu/cutils.h"
@@ -89,7 +89,7 @@
 #include "qapi/qobject-input-visitor.h"
 #include "qemu/option.h"
 #include "qemu/config-file.h"
-#include "qemu-options.h"
+#include "qemu/qemu-options.h"
 #include "qemu/main-loop.h"
 #ifdef CONFIG_VIRTFS
 #include "fsdev/qemu-fsdev.h"
@@ -122,9 +122,12 @@
 #include "qapi/qapi-commands-misc.h"
 #include "qapi/qapi-visit-qom.h"
 #include "qapi/qapi-commands-ui.h"
+#include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qerror.h"
 #include "sysemu/iothread.h"
 #include "qemu/guest-random.h"
+
+#include "config-host.h"
 
 #include "ui/xemu-settings.h"
 #include "ui/xemu-notifications.h"
@@ -151,6 +154,8 @@ static const char *cpu_option;
 static const char *mem_path;
 static const char *incoming;
 static const char *loadvm;
+static const char *accelerators;
+static QDict *machine_opts_dict;
 static QTAILQ_HEAD(, ObjectOption) object_opts = QTAILQ_HEAD_INITIALIZER(object_opts);
 static ram_addr_t maxram_size;
 static uint64_t ram_slots;
@@ -204,6 +209,7 @@ static struct {
     { .driver = "virtio-vga",           .flag = &default_vga       },
     { .driver = "ati-vga",              .flag = &default_vga       },
     { .driver = "vhost-user-vga",       .flag = &default_vga       },
+    { .driver = "virtio-vga-gl",        .flag = &default_vga       },
 };
 
 static QemuOptsList qemu_rtc_opts = {
@@ -238,21 +244,6 @@ static QemuOptsList qemu_option_rom_opts = {
             .type = QEMU_OPT_STRING,
         },
         { /* end of list */ }
-    },
-};
-
-static QemuOptsList qemu_machine_opts = {
-    .name = "machine",
-    .implied_opt_name = "type",
-    .merge_lists = true,
-    .head = QTAILQ_HEAD_INITIALIZER(qemu_machine_opts.head),
-    .desc = {
-        /*
-         * no elements => accept any
-         * sanity checking will happen later
-         * when setting machine properties
-         */
-        { }
     },
 };
 
@@ -503,16 +494,6 @@ static QemuOptsList qemu_action_opts = {
         { /* end of list */ }
     },
 };
-
-/**
- * Get machine options
- *
- * Returns: machine options (never null).
- */
-static QemuOpts *qemu_get_machine_opts(void)
-{
-    return qemu_find_opts_singleton("machine");
-}
 
 const char *qemu_get_vm_name(void)
 {
@@ -821,33 +802,6 @@ static MachineClass *find_default_machine(GSList *machines)
     return default_machineclass;
 }
 
-static int machine_help_func(QemuOpts *opts, MachineState *machine)
-{
-    ObjectProperty *prop;
-    ObjectPropertyIterator iter;
-
-    if (!qemu_opt_has_help_opt(opts)) {
-        return 0;
-    }
-
-    object_property_iter_init(&iter, OBJECT(machine));
-    while ((prop = object_property_iter_next(&iter))) {
-        if (!prop->set) {
-            continue;
-        }
-
-        printf("%s.%s=%s", MACHINE_GET_CLASS(machine)->name,
-               prop->name, prop->type);
-        if (prop->description) {
-            printf(" (%s)\n", prop->description);
-        } else {
-            printf("\n");
-        }
-    }
-
-    return 1;
-}
-
 static void version(void)
 {
     printf("QEMU emulator version " QEMU_FULL_VERSION "\n"
@@ -861,8 +815,17 @@ static void help(int exitcode)
            "'disk_image' is a raw hard disk image for IDE hard disk 0\n\n",
             error_get_progname());
 
-#define QEMU_OPTIONS_GENERATE_HELP
-#include "qemu-options-wrapper.h"
+#define DEF(option, opt_arg, opt_enum, opt_help, arch_mask)    \
+    if ((arch_mask) & arch_type)                               \
+        fputs(opt_help, stdout);
+
+#define ARCHHEADING(text, arch_mask) \
+    if ((arch_mask) & arch_type)    \
+        puts(stringify(text));
+
+#define DEFHEADING(text) ARCHHEADING(text, QEMU_ARCH_ALL)
+
+#include "qemu-options.def"
 
     printf("\nDuring emulation, the following keys are useful:\n"
            "ctrl-alt-f      toggle full screen\n"
@@ -887,8 +850,13 @@ typedef struct QEMUOption {
 
 static const QEMUOption qemu_options[] = {
     { "h", 0, QEMU_OPTION_h, QEMU_ARCH_ALL },
-#define QEMU_OPTIONS_GENERATE_OPTIONS
-#include "qemu-options-wrapper.h"
+
+#define DEF(option, opt_arg, opt_enum, opt_help, arch_mask)     \
+    { option, opt_arg, opt_enum, arch_mask },
+#define DEFHEADING(text)
+#define ARCHHEADING(text, arch_mask)
+
+#include "qemu-options.def"
     { NULL },
 };
 
@@ -1054,12 +1022,11 @@ static void parse_display(const char *p)
          * sdl DisplayType needs hand-crafted parser instead of
          * parse_display_qapi() due to some options not in
          * DisplayOptions, specifically:
-         *   - frame
-         *     Already deprecated.
          *   - ctrl_grab + alt_grab
          *     Not clear yet what happens to them long-term.  Should
          *     replaced by something better or deprecated and dropped.
          */
+#if defined(CONFIG_SDL)
         dpy.type = DISPLAY_TYPE_SDL;
         while (*opts) {
             const char *nextopt;
@@ -1082,7 +1049,12 @@ static void parse_display(const char *p)
                 } else {
                     goto invalid_sdl_args;
                 }
-            } else if (strstart(opts, ",window_close=", &nextopt)) {
+            } else if (strstart(opts, ",window_close=", &nextopt) ||
+                       strstart(opts, ",window-close=", &nextopt)) {
+                if (strstart(opts, ",window_close=", NULL)) {
+                    warn_report("window_close with an underscore is deprecated,"
+                                " please use window-close instead.");
+                }
                 opts = nextopt;
                 dpy.has_window_close = true;
                 if (strstart(opts, "on", &nextopt)) {
@@ -1123,6 +1095,10 @@ static void parse_display(const char *p)
             }
             opts = nextopt;
         }
+#else
+        error_report("SDL display supported is not available in this binary");
+        exit(1);
+#endif
     } else if (strstart(p, "vnc", &opts)) {
         /*
          * vnc isn't a (local) DisplayType but a protocol for remote
@@ -1540,33 +1516,63 @@ static gint machine_class_cmp(gconstpointer a, gconstpointer b)
                   object_class_get_name(OBJECT_CLASS(mc1)));
 }
 
-static MachineClass *machine_parse(const char *name, GSList *machines)
+static void machine_help_func(const QDict *qdict)
 {
-    MachineClass *mc;
-    GSList *el;
+    GSList *machines, *el;
+    const char *type = qdict_get_try_str(qdict, "type");
 
-    if (is_help_option(name)) {
-        printf("Supported machines are:\n");
-        machines = g_slist_sort(machines, machine_class_cmp);
-        for (el = machines; el; el = el->next) {
-            MachineClass *mc = el->data;
-            if (mc->alias) {
-                printf("%-20s %s (alias of %s)\n", mc->alias, mc->desc, mc->name);
-            }
-            printf("%-20s %s%s%s\n", mc->name, mc->desc,
-                   mc->is_default ? " (default)" : "",
-                   mc->deprecation_reason ? " (deprecated)" : "");
+    machines = object_class_get_list(TYPE_MACHINE, false);
+    if (type) {
+        ObjectClass *machine_class = OBJECT_CLASS(find_machine(type, machines));
+        if (machine_class) {
+            type_print_class_properties(object_class_get_name(machine_class));
+            return;
         }
+    }
+
+    printf("Supported machines are:\n");
+    machines = g_slist_sort(machines, machine_class_cmp);
+    for (el = machines; el; el = el->next) {
+        MachineClass *mc = el->data;
+        if (mc->alias) {
+            printf("%-20s %s (alias of %s)\n", mc->alias, mc->desc, mc->name);
+        }
+        printf("%-20s %s%s%s\n", mc->name, mc->desc,
+               mc->is_default ? " (default)" : "",
+               mc->deprecation_reason ? " (deprecated)" : "");
+    }
+}
+
+static void
+machine_merge_property(const char *propname, QDict *prop, Error **errp)
+{
+    QDict *opts;
+
+    opts = qdict_new();
+    /* Preserve the caller's reference to prop.  */
+    qobject_ref(prop);
+    qdict_put(opts, propname, prop);
+    keyval_merge(machine_opts_dict, opts, errp);
+    qobject_unref(opts);
+}
+
+static void
+machine_parse_property_opt(QemuOptsList *opts_list, const char *propname,
+                           const char *arg, Error **errp)
+{
+    QDict *prop = NULL;
+    bool help = false;
+
+    prop = keyval_parse(arg, opts_list->implied_opt_name, &help, errp);
+    if (help) {
+        qemu_opts_print_help(opts_list, true);
         exit(0);
     }
-
-    mc = find_machine(name, machines);
-    if (!mc) {
-        error_report("unsupported machine type");
-        error_printf("Use -machine help to list supported machines\n");
-        exit(1);
+    if (!prop) {
+        return;
     }
-    return mc;
+    machine_merge_property(propname, prop, errp);
+    qobject_unref(prop);
 }
 
 static const char *pid_file;
@@ -1619,32 +1625,31 @@ static const QEMUOption *lookup_opt(int argc, char **argv,
     return popt;
 }
 
-static MachineClass *select_machine(void)
+static MachineClass *select_machine(QDict *qdict, Error **errp)
 {
+    const char *optarg = qdict_get_try_str(qdict, "type");
     GSList *machines = object_class_get_list(TYPE_MACHINE, false);
-    MachineClass *machine_class = find_default_machine(machines);
-    const char *optarg;
-    QemuOpts *opts;
-    Location loc;
+    MachineClass *machine_class;
+    Error *local_err = NULL;
 
-    loc_push_none(&loc);
-
-    opts = qemu_get_machine_opts();
-    qemu_opts_loc_restore(opts);
-
-    optarg = qemu_opt_get(opts, "type");
     if (optarg) {
-        machine_class = machine_parse(optarg, machines);
+        machine_class = find_machine(optarg, machines);
+        qdict_del(qdict, "type");
+        if (!machine_class) {
+            error_setg(&local_err, "unsupported machine type");
+        }
+    } else {
+        machine_class = find_default_machine(machines);
+        if (!machine_class) {
+            error_setg(&local_err, "No machine specified, and there is no default");
+        }
     }
 
-    if (!machine_class) {
-        error_report("No machine specified, and there is no default");
-        error_printf("Use -machine help to list supported machines\n");
-        exit(1);
-    }
-
-    loc_pop(&loc);
     g_slist_free(machines);
+    if (local_err) {
+        error_append_hint(&local_err, "Use -machine help to list supported machines\n");
+        error_propagate(errp, local_err);
+    }
     return machine_class;
 }
 
@@ -1663,42 +1668,70 @@ static int object_parse_property_opt(Object *obj,
     return 0;
 }
 
-static int machine_set_property(void *opaque,
-                                const char *name, const char *value,
-                                Error **errp)
+/* *Non*recursively replace underscores with dashes in QDict keys.  */
+static void keyval_dashify(QDict *qdict, Error **errp)
 {
-    g_autofree char *qom_name = g_strdup(name);
+    const QDictEntry *ent, *next;
     char *p;
 
-    for (p = qom_name; *p; p++) {
-        if (*p == '_') {
-            *p = '-';
+    for (ent = qdict_first(qdict); ent; ent = next) {
+        g_autofree char *new_key = NULL;
+
+        next = qdict_next(qdict, ent);
+        if (!strchr(ent->key, '_')) {
+            continue;
         }
+        new_key = g_strdup(ent->key);
+        for (p = new_key; *p; p++) {
+            if (*p == '_') {
+                *p = '-';
+            }
+        }
+        if (qdict_haskey(qdict, new_key)) {
+            error_setg(errp, "Conflict between '%s' and '%s'", ent->key, new_key);
+            return;
+        }
+        qobject_ref(ent->value);
+        qdict_put_obj(qdict, new_key, ent->value);
+        qdict_del(qdict, ent->key);
     }
+}
+
+static void qemu_apply_legacy_machine_options(QDict *qdict)
+{
+    const char *value;
+
+    keyval_dashify(qdict, &error_fatal);
 
     /* Legacy options do not correspond to MachineState properties.  */
-    if (g_str_equal(qom_name, "accel")) {
-        return 0;
-    }
-    if (g_str_equal(qom_name, "igd-passthru")) {
-        object_register_sugar_prop(ACCEL_CLASS_NAME("xen"), qom_name, value,
-                                   false);
-        return 0;
-    }
-    if (g_str_equal(qom_name, "kvm-shadow-mem")) {
-        object_register_sugar_prop(ACCEL_CLASS_NAME("kvm"), qom_name, value,
-                                   false);
-        return 0;
-    }
-    if (g_str_equal(qom_name, "kernel-irqchip")) {
-        object_register_sugar_prop(ACCEL_CLASS_NAME("kvm"), qom_name, value,
-                                   false);
-        object_register_sugar_prop(ACCEL_CLASS_NAME("whpx"), qom_name, value,
-                                   false);
-        return 0;
+    value = qdict_get_try_str(qdict, "accel");
+    if (value) {
+        accelerators = g_strdup(value);
+        qdict_del(qdict, "accel");
     }
 
-    return object_parse_property_opt(opaque, name, value, "type", errp);
+    value = qdict_get_try_str(qdict, "igd-passthru");
+    if (value) {
+        object_register_sugar_prop(ACCEL_CLASS_NAME("xen"), "igd-passthru", value,
+                                   false);
+        qdict_del(qdict, "igd-passthru");
+    }
+
+    value = qdict_get_try_str(qdict, "kvm-shadow-mem");
+    if (value) {
+        object_register_sugar_prop(ACCEL_CLASS_NAME("kvm"), "kvm-shadow-mem", value,
+                                   false);
+        qdict_del(qdict, "kvm-shadow-mem");
+    }
+
+    value = qdict_get_try_str(qdict, "kernel-irqchip");
+    if (value) {
+        object_register_sugar_prop(ACCEL_CLASS_NAME("kvm"), "kernel-irqchip", value,
+                                   false);
+        object_register_sugar_prop(ACCEL_CLASS_NAME("whpx"), "kernel-irqchip", value,
+                                   false);
+        qdict_del(qdict, "kernel-irqchip");
+    }
 }
 
 static void object_option_foreach_add(bool (*type_opt_predicate)(const char *))
@@ -1716,9 +1749,15 @@ static void object_option_foreach_add(bool (*type_opt_predicate)(const char *))
     }
 }
 
+static void object_option_add_visitor(Visitor *v)
+{
+    ObjectOption *opt = g_new0(ObjectOption, 1);
+    visit_type_ObjectOptions(v, NULL, &opt->opts, &error_fatal);
+    QTAILQ_INSERT_TAIL(&object_opts, opt, next);
+}
+
 static void object_option_parse(const char *optarg)
 {
-    ObjectOption *opt;
     QemuOpts *opts;
     const char *type;
     Visitor *v;
@@ -1746,11 +1785,8 @@ static void object_option_parse(const char *optarg)
         v = opts_visitor_new(opts);
     }
 
-    opt = g_new0(ObjectOption, 1);
-    visit_type_ObjectOptions(v, NULL, &opt->opts, &error_fatal);
+    object_option_add_visitor(v);
     visit_free(v);
-
-    QTAILQ_INSERT_TAIL(&object_opts, opt, next);
 }
 
 /*
@@ -1767,8 +1803,9 @@ static bool object_create_early(const char *type)
      * add one, state the reason in a comment!
      */
 
-    /* Reason: rng-egd property "chardev" */
-    if (g_str_equal(type, "rng-egd")) {
+    /* Reason: property "chardev" */
+    if (g_str_equal(type, "rng-egd") ||
+        g_str_equal(type, "qtest")) {
         return false;
     }
 
@@ -1809,16 +1846,14 @@ static bool object_create_early(const char *type)
     return true;
 }
 
-static void qemu_apply_machine_options(void)
+static void qemu_apply_machine_options(QDict *qdict)
 {
     MachineClass *machine_class = MACHINE_GET_CLASS(current_machine);
-    QemuOpts *machine_opts = qemu_get_machine_opts();
     const char *boot_order = NULL;
     const char *boot_once = NULL;
     QemuOpts *opts;
 
-    qemu_opt_foreach(machine_opts, machine_set_property, current_machine,
-                     &error_fatal);
+    object_set_properties_from_keyval(OBJECT(current_machine), qdict, false, &error_fatal);
     current_machine->ram_size = ram_size;
     current_machine->maxram_size = maxram_size;
     current_machine->ram_slots = ram_slots;
@@ -1847,23 +1882,36 @@ static void qemu_apply_machine_options(void)
     current_machine->boot_once = boot_once;
 
     if (semihosting_enabled() && !semihosting_get_argc()) {
-        const char *kernel_filename = qemu_opt_get(machine_opts, "kernel");
-        const char *kernel_cmdline = qemu_opt_get(machine_opts, "append") ?: "";
         /* fall back to the -kernel/-append */
-        semihosting_arg_fallback(kernel_filename, kernel_cmdline);
+        semihosting_arg_fallback(current_machine->kernel_filename, current_machine->kernel_cmdline);
+    }
+
+    if (current_machine->smp.cpus > 1) {
+        Error *blocker = NULL;
+        error_setg(&blocker, QERR_REPLAY_NOT_SUPPORTED, "smp");
+        replay_add_blocker(blocker);
     }
 }
 
 static void qemu_create_early_backends(void)
 {
     MachineClass *machine_class = MACHINE_GET_CLASS(current_machine);
+#if defined(CONFIG_SDL)
+    const bool use_sdl = (dpy.type == DISPLAY_TYPE_SDL);
+#else
+    const bool use_sdl = false;
+#endif
+#if defined(CONFIG_GTK)
+    const bool use_gtk = (dpy.type == DISPLAY_TYPE_GTK);
+#else
+    const bool use_gtk = false;
+#endif
 
-    if ((alt_grab || ctrl_grab) && dpy.type != DISPLAY_TYPE_SDL) {
+    if ((alt_grab || ctrl_grab) && !use_sdl) {
         error_report("-alt-grab and -ctrl-grab are only valid "
                      "for SDL, ignoring option");
     }
-    if (dpy.has_window_close &&
-        (dpy.type != DISPLAY_TYPE_GTK && dpy.type != DISPLAY_TYPE_SDL)) {
+    if (dpy.has_window_close && !use_gtk && !use_sdl) {
         error_report("-no-quit is only valid for GTK and SDL, "
                      "ignoring option");
     }
@@ -1897,8 +1945,7 @@ static void qemu_create_early_backends(void)
 
     /*
      * Note: we need to create audio and block backends before
-     * machine_set_property(), so machine properties can refer to
-     * them.
+     * setting machine properties, so they can be referred to.
      */
     configure_blockdev(&bdo_queue, machine_class, snapshot);
     audio_init_audiodevs();
@@ -2041,8 +2088,6 @@ static void set_memory_options(MachineClass *mc)
         exit(EXIT_FAILURE);
     }
 
-    /* store value for the future use */
-    qemu_opt_set_number(opts, "size", ram_size, &error_abort);
     maxram_size = ram_size;
 
     if (qemu_opt_get(opts, "maxmem")) {
@@ -2074,16 +2119,14 @@ static void set_memory_options(MachineClass *mc)
     loc_pop(&loc);
 }
 
-static void qemu_create_machine(MachineClass *machine_class)
+static void qemu_create_machine(QDict *qdict)
 {
+    MachineClass *machine_class = select_machine(qdict, &error_fatal);
     object_set_machine_compat_props(machine_class->compat_props);
 
     set_memory_options(machine_class);
 
     current_machine = MACHINE(object_new_with_class(OBJECT_CLASS(machine_class)));
-    if (machine_help_func(qemu_get_machine_opts(), current_machine)) {
-        exit(0);
-    }
     object_property_add_child(object_get_root(), "machine",
                               OBJECT(current_machine));
     object_property_add_child(container_get(OBJECT(current_machine),
@@ -2106,16 +2149,18 @@ static void qemu_create_machine(MachineClass *machine_class)
         qemu_set_hw_version(machine_class->hw_version);
     }
 
-    machine_smp_parse(current_machine,
-        qemu_opts_find(qemu_find_opts("smp-opts"), NULL), &error_fatal);
-
     /*
      * Get the default machine options from the machine if it is not already
      * specified either by the configuration file or by the command line.
      */
     if (machine_class->default_machine_opts) {
-        qemu_opts_set_defaults(qemu_find_opts("machine"),
-                               machine_class->default_machine_opts, 0);
+        QDict *default_opts =
+            keyval_parse(machine_class->default_machine_opts, NULL, NULL,
+                         &error_abort);
+        qemu_apply_legacy_machine_options(default_opts);
+        object_set_properties_from_keyval(OBJECT(current_machine), default_opts,
+                                          false, &error_abort);
+        qobject_unref(default_opts);
     }
 }
 
@@ -2131,13 +2176,78 @@ static int global_init_func(void *opaque, QemuOpts *opts, Error **errp)
     return 0;
 }
 
+/*
+ * Return whether configuration group @group is stored in QemuOpts, or
+ * recorded as one or more QDicts by qemu_record_config_group.
+ */
+static bool is_qemuopts_group(const char *group)
+{
+    if (g_str_equal(group, "object") ||
+        g_str_equal(group, "machine") ||
+        g_str_equal(group, "smp-opts")) {
+        return false;
+    }
+    return true;
+}
+
+static void qemu_record_config_group(const char *group, QDict *dict,
+                                     bool from_json, Error **errp)
+{
+    if (g_str_equal(group, "object")) {
+        Visitor *v = qobject_input_visitor_new_keyval(QOBJECT(dict));
+        object_option_add_visitor(v);
+        visit_free(v);
+    } else if (g_str_equal(group, "machine")) {
+        /*
+         * Cannot merge string-valued and type-safe dictionaries, so JSON
+         * is not accepted yet for -M.
+         */
+        assert(!from_json);
+        keyval_merge(machine_opts_dict, dict, errp);
+    } else if (g_str_equal(group, "smp-opts")) {
+        machine_merge_property("smp", dict, &error_fatal);
+    } else {
+        abort();
+    }
+}
+
+/*
+ * Parse non-QemuOpts config file groups, pass the rest to
+ * qemu_config_do_parse.
+ */
+static void qemu_parse_config_group(const char *group, QDict *qdict,
+                                    void *opaque, Error **errp)
+{
+    QObject *crumpled;
+    if (is_qemuopts_group(group)) {
+        qemu_config_do_parse(group, qdict, opaque, errp);
+        return;
+    }
+
+    crumpled = qdict_crumple(qdict, errp);
+    if (!crumpled) {
+        return;
+    }
+    switch (qobject_type(crumpled)) {
+    case QTYPE_QDICT:
+        qemu_record_config_group(group, qobject_to(QDict, crumpled), false, errp);
+        break;
+    case QTYPE_QLIST:
+        error_setg(errp, "Lists cannot be at top level of a configuration section");
+        break;
+    default:
+        g_assert_not_reached();
+    }
+    qobject_unref(crumpled);
+}
+
 static void qemu_read_default_config_file(Error **errp)
 {
     ERRP_GUARD();
     int ret;
     g_autofree char *file = get_relocated_path(CONFIG_QEMU_CONFDIR "/qemu.conf");
 
-    ret = qemu_read_config_file(file, errp);
+    ret = qemu_read_config_file(file, qemu_parse_config_group, errp);
     if (ret < 0) {
         if (ret == -ENOENT) {
             error_free(*errp);
@@ -2146,9 +2256,8 @@ static void qemu_read_default_config_file(Error **errp)
     }
 }
 
-static int qemu_set_option(const char *str)
+static void qemu_set_option(const char *str, Error **errp)
 {
-    Error *local_err = NULL;
     char group[64], id[64], arg[64];
     QemuOptsList *list;
     QemuOpts *opts;
@@ -2156,27 +2265,23 @@ static int qemu_set_option(const char *str)
 
     rc = sscanf(str, "%63[^.].%63[^.].%63[^=]%n", group, id, arg, &offset);
     if (rc < 3 || str[offset] != '=') {
-        error_report("can't parse: \"%s\"", str);
-        return -1;
+        error_setg(errp, "can't parse: \"%s\"", str);
+        return;
     }
 
-    list = qemu_find_opts(group);
-    if (list == NULL) {
-        return -1;
+    if (!is_qemuopts_group(group)) {
+        error_setg(errp, "-set is not supported with %s", group);
+    } else {
+        list = qemu_find_opts_err(group, errp);
+        if (list) {
+            opts = qemu_opts_find(list, id);
+            if (!opts) {
+                error_setg(errp, "there is no %s \"%s\" defined", group, id);
+                return;
+            }
+            qemu_opt_set(opts, arg, str + offset + 1, errp);
+        }
     }
-
-    opts = qemu_opts_find(list, id);
-    if (!opts) {
-        error_report("there is no %s \"%s\" defined",
-                     list->name, id);
-        return -1;
-    }
-
-    if (!qemu_opt_set(opts, arg, str + offset + 1, &local_err)) {
-        error_report_err(local_err);
-        return -1;
-    }
-    return 0;
 }
 
 static void user_register_global_props(void)
@@ -2236,13 +2341,11 @@ static int do_configure_accelerator(void *opaque, QemuOpts *opts, Error **errp)
 
 static void configure_accelerators(const char *progname)
 {
-    const char *accelerators;
     bool init_failed = false;
 
     qemu_opts_foreach(qemu_find_opts("icount"),
                       do_configure_icount, NULL, &error_fatal);
 
-    accelerators = qemu_opt_get(qemu_get_machine_opts(), "accel");
     if (QTAILQ_EMPTY(&qemu_accel_opts.head)) {
         char **accel_list, **tmp;
 
@@ -2333,7 +2436,7 @@ static void create_default_memdev(MachineState *ms, const char *path)
 /* Return 1 if file fails to open */
 static int xemu_check_file(const char *path)
 {
-    FILE *fd = fopen(path, "rb");
+    FILE *fd = qemu_fopen(path, "rb");
     if (fd == NULL) {
         return 1;
     }
@@ -2363,12 +2466,11 @@ static char *strdup_double_commas(const char *input) {
     return output;
 }
 
-static void qemu_validate_options(void)
+static void qemu_validate_options(const QDict *machine_opts)
 {
-    QemuOpts *machine_opts = qemu_get_machine_opts();
-    const char *kernel_filename = qemu_opt_get(machine_opts, "kernel");
-    const char *initrd_filename = qemu_opt_get(machine_opts, "initrd");
-    const char *kernel_cmdline = qemu_opt_get(machine_opts, "append");
+    const char *kernel_filename = qdict_get_try_str(machine_opts, "kernel");
+    const char *initrd_filename = qdict_get_try_str(machine_opts, "initrd");
+    const char *kernel_cmdline = qdict_get_try_str(machine_opts, "append");
 
     if (kernel_filename == NULL) {
          if (kernel_cmdline != NULL) {
@@ -2403,13 +2505,15 @@ static void qemu_validate_options(void)
 static void qemu_process_sugar_options(void)
 {
     if (mem_prealloc) {
-        char *val;
-
-        val = g_strdup_printf("%d",
-                 (uint32_t) qemu_opt_get_number(qemu_find_opts_singleton("smp-opts"), "cpus", 1));
-        object_register_sugar_prop("memory-backend", "prealloc-threads", val,
-                                   false);
-        g_free(val);
+        QObject *smp = qdict_get(machine_opts_dict, "smp");
+        if (smp && qobject_type(smp) == QTYPE_QDICT) {
+            QObject *cpus = qdict_get(qobject_to(QDict, smp), "cpus");
+            if (cpus && qobject_type(cpus) == QTYPE_QSTRING) {
+                const char *val = qstring_get_str(qobject_to(QString, cpus));
+                object_register_sugar_prop("memory-backend", "prealloc-threads",
+                                           val, false);
+            }
+        }
         object_register_sugar_prop("memory-backend", "prealloc", "on", false);
     }
 
@@ -2511,7 +2615,7 @@ static void qemu_process_help_options(void)
 
 static void qemu_maybe_daemonize(const char *pid_file)
 {
-    Error *err;
+    Error *err = NULL;
 
     os_daemonize();
     rcu_disable_atfork();
@@ -2708,8 +2812,6 @@ void qemu_init(int argc, char **argv, char **envp)
 
     fake_argc = 0;
     fake_argv[fake_argc++] = argv[0];
-    fake_argv[fake_argc++] = strdup("-cpu");
-    fake_argv[fake_argc++] = strdup("pentium3");
     fake_argv[fake_argc++] = strdup("-machine");
 
     char *bootrom_arg = NULL;
@@ -2914,7 +3016,6 @@ void qemu_init(int argc, char **argv, char **envp)
     qemu_add_opts(&qemu_trace_opts);
     qemu_plugin_add_opts();
     qemu_add_opts(&qemu_option_rom_opts);
-    qemu_add_opts(&qemu_machine_opts);
     qemu_add_opts(&qemu_accel_opts);
     qemu_add_opts(&qemu_mem_opts);
     qemu_add_opts(&qemu_smp_opts);
@@ -2934,6 +3035,11 @@ void qemu_init(int argc, char **argv, char **envp)
 
     error_init(argv[0]);
     qemu_init_exec_dir(argv[0]);
+
+#ifdef CONFIG_MODULES
+    module_init_info(qemu_modinfo);
+    module_allow_arch(TARGET_NAME);
+#endif
 
     qemu_init_subsystems();
 
@@ -2955,6 +3061,7 @@ void qemu_init(int argc, char **argv, char **envp)
         }
     }
 
+    machine_opts_dict = qdict_new();
     if (userconfig) {
         qemu_read_default_config_file(&error_fatal);
     }
@@ -3009,8 +3116,7 @@ void qemu_init(int argc, char **argv, char **envp)
                 }
                 break;
             case QEMU_OPTION_set:
-                if (qemu_set_option(optarg) != 0)
-                    exit(1);
+                qemu_set_option(optarg, &error_fatal);
                 break;
             case QEMU_OPTION_global:
                 if (qemu_global_option(optarg) != 0)
@@ -3045,8 +3151,7 @@ void qemu_init(int argc, char **argv, char **envp)
                 parse_display(optarg);
                 break;
             case QEMU_OPTION_nographic:
-                olist = qemu_find_opts("machine");
-                qemu_opts_parse_noisily(olist, "graphics=off", false);
+                qdict_put_str(machine_opts_dict, "graphics", "off");
                 nographic = true;
                 dpy.type = DISPLAY_TYPE_NONE;
                 break;
@@ -3070,16 +3175,16 @@ void qemu_init(int argc, char **argv, char **envp)
                 }
                 break;
             case QEMU_OPTION_kernel:
-                qemu_opts_set(qemu_find_opts("machine"), "kernel", optarg, &error_abort);
+                qdict_put_str(machine_opts_dict, "kernel", optarg);
                 break;
             case QEMU_OPTION_initrd:
-                qemu_opts_set(qemu_find_opts("machine"), "initrd", optarg, &error_abort);
+                qdict_put_str(machine_opts_dict, "initrd", optarg);
                 break;
             case QEMU_OPTION_append:
-                qemu_opts_set(qemu_find_opts("machine"), "append", optarg, &error_abort);
+                qdict_put_str(machine_opts_dict, "append", optarg);
                 break;
             case QEMU_OPTION_dtb:
-                qemu_opts_set(qemu_find_opts("machine"), "dtb", optarg, &error_abort);
+                qdict_put_str(machine_opts_dict, "dtb", optarg);
                 break;
             case QEMU_OPTION_cdrom:
                 drive_add(IF_DEFAULT, 2, optarg, CDROM_OPTS);
@@ -3189,7 +3294,7 @@ void qemu_init(int argc, char **argv, char **envp)
                 }
                 break;
             case QEMU_OPTION_bios:
-                qemu_opts_set(qemu_find_opts("machine"), "firmware", optarg, &error_abort);
+                qdict_put_str(machine_opts_dict, "firmware", optarg);
                 break;
             case QEMU_OPTION_singlestep:
                 singlestep = 1;
@@ -3416,6 +3521,8 @@ void qemu_init(int argc, char **argv, char **envp)
             case QEMU_OPTION_no_quit:
                 dpy.has_window_close = true;
                 dpy.window_close = false;
+                warn_report("-no-quit is deprecated, please use "
+                            "-display ...,window-close=off instead.");
                 break;
             case QEMU_OPTION_sdl:
 #ifdef CONFIG_SDL
@@ -3458,17 +3565,20 @@ void qemu_init(int argc, char **argv, char **envp)
                 preconfig_requested = true;
                 break;
             case QEMU_OPTION_enable_kvm:
-                olist = qemu_find_opts("machine");
-                qemu_opts_parse_noisily(olist, "accel=kvm", false);
+                qdict_put_str(machine_opts_dict, "accel", "kvm");
                 break;
             case QEMU_OPTION_M:
             case QEMU_OPTION_machine:
-                olist = qemu_find_opts("machine");
-                opts = qemu_opts_parse_noisily(olist, optarg, true);
-                if (!opts) {
-                    exit(1);
+                {
+                    bool help;
+
+                    keyval_parse_into(machine_opts_dict, optarg, "type", &help, &error_fatal);
+                    if (help) {
+                        machine_help_func(machine_opts_dict);
+                        exit(EXIT_SUCCESS);
+                    }
+                    break;
                 }
-                break;
             case QEMU_OPTION_accel:
                 accel_opts = qemu_opts_parse_noisily(qemu_find_opts("accel"),
                                                      optarg, true);
@@ -3495,12 +3605,10 @@ void qemu_init(int argc, char **argv, char **envp)
                 }
                 break;
             case QEMU_OPTION_usb:
-                olist = qemu_find_opts("machine");
-                qemu_opts_parse_noisily(olist, "usb=on", false);
+                qdict_put_str(machine_opts_dict, "usb", "on");
                 break;
             case QEMU_OPTION_usbdevice:
-                olist = qemu_find_opts("machine");
-                qemu_opts_parse_noisily(olist, "usb=on", false);
+                qdict_put_str(machine_opts_dict, "usb", "on");
                 add_device_config(DEV_USB, optarg);
                 break;
             case QEMU_OPTION_device:
@@ -3510,21 +3618,16 @@ void qemu_init(int argc, char **argv, char **envp)
                 }
                 break;
             case QEMU_OPTION_smp:
-                if (!qemu_opts_parse_noisily(qemu_find_opts("smp-opts"),
-                                             optarg, true)) {
-                    exit(1);
-                }
+                machine_parse_property_opt(qemu_find_opts("smp-opts"), "smp", optarg, &error_fatal);
                 break;
             case QEMU_OPTION_vnc:
                 vnc_parse(optarg);
                 break;
             case QEMU_OPTION_no_acpi:
-                olist = qemu_find_opts("machine");
-                qemu_opts_parse_noisily(olist, "acpi=off", false);
+                qdict_put_str(machine_opts_dict, "acpi", "off");
                 break;
             case QEMU_OPTION_no_hpet:
-                olist = qemu_find_opts("machine");
-                qemu_opts_parse_noisily(olist, "hpet=off", false);
+                qdict_put_str(machine_opts_dict, "hpet", "off");
                 break;
             case QEMU_OPTION_no_reboot:
                 olist = qemu_find_opts("action");
@@ -3642,14 +3745,10 @@ void qemu_init(int argc, char **argv, char **envp)
                 qemu_plugin_opt_parse(optarg, &plugin_list);
                 break;
             case QEMU_OPTION_readconfig:
-                qemu_read_config_file(optarg, &error_fatal);
+                qemu_read_config_file(optarg, qemu_parse_config_group, &error_fatal);
                 break;
             case QEMU_OPTION_spice:
                 olist = qemu_find_opts_err("spice", NULL);
-                if (!olist) {
-                    ui_module_load_one("spice-core");
-                    olist = qemu_find_opts("spice");
-                }
                 if (!olist) {
                     error_report("spice support is disabled");
                     exit(1);
@@ -3667,7 +3766,7 @@ void qemu_init(int argc, char **argv, char **envp)
                     if (strcmp(optarg, "-") == 0) {
                         fp = stdout;
                     } else {
-                        fp = fopen(optarg, "w");
+                        fp = qemu_fopen(optarg, "w");
                         if (fp == NULL) {
                             error_report("open %s: %s", optarg,
                                          strerror(errno));
@@ -3755,7 +3854,7 @@ void qemu_init(int argc, char **argv, char **envp)
                                  "option may be given");
                     exit(1);
                 }
-                vmstate_dump_file = fopen(optarg, "w");
+                vmstate_dump_file = qemu_fopen(optarg, "w");
                 if (vmstate_dump_file == NULL) {
                     error_report("open %s: %s", optarg, strerror(errno));
                     exit(1);
@@ -3781,7 +3880,7 @@ void qemu_init(int argc, char **argv, char **envp)
      */
     loc_set_none();
 
-    qemu_validate_options();
+    qemu_validate_options(machine_opts_dict);
     qemu_process_sugar_options();
 
     /*
@@ -3814,7 +3913,7 @@ void qemu_init(int argc, char **argv, char **envp)
 
     configure_rtc(qemu_find_opts_singleton("rtc"));
 
-    qemu_create_machine(select_machine());
+    qemu_create_machine(machine_opts_dict);
 
     suspend_mux_open();
 
@@ -3822,12 +3921,14 @@ void qemu_init(int argc, char **argv, char **envp)
     qemu_create_default_devices();
     qemu_create_early_backends();
 
-    qemu_apply_machine_options();
+    qemu_apply_legacy_machine_options(machine_opts_dict);
+    qemu_apply_machine_options(machine_opts_dict);
+    qobject_unref(machine_opts_dict);
     phase_advance(PHASE_MACHINE_CREATED);
 
     /*
      * Note: uses machine properties such as kernel-irqchip, must run
-     * after machine_set_property().
+     * after qemu_apply_machine_options.
      */
     configure_accelerators(argv[0]);
     phase_advance(PHASE_ACCEL_CREATED);
@@ -3868,7 +3969,6 @@ void qemu_init(int argc, char **argv, char **envp)
         current_machine->cpu_type = parse_cpu_option(cpu_option);
     }
     /* NB: for machine none cpu_type could STILL be NULL here! */
-    accel_init_interfaces(ACCEL_GET_CLASS(current_machine->accelerator));
 
     qemu_resolve_machine_memdev();
     parse_numa_opts(current_machine);

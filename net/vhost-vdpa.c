@@ -54,6 +54,8 @@ const int vdpa_feature_bits[] = {
     VIRTIO_NET_F_MTU,
     VIRTIO_F_IOMMU_PLATFORM,
     VIRTIO_F_RING_PACKED,
+    VIRTIO_NET_F_RSS,
+    VIRTIO_NET_F_HASH_REPORT,
     VIRTIO_NET_F_GUEST_ANNOUNCE,
     VIRTIO_NET_F_STATUS,
     VHOST_INVALID_FEATURE_BIT
@@ -64,15 +66,6 @@ VHostNetState *vhost_vdpa_get_vhost_net(NetClientState *nc)
     VhostVDPAState *s = DO_UPCAST(VhostVDPAState, nc, nc);
     assert(nc->info->type == NET_CLIENT_DRIVER_VHOST_VDPA);
     return s->vhost_net;
-}
-
-uint64_t vhost_vdpa_get_acked_features(NetClientState *nc)
-{
-    VhostVDPAState *s = DO_UPCAST(VhostVDPAState, nc, nc);
-    assert(nc->info->type == NET_CLIENT_DRIVER_VHOST_VDPA);
-    s->acked_features = vhost_net_get_acked_features(s->vhost_net);
-
-    return s->acked_features;
 }
 
 static int vhost_vdpa_net_check_device_id(struct vhost_net *net)

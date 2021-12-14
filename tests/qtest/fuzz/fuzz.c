@@ -16,9 +16,9 @@
 #include <wordexp.h>
 
 #include "qemu/datadir.h"
+#include "sysemu/sysemu.h"
 #include "sysemu/qtest.h"
 #include "sysemu/runstate.h"
-#include "sysemu/sysemu.h"
 #include "qemu/main-loop.h"
 #include "qemu/rcu.h"
 #include "tests/qtest/libqos/libqtest.h"

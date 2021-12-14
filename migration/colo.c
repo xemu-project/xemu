@@ -28,7 +28,7 @@
 #include "migration/failover.h"
 #include "migration/ram.h"
 #ifdef CONFIG_REPLICATION
-#include "replication.h"
+#include "block/replication.h"
 #endif
 #include "net/colo-compare.h"
 #include "net/colo.h"
@@ -433,12 +433,6 @@ static int colo_do_checkpoint_transaction(MigrationState *s,
      * So we need check failover_request_is_active() again.
      */
     if (failover_get_state() != FAILOVER_STATUS_NONE) {
-        goto out;
-    }
-
-    /* Disable block migration */
-    migrate_set_block_enabled(false, &local_err);
-    if (local_err) {
         goto out;
     }
     qemu_mutex_lock_iothread();

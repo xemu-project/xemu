@@ -38,7 +38,7 @@ char *qemu_find_file(int type, const char *name)
     char *buf;
 
     /* Try the name as a straight path first */
-    if (access(name, R_OK) == 0) {
+    if (qemu_access(name, R_OK) == 0) {
         trace_load_file(name, name);
         return g_strdup(name);
     }
@@ -56,7 +56,7 @@ char *qemu_find_file(int type, const char *name)
 
     for (i = 0; i < data_dir_idx; i++) {
         buf = g_strdup_printf("%s/%s%s", data_dir[i], subdir, name);
-        if (access(buf, R_OK) == 0) {
+        if (qemu_access(buf, R_OK) == 0) {
             trace_load_file(name, buf);
             return buf;
         }

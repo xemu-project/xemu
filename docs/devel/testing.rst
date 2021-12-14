@@ -775,7 +775,7 @@ The base test class has also support for tests with more than one
 QEMUMachine. The way to get machines is through the ``self.get_vm()``
 method which will return a QEMUMachine instance. The ``self.get_vm()``
 method accepts arguments that will be passed to the QEMUMachine creation
-and also an optional `name` attribute so you can identify a specific
+and also an optional ``name`` attribute so you can identify a specific
 machine and get it more than once through the tests methods. A simple
 and hypothetical example follows:
 
@@ -809,6 +809,32 @@ and hypothetical example follows:
 
 At test "tear down", ``avocado_qemu.Test`` handles all the QEMUMachines
 shutdown.
+
+The ``avocado_qemu.LinuxTest`` base test class
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``avocado_qemu.LinuxTest`` is further specialization of the
+``avocado_qemu.Test`` class, so it contains all the characteristics of
+the later plus some extra features.
+
+First of all, this base class is intended for tests that need to
+interact with a fully booted and operational Linux guest.  At this
+time, it uses a Fedora 31 guest image.  The most basic example looks
+like this:
+
+.. code::
+
+  from avocado_qemu import LinuxTest
+
+
+  class SomeTest(LinuxTest):
+
+      def test(self):
+          self.launch_and_wait()
+          self.ssh_command('some_command_to_be_run_in_the_guest')
+
+Please refer to tests that use ``avocado_qemu.LinuxTest`` under
+``tests/acceptance`` for more examples.
 
 QEMUMachine
 ~~~~~~~~~~~
@@ -878,6 +904,17 @@ name.  If one is not given explicitly, it will either be set to
 ``None``, or, if the test is tagged with one (and only one)
 ``:avocado: tags=arch:VALUE`` tag, it will be set to ``VALUE``.
 
+cpu
+~~~
+
+The cpu model that will be set to all QEMUMachine instances created
+by the test.
+
+The ``cpu`` attribute will be set to the test parameter of the same
+name. If one is not given explicitly, it will either be set to
+``None ``, or, if the test is tagged with one (and only one)
+``:avocado: tags=cpu:VALUE`` tag, it will be set to ``VALUE``.
+
 machine
 ~~~~~~~
 
@@ -895,6 +932,39 @@ qemu_bin
 The preserved value of the ``qemu_bin`` parameter or the result of the
 dynamic probe for a QEMU binary in the current working directory or
 source tree.
+
+LinuxTest
+~~~~~~~~~
+
+Besides the attributes present on the ``avocado_qemu.Test`` base
+class, the ``avocado_qemu.LinuxTest`` adds the following attributes:
+
+distro
+......
+
+The name of the Linux distribution used as the guest image for the
+test.  The name should match the **Provider** column on the list
+of images supported by the avocado.utils.vmimage library:
+
+https://avocado-framework.readthedocs.io/en/latest/guides/writer/libs/vmimage.html#supported-images
+
+distro_version
+..............
+
+The version of the Linux distribution as the guest image for the
+test.  The name should match the **Version** column on the list
+of images supported by the avocado.utils.vmimage library:
+
+https://avocado-framework.readthedocs.io/en/latest/guides/writer/libs/vmimage.html#supported-images
+
+distro_checksum
+...............
+
+The sha256 hash of the guest image file used for the test.
+
+If this value is not set in the code or by a test parameter (with the
+same name), no validation on the integrity of the image will be
+performed.
 
 Parameter reference
 -------------------
@@ -924,6 +994,12 @@ architecture of a kernel or disk image to boot a VM with.
 This parameter has a direct relation with the ``arch`` attribute.  If
 not given, it will default to None.
 
+cpu
+~~~
+
+The cpu model that will be set to all QEMUMachine instances created
+by the test.
+
 machine
 ~~~~~~~
 
@@ -935,6 +1011,38 @@ qemu_bin
 ~~~~~~~~
 
 The exact QEMU binary to be used on QEMUMachine.
+
+LinuxTest
+~~~~~~~~~
+
+Besides the parameters present on the ``avocado_qemu.Test`` base
+class, the ``avocado_qemu.LinuxTest`` adds the following parameters:
+
+distro
+......
+
+The name of the Linux distribution used as the guest image for the
+test.  The name should match the **Provider** column on the list
+of images supported by the avocado.utils.vmimage library:
+
+https://avocado-framework.readthedocs.io/en/latest/guides/writer/libs/vmimage.html#supported-images
+
+distro_version
+..............
+
+The version of the Linux distribution as the guest image for the
+test.  The name should match the **Version** column on the list
+of images supported by the avocado.utils.vmimage library:
+
+https://avocado-framework.readthedocs.io/en/latest/guides/writer/libs/vmimage.html#supported-images
+
+distro_checksum
+...............
+
+The sha256 hash of the guest image file used for the test.
+
+If this value is not set in the code or by this parameter no
+validation on the integrity of the image will be performed.
 
 Skipping tests
 --------------
@@ -954,7 +1062,7 @@ Here is a list of the most used variables:
 AVOCADO_ALLOW_LARGE_STORAGE
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Tests which are going to fetch or produce assets considered *large* are not
-going to run unless that `AVOCADO_ALLOW_LARGE_STORAGE=1` is exported on
+going to run unless that ``AVOCADO_ALLOW_LARGE_STORAGE=1`` is exported on
 the environment.
 
 The definition of *large* is a bit arbitrary here, but it usually means an
@@ -968,7 +1076,7 @@ skipped by default. The definition of *not safe* is also arbitrary but
 usually it means a blob which either its source or build process aren't
 public available.
 
-You should export `AVOCADO_ALLOW_UNTRUSTED_CODE=1` on the environment in
+You should export ``AVOCADO_ALLOW_UNTRUSTED_CODE=1`` on the environment in
 order to allow tests which make use of those kind of assets.
 
 AVOCADO_TIMEOUT_EXPECTED
@@ -982,7 +1090,7 @@ property defined in the test class, for further details::
 Even though the timeout can be set by the test developer, there are some tests
 that may not have a well-defined limit of time to finish under certain
 conditions. For example, tests that take longer to execute when QEMU is
-compiled with debug flags. Therefore, the `AVOCADO_TIMEOUT_EXPECTED` variable
+compiled with debug flags. Therefore, the ``AVOCADO_TIMEOUT_EXPECTED`` variable
 has been used to determine whether those tests should run or not.
 
 GITLAB_CI

@@ -361,7 +361,7 @@ static int multifd_recv_unfill_packet(MultiFDRecvParams *p, Error **errp)
         if (offset > (block->used_length - qemu_target_page_size())) {
             error_setg(errp, "multifd: offset too long %" PRIu64
                        " (max " RAM_ADDR_FMT ")",
-                       offset, block->max_length);
+                       offset, block->used_length);
             return -1;
         }
         p->pages->iov[i].iov_base = block->host + offset;
@@ -987,11 +987,8 @@ int multifd_load_cleanup(Error **errp)
     for (i = 0; i < migrate_multifd_channels(); i++) {
         MultiFDRecvParams *p = &multifd_recv_state->params[i];
 
-        if (object_dynamic_cast(OBJECT(p->c), TYPE_QIO_CHANNEL_SOCKET)
-            && OBJECT(p->c)->ref == 1) {
-            yank_unregister_function(MIGRATION_YANK_INSTANCE,
-                                     migration_yank_iochannel,
-                                     QIO_CHANNEL(p->c));
+        if (OBJECT(p->c)->ref == 1) {
+            migration_ioc_unregister_yank(p->c);
         }
 
         object_unref(OBJECT(p->c));
@@ -1163,6 +1160,11 @@ bool multifd_recv_all_channels_created(void)
 
     if (!migrate_use_multifd()) {
         return true;
+    }
+
+    if (!multifd_recv_state) {
+        /* Called before any connections created */
+        return false;
     }
 
     return thread_count == qatomic_read(&multifd_recv_state->count);

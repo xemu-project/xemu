@@ -1,9 +1,10 @@
-FROM fedora:33
+FROM registry.fedoraproject.org/fedora:33
 
 # Please keep this list sorted alphabetically
 ENV PACKAGES \
     bc \
     bzip2 \
+    ccache \
     diffutils \
     findutils \
     gcc \
@@ -18,9 +19,11 @@ ENV PACKAGES \
     mingw32-gmp \
     mingw32-gnutls \
     mingw32-gtk3 \
+    mingw32-libffi \
     mingw32-libjpeg-turbo \
     mingw32-libpng \
     mingw32-libtasn1 \
+    mingw32-libusbx \
     mingw32-nettle \
     mingw32-nsis \
     mingw32-pixman \
@@ -35,7 +38,6 @@ ENV PACKAGES \
 
 RUN dnf install -y $PACKAGES
 RUN rpm -q $PACKAGES | sort > /packages.txt
-ENV FEATURES mingw
 
 # Specify the cross prefix for this image (see tests/docker/common.rc)
 ENV QEMU_CONFIGURE_OPTS --cross-prefix=i686-w64-mingw32-

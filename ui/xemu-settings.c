@@ -17,6 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
 #include <stdlib.h>
 #include <SDL_filesystem.h>
 #include <string.h>
@@ -81,6 +82,7 @@ struct enum_str_map {
 static const struct enum_str_map display_scale_map[DISPLAY_SCALE__COUNT+1] = {
 	{ DISPLAY_SCALE_CENTER,  "center"  },
 	{ DISPLAY_SCALE_SCALE,   "scale"   },
+	{ DISPLAY_SCALE_WS169,   "scale_ws169" },
 	{ DISPLAY_SCALE_STRETCH, "stretch" },
 	{ 0,                     NULL      },
 };
@@ -207,7 +209,7 @@ static bool xemu_settings_detect_portable_mode(void)
 	bool val = false;
 	char *portable_path = g_strdup_printf("%s%s", SDL_GetBasePath(), filename);
 	FILE *tmpfile;
-	if ((tmpfile = fopen(portable_path, "r"))) {
+	if ((tmpfile = qemu_fopen(portable_path, "r"))) {
 		fclose(tmpfile);
 		val = true;
 	}
@@ -391,7 +393,7 @@ void xemu_settings_load(void)
 
 int xemu_settings_save(void)
 {
-	FILE *fd = fopen(xemu_settings_get_path(), "wb");
+	FILE *fd = qemu_fopen(xemu_settings_get_path(), "wb");
 	assert(fd != NULL);
 
 	const char *last_section = "";

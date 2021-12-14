@@ -447,6 +447,14 @@ static MString* decode_token(const uint32_t *shader_token)
 {
     MString *ret;
 
+    /* See what MAC opcode is written to (if not masked away): */
+    VshMAC mac = vsh_get_field(shader_token, FLD_MAC);
+    /* See if a ILU opcode is present too: */
+    VshILU ilu = vsh_get_field(shader_token, FLD_ILU);
+    if (mac == MAC_NOP && ilu == ILU_NOP) {
+        return mstring_new();
+    }
+
     /* Since it's potentially used twice, decode input C once: */
     MString *input_c =
         decode_opcode_input(shader_token,
@@ -455,8 +463,6 @@ static MString* decode_token(const uint32_t *shader_token)
                             (vsh_get_field(shader_token, FLD_C_R_HIGH) << 2)
                                 | vsh_get_field(shader_token, FLD_C_R_LOW));
 
-    /* See what MAC opcode is written to (if not masked away): */
-    VshMAC mac = vsh_get_field(shader_token, FLD_MAC);
     if (mac != MAC_NOP) {
         MString *inputs_mac = mstring_new();
         if (mac_opcode_params[mac].A) {
@@ -495,8 +501,6 @@ static MString* decode_token(const uint32_t *shader_token)
         ret = mstring_new();
     }
 
-    /* See if a ILU opcode is present too: */
-    VshILU ilu = vsh_get_field(shader_token, FLD_ILU);
     if (ilu != ILU_NOP) {
         MString *inputs_c = mstring_from_str(", ");
         mstring_append(inputs_c, mstring_get_str(input_c));

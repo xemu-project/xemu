@@ -30,7 +30,6 @@
 #include "qemu/module.h"
 #include "hw/qdev-properties.h"
 #include "sysemu/runstate.h"
-#include "migration/blocker.h"
 #include "migration/vmstate.h"
 #include "trace.h"
 
@@ -321,7 +320,7 @@ static ram_addr_t qxl_rom_size(void)
 #define QXL_ROM_SZ 8192
 
     QEMU_BUILD_BUG_ON(QXL_REQUIRED_SZ > QXL_ROM_SZ);
-    return QXL_ROM_SZ;
+    return QEMU_ALIGN_UP(QXL_REQUIRED_SZ, qemu_real_host_page_size);
 }
 
 static void init_qxl_rom(PCIQXLDevice *d)
@@ -666,30 +665,6 @@ static int interface_get_command(QXLInstance *sin, struct QXLCommandExt *ext)
         qxl->guest_primary.commands++;
         qxl_track_command(qxl, ext);
         qxl_log_command(qxl, "cmd", ext);
-        {
-            /*
-             * Windows 8 drivers place qxl commands in the vram
-             * (instead of the ram) bar.  We can't live migrate such a
-             * guest, so add a migration blocker in case we detect
-             * this, to avoid triggering the assert in pre_save().
-             *
-             * https://cgit.freedesktop.org/spice/win32/qxl-wddm-dod/commit/?id=f6e099db39e7d0787f294d5fd0dce328b5210faa
-             */
-            void *msg = qxl_phys2virt(qxl, ext->cmd.data, ext->group_id);
-            if (msg != NULL && (
-                    msg < (void *)qxl->vga.vram_ptr ||
-                    msg > ((void *)qxl->vga.vram_ptr + qxl->vga.vram_size))) {
-                if (!qxl->migration_blocker) {
-                    Error *local_err = NULL;
-                    error_setg(&qxl->migration_blocker,
-                               "qxl: guest bug: command not in ram bar");
-                    migrate_add_blocker(qxl->migration_blocker, &local_err);
-                    if (local_err) {
-                        error_report_err(local_err);
-                    }
-                }
-            }
-        }
         trace_qxl_ring_command_get(qxl->id, qxl_mode_to_string(qxl->mode));
         return true;
     default:
@@ -1282,12 +1257,6 @@ static void qxl_hard_reset(PCIQXLDevice *d, int loadvm)
     }
     qemu_spice_create_host_memslot(&d->ssd);
     qxl_soft_reset(d);
-
-    if (d->migration_blocker) {
-        migrate_del_blocker(d->migration_blocker);
-        error_free(d->migration_blocker);
-        d->migration_blocker = NULL;
-    }
 
     if (startstop) {
         qemu_spice_display_start();
@@ -2283,7 +2252,9 @@ static int qxl_pre_save(void *opaque)
     } else {
         d->last_release_offset = (uint8_t *)d->last_release - ram_start;
     }
-    assert(d->last_release_offset < d->vga.vram_size);
+    if (d->last_release_offset < d->vga.vram_size) {
+        return 1;
+    }
 
     return 0;
 }
@@ -2384,7 +2355,7 @@ static bool qxl_monitors_config_needed(void *opaque)
 }
 
 
-static VMStateDescription qxl_memslot = {
+static const VMStateDescription qxl_memslot = {
     .name               = "qxl-memslot",
     .version_id         = QXL_SAVE_VERSION,
     .minimum_version_id = QXL_SAVE_VERSION,
@@ -2396,7 +2367,7 @@ static VMStateDescription qxl_memslot = {
     }
 };
 
-static VMStateDescription qxl_surface = {
+static const VMStateDescription qxl_surface = {
     .name               = "qxl-surface",
     .version_id         = QXL_SAVE_VERSION,
     .minimum_version_id = QXL_SAVE_VERSION,
@@ -2414,7 +2385,7 @@ static VMStateDescription qxl_surface = {
     }
 };
 
-static VMStateDescription qxl_vmstate_monitors_config = {
+static const VMStateDescription qxl_vmstate_monitors_config = {
     .name               = "qxl/monitors-config",
     .version_id         = 1,
     .minimum_version_id = 1,
@@ -2425,7 +2396,7 @@ static VMStateDescription qxl_vmstate_monitors_config = {
     },
 };
 
-static VMStateDescription qxl_vmstate = {
+static const VMStateDescription qxl_vmstate = {
     .name               = "qxl",
     .version_id         = QXL_SAVE_VERSION,
     .minimum_version_id = QXL_SAVE_VERSION,
@@ -2522,6 +2493,7 @@ static const TypeInfo qxl_primary_info = {
     .parent        = TYPE_PCI_QXL,
     .class_init    = qxl_primary_class_init,
 };
+module_obj("qxl-vga");
 
 static void qxl_secondary_class_init(ObjectClass *klass, void *data)
 {
@@ -2538,6 +2510,7 @@ static const TypeInfo qxl_secondary_info = {
     .parent        = TYPE_PCI_QXL,
     .class_init    = qxl_secondary_class_init,
 };
+module_obj("qxl");
 
 static void qxl_register_types(void)
 {
@@ -2547,3 +2520,5 @@ static void qxl_register_types(void)
 }
 
 type_init(qxl_register_types)
+
+module_dep("ui-spice-core");

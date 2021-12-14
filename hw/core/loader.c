@@ -57,7 +57,6 @@
 #include "hw/loader.h"
 #include "hw/nvram/fw_cfg.h"
 #include "exec/memory.h"
-#include "exec/address-spaces.h"
 #include "hw/boards.h"
 #include "qemu/cutils.h"
 #include "sysemu/runstate.h"
@@ -71,7 +70,7 @@ int64_t get_image_size(const char *filename)
 {
     int fd;
     int64_t size;
-    fd = open(filename, O_RDONLY | O_BINARY);
+    fd = qemu_open(filename, O_RDONLY | O_BINARY, NULL);
     if (fd < 0)
         return -1;
     size = lseek(fd, 0, SEEK_END);
@@ -85,7 +84,7 @@ ssize_t load_image_size(const char *filename, void *addr, size_t size)
     int fd;
     ssize_t actsize, l = 0;
 
-    fd = open(filename, O_RDONLY | O_BINARY);
+    fd = qemu_open(filename, O_RDONLY | O_BINARY, NULL);
     if (fd < 0) {
         return -1;
     }
@@ -230,7 +229,7 @@ int load_aout(const char *filename, hwaddr addr, int max_sz,
     struct exec e;
     uint32_t magic;
 
-    fd = open(filename, O_RDONLY | O_BINARY);
+    fd = qemu_open(filename, O_RDONLY | O_BINARY, NULL);
     if (fd < 0)
         return -1;
 
@@ -360,7 +359,7 @@ void load_elf_hdr(const char *filename, void *hdr, bool *is64, Error **errp)
     }
     e_ident = hdr;
 
-    fd = open(filename, O_RDONLY | O_BINARY);
+    fd = qemu_open(filename, O_RDONLY | O_BINARY, NULL);
     if (fd < 0) {
         error_setg_errno(errp, errno, "Failed to open file: %s", filename);
         return;
@@ -457,7 +456,7 @@ int load_elf_ram_sym(const char *filename,
     int fd, data_order, target_data_order, must_swab, ret = ELF_LOAD_FAILED;
     uint8_t e_ident[EI_NIDENT];
 
-    fd = open(filename, O_RDONLY | O_BINARY);
+    fd = qemu_open(filename, O_RDONLY | O_BINARY, NULL);
     if (fd < 0) {
         perror(filename);
         return -1;
@@ -614,7 +613,7 @@ static int load_uboot_image(const char *filename, hwaddr *ep, hwaddr *loadaddr,
     int ret = -1;
     int do_uncompress = 0;
 
-    fd = open(filename, O_RDONLY | O_BINARY);
+    fd = qemu_open(filename, O_RDONLY | O_BINARY, NULL);
     if (fd < 0)
         return -1;
 
@@ -963,7 +962,7 @@ int rom_add_file(const char *file, const char *fw_dir,
         rom->path = g_strdup(file);
     }
 
-    fd = open(rom->path, O_RDONLY | O_BINARY);
+    fd = qemu_open(rom->path, O_RDONLY | O_BINARY, NULL);
     if (fd == -1) {
         fprintf(stderr, "Could not open option rom '%s': %s\n",
                 rom->path, strerror(errno));

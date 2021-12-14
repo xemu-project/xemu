@@ -9,6 +9,7 @@ specific_ss.add(files(
 	'pmc.c',
 	'pramdac.c',
 	'prmcio.c',
+	'prmdio.c',
 	'prmvio.c',
 	'psh.c',
 	'ptimer.c',

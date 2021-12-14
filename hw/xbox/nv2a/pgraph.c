@@ -20,9 +20,9 @@
  */
 
 #include "nv2a_int.h"
-#include "xxHash/xxh3.h"
 #include "s3tc.h"
 #include "ui/xemu-settings.h"
+#include "qemu/fast-hash.h"
 
 #define DBG_SURFACES 0
 #define DBG_SURFACE_SYNC 0
@@ -433,7 +433,6 @@ static gboolean shader_equal(gconstpointer a, gconstpointer b);
 static unsigned int kelvin_map_stencil_op(uint32_t parameter);
 static unsigned int kelvin_map_polygon_mode(uint32_t parameter);
 static unsigned int kelvin_map_texgen(uint32_t parameter, unsigned int channel);
-static uint64_t fast_hash(const uint8_t *data, size_t len);
 static void pgraph_reload_surface_scale_factor(NV2AState *d);
 
 static uint32_t pgraph_rdi_read(PGRAPHState *pg,
@@ -613,11 +612,13 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     qemu_mutex_unlock(&d->pfifo.lock);
 }
 
-static void pgraph_flush(NV2AState *d)
+void pgraph_flush(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
 
-    // Clear last surface shape to force recreation of buffers at next draw
+    bool update_surface = (pg->color_binding || pg->zeta_binding);
+
+    /* Clear last surface shape to force recreation of buffers at next draw */
     pg->surface_color.draw_dirty = false;
     pg->surface_zeta.draw_dirty = false;
     memset(&pg->last_surface_shape, 0, sizeof(pg->last_surface_shape));
@@ -631,13 +632,20 @@ static void pgraph_flush(NV2AState *d)
 
     pgraph_mark_textures_possibly_dirty(d, 0, memory_region_size(d->vram));
 
-    // Sync all RAM
+    /* Sync all RAM */
     glBindBuffer(GL_ARRAY_BUFFER, d->pgraph.gl_memory_buffer);
     glBufferSubData(GL_ARRAY_BUFFER, 0, memory_region_size(d->vram), d->vram_ptr);
 
-    // FIXME: Flush more?
+    /* FIXME: Flush more? */
 
     pgraph_reload_surface_scale_factor(d);
+
+    if (update_surface) {
+        pgraph_update_surface(d, true, true, true);
+    }
+
+    qatomic_set(&d->pgraph.flush_pending, false);
+    qemu_event_set(&d->pgraph.flush_complete);
 }
 
 #define METHOD_ADDR(gclass, name) \
@@ -743,11 +751,6 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
     assert(glGetError() == GL_NO_ERROR);
 
     PGRAPHState *pg = &d->pgraph;
-
-    if (pg->flush_pending) {
-        pgraph_flush(d);
-        pg->flush_pending = false;
-    }
 
     bool channel_valid =
         d->pgraph.regs[NV_PGRAPH_CTX_CONTROL] & NV_PGRAPH_CTX_CONTROL_CHID;
@@ -1485,9 +1488,8 @@ DEF_METHOD(NV097, SET_BLEND_FUNC_SFACTOR)
     case NV097_SET_BLEND_FUNC_SFACTOR_V_ONE_MINUS_CONSTANT_ALPHA:
         factor = NV_PGRAPH_BLEND_SFACTOR_ONE_MINUS_CONSTANT_ALPHA; break;
     default:
-        fprintf(stderr, "Unknown blend source factor: 0x%x\n", parameter);
-        assert(false);
-        break;
+        NV2A_DPRINTF("Unknown blend source factor: 0x%08x\n", parameter);
+        return; /* discard */
     }
     SET_MASK(pg->regs[NV_PGRAPH_BLEND], NV_PGRAPH_BLEND_SFACTOR, factor);
 }
@@ -1527,9 +1529,8 @@ DEF_METHOD(NV097, SET_BLEND_FUNC_DFACTOR)
     case NV097_SET_BLEND_FUNC_DFACTOR_V_ONE_MINUS_CONSTANT_ALPHA:
         factor = NV_PGRAPH_BLEND_DFACTOR_ONE_MINUS_CONSTANT_ALPHA; break;
     default:
-        fprintf(stderr, "Unknown blend destination factor: 0x%x\n", parameter);
-        assert(false);
-        break;
+        NV2A_DPRINTF("Unknown blend destination factor: 0x%08x\n", parameter);
+        return; /* discard */
     }
     SET_MASK(pg->regs[NV_PGRAPH_BLEND], NV_PGRAPH_BLEND_DFACTOR, factor);
 }
@@ -1558,8 +1559,8 @@ DEF_METHOD(NV097, SET_BLEND_EQUATION)
     case NV097_SET_BLEND_EQUATION_V_FUNC_ADD_SIGNED:
         equation = 6; break;
     default:
-        assert(false);
-        break;
+        NV2A_DPRINTF("Unknown blend equation: 0x%08x\n", parameter);
+        return; /* discard */
     }
     SET_MASK(pg->regs[NV_PGRAPH_BLEND], NV_PGRAPH_BLEND_EQN, equation);
 }
@@ -1703,9 +1704,8 @@ DEF_METHOD(NV097, SET_FRONT_FACE)
     case NV097_SET_FRONT_FACE_V_CCW:
         ccw = true; break;
     default:
-        fprintf(stderr, "Unknown front face: 0x%x\n", parameter);
-        assert(false);
-        break;
+        NV2A_DPRINTF("Unknown front face: 0x%08x\n", parameter);
+        return; /* discard */
     }
     SET_MASK(pg->regs[NV_PGRAPH_SETUPRASTER],
              NV_PGRAPH_SETUPRASTER_FRONTFACE,
@@ -2786,15 +2786,25 @@ DEF_METHOD(NV097, SET_TEXTURE_BORDER_COLOR)
 DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_MAT)
 {
     int slot = (method - NV097_SET_TEXTURE_SET_BUMP_ENV_MAT) / 4;
-    assert((slot / 16) > 0);
+    if (slot < 16) {
+        /* discard */
+        return;
+    }
+
     slot -= 16;
-    pg->bump_env_matrix[slot / 16][slot % 4] = *(float*)&parameter;
+    const int swizzle[4] = { NV_PGRAPH_BUMPMAT00, NV_PGRAPH_BUMPMAT01,
+                             NV_PGRAPH_BUMPMAT11, NV_PGRAPH_BUMPMAT10 };
+    pg->regs[swizzle[slot % 4] + slot / 4] = parameter;
 }
 
 DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_SCALE)
 {
     int slot = (method - NV097_SET_TEXTURE_SET_BUMP_ENV_SCALE) / 64;
-    assert(slot > 0);
+    if (slot == 0) {
+        /* discard */
+        return;
+    }
+
     slot--;
     pg->regs[NV_PGRAPH_BUMPSCALE1 + slot * 4] = parameter;
 }
@@ -2802,7 +2812,11 @@ DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_SCALE)
 DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_OFFSET)
 {
     int slot = (method - NV097_SET_TEXTURE_SET_BUMP_ENV_OFFSET) / 64;
-    assert(slot > 0);
+    if (slot == 0) {
+        /* discard */
+        return;
+    }
+
     slot--;
     pg->regs[NV_PGRAPH_BUMPOFFSET1 + slot * 4] = parameter;
 }
@@ -3028,7 +3042,6 @@ DEF_METHOD(NV097, CLEAR_SURFACE)
             /* FIXME: Remove bit for stencil clear? */
             if (pg->surface_shape.z_format) {
                 gl_clear_depth = convert_f16_to_float(z) / f16_max;
-                assert(false); /* FIXME: Untested */
             } else {
                 gl_clear_depth = z / (float)0xFFFF;
             }
@@ -3391,15 +3404,42 @@ void nv2a_gl_context_init(void)
 
 void nv2a_set_surface_scale_factor(unsigned int scale)
 {
-    PGRAPHState *pg = &g_nv2a->pgraph;
+    NV2AState *d = g_nv2a;
 
     xemu_settings_set_int(XEMU_SETTINGS_DISPLAY_RENDER_SCALE,
                           scale < 1 ? 1 : scale);
     xemu_settings_save();
 
-    qemu_mutex_lock(&pg->lock);
-    pg->flush_pending = true;
-    qemu_mutex_unlock(&pg->lock);
+    qemu_mutex_unlock_iothread();
+
+    qemu_mutex_lock(&d->pfifo.lock);
+    qatomic_set(&d->pfifo.halt, true);
+    qemu_mutex_unlock(&d->pfifo.lock);
+
+    qemu_mutex_lock(&d->pgraph.lock);
+    qemu_event_reset(&d->pgraph.dirty_surfaces_download_complete);
+    qatomic_set(&d->pgraph.download_dirty_surfaces_pending, true);
+    qemu_mutex_unlock(&d->pgraph.lock);
+    qemu_mutex_lock(&d->pfifo.lock);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+    qemu_event_wait(&d->pgraph.dirty_surfaces_download_complete);
+
+    qemu_mutex_lock(&d->pgraph.lock);
+    qemu_event_reset(&d->pgraph.flush_complete);
+    qatomic_set(&d->pgraph.flush_pending, true);
+    qemu_mutex_unlock(&d->pgraph.lock);
+    qemu_mutex_lock(&d->pfifo.lock);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+    qemu_event_wait(&d->pgraph.flush_complete);
+
+    qemu_mutex_lock(&d->pfifo.lock);
+    qatomic_set(&d->pfifo.halt, false);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+
+    qemu_mutex_lock_iothread();
 }
 
 unsigned int nv2a_get_surface_scale_factor(void)
@@ -3430,6 +3470,8 @@ void pgraph_init(NV2AState *d)
     qemu_mutex_init(&pg->lock);
     qemu_event_init(&pg->gl_sync_complete, false);
     qemu_event_init(&pg->downloads_complete, false);
+    qemu_event_init(&pg->dirty_surfaces_download_complete, false);
+    qemu_event_init(&pg->flush_complete, false);
 
     /* fire up opengl */
     glo_set_current(g_nv2a_context_render);
@@ -3580,7 +3622,12 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
         if (i > 0) {
             loc = binding->bump_mat_loc[i];
             if (loc != -1) {
-                glUniformMatrix2fv(loc, 1, GL_FALSE, pg->bump_env_matrix[i - 1]);
+                float m[4];
+                m[0] = *(float*)&pg->regs[NV_PGRAPH_BUMPMAT00 + 4 * (i - 1)];
+                m[1] = *(float*)&pg->regs[NV_PGRAPH_BUMPMAT01 + 4 * (i - 1)];
+                m[2] = *(float*)&pg->regs[NV_PGRAPH_BUMPMAT10 + 4 * (i - 1)];
+                m[3] = *(float*)&pg->regs[NV_PGRAPH_BUMPMAT11 + 4 * (i - 1)];
+                glUniformMatrix2fv(loc, 1, GL_FALSE, m);
             }
             loc = binding->bump_scale_loc[i];
             if (loc != -1) {
@@ -4391,7 +4438,6 @@ static void pgraph_init_display_renderer(NV2AState *d)
         "    float y = -1.0 + float((gl_VertexID & 2) << 1);\n"
         "    gl_Position = vec4(x, y, 0, 1);\n"
         "}\n";
-    /* FIXME: gamma correction */
     /* FIXME: improve interlace handling, pvideo */
 
     const char *fs =
@@ -4630,7 +4676,13 @@ void pgraph_gl_sync(NV2AState *d)
     /* Switch back to original context */
     glo_set_current(g_nv2a_context_render);
 
+    qatomic_set(&d->pgraph.gl_sync_pending, false);
     qemu_event_set(&d->pgraph.gl_sync_complete);
+}
+
+const uint8_t *nv2a_get_dac_palette(void)
+{
+    return g_nv2a->puserdac.palette;
 }
 
 int nv2a_get_framebuffer_surface(void)
@@ -5065,8 +5117,21 @@ void pgraph_process_pending_downloads(NV2AState *d)
         pgraph_download_surface_data(d, surface, false);
     }
 
+    qatomic_set(&d->pgraph.downloads_pending, false);
     qemu_event_set(&d->pgraph.downloads_complete);
 }
+
+void pgraph_download_dirty_surfaces(NV2AState *d)
+{
+    SurfaceBinding *surface;
+    QTAILQ_FOREACH(surface, &d->pgraph.surfaces, entry) {
+        pgraph_download_surface_data_if_dirty(d, surface);
+    }
+
+    qatomic_set(&d->pgraph.download_dirty_surfaces_pending, false);
+    qemu_event_set(&d->pgraph.dirty_surfaces_download_complete);
+}
+
 
 static void surface_copy_expand_row(uint8_t *out, uint8_t *in,
                                     unsigned int width,
@@ -5368,11 +5433,8 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                      pg->surface_shape.clip_height);
 
         bool should_create = true;
-        bool surface_type_changed = false;
 
         if (found != NULL) {
-            surface_type_changed = (entry.color != found->color);
-
             bool is_compatible =
                 pgraph_check_surface_compatibility(found, &entry, false);
             NV2A_XPRINTF(DBG_SURFACES,
@@ -5415,9 +5477,7 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
             } else {
                 NV2A_XPRINTF(DBG_SURFACES, "Evicting incompatible surface\n");
                 pgraph_compare_surfaces(found, &entry);
-                if (!surface_type_changed) {
-                    pgraph_download_surface_data_if_dirty(d, found);
-                }
+                pgraph_download_surface_data_if_dirty(d, found);
                 pgraph_surface_invalidate(d, found);
             }
         }
@@ -5450,15 +5510,6 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
             pg->surface_binding_dim.clip_y = entry.shape.clip_y;
             pg->surface_binding_dim.clip_height = entry.shape.clip_height;
         }
-
-        /*
-         * Assume moving from color to zeta, or zeta to color, will clear the
-         * surface and in this case avoid syncronization.
-         *
-         * FIXME: It's possible that this assumption is too broad, especially if
-         * dimensions differ. For now keep things simple.
-         */
-        found->upload_pending &= !surface_type_changed;
 
         NV2A_XPRINTF(DBG_SURFACES,
                      "%6s: [%5s @ %" HWADDR_PRIx " (%dx%d)] (%s) "
@@ -6337,10 +6388,10 @@ static uint8_t* convert_texture_data(const TextureShape s,
         // FIXME: only valid if control0 register allows for colorspace conversion
         uint8_t* converted_data = (uint8_t*)g_malloc(width * height * 4);
         int x, y;
+        uint8_t* pixel = converted_data;
         for (y = 0; y < height; y++) {
-            const uint8_t* line = &data[y * s.width * 2];
-            for (x = 0; x < width; x++) {
-                uint8_t* pixel = &converted_data[(y * s.width + x) * 4];
+            const uint8_t* line = &data[y * row_pitch * depth];
+            for (x = 0; x < width; x++, pixel += 4) {
                 if (s.color_format
                     == NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8) {
                     convert_yuy2_to_rgb(line, x, &pixel[0], &pixel[1], &pixel[2]);
@@ -6390,14 +6441,12 @@ static void upload_gl_texture(GLenum gl_target,
     case GL_TEXTURE_RECTANGLE: {
         /* Can't handle strides unaligned to pixels */
         assert(s.pitch % f.bytes_per_pixel == 0);
-        glPixelStorei(GL_UNPACK_ROW_LENGTH,
-                      s.pitch / f.bytes_per_pixel);
 
         uint8_t *converted = convert_texture_data(s, texture_data,
                                                   palette_data,
                                                   s.width, s.height, 1,
                                                   s.pitch, 0);
-
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, converted ? 0 : s.pitch / f.bytes_per_pixel);
         glTexImage2D(gl_target, 0, f.gl_internal_format,
                      s.width, s.height, 0,
                      f.gl_format, f.gl_type,
@@ -6774,9 +6823,4 @@ static unsigned int kelvin_map_texgen(uint32_t parameter, unsigned int channel)
         break;
     }
     return texgen;
-}
-
-static uint64_t fast_hash(const uint8_t *data, size_t len)
-{
-    return XXH3_64bits(data, len);
 }

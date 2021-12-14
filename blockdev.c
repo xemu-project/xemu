@@ -583,8 +583,7 @@ static BlockBackend *blockdev_init(const char *file, QDict *bs_opts,
 
         blk = blk_new(qemu_get_aio_context(), 0, BLK_PERM_ALL);
         blk_rs = blk_get_root_state(blk);
-        blk_rs->open_flags    = bdrv_flags;
-        blk_rs->read_only     = read_only;
+        blk_rs->open_flags    = bdrv_flags | (read_only ? 0 : BDRV_O_RDWR);
         blk_rs->detect_zeroes = detect_zeroes;
 
         qobject_unref(bs_opts);
@@ -1585,10 +1584,6 @@ static void external_snapshot_prepare(BlkActionState *common,
         goto out;
     }
 
-    /* This removes our old bs and adds the new bs. This is an operation that
-     * can fail, so we need to do it in .prepare; undoing it for abort is
-     * always possible. */
-    bdrv_ref(state->new_bs);
     ret = bdrv_append(state->new_bs, state->old_bs, errp);
     if (ret < 0) {
         goto out;
@@ -1728,6 +1723,7 @@ static void drive_backup_prepare(BlkActionState *common, Error **errp)
     aio_context = bdrv_get_aio_context(bs);
     aio_context_acquire(aio_context);
 
+    state->bs = bs;
     /* Paired with .clean() */
     bdrv_drained_begin(bs);
 
@@ -1826,8 +1822,6 @@ static void drive_backup_prepare(BlkActionState *common, Error **errp)
             goto unref;
         }
     }
-
-    state->bs = bs;
 
     state->job = do_backup_common(qapi_DriveBackup_base(backup),
                                   bs, target_bs, aio_context,
@@ -3574,46 +3568,60 @@ fail:
     visit_free(v);
 }
 
-void qmp_x_blockdev_reopen(BlockdevOptions *options, Error **errp)
+void qmp_blockdev_reopen(BlockdevOptionsList *reopen_list, Error **errp)
 {
-    BlockDriverState *bs;
-    AioContext *ctx;
-    QObject *obj;
-    Visitor *v = qobject_output_visitor_new(&obj);
-    BlockReopenQueue *queue;
-    QDict *qdict;
+    BlockReopenQueue *queue = NULL;
+    GSList *drained = NULL;
 
-    /* Check for the selected node name */
-    if (!options->has_node_name) {
-        error_setg(errp, "node-name not specified");
-        goto fail;
+    /* Add each one of the BDS that we want to reopen to the queue */
+    for (; reopen_list != NULL; reopen_list = reopen_list->next) {
+        BlockdevOptions *options = reopen_list->value;
+        BlockDriverState *bs;
+        AioContext *ctx;
+        QObject *obj;
+        Visitor *v;
+        QDict *qdict;
+
+        /* Check for the selected node name */
+        if (!options->has_node_name) {
+            error_setg(errp, "node-name not specified");
+            goto fail;
+        }
+
+        bs = bdrv_find_node(options->node_name);
+        if (!bs) {
+            error_setg(errp, "Failed to find node with node-name='%s'",
+                       options->node_name);
+            goto fail;
+        }
+
+        /* Put all options in a QDict and flatten it */
+        v = qobject_output_visitor_new(&obj);
+        visit_type_BlockdevOptions(v, NULL, &options, &error_abort);
+        visit_complete(v, &obj);
+        visit_free(v);
+
+        qdict = qobject_to(QDict, obj);
+
+        qdict_flatten(qdict);
+
+        ctx = bdrv_get_aio_context(bs);
+        aio_context_acquire(ctx);
+
+        bdrv_subtree_drained_begin(bs);
+        queue = bdrv_reopen_queue(queue, bs, qdict, false);
+        drained = g_slist_prepend(drained, bs);
+
+        aio_context_release(ctx);
     }
-
-    bs = bdrv_find_node(options->node_name);
-    if (!bs) {
-        error_setg(errp, "Failed to find node with node-name='%s'",
-                   options->node_name);
-        goto fail;
-    }
-
-    /* Put all options in a QDict and flatten it */
-    visit_type_BlockdevOptions(v, NULL, &options, &error_abort);
-    visit_complete(v, &obj);
-    qdict = qobject_to(QDict, obj);
-
-    qdict_flatten(qdict);
 
     /* Perform the reopen operation */
-    ctx = bdrv_get_aio_context(bs);
-    aio_context_acquire(ctx);
-    bdrv_subtree_drained_begin(bs);
-    queue = bdrv_reopen_queue(NULL, bs, qdict, false);
     bdrv_reopen_multiple(queue, errp);
-    bdrv_subtree_drained_end(bs);
-    aio_context_release(ctx);
+    queue = NULL;
 
 fail:
-    visit_free(v);
+    bdrv_reopen_queue_free(queue);
+    g_slist_free_full(drained, (GDestroyNotify) bdrv_subtree_drained_end);
 }
 
 void qmp_blockdev_del(const char *node_name, Error **errp)

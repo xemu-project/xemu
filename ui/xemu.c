@@ -905,7 +905,7 @@ static void sdl2_display_early_init(DisplayOptions *o)
     SDL_GL_MakeCurrent(m_window, m_context);
     SDL_GL_SetSwapInterval(0);
     xemu_hud_init(m_window, m_context);
-    blit = create_decal_shader(SHADER_TYPE_BLIT);
+    blit = create_decal_shader(SHADER_TYPE_BLIT_GAMMA);
 }
 
 static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
@@ -1165,8 +1165,15 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
         scale[0] = (float)tw/(float)ww;
         scale[1] = (float)th/(float)wh;
     } else {
-        // Scale to fit
-        float t_ratio = (float)tw/(float)th;
+        float t_ratio;
+        if (scaling_mode == DISPLAY_SCALE_WS169) {
+            // Scale to fit window using a fixed 16:9 aspect ratio
+            t_ratio = 16.0f/9.0f;
+        } else {
+            // Scale to fit, preserving framebuffer aspect ratio
+            t_ratio = (float)tw/(float)th;
+        }
+
         float w_ratio = (float)ww/(float)wh;
         if (w_ratio >= t_ratio) {
             scale[0] = t_ratio/w_ratio;
@@ -1187,6 +1194,14 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     glUniform4f(s->ScaleOffset_loc, scale[0], scale[1], 0, 0);
     glUniform4f(s->TexScaleOffset_loc, 1.0, 1.0, 0, 0);
     glUniform1i(s->tex_loc, 0);
+
+    const uint8_t *palette = nv2a_get_dac_palette();
+    for (int i = 0; i < 256; i++) {
+        uint32_t e = (palette[i * 3 + 2] << 16) | (palette[i * 3 + 1] << 8) |
+                     palette[i * 3];
+        glUniform1ui(s->palette_loc[i], e);
+    }
+
     glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
     glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
@@ -1505,6 +1520,7 @@ int main(int argc, char **argv)
      */
     tcg_register_init_ctx();
     // rcu_register_thread();
+    qemu_set_current_aio_context(qemu_get_aio_context());
 
     DPRINTF("Main thread: initializing app\n");
 

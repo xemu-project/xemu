@@ -419,8 +419,7 @@ static void xbox_lpc_class_init(ObjectClass *klass, void *data)
     k->config_write = xbox_lpc_config_write;
     k->vendor_id = PCI_VENDOR_ID_NVIDIA;
     k->device_id = PCI_DEVICE_ID_NVIDIA_NFORCE_LPC;
-    /* FIXME - correct revision for this is 0xB2 (178) for retail 1.0 Xbox, causes known USB bug */
-    k->revision = 212;
+    k->revision = 178;
     k->class_id = PCI_CLASS_BRIDGE_ISA;
 
     dc->desc = "nForce LPC Bridge";

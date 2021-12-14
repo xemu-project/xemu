@@ -14,6 +14,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu/bitops.h"
+#include "qemu/log.h"
 #include "qemu/main-loop.h"
 #include "trace.h"
 #include "gicv3_internal.h"
@@ -1226,7 +1227,7 @@ static void icv_dir_write(CPUARMState *env, const ARMCPRegInfo *ri,
 
     trace_gicv3_icv_dir_write(gicv3_redist_affid(cs), value);
 
-    if (irq >= cs->gic->num_irq) {
+    if (irq >= GICV3_MAXIRQ) {
         /* Also catches special interrupt numbers and LPIs */
         return;
     }
@@ -1261,7 +1262,7 @@ static void icv_eoir_write(CPUARMState *env, const ARMCPRegInfo *ri,
     trace_gicv3_icv_eoir_write(ri->crm == 8 ? 0 : 1,
                                gicv3_redist_affid(cs), value);
 
-    if (irq >= cs->gic->num_irq) {
+    if (irq >= GICV3_MAXIRQ) {
         /* Also catches special interrupt numbers and LPIs */
         return;
     }
@@ -1307,26 +1308,15 @@ static void icc_eoir_write(CPUARMState *env, const ARMCPRegInfo *ri,
     GICv3CPUState *cs = icc_cs_from_env(env);
     int irq = value & 0xffffff;
     int grp;
+    bool is_eoir0 = ri->crm == 8;
 
-    if (icv_access(env, ri->crm == 8 ? HCR_FMO : HCR_IMO)) {
+    if (icv_access(env, is_eoir0 ? HCR_FMO : HCR_IMO)) {
         icv_eoir_write(env, ri, value);
         return;
     }
 
-    trace_gicv3_icc_eoir_write(ri->crm == 8 ? 0 : 1,
+    trace_gicv3_icc_eoir_write(is_eoir0 ? 0 : 1,
                                gicv3_redist_affid(cs), value);
-
-    if (ri->crm == 8) {
-        /* EOIR0 */
-        grp = GICV3_G0;
-    } else {
-        /* EOIR1 */
-        if (arm_is_secure(env)) {
-            grp = GICV3_G1;
-        } else {
-            grp = GICV3_G1NS;
-        }
-    }
 
     if (irq >= cs->gic->num_irq) {
         /* This handles two cases:
@@ -1340,7 +1330,36 @@ static void icc_eoir_write(CPUARMState *env, const ARMCPRegInfo *ri,
         return;
     }
 
-    if (icc_highest_active_group(cs) != grp) {
+    grp = icc_highest_active_group(cs);
+    switch (grp) {
+    case GICV3_G0:
+        if (!is_eoir0) {
+            return;
+        }
+        if (!(cs->gic->gicd_ctlr & GICD_CTLR_DS)
+            && arm_feature(env, ARM_FEATURE_EL3) && !arm_is_secure(env)) {
+            return;
+        }
+        break;
+    case GICV3_G1:
+        if (is_eoir0) {
+            return;
+        }
+        if (!arm_is_secure(env)) {
+            return;
+        }
+        break;
+    case GICV3_G1NS:
+        if (is_eoir0) {
+            return;
+        }
+        if (!arm_is_el3_or_mon(env) && arm_is_secure(env)) {
+            return;
+        }
+        break;
+    default:
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: IRQ %d isn't active\n", __func__, irq);
         return;
     }
 
