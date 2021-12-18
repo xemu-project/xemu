@@ -1880,6 +1880,11 @@ DEF_METHOD_INC(NV097, SET_MATERIAL_EMISSION)
     pg->ltctxa_dirty[NV_IGRAPH_XF_LTCTXA_CM_COL] = true;
 }
 
+DEF_METHOD(NV097, SET_MATERIAL_ALPHA)
+{
+    pg->material_alpha = *(float*)&parameter;
+}
+
 DEF_METHOD(NV097, SET_LIGHT_ENABLE_MASK)
 {
     SET_MASK(d->pgraph.regs[NV_PGRAPH_CSV0_D],
@@ -3608,6 +3613,8 @@ void pgraph_init(NV2AState *d)
 
     pg->shader_cache = g_hash_table_new(shader_hash, shader_equal);
 
+    pg->material_alpha = 0.0f;
+
     for (i=0; i<NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
         VertexAttribute *attribute = &pg->vertex_attributes[i];
         glGenBuffers(1, &attribute->gl_inline_buffer);
@@ -3873,6 +3880,10 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
         glUniform4i(pg->shader_binding->clip_region_loc[i],
                     x_min, y_min_xlat, x_max, y_max_xlat);
     }
+
+    if (binding->material_alpha_loc != -1) {
+        glUniform1f(binding->material_alpha_loc, pg->material_alpha);
+    }
 }
 
 static bool pgraph_bind_shaders_test_dirty(PGRAPHState *pg)
@@ -4002,18 +4013,19 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
 
     /* fixed function stuff */
     if (fixed_function) {
-    state.skinning = (enum VshSkinning)GET_MASK(pg->regs[NV_PGRAPH_CSV0_D],
-                                           NV_PGRAPH_CSV0_D_SKIN);
-    state.lighting = GET_MASK(pg->regs[NV_PGRAPH_CSV0_C],
-                         NV_PGRAPH_CSV0_C_LIGHTING);
-    state.normalization = pg->regs[NV_PGRAPH_CSV0_C]
-                       & NV_PGRAPH_CSV0_C_NORMALIZATION_ENABLE;
+        state.skinning = (enum VshSkinning)GET_MASK(pg->regs[NV_PGRAPH_CSV0_D],
+                                               NV_PGRAPH_CSV0_D_SKIN);
+        state.lighting = GET_MASK(pg->regs[NV_PGRAPH_CSV0_C],
+                             NV_PGRAPH_CSV0_C_LIGHTING);
+        state.normalization = pg->regs[NV_PGRAPH_CSV0_C]
+                           & NV_PGRAPH_CSV0_C_NORMALIZATION_ENABLE;
 
-    /* color material */
-    state.emission_src = (enum MaterialColorSource)GET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_EMISSION);
-    state.ambient_src = (enum MaterialColorSource)GET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_AMBIENT);
-    state.diffuse_src = (enum MaterialColorSource)GET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_DIFFUSE);
-    state.specular_src = (enum MaterialColorSource)GET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_SPECULAR);
+        /* color material */
+        state.emission_src = (enum MaterialColorSource)GET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_EMISSION);
+        state.ambient_src = (enum MaterialColorSource)GET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_AMBIENT);
+        state.diffuse_src = (enum MaterialColorSource)GET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_DIFFUSE);
+        state.specular_src = (enum MaterialColorSource)GET_MASK(pg->regs[NV_PGRAPH_CSV0_C], NV_PGRAPH_CSV0_C_SPECULAR);
+        state.material_alpha = pg->material_alpha;
     }
 
     /* vertex program stuff */
