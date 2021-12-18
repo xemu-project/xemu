@@ -76,6 +76,8 @@ typedef struct ShaderState {
     enum MaterialColorSource diffuse_src;
     enum MaterialColorSource specular_src;
 
+    float material_alpha;
+
     bool lighting;
     enum VshLight light[NV2A_MAX_LIGHTS];
 
@@ -128,6 +130,8 @@ typedef struct ShaderBinding {
     GLint light_local_attenuation_loc[NV2A_MAX_LIGHTS];
 
     GLint clip_region_loc[8];
+
+    GLint material_alpha_loc;
 } ShaderBinding;
 
 ShaderBinding* generate_shaders(const ShaderState state);

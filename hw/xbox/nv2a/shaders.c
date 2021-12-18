@@ -488,12 +488,23 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
         //FIXME: Do 2 passes if we want 2 sided-lighting?
 
+        static char alpha_source_diffuse[] = "diffuse.a";
+        static char alpha_source_specular[] = "specular.a";
+        static char alpha_source_material[] = "material_alpha";
+        const char *alpha_source = alpha_source_diffuse;
+        if (state.diffuse_src == MATERIAL_COLOR_SRC_MATERIAL) {
+            mstring_append(header, "uniform float material_alpha;\n");
+            alpha_source = alpha_source_material;
+        } else if (state.diffuse_src == MATERIAL_COLOR_SRC_SPECULAR) {
+            alpha_source = alpha_source_specular;
+        }
+
         if (state.ambient_src == MATERIAL_COLOR_SRC_MATERIAL) {
-            mstring_append(body, "oD0 = vec4(sceneAmbientColor, diffuse.a);\n");
+            mstring_append_fmt(body, "oD0 = vec4(sceneAmbientColor, %s);\n", alpha_source);
         } else if (state.ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
-            mstring_append(body, "oD0 = vec4(diffuse.rgb, diffuse.a);\n");
+            mstring_append_fmt(body, "oD0 = vec4(diffuse.rgb, %s);\n", alpha_source);
         } else if (state.ambient_src == MATERIAL_COLOR_SRC_SPECULAR) {
-            mstring_append(body, "oD0 = vec4(specular.rgb, diffuse.a);\n");
+            mstring_append_fmt(body, "oD0 = vec4(specular.rgb, %s);\n", alpha_source);
         }
 
         mstring_append(body, "oD0.rgb *= materialEmissionColor.rgb;\n");
@@ -602,8 +613,20 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             mstring_append(body,
                 "  oD0.xyz += lightAmbient;\n");
 
-            mstring_append(body,
-                "  oD0.xyz += diffuse.xyz * lightDiffuse;\n");
+            switch (state.diffuse_src) {
+            case MATERIAL_COLOR_SRC_MATERIAL:
+                mstring_append(body,
+                               "  oD0.xyz += lightDiffuse;\n");
+                break;
+            case MATERIAL_COLOR_SRC_DIFFUSE:
+                mstring_append(body,
+                               "  oD0.xyz += diffuse.xyz * lightDiffuse;\n");
+                break;
+            case MATERIAL_COLOR_SRC_SPECULAR:
+                mstring_append(body,
+                               "  oD0.xyz += specular.xyz * lightDiffuse;\n");
+                break;
+            }
 
             mstring_append(body,
                 "  oD1.xyz += specular.xyz * lightSpecular;\n");
@@ -1057,6 +1080,12 @@ ShaderBinding* generate_shaders(const ShaderState state)
     for (i = 0; i < 8; i++) {
         snprintf(tmp, sizeof(tmp), "clipRegion[%d]", i);
         ret->clip_region_loc[i] = glGetUniformLocation(program, tmp);
+    }
+
+    if (state.fixed_function) {
+        ret->material_alpha_loc = glGetUniformLocation(program, "material_alpha");
+    } else {
+        ret->material_alpha_loc = -1;
     }
 
     return ret;

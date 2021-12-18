@@ -982,6 +982,7 @@
 #       define NV097_SET_FRONT_FACE_V_CCW                          0x901
 #   define NV097_SET_NORMALIZATION_ENABLE                     0x000003A4
 #   define NV097_SET_MATERIAL_EMISSION                        0x000003A8
+#   define NV097_SET_MATERIAL_ALPHA                           0x000003B4
 #   define NV097_SET_LIGHT_ENABLE_MASK                        0x000003BC
 #           define NV097_SET_LIGHT_ENABLE_MASK_LIGHT0_OFF           0
 #           define NV097_SET_LIGHT_ENABLE_MASK_LIGHT0_INFINITE      1
