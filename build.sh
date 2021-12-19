@@ -55,12 +55,14 @@ package_macos() {
       echo "Fixing $exe_path dependency $dep_basename -> $new_path"
       install_name_tool -change "$dep" "$new_path" "$exe_path"
     done
+
     for lib_path in ${lib_path}/*.dylib; do
       for dep in $(otool -L "$lib_path" | grep -e '/opt/local/' | cut -d' ' -f1); do
         dep_basename="$(basename $dep)"
         new_path="@rpath/${dep_basename}"
         echo "Fixing $lib_path dependency $dep_basename -> $new_path"
         install_name_tool -change "$dep" "$new_path" "$lib_path"
+        codesign -s - -f "${lib_path}"
       done
     done
 
@@ -74,6 +76,8 @@ package_macos() {
     iconutil --convert icns --output dist/xemu.app/Contents/Resources/xemu.icns xemu.iconset
 
     cp Info.plist dist/xemu.app/Contents/
+
+    codesign --force --deep --preserve-metadata=entitlements,requirements,flags,runtime --sign - "${exe_path}"
     python3 ./scripts/gen-license.py --version-file=macos-libs/$target_arch/INSTALLED > dist/LICENSE.txt
 }
 
@@ -183,13 +187,11 @@ case "$platform" in # Adjust compilation options based on platform
         sdk_macos_11_3="${sdk_base}/MacOSX11.3.sdk"
         sdk_macos_12_0="${sdk_base}/MacOSX12.0.sdk"
         if [ "$target_arch" == "arm64" ]; then
-            macos_min_ver=11.1
+            macos_min_ver=11.3
             if test -d "$sdk_macos_12_0"; then
                 sdk="$sdk_macos_12_0"
             elif test -d "$sdk_macos_11_3"; then
                 sdk="$sdk_macos_11_3"
-            elif test -d "$sdk_macos_11_1"; then
-                sdk="$sdk_macos_11_1"
             else
                 echo "SDK not found. Install Xcode Command Line Tools"
                 exit 1
