@@ -49,6 +49,10 @@ static void nv2a_profile_increment(void)
         ts = now;
         frame_count = 0;
     }
+
+#ifdef ENABLE_NV2A_DEBUGGER
+    nv2a_dbg_handle_frame_swap();
+#endif
 }
 
 static void nv2a_profile_flip_stall(void)
@@ -2353,7 +2357,14 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         pg->regs[NV_PGRAPH_CONTROL_1] & NV_PGRAPH_CONTROL_1_STENCIL_TEST_ENABLE;
 
     if (parameter == NV097_SET_BEGIN_END_OP_END) {
-
+#ifdef ENABLE_NV2A_DEBUGGER
+        NV2ADbgDrawInfo debug_info;
+        glGetFramebufferAttachmentParameteriv(
+            GL_FRAMEBUFFER,
+            GL_COLOR_ATTACHMENT0,
+            GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,
+            &debug_info.backbuffer_texture);
+#endif
         nv2a_profile_inc_counter(NV2A_PROF_BEGIN_ENDS);
 
         assert(pg->shader_binding);
@@ -2373,6 +2384,13 @@ DEF_METHOD(NV097, SET_BEGIN_END)
                               pg->gl_draw_arrays_start,
                               pg->gl_draw_arrays_count,
                               pg->draw_arrays_length);
+#ifdef ENABLE_NV2A_DEBUGGER
+            debug_info.last_draw_operation = NV2A_DRAW_TYPE_DRAW_ARRAYS;
+            debug_info.last_draw_num_items = 0;
+            for (int i = 0; i < pg->draw_arrays_length; ++i) {
+                debug_info.last_draw_num_items += pg->gl_draw_arrays_count[i];
+            }
+#endif
         } else if (pg->inline_buffer_length) {
             nv2a_profile_inc_counter(NV2A_PROF_INLINE_BUFFERS);
 
@@ -2406,6 +2424,10 @@ DEF_METHOD(NV097, SET_BEGIN_END)
 
             glDrawArrays(pg->shader_binding->gl_primitive_mode,
                          0, pg->inline_buffer_length);
+#ifdef ENABLE_NV2A_DEBUGGER
+            debug_info.last_draw_operation = NV2A_DRAW_TYPE_INLINE_BUFFERS;
+            debug_info.last_draw_num_items = pg->inline_buffer_length;
+#endif
         } else if (pg->inline_array_length) {
             nv2a_profile_inc_counter(NV2A_PROF_INLINE_ARRAYS);
 
@@ -2418,6 +2440,10 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             unsigned int index_count = pgraph_bind_inline_array(d);
             glDrawArrays(pg->shader_binding->gl_primitive_mode,
                          0, index_count);
+#ifdef ENABLE_NV2A_DEBUGGER
+            debug_info.last_draw_operation = NV2A_DRAW_TYPE_INLINE_ARRAYS;
+            debug_info.last_draw_num_items = index_count;
+#endif
         } else if (pg->inline_elements_length) {
             nv2a_profile_inc_counter(NV2A_PROF_INLINE_ELEMENTS);
 
@@ -2461,9 +2487,17 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             glDrawElements(pg->shader_binding->gl_primitive_mode,
                            pg->inline_elements_length, GL_UNSIGNED_INT,
                            (void *)0);
+#ifdef ENABLE_NV2A_DEBUGGER
+            debug_info.last_draw_operation = NV2A_DRAW_TYPE_INLINE_ELEMENTS;
+            debug_info.last_draw_num_items = pg->inline_elements_length;
+#endif
         } else {
             NV2A_GL_DPRINTF(true, "EMPTY NV097_SET_BEGIN_END");
             NV2A_UNCONFIRMED("EMPTY NV097_SET_BEGIN_END");
+#ifdef ENABLE_NV2A_DEBUGGER
+            debug_info.last_draw_operation = NV2A_DRAW_TYPE_EMPTY;
+            debug_info.last_draw_num_items = 0;
+#endif
         }
 
         /* End of visibility testing */
@@ -2473,6 +2507,10 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         }
 
         NV2A_GL_DGROUP_END();
+
+#ifdef ENABLE_NV2A_DEBUGGER
+        nv2a_dbg_handle_begin_end(&debug_info);
+#endif
     } else {
         NV2A_GL_DGROUP_BEGIN("NV097_SET_BEGIN_END: 0x%x", parameter);
         assert(parameter <= NV097_SET_BEGIN_END_OP_POLYGON);
@@ -3478,6 +3516,9 @@ void pgraph_init(NV2AState *d)
 
 #ifdef DEBUG_NV2A_GL
     gl_debug_initialize();
+#endif
+#ifdef ENABLE_NV2A_DEBUGGER
+    nv2a_dbg_initialize(d);
 #endif
 
     /* DXT textures */
@@ -6703,6 +6744,16 @@ static TextureBinding* generate_texture(const TextureShape s,
     ret->refcnt = 1;
     ret->draw_time = 0;
     ret->data_hash = 0;
+
+#ifdef ENABLE_NV2A_DEBUGGER
+    nv2a_dbg_handle_generate_texture(ret->gl_texture,
+                                     f.gl_internal_format,
+                                     s.width,
+                                     s.height,
+                                     f.gl_format,
+                                     f.gl_type);
+#endif
+
     return ret;
 }
 
@@ -6714,6 +6765,9 @@ static void texture_binding_destroy(gpointer data)
     if (binding->refcnt == 0) {
         glDeleteTextures(1, &binding->gl_texture);
         g_free(binding);
+#ifdef ENABLE_NV2A_DEBUGGER
+        nv2a_dbg_handle_delete_texture(binding->gl_texture);
+#endif
     }
 }
 

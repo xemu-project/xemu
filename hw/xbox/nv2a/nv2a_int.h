@@ -364,6 +364,9 @@ typedef struct PGRAPHState {
     bool waiting_for_nop;
     bool waiting_for_flip;
     bool waiting_for_context_switch;
+#ifdef ENABLE_NV2A_DEBUGGER
+    bool waiting_for_nv2a_debugger;
+#endif
     bool downloads_pending;
     bool download_dirty_surfaces_pending;
     bool flush_pending;

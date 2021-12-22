@@ -36,6 +36,12 @@
 # define NV2A_DPRINTF(format, ...)       do { } while (0)
 #endif
 
+// Disable raise irq and dma_map mesages.
+//#define DEBUG_NV2A_SUPPRESS_IRQ_AND_DMA_MESSAGES
+
+// Enable debugger functionality within xemu.
+//#define ENABLE_NV2A_DEBUGGER
+
 // #define DEBUG_NV2A_GL
 #ifdef DEBUG_NV2A_GL
 
@@ -137,6 +143,10 @@ typedef struct NV2AStats {
         int counters[NV2A_PROF__COUNT];
     } frame_working, frame_history[NV2A_PROF_NUM_FRAMES];
     unsigned int frame_ptr;
+
+    const unsigned char *vram_ptr;
+    const unsigned char *ramin_ptr;
+    const unsigned int *pfifo_regs;
 } NV2AStats;
 
 #ifdef __cplusplus
@@ -147,6 +157,69 @@ extern NV2AStats g_nv2a_stats;
 
 const char *nv2a_profile_get_counter_name(unsigned int cnt);
 int nv2a_profile_get_counter_value(unsigned int cnt);
+
+unsigned int nv2a_get_ramht_offset(void);
+unsigned int nv2a_get_ramht_size(void);
+
+#ifdef ENABLE_NV2A_DEBUGGER
+#include <epoxy/gl.h>
+
+struct NV2AState;
+
+typedef struct NV2ADbgTextureInfo {
+    uint32_t slot;
+    GLuint target;
+    GLuint texture;
+    GLint width;
+    GLint height;
+} NV2ADbgTextureInfo;
+
+enum NV2A_DRAW_TYPE {
+    NV2A_DRAW_TYPE_INVALID,
+    NV2A_DRAW_TYPE_DRAW_ARRAYS,
+    NV2A_DRAW_TYPE_INLINE_BUFFERS,
+    NV2A_DRAW_TYPE_INLINE_ARRAYS,
+    NV2A_DRAW_TYPE_INLINE_ELEMENTS,
+    NV2A_DRAW_TYPE_EMPTY
+};
+
+typedef struct NV2ADbgDrawInfo {
+    uint32_t primitive_mode;
+    enum NV2A_DRAW_TYPE last_draw_operation;
+    uint32_t last_draw_num_items;
+    GLint backbuffer_texture;
+} NV2ADbgDrawInfo;
+
+// Keep in sync with NV2A_MAX_TEXTURES
+// TODO: Make nv2a_regs.h includable from C++ files.
+#define NV2A_DEBUGGER_NUM_TEXTURES 4
+
+typedef struct NV2ADbgState {
+    GLint backbuffer_width;
+    GLint backbuffer_height;
+    NV2ADbgTextureInfo textures[NV2A_DEBUGGER_NUM_TEXTURES];
+    NV2ADbgDrawInfo draw_info;
+} NV2ADbgState;
+
+void nv2a_dbg_initialize(struct NV2AState* device);
+void nv2a_dbg_step_frame(void);
+void nv2a_dbg_step_begin_end(void);
+void nv2a_dbg_continue(void);
+void nv2a_dbg_handle_frame_swap(void);
+void nv2a_dbg_handle_begin_end(const NV2ADbgDrawInfo* info);
+
+void nv2a_dbg_handle_generate_texture(GLuint texture,
+                                    GLint internal_format,
+                                    uint32_t width,
+                                    uint32_t height,
+                                    GLenum format,
+                                    GLenum type);
+void nv2a_dbg_handle_delete_texture(GLuint texture);
+
+NV2ADbgState* nv2a_dbg_fetch_state(void);
+void nv2a_dbg_free_state(NV2ADbgState* state);
+
+#endif
 
 #ifdef __cplusplus
 }

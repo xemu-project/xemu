@@ -70,6 +70,10 @@ extern "C" {
 #undef atomic_fetch_sub
 }
 
+#ifdef ENABLE_NV2A_DEBUGGER
+#include "xemu-nv2a-debugger.h"
+#endif // ENABLE_NV2A_DEBUGGER
+
 ImFont *g_fixed_width_font;
 float g_main_menu_height;
 float g_ui_scale = 1.0;
@@ -1887,6 +1891,9 @@ public:
 static MonitorWindow monitor_window;
 static DebugApuWindow apu_window;
 static DebugVideoWindow video_window;
+#ifdef ENABLE_NV2A_DEBUGGER
+static NV2ADebugger nv2a_debugger;
+#endif
 static InputWindow input_window;
 static NetworkWindow network_window;
 static AboutWindow about_window;
@@ -2135,6 +2142,9 @@ static void ShowMainMenu()
             ImGui::MenuItem("Monitor", "~", &monitor_window.is_open);
             ImGui::MenuItem("Audio", NULL, &apu_window.is_open);
             ImGui::MenuItem("Video", NULL, &video_window.is_open);
+#ifdef ENABLE_NV2A_DEBUGGER
+            ImGui::MenuItem("nv2a Debugger", NULL, &nv2a_debugger.is_open);
+#endif
             ImGui::EndMenu();
         }
 
@@ -2456,6 +2466,9 @@ void xemu_hud_render(void)
     network_window.Draw();
     compatibility_reporter_window.Draw();
     notification_manager.Draw();
+#ifdef ENABLE_NV2A_DEBUGGER
+    nv2a_debugger.Draw(g_fixed_width_font, g_ui_scale, g_main_menu_height);
+#endif
 #if defined(_WIN32)
     update_window.Draw();
 #endif

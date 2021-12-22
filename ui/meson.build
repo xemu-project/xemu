@@ -37,6 +37,7 @@ xemu_ss.add(files(
   'xemu-settings.c',
   'xemu-shaders.c',
   'xemu-hud.cc',
+  'xemu-nv2a-debugger.cc',
   'xemu-reporting.cc',
 ))
 xemu_ss.add(when: 'CONFIG_WIN32', if_true: files('xemu-update.cc'))
