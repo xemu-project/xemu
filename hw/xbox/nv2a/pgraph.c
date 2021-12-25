@@ -1180,30 +1180,28 @@ DEF_METHOD(NV097, SET_SURFACE_FORMAT)
 DEF_METHOD(NV097, SET_SURFACE_PITCH)
 {
     pgraph_update_surface(d, false, true, true);
+    unsigned int color_pitch = GET_MASK(parameter, NV097_SET_SURFACE_PITCH_COLOR);
+    unsigned int zeta_pitch  = GET_MASK(parameter, NV097_SET_SURFACE_PITCH_ZETA);
 
-    pg->surface_color.pitch =
-        GET_MASK(parameter, NV097_SET_SURFACE_PITCH_COLOR);
-    pg->surface_zeta.pitch =
-        GET_MASK(parameter, NV097_SET_SURFACE_PITCH_ZETA);
+    pg->surface_color.buffer_dirty |= (pg->surface_color.pitch != color_pitch);
+    pg->surface_color.pitch = color_pitch;
 
-    pg->surface_color.buffer_dirty = true;
-    pg->surface_zeta.buffer_dirty = true;
+    pg->surface_zeta.buffer_dirty |= (pg->surface_zeta.pitch != zeta_pitch);
+    pg->surface_zeta.pitch = zeta_pitch;
 }
 
 DEF_METHOD(NV097, SET_SURFACE_COLOR_OFFSET)
 {
     pgraph_update_surface(d, false, true, true);
-
+    pg->surface_color.buffer_dirty |= (pg->surface_color.offset != parameter);
     pg->surface_color.offset = parameter;
-    pg->surface_color.buffer_dirty = true;
 }
 
 DEF_METHOD(NV097, SET_SURFACE_ZETA_OFFSET)
 {
     pgraph_update_surface(d, false, true, true);
-
+    pg->surface_zeta.buffer_dirty |= (pg->surface_zeta.offset != parameter);
     pg->surface_zeta.offset = parameter;
-    pg->surface_zeta.buffer_dirty = true;
 }
 
 DEF_METHOD(NV097, SET_COMBINER_ALPHA_ICW)
@@ -5581,9 +5579,6 @@ static void pgraph_update_surface(NV2AState *d, bool upload,
     /* FIXME: Does this apply to CLEARs too? */
     color_write = color_write && pgraph_color_write_enabled(pg);
     zeta_write = zeta_write && pgraph_zeta_write_enabled(pg);
-
-    // FIXME: We don't need to bind/unbind so much (fix reprogram of same
-    // pitch/offset causing dirty)
 
     if (upload) {
         bool fb_dirty = pgraph_framebuffer_dirty(pg);
