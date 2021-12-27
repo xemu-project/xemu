@@ -218,6 +218,7 @@ void nv2a_dbg_handle_delete_texture(GLuint texture);
 
 NV2ADbgState* nv2a_dbg_fetch_state(void);
 void nv2a_dbg_free_state(NV2ADbgState* state);
+void nv2a_dbg_invalidate_shader_cache(void);
 
 #endif
 

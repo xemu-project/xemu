@@ -357,4 +357,10 @@ void nv2a_dbg_free_state(NV2ADbgState* state)
     memset(state->textures, 0, sizeof(state->textures));
 }
 
+void nv2a_dbg_invalidate_shader_cache(void)
+{
+    PGRAPHState* pg = &g_debugger_state.device->pgraph;
+    g_hash_table_remove_all(pg->shader_cache);
+}
+
 #endif // ENABLE_NV2A_DEBUGGER

@@ -50,16 +50,20 @@ void NV2ADebugger::DrawDebuggerControls(ImGuiIO& io,
                                         float ui_scale,
                                         float main_menu_height)
 {
-    static constexpr float button_width = 120.0f;
+    static constexpr float button_width = 146.0f;
     static constexpr float button_height = 38.0f;
-    static constexpr int num_buttons = 3;
+    static constexpr int spacer_height = 10.0f;
+    static constexpr int num_buttons = 4;
+    static constexpr int num_spacers = 1;
+    static constexpr int window_height = button_height * num_buttons +
+            spacer_height * num_spacers;
 
     ImVec2 window_pos = ImVec2(5 * ui_scale,
                                main_menu_height);
     ImGui::SetNextWindowPos(window_pos, ImGuiCond_Once);
     ImGui::SetNextWindowSize(
             ImVec2((button_width + 16.0f) * ui_scale,
-                   button_height * num_buttons * ui_scale),
+                   window_height * ui_scale),
             ImGuiCond_Once);
     if (ImGui::Begin("nv2a Debug", &is_open)) {
 
@@ -75,6 +79,12 @@ void NV2ADebugger::DrawDebuggerControls(ImGuiIO& io,
         }
         if (ImGui::Button("Continue", ImVec2(button_width*ui_scale, 0))) {
             nv2a_dbg_continue();
+        }
+
+        ImGui::Dummy(ImVec2(0.0f, spacer_height));
+        if (ImGui::Button("Invalidate shaders",
+                          ImVec2(button_width*ui_scale, 0))) {
+            nv2a_dbg_invalidate_shader_cache();
         }
 
         ImGui::PopFont();
