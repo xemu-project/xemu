@@ -246,7 +246,7 @@ Lib('pcre', 'http://pcre.org/',
 Lib('gettext', 'https://www.gnu.org/software/gettext/',
 	lgplv2_1, 'https://git.savannah.gnu.org/gitweb/?p=gettext.git;a=blob_plain;f=gettext-runtime/intl/COPYING.LIB;hb=HEAD',
 	ships_static={windows}, ships_dynamic={macos},
-	pkg_win='gettext', pkg_mac='gettext',
+	pkg_win='gettext', pkg_mac='gettext-runtime',
 	),
 
 # glib dep
