@@ -19,3 +19,6 @@ GTAGS
 build.log
 /dist
 /xemu.ini
+/macos-libs/
+/macos-pkgs/
+/xemu.iconset/
