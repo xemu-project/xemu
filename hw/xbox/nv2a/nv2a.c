@@ -21,6 +21,9 @@
 
 #include "hw/xbox/nv2a/nv2a_int.h"
 
+#define DBG_IRQ 0
+#define DBG_DMA 0
+
 void nv2a_update_irq(NV2AState *d)
 {
     /* PFIFO */
@@ -45,7 +48,7 @@ void nv2a_update_irq(NV2AState *d)
     }
 
     if (d->pmc.pending_interrupts && d->pmc.enabled_interrupts) {
-        NV2A_DPRINTF("raise irq\n");
+        NV2A_XPRINTF(DBG_IRQ, "raise irq\n");
         pci_irq_assert(PCI_DEVICE(d));
     } else {
         pci_irq_deassert(PCI_DEVICE(d));
@@ -74,10 +77,10 @@ void *nv_dma_map(NV2AState *d, hwaddr dma_obj_address, hwaddr *len)
     DMAObject dma = nv_dma_load(d, dma_obj_address);
 
     /* TODO: Handle targets and classes properly */
-    NV2A_DPRINTF("dma_map %" HWADDR_PRIx " - %x, %x, %" HWADDR_PRIx " %" HWADDR_PRIx "\n",
+    NV2A_XPRINTF(DBG_DMA,
+                 "dma_map %" HWADDR_PRIx " - %x, %x, %" HWADDR_PRIx " %" HWADDR_PRIx "\n",
                  dma_obj_address,
                  dma.dma_class, dma.dma_target, dma.address, dma.limit);
-
     dma.address &= 0x07FFFFFF;
 
     assert(dma.address < memory_region_size(d->vram));
