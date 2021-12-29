@@ -27,10 +27,6 @@ uint64_t pfb_read(void *opaque, hwaddr addr, unsigned int size)
 
     uint64_t r = 0;
     switch (addr) {
-    case NV_PFB_CFG0:
-        /* 3-4 memory partitions. The debug bios checks this. */
-        r = 3;
-        break;
     case NV_PFB_CSTATUS:
         r = memory_region_size(d->vram);
         break;
