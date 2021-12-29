@@ -239,6 +239,7 @@ jobs:
         lipo -create -output xemu.app/Contents/MacOS/xemu \
           ../xemu-macos-x86_64-${{ matrix.configuration }}/xemu.app/Contents/MacOS/xemu \
           ../xemu-macos-arm64-${{ matrix.configuration }}/xemu.app/Contents/MacOS/xemu
+        codesign --force --deep --preserve-metadata=entitlements,requirements,flags,runtime --sign - xemu.app/Contents/MacOS/xemu
         zip -r ../xemu-macos-universal-${{ matrix.configuration }}.zip *
         popd
     - name: Upload build artifact
