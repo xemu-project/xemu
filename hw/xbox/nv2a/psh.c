@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2013 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2020-2021 Matt Borgerson
+ * Copyright (C) 2020-2022 Matt Borgerson
  *
  * Based on:
  * Cxbx, PixelShader.cpp

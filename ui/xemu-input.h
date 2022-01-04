@@ -6,7 +6,7 @@
  * Xbox gamepad and support automatic binding, hotplugging, and removal at
  * runtime.
  *
- * Copyright (C) 2020-2021 Matt Borgerson
+ * Copyright (C) 2020-2022 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

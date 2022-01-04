@@ -4,7 +4,7 @@
  * Helper functions for other subsystems to queue a notification for the user,
  * which can be displayed by the HUD.
  *
- * Copyright (C) 2020-2021 Matt Borgerson
+ * Copyright (C) 2020-2022 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

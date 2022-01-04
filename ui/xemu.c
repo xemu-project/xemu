@@ -1,7 +1,7 @@
 /*
  * xemu SDL display driver
  *
- * Copyright (c) 2020-2021 Matt Borgerson
+ * Copyright (C) 2020-2022 Matt Borgerson
  *
  * Based on sdl2.c, sdl2-gl.c
  *

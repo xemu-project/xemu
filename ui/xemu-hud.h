@@ -4,7 +4,7 @@
  * Subsystem handling primary graphical user interface, which can be controlled
  * via mouse and keyboard or through any attached gamepad.
  *
- * Copyright (C) 2020-2021 Matt Borgerson
+ * Copyright (C) 2020-2022 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
