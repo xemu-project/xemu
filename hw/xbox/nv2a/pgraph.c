@@ -791,7 +791,7 @@ static void pgraph_image_blit(NV2AState *d)
 
     SurfaceBinding *surf_src = pgraph_surface_get(d, source_addr);
     if (surf_src) {
-        pgraph_download_surface_data(d, surf_src, true);
+        pgraph_download_surface_data_if_dirty(d, surf_src);
     }
 
     SurfaceBinding *surf_dest = pgraph_surface_get(d, dest_addr);
