@@ -3,7 +3,7 @@
 set -eu
 
 dir="$1"
-XEMU_DATE=$(date -u)
+: ${XEMU_DATE=$(date -u)}
 XEMU_COMMIT=$( \
   cd "$dir"; \
   if test -e .git; then \
