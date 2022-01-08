@@ -27,6 +27,8 @@
 
 void smbus_xbox_smc_init(I2CBus *smbus, int address);
 void smbus_cx25871_init(I2CBus *smbus, int address);
+void smbus_fs454_init(I2CBus *smbus, int address);
+void smbus_xcalibur_init(I2CBus *smbus, int address);
 void smbus_adm1032_init(I2CBus *smbus, int address);
 
 bool xbox_smc_avpack_to_reg(const char *avpack, uint8_t *value);

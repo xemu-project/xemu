@@ -46,6 +46,7 @@ typedef struct XboxMachineState {
     char *avpack;
     bool short_animation;
     char *smc_version;
+    char *video_encoder;
 } XboxMachineState;
 
 typedef struct XboxMachineClass {
