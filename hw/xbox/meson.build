@@ -8,6 +8,8 @@ specific_ss.add(files(
 	'nvnet.c',
 	'smbus_adm1032.c',
 	'smbus_cx25871.c',
+	'smbus_fs454.c',
+	'smbus_xcalibur.c',
 	'smbus_storage.c',
 	'smbus_xbox_smc.c',
 	'xbox.c',

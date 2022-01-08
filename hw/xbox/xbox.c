@@ -310,8 +310,20 @@ void xbox_init_common(MachineState *machine,
 
     /* smbus devices */
     smbus_xbox_smc_init(smbus, 0x10);
-    smbus_cx25871_init(smbus, 0x45);
-    smbus_adm1032_init(smbus, 0x4c);
+
+    const char *video_encoder =
+        object_property_get_str(qdev_get_machine(), "video-encoder", NULL);
+
+    if (strcmp(video_encoder, "xcalibur") != 0) {
+        if (!strcmp(video_encoder, "conexant")) {
+            smbus_cx25871_init(smbus, 0x45);
+        } else if (!strcmp(video_encoder, "focus")) {
+            smbus_fs454_init(smbus, 0x6A);
+        }
+        smbus_adm1032_init(smbus, 0x4C);
+    } else {
+        smbus_xcalibur_init(smbus, 0x70);
+    }
 
     /* USB */
     PCIDevice *usb1 = pci_new(PCI_DEVFN(3, 0), "pci-ohci");
@@ -445,6 +457,31 @@ static void machine_set_smc_version(Object *obj, const char *value,
     ms->smc_version = g_strdup(value);
 }
 
+static char *machine_get_video_encoder(Object *obj, Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+
+    return g_strdup(ms->video_encoder);
+}
+
+static void machine_set_video_encoder(Object *obj, const char *value,
+                               Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+
+    if (strcmp(value, "conexant") != 0 &&
+            strcmp(value, "focus") != 0 &&
+            strcmp(value, "xcalibur") != 0
+    ) {
+        error_setg(errp, "-machine video_encoder=%s: unsupported option", value);
+        error_append_hint(errp, "Valid options are: conexant (default), focus, xcalibur\n");
+        return; 
+    }
+
+    g_free(ms->video_encoder);
+    ms->video_encoder = g_strdup(value);
+}
+
 static inline void xbox_machine_initfn(Object *obj)
 {
     object_property_add_str(obj, "bootrom", machine_get_bootrom,
@@ -470,6 +507,12 @@ static inline void xbox_machine_initfn(Object *obj)
     object_property_set_description(obj, "smc-version",
                                     "Set the SMC version number, default is P01");
     object_property_set_str(obj, "smc-version", "P01", &error_fatal);
+
+    object_property_add_str(obj, "video-encoder", machine_get_video_encoder,
+                            machine_set_video_encoder);
+    object_property_set_description(obj, "video-encoder",
+                                    "Set the encoder presented to the OS: conexant (default), focus, xcalibur");
+    object_property_set_str(obj, "video-encoder", "conexant", &error_fatal);
 
 }
 
