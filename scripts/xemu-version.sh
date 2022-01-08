@@ -21,13 +21,13 @@ XEMU_BRANCH=$( \
 : ${XEMU_VERSION=$( \
   cd "$dir"; \
   if test -e .git; then \
-    git describe --tags --match 'xemu-v*' | cut -c 7- | tr -d '\n'; \
+    git describe --tags --match 'xemu-v*' | cut -c 6- | tr -d '\n'; \
   elif test -e XEMU_VERSION; then \
     cat XEMU_VERSION; \
   fi)}
 
 get_version_field() {
-  echo ${XEMU_VERSION}-0 | cut -d- -f$1
+  echo ${XEMU_VERSION#v}-0 | cut -d- -f$1
 }
 
 get_version_dot () {

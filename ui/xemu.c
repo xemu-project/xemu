@@ -835,7 +835,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
         SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-    char *title = g_strdup_printf("xemu | v%s"
+    char *title = g_strdup_printf("xemu | %s"
 #if XEMU_DEBUG_BUILD
                                   " Debug"
 #endif
