@@ -230,8 +230,7 @@ typedef struct ImageBlitState {
 
 typedef struct BetaState {
   hwaddr object_instance;
-  // signed fixed-point number with a sign bit and 31 fractional bits.
-  unsigned int beta;
+  uint32_t beta;
 } BetaState;
 
 typedef struct PGRAPHState {
