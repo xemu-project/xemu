@@ -651,6 +651,8 @@ void pgraph_flush(NV2AState *d)
 #define METHOD_ADDR(gclass, name) \
     gclass ## _ ## name
 #define METHOD_ADDR_TO_INDEX(x) ((x)>>2)
+#define METHOD_NAME_STR(gclass, name) \
+    tostring(gclass ## _ ## name)
 #define METHOD_FUNC_NAME(gclass, name) \
     pgraph_ ## gclass ## _ ## name ## _handler
 #define METHOD_HANDLER_ARGS \
@@ -675,23 +677,44 @@ void pgraph_flush(NV2AState *d)
 #undef DEF_METHOD_CASE_4
 
 typedef void (*MethodFunc)(METHOD_HANDLER_ARGS);
-static const MethodFunc pgraph_kelvin_method_handlers[0x800] = {
+static const struct {
+    MethodFunc handler;
+    const char *name;
+} pgraph_kelvin_methods[0x800] = {
 #define DEF_METHOD(gclass, name)                        \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name))] = \
-        METHOD_FUNC_NAME(gclass, name),
+    { \
+        METHOD_FUNC_NAME(gclass, name), \
+        METHOD_NAME_STR(gclass, name) \
+    },
 #define DEF_METHOD_RANGE(gclass, name, range) \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name)) \
      ... METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + range)] = \
-        &METHOD_FUNC_NAME(gclass, name),
+    { \
+        METHOD_FUNC_NAME(gclass, name), \
+        METHOD_NAME_STR(gclass, name) \
+    },
 #define DEF_METHOD_CASE_4_OFFSET(gclass, name, offset, stride) \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + offset)] = \
-        &METHOD_FUNC_NAME(gclass, name), \
+    { \
+        METHOD_FUNC_NAME(gclass, name), \
+        METHOD_NAME_STR(gclass, name) \
+    }, \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + offset + stride)] = \
-        &METHOD_FUNC_NAME(gclass, name), \
+    { \
+        METHOD_FUNC_NAME(gclass, name), \
+        METHOD_NAME_STR(gclass, name) \
+    }, \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + offset + stride * 2)] = \
-        &METHOD_FUNC_NAME(gclass, name), \
+    { \
+        METHOD_FUNC_NAME(gclass, name), \
+        METHOD_NAME_STR(gclass, name) \
+    }, \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + offset + stride * 3)] = \
-        &METHOD_FUNC_NAME(gclass, name),
+    { \
+        METHOD_FUNC_NAME(gclass, name), \
+        METHOD_NAME_STR(gclass, name) \
+    },
 #define DEF_METHOD_CASE_4(gclass, name, stride) \
     DEF_METHOD_CASE_4_OFFSET(gclass, name, 0, stride)
 #include "pgraph_methods.h"
@@ -1025,7 +1048,7 @@ int pgraph_method(NV2AState *d, unsigned int subchannel,
 
     case NV_KELVIN_PRIMITIVE: {
         MethodFunc handler =
-            pgraph_kelvin_method_handlers[METHOD_ADDR_TO_INDEX(method)];
+            pgraph_kelvin_methods[METHOD_ADDR_TO_INDEX(method)].handler;
         if (handler == NULL) {
             NV2A_GL_DPRINTF(true, "    unhandled  (0x%02x 0x%08x)",
                             graphics_class, method);
@@ -3440,11 +3463,10 @@ void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
     }
 }
 
-// static const char* nv2a_method_names[] = {};
-
 static void pgraph_method_log(unsigned int subchannel,
                               unsigned int graphics_class,
                               unsigned int method, uint32_t parameter) {
+#ifdef DEBUG_NV2A
     static unsigned int last = 0;
     static unsigned int count = 0;
     if (last == 0x1800 && method != last) {
@@ -3452,36 +3474,38 @@ static void pgraph_method_log(unsigned int subchannel,
                      subchannel, last, count);
     }
     if (method != 0x1800) {
-        // const char* method_name = NULL;
+        const char* method_name = NULL;
         // unsigned int nmethod = 0;
-        // switch (graphics_class) {
-        //     case NV_KELVIN_PRIMITIVE:
-        //         nmethod = method | (0x5c << 16);
-        //         break;
-        //     case NV_CONTEXT_SURFACES_2D:
-        //         nmethod = method | (0x6d << 16);
-        //         break;
-        //     case NV_CONTEXT_PATTERN:
-        //         nmethod = method | (0x68 << 16);
-        //         break;
-        //     default:
-        //         break;
-        // }
-        // if (nmethod != 0 && nmethod < ARRAY_SIZE(nv2a_method_names)) {
-        //     method_name = nv2a_method_names[nmethod];
-        // }
-        // if (method_name) {
-        //     NV2A_DPRINTF("pgraph method (%d): %s (0x%x)\n",
-        //                  subchannel, method_name, parameter);
-        // } else {
+        switch (graphics_class) {
+            case NV_KELVIN_PRIMITIVE: {
+                // nmethod = method | (0x5c << 16);
+                int idx = METHOD_ADDR_TO_INDEX(method);
+                if (idx < ARRAY_SIZE(pgraph_kelvin_methods)) {
+                    method_name = pgraph_kelvin_methods[idx].name;
+                }
+                break;
+            }
+            case NV_CONTEXT_SURFACES_2D:
+                // nmethod = method | (0x6d << 16);
+                break;
+            case NV_CONTEXT_PATTERN:
+                // nmethod = method | (0x68 << 16);
+                break;
+            default:
+                break;
+        }
+        if (method_name) {
+            NV2A_DPRINTF("pgraph method (%d): %s (0x%x)\n",
+                         subchannel, method_name, parameter);
+        } else {
             NV2A_DPRINTF("pgraph method (%d): 0x%x -> 0x%04x (0x%x)\n",
                          subchannel, graphics_class, method, parameter);
-        // }
-
+        }
     }
     if (method == last) { count++; }
     else {count = 0; }
     last = method;
+#endif
 }
 
 static void pgraph_allocate_inline_buffer_vertices(PGRAPHState *pg,
