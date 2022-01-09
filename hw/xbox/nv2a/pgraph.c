@@ -5912,7 +5912,7 @@ static void pgraph_bind_textures(NV2AState *d)
                                               NV_PGRAPH_TEXFMT0_BORDER_SOURCE);
         uint32_t border_color = pg->regs[NV_PGRAPH_BORDERCOLOR0 + i*4];
 
-        unsigned int offset = pg->regs[NV_PGRAPH_TEXOFFSET0 + i*4];
+        hwaddr offset = pg->regs[NV_PGRAPH_TEXOFFSET0 + i*4];
 
         bool palette_dma_select =
             GET_MASK(palette, NV_PGRAPH_TEXPALETTE0_CONTEXT_DMA);
