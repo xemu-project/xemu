@@ -3099,14 +3099,11 @@ DEF_METHOD(NV097, SET_VERTEX_DATA4S_M)
     int slot = (method - NV097_SET_VERTEX_DATA4S_M) / 4;
     unsigned int part = slot % 2;
     slot /= 2;
-    assert(false); /* FIXME: Untested! */
     VertexAttribute *attribute = &pg->vertex_attributes[slot];
     pgraph_allocate_inline_buffer_vertices(pg, slot);
-    /* FIXME: Is mapping to [-1,+1] correct? */
-    attribute->inline_value[part * 2 + 0] = ((int16_t)(parameter & 0xFFFF)
-                                                 * 2.0 + 1) / 65535.0;
-    attribute->inline_value[part * 2 + 1] = ((int16_t)(parameter >> 16)
-                                                 * 2.0 + 1) / 65535.0;
+
+    attribute->inline_value[part * 2 + 0] = (float)(int16_t)(parameter & 0xFFFF);
+    attribute->inline_value[part * 2 + 1] = (float)(int16_t)(parameter >> 16);
     if ((slot == 0) && (part == 1)) {
         pgraph_finish_inline_buffer_vertex(pg);
     }
