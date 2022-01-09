@@ -1186,11 +1186,13 @@ DEF_METHOD(NV097, SET_CONTEXT_DMA_COLOR)
     pgraph_update_surface(d, false, true, true);
 
     pg->dma_color = parameter;
+    pg->surface_color.buffer_dirty = true;
 }
 
 DEF_METHOD(NV097, SET_CONTEXT_DMA_ZETA)
 {
     pg->dma_zeta = parameter;
+    pg->surface_zeta.buffer_dirty = true;
 }
 
 DEF_METHOD(NV097, SET_CONTEXT_DMA_VERTEX_A)
