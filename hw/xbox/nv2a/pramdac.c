@@ -74,7 +74,8 @@ uint64_t pramdac_read(void *opaque, hwaddr addr, unsigned int size)
     /* Surprisingly, QEMU doesn't handle unaligned access for you properly */
     r >>= 32 - 8 * size - 8 * (addr & 3);
 
-    NV2A_DPRINTF("PRAMDAC: read %d [0x%" HWADDR_PRIx "] -> %llx\n", size, addr, r);
+    NV2A_DPRINTF("PRAMDAC: read %d [0x%" HWADDR_PRIx "] -> %" PRIx64 "\n", size,
+                 addr, r);
     return r;
 }
 
