@@ -5555,16 +5555,11 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                  * to be marked swizzled. Strictly match size to avoid
                  * pathological cases.
                  */
-                if (pg->clearing || found->cleared) {
-                    is_compatible &=
-                        pgraph_check_surface_compatibility(found, &entry, true);
-                    if (is_compatible) {
-                        NV2A_XPRINTF(DBG_SURFACES,
-                                     "Migrating surface type to %s\n",
-                                     entry.swizzle ? "swizzled" : "linear");
-                    }
-                } else {
-                    is_compatible = false;
+                is_compatible &= (pg->clearing || found->cleared) &&
+                    pgraph_check_surface_compatibility(found, &entry, true);
+                if (is_compatible) {
+                    NV2A_XPRINTF(DBG_SURFACES, "Migrating surface type to %s\n",
+                                 entry.swizzle ? "swizzled" : "linear");
                 }
             }
 
