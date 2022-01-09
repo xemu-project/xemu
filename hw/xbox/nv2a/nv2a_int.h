@@ -149,6 +149,7 @@ typedef struct SurfaceBinding {
 
     GLuint gl_buffer;
 
+    bool cleared;
     int frame_time;
     int draw_time;
     bool draw_dirty;
@@ -368,6 +369,7 @@ typedef struct PGRAPHState {
 
     uint32_t regs[0x2000];
 
+    bool clearing;
     bool waiting_for_nop;
     bool waiting_for_flip;
     bool waiting_for_context_switch;

@@ -1250,8 +1250,12 @@ DEF_METHOD(NV097, SET_SURFACE_FORMAT)
     pg->surface_shape.log_height =
         GET_MASK(parameter, NV097_SET_SURFACE_FORMAT_HEIGHT);
 
-    pg->surface_type =
-        GET_MASK(parameter, NV097_SET_SURFACE_FORMAT_TYPE);
+    int surface_type = GET_MASK(parameter, NV097_SET_SURFACE_FORMAT_TYPE);
+    if (surface_type != pg->surface_type) {
+        pg->surface_type = surface_type;
+        pg->surface_color.buffer_dirty = true;
+        pg->surface_zeta.buffer_dirty = true;
+    }
 }
 
 DEF_METHOD(NV097, SET_SURFACE_PITCH)
@@ -3093,6 +3097,8 @@ DEF_METHOD(NV097, SET_COLOR_CLEAR_VALUE)
 
 DEF_METHOD(NV097, CLEAR_SURFACE)
 {
+    pg->clearing = true;
+
     NV2A_DPRINTF("---------PRE CLEAR ------\n");
     GLbitfield gl_mask = 0;
 
@@ -3247,6 +3253,10 @@ DEF_METHOD(NV097, CLEAR_SURFACE)
     NV2A_DPRINTF("Translated clear rect to %d,%d - %d,%d\n", xmin, ymin,
                  xmin + scissor_width - 1, ymin + scissor_height - 1);
 
+    bool full_clear = !xmin && !ymin &&
+                      scissor_width >= pg->surface_binding_dim.width &&
+                      scissor_height >= pg->surface_binding_dim.height;
+
     pgraph_apply_scaling_factor(pg, &xmin, &ymin);
     pgraph_apply_scaling_factor(pg, &scissor_width, &scissor_height);
 
@@ -3267,6 +3277,15 @@ DEF_METHOD(NV097, CLEAR_SURFACE)
     glDisable(GL_SCISSOR_TEST);
 
     pgraph_set_surface_dirty(pg, write_color, write_zeta);
+
+    if (pg->color_binding) {
+        pg->color_binding->cleared = full_clear && write_color;
+    }
+    if (pg->zeta_binding) {
+        pg->zeta_binding->cleared = full_clear && write_zeta;
+    }
+
+    pg->clearing = false;
 }
 
 DEF_METHOD(NV097, SET_CLEAR_RECT_HORIZONTAL)
@@ -4220,11 +4239,15 @@ static void pgraph_set_surface_dirty(PGRAPHState *pg, bool color, bool zeta)
     if (pg->color_binding) {
         pg->color_binding->draw_dirty |= color;
         pg->color_binding->frame_time = pg->frame_time;
+        pg->color_binding->cleared = false;
+
     }
 
     if (pg->zeta_binding) {
         pg->zeta_binding->draw_dirty |= zeta;
         pg->zeta_binding->frame_time = pg->frame_time;
+        pg->zeta_binding->cleared = false;
+
     }
 }
 
@@ -5009,8 +5032,7 @@ static bool pgraph_check_surface_compatibility(SurfaceBinding *s1,
         (s1->fmt.gl_internal_format == s2->fmt.gl_internal_format) &&
         (s1->pitch == s2->pitch) &&
         (s1->shape.clip_x <= s2->shape.clip_x) &&
-        (s1->shape.clip_y <= s2->shape.clip_y) &&
-        (s1->swizzle == s2->swizzle);
+        (s1->shape.clip_y <= s2->shape.clip_y);
     if (!format_compatible) {
         return false;
     }
@@ -5444,6 +5466,7 @@ static void pgraph_populate_surface_binding_entry_sized(NV2AState *d,
     entry->dma_len = dma.limit;
     entry->frame_time = pg->frame_time;
     entry->draw_time = pg->draw_time;
+    entry->cleared = false;
 }
 
 static void pgraph_populate_surface_binding_entry(NV2AState *d, bool color,
@@ -5521,6 +5544,29 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                          found->shape.anti_aliasing, found->shape.clip_x,
                          found->shape.clip_width, found->shape.clip_y,
                          found->shape.clip_height);
+
+            assert(!(entry.swizzle && pg->clearing));
+
+            if (found->swizzle != entry.swizzle) {
+                /* Clears should only be done on linear surfaces. Avoid
+                 * synchronization by allowing (1) a surface marked swizzled to
+                 * be cleared under the assumption the entire surface is
+                 * destined to be cleared and (2) a fully cleared linear surface
+                 * to be marked swizzled. Strictly match size to avoid
+                 * pathological cases.
+                 */
+                if (pg->clearing || found->cleared) {
+                    is_compatible &=
+                        pgraph_check_surface_compatibility(found, &entry, true);
+                    if (is_compatible) {
+                        NV2A_XPRINTF(DBG_SURFACES,
+                                     "Migrating surface type to %s\n",
+                                     entry.swizzle ? "swizzled" : "linear");
+                    }
+                } else {
+                    is_compatible = false;
+                }
+            }
 
             if (is_compatible && color &&
                 !pgraph_check_surface_compatibility(found, &entry, true)) {
