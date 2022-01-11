@@ -746,7 +746,11 @@ static const struct {
     for (size_t param_iter = 0; \
          param_iter < num_words_available; \
          param_iter++) { \
-        parameter = ldl_le_p(parameters + param_iter);
+        parameter = ldl_le_p(parameters + param_iter); \
+        if (param_iter) { \
+            pgraph_method_log( \
+                subchannel, NV_KELVIN_PRIMITIVE, method, parameter); \
+        }
 
 #define NON_INC_METHOD_LOOP_END \
     } \
@@ -757,7 +761,11 @@ static const struct {
     for (; (param_iter < num_words_available) && \
            (method <= METHOD_RANGE_END_NAME(gclass, name)); \
          param_iter++) { \
-        parameter = ldl_le_p(parameters + param_iter);
+        parameter = ldl_le_p(parameters + param_iter); \
+        if (param_iter) { \
+            pgraph_method_log( \
+                subchannel, NV_KELVIN_PRIMITIVE, method, parameter); \
+        }
 
 #define INC_METHOD_LOOP_END \
         method += 4; \
