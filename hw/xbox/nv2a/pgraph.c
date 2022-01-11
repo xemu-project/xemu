@@ -678,42 +678,49 @@ void pgraph_flush(NV2AState *d)
 
 typedef void (*MethodFunc)(METHOD_HANDLER_ARGS);
 static const struct {
-    MethodFunc handler;
+    uint32_t base;
     const char *name;
+    MethodFunc handler;
 } pgraph_kelvin_methods[0x800] = {
 #define DEF_METHOD(gclass, name)                        \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name))] = \
     { \
+        METHOD_ADDR(gclass, name), \
+        METHOD_NAME_STR(gclass, name), \
         METHOD_FUNC_NAME(gclass, name), \
-        METHOD_NAME_STR(gclass, name) \
     },
 #define DEF_METHOD_RANGE(gclass, name, range) \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name)) \
      ... METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + range)] = \
     { \
+        METHOD_ADDR(gclass, name), \
+        METHOD_NAME_STR(gclass, name), \
         METHOD_FUNC_NAME(gclass, name), \
-        METHOD_NAME_STR(gclass, name) \
     },
 #define DEF_METHOD_CASE_4_OFFSET(gclass, name, offset, stride) \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + offset)] = \
     { \
+        METHOD_ADDR(gclass, name), \
+        METHOD_NAME_STR(gclass, name), \
         METHOD_FUNC_NAME(gclass, name), \
-        METHOD_NAME_STR(gclass, name) \
     }, \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + offset + stride)] = \
     { \
+        METHOD_ADDR(gclass, name), \
+        METHOD_NAME_STR(gclass, name), \
         METHOD_FUNC_NAME(gclass, name), \
-        METHOD_NAME_STR(gclass, name) \
     }, \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + offset + stride * 2)] = \
     { \
+        METHOD_ADDR(gclass, name), \
+        METHOD_NAME_STR(gclass, name), \
         METHOD_FUNC_NAME(gclass, name), \
-        METHOD_NAME_STR(gclass, name) \
     }, \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + offset + stride * 3)] = \
     { \
+        METHOD_ADDR(gclass, name), \
+        METHOD_NAME_STR(gclass, name), \
         METHOD_FUNC_NAME(gclass, name), \
-        METHOD_NAME_STR(gclass, name) \
     },
 #define DEF_METHOD_CASE_4(gclass, name, stride) \
     DEF_METHOD_CASE_4_OFFSET(gclass, name, 0, stride)
@@ -3483,6 +3490,7 @@ static void pgraph_method_log(unsigned int subchannel,
     }
     if (method != 0x1800) {
         const char* method_name = NULL;
+        uint32_t base = method;
         // unsigned int nmethod = 0;
         switch (graphics_class) {
             case NV_KELVIN_PRIMITIVE: {
@@ -3490,6 +3498,7 @@ static void pgraph_method_log(unsigned int subchannel,
                 int idx = METHOD_ADDR_TO_INDEX(method);
                 if (idx < ARRAY_SIZE(pgraph_kelvin_methods)) {
                     method_name = pgraph_kelvin_methods[idx].name;
+                    base = pgraph_kelvin_methods[idx].base;
                 }
                 break;
             }
@@ -3502,13 +3511,24 @@ static void pgraph_method_log(unsigned int subchannel,
             default:
                 break;
         }
+
+        char buf[256];
+        char *ptr = buf;
+        char *end = ptr + sizeof(buf);
+
+        ptr += snprintf(ptr, end - ptr, "pgraph method (%d): 0x%x -> 0x%04x",
+            subchannel, graphics_class, method);
+
         if (method_name) {
-            NV2A_DPRINTF("pgraph method (%d): %s (0x%x)\n",
-                         subchannel, method_name, parameter);
-        } else {
-            NV2A_DPRINTF("pgraph method (%d): 0x%x -> 0x%04x (0x%x)\n",
-                         subchannel, graphics_class, method, parameter);
+            ptr += snprintf(ptr, end - ptr, " %s", method_name);
+            uint32_t o = method - base;
+            if (o) {
+                ptr += snprintf(ptr, end - ptr, "+0x%02x", o);
+            }
         }
+
+        ptr += snprintf(ptr, end - ptr, " (0x%x)", parameter);
+        NV2A_GL_DPRINTF(true, "%s", buf);
     }
     if (method == last) { count++; }
     else {count = 0; }
