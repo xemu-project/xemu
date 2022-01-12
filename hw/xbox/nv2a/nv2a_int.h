@@ -534,7 +534,8 @@ void pgraph_destroy(PGRAPHState *pg);
 void pgraph_context_switch(NV2AState *d, unsigned int channel_id);
 int pgraph_method(NV2AState *d, unsigned int subchannel, unsigned int method,
                   uint32_t parameter, uint32_t *parameters,
-                  size_t num_words_available, size_t max_lookahead_words);
+                  size_t num_words_available, size_t max_lookahead_words,
+                  bool inc);
 void pgraph_gl_sync(NV2AState *d);
 void pgraph_process_pending_reports(NV2AState *d);
 void pgraph_process_pending_downloads(NV2AState *d);
