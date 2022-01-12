@@ -745,7 +745,7 @@ static const struct {
 #define DEF_METHOD_CASE_4_OFFSET(gclass, name, offset, stride) /* drop */
 #define DEF_METHOD_CASE_4(gclass, name, stride) \
     static const size_t METHOD_RANGE_END_NAME(gclass, name) = \
-        METHOD_ADDR(gclass, name) + 4;
+        METHOD_ADDR(gclass, name) + 4*stride;
 #include "pgraph_methods.h"
 #undef DEF_METHOD
 #undef DEF_METHOD_RANGE
@@ -1350,7 +1350,7 @@ DEF_METHOD(NV097, SET_SURFACE_ZETA_OFFSET)
     pg->surface_zeta.offset = parameter;
 }
 
-DEF_METHOD(NV097, SET_COMBINER_ALPHA_ICW)
+DEF_METHOD_LOOP(NV097, SET_COMBINER_ALPHA_ICW)
 {
     int slot = (method - NV097_SET_COMBINER_ALPHA_ICW) / 4;
     pg->regs[NV_PGRAPH_COMBINEALPHAI0 + slot*4] = parameter;
@@ -1481,13 +1481,13 @@ DEF_METHOD(NV097, SET_WINDOW_CLIP_TYPE)
              NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE, parameter);
 }
 
-DEF_METHOD(NV097, SET_WINDOW_CLIP_HORIZONTAL)
+DEF_METHOD_LOOP(NV097, SET_WINDOW_CLIP_HORIZONTAL)
 {
     int slot = (method - NV097_SET_WINDOW_CLIP_HORIZONTAL) / 4;
     pg->regs[NV_PGRAPH_WINDOWCLIPX0 + slot * 4] = parameter;
 }
 
-DEF_METHOD(NV097, SET_WINDOW_CLIP_VERTICAL)
+DEF_METHOD_LOOP(NV097, SET_WINDOW_CLIP_VERTICAL)
 {
     int slot = (method - NV097_SET_WINDOW_CLIP_VERTICAL) / 4;
     pg->regs[NV_PGRAPH_WINDOWCLIPY0 + slot * 4] = parameter;
@@ -1863,7 +1863,7 @@ DEF_METHOD(NV097, SET_NORMALIZATION_ENABLE)
              parameter);
 }
 
-DEF_METHOD(NV097, SET_MATERIAL_EMISSION)
+DEF_METHOD_LOOP(NV097, SET_MATERIAL_EMISSION)
 {
     int slot = (method - NV097_SET_MATERIAL_EMISSION) / 4;
     // FIXME: Verify NV_IGRAPH_XF_LTCTXA_CM_COL is correct
@@ -1918,7 +1918,7 @@ DEF_METHOD(NV097, SET_TEXGEN_Q)
     SET_MASK(pg->regs[reg], mask, kelvin_map_texgen(parameter, 3));
 }
 
-DEF_METHOD(NV097, SET_TEXTURE_MATRIX_ENABLE)
+DEF_METHOD_LOOP(NV097, SET_TEXTURE_MATRIX_ENABLE)
 {
     int slot = (method - NV097_SET_TEXTURE_MATRIX_ENABLE) / 4;
     pg->texture_matrix_enable[slot] = parameter;
@@ -2412,7 +2412,7 @@ DEF_METHOD(NV097, GET_REPORT)
     pg->gl_zpass_pixel_count_queries = NULL;
 }
 
-DEF_METHOD(NV097, SET_EYE_DIRECTION)
+DEF_METHOD_LOOP(NV097, SET_EYE_DIRECTION)
 {
     int slot = (method - NV097_SET_EYE_DIRECTION) / 4;
     pg->ltctxa[NV_IGRAPH_XF_LTCTXA_EYED][slot] = parameter;
@@ -2942,7 +2942,7 @@ DEF_METHOD_LOOP(NV097, INLINE_ARRAY)
     pg->inline_array[pg->inline_array_length++] = parameter;
 }
 
-DEF_METHOD(NV097, SET_EYE_VECTOR)
+DEF_METHOD_LOOP(NV097, SET_EYE_VECTOR)
 {
     int slot = (method - NV097_SET_EYE_VECTOR) / 4;
     pg->regs[NV_PGRAPH_EYEVEC0 + slot * 4] = parameter;
@@ -3259,7 +3259,7 @@ DEF_METHOD(NV097, SET_CLEAR_RECT_VERTICAL)
     pg->regs[NV_PGRAPH_CLEARRECTY] = parameter;
 }
 
-DEF_METHOD(NV097, SET_SPECULAR_FOG_FACTOR)
+DEF_METHOD_LOOP(NV097, SET_SPECULAR_FOG_FACTOR)
 {
     int slot = (method - NV097_SET_SPECULAR_FOG_FACTOR) / 4;
     pg->regs[NV_PGRAPH_SPECFOGFACTOR0 + slot*4] = parameter;
@@ -3270,7 +3270,7 @@ DEF_METHOD(NV097, SET_SHADER_CLIP_PLANE_MODE)
     pg->regs[NV_PGRAPH_SHADERCLIPMODE] = parameter;
 }
 
-DEF_METHOD(NV097, SET_COMBINER_COLOR_OCW)
+DEF_METHOD_LOOP(NV097, SET_COMBINER_COLOR_OCW)
 {
     int slot = (method - NV097_SET_COMBINER_COLOR_OCW) / 4;
     pg->regs[NV_PGRAPH_COMBINECOLORO0 + slot*4] = parameter;
