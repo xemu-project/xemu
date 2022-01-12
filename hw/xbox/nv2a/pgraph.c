@@ -694,7 +694,7 @@ static const struct {
     },
 #define DEF_METHOD_RANGE(gclass, name, range) \
     [METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name)) \
-     ... METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + range)] = \
+     ... METHOD_ADDR_TO_INDEX(METHOD_ADDR(gclass, name) + 4*range - 1)] = \
     { \
         METHOD_ADDR(gclass, name), \
         METHOD_NAME_STR(gclass, name), \
@@ -741,7 +741,7 @@ static const struct {
         METHOD_ADDR(gclass, name) + 4;
 #define DEF_METHOD_RANGE(gclass, name, range) \
     static const size_t METHOD_RANGE_END_NAME(gclass, name) = \
-        METHOD_ADDR(gclass, name) + range + 4;
+        METHOD_ADDR(gclass, name) + 4*range;
 #define DEF_METHOD_CASE_4_OFFSET(gclass, name, offset, stride) /* drop */
 #define DEF_METHOD_CASE_4(gclass, name, stride) \
     static const size_t METHOD_RANGE_END_NAME(gclass, name) = \
