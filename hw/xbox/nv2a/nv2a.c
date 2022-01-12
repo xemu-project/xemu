@@ -561,6 +561,8 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT64(pramdac.core_clock_freq, NV2AState),
         VMSTATE_UINT32(pramdac.memory_clock_coeff, NV2AState),
         VMSTATE_UINT32(pramdac.video_clock_coeff, NV2AState),
+        VMSTATE_UINT16(puserdac.write_mode_address, NV2AState),
+        VMSTATE_UINT8_ARRAY(puserdac.palette, NV2AState, 256*3),
         VMSTATE_BOOL(pgraph.waiting_for_flip, NV2AState),
         VMSTATE_BOOL(pgraph.waiting_for_nop, NV2AState),
         VMSTATE_UNUSED(1),
