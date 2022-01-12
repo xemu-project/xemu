@@ -655,13 +655,16 @@ void pgraph_flush(NV2AState *d)
     tostring(gclass ## _ ## name)
 #define METHOD_FUNC_NAME(gclass, name) \
     pgraph_ ## gclass ## _ ## name ## _handler
-#define METHOD_HANDLER_ARGS \
+#define METHOD_HANDLER_ARG_DECL \
     NV2AState *d, PGRAPHState *pg, \
     unsigned int subchannel, unsigned int method, \
     uint32_t parameter, uint32_t *parameters, \
     size_t num_words_available, size_t *num_words_consumed
+#define METHOD_HANDLER_ARGS \
+    d, pg, subchannel, method, parameter, parameters, \
+    num_words_available, num_words_consumed
 #define DEF_METHOD_PROTO(gclass, name) \
-    static void METHOD_FUNC_NAME(gclass, name)(METHOD_HANDLER_ARGS)
+    static void METHOD_FUNC_NAME(gclass, name)(METHOD_HANDLER_ARG_DECL)
 
 #define DEF_METHOD(gclass, name) \
     DEF_METHOD_PROTO(gclass, name);
@@ -676,7 +679,7 @@ void pgraph_flush(NV2AState *d)
 #undef DEF_METHOD_CASE_4_OFFSET
 #undef DEF_METHOD_CASE_4
 
-typedef void (*MethodFunc)(METHOD_HANDLER_ARGS);
+typedef void (*MethodFunc)(METHOD_HANDLER_ARG_DECL);
 static const struct {
     uint32_t base;
     const char *name;
@@ -747,38 +750,56 @@ static const struct {
 
 #define DEF_METHOD(gclass, name) DEF_METHOD_PROTO(gclass, name)
 
-#define DEF_METHOD_INC(gclass, name, impl)                                 \
-    DEF_METHOD(gclass, name)                                               \
-    {                                                                      \
-        size_t param_iter = 0;                                             \
-        for (; (param_iter < num_words_available) &&                       \
-               (method <= METHOD_RANGE_END_NAME(gclass, name));            \
-             param_iter++) {                                               \
-            parameter = ldl_le_p(parameters + param_iter);                 \
-            if (param_iter) {                                              \
-                pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method, \
-                                  parameter);                              \
-            }                                                              \
-            impl                                                           \
-            method += 4;                                                   \
-        }                                                                  \
-        *num_words_consumed = param_iter;                                  \
+static void pgraph_method_inc(MethodFunc handler, uint32_t end,
+                              METHOD_HANDLER_ARG_DECL)
+{
+    size_t i = 0;
+    for (; (i < num_words_available) && (method <= end); i++) {
+        parameter = ldl_le_p(parameters + i);
+        if (i) {
+            pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method,
+                              parameter);
+        }
+        handler(METHOD_HANDLER_ARGS);
+        method += 4;
     }
+    *num_words_consumed = i;
+}
 
-#define DEF_METHOD_NON_INC(gclass, name, impl)                             \
-    DEF_METHOD(gclass, name)                                               \
-    {                                                                      \
-        for (size_t param_iter = 0; param_iter < num_words_available;      \
-             param_iter++) {                                               \
-            parameter = ldl_le_p(parameters + param_iter);                 \
-            if (param_iter) {                                              \
-                pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method, \
-                                  parameter);                              \
-            }                                                              \
-            impl                                                           \
-        }                                                                  \
-        *num_words_consumed = num_words_available;                         \
+static void pgraph_method_non_inc(MethodFunc handler, METHOD_HANDLER_ARG_DECL)
+{
+    for (size_t i = 0; i < num_words_available; i++) {
+        parameter = ldl_le_p(parameters + i);
+        if (i) {
+            pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method,
+                              parameter);
+        }
+        handler(METHOD_HANDLER_ARGS);
     }
+    *num_words_consumed = num_words_available;
+}
+
+#define METHOD_FUNC_NAME_INT(gclass, name) METHOD_FUNC_NAME(gclass, name##_int)
+#define DEF_METHOD_INT(gclass, name) DEF_METHOD(gclass, name##_int)
+
+#define DEF_METHOD_INC(gclass, name)                           \
+    DEF_METHOD_INT(gclass, name);                              \
+    DEF_METHOD(gclass, name)                                   \
+    {                                                          \
+        pgraph_method_inc(METHOD_FUNC_NAME_INT(gclass, name),  \
+                          METHOD_RANGE_END_NAME(gclass, name), \
+                          METHOD_HANDLER_ARGS);                \
+    }                                                          \
+    DEF_METHOD_INT(gclass, name)
+
+#define DEF_METHOD_NON_INC(gclass, name)                          \
+    DEF_METHOD_INT(gclass, name);                                 \
+    DEF_METHOD(gclass, name)                                      \
+    {                                                             \
+        pgraph_method_non_inc(METHOD_FUNC_NAME_INT(gclass, name), \
+                              METHOD_HANDLER_ARGS);               \
+    }                                                             \
+    DEF_METHOD_INT(gclass, name)
 
 // TODO: Optimize. Ideally this should all be done via OpenGL.
 static void pgraph_image_blit(NV2AState *d)
@@ -1905,16 +1926,16 @@ DEF_METHOD(NV097, SET_POINT_SIZE)
     SET_MASK(pg->regs[NV_PGRAPH_POINTSIZE], NV097_SET_POINT_SIZE_V, parameter);
 }
 
-DEF_METHOD_INC(NV097, SET_PROJECTION_MATRIX,
+DEF_METHOD_INC(NV097, SET_PROJECTION_MATRIX)
 {
     int slot = (method - NV097_SET_PROJECTION_MATRIX) / 4;
     // pg->projection_matrix[slot] = *(float*)&parameter;
     unsigned int row = NV_IGRAPH_XF_XFCTX_PMAT0 + slot/4;
     pg->vsh_constants[row][slot%4] = parameter;
     pg->vsh_constants_dirty[row] = true;
-})
+}
 
-DEF_METHOD_INC(NV097, SET_MODEL_VIEW_MATRIX,
+DEF_METHOD_INC(NV097, SET_MODEL_VIEW_MATRIX)
 {
     int slot = (method - NV097_SET_MODEL_VIEW_MATRIX) / 4;
     unsigned int matnum = slot / 16;
@@ -1922,9 +1943,9 @@ DEF_METHOD_INC(NV097, SET_MODEL_VIEW_MATRIX,
     unsigned int row = NV_IGRAPH_XF_XFCTX_MMAT0 + matnum*8 + entry/4;
     pg->vsh_constants[row][entry % 4] = parameter;
     pg->vsh_constants_dirty[row] = true;
-})
+}
 
-DEF_METHOD_INC(NV097, SET_INVERSE_MODEL_VIEW_MATRIX,
+DEF_METHOD_INC(NV097, SET_INVERSE_MODEL_VIEW_MATRIX)
 {
     int slot = (method - NV097_SET_INVERSE_MODEL_VIEW_MATRIX) / 4;
     unsigned int matnum = slot / 16;
@@ -1932,17 +1953,17 @@ DEF_METHOD_INC(NV097, SET_INVERSE_MODEL_VIEW_MATRIX,
     unsigned int row = NV_IGRAPH_XF_XFCTX_IMMAT0 + matnum*8 + entry/4;
     pg->vsh_constants[row][entry % 4] = parameter;
     pg->vsh_constants_dirty[row] = true;
-})
+}
 
-DEF_METHOD_INC(NV097, SET_COMPOSITE_MATRIX,
+DEF_METHOD_INC(NV097, SET_COMPOSITE_MATRIX)
 {
     int slot = (method - NV097_SET_COMPOSITE_MATRIX) / 4;
     unsigned int row = NV_IGRAPH_XF_XFCTX_CMAT0 + slot/4;
     pg->vsh_constants[row][slot%4] = parameter;
     pg->vsh_constants_dirty[row] = true;
-})
+}
 
-DEF_METHOD_INC(NV097, SET_TEXTURE_MATRIX,
+DEF_METHOD_INC(NV097, SET_TEXTURE_MATRIX)
 {
     int slot = (method - NV097_SET_TEXTURE_MATRIX) / 4;
     unsigned int tex = slot / 16;
@@ -1950,9 +1971,9 @@ DEF_METHOD_INC(NV097, SET_TEXTURE_MATRIX,
     unsigned int row = NV_IGRAPH_XF_XFCTX_T0MAT + tex*8 + entry/4;
     pg->vsh_constants[row][entry%4] = parameter;
     pg->vsh_constants_dirty[row] = true;
-})
+}
 
-DEF_METHOD_INC(NV097, SET_FOG_PARAMS,
+DEF_METHOD_INC(NV097, SET_FOG_PARAMS)
 {
     int slot = (method - NV097_SET_FOG_PARAMS) / 4;
     if (slot < 2) {
@@ -1963,10 +1984,10 @@ DEF_METHOD_INC(NV097, SET_FOG_PARAMS,
 
     pg->ltctxa[NV_IGRAPH_XF_LTCTXA_FOG_K][slot] = parameter;
     pg->ltctxa_dirty[NV_IGRAPH_XF_LTCTXA_FOG_K] = true;
-})
+}
 
 /* Handles NV097_SET_TEXGEN_PLANE_S,T,R,Q */
-DEF_METHOD_INC(NV097, SET_TEXGEN_PLANE_S,
+DEF_METHOD_INC(NV097, SET_TEXGEN_PLANE_S)
 {
     int slot = (method - NV097_SET_TEXGEN_PLANE_S) / 4;
     unsigned int tex = slot / 16;
@@ -1974,7 +1995,7 @@ DEF_METHOD_INC(NV097, SET_TEXGEN_PLANE_S,
     unsigned int row = NV_IGRAPH_XF_XFCTX_TG0MAT + tex*8 + entry/4;
     pg->vsh_constants[row][entry%4] = parameter;
     pg->vsh_constants_dirty[row] = true;
-})
+}
 
 DEF_METHOD(NV097, SET_TEXGEN_VIEW_MODEL)
 {
@@ -1982,73 +2003,73 @@ DEF_METHOD(NV097, SET_TEXGEN_VIEW_MODEL)
              parameter);
 }
 
-DEF_METHOD_INC(NV097, SET_FOG_PLANE,
+DEF_METHOD_INC(NV097, SET_FOG_PLANE)
 {
     int slot = (method - NV097_SET_FOG_PLANE) / 4;
     pg->vsh_constants[NV_IGRAPH_XF_XFCTX_FOG][slot] = parameter;
     pg->vsh_constants_dirty[NV_IGRAPH_XF_XFCTX_FOG] = true;
-})
+}
 
-DEF_METHOD_INC(NV097, SET_SCENE_AMBIENT_COLOR,
+DEF_METHOD_INC(NV097, SET_SCENE_AMBIENT_COLOR)
 {
     int slot = (method - NV097_SET_SCENE_AMBIENT_COLOR) / 4;
     // ??
     pg->ltctxa[NV_IGRAPH_XF_LTCTXA_FR_AMB][slot] = parameter;
     pg->ltctxa_dirty[NV_IGRAPH_XF_LTCTXA_FR_AMB] = true;
-})
+}
 
-DEF_METHOD_INC(NV097, SET_VIEWPORT_OFFSET,
+DEF_METHOD_INC(NV097, SET_VIEWPORT_OFFSET)
 {
     int slot = (method - NV097_SET_VIEWPORT_OFFSET) / 4;
     pg->vsh_constants[NV_IGRAPH_XF_XFCTX_VPOFF][slot] = parameter;
     pg->vsh_constants_dirty[NV_IGRAPH_XF_XFCTX_VPOFF] = true;
-})
+}
 
-DEF_METHOD_INC(NV097, SET_POINT_PARAMS,
+DEF_METHOD_INC(NV097, SET_POINT_PARAMS)
 {
     int slot = (method - NV097_SET_POINT_PARAMS) / 4;
     pg->point_params[slot] = *(float *)&parameter; /* FIXME: Where? */
-})
+}
 
-DEF_METHOD_INC(NV097, SET_EYE_POSITION,
+DEF_METHOD_INC(NV097, SET_EYE_POSITION)
 {
     int slot = (method - NV097_SET_EYE_POSITION) / 4;
     pg->vsh_constants[NV_IGRAPH_XF_XFCTX_EYEP][slot] = parameter;
     pg->vsh_constants_dirty[NV_IGRAPH_XF_XFCTX_EYEP] = true;
-})
+}
 
-DEF_METHOD_INC(NV097, SET_COMBINER_FACTOR0,
+DEF_METHOD_INC(NV097, SET_COMBINER_FACTOR0)
 {
     int slot = (method - NV097_SET_COMBINER_FACTOR0) / 4;
     pg->regs[NV_PGRAPH_COMBINEFACTOR0 + slot*4] = parameter;
-})
+}
 
-DEF_METHOD_INC(NV097, SET_COMBINER_FACTOR1,
+DEF_METHOD_INC(NV097, SET_COMBINER_FACTOR1)
 {
     int slot = (method - NV097_SET_COMBINER_FACTOR1) / 4;
     pg->regs[NV_PGRAPH_COMBINEFACTOR1 + slot*4] = parameter;
-})
+}
 
-DEF_METHOD_INC(NV097, SET_COMBINER_ALPHA_OCW,
+DEF_METHOD_INC(NV097, SET_COMBINER_ALPHA_OCW)
 {
     int slot = (method - NV097_SET_COMBINER_ALPHA_OCW) / 4;
     pg->regs[NV_PGRAPH_COMBINEALPHAO0 + slot*4] = parameter;
-})
+}
 
-DEF_METHOD_INC(NV097, SET_COMBINER_COLOR_ICW,
+DEF_METHOD_INC(NV097, SET_COMBINER_COLOR_ICW)
 {
     int slot = (method - NV097_SET_COMBINER_COLOR_ICW) / 4;
     pg->regs[NV_PGRAPH_COMBINECOLORI0 + slot*4] = parameter;
-})
+}
 
-DEF_METHOD_INC(NV097, SET_VIEWPORT_SCALE,
+DEF_METHOD_INC(NV097, SET_VIEWPORT_SCALE)
 {
     int slot = (method - NV097_SET_VIEWPORT_SCALE) / 4;
     pg->vsh_constants[NV_IGRAPH_XF_XFCTX_VPSCL][slot] = parameter;
     pg->vsh_constants_dirty[NV_IGRAPH_XF_XFCTX_VPSCL] = true;
-})
+}
 
-DEF_METHOD_INC(NV097, SET_TRANSFORM_PROGRAM,
+DEF_METHOD_INC(NV097, SET_TRANSFORM_PROGRAM)
 {
     int slot = (method - NV097_SET_TRANSFORM_PROGRAM) / 4;
 
@@ -2063,9 +2084,9 @@ DEF_METHOD_INC(NV097, SET_TRANSFORM_PROGRAM,
         SET_MASK(pg->regs[NV_PGRAPH_CHEOPS_OFFSET],
                  NV_PGRAPH_CHEOPS_OFFSET_PROG_LD_PTR, program_load+1);
     }
-})
+}
 
-DEF_METHOD_INC(NV097, SET_TRANSFORM_CONSTANT,
+DEF_METHOD_INC(NV097, SET_TRANSFORM_CONSTANT)
 {
     int slot = (method - NV097_SET_TRANSFORM_CONSTANT) / 4;
     int const_load = GET_MASK(pg->regs[NV_PGRAPH_CHEOPS_OFFSET],
@@ -2081,9 +2102,9 @@ DEF_METHOD_INC(NV097, SET_TRANSFORM_CONSTANT,
         SET_MASK(pg->regs[NV_PGRAPH_CHEOPS_OFFSET],
                  NV_PGRAPH_CHEOPS_OFFSET_CONST_LD_PTR, const_load+1);
     }
-})
+}
 
-DEF_METHOD_INC(NV097, SET_VERTEX3F,
+DEF_METHOD_INC(NV097, SET_VERTEX3F)
 {
     int slot = (method - NV097_SET_VERTEX3F) / 4;
     VertexAttribute *attribute =
@@ -2094,10 +2115,10 @@ DEF_METHOD_INC(NV097, SET_VERTEX3F,
     if (slot == 2) {
         pgraph_finish_inline_buffer_vertex(pg);
     }
-})
+}
 
 /* Handles NV097_SET_BACK_LIGHT_* */
-DEF_METHOD_INC(NV097, SET_BACK_LIGHT_AMBIENT_COLOR,
+DEF_METHOD_INC(NV097, SET_BACK_LIGHT_AMBIENT_COLOR)
 {
     int slot = (method - NV097_SET_BACK_LIGHT_AMBIENT_COLOR) / 4;
     unsigned int part = NV097_SET_BACK_LIGHT_AMBIENT_COLOR / 4 + slot % 16;
@@ -2126,10 +2147,10 @@ DEF_METHOD_INC(NV097, SET_BACK_LIGHT_AMBIENT_COLOR,
         assert(false);
         break;
     }
-})
+}
 
 /* Handles all the light source props except for NV097_SET_BACK_LIGHT_* */
-DEF_METHOD_INC(NV097, SET_LIGHT_AMBIENT_COLOR,
+DEF_METHOD_INC(NV097, SET_LIGHT_AMBIENT_COLOR)
 {
     int slot = (method - NV097_SET_LIGHT_AMBIENT_COLOR) / 4;
     unsigned int part = NV097_SET_LIGHT_AMBIENT_COLOR / 4 + slot % 32;
@@ -2194,9 +2215,9 @@ DEF_METHOD_INC(NV097, SET_LIGHT_AMBIENT_COLOR,
         assert(false);
         break;
     }
-})
+}
 
-DEF_METHOD_INC(NV097, SET_VERTEX4F,
+DEF_METHOD_INC(NV097, SET_VERTEX4F)
 {
     int slot = (method - NV097_SET_VERTEX4F) / 4;
     VertexAttribute *attribute =
@@ -2206,9 +2227,9 @@ DEF_METHOD_INC(NV097, SET_VERTEX4F,
     if (slot == 3) {
         pgraph_finish_inline_buffer_vertex(pg);
     }
-})
+}
 
-DEF_METHOD_INC(NV097, SET_VERTEX_DATA_ARRAY_FORMAT,
+DEF_METHOD_INC(NV097, SET_VERTEX_DATA_ARRAY_FORMAT)
 {
     int slot = (method - NV097_SET_VERTEX_DATA_ARRAY_FORMAT) / 4;
     VertexAttribute *attr = &pg->vertex_attributes[slot];
@@ -2273,15 +2294,15 @@ DEF_METHOD_INC(NV097, SET_VERTEX_DATA_ARRAY_FORMAT,
     } else {
         pg->compressed_attrs &= ~(1 << slot);
     }
-})
+}
 
-DEF_METHOD_INC(NV097, SET_VERTEX_DATA_ARRAY_OFFSET,
+DEF_METHOD_INC(NV097, SET_VERTEX_DATA_ARRAY_OFFSET)
 {
     int slot = (method - NV097_SET_VERTEX_DATA_ARRAY_OFFSET) / 4;
 
     pg->vertex_attributes[slot].dma_select = parameter & 0x80000000;
     pg->vertex_attributes[slot].offset = parameter & 0x7fffffff;
-})
+}
 
 DEF_METHOD(NV097, SET_LOGIC_OP_ENABLE)
 {
@@ -2871,18 +2892,18 @@ DEF_METHOD(NV097, SET_TEXTURE_SET_BUMP_ENV_OFFSET)
     pg->regs[NV_PGRAPH_BUMPOFFSET1 + slot * 4] = parameter;
 }
 
-DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT16,
+DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT16)
 {
     assert(pg->inline_elements_length < NV2A_MAX_BATCH_LENGTH);
     pg->inline_elements[pg->inline_elements_length++] = parameter & 0xFFFF;
     pg->inline_elements[pg->inline_elements_length++] = parameter >> 16;
-})
+}
 
-DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT32,
+DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT32)
 {
     assert(pg->inline_elements_length < NV2A_MAX_BATCH_LENGTH);
     pg->inline_elements[pg->inline_elements_length++] = parameter;
-})
+}
 
 DEF_METHOD(NV097, DRAW_ARRAYS)
 {
@@ -2912,11 +2933,11 @@ DEF_METHOD(NV097, DRAW_ARRAYS)
     pg->draw_arrays_prevent_connect = false;
 }
 
-DEF_METHOD_NON_INC(NV097, INLINE_ARRAY,
+DEF_METHOD_NON_INC(NV097, INLINE_ARRAY)
 {
     assert(pg->inline_array_length < NV2A_MAX_BATCH_LENGTH);
     pg->inline_array[pg->inline_array_length++] = parameter;
-})
+}
 
 DEF_METHOD(NV097, SET_EYE_VECTOR)
 {
@@ -2924,7 +2945,7 @@ DEF_METHOD(NV097, SET_EYE_VECTOR)
     pg->regs[NV_PGRAPH_EYEVEC0 + slot * 4] = parameter;
 }
 
-DEF_METHOD_INC(NV097, SET_VERTEX_DATA2F_M,
+DEF_METHOD_INC(NV097, SET_VERTEX_DATA2F_M)
 {
     int slot = (method - NV097_SET_VERTEX_DATA2F_M) / 4;
     unsigned int part = slot % 2;
@@ -2938,9 +2959,9 @@ DEF_METHOD_INC(NV097, SET_VERTEX_DATA2F_M,
     if ((slot == 0) && (part == 1)) {
         pgraph_finish_inline_buffer_vertex(pg);
     }
-})
+}
 
-DEF_METHOD_INC(NV097, SET_VERTEX_DATA4F_M,
+DEF_METHOD_INC(NV097, SET_VERTEX_DATA4F_M)
 {
     int slot = (method - NV097_SET_VERTEX_DATA4F_M) / 4;
     unsigned int part = slot % 4;
@@ -2951,9 +2972,9 @@ DEF_METHOD_INC(NV097, SET_VERTEX_DATA4F_M,
     if ((slot == 0) && (part == 3)) {
         pgraph_finish_inline_buffer_vertex(pg);
     }
-})
+}
 
-DEF_METHOD_INC(NV097, SET_VERTEX_DATA2S,
+DEF_METHOD_INC(NV097, SET_VERTEX_DATA2S)
 {
     int slot = (method - NV097_SET_VERTEX_DATA2S) / 4;
     VertexAttribute *attribute = &pg->vertex_attributes[slot];
@@ -2964,10 +2985,10 @@ DEF_METHOD_INC(NV097, SET_VERTEX_DATA2S,
     attribute->inline_value[3] = 1.0;
     if (slot == 0) {
         pgraph_finish_inline_buffer_vertex(pg);
-  }
-})
+    }
+}
 
-DEF_METHOD_INC(NV097, SET_VERTEX_DATA4UB,
+DEF_METHOD_INC(NV097, SET_VERTEX_DATA4UB)
 {
     int slot = (method - NV097_SET_VERTEX_DATA4UB) / 4;
     VertexAttribute *attribute = &pg->vertex_attributes[slot];
@@ -2979,9 +3000,9 @@ DEF_METHOD_INC(NV097, SET_VERTEX_DATA4UB,
     if (slot == 0) {
         pgraph_finish_inline_buffer_vertex(pg);
     }
-})
+}
 
-DEF_METHOD_INC(NV097, SET_VERTEX_DATA4S_M,
+DEF_METHOD_INC(NV097, SET_VERTEX_DATA4S_M)
 {
     int slot = (method - NV097_SET_VERTEX_DATA4S_M) / 4;
     unsigned int part = slot % 2;
@@ -2994,7 +3015,7 @@ DEF_METHOD_INC(NV097, SET_VERTEX_DATA4S_M,
     if ((slot == 0) && (part == 1)) {
         pgraph_finish_inline_buffer_vertex(pg);
     }
-})
+}
 
 DEF_METHOD(NV097, SET_SEMAPHORE_OFFSET)
 {
