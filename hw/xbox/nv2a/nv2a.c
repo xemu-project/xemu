@@ -344,6 +344,12 @@ static void nv2a_reset(NV2AState *d)
     d->ptimer.pending_interrupts = 0;
     d->pcrtc.pending_interrupts = 0;
 
+    for (int i = 0; i < 256; i++) {
+        d->puserdac.palette[i*3]   = i;
+        d->puserdac.palette[i*3+1] = i;
+        d->puserdac.palette[i*3+2] = i;
+    }
+
     nv2a_unlock_fifo(d);
 }
 
