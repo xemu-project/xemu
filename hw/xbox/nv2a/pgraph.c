@@ -745,55 +745,40 @@ static const struct {
 #undef DEF_METHOD_CASE_4_OFFSET
 #undef DEF_METHOD_CASE_4
 
-#define DEF_METHOD(gclass, name) \
-    DEF_METHOD_PROTO(gclass, name)
+#define DEF_METHOD(gclass, name) DEF_METHOD_PROTO(gclass, name)
 
-/* Temp helpers to aide hot methods. */
-#define NON_INC_METHOD_LOOP_BEGIN \
-    for (size_t param_iter = 0; \
-         param_iter < num_words_available; \
-         param_iter++) { \
-        parameter = ldl_le_p(parameters + param_iter); \
-        if (param_iter) { \
-            pgraph_method_log( \
-                subchannel, NV_KELVIN_PRIMITIVE, method, parameter); \
-        }
+#define DEF_METHOD_INC(gclass, name, impl)                                 \
+    DEF_METHOD(gclass, name)                                               \
+    {                                                                      \
+        size_t param_iter = 0;                                             \
+        for (; (param_iter < num_words_available) &&                       \
+               (method <= METHOD_RANGE_END_NAME(gclass, name));            \
+             param_iter++) {                                               \
+            parameter = ldl_le_p(parameters + param_iter);                 \
+            if (param_iter) {                                              \
+                pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method, \
+                                  parameter);                              \
+            }                                                              \
+            impl                                                           \
+            method += 4;                                                   \
+        }                                                                  \
+        *num_words_consumed = param_iter;                                  \
+    }
 
-#define NON_INC_METHOD_LOOP_END \
-    } \
-    *num_words_consumed = num_words_available;
-
-#define INC_METHOD_LOOP_BEGIN(gclass, name) \
-    size_t param_iter = 0; \
-    for (; (param_iter < num_words_available) && \
-           (method <= METHOD_RANGE_END_NAME(gclass, name)); \
-         param_iter++) { \
-        parameter = ldl_le_p(parameters + param_iter); \
-        if (param_iter) { \
-            pgraph_method_log( \
-                subchannel, NV_KELVIN_PRIMITIVE, method, parameter); \
-        }
-
-#define INC_METHOD_LOOP_END \
-        method += 4; \
-    } \
-    *num_words_consumed = param_iter;
-
-#define DEF_METHOD_INC(gclass, name, impl) \
-    DEF_METHOD(gclass, name) \
-    { \
-        INC_METHOD_LOOP_BEGIN(gclass, name) \
-        impl \
-        INC_METHOD_LOOP_END \
-    } \
-
-#define DEF_METHOD_NON_INC(gclass, name, impl) \
-    DEF_METHOD(gclass, name) \
-    { \
-        NON_INC_METHOD_LOOP_BEGIN \
-        impl \
-        NON_INC_METHOD_LOOP_END \
-    } \
+#define DEF_METHOD_NON_INC(gclass, name, impl)                             \
+    DEF_METHOD(gclass, name)                                               \
+    {                                                                      \
+        for (size_t param_iter = 0; param_iter < num_words_available;      \
+             param_iter++) {                                               \
+            parameter = ldl_le_p(parameters + param_iter);                 \
+            if (param_iter) {                                              \
+                pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method, \
+                                  parameter);                              \
+            }                                                              \
+            impl                                                           \
+        }                                                                  \
+        *num_words_consumed = num_words_available;                         \
+    }
 
 // TODO: Optimize. Ideally this should all be done via OpenGL.
 static void pgraph_image_blit(NV2AState *d)
