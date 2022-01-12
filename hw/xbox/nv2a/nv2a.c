@@ -120,7 +120,7 @@ const struct NV2ABlockInfo blocktable[] = {
 };
 #undef ENTRY
 
-#ifdef NV2A_DEBUG
+#ifdef DEBUG_NV2A_REG
 static const char *nv2a_reg_names[] = {};
 
 void nv2a_reg_log_read(int block, hwaddr addr, uint64_t val)

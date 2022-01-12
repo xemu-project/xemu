@@ -492,7 +492,7 @@ extern GloContext *g_nv2a_context_display;
 
 void nv2a_update_irq(NV2AState *d);
 
-#ifdef NV2A_DEBUG
+#ifdef DEBUG_NV2A_REG
 void nv2a_reg_log_read(int block, hwaddr addr, uint64_t val);
 void nv2a_reg_log_write(int block, hwaddr addr, uint64_t val);
 #else
