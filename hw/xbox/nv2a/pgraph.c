@@ -407,6 +407,8 @@ static void pgraph_download_surface_data_to_buffer(NV2AState *d,
                                                    bool downscale,
                                                    uint8_t *pixels);
 static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface, bool force);
+static void pgraph_populate_surface_binding_entry(NV2AState *d, bool color,
+                                                  SurfaceBinding *entry);
 static bool pgraph_check_surface_compatibility(SurfaceBinding *s1, SurfaceBinding *s2, bool strict);
 static bool pgraph_check_surface_to_texture_compatibility(const SurfaceBinding *surface, const TextureShape *shape);
 static void pgraph_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface, TextureBinding *texture, TextureShape *texture_shape, int texture_unit);
@@ -5777,6 +5779,17 @@ static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                  surface->fmt.bytes_per_pixel);
 
     PGRAPHState *pg = &d->pgraph;
+
+    SurfaceBinding entry;
+    pgraph_populate_surface_binding_entry(d, surface->color, &entry);
+    bool compatible = pgraph_check_surface_compatibility(&entry, surface, true);
+    if (!compatible) {
+        surface->pitch = entry.pitch;
+        surface->shape.clip_x = entry.shape.clip_x;
+        surface->shape.clip_y = entry.shape.clip_y;
+        surface->width = entry.width;
+        surface->height = entry.height;
+    }
 
     surface->upload_pending = false;
     surface->draw_time = pg->draw_time;
