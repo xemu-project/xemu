@@ -793,14 +793,25 @@ STRUCT_VERTEX_DATA);
         case FOG_MODE_LINEAR_ABS:
 
             /* f = (end - d) / (end - start)
-             *    fogParam[1] = 1 / (end - start)
-             *    fogParam[0] = 1 + end * fogParam[1];
+             *    fogParam[1] = -1 / (end - start)
+             *    fogParam[0] = 1 - end * fogParam[1];
              */
 
+            mstring_append(body,
+                "  if (isinf(fogDistance)) {\n"
+                "    fogDistance = 0.0;\n"
+                "  }\n"
+            );
             mstring_append(body, "  float fogFactor = fogParam[0] + fogDistance * fogParam[1];\n");
-            mstring_append(body, "  fogFactor -= 1.0;\n"); /* FIXME: WHHYYY?!! */
+            mstring_append(body, "  fogFactor -= 1.0;\n");
             break;
         case FOG_MODE_EXP:
+          mstring_append(body,
+                         "  if (isinf(fogDistance)) {\n"
+                         "    fogDistance = 0.0;\n"
+                         "  }\n"
+          );
+          /* fallthru */
         case FOG_MODE_EXP_ABS:
 
             /* f = 1 / (e^(d * density))
@@ -809,7 +820,7 @@ STRUCT_VERTEX_DATA);
              */
 
             mstring_append(body, "  float fogFactor = fogParam[0] + exp2(fogDistance * fogParam[1] * 16.0);\n");
-            mstring_append(body, "  fogFactor -= 1.5;\n"); /* FIXME: WHHYYY?!! */
+            mstring_append(body, "  fogFactor -= 1.5;\n");
             break;
         case FOG_MODE_EXP2:
         case FOG_MODE_EXP2_ABS:
@@ -820,7 +831,7 @@ STRUCT_VERTEX_DATA);
              */
 
             mstring_append(body, "  float fogFactor = fogParam[0] + exp2(-fogDistance * fogDistance * fogParam[1] * fogParam[1] * 32.0);\n");
-            mstring_append(body, "  fogFactor -= 1.5;\n"); /* FIXME: WHHYYY?!! */
+            mstring_append(body, "  fogFactor -= 1.5;\n");
             break;
         default:
             assert(false);
@@ -836,7 +847,7 @@ STRUCT_VERTEX_DATA);
         default:
             break;
         }
-        /* FIXME: What about fog alpha?! */
+
         mstring_append(body, "  oFog.xyzw = vec4(fogFactor);\n");
     } else {
         /* FIXME: Is the fog still calculated / passed somehow?!
