@@ -31,7 +31,10 @@
 
 // #define DEBUG_NV2A
 #ifdef DEBUG_NV2A
-# define NV2A_DPRINTF(format, ...)       printf("nv2a: " format, ## __VA_ARGS__)
+extern int (*nv2a_log)(const char* format, ...);
+void nv2a_log_enable(void);
+void nv2a_log_disable(void);
+# define NV2A_DPRINTF(format, ...)       nv2a_log("nv2a: " format, ## __VA_ARGS__)
 #else
 # define NV2A_DPRINTF(format, ...)       do { } while (0)
 #endif

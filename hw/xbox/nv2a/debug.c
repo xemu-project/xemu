@@ -38,6 +38,28 @@ static int32_t renderdoc_capture_frames = 0;
 static bool has_GL_GREMEDY_frame_terminator = false;
 static bool has_GL_KHR_debug = false;
 
+#ifdef DEBUG_NV2A
+#include <stdio.h>
+
+int (*nv2a_log)(const char* format, ...) = printf;
+
+static int nv2a_null_printf(const char* format, ...)
+{
+    return 0;
+}
+
+void nv2a_log_enable(void)
+{
+    nv2a_log = printf;
+}
+
+void nv2a_log_disable(void)
+{
+    nv2a_log = nv2a_null_printf;
+}
+
+#endif // DEBUG_NV2A
+
 void gl_debug_initialize(void)
 {
     has_GL_KHR_debug = glo_check_extension("GL_KHR_debug");
@@ -89,7 +111,7 @@ void gl_debug_message(bool cc, const char *fmt, ...)
 
     glDebugMessageInsert(GL_DEBUG_SOURCE_APPLICATION, GL_DEBUG_TYPE_MARKER,
                          0, GL_DEBUG_SEVERITY_NOTIFICATION, n, buffer);
-    if (cc) {
+    if (cc && nv2a_log != nv2a_null_printf) {
         fwrite(buffer, sizeof(char), n, stdout);
         fputc('\n', stdout);
     }
@@ -170,12 +192,12 @@ void gl_debug_frame_terminator(void)
 #ifdef ENABLE_RENDERDOC
 
 bool nv2a_dbg_renderdoc_available(void) {
-  return rdoc_api != NULL;
+    return rdoc_api != NULL;
 }
 
 void nv2a_dbg_renderdoc_capture_frames(uint32_t num_frames) {
-  renderdoc_capture_frames = num_frames;
+    renderdoc_capture_frames = num_frames;
 }
 #endif // ENABLE_RENDERDOC
 
-#endif
+#endif // DEBUG_NV2A_GL

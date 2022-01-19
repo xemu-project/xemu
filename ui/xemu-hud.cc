@@ -1887,6 +1887,10 @@ public:
 static MonitorWindow monitor_window;
 static DebugApuWindow apu_window;
 static DebugVideoWindow video_window;
+#ifdef DEBUG_NV2A
+static bool nv2a_log_enabled = true;
+static bool nv2a_log_enabled_last_frame = true;
+#endif
 static InputWindow input_window;
 static NetworkWindow network_window;
 static AboutWindow about_window;
@@ -2150,6 +2154,9 @@ static void ShowMainMenu()
             if (nv2a_dbg_renderdoc_available()) {
                 ImGui::MenuItem("RenderDoc: Capture", NULL, &capture_renderdoc_frame);
             }
+#endif
+#ifdef DEBUG_NV2A
+            ImGui::MenuItem("Toggle nv2a logging", NULL, &nv2a_log_enabled);
 #endif
             ImGui::EndMenu();
         }
@@ -2479,6 +2486,16 @@ void xemu_hud_render(void)
     network_window.Draw();
     compatibility_reporter_window.Draw();
     notification_manager.Draw();
+#ifdef DEBUG_NV2A
+    if (nv2a_log_enabled != nv2a_log_enabled_last_frame) {
+        if (nv2a_log_enabled) {
+            nv2a_log_enable();
+        } else {
+            nv2a_log_disable();
+        }
+        nv2a_log_enabled_last_frame = nv2a_log_enabled;
+    }
+#endif
 #if defined(_WIN32)
     update_window.Draw();
 #endif
