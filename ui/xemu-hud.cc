@@ -1898,6 +1898,10 @@ static AutoUpdateWindow update_window;
 #endif
 static std::deque<const char *> g_errors;
 
+#ifdef ENABLE_RENDERDOC
+static bool capture_renderdoc_frame = false;
+#endif
+
 class FirstBootWindow
 {
 public:
@@ -2058,6 +2062,12 @@ static void process_keyboard_shortcuts(void)
     if (is_key_pressed(SDL_SCANCODE_GRAVE)) {
         monitor_window.toggle_open();
     }
+
+#ifdef ENABLE_RENDERDOC
+    if (is_key_pressed(SDL_SCANCODE_F10)) {
+        nv2a_dbg_renderdoc_capture_frames(1);
+    }
+#endif
 }
 
 #if defined(__APPLE__)
@@ -2136,6 +2146,11 @@ static void ShowMainMenu()
             ImGui::MenuItem("Monitor", "~", &monitor_window.is_open);
             ImGui::MenuItem("Audio", NULL, &apu_window.is_open);
             ImGui::MenuItem("Video", NULL, &video_window.is_open);
+#ifdef ENABLE_RENDERDOC
+            if (nv2a_dbg_renderdoc_available()) {
+                ImGui::MenuItem("RenderDoc: Capture", NULL, &capture_renderdoc_frame);
+            }
+#endif
             ImGui::EndMenu();
         }
 
@@ -2412,6 +2427,13 @@ void xemu_hud_render(void)
 
     ImGui::NewFrame();
     process_keyboard_shortcuts();
+
+#ifdef ENABLE_RENDERDOC
+    if (capture_renderdoc_frame) {
+        nv2a_dbg_renderdoc_capture_frames(1);
+        capture_renderdoc_frame = false;
+    }
+#endif
 
     bool show_main_menu = true;
 
