@@ -653,6 +653,12 @@
 #   define NV_PVIDEO_FORMAT_COLOR                             0x00030000
 #       define NV_PVIDEO_FORMAT_COLOR_LE_CR8YB8CB8YA8             1
 #   define NV_PVIDEO_FORMAT_DISPLAY                            (1 << 20)
+#       define NV_PVIDEO_FORMAT_DISPLAY_COLOR_KEY                 1
+#define NV_PVIDEO_COLOR_KEY                              0x00000B00
+#   define NV_PVIDEO_COLOR_KEY_RED                            0x00FF0000
+#   define NV_PVIDEO_COLOR_KEY_GREEN                          0x0000FF00
+#   define NV_PVIDEO_COLOR_KEY_BLUE                           0x000000FF
+#   define NV_PVIDEO_COLOR_KEY_ALPHA                          0xFF000000
 
 
 #define NV_PTIMER_INTR_0                                 0x00000100
