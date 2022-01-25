@@ -2241,7 +2241,107 @@ DEF_METHOD_INC(NV097, SET_VERTEX4F)
     }
 }
 
-#define SET_VERTEX_ATTRIBUTE(command, attr_index) \
+DEF_METHOD_INC(NV097, SET_NORMAL3S)
+{
+    int slot = (method - NV097_SET_NORMAL3S) / 4;
+    unsigned int part = slot % 2;
+    VertexAttribute *attribute =
+        &pg->vertex_attributes[NV2A_VERTEX_ATTR_NORMAL];
+    pgraph_allocate_inline_buffer_vertices(pg, NV2A_VERTEX_ATTR_NORMAL);
+    int16_t val = parameter & 0xFFFF;
+    attribute->inline_value[part * 2 + 0] = MAX(-1.0f, (float)val / 32767.0f);
+    val = parameter >> 16;
+    attribute->inline_value[part * 2 + 1] = MAX(-1.0f, (float)val / 32767.0f);
+}
+
+#define SET_VERTEX_ATTRIBUTE_4S(command, attr_index)                     \
+    do {                                                                   \
+        int slot = (method - (command)) / 4;                               \
+        unsigned int part = slot % 2;                                      \
+        VertexAttribute *attribute = &pg->vertex_attributes[(attr_index)]; \
+        pgraph_allocate_inline_buffer_vertices(pg, (attr_index));          \
+        attribute->inline_value[part * 2 + 0] =                            \
+            (float)(int16_t)(parameter & 0xFFFF);                          \
+        attribute->inline_value[part * 2 + 1] =                            \
+            (float)(int16_t)(parameter >> 16);                             \
+    } while (0)
+
+DEF_METHOD_INC(NV097, SET_TEXCOORD0_4S)
+{
+    SET_VERTEX_ATTRIBUTE_4S(NV097_SET_TEXCOORD0_4S, NV2A_VERTEX_ATTR_TEXTURE0);
+}
+
+DEF_METHOD_INC(NV097, SET_TEXCOORD1_4S)
+{
+    SET_VERTEX_ATTRIBUTE_4S(NV097_SET_TEXCOORD1_4S, NV2A_VERTEX_ATTR_TEXTURE1);
+}
+
+DEF_METHOD_INC(NV097, SET_TEXCOORD2_4S)
+{
+    SET_VERTEX_ATTRIBUTE_4S(NV097_SET_TEXCOORD2_4S, NV2A_VERTEX_ATTR_TEXTURE2);
+}
+
+DEF_METHOD_INC(NV097, SET_TEXCOORD3_4S)
+{
+    SET_VERTEX_ATTRIBUTE_4S(NV097_SET_TEXCOORD3_4S, NV2A_VERTEX_ATTR_TEXTURE3);
+}
+
+#undef SET_VERTEX_ATTRIBUTE_4S
+
+#define SET_VERTEX_ATRIBUTE_TEX_2S(attr_index)                             \
+    do {                                                                   \
+        VertexAttribute *attribute = &pg->vertex_attributes[(attr_index)]; \
+        pgraph_allocate_inline_buffer_vertices(pg, (attr_index));          \
+        attribute->inline_value[0] = (float)(int16_t)(parameter & 0xFFFF); \
+        attribute->inline_value[1] = (float)(int16_t)(parameter >> 16);    \
+        attribute->inline_value[2] = 0.0f;                                 \
+        attribute->inline_value[3] = 1.0f;                                 \
+    } while (0)
+
+DEF_METHOD_INC(NV097, SET_TEXCOORD0_2S)
+{
+    SET_VERTEX_ATRIBUTE_TEX_2S(NV2A_VERTEX_ATTR_TEXTURE0);
+}
+
+DEF_METHOD_INC(NV097, SET_TEXCOORD1_2S)
+{
+    SET_VERTEX_ATRIBUTE_TEX_2S(NV2A_VERTEX_ATTR_TEXTURE1);
+}
+
+DEF_METHOD_INC(NV097, SET_TEXCOORD2_2S)
+{
+    SET_VERTEX_ATRIBUTE_TEX_2S(NV2A_VERTEX_ATTR_TEXTURE2);
+}
+
+DEF_METHOD_INC(NV097, SET_TEXCOORD3_2S)
+{
+    SET_VERTEX_ATRIBUTE_TEX_2S(NV2A_VERTEX_ATTR_TEXTURE3);
+}
+
+#undef SET_VERTEX_ATRIBUTE_TEX_2S
+
+#define SET_VERTEX_COLOR_3F(command, attr_index)                           \
+    do {                                                                   \
+        int slot = (method - (command)) / 4;                               \
+        VertexAttribute *attribute = &pg->vertex_attributes[(attr_index)]; \
+        pgraph_allocate_inline_buffer_vertices(pg, (attr_index));          \
+        attribute->inline_value[slot] = *(float*)&parameter;               \
+        attribute->inline_value[3] = 1.0f;                                 \
+    } while (0)
+
+DEF_METHOD_INC(NV097, SET_DIFFUSE_COLOR3F)
+{
+    SET_VERTEX_COLOR_3F(NV097_SET_DIFFUSE_COLOR3F, NV2A_VERTEX_ATTR_DIFFUSE);
+}
+
+DEF_METHOD_INC(NV097, SET_SPECULAR_COLOR3F)
+{
+    SET_VERTEX_COLOR_3F(NV097_SET_SPECULAR_COLOR3F, NV2A_VERTEX_ATTR_SPECULAR);
+}
+
+#undef SET_VERTEX_COLOR_3F
+
+#define SET_VERTEX_ATTRIBUTE_F(command, attr_index)                        \
     do {                                                                   \
         int slot = (method - (command)) / 4;                               \
         VertexAttribute *attribute = &pg->vertex_attributes[(attr_index)]; \
@@ -2249,42 +2349,104 @@ DEF_METHOD_INC(NV097, SET_VERTEX4F)
         attribute->inline_value[slot] = *(float*)&parameter;               \
     } while (0)
 
-DEF_METHOD_INC(NV097, SET_NORMAL)
+DEF_METHOD_INC(NV097, SET_NORMAL3F)
 {
-    SET_VERTEX_ATTRIBUTE(NV097_SET_NORMAL, NV2A_VERTEX_ATTR_NORMAL);
+    SET_VERTEX_ATTRIBUTE_F(NV097_SET_NORMAL3F, NV2A_VERTEX_ATTR_NORMAL);
 }
 
 DEF_METHOD_INC(NV097, SET_DIFFUSE_COLOR4F)
 {
-    SET_VERTEX_ATTRIBUTE(NV097_SET_DIFFUSE_COLOR4F, NV2A_VERTEX_ATTR_DIFFUSE);
+    SET_VERTEX_ATTRIBUTE_F(NV097_SET_DIFFUSE_COLOR4F, NV2A_VERTEX_ATTR_DIFFUSE);
 }
 
 DEF_METHOD_INC(NV097, SET_SPECULAR_COLOR4F)
 {
-    SET_VERTEX_ATTRIBUTE(NV097_SET_SPECULAR_COLOR4F, NV2A_VERTEX_ATTR_SPECULAR);
+    SET_VERTEX_ATTRIBUTE_F(NV097_SET_SPECULAR_COLOR4F,
+                           NV2A_VERTEX_ATTR_SPECULAR);
 }
 
-DEF_METHOD_INC(NV097, SET_TEXCOORD0)
+DEF_METHOD_INC(NV097, SET_TEXCOORD0_4F)
 {
-    SET_VERTEX_ATTRIBUTE(NV097_SET_TEXCOORD0, NV2A_VERTEX_ATTR_TEXTURE0);
+    SET_VERTEX_ATTRIBUTE_F(NV097_SET_TEXCOORD0_4F, NV2A_VERTEX_ATTR_TEXTURE0);
 }
 
-DEF_METHOD_INC(NV097, SET_TEXCOORD1)
+DEF_METHOD_INC(NV097, SET_TEXCOORD1_4F)
 {
-    SET_VERTEX_ATTRIBUTE(NV097_SET_TEXCOORD1, NV2A_VERTEX_ATTR_TEXTURE1);
+    SET_VERTEX_ATTRIBUTE_F(NV097_SET_TEXCOORD1_4F, NV2A_VERTEX_ATTR_TEXTURE1);
 }
 
-DEF_METHOD_INC(NV097, SET_TEXCOORD2)
+
+DEF_METHOD_INC(NV097, SET_TEXCOORD2_4F)
 {
-    SET_VERTEX_ATTRIBUTE(NV097_SET_TEXCOORD2, NV2A_VERTEX_ATTR_TEXTURE2);
+    SET_VERTEX_ATTRIBUTE_F(NV097_SET_TEXCOORD2_4F, NV2A_VERTEX_ATTR_TEXTURE2);
 }
 
-DEF_METHOD_INC(NV097, SET_TEXCOORD3)
+DEF_METHOD_INC(NV097, SET_TEXCOORD3_4F)
 {
-    SET_VERTEX_ATTRIBUTE(NV097_SET_TEXCOORD3, NV2A_VERTEX_ATTR_TEXTURE3);
+    SET_VERTEX_ATTRIBUTE_F(NV097_SET_TEXCOORD3_4F, NV2A_VERTEX_ATTR_TEXTURE3);
 }
 
-#undef SET_VERTEX_ATTRIBUTE
+#undef SET_VERTEX_ATTRIBUTE_F
+
+#define SET_VERTEX_ATRIBUTE_TEX_2F(command, attr_index)                    \
+    do {                                                                   \
+        int slot = (method - (command)) / 4;                               \
+        VertexAttribute *attribute = &pg->vertex_attributes[(attr_index)]; \
+        pgraph_allocate_inline_buffer_vertices(pg, (attr_index));          \
+        attribute->inline_value[slot] = *(float*)&parameter;               \
+        attribute->inline_value[2] = 0.0f;                                 \
+        attribute->inline_value[3] = 1.0f;                                 \
+    } while (0)
+
+DEF_METHOD_INC(NV097, SET_TEXCOORD0_2F)
+{
+    SET_VERTEX_ATRIBUTE_TEX_2F(NV097_SET_TEXCOORD0_2F,
+                               NV2A_VERTEX_ATTR_TEXTURE0);
+}
+
+DEF_METHOD_INC(NV097, SET_TEXCOORD1_2F)
+{
+    SET_VERTEX_ATRIBUTE_TEX_2F(NV097_SET_TEXCOORD1_2F,
+                               NV2A_VERTEX_ATTR_TEXTURE1);
+}
+
+DEF_METHOD_INC(NV097, SET_TEXCOORD2_2F)
+{
+    SET_VERTEX_ATRIBUTE_TEX_2F(NV097_SET_TEXCOORD2_2F,
+                               NV2A_VERTEX_ATTR_TEXTURE2);
+}
+
+DEF_METHOD_INC(NV097, SET_TEXCOORD3_2F)
+{
+    SET_VERTEX_ATRIBUTE_TEX_2F(NV097_SET_TEXCOORD3_2F,
+                               NV2A_VERTEX_ATTR_TEXTURE3);
+}
+
+#undef SET_VERTEX_ATRIBUTE_TEX_2F
+
+#define SET_VERTEX_ATTRIBUTE_4UB(command, attr_index)                       \
+    do {                                                                   \
+        VertexAttribute *attribute = &pg->vertex_attributes[(attr_index)]; \
+        pgraph_allocate_inline_buffer_vertices(pg, (attr_index));          \
+        attribute->inline_value[0] = (parameter & 0xFF) / 255.0f;          \
+        attribute->inline_value[1] = ((parameter >> 8) & 0xFF) / 255.0f;   \
+        attribute->inline_value[2] = ((parameter >> 16) & 0xFF) / 255.0f;  \
+        attribute->inline_value[3] = ((parameter >> 24) & 0xFF) / 255.0f;  \
+    } while (0)
+
+DEF_METHOD_INC(NV097, SET_DIFFUSE_COLOR4UB)
+{
+    SET_VERTEX_ATTRIBUTE_4UB(NV097_SET_DIFFUSE_COLOR4UB,
+                             NV2A_VERTEX_ATTR_DIFFUSE);
+}
+
+DEF_METHOD_INC(NV097, SET_SPECULAR_COLOR4UB)
+{
+    SET_VERTEX_ATTRIBUTE_4UB(NV097_SET_SPECULAR_COLOR4UB,
+                             NV2A_VERTEX_ATTR_SPECULAR);
+}
+
+#undef SET_VERTEX_ATTRIBUTE_4UB
 
 DEF_METHOD_INC(NV097, SET_VERTEX_DATA_ARRAY_FORMAT)
 {
