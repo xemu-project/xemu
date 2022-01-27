@@ -273,7 +273,6 @@ static void append_skinning_code(MString* str, bool mix,
                 mstring_append_fmt(str, "%s += (%s * %s%d).%s * weight.%c;\n",
                                    output, input, matrix, i, swizzle, c);
             }
-            assert(false); /* FIXME: Untested */
         }
     }
 }
