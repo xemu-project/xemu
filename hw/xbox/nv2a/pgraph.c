@@ -6533,21 +6533,28 @@ static uint8_t* convert_texture_data(const TextureShape s,
                                      unsigned int slice_pitch)
 {
     if (s.color_format == NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8) {
-        assert(depth == 1); /* FIXME */
-        uint8_t* converted_data = (uint8_t*)g_malloc(width * height * 4);
-        int x, y;
-        for (y = 0; y < height; y++) {
-            for (x = 0; x < width; x++) {
-                uint8_t index = data[y * row_pitch + x];
-                uint32_t color = *(uint32_t*)(palette_data + index * 4);
-                *(uint32_t*)(converted_data + y * width * 4 + x * 4) = color;
+        uint8_t* converted_data = (uint8_t*)g_malloc(width * height * depth * 4);
+        int x, y, z;
+        const uint8_t* src = data;
+        uint32_t* dst = (uint32_t*)converted_data;
+        for (z = 0; z < depth; z++) {
+            for (y = 0; y < height; y++) {
+                for (x = 0; x < width; x++) {
+                    uint8_t index = src[y * row_pitch + x];
+                    uint32_t color = *(uint32_t * )(palette_data + index * 4);
+                    *dst++ = color;
+                }
             }
+            src += slice_pitch;
         }
         return converted_data;
     } else if (s.color_format
                    == NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8 ||
                    s.color_format
                    == NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_YB8CR8YA8CB8) {
+        // TODO: Investigate whether a non-1 depth is possible.
+        // Generally the hardware asserts when attempting to use volumetric
+        // textures in linear formats.
         assert(depth == 1); /* FIXME */
         // FIXME: only valid if control0 register allows for colorspace conversion
         uint8_t* converted_data = (uint8_t*)g_malloc(width * height * 4);
