@@ -6662,17 +6662,6 @@ static void pgraph_bind_vertex_attributes(NV2AState *d,
             updated_memory_buffer = true;
         }
 
-        if (attr->needs_conversion) {
-            glVertexAttribIPointer(i, attr->gl_count, attr->gl_type, stride,
-                                   (void *)attrib_data_addr);
-        } else {
-            glVertexAttribPointer(i, attr->gl_count, attr->gl_type,
-                                  attr->gl_normalize, stride,
-                                  (void *)attrib_data_addr);
-        }
-
-        glEnableVertexAttribArray(i);
-
         uint32_t provoking_element_index = provoking_element - min_element;
         size_t element_size = attr->size * attr->count;
         assert(element_size <= sizeof(attr->inline_value));
@@ -6683,12 +6672,26 @@ static void pgraph_bind_vertex_attributes(NV2AState *d,
         } else {
             last_entry = d->vram_ptr + start;
         }
-        if (stride) {
-            last_entry += stride * provoking_element_index;
-        } else {
-            last_entry += element_size * provoking_element_index;
+        if (!stride) {
+            // Stride of 0 indicates that only the first element should be
+            // used.
+            pgraph_update_inline_value(attr, last_entry);
+            glDisableVertexAttribArray(i);
+            glVertexAttrib4fv(i, attr->inline_value);
+            continue;
         }
 
+        if (attr->needs_conversion) {
+            glVertexAttribIPointer(i, attr->gl_count, attr->gl_type, stride,
+                                   (void *)attrib_data_addr);
+        } else {
+            glVertexAttribPointer(i, attr->gl_count, attr->gl_type,
+                                  attr->gl_normalize, stride,
+                                  (void *)attrib_data_addr);
+        }
+
+        glEnableVertexAttribArray(i);
+        last_entry += stride * provoking_element_index;
         pgraph_update_inline_value(attr, last_entry);
     }
 
