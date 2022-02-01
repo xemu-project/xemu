@@ -62,6 +62,9 @@ xemu_ss.add(sdl, opengl, openssl, imgui)
 xemu_ss.add(when: 'CONFIG_LINUX', if_true: [xemu_gtk, files('xemu-os-utils-linux.c', 'noc_file_dialog_gtk.c')])
 xemu_ss.add(when: 'CONFIG_WIN32', if_true: files('xemu-os-utils-windows.c', 'noc_file_dialog_win32.c'))
 xemu_ss.add(when: 'CONFIG_DARWIN', if_true: files('xemu-os-utils-macos.m', 'noc_file_dialog_macos.m'))
+
+xemu_ss.add(whend: 'CONFIG_RENDERDOC', if_true: [libdl])
+
 softmmu_ss.add_all(xemu_ss)
 
 softmmu_ss.add([spice_headers, files('spice-module.c')])

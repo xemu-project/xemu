@@ -469,7 +469,7 @@ if 'CONFIG_SPICE_PROTOCOL' in config_host
 endif
 rt = cc.find_library('rt', required: false)
 libdl = not_found
-if 'CONFIG_PLUGIN' in config_host
+if 'CONFIG_PLUGIN' in config_host or get_option('renderdoc').enabled()
   libdl = cc.find_library('dl', required: false)
   if not cc.has_function('dlopen', dependencies: libdl)
     error('dlopen not found')
@@ -1224,6 +1224,19 @@ endif
 have_host_block_device = (targetos != 'darwin' or
     cc.has_header('IOKit/storage/IOMedia.h'))
 
+have_renderdoc = false
+if have_system and get_option('renderdoc').enabled()
+  if not cc.has_header('renderdoc_app.h')
+    error('renderdoc required, but renderdoc_app.h was not found')
+  else
+    if targetos == 'linux' and not libdl.found()
+      error('renderdoc required, but libdl was not found')
+    else
+      have_renderdoc = true
+    endif
+  endif
+endif
+
 #################
 # config-host.h #
 #################
@@ -1324,6 +1337,7 @@ config_host_data.set('QEMU_VERSION_MINOR', meson.project_version().split('.')[1]
 config_host_data.set('QEMU_VERSION_MICRO', meson.project_version().split('.')[2])
 
 config_host_data.set('HAVE_HOST_BLOCK_DEVICE', have_host_block_device)
+config_host_data.set('CONFIG_RENDERDOC', have_renderdoc)
 
 # has_header
 config_host_data.set('CONFIG_EPOLL', cc.has_header('sys/epoll.h'))
