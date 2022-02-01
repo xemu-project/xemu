@@ -344,6 +344,7 @@ pvrdma="$default_feature"
 gprof="no"
 debug_tcg="no"
 debug="no"
+renderdoc="$auto"
 sanitizers="no"
 tsan="no"
 fortify_source="$default_feature"
@@ -1111,6 +1112,10 @@ for opt do
   --disable-nvmm) nvmm="disabled"
   ;;
   --enable-nvmm) nvmm="enabled"
+  ;;
+  --disable-renderdoc) renderdoc="disabled"
+  ;;
+  --enable-renderdoc) renderdoc="enabled"
   ;;
   --disable-whpx) whpx="disabled"
   ;;
@@ -1974,6 +1979,7 @@ disabled with --disable-FEATURE, default is enabled if available
   multiprocess    Out of process device emulation support
   gio             libgio support
   slirp-smbd      use smbd (at path --smbd=*) in slirp networking
+  renderdoc       improved RenderDoc frame capture support
 
 NOTE: The object files are built at the place where configure is launched
 EOF
@@ -5315,7 +5321,8 @@ if test "$skip_meson" = no; then
         -Dattr=$attr -Ddefault_devices=$default_devices -Dvirglrenderer=$virglrenderer \
         -Ddocs=$docs -Dsphinx_build=$sphinx_build -Dinstall_blobs=$blobs \
         -Dvhost_user_blk_server=$vhost_user_blk_server -Dmultiprocess=$multiprocess \
-        -Dfuse=$fuse -Dfuse_lseek=$fuse_lseek -Dguest_agent_msi=$guest_agent_msi -Dbpf=$bpf\
+        -Dfuse=$fuse -Dfuse_lseek=$fuse_lseek -Dguest_agent_msi=$guest_agent_msi -Dbpf=$bpf \
+        -Drenderdoc=$renderdoc \
         $(if test "$default_feature" = no; then echo "-Dauto_features=disabled"; fi) \
 	-Dtcg_interpreter=$tcg_interpreter \
         $cross_arg \

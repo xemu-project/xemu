@@ -39,11 +39,9 @@
 // #define DEBUG_NV2A_GL
 #ifdef DEBUG_NV2A_GL
 
-// Improve frame capture boundaries with RenderDoc.
-// #define ENABLE_RENDERDOC
-
 #include <stdbool.h>
 #include "gl/gloffscreen.h"
+#include "config-host.h"
 
 void gl_debug_initialize(void);
 void gl_debug_message(bool cc, const char *fmt, ...);
@@ -62,6 +60,19 @@ void gl_debug_frame_terminator(void);
     gl_debug_label(target, name, "nv2a: { " format " }", ## __VA_ARGS__)
 #define NV2A_GL_DFRAME_TERMINATOR() \
     gl_debug_frame_terminator()
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifdef CONFIG_RENDERDOC
+bool nv2a_dbg_renderdoc_available(void);
+void nv2a_dbg_renderdoc_capture_frames(uint32_t num_frames);
+#endif
+
+#ifdef __cplusplus
+}
+#endif
 
 #else
 # define NV2A_GL_DPRINTF(cc, format, ...)          do { \
@@ -150,11 +161,6 @@ extern NV2AStats g_nv2a_stats;
 
 const char *nv2a_profile_get_counter_name(unsigned int cnt);
 int nv2a_profile_get_counter_value(unsigned int cnt);
-
-#ifdef ENABLE_RENDERDOC
-bool nv2a_dbg_renderdoc_available(void);
-void nv2a_dbg_renderdoc_capture_frames(uint32_t num_frames);
-#endif
 
 #ifdef __cplusplus
 }
