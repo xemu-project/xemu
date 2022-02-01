@@ -41,6 +41,7 @@
 #include "hw/pci/pci.h"
 #include "cpu.h"
 
+#include "trace.h"
 #include "swizzle.h"
 #include "lru.h"
 #include "gl/gloffscreen.h"
@@ -488,19 +489,32 @@ typedef struct NV2ABlockInfo {
     uint64_t size;
     MemoryRegionOps ops;
 } NV2ABlockInfo;
+extern const NV2ABlockInfo blocktable[NV_NUM_BLOCKS];
 
 extern GloContext *g_nv2a_context_render;
 extern GloContext *g_nv2a_context_display;
 
 void nv2a_update_irq(NV2AState *d);
 
-#ifdef DEBUG_NV2A_REG
-void nv2a_reg_log_read(int block, hwaddr addr, uint64_t val);
-void nv2a_reg_log_write(int block, hwaddr addr, uint64_t val);
-#else
-#define nv2a_reg_log_read(block, addr, val) do {} while (0)
-#define nv2a_reg_log_write(block, addr, val) do {} while (0)
-#endif
+static inline
+void nv2a_reg_log_read(int block, hwaddr addr, unsigned int size, uint64_t val)
+{
+    const char *block_name = "UNK";
+    if (block < ARRAY_SIZE(blocktable) && blocktable[block].name) {
+        block_name = blocktable[block].name;
+    }
+    trace_nv2a_reg_read(block_name, addr, size, val);
+}
+
+static inline
+void nv2a_reg_log_write(int block, hwaddr addr, unsigned int size, uint64_t val)
+{
+    const char *block_name = "UNK";
+    if (block < ARRAY_SIZE(blocktable) && blocktable[block].name) {
+        block_name = blocktable[block].name;
+    }
+    trace_nv2a_reg_write(block_name, addr, size, val);
+}
 
 #define DEFINE_PROTO(n) \
     uint64_t n##_read(void *opaque, hwaddr addr, unsigned int size); \

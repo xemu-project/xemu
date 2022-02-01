@@ -42,7 +42,7 @@ uint64_t pfb_read(void *opaque, hwaddr addr, unsigned int size)
         break;
     }
 
-    nv2a_reg_log_read(NV_PFB, addr, r);
+    nv2a_reg_log_read(NV_PFB, addr, size, r);
     return r;
 }
 
@@ -50,7 +50,7 @@ void pfb_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
 
-    nv2a_reg_log_write(NV_PFB, addr, val);
+    nv2a_reg_log_write(NV_PFB, addr, size, val);
 
     switch (addr) {
     default:

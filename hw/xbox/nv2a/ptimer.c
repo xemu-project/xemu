@@ -59,7 +59,7 @@ uint64_t ptimer_read(void *opaque, hwaddr addr, unsigned int size)
         break;
     }
 
-    nv2a_reg_log_read(NV_PTIMER, addr, r);
+    nv2a_reg_log_read(NV_PTIMER, addr, size, r);
     return r;
 }
 
@@ -67,7 +67,7 @@ void ptimer_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     NV2AState *d = opaque;
 
-    nv2a_reg_log_write(NV_PTIMER, addr, val);
+    nv2a_reg_log_write(NV_PTIMER, addr, size, val);
 
     switch (addr) {
     case NV_PTIMER_INTR_0:

@@ -2186,6 +2186,7 @@ if have_system
     'softmmu',
     'ui',
     'hw/remote',
+    'hw/xbox/nv2a',
   ]
 endif
 if have_system or have_user
