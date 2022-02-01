@@ -66,7 +66,7 @@ uint64_t user_read(void *opaque, hwaddr addr, unsigned int size)
 
     qemu_mutex_unlock(&d->pfifo.lock);
 
-    nv2a_reg_log_read(NV_USER, addr, r);
+    nv2a_reg_log_read(NV_USER, addr, size, r);
     return r;
 }
 
@@ -74,7 +74,7 @@ void user_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
 
-    nv2a_reg_log_write(NV_USER, addr, val);
+    nv2a_reg_log_write(NV_USER, addr, size, val);
 
     unsigned int channel_id = addr >> 16;
     assert(channel_id < NV2A_NUM_CHANNELS);

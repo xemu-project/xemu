@@ -74,8 +74,7 @@ uint64_t pramdac_read(void *opaque, hwaddr addr, unsigned int size)
     /* Surprisingly, QEMU doesn't handle unaligned access for you properly */
     r >>= 32 - 8 * size - 8 * (addr & 3);
 
-    NV2A_DPRINTF("PRAMDAC: read %d [0x%" HWADDR_PRIx "] -> %" PRIx64 "\n", size,
-                 addr, r);
+    nv2a_reg_log_read(NV_PRAMDAC, addr, size, r);
     return r;
 }
 
@@ -84,7 +83,7 @@ void pramdac_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
     NV2AState *d = (NV2AState *)opaque;
     uint32_t m, n, p;
 
-    nv2a_reg_log_write(NV_PRAMDAC, addr, val);
+    nv2a_reg_log_write(NV_PRAMDAC, addr, size, val);
 
     switch (addr) {
     case NV_PRAMDAC_NVPLL_COEFF:

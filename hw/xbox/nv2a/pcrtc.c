@@ -43,7 +43,7 @@ uint64_t pcrtc_read(void *opaque, hwaddr addr, unsigned int size)
             break;
     }
 
-    nv2a_reg_log_read(NV_PCRTC, addr, r);
+    nv2a_reg_log_read(NV_PCRTC, addr, size, r);
     return r;
 }
 
@@ -51,7 +51,7 @@ void pcrtc_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
 {
     NV2AState *d = (NV2AState *)opaque;
 
-    nv2a_reg_log_write(NV_PCRTC, addr, val);
+    nv2a_reg_log_write(NV_PCRTC, addr, size, val);
 
     switch (addr) {
     case NV_PCRTC_INTR_0:

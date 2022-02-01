@@ -165,7 +165,7 @@ done
 target="qemu-system-i386"
 if test ! -z "$debug"; then
     build_cflags='-O0 -g -DXEMU_DEBUG_BUILD=1'
-    opts="--enable-debug"
+    opts="--enable-debug --enable-trace-backends=log"
 else
     opts="--enable-lto"
 fi
