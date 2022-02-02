@@ -1,0 +1,9 @@
+# See docs/devel/tracing.rst for syntax documentation.
+
+# nvnet.c
+nvnet_mii_read(unsigned int phy_addr, uint32_t addr, const char *name, uint64_t val) "phy %d addr 0x%"PRIx32" %s val 0x%"PRIx64
+nvnet_mii_write(unsigned int phy_addr, uint32_t addr, const char *name, uint64_t val) "phy %d addr 0x%"PRIx32" %s val 0x%"PRIx64
+nvnet_reg_read(uint32_t addr, const char *name, unsigned int size, uint64_t val) "addr 0x%"PRIx32" %s size %d val 0x%"PRIx64
+nvnet_reg_write(uint32_t addr, const char *name, unsigned int size, uint64_t val) "addr 0x%"PRIx32" %s size %d val 0x%"PRIx64
+nvnet_io_read(uint32_t addr, unsigned int size, uint64_t val) "addr 0x%"PRIx32" size %d val 0x%"PRIx64
+nvnet_io_write(uint32_t addr, unsigned int size, uint64_t val) "addr 0x%"PRIx32" size %d val 0x%"PRIx64
