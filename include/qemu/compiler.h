@@ -176,7 +176,7 @@
  */
 extern void QEMU_NORETURN QEMU_ERROR("code path is reachable")
     qemu_build_not_reached_always(void);
-#if defined(__OPTIMIZE__) && !defined(__NO_INLINE__)
+#if defined(__OPTIMIZE__) && !defined(__NO_INLINE__) && !defined(XEMU_DEBUG_BUILD)
 #define qemu_build_not_reached()  qemu_build_not_reached_always()
 #else
 #define qemu_build_not_reached()  g_assert_not_reached()
