@@ -19,6 +19,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "trace.h"
 #include "hw/hw.h"
 #include "hw/i386/pc.h"
 #include "hw/pci/pci.h"
@@ -362,9 +363,9 @@ static ssize_t nvnet_receive_iov(NetClientState *nc,
 /* Utility Functions */
 static void nvnet_hex_dump(NvNetState *s, const uint8_t *buf, int size);
 
-#ifdef DEBUG
 static const char *nvnet_get_reg_name(hwaddr addr);
 static const char *nvnet_get_mii_reg_name(uint8_t reg);
+#ifdef DEBUG
 static void nvnet_dump_ring_descriptors(NvNetState *s);
 #endif
 
@@ -465,15 +466,13 @@ static int nvnet_mii_rw(NvNetState *s, uint64_t val)
     reg      = mii_ctl & ((1 << NVREG_MIICTL_ADDRSHIFT) - 1);
     write    = mii_ctl & NVREG_MIICTL_WRITE;
 
-    NVNET_DPRINTF("nvnet mii %s: phy 0x%x %s [0x%x]\n",
-        write ? "write" : "read", phy_addr, nvnet_get_mii_reg_name(reg), reg);
-
     if (phy_addr != 1) {
-        return -1;
+        retval = -1;
+        goto out;
     }
 
     if (write) {
-        return retval;
+        goto out;
     }
 
     switch (reg) {
@@ -495,6 +494,13 @@ static int nvnet_mii_rw(NvNetState *s, uint64_t val)
         break;
     }
 
+out:
+    if (write) {
+        trace_nvnet_mii_write(phy_addr, reg, nvnet_get_mii_reg_name(reg), val);
+    } else {
+        trace_nvnet_mii_read(phy_addr, reg, nvnet_get_mii_reg_name(reg),
+                             retval);
+    }
     return retval;
 }
 
@@ -532,9 +538,7 @@ static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
         break;
     }
 
-    NVNET_DPRINTF("nvnet mmio: read %s [0x%llx] <- 0x%llx\n",
-        nvnet_get_reg_name(addr & ~3), addr, retval);
-
+    trace_nvnet_reg_read(addr, nvnet_get_reg_name(addr & ~3), size, retval);
     return retval;
 }
 
@@ -544,13 +548,10 @@ static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
 static void nvnet_mmio_write(void *opaque, hwaddr addr,
                              uint64_t val, unsigned int size)
 {
-    NvNetState *s;
+    NvNetState *s = NVNET_DEVICE(opaque);
     uint32_t temp;
 
-    s = NVNET_DEVICE(opaque);
-
-    NVNET_DPRINTF("nvnet mmio: write %s [0x%llx] = 0x%llx\n",
-        nvnet_get_reg_name(addr & ~3), addr, val);
+    trace_nvnet_reg_write(addr, nvnet_get_reg_name(addr & ~3), size, val);
 
     switch (addr) {
     case NvRegRingSizes:
@@ -849,14 +850,15 @@ static void nvnet_set_link_status(NetClientState *nc)
 
 static uint64_t nvnet_io_read(void *opaque, hwaddr addr, unsigned int size)
 {
-    NVNET_DPRINTF("nvnet io: read [0x%llx]\n", addr);
-    return 0;
+    uint64_t r = 0;
+    trace_nvnet_io_read(addr, size, r);
+    return r;
 }
 
 static void nvnet_io_write(void *opaque,
                            hwaddr addr, uint64_t val, unsigned int size)
 {
-    NVNET_DPRINTF("nvnet io: [0x%llx] = 0x%llx\n", addr, val);
+    trace_nvnet_io_write(addr, size, val);
 }
 
 static const MemoryRegionOps nvnet_io_ops = {
@@ -992,7 +994,6 @@ static void nvnet_hex_dump(NvNetState *s, const uint8_t *buf, int size)
     }
 }
 
-#ifdef DEBUG
 /*
  * Return register name given the offset of the device register.
  */
@@ -1060,6 +1061,7 @@ static const char *nvnet_get_mii_reg_name(uint8_t reg)
     }
 }
 
+#ifdef DEBUG
 static void nvnet_dump_ring_descriptors(NvNetState *s)
 {
     struct RingDesc desc;
