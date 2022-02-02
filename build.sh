@@ -95,7 +95,7 @@ package_linux() {
 
 postbuild=''
 debug_opts=''
-build_cflags='-O3'
+build_cflags=''
 default_job_count='12'
 sys_ldflags=''
 
@@ -164,7 +164,7 @@ done
 
 target="qemu-system-i386"
 if test ! -z "$debug"; then
-    build_cflags='-O0 -g -DXEMU_DEBUG_BUILD=1'
+    build_cflags='-DXEMU_DEBUG_BUILD=1'
     opts="--enable-debug --enable-trace-backends=log"
 else
     opts="--enable-lto"

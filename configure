@@ -5290,7 +5290,7 @@ if test "$skip_meson" = no; then
         -Ddocdir="$docdir" \
         -Dqemu_firmwarepath="$firmwarepath" \
         -Dqemu_suffix="$qemu_suffix" \
-        -Doptimization=$(if test "$debug" = yes; then echo 0; else echo 2; fi) \
+        -Doptimization=$(if test "$debug" = yes; then echo g; else echo 3; fi) \
         -Ddebug=$(if test "$debug_info" = yes; then echo true; else echo false; fi) \
         -Dwerror=$(if test "$werror" = yes; then echo true; else echo false; fi) \
         -Dstrip=$(if test "$strip_opt" = yes; then echo true; else echo false; fi) \
