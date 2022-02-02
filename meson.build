@@ -2187,6 +2187,7 @@ if have_system
     'ui',
     'hw/remote',
     'hw/xbox/nv2a',
+    'hw/xbox/mcpx',
   ]
 endif
 if have_system or have_user
