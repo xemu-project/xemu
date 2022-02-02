@@ -32,6 +32,7 @@
 #include "qemu/fifo8.h"
 #include "ui/xemu-settings.h"
 
+#include "trace.h"
 #include "dsp/dsp.h"
 #include "dsp/dsp_dma.h"
 #include "dsp/dsp_cpu.h"
@@ -367,9 +368,7 @@ static uint64_t mcpx_apu_read(void *opaque, hwaddr addr, unsigned int size)
         break;
     }
 
-    DPRINTF("mcpx apu: read [0x%" HWADDR_PRIx "] (%s) -> 0x%lx\n", addr,
-            get_reg_str(addr), r);
-
+    trace_mcpx_apu_reg_read(addr, size, r);
     return r;
 }
 
@@ -378,8 +377,7 @@ static void mcpx_apu_write(void *opaque, hwaddr addr, uint64_t val,
 {
     MCPXAPUState *d = opaque;
 
-    DPRINTF("mcpx apu: [0x%" HWADDR_PRIx "] (%s) = 0x%lx\n", addr,
-            get_reg_str(addr), val);
+    trace_mcpx_apu_reg_write(addr, size, val);
 
     switch (addr) {
     case NV_PAPU_ISTS:
@@ -455,7 +453,7 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
 {
     unsigned int slot;
 
-    DPRINTF("mcpx fe_method 0x%x 0x%x\n", method, argument);
+    trace_mcpx_apu_method(method, argument);
 
     //assert((d->regs[NV_PAPU_FECTL] & NV_PAPU_FECTL_FEMETHMODE) == 0);
 
