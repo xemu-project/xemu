@@ -469,8 +469,13 @@ static void add_stage_code(struct PixelShader *ps,
     if (output.muxsum_op == PS_COMBINEROUTPUT_AB_CD_SUM) {
         sum = mstring_from_fmt("(%s + %s)", mstring_get_str(ab), mstring_get_str(cd));
     } else {
-        sum = mstring_from_fmt("((r0.a >= 0.5) ? %s(%s) : %s(%s))",
-                               caster, mstring_get_str(cd), caster, mstring_get_str(ab));
+        if (ps->flags & PS_COMBINERCOUNT_MUX_MSB) {
+            sum = mstring_from_fmt("((r0.a >= 0.5) ? %s(%s) : %s(%s))",
+                                   caster, mstring_get_str(cd), caster, mstring_get_str(ab));
+        } else {
+            sum = mstring_from_fmt("(((uint(r0.a * 255.0) & 1u) == 1u) ? %s(%s) : %s(%s))",
+                                   caster, mstring_get_str(cd), caster, mstring_get_str(ab));
+        }
     }
 
     MString *sum_mapping = get_output(sum, output.mapping);
