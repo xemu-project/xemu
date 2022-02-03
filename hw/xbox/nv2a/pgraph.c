@@ -6596,6 +6596,20 @@ static uint8_t* convert_texture_data(const TextureShape s,
     }
 }
 
+static uint8_t *corrected_black_pixels(const uint8_t *data, GLsizei data_size)
+{
+    uint8_t *replacement_buffer = g_malloc(data_size);
+    memcpy(replacement_buffer, data, data_size);
+
+    for (int i = 0; i < data_size; i += 8)
+    {
+        replacement_buffer[i + 6] = replacement_buffer[i + 4];
+        replacement_buffer[i + 7] = replacement_buffer[i + 5];
+    }
+
+    return replacement_buffer;
+}
+
 static void upload_gl_texture(GLenum gl_target,
                               const TextureShape s,
                               const uint8_t *texture_data,
@@ -6643,6 +6657,11 @@ static void upload_gl_texture(GLenum gl_target,
         for (level = 0; level < s.levels; level++) {
             if (f.gl_format == 0) { /* compressed */
 
+                bool use_black_pixel_correction = false;
+                if (height == 2)
+                {
+                    use_black_pixel_correction = true;
+                }
                 width = MAX(width, 4); height = MAX(height, 4);
 
                 unsigned int block_size;
@@ -6652,10 +6671,21 @@ static void upload_gl_texture(GLenum gl_target,
                     block_size = 16;
                 }
 
+                GLsizei texture_data_size = width / 4 * height / 4 * block_size;
+
+                const uint8_t *texture_to_upload = texture_data;
+                uint8_t *converted_texture = NULL;
+                if (use_black_pixel_correction)
+                {
+                    converted_texture = corrected_black_pixels(texture_data, texture_data_size);
+                    texture_to_upload = converted_texture;
+                }
                 glCompressedTexImage2D(gl_target, level, f.gl_internal_format,
                                        width, height, 0,
-                                       width/4 * height/4 * block_size,
-                                       texture_data);
+                                       texture_data_size,
+                                       texture_to_upload);
+
+                free(converted_texture);
 
                 texture_data += width/4 * height/4 * block_size;
             } else {
