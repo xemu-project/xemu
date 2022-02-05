@@ -448,10 +448,14 @@ static void add_stage_code(struct PixelShader *ps,
     MString *cd_dest = get_var(ps, output.cd, true);
     MString *muxsum_dest = get_var(ps, output.muxsum, true);
 
+    bool assign_ab = false;
+    bool assign_cd = false;
+    bool assign_muxsum = false;
+
     if (mstring_get_length(ab_dest)) {
-        mstring_append_fmt(ps->code, "%s.%s = clamp(%s(%s), -1.0, 1.0);\n",
-                           mstring_get_str(ab_dest), write_mask, caster,
-                           mstring_get_str(ab_mapping));
+        mstring_append_fmt(ps->code, "ab.%s = clamp(%s(%s), -1.0, 1.0);\n",
+                           write_mask, caster, mstring_get_str(ab_mapping));
+        assign_ab = true;
     } else {
         mstring_unref(ab_dest);
         mstring_ref(ab_mapping);
@@ -459,22 +463,13 @@ static void add_stage_code(struct PixelShader *ps,
     }
 
     if (mstring_get_length(cd_dest)) {
-        mstring_append_fmt(ps->code, "%s.%s = clamp(%s(%s), -1.0, 1.0);\n",
-                           mstring_get_str(cd_dest), write_mask, caster,
-                           mstring_get_str(cd_mapping));
+        mstring_append_fmt(ps->code, "cd.%s = clamp(%s(%s), -1.0, 1.0);\n",
+                           write_mask, caster, mstring_get_str(cd_mapping));
+        assign_cd = true;
     } else {
         mstring_unref(cd_dest);
         mstring_ref(cd_mapping);
         cd_dest = cd_mapping;
-    }
-
-    if (!is_alpha && output.flags & PS_COMBINEROUTPUT_AB_BLUE_TO_ALPHA) {
-        mstring_append_fmt(ps->code, "%s.a = %s.b;\n", mstring_get_str(ab_dest),
-                           mstring_get_str(ab_dest));
-    }
-    if (!is_alpha && output.flags & PS_COMBINEROUTPUT_CD_BLUE_TO_ALPHA) {
-        mstring_append_fmt(ps->code, "%s.a = %s.b;\n", mstring_get_str(cd_dest),
-                           mstring_get_str(cd_dest));
     }
 
     MString *muxsum;
@@ -492,9 +487,32 @@ static void add_stage_code(struct PixelShader *ps,
 
     MString *muxsum_mapping = get_output(muxsum, output.mapping);
     if (mstring_get_length(muxsum_dest)) {
-        mstring_append_fmt(ps->code, "%s.%s = clamp(%s(%s), -1.0, 1.0);\n",
-                           mstring_get_str(muxsum_dest), write_mask, caster,
-                           mstring_get_str(muxsum_mapping));
+        mstring_append_fmt(ps->code, "mux_sum.%s = clamp(%s(%s), -1.0, 1.0);\n",
+                           write_mask, caster, mstring_get_str(muxsum_mapping));
+        assign_muxsum = true;
+    }
+
+    if (assign_ab) {
+        mstring_append_fmt(ps->code, "%s.%s = ab.%s;\n",
+                           mstring_get_str(ab_dest), write_mask, write_mask);
+
+        if (!is_alpha && output.flags & PS_COMBINEROUTPUT_AB_BLUE_TO_ALPHA) {
+            mstring_append_fmt(ps->code, "%s.a = ab.b;\n",
+                               mstring_get_str(ab_dest));
+        }
+    }
+    if (assign_cd) {
+        mstring_append_fmt(ps->code, "%s.%s = cd.%s;\n",
+                           mstring_get_str(cd_dest), write_mask, write_mask);
+
+        if (!is_alpha && output.flags & PS_COMBINEROUTPUT_CD_BLUE_TO_ALPHA) {
+            mstring_append_fmt(ps->code, "%s.a = cd.b;\n",
+                               mstring_get_str(cd_dest));
+        }
+    }
+    if (assign_muxsum) {
+        mstring_append_fmt(ps->code, "%s.%s = mux_sum.%s;\n",
+                           mstring_get_str(muxsum_dest), write_mask, write_mask);
     }
 
     mstring_unref(a);
@@ -671,6 +689,9 @@ static MString* psh_convert(struct PixelShader *ps)
     mstring_append(vars, "\n");
     mstring_append(vars, "vec4 v0 = pD0;\n");
     mstring_append(vars, "vec4 v1 = pD1;\n");
+    mstring_append(vars, "vec4 ab;\n");
+    mstring_append(vars, "vec4 cd;\n");
+    mstring_append(vars, "vec4 mux_sum;\n");
 
     ps->code = mstring_new();
 
