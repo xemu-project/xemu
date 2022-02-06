@@ -14,26 +14,29 @@ on:
 
 jobs:
   Init:
+    name: Create source package
     runs-on: ubuntu-latest
     steps:
-    - name: Create build tag
+    - name: Clone tree
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+    - name: Create source package
       run: |
-        export BUILD_TAG=build-$(date -u +'%Y%m%d%H%M')
-        echo "BUILD_TAG=$BUILD_TAG" >> $GITHUB_ENV
-        echo -n $BUILD_TAG > tag
-    - name: Upload artifacts
+        ./scripts/archive-source.sh src.tar
+        gzip -1 src.tar
+    - name: Upload source package artifact
       uses: actions/upload-artifact@v2
       with:
-        name: tag
-        path: tag
+        name: src.tar.gz
+        path: src.tar.gz
 
-  UbuntuWinCross:
+  Windows:
     name: Build for Windows (${{ matrix.configuration }}) on Ubuntu
     runs-on: ubuntu-latest
     needs: Init
     strategy:
       matrix:
-        configuration: ["Debug", "Release"]
         include:
         - configuration: Debug
           build_param: --debug
@@ -46,10 +49,12 @@ jobs:
     env:
       DOCKER_IMAGE_NAME: mborgerson/xemu-ubuntu-win64-cross:latest
     steps:
-    - name: Clone tree
-      uses: actions/checkout@v2
+    - name: Download source package
+      uses: actions/download-artifact@v2
       with:
-        fetch-depth: 0
+        name: src.tar.gz
+    - name: Extract source package
+      run: tar xf src.tar.gz
     - name: Initialize compiler cache
       id: cache
       uses: actions/cache@v2
@@ -79,12 +84,11 @@ jobs:
         path: ${{ matrix.artifact_filename }}
 
   Ubuntu:
-    name: Build for Ubuntu
+    name: Build for Ubuntu (${{ matrix.configuration }})
     runs-on: ubuntu-latest
     needs: Init
     strategy:
       matrix:
-        configuration: ["Debug", "Release"]
         include:
         - configuration: Debug
           build_param: --debug
@@ -95,22 +99,6 @@ jobs:
           artifact_name: xemu-ubuntu-release
           artifact_filename: xemu-ubuntu-release.tgz
     steps:
-    - name: Clone tree
-      uses: actions/checkout@v2
-      with:
-        fetch-depth: 0
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          libepoxy-dev \
-          libgtk-3-dev \
-          libpixman-1-dev \
-          libsdl2-dev \
-          libsamplerate0-dev \
-          libpcap-dev \
-          ccache \
-          ninja-build
     - name: Initialize compiler cache
       id: cache
       uses: actions/cache@v2
@@ -118,15 +106,53 @@ jobs:
         path: /tmp/xemu-ccache
         key: cache-${{ runner.os }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-${{ runner.os }}-${{ matrix.configuration }}-
+    - name: Clone Debian packaging
+      uses: actions/checkout@v2
+      with:
+        ref: deb
+        path: src
+    - name: Download source package
+      uses: actions/download-artifact@v2
+      with:
+        name: src.tar.gz
+    - name: Extract source package
+      run: tar -C src -xf src.tar.gz
+    - name: Create debian changelog
+      run: |
+        pushd src
+        echo -e "\
+        xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
+          Built from $(cat XEMU_VERSION)\n\
+         -- Matt Borgerson <contact@mborgerson.com>  $(date -R)" > debian/changelog
+        popd
+    - name: Install dependencies
+      run: |
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt-get -qy update
+        sudo apt-get install ccache
+        pushd src
+        sudo apt-get -qy build-dep .
     - name: Compile
       run: |
         export CCACHE_DIR=/tmp/xemu-ccache
         export CCACHE_MAXSIZE=512M
         export PATH="/usr/lib/ccache:$PATH"
-        ./build.sh ${{ matrix.build_param }} --extra-cflags="-fuse-ld=gold"
-        echo -e "\nCompiler Cache Stats:"
-        ccache -s -c
+        export XEMU_BUILD_OPTIONS="${{ matrix.build_param }} --extra-cflags='-fuse-ld=gold'"
+
+        # XXX: dpkg-genbuildinfo takes two minutes on GH runners. Nuke it for now.
+        sudo rm /usr/bin/dpkg-genbuildinfo
+        sudo ln -s /bin/true /usr/bin/dpkg-genbuildinfo
+
+        pushd src
+        dpkg-buildpackage --no-sign -b
+        popd
+
+        mkdir -p dist
+        mv *.deb *.ddeb dist
         tar -czvf ${{ matrix.artifact_filename }} --transform "s#^dist#xemu#" dist
+
+        echo -e "\n\nCompiler Cache Stats:"
+        ccache -s -c
     - name: Upload build artifact
       uses: actions/upload-artifact@v2
       with:
@@ -134,13 +160,11 @@ jobs:
         path: ${{ matrix.artifact_filename }}
 
   macOS:
-    name: Build for ${{ matrix.arch }} macOS (${{ matrix.configuration }})
+    name: Build for macOS (${{ matrix.arch }}, ${{ matrix.configuration }})
     runs-on: macOS-latest
     needs: Init
     strategy:
       matrix:
-        arch: ["x86_64", "arm64"]
-        configuration: ["Debug", "Release"]
         include:
         - arch: x86_64
           configuration: Debug
@@ -163,10 +187,12 @@ jobs:
           artifact_name: xemu-macos-arm64-release
           artifact_filename: xemu-macos-arm64-release.zip
     steps:
-    - name: Clone tree
-      uses: actions/checkout@v2
+    - name: Download source package
+      uses: actions/download-artifact@v2
       with:
-        fetch-depth: 0
+        name: src.tar.gz
+    - name: Extract source package
+      run: tar xf src.tar.gz
     - name: Install dependencies
       run: |
         export HOMEBREW_NO_AUTO_UPDATE=1
@@ -203,15 +229,13 @@ jobs:
         name: ${{ matrix.artifact_name }}
         path: ${{ matrix.artifact_filename }}
 
-  macOSBuildUniversal:
+  macOSUniversal:
     name: Build for Universal macOS (${{ matrix.configuration }})
     runs-on: macOS-latest
     needs: [macOS]
     strategy:
       matrix:
         configuration: ["debug", "release"]
-    env:
-      BUILD_TAG:
     steps:
     - name: Download x86_64 build
       uses: actions/download-artifact@v2
@@ -251,102 +275,70 @@ jobs:
   Release:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/xemu-v'))
     runs-on: ubuntu-latest
-    needs: [Ubuntu, macOSBuildUniversal, UbuntuWinCross]
-    env:
-      BUILD_TAG:
+    needs: [Ubuntu, macOSUniversal, Windows]
     steps:
     - name: Download artifacts
       uses: actions/download-artifact@v2
       with:
         path: dist
-    - name: Get package info
+    - name: Extract source package
+      run: tar xf dist/src.tar.gz/src.tar.gz
+    - name: Get release info
       run: |
-        echo "BUILD_TAG=$(cat dist/tag/tag)" >> $GITHUB_ENV
-    - name: Create release
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        echo "XEMU_VERSION=$(cat XEMU_VERSION)" >> $GITHUB_ENV
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          echo "TAG_NAME=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
+        else
+          # GitHub requires a tag to make a release, but this is not a tagged
+          # update. Generate a new tag.
+          echo "TAG_NAME=gh-release/$(cat XEMU_VERSION)" >> $GITHUB_ENV
+        fi
+    - name: Publish release
+      uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ env.BUILD_TAG }}
-        release_name: ${{ env.BUILD_TAG }}
-        draft: false
+        tag_name: ${{ env.TAG_NAME }}
+        name: ${{ env.XEMU_VERSION }}
         prerelease: false
-    - name: Upload release assets (Windows debug build)
-      id: upload-release-asset-win-debug
-      uses: actions/upload-release-asset@v1.0.1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_name: xemu-win-debug.zip
-        asset_path: dist/xemu-win-debug/xemu-win-debug.zip
-        asset_content_type: application/zip
-    - name: Upload release assets (Windows release build)
-      id: upload-release-asset-win-release
-      uses: actions/upload-release-asset@v1.0.1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_name: xemu-win-release.zip
-        asset_path: dist/xemu-win-release/xemu-win-release.zip
-        asset_content_type: application/zip
-    - name: Upload release assets (macOS release build)
-      id: upload-release-asset-macos-release
-      uses: actions/upload-release-asset@v1.0.1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_name: xemu-macos-universal-release.zip
-        asset_path: dist/xemu-macos-universal-release/xemu-macos-universal-release.zip
-        asset_content_type: application/zip
-    - name: Upload release assets (macOS debug build)
-      id: upload-release-asset-macos-debug
-      uses: actions/upload-release-asset@v1.0.1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_name: xemu-macos-universal-debug.zip
-        asset_path: dist/xemu-macos-universal-debug/xemu-macos-universal-debug.zip
-        asset_content_type: application/zip
+        draft: false
+        files: |
+          dist/xemu-win-debug/xemu-win-debug.zip
+          dist/xemu-win-release/xemu-win-release.zip
+          dist/xemu-macos-universal-release/xemu-macos-universal-release.zip
+          dist/xemu-macos-universal-debug/xemu-macos-universal-debug.zip
 
   # Sync archive version of source (including submodule code) to the
   # ppa-snapshot branch to work around limitations of the Launchpad platform,
   # namely: no network egress on package build, no custom scripting in source
   # package creation.
   PushToPPA:
+    name: Push to PPA Snapshot Branch
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/xemu-v'))
-    needs: [Ubuntu, macOSBuildUniversal, UbuntuWinCross]
+    needs: [Ubuntu, macOSUniversal, Windows]
     runs-on: ubuntu-latest
     steps:
-    - name: Clone tree
+    - name: Clone Debian packaging
       uses: actions/checkout@v2
       with:
-        fetch-depth: 0
-    - name: Create source archive
+        ref: deb
+        path: src
+    - name: Download source package
+      uses: actions/download-artifact@v2
+      with:
+        name: src.tar.gz
+    - name: Extract source package
+      run: tar -C src -xf src.tar.gz
+    - name: Create changelog
       run: |
-        ./scripts/archive-source.sh archive.tgz
-        mkdir archive
-        pushd archive
-        tar xf ../archive.tgz
+        pushd src
+        echo -e "\
+        xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
+          Built from $(cat XEMU_VERSION)\n\
+         -- Matt Borgerson <contact@mborgerson.com>  $(date -R)" > debian/changelog
         popd
-    - name: Integrate Debian packaging
-      run: |
-        # Clone deb branch containing packaging files
-        git clone --branch=deb --depth=1 https://github.com/mborgerson/xemu.git /tmp/xemu-debian
-        mv /tmp/xemu-debian/debian archive
-
-        # Create changelog containing current version
-        echo -e "xemu (1:$(cat archive/XEMU_VERSION)-0) unstable; urgency=medium\n" > archive/debian/changelog
-        echo -e "  Built from $(cat archive/XEMU_VERSION)\n" >> archive/debian/changelog
-        echo " -- Matt Borgerson <contact@mborgerson.com>  $(date -R)" >> archive/debian/changelog
     - name: Deploy source archive to branch
       uses: peaceiris/actions-gh-pages@v3
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./archive
+        publish_dir: ./src
         publish_branch: ppa-snapshot
         force_orphan: true
