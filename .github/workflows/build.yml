@@ -74,7 +74,7 @@ jobs:
           -e CCACHE_MAXSIZE=512M \
           -u $(id -u):$(id -g) \
           $DOCKER_IMAGE_NAME \
-            bash -c "./build.sh -p win64-cross ${{ matrix.build_param }} && ccache -sc"
+            bash -c "ccache -z; ./build.sh -p win64-cross ${{ matrix.build_param }} && ccache -s"
         cd dist
         zip -r ../${{ matrix.artifact_filename }} *
     - name: Upload build artifact
@@ -138,6 +138,7 @@ jobs:
         export CCACHE_MAXSIZE=512M
         export PATH="/usr/lib/ccache:$PATH"
         export XEMU_BUILD_OPTIONS="${{ matrix.build_param }} --extra-cflags='-fuse-ld=gold'"
+        ccache -z
 
         # XXX: dpkg-genbuildinfo takes two minutes on GH runners. Nuke it for now.
         sudo rm /usr/bin/dpkg-genbuildinfo
@@ -152,7 +153,7 @@ jobs:
         tar -czvf ${{ matrix.artifact_filename }} --transform "s#^dist#xemu#" dist
 
         echo -e "\n\nCompiler Cache Stats:"
-        ccache -s -c
+        ccache -s
     - name: Upload build artifact
       uses: actions/upload-artifact@v2
       with:
@@ -217,9 +218,10 @@ jobs:
         export CCACHE_DIR=/tmp/xemu-ccache
         export CCACHE_MAXSIZE=512M
         export PATH="/usr/local/opt/ccache/libexec:$PATH"
+        ccache -z
         ./build.sh ${{ matrix.build_param }}
         echo -e "\nCompiler Cache Stats:"
-        ccache -s -c
+        ccache -s
         pushd dist
         zip -r ../${{ matrix.artifact_filename }} *
         popd
