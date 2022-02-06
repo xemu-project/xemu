@@ -145,10 +145,19 @@ class Submodule:
 
 	@property
 	def head(self):
-		head = subprocess.run(['git', 'rev-parse', 'HEAD'],
-			                 cwd=self.path, capture_output=True,
-			                 check=True)
-		return head.stdout.decode('utf-8').strip()
+		try:
+			return subprocess.run(['git', 'rev-parse', 'HEAD'],
+				                 cwd=self.path, capture_output=True,
+				                 check=True).stdout.decode('utf-8').strip()
+		except subprocess.CalledProcessError:
+			pass
+
+		commit_file_path = os.path.join(self.path, 'HEAD')
+		if os.path.exists(commit_file_path):
+			return open(commit_file_path).read().strip()
+
+		raise Exception('Failed to determine submodule revision')
+		return ''
 
 LIBS = [
 
