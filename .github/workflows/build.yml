@@ -232,7 +232,7 @@ jobs:
         path: ${{ matrix.artifact_filename }}
 
   macOSUniversal:
-    name: Build for Universal macOS (${{ matrix.configuration }})
+    name: Build macOS Universal Bundle (${{ matrix.configuration }})
     runs-on: macOS-latest
     needs: [macOS]
     strategy:
