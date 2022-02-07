@@ -121,7 +121,7 @@ jobs:
       run: |
         pushd src
         echo -e "\
-        xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
+        xemu (1:$(cat XEMU_VERSION | cut -c2-)-0) unstable; urgency=medium\n\
           Built from $(cat XEMU_VERSION)\n\
          -- Matt Borgerson <contact@mborgerson.com>  $(date -R)" > debian/changelog
         popd
@@ -333,7 +333,7 @@ jobs:
       run: |
         pushd src
         echo -e "\
-        xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
+        xemu (1:$(cat XEMU_VERSION | cut -c2-)-0) unstable; urgency=medium\n\
           Built from $(cat XEMU_VERSION)\n\
          -- Matt Borgerson <contact@mborgerson.com>  $(date -R)" > debian/changelog
         popd
