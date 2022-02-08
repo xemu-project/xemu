@@ -77,6 +77,9 @@ done
 git rev-parse HEAD 2>/dev/null | tr -d '\n' > XEMU_COMMIT
 git symbolic-ref --short HEAD > XEMU_BRANCH
 git describe --tags --match 'xemu-v*' | cut -c 7- | tr -d '\n' > XEMU_VERSION
-tar -r --file "$tar_file" XEMU_COMMIT XEMU_BRANCH XEMU_VERSION
+# Not all submodules are cloned, which can produce errors.
+# It is also no longer needed
+tar --delete --file "$tar_file" .gitmodules
+tar --append --file "$tar_file" XEMU_COMMIT XEMU_BRANCH XEMU_VERSION
 
 exit 0
