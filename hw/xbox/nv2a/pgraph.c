@@ -4910,6 +4910,11 @@ static void pgraph_render_display(NV2AState *d, SurfaceBinding *surface)
     d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
     int line_offset = surface->pitch / pline_offset;
 
+    /* Adjust viewport height for interlaced mode, used only in 1080i */
+    if (d->vga.cr[NV_PRMCIO_INTERLACE_MODE] != NV_PRMCIO_INTERLACE_MODE_DISABLED) {
+        height *= 2;
+    }
+
     pgraph_apply_scaling_factor(pg, &width, &height);
 
     glBindFramebuffer(GL_FRAMEBUFFER, d->pgraph.disp_rndr.fbo);

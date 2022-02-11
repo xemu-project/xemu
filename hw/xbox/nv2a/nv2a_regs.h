@@ -619,6 +619,10 @@
 #define NV_PCRTC_RASTER                                  0x00000808
 
 
+#define NV_PRMCIO_INTERLACE_MODE                         0x00000039
+#   define NV_PRMCIO_INTERLACE_MODE_DISABLED                    0xff
+
+
 #define NV_PVIDEO_INTR                                   0x00000100
 #   define NV_PVIDEO_INTR_BUFFER_0                              (1 << 0)
 #   define NV_PVIDEO_INTR_BUFFER_1                              (1 << 4)
