@@ -829,12 +829,18 @@ void vsh_translate(uint16_t version,
     );
 
     mstring_append(body,
-        /* the shaders leave the result in screen space, while
-         * opengl expects it in clip space.
-         * TODO: the pixel-center co-ordinate differences should handled
+        /* The shaders leave the result in screen space, while OpenGL expects it
+         * in clip space. Also, hardware rounds at 9/16 pixel, so the difference
+         * between the calculated output and the final HW position must be
+         * remapped to fit the 0.5 range used by OpenGL.
          */
-        "  oPos.x = 2.0 * (oPos.x - surfaceSize.x * 0.5) / surfaceSize.x;\n"
-        "  oPos.y = -2.0 * (oPos.y - surfaceSize.y * 0.5) / surfaceSize.y;\n"
+        "  vec2 fixed_pos = vec2(oPos.xy);\n"
+        "  vec2 hw_rounded_pos = floor(fixed_pos + 0.4375);\n"
+        "  vec2 pos_delta = (fixed_pos - hw_rounded_pos) / 0.5625;\n"
+        "  pos_delta *= 0.5 / surfaceSize;\n"
+        "  fixed_pos = hw_rounded_pos + pos_delta;\n"
+        "  oPos.xy = 2.0 * fixed_pos / surfaceSize - vec2(1.0);\n"
+        "  oPos.y *= -1.0;\n"
     );
     if (z_perspective) {
         mstring_append(body, "  oPos.z = oPos.w;\n");
