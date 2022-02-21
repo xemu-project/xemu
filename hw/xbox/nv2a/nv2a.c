@@ -375,13 +375,16 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
         nv2a_lock_fifo(d);
         qatomic_set(&d->pfifo.halt, true);
         nv2a_unlock_fifo(d);
+    } else if (state == RUN_STATE_RUNNING) {
+        nv2a_lock_fifo(d);
+        qatomic_set(&d->pfifo.halt, false);
+        nv2a_unlock_fifo(d);
     }
 }
 
 static int nv2a_post_save(void *opaque)
 {
     NV2AState *d = opaque;
-    qatomic_set(&d->pfifo.halt, false);
     nv2a_unlock_fifo(d);
     return 0;
 }
@@ -396,7 +399,6 @@ static int nv2a_pre_load(void *opaque)
 static int nv2a_post_load(void *opaque, int version_id)
 {
     NV2AState *d = opaque;
-    qatomic_set(&d->pfifo.halt, false);
     qatomic_set(&d->pgraph.flush_pending, true);
     nv2a_unlock_fifo(d);
     return 0;
