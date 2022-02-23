@@ -843,7 +843,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
 
     // Create main window
     m_window = SDL_CreateWindow(
-        title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1024, 768,
+        title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 960,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     if (m_window == NULL) {
         fprintf(stderr, "Failed to create main window\n");
