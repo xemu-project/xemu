@@ -106,19 +106,23 @@ jobs:
         path: /tmp/xemu-ccache
         key: cache-${{ runner.os }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-${{ runner.os }}-${{ matrix.configuration }}-
-    - name: Clone Debian packaging
-      uses: actions/checkout@v2
-      with:
-        ref: deb
-        path: src
     - name: Download source package
       uses: actions/download-artifact@v2
       with:
         name: src.tar.gz
     - name: Extract source package
-      run: tar -C src -xf src.tar.gz
-    - name: Create debian changelog
       run: |
+        mkdir src
+        tar -C src -xf src.tar.gz
+    - name: Clone Debian packaging
+      uses: actions/checkout@v2
+      with:
+        ref: deb
+        path: debian-tmp
+    - name: Integrate Debian packaging
+      run: |
+        mv debian-tmp/debian src
+        rm -rf debian-tmp
         pushd src
         echo -e "\
         xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
@@ -318,19 +322,23 @@ jobs:
     needs: [Ubuntu, macOSUniversal, Windows]
     runs-on: ubuntu-latest
     steps:
-    - name: Clone Debian packaging
-      uses: actions/checkout@v2
-      with:
-        ref: deb
-        path: src
     - name: Download source package
       uses: actions/download-artifact@v2
       with:
         name: src.tar.gz
     - name: Extract source package
-      run: tar -C src -xf src.tar.gz
-    - name: Create changelog
       run: |
+        mkdir src
+        tar -C src -xf src.tar.gz
+    - name: Clone Debian packaging
+      uses: actions/checkout@v2
+      with:
+        ref: deb
+        path: debian-tmp
+    - name: Integrate Debian packaging
+      run: |
+        mv debian-tmp/debian src
+        rm -rf debian-tmp
         pushd src
         echo -e "\
         xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
