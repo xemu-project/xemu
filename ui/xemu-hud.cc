@@ -74,6 +74,7 @@ ImFont *g_fixed_width_font;
 float g_main_menu_height;
 float g_ui_scale = 1.0;
 bool g_trigger_style_update = true;
+bool *wireframe = (bool *)malloc(sizeof(bool));
 
 class NotificationManager
 {
@@ -2059,6 +2060,10 @@ static void process_keyboard_shortcuts(void)
         action_shutdown();
     }
 
+    if (is_shortcut_key_pressed(SDL_SCANCODE_F5)) {
+        *wireframe = !*wireframe;
+    }
+
     if (is_key_pressed(SDL_SCANCODE_GRAVE)) {
         monitor_window.toggle_open();
     }
@@ -2307,6 +2312,8 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
         update_window.check_for_updates_and_prompt_if_available();
     }
 #endif
+
+    *wireframe = false;
 }
 
 void xemu_hud_cleanup(void)
