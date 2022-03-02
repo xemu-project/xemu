@@ -297,7 +297,7 @@ jobs:
         else
           # GitHub requires a tag to make a release, but this is not a tagged
           # update. Generate a new tag.
-          echo "TAG_NAME=gh-release/$(cat XEMU_VERSION)" >> $GITHUB_ENV
+          echo "TAG_NAME=$(cat XEMU_VERSION)" >> $GITHUB_ENV
         fi
     - name: Publish release
       uses: softprops/action-gh-release@v1
