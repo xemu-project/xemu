@@ -230,8 +230,13 @@ static void pci_irq_handler(void *opaque, int irq_num, int level);
 static void pci_add_option_rom(PCIDevice *pdev, bool is_default_rom, Error **);
 static void pci_del_option_rom(PCIDevice *pdev);
 
+#ifdef XBOX
+static uint16_t pci_default_sub_vendor_id = 0;
+static uint16_t pci_default_sub_device_id = 0;
+#else
 static uint16_t pci_default_sub_vendor_id = PCI_SUBVENDOR_ID_REDHAT_QUMRANET;
 static uint16_t pci_default_sub_device_id = PCI_SUBDEVICE_ID_QEMU;
+#endif
 
 static QLIST_HEAD(, PCIHostState) pci_host_bridges;
 
