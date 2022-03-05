@@ -353,6 +353,9 @@ void xbox_init_common(MachineState *machine,
     /* GPU! */
     nv2a_init(agp_bus, PCI_DEVFN(0, 0), ram_memory);
 
+    /* FIXME: Stub the memory controller */
+    pci_create_simple(pci_bus, PCI_DEVFN(0, 3), "pci-testdev");
+
     if (pci_bus_out) {
         *pci_bus_out = pci_bus;
     }
