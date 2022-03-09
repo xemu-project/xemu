@@ -451,8 +451,47 @@ int qemu_unlink(const char *name)
         return 0;
     }
 
+#ifdef _WIN32
+    wchar_t *namew = g_utf8_to_utf16(name, -1, NULL, NULL, NULL);
+    if (!namew) {
+        return -1;
+    }
+    int ret = _wunlink(namew);
+    g_free(namew);
+    return ret;
+#else
     return unlink(name);
+#endif
 }
+
+#ifdef XBOX
+
+/*
+ * Create a directory on the filesystem
+ *
+ * Returns: On success, zero is returned. On error, -1 is returned,
+ * and errno is set appropriately.
+ */
+
+int qemu_mkdir(const char *path)
+{
+#ifdef _WIN32
+	wchar_t *wpath = g_utf8_to_utf16(path, -1, NULL, NULL, NULL);
+	if (!wpath) {
+		return -1;
+	}
+
+	BOOL dirResult = CreateDirectoryW(wpath, 0);
+	g_free(wpath);
+	if (!dirResult) {
+		return -1;
+	}
+#else
+	return mkdir(path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+#endif
+}
+
+#endif
 
 /*
  * A variant of write(2) which handles partial write.
