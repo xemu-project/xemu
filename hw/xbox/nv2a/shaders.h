@@ -21,12 +21,14 @@
 #ifndef HW_NV2A_SHADERS_H
 #define HW_NV2A_SHADERS_H
 
+#include "qemu/thread.h"
 #include "qapi/qmp/qstring.h"
 #include "gl/gloffscreen.h"
 
 #include "nv2a_regs.h"
 #include "vsh.h"
 #include "psh.h"
+#include "lru.h"
 
 enum ShaderPrimitiveMode {
     PRIM_TYPE_INVALID,
@@ -136,6 +138,26 @@ typedef struct ShaderBinding {
     GLint material_alpha_loc;
 } ShaderBinding;
 
+typedef struct ShaderLruNode {
+    LruNode node;
+    bool cached;
+    void *program;
+    size_t program_size;
+    GLenum program_format;
+    ShaderState state;
+    ShaderBinding *binding;
+    QemuThread *save_thread;
+} ShaderLruNode;
+
+typedef struct PGRAPHState PGRAPHState;
+
+GLenum get_gl_primitive_mode(enum ShaderPolygonMode polygon_mode, enum ShaderPrimitiveMode primitive_mode);
+void update_shader_constant_locations(ShaderBinding *binding, const ShaderState *state);
 ShaderBinding *generate_shaders(const ShaderState *state);
+
+void shader_cache_init(PGRAPHState *pg);
+void shader_write_cache_reload_list(PGRAPHState *pg);
+bool shader_load_from_memory(ShaderLruNode *snode);
+void shader_cache_to_disk(ShaderLruNode *snode);
 
 #endif

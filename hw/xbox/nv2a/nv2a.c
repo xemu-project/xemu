@@ -380,6 +380,14 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
         nv2a_lock_fifo(d);
         qatomic_set(&d->pfifo.halt, false);
         nv2a_unlock_fifo(d);
+    } else if (state == RUN_STATE_SHUTDOWN) {
+        nv2a_lock_fifo(d);
+        qatomic_set(&d->pgraph.shader_cache_writeback_pending, true);
+        qemu_event_reset(&d->pgraph.shader_cache_writeback_complete);
+        nv2a_unlock_fifo(d);
+        qemu_mutex_unlock_iothread();
+        qemu_event_wait(&d->pgraph.shader_cache_writeback_complete);
+        qemu_mutex_lock_iothread();
     }
 }
 
