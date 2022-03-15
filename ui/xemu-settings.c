@@ -55,6 +55,8 @@ struct xemu_settings {
 	int scale;
 	int ui_scale;
 	int render_scale;
+	int window_width;
+	int window_height;
 
 	// [input]
 	char *controller_1_guid;
@@ -119,9 +121,11 @@ struct config_offset_table {
 
 	[XEMU_SETTINGS_AUDIO_USE_DSP] = { CONFIG_TYPE_BOOL, "audio", "use_dsp", offsetof(struct xemu_settings, use_dsp), { .default_bool = 0  } },
 
-	[XEMU_SETTINGS_DISPLAY_SCALE]        = { CONFIG_TYPE_ENUM, "display", "scale",        offsetof(struct xemu_settings, scale),        { .default_int = DISPLAY_SCALE_SCALE }, display_scale_map },
-	[XEMU_SETTINGS_DISPLAY_UI_SCALE]     = { CONFIG_TYPE_INT,  "display", "ui_scale",     offsetof(struct xemu_settings, ui_scale),     { .default_int = 1                   }                    },
-	[XEMU_SETTINGS_DISPLAY_RENDER_SCALE] = { CONFIG_TYPE_INT,  "display", "render_scale", offsetof(struct xemu_settings, render_scale), { .default_int = 1                   }                    },
+	[XEMU_SETTINGS_DISPLAY_SCALE]         = { CONFIG_TYPE_ENUM, "display", "scale",         offsetof(struct xemu_settings, scale),         { .default_int = DISPLAY_SCALE_SCALE }, display_scale_map },
+	[XEMU_SETTINGS_DISPLAY_UI_SCALE]      = { CONFIG_TYPE_INT,  "display", "ui_scale",      offsetof(struct xemu_settings, ui_scale),      { .default_int = 1                   }                    },
+	[XEMU_SETTINGS_DISPLAY_RENDER_SCALE]  = { CONFIG_TYPE_INT,  "display", "render_scale",  offsetof(struct xemu_settings, render_scale),  { .default_int = 1                   }                    },
+	[XEMU_SETTINGS_DISPLAY_WINDOW_WIDTH]  = { CONFIG_TYPE_INT,  "display", "window_width",  offsetof(struct xemu_settings, window_width),  { .default_int = 1280                }                    },
+	[XEMU_SETTINGS_DISPLAY_WINDOW_HEIGHT] = { CONFIG_TYPE_INT,  "display", "window_height", offsetof(struct xemu_settings, window_height), { .default_int = 960                 }                    },
 
 	[XEMU_SETTINGS_INPUT_CONTROLLER_1_GUID] = { CONFIG_TYPE_STRING,   "input", "controller_1_guid", offsetof(struct xemu_settings, controller_1_guid), { .default_str = "" } },
 	[XEMU_SETTINGS_INPUT_CONTROLLER_2_GUID] = { CONFIG_TYPE_STRING,   "input", "controller_2_guid", offsetof(struct xemu_settings, controller_2_guid), { .default_str = "" } },
@@ -392,7 +396,7 @@ void xemu_settings_load(void)
 	}
 }
 
-int xemu_settings_save(void)
+void xemu_settings_save(void)
 {
 	FILE *fd = qemu_fopen(xemu_settings_get_path(), "wb");
 	assert(fd != NULL);
@@ -434,5 +438,4 @@ int xemu_settings_save(void)
 	}
 
 	fclose(fd);
-	return 0;
 }

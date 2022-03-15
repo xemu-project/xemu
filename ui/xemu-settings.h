@@ -41,6 +41,8 @@ enum xemu_settings_keys {
 	XEMU_SETTINGS_DISPLAY_SCALE,
 	XEMU_SETTINGS_DISPLAY_UI_SCALE,
 	XEMU_SETTINGS_DISPLAY_RENDER_SCALE,
+	XEMU_SETTINGS_DISPLAY_WINDOW_WIDTH,
+	XEMU_SETTINGS_DISPLAY_WINDOW_HEIGHT,
 	XEMU_SETTINGS_INPUT_CONTROLLER_1_GUID,
 	XEMU_SETTINGS_INPUT_CONTROLLER_2_GUID,
 	XEMU_SETTINGS_INPUT_CONTROLLER_3_GUID,
@@ -91,7 +93,7 @@ const char *xemu_settings_get_default_eeprom_path(void);
 void xemu_settings_load(void);
 
 // Save config file to disk
-int xemu_settings_save(void);
+void xemu_settings_save(void);
 
 // Config item setters/getters
 int xemu_settings_set_string(enum xemu_settings_keys key, const char *str);

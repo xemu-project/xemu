@@ -591,6 +591,11 @@ static void handle_windowevent(SDL_Event *ev)
             info.width = ev->window.data1;
             info.height = ev->window.data2;
             dpy_set_ui_info(scon->dcl.con, &info);
+
+            if (!gui_fullscreen) {
+                xemu_settings_set_int(XEMU_SETTINGS_DISPLAY_WINDOW_WIDTH, ev->window.data1);
+                xemu_settings_set_int(XEMU_SETTINGS_DISPLAY_WINDOW_HEIGHT, ev->window.data2);
+            }
         }
         sdl2_redraw(scon);
         break;
@@ -843,7 +848,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
 
     // Create main window
     m_window = SDL_CreateWindow(
-        title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 960,
+        title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 640, 480,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
     if (m_window == NULL) {
         fprintf(stderr, "Failed to create main window\n");
@@ -851,6 +856,20 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
         exit(1);
     }
     g_free(title);
+
+    SDL_DisplayMode disp_mode;
+    SDL_GetCurrentDisplayMode(SDL_GetWindowDisplayIndex(m_window), &disp_mode);
+
+    int win_w, win_h;
+    xemu_settings_get_int(XEMU_SETTINGS_DISPLAY_WINDOW_WIDTH, &win_w);
+    xemu_settings_get_int(XEMU_SETTINGS_DISPLAY_WINDOW_HEIGHT, &win_h);
+
+    if (win_w > 0 && win_h > 0) {
+        if (disp_mode.w >= win_w && disp_mode.h >= win_h) {
+            SDL_SetWindowSize(m_window, win_w, win_h);
+            SDL_SetWindowPosition(m_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+        }
+    }
 
     m_context = SDL_GL_CreateContext(m_window);
 
@@ -1502,6 +1521,9 @@ int main(int argc, char **argv)
     DPRINTF("Entered main()\n");
     gArgc = argc;
     gArgv = argv;
+
+    xemu_settings_load();
+    atexit(xemu_settings_save);
 
     sdl2_display_very_early_init(NULL);
 
