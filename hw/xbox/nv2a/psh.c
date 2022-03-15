@@ -290,7 +290,17 @@ static MString* get_var(struct PixelShader *ps, int reg, bool is_dest)
         return mstring_from_str("r1");
     case PS_REGISTER_V1R0_SUM:
         add_var_ref(ps, "r0");
-        return mstring_from_str("vec4(v1.rgb + r0.rgb, 0.0)");
+        if (ps->final_input.clamp_sum) {
+            return mstring_from_fmt(
+                    "clamp(vec4(%s.rgb + %s.rgb, 0.0), 0.0, 1.0)",
+                    ps->final_input.inv_v1 ? "(1.0 - v1)" : "v1",
+                    ps->final_input.inv_r0 ? "(1.0 - r0)" : "r0");
+        } else {
+            return mstring_from_fmt(
+                    "vec4(%s.rgb + %s.rgb, 0.0)",
+                    ps->final_input.inv_v1 ? "(1.0 - v1)" : "v1",
+                    ps->final_input.inv_r0 ? "(1.0 - r0)" : "r0");
+        }
     case PS_REGISTER_EF_PROD:
         return mstring_from_fmt("vec4(%s * %s, 0.0)",
                                 mstring_get_str(ps->varE),
