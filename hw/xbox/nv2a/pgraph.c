@@ -290,11 +290,11 @@ static const ColorFormatInfo kelvin_color_format_map[66] = {
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R6G5B5] =
         {2, false, GL_RGB8_SNORM, GL_RGB, GL_BYTE}, /* FIXME: This might be signed */
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_G8B8] =
-        {2, false, GL_RG8_SNORM, GL_RG, GL_BYTE, /* FIXME: This might be signed */
-         {GL_ONE, GL_GREEN, GL_RED, GL_ONE}},
+        {2, false, GL_RG8, GL_RG, GL_UNSIGNED_BYTE,
+         {GL_RED, GL_GREEN, GL_RED, GL_GREEN}},
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_R8B8] =
-        {2, false, GL_RG8_SNORM, GL_RG, GL_BYTE, /* FIXME: This might be signed */
-         {GL_GREEN, GL_ONE, GL_RED, GL_ONE}},
+        {2, false, GL_RG8, GL_RG, GL_UNSIGNED_BYTE,
+         {GL_GREEN, GL_RED, GL_RED, GL_GREEN}},
 
     [NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_CR8YB8CB8YA8] =
         {2, true, GL_RGBA8,  GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV},
