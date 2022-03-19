@@ -446,11 +446,12 @@ static void add_stage_code(struct PixelShader *ps,
     MString *cd_mapping = get_output(cd, output.mapping);
     MString *ab_dest = get_var(ps, output.ab, true);
     MString *cd_dest = get_var(ps, output.cd, true);
-    MString *sum_dest = get_var(ps, output.muxsum, true);
+    MString *muxsum_dest = get_var(ps, output.muxsum, true);
 
     if (mstring_get_length(ab_dest)) {
         mstring_append_fmt(ps->code, "%s.%s = clamp(%s(%s), -1.0, 1.0);\n",
-                           mstring_get_str(ab_dest), write_mask, caster, mstring_get_str(ab_mapping));
+                           mstring_get_str(ab_dest), write_mask, caster,
+                           mstring_get_str(ab_mapping));
     } else {
         mstring_unref(ab_dest);
         mstring_ref(ab_mapping);
@@ -459,7 +460,8 @@ static void add_stage_code(struct PixelShader *ps,
 
     if (mstring_get_length(cd_dest)) {
         mstring_append_fmt(ps->code, "%s.%s = clamp(%s(%s), -1.0, 1.0);\n",
-                           mstring_get_str(cd_dest), write_mask, caster, mstring_get_str(cd_mapping));
+                           mstring_get_str(cd_dest), write_mask, caster,
+                           mstring_get_str(cd_mapping));
     } else {
         mstring_unref(cd_dest);
         mstring_ref(cd_mapping);
@@ -467,31 +469,32 @@ static void add_stage_code(struct PixelShader *ps,
     }
 
     if (!is_alpha && output.flags & PS_COMBINEROUTPUT_AB_BLUE_TO_ALPHA) {
-        mstring_append_fmt(ps->code, "%s.a = %s.b;\n",
-                           mstring_get_str(ab_dest), mstring_get_str(ab_dest));
+        mstring_append_fmt(ps->code, "%s.a = %s.b;\n", mstring_get_str(ab_dest),
+                           mstring_get_str(ab_dest));
     }
     if (!is_alpha && output.flags & PS_COMBINEROUTPUT_CD_BLUE_TO_ALPHA) {
-        mstring_append_fmt(ps->code, "%s.a = %s.b;\n",
-                           mstring_get_str(cd_dest), mstring_get_str(cd_dest));
+        mstring_append_fmt(ps->code, "%s.a = %s.b;\n", mstring_get_str(cd_dest),
+                           mstring_get_str(cd_dest));
     }
 
-    MString *sum;
+    MString *muxsum;
     if (output.muxsum_op == PS_COMBINEROUTPUT_AB_CD_SUM) {
-        sum = mstring_from_fmt("(%s + %s)", mstring_get_str(ab), mstring_get_str(cd));
+        muxsum = mstring_from_fmt("(%s + %s)", mstring_get_str(ab),
+                                  mstring_get_str(cd));
     } else {
-        if (ps->flags & PS_COMBINERCOUNT_MUX_MSB) {
-            sum = mstring_from_fmt("((r0.a >= 0.5) ? %s(%s) : %s(%s))",
-                                   caster, mstring_get_str(cd), caster, mstring_get_str(ab));
-        } else {
-            sum = mstring_from_fmt("(((uint(r0.a * 255.0) & 1u) == 1u) ? %s(%s) : %s(%s))",
-                                   caster, mstring_get_str(cd), caster, mstring_get_str(ab));
-        }
+        muxsum = mstring_from_fmt("((%s) ? %s(%s) : %s(%s))",
+                                  (ps->flags & PS_COMBINERCOUNT_MUX_MSB) ?
+                                      "r0.a >= 0.5" :
+                                      "(uint(r0.a * 255.0) & 1u) == 1u",
+                                  caster, mstring_get_str(cd), caster,
+                                  mstring_get_str(ab));
     }
 
-    MString *sum_mapping = get_output(sum, output.mapping);
-    if (mstring_get_length(sum_dest)) {
+    MString *muxsum_mapping = get_output(muxsum, output.mapping);
+    if (mstring_get_length(muxsum_dest)) {
         mstring_append_fmt(ps->code, "%s.%s = clamp(%s(%s), -1.0, 1.0);\n",
-                           mstring_get_str(sum_dest), write_mask, caster, mstring_get_str(sum_mapping));
+                           mstring_get_str(muxsum_dest), write_mask, caster,
+                           mstring_get_str(muxsum_mapping));
     }
 
     mstring_unref(a);
@@ -504,9 +507,9 @@ static void add_stage_code(struct PixelShader *ps,
     mstring_unref(cd_mapping);
     mstring_unref(ab_dest);
     mstring_unref(cd_dest);
-    mstring_unref(sum_dest);
-    mstring_unref(sum);
-    mstring_unref(sum_mapping);
+    mstring_unref(muxsum_dest);
+    mstring_unref(muxsum);
+    mstring_unref(muxsum_mapping);
 }
 
 // Add code for the final combiner stage
