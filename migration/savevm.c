@@ -68,6 +68,7 @@
 #include "yank_functions.h"
 
 #include "ui/xemu-snapshots.h"
+#include "hw/xbox/nv2a/nv2a.h"
 
 const unsigned int postcopy_ram_discard_version;
 
@@ -2854,6 +2855,9 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
         return false;
     }
     vm_stop(RUN_STATE_SAVE_VM);
+#ifdef XBOX
+    nv2a_save_vm_state();
+#endif
 
     bdrv_drain_all_begin();
 
