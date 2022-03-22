@@ -1522,6 +1522,17 @@ int main(int argc, char **argv)
     gArgc = argc;
     gArgv = argv;
 
+    for (int i = 1; i < argc; i++) {
+        if (argv[i] && strcmp(argv[i], "-config_path") == 0) {
+            argv[i] = NULL;
+            if (i < argc - 1 && argv[i+1]) {
+                xemu_settings_set_path(argv[i+1]);
+                argv[i+1] = NULL;
+            }
+            break;
+        }
+    }
+
     xemu_settings_load();
     atexit(xemu_settings_save);
 

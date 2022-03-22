@@ -2794,16 +2794,6 @@ void qemu_init(int argc, char **argv, char **envp)
     // reporting. This should be replaced eventually, but is "good enough" for
     // now.
     //
-    for (int i = 1; i < argc; i++) {
-        if (argv[i] && strcmp(argv[i], "-config_path") == 0) {
-            argv[i] = NULL;
-            if (i < argc - 1 && argv[i+1]) {
-                xemu_settings_set_path(argv[i+1]);
-                argv[i+1] = NULL;
-            }
-            break;
-        }
-    }
 
     int first_boot = xemu_settings_did_fail_to_load();
     int fake_argc = 32 + argc;
