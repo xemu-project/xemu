@@ -11,6 +11,13 @@ general:
   # throttle_io: bool
   last_viewed_menu_index: integer
   user_token: string
+  snapshots:
+    shortcuts:
+      f5: string
+      f6: string
+      f7: string
+      f8: string
+    filter_current_game: bool
 
 input:
   bindings:

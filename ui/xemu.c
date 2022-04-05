@@ -47,6 +47,7 @@
 #include "xemu-input.h"
 #include "xemu-settings.h"
 // #include "xemu-shaders.h"
+#include "xemu-snapshots.h"
 #include "xemu-version.h"
 #include "xemu-os-utils.h"
 
@@ -1199,6 +1200,7 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
 
     glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
+    xemu_snapshots_set_framebuffer_texture(tex, flip_required);
     xemu_hud_set_framebuffer_texture(tex, flip_required);
     xemu_hud_render();
 
@@ -1548,6 +1550,7 @@ int main(int argc, char **argv)
 
     while (1) {
         sdl2_gl_refresh(&sdl2_console[0].dcl);
+        assert(glGetError() == GL_NO_ERROR);
     }
 
     // rcu_unregister_thread();

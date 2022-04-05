@@ -24,6 +24,7 @@
 #include "widgets.hh"
 #include "scene.hh"
 #include "scene-components.hh"
+#include "../xemu-snapshots.h"
 
 extern "C" {
 #include "net/pcap.h"
@@ -102,8 +103,24 @@ public:
 
 class MainMenuSnapshotsView : public virtual MainMenuTabView
 {
+protected:
+    QEMUSnapshotInfo *m_snapshots;
+    XemuSnapshotData *m_extra_data;
+    int m_snapshots_len;
+    uint32_t m_current_title_id;
+    char *m_current_title_name;
+    std::string m_search_buf;
+    std::string m_create_buf;
+    bool m_load_failed;
+
+private:
+    void Load();
+
 public:
-    void SnapshotBigButton(const char *name, const char *title_name,
+    GRegex *m_search_regex;
+    MainMenuSnapshotsView();
+    ~MainMenuSnapshotsView();
+    void SnapshotBigButton(QEMUSnapshotInfo *snapshot, const char *title_name,
                            GLuint screenshot);
     void Draw() override;
 };
@@ -153,7 +170,7 @@ protected:
                                     m_display_button,
                                     m_audio_button,
                                     m_network_button,
-                                    // m_snapshots_button,
+                                    m_snapshots_button,
                                     m_system_button,
                                     m_about_button;
     std::vector<MainMenuTabView*>   m_views;
@@ -162,7 +179,7 @@ protected:
     MainMenuDisplayView             m_display_view;
     MainMenuAudioView               m_audio_view;
     MainMenuNetworkView             m_network_view;
-    // MainMenuSnapshotsView        m_snapshots_view;
+    MainMenuSnapshotsView           m_snapshots_view;
     MainMenuSystemView              m_system_view;
     MainMenuAboutView               m_about_view;
 
@@ -174,7 +191,7 @@ public:
     void ShowDisplay();
     void ShowAudio();
     void ShowNetwork();
-    // void ShowSnapshots();
+    void ShowSnapshots();
     void ShowSystem();
     void ShowAbout();
     void SetNextViewIndexWithFocus(int i);

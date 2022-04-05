@@ -19,6 +19,8 @@
 #include "common.hh"
 #include "misc.hh"
 #include "xemu-hud.h"
+#include "../xemu-snapshots.h"
+#include "../xemu-notifications.h"
 
 void ActionEjectDisc(void)
 {
@@ -62,4 +64,28 @@ void ActionShutdown(void)
 void ActionScreenshot(void)
 {
 	g_screenshot_pending = true;
+}
+
+void ActionActivateBoundSnapshot(int slot, bool save)
+{
+    assert(slot < 4 && slot >= 0);
+    const char *snapshot_name = *(g_snapshot_shortcut_index_key_map[slot]);
+    if (!snapshot_name || !(snapshot_name[0])) {
+        char *msg = g_strdup_printf("F%d is not bound to a snapshot", slot + 5);
+        xemu_queue_notification(msg);
+        g_free(msg);
+        return;
+    }
+
+    Error *err = NULL;
+    if (save) {
+        xemu_snapshots_save(snapshot_name, &err);
+    } else {
+        xemu_snapshots_load(snapshot_name, &err);
+    }
+
+    if (err) {
+        xemu_queue_error_message(error_get_pretty(err));
+        error_free(err);
+    }
 }

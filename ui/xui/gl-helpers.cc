@@ -26,12 +26,14 @@
 #include "data/controller_mask.png.h"
 #include "data/logo_sdf.png.h"
 #include "ui/shader/xemu-logo-frag.h"
+#include "data/xemu_64x64.png.h"
 #include "notifications.hh"
 
 Fbo *controller_fbo,
     *logo_fbo;
 GLuint g_controller_tex,
-       g_logo_tex;
+       g_logo_tex,
+       g_icon_tex;
 
 enum class ShaderType {
     Blit,
@@ -155,10 +157,10 @@ static GLuint InitTexture(unsigned char *data, int width, int height,
     return tex;
 }
 
-static GLuint LoadTextureFromMemory(const unsigned char *buf, unsigned int size)
+static GLuint LoadTextureFromMemory(const unsigned char *buf, unsigned int size, bool flip=true)
 {
     // Flip vertically so textures are loaded according to GL convention.
-    stbi_set_flip_vertically_on_load(1);
+    stbi_set_flip_vertically_on_load(flip);
 
     int width, height, channels = 0;
     unsigned char *data = stbi_load_from_memory(buf, size, &width, &height, &channels, 4);
@@ -442,6 +444,8 @@ void InitCustomRendering(void)
     g_logo_shader = NewDecalShader(ShaderType::Logo);
     logo_fbo = new Fbo(512, 512);
 
+    g_icon_tex = LoadTextureFromMemory(xemu_64x64_data, xemu_64x64_size, false);
+
     g_framebuffer_shader = NewDecalShader(ShaderType::BlitGamma);
 }
 
@@ -657,7 +661,7 @@ void RenderLogo(uint32_t time)
     glUseProgram(0);
 }
 
-void RenderFramebuffer(GLint tex, int width, int height, bool flip)
+void RenderFramebuffer(GLint tex, int width, int height, bool flip, bool apply_scaling_factor)
 {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -668,7 +672,10 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
 
     // Calculate scaling factors
     float scale[2];
-    if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_STRETCH) {
+    if (!apply_scaling_factor) {
+        scale[0] = 1.0;
+        scale[1] = 1.0;
+    } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_STRETCH) {
         // Stretch to fit
         scale[0] = 1.0;
         scale[1] = 1.0;
@@ -720,19 +727,27 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
     glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
 }
 
-void SaveScreenshot(GLuint tex, bool flip)
+bool ExtractFramebufferPixels(GLuint tex, bool flip, std::vector<uint8_t> &png, int width, int height)
 {
-    int width, height;
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
-    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
-    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    assert((width == 0 && height == 0) || (width > 0 && height > 0));
 
-    if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_16_9) {
-        width = height * (16.0f / 9.0f);
-    } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_4_3) {
-        width = height * (4.0f / 3.0f);
+    bool params_from_tex = false;
+    if (width <= 0 && height <= 0) {
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
+        params_from_tex = true;
+    }
+    glBindTexture(GL_TEXTURE_2D, 0);
+    assert(width > 0 && height > 0);
+
+    if (params_from_tex) {
+        if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_16_9) {
+            width = height * (16.0f / 9.0f);
+        } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_4_3) {
+            width = height * (4.0f / 3.0f);
+        }
     }
 
     std::vector<uint8_t> pixels;
@@ -742,7 +757,7 @@ void SaveScreenshot(GLuint tex, bool flip)
     fbo.Target();
     bool blend = glIsEnabled(GL_BLEND);
     if (blend) glDisable(GL_BLEND);
-    RenderFramebuffer(tex, width, height, !flip);
+    RenderFramebuffer(tex, width, height, !flip, params_from_tex);
     if (blend) glEnable(GL_BLEND);
     glPixelStorei(GL_PACK_ROW_LENGTH, width);
     glPixelStorei(GL_PACK_IMAGE_HEIGHT, height);
@@ -750,10 +765,15 @@ void SaveScreenshot(GLuint tex, bool flip)
     glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
     fbo.Restore();
 
-    char fname[128];
+    return fpng::fpng_encode_image_to_memory(pixels.data(), width, height, 3, png);
+}
+
+void SaveScreenshot(GLuint tex, bool flip)
+{
     Error *err = NULL;
+    char fname[128];
     std::vector<uint8_t> png;
-    if (fpng::fpng_encode_image_to_memory(pixels.data(), width, height, 3, png)) {
+    if (ExtractFramebufferPixels(tex, flip, png)) {
         time_t t = time(NULL);
         struct tm *tmp = localtime(&t);
         if (tmp) {
