@@ -27,6 +27,7 @@
 #include "misc.hh"
 #include "gl-helpers.hh"
 #include "reporting.hh"
+#include "qapi/error.h"
 
 #include "../xemu-input.h"
 #include "../xemu-notifications.h"
@@ -34,6 +35,7 @@
 #include "../xemu-monitor.h"
 #include "../xemu-version.h"
 #include "../xemu-net.h"
+#include "../xemu-snapshots.h"
 #include "../xemu-os-utils.h"
 #include "../xemu-xbe.h"
 
@@ -639,115 +641,356 @@ void MainMenuNetworkView::DrawUdpOptions(bool appearing)
     ImGui::PopFont();
 }
 
-#if 0
-class MainMenuSnapshotsView : public virtual MainMenuTabView
+void MainMenuSnapshotsView::Load()
 {
-protected:
-    GLuint screenshot;
+    Error *err = NULL;
 
-public:
-    void initScreenshot()
-    {
-        if (screenshot == 0) {
-            glGenTextures(1, &screenshot);
-            int w, h, n;
-            stbi_set_flip_vertically_on_load(0);
-            unsigned char *data = stbi_load("./data/screenshot.png", &w, &h, &n, 4);
-            assert(n == 4);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, screenshot);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL,  0);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_BORDER);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_BORDER);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-            stbi_image_free(data);
+    if (!m_load_failed) {
+        m_snapshots_len = xemu_snapshots_list(&m_snapshots, &m_extra_data, &err);
+    }
+
+    if (err) {
+        m_load_failed = true;
+        xemu_queue_error_message(error_get_pretty(err));
+        error_free(err);
+        m_snapshots_len = 0;
+    }
+
+    struct xbe *xbe = xemu_get_xbe_info();
+    if (xbe && xbe->cert->m_titleid != m_current_title_id) {
+        g_free(m_current_title_name);
+        m_current_title_name = g_utf16_to_utf8(xbe->cert->m_title_name, 40, NULL, NULL, NULL);
+        m_current_title_id = xbe->cert->m_titleid;
+    }
+}
+
+MainMenuSnapshotsView::MainMenuSnapshotsView(): MainMenuTabView()
+{
+    xemu_snapshots_mark_dirty();
+    m_load_failed = false;
+
+    m_search_regex = NULL;
+    m_current_title_name = NULL;
+    m_current_title_id = 0;
+
+}
+
+MainMenuSnapshotsView::~MainMenuSnapshotsView()
+{
+    g_free(m_snapshots);
+    g_free(m_extra_data);
+    xemu_snapshots_mark_dirty();
+
+    g_free(m_current_title_name);
+    g_free(m_search_regex);
+}
+
+void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const char *title_name, GLuint screenshot)
+{
+    Error *err = NULL;
+    int current_snapshot_binding = -1;
+    for (int i = 0; i < 4; ++i) {
+        if (g_strcmp0(*(g_snapshot_shortcut_index_key_map[i]), snapshot->name) == 0) {
+            assert(current_snapshot_binding == -1);
+            current_snapshot_binding = i;
         }
     }
 
-    void snapshotBigButton(const char *name, const char *title_name, GLuint screenshot)
-    {
-        ImGuiStyle &style = ImGui::GetStyle();
-        ImVec2 pos = ImGui::GetCursorPos();
-        ImDrawList *draw_list = ImGui::GetWindowDrawList();
+    ImGuiStyle &style = ImGui::GetStyle();
+    ImVec2 pos = ImGui::GetCursorPos();
+    ImDrawList *draw_list = ImGui::GetWindowDrawList();
 
-        ImGui::PushFont(g_font_mgr.m_menuFont);
-        const char *icon = ICON_FA_CIRCLE_XMARK;
-        ImVec2 ts_icon = ImGui::CalcTextSize(icon);
-        ts_icon.x += 2*style.FramePadding.x;
-        ImGui::PopFont();
+    ImGui::PushFont(g_font_mgr.m_menu_font);
+    const char *close_icon = ICON_FA_CIRCLE_XMARK;
+    ImVec2 ts_close_icon = ImGui::CalcTextSize(close_icon);
+    ts_close_icon.x += 2*style.FramePadding.x;
+    ImGui::PopFont();
 
-        ImGui::PushFont(g_font_mgr.m_menuFontSmall);
-        ImVec2 ts_sub = ImGui::CalcTextSize(name);
-        ImGui::PopFont();
+    ImGui::PushFont(g_font_mgr.m_menu_font);
+    const char *save_icon = ICON_FA_FLOPPY_DISK;
+    ImVec2 ts_save_icon = ImGui::CalcTextSize(save_icon);
+    ts_save_icon.x += 2*style.FramePadding.x;
+    ImGui::PopFont();
 
-        ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0));
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, g_viewport_mgr.scale(ImVec2(5, 5)));
-        ImGui::PushFont(g_font_mgr.m_menuFontMedium);
+    ImGui::PushFont(g_font_mgr.m_menu_font);
+    const char *binding_icon = ICON_FA_KEYBOARD;
+    ImVec2 ts_binding_icon = ImGui::CalcTextSize(binding_icon);
+    ts_binding_icon.x += 2*style.FramePadding.x;
+    ImGui::PopFont();
 
-        ImVec2 ts_title = ImGui::CalcTextSize(name);
-        ImVec2 thumbnail_size = g_viewport_mgr.scale(ImVec2(160, 120));
-        ImVec2 thumbnail_pos(style.FramePadding.x, style.FramePadding.y);
-        ImVec2 text_pos(thumbnail_pos.x + thumbnail_size.x + style.FramePadding.x * 2, thumbnail_pos.y);
-        ImVec2 subtext_pos(text_pos.x, text_pos.y + ts_title.y + style.FramePadding.x);
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    ImVec2 ts_sub = ImGui::CalcTextSize(snapshot->name);
+    ImGui::PopFont();
 
-        ImGui::Button("###button", ImVec2(ImGui::GetContentRegionAvail().x, fmax(thumbnail_size.y + style.FramePadding.y * 2,
-                                                                                 ts_title.y + ts_sub.y + style.FramePadding.y * 3)));
-        ImGui::PopFont();
-        const ImVec2 sz = ImGui::GetItemRectSize();
-        const ImVec2 p0 = ImGui::GetItemRectMin();
-        const ImVec2 p1 = ImGui::GetItemRectMax();
-        ts_icon.y = sz.y;
+    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, g_viewport_mgr.Scale(ImVec2(5, 5)));
+    ImGui::PushFont(g_font_mgr.m_menu_font_medium);
 
-        // Snapshot thumbnail
-        ImGui::SetItemAllowOverlap();
-        ImGui::SameLine();
-        ImGui::SetCursorPosX(pos.x + thumbnail_pos.x);
-        ImGui::SetCursorPosY(pos.y + thumbnail_pos.y);
-        ImGui::Image((ImTextureID)screenshot, thumbnail_size, ImVec2(0,0), ImVec2(1,1));
+    ImVec2 ts_title = ImGui::CalcTextSize(snapshot->name);
+    ImVec2 thumbnail_size = g_viewport_mgr.Scale(ImVec2(XEMU_SNAPSHOT_WIDTH, XEMU_SNAPSHOT_HEIGHT));
+    ImVec2 thumbnail_pos(style.FramePadding.x, style.FramePadding.y);
+    ImVec2 name_pos(thumbnail_pos.x + thumbnail_size.x + style.FramePadding.x * 2, thumbnail_pos.y);
+    ImVec2 date_pos(name_pos.x, name_pos.y + ts_title.y + style.FramePadding.x);
+    ImVec2 title_pos(name_pos.x, date_pos.y + ts_title.y + style.FramePadding.x);
+    ImVec2 binding_pos(name_pos.x, title_pos.y + ts_title.y + style.FramePadding.x);
 
-        draw_list->PushClipRect(p0, p1, true);
+    bool load = ImGui::Button("###button", ImVec2(ImGui::GetContentRegionAvail().x, fmax(thumbnail_size.y + style.FramePadding.y * 2,
+                                                                                         ts_title.y + ts_sub.y + style.FramePadding.y * 3)));
+    ImGui::PopFont();   
+    const ImVec2 sz = ImGui::GetItemRectSize();
+    const ImVec2 p0 = ImGui::GetItemRectMin();
+    const ImVec2 p1 = ImGui::GetItemRectMax();
+    ts_close_icon.y = sz.y / 1;
+    ts_save_icon.y = sz.y / 1;
+    ts_binding_icon.y = sz.y / 1;
 
-        // Snapshot title
-        ImGui::PushFont(g_font_mgr.m_menuFontMedium);
-        draw_list->AddText(ImVec2(p0.x + text_pos.x, p0.y + text_pos.y), IM_COL32(255, 255, 255, 255), name);
-        ImGui::PopFont();
-
-        // Snapshot subtitle
-        ImGui::PushFont(g_font_mgr.m_menuFontSmall);
-        draw_list->AddText(ImVec2(p0.x + subtext_pos.x, p0.y + subtext_pos.y), IM_COL32(255, 255, 255, 200), title_name);
-        ImGui::PopFont();
-
-        draw_list->PopClipRect();
-
-        // Delete button
-        ImGui::SameLine();
-        ImGui::SetCursorPosY(pos.y);
-        ImGui::SetCursorPosX(pos.x + sz.x - ts_icon.x);
-        ImGui::PushFont(g_font_mgr.m_menuFont);
-        ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0));
-        ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32_BLACK_TRANS);
-        ImGui::Button(icon, ts_icon);
-        ImGui::PopStyleColor();
-        ImGui::PopStyleVar(1);
-        ImGui::PopFont();
-        ImGui::PopStyleVar(2);
-    }
-
-    void Draw()
-    {
-        initScreenshot();
-        for (int i = 0; i < 15; i++) {
-            char buf[64];
-            snprintf(buf, sizeof(buf), "%s", "Apr 9 2022 19:44");
-            ImGui::PushID(i);
-            snapshotBigButton(buf, "Halo: Combat Evolved", screenshot);
-            ImGui::PopID();
+    if (load) {
+        xemu_snapshots_load(snapshot->name, &err);
+        if (err) {
+            xemu_queue_error_message(error_get_pretty(err));
+            error_free(err);
         }
     }
-};
-#endif
+
+    // Snapshot thumbnail
+    ImGui::SetItemAllowOverlap();
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(pos.x + thumbnail_pos.x);
+    ImGui::SetCursorPosY(pos.y + thumbnail_pos.y);
+    if (screenshot > 0) {
+        ImGui::Image((ImTextureID)(uint64_t)screenshot, thumbnail_size);
+    } else {
+        ImGui::Image((ImTextureID)(uint64_t)g_icon_tex, thumbnail_size);
+    }
+
+    draw_list->PushClipRect(p0, p1, true);
+
+    // Snapshot title
+    ImGui::PushFont(g_font_mgr.m_menu_font_medium);
+    draw_list->AddText(ImVec2(p0.x + name_pos.x, p0.y + name_pos.y), IM_COL32(255, 255, 255, 255), snapshot->name);
+    ImGui::PopFont();
+
+    // Snapshot date
+    g_autoptr(GDateTime) date = g_date_time_new_from_unix_local(snapshot->date_sec);
+    char *date_buf = g_date_time_format(date, "%Y-%m-%d %H:%M:%S");
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    draw_list->AddText(ImVec2(p0.x + date_pos.x, p0.y + date_pos.y), IM_COL32(255, 255, 255, 200), date_buf);
+    ImGui::PopFont();
+    g_free(date_buf);
+
+    // Snapshot title
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    draw_list->AddText(ImVec2(p0.x + title_pos.x, p0.y + title_pos.y), IM_COL32(255, 255, 255, 200), title_name);
+    ImGui::PopFont();
+
+    // Snapshot binding
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    if (current_snapshot_binding != -1) {
+        char *binding_text = g_strdup_printf("Bound to F%d", current_snapshot_binding + 5);
+        draw_list->AddText(ImVec2(p0.x + binding_pos.x, p0.y + binding_pos.y), IM_COL32(255, 255, 255, 200), binding_text);
+        g_free(binding_text);
+    } else {
+        ImGui::Text("Not Bound");
+        draw_list->AddText(ImVec2(p0.x + binding_pos.x, p0.y + binding_pos.y), IM_COL32(255, 255, 255, 200), "Not Bound");
+    }
+    
+    ImGui::PopFont();
+
+    draw_list->PopClipRect();
+
+    // Delete button
+    ImGui::SameLine();
+    ImGui::SetCursorPosY(pos.y);
+    ImGui::SetCursorPosX(pos.x + sz.x - ts_close_icon.x);
+    ImGui::PushFont(g_font_mgr.m_menu_font);
+    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0));
+    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32_BLACK_TRANS);
+    if (ImGui::Button(close_icon, ts_close_icon)) {
+        xemu_snapshots_delete(snapshot->name, &err);
+        if (err) {
+            xemu_queue_error_message(error_get_pretty(err));
+            error_free(err);
+        }
+    }
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(1);
+    ImGui::PopFont();
+
+    // Save button
+    ImGui::SameLine();
+    ImGui::SetCursorPosY(pos.y);
+    ImGui::SetCursorPosX(pos.x + sz.x - ts_save_icon.x - ts_close_icon.x);
+    ImGui::PushFont(g_font_mgr.m_menu_font);
+    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0));
+    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32_BLACK_TRANS);
+    if (ImGui::Button(save_icon, ts_save_icon)) {
+        xemu_snapshots_save(snapshot->name, &err);
+        if (err) {
+            xemu_queue_error_message(error_get_pretty(err));
+            error_free(err);
+        }
+    }
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(1);
+    ImGui::PopFont();
+
+    // Bind button
+    ImGui::SameLine();
+    ImGui::SetCursorPosY(pos.y);
+    ImGui::SetCursorPosX(pos.x + sz.x - ts_binding_icon.x - ts_save_icon.x - ts_close_icon.x);
+    ImGui::PushFont(g_font_mgr.m_menu_font);
+    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0));
+    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32_BLACK_TRANS);
+    if (ImGui::Button(binding_icon, ts_binding_icon)) {
+        ImGui::OpenPopup("Bind Snapshot Key");
+    }
+
+    if (ImGui::BeginPopupContextItem("Bind Snapshot Key")) {
+        for (int i = 0; i < 4; ++i) {
+            char *item_name = g_strdup_printf("Bind to F%d", i + 5);
+
+            if (ImGui::MenuItem(item_name)) {
+                if (current_snapshot_binding >= 0) {
+                    xemu_settings_set_string(g_snapshot_shortcut_index_key_map[current_snapshot_binding], "");
+                }
+                xemu_settings_set_string(g_snapshot_shortcut_index_key_map[i], snapshot->name);
+                current_snapshot_binding = i;
+
+                ImGui::CloseCurrentPopup();
+            }
+
+            g_free(item_name);
+        }
+
+        if (current_snapshot_binding >= 0) {
+            ImGui::Separator();
+            if (ImGui::MenuItem("Unbind")) {
+                xemu_settings_set_string(g_snapshot_shortcut_index_key_map[current_snapshot_binding], "");
+                current_snapshot_binding = -1;
+            }
+        }
+
+        ImGui::EndPopup();
+    }
+
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar(1);
+    ImGui::PopFont();
+
+
+    ImGui::PopStyleVar(2);
+}
+
+static int MainMenuSnapshotsViewUpdateSearchBox(ImGuiInputTextCallbackData *data)
+{
+    GError *gerr = NULL;
+    MainMenuSnapshotsView *win = (MainMenuSnapshotsView*)data->UserData;
+
+    if (win->m_search_regex) g_free(win->m_search_regex);
+    if (data->BufTextLen == 0) {
+        win->m_search_regex = NULL;
+        return 0;
+    }
+
+    char *buf = g_strdup_printf("(.*)%s(.*)", data->Buf);
+
+    win->m_search_regex = g_regex_new(buf, (GRegexCompileFlags)0, (GRegexMatchFlags)0, &gerr);
+    g_free(buf);
+    if (gerr) {
+        win->m_search_regex = NULL;
+        return 1;
+    }
+
+    return 0;
+}
+
+void MainMenuSnapshotsView::Draw()
+{
+    Load();
+    SectionTitle("Snapshots");
+    ImGui::Checkbox("Filter by current title", &g_config.general.snapshots.filter_current_game);
+    ImGui::InputTextWithHint("##search", "Filter by name...", &m_search_buf, ImGuiInputTextFlags_CallbackEdit,
+                             &MainMenuSnapshotsViewUpdateSearchBox, this);
+
+    ImGui::InputTextWithHint("##create", "Create new snapshot", &m_create_buf);
+
+    bool snapshot_with_create_name_exists = false;
+    for (int i = 0; i < m_snapshots_len; ++i) {
+        if (g_strcmp0(m_create_buf.c_str(), m_snapshots[i].name) == 0) {
+            snapshot_with_create_name_exists = true;
+            break;
+        }
+    }
+
+    ImGui::SameLine();
+    if (ImGui::Button(snapshot_with_create_name_exists ? "Save" : "Create") && !m_create_buf.empty()) {
+        xemu_snapshots_save(m_create_buf.c_str(), NULL);
+        m_create_buf.clear();
+    }
+
+    if (snapshot_with_create_name_exists && ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("A snapshot with the name \"%s\" already exists. This button will overwrite the existing snapshot.", m_create_buf.c_str());
+    }
+
+    bool search_buf_equal = false;
+    for (int i = m_snapshots_len - 1; i >= 0; i--) {
+        if (g_config.general.snapshots.filter_current_game && m_extra_data[i].xbe_title_present && 
+            (strcmp(m_current_title_name, m_extra_data[i].xbe_title) != 0)) {
+            continue;
+        }
+
+        if (m_search_regex) {
+            GMatchInfo *match;
+            bool keep_entry = false;
+        
+            g_regex_match(m_search_regex, m_snapshots[i].name, (GRegexMatchFlags)0, &match);
+            keep_entry |= g_match_info_matches(match);
+            g_match_info_free(match);
+
+            if (m_extra_data[i].xbe_title_present) {
+                g_regex_match(m_search_regex, m_extra_data[i].xbe_title, (GRegexMatchFlags)0, &match);
+                keep_entry |= g_match_info_matches(match);
+                g_free(match);
+            }
+
+            if (!keep_entry) {
+                continue;
+            }
+        }
+
+        search_buf_equal |= g_strcmp0(m_search_buf.c_str(), m_snapshots[i].name) == 0;
+
+        ImGui::PushID(i);
+        GLuint thumbnail = 0;
+        if (m_extra_data[i].thumbnail_present) {
+            thumbnail = m_extra_data[i].gl_thumbnail;
+        }
+        SnapshotBigButton(
+            m_snapshots + i,
+            m_extra_data[i].xbe_title_present ? m_extra_data[i].xbe_title : "Unknown",
+            thumbnail
+        );
+        ImGui::PopID();
+    }
+
+    /* Snapshot names are unique, don't give option to create new one if it exists already */
+    if (!search_buf_equal && !m_search_buf.empty()) {
+        char *new_snapshot = g_strdup_printf("Create Snapshot '%s'", m_search_buf.c_str());
+        ImGui::PushFont(g_font_mgr.m_menu_font_small);
+        ImVec2 new_snapshot_size = ImGui::CalcTextSize(new_snapshot);
+        ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - new_snapshot_size.x)/2);
+        if (ImGui::Button(new_snapshot)) {
+            Error *err = NULL;
+            xemu_snapshots_save(m_search_buf.c_str(), &err);
+            if (err) {
+                xemu_queue_error_message(error_get_pretty(err));
+                error_free(err);
+            }
+        }
+        ImGui::PopFont();
+        g_free(new_snapshot);
+    }
+}
 
 MainMenuSystemView::MainMenuSystemView() : m_dirty(false)
 {
@@ -929,7 +1172,7 @@ MainMenuScene::MainMenuScene()
   m_display_button("Display",     ICON_FA_TV),
   m_audio_button("Audio",         ICON_FA_VOLUME_HIGH),
   m_network_button("Network",     ICON_FA_NETWORK_WIRED),
-  // m_snapshots_button("Snapshots", ICON_FA_CLOCK_ROTATE_LEFT),
+  m_snapshots_button("Snapshots", ICON_FA_CLOCK_ROTATE_LEFT),
   m_system_button("System",       ICON_FA_MICROCHIP),
   m_about_button("About",         ICON_FA_CIRCLE_INFO)
 {
@@ -940,7 +1183,7 @@ MainMenuScene::MainMenuScene()
     m_tabs.push_back(&m_display_button);
     m_tabs.push_back(&m_audio_button);
     m_tabs.push_back(&m_network_button);
-    // m_tabs.push_back(&m_snapshots_button);
+    m_tabs.push_back(&m_snapshots_button);
     m_tabs.push_back(&m_system_button);
     m_tabs.push_back(&m_about_button);
 
@@ -949,7 +1192,7 @@ MainMenuScene::MainMenuScene()
     m_views.push_back(&m_display_view);
     m_views.push_back(&m_audio_view);
     m_views.push_back(&m_network_view);
-    // m_views.push_back(&m_snapshots_view);
+    m_views.push_back(&m_snapshots_view);
     m_views.push_back(&m_system_view);
     m_views.push_back(&m_about_view);
 
@@ -977,14 +1220,17 @@ void MainMenuScene::ShowNetwork()
 {
     SetNextViewIndexWithFocus(4);
 }
-// void MainMenuScene::showSnapshots() { SetNextViewIndexWithFocus(5); }
-void MainMenuScene::ShowSystem()
+void MainMenuScene::ShowSnapshots() 
 {
     SetNextViewIndexWithFocus(5);
 }
-void MainMenuScene::ShowAbout()
+void MainMenuScene::ShowSystem()
 {
     SetNextViewIndexWithFocus(6);
+}
+void MainMenuScene::ShowAbout()
+{
+    SetNextViewIndexWithFocus(7);
 }
 
 void MainMenuScene::SetNextViewIndexWithFocus(int i)
