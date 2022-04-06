@@ -872,6 +872,11 @@ static void pgraph_image_blit(NV2AState *d)
         if (image_blit->height < surf_dest->height ||
             image_blit->width < surf_dest->width) {
             pgraph_download_surface_data_if_dirty(d, surf_dest);
+        } else {
+            // The blit will completely replace the surface so any pending
+            // download should be discarded.
+            surf_dest->download_pending = false;
+            surf_dest->draw_dirty = false;
         }
         surf_dest->upload_pending = true;
     }
