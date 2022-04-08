@@ -128,7 +128,7 @@ void pgraph_gl_clear_surface(NV2AState *d, uint32_t parameter)
     if (r->zeta_binding) {
         r->zeta_binding->cleared = full_clear && write_zeta;
     }
-    
+
     pg->clearing = false;
 }
 
@@ -137,7 +137,16 @@ void pgraph_gl_draw_begin(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    NV2A_GL_DGROUP_BEGIN("NV097_SET_BEGIN_END: 0x%x", pg->primitive_mode);
+    // abaire
+#if DEBUG_NV2A_GL
+    NV2A_GL_DGROUP_BEGIN("NV097_SET_BEGIN_END: 0x%x %d", pg->primitive_mode, g_nv2a_current_frame_draw_count);
+    {
+        char buffer[256] = {0};
+        sprintf(buffer, "frame_draw %d   ", g_nv2a_current_frame_draw_count);
+        trace_nv2a_pgraph_method(-1, 0, 0, buffer, 0, 0);
+    }
+#endif
+    // /abaire
 
     uint32_t control_0 = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0);
     bool mask_alpha = control_0 & NV_PGRAPH_CONTROL_0_ALPHA_WRITE_ENABLE;
@@ -366,6 +375,10 @@ void pgraph_gl_draw_end(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
+
+#if DEBUG_NV2A_GL
+    ++g_nv2a_current_frame_draw_count;  // abaire
+#endif
 
     uint32_t control_0 = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0);
     bool mask_alpha = control_0 & NV_PGRAPH_CONTROL_0_ALPHA_WRITE_ENABLE;

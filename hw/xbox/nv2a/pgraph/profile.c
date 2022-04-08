@@ -20,6 +20,7 @@
 #include "hw/xbox/nv2a/nv2a_int.h"
 
 NV2AStats g_nv2a_stats;
+uint32_t g_nv2a_current_frame_draw_count = 0;  // abaire
 
 void nv2a_profile_increment(void)
 {
@@ -51,6 +52,8 @@ void nv2a_profile_flip_stall(void)
         (g_nv2a_stats.frame_ptr + 1) % NV2A_PROF_NUM_FRAMES;
     g_nv2a_stats.frame_count++;
     memset(&g_nv2a_stats.frame_working, 0, sizeof(g_nv2a_stats.frame_working));
+
+    g_nv2a_current_frame_draw_count = 0;  // abaire
 }
 
 const char *nv2a_profile_get_counter_name(unsigned int cnt)
