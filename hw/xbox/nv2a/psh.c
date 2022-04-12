@@ -558,6 +558,64 @@ static void add_final_stage_code(struct PixelShader *ps, struct FCInputInfo fina
     ps->varE = ps->varF = NULL;
 }
 
+static const char sampler2D[] = "sampler2D";
+static const char sampler3D[] = "sampler3D";
+static const char samplerCube[] = "samplerCube";
+static const char sampler2DRect[] = "sampler2DRect";
+
+static const char* get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *state, int i)
+{
+    switch (mode) {
+    default:
+    case PS_TEXTUREMODES_NONE:
+        return NULL;
+
+    case PS_TEXTUREMODES_PROJECT2D:
+    case PS_TEXTUREMODES_BUMPENVMAP:
+    case PS_TEXTUREMODES_BUMPENVMAP_LUM:
+    case PS_TEXTUREMODES_DOT_ST:
+        if (state->shadow_map[i]) {
+            fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
+            assert(!"Shadow map support not implemented for this mode");
+        }
+        return state->rect_tex[i] ? sampler2DRect : sampler2D;
+
+    case PS_TEXTUREMODES_PROJECT3D:
+    case PS_TEXTUREMODES_DOT_STR_3D:
+        if (state->shadow_map[i]) {
+            return state->rect_tex[i] ? sampler2DRect : sampler2D;
+        }
+        return sampler3D;
+
+    case PS_TEXTUREMODES_CUBEMAP:
+    case PS_TEXTUREMODES_DOT_RFLCT_DIFF:
+    case PS_TEXTUREMODES_DOT_RFLCT_SPEC:
+    case PS_TEXTUREMODES_DOT_STR_CUBE:
+        if (state->shadow_map[i]) {
+            fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
+            assert(!"Shadow map support not implemented for this mode");
+        }
+        return samplerCube;
+
+    case PS_TEXTUREMODES_DPNDNT_AR:
+    case PS_TEXTUREMODES_DPNDNT_GB:
+        if (state->shadow_map[i]) {
+            fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
+            assert(!"Shadow map support not implemented for this mode");
+        }
+        return sampler2D;
+    }
+}
+
+static const char *shadow_comparison_map[] = {
+    [SHADOW_DEPTH_FUNC_LESS] = "<",
+    [SHADOW_DEPTH_FUNC_EQUAL] = "==",
+    [SHADOW_DEPTH_FUNC_LEQUAL] = "<=",
+    [SHADOW_DEPTH_FUNC_GREATER] = ">",
+    [SHADOW_DEPTH_FUNC_NOTEQUAL] = "!=",
+    [SHADOW_DEPTH_FUNC_GEQUAL] = ">=",
+};
+
 static MString* psh_convert(struct PixelShader *ps)
 {
     int i;
@@ -699,7 +757,7 @@ static MString* psh_convert(struct PixelShader *ps)
 
     for (i = 0; i < 4; i++) {
 
-        const char *sampler_type = NULL;
+        const char *sampler_type = get_sampler_type(ps->tex_modes[i], &ps->state, i);
 
         assert(ps->dot_map[i] < 8);
         const char *dotmap_func = dotmap_funcs[ps->dot_map[i]];
@@ -713,7 +771,6 @@ static MString* psh_convert(struct PixelShader *ps)
                                i);
             break;
         case PS_TEXTUREMODES_PROJECT2D: {
-            sampler_type = ps->state.rect_tex[i] ? "sampler2DRect" : "sampler2D";
             const char *lookup = "textureProj";
             if ((ps->state.conv_tex[i] == CONVOLUTION_FILTER_GAUSSIAN)
                 || (ps->state.conv_tex[i] == CONVOLUTION_FILTER_QUINCUNX)) {
@@ -733,12 +790,38 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         }
         case PS_TEXTUREMODES_PROJECT3D:
-            sampler_type = "sampler3D";
-            mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, pT%d.xyzw);\n",
-                               i, i, i);
+            if (ps->state.shadow_map[i]) {
+                if (ps->state.shadow_depth_func == SHADOW_DEPTH_FUNC_NEVER) {
+                    mstring_append_fmt(vars, "vec4 t%d = vec4(0.0);\n", i);
+                } else if (ps->state.shadow_depth_func == SHADOW_DEPTH_FUNC_ALWAYS) {
+                    mstring_append_fmt(vars, "vec4 t%d = vec4(1.0);\n", i);
+                } else {
+                    mstring_append_fmt(vars,
+                                       "pT%d.xy *= texScale%d;\n"
+                                       "vec4 t%d_depth = textureProj(texSamp%d, pT%d.xyw);\n"
+                                       "float t%d_max_depth;\n"
+                                       "if (t%d_depth.y > 0) {\n"
+                                       "  t%d_max_depth = 0xFFFFFF;\n"
+                                       "} else {\n"
+                                       "  t%d_max_depth = 0xFFFF; // TODO: Support float max.\n"
+                                       "}\n"
+                                       "t%d_depth.x *= t%d_max_depth;\n"
+                                       "pT%d.z = clamp(pT%d.z / pT%d.w, 0, t%d_max_depth);\n",
+                                       i, i, i, i, i,
+                                       i, i, i, i, i,
+                                       i, i, i, i, i);
+
+                    const char *comparison = shadow_comparison_map[ps->state.shadow_depth_func];
+                    mstring_append_fmt(vars,
+                                       "vec4 t%d = vec4(t%d_depth.x %s pT%d.z ? 1.0 : 0.0);\n",
+                                       i, i, comparison, i);
+                }
+            } else {
+                mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, pT%d.xyzw);\n",
+                                   i, i, i);
+            }
             break;
         case PS_TEXTUREMODES_CUBEMAP:
-            sampler_type = "samplerCube";
             mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, pT%d.xyz / pT%d.w);\n",
                                i, i, i, i);
             break;
@@ -758,7 +841,6 @@ static MString* psh_convert(struct PixelShader *ps)
         }
         case PS_TEXTUREMODES_BUMPENVMAP:
             assert(i >= 1);
-            sampler_type = ps->state.rect_tex[i] ? "sampler2DRect" : "sampler2D";
             mstring_append_fmt(preflight, "uniform mat2 bumpMat%d;\n", i);
 
             if (ps->state.snorm_tex[ps->input_tex[i]]) {
@@ -778,7 +860,6 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_BUMPENVMAP_LUM:
             assert(i >= 1);
-            sampler_type = ps->state.rect_tex[i] ? "sampler2DRect" : "sampler2D";
             mstring_append_fmt(preflight, "uniform float bumpScale%d;\n", i);
             mstring_append_fmt(preflight, "uniform float bumpOffset%d;\n", i);
             mstring_append_fmt(preflight, "uniform mat2 bumpMat%d;\n", i);
@@ -808,7 +889,6 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_ST:
             assert(i >= 2);
-            sampler_type = ps->state.rect_tex[i] ? "sampler2DRect" : "sampler2D";
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_ST */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
@@ -825,7 +905,6 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_DIFF:
             assert(i == 2);
-            sampler_type = "samplerCube";
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_RFLCT_DIFF */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
@@ -839,7 +918,6 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_RFLCT_SPEC:
             assert(i == 3);
-            sampler_type = "samplerCube";
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_RFLCT_SPEC */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
@@ -854,7 +932,6 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_STR_3D:
             assert(i == 3);
-            sampler_type = "sampler3D";
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_3D */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
@@ -863,7 +940,6 @@ static MString* psh_convert(struct PixelShader *ps)
             break;
         case PS_TEXTUREMODES_DOT_STR_CUBE:
             assert(i == 3);
-            sampler_type = "samplerCube";
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_CUBE */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
@@ -873,14 +949,12 @@ static MString* psh_convert(struct PixelShader *ps)
         case PS_TEXTUREMODES_DPNDNT_AR:
             assert(i >= 1);
             assert(!ps->state.rect_tex[i]);
-            sampler_type = "sampler2D";
             mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, t%d.ar);\n",
                 i, i, ps->input_tex[i]);
             break;
         case PS_TEXTUREMODES_DPNDNT_GB:
             assert(i >= 1);
             assert(!ps->state.rect_tex[i]);
-            sampler_type = "sampler2D";
             mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, t%d.gb);\n",
                 i, i, ps->input_tex[i]);
             break;
@@ -1062,8 +1136,6 @@ MString *psh_translate(const PshState state)
         ps.final_input.inv_v1 = flags & PS_FINALCOMBINERSETTING_COMPLEMENT_V1;
         ps.final_input.inv_r0 = flags & PS_FINALCOMBINERSETTING_COMPLEMENT_R0;
     }
-
-
 
     return psh_convert(&ps);
 }
