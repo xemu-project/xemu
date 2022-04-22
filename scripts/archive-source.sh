@@ -28,7 +28,7 @@ sub_file="${sub_tdir}/submodule.tar"
 # different to the host OS.
 submodules="dtc slirp meson ui/keycodemapdb"
 submodules="$submodules tests/fp/berkeley-softfloat-3 tests/fp/berkeley-testfloat-3"
-submodules="$submodules ui/imgui ui/implot util/xxHash" # xemu extras
+submodules="$submodules ui/imgui ui/implot util/xxHash tomlplusplus genconfig" # xemu extras
 sub_deinit=""
 
 function cleanup() {
