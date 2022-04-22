@@ -76,3 +76,6 @@
 	path = util/xxHash
 	url = https://github.com/Cyan4973/xxHash.git
 	ignore = untracked
+[submodule "genconfig"]
+	path = genconfig
+	url = https://github.com/mborgerson/genconfig.git
