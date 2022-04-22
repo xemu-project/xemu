@@ -87,11 +87,11 @@ ControllerStateList available_controllers =
 ControllerState *bound_controllers[4] = { NULL, NULL, NULL, NULL };
 int test_mode;
 
-static const enum xemu_settings_keys port_index_to_settings_key_map[] = {
-    XEMU_SETTINGS_INPUT_CONTROLLER_1_GUID,
-    XEMU_SETTINGS_INPUT_CONTROLLER_2_GUID,
-    XEMU_SETTINGS_INPUT_CONTROLLER_3_GUID,
-    XEMU_SETTINGS_INPUT_CONTROLLER_4_GUID,
+static const char **port_index_to_settings_key_map[] = {
+    &g_config.input.bindings.port1,
+    &g_config.input.bindings.port2,
+    &g_config.input.bindings.port3,
+    &g_config.input.bindings.port4,
 };
 
 void xemu_input_init(void)
@@ -141,9 +141,7 @@ int xemu_input_get_controller_default_bind_port(ControllerState *state, int star
     }
 
     for (int i = start; i < 4; i++) {
-        const char *this_port;
-        xemu_settings_get_string(port_index_to_settings_key_map[i], &this_port);
-        if (strcmp(guid, this_port) == 0) {
+        if (strcmp(guid, *port_index_to_settings_key_map[i]) == 0) {
             return i;
         }
     }
@@ -434,7 +432,6 @@ void xemu_input_bind(int index, ControllerState *state, int save)
             }
         }
         xemu_settings_set_string(port_index_to_settings_key_map[index], guid_buf);
-        xemu_settings_save();
     }
 
     // Bind new controller

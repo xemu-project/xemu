@@ -2624,9 +2624,7 @@ void mcpx_apu_init(PCIBus *bus, int devfn, MemoryRegion *ram)
     /* Until DSP is more performant, a switch to decide whether or not we should
      * use the full audio pipeline or not.
      */
-    int use_dsp;
-    xemu_settings_get_bool(XEMU_SETTINGS_AUDIO_USE_DSP, &use_dsp);
-    if (use_dsp) {
+    if (g_config.audio.use_dsp) {
         d->mon = MCPX_APU_DEBUG_MON_GP_OR_EP;
         d->gp.realtime = true;
         d->ep.realtime = true;

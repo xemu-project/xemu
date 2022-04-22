@@ -3707,9 +3707,7 @@ void nv2a_set_surface_scale_factor(unsigned int scale)
 {
     NV2AState *d = g_nv2a;
 
-    xemu_settings_set_int(XEMU_SETTINGS_DISPLAY_RENDER_SCALE,
-                          scale < 1 ? 1 : scale);
-    xemu_settings_save();
+    g_config.display.quality.surface_scale = scale < 1 ? 1 : scale;
 
     qemu_mutex_unlock_iothread();
 
@@ -3750,8 +3748,7 @@ unsigned int nv2a_get_surface_scale_factor(void)
 
 static void pgraph_reload_surface_scale_factor(NV2AState *d)
 {
-    int factor;
-    xemu_settings_get_int(XEMU_SETTINGS_DISPLAY_RENDER_SCALE, &factor);
+    int factor = g_config.display.quality.surface_scale;
     d->pgraph.surface_scale_factor = factor < 1 ? 1 : factor;
 }
 

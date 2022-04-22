@@ -9046,7 +9046,7 @@ void tcg_x86_init(void)
                                    offsetof(CPUX86State, fpstt), "fpstt");
 
 #if defined(XBOX) && defined(__x86_64__)
-    xemu_settings_get_bool(XEMU_SETTINGS_SYSTEM_HARD_FPU, &g_use_hard_fpu);
+    g_use_hard_fpu = g_config.perf.hard_fpu;
 #endif
 }
 
