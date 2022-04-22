@@ -50,36 +50,28 @@ void xemu_net_enable(void)
         return;
     }
 
-    int backend;
-    const char *local_addr, *remote_addr;
-    xemu_settings_get_enum(XEMU_SETTINGS_NETWORK_BACKEND, &backend);
-    xemu_settings_get_string(XEMU_SETTINGS_NETWORK_REMOTE_ADDR, &remote_addr);
-    xemu_settings_get_string(XEMU_SETTINGS_NETWORK_LOCAL_ADDR, &local_addr);
-
     // Create the netdev
     QDict *qdict;
-    if (backend == XEMU_NET_BACKEND_USER) {
+    if (g_config.net.backend == CONFIG_NET_BACKEND_NAT) {
         qdict = qdict_new();
         qdict_put_str(qdict, "id",   id);
         qdict_put_str(qdict, "type", "user");
-    } else if (backend == XEMU_NET_BACKEND_SOCKET_UDP) {
+    } else if (g_config.net.backend == CONFIG_NET_BACKEND_UDP) {
         qdict = qdict_new();
         qdict_put_str(qdict, "id",        id);
         qdict_put_str(qdict, "type",      "socket");
-        qdict_put_str(qdict, "udp",       remote_addr);
-        qdict_put_str(qdict, "localaddr", local_addr);
-    } else if (backend == XEMU_NET_BACKEND_PCAP) {
+        qdict_put_str(qdict, "udp",       g_config.net.udp.remote_addr);
+        qdict_put_str(qdict, "localaddr", g_config.net.udp.bind_addr);
+    } else if (g_config.net.backend == CONFIG_NET_BACKEND_PCAP) {
 #if defined(_WIN32)
         if (pcap_load_library()) {
             return;
         }
 #endif
-        const char *iface;
-        xemu_settings_get_string(XEMU_SETTINGS_NETWORK_PCAP_INTERFACE, &iface);
         qdict = qdict_new();
         qdict_put_str(qdict, "id",        id);
         qdict_put_str(qdict, "type",      "pcap");
-        qdict_put_str(qdict, "ifname",    iface);
+        qdict_put_str(qdict, "ifname",    g_config.net.pcap.netif);
     } else {
         // Unsupported backend type
         return;
@@ -111,6 +103,8 @@ void xemu_net_enable(void)
         xemu_queue_error_message(error_get_pretty(local_err));
         error_report_err(local_err);
     }
+
+    g_config.net.enable = true;
 }
 
 static void remove_netdev(const char *name)
@@ -139,11 +133,13 @@ void xemu_net_disable(void)
 {
     remove_netdev(id);
     remove_netdev(id_hubport);
+    g_config.net.enable = false;
 }
 
 int xemu_net_is_enabled(void)
 {
     NetClientState *nc;
     nc = qemu_find_netdev(id);
-    return (nc != NULL);
+    g_config.net.enable = (nc != NULL);
+    return g_config.net.enable;
 }

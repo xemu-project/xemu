@@ -1970,9 +1970,7 @@ static void qemu_create_late_backends(void)
     net_init_clients(&error_fatal);
 
 #ifdef XBOX
-    int xemu_net_enabled;
-    xemu_settings_get_bool(XEMU_SETTINGS_NETWORK_ENABLED, &xemu_net_enabled);
-    if (xemu_net_enabled) {
+    if (g_config.net.enable) {
         xemu_net_enable();
     }
 #endif
@@ -2801,8 +2799,7 @@ void qemu_init(int argc, char **argv, char **envp)
     fake_argv[fake_argc++] = strdup("-machine");
 
     char *bootrom_arg = NULL;
-    const char *bootrom_path;
-    xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_BOOTROM_PATH, &bootrom_path);
+    const char *bootrom_path = g_config.sys.files.bootrom_path;
 
     if (strlen(bootrom_path) > 0) {
         int bootrom_size = get_image_size(bootrom_path);
@@ -2828,12 +2825,9 @@ void qemu_init(int argc, char **argv, char **envp)
         }
     }
 
-    int short_animation;
-    xemu_settings_get_bool(XEMU_SETTINGS_SYSTEM_SHORTANIM, &short_animation);
-
     fake_argv[fake_argc++] = g_strdup_printf("xbox%s%s%s",
         (bootrom_arg != NULL) ? bootrom_arg : "",
-        short_animation ? ",short-animation=on" : "",
+        g_config.general.misc.skip_boot_anim ? ",short-animation=on" : "",
         ",kernel-irqchip=off"
         );
 
@@ -2841,8 +2835,7 @@ void qemu_init(int argc, char **argv, char **envp)
         g_free(bootrom_arg);
     }
 
-    const char *eeprom_path;
-    xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_EEPROM_PATH, &eeprom_path);
+    const char *eeprom_path = g_config.sys.files.eeprom_path;
 
     // Sanity check EEPROM file
     if (strlen(eeprom_path) > 0) {
@@ -2875,8 +2868,7 @@ void qemu_init(int argc, char **argv, char **envp)
     if (strlen(eeprom_path) == 0) {
         eeprom_path = xemu_settings_get_default_eeprom_path();
         if (xbox_eeprom_generate(eeprom_path, XBOX_EEPROM_VERSION_R1)) {
-            xemu_settings_set_string(XEMU_SETTINGS_SYSTEM_EEPROM_PATH, eeprom_path);
-            xemu_settings_save();
+            xemu_settings_set_string(&g_config.sys.files.eeprom_path, eeprom_path);
             fake_argv[fake_argc++] = strdup("-device");
             char *escaped_eeprom_path = strdup_double_commas(eeprom_path);
             fake_argv[fake_argc++] = g_strdup_printf("smbus-storage,file=%s",
@@ -2889,29 +2881,26 @@ void qemu_init(int argc, char **argv, char **envp)
         }
     }
 
-    const char *flash_path;
-    xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_FLASH_PATH, &flash_path);
+    const char *flashrom_path = g_config.sys.files.flashrom_path;
     autostart = 0; // Do not auto-start the machine without a valid BIOS file
     if (first_boot) {
         // Don't display an error if this is the first boot. Give user a chance
         // to configure the path.
-    } else if (xemu_check_file(flash_path)) {
-        char *msg = g_strdup_printf("Failed to open flash file '%s'. Please check machine settings.", flash_path);
+    } else if (xemu_check_file(flashrom_path)) {
+        char *msg = g_strdup_printf("Failed to open flash file '%s'. Please check machine settings.", flashrom_path);
         xemu_queue_error_message(msg);
         g_free(msg);
     } else {
         fake_argv[fake_argc++] = strdup("-bios");
-        fake_argv[fake_argc++] = strdup(flash_path);
+        fake_argv[fake_argc++] = strdup(flashrom_path);
         autostart = 1;
     }
 
-    int mem;
-    xemu_settings_get_int(XEMU_SETTINGS_SYSTEM_MEMORY, &mem);
+    int mem = ((int)g_config.sys.mem_limit + 1) * 64;
     fake_argv[fake_argc++] = strdup("-m");
     fake_argv[fake_argc++] = g_strdup_printf("%d", mem);
 
-    const char *hdd_path;
-    xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_HDD_PATH, &hdd_path);
+    const char *hdd_path = g_config.sys.files.hdd_path;
     if (strlen(hdd_path) > 0) {
         if (xemu_check_file(hdd_path)) {
             char *msg = g_strdup_printf("Failed to open hard disk image file '%s'. Please check machine settings.", hdd_path);
@@ -2927,9 +2916,7 @@ void qemu_init(int argc, char **argv, char **envp)
         }
     }
 
-    const char *dvd_path = "";
-    xemu_settings_get_string(XEMU_SETTINGS_SYSTEM_DVD_PATH, &dvd_path);
-
+    const char *dvd_path = g_config.sys.files.dvd_path;
     // Allow overriding the dvd path from command line
     for (int i = 1; i < argc; i++) {
         if (argv[i] && strcmp(argv[i], "-dvd_path") == 0) {

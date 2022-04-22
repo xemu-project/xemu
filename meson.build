@@ -837,6 +837,9 @@ if 'CONFIG_OPENGL' in config_host
                               link_args: config_host['OPENGL_LIBS'].split())
 endif
 
+tomlpp = declare_dependency(include_directories: 'tomlplusplus')
+genconfig = declare_dependency(include_directories: 'genconfig')
+
 xemu_gtk = declare_dependency(compile_args: config_host['XEMU_GTK_CFLAGS'].split(),
                               link_args: config_host['XEMU_GTK_LIBS'].split())
 
@@ -2056,8 +2059,20 @@ qemu_version = custom_target('qemu-version.h',
                              build_by_default: true,
                              build_always_stale: true)
 
+genconfig_cmd = [
+  python, files('genconfig/gen_config.py'),
+   meson.source_root() / 'config_spec.yml', 'xemu-config.h'
+]
+
+xemu_config = custom_target('xemu-config.h',
+                            output: 'xemu-config.h',
+                            input: [ files('config_spec.yml') ],
+                            command: genconfig_cmd,
+                            depend_files: files('config_spec.yml'))
+
 genh += qemu_version
 genh += xemu_version
+genh += xemu_config
 
 hxdep = []
 hx_headers = [
@@ -2299,6 +2314,9 @@ endif
 specific_ss.add(files('xemu-xbe.c', 'xemu-version.c'))
 
 common_ss.add(files('cpus-common.c'))
+
+common_ss.add(tomlpp)
+common_ss.add(genconfig)
 
 subdir('softmmu')
 

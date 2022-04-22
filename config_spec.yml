@@ -1,0 +1,68 @@
+general:
+  updates:
+    check:
+      type: bool
+      default: true
+  misc:
+    skip_boot_anim: bool
+  user_token: string
+
+input:
+  bindings:
+    port1: string
+    port2: string
+    port3: string
+    port4: string
+
+display:
+  quality:
+    surface_scale:
+      type: integer
+      default: 1
+  window:
+    last_width: integer
+    last_height: integer
+  ui:
+    fit:
+      type: enum
+      values: [center, scale, scale_16_9, scale_4_3, stretch]
+      default: scale
+    scale:
+      type: integer
+      default: 1
+
+audio:
+  use_dsp: bool
+
+net:
+  enable: bool
+  backend:
+    type: enum
+    values: [nat, udp, pcap]
+    default: nat
+  pcap:
+    netif: string
+  udp:
+    bind_addr:
+      type: string
+      default: 0.0.0.0:9368
+    remote_addr:
+      type: string
+      default: 1.2.3.4:9368
+
+sys:
+  mem_limit:
+    type: enum
+    values: ['64', '128']
+    default: '64'
+  files:
+    bootrom_path: string
+    flashrom_path: string
+    eeprom_path: string
+    hdd_path: string
+    dvd_path: string
+
+perf:
+  hard_fpu:
+    type: bool
+    default: true
