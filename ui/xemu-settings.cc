@@ -35,7 +35,7 @@
 
 struct config g_config;
 static bool settings_failed_to_load = true;
-static const char *filename = "xemu.ini";
+static const char *filename = "xemu.toml";
 static const char *settings_path;
 
 static bool xemu_settings_detect_portable_mode(void)
