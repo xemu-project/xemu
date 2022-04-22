@@ -2789,7 +2789,6 @@ void qemu_init(int argc, char **argv, char **envp)
     // now.
     //
 
-    int first_boot = xemu_settings_did_fail_to_load();
     int fake_argc = 32 + argc;
     char **fake_argv = malloc(sizeof(char*)*fake_argc);
     memset(fake_argv, 0, sizeof(char*)*fake_argc);
@@ -2883,7 +2882,7 @@ void qemu_init(int argc, char **argv, char **envp)
 
     const char *flashrom_path = g_config.sys.files.flashrom_path;
     autostart = 0; // Do not auto-start the machine without a valid BIOS file
-    if (first_boot) {
+    if (g_config.general.show_welcome) {
         // Don't display an error if this is the first boot. Give user a chance
         // to configure the path.
     } else if (xemu_check_file(flashrom_path)) {
