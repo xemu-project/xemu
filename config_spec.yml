@@ -1,4 +1,7 @@
 general:
+  show_welcome:
+    type: bool
+    default: true
   updates:
     check:
       type: bool

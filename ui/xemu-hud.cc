@@ -671,6 +671,7 @@ public:
         xemu_settings_set_string(&g_config.sys.files.eeprom_path, eeprom_path);
         xemu_queue_notification("Settings saved. Restart to apply updates.");
         pending_restart = true;
+        g_config.general.show_welcome = false;
     }
 
     void FilePicker(const char *name, char *buf, size_t len, const char *filters)
@@ -2169,7 +2170,7 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     ImGui_ImplSDL2_InitForOpenGL(window, sdl_gl_context);
     ImGui_ImplOpenGL3_Init("#version 150");
 
-    first_boot_window.is_open = xemu_settings_did_fail_to_load();
+    first_boot_window.is_open = g_config.general.show_welcome;
 
     int ui_scale_int = g_config.display.ui.scale;
     if (ui_scale_int < 1) ui_scale_int = 1;
