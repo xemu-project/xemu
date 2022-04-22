@@ -837,7 +837,12 @@ if 'CONFIG_OPENGL' in config_host
                               link_args: config_host['OPENGL_LIBS'].split())
 endif
 
-tomlpp = declare_dependency(include_directories: 'tomlplusplus')
+tomllib = static_library('tomlpp', sources: files('toml.cpp'),
+                         include_directories: 'tomlplusplus')
+toml = declare_dependency(compile_args: ['-DTOML_HEADER_ONLY=0'],
+                          include_directories: 'tomlplusplus',
+                          link_with: tomllib)
+
 genconfig = declare_dependency(include_directories: 'genconfig')
 
 xemu_gtk = declare_dependency(compile_args: config_host['XEMU_GTK_CFLAGS'].split(),
@@ -2315,7 +2320,7 @@ specific_ss.add(files('xemu-xbe.c', 'xemu-version.c'))
 
 common_ss.add(files('cpus-common.c'))
 
-common_ss.add(tomlpp)
+common_ss.add(toml)
 common_ss.add(genconfig)
 
 subdir('softmmu')
