@@ -844,7 +844,7 @@ for opt do
   case "$opt" in
   --help|-h) show_help=yes
   ;;
-  --version|-V) exec cat $source_path/VERSION
+  --version|-V) exec cat $source_path/QEMU_VERSION
   ;;
   --prefix=*) prefix="$optarg"
   ;;
@@ -4489,7 +4489,7 @@ if test "$QEMU_GA_DISTRO" = ""; then
   QEMU_GA_DISTRO=Linux
 fi
 if test "$QEMU_GA_VERSION" = ""; then
-    QEMU_GA_VERSION=$(cat $source_path/VERSION)
+  QEMU_GA_VERSION=$(cat $source_path/QEMU_VERSION)
 fi
 
 QEMU_GA_MSI_MINGW_DLL_PATH="$($pkg_config --variable=prefix glib-2.0)/bin"
@@ -4680,7 +4680,7 @@ fi
 if test "$xfs" = "yes" ; then
   echo "CONFIG_XFS=y" >> $config_host_mak
 fi
-qemu_version=$(head $source_path/VERSION)
+qemu_version=$(head $source_path/QEMU_VERSION)
 echo "PKGVERSION=$pkgversion" >>$config_host_mak
 echo "SRC_PATH=$source_path" >> $config_host_mak
 echo "TARGET_DIRS=$target_list" >> $config_host_mak
