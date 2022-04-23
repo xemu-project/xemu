@@ -1183,8 +1183,10 @@ public:
     }
 };
 
+#ifndef _WIN32
 #ifdef CONFIG_CPUID_H
 #include <cpuid.h>
+#endif
 #endif
 
 const char *get_cpu_info(void)
