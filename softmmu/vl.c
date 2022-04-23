@@ -2719,10 +2719,6 @@ static void qemu_machine_creation_done(void)
 
     qdev_machine_creation_done();
 
-#ifdef XBOX
-    xemu_input_init();
-#endif
-
     if (machine->cgs) {
         /*
          * Verify that Confidential Guest Support has actually been initialized
