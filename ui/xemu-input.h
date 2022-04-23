@@ -67,7 +67,7 @@ typedef struct ControllerState {
     QTAILQ_ENTRY(ControllerState) entry;
 
     int64_t last_input_updated_ts;
-    int64_t last_haptic_updated_ts;
+    int64_t last_rumble_updated_ts;
 
     // Input state
     uint16_t buttons;
@@ -78,14 +78,12 @@ typedef struct ControllerState {
     uint32_t animate_trigger_end;
 
     // Rumble state
+    bool rumble_enabled;
     uint16_t rumble_l, rumble_r;
 
     enum controller_input_device_type type;
     const char         *name;
     SDL_GameController *sdl_gamecontroller; // if type == INPUT_DEVICE_SDL_GAMECONTROLLER
-    SDL_Haptic         *sdl_haptic;
-    SDL_HapticEffect    sdl_haptic_effect;
-    int                 sdl_haptic_effect_id;
     SDL_Joystick       *sdl_joystick;
     SDL_JoystickID      sdl_joystick_id;
     SDL_JoystickGUID    sdl_joystick_guid;
