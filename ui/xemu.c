@@ -1561,6 +1561,12 @@ int main(int argc, char **argv)
 
     DPRINTF("Main thread: initializing app\n");
 
+    qemu_mutex_lock_main_loop();
+    qemu_mutex_lock_iothread();
+    xemu_input_init();
+    qemu_mutex_unlock_iothread();
+    qemu_mutex_unlock_main_loop();
+
     while (1) {
         sdl2_gl_refresh(&sdl2_console[0].dcl);
     }
