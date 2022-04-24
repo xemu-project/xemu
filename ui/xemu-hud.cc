@@ -2181,7 +2181,7 @@ void xemu_hud_init(SDL_Window* window, void* sdl_gl_context)
     ImPlot::CreateContext();
 
 #if defined(_WIN32)
-    if (g_config.general.updates.check) {
+    if (!g_config.general.show_welcome && g_config.general.updates.check) {
         update_window.check_for_updates_and_prompt_if_available();
     }
 #endif
