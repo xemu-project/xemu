@@ -1529,7 +1529,15 @@ int main(int argc, char **argv)
         }
     }
 
-    xemu_settings_load();
+    if (!xemu_settings_load()) {
+        const char *err_msg = xemu_settings_get_error_message();
+        fprintf(stderr, "%s", err_msg);
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+            "Failed to load xemu config file", err_msg,
+            m_window);
+        SDL_Quit();
+        exit(1);
+    }
     atexit(xemu_settings_save);
 
     sdl2_display_very_early_init(NULL);

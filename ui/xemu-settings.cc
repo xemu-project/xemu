@@ -1,7 +1,7 @@
 /*
  * xemu Settings Management
  *
- * Copyright (C) 2020-2021 Matt Borgerson
+ * Copyright (C) 2020-2022 Matt Borgerson
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,128 +25,165 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <stdio.h>
-#include <iostream>
 #include <toml.hpp>
 #include <cnode.h>
+#include <sstream>
+#include <iostream>
 
 #include "xemu-settings.h"
+
 #define DEFINE_CONFIG_TREE
 #include "xemu-config.h"
 
 struct config g_config;
-static bool settings_failed_to_load = true;
+
 static const char *filename = "xemu.toml";
 static const char *settings_path;
+static std::string error_msg;
+
+const char *xemu_settings_get_error_message(void)
+{
+    return error_msg.length() ? error_msg.c_str() : NULL;
+}
 
 static bool xemu_settings_detect_portable_mode(void)
 {
-	bool val = false;
-	char *portable_path = g_strdup_printf("%s%s", SDL_GetBasePath(), filename);
-	FILE *tmpfile;
-	if ((tmpfile = qemu_fopen(portable_path, "r"))) {
-		fclose(tmpfile);
-		val = true;
-	}
+    bool val = false;
+    char *portable_path = g_strdup_printf("%s%s", SDL_GetBasePath(), filename);
+    FILE *tmpfile;
+    if ((tmpfile = qemu_fopen(portable_path, "r"))) {
+        fclose(tmpfile);
+        val = true;
+    }
 
-	free(portable_path);
-	return val;
+    free(portable_path);
+    return val;
 }
 
 void xemu_settings_set_path(const char *path)
 {
-	assert(path != NULL);
-	assert(settings_path == NULL);
-	settings_path = path;
-	fprintf(stderr, "%s: config path: %s\n", __func__, settings_path);
+    assert(path != NULL);
+    assert(settings_path == NULL);
+    settings_path = path;
+    fprintf(stderr, "%s: config path: %s\n", __func__, settings_path);
 }
 
 const char *xemu_settings_get_path(void)
 {
-	if (settings_path != NULL) {
-		return settings_path;
-	}
+    if (settings_path != NULL) {
+        return settings_path;
+    }
 
-	char *base = xemu_settings_detect_portable_mode()
-	             ? SDL_GetBasePath()
-	             : SDL_GetPrefPath("xemu", "xemu");
-	assert(base != NULL);
-	settings_path = g_strdup_printf("%s%s", base, filename);
-	SDL_free(base);
-	fprintf(stderr, "%s: config path: %s\n", __func__, settings_path);
-	return settings_path;
+    char *base = xemu_settings_detect_portable_mode()
+                 ? SDL_GetBasePath()
+                 : SDL_GetPrefPath("xemu", "xemu");
+    assert(base != NULL);
+    settings_path = g_strdup_printf("%s%s", base, filename);
+    SDL_free(base);
+    fprintf(stderr, "%s: config path: %s\n", __func__, settings_path);
+    return settings_path;
 }
 
 const char *xemu_settings_get_default_eeprom_path(void)
 {
-	static char *eeprom_path = NULL;
-	if (eeprom_path != NULL) {
-		return eeprom_path;
-	}
+    static char *eeprom_path = NULL;
+    if (eeprom_path != NULL) {
+        return eeprom_path;
+    }
 
-	char *base = xemu_settings_detect_portable_mode()
-	             ? SDL_GetBasePath()
-	             : SDL_GetPrefPath("xemu", "xemu");
-	assert(base != NULL);
-	eeprom_path = g_strdup_printf("%s%s", base, "eeprom.bin");
-	SDL_free(base);
-	return eeprom_path;
+    char *base = xemu_settings_detect_portable_mode()
+                 ? SDL_GetBasePath()
+                 : SDL_GetPrefPath("xemu", "xemu");
+    assert(base != NULL);
+    eeprom_path = g_strdup_printf("%s%s", base, "eeprom.bin");
+    SDL_free(base);
+    return eeprom_path;
 }
 
-void xemu_settings_load(void)
+static ssize_t get_file_size(FILE *fd)
 {
-	FILE *fd;
-	size_t file_size = 0;
-	char *file_buf = NULL;
-	const char *settings_path = xemu_settings_get_path();
+    if (fseek(fd, 0, SEEK_END)) {
+        return -1;
+    }
 
-	fd = qemu_fopen(settings_path, "rb");
-	if (!fd) {
-		fprintf(stderr, "Failed to open settings path %s for reading\n", settings_path);
-		goto out;
-	}
+    size_t file_size = ftell(fd);
 
-	fseek(fd, 0, SEEK_END);
-	file_size = ftell(fd);
-	fseek(fd, 0, SEEK_SET);
-	file_buf = (char *)malloc(file_size + 1);
-	if (fread(file_buf, file_size, 1, fd) != 1) {
-		fprintf(stderr, "Failed to read settings\n");
-		fclose(fd);
-		fd = NULL;
-		free(file_buf);
-		file_buf = NULL;
-		goto out;
-	}
-	file_buf[file_size] = '\x00';
+    if (fseek(fd, 0, SEEK_SET)) {
+        return -1;
+    }
 
-	try
-	{
-		auto tbl = toml::parse(file_buf);
-		config_tree.update_from_table(tbl);
-		settings_failed_to_load = false;
-	}
-	catch (const toml::parse_error& err)
-	{
-	   std::cerr
-	       << "Error parsing file '" << *err.source().path
-	       << "':\n" << err.description()
-	       << "\n  (" << err.source().begin << ")\n";
-	}
-
-out:
-	config_tree.store_to_struct(&g_config);
+    return file_size;
 }
 
-bool xemu_settings_did_fail_to_load(void)
+static const char *read_file(FILE *fd)
 {
-	return settings_failed_to_load;
+    ssize_t size = get_file_size(fd);
+    if (size < 0) {
+        return NULL;
+    }
+
+    char *buf = (char *)malloc(size + 1);
+    if (!buf) {
+        return NULL;
+    }
+
+    if (size > 0) {
+        if (fread(buf, size, 1, fd) != 1) {
+            free(buf);
+            return NULL;
+        }
+    }
+
+    buf[size] = '\x00';
+    return buf;
+}
+
+bool xemu_settings_load(void)
+{
+    const char *settings_path = xemu_settings_get_path();
+    bool success = false;
+
+    if (qemu_access(settings_path, F_OK) == -1) {
+        fprintf(stderr, "Config file not found, starting with default settings.\n");
+        success = true;
+    } else {
+        FILE *fd = qemu_fopen(settings_path, "rb");
+        if (fd) {
+            const char *buf = read_file(fd);
+            if (buf) {
+                try {
+                    config_tree.update_from_table(toml::parse(buf));
+                    success = true;
+                } catch (const toml::parse_error& err) {
+                   std::ostringstream oss;
+                   oss << "Error parsing config file at " << err.source().begin << ":\n"
+                       << "    " << err.description() << "\n"
+                       << "Please fix the error or delete the file to continue.\n";
+                   error_msg = oss.str();
+                }
+                free((char*)buf);
+            } else {
+                error_msg = "Failed to read config file.\n";
+            }
+            fclose(fd);
+        } else {
+            error_msg = "Failed to open config file for reading. Check permissions.\n";
+        }
+    }
+
+    config_tree.store_to_struct(&g_config);
+    return success;
 }
 
 void xemu_settings_save(void)
 {
-	FILE *fd = qemu_fopen(xemu_settings_get_path(), "wb");
-	assert(fd != NULL);
-	config_tree.update_from_struct(&g_config);
-	fprintf(fd, "%s", config_tree.generate_delta_toml().c_str());
-	fclose(fd);
+    FILE *fd = qemu_fopen(xemu_settings_get_path(), "wb");
+    if (!fd) {
+        fprintf(stderr, "Failed to open config file for writing. Check permissions.\n");
+        return;
+    }
+
+    config_tree.update_from_struct(&g_config);
+    fprintf(fd, "%s", config_tree.generate_delta_toml().c_str());
+    fclose(fd);
 }

@@ -24,6 +24,9 @@
 #ifndef XEMU_SETTINGS_H
 #define XEMU_SETTINGS_H
 
+#include <stdlib.h>
+#include <string.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -31,9 +34,6 @@ extern "C" {
 #include "xemu-config.h"
 
 extern struct config g_config;
-
-// Determine whether settings were loaded or not
-bool xemu_settings_did_fail_to_load(void);
 
 // Override the default config file paths
 void xemu_settings_set_path(const char *path);
@@ -44,14 +44,14 @@ const char *xemu_settings_get_path(void);
 // Get path of the default generated eeprom file on disk
 const char *xemu_settings_get_default_eeprom_path(void);
 
-// Load config file from disk, or load defaults
-void xemu_settings_load(void);
+// Get error message on failure to parse settings
+const char *xemu_settings_get_error_message(void);
+
+// Load config file from disk, or load defaults. Return true on success, false if an error occured.
+bool xemu_settings_load(void);
 
 // Save config file to disk
 void xemu_settings_save(void);
-
-#include <stdlib.h>
-#include <string.h>
 
 static inline void xemu_settings_set_string(const char **str, const char *new_str)
 {
