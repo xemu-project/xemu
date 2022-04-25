@@ -62,7 +62,13 @@ void gl_debug_initialize(void)
     }
 
 #ifdef CONFIG_RENDERDOC
-    void* renderdoc = dlopen("librenderdoc.so", RTLD_NOW | RTLD_NOLOAD);
+    const char *renderdoc_lib;
+#ifdef __APPLE__
+    renderdoc_lib = "librenderdoc.dylib";
+#else
+    renderdoc_lib = "librenderdoc.so";
+#endif
+    void* renderdoc = dlopen(renderdoc_lib, RTLD_NOW | RTLD_NOLOAD);
     if (renderdoc) {
         pRENDERDOC_GetAPI RENDERDOC_GetAPI = (pRENDERDOC_GetAPI)dlsym(
             renderdoc, "RENDERDOC_GetAPI");
