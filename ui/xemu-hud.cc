@@ -637,6 +637,8 @@ private:
     char hdd_path[MAX_STRING_LEN];
     char eeprom_path[MAX_STRING_LEN];
     int  memory_idx;
+    int  dvd_speed;
+    int  hdd_speed;
     bool short_animation;
 #if defined(_WIN32)
     bool check_for_update;
@@ -654,6 +656,8 @@ public:
         hdd_path[0] = '\0';
         eeprom_path[0] = '\0';
         memory_idx = 0;
+        dvd_speed = 0;
+        hdd_speed = 0;
         short_animation = false;
     }
 
@@ -690,6 +694,12 @@ public:
         xemu_settings_get_int(XEMU_SETTINGS_SYSTEM_MEMORY, &tmp_int);
         memory_idx = (tmp_int-64)/64;
 
+        xemu_settings_get_int(XEMU_SETTINGS_SYSTEM_DVD_SPEED, &tmp_int);
+        dvd_speed = tmp_int / 1000000;
+
+        xemu_settings_get_int(XEMU_SETTINGS_SYSTEM_HDD_SPEED, &tmp_int);
+        hdd_speed = tmp_int / 1000000;
+
         xemu_settings_get_bool(XEMU_SETTINGS_SYSTEM_SHORTANIM, &tmp_int);
         short_animation = !!tmp_int;
 
@@ -708,6 +718,8 @@ public:
         xemu_settings_set_string(XEMU_SETTINGS_SYSTEM_HDD_PATH, hdd_path);
         xemu_settings_set_string(XEMU_SETTINGS_SYSTEM_EEPROM_PATH, eeprom_path);
         xemu_settings_set_int(XEMU_SETTINGS_SYSTEM_MEMORY, 64+memory_idx*64);
+        xemu_settings_set_int(XEMU_SETTINGS_SYSTEM_DVD_SPEED, dvd_speed * 1000000);
+        xemu_settings_set_int(XEMU_SETTINGS_SYSTEM_HDD_SPEED, hdd_speed * 1000000);
         xemu_settings_set_bool(XEMU_SETTINGS_SYSTEM_SHORTANIM, short_animation);
 #if defined(_WIN32)
         xemu_settings_set_bool(XEMU_SETTINGS_MISC_CHECK_FOR_UPDATE, check_for_update);
@@ -785,6 +797,36 @@ public:
         ImGui::SetNextItemWidth(ImGui::GetColumnWidth()*0.5);
         if (ImGui::Combo("###mem", &memory_idx, "64 MiB\0" "128 MiB\0")) {
             dirty = true;
+        }
+        ImGui::NextColumn();
+
+        bool throttleDvdToggle = !!dvd_speed;
+        ImGui::Text("Throttle DVD Drive");
+        ImGui::NextColumn();
+        if(ImGui::Checkbox("###dvdspeedtoggle", &throttleDvdToggle)) {
+            dvd_speed = !!throttleDvdToggle;
+            dirty = true;
+        }
+        if(throttleDvdToggle) {
+            ImGui::SameLine();
+            if(ImGui::SliderInt("###dvdspeed", &dvd_speed, 1, 150, "%d MB/s")) {
+                dirty = true;
+            }
+        }
+        ImGui::NextColumn();
+
+        bool throttleHddToggle = !!hdd_speed;
+        ImGui::Text("Throttle Hard Drive");
+        ImGui::NextColumn();
+        if(ImGui::Checkbox("###hddspeedtoggle", &throttleHddToggle)) {
+            hdd_speed = !!throttleHddToggle;
+            dirty = true;
+        }
+        if(throttleHddToggle) {
+            ImGui::SameLine();
+            if(ImGui::SliderInt("###hddspeed", &hdd_speed, 1, 150, "%d MB/s")) {
+                dirty = true;
+            }
         }
         ImGui::NextColumn();
 
