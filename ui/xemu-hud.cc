@@ -789,6 +789,44 @@ public:
     }
 };
 
+static const char *get_os_platform(void) 
+{
+    const char *platform_name;
+
+#if defined(__linux__)
+        platform_name = "Linux";
+#elif defined(_WIN32)
+       platform_name = "Windows";
+#elif defined(__APPLE__)
+       platform_name = "macOS";
+#else
+        platform_name = "Unknown";
+#endif
+        return platform_name;
+}
+
+#ifndef _WIN32
+#ifdef CONFIG_CPUID_H
+#include <cpuid.h>
+#endif
+#endif
+
+static const char *get_cpu_info(void)
+{
+    const char *cpu_info = "";
+#ifdef CONFIG_CPUID_H
+    static uint32_t brand[12];
+    if (__get_cpuid_max(0x80000004, NULL)) {
+        __get_cpuid(0x80000002, brand+0x0, brand+0x1, brand+0x2, brand+0x3);
+        __get_cpuid(0x80000003, brand+0x4, brand+0x5, brand+0x6, brand+0x7);
+        __get_cpuid(0x80000004, brand+0x8, brand+0x9, brand+0xa, brand+0xb);
+    }
+    cpu_info = (const char *)brand;
+#endif
+    // FIXME: Support other architectures (e.g. ARM)
+    return cpu_info;
+}
+
 class AboutWindow
 {
 public:
@@ -801,9 +839,10 @@ public:
     AboutWindow()
     {
         snprintf(build_info_text, sizeof(build_info_text),
-            "Version: %s\n" "Branch:  %s\n" "Commit:  %s\n" "Date:    %s",
-            xemu_version,  xemu_branch,   xemu_commit,   xemu_date);
-        // FIXME: Show platform
+            "Version: %s\n" "Branch:  %s\n" "Commit:  %s\n" "Date: %s\n"
+            "CPU: %s\n" "OS Platform: %s\n" "OS Version: %s\n",
+            xemu_version,  xemu_branch,   xemu_commit,   xemu_date, get_cpu_info(), get_os_platform(), xemu_get_os_info()
+            );
         // FIXME: Show driver
         // FIXME: Show BIOS/BootROM hash
     }
@@ -1119,28 +1158,6 @@ public:
     }
 };
 
-#ifndef _WIN32
-#ifdef CONFIG_CPUID_H
-#include <cpuid.h>
-#endif
-#endif
-
-const char *get_cpu_info(void)
-{
-    const char *cpu_info = "";
-#ifdef CONFIG_CPUID_H
-    static uint32_t brand[12];
-    if (__get_cpuid_max(0x80000004, NULL)) {
-        __get_cpuid(0x80000002, brand+0x0, brand+0x1, brand+0x2, brand+0x3);
-        __get_cpuid(0x80000003, brand+0x4, brand+0x5, brand+0x6, brand+0x7);
-        __get_cpuid(0x80000004, brand+0x8, brand+0x9, brand+0xa, brand+0xb);
-    }
-    cpu_info = (const char *)brand;
-#endif
-    // FIXME: Support other architectures (e.g. ARM)
-    return cpu_info;
-}
-
 class CompatibilityReporter
 {
 public:
@@ -1163,15 +1180,8 @@ public:
         report.xemu_branch = xemu_branch;
         report.xemu_commit = xemu_commit;
         report.xemu_date = xemu_date;
-#if defined(__linux__)
-        report.os_platform = "Linux";
-#elif defined(_WIN32)
-        report.os_platform = "Windows";
-#elif defined(__APPLE__)
-        report.os_platform = "macOS";
-#else
-        report.os_platform = "Unknown";
-#endif
+
+        report.os_platform = get_os_platform();
         report.os_version = xemu_get_os_info();
         report.cpu = get_cpu_info();
         dirty = true;
