@@ -837,7 +837,7 @@ private:
     char platform_info_text[350];
 
 public:
-        AboutWindow()
+    AboutWindow()
         {
             snprintf(build_info_text, sizeof(build_info_text),
                 "Version: %s\nBranch:  %s\nCommit:  %s\nDate:    %s",
