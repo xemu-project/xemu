@@ -793,15 +793,15 @@ static const char *get_os_platform(void)
 {
     const char *platform_name;
 
-#if defined(__linux__)
+    #if defined(__linux__)
         platform_name = "Linux";
-#elif defined(_WIN32)
+    #elif defined(_WIN32)
        platform_name = "Windows";
-#elif defined(__APPLE__)
+    #elif defined(__APPLE__)
        platform_name = "macOS";
-#else
+    #else
         platform_name = "Unknown";
-#endif
+    #endif
         return platform_name;
 }
 
