@@ -827,29 +827,39 @@ static const char *get_cpu_info(void)
     return cpu_info;
 }
 
+static const char *get_gl_vendor(void) 
+{
+    const char *gl_vendor = (const char*)glGetString(GL_VENDOR); 
+    return gl_vendor;
+}
+
+static const char *get_gl_renderer(void) 
+{
+    const char *gl_renderer = (const char*)glGetString(GL_RENDERER);
+    return gl_renderer;
+}
+
+static const char *get_gl_version(void)
+{
+    const char *gl_version = (const char*)glGetString(GL_VERSION);
+    return gl_version;
+}
+
+static const char *get_gl_shader_version(void)
+{
+    const char *gl_shader_version = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
+    return gl_shader_version;
+}
+
 class AboutWindow
 {
 public:
     bool is_open;
 
 private:
-    char build_info_text[256];
+    char build_info_text[600];
 
 public:
-    AboutWindow()
-    {
-        snprintf(build_info_text, sizeof(build_info_text),
-            "Version: %s\n" "Branch:  %s\n" "Commit:  %s\n" "Date: %s\n"
-            "CPU: %s\n" "OS Platform: %s\n" "OS Version: %s\n",
-            xemu_version, xemu_branch, xemu_commit, xemu_date, get_cpu_info(), 
-            get_os_platform(), xemu_get_os_info());
-        // FIXME: Show driver
-        // FIXME: Show BIOS/BootROM hash
-    }
-
-    ~AboutWindow()
-    {
-    }
 
     void Draw()
     {
@@ -864,6 +874,17 @@ public:
 
         static uint32_t time_start = 0;
         if (ImGui::IsWindowAppearing()) {
+             
+        snprintf(build_info_text, sizeof(build_info_text),
+            "Version: %s\n" "Branch:  %s\n" "Commit:  %s\n" "Date: %s\n\n"
+            "----------------System Information-----------------------------\n\n"
+            "CPU: %s\n" "OS Platform: %s\n" "OS Version: %s\n" "Manufacturer: %s\n"
+            "GPU Model: %s\n" "Driver: %s\n" "Shading Language Version: %s\n",
+            xemu_version, xemu_branch, xemu_commit, xemu_date, get_cpu_info(), 
+            get_os_platform(), xemu_get_os_info(), get_gl_vendor(), get_gl_renderer(),
+            get_gl_version(), get_gl_shader_version());
+            // FIXME: Show BIOS/BootROM hash
+
             time_start = SDL_GetTicks();
         }
         uint32_t now = SDL_GetTicks() - time_start;
@@ -900,7 +921,7 @@ public:
         ImGui::Dummy(ImVec2(0,40*g_ui_scale));
 
         ImGui::PushFont(g_fixed_width_font);
-        ImGui::InputTextMultiline("##build_info", build_info_text, sizeof(build_info_text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 6), ImGuiInputTextFlags_ReadOnly);
+        ImGui::InputTextMultiline("##build_info", build_info_text, sizeof(build_info_text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 12), ImGuiInputTextFlags_ReadOnly);
         ImGui::PopFont();
 
         ImGui::End();
