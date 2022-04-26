@@ -906,7 +906,7 @@ public:
 
         ImGui::PushFont(g_fixed_width_font);
         ImGui::InputTextMultiline("##build_info", build_info_text, sizeof(build_info_text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 5), ImGuiInputTextFlags_ReadOnly);
-        ImGui::InputTextMultiline("##plaftorm_info", platform_info_text, sizeof(platform_info_text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 8), ImGuiInputTextFlags_ReadOnly);
+        ImGui::InputTextMultiline("##platform_info", platform_info_text, sizeof(platform_info_text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 8), ImGuiInputTextFlags_ReadOnly);
         ImGui::PopFont();
 
         ImGui::End();
