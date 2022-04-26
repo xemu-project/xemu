@@ -35,6 +35,15 @@ static RENDERDOC_API_1_1_2 *rdoc_api = NULL;
 static int32_t renderdoc_capture_frames = 0;
 #endif
 
+#define CHECK_GL_ERROR() do { \
+  GLenum error = glGetError(); \
+  if (error != GL_NO_ERROR) {  \
+      fprintf(stderr, "OpenGL error: 0x%X (%d) at %s:%d\n", error, error, __FILE__, __LINE__); \
+      assert(!"OpenGL error detected");                                                        \
+  } \
+} while(0)
+
+
 static bool has_GL_GREMEDY_frame_terminator = false;
 static bool has_GL_KHR_debug = false;
 
@@ -153,14 +162,23 @@ void gl_debug_label(GLenum target, GLuint name, const char *fmt, ...)
 
 void gl_debug_frame_terminator(void)
 {
+    CHECK_GL_ERROR();
+
 #ifdef CONFIG_RENDERDOC
     if (rdoc_api) {
         if (rdoc_api->IsTargetControlConnected()) {
             if (rdoc_api->IsFrameCapturing()) {
                 rdoc_api->EndFrameCapture(NULL, NULL);
+                CHECK_GL_ERROR();
             }
             if (renderdoc_capture_frames) {
                 rdoc_api->StartFrameCapture(NULL, NULL);
+                GLenum error = glGetError();
+                if (error != GL_NO_ERROR) {
+                    fprintf(stderr,
+                            "Renderdoc frame capture triggered GL error 0x%X - ignoring\n",
+                            error);
+                }
                 --renderdoc_capture_frames;
             }
         }
@@ -171,6 +189,7 @@ void gl_debug_frame_terminator(void)
     }
 
     glFrameTerminatorGREMEDY();
+    CHECK_GL_ERROR();
 }
 
 #ifdef CONFIG_RENDERDOC
@@ -184,4 +203,3 @@ void nv2a_dbg_renderdoc_capture_frames(uint32_t num_frames) {
 #endif
 
 #endif // DEBUG_NV2A_GL
-
