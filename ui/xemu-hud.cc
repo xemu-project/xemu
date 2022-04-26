@@ -827,30 +827,6 @@ static const char *get_cpu_info(void)
     return cpu_info;
 }
 
-static const char *get_gl_vendor(void) 
-{
-    const char *gl_vendor = (const char*)glGetString(GL_VENDOR); 
-    return gl_vendor;
-}
-
-static const char *get_gl_renderer(void) 
-{
-    const char *gl_renderer = (const char*)glGetString(GL_RENDERER);
-    return gl_renderer;
-}
-
-static const char *get_gl_version(void)
-{
-    const char *gl_version = (const char*)glGetString(GL_VERSION);
-    return gl_version;
-}
-
-static const char *get_gl_shader_version(void)
-{
-    const char *gl_shader_version = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
-    return gl_shader_version;
-}
-
 class AboutWindow
 {
 public:
@@ -864,13 +840,8 @@ public:
         AboutWindow()
         {
             snprintf(build_info_text, sizeof(build_info_text),
-            "Version: %s\n" "Branch:  %s\n" "Commit:  %s\n" "Date: %s\n\n",
-            xemu_version, xemu_branch, xemu_commit, xemu_date);
-        }
-
-        ~AboutWindow()
-        {
-
+                    "Version: %s\nBranch: %s\nCommit: %s\nDate: %s\n",
+                    xemu_version, xemu_branch, xemu_commit, xemu_date);
         }
 
     void Draw()
@@ -885,13 +856,17 @@ public:
         }
 
         static uint32_t time_start = 0;
-        if (ImGui::IsWindowAppearing()) {
+        if (ImGui::IsWindowAppearing()) { 
+            const char *gl_shader_version = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
+            const char *gl_version = (const char*)glGetString(GL_VERSION);
+            const char *gl_renderer = (const char*)glGetString(GL_RENDERER);
+            const char *gl_vendor = (const char*)glGetString(GL_VENDOR);
              
-        snprintf(platform_info_text, sizeof(platform_info_text),
-            "CPU: %s\n" "OS Platform: %s\n" "OS Version: %s\n" "Manufacturer: %s\n"
-            "GPU Model: %s\n" "Driver: %s\n" "Shading Language Version: %s\n",
-            get_cpu_info(), get_os_platform(), xemu_get_os_info(), get_gl_vendor(), 
-            get_gl_renderer(), get_gl_version(), get_gl_shader_version());
+            snprintf(platform_info_text, sizeof(platform_info_text),
+                "CPU: %s\nOS Platform: %s\nOS Version: %s\nManufacturer: %s\n"
+                "GPU Model: %s\nDriver: %s\nShading Language Version: %s\n",
+                 get_cpu_info(), get_os_platform(), xemu_get_os_info(), gl_renderer,
+                 gl_vendor, gl_version, gl_shader_version);
             // FIXME: Show BIOS/BootROM hash
 
             time_start = SDL_GetTicks();
