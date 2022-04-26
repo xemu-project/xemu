@@ -833,8 +833,8 @@ public:
     bool is_open;
 
 private:
-    char build_info_text[600];
-    char platform_info_text[300];
+    char build_info_text[256];
+    char platform_info_text[350];
 
 public:
         AboutWindow()
