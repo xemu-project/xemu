@@ -841,8 +841,8 @@ public:
         snprintf(build_info_text, sizeof(build_info_text),
             "Version: %s\n" "Branch:  %s\n" "Commit:  %s\n" "Date: %s\n"
             "CPU: %s\n" "OS Platform: %s\n" "OS Version: %s\n",
-            xemu_version,  xemu_branch,   xemu_commit,   xemu_date, get_cpu_info(), get_os_platform(), xemu_get_os_info()
-            );
+            xemu_version, xemu_branch, xemu_commit, xemu_date, get_cpu_info(), 
+            get_os_platform(), xemu_get_os_info());
         // FIXME: Show driver
         // FIXME: Show BIOS/BootROM hash
     }
