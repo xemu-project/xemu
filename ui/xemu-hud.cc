@@ -840,7 +840,7 @@ public:
         AboutWindow()
         {
             snprintf(build_info_text, sizeof(build_info_text),
-                "Version: %s\nBranch: %s\nCommit: %s\nDate: %s\n",
+                "Version: %s\nBranch:  %s\nCommit:  %s\nDate:    %s",
                 xemu_version, xemu_branch, xemu_commit, xemu_date);
         }
 
