@@ -858,8 +858,20 @@ public:
 
 private:
     char build_info_text[600];
+    char platform_info_text[300];
 
 public:
+        AboutWindow()
+        {
+            snprintf(build_info_text, sizeof(build_info_text),
+            "Version: %s\n" "Branch:  %s\n" "Commit:  %s\n" "Date: %s\n\n",
+            xemu_version, xemu_branch, xemu_commit, xemu_date);
+        }
+
+        ~AboutWindow()
+        {
+
+        }
 
     void Draw()
     {
@@ -875,14 +887,11 @@ public:
         static uint32_t time_start = 0;
         if (ImGui::IsWindowAppearing()) {
              
-        snprintf(build_info_text, sizeof(build_info_text),
-            "Version: %s\n" "Branch:  %s\n" "Commit:  %s\n" "Date: %s\n\n"
-            "----------------System Information-----------------------------\n\n"
+        snprintf(platform_info_text, sizeof(platform_info_text),
             "CPU: %s\n" "OS Platform: %s\n" "OS Version: %s\n" "Manufacturer: %s\n"
             "GPU Model: %s\n" "Driver: %s\n" "Shading Language Version: %s\n",
-            xemu_version, xemu_branch, xemu_commit, xemu_date, get_cpu_info(), 
-            get_os_platform(), xemu_get_os_info(), get_gl_vendor(), get_gl_renderer(),
-            get_gl_version(), get_gl_shader_version());
+            get_cpu_info(), get_os_platform(), xemu_get_os_info(), get_gl_vendor(), 
+            get_gl_renderer(), get_gl_version(), get_gl_shader_version());
             // FIXME: Show BIOS/BootROM hash
 
             time_start = SDL_GetTicks();
@@ -921,7 +930,8 @@ public:
         ImGui::Dummy(ImVec2(0,40*g_ui_scale));
 
         ImGui::PushFont(g_fixed_width_font);
-        ImGui::InputTextMultiline("##build_info", build_info_text, sizeof(build_info_text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 12), ImGuiInputTextFlags_ReadOnly);
+        ImGui::InputTextMultiline("##build_info", build_info_text, sizeof(build_info_text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 5), ImGuiInputTextFlags_ReadOnly);
+        ImGui::InputTextMultiline("##plaftorm_info", platform_info_text, sizeof(platform_info_text), ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 8), ImGuiInputTextFlags_ReadOnly);
         ImGui::PopFont();
 
         ImGui::End();
