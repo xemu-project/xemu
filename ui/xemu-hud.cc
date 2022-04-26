@@ -864,7 +864,7 @@ public:
              
             snprintf(platform_info_text, sizeof(platform_info_text),
                 "CPU: %s\nOS Platform: %s\nOS Version: %s\nManufacturer: %s\n"
-                "GPU Model: %s\nDriver: %s\nShading Language Version: %s\n",
+                "GPU Model: %s\nDriver: %s\nShading Language Version: %s",
                  get_cpu_info(), get_os_platform(), xemu_get_os_info(), gl_renderer,
                  gl_vendor, gl_version, gl_shader_version);
             // FIXME: Show BIOS/BootROM hash
