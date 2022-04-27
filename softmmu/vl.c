@@ -2766,6 +2766,48 @@ void qmp_x_exit_preconfig(Error **errp)
     }
 }
 
+static const char *get_eeprom_path(void)
+{
+    const char *path = g_config.sys.files.eeprom_path;
+
+    if (strlen(path) == 0) {
+        path = xemu_settings_get_default_eeprom_path();
+        xemu_settings_set_string(&g_config.sys.files.eeprom_path, path);
+    }
+
+    if (qemu_access(path, F_OK) == -1) {
+        if (!xbox_eeprom_generate(path, XBOX_EEPROM_VERSION_R1)) {
+            char *msg = g_strdup_printf("Failed to generate EEPROM file '%s'."
+                                        "Please check machine settings.",
+                                        path);
+            xemu_queue_error_message(msg);
+            g_free(msg);
+            return NULL;
+        }
+    }
+
+    int size = get_image_size(path);
+
+    if (size < 0) {
+        char *msg = g_strdup_printf("Failed to open EEPROM file '%s'.\n\n"
+                                    "Please check machine settings.");
+        xemu_queue_error_message(msg);
+        g_free(msg);
+        return NULL;
+    }
+
+    if (size != 256) {
+        char *msg = g_strdup_printf(
+            "Invalid EEPROM file '%s' size of %d; should be 256 bytes.\n\n"
+            "Please check machine settings.", path, size);
+        xemu_queue_error_message(msg);
+        g_free(msg);
+        return NULL;
+    }
+
+    return path;
+}
+
 void qemu_init(int argc, char **argv, char **envp)
 {
     QemuOpts *opts;
@@ -2834,51 +2876,15 @@ void qemu_init(int argc, char **argv, char **envp)
         g_free(bootrom_arg);
     }
 
-    const char *eeprom_path = g_config.sys.files.eeprom_path;
-
-    // Sanity check EEPROM file
-    if (strlen(eeprom_path) > 0) {
-        int eeprom_size = get_image_size(eeprom_path);
-        if (eeprom_size < 0) {
-            char *msg = g_strdup_printf("Failed to open EEPROM file '%s'.\n\n"
-                "Automatically generating a new one instead. "
-                "Please check machine settings for the new path and move if desired.", eeprom_path);
-            xemu_queue_error_message(msg);
-            g_free(msg);
-            eeprom_path = "";
-        } else if (eeprom_size != 256) {
-            char *msg = g_strdup_printf(
-                "Invalid EEPROM file '%s' size of %d; should be 256 bytes.\n\n"
-                "Automatically generating a new one instead. "
-                "Please check machine settings for the new path and move if desired.", eeprom_path, eeprom_size);
-            xemu_queue_error_message(msg);
-            g_free(msg);
-            eeprom_path = "";
-        } else {
-            fake_argv[fake_argc++] = strdup("-device");
-            char *escaped_eeprom_path = strdup_double_commas(eeprom_path);
-            fake_argv[fake_argc++] = g_strdup_printf("smbus-storage,file=%s",
-                                                     escaped_eeprom_path);
-            free(escaped_eeprom_path);
-        }
+    const char *eeprom_path = get_eeprom_path();
+    if (eeprom_path == NULL) {
+        eeprom_path = "";
     }
-
-    // Generate a new EEPROM file if one isn't specified or contents are invalid
-    if (strlen(eeprom_path) == 0) {
-        eeprom_path = xemu_settings_get_default_eeprom_path();
-        if (xbox_eeprom_generate(eeprom_path, XBOX_EEPROM_VERSION_R1)) {
-            xemu_settings_set_string(&g_config.sys.files.eeprom_path, eeprom_path);
-            fake_argv[fake_argc++] = strdup("-device");
-            char *escaped_eeprom_path = strdup_double_commas(eeprom_path);
-            fake_argv[fake_argc++] = g_strdup_printf("smbus-storage,file=%s",
-                                                     escaped_eeprom_path);
-            free(escaped_eeprom_path);
-        } else {
-            char *msg = g_strdup_printf("Failed to generate eeprom file '%s'. Please check machine settings.", eeprom_path);
-            xemu_queue_error_message(msg);
-            g_free(msg);
-        }
-    }
+    fake_argv[fake_argc++] = strdup("-device");
+    char *escaped_eeprom_path = strdup_double_commas(eeprom_path);
+    fake_argv[fake_argc++] = g_strdup_printf("smbus-storage,file=%s",
+                                             escaped_eeprom_path);
+    free(escaped_eeprom_path);
 
     const char *flashrom_path = g_config.sys.files.flashrom_path;
     autostart = 0; // Do not auto-start the machine without a valid BIOS file
