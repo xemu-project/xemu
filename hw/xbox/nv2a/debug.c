@@ -169,14 +169,19 @@ void gl_debug_frame_terminator(void)
         if (rdoc_api->IsTargetControlConnected()) {
             if (rdoc_api->IsFrameCapturing()) {
                 rdoc_api->EndFrameCapture(NULL, NULL);
-                CHECK_GL_ERROR();
+                GLenum error = glGetError();
+                if (error != GL_NO_ERROR) {
+                    fprintf(stderr,
+                            "Renderdoc EndFrameCapture triggered GL error 0x%X - ignoring\n",
+                            error);
+                }
             }
             if (renderdoc_capture_frames) {
                 rdoc_api->StartFrameCapture(NULL, NULL);
                 GLenum error = glGetError();
                 if (error != GL_NO_ERROR) {
                     fprintf(stderr,
-                            "Renderdoc frame capture triggered GL error 0x%X - ignoring\n",
+                            "Renderdoc StartFrameCapture triggered GL error 0x%X - ignoring\n",
                             error);
                 }
                 --renderdoc_capture_frames;
