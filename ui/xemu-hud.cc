@@ -811,7 +811,7 @@ static const char *get_os_platform(void)
 #endif
 #endif
 
-static const char *get_cpu_info(void)
+const char *xemu_get_cpu_info(void)
 {
     const char *cpu_info = "";
 #ifdef CONFIG_CPUID_H
@@ -865,7 +865,7 @@ public:
             snprintf(platform_info_text, sizeof(platform_info_text),
                 "CPU:          %s\nOS Platform:  %s\nOS Version:   %s\nManufacturer: %s\n"
                 "GPU Model:    %s\nDriver:       %s\nShader:       %s",
-                 get_cpu_info(), get_os_platform(), xemu_get_os_info(), gl_vendor,
+                 xemu_get_cpu_info(), get_os_platform(), xemu_get_os_info(), gl_vendor,
                  gl_renderer, gl_version, gl_shader_version);
             // FIXME: Show BIOS/BootROM hash
 
@@ -1189,7 +1189,7 @@ public:
 
         report.os_platform = get_os_platform();
         report.os_version = xemu_get_os_info();
-        report.cpu = get_cpu_info();
+        report.cpu = xemu_get_cpu_info();
         dirty = true;
         is_xbe_identified = false;
         did_send = send_result = false;

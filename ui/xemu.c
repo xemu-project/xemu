@@ -903,6 +903,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
         // by the SDL surface.
     }
 
+    fprintf(stderr, "CPU: %s\n", xemu_get_cpu_info());
     fprintf(stderr, "OS_Version: %s\n", xemu_get_os_info());
     fprintf(stderr, "GL_VENDOR: %s\n", glGetString(GL_VENDOR));
     fprintf(stderr, "GL_RENDERER: %s\n", glGetString(GL_RENDERER));
