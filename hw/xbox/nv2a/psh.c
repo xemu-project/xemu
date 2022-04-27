@@ -653,8 +653,8 @@ static MString* psh_convert(struct PixelShader *ps)
         mstring_append(clip, "bool clipContained = false;\n");
     }
     mstring_append(clip, "for (int i = 0; i < 8; i++) {\n"
-                         "  bvec4 clipTest = bvec4(lessThan(gl_FragCoord.xy-0.5, clipRegion[i].xy),\n"
-                         "                         greaterThan(gl_FragCoord.xy-0.5, clipRegion[i].zw));\n"
+                         "  bvec4 clipTest = bvec4(lessThan(gl_FragCoord.xy-0.5, vec2(clipRegion[i].xy)),\n"
+                         "                         greaterThan(gl_FragCoord.xy-0.5, vec2(clipRegion[i].zw)));\n"
                          "  if (!any(clipTest)) {\n");
     if (ps->state.window_clip_exclusive) {
         mstring_append(clip, "    discard;\n");
