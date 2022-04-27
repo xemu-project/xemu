@@ -2778,7 +2778,7 @@ static const char *get_eeprom_path(void)
     if (qemu_access(path, F_OK) == -1) {
         if (!xbox_eeprom_generate(path, XBOX_EEPROM_VERSION_R1)) {
             char *msg = g_strdup_printf("Failed to generate EEPROM file '%s'."
-                                        "Please check machine settings.",
+                                        "\n\nPlease check machine settings.",
                                         path);
             xemu_queue_error_message(msg);
             g_free(msg);
@@ -2790,7 +2790,7 @@ static const char *get_eeprom_path(void)
 
     if (size < 0) {
         char *msg = g_strdup_printf("Failed to open EEPROM file '%s'.\n\n"
-                                    "Please check machine settings.");
+                                    "Please check machine settings.", path);
         xemu_queue_error_message(msg);
         g_free(msg);
         return NULL;
@@ -2877,28 +2877,29 @@ void qemu_init(int argc, char **argv, char **envp)
     }
 
     const char *eeprom_path = get_eeprom_path();
-    if (eeprom_path == NULL) {
-        eeprom_path = "";
+    if (eeprom_path) {
+        fake_argv[fake_argc++] = strdup("-device");
+        char *escaped_eeprom_path = strdup_double_commas(eeprom_path);
+        fake_argv[fake_argc++] = g_strdup_printf("smbus-storage,file=%s",
+                                                 escaped_eeprom_path);
+        free(escaped_eeprom_path);
+    } else {
+        autostart = 0;
     }
-    fake_argv[fake_argc++] = strdup("-device");
-    char *escaped_eeprom_path = strdup_double_commas(eeprom_path);
-    fake_argv[fake_argc++] = g_strdup_printf("smbus-storage,file=%s",
-                                             escaped_eeprom_path);
-    free(escaped_eeprom_path);
 
     const char *flashrom_path = g_config.sys.files.flashrom_path;
-    autostart = 0; // Do not auto-start the machine without a valid BIOS file
     if (g_config.general.show_welcome) {
         // Don't display an error if this is the first boot. Give user a chance
         // to configure the path.
+        autostart = 0;
     } else if (xemu_check_file(flashrom_path)) {
         char *msg = g_strdup_printf("Failed to open flash file '%s'. Please check machine settings.", flashrom_path);
         xemu_queue_error_message(msg);
         g_free(msg);
+        autostart = 0;
     } else {
         fake_argv[fake_argc++] = strdup("-bios");
         fake_argv[fake_argc++] = strdup(flashrom_path);
-        autostart = 1;
     }
 
     int mem = ((int)g_config.sys.mem_limit + 1) * 64;
