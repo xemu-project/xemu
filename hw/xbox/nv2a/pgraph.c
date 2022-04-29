@@ -896,14 +896,14 @@ static void pgraph_image_blit(NV2AState *d)
     uint8_t *dest_row = dest + dest_offset;
 
     if (image_blit->operation == NV09F_SET_OPERATION_SRCCOPY) {
-        NV2A_GL_DPRINTF(true, "NV09F_SET_OPERATION_SRCCOPY");
+        NV2A_GL_DPRINTF(false, "NV09F_SET_OPERATION_SRCCOPY");
         for (unsigned int y = 0; y < image_blit->height; y++) {
             memmove(dest_row, source_row, image_blit->width * bytes_per_pixel);
             source_row += context_surfaces->source_pitch;
             dest_row += context_surfaces->dest_pitch;
         }
     } else if (image_blit->operation == NV09F_SET_OPERATION_BLEND_AND) {
-        NV2A_GL_DPRINTF(true, "NV09F_SET_OPERATION_BLEND_AND");
+        NV2A_GL_DPRINTF(false, "NV09F_SET_OPERATION_BLEND_AND");
         uint32_t max_beta_mult = 0x7f80;
         uint32_t beta_mult = beta->beta >> 16;
         uint32_t inv_beta_mult = max_beta_mult - beta_mult;
