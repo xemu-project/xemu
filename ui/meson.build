@@ -15,57 +15,35 @@ softmmu_ss.add(files(
   'udmabuf.c',
 ))
 
-imgui_files = files(
-  'imgui/imgui.cpp',
-  'imgui/imgui_draw.cpp',
-  'imgui/imgui_tables.cpp',
-  #'imgui/imgui_demo.cpp',
-  'imgui/imgui_widgets.cpp',
-  'imgui/backends/imgui_impl_opengl3.cpp',
-  'imgui/backends/imgui_impl_sdl.cpp',
-  'implot/implot.cpp',
-  #'implot/implot_demo.cpp',
-  'implot/implot_items.cpp'
-)
-
-imgui_cppargs = ['-DIMGUI_IMPL_OPENGL_LOADER_CUSTOM="epoxy/gl.h"']
-
-libimgui = static_library('imgui',
-                          sources: imgui_files,
-                          cpp_args: imgui_cppargs,
-                          include_directories: 'imgui',
-                          dependencies: [sdl, opengl])
-imgui = declare_dependency(link_with: libimgui,
-                           compile_args: imgui_cppargs,
-                           include_directories: 'imgui')
+subdir('thirdparty')
 
 xemu_ss = ss.source_set()
 xemu_ss.add(files(
-  'xemu.c',
-  'xemu-custom-widgets.c',
-  'xemu-data.c',
   'xemu-input.c',
   'xemu-monitor.c',
   'xemu-net.c',
   'xemu-settings.cc',
-  'xemu-shaders.c',
-  'xemu-hud.cc',
-  'xemu-reporting.cc',
+
+  'xemu.c',
+  'xemu-data.c',
 ))
 
-xemu_ss.add(when: 'CONFIG_WIN32', if_true: files('xemu-update.cc'))
+subdir('xui')
 
 if 'CONFIG_DARWIN' in config_host
 xemu_cocoa = dependency('appleframeworks', modules: 'Cocoa')
-xemu_ss.add(xemu_cocoa) # FIXME: Use existing cocoa name
+xemu_ss.add(xemu_cocoa)
 endif
 
-xemu_ss.add(imgui, sdl, opengl, openssl)
-xemu_ss.add(when: 'CONFIG_LINUX', if_true: [xemu_gtk, files('xemu-os-utils-linux.c', 'noc_file_dialog_gtk.c')])
-xemu_ss.add(when: 'CONFIG_WIN32', if_true: files('xemu-os-utils-windows.c', 'noc_file_dialog_win32.c'))
-xemu_ss.add(when: 'CONFIG_DARWIN', if_true: files('xemu-os-utils-macos.m', 'noc_file_dialog_macos.m'))
+if 'CONFIG_LINUX' in config_host
+xemu_ss.add(xemu_gtk)
+endif
 
+xemu_ss.add(when: 'CONFIG_LINUX', if_true: [xemu_gtk, files('xemu-os-utils-linux.c')])
+xemu_ss.add(when: 'CONFIG_WIN32', if_true: files('xemu-os-utils-windows.c'))
+xemu_ss.add(when: 'CONFIG_DARWIN', if_true: files('xemu-os-utils-macos.m'))
 xemu_ss.add(when: 'CONFIG_RENDERDOC', if_true: [libdl])
+xemu_ss.add(imgui, implot, stb_image, noc, sdl, opengl, openssl, fa, fpng, json, httplib)
 
 softmmu_ss.add_all(xemu_ss)
 

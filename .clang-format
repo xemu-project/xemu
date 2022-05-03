@@ -68,6 +68,7 @@ IncludeCategories:
 IncludeIsMainRegex: '$'
 IndentCaseLabels: false
 IndentWidth:     4
+AccessModifierOffset: -4
 IndentWrappedFunctionNames: false
 KeepEmptyLinesAtTheStartOfBlocks: false
 MacroBlockBegin: '.*_BEGIN$' # only PREC_BEGIN ?

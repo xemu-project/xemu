@@ -96,7 +96,9 @@ static const char **port_index_to_settings_key_map[] = {
 
 void xemu_input_init(void)
 {
-    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    if (g_config.input.background_input_capture) {
+        SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+    }
 
     if (SDL_Init(SDL_INIT_GAMECONTROLLER) < 0) {
         fprintf(stderr, "Failed to initialize SDL gamecontroller subsystem: %s\n", SDL_GetError());
@@ -191,25 +193,42 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         // upside in this case is that a person can use the same GUID on all
         // ports and just needs to bind to the receiver and never needs to hit
         // this dialog.
+
+
+        // Attempt to re-bind to port previously bound to
         int port = 0;
-        while (1) {
+        bool did_bind = false;
+        while (!did_bind) {
             port = xemu_input_get_controller_default_bind_port(new_con, port);
             if (port < 0) {
                 // No (additional) default mappings
                 break;
-            }
-            if (xemu_input_get_bound(port) != NULL) {
-                // Something already bound here, try again for another port
+            } else if (!xemu_input_get_bound(port)) {
+                xemu_input_bind(port, new_con, 0);
+                did_bind = true;
+                break;
+            } else {
+                // Try again for another port
                 port++;
-                continue;
             }
-            xemu_input_bind(port, new_con, 0);
+        }
+
+        // Try to bind to any open port, and if so remember the binding
+        if (!did_bind && g_config.input.auto_bind) {
+            for (port = 0; port < 4; port++) {
+                if (!xemu_input_get_bound(port)) {
+                    xemu_input_bind(port, new_con, 1);
+                    did_bind = true;
+                    break;
+                }
+            }
+        }
+
+        if (did_bind) {
             char buf[128];
             snprintf(buf, sizeof(buf), "Connected '%s' to port %d", new_con->name, port+1);
             xemu_queue_notification(buf);
-            break;
         }
-
     } else if (event->type == SDL_CONTROLLERDEVICEREMOVED) {
         DPRINTF("Controller Removed: %d\n", event->cdevice.which);
         int handled = 0;

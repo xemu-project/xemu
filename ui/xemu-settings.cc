@@ -187,3 +187,31 @@ void xemu_settings_save(void)
     fprintf(fd, "%s", config_tree.generate_delta_toml().c_str());
     fclose(fd);
 }
+
+void add_net_nat_forward_ports(int host, int guest, CONFIG_NET_NAT_FORWARD_PORTS_PROTOCOL protocol)
+{
+    // FIXME: - Realloc the arrays instead of free/alloc
+    //        - Don't need to copy as much
+    auto cnode = config_tree.child("net")
+                            ->child("nat")
+                            ->child("forward_ports");
+    cnode->update_from_struct(&g_config);
+    cnode->children.push_back(*cnode->array_item_type);
+    auto &e = cnode->children.back();
+    e.child("host")->set_integer(host);
+    e.child("guest")->set_integer(guest);
+    e.child("protocol")->set_enum_by_index(protocol);
+    cnode->free_allocations(&g_config);
+    cnode->store_to_struct(&g_config);
+}
+
+void remove_net_nat_forward_ports(unsigned int index)
+{
+    auto cnode = config_tree.child("net")
+                            ->child("nat")
+                            ->child("forward_ports");
+    cnode->update_from_struct(&g_config);
+    cnode->children.erase(cnode->children.begin()+index);
+    cnode->free_allocations(&g_config);
+    cnode->store_to_struct(&g_config);
+}

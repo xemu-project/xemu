@@ -297,6 +297,27 @@ void mcpx_apu_debug_toggle_mute(uint16_t v)
     g_dbg_muted_voices[v / 64] ^= (1LL << (v % 64));
 }
 
+static void mcpx_apu_update_dsp_preference(MCPXAPUState *d)
+{
+    static int last_known_preference = -1;
+
+    if (last_known_preference == (int)g_config.audio.use_dsp) {
+        return;
+    }
+
+    if (g_config.audio.use_dsp) {
+        d->mon = MCPX_APU_DEBUG_MON_GP_OR_EP;
+        d->gp.realtime = true;
+        d->ep.realtime = true;
+    } else {
+        d->mon = MCPX_APU_DEBUG_MON_VP;
+        d->gp.realtime = false;
+        d->ep.realtime = false;
+    }
+
+    last_known_preference = g_config.audio.use_dsp;
+}
+
 static float clampf(float v, float min, float max)
 {
     if (v < min) {
@@ -2050,6 +2071,7 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
 
 static void se_frame(MCPXAPUState *d)
 {
+    mcpx_apu_update_dsp_preference(d);
     mcpx_debug_begin_frame();
     g_dbg.gp_realtime = d->gp.realtime;
     g_dbg.ep_realtime = d->ep.realtime;
@@ -2137,6 +2159,7 @@ static void se_frame(MCPXAPUState *d)
             d->apu_fifo_output[off + i][0] += isamp[2*i];
             d->apu_fifo_output[off + i][1] += isamp[2*i+1];
         }
+
         memset(d->vp.sample_buf, 0, sizeof(d->vp.sample_buf));
         memset(mixbins, 0, sizeof(mixbins));
     }
@@ -2198,6 +2221,15 @@ static void se_frame(MCPXAPUState *d)
         fwrite(d->apu_fifo_output, sizeof(d->apu_fifo_output), 1, fd);
         fclose(fd);
 #endif
+
+        if (0 <= g_config.audio.volume_limit && g_config.audio.volume_limit < 1) {
+            float f = pow(g_config.audio.volume_limit, M_E);
+            for (int i = 0; i < 256; i++) {
+                d->apu_fifo_output[i][0] *= f;
+                d->apu_fifo_output[i][1] *= f;
+            }
+        }
+
         qemu_spin_lock(&d->vp.out_buf_lock);
         int num_bytes_free = fifo8_num_free(&d->vp.out_buf);
         assert(num_bytes_free >= sizeof(d->apu_fifo_output));
@@ -2624,15 +2656,7 @@ void mcpx_apu_init(PCIBus *bus, int devfn, MemoryRegion *ram)
     /* Until DSP is more performant, a switch to decide whether or not we should
      * use the full audio pipeline or not.
      */
-    if (g_config.audio.use_dsp) {
-        d->mon = MCPX_APU_DEBUG_MON_GP_OR_EP;
-        d->gp.realtime = true;
-        d->ep.realtime = true;
-    } else {
-        d->mon = MCPX_APU_DEBUG_MON_VP;
-        d->gp.realtime = false;
-        d->ep.realtime = false;
-    }
+    mcpx_apu_update_dsp_preference(d);
 
     qemu_thread_create(&d->apu_thread, "mcpx.apu_thread", mcpx_apu_frame_thread,
                        d, QEMU_THREAD_JOINABLE);
