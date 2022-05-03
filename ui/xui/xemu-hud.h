@@ -1,5 +1,8 @@
 /*
- * xemu User Interface Rendering Helpers
+ * xemu User Interface
+ *
+ * Subsystem handling primary graphical user interface, which can be controlled
+ * via mouse and keyboard or through any attached gamepad.
  *
  * Copyright (C) 2020-2021 Matt Borgerson
  *
@@ -17,26 +20,29 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef XEMU_CUSTOM_WIDGETS
-#define XEMU_CUSTOM_WIDGETS
+#ifndef XEMU_HUD_H
+#define XEMU_HUD_H
 
-#include <stdint.h>
-#include "xemu-input.h"
-#include "xemu-shaders.h"
+#include <SDL.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// FIXME: Cleanup
-extern struct fbo *controller_fbo;
-extern struct fbo *logo_fbo;
+// Implemented in xemu.c
+int xemu_is_fullscreen(void);
+void xemu_monitor_init(void);
+void xemu_toggle_fullscreen(void);
+void xemu_eject_disc(void);
+void xemu_load_disc(const char *path);
 
-void initialize_custom_ui_rendering(void);
-void render_meter(struct decal_shader *s, float x, float y, float width, float height, float p, uint32_t color_bg, uint32_t color_fg);
-void render_controller(float frame_x, float frame_y, uint32_t primary_color, uint32_t secondary_color, ControllerState *state);
-void render_controller_port(float frame_x, float frame_y, int i, uint32_t port_color);
-void render_logo(uint32_t time, uint32_t primary_color, uint32_t secondary_color, uint32_t fill_color);
+// Implemented in xemu_hud.cc
+void xemu_hud_init(SDL_Window *window, void *sdl_gl_context);
+void xemu_hud_cleanup(void);
+void xemu_hud_render(void);
+void xemu_hud_process_sdl_events(SDL_Event *event);
+void xemu_hud_should_capture_kbd_mouse(int *kbd, int *mouse);
+void xemu_hud_set_framebuffer_texture(GLuint tex, bool flip);
 
 #ifdef __cplusplus
 }

@@ -641,6 +641,15 @@ static SlirpState *slirp_lookup(Monitor *mon, const char *id)
     }
 }
 
+#ifdef XBOX
+void *slirp_get_state_from_netdev(const char *id)
+{
+    SlirpState *s = slirp_lookup(NULL, id);
+    if (!s) return NULL;
+    return s->slirp;
+}
+#endif
+
 void hmp_hostfwd_remove(Monitor *mon, const QDict *qdict)
 {
     struct in_addr host_addr = { .s_addr = INADDR_ANY };

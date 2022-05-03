@@ -20,6 +20,7 @@ bsd_3clause = 'bsd-3clause'
 zlib = 'zlib'
 lgplv2_1 = 'lgplv2_1'
 apache2 = 'apache2'
+unlicense = 'unlicense'
 multi = 'multi'
 
 
@@ -179,13 +180,13 @@ Lib('slirp', 'https://gitlab.freedesktop.org/slirp',
 Lib('imgui', 'https://github.com/ocornut/imgui',
 	mit, 'https://raw.githubusercontent.com/ocornut/imgui/master/LICENSE.txt',
 	ships_static=all_platforms,
-	submodule=Submodule('ui/imgui')
+	submodule=Submodule('ui/thirdparty/imgui')
 	),
 
 Lib('implot', 'https://github.com/epezent/implot',
 	mit, 'https://raw.githubusercontent.com/epezent/implot/master/LICENSE',
 	ships_static=all_platforms,
-	submodule=Submodule('ui/implot')
+	submodule=Submodule('ui/thirdparty/implot')
 	),
 
 Lib('httplib', 'https://github.com/yhirose/cpp-httplib',
@@ -206,16 +207,22 @@ Lib('stb_image', 'https://github.com/nothings/stb',
 	version='2.25'
 	),
 
-Lib('inih', 'https://github.com/benhoyt/inih',
-	bsd, 'https://raw.githubusercontent.com/mborgerson/xemu/master/ui/inih/LICENSE.txt',
+Lib('tomlplusplus', 'https://github.com/marzer/tomlplusplus',
+	mit, 'https://raw.githubusercontent.com/marzer/tomlplusplus/master/LICENSE',
 	ships_static=all_platforms,
-	version='351217124ddb3e3fe2b982248a04c672350bb0af'
+	submodule=Submodule('tomlplusplus')
 	),
 
 Lib('xxHash', 'https://github.com/Cyan4973/xxHash.git',
 	bsd, 'https://raw.githubusercontent.com/Cyan4973/xxHash/dev/LICENSE', license_lines=(1,26),
 	ships_static=all_platforms,
 	submodule=Submodule('util/xxHash')
+	),
+
+Lib('fpng', 'https://github.com/richgel999/fpng',
+	unlicense, 'https://github.com/richgel999/fpng/blob/main/README.md',
+	ships_static=all_platforms,
+	version='6926f5a0a78f22d42b074a0ab8032e07736babd4'
 	),
 
 #
@@ -226,6 +233,12 @@ Lib('roboto', 'https://github.com/googlefonts/roboto',
 	apache2, 'https://raw.githubusercontent.com/googlefonts/roboto/main/LICENSE',
 	ships_static=all_platforms,
 	version='2.138'
+	),
+
+Lib('fontawesome', 'https://fontawesome.com',
+	multi, '',
+	ships_static=all_platforms,
+	version='6.1.1'
 	),
 
 #

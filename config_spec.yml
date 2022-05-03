@@ -6,8 +6,10 @@ general:
     check:
       type: bool
       default: true
-  misc:
-    skip_boot_anim: bool
+  screenshot_dir: string
+  skip_boot_anim: bool
+  # throttle_io: bool
+  last_viewed_menu_index: integer
   user_token: string
 
 input:
@@ -16,6 +18,11 @@ input:
     port2: string
     port3: string
     port4: string
+  gamecontrollerdb_path: string
+  auto_bind:
+    type: bool
+    default: true
+  background_input_capture: bool
 
 display:
   quality:
@@ -23,9 +30,27 @@ display:
       type: integer
       default: 1
   window:
-    last_width: integer
-    last_height: integer
+    fullscreen_on_startup: bool
+    startup_size:
+      type: enum
+      values: [last_used, 640x480, 1280x720, 1280x800, 1280x960, 1920x1080, 2560x1440, 2560x1600, 2560x1920, 3840x2160]
+      default: 1280x960
+    last_width:
+      type: integer
+      default: 640
+    last_height:
+      type: integer
+      default: 480
+    vsync:
+      type: bool
+      default: true
   ui:
+    show_menubar:
+      type: bool
+      default: true
+    use_animations:
+      type: bool
+      default: true
     fit:
       type: enum
       values: [center, scale, scale_16_9, scale_4_3, stretch]
@@ -33,9 +58,15 @@ display:
     scale:
       type: integer
       default: 1
+    auto_scale:
+      type: bool
+      default: true
 
 audio:
   use_dsp: bool
+  volume_limit:
+    type: number
+    default: 1
 
 net:
   enable: bool
@@ -52,12 +83,26 @@ net:
     remote_addr:
       type: string
       default: 1.2.3.4:9368
+  nat:
+    forward_ports:
+      type: array
+      items:
+        host: integer
+        guest: integer
+        protocol:
+          type: enum
+          values: [tcp, udp]
+          default: tcp
 
 sys:
   mem_limit:
     type: enum
     values: ['64', '128']
     default: '64'
+  avpack:
+    type: enum
+    values: [scart, hdtv, vga, rfu, svideo, composite, none]
+    default: hdtv
   files:
     bootrom_path: string
     flashrom_path: string
@@ -69,3 +114,6 @@ perf:
   hard_fpu:
     type: bool
     default: true
+  # cache_shaders:
+  #   type: bool
+  #   default: true

@@ -20,6 +20,8 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
+#ifndef NOC_FILE_DIALOG_H
+#define NOC_FILE_DIALOG_H
 
 /* A portable library to create open and save dialogs on linux, osx and
  * windows.
@@ -327,4 +329,5 @@ const char *noc_file_dialog_open(int flags,
 #endif
 
 
+#endif
 #endif

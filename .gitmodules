@@ -64,12 +64,12 @@
 [submodule "roms/vbootrom"]
 	path = roms/vbootrom
 	url = https://gitlab.com/qemu-project/vbootrom.git
-[submodule "ui/imgui"]
-	path = ui/imgui
+[submodule "ui/thirdparty/imgui"]
+	path = ui/thirdparty/imgui
 	url = https://github.com/ocornut/imgui.git
 	ignore = untracked
-[submodule "ui/implot"]
-	path = ui/implot
+[submodule "ui/thirdparty/implot"]
+	path = ui/thirdparty/implot
 	url = https://github.com/epezent/implot.git
 	ignore = untracked
 [submodule "hw/xbox/nv2a/xxHash"]
