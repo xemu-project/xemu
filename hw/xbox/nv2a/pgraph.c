@@ -2932,6 +2932,12 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             glDisable(GL_DEPTH_TEST);
         }
 
+        if (pg->depth_clamp_enable) {
+            glEnable(GL_DEPTH_CLAMP);
+        } else {
+            glDisable(GL_DEPTH_CLAMP);
+        }
+
         if (stencil_test) {
             glEnable(GL_STENCIL_TEST);
 
@@ -3319,6 +3325,12 @@ DEF_METHOD(NV097, BACK_END_WRITE_SEMAPHORE_RELEASE)
 
     //qemu_mutex_lock(&d->pgraph.lock);
     //qemu_mutex_unlock_iothread();
+}
+
+DEF_METHOD(NV097, SET_DEPTH_CLAMP_CONTROL)
+{
+    pg->depth_clamp_enable =
+        parameter & NV097_SET_DEPTH_CLAMP_CONTROL_CLAMP_ENABLE;
 }
 
 DEF_METHOD(NV097, SET_ZSTENCIL_CLEAR_VALUE)
@@ -3866,6 +3878,7 @@ void pgraph_init(NV2AState *d)
 
     pg->shader_cache = g_hash_table_new(shader_hash, shader_equal);
 
+    pg->depth_clamp_enable = false;
     pg->material_alpha = 0.0f;
 
     for (i=0; i<NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
