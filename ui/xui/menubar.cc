@@ -66,6 +66,10 @@ void ProcessKeyboardShortcuts(void)
         monitor_window.ToggleOpen();
     }
 
+    if (ImGui::IsKeyPressed(ImGuiKey_F12)) {
+        ActionScreenshot();
+    }
+
 #if defined(DEBUG_NV2A_GL) && defined(CONFIG_RENDERDOC)
     if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
         nv2a_dbg_renderdoc_capture_frames(1);
@@ -82,7 +86,7 @@ void ShowMainMenu()
         if (ImGui::BeginMenu("Machine"))
         {
             if (ImGui::MenuItem(running ? "Pause" : "Resume", SHORTCUT_MENU_TEXT(P))) ActionTogglePause();
-            if (ImGui::MenuItem("Screenshot")) ActionScreenshot();
+            if (ImGui::MenuItem("Screenshot", "F12")) ActionScreenshot();
 
             ImGui::Separator();
 
