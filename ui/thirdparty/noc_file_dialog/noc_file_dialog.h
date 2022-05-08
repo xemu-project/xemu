@@ -64,10 +64,19 @@ enum {
  * managed by the library.  The string is valid until the next call to
  * no_dialog_open.  If the user canceled, the return value is NULL.
  */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 const char *noc_file_dialog_open(int flags,
                                  const char *filters,
                                  const char *default_path,
                                  const char *default_name);
+
+#ifdef __cplusplus
+}
+#endif
 
 #ifdef NOC_FILE_DIALOG_IMPLEMENTATION
 
@@ -164,16 +173,58 @@ const char *noc_file_dialog_open(int flags,
 
 #ifdef NOC_FILE_DIALOG_WIN32
 
+#define UNICODE 1
 #include <windows.h>
 #include <commdlg.h>
 #include <glib.h>
 #include <stdio.h>
+#include <combaseapi.h>
+#include <shobjidl.h>
+
+static const char *noc_file_dialog_open_folder(void)
+{
+    const char *path = NULL;
+
+    IFileDialog *pfd;
+    if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pfd))))
+    {
+        DWORD dwOptions;
+        if (SUCCEEDED(pfd->GetOptions(&dwOptions)))
+        {
+            pfd->SetOptions(dwOptions | FOS_PICKFOLDERS);
+        }
+
+        if (SUCCEEDED(pfd->Show(NULL)))
+        {
+            IShellItem *pItem;
+            if (SUCCEEDED(pfd->GetResult(&pItem)))
+            {
+                PWSTR pszFilePath;
+                HRESULT hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath);
+
+                if (SUCCEEDED(hr))
+                {
+                    path = g_utf16_to_utf8((gunichar2*)pszFilePath, -1, NULL, NULL, NULL);
+                    CoTaskMemFree(pszFilePath);
+                }
+                pItem->Release();
+            }
+        }
+        pfd->Release();
+    }
+
+    return path;
+}
 
 const char *noc_file_dialog_open(int flags,
                                  const char *filters,
                                  const char *default_path,
                                  const char *default_name)
 {
+    if (flags & NOC_FILE_DIALOG_DIR) {
+        return noc_file_dialog_open_folder();
+    }
+
     OPENFILENAMEW ofn;         // common dialog box structure
     wchar_t szFile[_MAX_PATH]; // buffer for file name
     wchar_t initialDir[_MAX_PATH];
@@ -200,14 +251,14 @@ const char *noc_file_dialog_open(int flags,
         }
     }
     if (default_path) {
-        wdefault_path = g_utf8_to_utf16(default_path, -1, NULL, NULL, NULL);
+        wdefault_path = (wchar_t*)g_utf8_to_utf16(default_path, -1, NULL, NULL, NULL);
         if (!wdefault_path) {
             fprintf(stderr, "Failed to convert UTF-8 string to UTF-16\n");
             goto done;
         }
     }
     if (default_name) {
-        wdefault_name = g_utf8_to_utf16(default_name, -1, NULL, NULL, NULL);
+        wdefault_name = (wchar_t*)g_utf8_to_utf16(default_name, -1, NULL, NULL, NULL);
         if (!wdefault_name) {
             fprintf(stderr, "Failed to convert UTF-8 string to UTF-16\n");
             goto done;
@@ -247,7 +298,7 @@ done:
 
     g_free(g_noc_file_dialog_ret);
     if (ret) {
-        g_noc_file_dialog_ret = g_utf16_to_utf8(szFile, -1, NULL, NULL, NULL);
+        g_noc_file_dialog_ret = g_utf16_to_utf8((gunichar2*)szFile, -1, NULL, NULL, NULL);
     } else {
         g_noc_file_dialog_ret = NULL;
     }
