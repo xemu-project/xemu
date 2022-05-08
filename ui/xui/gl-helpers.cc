@@ -717,7 +717,7 @@ void SaveScreenshot(GLuint tex, bool flip)
     }
 
     std::vector<uint8_t> pixels;
-    pixels.resize(width * height * 4);
+    pixels.resize(width * height * 3);
 
     Fbo fbo(width, height);
     fbo.Target();
@@ -728,8 +728,7 @@ void SaveScreenshot(GLuint tex, bool flip)
     glPixelStorei(GL_PACK_ROW_LENGTH, width);
     glPixelStorei(GL_PACK_IMAGE_HEIGHT, height);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glReadnPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels.size(),
-                  pixels.data());
+    glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
     fbo.Restore();
 
     char fname[128];
