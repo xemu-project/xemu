@@ -127,13 +127,10 @@ public:
 class MainMenuTabButton
 {
 protected:
-    std::string m_icon;
-    std::string m_text;
-    MainMenuTabView *m_view;
+    std::string m_icon, m_text;
 
 public:
-    MainMenuTabButton(std::string text, std::string icon = "", MainMenuTabView *view = nullptr);
-    MainMenuTabView *view();
+    MainMenuTabButton(std::string text, std::string icon = "");
     bool Draw(bool selected);
 };
 
@@ -155,6 +152,7 @@ protected:
                                     // m_snapshots_button,
                                     m_system_button,
                                     m_about_button;
+    std::vector<MainMenuTabView*>   m_views;
     MainMenuGeneralView             m_general_view;
     MainMenuInputView               m_input_view;
     MainMenuDisplayView             m_display_view;

@@ -37,6 +37,8 @@
 #include "../xemu-os-utils.h"
 #include "../xemu-xbe.h"
 
+MainMenuScene g_main_menu;
+
 MainMenuTabView::~MainMenuTabView() {}
 void MainMenuTabView::Draw() {}
 
@@ -865,14 +867,9 @@ void MainMenuAboutView::Draw()
     ImGui::Text("for more information");
 }
 
-MainMenuTabButton::MainMenuTabButton(std::string text, std::string icon, MainMenuTabView *view)
-: m_icon(icon), m_text(text), m_view(view)
+MainMenuTabButton::MainMenuTabButton(std::string text, std::string icon)
+: m_icon(icon), m_text(text)
 {
-}
-
-MainMenuTabView *MainMenuTabButton::view()
-{
-    return m_view;
 }
 
 bool MainMenuTabButton::Draw(bool selected)
@@ -905,14 +902,14 @@ bool MainMenuTabButton::Draw(bool selected)
 
 MainMenuScene::MainMenuScene()
 : m_animation(0.12, 0.12),
-  m_general_button("General",     ICON_FA_GEARS,              &m_general_view),
-  m_input_button("Input",         ICON_FA_GAMEPAD,            &m_input_view),
-  m_display_button("Display",     ICON_FA_TV,                 &m_display_view),
-  m_audio_button("Audio",         ICON_FA_VOLUME_HIGH,        &m_audio_view),
-  m_network_button("Network",     ICON_FA_NETWORK_WIRED,      &m_network_view),
-  // m_snapshots_button("Snapshots", ICON_FA_CLOCK_ROTATE_LEFT,  &m_snapshots_view),
-  m_system_button("System",       ICON_FA_MICROCHIP,          &m_system_view),
-  m_about_button("About",         ICON_FA_CIRCLE_INFO,        &m_about_view)
+  m_general_button("General",     ICON_FA_GEARS),
+  m_input_button("Input",         ICON_FA_GAMEPAD),
+  m_display_button("Display",     ICON_FA_TV),
+  m_audio_button("Audio",         ICON_FA_VOLUME_HIGH),
+  m_network_button("Network",     ICON_FA_NETWORK_WIRED),
+  // m_snapshots_button("Snapshots", ICON_FA_CLOCK_ROTATE_LEFT),
+  m_system_button("System",       ICON_FA_MICROCHIP),
+  m_about_button("About",         ICON_FA_CIRCLE_INFO)
 {
     m_had_focus_last_frame = false;
     m_focus_view = false;
@@ -924,6 +921,15 @@ MainMenuScene::MainMenuScene()
     // m_tabs.push_back(&m_snapshots_button);
     m_tabs.push_back(&m_system_button);
     m_tabs.push_back(&m_about_button);
+
+    m_views.push_back(&m_general_view);
+    m_views.push_back(&m_input_view);
+    m_views.push_back(&m_display_view);
+    m_views.push_back(&m_audio_view);
+    m_views.push_back(&m_network_view);
+    // m_views.push_back(&m_snapshots_view);
+    m_views.push_back(&m_system_view);
+    m_views.push_back(&m_about_view);
 
     m_current_view_index = 0;
     m_next_view_index = m_current_view_index;
@@ -1124,7 +1130,7 @@ bool MainMenuScene::Draw()
             ImGui::SetKeyboardFocusHere();
             m_focus_view = false;
         }
-        m_tabs[m_current_view_index]->view()->Draw();
+        m_views[m_current_view_index]->Draw();
 
         ImGui::PopFont();
         ImGui::EndChild();
@@ -1138,5 +1144,3 @@ bool MainMenuScene::Draw()
 
     return !m_animation.IsComplete();
 }
-
-MainMenuScene g_main_menu;
