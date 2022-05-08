@@ -19,6 +19,17 @@
 
 #include "xemu-os-utils.h"
 #include <windows.h>
+#include <stdio.h>
+
+const char *xemu_get_os_info(void)
+{
+   OSVERSIONINFOEX info;
+    ZeroMemory(&info, sizeof(OSVERSIONINFOEX));
+    info.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+    GetVersionEx((LPOSVERSIONINFO)&info);//info requires typecasting
+
+    printf("Windows version: %u.%u\n", info.dwMajorVersion, info.dwMinorVersion);
+}
 
 const char *xemu_get_os_info(void)
 {
