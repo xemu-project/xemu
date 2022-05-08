@@ -312,9 +312,10 @@ bool FilePicker(const char *str_id, const char **buf, const char *filters,
     ImGui::PushID(str_id);
     bool status = ImGui::Button("###file_button", bb);
     if (status) {
+        int flags = NOC_FILE_DIALOG_OPEN;
+        if (dir) flags |= NOC_FILE_DIALOG_DIR;
         const char *new_path =
-            PausedFileOpen(dir ? NOC_FILE_DIALOG_DIR : NOC_FILE_DIALOG_OPEN,
-                           filters, *buf, NULL);
+            PausedFileOpen(flags, filters, *buf, NULL);
         if (new_path) {
             free((void*)*buf);
             *buf = strdup(new_path);
