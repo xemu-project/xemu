@@ -31,7 +31,7 @@
 extern float g_main_menu_height; // FIXME
 
 #ifdef CONFIG_RENDERDOC
-static bool capture_renderdoc_frame = false;
+bool g_capture_renderdoc_frame = false;
 #endif
 
 #if defined(__APPLE__)
@@ -167,7 +167,7 @@ void ShowMainMenu()
             ImGui::MenuItem("Video", NULL, &video_window.m_is_open);
 #if defined(DEBUG_NV2A_GL) && defined(CONFIG_RENDERDOC)
             if (nv2a_dbg_renderdoc_available()) {
-                ImGui::MenuItem("RenderDoc: Capture", NULL, &capture_renderdoc_frame);
+                ImGui::MenuItem("RenderDoc: Capture", NULL, &g_capture_renderdoc_frame);
             }
 #endif
             ImGui::EndMenu();
