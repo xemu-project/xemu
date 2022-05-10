@@ -33,7 +33,7 @@ Fbo *controller_fbo,
 GLuint g_controller_tex,
        g_logo_tex;
 
-enum ShaderType {
+enum class ShaderType {
     Blit,
     BlitGamma, // FIMXE: Move to nv2a_get_framebuffer_surface
     Mask,
