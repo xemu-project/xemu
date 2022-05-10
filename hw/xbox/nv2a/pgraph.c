@@ -1507,13 +1507,17 @@ DEF_METHOD(NV097, SET_WINDOW_CLIP_TYPE)
 DEF_METHOD_INC(NV097, SET_WINDOW_CLIP_HORIZONTAL)
 {
     int slot = (method - NV097_SET_WINDOW_CLIP_HORIZONTAL) / 4;
-    pg->regs[NV_PGRAPH_WINDOWCLIPX0 + slot * 4] = parameter;
+    for (; slot < 8; ++slot) {
+        pg->regs[NV_PGRAPH_WINDOWCLIPX0 + slot * 4] = parameter;
+    }
 }
 
 DEF_METHOD_INC(NV097, SET_WINDOW_CLIP_VERTICAL)
 {
     int slot = (method - NV097_SET_WINDOW_CLIP_VERTICAL) / 4;
-    pg->regs[NV_PGRAPH_WINDOWCLIPY0 + slot * 4] = parameter;
+    for (; slot < 8; ++slot) {
+        pg->regs[NV_PGRAPH_WINDOWCLIPY0 + slot * 4] = parameter;
+    }
 }
 
 DEF_METHOD(NV097, SET_ALPHA_TEST_ENABLE)
@@ -4075,6 +4079,7 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
     }
 
     /* Clipping regions */
+    int max_gl_height = pg->surface_binding_dim.height - 1;
     for (i = 0; i < 8; i++) {
         uint32_t x = pg->regs[NV_PGRAPH_WINDOWCLIPX0 + i * 4];
         unsigned int x_min = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMIN);
@@ -4086,9 +4091,9 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
         pgraph_apply_anti_aliasing_factor(pg, &x_max, &y_max);
 
         /* Translate for the GL viewport origin */
-        unsigned int y_min_xlat = MAX(pg->surface_binding_dim.height - y_max - 1, 0);
-        unsigned int y_max_xlat = MIN(pg->surface_binding_dim.height - y_min - 1,
-                                      pg->surface_binding_dim.height);
+        unsigned int y_min_xlat = MAX(max_gl_height - (int)y_max, 0);
+        unsigned int y_max_xlat = MIN(max_gl_height - (int)y_min, max_gl_height);
+
         pgraph_apply_scaling_factor(pg, &x_min, &y_min_xlat);
         pgraph_apply_scaling_factor(pg, &x_max, &y_max_xlat);
 
