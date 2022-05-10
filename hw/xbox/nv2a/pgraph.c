@@ -4774,14 +4774,15 @@ static void pgraph_init_display_renderer(NV2AState *d)
         "    texCoord.y = 1 + rel*(texCoord.y - 1);"
         "    out_Color.rgba = texture(tex, texCoord);\n"
         "    if (pvideo_enable) {\n"
+        "        vec2 screenCoord = gl_FragCoord.xy - 0.5;\n"
         "        vec4 extent = vec4(pvideo_pos.xy, pvideo_pos.xy + pvideo_pos.zw);\n"
-        "        bvec4 clip = bvec4(lessThan(gl_FragCoord.xy, extent.xy),\n"
-        "                           greaterThan(gl_FragCoord.xy, extent.zw));\n"
+        "        bvec4 clip = bvec4(lessThan(screenCoord, extent.xy),\n"
+        "                           greaterThan(screenCoord, extent.zw));\n"
         "        if (!any(clip)) {\n"
-        "            vec2 spos = vec2(gl_FragCoord.x, textureSize(tex,0).y-gl_FragCoord.y);\n"
-        "            vec2 coord = (spos-pvideo_pos.xy)/pvideo_pos.zw;\n"
+        "            vec2 videoCoord = (screenCoord - pvideo_pos.xy) / pvideo_pos.zw;\n"
+        "            videoCoord.y *= -1.0;\n"
         "            if (!pvideo_color_key_enable || out_Color.rgba == pvideo_color_key) {\n"
-        "               out_Color.rgba = texture(pvideo_tex, coord);\n"
+        "               out_Color.rgba = texture(pvideo_tex, videoCoord);\n"
         "            }\n"
         "        }\n"
         "    }\n"
@@ -4889,6 +4890,9 @@ static void pgraph_render_display_pvideo_overlay(NV2AState *d)
 
     pgraph_apply_scaling_factor(pg, &out_x, &out_y);
     pgraph_apply_scaling_factor(pg, &out_width, &out_height);
+
+    // Translate for the GL viewport origin.
+    out_y = MAX(pg->gl_display_buffer_height - 1 - (int)(out_y + out_height), 0);
 
     glActiveTexture(GL_TEXTURE0 + 1);
     glBindTexture(GL_TEXTURE_2D, g_nv2a->pgraph.disp_rndr.pvideo_tex);
