@@ -639,7 +639,7 @@ static const char* vsh_header =
     // Unfortunately mix() falls victim to the same handling of exceptional
     // (inf/NaN) handling as a multiply, so per-component comparisons are used
     // to guarantee HW behavior (anything * 0 must == 0).
-    "  vec4 zero_components = sign(src0) * sign(src1);\n"
+    "  vec4 zero_components = sign(NaNToOne(src0)) * sign(NaNToOne(src1));\n"
     "  vec4 ret = src0 * src1;\n"
     "  if (zero_components.x == 0.0) { ret.x = 0.0; }\n"
     "  if (zero_components.y == 0.0) { ret.y = 0.0; }\n"
