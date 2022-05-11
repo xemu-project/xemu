@@ -853,6 +853,23 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
                                i, i);
         }
     }
+    mstring_append(header,
+                   "/* Converts the input to vec4, pads with last component */\n"
+                   "vec4 _in(float v) { return vec4(v); }\n"
+                   "vec4 _in(vec2 v) { return v.xyyy; }\n"
+                   "vec4 _in(vec3 v) { return v.xyzz; }\n"
+                   "vec4 _in(vec4 v) { return v.xyzw; }\n"
+                   "#define FixNaN(src, mask) _FixNaN(_in(src)).mask\n"
+                   "vec4 _FixNaN(vec4 src)\n"
+                   "{\n"
+                   "  bvec4 nans = isnan(src);\n"
+                   "  if (!any(nans)) {\n"
+                   "    return src;\n"
+                   "  }\n"
+                   "  ivec4 signs = floatBitsToInt(src);\n"
+                   "  vec4 negative = vec4(lessThan(signs, ivec4(0)));"
+                   "  return mix(src, mix(vec4(1.0), vec4(0.0), negative), vec4(nans));\n"
+                   "}\n");
     mstring_append(header, "\n");
 
     MString *body = mstring_from_str("void main() {\n");
@@ -964,15 +981,15 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
     /* Set outputs */
     const char *shade_model_mult = state->smooth_shading ? "vtx_inv_w" : "vtx_inv_w_flat";
     mstring_append_fmt(body, "\n"
-                      "  vtxD0 = clamp(oD0, 0.0, 1.0) * %s;\n"
-                      "  vtxD1 = clamp(oD1, 0.0, 1.0) * %s;\n"
-                      "  vtxB0 = clamp(oB0, 0.0, 1.0) * %s;\n"
-                      "  vtxB1 = clamp(oB1, 0.0, 1.0) * %s;\n"
-                      "  vtxFog = oFog.x * vtx_inv_w;\n"
-                      "  vtxT0 = oT0 * vtx_inv_w;\n"
-                      "  vtxT1 = oT1 * vtx_inv_w;\n"
-                      "  vtxT2 = oT2 * vtx_inv_w;\n"
-                      "  vtxT3 = oT3 * vtx_inv_w;\n"
+                      "  vtxD0 = clamp(FixNaN(oD0, xyzw), 0.0, 1.0) * %s;\n"
+                      "  vtxD1 = clamp(FixNaN(oD1, xyzw), 0.0, 1.0) * %s;\n"
+                      "  vtxB0 = clamp(FixNaN(oB0, xyzw), 0.0, 1.0) * %s;\n"
+                      "  vtxB1 = clamp(FixNaN(oB1, xyzw), 0.0, 1.0) * %s;\n"
+                      "  vtxFog = FixNaN(oFog, x) * vtx_inv_w;\n"
+                      "  vtxT0 = FixNaN(oT0, xyzw) * vtx_inv_w;\n"
+                      "  vtxT1 = FixNaN(oT1, xyzw) * vtx_inv_w;\n"
+                      "  vtxT2 = FixNaN(oT2, xyzw) * vtx_inv_w;\n"
+                      "  vtxT3 = FixNaN(oT3, xyzw) * vtx_inv_w;\n"
                       "  gl_Position = oPos;\n"
                       "  gl_PointSize = oPts.x;\n"
                       "\n"
