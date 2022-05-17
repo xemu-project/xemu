@@ -120,7 +120,7 @@ void MainMenuInputView::Draw()
             ImVec2(b_w*g_viewport_mgr.m_scale,b_h*g_viewport_mgr.m_scale),
             ImVec2(x/t_w, (b_y+b_h)/t_h),
             ImVec2((x+b_w)/t_w, b_y/t_h),
-            port_padding);
+            port_padding * g_viewport_mgr.m_scale);
         ImGui::PopStyleColor();
 
         if (activated) {
