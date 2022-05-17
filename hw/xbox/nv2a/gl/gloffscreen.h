@@ -30,17 +30,7 @@
 #define GLOFFSCREEN_H_
 
 #include <stdbool.h>
-
 #include <epoxy/gl.h>
-
-#if defined(__APPLE__)                 /* macOS-Specific GL Includes */
-#include <OpenGL/OpenGL.h>
-#include <OpenGL/glext.h>
-#elif defined(_WIN32)                  /* Windows-Specific GL Includes */
-#include <epoxy/wgl.h>
-#else                                  /* Assume GLX */
-#include <epoxy/glx.h>
-#endif
 
 /* Used to hold data for the OpenGL context */
 struct _GloContext;
