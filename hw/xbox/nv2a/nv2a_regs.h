@@ -489,6 +489,8 @@
 #define NV_PGRAPH_SHADERCTL                              0x00001998
 #define NV_PGRAPH_SHADERPROG                             0x0000199C
 #define NV_PGRAPH_SEMAPHOREOFFSET                        0x000019A0
+#define NV_PGRAPH_SHADOWCTL                              0x000019A4
+#   define NV_PGRAPH_SHADOWCTL_SHADOW_ZFUNC                     0x00000007
 #define NV_PGRAPH_SHADOWZSLOPETHRESHOLD                  0x000019A8
 #define NV_PGRAPH_SPECFOGFACTOR0                         0x000019AC
 #define NV_PGRAPH_SPECFOGFACTOR1                         0x000019B0

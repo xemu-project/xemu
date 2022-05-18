@@ -304,8 +304,6 @@ typedef struct PGRAPHState {
 
     bool texture_matrix_enable[NV2A_MAX_TEXTURES];
 
-    enum PshShadowDepthFunc shadow_depth_func;
-
     GLuint gl_framebuffer;
 
     GLuint gl_display_buffer;
