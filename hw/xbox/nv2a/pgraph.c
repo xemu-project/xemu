@@ -3554,7 +3554,8 @@ DEF_METHOD(NV097, SET_SHADOW_ZSLOPE_THRESHOLD)
 
 DEF_METHOD(NV097, SET_SHADOW_DEPTH_FUNC)
 {
-    pg->shadow_depth_func = parameter;
+    SET_MASK(pg->regs[NV_PGRAPH_SHADOWCTL], NV_PGRAPH_SHADOWCTL_SHADOW_ZFUNC,
+             parameter);
 }
 
 DEF_METHOD(NV097, SET_SHADER_STAGE_PROGRAM)
@@ -3857,7 +3858,6 @@ void pgraph_init(NV2AState *d)
 
     pg->shader_cache = g_hash_table_new(shader_hash, shader_equal);
 
-    pg->shadow_depth_func = SHADOW_DEPTH_FUNC_NEVER;
     pg->material_alpha = 0.0f;
 
     for (i=0; i<NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
@@ -4255,7 +4255,8 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
     state.psh.point_sprite = pg->regs[NV_PGRAPH_SETUPRASTER] &
                                  NV_PGRAPH_SETUPRASTER_POINTSMOOTHENABLE;
 
-    state.psh.shadow_depth_func = pg->shadow_depth_func;
+    state.psh.shadow_depth_func = (enum PshShadowDepthFunc)GET_MASK(
+        pg->regs[NV_PGRAPH_SHADOWCTL], NV_PGRAPH_SHADOWCTL_SHADOW_ZFUNC);
 
     state.fixed_function = fixed_function;
 
