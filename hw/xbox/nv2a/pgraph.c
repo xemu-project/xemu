@@ -6179,6 +6179,15 @@ static void pgraph_bind_textures(NV2AState *d)
         texture_data += offset;
         hwaddr texture_vram_offset = texture_data - d->vram_ptr;
 
+        SurfaceBinding *surface = pgraph_surface_get(d, texture_vram_offset);
+        TextureBinding *tbind = pg->texture_binding[i];
+        if (!pg->texture_dirty[i] && tbind &&
+            (!surface || tbind->draw_time == surface->draw_time)) {
+            glBindTexture(pg->texture_binding[i]->gl_target,
+                          pg->texture_binding[i]->gl_texture);
+            continue;
+        }
+
         hwaddr palette_dma_len;
         uint8_t *palette_data;
         if (palette_dma_select) {
@@ -6189,15 +6198,6 @@ static void pgraph_bind_textures(NV2AState *d)
         assert(palette_offset < palette_dma_len);
         palette_data += palette_offset;
         hwaddr palette_vram_offset = palette_data - d->vram_ptr;
-
-        SurfaceBinding *surface = pgraph_surface_get(d, texture_vram_offset);
-        TextureBinding *tbind = pg->texture_binding[i];
-        if (!pg->texture_dirty[i] && tbind &&
-            (!surface || tbind->draw_time == surface->draw_time)) {
-            glBindTexture(pg->texture_binding[i]->gl_target,
-                          pg->texture_binding[i]->gl_texture);
-            continue;
-        }
 
         NV2A_DPRINTF(" texture %d is format 0x%x, "
                         "off 0x%" HWADDR_PRIx " (r %d, %d or %d, %d, %d; %d%s),"
