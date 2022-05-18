@@ -4155,6 +4155,7 @@ static bool pgraph_bind_shaders_test_dirty(PGRAPHState *pg)
     #define DIRTY_REGS \
         CR_1(NV_PGRAPH_COMBINECTL) \
         CR_1(NV_PGRAPH_SHADERCTL) \
+        CR_1(NV_PGRAPH_SHADOWCTL) \
         CR_1(NV_PGRAPH_COMBINESPECFOG0) \
         CR_1(NV_PGRAPH_COMBINESPECFOG1) \
         CR_1(NV_PGRAPH_CONTROL_0) \
