@@ -5817,13 +5817,13 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                 pgraph_check_surface_compatibility(found, &entry, false);
             NV2A_XPRINTF(DBG_SURFACES,
                          "%6s: [%5s @ %" HWADDR_PRIx " (%dx%d)] (%s) "
-                         "aa:%d, clip:x=%d,w=%d,y=%d,h=%d\n",
+                         "aa:%d, clip:x=%d,w=%d,y=%d,h=%d,p=%d\n",
                          "Match", found->color ? "COLOR" : "ZETA",
                          found->vram_addr, found->width, found->height,
                          found->swizzle ? "sz" : "ln",
                          found->shape.anti_aliasing, found->shape.clip_x,
                          found->shape.clip_width, found->shape.clip_y,
-                         found->shape.clip_height);
+                         found->shape.clip_height, found->pitch);
 
             assert(!(entry.swizzle && pg->clearing));
 
@@ -5909,12 +5909,13 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
 
         NV2A_XPRINTF(DBG_SURFACES,
                      "%6s: [%5s @ %" HWADDR_PRIx " (%dx%d)] (%s) "
-                     "aa:%d, clip:x=%d,w=%d,y=%d,h=%d\n",
+                     "aa:%d, clip:x=%d,w=%d,y=%d,h=%d,p=%d\n",
                      should_create ? "Create" : "Hit", color ? "COLOR" : "ZETA",
                      found->vram_addr, found->width, found->height,
                      found->swizzle ? "sz" : "ln", found->shape.anti_aliasing,
                      found->shape.clip_x, found->shape.clip_width,
-                     found->shape.clip_y, found->shape.clip_height);
+                     found->shape.clip_y, found->shape.clip_height,
+                     found->pitch);
 
         if (color) {
             pg->color_binding = found;
