@@ -408,6 +408,8 @@ static void pgraph_get_surface_dimensions(PGRAPHState *pg, unsigned int *width, 
 static void pgraph_update_memory_buffer(NV2AState *d, hwaddr addr, hwaddr size, bool quick);
 static void pgraph_bind_vertex_attributes(NV2AState *d, unsigned int min_element, unsigned int max_element, bool inline_data, unsigned int inline_stride, unsigned int provoking_element);
 static unsigned int pgraph_bind_inline_array(NV2AState *d);
+static bool pgraph_is_texture_stage_active(PGRAPHState *pg, unsigned int stage);
+
 static float convert_f16_to_float(uint16_t f16);
 static float convert_f24_to_float(uint32_t f24);
 static uint8_t cliptobyte(int x);
@@ -4375,14 +4377,15 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
             state.psh.compare_mode[i][j] =
                 (pg->regs[NV_PGRAPH_SHADERCLIPMODE] >> (4 * i + j)) & 1;
         }
-        state.psh.alphakill[i] = pg->regs[NV_PGRAPH_TEXCTL0_0 + i*4]
-                               & NV_PGRAPH_TEXCTL0_0_ALPHAKILLEN;
 
-        bool enabled = pg->regs[NV_PGRAPH_TEXCTL0_0 + i*4]
-                         & NV_PGRAPH_TEXCTL0_0_ENABLE;
+        uint32_t ctl_0 = pg->regs[NV_PGRAPH_TEXCTL0_0 + i*4];
+        bool enabled = pgraph_is_texture_stage_active(pg, i) &&
+                       (ctl_0 & NV_PGRAPH_TEXCTL0_0_ENABLE);
         if (!enabled) {
             continue;
         }
+
+        state.psh.alphakill[i] = ctl_0 & NV_PGRAPH_TEXCTL0_0_ALPHAKILLEN;
 
         unsigned int color_format =
             GET_MASK(pg->regs[NV_PGRAPH_TEXFMT0 + i*4],
@@ -6093,6 +6096,13 @@ static bool pgraph_check_texture_dirty(NV2AState *d, hwaddr addr, hwaddr size)
                                               DIRTY_MEMORY_NV2A_TEX);
 }
 
+static bool pgraph_is_texture_stage_active(PGRAPHState *pg, unsigned int stage)
+{
+    assert(stage < NV2A_MAX_TEXTURES);
+    uint32_t mode = (pg->regs[NV_PGRAPH_SHADERPROG] >> (stage * 5)) & 0x1F;
+    return !!mode;
+}
+
 static void pgraph_bind_textures(NV2AState *d)
 {
     int i;
@@ -6101,15 +6111,27 @@ static void pgraph_bind_textures(NV2AState *d)
     NV2A_GL_DGROUP_BEGIN("%s", __func__);
 
     for (i=0; i<NV2A_MAX_TEXTURES; i++) {
-
         uint32_t ctl_0 = pg->regs[NV_PGRAPH_TEXCTL0_0 + i*4];
+        bool enabled = pgraph_is_texture_stage_active(pg, i) &&
+                       GET_MASK(ctl_0, NV_PGRAPH_TEXCTL0_0_ENABLE);
+        /* FIXME: What happens if texture is disabled but stage is active? */
+
+        glActiveTexture(GL_TEXTURE0 + i);
+        if (!enabled) {
+            glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+            glBindTexture(GL_TEXTURE_RECTANGLE, 0);
+            glBindTexture(GL_TEXTURE_1D, 0);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            glBindTexture(GL_TEXTURE_3D, 0);
+            continue;
+        }
+
         uint32_t ctl_1 = pg->regs[NV_PGRAPH_TEXCTL1_0 + i*4];
         uint32_t fmt = pg->regs[NV_PGRAPH_TEXFMT0 + i*4];
         uint32_t filter = pg->regs[NV_PGRAPH_TEXFILTER0 + i*4];
-        uint32_t address =  pg->regs[NV_PGRAPH_TEXADDRESS0 + i*4];
-        uint32_t palette =  pg->regs[NV_PGRAPH_TEXPALETTE0 + i*4];
+        uint32_t address = pg->regs[NV_PGRAPH_TEXADDRESS0 + i*4];
+        uint32_t palette = pg->regs[NV_PGRAPH_TEXPALETTE0 + i*4];
 
-        bool enabled = GET_MASK(ctl_0, NV_PGRAPH_TEXCTL0_0_ENABLE);
         unsigned int min_mipmap_level =
             GET_MASK(ctl_0, NV_PGRAPH_TEXCTL0_0_MIN_LOD_CLAMP);
         unsigned int max_mipmap_level =
@@ -6174,16 +6196,6 @@ static void pgraph_bind_textures(NV2AState *d)
         if (filter & NV_PGRAPH_TEXFILTER0_RSIGNED) NV2A_UNIMPLEMENTED("NV_PGRAPH_TEXFILTER0_RSIGNED");
         if (filter & NV_PGRAPH_TEXFILTER0_GSIGNED) NV2A_UNIMPLEMENTED("NV_PGRAPH_TEXFILTER0_GSIGNED");
         if (filter & NV_PGRAPH_TEXFILTER0_BSIGNED) NV2A_UNIMPLEMENTED("NV_PGRAPH_TEXFILTER0_BSIGNED");
-
-        glActiveTexture(GL_TEXTURE0 + i);
-        if (!enabled) {
-            glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
-            glBindTexture(GL_TEXTURE_RECTANGLE, 0);
-            glBindTexture(GL_TEXTURE_1D, 0);
-            glBindTexture(GL_TEXTURE_2D, 0);
-            glBindTexture(GL_TEXTURE_3D, 0);
-            continue;
-        }
 
         nv2a_profile_inc_counter(NV2A_PROF_TEX_BIND);
 
