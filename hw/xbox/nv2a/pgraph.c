@@ -397,7 +397,7 @@ static void pgraph_download_surface_data_to_buffer(NV2AState *d,
                                                    uint8_t *pixels);
 static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface, bool force);
 static bool pgraph_check_surface_compatibility(SurfaceBinding *s1, SurfaceBinding *s2, bool strict);
-static bool pgraph_check_surface_to_texture_compatibility(SurfaceBinding *surface, TextureShape *shape);
+static bool pgraph_check_surface_to_texture_compatibility(const SurfaceBinding *surface, const TextureShape *shape);
 static void pgraph_render_surface_to_texture(NV2AState *d, SurfaceBinding *surface, TextureBinding *texture, TextureShape *texture_shape, int texture_unit);
 static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color);
 static void pgraph_update_surface(NV2AState *d, bool upload, bool color_write, bool zeta_write);
@@ -888,6 +888,7 @@ static void pgraph_image_blit(NV2AState *d)
             surf_dest->draw_dirty = false;
         }
         surf_dest->upload_pending = true;
+        pg->draw_time++;
     }
 
     hwaddr source_offset = image_blit->in_y * context_surfaces->source_pitch +
@@ -5099,8 +5100,8 @@ int nv2a_get_framebuffer_surface(void)
 }
 
 static bool pgraph_check_surface_to_texture_compatibility(
-    SurfaceBinding *surface,
-    TextureShape *shape)
+    const SurfaceBinding *surface,
+    const TextureShape *shape)
 {
     // FIXME: Better checks/handling on formats and surface-texture compat
 
@@ -5577,6 +5578,7 @@ static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
     PGRAPHState *pg = &d->pgraph;
 
     surface->upload_pending = false;
+    surface->draw_time = pg->draw_time;
 
     // FIXME: Don't query GL for texture binding
     GLint last_texture_binding;
