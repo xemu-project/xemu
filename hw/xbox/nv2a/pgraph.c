@@ -5268,8 +5268,14 @@ static void pgraph_surface_invalidate(NV2AState *d, SurfaceBinding *surface)
 {
     trace_nv2a_pgraph_surface_invalidated(surface->vram_addr);
 
-    assert(surface != d->pgraph.color_binding);
-    assert(surface != d->pgraph.zeta_binding);
+    if (surface == d->pgraph.color_binding) {
+        assert(d->pgraph.surface_color.buffer_dirty);
+        pgraph_unbind_surface(d, true);
+    }
+    if (surface == d->pgraph.zeta_binding) {
+        assert(d->pgraph.surface_zeta.buffer_dirty);
+        pgraph_unbind_surface(d, false);
+    }
 
     if (tcg_enabled()) {
         qemu_mutex_unlock(&d->pgraph.lock);
