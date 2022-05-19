@@ -693,8 +693,13 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                            state->surface_scale_factor);
     }
 
-    mstring_append(body, "  vtx.inv_w = 1.0 / oPos.w;\n");
 
+    mstring_append(body,
+                   "  if (oPos.w == 0.0 || isinf(oPos.w)) {\n"
+                   "    vtx.inv_w = 1.0;\n"
+                   "  } else {\n"
+                   "    vtx.inv_w = 1.0 / oPos.w;\n"
+                   "  }\n");
 }
 
 static MString *generate_vertex_shader(const ShaderState *state,
