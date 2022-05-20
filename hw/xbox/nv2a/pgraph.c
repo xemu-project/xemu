@@ -25,9 +25,6 @@
 #include "ui/xemu-settings.h"
 #include "qemu/fast-hash.h"
 
-#define DBG_SURFACES 0
-#define DBG_SURFACE_SYNC 0
-
 static NV2AState *g_nv2a;
 GloContext *g_nv2a_context_render;
 GloContext *g_nv2a_context_display;
@@ -4629,7 +4626,7 @@ static bool pgraph_surface_to_texture_can_fastpath(SurfaceBinding *surface,
     default: break;
     }
 
-    NV2A_XPRINTF(DBG_SURFACES, "Surface->Texture compat failed: %x to %x\n",
+    trace_nv2a_pgraph_surface_texture_compat_failed(
         surface_fmt, texture_fmt);
     return false;
 }
@@ -5153,7 +5150,7 @@ static bool pgraph_check_surface_to_texture_compatibility(
         break;
     }
 
-    NV2A_XPRINTF(DBG_SURFACES, "Surface->Texture compat failed: %x to %x\n",
+    trace_nv2a_pgraph_surface_texture_compat_failed(
         surface_fmt, texture_fmt);
     return false;
 }
@@ -5201,8 +5198,6 @@ static SurfaceBinding *pgraph_surface_put(NV2AState *d,
     SurfaceBinding *surface_in)
 {
     assert(pgraph_surface_get(d, addr) == NULL);
-    trace_nv2a_pgraph_surface_created(surface_in->vram_addr,
-                                      surface_in->vram_addr + surface_in->size);
 
     SurfaceBinding *surface, *next;
     uintptr_t e_end = surface_in->vram_addr + surface_in->size - 1;
@@ -5211,9 +5206,9 @@ static SurfaceBinding *pgraph_surface_put(NV2AState *d,
         bool overlapping = !(surface->vram_addr > e_end
                              || surface_in->vram_addr > s_end);
         if (overlapping) {
-            NV2A_XPRINTF(DBG_SURFACES,
-                "Evicting overlapping surface @ %" HWADDR_PRIx " (%dx%d)\n",
-                surface->vram_addr, surface->width, surface->height);
+            trace_nv2a_pgraph_surface_evict_overlapping(
+                surface->vram_addr, surface->width, surface->height,
+                surface->pitch);
             pgraph_download_surface_data_if_dirty(d, surface);
             pgraph_surface_invalidate(d, surface);
         }
@@ -5299,7 +5294,7 @@ static void pgraph_surface_evict_old(NV2AState *d)
     QTAILQ_FOREACH_SAFE(s, &d->pgraph.surfaces, entry, next) {
         int last_used = d->pgraph.frame_time - s->frame_time;
         if (last_used >= surface_age_limit) {
-            NV2A_XPRINTF(DBG_SURFACES, "Evicting old surface\n");
+            trace_nv2a_pgraph_surface_evict_reason("old", s->vram_addr);
             pgraph_download_surface_data_if_dirty(d, s);
             pgraph_surface_invalidate(d, s);
         }
@@ -5392,13 +5387,11 @@ static void pgraph_download_surface_data_to_buffer(NV2AState *d,
     swizzle &= surface->swizzle;
     downscale &= (pg->surface_scale_factor != 1);
 
-    NV2A_XPRINTF(DBG_SURFACE_SYNC,
-                 "[GPU->RAM] %s (%s) surface @ %" HWADDR_PRIx
-                 " (w=%d,h=%d,p=%d,bpp=%d)\n",
-                 surface->color ? "COLOR" : "ZETA",
-                 surface->swizzle ? "sz" : "lin", surface->vram_addr,
-                 surface->width, surface->height, surface->pitch,
-                 surface->fmt.bytes_per_pixel);
+    trace_nv2a_pgraph_surface_download(
+        surface->color ? "COLOR" : "ZETA",
+        surface->swizzle ? "sz" : "lin", surface->vram_addr,
+        surface->width, surface->height, surface->pitch,
+        surface->fmt.bytes_per_pixel);
 
     /*  Bind destination surface to framebuffer */
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
@@ -5573,9 +5566,7 @@ static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
 
     nv2a_profile_inc_counter(NV2A_PROF_SURF_UPLOAD);
 
-    NV2A_XPRINTF(DBG_SURFACE_SYNC,
-                 "[RAM->GPU] %s (%s) surface @ %" HWADDR_PRIx
-                 " (w=%d,h=%d,p=%d,bpp=%d)\n",
+    trace_nv2a_pgraph_surface_upload(
                  surface->color ? "COLOR" : "ZETA",
                  surface->swizzle ? "sz" : "lin", surface->vram_addr,
                  surface->width, surface->height, surface->pitch,
@@ -5656,7 +5647,7 @@ static void pgraph_compare_surfaces(SurfaceBinding *s1, SurfaceBinding *s2)
 {
     #define DO_CMP(fld) \
         if (s1->fld != s2->fld) \
-            NV2A_XPRINTF(DBG_SURFACES, "%20s -- %8ld vs %8ld\n", \
+            trace_nv2a_pgraph_surface_compare_mismatch( \
                 #fld, (long int)s1->fld, (long int)s2->fld);
     DO_CMP(shape.clip_x)
     DO_CMP(shape.clip_width)
@@ -5807,29 +5798,31 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
             }
         }
 
-        NV2A_XPRINTF(DBG_SURFACES,
-                     "Target: [%5s @ %" HWADDR_PRIx "] (%s) "
-                     "aa:%d clip:x=%d,w=%d,y=%d,h=%d\n",
-                     color ? "COLOR" : "ZETA", entry.vram_addr,
-                     entry.swizzle ? "sz" : "ln",
-                     pg->surface_shape.anti_aliasing, pg->surface_shape.clip_x,
-                     pg->surface_shape.clip_width, pg->surface_shape.clip_y,
-                     pg->surface_shape.clip_height);
+        trace_nv2a_pgraph_surface_target(
+            color ? "COLOR" : "ZETA", entry.vram_addr,
+            entry.swizzle ? "sz" : "ln",
+            pg->surface_shape.anti_aliasing,
+            pg->surface_shape.clip_x,
+            pg->surface_shape.clip_width, pg->surface_shape.clip_y,
+            pg->surface_shape.clip_height);
 
         bool should_create = true;
 
         if (found != NULL) {
             bool is_compatible =
                 pgraph_check_surface_compatibility(found, &entry, false);
-            NV2A_XPRINTF(DBG_SURFACES,
-                         "%6s: [%5s @ %" HWADDR_PRIx " (%dx%d)] (%s) "
-                         "aa:%d, clip:x=%d,w=%d,y=%d,h=%d,p=%d\n",
-                         "Match", found->color ? "COLOR" : "ZETA",
-                         found->vram_addr, found->width, found->height,
-                         found->swizzle ? "sz" : "ln",
-                         found->shape.anti_aliasing, found->shape.clip_x,
-                         found->shape.clip_width, found->shape.clip_y,
-                         found->shape.clip_height, found->pitch);
+
+#define TRACE_ARGS found->vram_addr, found->width, found->height, \
+            found->swizzle ? "sz" : "ln", \
+            found->shape.anti_aliasing, found->shape.clip_x, \
+            found->shape.clip_width, found->shape.clip_y, \
+            found->shape.clip_height, found->pitch
+            if (found->color) {
+                trace_nv2a_pgraph_surface_match_color(TRACE_ARGS);
+            } else {
+                trace_nv2a_pgraph_surface_match_zeta(TRACE_ARGS);
+            }
+#undef TRACE_ARGS
 
             assert(!(entry.swizzle && pg->clearing));
 
@@ -5844,8 +5837,8 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                 is_compatible &= (pg->clearing || found->cleared) &&
                     pgraph_check_surface_compatibility(found, &entry, true);
                 if (is_compatible) {
-                    NV2A_XPRINTF(DBG_SURFACES, "Migrating surface type to %s\n",
-                                 entry.swizzle ? "swizzled" : "linear");
+                    trace_nv2a_pgraph_surface_migrate_type(
+                        entry.swizzle ? "swizzled" : "linear");
                 }
             }
 
@@ -5877,7 +5870,8 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
                 pg->surface_zeta.buffer_dirty |= color;
                 should_create = false;
             } else {
-                NV2A_XPRINTF(DBG_SURFACES, "Evicting incompatible surface\n");
+                trace_nv2a_pgraph_surface_evict_reason(
+                    "incompatible", found->vram_addr);
                 pgraph_compare_surfaces(found, &entry);
                 pgraph_download_surface_data_if_dirty(d, found);
                 pgraph_surface_invalidate(d, found);
@@ -5917,21 +5911,28 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
             }
         }
 
-        NV2A_XPRINTF(DBG_SURFACES,
-                     "%6s: [%5s @ %" HWADDR_PRIx " (%dx%d)] (%s) "
-                     "aa:%d, clip:x=%d,w=%d,y=%d,h=%d,p=%d\n",
-                     should_create ? "Create" : "Hit", color ? "COLOR" : "ZETA",
-                     found->vram_addr, found->width, found->height,
-                     found->swizzle ? "sz" : "ln", found->shape.anti_aliasing,
-                     found->shape.clip_x, found->shape.clip_width,
-                     found->shape.clip_y, found->shape.clip_height,
-                     found->pitch);
+#define TRACE_ARGS found->vram_addr, found->width, found->height, \
+                   found->swizzle ? "sz" : "ln", found->shape.anti_aliasing, \
+                   found->shape.clip_x, found->shape.clip_width, \
+                   found->shape.clip_y, found->shape.clip_height, found->pitch
 
         if (color) {
+            if (should_create) {
+                trace_nv2a_pgraph_surface_create_color(TRACE_ARGS);
+            } else {
+                trace_nv2a_pgraph_surface_hit_color(TRACE_ARGS);
+            }
+
             pg->color_binding = found;
         } else {
+            if (should_create) {
+                trace_nv2a_pgraph_surface_create_zeta(TRACE_ARGS);
+            } else {
+                trace_nv2a_pgraph_surface_hit_zeta(TRACE_ARGS);
+            }
             pg->zeta_binding = found;
         }
+#undef TRACE_ARGS
 
         glFramebufferTexture2D(GL_FRAMEBUFFER, entry.fmt.gl_attachment,
                                GL_TEXTURE_2D, found->gl_buffer, 0);
@@ -6466,8 +6467,7 @@ static void pgraph_bind_textures(NV2AState *d)
 
         if (surf_to_tex && binding->draw_time < surface->draw_time) {
 
-            NV2A_XPRINTF(DBG_SURFACES,
-                "Rendering surface @ %" HWADDR_PRIx " to texture (%dx%d)\n",
+            trace_nv2a_pgraph_surface_render_to_texture(
                 surface->vram_addr, surface->width, surface->height);
             pgraph_render_surface_to_texture(d, surface, binding, &state, i);
             binding->draw_time = surface->draw_time;
