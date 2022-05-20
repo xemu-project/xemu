@@ -5911,6 +5911,10 @@ static void pgraph_update_surface_part(NV2AState *d, bool upload, bool color)
             pg->surface_binding_dim.height = entry.height;
             pg->surface_binding_dim.clip_y = entry.shape.clip_y;
             pg->surface_binding_dim.clip_height = entry.shape.clip_height;
+
+            if (color && pg->zeta_binding && (pg->zeta_binding->width != entry.width || pg->zeta_binding->height != entry.height)) {
+                pg->surface_zeta.buffer_dirty = true;
+            }
         }
 
         NV2A_XPRINTF(DBG_SURFACES,
