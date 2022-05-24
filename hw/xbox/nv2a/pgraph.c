@@ -6320,6 +6320,8 @@ static void pgraph_bind_textures(NV2AState *d)
                 }
             }
             assert(levels > 0);
+            min_mipmap_level = MIN(levels-1, min_mipmap_level);
+            max_mipmap_level = MIN(levels-1, max_mipmap_level);
         }
 
         size_t length = 0;
