@@ -6277,41 +6277,23 @@ static void pgraph_bind_textures(NV2AState *d)
             depth = 1 << log_depth;
             pitch = 0;
 
-            /* FIXME: What about 3D mipmaps? */
             levels = MIN(levels, max_mipmap_level + 1);
-            if (f.gl_format != 0) {
-                /* Discard mipmap levels that would be smaller than 1x1.
-                 * FIXME: Is this actually needed?
-                 *
-                 * >> Level 0: 32 x 4
-                 *    Level 1: 16 x 2
-                 *    Level 2: 8 x 1
-                 *    Level 3: 4 x 1
-                 *    Level 4: 2 x 1
-                 *    Level 5: 1 x 1
-                 */
-                levels = MIN(levels, MAX(log_width, log_height) + 1);
-            } else {
-                /* OpenGL requires DXT textures to always have a width and
-                 * height a multiple of 4. The Xbox and DirectX handles DXT
-                 * textures smaller than 4 by padding the reset of the block.
-                 *
-                 * See:
-                 * https://msdn.microsoft.com/en-us/library/windows/desktop/bb204843(v=vs.85).aspx
-                 * https://msdn.microsoft.com/en-us/library/windows/desktop/bb694531%28v=vs.85%29.aspx#Virtual_Size
-                 *
-                 * Work around this for now by discarding mipmap levels that
-                 * would result in too-small textures. A correct solution
-                 * will be to decompress these levels manually, or add texture
-                 * sampling logic.
-                 *
-                 * >> Level 0: 64 x 8
-                 *    Level 1: 32 x 4
-                 *    Level 2: 16 x 2 << Ignored
-                 * >> Level 0: 16 x 16
-                 *    Level 1: 8 x 8
-                 *    Level 2: 4 x 4 << OK!
-                 */
+
+            /* Discard mipmap levels that would be smaller than 1x1.
+             * FIXME: Is this actually needed?
+             *
+             * >> Level 0: 32 x 4
+             *    Level 1: 16 x 2
+             *    Level 2: 8 x 1
+             *    Level 3: 4 x 1
+             *    Level 4: 2 x 1
+             *    Level 5: 1 x 1
+             */
+            levels = MIN(levels, MAX(log_width, log_height) + 1);
+            assert(levels > 0);
+
+            if (dimensionality == 3) {
+                /* FIXME: What about 3D mipmaps? */
                 if (log_width < 2 || log_height < 2) {
                     /* Base level is smaller than 4x4... */
                     levels = 1;
@@ -6319,7 +6301,6 @@ static void pgraph_bind_textures(NV2AState *d)
                     levels = MIN(levels, MIN(log_width, log_height) - 1);
                 }
             }
-            assert(levels > 0);
             min_mipmap_level = MIN(levels-1, min_mipmap_level);
             max_mipmap_level = MIN(levels-1, max_mipmap_level);
         }
@@ -6335,25 +6316,26 @@ static void pgraph_bind_textures(NV2AState *d)
                 int level;
                 if (f.gl_format != 0) {
                     for (level = 0; level < levels; level++) {
-                        w = MAX(w, 1); h = MAX(h, 1);
+                        w = MAX(w, 1);
+                        h = MAX(h, 1);
                         length += w * h * f.bytes_per_pixel;
                         w /= 2;
                         h /= 2;
                     }
                 } else {
                     /* Compressed textures are a bit different */
-                    unsigned int block_size;
-                    if (f.gl_internal_format ==
-                            GL_COMPRESSED_RGBA_S3TC_DXT1_EXT) {
-                        block_size = 8;
-                    } else {
-                        block_size = 16;
-                    }
-
+                    unsigned int block_size =
+                        f.gl_internal_format ==
+                                GL_COMPRESSED_RGBA_S3TC_DXT1_EXT ?
+                            8 : 16;
                     for (level = 0; level < levels; level++) {
-                        w = MAX(w, 4); h = MAX(h, 4);
-                        length += w/4 * h/4 * block_size;
-                        w /= 2; h /= 2;
+                        w = MAX(w, 1);
+                        h = MAX(h, 1);
+                        unsigned int phys_w = (w + 3) & ~3,
+                                     phys_h = (h + 3) & ~3;
+                        length += phys_w/4 * phys_h/4 * block_size;
+                        w /= 2;
+                        h /= 2;
                     }
                 }
                 if (cubemap) {
@@ -6986,44 +6968,42 @@ static void upload_gl_texture(GLenum gl_target,
 
         int level;
         for (level = 0; level < s.levels; level++) {
+            width = MAX(width, 1);
+            height = MAX(height, 1);
+
             if (f.gl_format == 0) { /* compressed */
-                assert(width >= 4 && height >= 4 &&
-                       "Compressed texture padding");
-                width = MAX(width, 4); height = MAX(height, 4);
-
-                unsigned int block_size;
-                if (f.gl_internal_format == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT) {
-                    block_size = 8;
-                } else {
-                    block_size = 16;
+                 // https://docs.microsoft.com/en-us/windows/win32/direct3d10/d3d10-graphics-programming-guide-resources-block-compression#virtual-size-versus-physical-size
+                unsigned int block_size =
+                    f.gl_internal_format == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT ?
+                        8 : 16;
+                unsigned int physical_width = (width + 3) & ~3,
+                             physical_height = (height + 3) & ~3;
+                if (physical_width != width) {
+                    glPixelStorei(GL_UNPACK_ROW_LENGTH, physical_width * 4);
                 }
-
                 uint8_t *converted = decompress_2d_texture_data(
-                    f.gl_internal_format, texture_data, width, height);
+                    f.gl_internal_format, texture_data, physical_width,
+                    physical_height);
                 glTexImage2D(gl_target, level, GL_RGBA, width, height, 0,
                              GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, converted);
                 g_free(converted);
-
-                texture_data += width/4 * height/4 * block_size;
+                if (physical_width != width) {
+                    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+                }
+                texture_data +=
+                    physical_width / 4 * physical_height / 4 * block_size;
             } else {
-
-                width = MAX(width, 1); height = MAX(height, 1);
-
                 unsigned int pitch = width * f.bytes_per_pixel;
                 uint8_t *unswizzled = (uint8_t*)g_malloc(height * pitch);
                 unswizzle_rect(texture_data, width, height,
                                unswizzled, pitch, f.bytes_per_pixel);
-
                 uint8_t *converted = convert_texture_data(s, unswizzled,
                                                           palette_data,
                                                           width, height, 1,
                                                           pitch, 0);
-
-                glTexImage2D(gl_target, level, f.gl_internal_format,
-                             width, height, 0,
-                             f.gl_format, f.gl_type,
+                glTexImage2D(gl_target, level, f.gl_internal_format, width,
+                             height, 0, f.gl_format, f.gl_type,
                              converted ? converted : unswizzled);
-
                 if (converted) {
                     g_free(converted);
                 }
@@ -7047,7 +7027,8 @@ static void upload_gl_texture(GLenum gl_target,
         int level;
         for (level = 0; level < s.levels; level++) {
             if (f.gl_format == 0) { /* compressed */
-
+                assert(width % 4 == 0 && height % 4 == 0 &&
+                       "Compressed 3D texture virtual size");
                 width = MAX(width, 4);
                 height = MAX(height, 4);
                 depth = MAX(depth, 1);
@@ -7072,6 +7053,9 @@ static void upload_gl_texture(GLenum gl_target,
 
                 texture_data += texture_size;
             } else {
+                width = MAX(width, 1);
+                height = MAX(height, 1);
+                depth = MAX(depth, 1);
 
                 unsigned int row_pitch = width * f.bytes_per_pixel;
                 unsigned int slice_pitch = row_pitch * height;
