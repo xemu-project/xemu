@@ -6985,7 +6985,8 @@ static void upload_gl_texture(GLenum gl_target,
         int level;
         for (level = 0; level < s.levels; level++) {
             if (f.gl_format == 0) { /* compressed */
-
+                assert(width >= 4 && height >= 4 &&
+                       "Compressed texture padding");
                 width = MAX(width, 4); height = MAX(height, 4);
 
                 unsigned int block_size;
@@ -6995,10 +6996,11 @@ static void upload_gl_texture(GLenum gl_target,
                     block_size = 16;
                 }
 
-                glCompressedTexImage2D(gl_target, level, f.gl_internal_format,
-                                       width, height, 0,
-                                       width/4 * height/4 * block_size,
-                                       texture_data);
+                uint8_t *converted = decompress_2d_texture_data(
+                    f.gl_internal_format, texture_data, width, height);
+                glTexImage2D(gl_target, level, GL_RGBA, width, height, 0,
+                             GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, converted);
+                g_free(converted);
 
                 texture_data += width/4 * height/4 * block_size;
             } else {

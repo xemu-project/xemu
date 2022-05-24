@@ -32,4 +32,8 @@ uint8_t *decompress_3d_texture_data(GLint color_format,
                                     unsigned int width,
                                     unsigned int height,
                                     unsigned int depth);
+
+uint8_t *decompress_2d_texture_data(GLint color_format, const uint8_t *data,
+                                    unsigned int width, unsigned int height);
+
 #endif

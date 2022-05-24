@@ -215,3 +215,30 @@ uint8_t *decompress_3d_texture_data(GLint color_format,
     }
     return converted_data;
 }
+
+uint8_t *decompress_2d_texture_data(GLint color_format, const uint8_t *data,
+                                    unsigned int width, unsigned int height)
+{
+    assert((width > 0) && (width % 4 == 0));
+    assert((height > 0) && (height % 4 == 0));
+    int num_blocks_x = width / 4, num_blocks_y = height / 4;
+    uint8_t *converted_data = (uint8_t *)g_malloc(width * height * 4);
+    for (int j = 0; j < num_blocks_y; j++) {
+        for (int i = 0; i < num_blocks_x; i++) {
+            int block_index = j * num_blocks_x + i;
+            if (color_format == GL_COMPRESSED_RGBA_S3TC_DXT1_EXT) {
+                decompress_dxt1_block(data + 8 * block_index,
+                                      converted_data, i, j, width, 0);
+            } else if (color_format == GL_COMPRESSED_RGBA_S3TC_DXT3_EXT) {
+                decompress_dxt3_block(data + 16 * block_index,
+                                      converted_data, i, j, width, 0);
+            } else if (color_format == GL_COMPRESSED_RGBA_S3TC_DXT5_EXT) {
+                decompress_dxt5_block(data + 16 * block_index,
+                                      converted_data, i, j, width, 0);
+            } else {
+                assert(false);
+            }
+        }
+    }
+    return converted_data;
+}
