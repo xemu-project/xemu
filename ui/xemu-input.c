@@ -94,10 +94,12 @@ static const char **port_index_to_settings_key_map[] = {
     &g_config.input.bindings.port4,
 };
 
-static int sdl_kbd_button_map[15];
+static int sdl_kbd_scancode_map[25];
 
 void xemu_input_init(void)
 {
+    int i;
+
     if (g_config.input.background_input_capture) {
         SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     }
@@ -114,22 +116,46 @@ void xemu_input_init(void)
     new_con->name = "Keyboard";
     new_con->bound = -1;
 
-    //init the keyboard digital button map from the toml config
-    sdl_kbd_button_map[0] = g_config.input.keyboard_mappings_dig.KEY_CTRLR_DIG_A;
-    sdl_kbd_button_map[1] = g_config.input.keyboard_mappings_dig.KEY_CTRLR_DIG_B;
-    sdl_kbd_button_map[2] = g_config.input.keyboard_mappings_dig.KEY_CTRLR_DIG_X;
-    sdl_kbd_button_map[3] = g_config.input.keyboard_mappings_dig.KEY_CTRLR_DIG_Y;
-    sdl_kbd_button_map[4] = g_config.input.keyboard_mappings_dig.KEY_CTRLR_DIG_LEFT;
-    sdl_kbd_button_map[5] = g_config.input.keyboard_mappings_dig.KEY_CTRLR_DIG_UP;
-    sdl_kbd_button_map[6] = g_config.input.keyboard_mappings_dig.KEY_CTRLR_DIG_RIGHT;
-    sdl_kbd_button_map[7] = g_config.input.keyboard_mappings_dig.KEY_CTRLR_DIG_DOWN;
-    sdl_kbd_button_map[8] = g_config.input.keyboard_mappings_dig.KEY_CTRLR_DIG_BACK;
-    sdl_kbd_button_map[9] = g_config.input.keyboard_mappings_dig.KEY_CTRLR_DIG_START;
-    sdl_kbd_button_map[10] = g_config.input.keyboard_mappings_dig.KEY_CTRLR_DIG_WHITE;
-    sdl_kbd_button_map[11] = g_config.input.keyboard_mappings_dig.KEY_CTRLR_DIG_BLACK;
-    sdl_kbd_button_map[12] = g_config.input.keyboard_mappings_dig.KEY_CTRLR_DIG_LSTICK_PRESS;
-    sdl_kbd_button_map[13] = g_config.input.keyboard_mappings_dig.KEY_CTRLR_DIG_RSTICK_PRESS;
-    sdl_kbd_button_map[14] = g_config.input.keyboard_mappings_dig.KEY_CTRLR_DIG_GUIDE;
+    //see config_spec.yml for default scancode values
+    sdl_kbd_scancode_map[0] = g_config.input.keyboard_controller_scancode_map.a;             //default key : a
+    sdl_kbd_scancode_map[1] = g_config.input.keyboard_controller_scancode_map.b;             //default key : b
+    sdl_kbd_scancode_map[2] = g_config.input.keyboard_controller_scancode_map.x;             //default key : x
+    sdl_kbd_scancode_map[3] = g_config.input.keyboard_controller_scancode_map.y;             //default key : y
+    sdl_kbd_scancode_map[4] = g_config.input.keyboard_controller_scancode_map.dpad_left;     //default key : left
+    sdl_kbd_scancode_map[5] = g_config.input.keyboard_controller_scancode_map.dpad_up;       //default key : up
+    sdl_kbd_scancode_map[6] = g_config.input.keyboard_controller_scancode_map.dpad_right;    //default key : right
+    sdl_kbd_scancode_map[7] = g_config.input.keyboard_controller_scancode_map.dpad_down;     //default key : down
+    sdl_kbd_scancode_map[8] = g_config.input.keyboard_controller_scancode_map.back;          //default key : backspace
+    sdl_kbd_scancode_map[9] = g_config.input.keyboard_controller_scancode_map.start;         //default key : return
+    sdl_kbd_scancode_map[10] = g_config.input.keyboard_controller_scancode_map.white;        //default key : 1
+    sdl_kbd_scancode_map[11] = g_config.input.keyboard_controller_scancode_map.black;        //default key : 2
+    sdl_kbd_scancode_map[12] = g_config.input.keyboard_controller_scancode_map.lstick_btn;   //default key : 3
+    sdl_kbd_scancode_map[13] = g_config.input.keyboard_controller_scancode_map.rstick_btn;   //default key : 4
+    sdl_kbd_scancode_map[14] = g_config.input.keyboard_controller_scancode_map.guide;        //default key : 5
+    sdl_kbd_scancode_map[15] = g_config.input.keyboard_controller_scancode_map.lstick_up;    //default key : e
+    sdl_kbd_scancode_map[16] = g_config.input.keyboard_controller_scancode_map.lstick_left;  //default key : s
+    sdl_kbd_scancode_map[17] = g_config.input.keyboard_controller_scancode_map.lstick_right; //default key : f
+    sdl_kbd_scancode_map[18] = g_config.input.keyboard_controller_scancode_map.lstick_down;  //default key : d
+    sdl_kbd_scancode_map[19] = g_config.input.keyboard_controller_scancode_map.ltrigger;     //default key : w
+    sdl_kbd_scancode_map[20] = g_config.input.keyboard_controller_scancode_map.rstick_up;    //default key : i
+    sdl_kbd_scancode_map[21] = g_config.input.keyboard_controller_scancode_map.rstick_left;  //default key : j
+    sdl_kbd_scancode_map[22] = g_config.input.keyboard_controller_scancode_map.rstick_right; //default key : l
+    sdl_kbd_scancode_map[23] = g_config.input.keyboard_controller_scancode_map.rstick_down;  //default key : k
+    sdl_kbd_scancode_map[24] = g_config.input.keyboard_controller_scancode_map.rtrigger;     //default key : o
+
+    for (i=0; i<25; i++){
+        /* SDL allocates an array of size SDL_NUM_SCANCODES
+           that can be indexed to get the pressed states of
+           each key. We need to validate that none of the
+           assignements in the toml file are outside of this
+           range */
+
+        if( sdl_kbd_scancode_map[i] >= SDL_NUM_SCANCODES ){
+            printf("WARNING: Keyboard Controller Scancode Out Of Range (%d) : Disabled\n", sdl_kbd_scancode_map[i]);
+            // Default to an unknown code (0)
+            sdl_kbd_scancode_map[i] = SDL_SCANCODE_UNKNOWN;
+        }
+    }
 
     // Create USB Daughterboard for 1.0 Xbox. This is connected to Port 1 of the Root hub.
     QDict *usbhub_qdict = qdict_new();
@@ -329,32 +355,20 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
     const uint8_t *kbd = SDL_GetKeyboardState(NULL);
 
     for (int i = 0; i < 15; i++) {
-        state->buttons |= kbd[sdl_kbd_button_map[i]] << i;
+        state->buttons |= kbd[sdl_kbd_scancode_map[i]] << i;
     }
 
-    /*
-    W = LTrig
-       E
-    S     F
-       D
-    */
-    if (kbd[g_config.input.keyboard_mappings_ana.KEY_CTRLR_ANA_LSTICK_UP]) state->axis[CONTROLLER_AXIS_LSTICK_Y] = 32767;
-    if (kbd[g_config.input.keyboard_mappings_ana.KEY_CTRLR_ANA_LSTICK_LEFT]) state->axis[CONTROLLER_AXIS_LSTICK_X] = -32768;
-    if (kbd[g_config.input.keyboard_mappings_ana.KEY_CTRLR_ANA_LSTICK_RIGHT]) state->axis[CONTROLLER_AXIS_LSTICK_X] = 32767;
-    if (kbd[g_config.input.keyboard_mappings_ana.KEY_CTRLR_ANA_LSTICK_DOWN]) state->axis[CONTROLLER_AXIS_LSTICK_Y] = -32768;
-    if (kbd[g_config.input.keyboard_mappings_ana.KEY_CTRLR_ANA_LSTICK_LTRIG]) state->axis[CONTROLLER_AXIS_LTRIG] = 32767;
+    if (kbd[sdl_kbd_scancode_map[15]]) state->axis[CONTROLLER_AXIS_LSTICK_Y] = 32767;
+    if (kbd[sdl_kbd_scancode_map[16]]) state->axis[CONTROLLER_AXIS_LSTICK_X] = -32768;
+    if (kbd[sdl_kbd_scancode_map[17]]) state->axis[CONTROLLER_AXIS_LSTICK_X] = 32767;
+    if (kbd[sdl_kbd_scancode_map[18]]) state->axis[CONTROLLER_AXIS_LSTICK_Y] = -32768;
+    if (kbd[sdl_kbd_scancode_map[19]]) state->axis[CONTROLLER_AXIS_LTRIG] = 32767;
 
-    /*
-          O = RTrig
-       I
-    J     L
-       K
-    */
-    if (kbd[g_config.input.keyboard_mappings_ana.KEY_CTRLR_ANA_RSTICK_UP]) state->axis[CONTROLLER_AXIS_RSTICK_Y] = 32767;
-    if (kbd[g_config.input.keyboard_mappings_ana.KEY_CTRLR_ANA_RSTICK_LEFT]) state->axis[CONTROLLER_AXIS_RSTICK_X] = -32768;
-    if (kbd[g_config.input.keyboard_mappings_ana.KEY_CTRLR_ANA_RSTICK_RIGHT]) state->axis[CONTROLLER_AXIS_RSTICK_X] = 32767;
-    if (kbd[g_config.input.keyboard_mappings_ana.KEY_CTRLR_ANA_RSTICK_DOWN]) state->axis[CONTROLLER_AXIS_RSTICK_Y] = -32768;
-    if (kbd[g_config.input.keyboard_mappings_ana.KEY_CTRLR_ANA_RSTICK_RTRIG]) state->axis[CONTROLLER_AXIS_RTRIG] = 32767;
+    if (kbd[sdl_kbd_scancode_map[20]]) state->axis[CONTROLLER_AXIS_RSTICK_Y] = 32767;
+    if (kbd[sdl_kbd_scancode_map[21]]) state->axis[CONTROLLER_AXIS_RSTICK_X] = -32768;
+    if (kbd[sdl_kbd_scancode_map[22]]) state->axis[CONTROLLER_AXIS_RSTICK_X] = 32767;
+    if (kbd[sdl_kbd_scancode_map[23]]) state->axis[CONTROLLER_AXIS_RSTICK_Y] = -32768;
+    if (kbd[sdl_kbd_scancode_map[24]]) state->axis[CONTROLLER_AXIS_RTRIG] = 32767;
 }
 
 void xemu_input_update_sdl_controller_state(ControllerState *state)
