@@ -147,10 +147,11 @@ void xemu_input_init(void)
         /* SDL allocates an array of size SDL_NUM_SCANCODES
            that can be indexed to get the pressed states of
            each key. We need to validate that none of the
-           assignements in the toml file are outside of this
+           assignments in the toml file are outside of this
            range */
 
-        if( sdl_kbd_scancode_map[i] >= SDL_NUM_SCANCODES ){
+        if( (sdl_kbd_scancode_map[i] < SDL_SCANCODE_UNKNOWN) ||
+            (sdl_kbd_scancode_map[i] >= SDL_NUM_SCANCODES) ) {
             printf("WARNING: Keyboard Controller Scancode Out Of Range (%d) : Disabled\n", sdl_kbd_scancode_map[i]);
             // Default to an unknown code (0)
             sdl_kbd_scancode_map[i] = SDL_SCANCODE_UNKNOWN;
