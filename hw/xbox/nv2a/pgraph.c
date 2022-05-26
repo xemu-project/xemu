@@ -305,6 +305,10 @@ static const ColorFormatInfo kelvin_color_format_map[66] = {
     [NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_X8_Y24_FIXED] =
         {4, true, GL_DEPTH_COMPONENT, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8,
          {GL_RED, GL_ONE, GL_ZERO, GL_ZERO}, true},
+    [NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_X8_Y24_FLOAT] =
+        /* FIXME: Uses fixed-point format to match surface format hack below. */
+        {4, true, GL_DEPTH_COMPONENT, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8,
+         {GL_RED, GL_ONE, GL_ZERO, GL_ZERO}, true},
     [NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FIXED] =
         {2, true, GL_DEPTH_COMPONENT16, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT,
          {GL_RED, GL_ZERO, GL_ZERO, GL_ZERO}, true},
@@ -352,7 +356,11 @@ static const SurfaceFormatInfo kelvin_surface_zeta_float_format_map[] = {
     [NV097_SET_SURFACE_FORMAT_ZETA_Z16] =
         {2, GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_HALF_FLOAT, GL_DEPTH_ATTACHMENT},
     [NV097_SET_SURFACE_FORMAT_ZETA_Z24S8] =
-        {4, GL_DEPTH32F_STENCIL8, GL_DEPTH_STENCIL, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, GL_DEPTH_STENCIL_ATTACHMENT},
+        /* FIXME: GL does not support packing floating-point Z24S8 OOTB, so for
+         *        now just emulate this with fixed-point Z24S8. Possible compat
+         *        improvement with custom conversion.
+         */
+        {4, GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, GL_DEPTH_STENCIL_ATTACHMENT},
 };
 
 static const SurfaceFormatInfo kelvin_surface_zeta_fixed_format_map[] = {
@@ -3340,8 +3348,7 @@ DEF_METHOD(NV097, CLEAR_SURFACE)
 
         /* FIXME: Put these in some lookup table */
         const float f16_max = 511.9375f;
-        /* FIXME: 7 bits of mantissa unused. maybe use full buffer? */
-        const float f24_max = 3.4027977E38;
+        const float f24_max = 1.0E30;
 
         switch(pg->surface_shape.zeta_format) {
         case NV097_SET_SURFACE_FORMAT_ZETA_Z16: {
@@ -3359,7 +3366,6 @@ DEF_METHOD(NV097, CLEAR_SURFACE)
             uint32_t z = clear_zstencil >> 8;
             if (pg->surface_shape.z_format) {
                 gl_clear_depth = convert_f24_to_float(z) / f24_max;
-                assert(false); /* FIXME: Untested */
             } else {
                 gl_clear_depth = z / (float)0xFFFFFF;
             }
@@ -5706,9 +5712,6 @@ static void pgraph_populate_surface_binding_entry_sized(NV2AState *d,
             pg->surface_shape.z_format ? kelvin_surface_zeta_float_format_map :
                                          kelvin_surface_zeta_fixed_format_map;
         fmt = map[pg->surface_shape.zeta_format];
-        assert(!(pg->surface_shape.zeta_format ==
-                     NV097_SET_SURFACE_FORMAT_ZETA_Z24S8 &&
-                 pg->surface_shape.z_format)); /* FIXME */
     }
 
     DMAObject dma = nv_dma_load(d, dma_address);
