@@ -355,7 +355,7 @@ static const SurfaceFormatInfo kelvin_surface_zeta_float_format_map[] = {
         {4, GL_DEPTH32F_STENCIL8, GL_DEPTH_STENCIL, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, GL_DEPTH_STENCIL_ATTACHMENT},
 };
 
-static const SurfaceFormatInfo kelvin_surface_zeta_int_format_map[] = {
+static const SurfaceFormatInfo kelvin_surface_zeta_fixed_format_map[] = {
     [NV097_SET_SURFACE_FORMAT_ZETA_Z16] =
         {2, GL_DEPTH_COMPONENT16, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT, GL_DEPTH_ATTACHMENT},
     [NV097_SET_SURFACE_FORMAT_ZETA_Z24S8] =
@@ -5704,7 +5704,7 @@ static void pgraph_populate_surface_binding_entry_sized(NV2AState *d,
                ARRAY_SIZE(kelvin_surface_zeta_float_format_map));
         const SurfaceFormatInfo *map =
             pg->surface_shape.z_format ? kelvin_surface_zeta_float_format_map :
-                                         kelvin_surface_zeta_int_format_map;
+                                         kelvin_surface_zeta_fixed_format_map;
         fmt = map[pg->surface_shape.zeta_format];
         assert(!(pg->surface_shape.zeta_format ==
                      NV097_SET_SURFACE_FORMAT_ZETA_Z24S8 &&
