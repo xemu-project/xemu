@@ -149,7 +149,7 @@ void xemu_input_init(void)
 
         if( (sdl_kbd_scancode_map[i] < SDL_SCANCODE_UNKNOWN) ||
             (sdl_kbd_scancode_map[i] >= SDL_NUM_SCANCODES) ) {
-            fprintf(stderr,"WARNING: Keyboard controller map scancode out of range (%d) : Disabled\n", sdl_kbd_scancode_map[i]);
+            fprintf(stderr, "WARNING: Keyboard controller map scancode out of range (%d) : Disabled\n", sdl_kbd_scancode_map[i]);
             // Default to an unknown code (0)
             sdl_kbd_scancode_map[i] = SDL_SCANCODE_UNKNOWN;
         }
