@@ -24,80 +24,106 @@ input:
     default: true
   background_input_capture: bool
   keyboard_controller_scancode_map:
+    # Scancode reference : https://github.com/libsdl-org/SDL/blob/main/include/SDL_scancode.h
     a:
       type: integer
+      # default key : a (4)
       default: 4
     b:
       type: integer
+      # default key : b (5)
       default: 5
     x:
       type: integer
+      # default key : x (27)
       default: 27
     y:
       type: integer
+      # default key : y (28)
       default: 28
     dpad_left:
       type: integer
+      # default key : left (80)
       default: 80
     dpad_up:
       type: integer
+      # default key : up (82)
       default: 82
     dpad_right:
       type: integer
+      # default key : right (79)
       default: 79
     dpad_down:
       type: integer
+      # default key : down (81)
       default: 81
     back:
       type: integer
+      # default key : backspace (42)
       default: 42
     start:
       type: integer
+      # default key : return (40)
       default: 40
     white:
       type: integer
+      # default key : 1 (30)
       default: 30
     black:
       type: integer
+      # default key : 2 (31)
       default: 31
     lstick_btn:
       type: integer
+      # default key : 3 (32)
       default: 32
     rstick_btn:
       type: integer
+      # default key : 4 (33)
       default: 33
     guide:
       type: integer
+      # default key : 5 (34)
       default: 34
     lstick_up:
       type: integer
+      # default key : e (8)
       default: 8
     lstick_left:
       type: integer
+      # default key : s (22)
       default: 22
     lstick_right:
       type: integer
+      # default key : f (9)
       default: 9
     lstick_down:
       type: integer
+      # default key : d (7)
       default: 7
     ltrigger:
       type: integer
+      # default key : w (26)
       default: 26
     rstick_up:
       type: integer
+      # default key : i (12)
       default: 12
     rstick_left:
       type: integer
+      # default key : j (13)
       default: 13
     rstick_right:
       type: integer
+      # default key : l (15)
       default: 15
     rstick_down:
       type: integer
+      # default key : k (14)
       default: 14
     rtrigger:
       type: integer
+      # default key : w (18)
       default: 18
 
 display:

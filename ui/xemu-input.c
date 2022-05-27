@@ -98,8 +98,6 @@ static int sdl_kbd_scancode_map[25];
 
 void xemu_input_init(void)
 {
-    int i;
-
     if (g_config.input.background_input_capture) {
         SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     }
@@ -116,34 +114,33 @@ void xemu_input_init(void)
     new_con->name = "Keyboard";
     new_con->bound = -1;
 
-    //see config_spec.yml for default scancode values
-    sdl_kbd_scancode_map[0] = g_config.input.keyboard_controller_scancode_map.a;             //default key : a
-    sdl_kbd_scancode_map[1] = g_config.input.keyboard_controller_scancode_map.b;             //default key : b
-    sdl_kbd_scancode_map[2] = g_config.input.keyboard_controller_scancode_map.x;             //default key : x
-    sdl_kbd_scancode_map[3] = g_config.input.keyboard_controller_scancode_map.y;             //default key : y
-    sdl_kbd_scancode_map[4] = g_config.input.keyboard_controller_scancode_map.dpad_left;     //default key : left
-    sdl_kbd_scancode_map[5] = g_config.input.keyboard_controller_scancode_map.dpad_up;       //default key : up
-    sdl_kbd_scancode_map[6] = g_config.input.keyboard_controller_scancode_map.dpad_right;    //default key : right
-    sdl_kbd_scancode_map[7] = g_config.input.keyboard_controller_scancode_map.dpad_down;     //default key : down
-    sdl_kbd_scancode_map[8] = g_config.input.keyboard_controller_scancode_map.back;          //default key : backspace
-    sdl_kbd_scancode_map[9] = g_config.input.keyboard_controller_scancode_map.start;         //default key : return
-    sdl_kbd_scancode_map[10] = g_config.input.keyboard_controller_scancode_map.white;        //default key : 1
-    sdl_kbd_scancode_map[11] = g_config.input.keyboard_controller_scancode_map.black;        //default key : 2
-    sdl_kbd_scancode_map[12] = g_config.input.keyboard_controller_scancode_map.lstick_btn;   //default key : 3
-    sdl_kbd_scancode_map[13] = g_config.input.keyboard_controller_scancode_map.rstick_btn;   //default key : 4
-    sdl_kbd_scancode_map[14] = g_config.input.keyboard_controller_scancode_map.guide;        //default key : 5
-    sdl_kbd_scancode_map[15] = g_config.input.keyboard_controller_scancode_map.lstick_up;    //default key : e
-    sdl_kbd_scancode_map[16] = g_config.input.keyboard_controller_scancode_map.lstick_left;  //default key : s
-    sdl_kbd_scancode_map[17] = g_config.input.keyboard_controller_scancode_map.lstick_right; //default key : f
-    sdl_kbd_scancode_map[18] = g_config.input.keyboard_controller_scancode_map.lstick_down;  //default key : d
-    sdl_kbd_scancode_map[19] = g_config.input.keyboard_controller_scancode_map.ltrigger;     //default key : w
-    sdl_kbd_scancode_map[20] = g_config.input.keyboard_controller_scancode_map.rstick_up;    //default key : i
-    sdl_kbd_scancode_map[21] = g_config.input.keyboard_controller_scancode_map.rstick_left;  //default key : j
-    sdl_kbd_scancode_map[22] = g_config.input.keyboard_controller_scancode_map.rstick_right; //default key : l
-    sdl_kbd_scancode_map[23] = g_config.input.keyboard_controller_scancode_map.rstick_down;  //default key : k
-    sdl_kbd_scancode_map[24] = g_config.input.keyboard_controller_scancode_map.rtrigger;     //default key : o
+    sdl_kbd_scancode_map[0] = g_config.input.keyboard_controller_scancode_map.a;
+    sdl_kbd_scancode_map[1] = g_config.input.keyboard_controller_scancode_map.b;
+    sdl_kbd_scancode_map[2] = g_config.input.keyboard_controller_scancode_map.x;
+    sdl_kbd_scancode_map[3] = g_config.input.keyboard_controller_scancode_map.y;
+    sdl_kbd_scancode_map[4] = g_config.input.keyboard_controller_scancode_map.dpad_left;
+    sdl_kbd_scancode_map[5] = g_config.input.keyboard_controller_scancode_map.dpad_up;
+    sdl_kbd_scancode_map[6] = g_config.input.keyboard_controller_scancode_map.dpad_right;
+    sdl_kbd_scancode_map[7] = g_config.input.keyboard_controller_scancode_map.dpad_down;
+    sdl_kbd_scancode_map[8] = g_config.input.keyboard_controller_scancode_map.back;
+    sdl_kbd_scancode_map[9] = g_config.input.keyboard_controller_scancode_map.start;
+    sdl_kbd_scancode_map[10] = g_config.input.keyboard_controller_scancode_map.white;
+    sdl_kbd_scancode_map[11] = g_config.input.keyboard_controller_scancode_map.black;
+    sdl_kbd_scancode_map[12] = g_config.input.keyboard_controller_scancode_map.lstick_btn;
+    sdl_kbd_scancode_map[13] = g_config.input.keyboard_controller_scancode_map.rstick_btn;
+    sdl_kbd_scancode_map[14] = g_config.input.keyboard_controller_scancode_map.guide;
+    sdl_kbd_scancode_map[15] = g_config.input.keyboard_controller_scancode_map.lstick_up;
+    sdl_kbd_scancode_map[16] = g_config.input.keyboard_controller_scancode_map.lstick_left;
+    sdl_kbd_scancode_map[17] = g_config.input.keyboard_controller_scancode_map.lstick_right;
+    sdl_kbd_scancode_map[18] = g_config.input.keyboard_controller_scancode_map.lstick_down;
+    sdl_kbd_scancode_map[19] = g_config.input.keyboard_controller_scancode_map.ltrigger;
+    sdl_kbd_scancode_map[20] = g_config.input.keyboard_controller_scancode_map.rstick_up;
+    sdl_kbd_scancode_map[21] = g_config.input.keyboard_controller_scancode_map.rstick_left;
+    sdl_kbd_scancode_map[22] = g_config.input.keyboard_controller_scancode_map.rstick_right;
+    sdl_kbd_scancode_map[23] = g_config.input.keyboard_controller_scancode_map.rstick_down;
+    sdl_kbd_scancode_map[24] = g_config.input.keyboard_controller_scancode_map.rtrigger;
 
-    for (i=0; i<25; i++){
+    for (int i = 0; i < 25; i++) {
         /* SDL allocates an array of size SDL_NUM_SCANCODES
            that can be indexed to get the pressed states of
            each key. We need to validate that none of the
@@ -152,7 +149,7 @@ void xemu_input_init(void)
 
         if( (sdl_kbd_scancode_map[i] < SDL_SCANCODE_UNKNOWN) ||
             (sdl_kbd_scancode_map[i] >= SDL_NUM_SCANCODES) ) {
-            printf("WARNING: Keyboard Controller Scancode Out Of Range (%d) : Disabled\n", sdl_kbd_scancode_map[i]);
+            fprintf(stderr,"WARNING: Keyboard controller map scancode out of range (%d) : Disabled\n", sdl_kbd_scancode_map[i]);
             // Default to an unknown code (0)
             sdl_kbd_scancode_map[i] = SDL_SCANCODE_UNKNOWN;
         }
