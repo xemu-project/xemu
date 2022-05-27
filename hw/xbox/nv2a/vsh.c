@@ -202,6 +202,28 @@ static const char* mask_str[] = {
     ",xyzw" // 1111 xyzw
 };
 
+/* Writes to the oFog register apply the most significant masked component to
+ * `x`. The remaining values are assigned arbitrarily to fit the 4-component
+ * function behavior. */
+static const char* fog_mask_str[] = {
+    ",",
+    ",x",
+    ",x",
+    ",xy",
+    ",x",
+    ",xy",
+    ",xy",
+    ",xyz",
+    ",x",
+    ",xy",
+    ",xy",
+    ",xyz",
+    ",xy",
+    ",xyz",
+    ",xyz",
+    ",xyzw"
+};
+
 /* Note: OpenGL seems to be case-sensitive, and requires upper-case opcodes! */
 static const char* mac_opcode[] = {
     "NOP",
@@ -391,10 +413,8 @@ static MString* decode_opcode(const uint32_t *shader_token,
                               uint32_t mask,
                               const char *opcode,
                               const char *inputs,
-                              uint32_t *fog_write_mask_idx,
                               MString** suffix)
 {
-    *fog_write_mask_idx = 0;
     MString *ret = mstring_new();
     int reg_num = vsh_get_field(shader_token, FLD_OUT_R);
     bool use_temp_var = false;
@@ -436,24 +456,10 @@ static MString* decode_opcode(const uint32_t *shader_token,
         }
 
         int write_mask = vsh_get_field(shader_token, FLD_OUT_O_MASK);
-        mstring_append(ret, mask_str[write_mask]);
+        const char *write_mask_str = write_fog_register ? fog_mask_str[write_mask] : mask_str[write_mask];
+        mstring_append(ret, write_mask_str);
         mstring_append(ret, inputs);
         mstring_append(ret, ");\n");
-
-        if (write_fog_register) {
-            if (write_mask & 0x08) {
-                *fog_write_mask_idx = 8;
-            } else if (write_mask & 0x04) {
-                *fog_write_mask_idx = 4;
-            } else if (write_mask & 0x02) {
-                *fog_write_mask_idx = 2;
-            } else if (write_mask & 0x01) {
-                *fog_write_mask_idx = 1;
-            } else {
-                // TODO: Verify the behavior of a 0-mask.
-                *fog_write_mask_idx = 8;
-            }
-        }
     }
 
     if (use_temp_var) {
@@ -491,11 +497,9 @@ static MString* decode_opcode(const uint32_t *shader_token,
 }
 
 
-static MString* decode_token(const uint32_t *shader_token,
-                             uint32_t *fog_write_mask_idx)
+static MString* decode_token(const uint32_t *shader_token)
 {
     MString *ret;
-    *fog_write_mask_idx = 0;
 
     /* See what MAC opcode is written to (if not masked away): */
     VshMAC mac = vsh_get_field(shader_token, FLD_MAC);
@@ -547,7 +551,6 @@ static MString* decode_token(const uint32_t *shader_token,
                             vsh_get_field(shader_token, FLD_OUT_MAC_MASK),
                             mac_opcode[mac],
                             mstring_get_str(inputs_mac),
-                            fog_write_mask_idx,
                             &mac_suffix);
         mstring_unref(inputs_mac);
     } else {
@@ -565,7 +568,6 @@ static MString* decode_token(const uint32_t *shader_token,
                           vsh_get_field(shader_token, FLD_OUT_ILU_MASK),
                           ilu_opcode[ilu],
                           mstring_get_str(inputs_c),
-                          fog_write_mask_idx,
                           NULL);
 
         mstring_append(ret, mstring_get_str(ilu_op));
@@ -795,13 +797,9 @@ void vsh_translate(uint16_t version,
     bool has_final = false;
     int slot;
 
-    uint32_t max_fog_write_mask_idx = 0;
     for (slot=0; slot < length; slot++) {
         const uint32_t* cur_token = &tokens[slot * VSH_TOKEN_SIZE];
-        uint32_t fog_write_mask_idx;
-        MString *token_str = decode_token(cur_token, &fog_write_mask_idx);
-        max_fog_write_mask_idx = MAX(max_fog_write_mask_idx,
-                                     fog_write_mask_idx);
+        MString *token_str = decode_token(cur_token);
         mstring_append_fmt(body,
                            "  /* Slot %d: 0x%08X 0x%08X 0x%08X 0x%08X */",
                            slot,
@@ -817,13 +815,6 @@ void vsh_translate(uint16_t version,
         }
     }
     assert(has_final);
-
-    /* patch up oFog.x to mimic observed hardware behavior */
-    if (max_fog_write_mask_idx && max_fog_write_mask_idx != 8) {
-        // Skip the leading comma
-        const char *mask = &mask_str[max_fog_write_mask_idx][1];
-        mstring_append_fmt(body, "  oFog.x = oFog.%s;\n", mask);
-    }
 
     /* pre-divide and output the generated W so we can do persepctive correct
      * interpolation manually. OpenGL can't, since we give it a W of 1 to work
