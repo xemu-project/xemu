@@ -571,6 +571,8 @@ static const char* get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
         return NULL;
 
     case PS_TEXTUREMODES_PROJECT2D:
+        return state->rect_tex[i] ? sampler2DRect : sampler2D;
+
     case PS_TEXTUREMODES_BUMPENVMAP:
     case PS_TEXTUREMODES_BUMPENVMAP_LUM:
     case PS_TEXTUREMODES_DOT_ST:
@@ -615,6 +617,47 @@ static const char *shadow_comparison_map[] = {
     [SHADOW_DEPTH_FUNC_NOTEQUAL] = "!=",
     [SHADOW_DEPTH_FUNC_GEQUAL] = ">=",
 };
+
+static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compare_z, MString *vars)
+{
+    if (ps->state.shadow_depth_func == SHADOW_DEPTH_FUNC_NEVER) {
+        mstring_append_fmt(vars, "vec4 t%d = vec4(0.0);\n", i);
+        return;
+    }
+
+    if (ps->state.shadow_depth_func == SHADOW_DEPTH_FUNC_ALWAYS) {
+        mstring_append_fmt(vars, "vec4 t%d = vec4(1.0);\n", i);
+        return;
+    }
+
+    mstring_append_fmt(vars,
+                       "pT%d.xy *= texScale%d;\n"
+                       "vec4 t%d_depth = textureProj(texSamp%d, pT%d.xyw);\n",
+                       i, i, i, i, i);
+
+    const char *comparison = shadow_comparison_map[ps->state.shadow_depth_func];
+    if (compare_z) {
+        mstring_append_fmt(
+            vars,
+            "float t%d_max_depth;\n"
+            "if (t%d_depth.y > 0) {\n"
+            "  t%d_max_depth = 0xFFFFFF;\n"
+            "} else {\n"
+            "  t%d_max_depth = 0xFFFF; // TODO: Support float max.\n"
+            "}\n"
+            "t%d_depth.x *= t%d_max_depth;\n"
+            "pT%d.z = clamp(pT%d.z / pT%d.w, 0, t%d_max_depth);\n"
+            "vec4 t%d = vec4(t%d_depth.x %s pT%d.z ? 1.0 : 0.0);\n",
+            i, i, i, i, i,
+            i, i, i, i, i,
+            i, i, comparison, i);
+    } else {
+        mstring_append_fmt(
+            vars,
+            "vec4 t%d = vec4(t%d_depth.x %s 0.0 ? 1.0 : 0.0);\n",
+            i, i, comparison);
+    }
+}
 
 static MString* psh_convert(struct PixelShader *ps)
 {
@@ -771,51 +814,31 @@ static MString* psh_convert(struct PixelShader *ps)
                                i);
             break;
         case PS_TEXTUREMODES_PROJECT2D: {
-            const char *lookup = "textureProj";
-            if ((ps->state.conv_tex[i] == CONVOLUTION_FILTER_GAUSSIAN)
-                || (ps->state.conv_tex[i] == CONVOLUTION_FILTER_QUINCUNX)) {
-                /* FIXME: Quincunx looks better than Linear and costs less than
-                 * Gaussian, but Gaussian should be plenty fast so use it for
-                 * now.
-                 */
-                if (ps->state.rect_tex[i]) {
-                    lookup = "gaussianFilter2DRectProj";
-                } else {
-                    NV2A_UNIMPLEMENTED("Convolution for 2D textures");
+            if (ps->state.shadow_map[i]) {
+                psh_append_shadowmap(ps, i, false, vars);
+            } else {
+                const char *lookup = "textureProj";
+                if ((ps->state.conv_tex[i] == CONVOLUTION_FILTER_GAUSSIAN)
+                    || (ps->state.conv_tex[i] == CONVOLUTION_FILTER_QUINCUNX)) {
+                    /* FIXME: Quincunx looks better than Linear and costs less than
+                     * Gaussian, but Gaussian should be plenty fast so use it for
+                     * now.
+                     */
+                    if (ps->state.rect_tex[i]) {
+                        lookup = "gaussianFilter2DRectProj";
+                    } else {
+                        NV2A_UNIMPLEMENTED("Convolution for 2D textures");
+                    }
                 }
+                mstring_append_fmt(vars, "pT%d.xy = texScale%d * pT%d.xy;\n", i, i, i);
+                mstring_append_fmt(vars, "vec4 t%d = %s(texSamp%d, pT%d.xyw);\n",
+                                   i, lookup, i, i);
             }
-            mstring_append_fmt(vars, "pT%d.xy = texScale%d * pT%d.xy;\n", i, i, i);
-            mstring_append_fmt(vars, "vec4 t%d = %s(texSamp%d, pT%d.xyw);\n",
-                               i, lookup, i, i);
             break;
         }
         case PS_TEXTUREMODES_PROJECT3D:
             if (ps->state.shadow_map[i]) {
-                if (ps->state.shadow_depth_func == SHADOW_DEPTH_FUNC_NEVER) {
-                    mstring_append_fmt(vars, "vec4 t%d = vec4(0.0);\n", i);
-                } else if (ps->state.shadow_depth_func == SHADOW_DEPTH_FUNC_ALWAYS) {
-                    mstring_append_fmt(vars, "vec4 t%d = vec4(1.0);\n", i);
-                } else {
-                    mstring_append_fmt(vars,
-                                       "pT%d.xy *= texScale%d;\n"
-                                       "vec4 t%d_depth = textureProj(texSamp%d, pT%d.xyw);\n"
-                                       "float t%d_max_depth;\n"
-                                       "if (t%d_depth.y > 0) {\n"
-                                       "  t%d_max_depth = 0xFFFFFF;\n"
-                                       "} else {\n"
-                                       "  t%d_max_depth = 0xFFFF; // TODO: Support float max.\n"
-                                       "}\n"
-                                       "t%d_depth.x *= t%d_max_depth;\n"
-                                       "pT%d.z = clamp(pT%d.z / pT%d.w, 0, t%d_max_depth);\n",
-                                       i, i, i, i, i,
-                                       i, i, i, i, i,
-                                       i, i, i, i, i);
-
-                    const char *comparison = shadow_comparison_map[ps->state.shadow_depth_func];
-                    mstring_append_fmt(vars,
-                                       "vec4 t%d = vec4(t%d_depth.x %s pT%d.z ? 1.0 : 0.0);\n",
-                                       i, i, comparison, i);
-                }
+                psh_append_shadowmap(ps, i, true, vars);
             } else {
                 mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, pT%d.xyzw);\n",
                                    i, i, i);
