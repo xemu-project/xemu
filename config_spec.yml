@@ -27,104 +27,79 @@ input:
     # Scancode reference : https://github.com/libsdl-org/SDL/blob/main/include/SDL_scancode.h
     a:
       type: integer
-      # default key : a (4)
-      default: 4
+      default: 4 # a
     b:
       type: integer
-      # default key : b (5)
-      default: 5
+      default: 5 # b
     x:
       type: integer
-      # default key : x (27)
-      default: 27
+      default: 27 # x
     y:
       type: integer
-      # default key : y (28)
-      default: 28
+      default: 28 # y
     dpad_left:
       type: integer
-      # default key : left (80)
-      default: 80
+      default: 80 # left
     dpad_up:
       type: integer
-      # default key : up (82)
-      default: 82
+      default: 82 # up
     dpad_right:
       type: integer
-      # default key : right (79)
-      default: 79
+      default: 79 # right
     dpad_down:
       type: integer
-      # default key : down (81)
-      default: 81
+      default: 81 # down
     back:
       type: integer
-      # default key : backspace (42)
-      default: 42
+      default: 42 # backspace
     start:
       type: integer
-      # default key : return (40)
-      default: 40
+      default: 40 # return
     white:
       type: integer
-      # default key : 1 (30)
-      default: 30
+      default: 30 # 1
     black:
       type: integer
-      # default key : 2 (31)
-      default: 31
+      default: 31 # 2
     lstick_btn:
       type: integer
-      # default key : 3 (32)
-      default: 32
+      default: 32 # 3
     rstick_btn:
       type: integer
-      # default key : 4 (33)
-      default: 33
+      default: 33 # 4
     guide:
       type: integer
-      # default key : 5 (34)
-      default: 34
+      default: 34 # 5
     lstick_up:
       type: integer
-      # default key : e (8)
-      default: 8
+      default: 8 # e
     lstick_left:
       type: integer
-      # default key : s (22)
-      default: 22
+      default: 22 # s
     lstick_right:
       type: integer
-      # default key : f (9)
-      default: 9
+      default: 9 # f
     lstick_down:
       type: integer
-      # default key : d (7)
-      default: 7
+      default: 7 # d
     ltrigger:
       type: integer
-      # default key : w (26)
-      default: 26
+      default: 26 # w
     rstick_up:
       type: integer
-      # default key : i (12)
-      default: 12
+      default: 12 # i
     rstick_left:
       type: integer
-      # default key : j (13)
-      default: 13
+      default: 13 # j
     rstick_right:
       type: integer
-      # default key : l (15)
-      default: 15
+      default: 15 # l
     rstick_down:
       type: integer
-      # default key : k (14)
-      default: 14
+      default: 14 # k
     rtrigger:
       type: integer
-      # default key : w (18)
-      default: 18
+      default: 18 # w
 
 display:
   quality:

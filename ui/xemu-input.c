@@ -141,16 +141,9 @@ void xemu_input_init(void)
     sdl_kbd_scancode_map[24] = g_config.input.keyboard_controller_scancode_map.rtrigger;
 
     for (int i = 0; i < 25; i++) {
-        /* SDL allocates an array of size SDL_NUM_SCANCODES
-           that can be indexed to get the pressed states of
-           each key. We need to validate that none of the
-           assignments in the toml file are outside of this
-           range */
-
         if( (sdl_kbd_scancode_map[i] < SDL_SCANCODE_UNKNOWN) ||
             (sdl_kbd_scancode_map[i] >= SDL_NUM_SCANCODES) ) {
             fprintf(stderr, "WARNING: Keyboard controller map scancode out of range (%d) : Disabled\n", sdl_kbd_scancode_map[i]);
-            // Default to an unknown code (0)
             sdl_kbd_scancode_map[i] = SDL_SCANCODE_UNKNOWN;
         }
     }
