@@ -2680,8 +2680,13 @@ DEF_METHOD_INC(NV097, SET_EYE_DIRECTION)
 
 DEF_METHOD(NV097, SET_BEGIN_END)
 {
-    bool depth_test =
-        pg->regs[NV_PGRAPH_CONTROL_0] & NV_PGRAPH_CONTROL_0_ZENABLE;
+    uint32_t control_0 = pg->regs[NV_PGRAPH_CONTROL_0];
+    bool mask_alpha = control_0 & NV_PGRAPH_CONTROL_0_ALPHA_WRITE_ENABLE;
+    bool mask_red = control_0 & NV_PGRAPH_CONTROL_0_RED_WRITE_ENABLE;
+    bool mask_green = control_0 & NV_PGRAPH_CONTROL_0_GREEN_WRITE_ENABLE;
+    bool mask_blue = control_0 & NV_PGRAPH_CONTROL_0_BLUE_WRITE_ENABLE;
+
+    bool depth_test = control_0 & NV_PGRAPH_CONTROL_0_ZENABLE;
     bool stencil_test =
         pg->regs[NV_PGRAPH_CONTROL_1] & NV_PGRAPH_CONTROL_1_STENCIL_TEST_ENABLE;
 
@@ -2819,6 +2824,9 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             pg->zeta_binding->draw_time = pg->draw_time;
         }
 
+        uint32_t color_write = mask_alpha | mask_red | mask_green | mask_blue;
+        pgraph_set_surface_dirty(pg, color_write, depth_test || stencil_test);
+
         NV2A_GL_DGROUP_END();
     } else {
         NV2A_GL_DGROUP_BEGIN("NV097_SET_BEGIN_END: 0x%x", parameter);
@@ -2831,13 +2839,7 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         pgraph_bind_textures(d);
         pgraph_bind_shaders(pg);
 
-        uint32_t control_0 = pg->regs[NV_PGRAPH_CONTROL_0];
-
-        bool alpha = control_0 & NV_PGRAPH_CONTROL_0_ALPHA_WRITE_ENABLE;
-        bool red = control_0 & NV_PGRAPH_CONTROL_0_RED_WRITE_ENABLE;
-        bool green = control_0 & NV_PGRAPH_CONTROL_0_GREEN_WRITE_ENABLE;
-        bool blue = control_0 & NV_PGRAPH_CONTROL_0_BLUE_WRITE_ENABLE;
-        glColorMask(red, green, blue, alpha);
+        glColorMask(mask_red, mask_green, mask_blue, mask_alpha);
         glDepthMask(!!(control_0 & NV_PGRAPH_CONTROL_0_ZWRITEENABLE));
         glStencilMask(GET_MASK(pg->regs[NV_PGRAPH_CONTROL_1],
                                NV_PGRAPH_CONTROL_1_STENCIL_MASK_WRITE));
@@ -2985,9 +2987,6 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             glDisable(GL_POLYGON_SMOOTH);
         }
 
-        //glDisableVertexAttribArray(NV2A_VERTEX_ATTR_DIFFUSE);
-        //glVertexAttrib4f(NV2A_VERTEX_ATTR_DIFFUSE, 1.0, 1.0, 1.0, 1.0);
-
         unsigned int vp_width = pg->surface_binding_dim.width,
                      vp_height = pg->surface_binding_dim.height;
         pgraph_apply_scaling_factor(pg, &vp_width, &vp_height);
@@ -3032,8 +3031,6 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             glBeginQuery(GL_SAMPLES_PASSED, gl_query);
         }
     }
-
-    pgraph_set_surface_dirty(pg, true, depth_test || stencil_test);
 }
 
 DEF_METHOD(NV097, SET_TEXTURE_OFFSET)
