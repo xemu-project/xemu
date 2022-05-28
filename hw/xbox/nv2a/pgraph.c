@@ -6784,7 +6784,6 @@ static unsigned int pgraph_bind_inline_array(NV2AState *d)
 
     unsigned int vertex_size = offset;
     unsigned int index_count = pg->inline_array_length*4 / vertex_size;
-    assert((index_count*vertex_size) == (pg->inline_array_length*4));
 
     NV2A_DPRINTF("draw inline array %d, %d\n", vertex_size, index_count);
 
@@ -6792,7 +6791,7 @@ static unsigned int pgraph_bind_inline_array(NV2AState *d)
     glBindBuffer(GL_ARRAY_BUFFER, pg->gl_inline_array_buffer);
     glBufferData(GL_ARRAY_BUFFER, NV2A_MAX_BATCH_LENGTH * sizeof(uint32_t),
                  NULL, GL_STREAM_DRAW);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, pg->inline_array_length*4, pg->inline_array);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, index_count * vertex_size, pg->inline_array);
     pgraph_bind_vertex_attributes(d, 0, index_count-1, true, vertex_size,
                                   index_count-1);
 
