@@ -94,6 +94,8 @@ static const char **port_index_to_settings_key_map[] = {
     &g_config.input.bindings.port4,
 };
 
+static int sdl_kbd_scancode_map[25];
+
 void xemu_input_init(void)
 {
     if (g_config.input.background_input_capture) {
@@ -111,6 +113,40 @@ void xemu_input_init(void)
     new_con->type = INPUT_DEVICE_SDL_KEYBOARD;
     new_con->name = "Keyboard";
     new_con->bound = -1;
+
+    sdl_kbd_scancode_map[0] = g_config.input.keyboard_controller_scancode_map.a;
+    sdl_kbd_scancode_map[1] = g_config.input.keyboard_controller_scancode_map.b;
+    sdl_kbd_scancode_map[2] = g_config.input.keyboard_controller_scancode_map.x;
+    sdl_kbd_scancode_map[3] = g_config.input.keyboard_controller_scancode_map.y;
+    sdl_kbd_scancode_map[4] = g_config.input.keyboard_controller_scancode_map.dpad_left;
+    sdl_kbd_scancode_map[5] = g_config.input.keyboard_controller_scancode_map.dpad_up;
+    sdl_kbd_scancode_map[6] = g_config.input.keyboard_controller_scancode_map.dpad_right;
+    sdl_kbd_scancode_map[7] = g_config.input.keyboard_controller_scancode_map.dpad_down;
+    sdl_kbd_scancode_map[8] = g_config.input.keyboard_controller_scancode_map.back;
+    sdl_kbd_scancode_map[9] = g_config.input.keyboard_controller_scancode_map.start;
+    sdl_kbd_scancode_map[10] = g_config.input.keyboard_controller_scancode_map.white;
+    sdl_kbd_scancode_map[11] = g_config.input.keyboard_controller_scancode_map.black;
+    sdl_kbd_scancode_map[12] = g_config.input.keyboard_controller_scancode_map.lstick_btn;
+    sdl_kbd_scancode_map[13] = g_config.input.keyboard_controller_scancode_map.rstick_btn;
+    sdl_kbd_scancode_map[14] = g_config.input.keyboard_controller_scancode_map.guide;
+    sdl_kbd_scancode_map[15] = g_config.input.keyboard_controller_scancode_map.lstick_up;
+    sdl_kbd_scancode_map[16] = g_config.input.keyboard_controller_scancode_map.lstick_left;
+    sdl_kbd_scancode_map[17] = g_config.input.keyboard_controller_scancode_map.lstick_right;
+    sdl_kbd_scancode_map[18] = g_config.input.keyboard_controller_scancode_map.lstick_down;
+    sdl_kbd_scancode_map[19] = g_config.input.keyboard_controller_scancode_map.ltrigger;
+    sdl_kbd_scancode_map[20] = g_config.input.keyboard_controller_scancode_map.rstick_up;
+    sdl_kbd_scancode_map[21] = g_config.input.keyboard_controller_scancode_map.rstick_left;
+    sdl_kbd_scancode_map[22] = g_config.input.keyboard_controller_scancode_map.rstick_right;
+    sdl_kbd_scancode_map[23] = g_config.input.keyboard_controller_scancode_map.rstick_down;
+    sdl_kbd_scancode_map[24] = g_config.input.keyboard_controller_scancode_map.rtrigger;
+
+    for (int i = 0; i < 25; i++) {
+        if( (sdl_kbd_scancode_map[i] < SDL_SCANCODE_UNKNOWN) ||
+            (sdl_kbd_scancode_map[i] >= SDL_NUM_SCANCODES) ) {
+            fprintf(stderr, "WARNING: Keyboard controller map scancode out of range (%d) : Disabled\n", sdl_kbd_scancode_map[i]);
+            sdl_kbd_scancode_map[i] = SDL_SCANCODE_UNKNOWN;
+        }
+    }
 
     // Create USB Daughterboard for 1.0 Xbox. This is connected to Port 1 of the Root hub.
     QDict *usbhub_qdict = qdict_new();
@@ -308,51 +344,22 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
     memset(state->axis, 0, sizeof(state->axis));
 
     const uint8_t *kbd = SDL_GetKeyboardState(NULL);
-    const int sdl_kbd_button_map[15] = {
-        SDL_SCANCODE_A,
-        SDL_SCANCODE_B,
-        SDL_SCANCODE_X,
-        SDL_SCANCODE_Y,
-        SDL_SCANCODE_LEFT,
-        SDL_SCANCODE_UP,
-        SDL_SCANCODE_RIGHT,
-        SDL_SCANCODE_DOWN,
-        SDL_SCANCODE_BACKSPACE,
-        SDL_SCANCODE_RETURN,
-        SDL_SCANCODE_1,
-        SDL_SCANCODE_2,
-        SDL_SCANCODE_3,
-        SDL_SCANCODE_4,
-        SDL_SCANCODE_5
-    };
 
     for (int i = 0; i < 15; i++) {
-        state->buttons |= kbd[sdl_kbd_button_map[i]] << i;
+        state->buttons |= kbd[sdl_kbd_scancode_map[i]] << i;
     }
 
-    /*
-    W = LTrig
-       E
-    S     F
-       D
-    */
-    if (kbd[SDL_SCANCODE_E]) state->axis[CONTROLLER_AXIS_LSTICK_Y] = 32767;
-    if (kbd[SDL_SCANCODE_S]) state->axis[CONTROLLER_AXIS_LSTICK_X] = -32768;
-    if (kbd[SDL_SCANCODE_F]) state->axis[CONTROLLER_AXIS_LSTICK_X] = 32767;
-    if (kbd[SDL_SCANCODE_D]) state->axis[CONTROLLER_AXIS_LSTICK_Y] = -32768;
-    if (kbd[SDL_SCANCODE_W]) state->axis[CONTROLLER_AXIS_LTRIG] = 32767;
+    if (kbd[sdl_kbd_scancode_map[15]]) state->axis[CONTROLLER_AXIS_LSTICK_Y] = 32767;
+    if (kbd[sdl_kbd_scancode_map[16]]) state->axis[CONTROLLER_AXIS_LSTICK_X] = -32768;
+    if (kbd[sdl_kbd_scancode_map[17]]) state->axis[CONTROLLER_AXIS_LSTICK_X] = 32767;
+    if (kbd[sdl_kbd_scancode_map[18]]) state->axis[CONTROLLER_AXIS_LSTICK_Y] = -32768;
+    if (kbd[sdl_kbd_scancode_map[19]]) state->axis[CONTROLLER_AXIS_LTRIG] = 32767;
 
-    /*
-          O = RTrig
-       I
-    J     L
-       K
-    */
-    if (kbd[SDL_SCANCODE_I]) state->axis[CONTROLLER_AXIS_RSTICK_Y] = 32767;
-    if (kbd[SDL_SCANCODE_J]) state->axis[CONTROLLER_AXIS_RSTICK_X] = -32768;
-    if (kbd[SDL_SCANCODE_L]) state->axis[CONTROLLER_AXIS_RSTICK_X] = 32767;
-    if (kbd[SDL_SCANCODE_K]) state->axis[CONTROLLER_AXIS_RSTICK_Y] = -32768;
-    if (kbd[SDL_SCANCODE_O]) state->axis[CONTROLLER_AXIS_RTRIG] = 32767;
+    if (kbd[sdl_kbd_scancode_map[20]]) state->axis[CONTROLLER_AXIS_RSTICK_Y] = 32767;
+    if (kbd[sdl_kbd_scancode_map[21]]) state->axis[CONTROLLER_AXIS_RSTICK_X] = -32768;
+    if (kbd[sdl_kbd_scancode_map[22]]) state->axis[CONTROLLER_AXIS_RSTICK_X] = 32767;
+    if (kbd[sdl_kbd_scancode_map[23]]) state->axis[CONTROLLER_AXIS_RSTICK_Y] = -32768;
+    if (kbd[sdl_kbd_scancode_map[24]]) state->axis[CONTROLLER_AXIS_RTRIG] = 32767;
 }
 
 void xemu_input_update_sdl_controller_state(ControllerState *state)

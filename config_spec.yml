@@ -23,6 +23,83 @@ input:
     type: bool
     default: true
   background_input_capture: bool
+  keyboard_controller_scancode_map:
+    # Scancode reference : https://github.com/libsdl-org/SDL/blob/main/include/SDL_scancode.h
+    a:
+      type: integer
+      default: 4 # a
+    b:
+      type: integer
+      default: 5 # b
+    x:
+      type: integer
+      default: 27 # x
+    y:
+      type: integer
+      default: 28 # y
+    dpad_left:
+      type: integer
+      default: 80 # left
+    dpad_up:
+      type: integer
+      default: 82 # up
+    dpad_right:
+      type: integer
+      default: 79 # right
+    dpad_down:
+      type: integer
+      default: 81 # down
+    back:
+      type: integer
+      default: 42 # backspace
+    start:
+      type: integer
+      default: 40 # return
+    white:
+      type: integer
+      default: 30 # 1
+    black:
+      type: integer
+      default: 31 # 2
+    lstick_btn:
+      type: integer
+      default: 32 # 3
+    rstick_btn:
+      type: integer
+      default: 33 # 4
+    guide:
+      type: integer
+      default: 34 # 5
+    lstick_up:
+      type: integer
+      default: 8 # e
+    lstick_left:
+      type: integer
+      default: 22 # s
+    lstick_right:
+      type: integer
+      default: 9 # f
+    lstick_down:
+      type: integer
+      default: 7 # d
+    ltrigger:
+      type: integer
+      default: 26 # w
+    rstick_up:
+      type: integer
+      default: 12 # i
+    rstick_left:
+      type: integer
+      default: 13 # j
+    rstick_right:
+      type: integer
+      default: 15 # l
+    rstick_down:
+      type: integer
+      default: 14 # k
+    rtrigger:
+      type: integer
+      default: 18 # w
 
 display:
   quality:
