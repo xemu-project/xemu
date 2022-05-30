@@ -410,10 +410,12 @@ static MString* get_output(MString *reg, int mapping)
 }
 
 // Add the GLSL code for a stage
-static void add_stage_code(struct PixelShader *ps,
-                           struct InputVarInfo input, struct OutputInfo output,
-                           const char *write_mask, bool is_alpha)
+static MString* add_stage_code(struct PixelShader *ps,
+                               struct InputVarInfo input,
+                               struct OutputInfo output,
+                               const char *write_mask, bool is_alpha)
 {
+    MString *ret = mstring_new();
     MString *a = get_input_var(ps, input.a, is_alpha);
     MString *b = get_input_var(ps, input.b, is_alpha);
     MString *c = get_input_var(ps, input.c, is_alpha);
@@ -493,25 +495,25 @@ static void add_stage_code(struct PixelShader *ps,
     }
 
     if (assign_ab) {
-        mstring_append_fmt(ps->code, "%s.%s = ab.%s;\n",
+        mstring_append_fmt(ret, "%s.%s = ab.%s;\n",
                            mstring_get_str(ab_dest), write_mask, write_mask);
 
         if (!is_alpha && output.flags & PS_COMBINEROUTPUT_AB_BLUE_TO_ALPHA) {
-            mstring_append_fmt(ps->code, "%s.a = ab.b;\n",
+            mstring_append_fmt(ret, "%s.a = ab.b;\n",
                                mstring_get_str(ab_dest));
         }
     }
     if (assign_cd) {
-        mstring_append_fmt(ps->code, "%s.%s = cd.%s;\n",
+        mstring_append_fmt(ret, "%s.%s = cd.%s;\n",
                            mstring_get_str(cd_dest), write_mask, write_mask);
 
         if (!is_alpha && output.flags & PS_COMBINEROUTPUT_CD_BLUE_TO_ALPHA) {
-            mstring_append_fmt(ps->code, "%s.a = cd.b;\n",
+            mstring_append_fmt(ret, "%s.a = cd.b;\n",
                                mstring_get_str(cd_dest));
         }
     }
     if (assign_muxsum) {
-        mstring_append_fmt(ps->code, "%s.%s = mux_sum.%s;\n",
+        mstring_append_fmt(ret, "%s.%s = mux_sum.%s;\n",
                            mstring_get_str(muxsum_dest), write_mask, write_mask);
     }
 
@@ -528,6 +530,8 @@ static void add_stage_code(struct PixelShader *ps,
     mstring_unref(muxsum_dest);
     mstring_unref(muxsum);
     mstring_unref(muxsum_mapping);
+
+    return ret;
 }
 
 // Add code for the final combiner stage
@@ -1015,8 +1019,13 @@ static MString* psh_convert(struct PixelShader *ps)
     for (i = 0; i < ps->num_stages; i++) {
         ps->cur_stage = i;
         mstring_append_fmt(ps->code, "// Stage %d\n", i);
-        add_stage_code(ps, ps->stage[i].rgb_input, ps->stage[i].rgb_output, "rgb", false);
-        add_stage_code(ps, ps->stage[i].alpha_input, ps->stage[i].alpha_output, "a", true);
+        MString* color = add_stage_code(ps, ps->stage[i].rgb_input, ps->stage[i].rgb_output, "rgb", false);
+        MString* alpha = add_stage_code(ps, ps->stage[i].alpha_input, ps->stage[i].alpha_output, "a", true);
+
+        mstring_append(ps->code, mstring_get_str(color));
+        mstring_append(ps->code, mstring_get_str(alpha));
+        mstring_unref(color);
+        mstring_unref(alpha);
     }
 
     if (ps->final_input.enabled) {
