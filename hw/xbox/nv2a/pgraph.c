@@ -299,6 +299,11 @@ static const ColorFormatInfo kelvin_color_format_map[66] = {
     [NV097_SET_TEXTURE_FORMAT_COLOR_LC_IMAGE_YB8CR8YA8CB8] =
         {2, true, GL_RGBA8,  GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV},
 
+    /* Additional information is passed to the pixel shader via the swizzle:
+     * RED: The depth value.
+     * GREEN: 0 for 16-bit, 1 for 24 bit
+     * BLUE: 0 for fixed, 1 for float
+     */
     [NV097_SET_TEXTURE_FORMAT_COLOR_SZ_DEPTH_Y16_FIXED] =
         {2, false, GL_DEPTH_COMPONENT16, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT,
          {GL_RED, GL_ZERO, GL_ZERO, GL_ZERO}, true},
@@ -313,8 +318,8 @@ static const ColorFormatInfo kelvin_color_format_map[66] = {
         {2, true, GL_DEPTH_COMPONENT16, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT,
          {GL_RED, GL_ZERO, GL_ZERO, GL_ZERO}, true},
     [NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_DEPTH_Y16_FLOAT] =
-        {2, true, GL_DEPTH_COMPONENT16, GL_DEPTH_COMPONENT, GL_FLOAT,
-          {GL_RED, GL_ZERO, GL_ZERO, GL_ZERO}, true},
+        {2, true, GL_DEPTH_COMPONENT16, GL_DEPTH_COMPONENT, GL_HALF_FLOAT,
+          {GL_RED, GL_ZERO, GL_ONE, GL_ZERO}, true},
 
     [NV097_SET_TEXTURE_FORMAT_COLOR_LU_IMAGE_Y16] =
         {2, true, GL_R16, GL_RED, GL_UNSIGNED_SHORT,

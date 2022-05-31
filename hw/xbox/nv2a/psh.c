@@ -640,6 +640,8 @@ static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compa
                        i, i, i, i, i);
 
     const char *comparison = shadow_comparison_map[ps->state.shadow_depth_func];
+
+    // Depth.y != 0 indicates 24 bit; depth.z != 0 indicates float.
     if (compare_z) {
         mstring_append_fmt(
             vars,
@@ -647,13 +649,13 @@ static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compa
             "if (t%d_depth.y > 0) {\n"
             "  t%d_max_depth = 0xFFFFFF;\n"
             "} else {\n"
-            "  t%d_max_depth = 0xFFFF; // TODO: Support float max.\n"
+            "  t%d_max_depth = t%d_depth.z > 0 ? 511.9375 : 0xFFFF;\n"
             "}\n"
             "t%d_depth.x *= t%d_max_depth;\n"
             "pT%d.z = clamp(pT%d.z / pT%d.w, 0, t%d_max_depth);\n"
             "vec4 t%d = vec4(t%d_depth.x %s pT%d.z ? 1.0 : 0.0);\n",
             i, i, i, i, i,
-            i, i, i, i, i,
+            i, i, i, i, i, i,
             i, i, comparison, i);
     } else {
         mstring_append_fmt(
