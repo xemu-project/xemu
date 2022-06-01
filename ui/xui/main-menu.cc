@@ -807,12 +807,14 @@ void MainMenuAboutView::Draw()
         const char *gl_version = (const char*)glGetString(GL_VERSION);
         const char *gl_renderer = (const char*)glGetString(GL_RENDERER);
         const char *gl_vendor = (const char*)glGetString(GL_VENDOR);
-
+        SDL_DisplayMode DM;
+        SDL_GetCurrentDisplayMode(0, &DM);
         sys_info_text = g_strdup_printf(
             "CPU:          %s\nOS Platform:  %s\nOS Version:   %s\nManufacturer: %s\n"
-            "GPU Model:    %s\nDriver:       %s\nShader:       %s\nInternal Resolution:%dx     \n",
+            "GPU Model:    %s\nDriver:       %s\nShader:       %s\nScaling:      %dx\n"
+            "Resolution:   %dx%d\n",
              xemu_get_cpu_info(), xemu_get_os_platform(), xemu_get_os_info(), gl_vendor,
-             gl_renderer, gl_version, gl_shader_version, nv2a_get_surface_scale_factor());
+             gl_renderer, gl_version, gl_shader_version, nv2a_get_surface_scale_factor(), DM.w, DM.h);
     }
 
     static uint32_t time_start = 0;
