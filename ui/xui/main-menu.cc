@@ -794,24 +794,25 @@ void MainMenuSystemView::Draw()
 
 void MainMenuAboutView::Draw()
 {
-    static const char *build_info_text = NULL;
+     const char *build_info_text = NULL;
     if (build_info_text == NULL) {
         build_info_text = g_strdup_printf(
             "Version:      %s\nBranch:       %s\nCommit:       %s\nDate:         %s",
             xemu_version, xemu_branch, xemu_commit, xemu_date);
     }
 
-    static const char *sys_info_text = NULL;
+     const char *sys_info_text = NULL;
     if (sys_info_text == NULL) {
         const char *gl_shader_version = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
         const char *gl_version = (const char*)glGetString(GL_VERSION);
         const char *gl_renderer = (const char*)glGetString(GL_RENDERER);
         const char *gl_vendor = (const char*)glGetString(GL_VENDOR);
+
         sys_info_text = g_strdup_printf(
             "CPU:          %s\nOS Platform:  %s\nOS Version:   %s\nManufacturer: %s\n"
-            "GPU Model:    %s\nDriver:       %s\nShader:       %s",
+            "GPU Model:    %s\nDriver:       %s\nShader:       %s\nInternal Resolution:%dx     \n",
              xemu_get_cpu_info(), xemu_get_os_platform(), xemu_get_os_info(), gl_vendor,
-             gl_renderer, gl_version, gl_shader_version);
+             gl_renderer, gl_version, gl_shader_version, nv2a_get_surface_scale_factor());
     }
 
     static uint32_t time_start = 0;
