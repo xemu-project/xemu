@@ -68,6 +68,9 @@ typedef struct PshState {
     bool alphakill[4];
     enum ConvolutionFilter conv_tex[4];
 
+    float border_logical_size[4][2];
+    float border_inv_real_size[4][2];
+
     bool shadow_map[4];
     enum PshShadowDepthFunc shadow_depth_func;
 
