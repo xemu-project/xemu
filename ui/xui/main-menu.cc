@@ -794,14 +794,14 @@ void MainMenuSystemView::Draw()
 
 void MainMenuAboutView::Draw()
 {
-     const char *build_info_text = NULL;
+    static  const char *build_info_text = NULL;
     if (build_info_text == NULL) {
         build_info_text = g_strdup_printf(
             "Version:      %s\nBranch:       %s\nCommit:       %s\nDate:         %s",
             xemu_version, xemu_branch, xemu_commit, xemu_date);
     }
 
-     const char *sys_info_text = NULL;
+    static const char *sys_info_text = NULL;
     if (sys_info_text == NULL) {
         const char *gl_shader_version = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
         const char *gl_version = (const char*)glGetString(GL_VERSION);
@@ -811,11 +811,11 @@ void MainMenuAboutView::Draw()
         SDL_GetCurrentDisplayMode(0, &DM);
         sys_info_text = g_strdup_printf(
             "CPU:          %s\nOS Platform:  %s\nOS Version:   %s\nManufacturer: %s\n"
-            "GPU Model:    %s\nDriver:       %s\nShader:       %s\nScaling:      %dx\n"
-            "Resolution:   %dx%d\n",
+            "GPU Model:    %s\nDriver:       %s\nShader:       %s\n" "Resolution:   %dx%d\n",
              xemu_get_cpu_info(), xemu_get_os_platform(), xemu_get_os_info(), gl_vendor,
-             gl_renderer, gl_version, gl_shader_version, nv2a_get_surface_scale_factor(), DM.w, DM.h);
+             gl_renderer, gl_version, gl_shader_version, DM.w, DM.h);
     }
+    char *content = g_strdup_printf("%sScaling:      %dx", sys_info_text, nv2a_get_surface_scale_factor());
 
     static uint32_t time_start = 0;
     if (ImGui::IsWindowAppearing()) {
@@ -853,11 +853,12 @@ void MainMenuAboutView::Draw()
 
     SectionTitle("System Information");
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
-    ImGui::InputTextMultiline("###systeminformation", (char *)sys_info_text,
-                              strlen(sys_info_text),
-                              ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 8),
+    ImGui::InputTextMultiline("###systeminformation", (char *)content,
+                              strlen(content),
+                              ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 10),
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
+    free(content);
 
     SectionTitle("Community");
 

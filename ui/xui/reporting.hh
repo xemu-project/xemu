@@ -31,9 +31,7 @@ public:
 	std::string xemu_branch;
 	std::string xemu_commit;
 	std::string xemu_date;
-	//not sure if report accepts unsigned int
 	unsigned int xemu_rendering_scale; 
-	//is it ok to save the data from SDL_GetCurrentDisplayMode in main_menu.cc directly into the class? same as the rendering scale so the data will be filled
 	int width, height; 
 	std::string os_platform;
 	std::string os_version;
