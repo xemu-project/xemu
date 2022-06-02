@@ -164,6 +164,7 @@ typedef struct TextureShape {
     unsigned int color_format;
     unsigned int levels;
     unsigned int width, height, depth;
+    bool border;
 
     unsigned int min_mipmap_level, max_mipmap_level;
     unsigned int pitch;

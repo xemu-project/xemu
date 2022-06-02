@@ -665,6 +665,26 @@ static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compa
     }
 }
 
+// Adjust the s, t coordinates in the given VAR to account for the 4 texel
+// border supported by the hardware.
+static void apply_border_adjustment(const struct PixelShader *ps, MString *vars, int tex_index, const char *var_template)
+{
+    int i = tex_index;
+    if (ps->state.border_logical_size[i][0] == 0.0f) {
+        return;
+    }
+
+    char var_name[32] = {0};
+    snprintf(var_name, sizeof(var_name), var_template, i);
+
+    mstring_append_fmt(
+        vars,
+        "vec2 t%dLogicalSize = vec2(%f, %f);\n"
+        "%s.xy = (%s.xy * t%dLogicalSize + vec2(4, 4)) * vec2(%f, %f);\n",
+        i, ps->state.border_logical_size[i][0], ps->state.border_logical_size[i][1],
+        var_name, var_name, i, ps->state.border_inv_real_size[i][0], ps->state.border_inv_real_size[i][1]);
+}
+
 static MString* psh_convert(struct PixelShader *ps)
 {
     int i;
@@ -836,6 +856,7 @@ static MString* psh_convert(struct PixelShader *ps)
                         NV2A_UNIMPLEMENTED("Convolution for 2D textures");
                     }
                 }
+                apply_border_adjustment(ps, vars, i, "pT%d");
                 mstring_append_fmt(vars, "pT%d.xy = texScale%d * pT%d.xy;\n", i, i, i);
                 mstring_append_fmt(vars, "vec4 t%d = %s(texSamp%d, pT%d.xyw);\n",
                                    i, lookup, i, i);
@@ -846,6 +867,7 @@ static MString* psh_convert(struct PixelShader *ps)
             if (ps->state.shadow_map[i]) {
                 psh_append_shadowmap(ps, i, true, vars);
             } else {
+                apply_border_adjustment(ps, vars, i, "pT%d");
                 mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, pT%d.xyzw);\n",
                                    i, i, i);
             }
@@ -855,6 +877,7 @@ static MString* psh_convert(struct PixelShader *ps)
                                i, i, i, i);
             break;
         case PS_TEXTUREMODES_PASSTHRU:
+            assert(ps->state.border_logical_size[i][0] == 0.0f && "Unexpected border texture on passthru");
             mstring_append_fmt(vars, "vec4 t%d = pT%d;\n", i, i);
             break;
         case PS_TEXTUREMODES_CLIPPLANE: {
@@ -919,10 +942,14 @@ static MString* psh_convert(struct PixelShader *ps)
         case PS_TEXTUREMODES_DOT_ST:
             assert(i >= 2);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_ST */\n");
-            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
-                i, i, dotmap_func, ps->input_tex[i]);
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, texScale%d * vec2(dot%d, dot%d));\n",
-                i, i, i, i-1, i);
+            mstring_append_fmt(vars,
+               "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n"
+               "vec2 dotST%d = vec2(dot%d, dot%d);\n",
+                i, i, dotmap_func, ps->input_tex[i], i, i-1, i);
+
+            apply_border_adjustment(ps, vars, i, "dotST%d");
+            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, texScale%d * dotST%d);\n",
+                i, i, i, i);
             break;
         case PS_TEXTUREMODES_DOT_ZW:
             assert(i >= 2);
@@ -942,6 +969,7 @@ static MString* psh_convert(struct PixelShader *ps)
                 i, i+1, dotmap_funcs[ps->dot_map[i+1]], ps->input_tex[i+1]);
             mstring_append_fmt(vars, "vec3 n_%d = vec3(dot%d, dot%d, dot%d_n);\n",
                 i, i-1, i, i);
+            apply_border_adjustment(ps, vars, i, "n_%d");
             mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, n_%d);\n",
                 i, i, i);
             break;
@@ -956,36 +984,49 @@ static MString* psh_convert(struct PixelShader *ps)
                 i, i-2, i-1, i);
             mstring_append_fmt(vars, "vec3 rv_%d = 2*n_%d*dot(n_%d,e_%d)/dot(n_%d,n_%d) - e_%d;\n",
                 i, i, i, i, i, i, i);
+            apply_border_adjustment(ps, vars, i, "rv_%d");
             mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, rv_%d);\n",
                 i, i, i);
             break;
         case PS_TEXTUREMODES_DOT_STR_3D:
             assert(i == 3);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_3D */\n");
-            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
-                i, i, dotmap_func, ps->input_tex[i]);
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(dot%d, dot%d, dot%d));\n",
-                i, i, i-2, i-1, i);
+            mstring_append_fmt(vars,
+               "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n"
+               "vec2 dotSTR%d = vec3(dot%d, dot%d, dot%d));\n",
+                i, i, dotmap_func, ps->input_tex[i],
+                i, i-2, i-1, i);
+
+            apply_border_adjustment(ps, vars, i, "dotSTR%d");
+            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, dotSTR%d);\n",
+                i, i, i);
             break;
         case PS_TEXTUREMODES_DOT_STR_CUBE:
             assert(i == 3);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_CUBE */\n");
             mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(dot%d, dot%d, dot%d));\n",
-                i, i, i-2, i-1, i);
+            mstring_append_fmt(vars, "vec3 dotSTR%dCube = vec3(dot%d, dot%d, dot%d);\n",
+                               i, i-2, i-1, i);
+            apply_border_adjustment(ps, vars, i, "dotSTR%dCube");
+            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, dotSTR%dCube);\n",
+                i, i, i);
             break;
         case PS_TEXTUREMODES_DPNDNT_AR:
             assert(i >= 1);
             assert(!ps->state.rect_tex[i]);
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, t%d.ar);\n",
-                i, i, ps->input_tex[i]);
+            mstring_append_fmt(vars, "vec2 t%dAR = t%d.ar;\n", i, ps->input_tex[i]);
+            apply_border_adjustment(ps, vars, i, "t%dAR");
+            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, t%dAR);\n",
+                i, i, i);
             break;
         case PS_TEXTUREMODES_DPNDNT_GB:
             assert(i >= 1);
             assert(!ps->state.rect_tex[i]);
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, t%d.gb);\n",
-                i, i, ps->input_tex[i]);
+            mstring_append_fmt(vars, "vec2 t%dGB = t%d.gb;\n", i, ps->input_tex[i]);
+            apply_border_adjustment(ps, vars, i, "t%dGB");
+            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, t%dGB);\n",
+                i, i, i);
             break;
         case PS_TEXTUREMODES_DOTPRODUCT:
             assert(i == 1 || i == 2);
