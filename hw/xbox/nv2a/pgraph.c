@@ -6119,6 +6119,23 @@ static bool pgraph_is_texture_stage_active(PGRAPHState *pg, unsigned int stage)
     return !!mode;
 }
 
+// Check if any of the pages spanned by the a texture are dirty.
+static bool pgraph_check_texture_possibly_dirty(NV2AState *d, hwaddr texture_vram_offset, unsigned int length, hwaddr palette_vram_offset, unsigned int palette_length)
+{
+    bool possibly_dirty = false;
+    if (pgraph_check_texture_dirty(d, texture_vram_offset, length)) {
+        possibly_dirty = true;
+        pgraph_mark_textures_possibly_dirty(d, texture_vram_offset, length);
+    }
+    if (palette_length && pgraph_check_texture_dirty(d, palette_vram_offset,
+                                                     palette_length)) {
+        possibly_dirty = true;
+        pgraph_mark_textures_possibly_dirty(d, palette_vram_offset,
+                                            palette_length);
+    }
+    return possibly_dirty;
+}
+
 static void pgraph_bind_textures(NV2AState *d)
 {
     int i;
@@ -6225,15 +6242,6 @@ static void pgraph_bind_textures(NV2AState *d)
         assert(offset < dma_len);
         texture_data += offset;
         hwaddr texture_vram_offset = texture_data - d->vram_ptr;
-
-        SurfaceBinding *surface = pgraph_surface_get(d, texture_vram_offset);
-        TextureBinding *tbind = pg->texture_binding[i];
-        if (!pg->texture_dirty[i] && tbind &&
-            (!surface || tbind->draw_time == surface->draw_time)) {
-            glBindTexture(pg->texture_binding[i]->gl_target,
-                          pg->texture_binding[i]->gl_texture);
-            continue;
-        }
 
         hwaddr palette_dma_len;
         uint8_t *palette_data;
@@ -6353,6 +6361,34 @@ static void pgraph_bind_textures(NV2AState *d)
         assert((texture_vram_offset + length) < memory_region_size(d->vram));
         assert((palette_vram_offset + palette_length)
                < memory_region_size(d->vram));
+        bool is_indexed = (color_format ==
+                NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8);
+        bool possibly_dirty = false;
+        bool possibly_dirty_checked = false;
+
+        SurfaceBinding *surface = pgraph_surface_get(d, texture_vram_offset);
+        TextureBinding *tbind = pg->texture_binding[i];
+        if (!pg->texture_dirty[i] && tbind) {
+            bool reusable = false;
+            if (surface && tbind->draw_time == surface->draw_time) {
+                reusable = true;
+            } else if (!surface) {
+                possibly_dirty = pgraph_check_texture_possibly_dirty(
+                        d,
+                        texture_vram_offset,
+                        length,
+                        palette_vram_offset,
+                        is_indexed ? palette_length : 0);
+                possibly_dirty_checked = true;
+                reusable = !possibly_dirty;
+            }
+
+            if (reusable) {
+                glBindTexture(pg->texture_binding[i]->gl_target,
+                              pg->texture_binding[i]->gl_texture);
+                continue;
+            }
+        }
 
         TextureShape state;
         memset(&state, 0, sizeof(TextureShape));
@@ -6395,9 +6431,6 @@ static void pgraph_bind_textures(NV2AState *d)
             }
         }
 
-        bool is_indexed = (color_format ==
-            NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8);
-
         TextureKey key;
         memset(&key, 0, sizeof(TextureKey));
         key.state = state;
@@ -6413,23 +6446,15 @@ static void pgraph_bind_textures(NV2AState *d)
         LruNode *found = lru_lookup(&pg->texture_cache,
                                      tex_binding_hash, &key);
         TextureLruNode *key_out = container_of(found, TextureLruNode, node);
-        bool possibly_dirty = (key_out->binding == NULL)
-                              || key_out->possibly_dirty;
+        possibly_dirty |= (key_out->binding == NULL) || key_out->possibly_dirty;
 
-        // Check if any of the pages spanned by the texture are dirty
-        if (!surf_to_tex) {
-            if (pgraph_check_texture_dirty(d, texture_vram_offset, length)) {
-                possibly_dirty = true;
-                pgraph_mark_textures_possibly_dirty(d, texture_vram_offset,
-                                                       length);
-            }
-
-            if (is_indexed && pgraph_check_texture_dirty(d, palette_vram_offset,
-                                                            palette_length)) {
-                possibly_dirty = true;
-                pgraph_mark_textures_possibly_dirty(d, palette_vram_offset,
-                                                       palette_length);
-            }
+        if (!surf_to_tex && !possibly_dirty_checked) {
+            possibly_dirty |= pgraph_check_texture_possibly_dirty(
+                    d,
+                    texture_vram_offset,
+                    length,
+                    palette_vram_offset,
+                    is_indexed ? palette_length : 0);
         }
 
         // Calculate hash of texture data, if necessary
