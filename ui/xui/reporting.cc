@@ -46,7 +46,7 @@ const std::string &CompatibilityReport::GetSerializedReport()
 		{"xemu_commit", xemu_commit},
 		{"xemu_date", xemu_date},
 		{"xemu_rendering_scale", xemu_rendering_scale},
-		{"Screen Resolution:" width, height},
+		{"Screen Resolution:", width, height},
 		{"os_platform", os_platform},
 		{"os_version", os_version},
 		{"cpu", cpu},
