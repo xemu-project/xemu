@@ -53,7 +53,32 @@ void MonitorWindow::Draw()
 
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4,1)); // Tighten spacing
         ImGui::PushFont(g_font_mgr.m_fixed_width_font);
-        ImGui::TextUnformatted(xemu_get_monitor_buffer());
+
+        // FIXME: Replace scroll to bottom hack when https://github.com/ocornut/imgui/issues/1972 is resolved.
+        // ImGui does not provide any mechanism to adjust scrolling in an InputTextMultiline and does not
+        // provide any other widget that allows for selectable text.
+        char *buffer = xemu_get_monitor_buffer();
+        size_t buffer_len = strlen(buffer);
+        // Calculating the precise size will cause an unnecessary vertical scrollbar in the InputTextMultiline.
+        int num_newlines = 2;
+        const char *start = buffer;
+        while (start) {
+            start = strchr(start, '\n');
+            if (start) {
+                ++num_newlines;
+                ++start;
+            }
+        }
+        float input_height = fmax(ImGui::GetWindowHeight(),
+                                  g_font_mgr.m_fixed_width_font->FontSize * num_newlines);
+
+        ImGui::PushID("#MonitorOutput");
+        ImGui::InputTextMultiline("",
+                                  buffer,
+                                  buffer_len,
+                                  ImVec2(-1.0f, input_height),
+                                  ImGuiInputTextFlags_ReadOnly|ImGuiInputTextFlags_NoUndoRedo);
+        ImGui::PopID();
         ImGui::PopFont();
 
         if (ScrollToBottom || (AutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())) {
