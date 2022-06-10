@@ -4113,23 +4113,26 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
     }
 
     /* Clipping regions */
-    int max_gl_height = pg->surface_binding_dim.height - 1;
+    unsigned int max_gl_width = pg->surface_binding_dim.width;
+    unsigned int max_gl_height = pg->surface_binding_dim.height;
+    pgraph_apply_scaling_factor(pg, &max_gl_width, &max_gl_height);
+
     for (i = 0; i < 8; i++) {
         uint32_t x = pg->regs[NV_PGRAPH_WINDOWCLIPX0 + i * 4];
         unsigned int x_min = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMIN);
-        unsigned int x_max = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMAX);
+        unsigned int x_max = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMAX) + 1;
         uint32_t y = pg->regs[NV_PGRAPH_WINDOWCLIPY0 + i * 4];
         unsigned int y_min = GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMIN);
-        unsigned int y_max = GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMAX);
+        unsigned int y_max = GET_MASK(y, NV_PGRAPH_WINDOWCLIPY0_YMAX) + 1;
         pgraph_apply_anti_aliasing_factor(pg, &x_min, &y_min);
         pgraph_apply_anti_aliasing_factor(pg, &x_max, &y_max);
 
-        /* Translate for the GL viewport origin */
-        unsigned int y_min_xlat = MAX(max_gl_height - (int)y_max, 0);
-        unsigned int y_max_xlat = MIN(max_gl_height - (int)y_min, max_gl_height);
+        pgraph_apply_scaling_factor(pg, &x_min, &y_min);
+        pgraph_apply_scaling_factor(pg, &x_max, &y_max);
 
-        pgraph_apply_scaling_factor(pg, &x_min, &y_min_xlat);
-        pgraph_apply_scaling_factor(pg, &x_max, &y_max_xlat);
+        /* Translate for the GL viewport origin */
+        int y_min_xlat = MAX((int)max_gl_height - (int)y_max, 0);
+        int y_max_xlat = MIN((int)max_gl_height - (int)y_min, max_gl_height);
 
         glUniform4i(pg->shader_binding->clip_region_loc[i],
                     x_min, y_min_xlat, x_max, y_max_xlat);
