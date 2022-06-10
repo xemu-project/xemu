@@ -503,8 +503,8 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT32(pgraph.inline_buffer_length, NV2AState), // fixme
         VMSTATE_UINT32(pgraph.draw_arrays_length, NV2AState), // fixme
         VMSTATE_UINT32(pgraph.draw_arrays_max_count, NV2AState), // fixme
-        // GLint gl_draw_arrays_start[1000]; // fixme
-        // GLsizei gl_draw_arrays_count[1000]; // fixme
+        // GLint gl_draw_arrays_start[1250]; // fixme
+        // GLsizei gl_draw_arrays_count[1250]; // fixme
         VMSTATE_UINT32_ARRAY(pgraph.regs, NV2AState, 0x2000),
         VMSTATE_UINT32(pmc.pending_interrupts, NV2AState),
         VMSTATE_UINT32(pmc.enabled_interrupts, NV2AState),
