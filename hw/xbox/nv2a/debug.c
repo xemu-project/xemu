@@ -28,7 +28,7 @@
 #include <assert.h>
 
 #ifdef CONFIG_RENDERDOC
-#include "renderdoc_app.h"
+#include "thirdparty/renderdoc_app.h"
 #ifdef _WIN32
 #include <libloaderapi.h>
 #else
