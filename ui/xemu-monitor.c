@@ -35,8 +35,8 @@
 #define TYPE_CHARDEV_XEMU_MONITOR "chardev-xemu-monitor"
 
 static Chardev *mon_chr;
-static char mon_buffer[8*4096];
-static const size_t mon_buffer_size = 8*4096;
+static char mon_buffer[12*4096];
+static const size_t mon_buffer_size = sizeof(mon_buffer);
 static size_t offset;
 
 static void char_xemu_class_init(ObjectClass *oc, void *data);
