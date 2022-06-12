@@ -834,13 +834,45 @@ void vsh_translate(uint16_t version,
          * between the calculated output and the final HW position must be
          * remapped to fit the 0.5 range used by OpenGL.
          */
-        "  vec2 fixed_pos = vec2(oPos.xy);\n"
-        "  vec2 hw_rounded_pos = floor(fixed_pos + 0.4375);\n"
-        "  vec2 pos_delta = (fixed_pos - hw_rounded_pos) / 0.5625;\n"
-        "  pos_delta *= 0.5 / surfaceSize;\n"
-        "  fixed_pos = hw_rounded_pos + pos_delta;\n"
-        "  oPos.xy = 2.0 * fixed_pos / surfaceSize - vec2(1.0);\n"
-        "  oPos.y *= -1.0;\n"
+
+#define FIXUP 0
+
+#if FIXUP == 0
+        "\n"
+        "vec2 fixed_pos = vec2(oPos.xy);\n"
+        "vec2 hw_rounded_pos = floor(fixed_pos);\n"
+        "vec2 pos_delta = (fixed_pos - hw_rounded_pos);\n"
+        "pos_delta -= 0.5625;  // Negative numbers => (0,0.5), positive numbers incl 0 => (0.5,1.0]\n"
+
+        "vec2 a = -pos_delta / 0.5625 * 0.5;\n"
+        "vec2 b = 0.5 + pos_delta / 0.4375 * 0.5;\n"
+
+        "vec2 round_down = vec2(lessThan(pos_delta, vec2(0.0)));\n"
+        "pos_delta = mix(b, a, round_down);\n"
+
+        "fixed_pos = hw_rounded_pos + pos_delta;\n"
+
+        "oPos.xy = 2.0 * fixed_pos / surfaceSize - vec2(1.0);\n"
+        "oPos.y *= -1.0;\n"
+        "\n"
+#endif
+
+#if FIXUP == 1
+        "\n"
+        "vec2 fixed_pos = vec2(oPos.xy);\n"
+        "vec2 hw_rounded_pos = floor(fixed_pos);\n"
+        "vec2 pos_delta = fixed_pos - hw_rounded_pos;\n"
+        "vec2 lt = pos_delta / 0.5625 * 0.5;\n"
+        "vec2 gte = 0.5 + (pos_delta - 0.5625) / 0.4375 * 0.5;\n"
+
+        "vec2 round_down = vec2(lessThan(pos_delta, vec2(0.5625)));\n"
+        "vec2 remapped_delta = mix(gte, lt, round_down);\n"
+        "fixed_pos = hw_rounded_pos;\n"
+        "\n"
+#endif
+
+        "oPos.xy = 2.0 * fixed_pos / surfaceSize - vec2(1.0);\n"
+        "oPos.y *= -1.0;\n"
     );
     if (z_perspective) {
         mstring_append(body, "  oPos.z = oPos.w;\n");
@@ -867,4 +899,12 @@ void vsh_translate(uint16_t version,
         "  }\n"
     );
 
+#if FIXUP == 1
+    /* Fix up the pixel-center difference between OpenGL and DirectX 8
+     * TODO: This still does not entirely match HW behavior.
+     * Pixels should be floored below 0.5 + 1/16 = 0.5625
+     */
+    mstring_append(body,
+                   "  oPos.xy += (vec2(remapped_delta.x, -remapped_delta.y) / glViewportSize.xy) * oPos.w;\n");
+#endif
 }

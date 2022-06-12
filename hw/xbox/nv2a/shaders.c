@@ -762,6 +762,7 @@ static MString *generate_vertex_shader(const ShaderState *state,
 "\n"
 "uniform vec2 clipRange;\n"
 "uniform vec2 surfaceSize;\n"
+"uniform vec2 glViewportSize;\n"
 "\n"
 /* All constants in 1 array declaration */
 "uniform vec4 c[" stringify(NV2A_VERTEXSHADER_CONSTANTS) "];\n"
@@ -1118,6 +1119,7 @@ ShaderBinding *generate_shaders(const ShaderState *state)
     }
     ret->surface_size_loc = glGetUniformLocation(program, "surfaceSize");
     ret->clip_range_loc = glGetUniformLocation(program, "clipRange");
+    ret->gl_viewport_size_loc = glGetUniformLocation(program, "glViewportSize");
     ret->fog_color_loc = glGetUniformLocation(program, "fogColor");
     ret->fog_param_loc[0] = glGetUniformLocation(program, "fogParam[0]");
     ret->fog_param_loc[1] = glGetUniformLocation(program, "fogParam[1]");

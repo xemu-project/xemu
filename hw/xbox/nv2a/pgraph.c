@@ -4269,6 +4269,13 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
         glUniform2f(binding->clip_range_loc, zclip_min, zclip_max);
     }
 
+    if (binding->gl_viewport_size_loc != -1) {
+        unsigned int vp_width = pg->surface_binding_dim.width,
+                vp_height = pg->surface_binding_dim.height;
+        pgraph_apply_scaling_factor(pg, &vp_width, &vp_height);
+        glUniform2f(binding->gl_viewport_size_loc, vp_width, vp_height);
+    }
+
     /* Clipping regions */
     unsigned int max_gl_width = pg->surface_binding_dim.width;
     unsigned int max_gl_height = pg->surface_binding_dim.height;
