@@ -792,6 +792,24 @@ void MainMenuSystemView::Draw()
     }
 }
 
+static const char *get_display_mode(void)
+{
+    const char *display_mode;
+
+    if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_16_9) {
+        display_mode = "Scale (Widescreen 16:9)";
+    } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_4_3) {
+        display_mode = "Scale (4:3)"; 
+    } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE) {
+        display_mode = "Scale";
+    } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_CENTER) {
+        display_mode = "Center";
+    } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_STRETCH) {
+        display_mode = "Stretch";
+    }
+    return display_mode;
+}
+
 void MainMenuAboutView::Draw()
 {
     static const char *build_info_text = NULL;
@@ -813,11 +831,12 @@ void MainMenuAboutView::Draw()
              xemu_get_cpu_info(), xemu_get_os_platform(), xemu_get_os_info(), gl_vendor,
              gl_renderer, gl_version, gl_shader_version);
     }
-    SDL_DisplayMode DM;
-    SDL_GetCurrentDisplayMode(0, &DM);
-
-    char *content = g_strdup_printf("%sScaling:      %dx\n" "Resolution:   %dx%d", 
-                                    sys_info_text, nv2a_get_surface_scale_factor(), DM.w, DM.h);
+    
+    //TODO: get real time window pixels from main window resolution.
+    char *content = g_strdup_printf("%sScaling:      %dx\n" "Resolution:   %dx%d\n"
+                                    "Display Mode: %s", 
+                                    sys_info_text, nv2a_get_surface_scale_factor(), 
+                                    NULL, NULL, get_display_mode());
 
     static uint32_t time_start = 0;
     if (ImGui::IsWindowAppearing()) {
@@ -857,7 +876,7 @@ void MainMenuAboutView::Draw()
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
     ImGui::InputTextMultiline("###systeminformation", content,
                               strlen(content),
-                              ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 10),
+                              ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 11),
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
     g_free(content);

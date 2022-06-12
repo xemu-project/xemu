@@ -31,8 +31,6 @@ public:
 	std::string xemu_branch;
 	std::string xemu_commit;
 	std::string xemu_date;
-	unsigned int xemu_rendering_scale; 
-	int width, height; 
 	std::string os_platform;
 	std::string os_version;
 	std::string cpu;
