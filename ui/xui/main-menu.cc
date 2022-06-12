@@ -833,8 +833,7 @@ void MainMenuAboutView::Draw()
     }
     
     //TODO: get real time window pixels from main window resolution.
-    char *content = g_strdup_printf("%sScaling:      %dx\n" "Resolution:   %dx%d\n"
-                                    "Display Mode: %s", 
+    char *content = g_strdup_printf("%sScaling:      %dx\nResolution:   %dx%d\nDisplay Mode: %s", 
                                     sys_info_text, nv2a_get_surface_scale_factor(), 
                                     NULL, NULL, get_display_mode());
 
