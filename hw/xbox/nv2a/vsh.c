@@ -835,41 +835,42 @@ void vsh_translate(uint16_t version,
          * remapped to fit the 0.5 range used by OpenGL.
          */
 
-#define FIXUP 0
-
-#if FIXUP == 0
         "\n"
-        "vec2 fixed_pos = vec2(oPos.xy);\n"
-        "vec2 hw_rounded_pos = floor(fixed_pos);\n"
-        "vec2 pos_delta = (fixed_pos - hw_rounded_pos);\n"
-        "pos_delta -= 0.5625;  // Negative numbers => (0,0.5), positive numbers incl 0 => (0.5,1.0]\n"
+       // This approach works at low render scale, but at higher scales it needs
+       // an increasingly large bias as small amounts become full intermediate
+       // pixels. This seems like it should be by design (render scale increases
+       // the range of intermediate values that should map to raster pixels),
+       // so it's possible that this whole approach is flawed and should focus
+       // on fixing the first row/column offset by shifting everything left,up
+       // in NDC instead of messing with subpixels in nv2a screen space like
+       // this.
+       "vec2 floored_pos = floor(oPos.xy);\n"
+       "vec2 subpixel = oPos.xy - floored_pos;\n"
 
-        "vec2 a = -pos_delta / 0.5625 * 0.5;\n"
-        "vec2 b = 0.5 + pos_delta / 0.4375 * 0.5;\n"
+       // Calculate what percentage of a full pixel should be added by shifting the 9/16
+       // rounding point to 0.5.
 
-        "vec2 round_down = vec2(lessThan(pos_delta, vec2(0.0)));\n"
-        "pos_delta = mix(b, a, round_down);\n"
+       // A bias is used to throw values on either side of 0.5 in order to avoid
+       // numerical precision issues (e.g., with a surfaceSize of 640,480, a 0.5625
+       // value will map to (0.5000..71, 0.49999..82) when going to NDC and back to
+       // screen coords instead of the correct (0.5, 0.5)).
+       // at 1x, 0.002 is enough, 2x and beyond need substantially higher biases
+       "float bias = 0.05;\n"
+       "float scale = 0.5 - bias;\n"
+       "float offset = 0.5 + bias;\n"
 
-        "fixed_pos = hw_rounded_pos + pos_delta;\n"
+       // (0, 0.5625) => (0,0.5)
+       "vec2 lt = subpixel / 0.5625 * scale;\n"
+       // (.5625,1) => (0.5,1)
+       "vec2 gte = offset + (subpixel - 0.5625) / 0.4375 * scale;\n"
 
-        "oPos.xy = 2.0 * fixed_pos / surfaceSize - vec2(1.0);\n"
-        "oPos.y *= -1.0;\n"
-        "\n"
-#endif
+       // Select between the two mappings based on whether the actual subpixel is above
+       // or below the rounding point.
+       "vec2 round_down = vec2(lessThan(subpixel, vec2(0.5625)));\n"
+       "subpixel = mix(gte, lt, round_down);\n"
 
-#if FIXUP == 1
-        "\n"
-        "vec2 fixed_pos = vec2(oPos.xy);\n"
-        "vec2 hw_rounded_pos = floor(fixed_pos);\n"
-        "vec2 pos_delta = fixed_pos - hw_rounded_pos;\n"
-        "vec2 lt = pos_delta / 0.5625 * 0.5;\n"
-        "vec2 gte = 0.5 + (pos_delta - 0.5625) / 0.4375 * 0.5;\n"
-
-        "vec2 round_down = vec2(lessThan(pos_delta, vec2(0.5625)));\n"
-        "vec2 remapped_delta = mix(gte, lt, round_down);\n"
-        "fixed_pos = hw_rounded_pos;\n"
-        "\n"
-#endif
+       "vec2 fixed_pos = floored_pos + subpixel;\n"
+       "\n"
 
         "oPos.xy = 2.0 * fixed_pos / surfaceSize - vec2(1.0);\n"
         "oPos.y *= -1.0;\n"
@@ -898,13 +899,4 @@ void vsh_translate(uint16_t version,
         "    oPos.w = 1.0;\n"
         "  }\n"
     );
-
-#if FIXUP == 1
-    /* Fix up the pixel-center difference between OpenGL and DirectX 8
-     * TODO: This still does not entirely match HW behavior.
-     * Pixels should be floored below 0.5 + 1/16 = 0.5625
-     */
-    mstring_append(body,
-                   "  oPos.xy += (vec2(remapped_delta.x, -remapped_delta.y) / glViewportSize.xy) * oPos.w;\n");
-#endif
 }
