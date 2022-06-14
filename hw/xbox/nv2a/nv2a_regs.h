@@ -602,6 +602,10 @@
 #define NV_PGRAPH_WINDOWCLIPY5                           0x00001A78
 #define NV_PGRAPH_WINDOWCLIPY6                           0x00001A7C
 #define NV_PGRAPH_WINDOWCLIPY7                           0x00001A80
+#define NV_PGRAPH_ZCOMPRESSOCCLUDE                       0x00001A84
+#   define NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN                 (1 << 4)
+#       define NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CULL            0
+#       define NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CLAMP           1
 #define NV_PGRAPH_ZSTENCILCLEARVALUE                     0x00001A88
 #define NV_PGRAPH_ZCLIPMIN                               0x00001A90
 #define NV_PGRAPH_ZOFFSETBIAS                            0x00001AA4
@@ -1205,9 +1209,10 @@
 #   define NV097_SET_TEXTURE_SET_BUMP_ENV_OFFSET              0x00001B3C
 #   define NV097_SET_SEMAPHORE_OFFSET                         0x00001D6C
 #   define NV097_BACK_END_WRITE_SEMAPHORE_RELEASE             0x00001D70
-#   define NV097_SET_DEPTH_CLAMP_CONTROL                      0x00001D78
-#       define NV097_SET_DEPTH_CLAMP_CONTROL_CLAMP                0x000000F0
-#       define NV097_SET_DEPTH_CLAMP_CONTROL_CLAMP_ENABLE             (1 << 4)
+#   define NV097_SET_ZMIN_MAX_CONTROL                         0x00001D78
+#       define NV097_SET_ZMIN_MAX_CONTROL_ZCLAMP_EN               0x000000F0
+#       define NV097_SET_ZMIN_MAX_CONTROL_ZCLAMP_EN_CULL              0
+#       define NV097_SET_ZMIN_MAX_CONTROL_ZCLAMP_EN_CLAMP             1
 #   define NV097_SET_ZSTENCIL_CLEAR_VALUE                     0x00001D8C
 #   define NV097_SET_COLOR_CLEAR_VALUE                        0x00001D90
 #   define NV097_CLEAR_SURFACE                                0x00001D94
