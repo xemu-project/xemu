@@ -444,7 +444,7 @@ static MString* decode_opcode(const uint32_t *shader_token,
 
         bool write_fog_register = false;
         if (vsh_get_field(shader_token, FLD_OUT_ORB) == OUTPUT_C) {
-            /* TODO : Emulate writeable const registers */
+            assert(!"TODO: Emulate writeable const registers");
             mstring_append(ret, "c");
             mstring_append_int(ret,
                 convert_c_register(
@@ -861,4 +861,3 @@ void vsh_translate(uint16_t version,
     );
 
 }
-

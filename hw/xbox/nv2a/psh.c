@@ -763,7 +763,7 @@ static MString* psh_convert(struct PixelShader *ps)
                          "for (int i = 0; i < 8; i++) {\n"
                          "  bool outside = any(bvec4(\n"
                          "      lessThan(coord, vec2(clipRegion[i].xy)),\n"
-                         "      greaterThan(coord, vec2(clipRegion[i].zw))));\n"
+                         "      greaterThanEqual(coord, vec2(clipRegion[i].zw))));\n"
                          "  if (!outside) {\n");
     if (ps->state.window_clip_exclusive) {
         mstring_append(clip, "    discard;\n");
