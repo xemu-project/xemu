@@ -2801,12 +2801,14 @@ DEF_METHOD(NV097, SET_BEGIN_END)
     bool mask_green = control_0 & NV_PGRAPH_CONTROL_0_GREEN_WRITE_ENABLE;
     bool mask_blue = control_0 & NV_PGRAPH_CONTROL_0_BLUE_WRITE_ENABLE;
     bool color_write = mask_alpha || mask_red || mask_green || mask_blue;
-
     bool depth_test = control_0 & NV_PGRAPH_CONTROL_0_ZENABLE;
     bool stencil_test =
         pg->regs[NV_PGRAPH_CONTROL_1] & NV_PGRAPH_CONTROL_1_STENCIL_TEST_ENABLE;
 
     if (parameter == NV097_SET_BEGIN_END_OP_END) {
+        if (pg->primitive_mode == PRIM_TYPE_INVALID) {
+            NV2A_DPRINTF("End without Begin!\n");
+        }
         nv2a_profile_inc_counter(NV2A_PROF_BEGIN_ENDS);
         pgraph_flush_draw(d);
 
@@ -2827,8 +2829,12 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         pgraph_set_surface_dirty(pg, color_write, depth_test || stencil_test);
 
         NV2A_GL_DGROUP_END();
+        pg->primitive_mode = PRIM_TYPE_INVALID;
     } else {
         NV2A_GL_DGROUP_BEGIN("NV097_SET_BEGIN_END: 0x%x", parameter);
+        if (pg->primitive_mode != PRIM_TYPE_INVALID) {
+            NV2A_DPRINTF("Begin without End!\n");
+        }
         assert(parameter <= NV097_SET_BEGIN_END_OP_POLYGON);
         pg->primitive_mode = parameter;
 
@@ -3209,8 +3215,17 @@ static void pgraph_expand_draw_arrays(NV2AState *d)
     }
 }
 
+static void pgraph_check_within_begin_end_block(PGRAPHState *pg)
+{
+    if (pg->primitive_mode == PRIM_TYPE_INVALID) {
+        NV2A_DPRINTF("Vertex data being sent outside of begin/end block!\n");
+    }
+}
+
 DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT16)
 {
+    pgraph_check_within_begin_end_block(pg);
+
     if (pg->draw_arrays_length) {
         pgraph_expand_draw_arrays(d);
     }
@@ -3221,6 +3236,8 @@ DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT16)
 
 DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT32)
 {
+    pgraph_check_within_begin_end_block(pg);
+
     if (pg->draw_arrays_length) {
         pgraph_expand_draw_arrays(d);
     }
@@ -3230,6 +3247,8 @@ DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT32)
 
 DEF_METHOD(NV097, DRAW_ARRAYS)
 {
+    pgraph_check_within_begin_end_block(pg);
+
     unsigned int start = GET_MASK(parameter, NV097_DRAW_ARRAYS_START_INDEX);
     unsigned int count = GET_MASK(parameter, NV097_DRAW_ARRAYS_COUNT) + 1;
 
@@ -3269,6 +3288,7 @@ DEF_METHOD(NV097, DRAW_ARRAYS)
 
 DEF_METHOD_NON_INC(NV097, INLINE_ARRAY)
 {
+    pgraph_check_within_begin_end_block(pg);
     assert(pg->inline_array_length < NV2A_MAX_BATCH_LENGTH);
     pg->inline_array[pg->inline_array_length++] = parameter;
 }
@@ -3792,6 +3812,7 @@ static void pgraph_allocate_inline_buffer_vertices(PGRAPHState *pg,
 
 static void pgraph_finish_inline_buffer_vertex(PGRAPHState *pg)
 {
+    pgraph_check_within_begin_end_block(pg);
     assert(pg->inline_buffer_length < NV2A_MAX_BATCH_LENGTH);
 
     for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
@@ -3937,6 +3958,7 @@ void pgraph_init(NV2AState *d)
     pg->shader_cache = g_hash_table_new(shader_hash, shader_equal);
 
     pg->material_alpha = 0.0f;
+    pg->primitive_mode = PRIM_TYPE_INVALID;
 
     for (i=0; i<NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
         VertexAttribute *attribute = &pg->vertex_attributes[i];
