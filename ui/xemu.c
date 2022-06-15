@@ -198,6 +198,11 @@ void sdl2_window_resize(struct sdl2_console *scon)
                       surface_height(scon->surface));
 }
 
+void xemu_get_window_size(window_data *data)
+{
+    SDL_GetWindowSize(m_window, &data->width, &data->height);
+}
+
 static void sdl2_redraw(struct sdl2_console *scon)
 {
     if (scon->opengl) {

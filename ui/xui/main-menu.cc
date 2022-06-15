@@ -27,6 +27,7 @@
 #include "misc.hh"
 #include "gl-helpers.hh"
 #include "reporting.hh"
+#include "popup-menu.hh"
 
 #include "../xemu-input.h"
 #include "../xemu-notifications.h"
@@ -792,22 +793,12 @@ void MainMenuSystemView::Draw()
     }
 }
 
-static const char *get_display_mode(void)
+static const char *GetDisplayMode() 
 {
-    const char *display_mode;
-
-    if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_16_9) {
-        display_mode = "Scale (Widescreen 16:9)";
-    } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_4_3) {
-        display_mode = "Scale (4:3)"; 
-    } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE) {
-        display_mode = "Scale";
-    } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_CENTER) {
-        display_mode = "Center";
-    } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_STRETCH) {
-        display_mode = "Stretch";
-    }
-    return display_mode;
+    const char *values[] = {
+        "Center", "Scale", "Scale (Widescreen 16:9)", "Scale (4:3)", "Stretch"
+    };
+    return values[g_config.display.ui.fit];
 }
 
 void MainMenuAboutView::Draw()
@@ -831,11 +822,11 @@ void MainMenuAboutView::Draw()
              xemu_get_cpu_info(), xemu_get_os_platform(), xemu_get_os_info(), gl_vendor,
              gl_renderer, gl_version, gl_shader_version);
     }
-    
-    //TODO: get real time window pixels from main window resolution.
+    window_data data;
+    xemu_get_window_size(&data);
     char *content = g_strdup_printf("%sScaling:      %dx\nResolution:   %dx%d\nDisplay Mode: %s", 
                                     sys_info_text, nv2a_get_surface_scale_factor(), 
-                                    NULL, NULL, get_display_mode());
+                                    data.width, data.height, GetDisplayMode());
 
     static uint32_t time_start = 0;
     if (ImGui::IsWindowAppearing()) {
