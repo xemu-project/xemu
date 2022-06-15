@@ -2693,13 +2693,11 @@ static void pgraph_flush_draw(NV2AState *d)
     assert(pg->shader_binding);
 
     if (pg->draw_arrays_length) {
-        nv2a_profile_inc_counter(NV2A_PROF_DRAW_ARRAYS);
-
         NV2A_GL_DPRINTF(false, "Draw Arrays");
-
+        nv2a_profile_inc_counter(NV2A_PROF_DRAW_ARRAYS);
+        assert(pg->inline_elements_length == 0);
         assert(pg->inline_buffer_length == 0);
         assert(pg->inline_array_length == 0);
-        assert(pg->inline_elements_length == 0);
 
         pgraph_bind_vertex_attributes(d, pg->draw_arrays_min_start,
                                       pg->draw_arrays_max_count - 1,
@@ -2710,10 +2708,8 @@ static void pgraph_flush_draw(NV2AState *d)
                           pg->gl_draw_arrays_count,
                           pg->draw_arrays_length);
     } else if (pg->inline_elements_length) {
-        nv2a_profile_inc_counter(NV2A_PROF_INLINE_ELEMENTS);
-
         NV2A_GL_DPRINTF(false, "Inline Elements");
-
+        nv2a_profile_inc_counter(NV2A_PROF_INLINE_ELEMENTS);
         assert(pg->inline_buffer_length == 0);
         assert(pg->inline_array_length == 0);
 
@@ -2753,12 +2749,9 @@ static void pgraph_flush_draw(NV2AState *d)
                        pg->inline_elements_length, GL_UNSIGNED_INT,
                        (void *)0);
     } else if (pg->inline_buffer_length) {
-        nv2a_profile_inc_counter(NV2A_PROF_INLINE_BUFFERS);
-
         NV2A_GL_DPRINTF(false, "Inline Buffer");
-
+        nv2a_profile_inc_counter(NV2A_PROF_INLINE_BUFFERS);
         assert(pg->inline_array_length == 0);
-        assert(pg->inline_elements_length == 0);
 
         if (pg->compressed_attrs) {
             pg->compressed_attrs = 0;
@@ -2788,12 +2781,8 @@ static void pgraph_flush_draw(NV2AState *d)
         glDrawArrays(pg->shader_binding->gl_primitive_mode,
                      0, pg->inline_buffer_length);
     } else if (pg->inline_array_length) {
-        nv2a_profile_inc_counter(NV2A_PROF_INLINE_ARRAYS);
-
         NV2A_GL_DPRINTF(false, "Inline Array");
-
-        assert(pg->inline_buffer_length == 0);
-        assert(pg->inline_elements_length == 0);
+        nv2a_profile_inc_counter(NV2A_PROF_INLINE_ARRAYS);
 
         unsigned int index_count = pgraph_bind_inline_array(d);
         glDrawArrays(pg->shader_binding->gl_primitive_mode,
@@ -3787,7 +3776,6 @@ static void pgraph_method_log(unsigned int subchannel,
 static void pgraph_allocate_inline_buffer_vertices(PGRAPHState *pg,
                                                    unsigned int attr)
 {
-    int i;
     VertexAttribute *attribute = &pg->vertex_attributes[attr];
 
     if (attribute->inline_buffer_populated || pg->inline_buffer_length == 0) {
@@ -3796,26 +3784,21 @@ static void pgraph_allocate_inline_buffer_vertices(PGRAPHState *pg,
 
     /* Now upload the previous attribute value */
     attribute->inline_buffer_populated = true;
-    for (i = 0; i < pg->inline_buffer_length; i++) {
-        memcpy(&attribute->inline_buffer[i * 4],
-               attribute->inline_value,
+    for (int i = 0; i < pg->inline_buffer_length; i++) {
+        memcpy(&attribute->inline_buffer[i * 4], attribute->inline_value,
                sizeof(float) * 4);
     }
 }
 
 static void pgraph_finish_inline_buffer_vertex(PGRAPHState *pg)
 {
-    int i;
-
     assert(pg->inline_buffer_length < NV2A_MAX_BATCH_LENGTH);
 
-    for (i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
+    for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
         VertexAttribute *attribute = &pg->vertex_attributes[i];
         if (attribute->inline_buffer_populated) {
-            memcpy(&attribute->inline_buffer[
-                      pg->inline_buffer_length * 4],
-                   attribute->inline_value,
-                   sizeof(float) * 4);
+            memcpy(&attribute->inline_buffer[pg->inline_buffer_length * 4],
+                   attribute->inline_value, sizeof(float) * 4);
         }
     }
 
