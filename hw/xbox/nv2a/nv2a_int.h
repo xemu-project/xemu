@@ -374,6 +374,7 @@ typedef struct PGRAPHState {
     unsigned int draw_arrays_min_start;
     unsigned int draw_arrays_max_count;
     /* FIXME: Unknown size, possibly endless, 1250 will do for now */
+    /* Keep in sync with size used in nv2a.c */
     GLint gl_draw_arrays_start[1250];
     GLsizei gl_draw_arrays_count[1250];
     bool draw_arrays_prevent_connect;
