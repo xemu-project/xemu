@@ -2684,10 +2684,22 @@ DEF_METHOD_INC(NV097, SET_EYE_DIRECTION)
     pg->ltctxa_dirty[NV_IGRAPH_XF_LTCTXA_EYED] = true;
 }
 
+static void pgraph_reset_inline_buffers(PGRAPHState *pg)
+{
+    pg->inline_elements_length = 0;
+    pg->inline_array_length = 0;
+    pg->inline_buffer_length = 0;
+    pg->draw_arrays_length = 0;
+    pg->draw_arrays_min_start = -1;
+    pg->draw_arrays_max_count = 0;
+    pg->draw_arrays_prevent_connect = false;
+}
+
 static void pgraph_flush_draw(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
     if (!(pg->color_binding || pg->zeta_binding)) {
+        pgraph_reset_inline_buffers(pg);
         return;
     }
     assert(pg->shader_binding);
@@ -2791,6 +2803,8 @@ static void pgraph_flush_draw(NV2AState *d)
         NV2A_GL_DPRINTF(true, "EMPTY NV097_SET_BEGIN_END");
         NV2A_UNCONFIRMED("EMPTY NV097_SET_BEGIN_END");
     }
+
+    pgraph_reset_inline_buffers(pg);
 }
 
 DEF_METHOD(NV097, SET_BEGIN_END)
@@ -2839,14 +2853,7 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         pg->primitive_mode = parameter;
 
         pgraph_update_surface(d, true, true, depth_test || stencil_test);
-
-        pg->inline_elements_length = 0;
-        pg->inline_array_length = 0;
-        pg->inline_buffer_length = 0;
-        pg->draw_arrays_length = 0;
-        pg->draw_arrays_min_start = -1;
-        pg->draw_arrays_max_count = 0;
-        pg->draw_arrays_prevent_connect = false;
+        pgraph_reset_inline_buffers(pg);
 
         if (!(color_write || depth_test || stencil_test)) {
             // FIXME: Check PGRAPH register 0x880.
@@ -3204,11 +3211,6 @@ static void pgraph_expand_draw_arrays(NV2AState *d)
         pgraph_flush_draw(d);
     }
 
-    pg->draw_arrays_length = 0;
-    pg->draw_arrays_min_start = -1;
-    pg->draw_arrays_max_count = 0;
-    pg->draw_arrays_prevent_connect = false;
-
     assert((pg->inline_elements_length + count) < NV2A_MAX_BATCH_LENGTH);
     for (unsigned int i = 0; i < count; i++) {
         pg->inline_elements[pg->inline_elements_length++] = start + i;
@@ -3229,6 +3231,7 @@ DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT16)
     if (pg->draw_arrays_length) {
         pgraph_expand_draw_arrays(d);
     }
+
     assert(pg->inline_elements_length < NV2A_MAX_BATCH_LENGTH);
     pg->inline_elements[pg->inline_elements_length++] = parameter & 0xFFFF;
     pg->inline_elements[pg->inline_elements_length++] = parameter >> 16;
@@ -3241,6 +3244,7 @@ DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT32)
     if (pg->draw_arrays_length) {
         pgraph_expand_draw_arrays(d);
     }
+
     assert(pg->inline_elements_length < NV2A_MAX_BATCH_LENGTH);
     pg->inline_elements[pg->inline_elements_length++] = parameter;
 }
