@@ -2841,8 +2841,17 @@ DEF_METHOD(NV097, SET_BEGIN_END)
     } else {
         NV2A_GL_DGROUP_BEGIN("NV097_SET_BEGIN_END: 0x%x", parameter);
         assert(parameter <= NV097_SET_BEGIN_END_OP_POLYGON);
+        pg->primitive_mode = parameter;
 
         pgraph_update_surface(d, true, true, depth_test || stencil_test);
+
+        pg->inline_elements_length = 0;
+        pg->inline_array_length = 0;
+        pg->inline_buffer_length = 0;
+        pg->draw_arrays_length = 0;
+        pg->draw_arrays_min_start = -1;
+        pg->draw_arrays_max_count = 0;
+        pg->draw_arrays_prevent_connect = false;
 
         if (!(color_write || depth_test || stencil_test)) {
             // FIXME: Check PGRAPH register 0x880.
@@ -2857,7 +2866,6 @@ DEF_METHOD(NV097, SET_BEGIN_END)
 
         assert(pg->color_binding || pg->zeta_binding);
 
-        pg->primitive_mode = parameter;
         pgraph_bind_textures(d);
         pgraph_bind_shaders(pg);
 
@@ -3039,14 +3047,6 @@ DEF_METHOD(NV097, SET_BEGIN_END)
 
         glEnable(GL_SCISSOR_TEST);
         glScissor(xmin, ymin, scissor_width, scissor_height);
-
-        pg->inline_elements_length = 0;
-        pg->inline_array_length = 0;
-        pg->inline_buffer_length = 0;
-        pg->draw_arrays_length = 0;
-        pg->draw_arrays_min_start = -1;
-        pg->draw_arrays_max_count = 0;
-        pg->draw_arrays_prevent_connect = false;
 
         /* Visibility testing */
         if (pg->zpass_pixel_count_enable) {
