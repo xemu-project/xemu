@@ -252,6 +252,13 @@ bool PopupMenu::DrawItems(PopupMenuItemDelegate &nav)
 
 class DisplayModePopupMenu : public virtual PopupMenu {
 public:
+    const char *GetDisplayMode() 
+    {
+        const char *values[] = {
+            "Center", "Scale", "Scale (Widescreen 16:9)", "Scale (4:3)", "Stretch"
+        };
+        return values[g_config.display.ui.fit];
+    }
     bool DrawItems(PopupMenuItemDelegate &nav) override
     {
         const char *values[] = {

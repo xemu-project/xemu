@@ -27,7 +27,6 @@
 #include "misc.hh"
 #include "gl-helpers.hh"
 #include "reporting.hh"
-#include "popup-menu.hh"
 
 #include "../xemu-input.h"
 #include "../xemu-notifications.h"
@@ -793,14 +792,6 @@ void MainMenuSystemView::Draw()
     }
 }
 
-static const char *GetDisplayMode() 
-{
-    const char *values[] = {
-        "Center", "Scale", "Scale (Widescreen 16:9)", "Scale (4:3)", "Stretch"
-    };
-    return values[g_config.display.ui.fit];
-}
-
 void MainMenuAboutView::Draw()
 {
     static const char *build_info_text = NULL;
@@ -822,11 +813,12 @@ void MainMenuAboutView::Draw()
              xemu_get_cpu_info(), xemu_get_os_platform(), xemu_get_os_info(), gl_vendor,
              gl_renderer, gl_version, gl_shader_version);
     }
-    window_data data;
-    xemu_get_window_size(&data);
+    int width = 0, height = 0;
+    xemu_get_window_size(&width, &height);
+    
     char *content = g_strdup_printf("%sScaling:      %dx\nResolution:   %dx%d\nDisplay Mode: %s", 
                                     sys_info_text, nv2a_get_surface_scale_factor(), 
-                                    data.width, data.height, GetDisplayMode());
+                                    width, height, GetDisplayMode());
 
     static uint32_t time_start = 0;
     if (ImGui::IsWindowAppearing()) {
