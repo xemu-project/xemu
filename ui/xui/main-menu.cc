@@ -44,13 +44,18 @@ void MainMenuTabView::Draw() {}
 
 void MainMenuGeneralView::Draw()
 {
+#if defined(_WIN32)
     SectionTitle("Updates");
     Toggle("Check for updates", &g_config.general.updates.check,
            "Check for updates whenever xemu is opened");
+#endif
 
+#if defined(__x86_64__)
     SectionTitle("Performance");
     Toggle("Hard FPU emulation", &g_config.perf.hard_fpu,
            "Use hardware-accelerated floating point emulation (requires restart)");
+#endif
+
     // toggle("Cache shaders to disk", &g_config.perf.cache_shaders,
     //        "Reduce stutter in games by caching previously generated shaders");
 
