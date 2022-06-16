@@ -3210,11 +3210,11 @@ static void pgraph_expand_draw_arrays(NV2AState *d)
     if (pg->draw_arrays_length > 1) {
         pgraph_flush_draw(d);
     }
-
     assert((pg->inline_elements_length + count) < NV2A_MAX_BATCH_LENGTH);
     for (unsigned int i = 0; i < count; i++) {
         pg->inline_elements[pg->inline_elements_length++] = start + i;
     }
+    pg->draw_arrays_length = 0;
 }
 
 static void pgraph_check_within_begin_end_block(PGRAPHState *pg)
