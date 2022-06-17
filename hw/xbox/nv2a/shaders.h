@@ -29,7 +29,7 @@
 #include "psh.h"
 
 enum ShaderPrimitiveMode {
-    PRIM_TYPE_NONE,
+    PRIM_TYPE_INVALID,
     PRIM_TYPE_POINTS,
     PRIM_TYPE_LINES,
     PRIM_TYPE_LINE_LOOP,

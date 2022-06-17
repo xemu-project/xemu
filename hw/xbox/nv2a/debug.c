@@ -28,8 +28,12 @@
 #include <assert.h>
 
 #ifdef CONFIG_RENDERDOC
-#include <renderdoc_app.h>
+#include "thirdparty/renderdoc_app.h"
+#ifdef _WIN32
+#include <libloaderapi.h>
+#else
 #include <dlfcn.h>
+#endif
 
 static RENDERDOC_API_1_1_2 *rdoc_api = NULL;
 static int32_t renderdoc_capture_frames = 0;
@@ -42,7 +46,6 @@ static int32_t renderdoc_capture_frames = 0;
       assert(!"OpenGL error detected");                                                        \
   } \
 } while(0)
-
 
 static bool has_GL_GREMEDY_frame_terminator = false;
 static bool has_GL_KHR_debug = false;
@@ -72,15 +75,26 @@ void gl_debug_initialize(void)
 
 #ifdef CONFIG_RENDERDOC
     const char *renderdoc_lib;
+    void* renderdoc;
 #ifdef __APPLE__
     renderdoc_lib = "librenderdoc.dylib";
+#elif _WIN32
+    renderdoc_lib = "renderdoc.dll";
 #else
     renderdoc_lib = "librenderdoc.so";
 #endif
-    void* renderdoc = dlopen(renderdoc_lib, RTLD_NOW | RTLD_NOLOAD);
+
+#ifdef _WIN32
+    renderdoc = GetModuleHandleA(renderdoc_lib);
+    if (renderdoc) {
+        pRENDERDOC_GetAPI RENDERDOC_GetAPI = (pRENDERDOC_GetAPI)GetProcAddress(
+            renderdoc, "RENDERDOC_GetAPI");
+#else
+    renderdoc = dlopen(renderdoc_lib, RTLD_NOW | RTLD_NOLOAD);
     if (renderdoc) {
         pRENDERDOC_GetAPI RENDERDOC_GetAPI = (pRENDERDOC_GetAPI)dlsym(
             renderdoc, "RENDERDOC_GetAPI");
+#endif
         int ret = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_1_2,
                                    (void **)&rdoc_api);
         assert(ret == 1 && "Failed to retrieve RenderDoc API.");

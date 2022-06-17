@@ -486,6 +486,7 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT64(pgraph.report_offset, NV2AState),
         VMSTATE_UINT64(pgraph.dma_vertex_a, NV2AState),
         VMSTATE_UINT64(pgraph.dma_vertex_b, NV2AState),
+        VMSTATE_UINT32(pgraph.primitive_mode, NV2AState),
         VMSTATE_UINT32_2DARRAY(pgraph.program_data, NV2AState, NV2A_MAX_TRANSFORM_PROGRAM_LENGTH, VSH_TOKEN_SIZE),
         VMSTATE_UINT32_2DARRAY(pgraph.vsh_constants, NV2AState, NV2A_VERTEXSHADER_CONSTANTS, 4),
         VMSTATE_BOOL_ARRAY(pgraph.vsh_constants_dirty, NV2AState, NV2A_VERTEXSHADER_CONSTANTS),
@@ -501,10 +502,10 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT32(pgraph.inline_elements_length, NV2AState), // fixme
         VMSTATE_UINT32_ARRAY(pgraph.inline_elements, NV2AState, NV2A_MAX_BATCH_LENGTH),
         VMSTATE_UINT32(pgraph.inline_buffer_length, NV2AState), // fixme
-        VMSTATE_UINT32(pgraph.draw_arrays_length, NV2AState), // fixme
-        VMSTATE_UINT32(pgraph.draw_arrays_max_count, NV2AState), // fixme
-        // GLint gl_draw_arrays_start[1250]; // fixme
-        // GLsizei gl_draw_arrays_count[1250]; // fixme
+        VMSTATE_UINT32(pgraph.draw_arrays_length, NV2AState),
+        VMSTATE_UINT32(pgraph.draw_arrays_max_count, NV2AState),
+        VMSTATE_INT32_ARRAY(pgraph.gl_draw_arrays_start, NV2AState, 1250),
+        VMSTATE_INT32_ARRAY(pgraph.gl_draw_arrays_count, NV2AState, 1250),
         VMSTATE_UINT32_ARRAY(pgraph.regs, NV2AState, 0x2000),
         VMSTATE_UINT32(pmc.pending_interrupts, NV2AState),
         VMSTATE_UINT32(pmc.enabled_interrupts, NV2AState),

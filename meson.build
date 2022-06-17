@@ -471,7 +471,7 @@ rt = cc.find_library('rt', required: false)
 libdl = not_found
 if 'CONFIG_PLUGIN' in config_host or get_option('renderdoc').enabled()
   libdl = cc.find_library('dl', required: false)
-  if not cc.has_function('dlopen', dependencies: libdl)
+  if targetos != 'windows' and not cc.has_function('dlopen', dependencies: libdl)
     error('dlopen not found')
   endif
 endif
@@ -1234,14 +1234,10 @@ have_host_block_device = (targetos != 'darwin' or
 
 have_renderdoc = false
 if have_system and get_option('renderdoc').enabled()
-  if not cc.has_header('renderdoc_app.h')
-    error('renderdoc required, but renderdoc_app.h was not found')
+  if targetos == 'linux' and not libdl.found()
+    error('renderdoc required, but libdl was not found')
   else
-    if targetos == 'linux' and not libdl.found()
-      error('renderdoc required, but libdl was not found')
-    else
-      have_renderdoc = true
-    endif
+    have_renderdoc = true
   endif
 endif
 
