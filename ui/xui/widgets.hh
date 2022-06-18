@@ -46,3 +46,4 @@ bool ChevronCombo(const char *label, int *current_item,
 bool ChevronCombo(const char* label, int* current_item, const char* items_separated_by_zeros, const char *description = NULL);
 void Hyperlink(const char *text, const char *url);
 void HelpMarker(const char* desc);
+void Logo();

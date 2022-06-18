@@ -819,31 +819,7 @@ void MainMenuAboutView::Draw()
              gl_renderer, gl_version, gl_shader_version);
     }
 
-    static uint32_t time_start = 0;
-    if (ImGui::IsWindowAppearing()) {
-        time_start = SDL_GetTicks();
-    }
-    uint32_t now = SDL_GetTicks() - time_start;
-
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY()-50*g_viewport_mgr.m_scale);
-    ImGui::SetCursorPosX((ImGui::GetWindowWidth()-256*g_viewport_mgr.m_scale)/2);
-
-    logo_fbo->Target();
-    ImTextureID id = (ImTextureID)(intptr_t)logo_fbo->Texture();
-    float t_w = 256.0;
-    float t_h = 256.0;
-    float x_off = 0;
-    ImGui::Image(id,
-        ImVec2((t_w-x_off)*g_viewport_mgr.m_scale, t_h*g_viewport_mgr.m_scale),
-        ImVec2(x_off/t_w, t_h/t_h),
-        ImVec2(t_w/t_w, 0));
-    if (ImGui::IsItemClicked()) {
-        time_start = SDL_GetTicks();
-    }
-    RenderLogo(now, 0x42e335ff, 0x42e335ff, 0x00000000);
-    logo_fbo->Restore();
-
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY()-75*g_viewport_mgr.m_scale);
+    Logo();
 
     SectionTitle("Build Information");
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
