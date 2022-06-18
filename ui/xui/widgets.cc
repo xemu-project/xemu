@@ -21,6 +21,7 @@
 #include "font-manager.hh"
 #include "viewport-manager.hh"
 #include "ui/xemu-os-utils.h"
+#include "gl-helpers.hh"
 
 void Separator()
 {
@@ -504,4 +505,45 @@ void HelpMarker(const char* desc)
         ImGui::PopTextWrapPos();
         ImGui::EndTooltip();
     }
+}
+
+void Logo()
+{
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY()-25*g_viewport_mgr.m_scale);
+    ImGui::SetCursorPosX((ImGui::GetWindowWidth()-256*g_viewport_mgr.m_scale)/2);
+
+    static uint32_t time_start = 0;
+    static uint32_t offset = 0;
+    uint32_t now = SDL_GetTicks();
+
+    if (ImGui::IsWindowAppearing()) {
+        time_start = now;
+    }
+
+    logo_fbo->Target();
+    ImTextureID id = (ImTextureID)(intptr_t)logo_fbo->Texture();
+    float t_w = 256.0;
+    float t_h = 256.0;
+    float x_off = 0;
+    ImVec2 pos = ImGui::GetCursorPos();
+    ImGui::Image(id,
+        ImVec2((t_w-x_off)*g_viewport_mgr.m_scale, t_h*g_viewport_mgr.m_scale),
+        ImVec2(x_off/t_w, t_h/t_h),
+        ImVec2(t_w/t_w, 0));
+    ImVec2 size = ImGui::GetItemRectSize();
+    ImGui::SetCursorPos(pos);
+    ImGui::InvisibleButton("###empty", ImVec2(size.x, size.y*0.8));
+    if (ImGui::IsItemClicked()) {
+        time_start = now;
+        offset = 0;
+    }
+    if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+        ImVec2 item_min = ImGui::GetItemRectMin();
+        ImVec2 mouse = ImGui::GetMousePos();
+        time_start = now;
+        offset = 1500 * fmin(fmax(0, (mouse.x - item_min.x) / (size.x)), 1);
+    }
+
+    RenderLogo(now - time_start + offset);
+    logo_fbo->Restore();
 }
