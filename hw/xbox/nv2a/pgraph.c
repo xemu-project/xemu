@@ -21,6 +21,7 @@
 
 #include "nv2a_int.h"
 
+#include "nv2a_vsh_emulator.h"
 #include "s3tc.h"
 #include "ui/xemu-settings.h"
 #include "qemu/fast-hash.h"
@@ -3687,6 +3688,33 @@ DEF_METHOD(NV097, SET_SHADER_OTHER_STAGE_INPUT)
 {
     SET_MASK(pg->regs[NV_PGRAPH_SHADERCTL], 0xFFFF000,
              GET_MASK(parameter, 0xFFFF000));
+}
+
+DEF_METHOD_INC(NV097, SET_TRANSFORM_DATA)
+{
+    int slot = (method - NV097_SET_TRANSFORM_DATA) / 4;
+    pg->vertex_state_shader_v0[slot] = parameter;
+}
+
+DEF_METHOD(NV097, LAUNCH_TRANSFORM_PROGRAM)
+{
+    unsigned int program_start = parameter;
+    assert(program_start < NV2A_MAX_TRANSFORM_PROGRAM_LENGTH);
+    Nv2aVshProgram program;
+    Nv2aVshParseResult result = nv2a_vsh_parse_program(
+            &program,
+            pg->program_data[program_start],
+            NV2A_MAX_TRANSFORM_PROGRAM_LENGTH - program_start);
+    assert(result == NV2AVPR_SUCCESS);
+
+    Nv2aVshCPUXVSSExecutionState state_linkage;
+    Nv2aVshExecutionState state = nv2a_vsh_emu_initialize_xss_execution_state(
+            &state_linkage, (float*)pg->vsh_constants);
+    memcpy(state_linkage.input_regs, pg->vertex_state_shader_v0, sizeof(pg->vertex_state_shader_v0));
+
+    nv2a_vsh_emu_execute_track_context_writes(&state, &program, pg->vsh_constants_dirty);
+
+    nv2a_vsh_program_destroy(&program);
 }
 
 DEF_METHOD(NV097, SET_TRANSFORM_EXECUTION_MODE)

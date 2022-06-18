@@ -487,6 +487,7 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT64(pgraph.dma_vertex_a, NV2AState),
         VMSTATE_UINT64(pgraph.dma_vertex_b, NV2AState),
         VMSTATE_UINT32(pgraph.primitive_mode, NV2AState),
+        VMSTATE_UINT32_ARRAY(pgraph.vertex_state_shader_v0, NV2AState, 4),
         VMSTATE_UINT32_2DARRAY(pgraph.program_data, NV2AState, NV2A_MAX_TRANSFORM_PROGRAM_LENGTH, VSH_TOKEN_SIZE),
         VMSTATE_UINT32_2DARRAY(pgraph.vsh_constants, NV2AState, NV2A_VERTEXSHADER_CONSTANTS, 4),
         VMSTATE_BOOL_ARRAY(pgraph.vsh_constants_dirty, NV2AState, NV2A_VERTEXSHADER_CONSTANTS),
