@@ -779,11 +779,11 @@ void MainMenuSystemView::Draw()
     }
 
     SectionTitle("Files");
-    if (FilePicker("Boot ROM", &g_config.sys.files.bootrom_path,
+    if (FilePicker("MCPX Boot ROM", &g_config.sys.files.bootrom_path,
                    rom_file_filters)) {
         m_dirty = true;
     }
-    if (FilePicker("Flash ROM", &g_config.sys.files.flashrom_path,
+    if (FilePicker("Flash ROM (BIOS)", &g_config.sys.files.flashrom_path,
                    rom_file_filters)) {
         m_dirty = true;
     }
