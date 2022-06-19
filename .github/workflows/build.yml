@@ -228,7 +228,7 @@ jobs:
           dylibbundler \
           pkg-config \
           ninja
-        python3 -m pip install pyyaml
+        python3 -m pip install pyyaml requests
     - name: Initialize compiler, library cache
       id: cache
       uses: actions/cache@v2.1.6
