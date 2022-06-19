@@ -22,3 +22,6 @@ specific_ss.add(files(
 	's3tc.c',
 	))
 subdir('gl')
+
+subdir('thirdparty')
+specific_ss.add(nv2a_vsh_cpu)

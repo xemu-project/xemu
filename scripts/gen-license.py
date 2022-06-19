@@ -225,6 +225,12 @@ Lib('fpng', 'https://github.com/richgel999/fpng',
 	version='6926f5a0a78f22d42b074a0ab8032e07736babd4'
 	),
 
+Lib('nv2a_vsh_cpu', 'https://github.com/abaire/nv2a_vsh_cpu',
+	unlicense, 'https://raw.githubusercontent.com/abaire/nv2a_vsh_cpu/main/LICENSE',
+	ships_static=all_platforms,
+	submodule=Submodule('hw/xbox/nv2a/thirdparty/nv2a_vsh_cpu')
+	),
+
 #
 # Data files included with xemu
 #
