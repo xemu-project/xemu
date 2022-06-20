@@ -1,5 +1,4 @@
 #version 330
-#define msdf tex
 uniform sampler2D tex;
 uniform vec4 in_ColorPrimary;
 uniform vec4 in_ColorFill;
@@ -165,7 +164,7 @@ void main()
     uv *= scale;
     vec2 pos = uv;
 
-    vec3 msd = texture2D(tex, vec2(pos.x, pos.y)).rgb;
+    vec3 msd = texture(tex, vec2(pos.x, pos.y)).rgb;
     float sd = median(msd.r, msd.g, msd.b);
     float screenPxDistance = pxRange*(sd - 0.5);
     float opacity = clamp(screenPxDistance + 0.5, 0.0, 1.0);
