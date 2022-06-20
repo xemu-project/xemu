@@ -28,6 +28,8 @@ extern "C" {
 #include <noc_file_dialog.h>
 }
 
+extern const char **display_modes;
+
 static inline
 bool IsNavInputPressed(ImGuiNavInput i) {
     ImGuiIO &io = ImGui::GetIO();

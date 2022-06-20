@@ -252,23 +252,13 @@ bool PopupMenu::DrawItems(PopupMenuItemDelegate &nav)
 
 class DisplayModePopupMenu : public virtual PopupMenu {
 public:
-    const char *GetDisplayMode() 
-    {
-        const char *values[] = {
-            "Center", "Scale", "Scale (Widescreen 16:9)", "Scale (4:3)", "Stretch"
-        };
-        return values[g_config.display.ui.fit];
-    }
+  
     bool DrawItems(PopupMenuItemDelegate &nav) override
     {
-        const char *values[] = {
-            "Center", "Scale", "Scale (Widescreen 16:9)", "Scale (4:3)", "Stretch"
-        };
-
         for (int i = 0; i < CONFIG_DISPLAY_UI_FIT__COUNT; i++) {
             bool selected = g_config.display.ui.fit == i;
             if (m_focus && selected) ImGui::SetKeyboardFocusHere();
-            if (PopupMenuCheck(values[i], "", selected))
+            if (PopupMenuCheck(display_modes[i], "", selected))
                 g_config.display.ui.fit = i;
         }
 
