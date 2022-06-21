@@ -28,7 +28,7 @@ extern "C" {
 #include <noc_file_dialog.h>
 }
 
-extern const char **display_modes;
+extern const char *g_ui_display_mode_name[];
 
 static inline
 bool IsNavInputPressed(ImGuiNavInput i) {

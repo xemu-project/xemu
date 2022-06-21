@@ -823,7 +823,7 @@ void MainMenuAboutView::Draw()
     
     char *content = g_strdup_printf("%sScaling:      %dx\nResolution:   %dx%d\nDisplay Mode: %s", 
                                     sys_info_text, nv2a_get_surface_scale_factor(), 
-                                    width, height, display_modes[g_config.display.ui.fit]);
+                                    width, height, g_ui_display_mode_name[g_config.display.ui.fit]);
 
     static uint32_t time_start = 0;
     if (ImGui::IsWindowAppearing()) {

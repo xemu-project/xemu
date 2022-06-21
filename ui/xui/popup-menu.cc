@@ -36,6 +36,7 @@ void PopupMenuItemDelegate::LostFocus() {}
 void PopupMenuItemDelegate::PushFocus() {}
 void PopupMenuItemDelegate::PopFocus() {}
 bool PopupMenuItemDelegate::DidPop() { return false; }
+const char *g_ui_display_mode_name[] = {"Center", "Scale", "Scale (Widescreen 16:9)", "Scale (4:3)", "Stretch"};
 
 bool PopupMenuButton(std::string text, std::string icon = "")
 {
@@ -258,7 +259,7 @@ public:
         for (int i = 0; i < CONFIG_DISPLAY_UI_FIT__COUNT; i++) {
             bool selected = g_config.display.ui.fit == i;
             if (m_focus && selected) ImGui::SetKeyboardFocusHere();
-            if (PopupMenuCheck(display_modes[i], "", selected))
+            if (PopupMenuCheck(g_ui_display_mode_name[i], "", selected))
                 g_config.display.ui.fit = i;
         }
 
