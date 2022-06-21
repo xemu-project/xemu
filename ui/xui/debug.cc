@@ -290,20 +290,30 @@ void DebugVideoWindow::Draw()
         if (ImGui::TreeNode("Advanced")) {
             ImGui::SetNextWindowBgAlpha(alpha);
             if (ImPlot::BeginPlot("##ScrollingDraws", ImVec2(-1,-1))) {
-                ImPlot::SetupAxes(NULL, NULL, rt_axis, rt_axis | ImPlotAxisFlags_Lock);
-                ImPlot::SetupAxesLimits(x_start, x_end, 0, 1500, ImPlotCond_Always);
+                ImPlot::SetupAxes(NULL, NULL, ImPlotAxisFlags_None, ImPlotAxisFlags_LogScale | ImPlotAxisFlags_AutoFit);
+                ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 1500);
+                ImPlot::SetupAxisLimits(ImAxis_X1, 0, NV2A_PROF_NUM_FRAMES);
+
+                ImGui::PushID(0);
+                ImPlot::PushStyleColor(ImPlotCol_Line, ImPlot::GetColormapColor(0));
+                ImPlot::PushStyleColor(ImPlotCol_Fill, ImPlot::GetColormapColor(0));
+                ImPlot::PlotLine("MSPF", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 1, 0, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
+                ImPlot::PopStyleColor(2);
+                ImGui::PopID();
+
                 for (int i = 0; i < NV2A_PROF__COUNT; i++) {
-                    ImGui::PushID(i);
+                    ImGui::PushID(i+1);
                     char title[64];
                     snprintf(title, sizeof(title), "%s: %d",
                         nv2a_profile_get_counter_name(i),
                         nv2a_profile_get_counter_value(i));
-                    ImPlot::PushStyleColor(ImPlotCol_Line, ImPlot::GetColormapColor(i));
-                    ImPlot::PushStyleColor(ImPlotCol_Fill, ImPlot::GetColormapColor(i));
-                    ImPlot::PlotLine(title, &g_nv2a_stats.frame_history[0].counters[i], NV2A_PROF_NUM_FRAMES, 1, x_start, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
+                    ImPlot::PushStyleColor(ImPlotCol_Line, ImPlot::GetColormapColor(i+1));
+                    ImPlot::PushStyleColor(ImPlotCol_Fill, ImPlot::GetColormapColor(i+1));
+                    ImPlot::PlotLine(title, &g_nv2a_stats.frame_history[0].counters[i], NV2A_PROF_NUM_FRAMES, 1, 0, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
                     ImPlot::PopStyleColor(2);
                     ImGui::PopID();
                 }
+
                 ImPlot::EndPlot();
             }
             ImGui::TreePop();
