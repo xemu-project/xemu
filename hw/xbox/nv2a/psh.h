@@ -78,6 +78,8 @@ typedef struct PshState {
     enum PshAlphaFunc alpha_func;
 
     bool window_clip_exclusive;
+
+    bool shade_model_flat;
 } PshState;
 
 MString *psh_translate(const PshState state);

@@ -1840,6 +1840,12 @@ DEF_METHOD(NV097, SET_STENCIL_OP_ZPASS)
              kelvin_map_stencil_op(parameter));
 }
 
+DEF_METHOD(NV097, SET_SHADE_MODEL)
+{
+    // FIXME: Find the correct register for this.
+    pg->shade_model = parameter;
+}
+
 DEF_METHOD(NV097, SET_POLYGON_OFFSET_SCALE_FACTOR)
 {
     pg->regs[NV_PGRAPH_ZOFFSETFACTOR] = parameter;
@@ -2973,6 +2979,10 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             glDisable(GL_DEPTH_CLAMP);
         }
 
+        if (pg->shade_model == NV097_SET_SHADE_MODEL_FLAT) {
+            glProvokingVertex(GL_FIRST_VERTEX_CONVENTION);
+        }
+
         if (stencil_test) {
             glEnable(GL_STENCIL_TEST);
 
@@ -3996,6 +4006,7 @@ void pgraph_init(NV2AState *d)
     pg->shader_cache = g_hash_table_new(shader_hash, shader_equal);
 
     pg->material_alpha = 0.0f;
+    pg->shade_model = NV097_SET_SHADE_MODEL_SMOOTH;
     pg->primitive_mode = PRIM_TYPE_INVALID;
 
     for (i=0; i<NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
@@ -4320,6 +4331,7 @@ static bool pgraph_bind_shaders_test_dirty(PGRAPHState *pg)
         CR_8(NV_PGRAPH_WINDOWCLIPX0) \
         CR_8(NV_PGRAPH_WINDOWCLIPY0) \
         CF(pg->primitive_mode, primitive_mode) \
+        CF(pg->shade_model, shade_model) \
         CF(pg->surface_scale_factor, surface_scale_factor) \
         CF(pg->compressed_attrs, compressed_attrs) \
         CFA(pg->texture_matrix_enable, texture_matrix_enable)
@@ -4440,6 +4452,9 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
                                                            NV_PGRAPH_SETUPRASTER_FRONTFACEMODE);
     state.polygon_back_mode = (enum ShaderPolygonMode)GET_MASK(pg->regs[NV_PGRAPH_SETUPRASTER],
                                                           NV_PGRAPH_SETUPRASTER_BACKFACEMODE);
+
+    state.shade_model_flat = pg->shade_model == NV097_SET_SHADE_MODEL_FLAT;
+    state.psh.shade_model_flat = pg->shade_model == NV097_SET_SHADE_MODEL_FLAT;
 
     state.program_length = 0;
 

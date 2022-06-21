@@ -690,9 +690,8 @@ static MString* psh_convert(struct PixelShader *ps)
     int i;
 
     MString *preflight = mstring_new();
-    mstring_append(preflight, STRUCT_VERTEX_DATA);
-    mstring_append(preflight, "noperspective in VertexData g_vtx;\n");
-    mstring_append(preflight, "#define vtx g_vtx\n");
+    mstring_append(preflight,
+                   ps->state.shade_model_flat ? STRUCT_VERTEX_DATA_IN_FLAT : STRUCT_VERTEX_DATA_IN_SMOOTH);
     mstring_append(preflight, "\n");
     mstring_append(preflight, "out vec4 fragColor;\n");
     mstring_append(preflight, "\n");
@@ -801,19 +800,19 @@ static MString* psh_convert(struct PixelShader *ps)
 
     /* calculate perspective-correct inputs */
     MString *vars = mstring_new();
-    mstring_append(vars, "vec4 pD0 = vtx.D0 / vtx.inv_w;\n");
-    mstring_append(vars, "vec4 pD1 = vtx.D1 / vtx.inv_w;\n");
-    mstring_append(vars, "vec4 pB0 = vtx.B0 / vtx.inv_w;\n");
-    mstring_append(vars, "vec4 pB1 = vtx.B1 / vtx.inv_w;\n");
-    mstring_append(vars, "vec4 pFog = vec4(fogColor.rgb, clamp(vtx.Fog / vtx.inv_w, 0.0, 1.0));\n");
-    mstring_append(vars, "vec4 pT0 = vtx.T0 / vtx.inv_w;\n");
-    mstring_append(vars, "vec4 pT1 = vtx.T1 / vtx.inv_w;\n");
-    mstring_append(vars, "vec4 pT2 = vtx.T2 / vtx.inv_w;\n");
+    mstring_append(vars, "vec4 pD0 = vtxD0 / vtx_inv_w;\n");
+    mstring_append(vars, "vec4 pD1 = vtxD1 / vtx_inv_w;\n");
+    mstring_append(vars, "vec4 pB0 = vtxB0 / vtx_inv_w;\n");
+    mstring_append(vars, "vec4 pB1 = vtxB1 / vtx_inv_w;\n");
+    mstring_append(vars, "vec4 pFog = vec4(fogColor.rgb, clamp(vtxFog / vtx_inv_w, 0.0, 1.0));\n");
+    mstring_append(vars, "vec4 pT0 = vtxT0 / vtx_inv_w;\n");
+    mstring_append(vars, "vec4 pT1 = vtxT1 / vtx_inv_w;\n");
+    mstring_append(vars, "vec4 pT2 = vtxT2 / vtx_inv_w;\n");
     if (ps->state.point_sprite) {
         assert(!ps->state.rect_tex[3]);
         mstring_append(vars, "vec4 pT3 = vec4(gl_PointCoord, 1.0, 1.0);\n");
     } else {
-        mstring_append(vars, "vec4 pT3 = vtx.T3 / vtx.inv_w;\n");
+        mstring_append(vars, "vec4 pT3 = vtxT3 / vtx_inv_w;\n");
     }
     mstring_append(vars, "\n");
     mstring_append(vars, "vec4 v0 = pD0;\n");
