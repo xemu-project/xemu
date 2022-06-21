@@ -348,6 +348,8 @@ typedef struct PGRAPHState {
     bool ltc1_dirty[NV2A_LTC1_COUNT];
 
     float material_alpha;
+    // FIXME: Find the correct register for this.
+    uint32_t shade_model;
 
     // should figure out where these are in lighting context
     float light_infinite_half_vector[NV2A_MAX_LIGHTS][3];

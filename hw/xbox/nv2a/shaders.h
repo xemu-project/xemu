@@ -97,6 +97,8 @@ typedef struct ShaderState {
     bool point_params_enable;
     float point_size;
     float point_params[8];
+
+    bool shade_model_flat;
 } ShaderState;
 
 typedef struct ShaderBinding {

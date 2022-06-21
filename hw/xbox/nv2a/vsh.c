@@ -821,9 +821,9 @@ void vsh_translate(uint16_t version,
      * around the perspective divide */
     mstring_append(body,
         "  if (oPos.w == 0.0 || isinf(oPos.w)) {\n"
-        "    vtx.inv_w = 1.0;\n"
+        "    vtx_inv_w = 1.0;\n"
         "  } else {\n"
-        "    vtx.inv_w = 1.0 / oPos.w;\n"
+        "    vtx_inv_w = 1.0 / oPos.w;\n"
         "  }\n"
     );
 
