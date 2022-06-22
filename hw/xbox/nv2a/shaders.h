@@ -134,6 +134,6 @@ typedef struct ShaderBinding {
     GLint material_alpha_loc;
 } ShaderBinding;
 
-ShaderBinding* generate_shaders(const ShaderState state);
+ShaderBinding* generate_shaders(const ShaderState *state);
 
 #endif
