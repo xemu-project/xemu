@@ -838,9 +838,9 @@ if 'CONFIG_OPENGL' in config_host
 endif
 
 tomllib = static_library('tomlpp', sources: files('toml.cpp'),
-                         include_directories: 'tomlplusplus')
+                         include_directories: 'tomlplusplus/include')
 toml = declare_dependency(compile_args: ['-DTOML_HEADER_ONLY=0'],
-                          include_directories: 'tomlplusplus',
+                          include_directories: 'tomlplusplus/include',
                           link_with: tomllib)
 
 genconfig = declare_dependency(include_directories: 'genconfig')
