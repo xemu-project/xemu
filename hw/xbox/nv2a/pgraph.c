@@ -4539,7 +4539,7 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
     if (cached_shader) {
         pg->shader_binding = cached_shader;
     } else {
-        pg->shader_binding = generate_shaders(state);
+        pg->shader_binding = generate_shaders(&state);
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_GEN);
 
         /* cache it */

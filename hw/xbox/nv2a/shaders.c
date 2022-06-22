@@ -286,7 +286,7 @@ static void append_skinning_code(MString* str, bool mix,
 
 #define GLSL_DEFINE(a, b) "#define " stringify(a) " " b "\n"
 
-static void generate_fixed_function(const ShaderState state,
+static void generate_fixed_function(const ShaderState *state,
                                     MString *header, MString *body)
 {
     int i, j;
@@ -373,7 +373,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     /* Skinning */
     unsigned int count;
     bool mix;
-    switch (state.skinning) {
+    switch (state->skinning) {
     case SKINNING_OFF:
         mix = false; count = 0; break;
     case SKINNING_1WEIGHTS:
@@ -393,7 +393,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         break;
     }
     mstring_append_fmt(body, "/* Skinning mode %d */\n",
-                       state.skinning);
+                       state->skinning);
 
     append_skinning_code(body, mix, count, "vec4",
                          "tPosition", "position",
@@ -403,7 +403,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                          "invModelViewMat", "xyz");
 
     /* Normalization */
-    if (state.normalization) {
+    if (state->normalization) {
         mstring_append(body, "tNormal = normalize(tNormal);\n");
     }
 
@@ -417,7 +417,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             /* TODO: TexGen View Model missing! */
             char c = "xyzw"[j];
             char cSuffix = "STRQ"[j];
-            switch (state.texgen[i][j]) {
+            switch (state->texgen[i][j]) {
             case TEXGEN_DISABLE:
                 mstring_append_fmt(body, "oT%d.%c = texture%d.%c;\n",
                                    i, c, i, c);
@@ -475,7 +475,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
     /* Apply texture matrices */
     for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
-        if (state.texture_matrix_enable[i]) {
+        if (state->texture_matrix_enable[i]) {
             mstring_append_fmt(body,
                                "oT%d = oT%d * texMat%d;\n",
                                i, i, i);
@@ -483,7 +483,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     }
 
     /* Lighting */
-    if (state.lighting) {
+    if (state->lighting) {
 
         //FIXME: Do 2 passes if we want 2 sided-lighting?
 
@@ -491,34 +491,34 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         static char alpha_source_specular[] = "specular.a";
         static char alpha_source_material[] = "material_alpha";
         const char *alpha_source = alpha_source_diffuse;
-        if (state.diffuse_src == MATERIAL_COLOR_SRC_MATERIAL) {
+        if (state->diffuse_src == MATERIAL_COLOR_SRC_MATERIAL) {
             mstring_append(header, "uniform float material_alpha;\n");
             alpha_source = alpha_source_material;
-        } else if (state.diffuse_src == MATERIAL_COLOR_SRC_SPECULAR) {
+        } else if (state->diffuse_src == MATERIAL_COLOR_SRC_SPECULAR) {
             alpha_source = alpha_source_specular;
         }
 
-        if (state.ambient_src == MATERIAL_COLOR_SRC_MATERIAL) {
+        if (state->ambient_src == MATERIAL_COLOR_SRC_MATERIAL) {
             mstring_append_fmt(body, "oD0 = vec4(sceneAmbientColor, %s);\n", alpha_source);
-        } else if (state.ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
+        } else if (state->ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
             mstring_append_fmt(body, "oD0 = vec4(diffuse.rgb, %s);\n", alpha_source);
-        } else if (state.ambient_src == MATERIAL_COLOR_SRC_SPECULAR) {
+        } else if (state->ambient_src == MATERIAL_COLOR_SRC_SPECULAR) {
             mstring_append_fmt(body, "oD0 = vec4(specular.rgb, %s);\n", alpha_source);
         }
 
         mstring_append(body, "oD0.rgb *= materialEmissionColor.rgb;\n");
-        if (state.emission_src == MATERIAL_COLOR_SRC_MATERIAL) {
+        if (state->emission_src == MATERIAL_COLOR_SRC_MATERIAL) {
             mstring_append(body, "oD0.rgb += sceneAmbientColor;\n");
-        } else if (state.emission_src == MATERIAL_COLOR_SRC_DIFFUSE) {
+        } else if (state->emission_src == MATERIAL_COLOR_SRC_DIFFUSE) {
             mstring_append(body, "oD0.rgb += diffuse.rgb;\n");
-        } else if (state.emission_src == MATERIAL_COLOR_SRC_SPECULAR) {
+        } else if (state->emission_src == MATERIAL_COLOR_SRC_SPECULAR) {
             mstring_append(body, "oD0.rgb += specular.rgb;\n");
         }
 
         mstring_append(body, "oD1 = vec4(0.0, 0.0, 0.0, specular.a);\n");
 
         for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
-            if (state.light[i] == LIGHT_OFF) {
+            if (state->light[i] == LIGHT_OFF) {
                 continue;
             }
 
@@ -530,8 +530,8 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
             mstring_append_fmt(body, "/* Light %d */ {\n", i);
 
-            if (state.light[i] == LIGHT_LOCAL
-                    || state.light[i] == LIGHT_SPOT) {
+            if (state->light[i] == LIGHT_LOCAL
+                    || state->light[i] == LIGHT_SPOT) {
 
                 mstring_append_fmt(header,
                     "uniform vec3 lightLocalPosition%d;\n"
@@ -552,7 +552,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
             }
 
-            switch(state.light[i]) {
+            switch(state->light[i]) {
             case LIGHT_INFINITE:
 
                 /* lightLocalRange will be 1e+30 here */
@@ -612,7 +612,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             mstring_append(body,
                 "  oD0.xyz += lightAmbient;\n");
 
-            switch (state.diffuse_src) {
+            switch (state->diffuse_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:
                 mstring_append(body,
                                "  oD0.xyz += lightDiffuse;\n");
@@ -640,10 +640,10 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     mstring_append(body, "  oB1 = backSpecular;\n");
 
     /* Fog */
-    if (state.fog_enable) {
+    if (state->fog_enable) {
 
         /* From: https://www.opengl.org/registry/specs/NV/fog_distance.txt */
-        switch(state.foggen) {
+        switch(state->foggen) {
         case FOGGEN_SPEC_ALPHA:
             /* FIXME: Do we have to clamp here? */
             mstring_append(body, "  float fogDistance = clamp(specular.a, 0.0, 1.0);\n");
@@ -654,7 +654,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         case FOGGEN_PLANAR:
         case FOGGEN_ABS_PLANAR:
             mstring_append(body, "  float fogDistance = dot(fogPlane.xyz, tPosition.xyz) + fogPlane.w;\n");
-            if (state.foggen == FOGGEN_ABS_PLANAR) {
+            if (state->foggen == FOGGEN_ABS_PLANAR) {
                 mstring_append(body, "  fogDistance = abs(fogDistance);\n");
             }
             break;
@@ -669,7 +669,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     }
 
     /* If skinning is off the composite matrix already includes the MV matrix */
-    if (state.skinning == SKINNING_OFF) {
+    if (state->skinning == SKINNING_OFF) {
         mstring_append(body, "  tPosition = position;\n");
     }
 
@@ -678,26 +678,26 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     "   oPos.z = oPos.z * 2.0 - oPos.w;\n");
 
     /* FIXME: Testing */
-    if (state.point_params_enable) {
+    if (state->point_params_enable) {
         mstring_append_fmt(
             body,
             "  float d_e = length(position * modelViewMat0);\n"
             "  oPts.x = 1/sqrt(%f + %f*d_e + %f*d_e*d_e) + %f;\n",
-            state.point_params[0], state.point_params[1], state.point_params[2],
-            state.point_params[6]);
+            state->point_params[0], state->point_params[1], state->point_params[2],
+            state->point_params[6]);
         mstring_append_fmt(body, "  oPts.x = min(oPts.x*%f + %f, 64.0) * %d;\n",
-                           state.point_params[3], state.point_params[7],
-                           state.surface_scale_factor);
+                           state->point_params[3], state->point_params[7],
+                           state->surface_scale_factor);
     } else {
-        mstring_append_fmt(body, "  oPts.x = %f * %d;\n", state.point_size,
-                           state.surface_scale_factor);
+        mstring_append_fmt(body, "  oPts.x = %f * %d;\n", state->point_size,
+                           state->surface_scale_factor);
     }
 
     mstring_append(body, "  vtx.inv_w = 1.0 / oPos.w;\n");
 
 }
 
-static MString *generate_vertex_shader(const ShaderState state,
+static MString *generate_vertex_shader(const ShaderState *state,
                                        char vtx_prefix)
 {
     int i;
@@ -761,7 +761,7 @@ STRUCT_VERTEX_DATA);
                        vtx_prefix);
     mstring_append(header, "\n");
     for (i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
-        if (state.compressed_attrs & (1 << i)) {
+        if (state->compressed_attrs & (1 << i)) {
             mstring_append_fmt(header,
                                "layout(location = %d) in int v%d_cmp;\n", i, i);
         } else {
@@ -774,20 +774,20 @@ STRUCT_VERTEX_DATA);
     MString *body = mstring_from_str("void main() {\n");
 
     for (i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
-        if (state.compressed_attrs & (1 << i)) {
+        if (state->compressed_attrs & (1 << i)) {
             mstring_append_fmt(
                 body, "vec4 v%d = decompress_11_11_10(v%d_cmp);\n", i, i);
         }
     }
 
-    if (state.fixed_function) {
+    if (state->fixed_function) {
         generate_fixed_function(state, header, body);
 
-    } else if (state.vertex_program) {
+    } else if (state->vertex_program) {
         vsh_translate(VSH_VERSION_XVS,
-                      (uint32_t*)state.program_data,
-                      state.program_length,
-                      state.z_perspective,
+                      (uint32_t*)state->program_data,
+                      state->program_length,
+                      state->z_perspective,
                       header, body);
     } else {
         assert(false);
@@ -796,13 +796,13 @@ STRUCT_VERTEX_DATA);
 
     /* Fog */
 
-    if (state.fog_enable) {
+    if (state->fog_enable) {
 
-        if (state.vertex_program) {
+        if (state->vertex_program) {
             /* FIXME: Does foggen do something here? Let's do some tracking..
              *
              *   "RollerCoaster Tycoon" has
-             *      state.vertex_program = true; state.foggen == FOGGEN_PLANAR
+             *      state->vertex_program = true; state->foggen == FOGGEN_PLANAR
              *      but expects oFog.x as fogdistance?! Writes oFog.xyzw = v0.z
              */
             mstring_append(body, "  float fogDistance = oFog.x;\n");
@@ -810,7 +810,7 @@ STRUCT_VERTEX_DATA);
 
         /* FIXME: Do this per pixel? */
 
-        switch (state.fog_mode) {
+        switch (state->fog_mode) {
         case FOG_MODE_LINEAR:
         case FOG_MODE_LINEAR_ABS:
 
@@ -860,7 +860,7 @@ STRUCT_VERTEX_DATA);
             break;
         }
         /* Calculate absolute for the modes which need it */
-        switch (state.fog_mode) {
+        switch (state->fog_mode) {
         case FOG_MODE_LINEAR_ABS:
         case FOG_MODE_EXP_ABS:
         case FOG_MODE_EXP2_ABS:
@@ -936,7 +936,7 @@ static GLuint create_gl_shader(GLenum gl_shader_type,
     return shader;
 }
 
-ShaderBinding* generate_shaders(const ShaderState state)
+ShaderBinding* generate_shaders(const ShaderState *state)
 {
     int i, j;
     char tmp[64];
@@ -947,9 +947,9 @@ ShaderBinding* generate_shaders(const ShaderState state)
     /* Create an option geometry shader and find primitive type */
     GLenum gl_primitive_mode;
     MString* geometry_shader_code =
-        generate_geometry_shader(state.polygon_front_mode,
-                                 state.polygon_back_mode,
-                                 state.primitive_mode,
+        generate_geometry_shader(state->polygon_front_mode,
+                                 state->polygon_back_mode,
+                                 state->primitive_mode,
                                  &gl_primitive_mode);
     if (geometry_shader_code) {
         const char* geometry_shader_code_str =
@@ -973,7 +973,7 @@ ShaderBinding* generate_shaders(const ShaderState state)
     mstring_unref(vertex_shader_code);
 
     /* generate a fragment shader from register combiners */
-    MString *fragment_shader_code = psh_translate(state.psh);
+    MString *fragment_shader_code = psh_translate(state->psh);
     const char *fragment_shader_code_str = mstring_get_str(fragment_shader_code);
     GLuint fragment_shader = create_gl_shader(GL_FRAGMENT_SHADER,
                                               fragment_shader_code_str,
@@ -1081,7 +1081,7 @@ ShaderBinding* generate_shaders(const ShaderState state)
         ret->clip_region_loc[i] = glGetUniformLocation(program, tmp);
     }
 
-    if (state.fixed_function) {
+    if (state->fixed_function) {
         ret->material_alpha_loc = glGetUniformLocation(program, "material_alpha");
     } else {
         ret->material_alpha_loc = -1;
