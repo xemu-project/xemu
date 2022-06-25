@@ -21,6 +21,7 @@
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
+#include <locale.h>
 
 #include "shaders_common.h"
 #include "shaders.h"
@@ -941,10 +942,18 @@ static GLuint create_gl_shader(GLenum gl_shader_type,
     return shader;
 }
 
-ShaderBinding* generate_shaders(const ShaderState *state)
+ShaderBinding *generate_shaders(const ShaderState *state)
 {
     int i, j;
     char tmp[64];
+
+    char *previous_numeric_locale = setlocale(LC_NUMERIC, NULL);
+    if (previous_numeric_locale) {
+        previous_numeric_locale = g_strdup(previous_numeric_locale);
+    }
+
+    /* Ensure numeric values are printed with '.' radix, no grouping */
+    setlocale(LC_NUMERIC, "C");
 
     char vtx_prefix;
     GLuint program = glCreateProgram();
@@ -1090,6 +1099,11 @@ ShaderBinding* generate_shaders(const ShaderState *state)
         ret->material_alpha_loc = glGetUniformLocation(program, "material_alpha");
     } else {
         ret->material_alpha_loc = -1;
+    }
+
+    if (previous_numeric_locale) {
+        setlocale(LC_NUMERIC, previous_numeric_locale);
+        g_free(previous_numeric_locale);
     }
 
     return ret;
