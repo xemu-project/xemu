@@ -29,6 +29,7 @@
 #include <cnode.h>
 #include <sstream>
 #include <iostream>
+#include <locale.h>
 
 #include "xemu-settings.h"
 
@@ -151,6 +152,14 @@ bool xemu_settings_load(void)
         if (fd) {
             const char *buf = read_file(fd);
             if (buf) {
+                char *previous_numeric_locale = setlocale(LC_NUMERIC, NULL);
+                if (previous_numeric_locale) {
+                    previous_numeric_locale = g_strdup(previous_numeric_locale);
+                }
+
+                /* Ensure numeric values are scanned with '.' radix, no grouping */
+                setlocale(LC_NUMERIC, "C");
+
                 try {
                     config_tree.update_from_table(toml::parse(buf));
                     success = true;
@@ -162,6 +171,11 @@ bool xemu_settings_load(void)
                    error_msg = oss.str();
                 }
                 free((char*)buf);
+
+                if (previous_numeric_locale) {
+                    setlocale(LC_NUMERIC, previous_numeric_locale);
+                    g_free(previous_numeric_locale);
+                }
             } else {
                 error_msg = "Failed to read config file.\n";
             }
@@ -172,6 +186,7 @@ bool xemu_settings_load(void)
     }
 
     config_tree.store_to_struct(&g_config);
+
     return success;
 }
 
@@ -183,9 +198,22 @@ void xemu_settings_save(void)
         return;
     }
 
+    char *previous_numeric_locale = setlocale(LC_NUMERIC, NULL);
+    if (previous_numeric_locale) {
+        previous_numeric_locale = g_strdup(previous_numeric_locale);
+    }
+
+    /* Ensure numeric values are printed with '.' radix, no grouping */
+    setlocale(LC_NUMERIC, "C");
+
     config_tree.update_from_struct(&g_config);
     fprintf(fd, "%s", config_tree.generate_delta_toml().c_str());
     fclose(fd);
+
+    if (previous_numeric_locale) {
+        setlocale(LC_NUMERIC, previous_numeric_locale);
+        g_free(previous_numeric_locale);
+    }
 }
 
 void add_net_nat_forward_ports(int host, int guest, CONFIG_NET_NAT_FORWARD_PORTS_PROTOCOL protocol)
