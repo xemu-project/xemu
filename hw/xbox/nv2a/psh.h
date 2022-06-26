@@ -79,7 +79,7 @@ typedef struct PshState {
 
     bool window_clip_exclusive;
 
-    bool shade_model_flat;
+    bool smooth_shading;
 } PshState;
 
 MString *psh_translate(const PshState state);
