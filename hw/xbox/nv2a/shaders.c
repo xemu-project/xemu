@@ -139,7 +139,7 @@ static MString* generate_geometry_shader(
         layout_in = "layout(triangles) in;\n";
         layout_out = "layout(line_strip, max_vertices = 4) out;\n";
         body = "  if (gl_PrimitiveIDIn == 0) {\n"
-               "    emit_vertex(0);\n"
+               "    emit_vertex(0, 0);\n"
                "  }\n"
                "  emit_vertex(1, 0);\n"
                "  emit_vertex(2, 0);\n"
