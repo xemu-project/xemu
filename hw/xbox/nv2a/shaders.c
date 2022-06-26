@@ -76,7 +76,7 @@ static MString* generate_geometry_shader(
                                       enum ShaderPolygonMode polygon_back_mode,
                                       enum ShaderPrimitiveMode primitive_mode,
                                       GLenum *gl_primitive_mode,
-                                      bool shade_model_flat)
+                                      bool smooth_shading)
 {
 
     /* FIXME: Missing support for 2-sided-poly mode */
@@ -203,7 +203,7 @@ static MString* generate_geometry_shader(
         }
         if (polygon_mode == POLY_MODE_FILL) {
             *gl_primitive_mode = GL_TRIANGLE_FAN;
-            if (!shade_model_flat) {
+            if (smooth_shading) {
                 return NULL;
             }
             layout_in = "layout(triangles) in;\n";
@@ -232,28 +232,7 @@ static MString* generate_geometry_shader(
     mstring_append(s, layout_in);
     mstring_append(s, layout_out);
     mstring_append(s, "\n");
-    if (shade_model_flat) {
-        mstring_append(s,
-                       STRUCT_V_VERTEX_DATA_IN_ARRAY_FLAT
-                       "\n"
-                       STRUCT_VERTEX_DATA_OUT_FLAT
-                       "\n"
-                       "void emit_vertex(int index, int provoking_index) {\n"
-                       "  gl_Position = gl_in[index].gl_Position;\n"
-                       "  gl_PointSize = gl_in[index].gl_PointSize;\n"
-                       "  vtx_inv_w = v_vtx_inv_w[index];\n"
-                       "  vtxD0 = v_vtxD0[provoking_index];\n"
-                       "  vtxD1 = v_vtxD1[provoking_index];\n"
-                       "  vtxB0 = v_vtxB0[provoking_index];\n"
-                       "  vtxB1 = v_vtxB1[provoking_index];\n"
-                       "  vtxFog = v_vtxFog[index];\n"
-                       "  vtxT0 = v_vtxT0[index];\n"
-                       "  vtxT1 = v_vtxT1[index];\n"
-                       "  vtxT2 = v_vtxT2[index];\n"
-                       "  vtxT3 = v_vtxT3[index];\n"
-                       "  EmitVertex();\n"
-                       "}\n");
-    } else {
+    if (smooth_shading) {
         mstring_append(s,
                        STRUCT_V_VERTEX_DATA_IN_ARRAY_SMOOTH
                        "\n"
@@ -267,6 +246,27 @@ static MString* generate_geometry_shader(
                        "  vtxD1 = v_vtxD1[index];\n"
                        "  vtxB0 = v_vtxB0[index];\n"
                        "  vtxB1 = v_vtxB1[index];\n"
+                       "  vtxFog = v_vtxFog[index];\n"
+                       "  vtxT0 = v_vtxT0[index];\n"
+                       "  vtxT1 = v_vtxT1[index];\n"
+                       "  vtxT2 = v_vtxT2[index];\n"
+                       "  vtxT3 = v_vtxT3[index];\n"
+                       "  EmitVertex();\n"
+                       "}\n");
+    } else {
+        mstring_append(s,
+                       STRUCT_V_VERTEX_DATA_IN_ARRAY_FLAT
+                       "\n"
+                       STRUCT_VERTEX_DATA_OUT_FLAT
+                       "\n"
+                       "void emit_vertex(int index, int provoking_index) {\n"
+                       "  gl_Position = gl_in[index].gl_Position;\n"
+                       "  gl_PointSize = gl_in[index].gl_PointSize;\n"
+                       "  vtx_inv_w = v_vtx_inv_w[index];\n"
+                       "  vtxD0 = v_vtxD0[provoking_index];\n"
+                       "  vtxD1 = v_vtxD1[provoking_index];\n"
+                       "  vtxB0 = v_vtxB0[provoking_index];\n"
+                       "  vtxB1 = v_vtxB1[provoking_index];\n"
                        "  vtxFog = v_vtxFog[index];\n"
                        "  vtxT0 = v_vtxT0[index];\n"
                        "  vtxT1 = v_vtxT1[index];\n"
@@ -807,11 +807,9 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
 "    return vec4(x, y, z, 1);\n"
 "}\n");
     if (prefix_outputs) {
-        if (state->shade_model_flat) {
-            mstring_append(header, STRUCT_V_VERTEX_DATA_OUT_FLAT);
-        } else {
-            mstring_append(header, STRUCT_V_VERTEX_DATA_OUT_SMOOTH);
-        }
+        mstring_append(header, state->smooth_shading ?
+                                   STRUCT_V_VERTEX_DATA_OUT_SMOOTH :
+                                   STRUCT_V_VERTEX_DATA_OUT_FLAT);
         mstring_append(header,
                        "#define vtx_inv_w v_vtx_inv_w\n"
                        "#define vtxD0 v_vtxD0\n"
@@ -825,11 +823,9 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
                        "#define vtxT3 v_vtxT3\n"
                        );
     } else {
-        if (state->shade_model_flat) {
-            mstring_append(header, STRUCT_VERTEX_DATA_OUT_FLAT);
-        } else {
-            mstring_append(header, STRUCT_VERTEX_DATA_OUT_SMOOTH);
-        }
+        mstring_append(header, state->smooth_shading ?
+                                   STRUCT_VERTEX_DATA_OUT_SMOOTH :
+                                   STRUCT_VERTEX_DATA_OUT_FLAT);
     }
     mstring_append(header, "\n");
     for (i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
@@ -1030,7 +1026,7 @@ ShaderBinding *generate_shaders(const ShaderState *state)
                                  state->polygon_back_mode,
                                  state->primitive_mode,
                                  &gl_primitive_mode,
-                                 state->shade_model_flat);
+                                 state->smooth_shading);
     if (geometry_shader_code) {
         const char* geometry_shader_code_str =
              mstring_get_str(geometry_shader_code);
@@ -1042,7 +1038,8 @@ ShaderBinding *generate_shaders(const ShaderState *state)
     }
 
     /* create the vertex shader */
-    MString *vertex_shader_code = generate_vertex_shader(state, geometry_shader_code);
+    MString *vertex_shader_code =
+        generate_vertex_shader(state, geometry_shader_code != NULL);
     GLuint vertex_shader = create_gl_shader(GL_VERTEX_SHADER,
                                             mstring_get_str(vertex_shader_code),
                                             "vertex shader");
@@ -1051,7 +1048,8 @@ ShaderBinding *generate_shaders(const ShaderState *state)
 
     /* generate a fragment shader from register combiners */
     MString *fragment_shader_code = psh_translate(state->psh);
-    const char *fragment_shader_code_str = mstring_get_str(fragment_shader_code);
+    const char *fragment_shader_code_str =
+        mstring_get_str(fragment_shader_code);
     GLuint fragment_shader = create_gl_shader(GL_FRAGMENT_SHADER,
                                               fragment_shader_code_str,
                                               "fragment shader");
@@ -1144,14 +1142,17 @@ ShaderBinding *generate_shaders(const ShaderState *state)
     }
     for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
         snprintf(tmp, sizeof(tmp), "lightInfiniteHalfVector%d", i);
-        ret->light_infinite_half_vector_loc[i] = glGetUniformLocation(program, tmp);
+        ret->light_infinite_half_vector_loc[i] =
+            glGetUniformLocation(program, tmp);
         snprintf(tmp, sizeof(tmp), "lightInfiniteDirection%d", i);
-        ret->light_infinite_direction_loc[i] = glGetUniformLocation(program, tmp);
+        ret->light_infinite_direction_loc[i] =
+            glGetUniformLocation(program, tmp);
 
         snprintf(tmp, sizeof(tmp), "lightLocalPosition%d", i);
         ret->light_local_position_loc[i] = glGetUniformLocation(program, tmp);
         snprintf(tmp, sizeof(tmp), "lightLocalAttenuation%d", i);
-        ret->light_local_attenuation_loc[i] = glGetUniformLocation(program, tmp);
+        ret->light_local_attenuation_loc[i] =
+            glGetUniformLocation(program, tmp);
     }
     for (i = 0; i < 8; i++) {
         snprintf(tmp, sizeof(tmp), "clipRegion[%d]", i);
@@ -1159,7 +1160,8 @@ ShaderBinding *generate_shaders(const ShaderState *state)
     }
 
     if (state->fixed_function) {
-        ret->material_alpha_loc = glGetUniformLocation(program, "material_alpha");
+        ret->material_alpha_loc =
+            glGetUniformLocation(program, "material_alpha");
     } else {
         ret->material_alpha_loc = -1;
     }

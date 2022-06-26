@@ -690,8 +690,9 @@ static MString* psh_convert(struct PixelShader *ps)
     int i;
 
     MString *preflight = mstring_new();
-    mstring_append(preflight,
-                   ps->state.shade_model_flat ? STRUCT_VERTEX_DATA_IN_FLAT : STRUCT_VERTEX_DATA_IN_SMOOTH);
+    mstring_append(preflight, ps->state.smooth_shading ?
+                                  STRUCT_VERTEX_DATA_IN_SMOOTH :
+                                  STRUCT_VERTEX_DATA_IN_FLAT);
     mstring_append(preflight, "\n");
     mstring_append(preflight, "out vec4 fragColor;\n");
     mstring_append(preflight, "\n");
