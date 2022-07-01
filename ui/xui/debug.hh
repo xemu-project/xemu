@@ -31,6 +31,7 @@ class DebugVideoWindow
 public:
     bool m_is_open;
     bool m_transparent;
+    bool m_position_restored;
 
     DebugVideoWindow();
     void Draw();

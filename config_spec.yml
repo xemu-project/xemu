@@ -138,6 +138,25 @@ display:
     auto_scale:
       type: bool
       default: true
+  debug:
+    video_transparency:
+      type: bool
+      default: false
+    video_x_pos:
+      type: number
+      default: 100.0
+    video_y_pos:
+      type: number
+      default: 100.0
+    video_x_winsize:
+      type: number
+      default: 600.0
+    video_y_winsize:
+      type: number
+      default: 150.0
+    video_advancedtree_state:
+      type: bool
+      default: false
 
 audio:
   use_dsp: bool
