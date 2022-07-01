@@ -72,7 +72,8 @@ void pgraph_gl_init_display(NV2AState *d)
         "    out_Color.rgba = texture(tex, texCoord);\n"
         "    if (pvideo_enable) {\n"
         "        vec2 screenCoord = gl_FragCoord.xy - 0.5;\n"
-        "        vec4 output_region = vec4(pvideo_pos.xy, pvideo_pos.xy + pvideo_pos.zw);\n"
+        "        vec4 output_region = vec4(pvideo_pos.xy, pvideo_pos.xy + "
+        "pvideo_pos.zw);\n"
         "        bvec4 clip = bvec4(lessThan(screenCoord, output_region.xy),\n"
         "                           greaterThan(screenCoord, output_region.zw));\n"
         "        if (!any(clip) && (!pvideo_color_key_enable || out_Color.rgb == pvideo_color_key)) {\n"
@@ -102,7 +103,19 @@ void pgraph_gl_init_display(NV2AState *d)
     glBindBuffer(GL_ARRAY_BUFFER, r->disp_rndr.vbo);
     glBufferData(GL_ARRAY_BUFFER, 0, NULL, GL_STATIC_DRAW);
     glGenFramebuffers(1, &r->disp_rndr.fbo);
+
+    glGenTextures(1, &r->disp_rndr.vga_framebuffer_tex);
+    glBindTexture(GL_TEXTURE_2D, r->disp_rndr.vga_framebuffer_tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
     glGenTextures(1, &r->disp_rndr.pvideo_tex);
+    glBindTexture(GL_TEXTURE_2D, r->disp_rndr.pvideo_tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
     assert(glGetError() == GL_NO_ERROR);
 
     glo_set_current(g_nv2a_context_render);
@@ -276,34 +289,115 @@ static void render_display_pvideo_overlay(NV2AState *d)
                 scale_x, scale_y, 1.0f / pg->surface_scale_factor);
 }
 
+static bool check_framebuffer_dirty(NV2AState *d, hwaddr addr, hwaddr size)
+{
+    hwaddr end = TARGET_PAGE_ALIGN(addr + size);
+    addr &= TARGET_PAGE_MASK;
+    assert(end < memory_region_size(d->vram));
+    return memory_region_test_and_clear_dirty(d->vram, addr, end - addr,
+                                              DIRTY_MEMORY_VGA);
+}
+
+static inline void get_vga_buffer_format(NV2AState *d,
+                                         const SurfaceFormatInfo **format,
+                                         int *framebuffer_bytes_per_pixel)
+{
+    int framebuffer_bpp = d->vga.get_bpp(&d->vga);
+    switch (framebuffer_bpp) {
+    case 15:
+        *format = &kelvin_surface_color_format_gl_map
+                      [NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_Z1R5G5B5];
+        *framebuffer_bytes_per_pixel = 2;
+        break;
+    case 16:
+        *format = &kelvin_surface_color_format_gl_map
+                      [NV097_SET_SURFACE_FORMAT_COLOR_LE_R5G6B5];
+        *framebuffer_bytes_per_pixel = 2;
+        break;
+    case 0:
+        /* See note in nv2a_get_bpp. For the purposes of selecting a surface,
+         * this is treated as 32bpp. */
+    case 32:
+        *format = &kelvin_surface_color_format_gl_map
+                      [NV097_SET_SURFACE_FORMAT_COLOR_LE_X8R8G8B8_Z8R8G8B8];
+        *framebuffer_bytes_per_pixel = 4;
+        break;
+    default:
+        fprintf(stderr, "Unexpected framebuffer_bpp %d\n", framebuffer_bpp);
+        assert(!"Unexpected framebuffer_bpp value");
+    }
+}
+
 static void render_display(NV2AState *d, SurfaceBinding *surface)
 {
     struct PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    unsigned int width, height;
+    int vga_width, vga_height;
     VGADisplayParams vga_display_params;
-    d->vga.get_resolution(&d->vga, (int*)&width, (int*)&height);
+    d->vga.get_resolution(&d->vga, &vga_width, &vga_height);
     d->vga.get_params(&d->vga, &vga_display_params);
-    int line_offset = vga_display_params.line_offset ? surface->pitch / vga_display_params.line_offset : 1;
 
     /* Adjust viewport height for interlaced mode, used only in 1080i */
     if (d->vga.cr[NV_PRMCIO_INTERLACE_MODE] != NV_PRMCIO_INTERLACE_MODE_DISABLED) {
-        height *= 2;
+        vga_height *= 2;
     }
 
+    unsigned int width = vga_width;
+    unsigned int height = vga_height;
     pgraph_apply_scaling_factor(pg, &width, &height);
+
+    int line_offset = 1;
+    const SurfaceFormatInfo *format;
+    int framebuffer_bytes_per_pixel;
+    get_vga_buffer_format(d, &format, &framebuffer_bytes_per_pixel);
+
+    if (surface && surface->color && surface->width == width &&
+        surface->height == height) {
+        line_offset = vga_display_params.line_offset ?
+                          surface->pitch / vga_display_params.line_offset :
+                          1;
+        format = &surface->fmt;
+    } else {
+        if (vga_width * framebuffer_bytes_per_pixel >
+            vga_display_params.line_offset) {
+            /* Some games without widescreen support (e.g., Pirates: The Legend
+             * of Black Kat) will set a VGA resolution that is wider than a
+             * single line when run with widescreen enabled in the dashboard.
+             */
+            vga_width =
+                vga_display_params.line_offset / framebuffer_bytes_per_pixel;
+            width = vga_width;
+            height = vga_height;
+            pgraph_apply_scaling_factor(pg, &width, &height);
+        }
+        hwaddr framebuffer = d->pcrtc.start;
+        size_t length = vga_display_params.line_offset * vga_height;
+        pgraph_gl_download_surfaces_in_range_if_dirty(pg, framebuffer, length);
+
+        bool dirty = check_framebuffer_dirty(d, framebuffer, length);
+        if (dirty) {
+            nv2a_profile_inc_counter(NV2A_PROF_SURF_UPLOAD);
+            glBindTexture(GL_TEXTURE_2D, r->disp_rndr.vga_framebuffer_tex);
+            pgraph_gl_upload_vram_to_bound_texture(
+                d, framebuffer, false, vga_width, vga_height,
+                vga_display_params.line_offset,
+                vga_display_params.line_offset * vga_height, format);
+            assert(glGetError() == GL_NO_ERROR);
+        }
+        surface = NULL;
+    }
 
     glBindFramebuffer(GL_FRAMEBUFFER, r->disp_rndr.fbo);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, r->gl_display_buffer);
-    bool recreate = (
-        surface->fmt.gl_internal_format != r->gl_display_buffer_internal_format
-        || width != r->gl_display_buffer_width
-        || height != r->gl_display_buffer_height
-        || surface->fmt.gl_format != r->gl_display_buffer_format
-        || surface->fmt.gl_type != r->gl_display_buffer_type
-        );
+
+    bool recreate =
+        width != r->gl_display_buffer_width ||
+        height != r->gl_display_buffer_height ||
+        format->gl_internal_format != r->gl_display_buffer_internal_format ||
+        format->gl_format != r->gl_display_buffer_format ||
+        format->gl_type != r->gl_display_buffer_type;
 
     if (recreate) {
         /* XXX: There's apparently a bug in some Intel OpenGL drivers for
@@ -317,11 +411,11 @@ static void render_display(NV2AState *d, SurfaceBinding *surface)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        r->gl_display_buffer_internal_format = surface->fmt.gl_internal_format;
         r->gl_display_buffer_width = width;
         r->gl_display_buffer_height = height;
-        r->gl_display_buffer_format = surface->fmt.gl_format;
-        r->gl_display_buffer_type = surface->fmt.gl_type;
+        r->gl_display_buffer_internal_format = format->gl_internal_format;
+        r->gl_display_buffer_format = format->gl_format;
+        r->gl_display_buffer_type = format->gl_type;
         glTexImage2D(GL_TEXTURE_2D, 0,
             r->gl_display_buffer_internal_format,
             r->gl_display_buffer_width,
@@ -338,7 +432,8 @@ static void render_display(NV2AState *d, SurfaceBinding *surface)
     glDrawBuffers(1, DrawBuffers);
     assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 
-    glBindTexture(GL_TEXTURE_2D, surface->gl_buffer);
+    glBindTexture(GL_TEXTURE_2D, surface ? surface->gl_buffer :
+                                           r->disp_rndr.vga_framebuffer_tex);
     glBindVertexArray(r->disp_rndr.vao);
     glBindBuffer(GL_ARRAY_BUFFER, r->disp_rndr.vbo);
     glUseProgram(r->disp_rndr.prog);
@@ -377,16 +472,19 @@ void pgraph_gl_sync(NV2AState *d)
     VGADisplayParams vga_display_params;
     d->vga.get_params(&d->vga, &vga_display_params);
 
-    SurfaceBinding *surface = pgraph_gl_surface_get_within(d, d->pcrtc.start + vga_display_params.line_offset);
-    if (surface == NULL || !surface->color || !surface->width || !surface->height) {
+    hwaddr framebuffer = d->pcrtc.start + vga_display_params.line_offset;
+    if (!framebuffer) {
         qemu_event_set(&d->pgraph.sync_complete);
         return;
     }
+    SurfaceBinding *surface = pgraph_gl_surface_get_within(d, framebuffer);
+    if (surface && surface->color  && surface->width && surface->height) {
+        /* FIXME: Sanity check surface dimensions */
 
-    /* FIXME: Sanity check surface dimensions */
+        /* Wait for queued commands to complete */
+        pgraph_gl_upload_surface_data(d, surface, !tcg_enabled());
+    }
 
-    /* Wait for queued commands to complete */
-    pgraph_gl_upload_surface_data(d, surface, !tcg_enabled());
     gl_fence();
     assert(glGetError() == GL_NO_ERROR);
 
@@ -414,22 +512,22 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
     VGADisplayParams vga_display_params;
     d->vga.get_params(&d->vga, &vga_display_params);
 
-    SurfaceBinding *surface = pgraph_gl_surface_get_within(
-        d, d->pcrtc.start + vga_display_params.line_offset);
-    if (surface == NULL || !surface->color) {
+    const hwaddr framebuffer = d->pcrtc.start + vga_display_params.line_offset;
+    if (!framebuffer) {
         qemu_mutex_unlock(&d->pfifo.lock);
         return 0;
     }
 
-    assert(surface->color);
-    assert(surface->fmt.gl_attachment == GL_COLOR_ATTACHMENT0);
-    assert(surface->fmt.gl_format == GL_RGBA
-        || surface->fmt.gl_format == GL_RGB
-        || surface->fmt.gl_format == GL_BGR
-        || surface->fmt.gl_format == GL_BGRA
-        );
+    SurfaceBinding *surface = pgraph_gl_surface_get_within(d, framebuffer);
+    if (surface && surface->color) {
+        assert(surface->fmt.gl_attachment == GL_COLOR_ATTACHMENT0);
+        assert(surface->fmt.gl_format == GL_RGBA ||
+               surface->fmt.gl_format == GL_RGB ||
+               surface->fmt.gl_format == GL_BGR ||
+               surface->fmt.gl_format == GL_BGRA);
+        surface->frame_time = pg->frame_time;
+    }
 
-    surface->frame_time = pg->frame_time;
     qemu_event_reset(&d->pgraph.sync_complete);
     qatomic_set(&pg->sync_pending, true);
     pfifo_kick(d);
