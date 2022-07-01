@@ -5354,6 +5354,12 @@ static bool pgraph_check_surface_to_texture_compatibility(
 {
     // FIXME: Better checks/handling on formats and surface-texture compat
 
+    if (surface->pitch != shape->pitch ||
+        surface->width != shape->width ||
+        surface->height != shape->height) {
+        return false;
+    }
+
     int surface_fmt = surface->shape.color_format;
     int texture_fmt = shape->color_format;
 
