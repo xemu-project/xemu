@@ -7216,7 +7216,7 @@ static void upload_gl_texture(GLenum gl_target,
                 unsigned int physical_width = (width + 3) & ~3,
                              physical_height = (height + 3) & ~3;
                 if (physical_width != width) {
-                    glPixelStorei(GL_UNPACK_ROW_LENGTH, physical_width * 4);
+                    glPixelStorei(GL_UNPACK_ROW_LENGTH, physical_width);
                 }
                 uint8_t *converted = decompress_2d_texture_data(
                     f.gl_internal_format, texture_data, physical_width,
