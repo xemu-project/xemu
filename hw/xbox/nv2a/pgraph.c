@@ -5684,15 +5684,14 @@ static void pgraph_download_surface_data_to_buffer(NV2AState *d,
          * FIXME: Consider swizzle in shader
          */
         assert(pg->surface_scale_factor == 1 || downscale);
-        swizzle_buf = (uint8_t *)g_malloc(surface->height * surface->pitch);
+        swizzle_buf = (uint8_t *)g_malloc(surface->size);
         gl_read_buf = swizzle_buf;
     }
 
     if (downscale) {
         pg->scale_buf = (uint8_t *)g_realloc(
             pg->scale_buf, pg->surface_scale_factor * pg->surface_scale_factor *
-                               surface->height * surface->pitch *
-                               surface->fmt.bytes_per_pixel);
+                               surface->size);
         gl_read_buf = pg->scale_buf;
     }
 
@@ -6000,7 +5999,7 @@ static void pgraph_populate_surface_binding_entry_sized(NV2AState *d,
     entry->width = width;
     entry->height = height;
     entry->pitch = surface->pitch;
-    entry->size = height * surface->pitch;
+    entry->size = height * MAX(surface->pitch, width * fmt.bytes_per_pixel);
     entry->upload_pending = true;
     entry->download_pending = false;
     entry->draw_dirty = false;
