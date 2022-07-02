@@ -993,7 +993,7 @@ static MString* psh_convert(struct PixelShader *ps)
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_3D */\n");
             mstring_append_fmt(vars,
                "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n"
-               "vec2 dotSTR%d = vec3(dot%d, dot%d, dot%d));\n",
+               "vec3 dotSTR%d = vec3(dot%d, dot%d, dot%d);\n",
                 i, i, dotmap_func, ps->input_tex[i],
                 i, i-2, i-1, i);
 
