@@ -62,7 +62,11 @@ void pvideo_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
         pvideo_vga_invalidate(d);
         break;
     case NV_PVIDEO_STOP:
-        d->pvideo.regs[NV_PVIDEO_BUFFER] = 0;
+        // PVIDEO_STOP may be set many times during the course of video playback
+        // but the overlay is only torn down if the 0th bit is 1.
+        if (val & 0x01) {
+            d->pvideo.regs[NV_PVIDEO_BUFFER] = 0;
+        }
         // d->vga.enable_overlay = false;
         pvideo_vga_invalidate(d);
         break;
