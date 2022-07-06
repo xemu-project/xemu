@@ -32,6 +32,8 @@ public:
     bool m_is_open;
     bool m_transparent;
     bool m_position_restored;
+    bool m_resize_init_complete;
+    float prev_m_scale;
 
     DebugVideoWindow();
     void Draw();
