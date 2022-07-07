@@ -6403,17 +6403,20 @@ static bool pgraph_check_texture_possibly_dirty(NV2AState *d, hwaddr texture_vra
     return possibly_dirty;
 }
 
-static void apply_texture_parameters(GLenum gl_target,
+static void apply_texture_parameters(TextureBinding *binding,
                                      const ColorFormatInfo *f,
                                      unsigned int dimensionality,
-                                     unsigned int min_filter,
-                                     unsigned int mag_filter,
-                                     unsigned int addru,
-                                     unsigned int addrv,
-                                     unsigned int addrp,
+                                     unsigned int filter,
+                                     unsigned int address,
                                      bool is_bordered,
                                      uint32_t border_color)
 {
+    unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
+    unsigned int mag_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG);
+    unsigned int addru = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU);
+    unsigned int addrv = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV);
+    unsigned int addrp = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRP);
+
     if (f->linear) {
         /* somtimes games try to set mipmap min filters on linear textures.
              * this could indicate a bug... */
@@ -6429,37 +6432,59 @@ static void apply_texture_parameters(GLenum gl_target,
         }
     }
 
-    glTexParameteri(gl_target, GL_TEXTURE_MIN_FILTER,
-                    pgraph_texture_min_filter_map[min_filter]);
-    glTexParameteri(gl_target, GL_TEXTURE_MAG_FILTER,
-                    pgraph_texture_mag_filter_map[mag_filter]);
+    if (min_filter != binding->min_filter) {
+        glTexParameteri(binding->gl_target, GL_TEXTURE_MIN_FILTER,
+                        pgraph_texture_min_filter_map[min_filter]);
+        binding->min_filter = min_filter;
+    }
+    if (mag_filter != binding->mag_filter) {
+        glTexParameteri(binding->gl_target, GL_TEXTURE_MAG_FILTER,
+                        pgraph_texture_mag_filter_map[mag_filter]);
+        binding->mag_filter = mag_filter;
+    }
 
     /* Texture wrapping */
     assert(addru < ARRAY_SIZE(pgraph_texture_addr_map));
-    glTexParameteri(gl_target, GL_TEXTURE_WRAP_S,
-                    pgraph_texture_addr_map[addru]);
+    if (addru != binding->addru) {
+        glTexParameteri(binding->gl_target, GL_TEXTURE_WRAP_S,
+                        pgraph_texture_addr_map[addru]);
+        binding->addru = addru;
+    }
+    bool needs_border_color = binding->addru == NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER;
     if (dimensionality > 1) {
-        assert(addrv < ARRAY_SIZE(pgraph_texture_addr_map));
-        glTexParameteri(gl_target, GL_TEXTURE_WRAP_T,
-                        pgraph_texture_addr_map[addrv]);
+        if (addrv != binding->addrv) {
+            assert(addrv < ARRAY_SIZE(pgraph_texture_addr_map));
+            glTexParameteri(binding->gl_target, GL_TEXTURE_WRAP_T,
+                            pgraph_texture_addr_map[addrv]);
+            binding->addrv = addrv;
+        }
+        needs_border_color = needs_border_color || binding->addrv == NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER;
     }
     if (dimensionality > 2) {
-        assert(addrp < ARRAY_SIZE(pgraph_texture_addr_map));
-        glTexParameteri(gl_target, GL_TEXTURE_WRAP_R,
-                        pgraph_texture_addr_map[addrp]);
+        if (addrp != binding->addrp) {
+            assert(addrp < ARRAY_SIZE(pgraph_texture_addr_map));
+            glTexParameteri(binding->gl_target, GL_TEXTURE_WRAP_R,
+                            pgraph_texture_addr_map[addrp]);
+            binding->addrp = addrp;
+        }
+        needs_border_color = needs_border_color || binding->addrp == NV_PGRAPH_TEXADDRESS0_ADDRU_BORDER;
     }
 
-    if (!is_bordered) {
-        /* FIXME: Only upload if necessary? [s, t or r = GL_CLAMP_TO_BORDER] */
-        GLfloat gl_border_color[] = {
-            /* FIXME: Color channels might be wrong order */
-            ((border_color >> 16) & 0xFF) / 255.0f, /* red */
-            ((border_color >> 8) & 0xFF) / 255.0f,  /* green */
-            (border_color & 0xFF) / 255.0f,         /* blue */
-            ((border_color >> 24) & 0xFF) / 255.0f  /* alpha */
-        };
-        glTexParameterfv(gl_target, GL_TEXTURE_BORDER_COLOR,
-                         gl_border_color);
+    if (!is_bordered && needs_border_color) {
+        if (!binding->border_color_set || binding->border_color != border_color) {
+            GLfloat gl_border_color[] = {
+                /* FIXME: Color channels might be wrong order */
+                ((border_color >> 16) & 0xFF) / 255.0f, /* red */
+                ((border_color >> 8) & 0xFF) / 255.0f, /* green */
+                (border_color & 0xFF) / 255.0f, /* blue */
+                ((border_color >> 24) & 0xFF) / 255.0f /* alpha */
+            };
+            glTexParameterfv(binding->gl_target, GL_TEXTURE_BORDER_COLOR,
+                             gl_border_color);
+
+            binding->border_color_set = true;
+            binding->border_color = border_color;
+        }
     }
 }
 
@@ -6522,13 +6547,6 @@ static void pgraph_bind_textures(NV2AState *d)
         unsigned int lod_bias =
             GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS);
 #endif
-        unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
-        unsigned int mag_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG);
-
-        unsigned int addru = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU);
-        unsigned int addrv = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRV);
-        unsigned int addrp = GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRP);
-
         unsigned int border_source = GET_MASK(fmt,
                                               NV_PGRAPH_TEXFMT0_BORDER_SOURCE);
         uint32_t border_color = pg->regs[NV_PGRAPH_BORDERCOLOR0 + i*4];
@@ -6715,14 +6733,11 @@ static void pgraph_bind_textures(NV2AState *d)
             if (reusable) {
                 glBindTexture(pg->texture_binding[i]->gl_target,
                               pg->texture_binding[i]->gl_texture);
-                apply_texture_parameters(pg->texture_binding[i]->gl_target,
+                apply_texture_parameters(pg->texture_binding[i],
                                          &f,
                                          dimensionality,
-                                         min_filter,
-                                         mag_filter,
-                                         addru,
-                                         addrv,
-                                         addrp,
+                                         filter,
+                                         address,
                                          is_bordered,
                                          border_color);
                 continue;
@@ -6843,14 +6858,11 @@ static void pgraph_bind_textures(NV2AState *d)
             }
         }
 
-        apply_texture_parameters(binding->gl_target,
+        apply_texture_parameters(binding,
                                  &f,
                                  dimensionality,
-                                 min_filter,
-                                 mag_filter,
-                                 addru,
-                                 addrv,
-                                 addrp,
+                                 filter,
+                                 address,
                                  is_bordered,
                                  border_color);
 
@@ -7592,6 +7604,12 @@ static TextureBinding* generate_texture(const TextureShape s,
     ret->refcnt = 1;
     ret->draw_time = 0;
     ret->data_hash = 0;
+    ret->min_filter = 0xFFFFFFFF;
+    ret->mag_filter = 0xFFFFFFFF;
+    ret->addru = 0xFFFFFFFF;
+    ret->addrv = 0xFFFFFFFF;
+    ret->addrp = 0xFFFFFFFF;
+    ret->border_color_set = false;
     return ret;
 }
 

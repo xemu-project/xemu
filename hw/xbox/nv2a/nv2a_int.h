@@ -177,6 +177,13 @@ typedef struct TextureBinding {
     int draw_time;
     uint64_t data_hash;
     unsigned int scale;
+    unsigned int min_filter;
+    unsigned int mag_filter;
+    unsigned int addru;
+    unsigned int addrv;
+    unsigned int addrp;
+    uint32_t border_color;
+    bool border_color_set;
 } TextureBinding;
 
 typedef struct TextureKey {
