@@ -5068,7 +5068,17 @@ static void pgraph_render_display_pvideo_overlay(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
 
-    bool enabled = d->pvideo.regs[NV_PVIDEO_BUFFER] & NV_PVIDEO_BUFFER_0_USE;
+    // FIXME: This check against PVIDEO_SIZE_IN does not match HW behavior.
+    // Many games seem to pass this value when initializing or tearing down
+    // PVIDEO. On its own, this generally does not result in the overlay being
+    // hidden, however there are certain games (e.g., Ultimate Beach Soccer)
+    // that use an unknown mechanism to hide the overlay without explicitly
+    // stopping it.
+    // Since the value seems to be set to 0xFFFFFFFF only in cases where the
+    // content is not valid, it is probably good enough to treat it as an
+    // implicit stop. 
+    bool enabled = (d->pvideo.regs[NV_PVIDEO_BUFFER] & NV_PVIDEO_BUFFER_0_USE)
+        && d->pvideo.regs[NV_PVIDEO_SIZE_IN] != 0xFFFFFFFF;
     glUniform1ui(d->pgraph.disp_rndr.pvideo_enable_loc, enabled);
     if (!enabled) {
         return;
