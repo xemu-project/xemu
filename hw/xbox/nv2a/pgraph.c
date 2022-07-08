@@ -5054,8 +5054,9 @@ static uint8_t *convert_texture_data__CR8YB8CB8YA8(const uint8_t *data,
     int x, y;
     for (y = 0; y < height; y++) {
         const uint8_t *line = &data[y * pitch];
+        const uint32_t row_offset = y * width;
         for (x = 0; x < width; x++) {
-            uint8_t *pixel = &converted_data[(y * width + x) * 4];
+            uint8_t *pixel = &converted_data[(row_offset + x) * 4];
             convert_yuy2_to_rgb(line, x, &pixel[0], &pixel[1], &pixel[2]);
             pixel[3] = 255;
         }
@@ -5093,14 +5094,25 @@ static void pgraph_render_display_pvideo_overlay(NV2AState *d)
     int in_color =
         GET_MASK(d->pvideo.regs[NV_PVIDEO_FORMAT], NV_PVIDEO_FORMAT_COLOR);
 
-    /* TODO: support other color formats */
-    assert(in_color == NV_PVIDEO_FORMAT_COLOR_LE_CR8YB8CB8YA8);
-    assert(in_pitch >= in_width * 2);
-
     unsigned int out_width =
         GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_OUT], NV_PVIDEO_SIZE_OUT_WIDTH);
     unsigned int out_height =
         GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_OUT], NV_PVIDEO_SIZE_OUT_HEIGHT);
+
+    // On HW, setting NV_PVIDEO_SIZE_IN larger than NV_PVIDEO_SIZE_OUT results
+    // in them being capped to the output size, content is not scaled. This is
+    // particularly important as NV_PVIDEO_SIZE_IN may be set to 0xFFFFFFFF
+    // during initialization or teardown.
+    if (in_width > out_width) {
+        in_width = out_width;
+    }
+    if (in_height > out_height) {
+        in_height = out_height;
+    }
+
+    /* TODO: support other color formats */
+    assert(in_color == NV_PVIDEO_FORMAT_COLOR_LE_CR8YB8CB8YA8);
+
     unsigned int out_x =
         GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_OUT], NV_PVIDEO_POINT_OUT_X);
     unsigned int out_y =
