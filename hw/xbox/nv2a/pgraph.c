@@ -4568,6 +4568,7 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
         bool cubemap = GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_CUBEMAPENABLE);
         state.psh.border_logical_size[i][0] = 0.0f;
         state.psh.border_logical_size[i][1] = 0.0f;
+        state.psh.border_logical_size[i][2] = 0.0f;
         if (border_source != NV_PGRAPH_TEXFMT0_BORDER_SOURCE_COLOR) {
             if (!f.linear && !cubemap) {
                 // The actual texture will be (at least) double the reported
@@ -4577,8 +4578,13 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
                         1 << GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_BASE_SIZE_U);
                 unsigned int reported_height =
                         1 << GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_BASE_SIZE_V);
+                unsigned int reported_depth =
+                    1 << GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_BASE_SIZE_P);
+
                 state.psh.border_logical_size[i][0] = reported_width;
                 state.psh.border_logical_size[i][1] = reported_height;
+                state.psh.border_logical_size[i][2] = reported_depth;
+
                 if (reported_width < 8) {
                     state.psh.border_inv_real_size[i][0] = 0.0625f;
                 } else {
@@ -4590,6 +4596,12 @@ static void pgraph_bind_shaders(PGRAPHState *pg)
                 } else {
                     state.psh.border_inv_real_size[i][1] =
                             1.0f / (reported_height * 2.0f);
+                }
+                if (reported_depth < 8) {
+                    state.psh.border_inv_real_size[i][2] = 0.0625f;
+                } else {
+                    state.psh.border_inv_real_size[i][2] =
+                            1.0f / (reported_depth * 2.0f);
                 }
             } else {
                 NV2A_UNIMPLEMENTED("Border source texture with linear %d cubemap %d",
@@ -7214,10 +7226,12 @@ static void upload_gl_texture(GLenum gl_target,
     unsigned int adjusted_width = s.width;
     unsigned int adjusted_height = s.height;
     unsigned int adjusted_pitch = s.pitch;
+    unsigned int adjusted_depth = s.depth;
     if (!f.linear && s.border) {
         adjusted_width = MAX(16, adjusted_width * 2);
         adjusted_height = MAX(16, adjusted_height * 2);
         adjusted_pitch = adjusted_width * (s.pitch / s.width);
+        adjusted_depth = MAX(16, s.depth * 2);
     }
 
     switch(gl_target) {
@@ -7353,7 +7367,7 @@ static void upload_gl_texture(GLenum gl_target,
 
         unsigned int width = adjusted_width;
         unsigned int height = adjusted_height;
-        unsigned int depth = s.depth;
+        unsigned int depth = adjusted_depth;
 
         assert(f.linear == false);
 

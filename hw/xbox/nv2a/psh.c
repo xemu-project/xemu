@@ -679,10 +679,10 @@ static void apply_border_adjustment(const struct PixelShader *ps, MString *vars,
 
     mstring_append_fmt(
         vars,
-        "vec2 t%dLogicalSize = vec2(%f, %f);\n"
-        "%s.xy = (%s.xy * t%dLogicalSize + vec2(4, 4)) * vec2(%f, %f);\n",
-        i, ps->state.border_logical_size[i][0], ps->state.border_logical_size[i][1],
-        var_name, var_name, i, ps->state.border_inv_real_size[i][0], ps->state.border_inv_real_size[i][1]);
+        "vec3 t%dLogicalSize = vec3(%f, %f, %f);\n"
+        "%s.xyz = (%s.xyz * t%dLogicalSize + vec3(4, 4, 4)) * vec3(%f, %f, %f);\n",
+        i, ps->state.border_logical_size[i][0], ps->state.border_logical_size[i][1], ps->state.border_logical_size[i][2],
+        var_name, var_name, i, ps->state.border_inv_real_size[i][0], ps->state.border_inv_real_size[i][1], ps->state.border_inv_real_size[i][2]);
 }
 
 static MString* psh_convert(struct PixelShader *ps)
