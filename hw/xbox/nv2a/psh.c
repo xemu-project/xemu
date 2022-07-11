@@ -801,10 +801,17 @@ static MString* psh_convert(struct PixelShader *ps)
 
     /* calculate perspective-correct inputs */
     MString *vars = mstring_new();
-    mstring_append(vars, "vec4 pD0 = vtxD0 / vtx_inv_w;\n");
-    mstring_append(vars, "vec4 pD1 = vtxD1 / vtx_inv_w;\n");
-    mstring_append(vars, "vec4 pB0 = vtxB0 / vtx_inv_w;\n");
-    mstring_append(vars, "vec4 pB1 = vtxB1 / vtx_inv_w;\n");
+    if (ps->state.smooth_shading) {
+        mstring_append(vars, "vec4 pD0 = vtxD0 / vtx_inv_w;\n");
+        mstring_append(vars, "vec4 pD1 = vtxD1 / vtx_inv_w;\n");
+        mstring_append(vars, "vec4 pB0 = vtxB0 / vtx_inv_w;\n");
+        mstring_append(vars, "vec4 pB1 = vtxB1 / vtx_inv_w;\n");
+    } else {
+        mstring_append(vars, "vec4 pD0 = vtxD0 / vtx_inv_w_flat;\n");
+        mstring_append(vars, "vec4 pD1 = vtxD1 / vtx_inv_w_flat;\n");
+        mstring_append(vars, "vec4 pB0 = vtxB0 / vtx_inv_w_flat;\n");
+        mstring_append(vars, "vec4 pB1 = vtxB1 / vtx_inv_w_flat;\n");
+    }
     mstring_append(vars, "vec4 pFog = vec4(fogColor.rgb, clamp(vtxFog / vtx_inv_w, 0.0, 1.0));\n");
     mstring_append(vars, "vec4 pT0 = vtxT0 / vtx_inv_w;\n");
     mstring_append(vars, "vec4 pT1 = vtxT1 / vtx_inv_w;\n");
