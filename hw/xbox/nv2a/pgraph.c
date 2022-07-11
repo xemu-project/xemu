@@ -21,6 +21,8 @@
 
 #include "nv2a_int.h"
 
+#include <math.h>
+
 #include "nv2a_vsh_emulator.h"
 #include "s3tc.h"
 #include "ui/xemu-settings.h"
@@ -4998,7 +5000,9 @@ static void pgraph_init_display_renderer(NV2AState *d)
         "uniform sampler2D tex;\n"
         "uniform bool pvideo_enable;\n"
         "uniform sampler2D pvideo_tex;\n"
+        "uniform vec2 pvideo_in_pos;\n"
         "uniform vec4 pvideo_pos;\n"
+        "uniform vec3 pvideo_scale;\n"
         "uniform bool pvideo_color_key_enable;\n"
         "uniform vec4 pvideo_color_key;\n"
         "uniform vec2 display_size;\n"
@@ -5012,15 +5016,14 @@ static void pgraph_init_display_renderer(NV2AState *d)
         "    out_Color.rgba = texture(tex, texCoord);\n"
         "    if (pvideo_enable) {\n"
         "        vec2 screenCoord = gl_FragCoord.xy - 0.5;\n"
-        "        vec4 extent = vec4(pvideo_pos.xy, pvideo_pos.xy + pvideo_pos.zw);\n"
-        "        bvec4 clip = bvec4(lessThan(screenCoord, extent.xy),\n"
-        "                           greaterThan(screenCoord, extent.zw));\n"
-        "        if (!any(clip)) {\n"
-        "            vec2 videoCoord = (screenCoord - pvideo_pos.xy) / pvideo_pos.zw;\n"
-        "            videoCoord.y *= -1.0;\n"
-        "            if (!pvideo_color_key_enable || out_Color.rgba == pvideo_color_key) {\n"
-        "               out_Color.rgba = texture(pvideo_tex, videoCoord);\n"
-        "            }\n"
+        "        vec4 output_region = vec4(pvideo_pos.xy, pvideo_pos.xy + pvideo_pos.zw);\n"
+        "        bvec4 clip = bvec4(lessThan(screenCoord, output_region.xy),\n"
+        "                           greaterThan(screenCoord, output_region.zw));\n"
+        "        if (!any(clip) && (!pvideo_color_key_enable || out_Color.rgba == pvideo_color_key)) {\n"
+        "            vec2 out_xy = (screenCoord - pvideo_pos.xy) * pvideo_scale.z;\n"
+        "            vec2 in_st = (pvideo_in_pos + out_xy * pvideo_scale.xy) / textureSize(pvideo_tex, 0);\n"
+        "            in_st.y *= -1.0;\n"
+        "            out_Color.rgba = texture(pvideo_tex, in_st);\n"
         "        }\n"
         "    }\n"
         "}\n";
@@ -5029,7 +5032,9 @@ static void pgraph_init_display_renderer(NV2AState *d)
     pg->disp_rndr.tex_loc = glGetUniformLocation(pg->disp_rndr.prog, "tex");
     pg->disp_rndr.pvideo_enable_loc = glGetUniformLocation(pg->disp_rndr.prog, "pvideo_enable");
     pg->disp_rndr.pvideo_tex_loc = glGetUniformLocation(pg->disp_rndr.prog, "pvideo_tex");
+    pg->disp_rndr.pvideo_in_pos_loc = glGetUniformLocation(pg->disp_rndr.prog, "pvideo_in_pos");
     pg->disp_rndr.pvideo_pos_loc = glGetUniformLocation(pg->disp_rndr.prog, "pvideo_pos");
+    pg->disp_rndr.pvideo_scale_loc = glGetUniformLocation(pg->disp_rndr.prog, "pvideo_scale");
     pg->disp_rndr.pvideo_color_key_enable_loc = glGetUniformLocation(pg->disp_rndr.prog, "pvideo_color_key_enable");
     pg->disp_rndr.pvideo_color_key_loc = glGetUniformLocation(pg->disp_rndr.prog, "pvideo_color_key");
     pg->disp_rndr.display_size_loc = glGetUniformLocation(pg->disp_rndr.prog, "display_size");
@@ -5064,6 +5069,14 @@ static uint8_t *convert_texture_data__CR8YB8CB8YA8(const uint8_t *data,
     return converted_data;
 }
 
+static inline float pvideo_calculate_scale(unsigned int din_dout,
+                                           unsigned int output_size)
+{
+    float calculated_in = din_dout * (output_size - 1);
+    calculated_in = floorf(calculated_in / (1 << 20) + 0.5f);
+    return (calculated_in + 1.0f) / output_size;
+}
+
 static void pgraph_render_display_pvideo_overlay(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
@@ -5076,7 +5089,7 @@ static void pgraph_render_display_pvideo_overlay(NV2AState *d)
     // stopping it.
     // Since the value seems to be set to 0xFFFFFFFF only in cases where the
     // content is not valid, it is probably good enough to treat it as an
-    // implicit stop. 
+    // implicit stop.
     bool enabled = (d->pvideo.regs[NV_PVIDEO_BUFFER] & NV_PVIDEO_BUFFER_0_USE)
         && d->pvideo.regs[NV_PVIDEO_SIZE_IN] != 0xFFFFFFFF;
     glUniform1ui(d->pgraph.disp_rndr.pvideo_enable_loc, enabled);
@@ -5093,12 +5106,11 @@ static void pgraph_render_display_pvideo_overlay(NV2AState *d)
     int in_height =
         GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_IN], NV_PVIDEO_SIZE_IN_HEIGHT);
 
-    /* FIXME
     int in_s = GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_IN],
                         NV_PVIDEO_POINT_IN_S);
     int in_t = GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_IN],
                         NV_PVIDEO_POINT_IN_T);
-    */
+
     int in_pitch =
         GET_MASK(d->pvideo.regs[NV_PVIDEO_FORMAT], NV_PVIDEO_FORMAT_PITCH);
     int in_color =
@@ -5109,15 +5121,26 @@ static void pgraph_render_display_pvideo_overlay(NV2AState *d)
     unsigned int out_height =
         GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_OUT], NV_PVIDEO_SIZE_OUT_HEIGHT);
 
+    float scale_x = 1.0f;
+    float scale_y = 1.0f;
+    unsigned int ds_dx = d->pvideo.regs[NV_PVIDEO_DS_DX];
+    unsigned int dt_dy = d->pvideo.regs[NV_PVIDEO_DT_DY];
+    if (ds_dx != NV_PVIDEO_DIN_DOUT_UNITY) {
+        scale_x = pvideo_calculate_scale(ds_dx, out_width);
+    }
+    if (dt_dy != NV_PVIDEO_DIN_DOUT_UNITY) {
+        scale_y = pvideo_calculate_scale(dt_dy, out_height);
+    }
+
     // On HW, setting NV_PVIDEO_SIZE_IN larger than NV_PVIDEO_SIZE_OUT results
     // in them being capped to the output size, content is not scaled. This is
     // particularly important as NV_PVIDEO_SIZE_IN may be set to 0xFFFFFFFF
     // during initialization or teardown.
     if (in_width > out_width) {
-        in_width = out_width;
+        in_width = floorf((float)out_width * scale_x + 0.5f);
     }
     if (in_height > out_height) {
-        in_height = out_height;
+        in_height = floorf((float)out_height * scale_y + 0.5f);
     }
 
     /* TODO: support other color formats */
@@ -5164,8 +5187,11 @@ static void pgraph_render_display_pvideo_overlay(NV2AState *d)
                  GL_UNSIGNED_BYTE, tex_rgba);
     g_free(tex_rgba);
     glUniform1i(d->pgraph.disp_rndr.pvideo_tex_loc, 1);
+    glUniform2f(d->pgraph.disp_rndr.pvideo_in_pos_loc, in_s, in_t);
     glUniform4f(d->pgraph.disp_rndr.pvideo_pos_loc,
                 out_x, out_y, out_width, out_height);
+    glUniform3f(d->pgraph.disp_rndr.pvideo_scale_loc,
+                scale_x, scale_y, 1.0f / pg->surface_scale_factor);
 }
 
 static void pgraph_render_display(NV2AState *d, SurfaceBinding *surface)

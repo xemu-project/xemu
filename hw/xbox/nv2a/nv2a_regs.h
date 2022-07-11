@@ -655,6 +655,7 @@
 #   define NV_PVIDEO_POINT_IN_T                               0xFFFE0000
 #define NV_PVIDEO_DS_DX                                  0x00000938
 #define NV_PVIDEO_DT_DY                                  0x00000940
+#   define NV_PVIDEO_DIN_DOUT_UNITY                           0x00100000
 #define NV_PVIDEO_POINT_OUT                              0x00000948
 #   define NV_PVIDEO_POINT_OUT_X                              0x00000FFF
 #   define NV_PVIDEO_POINT_OUT_Y                              0x0FFF0000
