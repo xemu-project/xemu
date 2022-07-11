@@ -262,7 +262,7 @@ static MString* generate_geometry_shader(
                        "void emit_vertex(int index, int provoking_index) {\n"
                        "  gl_Position = gl_in[index].gl_Position;\n"
                        "  gl_PointSize = gl_in[index].gl_PointSize;\n"
-                       "  vtx_inv_w = v_vtx_inv_w[index];\n"
+                       "  vtx_inv_w = v_vtx_inv_w[provoking_index];\n"
                        "  vtxD0 = v_vtxD0[provoking_index];\n"
                        "  vtxD1 = v_vtxD1[provoking_index];\n"
                        "  vtxB0 = v_vtxB0[provoking_index];\n"
