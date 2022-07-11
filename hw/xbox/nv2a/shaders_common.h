@@ -24,7 +24,8 @@
 #include "debug.h"
 
 #define DEF_VERTEX_DATA(qualifier, in_out, prefix, suffix) \
-    qualifier " " in_out " float " prefix "vtx_inv_w" suffix ";\n" \
+    "noperspective " in_out " float " prefix "vtx_inv_w" suffix ";\n" \
+    "flat " in_out " float " prefix "vtx_inv_w_flat" suffix ";\n" \
     qualifier " " in_out " vec4 " prefix "vtxD0" suffix ";\n" \
     qualifier " " in_out " vec4 " prefix "vtxD1" suffix ";\n" \
     qualifier " " in_out " vec4 " prefix "vtxB0" suffix ";\n" \

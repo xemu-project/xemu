@@ -825,6 +825,7 @@ void vsh_translate(uint16_t version,
         "  } else {\n"
         "    vtx_inv_w = 1.0 / oPos.w;\n"
         "  }\n"
+        "  vtx_inv_w_flat = vtx_inv_w;\n"
     );
 
     mstring_append(body,
