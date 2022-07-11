@@ -266,7 +266,9 @@ typedef struct PGRAPHState {
         GLuint pvideo_tex;
         GLint pvideo_enable_loc;
         GLint pvideo_tex_loc;
+        GLint pvideo_in_pos_loc;
         GLint pvideo_pos_loc;
+        GLint pvideo_scale_loc;
         GLint pvideo_color_key_enable_loc;
         GLint pvideo_color_key_loc;
         GLint palette_loc[256];
