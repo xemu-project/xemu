@@ -3049,14 +3049,16 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         glEnable(GL_PROGRAM_POINT_SIZE);
 
         /* Edge Antialiasing */
-        if (pg->regs[NV_PGRAPH_SETUPRASTER] &
-                NV_PGRAPH_SETUPRASTER_LINESMOOTHENABLE) {
+        if (pg->smoothing_enabled
+            && pg->regs[NV_PGRAPH_SETUPRASTER] &
+                   NV_PGRAPH_SETUPRASTER_LINESMOOTHENABLE) {
             glEnable(GL_LINE_SMOOTH);
         } else {
             glDisable(GL_LINE_SMOOTH);
         }
-        if (pg->regs[NV_PGRAPH_SETUPRASTER] &
-                NV_PGRAPH_SETUPRASTER_POLYSMOOTHENABLE) {
+        if (pg->smoothing_enabled
+                && pg->regs[NV_PGRAPH_SETUPRASTER] &
+                   NV_PGRAPH_SETUPRASTER_POLYSMOOTHENABLE) {
             glEnable(GL_POLYGON_SMOOTH);
         } else {
             glDisable(GL_POLYGON_SMOOTH);
@@ -3455,6 +3457,14 @@ DEF_METHOD(NV097, SET_ZMIN_MAX_CONTROL)
         assert(!"Invalid zclamp value");
         break;
     }
+}
+
+DEF_METHOD(NV097, SET_SMOOTHING_CONTROL)
+{
+    // FIXME: Find the correct register for this.
+    pg->smoothing_enabled = !GET_MASK(parameter,
+                                      NV097_SET_SMOOTHING_CONTROL_DISABLE);
+    // FIXME: Handle the remaining bits (observed values 0xFFFF0000, 0xFFFF0001)
 }
 
 DEF_METHOD(NV097, SET_ZSTENCIL_CLEAR_VALUE)
@@ -4027,6 +4037,7 @@ void pgraph_init(NV2AState *d)
     shader_cache_init(pg);
 
     pg->material_alpha = 0.0f;
+    pg->smoothing_enabled = false;
     SET_MASK(pg->regs[NV_PGRAPH_CONTROL_3], NV_PGRAPH_CONTROL_3_SHADEMODE,
          NV_PGRAPH_CONTROL_3_SHADEMODE_SMOOTH);
     pg->primitive_mode = PRIM_TYPE_INVALID;

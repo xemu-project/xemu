@@ -517,6 +517,7 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_INT32_ARRAY(pgraph.gl_draw_arrays_start, NV2AState, 1250),
         VMSTATE_INT32_ARRAY(pgraph.gl_draw_arrays_count, NV2AState, 1250),
         VMSTATE_UINT32_ARRAY(pgraph.regs, NV2AState, 0x2000),
+        VMSTATE_BOOL(pgraph.smoothing_enabled, NV2AState),
         VMSTATE_UINT32(pmc.pending_interrupts, NV2AState),
         VMSTATE_UINT32(pmc.enabled_interrupts, NV2AState),
         VMSTATE_UINT32(pfifo.pending_interrupts, NV2AState),
