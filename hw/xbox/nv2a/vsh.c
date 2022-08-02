@@ -819,7 +819,8 @@ void vsh_translate(uint16_t version,
     /* pre-divide and output the generated W so we can do persepctive correct
      * interpolation manually. OpenGL can't, since we give it a W of 1 to work
      * around the perspective divide */
-    mstring_append(body,
+    mstring_append(
+        body,
         "  if (oPos.w == 0.0 || isinf(oPos.w)) {\n"
         "    vtx_inv_w = 1.0;\n"
         "  } else {\n"
@@ -828,57 +829,18 @@ void vsh_translate(uint16_t version,
         "  vtx_inv_w_flat = vtx_inv_w;\n"
     );
 
-    mstring_append(body,
-        /* The shaders leave the result in screen space, while OpenGL expects it
-         * in clip space. Also, hardware rounds at 9/16 pixel, so the difference
-         * between the calculated output and the final HW position must be
-         * remapped to fit the 0.5 range used by OpenGL.
-         */
-
-        "\n"
-       // This approach works at low render scale, but at higher scales it needs
-       // an increasingly large bias as small amounts become full intermediate
-       // pixels. This seems like it should be by design (render scale increases
-       // the range of intermediate values that should map to raster pixels),
-       // so it's possible that this whole approach is flawed and should focus
-       // on fixing the first row/column offset by shifting everything left,up
-       // in NDC instead of messing with subpixels in nv2a screen space like
-       // this.
-       "vec2 floored_pos = floor(oPos.xy);\n"
-       "vec2 subpixel = oPos.xy - floored_pos;\n"
-
-       // Calculate what percentage of a full pixel should be added by shifting the 9/16
-       // rounding point to 0.5.
-
-       // A bias is used to throw values on either side of 0.5 in order to avoid
-       // numerical precision issues (e.g., with a surfaceSize of 640,480, a 0.5625
-       // value will map to (0.5000..71, 0.49999..82) when going to NDC and back to
-       // screen coords instead of the correct (0.5, 0.5)).
-       // at 1x, 0.002 is enough, 2x and beyond need substantially higher biases
-       "float bias = 0.05;\n"
-       "float scale = 0.5 - bias;\n"
-       "float offset = 0.5 + bias;\n"
-
-       // (0, 0.5625) => (0,0.5)
-       "vec2 lt = subpixel / 0.5625 * scale;\n"
-       // (.5625,1) => (0.5,1)
-       "vec2 gte = offset + (subpixel - 0.5625) / 0.4375 * scale;\n"
-
-       // Select between the two mappings based on whether the actual subpixel is above
-       // or below the rounding point.
-       "vec2 round_down = vec2(lessThan(subpixel, vec2(0.5625)));\n"
-       "subpixel = mix(gte, lt, round_down);\n"
-
-       "vec2 fixed_pos = floored_pos + subpixel;\n"
-       "\n"
-
-        "oPos.xy = 2.0 * fixed_pos / surfaceSize - vec2(1.0);\n"
-        "oPos.y *= -1.0;\n"
+    mstring_append(
+        body,
+        "  vec2 fixed_pos = fix_pixel_rounding(oPos.xy, 1.0);\n"
+        "  oPos.xy = 2.0 * fixed_pos / surfaceSize - vec2(1.0);\n"
+        "  oPos.y *= -1.0;\n"
     );
+
     if (z_perspective) {
         mstring_append(body, "  oPos.z = oPos.w;\n");
     }
-    mstring_append(body,
+    mstring_append(
+        body,
         /* Map the clip range into clip space so z is clipped correctly.
          * Note this makes the values in the depth buffer wrong. This should be
          * handled with gl_ClipDistance instead, but that has performance issues

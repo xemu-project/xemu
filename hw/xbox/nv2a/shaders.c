@@ -724,9 +724,13 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         mstring_append(body, "  tPosition = position;\n");
     }
 
-    mstring_append(body,
-    "   oPos = invViewport * (tPosition * compositeMat);\n"
-    "   oPos.z = oPos.z * 2.0 - oPos.w;\n");
+    mstring_append(
+        body,
+        "  oPos = tPosition * compositeMat;\n"
+        "  oPos.xy = fix_pixel_rounding(oPos.xy, oPos.w);\n"
+        "  oPos = invViewport * oPos;\n"
+        "  oPos.z = oPos.z * 2.0 - oPos.w;\n"
+    );
 
     /* FIXME: Testing */
     if (state->point_params_enable) {
@@ -753,6 +757,58 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                    "  vtx_inv_w_flat = vtx_inv_w;\n");
 }
 
+/*
+ * Generates a GLSL function that emulates hardware rounding at 9/16 pixel.
+ *
+ * FIXME: This approach only works at low render scale.
+ * At higher scales it needs an increasingly large bias as small amounts
+ * become full intermediate pixels. This seems like it should be by design
+ * (render scale increases the range of intermediate values that should map
+ * to raster pixels), so it's possible that this whole approach is flawed
+ * and should focus on fixing the first row/column offset by shifting
+ * everything left,up in NDC instead of messing with subpixels in nv2a
+ * screen space like this.
+ */
+static void append_fix_pixel_rounding(MString *header)
+{
+    // A bias is used to throw values on either side of 0.5 in order to
+    // avoid numerical precision issues (e.g., with a surfaceSize of
+    // 640,480, a 0.5625 value will map to (0.5000..71, 0.49999..82) when
+    // going to NDC and back to screen coords instead of the correct (0.5,
+    // 0.5)). at 1x, 0.002 is enough, 2x and beyond need substantially
+    // higher biases
+    static const float bias = 0.05f;
+    static const float scale = 0.5f - bias;
+    static const float offset = 0.5f + bias;
+
+    mstring_append_fmt(
+        header,
+        "\n"
+        "vec2 fix_pixel_rounding(vec2 screen_coords, float w) {\n"
+        "  if (w == 0.0 || isinf(w)) {\n"
+        "    w = 1.0;\n"
+        "  }\n"
+        "  screen_coords /= w;\n"
+        "  vec2 floored_pos = floor(screen_coords);\n"
+        "  vec2 subpixel = screen_coords - floored_pos;\n"
+        // Calculate what percentage of a full pixel should be added by shifting
+        // the 9/16 rounding point to 0.5.
+        //
+        // (0, 0.5625) => (0,0.5)
+        "  vec2 lt = subpixel / 0.5625 * %f;\n"
+        // (.5625,1) => (0.5,1)
+        "  vec2 gte = %f + (subpixel - 0.5625) / 0.4375 * %f;\n"
+        // Select between the two mappings based on whether the subpixel is
+        // above or below the rounding point.
+        "  vec2 round_down = vec2(lessThan(subpixel, vec2(0.5625)));\n"
+        "  subpixel = mix(gte, lt, round_down);\n"
+
+        "  return (floored_pos + subpixel) * w;\n"
+        "}\n",
+        scale, offset, scale
+    );
+}
+
 static MString *generate_vertex_shader(const ShaderState *state,
                                        bool prefix_outputs)
 {
@@ -762,7 +818,6 @@ static MString *generate_vertex_shader(const ShaderState *state,
 "\n"
 "uniform vec2 clipRange;\n"
 "uniform vec2 surfaceSize;\n"
-"uniform vec2 glViewportSize;\n"
 "\n"
 /* All constants in 1 array declaration */
 "uniform vec4 c[" stringify(NV2A_VERTEXSHADER_CONSTANTS) "];\n"
@@ -828,6 +883,8 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
                                i, i);
         }
     }
+
+    append_fix_pixel_rounding(header);
     mstring_append(header, "\n");
 
     MString *body = mstring_from_str("void main() {\n");
@@ -1119,7 +1176,6 @@ ShaderBinding *generate_shaders(const ShaderState *state)
     }
     ret->surface_size_loc = glGetUniformLocation(program, "surfaceSize");
     ret->clip_range_loc = glGetUniformLocation(program, "clipRange");
-    ret->gl_viewport_size_loc = glGetUniformLocation(program, "glViewportSize");
     ret->fog_color_loc = glGetUniformLocation(program, "fogColor");
     ret->fog_param_loc[0] = glGetUniformLocation(program, "fogParam[0]");
     ret->fog_param_loc[1] = glGetUniformLocation(program, "fogParam[1]");

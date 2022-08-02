@@ -121,5 +121,4 @@ size_t mstring_get_length(MString *mstr)
    return strlen(mstr->string);
 }
 
-
 #endif
