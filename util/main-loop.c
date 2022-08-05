@@ -557,12 +557,12 @@ static int os_host_main_loop_wait(int64_t timeout)
     for (pe = first_polling_entry; pe != NULL; pe = pe->next) {
         ret |= pe->func(pe->opaque);
     }
+    
+    g_main_context_release(context);
+    
     if (ret != 0) {
-        g_main_context_release(context);
         return ret;
     }
-
-    g_main_context_release(context);
 
     return select_ret || g_poll_ret;
 }
