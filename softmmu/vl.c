@@ -2966,6 +2966,10 @@ void qemu_init(int argc, char **argv, char **envp)
     fake_argv[fake_argc++] = strdup("-display");
     fake_argv[fake_argc++] = strdup("xemu");
 
+    // Create USB Daughterboard for 1.0 Xbox. This is connected to Port 1 of the Root hub.
+    fake_argv[fake_argc++] = strdup("-device");
+    fake_argv[fake_argc++] = strdup("usb-hub,port=1,ports=4");
+
 #ifdef _WIN32
     // FIXME: Create this dummy device to prevent logspam
     fake_argv[fake_argc++] = strdup("-audiodev");
