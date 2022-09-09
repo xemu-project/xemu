@@ -5999,7 +5999,8 @@ static void pgraph_populate_surface_binding_entry_sized(NV2AState *d,
     entry->vram_addr = dma.address + surface->offset;
     entry->width = width;
     entry->height = height;
-    entry->pitch = surface->pitch;
+    entry->pitch = entry->swizzle ? (entry->width * entry->fmt.bytes_per_pixel)
+                                  : surface->pitch;
     entry->size = height * surface->pitch;
     entry->upload_pending = true;
     entry->download_pending = false;
@@ -6009,6 +6010,8 @@ static void pgraph_populate_surface_binding_entry_sized(NV2AState *d,
     entry->frame_time = pg->frame_time;
     entry->draw_time = pg->draw_time;
     entry->cleared = false;
+
+    assert(entry->pitch >= (entry->width * entry->fmt.bytes_per_pixel));
 }
 
 static void pgraph_populate_surface_binding_entry(NV2AState *d, bool color,
