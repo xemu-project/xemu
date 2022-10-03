@@ -782,10 +782,12 @@ void MainMenuSystemView::Draw()
     if (FilePicker("MCPX Boot ROM", &g_config.sys.files.bootrom_path,
                    rom_file_filters)) {
         m_dirty = true;
+        g_main_menu.UpdateAboutViewConfigInfo();
     }
     if (FilePicker("Flash ROM (BIOS)", &g_config.sys.files.flashrom_path,
                    rom_file_filters)) {
         m_dirty = true;
+        g_main_menu.UpdateAboutViewConfigInfo();
     }
     if (FilePicker("Hard Disk", &g_config.sys.files.hdd_path,
                    qcow_file_filters)) {
@@ -795,6 +797,33 @@ void MainMenuSystemView::Draw()
                    rom_file_filters)) {
         m_dirty = true;
     }
+}
+
+MainMenuAboutView::MainMenuAboutView(): m_config_info_text{NULL}
+{}
+
+void MainMenuAboutView::UpdateConfigInfoText()
+{
+    if (m_config_info_text) {
+        g_free(m_config_info_text);
+    }
+
+    gchar *bootrom_checksum = GetFileMD5Checksum(g_config.sys.files.bootrom_path);
+    if (!bootrom_checksum) {
+        bootrom_checksum = g_strdup("None");
+    }
+
+    gchar *flash_rom_checksum = GetFileMD5Checksum(g_config.sys.files.flashrom_path);
+    if (!flash_rom_checksum) {
+        flash_rom_checksum = g_strdup("None");
+    }
+
+    m_config_info_text = g_strdup_printf(
+            "MCPX Boot ROM MD5 Hash:        %s\n"
+            "Flash ROM (BIOS) MD5 Hash:     %s",
+            bootrom_checksum, flash_rom_checksum);
+    g_free(bootrom_checksum);
+    g_free(flash_rom_checksum);
 }
 
 void MainMenuAboutView::Draw()
@@ -819,6 +848,10 @@ void MainMenuAboutView::Draw()
              gl_renderer, gl_version, gl_shader_version);
     }
 
+    if (m_config_info_text == NULL) {
+        UpdateConfigInfoText();
+    }
+
     Logo();
 
     SectionTitle("Build Information");
@@ -834,6 +867,14 @@ void MainMenuAboutView::Draw()
     ImGui::InputTextMultiline("###systeminformation", (char *)sys_info_text,
                               strlen(sys_info_text),
                               ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 8),
+                              ImGuiInputTextFlags_ReadOnly);
+    ImGui::PopFont();
+
+    SectionTitle("Config Information");
+    ImGui::PushFont(g_font_mgr.m_fixed_width_font);
+    ImGui::InputTextMultiline("##config_info", (char *)m_config_info_text,
+                              strlen(build_info_text),
+                              ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 3),
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
 
@@ -1008,6 +1049,11 @@ void MainMenuScene::HandleInput()
     }
 
     m_had_focus_last_frame = focus;
+}
+
+void MainMenuScene::UpdateAboutViewConfigInfo()
+{
+    m_about_view.UpdateConfigInfoText();
 }
 
 bool MainMenuScene::Draw()

@@ -120,7 +120,11 @@ public:
 
 class MainMenuAboutView : public virtual MainMenuTabView
 {
+protected:
+    char *m_config_info_text;
 public:
+    MainMenuAboutView();
+    void UpdateConfigInfoText();
     void Draw() override;
 };
 
@@ -179,6 +183,7 @@ public:
     bool IsAnimating() override;
     void SetNextViewIndex(int i);
     void HandleInput();
+    void UpdateAboutViewConfigInfo();
     bool Draw() override;
 };
 
