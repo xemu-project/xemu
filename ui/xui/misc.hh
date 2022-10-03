@@ -104,3 +104,23 @@ int PushWindowTransparencySettings(bool transparent, float alpha_transparent = 0
 
         return 5;
 }
+
+static inline gchar *GetFileMD5Checksum(const char *path)
+{
+    auto *checksum = g_checksum_new(G_CHECKSUM_MD5);
+
+    auto *file = qemu_fopen(path, "rb");
+    if (!file) return nullptr;
+
+    guchar buf[512];
+    size_t nread;
+    while ((nread = fread(buf, 1, sizeof(buf), file))) {
+        g_checksum_update(checksum, buf, nread);
+    }
+
+    gchar *checksum_str = g_strdup(g_checksum_get_string(checksum));
+    fclose(file);
+    g_checksum_free(checksum);
+    return checksum_str;
+}
+
