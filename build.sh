@@ -231,7 +231,7 @@ case "$platform" in # Adjust compilation options based on platform
         export LDFLAGS="-arch ${target_arch} \
                         -isysroot ${sdk}"
         if [ "$target_arch" == "x86_64" ]; then
-            sys_cflags='-march=ivybridge'
+            sys_cflags='-march=x86-64-v3'
         fi
         sys_ldflags='-headerpad_max_install_names'
         export PKG_CONFIG_PATH="${lib_prefix}/lib/pkgconfig"
