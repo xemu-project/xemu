@@ -542,6 +542,14 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
         }
     }
 
+    //Highlight the current button to rebind when rebinding.
+    if (is_remapping_active)
+    {
+        RenderDecal(g_decal_shader, frame_x + buttons[currently_remapping].x,
+                    frame_y + buttons[currently_remapping].y, buttons[currently_remapping].w, buttons[currently_remapping].h, 0,
+                    0, 1, 1, 0, 0, primary_color + 0xff);
+    }
+
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Blend with controller
 
     // Render left thumbstick

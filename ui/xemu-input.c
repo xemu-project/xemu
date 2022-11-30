@@ -298,7 +298,9 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         }
     } else if (event->type == SDL_CONTROLLERDEVICEREMAPPED) {
         DPRINTF("Controller Remapped: %d\n", event->cdevice.which);
-    }
+    } else if (is_remapping_active){
+        xemu_input_rebind(event);
+    }  
 }
 
 void xemu_input_update_controller(ControllerState *state)
@@ -352,6 +354,27 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
     if (kbd[sdl_kbd_scancode_map[23]]) state->axis[CONTROLLER_AXIS_RSTICK_Y] = -32768;
     if (kbd[sdl_kbd_scancode_map[24]]) state->axis[CONTROLLER_AXIS_RTRIG] = 32767;
 }
+
+void xemu_input_rebind(const SDL_Event *ev)
+{
+    //FIXME: If we select a controller and start rebinding, it overrides the previous keyboard binding in a bad way
+    //TODO: Divide remapping for controller/keyboard
+    //TODO: Store updated mapping into config file for next boot 
+    sdl_kbd_scancode_map[currently_remapping] = NULL;
+    if(ev->type == SDL_KEYDOWN){
+        sdl_kbd_scancode_map[currently_remapping] = ev->key.keysym.scancode;
+        currently_remapping++;
+        if(currently_remapping == 25){
+            is_remapping_active = false;
+        }
+    }
+
+    if( (sdl_kbd_scancode_map[currently_remapping] < SDL_SCANCODE_UNKNOWN) || 
+        (sdl_kbd_scancode_map[currently_remapping] >= SDL_NUM_SCANCODES) ) {
+        fprintf(stderr, "WARNING: Keyboard controller map scancode out of range (%d) : Disabled\n", sdl_kbd_scancode_map[currently_remapping]);
+        sdl_kbd_scancode_map[currently_remapping] = SDL_SCANCODE_UNKNOWN;
+    }
+} 
 
 void xemu_input_update_sdl_controller_state(ControllerState *state)
 {

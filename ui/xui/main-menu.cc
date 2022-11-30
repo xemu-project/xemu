@@ -38,6 +38,8 @@
 #include "../xemu-xbe.h"
 
 MainMenuScene g_main_menu;
+bool is_remapping_active = false;
+int currently_remapping = 0;
 
 MainMenuTabView::~MainMenuTabView() {}
 void MainMenuTabView::Draw() {}
@@ -263,6 +265,17 @@ void MainMenuInputView::Draw()
     Toggle("Background controller input capture",
            &g_config.input.background_input_capture,
            "Capture even if window is unfocused (requires restart)");
+    
+    if (ImGui::IsItemClicked(ImGui::Button("Rebind Controls")))
+    {
+        currently_remapping = 0;
+        is_remapping_active = true;
+    }
+
+    if (is_remapping_active)
+    {
+        ImGui::Text("Press the key you want to bind to the highlighted button. Keys left to bind: %d", 25-currently_remapping);
+    }
 }
 
 void MainMenuDisplayView::Draw()
