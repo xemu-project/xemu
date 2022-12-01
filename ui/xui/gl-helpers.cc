@@ -501,15 +501,16 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
 
     uint32_t jewel_color = secondary_color;
 
-    // Check to see if the guide button is pressed
-    const uint32_t animate_guide_button_duration = 2000;
-    if (state->buttons & CONTROLLER_BUTTON_GUIDE) {
-        state->animate_guide_button_end = now + animate_guide_button_duration;
-    }
+    // Check to see if the guide button is pressed only when not remapping.
+    if (!is_remapping_active) {
+        const uint32_t animate_guide_button_duration = 2000;
+        if (state->buttons & CONTROLLER_BUTTON_GUIDE) {
+            state->animate_guide_button_end = now + animate_guide_button_duration;
+        }
 
-    if (now < state->animate_guide_button_end) {
-        t = 1.0f - (float)(state->animate_guide_button_end-now)/(float)animate_guide_button_duration;
-        float sin_wav = (1-sin(M_PI * t / 2.0f));
+        if (now < state->animate_guide_button_end) {
+            t = 1.0f - (float)(state->animate_guide_button_end-now)/(float)animate_guide_button_duration;
+            float sin_wav = (1-sin(M_PI * t / 2.0f));
 
         // Animate guide button by highlighting logo jewel and fading out over time
         alpha = sin_wav * 255.0f;
@@ -519,7 +520,9 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
         frame_x += ((float)(rand() % 5)-2.5) * (1-t);
         frame_y += ((float)(rand() % 5)-2.5) * (1-t);
         rumble_l = rumble_r = sin_wav;
+        }
     }
+    
 
     // Render controller texture
     RenderDecal(g_decal_shader, frame_x + 0, frame_y + 0,
@@ -534,11 +537,15 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
 
     // The controller has alpha cutouts where the buttons are. Draw a surface
     // behind the buttons if they are activated
-    for (int i = 0; i < 12; i++) {
-        if (state->buttons & (1 << i)) {
-            RenderDecal(g_decal_shader, frame_x + buttons[i].x,
-                        frame_y + buttons[i].y, buttons[i].w, buttons[i].h, 0,
-                        0, 1, 1, 0, 0, primary_color + 0xff);
+    // Do not highlight the buttons while remapping.
+    if (!is_remapping_active)
+    {
+        for (int i = 0; i < 12; i++) {
+            if (state->buttons & (1 << i)) {
+                RenderDecal(g_decal_shader, frame_x + buttons[i].x,
+                            frame_y + buttons[i].y, buttons[i].w, buttons[i].h, 0,
+                            0, 1, 1, 0, 0, primary_color + 0xff);
+            }
         }
     }
 
