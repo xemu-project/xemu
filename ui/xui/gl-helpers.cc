@@ -543,7 +543,7 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
     }
 
     // Highlight the current button to rebind when rebinding. 
-    // Some items do not highlight correctly resulting in most of the UI highlighted (no highlight expected for those bindings?)
+    // FIXME:Some items do not highlight correctly resulting in most of the UI highlighted (no highlight expected for those bindings?)
  
     if (is_remapping_active)
     {
