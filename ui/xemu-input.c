@@ -364,12 +364,14 @@ void xemu_input_keyboard_rebind(const SDL_Event *ev, ControllerState *state)
         if(ev->type == SDL_KEYDOWN){
             sdl_kbd_scancode_map[currently_remapping] = ev->key.keysym.scancode;
 
-            //check for duplicated keybindings, if found, rebind that button.
+            //check for duplicated keybindings, if found, rebind that button. Send a message on the UI to notify the user
             for (size_t i = 0; i < currently_remapping; i++)
             {
                 if (sdl_kbd_scancode_map[currently_remapping] == sdl_kbd_scancode_map[i])
                 {
-                    fprintf(stderr, "WARNING: Keybind already in use, try another key.");
+                    char buf[40];
+                    snprintf(buf, sizeof(buf), "WARNING: Keybind already in use, try another key.");
+                    xemu_queue_notification(buf);
                     currently_remapping--;
                     break;
                 }
