@@ -299,7 +299,6 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
     } else if (event->type == SDL_CONTROLLERDEVICEREMAPPED) {
         DPRINTF("Controller Remapped: %d\n", event->cdevice.which);
     } else if (is_remapping_active){
-        //Check if currently used device it's a keyboard then start mapping it.
         ControllerState state;
         xemu_input_keyboard_rebind(event, &state);
     }  
