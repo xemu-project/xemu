@@ -272,9 +272,14 @@ void MainMenuInputView::Draw()
         is_remapping_active = true;
     }
 
+    const char *bindings[] = {"A", "B", "X", "Y", "DPAD LEFT", "DPAD UP", "DPAD RIGHT", "DPAD DOWN", "BACK", "START", 
+                              "WHITE", "BLACK", "LEFT STICK BUTTON", "RIGHT STICK BUTTON", "GUIDE", "LEFT STICK UP", 
+                              "LEFT STICK LEFT", "LEFT STICK RIGHT", "LEFT STICK DOWN", "LEFT TRIGGER", "RIGHT STICK UP", 
+                              "RIGHT STICK LEFT", "RIGHT STICK RIGHT", "RIGHT STICK DOWN", "RIGHT TRIGGER"};
+
     if (is_remapping_active)
     {
-        ImGui::Text("Press the key you want to bind to the highlighted button %d.", currently_remapping);
+        ImGui::Text("Press the key you want to bind for: %s", bindings[currently_remapping]);
     }
 }
 
