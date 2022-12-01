@@ -274,7 +274,7 @@ void MainMenuInputView::Draw()
 
     if (is_remapping_active)
     {
-        ImGui::Text("Press the key you want to bind to the highlighted button. Keys left to bind: %d", 25-currently_remapping);
+        ImGui::Text("Press the key you want to bind to the highlighted button %d.", currently_remapping);
     }
 }
 

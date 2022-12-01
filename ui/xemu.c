@@ -132,7 +132,7 @@ void xemu_toggle_fullscreen(void)
 
 // static void sdl_update_caption(struct sdl2_console *scon);
 
-struct sdl2_console *get_scon_from_window(uint32_t window_id)
+static struct sdl2_console *get_scon_from_window(uint32_t window_id)
 {
     int i;
     for (i = 0; i < sdl2_num_outputs; i++) {
