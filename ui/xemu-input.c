@@ -369,9 +369,8 @@ void xemu_input_keyboard_rebind(const SDL_Event *ev, ControllerState *state)
             {
                 if (sdl_kbd_scancode_map[currently_remapping] == sdl_kbd_scancode_map[i])
                 {
-                    char buf[40];
-                    snprintf(buf, sizeof(buf), "WARNING: Keybind already in use, try another key.");
-                    xemu_queue_notification(buf);
+                    duplicate_found = true;
+                    already_mapped = i;
                     currently_remapping--;
                     break;
                 }

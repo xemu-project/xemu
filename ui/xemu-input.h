@@ -98,7 +98,9 @@ extern ControllerStateList available_controllers;
 extern ControllerState *bound_controllers[4];
 
 extern bool is_remapping_active;
+extern bool duplicate_found;
 extern int currently_remapping;
+extern int already_mapped;
 
 #ifdef __cplusplus
 extern "C" {

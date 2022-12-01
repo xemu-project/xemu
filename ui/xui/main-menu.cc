@@ -39,7 +39,9 @@
 
 MainMenuScene g_main_menu;
 bool is_remapping_active = false;
+bool duplicate_found = false;
 int currently_remapping = 0;
+int already_mapped = 0;
 
 MainMenuTabView::~MainMenuTabView() {}
 void MainMenuTabView::Draw() {}
@@ -280,6 +282,14 @@ void MainMenuInputView::Draw()
     if (is_remapping_active)
     {
         ImGui::Text("Press the key you want to bind for: %s", bindings[currently_remapping]);
+    }
+
+    if (duplicate_found)
+    {
+        char buf[40];
+        snprintf(buf, sizeof(buf), "WARNING: Keybind already in use for: %s\n, try another key.", bindings[already_mapped]);
+        xemu_queue_notification(buf);
+        duplicate_found = false;
     }
 }
 
