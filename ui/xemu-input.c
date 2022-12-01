@@ -299,7 +299,7 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
     } else if (event->type == SDL_CONTROLLERDEVICEREMAPPED) {
         DPRINTF("Controller Remapped: %d\n", event->cdevice.which);
     } else if (is_remapping_active){
-        sdl_kbd_scancode_map[currently_remapping] = SDL_SCANCODE_UNKNOWN;
+        //Check if currently used device it's a keyboard then start mapping it.
         ControllerState state;
         xemu_input_keyboard_rebind(event, &state);
     }  
@@ -359,16 +359,29 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
 
 void xemu_input_keyboard_rebind(const SDL_Event *ev, ControllerState *state)
 {
-    //FIXME: Activate rebinding only when keyboard is a selected device.
-
+    sdl_kbd_scancode_map[currently_remapping] = SDL_SCANCODE_UNKNOWN;
+    
         if(ev->type == SDL_KEYDOWN){
             sdl_kbd_scancode_map[currently_remapping] = ev->key.keysym.scancode;
+
+            //check for duplicated keybindings, if found, rebind that button.
+            for (size_t i = 0; i < currently_remapping; i++)
+            {
+                if (sdl_kbd_scancode_map[currently_remapping] == sdl_kbd_scancode_map[i])
+                {
+                    fprintf(stderr, "WARNING: Keybind already in use, try another key.");
+                    currently_remapping--;
+                    break;
+                }
+            }
             
             if( (sdl_kbd_scancode_map[currently_remapping] < SDL_SCANCODE_UNKNOWN) || 
-            (sdl_kbd_scancode_map[currently_remapping] >= SDL_NUM_SCANCODES) ) {
-            fprintf(stderr, "WARNING: Keyboard controller map scancode out of range (%d) : Disabled\n", sdl_kbd_scancode_map[currently_remapping]);
-            sdl_kbd_scancode_map[currently_remapping] = SDL_SCANCODE_UNKNOWN;
-        }
+                (sdl_kbd_scancode_map[currently_remapping] >= SDL_NUM_SCANCODES) ) {
+                fprintf(stderr, "WARNING: Keyboard controller map scancode out of range (%d) : Disabled\n", sdl_kbd_scancode_map[currently_remapping]);
+                sdl_kbd_scancode_map[currently_remapping] = SDL_SCANCODE_UNKNOWN;
+
+        } 
+                    
             currently_remapping++;
 
             if(currently_remapping == 25){
