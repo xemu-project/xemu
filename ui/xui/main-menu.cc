@@ -269,7 +269,8 @@ void MainMenuInputView::Draw()
            &g_config.input.background_input_capture,
            "Capture even if window is unfocused (requires restart)");
 
-    //Interface and checks for keyboard remapping
+    //Interface and checks for keyboard remapping. 
+    //Remove focus on input window while binding to avoide moving inside the UI.
     
     if (ImGui::Button("Rebind Controls")) {
              currently_remapping = 0;
@@ -282,6 +283,7 @@ void MainMenuInputView::Draw()
                               "RIGHT STICK LEFT", "RIGHT STICK RIGHT", "RIGHT STICK DOWN", "RIGHT TRIGGER"};
 
     if (is_remapping_active) {
+        ImGui::SetKeyboardFocusHere(1);
         ImGui::Text("Press the key you want to bind for: %s", bindings[currently_remapping]);
     }
 
