@@ -40,7 +40,6 @@
 MainMenuScene g_main_menu;
 bool is_remapping_active = false;
 bool duplicate_found = false;
-bool is_auto_binding_active = false;
 int currently_remapping = 0;
 int already_mapped = 0;
 
@@ -264,49 +263,32 @@ void MainMenuInputView::Draw()
 
     SectionTitle("Options");
     Toggle("Auto-bind controllers", &g_config.input.auto_bind,
-           "Bind newly connected controllers to any open port");
+           "Bind newly connected controllers to any open port.\n" 
+           "NOTE: If left enabled, on next boot this will reset your keyboard config");
     Toggle("Background controller input capture",
            &g_config.input.background_input_capture,
            "Capture even if window is unfocused (requires restart)");
 
     //Interface and checks for keyboard remapping
     
-    if (ImGui::IsItemClicked(ImGui::Button("Rebind Controls")))
-    {
-        if (!g_config.input.auto_bind)
-        {
-             is_auto_binding_active = false;
+    if (ImGui::Button("Rebind Controls")) {
              currently_remapping = 0;
              is_remapping_active = true;
         }
-
-        if (g_config.input.auto_bind)
-        {
-            is_auto_binding_active = true;
-            is_remapping_active = false;
-        }
-    }
-
-    if (is_auto_binding_active)
-    {
-        ImGui::Text("Auto Binding is enabled, please disable it");
-    }
 
     const char *bindings[] = {"A", "B", "X", "Y", "DPAD LEFT", "DPAD UP", "DPAD RIGHT", "DPAD DOWN", "BACK", "START", 
                               "WHITE", "BLACK", "LEFT STICK BUTTON", "RIGHT STICK BUTTON", "GUIDE", "LEFT STICK UP", 
                               "LEFT STICK LEFT", "LEFT STICK RIGHT", "LEFT STICK DOWN", "LEFT TRIGGER", "RIGHT STICK UP", 
                               "RIGHT STICK LEFT", "RIGHT STICK RIGHT", "RIGHT STICK DOWN", "RIGHT TRIGGER"};
 
-    if (is_remapping_active && !g_config.input.auto_bind)
-    {
+    if (is_remapping_active) {
         ImGui::Text("Press the key you want to bind for: %s", bindings[currently_remapping]);
     }
 
-    if (duplicate_found)
-    {
-        char buf[40];
-        snprintf(buf, sizeof(buf), "WARNING: Keybind already in use for: %s\n, try another key.", bindings[already_mapped]);
+    if (duplicate_found) {
+        char *buf = g_strdup_printf("WARNING: Keybind already in use for: %s. Try another key.", bindings[already_mapped]);
         xemu_queue_notification(buf);
+        free(buf);
         duplicate_found = false;
     }
 }

@@ -519,8 +519,7 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
         // Add a little extra flare: wiggle the frame around while we rumble
         frame_x += ((float)(rand() % 5)-2.5) * (1-t);
         frame_y += ((float)(rand() % 5)-2.5) * (1-t);
-        rumble_l = rumble_r = sin_wav;
-        }
+        rumble_l = rumble_r = sin_wav; }
     }
     
 
@@ -548,8 +547,7 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
             }
         }
     }
-
-
+    
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Blend with controller
 
     // Render left thumbstick
