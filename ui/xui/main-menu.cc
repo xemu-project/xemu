@@ -40,8 +40,14 @@
 MainMenuScene g_main_menu;
 bool is_remapping_active = false;
 bool duplicate_found = false;
+bool restore_controls = false;
+bool abort_rebinding = false;
 int currently_remapping = 0;
 int already_mapped = 0;
+const char *bindings[25] = {"A", "B", "X", "Y", "DPAD LEFT", "DPAD UP", "DPAD RIGHT", "DPAD DOWN", "BACK", "START", 
+                        "WHITE", "BLACK", "LEFT STICK BUTTON", "RIGHT STICK BUTTON", "GUIDE", "LEFT STICK UP", 
+                        "LEFT STICK LEFT", "LEFT STICK RIGHT", "LEFT STICK DOWN", "LEFT TRIGGER", "RIGHT STICK UP", 
+                        "RIGHT STICK LEFT", "RIGHT STICK RIGHT", "RIGHT STICK DOWN", "RIGHT TRIGGER"};
 
 MainMenuTabView::~MainMenuTabView() {}
 void MainMenuTabView::Draw() {}
@@ -262,36 +268,34 @@ void MainMenuInputView::Draw()
     ImGui::SetCursorPos(pos);
 
     SectionTitle("Options");
-    Toggle("Auto-bind controllers", &g_config.input.auto_bind,
-           "Bind newly connected controllers to any open port.\n" 
-           "NOTE: If left enabled, on next boot this will reset your keyboard config");
-    Toggle("Background controller input capture",
+    Toggle("Background controller input capture\n",
            &g_config.input.background_input_capture,
            "Capture even if window is unfocused (requires restart)");
 
-    //Interface and checks for keyboard remapping. 
-    //Remove focus on input window while binding to avoide moving inside the UI.
+    /*Interface and checks for keyboard remapping. 
+      Remove focus on input window while binding to avoide moving inside the UI.
+      Abort remapping if you exit the window. 
+      NOTE: The keyboard config is overwrited only when the mapping is complete
+      Exiting the window while remapping will not leave the user with incomplete mapping, but with the default one until remapped.*/ 
     
-    if (ImGui::Button("Rebind Controls")) {
-             currently_remapping = 0;
-             is_remapping_active = true;
-        }
-
-    const char *bindings[] = {"A", "B", "X", "Y", "DPAD LEFT", "DPAD UP", "DPAD RIGHT", "DPAD DOWN", "BACK", "START", 
-                              "WHITE", "BLACK", "LEFT STICK BUTTON", "RIGHT STICK BUTTON", "GUIDE", "LEFT STICK UP", 
-                              "LEFT STICK LEFT", "LEFT STICK RIGHT", "LEFT STICK DOWN", "LEFT TRIGGER", "RIGHT STICK UP", 
-                              "RIGHT STICK LEFT", "RIGHT STICK RIGHT", "RIGHT STICK DOWN", "RIGHT TRIGGER"};
+    if (Toggle("Rebind keyboard controls", &is_remapping_active, 
+               "NOTE: if not on this window default keys will be restored\n(No reboot required to remap/reset)")) {
+        currently_remapping = 0;
+        is_remapping_active = true;
+    } 
+        
+    if (!ImGui::IsWindowFocused(1) && is_remapping_active) {
+        abort_rebinding = true;
+    }
+    
+    if (Toggle("Reset controls to default", &restore_controls,
+               "Resets the keyboard mapping to default. (No reboot required)")) {
+        restore_controls = true;
+    }
 
     if (is_remapping_active) {
         ImGui::SetKeyboardFocusHere(1);
-        ImGui::Text("Press the key you want to bind for: %s", bindings[currently_remapping]);
-    }
-
-    if (duplicate_found) {
-        char *buf = g_strdup_printf("WARNING: Keybind already in use for: %s. Try another key.", bindings[already_mapped]);
-        xemu_queue_notification(buf);
-        free(buf);
-        duplicate_found = false;
+        ImGui::Text("\nPress the key you want to bind for: %s", bindings[currently_remapping]);
     }
 }
 
