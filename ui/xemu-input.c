@@ -451,7 +451,7 @@ void xemu_input_keyboard_rebind(const SDL_Event *ev)
                                         sdl_kbd_scancode_map[currently_remapping]);
             xemu_queue_notification(buf);
             free(buf);
-            sdl_kbd_scancode_map[currently_remapping] = SDL_SCANCODE_UNKNOWN;
+            currently_remapping--;
     }            
         currently_remapping++;
 
