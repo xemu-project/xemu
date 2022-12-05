@@ -610,9 +610,12 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
                 original_frame_y + tex_items[obj_controller].h + 20, 150, 5,
                 rtrig, primary_color + alpha, primary_color + 0xff);
 
+
     // Apply rumble updates
+    if (!is_remapping_active) {
     state->rumble_l = (int)(rumble_l * (float)0xffff);
     state->rumble_r = (int)(rumble_r * (float)0xffff);
+    }
 
     glBindVertexArray(0);
     glUseProgram(0);

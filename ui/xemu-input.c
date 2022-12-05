@@ -411,7 +411,7 @@ void xemu_input_restore_defaults(void)
     g_config.input.keyboard_controller_scancode_map.rstick_down  = SDL_SCANCODE_K;
     g_config.input.keyboard_controller_scancode_map.rtrigger     = SDL_SCANCODE_O;
 
-    char *buf = g_strdup_printf("WARNING: Keys have been resetted to default.");
+    char *buf = g_strdup_printf("INFO: Keys have been resetted to default.");
     xemu_queue_notification(buf);
     free(buf);
 
@@ -422,7 +422,7 @@ void xemu_input_keyboard_rebind(const SDL_Event *ev)
 {   
     //Check if the user aborts the remapping process, if so, reset the default mapping. and save the defaults.
     if (abort_rebinding) {
-        char *buf = g_strdup_printf("WARNING: Rebinding process aborted because of window change.\n Restoring default bindings...");
+        char *buf = g_strdup_printf("WARNING: Rebinding process aborted. Restoring default bindings...");
         xemu_queue_notification(buf);
         free(buf);
         xemu_input_restore_defaults();
@@ -483,6 +483,11 @@ void xemu_input_keyboard_rebind(const SDL_Event *ev)
             g_config.input.keyboard_controller_scancode_map.rstick_right = sdl_kbd_scancode_map[22];
             g_config.input.keyboard_controller_scancode_map.rstick_down  = sdl_kbd_scancode_map[23];
             g_config.input.keyboard_controller_scancode_map.rtrigger     = sdl_kbd_scancode_map[24];
+            
+            char *buf = g_strdup_printf("INFO: Successfully remapped keyboard.", 
+                                        sdl_kbd_scancode_map[currently_remapping]);
+            xemu_queue_notification(buf);
+            free(buf);
             is_remapping_active = false;
         }
     }

@@ -272,28 +272,34 @@ void MainMenuInputView::Draw()
            &g_config.input.background_input_capture,
            "Capture even if window is unfocused (requires restart)");
 
-    /*Interface and checks for keyboard remapping. 
-      Remove focus on input window while binding to avoide moving inside the UI.
-      Abort remapping if you exit the window. 
+    /* Interface and checks for keyboard remapping. 
+      -Remove focus on input window while binding to avoide moving inside the UI. 
+      -Abort remapping if you exit the window and restore defaults. 
+      -Give a toggle to the user while he's remapping to stop the remapping manually, without the need of switching windows.
+      -If the user is rebinding, do not render the "reset to default" option.
       NOTE: The keyboard config is overwrited only when the mapping is complete
-      Exiting the window while remapping will not leave the user with incomplete mapping, but with the default one until remapped.*/ 
+    */ 
     
     if (Toggle("Rebind keyboard controls", &is_remapping_active, 
-               "NOTE: if not on this window default keys will be restored\n(No reboot required to remap/reset)")) {
+               "If not on this UI, defaults will be restored. (No reboot required to remap/reset)")) {
         currently_remapping = 0;
         is_remapping_active = true;
     } 
-        
+        //TODO: Force focus on window for the user while rebinding. Do not abort process if focus is lost.
     if (!ImGui::IsWindowFocused(1) && is_remapping_active) {
-        abort_rebinding = true;
     }
     
-    if (Toggle("Reset controls to default", &restore_controls,
-               "Resets the keyboard mapping to default. (No reboot required)")) {
-        restore_controls = true;
+    if (!is_remapping_active) {
+        if (Toggle("Reset controls to default", &restore_controls,
+                   "Resets the keyboard mapping to default. (No reboot required)")) {
+            restore_controls = true;
+        }
     }
 
     if (is_remapping_active) {
+        if (Toggle("Abort rebinding", &abort_rebinding, "Abort the rebinding process and restore default keys.")) {
+            abort_rebinding = true;
+        }
         ImGui::SetKeyboardFocusHere(1);
         ImGui::Text("\nPress the key you want to bind for: %s", bindings[currently_remapping]);
     }
