@@ -281,7 +281,7 @@ void MainMenuInputView::Draw()
     */ 
     
     if (Toggle("Rebind keyboard controls", &is_remapping_active, 
-               "If not on this UI, defaults will be restored. (No reboot required to remap/reset)")) {
+               "Allows you to change the keyboard button map. (No reboot required to remap/reset)")) {
         currently_remapping = 0;
         is_remapping_active = true;
     } 
