@@ -422,9 +422,6 @@ void xemu_input_keyboard_rebind(const SDL_Event *ev)
 {   
     //Check if the user aborts the remapping process, if so, reset the default mapping. and save the defaults.
     if (abort_rebinding) {
-        char *buf = g_strdup_printf("WARNING: Rebinding process aborted. Restoring default bindings...");
-        xemu_queue_notification(buf);
-        free(buf);
         xemu_input_restore_defaults();
         is_remapping_active = false;
         abort_rebinding = false;
