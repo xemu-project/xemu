@@ -281,12 +281,14 @@ void MainMenuInputView::Draw()
     */ 
     
     if (Toggle("Rebind keyboard controls", &is_remapping_active, 
-               "Allows you to change the keyboard button map. (No reboot required to remap/reset)")) {
+               "If out of input window, process is aborted and defaults restored.")) {
         currently_remapping = 0;
         is_remapping_active = true;
     } 
-        //TODO: Force focus on window for the user while rebinding. Do not abort process if focus is lost.
+
     if (!ImGui::IsWindowFocused(1) && is_remapping_active) {
+        abort_rebinding = true;
+        restore_controls = true;
     }
     
     if (!is_remapping_active) {
@@ -297,7 +299,7 @@ void MainMenuInputView::Draw()
     }
 
     if (is_remapping_active) {
-        if (Toggle("Abort rebinding", &abort_rebinding, "Abort the rebinding process and restore default keys.")) {
+        if (Toggle("Abort rebinding", &abort_rebinding, "Abort the rebinding process.")) {
             abort_rebinding = true;
         }
         ImGui::SetKeyboardFocusHere(1);

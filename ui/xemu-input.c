@@ -411,7 +411,7 @@ void xemu_input_restore_defaults(void)
     g_config.input.keyboard_controller_scancode_map.rstick_down  = SDL_SCANCODE_K;
     g_config.input.keyboard_controller_scancode_map.rtrigger     = SDL_SCANCODE_O;
 
-    char *buf = g_strdup_printf("INFO: Keys have been resetted to default.");
+    char *buf = g_strdup_printf("INFO: Keys restored to default.");
     xemu_queue_notification(buf);
     free(buf);
 
@@ -420,9 +420,11 @@ void xemu_input_restore_defaults(void)
 
 void xemu_input_keyboard_rebind(const SDL_Event *ev)
 {   
-    //Check if the user aborts the remapping process, if so, reset the default mapping. and save the defaults.
+    //Check if the user aborts the remapping process.
     if (abort_rebinding) {
-        xemu_input_restore_defaults();
+        char *buf = g_strdup_printf("INFO: Remapping process aborted");
+        xemu_queue_notification(buf);
+        free(buf);
         is_remapping_active = false;
         abort_rebinding = false;
     }
@@ -444,8 +446,7 @@ void xemu_input_keyboard_rebind(const SDL_Event *ev)
             
         if( (sdl_kbd_scancode_map[currently_remapping] < SDL_SCANCODE_UNKNOWN) || 
             (sdl_kbd_scancode_map[currently_remapping] >= SDL_NUM_SCANCODES) ) {
-            char *buf = g_strdup_printf("WARNING: Keyboard controller map scancode out of range (%d) : Disabled", 
-                                        sdl_kbd_scancode_map[currently_remapping]);
+            char *buf = g_strdup_printf("WARNING: Keyboard scancode out of range, try another key.");
             xemu_queue_notification(buf);
             free(buf);
             currently_remapping--;
@@ -481,8 +482,7 @@ void xemu_input_keyboard_rebind(const SDL_Event *ev)
             g_config.input.keyboard_controller_scancode_map.rstick_down  = sdl_kbd_scancode_map[23];
             g_config.input.keyboard_controller_scancode_map.rtrigger     = sdl_kbd_scancode_map[24];
             
-            char *buf = g_strdup_printf("INFO: Successfully remapped keyboard.", 
-                                        sdl_kbd_scancode_map[currently_remapping]);
+            char *buf = g_strdup_printf("INFO: Successfully remapped keyboard.");
             xemu_queue_notification(buf);
             free(buf);
             is_remapping_active = false;
