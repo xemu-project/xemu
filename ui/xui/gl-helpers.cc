@@ -611,7 +611,7 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
                 rtrig, primary_color + alpha, primary_color + 0xff);
 
 
-    // Apply rumble updates
+    // Apply rumble updates when not remapping
     if (!is_remapping_active) {
     state->rumble_l = (int)(rumble_l * (float)0xffff);
     state->rumble_r = (int)(rumble_r * (float)0xffff);
