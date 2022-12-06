@@ -550,47 +550,51 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
     
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Blend with controller
 
-    // Render left thumbstick, do not make them move while remapping.
+    // Render left thumbstick, do not make move/highlight while remapping.
     float w = tex_items[obj_lstick].w;
     float h = tex_items[obj_lstick].h;
     float c_x = frame_x+lstick_ctr.x;
     float c_y = frame_y+lstick_ctr.y;
     float lstick_x = (float)state->axis[CONTROLLER_AXIS_LSTICK_X]/32768.0;
     float lstick_y = (float)state->axis[CONTROLLER_AXIS_LSTICK_Y]/32768.0;
+    int lstick_press_anim = CONTROLLER_BUTTON_LSTICK;
 
     if (is_remapping_active) {
         lstick_x = 0;
         lstick_y = 0;
+        lstick_press_anim = SDL_SCANCODE_UNKNOWN;
     }
 
     RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * lstick_x),
                 (int)(c_y - h / 2.0f + 10.0f * lstick_y), w, h,
                 tex_items[obj_lstick].x, tex_items[obj_lstick].y, w, h,
-                (state->buttons & CONTROLLER_BUTTON_LSTICK) ? secondary_color :
+                (state->buttons & lstick_press_anim) ? secondary_color :
                                                               primary_color,
-                (state->buttons & CONTROLLER_BUTTON_LSTICK) ? primary_color :
+                (state->buttons & lstick_press_anim) ? primary_color :
                                                               secondary_color,
                 0);
 
-    // Render right thumbstick
+    // Render right thumbstick, do not make move/highlight while remapping
     w = tex_items[obj_rstick].w;
     h = tex_items[obj_rstick].h;
     c_x = frame_x+rstick_ctr.x;
     c_y = frame_y+rstick_ctr.y;
     float rstick_x = (float)state->axis[CONTROLLER_AXIS_RSTICK_X]/32768.0;
     float rstick_y = (float)state->axis[CONTROLLER_AXIS_RSTICK_Y]/32768.0;
+    int rstick_press_anim = CONTROLLER_BUTTON_RSTICK;
 
     if (is_remapping_active) {
         rstick_x = 0;
         rstick_y = 0;
+        rstick_press_anim = SDL_SCANCODE_UNKNOWN;
     }
 
     RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * rstick_x),
                 (int)(c_y - h / 2.0f + 10.0f * rstick_y), w, h,
                 tex_items[obj_rstick].x, tex_items[obj_rstick].y, w, h,
-                (state->buttons & CONTROLLER_BUTTON_RSTICK) ? secondary_color :
+                (state->buttons & rstick_press_anim) ? secondary_color :
                                                               primary_color,
-                (state->buttons & CONTROLLER_BUTTON_RSTICK) ? primary_color :
+                (state->buttons & rstick_press_anim) ? primary_color :
                                                               secondary_color,
                 0);
 
