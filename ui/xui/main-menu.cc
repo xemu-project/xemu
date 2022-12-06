@@ -275,7 +275,7 @@ void MainMenuInputView::Draw()
     /* Interface and checks for keyboard remapping. 
       -Remove focus on input window while binding to avoide moving inside the UI. 
       -Abort remapping if you exit the window and restore defaults. 
-      -Give a toggle to the user while he's remapping to stop the remapping manually, without the need of switching windows.
+      -Give a toggle to the user while he's remapping to stop the remapping manually.
       -If the user is rebinding, do not render the "reset to default" option.
       NOTE: The keyboard config is overwrited only when the mapping is complete
     */ 
@@ -286,7 +286,7 @@ void MainMenuInputView::Draw()
         is_remapping_active = true;
     } 
 
-    if (!ImGui::IsWindowFocused(1) && is_remapping_active) {
+    if (g_config.general.last_viewed_menu_index != 1 && is_remapping_active) {
         abort_rebinding = true;
         restore_controls = true;
     }
@@ -997,6 +997,9 @@ MainMenuScene::MainMenuScene()
 
     m_current_view_index = 0;
     m_next_view_index = m_current_view_index;
+    if (m_current_view_index != 1) {
+        is_input_selected = false;
+    }
 }
 
 void MainMenuScene::ShowGeneral()
