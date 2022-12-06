@@ -429,9 +429,8 @@ void xemu_input_keyboard_rebind(const SDL_Event *ev)
         abort_rebinding = false;
     }
     
-    if(ev->type == SDL_KEYDOWN){
+    if (ev->type == SDL_KEYDOWN) {
         sdl_kbd_scancode_map[currently_remapping] = ev->key.keysym.scancode;
-
         //check for duplicated keybindings, if found, rebind that button.
         for (size_t i = 0; i < currently_remapping; i++) {
             if (sdl_kbd_scancode_map[currently_remapping] == sdl_kbd_scancode_map[i]) {
@@ -444,18 +443,18 @@ void xemu_input_keyboard_rebind(const SDL_Event *ev)
             }
         }
             
-        if( (sdl_kbd_scancode_map[currently_remapping] < SDL_SCANCODE_UNKNOWN) || 
-            (sdl_kbd_scancode_map[currently_remapping] >= SDL_NUM_SCANCODES) ) {
+        if ((sdl_kbd_scancode_map[currently_remapping] < SDL_SCANCODE_UNKNOWN) || 
+            (sdl_kbd_scancode_map[currently_remapping] >= SDL_NUM_SCANCODES)) {
             char *buf = g_strdup_printf("WARNING: Keyboard scancode out of range, try another key.");
             xemu_queue_notification(buf);
             free(buf);
             currently_remapping--;
-    }            
+        }            
+        
         currently_remapping++;
 
         //If the user has mapped all the buttons, store the new bindings.
-
-        if(currently_remapping == 25) {
+        if (currently_remapping == 25) {
             g_config.input.keyboard_controller_scancode_map.a            = sdl_kbd_scancode_map[0];
             g_config.input.keyboard_controller_scancode_map.b            = sdl_kbd_scancode_map[1];
             g_config.input.keyboard_controller_scancode_map.x            = sdl_kbd_scancode_map[2]; 
