@@ -997,9 +997,7 @@ MainMenuScene::MainMenuScene()
 
     m_current_view_index = 0;
     m_next_view_index = m_current_view_index;
-    if (m_current_view_index != 1) {
-        is_input_selected = false;
-    }
+
 }
 
 void MainMenuScene::ShowGeneral()
