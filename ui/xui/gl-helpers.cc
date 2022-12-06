@@ -550,13 +550,19 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
     
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Blend with controller
 
-    // Render left thumbstick
+    // Render left thumbstick, do not make them move while remapping.
     float w = tex_items[obj_lstick].w;
     float h = tex_items[obj_lstick].h;
     float c_x = frame_x+lstick_ctr.x;
     float c_y = frame_y+lstick_ctr.y;
     float lstick_x = (float)state->axis[CONTROLLER_AXIS_LSTICK_X]/32768.0;
     float lstick_y = (float)state->axis[CONTROLLER_AXIS_LSTICK_Y]/32768.0;
+
+    if (is_remapping_active) {
+        lstick_x = 0;
+        lstick_y = 0;
+    }
+
     RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * lstick_x),
                 (int)(c_y - h / 2.0f + 10.0f * lstick_y), w, h,
                 tex_items[obj_lstick].x, tex_items[obj_lstick].y, w, h,
@@ -573,6 +579,12 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
     c_y = frame_y+rstick_ctr.y;
     float rstick_x = (float)state->axis[CONTROLLER_AXIS_RSTICK_X]/32768.0;
     float rstick_y = (float)state->axis[CONTROLLER_AXIS_RSTICK_Y]/32768.0;
+
+    if (is_remapping_active) {
+        rstick_x = 0;
+        rstick_y = 0;
+    }
+
     RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * rstick_x),
                 (int)(c_y - h / 2.0f + 10.0f * rstick_y), w, h,
                 tex_items[obj_rstick].x, tex_items[obj_rstick].y, w, h,
@@ -584,7 +596,7 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
 
     glBlendFunc(GL_ONE, GL_ZERO); // Don't blend, just overwrite values in buffer
 
-    // Render trigger bars
+    // Render trigger bars, do not highlight when remapping.
     float ltrig = state->axis[CONTROLLER_AXIS_LTRIG] / 32767.0;
     float rtrig = state->axis[CONTROLLER_AXIS_RTRIG] / 32767.0;
     const uint32_t animate_trigger_duration = 1000;
@@ -600,6 +612,12 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
         t = 1.0f - (float)(state->animate_trigger_end-now)/(float)animate_trigger_duration;
         float sin_wav = (1-sin(M_PI * t / 2.0f));
         alpha += fmin(sin_wav * 0x40, 0x80);
+    }
+
+    if (is_remapping_active) {
+        ltrig = 0;
+        rtrig = 0;
+        alpha = 0x80;
     }
 
     RenderMeter(g_decal_shader, original_frame_x + 10,

@@ -92,7 +92,6 @@ typedef struct ControllerState {
     void *device; // DeviceState opaque
 } ControllerState;
 
-
 typedef QTAILQ_HEAD(, ControllerState) ControllerStateList;
 extern ControllerStateList available_controllers;
 extern ControllerState *bound_controllers[4];
