@@ -1049,9 +1049,12 @@ void MainMenuScene::Show()
 
 void MainMenuScene::Hide()
 {
-    m_background.Hide();
-    m_nav_control_view.Hide();
-    m_animation.EaseOut();
+    //ESC button will not make exit the menu while remapping.
+    if (!is_remapping_active) {
+        m_background.Hide();
+        m_nav_control_view.Hide();
+        m_animation.EaseOut();
+    }
 }
 
 bool MainMenuScene::IsAnimating()
