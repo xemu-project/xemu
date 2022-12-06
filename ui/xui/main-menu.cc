@@ -302,8 +302,8 @@ void MainMenuInputView::Draw()
         if (Toggle("Abort rebinding", &abort_rebinding, "Abort the rebinding process.")) {
             abort_rebinding = true;
         }
-        ImGui::SetKeyboardFocusHere(1);
-        ImGui::Text("\nPress the key you want to bind for: %s", bindings[currently_remapping]);
+    ImGui::SetKeyboardFocusHere(1);
+    ImGui::Text("\nPress the key you want to bind for: %s", bindings[currently_remapping]);
     }
 }
 
