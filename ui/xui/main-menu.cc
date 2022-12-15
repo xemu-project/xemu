@@ -351,10 +351,16 @@ void MainMenuAudioView::Draw()
              (int)(g_config.audio.volume_limit * 100));
     Slider("Output volume limit", &g_config.audio.volume_limit, buf);
 
+    if (g_config.audio.use_dsp) {
+        g_config.audio.use_dsp = false;
+    }
+    
+    /*
+    FIXME: DSP Emulation implementation.
     SectionTitle("Quality");
     Toggle("Real-time DSP processing", &g_config.audio.use_dsp,
            "Enable improved audio accuracy (experimental)");
-
+    */
 }
 
 NetworkInterface::NetworkInterface(pcap_if_t *pcap_desc, char *_friendlyname)
