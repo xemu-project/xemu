@@ -5905,10 +5905,19 @@ static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                             d->pgraph.surface_scale_factor);
     }
 
+    int prev_unpack_alignment;
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &prev_unpack_alignment);
+    if (unlikely((width * surface->fmt.bytes_per_pixel) % 4 != 0)) {
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    } else {
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    }
+
     glBindTexture(GL_TEXTURE_2D, surface->gl_buffer);
     glTexImage2D(GL_TEXTURE_2D, 0, surface->fmt.gl_internal_format, width,
                  height, 0, surface->fmt.gl_format, surface->fmt.gl_type,
                  gl_read_buf);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, prev_unpack_alignment);
     g_free(flipped_buf);
     if (surface->swizzle) {
         g_free(buf);
