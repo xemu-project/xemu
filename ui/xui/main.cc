@@ -256,6 +256,16 @@ void xemu_hud_render(void)
         }
     }
 
+    static uint32_t last_mouse_move = 0;
+    if (g_input_mgr.MouseMoved()) {
+        last_mouse_move = now;
+    }
+
+    // FIXME: Handle time wrap around
+    if (g_config.display.ui.hide_cursor && (now - last_mouse_move) > 3000) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+    }
+
     if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow) &&
         !g_scene_mgr.IsDisplayingScene()) {
 

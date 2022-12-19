@@ -136,6 +136,9 @@ display:
     show_notifications:
       type: bool
       default: true
+    hide_cursor:
+      type: bool
+      default: true
     use_animations:
       type: bool
       default: true
