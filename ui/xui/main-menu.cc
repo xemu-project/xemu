@@ -149,6 +149,35 @@ void MainMenuInputView::Draw()
     ImGui::Columns(1);
 
     //
+    // Render device driver combo
+    //
+
+    // List available device drivers
+    const char *driver = bound_drivers[active];
+
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    if (ImGui::BeginCombo("###InputDrivers", driver, ImGuiComboFlags_NoArrowButton))
+    {
+        const char *available_drivers[3] = { DRIVER_DUKE, DRIVER_S, DRIVER_SB };
+        bool is_selected = false;
+        for(int i = 0; i < 3; i++) {
+            const char* iter = available_drivers[i];
+            is_selected = strcmp(driver, iter) == 0;
+            ImGui::PushID(iter);
+            if (ImGui::Selectable(iter, is_selected)) {
+                bound_drivers[active] = iter;
+                xemu_input_bind(active, bound_controllers[active], 1);
+            }
+            if (is_selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+            ImGui::PopID();
+        }
+
+        ImGui::EndCombo();
+    }
+
+    //
     // Render input device combo
     //
 

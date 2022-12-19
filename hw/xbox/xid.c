@@ -50,7 +50,11 @@
 #define XID_GET_CAPABILITIES 0x01
 
 #define TYPE_USB_XID "usb-xbox-gamepad"
-#define USB_XID(obj) OBJECT_CHECK(USBXIDState, (obj), TYPE_USB_XID)
+#define TYPE_USB_XID_ALT "usb-xbox-gamepad-s"
+#define TYPE_USB_XID_SB "usb-steel-battalion"
+#define USB_XID(obj) OBJECT_CHECK(USBXIDGamepadState, (obj), TYPE_USB_XID)
+#define USB_XID_S(obj) OBJECT_CHECK(USBXIDGamepadState, (obj), TYPE_USB_XID_ALT)
+#define USB_XID_SB(obj) OBJECT_CHECK(USBXIDSteelBattalionState, (obj), TYPE_USB_XID_SB)
 
 enum {
     STR_MANUFACTURER = 1,
@@ -98,7 +102,32 @@ typedef struct XIDGamepadOutputReport {
     uint16_t right_actuator_strength;
 } QEMU_PACKED XIDGamepadOutputReport;
 
-typedef struct USBXIDState {
+typedef struct XIDSteelBattalionReport {
+    uint8_t     bReportId;
+    uint8_t     bLength;
+    uint32_t    dwButtons;
+    uint8_t     bMoreButtons;
+    uint16_t    wPadding;
+    uint8_t  	bAimingX;
+    uint8_t     bPadding;
+    uint8_t  	bAimingY;
+    int16_t   	sRotationLever; // only high byte is used
+    int16_t   	sSightChangeX;  // only high byte is used
+    int16_t   	sSightChangeY;  // only high byte is used
+    uint16_t    wLeftPedal;     // only high byte is used
+    uint16_t    wMiddlePedal;   // only high byte is used
+    uint16_t    wRightPedal;    // only high byte is used
+    uint8_t   	ucTunerDial;    // low nibble, The 9 o'clock postion is 0, and the 6 o'clock position is 12
+    uint8_t   	ucGearLever;    // gear lever 1~5 for gear 1~5, 7~13 for gear R,N,1~5, 15 for gear R
+} QEMU_PACKED XIDSteelBattalionReport;
+
+typedef struct XIDSteelBattalionOutputReport {
+    uint8_t report_id;
+    uint8_t length;
+    uint8_t notUsed[32];
+} QEMU_PACKED XIDSteelBattalionOutputReport;
+
+typedef struct USBXIDGamepadState {
     USBDevice              dev;
     USBEndpoint            *intr;
     const XIDDesc          *xid_desc;
@@ -107,7 +136,18 @@ typedef struct USBXIDState {
     XIDGamepadOutputReport out_state;
     XIDGamepadOutputReport out_state_capabilities;
     uint8_t                device_index;
-} USBXIDState;
+} USBXIDGamepadState;
+
+typedef struct USBXIDSteelBattalionState {
+    USBDevice                       dev;
+    USBEndpoint                     *intr;
+    const XIDDesc                   *xid_desc;
+    XIDSteelBattalionReport         in_state;
+    XIDSteelBattalionReport         in_state_capabilities;
+    XIDSteelBattalionOutputReport   out_state;
+    XIDSteelBattalionOutputReport   out_state_capabilities;
+    uint8_t                         device_index;
+} USBXIDSteelBattalionState;
 
 static const USBDescIface desc_iface_xbox_gamepad = {
     .bInterfaceNumber              = 0,
@@ -131,6 +171,28 @@ static const USBDescIface desc_iface_xbox_gamepad = {
     },
 };
 
+static const USBDescIface desc_iface_steel_battalion = {
+    .bInterfaceNumber              = 0,
+    .bNumEndpoints                 = 2,
+    .bInterfaceClass               = USB_CLASS_XID,
+    .bInterfaceSubClass            = 0x42,
+    .bInterfaceProtocol            = 0x00,
+    .eps = (USBDescEndpoint[]) {
+        {
+            .bEndpointAddress      = USB_DIR_IN | 0x02,
+            .bmAttributes          = USB_ENDPOINT_XFER_INT,
+            .wMaxPacketSize        = 0x20,
+            .bInterval             = 4,
+        },
+        {
+            .bEndpointAddress      = USB_DIR_OUT | 0x01,
+            .bmAttributes          = USB_ENDPOINT_XFER_INT,
+            .wMaxPacketSize        = 0x20,
+            .bInterval             = 4,
+        },
+    },
+};
+
 static const USBDescDevice desc_device_xbox_gamepad = {
     .bcdUSB                        = 0x0110,
     .bMaxPacketSize0               = 0x40,
@@ -143,6 +205,22 @@ static const USBDescDevice desc_device_xbox_gamepad = {
             .bMaxPower             = 50,
             .nif = 1,
             .ifs = &desc_iface_xbox_gamepad,
+        },
+    },
+};
+
+static const USBDescDevice desc_device_steel_battaion = {
+    .bcdUSB                        = 0x0110,
+    .bMaxPacketSize0               = 0x40,
+    .bNumConfigurations            = 1,
+    .confs = (USBDescConfig[]) {
+        {
+            .bNumInterfaces        = 1,
+            .bConfigurationValue   = 1,
+            .bmAttributes          = USB_CFG_ATT_ONE,
+            .bMaxPower             = 50,
+            .nif = 1,
+            .ifs = &desc_iface_steel_battalion,
         },
     },
 };
@@ -160,6 +238,32 @@ static const USBDesc desc_xbox_gamepad = {
     .str  = desc_strings,
 };
 
+static const USBDesc desc_xbox_gamepad_s = {
+    .id = {
+        .idVendor          = 0x045e,
+        .idProduct         = 0x0289,
+        .bcdDevice         = 0x0100,
+        .iManufacturer     = STR_MANUFACTURER,
+        .iProduct          = STR_PRODUCT,
+        .iSerialNumber     = STR_SERIALNUMBER,
+    },
+    .full = &desc_device_xbox_gamepad,
+    .str  = desc_strings,
+};
+
+static const USBDesc desc_xbox_steel_battalion = {
+    .id = {
+        .idVendor          = 0x0a7b,
+        .idProduct         = 0xd000,
+        .bcdDevice         = 0x0100,
+        .iManufacturer     = STR_MANUFACTURER,
+        .iProduct          = STR_PRODUCT,
+        .iSerialNumber     = STR_SERIALNUMBER,
+    },
+    .full = &desc_device_xbox_gamepad,
+    .str  = desc_strings,
+};
+
 static const XIDDesc desc_xid_xbox_gamepad = {
     .bLength              = 0x10,
     .bDescriptorType      = USB_DT_XID,
@@ -168,6 +272,28 @@ static const XIDDesc desc_xid_xbox_gamepad = {
     .bSubType             = 1,
     .bMaxInputReportSize  = 20,
     .bMaxOutputReportSize = 6,
+    .wAlternateProductIds = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF },
+};
+
+static const XIDDesc desc_xid_xbox_gamepad_s = {
+    .bLength              = 0x10,
+    .bDescriptorType      = USB_DT_XID,
+    .bcdXid               = 0x100,
+    .bType                = 1,
+    .bSubType             = 2,
+    .bMaxInputReportSize  = 20,
+    .bMaxOutputReportSize = 6,
+    .wAlternateProductIds = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF },
+};
+
+static const XIDDesc desc_xid_steel_battalion = {
+    .bLength              = 0x10,
+    .bDescriptorType      = USB_DT_XID,
+    .bcdXid               = 0x100,
+    .bType                = 128,
+    .bSubType             = 1,
+    .bMaxInputReportSize  = 26,
+    .bMaxOutputReportSize = 32,
     .wAlternateProductIds = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF },
 };
 
@@ -191,7 +317,7 @@ static const XIDDesc desc_xid_xbox_gamepad = {
 
 #define BUTTON_MASK(button) (1 << ((button) - GAMEPAD_DPAD_UP))
 
-static void update_output(USBXIDState *s)
+static void update_output(USBXIDGamepadState *s)
 {
     if (xemu_input_get_test_mode()) {
         // Don't report changes if we are testing the controller while running
@@ -200,12 +326,12 @@ static void update_output(USBXIDState *s)
 
     ControllerState *state = xemu_input_get_bound(s->device_index);
     assert(state);
-    state->rumble_l = s->out_state.left_actuator_strength;
-    state->rumble_r = s->out_state.right_actuator_strength;
+    state->gp.rumble_l = s->out_state.left_actuator_strength;
+    state->gp.rumble_r = s->out_state.right_actuator_strength;
     xemu_input_update_rumble(state);
 }
 
-static void update_input(USBXIDState *s)
+static void update_input(USBXIDGamepadState *s)
 {
     if (xemu_input_get_test_mode()) {
         // Don't report changes if we are testing the controller while running
@@ -237,23 +363,51 @@ static void update_input(USBXIDState *s)
     };
 
     for (int i = 0; i < 6; i++) {
-        int pressed = state->buttons & button_map_analog[i][1];
+        int pressed = state->gp.buttons & button_map_analog[i][1];
         s->in_state.bAnalogButtons[button_map_analog[i][0]] = pressed ? 0xff : 0;
     }
 
     s->in_state.wButtons = 0;
     for (int i = 0; i < 8; i++) {
-        if (state->buttons & button_map_binary[i][1]) {
+        if (state->gp.buttons & button_map_binary[i][1]) {
             s->in_state.wButtons |= BUTTON_MASK(button_map_binary[i][0]);
         }
     }
 
-    s->in_state.bAnalogButtons[GAMEPAD_LEFT_TRIGGER] = state->axis[CONTROLLER_AXIS_LTRIG] >> 7;
-    s->in_state.bAnalogButtons[GAMEPAD_RIGHT_TRIGGER] = state->axis[CONTROLLER_AXIS_RTRIG] >> 7;
-    s->in_state.sThumbLX = state->axis[CONTROLLER_AXIS_LSTICK_X];
-    s->in_state.sThumbLY = state->axis[CONTROLLER_AXIS_LSTICK_Y];
-    s->in_state.sThumbRX = state->axis[CONTROLLER_AXIS_RSTICK_X];
-    s->in_state.sThumbRY = state->axis[CONTROLLER_AXIS_RSTICK_Y];
+    s->in_state.bAnalogButtons[GAMEPAD_LEFT_TRIGGER] = state->gp.axis[CONTROLLER_AXIS_LTRIG] >> 7;
+    s->in_state.bAnalogButtons[GAMEPAD_RIGHT_TRIGGER] = state->gp.axis[CONTROLLER_AXIS_RTRIG] >> 7;
+    s->in_state.sThumbLX = state->gp.axis[CONTROLLER_AXIS_LSTICK_X];
+    s->in_state.sThumbLY = state->gp.axis[CONTROLLER_AXIS_LSTICK_Y];
+    s->in_state.sThumbRX = state->gp.axis[CONTROLLER_AXIS_RSTICK_X];
+    s->in_state.sThumbRY = state->gp.axis[CONTROLLER_AXIS_RSTICK_Y];
+}
+
+static void update_sb_input(USBXIDSteelBattalionState *s)
+{
+    if(xemu_input_get_test_mode()) {
+        // Don't report changes if we are testing the controller while running
+        return;
+    }
+
+    ControllerState *state = xemu_input_get_bound(s->device_index);
+    assert(state);
+    xemu_input_update_controller(state);
+
+    s->in_state.dwButtons = (uint32_t)(state->sbc.buttons & 0xFFFFFFFF);
+    s->in_state.bMoreButtons = (uint8_t)((state->sbc.buttons >> 32) & 0x7F);
+    s->in_state.bMoreButtons |= state->sbc.toggleSwitches;
+
+    s->in_state.sSightChangeX = state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X];
+    s->in_state.sSightChangeY = state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y];
+    s->in_state.bAimingX = (uint8_t)(128 + (state->sbc.axis[SBC_AXIS_AIMING_X] / 256));          // Convert from int16_t to uint8_t
+    s->in_state.bAimingY = (uint8_t)(128 + (state->sbc.axis[SBC_AXIS_AIMING_Y] / 256));          // Convert from int16_t to uint8_t
+    s->in_state.sRotationLever = state->sbc.axis[SBC_AXIS_ROTATION_LEVER];
+    s->in_state.wLeftPedal = (uint16_t)state->sbc.axis[SBC_AXIS_LEFT_PEDAL];
+    s->in_state.wMiddlePedal = (uint16_t)state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL];
+    s->in_state.wRightPedal = (uint16_t)state->sbc.axis[SBC_AXIS_RIGHT_PEDAL];
+
+    s->in_state.ucGearLever = state->sbc.gearLever;
+    s->in_state.ucTunerDial = state->sbc.tunerDial;
 }
 
 static void usb_xid_handle_reset(USBDevice *dev)
@@ -264,7 +418,7 @@ static void usb_xid_handle_reset(USBDevice *dev)
 static void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
                int request, int value, int index, int length, uint8_t *data)
 {
-    USBXIDState *s = (USBXIDState *)dev;
+    USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
 
     DPRINTF("xid handle_control 0x%x 0x%x\n", request, value);
 
@@ -370,23 +524,34 @@ static void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
 
 static void usb_xid_handle_data(USBDevice *dev, USBPacket *p)
 {
-    USBXIDState *s = DO_UPCAST(USBXIDState, dev, dev);
-
     DPRINTF("xid handle_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
 
     switch (p->pid) {
     case USB_TOKEN_IN:
         if (p->ep->nr == 2) {
-            update_input(s);
-            usb_packet_copy(p, &s->in_state, s->in_state.bLength);
+            if(p->iov.size > 20)
+            {
+                USBXIDSteelBattalionState *s = DO_UPCAST(USBXIDSteelBattalionState, dev, dev);
+                update_sb_input(s);
+                usb_packet_copy(p, &s->in_state, s->in_state.bLength);
+            }
+            else
+            {
+                USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
+                update_input(s);
+                usb_packet_copy(p, &s->in_state, s->in_state.bLength);
+            }
         } else {
             assert(false);
         }
         break;
     case USB_TOKEN_OUT:
         if (p->ep->nr == 2) {
-            usb_packet_copy(p, &s->out_state, s->out_state.length);
-            update_output(s);
+            if(p->iov.size < 20) {
+                USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
+                usb_packet_copy(p, &s->out_state, s->out_state.length);
+                update_output(s);
+            }
         } else {
             assert(false);
         }
@@ -401,7 +566,7 @@ static void usb_xid_handle_data(USBDevice *dev, USBPacket *p)
 #if 0
 static void usb_xid_handle_destroy(USBDevice *dev)
 {
-    USBXIDState *s = DO_UPCAST(USBXIDState, dev, dev);
+    USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
     DPRINTF("xid handle_destroy\n");
 }
 #endif
@@ -423,7 +588,7 @@ static void usb_xid_class_initfn(ObjectClass *klass, void *data)
 
 static void usb_xbox_gamepad_realize(USBDevice *dev, Error **errp)
 {
-    USBXIDState *s = USB_XID(dev);
+    USBXIDGamepadState *s = USB_XID(dev);
     usb_desc_create_serial(dev);
     usb_desc_init(dev);
     s->intr = usb_ep_get(dev, USB_TOKEN_IN, 2);
@@ -445,8 +610,61 @@ static void usb_xbox_gamepad_realize(USBDevice *dev, Error **errp)
     s->out_state_capabilities.report_id = 0;
 }
 
+static void usb_xbox_gamepad_s_realize(USBDevice *dev, Error **errp)
+{
+    USBXIDGamepadState *s = USB_XID_S(dev);
+    usb_desc_create_serial(dev);
+    usb_desc_init(dev);
+    s->intr = usb_ep_get(dev, USB_TOKEN_IN, 2);
+
+    s->in_state.bLength = sizeof(s->in_state);
+    s->in_state.bReportId = 0;
+
+    s->out_state.length = sizeof(s->out_state);
+    s->out_state.report_id = 0;
+
+    s->xid_desc = &desc_xid_xbox_gamepad_s;
+
+    memset(&s->in_state_capabilities, 0xFF, sizeof(s->in_state_capabilities));
+    s->in_state_capabilities.bLength = sizeof(s->in_state_capabilities);
+    s->in_state_capabilities.bReportId = 0;
+
+    memset(&s->out_state_capabilities, 0xFF, sizeof(s->out_state_capabilities));
+    s->out_state_capabilities.length = sizeof(s->out_state_capabilities);
+    s->out_state_capabilities.report_id = 0;
+}
+
+static void usb_steel_battalion_realize(USBDevice *dev, Error **errp)
+{
+    USBXIDSteelBattalionState *s = USB_XID_SB(dev);
+    usb_desc_create_serial(dev);
+    usb_desc_init(dev);
+    s->intr = usb_ep_get(dev, USB_TOKEN_IN, 2);
+
+    s->in_state.bLength = sizeof(s->in_state);
+    s->in_state.bReportId = 0;
+
+    s->out_state.length = sizeof(s->out_state);
+    s->out_state.report_id = 0;
+
+    s->xid_desc = &desc_xid_steel_battalion;
+
+    memset(&s->in_state_capabilities, 0xFF, sizeof(s->in_state_capabilities));
+    s->in_state_capabilities.bLength = sizeof(s->in_state_capabilities);
+    s->in_state_capabilities.bReportId = 0;
+
+    memset(&s->out_state_capabilities, 0xFF, sizeof(s->out_state_capabilities));
+    s->out_state_capabilities.length = sizeof(s->out_state_capabilities);
+    s->out_state_capabilities.report_id = 0;
+}
+
 static Property xid_properties[] = {
-    DEFINE_PROP_UINT8("index", USBXIDState, device_index, 0),
+    DEFINE_PROP_UINT8("index", USBXIDGamepadState, device_index, 0),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
+static Property xid_sb_properties[] = {
+    DEFINE_PROP_UINT8("index", USBXIDSteelBattalionState, device_index, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -455,7 +673,29 @@ static const VMStateDescription vmstate_usb_xbox = {
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_USB_DEVICE(dev, USBXIDState),
+        VMSTATE_USB_DEVICE(dev, USBXIDGamepadState),
+        // FIXME
+        VMSTATE_END_OF_LIST()
+    },
+};
+
+static const VMStateDescription vmstate_usb_xbox_s = {
+    .name = TYPE_USB_XID_ALT,
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_USB_DEVICE(dev, USBXIDGamepadState),
+        // FIXME
+        VMSTATE_END_OF_LIST()
+    },
+};
+
+static const VMStateDescription vmstate_usb_sb = {
+    .name = TYPE_USB_XID_SB,
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_USB_DEVICE(dev, USBXIDSteelBattalionState),
         // FIXME
         VMSTATE_END_OF_LIST()
     },
@@ -477,16 +717,64 @@ static void usb_xbox_gamepad_class_initfn(ObjectClass *klass, void *data)
     dc->desc  = "Microsoft Xbox Controller";
 }
 
+static void usb_xbox_gamepad_s_class_initfn(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
+
+    uc->product_desc   = "Microsoft Xbox Controller S";
+    uc->usb_desc       = &desc_xbox_gamepad_s;
+    uc->realize        = usb_xbox_gamepad_s_realize;
+    uc->unrealize      = usb_xbox_gamepad_unrealize;
+    usb_xid_class_initfn(klass, data);
+    set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
+    dc->vmsd  = &vmstate_usb_xbox_s;
+    device_class_set_props(dc, xid_properties);
+    dc->desc  = "Microsoft Xbox Controller S";
+}
+
+static void usb_steel_battalion_class_initfn(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
+
+    uc->product_desc   = "Steel Battalion Controller";
+    uc->usb_desc       = &desc_xbox_steel_battalion;
+    uc->realize        = usb_steel_battalion_realize;
+    uc->unrealize      = usb_xbox_gamepad_unrealize;
+    usb_xid_class_initfn(klass, data);
+    set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
+    dc->vmsd  = &vmstate_usb_sb;
+    device_class_set_props(dc, xid_sb_properties);
+    dc->desc  = "Steel Battalion Controller";
+}
+
 static const TypeInfo usb_xbox_gamepad_info = {
     .name          = TYPE_USB_XID,
     .parent        = TYPE_USB_DEVICE,
-    .instance_size = sizeof(USBXIDState),
+    .instance_size = sizeof(USBXIDGamepadState),
     .class_init    = usb_xbox_gamepad_class_initfn,
+};
+
+static const TypeInfo usb_xbox_gamepad_s_info = {
+    .name          = TYPE_USB_XID_ALT,
+    .parent        = TYPE_USB_DEVICE,
+    .instance_size = sizeof(USBXIDGamepadState),
+    .class_init    = usb_xbox_gamepad_s_class_initfn,
+};
+
+static const TypeInfo usb_steel_battalion_info = {
+    .name          = TYPE_USB_XID_SB,
+    .parent        = TYPE_USB_DEVICE,
+    .instance_size = sizeof(USBXIDSteelBattalionState),
+    .class_init    = usb_steel_battalion_class_initfn,
 };
 
 static void usb_xid_register_types(void)
 {
     type_register_static(&usb_xbox_gamepad_info);
+    type_register_static(&usb_xbox_gamepad_s_info);
+    type_register_static(&usb_steel_battalion_info);
 }
 
 type_init(usb_xid_register_types)

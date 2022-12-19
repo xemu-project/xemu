@@ -1,5 +1,7 @@
 pfiles = [
+  'sb_controller_mask.png',
   'controller_mask.png',
+  'controller_mask_s.png',
   'logo_sdf.png',
   'xemu_64x64.png',
   'abxy.ttf',
