@@ -3936,10 +3936,57 @@ unsigned int nv2a_get_surface_scale_factor(void)
     return g_nv2a->pgraph.surface_scale_factor;
 }
 
+void nv2a_set_line_width_scaling_enabled(bool enable)
+{
+    NV2AState *d = g_nv2a;
+
+    g_config.display.quality.scale_lines = enable;
+    
+    qemu_mutex_unlock_iothread();
+
+    qemu_mutex_lock(&d->pfifo.lock);
+    qatomic_set(&d->pfifo.halt, true);
+    qemu_mutex_unlock(&d->pfifo.lock);
+
+    qemu_mutex_lock(&d->pgraph.lock);
+    qemu_event_reset(&d->pgraph.dirty_surfaces_download_complete);
+    qatomic_set(&d->pgraph.download_dirty_surfaces_pending, true);
+    qemu_mutex_unlock(&d->pgraph.lock);
+    qemu_mutex_lock(&d->pfifo.lock);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+    qemu_event_wait(&d->pgraph.dirty_surfaces_download_complete);
+
+    qemu_mutex_lock(&d->pgraph.lock);
+    qemu_event_reset(&d->pgraph.flush_complete);
+    qatomic_set(&d->pgraph.flush_pending, true);
+    qemu_mutex_unlock(&d->pgraph.lock);
+    qemu_mutex_lock(&d->pfifo.lock);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+    qemu_event_wait(&d->pgraph.flush_complete);
+
+    qemu_mutex_lock(&d->pfifo.lock);
+    qatomic_set(&d->pfifo.halt, false);
+    pfifo_kick(d);
+    qemu_mutex_unlock(&d->pfifo.lock);
+
+    qemu_mutex_lock_iothread();
+}
+
+bool nv2a_get_line_width_scaling_enabled()
+{
+    return g_config.display.quality.scale_lines;
+}
+
 static void pgraph_reload_surface_scale_factor(NV2AState *d)
 {
     int factor = g_config.display.quality.surface_scale;
     d->pgraph.surface_scale_factor = factor < 1 ? 1 : factor;
+    if(g_config.display.quality.scale_lines)
+        glLineWidth(d->pgraph.surface_scale_factor);
+    else
+        glLineWidth(1);
 }
 
 void pgraph_init(NV2AState *d)

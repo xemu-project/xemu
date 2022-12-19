@@ -106,6 +106,9 @@ display:
     surface_scale:
       type: integer
       default: 1
+    scale_lines:
+      type: bool
+      default: true
   window:
     fullscreen_on_startup: bool
     startup_size:
