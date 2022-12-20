@@ -1442,20 +1442,9 @@ DisplaySurface *qemu_create_placeholder_surface(int w, int h,
     x = (w / FONT_WIDTH  - 70) / 2;
     y = (h / FONT_HEIGHT - 1) / 2;
     for (i = 0; i < len; i++) {
-        /*go on newline for longer text, skip the already drawed char.
-        NOTE: If you have to go on a newline and your char isn't 70 chars, add blank spaces to reach that quota
-        and go on the next line*/
-        if (i > 69) {
-            i = 0;
-            counter++;
-            y += 1;
-        }
-        if (i + (69 * counter) > len) {
-            break;
-        }
-        glyph  = qemu_pixman_glyph_from_vgafont(FONT_HEIGHT, vgafont16, msg[i+(69*counter)]);
+        glyph  = qemu_pixman_glyph_from_vgafont(FONT_HEIGHT, vgafont16, msg[i]);
         qemu_pixman_glyph_render(glyph, surface->image, &fg, &bg,
-                                 x+i, y, FONT_WIDTH, FONT_HEIGHT);
+                                 x+i % 70, y + i / 70, FONT_WIDTH, FONT_HEIGHT);
         qemu_pixman_image_unref(glyph);
     }
     surface->flags |= QEMU_PLACEHOLDER_FLAG;
@@ -1991,9 +1980,9 @@ QemuConsole *graphic_console_init(DeviceState *dev, uint32_t head,
                                   void *opaque)
 {
     static const char noinit[] = 
-            "Guest has not initialized the display (yet). If this message remains:"
-            "-The AV pack in System > System Configuration shouldn't be (No video)"
-            "-Check if you have set up all the required files in System > Files";
+            "Guest has not initialized the display (yet). If this message remains: "
+            "-The AV pack in System > System Configuration shouldn't be (No video) "
+            "-Check if you have set up all the required files in System > Files   ";
     int width = 640;
     int height = 480;
     QemuConsole *s;
