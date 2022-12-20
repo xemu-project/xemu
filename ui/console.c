@@ -1435,7 +1435,7 @@ DisplaySurface *qemu_create_placeholder_surface(int w, int h,
     pixman_color_t bg = color_table_rgb[0][QEMU_COLOR_BLACK];
     pixman_color_t fg = color_table_rgb[0][QEMU_COLOR_WHITE];
     pixman_image_t *glyph;
-    int len, i, counter = 0, x, y;
+    int len, x, y, i, counter = 0;
 
     //Horizontal center x on 640x480 is 5.
     len = strlen(msg);
