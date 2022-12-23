@@ -209,7 +209,7 @@ static const USBDescDevice desc_device_xbox_gamepad = {
     },
 };
 
-static const USBDescDevice desc_device_steel_battaion = {
+static const USBDescDevice desc_device_steel_battalion = {
     .bcdUSB                        = 0x0110,
     .bMaxPacketSize0               = 0x40,
     .bNumConfigurations            = 1,
@@ -260,7 +260,7 @@ static const USBDesc desc_xbox_steel_battalion = {
         .iProduct          = STR_PRODUCT,
         .iSerialNumber     = STR_SERIALNUMBER,
     },
-    .full = &desc_device_xbox_gamepad,
+    .full = &desc_device_steel_battalion,
     .str  = desc_strings,
 };
 
