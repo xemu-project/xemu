@@ -49,8 +49,8 @@ const char *xemu_get_os_info(void)
             RegQueryValueExW(keyHandle, L"ProductName", NULL, NULL, (LPBYTE)windows_name, &string3); 
             RegCloseKey(keyHandle);
         } else {
-            const char *default = "Windows";
-            return default;
+            const char *msg = "Windows";
+            return msg;
         }
     }
     buffer = g_strdup_printf("%ls %ls", windows_name, windows_build);
