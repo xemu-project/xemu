@@ -43,7 +43,7 @@ const char *xemu_get_os_info(void)
 
                 //If it's lower (win 8 and below until XP) get the build descriptor from CSDBuildNumber.
                 } else { 
-                    RegQueryValueExW(keyHandle, L"CSDBuildNumber", NULL, NULL, (LPBYTE)windows_build, &string2);
+                    RegQueryValueExW(keyHandle, L"CSDVersion", NULL, NULL, (LPBYTE)windows_build, &string2);
                 }
 
             RegQueryValueExW(keyHandle, L"ProductName", NULL, NULL, (LPBYTE)windows_name, &string3); 
