@@ -41,7 +41,7 @@ const char *xemu_get_os_info(void)
             if (wcscmp(version_number, L"10.0") == 0) {
                 RegQueryValueExW(keyHandle, L"DisplayVersion", NULL, NULL, (LPBYTE)windows_build, &string1);
 
-                //If it's lower (win 8 and below until XP) get the build descriptor from CSDBuildNumber.
+                //If it's lower (win 8 and below until XP) get the build descriptor from CSDVersion.
                 } else { 
                     RegQueryValueExW(keyHandle, L"CSDVersion", NULL, NULL, (LPBYTE)windows_build, &string2);
                 }
