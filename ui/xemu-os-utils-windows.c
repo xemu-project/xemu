@@ -36,7 +36,7 @@ const char *xemu_get_os_info(void)
                           KEY_QUERY_VALUE, &keyHandle) == ERROR_SUCCESS) {
             RegQueryValueExW(keyHandle, L"CurrentVersion", NULL, NULL, (LPBYTE)version_number, &string);
             
-            //if version number is 6.3 (win 8.1/10/11), get the build number from the DisplayVersion Registry.
+            //if version number is 10.0 (win 8.1/10/11), get the build number from the DisplayVersion Registry.
             if (wcscmp(version_number, L"10.0") == 0) {
                 RegQueryValueExW(keyHandle, L"DisplayVersion", NULL, NULL, (LPBYTE)windows_build, &string1);
 
