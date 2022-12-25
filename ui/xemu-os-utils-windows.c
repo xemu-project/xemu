@@ -37,7 +37,7 @@ const char *xemu_get_os_info(void)
             RegQueryValueExW(keyHandle, L"CurrentVersion", NULL, NULL, (LPBYTE)version_number, &string);
             
             //if version number is 6.3 (win 8.1/10/11), get the build number from the DisplayVersion Registry.
-            if (wcscmp(version_number, L"6.3") == 0) {
+            if (wcscmp(version_number, L"10.0") == 0) {
                 RegQueryValueExW(keyHandle, L"DisplayVersion", NULL, NULL, (LPBYTE)windows_build, &string1);
 
                 //If it's lower than 6.3 (win 8 and below until XP) get the build descriptor from CSDBuildNumber.
