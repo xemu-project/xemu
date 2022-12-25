@@ -32,7 +32,7 @@ const char *xemu_get_os_info(void)
 
     if (buffer == NULL) {
         //Get Current Kernel version number.
-        if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows NT\\CurrentVersion", 0,
+        if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0,
                           KEY_QUERY_VALUE, &keyHandle) == ERROR_SUCCESS) {
             RegQueryValueExW(keyHandle, L"CurrentVersion", NULL, NULL, (LPBYTE)version_number, &string);
             
