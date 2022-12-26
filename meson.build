@@ -838,9 +838,9 @@ if 'CONFIG_OPENGL' in config_host
 endif
 
 tomllib = static_library('tomlpp', sources: files('toml.cpp'),
-                         include_directories: 'tomlplusplus')
+                         include_directories: 'tomlplusplus/include')
 toml = declare_dependency(compile_args: ['-DTOML_HEADER_ONLY=0'],
-                          include_directories: 'tomlplusplus',
+                          include_directories: 'tomlplusplus/include',
                           link_with: tomllib)
 
 genconfig = declare_dependency(include_directories: 'genconfig')
@@ -2268,6 +2268,7 @@ util_ss.add_all(trace_ss)
 util_ss = util_ss.apply(config_all, strict: false)
 libqemuutil = static_library('qemuutil',
                              sources: util_ss.sources() + stub_ss.sources() + genh,
+                             include_directories: 'util/xxHash',
                              dependencies: [util_ss.dependencies(), libm, threads, glib, socket, malloc, pixman])
 qemuutil = declare_dependency(link_with: libqemuutil,
                               sources: genh + version_res)

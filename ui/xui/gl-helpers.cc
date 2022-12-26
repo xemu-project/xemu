@@ -368,20 +368,38 @@ void RenderDecal(DecalShader *s, float x, float y, float w, float h,
     float tw = tw_i, th = th_i;
 
     #define COL(color, c) (float)(((color)>>((c)*8)) & 0xff)/255.0
-    glUniform1i(s->flipy_loc, s->flip);
-    glUniform4f(s->scale_offset_loc, w / ww, h / wh, -1 + ((2 * x + w) / ww),
-                -1 + ((2 * y + h) / wh));
-    glUniform4f(s->tex_scale_offset_loc, tex_w / tw, tex_h / th, tex_x / tw,
-                tex_y / th);
-    glUniform1i(s->tex_loc, 0);
-    glUniform4f(s->color_primary_loc, COL(primary, 3), COL(primary, 2),
-                COL(primary, 1), COL(primary, 0));
-    glUniform4f(s->color_secondary_loc, COL(secondary, 3), COL(secondary, 2),
-                COL(secondary, 1), COL(secondary, 0));
-    glUniform4f(s->color_fill_loc, COL(fill, 3), COL(fill, 2), COL(fill, 1),
-                COL(fill, 0));
-    if (s->time_loc >= 0) glUniform1f(s->time_loc, s->time/1000.0f);
-    if (s->scale_loc >= 0) glUniform1f(s->scale_loc, s->scale);
+    if (s->flipy_loc >= 0) {
+        glUniform1i(s->flipy_loc, s->flip);
+    }
+    if (s->scale_offset_loc >= 0) {
+        glUniform4f(s->scale_offset_loc, w / ww, h / wh, -1 + ((2 * x + w) / ww),
+                    -1 + ((2 * y + h) / wh));
+    }
+    if (s->tex_scale_offset_loc >= 0) {
+        glUniform4f(s->tex_scale_offset_loc, tex_w / tw, tex_h / th, tex_x / tw,
+                    tex_y / th);
+    }
+    if (s->tex_loc >= 0) {
+        glUniform1i(s->tex_loc, 0);
+    }
+    if (s->color_primary_loc >= 0) {
+        glUniform4f(s->color_primary_loc, COL(primary, 3), COL(primary, 2),
+                    COL(primary, 1), COL(primary, 0));
+    }
+    if (s->color_secondary_loc >= 0) {
+        glUniform4f(s->color_secondary_loc, COL(secondary, 3), COL(secondary, 2),
+                    COL(secondary, 1), COL(secondary, 0));
+    }
+    if (s->color_fill_loc >= 0) {
+        glUniform4f(s->color_fill_loc, COL(fill, 3), COL(fill, 2), COL(fill, 1),
+                    COL(fill, 0));
+    }
+    if (s->time_loc >= 0) {
+        glUniform1f(s->time_loc, s->time/1000.0f);
+    }
+    if (s->scale_loc >= 0) {
+        glUniform1f(s->scale_loc, s->scale);
+    }
     #undef COL
     glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
 }
@@ -623,17 +641,18 @@ void RenderControllerPort(float frame_x, float frame_y, int i,
     glUseProgram(0);
 }
 
-void RenderLogo(uint32_t time, uint32_t primary_color, uint32_t secondary_color,
-                uint32_t fill_color)
+void RenderLogo(uint32_t time)
 {
+    uint32_t color = 0x62ca13ff;
+
     g_logo_shader->time = time;
     glUseProgram(g_logo_shader->prog);
     glBindVertexArray(g_decal_shader->vao);
     glBlendFunc(GL_ONE, GL_ZERO);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, g_logo_tex);
-    RenderDecal(g_logo_shader, 0, 0, 512, 512, 0, 0, 128, 128, primary_color,
-                secondary_color, fill_color);
+    RenderDecal(g_logo_shader, 0, 0, 512, 512, 0, 0, 128, 128, color,
+        color, 0x00000000);
     glBindVertexArray(0);
     glUseProgram(0);
 }

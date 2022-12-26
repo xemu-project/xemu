@@ -164,6 +164,7 @@ typedef struct TextureShape {
     unsigned int color_format;
     unsigned int levels;
     unsigned int width, height, depth;
+    bool border;
 
     unsigned int min_mipmap_level, max_mipmap_level;
     unsigned int pitch;
@@ -176,6 +177,13 @@ typedef struct TextureBinding {
     int draw_time;
     uint64_t data_hash;
     unsigned int scale;
+    unsigned int min_filter;
+    unsigned int mag_filter;
+    unsigned int addru;
+    unsigned int addrv;
+    unsigned int addrp;
+    uint32_t border_color;
+    bool border_color_set;
 } TextureBinding;
 
 typedef struct TextureKey {
@@ -265,7 +273,9 @@ typedef struct PGRAPHState {
         GLuint pvideo_tex;
         GLint pvideo_enable_loc;
         GLint pvideo_tex_loc;
+        GLint pvideo_in_pos_loc;
         GLint pvideo_pos_loc;
+        GLint pvideo_scale_loc;
         GLint pvideo_color_key_enable_loc;
         GLint pvideo_color_key_loc;
         GLint palette_loc[256];
@@ -295,12 +305,15 @@ typedef struct PGRAPHState {
 
     hwaddr dma_a, dma_b;
     Lru texture_cache;
-    struct TextureLruNode *texture_cache_entries;
+    TextureLruNode *texture_cache_entries;
     bool texture_dirty[NV2A_MAX_TEXTURES];
     TextureBinding *texture_binding[NV2A_MAX_TEXTURES];
 
-    GHashTable *shader_cache;
+    Lru shader_cache;
+    ShaderLruNode *shader_cache_entries;
     ShaderBinding *shader_binding;
+    QemuMutex shader_cache_lock;
+    QemuThread shader_disk_thread;
 
     bool texture_matrix_enable[NV2A_MAX_TEXTURES];
 
@@ -331,6 +344,7 @@ typedef struct PGRAPHState {
 
     bool enable_vertex_program_write;
 
+    uint32_t vertex_state_shader_v0[4];
     uint32_t program_data[NV2A_MAX_TRANSFORM_PROGRAM_LENGTH][VSH_TOKEN_SIZE];
     bool program_data_dirty;
 
@@ -359,7 +373,7 @@ typedef struct PGRAPHState {
     uint16_t compressed_attrs;
 
     Lru element_cache;
-    struct VertexLruNode *element_cache_entries;
+    VertexLruNode *element_cache_entries;
 
     unsigned int inline_array_length;
     uint32_t inline_array[NV2A_MAX_BATCH_LENGTH];
@@ -392,10 +406,12 @@ typedef struct PGRAPHState {
     bool download_dirty_surfaces_pending;
     bool flush_pending;
     bool gl_sync_pending;
+    bool shader_cache_writeback_pending;
     QemuEvent downloads_complete;
     QemuEvent dirty_surfaces_download_complete;
     QemuEvent flush_complete;
     QemuEvent gl_sync_complete;
+    QemuEvent shader_cache_writeback_complete;
 
     unsigned int surface_scale_factor;
     uint8_t *scale_buf;

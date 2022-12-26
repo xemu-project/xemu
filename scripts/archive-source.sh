@@ -29,6 +29,7 @@ sub_file="${sub_tdir}/submodule.tar"
 submodules="dtc slirp meson ui/keycodemapdb"
 submodules="$submodules tests/fp/berkeley-softfloat-3 tests/fp/berkeley-testfloat-3"
 submodules="$submodules ui/thirdparty/imgui ui/thirdparty/implot util/xxHash tomlplusplus genconfig" # xemu extras
+submodules="$submodules hw/xbox/nv2a/thirdparty/nv2a_vsh_cpu"
 sub_deinit=""
 
 function cleanup() {

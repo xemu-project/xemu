@@ -25,10 +25,11 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <stdio.h>
-#include <toml.hpp>
+#include <toml++/toml.h>
 #include <cnode.h>
 #include <sstream>
 #include <iostream>
+#include <locale.h>
 
 #include "xemu-settings.h"
 
@@ -68,18 +69,32 @@ void xemu_settings_set_path(const char *path)
     fprintf(stderr, "%s: config path: %s\n", __func__, settings_path);
 }
 
-const char *xemu_settings_get_path(void)
+const char *xemu_settings_get_base_path(void)
 {
-    if (settings_path != NULL) {
-        return settings_path;
+    static const char *base_path = NULL;
+    if (base_path != NULL) {
+        return base_path;
     }
 
     char *base = xemu_settings_detect_portable_mode()
                  ? SDL_GetBasePath()
                  : SDL_GetPrefPath("xemu", "xemu");
     assert(base != NULL);
-    settings_path = g_strdup_printf("%s%s", base, filename);
+    base_path = g_strdup(base);
     SDL_free(base);
+    fprintf(stderr, "%s: base path: %s\n", __func__, base_path);
+    return base_path;
+}
+
+const char *xemu_settings_get_path(void)
+{
+    if (settings_path != NULL) {
+        return settings_path;
+    }
+
+    const char *base = xemu_settings_get_base_path();
+    assert(base != NULL);
+    settings_path = g_strdup_printf("%s%s", base, filename);
     fprintf(stderr, "%s: config path: %s\n", __func__, settings_path);
     return settings_path;
 }
@@ -91,12 +106,9 @@ const char *xemu_settings_get_default_eeprom_path(void)
         return eeprom_path;
     }
 
-    char *base = xemu_settings_detect_portable_mode()
-                 ? SDL_GetBasePath()
-                 : SDL_GetPrefPath("xemu", "xemu");
+    const char *base = xemu_settings_get_base_path();
     assert(base != NULL);
     eeprom_path = g_strdup_printf("%s%s", base, "eeprom.bin");
-    SDL_free(base);
     return eeprom_path;
 }
 
@@ -151,6 +163,14 @@ bool xemu_settings_load(void)
         if (fd) {
             const char *buf = read_file(fd);
             if (buf) {
+                char *previous_numeric_locale = setlocale(LC_NUMERIC, NULL);
+                if (previous_numeric_locale) {
+                    previous_numeric_locale = g_strdup(previous_numeric_locale);
+                }
+
+                /* Ensure numeric values are scanned with '.' radix, no grouping */
+                setlocale(LC_NUMERIC, "C");
+
                 try {
                     config_tree.update_from_table(toml::parse(buf));
                     success = true;
@@ -162,6 +182,11 @@ bool xemu_settings_load(void)
                    error_msg = oss.str();
                 }
                 free((char*)buf);
+
+                if (previous_numeric_locale) {
+                    setlocale(LC_NUMERIC, previous_numeric_locale);
+                    g_free(previous_numeric_locale);
+                }
             } else {
                 error_msg = "Failed to read config file.\n";
             }
@@ -172,6 +197,7 @@ bool xemu_settings_load(void)
     }
 
     config_tree.store_to_struct(&g_config);
+
     return success;
 }
 
@@ -183,9 +209,22 @@ void xemu_settings_save(void)
         return;
     }
 
+    char *previous_numeric_locale = setlocale(LC_NUMERIC, NULL);
+    if (previous_numeric_locale) {
+        previous_numeric_locale = g_strdup(previous_numeric_locale);
+    }
+
+    /* Ensure numeric values are printed with '.' radix, no grouping */
+    setlocale(LC_NUMERIC, "C");
+
     config_tree.update_from_struct(&g_config);
     fprintf(fd, "%s", config_tree.generate_delta_toml().c_str());
     fclose(fd);
+
+    if (previous_numeric_locale) {
+        setlocale(LC_NUMERIC, previous_numeric_locale);
+        g_free(previous_numeric_locale);
+    }
 }
 
 void add_net_nat_forward_ports(int host, int guest, CONFIG_NET_NAT_FORWARD_PORTS_PROTOCOL protocol)

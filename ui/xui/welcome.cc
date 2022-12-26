@@ -43,55 +43,32 @@ void FirstBootWindow::Draw()
     ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always);
 
     ImGui::SetNextWindowSize(size, ImGuiCond_Appearing);
-    if (!ImGui::Begin("First Boot", &is_open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration)) {
+    if (!ImGui::Begin("First Boot", &is_open, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::End();
         return;
     }
 
-    static uint32_t time_start = 0;
-    if (ImGui::IsWindowAppearing()) {
-        time_start = SDL_GetTicks();
-    }
-    uint32_t now = SDL_GetTicks() - time_start;
-
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY()-50*g_viewport_mgr.m_scale);
-    ImGui::SetCursorPosX((ImGui::GetWindowWidth()-256*g_viewport_mgr.m_scale)/2);
-
-    logo_fbo->Target();
-    ImTextureID id = (ImTextureID)(intptr_t)logo_fbo->Texture();
-    float t_w = 256.0;
-    float t_h = 256.0;
-    float x_off = 0;
-    ImGui::Image(id,
-        ImVec2((t_w-x_off)*g_viewport_mgr.m_scale, t_h*g_viewport_mgr.m_scale),
-        ImVec2(x_off/t_w, t_h/t_h),
-        ImVec2(t_w/t_w, 0));
-    if (ImGui::IsItemClicked()) {
-        time_start = SDL_GetTicks();
-    }
-    RenderLogo(now, 0x42e335ff, 0x42e335ff, 0x00000000);
-    logo_fbo->Restore();
-
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY()-100*g_viewport_mgr.m_scale);
-    ImGui::SetCursorPosX(10*g_viewport_mgr.m_scale);
-    ImGui::Dummy(ImVec2(0,20*g_viewport_mgr.m_scale));
+    Logo();
 
     const char *msg = "Configure machine settings to get started";
     ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
     ImGui::Text("%s", msg);
 
     ImGui::Dummy(ImVec2(0,20*g_viewport_mgr.m_scale));
+
     ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120*g_viewport_mgr.m_scale)/2);
-    ImGui::SetItemDefaultFocus();
     if (ImGui::Button("Settings", ImVec2(120*g_viewport_mgr.m_scale, 0))) {
         g_main_menu.ShowSystem();
         g_config.general.show_welcome = false;
     }
-    ImGui::Dummy(ImVec2(0,20*g_viewport_mgr.m_scale));
+
+    ImGui::Dummy(ImVec2(0,50*g_viewport_mgr.m_scale));
 
     msg = "Visit https://xemu.app for more information";
     ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
     Hyperlink(msg, "https://xemu.app");
+
+    ImGui::Dummy(ImVec2(400*g_viewport_mgr.m_scale,20*g_viewport_mgr.m_scale));
 
     ImGui::End();
 }

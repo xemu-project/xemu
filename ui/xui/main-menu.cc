@@ -56,8 +56,8 @@ void MainMenuGeneralView::Draw()
            "Use hardware-accelerated floating point emulation (requires restart)");
 #endif
 
-    // toggle("Cache shaders to disk", &g_config.perf.cache_shaders,
-    //        "Reduce stutter in games by caching previously generated shaders");
+    Toggle("Cache shaders to disk", &g_config.perf.cache_shaders,
+           "Reduce stutter in games by caching previously generated shaders");
 
     SectionTitle("Miscellaneous");
     Toggle("Skip startup animation", &g_config.general.skip_boot_anim,
@@ -779,13 +779,15 @@ void MainMenuSystemView::Draw()
     }
 
     SectionTitle("Files");
-    if (FilePicker("Boot ROM", &g_config.sys.files.bootrom_path,
+    if (FilePicker("MCPX Boot ROM", &g_config.sys.files.bootrom_path,
                    rom_file_filters)) {
         m_dirty = true;
+        g_main_menu.UpdateAboutViewConfigInfo();
     }
-    if (FilePicker("Flash ROM", &g_config.sys.files.flashrom_path,
+    if (FilePicker("Flash ROM (BIOS)", &g_config.sys.files.flashrom_path,
                    rom_file_filters)) {
         m_dirty = true;
+        g_main_menu.UpdateAboutViewConfigInfo();
     }
     if (FilePicker("Hard Disk", &g_config.sys.files.hdd_path,
                    qcow_file_filters)) {
@@ -795,6 +797,33 @@ void MainMenuSystemView::Draw()
                    rom_file_filters)) {
         m_dirty = true;
     }
+}
+
+MainMenuAboutView::MainMenuAboutView(): m_config_info_text{NULL}
+{}
+
+void MainMenuAboutView::UpdateConfigInfoText()
+{
+    if (m_config_info_text) {
+        g_free(m_config_info_text);
+    }
+
+    gchar *bootrom_checksum = GetFileMD5Checksum(g_config.sys.files.bootrom_path);
+    if (!bootrom_checksum) {
+        bootrom_checksum = g_strdup("None");
+    }
+
+    gchar *flash_rom_checksum = GetFileMD5Checksum(g_config.sys.files.flashrom_path);
+    if (!flash_rom_checksum) {
+        flash_rom_checksum = g_strdup("None");
+    }
+
+    m_config_info_text = g_strdup_printf(
+            "MCPX Boot ROM MD5 Hash:        %s\n"
+            "Flash ROM (BIOS) MD5 Hash:     %s",
+            bootrom_checksum, flash_rom_checksum);
+    g_free(bootrom_checksum);
+    g_free(flash_rom_checksum);
 }
 
 void MainMenuAboutView::Draw()
@@ -825,31 +854,11 @@ void MainMenuAboutView::Draw()
                                     sys_info_text, nv2a_get_surface_scale_factor(), 
                                     width, height, g_ui_display_mode_name[g_config.display.ui.fit]);
 
-    static uint32_t time_start = 0;
-    if (ImGui::IsWindowAppearing()) {
-        time_start = SDL_GetTicks();
+    if (m_config_info_text == NULL) {
+        UpdateConfigInfoText();
     }
-    uint32_t now = SDL_GetTicks() - time_start;
 
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY()-50*g_viewport_mgr.m_scale);
-    ImGui::SetCursorPosX((ImGui::GetWindowWidth()-256*g_viewport_mgr.m_scale)/2);
-
-    logo_fbo->Target();
-    ImTextureID id = (ImTextureID)(intptr_t)logo_fbo->Texture();
-    float t_w = 256.0;
-    float t_h = 256.0;
-    float x_off = 0;
-    ImGui::Image(id,
-        ImVec2((t_w-x_off)*g_viewport_mgr.m_scale, t_h*g_viewport_mgr.m_scale),
-        ImVec2(x_off/t_w, t_h/t_h),
-        ImVec2(t_w/t_w, 0));
-    if (ImGui::IsItemClicked()) {
-        time_start = SDL_GetTicks();
-    }
-    RenderLogo(now, 0x42e335ff, 0x42e335ff, 0x00000000);
-    logo_fbo->Restore();
-
-    ImGui::SetCursorPosY(ImGui::GetCursorPosY()-75*g_viewport_mgr.m_scale);
+    Logo();
 
     SectionTitle("Build Information");
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
@@ -867,6 +876,14 @@ void MainMenuAboutView::Draw()
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
     g_free(content);
+
+    SectionTitle("Config Information");
+    ImGui::PushFont(g_font_mgr.m_fixed_width_font);
+    ImGui::InputTextMultiline("##config_info", (char *)m_config_info_text,
+                              strlen(build_info_text),
+                              ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 3),
+                              ImGuiInputTextFlags_ReadOnly);
+    ImGui::PopFont();
 
     SectionTitle("Community");
 
@@ -1039,6 +1056,11 @@ void MainMenuScene::HandleInput()
     }
 
     m_had_focus_last_frame = focus;
+}
+
+void MainMenuScene::UpdateAboutViewConfigInfo()
+{
+    m_about_view.UpdateConfigInfoText();
 }
 
 bool MainMenuScene::Draw()

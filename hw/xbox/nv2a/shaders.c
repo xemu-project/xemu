@@ -21,9 +21,13 @@
 
 #include "qemu/osdep.h"
 #include "qemu-common.h"
+#include <locale.h>
 
 #include "shaders_common.h"
 #include "shaders.h"
+#include "nv2a_int.h"
+#include "ui/xemu-settings.h"
+#include "xemu-version.h"
 
 void mstring_append_fmt(MString *qstring, const char *fmt, ...)
 {
@@ -70,20 +74,52 @@ void mstring_append_va(MString *qstring, const char *fmt, va_list va)
     g_free(buf);
 }
 
+GLenum get_gl_primitive_mode(enum ShaderPolygonMode polygon_mode, enum ShaderPrimitiveMode primitive_mode)
+{
+    if (polygon_mode == POLY_MODE_POINT) {
+        return GL_POINTS;
+    }
+
+    switch (primitive_mode) {
+    case PRIM_TYPE_POINTS: return GL_POINTS;
+    case PRIM_TYPE_LINES: return GL_LINES;
+    case PRIM_TYPE_LINE_LOOP: return GL_LINE_LOOP;
+    case PRIM_TYPE_LINE_STRIP: return GL_LINE_STRIP;
+    case PRIM_TYPE_TRIANGLES: return GL_TRIANGLES;
+    case PRIM_TYPE_TRIANGLE_STRIP: return GL_TRIANGLE_STRIP;
+    case PRIM_TYPE_TRIANGLE_FAN: return GL_TRIANGLE_FAN;
+    case PRIM_TYPE_QUADS: return GL_LINES_ADJACENCY;
+    case PRIM_TYPE_QUAD_STRIP: return GL_LINE_STRIP_ADJACENCY;
+    case PRIM_TYPE_POLYGON:
+        if (polygon_mode == POLY_MODE_LINE) {
+            return GL_LINE_LOOP;
+        } else if (polygon_mode == POLY_MODE_FILL) {
+            return GL_TRIANGLE_FAN;
+        }
+
+        assert(!"PRIM_TYPE_POLYGON with invalid polygon_mode");
+        return 0;
+    default:
+        assert(!"Invalid primitive_mode");
+        return 0;
+    }
+}
+
 static MString* generate_geometry_shader(
                                       enum ShaderPolygonMode polygon_front_mode,
                                       enum ShaderPolygonMode polygon_back_mode,
                                       enum ShaderPrimitiveMode primitive_mode,
-                                      GLenum *gl_primitive_mode)
+                                      GLenum *gl_primitive_mode,
+                                      bool smooth_shading)
 {
-
     /* FIXME: Missing support for 2-sided-poly mode */
     assert(polygon_front_mode == polygon_back_mode);
     enum ShaderPolygonMode polygon_mode = polygon_front_mode;
 
+    *gl_primitive_mode = get_gl_primitive_mode(polygon_mode, primitive_mode);
+
     /* POINT mode shouldn't require any special work */
     if (polygon_mode == POLY_MODE_POINT) {
-        *gl_primitive_mode = GL_POINTS;
         return NULL;
     }
 
@@ -92,24 +128,22 @@ static MString* generate_geometry_shader(
     const char *layout_out = NULL;
     const char *body = NULL;
     switch (primitive_mode) {
-    case PRIM_TYPE_POINTS: *gl_primitive_mode = GL_POINTS; return NULL;
-    case PRIM_TYPE_LINES: *gl_primitive_mode = GL_LINES; return NULL;
-    case PRIM_TYPE_LINE_LOOP: *gl_primitive_mode = GL_LINE_LOOP; return NULL;
-    case PRIM_TYPE_LINE_STRIP: *gl_primitive_mode = GL_LINE_STRIP; return NULL;
+    case PRIM_TYPE_POINTS: return NULL;
+    case PRIM_TYPE_LINES: return NULL;
+    case PRIM_TYPE_LINE_LOOP: return NULL;
+    case PRIM_TYPE_LINE_STRIP: return NULL;
     case PRIM_TYPE_TRIANGLES:
-        *gl_primitive_mode = GL_TRIANGLES;
         if (polygon_mode == POLY_MODE_FILL) { return NULL; }
         assert(polygon_mode == POLY_MODE_LINE);
         layout_in = "layout(triangles) in;\n";
         layout_out = "layout(line_strip, max_vertices = 4) out;\n";
-        body = "  emit_vertex(0);\n"
-               "  emit_vertex(1);\n"
-               "  emit_vertex(2);\n"
-               "  emit_vertex(0);\n"
+        body = "  emit_vertex(0, 0);\n"
+               "  emit_vertex(1, 0);\n"
+               "  emit_vertex(2, 0);\n"
+               "  emit_vertex(0, 0);\n"
                "  EndPrimitive();\n";
         break;
     case PRIM_TYPE_TRIANGLE_STRIP:
-        *gl_primitive_mode = GL_TRIANGLE_STRIP;
         if (polygon_mode == POLY_MODE_FILL) { return NULL; }
         assert(polygon_mode == POLY_MODE_LINE);
         layout_in = "layout(triangles) in;\n";
@@ -118,49 +152,47 @@ static MString* generate_geometry_shader(
          * vertex we are using */
         body = "  if ((gl_PrimitiveIDIn & 1) == 0) {\n"
                "    if (gl_PrimitiveIDIn == 0) {\n"
-               "      emit_vertex(0);\n" /* bottom right */
+               "      emit_vertex(0, 0);\n" /* bottom right */
                "    }\n"
-               "    emit_vertex(1);\n" /* top right */
-               "    emit_vertex(2);\n" /* bottom left */
-               "    emit_vertex(0);\n" /* bottom right */
+               "    emit_vertex(1, 0);\n" /* top right */
+               "    emit_vertex(2, 0);\n" /* bottom left */
+               "    emit_vertex(0, 0);\n" /* bottom right */
                "  } else {\n"
-               "    emit_vertex(2);\n" /* bottom left */
-               "    emit_vertex(1);\n" /* top left */
-               "    emit_vertex(0);\n" /* top right */
+               "    emit_vertex(2, 0);\n" /* bottom left */
+               "    emit_vertex(1, 0);\n" /* top left */
+               "    emit_vertex(0, 0);\n" /* top right */
                "  }\n"
                "  EndPrimitive();\n";
         break;
     case PRIM_TYPE_TRIANGLE_FAN:
-        *gl_primitive_mode = GL_TRIANGLE_FAN;
         if (polygon_mode == POLY_MODE_FILL) { return NULL; }
         assert(polygon_mode == POLY_MODE_LINE);
         layout_in = "layout(triangles) in;\n";
         layout_out = "layout(line_strip, max_vertices = 4) out;\n";
         body = "  if (gl_PrimitiveIDIn == 0) {\n"
-               "    emit_vertex(0);\n"
+               "    emit_vertex(0, 0);\n"
                "  }\n"
-               "  emit_vertex(1);\n"
-               "  emit_vertex(2);\n"
-               "  emit_vertex(0);\n"
+               "  emit_vertex(1, 0);\n"
+               "  emit_vertex(2, 0);\n"
+               "  emit_vertex(0, 0);\n"
                "  EndPrimitive();\n";
         break;
     case PRIM_TYPE_QUADS:
-        *gl_primitive_mode = GL_LINES_ADJACENCY;
         layout_in = "layout(lines_adjacency) in;\n";
         if (polygon_mode == POLY_MODE_LINE) {
             layout_out = "layout(line_strip, max_vertices = 5) out;\n";
-            body = "  emit_vertex(0);\n"
-                   "  emit_vertex(1);\n"
-                   "  emit_vertex(2);\n"
-                   "  emit_vertex(3);\n"
-                   "  emit_vertex(0);\n"
+            body = "  emit_vertex(0, 3);\n"
+                   "  emit_vertex(1, 3);\n"
+                   "  emit_vertex(2, 3);\n"
+                   "  emit_vertex(3, 3);\n"
+                   "  emit_vertex(0, 3);\n"
                    "  EndPrimitive();\n";
         } else if (polygon_mode == POLY_MODE_FILL) {
             layout_out = "layout(triangle_strip, max_vertices = 4) out;\n";
-            body = "  emit_vertex(0);\n"
-                   "  emit_vertex(1);\n"
-                   "  emit_vertex(3);\n"
-                   "  emit_vertex(2);\n"
+            body = "  emit_vertex(3, 3);\n"
+                   "  emit_vertex(0, 3);\n"
+                   "  emit_vertex(2, 3);\n"
+                   "  emit_vertex(1, 3);\n"
                    "  EndPrimitive();\n";
         } else {
             assert(false);
@@ -168,26 +200,25 @@ static MString* generate_geometry_shader(
         }
         break;
     case PRIM_TYPE_QUAD_STRIP:
-        *gl_primitive_mode = GL_LINE_STRIP_ADJACENCY;
         layout_in = "layout(lines_adjacency) in;\n";
         if (polygon_mode == POLY_MODE_LINE) {
             layout_out = "layout(line_strip, max_vertices = 5) out;\n";
             body = "  if ((gl_PrimitiveIDIn & 1) != 0) { return; }\n"
                    "  if (gl_PrimitiveIDIn == 0) {\n"
-                   "    emit_vertex(0);\n"
+                   "    emit_vertex(0, 3);\n"
                    "  }\n"
-                   "  emit_vertex(1);\n"
-                   "  emit_vertex(3);\n"
-                   "  emit_vertex(2);\n"
-                   "  emit_vertex(0);\n"
+                   "  emit_vertex(1, 3);\n"
+                   "  emit_vertex(3, 3);\n"
+                   "  emit_vertex(2, 3);\n"
+                   "  emit_vertex(0, 3);\n"
                    "  EndPrimitive();\n";
         } else if (polygon_mode == POLY_MODE_FILL) {
             layout_out = "layout(triangle_strip, max_vertices = 4) out;\n";
             body = "  if ((gl_PrimitiveIDIn & 1) != 0) { return; }\n"
-                   "  emit_vertex(0);\n"
-                   "  emit_vertex(1);\n"
-                   "  emit_vertex(2);\n"
-                   "  emit_vertex(3);\n"
+                   "  emit_vertex(0, 3);\n"
+                   "  emit_vertex(1, 3);\n"
+                   "  emit_vertex(2, 3);\n"
+                   "  emit_vertex(3, 3);\n"
                    "  EndPrimitive();\n";
         } else {
             assert(false);
@@ -196,13 +227,24 @@ static MString* generate_geometry_shader(
         break;
     case PRIM_TYPE_POLYGON:
         if (polygon_mode == POLY_MODE_LINE) {
-            *gl_primitive_mode = GL_LINE_LOOP;
-        } else if (polygon_mode == POLY_MODE_FILL) {
-            *gl_primitive_mode = GL_TRIANGLE_FAN;
+            return NULL;
+        }
+        if (polygon_mode == POLY_MODE_FILL) {
+            if (smooth_shading) {
+                return NULL;
+            }
+            layout_in = "layout(triangles) in;\n";
+            layout_out = "layout(triangle_strip, max_vertices = 3) out;\n";
+            body = "  emit_vertex(0, 2);\n"
+                   "  emit_vertex(1, 2);\n"
+                   "  emit_vertex(2, 2);\n"
+                   "  EndPrimitive();\n";
         } else {
             assert(false);
+            return NULL;
         }
-        return NULL;
+        break;
+
     default:
         assert(false);
         return NULL;
@@ -216,18 +258,54 @@ static MString* generate_geometry_shader(
                                   "\n");
     mstring_append(s, layout_in);
     mstring_append(s, layout_out);
+    mstring_append(s, "\n");
+    if (smooth_shading) {
+        mstring_append(s,
+                       STRUCT_V_VERTEX_DATA_IN_ARRAY_SMOOTH
+                       "\n"
+                       STRUCT_VERTEX_DATA_OUT_SMOOTH
+                       "\n"
+                       "void emit_vertex(int index, int _unused) {\n"
+                       "  gl_Position = gl_in[index].gl_Position;\n"
+                       "  gl_PointSize = gl_in[index].gl_PointSize;\n"
+                       "  vtx_inv_w = v_vtx_inv_w[index];\n"
+                       "  vtx_inv_w_flat = v_vtx_inv_w[index];\n"
+                       "  vtxD0 = v_vtxD0[index];\n"
+                       "  vtxD1 = v_vtxD1[index];\n"
+                       "  vtxB0 = v_vtxB0[index];\n"
+                       "  vtxB1 = v_vtxB1[index];\n"
+                       "  vtxFog = v_vtxFog[index];\n"
+                       "  vtxT0 = v_vtxT0[index];\n"
+                       "  vtxT1 = v_vtxT1[index];\n"
+                       "  vtxT2 = v_vtxT2[index];\n"
+                       "  vtxT3 = v_vtxT3[index];\n"
+                       "  EmitVertex();\n"
+                       "}\n");
+    } else {
+        mstring_append(s,
+                       STRUCT_V_VERTEX_DATA_IN_ARRAY_FLAT
+                       "\n"
+                       STRUCT_VERTEX_DATA_OUT_FLAT
+                       "\n"
+                       "void emit_vertex(int index, int provoking_index) {\n"
+                       "  gl_Position = gl_in[index].gl_Position;\n"
+                       "  gl_PointSize = gl_in[index].gl_PointSize;\n"
+                       "  vtx_inv_w = v_vtx_inv_w[index];\n"
+                       "  vtx_inv_w_flat = v_vtx_inv_w[provoking_index];\n"
+                       "  vtxD0 = v_vtxD0[provoking_index];\n"
+                       "  vtxD1 = v_vtxD1[provoking_index];\n"
+                       "  vtxB0 = v_vtxB0[provoking_index];\n"
+                       "  vtxB1 = v_vtxB1[provoking_index];\n"
+                       "  vtxFog = v_vtxFog[index];\n"
+                       "  vtxT0 = v_vtxT0[index];\n"
+                       "  vtxT1 = v_vtxT1[index];\n"
+                       "  vtxT2 = v_vtxT2[index];\n"
+                       "  vtxT3 = v_vtxT3[index];\n"
+                       "  EmitVertex();\n"
+                       "}\n");
+    }
+
     mstring_append(s, "\n"
-                      STRUCT_VERTEX_DATA
-                      "noperspective in VertexData v_vtx[];\n"
-                      "noperspective out VertexData g_vtx;\n"
-                      "\n"
-                      "void emit_vertex(int index) {\n"
-                      "  gl_Position = gl_in[index].gl_Position;\n"
-                      "  gl_PointSize = gl_in[index].gl_PointSize;\n"
-                      "  g_vtx = v_vtx[index];\n"
-                      "  EmitVertex();\n"
-                      "}\n"
-                      "\n"
                       "void main() {\n");
     mstring_append(s, body);
     mstring_append(s, "}\n");
@@ -240,7 +318,6 @@ static void append_skinning_code(MString* str, bool mix,
                                  const char* output, const char* input,
                                  const char* matrix, const char* swizzle)
 {
-
     if (count == 0) {
         mstring_append_fmt(str, "%s %s = (%s * %s0).%s;\n",
                            type, output, input, matrix, swizzle);
@@ -286,7 +363,7 @@ static void append_skinning_code(MString* str, bool mix,
 
 #define GLSL_DEFINE(a, b) "#define " stringify(a) " " b "\n"
 
-static void generate_fixed_function(const ShaderState state,
+static void generate_fixed_function(const ShaderState *state,
                                     MString *header, MString *body)
 {
     int i, j;
@@ -373,7 +450,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     /* Skinning */
     unsigned int count;
     bool mix;
-    switch (state.skinning) {
+    switch (state->skinning) {
     case SKINNING_OFF:
         mix = false; count = 0; break;
     case SKINNING_1WEIGHTS:
@@ -393,7 +470,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         break;
     }
     mstring_append_fmt(body, "/* Skinning mode %d */\n",
-                       state.skinning);
+                       state->skinning);
 
     append_skinning_code(body, mix, count, "vec4",
                          "tPosition", "position",
@@ -403,7 +480,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
                          "invModelViewMat", "xyz");
 
     /* Normalization */
-    if (state.normalization) {
+    if (state->normalization) {
         mstring_append(body, "tNormal = normalize(tNormal);\n");
     }
 
@@ -417,7 +494,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             /* TODO: TexGen View Model missing! */
             char c = "xyzw"[j];
             char cSuffix = "STRQ"[j];
-            switch (state.texgen[i][j]) {
+            switch (state->texgen[i][j]) {
             case TEXGEN_DISABLE:
                 mstring_append_fmt(body, "oT%d.%c = texture%d.%c;\n",
                                    i, c, i, c);
@@ -475,7 +552,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
     /* Apply texture matrices */
     for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
-        if (state.texture_matrix_enable[i]) {
+        if (state->texture_matrix_enable[i]) {
             mstring_append_fmt(body,
                                "oT%d = oT%d * texMat%d;\n",
                                i, i, i);
@@ -483,7 +560,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     }
 
     /* Lighting */
-    if (state.lighting) {
+    if (state->lighting) {
 
         //FIXME: Do 2 passes if we want 2 sided-lighting?
 
@@ -491,34 +568,34 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         static char alpha_source_specular[] = "specular.a";
         static char alpha_source_material[] = "material_alpha";
         const char *alpha_source = alpha_source_diffuse;
-        if (state.diffuse_src == MATERIAL_COLOR_SRC_MATERIAL) {
+        if (state->diffuse_src == MATERIAL_COLOR_SRC_MATERIAL) {
             mstring_append(header, "uniform float material_alpha;\n");
             alpha_source = alpha_source_material;
-        } else if (state.diffuse_src == MATERIAL_COLOR_SRC_SPECULAR) {
+        } else if (state->diffuse_src == MATERIAL_COLOR_SRC_SPECULAR) {
             alpha_source = alpha_source_specular;
         }
 
-        if (state.ambient_src == MATERIAL_COLOR_SRC_MATERIAL) {
+        if (state->ambient_src == MATERIAL_COLOR_SRC_MATERIAL) {
             mstring_append_fmt(body, "oD0 = vec4(sceneAmbientColor, %s);\n", alpha_source);
-        } else if (state.ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
+        } else if (state->ambient_src == MATERIAL_COLOR_SRC_DIFFUSE) {
             mstring_append_fmt(body, "oD0 = vec4(diffuse.rgb, %s);\n", alpha_source);
-        } else if (state.ambient_src == MATERIAL_COLOR_SRC_SPECULAR) {
+        } else if (state->ambient_src == MATERIAL_COLOR_SRC_SPECULAR) {
             mstring_append_fmt(body, "oD0 = vec4(specular.rgb, %s);\n", alpha_source);
         }
 
         mstring_append(body, "oD0.rgb *= materialEmissionColor.rgb;\n");
-        if (state.emission_src == MATERIAL_COLOR_SRC_MATERIAL) {
+        if (state->emission_src == MATERIAL_COLOR_SRC_MATERIAL) {
             mstring_append(body, "oD0.rgb += sceneAmbientColor;\n");
-        } else if (state.emission_src == MATERIAL_COLOR_SRC_DIFFUSE) {
+        } else if (state->emission_src == MATERIAL_COLOR_SRC_DIFFUSE) {
             mstring_append(body, "oD0.rgb += diffuse.rgb;\n");
-        } else if (state.emission_src == MATERIAL_COLOR_SRC_SPECULAR) {
+        } else if (state->emission_src == MATERIAL_COLOR_SRC_SPECULAR) {
             mstring_append(body, "oD0.rgb += specular.rgb;\n");
         }
 
         mstring_append(body, "oD1 = vec4(0.0, 0.0, 0.0, specular.a);\n");
 
         for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
-            if (state.light[i] == LIGHT_OFF) {
+            if (state->light[i] == LIGHT_OFF) {
                 continue;
             }
 
@@ -530,8 +607,8 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
             mstring_append_fmt(body, "/* Light %d */ {\n", i);
 
-            if (state.light[i] == LIGHT_LOCAL
-                    || state.light[i] == LIGHT_SPOT) {
+            if (state->light[i] == LIGHT_LOCAL
+                    || state->light[i] == LIGHT_SPOT) {
 
                 mstring_append_fmt(header,
                     "uniform vec3 lightLocalPosition%d;\n"
@@ -552,7 +629,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
 
             }
 
-            switch(state.light[i]) {
+            switch(state->light[i]) {
             case LIGHT_INFINITE:
 
                 /* lightLocalRange will be 1e+30 here */
@@ -612,7 +689,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             mstring_append(body,
                 "  oD0.xyz += lightAmbient;\n");
 
-            switch (state.diffuse_src) {
+            switch (state->diffuse_src) {
             case MATERIAL_COLOR_SRC_MATERIAL:
                 mstring_append(body,
                                "  oD0.xyz += lightDiffuse;\n");
@@ -640,10 +717,10 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     mstring_append(body, "  oB1 = backSpecular;\n");
 
     /* Fog */
-    if (state.fog_enable) {
+    if (state->fog_enable) {
 
         /* From: https://www.opengl.org/registry/specs/NV/fog_distance.txt */
-        switch(state.foggen) {
+        switch(state->foggen) {
         case FOGGEN_SPEC_ALPHA:
             /* FIXME: Do we have to clamp here? */
             mstring_append(body, "  float fogDistance = clamp(specular.a, 0.0, 1.0);\n");
@@ -654,7 +731,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
         case FOGGEN_PLANAR:
         case FOGGEN_ABS_PLANAR:
             mstring_append(body, "  float fogDistance = dot(fogPlane.xyz, tPosition.xyz) + fogPlane.w;\n");
-            if (state.foggen == FOGGEN_ABS_PLANAR) {
+            if (state->foggen == FOGGEN_ABS_PLANAR) {
                 mstring_append(body, "  fogDistance = abs(fogDistance);\n");
             }
             break;
@@ -669,7 +746,7 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     }
 
     /* If skinning is off the composite matrix already includes the MV matrix */
-    if (state.skinning == SKINNING_OFF) {
+    if (state->skinning == SKINNING_OFF) {
         mstring_append(body, "  tPosition = position;\n");
     }
 
@@ -678,27 +755,32 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     "   oPos.z = oPos.z * 2.0 - oPos.w;\n");
 
     /* FIXME: Testing */
-    if (state.point_params_enable) {
+    if (state->point_params_enable) {
         mstring_append_fmt(
             body,
             "  float d_e = length(position * modelViewMat0);\n"
             "  oPts.x = 1/sqrt(%f + %f*d_e + %f*d_e*d_e) + %f;\n",
-            state.point_params[0], state.point_params[1], state.point_params[2],
-            state.point_params[6]);
+            state->point_params[0], state->point_params[1], state->point_params[2],
+            state->point_params[6]);
         mstring_append_fmt(body, "  oPts.x = min(oPts.x*%f + %f, 64.0) * %d;\n",
-                           state.point_params[3], state.point_params[7],
-                           state.surface_scale_factor);
+                           state->point_params[3], state->point_params[7],
+                           state->surface_scale_factor);
     } else {
-        mstring_append_fmt(body, "  oPts.x = %f * %d;\n", state.point_size,
-                           state.surface_scale_factor);
+        mstring_append_fmt(body, "  oPts.x = %f * %d;\n", state->point_size,
+                           state->surface_scale_factor);
     }
 
-    mstring_append(body, "  vtx.inv_w = 1.0 / oPos.w;\n");
-
+    mstring_append(body,
+                   "  if (oPos.w == 0.0 || isinf(oPos.w)) {\n"
+                   "    vtx_inv_w = 1.0;\n"
+                   "  } else {\n"
+                   "    vtx_inv_w = 1.0 / oPos.w;\n"
+                   "  }\n"
+                   "  vtx_inv_w_flat = vtx_inv_w;\n");
 }
 
-static MString *generate_vertex_shader(const ShaderState state,
-                                       char vtx_prefix)
+static MString *generate_vertex_shader(const ShaderState *state,
+                                       bool prefix_outputs)
 {
     int i;
     MString *header = mstring_from_str(
@@ -727,21 +809,7 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
 "vec4 oB0 = vec4(0.0,0.0,0.0,1.0);\n"
 "vec4 oB1 = vec4(0.0,0.0,0.0,1.0);\n"
 "vec4 oPts = vec4(0.0,0.0,0.0,1.0);\n"
-/* FIXME: NV_vertex_program says: "FOGC is the transformed vertex's fog
- * coordinate. The register's first floating-point component is interpolated
- * across the assembled primitive during rasterization and used as the fog
- * distance to compute per-fragment the fog factor when fog is enabled.
- * However, if both fog and vertex program mode are enabled, but the FOGC
- * vertex result register is not written, the fog factor is overridden to
- * 1.0. The register's other three components are ignored."
- *
- * That probably means it will read back as vec4(0.0, 0.0, 0.0, 1.0) but
- * will be set to 1.0 AFTER the VP if it was never written?
- * We should test on real hardware..
- *
- * We'll force 1.0 for oFog.x for now.
- */
-"vec4 oFog = vec4(1.0,0.0,0.0,1.0);\n"
+"vec4 oFog = vec4(0.0,0.0,0.0,1.0);\n"
 "vec4 oT0 = vec4(0.0,0.0,0.0,1.0);\n"
 "vec4 oT1 = vec4(0.0,0.0,0.0,1.0);\n"
 "vec4 oT2 = vec4(0.0,0.0,0.0,1.0);\n"
@@ -752,16 +820,32 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
 "    float y = float(bitfieldExtract(cmp, 11, 11)) / 1023.0;\n"
 "    float z = float(bitfieldExtract(cmp, 22, 10)) / 511.0;\n"
 "    return vec4(x, y, z, 1);\n"
-"}\n"
-STRUCT_VERTEX_DATA);
-
-    mstring_append_fmt(header, "noperspective out VertexData %c_vtx;\n",
-                       vtx_prefix);
-    mstring_append_fmt(header, "#define vtx %c_vtx\n",
-                       vtx_prefix);
+"}\n");
+    if (prefix_outputs) {
+        mstring_append(header, state->smooth_shading ?
+                                   STRUCT_V_VERTEX_DATA_OUT_SMOOTH :
+                                   STRUCT_V_VERTEX_DATA_OUT_FLAT);
+        mstring_append(header,
+                       "#define vtx_inv_w v_vtx_inv_w\n"
+                       "#define vtx_inv_w_flat v_vtx_inv_w_flat\n"
+                       "#define vtxD0 v_vtxD0\n"
+                       "#define vtxD1 v_vtxD1\n"
+                       "#define vtxB0 v_vtxB0\n"
+                       "#define vtxB1 v_vtxB1\n"
+                       "#define vtxFog v_vtxFog\n"
+                       "#define vtxT0 v_vtxT0\n"
+                       "#define vtxT1 v_vtxT1\n"
+                       "#define vtxT2 v_vtxT2\n"
+                       "#define vtxT3 v_vtxT3\n"
+                       );
+    } else {
+        mstring_append(header, state->smooth_shading ?
+                                   STRUCT_VERTEX_DATA_OUT_SMOOTH :
+                                   STRUCT_VERTEX_DATA_OUT_FLAT);
+    }
     mstring_append(header, "\n");
     for (i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
-        if (state.compressed_attrs & (1 << i)) {
+        if (state->compressed_attrs & (1 << i)) {
             mstring_append_fmt(header,
                                "layout(location = %d) in int v%d_cmp;\n", i, i);
         } else {
@@ -774,20 +858,20 @@ STRUCT_VERTEX_DATA);
     MString *body = mstring_from_str("void main() {\n");
 
     for (i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
-        if (state.compressed_attrs & (1 << i)) {
+        if (state->compressed_attrs & (1 << i)) {
             mstring_append_fmt(
                 body, "vec4 v%d = decompress_11_11_10(v%d_cmp);\n", i, i);
         }
     }
 
-    if (state.fixed_function) {
+    if (state->fixed_function) {
         generate_fixed_function(state, header, body);
 
-    } else if (state.vertex_program) {
+    } else if (state->vertex_program) {
         vsh_translate(VSH_VERSION_XVS,
-                      (uint32_t*)state.program_data,
-                      state.program_length,
-                      state.z_perspective,
+                      (uint32_t*)state->program_data,
+                      state->program_length,
+                      state->z_perspective,
                       header, body);
     } else {
         assert(false);
@@ -796,13 +880,13 @@ STRUCT_VERTEX_DATA);
 
     /* Fog */
 
-    if (state.fog_enable) {
+    if (state->fog_enable) {
 
-        if (state.vertex_program) {
+        if (state->vertex_program) {
             /* FIXME: Does foggen do something here? Let's do some tracking..
              *
              *   "RollerCoaster Tycoon" has
-             *      state.vertex_program = true; state.foggen == FOGGEN_PLANAR
+             *      state->vertex_program = true; state->foggen == FOGGEN_PLANAR
              *      but expects oFog.x as fogdistance?! Writes oFog.xyzw = v0.z
              */
             mstring_append(body, "  float fogDistance = oFog.x;\n");
@@ -810,7 +894,7 @@ STRUCT_VERTEX_DATA);
 
         /* FIXME: Do this per pixel? */
 
-        switch (state.fog_mode) {
+        switch (state->fog_mode) {
         case FOG_MODE_LINEAR:
         case FOG_MODE_LINEAR_ABS:
 
@@ -860,7 +944,7 @@ STRUCT_VERTEX_DATA);
             break;
         }
         /* Calculate absolute for the modes which need it */
-        switch (state.fog_mode) {
+        switch (state->fog_mode) {
         case FOG_MODE_LINEAR_ABS:
         case FOG_MODE_EXP_ABS:
         case FOG_MODE_EXP2_ABS:
@@ -878,20 +962,25 @@ STRUCT_VERTEX_DATA);
     }
 
     /* Set outputs */
-    mstring_append(body, "\n"
-                      "  vtx.D0 = clamp(oD0, 0.0, 1.0) * vtx.inv_w;\n"
-                      "  vtx.D1 = clamp(oD1, 0.0, 1.0) * vtx.inv_w;\n"
-                      "  vtx.B0 = clamp(oB0, 0.0, 1.0) * vtx.inv_w;\n"
-                      "  vtx.B1 = clamp(oB1, 0.0, 1.0) * vtx.inv_w;\n"
-                      "  vtx.Fog = oFog.x * vtx.inv_w;\n"
-                      "  vtx.T0 = oT0 * vtx.inv_w;\n"
-                      "  vtx.T1 = oT1 * vtx.inv_w;\n"
-                      "  vtx.T2 = oT2 * vtx.inv_w;\n"
-                      "  vtx.T3 = oT3 * vtx.inv_w;\n"
+    const char *shade_model_mult = state->smooth_shading ? "vtx_inv_w" : "vtx_inv_w_flat";
+    mstring_append_fmt(body, "\n"
+                      "  vtxD0 = clamp(oD0, 0.0, 1.0) * %s;\n"
+                      "  vtxD1 = clamp(oD1, 0.0, 1.0) * %s;\n"
+                      "  vtxB0 = clamp(oB0, 0.0, 1.0) * %s;\n"
+                      "  vtxB1 = clamp(oB1, 0.0, 1.0) * %s;\n"
+                      "  vtxFog = oFog.x * vtx_inv_w;\n"
+                      "  vtxT0 = oT0 * vtx_inv_w;\n"
+                      "  vtxT1 = oT1 * vtx_inv_w;\n"
+                      "  vtxT2 = oT2 * vtx_inv_w;\n"
+                      "  vtxT3 = oT3 * vtx_inv_w;\n"
                       "  gl_Position = oPos;\n"
                       "  gl_PointSize = oPts.x;\n"
                       "\n"
-                      "}\n");
+                      "}\n",
+                       shade_model_mult,
+                       shade_model_mult,
+                       shade_model_mult,
+                       shade_model_mult);
 
 
     /* Return combined header + source */
@@ -936,21 +1025,124 @@ static GLuint create_gl_shader(GLenum gl_shader_type,
     return shader;
 }
 
-ShaderBinding* generate_shaders(const ShaderState state)
+void update_shader_constant_locations(ShaderBinding *binding, const ShaderState *state)
 {
     int i, j;
     char tmp[64];
 
-    char vtx_prefix;
+    /* set texture samplers */
+    for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
+        char samplerName[16];
+        snprintf(samplerName, sizeof(samplerName), "texSamp%d", i);
+        GLint texSampLoc = glGetUniformLocation(binding->gl_program, samplerName);
+        if (texSampLoc >= 0) {
+            glUniform1i(texSampLoc, i);
+        }
+    }
+
+    /* validate the program */
+    glValidateProgram(binding->gl_program);
+    GLint valid = 0;
+    glGetProgramiv(binding->gl_program, GL_VALIDATE_STATUS, &valid);
+    if (!valid) {
+        GLchar log[1024];
+        glGetProgramInfoLog(binding->gl_program, 1024, NULL, log);
+        fprintf(stderr, "nv2a: shader validation failed: %s\n", log);
+        abort();
+    }
+
+    /* lookup fragment shader uniforms */
+    for (i = 0; i < 9; i++) {
+        for (j = 0; j < 2; j++) {
+            snprintf(tmp, sizeof(tmp), "c%d_%d", j, i);
+            binding->psh_constant_loc[i][j] = glGetUniformLocation(binding->gl_program, tmp);
+        }
+    }
+    binding->alpha_ref_loc = glGetUniformLocation(binding->gl_program, "alphaRef");
+    for (i = 1; i < NV2A_MAX_TEXTURES; i++) {
+        snprintf(tmp, sizeof(tmp), "bumpMat%d", i);
+        binding->bump_mat_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+        snprintf(tmp, sizeof(tmp), "bumpScale%d", i);
+        binding->bump_scale_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+        snprintf(tmp, sizeof(tmp), "bumpOffset%d", i);
+        binding->bump_offset_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+    }
+
+    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
+        snprintf(tmp, sizeof(tmp), "texScale%d", i);
+        binding->tex_scale_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+    }
+
+    /* lookup vertex shader uniforms */
+    for(i = 0; i < NV2A_VERTEXSHADER_CONSTANTS; i++) {
+        snprintf(tmp, sizeof(tmp), "c[%d]", i);
+        binding->vsh_constant_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+    }
+    binding->surface_size_loc = glGetUniformLocation(binding->gl_program, "surfaceSize");
+    binding->clip_range_loc = glGetUniformLocation(binding->gl_program, "clipRange");
+    binding->fog_color_loc = glGetUniformLocation(binding->gl_program, "fogColor");
+    binding->fog_param_loc[0] = glGetUniformLocation(binding->gl_program, "fogParam[0]");
+    binding->fog_param_loc[1] = glGetUniformLocation(binding->gl_program, "fogParam[1]");
+
+    binding->inv_viewport_loc = glGetUniformLocation(binding->gl_program, "invViewport");
+    for (i = 0; i < NV2A_LTCTXA_COUNT; i++) {
+        snprintf(tmp, sizeof(tmp), "ltctxa[%d]", i);
+        binding->ltctxa_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+    }
+    for (i = 0; i < NV2A_LTCTXB_COUNT; i++) {
+        snprintf(tmp, sizeof(tmp), "ltctxb[%d]", i);
+        binding->ltctxb_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+    }
+    for (i = 0; i < NV2A_LTC1_COUNT; i++) {
+        snprintf(tmp, sizeof(tmp), "ltc1[%d]", i);
+        binding->ltc1_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+    }
+    for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
+        snprintf(tmp, sizeof(tmp), "lightInfiniteHalfVector%d", i);
+        binding->light_infinite_half_vector_loc[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
+        snprintf(tmp, sizeof(tmp), "lightInfiniteDirection%d", i);
+        binding->light_infinite_direction_loc[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
+
+        snprintf(tmp, sizeof(tmp), "lightLocalPosition%d", i);
+        binding->light_local_position_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+        snprintf(tmp, sizeof(tmp), "lightLocalAttenuation%d", i);
+        binding->light_local_attenuation_loc[i] =
+            glGetUniformLocation(binding->gl_program, tmp);
+    }
+    for (i = 0; i < 8; i++) {
+        snprintf(tmp, sizeof(tmp), "clipRegion[%d]", i);
+        binding->clip_region_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
+    }
+
+    if (state->fixed_function) {
+        binding->material_alpha_loc =
+            glGetUniformLocation(binding->gl_program, "material_alpha");
+    } else {
+        binding->material_alpha_loc = -1;
+    }
+}
+
+ShaderBinding *generate_shaders(const ShaderState *state)
+{
+    char *previous_numeric_locale = setlocale(LC_NUMERIC, NULL);
+    if (previous_numeric_locale) {
+        previous_numeric_locale = g_strdup(previous_numeric_locale);
+    }
+
+    /* Ensure numeric values are printed with '.' radix, no grouping */
+    setlocale(LC_NUMERIC, "C");
     GLuint program = glCreateProgram();
 
-    /* Create an option geometry shader and find primitive type */
+    /* Create an optional geometry shader and find primitive type */
     GLenum gl_primitive_mode;
     MString* geometry_shader_code =
-        generate_geometry_shader(state.polygon_front_mode,
-                                 state.polygon_back_mode,
-                                 state.primitive_mode,
-                                 &gl_primitive_mode);
+        generate_geometry_shader(state->polygon_front_mode,
+                                 state->polygon_back_mode,
+                                 state->primitive_mode,
+                                 &gl_primitive_mode,
+                                 state->smooth_shading);
     if (geometry_shader_code) {
         const char* geometry_shader_code_str =
              mstring_get_str(geometry_shader_code);
@@ -959,13 +1151,11 @@ ShaderBinding* generate_shaders(const ShaderState state)
                                                   "geometry shader");
         glAttachShader(program, geometry_shader);
         mstring_unref(geometry_shader_code);
-        vtx_prefix = 'v';
-    } else {
-        vtx_prefix = 'g';
     }
 
     /* create the vertex shader */
-    MString *vertex_shader_code = generate_vertex_shader(state, vtx_prefix);
+    MString *vertex_shader_code =
+        generate_vertex_shader(state, geometry_shader_code != NULL);
     GLuint vertex_shader = create_gl_shader(GL_VERTEX_SHADER,
                                             mstring_get_str(vertex_shader_code),
                                             "vertex shader");
@@ -973,8 +1163,9 @@ ShaderBinding* generate_shaders(const ShaderState state)
     mstring_unref(vertex_shader_code);
 
     /* generate a fragment shader from register combiners */
-    MString *fragment_shader_code = psh_translate(state.psh);
-    const char *fragment_shader_code_str = mstring_get_str(fragment_shader_code);
+    MString *fragment_shader_code = psh_translate(state->psh);
+    const char *fragment_shader_code_str =
+        mstring_get_str(fragment_shader_code);
     GLuint fragment_shader = create_gl_shader(GL_FRAGMENT_SHADER,
                                               fragment_shader_code_str,
                                               "fragment shader");
@@ -994,98 +1185,412 @@ ShaderBinding* generate_shaders(const ShaderState state)
 
     glUseProgram(program);
 
-    /* set texture samplers */
-    for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
-        char samplerName[16];
-        snprintf(samplerName, sizeof(samplerName), "texSamp%d", i);
-        GLint texSampLoc = glGetUniformLocation(program, samplerName);
-        if (texSampLoc >= 0) {
-            glUniform1i(texSampLoc, i);
-        }
-    }
-
-    /* validate the program */
-    glValidateProgram(program);
-    GLint valid = 0;
-    glGetProgramiv(program, GL_VALIDATE_STATUS, &valid);
-    if (!valid) {
-        GLchar log[1024];
-        glGetProgramInfoLog(program, 1024, NULL, log);
-        fprintf(stderr, "nv2a: shader validation failed: %s\n", log);
-        abort();
-    }
-
     ShaderBinding* ret = g_malloc0(sizeof(ShaderBinding));
     ret->gl_program = program;
     ret->gl_primitive_mode = gl_primitive_mode;
 
-    /* lookup fragment shader uniforms */
-    for (i = 0; i < 9; i++) {
-        for (j = 0; j < 2; j++) {
-            snprintf(tmp, sizeof(tmp), "c%d_%d", j, i);
-            ret->psh_constant_loc[i][j] = glGetUniformLocation(program, tmp);
-        }
-    }
-    ret->alpha_ref_loc = glGetUniformLocation(program, "alphaRef");
-    for (i = 1; i < NV2A_MAX_TEXTURES; i++) {
-        snprintf(tmp, sizeof(tmp), "bumpMat%d", i);
-        ret->bump_mat_loc[i] = glGetUniformLocation(program, tmp);
-        snprintf(tmp, sizeof(tmp), "bumpScale%d", i);
-        ret->bump_scale_loc[i] = glGetUniformLocation(program, tmp);
-        snprintf(tmp, sizeof(tmp), "bumpOffset%d", i);
-        ret->bump_offset_loc[i] = glGetUniformLocation(program, tmp);
-    }
+    update_shader_constant_locations(ret, state);
 
-    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
-        snprintf(tmp, sizeof(tmp), "texScale%d", i);
-        ret->tex_scale_loc[i] = glGetUniformLocation(program, tmp);
-    }
-
-    /* lookup vertex shader uniforms */
-    for(i = 0; i < NV2A_VERTEXSHADER_CONSTANTS; i++) {
-        snprintf(tmp, sizeof(tmp), "c[%d]", i);
-        ret->vsh_constant_loc[i] = glGetUniformLocation(program, tmp);
-    }
-    ret->surface_size_loc = glGetUniformLocation(program, "surfaceSize");
-    ret->clip_range_loc = glGetUniformLocation(program, "clipRange");
-    ret->fog_color_loc = glGetUniformLocation(program, "fogColor");
-    ret->fog_param_loc[0] = glGetUniformLocation(program, "fogParam[0]");
-    ret->fog_param_loc[1] = glGetUniformLocation(program, "fogParam[1]");
-
-    ret->inv_viewport_loc = glGetUniformLocation(program, "invViewport");
-    for (i = 0; i < NV2A_LTCTXA_COUNT; i++) {
-        snprintf(tmp, sizeof(tmp), "ltctxa[%d]", i);
-        ret->ltctxa_loc[i] = glGetUniformLocation(program, tmp);
-    }
-    for (i = 0; i < NV2A_LTCTXB_COUNT; i++) {
-        snprintf(tmp, sizeof(tmp), "ltctxb[%d]", i);
-        ret->ltctxb_loc[i] = glGetUniformLocation(program, tmp);
-    }
-    for (i = 0; i < NV2A_LTC1_COUNT; i++) {
-        snprintf(tmp, sizeof(tmp), "ltc1[%d]", i);
-        ret->ltc1_loc[i] = glGetUniformLocation(program, tmp);
-    }
-    for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
-        snprintf(tmp, sizeof(tmp), "lightInfiniteHalfVector%d", i);
-        ret->light_infinite_half_vector_loc[i] = glGetUniformLocation(program, tmp);
-        snprintf(tmp, sizeof(tmp), "lightInfiniteDirection%d", i);
-        ret->light_infinite_direction_loc[i] = glGetUniformLocation(program, tmp);
-
-        snprintf(tmp, sizeof(tmp), "lightLocalPosition%d", i);
-        ret->light_local_position_loc[i] = glGetUniformLocation(program, tmp);
-        snprintf(tmp, sizeof(tmp), "lightLocalAttenuation%d", i);
-        ret->light_local_attenuation_loc[i] = glGetUniformLocation(program, tmp);
-    }
-    for (i = 0; i < 8; i++) {
-        snprintf(tmp, sizeof(tmp), "clipRegion[%d]", i);
-        ret->clip_region_loc[i] = glGetUniformLocation(program, tmp);
-    }
-
-    if (state.fixed_function) {
-        ret->material_alpha_loc = glGetUniformLocation(program, "material_alpha");
-    } else {
-        ret->material_alpha_loc = -1;
+    if (previous_numeric_locale) {
+        setlocale(LC_NUMERIC, previous_numeric_locale);
+        g_free(previous_numeric_locale);
     }
 
     return ret;
+}
+
+static const char *shader_gl_vendor = NULL;
+
+static void shader_create_cache_folder(void)
+{
+    char *shader_path = g_strdup_printf("%sshaders", xemu_settings_get_base_path());
+    qemu_mkdir(shader_path);
+    g_free(shader_path);
+}
+
+static char *shader_get_lru_cache_path(void)
+{
+    return g_strdup_printf("%s/shader_cache_list", xemu_settings_get_base_path());
+}
+
+static void shader_write_lru_list_entry_to_disk(Lru *lru, LruNode *node, void *opaque)
+{
+    FILE *lru_list_file = (FILE*) opaque;
+    size_t written = fwrite(&node->hash, sizeof(uint64_t), 1, lru_list_file);
+    if (written != 1) {
+        fprintf(stderr, "nv2a: Failed to write shader list entry %llx to disk\n",
+                (unsigned long long) node->hash);
+    }
+}
+
+void shader_write_cache_reload_list(PGRAPHState *pg)
+{
+    if (!g_config.perf.cache_shaders) {
+        qatomic_set(&pg->shader_cache_writeback_pending, false);
+        qemu_event_set(&pg->shader_cache_writeback_complete);
+        return;
+    }
+
+    char *shader_lru_path = shader_get_lru_cache_path();
+    qemu_thread_join(&pg->shader_disk_thread);
+
+    FILE *lru_list = qemu_fopen(shader_lru_path, "wb");
+    g_free(shader_lru_path);
+    if (!lru_list) {
+        fprintf(stderr, "nv2a: Failed to open shader LRU cache for writing\n");
+        return;
+    }
+
+    lru_visit_active(&pg->shader_cache, shader_write_lru_list_entry_to_disk, lru_list);
+    fclose(lru_list);
+
+    lru_flush(&pg->shader_cache);
+
+    qatomic_set(&pg->shader_cache_writeback_pending, false);
+    qemu_event_set(&pg->shader_cache_writeback_complete);
+}
+
+bool shader_load_from_memory(ShaderLruNode *snode)
+{
+    assert(glGetError() == GL_NO_ERROR);
+
+    if (!snode->program) {
+        return false;
+    }
+
+    GLuint gl_program = glCreateProgram();
+    glProgramBinary(gl_program, snode->program_format, snode->program, snode->program_size);
+    GLint gl_error = glGetError();
+    if (gl_error != GL_NO_ERROR) {
+        NV2A_DPRINTF("failed to load shader binary from disk: GL error code %d\n", gl_error);
+        glDeleteProgram(gl_program);
+        return false;
+    }
+
+    glValidateProgram(gl_program);
+    GLint valid = 0;
+    glGetProgramiv(gl_program, GL_VALIDATE_STATUS, &valid);
+    if (!valid) {
+        GLchar log[1024];
+        glGetProgramInfoLog(gl_program, 1024, NULL, log);
+        NV2A_DPRINTF("failed to load shader binary from disk: %s\n", log);
+        glDeleteProgram(gl_program);
+        return false;
+    }
+
+    glUseProgram(gl_program);
+
+    ShaderBinding* binding = g_malloc0(sizeof(ShaderBinding));
+    binding->gl_program = gl_program;
+    binding->gl_primitive_mode = get_gl_primitive_mode(snode->state.polygon_front_mode,
+                                                       snode->state.primitive_mode);
+    snode->binding = binding;
+
+    g_free(snode->program);
+    snode->program = NULL;
+
+    update_shader_constant_locations(binding, &snode->state);
+
+    return true;
+}
+
+static char *shader_get_bin_directory(uint64_t hash)
+{
+    const char *cfg_dir = xemu_settings_get_base_path();
+    uint64_t bin_mask = 0xffffUL << 48;
+    char *shader_bin_dir = g_strdup_printf("%s/shaders/%04lx",
+                                           cfg_dir, (hash & bin_mask) >> 48);
+    return shader_bin_dir;
+}
+
+static char *shader_get_binary_path(const char *shader_bin_dir, uint64_t hash)
+{
+    uint64_t bin_mask = 0xffffUL << 48;
+    return g_strdup_printf("%s/%012lx", shader_bin_dir,
+                           hash & (~bin_mask));
+}
+
+static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
+{
+    char *shader_bin_dir = shader_get_bin_directory(hash);
+    char *shader_path = shader_get_binary_path(shader_bin_dir, hash);
+    char *cached_xemu_version = NULL;
+    char *cached_gl_vendor = NULL;
+    void *program_buffer = NULL;
+
+    uint64_t cached_xemu_version_len;
+    uint64_t gl_vendor_len;
+    GLenum program_binary_format;
+    ShaderState state;
+    size_t shader_size;
+
+    g_free(shader_bin_dir);
+
+    qemu_mutex_lock(&pg->shader_cache_lock); 
+    if (lru_contains_hash(&pg->shader_cache, hash)) {
+        qemu_mutex_unlock(&pg->shader_cache_lock);
+        return;
+    }
+    qemu_mutex_unlock(&pg->shader_cache_lock);
+
+    FILE *shader_file = qemu_fopen(shader_path, "rb");
+    if (!shader_file) {
+        goto error;
+    }
+
+    size_t nread;
+    #define READ_OR_ERR(data, data_len) \
+        do { \
+            nread = fread(data, data_len, 1, shader_file); \
+            if (nread != 1) { \
+                fclose(shader_file); \
+                goto error; \
+            } \
+        } while (0)
+
+    READ_OR_ERR(&cached_xemu_version_len, sizeof(cached_xemu_version_len));
+
+    cached_xemu_version = g_malloc(cached_xemu_version_len +1);
+    READ_OR_ERR(cached_xemu_version, cached_xemu_version_len);
+    if (strcmp(cached_xemu_version, xemu_version) != 0) {
+        fclose(shader_file);
+        goto error;
+    }
+
+    READ_OR_ERR(&gl_vendor_len, sizeof(gl_vendor_len));
+
+    cached_gl_vendor = g_malloc(gl_vendor_len);
+    READ_OR_ERR(cached_gl_vendor, gl_vendor_len);
+    if (strcmp(cached_gl_vendor, shader_gl_vendor) != 0) {
+        fclose(shader_file);
+        goto error;
+    }
+
+    READ_OR_ERR(&program_binary_format, sizeof(program_binary_format));
+    READ_OR_ERR(&state, sizeof(state));
+    READ_OR_ERR(&shader_size, sizeof(shader_size));
+
+    program_buffer = g_malloc(shader_size);
+    READ_OR_ERR(program_buffer, shader_size);
+
+    #undef READ_OR_ERR
+
+    fclose(shader_file);
+    g_free(shader_path);
+    g_free(cached_xemu_version);
+    g_free(cached_gl_vendor);
+
+    qemu_mutex_lock(&pg->shader_cache_lock);
+    LruNode *node = lru_lookup(&pg->shader_cache, hash, &state);
+    ShaderLruNode *snode = container_of(node, ShaderLruNode, node);
+
+    /* If we happened to regenerate this shader already, then we may as well use the new one */
+    if (snode->binding) {
+        qemu_mutex_unlock(&pg->shader_cache_lock);
+        return;
+    }
+
+    snode->program_format = program_binary_format;
+    snode->program_size = shader_size;
+    snode->program = program_buffer;
+    snode->cached = true;
+    qemu_mutex_unlock(&pg->shader_cache_lock);
+    return;
+
+error:
+    /* Delete the shader so it won't be loaded again */
+    qemu_unlink(shader_path);
+    g_free(shader_path);
+    g_free(program_buffer);
+    g_free(cached_xemu_version);
+    g_free(cached_gl_vendor);
+}
+
+static void *shader_reload_lru_from_disk(void *arg)
+{
+    if (!g_config.perf.cache_shaders) {
+        return NULL;
+    }
+
+    PGRAPHState *pg = (PGRAPHState*) arg;
+    char *shader_lru_path = shader_get_lru_cache_path();
+
+    FILE *lru_shaders_list = qemu_fopen(shader_lru_path, "rb");
+    g_free(shader_lru_path);
+    if (!lru_shaders_list) {
+        return NULL;
+    }
+
+    uint64_t hash;
+    while (fread(&hash, sizeof(uint64_t), 1, lru_shaders_list) == 1) {
+        shader_load_from_disk(pg, hash);
+    }
+
+    return NULL;
+}
+
+static void shader_cache_entry_init(Lru *lru, LruNode *node, void *state)
+{
+    ShaderLruNode *snode = container_of(node, ShaderLruNode, node);
+    memcpy(&snode->state, state, sizeof(ShaderState));
+    snode->cached = false;
+    snode->binding = NULL;
+    snode->program = NULL;
+    snode->save_thread = NULL;
+}
+
+static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
+{
+    ShaderLruNode *snode = container_of(node, ShaderLruNode, node);
+    
+    if (snode->save_thread) {
+        qemu_thread_join(snode->save_thread);
+        g_free(snode->save_thread);
+    }
+    
+    if (snode->binding) {
+        glDeleteProgram(snode->binding->gl_program);
+        g_free(snode->binding);
+    }
+
+    if (snode->program) {
+        g_free(snode->program);
+    }
+
+    snode->cached = false;
+    snode->save_thread = NULL;
+    snode->binding = NULL;
+    snode->program = NULL;
+    memset(&snode->state, 0, sizeof(ShaderState));
+}
+
+static bool shader_cache_entry_compare(Lru *lru, LruNode *node, void *key)
+{
+    ShaderLruNode *snode = container_of(node, ShaderLruNode, node);
+    return memcmp(&snode->state, key, sizeof(ShaderState));
+}
+
+void shader_cache_init(PGRAPHState *pg)
+{
+    if (!shader_gl_vendor) {
+        shader_gl_vendor = (const char *) glGetString(GL_VENDOR);
+    }
+
+    shader_create_cache_folder();
+    
+    /* FIXME: Make this configurable */
+    const size_t shader_cache_size = 50*1024;
+    lru_init(&pg->shader_cache);
+    pg->shader_cache_entries = malloc(shader_cache_size * sizeof(ShaderLruNode));
+    assert(pg->shader_cache_entries != NULL);
+    for (int i = 0; i < shader_cache_size; i++) {
+        lru_add_free(&pg->shader_cache, &pg->shader_cache_entries[i].node);
+    }
+
+    pg->shader_cache.init_node = shader_cache_entry_init;
+    pg->shader_cache.compare_nodes = shader_cache_entry_compare;
+    pg->shader_cache.post_node_evict = shader_cache_entry_post_evict;
+
+    qemu_thread_create(&pg->shader_disk_thread, "pgraph.shader_cache",
+                       shader_reload_lru_from_disk, pg, QEMU_THREAD_JOINABLE);
+}
+
+static void *shader_write_to_disk(void *arg)
+{
+    ShaderLruNode *snode = (ShaderLruNode*) arg;
+
+    char *shader_bin = shader_get_bin_directory(snode->node.hash);
+    char *shader_path = shader_get_binary_path(shader_bin, snode->node.hash);
+
+    static uint64_t gl_vendor_len;
+    if (gl_vendor_len == 0) {
+        gl_vendor_len = (uint64_t) (strlen(shader_gl_vendor) + 1);
+    }
+
+    static uint64_t xemu_version_len = 0;
+    if (xemu_version_len == 0) {
+        xemu_version_len = (uint64_t) (strlen(xemu_version) + 1);
+    }
+
+    qemu_mkdir(shader_bin);
+    g_free(shader_bin);
+
+    FILE *shader_file = qemu_fopen(shader_path, "wb");
+    if (!shader_file) {
+        goto error;
+    }
+
+    size_t written;
+    #define WRITE_OR_ERR(data, data_size) \
+        do { \
+            written = fwrite(data, data_size, 1, shader_file); \
+            if (written != 1) { \
+                fclose(shader_file); \
+                goto error; \
+            } \
+        } while (0)
+
+    WRITE_OR_ERR(&xemu_version_len, sizeof(xemu_version_len));
+    WRITE_OR_ERR(xemu_version, xemu_version_len);
+
+    WRITE_OR_ERR(&gl_vendor_len, sizeof(gl_vendor_len));
+    WRITE_OR_ERR(shader_gl_vendor, gl_vendor_len);
+
+    WRITE_OR_ERR(&snode->program_format, sizeof(snode->program_format));
+    WRITE_OR_ERR(&snode->state, sizeof(snode->state));
+
+    WRITE_OR_ERR(&snode->program_size, sizeof(snode->program_size));
+    WRITE_OR_ERR(snode->program, snode->program_size);
+
+    #undef WRITE_OR_ERR
+
+    fclose(shader_file);
+
+    g_free(shader_path);
+    g_free(snode->program);
+    snode->program = NULL;
+
+    return NULL;
+
+error:
+    fprintf(stderr, "nv2a: Failed to write shader binary file to %s\n", shader_path);
+    qemu_unlink(shader_path);
+    g_free(shader_path);
+    g_free(snode->program);
+    snode->program = NULL;
+    return NULL;
+}
+
+void shader_cache_to_disk(ShaderLruNode *snode)
+{
+    if (!snode->binding || snode->cached) {
+        return;
+    }
+
+    GLint program_size;
+    glGetProgramiv(snode->binding->gl_program, GL_PROGRAM_BINARY_LENGTH, &program_size);
+    
+    if (snode->program) {
+        g_free(snode->program);
+        snode->program = NULL;
+    }
+
+    /* program_size might be zero on some systems, if no binary formats are supported */
+    if (program_size == 0) {
+        return;
+    }
+
+    snode->program = g_malloc(program_size);
+    GLsizei program_size_copied;
+    glGetProgramBinary(snode->binding->gl_program, program_size, &program_size_copied,
+                       &snode->program_format, snode->program);
+    assert(glGetError() == GL_NO_ERROR);
+
+    snode->program_size = program_size_copied;
+    snode->cached = true;
+
+    char name[24];
+    snprintf(name, sizeof(name), "scache-%llx", (unsigned long long) snode->node.hash);
+    snode->save_thread = g_malloc0(sizeof(QemuThread));
+    qemu_thread_create(snode->save_thread, name, shader_write_to_disk, snode, QEMU_THREAD_JOINABLE);
 }

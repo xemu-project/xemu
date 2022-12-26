@@ -278,6 +278,7 @@ static void nv2a_reset(NV2AState *d)
 
     memset(d->pfifo.regs, 0, sizeof(d->pfifo.regs));
     memset(d->pgraph.regs, 0, sizeof(d->pgraph.regs));
+    memset(d->pvideo.regs, 0, sizeof(d->pvideo.regs));
 
     d->pcrtc.start = 0;
     d->pramdac.core_clock_coeff = 0x00011C01; /* 189MHz...? */
@@ -379,6 +380,14 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
         nv2a_lock_fifo(d);
         qatomic_set(&d->pfifo.halt, false);
         nv2a_unlock_fifo(d);
+    } else if (state == RUN_STATE_SHUTDOWN) {
+        nv2a_lock_fifo(d);
+        qatomic_set(&d->pgraph.shader_cache_writeback_pending, true);
+        qemu_event_reset(&d->pgraph.shader_cache_writeback_complete);
+        nv2a_unlock_fifo(d);
+        qemu_mutex_unlock_iothread();
+        qemu_event_wait(&d->pgraph.shader_cache_writeback_complete);
+        qemu_mutex_lock_iothread();
     }
 }
 
@@ -487,6 +496,7 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT64(pgraph.dma_vertex_a, NV2AState),
         VMSTATE_UINT64(pgraph.dma_vertex_b, NV2AState),
         VMSTATE_UINT32(pgraph.primitive_mode, NV2AState),
+        VMSTATE_UINT32_ARRAY(pgraph.vertex_state_shader_v0, NV2AState, 4),
         VMSTATE_UINT32_2DARRAY(pgraph.program_data, NV2AState, NV2A_MAX_TRANSFORM_PROGRAM_LENGTH, VSH_TOKEN_SIZE),
         VMSTATE_UINT32_2DARRAY(pgraph.vsh_constants, NV2AState, NV2A_VERTEXSHADER_CONSTANTS, 4),
         VMSTATE_BOOL_ARRAY(pgraph.vsh_constants_dirty, NV2AState, NV2A_VERTEXSHADER_CONSTANTS),

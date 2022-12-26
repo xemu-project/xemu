@@ -82,3 +82,6 @@
 [submodule "tomlplusplus"]
 	path = tomlplusplus
 	url = https://github.com/marzer/tomlplusplus
+[submodule "hw/xbox/nv2a/thirdparty/nv2a_vsh_cpu"]
+	path = hw/xbox/nv2a/thirdparty/nv2a_vsh_cpu
+	url = https://github.com/abaire/nv2a_vsh_cpu.git

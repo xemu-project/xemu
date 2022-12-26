@@ -490,16 +490,6 @@ static int os_host_main_loop_wait(int64_t timeout)
 
     g_main_context_acquire(context);
 
-    /* XXX: need to suppress polling by better using win32 events */
-    ret = 0;
-    for (pe = first_polling_entry; pe != NULL; pe = pe->next) {
-        ret |= pe->func(pe->opaque);
-    }
-    if (ret != 0) {
-        g_main_context_release(context);
-        return ret;
-    }
-
     FD_ZERO(&rfds);
     FD_ZERO(&wfds);
     FD_ZERO(&xfds);
@@ -562,7 +552,17 @@ static int os_host_main_loop_wait(int64_t timeout)
         g_main_context_dispatch(context);
     }
 
+    /* XXX: need to suppress polling by better using win32 events */
+    ret = 0;
+    for (pe = first_polling_entry; pe != NULL; pe = pe->next) {
+        ret |= pe->func(pe->opaque);
+    }
+    
     g_main_context_release(context);
+    
+    if (ret != 0) {
+        return ret;
+    }
 
     return select_ret || g_poll_ret;
 }

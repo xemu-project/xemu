@@ -40,8 +40,7 @@ public:
 extern Fbo *controller_fbo, *logo_fbo;
 
 void InitCustomRendering(void);
-void RenderLogo(uint32_t time, uint32_t primary_color, uint32_t secondary_color,
-                uint32_t fill_color);
+void RenderLogo(uint32_t time);
 void RenderController(float frame_x, float frame_y, uint32_t primary_color,
                       uint32_t secondary_color, ControllerState *state);
 void RenderControllerPort(float frame_x, float frame_y, int i,
