@@ -37,7 +37,7 @@ public:
     void Restore();
 };
 
-extern Fbo *controller_fbo, *logo_fbo;
+extern Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
 
 void InitCustomRendering(void);
 void RenderLogo(uint32_t time);
@@ -45,5 +45,7 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
                       uint32_t secondary_color, ControllerState *state);
 void RenderControllerPort(float frame_x, float frame_y, int i,
                           uint32_t port_color);
+void RenderXmu(float frame_x, float frame_y, uint32_t primary_color,
+                      uint32_t secondary_color);
 void RenderFramebuffer(GLint tex, int width, int height, bool flip);
 void SaveScreenshot(GLuint tex, bool flip);
