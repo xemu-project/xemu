@@ -94,6 +94,20 @@ static const char **port_index_to_settings_key_map[] = {
     &g_config.input.bindings.port4,
 };
 
+static int* peripheral_types_settings_map[4][2] = {
+    { &g_config.input.peripherals.port1.peripheral_type_0, &g_config.input.peripherals.port1.peripheral_type_1 },
+    { &g_config.input.peripherals.port2.peripheral_type_0, &g_config.input.peripherals.port2.peripheral_type_1 },
+    { &g_config.input.peripherals.port3.peripheral_type_0, &g_config.input.peripherals.port3.peripheral_type_1 },
+    { &g_config.input.peripherals.port4.peripheral_type_0, &g_config.input.peripherals.port4.peripheral_type_1 }
+};
+
+static const char **peripheral_params_settings_map[4][2] = {
+    { &g_config.input.peripherals.port1.peripheral_param_0, &g_config.input.peripherals.port1.peripheral_param_1 },
+    { &g_config.input.peripherals.port2.peripheral_param_0, &g_config.input.peripherals.port2.peripheral_param_1 },
+    { &g_config.input.peripherals.port3.peripheral_param_0, &g_config.input.peripherals.port3.peripheral_param_1 },
+    { &g_config.input.peripherals.port4.peripheral_param_0, &g_config.input.peripherals.port4.peripheral_param_1 }
+};
+
 static int sdl_kbd_scancode_map[25];
 
 void xemu_input_init(void)
@@ -182,6 +196,25 @@ int xemu_input_get_controller_default_bind_port(ControllerState *state, int star
     return -1;
 }
 
+void xemu_save_peripheral_settings(int player_index, int peripheral_index, int peripheral_type, const char *peripheral_parameter)
+{
+    fprintf(stderr, "saving peripheral settings for port %d%c: type = %d, filename = %s\r\n", player_index+1, 'A' + peripheral_index, peripheral_type, peripheral_parameter == NULL ? "NULL" : peripheral_parameter);
+
+    int *peripheral_type_ptr = peripheral_types_settings_map[player_index][peripheral_index];
+    const char **peripheral_param_ptr = peripheral_params_settings_map[player_index][peripheral_index];
+
+    if(peripheral_type_ptr != NULL && peripheral_param_ptr != NULL)
+    {
+        *peripheral_type_ptr = peripheral_type;
+        if(*peripheral_param_ptr != NULL)
+            free(*peripheral_param_ptr);
+        *peripheral_param_ptr = 
+            peripheral_parameter == NULL ? strdup("") : strdup(peripheral_parameter);
+    }
+
+    fprintf(stderr, "saved peripheral settings for port %d%c: type = %d, filename = %s\r\n", player_index+1, 'A' + peripheral_index, peripheral_type, peripheral_parameter == NULL ? "NULL" : peripheral_parameter);
+}
+
 void xemu_input_process_sdl_events(const SDL_Event *event)
 {
     if (event->type == SDL_CONTROLLERDEVICEADDED) {
@@ -263,6 +296,30 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
             char buf[128];
             snprintf(buf, sizeof(buf), "Connected '%s' to port %d", new_con->name, port+1);
             xemu_queue_notification(buf);
+
+            // Try to bind peripherals back to controller
+            enum peripheral_type peripheralType = PERIPHERAL_NONE;
+            const char *param = NULL;
+
+            for(int i = 0; i < 2; i++)
+            {
+                peripheralType = (enum peripheral_type)(*peripheral_types_settings_map[port][i]);
+                param = *peripheral_params_settings_map[port][i];
+
+                if(peripheralType == PERIPHERAL_XMU) {
+                    if(param != NULL && strlen(param) > 0) {
+                        // This is an XMU and needs to be bound to this controller
+                        bound_controllers[port]->PeripheralTypes[i] = (enum peripheral_type)peripheralType;
+                        bound_controllers[port]->Peripherals[i] = malloc(sizeof(XmuState));
+                        memset(bound_controllers[port]->Peripherals[i], 0, sizeof(XmuState));
+                        xemu_input_bind_xmu(port, i, param);
+
+                        char buf[128];
+                        snprintf(buf, 128, "Connected XMU %s to port %d%c", param, port + 1, 'A' + i);
+                        xemu_queue_notification(buf);
+                    }
+                }
+            }
         }
     } else if (event->type == SDL_CONTROLLERDEVICEREMOVED) {
         DPRINTF("Controller Removed: %d\n", event->cdevice.which);
@@ -525,8 +582,6 @@ void xemu_input_bind_xmu(int player_index, int peripheral_port_index, const char
     assert(player_index >= 0 && player_index < 4);
     assert(peripheral_port_index >= 0 && peripheral_port_index < 2);
 
-    fprintf(stderr, "xemu_input_bind_xmu\r\n");
-
     ControllerState *player = bound_controllers[player_index];
     enum peripheral_type peripheralType = player->PeripheralTypes[peripheral_port_index];
     if(peripheralType != PERIPHERAL_XMU)
@@ -552,9 +607,10 @@ void xemu_input_bind_xmu(int player_index, int peripheral_port_index, const char
                     assert(xmu_i);
 
                     if(xmu_i->filename != NULL && strcmp(xmu_i->filename, filename) == 0) {
-                        fprintf(stderr, "This XMU is already mounted on player %d slot %c\r\n", player_i+1, 'A' + peripheral_i);
+                        char buf[128];
+                        snprintf(buf, sizeof(buf), "This XMU is already mounted on player %d slot %c\r\n", player_i+1, 'A' + peripheral_i);
+                        xemu_queue_notification(buf);
                         return;
-                        //xemu_input_unbind_xmu(player_i, peripheral_i);
                     }
                 }
             }
@@ -578,9 +634,6 @@ void xemu_input_bind_xmu(int player_index, int peripheral_port_index, const char
 
     QemuOpts *drvopts = qemu_opts_from_qdict(qemu_find_opts("drive"), qdict1, &error_abort);
 
-    printf("Adding Drive. Options:\r\n");
-    qemu_opts_print(drvopts, "\r\n");
-
     xmu->dinfo = drive_new(drvopts, 0, &error_abort);
     assert(xmu->dinfo);
 
@@ -602,9 +655,6 @@ void xemu_input_bind_xmu(int player_index, int peripheral_port_index, const char
     // Create the device
     QemuOpts *opts = qemu_opts_from_qdict(qemu_find_opts("device"), qdict2, &error_abort);
 
-    printf("Adding Device. Options:\r\n");
-    qemu_opts_print(opts, "\r\n");
-
     DeviceState *dev = qdev_device_add(opts, &error_abort);
     assert(dev);
 
@@ -613,6 +663,8 @@ void xemu_input_bind_xmu(int player_index, int peripheral_port_index, const char
     // Unref for eventual cleanup
     qobject_unref(qdict1);
     qobject_unref(qdict2);
+
+    xemu_save_peripheral_settings(player_index, peripheral_port_index, player->PeripheralTypes[peripheral_port_index], xmu->filename);
 }
 
 void xemu_input_unbind_xmu(int player_index, int peripheral_port_index)
@@ -631,8 +683,6 @@ void xemu_input_unbind_xmu(int player_index, int peripheral_port_index)
             qdev_unplug((DeviceState*)xmu->dev, &error_abort);
             object_unref(OBJECT(xmu->dev));
             xmu->dev = NULL;
-
-            // TODO: drive_del(?)
         }
 
         if(xmu->filename != NULL) {

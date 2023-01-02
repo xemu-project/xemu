@@ -301,7 +301,13 @@ void MainMenuInputView::Draw()
                         if(j == PERIPHERAL_XMU) {
                             bound_state->Peripherals[i] = malloc(sizeof(XmuState));
                             memset(bound_state->Peripherals[i], 0, sizeof(XmuState));
+                        } else if(bound_state->Peripherals[i] != NULL) {
+                            fprintf(stderr, "'None' was selected. Deleting the XmuState\r\n");
+                            //free((void*)bound_state->Peripherals[i]);
+                            bound_state->Peripherals[i] = NULL;
                         }
+
+                        xemu_save_peripheral_settings(active, i, bound_state->PeripheralTypes[i], NULL);
                     }
                     if (is_selected) {
                         ImGui::SetItemDefaultFocus();
@@ -320,6 +326,7 @@ void MainMenuInputView::Draw()
                     2 * port_padding * g_viewport_mgr.m_scale) /
                     2));
 
+            selectedType = bound_state->PeripheralTypes[i];
             if(selectedType == PERIPHERAL_XMU)
             {
                 // We are using the same texture for all buttons, but ImageButton
@@ -403,7 +410,10 @@ void MainMenuInputView::Draw()
                 if(ImGui::Button("Clear Selection", ImVec2(250, 0)))
                 {
                     if(xmu->dev)
+                    {
                         xemu_input_unbind_xmu(active, i);
+                        xemu_save_peripheral_settings(active, i, bound_state->PeripheralTypes[i], NULL);
+                    }
                 }
                 ImGui::PopID();
             }
