@@ -186,7 +186,7 @@ jobs:
 
   macOS:
     name: Build for macOS (${{ matrix.arch }}, ${{ matrix.configuration }})
-    runs-on: macOS-latest
+    runs-on: macOS-11
     needs: Init
     strategy:
       matrix:
@@ -258,7 +258,7 @@ jobs:
 
   macOSUniversal:
     name: Build macOS Universal Bundle (${{ matrix.configuration }})
-    runs-on: macOS-latest
+    runs-on: macOS-11
     needs: [macOS]
     strategy:
       matrix:
