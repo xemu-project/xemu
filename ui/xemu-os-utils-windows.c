@@ -25,35 +25,38 @@
 
 const char *xemu_get_os_info(void)
 { 
-	HKEY keyHandle;
-    WCHAR windows_build[1024], windows_name[1024], version_number[1024];
-    static const char *buffer = NULL; 
-    DWORD string = 1024, string1 = 1024, string2 = 1024, string3 = 1024;
+    static const char *buffer = NULL;
+    HKEY keyhandle; 
+    WCHAR current_version[1024], current_build[1024], product_name[1024]; 
+    WCHAR version_size = 1024, build_size = 1024, product_size = 1024;
 
     if (buffer == NULL) {
         //Get Current Kernel version number.
-        if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0,
-                          KEY_QUERY_VALUE, &keyHandle) == ERROR_SUCCESS) {
-            RegQueryValueExW(keyHandle, L"CurrentVersion", NULL, NULL, (LPBYTE)version_number, &string);
-            
-            /* if version number is 10.0 (win 8.1/10/11), get the build number from the DisplayVersion Registry.
+       if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0,
+                          KEY_QUERY_VALUE, &keyhandle) == ERROR_SUCCESS) {
+
+            RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 
+                         L"CurrentVersion", RRF_RT_REG_SZ, (LPVOID)NULL, &current_version, (LPDWORD)&version_size) == ERROR_SUCCESS;
+
+            /* if version number is 6.3/10.0 (8.1/10/11), get the build number from the DisplayVersion Registry.
                Reference: https://en.wikipedia.org/wiki/Windows_NT */
-            if (wcscmp(version_number, L"10.0") == 0) {
-                RegQueryValueExW(keyHandle, L"DisplayVersion", NULL, NULL, (LPBYTE)windows_build, &string1);
+            if ((wcscmp(current_version, L"10.0") == 0) || (wcscmp(current_version, L"6.3") == 0)) {
+                RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 
+                             L"CurrentBuild", RRF_RT_REG_SZ, (LPVOID)NULL, &current_build, (LPDWORD)&build_size);
 
                 //If it's lower (win 8 and below until XP) get the build descriptor from CSDVersion.
                 } else { 
-                    RegQueryValueExW(keyHandle, L"CSDVersion", NULL, NULL, (LPBYTE)windows_build, &string2);
+                    RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+                                 L"CSDVersion", RRF_RT_REG_SZ, (LPVOID)NULL, &current_build, (LPDWORD)&build_size);
                 }
-
-            RegQueryValueExW(keyHandle, L"ProductName", NULL, NULL, (LPBYTE)windows_name, &string3); 
-            RegCloseKey(keyHandle);
+            RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 
+                         L"ProductName", RRF_RT_REG_SZ, (LPVOID)NULL, &product_name, (LPDWORD)&product_size);
+            buffer = g_strdup_printf("%ls %ls", product_name, current_build);
+            RegCloseKey(keyhandle);
         } else {
-            const char *msg = "Windows";
-            return msg;
+            buffer = "Windows";
         }
     }
-    buffer = g_strdup_printf("%ls %ls", windows_name, windows_build);
     return buffer;
 }
 
