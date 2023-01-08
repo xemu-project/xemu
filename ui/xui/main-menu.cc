@@ -380,15 +380,25 @@ void MainMenuInputView::Draw()
                     const char *new_path = PausedFileOpen(flags, img_file_filters, NULL, "xmu.img");
 
                     if (new_path) {
-                        // Create an 8MB formatted XMU image. We can create smaller or larger ones, but 8 MB is the default
-                        if(xemu_new_xmu(new_path, 8*1024*1024)) {
-                            // XMU was created successfully. Bind it
-                            if(xmu->filename != NULL)
-                                free((void*)xmu->filename );
-                            xmu->filename = strdup(new_path);
-                            xemu_input_bind_xmu(active, i, xmu->filename);
-                        } else {
-                            // Show an Alert on the UI somewhere about not being able to create the XMU
+                        if(access(new_path, F_OK) == 0) {
+                            // The file already exists
+                            char *msg = g_strdup_printf("%s already exists", new_path);
+                            xemu_queue_notification(msg);
+                            free(msg);
+                        } else  {
+                            // Create an 8MB formatted XMU image. We can create smaller or larger ones, but 8 MB is the default
+                            if(xemu_new_xmu(new_path, 8*1024*1024)) {
+                                // XMU was created successfully. Bind it
+                                if(xmu->filename != NULL)
+                                    free((void*)xmu->filename );
+                                xmu->filename = strdup(new_path);
+                                xemu_input_bind_xmu(active, i, xmu->filename);
+                            } else {
+                                // Show alert message
+                                char *msg = g_strdup_printf("Unable to create XMU image at %s", new_path);
+                                xemu_queue_notification(msg);
+                                free(msg);
+                            }
                         }
                     }
                 }
