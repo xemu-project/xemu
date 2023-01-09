@@ -42,7 +42,7 @@ const char *xemu_get_os_info(void)
                Reference: https://en.wikipedia.org/wiki/Windows_NT */
             if ((wcscmp(current_version, L"10.0") == 0) || (wcscmp(current_version, L"6.3") == 0)) {
                 RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 
-                             L"CurrentBuild", RRF_RT_REG_SZ, (LPVOID)NULL, &current_build, (LPDWORD)&build_size);
+                             L"DisplayVersion", RRF_RT_REG_SZ, (LPVOID)NULL, &current_build, (LPDWORD)&build_size);
 
                 //If it's lower (win 8 and below until XP) get the build descriptor from CSDVersion.
                 } else { 
