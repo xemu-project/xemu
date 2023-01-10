@@ -33,6 +33,8 @@
 #include "xemu-notifications.h"
 #include "xemu-settings.h"
 
+#include "sysemu/blockdev.h"
+
 // #define DEBUG_INPUT
 
 #ifdef DEBUG_INPUT
