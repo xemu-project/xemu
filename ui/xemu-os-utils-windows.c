@@ -36,7 +36,7 @@ const char *xemu_get_os_info(void)
                           KEY_QUERY_VALUE, &keyhandle) == ERROR_SUCCESS) {
 
             RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 
-                         L"CurrentVersion", RRF_RT_REG_SZ, (LPVOID)NULL, &current_version, (LPDWORD)&version_size) == ERROR_SUCCESS;
+                         L"CurrentVersion", RRF_RT_REG_SZ, (LPVOID)NULL, &current_version, (LPDWORD)&version_size);
 
             /* if version number is 6.3/10.0 (8.1/10/11), get the build number from the DisplayVersion Registry.
                Reference: https://en.wikipedia.org/wiki/Windows_NT */
