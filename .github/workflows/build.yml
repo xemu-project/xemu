@@ -253,13 +253,13 @@ jobs:
       uses: actions/cache@v3
       with:
         path: |
-          /tmp/xemu-ccache
+          xemu-ccache
           macos-pkgs
         key: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
     - name: Compile
       run: |
-        export CCACHE_DIR=/tmp/xemu-ccache
+        export CCACHE_DIR=${GITHUB_WORKSPACE}/xemu-ccache
         export CCACHE_MAXSIZE=512M
         export PATH="/usr/local/opt/ccache/libexec:$PATH"
         ccache -z
