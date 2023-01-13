@@ -153,7 +153,7 @@ jobs:
       run: |
         export DEBIAN_FRONTEND=noninteractive
         sudo apt-get -qy update
-        sudo apt-get install ccache
+        sudo apt-get install ccache libfuse2
         pushd src
         sudo apt-get -qy build-dep .
     - name: Compile
@@ -174,10 +174,29 @@ jobs:
 
         mkdir -p dist
         mv *.deb *.ddeb dist
-        tar -czvf ${{ matrix.artifact_filename }} --transform "s#^dist#xemu#" dist
 
         echo -e "\n\nCompiler Cache Stats:"
         ccache -s
+    - name: Generate AppImage
+      run: |
+        wget --no-verbose https://github.com/linuxdeploy/linuxdeploy/releases/latest/download/linuxdeploy-x86_64.AppImage
+        chmod +x linuxdeploy-x86_64.AppImage
+
+        ar x dist/*.deb
+        mkdir appimage
+        tar -C appimage -xf data.tar*
+        install -DT src/xemu.appdata.xml appimage/usr/share/metainfo/xemu.appdata.xml
+
+        export VERSION=$(cat src/XEMU_VERSION)
+        if [[ "${{ matrix.configuration }}" == "Debug" ]]; then
+          export VERSION=$VERSION-dbg
+        fi
+
+        ./linuxdeploy-x86_64.AppImage --output appimage --appdir appimage
+        mv xemu-*.AppImage dist
+    - name: Bundle artifacts
+      run: |
+        tar -czvf ${{ matrix.artifact_filename }} --transform "s#^dist#xemu#" dist
     - name: Upload build artifact
       uses: actions/upload-artifact@v3
       with:
@@ -326,6 +345,12 @@ jobs:
           dist/xemu-win-release/xemu-win-release.zip
           dist/xemu-macos-universal-release/xemu-macos-universal-release.zip
           dist/xemu-macos-universal-debug/xemu-macos-universal-debug.zip
+          dist/xemu-ubuntu-release/*.AppImage
+          dist/xemu-ubuntu-release/*.deb
+          dist/xemu-ubuntu-release/*.ddeb
+          dist/xemu-ubuntu-debug/*.AppImage
+          dist/xemu-ubuntu-debug/*.deb
+          dist/xemu-ubuntu-debug/*.ddeb
 
   # Sync archive version of source (including submodule code) to the
   # ppa-snapshot branch to work around limitations of the Launchpad platform,
