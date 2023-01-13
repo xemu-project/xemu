@@ -345,12 +345,8 @@ jobs:
           dist/xemu-win-release/xemu-win-release.zip
           dist/xemu-macos-universal-release/xemu-macos-universal-release.zip
           dist/xemu-macos-universal-debug/xemu-macos-universal-debug.zip
-          dist/xemu-ubuntu-release/*.AppImage
-          dist/xemu-ubuntu-release/*.deb
-          dist/xemu-ubuntu-release/*.ddeb
-          dist/xemu-ubuntu-debug/*.AppImage
-          dist/xemu-ubuntu-debug/*.deb
-          dist/xemu-ubuntu-debug/*.ddeb
+          dist/xemu-ubuntu-release/xemu-${{ env.XEMU_VERSION }}-x86_64.AppImage
+          dist/xemu-ubuntu-debug/xemu-${{ env.XEMU_VERSION }}-dbg-x86_64.AppImage
 
   # Sync archive version of source (including submodule code) to the
   # ppa-snapshot branch to work around limitations of the Launchpad platform,
