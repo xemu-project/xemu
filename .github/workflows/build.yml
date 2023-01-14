@@ -4,13 +4,15 @@ on:
   push:
     paths-ignore:
       - '.github/**'
-      - '!.github/workflows/**'
+      - '!.github/workflows/build.yml'
       - 'README.md'
+      - 'ubuntu-win64-cross/**'
   pull_request:
     paths-ignore:
       - '.github/**'
-      - '!.github/workflows/**'
+      - '!.github/workflows/build.yml'
       - 'README.md'
+      - 'ubuntu-win64-cross/**'
 
 jobs:
   Init:
