@@ -64,8 +64,8 @@ RUN cd /opt \
             openssl \
             cmake
 
-COPY sdl2.mk                                       /opt/mxe/src/sdl2.mk
-COPY sdl2-2-link-order.patch                       /opt/mxe/src/sdl2-2-link-order.patch
+RUN rm /opt/mxe/src/sdl2*.patch
+COPY sdl2.mk /opt/mxe/src/sdl2.mk
 RUN V=1 MXE_VERBOSE=1 make -C /opt/mxe \
         MXE_TARGETS=x86_64-w64-mingw32.static \
         MXE_PLUGIN_DIRS=plugins/gcc10 \
