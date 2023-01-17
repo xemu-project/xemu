@@ -347,6 +347,7 @@ jobs:
     - name: Publish release
       uses: softprops/action-gh-release@v1
       with:
+        token: ${{ secrets.XEMU_ROBOT_TOKEN }}
         tag_name: v${{ env.XEMU_VERSION }}
         name: v${{ env.XEMU_VERSION }}
         prerelease: false
