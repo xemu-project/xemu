@@ -380,7 +380,9 @@ static void set_full_screen(struct sdl2_console *scon, bool set)
 
     if (gui_fullscreen) {
         SDL_SetWindowFullscreen(scon->real_window,
-                                SDL_WINDOW_FULLSCREEN_DESKTOP);
+                                (g_config.display.window.fullscreen_exclusive ?
+                                SDL_WINDOW_FULLSCREEN :
+                                SDL_WINDOW_FULLSCREEN_DESKTOP));
         gui_saved_grab = gui_grab;
         sdl_grab_start(scon);
     } else {
