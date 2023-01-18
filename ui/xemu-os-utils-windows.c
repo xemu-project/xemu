@@ -35,20 +35,20 @@ const char *xemu_get_os_info(void)
        if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0,
                           KEY_QUERY_VALUE, &keyhandle) == ERROR_SUCCESS) {
             if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 
-                             L"ProductName", RRF_RT_REG_SZ, (LPVOID)NULL, &product_name, (LPDWORD)&product_size == ERROR_SUCCESS)) {
+                             L"ProductName", RRF_RT_REG_SZ, (LPVOID)NULL, &product_name, (LPDWORD)&product_size) == ERROR_SUCCESS) {
                 if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 
-                                 L"CurrentVersion", RRF_RT_REG_SZ, (LPVOID)NULL, &current_version, (LPDWORD)&version_size == ERROR_SUCCESS)) {
+                                 L"CurrentVersion", RRF_RT_REG_SZ, (LPVOID)NULL, &current_version, (LPDWORD)&version_size) == ERROR_SUCCESS) {
 
                         /* if version number is 6.3/10.0 (8.1/10/11), get the build number from the DisplayVersion Registry.
                             Reference: https://en.wikipedia.org/wiki/Windows_NT */
                     if ((wcscmp(current_version, L"10.0") == 0) || (wcscmp(current_version, L"6.3") == 0)) {
                         if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 
-                                    L"DisplayVersion", RRF_RT_REG_SZ, (LPVOID)NULL, &current_build, (LPDWORD)&build_size == ERROR_SUCCESS)) {
+                                    L"DisplayVersion", RRF_RT_REG_SZ, (LPVOID)NULL, &current_build, (LPDWORD)&build_size) == ERROR_SUCCESS) {
                             buffer = g_strdup_printf("%ls %ls", product_name, current_build);
                             //If it's lower (win 8 and below until XP) get the build descriptor from CSDVersion.
                         } else if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
-                                        L"CSDVersion", RRF_RT_REG_SZ, (LPVOID)NULL, &current_build, (LPDWORD)&build_size)) {
-                                   buffer = g_strdup_printf("%ls %ls", product_name, current_build); 
+                                        L"CSDVersion", RRF_RT_REG_SZ, (LPVOID)NULL, &current_build, (LPDWORD)&build_size) == ERROR_SUCCESS) {
+                                    buffer = g_strdup_printf("%ls %ls", product_name, current_build); 
                         } 
                     }
                 }
