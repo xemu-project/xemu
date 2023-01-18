@@ -359,6 +359,13 @@ jobs:
           dist/xemu-macos-universal-debug/xemu-macos-universal-debug.zip
           dist/xemu-ubuntu-release/xemu/xemu-v${{ env.XEMU_VERSION }}-x86_64.AppImage
           dist/xemu-ubuntu-debug/xemu/xemu-v${{ env.XEMU_VERSION }}-dbg-x86_64.AppImage
+    - name: Trigger website update
+      uses: benc-uk/workflow-dispatch@v1.2.2
+      with:
+        workflow: build.yml
+        repo: xemu-project/xemu-website
+        token: ${{ secrets.XEMU_ROBOT_TOKEN }}
+        ref: master
 
   # Sync archive version of source (including submodule code) to the
   # ppa-snapshot branch to work around limitations of the Launchpad platform,
