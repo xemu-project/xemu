@@ -205,14 +205,11 @@ void xemu_save_peripheral_settings(int player_index, int peripheral_index, int p
     int *peripheral_type_ptr = peripheral_types_settings_map[player_index][peripheral_index];
     const char **peripheral_param_ptr = peripheral_params_settings_map[player_index][peripheral_index];
 
-    if(peripheral_type_ptr != NULL && peripheral_param_ptr != NULL)
-    {
-        *peripheral_type_ptr = peripheral_type;
-        if(*peripheral_param_ptr != NULL)
-            free(*peripheral_param_ptr);
-        *peripheral_param_ptr = 
-            peripheral_parameter == NULL ? strdup("") : strdup(peripheral_parameter);
-    }
+    assert(peripheral_type_ptr);
+    assert(peripheral_param_ptr);
+    
+    *peripheral_type_ptr = peripheral_type;
+    xemu_settings_set_string(peripheral_param_ptr, peripheral_parameter);
 
     fprintf(stderr, "saved peripheral settings for port %d%c: type = %d, filename = %s\r\n", player_index+1, 'A' + peripheral_index, peripheral_type, peripheral_parameter == NULL ? "NULL" : peripheral_parameter);
 }
@@ -303,8 +300,7 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
             enum peripheral_type peripheralType = PERIPHERAL_NONE;
             const char *param = NULL;
 
-            for(int i = 0; i < 2; i++)
-            {
+            for(int i = 0; i < 2; i++) {
                 peripheralType = (enum peripheral_type)(*peripheral_types_settings_map[port][i]);
                 param = *peripheral_params_settings_map[port][i];
 
@@ -316,9 +312,9 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
                         memset(bound_controllers[port]->Peripherals[i], 0, sizeof(XmuState));
                         xemu_input_bind_xmu(port, i, param);
 
-                        char buf[128];
-                        snprintf(buf, 128, "Connected XMU %s to port %d%c", param, port + 1, 'A' + i);
+                        char *buf = g_strdup_printf("Connected XMU %s to port %d%c", param, port + 1, 'A' + i);
                         xemu_queue_notification(buf);
+                        g_free(buf);
                     }
                 }
             }
@@ -609,9 +605,9 @@ void xemu_input_bind_xmu(int player_index, int peripheral_port_index, const char
                     assert(xmu_i);
 
                     if(xmu_i->filename != NULL && strcmp(xmu_i->filename, filename) == 0) {
-                        char buf[128];
-                        snprintf(buf, sizeof(buf), "This XMU is already mounted on player %d slot %c\r\n", player_i+1, 'A' + peripheral_i);
+                        char *buf = g_strdup_printf("This XMU is already mounted on player %d slot %c\r\n", player_i+1, 'A' + peripheral_i);
                         xemu_queue_notification(buf);
+                        g_free(buf);
                         return;
                     }
                 }
@@ -636,8 +632,8 @@ void xemu_input_bind_xmu(int player_index, int peripheral_port_index, const char
 
     QemuOpts *drvopts = qemu_opts_from_qdict(qemu_find_opts("drive"), qdict1, &error_abort);
 
-    xmu->dinfo = drive_new(drvopts, 0, &error_abort);
-    assert(xmu->dinfo);
+    DriveInfo *dinfo = drive_new(drvopts, 0, &error_abort);
+    assert(dinfo);
 
     // Create the usb-storage device
     QDict *qdict2 = qdict_new();
@@ -663,6 +659,7 @@ void xemu_input_bind_xmu(int player_index, int peripheral_port_index, const char
     xmu->dev = (void*)dev;
 
     // Unref for eventual cleanup
+    //g_free(dinfo);
     qobject_unref(qdict1);
     qobject_unref(qdict2);
 
@@ -688,7 +685,7 @@ void xemu_input_unbind_xmu(int player_index, int peripheral_port_index)
         }
 
         if(xmu->filename != NULL) {
-            free(xmu->filename);
+            free((void*)xmu->filename);
             xmu->filename = NULL;
         }
     }
@@ -702,57 +699,4 @@ void xemu_input_set_test_mode(int enabled)
 int xemu_input_get_test_mode(void)
 {
     return test_mode;
-}
-
-#define FATX_SIGNATURE 0x58544146
-
-// This is from libfatx
-#pragma pack(1)
-struct fatx_superblock {
-    uint32_t signature;
-    uint32_t volume_id;
-    uint32_t sectors_per_cluster;
-    uint32_t root_cluster;
-    uint16_t unknown1;
-    uint8_t  padding[4078];
-};
-#pragma pack()
-
-bool xemu_new_xmu(const char* filename, unsigned int size)
-{
-    unsigned int PartitionId = (unsigned int)rand();
-    unsigned int SectorsPerCluster = 0x04;
-    unsigned int RootDirectoryCluster = 0x01;
-    unsigned char zero = 0x00;
-    unsigned int empty_fat = 0xfffffff8;
-
-    FILE *fp = fopen(filename, "wb");
-    if(fp != NULL)
-    {
-        struct fatx_superblock superblock;
-        memset(&superblock, 0xff, sizeof(struct fatx_superblock));
-
-        superblock.signature = FATX_SIGNATURE;
-        superblock.sectors_per_cluster = 4;
-        superblock.volume_id = PartitionId;
-        superblock.root_cluster = 1;
-        superblock.unknown1 = 0;
-
-        // Write the fatx superblock.
-        fwrite(&superblock, sizeof(superblock), 1, fp);
-
-        // Write the FAT
-        fwrite(&empty_fat, sizeof(empty_fat), 1, fp);
-
-        // Fill the rest of the space with zeros
-        for(unsigned int i = ftell(fp); i < size; i++)
-            fwrite(&zero, 1, 1, fp);
-
-        fflush(fp);
-        fclose(fp);
-
-        return true;
-    }
-
-    return false;
 }

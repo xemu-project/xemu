@@ -71,7 +71,6 @@ enum peripheral_type {
 typedef struct XmuState {
     const char *filename;
     void *dev;
-    void *dinfo;
 } XmuState;
 
 typedef struct ControllerState {

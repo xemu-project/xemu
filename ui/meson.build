@@ -26,6 +26,8 @@ xemu_ss.add(files(
 
   'xemu.c',
   'xemu-data.c',
+
+  'fatx.c',
 ))
 
 subdir('xui')

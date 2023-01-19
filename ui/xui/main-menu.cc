@@ -37,6 +37,8 @@
 #include "../xemu-os-utils.h"
 #include "../xemu-xbe.h"
 
+#include "../fatx.h"
+
 MainMenuScene g_main_menu;
 
 MainMenuTabView::~MainMenuTabView() {}
@@ -286,14 +288,11 @@ void MainMenuInputView::Draw()
                     bool is_selected = selectedType == j;
                     ImGui::PushID(86 + j);
                     const char *selectable_label = peripheralTypeNames[j];
-                    char buf[128];
 
                     if (ImGui::Selectable(selectable_label, is_selected)) {
-                        if(bound_state->Peripherals[i] != NULL)
-                        {
-                            if(bound_state->PeripheralTypes[i] == PERIPHERAL_XMU)
-                            {
-                                fprintf(stderr, "Another peripheral was already bound. Unplugging\r\n");
+                        if(bound_state->Peripherals[i] != NULL) {
+                            if(bound_state->PeripheralTypes[i] == PERIPHERAL_XMU) {
+                                // Another peripheral was already bound. Unplugging
                                 xemu_input_unbind_xmu(active, i);
                             }
                         }
@@ -302,16 +301,18 @@ void MainMenuInputView::Draw()
                             bound_state->Peripherals[i] = malloc(sizeof(XmuState));
                             memset(bound_state->Peripherals[i], 0, sizeof(XmuState));
                         } else if(bound_state->Peripherals[i] != NULL) {
-                            fprintf(stderr, "'None' was selected. Deleting the XmuState\r\n");
-                            //free((void*)bound_state->Peripherals[i]);
+                            // 'None' was selected. Deleting the XmuState
+                            free((void*)bound_state->Peripherals[i]);
                             bound_state->Peripherals[i] = NULL;
                         }
 
                         xemu_save_peripheral_settings(active, i, bound_state->PeripheralTypes[i], NULL);
                     }
+
                     if (is_selected) {
                         ImGui::SetItemDefaultFocus();
                     }
+
                     ImGui::PopID();
                 }
 
@@ -327,8 +328,7 @@ void MainMenuInputView::Draw()
                     2));
 
             selectedType = bound_state->PeripheralTypes[i];
-            if(selectedType == PERIPHERAL_XMU)
-            {
+            if(selectedType == PERIPHERAL_XMU) {
                 // We are using the same texture for all buttons, but ImageButton
                 // uses the texture as a unique ID. Push a new ID now to resolve
                 // the conflict
@@ -380,24 +380,21 @@ void MainMenuInputView::Draw()
                     const char *new_path = PausedFileOpen(flags, img_file_filters, NULL, "xmu.img");
 
                     if (new_path) {
-                        if(access(new_path, F_OK) == 0) {
+                        if(qemu_access(new_path, F_OK) == 0) {
                             // The file already exists
                             char *msg = g_strdup_printf("%s already exists", new_path);
                             xemu_queue_notification(msg);
-                            free(msg);
+                            g_free(msg);
                         } else  {
                             // Create an 8MB formatted XMU image. We can create smaller or larger ones, but 8 MB is the default
-                            if(xemu_new_xmu(new_path, 8*1024*1024)) {
+                            if(create_fatx_image(new_path, 8*1024*1024)) {
                                 // XMU was created successfully. Bind it
-                                if(xmu->filename != NULL)
-                                    free((void*)xmu->filename );
-                                xmu->filename = strdup(new_path);
-                                xemu_input_bind_xmu(active, i, xmu->filename);
+                                xemu_input_bind_xmu(active, i, new_path);
                             } else {
                                 // Show alert message
                                 char *msg = g_strdup_printf("Unable to create XMU image at %s", new_path);
                                 xemu_queue_notification(msg);
-                                free(msg);
+                                g_free(msg);
                             }
                         }
                     }
@@ -413,14 +410,13 @@ void MainMenuInputView::Draw()
                 if (FilePicker(id, &xmu_port_path, img_file_filters)) {
                     xemu_input_bind_xmu(active, i, xmu_port_path);
                 }
-                free((void*)id);
-                free((void*)xmu_port_path);
+                g_free((void*)id);
+                g_free((void*)xmu_port_path);
 
                 ImGui::PushID(67+i);
                 if(ImGui::Button("Clear Selection", ImVec2(250, 0)))
                 {
-                    if(xmu->dev)
-                    {
+                    if(xmu->dev) {
                         xemu_input_unbind_xmu(active, i);
                         xemu_save_peripheral_settings(active, i, bound_state->PeripheralTypes[i], NULL);
                     }
