@@ -37,7 +37,7 @@
 #include "../xemu-os-utils.h"
 #include "../xemu-xbe.h"
 
-#include "../fatx.h"
+#include "../thirdparty/fatx/fatx.h"
 
 MainMenuScene g_main_menu;
 
