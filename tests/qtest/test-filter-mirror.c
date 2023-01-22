@@ -9,8 +9,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
-#include "libqos/libqtest.h"
+#include "libqtest.h"
 #include "qapi/qmp/qdict.h"
 #include "qemu/iov.h"
 #include "qemu/sockets.h"
@@ -28,12 +27,7 @@ static void test_mirror(void)
     char *recv_buf;
     uint32_t size = sizeof(send_buf);
     size = htonl(size);
-    const char *devstr = "e1000";
     QTestState *qts;
-
-    if (g_str_equal(qtest_get_arch(), "s390x")) {
-        devstr = "virtio-net-ccw";
-    }
 
     ret = socketpair(PF_UNIX, SOCK_STREAM, 0, send_sock);
     g_assert_cmpint(ret, !=, -1);
@@ -42,11 +36,10 @@ static void test_mirror(void)
     g_assert_cmpint(ret, !=, -1);
 
     qts = qtest_initf(
-        "-netdev socket,id=qtest-bn0,fd=%d "
-        "-device %s,netdev=qtest-bn0,id=qtest-e0 "
+        "-nic socket,id=qtest-bn0,fd=%d "
         "-chardev socket,id=mirror0,fd=%d "
         "-object filter-mirror,id=qtest-f0,netdev=qtest-bn0,queue=tx,outdev=mirror0 "
-        , send_sock[1], devstr, recv_sock[1]);
+        , send_sock[1], recv_sock[1]);
 
     struct iovec iov[] = {
         {
@@ -64,13 +57,13 @@ static void test_mirror(void)
     g_assert_cmpint(ret, ==, sizeof(send_buf) + sizeof(size));
     close(send_sock[0]);
 
-    ret = qemu_recv(recv_sock[0], &len, sizeof(len), 0);
+    ret = recv(recv_sock[0], &len, sizeof(len), 0);
     g_assert_cmpint(ret, ==, sizeof(len));
     len = ntohl(len);
 
     g_assert_cmpint(len, ==, sizeof(send_buf));
     recv_buf = g_malloc(len);
-    ret = qemu_recv(recv_sock[0], recv_buf, len, 0);
+    ret = recv(recv_sock[0], recv_buf, len, 0);
     g_assert_cmpstr(recv_buf, ==, send_buf);
 
     g_free(recv_buf);

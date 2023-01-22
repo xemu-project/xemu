@@ -195,6 +195,11 @@ static void esp_pdma_write(ESPState *s, uint8_t val)
     esp_set_tc(s, dmalen);
 }
 
+static void esp_set_pdma_cb(ESPState *s, enum pdma_cb cb)
+{
+    s->pdma_cb = cb;
+}
+
 static int esp_select(ESPState *s)
 {
     int target;
@@ -203,11 +208,6 @@ static int esp_select(ESPState *s)
 
     s->ti_size = 0;
     fifo8_reset(&s->fifo);
-
-    if (s->current_req) {
-        /* Started a new command before the old one finished.  Cancel it.  */
-        scsi_req_cancel(s->current_req);
-    }
 
     s->current_dev = scsi_device_find(&s->bus, 0, target, 0);
     if (!s->current_dev) {
@@ -234,6 +234,11 @@ static uint32_t get_cmd(ESPState *s, uint32_t maxlen)
     uint8_t buf[ESP_CMDFIFO_SZ];
     uint32_t dmalen, n;
     int target;
+
+    if (s->current_req) {
+        /* Started a new command before the old one finished.  Cancel it.  */
+        scsi_req_cancel(s->current_req);
+    }
 
     target = s->wregs[ESP_WBUSID] & BUSID_DID;
     if (s->dma) {
@@ -287,7 +292,7 @@ static void do_command_phase(ESPState *s)
     esp_fifo_pop_buf(&s->cmdfifo, buf, cmdlen);
 
     current_lun = scsi_device_find(&s->bus, 0, s->current_dev->id, s->lun);
-    s->current_req = scsi_req_new(current_lun, 0, s->lun, buf, s);
+    s->current_req = scsi_req_new(current_lun, 0, s->lun, buf, cmdlen, s);
     datalen = scsi_req_enqueue(s->current_req);
     s->ti_size = datalen;
     fifo8_reset(&s->cmdfifo);
@@ -356,7 +361,7 @@ static void handle_satn(ESPState *s)
         s->dma_cb = handle_satn;
         return;
     }
-    s->pdma_cb = satn_pdma_cb;
+    esp_set_pdma_cb(s, SATN_PDMA_CB);
     cmdlen = get_cmd(s, ESP_CMDFIFO_SZ);
     if (cmdlen > 0) {
         s->cmdfifo_cdb_offset = 1;
@@ -387,7 +392,7 @@ static void handle_s_without_atn(ESPState *s)
         s->dma_cb = handle_s_without_atn;
         return;
     }
-    s->pdma_cb = s_without_satn_pdma_cb;
+    esp_set_pdma_cb(s, S_WITHOUT_SATN_PDMA_CB);
     cmdlen = get_cmd(s, ESP_CMDFIFO_SZ);
     if (cmdlen > 0) {
         s->cmdfifo_cdb_offset = 0;
@@ -422,7 +427,7 @@ static void handle_satn_stop(ESPState *s)
         s->dma_cb = handle_satn_stop;
         return;
     }
-    s->pdma_cb = satn_stop_pdma_cb;
+    esp_set_pdma_cb(s, SATN_STOP_PDMA_CB);
     cmdlen = get_cmd(s, 1);
     if (cmdlen > 0) {
         trace_esp_handle_satn_stop(fifo8_num_used(&s->cmdfifo));
@@ -464,7 +469,7 @@ static void write_response(ESPState *s)
             s->rregs[ESP_RINTR] |= INTR_BS | INTR_FC;
             s->rregs[ESP_RSEQ] = SEQ_CD;
         } else {
-            s->pdma_cb = write_response_pdma_cb;
+            esp_set_pdma_cb(s, WRITE_RESPONSE_PDMA_CB);
             esp_raise_drq(s);
             return;
         }
@@ -510,7 +515,7 @@ static void do_dma_pdma_cb(ESPState *s)
         } else {
             /*
              * Extra message out bytes received: update cmdfifo_cdb_offset
-             * and then switch to commmand phase
+             * and then switch to command phase
              */
             s->cmdfifo_cdb_offset = fifo8_num_used(&s->cmdfifo);
             s->rregs[ESP_RSTAT] = STAT_TC | STAT_CD;
@@ -604,7 +609,7 @@ static void esp_do_dma(ESPState *s)
             s->dma_memory_read(s->dma_opaque, buf, len);
             fifo8_push_all(&s->cmdfifo, buf, len);
         } else {
-            s->pdma_cb = do_dma_pdma_cb;
+            esp_set_pdma_cb(s, DO_DMA_PDMA_CB);
             esp_raise_drq(s);
             return;
         }
@@ -622,7 +627,7 @@ static void esp_do_dma(ESPState *s)
         } else {
             /*
              * Extra message out bytes received: update cmdfifo_cdb_offset
-             * and then switch to commmand phase
+             * and then switch to command phase
              */
             s->cmdfifo_cdb_offset = fifo8_num_used(&s->cmdfifo);
             s->rregs[ESP_RSTAT] = STAT_TC | STAT_CD;
@@ -646,7 +651,7 @@ static void esp_do_dma(ESPState *s)
         if (s->dma_memory_read) {
             s->dma_memory_read(s->dma_opaque, s->async_buf, len);
         } else {
-            s->pdma_cb = do_dma_pdma_cb;
+            esp_set_pdma_cb(s, DO_DMA_PDMA_CB);
             esp_raise_drq(s);
             return;
         }
@@ -678,7 +683,7 @@ static void esp_do_dma(ESPState *s)
             }
 
             esp_set_tc(s, esp_get_tc(s) - len);
-            s->pdma_cb = do_dma_pdma_cb;
+            esp_set_pdma_cb(s, DO_DMA_PDMA_CB);
             esp_raise_drq(s);
 
             /* Indicate transfer to FIFO is complete */
@@ -733,7 +738,7 @@ static void esp_do_nodma(ESPState *s)
         } else {
             /*
              * Extra message out bytes received: update cmdfifo_cdb_offset
-             * and then switch to commmand phase
+             * and then switch to command phase
              */
             s->cmdfifo_cdb_offset = fifo8_num_used(&s->cmdfifo);
             s->rregs[ESP_RSTAT] = STAT_TC | STAT_CD;
@@ -775,6 +780,29 @@ static void esp_do_nodma(ESPState *s)
 
     s->rregs[ESP_RINTR] |= INTR_BS;
     esp_raise_irq(s);
+}
+
+static void esp_pdma_cb(ESPState *s)
+{
+    switch (s->pdma_cb) {
+    case SATN_PDMA_CB:
+        satn_pdma_cb(s);
+        break;
+    case S_WITHOUT_SATN_PDMA_CB:
+        s_without_satn_pdma_cb(s);
+        break;
+    case SATN_STOP_PDMA_CB:
+        satn_stop_pdma_cb(s);
+        break;
+    case WRITE_RESPONSE_PDMA_CB:
+        write_response_pdma_cb(s);
+        break;
+    case DO_DMA_PDMA_CB:
+        do_dma_pdma_cb(s);
+        break;
+    default:
+        g_assert_not_reached();
+    }
 }
 
 void esp_command_complete(SCSIRequest *req, size_t resid)
@@ -894,6 +922,7 @@ void esp_hard_reset(ESPState *s)
     memset(s->wregs, 0, ESP_REGS);
     s->tchi_written = 0;
     s->ti_size = 0;
+    s->async_len = 0;
     fifo8_reset(&s->fifo);
     fifo8_reset(&s->cmdfifo);
     s->dma = 0;
@@ -908,6 +937,11 @@ static void esp_soft_reset(ESPState *s)
     qemu_irq_lower(s->irq);
     qemu_irq_lower(s->irq_data);
     esp_hard_reset(s);
+}
+
+static void esp_bus_reset(ESPState *s)
+{
+    bus_cold_reset(BUS(&s->bus));
 }
 
 static void parent_esp_reset(ESPState *s, int irq, int level)
@@ -1038,6 +1072,7 @@ void esp_reg_write(ESPState *s, uint32_t saddr, uint64_t val)
             break;
         case CMD_BUSRESET:
             trace_esp_mem_writeb_cmd_bus_reset(val);
+            esp_bus_reset(s);
             if (!(s->wregs[ESP_CFG1] & CFG1_RESREPT)) {
                 s->rregs[ESP_RINTR] |= INTR_RST;
                 esp_raise_irq(s);
@@ -1180,6 +1215,33 @@ static int esp_post_load(void *opaque, int version_id)
     return 0;
 }
 
+/*
+ * PDMA (or pseudo-DMA) is only used on the Macintosh and requires the
+ * guest CPU to perform the transfers between the SCSI bus and memory
+ * itself. This is indicated by the dma_memory_read and dma_memory_write
+ * functions being NULL (in contrast to the ESP PCI device) whilst
+ * dma_enabled is still set.
+ */
+
+static bool esp_pdma_needed(void *opaque)
+{
+    ESPState *s = ESP(opaque);
+
+    return s->dma_memory_read == NULL && s->dma_memory_write == NULL &&
+           s->dma_enabled;
+}
+
+static const VMStateDescription vmstate_esp_pdma = {
+    .name = "esp/pdma",
+    .version_id = 0,
+    .minimum_version_id = 0,
+    .needed = esp_pdma_needed,
+    .fields = (VMStateField[]) {
+        VMSTATE_UINT8(pdma_cb, ESPState),
+        VMSTATE_END_OF_LIST()
+    }
+};
+
 const VMStateDescription vmstate_esp = {
     .name = "esp",
     .version_id = 6,
@@ -1214,6 +1276,10 @@ const VMStateDescription vmstate_esp = {
         VMSTATE_UINT8_TEST(lun, ESPState, esp_is_version_6),
         VMSTATE_END_OF_LIST()
     },
+    .subsections = (const VMStateDescription * []) {
+        &vmstate_esp_pdma,
+        NULL
+    }
 };
 
 static void sysbus_esp_mem_write(void *opaque, hwaddr addr,
@@ -1262,7 +1328,7 @@ static void sysbus_esp_pdma_write(void *opaque, hwaddr addr,
         esp_pdma_write(s, val);
         break;
     }
-    s->pdma_cb(s);
+    esp_pdma_cb(s);
 }
 
 static uint64_t sysbus_esp_pdma_read(void *opaque, hwaddr addr,
@@ -1284,9 +1350,18 @@ static uint64_t sysbus_esp_pdma_read(void *opaque, hwaddr addr,
         break;
     }
     if (fifo8_num_used(&s->fifo) < 2) {
-        s->pdma_cb(s);
+        esp_pdma_cb(s);
     }
     return val;
+}
+
+static void *esp_load_request(QEMUFile *f, SCSIRequest *req)
+{
+    ESPState *s = container_of(req->bus, ESPState, bus);
+
+    scsi_req_ref(req);
+    s->current_req = req;
+    return s;
 }
 
 static const MemoryRegionOps sysbus_esp_pdma_ops = {
@@ -1304,6 +1379,7 @@ static const struct SCSIBusInfo esp_scsi_info = {
     .max_target = ESP_MAX_DEVS,
     .max_lun = 7,
 
+    .load_request = esp_load_request,
     .transfer_data = esp_transfer_data,
     .complete = esp_command_complete,
     .cancel = esp_request_cancelled
@@ -1348,7 +1424,7 @@ static void sysbus_esp_realize(DeviceState *dev, Error **errp)
 
     qdev_init_gpio_in(dev, sysbus_esp_gpio_demux, 2);
 
-    scsi_bus_new(&s->bus, sizeof(s->bus), dev, &esp_scsi_info, NULL);
+    scsi_bus_init(&s->bus, sizeof(s->bus), dev, &esp_scsi_info);
 }
 
 static void sysbus_esp_hard_reset(DeviceState *dev)

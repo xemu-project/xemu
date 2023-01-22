@@ -44,10 +44,20 @@ static target_long monitor_get_ccr(Monitor *mon, const struct MonitorDef *md,
     return u;
 }
 
+static target_long monitor_get_xer(Monitor *mon, const struct MonitorDef *md,
+                                   int val)
+{
+    CPUArchState *env = mon_get_cpu_env(mon);
+    return cpu_read_xer(env);
+}
+
 static target_long monitor_get_decr(Monitor *mon, const struct MonitorDef *md,
                                     int val)
 {
     CPUArchState *env = mon_get_cpu_env(mon);
+    if (!env->tb_env) {
+        return 0;
+    }
     return cpu_ppc_load_decr(env);
 }
 
@@ -55,6 +65,9 @@ static target_long monitor_get_tbu(Monitor *mon, const struct MonitorDef *md,
                                    int val)
 {
     CPUArchState *env = mon_get_cpu_env(mon);
+    if (!env->tb_env) {
+        return 0;
+    }
     return cpu_ppc_load_tbu(env);
 }
 
@@ -62,6 +75,9 @@ static target_long monitor_get_tbl(Monitor *mon, const struct MonitorDef *md,
                                    int val)
 {
     CPUArchState *env = mon_get_cpu_env(mon);
+    if (!env->tb_env) {
+        return 0;
+    }
     return cpu_ppc_load_tbl(env);
 }
 
@@ -85,7 +101,7 @@ const MonitorDef monitor_defs[] = {
     { "decr", 0, &monitor_get_decr, },
     { "ccr|cr", 0, &monitor_get_ccr, },
     /* Machine state register */
-    { "xer", offsetof(CPUPPCState, xer) },
+    { "xer", 0, &monitor_get_xer },
     { "msr", offsetof(CPUPPCState, msr) },
     { "tbu", 0, &monitor_get_tbu, },
     { "tbl", 0, &monitor_get_tbl, },

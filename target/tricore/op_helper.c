@@ -25,13 +25,13 @@
 
 /* Exception helpers */
 
-static void QEMU_NORETURN
-raise_exception_sync_internal(CPUTriCoreState *env, uint32_t class, int tin,
-                              uintptr_t pc, uint32_t fcd_pc)
+static G_NORETURN
+void raise_exception_sync_internal(CPUTriCoreState *env, uint32_t class, int tin,
+                                   uintptr_t pc, uint32_t fcd_pc)
 {
     CPUState *cs = env_cpu(env);
     /* in case we come from a helper-call we need to restore the PC */
-    cpu_restore_state(cs, pc, true);
+    cpu_restore_state(cs, pc);
 
     /* Tin is loaded into d[15] */
     env->gpr_d[15] = tin;
@@ -105,13 +105,6 @@ static void raise_exception_sync_helper(CPUTriCoreState *env, uint32_t class,
                                         uint32_t tin, uintptr_t pc)
 {
     raise_exception_sync_internal(env, class, tin, pc, 0);
-}
-
-void helper_qemu_excp(CPUTriCoreState *env, uint32_t excp)
-{
-    CPUState *cs = env_cpu(env);
-    cs->exception_index = excp;
-    cpu_loop_exit(cs);
 }
 
 /* Addressing mode helper */

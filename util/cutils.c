@@ -26,10 +26,28 @@
 #include "qemu/host-utils.h"
 #include <math.h>
 
-#include "qemu-common.h"
-#include "qemu/sockets.h"
-#include "qemu/iov.h"
-#include "net/net.h"
+#ifdef __FreeBSD__
+#include <sys/sysctl.h>
+#include <sys/user.h>
+#endif
+
+#ifdef __NetBSD__
+#include <sys/sysctl.h>
+#endif
+
+#ifdef __HAIKU__
+#include <kernel/image.h>
+#endif
+
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
+
+#ifdef G_OS_WIN32
+#include <pathcch.h>
+#include <wchar.h>
+#endif
+
 #include "qemu/ctype.h"
 #include "qemu/cutils.h"
 #include "qemu/error-report.h"
@@ -147,77 +165,6 @@ time_t mktimegm(struct tm *tm)
     t += 3600 * tm->tm_hour + 60 * tm->tm_min + tm->tm_sec;
     return t;
 }
-
-/*
- * Make sure data goes on disk, but if possible do not bother to
- * write out the inode just for timestamp updates.
- *
- * Unfortunately even in 2009 many operating systems do not support
- * fdatasync and have to fall back to fsync.
- */
-int qemu_fdatasync(int fd)
-{
-#ifdef CONFIG_FDATASYNC
-    return fdatasync(fd);
-#else
-    return fsync(fd);
-#endif
-}
-
-/**
- * Sync changes made to the memory mapped file back to the backing
- * storage. For POSIX compliant systems this will fallback
- * to regular msync call. Otherwise it will trigger whole file sync
- * (including the metadata case there is no support to skip that otherwise)
- *
- * @addr   - start of the memory area to be synced
- * @length - length of the are to be synced
- * @fd     - file descriptor for the file to be synced
- *           (mandatory only for POSIX non-compliant systems)
- */
-int qemu_msync(void *addr, size_t length, int fd)
-{
-#ifdef CONFIG_POSIX
-    size_t align_mask = ~(qemu_real_host_page_size - 1);
-
-    /**
-     * There are no strict reqs as per the length of mapping
-     * to be synced. Still the length needs to follow the address
-     * alignment changes. Additionally - round the size to the multiple
-     * of PAGE_SIZE
-     */
-    length += ((uintptr_t)addr & (qemu_real_host_page_size - 1));
-    length = (length + ~align_mask) & align_mask;
-
-    addr = (void *)((uintptr_t)addr & align_mask);
-
-    return msync(addr, length, MS_SYNC);
-#else /* CONFIG_POSIX */
-    /**
-     * Perform the sync based on the file descriptor
-     * The sync range will most probably be wider than the one
-     * requested - but it will still get the job done
-     */
-    return qemu_fdatasync(fd);
-#endif /* CONFIG_POSIX */
-}
-
-#ifndef _WIN32
-/* Sets a specific flag */
-int fcntl_setfl(int fd, int flag)
-{
-    int flags;
-
-    flags = fcntl(fd, F_GETFL);
-    if (flags == -1)
-        return -errno;
-
-    if (fcntl(fd, F_SETFL, flags | flag) == -1)
-        return -errno;
-
-    return 0;
-}
-#endif
 
 static int64_t suffix_mul(char suffix, int64_t unit)
 {
@@ -938,17 +885,23 @@ int parse_debug_env(const char *name, int max, int initial)
     return debug;
 }
 
-/*
- * Helper to print ethernet mac address
- */
-const char *qemu_ether_ntoa(const MACAddr *mac)
+const char *si_prefix(unsigned int exp10)
 {
-    static char ret[18];
+    static const char *prefixes[] = {
+        "a", "f", "p", "n", "u", "m", "", "K", "M", "G", "T", "P", "E"
+    };
 
-    snprintf(ret, sizeof(ret), "%02x:%02x:%02x:%02x:%02x:%02x",
-             mac->a[0], mac->a[1], mac->a[2], mac->a[3], mac->a[4], mac->a[5]);
+    exp10 += 18;
+    assert(exp10 % 3 == 0 && exp10 / 3 < ARRAY_SIZE(prefixes));
+    return prefixes[exp10 / 3];
+}
 
-    return ret;
+const char *iec_binary_prefix(unsigned int exp2)
+{
+    static const char *prefixes[] = { "", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei" };
+
+    assert(exp2 % 10 == 0 && exp2 / 10 < ARRAY_SIZE(prefixes));
+    return prefixes[exp2 / 10];
 }
 
 /*
@@ -959,7 +912,6 @@ const char *qemu_ether_ntoa(const MACAddr *mac)
  */
 char *size_to_str(uint64_t val)
 {
-    static const char *suffixes[] = { "", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei" };
     uint64_t div;
     int i;
 
@@ -970,25 +922,23 @@ char *size_to_str(uint64_t val)
      * (see e41b509d68afb1f for more info)
      */
     frexp(val / (1000.0 / 1024.0), &i);
-    i = (i - 1) / 10;
-    div = 1ULL << (i * 10);
+    i = (i - 1) / 10 * 10;
+    div = 1ULL << i;
 
-    return g_strdup_printf("%0.3g %sB", (double)val / div, suffixes[i]);
+    return g_strdup_printf("%0.3g %sB", (double)val / div, iec_binary_prefix(i));
 }
 
 char *freq_to_str(uint64_t freq_hz)
 {
-    static const char *const suffixes[] = { "", "K", "M", "G", "T", "P", "E" };
     double freq = freq_hz;
-    size_t idx = 0;
+    size_t exp10 = 0;
 
     while (freq >= 1000.0) {
         freq /= 1000.0;
-        idx++;
+        exp10 += 3;
     }
-    assert(idx < ARRAY_SIZE(suffixes));
 
-    return g_strdup_printf("%0.3g %sHz", freq, suffixes[idx]);
+    return g_strdup_printf("%0.3g %sHz", freq, si_prefix(exp10));
 }
 
 int qemu_pstrcmp0(const char **str1, const char **str2)
@@ -1019,6 +969,114 @@ static inline const char *next_component(const char *dir, int *p_len)
     return dir;
 }
 
+static const char *exec_dir;
+
+void qemu_init_exec_dir(const char *argv0)
+{
+#ifdef G_OS_WIN32
+    char *p;
+    char buf[MAX_PATH];
+    DWORD len;
+
+    if (exec_dir) {
+        return;
+    }
+
+    len = GetModuleFileName(NULL, buf, sizeof(buf) - 1);
+    if (len == 0) {
+        return;
+    }
+
+    buf[len] = 0;
+    p = buf + len - 1;
+    while (p != buf && *p != '\\') {
+        p--;
+    }
+    *p = 0;
+    if (access(buf, R_OK) == 0) {
+        exec_dir = g_strdup(buf);
+    } else {
+        exec_dir = CONFIG_BINDIR;
+    }
+#else
+    char *p = NULL;
+    char buf[PATH_MAX];
+
+    if (exec_dir) {
+        return;
+    }
+
+#if defined(__linux__)
+    {
+        int len;
+        len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+        if (len > 0) {
+            buf[len] = 0;
+            p = buf;
+        }
+    }
+#elif defined(__FreeBSD__) \
+      || (defined(__NetBSD__) && defined(KERN_PROC_PATHNAME))
+    {
+#if defined(__FreeBSD__)
+        static int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1};
+#else
+        static int mib[4] = {CTL_KERN, KERN_PROC_ARGS, -1, KERN_PROC_PATHNAME};
+#endif
+        size_t len = sizeof(buf) - 1;
+
+        *buf = '\0';
+        if (!sysctl(mib, ARRAY_SIZE(mib), buf, &len, NULL, 0) &&
+            *buf) {
+            buf[sizeof(buf) - 1] = '\0';
+            p = buf;
+        }
+    }
+#elif defined(__APPLE__)
+    {
+        char fpath[PATH_MAX];
+        uint32_t len = sizeof(fpath);
+        if (_NSGetExecutablePath(fpath, &len) == 0) {
+            p = realpath(fpath, buf);
+            if (!p) {
+                return;
+            }
+        }
+    }
+#elif defined(__HAIKU__)
+    {
+        image_info ii;
+        int32_t c = 0;
+
+        *buf = '\0';
+        while (get_next_image_info(0, &c, &ii) == B_OK) {
+            if (ii.type == B_APP_IMAGE) {
+                strncpy(buf, ii.name, sizeof(buf));
+                buf[sizeof(buf) - 1] = 0;
+                p = buf;
+                break;
+            }
+        }
+    }
+#endif
+    /* If we don't have any way of figuring out the actual executable
+       location then try argv[0].  */
+    if (!p && argv0) {
+        p = realpath(argv0, buf);
+    }
+    if (p) {
+        exec_dir = g_path_get_dirname(p);
+    } else {
+        exec_dir = CONFIG_BINDIR;
+    }
+#endif
+}
+
+const char *qemu_get_exec_dir(void)
+{
+    return exec_dir;
+}
+
 char *get_relocated_path(const char *dir)
 {
     size_t prefix_len = strlen(CONFIG_PREFIX);
@@ -1029,31 +1087,52 @@ char *get_relocated_path(const char *dir)
 
     /* Fail if qemu_init_exec_dir was not called.  */
     assert(exec_dir[0]);
-    if (!starts_with_prefix(dir) || !starts_with_prefix(bindir)) {
-        return g_strdup(dir);
-    }
 
     result = g_string_new(exec_dir);
+    g_string_append(result, "/qemu-bundle");
+    if (access(result->str, R_OK) == 0) {
+#ifdef G_OS_WIN32
+        size_t size = mbsrtowcs(NULL, &dir, 0, &(mbstate_t){0}) + 1;
+        PWSTR wdir = g_new(WCHAR, size);
+        mbsrtowcs(wdir, &dir, size, &(mbstate_t){0});
 
-    /* Advance over common components.  */
-    len_dir = len_bindir = prefix_len;
-    do {
-        dir += len_dir;
-        bindir += len_bindir;
-        dir = next_component(dir, &len_dir);
-        bindir = next_component(bindir, &len_bindir);
-    } while (len_dir && len_dir == len_bindir && !memcmp(dir, bindir, len_dir));
+        PCWSTR wdir_skipped_root;
+        PathCchSkipRoot(wdir, &wdir_skipped_root);
 
-    /* Ascend from bindir to the common prefix with dir.  */
-    while (len_bindir) {
-        bindir += len_bindir;
-        g_string_append(result, "/..");
-        bindir = next_component(bindir, &len_bindir);
+        size = wcsrtombs(NULL, &wdir_skipped_root, 0, &(mbstate_t){0});
+        char *cursor = result->str + result->len;
+        g_string_set_size(result, result->len + size);
+        wcsrtombs(cursor, &wdir_skipped_root, size + 1, &(mbstate_t){0});
+        g_free(wdir);
+#else
+        g_string_append(result, dir);
+#endif
+    } else if (!starts_with_prefix(dir) || !starts_with_prefix(bindir)) {
+        g_string_assign(result, dir);
+    } else {
+        g_string_assign(result, exec_dir);
+
+        /* Advance over common components.  */
+        len_dir = len_bindir = prefix_len;
+        do {
+            dir += len_dir;
+            bindir += len_bindir;
+            dir = next_component(dir, &len_dir);
+            bindir = next_component(bindir, &len_bindir);
+        } while (len_dir && len_dir == len_bindir && !memcmp(dir, bindir, len_dir));
+
+        /* Ascend from bindir to the common prefix with dir.  */
+        while (len_bindir) {
+            bindir += len_bindir;
+            g_string_append(result, "/..");
+            bindir = next_component(bindir, &len_bindir);
+        }
+
+        if (*dir) {
+            assert(G_IS_DIR_SEPARATOR(dir[-1]));
+            g_string_append(result, dir - 1);
+        }
     }
 
-    if (*dir) {
-        assert(G_IS_DIR_SEPARATOR(dir[-1]));
-        g_string_append(result, dir - 1);
-    }
     return g_string_free(result, false);
 }

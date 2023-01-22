@@ -26,6 +26,7 @@ typedef enum DeviceCategory {
     DEVICE_CATEGORY_SOUND,
     DEVICE_CATEGORY_MISC,
     DEVICE_CATEGORY_CPU,
+    DEVICE_CATEGORY_WATCHDOG,
     DEVICE_CATEGORY_MAX
 } DeviceCategory;
 
@@ -176,11 +177,12 @@ struct DeviceState {
     Object parent_obj;
     /*< public >*/
 
-    const char *id;
+    char *id;
     char *canonical_path;
     bool realized;
     bool pending_deleted_event;
-    QemuOpts *opts;
+    int64_t pending_deleted_expires_ms;
+    QDict *opts;
     int hotplugged;
     bool allow_unplug_during_migration;
     BusState *parent_bus;
@@ -191,6 +193,7 @@ struct DeviceState {
     int instance_id_alias;
     int alias_required_for_version;
     ResettableState reset;
+    GSList *unplug_blockers;
 };
 
 struct DeviceListener {
@@ -201,8 +204,12 @@ struct DeviceListener {
      * informs qdev if a device should be visible or hidden.  We can
      * hide a failover device depending for example on the device
      * opts.
+     *
+     * On errors, it returns false and errp is set. Device creation
+     * should fail in this case.
      */
-    bool (*hide_device)(DeviceListener *listener, QemuOpts *device_opts);
+    bool (*hide_device)(DeviceListener *listener, const QDict *device_opts,
+                        bool from_json, Error **errp);
     QTAILQ_ENTRY(DeviceListener) link;
 };
 
@@ -264,6 +271,7 @@ struct BusState {
     HotplugHandler *hotplug_handler;
     int max_index;
     bool realized;
+    bool full;
     int num_children;
 
     /*
@@ -314,6 +322,7 @@ compat_props_add(GPtrArray *arr,
  * The returned object has a reference count of 1.
  */
 DeviceState *qdev_new(const char *name);
+
 /**
  * qdev_try_new: Try to create a device on the heap
  * @name: device type to create
@@ -322,6 +331,7 @@ DeviceState *qdev_new(const char *name);
  * does not exist, rather than asserting.
  */
 DeviceState *qdev_try_new(const char *name);
+
 /**
  * qdev_realize: Realize @dev.
  * @dev: device to realize
@@ -340,6 +350,7 @@ DeviceState *qdev_try_new(const char *name);
  * qdev_realize_and_unref() instead.
  */
 bool qdev_realize(DeviceState *dev, BusState *bus, Error **errp);
+
 /**
  * qdev_realize_and_unref: Realize @dev and drop a reference
  * @dev: device to realize
@@ -365,6 +376,7 @@ bool qdev_realize(DeviceState *dev, BusState *bus, Error **errp);
  * would be incorrect. For that use case you want qdev_realize().
  */
 bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
+
 /**
  * qdev_unrealize: Unrealize a device
  * @dev: device to unrealize
@@ -374,7 +386,7 @@ bool qdev_realize_and_unref(DeviceState *dev, BusState *bus, Error **errp);
  *
  *  - unrealize any child buses by calling qbus_unrealize()
  *    (this will recursively unrealize any devices on those buses)
- *  - call the the unrealize method of @dev
+ *  - call the unrealize method of @dev
  *
  * The device can then be freed by causing its reference count to go
  * to zero.
@@ -407,6 +419,34 @@ void qdev_simple_device_unplug_cb(HotplugHandler *hotplug_dev,
                                   DeviceState *dev, Error **errp);
 void qdev_machine_creation_done(void);
 bool qdev_machine_modified(void);
+
+/**
+ * qdev_add_unplug_blocker: Add an unplug blocker to a device
+ *
+ * @dev: Device to be blocked from unplug
+ * @reason: Reason for blocking
+ */
+void qdev_add_unplug_blocker(DeviceState *dev, Error *reason);
+
+/**
+ * qdev_del_unplug_blocker: Remove an unplug blocker from a device
+ *
+ * @dev: Device to be unblocked
+ * @reason: Pointer to the Error used with qdev_add_unplug_blocker.
+ *          Used as a handle to lookup the blocker for deletion.
+ */
+void qdev_del_unplug_blocker(DeviceState *dev, Error *reason);
+
+/**
+ * qdev_unplug_blocked: Confirm if a device is blocked from unplug
+ *
+ * @dev: Device to be tested
+ * @reason: Returns one of the reasons why the device is blocked,
+ *          if any
+ *
+ * Returns: true if device is blocked from unplug, false otherwise
+ */
+bool qdev_unplug_blocked(DeviceState *dev, Error **errp);
 
 /**
  * GpioPolarity: Polarity of a GPIO line
@@ -443,6 +483,7 @@ typedef enum {
  * For named input GPIO lines, use qdev_get_gpio_in_named().
  */
 qemu_irq qdev_get_gpio_in(DeviceState *dev, int n);
+
 /**
  * qdev_get_gpio_in_named: Get one of a device's named input GPIO lines
  * @dev: Device whose GPIO we want
@@ -464,7 +505,7 @@ qemu_irq qdev_get_gpio_in_named(DeviceState *dev, const char *name, int n);
  * qdev_connect_gpio_out: Connect one of a device's anonymous output GPIO lines
  * @dev: Device whose GPIO to connect
  * @n: Number of the anonymous output GPIO line (which must be in range)
- * @pin: qemu_irq to connect the output line to
+ * @input_pin: qemu_irq to connect the output line to
  *
  * This function connects an anonymous output GPIO line on a device
  * up to an arbitrary qemu_irq, so that when the device asserts that
@@ -481,7 +522,7 @@ qemu_irq qdev_get_gpio_in_named(DeviceState *dev, const char *name, int n);
  * qemu_irqs at once, or to connect multiple outbound GPIOs to the
  * same qemu_irq. (Warning: there is no assertion or other guard to
  * catch this error: the model will just not do the right thing.)
- * Instead, for fan-out you can use the TYPE_IRQ_SPLIT device: connect
+ * Instead, for fan-out you can use the TYPE_SPLIT_IRQ device: connect
  * a device's outbound GPIO to the splitter's input, and connect each
  * of the splitter's outputs to a different device.  For fan-in you
  * can use the TYPE_OR_IRQ device, which is a model of a logical OR
@@ -490,12 +531,14 @@ qemu_irq qdev_get_gpio_in_named(DeviceState *dev, const char *name, int n);
  * For named output GPIO lines, use qdev_connect_gpio_out_named().
  */
 void qdev_connect_gpio_out(DeviceState *dev, int n, qemu_irq pin);
+
 /**
- * qdev_connect_gpio_out: Connect one of a device's anonymous output GPIO lines
+ * qdev_connect_gpio_out_named: Connect one of a device's named output
+ *                              GPIO lines
  * @dev: Device whose GPIO to connect
  * @name: Name of the output GPIO array
  * @n: Number of the anonymous output GPIO line (which must be in range)
- * @pin: qemu_irq to connect the output line to
+ * @input_pin: qemu_irq to connect the output line to
  *
  * This function connects an anonymous output GPIO line on a device
  * up to an arbitrary qemu_irq, so that when the device asserts that
@@ -513,10 +556,11 @@ void qdev_connect_gpio_out(DeviceState *dev, int n, qemu_irq pin);
  * qemu_irqs at once, or to connect multiple outbound GPIOs to the
  * same qemu_irq; see qdev_connect_gpio_out() for details.
  *
- * For named output GPIO lines, use qdev_connect_gpio_out_named().
+ * For anonymous output GPIO lines, use qdev_connect_gpio_out().
  */
 void qdev_connect_gpio_out_named(DeviceState *dev, const char *name, int n,
-                                 qemu_irq pin);
+                                 qemu_irq input_pin);
+
 /**
  * qdev_get_gpio_out_connector: Get the qemu_irq connected to an output GPIO
  * @dev: Device whose output GPIO we are interested in
@@ -534,6 +578,7 @@ void qdev_connect_gpio_out_named(DeviceState *dev, const char *name, int n,
  * by the platform-bus subsystem.
  */
 qemu_irq qdev_get_gpio_out_connector(DeviceState *dev, const char *name, int n);
+
 /**
  * qdev_intercept_gpio_out: Intercept an existing GPIO connection
  * @dev: Device to intercept the outbound GPIO line from
@@ -575,6 +620,7 @@ BusState *qdev_get_child_bus(DeviceState *dev, const char *name);
  * hold of an input GPIO line to manipulate it.
  */
 void qdev_init_gpio_in(DeviceState *dev, qemu_irq_handler handler, int n);
+
 /**
  * qdev_init_gpio_out: create an array of anonymous output GPIO lines
  * @dev: Device to create output GPIOs for
@@ -597,10 +643,15 @@ void qdev_init_gpio_in(DeviceState *dev, qemu_irq_handler handler, int n);
  *
  * See qdev_connect_gpio_out() for how code that uses such a device
  * can connect to one of its output GPIO lines.
+ *
+ * There is no need to release the @pins allocated array because it
+ * will be automatically released when @dev calls its instance_finalize()
+ * handler.
  */
 void qdev_init_gpio_out(DeviceState *dev, qemu_irq *pins, int n);
+
 /**
- * qdev_init_gpio_out: create an array of named output GPIO lines
+ * qdev_init_gpio_out_named: create an array of named output GPIO lines
  * @dev: Device to create output GPIOs for
  * @pins: Pointer to qemu_irq or qemu_irq array for the GPIO lines
  * @name: Name to give this array of GPIO lines
@@ -612,6 +663,7 @@ void qdev_init_gpio_out(DeviceState *dev, qemu_irq *pins, int n);
  */
 void qdev_init_gpio_out_named(DeviceState *dev, qemu_irq *pins,
                               const char *name, int n);
+
 /**
  * qdev_init_gpio_in_named_with_opaque: create an array of input GPIO lines
  *   for the specified device
@@ -673,9 +725,9 @@ DeviceState *qdev_find_recursive(BusState *bus, const char *id);
 typedef int (qbus_walkerfn)(BusState *bus, void *opaque);
 typedef int (qdev_walkerfn)(DeviceState *dev, void *opaque);
 
-void qbus_create_inplace(void *bus, size_t size, const char *typename,
-                         DeviceState *parent, const char *name);
-BusState *qbus_create(const char *typename, DeviceState *parent, const char *name);
+void qbus_init(void *bus, size_t size, const char *typename,
+               DeviceState *parent, const char *name);
+BusState *qbus_new(const char *typename, DeviceState *parent, const char *name);
 bool qbus_realize(BusState *bus, Error **errp);
 void qbus_unrealize(BusState *bus);
 
@@ -798,18 +850,43 @@ static inline bool qbus_is_hotpluggable(BusState *bus)
    return bus->hotplug_handler;
 }
 
+/**
+ * qbus_mark_full: Mark this bus as full, so no more devices can be attached
+ * @bus: Bus to mark as full
+ *
+ * By default, QEMU will allow devices to be plugged into a bus up
+ * to the bus class's device count limit. Calling this function
+ * marks a particular bus as full, so that no more devices can be
+ * plugged into it. In particular this means that the bus will not
+ * be considered as a candidate for plugging in devices created by
+ * the user on the commandline or via the monitor.
+ * If a machine has multiple buses of a given type, such as I2C,
+ * where some of those buses in the real hardware are used only for
+ * internal devices and some are exposed via expansion ports, you
+ * can use this function to mark the internal-only buses as full
+ * after you have created all their internal devices. Then user
+ * created devices will appear on the expansion-port bus where
+ * guest software expects them.
+ */
+static inline void qbus_mark_full(BusState *bus)
+{
+    bus->full = true;
+}
+
 void device_listener_register(DeviceListener *listener);
 void device_listener_unregister(DeviceListener *listener);
 
 /**
  * @qdev_should_hide_device:
- * @opts: QemuOpts as passed on cmdline.
+ * @opts: options QDict
+ * @from_json: true if @opts entries are typed, false for all strings
+ * @errp: pointer to error object
  *
  * Check if a device should be added.
  * When a device is added via qdev_device_add() this will be called,
  * and return if the device should be added now or not.
  */
-bool qdev_should_hide_device(QemuOpts *opts);
+bool qdev_should_hide_device(const QDict *opts, bool from_json, Error **errp);
 
 typedef enum MachineInitPhase {
     /* current_machine is NULL.  */

@@ -22,6 +22,8 @@
 #include "qemu/coroutine.h"
 #include "qemu/main-loop.h"
 #include "coth.h"
+#include "9p-xattr.h"
+#include "9p-util.h"
 
 /*
  * Intended to be called from bottom-half (e.g. background I/O thread)
@@ -139,12 +141,11 @@ static int do_readdir_many(V9fsPDU *pdu, V9fsFidState *fidp,
 
         /* append next node to result chain */
         if (!e) {
-            *entries = e = g_malloc0(sizeof(V9fsDirEnt));
+            *entries = e = g_new0(V9fsDirEnt, 1);
         } else {
-            e = e->next = g_malloc0(sizeof(V9fsDirEnt));
+            e = e->next = g_new0(V9fsDirEnt, 1);
         }
-        e->dent = g_malloc0(sizeof(struct dirent));
-        memcpy(e->dent, dent, sizeof(struct dirent));
+        e->dent = qemu_dirent_dup(dent);
 
         /* perform a full stat() for directory entry if requested by caller */
         if (dostat) {
@@ -162,12 +163,12 @@ static int do_readdir_many(V9fsPDU *pdu, V9fsFidState *fidp,
                 break;
             }
 
-            e->st = g_malloc0(sizeof(struct stat));
+            e->st = g_new0(struct stat, 1);
             memcpy(e->st, &stbuf, sizeof(struct stat));
         }
 
         size += len;
-        saved_dir_pos = dent->d_off;
+        saved_dir_pos = qemu_dirent_off(dent);
     }
 
     /* restore (last) saved position */
@@ -183,14 +184,25 @@ out:
 }
 
 /**
- * @brief Reads multiple directory entries in one rush.
+ * v9fs_co_readdir_many() - Reads multiple directory entries in one rush.
+ *
+ * @pdu: the causing 9p (T_readdir) client request
+ * @fidp: already opened directory where readdir shall be performed on
+ * @entries: output for directory entries (must not be NULL)
+ * @offset: initial position inside the directory the function shall
+ *          seek to before retrieving the directory entries
+ * @maxsize: maximum result message body size (in bytes)
+ * @dostat: whether a stat() should be performed and returned for
+ *          each directory entry
+ * Return: resulting response message body size (in bytes) on success,
+ *         negative error code otherwise
  *
  * Retrieves the requested (max. amount of) directory entries from the fs
  * driver. This function must only be called by the main IO thread (top half).
  * Internally this function call will be dispatched to a background IO thread
  * (bottom half) where it is eventually executed by the fs driver.
  *
- * @discussion Acquiring multiple directory entries in one rush from the fs
+ * Acquiring multiple directory entries in one rush from the fs
  * driver, instead of retrieving each directory entry individually, is very
  * beneficial from performance point of view. Because for every fs driver
  * request latency is added, which in practice could lead to overall
@@ -198,20 +210,9 @@ out:
  * directory) if every directory entry was individually requested from fs
  * driver.
  *
- * @note You must @b ALWAYS call @c v9fs_free_dirents(entries) after calling
+ * NOTE: You must ALWAYS call v9fs_free_dirents(entries) after calling
  * v9fs_co_readdir_many(), both on success and on error cases of this
- * function, to avoid memory leaks once @p entries are no longer needed.
- *
- * @param pdu - the causing 9p (T_readdir) client request
- * @param fidp - already opened directory where readdir shall be performed on
- * @param entries - output for directory entries (must not be NULL)
- * @param offset - initial position inside the directory the function shall
- *                 seek to before retrieving the directory entries
- * @param maxsize - maximum result message body size (in bytes)
- * @param dostat - whether a stat() should be performed and returned for
- *                 each directory entry
- * @returns resulting response message body size (in bytes) on success,
- *          negative error code otherwise
+ * function, to avoid memory leaks once @entries are no longer needed.
  */
 int coroutine_fn v9fs_co_readdir_many(V9fsPDU *pdu, V9fsFidState *fidp,
                                       struct V9fsDirEnt **entries,

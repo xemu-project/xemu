@@ -449,14 +449,17 @@ INDEX_ri        00000100 esz:2 1 imm:s5 010001 rn:5 rd:5
 # SVE index generation (register start, register increment)
 INDEX_rr        00000100 .. 1 ..... 010011 ..... .....          @rd_rn_rm
 
-### SVE Stack Allocation Group
+### SVE / Streaming SVE Stack Allocation Group
 
 # SVE stack frame adjustment
 ADDVL           00000100 001 ..... 01010 ...... .....           @rd_rn_i6
+ADDSVL          00000100 001 ..... 01011 ...... .....           @rd_rn_i6
 ADDPL           00000100 011 ..... 01010 ...... .....           @rd_rn_i6
+ADDSPL          00000100 011 ..... 01011 ...... .....           @rd_rn_i6
 
 # SVE stack frame size
 RDVL            00000100 101 11111 01010 imm:s6 rd:5
+RDSVL           00000100 101 11111 01011 imm:s6 rd:5
 
 ### SVE Bitwise Shift - Unpredicated Group
 
@@ -528,8 +531,14 @@ DUPM            00000101 11 0000 dbm:13 rd:5
 FCPY            00000101 .. 01 .... 110 imm:8 .....             @rdn_pg4
 
 # SVE copy integer immediate (predicated)
-CPY_m_i         00000101 .. 01 .... 01 . ........ .....   @rdn_pg4 imm=%sh8_i8s
-CPY_z_i         00000101 .. 01 .... 00 . ........ .....   @rdn_pg4 imm=%sh8_i8s
+{
+  INVALID       00000101 00 01 ---- 01 1 -------- -----
+  CPY_m_i       00000101 .. 01 .... 01 . ........ .....   @rdn_pg4 imm=%sh8_i8s
+}
+{
+  INVALID       00000101 00 01 ---- 00 1 -------- -----
+  CPY_z_i       00000101 .. 01 .... 00 . ........ .....   @rdn_pg4 imm=%sh8_i8s
+}
 
 ### SVE Permute - Extract Group
 
@@ -643,6 +652,7 @@ REVB            00000101 .. 1001 00 100 ... ..... .....         @rd_pg_rn
 REVH            00000101 .. 1001 01 100 ... ..... .....         @rd_pg_rn
 REVW            00000101 .. 1001 10 100 ... ..... .....         @rd_pg_rn
 RBIT            00000101 .. 1001 11 100 ... ..... .....         @rd_pg_rn
+REVD            00000101 00 1011 10 100 ... ..... .....         @rd_pg_rn_e0
 
 # SVE vector splice (predicated, destructive)
 SPLICE          00000101 .. 101 100 100 ... ..... .....         @rdn_pg_rm
@@ -787,16 +797,40 @@ WHILE_ptr       00100101 esz:2 1 rm:5 001 100 rn:5 rw:1 rd:4
 FDUP            00100101 esz:2 111 00 1110 imm:8 rd:5
 
 # SVE broadcast integer immediate (unpredicated)
-DUP_i           00100101 esz:2 111 00 011 . ........ rd:5       imm=%sh8_i8s
+{
+  INVALID       00100101 00    111 00 011 1 -------- -----
+  DUP_i         00100101 esz:2 111 00 011 . ........ rd:5       imm=%sh8_i8s
+}
 
 # SVE integer add/subtract immediate (unpredicated)
-ADD_zzi         00100101 .. 100 000 11 . ........ .....         @rdn_sh_i8u
-SUB_zzi         00100101 .. 100 001 11 . ........ .....         @rdn_sh_i8u
-SUBR_zzi        00100101 .. 100 011 11 . ........ .....         @rdn_sh_i8u
-SQADD_zzi       00100101 .. 100 100 11 . ........ .....         @rdn_sh_i8u
-UQADD_zzi       00100101 .. 100 101 11 . ........ .....         @rdn_sh_i8u
-SQSUB_zzi       00100101 .. 100 110 11 . ........ .....         @rdn_sh_i8u
-UQSUB_zzi       00100101 .. 100 111 11 . ........ .....         @rdn_sh_i8u
+{
+  INVALID       00100101 00 100 000 11 1 -------- -----
+  ADD_zzi       00100101 .. 100 000 11 . ........ .....         @rdn_sh_i8u
+}
+{
+  INVALID       00100101 00 100 001 11 1 -------- -----
+  SUB_zzi       00100101 .. 100 001 11 . ........ .....         @rdn_sh_i8u
+}
+{
+  INVALID       00100101 00 100 011 11 1 -------- -----
+  SUBR_zzi      00100101 .. 100 011 11 . ........ .....         @rdn_sh_i8u
+}
+{
+  INVALID       00100101 00 100 100 11 1 -------- -----
+  SQADD_zzi     00100101 .. 100 100 11 . ........ .....         @rdn_sh_i8u
+}
+{
+  INVALID       00100101 00 100 101 11 1 -------- -----
+  UQADD_zzi     00100101 .. 100 101 11 . ........ .....         @rdn_sh_i8u
+}
+{
+  INVALID       00100101 00 100 110 11 1 -------- -----
+  SQSUB_zzi     00100101 .. 100 110 11 . ........ .....         @rdn_sh_i8u
+}
+{
+  INVALID       00100101 00 100 111 11 1 -------- -----
+  UQSUB_zzi     00100101 .. 100 111 11 . ........ .....         @rdn_sh_i8u
+}
 
 # SVE integer min/max immediate (unpredicated)
 SMAX_zzi        00100101 .. 101 000 110 ........ .....          @rdn_i8s
@@ -1153,10 +1187,10 @@ LD1RO_zpri      1010010 .. 01 0.... 001 ... ..... ..... \
                 @rpri_load_msz nreg=0
 
 # SVE 32-bit gather prefetch (scalar plus 32-bit scaled offsets)
-PRF             1000010 00 -1 ----- 0-- --- ----- 0 ----
+PRF_ns          1000010 00 -1 ----- 0-- --- ----- 0 ----
 
 # SVE 32-bit gather prefetch (vector plus immediate)
-PRF             1000010 -- 00 ----- 111 --- ----- 0 ----
+PRF_ns          1000010 -- 00 ----- 111 --- ----- 0 ----
 
 # SVE contiguous prefetch (scalar plus immediate)
 PRF             1000010 11 1- ----- 0-- --- ----- 0 ----
@@ -1193,13 +1227,13 @@ LD1_zpiz        1100010 .. 01 ..... 1.. ... ..... ..... \
                 @rpri_g_load esz=3
 
 # SVE 64-bit gather prefetch (scalar plus 64-bit scaled offsets)
-PRF             1100010 00 11 ----- 1-- --- ----- 0 ----
+PRF_ns          1100010 00 11 ----- 1-- --- ----- 0 ----
 
 # SVE 64-bit gather prefetch (scalar plus unpacked 32-bit scaled offsets)
-PRF             1100010 00 -1 ----- 0-- --- ----- 0 ----
+PRF_ns          1100010 00 -1 ----- 0-- --- ----- 0 ----
 
 # SVE 64-bit gather prefetch (vector plus immediate)
-PRF             1100010 -- 00 ----- 111 --- ----- 0 ----
+PRF_ns          1100010 -- 00 ----- 111 --- ----- 0 ----
 
 ### SVE Memory Store Group
 
@@ -1568,17 +1602,15 @@ SQRDCMLAH_zzzz  01000100 esz:2 0 rm:5 0011 rot:2 rn:5 rd:5  ra=%reg_movprfx
 USDOT_zzzz      01000100 .. 0 ..... 011 110 ..... .....  @rda_rn_rm
 
 ### SVE2 floating point matrix multiply accumulate
-{
-  BFMMLA        01100100 01 1 ..... 111 001 ..... .....  @rda_rn_rm_e0
-  FMMLA         01100100 .. 1 ..... 111 001 ..... .....  @rda_rn_rm
-}
+BFMMLA          01100100 01 1 ..... 111 001 ..... .....  @rda_rn_rm_e0
+FMMLA_s         01100100 10 1 ..... 111 001 ..... .....  @rda_rn_rm_e0
+FMMLA_d         01100100 11 1 ..... 111 001 ..... .....  @rda_rn_rm_e0
 
 ### SVE2 Memory Gather Load Group
 
-# SVE2 64-bit gather non-temporal load
-#   (scalar plus unpacked 32-bit unscaled offsets)
+# SVE2 64-bit gather non-temporal load (scalar plus 64-bit unscaled offsets)
 LDNT1_zprz      1100010 msz:2 00 rm:5 1 u:1 0 pg:3 rn:5 rd:5 \
-                &rprr_gather_load xs=0 esz=3 scale=0 ff=0
+                &rprr_gather_load xs=2 esz=3 scale=0 ff=0
 
 # SVE2 32-bit gather non-temporal load (scalar plus 32-bit unscaled offsets)
 LDNT1_zprz      1000010 msz:2 00 rm:5 10 u:1 pg:3 rn:5 rd:5 \
@@ -1643,3 +1675,28 @@ BFMLALT_zzxw    01100100 11 1 ..... 0100.1 ..... .....     @rrxr_3a esz=2
 
 ### SVE2 floating-point bfloat16 dot-product (indexed)
 BFDOT_zzxz      01100100 01 1 ..... 010000 ..... .....     @rrxr_2 esz=2
+
+### SVE broadcast predicate element
+
+&psel           esz pd pn pm rv imm
+%psel_rv        16:2 !function=plus_12
+%psel_imm_b     22:2 19:2
+%psel_imm_h     22:2 20:1
+%psel_imm_s     22:2
+%psel_imm_d     23:1
+@psel           ........ .. . ... .. .. pn:4 . pm:4 . pd:4  \
+                &psel rv=%psel_rv
+
+PSEL            00100101 .. 1 ..1 .. 01 .... 0 .... 0 ....  \
+                @psel esz=0 imm=%psel_imm_b
+PSEL            00100101 .. 1 .10 .. 01 .... 0 .... 0 ....  \
+                @psel esz=1 imm=%psel_imm_h
+PSEL            00100101 .. 1 100 .. 01 .... 0 .... 0 ....  \
+                @psel esz=2 imm=%psel_imm_s
+PSEL            00100101 .1 1 000 .. 01 .... 0 .... 0 ....  \
+                @psel esz=3 imm=%psel_imm_d
+
+### SVE clamp
+
+SCLAMP          01000100 .. 0 ..... 110000 ..... .....          @rda_rn_rm
+UCLAMP          01000100 .. 0 ..... 110001 ..... .....          @rda_rn_rm

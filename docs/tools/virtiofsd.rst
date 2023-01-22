@@ -104,6 +104,18 @@ Options
   * posix_acl|no_posix_acl -
     Enable/disable posix acl support.  Posix ACLs are disabled by default.
 
+  * security_label|no_security_label -
+    Enable/disable security label support. Security labels are disabled by
+    default. This will allow client to send a MAC label of file during
+    file creation. Typically this is expected to be SELinux security
+    label. Server will try to set that label on newly created file
+    atomically wherever possible.
+
+  * killpriv_v2|no_killpriv_v2 -
+    Enable/disable ``FUSE_HANDLE_KILLPRIV_V2`` support. KILLPRIV_V2 is enabled
+    by default as long as the client supports it. Enabling this option helps
+    with performance in write path.
+
 .. option:: --socket-path=PATH
 
   Listen on vhost-user UNIX domain socket at PATH.
@@ -120,7 +132,7 @@ Options
 .. option:: --thread-pool-size=NUM
 
   Restrict the number of worker threads per request queue to NUM.  The default
-  is 64.
+  is 0.
 
 .. option:: --cache=none|auto|always
 
@@ -136,8 +148,8 @@ Extended attribute (xattr) mapping
 By default the name of xattr's used by the client are passed through to the server
 file system.  This can be a problem where either those xattr names are used
 by something on the server (e.g. selinux client/server confusion) or if the
-virtiofsd is running in a container with restricted privileges where it cannot
-access some attributes.
+``virtiofsd`` is running in a container with restricted privileges where it
+cannot access some attributes.
 
 Mapping syntax
 ~~~~~~~~~~~~~~
@@ -183,6 +195,12 @@ Using ':' as the separator a rule is of the form:
   'ok' as either an explicit terminator or for special handling of certain
   patterns.
 
+- 'unsupported' - If a client tries to use a name matching 'key' it's
+  denied using ENOTSUP; when the server passes an attribute
+  name matching 'prepend' it's hidden.  In many ways it's use is very like
+  'ok' as either an explicit terminator or for special handling of certain
+  patterns.
+
 **key** is a string tested as a prefix on an attribute name originating
 on the client.  It maybe empty in which case a 'client' rule
 will always match on client names.
@@ -214,7 +232,7 @@ e.g.:
 
   ``:ok:server::security.:``
 
-  will pass 'securty.' xattr's in listxattr from the server
+  will pass 'security.' xattr's in listxattr from the server
   and ignore following rules.
 
   ``:ok:all:::``
@@ -341,6 +359,31 @@ rules into a single 'all' rule, matching 'security.' in either
 client arguments or lists returned from the host.  This stops
 the client seeing any 'security.' attributes on the server and
 stops it setting any.
+
+SELinux support
+---------------
+One can enable support for SELinux by running virtiofsd with option
+"-o security_label". But this will try to save guest's security context
+in xattr security.selinux on host and it might fail if host's SELinux
+policy does not permit virtiofsd to do this operation.
+
+Hence, it is preferred to remap guest's "security.selinux" xattr to say
+"trusted.virtiofs.security.selinux" on host.
+
+"-o xattrmap=:map:security.selinux:trusted.virtiofs.:"
+
+This will make sure that guest and host's SELinux xattrs on same file
+remain separate and not interfere with each other. And will allow both
+host and guest to implement their own separate SELinux policies.
+
+Setting trusted xattr on host requires CAP_SYS_ADMIN. So one will need
+add this capability to daemon.
+
+"-o modcaps=+sys_admin"
+
+Giving CAP_SYS_ADMIN increases the risk on system. Now virtiofsd is more
+powerful and if gets compromised, it can do lot of damage to host system.
+So keep this trade-off in my mind while making a decision.
 
 Examples
 --------

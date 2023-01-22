@@ -316,12 +316,6 @@ static inline int xen_set_pci_intx_level(domid_t domid, uint16_t segment,
                                              device, intx, level);
 }
 
-static inline int xen_set_pci_link_route(domid_t domid, uint8_t link,
-                                         uint8_t irq)
-{
-    return xendevicemodel_set_pci_link_route(xen_dmod, domid, link, irq);
-}
-
 static inline int xen_inject_msi(domid_t domid, uint64_t msi_addr,
                                  uint32_t msi_data)
 {
@@ -358,7 +352,7 @@ static inline int xen_restrict(domid_t domid)
 void destroy_hvm_domain(bool reboot);
 
 /* shutdown/destroy current domain because of an error */
-void xen_shutdown_fatal_error(const char *fmt, ...) GCC_FMT_ATTR(1, 2);
+void xen_shutdown_fatal_error(const char *fmt, ...) G_GNUC_PRINTF(1, 2);
 
 #ifdef HVM_PARAM_VMPORT_REGS_PFN
 static inline int xen_get_vmport_regs_pfn(xc_interface *xc, domid_t dom,

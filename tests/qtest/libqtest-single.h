@@ -11,9 +11,13 @@
 #ifndef LIBQTEST_SINGLE_H
 #define LIBQTEST_SINGLE_H
 
-#include "libqos/libqtest.h"
+#include "libqtest.h"
 
+#ifndef _WIN32
 QTestState *global_qtest __attribute__((common, weak));
+#else
+__declspec(selectany) QTestState *global_qtest;
+#endif
 
 /**
  * qtest_start:
@@ -52,7 +56,7 @@ static inline void qtest_end(void)
  *
  * Sends a QMP message to QEMU and returns the response.
  */
-GCC_FMT_ATTR(1, 2)
+G_GNUC_PRINTF(1, 2)
 static inline QDict *qmp(const char *fmt, ...)
 {
     va_list ap;

@@ -24,6 +24,7 @@ struct AioHandler {
     IOHandler *io_read;
     IOHandler *io_write;
     AioPollFn *io_poll;
+    IOHandler *io_poll_ready;
     IOHandler *io_poll_begin;
     IOHandler *io_poll_end;
     void *opaque;
@@ -36,6 +37,7 @@ struct AioHandler {
     unsigned flags; /* see fdmon-io_uring.c */
 #endif
     int64_t poll_idle_timeout; /* when to stop userspace polling */
+    bool poll_ready; /* has polling detected an event? */
     bool is_external;
 };
 

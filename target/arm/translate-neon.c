@@ -28,12 +28,6 @@
 #include "translate.h"
 #include "translate-a32.h"
 
-static inline int neon_3same_fp_size(DisasContext *s, int x)
-{
-    /* Convert 0==fp32, 1==fp16 into a MO_* value */
-    return MO_32 - x;
-}
-
 /* Include the generated Neon decoder */
 #include "decode-neon-dp.c.inc"
 #include "decode-neon-ls.c.inc"
@@ -79,7 +73,7 @@ static void neon_load_element64(TCGv_i64 var, int reg, int ele, MemOp mop)
     case MO_UL:
         tcg_gen_ld32u_i64(var, cpu_env, offset);
         break;
-    case MO_Q:
+    case MO_UQ:
         tcg_gen_ld_i64(var, cpu_env, offset);
         break;
     default:
@@ -453,7 +447,7 @@ static bool trans_VLDST_multiple(DisasContext *s, arg_VLDST_multiple *a)
     int mmu_idx = get_mem_index(s);
     int size = a->size;
     TCGv_i64 tmp64;
-    TCGv_i32 addr, tmp;
+    TCGv_i32 addr;
 
     if (!arm_dc_feature(s, ARM_FEATURE_NEON)) {
         return false;
@@ -519,7 +513,6 @@ static bool trans_VLDST_multiple(DisasContext *s, arg_VLDST_multiple *a)
 
     tmp64 = tcg_temp_new_i64();
     addr = tcg_temp_new_i32();
-    tmp = tcg_const_i32(1 << size);
     load_reg_var(s, addr, a->rn);
 
     mop = endian | size | align;
@@ -536,7 +529,7 @@ static bool trans_VLDST_multiple(DisasContext *s, arg_VLDST_multiple *a)
                     neon_load_element64(tmp64, tt, n, size);
                     gen_aa32_st_internal_i64(s, tmp64, addr, mmu_idx, mop);
                 }
-                tcg_gen_add_i32(addr, addr, tmp);
+                tcg_gen_addi_i32(addr, addr, 1 << size);
 
                 /* Subsequent memory operations inherit alignment */
                 mop &= ~MO_AMASK;
@@ -544,7 +537,6 @@ static bool trans_VLDST_multiple(DisasContext *s, arg_VLDST_multiple *a)
         }
     }
     tcg_temp_free_i32(addr);
-    tcg_temp_free_i32(tmp);
     tcg_temp_free_i64(tmp64);
 
     gen_neon_ldst_base_update(s, a->rm, a->rn, nregs * interleave * 8);
@@ -592,7 +584,11 @@ static bool trans_VLD_all_lanes(DisasContext *s, arg_VLD_all_lanes *a)
         case 3:
             return false;
         case 4:
-            align = pow2_align(size + 2);
+            if (size == 2) {
+                align = pow2_align(3);
+            } else {
+                align = pow2_align(size + 2);
+            }
             break;
         default:
             g_assert_not_reached();
@@ -663,18 +659,21 @@ static bool trans_VLDST_single(DisasContext *s, arg_VLDST_single *a)
     /* Catch the UNDEF cases. This is unavoidably a bit messy. */
     switch (nregs) {
     case 1:
+        if (a->stride != 1) {
+            return false;
+        }
         if (((a->align & (1 << a->size)) != 0) ||
             (a->size == 2 && (a->align == 1 || a->align == 2))) {
             return false;
         }
         break;
-    case 3:
-        if ((a->align & 1) != 0) {
-            return false;
-        }
-        /* fall through */
     case 2:
         if (a->size == 2 && (a->align & 2) != 0) {
+            return false;
+        }
+        break;
+    case 3:
+        if (a->align != 0) {
             return false;
         }
         break;
@@ -684,7 +683,7 @@ static bool trans_VLDST_single(DisasContext *s, arg_VLDST_single *a)
         }
         break;
     default:
-        abort();
+        g_assert_not_reached();
     }
     if ((vd + a->stride * (nregs - 1)) > 31) {
         /*
@@ -1351,7 +1350,7 @@ static bool do_2shift_env_64(DisasContext *s, arg_2reg_shift *a,
      * To avoid excessive duplication of ops we implement shift
      * by immediate using the variable shift operations.
      */
-    constimm = tcg_const_i64(dup_const(a->size, a->shift));
+    constimm = tcg_constant_i64(dup_const(a->size, a->shift));
 
     for (pass = 0; pass < a->q + 1; pass++) {
         TCGv_i64 tmp = tcg_temp_new_i64();
@@ -1361,7 +1360,6 @@ static bool do_2shift_env_64(DisasContext *s, arg_2reg_shift *a,
         write_neon_element64(tmp, a->vd, pass, MO_64);
         tcg_temp_free_i64(tmp);
     }
-    tcg_temp_free_i64(constimm);
     return true;
 }
 
@@ -1397,7 +1395,7 @@ static bool do_2shift_env_32(DisasContext *s, arg_2reg_shift *a,
      * To avoid excessive duplication of ops we implement shift
      * by immediate using the variable shift operations.
      */
-    constimm = tcg_const_i32(dup_const(a->size, a->shift));
+    constimm = tcg_constant_i32(dup_const(a->size, a->shift));
     tmp = tcg_temp_new_i32();
 
     for (pass = 0; pass < (a->q ? 4 : 2); pass++) {
@@ -1406,7 +1404,6 @@ static bool do_2shift_env_32(DisasContext *s, arg_2reg_shift *a,
         write_neon_element32(tmp, a->vd, pass, MO_32);
     }
     tcg_temp_free_i32(tmp);
-    tcg_temp_free_i32(constimm);
     return true;
 }
 
@@ -1460,7 +1457,7 @@ static bool do_2shift_narrow_64(DisasContext *s, arg_2reg_shift *a,
      * This is always a right shift, and the shiftfn is always a
      * left-shift helper, which thus needs the negated shift count.
      */
-    constimm = tcg_const_i64(-a->shift);
+    constimm = tcg_constant_i64(-a->shift);
     rm1 = tcg_temp_new_i64();
     rm2 = tcg_temp_new_i64();
     rd = tcg_temp_new_i32();
@@ -1480,7 +1477,6 @@ static bool do_2shift_narrow_64(DisasContext *s, arg_2reg_shift *a,
     tcg_temp_free_i32(rd);
     tcg_temp_free_i64(rm1);
     tcg_temp_free_i64(rm2);
-    tcg_temp_free_i64(constimm);
 
     return true;
 }
@@ -1524,7 +1520,7 @@ static bool do_2shift_narrow_32(DisasContext *s, arg_2reg_shift *a,
         /* size == 2 */
         imm = -a->shift;
     }
-    constimm = tcg_const_i32(imm);
+    constimm = tcg_constant_i32(imm);
 
     /* Load all inputs first to avoid potential overwrite */
     rm1 = tcg_temp_new_i32();
@@ -1549,7 +1545,6 @@ static bool do_2shift_narrow_32(DisasContext *s, arg_2reg_shift *a,
 
     shiftfn(rm3, rm3, constimm);
     shiftfn(rm4, rm4, constimm);
-    tcg_temp_free_i32(constimm);
 
     tcg_gen_concat_i32_i64(rtmp, rm3, rm4);
     tcg_temp_free_i32(rm4);
@@ -1836,7 +1831,7 @@ static bool do_prewiden_3d(DisasContext *s, arg_3diff *a,
         return false;
     }
 
-    if ((a->vd & 1) || (src1_mop == MO_Q && (a->vn & 1))) {
+    if ((a->vd & 1) || (src1_mop == MO_UQ && (a->vn & 1))) {
         return false;
     }
 
@@ -1916,7 +1911,7 @@ static bool do_prewiden_3d(DisasContext *s, arg_3diff *a,
         };                                                              \
         int narrow_mop = a->size == MO_32 ? MO_32 | SIGN : -1;          \
         return do_prewiden_3d(s, a, widenfn[a->size], addfn[a->size],   \
-                              SRC1WIDE ? MO_Q : narrow_mop,             \
+                              SRC1WIDE ? MO_UQ : narrow_mop,             \
                               narrow_mop);                              \
     }
 
@@ -2914,7 +2909,7 @@ static bool trans_VTBL(DisasContext *s, arg_VTBL *a)
         return true;
     }
 
-    desc = tcg_const_i32((a->vn << 2) | a->len);
+    desc = tcg_constant_i32((a->vn << 2) | a->len);
     def = tcg_temp_new_i64();
     if (a->op) {
         read_neon_element64(def, a->vd, 0, MO_64);
@@ -2929,7 +2924,6 @@ static bool trans_VTBL(DisasContext *s, arg_VTBL *a)
 
     tcg_temp_free_i64(def);
     tcg_temp_free_i64(val);
-    tcg_temp_free_i32(desc);
     return true;
 }
 

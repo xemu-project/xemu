@@ -14,8 +14,8 @@
 #include "vss-common.h"
 #include "requester.h"
 #include "install.h"
-#include <inc/win2003/vswriter.h>
-#include <inc/win2003/vsbackup.h>
+#include <vswriter.h>
+#include <vsbackup.h>
 
 /* Max wait time for frozen event (VSS can only hold writes for 10 seconds) */
 #define VSS_TIMEOUT_FREEZE_MSEC 60000
@@ -354,12 +354,12 @@ void requester_freeze(int *num_vols, void *mountpoints, ErrorSet *errset)
             if (FAILED(hr)) {
                 err_set(errset, hr, "failed to add %S to snapshot set",
                         volume_name_wchar);
-                delete volume_name_wchar;
+                delete[] volume_name_wchar;
                 goto out;
             }
             num_mount_points++;
 
-            delete volume_name_wchar;
+            delete[] volume_name_wchar;
         }
 
         if (num_mount_points == 0) {

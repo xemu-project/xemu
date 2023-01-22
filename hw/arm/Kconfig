@@ -25,10 +25,12 @@ config ARM_VIRT
     select ACPI_PCI
     select MEM_DEVICE
     select DIMM
-    select ACPI_MEMORY_HOTPLUG
     select ACPI_HW_REDUCED
-    select ACPI_NVDIMM
     select ACPI_APEI
+    select ACPI_VIOT
+    select VIRTIO_MEM_SUPPORTED
+    select ACPI_CXL
+    select ACPI_HMAT
 
 config CHEETAH
     bool
@@ -46,6 +48,7 @@ config DIGIC
 
 config EXYNOS4
     bool
+    imply I2C_DEVICES
     select A9MPCORE
     select I2C
     select LAN9118
@@ -94,6 +97,9 @@ config MUSCA
     select PL031
     select SPLIT_IRQ
     select UNIMP
+
+config MARVELL_88W8618
+    bool
 
 config MUSICPAL
     bool
@@ -181,6 +187,7 @@ config REALVIEW
     bool
     imply PCI_DEVICES
     imply PCI_TESTDEV
+    imply I2C_DEVICES
     select SMC91C111
     select LAN9118
     select A9MPCORE
@@ -226,6 +233,7 @@ config SABRELITE
 
 config STELLARIS
     bool
+    imply I2C_DEVICES
     select ARM_V7M
     select CMSDK_APB_WATCHDOG
     select I2C
@@ -237,6 +245,7 @@ config STELLARIS
     select SSI_SD
     select STELLARIS_INPUT
     select STELLARIS_ENET # ethernet
+    select STELLARIS_GPTM # general purpose timer module
     select UNIMP
 
 config STM32VLDISCOVERY
@@ -382,6 +391,8 @@ config XLNX_VERSAL
     select XLNX_ZDMA
     select XLNX_ZYNQMP
     select OR_IRQ
+    select XLNX_BBRAM
+    select XLNX_EFUSE_VERSAL
 
 config NPCM7XX
     bool
@@ -391,6 +402,7 @@ config NPCM7XX
     select SMBUS
     select AT24C  # EEPROM
     select MAX34451
+    select ISL_PMBUS_VR
     select PL310  # cache controller
     select PMBUS
     select SERIAL
@@ -400,6 +412,7 @@ config NPCM7XX
 
 config FSL_IMX25
     bool
+    imply I2C_DEVICES
     select IMX
     select IMX_FEC
     select IMX_I2C
@@ -408,6 +421,7 @@ config FSL_IMX25
 
 config FSL_IMX31
     bool
+    imply I2C_DEVICES
     select SERIAL
     select IMX
     select IMX_I2C
@@ -416,6 +430,7 @@ config FSL_IMX31
 
 config FSL_IMX6
     bool
+    imply I2C_DEVICES
     select A9MPCORE
     select IMX
     select IMX_FEC
@@ -429,6 +444,7 @@ config ASPEED_SOC
     select DS1338
     select FTGMAC100
     select I2C
+    select DPS310
     select PCA9552
     select SERIAL
     select SMBUS_EEPROM
@@ -440,9 +456,12 @@ config ASPEED_SOC
     select EMC141X
     select UNIMP
     select LED
+    select PMBUS
+    select MAX31785
 
 config MPS2
     bool
+    imply I2C_DEVICES
     select ARMSSE
     select LAN9118
     select MPS2_FPGAIO
@@ -459,6 +478,7 @@ config FSL_IMX7
     bool
     imply PCI_DEVICES
     imply TEST_DEVICES
+    imply I2C_DEVICES
     select A15MPCORE
     select PCI
     select IMX
@@ -474,6 +494,7 @@ config ARM_SMMUV3
 
 config FSL_IMX6UL
     bool
+    imply I2C_DEVICES
     select A15MPCORE
     select IMX
     select IMX_FEC
@@ -488,6 +509,7 @@ config MICROBIT
 
 config NRF51_SOC
     bool
+    imply I2C_DEVICES
     select I2C
     select ARM_V7M
     select UNIMP

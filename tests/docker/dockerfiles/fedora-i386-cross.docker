@@ -1,12 +1,16 @@
-FROM registry.fedoraproject.org/fedora:33
+FROM registry.fedoraproject.org/fedora:34
+
 ENV PACKAGES \
+    bison \
     bzip2 \
     ccache \
     diffutils \
+    flex \
     findutils \
     gcc \
     git \
     libffi-devel.i686 \
+    libselinux-devel.i686 \
     libtasn1-devel.i686 \
     libzstd-devel.i686 \
     make \
@@ -17,12 +21,13 @@ ENV PACKAGES \
     glibc-static.i686 \
     gnutls-devel.i686 \
     nettle-devel.i686 \
-    perl-Test-Harness \
+    pcre-devel.i686 \
     pixman-devel.i686 \
+    sysprof-capture-devel.i686 \
     zlib-devel.i686
 
-ENV QEMU_CONFIGURE_OPTS --extra-cflags=-m32 --disable-vhost-user
-ENV PKG_CONFIG_PATH /usr/lib/pkgconfig
+ENV QEMU_CONFIGURE_OPTS --cpu=i386 --disable-vhost-user
+ENV PKG_CONFIG_LIBDIR /usr/lib/pkgconfig
 
-RUN dnf install -y $PACKAGES
+RUN dnf update -y && dnf install -y $PACKAGES
 RUN rpm -q $PACKAGES | sort > /packages.txt

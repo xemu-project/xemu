@@ -25,13 +25,16 @@ typedef enum {
  * armv7m_load_kernel:
  * @cpu: CPU
  * @kernel_filename: file to load
+ * @mem_base: base address to load image at (should be where the
+ *            CPU expects to find its vector table on reset)
  * @mem_size: mem_size: maximum image size to load
  *
  * Load the guest image for an ARMv7M system. This must be called by
  * any ARMv7M board. (This is necessary to ensure that the CPU resets
  * correctly on system reset, as well as for kernel loading.)
  */
-void armv7m_load_kernel(ARMCPU *cpu, const char *kernel_filename, int mem_size);
+void armv7m_load_kernel(ARMCPU *cpu, const char *kernel_filename,
+                        hwaddr mem_base, int mem_size);
 
 /* arm_boot.c */
 struct arm_boot_info {
@@ -56,7 +59,6 @@ struct arm_boot_info {
     hwaddr smp_loader_start;
     hwaddr smp_bootreg_addr;
     hwaddr gic_cpu_if_addr;
-    int nb_cpus;
     int board_id;
     /* ARM machines that support the ARM Security Extensions use this field to
      * control whether Linux is booted as secure(true) or non-secure(false).
@@ -70,6 +72,9 @@ struct arm_boot_info {
      * boot loader/boot ROM code, and secondary_cpu_reset_hook() should
      * perform any necessary CPU reset handling and set the PC for the
      * secondary CPUs to point at this boot blob.
+     *
+     * These hooks won't be called if secondary CPUs are booting via
+     * emulated PSCI (see psci_conduit below).
      */
     void (*write_secondary_boot)(ARMCPU *cpu,
                                  const struct arm_boot_info *info);
@@ -86,6 +91,16 @@ struct arm_boot_info {
      * the user it should implement this hook.
      */
     void (*modify_dtb)(const struct arm_boot_info *info, void *fdt);
+    /*
+     * If a board wants to use the QEMU emulated-firmware PSCI support,
+     * it should set this to QEMU_PSCI_CONDUIT_HVC or QEMU_PSCI_CONDUIT_SMC
+     * as appropriate. arm_load_kernel() will set the psci-conduit and
+     * start-powered-off properties on the CPUs accordingly.
+     * Note that if the guest image is started at the same exception level
+     * as the conduit specifies calls should go to (eg guest firmware booted
+     * to EL3) then PSCI will not be enabled.
+     */
+    int psci_conduit;
     /* Used internally by arm_boot.c */
     int is_linux;
     hwaddr initrd_start;

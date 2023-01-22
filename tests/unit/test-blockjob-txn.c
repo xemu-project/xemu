@@ -25,14 +25,6 @@ typedef struct {
     int *result;
 } TestBlockJob;
 
-static void test_block_job_clean(Job *job)
-{
-    BlockJob *bjob = container_of(job, BlockJob, job);
-    BlockDriverState *bs = blk_bs(bjob->blk);
-
-    bdrv_unref(bs);
-}
-
 static int coroutine_fn test_block_job_run(Job *job, Error **errp)
 {
     TestBlockJob *s = container_of(job, TestBlockJob, common.job);
@@ -73,7 +65,6 @@ static const BlockJobDriver test_block_job_driver = {
         .free          = block_job_free,
         .user_resume   = block_job_user_resume,
         .run           = test_block_job_run,
-        .clean         = test_block_job_clean,
     },
 };
 
@@ -105,6 +96,7 @@ static BlockJob *test_block_job_start(unsigned int iterations,
     s = block_job_create(job_id, &test_block_job_driver, txn, bs,
                          0, BLK_PERM_ALL, 0, JOB_DEFAULT,
                          test_block_job_cb, data, &error_abort);
+    bdrv_unref(bs); /* referenced by job now */
     s->iterations = iterations;
     s->use_timer = use_timer;
     s->rc = rc;
@@ -124,8 +116,10 @@ static void test_single_job(int expected)
     job = test_block_job_start(1, true, expected, &result, txn);
     job_start(&job->job);
 
-    if (expected == -ECANCELED) {
-        job_cancel(&job->job, false);
+    WITH_JOB_LOCK_GUARD() {
+        if (expected == -ECANCELED) {
+            job_cancel_locked(&job->job, false);
+        }
     }
 
     while (result == -EINPROGRESS) {
@@ -168,13 +162,15 @@ static void test_pair_jobs(int expected1, int expected2)
     /* Release our reference now to trigger as many nice
      * use-after-free bugs as possible.
      */
-    job_txn_unref(txn);
+    WITH_JOB_LOCK_GUARD() {
+        job_txn_unref_locked(txn);
 
-    if (expected1 == -ECANCELED) {
-        job_cancel(&job1->job, false);
-    }
-    if (expected2 == -ECANCELED) {
-        job_cancel(&job2->job, false);
+        if (expected1 == -ECANCELED) {
+            job_cancel_locked(&job1->job, false);
+        }
+        if (expected2 == -ECANCELED) {
+            job_cancel_locked(&job2->job, false);
+        }
     }
 
     while (result1 == -EINPROGRESS || result2 == -EINPROGRESS) {
@@ -227,7 +223,9 @@ static void test_pair_jobs_fail_cancel_race(void)
     job_start(&job1->job);
     job_start(&job2->job);
 
-    job_cancel(&job1->job, false);
+    WITH_JOB_LOCK_GUARD() {
+        job_cancel_locked(&job1->job, false);
+    }
 
     /* Now make job2 finish before the main loop kicks jobs.  This simulates
      * the race between a pending kick and another job completing.

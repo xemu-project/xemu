@@ -56,8 +56,8 @@
  *
  */
 
-#ifndef HW_ACPI_GED_H
-#define HW_ACPI_GED_H
+#ifndef HW_ACPI_GENERIC_EVENT_DEVICE_H
+#define HW_ACPI_GENERIC_EVENT_DEVICE_H
 
 #include "hw/sysbus.h"
 #include "hw/acpi/memory_hotplug.h"
@@ -70,8 +70,6 @@
 OBJECT_DECLARE_SIMPLE_TYPE(AcpiGedState, ACPI_GED)
 
 #define TYPE_ACPI_GED_X86 "acpi-ged-x86"
-#define ACPI_GED_X86(obj) \
-    OBJECT_CHECK(AcpiGedX86State, (obj), TYPE_ACPI_GED_X86)
 
 #define ACPI_GED_EVT_SEL_OFFSET    0x0
 #define ACPI_GED_EVT_SEL_LEN       0x4

@@ -29,14 +29,6 @@
 #include "hw/acpi/aml-build.h"
 #include "qom/object.h"
 
-#define NVDIMM_DEBUG 0
-#define nvdimm_debug(fmt, ...)                                \
-    do {                                                      \
-        if (NVDIMM_DEBUG) {                                   \
-            fprintf(stderr, "nvdimm: " fmt, ## __VA_ARGS__);  \
-        }                                                     \
-    } while (0)
-
 /*
  * The minimum label data size is required by NVDIMM Namespace
  * specification, see the chapter 2 Namespaces:
@@ -103,6 +95,8 @@ struct NVDIMMClass {
     /* write @size bytes from @buf to NVDIMM label data at @offset. */
     void (*write_label_data)(NVDIMMDevice *nvdimm, const void *buf,
                              uint64_t size, uint64_t offset);
+    void (*realize)(NVDIMMDevice *nvdimm, Error **errp);
+    void (*unrealize)(NVDIMMDevice *nvdimm);
 };
 
 #define NVDIMM_DSM_MEM_FILE     "etc/acpi/nvdimm-mem"

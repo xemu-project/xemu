@@ -20,8 +20,10 @@
  */
 
 typedef enum QemuClipboardType QemuClipboardType;
+typedef enum QemuClipboardNotifyType QemuClipboardNotifyType;
 typedef enum QemuClipboardSelection QemuClipboardSelection;
 typedef struct QemuClipboardPeer QemuClipboardPeer;
+typedef struct QemuClipboardNotify QemuClipboardNotify;
 typedef struct QemuClipboardInfo QemuClipboardInfo;
 
 /**
@@ -55,16 +57,44 @@ enum QemuClipboardSelection {
  * struct QemuClipboardPeer
  *
  * @name: peer name.
- * @update: notifier for clipboard updates.
+ * @notifier: notifier for clipboard updates.
  * @request: callback for clipboard data requests.
  *
  * Clipboard peer description.
  */
 struct QemuClipboardPeer {
     const char *name;
-    Notifier update;
+    Notifier notifier;
     void (*request)(QemuClipboardInfo *info,
                     QemuClipboardType type);
+};
+
+/**
+ * enum QemuClipboardNotifyType
+ *
+ * @QEMU_CLIPBOARD_UPDATE_INFO: clipboard info update
+ * @QEMU_CLIPBOARD_RESET_SERIAL: reset clipboard serial
+ *
+ * Clipboard notify type.
+ */
+enum QemuClipboardNotifyType {
+    QEMU_CLIPBOARD_UPDATE_INFO,
+    QEMU_CLIPBOARD_RESET_SERIAL,
+};
+
+/**
+ * struct QemuClipboardNotify
+ *
+ * @type: the type of event.
+ * @info: a QemuClipboardInfo event.
+ *
+ * Clipboard notify data.
+ */
+struct QemuClipboardNotify {
+    QemuClipboardNotifyType type;
+    union {
+        QemuClipboardInfo *info;
+    };
 };
 
 /**
@@ -74,6 +104,8 @@ struct QemuClipboardPeer {
  * @owner: clipboard owner.
  * @selection: clipboard selection.
  * @types: clipboard data array (one entry per type).
+ * @has_serial: whether @serial is available.
+ * @serial: the grab serial counter.
  *
  * Clipboard content data and metadata.
  */
@@ -81,6 +113,8 @@ struct QemuClipboardInfo {
     uint32_t refcount;
     QemuClipboardPeer *owner;
     QemuClipboardSelection selection;
+    bool has_serial;
+    uint32_t serial;
     struct {
         bool available;
         bool requested;
@@ -108,6 +142,47 @@ void qemu_clipboard_peer_register(QemuClipboardPeer *peer);
  * Unregister clipboard peer.
  */
 void qemu_clipboard_peer_unregister(QemuClipboardPeer *peer);
+
+/**
+ * qemu_clipboard_peer_owns
+ *
+ * @peer: peer information.
+ * @selection: clipboard selection.
+ *
+ * Return TRUE if the peer owns the clipboard.
+ */
+bool qemu_clipboard_peer_owns(QemuClipboardPeer *peer,
+                              QemuClipboardSelection selection);
+
+/**
+ * qemu_clipboard_peer_release
+ *
+ * @peer: peer information.
+ * @selection: clipboard selection.
+ *
+ * If the peer owns the clipboard, release it.
+ */
+void qemu_clipboard_peer_release(QemuClipboardPeer *peer,
+                                 QemuClipboardSelection selection);
+
+/**
+ * qemu_clipboard_info
+ *
+ * @selection: clipboard selection.
+ *
+ * Return the current clipboard data & owner informations.
+ */
+QemuClipboardInfo *qemu_clipboard_info(QemuClipboardSelection selection);
+
+/**
+ * qemu_clipboard_check_serial
+ *
+ * @info: clipboard info.
+ * @client: whether to check from the client context and priority.
+ *
+ * Return TRUE if the @info has a higher serial than the current clipboard.
+ */
+bool qemu_clipboard_check_serial(QemuClipboardInfo *info, bool client);
 
 /**
  * qemu_clipboard_info_new
@@ -158,6 +233,13 @@ void qemu_clipboard_info_unref(QemuClipboardInfo *info);
 void qemu_clipboard_update(QemuClipboardInfo *info);
 
 /**
+ * qemu_clipboard_reset_serial
+ *
+ * Reset the clipboard serial.
+ */
+void qemu_clipboard_reset_serial(void);
+
+/**
  * qemu_clipboard_request
  *
  * @info: clipboard info.
@@ -189,5 +271,7 @@ void qemu_clipboard_set_data(QemuClipboardPeer *peer,
                              uint32_t size,
                              const void *data,
                              bool update);
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(QemuClipboardInfo, qemu_clipboard_info_unref)
 
 #endif /* QEMU_CLIPBOARD_H */

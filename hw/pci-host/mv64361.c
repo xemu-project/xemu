@@ -9,7 +9,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/units.h"
 #include "qapi/error.h"
 #include "hw/hw.h"
@@ -869,6 +868,7 @@ static void mv64361_realize(DeviceState *dev, Error **errp)
     s->base_addr_enable = 0x1fffff;
     memory_region_init_io(&s->regs, OBJECT(s), &mv64361_ops, s,
                           TYPE_MV64361, 0x10000);
+    sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->regs);
     for (i = 0; i < 2; i++) {
         g_autofree char *name = g_strdup_printf("pcihost%d", i);
         object_initialize_child(OBJECT(dev), name, &s->pci[i],

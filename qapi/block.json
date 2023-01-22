@@ -50,9 +50,9 @@
 #
 # Type of Floppy drive to be emulated by the Floppy Disk Controller.
 #
-# @144:  1.44MB 3.5" drive
-# @288:  2.88MB 3.5" drive
-# @120:  1.2MB 5.25" drive
+# @144: 1.44MB 3.5" drive
+# @288: 2.88MB 3.5" drive
+# @120: 1.2MB 5.25" drive
 # @none: No drive connected
 # @auto: Automatically determined by inserted media at boot
 #
@@ -105,7 +105,8 @@
 #
 # Returns: - Nothing on success
 #          - If @device is not a valid block device, DeviceNotFound
-# Notes:    Ejecting a device with no media results in success
+#
+# Notes: Ejecting a device with no media results in success
 #
 # Since: 0.14
 #
@@ -285,7 +286,6 @@
   'data': { 'id': 'str',
             'node-name': 'str'} }
 
-
 ##
 # @BlockdevChangeReadOnlyMode:
 #
@@ -299,11 +299,9 @@
 # @read-write: Makes the device writable
 #
 # Since: 2.3
-#
 ##
 { 'enum': 'BlockdevChangeReadOnlyMode',
   'data': ['retain', 'read-only', 'read-write'] }
-
 
 ##
 # @blockdev-change-medium:
@@ -325,6 +323,11 @@
 #
 # @read-only-mode: change the read-only mode of the device; defaults
 #                  to 'retain'
+#
+# @force: if false (the default), an eject request through blockdev-open-tray
+#         will be sent to the guest if it has locked the tray (and the tray
+#         will not be opened immediately); if true, the tray will be opened
+#         regardless of whether it is locked. (since 7.1)
 #
 # Features:
 # @deprecated: Member @device is deprecated.  Use @id instead.
@@ -367,8 +370,8 @@
             '*id': 'str',
             'filename': 'str',
             '*format': 'str',
+            '*force': 'bool',
             '*read-only-mode': 'BlockdevChangeReadOnlyMode' } }
-
 
 ##
 # @DEVICE_TRAY_MOVED:
@@ -493,7 +496,8 @@
 # <- { "return": {} }
 ##
 { 'command': 'block_set_io_throttle', 'boxed': true,
-  'data': 'BlockIOThrottle' }
+  'data': 'BlockIOThrottle',
+  'allow-preconfig': true }
 
 ##
 # @block-latency-histogram-set:
@@ -569,4 +573,5 @@
            '*boundaries': ['uint64'],
            '*boundaries-read': ['uint64'],
            '*boundaries-write': ['uint64'],
-           '*boundaries-flush': ['uint64'] } }
+           '*boundaries-flush': ['uint64'] },
+  'allow-preconfig': true }

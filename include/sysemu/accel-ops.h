@@ -10,6 +10,7 @@
 #ifndef ACCEL_OPS_H
 #define ACCEL_OPS_H
 
+#include "exec/hwaddr.h"
 #include "qom/object.h"
 
 #define ACCEL_OPS_SUFFIX "-ops"
@@ -28,18 +29,28 @@ struct AccelOpsClass {
     /* initialization function called when accel is chosen */
     void (*ops_init)(AccelOpsClass *ops);
 
+    bool (*cpus_are_resettable)(void);
+
     void (*create_vcpu_thread)(CPUState *cpu); /* MANDATORY NON-NULL */
     void (*kick_vcpu_thread)(CPUState *cpu);
+    bool (*cpu_thread_is_idle)(CPUState *cpu);
 
     void (*synchronize_post_reset)(CPUState *cpu);
     void (*synchronize_post_init)(CPUState *cpu);
     void (*synchronize_state)(CPUState *cpu);
     void (*synchronize_pre_loadvm)(CPUState *cpu);
+    void (*synchronize_pre_resume)(bool step_pending);
 
     void (*handle_interrupt)(CPUState *cpu, int mask);
 
     int64_t (*get_virtual_clock)(void);
     int64_t (*get_elapsed_ticks)(void);
+
+    /* gdbstub hooks */
+    bool (*supports_guest_debug)(void);
+    int (*insert_breakpoint)(CPUState *cpu, int type, hwaddr addr, hwaddr len);
+    int (*remove_breakpoint)(CPUState *cpu, int type, hwaddr addr, hwaddr len);
+    void (*remove_all_breakpoints)(CPUState *cpu);
 };
 
 #endif /* ACCEL_OPS_H */

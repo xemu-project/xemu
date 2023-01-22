@@ -82,12 +82,6 @@ struct fv_VuDev {
     struct fv_QueueInfo **qi;
 };
 
-/* From spec */
-struct virtio_fs_config {
-    char tag[36];
-    uint32_t num_queues;
-};
-
 /* Callback from libvhost-user */
 static uint64_t fv_get_features(VuDev *dev)
 {
@@ -249,6 +243,21 @@ static void vu_dispatch_unlock(struct fv_VuDev *vud)
     assert(ret == 0);
 }
 
+static void vq_send_element(struct fv_QueueInfo *qi, VuVirtqElement *elem,
+                            ssize_t len)
+{
+    struct fuse_session *se = qi->virtio_dev->se;
+    VuDev *dev = &se->virtio_dev->dev;
+    VuVirtq *q = vu_get_queue(dev, qi->qidx);
+
+    vu_dispatch_rdlock(qi->virtio_dev);
+    pthread_mutex_lock(&qi->vq_lock);
+    vu_queue_push(dev, q, elem, len);
+    vu_queue_notify(dev, q);
+    pthread_mutex_unlock(&qi->vq_lock);
+    vu_dispatch_unlock(qi->virtio_dev);
+}
+
 /*
  * Called back by ll whenever it wants to send a reply/message back
  * The 1st element of the iov starts with the fuse_out_header
@@ -259,8 +268,6 @@ int virtio_send_msg(struct fuse_session *se, struct fuse_chan *ch,
 {
     FVRequest *req = container_of(ch, FVRequest, ch);
     struct fv_QueueInfo *qi = ch->qi;
-    VuDev *dev = &se->virtio_dev->dev;
-    VuVirtq *q = vu_get_queue(dev, qi->qidx);
     VuVirtqElement *elem = &req->elem;
     int ret = 0;
 
@@ -302,13 +309,7 @@ int virtio_send_msg(struct fuse_session *se, struct fuse_chan *ch,
 
     copy_iov(iov, count, in_sg, in_num, tosend_len);
 
-    vu_dispatch_rdlock(qi->virtio_dev);
-    pthread_mutex_lock(&qi->vq_lock);
-    vu_queue_push(dev, q, elem, tosend_len);
-    vu_queue_notify(dev, q);
-    pthread_mutex_unlock(&qi->vq_lock);
-    vu_dispatch_unlock(qi->virtio_dev);
-
+    vq_send_element(qi, elem, tosend_len);
     req->reply_sent = true;
 
 err:
@@ -327,8 +328,6 @@ int virtio_send_data_iov(struct fuse_session *se, struct fuse_chan *ch,
 {
     FVRequest *req = container_of(ch, FVRequest, ch);
     struct fv_QueueInfo *qi = ch->qi;
-    VuDev *dev = &se->virtio_dev->dev;
-    VuVirtq *q = vu_get_queue(dev, qi->qidx);
     VuVirtqElement *elem = &req->elem;
     int ret = 0;
     g_autofree struct iovec *in_sg_cpy = NULL;
@@ -380,7 +379,7 @@ int virtio_send_data_iov(struct fuse_session *se, struct fuse_chan *ch,
     copy_iov(iov, count, in_sg, in_num, iov_len);
 
     /*
-     * Build a copy of the the in_sg iov so we can skip bits in it,
+     * Build a copy of the in_sg iov so we can skip bits in it,
      * including changing the offsets
      */
     in_sg_cpy = g_new(struct iovec, in_num);
@@ -436,12 +435,7 @@ int virtio_send_data_iov(struct fuse_session *se, struct fuse_chan *ch,
         out_sg->len = tosend_len;
     }
 
-    vu_dispatch_rdlock(qi->virtio_dev);
-    pthread_mutex_lock(&qi->vq_lock);
-    vu_queue_push(dev, q, elem, tosend_len);
-    vu_queue_notify(dev, q);
-    pthread_mutex_unlock(&qi->vq_lock);
-    vu_dispatch_unlock(qi->virtio_dev);
+    vq_send_element(qi, elem, tosend_len);
     req->reply_sent = true;
     return 0;
 }
@@ -453,7 +447,6 @@ static void fv_queue_worker(gpointer data, gpointer user_data)
 {
     struct fv_QueueInfo *qi = user_data;
     struct fuse_session *se = qi->virtio_dev->se;
-    struct VuDev *dev = &qi->virtio_dev->dev;
     FVRequest *req = data;
     VuVirtqElement *elem = &req->elem;
     struct fuse_buf fbuf = {};
@@ -595,17 +588,9 @@ out:
 
     /* If the request has no reply, still recycle the virtqueue element */
     if (!req->reply_sent) {
-        struct VuVirtq *q = vu_get_queue(dev, qi->qidx);
-
         fuse_log(FUSE_LOG_DEBUG, "%s: elem %d no reply sent\n", __func__,
                  elem->index);
-
-        vu_dispatch_rdlock(qi->virtio_dev);
-        pthread_mutex_lock(&qi->vq_lock);
-        vu_queue_push(dev, q, elem, 0);
-        vu_queue_notify(dev, q);
-        pthread_mutex_unlock(&qi->vq_lock);
-        vu_dispatch_unlock(qi->virtio_dev);
+        vq_send_element(qi, elem, 0);
     }
 
     pthread_mutex_destroy(&req->ch.lock);
@@ -716,6 +701,7 @@ static void *fv_queue_thread(void *opaque)
 
         /* Process all the requests. */
         if (!se->thread_pool_size && req_list != NULL) {
+            req_list = g_list_reverse(req_list);
             g_list_foreach(req_list, fv_queue_worker, qi);
             g_list_free(req_list);
             req_list = NULL;
@@ -752,6 +738,18 @@ static void fv_queue_cleanup_thread(struct fv_VuDev *vud, int qidx)
     ourqi->kick_fd = -1;
     g_free(vud->qi[qidx]);
     vud->qi[qidx] = NULL;
+}
+
+static void stop_all_queues(struct fv_VuDev *vud)
+{
+    for (int i = 0; i < vud->nqueues; i++) {
+        if (!vud->qi[i]) {
+            continue;
+        }
+
+        fuse_log(FUSE_LOG_INFO, "%s: Stopping queue %d thread\n", __func__, i);
+        fv_queue_cleanup_thread(vud, i);
+    }
 }
 
 /* Callback from libvhost-user on start or stop of a queue */
@@ -884,15 +882,7 @@ int virtio_loop(struct fuse_session *se)
      * Make sure all fv_queue_thread()s quit on exit, as we're about to
      * free virtio dev and fuse session, no one should access them anymore.
      */
-    for (int i = 0; i < se->virtio_dev->nqueues; i++) {
-        if (!se->virtio_dev->qi[i]) {
-            continue;
-        }
-
-        fuse_log(FUSE_LOG_INFO, "%s: Stopping queue %d thread\n", __func__, i);
-        fv_queue_cleanup_thread(se->virtio_dev, i);
-    }
-
+    stop_all_queues(se->virtio_dev);
     fuse_log(FUSE_LOG_INFO, "%s: Exit\n", __func__);
 
     return 0;
@@ -911,10 +901,12 @@ static bool fv_socket_lock(struct fuse_session *se)
 {
     g_autofree gchar *sk_name = NULL;
     g_autofree gchar *pidfile = NULL;
+    g_autofree gchar *state = NULL;
     g_autofree gchar *dir = NULL;
     Error *local_err = NULL;
 
-    dir = qemu_get_local_state_pathname("run/virtiofsd");
+    state = qemu_get_local_state_dir();
+    dir = g_build_filename(state, "run", "virtiofsd", NULL);
 
     if (g_mkdir_with_parents(dir, S_IRWXU) < 0) {
         fuse_log(FUSE_LOG_ERR, "%s: Failed to create directory %s: %s\n",
@@ -998,6 +990,13 @@ static int fv_create_listen_socket(struct fuse_session *se)
                          "vhost socket failed to set group to %s (%d): %m\n",
                          se->vu_socket_group, g->gr_gid);
             }
+        } else {
+            fuse_log(FUSE_LOG_ERR,
+                     "vhost socket: unable to find group '%s'\n",
+                     se->vu_socket_group);
+            close(listen_sock);
+            umask(old_umask);
+            return -1;
         }
     }
     umask(old_umask);

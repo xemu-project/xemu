@@ -16,7 +16,9 @@
  *   key-vals     = [ key-val { ',' key-val } [ ',' ] ]
  *   key-val      = key '=' val | help
  *   key          = key-fragment { '.' key-fragment }
- *   key-fragment = / [^=,.]+ /
+ *   key-fragment = qapi-name | index
+ *   qapi-name    = '__' / [a-z0-9.-]+ / '_' / [A-Za-z][A-Za-z0-9_-]* /
+ *   index        = / [0-9]+ /
  *   val          = { / [^,]+ / | ',,' }
  *   help         = 'help' | '?'
  *
@@ -93,8 +95,8 @@
 #include "qapi/qmp/qlist.h"
 #include "qapi/qmp/qstring.h"
 #include "qemu/cutils.h"
+#include "qemu/keyval.h"
 #include "qemu/help_option.h"
-#include "qemu/option.h"
 
 /*
  * Convert @key to a list index.

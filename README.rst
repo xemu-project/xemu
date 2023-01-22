@@ -39,7 +39,7 @@ Documentation can be found hosted online at
 current development version that is available at
 `<https://www.qemu.org/docs/master/>`_ is generated from the ``docs/``
 folder in the source tree, and is built by `Sphinx
-<https://www.sphinx-doc.org/en/master/>_`.
+<https://www.sphinx-doc.org/en/master/>`_.
 
 
 Building
@@ -59,9 +59,9 @@ of other UNIX targets. The simple steps to build QEMU are:
 
 Additional information can also be found online via the QEMU website:
 
-* `<https://qemu.org/Hosts/Linux>`_
-* `<https://qemu.org/Hosts/Mac>`_
-* `<https://qemu.org/Hosts/W32>`_
+* `<https://wiki.qemu.org/Hosts/Linux>`_
+* `<https://wiki.qemu.org/Hosts/Mac>`_
+* `<https://wiki.qemu.org/Hosts/W32>`_
 
 
 Submitting patches
@@ -78,14 +78,14 @@ format-patch' and/or 'git send-email' to format & send the mail to the
 qemu-devel@nongnu.org mailing list. All patches submitted must contain
 a 'Signed-off-by' line from the author. Patches should follow the
 guidelines set out in the `style section
-<https://www.qemu.org/docs/master/devel/style.html>` of
+<https://www.qemu.org/docs/master/devel/style.html>`_ of
 the Developers Guide.
 
 Additional information on submitting patches can be found online via
 the QEMU website
 
-* `<https://qemu.org/Contribute/SubmitAPatch>`_
-* `<https://qemu.org/Contribute/TrivialPatches>`_
+* `<https://wiki.qemu.org/Contribute/SubmitAPatch>`_
+* `<https://wiki.qemu.org/Contribute/TrivialPatches>`_
 
 The QEMU website is also maintained under source control.
 
@@ -144,7 +144,7 @@ reported via GitLab.
 
 For additional information on bug reporting consult:
 
-* `<https://qemu.org/Contribute/ReportABug>`_
+* `<https://wiki.qemu.org/Contribute/ReportABug>`_
 
 
 ChangeLog
@@ -168,4 +168,4 @@ main methods being email and IRC
 Information on additional methods of contacting the community can be
 found online via the QEMU website:
 
-* `<https://qemu.org/Contribute/StartHere>`_
+* `<https://wiki.qemu.org/Contribute/StartHere>`_

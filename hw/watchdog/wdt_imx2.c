@@ -280,8 +280,8 @@ static void imx2_wdt_class_init(ObjectClass *klass, void *data)
     dc->realize = imx2_wdt_realize;
     dc->reset = imx2_wdt_reset;
     dc->vmsd = &vmstate_imx2_wdt;
-    dc->desc = "i.MX watchdog timer";
-    set_bit(DEVICE_CATEGORY_MISC, dc->categories);
+    dc->desc = "i.MX2 watchdog timer";
+    set_bit(DEVICE_CATEGORY_WATCHDOG, dc->categories);
 }
 
 static const TypeInfo imx2_wdt_info = {
@@ -291,14 +291,8 @@ static const TypeInfo imx2_wdt_info = {
     .class_init    = imx2_wdt_class_init,
 };
 
-static WatchdogTimerModel model = {
-    .wdt_name = "imx2-watchdog",
-    .wdt_description = "i.MX2 Watchdog",
-};
-
 static void imx2_wdt_register_type(void)
 {
-    watchdog_add_model(&model);
     type_register_static(&imx2_wdt_info);
 }
 type_init(imx2_wdt_register_type)

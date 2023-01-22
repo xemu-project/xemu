@@ -24,7 +24,6 @@
 #include <linux/kvm.h>
 #include <asm/ptrace.h>
 
-#include "qemu-common.h"
 #include "cpu.h"
 #include "s390x-internal.h"
 #include "kvm_s390x.h"
@@ -152,11 +151,16 @@ const KVMCapabilityInfo kvm_arch_required_capabilities[] = {
 static int cap_sync_regs;
 static int cap_async_pf;
 static int cap_mem_op;
+static int cap_mem_op_extension;
 static int cap_s390_irq;
 static int cap_ri;
 static int cap_hpage_1m;
 static int cap_vcpu_resets;
 static int cap_protected;
+static int cap_zpci_op;
+static int cap_protected_dump;
+
+static bool mem_op_storage_key_support;
 
 static int active_cmma;
 
@@ -355,9 +359,13 @@ int kvm_arch_init(MachineState *ms, KVMState *s)
     cap_sync_regs = kvm_check_extension(s, KVM_CAP_SYNC_REGS);
     cap_async_pf = kvm_check_extension(s, KVM_CAP_ASYNC_PF);
     cap_mem_op = kvm_check_extension(s, KVM_CAP_S390_MEM_OP);
+    cap_mem_op_extension = kvm_check_extension(s, KVM_CAP_S390_MEM_OP_EXTENSION);
+    mem_op_storage_key_support = cap_mem_op_extension > 0;
     cap_s390_irq = kvm_check_extension(s, KVM_CAP_S390_INJECT_IRQ);
     cap_vcpu_resets = kvm_check_extension(s, KVM_CAP_S390_VCPU_RESETS);
     cap_protected = kvm_check_extension(s, KVM_CAP_S390_PROTECTED);
+    cap_zpci_op = kvm_check_extension(s, KVM_CAP_S390_ZPCI_OP);
+    cap_protected_dump = kvm_check_extension(s, KVM_CAP_S390_PROTECTED_DUMP);
 
     kvm_vm_enable_cap(s, KVM_CAP_S390_USER_SIGP, 0);
     kvm_vm_enable_cap(s, KVM_CAP_S390_VECTOR_REGISTERS, 0);
@@ -843,6 +851,7 @@ int kvm_s390_mem_op(S390CPU *cpu, vaddr addr, uint8_t ar, void *hostbuf,
                        : KVM_S390_MEMOP_LOGICAL_READ,
         .buf = (uint64_t)hostbuf,
         .ar = ar,
+        .key = (cpu->env.psw.mask & PSW_MASK_KEY) >> PSW_SHIFT_KEY,
     };
     int ret;
 
@@ -851,6 +860,9 @@ int kvm_s390_mem_op(S390CPU *cpu, vaddr addr, uint8_t ar, void *hostbuf,
     }
     if (!hostbuf) {
         mem_op.flags |= KVM_S390_MEMOP_F_CHECK_ONLY;
+    }
+    if (mem_op_storage_key_support) {
+        mem_op.flags |= KVM_S390_MEMOP_F_SKEY_PROTECTION;
     }
 
     ret = kvm_vcpu_ioctl(CPU(cpu), KVM_S390_MEM_OP, &mem_op);
@@ -1023,7 +1035,7 @@ int kvm_arch_remove_hw_breakpoint(target_ulong addr,
         }
         size = nb_hw_breakpoints * sizeof(struct kvm_hw_breakpoint);
         hw_breakpoints =
-             (struct kvm_hw_breakpoint *)g_realloc(hw_breakpoints, size);
+             g_realloc(hw_breakpoints, size);
     } else {
         g_free(hw_breakpoints);
         hw_breakpoints = NULL;
@@ -1585,6 +1597,10 @@ void kvm_s390_set_diag318(CPUState *cs, uint64_t diag318_info)
         env->diag318_info = diag318_info;
         cs->kvm_run->s.regs.diag318 = diag318_info;
         cs->kvm_run->kvm_dirty_regs |= KVM_SYNC_DIAG318;
+        /*
+         * diag 318 info is zeroed during a clear reset and
+         * diag 308 IPL subcodes.
+         */
     }
 }
 
@@ -2029,6 +2045,11 @@ int kvm_s390_assign_subch_ioeventfd(EventNotifier *notifier, uint32_t sch,
         kick.flags |= KVM_IOEVENTFD_FLAG_DEASSIGN;
     }
     return kvm_vm_ioctl(kvm_state, KVM_IOEVENTFD, &kick);
+}
+
+int kvm_s390_get_protected_dump(void)
+{
+    return cap_protected_dump;
 }
 
 int kvm_s390_get_ri(void)
@@ -2561,4 +2582,13 @@ void kvm_s390_stop_interrupt(S390CPU *cpu)
 bool kvm_arch_cpu_check_are_resettable(void)
 {
     return true;
+}
+
+int kvm_s390_get_zpci_op(void)
+{
+    return cap_zpci_op;
+}
+
+void kvm_arch_accel_class_init(ObjectClass *oc)
+{
 }

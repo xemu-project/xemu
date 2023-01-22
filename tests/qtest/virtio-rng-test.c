@@ -8,7 +8,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "libqos/libqtest.h"
+#include "libqtest.h"
 #include "qemu/module.h"
 #include "libqos/qgraph.h"
 #include "libqos/virtio-rng.h"
@@ -19,6 +19,11 @@ static void rng_hotplug(void *obj, void *data, QGuestAllocator *alloc)
 {
     QVirtioPCIDevice *dev = obj;
     QTestState *qts = dev->pdev->bus->qts;
+
+   if (dev->pdev->bus->not_hotpluggable) {
+        g_test_skip("pci bus does not support hotplug");
+        return;
+    }
 
     const char *arch = qtest_get_arch();
 

@@ -18,6 +18,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/log.h"
 #include "cpu.h"
 #include "exec/exec-all.h"
 #include "exec/helper-proto.h"
@@ -27,7 +28,7 @@
 #include "fpu/softfloat.h"
 #include "trace.h"
 
-void QEMU_NORETURN HELPER(excp)(CPUHPPAState *env, int excp)
+G_NORETURN void HELPER(excp)(CPUHPPAState *env, int excp)
 {
     CPUState *cs = env_cpu(env);
 
@@ -35,7 +36,7 @@ void QEMU_NORETURN HELPER(excp)(CPUHPPAState *env, int excp)
     cpu_loop_exit(cs);
 }
 
-void QEMU_NORETURN hppa_dynamic_excp(CPUHPPAState *env, int excp, uintptr_t ra)
+G_NORETURN void hppa_dynamic_excp(CPUHPPAState *env, int excp, uintptr_t ra)
 {
     CPUState *cs = env_cpu(env);
 
@@ -57,26 +58,29 @@ void HELPER(tcond)(CPUHPPAState *env, target_ureg cond)
     }
 }
 
-static void atomic_store_3(CPUHPPAState *env, target_ulong addr, uint32_t val,
-                           uint32_t mask, uintptr_t ra)
+static void atomic_store_3(CPUHPPAState *env, target_ulong addr,
+                           uint32_t val, uintptr_t ra)
 {
-#ifdef CONFIG_USER_ONLY
-    uint32_t old, new, cmp;
+    int mmu_idx = cpu_mmu_index(env, 0);
+    uint32_t old, new, cmp, mask, *haddr;
+    void *vaddr;
 
-    uint32_t *haddr = g2h(env_cpu(env), addr - 1);
+    vaddr = probe_access(env, addr, 3, MMU_DATA_STORE, mmu_idx, ra);
+    if (vaddr == NULL) {
+        cpu_loop_exit_atomic(env_cpu(env), ra);
+    }
+    haddr = (uint32_t *)((uintptr_t)vaddr & -4);
+    mask = addr & 1 ? 0x00ffffffu : 0xffffff00u;
+
     old = *haddr;
     while (1) {
-        new = (old & ~mask) | (val & mask);
+        new = be32_to_cpu((cpu_to_be32(old) & ~mask) | (val & mask));
         cmp = qatomic_cmpxchg(haddr, old, new);
         if (cmp == old) {
             return;
         }
         old = cmp;
     }
-#else
-    /* FIXME -- we can do better.  */
-    cpu_loop_exit_atomic(env_cpu(env), ra);
-#endif
 }
 
 static void do_stby_b(CPUHPPAState *env, target_ulong addr, target_ureg val,
@@ -92,7 +96,7 @@ static void do_stby_b(CPUHPPAState *env, target_ulong addr, target_ureg val,
     case 1:
         /* The 3 byte store must appear atomic.  */
         if (parallel) {
-            atomic_store_3(env, addr, val, 0x00ffffffu, ra);
+            atomic_store_3(env, addr, val, ra);
         } else {
             cpu_stb_data_ra(env, addr, val >> 16, ra);
             cpu_stw_data_ra(env, addr + 1, val, ra);
@@ -122,7 +126,7 @@ static void do_stby_e(CPUHPPAState *env, target_ulong addr, target_ureg val,
     case 3:
         /* The 3 byte store must appear atomic.  */
         if (parallel) {
-            atomic_store_3(env, addr - 3, val, 0xffffff00u, ra);
+            atomic_store_3(env, addr - 3, val, ra);
         } else {
             cpu_stw_data_ra(env, addr - 3, val >> 16, ra);
             cpu_stb_data_ra(env, addr - 1, val >> 8, ra);
@@ -166,7 +170,7 @@ target_ureg HELPER(probe)(CPUHPPAState *env, target_ulong addr,
                           uint32_t level, uint32_t want)
 {
 #ifdef CONFIG_USER_ONLY
-    return page_check_range(addr, 1, want);
+    return (page_check_range(addr, 1, want) == 0) ? 1 : 0;
 #else
     int prot, excp;
     hwaddr phys;
@@ -691,7 +695,7 @@ void HELPER(rfi)(CPUHPPAState *env)
     cpu_hppa_put_psw(env, env->cr[CR_IPSW]);
 }
 
-void HELPER(rfi_r)(CPUHPPAState *env)
+void HELPER(getshadowregs)(CPUHPPAState *env)
 {
     env->gr[1] = env->shadow[0];
     env->gr[8] = env->shadow[1];
@@ -700,6 +704,11 @@ void HELPER(rfi_r)(CPUHPPAState *env)
     env->gr[17] = env->shadow[4];
     env->gr[24] = env->shadow[5];
     env->gr[25] = env->shadow[6];
+}
+
+void HELPER(rfi_r)(CPUHPPAState *env)
+{
+    helper_getshadowregs(env);
     helper_rfi(env);
 }
 #endif

@@ -46,6 +46,7 @@ ppc_ss.add(when: 'CONFIG_POWERNV', if_true: files(
   'pnv_lpc.c',
   'pnv_psi.c',
   'pnv_occ.c',
+  'pnv_sbe.c',
   'pnv_bmc.c',
   'pnv_homer.c',
   'pnv_pnor.c',
@@ -58,8 +59,9 @@ ppc_ss.add(when: 'CONFIG_PPC440', if_true: files(
   'ppc440_bamboo.c',
   'ppc440_pcix.c', 'ppc440_uc.c'))
 ppc_ss.add(when: 'CONFIG_PPC4XX', if_true: files(
+  'ppc4xx_devs.c',
   'ppc4xx_pci.c',
-  'ppc4xx_devs.c'))
+  'ppc4xx_sdram.c'))
 ppc_ss.add(when: 'CONFIG_SAM460EX', if_true: files('sam460ex.c'))
 # PReP
 ppc_ss.add(when: 'CONFIG_PREP', if_true: files('prep.c'))
@@ -70,12 +72,10 @@ ppc_ss.add(when: 'CONFIG_MAC_OLDWORLD', if_true: files('mac_oldworld.c'))
 # NewWorld PowerMac
 ppc_ss.add(when: 'CONFIG_MAC_NEWWORLD', if_true: files('mac_newworld.c'))
 # e500
+ppc_ss.add(when: 'CONFIG_E500PLAT', if_true: files('e500plat.c'))
+ppc_ss.add(when: 'CONFIG_MPC8544DS', if_true: files('mpc8544ds.c'))
 ppc_ss.add(when: 'CONFIG_E500', if_true: files(
   'e500.c',
-  'mpc8544ds.c',
-  'e500plat.c'
-))
-ppc_ss.add(when: 'CONFIG_E500', if_true: files(
   'mpc8544_guts.c',
   'ppce500_spin.c'
 ))

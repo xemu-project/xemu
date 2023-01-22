@@ -290,7 +290,7 @@ static void pcie_aer_root_notify(PCIDevice *dev)
         msix_notify(dev, pcie_aer_root_get_vector(dev));
     } else if (msi_enabled(dev)) {
         msi_notify(dev, pcie_aer_root_get_vector(dev));
-    } else {
+    } else if (pci_intx(dev) != -1) {
         pci_irq_assert(dev);
     }
 }
@@ -323,7 +323,7 @@ static void pcie_aer_msg_root_port(PCIDevice *dev, const PCIEAERMsg *msg)
          */
     }
 
-    /* Errro Message Received: Root Error Status register */
+    /* Error Message Received: Root Error Status register */
     switch (msg->severity) {
     case PCI_ERR_ROOT_CMD_COR_EN:
         if (root_status & PCI_ERR_ROOT_COR_RCV) {
@@ -774,7 +774,9 @@ void pcie_aer_root_write_config(PCIDevice *dev,
     uint32_t root_cmd = pci_get_long(aer_cap + PCI_ERR_ROOT_COMMAND);
     /* 6.2.4.1.2 Interrupt Generation */
     if (!msix_enabled(dev) && !msi_enabled(dev)) {
-        pci_set_irq(dev, !!(root_cmd & enabled_cmd));
+        if (pci_intx(dev) != -1) {
+            pci_set_irq(dev, !!(root_cmd & enabled_cmd));
+        }
         return;
     }
 

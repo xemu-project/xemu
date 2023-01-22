@@ -36,6 +36,13 @@
 #include "qom/object.h"
 #include "net/can_emu.h"
 #include "hw/dma/xlnx_csu_dma.h"
+#include "hw/nvram/xlnx-bbram.h"
+#include "hw/nvram/xlnx-zynqmp-efuse.h"
+#include "hw/or-irq.h"
+#include "hw/misc/xlnx-zynqmp-apu-ctrl.h"
+#include "hw/misc/xlnx-zynqmp-crf.h"
+#include "hw/timer/cadence_ttc.h"
+#include "hw/usb/hcd-dwc3.h"
 
 #define TYPE_XLNX_ZYNQMP "xlnx-zynqmp"
 OBJECT_DECLARE_SIMPLE_TYPE(XlnxZynqMPState, XLNX_ZYNQMP)
@@ -50,6 +57,7 @@ OBJECT_DECLARE_SIMPLE_TYPE(XlnxZynqMPState, XLNX_ZYNQMP)
 #define XLNX_ZYNQMP_NUM_SPIS 2
 #define XLNX_ZYNQMP_NUM_GDMA_CH 8
 #define XLNX_ZYNQMP_NUM_ADMA_CH 8
+#define XLNX_ZYNQMP_NUM_USB 2
 
 #define XLNX_ZYNQMP_NUM_QSPI_BUS 2
 #define XLNX_ZYNQMP_NUM_QSPI_BUS_CS 2
@@ -79,6 +87,13 @@ OBJECT_DECLARE_SIMPLE_TYPE(XlnxZynqMPState, XLNX_ZYNQMP)
 #define XLNX_ZYNQMP_MAX_RAM_SIZE (XLNX_ZYNQMP_MAX_LOW_RAM_SIZE + \
                                   XLNX_ZYNQMP_MAX_HIGH_RAM_SIZE)
 
+#define XLNX_ZYNQMP_NUM_TTC 4
+
+/*
+ * Unimplemented mmio regions needed to boot some images.
+ */
+#define XLNX_ZYNQMP_NUM_UNIMP_AREAS 1
+
 struct XlnxZynqMPState {
     /*< private >*/
     DeviceState parent_obj;
@@ -95,6 +110,11 @@ struct XlnxZynqMPState {
 
     MemoryRegion *ddr_ram;
     MemoryRegion ddr_ram_low, ddr_ram_high;
+    XlnxBBRam bbram;
+    XlnxEFuse efuse;
+    XlnxZynqMPEFuse efuse_ctrl;
+
+    MemoryRegion mr_unimp[XLNX_ZYNQMP_NUM_UNIMP_AREAS];
 
     CadenceGEMState gem[XLNX_ZYNQMP_NUM_GEMS];
     CadenceUARTState uart[XLNX_ZYNQMP_NUM_UARTS];
@@ -110,6 +130,11 @@ struct XlnxZynqMPState {
     XlnxZDMA gdma[XLNX_ZYNQMP_NUM_GDMA_CH];
     XlnxZDMA adma[XLNX_ZYNQMP_NUM_ADMA_CH];
     XlnxCSUDMA qspi_dma;
+    qemu_or_irq qspi_irq_orgate;
+    XlnxZynqMPAPUCtrl apu_ctrl;
+    XlnxZynqMPCRF crf;
+    CadenceTTCState ttc[XLNX_ZYNQMP_NUM_TTC];
+    USBDWC3 usb[XLNX_ZYNQMP_NUM_USB];
 
     char *boot_cpu;
     ARMCPU *boot_cpu_ptr;

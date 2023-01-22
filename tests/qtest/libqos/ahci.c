@@ -24,11 +24,10 @@
 
 #include "qemu/osdep.h"
 
-#include "libqtest.h"
+#include "../libqtest.h"
 #include "ahci.h"
 #include "pci-pc.h"
 
-#include "qemu-common.h"
 #include "qemu/host-utils.h"
 
 #include "hw/pci/pci_ids.h"
@@ -639,8 +638,8 @@ void ahci_exec(AHCIQState *ahci, uint8_t port,
     AHCIOpts *opts;
     uint64_t buffer_in;
 
-    opts = g_memdup((opts_in == NULL ? &default_opts : opts_in),
-                    sizeof(AHCIOpts));
+    opts = g_memdup2((opts_in == NULL ? &default_opts : opts_in),
+                     sizeof(AHCIOpts));
 
     buffer_in = opts->buffer;
 
@@ -860,7 +859,7 @@ AHCICommand *ahci_command_create(uint8_t command_name)
     g_assert(!props->ncq || props->lba48);
 
     /* Defaults and book-keeping */
-    cmd->props = g_memdup(props, sizeof(AHCICommandProp));
+    cmd->props = g_memdup2(props, sizeof(AHCICommandProp));
     cmd->name = command_name;
     cmd->xbytes = props->size;
     cmd->prd_size = 4096;

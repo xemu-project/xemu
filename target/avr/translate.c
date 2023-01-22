@@ -70,11 +70,9 @@ static const char reg_names[NUMBER_OF_CPU_REGISTERS][8] = {
 };
 #define REG(x) (cpu_r[x])
 
-enum {
-    DISAS_EXIT   = DISAS_TARGET_0,  /* We want return to the cpu main loop.  */
-    DISAS_LOOKUP = DISAS_TARGET_1,  /* We have a variable condition exit.  */
-    DISAS_CHAIN  = DISAS_TARGET_2,  /* We have a single condition exit.  */
-};
+#define DISAS_EXIT   DISAS_TARGET_0  /* We want return to the cpu main loop.  */
+#define DISAS_LOOKUP DISAS_TARGET_1  /* We have a variable condition exit.  */
+#define DISAS_CHAIN  DISAS_TARGET_2  /* We have a single condition exit.  */
 
 typedef struct DisasContext DisasContext;
 
@@ -1089,11 +1087,7 @@ static void gen_goto_tb(DisasContext *ctx, int n, target_ulong dest)
         tcg_gen_exit_tb(tb, n);
     } else {
         tcg_gen_movi_i32(cpu_pc, dest);
-        if (ctx->base.singlestep_enabled) {
-            gen_helper_debug(cpu_env);
-        } else {
-            tcg_gen_lookup_and_goto_ptr();
-        }
+        tcg_gen_lookup_and_goto_ptr();
     }
     ctx->base.is_jmp = DISAS_NORETURN;
 }
@@ -2977,8 +2971,18 @@ static void avr_tr_translate_insn(DisasContextBase *dcbase, CPUState *cs)
     if (skip_label) {
         canonicalize_skip(ctx);
         gen_set_label(skip_label);
-        if (ctx->base.is_jmp == DISAS_NORETURN) {
+
+        switch (ctx->base.is_jmp) {
+        case DISAS_NORETURN:
             ctx->base.is_jmp = DISAS_CHAIN;
+            break;
+        case DISAS_NEXT:
+            if (ctx->base.tb->flags & TB_FLAGS_SKIP) {
+                ctx->base.is_jmp = DISAS_TOO_MANY;
+            }
+            break;
+        default:
+            break;
         }
     }
 
@@ -2995,6 +2999,11 @@ static void avr_tr_tb_stop(DisasContextBase *dcbase, CPUState *cs)
 {
     DisasContext *ctx = container_of(dcbase, DisasContext, base);
     bool nonconst_skip = canonicalize_skip(ctx);
+    /*
+     * Because we disable interrupts while env->skip is set,
+     * we must return to the main loop to re-evaluate afterward.
+     */
+    bool force_exit = ctx->base.tb->flags & TB_FLAGS_SKIP;
 
     switch (ctx->base.is_jmp) {
     case DISAS_NORETURN:
@@ -3003,7 +3012,7 @@ static void avr_tr_tb_stop(DisasContextBase *dcbase, CPUState *cs)
     case DISAS_NEXT:
     case DISAS_TOO_MANY:
     case DISAS_CHAIN:
-        if (!nonconst_skip) {
+        if (!nonconst_skip && !force_exit) {
             /* Note gen_goto_tb checks singlestep.  */
             gen_goto_tb(ctx, 1, ctx->npc);
             break;
@@ -3011,27 +3020,24 @@ static void avr_tr_tb_stop(DisasContextBase *dcbase, CPUState *cs)
         tcg_gen_movi_tl(cpu_pc, ctx->npc);
         /* fall through */
     case DISAS_LOOKUP:
-        if (!ctx->base.singlestep_enabled) {
+        if (!force_exit) {
             tcg_gen_lookup_and_goto_ptr();
             break;
         }
         /* fall through */
     case DISAS_EXIT:
-        if (ctx->base.singlestep_enabled) {
-            gen_helper_debug(cpu_env);
-        } else {
-            tcg_gen_exit_tb(NULL, 0);
-        }
+        tcg_gen_exit_tb(NULL, 0);
         break;
     default:
         g_assert_not_reached();
     }
 }
 
-static void avr_tr_disas_log(const DisasContextBase *dcbase, CPUState *cs)
+static void avr_tr_disas_log(const DisasContextBase *dcbase,
+                             CPUState *cs, FILE *logfile)
 {
-    qemu_log("IN: %s\n", lookup_symbol(dcbase->pc_first));
-    log_target_disas(cs, dcbase->pc_first, dcbase->tb->size);
+    fprintf(logfile, "IN: %s\n", lookup_symbol(dcbase->pc_first));
+    target_disas(logfile, cs, dcbase->pc_first, dcbase->tb->size);
 }
 
 static const TranslatorOps avr_tr_ops = {
@@ -3043,14 +3049,9 @@ static const TranslatorOps avr_tr_ops = {
     .disas_log          = avr_tr_disas_log,
 };
 
-void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
+void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns,
+                           target_ulong pc, void *host_pc)
 {
     DisasContext dc = { };
-    translator_loop(&avr_tr_ops, &dc.base, cs, tb, max_insns);
-}
-
-void restore_state_to_opc(CPUAVRState *env, TranslationBlock *tb,
-                            target_ulong *data)
-{
-    env->pc_w = data[0];
+    translator_loop(cs, tb, max_insns, pc, host_pc, &avr_tr_ops, &dc.base);
 }

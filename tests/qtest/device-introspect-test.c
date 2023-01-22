@@ -18,11 +18,10 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qapi/qmp/qstring.h"
 #include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qlist.h"
-#include "libqos/libqtest.h"
+#include "libqtest.h"
 
 const char common_args[] = "-nodefaults -machine none";
 

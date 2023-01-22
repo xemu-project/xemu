@@ -166,7 +166,7 @@ void add_boot_device_path(int32_t bootindex, DeviceState *dev,
 
     del_boot_device_path(dev, suffix);
 
-    node = g_malloc0(sizeof(FWBootEntry));
+    node = g_new0(FWBootEntry, 1);
     node->bootindex = bootindex;
     node->suffix = g_strdup(suffix);
     node->dev = dev;
@@ -268,7 +268,8 @@ char *get_boot_devices_list(size_t *size)
 
     *size = total;
 
-    if (boot_strict && *size > 0) {
+    if (current_machine->boot_config.has_strict &&
+        current_machine->boot_config.strict && *size > 0) {
         list[total-1] = '\n';
         list = g_realloc(list, total + 5);
         memcpy(&list[total], "HALT", 5);
@@ -367,7 +368,7 @@ void add_boot_device_lchs(DeviceState *dev, const char *suffix,
 
     assert(dev != NULL || suffix != NULL);
 
-    node = g_malloc0(sizeof(FWLCHSEntry));
+    node = g_new0(FWLCHSEntry, 1);
     node->suffix = g_strdup(suffix);
     node->dev = dev;
     node->lcyls = lcyls;

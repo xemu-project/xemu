@@ -29,7 +29,7 @@
 #include "migration/vmstate.h"
 #include "qemu/module.h"
 #include "sysemu/dma.h"
-
+#include "hw/isa/vt82c686.h"
 #include "hw/ide/pci.h"
 #include "trace.h"
 
@@ -112,7 +112,7 @@ static void via_ide_set_irq(void *opaque, int n, int level)
         d->config[0x70 + n * 8] &= ~0x80;
     }
 
-    qemu_set_irq(isa_get_irq(NULL, 14 + n), level);
+    via_isa_set_irq(pci_get_function_0(d), 14 + n, level);
 }
 
 static void via_ide_reset(DeviceState *dev)
@@ -190,7 +190,7 @@ static void via_ide_realize(PCIDevice *dev, Error **errp)
 
     qdev_init_gpio_in(ds, via_ide_set_irq, 2);
     for (i = 0; i < 2; i++) {
-        ide_bus_new(&d->bus[i], sizeof(d->bus[i]), ds, i, 2);
+        ide_bus_init(&d->bus[i], sizeof(d->bus[i]), ds, i, 2);
         ide_init2(&d->bus[i], qdev_get_gpio_in(ds, i));
 
         bmdma_init(&d->bus[i], &d->bmdma[i], d);
@@ -217,6 +217,9 @@ static void via_ide_class_init(ObjectClass *klass, void *data)
 
     dc->reset = via_ide_reset;
     dc->vmsd = &vmstate_ide_pci;
+    /* Reason: only works as function of VIA southbridge */
+    dc->user_creatable = false;
+
     k->realize = via_ide_realize;
     k->exit = via_ide_exitfn;
     k->vendor_id = PCI_VENDOR_ID_VIA;
@@ -227,7 +230,7 @@ static void via_ide_class_init(ObjectClass *klass, void *data)
 }
 
 static const TypeInfo via_ide_info = {
-    .name          = "via-ide",
+    .name          = TYPE_VIA_IDE,
     .parent        = TYPE_PCI_IDE,
     .class_init    = via_ide_class_init,
 };

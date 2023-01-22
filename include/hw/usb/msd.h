@@ -17,7 +17,7 @@ enum USBMSDMode {
     USB_MSDM_CSW /* Command Status.  */
 };
 
-struct usb_msd_csw {
+struct QEMU_PACKED usb_msd_csw {
     uint32_t sig;
     uint32_t tag;
     uint32_t residue;
@@ -40,6 +40,7 @@ struct MSDState {
     bool removable;
     bool commandlog;
     SCSIDevice *scsi_dev;
+    bool needs_reset;
 };
 
 typedef struct MSDState MSDState;

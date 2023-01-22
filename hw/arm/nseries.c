@@ -24,6 +24,7 @@
 #include "chardev/char.h"
 #include "qemu/cutils.h"
 #include "qemu/bswap.h"
+#include "qemu/hw-version.h"
 #include "sysemu/reset.h"
 #include "sysemu/runstate.h"
 #include "sysemu/sysemu.h"
@@ -701,7 +702,7 @@ static uint32_t mipid_txrx(void *opaque, uint32_t cmd, int len)
 
 static void *mipid_init(void)
 {
-    struct mipid_s *s = (struct mipid_s *) g_malloc0(sizeof(*s));
+    struct mipid_s *s = g_malloc0(sizeof(*s));
 
     s->id = 0x838f03;
     mipid_reset(s);
@@ -1299,7 +1300,7 @@ static int n810_atag_setup(const struct arm_boot_info *info, void *p)
 static void n8x0_init(MachineState *machine,
                       struct arm_boot_info *binfo, int model)
 {
-    struct n800_s *s = (struct n800_s *) g_malloc0(sizeof(*s));
+    struct n800_s *s = g_malloc0(sizeof(*s));
     MachineClass *mc = MACHINE_GET_CLASS(machine);
 
     if (machine->ram_size != mc->default_ram_size) {
@@ -1364,7 +1365,7 @@ static void n8x0_init(MachineState *machine,
     }
 
     if (option_rom[0].name &&
-        (machine->boot_order[0] == 'n' || !machine->kernel_filename)) {
+        (machine->boot_config.order[0] == 'n' || !machine->kernel_filename)) {
         uint8_t *nolo_tags = g_new(uint8_t, 0x10000);
         /* No, wait, better start at the ROM.  */
         s->mpu->cpu->env.regs[15] = OMAP2_Q2_BASE + 0x400000;

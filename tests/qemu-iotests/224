@@ -19,10 +19,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-# Creator/Owner: Max Reitz <mreitz@redhat.com>
+# Creator/Owner: Hanna Reitz <hreitz@redhat.com>
 
 import iotests
-from iotests import log, qemu_img, qemu_io_silent, filter_qmp_testfiles, \
+from iotests import log, qemu_img, qemu_io, filter_qmp_testfiles, \
                     filter_qmp_imgfmt
 import json
 
@@ -47,15 +47,14 @@ for filter_node_name in False, True:
          iotests.FilePath('top.img') as top_img_path, \
          iotests.VM() as vm:
 
-        assert qemu_img('create', '-f', iotests.imgfmt,
-                        base_img_path, '64M') == 0
-        assert qemu_img('create', '-f', iotests.imgfmt, '-b', base_img_path,
-                        '-F', iotests.imgfmt, mid_img_path) == 0
-        assert qemu_img('create', '-f', iotests.imgfmt, '-b', mid_img_path,
-                        '-F', iotests.imgfmt, top_img_path) == 0
+        qemu_img('create', '-f', iotests.imgfmt, base_img_path, '64M')
+        qemu_img('create', '-f', iotests.imgfmt, '-b', base_img_path,
+                 '-F', iotests.imgfmt, mid_img_path)
+        qemu_img('create', '-f', iotests.imgfmt, '-b', mid_img_path,
+                 '-F', iotests.imgfmt, top_img_path)
 
         # Something to commit
-        assert qemu_io_silent(mid_img_path, '-c', 'write -P 1 0 1M') == 0
+        qemu_io(mid_img_path, '-c', 'write -P 1 0 1M')
 
         vm.launch()
 

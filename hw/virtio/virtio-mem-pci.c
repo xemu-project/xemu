@@ -87,14 +87,12 @@ static void virtio_mem_pci_size_change_notify(Notifier *notifier, void *data)
     VirtIOMEMPCI *pci_mem = container_of(notifier, VirtIOMEMPCI,
                                          size_change_notifier);
     DeviceState *dev = DEVICE(pci_mem);
+    char *qom_path = object_get_canonical_path(OBJECT(dev));
     const uint64_t * const size_p = data;
-    const char *id = NULL;
 
-    if (dev->id) {
-        id = g_strdup(dev->id);
-    }
-
-    qapi_event_send_memory_device_size_change(!!id, id, *size_p);
+    qapi_event_send_memory_device_size_change(!!dev->id, dev->id, *size_p,
+                                              qom_path);
+    g_free(qom_path);
 }
 
 static void virtio_mem_pci_class_init(ObjectClass *klass, void *data)
@@ -106,8 +104,6 @@ static void virtio_mem_pci_class_init(ObjectClass *klass, void *data)
 
     k->realize = virtio_mem_pci_realize;
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
-    pcidev_k->vendor_id = PCI_VENDOR_ID_REDHAT_QUMRANET;
-    pcidev_k->device_id = PCI_DEVICE_ID_VIRTIO_MEM;
     pcidev_k->revision = VIRTIO_PCI_ABI_VERSION;
     pcidev_k->class_id = PCI_CLASS_OTHERS;
 

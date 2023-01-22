@@ -29,7 +29,7 @@ help:
 	@echo "    Performs no environment setup of any kind."
 	@echo ""
 	@echo "make develop:"
-	@echo "    Install deps needed for for 'make check',"
+	@echo "    Install deps needed for 'make check',"
 	@echo "    and install the qemu package in editable mode."
 	@echo "    (Can be used in or outside of a venv.)"
 	@echo ""
@@ -92,6 +92,13 @@ check:
 check-tox:
 	@tox $(QEMU_TOX_EXTRA_ARGS)
 
+.PHONY: check-coverage
+check-coverage:
+	@coverage run -m avocado --config avocado.cfg run tests/*.py
+	@coverage combine
+	@coverage html
+	@coverage report
+
 .PHONY: clean
 clean:
 	python3 setup.py clean --all
@@ -100,3 +107,5 @@ clean:
 .PHONY: distclean
 distclean: clean
 	rm -rf qemu.egg-info/ .venv/ .tox/ $(QEMU_VENV_DIR) dist/
+	rm -f .coverage .coverage.*
+	rm -rf htmlcov/

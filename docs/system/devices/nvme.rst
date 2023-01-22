@@ -70,7 +70,7 @@ namespaces and additional features, the ``nvme-ns`` device must be used.
 
 The namespaces defined by the ``nvme-ns`` device will attach to the most
 recently defined ``nvme-bus`` that is created by the ``nvme`` device. Namespace
-identifers are allocated automatically, starting from ``1``.
+identifiers are allocated automatically, starting from ``1``.
 
 There are a number of parameters available:
 
@@ -104,34 +104,38 @@ multipath I/O.
 .. code-block:: console
 
    -device nvme-subsys,id=nvme-subsys-0,nqn=subsys0
-   -device nvme,serial=a,subsys=nvme-subsys-0
-   -device nvme,serial=b,subsys=nvme-subsys-0
+   -device nvme,serial=deadbeef,subsys=nvme-subsys-0
+   -device nvme,serial=deadbeef,subsys=nvme-subsys-0
 
 This will create an NVM subsystem with two controllers. Having controllers
 linked to an ``nvme-subsys`` device allows additional ``nvme-ns`` parameters:
 
-``shared`` (default: ``off``)
+``shared`` (default: ``on`` since 6.2)
   Specifies that the namespace will be attached to all controllers in the
-  subsystem. If set to ``off`` (the default), the namespace will remain a
-  private namespace and may only be attached to a single controller at a time.
+  subsystem. If set to ``off``, the namespace will remain a private namespace
+  and may only be attached to a single controller at a time. Shared namespaces
+  are always automatically attached to all controllers (also when controllers
+  are hotplugged).
 
 ``detached`` (default: ``off``)
   If set to ``on``, the namespace will be be available in the subsystem, but
-  not attached to any controllers initially.
+  not attached to any controllers initially. A shared namespace with this set
+  to ``on`` will never be automatically attached to controllers.
 
 Thus, adding
 
 .. code-block:: console
 
    -drive file=nvm-1.img,if=none,id=nvm-1
-   -device nvme-ns,drive=nvm-1,nsid=1,shared=on
+   -device nvme-ns,drive=nvm-1,nsid=1
    -drive file=nvm-2.img,if=none,id=nvm-2
-   -device nvme-ns,drive=nvm-2,nsid=3,detached=on
+   -device nvme-ns,drive=nvm-2,nsid=3,shared=off,detached=on
 
-will cause NSID 1 will be a shared namespace (due to ``shared=on``) that is
-initially attached to both controllers. NSID 3 will be a private namespace
-(i.e. only attachable to a single controller at a time) and will not be
-attached to any controller initially (due to ``detached=on``).
+will cause NSID 1 will be a shared namespace that is initially attached to both
+controllers. NSID 3 will be a private namespace due to ``shared=off`` and only
+attachable to a single controller at a time. Additionally it will not be
+attached to any controller initially (due to ``detached=on``) or to hotplugged
+controllers.
 
 Optional Features
 =================
@@ -235,3 +239,85 @@ The virtual namespace device supports DIF- and DIX-based protection information
   to ``1`` to transfer protection information as the first eight bytes of
   metadata. Otherwise, the protection information is transferred as the last
   eight bytes.
+
+Virtualization Enhancements and SR-IOV (Experimental Support)
+-------------------------------------------------------------
+
+The ``nvme`` device supports Single Root I/O Virtualization and Sharing
+along with Virtualization Enhancements. The controller has to be linked to
+an NVM Subsystem device (``nvme-subsys``) for use with SR-IOV.
+
+A number of parameters are present (**please note, that they may be
+subject to change**):
+
+``sriov_max_vfs`` (default: ``0``)
+  Indicates the maximum number of PCIe virtual functions supported
+  by the controller. Specifying a non-zero value enables reporting of both
+  SR-IOV and ARI (Alternative Routing-ID Interpretation) capabilities
+  by the NVMe device. Virtual function controllers will not report SR-IOV.
+
+``sriov_vq_flexible``
+  Indicates the total number of flexible queue resources assignable to all
+  the secondary controllers. Implicitly sets the number of primary
+  controller's private resources to ``(max_ioqpairs - sriov_vq_flexible)``.
+
+``sriov_vi_flexible``
+  Indicates the total number of flexible interrupt resources assignable to
+  all the secondary controllers. Implicitly sets the number of primary
+  controller's private resources to ``(msix_qsize - sriov_vi_flexible)``.
+
+``sriov_max_vi_per_vf`` (default: ``0``)
+  Indicates the maximum number of virtual interrupt resources assignable
+  to a secondary controller. The default ``0`` resolves to
+  ``(sriov_vi_flexible / sriov_max_vfs)``
+
+``sriov_max_vq_per_vf`` (default: ``0``)
+  Indicates the maximum number of virtual queue resources assignable to
+  a secondary controller. The default ``0`` resolves to
+  ``(sriov_vq_flexible / sriov_max_vfs)``
+
+The simplest possible invocation enables the capability to set up one VF
+controller and assign an admin queue, an IO queue, and a MSI-X interrupt.
+
+.. code-block:: console
+
+   -device nvme-subsys,id=subsys0
+   -device nvme,serial=deadbeef,subsys=subsys0,sriov_max_vfs=1,
+    sriov_vq_flexible=2,sriov_vi_flexible=1
+
+The minimum steps required to configure a functional NVMe secondary
+controller are:
+
+  * unbind flexible resources from the primary controller
+
+.. code-block:: console
+
+   nvme virt-mgmt /dev/nvme0 -c 0 -r 1 -a 1 -n 0
+   nvme virt-mgmt /dev/nvme0 -c 0 -r 0 -a 1 -n 0
+
+  * perform a Function Level Reset on the primary controller to actually
+    release the resources
+
+.. code-block:: console
+
+   echo 1 > /sys/bus/pci/devices/0000:01:00.0/reset
+
+  * enable VF
+
+.. code-block:: console
+
+   echo 1 > /sys/bus/pci/devices/0000:01:00.0/sriov_numvfs
+
+  * assign the flexible resources to the VF and set it ONLINE
+
+.. code-block:: console
+
+   nvme virt-mgmt /dev/nvme0 -c 1 -r 1 -a 8 -n 1
+   nvme virt-mgmt /dev/nvme0 -c 1 -r 0 -a 8 -n 2
+   nvme virt-mgmt /dev/nvme0 -c 1 -r 0 -a 9 -n 0
+
+  * bind the NVMe driver to the VF
+
+.. code-block:: console
+
+   echo 0000:01:00.1 > /sys/bus/pci/drivers/nvme/bind

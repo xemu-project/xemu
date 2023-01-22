@@ -12,7 +12,7 @@
 
 #include "qemu/osdep.h"
 #include "libqos/fw_cfg.h"
-#include "libqos/libqtest.h"
+#include "libqtest.h"
 #include "qapi/qmp/qdict.h"
 #include "standard-headers/linux/qemu_fw_cfg.h"
 
@@ -33,6 +33,11 @@ static void test_a_boot_order(const char *machine,
 {
     uint64_t actual;
     QTestState *qts;
+
+    if (machine && !qtest_has_machine(machine)) {
+        g_test_skip("Machine is not available");
+        return;
+    }
 
     qts = qtest_initf("-nodefaults%s%s %s", machine ? " -M " : "",
                       machine ?: "", test_args);

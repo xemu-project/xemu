@@ -34,13 +34,13 @@
 
 /* some important defines:
  *
- * HOST_WORDS_BIGENDIAN : if defined, the host cpu is big endian and
+ * HOST_BIG_ENDIAN : whether the host cpu is big endian and
  * otherwise little endian.
  *
- * TARGET_WORDS_BIGENDIAN : same for target cpu
+ * TARGET_BIG_ENDIAN : same for the target cpu
  */
 
-#if defined(HOST_WORDS_BIGENDIAN) != defined(TARGET_WORDS_BIGENDIAN)
+#if HOST_BIG_ENDIAN != TARGET_BIG_ENDIAN
 #define BSWAP_NEEDED
 #endif
 
@@ -120,7 +120,7 @@ static inline void tswap64s(uint64_t *s)
 /* Target-endianness CPU memory access functions. These fit into the
  * {ld,st}{type}{sign}{size}{endian}_p naming scheme described in bswap.h.
  */
-#if defined(TARGET_WORDS_BIGENDIAN)
+#if TARGET_BIG_ENDIAN
 #define lduw_p(p) lduw_be_p(p)
 #define ldsw_p(p) ldsw_be_p(p)
 #define ldl_p(p) ldl_be_p(p)
@@ -234,15 +234,6 @@ extern const TargetPageBits target_page;
 
 #define TARGET_PAGE_ALIGN(addr) ROUND_UP((addr), TARGET_PAGE_SIZE)
 
-/* Using intptr_t ensures that qemu_*_page_mask is sign-extended even
- * when intptr_t is 32-bit and we are aligning a long long.
- */
-extern uintptr_t qemu_host_page_size;
-extern intptr_t qemu_host_page_mask;
-
-#define HOST_PAGE_ALIGN(addr) ROUND_UP((addr), qemu_host_page_size)
-#define REAL_HOST_PAGE_ALIGN(addr) ROUND_UP((addr), qemu_real_host_page_size)
-
 /* same as PROT_xxx */
 #define PAGE_READ      0x0001
 #define PAGE_WRITE     0x0002
@@ -271,6 +262,12 @@ extern intptr_t qemu_host_page_mask;
 #define PAGE_TARGET_1  0x0200
 #define PAGE_TARGET_2  0x0400
 
+/*
+ * For linux-user, indicates that the page is mapped with the same semantics
+ * in both guest and host.
+ */
+#define PAGE_PASSTHROUGH 0x0800
+
 #if defined(CONFIG_USER_ONLY)
 void page_dump(FILE *f);
 
@@ -280,31 +277,22 @@ int walk_memory_regions(void *, walk_memory_regions_fn);
 
 int page_get_flags(target_ulong address);
 void page_set_flags(target_ulong start, target_ulong end, int flags);
+void page_reset_target_data(target_ulong start, target_ulong end);
 int page_check_range(target_ulong start, target_ulong len, int flags);
-
-/**
- * page_alloc_target_data(address, size)
- * @address: guest virtual address
- * @size: size of data to allocate
- *
- * Allocate @size bytes of out-of-band data to associate with the
- * guest page at @address.  If the page is not mapped, NULL will
- * be returned.  If there is existing data associated with @address,
- * no new memory will be allocated.
- *
- * The memory will be freed when the guest page is deallocated,
- * e.g. with the munmap system call.
- */
-void *page_alloc_target_data(target_ulong address, size_t size);
 
 /**
  * page_get_target_data(address)
  * @address: guest virtual address
  *
- * Return any out-of-bound memory assocated with the guest page
- * at @address, as per page_alloc_target_data.
+ * Return TARGET_PAGE_DATA_SIZE bytes of out-of-band data to associate
+ * with the guest page at @address, allocating it if necessary.  The
+ * caller should already have verified that the address is valid.
+ *
+ * The memory will be freed when the guest page is deallocated,
+ * e.g. with the munmap system call.
  */
-void *page_get_target_data(target_ulong address);
+void *page_get_target_data(target_ulong address)
+    __attribute__((returns_nonnull));
 #endif
 
 CPUArchState *cpu_copy(CPUArchState *env);
@@ -428,25 +416,16 @@ static inline bool tlb_hit(target_ulong tlb_addr, target_ulong addr)
 }
 
 #ifdef CONFIG_TCG
-/* accel/tcg/cpu-exec.c */
-void dump_drift_info(void);
 /* accel/tcg/translate-all.c */
-void dump_exec_info(void);
-void dump_opcount_info(void);
+void dump_exec_info(GString *buf);
 #endif /* CONFIG_TCG */
 
 #endif /* !CONFIG_USER_ONLY */
 
-#ifdef CONFIG_TCG
 /* accel/tcg/cpu-exec.c */
 int cpu_exec(CPUState *cpu);
 void tcg_exec_realizefn(CPUState *cpu, Error **errp);
 void tcg_exec_unrealizefn(CPUState *cpu);
-#endif /* CONFIG_TCG */
-
-/* Returns: 0 on success, -1 on error */
-int cpu_memory_rw_debug(CPUState *cpu, target_ulong addr,
-                        void *ptr, target_ulong len, bool is_write);
 
 /**
  * cpu_set_cpustate_pointers(cpu)

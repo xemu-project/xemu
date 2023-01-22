@@ -20,7 +20,7 @@
 #include "qemu/osdep.h"
 
 #include "qemu.h"
-//#include "qemu-common.h"
+#include "user-internals.h"
 #include "uname.h"
 
 /* return highest utsname machine name for emulated instruction set
@@ -28,7 +28,7 @@
  * NB: the default emulated CPU ("any") might not match any existing CPU, e.g.
  * on ARM it has all features turned on, so there is no perfect arch string to
  * return here */
-const char *cpu_to_uname_machine(void *cpu_env)
+const char *cpu_to_uname_machine(CPUArchState *cpu_env)
 {
 #if defined(TARGET_ARM) && !defined(TARGET_AARCH64)
 
@@ -40,7 +40,7 @@ const char *cpu_to_uname_machine(void *cpu_env)
 
     /* in theory, endianness is configurable on some ARM CPUs, but this isn't
      * used in user mode emulation */
-#ifdef TARGET_WORDS_BIGENDIAN
+#if TARGET_BIG_ENDIAN
 #define utsname_suffix "b"
 #else
 #define utsname_suffix "l"
@@ -54,7 +54,7 @@ const char *cpu_to_uname_machine(void *cpu_env)
     return "armv5te" utsname_suffix;
 #elif defined(TARGET_I386) && !defined(TARGET_X86_64)
     /* see arch/x86/kernel/cpu/bugs.c: check_bugs(), 386, 486, 586, 686 */
-    CPUState *cpu = env_cpu((CPUX86State *)cpu_env);
+    CPUState *cpu = env_cpu(cpu_env);
     int family = object_property_get_int(OBJECT(cpu), "family", NULL);
     if (family == 4) {
         return "i486";

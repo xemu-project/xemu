@@ -14,8 +14,8 @@
 # Allow client connections for VNC, Spice and socket based
 # character devices to be passed in to QEMU via SCM_RIGHTS.
 #
-# @protocol: protocol name. Valid names are "vnc", "spice" or the
-#            name of a character device (eg. from -chardev id=XXXX)
+# @protocol: protocol name. Valid names are "vnc", "spice", "@dbus-display" or
+#            the name of a character device (eg. from -chardev id=XXXX)
 #
 # @fdname: file descriptor name previously passed via 'getfd' command
 #
@@ -136,7 +136,7 @@
 #
 # Stop all guest VCPU execution.
 #
-# Since:  0.14
+# Since: 0.14
 #
 # Notes: This function will succeed even if the guest is already in the stopped
 #        state.  In "inmigrate" state, it will ensure that the guest
@@ -156,9 +156,9 @@
 #
 # Resume guest VCPU execution.
 #
-# Since:  0.14
+# Since: 0.14
 #
-# Returns:  If successful, nothing
+# Returns: If successful, nothing
 #
 # Notes: This command will succeed if the guest is currently running.  It
 #        will also succeed if the guest is in the "inmigrate" state; in
@@ -185,7 +185,10 @@
 # available during the preconfig state (i.e. when the --preconfig command
 # line option was in use).
 #
-# Since 3.0
+# Features:
+# @unstable: This command is experimental.
+#
+# Since: 3.0
 #
 # Returns: nothing
 #
@@ -195,7 +198,8 @@
 # <- { "return": {} }
 #
 ##
-{ 'command': 'x-exit-preconfig', 'allow-preconfig': true }
+{ 'command': 'x-exit-preconfig', 'allow-preconfig': true,
+  'features': [ 'unstable' ] }
 
 ##
 # @human-monitor-command:
@@ -523,3 +527,60 @@
  'data': { '*option': 'str' },
  'returns': ['CommandLineOptionInfo'],
  'allow-preconfig': true }
+
+##
+# @RTC_CHANGE:
+#
+# Emitted when the guest changes the RTC time.
+#
+# @offset: offset in seconds between base RTC clock (as specified
+#          by -rtc base), and new RTC clock value
+#
+# @qom-path: path to the RTC object in the QOM tree
+#
+# Note: This event is rate-limited.
+#       It is not guaranteed that the RTC in the system implements
+#       this event, or even that the system has an RTC at all.
+#
+# Since: 0.13
+#
+# Example:
+#
+# <-   { "event": "RTC_CHANGE",
+#        "data": { "offset": 78 },
+#        "timestamp": { "seconds": 1267020223, "microseconds": 435656 } }
+#
+##
+{ 'event': 'RTC_CHANGE',
+  'data': { 'offset': 'int', 'qom-path': 'str' } }
+
+##
+# @VFU_CLIENT_HANGUP:
+#
+# Emitted when the client of a TYPE_VFIO_USER_SERVER closes the
+# communication channel
+#
+# @vfu-id: ID of the TYPE_VFIO_USER_SERVER object. It is the last component
+#          of @vfu-qom-path referenced below
+#
+# @vfu-qom-path: path to the TYPE_VFIO_USER_SERVER object in the QOM tree
+#
+# @dev-id: ID of attached PCI device
+#
+# @dev-qom-path: path to attached PCI device in the QOM tree
+#
+# Since: 7.1
+#
+# Example:
+#
+# <- { "event": "VFU_CLIENT_HANGUP",
+#      "data": { "vfu-id": "vfu1",
+#                "vfu-qom-path": "/objects/vfu1",
+#                "dev-id": "sas1",
+#                "dev-qom-path": "/machine/peripheral/sas1" },
+#      "timestamp": { "seconds": 1265044230, "microseconds": 450486 } }
+#
+##
+{ 'event': 'VFU_CLIENT_HANGUP',
+  'data': { 'vfu-id': 'str', 'vfu-qom-path': 'str',
+            'dev-id': 'str', 'dev-qom-path': 'str' } }

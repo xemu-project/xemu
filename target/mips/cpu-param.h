@@ -5,14 +5,14 @@
  */
 
 #ifndef MIPS_CPU_PARAM_H
-#define MIPS_CPU_PARAM_H 1
+#define MIPS_CPU_PARAM_H
 
 #ifdef TARGET_MIPS64
 # define TARGET_LONG_BITS 64
 #else
 # define TARGET_LONG_BITS 32
 #endif
-#ifdef TARGET_MIPS64
+#ifdef TARGET_ABI_MIPSN64
 #define TARGET_PHYS_ADDR_SPACE_BITS 48
 #define TARGET_VIRT_ADDR_SPACE_BITS 48
 #else

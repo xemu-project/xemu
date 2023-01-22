@@ -35,7 +35,7 @@ union fpr_t {
  *define FP_ENDIAN_IDX to access the same location
  * in the fpr_t union regardless of the host endianness
  */
-#if defined(HOST_WORDS_BIGENDIAN)
+#if HOST_BIG_ENDIAN
 #  define FP_ENDIAN_IDX 1
 #else
 #  define FP_ENDIAN_IDX 0
@@ -524,8 +524,7 @@ struct TCState {
 };
 
 struct MIPSITUState;
-typedef struct CPUMIPSState CPUMIPSState;
-struct CPUMIPSState {
+typedef struct CPUArchState {
     TCState active_tc;
     CPUMIPSFPUContext active_fpu;
 
@@ -1006,6 +1005,7 @@ struct CPUMIPSState {
  */
     uint64_t CP0_WatchHi[8];
 #define CP0WH_ASID 16
+#define CP0WH_M    31
 /*
  * CP0 Register 20
  */
@@ -1077,7 +1077,7 @@ struct CPUMIPSState {
 #define EXCP_INST_NOTAVAIL 0x2 /* No valid instruction word for BadInstr */
     uint32_t hflags;    /* CPU State */
     /* TMASK defines different execution modes */
-#define MIPS_HFLAG_TMASK  0x1F5807FF
+#define MIPS_HFLAG_TMASK  0x3F5807FF
 #define MIPS_HFLAG_MODE   0x00007 /* execution modes                    */
     /*
      * The KSU flags must be the lowest bits in hflags. The flag order
@@ -1161,18 +1161,17 @@ struct CPUMIPSState {
     QEMUTimer *timer; /* Internal timer */
     target_ulong exception_base; /* ExceptionBase input to the core */
     uint64_t cp0_count_ns; /* CP0_Count clock period (in nanoseconds) */
-};
+} CPUMIPSState;
 
 /**
  * MIPSCPU:
  * @env: #CPUMIPSState
  * @clock: this CPU input clock (may be connected
  *         to an output clock from another device).
- * @cp0_count_rate: rate at which the coprocessor 0 counter increments
  *
  * A MIPS CPU.
  */
-struct MIPSCPU {
+struct ArchCPU {
     /*< private >*/
     CPUState parent_obj;
     /*< public >*/
@@ -1180,20 +1179,11 @@ struct MIPSCPU {
     Clock *clock;
     CPUNegativeOffsetState neg;
     CPUMIPSState env;
-    /*
-     * The Count register acts as a timer, incrementing at a constant rate,
-     * whether or not an instruction is executed, retired, or any forward
-     * progress is made through the pipeline. The rate at which the counter
-     * increments is implementation dependent, and is a function of the
-     * pipeline clock of the processor, not the issue width of the processor.
-     */
-    unsigned cp0_count_rate;
 };
 
 
 void mips_cpu_list(void);
 
-#define cpu_signal_handler cpu_mips_signal_handler
 #define cpu_list mips_cpu_list
 
 extern void cpu_wrdsp(uint32_t rs, uint32_t mask_num, CPUMIPSState *env);
@@ -1218,9 +1208,6 @@ static inline int cpu_mmu_index(CPUMIPSState *env, bool ifetch)
 {
     return hflags_mmu_index(env->hflags);
 }
-
-typedef CPUMIPSState CPUArchState;
-typedef MIPSCPU ArchCPU;
 
 #include "exec/cpu-all.h"
 
@@ -1265,8 +1252,9 @@ enum {
     EXCP_MSAFPE,
     EXCP_TLBXI,
     EXCP_TLBRI,
+    EXCP_SEMIHOST,
 
-    EXCP_LAST = EXCP_TLBRI,
+    EXCP_LAST = EXCP_SEMIHOST,
 };
 
 /*
@@ -1276,8 +1264,6 @@ enum {
  * cleared when VPE goes from active to inactive.
  */
 #define CPU_INTERRUPT_WAKE CPU_INTERRUPT_TGT_INT_0
-
-int cpu_mips_signal_handler(int host_signum, void *pinfo, void *puc);
 
 #define MIPS_CPU_TYPE_SUFFIX "-" TYPE_MIPS_CPU
 #define MIPS_CPU_TYPE_NAME(model) model MIPS_CPU_TYPE_SUFFIX

@@ -18,12 +18,14 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/log.h"
 #include "cpu.h"
 #include "exec/exec-all.h"
 #include "exec/helper-proto.h"
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
 #include "mmu-book3s-v3.h"
+#include "hw/ppc/ppc.h"
 
 #include "helper_regs.h"
 
@@ -72,7 +74,7 @@ void helper_hfscr_facility_check(CPUPPCState *env, uint32_t bit,
                                  const char *caller, uint32_t cause)
 {
 #ifdef TARGET_PPC64
-    if ((env->msr_mask & MSR_HVB) && !msr_hv &&
+    if ((env->msr_mask & MSR_HVB) && !FIELD_EX64(env->msr, MSR, HV) &&
                                      !(env->spr[SPR_HFSCR] & (1UL << bit))) {
         raise_hv_fu_exception(env, bit, caller, cause, GETPC());
     }
@@ -162,7 +164,7 @@ target_ulong helper_load_dpdes(CPUPPCState *env)
     helper_hfscr_facility_check(env, HFSCR_MSGP, "load DPDES", HFSCR_IC_MSGP);
 
     /* TODO: TCG supports only one thread */
-    if (env->pending_interrupts & (1 << PPC_INTERRUPT_DOORBELL)) {
+    if (env->pending_interrupts & PPC_INTERRUPT_DOORBELL) {
         dpdes = 1;
     }
 
@@ -172,7 +174,6 @@ target_ulong helper_load_dpdes(CPUPPCState *env)
 void helper_store_dpdes(CPUPPCState *env, target_ulong val)
 {
     PowerPCCPU *cpu = env_archcpu(env);
-    CPUState *cs = CPU(cpu);
 
     helper_hfscr_facility_check(env, HFSCR_MSGP, "store DPDES", HFSCR_IC_MSGP);
 
@@ -183,12 +184,7 @@ void helper_store_dpdes(CPUPPCState *env, target_ulong val)
         return;
     }
 
-    if (val & 0x1) {
-        env->pending_interrupts |= 1 << PPC_INTERRUPT_DOORBELL;
-        cpu_interrupt(cs, CPU_INTERRUPT_HARD);
-    } else {
-        env->pending_interrupts &= ~(1 << PPC_INTERRUPT_DOORBELL);
-    }
+    ppc_set_irq(cpu, PPC_INTERRUPT_DOORBELL, val & 0x1);
 }
 #endif /* defined(TARGET_PPC64) */
 
@@ -211,30 +207,6 @@ void helper_store_lpidr(CPUPPCState *env, target_ulong val)
     tlb_flush(env_cpu(env));
 }
 
-void helper_store_hid0_601(CPUPPCState *env, target_ulong val)
-{
-    target_ulong hid0;
-
-    hid0 = env->spr[SPR_HID0];
-    env->spr[SPR_HID0] = (uint32_t)val;
-
-    if ((val ^ hid0) & 0x00000008) {
-        /* Change current endianness */
-        hreg_compute_hflags(env);
-        qemu_log("%s: set endianness to %c => %08x\n", __func__,
-                 val & 0x8 ? 'l' : 'b', env->hflags);
-    }
-}
-
-void helper_store_403_pbr(CPUPPCState *env, uint32_t num, target_ulong value)
-{
-    if (likely(env->pb[num] != value)) {
-        env->pb[num] = value;
-        /* Should be optimized */
-        tlb_flush(env_cpu(env));
-    }
-}
-
 void helper_store_40x_dbcr0(CPUPPCState *env, target_ulong val)
 {
     /* Bits 26 & 27 affect single-stepping. */
@@ -248,31 +220,6 @@ void helper_store_40x_sler(CPUPPCState *env, target_ulong val)
     store_40x_sler(env, val);
 }
 #endif
-/*****************************************************************************/
-/* PowerPC 601 specific instructions (POWER bridge) */
-
-target_ulong helper_clcs(CPUPPCState *env, uint32_t arg)
-{
-    switch (arg) {
-    case 0x0CUL:
-        /* Instruction cache line size */
-        return env->icache_line_size;
-    case 0x0DUL:
-        /* Data cache line size */
-        return env->dcache_line_size;
-    case 0x0EUL:
-        /* Minimum cache line size */
-        return (env->icache_line_size < env->dcache_line_size) ?
-            env->icache_line_size : env->dcache_line_size;
-    case 0x0FUL:
-        /* Maximum cache line size */
-        return (env->icache_line_size > env->dcache_line_size) ?
-            env->icache_line_size : env->dcache_line_size;
-    default:
-        /* Undefined */
-        return 0;
-    }
-}
 
 /*****************************************************************************/
 /* Special registers manipulation */

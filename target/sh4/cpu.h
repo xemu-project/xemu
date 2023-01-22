@@ -22,6 +22,7 @@
 
 #include "cpu-qom.h"
 #include "exec/cpu-defs.h"
+#include "qemu/cpu-float.h"
 
 /* CPU Subtypes */
 #define SH_CPU_SH7750  (1 << 0)
@@ -77,25 +78,33 @@
 #define FPSCR_RM_NEAREST       (0 << 0)
 #define FPSCR_RM_ZERO          (1 << 0)
 
-#define DELAY_SLOT_MASK        0x7
-#define DELAY_SLOT             (1 << 0)
-#define DELAY_SLOT_CONDITIONAL (1 << 1)
-#define DELAY_SLOT_RTE         (1 << 2)
+#define TB_FLAG_DELAY_SLOT       (1 << 0)
+#define TB_FLAG_DELAY_SLOT_COND  (1 << 1)
+#define TB_FLAG_DELAY_SLOT_RTE   (1 << 2)
+#define TB_FLAG_PENDING_MOVCA    (1 << 3)
+#define TB_FLAG_GUSA_SHIFT       4                      /* [11:4] */
+#define TB_FLAG_GUSA_EXCLUSIVE   (1 << 12)
+#define TB_FLAG_UNALIGN          (1 << 13)
+#define TB_FLAG_SR_FD            (1 << SR_FD)           /* 15 */
+#define TB_FLAG_FPSCR_PR         FPSCR_PR               /* 19 */
+#define TB_FLAG_FPSCR_SZ         FPSCR_SZ               /* 20 */
+#define TB_FLAG_FPSCR_FR         FPSCR_FR               /* 21 */
+#define TB_FLAG_SR_RB            (1 << SR_RB)           /* 29 */
+#define TB_FLAG_SR_MD            (1 << SR_MD)           /* 30 */
 
-#define TB_FLAG_PENDING_MOVCA  (1 << 3)
-
-#define GUSA_SHIFT             4
-#ifdef CONFIG_USER_ONLY
-#define GUSA_EXCLUSIVE         (1 << 12)
-#define GUSA_MASK              ((0xff << GUSA_SHIFT) | GUSA_EXCLUSIVE)
-#else
-/* Provide dummy versions of the above to allow tests against tbflags
-   to be elided while avoiding ifdefs.  */
-#define GUSA_EXCLUSIVE         0
-#define GUSA_MASK              0
-#endif
-
-#define TB_FLAG_ENVFLAGS_MASK  (DELAY_SLOT_MASK | GUSA_MASK)
+#define TB_FLAG_DELAY_SLOT_MASK  (TB_FLAG_DELAY_SLOT |       \
+                                  TB_FLAG_DELAY_SLOT_COND |  \
+                                  TB_FLAG_DELAY_SLOT_RTE)
+#define TB_FLAG_GUSA_MASK        ((0xff << TB_FLAG_GUSA_SHIFT) | \
+                                  TB_FLAG_GUSA_EXCLUSIVE)
+#define TB_FLAG_FPSCR_MASK       (TB_FLAG_FPSCR_PR | \
+                                  TB_FLAG_FPSCR_SZ | \
+                                  TB_FLAG_FPSCR_FR)
+#define TB_FLAG_SR_MASK          (TB_FLAG_SR_FD | \
+                                  TB_FLAG_SR_RB | \
+                                  TB_FLAG_SR_MD)
+#define TB_FLAG_ENVFLAGS_MASK    (TB_FLAG_DELAY_SLOT_MASK | \
+                                  TB_FLAG_GUSA_MASK)
 
 typedef struct tlb_t {
     uint32_t vpn;		/* virtual page number */
@@ -129,7 +138,7 @@ typedef struct memory_content {
     struct memory_content *next;
 } memory_content;
 
-typedef struct CPUSH4State {
+typedef struct CPUArchState {
     uint32_t flags;		/* general execution flags */
     uint32_t gregs[24];		/* general registers */
     float32 fregs[32];		/* floating point registers */
@@ -194,7 +203,7 @@ typedef struct CPUSH4State {
  *
  * A SuperH CPU.
  */
-struct SuperHCPU {
+struct ArchCPU {
     /*< private >*/
     CPUState parent_obj;
     /*< public >*/
@@ -204,25 +213,23 @@ struct SuperHCPU {
 };
 
 
-void superh_cpu_do_interrupt(CPUState *cpu);
-bool superh_cpu_exec_interrupt(CPUState *cpu, int int_req);
 void superh_cpu_dump_state(CPUState *cpu, FILE *f, int flags);
 hwaddr superh_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
 int superh_cpu_gdb_read_register(CPUState *cpu, GByteArray *buf, int reg);
 int superh_cpu_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg);
-void superh_cpu_do_unaligned_access(CPUState *cpu, vaddr addr,
-                                    MMUAccessType access_type,
-                                    int mmu_idx, uintptr_t retaddr);
+G_NORETURN void superh_cpu_do_unaligned_access(CPUState *cpu, vaddr addr,
+                                               MMUAccessType access_type, int mmu_idx,
+                                               uintptr_t retaddr);
 
 void sh4_translate_init(void);
-int cpu_sh4_signal_handler(int host_signum, void *pinfo,
-                           void *puc);
+void sh4_cpu_list(void);
+
+#if !defined(CONFIG_USER_ONLY)
 bool superh_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                          MMUAccessType access_type, int mmu_idx,
                          bool probe, uintptr_t retaddr);
-
-void sh4_cpu_list(void);
-#if !defined(CONFIG_USER_ONLY)
+void superh_cpu_do_interrupt(CPUState *cpu);
+bool superh_cpu_exec_interrupt(CPUState *cpu, int int_req);
 void cpu_sh4_invalidate_tlb(CPUSH4State *s);
 uint32_t cpu_sh4_read_mmaped_itlb_addr(CPUSH4State *s,
                                        hwaddr addr);
@@ -250,7 +257,6 @@ void cpu_load_tlb(CPUSH4State * env);
 #define SUPERH_CPU_TYPE_NAME(model) model SUPERH_CPU_TYPE_SUFFIX
 #define CPU_RESOLVING_TYPE TYPE_SUPERH_CPU
 
-#define cpu_signal_handler cpu_sh4_signal_handler
 #define cpu_list sh4_cpu_list
 
 /* MMU modes definitions */
@@ -259,15 +265,12 @@ static inline int cpu_mmu_index (CPUSH4State *env, bool ifetch)
 {
     /* The instruction in a RTE delay slot is fetched in privileged
        mode, but executed in user mode.  */
-    if (ifetch && (env->flags & DELAY_SLOT_RTE)) {
+    if (ifetch && (env->flags & TB_FLAG_DELAY_SLOT_RTE)) {
         return 0;
     } else {
         return (env->sr & (1u << SR_MD)) == 0 ? 1 : 0;
     }
 }
-
-typedef CPUSH4State CPUArchState;
-typedef SuperHCPU ArchCPU;
 
 #include "exec/cpu-all.h"
 
@@ -370,12 +373,14 @@ static inline void cpu_get_tb_cpu_state(CPUSH4State *env, target_ulong *pc,
 {
     *pc = env->pc;
     /* For a gUSA region, notice the end of the region.  */
-    *cs_base = env->flags & GUSA_MASK ? env->gregs[0] : 0;
-    *flags = env->flags /* TB_FLAG_ENVFLAGS_MASK: bits 0-2, 4-12 */
-            | (env->fpscr & (FPSCR_FR | FPSCR_SZ | FPSCR_PR))  /* Bits 19-21 */
-            | (env->sr & ((1u << SR_MD) | (1u << SR_RB)))      /* Bits 29-30 */
-            | (env->sr & (1u << SR_FD))                        /* Bit 15 */
+    *cs_base = env->flags & TB_FLAG_GUSA_MASK ? env->gregs[0] : 0;
+    *flags = env->flags
+            | (env->fpscr & TB_FLAG_FPSCR_MASK)
+            | (env->sr & TB_FLAG_SR_MASK)
             | (env->movcal_backup ? TB_FLAG_PENDING_MOVCA : 0); /* Bit 3 */
+#ifdef CONFIG_USER_ONLY
+    *flags |= TB_FLAG_UNALIGN * !env_cpu(env)->prctl_unalign_sigbus;
+#endif
 }
 
 #endif /* SH4_CPU_H */

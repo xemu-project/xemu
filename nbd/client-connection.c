@@ -23,6 +23,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "trace.h"
 
 #include "block/nbd.h"
 
@@ -33,22 +34,25 @@ struct NBDClientConnection {
     /* Initialization constants, never change */
     SocketAddress *saddr; /* address to connect to */
     QCryptoTLSCreds *tlscreds;
+    char *tlshostname;
     NBDExportInfo initial_info;
     bool do_negotiation;
     bool do_retry;
 
     QemuMutex mutex;
 
-    /*
-     * @sioc and @err represent a connection attempt.  While running
-     * is true, they are only used by the connection thread, and mutex
-     * locking is not needed.  Once the thread finishes,
-     * nbd_co_establish_connection then steals these pointers while
-     * under the mutex.
-     */
     NBDExportInfo updated_info;
+    /*
+     * @sioc represents a successful result. While thread is running, @sioc is
+     * used only by thread and not protected by mutex. When thread is not
+     * running, @sioc is stolen by nbd_co_establish_connection() under mutex.
+     */
     QIOChannelSocket *sioc;
     QIOChannel *ioc;
+    /*
+     * @err represents previous attempt. It may be copied by
+     * nbd_co_establish_connection() when it reports failure.
+     */
     Error *err;
 
     /* All further fields are accessed only under mutex */
@@ -75,7 +79,8 @@ NBDClientConnection *nbd_client_connection_new(const SocketAddress *saddr,
                                                bool do_negotiation,
                                                const char *export_name,
                                                const char *x_dirty_bitmap,
-                                               QCryptoTLSCreds *tlscreds)
+                                               QCryptoTLSCreds *tlscreds,
+                                               const char *tlshostname)
 {
     NBDClientConnection *conn = g_new(NBDClientConnection, 1);
 
@@ -83,6 +88,7 @@ NBDClientConnection *nbd_client_connection_new(const SocketAddress *saddr,
     *conn = (NBDClientConnection) {
         .saddr = QAPI_CLONE(SocketAddress, saddr),
         .tlscreds = tlscreds,
+        .tlshostname = g_strdup(tlshostname),
         .do_negotiation = do_negotiation,
 
         .initial_info.request_sizes = true,
@@ -105,6 +111,7 @@ static void nbd_client_connection_do_free(NBDClientConnection *conn)
     }
     error_free(conn->err);
     qapi_free_SocketAddress(conn->saddr);
+    g_free(conn->tlshostname);
     object_unref(OBJECT(conn->tlscreds));
     g_free(conn->initial_info.x_dirty_bitmap);
     g_free(conn->initial_info.name);
@@ -118,6 +125,7 @@ static void nbd_client_connection_do_free(NBDClientConnection *conn)
  */
 static int nbd_connect(QIOChannelSocket *sioc, SocketAddress *addr,
                        NBDExportInfo *info, QCryptoTLSCreds *tlscreds,
+                       const char *tlshostname,
                        QIOChannel **outioc, Error **errp)
 {
     int ret;
@@ -138,7 +146,7 @@ static int nbd_connect(QIOChannelSocket *sioc, SocketAddress *addr,
     }
 
     ret = nbd_receive_negotiate(NULL, QIO_CHANNEL(sioc), tlscreds,
-                                tlscreds ? addr->u.inet.host : NULL,
+                                tlshostname,
                                 outioc, info, errp);
     if (ret < 0) {
         /*
@@ -170,18 +178,19 @@ static void *connect_thread_func(void *opaque)
 
     qemu_mutex_lock(&conn->mutex);
     while (!conn->detached) {
+        Error *local_err = NULL;
+
         assert(!conn->sioc);
         conn->sioc = qio_channel_socket_new();
 
         qemu_mutex_unlock(&conn->mutex);
 
-        error_free(conn->err);
-        conn->err = NULL;
         conn->updated_info = conn->initial_info;
 
         ret = nbd_connect(conn->sioc, conn->saddr,
                           conn->do_negotiation ? &conn->updated_info : NULL,
-                          conn->tlscreds, &conn->ioc, &conn->err);
+                          conn->tlscreds, conn->tlshostname,
+                          &conn->ioc, &local_err);
 
         /*
          * conn->updated_info will finally be returned to the user. Clear the
@@ -194,10 +203,15 @@ static void *connect_thread_func(void *opaque)
 
         qemu_mutex_lock(&conn->mutex);
 
+        error_free(conn->err);
+        conn->err = NULL;
+        error_propagate(&conn->err, local_err);
+
         if (ret < 0) {
             object_unref(OBJECT(conn->sioc));
             conn->sioc = NULL;
             if (conn->do_retry && !conn->detached) {
+                trace_nbd_connect_thread_sleep(timeout);
                 qemu_mutex_unlock(&conn->mutex);
 
                 sleep(timeout);
@@ -311,13 +325,17 @@ nbd_co_establish_connection(NBDClientConnection *conn, NBDExportInfo *info,
             }
 
             conn->running = true;
-            error_free(conn->err);
-            conn->err = NULL;
             qemu_thread_create(&thread, "nbd-connect",
                                connect_thread_func, conn, QEMU_THREAD_DETACHED);
         }
 
         if (!blocking) {
+            if (conn->err) {
+                error_propagate(errp, error_copy(conn->err));
+            } else {
+                error_setg(errp, "No connection at the moment");
+            }
+
             return NULL;
         }
 
@@ -338,14 +356,30 @@ nbd_co_establish_connection(NBDClientConnection *conn, NBDExportInfo *info,
              * attempt as failed, but leave the connection thread running,
              * to reuse it for the next connection attempt.
              */
-            error_setg(errp, "Connection attempt cancelled by other operation");
+            if (conn->err) {
+                error_propagate(errp, error_copy(conn->err));
+            } else {
+                /*
+                 * The only possible case here is cancelling by open_timer
+                 * during nbd_open(). So, the error message is for that case.
+                 * If we have more use cases, we can refactor
+                 * nbd_co_establish_connection_cancel() to take an additional
+                 * parameter cancel_reason, that would be passed than to the
+                 * caller of cancelled nbd_co_establish_connection().
+                 */
+                error_setg(errp, "Connection attempt cancelled by timeout");
+            }
+
             return NULL;
         } else {
-            error_propagate(errp, conn->err);
-            conn->err = NULL;
-            if (!conn->sioc) {
+            /* Thread finished. There must be either error or sioc */
+            assert(!conn->err != !conn->sioc);
+
+            if (conn->err) {
+                error_propagate(errp, error_copy(conn->err));
                 return NULL;
             }
+
             if (conn->do_negotiation) {
                 memcpy(info, &conn->updated_info, sizeof(*info));
                 if (conn->ioc) {

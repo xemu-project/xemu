@@ -20,6 +20,7 @@
 #include "qemu/osdep.h"
 #include "qemu/units.h"
 
+#include "elf.h"
 #include "hw/boards.h"
 #include "hw/char/serial.h"
 #include "hw/ide/pci.h"
@@ -33,12 +34,14 @@
 #include "hw/qdev-properties.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
+#include "qemu/guest-random.h"
 #include "qemu/log.h"
 #include "chardev/char.h"
 #include "sysemu/device_tree.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/qtest.h"
 #include "sysemu/runstate.h"
+#include "sysemu/reset.h"
 
 #include <libfdt.h>
 #include "qom/object.h"
@@ -47,6 +50,15 @@
 typedef struct BostonState BostonState;
 DECLARE_INSTANCE_CHECKER(BostonState, BOSTON,
                          TYPE_BOSTON)
+
+#define FDT_IRQ_TYPE_NONE       0
+#define FDT_IRQ_TYPE_LEVEL_HIGH 4
+#define FDT_GIC_SHARED          0
+#define FDT_GIC_LOCAL           1
+#define FDT_BOSTON_CLK_SYS      1
+#define FDT_BOSTON_CLK_CPU      2
+#define FDT_PCI_IRQ_MAP_PINS    4
+#define FDT_PCI_IRQ_MAP_DESCS   6
 
 struct BostonState {
     SysBusDevice parent_obj;
@@ -62,6 +74,44 @@ struct BostonState {
 
     hwaddr kernel_entry;
     hwaddr fdt_base;
+};
+
+enum {
+    BOSTON_LOWDDR,
+    BOSTON_PCIE0,
+    BOSTON_PCIE1,
+    BOSTON_PCIE2,
+    BOSTON_PCIE2_MMIO,
+    BOSTON_CM,
+    BOSTON_GIC,
+    BOSTON_CDMM,
+    BOSTON_CPC,
+    BOSTON_PLATREG,
+    BOSTON_UART,
+    BOSTON_LCD,
+    BOSTON_FLASH,
+    BOSTON_PCIE1_MMIO,
+    BOSTON_PCIE0_MMIO,
+    BOSTON_HIGHDDR,
+};
+
+static const MemMapEntry boston_memmap[] = {
+    [BOSTON_LOWDDR] =     {        0x0,    0x10000000 },
+    [BOSTON_PCIE0] =      { 0x10000000,     0x2000000 },
+    [BOSTON_PCIE1] =      { 0x12000000,     0x2000000 },
+    [BOSTON_PCIE2] =      { 0x14000000,     0x2000000 },
+    [BOSTON_PCIE2_MMIO] = { 0x16000000,      0x100000 },
+    [BOSTON_CM] =         { 0x16100000,       0x20000 },
+    [BOSTON_GIC] =        { 0x16120000,       0x20000 },
+    [BOSTON_CDMM] =       { 0x16140000,        0x8000 },
+    [BOSTON_CPC] =        { 0x16200000,        0x8000 },
+    [BOSTON_PLATREG] =    { 0x17ffd000,        0x1000 },
+    [BOSTON_UART] =       { 0x17ffe000,          0x20 },
+    [BOSTON_LCD] =        { 0x17fff000,           0x8 },
+    [BOSTON_FLASH] =      { 0x18000000,     0x8000000 },
+    [BOSTON_PCIE1_MMIO] = { 0x20000000,    0x20000000 },
+    [BOSTON_PCIE0_MMIO] = { 0x40000000,    0x40000000 },
+    [BOSTON_HIGHDDR] =    { 0x80000000,           0x0 },
 };
 
 enum boston_plat_reg {
@@ -275,24 +325,24 @@ type_init(boston_register_types)
 
 static void gen_firmware(uint32_t *p, hwaddr kernel_entry, hwaddr fdt_addr)
 {
-    const uint32_t cm_base = 0x16100000;
-    const uint32_t gic_base = 0x16120000;
-    const uint32_t cpc_base = 0x16200000;
+    uint64_t regaddr;
 
     /* Move CM GCRs */
-    bl_gen_write_ulong(&p,
-                       cpu_mips_phys_to_kseg1(NULL, GCR_BASE_ADDR + GCR_BASE_OFS),
-                       cm_base);
+    regaddr = cpu_mips_phys_to_kseg1(NULL, GCR_BASE_ADDR + GCR_BASE_OFS),
+    bl_gen_write_ulong(&p, regaddr,
+                       boston_memmap[BOSTON_CM].base);
 
     /* Move & enable GIC GCRs */
-    bl_gen_write_ulong(&p,
-                       cpu_mips_phys_to_kseg1(NULL, cm_base + GCR_GIC_BASE_OFS),
-                       gic_base | GCR_GIC_BASE_GICEN_MSK);
+    regaddr = cpu_mips_phys_to_kseg1(NULL, boston_memmap[BOSTON_CM].base
+                                           + GCR_GIC_BASE_OFS),
+    bl_gen_write_ulong(&p, regaddr,
+                       boston_memmap[BOSTON_GIC].base | GCR_GIC_BASE_GICEN_MSK);
 
     /* Move & enable CPC GCRs */
-    bl_gen_write_ulong(&p,
-                       cpu_mips_phys_to_kseg1(NULL, cm_base + GCR_CPC_BASE_OFS),
-                       cpc_base | GCR_CPC_BASE_CPCEN_MSK);
+    regaddr = cpu_mips_phys_to_kseg1(NULL, boston_memmap[BOSTON_CM].base
+                                           + GCR_CPC_BASE_OFS),
+    bl_gen_write_ulong(&p, regaddr,
+                       boston_memmap[BOSTON_CPC].base | GCR_CPC_BASE_CPCEN_MSK);
 
     /*
      * Setup argument registers to follow the UHI boot protocol:
@@ -302,7 +352,10 @@ static void gen_firmware(uint32_t *p, hwaddr kernel_entry, hwaddr fdt_addr)
      * a2/$6 = 0
      * a3/$7 = 0
      */
-    bl_gen_jump_kernel(&p, 0, (int32_t)-2, fdt_addr, 0, 0, kernel_entry);
+    bl_gen_jump_kernel(&p,
+                       true, 0, true, (int32_t)-2,
+                       true, fdt_addr, true, 0, true, 0,
+                       kernel_entry);
 }
 
 static const void *boston_fdt_filter(void *opaque, const void *fdt_orig,
@@ -315,12 +368,16 @@ static const void *boston_fdt_filter(void *opaque, const void *fdt_orig,
     size_t ram_low_sz, ram_high_sz;
     size_t fdt_sz = fdt_totalsize(fdt_orig) * 2;
     g_autofree void *fdt = g_malloc0(fdt_sz);
+    uint8_t rng_seed[32];
 
     err = fdt_open_into(fdt_orig, fdt, fdt_sz);
     if (err) {
         fprintf(stderr, "unable to open FDT\n");
         return NULL;
     }
+
+    qemu_guest_getrandom_nofail(rng_seed, sizeof(rng_seed));
+    qemu_fdt_setprop(fdt, "/chosen", "rng-seed", rng_seed, sizeof(rng_seed));
 
     cmdline = (machine->kernel_cmdline && machine->kernel_cmdline[0])
             ? machine->kernel_cmdline : " ";
@@ -333,8 +390,9 @@ static const void *boston_fdt_filter(void *opaque, const void *fdt_orig,
     ram_low_sz = MIN(256 * MiB, machine->ram_size);
     ram_high_sz = machine->ram_size - ram_low_sz;
     qemu_fdt_setprop_sized_cells(fdt, "/memory@0", "reg",
-                                 1, 0x00000000, 1, ram_low_sz,
-                                 1, 0x90000000, 1, ram_high_sz);
+                        1, boston_memmap[BOSTON_LOWDDR].base, 1, ram_low_sz,
+                        1, boston_memmap[BOSTON_HIGHDDR].base + ram_low_sz,
+                        1, ram_high_sz);
 
     fdt = g_realloc(fdt, fdt_totalsize(fdt));
     qemu_fdt_dumpdtb(fdt, fdt_sz);
@@ -370,7 +428,7 @@ static inline XilinxPCIEHost *
 xilinx_pcie_init(MemoryRegion *sys_mem, uint32_t bus_nr,
                  hwaddr cfg_base, uint64_t cfg_size,
                  hwaddr mmio_base, uint64_t mmio_size,
-                 qemu_irq irq, bool link_up)
+                 qemu_irq irq)
 {
     DeviceState *dev;
     MemoryRegion *cfg, *mmio;
@@ -382,7 +440,6 @@ xilinx_pcie_init(MemoryRegion *sys_mem, uint32_t bus_nr,
     qdev_prop_set_uint64(dev, "cfg_size", cfg_size);
     qdev_prop_set_uint64(dev, "mmio_base", mmio_base);
     qdev_prop_set_uint64(dev, "mmio_size", mmio_size);
-    qdev_prop_set_bit(dev, "link_up", link_up);
 
     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
@@ -395,6 +452,222 @@ xilinx_pcie_init(MemoryRegion *sys_mem, uint32_t bus_nr,
     qdev_connect_gpio_out_named(dev, "interrupt_out", 0, irq);
 
     return XILINX_PCIE_HOST(dev);
+}
+
+
+static void fdt_create_pcie(void *fdt, int gic_ph, int irq, hwaddr reg_base,
+                            hwaddr reg_size, hwaddr mmio_base, hwaddr mmio_size)
+{
+    int i;
+    char *name, *intc_name;
+    uint32_t intc_ph;
+    uint32_t interrupt_map[FDT_PCI_IRQ_MAP_PINS][FDT_PCI_IRQ_MAP_DESCS];
+
+    intc_ph = qemu_fdt_alloc_phandle(fdt);
+    name = g_strdup_printf("/soc/pci@%" HWADDR_PRIx, reg_base);
+    qemu_fdt_add_subnode(fdt, name);
+    qemu_fdt_setprop_string(fdt, name, "compatible",
+                            "xlnx,axi-pcie-host-1.00.a");
+    qemu_fdt_setprop_string(fdt, name, "device_type", "pci");
+    qemu_fdt_setprop_cells(fdt, name, "reg", reg_base, reg_size);
+
+    qemu_fdt_setprop_cell(fdt, name, "#address-cells", 3);
+    qemu_fdt_setprop_cell(fdt, name, "#size-cells", 2);
+    qemu_fdt_setprop_cell(fdt, name, "#interrupt-cells", 1);
+
+    qemu_fdt_setprop_cell(fdt, name, "interrupt-parent", gic_ph);
+    qemu_fdt_setprop_cells(fdt, name, "interrupts", FDT_GIC_SHARED, irq,
+                            FDT_IRQ_TYPE_LEVEL_HIGH);
+
+    qemu_fdt_setprop_cells(fdt, name, "ranges", 0x02000000, 0, mmio_base,
+                            mmio_base, 0, mmio_size);
+    qemu_fdt_setprop_cells(fdt, name, "bus-range", 0x00, 0xff);
+
+
+
+    intc_name = g_strdup_printf("%s/interrupt-controller", name);
+    qemu_fdt_add_subnode(fdt, intc_name);
+    qemu_fdt_setprop(fdt, intc_name, "interrupt-controller", NULL, 0);
+    qemu_fdt_setprop_cell(fdt, intc_name, "#address-cells", 0);
+    qemu_fdt_setprop_cell(fdt, intc_name, "#interrupt-cells", 1);
+    qemu_fdt_setprop_cell(fdt, intc_name, "phandle", intc_ph);
+
+    qemu_fdt_setprop_cells(fdt, name, "interrupt-map-mask", 0, 0, 0, 7);
+    for (i = 0; i < FDT_PCI_IRQ_MAP_PINS; i++) {
+        uint32_t *irqmap = interrupt_map[i];
+
+        irqmap[0] = cpu_to_be32(0);
+        irqmap[1] = cpu_to_be32(0);
+        irqmap[2] = cpu_to_be32(0);
+        irqmap[3] = cpu_to_be32(i + 1);
+        irqmap[4] = cpu_to_be32(intc_ph);
+        irqmap[5] = cpu_to_be32(i + 1);
+    }
+    qemu_fdt_setprop(fdt, name, "interrupt-map",
+                     &interrupt_map, sizeof(interrupt_map));
+
+    g_free(intc_name);
+    g_free(name);
+}
+
+static const void *create_fdt(BostonState *s,
+                              const MemMapEntry *memmap, int *dt_size)
+{
+    void *fdt;
+    int cpu;
+    MachineState *mc = s->mach;
+    uint32_t platreg_ph, gic_ph, clk_ph;
+    char *name, *gic_name, *platreg_name, *stdout_name;
+    static const char * const syscon_compat[2] = {
+        "img,boston-platform-regs", "syscon"
+    };
+
+    fdt = create_device_tree(dt_size);
+    if (!fdt) {
+        error_report("create_device_tree() failed");
+        exit(1);
+    }
+
+    platreg_ph = qemu_fdt_alloc_phandle(fdt);
+    gic_ph = qemu_fdt_alloc_phandle(fdt);
+    clk_ph = qemu_fdt_alloc_phandle(fdt);
+
+    qemu_fdt_setprop_string(fdt, "/", "model", "img,boston");
+    qemu_fdt_setprop_string(fdt, "/", "compatible", "img,boston");
+    qemu_fdt_setprop_cell(fdt, "/", "#size-cells", 0x1);
+    qemu_fdt_setprop_cell(fdt, "/", "#address-cells", 0x1);
+
+
+    qemu_fdt_add_subnode(fdt, "/cpus");
+    qemu_fdt_setprop_cell(fdt, "/cpus", "#size-cells", 0x0);
+    qemu_fdt_setprop_cell(fdt, "/cpus", "#address-cells", 0x1);
+
+    for (cpu = 0; cpu < mc->smp.cpus; cpu++) {
+        name = g_strdup_printf("/cpus/cpu@%d", cpu);
+        qemu_fdt_add_subnode(fdt, name);
+        qemu_fdt_setprop_string(fdt, name, "compatible", "img,mips");
+        qemu_fdt_setprop_string(fdt, name, "status", "okay");
+        qemu_fdt_setprop_cell(fdt, name, "reg", cpu);
+        qemu_fdt_setprop_string(fdt, name, "device_type", "cpu");
+        qemu_fdt_setprop_cells(fdt, name, "clocks", clk_ph, FDT_BOSTON_CLK_CPU);
+        g_free(name);
+    }
+
+    qemu_fdt_add_subnode(fdt, "/soc");
+    qemu_fdt_setprop(fdt, "/soc", "ranges", NULL, 0);
+    qemu_fdt_setprop_string(fdt, "/soc", "compatible", "simple-bus");
+    qemu_fdt_setprop_cell(fdt, "/soc", "#size-cells", 0x1);
+    qemu_fdt_setprop_cell(fdt, "/soc", "#address-cells", 0x1);
+
+    fdt_create_pcie(fdt, gic_ph, 2,
+                memmap[BOSTON_PCIE0].base, memmap[BOSTON_PCIE0].size,
+                memmap[BOSTON_PCIE0_MMIO].base, memmap[BOSTON_PCIE0_MMIO].size);
+
+    fdt_create_pcie(fdt, gic_ph, 1,
+                memmap[BOSTON_PCIE1].base, memmap[BOSTON_PCIE1].size,
+                memmap[BOSTON_PCIE1_MMIO].base, memmap[BOSTON_PCIE1_MMIO].size);
+
+    fdt_create_pcie(fdt, gic_ph, 0,
+                memmap[BOSTON_PCIE2].base, memmap[BOSTON_PCIE2].size,
+                memmap[BOSTON_PCIE2_MMIO].base, memmap[BOSTON_PCIE2_MMIO].size);
+
+    /* GIC with it's timer node */
+    gic_name = g_strdup_printf("/soc/interrupt-controller@%" HWADDR_PRIx,
+                                memmap[BOSTON_GIC].base);
+    qemu_fdt_add_subnode(fdt, gic_name);
+    qemu_fdt_setprop_string(fdt, gic_name, "compatible", "mti,gic");
+    qemu_fdt_setprop_cells(fdt, gic_name, "reg", memmap[BOSTON_GIC].base,
+                            memmap[BOSTON_GIC].size);
+    qemu_fdt_setprop(fdt, gic_name, "interrupt-controller", NULL, 0);
+    qemu_fdt_setprop_cell(fdt, gic_name, "#interrupt-cells", 3);
+    qemu_fdt_setprop_cell(fdt, gic_name, "phandle", gic_ph);
+
+    name = g_strdup_printf("%s/timer", gic_name);
+    qemu_fdt_add_subnode(fdt, name);
+    qemu_fdt_setprop_string(fdt, name, "compatible", "mti,gic-timer");
+    qemu_fdt_setprop_cells(fdt, name, "interrupts", FDT_GIC_LOCAL, 1,
+                            FDT_IRQ_TYPE_NONE);
+    qemu_fdt_setprop_cells(fdt, name, "clocks", clk_ph, FDT_BOSTON_CLK_CPU);
+    g_free(name);
+    g_free(gic_name);
+
+    /* CDMM node */
+    name = g_strdup_printf("/soc/cdmm@%" HWADDR_PRIx, memmap[BOSTON_CDMM].base);
+    qemu_fdt_add_subnode(fdt, name);
+    qemu_fdt_setprop_string(fdt, name, "compatible", "mti,mips-cdmm");
+    qemu_fdt_setprop_cells(fdt, name, "reg", memmap[BOSTON_CDMM].base,
+                            memmap[BOSTON_CDMM].size);
+    g_free(name);
+
+    /* CPC node */
+    name = g_strdup_printf("/soc/cpc@%" HWADDR_PRIx, memmap[BOSTON_CPC].base);
+    qemu_fdt_add_subnode(fdt, name);
+    qemu_fdt_setprop_string(fdt, name, "compatible", "mti,mips-cpc");
+    qemu_fdt_setprop_cells(fdt, name, "reg", memmap[BOSTON_CPC].base,
+                            memmap[BOSTON_CPC].size);
+    g_free(name);
+
+    /* platreg and it's clk node */
+    platreg_name = g_strdup_printf("/soc/system-controller@%" HWADDR_PRIx,
+                                   memmap[BOSTON_PLATREG].base);
+    qemu_fdt_add_subnode(fdt, platreg_name);
+    qemu_fdt_setprop_string_array(fdt, platreg_name, "compatible",
+                                 (char **)&syscon_compat,
+                                 ARRAY_SIZE(syscon_compat));
+    qemu_fdt_setprop_cells(fdt, platreg_name, "reg",
+                           memmap[BOSTON_PLATREG].base,
+                           memmap[BOSTON_PLATREG].size);
+    qemu_fdt_setprop_cell(fdt, platreg_name, "phandle", platreg_ph);
+
+    name = g_strdup_printf("%s/clock", platreg_name);
+    qemu_fdt_add_subnode(fdt, name);
+    qemu_fdt_setprop_string(fdt, name, "compatible", "img,boston-clock");
+    qemu_fdt_setprop_cell(fdt, name, "#clock-cells", 1);
+    qemu_fdt_setprop_cell(fdt, name, "phandle", clk_ph);
+    g_free(name);
+    g_free(platreg_name);
+
+    /* reboot node */
+    name = g_strdup_printf("/soc/reboot");
+    qemu_fdt_add_subnode(fdt, name);
+    qemu_fdt_setprop_string(fdt, name, "compatible", "syscon-reboot");
+    qemu_fdt_setprop_cell(fdt, name, "regmap", platreg_ph);
+    qemu_fdt_setprop_cell(fdt, name, "offset", 0x10);
+    qemu_fdt_setprop_cell(fdt, name, "mask", 0x10);
+    g_free(name);
+
+    /* uart node */
+    name = g_strdup_printf("/soc/uart@%" HWADDR_PRIx, memmap[BOSTON_UART].base);
+    qemu_fdt_add_subnode(fdt, name);
+    qemu_fdt_setprop_string(fdt, name, "compatible", "ns16550a");
+    qemu_fdt_setprop_cells(fdt, name, "reg", memmap[BOSTON_UART].base,
+                            memmap[BOSTON_UART].size);
+    qemu_fdt_setprop_cell(fdt, name, "reg-shift", 0x2);
+    qemu_fdt_setprop_cell(fdt, name, "interrupt-parent", gic_ph);
+    qemu_fdt_setprop_cells(fdt, name, "interrupts", FDT_GIC_SHARED, 3,
+                            FDT_IRQ_TYPE_LEVEL_HIGH);
+    qemu_fdt_setprop_cells(fdt, name, "clocks", clk_ph, FDT_BOSTON_CLK_SYS);
+
+    qemu_fdt_add_subnode(fdt, "/chosen");
+    stdout_name = g_strdup_printf("%s:115200", name);
+    qemu_fdt_setprop_string(fdt, "/chosen", "stdout-path", stdout_name);
+    g_free(stdout_name);
+    g_free(name);
+
+    /* lcd node */
+    name = g_strdup_printf("/soc/lcd@%" HWADDR_PRIx, memmap[BOSTON_LCD].base);
+    qemu_fdt_add_subnode(fdt, name);
+    qemu_fdt_setprop_string(fdt, name, "compatible", "img,boston-lcd");
+    qemu_fdt_setprop_cells(fdt, name, "reg", memmap[BOSTON_LCD].base,
+                            memmap[BOSTON_LCD].size);
+    g_free(name);
+
+    name = g_strdup_printf("/memory@0");
+    qemu_fdt_add_subnode(fdt, name);
+    qemu_fdt_setprop_string(fdt, name, "device_type", "memory");
+    g_free(name);
+
+    return fdt;
 }
 
 static void boston_mach_init(MachineState *machine)
@@ -438,11 +711,15 @@ static void boston_mach_init(MachineState *machine)
     sysbus_mmio_map_overlap(SYS_BUS_DEVICE(&s->cps), 0, 0, 1);
 
     flash =  g_new(MemoryRegion, 1);
-    memory_region_init_rom(flash, NULL, "boston.flash", 128 * MiB,
-                           &error_fatal);
-    memory_region_add_subregion_overlap(sys_mem, 0x18000000, flash, 0);
+    memory_region_init_rom(flash, NULL, "boston.flash",
+                           boston_memmap[BOSTON_FLASH].size, &error_fatal);
+    memory_region_add_subregion_overlap(sys_mem,
+                                        boston_memmap[BOSTON_FLASH].base,
+                                        flash, 0);
 
-    memory_region_add_subregion_overlap(sys_mem, 0x80000000, machine->ram, 0);
+    memory_region_add_subregion_overlap(sys_mem,
+                                        boston_memmap[BOSTON_HIGHDDR].base,
+                                        machine->ram, 0);
 
     ddr_low_alias = g_new(MemoryRegion, 1);
     memory_region_init_alias(ddr_low_alias, NULL, "boston_low.ddr",
@@ -451,32 +728,41 @@ static void boston_mach_init(MachineState *machine)
     memory_region_add_subregion_overlap(sys_mem, 0, ddr_low_alias, 0);
 
     xilinx_pcie_init(sys_mem, 0,
-                     0x10000000, 32 * MiB,
-                     0x40000000, 1 * GiB,
-                     get_cps_irq(&s->cps, 2), false);
+                     boston_memmap[BOSTON_PCIE0].base,
+                     boston_memmap[BOSTON_PCIE0].size,
+                     boston_memmap[BOSTON_PCIE0_MMIO].base,
+                     boston_memmap[BOSTON_PCIE0_MMIO].size,
+                     get_cps_irq(&s->cps, 2));
 
     xilinx_pcie_init(sys_mem, 1,
-                     0x12000000, 32 * MiB,
-                     0x20000000, 512 * MiB,
-                     get_cps_irq(&s->cps, 1), false);
+                     boston_memmap[BOSTON_PCIE1].base,
+                     boston_memmap[BOSTON_PCIE1].size,
+                     boston_memmap[BOSTON_PCIE1_MMIO].base,
+                     boston_memmap[BOSTON_PCIE1_MMIO].size,
+                     get_cps_irq(&s->cps, 1));
 
     pcie2 = xilinx_pcie_init(sys_mem, 2,
-                             0x14000000, 32 * MiB,
-                             0x16000000, 1 * MiB,
-                             get_cps_irq(&s->cps, 0), true);
+                             boston_memmap[BOSTON_PCIE2].base,
+                             boston_memmap[BOSTON_PCIE2].size,
+                             boston_memmap[BOSTON_PCIE2_MMIO].base,
+                             boston_memmap[BOSTON_PCIE2_MMIO].size,
+                             get_cps_irq(&s->cps, 0));
 
     platreg = g_new(MemoryRegion, 1);
     memory_region_init_io(platreg, NULL, &boston_platreg_ops, s,
-                          "boston-platregs", 0x1000);
-    memory_region_add_subregion_overlap(sys_mem, 0x17ffd000, platreg, 0);
+                          "boston-platregs",
+                          boston_memmap[BOSTON_PLATREG].size);
+    memory_region_add_subregion_overlap(sys_mem,
+                          boston_memmap[BOSTON_PLATREG].base, platreg, 0);
 
-    s->uart = serial_mm_init(sys_mem, 0x17ffe000, 2,
+    s->uart = serial_mm_init(sys_mem, boston_memmap[BOSTON_UART].base, 2,
                              get_cps_irq(&s->cps, 3), 10000000,
                              serial_hd(0), DEVICE_NATIVE_ENDIAN);
 
     lcd = g_new(MemoryRegion, 1);
     memory_region_init_io(lcd, NULL, &boston_lcd_ops, s, "boston-lcd", 0x8);
-    memory_region_add_subregion_overlap(sys_mem, 0x17fff000, lcd, 0);
+    memory_region_add_subregion_overlap(sys_mem,
+                                        boston_memmap[BOSTON_LCD].base, lcd, 0);
 
     chr = qemu_chr_new("lcd", "vc:320x240", NULL);
     qemu_chr_fe_init(&s->lcd_display, chr, NULL);
@@ -499,10 +785,43 @@ static void boston_mach_init(MachineState *machine)
             exit(1);
         }
     } else if (machine->kernel_filename) {
-        fit_err = load_fit(&boston_fit_loader, machine->kernel_filename, s);
-        if (fit_err) {
-            error_report("unable to load FIT image");
-            exit(1);
+        uint64_t kernel_entry, kernel_high;
+        ssize_t kernel_size;
+
+        kernel_size = load_elf(machine->kernel_filename, NULL,
+                           cpu_mips_kseg0_to_phys, NULL,
+                           &kernel_entry, NULL, &kernel_high,
+                           NULL, 0, EM_MIPS, 1, 0);
+
+        if (kernel_size > 0) {
+            int dt_size;
+            g_autofree const void *dtb_file_data = NULL;
+            g_autofree const void *dtb_load_data = NULL;
+            hwaddr dtb_paddr = QEMU_ALIGN_UP(kernel_high, 64 * KiB);
+            hwaddr dtb_vaddr = cpu_mips_phys_to_kseg0(NULL, dtb_paddr);
+
+            s->kernel_entry = kernel_entry;
+            if (machine->dtb) {
+                dtb_file_data = load_device_tree(machine->dtb, &dt_size);
+            } else {
+                dtb_file_data = create_fdt(s, boston_memmap, &dt_size);
+            }
+
+            dtb_load_data = boston_fdt_filter(s, dtb_file_data,
+                                              NULL, &dtb_vaddr);
+
+            /* Calculate real fdt size after filter */
+            dt_size = fdt_totalsize(dtb_load_data);
+            rom_add_blob_fixed("dtb", dtb_load_data, dt_size, dtb_paddr);
+            qemu_register_reset_nosnapshotload(qemu_fdt_randomize_seeds,
+                                rom_ptr(dtb_paddr, dt_size));
+        } else {
+            /* Try to load file as FIT */
+            fit_err = load_fit(&boston_fit_loader, machine->kernel_filename, s);
+            if (fit_err) {
+                error_report("unable to load kernel image");
+                exit(1);
+            }
         }
 
         gen_firmware(memory_region_get_ram_ptr(flash) + 0x7c00000,

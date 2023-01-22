@@ -214,9 +214,9 @@ static void rtas_stop_self(PowerPCCPU *cpu, SpaprMachineState *spapr,
      * guest.
      * For the same reason, set PSSCR_EC.
      */
-    ppc_store_lpcr(cpu, env->spr[SPR_LPCR] & ~pcc->lpcr_pm);
     env->spr[SPR_PSSCR] |= PSSCR_EC;
     cs->halted = 1;
+    ppc_store_lpcr(cpu, env->spr[SPR_LPCR] & ~pcc->lpcr_pm);
     kvmppc_set_reg_ppc_online(cpu, 0);
     qemu_cpu_kick(cs);
 }
@@ -279,30 +279,29 @@ static void rtas_ibm_get_system_parameter(PowerPCCPU *cpu,
 
     switch (parameter) {
     case RTAS_SYSPARM_SPLPAR_CHARACTERISTICS: {
-        char *param_val = g_strdup_printf("MaxEntCap=%d,"
-                                          "DesMem=%" PRIu64 ","
-                                          "DesProcs=%d,"
-                                          "MaxPlatProcs=%d",
-                                          ms->smp.max_cpus,
-                                          ms->ram_size / MiB,
-                                          ms->smp.cpus,
-                                          ms->smp.max_cpus);
+        g_autofree char *param_val = g_strdup_printf("MaxEntCap=%d,"
+                                                     "DesMem=%" PRIu64 ","
+                                                     "DesProcs=%d,"
+                                                     "MaxPlatProcs=%d",
+                                                     ms->smp.max_cpus,
+                                                     ms->ram_size / MiB,
+                                                     ms->smp.cpus,
+                                                     ms->smp.max_cpus);
         if (pcc->n_host_threads > 0) {
-            char *hostthr_val, *old = param_val;
-
             /*
              * Add HostThrs property. This property is not present in PAPR but
              * is expected by some guests to communicate the number of physical
              * host threads per core on the system so that they can scale
              * information which varies based on the thread configuration.
              */
-            hostthr_val = g_strdup_printf(",HostThrs=%d", pcc->n_host_threads);
+            g_autofree char *hostthr_val = g_strdup_printf(",HostThrs=%d",
+                                                           pcc->n_host_threads);
+            char *old = param_val;
+
             param_val = g_strconcat(param_val, hostthr_val, NULL);
-            g_free(hostthr_val);
             g_free(old);
         }
         ret = sysparm_st(buffer, length, param_val, strlen(param_val) + 1);
-        g_free(param_val);
         break;
     }
     case RTAS_SYSPARM_DIAGNOSTICS_RUN_MODE: {
@@ -475,16 +474,16 @@ static void rtas_ibm_nmi_interlock(PowerPCCPU *cpu,
 
     if (spapr->fwnmi_machine_check_interlock != cpu->vcpu_id) {
         /*
-	 * The vCPU that hit the NMI should invoke "ibm,nmi-interlock"
+         * The vCPU that hit the NMI should invoke "ibm,nmi-interlock"
          * This should be PARAM_ERROR, but Linux calls "ibm,nmi-interlock"
-	 * for system reset interrupts, despite them not being interlocked.
-	 * PowerVM silently ignores this and returns success here. Returning
-	 * failure causes Linux to print the error "FWNMI: nmi-interlock
-	 * failed: -3", although no other apparent ill effects, this is a
-	 * regression for the user when enabling FWNMI. So for now, match
-	 * PowerVM. When most Linux clients are fixed, this could be
-	 * changed.
-	 */
+         * for system reset interrupts, despite them not being interlocked.
+         * PowerVM silently ignores this and returns success here. Returning
+         * failure causes Linux to print the error "FWNMI: nmi-interlock
+         * failed: -3", although no other apparent ill effects, this is a
+         * regression for the user when enabling FWNMI. So for now, match
+         * PowerVM. When most Linux clients are fixed, this could be
+         * changed.
+         */
         rtas_st(rets, 0, RTAS_OUT_SUCCESS);
         return;
     }

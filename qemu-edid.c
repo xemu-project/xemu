@@ -10,8 +10,8 @@
 #include "hw/display/edid.h"
 
 static qemu_edid_info info = {
-    .prefx = 1024,
-    .prefy = 768,
+    .prefx = 1280,
+    .prefy = 800,
 };
 
 static void usage(FILE *out)
@@ -90,6 +90,10 @@ int main(int argc, char *argv[])
         case 'd':
             if (qemu_strtoui(optarg, NULL, 10, &dpi) < 0) {
                 fprintf(stderr, "not a number: %s\n", optarg);
+                exit(1);
+            }
+            if (dpi == 0) {
+                fprintf(stderr, "cannot be zero: %s\n", optarg);
                 exit(1);
             }
             break;

@@ -19,6 +19,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/log.h"
 #include "cpu.h"
 #include "hw/core/tcg-cpu-ops.h"
 #include "mmu.h"
@@ -38,36 +39,6 @@
 #define D(x)
 #define D_LOG(...) do { } while (0)
 #endif
-
-#if defined(CONFIG_USER_ONLY)
-
-void cris_cpu_do_interrupt(CPUState *cs)
-{
-    CRISCPU *cpu = CRIS_CPU(cs);
-    CPUCRISState *env = &cpu->env;
-
-    cs->exception_index = -1;
-    env->pregs[PR_ERP] = env->pc;
-}
-
-void crisv10_cpu_do_interrupt(CPUState *cs)
-{
-    cris_cpu_do_interrupt(cs);
-}
-
-bool cris_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
-                       MMUAccessType access_type, int mmu_idx,
-                       bool probe, uintptr_t retaddr)
-{
-    CRISCPU *cpu = CRIS_CPU(cs);
-
-    cs->exception_index = 0xaa;
-    cpu->env.pregs[PR_EDA] = address;
-    cpu_loop_exit_restore(cs, retaddr);
-}
-
-#else /* !CONFIG_USER_ONLY */
-
 
 static void cris_shift_ccs(CPUCRISState *env)
 {
@@ -116,7 +87,7 @@ bool cris_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
     cs->exception_index = EXCP_BUSFAULT;
     env->fault_vector = res.bf_vec;
     if (retaddr) {
-        if (cpu_restore_state(cs, retaddr, true)) {
+        if (cpu_restore_state(cs, retaddr)) {
             /* Evaluate flags after retranslation. */
             helper_top_evaluate_flags(env);
         }
@@ -287,7 +258,6 @@ hwaddr cris_cpu_get_phys_page_debug(CPUState *cs, vaddr addr)
     D(fprintf(stderr, "%s %x -> %x\n", __func__, addr, phy));
     return phy;
 }
-#endif
 
 bool cris_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
 {

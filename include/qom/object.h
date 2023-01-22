@@ -21,7 +21,6 @@
 
 #include "qapi/qapi-builtin-types.h"
 #include "qemu/module.h"
-#include "qom/object.h"
 
 struct TypeImpl;
 typedef struct TypeImpl *Type;
@@ -621,7 +620,7 @@ Object *object_new_with_props(const char *typename,
                               Object *parent,
                               const char *id,
                               Error **errp,
-                              ...) QEMU_SENTINEL;
+                              ...) G_GNUC_NULL_TERMINATED;
 
 /**
  * object_new_with_propv:
@@ -681,7 +680,7 @@ void object_apply_compat_props(Object *obj);
  *
  * Returns: %true on success, %false on error.
  */
-bool object_set_props(Object *obj, Error **errp, ...) QEMU_SENTINEL;
+bool object_set_props(Object *obj, Error **errp, ...) G_GNUC_NULL_TERMINATED;
 
 /**
  * object_set_propv:
@@ -733,7 +732,7 @@ void object_initialize(void *obj, size_t size, const char *typename);
 bool object_initialize_child_with_props(Object *parentobj,
                              const char *propname,
                              void *childobj, size_t size, const char *type,
-                             Error **errp, ...) QEMU_SENTINEL;
+                             Error **errp, ...) G_GNUC_NULL_TERMINATED;
 
 /**
  * object_initialize_child_with_propsv:
@@ -1547,6 +1546,18 @@ Object *object_resolve_path(const char *path, bool *ambiguous);
  */
 Object *object_resolve_path_type(const char *path, const char *typename,
                                  bool *ambiguous);
+
+/**
+ * object_resolve_path_at:
+ * @parent: the object in which to resolve the path
+ * @path: the path to resolve
+ *
+ * This is like object_resolve_path(), except paths not starting with
+ * a slash are relative to @parent.
+ *
+ * Returns: The resolved object or NULL on path lookup failure.
+ */
+Object *object_resolve_path_at(Object *parent, const char *path);
 
 /**
  * object_resolve_path_component:

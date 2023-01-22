@@ -178,8 +178,20 @@ option or the ``device_add`` monitor command. Available devices are:
    host character device id.
 
 ``usb-braille,chardev=id``
-   Braille device. This will use BrlAPI to display the braille output on
-   a real or fake device referenced by id.
+   Braille device. This emulates a Baum Braille device USB port. id has to
+   specify a character device defined with ``-chardev …,id=id``.  One will
+   normally use BrlAPI to display the braille output on a BRLTTY-supported
+   device with
+
+   .. parsed-literal::
+
+      |qemu_system| [...] -chardev braille,id=brl -device usb-braille,chardev=brl
+
+   or alternatively, use the following equivalent shortcut:
+
+   .. parsed-literal::
+
+      |qemu_system| [...] -usbdevice braille
 
 ``usb-net[,netdev=id]``
    Network adapter that supports CDC ethernet and RNDIS protocols. id
@@ -198,6 +210,10 @@ option or the ``device_add`` monitor command. Available devices are:
 
 ``u2f-{emulated,passthru}``
    Universal Second Factor device
+
+``canokey``
+   An Open-source Secure Key implementing FIDO2, OpenPGP, PIV and more.
+   For more information, see :ref:`canokey`.
 
 Physical port addressing
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -349,3 +365,44 @@ and also assign it to the correct USB bus in QEMU like this:
         -device usb-ehci,id=ehci                             \\
         -device usb-host,bus=usb-bus.0,hostbus=3,hostport=1  \\
         -device usb-host,bus=ehci.0,hostbus=1,hostport=1
+
+``usb-host`` properties for reset behavior
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``guest-reset`` and ``guest-reset-all`` properties control
+whenever the guest is allowed to reset the physical usb device on the
+host.  There are three cases:
+
+``guest-reset=false``
+  The guest is not allowed to reset the (physical) usb device.
+
+``guest-reset=true,guest-resets-all=false``
+  The guest is allowed to reset the device when it is not yet
+  initialized (aka no usb bus address assigned).  Usually this results
+  in one guest reset being allowed.  This is the default behavior.
+
+``guest-reset=true,guest-resets-all=true``
+  The guest is allowed to reset the device as it pleases.
+
+The reason for this existing are broken usb devices.  In theory one
+should be able to reset (and re-initialize) usb devices at any time.
+In practice that may result in shitty usb device firmware crashing and
+the device not responding any more until you power-cycle (aka un-plug
+and re-plug) it.
+
+What works best pretty much depends on the behavior of the specific
+usb device at hand, so it's a trial-and-error game.  If the default
+doesn't work, try another option and see whenever the situation
+improves.
+
+record usb transfers
+^^^^^^^^^^^^^^^^^^^^
+
+All usb devices have support for recording the usb traffic.  This can
+be enabled using the ``pcap=<file>`` property, for example:
+
+``-device usb-mouse,pcap=mouse.pcap``
+
+The pcap files are compatible with the linux kernels usbmon.  Many
+tools, including ``wireshark``, can decode and inspect these trace
+files.

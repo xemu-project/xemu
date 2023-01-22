@@ -19,7 +19,17 @@ Board-specific documentation
    i386/microvm
    i386/pc
 
-.. include:: cpu-models-x86.rst.inc
+Architectural features
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. toctree::
+   :maxdepth: 1
+
+   i386/cpu
+   i386/hyperv
+   i386/kvm-pv
+   i386/sgx
+   i386/amd-memory-encryption
 
 .. _pcsys_005freq:
 

@@ -61,7 +61,7 @@ bool blk_check_size_and_read_all(BlockBackend *blk, void *buf, hwaddr size,
      * block device and read only on demand.
      */
     assert(size <= BDRV_REQUEST_MAX_BYTES);
-    ret = blk_pread(blk, 0, buf, size);
+    ret = blk_pread(blk, 0, size, buf, 0);
     if (ret < 0) {
         error_setg_errno(errp, -ret, "can't read block backend");
         return false;
@@ -179,8 +179,7 @@ bool blkconf_apply_backend_options(BlockConf *conf, bool readonly,
         perm |= BLK_PERM_WRITE;
     }
 
-    shared_perm = BLK_PERM_CONSISTENT_READ | BLK_PERM_WRITE_UNCHANGED |
-                  BLK_PERM_GRAPH_MOD;
+    shared_perm = BLK_PERM_CONSISTENT_READ | BLK_PERM_WRITE_UNCHANGED;
     if (resizable) {
         shared_perm |= BLK_PERM_RESIZE;
     }
@@ -214,6 +213,8 @@ bool blkconf_apply_backend_options(BlockConf *conf, bool readonly,
     blk_set_enable_write_cache(blk, wce);
     blk_set_on_error(blk, rerror, werror);
 
+    block_acct_setup(blk_get_stats(blk), conf->account_invalid,
+                     conf->account_failed);
     return true;
 }
 

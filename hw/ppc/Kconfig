@@ -58,7 +58,6 @@ config PPC4XX
 
 config SAM460EX
     bool
-    select PPC405
     select PFLASH_CFI01
     select IDE_SII3112
     select M41T80
@@ -72,14 +71,13 @@ config SAM460EX
 
 config PEGASOS2
     bool
+    imply ATI_VGA
     select MV64361
     select VT82C686
-    select IDE_VIA
     select SMBUS_EEPROM
     select VOF
 # This should come with VT82C686
     select ACPI_X86
-    imply ATI_VGA
 
 config PREP
     bool
@@ -125,13 +123,23 @@ config E500
     imply AT24C
     imply VIRTIO_PCI
     select ETSEC
+    select GPIO_MPC8XXX
     select OPENPIC
+    select PFLASH_CFI01
     select PLATFORM_BUS
     select PPCE500_PCI
     select SERIAL
     select MPC_I2C
     select FDT_PPC
     select DS1338
+
+config E500PLAT
+    bool
+    select E500
+
+config MPC8544DS
+    bool
+    select E500
 
 config VIRTEX
     bool

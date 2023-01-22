@@ -42,73 +42,21 @@ perform a build:
      ../configure
      make
 
-For now, checks on the compilation environment are found in configure
-rather than meson.build, though this is expected to change.  The command
-line is parsed in the configure script and, whenever needed, converted
-into the appropriate options to Meson.
+The configure script automatically recognizes
+command line options for which a same-named Meson option exists;
+dashes in the command line are replaced with underscores.
 
-New checks should be added to Meson, which usually comprises the
-following tasks:
+Many checks on the compilation environment are still found in configure
+rather than ``meson.build``, but new checks should be added directly to
+``meson.build``.
 
- - Add a Meson build option to meson_options.txt.
-
- - Add support to the command line arg parser to handle any new
-   ``--enable-XXX``/``--disable-XXX`` flags required by the feature.
-
- - Add information to the help output message to report on the new
-   feature flag.
-
- - Add code to perform the actual feature check.
-
- - Add code to include the feature status in ``config-host.h``
-
- - Add code to print out the feature status in the configure summary
-   upon completion.
-
-
-Taking the probe for SDL2_Image as an example, we have the following pieces
-in configure::
-
-  # Initial variable state
-  sdl_image=auto
-
-  ..snip..
-
-  # Configure flag processing
-  --disable-sdl-image) sdl_image=disabled
-  ;;
-  --enable-sdl-image) sdl_image=enabled
-  ;;
-
-  ..snip..
-
-  # Help output feature message
-  sdl-image         SDL Image support for icons
-
-  ..snip..
-
-  # Meson invocation
-  -Dsdl_image=$sdl_image
-
-In meson_options.txt::
-
-  option('sdl', type : 'feature', value : 'auto',
-         description: 'SDL Image support for icons')
-
-In meson.build::
-
-  # Detect dependency
-  sdl_image = dependency('SDL2_image', required: get_option('sdl_image'),
-                         method: 'pkg-config',
-                         kwargs: static_kwargs)
-
-  # Create config-host.h (if applicable)
-  config_host_data.set('CONFIG_SDL_IMAGE', sdl_image.found())
-
-  # Summary
-  summary_info += {'SDL image support': sdl_image.found()}
-
-
+Patches are also welcome to move existing checks from the configure
+phase to ``meson.build``.  When doing so, ensure that ``meson.build`` does
+not use anymore the keys that you have removed from ``config-host.mak``.
+Typically these will be replaced in ``meson.build`` by boolean variables,
+``get_option('optname')`` invocations, or ``dep.found()`` expressions.
+In general, the remaining checks have little or no interdependencies,
+so they can be moved one by one.
 
 Helper functions
 ----------------
@@ -151,11 +99,6 @@ developers in checking for system features:
    Write a minimal C program main() function to the temporary file
    indicated by $TMPC
 
-``feature_not_found $NAME $REMEDY``
-   Print a message to stderr that the feature $NAME was not available
-   on the system, suggesting the user try $REMEDY to address the
-   problem.
-
 ``error_exit $MESSAGE $MORE...``
    Print $MESSAGE to stderr, followed by $MORE... and then exit from the
    configure script with non-zero status
@@ -173,11 +116,11 @@ process for:
 
 1) executables, which include:
 
-   - Tools - qemu-img, qemu-nbd, qga (guest agent), etc
+   - Tools - ``qemu-img``, ``qemu-nbd``, ``qga`` (guest agent), etc
 
-   - System emulators - qemu-system-$ARCH
+   - System emulators - ``qemu-system-$ARCH``
 
-   - Userspace emulators - qemu-$ARCH
+   - Userspace emulators - ``qemu-$ARCH``
 
    - Unit tests
 
@@ -335,6 +278,60 @@ new target, or enabling new devices or hardware for a particular
 system/userspace emulation target
 
 
+Adding checks
+-------------
+
+New checks should be added to Meson.  Compiler checks can be as simple as
+the following::
+
+  config_host_data.set('HAVE_BTRFS_H', cc.has_header('linux/btrfs.h'))
+
+A more complex task such as adding a new dependency usually
+comprises the following tasks:
+
+ - Add a Meson build option to meson_options.txt.
+
+ - Add code to perform the actual feature check.
+
+ - Add code to include the feature status in ``config-host.h``
+
+ - Add code to print out the feature status in the configure summary
+   upon completion.
+
+Taking the probe for SDL2_Image as an example, we have the following
+in ``meson_options.txt``::
+
+  option('sdl_image', type : 'feature', value : 'auto',
+         description: 'SDL Image support for icons')
+
+Unless the option was given a non-``auto`` value (on the configure
+command line), the detection code must be performed only if the
+dependency will be used::
+
+  sdl_image = not_found
+  if not get_option('sdl_image').auto() or have_system
+    sdl_image = dependency('SDL2_image', required: get_option('sdl_image'),
+                           method: 'pkg-config',
+                           static: enable_static)
+  endif
+
+This avoids warnings on static builds of user-mode emulators, for example.
+Most of the libraries used by system-mode emulators are not available for
+static linking.
+
+The other supporting code is generally simple::
+
+  # Create config-host.h (if applicable)
+  config_host_data.set('CONFIG_SDL_IMAGE', sdl_image.found())
+
+  # Summary
+  summary_info += {'SDL image support': sdl_image.found()}
+
+For the configure script to parse the new option, the
+``scripts/meson-buildoptions.sh`` file must be up-to-date; ``make
+update-buildoptions`` (or just ``make``) will take care of updating it.
+
+
 Support scripts
 ---------------
 
@@ -380,6 +377,16 @@ phony target, while benchmarks are run with ``make bench``.  Meson test
 suites such as ``unit`` can be ran with ``make check-unit`` too.  It is also
 possible to run tests defined in meson.build with ``meson test``.
 
+Useful make targets
+-------------------
+
+``help``
+  Print a help message for the most common build targets.
+
+``print-VAR``
+  Print the value of the variable VAR. Useful for debugging the build
+  system.
+
 Important files for the build system
 ====================================
 
@@ -404,7 +411,7 @@ number of dynamically created files listed later.
 
 ``tests/Makefile.include``
   Rules for external test harnesses. These include the TCG tests,
-  ``qemu-iotests`` and the Avocado-based acceptance tests.
+  ``qemu-iotests`` and the Avocado-based integration tests.
 
 ``tests/docker/Makefile.include``
   Rules for Docker tests. Like tests/Makefile, this file is included
@@ -452,11 +459,10 @@ Built by Meson:
   scripts/make_device_config.sh program, feeding it the
   default-configs/$TARGET-NAME file as input.
 
-``config-host.h``, ``$TARGET-NAME/config-target.h``, ``$TARGET-NAME/config-devices.h``
-  These files are used by source code to determine what features
-  are enabled.  They are generated from the contents of the corresponding
-  ``*.h`` files using the scripts/create_config program. This extracts
-  relevant variables and formats them as C preprocessor macros.
+``config-host.h``, ``$TARGET_NAME-config-target.h``, ``$TARGET_NAME-config-devices.h``
+  These files are used by source code to determine what features are
+  enabled.  They are generated from the contents of the corresponding
+  ``*.mak`` files using Meson's ``configure_file()`` function.
 
 ``build.ninja``
   The build rules.
@@ -473,14 +479,3 @@ Built by Makefile:
   meson.build.  The rules are produced from Meson's JSON description of
   tests (obtained with "meson introspect --tests") through the script
   scripts/mtest2make.py.
-
-
-Useful make targets
--------------------
-
-``help``
-  Print a help message for the most common build targets.
-
-``print-VAR``
-  Print the value of the variable VAR. Useful for debugging the build
-  system.

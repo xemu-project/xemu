@@ -292,8 +292,7 @@ in the header file:
 .. code-block:: c
    :caption: Declaring a simple type
 
-   OBJECT_DECLARE_SIMPLE_TYPE(MyDevice, my_device,
-                              MY_DEVICE, DEVICE)
+   OBJECT_DECLARE_SIMPLE_TYPE(MyDevice, MY_DEVICE)
 
 This is equivalent to the following:
 
@@ -372,8 +371,8 @@ This accepts an array of interface type names.
                                       { TYPE_USER_CREATABLE },
                                       { NULL })
 
-If the type is not intended to be instantiated, then then
-the OBJECT_DEFINE_ABSTRACT_TYPE() macro can be used instead:
+If the type is not intended to be instantiated, then the
+OBJECT_DEFINE_ABSTRACT_TYPE() macro can be used instead:
 
 .. code-block:: c
    :caption: Defining a simple abstract type

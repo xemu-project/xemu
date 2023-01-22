@@ -22,15 +22,12 @@ config TPM
 
 config VHOST_USER
     bool
-    select VHOST
 
 config VHOST_VDPA
     bool
-    select VHOST
 
 config VHOST_KERNEL
     bool
-    select VHOST
 
 config VIRTFS
     bool
@@ -41,3 +38,11 @@ config PVRDMA
 config MULTIPROCESS_ALLOWED
     bool
     imply MULTIPROCESS
+
+config FUZZ
+    bool
+    select SPARSE_MEM
+
+config VFIO_USER_SERVER_ALLOWED
+    bool
+    imply VFIO_USER_SERVER

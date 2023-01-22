@@ -50,38 +50,7 @@ size_t qemu_fd_getpagesize(int fd)
 #endif
 #endif
 
-    return qemu_real_host_page_size;
-}
-
-size_t qemu_mempath_getpagesize(const char *mem_path)
-{
-#ifdef CONFIG_LINUX
-    struct statfs fs;
-    int ret;
-
-    if (mem_path) {
-        do {
-            ret = statfs(mem_path, &fs);
-        } while (ret != 0 && errno == EINTR);
-
-        if (ret != 0) {
-            fprintf(stderr, "Couldn't statfs() memory path: %s\n",
-                    strerror(errno));
-            exit(1);
-        }
-
-        if (fs.f_type == HUGETLBFS_MAGIC) {
-            /* It's hugepage, return the huge page size */
-            return fs.f_bsize;
-        }
-    }
-#ifdef __sparc__
-    /* SPARC Linux needs greater alignment than the pagesize */
-    return QEMU_VMALLOC_ALIGN;
-#endif
-#endif
-
-    return qemu_real_host_page_size;
+    return qemu_real_host_page_size();
 }
 
 #define OVERCOMMIT_MEMORY_PATH "/proc/sys/vm/overcommit_memory"
@@ -101,7 +70,7 @@ static bool map_noreserve_effective(int fd, uint32_t qemu_map_flags)
      *    MAP_NORESERVE.
      * b) MAP_NORESERVE is not affected by /proc/sys/vm/overcommit_memory.
      */
-    if (qemu_fd_getpagesize(fd) != qemu_real_host_page_size) {
+    if (qemu_fd_getpagesize(fd) != qemu_real_host_page_size()) {
         return true;
     }
 
@@ -166,7 +135,7 @@ static void *mmap_reserve(size_t size, int fd)
      * We do this unless we are using the system page size, in which case
      * anonymous memory is OK.
      */
-    if (fd == -1 || qemu_fd_getpagesize(fd) == qemu_real_host_page_size) {
+    if (fd == -1 || qemu_fd_getpagesize(fd) == qemu_real_host_page_size()) {
         fd = -1;
         flags |= MAP_ANONYMOUS;
     } else {
@@ -243,7 +212,7 @@ static inline size_t mmap_guard_pagesize(int fd)
     /* Mappings in the same segment must share the same page size */
     return qemu_fd_getpagesize(fd);
 #else
-    return qemu_real_host_page_size;
+    return qemu_real_host_page_size();
 #endif
 }
 

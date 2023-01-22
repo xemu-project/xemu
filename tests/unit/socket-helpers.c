@@ -19,7 +19,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/sockets.h"
 #include "socket-helpers.h"
 
@@ -89,7 +88,7 @@ static int socket_can_bind_connect(const char *hostname, int family)
         goto cleanup;
     }
 
-    qemu_set_nonblock(cfd);
+    qemu_socket_set_nonblock(cfd);
     if (connect(cfd, (struct sockaddr *)&ss, sslen) < 0) {
         if (errno == EINPROGRESS) {
             check_soerr = true;
@@ -105,7 +104,7 @@ static int socket_can_bind_connect(const char *hostname, int family)
     }
 
     if (check_soerr) {
-        if (qemu_getsockopt(cfd, SOL_SOCKET, SO_ERROR, &soerr, &soerrlen) < 0) {
+        if (getsockopt(cfd, SOL_SOCKET, SO_ERROR, &soerr, &soerrlen) < 0) {
             goto cleanup;
         }
         if (soerr) {
@@ -154,4 +153,20 @@ int socket_check_protocol_support(bool *has_ipv4, bool *has_ipv6)
     }
 
     return 0;
+}
+
+void socket_check_afunix_support(bool *has_afunix)
+{
+    int fd;
+
+    fd = socket(PF_UNIX, SOCK_STREAM, 0);
+    closesocket(fd);
+
+#ifdef _WIN32
+    *has_afunix = (fd != (int)INVALID_SOCKET);
+#else
+    *has_afunix = (fd >= 0);
+#endif
+
+    return;
 }

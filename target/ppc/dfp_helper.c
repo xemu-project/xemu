@@ -42,13 +42,21 @@ static void get_dfp128(ppc_vsr_t *dst, ppc_fprp_t *dfp)
 
 static void set_dfp64(ppc_fprp_t *dfp, ppc_vsr_t *src)
 {
-    dfp->VsrD(0) = src->VsrD(1);
+    dfp[0].VsrD(0) = src->VsrD(1);
+    dfp[0].VsrD(1) = 0ULL;
 }
 
 static void set_dfp128(ppc_fprp_t *dfp, ppc_vsr_t *src)
 {
     dfp[0].VsrD(0) = src->VsrD(0);
     dfp[1].VsrD(0) = src->VsrD(1);
+    dfp[0].VsrD(1) = 0ULL;
+    dfp[1].VsrD(1) = 0ULL;
+}
+
+static void set_dfp128_to_avr(ppc_avr_t *dst, ppc_vsr_t *src)
+{
+    *dst = *src;
 }
 
 struct PPC_DFP {
@@ -440,8 +448,8 @@ static void ADD_PPs(struct PPC_DFP *dfp)
     dfp_check_for_VXISI_add(dfp);
 }
 
-DFP_HELPER_TAB(dadd, decNumberAdd, ADD_PPs, 64)
-DFP_HELPER_TAB(daddq, decNumberAdd, ADD_PPs, 128)
+DFP_HELPER_TAB(DADD, decNumberAdd, ADD_PPs, 64)
+DFP_HELPER_TAB(DADDQ, decNumberAdd, ADD_PPs, 128)
 
 static void SUB_PPs(struct PPC_DFP *dfp)
 {
@@ -453,8 +461,8 @@ static void SUB_PPs(struct PPC_DFP *dfp)
     dfp_check_for_VXISI_subtract(dfp);
 }
 
-DFP_HELPER_TAB(dsub, decNumberSubtract, SUB_PPs, 64)
-DFP_HELPER_TAB(dsubq, decNumberSubtract, SUB_PPs, 128)
+DFP_HELPER_TAB(DSUB, decNumberSubtract, SUB_PPs, 64)
+DFP_HELPER_TAB(DSUBQ, decNumberSubtract, SUB_PPs, 128)
 
 static void MUL_PPs(struct PPC_DFP *dfp)
 {
@@ -466,8 +474,8 @@ static void MUL_PPs(struct PPC_DFP *dfp)
     dfp_check_for_VXIMZ(dfp);
 }
 
-DFP_HELPER_TAB(dmul, decNumberMultiply, MUL_PPs, 64)
-DFP_HELPER_TAB(dmulq, decNumberMultiply, MUL_PPs, 128)
+DFP_HELPER_TAB(DMUL, decNumberMultiply, MUL_PPs, 64)
+DFP_HELPER_TAB(DMULQ, decNumberMultiply, MUL_PPs, 128)
 
 static void DIV_PPs(struct PPC_DFP *dfp)
 {
@@ -481,8 +489,8 @@ static void DIV_PPs(struct PPC_DFP *dfp)
     dfp_check_for_VXIDI(dfp);
 }
 
-DFP_HELPER_TAB(ddiv, decNumberDivide, DIV_PPs, 64)
-DFP_HELPER_TAB(ddivq, decNumberDivide, DIV_PPs, 128)
+DFP_HELPER_TAB(DDIV, decNumberDivide, DIV_PPs, 64)
+DFP_HELPER_TAB(DDIVQ, decNumberDivide, DIV_PPs, 128)
 
 #define DFP_HELPER_BF_AB(op, dnop, postprocs, size)                            \
 uint32_t helper_##op(CPUPPCState *env, ppc_fprp_t *a, ppc_fprp_t *b)           \
@@ -502,8 +510,8 @@ static void CMPU_PPs(struct PPC_DFP *dfp)
     dfp_check_for_VXSNAN(dfp);
 }
 
-DFP_HELPER_BF_AB(dcmpu, decNumberCompare, CMPU_PPs, 64)
-DFP_HELPER_BF_AB(dcmpuq, decNumberCompare, CMPU_PPs, 128)
+DFP_HELPER_BF_AB(DCMPU, decNumberCompare, CMPU_PPs, 64)
+DFP_HELPER_BF_AB(DCMPUQ, decNumberCompare, CMPU_PPs, 128)
 
 static void CMPO_PPs(struct PPC_DFP *dfp)
 {
@@ -513,8 +521,8 @@ static void CMPO_PPs(struct PPC_DFP *dfp)
     dfp_check_for_VXVC(dfp);
 }
 
-DFP_HELPER_BF_AB(dcmpo, decNumberCompare, CMPO_PPs, 64)
-DFP_HELPER_BF_AB(dcmpoq, decNumberCompare, CMPO_PPs, 128)
+DFP_HELPER_BF_AB(DCMPO, decNumberCompare, CMPO_PPs, 64)
+DFP_HELPER_BF_AB(DCMPOQ, decNumberCompare, CMPO_PPs, 128)
 
 #define DFP_HELPER_TSTDC(op, size)                                       \
 uint32_t helper_##op(CPUPPCState *env, ppc_fprp_t *a, uint32_t dcm)      \
@@ -541,8 +549,8 @@ uint32_t helper_##op(CPUPPCState *env, ppc_fprp_t *a, uint32_t dcm)      \
     return dfp.crbf;                                                     \
 }
 
-DFP_HELPER_TSTDC(dtstdc, 64)
-DFP_HELPER_TSTDC(dtstdcq, 128)
+DFP_HELPER_TSTDC(DTSTDC, 64)
+DFP_HELPER_TSTDC(DTSTDCQ, 128)
 
 #define DFP_HELPER_TSTDG(op, size)                                       \
 uint32_t helper_##op(CPUPPCState *env, ppc_fprp_t *a, uint32_t dcm)      \
@@ -596,8 +604,8 @@ uint32_t helper_##op(CPUPPCState *env, ppc_fprp_t *a, uint32_t dcm)      \
     return dfp.crbf;                                                     \
 }
 
-DFP_HELPER_TSTDG(dtstdg, 64)
-DFP_HELPER_TSTDG(dtstdgq, 128)
+DFP_HELPER_TSTDG(DTSTDG, 64)
+DFP_HELPER_TSTDG(DTSTDGQ, 128)
 
 #define DFP_HELPER_TSTEX(op, size)                                       \
 uint32_t helper_##op(CPUPPCState *env, ppc_fprp_t *a, ppc_fprp_t *b)     \
@@ -628,8 +636,8 @@ uint32_t helper_##op(CPUPPCState *env, ppc_fprp_t *a, ppc_fprp_t *b)     \
     return dfp.crbf;                                                     \
 }
 
-DFP_HELPER_TSTEX(dtstex, 64)
-DFP_HELPER_TSTEX(dtstexq, 128)
+DFP_HELPER_TSTEX(DTSTEX, 64)
+DFP_HELPER_TSTEX(DTSTEXQ, 128)
 
 #define DFP_HELPER_TSTSF(op, size)                                       \
 uint32_t helper_##op(CPUPPCState *env, ppc_fprp_t *a, ppc_fprp_t *b)     \
@@ -665,8 +673,8 @@ uint32_t helper_##op(CPUPPCState *env, ppc_fprp_t *a, ppc_fprp_t *b)     \
     return dfp.crbf;                                                     \
 }
 
-DFP_HELPER_TSTSF(dtstsf, 64)
-DFP_HELPER_TSTSF(dtstsfq, 128)
+DFP_HELPER_TSTSF(DTSTSF, 64)
+DFP_HELPER_TSTSF(DTSTSFQ, 128)
 
 #define DFP_HELPER_TSTSFI(op, size)                                     \
 uint32_t helper_##op(CPUPPCState *env, uint32_t a, ppc_fprp_t *b)       \
@@ -700,8 +708,8 @@ uint32_t helper_##op(CPUPPCState *env, uint32_t a, ppc_fprp_t *b)       \
     return dfp.crbf;                                                    \
 }
 
-DFP_HELPER_TSTSFI(dtstsfi, 64)
-DFP_HELPER_TSTSFI(dtstsfiq, 128)
+DFP_HELPER_TSTSFI(DTSTSFI, 64)
+DFP_HELPER_TSTSFI(DTSTSFIQ, 128)
 
 static void QUA_PPs(struct PPC_DFP *dfp)
 {
@@ -746,8 +754,8 @@ void helper_##op(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b,        \
     set_dfp##size(t, &dfp.vt);                                          \
 }
 
-DFP_HELPER_QUAI(dquai, 64)
-DFP_HELPER_QUAI(dquaiq, 128)
+DFP_HELPER_QUAI(DQUAI, 64)
+DFP_HELPER_QUAI(DQUAIQ, 128)
 
 #define DFP_HELPER_QUA(op, size)                                        \
 void helper_##op(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *a,        \
@@ -764,8 +772,8 @@ void helper_##op(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *a,        \
     set_dfp##size(t, &dfp.vt);                                          \
 }
 
-DFP_HELPER_QUA(dqua, 64)
-DFP_HELPER_QUA(dquaq, 128)
+DFP_HELPER_QUA(DQUA, 64)
+DFP_HELPER_QUA(DQUAQ, 128)
 
 static void _dfp_reround(uint8_t rmc, int32_t ref_sig, int32_t xmax,
                              struct PPC_DFP *dfp)
@@ -842,8 +850,8 @@ void helper_##op(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *a,        \
     set_dfp##size(t, &dfp.vt);                                          \
 }
 
-DFP_HELPER_RRND(drrnd, 64)
-DFP_HELPER_RRND(drrndq, 128)
+DFP_HELPER_RRND(DRRND, 64)
+DFP_HELPER_RRND(DRRNDQ, 128)
 
 #define DFP_HELPER_RINT(op, postprocs, size)                                   \
 void helper_##op(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b,               \
@@ -868,8 +876,8 @@ static void RINTX_PPs(struct PPC_DFP *dfp)
     dfp_check_for_VXSNAN(dfp);
 }
 
-DFP_HELPER_RINT(drintx, RINTX_PPs, 64)
-DFP_HELPER_RINT(drintxq, RINTX_PPs, 128)
+DFP_HELPER_RINT(DRINTX, RINTX_PPs, 64)
+DFP_HELPER_RINT(DRINTXQ, RINTX_PPs, 128)
 
 static void RINTN_PPs(struct PPC_DFP *dfp)
 {
@@ -877,10 +885,10 @@ static void RINTN_PPs(struct PPC_DFP *dfp)
     dfp_check_for_VXSNAN(dfp);
 }
 
-DFP_HELPER_RINT(drintn, RINTN_PPs, 64)
-DFP_HELPER_RINT(drintnq, RINTN_PPs, 128)
+DFP_HELPER_RINT(DRINTN, RINTN_PPs, 64)
+DFP_HELPER_RINT(DRINTNQ, RINTN_PPs, 128)
 
-void helper_dctdp(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b)
+void helper_DCTDP(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b)
 {
     struct PPC_DFP dfp;
     ppc_vsr_t vb;
@@ -896,7 +904,7 @@ void helper_dctdp(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b)
     dfp_set_FPRF_from_FRT(&dfp);
 }
 
-void helper_dctqpq(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b)
+void helper_DCTQPQ(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b)
 {
     struct PPC_DFP dfp;
     ppc_vsr_t vb;
@@ -911,7 +919,7 @@ void helper_dctqpq(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b)
     set_dfp128(t, &dfp.vt);
 }
 
-void helper_drsp(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b)
+void helper_DRSP(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b)
 {
     struct PPC_DFP dfp;
     uint32_t t_short = 0;
@@ -929,7 +937,7 @@ void helper_drsp(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b)
     set_dfp64(t, &vt);
 }
 
-void helper_drdpq(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b)
+void helper_DRDPQ(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b)
 {
     struct PPC_DFP dfp;
     dfp_prepare_decimal128(&dfp, 0, b, env);
@@ -967,8 +975,20 @@ static void CFFIX_PPs(struct PPC_DFP *dfp)
     dfp_check_for_XX(dfp);
 }
 
-DFP_HELPER_CFFIX(dcffix, 64)
-DFP_HELPER_CFFIX(dcffixq, 128)
+DFP_HELPER_CFFIX(DCFFIX, 64)
+DFP_HELPER_CFFIX(DCFFIXQ, 128)
+
+void helper_DCFFIXQQ(CPUPPCState *env, ppc_fprp_t *t, ppc_avr_t *b)
+{
+    struct PPC_DFP dfp;
+
+    dfp_prepare_decimal128(&dfp, NULL, NULL, env);
+    decNumberFromInt128(&dfp.t, (uint64_t)b->VsrD(1), (int64_t)b->VsrD(0));
+    dfp_finalize_decimal128(&dfp);
+    CFFIX_PPs(&dfp);
+
+    set_dfp128(t, &dfp.vt);
+}
 
 #define DFP_HELPER_CTFIX(op, size)                                            \
 void helper_##op(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b)              \
@@ -1005,8 +1025,55 @@ void helper_##op(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b)              \
     set_dfp64(t, &dfp.vt);                                                    \
 }
 
-DFP_HELPER_CTFIX(dctfix, 64)
-DFP_HELPER_CTFIX(dctfixq, 128)
+DFP_HELPER_CTFIX(DCTFIX, 64)
+DFP_HELPER_CTFIX(DCTFIXQ, 128)
+
+void helper_DCTFIXQQ(CPUPPCState *env, ppc_avr_t *t, ppc_fprp_t *b)
+{
+    struct PPC_DFP dfp;
+    dfp_prepare_decimal128(&dfp, 0, b, env);
+
+    if (unlikely(decNumberIsSpecial(&dfp.b))) {
+        uint64_t invalid_flags = FP_VX | FP_VXCVI;
+        if (decNumberIsInfinite(&dfp.b)) {
+            if (decNumberIsNegative(&dfp.b)) {
+                dfp.vt.VsrD(0) = INT64_MIN;
+                dfp.vt.VsrD(1) = 0;
+            } else {
+                dfp.vt.VsrD(0) = INT64_MAX;
+                dfp.vt.VsrD(1) = UINT64_MAX;
+            }
+        } else { /* NaN */
+            dfp.vt.VsrD(0) = INT64_MIN;
+            dfp.vt.VsrD(1) = 0;
+            if (decNumberIsSNaN(&dfp.b)) {
+                invalid_flags |= FP_VXSNAN;
+            }
+        }
+        dfp_set_FPSCR_flag(&dfp, invalid_flags, FP_VE);
+    } else if (unlikely(decNumberIsZero(&dfp.b))) {
+        dfp.vt.VsrD(0) = 0;
+        dfp.vt.VsrD(1) = 0;
+    } else {
+        decNumberToIntegralExact(&dfp.b, &dfp.b, &dfp.context);
+        decNumberIntegralToInt128(&dfp.b, &dfp.context,
+                &dfp.vt.VsrD(1), &dfp.vt.VsrD(0));
+        if (decContextTestStatus(&dfp.context, DEC_Invalid_operation)) {
+            if (decNumberIsNegative(&dfp.b)) {
+                dfp.vt.VsrD(0) = INT64_MIN;
+                dfp.vt.VsrD(1) = 0;
+            } else {
+                dfp.vt.VsrD(0) = INT64_MAX;
+                dfp.vt.VsrD(1) = UINT64_MAX;
+            }
+            dfp_set_FPSCR_flag(&dfp, FP_VX | FP_VXCVI, FP_VE);
+        } else {
+            dfp_check_for_XX(&dfp);
+        }
+    }
+
+    set_dfp128_to_avr(t, &dfp.vt);
+}
 
 static inline void dfp_set_bcd_digit_64(ppc_vsr_t *t, uint8_t digit,
                                         unsigned n)
@@ -1067,8 +1134,8 @@ void helper_##op(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b,          \
     set_dfp##size(t, &dfp.vt);                                            \
 }
 
-DFP_HELPER_DEDPD(ddedpd, 64)
-DFP_HELPER_DEDPD(ddedpdq, 128)
+DFP_HELPER_DEDPD(DDEDPD, 64)
+DFP_HELPER_DEDPD(DDEDPDQ, 128)
 
 static inline uint8_t dfp_get_bcd_digit_64(ppc_vsr_t *t, unsigned n)
 {
@@ -1078,6 +1145,26 @@ static inline uint8_t dfp_get_bcd_digit_64(ppc_vsr_t *t, unsigned n)
 static inline uint8_t dfp_get_bcd_digit_128(ppc_vsr_t *t, unsigned n)
 {
     return t->VsrD((n & 0x10) ? 0 : 1) >> ((n << 2) & 63) & 15;
+}
+
+static inline void dfp_invalid_op_vxcvi_64(struct PPC_DFP *dfp)
+{
+    /* TODO: fpscr is incorrectly not being saved to env */
+    dfp_set_FPSCR_flag(dfp, FP_VX | FP_VXCVI, FPSCR_VE);
+    if ((dfp->env->fpscr & FP_VE) == 0) {
+        dfp->vt.VsrD(1) = 0x7c00000000000000; /* QNaN */
+    }
+}
+
+
+static inline void dfp_invalid_op_vxcvi_128(struct PPC_DFP *dfp)
+{
+    /* TODO: fpscr is incorrectly not being saved to env */
+    dfp_set_FPSCR_flag(dfp, FP_VX | FP_VXCVI, FPSCR_VE);
+    if ((dfp->env->fpscr & FP_VE) == 0) {
+        dfp->vt.VsrD(0) = 0x7c00000000000000; /* QNaN */
+        dfp->vt.VsrD(1) = 0x0;
+    }
 }
 
 #define DFP_HELPER_ENBCD(op, size)                                           \
@@ -1106,7 +1193,8 @@ void helper_##op(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b,             \
             sgn = 0;                                                         \
             break;                                                           \
         default:                                                             \
-            dfp_set_FPSCR_flag(&dfp, FP_VX | FP_VXCVI, FPSCR_VE);            \
+            dfp_invalid_op_vxcvi_##size(&dfp);                               \
+            set_dfp##size(t, &dfp.vt);                                       \
             return;                                                          \
         }                                                                    \
         }                                                                    \
@@ -1116,7 +1204,8 @@ void helper_##op(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b,             \
         digits[(size) / 4 - n] = dfp_get_bcd_digit_##size(&dfp.vb,           \
                                                           offset++);         \
         if (digits[(size) / 4 - n] > 10) {                                   \
-            dfp_set_FPSCR_flag(&dfp, FP_VX | FP_VXCVI, FPSCR_VE);            \
+            dfp_invalid_op_vxcvi_##size(&dfp);                               \
+            set_dfp##size(t, &dfp.vt);                                       \
             return;                                                          \
         } else {                                                             \
             nonzero |= (digits[(size) / 4 - n] > 0);                         \
@@ -1135,8 +1224,8 @@ void helper_##op(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b,             \
     set_dfp##size(t, &dfp.vt);                                               \
 }
 
-DFP_HELPER_ENBCD(denbcd, 64)
-DFP_HELPER_ENBCD(denbcdq, 128)
+DFP_HELPER_ENBCD(DENBCD, 64)
+DFP_HELPER_ENBCD(DENBCDQ, 128)
 
 #define DFP_HELPER_XEX(op, size)                               \
 void helper_##op(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b) \
@@ -1169,8 +1258,8 @@ void helper_##op(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *b) \
     }                                                          \
 }
 
-DFP_HELPER_XEX(dxex, 64)
-DFP_HELPER_XEX(dxexq, 128)
+DFP_HELPER_XEX(DXEX, 64)
+DFP_HELPER_XEX(DXEXQ, 128)
 
 static void dfp_set_raw_exp_64(ppc_vsr_t *t, uint64_t raw)
 {
@@ -1235,8 +1324,8 @@ void helper_##op(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *a,          \
     set_dfp##size(t, &dfp.vt);                                            \
 }
 
-DFP_HELPER_IEX(diex, 64)
-DFP_HELPER_IEX(diexq, 128)
+DFP_HELPER_IEX(DIEX, 64)
+DFP_HELPER_IEX(DIEXQ, 128)
 
 static void dfp_clear_lmd_from_g5msb(uint64_t *t)
 {
@@ -1323,7 +1412,72 @@ void helper_##op(CPUPPCState *env, ppc_fprp_t *t, ppc_fprp_t *a,    \
     set_dfp##size(t, &dfp.vt);                                      \
 }
 
-DFP_HELPER_SHIFT(dscli, 64, 1)
-DFP_HELPER_SHIFT(dscliq, 128, 1)
-DFP_HELPER_SHIFT(dscri, 64, 0)
-DFP_HELPER_SHIFT(dscriq, 128, 0)
+DFP_HELPER_SHIFT(DSCLI, 64, 1)
+DFP_HELPER_SHIFT(DSCLIQ, 128, 1)
+DFP_HELPER_SHIFT(DSCRI, 64, 0)
+DFP_HELPER_SHIFT(DSCRIQ, 128, 0)
+
+target_ulong helper_CDTBCD(target_ulong s)
+{
+    uint64_t res = 0;
+    uint32_t dec32, declets;
+    uint8_t bcd[6];
+    int i, w, sh;
+    decNumber a;
+
+    for (w = 1; w >= 0; w--) {
+        res <<= 32;
+        declets = extract64(s, 32 * w, 20);
+        if (declets) {
+            /* decimal32 with zero exponent and word "w" declets */
+            dec32 = (0x225ULL << 20) | declets;
+            decimal32ToNumber((decimal32 *)&dec32, &a);
+            decNumberGetBCD(&a, bcd);
+            for (i = 0; i < a.digits; i++) {
+                sh = 4 * (a.digits - 1 - i);
+                res |= (uint64_t)bcd[i] << sh;
+            }
+        }
+    }
+
+    return res;
+}
+
+target_ulong helper_CBCDTD(target_ulong s)
+{
+    uint64_t res = 0;
+    uint32_t dec32;
+    uint8_t bcd[6];
+    int w, i, offs;
+    decNumber a;
+    decContext context;
+
+    decContextDefault(&context, DEC_INIT_DECIMAL32);
+
+    for (w = 1; w >= 0; w--) {
+        res <<= 32;
+        decNumberZero(&a);
+        /* Extract each BCD field of word "w" */
+        for (i = 5; i >= 0; i--) {
+            offs = 4 * (5 - i) + 32 * w;
+            bcd[i] = extract64(s, offs, 4);
+            if (bcd[i] > 9) {
+                /*
+                 * If the field value is greater than 9, the results are
+                 * undefined. We could use a fixed value like 0 or 9, but
+                 * an and with 9 seems to better match the hardware behavior.
+                 */
+                bcd[i] &= 9;
+            }
+        }
+
+        /* Create a decNumber with the BCD values and convert to decimal32 */
+        decNumberSetBCD(&a, bcd, 6);
+        decimal32FromNumber((decimal32 *)&dec32, &a, &context);
+
+        /* Extract the two declets from the decimal32 value */
+        res |= dec32 & 0xfffff;
+    }
+
+    return res;
+}

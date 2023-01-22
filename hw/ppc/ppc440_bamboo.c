@@ -3,9 +3,9 @@
  *
  * Copyright 2007 IBM Corporation.
  * Authors:
- *	Jerone Young <jyoung5@us.ibm.com>
- *	Christian Ehrhardt <ehrhardt@linux.vnet.ibm.com>
- *	Hollis Blanchard <hollisb@us.ibm.com>
+ *  Jerone Young <jyoung5@us.ibm.com>
+ *  Christian Ehrhardt <ehrhardt@linux.vnet.ibm.com>
+ *  Hollis Blanchard <hollisb@us.ibm.com>
  *
  * This work is licensed under the GNU GPL license version 2 or later.
  *
@@ -14,7 +14,6 @@
 #include "qemu/osdep.h"
 #include "qemu/units.h"
 #include "qemu/error-report.h"
-#include "qemu-common.h"
 #include "qemu/datadir.h"
 #include "qemu/error-report.h"
 #include "net/net.h"
@@ -35,6 +34,8 @@
 #include "hw/qdev-properties.h"
 #include "qapi/error.h"
 
+#include <libfdt.h>
+
 #define BINARY_DEVICE_TREE_FILE "bamboo.dtb"
 
 /* from u-boot */
@@ -49,22 +50,15 @@
 #define PPC440EP_PCI_IO         0xe8000000
 #define PPC440EP_PCI_IOLEN      0x00010000
 
-#define PPC440EP_SDRAM_NR_BANKS 4
-
-static const ram_addr_t ppc440ep_sdram_bank_sizes[] = {
-    256 * MiB, 128 * MiB, 64 * MiB, 32 * MiB, 16 * MiB, 8 * MiB, 0
-};
-
 static hwaddr entry;
 
-static int bamboo_load_device_tree(hwaddr addr,
-                                     uint32_t ramsize,
-                                     hwaddr initrd_base,
-                                     hwaddr initrd_size,
-                                     const char *kernel_cmdline)
+static int bamboo_load_device_tree(MachineState *machine,
+                                   hwaddr addr,
+                                   hwaddr initrd_base,
+                                   hwaddr initrd_size)
 {
     int ret = -1;
-    uint32_t mem_reg_property[] = { 0, 0, cpu_to_be32(ramsize) };
+    uint32_t mem_reg_property[] = { 0, 0, cpu_to_be32(machine->ram_size) };
     char *filename;
     int fdt_size;
     void *fdt;
@@ -85,27 +79,30 @@ static int bamboo_load_device_tree(hwaddr addr,
 
     ret = qemu_fdt_setprop(fdt, "/memory", "reg", mem_reg_property,
                            sizeof(mem_reg_property));
-    if (ret < 0)
+    if (ret < 0) {
         fprintf(stderr, "couldn't set /memory/reg\n");
-
+    }
     ret = qemu_fdt_setprop_cell(fdt, "/chosen", "linux,initrd-start",
                                 initrd_base);
-    if (ret < 0)
+    if (ret < 0) {
         fprintf(stderr, "couldn't set /chosen/linux,initrd-start\n");
-
+    }
     ret = qemu_fdt_setprop_cell(fdt, "/chosen", "linux,initrd-end",
                                 (initrd_base + initrd_size));
-    if (ret < 0)
+    if (ret < 0) {
         fprintf(stderr, "couldn't set /chosen/linux,initrd-end\n");
-
+    }
     ret = qemu_fdt_setprop_string(fdt, "/chosen", "bootargs",
-                                  kernel_cmdline);
-    if (ret < 0)
+                                  machine->kernel_cmdline);
+    if (ret < 0) {
         fprintf(stderr, "couldn't set /chosen/bootargs\n");
+    }
 
-    /* Copy data from the host device tree into the guest. Since the guest can
+    /*
+     * Copy data from the host device tree into the guest. Since the guest can
      * directly access the timebase without host involvement, we must expose
-     * the correct frequencies. */
+     * the correct frequencies.
+     */
     if (kvm_enabled()) {
         tb_freq = kvmppc_get_tbfreq();
         clock_freq = kvmppc_get_clockfreq();
@@ -117,7 +114,10 @@ static int bamboo_load_device_tree(hwaddr addr,
                           tb_freq);
 
     rom_add_blob_fixed(BINARY_DEVICE_TREE_FILE, fdt, fdt_size, addr);
-    g_free(fdt);
+
+    /* Set ms->fdt for 'dumpdtb' QMP/HMP command */
+    machine->fdt = fdt;
+
     return 0;
 }
 
@@ -161,14 +161,10 @@ static void main_cpu_reset(void *opaque)
 static void bamboo_init(MachineState *machine)
 {
     const char *kernel_filename = machine->kernel_filename;
-    const char *kernel_cmdline = machine->kernel_cmdline;
     const char *initrd_filename = machine->initrd_filename;
     unsigned int pci_irq_nrs[4] = { 28, 27, 26, 25 };
     MemoryRegion *address_space_mem = get_system_memory();
     MemoryRegion *isa = g_new(MemoryRegion, 1);
-    MemoryRegion *ram_memories = g_new(MemoryRegion, PPC440EP_SDRAM_NR_BANKS);
-    hwaddr ram_bases[PPC440EP_SDRAM_NR_BANKS];
-    hwaddr ram_sizes[PPC440EP_SDRAM_NR_BANKS];
     PCIBus *pcibus;
     PowerPCCPU *cpu;
     CPUPPCState *env;
@@ -194,27 +190,24 @@ static void bamboo_init(MachineState *machine)
 
     /* interrupt controller */
     uicdev = qdev_new(TYPE_PPC_UIC);
+    ppc4xx_dcr_realize(PPC4xx_DCR_DEVICE(uicdev), cpu, &error_fatal);
+    object_unref(OBJECT(uicdev));
     uicsbd = SYS_BUS_DEVICE(uicdev);
-
-    object_property_set_link(OBJECT(uicdev), "cpu", OBJECT(cpu),
-                             &error_fatal);
-    sysbus_realize_and_unref(uicsbd, &error_fatal);
-
     sysbus_connect_irq(uicsbd, PPCUIC_OUTPUT_INT,
-                       ((qemu_irq *)env->irq_inputs)[PPC40x_INPUT_INT]);
+                       qdev_get_gpio_in(DEVICE(cpu), PPC40x_INPUT_INT));
     sysbus_connect_irq(uicsbd, PPCUIC_OUTPUT_CINT,
-                       ((qemu_irq *)env->irq_inputs)[PPC40x_INPUT_CINT]);
+                       qdev_get_gpio_in(DEVICE(cpu), PPC40x_INPUT_CINT));
 
     /* SDRAM controller */
-    memset(ram_bases, 0, sizeof(ram_bases));
-    memset(ram_sizes, 0, sizeof(ram_sizes));
-    ppc4xx_sdram_banks(machine->ram, PPC440EP_SDRAM_NR_BANKS, ram_memories,
-                       ram_bases, ram_sizes, ppc440ep_sdram_bank_sizes);
+    dev = qdev_new(TYPE_PPC4xx_SDRAM_DDR);
+    object_property_set_link(OBJECT(dev), "dram", OBJECT(machine->ram),
+                             &error_abort);
+    ppc4xx_dcr_realize(PPC4xx_DCR_DEVICE(dev), cpu, &error_fatal);
+    object_unref(OBJECT(dev));
     /* XXX 440EP's ECC interrupts are on UIC1, but we've only created UIC0. */
-    ppc4xx_sdram_init(env,
-                      qdev_get_gpio_in(uicdev, 14),
-                      PPC440EP_SDRAM_NR_BANKS, ram_memories,
-                      ram_bases, ram_sizes, 1);
+    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, qdev_get_gpio_in(uicdev, 14));
+    /* Enable SDRAM memory regions, this should be done by the firmware */
+    ppc4xx_sdram_ddr_enable(PPC4xx_SDRAM_DDR(dev));
 
     /* PCI */
     dev = sysbus_create_varargs(TYPE_PPC4xx_PCI_HOST_BRIDGE,
@@ -250,8 +243,10 @@ static void bamboo_init(MachineState *machine)
     if (pcibus) {
         /* Register network interfaces. */
         for (i = 0; i < nb_nics; i++) {
-            /* There are no PCI NICs on the Bamboo board, but there are
-             * PCI slots, so we can pick whatever default model we want. */
+            /*
+             * There are no PCI NICs on the Bamboo board, but there are
+             * PCI slots, so we can pick whatever default model we want.
+             */
             pci_nic_init_nofail(&nd_table[i], pcibus, "e1000", NULL);
         }
     }
@@ -288,8 +283,8 @@ static void bamboo_init(MachineState *machine)
 
     /* If we're loading a kernel directly, we must load the device tree too. */
     if (kernel_filename) {
-        if (bamboo_load_device_tree(FDT_ADDR, machine->ram_size, RAMDISK_ADDR,
-                                    initrd_size, kernel_cmdline) < 0) {
+        if (bamboo_load_device_tree(machine, FDT_ADDR,
+                                    RAMDISK_ADDR, initrd_size) < 0) {
             error_report("couldn't load device tree");
             exit(1);
         }

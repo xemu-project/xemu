@@ -231,6 +231,7 @@ enum tunable_id {
 	ETHTOOL_RX_COPYBREAK,
 	ETHTOOL_TX_COPYBREAK,
 	ETHTOOL_PFC_PREVENTION_TOUT, /* timeout in msecs */
+	ETHTOOL_TX_COPYBREAK_BUF_SIZE,
 	/*
 	 * Add your fresh new tunable attribute above and remember to update
 	 * tunable_strings[] in net/ethtool/common.c
@@ -256,7 +257,7 @@ struct ethtool_tunable {
 	uint32_t	id;
 	uint32_t	type_id;
 	uint32_t	len;
-	void	*data[0];
+	void	*data[];
 };
 
 #define DOWNSHIFT_DEV_DEFAULT_COUNT	0xff
@@ -321,7 +322,7 @@ struct ethtool_regs {
 	uint32_t	cmd;
 	uint32_t	version;
 	uint32_t	len;
-	uint8_t	data[0];
+	uint8_t	data[];
 };
 
 /**
@@ -347,7 +348,7 @@ struct ethtool_eeprom {
 	uint32_t	magic;
 	uint32_t	offset;
 	uint32_t	len;
-	uint8_t	data[0];
+	uint8_t	data[];
 };
 
 /**
@@ -603,6 +604,7 @@ enum ethtool_link_ext_state {
 	ETHTOOL_LINK_EXT_STATE_CALIBRATION_FAILURE,
 	ETHTOOL_LINK_EXT_STATE_POWER_BUDGET_EXCEEDED,
 	ETHTOOL_LINK_EXT_STATE_OVERHEAT,
+	ETHTOOL_LINK_EXT_STATE_MODULE,
 };
 
 /* More information in addition to ETHTOOL_LINK_EXT_STATE_AUTONEG. */
@@ -639,12 +641,19 @@ enum ethtool_link_ext_substate_link_logical_mismatch {
 enum ethtool_link_ext_substate_bad_signal_integrity {
 	ETHTOOL_LINK_EXT_SUBSTATE_BSI_LARGE_NUMBER_OF_PHYSICAL_ERRORS = 1,
 	ETHTOOL_LINK_EXT_SUBSTATE_BSI_UNSUPPORTED_RATE,
+	ETHTOOL_LINK_EXT_SUBSTATE_BSI_SERDES_REFERENCE_CLOCK_LOST,
+	ETHTOOL_LINK_EXT_SUBSTATE_BSI_SERDES_ALOS,
 };
 
 /* More information in addition to ETHTOOL_LINK_EXT_STATE_CABLE_ISSUE. */
 enum ethtool_link_ext_substate_cable_issue {
 	ETHTOOL_LINK_EXT_SUBSTATE_CI_UNSUPPORTED_CABLE = 1,
 	ETHTOOL_LINK_EXT_SUBSTATE_CI_CABLE_TEST_FAILURE,
+};
+
+/* More information in addition to ETHTOOL_LINK_EXT_STATE_MODULE. */
+enum ethtool_link_ext_substate_module {
+	ETHTOOL_LINK_EXT_SUBSTATE_MODULE_CMIS_NOT_READY = 1,
 };
 
 #define ETH_GSTRING_LEN		32
@@ -705,6 +714,29 @@ enum ethtool_stringset {
 };
 
 /**
+ * enum ethtool_module_power_mode_policy - plug-in module power mode policy
+ * @ETHTOOL_MODULE_POWER_MODE_POLICY_HIGH: Module is always in high power mode.
+ * @ETHTOOL_MODULE_POWER_MODE_POLICY_AUTO: Module is transitioned by the host
+ *	to high power mode when the first port using it is put administratively
+ *	up and to low power mode when the last port using it is put
+ *	administratively down.
+ */
+enum ethtool_module_power_mode_policy {
+	ETHTOOL_MODULE_POWER_MODE_POLICY_HIGH = 1,
+	ETHTOOL_MODULE_POWER_MODE_POLICY_AUTO,
+};
+
+/**
+ * enum ethtool_module_power_mode - plug-in module power mode
+ * @ETHTOOL_MODULE_POWER_MODE_LOW: Module is in low power mode.
+ * @ETHTOOL_MODULE_POWER_MODE_HIGH: Module is in high power mode.
+ */
+enum ethtool_module_power_mode {
+	ETHTOOL_MODULE_POWER_MODE_LOW = 1,
+	ETHTOOL_MODULE_POWER_MODE_HIGH,
+};
+
+/**
  * struct ethtool_gstrings - string set for data tagging
  * @cmd: Command number = %ETHTOOL_GSTRINGS
  * @string_set: String set ID; one of &enum ethtool_stringset
@@ -720,7 +752,7 @@ struct ethtool_gstrings {
 	uint32_t	cmd;
 	uint32_t	string_set;
 	uint32_t	len;
-	uint8_t	data[0];
+	uint8_t	data[];
 };
 
 /**
@@ -745,7 +777,7 @@ struct ethtool_sset_info {
 	uint32_t	cmd;
 	uint32_t	reserved;
 	uint64_t	sset_mask;
-	uint32_t	data[0];
+	uint32_t	data[];
 };
 
 /**
@@ -785,7 +817,7 @@ struct ethtool_test {
 	uint32_t	flags;
 	uint32_t	reserved;
 	uint32_t	len;
-	uint64_t	data[0];
+	uint64_t	data[];
 };
 
 /**
@@ -802,7 +834,7 @@ struct ethtool_test {
 struct ethtool_stats {
 	uint32_t	cmd;
 	uint32_t	n_stats;
-	uint64_t	data[0];
+	uint64_t	data[];
 };
 
 /**
@@ -819,7 +851,7 @@ struct ethtool_stats {
 struct ethtool_perm_addr {
 	uint32_t	cmd;
 	uint32_t	size;
-	uint8_t	data[0];
+	uint8_t	data[];
 };
 
 /* boolean flags controlling per-interface behavior characteristics.
@@ -1128,7 +1160,7 @@ struct ethtool_rxnfc {
 struct ethtool_rxfh_indir {
 	uint32_t	cmd;
 	uint32_t	size;
-	uint32_t	ring_index[0];
+	uint32_t	ring_index[];
 };
 
 /**
@@ -1169,7 +1201,7 @@ struct ethtool_rxfh {
 	uint8_t	hfunc;
 	uint8_t	rsvd8[3];
 	uint32_t	rsvd32;
-	uint32_t   rss_config[0];
+	uint32_t   rss_config[];
 };
 #define ETH_RXFH_CONTEXT_ALLOC		0xffffffff
 #define ETH_RXFH_INDIR_NO_CHANGE	0xffffffff
@@ -1254,7 +1286,7 @@ struct ethtool_dump {
 	uint32_t	version;
 	uint32_t	flag;
 	uint32_t	len;
-	uint8_t	data[0];
+	uint8_t	data[];
 };
 
 #define ETH_FW_DUMP_DISABLE 0
@@ -1286,7 +1318,7 @@ struct ethtool_get_features_block {
 struct ethtool_gfeatures {
 	uint32_t	cmd;
 	uint32_t	size;
-	struct ethtool_get_features_block features[0];
+	struct ethtool_get_features_block features[];
 };
 
 /**
@@ -1308,7 +1340,7 @@ struct ethtool_set_features_block {
 struct ethtool_sfeatures {
 	uint32_t	cmd;
 	uint32_t	size;
-	struct ethtool_set_features_block features[0];
+	struct ethtool_set_features_block features[];
 };
 
 /**
@@ -1659,6 +1691,7 @@ enum ethtool_link_mode_bit_indices {
 	ETHTOOL_LINK_MODE_400000baseCR4_Full_BIT	 = 89,
 	ETHTOOL_LINK_MODE_100baseFX_Half_BIT		 = 90,
 	ETHTOOL_LINK_MODE_100baseFX_Full_BIT		 = 91,
+	ETHTOOL_LINK_MODE_10baseT1L_Full_BIT		 = 92,
 	/* must be last entry */
 	__ETHTOOL_LINK_MODE_MASK_NBITS
 };
@@ -2054,7 +2087,7 @@ struct ethtool_link_settings {
 	uint8_t	master_slave_state;
 	uint8_t	reserved1[1];
 	uint32_t	reserved[7];
-	uint32_t	link_mode_masks[0];
+	uint32_t	link_mode_masks[];
 	/* layout of link_mode_masks fields:
 	 * uint32_t map_supported[link_mode_masks_nwords];
 	 * uint32_t map_advertising[link_mode_masks_nwords];

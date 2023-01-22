@@ -234,8 +234,8 @@ static int bitmap_table_load(BlockDriverState *bs, Qcow2BitmapTable *tb,
     }
 
     assert(tb->size <= BME_MAX_TABLE_SIZE);
-    ret = bdrv_pread(bs->file, tb->offset,
-                     table, tb->size * BME_TABLE_ENTRY_SIZE);
+    ret = bdrv_pread(bs->file, tb->offset, tb->size * BME_TABLE_ENTRY_SIZE,
+                     table, 0);
     if (ret < 0) {
         goto fail;
     }
@@ -317,7 +317,7 @@ static int load_bitmap_data(BlockDriverState *bs,
                  * already cleared */
             }
         } else {
-            ret = bdrv_pread(bs->file, data_offset, buf, s->cluster_size);
+            ret = bdrv_pread(bs->file, data_offset, s->cluster_size, buf, 0);
             if (ret < 0) {
                 goto finish;
             }
@@ -575,7 +575,7 @@ static Qcow2BitmapList *bitmap_list_load(BlockDriverState *bs, uint64_t offset,
     }
     dir_end = dir + size;
 
-    ret = bdrv_pread(bs->file, offset, dir, size);
+    ret = bdrv_pread(bs->file, offset, size, dir, 0);
     if (ret < 0) {
         error_setg_errno(errp, -ret, "Failed to read bitmap directory");
         goto fail;
@@ -787,10 +787,10 @@ static int bitmap_list_store(BlockDriverState *bs, Qcow2BitmapList *bm_list,
         }
     }
 
-    /* Actually, even in in-place case ignoring QCOW2_OL_BITMAP_DIRECTORY is not
-     * necessary, because we drop QCOW2_AUTOCLEAR_BITMAPS when updating bitmap
-     * directory in-place (actually, turn-off the extension), which is checked
-     * in qcow2_check_metadata_overlap() */
+    /* Actually, even in the in-place case ignoring QCOW2_OL_BITMAP_DIRECTORY
+     * is not necessary, because we drop QCOW2_AUTOCLEAR_BITMAPS when updating
+     * bitmap directory in-place (actually, turn-off the extension), which is
+     * checked in qcow2_check_metadata_overlap() */
     ret = qcow2_pre_write_overlap_check(
             bs, in_place ? QCOW2_OL_BITMAP_DIRECTORY : 0, dir_offset, dir_size,
             false);
@@ -798,7 +798,7 @@ static int bitmap_list_store(BlockDriverState *bs, Qcow2BitmapList *bm_list,
         goto fail;
     }
 
-    ret = bdrv_pwrite(bs->file, dir_offset, dir, dir_size);
+    ret = bdrv_pwrite(bs->file, dir_offset, dir_size, dir, 0);
     if (ret < 0) {
         goto fail;
     }
@@ -955,8 +955,8 @@ static void set_readonly_helper(gpointer bitmap, gpointer value)
  * If header_updated is not NULL then it is set appropriately regardless of
  * the return value.
  */
-bool qcow2_load_dirty_bitmaps(BlockDriverState *bs, bool *header_updated,
-                              Error **errp)
+bool coroutine_fn qcow2_load_dirty_bitmaps(BlockDriverState *bs,
+                                           bool *header_updated, Error **errp)
 {
     BDRVQcow2State *s = bs->opaque;
     Qcow2BitmapList *bm_list;
@@ -1208,7 +1208,7 @@ int qcow2_reopen_bitmaps_rw(BlockDriverState *bs, Error **errp)
         }
     }
 
-    g_slist_foreach(ro_dirty_bitmaps, set_readonly_helper, false);
+    g_slist_foreach(ro_dirty_bitmaps, set_readonly_helper, (gpointer)false);
     ret = 0;
 
 out:
@@ -1339,7 +1339,7 @@ static uint64_t *store_bitmap_data(BlockDriverState *bs,
             goto fail;
         }
 
-        ret = bdrv_pwrite(bs->file, off, buf, s->cluster_size);
+        ret = bdrv_pwrite(bs->file, off, s->cluster_size, buf, 0);
         if (ret < 0) {
             error_setg_errno(errp, -ret, "Failed to write bitmap '%s' to file",
                              bm_name);
@@ -1402,7 +1402,7 @@ static int store_bitmap(BlockDriverState *bs, Qcow2Bitmap *bm, Error **errp)
     }
 
     bitmap_table_to_be(tb, tb_size);
-    ret = bdrv_pwrite(bs->file, tb_offset, tb, tb_size * sizeof(tb[0]));
+    ret = bdrv_pwrite(bs->file, tb_offset, tb_size * sizeof(tb[0]), tb, 0);
     if (ret < 0) {
         error_setg_errno(errp, -ret, "Failed to write bitmap '%s' to file",
                          bm_name);

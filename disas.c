@@ -83,18 +83,18 @@ static int print_insn_objdump(bfd_vma pc, disassemble_info *info,
                               const char *prefix)
 {
     int i, n = info->buffer_length;
-    uint8_t *buf = g_malloc(n);
+    g_autofree uint8_t *buf = g_malloc(n);
 
-    info->read_memory_func(pc, buf, n, info);
-
-    for (i = 0; i < n; ++i) {
-        if (i % 32 == 0) {
-            info->fprintf_func(info->stream, "\n%s: ", prefix);
+    if (info->read_memory_func(pc, buf, n, info) == 0) {
+        for (i = 0; i < n; ++i) {
+            if (i % 32 == 0) {
+                info->fprintf_func(info->stream, "\n%s: ", prefix);
+            }
+            info->fprintf_func(info->stream, "%02x", buf[i]);
         }
-        info->fprintf_func(info->stream, "%02x", buf[i]);
+    } else {
+        info->fprintf_func(info->stream, "unable to read memory");
     }
-
-    g_free(buf);
     return n;
 }
 
@@ -126,7 +126,7 @@ static void initialize_debug_target(CPUDebug *s, CPUState *cpu)
     s->cpu = cpu;
     s->info.read_memory_func = target_read_memory;
     s->info.print_address_func = print_address;
-#ifdef TARGET_WORDS_BIGENDIAN
+#if TARGET_BIG_ENDIAN
     s->info.endian = BFD_ENDIAN_BIG;
 #else
     s->info.endian = BFD_ENDIAN_LITTLE;
@@ -144,7 +144,7 @@ static void initialize_debug_host(CPUDebug *s)
 
     s->info.read_memory_func = host_read_memory;
     s->info.print_address_func = host_print_address;
-#ifdef HOST_WORDS_BIGENDIAN
+#if HOST_BIG_ENDIAN
     s->info.endian = BFD_ENDIAN_BIG;
 #else
     s->info.endian = BFD_ENDIAN_LITTLE;
@@ -153,21 +153,17 @@ static void initialize_debug_host(CPUDebug *s)
     s->info.print_insn = print_insn_tci;
 #elif defined(__i386__)
     s->info.mach = bfd_mach_i386_i386;
-    s->info.print_insn = print_insn_i386;
     s->info.cap_arch = CS_ARCH_X86;
     s->info.cap_mode = CS_MODE_32;
     s->info.cap_insn_unit = 1;
     s->info.cap_insn_split = 8;
 #elif defined(__x86_64__)
     s->info.mach = bfd_mach_x86_64;
-    s->info.print_insn = print_insn_i386;
     s->info.cap_arch = CS_ARCH_X86;
     s->info.cap_mode = CS_MODE_64;
     s->info.cap_insn_unit = 1;
     s->info.cap_insn_split = 8;
 #elif defined(_ARCH_PPC)
-    s->info.disassembler_options = (char *)"any";
-    s->info.print_insn = print_insn_ppc;
     s->info.cap_arch = CS_ARCH_PPC;
 # ifdef _ARCH_PPC64
     s->info.cap_mode = CS_MODE_64;
@@ -182,9 +178,6 @@ static void initialize_debug_host(CPUDebug *s)
 #endif
 #elif defined(__aarch64__)
     s->info.cap_arch = CS_ARCH_ARM64;
-# ifdef CONFIG_ARM_A64_DIS
-    s->info.print_insn = print_insn_arm_a64;
-# endif
 #elif defined(__alpha__)
     s->info.print_insn = print_insn_alpha;
 #elif defined(__sparc__)
@@ -192,7 +185,6 @@ static void initialize_debug_host(CPUDebug *s)
     s->info.mach = bfd_mach_sparc_v9b;
 #elif defined(__arm__)
     /* TCG only generates code for arm mode.  */
-    s->info.print_insn = print_insn_arm;
     s->info.cap_arch = CS_ARCH_ARM;
 #elif defined(__MIPSEB__)
     s->info.print_insn = print_insn_big_mips;
@@ -201,7 +193,6 @@ static void initialize_debug_host(CPUDebug *s)
 #elif defined(__m68k__)
     s->info.print_insn = print_insn_m68k;
 #elif defined(__s390__)
-    s->info.print_insn = print_insn_s390;
     s->info.cap_arch = CS_ARCH_SYSZ;
     s->info.cap_insn_unit = 2;
     s->info.cap_insn_split = 6;
@@ -248,7 +239,7 @@ void target_disas(FILE *out, CPUState *cpu, target_ulong code,
     }
 }
 
-static int plugin_printf(FILE *stream, const char *fmt, ...)
+static int gstring_printf(FILE *stream, const char *fmt, ...)
 {
     /* We abuse the FILE parameter to pass a GString. */
     GString *s = (GString *)stream;
@@ -279,7 +270,7 @@ char *plugin_disas(CPUState *cpu, uint64_t addr, size_t size)
     GString *ds = g_string_new(NULL);
 
     initialize_debug_target(&s, cpu);
-    s.info.fprintf_func = plugin_printf;
+    s.info.fprintf_func = gstring_printf;
     s.info.stream = (FILE *)ds;  /* abuse this slot */
     s.info.buffer_vma = addr;
     s.info.buffer_length = size;
@@ -367,15 +358,19 @@ void monitor_disas(Monitor *mon, CPUState *cpu,
 {
     int count, i;
     CPUDebug s;
+    g_autoptr(GString) ds = g_string_new("");
 
     initialize_debug_target(&s, cpu);
-    s.info.fprintf_func = qemu_fprintf;
+    s.info.fprintf_func = gstring_printf;
+    s.info.stream = (FILE *)ds;  /* abuse this slot */
+
     if (is_physical) {
         s.info.read_memory_func = physical_read_memory;
     }
     s.info.buffer_vma = pc;
 
     if (s.info.cap_arch >= 0 && cap_disas_monitor(&s.info, pc, nb_insn)) {
+        monitor_puts(mon, ds->str);
         return;
     }
 
@@ -385,13 +380,16 @@ void monitor_disas(Monitor *mon, CPUState *cpu,
         return;
     }
 
-    for(i = 0; i < nb_insn; i++) {
-	monitor_printf(mon, "0x" TARGET_FMT_lx ":  ", pc);
+    for (i = 0; i < nb_insn; i++) {
+        g_string_append_printf(ds, "0x" TARGET_FMT_lx ":  ", pc);
         count = s.info.print_insn(pc, &s.info);
-	monitor_printf(mon, "\n");
-	if (count < 0)
-	    break;
+        g_string_append_c(ds, '\n');
+        if (count < 0) {
+            break;
+        }
         pc += count;
     }
+
+    monitor_puts(mon, ds->str);
 }
 #endif

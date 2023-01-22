@@ -32,7 +32,7 @@
 
 typedef void (*audio_callback_fn) (void *opaque, int avail);
 
-#ifdef HOST_WORDS_BIGENDIAN
+#if HOST_BIG_ENDIAN
 #define AUDIO_HOST_ENDIANNESS 1
 #else
 #define AUDIO_HOST_ENDIANNESS 0
@@ -91,8 +91,8 @@ typedef struct QEMUAudioTimeStamp {
     uint64_t old_ts;
 } QEMUAudioTimeStamp;
 
-void AUD_vlog (const char *cap, const char *fmt, va_list ap) GCC_FMT_ATTR(2, 0);
-void AUD_log (const char *cap, const char *fmt, ...) GCC_FMT_ATTR(2, 3);
+void AUD_vlog (const char *cap, const char *fmt, va_list ap) G_GNUC_PRINTF(2, 0);
+void AUD_log (const char *cap, const char *fmt, ...) G_GNUC_PRINTF(2, 3);
 
 void AUD_register_card (const char *name, QEMUSoundCard *card);
 void AUD_remove_card (QEMUSoundCard *card);
@@ -168,8 +168,10 @@ void audio_sample_to_uint64(const void *samples, int pos,
 void audio_sample_from_uint64(void *samples, int pos,
                             uint64_t left, uint64_t right);
 
+void audio_define(Audiodev *audio);
 void audio_parse_option(const char *opt);
-void audio_init_audiodevs(void);
+bool audio_init_audiodevs(void);
+void audio_help(void);
 void audio_legacy_help(void);
 
 AudioState *audio_state_by_name(const char *name);
