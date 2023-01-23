@@ -799,6 +799,10 @@ for opt do
   ;;
   --disable-tsan) tsan="no"
   ;;
+  --disable-fortify-source) fortify_source="no"
+  ;;
+  --enable-fortify-source) fortify_source="yes"
+  ;;
   --disable-tcg) tcg="disabled"
                  plugins="no"
   ;;
