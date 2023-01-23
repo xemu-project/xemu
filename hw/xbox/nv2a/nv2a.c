@@ -417,7 +417,6 @@ const VMStateDescription vmstate_nv2a_pgraph_vertex_attributes = {
     .name = "nv2a/pgraph/vertex-attr",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         // FIXME
         VMSTATE_END_OF_LIST()

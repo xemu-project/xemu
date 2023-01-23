@@ -2393,7 +2393,6 @@ const VMStateDescription vmstate_vp_dsp_dma_state = {
     .name = "mcpx-apu/dsp-state/dma",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields      = (VMStateField[]) {
         VMSTATE_UINT32(configuration, DSPDMAState),
         VMSTATE_UINT32(control, DSPDMAState),
@@ -2409,7 +2408,6 @@ const VMStateDescription vmstate_vp_dsp_core_state = {
     .name = "mcpx-apu/dsp-state/core",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields      = (VMStateField[]) {
         // FIXME: Remove unnecessary fields
         VMSTATE_UINT16(instr_cycle, dsp_core_t),
@@ -2453,7 +2451,6 @@ const VMStateDescription vmstate_vp_dsp_state = {
     .name = "mcpx-apu/dsp-state",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_STRUCT(core, DSPState, 1, vmstate_vp_dsp_core_state, dsp_core_t),
         VMSTATE_STRUCT(dma, DSPState, 1, vmstate_vp_dsp_dma_state, DSPDMAState),
@@ -2468,7 +2465,6 @@ const VMStateDescription vmstate_vp_ssl_data = {
     .name = "mcpx_apu_voice_data",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32_ARRAY(base, MCPXAPUVPSSLData, MCPX_HW_SSLS_PER_VOICE),
         VMSTATE_UINT8_ARRAY(count, MCPXAPUVPSSLData, MCPX_HW_SSLS_PER_VOICE),
