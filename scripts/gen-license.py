@@ -174,7 +174,7 @@ Lib('qemu', 'https://www.qemu.org/',
 Lib('slirp', 'https://gitlab.freedesktop.org/slirp',
 	bsd_3clause, 'https://gitlab.freedesktop.org/slirp/libslirp/-/raw/master/COPYRIGHT', license_lines=(16,39),
 	ships_static=all_platforms,
-	submodule=Submodule('slirp')
+	pkgconfig=PkgConfig('slirp'), pkg_win='libslirp', pkg_mac='libslirp', pkg_ubuntu='libslirp-dev'
 	),
 
 Lib('imgui', 'https://github.com/ocornut/imgui',
