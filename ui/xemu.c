@@ -33,6 +33,7 @@
 #include "qemu/main-loop.h"
 #include "qemu/rcu.h"
 #include "qemu-version.h"
+#include "qemu-main.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-block.h"
 #include "qapi/qmp/qdict.h"
@@ -1427,14 +1428,14 @@ int gArgc;
 char **gArgv;
 
 // vl.c
-int qemu_main(int argc, char **argv, char **envp);
 
 static void *call_qemu_main(void *opaque)
 {
     int status;
 
     DPRINTF("Second thread: calling qemu_main()\n");
-    status = qemu_main(gArgc, gArgv, NULL);
+    qemu_init(gArgc, gArgv);
+    status = qemu_main();
     DPRINTF("Second thread: qemu_main() returned, exiting\n");
     exit(status);
 }

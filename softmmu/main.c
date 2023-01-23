@@ -26,25 +26,10 @@
 #include "qemu-main.h"
 #include "sysemu/sysemu.h"
 
-#ifdef XBOX
-
-#undef main
-
-int qemu_main(int argc, char **argv)
-{
-    int status;
-
-    qemu_init(argc, argv);
-    status = qemu_main_loop();
-    qemu_cleanup();
-
-    return status;
-}
-
-#else
-
+#ifndef XBOX
 #ifdef CONFIG_SDL
 #include <SDL.h>
+#endif
 #endif
 
 int qemu_default_main(void)
@@ -59,10 +44,10 @@ int qemu_default_main(void)
 
 int (*qemu_main)(void) = qemu_default_main;
 
+#ifndef XBOX
 int main(int argc, char **argv)
 {
     qemu_init(argc, argv);
     return qemu_main();
 }
-
-#endif // ifdef XBOX
+#endif
