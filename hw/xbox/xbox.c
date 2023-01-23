@@ -98,7 +98,7 @@ static void xbox_flash_init(MachineState *ms, MemoryRegion *rom_memory)
     }
 
     if (failed_to_load_bios) {
-        fprintf(stderr, "Failed to load BIOS '%s'\n", filename);
+        fprintf(stderr, "Failed to load BIOS '%s'\n", filename ? filename : "(null)");
         memset(bios_data, 0xff, bios_size);
     }
     if (filename != NULL) {
