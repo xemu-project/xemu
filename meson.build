@@ -1160,11 +1160,11 @@ opengl = not_found
 if not get_option('opengl').auto() or have_system or have_vhost_user_gpu
   epoxy = dependency('epoxy', method: 'pkg-config',
                       required: get_option('opengl'), kwargs: static_kwargs)
-  if cc.has_header('epoxy/egl.h', dependencies: epoxy)
+  #if cc.has_header('epoxy/egl.h', dependencies: epoxy)
     opengl = epoxy
-  elif get_option('opengl').enabled()
-    error('epoxy/egl.h not found')
-  endif
+  # elif get_option('opengl').enabled()
+  #   error('epoxy/egl.h not found')
+  # endif
 endif
 gbm = not_found
 if (have_system or have_tools) and (virgl.found() or opengl.found())
