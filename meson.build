@@ -2877,7 +2877,7 @@ qemu_version = custom_target('qemu-version.h',
 
 genconfig_cmd = [
   python, files('genconfig/gen_config.py'),
-   meson.source_root() / 'config_spec.yml', 'xemu-config.h'
+  meson.current_source_dir() / 'config_spec.yml', 'xemu-config.h'
 ]
 
 xemu_config = custom_target('xemu-config.h',
