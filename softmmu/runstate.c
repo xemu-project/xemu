@@ -762,7 +762,9 @@ static void qemu_run_exit_notifiers(void)
 
 void qemu_init_subsystems(void)
 {
+#ifndef XBOX
     Error *err = NULL;
+#endif
 
     os_set_line_buffering();
 
