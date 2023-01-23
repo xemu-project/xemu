@@ -69,7 +69,7 @@ jobs:
           artifact_name: xemu-win-release
           artifact_filename: xemu-win-release.zip
     env:
-      DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-99d540a
+      DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-d0d3e7b
 
     steps:
     - name: Download source package
