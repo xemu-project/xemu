@@ -1551,6 +1551,16 @@ case "$fdt" in
 esac
 
 ##########################################
+# epoxy probe
+if $pkg_config --libs --silence-errors epoxy > /dev/null 2>&1 ; then
+    epoxy_libs=$($pkg_config --libs --silence-errors epoxy)
+    epoxy_cflags=$($pkg_config --cflags --silence-errors epoxy)
+else
+    error_exit "epoxy not present." \
+        "Please install the epoxy devel package."
+fi
+
+##########################################
 # check and set a backend for coroutine
 
 # We prefer ucontext, but it's not always possible. The fallback
@@ -2423,6 +2433,10 @@ echo "GLIB_BINDIR=$glib_bindir" >> $config_host_mak
 echo "GLIB_VERSION=$(pkg-config --modversion glib-2.0)" >> $config_host_mak
 echo "QEMU_LDFLAGS=$QEMU_LDFLAGS" >> $config_host_mak
 echo "EXESUF=$EXESUF" >> $config_host_mak
+
+# FIXME: Use meson
+echo "EPOXY_CFLAGS=$epoxy_cflags" >> $config_host_mak
+echo "EPOXY_LIBS=$epoxy_libs" >> $config_host_mak
 
 # use included Linux headers
 if test "$linux" = "yes" ; then
