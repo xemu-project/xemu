@@ -71,6 +71,15 @@ RUN V=1 MXE_VERBOSE=1 make -C /opt/mxe \
         MXE_PLUGIN_DIRS=plugins/gcc10 \
             sdl2
 
+COPY libslirp.mk /opt/mxe/src/libslirp.mk
+COPY libslirp-1.patch /opt/mxe/src/libslirp-1.patch
+RUN V=1 MXE_VERBOSE=1 make -C /opt/mxe \
+        MXE_TARGETS=x86_64-w64-mingw32.static \
+        MXE_PLUGIN_DIRS=plugins/gcc10 \
+            libslirp
+
+RUN find /opt/mxe/usr -executable -type f -exec chmod a+x {} \;
+
 ENV CROSSPREFIX=x86_64-w64-mingw32.static-
 ENV CROSSAR=${CROSSPREFIX}gcc-ar
 ENV PATH="/opt/mxe/.ccache/bin:/opt/mxe/usr/x86_64-pc-linux-gnu/bin:/opt/mxe/usr/bin:${PATH}"
