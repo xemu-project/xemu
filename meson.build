@@ -1196,8 +1196,10 @@ else
                        kwargs: static_kwargs)
 endif
 
-libsamplerate = declare_dependency(compile_args: config_host['LIBSAMPLERATE_CFLAGS'].split(),
-                                   link_args: config_host['LIBSAMPLERATE_LIBS'].split())
+libsamplerate = dependency('samplerate',
+                           method: 'pkg-config',
+                           required: true,
+                           kwargs: static_kwargs)
 
 gnutls = not_found
 gnutls_crypto = not_found

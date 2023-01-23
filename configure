@@ -1562,15 +1562,6 @@ if test "$opengl" != "no" ; then
   QEMU_CFLAGS="$QEMU_CFLAGS $opengl_cflags"
 fi # test "$opengl" != "no"
 
-##########################################
-# libsamplerate probe
-if $pkg_config --exists samplerate; then
-    libsamplerate_cflags=$($pkg_config --cflags samplerate)
-    libsamplerate_libs=$($pkg_config --libs samplerate)
-else
-    feature_not_found "samplerate" "Install libsamplerate0-dev"
-fi
-
 # check and set a backend for coroutine
 
 # We prefer ucontext, but it's not always possible. The fallback
@@ -2411,9 +2402,6 @@ fi
 if test "$have_tsan" = "yes" && test "$have_tsan_iface_fiber" = "yes" ; then
     echo "CONFIG_TSAN=y" >> $config_host_mak
 fi
-
-echo "LIBSAMPLERATE_CFLAGS=$libsamplerate_cflags" >> $config_host_mak
-echo "LIBSAMPLERATE_LIBS=$libsamplerate_libs" >> $config_host_mak
 
 if test "$plugins" = "yes" ; then
     echo "CONFIG_PLUGIN=y" >> $config_host_mak
