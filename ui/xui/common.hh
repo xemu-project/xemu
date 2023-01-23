@@ -35,7 +35,6 @@ extern "C" {
 
 // Include necessary QEMU headers
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qapi/error.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/runstate.h"
