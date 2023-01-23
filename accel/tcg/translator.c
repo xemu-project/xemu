@@ -133,7 +133,7 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int max_insns,
     /* The disas_log hook may use these values rather than recompute.  */
     tb->size = db->pc_next - db->pc_first;
     tb->icount = db->num_insns;
-    tb->ihash = tb_code_hash_func(cpu->env_ptr, tb->pc, tb->size);
+    tb->ihash = tb_code_hash_func(cpu->env_ptr, db->pc_first, tb->size);
 
 #ifdef DEBUG_DISAS
     if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)
