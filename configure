@@ -1547,7 +1547,6 @@ case "$fdt" in
 esac
 
 ##########################################
-
 # check and set a backend for coroutine
 
 # We prefer ucontext, but it's not always possible. The fallback
