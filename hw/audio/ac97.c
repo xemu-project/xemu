@@ -197,8 +197,7 @@ static void fetch_bd(AC97LinkState *s, AC97BusMasterRegs *r)
 {
     uint8_t b[8];
 
-    // dma_memory_read(s->as, r->bdbar + r->civ * 8, b, 8);  // XEMU_FIXME
-    pci_dma_read(&s->dev, r->bdbar + r->civ * 8, b, 8);
+    dma_memory_read(s->as, r->bdbar + r->civ * 8, b, 8, MEMTXATTRS_UNSPECIFIED);
     r->bd_valid = 1;
     r->bd.addr = le32_to_cpu(*(uint32_t *) &b[0]) & ~3;
     r->bd.ctl_len = le32_to_cpu(*(uint32_t *) &b[4]);
@@ -949,8 +948,7 @@ static int write_audio(AC97LinkState *s, AC97BusMasterRegs *r,
     while (temp) {
         int copied;
         to_copy = MIN(temp, sizeof(tmpbuf));
-        // dma_memory_read(s->as, addr, tmpbuf, to_copy); // XEMU_FIXME
-        pci_dma_read(&s->dev, addr, tmpbuf, to_copy);
+        dma_memory_read(s->as, addr, tmpbuf, to_copy, MEMTXATTRS_UNSPECIFIED);
         copied = AUD_write(s->voice_po, tmpbuf, to_copy);
         dolog("write_audio max=%x to_copy=%x copied=%x\n",
               max, to_copy, copied);
@@ -1030,8 +1028,7 @@ static int read_audio(AC97LinkState *s, AC97BusMasterRegs *r,
             *stop = 1;
             break;
         }
-        // dma_memory_write (s->as, addr, tmpbuf, acquired);  // XEMU_FIXME
-        pci_dma_write(&s->dev, addr, tmpbuf, acquired);
+        dma_memory_write(s->as, addr, tmpbuf, acquired, MEMTXATTRS_UNSPECIFIED);
         temp -= acquired;
         addr += acquired;
         nread += acquired;
