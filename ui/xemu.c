@@ -33,7 +33,6 @@
 #include "qemu/main-loop.h"
 #include "qemu/rcu.h"
 #include "qemu-version.h"
-#include "qemu-common.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-block.h"
 #include "qapi/qmp/qdict.h"
