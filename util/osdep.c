@@ -476,6 +476,8 @@ int qemu_mkdir(const char *path)
 	if (!dirResult) {
 		return -1;
 	}
+
+    return 0;
 #else
 	return mkdir(path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 #endif
