@@ -4978,6 +4978,7 @@ uint64_t x86_cpu_get_supported_feature_word(FeatureWord w,
     return r;
 }
 
+#ifndef XBOX
 static void x86_cpu_get_supported_cpuid(uint32_t func, uint32_t index,
                                         uint32_t *eax, uint32_t *ebx,
                                         uint32_t *ecx, uint32_t *edx)
@@ -5030,6 +5031,7 @@ static void x86_cpu_get_cache_cpuid(uint32_t func, uint32_t index,
         host_cpuid(func, index, eax, ebx, ecx, edx);
     }
 }
+#endif /* XBOX */
 
 /*
  * Only for builtin_x86_defs models initialized with x86_register_cpudef_types.
