@@ -1563,19 +1563,6 @@ if test "$opengl" != "no" ; then
 fi # test "$opengl" != "no"
 
 ##########################################
-# epoxy probe
-
-# if $pkg_config --exists epoxy ; then
-#     epoxy_libs=$($pkg_config --libs epoxy)
-#     epoxy_flags=$($pkg_config --cflags epoxy)
-# else
-#     error_exit "epoxy not present." \
-#         "Please install the epoxy devel package."
-# fi
-# LIBS="$LIBS $epoxy_libs"
-# QEMU_CFLAGS="$QEMU_CFLAGS $epoxy_flags"
-
-##########################################
 # gtk probe
 
 # Depend on GTK for native file dialog boxes
