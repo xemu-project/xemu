@@ -1187,24 +1187,18 @@ toml = declare_dependency(compile_args: ['-DTOML_HEADER_ONLY=0'],
 
 genconfig = declare_dependency(include_directories: 'genconfig')
 
-openssl = dependency('openssl',
-                     method: 'pkg-config',
-                     required: true,
+openssl = dependency('openssl', method: 'pkg-config', required: true,
                      kwargs: static_kwargs)
 
 if targetos == 'windows'
   libpcap = declare_dependency(include_directories: 'winpcap-loader/include',
                                link_args: ['-lws2_32'])
 else
-  libpcap = dependency('libpcap',
-                       method: 'pkg-config',
-                       required: true,
+  libpcap = dependency('libpcap', method: 'pkg-config', required: true,
                        kwargs: static_kwargs)
 endif
 
-libsamplerate = dependency('samplerate',
-                           method: 'pkg-config',
-                           required: true,
+libsamplerate = dependency('samplerate', method: 'pkg-config', required: true,
                            kwargs: static_kwargs)
 
 gnutls = not_found
