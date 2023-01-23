@@ -273,7 +273,6 @@ EXTRA_OBJCFLAGS=""
 EXTRA_LDFLAGS=""
 
 debug_tcg="no"
-renderdoc="$auto"
 sanitizers="no"
 tsan="no"
 fortify_source="yes"
@@ -800,10 +799,6 @@ for opt do
   ;;
   --disable-tsan) tsan="no"
   ;;
-  --disable-renderdoc) renderdoc="disabled"
-  ;;
-  --enable-renderdoc) renderdoc="enabled"
-  ;;
   --disable-tcg) tcg="disabled"
                  plugins="no"
   ;;
@@ -1054,7 +1049,6 @@ cat << EOF
   debug-info      debugging information
   safe-stack      SafeStack Stack Smash Protection. Depends on
                   clang/llvm >= 3.7 and requires coroutine backend ucontext.
-  renderdoc       improved RenderDoc frame capture support
 
 NOTE: The object files are built at the place where configure is launched
 EOF
@@ -2686,9 +2680,6 @@ if test "$skip_meson" = no; then
   mv $cross config-meson.cross
 
   rm -rf meson-private meson-info meson-logs
-
-  # xemu
-  meson_option_add "-Drenderdoc=$renderdoc"
 
   # Built-in options
   test "$bindir" != "bin" && meson_option_add "-Dbindir=$bindir"

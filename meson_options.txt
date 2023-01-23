@@ -323,3 +323,6 @@ option('profiler', type: 'boolean', value: false,
        description: 'profiler support')
 option('slirp_smbd', type : 'feature', value : 'auto',
        description: 'use smbd (at path --smbd=*) in slirp networking')
+
+option('renderdoc', type: 'feature', value: 'auto',
+       description: 'improved RenderDoc frame capture support')
