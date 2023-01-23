@@ -1563,15 +1563,6 @@ if test "$opengl" != "no" ; then
 fi # test "$opengl" != "no"
 
 ##########################################
-# openssl probe
-if $pkg_config --exists openssl; then
-    openssl_cflags=$($pkg_config --cflags openssl)
-    openssl_libs=$($pkg_config --libs openssl)
-else
-    feature_not_found "openssl" "Install openssl-dev"
-fi
-
-##########################################
 # libpcap probe
 if test "$mingw32" = "yes"; then
   libpcap_cflags="-I$source_path/winpcap-loader/include"
@@ -2434,9 +2425,6 @@ fi
 if test "$have_tsan" = "yes" && test "$have_tsan_iface_fiber" = "yes" ; then
     echo "CONFIG_TSAN=y" >> $config_host_mak
 fi
-
-echo "OPENSSL_CFLAGS=$openssl_cflags" >> $config_host_mak
-echo "OPENSSL_LIBS=$openssl_libs" >> $config_host_mak
 
 echo "LIBPCAP_CFLAGS=$libpcap_cflags" >> $config_host_mak
 echo "LIBPCAP_LIBS=$libpcap_libs" >> $config_host_mak

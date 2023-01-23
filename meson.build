@@ -1181,8 +1181,10 @@ toml = declare_dependency(compile_args: ['-DTOML_HEADER_ONLY=0'],
 
 genconfig = declare_dependency(include_directories: 'genconfig')
 
-openssl = declare_dependency(compile_args: config_host['OPENSSL_CFLAGS'].split(),
-                             link_args: config_host['OPENSSL_LIBS'].split())
+openssl = dependency('openssl',
+                     method: 'pkg-config',
+                     required: true,
+                     kwargs: static_kwargs)
 
 libpcap = declare_dependency(compile_args: config_host['LIBPCAP_CFLAGS'].split(),
                              link_args: config_host['LIBPCAP_LIBS'].split())
