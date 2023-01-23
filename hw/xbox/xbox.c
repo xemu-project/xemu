@@ -278,7 +278,6 @@ void xbox_init_common(MachineState *machine,
     }
 
     /* init basic PC hardware */
-    pcms->pit_enabled = 1; // XBOX_FIXME: What's the right way to do this?
     rtc_state = mc146818_rtc_init(isa_bus, 2000, NULL);
 
     if (kvm_pit_in_kernel()) {
