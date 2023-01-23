@@ -400,7 +400,7 @@ static void gen_3dnow(DisasContext *s, CPUX86State *env, X86DecodedInsn *decode)
         return;
     }
 
-    gen_enter_mmx(cpu_env);
+    gen_enter_mmx(s);
     if (fn == FN_3DNOW_MOVE) {
        tcg_gen_ld_i64(s->tmp1_i64, cpu_env, decode->op[1].offset);
        tcg_gen_st_i64(s->tmp1_i64, cpu_env, decode->op[0].offset);
@@ -1170,7 +1170,7 @@ static void gen_CRC32(DisasContext *s, CPUX86State *env, X86DecodedInsn *decode)
 
 static void gen_CVTPI2Px(DisasContext *s, CPUX86State *env, X86DecodedInsn *decode)
 {
-    gen_enter_mmx(cpu_env);
+    gen_enter_mmx(s);
     if (s->prefix & PREFIX_DATA) {
         gen_helper_cvtpi2pd(cpu_env, OP_PTR0, OP_PTR2);
     } else {
@@ -1180,7 +1180,7 @@ static void gen_CVTPI2Px(DisasContext *s, CPUX86State *env, X86DecodedInsn *deco
 
 static void gen_CVTPx2PI(DisasContext *s, CPUX86State *env, X86DecodedInsn *decode)
 {
-    gen_enter_mmx(cpu_env);
+    gen_enter_mmx(s);
     if (s->prefix & PREFIX_DATA) {
         gen_helper_cvtpd2pi(cpu_env, OP_PTR0, OP_PTR2);
     } else {
@@ -1190,7 +1190,7 @@ static void gen_CVTPx2PI(DisasContext *s, CPUX86State *env, X86DecodedInsn *deco
 
 static void gen_CVTTPx2PI(DisasContext *s, CPUX86State *env, X86DecodedInsn *decode)
 {
-    gen_enter_mmx(cpu_env);
+    gen_enter_mmx(s);
     if (s->prefix & PREFIX_DATA) {
         gen_helper_cvttpd2pi(cpu_env, OP_PTR0, OP_PTR2);
     } else {
@@ -1343,7 +1343,7 @@ static void gen_MOVQ(DisasContext *s, CPUX86State *env, X86DecodedInsn *decode)
 
 static void gen_MOVq_dq(DisasContext *s, CPUX86State *env, X86DecodedInsn *decode)
 {
-    gen_enter_mmx(cpu_env);
+    gen_enter_mmx(s);
     /* Otherwise the same as any other movq.  */
     return gen_MOVQ(s, env, decode);
 }

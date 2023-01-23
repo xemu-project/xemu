@@ -1806,7 +1806,7 @@ static void disas_insn_new(DisasContext *s, CPUState *cpu, int b)
 
     case X86_SPECIAL_MMX:
         if (!(s->prefix & (PREFIX_REPZ | PREFIX_REPNZ | PREFIX_DATA))) {
-            gen_enter_mmx(cpu_env);
+            gen_enter_mmx(s);
         }
         break;
     }
