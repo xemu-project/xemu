@@ -1770,11 +1770,7 @@ have_host_block_device = (targetos != 'darwin' or
 
 have_renderdoc = false
 if have_system and get_option('renderdoc').enabled()
-  if targetos == 'linux' and not libdl.found()
-    error('renderdoc required, but libdl was not found')
-  else
-    have_renderdoc = true
-  endif
+  have_renderdoc = true
 endif
 
 dbus_display = get_option('dbus_display') \
