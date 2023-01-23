@@ -171,7 +171,7 @@ option('lzo', type : 'feature', value : 'auto',
        description: 'lzo compression support')
 option('rbd', type : 'feature', value : 'auto',
        description: 'Ceph block device driver')
-option('opengl', type : 'feature', value : 'auto',
+option('opengl', type : 'feature', value : 'enabled',
        description: 'OpenGL support')
 option('rdma', type : 'feature', value : 'auto',
        description: 'Enable RDMA-based migration')
