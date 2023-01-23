@@ -1186,8 +1186,15 @@ openssl = dependency('openssl',
                      required: true,
                      kwargs: static_kwargs)
 
-libpcap = declare_dependency(compile_args: config_host['LIBPCAP_CFLAGS'].split(),
-                             link_args: config_host['LIBPCAP_LIBS'].split())
+if targetos == 'windows'
+  libpcap = declare_dependency(include_directories: 'winpcap-loader/include',
+                               link_args: ['-lws2_32'])
+else
+  libpcap = dependency('libpcap',
+                       method: 'pkg-config',
+                       required: true,
+                       kwargs: static_kwargs)
+endif
 
 libsamplerate = declare_dependency(compile_args: config_host['LIBSAMPLERATE_CFLAGS'].split(),
                                    link_args: config_host['LIBSAMPLERATE_LIBS'].split())

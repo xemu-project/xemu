@@ -1563,20 +1563,6 @@ if test "$opengl" != "no" ; then
 fi # test "$opengl" != "no"
 
 ##########################################
-# libpcap probe
-if test "$mingw32" = "yes"; then
-  libpcap_cflags="-I$source_path/winpcap-loader/include"
-  libpcap_libs="-lws2_32"
-else
-  if $pkg_config --exists "libpcap"; then
-    libpcap_cflags=$($pkg_config --cflags libpcap)
-    libpcap_libs=$($pkg_config --libs libpcap)
-  else
-    feature_not_found "libpcap" "Install libpcap"
-  fi
-fi
-
-##########################################
 # libsamplerate probe
 if $pkg_config --exists samplerate; then
     libsamplerate_cflags=$($pkg_config --cflags samplerate)
@@ -2425,9 +2411,6 @@ fi
 if test "$have_tsan" = "yes" && test "$have_tsan_iface_fiber" = "yes" ; then
     echo "CONFIG_TSAN=y" >> $config_host_mak
 fi
-
-echo "LIBPCAP_CFLAGS=$libpcap_cflags" >> $config_host_mak
-echo "LIBPCAP_LIBS=$libpcap_libs" >> $config_host_mak
 
 echo "LIBSAMPLERATE_CFLAGS=$libsamplerate_cflags" >> $config_host_mak
 echo "LIBSAMPLERATE_LIBS=$libsamplerate_libs" >> $config_host_mak
