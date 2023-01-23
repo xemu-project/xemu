@@ -1548,20 +1548,6 @@ esac
 
 ##########################################
 
-# XBOX
-if test "$opengl" != "no" ; then
-  if test "$darwin" = "yes" ; then
-    opengl_libs="$opengl_libs -framework OpenGL"
-  elif test "$mingw32" = "yes" ; then
-    opengl_libs="$opengl_libs -lopengl32 -lgdi32"
-  elif test "$linux" = "yes" ; then
-    opengl_libs="$opengl_libs -lGLU -lGL"
-  fi
-  opengl_libs="$opengl_libs $($pkg_config --libs epoxy)"
-  opengl_cflags="$opengl_cflags $($pkg_config --cflags epoxy)"
-  QEMU_CFLAGS="$QEMU_CFLAGS $opengl_cflags"
-fi # test "$opengl" != "no"
-
 # check and set a backend for coroutine
 
 # We prefer ucontext, but it's not always possible. The fallback

@@ -1158,14 +1158,20 @@ endif
 
 opengl = not_found
 if not get_option('opengl').auto() or have_system or have_vhost_user_gpu
+  # FIXME: Use meson's 'gl' dep
+  if targetos == 'darwin'
+    opengl_libs=['-framework OpenGL']
+  elif targetos == 'windows'
+    opengl_libs=['-lopengl32', '-lgdi32']
+  elif targetos == 'linux'
+    opengl_libs=['-lGLU', '-lGL']
+  endif
   epoxy = dependency('epoxy', method: 'pkg-config',
-                      required: get_option('opengl'), kwargs: static_kwargs)
-  #if cc.has_header('epoxy/egl.h', dependencies: epoxy)
-    opengl = epoxy
-  # elif get_option('opengl').enabled()
-  #   error('epoxy/egl.h not found')
-  # endif
+                      required: true, kwargs: static_kwargs)
+  opengl = declare_dependency(link_args: opengl_libs,
+                              dependencies: epoxy)
 endif
+
 gbm = not_found
 if (have_system or have_tools) and (virgl.found() or opengl.found())
   gbm = dependency('gbm', method: 'pkg-config', required: false,
