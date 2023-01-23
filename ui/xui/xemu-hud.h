@@ -24,6 +24,7 @@
 #define XEMU_HUD_H
 
 #include <SDL.h>
+#include <epoxy/gl.h>
 
 #ifdef __cplusplus
 extern "C" {
