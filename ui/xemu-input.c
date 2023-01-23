@@ -299,6 +299,13 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
             // Try to bind peripherals back to controller
             for(int i = 0; i < 2; i++) {
                 enum peripheral_type peripheralType = (enum peripheral_type)(*peripheral_types_settings_map[port][i]);
+                
+                // If peripheralType is out of range, change the settings for this controller and peripheral port to default
+                if(peripheralType < PERIPHERAL_NONE || peripheralType >= PERIPHERAL_TYPE_COUNT) {
+                    xemu_save_peripheral_settings(port, i, PERIPHERAL_NONE, NULL);
+                    peripheralType = PERIPHERAL_NONE;
+                }
+
                 const char *param = *peripheral_params_settings_map[port][i];
 
                 if(peripheralType == PERIPHERAL_XMU) {

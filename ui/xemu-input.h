@@ -65,7 +65,8 @@ enum controller_input_device_type {
 
 enum peripheral_type {
     PERIPHERAL_NONE,
-    PERIPHERAL_XMU
+    PERIPHERAL_XMU,
+    PERIPHERAL_TYPE_COUNT
 };
 
 typedef struct XmuState {
