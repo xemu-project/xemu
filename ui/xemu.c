@@ -97,6 +97,8 @@ static int sdl2_num_outputs;
 static struct sdl2_console *sdl2_console;
 static SDL_Surface *guest_sprite_surface;
 static int gui_grab; /* if true, all keyboard/mouse events are grabbed */
+static bool alt_grab;
+static bool ctrl_grab;
 static int gui_saved_grab;
 static int gui_fullscreen;
 static int gui_grab_code = KMOD_LALT | KMOD_LCTRL;
