@@ -788,6 +788,7 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
 #endif
     int64_t ti;
     void *host_pc;
+    bool recycled = false;
 
     assert_memory_lock();
     qemu_thread_jit_write();
@@ -815,6 +816,7 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
                                   tb->trace_vcpu_dstate);
         bool removed = qht_remove(&tb_ctx.inv_htable, tb, h);
         g_assert(removed);
+        recycled = true;
         goto recycle_tb;
     }
 
@@ -1024,10 +1026,12 @@ recycle_tb:
     existing_tb = tb_link_page(tb, tb_page_addr0(tb), tb_page_addr1(tb));
     /* if the TB already exists, discard what we just translated */
     if (unlikely(existing_tb != tb)) {
-        uintptr_t orig_aligned = (uintptr_t)gen_code_buf;
+        if (!recycled) {
+            uintptr_t orig_aligned = (uintptr_t)gen_code_buf;
 
-        orig_aligned -= ROUND_UP(sizeof(*tb), qemu_icache_linesize);
-        qatomic_set(&tcg_ctx->code_gen_ptr, (void *)orig_aligned);
+            orig_aligned -= ROUND_UP(sizeof(*tb), qemu_icache_linesize);
+            qatomic_set(&tcg_ctx->code_gen_ptr, (void *)orig_aligned);
+        }
         tcg_tb_remove(tb);
         return existing_tb;
     }
