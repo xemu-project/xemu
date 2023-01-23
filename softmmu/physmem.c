@@ -915,9 +915,9 @@ void mem_access_callback_remove_by_ref(CPUState *cpu, MemAccessCallback *cb)
 
 void mem_check_access_callback_vaddr(CPUState *cpu,
                                      vaddr addr, vaddr len, int flags,
-                                     void *iotlbentry)
+                                     void *tlbentryfull)
 {
-    ram_addr_t ram_addr = (((CPUIOTLBEntry *)iotlbentry)->addr
+    ram_addr_t ram_addr = (((CPUTLBEntryFull *)tlbentryfull)->xlat_section
                            & TARGET_PAGE_MASK) + addr;
     mem_check_access_callback_ramaddr(cpu, ram_addr, len, flags);
 }

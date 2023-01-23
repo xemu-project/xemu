@@ -1652,7 +1652,7 @@ void *probe_access(CPUArchState *env, target_ulong addr, int size,
                              ? BP_MEM_WRITE : BP_MEM_READ);
 #ifdef XBOX
             mem_check_access_callback_vaddr(env_cpu(env), addr, size, wp_access,
-                                            iotlbentry);
+                                            full);
 #endif
             cpu_check_watchpoint(env_cpu(env), addr, size,
                                  full->attrs, wp_access, retaddr);
@@ -1969,7 +1969,7 @@ load_helper(CPUArchState *env, target_ulong addr, MemOpIdx oi,
         if (unlikely(tlb_addr & TLB_WATCHPOINT)) {
 #ifdef XBOX
             mem_check_access_callback_vaddr(env_cpu(env), addr, size,
-                                            BP_MEM_READ, iotlbentry);
+                                            BP_MEM_READ, full);
 #endif
 
             /* On watchpoint hit, this will longjmp out.  */
@@ -2300,7 +2300,7 @@ store_helper_unaligned(CPUArchState *env, target_ulong addr, uint64_t val,
     if (unlikely(tlb_addr & TLB_WATCHPOINT)) {
 #ifdef XBOX
         mem_check_access_callback_vaddr(env_cpu(env), addr, size - size2,
-            BP_MEM_WRITE, &env_tlb(env)->d[mmu_idx].iotlb[index]);
+            BP_MEM_WRITE, &env_tlb(env)->d[mmu_idx].fulltlb[index]);
 #endif
         cpu_check_watchpoint(env_cpu(env), addr, size - size2,
                              env_tlb(env)->d[mmu_idx].fulltlb[index].attrs,
@@ -2309,7 +2309,7 @@ store_helper_unaligned(CPUArchState *env, target_ulong addr, uint64_t val,
     if (size2 && unlikely(tlb_addr2 & TLB_WATCHPOINT)) {
 #ifdef XBOX
         mem_check_access_callback_vaddr(env_cpu(env), page2, size2,
-            BP_MEM_WRITE, &env_tlb(env)->d[mmu_idx].iotlb[index2]);
+            BP_MEM_WRITE, &env_tlb(env)->d[mmu_idx].fulltlb[index2]);
 #endif
         cpu_check_watchpoint(env_cpu(env), page2, size2,
                              env_tlb(env)->d[mmu_idx].fulltlb[index2].attrs,
@@ -2390,7 +2390,7 @@ store_helper(CPUArchState *env, target_ulong addr, uint64_t val,
         if (unlikely(tlb_addr & TLB_WATCHPOINT)) {
 #ifdef XBOX
             mem_check_access_callback_vaddr(env_cpu(env), addr, size,
-                                            BP_MEM_WRITE, iotlbentry);
+                                            BP_MEM_WRITE, full);
 #endif
 
             /* On watchpoint hit, this will longjmp out.  */
