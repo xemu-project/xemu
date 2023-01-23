@@ -4939,7 +4939,7 @@ static bool disas_insn(DisasContext *s, CPUState *cpu)
                     gen_helper_fldenv(cpu_env, s->A0,
                                       tcg_const_i32(dflag - 1));
                     update_fip = update_fdp = false;
-                    gen_jmp_im(s, s->pc - s->cs_base);
+                    gen_update_eip_next(s);
                     gen_eob(s);
                     break;
                 case 0x0d: /* fldcw mem */
@@ -4947,7 +4947,7 @@ static bool disas_insn(DisasContext *s, CPUState *cpu)
                                         s->mem_index, MO_LEUW);
                     gen_helper_fldcw(cpu_env, s->tmp2_i32);
                     update_fip = update_fdp = false;
-                    gen_jmp_im(s, s->pc - s->cs_base);
+                    gen_update_eip_next(s);
                     gen_eob(s);
                     break;
                 case 0x0e: /* fnstenv mem */
@@ -5211,7 +5211,7 @@ static bool disas_insn(DisasContext *s, CPUState *cpu)
                     case 3: /* fninit */
                         gen_helper_fninit(cpu_env);
                         update_fip = false;
-                        gen_jmp_im(s, s->pc - s->cs_base);
+                        gen_update_eip_next(s);
                         gen_eob(s);
                         break;
                     case 4: /* fsetpm (287 only, just do nop here) */
@@ -7061,7 +7061,7 @@ static bool disas_insn(DisasContext *s, CPUState *cpu)
             }
             gen_lea_modrm(env, s, modrm);
             gen_helper_fxrstor(cpu_env, s->A0);
-            gen_jmp_im(s, s->pc - s->cs_base);
+            gen_update_eip_next(s);
             gen_eob(s);
             break;
 
