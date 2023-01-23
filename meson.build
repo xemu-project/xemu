@@ -1181,9 +1181,6 @@ toml = declare_dependency(compile_args: ['-DTOML_HEADER_ONLY=0'],
 
 genconfig = declare_dependency(include_directories: 'genconfig')
 
-xemu_gtk = declare_dependency(compile_args: config_host['XEMU_GTK_CFLAGS'].split(),
-                              link_args: config_host['XEMU_GTK_LIBS'].split())
-
 openssl = declare_dependency(compile_args: config_host['OPENSSL_CFLAGS'].split(),
                              link_args: config_host['OPENSSL_LIBS'].split())
 
@@ -1283,10 +1280,14 @@ gtkx11 = not_found
 vte = not_found
 have_gtk_clipboard = get_option('gtk_clipboard').enabled()
 
-if not get_option('gtk').auto() or have_system
+# xemu: GTK is required in Linux builds for file selection interfaces. In the
+# future, this may be relaxed in the future with alternative options.
+require_gtk = targetos == 'linux'
+
+if require_gtk
   gtk = dependency('gtk+-3.0', version: '>=3.22.0',
                    method: 'pkg-config',
-                   required: get_option('gtk'),
+                   required: require_gtk,
                    kwargs: static_kwargs)
   if gtk.found()
     gtkx11 = dependency('gtk+-x11-3.0', version: '>=3.22.0',

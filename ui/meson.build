@@ -38,10 +38,10 @@ xemu_ss.add(xemu_cocoa)
 endif
 
 if 'CONFIG_LINUX' in config_host
-xemu_ss.add(xemu_gtk)
+xemu_ss.add(gtk)
 endif
 
-xemu_ss.add(when: 'CONFIG_LINUX', if_true: [xemu_gtk, files('xemu-os-utils-linux.c')])
+xemu_ss.add(when: 'CONFIG_LINUX', if_true: [gtk, files('xemu-os-utils-linux.c')])
 xemu_ss.add(when: 'CONFIG_WIN32', if_true: files('xemu-os-utils-windows.c'))
 xemu_ss.add(when: 'CONFIG_DARWIN', if_true: files('xemu-os-utils-macos.m'))
 xemu_ss.add(imgui, implot, stb_image, noc, sdl, opengl, openssl, fa, fpng, json, httplib)
