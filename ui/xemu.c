@@ -1565,7 +1565,7 @@ void xemu_load_disc(const char *path)
 
     Error *err = NULL;
     qmp_blockdev_change_medium(true, "ide0-cd1", false, NULL, path,
-                               false, "", false, 0,
+                               false, "",  false, false, false, 0,
                                &err);
 
     xbox_smc_update_tray_state();
