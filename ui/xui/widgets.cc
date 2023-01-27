@@ -322,6 +322,7 @@ bool FilePicker(const char *str_id, const char **buf, const char *filters,
         if (new_path) {
             free((void*)*buf);
             *buf = strdup(new_path);
+            desc = *buf;
             changed = true;
         }
     }
