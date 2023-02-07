@@ -546,7 +546,9 @@ static void usb_xid_handle_data(USBDevice *dev, USBPacket *p)
         }
         break;
     case USB_TOKEN_OUT:
-        if (p->ep->nr == 2) {
+        if (p->ep->nr == 1) {
+            // TODO: Update output for Steel Battalion Controller here
+        } else if (p->ep->nr == 2) {
             if(p->iov.size < 20) {
                 USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
                 usb_packet_copy(p, &s->out_state, s->out_state.length);
