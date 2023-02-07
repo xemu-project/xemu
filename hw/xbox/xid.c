@@ -530,7 +530,7 @@ static void usb_xid_handle_data(USBDevice *dev, USBPacket *p)
     DPRINTF("xid handle_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
 
     assert(dev->usb_desc);
-    uint16_t vendor = dev->usb_desc->id->idVendor;
+    uint16_t vendor = dev->usb_desc->id.idVendor;
 
     switch (p->pid) {
     case USB_TOKEN_IN:
