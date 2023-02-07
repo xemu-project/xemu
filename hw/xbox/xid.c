@@ -529,20 +529,17 @@ static void usb_xid_handle_data(USBDevice *dev, USBPacket *p)
 {
     DPRINTF("xid handle_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
 
-    assert(dev->usb_desc);
-    uint16_t vendor = dev->usb_desc->id.idVendor;
+    const USBDesc * desc = usb_device_get_usb_desc(dev);
+    assert(desc);
 
     switch (p->pid) {
     case USB_TOKEN_IN:
         if (p->ep->nr == 2) {
-            if (vendor == USB_VENDOR_CAPCOM)
-            {
+            if (desc->id.idVendor == USB_VENDOR_CAPCOM) {
                 USBXIDSteelBattalionState *s = DO_UPCAST(USBXIDSteelBattalionState, dev, dev);
                 update_sb_input(s);
                 usb_packet_copy(p, &s->in_state, s->in_state.bLength);
-            }
-            else if (vendor == USB_VENDOR_MICROSOFT)
-            {
+            } else if (desc->id.idVendor == USB_VENDOR_MICROSOFT) {
                 USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
                 update_input(s);
                 usb_packet_copy(p, &s->in_state, s->in_state.bLength);
@@ -557,7 +554,7 @@ static void usb_xid_handle_data(USBDevice *dev, USBPacket *p)
         if (p->ep->nr == 1) {
             // TODO: Update output for Steel Battalion Controller here
         } else if (p->ep->nr == 2) {
-            if (vendor == USB_VENDOR_MICROSOFT) {
+            if (desc->id.idVendor == USB_VENDOR_MICROSOFT) {
                 USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
                 usb_packet_copy(p, &s->out_state, s->out_state.length);
                 update_output(s);
