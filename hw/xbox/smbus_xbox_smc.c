@@ -78,6 +78,8 @@
 #define SMC_REG_BOARDTEMP           0x0a
 #define SMC_REG_TRAYEJECT           0x0c
 #define SMC_REG_INTACK              0x0d
+#define SMC_REG_ERROR_WRITE         0x0e
+#define SMC_REG_ERROR_READ          0x0f
 #define SMC_REG_INTSTATUS           0x11
 #define     SMC_REG_INTSTATUS_POWER         0x01
 #define     SMC_REG_INTSTATUS_TRAYCLOSED    0x02
@@ -102,6 +104,7 @@ typedef struct SMBusSMCDevice {
     uint8_t avpack_reg;
     uint8_t intstatus_reg;
     uint8_t scratch_reg;
+    uint8_t error_reg;
 } SMBusSMCDevice;
 
 static void smc_quick_cmd(SMBusDevice *dev, uint8_t read)
@@ -135,6 +138,10 @@ static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
         } else if (buf[0] & SMC_REG_POWER_SHUTDOWN) {
             qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
         }
+        break;
+
+    case SMC_REG_ERROR_WRITE:
+        smc->error_reg = buf[0];
         break;
 
     case SMC_REG_SCRATCH:
@@ -176,6 +183,9 @@ static uint8_t smc_receive_byte(SMBusDevice *dev)
 
     case SMC_REG_AVPACK:
         return smc->avpack_reg;
+
+    case SMC_REG_ERROR_READ:
+        return smc->error_reg;
 
     case SMC_REG_INTSTATUS: {
         uint8_t r = smc->intstatus_reg;
@@ -252,6 +262,7 @@ static void smbus_smc_realize(DeviceState *dev, Error **errp)
     smc->intstatus_reg = 0;
     smc->scratch_reg = 0;
     smc->cmd = 0;
+    smc->error_reg = 0;
 
     if (object_property_get_bool(qdev_get_machine(), "short-animation", NULL)) {
         smc->scratch_reg = SMC_REG_SCRATCH_SHORT_ANIMATION;
