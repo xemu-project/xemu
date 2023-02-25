@@ -1981,7 +1981,6 @@ QemuConsole *graphic_console_init(DeviceState *dev, uint32_t head,
 {
     static const char noinit[] = 
             "Guest has not initialized the display (yet). If this message remains: "
-            "-The AV pack in System > System Configuration shouldn't be (No video) "
             "-Check if you have set up all the required files in System > Files   ";
     int width = 640;
     int height = 480;
