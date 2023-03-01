@@ -1,2 +1,20 @@
-- name: RPM Build
-  uses: 
+name: Xemu RPM
+on: push
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: xemu RPM package
+      id: rpm
+      uses: xemu-project/xemu
+      with:
+        spec_file: "RPM_package.spec"
+        
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1.0.0
+      with:
+        name: Xemu RPM
+        path: ${{ steps.rpm.outputs.rpm_dir_path }}
