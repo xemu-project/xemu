@@ -30,7 +30,7 @@ Xemu original xbox emulator package release for RPM based distributions.
 
 %prep
 rm -fr src
-wget https://github.com/xemu-project/xemu/releases/download/v0.7.84/src.tar.gz -O $HOME/rpmbuild/SOURCES/src.tar.gz
+wget https://github.com/xemu-project/xemu/releases/lastes/download/src.tar.gz -O $HOME/rpmbuild/SOURCES/src.tar.gz
 tar -xzf %{SOURCE0}
 
 %build
