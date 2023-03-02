@@ -1,11 +1,11 @@
 Name:           xemu
-Version:        lastes
+Version:        0.7.84
 Release:        1%{?dist}
 Summary:        xemu: Original Xbox Emulator (RPM)
 
 License:        LGPL-2.1, GPL.2.0
 URL:            https://github.com/xemu-project/xemu
-Source0:        https://github.com/xemu-project/xemu/releases/lastes/download/src.tar.gz
+Source0:        https://github.com/xemu-project/xemu/releases/latest/download/src.tar.gz
 
 BuildRequires: libdrm-devel            
 BuildRequires: libslirp-devel
