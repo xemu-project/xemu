@@ -1,5 +1,5 @@
 Name:           xemu
-Version:        0.7.84
+Version:        lastes
 Release:        1%{?dist}
 Summary:        xemu: Original Xbox Emulator (RPM)
 
