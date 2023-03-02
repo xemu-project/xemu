@@ -1,12 +1,16 @@
 name: Xemu RPM
-on: push
+on: 
+  push:
+    tags:
+      - v*
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-
+    - run:  bash RPM_check_version.sh
+    
     - name: xemu RPM package
       id: rpm
       uses: xemu-project/xemu
