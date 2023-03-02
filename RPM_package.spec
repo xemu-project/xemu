@@ -5,7 +5,7 @@ Summary:        xemu: Original Xbox Emulator (RPM)
 
 License:        LGPL-2.1, GPL.2.0
 URL:            https://github.com/xemu-project/xemu
-Source0:        https://github.com/xemu-project/xemu/releases/download/v${version}/src.tar.gz
+Source0:        https://github.com/xemu-project/xemu/releases/lastes/download/src.tar.gz
 
 BuildRequires: libdrm-devel            
 BuildRequires: libslirp-devel
@@ -38,12 +38,13 @@ tar -xzf %{SOURCE0}
 
 %files
 %license LICENSE
+#TODO: Apply icon.png to executable, possibly using a .desktop file.
 /icon.png
 /xemu
 
 %install
 mkdir -p $HOME/.local/bin
-#cp ./ui/icons/xemu_128x128.png $RPM_BUILD_ROOT/icon.png
+cp ./ui/icons/xemu_128x128.png $RPM_BUILD_ROOT/icon.png
 cp ./dist/xemu $RPM_BUILD_ROOT/xemu
 install -m755  $RPM_BUILD_ROOT/xemu $HOME/.local/bin/xemu
 
