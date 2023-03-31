@@ -77,6 +77,9 @@ package_macos() {
 
     cp Info.plist dist/xemu.app/Contents/
 
+    plutil -replace CFBundleShortVersionString -string $(cat ${project_source_dir}/XEMU_VERSION | cut -f1 -d-) dist/xemu.app/Contents/Info.plist
+    plutil -replace CFBundleVersion            -string $(cat ${project_source_dir}/XEMU_VERSION | cut -f1 -d-) dist/xemu.app/Contents/Info.plist
+
     codesign --force --deep --preserve-metadata=entitlements,requirements,flags,runtime --sign - "${exe_path}"
     python3 ./scripts/gen-license.py --version-file=macos-libs/$target_arch/INSTALLED > dist/LICENSE.txt
 }
