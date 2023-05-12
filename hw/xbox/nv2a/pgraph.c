@@ -2841,12 +2841,25 @@ DEF_METHOD(NV097, SET_BEGIN_END)
     bool depth_test = control_0 & NV_PGRAPH_CONTROL_0_ZENABLE;
     bool stencil_test =
         pg->regs[NV_PGRAPH_CONTROL_1] & NV_PGRAPH_CONTROL_1_STENCIL_TEST_ENABLE;
+    bool is_nop_draw = !(color_write || depth_test || stencil_test);
 
     if (parameter == NV097_SET_BEGIN_END_OP_END) {
         if (pg->primitive_mode == PRIM_TYPE_INVALID) {
             NV2A_DPRINTF("End without Begin!\n");
         }
         nv2a_profile_inc_counter(NV2A_PROF_BEGIN_ENDS);
+
+        if (is_nop_draw) {
+            // FIXME: Check PGRAPH register 0x880.
+            // HW uses bit 11 in 0x880 to enable or disable a color/zeta limit
+            // check that will raise an exception in the case that a draw should
+            // modify the color and/or zeta buffer but the target(s) are masked
+            // off. This check only seems to trigger during the fragment
+            // processing, it is legal to attempt a draw that is entirely
+            // clipped regardless of 0x880. See xemu#635 for context.
+            return;
+        }
+
         pgraph_flush_draw(d);
 
         /* End of visibility testing */
@@ -2878,14 +2891,7 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         pgraph_update_surface(d, true, true, depth_test || stencil_test);
         pgraph_reset_inline_buffers(pg);
 
-        if (!(color_write || depth_test || stencil_test)) {
-            // FIXME: Check PGRAPH register 0x880.
-            // HW uses bit 11 in 0x880 to enable or disable a color/zeta limit
-            // check that will raise an exception in the case that a draw should
-            // modify the color and/or zeta buffer but the target(s) are masked
-            // off. This check only seems to trigger during the fragment
-            // processing, it is legal to attempt a draw that is entirely
-            // clipped regardless of 0x880. See xemu#635 for context.
+        if (is_nop_draw) {
             return;
         }
 
