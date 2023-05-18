@@ -843,10 +843,16 @@ void MainMenuAboutView::Draw()
         const char *gl_vendor = (const char*)glGetString(GL_VENDOR);
         sys_info_text = g_strdup_printf(
             "CPU:          %s\nOS Platform:  %s\nOS Version:   %s\nManufacturer: %s\n"
-            "GPU Model:    %s\nDriver:       %s\nShader:       %s",
+            "GPU Model:    %s\nDriver:       %s\nShader:       %s\n",
              xemu_get_cpu_info(), xemu_get_os_platform(), xemu_get_os_info(), gl_vendor,
              gl_renderer, gl_version, gl_shader_version);
     }
+    int width = 0, height = 0;
+    xemu_get_window_size(&width, &height);
+    
+    char *content = g_strdup_printf("%sScaling:      %dx\nResolution:   %dx%d\nDisplay Mode: %s", 
+                                    sys_info_text, nv2a_get_surface_scale_factor(), 
+                                    width, height, g_ui_display_mode_name[g_config.display.ui.fit]);
 
     if (m_config_info_text == NULL) {
         UpdateConfigInfoText();
@@ -864,11 +870,12 @@ void MainMenuAboutView::Draw()
 
     SectionTitle("System Information");
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
-    ImGui::InputTextMultiline("###systeminformation", (char *)sys_info_text,
-                              strlen(sys_info_text),
-                              ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 8),
+    ImGui::InputTextMultiline("###systeminformation", content,
+                              strlen(content),
+                              ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 11),
                               ImGuiInputTextFlags_ReadOnly);
     ImGui::PopFont();
+    g_free(content);
 
     SectionTitle("Config Information");
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);

@@ -35,6 +35,7 @@ void xemu_monitor_init(void);
 void xemu_toggle_fullscreen(void);
 void xemu_eject_disc(void);
 void xemu_load_disc(const char *path);
+void xemu_get_window_size(int *width, int *height);
 
 // Implemented in xemu_hud.cc
 void xemu_hud_init(SDL_Window *window, void *sdl_gl_context);
