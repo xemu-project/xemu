@@ -855,19 +855,31 @@ void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const 
     ImGui::SetCursorPos(next_pos);
 }
 
+void MainMenuSnapshotsView::ClearSearch()
+{
+    m_search_buf.clear();
+
+    if (m_search_regex) {
+        g_free(m_search_regex);
+        m_search_regex = NULL;
+    }
+}
+
 static int MainMenuSnapshotsViewUpdateSearchBox(ImGuiInputTextCallbackData *data)
 {
     GError *gerr = NULL;
     MainMenuSnapshotsView *win = (MainMenuSnapshotsView*)data->UserData;
 
-    if (win->m_search_regex) g_free(win->m_search_regex);
-    if (data->BufTextLen == 0) {
+    if (win->m_search_regex) {
+        g_free(win->m_search_regex);
         win->m_search_regex = NULL;
+    }
+
+    if (data->BufTextLen == 0) {
         return 0;
     }
 
     char *buf = g_strdup_printf("(.*)%s(.*)", data->Buf);
-
     win->m_search_regex = g_regex_new(buf, (GRegexCompileFlags)0, (GRegexMatchFlags)0, &gerr);
     g_free(buf);
     if (gerr) {
@@ -900,7 +912,7 @@ void MainMenuSnapshotsView::Draw()
     ImGui::SameLine();
     if (ImGui::Button(snapshot_with_create_name_exists ? "Replace" : "Create", ImVec2(-FLT_MIN, 0))) {
         xemu_snapshots_save(m_search_buf.empty() ? NULL : m_search_buf.c_str(), NULL);
-        m_search_buf.clear();
+        ClearSearch();
     }
 
     if (snapshot_with_create_name_exists && ImGui::IsItemHovered()) {
