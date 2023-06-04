@@ -953,7 +953,6 @@ void MainMenuSnapshotsView::Draw()
         ImGui::SetTooltip("A snapshot with the name \"%s\" already exists. This button will overwrite the existing snapshot.", m_create_buf.c_str());
     }
 
-    bool search_buf_equal = false;
     for (int i = m_snapshots_len - 1; i >= 0; i--) {
         if (g_config.general.snapshots.filter_current_game && m_extra_data[i].xbe_title_name && 
             (strcmp(m_current_title_name, m_extra_data[i].xbe_title_name) != 0)) {
@@ -979,8 +978,6 @@ void MainMenuSnapshotsView::Draw()
             }
         }
 
-        search_buf_equal |= g_strcmp0(m_search_buf.c_str(), m_snapshots[i].name) == 0;
-
         ImGui::PushID(i);
         SnapshotBigButton(
             m_snapshots + i,
@@ -988,24 +985,6 @@ void MainMenuSnapshotsView::Draw()
             m_extra_data[i].gl_thumbnail
         );
         ImGui::PopID();
-    }
-
-    /* Snapshot names are unique, don't give option to create new one if it exists already */
-    if (!search_buf_equal && !m_search_buf.empty()) {
-        char *new_snapshot = g_strdup_printf("Create Snapshot '%s'", m_search_buf.c_str());
-        ImGui::PushFont(g_font_mgr.m_menu_font_small);
-        ImVec2 new_snapshot_size = ImGui::CalcTextSize(new_snapshot);
-        ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - new_snapshot_size.x)/2);
-        if (ImGui::Button(new_snapshot)) {
-            Error *err = NULL;
-            xemu_snapshots_save(m_search_buf.c_str(), &err);
-            if (err) {
-                xemu_queue_error_message(error_get_pretty(err));
-                error_free(err);
-            }
-        }
-        ImGui::PopFont();
-        g_free(new_snapshot);
     }
 }
 
