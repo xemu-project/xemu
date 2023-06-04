@@ -929,7 +929,9 @@ void MainMenuSnapshotsView::Draw()
 {
     Load();
     SectionTitle("Snapshots");
-    ImGui::Checkbox("Filter by current title", &g_config.general.snapshots.filter_current_game);
+
+    Toggle("Filter by current title", &g_config.general.snapshots.filter_current_game);
+
     ImGui::InputTextWithHint("##search", "Search...", &m_search_buf, ImGuiInputTextFlags_CallbackEdit,
                              &MainMenuSnapshotsViewUpdateSearchBox, this);
 
@@ -950,6 +952,7 @@ void MainMenuSnapshotsView::Draw()
     if (snapshot_with_create_name_exists && ImGui::IsItemHovered()) {
         ImGui::SetTooltip("A snapshot with the name \"%s\" already exists. This button will overwrite the existing snapshot.", m_search_buf.c_str());
     }
+
 
     for (int i = m_snapshots_len - 1; i >= 0; i--) {
         if (g_config.general.snapshots.filter_current_game && m_extra_data[i].xbe_title_name && 
