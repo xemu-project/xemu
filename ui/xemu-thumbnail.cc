@@ -33,14 +33,13 @@ void xemu_snapshots_set_framebuffer_texture(GLuint tex, bool flip)
     display_flip = flip;
 }
 
-void xemu_snapshots_render_thumbnail(GLuint tex, TextureBuffer *thumbnail)
+bool xemu_snapshots_load_png_to_texture(GLuint tex, void *buf, size_t size)
 {
     std::vector<uint8_t> pixels;
     unsigned int width, height, channels;
-    if (fpng::fpng_decode_memory(
-            thumbnail->buffer, thumbnail->size, pixels, width, height, channels,
-            thumbnail->channels) != fpng::FPNG_DECODE_SUCCESS) {
-        return;
+    if (fpng::fpng_decode_memory(buf, size, pixels, width, height, channels,
+                                 3) != fpng::FPNG_DECODE_SUCCESS) {
+        return false;
     }
 
     glActiveTexture(GL_TEXTURE0);
@@ -52,9 +51,11 @@ void xemu_snapshots_render_thumbnail(GLuint tex, TextureBuffer *thumbnail)
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB,
                  GL_UNSIGNED_BYTE, pixels.data());
+
+    return true;
 }
 
-TextureBuffer *xemu_snapshots_extract_thumbnail()
+void *xemu_snapshots_create_framebuffer_thumbnail_png(size_t *size)
 {
     /*
      * Avoids crashing if a snapshot is made on a thread with no GL context
@@ -74,10 +75,8 @@ TextureBuffer *xemu_snapshots_extract_thumbnail()
         return NULL;
     }
 
-    TextureBuffer *thumbnail = (TextureBuffer *)g_malloc(sizeof(TextureBuffer));
-    thumbnail->buffer = g_malloc(png.size() * sizeof(uint8_t));
-    thumbnail->channels = 3;
-    thumbnail->size = png.size() * sizeof(uint8_t);
-    memcpy(thumbnail->buffer, png.data(), thumbnail->size);
-    return thumbnail;
+    void *buf = g_malloc(png.size());
+    memcpy(buf, png.data(), png.size());
+    *size = png.size();
+    return buf;
 }

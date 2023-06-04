@@ -26,33 +26,19 @@ extern "C" {
 
 #include "qemu/osdep.h"
 #include "block/snapshot.h"
+#include <epoxy/gl.h>
 
-#define XEMU_SNAPSHOT_DATA_MAGIC 0x78656d75
+#define XEMU_SNAPSHOT_DATA_MAGIC 0x78656d75 // 'xemu'
+#define XEMU_SNAPSHOT_DATA_VERSION 1
+
 #define XEMU_SNAPSHOT_THUMBNAIL_WIDTH 160
 #define XEMU_SNAPSHOT_THUMBNAIL_HEIGHT 120
 
 extern const char **g_snapshot_shortcut_index_key_map[];
 
-#pragma pack(1)
-typedef struct TextureBuffer {
-    int channels;
-    unsigned long size;
-    void *buffer;
-} TextureBuffer;
-#pragma pack()
-
-typedef struct XemuSnapshotHeader {
-    uint32_t magic;
-    uint32_t size;
-} XemuSnapshotHeader;
-
 typedef struct XemuSnapshotData {
-    int64_t xbe_title_len;
-    char *xbe_title;
-    bool xbe_title_present;
-    TextureBuffer thumbnail;
-    bool thumbnail_present;
-    unsigned int gl_thumbnail;
+    char *xbe_title_name;
+    GLuint gl_thumbnail;
 } XemuSnapshotData;
 
 // Implemented in xemu-snapshots.c
@@ -67,10 +53,9 @@ bool xemu_snapshots_offset_extra_data(QEMUFile *f);
 void xemu_snapshots_mark_dirty(void);
 
 // Implemented in xemu-thumbnail.cc
-void xemu_snapshots_set_framebuffer_texture(unsigned int tex, bool flip);
-void xemu_snapshots_render_thumbnail(unsigned int tex,
-                                     TextureBuffer *thumbnail);
-TextureBuffer *xemu_snapshots_extract_thumbnail(void);
+void xemu_snapshots_set_framebuffer_texture(GLuint tex, bool flip);
+bool xemu_snapshots_load_png_to_texture(GLuint tex, void *buf, size_t size);
+void *xemu_snapshots_create_framebuffer_thumbnail_png(size_t *size);
 
 #ifdef __cplusplus
 }

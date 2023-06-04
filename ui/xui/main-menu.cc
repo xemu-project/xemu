@@ -955,8 +955,8 @@ void MainMenuSnapshotsView::Draw()
 
     bool search_buf_equal = false;
     for (int i = m_snapshots_len - 1; i >= 0; i--) {
-        if (g_config.general.snapshots.filter_current_game && m_extra_data[i].xbe_title_present && 
-            (strcmp(m_current_title_name, m_extra_data[i].xbe_title) != 0)) {
+        if (g_config.general.snapshots.filter_current_game && m_extra_data[i].xbe_title_name && 
+            (strcmp(m_current_title_name, m_extra_data[i].xbe_title_name) != 0)) {
             continue;
         }
 
@@ -968,8 +968,8 @@ void MainMenuSnapshotsView::Draw()
             keep_entry |= g_match_info_matches(match);
             g_match_info_free(match);
 
-            if (m_extra_data[i].xbe_title_present) {
-                g_regex_match(m_search_regex, m_extra_data[i].xbe_title, (GRegexMatchFlags)0, &match);
+            if (m_extra_data[i].xbe_title_name) {
+                g_regex_match(m_search_regex, m_extra_data[i].xbe_title_name, (GRegexMatchFlags)0, &match);
                 keep_entry |= g_match_info_matches(match);
                 g_free(match);
             }
@@ -982,14 +982,10 @@ void MainMenuSnapshotsView::Draw()
         search_buf_equal |= g_strcmp0(m_search_buf.c_str(), m_snapshots[i].name) == 0;
 
         ImGui::PushID(i);
-        GLuint thumbnail = 0;
-        if (m_extra_data[i].thumbnail_present) {
-            thumbnail = m_extra_data[i].gl_thumbnail;
-        }
         SnapshotBigButton(
             m_snapshots + i,
-            m_extra_data[i].xbe_title_present ? m_extra_data[i].xbe_title : "Unknown",
-            thumbnail
+            m_extra_data[i].xbe_title_name ? m_extra_data[i].xbe_title_name : "Unknown",
+            m_extra_data[i].gl_thumbnail
         );
         ImGui::PopID();
     }
