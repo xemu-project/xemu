@@ -757,31 +757,32 @@ void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const 
     ImGui::SameLine();
     ImGui::SetCursorPosX(pos.x + thumbnail_pos.x);
     ImGui::SetCursorPosY(pos.y + thumbnail_pos.y);
-    if (screenshot > 0) {
-        int thumbnail_width, thumbnail_height;
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, screenshot);
-        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &thumbnail_width);
-        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &thumbnail_height);
+    int thumbnail_width, thumbnail_height;
 
-        // Draw black background behind thumbnail
-        draw_list->AddRectFilled(ImVec2(p0.x + thumbnail_pos.x, p0.y + thumbnail_pos.y),
-                                 ImVec2(p0.x + thumbnail_pos.x + thumbnail_size.x, p0.y + thumbnail_pos.y + thumbnail_size.y),
-                                 IM_COL32_BLACK);
-
-        // Center the thumbnail
-        int scaled_width, scaled_height;
-        ScaleDimensions(thumbnail_width, thumbnail_height, thumbnail_size.x, thumbnail_size.y, &scaled_width, &scaled_height);
-        ImVec2 img_pos = ImGui::GetCursorPos();
-        img_pos.x += (thumbnail_size.x - scaled_width) / 2;
-        img_pos.y += (thumbnail_size.y - scaled_height) / 2;
-        ImGui::SetCursorPos(img_pos);
-
-        ImGui::Image((ImTextureID)(uint64_t)screenshot, ImVec2(scaled_width, scaled_height));
-    } else {
-        ImGui::Image((ImTextureID)(uint64_t)g_icon_tex, thumbnail_size);
+    if (!screenshot) {
+        screenshot = g_icon_tex;
     }
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, screenshot);
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &thumbnail_width);
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &thumbnail_height);
+
+    // Draw black background behind thumbnail
+    draw_list->AddRectFilled(ImVec2(p0.x + thumbnail_pos.x, p0.y + thumbnail_pos.y),
+                             ImVec2(p0.x + thumbnail_pos.x + thumbnail_size.x, p0.y + thumbnail_pos.y + thumbnail_size.y),
+                             IM_COL32_BLACK);
+
+    // Center the thumbnail
+    int scaled_width, scaled_height;
+    ScaleDimensions(thumbnail_width, thumbnail_height, thumbnail_size.x, thumbnail_size.y, &scaled_width, &scaled_height);
+    ImVec2 img_pos = ImGui::GetCursorPos();
+    img_pos.x += (thumbnail_size.x - scaled_width) / 2;
+    img_pos.y += (thumbnail_size.y - scaled_height) / 2;
+    ImGui::SetCursorPos(img_pos);
+
+    ImGui::Image((ImTextureID)(uint64_t)screenshot, ImVec2(scaled_width, scaled_height));
 
     draw_list->PushClipRect(p0, p1, true);
 
