@@ -685,7 +685,7 @@ MainMenuSnapshotsView::~MainMenuSnapshotsView()
     g_free(m_search_regex);
 }
 
-void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const char *title_name, GLuint screenshot)
+void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const char *title_name, GLuint thumbnail)
 {
     Error *err = NULL;
     int current_snapshot_binding = -1;
@@ -700,24 +700,6 @@ void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const 
     ImVec2 pos = ImGui::GetCursorPos();
     ImDrawList *draw_list = ImGui::GetWindowDrawList();
 
-    ImGui::PushFont(g_font_mgr.m_menu_font);
-    const char *close_icon = ICON_FA_CIRCLE_XMARK;
-    ImVec2 ts_close_icon = ImGui::CalcTextSize(close_icon);
-    ts_close_icon.x += 2*style.FramePadding.x;
-    ImGui::PopFont();
-
-    ImGui::PushFont(g_font_mgr.m_menu_font);
-    const char *save_icon = ICON_FA_FLOPPY_DISK;
-    ImVec2 ts_save_icon = ImGui::CalcTextSize(save_icon);
-    ts_save_icon.x += 2*style.FramePadding.x;
-    ImGui::PopFont();
-
-    ImGui::PushFont(g_font_mgr.m_menu_font);
-    const char *binding_icon = ICON_FA_KEYBOARD;
-    ImVec2 ts_binding_icon = ImGui::CalcTextSize(binding_icon);
-    ts_binding_icon.x += 2*style.FramePadding.x;
-    ImGui::PopFont();
-
     ImGui::PushFont(g_font_mgr.m_menu_font_small);
     ImVec2 ts_sub = ImGui::CalcTextSize(snapshot->name);
     ImGui::PopFont();
@@ -730,20 +712,11 @@ void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const 
     ImVec2 thumbnail_size = g_viewport_mgr.Scale(ImVec2(XEMU_SNAPSHOT_THUMBNAIL_WIDTH, XEMU_SNAPSHOT_THUMBNAIL_HEIGHT));
     ImVec2 thumbnail_pos(style.FramePadding.x, style.FramePadding.y);
     ImVec2 name_pos(thumbnail_pos.x + thumbnail_size.x + style.FramePadding.x * 2, thumbnail_pos.y);
-    ImVec2 date_pos(name_pos.x, name_pos.y + ts_title.y + style.FramePadding.x);
-    ImVec2 title_pos(name_pos.x, date_pos.y + ts_title.y + style.FramePadding.x);
-    ImVec2 binding_pos(name_pos.x, title_pos.y + ts_title.y + style.FramePadding.x);
+    ImVec2 title_pos(name_pos.x, name_pos.y + ts_title.y + style.FramePadding.x);
+    ImVec2 date_pos(name_pos.x, title_pos.y + ts_title.y + style.FramePadding.x);
+    ImVec2 binding_pos(name_pos.x, date_pos.y + ts_title.y + style.FramePadding.x);
 
-    bool load = ImGui::Button("###button", ImVec2(ImGui::GetContentRegionAvail().x, fmax(thumbnail_size.y + style.FramePadding.y * 2,
-                                                                                         ts_title.y + ts_sub.y + style.FramePadding.y * 3)));
-    ImGui::PopFont();   
-    const ImVec2 sz = ImGui::GetItemRectSize();
-    const ImVec2 p0 = ImGui::GetItemRectMin();
-    const ImVec2 p1 = ImGui::GetItemRectMax();
-    ts_close_icon.y = sz.y / 1;
-    ts_save_icon.y = sz.y / 1;
-    ts_binding_icon.y = sz.y / 1;
-
+    bool load = ImGui::Button("###button", ImVec2(-FLT_MIN, fmax(thumbnail_size.y + style.FramePadding.y * 2, ts_title.y + ts_sub.y + style.FramePadding.y * 3)));
     if (load) {
         xemu_snapshots_load(snapshot->name, &err);
         if (err) {
@@ -751,21 +724,29 @@ void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const 
             error_free(err);
         }
     }
+    bool options_key_pressed = ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft);
+    bool show_snapshot_context_menu = ImGui::IsItemHovered() &&
+        (ImGui::IsMouseReleased(ImGuiMouseButton_Right) ||
+         options_key_pressed);
+
+    ImVec2 next_pos = ImGui::GetCursorPos();
+    const ImVec2 p0 = ImGui::GetItemRectMin();
+    const ImVec2 p1 = ImGui::GetItemRectMax();
+    ImGui::PopFont();
+
+    draw_list->PushClipRect(p0, p1, true);
 
     // Snapshot thumbnail
     ImGui::SetItemAllowOverlap();
-    ImGui::SameLine();
-    ImGui::SetCursorPosX(pos.x + thumbnail_pos.x);
-    ImGui::SetCursorPosY(pos.y + thumbnail_pos.y);
+    ImGui::SetCursorPos(ImVec2(pos.x + thumbnail_pos.x, pos.y + thumbnail_pos.y));
 
-    int thumbnail_width, thumbnail_height;
-
-    if (!screenshot) {
-        screenshot = g_icon_tex;
+    if (!thumbnail) {
+        thumbnail = g_icon_tex;
     }
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, screenshot);
+    glBindTexture(GL_TEXTURE_2D, thumbnail);
+    int thumbnail_width, thumbnail_height;
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &thumbnail_width);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &thumbnail_height);
 
@@ -774,132 +755,104 @@ void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const 
                              ImVec2(p0.x + thumbnail_pos.x + thumbnail_size.x, p0.y + thumbnail_pos.y + thumbnail_size.y),
                              IM_COL32_BLACK);
 
-    // Center the thumbnail
+    // Draw centered thumbnail
     int scaled_width, scaled_height;
     ScaleDimensions(thumbnail_width, thumbnail_height, thumbnail_size.x, thumbnail_size.y, &scaled_width, &scaled_height);
     ImVec2 img_pos = ImGui::GetCursorPos();
     img_pos.x += (thumbnail_size.x - scaled_width) / 2;
     img_pos.y += (thumbnail_size.y - scaled_height) / 2;
     ImGui::SetCursorPos(img_pos);
-
-    ImGui::Image((ImTextureID)(uint64_t)screenshot, ImVec2(scaled_width, scaled_height));
-
-    draw_list->PushClipRect(p0, p1, true);
+    ImGui::Image((ImTextureID)(uint64_t)thumbnail, ImVec2(scaled_width, scaled_height));
 
     // Snapshot title
     ImGui::PushFont(g_font_mgr.m_menu_font_medium);
     draw_list->AddText(ImVec2(p0.x + name_pos.x, p0.y + name_pos.y), IM_COL32(255, 255, 255, 255), snapshot->name);
     ImGui::PopFont();
 
+    // Snapshot XBE title name
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    draw_list->AddText(ImVec2(p0.x + title_pos.x, p0.y + title_pos.y), IM_COL32(255, 255, 255, 200), title_name);
+
     // Snapshot date
     g_autoptr(GDateTime) date = g_date_time_new_from_unix_local(snapshot->date_sec);
     char *date_buf = g_date_time_format(date, "%Y-%m-%d %H:%M:%S");
-    ImGui::PushFont(g_font_mgr.m_menu_font_small);
     draw_list->AddText(ImVec2(p0.x + date_pos.x, p0.y + date_pos.y), IM_COL32(255, 255, 255, 200), date_buf);
-    ImGui::PopFont();
     g_free(date_buf);
 
-    // Snapshot title
-    ImGui::PushFont(g_font_mgr.m_menu_font_small);
-    draw_list->AddText(ImVec2(p0.x + title_pos.x, p0.y + title_pos.y), IM_COL32(255, 255, 255, 200), title_name);
-    ImGui::PopFont();
-
-    // Snapshot binding
-    ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    // Snapshot keyboard binding
     if (current_snapshot_binding != -1) {
         char *binding_text = g_strdup_printf("Bound to F%d", current_snapshot_binding + 5);
         draw_list->AddText(ImVec2(p0.x + binding_pos.x, p0.y + binding_pos.y), IM_COL32(255, 255, 255, 200), binding_text);
         g_free(binding_text);
-    } else {
-        ImGui::Text("Not Bound");
-        draw_list->AddText(ImVec2(p0.x + binding_pos.x, p0.y + binding_pos.y), IM_COL32(255, 255, 255, 200), "Not Bound");
     }
-    
-    ImGui::PopFont();
 
+    ImGui::PopFont();
     draw_list->PopClipRect();
 
-    // Delete button
-    ImGui::SameLine();
-    ImGui::SetCursorPosY(pos.y);
-    ImGui::SetCursorPosX(pos.x + sz.x - ts_close_icon.x);
-    ImGui::PushFont(g_font_mgr.m_menu_font);
-    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0));
-    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32_BLACK_TRANS);
-    if (ImGui::Button(close_icon, ts_close_icon)) {
-        xemu_snapshots_delete(snapshot->name, &err);
-        if (err) {
-            xemu_queue_error_message(error_get_pretty(err));
-            error_free(err);
+    if (show_snapshot_context_menu) {
+        if (options_key_pressed) {
+            ImGui::SetNextWindowPos(p0);
         }
+        ImGui::OpenPopup("Snapshot Options");
     }
-    ImGui::PopStyleColor();
-    ImGui::PopStyleVar(1);
-    ImGui::PopFont();
 
-    // Save button
-    ImGui::SameLine();
-    ImGui::SetCursorPosY(pos.y);
-    ImGui::SetCursorPosX(pos.x + sz.x - ts_save_icon.x - ts_close_icon.x);
-    ImGui::PushFont(g_font_mgr.m_menu_font);
-    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0));
-    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32_BLACK_TRANS);
-    if (ImGui::Button(save_icon, ts_save_icon)) {
-        xemu_snapshots_save(snapshot->name, &err);
-        if (err) {
-            xemu_queue_error_message(error_get_pretty(err));
-            error_free(err);
+    if (ImGui::BeginPopupContextItem("Snapshot Options")) {
+        if (ImGui::MenuItem("Load")) {
+            xemu_snapshots_load(snapshot->name, &err);
+            if (err) {
+                xemu_queue_error_message(error_get_pretty(err));
+                error_free(err);
+            }
         }
-    }
-    ImGui::PopStyleColor();
-    ImGui::PopStyleVar(1);
-    ImGui::PopFont();
 
-    // Bind button
-    ImGui::SameLine();
-    ImGui::SetCursorPosY(pos.y);
-    ImGui::SetCursorPosX(pos.x + sz.x - ts_binding_icon.x - ts_save_icon.x - ts_close_icon.x);
-    ImGui::PushFont(g_font_mgr.m_menu_font);
-    ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0));
-    ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32_BLACK_TRANS);
-    if (ImGui::Button(binding_icon, ts_binding_icon)) {
-        ImGui::OpenPopup("Bind Snapshot Key");
-    }
+        if (ImGui::BeginMenu("Keybinding")) {
+            for (int i = 0; i < 4; ++i) {
+                char *item_name = g_strdup_printf("Bind to F%d", i + 5);
 
-    if (ImGui::BeginPopupContextItem("Bind Snapshot Key")) {
-        for (int i = 0; i < 4; ++i) {
-            char *item_name = g_strdup_printf("Bind to F%d", i + 5);
+                if (ImGui::MenuItem(item_name)) {
+                    if (current_snapshot_binding >= 0) {
+                        xemu_settings_set_string(g_snapshot_shortcut_index_key_map[current_snapshot_binding], "");
+                    }
+                    xemu_settings_set_string(g_snapshot_shortcut_index_key_map[i], snapshot->name);
+                    current_snapshot_binding = i;
 
-            if (ImGui::MenuItem(item_name)) {
-                if (current_snapshot_binding >= 0) {
-                    xemu_settings_set_string(g_snapshot_shortcut_index_key_map[current_snapshot_binding], "");
+                    ImGui::CloseCurrentPopup();
                 }
-                xemu_settings_set_string(g_snapshot_shortcut_index_key_map[i], snapshot->name);
-                current_snapshot_binding = i;
 
-                ImGui::CloseCurrentPopup();
+                g_free(item_name);
             }
 
-            g_free(item_name);
+            if (current_snapshot_binding >= 0) {
+                if (ImGui::MenuItem("Unbind")) {
+                    xemu_settings_set_string(g_snapshot_shortcut_index_key_map[current_snapshot_binding], "");
+                    current_snapshot_binding = -1;
+                }
+            }
+            ImGui::EndMenu();
         }
+        
+        ImGui::Separator();
 
-        if (current_snapshot_binding >= 0) {
-            ImGui::Separator();
-            if (ImGui::MenuItem("Unbind")) {
-                xemu_settings_set_string(g_snapshot_shortcut_index_key_map[current_snapshot_binding], "");
-                current_snapshot_binding = -1;
+        if (ImGui::MenuItem("Replace")) {
+            xemu_snapshots_save(snapshot->name, &err);
+            if (err) {
+                xemu_queue_error_message(error_get_pretty(err));
+                error_free(err);
+            }
+        }
+        if (ImGui::MenuItem("Delete")) {
+            xemu_snapshots_delete(snapshot->name, &err);
+            if (err) {
+                xemu_queue_error_message(error_get_pretty(err));
+                error_free(err);
             }
         }
 
         ImGui::EndPopup();
     }
 
-    ImGui::PopStyleColor();
-    ImGui::PopStyleVar(1);
-    ImGui::PopFont();
-
-
     ImGui::PopStyleVar(2);
+    ImGui::SetCursorPos(next_pos);
 }
 
 static int MainMenuSnapshotsViewUpdateSearchBox(ImGuiInputTextCallbackData *data)
@@ -953,7 +906,6 @@ void MainMenuSnapshotsView::Draw()
     if (snapshot_with_create_name_exists && ImGui::IsItemHovered()) {
         ImGui::SetTooltip("A snapshot with the name \"%s\" already exists. This button will overwrite the existing snapshot.", m_search_buf.c_str());
     }
-
 
     for (int i = m_snapshots_len - 1; i >= 0; i--) {
         if (g_config.general.snapshots.filter_current_game && m_extra_data[i].xbe_title_name && 
