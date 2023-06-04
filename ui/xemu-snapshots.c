@@ -49,88 +49,65 @@ const char **g_snapshot_shortcut_index_key_map[] = {
     &g_config.general.snapshots.shortcuts.f8,
 };
 
-static bool xemu_snapshots_load_thumbnail(BlockDriverState *bs_ro,
-                                          XemuSnapshotData *data,
-                                          int64_t *offset)
-{
-    int res = bdrv_load_vmstate(bs_ro, (uint8_t *)&data->thumbnail, *offset,
-                                sizeof(TextureBuffer) -
-                                    sizeof(data->thumbnail.buffer));
-    if (res != sizeof(TextureBuffer) - sizeof(data->thumbnail.buffer))
-        return false;
-    *offset += res;
-
-    data->thumbnail.buffer = g_malloc(data->thumbnail.size);
-
-    res = bdrv_load_vmstate(bs_ro, (uint8_t *)data->thumbnail.buffer, *offset,
-                            data->thumbnail.size);
-    if (res != data->thumbnail.size) {
-        return false;
-    }
-    *offset += res;
-
-    return true;
-}
-
 static void xemu_snapshots_load_data(BlockDriverState *bs_ro,
                                      QEMUSnapshotInfo *info,
                                      XemuSnapshotData *data, Error **err)
 {
-    int res;
-    XemuSnapshotHeader header;
+    data->xbe_title_name = NULL;
+    data->gl_thumbnail = 0;
+
+    int res = bdrv_snapshot_load_tmp(bs_ro, info->id_str, info->name, err);
+    if (res < 0) {
+        return;
+    }
+
+    uint32_t header[3];
     int64_t offset = 0;
-
-    data->xbe_title_present = false;
-    data->thumbnail_present = false;
-    res = bdrv_snapshot_load_tmp(bs_ro, info->id_str, info->name, err);
-    if (res < 0)
-        return;
-
     res = bdrv_load_vmstate(bs_ro, (uint8_t *)&header, offset, sizeof(header));
-    if (res != sizeof(header))
-        goto error;
-    offset += res;
-
-    if (header.magic != XEMU_SNAPSHOT_DATA_MAGIC)
-        goto error;
-
-    res = bdrv_load_vmstate(bs_ro, (uint8_t *)&data->xbe_title_len, offset,
-                            sizeof(data->xbe_title_len));
-    if (res != sizeof(data->xbe_title_len))
-        goto error;
-    offset += res;
-
-    data->xbe_title = (char *)g_malloc(data->xbe_title_len);
-
-    res = bdrv_load_vmstate(bs_ro, (uint8_t *)data->xbe_title, offset,
-                            data->xbe_title_len);
-    if (res != data->xbe_title_len)
-        goto error;
-    offset += res;
-
-    data->xbe_title_present = (offset <= sizeof(header) + header.size);
-
-    if (offset == sizeof(header) + header.size)
+    if (res != sizeof(header)) {
         return;
+    }
+    offset += res;
 
-    if (!xemu_snapshots_load_thumbnail(bs_ro, data, &offset)) {
-        goto error;
+    if (be32_to_cpu(header[0]) != XEMU_SNAPSHOT_DATA_MAGIC ||
+        be32_to_cpu(header[1]) != XEMU_SNAPSHOT_DATA_VERSION) {
+        return;
     }
 
-    data->thumbnail_present = (offset <= sizeof(header) + header.size);
-
-    if (data->thumbnail_present) {
-        glGenTextures(1, &data->gl_thumbnail);
-        xemu_snapshots_render_thumbnail(data->gl_thumbnail, &data->thumbnail);
+    size_t size = be32_to_cpu(header[2]);
+    uint8_t *buf = g_malloc(size);
+    res = bdrv_load_vmstate(bs_ro, buf, offset, size);
+    if (res != size) {
+        g_free(buf);
+        return;
     }
-    return;
 
-error:
-    g_free(data->xbe_title);
-    data->xbe_title_present = false;
+    const size_t xbe_title_name_size = buf[0];
+    offset = 1;
 
-    g_free(data->thumbnail.buffer);
-    data->thumbnail_present = false;
+    if (xbe_title_name_size) {
+        data->xbe_title_name = (char *)g_malloc(xbe_title_name_size + 1);
+        memcpy(data->xbe_title_name, &buf[offset], xbe_title_name_size);
+        data->xbe_title_name[xbe_title_name_size] = 0;
+        offset += xbe_title_name_size;
+    }
+
+    const size_t thumbnail_size = be32_to_cpu(*(uint32_t *)&buf[offset]);
+    offset += 4;
+
+    if (thumbnail_size) {
+        GLuint thumbnail;
+        glGenTextures(1, &thumbnail);
+        if (xemu_snapshots_load_png_to_texture(thumbnail, &buf[offset],
+                                               thumbnail_size)) {
+            data->gl_thumbnail = thumbnail;
+        } else {
+            glDeleteTextures(1, &thumbnail);
+        }
+        offset += thumbnail_size;
+    }
+
+    g_free(buf);
 }
 
 static void xemu_snapshots_all_load_data(QEMUSnapshotInfo **info,
@@ -144,12 +121,8 @@ static void xemu_snapshots_all_load_data(QEMUSnapshotInfo **info,
 
     if (*data) {
         for (int i = 0; i < xemu_snapshots_len; ++i) {
-            if ((*data)[i].xbe_title_present) {
-                g_free((*data)[i].xbe_title);
-            }
-
-            if ((*data)[i].thumbnail_present) {
-                g_free((*data)[i].thumbnail.buffer);
+            g_free((*data)[i].xbe_title_name);
+            if ((*data)[i].gl_thumbnail) {
                 glDeleteTextures(1, &((*data)[i].gl_thumbnail));
             }
         }
@@ -250,65 +223,61 @@ void xemu_snapshots_delete(const char *vm_name, Error **err)
 
 void xemu_snapshots_save_extra_data(QEMUFile *f)
 {
+    size_t xbe_title_name_size = 0;
+    char *xbe_title_name = NULL;
     struct xbe *xbe_data = xemu_get_xbe_info();
-
-    int64_t xbe_title_len = 0;
-    char *xbe_title = g_utf16_to_utf8(xbe_data->cert->m_title_name, 40, NULL,
-                                      &xbe_title_len, NULL);
-    xbe_title_len++;
-
-    XemuSnapshotHeader header = { XEMU_SNAPSHOT_DATA_MAGIC, 0 };
-
-    header.size += sizeof(xbe_title_len);
-    header.size += xbe_title_len;
-
-    TextureBuffer *thumbnail = xemu_snapshots_extract_thumbnail();
-    if (thumbnail && thumbnail->buffer) {
-        header.size += sizeof(TextureBuffer) - sizeof(thumbnail->buffer);
-        header.size += thumbnail->size;
+    if (xbe_data && xbe_data->cert) {
+        glong items_written = 0;
+        xbe_title_name = g_utf16_to_utf8(xbe_data->cert->m_title_name, 40, NULL, &items_written, NULL);
+        if (xbe_title_name) {
+            xbe_title_name_size = items_written;
+        }
     }
 
-    qemu_put_buffer(f, (const uint8_t *)&header, sizeof(header));
-    qemu_put_buffer(f, (const uint8_t *)&xbe_title_len, sizeof(xbe_title_len));
-    qemu_put_buffer(f, (const uint8_t *)xbe_title, xbe_title_len);
+    size_t thumbnail_size = 0;
+    void *thumbnail_buf = xemu_snapshots_create_framebuffer_thumbnail_png(&thumbnail_size);
 
-    if (thumbnail && thumbnail->buffer) {
-        qemu_put_buffer(f, (const uint8_t *)thumbnail,
-                        sizeof(TextureBuffer) - sizeof(thumbnail->buffer));
-        qemu_put_buffer(f, (const uint8_t *)thumbnail->buffer, thumbnail->size);
+    qemu_put_be32(f, XEMU_SNAPSHOT_DATA_MAGIC);
+    qemu_put_be32(f, XEMU_SNAPSHOT_DATA_VERSION);
+    qemu_put_be32(f, 1 + xbe_title_name_size + 4 + thumbnail_size);
+
+    qemu_put_byte(f, xbe_title_name_size);
+    if (xbe_title_name_size) {
+        qemu_put_buffer(f, (const uint8_t *)xbe_title_name, xbe_title_name_size);
+        g_free(xbe_title_name);
     }
 
-    g_free(xbe_title);
-
-    if (thumbnail && thumbnail->buffer) {
-        g_free(thumbnail->buffer);
+    qemu_put_be32(f, thumbnail_size);
+    if (thumbnail_size) {
+        qemu_put_buffer(f, (const uint8_t *)thumbnail_buf, thumbnail_size);
+        g_free(thumbnail_buf);
     }
-
-    g_free(thumbnail);
 
     xemu_snapshots_dirty = true;
 }
 
 bool xemu_snapshots_offset_extra_data(QEMUFile *f)
 {
-    size_t ret;
-    XemuSnapshotHeader header;
-    ret = qemu_get_buffer(f, (uint8_t *)&header, sizeof(header));
-    if (ret != sizeof(header)) {
-        return false;
+    unsigned int v;
+    uint32_t version;
+    uint32_t size;
+
+    v = qemu_get_be32(f);
+    if (v != XEMU_SNAPSHOT_DATA_MAGIC) {
+        qemu_file_skip(f, -4);
+        return true;
     }
 
-    if (header.magic == XEMU_SNAPSHOT_DATA_MAGIC) {
-        /*
-         * qemu_file_skip only works if you aren't skipping past its buffer.
-         * Unfortunately, it's not usable here.
-         */
-        void *buf = g_malloc(header.size);
-        qemu_get_buffer(f, buf, header.size);
-        g_free(buf);
-    } else {
-        qemu_file_skip(f, -((int)sizeof(header)));
-    }
+    version = qemu_get_be32(f);
+    (void)version;
+
+    /* qemu_file_skip only works if you aren't skipping past internal buffer limit.
+     * Unfortunately, it's not usable here.
+     */
+    size = qemu_get_be32(f);
+    void *buf = g_malloc(size);
+    qemu_get_buffer(f, buf, size);
+    g_free(buf);
 
     return true;
 }
