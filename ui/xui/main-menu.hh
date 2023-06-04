@@ -114,6 +114,7 @@ protected:
 
 private:
     void Load();
+    void ClearSearch();
 
 public:
     GRegex *m_search_regex;
