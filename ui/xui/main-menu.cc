@@ -930,14 +930,12 @@ void MainMenuSnapshotsView::Draw()
     Load();
     SectionTitle("Snapshots");
     ImGui::Checkbox("Filter by current title", &g_config.general.snapshots.filter_current_game);
-    ImGui::InputTextWithHint("##search", "Filter by name...", &m_search_buf, ImGuiInputTextFlags_CallbackEdit,
+    ImGui::InputTextWithHint("##search", "Search...", &m_search_buf, ImGuiInputTextFlags_CallbackEdit,
                              &MainMenuSnapshotsViewUpdateSearchBox, this);
-
-    ImGui::InputTextWithHint("##create", "Create new snapshot", &m_create_buf);
 
     bool snapshot_with_create_name_exists = false;
     for (int i = 0; i < m_snapshots_len; ++i) {
-        if (g_strcmp0(m_create_buf.c_str(), m_snapshots[i].name) == 0) {
+        if (g_strcmp0(m_search_buf.c_str(), m_snapshots[i].name) == 0) {
             snapshot_with_create_name_exists = true;
             break;
         }
@@ -945,12 +943,12 @@ void MainMenuSnapshotsView::Draw()
 
     ImGui::SameLine();
     if (ImGui::Button(snapshot_with_create_name_exists ? "Replace" : "Create")) {
-        xemu_snapshots_save(m_create_buf.empty() ? NULL : m_create_buf.c_str(), NULL);
-        m_create_buf.clear();
+        xemu_snapshots_save(m_search_buf.empty() ? NULL : m_search_buf.c_str(), NULL);
+        m_search_buf.clear();
     }
 
     if (snapshot_with_create_name_exists && ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("A snapshot with the name \"%s\" already exists. This button will overwrite the existing snapshot.", m_create_buf.c_str());
+        ImGui::SetTooltip("A snapshot with the name \"%s\" already exists. This button will overwrite the existing snapshot.", m_search_buf.c_str());
     }
 
     for (int i = m_snapshots_len - 1; i >= 0; i--) {
