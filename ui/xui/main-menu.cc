@@ -727,7 +727,7 @@ void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const 
     ImGui::PushFont(g_font_mgr.m_menu_font_medium);
 
     ImVec2 ts_title = ImGui::CalcTextSize(snapshot->name);
-    ImVec2 thumbnail_size = g_viewport_mgr.Scale(ImVec2(XEMU_SNAPSHOT_WIDTH, XEMU_SNAPSHOT_HEIGHT));
+    ImVec2 thumbnail_size = g_viewport_mgr.Scale(ImVec2(XEMU_SNAPSHOT_THUMBNAIL_WIDTH, XEMU_SNAPSHOT_THUMBNAIL_HEIGHT));
     ImVec2 thumbnail_pos(style.FramePadding.x, style.FramePadding.y);
     ImVec2 name_pos(thumbnail_pos.x + thumbnail_size.x + style.FramePadding.x * 2, thumbnail_pos.y);
     ImVec2 date_pos(name_pos.x, name_pos.y + ts_title.y + style.FramePadding.x);
@@ -758,7 +758,27 @@ void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const 
     ImGui::SetCursorPosX(pos.x + thumbnail_pos.x);
     ImGui::SetCursorPosY(pos.y + thumbnail_pos.y);
     if (screenshot > 0) {
-        ImGui::Image((ImTextureID)(uint64_t)screenshot, thumbnail_size);
+        int thumbnail_width, thumbnail_height;
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, screenshot);
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &thumbnail_width);
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &thumbnail_height);
+
+        // Draw black background behind thumbnail
+        draw_list->AddRectFilled(ImVec2(p0.x + thumbnail_pos.x, p0.y + thumbnail_pos.y),
+                                 ImVec2(p0.x + thumbnail_pos.x + thumbnail_size.x, p0.y + thumbnail_pos.y + thumbnail_size.y),
+                                 IM_COL32_BLACK);
+
+        // Center the thumbnail
+        int scaled_width, scaled_height;
+        ScaleDimensions(thumbnail_width, thumbnail_height, thumbnail_size.x, thumbnail_size.y, &scaled_width, &scaled_height);
+        ImVec2 img_pos = ImGui::GetCursorPos();
+        img_pos.x += (thumbnail_size.x - scaled_width) / 2;
+        img_pos.y += (thumbnail_size.y - scaled_height) / 2;
+        ImGui::SetCursorPos(img_pos);
+
+        ImGui::Image((ImTextureID)(uint64_t)screenshot, ImVec2(scaled_width, scaled_height));
     } else {
         ImGui::Image((ImTextureID)(uint64_t)g_icon_tex, thumbnail_size);
     }

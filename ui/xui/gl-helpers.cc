@@ -661,21 +661,60 @@ void RenderLogo(uint32_t time)
     glUseProgram(0);
 }
 
-void RenderFramebuffer(GLint tex, int width, int height, bool flip, bool apply_scaling_factor)
+// Scale <src> proportionally to fit in <max>
+void ScaleDimensions(int src_width, int src_height, int max_width, int max_height, int *out_width, int *out_height)
+{
+    float w_ratio = (float)max_width/(float)max_height;
+    float t_ratio = (float)src_width/(float)src_height;
+
+    if (w_ratio >= t_ratio) {
+        *out_width = (float)max_width * t_ratio/w_ratio;
+        *out_height = max_height;
+    } else {
+        *out_width = max_width;
+        *out_height = (float)max_height * w_ratio/t_ratio;
+    }
+}
+
+void RenderFramebuffer(GLint tex, int width, int height, bool flip, float scale[2])
 {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
 
+    DecalShader *s = g_framebuffer_shader;
+    s->flip = flip;
+    glViewport(0, 0, width, height);
+    glUseProgram(s->prog);
+    glBindVertexArray(s->vao);
+    glUniform1i(s->flipy_loc, s->flip);
+    glUniform4f(s->scale_offset_loc, scale[0], scale[1], 0, 0);
+    glUniform4f(s->tex_scale_offset_loc, 1.0, 1.0, 0, 0);
+    glUniform1i(s->tex_loc, 0);
+
+    const uint8_t *palette = nv2a_get_dac_palette();
+    for (int i = 0; i < 256; i++) {
+        uint32_t e = (palette[i * 3 + 2] << 16) | (palette[i * 3 + 1] << 8) |
+                     palette[i * 3];
+        glUniform1ui(s->palette_loc[i], e);
+    }
+
+    glClearColor(0, 0, 0, 0);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
+}
+
+void RenderFramebuffer(GLint tex, int width, int height, bool flip)
+{
     int tw, th;
+    float scale[2];
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, tex);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tw);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &th);
 
     // Calculate scaling factors
-    float scale[2];
-    if (!apply_scaling_factor) {
-        scale[0] = 1.0;
-        scale[1] = 1.0;
-    } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_STRETCH) {
+    if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_STRETCH) {
         // Stretch to fit
         scale[0] = 1.0;
         scale[1] = 1.0;
@@ -705,50 +744,27 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip, bool apply_s
         }
     }
 
-    DecalShader *s = g_framebuffer_shader;
-    s->flip = flip;
-    glViewport(0, 0, width, height);
-    glUseProgram(s->prog);
-    glBindVertexArray(s->vao);
-    glUniform1i(s->flipy_loc, s->flip);
-    glUniform4f(s->scale_offset_loc, scale[0], scale[1], 0, 0);
-    glUniform4f(s->tex_scale_offset_loc, 1.0, 1.0, 0, 0);
-    glUniform1i(s->tex_loc, 0);
-
-    const uint8_t *palette = nv2a_get_dac_palette();
-    for (int i = 0; i < 256; i++) {
-        uint32_t e = (palette[i * 3 + 2] << 16) | (palette[i * 3 + 1] << 8) |
-                     palette[i * 3];
-        glUniform1ui(s->palette_loc[i], e);
-    }
-
-    glClearColor(0, 0, 0, 0);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
+    RenderFramebuffer(tex, width, height, flip, scale);
 }
 
-bool ExtractFramebufferPixels(GLuint tex, bool flip, std::vector<uint8_t> &png, int width, int height)
+bool RenderFramebufferToPng(GLuint tex, bool flip, std::vector<uint8_t> &png, int max_width, int max_height)
 {
+    int width, height;
+
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
-    assert((width == 0 && height == 0) || (width > 0 && height > 0));
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
 
-    bool params_from_tex = false;
-    if (width <= 0 && height <= 0) {
-        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
-        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
-        params_from_tex = true;
+    if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_16_9) {
+        width = height * (16.0f / 9.0f);
+    } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_4_3) {
+        width = height * (4.0f / 3.0f);
     }
-    glBindTexture(GL_TEXTURE_2D, 0);
-    assert(width > 0 && height > 0);
 
-    if (params_from_tex) {
-        if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_16_9) {
-            width = height * (16.0f / 9.0f);
-        } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_4_3) {
-            width = height * (4.0f / 3.0f);
-        }
-    }
+    if (!max_width) max_width = width;
+    if (!max_height) max_height = height;
+    ScaleDimensions(width, height, max_width, max_height, &width, &height);
 
     std::vector<uint8_t> pixels;
     pixels.resize(width * height * 3);
@@ -757,7 +773,8 @@ bool ExtractFramebufferPixels(GLuint tex, bool flip, std::vector<uint8_t> &png, 
     fbo.Target();
     bool blend = glIsEnabled(GL_BLEND);
     if (blend) glDisable(GL_BLEND);
-    RenderFramebuffer(tex, width, height, !flip, params_from_tex);
+    float scale[2] = {1.0, 1.0};
+    RenderFramebuffer(tex, width, height, !flip, scale);
     if (blend) glEnable(GL_BLEND);
     glPixelStorei(GL_PACK_ROW_LENGTH, width);
     glPixelStorei(GL_PACK_IMAGE_HEIGHT, height);
@@ -773,7 +790,8 @@ void SaveScreenshot(GLuint tex, bool flip)
     Error *err = NULL;
     char fname[128];
     std::vector<uint8_t> png;
-    if (ExtractFramebufferPixels(tex, flip, png)) {
+
+    if (RenderFramebufferToPng(tex, flip, png)) {
         time_t t = time(NULL);
         struct tm *tmp = localtime(&t);
         if (tmp) {

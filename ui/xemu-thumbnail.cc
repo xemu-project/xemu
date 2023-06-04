@@ -67,24 +67,15 @@ TextureBuffer *xemu_snapshots_extract_thumbnail()
         return NULL;
     }
 
-    // Render at 2x the base size to account for potential UI scaling
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, display_tex);
-    int thumbnail_width = XEMU_SNAPSHOT_WIDTH * 2;
-    int tex_width;
-    int tex_height;
-    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tex_width);
-    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &tex_height);
-    int thumbnail_height = (int)(((float)tex_height / (float)tex_width) * (float)thumbnail_width);
-
     std::vector<uint8_t> png;
-    if (!ExtractFramebufferPixels(display_tex, display_flip, png, thumbnail_width, thumbnail_height)) {
+    if (!RenderFramebufferToPng(display_tex, display_flip, png,
+                                2 * XEMU_SNAPSHOT_THUMBNAIL_WIDTH,
+                                2 * XEMU_SNAPSHOT_THUMBNAIL_HEIGHT)) {
         return NULL;
     }
 
     TextureBuffer *thumbnail = (TextureBuffer *)g_malloc(sizeof(TextureBuffer));
     thumbnail->buffer = g_malloc(png.size() * sizeof(uint8_t));
-
     thumbnail->channels = 3;
     thumbnail->size = png.size() * sizeof(uint8_t);
     memcpy(thumbnail->buffer, png.data(), thumbnail->size);

@@ -28,8 +28,8 @@ extern "C" {
 #include "block/snapshot.h"
 
 #define XEMU_SNAPSHOT_DATA_MAGIC 0x78656d75
-#define XEMU_SNAPSHOT_HEIGHT 120
-#define XEMU_SNAPSHOT_WIDTH 160
+#define XEMU_SNAPSHOT_THUMBNAIL_WIDTH 160
+#define XEMU_SNAPSHOT_THUMBNAIL_HEIGHT 120
 
 extern const char **g_snapshot_shortcut_index_key_map[];
 
