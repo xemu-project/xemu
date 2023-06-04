@@ -170,6 +170,32 @@ else
     opts="--enable-lto"
 fi
 
+most_recent_macosx_sdk_ver () {
+  local min_ver="${1}"
+  local macos_sdk_base=/Library/Developer/CommandLineTools/SDKs
+  local sdks=("${macos_sdk_base}"/MacOSX[0-9]*.[0-9]*.sdk)
+  for i in "${!sdks[@]}"; do
+    local newval="${sdks[i]##${macos_sdk_base}/MacOSX}"
+    sdks[$i]="${newval%%.sdk}"
+  done
+
+  IFS=$'\n' sdks=($(sort -nr <<<"${sdks[*]}"))
+  unset IFS
+
+  local newest_sdk_ver="${sdks[0]}"
+
+  local sdk_path="${macos_sdk_base}/MacOSX${newest_sdk_ver}.sdk"
+  if ! test -d "${sdk_path}"; then
+    echo ""
+    return
+  fi
+
+  if ! LC_ALL=C awk 'BEGIN {exit ('${newest_sdk_ver}' < '${min_ver}')}'; then
+    echo ""
+    return
+  fi
+  echo "${sdk_path}"
+}
 
 case "$platform" in # Adjust compilation options based on platform
     Linux)
@@ -180,47 +206,21 @@ case "$platform" in # Adjust compilation options based on platform
         ;;
     Darwin)
         echo "Compiling for MacOS for $target_arch..."
-        sdk_base=/Library/Developer/CommandLineTools/SDKs/
-        sdk_macos_10_14="${sdk_base}/MacOSX10.14.sdk"
-        sdk_macos_10_15="${sdk_base}/MacOSX10.15.sdk"
-        sdk_macos_11_1="${sdk_base}/MacOSX11.1.sdk"
-        sdk_macos_11_3="${sdk_base}/MacOSX11.3.sdk"
-        sdk_macos_12_0="${sdk_base}/MacOSX12.0.sdk"
-        sdk_macos_12_1="${sdk_base}/MacOSX12.1.sdk"
         if [ "$target_arch" == "arm64" ]; then
             macos_min_ver=11.3
-            if test -d "$sdk_macos_12_1"; then
-                sdk="$sdk_macos_12_1"
-            elif test -d "$sdk_macos_12_0"; then
-                sdk="$sdk_macos_12_0"
-            elif test -d "$sdk_macos_11_3"; then
-                sdk="$sdk_macos_11_3"
-            else
-                echo "SDK not found. Install Xcode Command Line Tools"
-                exit 1
-            fi
         elif [ "$target_arch" == "x86_64" ]; then
             macos_min_ver=10.13
-            if test -d "$sdk_macos_12_1"; then
-                sdk="$sdk_macos_12_1"
-            elif test -d "$sdk_macos_12_0"; then
-                sdk="$sdk_macos_12_0"
-            elif test -d "$sdk_macos_11_3"; then
-                sdk="$sdk_macos_11_3"
-            elif test -d "$sdk_macos_11_1"; then
-                sdk="$sdk_macos_11_1"
-            elif test -d "$sdk_macos_10_15"; then
-                sdk="$sdk_macos_10_15"
-            elif test -d "$sdk_macos_10_14"; then
-                sdk="$sdk_macos_10_14"
-            else
-                echo "SDK not found. Install Xcode Command Line Tools"
-                exit 1
-            fi
         else
             echo "Unsupported arch $target_arch"
             exit 1
         fi
+
+        sdk="$(most_recent_macosx_sdk_ver ${macos_min_ver})"
+        if [[ -z "${sdk}" ]]; then
+          echo "SDK >= ${macos_min_ver} not found. Install Xcode Command Line Tools"
+          exit 1
+        fi
+
         python3 ./scripts/download-macos-libs.py ${target_arch}
         lib_prefix=${PWD}/macos-libs/${target_arch}/opt/local
         export CFLAGS="-arch ${target_arch} \
