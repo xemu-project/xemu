@@ -790,6 +790,7 @@ void MainMenuSnapshotsView::Draw()
            "Only display snapshots created while running the currently running XBE");
 
     ImGui::SetNextItemWidth(ImGui::GetColumnWidth() * 0.8);
+    ImGui::PushFont(g_font_mgr.m_menu_font_small);
     ImGui::InputTextWithHint("##search", "Search or name new snapshot...",
                              &m_search_buf, ImGuiInputTextFlags_CallbackEdit,
                              &MainMenuSnapshotsViewUpdateSearchBox, this);
@@ -811,6 +812,7 @@ void MainMenuSnapshotsView::Draw()
     if (snapshot_with_create_name_exists && ImGui::IsItemHovered()) {
         ImGui::SetTooltip("A snapshot with the name \"%s\" already exists. This button will overwrite the existing snapshot.", m_search_buf.c_str());
     }
+    ImGui::PopFont();
 
     for (int i = g_snapshot_mgr.m_snapshots_len - 1; i >= 0; i--) {
         if (g_config.general.snapshots.filter_current_game && g_snapshot_mgr.m_extra_data[i].xbe_title_name && 
