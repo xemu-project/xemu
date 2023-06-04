@@ -944,8 +944,8 @@ void MainMenuSnapshotsView::Draw()
     }
 
     ImGui::SameLine();
-    if (ImGui::Button(snapshot_with_create_name_exists ? "Save" : "Create") && !m_create_buf.empty()) {
-        xemu_snapshots_save(m_create_buf.c_str(), NULL);
+    if (ImGui::Button(snapshot_with_create_name_exists ? "Save" : "Create")) {
+        xemu_snapshots_save(m_create_buf.empty() ? NULL : m_create_buf.c_str(), NULL);
         m_create_buf.clear();
     }
 
