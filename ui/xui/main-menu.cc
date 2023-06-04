@@ -790,7 +790,8 @@ void MainMenuSnapshotsView::Draw()
            "Only display snapshots created while running the currently running XBE");
 
     ImGui::SetNextItemWidth(ImGui::GetColumnWidth() * 0.8);
-    ImGui::InputTextWithHint("##search", "Search...", &m_search_buf, ImGuiInputTextFlags_CallbackEdit,
+    ImGui::InputTextWithHint("##search", "Search or name new snapshot...",
+                             &m_search_buf, ImGuiInputTextFlags_CallbackEdit,
                              &MainMenuSnapshotsViewUpdateSearchBox, this);
 
     bool snapshot_with_create_name_exists = false;
