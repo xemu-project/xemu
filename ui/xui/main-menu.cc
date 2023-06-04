@@ -932,6 +932,7 @@ void MainMenuSnapshotsView::Draw()
 
     Toggle("Filter by current title", &g_config.general.snapshots.filter_current_game);
 
+    ImGui::SetNextItemWidth(ImGui::GetColumnWidth() * 0.8);
     ImGui::InputTextWithHint("##search", "Search...", &m_search_buf, ImGuiInputTextFlags_CallbackEdit,
                              &MainMenuSnapshotsViewUpdateSearchBox, this);
 
@@ -944,7 +945,7 @@ void MainMenuSnapshotsView::Draw()
     }
 
     ImGui::SameLine();
-    if (ImGui::Button(snapshot_with_create_name_exists ? "Replace" : "Create")) {
+    if (ImGui::Button(snapshot_with_create_name_exists ? "Replace" : "Create", ImVec2(-FLT_MIN, 0))) {
         xemu_snapshots_save(m_search_buf.empty() ? NULL : m_search_buf.c_str(), NULL);
         m_search_buf.clear();
     }
