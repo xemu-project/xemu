@@ -37,11 +37,13 @@ extern "C" {
 extern const char **g_snapshot_shortcut_index_key_map[];
 
 typedef struct XemuSnapshotData {
+    char *disc_path;
     char *xbe_title_name;
     GLuint gl_thumbnail;
 } XemuSnapshotData;
 
 // Implemented in xemu-snapshots.c
+char *xemu_get_currently_loaded_disc_path(void);
 int xemu_snapshots_list(QEMUSnapshotInfo **info, XemuSnapshotData **extra_data,
                         Error **err);
 void xemu_snapshots_load(const char *vm_name, Error **err);

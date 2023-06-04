@@ -31,6 +31,7 @@
 #include "migration/qemu-file.h"
 #include "migration/snapshot.h"
 #include "qapi/error.h"
+#include "qapi/qapi-commands-block.h"
 #include "sysemu/runstate.h"
 #include "qemu-common.h"
 
@@ -53,6 +54,7 @@ static void xemu_snapshots_load_data(BlockDriverState *bs_ro,
                                      QEMUSnapshotInfo *info,
                                      XemuSnapshotData *data, Error **err)
 {
+    data->disc_path = NULL;
     data->xbe_title_name = NULL;
     data->gl_thumbnail = 0;
 
@@ -82,11 +84,28 @@ static void xemu_snapshots_load_data(BlockDriverState *bs_ro,
         return;
     }
 
-    const size_t xbe_title_name_size = buf[0];
-    offset = 1;
+    assert(size >= 9);
+
+    offset = 0;
+
+    const size_t disc_path_size = be32_to_cpu(*(uint32_t *)&buf[offset]);
+    offset += 4;
+
+    if (disc_path_size) {
+        data->disc_path = (char *)g_malloc(disc_path_size + 1);
+        assert(size >= (offset + disc_path_size));
+        memcpy(data->disc_path, &buf[offset], disc_path_size);
+        data->disc_path[disc_path_size] = 0;
+        offset += disc_path_size;
+    }
+
+    assert(size >= (offset + 4));
+    const size_t xbe_title_name_size = buf[offset];
+    offset += 1;
 
     if (xbe_title_name_size) {
         data->xbe_title_name = (char *)g_malloc(xbe_title_name_size + 1);
+        assert(size >= (offset + xbe_title_name_size));
         memcpy(data->xbe_title_name, &buf[offset], xbe_title_name_size);
         data->xbe_title_name[xbe_title_name_size] = 0;
         offset += xbe_title_name_size;
@@ -98,6 +117,7 @@ static void xemu_snapshots_load_data(BlockDriverState *bs_ro,
     if (thumbnail_size) {
         GLuint thumbnail;
         glGenTextures(1, &thumbnail);
+        assert(size >= (offset + thumbnail_size));
         if (xemu_snapshots_load_png_to_texture(thumbnail, &buf[offset],
                                                thumbnail_size)) {
             data->gl_thumbnail = thumbnail;
@@ -202,6 +222,30 @@ done:
     return xemu_snapshots_len;
 }
 
+char *xemu_get_currently_loaded_disc_path(void)
+{
+    char *file = NULL;
+    BlockInfoList *block_list, *info;
+
+    block_list = qmp_query_block(NULL);
+    
+    for (info = block_list; info; info = info->next) {
+        if (strcmp("ide0-cd1", info->value->device)) {
+            continue;
+        }
+
+        if (info->value->has_inserted) {
+            BlockDeviceInfo *inserted = info->value->inserted;
+            if (inserted->has_node_name) {
+                file = g_strdup(inserted->file);
+            }
+        }
+    }
+
+    qapi_free_BlockInfoList(block_list);
+    return file;
+}
+
 void xemu_snapshots_load(const char *vm_name, Error **err)
 {
     bool vm_running = runstate_is_running();
@@ -223,6 +267,9 @@ void xemu_snapshots_delete(const char *vm_name, Error **err)
 
 void xemu_snapshots_save_extra_data(QEMUFile *f)
 {
+    char *path = xemu_get_currently_loaded_disc_path();
+    size_t path_size = path ? strlen(path) : 0;
+
     size_t xbe_title_name_size = 0;
     char *xbe_title_name = NULL;
     struct xbe *xbe_data = xemu_get_xbe_info();
@@ -239,7 +286,13 @@ void xemu_snapshots_save_extra_data(QEMUFile *f)
 
     qemu_put_be32(f, XEMU_SNAPSHOT_DATA_MAGIC);
     qemu_put_be32(f, XEMU_SNAPSHOT_DATA_VERSION);
-    qemu_put_be32(f, 1 + xbe_title_name_size + 4 + thumbnail_size);
+    qemu_put_be32(f, 4 + path_size + 1 + xbe_title_name_size + 4 + thumbnail_size);
+
+    qemu_put_be32(f, path_size);
+    if (path_size) {
+        qemu_put_buffer(f, (const uint8_t *)path, path_size);
+        g_free(path);
+    }
 
     qemu_put_byte(f, xbe_title_name_size);
     if (xbe_title_name_size) {

@@ -17,19 +17,29 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include "common.hh"
+#include "actions.hh"
 #include "misc.hh"
 #include "xemu-hud.h"
 #include "../xemu-snapshots.h"
 #include "../xemu-notifications.h"
+#include "snapshot-manager.hh"
 
 void ActionEjectDisc(void)
 {
     xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
-    xemu_eject_disc();
+
+    Error *err = NULL;
+    xemu_eject_disc(&err);
+    if (err) {
+        xemu_queue_error_message(error_get_pretty(err));
+        error_free(err);
+    }
 }
 
 void ActionLoadDisc(void)
 {
+    Error *err = NULL;
+
     const char *iso_file_filters = ".iso Files\0*.iso\0All Files\0*.*\0";
     const char *new_disc_path =
         PausedFileOpen(NOC_FILE_DIALOG_OPEN, iso_file_filters,
@@ -39,7 +49,12 @@ void ActionLoadDisc(void)
         return;
     }
     xemu_settings_set_string(&g_config.sys.files.dvd_path, new_disc_path);
-    xemu_load_disc(new_disc_path);
+
+    xemu_load_disc(new_disc_path, &err);
+    if (err) {
+        xemu_queue_error_message(error_get_pretty(err));
+        error_free(err);
+    }
 }
 
 void ActionTogglePause(void)
@@ -81,11 +96,16 @@ void ActionActivateBoundSnapshot(int slot, bool save)
     if (save) {
         xemu_snapshots_save(snapshot_name, &err);
     } else {
-        xemu_snapshots_load(snapshot_name, &err);
+        ActionLoadSnapshotChecked(snapshot_name);
     }
 
     if (err) {
         xemu_queue_error_message(error_get_pretty(err));
         error_free(err);
     }
+}
+
+void ActionLoadSnapshotChecked(const char *name)
+{
+    g_snapshot_mgr.LoadSnapshotChecked(name);
 }

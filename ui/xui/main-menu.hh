@@ -104,24 +104,19 @@ public:
 class MainMenuSnapshotsView : public virtual MainMenuTabView
 {
 protected:
-    QEMUSnapshotInfo *m_snapshots;
-    XemuSnapshotData *m_extra_data;
-    int m_snapshots_len;
     uint32_t m_current_title_id;
     char *m_current_title_name;
     std::string m_search_buf;
-    bool m_load_failed;
 
 private:
-    void Load();
     void ClearSearch();
+    void DrawSnapshotContextMenu(QEMUSnapshotInfo *snapshot, XemuSnapshotData *data, int current_snapshot_binding);
 
 public:
     GRegex *m_search_regex;
     MainMenuSnapshotsView();
     ~MainMenuSnapshotsView();
-    void SnapshotBigButton(QEMUSnapshotInfo *snapshot, const char *title_name,
-                           GLuint screenshot);
+    bool BigSnapshotButton(QEMUSnapshotInfo *snapshot, XemuSnapshotData *data, int current_snapshot_binding);
     void Draw() override;
 };
 
