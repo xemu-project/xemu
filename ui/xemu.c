@@ -55,6 +55,7 @@
 
 #include "hw/xbox/smbus.h" // For eject, drive tray
 #include "hw/xbox/nv2a/nv2a.h"
+#include "ui/xemu-notifications.h"
 
 #include <stb_image.h>
 
@@ -1556,26 +1557,34 @@ int main(int argc, char **argv)
     // rcu_unregister_thread();
 }
 
-void xemu_eject_disc(void)
+void xemu_eject_disc(Error **errp)
 {
+    Error *error = NULL;
+
     xbox_smc_eject_button();
 
     // Xbox software may request that the drive open, but do it now anyway
-    Error *err = NULL;
-    qmp_eject(true, "ide0-cd1", false, NULL, true, false, &err);
+    qmp_eject(true, "ide0-cd1", false, NULL, true, false, &error);
+    if (error) {
+        error_propagate(errp, error);
+    }
 
     xbox_smc_update_tray_state();
 }
 
-void xemu_load_disc(const char *path)
+void xemu_load_disc(const char *path, Error **errp)
 {
+    Error *error = NULL;
+
     // Ensure an eject sequence is always triggered so Xbox software reloads
     xbox_smc_eject_button();
 
-    Error *err = NULL;
     qmp_blockdev_change_medium(true, "ide0-cd1", false, NULL, path,
                                false, "", false, 0,
-                               &err);
+                               &error);
+    if (error) {
+        error_propagate(errp, error);
+    }
 
     xbox_smc_update_tray_state();
 }

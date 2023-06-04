@@ -37,6 +37,7 @@
 #include "misc.hh"
 #include "gl-helpers.hh"
 #include "input-manager.hh"
+#include "snapshot-manager.hh"
 #include "viewport-manager.hh"
 #include "font-manager.hh"
 #include "scene.hh"
@@ -54,6 +55,8 @@
 #endif
 
 bool g_screenshot_pending;
+const char *g_snapshot_pending_load_name;
+
 float g_main_menu_height;
 
 static ImGuiStyle g_base_style;
@@ -298,6 +301,7 @@ void xemu_hud_render(void)
 #endif
     g_scene_mgr.Draw();
     if (!first_boot_window.is_open) notification_manager.Draw();
+    g_snapshot_mgr.Draw();
 
     // static bool show_demo = true;
     // if (show_demo) ImGui::ShowDemoWindow(&show_demo);

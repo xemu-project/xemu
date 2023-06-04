@@ -22,12 +22,14 @@
 #include "main-menu.hh"
 #include "font-manager.hh"
 #include "input-manager.hh"
+#include "snapshot-manager.hh"
 #include "viewport-manager.hh"
 #include "xemu-hud.h"
 #include "misc.hh"
 #include "gl-helpers.hh"
 #include "reporting.hh"
 #include "qapi/error.h"
+#include "actions.hh"
 
 #include "../xemu-input.h"
 #include "../xemu-notifications.h"
@@ -35,7 +37,6 @@
 #include "../xemu-monitor.h"
 #include "../xemu-version.h"
 #include "../xemu-net.h"
-#include "../xemu-snapshots.h"
 #include "../xemu-os-utils.h"
 #include "../xemu-xbe.h"
 
@@ -641,63 +642,24 @@ void MainMenuNetworkView::DrawUdpOptions(bool appearing)
     ImGui::PopFont();
 }
 
-void MainMenuSnapshotsView::Load()
-{
-    Error *err = NULL;
-
-    if (!m_load_failed) {
-        m_snapshots_len = xemu_snapshots_list(&m_snapshots, &m_extra_data, &err);
-    }
-
-    if (err) {
-        m_load_failed = true;
-        xemu_queue_error_message(error_get_pretty(err));
-        error_free(err);
-        m_snapshots_len = 0;
-    }
-
-    struct xbe *xbe = xemu_get_xbe_info();
-    if (xbe && xbe->cert->m_titleid != m_current_title_id) {
-        g_free(m_current_title_name);
-        m_current_title_name = g_utf16_to_utf8(xbe->cert->m_title_name, 40, NULL, NULL, NULL);
-        m_current_title_id = xbe->cert->m_titleid;
-    }
-}
-
-MainMenuSnapshotsView::MainMenuSnapshotsView(): MainMenuTabView()
+MainMenuSnapshotsView::MainMenuSnapshotsView() : MainMenuTabView()
 {
     xemu_snapshots_mark_dirty();
-    m_load_failed = false;
 
     m_search_regex = NULL;
     m_current_title_name = NULL;
     m_current_title_id = 0;
-
 }
 
 MainMenuSnapshotsView::~MainMenuSnapshotsView()
 {
-    g_free(m_snapshots);
-    g_free(m_extra_data);
-    xemu_snapshots_mark_dirty();
-
     g_free(m_current_title_name);
     g_free(m_search_regex);
 }
 
-void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const char *title_name, GLuint thumbnail)
+bool MainMenuSnapshotsView::BigSnapshotButton(QEMUSnapshotInfo *snapshot, XemuSnapshotData *data, int current_snapshot_binding)
 {
-    Error *err = NULL;
-    int current_snapshot_binding = -1;
-    for (int i = 0; i < 4; ++i) {
-        if (g_strcmp0(*(g_snapshot_shortcut_index_key_map[i]), snapshot->name) == 0) {
-            assert(current_snapshot_binding == -1);
-            current_snapshot_binding = i;
-        }
-    }
-
     ImGuiStyle &style = ImGui::GetStyle();
-    ImVec2 pos = ImGui::GetCursorPos();
     ImDrawList *draw_list = ImGui::GetWindowDrawList();
 
     ImGui::PushFont(g_font_mgr.m_menu_font_small);
@@ -706,6 +668,7 @@ void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const 
 
     ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0));
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, g_viewport_mgr.Scale(ImVec2(5, 5)));
+
     ImGui::PushFont(g_font_mgr.m_menu_font_medium);
 
     ImVec2 ts_title = ImGui::CalcTextSize(snapshot->name);
@@ -715,54 +678,36 @@ void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const 
     ImVec2 title_pos(name_pos.x, name_pos.y + ts_title.y + style.FramePadding.x);
     ImVec2 date_pos(name_pos.x, title_pos.y + ts_title.y + style.FramePadding.x);
     ImVec2 binding_pos(name_pos.x, date_pos.y + ts_title.y + style.FramePadding.x);
+    ImVec2 button_size(-FLT_MIN, fmax(thumbnail_size.y + style.FramePadding.y * 2, ts_title.y + ts_sub.y + style.FramePadding.y * 3));
 
-    bool load = ImGui::Button("###button", ImVec2(-FLT_MIN, fmax(thumbnail_size.y + style.FramePadding.y * 2, ts_title.y + ts_sub.y + style.FramePadding.y * 3)));
-    if (load) {
-        xemu_snapshots_load(snapshot->name, &err);
-        if (err) {
-            xemu_queue_error_message(error_get_pretty(err));
-            error_free(err);
-        }
-    }
-    bool options_key_pressed = ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft);
-    bool show_snapshot_context_menu = ImGui::IsItemHovered() &&
-        (ImGui::IsMouseReleased(ImGuiMouseButton_Right) ||
-         options_key_pressed);
+    bool load = ImGui::Button("###button", button_size);
 
-    ImVec2 next_pos = ImGui::GetCursorPos();
-    const ImVec2 p0 = ImGui::GetItemRectMin();
-    const ImVec2 p1 = ImGui::GetItemRectMax();
     ImGui::PopFont();
 
+    const ImVec2 p0 = ImGui::GetItemRectMin();
+    const ImVec2 p1 = ImGui::GetItemRectMax();
     draw_list->PushClipRect(p0, p1, true);
 
     // Snapshot thumbnail
-    ImGui::SetItemAllowOverlap();
-    ImGui::SetCursorPos(ImVec2(pos.x + thumbnail_pos.x, pos.y + thumbnail_pos.y));
-
-    if (!thumbnail) {
-        thumbnail = g_icon_tex;
-    }
-
+    GLuint thumbnail = data->gl_thumbnail ? data->gl_thumbnail : g_icon_tex;
+    int thumbnail_width, thumbnail_height;
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, thumbnail);
-    int thumbnail_width, thumbnail_height;
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &thumbnail_width);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &thumbnail_height);
 
     // Draw black background behind thumbnail
-    draw_list->AddRectFilled(ImVec2(p0.x + thumbnail_pos.x, p0.y + thumbnail_pos.y),
-                             ImVec2(p0.x + thumbnail_pos.x + thumbnail_size.x, p0.y + thumbnail_pos.y + thumbnail_size.y),
-                             IM_COL32_BLACK);
+    ImVec2 thumbnail_min(p0.x + thumbnail_pos.x, p0.y + thumbnail_pos.y);
+    ImVec2 thumbnail_max(thumbnail_min.x + thumbnail_size.x, thumbnail_min.y + thumbnail_size.y);
+    draw_list->AddRectFilled(thumbnail_min, thumbnail_max, IM_COL32_BLACK);
 
-    // Draw centered thumbnail
+    // Draw centered thumbnail image
     int scaled_width, scaled_height;
     ScaleDimensions(thumbnail_width, thumbnail_height, thumbnail_size.x, thumbnail_size.y, &scaled_width, &scaled_height);
-    ImVec2 img_pos = ImGui::GetCursorPos();
-    img_pos.x += (thumbnail_size.x - scaled_width) / 2;
-    img_pos.y += (thumbnail_size.y - scaled_height) / 2;
-    ImGui::SetCursorPos(img_pos);
-    ImGui::Image((ImTextureID)(uint64_t)thumbnail, ImVec2(scaled_width, scaled_height));
+    ImVec2 img_min = ImVec2(thumbnail_min.x + (thumbnail_size.x - scaled_width) / 2,
+                            thumbnail_min.y + (thumbnail_size.y - scaled_height) / 2);
+    ImVec2 img_max = ImVec2(img_min.x + scaled_width, img_min.y + scaled_height);
+    draw_list->AddImage((ImTextureID)(uint64_t)thumbnail, img_min, img_max);
 
     // Snapshot title
     ImGui::PushFont(g_font_mgr.m_menu_font_medium);
@@ -771,6 +716,7 @@ void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const 
 
     // Snapshot XBE title name
     ImGui::PushFont(g_font_mgr.m_menu_font_small);
+    const char *title_name = data->xbe_title_name ? data->xbe_title_name : "(Unknown XBE Title Name)";
     draw_list->AddText(ImVec2(p0.x + title_pos.x, p0.y + title_pos.y), IM_COL32(255, 255, 255, 200), title_name);
 
     // Snapshot date
@@ -788,71 +734,9 @@ void MainMenuSnapshotsView::SnapshotBigButton(QEMUSnapshotInfo *snapshot, const 
 
     ImGui::PopFont();
     draw_list->PopClipRect();
-
-    if (show_snapshot_context_menu) {
-        if (options_key_pressed) {
-            ImGui::SetNextWindowPos(p0);
-        }
-        ImGui::OpenPopup("Snapshot Options");
-    }
-
-    if (ImGui::BeginPopupContextItem("Snapshot Options")) {
-        if (ImGui::MenuItem("Load")) {
-            xemu_snapshots_load(snapshot->name, &err);
-            if (err) {
-                xemu_queue_error_message(error_get_pretty(err));
-                error_free(err);
-            }
-        }
-
-        if (ImGui::BeginMenu("Keybinding")) {
-            for (int i = 0; i < 4; ++i) {
-                char *item_name = g_strdup_printf("Bind to F%d", i + 5);
-
-                if (ImGui::MenuItem(item_name)) {
-                    if (current_snapshot_binding >= 0) {
-                        xemu_settings_set_string(g_snapshot_shortcut_index_key_map[current_snapshot_binding], "");
-                    }
-                    xemu_settings_set_string(g_snapshot_shortcut_index_key_map[i], snapshot->name);
-                    current_snapshot_binding = i;
-
-                    ImGui::CloseCurrentPopup();
-                }
-
-                g_free(item_name);
-            }
-
-            if (current_snapshot_binding >= 0) {
-                if (ImGui::MenuItem("Unbind")) {
-                    xemu_settings_set_string(g_snapshot_shortcut_index_key_map[current_snapshot_binding], "");
-                    current_snapshot_binding = -1;
-                }
-            }
-            ImGui::EndMenu();
-        }
-        
-        ImGui::Separator();
-
-        if (ImGui::MenuItem("Replace")) {
-            xemu_snapshots_save(snapshot->name, &err);
-            if (err) {
-                xemu_queue_error_message(error_get_pretty(err));
-                error_free(err);
-            }
-        }
-        if (ImGui::MenuItem("Delete")) {
-            xemu_snapshots_delete(snapshot->name, &err);
-            if (err) {
-                xemu_queue_error_message(error_get_pretty(err));
-                error_free(err);
-            }
-        }
-
-        ImGui::EndPopup();
-    }
-
     ImGui::PopStyleVar(2);
-    ImGui::SetCursorPos(next_pos);
+
+    return load;
 }
 
 void MainMenuSnapshotsView::ClearSearch()
@@ -892,18 +776,26 @@ static int MainMenuSnapshotsViewUpdateSearchBox(ImGuiInputTextCallbackData *data
 
 void MainMenuSnapshotsView::Draw()
 {
-    Load();
-    SectionTitle("Snapshots");
+    g_snapshot_mgr.Refresh();
 
-    Toggle("Filter by current title", &g_config.general.snapshots.filter_current_game);
+    struct xbe *xbe = xemu_get_xbe_info();
+    if (xbe && xbe->cert->m_titleid != m_current_title_id) {
+        g_free(m_current_title_name);
+        m_current_title_name = g_utf16_to_utf8(xbe->cert->m_title_name, 40, NULL, NULL, NULL);
+        m_current_title_id = xbe->cert->m_titleid;
+    }
+
+    SectionTitle("Snapshots");
+    Toggle("Filter by current title", &g_config.general.snapshots.filter_current_game,
+           "Only display snapshots created while running the currently running XBE");
 
     ImGui::SetNextItemWidth(ImGui::GetColumnWidth() * 0.8);
     ImGui::InputTextWithHint("##search", "Search...", &m_search_buf, ImGuiInputTextFlags_CallbackEdit,
                              &MainMenuSnapshotsViewUpdateSearchBox, this);
 
     bool snapshot_with_create_name_exists = false;
-    for (int i = 0; i < m_snapshots_len; ++i) {
-        if (g_strcmp0(m_search_buf.c_str(), m_snapshots[i].name) == 0) {
+    for (int i = 0; i < g_snapshot_mgr.m_snapshots_len; ++i) {
+        if (g_strcmp0(m_search_buf.c_str(), g_snapshot_mgr.m_snapshots[i].name) == 0) {
             snapshot_with_create_name_exists = true;
             break;
         }
@@ -919,9 +811,9 @@ void MainMenuSnapshotsView::Draw()
         ImGui::SetTooltip("A snapshot with the name \"%s\" already exists. This button will overwrite the existing snapshot.", m_search_buf.c_str());
     }
 
-    for (int i = m_snapshots_len - 1; i >= 0; i--) {
-        if (g_config.general.snapshots.filter_current_game && m_extra_data[i].xbe_title_name && 
-            (strcmp(m_current_title_name, m_extra_data[i].xbe_title_name) != 0)) {
+    for (int i = g_snapshot_mgr.m_snapshots_len - 1; i >= 0; i--) {
+        if (g_config.general.snapshots.filter_current_game && g_snapshot_mgr.m_extra_data[i].xbe_title_name && 
+            (strcmp(m_current_title_name, g_snapshot_mgr.m_extra_data[i].xbe_title_name) != 0)) {
             continue;
         }
 
@@ -929,12 +821,12 @@ void MainMenuSnapshotsView::Draw()
             GMatchInfo *match;
             bool keep_entry = false;
         
-            g_regex_match(m_search_regex, m_snapshots[i].name, (GRegexMatchFlags)0, &match);
+            g_regex_match(m_search_regex, g_snapshot_mgr.m_snapshots[i].name, (GRegexMatchFlags)0, &match);
             keep_entry |= g_match_info_matches(match);
             g_match_info_free(match);
 
-            if (m_extra_data[i].xbe_title_name) {
-                g_regex_match(m_search_regex, m_extra_data[i].xbe_title_name, (GRegexMatchFlags)0, &match);
+            if (g_snapshot_mgr.m_extra_data[i].xbe_title_name) {
+                g_regex_match(m_search_regex, g_snapshot_mgr.m_extra_data[i].xbe_title_name, (GRegexMatchFlags)0, &match);
                 keep_entry |= g_match_info_matches(match);
                 g_free(match);
             }
@@ -944,14 +836,92 @@ void MainMenuSnapshotsView::Draw()
             }
         }
 
+        QEMUSnapshotInfo *snapshot = &g_snapshot_mgr.m_snapshots[i];
+        XemuSnapshotData *data = &g_snapshot_mgr.m_extra_data[i];
+
+        int current_snapshot_binding = -1;
+        for (int i = 0; i < 4; ++i) {
+            if (g_strcmp0(*(g_snapshot_shortcut_index_key_map[i]), snapshot->name) == 0) {
+                assert(current_snapshot_binding == -1);
+                current_snapshot_binding = i;
+            }
+        }
+
         ImGui::PushID(i);
-        SnapshotBigButton(
-            m_snapshots + i,
-            m_extra_data[i].xbe_title_name ? m_extra_data[i].xbe_title_name : "Unknown",
-            m_extra_data[i].gl_thumbnail
-        );
+
+        ImVec2 pos = ImGui::GetCursorScreenPos();
+        bool load = BigSnapshotButton(snapshot, data, current_snapshot_binding);
+
+        // FIXME: Provide context menu control annotation
+        if (ImGui::IsItemHovered() && ImGui::IsKeyPressed(ImGuiKey_GamepadFaceLeft)) {
+            ImGui::SetNextWindowPos(pos);
+            ImGui::OpenPopup("Snapshot Options");
+        }
+    
+        DrawSnapshotContextMenu(snapshot, data, current_snapshot_binding);
+        
         ImGui::PopID();
+
+        if (load) {
+            ActionLoadSnapshotChecked(snapshot->name);
+        }
     }
+}
+
+void MainMenuSnapshotsView::DrawSnapshotContextMenu(QEMUSnapshotInfo *snapshot, XemuSnapshotData *data, int current_snapshot_binding)
+{
+    if (!ImGui::BeginPopupContextItem("Snapshot Options")) {
+        return;
+    }
+
+    if (ImGui::MenuItem("Load")) {
+        ActionLoadSnapshotChecked(snapshot->name);
+    }
+
+    if (ImGui::BeginMenu("Keybinding")) {
+        for (int i = 0; i < 4; ++i) {
+            char *item_name = g_strdup_printf("Bind to F%d", i + 5);
+
+            if (ImGui::MenuItem(item_name)) {
+                if (current_snapshot_binding >= 0) {
+                    xemu_settings_set_string(g_snapshot_shortcut_index_key_map[current_snapshot_binding], "");
+                }
+                xemu_settings_set_string(g_snapshot_shortcut_index_key_map[i], snapshot->name);
+                current_snapshot_binding = i;
+
+                ImGui::CloseCurrentPopup();
+            }
+
+            g_free(item_name);
+        }
+
+        if (current_snapshot_binding >= 0) {
+            if (ImGui::MenuItem("Unbind")) {
+                xemu_settings_set_string(g_snapshot_shortcut_index_key_map[current_snapshot_binding], "");
+                current_snapshot_binding = -1;
+            }
+        }
+        ImGui::EndMenu();
+    }
+    
+    ImGui::Separator();
+
+    Error *err = NULL;
+
+    if (ImGui::MenuItem("Replace")) {
+        xemu_snapshots_save(snapshot->name, &err);
+    }
+
+    if (ImGui::MenuItem("Delete")) {
+        xemu_snapshots_delete(snapshot->name, &err);
+    }
+
+    if (err) {
+        xemu_queue_error_message(error_get_pretty(err));
+        error_free(err);
+    }
+
+    ImGui::EndPopup();
 }
 
 MainMenuSystemView::MainMenuSystemView() : m_dirty(false)
