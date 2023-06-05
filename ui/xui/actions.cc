@@ -26,8 +26,6 @@
 
 void ActionEjectDisc(void)
 {
-    xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
-
     Error *err = NULL;
     xemu_eject_disc(&err);
     if (err) {
@@ -48,7 +46,6 @@ void ActionLoadDisc(void)
         /* Cancelled */
         return;
     }
-    xemu_settings_set_string(&g_config.sys.files.dvd_path, new_disc_path);
 
     xemu_load_disc(new_disc_path, &err);
     if (err) {
