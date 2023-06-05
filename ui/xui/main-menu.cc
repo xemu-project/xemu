@@ -747,7 +747,7 @@ void MainMenuSnapshotsView::ClearSearch()
     }
 }
 
-static int MainMenuSnapshotsViewUpdateSearchBox(ImGuiInputTextCallbackData *data)
+int MainMenuSnapshotsView::OnSearchTextUpdate(ImGuiInputTextCallbackData *data)
 {
     GError *gerr = NULL;
     MainMenuSnapshotsView *win = (MainMenuSnapshotsView*)data->UserData;
@@ -804,7 +804,7 @@ void MainMenuSnapshotsView::Draw()
     ImGui::PushFont(g_font_mgr.m_menu_font_small);
     ImGui::InputTextWithHint("##search", "Search or name new snapshot...",
                              &m_search_buf, ImGuiInputTextFlags_CallbackEdit,
-                             &MainMenuSnapshotsViewUpdateSearchBox, this);
+                             &OnSearchTextUpdate, this);
 
     bool snapshot_with_create_name_exists = false;
     for (int i = 0; i < g_snapshot_mgr.m_snapshots_len; ++i) {

@@ -104,20 +104,21 @@ public:
 class MainMenuSnapshotsView : public virtual MainMenuTabView
 {
 protected:
+    GRegex *m_search_regex;
     uint32_t m_current_title_id;
     std::string m_current_title_name;
     std::string m_search_buf;
 
-private:
     void ClearSearch();
     void DrawSnapshotContextMenu(QEMUSnapshotInfo *snapshot, XemuSnapshotData *data, int current_snapshot_binding);
+    bool BigSnapshotButton(QEMUSnapshotInfo *snapshot, XemuSnapshotData *data, int current_snapshot_binding);
+    static int OnSearchTextUpdate(ImGuiInputTextCallbackData *data);
 
 public:
-    GRegex *m_search_regex;
     MainMenuSnapshotsView();
     ~MainMenuSnapshotsView();
-    bool BigSnapshotButton(QEMUSnapshotInfo *snapshot, XemuSnapshotData *data, int current_snapshot_binding);
     void Draw() override;
+
 };
 
 class MainMenuSystemView : public virtual MainMenuTabView
