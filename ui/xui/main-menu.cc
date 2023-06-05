@@ -814,6 +814,8 @@ void MainMenuSnapshotsView::Draw()
     }
     ImGui::PopFont();
 
+    bool at_least_one_snapshot_displayed = false;
+
     for (int i = g_snapshot_mgr.m_snapshots_len - 1; i >= 0; i--) {
         if (g_config.general.snapshots.filter_current_game && g_snapshot_mgr.m_extra_data[i].xbe_title_name && 
             (strcmp(m_current_title_name, g_snapshot_mgr.m_extra_data[i].xbe_title_name) != 0)) {
@@ -868,6 +870,26 @@ void MainMenuSnapshotsView::Draw()
         if (load) {
             ActionLoadSnapshotChecked(snapshot->name);
         }
+
+        at_least_one_snapshot_displayed = true;
+    }
+
+    if (!at_least_one_snapshot_displayed) {
+        ImGui::Dummy(g_viewport_mgr.Scale(ImVec2(0, 16)));
+        const char *msg;
+        if (g_snapshot_mgr.m_snapshots_len) {
+            if (!m_search_buf.empty()) {
+                msg = "Press Create to create new snapshot";
+            } else {
+                msg = "No snapshots match filter criteria";
+            }
+        } else {
+            msg = "No snapshots to display";
+        }
+        ImVec2 dim = ImGui::CalcTextSize(msg);
+        ImVec2 cur = ImGui::GetCursorPos();
+        ImGui::SetCursorPosX(cur.x + (ImGui::GetColumnWidth()-dim.x)/2);
+        ImGui::TextColored(ImVec4(0.94f, 0.94f, 0.94f, 0.70f), "%s", msg);
     }
 }
 
