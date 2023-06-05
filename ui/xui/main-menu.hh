@@ -105,7 +105,7 @@ class MainMenuSnapshotsView : public virtual MainMenuTabView
 {
 protected:
     uint32_t m_current_title_id;
-    char *m_current_title_name;
+    std::string m_current_title_name;
     std::string m_search_buf;
 
 private:

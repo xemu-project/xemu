@@ -647,13 +647,11 @@ MainMenuSnapshotsView::MainMenuSnapshotsView() : MainMenuTabView()
     xemu_snapshots_mark_dirty();
 
     m_search_regex = NULL;
-    m_current_title_name = NULL;
     m_current_title_id = 0;
 }
 
 MainMenuSnapshotsView::~MainMenuSnapshotsView()
 {
-    g_free(m_current_title_name);
     g_free(m_search_regex);
 }
 
@@ -778,16 +776,29 @@ void MainMenuSnapshotsView::Draw()
 {
     g_snapshot_mgr.Refresh();
 
-    struct xbe *xbe = xemu_get_xbe_info();
-    if (xbe && xbe->cert->m_titleid != m_current_title_id) {
-        g_free(m_current_title_name);
-        m_current_title_name = g_utf16_to_utf8(xbe->cert->m_title_name, 40, NULL, NULL, NULL);
-        m_current_title_id = xbe->cert->m_titleid;
-    }
-
     SectionTitle("Snapshots");
     Toggle("Filter by current title", &g_config.general.snapshots.filter_current_game,
            "Only display snapshots created while running the currently running XBE");
+
+    if (g_config.general.snapshots.filter_current_game) {
+        struct xbe *xbe = xemu_get_xbe_info();
+        if (xbe && xbe->cert) {
+            if (xbe->cert->m_titleid != m_current_title_id) {
+                char *title_name = g_utf16_to_utf8(xbe->cert->m_title_name, 40, NULL, NULL, NULL);
+                if (title_name) {
+                    m_current_title_name = title_name;
+                    g_free(title_name);
+                } else {
+                    m_current_title_name.clear();
+                }
+
+                m_current_title_id = xbe->cert->m_titleid;
+            }
+        } else {
+            m_current_title_name.clear();
+            m_current_title_id = 0;
+        }
+    }
 
     ImGui::SetNextItemWidth(ImGui::GetColumnWidth() * 0.8);
     ImGui::PushFont(g_font_mgr.m_menu_font_small);
@@ -826,7 +837,7 @@ void MainMenuSnapshotsView::Draw()
 
     for (int i = g_snapshot_mgr.m_snapshots_len - 1; i >= 0; i--) {
         if (g_config.general.snapshots.filter_current_game && g_snapshot_mgr.m_extra_data[i].xbe_title_name && 
-            (strcmp(m_current_title_name, g_snapshot_mgr.m_extra_data[i].xbe_title_name) != 0)) {
+            m_current_title_name.size() && strcmp(m_current_title_name.c_str(), g_snapshot_mgr.m_extra_data[i].xbe_title_name)) {
             continue;
         }
 
