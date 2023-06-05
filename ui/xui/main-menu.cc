@@ -804,9 +804,17 @@ void MainMenuSnapshotsView::Draw()
     }
 
     ImGui::SameLine();
+    if (snapshot_with_create_name_exists) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8, 0, 0, 1));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1, 0, 0, 1));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1, 0, 0, 1));
+    }
     if (ImGui::Button(snapshot_with_create_name_exists ? "Replace" : "Create", ImVec2(-FLT_MIN, 0))) {
         xemu_snapshots_save(m_search_buf.empty() ? NULL : m_search_buf.c_str(), NULL);
         ClearSearch();
+    }
+    if (snapshot_with_create_name_exists) {
+        ImGui::PopStyleColor(3);
     }
 
     if (snapshot_with_create_name_exists && ImGui::IsItemHovered()) {
