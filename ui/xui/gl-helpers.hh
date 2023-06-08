@@ -17,6 +17,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #pragma once
+#include <vector>
 #include "common.hh"
 #include "../xemu-input.h"
 
@@ -38,6 +39,7 @@ public:
 };
 
 extern Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
+extern GLuint g_icon_tex;
 
 void InitCustomRendering(void);
 void RenderLogo(uint32_t time);
@@ -48,4 +50,7 @@ void RenderControllerPort(float frame_x, float frame_y, int i,
 void RenderXmu(float frame_x, float frame_y, uint32_t primary_color,
                       uint32_t secondary_color);
 void RenderFramebuffer(GLint tex, int width, int height, bool flip);
+void RenderFramebuffer(GLint tex, int width, int height, bool flip, float scale[2]);
+bool RenderFramebufferToPng(GLuint tex, bool flip, std::vector<uint8_t> &png, int max_width = 0, int max_height = 0);
 void SaveScreenshot(GLuint tex, bool flip);
+void ScaleDimensions(int src_width, int src_height, int max_width, int max_height, int *out_width, int *out_height);

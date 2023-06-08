@@ -5,6 +5,7 @@ imgui_files = files(
   'imgui/imgui_widgets.cpp',
   'imgui/backends/imgui_impl_sdl.cpp',
   'imgui/backends/imgui_impl_opengl3.cpp',
+  'imgui/misc/cpp/imgui_stdlib.cpp',
   #'imgui/imgui_demo.cpp',
 )
 

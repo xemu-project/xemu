@@ -24,6 +24,7 @@
 #include "widgets.hh"
 #include "scene.hh"
 #include "scene-components.hh"
+#include "../xemu-snapshots.h"
 
 extern "C" {
 #include "net/pcap.h"
@@ -102,10 +103,22 @@ public:
 
 class MainMenuSnapshotsView : public virtual MainMenuTabView
 {
+protected:
+    GRegex *m_search_regex;
+    uint32_t m_current_title_id;
+    std::string m_current_title_name;
+    std::string m_search_buf;
+
+    void ClearSearch();
+    void DrawSnapshotContextMenu(QEMUSnapshotInfo *snapshot, XemuSnapshotData *data, int current_snapshot_binding);
+    bool BigSnapshotButton(QEMUSnapshotInfo *snapshot, XemuSnapshotData *data, int current_snapshot_binding);
+    static int OnSearchTextUpdate(ImGuiInputTextCallbackData *data);
+
 public:
-    void SnapshotBigButton(const char *name, const char *title_name,
-                           GLuint screenshot);
+    MainMenuSnapshotsView();
+    ~MainMenuSnapshotsView();
     void Draw() override;
+
 };
 
 class MainMenuSystemView : public virtual MainMenuTabView
@@ -153,7 +166,7 @@ protected:
                                     m_display_button,
                                     m_audio_button,
                                     m_network_button,
-                                    // m_snapshots_button,
+                                    m_snapshots_button,
                                     m_system_button,
                                     m_about_button;
     std::vector<MainMenuTabView*>   m_views;
@@ -162,7 +175,7 @@ protected:
     MainMenuDisplayView             m_display_view;
     MainMenuAudioView               m_audio_view;
     MainMenuNetworkView             m_network_view;
-    // MainMenuSnapshotsView        m_snapshots_view;
+    MainMenuSnapshotsView           m_snapshots_view;
     MainMenuSystemView              m_system_view;
     MainMenuAboutView               m_about_view;
 
@@ -174,7 +187,7 @@ public:
     void ShowDisplay();
     void ShowAudio();
     void ShowNetwork();
-    // void ShowSnapshots();
+    void ShowSnapshots();
     void ShowSystem();
     void ShowAbout();
     void SetNextViewIndexWithFocus(int i);

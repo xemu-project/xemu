@@ -26,6 +26,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,8 +59,9 @@ void xemu_settings_save(void);
 
 static inline void xemu_settings_set_string(const char **str, const char *new_str)
 {
-	free((char*)*str);
-	*str = strdup(new_str == NULL ? "" : new_str);
+    assert(new_str);
+    free((char*)*str);
+    *str = strdup(new_str);
 }
 
 void add_net_nat_forward_ports(int host, int guest, CONFIG_NET_NAT_FORWARD_PORTS_PROTOCOL protocol);
