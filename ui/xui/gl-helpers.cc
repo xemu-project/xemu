@@ -24,16 +24,19 @@
 #include "gl-helpers.hh"
 #include "stb_image.h"
 #include "data/controller_mask.png.h"
+#include "data/xmu_mask.png.h"
 #include "data/logo_sdf.png.h"
 #include "ui/shader/xemu-logo-frag.h"
 #include "data/xemu_64x64.png.h"
 #include "notifications.hh"
 
 Fbo *controller_fbo,
+    *xmu_fbo,
     *logo_fbo;
 GLuint g_controller_tex,
        g_logo_tex,
-       g_icon_tex;
+       g_icon_tex,
+       g_xmu_tex;
 
 enum class ShaderType {
     Blit,
@@ -419,6 +422,7 @@ static const struct rect tex_items[] = {
     {  67,  48,  28,  28 }, // obj_port_lbl_2
     {  67,  20,  28,  28 }, // obj_port_lbl_3
     {  95,  76,  28,  28 }, // obj_port_lbl_4
+    {   0,   0, 512, 512 }  // obj_xmu
 };
 
 enum tex_item_names {
@@ -430,6 +434,7 @@ enum tex_item_names {
     obj_port_lbl_2,
     obj_port_lbl_3,
     obj_port_lbl_4,
+    obj_xmu
 };
 
 void InitCustomRendering(void)
@@ -439,6 +444,9 @@ void InitCustomRendering(void)
         LoadTextureFromMemory(controller_mask_data, controller_mask_size);
     g_decal_shader = NewDecalShader(ShaderType::Mask);
     controller_fbo = new Fbo(512, 512);
+
+    g_xmu_tex = LoadTextureFromMemory(xmu_mask_data, xmu_mask_size);
+    xmu_fbo = new Fbo(512, 256);
 
     g_logo_tex = LoadTextureFromMemory(logo_sdf_data, logo_sdf_size);
     g_logo_shader = NewDecalShader(ShaderType::Logo);
@@ -640,6 +648,25 @@ void RenderControllerPort(float frame_x, float frame_y, int i,
         tex_items[obj_port_lbl_1 + i].h, tex_items[obj_port_lbl_1 + i].x,
         tex_items[obj_port_lbl_1 + i].y, tex_items[obj_port_lbl_1 + i].w,
         tex_items[obj_port_lbl_1 + i].h, port_color, port_color, 0);
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
+void RenderXmu(float frame_x, float frame_y, uint32_t primary_color, uint32_t secondary_color) {
+    glUseProgram(g_decal_shader->prog);
+    glBindVertexArray(g_decal_shader->vao);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_xmu_tex);
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFunc(GL_ONE, GL_ZERO);
+
+    // Render xmu
+    RenderDecal(g_decal_shader, frame_x, frame_y, 
+                256, 256, 
+                tex_items[obj_xmu].x, tex_items[obj_xmu].y, 
+                tex_items[obj_xmu].w, tex_items[obj_xmu].h, 
+                primary_color, secondary_color, 0);
 
     glBindVertexArray(0);
     glUseProgram(0);

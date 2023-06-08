@@ -25,6 +25,51 @@ input:
     port2: string
     port3: string
     port4: string
+  peripherals:
+    port1:
+      peripheral_type_0:
+        type: integer
+        default: 0
+      peripheral_param_0:
+        type: string
+      peripheral_type_1:
+        type: integer
+        default: 0
+      peripheral_param_1:
+        type: string
+    port2:
+      peripheral_type_0:
+        type: integer
+        default: 0
+      peripheral_param_0:
+        type: string
+      peripheral_type_1:
+        type: integer
+        default: 0
+      peripheral_param_1:
+        type: string
+    port3:
+      peripheral_type_0:
+        type: integer
+        default: 0
+      peripheral_param_0:
+        type: string
+      peripheral_type_1:
+        type: integer
+        default: 0
+      peripheral_param_1:
+        type: string
+    port4:
+      peripheral_type_0:
+        type: integer
+        default: 0
+      peripheral_param_0:
+        type: string
+      peripheral_type_1:
+        type: integer
+        default: 0
+      peripheral_param_1:
+        type: string
   gamecontrollerdb_path: string
   auto_bind:
     type: bool

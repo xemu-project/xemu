@@ -38,7 +38,7 @@ public:
     void Restore();
 };
 
-extern Fbo *controller_fbo, *logo_fbo;
+extern Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
 extern GLuint g_icon_tex;
 
 void InitCustomRendering(void);
@@ -47,6 +47,8 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
                       uint32_t secondary_color, ControllerState *state);
 void RenderControllerPort(float frame_x, float frame_y, int i,
                           uint32_t port_color);
+void RenderXmu(float frame_x, float frame_y, uint32_t primary_color,
+                      uint32_t secondary_color);
 void RenderFramebuffer(GLint tex, int width, int height, bool flip);
 void RenderFramebuffer(GLint tex, int width, int height, bool flip, float scale[2]);
 bool RenderFramebufferToPng(GLuint tex, bool flip, std::vector<uint8_t> &png, int max_width = 0, int max_height = 0);
