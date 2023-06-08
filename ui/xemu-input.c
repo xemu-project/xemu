@@ -628,7 +628,7 @@ void xemu_input_bind_xmu(int player_index, int peripheral_port_index, const char
     static int id_counter = 0;
     tmp = g_strdup_printf("xmu_%d", id_counter++);
     
-    // Add the file as a drive (fixme: Specify the format as raw so that qemu doesn't have to guess)
+    // Add the file as a drive
     QDict *qdict1 = qdict_new();
     qdict_put_str(qdict1, "id", tmp);
     qdict_put_str(qdict1, "format", "raw");
@@ -688,10 +688,8 @@ void xemu_input_unbind_xmu(int player_index, int peripheral_port_index)
             xmu->dev = NULL;
         }
 
-        if(xmu->filename != NULL) {
-            free((void*)xmu->filename);
-            xmu->filename = NULL;
-        }
+        g_free((void*)xmu->filename);
+        xmu->filename = NULL;
     }
 }
 

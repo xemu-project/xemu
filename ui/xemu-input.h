@@ -100,7 +100,7 @@ typedef struct ControllerState {
     SDL_JoystickGUID    sdl_joystick_guid;
 
     enum peripheral_type PeripheralTypes[2];
-    void               *Peripherals[2];
+    void                *Peripherals[2];
 
     int   bound;  // Which port this input device is bound to
     void *device; // DeviceState opaque

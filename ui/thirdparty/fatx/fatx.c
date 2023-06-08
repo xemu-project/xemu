@@ -20,7 +20,7 @@ bool create_fatx_image(const char* filename, unsigned int size)
     unsigned int empty_fat = 0xfffffff8;
 
     FILE *fp = qemu_fopen(filename, "wb");
-    if(fp != NULL)
+    if (fp != NULL)
     {
         struct fatx_superblock superblock;
         memset(&superblock, 0xff, sizeof(struct fatx_superblock));
@@ -38,7 +38,7 @@ bool create_fatx_image(const char* filename, unsigned int size)
         fwrite(&empty_fat, sizeof(empty_fat), 1, fp);
 
         // Fill the rest of the space with zeros
-        for(unsigned int i = ftell(fp); i < size; i++)
+        for (unsigned int i = ftell(fp); i < size; i++)
             fwrite(&zero, 1, 1, fp);
 
         fflush(fp);
