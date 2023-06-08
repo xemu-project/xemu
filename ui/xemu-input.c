@@ -209,7 +209,7 @@ void xemu_save_peripheral_settings(int player_index, int peripheral_index, int p
     assert(peripheral_param_ptr);
     
     *peripheral_type_ptr = peripheral_type;
-    xemu_settings_set_string(peripheral_param_ptr, peripheral_parameter);
+    xemu_settings_set_string(peripheral_param_ptr, peripheral_parameter == NULL ? "" : peripheral_parameter);
 
     fprintf(stderr, "saved peripheral settings for port %d%c: type = %d, filename = %s\r\n", player_index+1, 'A' + peripheral_index, peripheral_type, peripheral_parameter == NULL ? "NULL" : peripheral_parameter);
 }
