@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+#include "ui/xemu-notifications.h"
 #include <string>
 #include <vector>
 #include "misc.hh"
@@ -27,6 +28,8 @@
 #include "input-manager.hh"
 #include "xemu-hud.h"
 #include "IconsFontAwesome6.h"
+#include "../xemu-snapshots.h"
+#include "main-menu.hh"
 
 PopupMenuItemDelegate::~PopupMenuItemDelegate() {}
 void PopupMenuItemDelegate::PushMenu(PopupMenu &menu) {}
@@ -269,7 +272,7 @@ public:
     }
 };
 
-extern Scene g_main_menu;
+extern MainMenuScene g_main_menu;
 
 class SettingsPopupMenu : public virtual PopupMenu {
 protected:
@@ -291,6 +294,11 @@ public:
         if (PopupMenuSubmenuButton("Display Mode", ICON_FA_EXPAND)) {
             nav.PushFocus();
             nav.PushMenu(display_mode);
+        }
+        if (PopupMenuButton("Snapshots...", ICON_FA_CLOCK_ROTATE_LEFT)) {
+            nav.ClearMenuStack();
+            g_scene_mgr.PushScene(g_main_menu);
+            g_main_menu.ShowSnapshots();
         }
         if (PopupMenuButton("All settings...", ICON_FA_SLIDERS)) {
             nav.ClearMenuStack();
@@ -336,6 +344,11 @@ public:
         }
         if (PopupMenuButton("Screenshot", ICON_FA_CAMERA)) {
             ActionScreenshot();
+            pop = true;
+        }
+        if (PopupMenuButton("Save Snapshot", ICON_FA_DOWNLOAD)) {
+            xemu_snapshots_save(NULL, NULL);
+            xemu_queue_notification("Created new snapshot");
             pop = true;
         }
         if (PopupMenuButton("Eject Disc", ICON_FA_EJECT)) {

@@ -26,12 +26,14 @@
 #include "data/controller_mask.png.h"
 #include "data/logo_sdf.png.h"
 #include "ui/shader/xemu-logo-frag.h"
+#include "data/xemu_64x64.png.h"
 #include "notifications.hh"
 
 Fbo *controller_fbo,
     *logo_fbo;
 GLuint g_controller_tex,
-       g_logo_tex;
+       g_logo_tex,
+       g_icon_tex;
 
 enum class ShaderType {
     Blit,
@@ -155,10 +157,10 @@ static GLuint InitTexture(unsigned char *data, int width, int height,
     return tex;
 }
 
-static GLuint LoadTextureFromMemory(const unsigned char *buf, unsigned int size)
+static GLuint LoadTextureFromMemory(const unsigned char *buf, unsigned int size, bool flip=true)
 {
     // Flip vertically so textures are loaded according to GL convention.
-    stbi_set_flip_vertically_on_load(1);
+    stbi_set_flip_vertically_on_load(flip);
 
     int width, height, channels = 0;
     unsigned char *data = stbi_load_from_memory(buf, size, &width, &height, &channels, 4);
@@ -442,6 +444,8 @@ void InitCustomRendering(void)
     g_logo_shader = NewDecalShader(ShaderType::Logo);
     logo_fbo = new Fbo(512, 512);
 
+    g_icon_tex = LoadTextureFromMemory(xemu_64x64_data, xemu_64x64_size, false);
+
     g_framebuffer_shader = NewDecalShader(ShaderType::BlitGamma);
 }
 
@@ -657,17 +661,59 @@ void RenderLogo(uint32_t time)
     glUseProgram(0);
 }
 
-void RenderFramebuffer(GLint tex, int width, int height, bool flip)
+// Scale <src> proportionally to fit in <max>
+void ScaleDimensions(int src_width, int src_height, int max_width, int max_height, int *out_width, int *out_height)
+{
+    float w_ratio = (float)max_width/(float)max_height;
+    float t_ratio = (float)src_width/(float)src_height;
+
+    if (w_ratio >= t_ratio) {
+        *out_width = (float)max_width * t_ratio/w_ratio;
+        *out_height = max_height;
+    } else {
+        *out_width = max_width;
+        *out_height = (float)max_height * w_ratio/t_ratio;
+    }
+}
+
+void RenderFramebuffer(GLint tex, int width, int height, bool flip, float scale[2])
 {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
 
+    DecalShader *s = g_framebuffer_shader;
+    s->flip = flip;
+    glViewport(0, 0, width, height);
+    glUseProgram(s->prog);
+    glBindVertexArray(s->vao);
+    glUniform1i(s->flipy_loc, s->flip);
+    glUniform4f(s->scale_offset_loc, scale[0], scale[1], 0, 0);
+    glUniform4f(s->tex_scale_offset_loc, 1.0, 1.0, 0, 0);
+    glUniform1i(s->tex_loc, 0);
+
+    const uint8_t *palette = nv2a_get_dac_palette();
+    for (int i = 0; i < 256; i++) {
+        uint32_t e = (palette[i * 3 + 2] << 16) | (palette[i * 3 + 1] << 8) |
+                     palette[i * 3];
+        glUniform1ui(s->palette_loc[i], e);
+    }
+
+    glClearColor(0, 0, 0, 0);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
+}
+
+void RenderFramebuffer(GLint tex, int width, int height, bool flip)
+{
     int tw, th;
+    float scale[2];
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, tex);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tw);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &th);
 
     // Calculate scaling factors
-    float scale[2];
     if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_STRETCH) {
         // Stretch to fit
         scale[0] = 1.0;
@@ -698,42 +744,27 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
         }
     }
 
-    DecalShader *s = g_framebuffer_shader;
-    s->flip = flip;
-    glViewport(0, 0, width, height);
-    glUseProgram(s->prog);
-    glBindVertexArray(s->vao);
-    glUniform1i(s->flipy_loc, s->flip);
-    glUniform4f(s->scale_offset_loc, scale[0], scale[1], 0, 0);
-    glUniform4f(s->tex_scale_offset_loc, 1.0, 1.0, 0, 0);
-    glUniform1i(s->tex_loc, 0);
-
-    const uint8_t *palette = nv2a_get_dac_palette();
-    for (int i = 0; i < 256; i++) {
-        uint32_t e = (palette[i * 3 + 2] << 16) | (palette[i * 3 + 1] << 8) |
-                     palette[i * 3];
-        glUniform1ui(s->palette_loc[i], e);
-    }
-
-    glClearColor(0, 0, 0, 0);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
+    RenderFramebuffer(tex, width, height, flip, scale);
 }
 
-void SaveScreenshot(GLuint tex, bool flip)
+bool RenderFramebufferToPng(GLuint tex, bool flip, std::vector<uint8_t> &png, int max_width, int max_height)
 {
     int width, height;
+
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
-    glBindTexture(GL_TEXTURE_2D, 0);
 
     if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_16_9) {
         width = height * (16.0f / 9.0f);
     } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_4_3) {
         width = height * (4.0f / 3.0f);
     }
+
+    if (!max_width) max_width = width;
+    if (!max_height) max_height = height;
+    ScaleDimensions(width, height, max_width, max_height, &width, &height);
 
     std::vector<uint8_t> pixels;
     pixels.resize(width * height * 3);
@@ -742,7 +773,8 @@ void SaveScreenshot(GLuint tex, bool flip)
     fbo.Target();
     bool blend = glIsEnabled(GL_BLEND);
     if (blend) glDisable(GL_BLEND);
-    RenderFramebuffer(tex, width, height, !flip);
+    float scale[2] = {1.0, 1.0};
+    RenderFramebuffer(tex, width, height, !flip, scale);
     if (blend) glEnable(GL_BLEND);
     glPixelStorei(GL_PACK_ROW_LENGTH, width);
     glPixelStorei(GL_PACK_IMAGE_HEIGHT, height);
@@ -750,10 +782,16 @@ void SaveScreenshot(GLuint tex, bool flip)
     glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
     fbo.Restore();
 
-    char fname[128];
+    return fpng::fpng_encode_image_to_memory(pixels.data(), width, height, 3, png);
+}
+
+void SaveScreenshot(GLuint tex, bool flip)
+{
     Error *err = NULL;
+    char fname[128];
     std::vector<uint8_t> png;
-    if (fpng::fpng_encode_image_to_memory(pixels.data(), width, height, 3, png)) {
+
+    if (RenderFramebufferToPng(tex, flip, png)) {
         time_t t = time(NULL);
         struct tm *tmp = localtime(&t);
         if (tmp) {
