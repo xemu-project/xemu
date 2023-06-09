@@ -1,4 +1,5 @@
 #include "fatx.h"
+#include "qemu/bswap.h"
 
 #define FATX_SIGNATURE 0x58544146
 
@@ -16,8 +17,8 @@ struct fatx_superblock {
 
 bool create_fatx_image(const char* filename, unsigned int size)
 {
-    unsigned char zero = 0x00;
-    unsigned int empty_fat = 0xfffffff8;
+    unsigned int empty_fat = cpu_to_le32(0xfffffff8);
+    unsigned char zero = 0;
 
     FILE *fp = qemu_fopen(filename, "wb");
     if (fp != NULL)
@@ -25,10 +26,10 @@ bool create_fatx_image(const char* filename, unsigned int size)
         struct fatx_superblock superblock;
         memset(&superblock, 0xff, sizeof(struct fatx_superblock));
 
-        superblock.signature = FATX_SIGNATURE;
-        superblock.sectors_per_cluster = 4;
+        superblock.signature = cpu_to_le32(FATX_SIGNATURE);
+        superblock.sectors_per_cluster = cpu_to_le32(4);
         superblock.volume_id = (uint32_t)rand();
-        superblock.root_cluster = 1;
+        superblock.root_cluster = cpu_to_le32(1);
         superblock.unknown1 = 0;
 
         // Write the fatx superblock.
@@ -37,9 +38,8 @@ bool create_fatx_image(const char* filename, unsigned int size)
         // Write the FAT
         fwrite(&empty_fat, sizeof(empty_fat), 1, fp);
 
-        // Fill the rest of the space with zeros
-        for (unsigned int i = ftell(fp); i < size; i++)
-            fwrite(&zero, 1, 1, fp);
+        fseek(fp, size-sizeof(unsigned char), SEEK_SET);
+        fwrite(&zero, sizeof(unsigned char), 1, fp);
 
         fflush(fp);
         fclose(fp);
