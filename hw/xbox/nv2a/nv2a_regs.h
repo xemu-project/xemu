@@ -335,6 +335,8 @@
 #   define NV_PGRAPH_CHEOPS_OFFSET_PROG_LD_PTR                  0x000000FF
 #   define NV_PGRAPH_CHEOPS_OFFSET_CONST_LD_PTR                 0x0000FF00
 #define NV_PGRAPH_DMA_STATE                              0x00001034
+#define NV_PGRAPH_ANTIALIASING                           0x00001800
+#   define NV_PGRAPH_ANTIALIASING_ENABLE                        (1 << 0)
 #define NV_PGRAPH_BLEND                                  0x00001804
 #   define NV_PGRAPH_BLEND_EQN                                  0x00000007
 #   define NV_PGRAPH_BLEND_EN                                   (1 << 3)
@@ -1220,8 +1222,8 @@
 #       define NV097_SET_ZMIN_MAX_CONTROL_ZCLAMP_EN               0x000000F0
 #       define NV097_SET_ZMIN_MAX_CONTROL_ZCLAMP_EN_CULL              0
 #       define NV097_SET_ZMIN_MAX_CONTROL_ZCLAMP_EN_CLAMP             1
-#   define NV097_SET_SMOOTHING_CONTROL                        0x00001D7C
-#       define NV097_SET_SMOOTHING_CONTROL_DISABLE                0x00000001
+#   define NV097_SET_ANTI_ALIASING_CONTROL                    0x00001D7C
+#       define NV097_SET_ANTI_ALIASING_CONTROL_ENABLE             (1 << 0)
 #   define NV097_SET_ZSTENCIL_CLEAR_VALUE                     0x00001D8C
 #   define NV097_SET_COLOR_CLEAR_VALUE                        0x00001D90
 #   define NV097_CLEAR_SURFACE                                0x00001D94
