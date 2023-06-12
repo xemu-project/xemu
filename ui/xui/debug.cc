@@ -232,7 +232,7 @@ DebugVideoWindow::DebugVideoWindow()
     m_transparent = false;
     m_position_restored = false;
     m_resize_init_complete = false;
-    prev_m_scale = g_viewport_mgr.m_scale;
+    m_prev_scale = g_viewport_mgr.m_scale;
 }
 
 void DebugVideoWindow::Draw()
@@ -240,7 +240,7 @@ void DebugVideoWindow::Draw()
     if (!m_is_open)
         return;
 
-    if(!m_position_restored) {
+    if (!m_position_restored) {
         ImGui::SetNextWindowPos(ImVec2(g_config.display.debug.video_x_pos, g_config.display.debug.video_y_pos), 
                                 ImGuiCond_Once, ImVec2(0, 0) );
         m_transparent = g_config.display.debug.video_transparency;
@@ -250,12 +250,12 @@ void DebugVideoWindow::Draw()
     float alpha = m_transparent ? 0.2 : 1.0;
     PushWindowTransparencySettings(m_transparent, 0.2);
 
-    if(!m_resize_init_complete || (g_viewport_mgr.m_scale != prev_m_scale)) {        
+    if (!m_resize_init_complete || (g_viewport_mgr.m_scale != m_prev_scale)) {        
         ImGui::SetNextWindowSize(ImVec2(g_config.display.debug.video_x_winsize*g_viewport_mgr.m_scale, 
                                         g_config.display.debug.video_y_winsize*g_viewport_mgr.m_scale));
         m_resize_init_complete = true;
     }
-    prev_m_scale = g_viewport_mgr.m_scale;
+    m_prev_scale = g_viewport_mgr.m_scale;
 
     if (ImGui::Begin("Video Debug", &m_is_open)) {
         double x_start, x_end;
