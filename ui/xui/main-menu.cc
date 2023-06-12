@@ -348,8 +348,6 @@ void MainMenuInputView::Draw()
                     RenderXmu(x, y, 0x1f1f1f00, 0x0f0f0f00);
                 }
 
-                ImVec2 cur = ImGui::GetCursorPos();
-
                 ImVec2 xmu_display_size;
                 if (ImGui::GetContentRegionMax().x < xmu_h*g_viewport_mgr.m_scale) {
                     xmu_display_size.x = ImGui::GetContentRegionMax().x / 2;
@@ -365,8 +363,6 @@ void MainMenuInputView::Draw()
                     ImGui::GetCursorPosX() +
                     (int)((ImGui::GetColumnWidth() - xmu_display_size.x) / 2.0));
 
-                ImGui::Text("Expansion Slot %c", 'A' + i);
-
                 // TODO: Display a combo box to allow the user to choose the type of peripheral they want to use
                 ImGui::Image(id,
                     xmu_display_size,
@@ -380,48 +376,38 @@ void MainMenuInputView::Draw()
                 ImGui::PushID(i);
                 if (ImGui::Button("New Image", ImVec2(250, 0)))
                 {
-                    int flags = NOC_FILE_DIALOG_SAVE;
+                    int flags = NOC_FILE_DIALOG_SAVE | NOC_FILE_DIALOG_OVERWRITE_CONFIRMATION;
                     const char *new_path = PausedFileOpen(flags, img_file_filters, NULL, "xmu.img");
 
                     if (new_path) {
-                        if (qemu_access(new_path, F_OK) == 0) {
-                            // The file already exists
-                            char *msg = g_strdup_printf("%s already exists", new_path);
+                        if (create_fatx_image(new_path, DEFAULT_XMU_SIZE)) {
+                            // XMU was created successfully. Bind it
+                            xemu_input_bind_xmu(active, i, new_path);
+                        } else {
+                            // Show alert message
+                            char *msg = g_strdup_printf("Unable to create XMU image at %s", new_path);
                             xemu_queue_error_message(msg);
                             g_free(msg);
-                        } else {
-                            if (create_fatx_image(new_path, DEFAULT_XMU_SIZE)) {
-                                // XMU was created successfully. Bind it
-                                xemu_input_bind_xmu(active, i, new_path);
-                            } else {
-                                // Show alert message
-                                char *msg = g_strdup_printf("Unable to create XMU image at %s", new_path);
-                                xemu_queue_error_message(msg);
-                                g_free(msg);
-                            }
                         }
                     }
                 }
 
-                const char *id = g_strdup_printf("MU_%d%c File Path", active + 1, 'A' + i);
+                const char *id = g_strdup_printf("Image", active + 1, 'A' + i);
                 const char *xmu_port_path = NULL;
                 if (xmu->filename == NULL)
                     xmu_port_path = g_strdup("");
                 else 
                     xmu_port_path = g_strdup(xmu->filename);
                 if (FilePicker(id, &xmu_port_path, img_file_filters)) {
-                    xemu_input_bind_xmu(active, i, xmu_port_path);
+                    if(strlen(xmu_port_path) == 0) {
+                        xemu_input_unbind_xmu(active, i);
+                    } else {
+                        xemu_input_bind_xmu(active, i, xmu_port_path);
+                    }
                 }
                 g_free((void*)id);
                 g_free((void*)xmu_port_path);
 
-                if (ImGui::Button("Clear Selection", ImVec2(250, 0)))
-                {
-                    if (xmu->dev) {
-                        xemu_input_unbind_xmu(active, i);
-                        xemu_save_peripheral_settings(active, i, bound_state->peripheral_types[i], NULL);
-                    }
-                }
                 ImGui::PopID();
             }
 
