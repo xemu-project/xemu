@@ -31,11 +31,13 @@
 #include <string>
 #include <memory>
 
+#include "actions.hh"
 #include "common.hh"
 #include "xemu-hud.h"
 #include "misc.hh"
 #include "gl-helpers.hh"
 #include "input-manager.hh"
+#include "snapshot-manager.hh"
 #include "viewport-manager.hh"
 #include "font-manager.hh"
 #include "scene.hh"
@@ -53,6 +55,8 @@
 #endif
 
 bool g_screenshot_pending;
+const char *g_snapshot_pending_load_name;
+
 float g_main_menu_height;
 
 static ImGuiStyle g_base_style;
@@ -277,6 +281,14 @@ void xemu_hud_render(void)
                     !ImGui::IsAnyItemFocused() && !ImGui::IsAnyItemHovered())) {
             g_scene_mgr.PushScene(g_popup_menu);
         }
+        
+        bool mod_key_down = ImGui::IsKeyDown(ImGuiKey_ModShift);
+        for (int f_key = 0; f_key < 4; ++f_key) {
+            if (ImGui::IsKeyPressed(f_key + ImGuiKey_F5)) {
+                ActionActivateBoundSnapshot(f_key, mod_key_down);
+                break;
+            }
+        }
     }
 
     first_boot_window.Draw();
@@ -289,6 +301,7 @@ void xemu_hud_render(void)
 #endif
     g_scene_mgr.Draw();
     if (!first_boot_window.is_open) notification_manager.Draw();
+    g_snapshot_mgr.Draw();
 
     // static bool show_demo = true;
     // if (show_demo) ImGui::ShowDemoWindow(&show_demo);

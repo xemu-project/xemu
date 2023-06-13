@@ -306,12 +306,14 @@ bool FilePicker(const char *str_id, const char **buf, const char *filters,
     ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32_BLACK_TRANS);
     ImGuiStyle &style = ImGui::GetStyle();
     ImVec2 p = ImGui::GetCursorScreenPos();
+    ImVec2 cursor = ImGui::GetCursorPos();
     const char *desc = strlen(*buf) ? *buf : "(None Selected)";
     ImVec2 bb(ImGui::GetColumnWidth(),
               GetWidgetTitleDescriptionHeight(str_id, desc));
     ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0));
     ImGui::PushID(str_id);
     bool status = ImGui::Button("###file_button", bb);
+    ImGui::SetItemAllowOverlap();
     if (status) {
         int flags = NOC_FILE_DIALOG_OPEN;
         if (dir) flags |= NOC_FILE_DIALOG_DIR;
@@ -320,6 +322,7 @@ bool FilePicker(const char *str_id, const char **buf, const char *filters,
         if (new_path) {
             free((void*)*buf);
             *buf = strdup(new_path);
+            desc = *buf;
             changed = true;
         }
     }
@@ -336,9 +339,32 @@ bool FilePicker(const char *str_id, const char **buf, const char *filters,
     ImGui::PushFont(g_font_mgr.m_menu_font);
     const char *icon = dir ? ICON_FA_FOLDER : ICON_FA_FILE;
     ImVec2 ts_icon = ImGui::CalcTextSize(icon);
-    draw_list->AddText(ImVec2(p1.x - style.FramePadding.x - ts_icon.x,
-                              p0.y + (p1.y - p0.y - ts_icon.y) / 2),
-                       ImGui::GetColorU32(ImGuiCol_Text), icon);
+    ImVec2 icon_pos = ImVec2(p1.x - style.FramePadding.x - ts_icon.x,
+                              p0.y + (p1.y - p0.y - ts_icon.y) / 2);
+    draw_list->AddText(icon_pos, ImGui::GetColorU32(ImGuiCol_Text), icon);
+
+    ImVec2 ts_clear_icon = ImGui::CalcTextSize(ICON_FA_XMARK);
+    ts_clear_icon.x += 2 * style.FramePadding.x;
+    ImVec2 clear_icon_pos = ImVec2(cursor.x + bb.x - ts_icon.x - ts_clear_icon.x, cursor.y);
+
+    auto prev_pos = ImGui::GetCursorPos();
+    ImGui::SetCursorPos(clear_icon_pos);
+
+    char *clear_button_id = g_strdup_printf("%s_clear", str_id);
+    ImGui::PushID(clear_button_id);
+
+    bool clear = ImGui::Button(ICON_FA_XMARK, ImVec2(ts_clear_icon.x, bb.y));
+    if (clear) {
+        free((void*)*buf);
+        *buf = strdup("");
+        changed = true;
+    }
+
+    ImGui::PopID();
+    g_free(clear_button_id);
+
+    ImGui::SetCursorPos(prev_pos);
+
     ImGui::PopFont();
 
     ImGui::PopStyleColor();

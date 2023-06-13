@@ -636,7 +636,16 @@ static const char* vsh_header =
     "#define MUL(dest, mask, src0, src1) dest.mask = _MUL(_in(src0), _in(src1)).mask\n"
     "vec4 _MUL(vec4 src0, vec4 src1)\n"
     "{\n"
-    "  return src0 * src1;\n"
+    // Unfortunately mix() falls victim to the same handling of exceptional
+    // (inf/NaN) handling as a multiply, so per-component comparisons are used
+    // to guarantee HW behavior (anything * 0 must == 0).
+    "  vec4 zero_components = sign(src0) * sign(src1);\n"
+    "  vec4 ret = src0 * src1;\n"
+    "  if (zero_components.x == 0.0) { ret.x = 0.0; }\n"
+    "  if (zero_components.y == 0.0) { ret.y = 0.0; }\n"
+    "  if (zero_components.z == 0.0) { ret.z = 0.0; }\n"
+    "  if (zero_components.w == 0.0) { ret.w = 0.0; }\n"
+    "  return ret;\n"
     "}\n"
     "\n"
     "#define ADD(dest, mask, src0, src1) dest.mask = _ADD(_in(src0), _in(src1)).mask\n"
@@ -648,7 +657,7 @@ static const char* vsh_header =
     "#define MAD(dest, mask, src0, src1, src2) dest.mask = _MAD(_in(src0), _in(src1), _in(src2)).mask\n"
     "vec4 _MAD(vec4 src0, vec4 src1, vec4 src2)\n"
     "{\n"
-    "  return src0 * src1 + src2;\n"
+    "  return _MUL(src0, src1) + src2;\n"
     "}\n"
     "\n"
     "#define DP3(dest, mask, src0, src1) dest.mask = _DP3(_in(src0), _in(src1)).mask\n"
