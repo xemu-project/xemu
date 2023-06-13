@@ -392,7 +392,7 @@ void MainMenuInputView::Draw()
                     }
                 }
 
-                const char *id = g_strdup_printf("Image", active + 1, 'A' + i);
+                const char *id = "Image";
                 const char *xmu_port_path = NULL;
                 if (xmu->filename == NULL)
                     xmu_port_path = g_strdup("");
@@ -405,7 +405,6 @@ void MainMenuInputView::Draw()
                         xemu_input_bind_xmu(active, i, xmu_port_path);
                     }
                 }
-                g_free((void*)id);
                 g_free((void*)xmu_port_path);
 
                 ImGui::PopID();
