@@ -177,6 +177,7 @@ void xemu_input_init(void)
         char buf[128];
         snprintf(buf, sizeof(buf), "Connected '%s' to port %d", new_con->name, port+1);
         xemu_queue_notification(buf);
+        xemu_input_rebind_xmu(port);
     }
 
     QTAILQ_INSERT_TAIL(&available_controllers, new_con, entry);
@@ -293,39 +294,7 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
             char buf[128];
             snprintf(buf, sizeof(buf), "Connected '%s' to port %d", new_con->name, port+1);
             xemu_queue_notification(buf);
-
-            // Try to bind peripherals back to controller
-            for(int i = 0; i < 2; i++) {
-                enum peripheral_type peripheralType = (enum peripheral_type)(*peripheral_types_settings_map[port][i]);
-                
-                // If peripheralType is out of range, change the settings for this controller and peripheral port to default
-                if(peripheralType < PERIPHERAL_NONE || peripheralType >= PERIPHERAL_TYPE_COUNT) {
-                    xemu_save_peripheral_settings(port, i, PERIPHERAL_NONE, NULL);
-                    peripheralType = PERIPHERAL_NONE;
-                }
-
-                const char *param = *peripheral_params_settings_map[port][i];
-
-                if(peripheralType == PERIPHERAL_XMU) {
-                    if(param != NULL && strlen(param) > 0) {
-                        // This is an XMU and needs to be bound to this controller
-                        if(qemu_access(param, F_OK) == 0) {
-                            bound_controllers[port]->peripheral_types[i] = (enum peripheral_type)peripheralType;
-                            bound_controllers[port]->peripherals[i] = malloc(sizeof(XmuState));
-                            memset(bound_controllers[port]->peripherals[i], 0, sizeof(XmuState));
-                            xemu_input_bind_xmu(port, i, param);
-
-                            char *buf = g_strdup_printf("Connected XMU %s to port %d%c", param, port + 1, 'A' + i);
-                            xemu_queue_notification(buf);
-                            g_free(buf);
-                        } else {
-                            char *buf = g_strdup_printf("Unable to bind XMU at %s to port %d%c", param, port + 1, 'A' + i);
-                            xemu_queue_error_message(buf);
-                            g_free(buf);
-                        }
-                    }
-                }
-            }
+            xemu_input_rebind_xmu(port);
         }
     } else if (event->type == SDL_CONTROLLERDEVICEREMOVED) {
         DPRINTF("Controller Removed: %d\n", event->cdevice.which);
@@ -691,6 +660,42 @@ void xemu_input_unbind_xmu(int player_index, int peripheral_port_index)
 
         g_free((void*)xmu->filename);
         xmu->filename = NULL;
+    }
+}
+
+void xemu_input_rebind_xmu(int port)
+{
+    // Try to bind peripherals back to controller
+    for(int i = 0; i < 2; i++) {
+        enum peripheral_type peripheralType = (enum peripheral_type)(*peripheral_types_settings_map[port][i]);
+        
+        // If peripheralType is out of range, change the settings for this controller and peripheral port to default
+        if(peripheralType < PERIPHERAL_NONE || peripheralType >= PERIPHERAL_TYPE_COUNT) {
+            xemu_save_peripheral_settings(port, i, PERIPHERAL_NONE, NULL);
+            peripheralType = PERIPHERAL_NONE;
+        }
+
+        const char *param = *peripheral_params_settings_map[port][i];
+
+        if(peripheralType == PERIPHERAL_XMU) {
+            if(param != NULL && strlen(param) > 0) {
+                // This is an XMU and needs to be bound to this controller
+                if(qemu_access(param, F_OK) == 0) {
+                    bound_controllers[port]->peripheral_types[i] = peripheralType;
+                    bound_controllers[port]->peripherals[i] = malloc(sizeof(XmuState));
+                    memset(bound_controllers[port]->peripherals[i], 0, sizeof(XmuState));
+                    xemu_input_bind_xmu(port, i, param);
+
+                    char *buf = g_strdup_printf("Connected XMU %s to port %d%c", param, port + 1, 'A' + i);
+                    xemu_queue_notification(buf);
+                    g_free(buf);
+                } else {
+                    char *buf = g_strdup_printf("Unable to bind XMU at %s to port %d%c", param, port + 1, 'A' + i);
+                    xemu_queue_error_message(buf);
+                    g_free(buf);
+                }
+            }
+        }
     }
 }
 

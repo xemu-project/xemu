@@ -124,6 +124,7 @@ void xemu_input_update_rumble(ControllerState *state);
 ControllerState *xemu_input_get_bound(int index);
 void xemu_input_bind(int index, ControllerState *state, int save);
 void xemu_input_bind_xmu(int player_index, int peripheral_port_index, const char *filename);
+void xemu_input_rebind_xmu(int port);
 void xemu_input_unbind_xmu(int player_index, int peripheral_port_index);
 int xemu_input_get_controller_default_bind_port(ControllerState *state, int start);
 void xemu_save_peripheral_settings(int player_index, int peripheral_index, int peripheral_type, const char *peripheral_parameter);
