@@ -667,21 +667,21 @@ void xemu_input_rebind_xmu(int port)
 {
     // Try to bind peripherals back to controller
     for(int i = 0; i < 2; i++) {
-        enum peripheral_type peripheralType = (enum peripheral_type)(*peripheral_types_settings_map[port][i]);
+        enum peripheral_type peripheral_type = (enum peripheral_type)(*peripheral_types_settings_map[port][i]);
         
         // If peripheralType is out of range, change the settings for this controller and peripheral port to default
-        if(peripheralType < PERIPHERAL_NONE || peripheralType >= PERIPHERAL_TYPE_COUNT) {
+        if(peripheral_type < PERIPHERAL_NONE || peripheral_type >= PERIPHERAL_TYPE_COUNT) {
             xemu_save_peripheral_settings(port, i, PERIPHERAL_NONE, NULL);
-            peripheralType = PERIPHERAL_NONE;
+            peripheral_type = PERIPHERAL_NONE;
         }
 
         const char *param = *peripheral_params_settings_map[port][i];
 
-        if(peripheralType == PERIPHERAL_XMU) {
+        if(peripheral_type == PERIPHERAL_XMU) {
             if(param != NULL && strlen(param) > 0) {
                 // This is an XMU and needs to be bound to this controller
                 if(qemu_access(param, F_OK) == 0) {
-                    bound_controllers[port]->peripheral_types[i] = peripheralType;
+                    bound_controllers[port]->peripheral_types[i] = peripheral_type;
                     bound_controllers[port]->peripherals[i] = malloc(sizeof(XmuState));
                     memset(bound_controllers[port]->peripherals[i], 0, sizeof(XmuState));
                     xemu_input_bind_xmu(port, i, param);
