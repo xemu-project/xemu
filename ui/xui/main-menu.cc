@@ -270,7 +270,7 @@ void MainMenuInputView::Draw()
     if (bound_state) {
         ///
         SectionTitle("Expansion Slots");
-        // Begin a 4-column layout to render the ports
+        // Begin a 2-column layout to render the expansion slots
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
                             g_viewport_mgr.Scale(ImVec2(0, 12)));
         ImGui::Columns(2, "mixed", false);
@@ -281,13 +281,14 @@ void MainMenuInputView::Draw()
         const char *img_file_filters = ".img Files\0*.img\0All Files\0*.*\0";
         const char *comboLabels[2] = { "###ExpansionSlotA", "###ExpansionSlotB" };
         for (int i = 0; i < 2; i++) {
+            // Display a combo box to allow the user to choose the type of peripheral they want to use
             enum peripheral_type selectedType = bound_state->peripheral_types[i];
             const char *peripheralTypeNames[2] = { "None", "Memory Unit" };
             const char *selectedPeripheralType = peripheralTypeNames[selectedType];
             ImGui::SetNextItemWidth(-FLT_MIN);
             if (ImGui::BeginCombo(comboLabels[i], selectedPeripheralType, ImGuiComboFlags_NoArrowButton))
             {
-                // Handle all available input devices
+                // Handle all available peripheral types
                 for (int j = 0; j < 2; j++) {
                     bool is_selected = selectedType == j;
                     ImGui::PushID(j);
@@ -333,13 +334,9 @@ void MainMenuInputView::Draw()
 
             selectedType = bound_state->peripheral_types[i];
             if (selectedType == PERIPHERAL_XMU) {
-                // We are using the same texture for all buttons, but ImageButton
-                // uses the texture as a unique ID. Push a new ID now to resolve
-                // the conflict
                 float x = xmu_x+i*xmu_x_stride;
                 float y = xmu_y;
                 
-                // If mounted
                 XmuState *xmu = (XmuState*)bound_state->peripherals[i];
                 if (xmu->filename != NULL && strlen(xmu->filename) > 0) {
                     RenderXmu(x, y, 0x81dc8a00, 0x0f0f0f00);
@@ -363,7 +360,9 @@ void MainMenuInputView::Draw()
                     ImGui::GetCursorPosX() +
                     (int)((ImGui::GetColumnWidth() - xmu_display_size.x) / 2.0));
 
-                // TODO: Display a combo box to allow the user to choose the type of peripheral they want to use
+                // We are using the same texture for all buttons, but ImageButton
+                // uses the texture as a unique ID. Push a new ID now to resolve
+                // the conflict
                 ImGui::Image(id,
                     xmu_display_size,
                     ImVec2(0.5f * i, 1),
@@ -392,13 +391,12 @@ void MainMenuInputView::Draw()
                     }
                 }
 
-                const char *id = "Image";
                 const char *xmu_port_path = NULL;
                 if (xmu->filename == NULL)
                     xmu_port_path = g_strdup("");
                 else 
                     xmu_port_path = g_strdup(xmu->filename);
-                if (FilePicker(id, &xmu_port_path, img_file_filters)) {
+                if (FilePicker("Image", &xmu_port_path, img_file_filters)) {
                     if(strlen(xmu_port_path) == 0) {
                         xemu_input_unbind_xmu(active, i);
                     } else {
