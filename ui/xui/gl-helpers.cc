@@ -700,7 +700,10 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip, float scale[
 
     glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
-    glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
+
+    if (!nv2a_get_screen_off()) {
+        glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
+    }
 }
 
 void RenderFramebuffer(GLint tex, int width, int height, bool flip)
