@@ -340,10 +340,14 @@ void MainMenuDisplayView::Draw()
     ChevronCombo("Display mode", &g_config.display.ui.fit,
                  "Center\0"
                  "Scale\0"
-                 "Scale (Widescreen 16:9)\0"
-                 "Scale (4:3)\0"
                  "Stretch\0",
                  "Select how the framebuffer should fit or scale into the window");
+    ChevronCombo("Aspect ratio", &g_config.display.ui.aspect_ratio,
+                 "Native\0"
+                 "Auto (Default)\0"
+                 "4:3\0"
+                 "16:9\0",
+                 "Select the displayed aspect ratio");
 }
 
 void MainMenuAudioView::Draw()
