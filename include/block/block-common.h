@@ -154,6 +154,10 @@ typedef enum {
                                       read-write fails */
 #define BDRV_O_IO_URING    0x40000 /* use io_uring instead of the thread pool */
 
+#ifdef XBOX
+#define BDRV_O_RO_WRITE_SHARE 0x80000 /* allow the file to open RO alongside an existing RW handle */
+#endif
+
 #define BDRV_O_CACHE_MASK  (BDRV_O_NOCACHE | BDRV_O_NO_FLUSH)
 
 

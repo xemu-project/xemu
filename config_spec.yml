@@ -11,6 +11,13 @@ general:
   # throttle_io: bool
   last_viewed_menu_index: integer
   user_token: string
+  snapshots:
+    shortcuts:
+      f5: string
+      f6: string
+      f7: string
+      f8: string
+    filter_current_game: bool
 
 input:
   bindings:
@@ -108,6 +115,7 @@ display:
       default: 1
   window:
     fullscreen_on_startup: bool
+    fullscreen_exclusive: bool
     startup_size:
       type: enum
       values: [last_used, 640x480, 1280x720, 1280x800, 1280x960, 1920x1080, 2560x1440, 2560x1600, 2560x1920, 3840x2160]
@@ -130,8 +138,12 @@ display:
       default: true
     fit:
       type: enum
-      values: [center, scale, scale_16_9, scale_4_3, stretch]
+      values: [center, scale, stretch]
       default: scale
+    aspect_ratio:
+      type: enum
+      values: [native, auto, 4x3, 16x9]
+      default: auto
     scale:
       type: integer
       default: 1

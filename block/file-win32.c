@@ -36,6 +36,7 @@
 #include "qapi/qmp/qstring.h"
 #include <windows.h>
 #include <winioctl.h>
+#include <assert.h>
 
 #define FTYPE_FILE 0
 #define FTYPE_CD     1
@@ -345,6 +346,9 @@ static int raw_open(BlockDriverState *bs, QDict *options, int flags,
     bool use_aio;
     OnOffAuto locking;
     int ret;
+#ifdef XBOX
+    int sharing_flags;
+#endif
 
     s->type = FTYPE_FILE;
 
@@ -400,9 +404,21 @@ static int raw_open(BlockDriverState *bs, QDict *options, int flags,
     if (!filename) {
         goto fail;
     }
+
+#ifdef XBOX
+    sharing_flags = FILE_SHARE_READ;
+    if (flags & BDRV_O_RO_WRITE_SHARE) {
+        assert(access_flags == GENERIC_READ);
+        sharing_flags = FILE_SHARE_READ | FILE_SHARE_WRITE;
+    }
+    s->hfile = CreateFileW(wfilename, access_flags,
+                          sharing_flags, NULL,
+                          OPEN_EXISTING, overlapped, NULL);
+#else
     s->hfile = CreateFileW(wfilename, access_flags,
                            FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
                            OPEN_EXISTING, overlapped, NULL);
+#endif
     g_free(wfilename);
     if (s->hfile == INVALID_HANDLE_VALUE) {
         int err = GetLastError();

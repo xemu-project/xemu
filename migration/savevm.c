@@ -67,6 +67,8 @@
 #include "qemu/yank.h"
 #include "yank_functions.h"
 
+#include "ui/xemu-snapshots.h"
+
 const unsigned int postcopy_ram_discard_version;
 
 /* Subcommands for QEMU_VM_COMMAND */
@@ -1537,6 +1539,9 @@ static int qemu_savevm_state(QEMUFile *f, Error **errp)
     ms->to_dst_file = f;
 
     qemu_mutex_unlock_iothread();
+#ifdef XBOX
+    xemu_snapshots_save_extra_data(f);
+#endif
     qemu_savevm_state_header(f);
     qemu_savevm_state_setup(f);
     qemu_mutex_lock_iothread();
@@ -2698,6 +2703,12 @@ int qemu_loadvm_state(QEMUFile *f)
         return -EINVAL;
     }
 
+#ifdef XBOX
+    if (!xemu_snapshots_offset_extra_data(f)) {
+        return -EINVAL;
+    }
+#endif
+
     ret = qemu_loadvm_state_header(f);
     if (ret) {
         return ret;
@@ -3094,6 +3105,10 @@ bool delete_snapshot(const char *name, bool has_devices,
     if (bdrv_all_delete_snapshot(name, has_devices, devices, errp) < 0) {
         return false;
     }
+
+#ifdef XBOX
+    xemu_snapshots_mark_dirty();
+#endif
 
     return true;
 }

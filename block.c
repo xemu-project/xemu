@@ -2782,6 +2782,12 @@ static void bdrv_default_perms_for_storage(BlockDriverState *bs, BdrvChild *c,
         shared |= BLK_PERM_WRITE | BLK_PERM_RESIZE;
     }
 
+#ifdef XBOX
+    if (bs->open_flags & BDRV_O_RO_WRITE_SHARE) {
+        shared |= BLK_PERM_WRITE | BLK_PERM_RESIZE;
+    }
+#endif
+
     *nperm = perm;
     *nshared = shared;
 }
