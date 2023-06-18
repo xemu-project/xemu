@@ -1538,10 +1538,10 @@ static int qemu_savevm_state(QEMUFile *f, Error **errp)
     memset(&compression_counters, 0, sizeof(compression_counters));
     ms->to_dst_file = f;
 
-    qemu_mutex_unlock_iothread();
 #ifdef XBOX
     xemu_snapshots_save_extra_data(f);
 #endif
+    qemu_mutex_unlock_iothread();
     qemu_savevm_state_header(f);
     qemu_savevm_state_setup(f);
     qemu_mutex_lock_iothread();
