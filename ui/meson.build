@@ -28,6 +28,7 @@ xemu_ss.add(files(
   'xemu-data.c',
   'xemu-snapshots.c',
   'xemu-thumbnail.cc',
+  'xemu-widescreen.c',
 ))
 
 subdir('xui')

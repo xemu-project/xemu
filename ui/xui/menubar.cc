@@ -191,11 +191,12 @@ void ShowMainMenu()
             }
 
             ImGui::Combo("Display Mode", &g_config.display.ui.fit,
-                         "Center\0Scale\0Scale (Widescreen 16:9)\0Scale "
-                         "(4:3)\0Stretch\0");
+                         "Center\0Scale\0Stretch\0");
             ImGui::SameLine();
             HelpMarker("Controls how the rendered content should be scaled "
                        "into the window");
+            ImGui::Combo("Aspect Ratio", &g_config.display.ui.aspect_ratio,
+                         "Native\0Auto\0""4:3\0""16:9\0");
             if (ImGui::MenuItem("Fullscreen", SHORTCUT_MENU_TEXT(Alt + F),
                                 xemu_is_fullscreen(), true)) {
                 xemu_toggle_fullscreen();
