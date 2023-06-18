@@ -33,7 +33,6 @@
 #include "qapi/error.h"
 #include "qapi/qapi-commands-block.h"
 #include "sysemu/runstate.h"
-#include "qemu-common.h"
 
 #include "ui/console.h"
 #include "ui/input.h"
