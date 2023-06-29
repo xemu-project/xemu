@@ -66,6 +66,15 @@ void MainMenuGeneralView::Draw()
     Toggle("Cache shaders to disk", &g_config.perf.cache_shaders,
            "Reduce stutter in games by caching previously generated shaders");
 
+    Toggle("Emulated CPU clock override", &g_config.perf.override_clockspeed,
+           "Enables to override default CPU clock speed");
+    
+    char buf[32];
+    snprintf(buf, sizeof(buf), "Clock Speed (%d%%)",
+             (int)(g_config.perf.cpu_clockspeed * 200));
+    Slider("Virtual CPU clock", &g_config.perf.cpu_clockspeed, buf);
+
+    
     SectionTitle("Miscellaneous");
     Toggle("Skip startup animation", &g_config.general.skip_boot_anim,
            "Skip the full Xbox boot animation sequence");
