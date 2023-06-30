@@ -536,12 +536,13 @@ static long get_file_size(FILE *f)
 uint64_t cpu_get_tsc(CPUX86State *env)
 {
 #ifdef XBOX
-    float clock_multiplier = g_config.perf.cpu_clockspeed * 2;
-    float cpu_clock_hz = 733333333;
+    float clock_multiplier = g_config.perf.cpu_clockspeed * 2.0;
+    float cpu_clock_hz = 733333333.0;
     
     if (g_config.perf.override_clockspeed) {
         cpu_clock_hz *= clock_multiplier;
     }
+    printf(cpu_clock_hz)
     return muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), cpu_clock_hz, NANOSECONDS_PER_SECOND);
 #else
     return cpus_get_elapsed_ticks();
