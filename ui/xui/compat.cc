@@ -206,6 +206,11 @@ void CompatibilityReporter::Draw()
     ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*g_viewport_mgr.m_scale);
 
     ImGui::SetItemDefaultFocus();
+    if (g_config.perf.override_clockspeed)
+    {
+        ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+    }
     if (ImGui::Button("Send", ImVec2(120*g_viewport_mgr.m_scale, 0))) {
         did_send = true;
         send_result = report.Send();
@@ -213,7 +218,12 @@ void CompatibilityReporter::Draw()
             is_open = false;
         }
     }
-
+    if (g_config.perf.override_clockspeed)
+    {
+        ImGui::Text("Reports using Emulated CPU clock override is not allowed.");
+        ImGui::PopItemFlag();
+        ImGui::PopStyleVar();
+    }
     ImGui::End();
 }
 
