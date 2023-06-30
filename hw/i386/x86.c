@@ -541,6 +541,7 @@ uint64_t cpu_get_tsc(CPUX86State *env)
     
     if (g_config.perf.override_clockspeed) {
         cpu_clock_hz *= clock_multiplier;
+        printf(clock_multiplier)
     }
     printf(cpu_clock_hz)
     return muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), cpu_clock_hz, NANOSECONDS_PER_SECOND);
