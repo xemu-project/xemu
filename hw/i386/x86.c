@@ -540,13 +540,11 @@ uint64_t cpu_get_tsc(CPUX86State *env)
     float OVERCLOCK_VALUE = g_config.perf.cpu_clockspeed; /* 0.5 is 100% */
     float PERCENTAGE_OUTPUT = OVERCLOCK_VALUE * 2;
     
+    float cpu_clock_hz = 733333333;
     if (g_config.perf.override_clockspeed) {
-        float clockOutput = DEFAULT_CPU_CLOCK * PERCENTAGE_OUTPUT;
-        return muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), clockOutput, NANOSECONDS_PER_SECOND);
-    } else {
-        float clockOutput = DEFAULT_CPU_CLOCK;
-        return muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), clockOutput, NANOSECONDS_PER_SECOND);
+      cpu_clock_hz *= clock_multiplier;
     }
+    return muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), cpu_clock_hz, NANOSECONDS_PER_SECOND);
 #else
     return cpus_get_elapsed_ticks();
 #endif
