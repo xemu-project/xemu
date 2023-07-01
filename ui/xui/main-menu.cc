@@ -70,10 +70,14 @@ void MainMenuGeneralView::Draw()
            "Enables to override default CPU clock speed");
     
     char buf[32];
+
+
+    
     snprintf(buf, sizeof(buf), "Clock Speed %d%% (%.2f MHz)",
              (int)(g_config.perf.cpu_clockspeed * 200), (733333333.0 * g_config.perf.cpu_clockspeed * 2.0)/1000000);
     Slider("Virtual CPU clock", &g_config.perf.cpu_clockspeed, buf);
 
+    if ((g_config.perf.cpu_clockspeed-0.495)*(g_config.perf.cpu_clockspeed-0.505) <= 0) {g_config.perf.cpu_clockspeed = 0.5;}
     
     SectionTitle("Miscellaneous");
     Toggle("Skip startup animation", &g_config.general.skip_boot_anim,
