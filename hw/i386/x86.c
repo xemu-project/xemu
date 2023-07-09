@@ -536,8 +536,8 @@ static long get_file_size(FILE *f)
 uint64_t cpu_get_tsc(CPUX86State *env)
 {
 #ifdef XBOX
-    float clock_multiplier = g_config.perf.cpu_clockspeed * 2.0;
-    float cpu_clock_hz = 733333333.0;
+    float clock_multiplier = g_config.perf.cpu_clockspeed;
+    int cpu_clock_hz = 733333333;
     
     if (g_config.perf.override_clockspeed) {
         cpu_clock_hz *= clock_multiplier;
