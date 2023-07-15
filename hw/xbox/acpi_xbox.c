@@ -30,6 +30,7 @@
 #include "hw/xbox/xbox_pci.h"
 #include "hw/xbox/acpi_xbox.h"
 #include "migration/vmstate.h"
+#include "ui/xemu-widescreen.h"
 
 // #define DEBUG
 #ifdef DEBUG
@@ -43,6 +44,8 @@
 #define XBOX_PM_GPE_LEN   4
 #define XBOX_PM_GPIO_BASE 0xC0
 #define XBOX_PM_GPIO_LEN  26
+
+#define XBOX_PM_GPIO_ASPECT_RATIO 0x16
 
 static int field_pin;
 
@@ -66,6 +69,12 @@ static void xbox_pm_gpio_write(void *opaque, hwaddr addr, uint64_t val,
                                unsigned width)
 {
     XBOX_DPRINTF("pm gpio write [0x%llx] = 0x%llx\n", addr, val);
+
+    if (addr == XBOX_PM_GPIO_ASPECT_RATIO) {
+        xemu_set_widescreen(val == 5);
+    }
+
+    // FIXME: Add GPIO to VM state
 }
 
 static const MemoryRegionOps xbox_pm_gpio_ops = {

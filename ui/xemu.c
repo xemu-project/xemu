@@ -47,6 +47,7 @@
 #include "xemu-input.h"
 #include "xemu-settings.h"
 // #include "xemu-shaders.h"
+#include "xemu-snapshots.h"
 #include "xemu-version.h"
 #include "xemu-os-utils.h"
 
@@ -54,6 +55,7 @@
 
 #include "hw/xbox/smbus.h" // For eject, drive tray
 #include "hw/xbox/nv2a/nv2a.h"
+#include "ui/xemu-notifications.h"
 
 #include <stb_image.h>
 
@@ -380,7 +382,9 @@ static void set_full_screen(struct sdl2_console *scon, bool set)
 
     if (gui_fullscreen) {
         SDL_SetWindowFullscreen(scon->real_window,
-                                SDL_WINDOW_FULLSCREEN_DESKTOP);
+                                (g_config.display.window.fullscreen_exclusive ?
+                                SDL_WINDOW_FULLSCREEN :
+                                SDL_WINDOW_FULLSCREEN_DESKTOP));
         gui_saved_grab = gui_grab;
         sdl_grab_start(scon);
     } else {
@@ -1197,6 +1201,7 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
 
     glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
+    xemu_snapshots_set_framebuffer_texture(tex, flip_required);
     xemu_hud_set_framebuffer_texture(tex, flip_required);
     xemu_hud_render();
 
@@ -1546,31 +1551,44 @@ int main(int argc, char **argv)
 
     while (1) {
         sdl2_gl_refresh(&sdl2_console[0].dcl);
+        assert(glGetError() == GL_NO_ERROR);
     }
 
     // rcu_unregister_thread();
 }
 
-void xemu_eject_disc(void)
+void xemu_eject_disc(Error **errp)
 {
+    Error *error = NULL;
+
     xbox_smc_eject_button();
+    xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
 
     // Xbox software may request that the drive open, but do it now anyway
-    Error *err = NULL;
-    qmp_eject(true, "ide0-cd1", false, NULL, true, false, &err);
+    qmp_eject(true, "ide0-cd1", false, NULL, true, false, &error);
+    if (error) {
+        error_propagate(errp, error);
+    }
 
     xbox_smc_update_tray_state();
 }
 
-void xemu_load_disc(const char *path)
+void xemu_load_disc(const char *path, Error **errp)
 {
+    Error *error = NULL;
+
     // Ensure an eject sequence is always triggered so Xbox software reloads
     xbox_smc_eject_button();
+    xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
 
-    Error *err = NULL;
     qmp_blockdev_change_medium(true, "ide0-cd1", false, NULL, path,
                                false, "", false, 0,
-                               &err);
+                               &error);
+    if (error) {
+        error_propagate(errp, error);
+    } else {
+        xemu_settings_set_string(&g_config.sys.files.dvd_path, path);
+    }
 
     xbox_smc_update_tray_state();
 }
