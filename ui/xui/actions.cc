@@ -17,17 +17,27 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include "common.hh"
+#include "actions.hh"
 #include "misc.hh"
 #include "xemu-hud.h"
+#include "../xemu-snapshots.h"
+#include "../xemu-notifications.h"
+#include "snapshot-manager.hh"
 
 void ActionEjectDisc(void)
 {
-    xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
-    xemu_eject_disc();
+    Error *err = NULL;
+    xemu_eject_disc(&err);
+    if (err) {
+        xemu_queue_error_message(error_get_pretty(err));
+        error_free(err);
+    }
 }
 
 void ActionLoadDisc(void)
 {
+    Error *err = NULL;
+
     const char *iso_file_filters = ".iso Files\0*.iso\0All Files\0*.*\0";
     const char *new_disc_path =
         PausedFileOpen(NOC_FILE_DIALOG_OPEN, iso_file_filters,
@@ -36,8 +46,12 @@ void ActionLoadDisc(void)
         /* Cancelled */
         return;
     }
-    xemu_settings_set_string(&g_config.sys.files.dvd_path, new_disc_path);
-    xemu_load_disc(new_disc_path);
+
+    xemu_load_disc(new_disc_path, &err);
+    if (err) {
+        xemu_queue_error_message(error_get_pretty(err));
+        error_free(err);
+    }
 }
 
 void ActionTogglePause(void)
@@ -62,4 +76,33 @@ void ActionShutdown(void)
 void ActionScreenshot(void)
 {
 	g_screenshot_pending = true;
+}
+
+void ActionActivateBoundSnapshot(int slot, bool save)
+{
+    assert(slot < 4 && slot >= 0);
+    const char *snapshot_name = *(g_snapshot_shortcut_index_key_map[slot]);
+    if (!snapshot_name || !(snapshot_name[0])) {
+        char *msg = g_strdup_printf("F%d is not bound to a snapshot", slot + 5);
+        xemu_queue_notification(msg);
+        g_free(msg);
+        return;
+    }
+
+    Error *err = NULL;
+    if (save) {
+        xemu_snapshots_save(snapshot_name, &err);
+    } else {
+        ActionLoadSnapshotChecked(snapshot_name);
+    }
+
+    if (err) {
+        xemu_queue_error_message(error_get_pretty(err));
+        error_free(err);
+    }
+}
+
+void ActionLoadSnapshotChecked(const char *name)
+{
+    g_snapshot_mgr.LoadSnapshotChecked(name);
 }
