@@ -505,7 +505,6 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
             case TEXGEN_OBJECT_LINEAR:
                 mstring_append_fmt(body, "oT%d.%c = dot(texPlane%c%d, position);\n",
                                    i, c, cSuffix, i);
-                assert(false); /* Untested */
                 break;
             case TEXGEN_SPHERE_MAP:
                 assert(j < 2);  /* Channels S,T only! */
@@ -1325,7 +1324,7 @@ static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
 
     g_free(shader_bin_dir);
 
-    qemu_mutex_lock(&pg->shader_cache_lock); 
+    qemu_mutex_lock(&pg->shader_cache_lock);
     if (lru_contains_hash(&pg->shader_cache, hash)) {
         qemu_mutex_unlock(&pg->shader_cache_lock);
         return;
@@ -1441,12 +1440,12 @@ static void shader_cache_entry_init(Lru *lru, LruNode *node, void *state)
 static void shader_cache_entry_post_evict(Lru *lru, LruNode *node)
 {
     ShaderLruNode *snode = container_of(node, ShaderLruNode, node);
-    
+
     if (snode->save_thread) {
         qemu_thread_join(snode->save_thread);
         g_free(snode->save_thread);
     }
-    
+
     if (snode->binding) {
         glDeleteProgram(snode->binding->gl_program);
         g_free(snode->binding);
@@ -1476,7 +1475,7 @@ void shader_cache_init(PGRAPHState *pg)
     }
 
     shader_create_cache_folder();
-    
+
     /* FIXME: Make this configurable */
     const size_t shader_cache_size = 50*1024;
     lru_init(&pg->shader_cache);
@@ -1568,7 +1567,7 @@ void shader_cache_to_disk(ShaderLruNode *snode)
 
     GLint program_size;
     glGetProgramiv(snode->binding->gl_program, GL_PROGRAM_BINARY_LENGTH, &program_size);
-    
+
     if (snode->program) {
         g_free(snode->program);
         snode->program = NULL;

@@ -6643,7 +6643,8 @@ static void pgraph_bind_textures(NV2AState *d)
                      1 << log_width, 1 << log_height, 1 << log_depth,
                      pitch,
                      cubemap ? "; cubemap" : "",
-                     min_filter, mag_filter,
+                     GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN),
+                     GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG),
                      min_mipmap_level, max_mipmap_level, levels,
                      lod_bias);
 
