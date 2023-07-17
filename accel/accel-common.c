@@ -49,6 +49,14 @@ AccelClass *accel_find(const char *opt_name)
     return ac;
 }
 
+/* Return the name of the current accelerator */
+const char *current_accel_name(void)
+{
+    AccelClass *ac = ACCEL_GET_CLASS(current_accel());
+
+    return ac->name;
+}
+
 static void accel_init_cpu_int_aux(ObjectClass *klass, void *opaque)
 {
     CPUClass *cc = CPU_CLASS(klass);
@@ -119,6 +127,16 @@ bool accel_cpu_realizefn(CPUState *cpu, Error **errp)
         return cc->accel_cpu->cpu_realizefn(cpu, errp);
     }
     return true;
+}
+
+int accel_supported_gdbstub_sstep_flags(void)
+{
+    AccelState *accel = current_accel();
+    AccelClass *acc = ACCEL_GET_CLASS(accel);
+    if (acc->gdbstub_supported_sstep_flags) {
+        return acc->gdbstub_supported_sstep_flags();
+    }
+    return 0;
 }
 
 static const TypeInfo accel_cpu_type = {

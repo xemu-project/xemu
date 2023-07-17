@@ -22,8 +22,8 @@ class OpenBSDVM(basevm.BaseVM):
     name = "openbsd"
     arch = "x86_64"
 
-    link = "https://cdn.openbsd.org/pub/OpenBSD/6.9/amd64/install69.iso"
-    csum = "140d26548aec680e34bb5f82295414228e7f61e4f5e7951af066014fda2d6e43"
+    link = "https://cdn.openbsd.org/pub/OpenBSD/7.2/amd64/install72.iso"
+    csum = "0369ef40a3329efcb978c578c7fdc7bda71e502aecec930a74b44160928c91d3"
     size = "20G"
     pkgs = [
         # tools
@@ -48,13 +48,17 @@ class OpenBSDVM(basevm.BaseVM):
         "jpeg",
         "png",
 
-	# libs: ui
+        # libs: ui
+        "capstone",
         "sdl2",
         "gtk+3",
         "libxkbcommon",
 
         # libs: migration
         "zstd",
+
+        # libs: networking
+        "libslirp",
     ]
 
     BUILD_SCRIPT = """
@@ -81,7 +85,6 @@ class OpenBSDVM(basevm.BaseVM):
 
         self.print_step("Booting installer")
         self.boot(img_tmp, extra_args = [
-            "-bios", "pc-bios/bios-256k.bin",
             "-machine", "graphics=off",
             "-device", "VGA",
             "-cdrom", iso
@@ -95,10 +98,9 @@ class OpenBSDVM(basevm.BaseVM):
         self.console_wait_send("Terminal type",           "xterm\n")
         self.console_wait_send("System hostname",         "openbsd\n")
         self.console_wait_send("Which network interface", "vio0\n")
-        self.console_wait_send("IPv4 address",            "dhcp\n")
+        self.console_wait_send("IPv4 address",            "autoconf\n")
         self.console_wait_send("IPv6 address",            "none\n")
         self.console_wait_send("Which network interface", "done\n")
-        self.console_wait_send("DNS domain name",         "localnet\n")
         self.console_wait("Password for root account")
         self.console_send("%s\n" % self._config["root_pass"])
         self.console_wait("Password for root account")

@@ -23,7 +23,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/datadir.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/dma.h"
@@ -42,6 +41,7 @@
 #include "qapi/error.h"
 #include "hw/acpi/aml-build.h"
 #include "hw/pci/pci_bus.h"
+#include "hw/loader.h"
 
 #define FW_CFG_FILE_SLOTS_DFLT 0x20
 
@@ -179,21 +179,13 @@ error:
 
 static void fw_cfg_bootsplash(FWCfgState *s)
 {
-    const char *boot_splash_filename = NULL;
-    const char *boot_splash_time = NULL;
     char *filename, *file_data;
     gsize file_size;
     int file_type;
 
-    /* get user configuration */
-    QemuOptsList *plist = qemu_find_opts("boot-opts");
-    QemuOpts *opts = QTAILQ_FIRST(&plist->head);
-    boot_splash_filename = qemu_opt_get(opts, "splash");
-    boot_splash_time = qemu_opt_get(opts, "splash-time");
-
     /* insert splash time if user configurated */
-    if (boot_splash_time) {
-        int64_t bst_val = qemu_opt_get_number(opts, "splash-time", -1);
+    if (current_machine->boot_config.has_splash_time) {
+        int64_t bst_val = current_machine->boot_config.splash_time;
         uint16_t bst_le16;
 
         /* validate the input */
@@ -209,7 +201,8 @@ static void fw_cfg_bootsplash(FWCfgState *s)
     }
 
     /* insert splash file if user configurated */
-    if (boot_splash_filename) {
+    if (current_machine->boot_config.has_splash) {
+        const char *boot_splash_filename = current_machine->boot_config.splash;
         filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, boot_splash_filename);
         if (filename == NULL) {
             error_report("failed to find file '%s'", boot_splash_filename);
@@ -239,17 +232,11 @@ static void fw_cfg_bootsplash(FWCfgState *s)
 
 static void fw_cfg_reboot(FWCfgState *s)
 {
-    const char *reboot_timeout = NULL;
     uint64_t rt_val = -1;
     uint32_t rt_le32;
 
-    /* get user configuration */
-    QemuOptsList *plist = qemu_find_opts("boot-opts");
-    QemuOpts *opts = QTAILQ_FIRST(&plist->head);
-    reboot_timeout = qemu_opt_get(opts, "reboot-timeout");
-
-    if (reboot_timeout) {
-        rt_val = qemu_opt_get_number(opts, "reboot-timeout", -1);
+    if (current_machine->boot_config.has_reboot_timeout) {
+        rt_val = current_machine->boot_config.reboot_timeout;
 
         /* validate the input */
         if (rt_val > 0xffff && rt_val != (uint64_t)-1) {
@@ -357,9 +344,10 @@ static void fw_cfg_dma_transfer(FWCfgState *s)
     dma_addr = s->dma_addr;
     s->dma_addr = 0;
 
-    if (dma_memory_read(s->dma_as, dma_addr, &dma, sizeof(dma))) {
+    if (dma_memory_read(s->dma_as, dma_addr,
+                        &dma, sizeof(dma), MEMTXATTRS_UNSPECIFIED)) {
         stl_be_dma(s->dma_as, dma_addr + offsetof(FWCfgDmaAccess, control),
-                   FW_CFG_DMA_CTL_ERROR);
+                   FW_CFG_DMA_CTL_ERROR, MEMTXATTRS_UNSPECIFIED);
         return;
     }
 
@@ -399,7 +387,8 @@ static void fw_cfg_dma_transfer(FWCfgState *s)
              * tested before.
              */
             if (read) {
-                if (dma_memory_set(s->dma_as, dma.address, 0, len)) {
+                if (dma_memory_set(s->dma_as, dma.address, 0, len,
+                                   MEMTXATTRS_UNSPECIFIED)) {
                     dma.control |= FW_CFG_DMA_CTL_ERROR;
                 }
             }
@@ -418,7 +407,8 @@ static void fw_cfg_dma_transfer(FWCfgState *s)
              */
             if (read) {
                 if (dma_memory_write(s->dma_as, dma.address,
-                                    &e->data[s->cur_offset], len)) {
+                                     &e->data[s->cur_offset], len,
+                                     MEMTXATTRS_UNSPECIFIED)) {
                     dma.control |= FW_CFG_DMA_CTL_ERROR;
                 }
             }
@@ -426,7 +416,8 @@ static void fw_cfg_dma_transfer(FWCfgState *s)
                 if (!e->allow_write ||
                     len != dma.length ||
                     dma_memory_read(s->dma_as, dma.address,
-                                    &e->data[s->cur_offset], len)) {
+                                    &e->data[s->cur_offset], len,
+                                    MEMTXATTRS_UNSPECIFIED)) {
                     dma.control |= FW_CFG_DMA_CTL_ERROR;
                 } else if (e->write_cb) {
                     e->write_cb(e->callback_opaque, s->cur_offset, len);
@@ -442,7 +433,7 @@ static void fw_cfg_dma_transfer(FWCfgState *s)
     }
 
     stl_be_dma(s->dma_as, dma_addr + offsetof(FWCfgDmaAccess, control),
-                dma.control);
+                dma.control, MEMTXATTRS_UNSPECIFIED);
 
     trace_fw_cfg_read(s, 0);
 }
@@ -618,9 +609,9 @@ static bool fw_cfg_acpi_mr_restore(void *opaque)
     FWCfgState *s = opaque;
     bool mr_aligned;
 
-    mr_aligned = QEMU_IS_ALIGNED(s->table_mr_size, qemu_real_host_page_size) &&
-                 QEMU_IS_ALIGNED(s->linker_mr_size, qemu_real_host_page_size) &&
-                 QEMU_IS_ALIGNED(s->rsdp_mr_size, qemu_real_host_page_size);
+    mr_aligned = QEMU_IS_ALIGNED(s->table_mr_size, qemu_real_host_page_size()) &&
+                 QEMU_IS_ALIGNED(s->linker_mr_size, qemu_real_host_page_size()) &&
+                 QEMU_IS_ALIGNED(s->rsdp_mr_size, qemu_real_host_page_size());
     return s->acpi_mr_restore && !mr_aligned;
 }
 
@@ -878,6 +869,7 @@ static struct {
     { "etc/tpm/log", 150 },
     { "etc/acpi/rsdp", 160 },
     { "bootorder", 170 },
+    { "etc/msr_feature_control", 180 },
 
 #define FW_CFG_ORDER_OVERRIDE_LAST 200
 };
@@ -1129,7 +1121,7 @@ static void fw_cfg_common_realize(DeviceState *dev, Error **errp)
     fw_cfg_add_bytes(s, FW_CFG_SIGNATURE, (char *)"QEMU", 4);
     fw_cfg_add_bytes(s, FW_CFG_UUID, &qemu_uuid, 16);
     fw_cfg_add_i16(s, FW_CFG_NOGRAPHIC, (uint16_t)!machine->enable_graphics);
-    fw_cfg_add_i16(s, FW_CFG_BOOT_MENU, (uint16_t)boot_menu);
+    fw_cfg_add_i16(s, FW_CFG_BOOT_MENU, (uint16_t)(machine->boot_config.has_menu && machine->boot_config.menu));
     fw_cfg_bootsplash(s);
     fw_cfg_reboot(s);
 
@@ -1230,6 +1222,37 @@ FWCfgState *fw_cfg_find(void)
     return FW_CFG(object_resolve_path_type("", TYPE_FW_CFG, NULL));
 }
 
+void load_image_to_fw_cfg(FWCfgState *fw_cfg, uint16_t size_key,
+                          uint16_t data_key, const char *image_name,
+                          bool try_decompress)
+{
+    size_t size = -1;
+    uint8_t *data;
+
+    if (image_name == NULL) {
+        return;
+    }
+
+    if (try_decompress) {
+        size = load_image_gzipped_buffer(image_name,
+                                         LOAD_IMAGE_MAX_GUNZIP_BYTES, &data);
+    }
+
+    if (size == (size_t)-1) {
+        gchar *contents;
+        gsize length;
+
+        if (!g_file_get_contents(image_name, &contents, &length, NULL)) {
+            error_report("failed to load \"%s\"", image_name);
+            exit(1);
+        }
+        size = length;
+        data = (uint8_t *)contents;
+    }
+
+    fw_cfg_add_i32(fw_cfg, size_key, size);
+    fw_cfg_add_bytes(fw_cfg, data_key, data, size);
+}
 
 static void fw_cfg_class_init(ObjectClass *klass, void *data)
 {

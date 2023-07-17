@@ -197,7 +197,7 @@ static const int tcg_target_reg_alloc_order[] = {
     TCG_REG_R0,
 };
 
-#if MAX_OPC_PARAM_IARGS != 6
+#if MAX_OPC_PARAM_IARGS != 7
 # error Fix needed, number of supported input arguments changed!
 #endif
 
@@ -790,14 +790,13 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc,
 static void tcg_out_st(TCGContext *s, TCGType type, TCGReg val, TCGReg base,
                        intptr_t offset)
 {
-    stack_bounds_check(base, offset);
     switch (type) {
     case TCG_TYPE_I32:
-        tcg_out_op_rrs(s, INDEX_op_st_i32, val, base, offset);
+        tcg_out_ldst(s, INDEX_op_st_i32, val, base, offset);
         break;
 #if TCG_TARGET_REG_BITS == 64
     case TCG_TYPE_I64:
-        tcg_out_op_rrs(s, INDEX_op_st_i64, val, base, offset);
+        tcg_out_ldst(s, INDEX_op_st_i64, val, base, offset);
         break;
 #endif
     default:
@@ -824,13 +823,6 @@ static void tcg_out_nop_fill(tcg_insn_unit *p, int count)
 
 static void tcg_target_init(TCGContext *s)
 {
-#if defined(CONFIG_DEBUG_TCG_INTERPRETER)
-    const char *envval = getenv("DEBUG_TCG");
-    if (envval) {
-        qemu_set_log(strtol(envval, NULL, 0));
-    }
-#endif
-
     /* The current code uses uint8_t for tcg operations. */
     tcg_debug_assert(tcg_op_defs_max <= UINT8_MAX);
 

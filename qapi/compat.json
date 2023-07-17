@@ -1,4 +1,5 @@
 # -*- Mode: Python -*-
+# vim: filetype=python
 
 ##
 # = Compatibility policy
@@ -40,13 +41,22 @@
 #
 # Limitation: covers only syntactic aspects of QMP, i.e. stuff tagged
 # with feature 'deprecated'.  We may want to extend it to cover
-# semantic aspects, CLI, and experimental features.
+# semantic aspects and CLI.
+#
+# Limitation: deprecated-output policy @hide is not implemented for
+# enumeration values.  They behave the same as with policy @accept.
 #
 # @deprecated-input: how to handle deprecated input (default 'accept')
 # @deprecated-output: how to handle deprecated output (default 'accept')
+# @unstable-input: how to handle unstable input (default 'accept')
+#                  (since 6.2)
+# @unstable-output: how to handle unstable output (default 'accept')
+#                   (since 6.2)
 #
 # Since: 6.0
 ##
 { 'struct': 'CompatPolicy',
   'data': { '*deprecated-input': 'CompatPolicyInput',
-            '*deprecated-output': 'CompatPolicyOutput' } }
+            '*deprecated-output': 'CompatPolicyOutput',
+            '*unstable-input': 'CompatPolicyInput',
+            '*unstable-output': 'CompatPolicyOutput' } }

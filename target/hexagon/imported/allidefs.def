@@ -28,3 +28,4 @@
 #include "shift.idef"
 #include "system.idef"
 #include "subinsns.idef"
+#include "allext.idef"

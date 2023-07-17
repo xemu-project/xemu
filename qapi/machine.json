@@ -30,7 +30,7 @@
 ##
 { 'enum' : 'SysEmuTarget',
   'data' : [ 'aarch64', 'alpha', 'arm', 'avr', 'cris', 'hppa', 'i386',
-             'm68k', 'microblaze', 'microblazeel', 'mips', 'mips64',
+             'loongarch64', 'm68k', 'microblaze', 'microblazeel', 'mips', 'mips64',
              'mips64el', 'mipsel', 'nios2', 'or1k', 'ppc',
              'ppc64', 'riscv32', 'riscv64', 'rx', 's390x', 'sh4',
              'sh4eb', 'sparc', 'sparc64', 'tricore',
@@ -77,7 +77,6 @@
 #          additional fields will be listed (since 3.0)
 #
 # Since: 2.12
-#
 ##
 { 'union'         : 'CpuInfoFast',
   'base'          : { 'cpu-index'    : 'int',
@@ -109,7 +108,6 @@
 #                 "socket-id": 0
 #             },
 #             "qom-path": "/machine/unattached/device[0]",
-#             "arch":"x86",
 #             "target":"x86_64",
 #             "cpu-index": 0
 #         },
@@ -121,7 +119,6 @@
 #                 "socket-id": 1
 #             },
 #             "qom-path": "/machine/unattached/device[2]",
-#             "arch":"x86",
 #             "target":"x86_64",
 #             "cpu-index": 1
 #         }
@@ -301,6 +298,7 @@
 #        returning does not indicate that a guest has accepted the request or
 #        that it has shut down.  Many guests will respond to this command by
 #        prompting the user in some way.
+#
 # Example:
 #
 # -> { "execute": "system_powerdown" }
@@ -317,9 +315,9 @@
 # query-current-machine), wake-up guest from suspend if the guest is
 # in SUSPENDED state. Return an error otherwise.
 #
-# Since:  1.1
+# Since: 1.1
 #
-# Returns:  nothing.
+# Returns: nothing.
 #
 # Note: prior to 4.0, this command does nothing in case the guest
 #       isn't suspended.
@@ -370,9 +368,9 @@
 # Injects a Non-Maskable Interrupt into the default CPU (x86/s390) or all CPUs (ppc64).
 # The command fails when the guest doesn't support injecting.
 #
-# Returns:  If successful, nothing
+# Returns: If successful, nothing
 #
-# Since:  0.14
+# Since: 0.14
 #
 # Note: prior to 2.1, this command was only supported for x86 and s390 VMs
 #
@@ -503,6 +501,40 @@
    'src': 'uint16',
    'dst': 'uint16',
    'val': 'uint8' }}
+
+##
+# @CXLFixedMemoryWindowOptions:
+#
+# Create a CXL Fixed Memory Window
+#
+# @size: Size of the Fixed Memory Window in bytes. Must be a multiple
+#        of 256MiB.
+# @interleave-granularity: Number of contiguous bytes for which
+#                          accesses will go to a given interleave target.
+#                          Accepted values [256, 512, 1k, 2k, 4k, 8k, 16k]
+# @targets: Target root bridge IDs from -device ...,id=<ID> for each root
+#           bridge.
+#
+# Since 7.1
+##
+{ 'struct': 'CXLFixedMemoryWindowOptions',
+  'data': {
+      'size': 'size',
+      '*interleave-granularity': 'size',
+      'targets': ['str'] }}
+
+##
+# @CXLFMWProperties:
+#
+# List of CXL Fixed Memory Windows.
+#
+# @cxl-fmw: List of CXLFixedMemoryWindowOptions
+#
+# Since 7.1
+##
+{ 'struct' : 'CXLFMWProperties',
+  'data': { 'cxl-fmw': ['CXLFixedMemoryWindowOptions'] }
+}
 
 ##
 # @X86CPURegister32:
@@ -841,6 +873,7 @@
 #          "merge": false,
 #          "dump": true,
 #          "prealloc": false,
+#          "share": false,
 #          "host-nodes": [0, 1],
 #          "policy": "bind"
 #        },
@@ -849,6 +882,7 @@
 #          "merge": false,
 #          "dump": true,
 #          "prealloc": true,
+#          "share": false,
 #          "host-nodes": [2, 3],
 #          "policy": "preferred"
 #        }
@@ -867,11 +901,12 @@
 #
 # @node-id: NUMA node ID the CPU belongs to
 # @socket-id: socket number within node/board the CPU belongs to
-# @die-id: die number within node/board the CPU belongs to (Since 4.1)
-# @core-id: core number within die the CPU belongs to
+# @die-id: die number within socket the CPU belongs to (since 4.1)
+# @cluster-id: cluster number within die the CPU belongs to (since 7.1)
+# @core-id: core number within cluster the CPU belongs to
 # @thread-id: thread number within core the CPU belongs to
 #
-# Note: currently there are 5 properties that could be present
+# Note: currently there are 6 properties that could be present
 #       but management should be prepared to pass through other
 #       properties with device_add command to allow for future
 #       interface extension. This also requires the filed names to be kept in
@@ -883,6 +918,7 @@
   'data': { '*node-id': 'int',
             '*socket-id': 'int',
             '*die-id': 'int',
+            '*cluster-id': 'int',
             '*core-id': 'int',
             '*thread-id': 'int'
   }
@@ -922,9 +958,9 @@
 #
 # -> { "execute": "query-hotpluggable-cpus" }
 # <- {"return": [
-#      { "props": { "core": 8 }, "type": "POWER8-spapr-cpu-core",
+#      { "props": { "core-id": 8 }, "type": "POWER8-spapr-cpu-core",
 #        "vcpus-count": 1 },
-#      { "props": { "core": 0 }, "type": "POWER8-spapr-cpu-core",
+#      { "props": { "core-id": 0 }, "type": "POWER8-spapr-cpu-core",
 #        "vcpus-count": 1, "qom-path": "/machine/unattached/device[0]"}
 #    ]}'
 #
@@ -970,7 +1006,7 @@
 # preconfigure stage to configure numa mapping before initializing
 # machine.
 #
-# Since 3.0
+# Since: 3.0
 ##
 { 'command': 'set-numa-node', 'boxed': true,
   'data': 'NumaOptions',
@@ -1019,7 +1055,6 @@
 #          Formula used: logical_vm_size = vm_ram_size - balloon_size
 #
 # Since: 0.14
-#
 ##
 { 'struct': 'BalloonInfo', 'data': {'actual': 'int' } }
 
@@ -1039,7 +1074,7 @@
 #
 # -> { "execute": "query-balloon" }
 # <- { "return": {
-#          "actual": 1073741824,
+#          "actual": 1073741824
 #       }
 #    }
 #
@@ -1195,21 +1230,120 @@
 }
 
 ##
+# @SgxEPCDeviceInfo:
+#
+# Sgx EPC state information
+#
+# @id: device's ID
+#
+# @memaddr: physical address in memory, where device is mapped
+#
+# @size: size of memory that the device provides
+#
+# @memdev: memory backend linked with device
+#
+# @node: the numa node (Since: 7.0)
+#
+# Since: 6.2
+##
+{ 'struct': 'SgxEPCDeviceInfo',
+  'data': { '*id': 'str',
+            'memaddr': 'size',
+            'size': 'size',
+            'node': 'int',
+            'memdev': 'str'
+          }
+}
+
+##
+# @MemoryDeviceInfoKind:
+#
+# Since: 2.1
+##
+{ 'enum': 'MemoryDeviceInfoKind',
+  'data': [ 'dimm', 'nvdimm', 'virtio-pmem', 'virtio-mem', 'sgx-epc' ] }
+
+##
+# @PCDIMMDeviceInfoWrapper:
+#
+# Since: 2.1
+##
+{ 'struct': 'PCDIMMDeviceInfoWrapper',
+  'data': { 'data': 'PCDIMMDeviceInfo' } }
+
+##
+# @VirtioPMEMDeviceInfoWrapper:
+#
+# Since: 2.1
+##
+{ 'struct': 'VirtioPMEMDeviceInfoWrapper',
+  'data': { 'data': 'VirtioPMEMDeviceInfo' } }
+
+##
+# @VirtioMEMDeviceInfoWrapper:
+#
+# Since: 2.1
+##
+{ 'struct': 'VirtioMEMDeviceInfoWrapper',
+  'data': { 'data': 'VirtioMEMDeviceInfo' } }
+
+##
+# @SgxEPCDeviceInfoWrapper:
+#
+# Since: 6.2
+##
+{ 'struct': 'SgxEPCDeviceInfoWrapper',
+  'data': { 'data': 'SgxEPCDeviceInfo' } }
+
+##
 # @MemoryDeviceInfo:
 #
 # Union containing information about a memory device
 #
 # nvdimm is included since 2.12. virtio-pmem is included since 4.1.
-# virtio-mem is included since 5.1.
+# virtio-mem is included since 5.1. sgx-epc is included since 6.2.
 #
 # Since: 2.1
 ##
 { 'union': 'MemoryDeviceInfo',
-  'data': { 'dimm': 'PCDIMMDeviceInfo',
-            'nvdimm': 'PCDIMMDeviceInfo',
-            'virtio-pmem': 'VirtioPMEMDeviceInfo',
-            'virtio-mem': 'VirtioMEMDeviceInfo'
+  'base': { 'type': 'MemoryDeviceInfoKind' },
+  'discriminator': 'type',
+  'data': { 'dimm': 'PCDIMMDeviceInfoWrapper',
+            'nvdimm': 'PCDIMMDeviceInfoWrapper',
+            'virtio-pmem': 'VirtioPMEMDeviceInfoWrapper',
+            'virtio-mem': 'VirtioMEMDeviceInfoWrapper',
+            'sgx-epc': 'SgxEPCDeviceInfoWrapper'
           }
+}
+
+##
+# @SgxEPC:
+#
+# Sgx EPC cmdline information
+#
+# @memdev: memory backend linked with device
+#
+# @node: the numa node (Since: 7.0)
+#
+# Since: 6.2
+##
+{ 'struct': 'SgxEPC',
+  'data': { 'memdev': 'str',
+            'node': 'int'
+          }
+}
+
+##
+# @SgxEPCProperties:
+#
+# SGX properties of machine types.
+#
+# @sgx-epc: list of ids of memory-backend-epc objects.
+#
+# Since: 6.2
+##
+{ 'struct': 'SgxEPCProperties',
+  'data': { 'sgx-epc': ['SgxEPC'] }
 }
 
 ##
@@ -1245,7 +1379,10 @@
 # action).
 #
 # @id: device's ID
+#
 # @size: the new size of memory that the device provides
+#
+# @qom-path: path to the device object in the QOM tree (since 6.2)
 #
 # Note: this event is rate-limited.
 #
@@ -1254,13 +1391,13 @@
 # Example:
 #
 # <- { "event": "MEMORY_DEVICE_SIZE_CHANGE",
-#      "data": { "id": "vm0", "size": 1073741824},
+#      "data": { "id": "vm0", "size": 1073741824,
+#                "qom-path": "/machine/unattached/device[2]" },
 #      "timestamp": { "seconds": 1588168529, "microseconds": 201316 } }
 #
 ##
 { 'event': 'MEMORY_DEVICE_SIZE_CHANGE',
-  'data': { '*id': 'str', 'size': 'size' } }
-
+  'data': { '*id': 'str', 'size': 'size', 'qom-path' : 'str'} }
 
 ##
 # @MEM_UNPLUG_ERROR:
@@ -1271,11 +1408,15 @@
 #
 # @msg: Informative message
 #
+# Features:
+# @deprecated: This event is deprecated. Use @DEVICE_UNPLUG_GUEST_ERROR
+#              instead.
+#
 # Since: 2.4
 #
 # Example:
 #
-# <- { "event": "MEM_UNPLUG_ERROR"
+# <- { "event": "MEM_UNPLUG_ERROR",
 #      "data": { "device": "dimm1",
 #                "msg": "acpi: device unplug for unsupported device"
 #      },
@@ -1283,7 +1424,38 @@
 #
 ##
 { 'event': 'MEM_UNPLUG_ERROR',
-  'data': { 'device': 'str', 'msg': 'str' } }
+  'data': { 'device': 'str', 'msg': 'str' },
+  'features': ['deprecated'] }
+
+##
+# @BootConfiguration:
+#
+# Schema for virtual machine boot configuration.
+#
+# @order: Boot order (a=floppy, c=hard disk, d=CD-ROM, n=network)
+#
+# @once: Boot order to apply on first boot
+#
+# @menu: Whether to show a boot menu
+#
+# @splash: The name of the file to be passed to the firmware as logo picture, if @menu is true.
+#
+# @splash-time: How long to show the logo picture, in milliseconds
+#
+# @reboot-timeout: Timeout before guest reboots after boot fails
+#
+# @strict: Whether to attempt booting from devices not included in the boot order
+#
+# Since: 7.1
+##
+{ 'struct': 'BootConfiguration', 'data': {
+     '*order': 'str',
+     '*once': 'str',
+     '*menu': 'bool',
+     '*splash': 'str',
+     '*splash-time': 'int',
+     '*reboot-timeout': 'int',
+     '*strict': 'bool' } }
 
 ##
 # @SMPConfiguration:
@@ -1297,7 +1469,9 @@
 #
 # @dies: number of dies per socket in the CPU topology
 #
-# @cores: number of cores per thread in the CPU topology
+# @clusters: number of clusters per die in the CPU topology (since 7.0)
+#
+# @cores: number of cores per cluster in the CPU topology
 #
 # @threads: number of threads per core in the CPU topology
 #
@@ -1309,6 +1483,202 @@
      '*cpus': 'int',
      '*sockets': 'int',
      '*dies': 'int',
+     '*clusters': 'int',
      '*cores': 'int',
      '*threads': 'int',
      '*maxcpus': 'int' } }
+
+##
+# @x-query-irq:
+#
+# Query interrupt statistics
+#
+# Features:
+# @unstable: This command is meant for debugging.
+#
+# Returns: interrupt statistics
+#
+# Since: 6.2
+##
+{ 'command': 'x-query-irq',
+  'returns': 'HumanReadableText',
+  'features': [ 'unstable' ] }
+
+##
+# @x-query-jit:
+#
+# Query TCG compiler statistics
+#
+# Features:
+# @unstable: This command is meant for debugging.
+#
+# Returns: TCG compiler statistics
+#
+# Since: 6.2
+##
+{ 'command': 'x-query-jit',
+  'returns': 'HumanReadableText',
+  'if': 'CONFIG_TCG',
+  'features': [ 'unstable' ] }
+
+##
+# @x-query-numa:
+#
+# Query NUMA topology information
+#
+# Features:
+# @unstable: This command is meant for debugging.
+#
+# Returns: topology information
+#
+# Since: 6.2
+##
+{ 'command': 'x-query-numa',
+  'returns': 'HumanReadableText',
+  'features': [ 'unstable' ] }
+
+##
+# @x-query-opcount:
+#
+# Query TCG opcode counters
+#
+# Features:
+# @unstable: This command is meant for debugging.
+#
+# Returns: TCG opcode counters
+#
+# Since: 6.2
+##
+{ 'command': 'x-query-opcount',
+  'returns': 'HumanReadableText',
+  'if': 'CONFIG_TCG',
+  'features': [ 'unstable' ] }
+
+##
+# @x-query-profile:
+#
+# Query TCG profiling information
+#
+# Features:
+# @unstable: This command is meant for debugging.
+#
+# Returns: profile information
+#
+# Since: 6.2
+##
+{ 'command': 'x-query-profile',
+  'returns': 'HumanReadableText',
+  'if': 'CONFIG_TCG',
+  'features': [ 'unstable' ] }
+
+##
+# @x-query-ramblock:
+#
+# Query system ramblock information
+#
+# Features:
+# @unstable: This command is meant for debugging.
+#
+# Returns: system ramblock information
+#
+# Since: 6.2
+##
+{ 'command': 'x-query-ramblock',
+  'returns': 'HumanReadableText',
+  'features': [ 'unstable' ] }
+
+##
+# @x-query-rdma:
+#
+# Query RDMA state
+#
+# Features:
+# @unstable: This command is meant for debugging.
+#
+# Returns: RDMA state
+#
+# Since: 6.2
+##
+{ 'command': 'x-query-rdma',
+  'returns': 'HumanReadableText',
+  'features': [ 'unstable' ] }
+
+##
+# @x-query-roms:
+#
+# Query information on the registered ROMS
+#
+# Features:
+# @unstable: This command is meant for debugging.
+#
+# Returns: registered ROMs
+#
+# Since: 6.2
+##
+{ 'command': 'x-query-roms',
+  'returns': 'HumanReadableText',
+  'features': [ 'unstable' ] }
+
+##
+# @x-query-usb:
+#
+# Query information on the USB devices
+#
+# Features:
+# @unstable: This command is meant for debugging.
+#
+# Returns: USB device information
+#
+# Since: 6.2
+##
+{ 'command': 'x-query-usb',
+  'returns': 'HumanReadableText',
+  'features': [ 'unstable' ] }
+
+##
+# @SmbiosEntryPointType:
+#
+# @32: SMBIOS version 2.1 (32-bit) Entry Point
+#
+# @64: SMBIOS version 3.0 (64-bit) Entry Point
+#
+# Since: 7.0
+##
+{ 'enum': 'SmbiosEntryPointType',
+  'data': [ '32', '64' ] }
+
+##
+# @MemorySizeConfiguration:
+#
+# Schema for memory size configuration.
+#
+# @size: memory size in bytes
+#
+# @max-size: maximum hotpluggable memory size in bytes
+#
+# @slots: number of available memory slots for hotplug
+#
+# Since: 7.1
+##
+{ 'struct': 'MemorySizeConfiguration', 'data': {
+     '*size': 'size',
+     '*max-size': 'size',
+     '*slots': 'uint64' } }
+
+##
+# @dumpdtb:
+#
+# Save the FDT in dtb format.
+#
+# @filename: name of the dtb file to be created
+#
+# Since: 7.2
+#
+# Example:
+#   {"execute": "dumpdtb"}
+#    "arguments": { "filename": "fdt.dtb" } }
+#
+##
+{ 'command': 'dumpdtb',
+  'data': { 'filename': 'str' },
+  'if': 'CONFIG_FDT' }

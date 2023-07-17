@@ -12,7 +12,12 @@
 #ifndef HW_VIRTIO_VHOST_VDPA_H
 #define HW_VIRTIO_VHOST_VDPA_H
 
+#include <gmodule.h>
+
+#include "hw/virtio/vhost-iova-tree.h"
+#include "hw/virtio/vhost-shadow-virtqueue.h"
 #include "hw/virtio/virtio.h"
+#include "standard-headers/linux/vhost_types.h"
 
 typedef struct VhostVDPAHostNotifier {
     MemoryRegion mr;
@@ -21,10 +26,24 @@ typedef struct VhostVDPAHostNotifier {
 
 typedef struct vhost_vdpa {
     int device_fd;
+    int index;
     uint32_t msg_type;
+    bool iotlb_batch_begin_sent;
     MemoryListener listener;
+    struct vhost_vdpa_iova_range iova_range;
+    uint64_t acked_features;
+    bool shadow_vqs_enabled;
+    /* IOVA mapping used by the Shadow Virtqueue */
+    VhostIOVATree *iova_tree;
+    GPtrArray *shadow_vqs;
+    const VhostShadowVirtqueueOps *shadow_vq_ops;
+    void *shadow_vq_ops_opaque;
     struct vhost_dev *dev;
     VhostVDPAHostNotifier notifier[VIRTIO_QUEUE_MAX];
 } VhostVDPA;
+
+int vhost_vdpa_dma_map(struct vhost_vdpa *v, hwaddr iova, hwaddr size,
+                       void *vaddr, bool readonly);
+int vhost_vdpa_dma_unmap(struct vhost_vdpa *v, hwaddr iova, hwaddr size);
 
 #endif

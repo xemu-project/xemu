@@ -77,7 +77,6 @@
     ( ( input ) & ( size - 1 )  )
 
 #define ETHER_TYPE_LEN 2
-#define ETH_MTU     1500
 
 #define VLAN_TCI_LEN 2
 #define VLAN_HLEN (ETHER_TYPE_LEN + VLAN_TCI_LEN)
@@ -86,7 +85,7 @@
 #  define DPRINTF(fmt, ...) \
     do { fprintf(stderr, "RTL8139: " fmt, ## __VA_ARGS__); } while (0)
 #else
-static inline GCC_FMT_ATTR(1, 2) int DPRINTF(const char *fmt, ...)
+static inline G_GNUC_PRINTF(1, 2) int DPRINTF(const char *fmt, ...)
 {
     return 0;
 }
@@ -1934,8 +1933,9 @@ static int rtl8139_cplus_transmit_one(RTL8139State *s)
 #define CP_TX_LS (1<<28)
 /* large send packet flag */
 #define CP_TX_LGSEN (1<<27)
-/* large send MSS mask, bits 16...25 */
-#define CP_TC_LGSEN_MSS_MASK ((1 << 12) - 1)
+/* large send MSS mask, bits 16...26 */
+#define CP_TC_LGSEN_MSS_SHIFT 16
+#define CP_TC_LGSEN_MSS_MASK ((1 << 11) - 1)
 
 /* IP checksum offload flag */
 #define CP_TX_IPCS (1<<18)
@@ -2027,18 +2027,21 @@ static int rtl8139_cplus_transmit_one(RTL8139State *s)
             s->currCPlusTxDesc = 0;
     }
 
+    /* Build the Tx Status Descriptor */
+    uint32_t tx_status = txdw0;
+
     /* transfer ownership to target */
-    txdw0 &= ~CP_TX_OWN;
+    tx_status &= ~CP_TX_OWN;
 
     /* reset error indicator bits */
-    txdw0 &= ~CP_TX_STATUS_UNF;
-    txdw0 &= ~CP_TX_STATUS_TES;
-    txdw0 &= ~CP_TX_STATUS_OWC;
-    txdw0 &= ~CP_TX_STATUS_LNKF;
-    txdw0 &= ~CP_TX_STATUS_EXC;
+    tx_status &= ~CP_TX_STATUS_UNF;
+    tx_status &= ~CP_TX_STATUS_TES;
+    tx_status &= ~CP_TX_STATUS_OWC;
+    tx_status &= ~CP_TX_STATUS_LNKF;
+    tx_status &= ~CP_TX_STATUS_EXC;
 
     /* update ring data */
-    val = cpu_to_le32(txdw0);
+    val = cpu_to_le32(tx_status);
     pci_dma_write(d, cplus_tx_ring_desc, (uint8_t *)&val, 4);
 
     /* Now decide if descriptor being processed is holding the last segment of packet */
@@ -2132,7 +2135,7 @@ static int rtl8139_cplus_transmit_one(RTL8139State *s)
             }
             ip_data_len -= hlen;
 
-            if (txdw0 & CP_TX_IPCS)
+            if (!(txdw0 & CP_TX_LGSEN) && (txdw0 & CP_TX_IPCS))
             {
                 DPRINTF("+++ C+ mode need IP checksum\n");
 
@@ -2149,14 +2152,17 @@ static int rtl8139_cplus_transmit_one(RTL8139State *s)
                     goto skip_offload;
                 }
 
-                int large_send_mss = (txdw0 >> 16) & CP_TC_LGSEN_MSS_MASK;
+                int large_send_mss = (txdw0 >> CP_TC_LGSEN_MSS_SHIFT) &
+                                     CP_TC_LGSEN_MSS_MASK;
+                if (large_send_mss == 0) {
+                    goto skip_offload;
+                }
 
-                DPRINTF("+++ C+ mode offloaded task TSO MTU=%d IP data %d "
-                    "frame data %d specified MSS=%d\n", ETH_MTU,
+                DPRINTF("+++ C+ mode offloaded task TSO IP data %d "
+                    "frame data %d specified MSS=%d\n",
                     ip_data_len, saved_size - ETH_HLEN, large_send_mss);
 
                 int tcp_send_offset = 0;
-                int send_count = 0;
 
                 /* maximum IP header length is 60 bytes */
                 uint8_t saved_ip_header[60];
@@ -2178,25 +2184,22 @@ static int rtl8139_cplus_transmit_one(RTL8139State *s)
                     goto skip_offload;
                 }
 
-                /* ETH_MTU = ip header len + tcp header len + payload */
                 int tcp_data_len = ip_data_len - tcp_hlen;
-                int tcp_chunk_size = ETH_MTU - hlen - tcp_hlen;
 
                 DPRINTF("+++ C+ mode TSO IP data len %d TCP hlen %d TCP "
-                    "data len %d TCP chunk size %d\n", ip_data_len,
-                    tcp_hlen, tcp_data_len, tcp_chunk_size);
+                    "data len %d\n", ip_data_len, tcp_hlen, tcp_data_len);
 
                 /* note the cycle below overwrites IP header data,
                    but restores it from saved_ip_header before sending packet */
 
                 int is_last_frame = 0;
 
-                for (tcp_send_offset = 0; tcp_send_offset < tcp_data_len; tcp_send_offset += tcp_chunk_size)
+                for (tcp_send_offset = 0; tcp_send_offset < tcp_data_len; tcp_send_offset += large_send_mss)
                 {
-                    uint16_t chunk_size = tcp_chunk_size;
+                    uint16_t chunk_size = large_send_mss;
 
                     /* check if this is the last frame */
-                    if (tcp_send_offset + tcp_chunk_size >= tcp_data_len)
+                    if (tcp_send_offset + large_send_mss >= tcp_data_len)
                     {
                         is_last_frame = 1;
                         chunk_size = tcp_data_len - tcp_send_offset;
@@ -2245,7 +2248,7 @@ static int rtl8139_cplus_transmit_one(RTL8139State *s)
                     ip->ip_len = cpu_to_be16(hlen + tcp_hlen + chunk_size);
 
                     /* increment IP id for subsequent frames */
-                    ip->ip_id = cpu_to_be16(tcp_send_offset/tcp_chunk_size + be16_to_cpu(ip->ip_id));
+                    ip->ip_id = cpu_to_be16(tcp_send_offset/large_send_mss + be16_to_cpu(ip->ip_id));
 
                     ip->ip_sum = 0;
                     ip->ip_sum = ip_checksum(eth_payload_data, hlen);
@@ -2261,13 +2264,12 @@ static int rtl8139_cplus_transmit_one(RTL8139State *s)
                     /* add transferred count to TCP sequence number */
                     stl_be_p(&p_tcp_hdr->th_seq,
                              chunk_size + ldl_be_p(&p_tcp_hdr->th_seq));
-                    ++send_count;
                 }
 
                 /* Stop sending this frame */
                 saved_size = 0;
             }
-            else if (txdw0 & (CP_TX_TCPCS|CP_TX_UDPCS))
+            else if (!(txdw0 & CP_TX_LGSEN) && (txdw0 & (CP_TX_TCPCS|CP_TX_UDPCS)))
             {
                 DPRINTF("+++ C+ mode need TCP or UDP checksum\n");
 

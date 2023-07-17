@@ -34,7 +34,7 @@ implot = declare_dependency(link_with: libimplot,
                             include_directories: 'implot')
 
 noc_ss = ss.source_set()
-noc_ss.add(when: 'CONFIG_LINUX', if_true: [xemu_gtk, files('noc_file_dialog/noc_file_dialog_gtk.c')])
+noc_ss.add(when: 'CONFIG_LINUX', if_true: [gtk, files('noc_file_dialog/noc_file_dialog_gtk.c')])
 noc_ss.add(when: 'CONFIG_WIN32', if_true: files('noc_file_dialog/noc_file_dialog_win32.cc'))
 noc_ss.add(when: 'CONFIG_DARWIN', if_true: files('noc_file_dialog/noc_file_dialog_macos.m'))
 noc_ss = noc_ss.apply(config_all, strict: false)

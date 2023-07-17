@@ -20,7 +20,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include <locale.h>
 
 #include "shaders_common.h"

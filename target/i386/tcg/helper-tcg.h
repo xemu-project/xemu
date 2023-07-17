@@ -38,12 +38,9 @@ QEMU_BUILD_BUG_ON(TCG_PHYS_ADDR_BITS > TARGET_PHYS_ADDR_SPACE_BITS);
  * @cpu: vCPU the interrupt is to be handled by.
  */
 void x86_cpu_do_interrupt(CPUState *cpu);
+#ifndef CONFIG_USER_ONLY
 bool x86_cpu_exec_interrupt(CPUState *cpu, int int_req);
-
-/* helper.c */
-bool x86_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
-                      MMUAccessType access_type, int mmu_idx,
-                      bool probe, uintptr_t retaddr);
+#endif
 
 void breakpoint_handler(CPUState *cs);
 
@@ -61,27 +58,44 @@ static inline target_long lshift(target_long x, int n)
 void tcg_x86_init(void);
 
 /* excp_helper.c */
-void QEMU_NORETURN raise_exception(CPUX86State *env, int exception_index);
-void QEMU_NORETURN raise_exception_ra(CPUX86State *env, int exception_index,
-                                      uintptr_t retaddr);
-void QEMU_NORETURN raise_exception_err(CPUX86State *env, int exception_index,
-                                       int error_code);
-void QEMU_NORETURN raise_exception_err_ra(CPUX86State *env, int exception_index,
-                                          int error_code, uintptr_t retaddr);
-void QEMU_NORETURN raise_interrupt(CPUX86State *nenv, int intno, int is_int,
-                                   int error_code, int next_eip_addend);
+G_NORETURN void raise_exception(CPUX86State *env, int exception_index);
+G_NORETURN void raise_exception_ra(CPUX86State *env, int exception_index,
+                                   uintptr_t retaddr);
+G_NORETURN void raise_exception_err(CPUX86State *env, int exception_index,
+                                    int error_code);
+G_NORETURN void raise_exception_err_ra(CPUX86State *env, int exception_index,
+                                       int error_code, uintptr_t retaddr);
+G_NORETURN void raise_interrupt(CPUX86State *nenv, int intno, int is_int,
+                                int error_code, int next_eip_addend);
+G_NORETURN void handle_unaligned_access(CPUX86State *env, vaddr vaddr,
+                                        MMUAccessType access_type,
+                                        uintptr_t retaddr);
+#ifdef CONFIG_USER_ONLY
+void x86_cpu_record_sigsegv(CPUState *cs, vaddr addr,
+                            MMUAccessType access_type,
+                            bool maperr, uintptr_t ra);
+void x86_cpu_record_sigbus(CPUState *cs, vaddr addr,
+                           MMUAccessType access_type, uintptr_t ra);
+#else
+bool x86_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+                      MMUAccessType access_type, int mmu_idx,
+                      bool probe, uintptr_t retaddr);
+G_NORETURN void x86_cpu_do_unaligned_access(CPUState *cs, vaddr vaddr,
+                                            MMUAccessType access_type,
+                                            int mmu_idx, uintptr_t retaddr);
+#endif
 
 /* cc_helper.c */
 extern const uint8_t parity_table[256];
 
 /* misc_helper.c */
 void cpu_load_eflags(CPUX86State *env, int eflags, int update_mask);
-void do_pause(CPUX86State *env) QEMU_NORETURN;
+G_NORETURN void do_pause(CPUX86State *env);
 
 /* sysemu/svm_helper.c */
 #ifndef CONFIG_USER_ONLY
-void QEMU_NORETURN cpu_vmexit(CPUX86State *nenv, uint32_t exit_code,
-                              uint64_t exit_info_1, uintptr_t retaddr);
+G_NORETURN void cpu_vmexit(CPUX86State *nenv, uint32_t exit_code,
+                           uint64_t exit_info_1, uintptr_t retaddr);
 void do_vmexit(CPUX86State *env);
 #endif
 

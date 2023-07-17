@@ -29,6 +29,8 @@
 #include "qemu/error-report.h"
 #include "qemu/main-loop.h"
 #include "qemu/timer.h"
+#include "qemu/hw-version.h"
+#include "qemu/memalign.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/blockdev.h"
 #include "sysemu/dma.h"
@@ -99,8 +101,12 @@ static void put_le16(uint16_t *p, unsigned int v)
 static void ide_identify_size(IDEState *s)
 {
     uint16_t *p = (uint16_t *)s->identify_data;
-    put_le16(p + 60, s->nb_sectors);
-    put_le16(p + 61, s->nb_sectors >> 16);
+    int64_t nb_sectors_lba28 = s->nb_sectors;
+    if (nb_sectors_lba28 >= 1 << 28) {
+        nb_sectors_lba28 = (1 << 28) - 1;
+    }
+    put_le16(p + 60, nb_sectors_lba28);
+    put_le16(p + 61, nb_sectors_lba28 >> 16);
     put_le16(p + 100, s->nb_sectors);
     put_le16(p + 101, s->nb_sectors >> 16);
     put_le16(p + 102, s->nb_sectors >> 32);
@@ -437,12 +443,16 @@ static const AIOCBInfo trim_aiocb_info = {
 static void ide_trim_bh_cb(void *opaque)
 {
     TrimAIOCB *iocb = opaque;
+    BlockBackend *blk = iocb->s->blk;
 
     iocb->common.cb(iocb->common.opaque, iocb->ret);
 
     qemu_bh_delete(iocb->bh);
     iocb->bh = NULL;
     qemu_aio_unref(iocb);
+
+    /* Paired with an increment in ide_issue_trim() */
+    blk_dec_in_flight(blk);
 }
 
 static void ide_issue_trim_cb(void *opaque, int ret)
@@ -511,6 +521,9 @@ BlockAIOCB *ide_issue_trim(
 {
     IDEState *s = opaque;
     TrimAIOCB *iocb;
+
+    /* Paired with a decrement in ide_trim_bh_cb() */
+    blk_inc_in_flight(s->blk);
 
     iocb = blk_aio_get(&trim_aiocb_info, s->blk, cb, cb_opaque);
     iocb->s = s;
@@ -1335,6 +1348,11 @@ static void ide_reset(IDEState *s)
         s->pio_aiocb = NULL;
     }
 
+    if (s->reset_reverts) {
+        s->reset_reverts = false;
+        s->heads         = s->drive_heads;
+        s->sectors       = s->drive_sectors;
+    }
     if (s->drive_kind == IDE_CFATA)
         s->mult_sectors = 0;
     else
@@ -1613,6 +1631,20 @@ static bool cmd_check_power_mode(IDEState *s, uint8_t cmd)
     return true;
 }
 
+/* INITIALIZE DEVICE PARAMETERS */
+static bool cmd_specify(IDEState *s, uint8_t cmd)
+{
+    if (s->blk && s->drive_kind != IDE_CD) {
+        s->heads = (s->select & (ATA_DEV_HS)) + 1;
+        s->sectors = s->nsector;
+        ide_set_irq(s->bus);
+    } else {
+        ide_abort_command(s);
+    }
+
+    return true;
+}
+
 static bool cmd_set_features(IDEState *s, uint8_t cmd)
 {
     uint16_t *identify_data;
@@ -1636,7 +1668,11 @@ static bool cmd_set_features(IDEState *s, uint8_t cmd)
         ide_flush_cache(s);
         return false;
     case 0xcc: /* reverting to power-on defaults enable */
+        s->reset_reverts = true;
+        return true;
     case 0x66: /* reverting to power-on defaults disable */
+        s->reset_reverts = false;
+        return true;
     case 0xaa: /* read look-ahead enable */
     case 0x55: /* read look-ahead disable */
     case 0x05: /* set advanced power management mode */
@@ -1699,8 +1735,14 @@ static bool cmd_identify_packet(IDEState *s, uint8_t cmd)
     return false;
 }
 
+/* EXECUTE DEVICE DIAGNOSTIC */
 static bool cmd_exec_dev_diagnostic(IDEState *s, uint8_t cmd)
 {
+    /*
+     * Clear the device register per the ATA (v6) specification,
+     * because ide_set_signature does not clear LBA or drive bits.
+     */
+    s->select = (ATA_DEV_ALWAYS_ON);
     ide_set_signature(s);
 
     if (s->drive_kind == IDE_CD) {
@@ -2049,7 +2091,7 @@ static const struct {
     [WIN_SEEK]                    = { cmd_seek, HD_CFA_OK | SET_DSC },
     [CFA_TRANSLATE_SECTOR]        = { cmd_cfa_translate_sector, CFA_OK },
     [WIN_DIAGNOSE]                = { cmd_exec_dev_diagnostic, ALL_OK },
-    [WIN_SPECIFY]                 = { cmd_nop, HD_CFA_OK | SET_DSC },
+    [WIN_SPECIFY]                 = { cmd_specify, HD_CFA_OK | SET_DSC },
     [WIN_STANDBYNOW2]             = { cmd_nop, HD_CFA_OK },
     [WIN_IDLEIMMEDIATE2]          = { cmd_nop, HD_CFA_OK },
     [WIN_STANDBY2]                = { cmd_nop, HD_CFA_OK },
@@ -2171,7 +2213,11 @@ uint32_t ide_ioport_read(void *opaque, uint32_t addr)
     hob = bus->cmd & (IDE_CTRL_HOB);
     switch (reg_num) {
     case ATA_IOPORT_RR_DATA:
-        ret = 0xff;
+        /*
+         * The pre-GRUB Solaris x86 bootloader relies upon inb
+         * consuming a word from the drive's sector buffer.
+         */
+        ret = ide_data_readw(bus, addr) & 0xff;
         break;
     case ATA_IOPORT_RR_ERROR:
         if ((!bus->ifs[0].blk && !bus->ifs[1].blk) ||
@@ -2548,8 +2594,8 @@ int ide_init_drive(IDEState *s, BlockBackend *blk, IDEDriveKind kind,
 
     blk_get_geometry(blk, &nb_sectors);
     s->cylinders = cylinders;
-    s->heads = heads;
-    s->sectors = secs;
+    s->heads = s->drive_heads = heads;
+    s->sectors = s->drive_sectors = secs;
     s->chs_trans = chs_trans;
     s->nb_sectors = nb_sectors;
     s->wwn = wwn;
@@ -2561,7 +2607,6 @@ int ide_init_drive(IDEState *s, BlockBackend *blk, IDEDriveKind kind,
     s->smart_selftest_count = 0;
     if (kind == IDE_CD) {
         blk_set_dev_ops(blk, &ide_cd_block_ops, s);
-        blk_set_guest_block_size(blk, 2048);
     } else {
         if (!blk_is_inserted(s->blk)) {
             error_setg(errp, "Device needs media, but drive is empty");

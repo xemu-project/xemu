@@ -22,6 +22,7 @@
  * THE SOFTWARE.
  */
 
+#include "../tcg-ldst.c.inc"
 #include "../tcg-pool.c.inc"
 
 #ifdef CONFIG_DEBUG_TCG
@@ -170,6 +171,10 @@ bool have_bmi1;
 bool have_popcnt;
 bool have_avx1;
 bool have_avx2;
+bool have_avx512bw;
+bool have_avx512dq;
+bool have_avx512vbmi2;
+bool have_avx512vl;
 bool have_movbe;
 
 #ifdef CONFIG_CPUID_H
@@ -241,8 +246,9 @@ static bool tcg_target_const_match(int64_t val, TCGType type, int ct)
 #define P_EXT		0x100		/* 0x0f opcode prefix */
 #define P_EXT38         0x200           /* 0x0f 0x38 opcode prefix */
 #define P_DATA16        0x400           /* 0x66 opcode prefix */
+#define P_VEXW          0x1000          /* Set VEX.W = 1 */
 #if TCG_TARGET_REG_BITS == 64
-# define P_REXW         0x1000          /* Set REX.W = 1 */
+# define P_REXW         P_VEXW          /* Set REX.W = 1; match VEXW */
 # define P_REXB_R       0x2000          /* REG field as byte register */
 # define P_REXB_RM      0x4000          /* R/M field as byte register */
 # define P_GS           0x8000          /* gs segment override */
@@ -256,6 +262,7 @@ static bool tcg_target_const_match(int64_t val, TCGType type, int ct)
 #define P_SIMDF3        0x20000         /* 0xf3 opcode prefix */
 #define P_SIMDF2        0x40000         /* 0xf2 opcode prefix */
 #define P_VEXL          0x80000         /* Set VEX.L = 1 */
+#define P_EVEX          0x100000        /* Requires EVEX encoding */
 
 #define OPC_ARITH_EvIz	(0x81)
 #define OPC_ARITH_EvIb	(0x83)
@@ -327,6 +334,7 @@ static bool tcg_target_const_match(int64_t val, TCGType type, int ct)
 #define OPC_PABSB       (0x1c | P_EXT38 | P_DATA16)
 #define OPC_PABSW       (0x1d | P_EXT38 | P_DATA16)
 #define OPC_PABSD       (0x1e | P_EXT38 | P_DATA16)
+#define OPC_VPABSQ      (0x1f | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
 #define OPC_PACKSSDW    (0x6b | P_EXT | P_DATA16)
 #define OPC_PACKSSWB    (0x63 | P_EXT | P_DATA16)
 #define OPC_PACKUSDW    (0x2b | P_EXT38 | P_DATA16)
@@ -353,15 +361,19 @@ static bool tcg_target_const_match(int64_t val, TCGType type, int ct)
 #define OPC_PMAXSB      (0x3c | P_EXT38 | P_DATA16)
 #define OPC_PMAXSW      (0xee | P_EXT | P_DATA16)
 #define OPC_PMAXSD      (0x3d | P_EXT38 | P_DATA16)
+#define OPC_VPMAXSQ     (0x3d | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
 #define OPC_PMAXUB      (0xde | P_EXT | P_DATA16)
 #define OPC_PMAXUW      (0x3e | P_EXT38 | P_DATA16)
 #define OPC_PMAXUD      (0x3f | P_EXT38 | P_DATA16)
+#define OPC_VPMAXUQ     (0x3f | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
 #define OPC_PMINSB      (0x38 | P_EXT38 | P_DATA16)
 #define OPC_PMINSW      (0xea | P_EXT | P_DATA16)
 #define OPC_PMINSD      (0x39 | P_EXT38 | P_DATA16)
+#define OPC_VPMINSQ     (0x39 | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
 #define OPC_PMINUB      (0xda | P_EXT | P_DATA16)
 #define OPC_PMINUW      (0x3a | P_EXT38 | P_DATA16)
 #define OPC_PMINUD      (0x3b | P_EXT38 | P_DATA16)
+#define OPC_VPMINUQ     (0x3b | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
 #define OPC_PMOVSXBW    (0x20 | P_EXT38 | P_DATA16)
 #define OPC_PMOVSXWD    (0x23 | P_EXT38 | P_DATA16)
 #define OPC_PMOVSXDQ    (0x25 | P_EXT38 | P_DATA16)
@@ -370,19 +382,21 @@ static bool tcg_target_const_match(int64_t val, TCGType type, int ct)
 #define OPC_PMOVZXDQ    (0x35 | P_EXT38 | P_DATA16)
 #define OPC_PMULLW      (0xd5 | P_EXT | P_DATA16)
 #define OPC_PMULLD      (0x40 | P_EXT38 | P_DATA16)
+#define OPC_VPMULLQ     (0x40 | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
 #define OPC_POR         (0xeb | P_EXT | P_DATA16)
 #define OPC_PSHUFB      (0x00 | P_EXT38 | P_DATA16)
 #define OPC_PSHUFD      (0x70 | P_EXT | P_DATA16)
 #define OPC_PSHUFLW     (0x70 | P_EXT | P_SIMDF2)
 #define OPC_PSHUFHW     (0x70 | P_EXT | P_SIMDF3)
 #define OPC_PSHIFTW_Ib  (0x71 | P_EXT | P_DATA16) /* /2 /6 /4 */
-#define OPC_PSHIFTD_Ib  (0x72 | P_EXT | P_DATA16) /* /2 /6 /4 */
+#define OPC_PSHIFTD_Ib  (0x72 | P_EXT | P_DATA16) /* /1 /2 /6 /4 */
 #define OPC_PSHIFTQ_Ib  (0x73 | P_EXT | P_DATA16) /* /2 /6 /4 */
 #define OPC_PSLLW       (0xf1 | P_EXT | P_DATA16)
 #define OPC_PSLLD       (0xf2 | P_EXT | P_DATA16)
 #define OPC_PSLLQ       (0xf3 | P_EXT | P_DATA16)
 #define OPC_PSRAW       (0xe1 | P_EXT | P_DATA16)
 #define OPC_PSRAD       (0xe2 | P_EXT | P_DATA16)
+#define OPC_VPSRAQ      (0xe2 | P_EXT | P_DATA16 | P_VEXW | P_EVEX)
 #define OPC_PSRLW       (0xd1 | P_EXT | P_DATA16)
 #define OPC_PSRLD       (0xd2 | P_EXT | P_DATA16)
 #define OPC_PSRLQ       (0xd3 | P_EXT | P_DATA16)
@@ -436,18 +450,37 @@ static bool tcg_target_const_match(int64_t val, TCGType type, int ct)
 #define OPC_VPBROADCASTW (0x79 | P_EXT38 | P_DATA16)
 #define OPC_VPBROADCASTD (0x58 | P_EXT38 | P_DATA16)
 #define OPC_VPBROADCASTQ (0x59 | P_EXT38 | P_DATA16)
-#define OPC_VPERMQ      (0x00 | P_EXT3A | P_DATA16 | P_REXW)
+#define OPC_VPERMQ      (0x00 | P_EXT3A | P_DATA16 | P_VEXW)
 #define OPC_VPERM2I128  (0x46 | P_EXT3A | P_DATA16 | P_VEXL)
+#define OPC_VPROLVD     (0x15 | P_EXT38 | P_DATA16 | P_EVEX)
+#define OPC_VPROLVQ     (0x15 | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
+#define OPC_VPRORVD     (0x14 | P_EXT38 | P_DATA16 | P_EVEX)
+#define OPC_VPRORVQ     (0x14 | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
+#define OPC_VPSHLDW     (0x70 | P_EXT3A | P_DATA16 | P_VEXW | P_EVEX)
+#define OPC_VPSHLDD     (0x71 | P_EXT3A | P_DATA16 | P_EVEX)
+#define OPC_VPSHLDQ     (0x71 | P_EXT3A | P_DATA16 | P_VEXW | P_EVEX)
+#define OPC_VPSHLDVW    (0x70 | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
+#define OPC_VPSHLDVD    (0x71 | P_EXT38 | P_DATA16 | P_EVEX)
+#define OPC_VPSHLDVQ    (0x71 | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
+#define OPC_VPSHRDVW    (0x72 | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
+#define OPC_VPSHRDVD    (0x73 | P_EXT38 | P_DATA16 | P_EVEX)
+#define OPC_VPSHRDVQ    (0x73 | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
+#define OPC_VPSLLVW     (0x12 | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
 #define OPC_VPSLLVD     (0x47 | P_EXT38 | P_DATA16)
-#define OPC_VPSLLVQ     (0x47 | P_EXT38 | P_DATA16 | P_REXW)
+#define OPC_VPSLLVQ     (0x47 | P_EXT38 | P_DATA16 | P_VEXW)
+#define OPC_VPSRAVW     (0x11 | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
 #define OPC_VPSRAVD     (0x46 | P_EXT38 | P_DATA16)
+#define OPC_VPSRAVQ     (0x46 | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
+#define OPC_VPSRLVW     (0x10 | P_EXT38 | P_DATA16 | P_VEXW | P_EVEX)
 #define OPC_VPSRLVD     (0x45 | P_EXT38 | P_DATA16)
-#define OPC_VPSRLVQ     (0x45 | P_EXT38 | P_DATA16 | P_REXW)
+#define OPC_VPSRLVQ     (0x45 | P_EXT38 | P_DATA16 | P_VEXW)
+#define OPC_VPTERNLOGQ  (0x25 | P_EXT3A | P_DATA16 | P_VEXW | P_EVEX)
 #define OPC_VZEROUPPER  (0x77 | P_EXT)
 #define OPC_XCHG_ax_r32	(0x90)
 
-#define OPC_GRP3_Ev	(0xf7)
-#define OPC_GRP5	(0xff)
+#define OPC_GRP3_Eb     (0xf6)
+#define OPC_GRP3_Ev     (0xf7)
+#define OPC_GRP5        (0xff)
 #define OPC_GRP14       (0x73 | P_EXT | P_DATA16)
 
 /* Group 1 opcode extensions for 0x80-0x83.
@@ -469,6 +502,7 @@ static bool tcg_target_const_match(int64_t val, TCGType type, int ct)
 #define SHIFT_SAR 7
 
 /* Group 3 opcode extensions for 0xf6, 0xf7.  To be used with OPC_GRP3.  */
+#define EXT3_TESTi 0
 #define EXT3_NOT   2
 #define EXT3_NEG   3
 #define EXT3_MUL   4
@@ -600,7 +634,7 @@ static void tcg_out_vex_opc(TCGContext *s, int opc, int r, int v,
 
     /* Use the two byte form if possible, which cannot encode
        VEX.W, VEX.B, VEX.X, or an m-mmmm field other than P_EXT.  */
-    if ((opc & (P_EXT | P_EXT38 | P_EXT3A | P_REXW)) == P_EXT
+    if ((opc & (P_EXT | P_EXT38 | P_EXT3A | P_VEXW)) == P_EXT
         && ((rm | index) & 8) == 0) {
         /* Two byte VEX prefix.  */
         tcg_out8(s, 0xc5);
@@ -625,7 +659,7 @@ static void tcg_out_vex_opc(TCGContext *s, int opc, int r, int v,
         tmp |= (rm & 8 ? 0 : 0x20);            /* VEX.B */
         tcg_out8(s, tmp);
 
-        tmp = (opc & P_REXW ? 0x80 : 0);       /* VEX.W */
+        tmp = (opc & P_VEXW ? 0x80 : 0);       /* VEX.W */
     }
 
     tmp |= (opc & P_VEXL ? 0x04 : 0);      /* VEX.L */
@@ -642,9 +676,57 @@ static void tcg_out_vex_opc(TCGContext *s, int opc, int r, int v,
     tcg_out8(s, opc);
 }
 
+static void tcg_out_evex_opc(TCGContext *s, int opc, int r, int v,
+                             int rm, int index)
+{
+    /* The entire 4-byte evex prefix; with R' and V' set. */
+    uint32_t p = 0x08041062;
+    int mm, pp;
+
+    tcg_debug_assert(have_avx512vl);
+
+    /* EVEX.mm */
+    if (opc & P_EXT3A) {
+        mm = 3;
+    } else if (opc & P_EXT38) {
+        mm = 2;
+    } else if (opc & P_EXT) {
+        mm = 1;
+    } else {
+        g_assert_not_reached();
+    }
+
+    /* EVEX.pp */
+    if (opc & P_DATA16) {
+        pp = 1;                          /* 0x66 */
+    } else if (opc & P_SIMDF3) {
+        pp = 2;                          /* 0xf3 */
+    } else if (opc & P_SIMDF2) {
+        pp = 3;                          /* 0xf2 */
+    } else {
+        pp = 0;
+    }
+
+    p = deposit32(p, 8, 2, mm);
+    p = deposit32(p, 13, 1, (rm & 8) == 0);             /* EVEX.RXB.B */
+    p = deposit32(p, 14, 1, (index & 8) == 0);          /* EVEX.RXB.X */
+    p = deposit32(p, 15, 1, (r & 8) == 0);              /* EVEX.RXB.R */
+    p = deposit32(p, 16, 2, pp);
+    p = deposit32(p, 19, 4, ~v);
+    p = deposit32(p, 23, 1, (opc & P_VEXW) != 0);
+    p = deposit32(p, 29, 2, (opc & P_VEXL) != 0);
+
+    tcg_out32(s, p);
+    tcg_out8(s, opc);
+}
+
 static void tcg_out_vex_modrm(TCGContext *s, int opc, int r, int v, int rm)
 {
-    tcg_out_vex_opc(s, opc, r, v, rm, 0);
+    if (opc & P_EVEX) {
+        tcg_out_evex_opc(s, opc, r, v, rm, 0);
+    } else {
+        tcg_out_vex_opc(s, opc, r, v, rm, 0);
+    }
     tcg_out8(s, 0xc0 | (LOWREGMASK(r) << 3) | LOWREGMASK(rm));
 }
 
@@ -1626,7 +1708,7 @@ static void tcg_out_branch(TCGContext *s, int call, const tcg_insn_unit *dest)
     } else {
         /* rip-relative addressing into the constant pool.
            This is 6 + 8 = 14 bytes, as compared to using an
-           an immediate load 10 + 6 = 16 bytes, plus we may
+           immediate load 10 + 6 = 16 bytes, plus we may
            be able to re-use the pool constant for more calls.  */
         tcg_out_opc(s, OPC_GRP5, 0, 0, 0);
         tcg_out8(s, (call ? EXT5_CALLN_Ev : EXT5_JMPN_Ev) << 3 | 5);
@@ -1661,32 +1743,30 @@ static void tcg_out_nopn(TCGContext *s, int n)
 }
 
 #if defined(CONFIG_SOFTMMU)
-#include "../tcg-ldst.c.inc"
-
 /* helper signature: helper_ret_ld_mmu(CPUState *env, target_ulong addr,
  *                                     int mmu_idx, uintptr_t ra)
  */
-static void * const qemu_ld_helpers[16] = {
+static void * const qemu_ld_helpers[(MO_SIZE | MO_BSWAP) + 1] = {
     [MO_UB]   = helper_ret_ldub_mmu,
     [MO_LEUW] = helper_le_lduw_mmu,
     [MO_LEUL] = helper_le_ldul_mmu,
-    [MO_LEQ]  = helper_le_ldq_mmu,
+    [MO_LEUQ] = helper_le_ldq_mmu,
     [MO_BEUW] = helper_be_lduw_mmu,
     [MO_BEUL] = helper_be_ldul_mmu,
-    [MO_BEQ]  = helper_be_ldq_mmu,
+    [MO_BEUQ] = helper_be_ldq_mmu,
 };
 
 /* helper signature: helper_ret_st_mmu(CPUState *env, target_ulong addr,
  *                                     uintxx_t val, int mmu_idx, uintptr_t ra)
  */
-static void * const qemu_st_helpers[16] = {
+static void * const qemu_st_helpers[(MO_SIZE | MO_BSWAP) + 1] = {
     [MO_UB]   = helper_ret_stb_mmu,
     [MO_LEUW] = helper_le_stw_mmu,
     [MO_LEUL] = helper_le_stl_mmu,
-    [MO_LEQ]  = helper_le_stq_mmu,
+    [MO_LEUQ] = helper_le_stq_mmu,
     [MO_BEUW] = helper_be_stw_mmu,
     [MO_BEUL] = helper_be_stl_mmu,
-    [MO_BEQ]  = helper_be_stq_mmu,
+    [MO_BEUQ] = helper_be_stq_mmu,
 };
 
 /* Perform the TLB load and compare.
@@ -1796,7 +1876,7 @@ static inline void tcg_out_tlb_load(TCGContext *s, TCGReg addrlo, TCGReg addrhi,
  * for a load or store, so that we can later generate the correct helper code
  */
 static void add_qemu_ldst_label(TCGContext *s, bool is_ld, bool is_64,
-                                TCGMemOpIdx oi,
+                                MemOpIdx oi,
                                 TCGReg datalo, TCGReg datahi,
                                 TCGReg addrlo, TCGReg addrhi,
                                 tcg_insn_unit *raddr,
@@ -1823,7 +1903,7 @@ static void add_qemu_ldst_label(TCGContext *s, bool is_ld, bool is_64,
  */
 static bool tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
 {
-    TCGMemOpIdx oi = l->oi;
+    MemOpIdx oi = l->oi;
     MemOp opc = get_memop(oi);
     TCGReg data_reg;
     tcg_insn_unit **label_ptr = &l->label_ptr[0];
@@ -1882,7 +1962,7 @@ static bool tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
     case MO_UL:
         tcg_out_mov(s, TCG_TYPE_I32, data_reg, TCG_REG_EAX);
         break;
-    case MO_Q:
+    case MO_UQ:
         if (TCG_TARGET_REG_BITS == 64) {
             tcg_out_mov(s, TCG_TYPE_I64, data_reg, TCG_REG_RAX);
         } else if (data_reg == TCG_REG_EDX) {
@@ -1908,7 +1988,7 @@ static bool tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
  */
 static bool tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
 {
-    TCGMemOpIdx oi = l->oi;
+    MemOpIdx oi = l->oi;
     MemOp opc = get_memop(oi);
     MemOp s_bits = opc & MO_SIZE;
     tcg_insn_unit **label_ptr = &l->label_ptr[0];
@@ -1971,7 +2051,84 @@ static bool tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
     tcg_out_jmp(s, qemu_st_helpers[opc & (MO_BSWAP | MO_SIZE)]);
     return true;
 }
-#elif TCG_TARGET_REG_BITS == 32
+#else
+
+static void tcg_out_test_alignment(TCGContext *s, bool is_ld, TCGReg addrlo,
+                                   TCGReg addrhi, unsigned a_bits)
+{
+    unsigned a_mask = (1 << a_bits) - 1;
+    TCGLabelQemuLdst *label;
+
+    /*
+     * We are expecting a_bits to max out at 7, so we can usually use testb.
+     * For i686, we have to use testl for %esi/%edi.
+     */
+    if (a_mask <= 0xff && (TCG_TARGET_REG_BITS == 64 || addrlo < 4)) {
+        tcg_out_modrm(s, OPC_GRP3_Eb | P_REXB_RM, EXT3_TESTi, addrlo);
+        tcg_out8(s, a_mask);
+    } else {
+        tcg_out_modrm(s, OPC_GRP3_Ev, EXT3_TESTi, addrlo);
+        tcg_out32(s, a_mask);
+    }
+
+    /* jne slow_path */
+    tcg_out_opc(s, OPC_JCC_long + JCC_JNE, 0, 0, 0);
+
+    label = new_ldst_label(s);
+    label->is_ld = is_ld;
+    label->addrlo_reg = addrlo;
+    label->addrhi_reg = addrhi;
+    label->raddr = tcg_splitwx_to_rx(s->code_ptr + 4);
+    label->label_ptr[0] = s->code_ptr;
+
+    s->code_ptr += 4;
+}
+
+static bool tcg_out_fail_alignment(TCGContext *s, TCGLabelQemuLdst *l)
+{
+    /* resolve label address */
+    tcg_patch32(l->label_ptr[0], s->code_ptr - l->label_ptr[0] - 4);
+
+    if (TCG_TARGET_REG_BITS == 32) {
+        int ofs = 0;
+
+        tcg_out_st(s, TCG_TYPE_PTR, TCG_AREG0, TCG_REG_ESP, ofs);
+        ofs += 4;
+
+        tcg_out_st(s, TCG_TYPE_I32, l->addrlo_reg, TCG_REG_ESP, ofs);
+        ofs += 4;
+        if (TARGET_LONG_BITS == 64) {
+            tcg_out_st(s, TCG_TYPE_I32, l->addrhi_reg, TCG_REG_ESP, ofs);
+            ofs += 4;
+        }
+
+        tcg_out_pushi(s, (uintptr_t)l->raddr);
+    } else {
+        tcg_out_mov(s, TCG_TYPE_TL, tcg_target_call_iarg_regs[1],
+                    l->addrlo_reg);
+        tcg_out_mov(s, TCG_TYPE_PTR, tcg_target_call_iarg_regs[0], TCG_AREG0);
+
+        tcg_out_movi(s, TCG_TYPE_PTR, TCG_REG_RAX, (uintptr_t)l->raddr);
+        tcg_out_push(s, TCG_REG_RAX);
+    }
+
+    /* "Tail call" to the helper, with the return address back inline. */
+    tcg_out_jmp(s, (const void *)(l->is_ld ? helper_unaligned_ld
+                                  : helper_unaligned_st));
+    return true;
+}
+
+static bool tcg_out_qemu_ld_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
+{
+    return tcg_out_fail_alignment(s, l);
+}
+
+static bool tcg_out_qemu_st_slow_path(TCGContext *s, TCGLabelQemuLdst *l)
+{
+    return tcg_out_fail_alignment(s, l);
+}
+
+#if TCG_TARGET_REG_BITS == 32
 # define x86_guest_base_seg     0
 # define x86_guest_base_index   -1
 # define x86_guest_base_offset  guest_base
@@ -2005,6 +2162,7 @@ static inline int setup_guest_base_seg(void)
     return 0;
 }
 # endif
+#endif
 #endif /* SOFTMMU */
 
 static void tcg_out_qemu_ld_direct(TCGContext *s, TCGReg datalo, TCGReg datahi,
@@ -2074,7 +2232,7 @@ static void tcg_out_qemu_ld_direct(TCGContext *s, TCGReg datalo, TCGReg datahi,
         }
         break;
 #endif
-    case MO_Q:
+    case MO_UQ:
         if (TCG_TARGET_REG_BITS == 64) {
             tcg_out_modrm_sib_offset(s, movop + P_REXW + seg, datalo,
                                      base, index, 0, ofs);
@@ -2109,11 +2267,13 @@ static void tcg_out_qemu_ld(TCGContext *s, const TCGArg *args, bool is64)
 {
     TCGReg datalo, datahi, addrlo;
     TCGReg addrhi __attribute__((unused));
-    TCGMemOpIdx oi;
+    MemOpIdx oi;
     MemOp opc;
 #if defined(CONFIG_SOFTMMU)
     int mem_index;
     tcg_insn_unit *label_ptr[2];
+#else
+    unsigned a_bits;
 #endif
 
     datalo = *args++;
@@ -2136,6 +2296,11 @@ static void tcg_out_qemu_ld(TCGContext *s, const TCGArg *args, bool is64)
     add_qemu_ldst_label(s, true, is64, oi, datalo, datahi, addrlo, addrhi,
                         s->code_ptr, label_ptr);
 #else
+    a_bits = get_alignment_bits(opc);
+    if (a_bits) {
+        tcg_out_test_alignment(s, true, addrlo, addrhi, a_bits);
+    }
+
     tcg_out_qemu_ld_direct(s, datalo, datahi, addrlo, x86_guest_base_index,
                            x86_guest_base_offset, x86_guest_base_seg,
                            is64, opc);
@@ -2198,11 +2363,13 @@ static void tcg_out_qemu_st(TCGContext *s, const TCGArg *args, bool is64)
 {
     TCGReg datalo, datahi, addrlo;
     TCGReg addrhi __attribute__((unused));
-    TCGMemOpIdx oi;
+    MemOpIdx oi;
     MemOp opc;
 #if defined(CONFIG_SOFTMMU)
     int mem_index;
     tcg_insn_unit *label_ptr[2];
+#else
+    unsigned a_bits;
 #endif
 
     datalo = *args++;
@@ -2225,6 +2392,11 @@ static void tcg_out_qemu_st(TCGContext *s, const TCGArg *args, bool is64)
     add_qemu_ldst_label(s, false, is64, oi, datalo, datahi, addrlo, addrhi,
                         s->code_ptr, label_ptr);
 #else
+    a_bits = get_alignment_bits(opc);
+    if (a_bits) {
+        tcg_out_test_alignment(s, false, addrlo, addrhi, a_bits);
+    }
+
     tcg_out_qemu_st_direct(s, datalo, datahi, addrlo, x86_guest_base_index,
                            x86_guest_base_offset, x86_guest_base_seg, opc);
 #endif
@@ -2893,7 +3065,7 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
         OPC_PSUBUB, OPC_PSUBUW, OPC_UD2, OPC_UD2
     };
     static int const mul_insn[4] = {
-        OPC_UD2, OPC_PMULLW, OPC_PMULLD, OPC_UD2
+        OPC_UD2, OPC_PMULLW, OPC_PMULLD, OPC_VPMULLQ
     };
     static int const shift_imm_insn[4] = {
         OPC_UD2, OPC_PSHIFTW_Ib, OPC_PSHIFTD_Ib, OPC_PSHIFTQ_Ib
@@ -2917,28 +3089,31 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
         OPC_PACKUSWB, OPC_PACKUSDW, OPC_UD2, OPC_UD2
     };
     static int const smin_insn[4] = {
-        OPC_PMINSB, OPC_PMINSW, OPC_PMINSD, OPC_UD2
+        OPC_PMINSB, OPC_PMINSW, OPC_PMINSD, OPC_VPMINSQ
     };
     static int const smax_insn[4] = {
-        OPC_PMAXSB, OPC_PMAXSW, OPC_PMAXSD, OPC_UD2
+        OPC_PMAXSB, OPC_PMAXSW, OPC_PMAXSD, OPC_VPMAXSQ
     };
     static int const umin_insn[4] = {
-        OPC_PMINUB, OPC_PMINUW, OPC_PMINUD, OPC_UD2
+        OPC_PMINUB, OPC_PMINUW, OPC_PMINUD, OPC_VPMINUQ
     };
     static int const umax_insn[4] = {
-        OPC_PMAXUB, OPC_PMAXUW, OPC_PMAXUD, OPC_UD2
+        OPC_PMAXUB, OPC_PMAXUW, OPC_PMAXUD, OPC_VPMAXUQ
+    };
+    static int const rotlv_insn[4] = {
+        OPC_UD2, OPC_UD2, OPC_VPROLVD, OPC_VPROLVQ
+    };
+    static int const rotrv_insn[4] = {
+        OPC_UD2, OPC_UD2, OPC_VPRORVD, OPC_VPRORVQ
     };
     static int const shlv_insn[4] = {
-        /* TODO: AVX512 adds support for MO_16.  */
-        OPC_UD2, OPC_UD2, OPC_VPSLLVD, OPC_VPSLLVQ
+        OPC_UD2, OPC_VPSLLVW, OPC_VPSLLVD, OPC_VPSLLVQ
     };
     static int const shrv_insn[4] = {
-        /* TODO: AVX512 adds support for MO_16.  */
-        OPC_UD2, OPC_UD2, OPC_VPSRLVD, OPC_VPSRLVQ
+        OPC_UD2, OPC_VPSRLVW, OPC_VPSRLVD, OPC_VPSRLVQ
     };
     static int const sarv_insn[4] = {
-        /* TODO: AVX512 adds support for MO_16, MO_64.  */
-        OPC_UD2, OPC_UD2, OPC_VPSRAVD, OPC_UD2
+        OPC_UD2, OPC_VPSRAVW, OPC_VPSRAVD, OPC_VPSRAVQ
     };
     static int const shls_insn[4] = {
         OPC_UD2, OPC_PSLLW, OPC_PSLLD, OPC_PSLLQ
@@ -2947,16 +3122,24 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
         OPC_UD2, OPC_PSRLW, OPC_PSRLD, OPC_PSRLQ
     };
     static int const sars_insn[4] = {
-        OPC_UD2, OPC_PSRAW, OPC_PSRAD, OPC_UD2
+        OPC_UD2, OPC_PSRAW, OPC_PSRAD, OPC_VPSRAQ
+    };
+    static int const vpshldi_insn[4] = {
+        OPC_UD2, OPC_VPSHLDW, OPC_VPSHLDD, OPC_VPSHLDQ
+    };
+    static int const vpshldv_insn[4] = {
+        OPC_UD2, OPC_VPSHLDVW, OPC_VPSHLDVD, OPC_VPSHLDVQ
+    };
+    static int const vpshrdv_insn[4] = {
+        OPC_UD2, OPC_VPSHRDVW, OPC_VPSHRDVD, OPC_VPSHRDVQ
     };
     static int const abs_insn[4] = {
-        /* TODO: AVX512 adds support for MO_64.  */
-        OPC_PABSB, OPC_PABSW, OPC_PABSD, OPC_UD2
+        OPC_PABSB, OPC_PABSW, OPC_PABSD, OPC_VPABSQ
     };
 
     TCGType type = vecl + TCG_TYPE_V64;
     int insn, sub;
-    TCGArg a0, a1, a2;
+    TCGArg a0, a1, a2, a3;
 
     a0 = args[0];
     a1 = args[1];
@@ -3014,6 +3197,12 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
     case INDEX_op_sarv_vec:
         insn = sarv_insn[vece];
         goto gen_simd;
+    case INDEX_op_rotlv_vec:
+        insn = rotlv_insn[vece];
+        goto gen_simd;
+    case INDEX_op_rotrv_vec:
+        insn = rotrv_insn[vece];
+        goto gen_simd;
     case INDEX_op_shls_vec:
         insn = shls_insn[vece];
         goto gen_simd;
@@ -3034,6 +3223,16 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
         goto gen_simd;
     case INDEX_op_x86_packus_vec:
         insn = packus_insn[vece];
+        goto gen_simd;
+    case INDEX_op_x86_vpshldv_vec:
+        insn = vpshldv_insn[vece];
+        a1 = a2;
+        a2 = args[3];
+        goto gen_simd;
+    case INDEX_op_x86_vpshrdv_vec:
+        insn = vpshrdv_insn[vece];
+        a1 = a2;
+        a2 = args[3];
         goto gen_simd;
 #if TCG_TARGET_REG_BITS == 32
     case INDEX_op_dup2_vec:
@@ -3078,17 +3277,30 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
         break;
 
     case INDEX_op_shli_vec:
+        insn = shift_imm_insn[vece];
         sub = 6;
         goto gen_shift;
     case INDEX_op_shri_vec:
+        insn = shift_imm_insn[vece];
         sub = 2;
         goto gen_shift;
     case INDEX_op_sari_vec:
-        tcg_debug_assert(vece != MO_64);
+        if (vece == MO_64) {
+            insn = OPC_PSHIFTD_Ib | P_VEXW | P_EVEX;
+        } else {
+            insn = shift_imm_insn[vece];
+        }
         sub = 4;
+        goto gen_shift;
+    case INDEX_op_rotli_vec:
+        insn = OPC_PSHIFTD_Ib | P_EVEX;  /* VPROL[DQ] */
+        if (vece == MO_64) {
+            insn |= P_VEXW;
+        }
+        sub = 1;
+        goto gen_shift;
     gen_shift:
         tcg_debug_assert(vece != MO_8);
-        insn = shift_imm_insn[vece];
         if (type == TCG_TYPE_V256) {
             insn |= P_VEXL;
         }
@@ -3124,7 +3336,51 @@ static void tcg_out_vec_op(TCGContext *s, TCGOpcode opc,
         insn = OPC_VPERM2I128;
         sub = args[3];
         goto gen_simd_imm8;
+    case INDEX_op_x86_vpshldi_vec:
+        insn = vpshldi_insn[vece];
+        sub = args[3];
+        goto gen_simd_imm8;
+
+    case INDEX_op_not_vec:
+        insn = OPC_VPTERNLOGQ;
+        a2 = a1;
+        sub = 0x33; /* !B */
+        goto gen_simd_imm8;
+    case INDEX_op_nor_vec:
+        insn = OPC_VPTERNLOGQ;
+        sub = 0x11; /* norCB */
+        goto gen_simd_imm8;
+    case INDEX_op_nand_vec:
+        insn = OPC_VPTERNLOGQ;
+        sub = 0x77; /* nandCB */
+        goto gen_simd_imm8;
+    case INDEX_op_eqv_vec:
+        insn = OPC_VPTERNLOGQ;
+        sub = 0x99; /* xnorCB */
+        goto gen_simd_imm8;
+    case INDEX_op_orc_vec:
+        insn = OPC_VPTERNLOGQ;
+        sub = 0xdd; /* orB!C */
+        goto gen_simd_imm8;
+
+    case INDEX_op_bitsel_vec:
+        insn = OPC_VPTERNLOGQ;
+        a3 = args[3];
+        if (a0 == a1) {
+            a1 = a2;
+            a2 = a3;
+            sub = 0xca; /* A?B:C */
+        } else if (a0 == a2) {
+            a2 = a3;
+            sub = 0xe2; /* B?A:C */
+        } else {
+            tcg_out_mov(s, type, a0, a3);
+            sub = 0xb8; /* B?C:A */
+        }
+        goto gen_simd_imm8;
+
     gen_simd_imm8:
+        tcg_debug_assert(insn != OPC_UD2);
         if (type == TCG_TYPE_V256) {
             insn |= P_VEXL;
         }
@@ -3392,6 +3648,10 @@ static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
     case INDEX_op_or_vec:
     case INDEX_op_xor_vec:
     case INDEX_op_andc_vec:
+    case INDEX_op_orc_vec:
+    case INDEX_op_nand_vec:
+    case INDEX_op_nor_vec:
+    case INDEX_op_eqv_vec:
     case INDEX_op_ssadd_vec:
     case INDEX_op_usadd_vec:
     case INDEX_op_sssub_vec:
@@ -3403,10 +3663,11 @@ static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
     case INDEX_op_shlv_vec:
     case INDEX_op_shrv_vec:
     case INDEX_op_sarv_vec:
+    case INDEX_op_rotlv_vec:
+    case INDEX_op_rotrv_vec:
     case INDEX_op_shls_vec:
     case INDEX_op_shrs_vec:
     case INDEX_op_sars_vec:
-    case INDEX_op_rotls_vec:
     case INDEX_op_cmp_vec:
     case INDEX_op_x86_shufps_vec:
     case INDEX_op_x86_blend_vec:
@@ -3415,6 +3676,7 @@ static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
     case INDEX_op_x86_vperm2i128_vec:
     case INDEX_op_x86_punpckl_vec:
     case INDEX_op_x86_punpckh_vec:
+    case INDEX_op_x86_vpshldi_vec:
 #if TCG_TARGET_REG_BITS == 32
     case INDEX_op_dup2_vec:
 #endif
@@ -3422,12 +3684,19 @@ static TCGConstraintSetIndex tcg_target_op_def(TCGOpcode op)
 
     case INDEX_op_abs_vec:
     case INDEX_op_dup_vec:
+    case INDEX_op_not_vec:
     case INDEX_op_shli_vec:
     case INDEX_op_shri_vec:
     case INDEX_op_sari_vec:
+    case INDEX_op_rotli_vec:
     case INDEX_op_x86_psrldq_vec:
         return C_O1_I1(x, x);
 
+    case INDEX_op_x86_vpshldv_vec:
+    case INDEX_op_x86_vpshrdv_vec:
+        return C_O1_I3(x, 0, x, x);
+
+    case INDEX_op_bitsel_vec:
     case INDEX_op_x86_vpblendvb_vec:
         return C_O1_I3(x, x, x, x);
 
@@ -3445,11 +3714,19 @@ int tcg_can_emit_vec_op(TCGOpcode opc, TCGType type, unsigned vece)
     case INDEX_op_or_vec:
     case INDEX_op_xor_vec:
     case INDEX_op_andc_vec:
+    case INDEX_op_orc_vec:
+    case INDEX_op_nand_vec:
+    case INDEX_op_nor_vec:
+    case INDEX_op_eqv_vec:
+    case INDEX_op_not_vec:
+    case INDEX_op_bitsel_vec:
         return 1;
-    case INDEX_op_rotli_vec:
     case INDEX_op_cmp_vec:
     case INDEX_op_cmpsel_vec:
         return -1;
+
+    case INDEX_op_rotli_vec:
+        return have_avx512vl && vece >= MO_32 ? 1 : -1;
 
     case INDEX_op_shli_vec:
     case INDEX_op_shri_vec:
@@ -3457,41 +3734,76 @@ int tcg_can_emit_vec_op(TCGOpcode opc, TCGType type, unsigned vece)
         return vece == MO_8 ? -1 : 1;
 
     case INDEX_op_sari_vec:
-        /* We must expand the operation for MO_8.  */
-        if (vece == MO_8) {
+        switch (vece) {
+        case MO_8:
             return -1;
-        }
-        /* We can emulate this for MO_64, but it does not pay off
-           unless we're producing at least 4 values.  */
-        if (vece == MO_64) {
+        case MO_16:
+        case MO_32:
+            return 1;
+        case MO_64:
+            if (have_avx512vl) {
+                return 1;
+            }
+            /*
+             * We can emulate this for MO_64, but it does not pay off
+             * unless we're producing at least 4 values.
+             */
             return type >= TCG_TYPE_V256 ? -1 : 0;
         }
-        return 1;
+        return 0;
 
     case INDEX_op_shls_vec:
     case INDEX_op_shrs_vec:
         return vece >= MO_16;
     case INDEX_op_sars_vec:
-        return vece >= MO_16 && vece <= MO_32;
+        switch (vece) {
+        case MO_16:
+        case MO_32:
+            return 1;
+        case MO_64:
+            return have_avx512vl;
+        }
+        return 0;
     case INDEX_op_rotls_vec:
         return vece >= MO_16 ? -1 : 0;
 
     case INDEX_op_shlv_vec:
     case INDEX_op_shrv_vec:
-        return have_avx2 && vece >= MO_32;
+        switch (vece) {
+        case MO_16:
+            return have_avx512bw;
+        case MO_32:
+        case MO_64:
+            return have_avx2;
+        }
+        return 0;
     case INDEX_op_sarv_vec:
-        return have_avx2 && vece == MO_32;
+        switch (vece) {
+        case MO_16:
+            return have_avx512bw;
+        case MO_32:
+            return have_avx2;
+        case MO_64:
+            return have_avx512vl;
+        }
+        return 0;
     case INDEX_op_rotlv_vec:
     case INDEX_op_rotrv_vec:
-        return have_avx2 && vece >= MO_32 ? -1 : 0;
+        switch (vece) {
+        case MO_16:
+            return have_avx512vbmi2 ? -1 : 0;
+        case MO_32:
+        case MO_64:
+            return have_avx512vl ? 1 : have_avx2 ? -1 : 0;
+        }
+        return 0;
 
     case INDEX_op_mul_vec:
-        if (vece == MO_8) {
-            /* We can expand the operation for MO_8.  */
+        switch (vece) {
+        case MO_8:
             return -1;
-        }
-        if (vece == MO_64) {
-            return 0;
+        case MO_64:
+            return have_avx512dq;
         }
         return 1;
 
@@ -3505,7 +3817,7 @@ int tcg_can_emit_vec_op(TCGOpcode opc, TCGType type, unsigned vece)
     case INDEX_op_umin_vec:
     case INDEX_op_umax_vec:
     case INDEX_op_abs_vec:
-        return vece <= MO_32;
+        return vece <= MO_32 || have_avx512vl;
 
     default:
         return 0;
@@ -3623,6 +3935,12 @@ static void expand_vec_rotli(TCGType type, unsigned vece,
         return;
     }
 
+    if (have_avx512vbmi2) {
+        vec_gen_4(INDEX_op_x86_vpshldi_vec, type, vece,
+                  tcgv_vec_arg(v0), tcgv_vec_arg(v1), tcgv_vec_arg(v1), imm);
+        return;
+    }
+
     t = tcg_temp_new_vec(type);
     tcg_gen_shli_vec(vece, t, v1, imm);
     tcg_gen_shri_vec(vece, v0, v1, (8 << vece) - imm);
@@ -3630,31 +3948,19 @@ static void expand_vec_rotli(TCGType type, unsigned vece,
     tcg_temp_free_vec(t);
 }
 
-static void expand_vec_rotls(TCGType type, unsigned vece,
-                             TCGv_vec v0, TCGv_vec v1, TCGv_i32 lsh)
-{
-    TCGv_i32 rsh;
-    TCGv_vec t;
-
-    tcg_debug_assert(vece != MO_8);
-
-    t = tcg_temp_new_vec(type);
-    rsh = tcg_temp_new_i32();
-
-    tcg_gen_neg_i32(rsh, lsh);
-    tcg_gen_andi_i32(rsh, rsh, (8 << vece) - 1);
-    tcg_gen_shls_vec(vece, t, v1, lsh);
-    tcg_gen_shrs_vec(vece, v0, v1, rsh);
-    tcg_gen_or_vec(vece, v0, v0, t);
-    tcg_temp_free_vec(t);
-    tcg_temp_free_i32(rsh);
-}
-
 static void expand_vec_rotv(TCGType type, unsigned vece, TCGv_vec v0,
                             TCGv_vec v1, TCGv_vec sh, bool right)
 {
-    TCGv_vec t = tcg_temp_new_vec(type);
+    TCGv_vec t;
 
+    if (have_avx512vbmi2) {
+        vec_gen_4(right ? INDEX_op_x86_vpshrdv_vec : INDEX_op_x86_vpshldv_vec,
+                  type, vece, tcgv_vec_arg(v0), tcgv_vec_arg(v1),
+                  tcgv_vec_arg(v1), tcgv_vec_arg(sh));
+        return;
+    }
+
+    t = tcg_temp_new_vec(type);
     tcg_gen_dupi_vec(vece, t, 8 << vece);
     tcg_gen_sub_vec(vece, t, t, sh);
     if (right) {
@@ -3665,6 +3971,35 @@ static void expand_vec_rotv(TCGType type, unsigned vece, TCGv_vec v0,
         tcg_gen_shlv_vec(vece, v0, v1, sh);
     }
     tcg_gen_or_vec(vece, v0, v0, t);
+    tcg_temp_free_vec(t);
+}
+
+static void expand_vec_rotls(TCGType type, unsigned vece,
+                             TCGv_vec v0, TCGv_vec v1, TCGv_i32 lsh)
+{
+    TCGv_vec t = tcg_temp_new_vec(type);
+
+    tcg_debug_assert(vece != MO_8);
+
+    if (vece >= MO_32 ? have_avx512vl : have_avx512vbmi2) {
+        tcg_gen_dup_i32_vec(vece, t, lsh);
+        if (vece >= MO_32) {
+            tcg_gen_rotlv_vec(vece, v0, v1, t);
+        } else {
+            expand_vec_rotv(type, vece, v0, v1, t, false);
+        }
+    } else {
+        TCGv_i32 rsh = tcg_temp_new_i32();
+
+        tcg_gen_neg_i32(rsh, lsh);
+        tcg_gen_andi_i32(rsh, rsh, (8 << vece) - 1);
+        tcg_gen_shls_vec(vece, t, v1, lsh);
+        tcg_gen_shrs_vec(vece, v0, v1, rsh);
+        tcg_gen_or_vec(vece, v0, v0, t);
+
+        tcg_temp_free_i32(rsh);
+    }
+
     tcg_temp_free_vec(t);
 }
 
@@ -3763,28 +4098,28 @@ static bool expand_vec_cmp_noinv(TCGType type, unsigned vece, TCGv_vec v0,
         fixup = NEED_SWAP | NEED_INV;
         break;
     case TCG_COND_LEU:
-        if (vece <= MO_32) {
+        if (tcg_can_emit_vec_op(INDEX_op_umin_vec, type, vece)) {
             fixup = NEED_UMIN;
         } else {
             fixup = NEED_BIAS | NEED_INV;
         }
         break;
     case TCG_COND_GTU:
-        if (vece <= MO_32) {
+        if (tcg_can_emit_vec_op(INDEX_op_umin_vec, type, vece)) {
             fixup = NEED_UMIN | NEED_INV;
         } else {
             fixup = NEED_BIAS;
         }
         break;
     case TCG_COND_GEU:
-        if (vece <= MO_32) {
+        if (tcg_can_emit_vec_op(INDEX_op_umax_vec, type, vece)) {
             fixup = NEED_UMAX;
         } else {
             fixup = NEED_BIAS | NEED_SWAP | NEED_INV;
         }
         break;
     case TCG_COND_LTU:
-        if (vece <= MO_32) {
+        if (tcg_can_emit_vec_op(INDEX_op_umax_vec, type, vece)) {
             fixup = NEED_UMAX | NEED_INV;
         } else {
             fixup = NEED_BIAS | NEED_SWAP;
@@ -4035,12 +4370,12 @@ static void tcg_out_nop_fill(tcg_insn_unit *p, int count)
 static void tcg_target_init(TCGContext *s)
 {
 #ifdef CONFIG_CPUID_H
-    unsigned a, b, c, d, b7 = 0;
-    int max = __get_cpuid_max(0, 0);
+    unsigned a, b, c, d, b7 = 0, c7 = 0;
+    unsigned max = __get_cpuid_max(0, 0);
 
     if (max >= 7) {
         /* BMI1 is available on AMD Piledriver and Intel Haswell CPUs.  */
-        __cpuid_count(7, 0, a, b7, c, d);
+        __cpuid_count(7, 0, a, b7, c7, d);
         have_bmi1 = (b7 & bit_BMI) != 0;
         have_bmi2 = (b7 & bit_BMI2) != 0;
     }
@@ -4070,6 +4405,22 @@ static void tcg_target_init(TCGContext *s)
             if ((xcrl & 6) == 6) {
                 have_avx1 = (c & bit_AVX) != 0;
                 have_avx2 = (b7 & bit_AVX2) != 0;
+
+                /*
+                 * There are interesting instructions in AVX512, so long
+                 * as we have AVX512VL, which indicates support for EVEX
+                 * on sizes smaller than 512 bits.  We are required to
+                 * check that OPMASK and all extended ZMM state are enabled
+                 * even if we're not using them -- the insns will fault.
+                 */
+                if ((xcrl & 0xe0) == 0xe0
+                    && (b7 & bit_AVX512F)
+                    && (b7 & bit_AVX512VL)) {
+                    have_avx512vl = true;
+                    have_avx512bw = (b7 & bit_AVX512BW) != 0;
+                    have_avx512dq = (b7 & bit_AVX512DQ) != 0;
+                    have_avx512vbmi2 = (c7 & bit_AVX512VBMI2) != 0;
+                }
             }
         }
     }

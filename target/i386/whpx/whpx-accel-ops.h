@@ -7,8 +7,8 @@
  * See the COPYING file in the top-level directory.
  */
 
-#ifndef WHPX_CPUS_H
-#define WHPX_CPUS_H
+#ifndef TARGET_I386_WHPX_ACCEL_OPS_H
+#define TARGET_I386_WHPX_ACCEL_OPS_H
 
 #include "sysemu/cpus.h"
 
@@ -21,6 +21,7 @@ void whpx_cpu_synchronize_state(CPUState *cpu);
 void whpx_cpu_synchronize_post_reset(CPUState *cpu);
 void whpx_cpu_synchronize_post_init(CPUState *cpu);
 void whpx_cpu_synchronize_pre_loadvm(CPUState *cpu);
+void whpx_cpu_synchronize_pre_resume(bool step_pending);
 
 /* state subset only touched by the VCPU itself during runtime */
 #define WHPX_SET_RUNTIME_STATE   1
@@ -29,4 +30,4 @@ void whpx_cpu_synchronize_pre_loadvm(CPUState *cpu);
 /* full state set, modified during initialization or on vmload */
 #define WHPX_SET_FULL_STATE      3
 
-#endif /* WHPX_CPUS_H */
+#endif /* TARGET_I386_WHPX_ACCEL_OPS_H */

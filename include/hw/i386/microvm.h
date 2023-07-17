@@ -18,7 +18,6 @@
 #ifndef HW_I386_MICROVM_H
 #define HW_I386_MICROVM_H
 
-#include "qemu-common.h"
 #include "exec/hwaddr.h"
 #include "qemu/notify.h"
 
@@ -68,8 +67,6 @@
 #define PCIE_ECAM_SIZE        0x10000000
 
 /* Machine type options */
-#define MICROVM_MACHINE_PIT                 "pit"
-#define MICROVM_MACHINE_PIC                 "pic"
 #define MICROVM_MACHINE_RTC                 "rtc"
 #define MICROVM_MACHINE_PCIE                "pcie"
 #define MICROVM_MACHINE_IOAPIC2             "ioapic2"
@@ -87,8 +84,6 @@ struct MicrovmMachineState {
     X86MachineState parent;
 
     /* Machine type options */
-    OnOffAuto pic;
-    OnOffAuto pit;
     OnOffAuto rtc;
     OnOffAuto pcie;
     OnOffAuto ioapic2;
@@ -104,6 +99,10 @@ struct MicrovmMachineState {
     Notifier machine_done;
     Notifier powerdown_req;
     struct GPEXConfig gpex;
+
+    /* device tree */
+    void *fdt;
+    uint32_t ioapic_phandle[2];
 };
 
 #define TYPE_MICROVM_MACHINE   MACHINE_TYPE_NAME("microvm")

@@ -98,7 +98,7 @@ static void xbox_flash_init(MachineState *ms, MemoryRegion *rom_memory)
     }
 
     if (failed_to_load_bios) {
-        fprintf(stderr, "Failed to load BIOS '%s'\n", filename);
+        fprintf(stderr, "Failed to load BIOS '%s'\n", filename ? filename : "(null)");
         memset(bios_data, 0xff, bios_size);
     }
     if (filename != NULL) {
@@ -278,7 +278,6 @@ void xbox_init_common(MachineState *machine,
     }
 
     /* init basic PC hardware */
-    pcms->pit_enabled = 1; // XBOX_FIXME: What's the right way to do this?
     rtc_state = mc146818_rtc_init(isa_bus, 2000, NULL);
 
     if (kvm_pit_in_kernel()) {

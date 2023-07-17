@@ -30,7 +30,6 @@
 #include "migration/misc.h"
 #include "migration.h"
 #include "savevm.h"
-#include "qemu-file-channel.h"
 #include "qemu-file.h"
 #include "migration/vmstate.h"
 #include "block/block.h"
@@ -49,6 +48,7 @@
 #include "trace.h"
 #include "exec/target_page.h"
 #include "io/channel-buffer.h"
+#include "io/channel-tls.h"
 #include "migration/colo.h"
 #include "hw/boards.h"
 #include "hw/qdev-properties.h"
@@ -60,6 +60,7 @@
 #include "qemu/yank.h"
 #include "sysemu/cpus.h"
 #include "yank_functions.h"
+#include "sysemu/qtest.h"
 
 #define MAX_THROTTLE  (128 << 20)      /* Migration transfer speed throttling */
 
@@ -162,7 +163,8 @@ INITIALIZE_MIGRATE_CAPS_SET(check_caps_background_snapshot,
     MIGRATION_CAPABILITY_COMPRESS,
     MIGRATION_CAPABILITY_XBZRLE,
     MIGRATION_CAPABILITY_X_COLO,
-    MIGRATION_CAPABILITY_VALIDATE_UUID);
+    MIGRATION_CAPABILITY_VALIDATE_UUID,
+    MIGRATION_CAPABILITY_ZERO_COPY_SEND);
 
 /* When we add fault tolerance, we could have several
    migrations at once.  For now we don't need to add
@@ -179,6 +181,18 @@ static int migration_maybe_pause(MigrationState *s,
                                  int new_state);
 static void migrate_fd_cancel(MigrationState *s);
 
+static bool migrate_allow_multi_channels = true;
+
+void migrate_protocol_allow_multi_channels(bool allow)
+{
+    migrate_allow_multi_channels = allow;
+}
+
+bool migrate_multi_channels_is_allowed(void)
+{
+    return migrate_allow_multi_channels;
+}
+
 static gint page_request_addr_cmp(gconstpointer ap, gconstpointer bp)
 {
     uintptr_t a = (uintptr_t) ap, b = (uintptr_t) bp;
@@ -188,8 +202,6 @@ static gint page_request_addr_cmp(gconstpointer ap, gconstpointer bp)
 
 void migration_object_init(void)
 {
-    Error *err = NULL;
-
     /* This can only be called once. */
     assert(!current_migration);
     current_migration = MIGRATION_OBJ(object_new(TYPE_MIGRATION));
@@ -204,34 +216,42 @@ void migration_object_init(void)
     current_incoming->postcopy_remote_fds =
         g_array_new(FALSE, TRUE, sizeof(struct PostCopyFD));
     qemu_mutex_init(&current_incoming->rp_mutex);
+    qemu_mutex_init(&current_incoming->postcopy_prio_thread_mutex);
     qemu_event_init(&current_incoming->main_thread_load_event, false);
     qemu_sem_init(&current_incoming->postcopy_pause_sem_dst, 0);
     qemu_sem_init(&current_incoming->postcopy_pause_sem_fault, 0);
+    qemu_sem_init(&current_incoming->postcopy_pause_sem_fast_load, 0);
     qemu_mutex_init(&current_incoming->page_request_mutex);
     current_incoming->page_requested = g_tree_new(page_request_addr_cmp);
 
-    if (!migration_object_check(current_migration, &err)) {
-        error_report_err(err);
-        exit(1);
-    }
+    migration_object_check(current_migration, &error_fatal);
 
     blk_mig_init();
     ram_mig_init();
     dirty_bitmap_mig_init();
 }
 
-void migration_cancel(void)
+void migration_cancel(const Error *error)
 {
+    if (error) {
+        migrate_set_error(current_migration, error);
+    }
     migrate_fd_cancel(current_migration);
 }
 
 void migration_shutdown(void)
 {
     /*
+     * When the QEMU main thread exit, the COLO thread
+     * may wait a semaphore. So, we should wakeup the
+     * COLO thread before migration shutdown.
+     */
+    colo_shutdown();
+    /*
      * Cancel the current migration - that will (eventually)
      * stop the migration using this structure
      */
-    migration_cancel();
+    migration_cancel(NULL);
     object_unref(OBJECT(current_migration));
 
     /*
@@ -262,6 +282,19 @@ MigrationIncomingState *migration_incoming_get_current(void)
     return current_incoming;
 }
 
+void migration_incoming_transport_cleanup(MigrationIncomingState *mis)
+{
+    if (mis->socket_address_list) {
+        qapi_free_SocketAddressList(mis->socket_address_list);
+        mis->socket_address_list = NULL;
+    }
+
+    if (mis->transport_cleanup) {
+        mis->transport_cleanup(mis->transport_data);
+        mis->transport_data = mis->transport_cleanup = NULL;
+    }
+}
+
 void migration_incoming_state_destroy(void)
 {
     struct MigrationIncomingState *mis = migration_incoming_get_current();
@@ -282,10 +315,8 @@ void migration_incoming_state_destroy(void)
         g_array_free(mis->postcopy_remote_fds, TRUE);
         mis->postcopy_remote_fds = NULL;
     }
-    if (mis->transport_cleanup) {
-        mis->transport_cleanup(mis->transport_data);
-    }
 
+    migration_incoming_transport_cleanup(mis);
     qemu_event_reset(&mis->main_thread_load_event);
 
     if (mis->page_requested) {
@@ -293,9 +324,10 @@ void migration_incoming_state_destroy(void)
         mis->page_requested = NULL;
     }
 
-    if (mis->socket_address_list) {
-        qapi_free_SocketAddressList(mis->socket_address_list);
-        mis->socket_address_list = NULL;
+    if (mis->postcopy_qemufile_dst) {
+        migration_ioc_unregister_yank_from_file(mis->postcopy_qemufile_dst);
+        qemu_fclose(mis->postcopy_qemufile_dst);
+        mis->postcopy_qemufile_dst = NULL;
     }
 
     yank_unregister_instance(MIGRATION_YANK_INSTANCE);
@@ -396,7 +428,7 @@ int migrate_send_rp_message_req_pages(MigrationIncomingState *mis,
 int migrate_send_rp_req_pages(MigrationIncomingState *mis,
                               RAMBlock *rb, ram_addr_t start, uint64_t haddr)
 {
-    void *aligned = (void *)(uintptr_t)(haddr & (-qemu_ram_pagesize(rb)));
+    void *aligned = (void *)(uintptr_t)ROUND_DOWN(haddr, qemu_ram_pagesize(rb));
     bool received = false;
 
     WITH_QEMU_LOCK_GUARD(&mis->page_request_mutex) {
@@ -458,10 +490,12 @@ static void qemu_start_incoming_migration(const char *uri, Error **errp)
 {
     const char *p = NULL;
 
+    migrate_protocol_allow_multi_channels(false); /* reset it anyway */
     qapi_event_send_migration(MIGRATION_STATUS_SETUP);
     if (strstart(uri, "tcp:", &p) ||
         strstart(uri, "unix:", NULL) ||
         strstart(uri, "vsock:", NULL)) {
+        migrate_protocol_allow_multi_channels(true);
         socket_start_incoming_migration(p ? p : uri, errp);
 #ifdef CONFIG_RDMA
     } else if (strstart(uri, "rdma:", &p)) {
@@ -490,9 +524,9 @@ static void process_incoming_migration_bh(void *opaque)
     if (!migrate_late_block_activate() ||
          (autostart && (!global_state_received() ||
             global_state_get_runstate() == RUN_STATE_RUNNING))) {
-        /* Make sure all file formats flush their mutable metadata.
+        /* Make sure all file formats throw away their mutable metadata.
          * If we get an error here, just don't restart the VM yet. */
-        bdrv_invalidate_cache_all(&local_err);
+        bdrv_activate_all(&local_err);
         if (local_err) {
             error_report_err(local_err);
             local_err = NULL;
@@ -540,7 +574,8 @@ static void process_incoming_migration_bh(void *opaque)
     migration_incoming_state_destroy();
 }
 
-static void process_incoming_migration_co(void *opaque)
+static void coroutine_fn
+process_incoming_migration_co(void *opaque)
 {
     MigrationIncomingState *mis = migration_incoming_get_current();
     PostcopyState ps;
@@ -578,8 +613,8 @@ static void process_incoming_migration_co(void *opaque)
 
     /* we get COLO info, and know if we are in COLO mode */
     if (!ret && migration_incoming_colo_enabled()) {
-        /* Make sure all file formats flush their mutable metadata */
-        bdrv_invalidate_cache_all(&local_err);
+        /* Make sure all file formats throw away their mutable metadata */
+        bdrv_activate_all(&local_err);
         if (local_err) {
             error_report_err(local_err);
             goto fail;
@@ -590,8 +625,10 @@ static void process_incoming_migration_co(void *opaque)
         mis->have_colo_incoming_thread = true;
         qemu_coroutine_yield();
 
+        qemu_mutex_unlock_iothread();
         /* Wait checkpoint incoming thread exit before free resource */
         qemu_thread_join(&mis->colo_incoming_thread);
+        qemu_mutex_lock_iothread();
         /* We hold the global iothread lock, so it is safe here */
         colo_release_ram_cache();
     }
@@ -616,30 +653,25 @@ fail:
 }
 
 /**
- * @migration_incoming_setup: Setup incoming migration
- *
- * Returns 0 for no error or 1 for error
- *
+ * migration_incoming_setup: Setup incoming migration
  * @f: file for main migration channel
  * @errp: where to put errors
+ *
+ * Returns: %true on success, %false on error.
  */
-static int migration_incoming_setup(QEMUFile *f, Error **errp)
+static bool migration_incoming_setup(QEMUFile *f, Error **errp)
 {
     MigrationIncomingState *mis = migration_incoming_get_current();
-    Error *local_err = NULL;
 
-    if (multifd_load_setup(&local_err) != 0) {
-        /* We haven't been able to create multifd threads
-           nothing better to do */
-        error_report_err(local_err);
-        exit(EXIT_FAILURE);
+    if (multifd_load_setup(errp) != 0) {
+        return false;
     }
 
     if (!mis->from_src_file) {
         mis->from_src_file = f;
     }
     qemu_file_set_blocking(f, false);
-    return 0;
+    return true;
 }
 
 void migration_incoming_process(void)
@@ -649,28 +681,29 @@ void migration_incoming_process(void)
 }
 
 /* Returns true if recovered from a paused migration, otherwise false */
-static bool postcopy_try_recover(QEMUFile *f)
+static bool postcopy_try_recover(void)
 {
     MigrationIncomingState *mis = migration_incoming_get_current();
 
     if (mis->state == MIGRATION_STATUS_POSTCOPY_PAUSED) {
         /* Resumed from a paused postcopy migration */
 
-        mis->from_src_file = f;
+        /* This should be set already in migration_incoming_setup() */
+        assert(mis->from_src_file);
         /* Postcopy has standalone thread to do vm load */
-        qemu_file_set_blocking(f, true);
+        qemu_file_set_blocking(mis->from_src_file, true);
 
         /* Re-configure the return path */
-        mis->to_src_file = qemu_file_get_return_path(f);
+        mis->to_src_file = qemu_file_get_return_path(mis->from_src_file);
 
         migrate_set_state(&mis->state, MIGRATION_STATUS_POSTCOPY_PAUSED,
                           MIGRATION_STATUS_POSTCOPY_RECOVER);
 
         /*
          * Here, we only wake up the main loading thread (while the
-         * fault thread will still be waiting), so that we can receive
+         * rest threads will still be waiting), so that we can receive
          * commands from source now, and answer it if needed. The
-         * fault thread will be woken up afterwards until we are sure
+         * rest threads will be woken up afterwards until we are sure
          * that source is ready to reply to page requests.
          */
         qemu_sem_post(&mis->postcopy_pause_sem_dst);
@@ -682,17 +715,18 @@ static bool postcopy_try_recover(QEMUFile *f)
 
 void migration_fd_process_incoming(QEMUFile *f, Error **errp)
 {
-    Error *local_err = NULL;
-
-    if (postcopy_try_recover(f)) {
+    if (!migration_incoming_setup(f, errp)) {
         return;
     }
-
-    if (migration_incoming_setup(f, &local_err)) {
-        error_propagate(errp, local_err);
+    if (postcopy_try_recover()) {
         return;
     }
     migration_incoming_process();
+}
+
+static bool migration_needs_multiple_sockets(void)
+{
+    return migrate_use_multifd() || migrate_postcopy_preempt();
 }
 
 void migration_ioc_process_incoming(QIOChannel *ioc, Error **errp)
@@ -700,30 +734,31 @@ void migration_ioc_process_incoming(QIOChannel *ioc, Error **errp)
     MigrationIncomingState *mis = migration_incoming_get_current();
     Error *local_err = NULL;
     bool start_migration;
+    QEMUFile *f;
 
     if (!mis->from_src_file) {
         /* The first connection (multifd may have multiple) */
-        QEMUFile *f = qemu_fopen_channel_input(ioc);
+        f = qemu_file_new_input(ioc);
 
-        /* If it's a recovery, we're done */
-        if (postcopy_try_recover(f)) {
-            return;
-        }
-
-        if (migration_incoming_setup(f, &local_err)) {
-            error_propagate(errp, local_err);
+        if (!migration_incoming_setup(f, errp)) {
             return;
         }
 
         /*
          * Common migration only needs one channel, so we can start
-         * right now.  Multifd needs more than one channel, we wait.
+         * right now.  Some features need more than one channel, we wait.
          */
-        start_migration = !migrate_use_multifd();
+        start_migration = !migration_needs_multiple_sockets();
     } else {
         /* Multiple connections */
-        assert(migrate_use_multifd());
-        start_migration = multifd_recv_new_channel(ioc, &local_err);
+        assert(migration_needs_multiple_sockets());
+        if (migrate_use_multifd()) {
+            start_migration = multifd_recv_new_channel(ioc, &local_err);
+        } else {
+            assert(migrate_postcopy_preempt());
+            f = qemu_file_new_input(ioc);
+            start_migration = postcopy_preempt_new_channel(mis, f);
+        }
         if (local_err) {
             error_propagate(errp, local_err);
             return;
@@ -731,6 +766,10 @@ void migration_ioc_process_incoming(QIOChannel *ioc, Error **errp)
     }
 
     if (start_migration) {
+        /* If it's a recovery, we're done */
+        if (postcopy_try_recover()) {
+            return;
+        }
         migration_incoming_process();
     }
 }
@@ -744,11 +783,20 @@ void migration_ioc_process_incoming(QIOChannel *ioc, Error **errp)
 bool migration_has_all_channels(void)
 {
     MigrationIncomingState *mis = migration_incoming_get_current();
-    bool all_channels;
 
-    all_channels = multifd_recv_all_channels_created();
+    if (!mis->from_src_file) {
+        return false;
+    }
 
-    return all_channels && mis->from_src_file != NULL;
+    if (migrate_use_multifd()) {
+        return multifd_recv_all_channels_created();
+    }
+
+    if (migrate_postcopy_preempt()) {
+        return mis->postcopy_qemufile_dst != NULL;
+    }
+
+    return true;
 }
 
 /*
@@ -997,6 +1045,8 @@ static void populate_time_info(MigrationInfo *info, MigrationState *s)
 
 static void populate_ram_info(MigrationInfo *info, MigrationState *s)
 {
+    size_t page_size = qemu_target_page_size();
+
     info->has_ram = true;
     info->ram = g_malloc0(sizeof(*info->ram));
     info->ram->transferred = ram_counters.transferred;
@@ -1005,14 +1055,18 @@ static void populate_ram_info(MigrationInfo *info, MigrationState *s)
     /* legacy value.  It is not used anymore */
     info->ram->skipped = 0;
     info->ram->normal = ram_counters.normal;
-    info->ram->normal_bytes = ram_counters.normal *
-        qemu_target_page_size();
+    info->ram->normal_bytes = ram_counters.normal * page_size;
     info->ram->mbps = s->mbps;
     info->ram->dirty_sync_count = ram_counters.dirty_sync_count;
+    info->ram->dirty_sync_missed_zero_copy =
+            ram_counters.dirty_sync_missed_zero_copy;
     info->ram->postcopy_requests = ram_counters.postcopy_requests;
-    info->ram->page_size = qemu_target_page_size();
+    info->ram->page_size = page_size;
     info->ram->multifd_bytes = ram_counters.multifd_bytes;
     info->ram->pages_per_second = s->pages_per_second;
+    info->ram->precopy_bytes = ram_counters.precopy_bytes;
+    info->ram->downtime_bytes = ram_counters.downtime_bytes;
+    info->ram->postcopy_bytes = ram_counters.postcopy_bytes;
 
     if (migrate_use_xbzrle()) {
         info->has_xbzrle_cache = true;
@@ -1063,6 +1117,7 @@ static void populate_disk_info(MigrationInfo *info)
 static void fill_source_migration_info(MigrationInfo *info)
 {
     MigrationState *s = migrate_get_current();
+    int state = qatomic_read(&s->state);
     GSList *cur_blocker = migration_blockers;
 
     info->blocked_reasons = NULL;
@@ -1082,7 +1137,7 @@ static void fill_source_migration_info(MigrationInfo *info)
     }
     info->has_blocked_reasons = info->blocked_reasons != NULL;
 
-    switch (s->state) {
+    switch (state) {
     case MIGRATION_STATUS_NONE:
         /* no migration has happened ever */
         /* do not overwrite destination migration status */
@@ -1127,7 +1182,7 @@ static void fill_source_migration_info(MigrationInfo *info)
         info->has_status = true;
         break;
     }
-    info->status = s->state;
+    info->status = state;
 }
 
 typedef enum WriteTrackingSupport {
@@ -1246,6 +1301,59 @@ static bool migrate_caps_check(bool *cap_list,
                         MigrationCapability_str(incomp_cap));
                 return false;
             }
+        }
+    }
+
+#ifdef CONFIG_LINUX
+    if (cap_list[MIGRATION_CAPABILITY_ZERO_COPY_SEND] &&
+        (!cap_list[MIGRATION_CAPABILITY_MULTIFD] ||
+         cap_list[MIGRATION_CAPABILITY_COMPRESS] ||
+         cap_list[MIGRATION_CAPABILITY_XBZRLE] ||
+         migrate_multifd_compression() ||
+         migrate_use_tls())) {
+        error_setg(errp,
+                   "Zero copy only available for non-compressed non-TLS multifd migration");
+        return false;
+    }
+#else
+    if (cap_list[MIGRATION_CAPABILITY_ZERO_COPY_SEND]) {
+        error_setg(errp,
+                   "Zero copy currently only available on Linux");
+        return false;
+    }
+#endif
+
+
+    /* incoming side only */
+    if (runstate_check(RUN_STATE_INMIGRATE) &&
+        !migrate_multi_channels_is_allowed() &&
+        cap_list[MIGRATION_CAPABILITY_MULTIFD]) {
+        error_setg(errp, "multifd is not supported by current protocol");
+        return false;
+    }
+
+    if (cap_list[MIGRATION_CAPABILITY_POSTCOPY_PREEMPT]) {
+        if (!cap_list[MIGRATION_CAPABILITY_POSTCOPY_RAM]) {
+            error_setg(errp, "Postcopy preempt requires postcopy-ram");
+            return false;
+        }
+
+        /*
+         * Preempt mode requires urgent pages to be sent in separate
+         * channel, OTOH compression logic will disorder all pages into
+         * different compression channels, which is not compatible with the
+         * preempt assumptions on channel assignments.
+         */
+        if (cap_list[MIGRATION_CAPABILITY_COMPRESS]) {
+            error_setg(errp, "Postcopy preempt not compatible with compress");
+            return false;
+        }
+    }
+
+    if (cap_list[MIGRATION_CAPABILITY_MULTIFD]) {
+        if (cap_list[MIGRATION_CAPABILITY_COMPRESS]) {
+            error_setg(errp, "Multifd is not compatible with compress");
+            return false;
         }
     }
 
@@ -1463,6 +1571,16 @@ static bool migrate_params_check(MigrationParameters *params, Error **errp)
         error_prepend(errp, "Invalid mapping given for block-bitmap-mapping: ");
         return false;
     }
+
+#ifdef CONFIG_LINUX
+    if (migrate_use_zero_copy_send() &&
+        ((params->has_multifd_compression && params->multifd_compression) ||
+         (params->has_tls_creds && params->tls_creds && *params->tls_creds))) {
+        error_setg(errp,
+                   "Zero copy only available for non-compressed non-TLS multifd migration");
+        return false;
+    }
+#endif
 
     return true;
 }
@@ -1791,6 +1909,9 @@ static void migrate_fd_cleanup(MigrationState *s)
     qemu_bh_delete(s->cleanup_bh);
     s->cleanup_bh = NULL;
 
+    g_free(s->hostname);
+    s->hostname = NULL;
+
     qemu_savevm_state_cleanup();
 
     if (s->to_dst_file) {
@@ -1815,6 +1936,12 @@ static void migrate_fd_cleanup(MigrationState *s)
          */
         migration_ioc_unregister_yank_from_file(tmp);
         qemu_fclose(tmp);
+    }
+
+    if (s->postcopy_qemufile_src) {
+        migration_ioc_unregister_yank_from_file(s->postcopy_qemufile_src);
+        qemu_fclose(s->postcopy_qemufile_src);
+        s->postcopy_qemufile_src = NULL;
     }
 
     assert(!migration_is_active(s));
@@ -1914,7 +2041,7 @@ static void migrate_fd_cancel(MigrationState *s)
     if (s->state == MIGRATION_STATUS_CANCELLING && s->block_inactive) {
         Error *local_err = NULL;
 
-        bdrv_invalidate_cache_all(&local_err);
+        bdrv_activate_all(&local_err);
         if (local_err) {
             error_report_err(local_err);
         } else {
@@ -2053,6 +2180,20 @@ void migrate_init(MigrationState *s)
     s->threshold_size = 0;
 }
 
+int migrate_add_blocker_internal(Error *reason, Error **errp)
+{
+    /* Snapshots are similar to migrations, so check RUN_STATE_SAVE_VM too. */
+    if (runstate_check(RUN_STATE_SAVE_VM) || !migration_is_idle()) {
+        error_propagate_prepend(errp, error_copy(reason),
+                                "disallowing migration blocker "
+                                "(migration/snapshot in progress) for: ");
+        return -EBUSY;
+    }
+
+    migration_blockers = g_slist_prepend(migration_blockers, reason);
+    return 0;
+}
+
 int migrate_add_blocker(Error *reason, Error **errp)
 {
     if (only_migratable) {
@@ -2062,15 +2203,7 @@ int migrate_add_blocker(Error *reason, Error **errp)
         return -EACCES;
     }
 
-    if (migration_is_idle()) {
-        migration_blockers = g_slist_prepend(migration_blockers, reason);
-        return 0;
-    }
-
-    error_propagate_prepend(errp, error_copy(reason),
-                            "disallowing migration blocker "
-                            "(migration in progress) for: ");
-    return -EBUSY;
+    return migrate_add_blocker_internal(reason, errp);
 }
 
 void migrate_del_blocker(Error *reason)
@@ -2124,11 +2257,8 @@ void qmp_migrate_recover(const char *uri, Error **errp)
         return;
     }
 
-    if (qatomic_cmpxchg(&mis->postcopy_recover_triggered,
-                       false, true) == true) {
-        error_setg(errp, "Migrate recovery is triggered already");
-        return;
-    }
+    /* If there's an existing transport, release it */
+    migration_incoming_transport_cleanup(mis);
 
     /*
      * Note that this call will never start a real migration; it will
@@ -2136,12 +2266,6 @@ void qmp_migrate_recover(const char *uri, Error **errp)
      * to continue using that newly established channel.
      */
     qemu_start_incoming_migration(uri, errp);
-
-    /* Safe to dereference with the assert above */
-    if (*errp) {
-        /* Reset the flag so user could still retry */
-        qatomic_set(&mis->postcopy_recover_triggered, false);
-    }
 }
 
 void qmp_migrate_pause(Error **errp)
@@ -2266,10 +2390,11 @@ static bool migrate_prepare(MigrationState *s, bool blk, bool blk_inc,
 
     migrate_init(s);
     /*
-     * set ram_counters memory to zero for a
+     * set ram_counters compression_counters memory to zero for a
      * new migration
      */
     memset(&ram_counters, 0, sizeof(ram_counters));
+    memset(&compression_counters, 0, sizeof(compression_counters));
 
     return true;
 }
@@ -2294,9 +2419,11 @@ void qmp_migrate(const char *uri, bool has_blk, bool blk,
         }
     }
 
+    migrate_protocol_allow_multi_channels(false);
     if (strstart(uri, "tcp:", &p) ||
         strstart(uri, "unix:", NULL) ||
         strstart(uri, "vsock:", NULL)) {
+        migrate_protocol_allow_multi_channels(true);
         socket_start_outgoing_migration(s, p ? p : uri, &local_err);
 #ifdef CONFIG_RDMA
     } else if (strstart(uri, "rdma:", &p)) {
@@ -2330,7 +2457,7 @@ void qmp_migrate(const char *uri, bool has_blk, bool blk,
 
 void qmp_migrate_cancel(Error **errp)
 {
-    migration_cancel();
+    migration_cancel(NULL);
 }
 
 void qmp_migrate_continue(MigrationStatus state, Error **errp)
@@ -2509,6 +2636,7 @@ MultiFDCompression migrate_multifd_compression(void)
 
     s = migrate_get_current();
 
+    assert(s->parameters.multifd_compression < MULTIFD_COMPRESSION__MAX);
     return s->parameters.multifd_compression;
 }
 
@@ -2528,6 +2656,26 @@ int migrate_multifd_zstd_level(void)
     s = migrate_get_current();
 
     return s->parameters.multifd_zstd_level;
+}
+
+#ifdef CONFIG_LINUX
+bool migrate_use_zero_copy_send(void)
+{
+    MigrationState *s;
+
+    s = migrate_get_current();
+
+    return s->enabled_capabilities[MIGRATION_CAPABILITY_ZERO_COPY_SEND];
+}
+#endif
+
+int migrate_use_tls(void)
+{
+    MigrationState *s;
+
+    s = migrate_get_current();
+
+    return s->parameters.tls_creds && *s->parameters.tls_creds;
 }
 
 int migrate_use_xbzrle(void)
@@ -2593,6 +2741,15 @@ bool migrate_background_snapshot(void)
     return s->enabled_capabilities[MIGRATION_CAPABILITY_BACKGROUND_SNAPSHOT];
 }
 
+bool migrate_postcopy_preempt(void)
+{
+    MigrationState *s;
+
+    s = migrate_get_current();
+
+    return s->enabled_capabilities[MIGRATION_CAPABILITY_POSTCOPY_PREEMPT];
+}
+
 /* migration thread support */
 /*
  * Something bad happened to the RP stream, mark an error
@@ -2625,7 +2782,7 @@ static struct rp_cmd_args {
 static void migrate_handle_rp_req_pages(MigrationState *ms, const char* rbname,
                                        ram_addr_t start, size_t len)
 {
-    long our_host_ps = qemu_real_host_page_size;
+    long our_host_ps = qemu_real_host_page_size();
 
     trace_migrate_handle_rp_req_pages(rbname, start, len);
 
@@ -2633,8 +2790,8 @@ static void migrate_handle_rp_req_pages(MigrationState *ms, const char* rbname,
      * Since we currently insist on matching page sizes, just sanity check
      * we're being asked for whole host pages.
      */
-    if (start & (our_host_ps - 1) ||
-       (len & (our_host_ps - 1))) {
+    if (!QEMU_IS_ALIGNED(start, our_host_ps) ||
+        !QEMU_IS_ALIGNED(len, our_host_ps)) {
         error_report("%s: Misaligned page request, start: " RAM_ADDR_FMT
                      " len: %zd", __func__, start, len);
         mark_source_rp_bad(ms);
@@ -2844,7 +3001,7 @@ retry:
 out:
     res = qemu_file_get_error(rp);
     if (res) {
-        if (res == -EIO && migration_in_postcopy()) {
+        if (res && migration_in_postcopy()) {
             /*
              * Maybe there is something we can do: it looks like a
              * network down issue, and we pause for a recovery.
@@ -2932,6 +3089,12 @@ static int postcopy_start(MigrationState *ms)
     int64_t bandwidth = migrate_max_postcopy_bandwidth();
     bool restart_block = false;
     int cur_state = MIGRATION_STATUS_ACTIVE;
+
+    if (postcopy_preempt_wait_channel(ms)) {
+        migrate_set_state(&ms->state, ms->state, MIGRATION_STATUS_FAILED);
+        return -1;
+    }
+
     if (!migrate_pause_before_switchover()) {
         migrate_set_state(&ms->state, MIGRATION_STATUS_ACTIVE,
                           MIGRATION_STATUS_POSTCOPY_ACTIVE);
@@ -2973,10 +3136,7 @@ static int postcopy_start(MigrationState *ms)
      * that are dirty
      */
     if (migrate_postcopy_ram()) {
-        if (ram_postcopy_send_discard_bitmap(ms)) {
-            error_report("postcopy send discard bitmap failed");
-            goto fail;
-        }
+        ram_postcopy_send_discard_bitmap(ms);
     }
 
     /*
@@ -3008,7 +3168,7 @@ static int postcopy_start(MigrationState *ms)
      */
     bioc = qio_channel_buffer_new(4096);
     qio_channel_set_name(QIO_CHANNEL(bioc), "migration-postcopy-buffer");
-    fb = qemu_fopen_channel_output(QIO_CHANNEL(bioc));
+    fb = qemu_file_new_output(QIO_CHANNEL(bioc));
     object_unref(OBJECT(bioc));
 
     /*
@@ -3074,6 +3234,8 @@ static int postcopy_start(MigrationState *ms)
                               MIGRATION_STATUS_FAILED);
     }
 
+    trace_postcopy_preempt_enabled(migrate_postcopy_preempt());
+
     return ret;
 
 fail_closefb:
@@ -3087,7 +3249,7 @@ fail:
          */
         Error *local_err = NULL;
 
-        bdrv_invalidate_cache_all(&local_err);
+        bdrv_activate_all(&local_err);
         if (local_err) {
             error_report_err(local_err);
         }
@@ -3158,7 +3320,6 @@ static void migration_completion(MigrationState *s)
         ret = global_state_store();
 
         if (!ret) {
-            bool inactivate = !migrate_colo_enabled();
             ret = vm_stop_force_state(RUN_STATE_FINISH_MIGRATE);
             trace_migration_completion_vm_stop(ret);
             if (ret >= 0) {
@@ -3166,12 +3327,15 @@ static void migration_completion(MigrationState *s)
                                             MIGRATION_STATUS_DEVICE);
             }
             if (ret >= 0) {
+                /*
+                 * Inactivate disks except in COLO, and track that we
+                 * have done so in order to remember to reactivate
+                 * them if migration fails or is cancelled.
+                 */
+                s->block_inactive = !migrate_colo_enabled();
                 qemu_file_set_rate_limit(s->to_dst_file, INT64_MAX);
                 ret = qemu_savevm_state_complete_precopy(s->to_dst_file, false,
-                                                         inactivate);
-            }
-            if (inactivate && ret >= 0) {
-                s->block_inactive = true;
+                                                         s->block_inactive);
             }
         }
         qemu_mutex_unlock_iothread();
@@ -3182,9 +3346,17 @@ static void migration_completion(MigrationState *s)
     } else if (s->state == MIGRATION_STATUS_POSTCOPY_ACTIVE) {
         trace_migration_completion_postcopy_end();
 
+        qemu_mutex_lock_iothread();
         qemu_savevm_state_complete_postcopy(s->to_dst_file);
+        qemu_mutex_unlock_iothread();
+
+        /* Shutdown the postcopy fast path thread */
+        if (migrate_postcopy_preempt()) {
+            postcopy_preempt_shutdown_file(s);
+        }
+
         trace_migration_completion_postcopy_end_after_complete();
-    } else if (s->state == MIGRATION_STATUS_CANCELLING) {
+    } else {
         goto fail;
     }
 
@@ -3200,32 +3372,37 @@ static void migration_completion(MigrationState *s)
         rp_error = await_return_path_close_on_source(s);
         trace_migration_return_path_end_after(rp_error);
         if (rp_error) {
-            goto fail_invalidate;
+            goto fail;
         }
     }
 
     if (qemu_file_get_error(s->to_dst_file)) {
         trace_migration_completion_file_err();
-        goto fail_invalidate;
+        goto fail;
     }
 
-    if (!migrate_colo_enabled()) {
+    if (migrate_colo_enabled() && s->state == MIGRATION_STATUS_ACTIVE) {
+        /* COLO does not support postcopy */
+        migrate_set_state(&s->state, MIGRATION_STATUS_ACTIVE,
+                          MIGRATION_STATUS_COLO);
+    } else {
         migrate_set_state(&s->state, current_active_state,
                           MIGRATION_STATUS_COMPLETED);
     }
 
     return;
 
-fail_invalidate:
-    /* If not doing postcopy, vm_start() will be called: let's regain
-     * control on images.
-     */
-    if (s->state == MIGRATION_STATUS_ACTIVE ||
-        s->state == MIGRATION_STATUS_DEVICE) {
+fail:
+    if (s->block_inactive && (s->state == MIGRATION_STATUS_ACTIVE ||
+                              s->state == MIGRATION_STATUS_DEVICE)) {
+        /*
+         * If not doing postcopy, vm_start() will be called: let's
+         * regain control on images.
+         */
         Error *local_err = NULL;
 
         qemu_mutex_lock_iothread();
-        bdrv_invalidate_cache_all(&local_err);
+        bdrv_activate_all(&local_err);
         if (local_err) {
             error_report_err(local_err);
         } else {
@@ -3234,7 +3411,6 @@ fail_invalidate:
         qemu_mutex_unlock_iothread();
     }
 
-fail:
     migrate_set_state(&s->state, current_active_state,
                       MIGRATION_STATUS_FAILED);
 }
@@ -3373,6 +3549,18 @@ static MigThrError postcopy_pause(MigrationState *s)
         qemu_file_shutdown(file);
         qemu_fclose(file);
 
+        /*
+         * Do the same to postcopy fast path socket too if there is.  No
+         * locking needed because no racer as long as we do this before setting
+         * status to paused.
+         */
+        if (s->postcopy_qemufile_src) {
+            migration_ioc_unregister_yank_from_file(s->postcopy_qemufile_src);
+            qemu_file_shutdown(s->postcopy_qemufile_src);
+            qemu_fclose(s->postcopy_qemufile_src);
+            s->postcopy_qemufile_src = NULL;
+        }
+
         migrate_set_state(&s->state, s->state,
                           MIGRATION_STATUS_POSTCOPY_PAUSED);
 
@@ -3389,6 +3577,14 @@ static MigThrError postcopy_pause(MigrationState *s)
 
         if (s->state == MIGRATION_STATUS_POSTCOPY_RECOVER) {
             /* Woken up by a recover procedure. Give it a shot */
+
+            if (postcopy_preempt_wait_channel(s)) {
+                /*
+                 * Preempt enabled, and new channel create failed; loop
+                 * back to wait for another recovery.
+                 */
+                continue;
+            }
 
             /*
              * Firstly, let's wake up the return path now, with a new
@@ -3428,8 +3624,13 @@ static MigThrError migration_detect_error(MigrationState *s)
         return MIG_THR_ERR_FATAL;
     }
 
-    /* Try to detect any file errors */
-    ret = qemu_file_get_error_obj(s->to_dst_file, &local_error);
+    /*
+     * Try to detect any file errors.  Note that postcopy_qemufile_src will
+     * be NULL when postcopy preempt is not enabled.
+     */
+    ret = qemu_file_get_error_obj_any(s->to_dst_file,
+                                      s->postcopy_qemufile_src,
+                                      &local_error);
     if (!ret) {
         /* Everything is fine */
         assert(!local_error);
@@ -3441,7 +3642,7 @@ static MigThrError migration_detect_error(MigrationState *s)
         error_free(local_error);
     }
 
-    if (state == MIGRATION_STATUS_POSTCOPY_ACTIVE && ret == -EIO) {
+    if (state == MIGRATION_STATUS_POSTCOPY_ACTIVE && ret) {
         /*
          * For postcopy, we allow the network to be down for a
          * while. After that, it can be continued by a
@@ -3464,7 +3665,8 @@ static MigThrError migration_detect_error(MigrationState *s)
 /* How many bytes have we transferred since the beginning of the migration */
 static uint64_t migration_total_bytes(MigrationState *s)
 {
-    return qemu_ftell(s->to_dst_file) + ram_counters.multifd_bytes;
+    return qemu_file_total_transferred(s->to_dst_file) +
+        ram_counters.multifd_bytes;
 }
 
 static void migration_calculate_complete(MigrationState *s)
@@ -3594,28 +3796,21 @@ static void migration_iteration_finish(MigrationState *s)
         migration_calculate_complete(s);
         runstate_set(RUN_STATE_POSTMIGRATE);
         break;
-
-    case MIGRATION_STATUS_ACTIVE:
-        /*
-         * We should really assert here, but since it's during
-         * migration, let's try to reduce the usage of assertions.
-         */
+    case MIGRATION_STATUS_COLO:
         if (!migrate_colo_enabled()) {
             error_report("%s: critical error: calling COLO code without "
                          "COLO enabled", __func__);
         }
         migrate_start_colo_process(s);
-        /*
-         * Fixme: we will run VM in COLO no matter its old running state.
-         * After exited COLO, we will keep running.
-         */
         s->vm_was_running = true;
         /* Fallthrough */
     case MIGRATION_STATUS_FAILED:
     case MIGRATION_STATUS_CANCELLED:
     case MIGRATION_STATUS_CANCELLING:
         if (s->vm_was_running) {
-            vm_start();
+            if (!runstate_check(RUN_STATE_SHUTDOWN)) {
+                vm_start();
+            }
         } else {
             if (runstate_check(RUN_STATE_FINISH_MIGRATE)) {
                 runstate_set(RUN_STATE_POSTMIGRATE);
@@ -3743,7 +3938,8 @@ static void qemu_savevm_wait_unplug(MigrationState *s, int old_state,
             while (timeout-- && qemu_savevm_state_guest_unplug_pending()) {
                 qemu_sem_timedwait(&s->wait_unplug_sem, 250);
             }
-            if (qemu_savevm_state_guest_unplug_pending()) {
+            if (qemu_savevm_state_guest_unplug_pending() &&
+                !qtest_enabled()) {
                 warn_report("migration: partially unplugged device on "
                             "failure");
             }
@@ -3896,7 +4092,7 @@ static void *bg_migration_thread(void *opaque)
      */
     s->bioc = qio_channel_buffer_new(512 * 1024);
     qio_channel_set_name(QIO_CHANNEL(s->bioc), "vmstate-buffer");
-    fb = qemu_fopen_channel_output(QIO_CHANNEL(s->bioc));
+    fb = qemu_file_new_output(QIO_CHANNEL(s->bioc));
     object_unref(OBJECT(s->bioc));
 
     update_iteration_initial_status(s);
@@ -4072,6 +4268,15 @@ void migrate_fd_connect(MigrationState *s, Error *error_in)
         }
     }
 
+    /* This needs to be done before resuming a postcopy */
+    if (postcopy_preempt_setup(s, &local_err)) {
+        error_report_err(local_err);
+        migrate_set_state(&s->state, MIGRATION_STATUS_SETUP,
+                          MIGRATION_STATUS_FAILED);
+        migrate_fd_cleanup(s);
+        return;
+    }
+
     if (resume) {
         /* Wakeup the main migration thread to do the recovery */
         migrate_set_state(&s->state, MIGRATION_STATUS_POSTCOPY_PAUSED,
@@ -4196,6 +4401,11 @@ static Property migration_properties[] = {
     DEFINE_PROP_SIZE("announce-step", MigrationState,
                       parameters.announce_step,
                       DEFAULT_MIGRATE_ANNOUNCE_STEP),
+    DEFINE_PROP_BOOL("x-postcopy-preempt-break-huge", MigrationState,
+                      postcopy_preempt_break_huge, true),
+    DEFINE_PROP_STRING("tls-creds", MigrationState, parameters.tls_creds),
+    DEFINE_PROP_STRING("tls-hostname", MigrationState, parameters.tls_hostname),
+    DEFINE_PROP_STRING("tls-authz", MigrationState, parameters.tls_authz),
 
     /* Migration capabilities */
     DEFINE_PROP_MIG_CAP("x-xbzrle", MIGRATION_CAPABILITY_XBZRLE),
@@ -4205,6 +4415,8 @@ static Property migration_properties[] = {
     DEFINE_PROP_MIG_CAP("x-compress", MIGRATION_CAPABILITY_COMPRESS),
     DEFINE_PROP_MIG_CAP("x-events", MIGRATION_CAPABILITY_EVENTS),
     DEFINE_PROP_MIG_CAP("x-postcopy-ram", MIGRATION_CAPABILITY_POSTCOPY_RAM),
+    DEFINE_PROP_MIG_CAP("x-postcopy-preempt",
+                        MIGRATION_CAPABILITY_POSTCOPY_PREEMPT),
     DEFINE_PROP_MIG_CAP("x-colo", MIGRATION_CAPABILITY_X_COLO),
     DEFINE_PROP_MIG_CAP("x-release-ram", MIGRATION_CAPABILITY_RELEASE_RAM),
     DEFINE_PROP_MIG_CAP("x-block", MIGRATION_CAPABILITY_BLOCK),
@@ -4212,6 +4424,10 @@ static Property migration_properties[] = {
     DEFINE_PROP_MIG_CAP("x-multifd", MIGRATION_CAPABILITY_MULTIFD),
     DEFINE_PROP_MIG_CAP("x-background-snapshot",
             MIGRATION_CAPABILITY_BACKGROUND_SNAPSHOT),
+#ifdef CONFIG_LINUX
+    DEFINE_PROP_MIG_CAP("x-zero-copy-send",
+            MIGRATION_CAPABILITY_ZERO_COPY_SEND),
+#endif
 
     DEFINE_PROP_END_OF_LIST(),
 };
@@ -4227,18 +4443,16 @@ static void migration_class_init(ObjectClass *klass, void *data)
 static void migration_instance_finalize(Object *obj)
 {
     MigrationState *ms = MIGRATION_OBJ(obj);
-    MigrationParameters *params = &ms->parameters;
 
     qemu_mutex_destroy(&ms->error_mutex);
     qemu_mutex_destroy(&ms->qemu_file_lock);
-    g_free(params->tls_hostname);
-    g_free(params->tls_creds);
     qemu_sem_destroy(&ms->wait_unplug_sem);
     qemu_sem_destroy(&ms->rate_limit_sem);
     qemu_sem_destroy(&ms->pause_sem);
     qemu_sem_destroy(&ms->postcopy_pause_sem);
     qemu_sem_destroy(&ms->postcopy_pause_rp_sem);
     qemu_sem_destroy(&ms->rp_state.rp_sem);
+    qemu_sem_destroy(&ms->postcopy_qemufile_src_sem);
     error_free(ms->error);
 }
 
@@ -4259,6 +4473,7 @@ static void migration_instance_init(Object *obj)
     /* Set has_* up only for parameter checks */
     params->has_compress_level = true;
     params->has_compress_threads = true;
+    params->has_compress_wait_thread = true;
     params->has_decompress_threads = true;
     params->has_throttle_trigger_threshold = true;
     params->has_cpu_throttle_initial = true;
@@ -4279,12 +4494,16 @@ static void migration_instance_init(Object *obj)
     params->has_announce_max = true;
     params->has_announce_rounds = true;
     params->has_announce_step = true;
+    params->has_tls_creds = true;
+    params->has_tls_hostname = true;
+    params->has_tls_authz = true;
 
     qemu_sem_init(&ms->postcopy_pause_sem, 0);
     qemu_sem_init(&ms->postcopy_pause_rp_sem, 0);
     qemu_sem_init(&ms->rp_state.rp_sem, 0);
     qemu_sem_init(&ms->rate_limit_sem, 0);
     qemu_sem_init(&ms->wait_unplug_sem, 0);
+    qemu_sem_init(&ms->postcopy_qemufile_src_sem, 0);
     qemu_mutex_init(&ms->qemu_file_lock);
 }
 

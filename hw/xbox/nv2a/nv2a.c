@@ -223,7 +223,7 @@ static void nv2a_init_vga(NV2AState *d)
     VGACommonState *vga = &d->vga;
     vga->vram_size_mb = memory_region_size(d->vram) / MiB;
 
-    vga_common_init(vga, OBJECT(d));
+    vga_common_init(vga, OBJECT(d), &error_fatal);
     vga->get_bpp = nv2a_get_bpp;
     vga->get_offsets = nv2a_get_offsets;
     // vga->overlay_draw_line = nv2a_overlay_draw_line;
@@ -417,7 +417,6 @@ const VMStateDescription vmstate_nv2a_pgraph_vertex_attributes = {
     .name = "nv2a/pgraph/vertex-attr",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         // FIXME
         VMSTATE_END_OF_LIST()

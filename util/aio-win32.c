@@ -16,7 +16,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "block/block.h"
 #include "qemu/main-loop.h"
 #include "qemu/queue.h"
@@ -68,6 +67,7 @@ void aio_set_fd_handler(AioContext *ctx,
                         IOHandler *io_read,
                         IOHandler *io_write,
                         AioPollFn *io_poll,
+                        IOHandler *io_poll_ready,
                         void *opaque)
 {
     /* fd is a SOCKET in our case */
@@ -136,7 +136,8 @@ void aio_set_event_notifier(AioContext *ctx,
                             EventNotifier *e,
                             bool is_external,
                             EventNotifierHandler *io_notify,
-                            AioPollFn *io_poll)
+                            AioPollFn *io_poll,
+                            EventNotifierHandler *io_poll_ready)
 {
     AioHandler *node;
 
@@ -325,9 +326,9 @@ void aio_dispatch(AioContext *ctx)
 bool aio_poll(AioContext *ctx, bool blocking)
 {
     AioHandler *node;
-    HANDLE events[MAXIMUM_WAIT_OBJECTS + 1];
+    HANDLE events[MAXIMUM_WAIT_OBJECTS];
     bool progress, have_select_revents, first;
-    int count;
+    unsigned count;
     int timeout;
 
     /*
@@ -368,6 +369,7 @@ bool aio_poll(AioContext *ctx, bool blocking)
     QLIST_FOREACH_RCU(node, &ctx->aio_handlers, node) {
         if (!node->deleted && node->io_notify
             && aio_node_check(ctx, node->is_external)) {
+            assert(count < MAXIMUM_WAIT_OBJECTS);
             events[count++] = event_notifier_get_handle(node->e);
         }
     }

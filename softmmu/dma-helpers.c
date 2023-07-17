@@ -19,31 +19,17 @@
 /* #define DEBUG_IOMMU */
 
 MemTxResult dma_memory_set(AddressSpace *as, dma_addr_t addr,
-                           uint8_t c, dma_addr_t len)
+                           uint8_t c, dma_addr_t len, MemTxAttrs attrs)
 {
     dma_barrier(as, DMA_DIRECTION_FROM_DEVICE);
 
-#define FILLBUF_SIZE 512
-    uint8_t fillbuf[FILLBUF_SIZE];
-    int l;
-    MemTxResult error = MEMTX_OK;
-
-    memset(fillbuf, c, FILLBUF_SIZE);
-    while (len > 0) {
-        l = len < FILLBUF_SIZE ? len : FILLBUF_SIZE;
-        error |= address_space_write(as, addr, MEMTXATTRS_UNSPECIFIED,
-                                     fillbuf, l);
-        len -= l;
-        addr += l;
-    }
-
-    return error;
+    return address_space_set(as, addr, c, len, attrs);
 }
 
 void qemu_sglist_init(QEMUSGList *qsg, DeviceState *dev, int alloc_hint,
                       AddressSpace *as)
 {
-    qsg->sg = g_malloc(alloc_hint * sizeof(ScatterGatherEntry));
+    qsg->sg = g_new(ScatterGatherEntry, alloc_hint);
     qsg->nsg = 0;
     qsg->nalloc = alloc_hint;
     qsg->size = 0;
@@ -56,7 +42,7 @@ void qemu_sglist_add(QEMUSGList *qsg, dma_addr_t base, dma_addr_t len)
 {
     if (qsg->nsg == qsg->nalloc) {
         qsg->nalloc = 2 * qsg->nalloc + 1;
-        qsg->sg = g_realloc(qsg->sg, qsg->nalloc * sizeof(ScatterGatherEntry));
+        qsg->sg = g_renew(ScatterGatherEntry, qsg->sg, qsg->nalloc);
     }
     qsg->sg[qsg->nsg].base = base;
     qsg->sg[qsg->nsg].len = len;
@@ -144,7 +130,8 @@ static void dma_blk_cb(void *opaque, int ret)
     while (dbs->sg_cur_index < dbs->sg->nsg) {
         cur_addr = dbs->sg->sg[dbs->sg_cur_index].base + dbs->sg_cur_byte;
         cur_len = dbs->sg->sg[dbs->sg_cur_index].len - dbs->sg_cur_byte;
-        mem = dma_memory_map(dbs->sg->as, cur_addr, &cur_len, dbs->dir);
+        mem = dma_memory_map(dbs->sg->as, cur_addr, &cur_len, dbs->dir,
+                             MEMTXATTRS_UNSPECIFIED);
         /*
          * Make reads deterministic in icount mode. Windows sometimes issues
          * disk read requests with overlapping SGs. It leads
@@ -294,35 +281,43 @@ BlockAIOCB *dma_blk_write(BlockBackend *blk,
 }
 
 
-static uint64_t dma_buf_rw(uint8_t *ptr, int32_t len, QEMUSGList *sg,
-                           DMADirection dir)
+static MemTxResult dma_buf_rw(void *buf, dma_addr_t len, dma_addr_t *residual,
+                              QEMUSGList *sg, DMADirection dir,
+                              MemTxAttrs attrs)
 {
-    uint64_t resid;
+    uint8_t *ptr = buf;
+    dma_addr_t xresidual;
     int sg_cur_index;
+    MemTxResult res = MEMTX_OK;
 
-    resid = sg->size;
+    xresidual = sg->size;
     sg_cur_index = 0;
-    len = MIN(len, resid);
+    len = MIN(len, xresidual);
     while (len > 0) {
         ScatterGatherEntry entry = sg->sg[sg_cur_index++];
-        int32_t xfer = MIN(len, entry.len);
-        dma_memory_rw(sg->as, entry.base, ptr, xfer, dir);
+        dma_addr_t xfer = MIN(len, entry.len);
+        res |= dma_memory_rw(sg->as, entry.base, ptr, xfer, dir, attrs);
         ptr += xfer;
         len -= xfer;
-        resid -= xfer;
+        xresidual -= xfer;
     }
 
-    return resid;
+    if (residual) {
+        *residual = xresidual;
+    }
+    return res;
 }
 
-uint64_t dma_buf_read(uint8_t *ptr, int32_t len, QEMUSGList *sg)
+MemTxResult dma_buf_read(void *ptr, dma_addr_t len, dma_addr_t *residual,
+                         QEMUSGList *sg, MemTxAttrs attrs)
 {
-    return dma_buf_rw(ptr, len, sg, DMA_DIRECTION_FROM_DEVICE);
+    return dma_buf_rw(ptr, len, residual, sg, DMA_DIRECTION_FROM_DEVICE, attrs);
 }
 
-uint64_t dma_buf_write(uint8_t *ptr, int32_t len, QEMUSGList *sg)
+MemTxResult dma_buf_write(void *ptr, dma_addr_t len, dma_addr_t *residual,
+                          QEMUSGList *sg, MemTxAttrs attrs)
 {
-    return dma_buf_rw(ptr, len, sg, DMA_DIRECTION_TO_DEVICE);
+    return dma_buf_rw(ptr, len, residual, sg, DMA_DIRECTION_TO_DEVICE, attrs);
 }
 
 void dma_acct_start(BlockBackend *blk, BlockAcctCookie *cookie,

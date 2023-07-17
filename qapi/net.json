@@ -7,6 +7,7 @@
 ##
 
 { 'include': 'common.json' }
+{ 'include': 'sockets.json' }
 
 ##
 # @set_link:
@@ -51,7 +52,7 @@
 #
 # -> { "execute": "netdev_add",
 #      "arguments": { "type": "user", "id": "netdev1",
-#                     "dnssearch": "example.org" } }
+#                     "dnssearch": [ { "str": "example.org" } ] } }
 # <- { "return": {} }
 #
 ##
@@ -298,7 +299,7 @@
 #
 # @udp: use the udp version of l2tpv3 encapsulation
 #
-# @cookie64: use 64 bit coookies
+# @cookie64: use 64 bit cookies
 #
 # @counter: have sequence counter
 #
@@ -442,15 +443,193 @@
 # @vhostdev: path of vhost-vdpa device
 #            (default:'/dev/vhost-vdpa-0')
 #
+# @vhostfd: file descriptor of an already opened vhost vdpa device
+#
 # @queues: number of queues to be created for multiqueue vhost-vdpa
 #          (default: 1)
+#
+# @x-svq: Start device with (experimental) shadow virtqueue. (Since 7.1)
+#         (default: false)
+#
+# Features:
+# @unstable: Member @x-svq is experimental.
 #
 # Since: 5.1
 ##
 { 'struct': 'NetdevVhostVDPAOptions',
   'data': {
     '*vhostdev':     'str',
-    '*queues':       'int' } }
+    '*vhostfd':      'str',
+    '*queues':       'int',
+    '*x-svq':        {'type': 'bool', 'features' : [ 'unstable'] } } }
+
+##
+# @NetdevVmnetHostOptions:
+#
+# vmnet (host mode) network backend.
+#
+# Allows the vmnet interface to communicate with other vmnet
+# interfaces that are in host mode and also with the host.
+#
+# @start-address: The starting IPv4 address to use for the interface.
+#                 Must be in the private IP range (RFC 1918). Must be
+#                 specified along with @end-address and @subnet-mask.
+#                 This address is used as the gateway address. The
+#                 subsequent address up to and including end-address are
+#                 placed in the DHCP pool.
+#
+# @end-address: The DHCP IPv4 range end address to use for the
+#               interface. Must be in the private IP range (RFC 1918).
+#               Must be specified along with @start-address and
+#               @subnet-mask.
+#
+# @subnet-mask: The IPv4 subnet mask to use on the interface. Must
+#               be specified along with @start-address and @subnet-mask.
+#
+# @isolated: Enable isolation for this interface. Interface isolation
+#            ensures that vmnet interface is not able to communicate
+#            with any other vmnet interfaces. Only communication with
+#            host is allowed. Requires at least macOS Big Sur 11.0.
+#
+# @net-uuid: The identifier (UUID) to uniquely identify the isolated
+#            network vmnet interface should be added to. If
+#            set, no DHCP service is provided for this interface and
+#            network communication is allowed only with other interfaces
+#            added to this network identified by the UUID. Requires
+#            at least macOS Big Sur 11.0.
+#
+# Since: 7.1
+##
+{ 'struct': 'NetdevVmnetHostOptions',
+  'data': {
+    '*start-address': 'str',
+    '*end-address':   'str',
+    '*subnet-mask':   'str',
+    '*isolated':      'bool',
+    '*net-uuid':      'str' },
+  'if': 'CONFIG_VMNET' }
+
+##
+# @NetdevVmnetSharedOptions:
+#
+# vmnet (shared mode) network backend.
+#
+# Allows traffic originating from the vmnet interface to reach the
+# Internet through a network address translator (NAT).
+# The vmnet interface can communicate with the host and with
+# other shared mode interfaces on the same subnet. If no DHCP
+# settings, subnet mask and IPv6 prefix specified, the interface can
+# communicate with any of other interfaces in shared mode.
+#
+# @start-address: The starting IPv4 address to use for the interface.
+#                 Must be in the private IP range (RFC 1918). Must be
+#                 specified along with @end-address and @subnet-mask.
+#                 This address is used as the gateway address. The
+#                 subsequent address up to and including end-address are
+#                 placed in the DHCP pool.
+#
+# @end-address: The DHCP IPv4 range end address to use for the
+#               interface. Must be in the private IP range (RFC 1918).
+#               Must be specified along with @start-address and @subnet-mask.
+#
+# @subnet-mask: The IPv4 subnet mask to use on the interface. Must
+#                be specified along with @start-address and @subnet-mask.
+#
+# @isolated: Enable isolation for this interface. Interface isolation
+#            ensures that vmnet interface is not able to communicate
+#            with any other vmnet interfaces. Only communication with
+#            host is allowed. Requires at least macOS Big Sur 11.0.
+#
+# @nat66-prefix: The IPv6 prefix to use into guest network. Must be a
+#                unique local address i.e. start with fd00::/8 and have
+#                length of 64.
+#
+# Since: 7.1
+##
+{ 'struct': 'NetdevVmnetSharedOptions',
+  'data': {
+    '*start-address': 'str',
+    '*end-address':   'str',
+    '*subnet-mask':   'str',
+    '*isolated':      'bool',
+    '*nat66-prefix':  'str' },
+  'if': 'CONFIG_VMNET' }
+
+##
+# @NetdevVmnetBridgedOptions:
+#
+# vmnet (bridged mode) network backend.
+#
+# Bridges the vmnet interface with a physical network interface.
+#
+# @ifname: The name of the physical interface to be bridged.
+#
+# @isolated: Enable isolation for this interface. Interface isolation
+#            ensures that vmnet interface is not able to communicate
+#            with any other vmnet interfaces. Only communication with
+#            host is allowed. Requires at least macOS Big Sur 11.0.
+#
+# Since: 7.1
+##
+{ 'struct': 'NetdevVmnetBridgedOptions',
+  'data': {
+    'ifname':     'str',
+    '*isolated':  'bool' },
+  'if': 'CONFIG_VMNET' }
+
+##
+# @NetdevStreamOptions:
+#
+# Configuration info for stream socket netdev
+#
+# @addr: socket address to listen on (server=true)
+#        or connect to (server=false)
+# @server: create server socket (default: false)
+#
+# Only SocketAddress types 'unix', 'inet' and 'fd' are supported.
+#
+# Since: 7.2
+##
+{ 'struct': 'NetdevStreamOptions',
+  'data': {
+    'addr':   'SocketAddress',
+    '*server': 'bool' } }
+
+##
+# @NetdevDgramOptions:
+#
+# Configuration info for datagram socket netdev.
+#
+# @remote: remote address
+# @local: local address
+#
+# Only SocketAddress types 'unix', 'inet' and 'fd' are supported.
+#
+# If remote address is present and it's a multicast address, local address
+# is optional. Otherwise local address is required and remote address is
+# optional.
+#
+# .. table:: Valid parameters combination table
+#    :widths: auto
+#
+#    =============  ========  =====
+#    remote         local     okay?
+#    =============  ========  =====
+#    absent         absent    no
+#    absent         not fd    no
+#    absent         fd        yes
+#    multicast      absent    yes
+#    multicast      present   yes
+#    not multicast  absent    no
+#    not multicast  present   yes
+#    =============  ========  =====
+#
+# Since: 7.2
+##
+{ 'struct': 'NetdevDgramOptions',
+  'data': {
+    '*local':  'SocketAddress',
+    '*remote': 'SocketAddress' } }
 
 ##
 # @NetdevPcapOptions:
@@ -473,11 +652,19 @@
 # Since: 2.7
 #
 #        @vhost-vdpa since 5.1
+#        @vmnet-host since 7.1
+#        @vmnet-shared since 7.1
+#        @vmnet-bridged since 7.1
+#        @stream since 7.2
+#        @dgram since 7.2
 ##
 { 'enum': 'NetClientDriver',
-  'data': [ 'none', 'nic', 'user', 'tap', 'l2tpv3', 'socket', 'vde',
-            'bridge', 'hubport', 'netmap', 'vhost-user', 'vhost-vdpa',
-            'pcap' ] }
+  'data': [ 'none', 'nic', 'user', 'tap', 'l2tpv3', 'socket', 'stream',
+            'dgram', 'vde', 'bridge', 'hubport', 'netmap', 'vhost-user',
+            'vhost-vdpa', 'pcap',
+            { 'name': 'vmnet-host', 'if': 'CONFIG_VMNET' },
+            { 'name': 'vmnet-shared', 'if': 'CONFIG_VMNET' },
+            { 'name': 'vmnet-bridged', 'if': 'CONFIG_VMNET' }] }
 
 ##
 # @Netdev:
@@ -491,6 +678,11 @@
 # Since: 1.2
 #
 #        'l2tpv3' - since 2.1
+#        'vmnet-host' - since 7.1
+#        'vmnet-shared' - since 7.1
+#        'vmnet-bridged' - since 7.1
+#        'stream' since 7.2
+#        'dgram' since 7.2
 ##
 { 'union': 'Netdev',
   'base': { 'id': 'str', 'type': 'NetClientDriver' },
@@ -501,13 +693,21 @@
     'tap':      'NetdevTapOptions',
     'l2tpv3':   'NetdevL2TPv3Options',
     'socket':   'NetdevSocketOptions',
+    'stream':   'NetdevStreamOptions',
+    'dgram':    'NetdevDgramOptions',
     'vde':      'NetdevVdeOptions',
     'bridge':   'NetdevBridgeOptions',
     'hubport':  'NetdevHubPortOptions',
     'netmap':   'NetdevNetmapOptions',
     'vhost-user': 'NetdevVhostUserOptions',
     'vhost-vdpa': 'NetdevVhostVDPAOptions',
-    'pcap':     'NetdevPcapOptions' } }
+    'pcap':       'NetdevPcapOptions',
+    'vmnet-host': { 'type': 'NetdevVmnetHostOptions',
+                    'if': 'CONFIG_VMNET' },
+    'vmnet-shared': { 'type': 'NetdevVmnetSharedOptions',
+                      'if': 'CONFIG_VMNET' },
+    'vmnet-bridged': { 'type': 'NetdevVmnetBridgedOptions',
+                       'if': 'CONFIG_VMNET' } } }
 
 ##
 # @RxState:
@@ -636,7 +836,6 @@
 #      "data": { "name": "vnet0",
 #                "path": "/machine/peripheral/vnet0/virtio-backend" },
 #      "timestamp": { "seconds": 1368697518, "microseconds": 326866 } }
-#    }
 #
 ##
 { 'event': 'NIC_RX_FILTER_CHANGED',
@@ -700,14 +899,65 @@
 # Failover primary devices which were hidden (not hotplugged when requested)
 # before will now be hotplugged by the virtio-net standby device.
 #
-# device-id: QEMU device id of the unplugged device
+# @device-id: QEMU device id of the unplugged device
+#
 # Since: 4.2
 #
 # Example:
 #
 # <- { "event": "FAILOVER_NEGOTIATED",
-#      "data": "net1" }
+#      "data": { "device-id": "net1" },
+#      "timestamp": { "seconds": 1368697518, "microseconds": 326866 } }
 #
 ##
 { 'event': 'FAILOVER_NEGOTIATED',
   'data': {'device-id': 'str'} }
+
+##
+# @NETDEV_STREAM_CONNECTED:
+#
+# Emitted when the netdev stream backend is connected
+#
+# @netdev-id: QEMU netdev id that is connected
+# @addr: The destination address
+#
+# Since: 7.2
+#
+# Example:
+#
+# <- { "event": "NETDEV_STREAM_CONNECTED",
+#      "data": { "netdev-id": "netdev0",
+#                "addr": { "port": "47666", "ipv6": true,
+#                          "host": "::1", "type": "inet" } },
+#      "timestamp": { "seconds": 1666269863, "microseconds": 311222 } }
+#
+# or
+#
+# <- { "event": "NETDEV_STREAM_CONNECTED",
+#      "data": { "netdev-id": "netdev0",
+#                "addr": { "path": "/tmp/qemu0", "type": "unix" } },
+#      "timestamp": { "seconds": 1666269706, "microseconds": 413651 } }
+#
+##
+{ 'event': 'NETDEV_STREAM_CONNECTED',
+  'data': { 'netdev-id': 'str',
+            'addr': 'SocketAddress' } }
+
+##
+# @NETDEV_STREAM_DISCONNECTED:
+#
+# Emitted when the netdev stream backend is disconnected
+#
+# @netdev-id: QEMU netdev id that is disconnected
+#
+# Since: 7.2
+#
+# Example:
+#
+# <- { 'event': 'NETDEV_STREAM_DISCONNECTED',
+#      'data': {'netdev-id': 'netdev0'},
+#      'timestamp': {'seconds': 1663330937, 'microseconds': 526695} }
+#
+##
+{ 'event': 'NETDEV_STREAM_DISCONNECTED',
+  'data': { 'netdev-id': 'str' } }

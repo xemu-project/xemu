@@ -38,27 +38,8 @@ extern PowerPCCPUAlias ppc_cpu_aliases[];
 /*****************************************************************************/
 /* PVR definitions for most known PowerPC                                    */
 enum {
-    /* PowerPC 401 family */
-    /* Generic PowerPC 401 */
-#define CPU_POWERPC_401              CPU_POWERPC_401G2
-    /* PowerPC 401 cores */
-    CPU_POWERPC_401A1              = 0x00210000,
-    CPU_POWERPC_401B2              = 0x00220000,
-    CPU_POWERPC_401C2              = 0x00230000,
-    CPU_POWERPC_401D2              = 0x00240000,
-    CPU_POWERPC_401E2              = 0x00250000,
-    CPU_POWERPC_401F2              = 0x00260000,
-    CPU_POWERPC_401G2              = 0x00270000,
-    /* PowerPC 401 microcontrolers */
-#define CPU_POWERPC_IOP480           CPU_POWERPC_401B2
     /* IBM Processor for Network Resources */
     CPU_POWERPC_COBRA              = 0x10100000, /* XXX: 405 ? */
-    /* PowerPC 403 family */
-    /* PowerPC 403 microcontrollers */
-    CPU_POWERPC_403GA              = 0x00200011,
-    CPU_POWERPC_403GB              = 0x00200100,
-    CPU_POWERPC_403GC              = 0x00200200,
-    CPU_POWERPC_403GCX             = 0x00201400,
     /* PowerPC 405 family */
     /* PowerPC 405 cores */
     CPU_POWERPC_405D2              = 0x20010000,
@@ -203,13 +184,13 @@ enum {
 #define CPU_POWERPC_MPC8548E_v11     CPU_POWERPC_e500v2_v11
 #define CPU_POWERPC_MPC8548E_v20     CPU_POWERPC_e500v2_v20
 #define CPU_POWERPC_MPC8548E_v21     CPU_POWERPC_e500v2_v21
-#define CPU_POWERPC_MPC8555_v10      CPU_POWERPC_e500v2_v10
-#define CPU_POWERPC_MPC8555_v11      CPU_POWERPC_e500v2_v11
-#define CPU_POWERPC_MPC8555E_v10     CPU_POWERPC_e500v2_v10
-#define CPU_POWERPC_MPC8555E_v11     CPU_POWERPC_e500v2_v11
-#define CPU_POWERPC_MPC8560_v10      CPU_POWERPC_e500v2_v10
-#define CPU_POWERPC_MPC8560_v20      CPU_POWERPC_e500v2_v20
-#define CPU_POWERPC_MPC8560_v21      CPU_POWERPC_e500v2_v21
+#define CPU_POWERPC_MPC8555_v10      CPU_POWERPC_e500v1_v20
+#define CPU_POWERPC_MPC8555_v11      CPU_POWERPC_e500v1_v20
+#define CPU_POWERPC_MPC8555E_v10     CPU_POWERPC_e500v1_v20
+#define CPU_POWERPC_MPC8555E_v11     CPU_POWERPC_e500v1_v20
+#define CPU_POWERPC_MPC8560_v10      CPU_POWERPC_e500v1_v10
+#define CPU_POWERPC_MPC8560_v20      CPU_POWERPC_e500v1_v20
+#define CPU_POWERPC_MPC8560_v21      CPU_POWERPC_e500v1_v20
 #define CPU_POWERPC_MPC8567          CPU_POWERPC_e500v2_v22
 #define CPU_POWERPC_MPC8567E         CPU_POWERPC_e500v2_v22
 #define CPU_POWERPC_MPC8568          CPU_POWERPC_e500v2_v22
@@ -224,10 +205,6 @@ enum {
 #define CPU_POWERPC_MPC8641          CPU_POWERPC_e600
 #define CPU_POWERPC_MPC8641D         CPU_POWERPC_e600
     /* PowerPC 6xx cores */
-    CPU_POWERPC_601_v0             = 0x00010001,
-    CPU_POWERPC_601_v1             = 0x00010001,
-    CPU_POWERPC_601_v2             = 0x00010002,
-    CPU_POWERPC_602                = 0x00050100,
     CPU_POWERPC_603                = 0x00030100,
     CPU_POWERPC_603E_v11           = 0x00060101,
     CPU_POWERPC_603E_v12           = 0x00060102,
@@ -375,6 +352,7 @@ enum {
     CPU_POWERPC_POWER9_DD20        = 0x004E1200,
     CPU_POWERPC_POWER10_BASE       = 0x00800000,
     CPU_POWERPC_POWER10_DD1        = 0x00800100,
+    CPU_POWERPC_POWER10_DD20       = 0x00800200,
     CPU_POWERPC_970_v22            = 0x00390202,
     CPU_POWERPC_970FX_v10          = 0x00391100,
     CPU_POWERPC_970FX_v20          = 0x003C0200,

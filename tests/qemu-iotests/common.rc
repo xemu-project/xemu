@@ -17,17 +17,39 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-SED=
-for sed in sed gsed; do
-    ($sed --version | grep 'GNU sed') > /dev/null 2>&1
-    if [ "$?" -eq 0 ]; then
-        SED=$sed
-        break
+export LANG=C
+
+PATH=".:$PATH"
+
+HOSTOS=$(uname -s)
+arch=$(uname -m)
+[[ "$arch" =~ "ppc64" ]] && qemu_arch=ppc64 || qemu_arch="$arch"
+
+# make sure we have a standard umask
+umask 022
+
+# bail out, setting up .notrun file
+_notrun()
+{
+    echo "$*" >"$TEST_DIR/$seq.notrun"
+    echo "$seq not run: $*"
+    status=0
+    exit
+}
+
+if ! command -v gsed >/dev/null 2>&1; then
+    if sed --version 2>&1 | grep -v 'not GNU sed' | grep 'GNU sed' > /dev/null;
+    then
+        gsed()
+        {
+            sed "$@"
+        }
+    else
+        gsed()
+        {
+            _notrun "GNU sed not available"
+        }
     fi
-done
-if [ -z "$SED" ]; then
-    echo "$0: GNU sed not found"
-    exit 1
 fi
 
 dd()
@@ -109,18 +131,14 @@ peek_file_raw()
     dd if="$1" bs=1 skip="$2" count="$3" status=none
 }
 
-config=common.config
-test -f $config || config=../common.config
-if ! test -f $config
-then
-    echo "$0: failed to find common.config"
-    exit 1
-fi
-if ! . $config
-    then
-    echo "$0: failed to source common.config"
-    exit 1
-fi
+_optstr_add()
+{
+    if [ -n "$1" ]; then
+        echo "$1,$2"
+    else
+        echo "$2"
+    fi
+}
 
 # Set the variables to the empty string to turn Valgrind off
 # for specific processes, e.g.
@@ -166,8 +184,14 @@ _qemu_wrapper()
         if [ -n "${QEMU_NEED_PID}" ]; then
             echo $BASHPID > "${QEMU_TEST_DIR}/qemu-${_QEMU_HANDLE}.pid"
         fi
+
+        GDB=""
+        if [ -n "${GDB_OPTIONS}" ]; then
+            GDB="gdbserver ${GDB_OPTIONS}"
+        fi
+
         VALGRIND_QEMU="${VALGRIND_QEMU_VM}" _qemu_proc_exec "${VALGRIND_LOGFILE}" \
-            "$QEMU_PROG" $QEMU_OPTIONS "$@"
+            $GDB "$QEMU_PROG" $QEMU_OPTIONS "$@"
     )
     RETVAL=$?
     _qemu_proc_valgrind_log "${VALGRIND_LOGFILE}" $RETVAL
@@ -693,6 +717,7 @@ _img_info()
             -e "s#$TEST_DIR#TEST_DIR#g" \
             -e "s#$SOCK_DIR/fuse-#TEST_DIR/#g" \
             -e "s#$IMGFMT#IMGFMT#g" \
+            -e 's/\(compression type: \)\(zlib\|zstd\)/\1COMPRESSION_TYPE/' \
             -e "/^disk size:/ D" \
             -e "/actual-size/ D" | \
         while IFS='' read -r line; do
@@ -715,30 +740,20 @@ _img_info()
         done
 }
 
-# bail out, setting up .notrun file
-#
-_notrun()
-{
-    echo "$*" >"$OUTPUT_DIR/$seq.notrun"
-    echo "$seq not run: $*"
-    status=0
-    exit
-}
-
 # bail out, setting up .casenotrun file
 # The function _casenotrun() is used as a notifier. It is the
 # caller's responsibility to make skipped a particular test.
 #
 _casenotrun()
 {
-    echo "    [case not run] $*" >>"$OUTPUT_DIR/$seq.casenotrun"
+    echo "    [case not run] $*" >>"$TEST_DIR/$seq.casenotrun"
 }
 
 # just plain bail out
 #
 _fail()
 {
-    echo "$*" | tee -a "$OUTPUT_DIR/$seq.full"
+    echo "$*" | tee -a "$TEST_DIR/$seq.full"
     echo "(see $seq.full for details)"
     status=1
     exit 1
@@ -913,7 +928,7 @@ _require_working_luks()
     IMGFMT='luks' _rm_test_img "$file"
 
     if [ $status != 0 ]; then
-        reason=$(echo "$output" | grep "$file:" | $SED -e "s#.*$file: *##")
+        reason=$(echo "$output" | grep "$file:" | sed -e "s#.*$file: *##")
         if [ -z "$reason" ]; then
             reason="Failed to create a LUKS image"
         fi
@@ -967,7 +982,7 @@ _require_large_file()
 #
 _require_devices()
 {
-    available=$($QEMU -M none -device help | \
+    available=$($QEMU -M none -device help 2> /dev/null | \
                 grep ^name | sed -e 's/^name "//' -e 's/".*$//')
     for device
     do
@@ -979,7 +994,7 @@ _require_devices()
 
 _require_one_device_of()
 {
-    available=$($QEMU -M none -device help | \
+    available=$($QEMU -M none -device help 2> /dev/null | \
                 grep ^name | sed -e 's/^name "//' -e 's/".*$//')
     for device
     do
@@ -988,6 +1003,27 @@ _require_one_device_of()
         fi
     done
     _notrun "$* not available"
+}
+
+_qcow2_dump_header()
+{
+    if [[ "$1" == "--no-filter-compression" ]]; then
+        local filter_compression=0
+        shift
+    else
+        local filter_compression=1
+    fi
+
+    img="$1"
+    if [ -z "$img" ]; then
+        img="$TEST_IMG"
+    fi
+
+    if [[ $filter_compression == 0 ]]; then
+        $PYTHON qcow2.py "$img" dump-header
+    else
+        $PYTHON qcow2.py "$img" dump-header | _filter_qcow2_compression_type_bit
+    fi
 }
 
 # make sure this script returns success
