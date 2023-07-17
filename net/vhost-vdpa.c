@@ -49,6 +49,7 @@ const int vdpa_feature_bits[] = {
     VIRTIO_F_VERSION_1,
     VIRTIO_NET_F_CSUM,
     VIRTIO_NET_F_GUEST_CSUM,
+    VIRTIO_NET_F_CTRL_GUEST_OFFLOADS,
     VIRTIO_NET_F_GSO,
     VIRTIO_NET_F_GUEST_TSO4,
     VIRTIO_NET_F_GUEST_TSO6,
@@ -160,6 +161,14 @@ static void vhost_vdpa_cleanup(NetClientState *nc)
     VhostVDPAState *s = DO_UPCAST(VhostVDPAState, nc, nc);
     struct vhost_dev *dev = &s->vhost_net->dev;
 
+    /*
+     * If a peer NIC is attached, do not cleanup anything.
+     * Cleanup will happen as a part of qemu_cleanup() -> net_cleanup()
+     * when the guest is shutting down.
+     */
+    if (nc->peer && nc->peer->info->type == NET_CLIENT_DRIVER_NIC) {
+        return;
+    }
     qemu_vfree(s->cvq_cmd_out_buffer);
     qemu_vfree(s->status);
     if (dev->vq_index + dev->nvqs == dev->vq_index_end) {
@@ -500,7 +509,7 @@ static int vhost_vdpa_net_handle_ctrl_avail(VhostShadowVirtqueue *svq,
     }
 
     if (*s->status != VIRTIO_NET_OK) {
-        return VIRTIO_NET_ERR;
+        goto out;
     }
 
     status = VIRTIO_NET_ERR;
