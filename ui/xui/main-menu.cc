@@ -70,13 +70,15 @@ void MainMenuGeneralView::Draw()
            "Enables to override default CPU clock speed");
     
     char buf[32];
-
+    float min = 0.01;
+    float max = 2;
+    float gpspeed = 0.01;
 
     
     snprintf(buf, sizeof(buf), "Clock Speed %d%% (%.2f MHz)", (int)(g_config.perf.cpu_clockspeed * 100), (733333333 * g_config.perf.cpu_clockspeed)/1000000);
-    Slider("Virtual CPU clock", &g_config.perf.cpu_clockspeed, buf);
+    Slider("Virtual CPU clock", &g_config.perf.cpu_clockspeed, min , max, gpspeed, buf);
 
-    if ((g_config.perf.cpu_clockspeed-0.495)*(g_config.perf.cpu_clockspeed-0.505) <= 0) {g_config.perf.cpu_clockspeed = 0.5;}
+    if ((g_config.perf.cpu_clockspeed-0.999)*(g_config.perf.cpu_clockspeed-1.009) <= 0) {g_config.perf.cpu_clockspeed = 1;}
     
     SectionTitle("Miscellaneous");
     Toggle("Skip startup animation", &g_config.general.skip_boot_anim,
@@ -549,9 +551,12 @@ void MainMenuAudioView::Draw()
 {
     SectionTitle("Volume");
     char buf[32];
+    float min = 0;
+    float max = 1;
+    float gpspeed = 0.05;
     snprintf(buf, sizeof(buf), "Limit output volume (%d%%)",
              (int)(g_config.audio.volume_limit * 100));
-    Slider("Output volume limit", &g_config.audio.volume_limit, buf);
+    Slider("Output volume limit", &g_config.audio.volume_limit, min, max, gpspeed, buf);
 
     SectionTitle("Quality");
     Toggle("Real-time DSP processing", &g_config.audio.use_dsp,
