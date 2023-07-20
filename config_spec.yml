@@ -258,4 +258,4 @@ perf:
     default: false
   cpu_clockspeed:
     type: number
-    default: 0.5
+    default: 1
