@@ -206,8 +206,7 @@ void CompatibilityReporter::Draw()
     ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*g_viewport_mgr.m_scale);
 
     ImGui::SetItemDefaultFocus();
-    if (g_config.perf.override_clockspeed)
-    {
+    if (g_config.perf.override_clockspeed) {
         ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
         ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
     }
