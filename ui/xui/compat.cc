@@ -218,9 +218,8 @@ void CompatibilityReporter::Draw()
             is_open = false;
         }
     }
-    if (g_config.perf.override_clockspeed)
-    {
-        ImGui::Text("Reports using Emulated CPU clock override is not allowed.");
+    if (g_config.perf.override_clockspeed) {
+        ImGui::Text("Reports cannot be made while using altered CPU clock speeds");
         ImGui::PopItemFlag();
         ImGui::PopStyleVar();
     }
