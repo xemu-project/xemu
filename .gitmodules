@@ -85,3 +85,6 @@
 [submodule "hw/xbox/nv2a/thirdparty/nv2a_vsh_cpu"]
 	path = hw/xbox/nv2a/thirdparty/nv2a_vsh_cpu
 	url = https://github.com/abaire/nv2a_vsh_cpu.git
+[submodule "ui/thirdparty/httplib"]
+	path = ui/thirdparty/httplib
+	url = https://github.com/yhirose/cpp-httplib
