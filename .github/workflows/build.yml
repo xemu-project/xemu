@@ -63,11 +63,9 @@ jobs:
         - configuration: Debug
           build_param: --debug
           artifact_name: xemu-win-debug
-          artifact_filename: xemu-win-debug.zip
         - configuration: Release
           build_param:
           artifact_name: xemu-win-release
-          artifact_filename: xemu-win-release.zip
     env:
       DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-d0d3e7b
 
@@ -98,13 +96,46 @@ jobs:
           -u $(id -u):$(id -g) \
           $DOCKER_IMAGE_NAME \
             bash -c "ccache -z; ./build.sh -p win64-cross ${{ matrix.build_param }} && ccache -s"
-        cd dist
-        zip -r ../${{ matrix.artifact_filename }} *
     - name: Upload build artifact
       uses: actions/upload-artifact@v3
       with:
         name: ${{ matrix.artifact_name }}
-        path: ${{ matrix.artifact_filename }}
+        path: dist
+
+  # Generate a symbols package for Windows. Use cv2pdb to generate PDBs from
+  # DWARF and update + strip the executable. Re-package the original release
+  # and create symbols package.
+  WindowsPdb:
+    name: Generate PDB for Windows (${{ matrix.configuration }})
+    runs-on: windows-latest
+    needs: Windows
+    strategy:
+      matrix:
+        include:
+        - configuration: Debug
+          artifact_name: xemu-win-debug
+        - configuration: Release
+          artifact_name: xemu-win-release
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: ${{ matrix.artifact_name }}
+        path: ${{ matrix.artifact_name }}
+    - name: Generate PDB
+      run: |
+        Invoke-WebRequest -Uri "https://github.com/rainers/cv2pdb/releases/download/v0.52/cv2pdb-0.52.zip" -OutFile "cv2pdb.zip"
+        7z x -ocv2pdb -y cv2pdb.zip
+        cd ${{ matrix.artifact_name }}
+        ../cv2pdb/cv2pdb64.exe xemu.exe
+        mkdir ../dist
+        7z a -tzip ../dist/${{ matrix.artifact_name }}.zip * "-xr!*.pdb"
+        7z a -tzip ../dist/${{ matrix.artifact_name }}-pdb.zip "-ir!*.pdb"
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.artifact_name }}-pdb
+        path: dist
 
   Ubuntu:
     name: Build for Ubuntu (${{ matrix.configuration }})
@@ -324,7 +355,7 @@ jobs:
   Release:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
-    needs: [Ubuntu, macOSUniversal, Windows]
+    needs: [Ubuntu, macOSUniversal, WindowsPdb]
     steps:
     - name: Download artifacts
       uses: actions/download-artifact@v3
@@ -353,8 +384,10 @@ jobs:
         draft: false
         files: |
           dist/src.tar.gz/src.tar.gz
-          dist/xemu-win-debug/xemu-win-debug.zip
-          dist/xemu-win-release/xemu-win-release.zip
+          dist/xemu-win-debug-pdb/xemu-win-debug.zip
+          dist/xemu-win-debug-pdb/xemu-win-debug-pdb.zip
+          dist/xemu-win-release-pdb/xemu-win-release.zip
+          dist/xemu-win-release-pdb/xemu-win-release-pdb.zip
           dist/xemu-macos-universal-release/xemu-macos-universal-release.zip
           dist/xemu-macos-universal-debug/xemu-macos-universal-debug.zip
           dist/xemu-ubuntu-release/xemu/xemu-v${{ env.XEMU_VERSION }}-x86_64.AppImage
@@ -374,7 +407,7 @@ jobs:
   PushToPPA:
     name: Push to PPA Snapshot Branch
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [Ubuntu, macOSUniversal, Windows]
+    needs: [Ubuntu, macOSUniversal, WindowsPdb]
     runs-on: ubuntu-latest
     steps:
     - name: Download source package
