@@ -284,7 +284,7 @@ void xemu_hud_render(void)
         
         bool mod_key_down = ImGui::IsKeyDown(ImGuiKey_ModShift);
         for (int f_key = 0; f_key < 4; ++f_key) {
-            if (ImGui::IsKeyPressed(f_key + ImGuiKey_F5)) {
+            if (ImGui::IsKeyPressed((enum ImGuiKey)(ImGuiKey_F5 + f_key))) {
                 ActionActivateBoundSnapshot(f_key, mod_key_down);
                 break;
             }

@@ -1257,8 +1257,8 @@ void MainMenuScene::HandleInput()
     // XXX: Ensure we have focus for two frames. If a user cancels a popup window, we do not want to cancel main
     //      window as well.
     if (nofocus || (focus && m_had_focus_last_frame &&
-                    ImGui::IsNavInputTest(ImGuiNavInput_Cancel,
-                                          ImGuiInputReadMode_Pressed))) {
+                    (ImGui::IsKeyDown(ImGuiKey_GamepadFaceRight)
+                     || ImGui::IsKeyDown(ImGuiKey_Escape)))) {
         Hide();
         return;
     }
