@@ -150,7 +150,6 @@ void Updater::check_for_update_internal()
 {
     httplib::SSLClient cli(version_host, 443);
     cli.set_follow_location(true);
-    cli.set_timeout_sec(5);
     auto res = cli.Get(version_uri, [this](uint64_t len, uint64_t total) {
         m_update_percentage = len*100/total;
         return !m_should_cancel;
@@ -198,7 +197,6 @@ void Updater::update_internal()
 {
     httplib::SSLClient cli(download_host, 443);
     cli.set_follow_location(true);
-    cli.set_timeout_sec(5);
     auto res = cli.Get(download_uri, [this](uint64_t len, uint64_t total) {
         m_update_percentage = len*100/total;
         return !m_should_cancel;
