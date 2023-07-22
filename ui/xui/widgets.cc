@@ -284,7 +284,7 @@ void Slider(const char *str_id, float *v, const char *description, float min, fl
             ImGui::NavMoveRequestCancel();
         }
     }
-    
+
     if (ImGui::IsItemActive()) {
         ImVec2 mouse = ImGui::GetMousePos();
         x = GetSliderValueForMousePos(mouse, slider_pos, slider_size);
