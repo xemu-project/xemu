@@ -43,6 +43,8 @@ void DebugApuWindow::Draw()
 
 
     ImGui::Columns(2, "", false);
+    ImGui::SetColumnWidth(0, 360*g_viewport_mgr.m_scale);
+
     int now = SDL_GetTicks() % 1000;
     float t = now/1000.0f;
     float freq = 1;
@@ -56,8 +58,8 @@ void DebugApuWindow::Draw()
 
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0);
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, 2));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 4));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2*g_viewport_mgr.m_scale, 2*g_viewport_mgr.m_scale));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4*g_viewport_mgr.m_scale, 4*g_viewport_mgr.m_scale));
     for (int i = 0; i < 256; i++)
     {
         if (i % 16) {
@@ -164,8 +166,6 @@ void DebugApuWindow::Draw()
         mcpx_apu_debug_toggle_mute(voice_mute);
     }
 
-    ImGui::SameLine();
-    ImGui::SetColumnWidth(0, ImGui::GetCursorPosX());
     ImGui::NextColumn();
 
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
