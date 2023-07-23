@@ -66,7 +66,7 @@
 	url = https://gitlab.com/qemu-project/libvfio-user.git
 [submodule "ui/thirdparty/imgui"]
 	path = ui/thirdparty/imgui
-	url = https://github.com/ocornut/imgui.git
+	url = https://github.com/xemu-project/imgui.git
 	ignore = untracked
 [submodule "ui/thirdparty/implot"]
 	path = ui/thirdparty/implot
