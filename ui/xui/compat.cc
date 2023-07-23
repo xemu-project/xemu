@@ -203,13 +203,17 @@ void CompatibilityReporter::Draw()
         ImGui::SameLine();
     }
 
-    ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*g_viewport_mgr.m_scale);
-
-    ImGui::SetItemDefaultFocus();
     if (g_config.perf.override_clockspeed) {
         ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
         ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+
+        ImGui::Text("Reports cannot be made while using altered CPU clock speeds");
+        ImGui::SameLine();
     }
+
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth()-(120+10)*g_viewport_mgr.m_scale);
+
+    ImGui::SetItemDefaultFocus();
     if (ImGui::Button("Send", ImVec2(120*g_viewport_mgr.m_scale, 0))) {
         did_send = true;
         send_result = report.Send();
