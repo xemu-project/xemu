@@ -222,7 +222,6 @@ void CompatibilityReporter::Draw()
         }
     }
     if (g_config.perf.override_clockspeed) {
-        ImGui::Text("Reports cannot be made while using altered CPU clock speeds");
         ImGui::PopItemFlag();
         ImGui::PopStyleVar();
     }
