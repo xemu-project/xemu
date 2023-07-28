@@ -2564,9 +2564,9 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
     OP_f32_f64(add): {
         int mopc = dp ? OPC_ADDSD : OPC_ADDSS;
         if (a0 == a1) {
-            tcg_out_modrm(s, mopc, a1, a2);
+            tcg_out_modrm(s, mopc, a0, a2);
         } else if (a0 == a2) {
-            tcg_out_modrm(s, mopc, a2, a1);
+            tcg_out_modrm(s, mopc, a0, a1);
         } else {
             tcg_out_stash_xmm(s, a1);
             tcg_out_modrm(s, mopc, a1, a2);
@@ -2579,7 +2579,7 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
     OP_f32_f64(sub): {
         int mopc = dp ? OPC_SUBSD : OPC_SUBSS;
         if (a0 == a1) {
-            tcg_out_modrm(s, mopc, a1, a2);
+            tcg_out_modrm(s, mopc, a0, a2);
         } else {
             tcg_out_stash_xmm(s, a1);
             tcg_out_modrm(s, mopc, a1, a2);
@@ -2592,9 +2592,9 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
     OP_f32_f64(mul): {
         int mopc = dp ? OPC_MULSD : OPC_MULSS;
         if (a0 == a1) {
-            tcg_out_modrm(s, mopc, a1, a2);
+            tcg_out_modrm(s, mopc, a0, a2);
         } else if (a0 == a2) {
-            tcg_out_modrm(s, mopc, a2, a1);
+            tcg_out_modrm(s, mopc, a0, a1);
         } else {
             /* FIXME: Handle 3 unique operand variant (AVX,reg,stack) */
             assert(0);
@@ -2604,7 +2604,7 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
     OP_f32_f64(div): {
         int mopc = dp ? OPC_DIVSD : OPC_DIVSS;
         if (a0 == a1) {
-            tcg_out_modrm(s, mopc, a1, a2);
+            tcg_out_modrm(s, mopc, a0, a2);
         } else {
             tcg_out_stash_xmm(s, a1);
             tcg_out_modrm(s, mopc, a1, a2);
