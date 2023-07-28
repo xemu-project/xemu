@@ -425,7 +425,7 @@ const VMStateDescription vmstate_nv2a_pgraph_vertex_attributes = {
 
 static const VMStateDescription vmstate_nv2a = {
     .name = "nv2a",
-    .version_id = 1,
+    .version_id = 2,
     .minimum_version_id = 1,
     .post_save = nv2a_post_save,
     .post_load = nv2a_post_load,
@@ -473,6 +473,7 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT32(pgraph.surface_shape.log_width, NV2AState),
         VMSTATE_UINT32(pgraph.surface_shape.log_height, NV2AState),
         VMSTATE_UINT32(pgraph.surface_shape.clip_x, NV2AState),
+        VMSTATE_UINT32_V(pgraph.surface_shape.clip_y, NV2AState, 2),
         VMSTATE_UINT32(pgraph.surface_shape.clip_width, NV2AState),
         VMSTATE_UINT32(pgraph.surface_shape.clip_height, NV2AState),
         VMSTATE_UINT32(pgraph.surface_shape.anti_aliasing, NV2AState),
@@ -482,6 +483,7 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT32(pgraph.last_surface_shape.log_width, NV2AState),
         VMSTATE_UINT32(pgraph.last_surface_shape.log_height, NV2AState),
         VMSTATE_UINT32(pgraph.last_surface_shape.clip_x, NV2AState),
+        VMSTATE_UINT32_V(pgraph.last_surface_shape.clip_y, NV2AState, 2),
         VMSTATE_UINT32(pgraph.last_surface_shape.clip_width, NV2AState),
         VMSTATE_UINT32(pgraph.last_surface_shape.clip_height, NV2AState),
         VMSTATE_UINT32(pgraph.last_surface_shape.anti_aliasing, NV2AState),
