@@ -2596,8 +2596,11 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
         } else if (a0 == a2) {
             tcg_out_modrm(s, mopc, a0, a1);
         } else {
-            /* FIXME: Handle 3 unique operand variant (AVX,reg,stack) */
-            assert(0);
+            tcg_out_stash_xmm(s, a1);
+            tcg_out_modrm(s, mopc, a1, a2);
+            tcg_out_mov(s, dp ? TCG_TYPE_F64 : TCG_TYPE_F32, a0, a1);
+            tcg_out_unstash_xmm(s, a1);
+            /* FIXME: AVX,reg,stack */
         }
         break;
     }
