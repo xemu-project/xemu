@@ -2651,8 +2651,6 @@ void qmp_x_exit_preconfig(Error **errp)
     qemu_create_cli_devices();
     qemu_machine_creation_done();
 
-    xemu_input_init();
-
     if (loadvm) {
         load_snapshot(loadvm, NULL, false, NULL, &error_fatal);
     }
