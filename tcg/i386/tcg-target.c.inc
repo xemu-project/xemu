@@ -2618,13 +2618,17 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
         break;
     }
     OP_f32_f64(abs):
-        assert(a0 == a1); /* FIXME: add mov */
+        if (a0 != a1) {
+            tcg_out_mov(s, dp ? TCG_TYPE_F64 : TCG_TYPE_F32, a0, a1);
+        }
         tcg_out_modrm_pool(s, OPC_PAND, a0);
         new_pool_l2(s, R_386_PC32, s->code_ptr - 4, -4,
                     dp ? fabs_mask64 : fabs_mask32, 0);
         break;
     OP_f32_f64(chs):
-        assert(a0 == a1); /* FIXME: add mov */
+        if (a0 != a1) {
+            tcg_out_mov(s, dp ? TCG_TYPE_F64 : TCG_TYPE_F32, a0, a1);
+        }
         tcg_out_modrm_pool(s, OPC_PXOR, a0);
         new_pool_l2(s, R_386_PC32, s->code_ptr - 4, -4,
                     dp ? fchs_mask64 : fchs_mask32, 0);
