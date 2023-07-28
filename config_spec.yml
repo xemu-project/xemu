@@ -133,6 +133,9 @@ display:
     show_menubar:
       type: bool
       default: true
+    show_notifications:
+      type: bool
+      default: true
     use_animations:
       type: bool
       default: true
