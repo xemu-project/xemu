@@ -2568,24 +2568,23 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
         } else if (a0 == a2) {
             tcg_out_modrm(s, mopc, a0, a1);
         } else {
-            tcg_out_stash_xmm(s, a1);
-            tcg_out_modrm(s, mopc, a1, a2);
             tcg_out_mov(s, dp ? TCG_TYPE_F64 : TCG_TYPE_F32, a0, a1);
-            tcg_out_unstash_xmm(s, a1);
-            /* FIXME: AVX,reg,stack */
+            tcg_out_modrm(s, mopc, a0, a2);
         }
         break;
     }
     OP_f32_f64(sub): {
         int mopc = dp ? OPC_SUBSD : OPC_SUBSS;
+        int ft = dp ? TCG_TYPE_F64 : TCG_TYPE_F32;
         if (a0 == a1) {
             tcg_out_modrm(s, mopc, a0, a2);
+        } else if (a0 == a2) {
+            tcg_out_stash_xmm(s, a2);
+            tcg_out_mov(s, ft, a0, a1);
+            tcg_out_modrm_offset(s, mopc, a0, TCG_REG_ESP, -0x10);
         } else {
-            tcg_out_stash_xmm(s, a1);
-            tcg_out_modrm(s, mopc, a1, a2);
-            tcg_out_mov(s, dp ? TCG_TYPE_F64 : TCG_TYPE_F32, a0, a1);
-            tcg_out_unstash_xmm(s, a1);
-            /* FIXME: AVX,reg,stack */
+            tcg_out_mov(s, ft, a0, a1);
+            tcg_out_modrm(s, mopc, a0, a2);
         }
         break;
     }
@@ -2596,24 +2595,23 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
         } else if (a0 == a2) {
             tcg_out_modrm(s, mopc, a0, a1);
         } else {
-            tcg_out_stash_xmm(s, a1);
-            tcg_out_modrm(s, mopc, a1, a2);
             tcg_out_mov(s, dp ? TCG_TYPE_F64 : TCG_TYPE_F32, a0, a1);
-            tcg_out_unstash_xmm(s, a1);
-            /* FIXME: AVX,reg,stack */
+            tcg_out_modrm(s, mopc, a0, a2);
         }
         break;
     }
     OP_f32_f64(div): {
         int mopc = dp ? OPC_DIVSD : OPC_DIVSS;
+        int ft = dp ? TCG_TYPE_F64 : TCG_TYPE_F32;
         if (a0 == a1) {
             tcg_out_modrm(s, mopc, a0, a2);
+        } else if (a0 == a2) {
+            tcg_out_stash_xmm(s, a2);
+            tcg_out_mov(s, ft, a0, a1);
+            tcg_out_modrm_offset(s, mopc, a0, TCG_REG_ESP, -0x10);
         } else {
-            tcg_out_stash_xmm(s, a1);
-            tcg_out_modrm(s, mopc, a1, a2);
-            tcg_out_mov(s, dp ? TCG_TYPE_F64 : TCG_TYPE_F32, a0, a1);
-            tcg_out_unstash_xmm(s, a1);
-            /* FIXME: AVX,reg,stack */
+            tcg_out_mov(s, ft, a0, a1);
+            tcg_out_modrm(s, mopc, a0, a2);
         }
         break;
     }
