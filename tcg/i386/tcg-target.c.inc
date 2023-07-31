@@ -2567,6 +2567,8 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
             tcg_out_modrm(s, mopc, a0, a2);
         } else if (a0 == a2) {
             tcg_out_modrm(s, mopc, a0, a1);
+        } else if (have_avx1) {
+            tcg_out_vex_modrm(s, mopc, a0, a1, a2);
         } else {
             tcg_out_mov(s, dp ? TCG_TYPE_F64 : TCG_TYPE_F32, a0, a1);
             tcg_out_modrm(s, mopc, a0, a2);
@@ -2578,6 +2580,8 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
         int ft = dp ? TCG_TYPE_F64 : TCG_TYPE_F32;
         if (a0 == a1) {
             tcg_out_modrm(s, mopc, a0, a2);
+        } else if (have_avx1) {
+            tcg_out_vex_modrm(s, mopc, a0, a1, a2);
         } else if (a0 == a2) {
             tcg_out_stash_xmm(s, a2);
             tcg_out_mov(s, ft, a0, a1);
@@ -2594,6 +2598,8 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
             tcg_out_modrm(s, mopc, a0, a2);
         } else if (a0 == a2) {
             tcg_out_modrm(s, mopc, a0, a1);
+        } else if (have_avx1) {
+            tcg_out_vex_modrm(s, mopc, a0, a1, a2);
         } else {
             tcg_out_mov(s, dp ? TCG_TYPE_F64 : TCG_TYPE_F32, a0, a1);
             tcg_out_modrm(s, mopc, a0, a2);
@@ -2605,6 +2611,8 @@ static inline void tcg_out_op(TCGContext *s, TCGOpcode opc,
         int ft = dp ? TCG_TYPE_F64 : TCG_TYPE_F32;
         if (a0 == a1) {
             tcg_out_modrm(s, mopc, a0, a2);
+        } else if (have_avx1) {
+            tcg_out_vex_modrm(s, mopc, a0, a1, a2);
         } else if (a0 == a2) {
             tcg_out_stash_xmm(s, a2);
             tcg_out_mov(s, ft, a0, a1);
