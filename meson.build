@@ -1786,6 +1786,18 @@ if have_system and get_option('renderdoc').enabled()
   have_renderdoc = true
 endif
 
+have_vtune = false
+vtune_path = get_option('vtune')
+if vtune_path != ''
+  have_vtune = true
+  vtune_jitprofiling = declare_dependency(
+    dependencies: cc.find_library('jitprofiling', dirs: [vtune_path + '/lib64']),
+    include_directories: include_directories(vtune_path + '/include'))
+  config_host += { 'CONFIG_VTUNE_JITPROFILING': 'y' }
+else
+  vtune_jitprofiling = not_found
+endif
+
 dbus_display = get_option('dbus_display') \
   .require(gio.version().version_compare('>=2.64'),
            error_message: '-display dbus requires glib>=2.64') \
@@ -4060,6 +4072,7 @@ summary_info += {'libudev':           libudev}
 # Dummy dependency, keep .found()
 summary_info += {'FUSE lseek':        fuse_lseek.found()}
 summary_info += {'selinux':           selinux}
+summary_info += {'vtune':             have_vtune ? vtune_path : false}
 summary(summary_info, bool_yn: true, section: 'Dependencies')
 
 if not supported_cpus.contains(cpu)
