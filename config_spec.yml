@@ -209,3 +209,6 @@ perf:
   cache_shaders:
     type: bool
     default: true
+  pin_cpu_thread:
+    type: bool
+    default: false

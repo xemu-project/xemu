@@ -58,6 +58,8 @@ void MainMenuGeneralView::Draw()
     Toggle("Hard FPU emulation", &g_config.perf.hard_fpu,
            "Use hardware-accelerated floating point emulation (requires restart)");
 #endif
+    Toggle("Set CPU thread affinity", &g_config.perf.pin_cpu_thread,
+           "Set CPU thread affinity to Logical CPU 0");
 
     Toggle("Cache shaders to disk", &g_config.perf.cache_shaders,
            "Reduce stutter in games by caching previously generated shaders");

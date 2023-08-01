@@ -24,6 +24,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/thread.h"
 #include "sysemu/tcg.h"
 #include "sysemu/replay.h"
 #include "sysemu/cpu-timers.h"
@@ -62,10 +63,60 @@ static void mttcg_force_rcu(Notifier *notify, void *data)
  * current CPUState for a given thread.
  */
 
+static void qemu_thread_set_affinity_simple(int core_id) {
+    int nbits =
+#ifdef _WIN32
+        64
+#else
+        sysconf(_SC_NPROCESSORS_ONLN);
+#endif
+    unsigned long *bitmap = bitmap_new(nbits);
+
+    core_id = core_id % nbits;
+    set_bit(core_id, bitmap);
+    
+    QemuThread thread;
+    qemu_thread_get_self(&thread);
+    
+    int ret = qemu_thread_set_affinity(&thread, bitmap, nbits);
+    if (ret) {
+        fprintf(stderr, "Setting CPU affinity failed\n");
+    }
+    g_free(bitmap);
+}
+
+static void qemu_thread_clear_affinity(void) {
+    int nbits =
+#ifdef _WIN32
+        64
+#else
+        sysconf(_SC_NPROCESSORS_ONLN);
+#endif
+    unsigned long *bitmap = bitmap_new(nbits);
+
+    for (int i = 0; i < nbits; i++) {
+        set_bit(i, bitmap);
+    }
+    
+    QemuThread thread;
+    qemu_thread_get_self(&thread);
+    
+    int ret = qemu_thread_set_affinity(&thread, bitmap, nbits);
+    if (ret) {
+        fprintf(stderr, "Setting CPU affinity failed\n");
+    }
+    g_free(bitmap);
+}
+
+#include "ui/xemu-settings.h"
+static bool pinned = false;
+
 static void *mttcg_cpu_thread_fn(void *arg)
 {
     MttcgForceRcuNotifier force_rcu;
     CPUState *cpu = arg;
+
+    qemu_thread_set_affinity_simple(0);
 
     assert(tcg_enabled());
     g_assert(!icount_enabled());
@@ -89,6 +140,15 @@ static void *mttcg_cpu_thread_fn(void *arg)
     cpu->exit_request = 1;
 
     do {
+        if (pinned != g_config.perf.pin_cpu_thread) {
+            if (g_config.perf.pin_cpu_thread) {
+                qemu_thread_set_affinity_simple(0);
+            } else {
+                qemu_thread_clear_affinity();
+            }
+            pinned = g_config.perf.pin_cpu_thread;
+        }
+
         if (cpu_can_run(cpu)) {
             int r;
             qemu_mutex_unlock_iothread();

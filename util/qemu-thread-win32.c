@@ -15,6 +15,7 @@
 #include "qemu/thread.h"
 #include "qemu/notify.h"
 #include "qemu-thread-common.h"
+#include "qemu/bitmap.h"
 #include <process.h>
 
 static bool name_threads;
@@ -480,7 +481,24 @@ void qemu_thread_create(QemuThread *thread, const char *name,
 int qemu_thread_set_affinity(QemuThread *thread, unsigned long *host_cpus,
                              unsigned long nbits)
 {
-    return -ENOSYS;
+    DWORD_PTR affinity = 0;
+    DWORD_PTR affinity_prev;
+    unsigned long value;
+    assert(nbits <= 64);
+
+    value = find_first_bit(host_cpus, nbits);
+    while (value < nbits) {
+        affinity |= 1ULL << value;
+        value = find_next_bit(host_cpus, nbits, value + 1);
+    }
+
+    affinity_prev =
+        SetThreadAffinityMask(qemu_thread_get_handle(thread), affinity);
+    if (!affinity_prev) {
+        return -1;
+    }
+
+    return 0;
 }
 
 int qemu_thread_get_affinity(QemuThread *thread, unsigned long **host_cpus,
