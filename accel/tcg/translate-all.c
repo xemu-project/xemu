@@ -63,6 +63,10 @@
 #include "tb-context.h"
 #include "internal.h"
 
+#if defined(CONFIG_VTUNE_JITPROFILING)
+#include <jitprofiling.h>
+#endif
+
 /* make various TB consistency checks */
 
 /**
@@ -1035,6 +1039,21 @@ recycle_tb:
         tcg_tb_remove(tb);
         return existing_tb;
     }
+
+#if defined(CONFIG_VTUNE_JITPROFILING)
+    if (iJIT_IsProfilingActive() == iJIT_SAMPLING_ON && !recycled) {
+        iJIT_Method_Load *jmethod = g_malloc0(sizeof(iJIT_Method_Load));
+        jmethod->method_id = iJIT_GetNewMethodID();
+        jmethod->method_name = g_strdup_printf("G@0x%x", pc);
+        jmethod->class_file_name = NULL;
+        jmethod->source_file_name = NULL;
+        jmethod->method_load_address = (void*)tb->tc.ptr;
+        jmethod->method_size = tb->tc.size;
+
+        iJIT_NotifyEvent(iJVM_EVENT_TYPE_METHOD_LOAD_FINISHED, (void*)jmethod);
+    }
+#endif
+
     return tb;
 }
 

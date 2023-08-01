@@ -33,6 +33,8 @@ option('fuzzing_engine', type : 'string', value : '',
        description: 'fuzzing engine library for OSS-Fuzz')
 option('trace_file', type: 'string', value: 'trace',
        description: 'Trace file prefix for simple backend')
+option('vtune', type : 'string', value : '',
+       description: 'Path to VTune directory for profiling')
 
 # Everything else can be set via --enable/--disable-* option
 # on the configure script command line.  After adding an option
