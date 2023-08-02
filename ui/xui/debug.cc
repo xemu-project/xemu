@@ -242,7 +242,7 @@ void DebugVideoWindow::Draw()
 
     if (!m_position_restored) {
         ImGui::SetNextWindowPos(ImVec2(g_config.display.debug.video_x_pos, g_config.display.debug.video_y_pos), 
-                                ImGuiCond_Once, ImVec2(0, 0) );
+                                ImGuiCond_Once, ImVec2(0, 0));
         m_transparent = g_config.display.debug.video_transparency;
         m_position_restored = true;
     }
@@ -345,13 +345,13 @@ void DebugVideoWindow::Draw()
 
         ImPlot::PopStyleVar(2);
 
-        ImVec2 dbgwinpos = ImGui::GetWindowPos();
-        g_config.display.debug.video_x_pos = dbgwinpos.x;
-        g_config.display.debug.video_y_pos = dbgwinpos.y;
+        ImVec2 debug_window_pos = ImGui::GetWindowPos();
+        g_config.display.debug.video_x_pos = debug_window_pos.x;
+        g_config.display.debug.video_y_pos = debug_window_pos.y;
 
-        ImVec2 dbgwinsize = ImGui::GetWindowSize();
-        g_config.display.debug.video_x_winsize = dbgwinsize.x / g_viewport_mgr.m_scale;
-        g_config.display.debug.video_y_winsize = dbgwinsize.y / g_viewport_mgr.m_scale;
+        ImVec2 debug_window_size = ImGui::GetWindowSize();
+        g_config.display.debug.video_x_winsize = debug_window_size.x / g_viewport_mgr.m_scale;
+        g_config.display.debug.video_y_winsize = debug_window_size.y / g_viewport_mgr.m_scale;
         g_config.display.debug.video_transparency = m_transparent;
     }
     ImGui::End();
