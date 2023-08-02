@@ -452,7 +452,8 @@ static void process_requests(NV2AState *d)
     if (qatomic_read(&d->pgraph.downloads_pending) ||
         qatomic_read(&d->pgraph.download_dirty_surfaces_pending) ||
         qatomic_read(&d->pgraph.gl_sync_pending) ||
-        qatomic_read(&d->pgraph.flush_pending)) {
+        qatomic_read(&d->pgraph.flush_pending) ||
+        qatomic_read(&d->pgraph.shader_cache_writeback_pending)) {
         qemu_mutex_unlock(&d->pfifo.lock);
         qemu_mutex_lock(&d->pgraph.lock);
         if (qatomic_read(&d->pgraph.downloads_pending)) {
@@ -466,6 +467,9 @@ static void process_requests(NV2AState *d)
         }
         if (qatomic_read(&d->pgraph.flush_pending)) {
             pgraph_flush(d);
+        }
+        if (qatomic_read(&d->pgraph.shader_cache_writeback_pending)) {
+            shader_write_cache_reload_list(&d->pgraph);
         }
         qemu_mutex_unlock(&d->pgraph.lock);
         qemu_mutex_lock(&d->pfifo.lock);

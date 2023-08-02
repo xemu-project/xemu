@@ -21,7 +21,7 @@
 #include <libgen.h>
 #include <pthread.h>
 
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
 #include "qapi/error.h"
 #include "qemu/cutils.h"
 #include "sysemu/block-backend.h"
@@ -47,6 +47,10 @@
 #include "trace/control.h"
 #include "qemu-version.h"
 
+#ifdef CONFIG_SELINUX
+#include <selinux/selinux.h>
+#endif
+
 #ifdef __linux__
 #define HAVE_NBD_DEVICE 1
 #else
@@ -64,6 +68,8 @@
 #define QEMU_NBD_OPT_FORK          263
 #define QEMU_NBD_OPT_TLSAUTHZ      264
 #define QEMU_NBD_OPT_PID_FILE      265
+#define QEMU_NBD_OPT_SELINUX_LABEL 266
+#define QEMU_NBD_OPT_TLSHOSTNAME   267
 
 #define MBR_SIZE 512
 
@@ -116,6 +122,9 @@ static void usage(const char *name)
 "  --fork                    fork off the server process and exit the parent\n"
 "                            once the server is running\n"
 "  --pid-file=PATH           store the server's process ID in the given file\n"
+#ifdef CONFIG_SELINUX
+"  --selinux-label=LABEL     set SELinux process label on listening socket\n"
+#endif
 #if HAVE_NBD_DEVICE
 "\n"
 "Kernel NBD client support:\n"
@@ -135,7 +144,9 @@ static void usage(const char *name)
 "                            'snapshot.id=[ID],snapshot.name=[NAME]', or\n"
 "                            '[ID_OR_NAME]'\n"
 "  -n, --nocache             disable host cache\n"
-"      --cache=MODE          set cache mode (none, writeback, ...)\n"
+"      --cache=MODE          set cache mode used to access the disk image, the\n"
+"                            valid options are: 'none', 'writeback' (default),\n"
+"                            'writethrough', 'directsync' and 'unsafe'\n"
 "      --aio=MODE            set AIO mode (native, io_uring or threads)\n"
 "      --discard=MODE        set discard mode (ignore, unmap)\n"
 "      --detect-zeroes=MODE  set detect-zeroes mode (off, on, unmap)\n"
@@ -452,6 +463,7 @@ static const char *socket_activation_validate_opts(const char *device,
                                                    const char *sockpath,
                                                    const char *address,
                                                    const char *port,
+                                                   const char *selinux,
                                                    bool list)
 {
     if (device != NULL) {
@@ -468,6 +480,10 @@ static const char *socket_activation_validate_opts(const char *device,
 
     if (port != NULL) {
         return "TCP port number can't be set when using socket activation";
+    }
+
+    if (selinux != NULL) {
+        return "SELinux label can't be set when using socket activation";
     }
 
     if (list) {
@@ -527,11 +543,14 @@ int main(int argc, char **argv)
         { "export-name", required_argument, NULL, 'x' },
         { "description", required_argument, NULL, 'D' },
         { "tls-creds", required_argument, NULL, QEMU_NBD_OPT_TLSCREDS },
+        { "tls-hostname", required_argument, NULL, QEMU_NBD_OPT_TLSHOSTNAME },
         { "tls-authz", required_argument, NULL, QEMU_NBD_OPT_TLSAUTHZ },
         { "image-opts", no_argument, NULL, QEMU_NBD_OPT_IMAGE_OPTS },
         { "trace", required_argument, NULL, 'T' },
         { "fork", no_argument, NULL, QEMU_NBD_OPT_FORK },
         { "pid-file", required_argument, NULL, QEMU_NBD_OPT_PID_FILE },
+        { "selinux-label", required_argument, NULL,
+          QEMU_NBD_OPT_SELINUX_LABEL },
         { NULL, 0, NULL, 0 }
     };
     int ch;
@@ -548,16 +567,18 @@ int main(int argc, char **argv)
     QDict *options = NULL;
     const char *export_name = NULL; /* defaults to "" later for server mode */
     const char *export_description = NULL;
-    strList *bitmaps = NULL;
+    BlockDirtyBitmapOrStrList *bitmaps = NULL;
     bool alloc_depth = false;
     const char *tlscredsid = NULL;
+    const char *tlshostname = NULL;
     bool imageOpts = false;
-    bool writethrough = true;
+    bool writethrough = false; /* Client will flush as needed. */
     bool fork_process = false;
     bool list = false;
     int old_stderr = -1;
     unsigned socket_activation;
     const char *pid_file_name = NULL;
+    const char *selinux_label = NULL;
     BlockExportOptions *export_opts;
 
 #ifdef CONFIG_POSIX
@@ -666,7 +687,14 @@ int main(int argc, char **argv)
             alloc_depth = true;
             break;
         case 'B':
-            QAPI_LIST_PREPEND(bitmaps, g_strdup(optarg));
+            {
+                BlockDirtyBitmapOrStr *el = g_new(BlockDirtyBitmapOrStr, 1);
+                *el = (BlockDirtyBitmapOrStr) {
+                    .type = QTYPE_QSTRING,
+                    .u.local = g_strdup(optarg),
+                };
+                QAPI_LIST_PREPEND(bitmaps, el);
+            }
             break;
         case 'k':
             sockpath = optarg;
@@ -729,6 +757,9 @@ int main(int argc, char **argv)
         case QEMU_NBD_OPT_TLSCREDS:
             tlscredsid = optarg;
             break;
+        case QEMU_NBD_OPT_TLSHOSTNAME:
+            tlshostname = optarg;
+            break;
         case QEMU_NBD_OPT_IMAGE_OPTS:
             imageOpts = true;
             break;
@@ -746,6 +777,9 @@ int main(int argc, char **argv)
             break;
         case QEMU_NBD_OPT_PID_FILE:
             pid_file_name = optarg;
+            break;
+        case QEMU_NBD_OPT_SELINUX_LABEL:
+            selinux_label = optarg;
             break;
         }
     }
@@ -777,15 +811,18 @@ int main(int argc, char **argv)
         exit(1);
     }
     trace_init_file();
-    qemu_set_log(LOG_TRACE);
+    qemu_set_log(LOG_TRACE, &error_fatal);
 
     socket_activation = check_socket_activation();
     if (socket_activation == 0) {
-        setup_address_and_port(&bindto, &port);
+        if (!sockpath) {
+            setup_address_and_port(&bindto, &port);
+        }
     } else {
         /* Using socket activation - check user didn't use -p etc. */
         const char *err_msg = socket_activation_validate_opts(device, sockpath,
                                                               bindto, port,
+                                                              selinux_label,
                                                               list);
         if (err_msg != NULL) {
             error_report("%s", err_msg);
@@ -801,16 +838,16 @@ int main(int argc, char **argv)
     }
 
     if (tlscredsid) {
-        if (sockpath) {
-            error_report("TLS is only supported with IPv4/IPv6");
-            exit(EXIT_FAILURE);
-        }
         if (device) {
             error_report("TLS is not supported with a host device");
             exit(EXIT_FAILURE);
         }
         if (tlsauthz && list) {
             error_report("TLS authorization is incompatible with export list");
+            exit(EXIT_FAILURE);
+        }
+        if (tlshostname && !list) {
+            error_report("TLS hostname is only supported with export list");
             exit(EXIT_FAILURE);
         }
         tlscreds = nbd_get_tls_creds(tlscredsid, list, &local_err);
@@ -823,11 +860,28 @@ int main(int argc, char **argv)
             error_report("--tls-authz is not permitted without --tls-creds");
             exit(EXIT_FAILURE);
         }
+        if (tlshostname) {
+            error_report("--tls-hostname is not permitted without --tls-creds");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    if (selinux_label) {
+#ifdef CONFIG_SELINUX
+        if (sockpath == NULL && device == NULL) {
+            error_report("--selinux-label is not permitted without --socket");
+            exit(EXIT_FAILURE);
+        }
+#else
+        error_report("SELinux support not enabled in this binary");
+        exit(EXIT_FAILURE);
+#endif
     }
 
     if (list) {
         saddr = nbd_build_socket_address(sockpath, bindto, port);
-        return qemu_nbd_client_list(saddr, tlscreds, bindto);
+        return qemu_nbd_client_list(saddr, tlscreds,
+                                    tlshostname ? tlshostname : bindto);
     }
 
 #if !HAVE_NBD_DEVICE
@@ -855,13 +909,14 @@ int main(int argc, char **argv)
 
     if ((device && !verbose) || fork_process) {
 #ifndef WIN32
+        g_autoptr(GError) err = NULL;
         int stderr_fd[2];
         pid_t pid;
         int ret;
 
-        if (qemu_pipe(stderr_fd) < 0) {
+        if (!g_unix_open_pipe(stderr_fd, FD_CLOEXEC, &err)) {
             error_report("Error setting up communication pipe: %s",
-                         strerror(errno));
+                         err->message);
             exit(EXIT_FAILURE);
         }
 
@@ -938,6 +993,13 @@ int main(int argc, char **argv)
         } else {
             backlog = MIN(shared, SOMAXCONN);
         }
+#ifdef CONFIG_SELINUX
+        if (selinux_label && setsockcreatecon_raw(selinux_label) == -1) {
+            error_report("Cannot set SELinux socket create context to %s: %s",
+                         selinux_label, strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+#endif
         saddr = nbd_build_socket_address(sockpath, bindto, port);
         if (qio_net_listener_open_sync(server, saddr, backlog,
                                        &local_err) < 0) {
@@ -945,6 +1007,13 @@ int main(int argc, char **argv)
             error_report_err(local_err);
             exit(EXIT_FAILURE);
         }
+#ifdef CONFIG_SELINUX
+        if (selinux_label && setsockcreatecon_raw(NULL) == -1) {
+            error_report("Cannot clear SELinux socket create context: %s",
+                         strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+#endif
     } else {
         size_t i;
         /* See comment in check_socket_activation above. */
@@ -963,10 +1032,7 @@ int main(int argc, char **argv)
         }
     }
 
-    if (qemu_init_main_loop(&local_err)) {
-        error_report_err(local_err);
-        exit(EXIT_FAILURE);
-    }
+    qemu_init_main_loop(&error_fatal);
     bdrv_init();
     atexit(qemu_nbd_shutdown);
 
@@ -1029,7 +1095,7 @@ int main(int argc, char **argv)
 
     bs->detect_zeroes = detect_zeroes;
 
-    nbd_server_is_qemu_nbd(true);
+    nbd_server_is_qemu_nbd(shared);
 
     export_opts = g_new(BlockExportOptions, 1);
     *export_opts = (BlockExportOptions) {

@@ -679,10 +679,10 @@ static void apply_border_adjustment(const struct PixelShader *ps, MString *vars,
 
     mstring_append_fmt(
         vars,
-        "vec2 t%dLogicalSize = vec2(%f, %f);\n"
-        "%s.xy = (%s.xy * t%dLogicalSize + vec2(4, 4)) * vec2(%f, %f);\n",
-        i, ps->state.border_logical_size[i][0], ps->state.border_logical_size[i][1],
-        var_name, var_name, i, ps->state.border_inv_real_size[i][0], ps->state.border_inv_real_size[i][1]);
+        "vec3 t%dLogicalSize = vec3(%f, %f, %f);\n"
+        "%s.xyz = (%s.xyz * t%dLogicalSize + vec3(4, 4, 4)) * vec3(%f, %f, %f);\n",
+        i, ps->state.border_logical_size[i][0], ps->state.border_logical_size[i][1], ps->state.border_logical_size[i][2],
+        var_name, var_name, i, ps->state.border_inv_real_size[i][0], ps->state.border_inv_real_size[i][1], ps->state.border_inv_real_size[i][2]);
 }
 
 static MString* psh_convert(struct PixelShader *ps)
@@ -801,10 +801,17 @@ static MString* psh_convert(struct PixelShader *ps)
 
     /* calculate perspective-correct inputs */
     MString *vars = mstring_new();
-    mstring_append(vars, "vec4 pD0 = vtxD0 / vtx_inv_w;\n");
-    mstring_append(vars, "vec4 pD1 = vtxD1 / vtx_inv_w;\n");
-    mstring_append(vars, "vec4 pB0 = vtxB0 / vtx_inv_w;\n");
-    mstring_append(vars, "vec4 pB1 = vtxB1 / vtx_inv_w;\n");
+    if (ps->state.smooth_shading) {
+        mstring_append(vars, "vec4 pD0 = vtxD0 / vtx_inv_w;\n");
+        mstring_append(vars, "vec4 pD1 = vtxD1 / vtx_inv_w;\n");
+        mstring_append(vars, "vec4 pB0 = vtxB0 / vtx_inv_w;\n");
+        mstring_append(vars, "vec4 pB1 = vtxB1 / vtx_inv_w;\n");
+    } else {
+        mstring_append(vars, "vec4 pD0 = vtxD0 / vtx_inv_w_flat;\n");
+        mstring_append(vars, "vec4 pD1 = vtxD1 / vtx_inv_w_flat;\n");
+        mstring_append(vars, "vec4 pB0 = vtxB0 / vtx_inv_w_flat;\n");
+        mstring_append(vars, "vec4 pB1 = vtxB1 / vtx_inv_w_flat;\n");
+    }
     mstring_append(vars, "vec4 pFog = vec4(fogColor.rgb, clamp(vtxFog / vtx_inv_w, 0.0, 1.0));\n");
     mstring_append(vars, "vec4 pT0 = vtxT0 / vtx_inv_w;\n");
     mstring_append(vars, "vec4 pT1 = vtxT1 / vtx_inv_w;\n");
@@ -993,7 +1000,7 @@ static MString* psh_convert(struct PixelShader *ps)
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_3D */\n");
             mstring_append_fmt(vars,
                "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n"
-               "vec2 dotSTR%d = vec3(dot%d, dot%d, dot%d));\n",
+               "vec3 dotSTR%d = vec3(dot%d, dot%d, dot%d);\n",
                 i, i, dotmap_func, ps->input_tex[i],
                 i, i-2, i-1, i);
 

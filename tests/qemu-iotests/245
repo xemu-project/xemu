@@ -20,11 +20,13 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import os
-import re
-import iotests
 import copy
 import json
+import os
+import re
+from subprocess import CalledProcessError
+
+import iotests
 from iotests import qemu_img, qemu_io
 
 hd_path = [
@@ -149,7 +151,7 @@ class TestBlockdevReopen(iotests.QMPTestCase):
         self.reopen(opts, {'node-name': ''}, "Failed to find node with node-name=''")
         self.reopen(opts, {'node-name': None}, "Invalid parameter type for 'options[0].node-name', expected: string")
         self.reopen(opts, {'driver': 'raw'}, "Cannot change the option 'driver'")
-        self.reopen(opts, {'driver': ''}, "Invalid parameter ''")
+        self.reopen(opts, {'driver': ''}, "Parameter 'driver' does not accept value ''")
         self.reopen(opts, {'driver': None}, "Invalid parameter type for 'options[0].driver', expected: string")
         self.reopen(opts, {'file': 'not-found'}, "Cannot find device='' nor node-name='not-found'")
         self.reopen(opts, {'file': ''}, "Cannot find device='' nor node-name=''")
@@ -216,11 +218,14 @@ class TestBlockdevReopen(iotests.QMPTestCase):
 
     # Reopen an image several times changing some of its options
     def test_reopen(self):
-        # Check whether the filesystem supports O_DIRECT
-        if 'O_DIRECT' in qemu_io('-f', 'raw', '-t', 'none', '-c', 'quit', hd_path[0]):
-            supports_direct = False
-        else:
+        try:
+            qemu_io('-f', 'raw', '-t', 'none', '-c', 'quit', hd_path[0])
             supports_direct = True
+        except CalledProcessError as exc:
+            if 'O_DIRECT' in exc.stdout:
+                supports_direct = False
+            else:
+                raise
 
         # Open the hd1 image passing all backing options
         opts = hd_opts(1)
@@ -1138,12 +1143,13 @@ class TestBlockdevReopen(iotests.QMPTestCase):
         self.assertEqual(self.get_node('hd1'), None)
         self.assert_qmp(self.get_node('hd2'), 'ro', True)
 
-    def run_test_iothreads(self, iothread_a, iothread_b, errmsg = None):
-        opts = hd_opts(0)
+    def run_test_iothreads(self, iothread_a, iothread_b, errmsg = None,
+                           opts_a = None, opts_b = None):
+        opts = opts_a or hd_opts(0)
         result = self.vm.qmp('blockdev-add', conv_keys = False, **opts)
         self.assert_qmp(result, 'return', {})
 
-        opts2 = hd_opts(2)
+        opts2 = opts_b or hd_opts(2)
         result = self.vm.qmp('blockdev-add', conv_keys = False, **opts2)
         self.assert_qmp(result, 'return', {})
 
@@ -1189,10 +1195,39 @@ class TestBlockdevReopen(iotests.QMPTestCase):
         self.run_test_iothreads('iothread0', 'iothread0')
 
     def test_iothreads_switch_backing(self):
-        self.run_test_iothreads('iothread0', None)
+        self.run_test_iothreads('iothread0', '')
 
     def test_iothreads_switch_overlay(self):
-        self.run_test_iothreads(None, 'iothread0')
+        self.run_test_iothreads('', 'iothread0')
+
+    def test_iothreads_with_throttling(self):
+        # Create a throttle-group object
+        opts = { 'qom-type': 'throttle-group', 'id': 'group0',
+                 'limits': { 'iops-total': 1000 } }
+        result = self.vm.qmp('object-add', conv_keys = False, **opts)
+        self.assert_qmp(result, 'return', {})
+
+        # Options with a throttle filter between format and protocol
+        opts = [
+            {
+                'driver': iotests.imgfmt,
+                'node-name': f'hd{idx}',
+                'file' : {
+                    'node-name': f'hd{idx}-throttle',
+                    'driver': 'throttle',
+                    'throttle-group': 'group0',
+                    'file': {
+                        'driver': 'file',
+                        'node-name': f'hd{idx}-file',
+                        'filename': hd_path[idx],
+                    },
+                },
+            }
+            for idx in (0, 2)
+        ]
+
+        self.run_test_iothreads('iothread0', 'iothread0', None,
+                                opts[0], opts[1])
 
 if __name__ == '__main__':
     iotests.activate_logging()

@@ -1,5 +1,5 @@
 keymaps = {
-  'ar': '-l ar',
+  'ar': '-l ara',
   'bepo': '-l fr -v dvorak',
   'cz': '-l cz',
   'da': '-l dk',
@@ -39,9 +39,9 @@ else
   native_qemu_keymap = qemu_keymap
 endif
 
-t = []
-foreach km, args: keymaps
-  if native_qemu_keymap.found()
+if native_qemu_keymap.found()
+  t = []
+  foreach km, args: keymaps
     # generate with qemu-kvm
     t += custom_target(km,
                        build_by_default: true,
@@ -49,20 +49,11 @@ foreach km, args: keymaps
                        command: [native_qemu_keymap, '-f', '@OUTPUT@', args.split()],
                        install: true,
                        install_dir: qemu_datadir / 'keymaps')
-  else
-    # copy from source tree
-    t += custom_target(km,
-                       build_by_default: true,
-                       input: km,
-                       output: km,
-                       command: ['cp', '@INPUT@', '@OUTPUT@'],
-                       install: true,
-                       install_dir: qemu_datadir / 'keymaps')
-  endif
-endforeach
+  endforeach
 
-if native_qemu_keymap.found()
   alias_target('update-keymaps', t)
+else
+  install_data(keymaps.keys(), install_dir: qemu_datadir / 'keymaps')
 endif
 
 install_data(['sl', 'sv'], install_dir: qemu_datadir / 'keymaps')

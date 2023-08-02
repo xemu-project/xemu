@@ -130,6 +130,21 @@ LruNode *lru_evict_one(Lru *lru)
 }
 
 static inline
+bool lru_contains_hash(Lru *lru, uint64_t hash)
+{
+	unsigned int bin = lru_hash_to_bin(lru, hash);
+	LruNode *iter;
+
+	QTAILQ_FOREACH(iter, &lru->bins[bin], next_bin) {
+        if (iter->hash == hash) {
+            return true;
+        }
+    }
+
+	return false;
+}
+
+static inline
 LruNode *lru_lookup(Lru *lru, uint64_t hash, void *key)
 {
 	unsigned int bin = lru_hash_to_bin(lru, hash);

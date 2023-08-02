@@ -95,12 +95,12 @@ static void spapr_cap_set_bool(Object *obj, Visitor *v, const char *name,
 }
 
 
-static void  spapr_cap_get_string(Object *obj, Visitor *v, const char *name,
-                                  void *opaque, Error **errp)
+static void spapr_cap_get_string(Object *obj, Visitor *v, const char *name,
+                                 void *opaque, Error **errp)
 {
     SpaprCapabilityInfo *cap = opaque;
     SpaprMachineState *spapr = SPAPR_MACHINE(obj);
-    char *val = NULL;
+    g_autofree char *val = NULL;
     uint8_t value = spapr_get_cap(spapr, cap->index);
 
     if (value >= cap->possible->num) {
@@ -111,7 +111,6 @@ static void  spapr_cap_get_string(Object *obj, Visitor *v, const char *name,
     val = g_strdup(cap->possible->vals[value]);
 
     visit_type_str(v, name, &val, errp);
-    g_free(val);
 }
 
 static void spapr_cap_set_string(Object *obj, Visitor *v, const char *name,
@@ -120,7 +119,7 @@ static void spapr_cap_set_string(Object *obj, Visitor *v, const char *name,
     SpaprCapabilityInfo *cap = opaque;
     SpaprMachineState *spapr = SPAPR_MACHINE(obj);
     uint8_t i;
-    char *val;
+    g_autofree char *val = NULL;
 
     if (!visit_type_str(v, name, &val, errp)) {
         return;
@@ -128,20 +127,18 @@ static void spapr_cap_set_string(Object *obj, Visitor *v, const char *name,
 
     if (!strcmp(val, "?")) {
         error_setg(errp, "%s", cap->possible->help);
-        goto out;
+        return;
     }
     for (i = 0; i < cap->possible->num; i++) {
         if (!strcasecmp(val, cap->possible->vals[i])) {
             spapr->cmd_line_caps[cap->index] = true;
             spapr->eff.caps[cap->index] = i;
-            goto out;
+            return;
         }
     }
 
     error_setg(errp, "Invalid capability mode \"%s\" for cap-%s", val,
                cap->name);
-out:
-    g_free(val);
 }
 
 static void spapr_cap_get_pagesize(Object *obj, Visitor *v, const char *name,
@@ -444,19 +441,23 @@ static void cap_nested_kvm_hv_apply(SpaprMachineState *spapr,
 {
     ERRP_GUARD();
     PowerPCCPU *cpu = POWERPC_CPU(first_cpu);
+    CPUPPCState *env = &cpu->env;
 
     if (!val) {
         /* capability disabled by default */
         return;
     }
 
-    if (tcg_enabled()) {
-        error_setg(errp, "No Nested KVM-HV support in TCG");
+    if (!(env->insns_flags2 & PPC2_ISA300)) {
+        error_setg(errp, "Nested-HV only supported on POWER9 and later");
         error_append_hint(errp, "Try appending -machine cap-nested-hv=off\n");
-    } else if (kvm_enabled()) {
+        return;
+    }
+
+    if (kvm_enabled()) {
         if (!ppc_check_compat(cpu, CPU_POWERPC_LOGICAL_3_00, 0,
                               spapr->max_compat_pvr)) {
-            error_setg(errp, "Nested KVM-HV only supported on POWER9");
+            error_setg(errp, "Nested-HV only supported on POWER9 and later");
             error_append_hint(errp,
                               "Try appending -machine max-cpu-compat=power9\n");
             return;
@@ -464,7 +465,7 @@ static void cap_nested_kvm_hv_apply(SpaprMachineState *spapr,
 
         if (!kvmppc_has_cap_nested_kvm_hv()) {
             error_setg(errp,
-                       "KVM implementation does not support Nested KVM-HV");
+                       "KVM implementation does not support Nested-HV");
             error_append_hint(errp,
                               "Try appending -machine cap-nested-hv=off\n");
         } else if (kvmppc_set_cap_nested_kvm_hv(val) < 0) {
@@ -552,7 +553,7 @@ static void cap_ccf_assist_apply(SpaprMachineState *spapr, uint8_t val,
              * instruction is a harmless no-op.  It won't correctly
              * implement the cache count flush *but* if we have
              * count-cache-disabled in the host, that flush is
-             * unnnecessary.  So, specifically allow this case.  This
+             * unnecessary.  So, specifically allow this case.  This
              * allows us to have better performance on POWER9 DD2.3,
              * while still working on POWER9 DD2.2 and POWER8 host
              * cpus.
@@ -929,16 +930,13 @@ void spapr_caps_add_properties(SpaprMachineClass *smc)
 
     for (i = 0; i < ARRAY_SIZE(capability_table); i++) {
         SpaprCapabilityInfo *cap = &capability_table[i];
-        char *name = g_strdup_printf("cap-%s", cap->name);
-        char *desc;
+        g_autofree char *name = g_strdup_printf("cap-%s", cap->name);
+        g_autofree char *desc = g_strdup_printf("%s", cap->description);
 
         object_class_property_add(klass, name, cap->type,
                                   cap->get, cap->set,
                                   NULL, cap);
 
-        desc = g_strdup_printf("%s", cap->description);
         object_class_property_set_description(klass, name, desc);
-        g_free(name);
-        g_free(desc);
     }
 }

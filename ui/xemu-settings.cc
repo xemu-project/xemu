@@ -69,18 +69,32 @@ void xemu_settings_set_path(const char *path)
     fprintf(stderr, "%s: config path: %s\n", __func__, settings_path);
 }
 
-const char *xemu_settings_get_path(void)
+const char *xemu_settings_get_base_path(void)
 {
-    if (settings_path != NULL) {
-        return settings_path;
+    static const char *base_path = NULL;
+    if (base_path != NULL) {
+        return base_path;
     }
 
     char *base = xemu_settings_detect_portable_mode()
                  ? SDL_GetBasePath()
                  : SDL_GetPrefPath("xemu", "xemu");
     assert(base != NULL);
-    settings_path = g_strdup_printf("%s%s", base, filename);
+    base_path = g_strdup(base);
     SDL_free(base);
+    fprintf(stderr, "%s: base path: %s\n", __func__, base_path);
+    return base_path;
+}
+
+const char *xemu_settings_get_path(void)
+{
+    if (settings_path != NULL) {
+        return settings_path;
+    }
+
+    const char *base = xemu_settings_get_base_path();
+    assert(base != NULL);
+    settings_path = g_strdup_printf("%s%s", base, filename);
     fprintf(stderr, "%s: config path: %s\n", __func__, settings_path);
     return settings_path;
 }
@@ -92,12 +106,9 @@ const char *xemu_settings_get_default_eeprom_path(void)
         return eeprom_path;
     }
 
-    char *base = xemu_settings_detect_portable_mode()
-                 ? SDL_GetBasePath()
-                 : SDL_GetPrefPath("xemu", "xemu");
+    const char *base = xemu_settings_get_base_path();
     assert(base != NULL);
     eeprom_path = g_strdup_printf("%s%s", base, "eeprom.bin");
-    SDL_free(base);
     return eeprom_path;
 }
 

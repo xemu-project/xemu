@@ -6,8 +6,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#ifndef _QEMU_VHOST_USER_I2C_H
-#define _QEMU_VHOST_USER_I2C_H
+#ifndef QEMU_VHOST_USER_I2C_H
+#define QEMU_VHOST_USER_I2C_H
 
 #include "hw/virtio/vhost.h"
 #include "hw/virtio/vhost-user.h"
@@ -25,4 +25,7 @@ struct VHostUserI2C {
     bool connected;
 };
 
-#endif /* _QEMU_VHOST_USER_I2C_H */
+/* Virtio Feature bits */
+#define VIRTIO_I2C_F_ZERO_LENGTH_REQUEST		0
+
+#endif /* QEMU_VHOST_USER_I2C_H */

@@ -41,9 +41,14 @@ _supported_fmt qcow2
 _supported_proto file
 # A compat=0.10 image is created in this test which does not support anything
 # other than refcount_bits=16;
-# it also will not support an external data file
-_unsupported_imgopts 'refcount_bits=\([^1]\|.\([^6]\|$\)\)' data_file
+# it also will not support an external data file and compression type
+_unsupported_imgopts 'refcount_bits=\([^1]\|.\([^6]\|$\)\)' data_file \
+    compression_type
 _require_drivers nbd
+
+if [ "$QEMU_DEFAULT_MACHINE" = "pc" ]; then
+    _require_devices lsi53c895a
+fi
 
 do_run_qemu()
 {
@@ -199,7 +204,7 @@ case "$QEMU_DEFAULT_MACHINE" in
         # virtio-blk enables the iothread only when the driver initialises the
         # device, so a second virtio-blk device can't be added even with the
         # same iothread. virtio-scsi allows this.
-        run_qemu $iothread -device virtio-blk-pci,drive=disk,iothread=iothread0,share-rw=on
+        run_qemu $iothread -device virtio-blk-pci,drive=disk,iothread=thread0,share-rw=on
         run_qemu $iothread -device virtio-scsi,id=virtio-scsi1,iothread=thread0 -device scsi-hd,bus=virtio-scsi1.0,drive=disk,share-rw=on
         ;;
      *)
@@ -370,7 +375,8 @@ if [ "${VALGRIND_QEMU_VM}" == "y" ]; then
     _casenotrun "Valgrind needs a valid TMPDIR for itself"
 fi
 VALGRIND_QEMU_VM= \
-TMPDIR=/nonexistent run_qemu -drive driver=null-co,snapshot=on
+TMPDIR=/nonexistent run_qemu -drive driver=null-co,snapshot=on |
+    sed -e "s#'[^']*/vl\.[A-Za-z0-9]\{6\}'#SNAPSHOT_PATH#g"
 
 # Using snapshot=on together with read-only=on
 echo "info block" |

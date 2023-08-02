@@ -26,6 +26,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,6 +38,9 @@ extern struct config g_config;
 
 // Override the default config file paths
 void xemu_settings_set_path(const char *path);
+
+// Get the path of the base settings dir
+const char *xemu_settings_get_base_path(void);
 
 // Get path of the config file on disk
 const char *xemu_settings_get_path(void);
@@ -55,8 +59,9 @@ void xemu_settings_save(void);
 
 static inline void xemu_settings_set_string(const char **str, const char *new_str)
 {
-	free((char*)*str);
-	*str = strdup(new_str);
+    assert(new_str);
+    free((char*)*str);
+    *str = strdup(new_str);
 }
 
 void add_net_nat_forward_ports(int host, int guest, CONFIG_NET_NAT_FORWARD_PORTS_PROTOCOL protocol);

@@ -29,6 +29,7 @@
 #include "hw/boards.h"
 #include "hw/qdev-properties.h"
 #include "hw/arm/boot.h"
+#include "hw/qdev-clock.h"
 #include "exec/address-spaces.h"
 #include "hw/arm/msf2-soc.h"
 
@@ -44,11 +45,12 @@ static void emcraft_sf2_s2s010_init(MachineState *machine)
     DeviceState *spi_flash;
     MSF2State *soc;
     MachineClass *mc = MACHINE_GET_CLASS(machine);
-    DriveInfo *dinfo = drive_get_next(IF_MTD);
+    DriveInfo *dinfo = drive_get(IF_MTD, 0, 0);
     qemu_irq cs_line;
     BusState *spi_bus;
     MemoryRegion *sysmem = get_system_memory();
     MemoryRegion *ddr = g_new(MemoryRegion, 1);
+    Clock *m3clk;
 
     if (strcmp(machine->cpu_type, mc->default_cpu_type) != 0) {
         error_report("This board can only be used with CPU %s",
@@ -72,7 +74,10 @@ static void emcraft_sf2_s2s010_init(MachineState *machine)
      * in Libero. CPU clock is divided by APB0 and APB1 divisors for
      * peripherals. Emcraft's SoM kit comes with these settings by default.
      */
-    qdev_prop_set_uint32(dev, "m3clk", 142 * 1000000);
+    /* This clock doesn't need migration because it is fixed-frequency */
+    m3clk = clock_new(OBJECT(machine), "m3clk");
+    clock_set_hz(m3clk, 142 * 1000000);
+    qdev_connect_clock_in(dev, "m3clk", m3clk);
     qdev_prop_set_uint32(dev, "apb0div", 2);
     qdev_prop_set_uint32(dev, "apb1div", 2);
 
@@ -93,7 +98,7 @@ static void emcraft_sf2_s2s010_init(MachineState *machine)
     sysbus_connect_irq(SYS_BUS_DEVICE(&soc->spi[0]), 1, cs_line);
 
     armv7m_load_kernel(ARM_CPU(first_cpu), machine->kernel_filename,
-                       soc->envm_size);
+                       0, soc->envm_size);
 }
 
 static void emcraft_sf2_machine_init(MachineClass *mc)

@@ -25,6 +25,9 @@ config ALLWINNER_A10_PIT
     bool
     select PTIMER
 
+config SIFIVE_PWM
+    bool
+
 config STM32F2XX_TIMER
     bool
 
@@ -50,6 +53,9 @@ config SSE_COUNTER
     bool
 
 config SSE_TIMER
+    bool
+
+config STELLARIS_GPTM
     bool
 
 config AVR_TIMER16

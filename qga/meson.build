@@ -1,3 +1,33 @@
+if not have_ga
+  if get_option('guest_agent_msi').enabled()
+    error('Guest agent MSI requested, but the guest agent is not being built')
+  endif
+  have_qga_vss = false
+  subdir_done()
+endif
+
+have_qga_vss = get_option('qga_vss') \
+  .require(targetos == 'windows',
+           error_message: 'VSS support requires Windows') \
+  .require(link_language == 'cpp',
+           error_message: 'VSS support requires a C++ compiler') \
+  .require(have_vss, error_message: '''VSS support requires VSS headers.
+    If your Visual Studio installation doesn't have the VSS headers,
+    Please download and install Microsoft VSS SDK:
+    http://www.microsoft.com/en-us/download/details.aspx?id=23490
+    On POSIX-systems, MinGW should provide headers in >=10.0 releases.
+    you can extract the SDK headers by:
+    $ scripts/extract-vsssdk-headers setup.exe
+    The headers are extracted in the directory 'inc/win2003'.
+    Then run configure with: --extra-cxxflags="-isystem /path/to/vss/inc/win2003"''') \
+  .require(midl.found() or widl.found(),
+           error_message: 'VSS support requires midl or widl') \
+  .require(not enable_static,
+           error_message: 'VSS support requires dynamic linking with GLib') \
+  .allowed()
+
+all_qga = []
+
 qga_qapi_outputs = [
   'qga-qapi-commands.c',
   'qga-qapi-commands.h',
@@ -15,10 +45,18 @@ qga_qapi_outputs = [
   'qga-qapi-visit.h',
 ]
 
+# Problem: to generate trace events, we'd have to add the .trace-events
+# file to qapi_trace_events like we do in qapi/meson.build.  Since
+# qapi_trace_events is used by trace/meson.build, we'd have to move
+# subdir('qga') above subdir('trace') in the top-level meson.build.
+# Can't, because it would break the dependency of qga on qemuutil (which
+# depends on trace_ss).  Not worth solving now; simply suppress trace
+# event generation instead.
 qga_qapi_files = custom_target('QGA QAPI files',
                                output: qga_qapi_outputs,
                                input: 'qapi-schema.json',
-                               command: [ qapi_gen, '-o', 'qga', '-p', 'qga-', '@INPUT0@' ],
+                               command: [ qapi_gen, '-o', 'qga', '-p', 'qga-', '@INPUT0@',
+                                          '--suppress-tracing' ],
                                depend_files: qapi_gen_depends)
 
 qga_ss = ss.source_set()
@@ -27,11 +65,18 @@ qga_ss.add(files(
   'commands.c',
   'guest-agent-command-state.c',
   'main.c',
+  'cutils.c',
 ))
 qga_ss.add(when: 'CONFIG_POSIX', if_true: files(
   'channel-posix.c',
   'commands-posix.c',
   'commands-posix-ssh.c',
+))
+qga_ss.add(when: 'CONFIG_LINUX', if_true: files(
+  'commands-linux.c',
+))
+qga_ss.add(when: 'CONFIG_BSD', if_true: files(
+  'commands-bsd.c',
 ))
 qga_ss.add(when: 'CONFIG_WIN32', if_true: files(
   'channel-win32.c',
@@ -42,19 +87,24 @@ qga_ss.add(when: 'CONFIG_WIN32', if_true: files(
 
 qga_ss = qga_ss.apply(config_host, strict: false)
 
+gen_tlb = []
+qga_libs = []
+if targetos == 'windows'
+  qga_libs += ['-lws2_32', '-lwinmm', '-lpowrprof', '-lwtsapi32', '-lwininet', '-liphlpapi', '-lnetapi32',
+               '-lsetupapi', '-lcfgmgr32']
+  if have_qga_vss
+    qga_libs += ['-lole32', '-loleaut32', '-lshlwapi', '-lstdc++', '-Wl,--enable-stdcall-fixup']
+    subdir('vss-win32')
+  endif
+endif
+
 qga = executable('qemu-ga', qga_ss.sources(),
-                 link_args: config_host['LIBS_QGA'].split(),
+                 link_args: qga_libs,
                  dependencies: [qemuutil, libudev],
                  install: true)
-all_qga = [qga]
+all_qga += qga
 
 if targetos == 'windows'
-  if 'CONFIG_QGA_VSS' in config_host
-    subdir('vss-win32')
-  else
-    gen_tlb = []
-  endif
-
   qemu_ga_msi_arch = {
     'x86': ['-D', 'Arch=32'],
     'x86_64': ['-a', 'x64', '-D', 'Arch=64']
@@ -69,24 +119,23 @@ if targetos == 'windows'
   if wixl.found()
     deps = [gen_tlb, qga]
     qemu_ga_msi_vss = []
-    if 'CONFIG_QGA_VSS' in config_host
+    if have_qga_vss
       qemu_ga_msi_vss = ['-D', 'InstallVss']
       deps += qga_vss
     endif
     qga_msi = custom_target('QGA MSI',
                             input: files('installer/qemu-ga.wxs'),
-                            output: 'qemu-ga-@0@.msi'.format(config_host['ARCH']),
+                            output: 'qemu-ga-@0@.msi'.format(host_arch),
                             depends: deps,
                             command: [
-                              find_program('env'),
-                              'QEMU_GA_VERSION=' + config_host['QEMU_GA_VERSION'],
-                              'QEMU_GA_MANUFACTURER=' + config_host['QEMU_GA_MANUFACTURER'],
-                              'QEMU_GA_DISTRO=' + config_host['QEMU_GA_DISTRO'],
-                              'BUILD_DIR=' + meson.build_root(),
                               wixl, '-o', '@OUTPUT0@', '@INPUT0@',
                               qemu_ga_msi_arch[cpu],
                               qemu_ga_msi_vss,
-                              '-D', 'Mingw_dlls=' + config_host['QEMU_GA_MSI_MINGW_DLL_PATH'],
+                              '-D', 'BUILD_DIR=' + meson.project_build_root(),
+                              '-D', 'BIN_DIR=' + glib.get_variable('bindir'),
+                              '-D', 'QEMU_GA_VERSION=' + config_host['QEMU_GA_VERSION'],
+                              '-D', 'QEMU_GA_MANUFACTURER=' + config_host['QEMU_GA_MANUFACTURER'],
+                              '-D', 'QEMU_GA_DISTRO=' + config_host['QEMU_GA_DISTRO'],
                             ])
     all_qga += [qga_msi]
     alias_target('msi', qga_msi)
@@ -95,7 +144,7 @@ else
   if get_option('guest_agent_msi').enabled()
     error('MSI guest agent package is available only for MinGW Windows cross-compilation')
   endif
-  install_subdir('run', install_dir: get_option('localstatedir'))
+  install_emptydir(get_option('localstatedir') / 'run')
 endif
 
 alias_target('qemu-ga', all_qga)

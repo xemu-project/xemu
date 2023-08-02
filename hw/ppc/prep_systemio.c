@@ -262,7 +262,7 @@ static void prep_systemio_realize(DeviceState *dev, Error **errp)
     qemu_set_irq(s->non_contiguous_io_map_irq,
                  s->iomap_type & PORT0850_IOMAP_NONCONTIGUOUS);
     cpu = POWERPC_CPU(first_cpu);
-    s->softreset_irq = cpu->env.irq_inputs[PPC6xx_INPUT_HRESET];
+    s->softreset_irq = qdev_get_gpio_in(DEVICE(cpu), PPC6xx_INPUT_HRESET);
 
     isa_register_portio_list(isa, &s->portio, 0x0, ppc_io800_port_list, s,
                              "systemio800");
@@ -300,7 +300,7 @@ static void prep_systemio_class_initfn(ObjectClass *klass, void *data)
     device_class_set_props(dc, prep_systemio_properties);
 }
 
-static TypeInfo prep_systemio800_info = {
+static const TypeInfo prep_systemio800_info = {
     .name          = TYPE_PREP_SYSTEMIO,
     .parent        = TYPE_ISA_DEVICE,
     .instance_size = sizeof(PrepSystemIoState),

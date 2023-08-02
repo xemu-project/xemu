@@ -30,18 +30,23 @@ typedef struct NBDServerData {
 } NBDServerData;
 
 static NBDServerData *nbd_server;
-static bool is_qemu_nbd;
+static int qemu_nbd_connections = -1; /* Non-negative if this is qemu-nbd */
 
 static void nbd_update_server_watch(NBDServerData *s);
 
-void nbd_server_is_qemu_nbd(bool value)
+void nbd_server_is_qemu_nbd(int max_connections)
 {
-    is_qemu_nbd = value;
+    qemu_nbd_connections = max_connections;
 }
 
 bool nbd_server_is_running(void)
 {
-    return nbd_server || is_qemu_nbd;
+    return nbd_server || qemu_nbd_connections >= 0;
+}
+
+int nbd_server_max_connections(void)
+{
+    return nbd_server ? nbd_server->max_connections : qemu_nbd_connections;
 }
 
 static void nbd_blockdev_client_closed(NBDClient *client, bool ignored)
@@ -148,12 +153,6 @@ void nbd_server_start(SocketAddress *addr, const char *tls_creds,
         if (!nbd_server->tlscreds) {
             goto error;
         }
-
-        /* TODO SOCKET_ADDRESS_TYPE_FD where fd has AF_INET or AF_INET6 */
-        if (addr->type != SOCKET_ADDRESS_TYPE_INET) {
-            error_setg(errp, "TLS is only supported with IPv4/IPv6");
-            goto error;
-        }
     }
 
     nbd_server->tlsauthz = g_strdup(tls_authz);
@@ -217,8 +216,14 @@ void qmp_nbd_server_add(NbdServerAddOptions *arg, Error **errp)
     QAPI_CLONE_MEMBERS(BlockExportOptionsNbdBase, &export_opts->u.nbd,
                        qapi_NbdServerAddOptions_base(arg));
     if (arg->has_bitmap) {
+        BlockDirtyBitmapOrStr *el = g_new(BlockDirtyBitmapOrStr, 1);
+
+        *el = (BlockDirtyBitmapOrStr) {
+            .type = QTYPE_QSTRING,
+            .u.local = g_strdup(arg->bitmap),
+        };
         export_opts->u.nbd.has_bitmaps = true;
-        QAPI_LIST_PREPEND(export_opts->u.nbd.bitmaps, g_strdup(arg->bitmap));
+        QAPI_LIST_PREPEND(export_opts->u.nbd.bitmaps, el);
     }
 
     /*

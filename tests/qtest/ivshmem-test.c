@@ -13,8 +13,7 @@
 #include "contrib/ivshmem-server/ivshmem-server.h"
 #include "libqos/libqos-pc.h"
 #include "libqos/libqos-spapr.h"
-#include "libqos/libqtest.h"
-#include "qemu-common.h"
+#include "libqtest.h"
 
 #define TMPSHMSIZE (1 << 20)
 static char *tmpshm;
@@ -305,6 +304,7 @@ static void setup_vm_with_server(IVState *s, int nvectors)
 
 static void test_ivshmem_server(void)
 {
+    g_autoptr(GError) err = NULL;
     IVState state1, state2, *s1, *s2;
     ServerThread thread;
     IvshmemServer server;
@@ -321,8 +321,8 @@ static void test_ivshmem_server(void)
     g_assert_cmpint(ret, ==, 0);
 
     thread.server = &server;
-    ret = pipe(thread.pipe);
-    g_assert_cmpint(ret, ==, 0);
+    g_unix_open_pipe(thread.pipe, FD_CLOEXEC, &err);
+    g_assert_no_error(err);
     thread.thread = g_thread_new("ivshmem-server", server_thread, &thread);
     g_assert(thread.thread != NULL);
 
@@ -378,6 +378,20 @@ static void test_ivshmem_server(void)
     close(thread.pipe[0]);
 }
 
+static void test_ivshmem_hotplug_q35(void)
+{
+    QTestState *qts = qtest_init("-object memory-backend-ram,size=1M,id=mb1 "
+                                 "-device pcie-root-port,id=p1 "
+                                 "-device pcie-pci-bridge,bus=p1,id=b1 "
+                                 "-machine q35");
+
+    qtest_qmp_device_add(qts, "ivshmem-plain", "iv1",
+                         "{'memdev': 'mb1', 'bus': 'b1'}");
+    qtest_qmp_device_del_send(qts, "iv1");
+
+    qtest_quit(qts);
+}
+
 #define PCI_SLOT_HP             0x06
 
 static void test_ivshmem_hotplug(void)
@@ -385,7 +399,12 @@ static void test_ivshmem_hotplug(void)
     QTestState *qts;
     const char *arch = qtest_get_arch();
 
-    qts = qtest_init("-object memory-backend-ram,size=1M,id=mb1");
+    if (strcmp(arch, "i386") == 0 || strcmp(arch, "x86_64") == 0) {
+        qts = qtest_init("-object memory-backend-ram,size=1M,id=mb1"
+                         " -machine pc");
+    } else {
+        qts = qtest_init("-object memory-backend-ram,size=1M,id=mb1");
+    }
 
     qtest_qmp_device_add(qts, "ivshmem-plain", "iv1",
                          "{'addr': %s, 'memdev': 'mb1'}",
@@ -463,8 +482,8 @@ static gchar *mktempshm(int size, int *fd)
 int main(int argc, char **argv)
 {
     int ret, fd;
-    const char *arch = qtest_get_arch();
     gchar dir[] = "/tmp/ivshmem-test.XXXXXX";
+    const char *arch = qtest_get_arch();
 
     g_test_init(&argc, &argv, NULL);
 
@@ -477,8 +496,8 @@ int main(int argc, char **argv)
     tmpshmem = mmap(0, TMPSHMSIZE, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     g_assert(tmpshmem != MAP_FAILED);
     /* server */
-    if (mkdtemp(dir) == NULL) {
-        g_error("mkdtemp: %s", g_strerror(errno));
+    if (g_mkdtemp(dir) == NULL) {
+        g_error("g_mkdtemp: %s", g_strerror(errno));
     }
     tmpdir = dir;
     tmpserver = g_strconcat(tmpdir, "/server", NULL);
@@ -488,9 +507,10 @@ int main(int argc, char **argv)
     qtest_add_func("/ivshmem/memdev", test_ivshmem_memdev);
     if (g_test_slow()) {
         qtest_add_func("/ivshmem/pair", test_ivshmem_pair);
-        if (strcmp(arch, "ppc64") != 0) {
-            qtest_add_func("/ivshmem/server", test_ivshmem_server);
-        }
+        qtest_add_func("/ivshmem/server", test_ivshmem_server);
+    }
+    if (!strcmp(arch, "x86_64") && qtest_has_machine("q35")) {
+        qtest_add_func("/ivshmem/hotplug-q35", test_ivshmem_hotplug_q35);
     }
 
 out:

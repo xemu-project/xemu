@@ -21,7 +21,7 @@
 #include "hw/riscv/shakti_c.h"
 #include "qapi/error.h"
 #include "hw/intc/sifive_plic.h"
-#include "hw/intc/sifive_clint.h"
+#include "hw/intc/riscv_aclint.h"
 #include "sysemu/sysemu.h"
 #include "hw/qdev-properties.h"
 #include "exec/address-spaces.h"
@@ -45,7 +45,6 @@ static void shakti_c_machine_state_init(MachineState *mstate)
 {
     ShaktiCMachineState *sms = RISCV_SHAKTI_MACHINE(mstate);
     MemoryRegion *system_memory = get_system_memory();
-    MemoryRegion *main_mem = g_new(MemoryRegion, 1);
 
     /* Allow only Shakti C CPU for this platform */
     if (strcmp(mstate->cpu_type, TYPE_RISCV_CPU_SHAKTI_C) != 0) {
@@ -59,18 +58,15 @@ static void shakti_c_machine_state_init(MachineState *mstate)
     qdev_realize(DEVICE(&sms->soc), NULL, &error_abort);
 
     /* register RAM */
-    memory_region_init_ram(main_mem, NULL, "riscv.shakti.c.ram",
-                           mstate->ram_size, &error_fatal);
     memory_region_add_subregion(system_memory,
                                 shakti_c_memmap[SHAKTI_C_RAM].base,
-                                main_mem);
+                                mstate->ram);
 
     /* ROM reset vector */
     riscv_setup_rom_reset_vec(mstate, &sms->soc.cpus,
                               shakti_c_memmap[SHAKTI_C_RAM].base,
                               shakti_c_memmap[SHAKTI_C_ROM].base,
-                              shakti_c_memmap[SHAKTI_C_ROM].size, 0, 0,
-                              NULL);
+                              shakti_c_memmap[SHAKTI_C_ROM].size, 0, 0);
     if (mstate->firmware) {
         riscv_load_firmware(mstate->firmware,
                             shakti_c_memmap[SHAKTI_C_RAM].base,
@@ -88,6 +84,7 @@ static void shakti_c_machine_class_init(ObjectClass *klass, void *data)
     mc->desc = "RISC-V Board compatible with Shakti SDK";
     mc->init = shakti_c_machine_state_init;
     mc->default_cpu_type = TYPE_RISCV_CPU_SHAKTI_C;
+    mc->default_ram_id = "riscv.shakti.c.ram";
 }
 
 static const TypeInfo shakti_c_machine_type_info = {
@@ -106,13 +103,14 @@ type_init(shakti_c_machine_type_info_register)
 
 static void shakti_c_soc_state_realize(DeviceState *dev, Error **errp)
 {
+    MachineState *ms = MACHINE(qdev_get_machine());
     ShaktiCSoCState *sss = RISCV_SHAKTI_SOC(dev);
     MemoryRegion *system_memory = get_system_memory();
 
     sysbus_realize(SYS_BUS_DEVICE(&sss->cpus), &error_abort);
 
     sss->plic = sifive_plic_create(shakti_c_memmap[SHAKTI_C_PLIC].base,
-        (char *)SHAKTI_C_PLIC_HART_CONFIG, 0,
+        (char *)SHAKTI_C_PLIC_HART_CONFIG, ms->smp.cpus, 0,
         SHAKTI_C_PLIC_NUM_SOURCES,
         SHAKTI_C_PLIC_NUM_PRIORITIES,
         SHAKTI_C_PLIC_PRIORITY_BASE,
@@ -123,10 +121,13 @@ static void shakti_c_soc_state_realize(DeviceState *dev, Error **errp)
         SHAKTI_C_PLIC_CONTEXT_STRIDE,
         shakti_c_memmap[SHAKTI_C_PLIC].size);
 
-    sifive_clint_create(shakti_c_memmap[SHAKTI_C_CLINT].base,
-        shakti_c_memmap[SHAKTI_C_CLINT].size, 0, 1,
-        SIFIVE_SIP_BASE, SIFIVE_TIMECMP_BASE, SIFIVE_TIME_BASE,
-        SIFIVE_CLINT_TIMEBASE_FREQ, false);
+    riscv_aclint_swi_create(shakti_c_memmap[SHAKTI_C_CLINT].base,
+        0, 1, false);
+    riscv_aclint_mtimer_create(shakti_c_memmap[SHAKTI_C_CLINT].base +
+            RISCV_ACLINT_SWI_SIZE,
+        RISCV_ACLINT_DEFAULT_MTIMER_SIZE, 0, 1,
+        RISCV_ACLINT_DEFAULT_MTIMECMP, RISCV_ACLINT_DEFAULT_MTIME,
+        RISCV_ACLINT_DEFAULT_TIMEBASE_FREQ, false);
 
     qdev_prop_set_chr(DEVICE(&(sss->uart)), "chardev", serial_hd(0));
     if (!sysbus_realize(SYS_BUS_DEVICE(&sss->uart), errp)) {
@@ -146,6 +147,13 @@ static void shakti_c_soc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     dc->realize = shakti_c_soc_state_realize;
+    /*
+     * Reasons:
+     *     - Creates CPUS in riscv_hart_realize(), and can create unintended
+     *       CPUs
+     *     - Uses serial_hds in realize function, thus can't be used twice
+     */
+    dc->user_creatable = false;
 }
 
 static void shakti_c_soc_instance_init(Object *obj)

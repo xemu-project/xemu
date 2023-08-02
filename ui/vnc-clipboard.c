@@ -23,7 +23,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "vnc.h"
 #include "vnc-jobs.h"
 
@@ -189,10 +188,8 @@ static void vnc_clipboard_provide(VncState *vs,
     vnc_flush(vs);
 }
 
-static void vnc_clipboard_notify(Notifier *notifier, void *data)
+static void vnc_clipboard_update_info(VncState *vs, QemuClipboardInfo *info)
 {
-    VncState *vs = container_of(notifier, VncState, cbpeer.update);
-    QemuClipboardInfo *info = data;
     QemuClipboardType type;
     bool self_update = info->owner == &vs->cbpeer;
     uint32_t flags = 0;
@@ -220,6 +217,21 @@ static void vnc_clipboard_notify(Notifier *notifier, void *data)
             vs->cbpending &= ~(1 << type);
             vnc_clipboard_provide(vs, info, type);
         }
+    }
+}
+
+static void vnc_clipboard_notify(Notifier *notifier, void *data)
+{
+    VncState *vs = container_of(notifier, VncState, cbpeer.notifier);
+    QemuClipboardNotify *notify = data;
+
+    switch (notify->type) {
+    case QEMU_CLIPBOARD_UPDATE_INFO:
+        vnc_clipboard_update_info(vs, notify->info);
+        return;
+    case QEMU_CLIPBOARD_RESET_SERIAL:
+        /* ignore */
+        return;
     }
 }
 
@@ -316,8 +328,10 @@ void vnc_server_cut_text_caps(VncState *vs)
     caps[1] = 0;
     vnc_clipboard_send(vs, 2, caps);
 
-    vs->cbpeer.name = "vnc";
-    vs->cbpeer.update.notify = vnc_clipboard_notify;
-    vs->cbpeer.request = vnc_clipboard_request;
-    qemu_clipboard_peer_register(&vs->cbpeer);
+    if (!vs->cbpeer.notifier.notify) {
+        vs->cbpeer.name = "vnc";
+        vs->cbpeer.notifier.notify = vnc_clipboard_notify;
+        vs->cbpeer.request = vnc_clipboard_request;
+        qemu_clipboard_peer_register(&vs->cbpeer);
+    }
 }

@@ -19,7 +19,6 @@
 
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "hw/qdev-core.h"
 #include "hw/qdev-properties.h"
 #include "qapi/error.h"
@@ -147,15 +146,6 @@ void xemu_input_init(void)
             sdl_kbd_scancode_map[i] = SDL_SCANCODE_UNKNOWN;
         }
     }
-
-    // Create USB Daughterboard for 1.0 Xbox. This is connected to Port 1 of the Root hub.
-    QDict *usbhub_qdict = qdict_new();
-    qdict_put_str(usbhub_qdict, "driver", "usb-hub");
-    qdict_put_int(usbhub_qdict, "port", 1);
-    qdict_put_int(usbhub_qdict, "ports", 4);
-    QemuOpts *usbhub_opts = qemu_opts_from_qdict(qemu_find_opts("device"), usbhub_qdict, &error_fatal);
-    DeviceState *usbhub_dev = qdev_device_add(usbhub_opts, &error_fatal);
-    assert(usbhub_dev);
 
     // Check to see if we should auto-bind the keyboard
     int port = xemu_input_get_controller_default_bind_port(new_con, 0);

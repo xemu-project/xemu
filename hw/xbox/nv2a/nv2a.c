@@ -223,7 +223,7 @@ static void nv2a_init_vga(NV2AState *d)
     VGACommonState *vga = &d->vga;
     vga->vram_size_mb = memory_region_size(d->vram) / MiB;
 
-    vga_common_init(vga, OBJECT(d));
+    vga_common_init(vga, OBJECT(d), &error_fatal);
     vga->get_bpp = nv2a_get_bpp;
     vga->get_offsets = nv2a_get_offsets;
     // vga->overlay_draw_line = nv2a_overlay_draw_line;
@@ -278,6 +278,7 @@ static void nv2a_reset(NV2AState *d)
 
     memset(d->pfifo.regs, 0, sizeof(d->pfifo.regs));
     memset(d->pgraph.regs, 0, sizeof(d->pgraph.regs));
+    memset(d->pvideo.regs, 0, sizeof(d->pvideo.regs));
 
     d->pcrtc.start = 0;
     d->pramdac.core_clock_coeff = 0x00011C01; /* 189MHz...? */
@@ -379,6 +380,14 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
         nv2a_lock_fifo(d);
         qatomic_set(&d->pfifo.halt, false);
         nv2a_unlock_fifo(d);
+    } else if (state == RUN_STATE_SHUTDOWN) {
+        nv2a_lock_fifo(d);
+        qatomic_set(&d->pgraph.shader_cache_writeback_pending, true);
+        qemu_event_reset(&d->pgraph.shader_cache_writeback_complete);
+        nv2a_unlock_fifo(d);
+        qemu_mutex_unlock_iothread();
+        qemu_event_wait(&d->pgraph.shader_cache_writeback_complete);
+        qemu_mutex_lock_iothread();
     }
 }
 
@@ -408,7 +417,6 @@ const VMStateDescription vmstate_nv2a_pgraph_vertex_attributes = {
     .name = "nv2a/pgraph/vertex-attr",
     .version_id = 1,
     .minimum_version_id = 1,
-    .minimum_version_id_old = 1,
     .fields = (VMStateField[]) {
         // FIXME
         VMSTATE_END_OF_LIST()
@@ -417,7 +425,7 @@ const VMStateDescription vmstate_nv2a_pgraph_vertex_attributes = {
 
 static const VMStateDescription vmstate_nv2a = {
     .name = "nv2a",
-    .version_id = 1,
+    .version_id = 2,
     .minimum_version_id = 1,
     .post_save = nv2a_post_save,
     .post_load = nv2a_post_load,
@@ -465,6 +473,7 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT32(pgraph.surface_shape.log_width, NV2AState),
         VMSTATE_UINT32(pgraph.surface_shape.log_height, NV2AState),
         VMSTATE_UINT32(pgraph.surface_shape.clip_x, NV2AState),
+        VMSTATE_UINT32_V(pgraph.surface_shape.clip_y, NV2AState, 2),
         VMSTATE_UINT32(pgraph.surface_shape.clip_width, NV2AState),
         VMSTATE_UINT32(pgraph.surface_shape.clip_height, NV2AState),
         VMSTATE_UINT32(pgraph.surface_shape.anti_aliasing, NV2AState),
@@ -474,6 +483,7 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT32(pgraph.last_surface_shape.log_width, NV2AState),
         VMSTATE_UINT32(pgraph.last_surface_shape.log_height, NV2AState),
         VMSTATE_UINT32(pgraph.last_surface_shape.clip_x, NV2AState),
+        VMSTATE_UINT32_V(pgraph.last_surface_shape.clip_y, NV2AState, 2),
         VMSTATE_UINT32(pgraph.last_surface_shape.clip_width, NV2AState),
         VMSTATE_UINT32(pgraph.last_surface_shape.clip_height, NV2AState),
         VMSTATE_UINT32(pgraph.last_surface_shape.anti_aliasing, NV2AState),

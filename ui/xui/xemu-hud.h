@@ -24,6 +24,7 @@
 #define XEMU_HUD_H
 
 #include <SDL.h>
+#include <epoxy/gl.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,8 +34,8 @@ extern "C" {
 int xemu_is_fullscreen(void);
 void xemu_monitor_init(void);
 void xemu_toggle_fullscreen(void);
-void xemu_eject_disc(void);
-void xemu_load_disc(const char *path);
+void xemu_eject_disc(Error **errp);
+void xemu_load_disc(const char *path, Error **errp);
 
 // Implemented in xemu_hud.cc
 void xemu_hud_init(SDL_Window *window, void *sdl_gl_context);
