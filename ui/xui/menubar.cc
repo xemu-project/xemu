@@ -138,7 +138,6 @@ void ShowMainMenu()
 
             ImGui::Separator();
 
-            //ImGui::MenuItem("Settings", NULL, false, false);
             if (ImGui::MenuItem("Settings...")) g_main_menu.ShowSettings();
 
             ImGui::Separator();
