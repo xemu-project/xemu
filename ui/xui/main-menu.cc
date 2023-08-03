@@ -1184,37 +1184,9 @@ MainMenuScene::MainMenuScene()
     m_next_view_index = m_current_view_index;
 }
 
-void MainMenuScene::ShowGeneral()
+void MainMenuScene::ShowSettings()
 {
-    SetNextViewIndexWithFocus(0);
-}
-void MainMenuScene::ShowInput()
-{
-    SetNextViewIndexWithFocus(1);
-}
-void MainMenuScene::ShowDisplay()
-{
-    SetNextViewIndexWithFocus(2);
-}
-void MainMenuScene::ShowAudio()
-{
-    SetNextViewIndexWithFocus(3);
-}
-void MainMenuScene::ShowNetwork()
-{
-    SetNextViewIndexWithFocus(4);
-}
-void MainMenuScene::ShowSnapshots() 
-{
-    SetNextViewIndexWithFocus(5);
-}
-void MainMenuScene::ShowSystem()
-{
-    SetNextViewIndexWithFocus(6);
-}
-void MainMenuScene::ShowAbout()
-{
-    SetNextViewIndexWithFocus(7);
+    SetNextViewIndexWithFocus(m_current_view_index);
 }
 
 void MainMenuScene::SetNextViewIndexWithFocus(int i)

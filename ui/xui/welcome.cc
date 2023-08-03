@@ -58,7 +58,7 @@ void FirstBootWindow::Draw()
 
     ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120*g_viewport_mgr.m_scale)/2);
     if (ImGui::Button("Settings", ImVec2(120*g_viewport_mgr.m_scale, 0))) {
-        g_main_menu.ShowSystem();
+        g_main_menu.ShowSettings();
         g_config.general.show_welcome = false;
     }
 

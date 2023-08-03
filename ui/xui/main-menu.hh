@@ -182,14 +182,7 @@ protected:
 
 public:
     MainMenuScene();
-    void ShowGeneral();
-    void ShowInput();
-    void ShowDisplay();
-    void ShowAudio();
-    void ShowNetwork();
-    void ShowSnapshots();
-    void ShowSystem();
-    void ShowAbout();
+    void ShowSettings();
     void SetNextViewIndexWithFocus(int i);
     void Show() override;
     void Hide() override;

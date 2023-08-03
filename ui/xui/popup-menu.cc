@@ -322,11 +322,6 @@ public:
             nav.PushFocus();
             nav.PushMenu(aspect_ratio);
         }
-        if (PopupMenuButton("Snapshots...", ICON_FA_CLOCK_ROTATE_LEFT)) {
-            nav.ClearMenuStack();
-            g_scene_mgr.PushScene(g_main_menu);
-            g_main_menu.ShowSnapshots();
-        }
         if (PopupMenuButton("All settings...", ICON_FA_SLIDERS)) {
             nav.ClearMenuStack();
             g_scene_mgr.PushScene(g_main_menu);
