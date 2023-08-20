@@ -258,7 +258,7 @@ public:
     bool DrawItems(PopupMenuItemDelegate &nav) override
     {
         const char *values[] = {
-            "Center", "Scale", "Scale (Widescreen 16:9)", "Scale (4:3)", "Stretch"
+            "Center", "Scale", "Stretch"
         };
 
         for (int i = 0; i < CONFIG_DISPLAY_UI_FIT__COUNT; i++) {
@@ -272,11 +272,34 @@ public:
     }
 };
 
+class AspectRatioPopupMenu : public virtual PopupMenu {
+public:
+    bool DrawItems(PopupMenuItemDelegate &nav) override
+    {
+        const char *values[] = {
+            "Native",
+            "Auto (Default)",
+            "4:3",
+            "16:9"
+        };
+
+        for (int i = 0; i < CONFIG_DISPLAY_UI_ASPECT_RATIO__COUNT; i++) {
+            bool selected = g_config.display.ui.aspect_ratio == i;
+            if (m_focus && selected) ImGui::SetKeyboardFocusHere();
+            if (PopupMenuCheck(values[i], "", selected))
+                g_config.display.ui.aspect_ratio = i;
+        }
+
+        return false;
+    }
+};
+
 extern MainMenuScene g_main_menu;
 
 class SettingsPopupMenu : public virtual PopupMenu {
 protected:
     DisplayModePopupMenu display_mode;
+    AspectRatioPopupMenu aspect_ratio;
 
 public:
     bool DrawItems(PopupMenuItemDelegate &nav) override
@@ -294,6 +317,10 @@ public:
         if (PopupMenuSubmenuButton("Display Mode", ICON_FA_EXPAND)) {
             nav.PushFocus();
             nav.PushMenu(display_mode);
+        }
+        if (PopupMenuSubmenuButton("Aspect Ratio", ICON_FA_EXPAND)) {
+            nav.PushFocus();
+            nav.PushMenu(aspect_ratio);
         }
         if (PopupMenuButton("Snapshots...", ICON_FA_CLOCK_ROTATE_LEFT)) {
             nav.ClearMenuStack();
@@ -432,9 +459,9 @@ void PopupMenuScene::PopFocus()
     m_focus_stack.pop_back();
     ImGuiContext *g = ImGui::GetCurrentContext();
     g->NavInitRequest = false;
-    g->NavInitResultId = next_focus.first;
-    g->NavInitResultRectRel = ImGui::WindowRectAbsToRel(g->CurrentWindow,
-                                                 next_focus.second);
+    g->NavInitResult.ID = next_focus.first;
+    g->NavInitResult.RectRel = ImGui::WindowRectAbsToRel(g->CurrentWindow,
+                                                         next_focus.second);
     // ImGui::NavUpdateAnyRequestFlag();
     g->NavAnyRequest = g->NavMoveScoringItems || g->NavInitRequest;// || (IMGUI_DEBUG_NAV_SCORING && g->NavWindow != NULL);
 }
@@ -453,7 +480,8 @@ void PopupMenuScene::ClearMenuStack()
 
 void PopupMenuScene::HandleInput()
 {
-    if (IsNavInputPressed(ImGuiNavInput_Cancel)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false)
+        || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         PopMenu();
     }
 }

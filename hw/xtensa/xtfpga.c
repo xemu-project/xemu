@@ -126,7 +126,7 @@ static const MemoryRegionOps xtfpga_fpga_ops = {
 static XtfpgaFpgaState *xtfpga_fpga_init(MemoryRegion *address_space,
                                          hwaddr base, uint32_t freq)
 {
-    XtfpgaFpgaState *s = g_malloc(sizeof(XtfpgaFpgaState));
+    XtfpgaFpgaState *s = g_new(XtfpgaFpgaState, 1);
 
     memory_region_init_io(&s->iomem, NULL, &xtfpga_fpga_ops, s,
                           "xtfpga.fpga", 0x10000);
@@ -219,7 +219,7 @@ static const MemoryRegionOps xtfpga_io_ops = {
 
 static void xtfpga_init(const XtfpgaBoardDesc *board, MachineState *machine)
 {
-#ifdef TARGET_WORDS_BIGENDIAN
+#if TARGET_BIG_ENDIAN
     int be = 1;
 #else
     int be = 0;
@@ -430,7 +430,7 @@ static void xtfpga_init(const XtfpgaBoardDesc *board, MachineState *machine)
         }
         if (entry_point != env->pc) {
             uint8_t boot[] = {
-#ifdef TARGET_WORDS_BIGENDIAN
+#if TARGET_BIG_ENDIAN
                 0x60, 0x00, 0x08,       /* j    1f */
                 0x00,                   /* .literal_position */
                 0x00, 0x00, 0x00, 0x00, /* .literal entry_pc */

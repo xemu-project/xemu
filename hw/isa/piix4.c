@@ -28,18 +28,19 @@
 #include "hw/irq.h"
 #include "hw/southbridge/piix.h"
 #include "hw/pci/pci.h"
+#include "hw/ide/piix.h"
 #include "hw/isa/isa.h"
 #include "hw/intc/i8259.h"
 #include "hw/dma/i8257.h"
 #include "hw/timer/i8254.h"
 #include "hw/rtc/mc146818rtc.h"
 #include "hw/ide/pci.h"
+#include "hw/acpi/piix4.h"
+#include "hw/usb/hcd-uhci.h"
 #include "migration/vmstate.h"
 #include "sysemu/reset.h"
 #include "sysemu/runstate.h"
 #include "qom/object.h"
-
-PCIDevice *piix4_dev;
 
 struct PIIX4State {
     PCIDevice dev;
@@ -47,12 +48,61 @@ struct PIIX4State {
     qemu_irq *isa;
 
     RTCState rtc;
+    PCIIDEState ide;
+    UHCIState uhci;
+    PIIX4PMState pm;
     /* Reset Control Register */
     MemoryRegion rcr_mem;
     uint8_t rcr;
 };
 
 OBJECT_DECLARE_SIMPLE_TYPE(PIIX4State, PIIX4_PCI_DEVICE)
+
+static void piix4_set_irq(void *opaque, int irq_num, int level)
+{
+    int i, pic_irq, pic_level;
+    PIIX4State *s = opaque;
+    PCIBus *bus = pci_get_bus(&s->dev);
+
+    /* now we change the pic irq level according to the piix irq mappings */
+    /* XXX: optimize */
+    pic_irq = s->dev.config[PIIX_PIRQCA + irq_num];
+    if (pic_irq < ISA_NUM_IRQS) {
+        /* The pic level is the logical OR of all the PCI irqs mapped to it. */
+        pic_level = 0;
+        for (i = 0; i < PIIX_NUM_PIRQS; i++) {
+            if (pic_irq == s->dev.config[PIIX_PIRQCA + i]) {
+                pic_level |= pci_bus_get_irq_level(bus, i);
+            }
+        }
+        qemu_set_irq(s->isa[pic_irq], pic_level);
+    }
+}
+
+static int pci_slot_get_pirq(PCIDevice *pci_dev, int irq_num)
+{
+    int slot;
+
+    slot = PCI_SLOT(pci_dev->devfn);
+
+    switch (slot) {
+    /* PIIX4 USB */
+    case 10:
+        return 3;
+    /* AMD 79C973 Ethernet */
+    case 11:
+        return 1;
+    /* Crystal 4281 Sound */
+    case 12:
+        return 2;
+    /* PCI slot 1 to 4 */
+    case 18 ... 21:
+        return ((slot - 18) + irq_num) & 0x03;
+    /* Unknown device, don't do any translation */
+    default:
+        return irq_num;
+    }
+}
 
 static void piix4_isa_reset(DeviceState *dev)
 {
@@ -90,9 +140,11 @@ static void piix4_isa_reset(DeviceState *dev)
     pci_conf[0xab] = 0x00;
     pci_conf[0xac] = 0x00;
     pci_conf[0xae] = 0x00;
+
+    d->rcr = 0;
 }
 
-static int piix4_ide_post_load(void *opaque, int version_id)
+static int piix4_post_load(void *opaque, int version_id)
 {
     PIIX4State *s = opaque;
 
@@ -107,7 +159,7 @@ static const VMStateDescription vmstate_piix4 = {
     .name = "PIIX4",
     .version_id = 3,
     .minimum_version_id = 2,
-    .post_load = piix4_ide_post_load,
+    .post_load = piix4_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_PCI_DEVICE(dev, PIIX4State),
         VMSTATE_UINT8_V(rcr, PIIX4State, 3),
@@ -160,6 +212,7 @@ static const MemoryRegionOps piix4_rcr_ops = {
 static void piix4_realize(PCIDevice *dev, Error **errp)
 {
     PIIX4State *s = PIIX4_PCI_DEVICE(dev);
+    PCIBus *pci_bus = pci_get_bus(dev);
     ISABus *isa_bus;
     qemu_irq *i8259_out_irq;
 
@@ -197,16 +250,41 @@ static void piix4_realize(PCIDevice *dev, Error **errp)
     if (!qdev_realize(DEVICE(&s->rtc), BUS(isa_bus), errp)) {
         return;
     }
-    isa_init_irq(ISA_DEVICE(&s->rtc), &s->rtc.irq, RTC_ISA_IRQ);
+    s->rtc.irq = isa_get_irq(ISA_DEVICE(&s->rtc), s->rtc.isairq);
 
-    piix4_dev = dev;
+    /* IDE */
+    qdev_prop_set_int32(DEVICE(&s->ide), "addr", dev->devfn + 1);
+    if (!qdev_realize(DEVICE(&s->ide), BUS(pci_bus), errp)) {
+        return;
+    }
+
+    /* USB */
+    qdev_prop_set_int32(DEVICE(&s->uhci), "addr", dev->devfn + 2);
+    if (!qdev_realize(DEVICE(&s->uhci), BUS(pci_bus), errp)) {
+        return;
+    }
+
+    /* ACPI controller */
+    qdev_prop_set_int32(DEVICE(&s->pm), "addr", dev->devfn + 3);
+    if (!qdev_realize(DEVICE(&s->pm), BUS(pci_bus), errp)) {
+        return;
+    }
+    qdev_connect_gpio_out(DEVICE(&s->pm), 0, s->isa[9]);
+
+    pci_bus_irqs(pci_bus, piix4_set_irq, pci_slot_get_pirq, s, PIIX_NUM_PIRQS);
 }
 
 static void piix4_init(Object *obj)
 {
     PIIX4State *s = PIIX4_PCI_DEVICE(obj);
 
-    object_initialize(&s->rtc, sizeof(s->rtc), TYPE_MC146818_RTC);
+    object_initialize_child(obj, "rtc", &s->rtc, TYPE_MC146818_RTC);
+    object_initialize_child(obj, "ide", &s->ide, TYPE_PIIX4_IDE);
+    object_initialize_child(obj, "uhci", &s->uhci, "piix4-usb-uhci");
+
+    object_initialize_child(obj, "pm", &s->pm, TYPE_PIIX4_PM);
+    qdev_prop_set_uint32(DEVICE(&s->pm), "smb_io_base", 0x1100);
+    qdev_prop_set_bit(DEVICE(&s->pm), "smm-enabled", 0);
 }
 
 static void piix4_class_init(ObjectClass *klass, void *data)
@@ -247,29 +325,3 @@ static void piix4_register_types(void)
 }
 
 type_init(piix4_register_types)
-
-DeviceState *piix4_create(PCIBus *pci_bus, ISABus **isa_bus, I2CBus **smbus)
-{
-    PCIDevice *pci;
-    DeviceState *dev;
-    int devfn = PCI_DEVFN(10, 0);
-
-    pci = pci_create_simple_multifunction(pci_bus, devfn,  true,
-                                          TYPE_PIIX4_PCI_DEVICE);
-    dev = DEVICE(pci);
-    if (isa_bus) {
-        *isa_bus = ISA_BUS(qdev_get_child_bus(dev, "isa.0"));
-    }
-
-    pci = pci_create_simple(pci_bus, devfn + 1, "piix4-ide");
-    pci_ide_create_devs(pci);
-
-    pci_create_simple(pci_bus, devfn + 2, "piix4-usb-uhci");
-    if (smbus) {
-        *smbus = piix4_pm_init(pci_bus, devfn + 3, 0x1100,
-                               qdev_get_gpio_in_named(dev, "isa", 9),
-                               NULL, 0, NULL);
-    }
-
-    return dev;
-}

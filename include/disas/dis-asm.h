@@ -253,6 +253,7 @@ enum bfd_architecture
 #define bfd_mach_rx            0x75
 #define bfd_mach_rx_v2         0x76
 #define bfd_mach_rx_v3         0x77
+  bfd_arch_loongarch,
   bfd_arch_last
   };
 #define bfd_mach_s390_31 31
@@ -269,7 +270,7 @@ typedef struct symbol_cache_entry
 } asymbol;
 
 typedef int (*fprintf_function)(FILE *f, const char *fmt, ...)
-    GCC_FMT_ATTR(2, 3);
+    G_GNUC_PRINTF(2, 3);
 
 enum dis_insn_type {
   dis_noninsn,			/* Not a valid instruction */
@@ -418,7 +419,6 @@ int print_insn_tci(bfd_vma, disassemble_info*);
 int print_insn_big_mips         (bfd_vma, disassemble_info*);
 int print_insn_little_mips      (bfd_vma, disassemble_info*);
 int print_insn_nanomips         (bfd_vma, disassemble_info*);
-int print_insn_i386             (bfd_vma, disassemble_info*);
 int print_insn_m68k             (bfd_vma, disassemble_info*);
 int print_insn_z8001            (bfd_vma, disassemble_info*);
 int print_insn_z8002            (bfd_vma, disassemble_info*);
@@ -429,7 +429,6 @@ int print_insn_h8500            (bfd_vma, disassemble_info*);
 int print_insn_arm_a64          (bfd_vma, disassemble_info*);
 int print_insn_alpha            (bfd_vma, disassemble_info*);
 disassembler_ftype arc_get_disassembler (int, int);
-int print_insn_arm              (bfd_vma, disassemble_info*);
 int print_insn_sparc            (bfd_vma, disassemble_info*);
 int print_insn_big_a29k         (bfd_vma, disassemble_info*);
 int print_insn_little_a29k      (bfd_vma, disassemble_info*);
@@ -449,19 +448,18 @@ int print_insn_w65              (bfd_vma, disassemble_info*);
 int print_insn_d10v             (bfd_vma, disassemble_info*);
 int print_insn_v850             (bfd_vma, disassemble_info*);
 int print_insn_tic30            (bfd_vma, disassemble_info*);
-int print_insn_ppc              (bfd_vma, disassemble_info*);
-int print_insn_s390             (bfd_vma, disassemble_info*);
 int print_insn_crisv32          (bfd_vma, disassemble_info*);
 int print_insn_crisv10          (bfd_vma, disassemble_info*);
 int print_insn_microblaze       (bfd_vma, disassemble_info*);
 int print_insn_ia64             (bfd_vma, disassemble_info*);
-int print_insn_big_nios2        (bfd_vma, disassemble_info*);
-int print_insn_little_nios2     (bfd_vma, disassemble_info*);
+int print_insn_nios2(bfd_vma, disassemble_info*);
 int print_insn_xtensa           (bfd_vma, disassemble_info*);
 int print_insn_riscv32          (bfd_vma, disassemble_info*);
 int print_insn_riscv64          (bfd_vma, disassemble_info*);
+int print_insn_riscv128         (bfd_vma, disassemble_info*);
 int print_insn_rx(bfd_vma, disassemble_info *);
 int print_insn_hexagon(bfd_vma, disassemble_info *);
+int print_insn_loongarch(bfd_vma, disassemble_info *);
 
 #ifdef CONFIG_CAPSTONE
 bool cap_disas_target(disassemble_info *info, uint64_t pc, size_t size);

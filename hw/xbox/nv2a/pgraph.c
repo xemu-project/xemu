@@ -3048,15 +3048,17 @@ DEF_METHOD(NV097, SET_BEGIN_END)
 
         glEnable(GL_PROGRAM_POINT_SIZE);
 
+        bool anti_aliasing = GET_MASK(pg->regs[NV_PGRAPH_ANTIALIASING], NV_PGRAPH_ANTIALIASING_ENABLE);
+
         /* Edge Antialiasing */
-        if (pg->regs[NV_PGRAPH_SETUPRASTER] &
-                NV_PGRAPH_SETUPRASTER_LINESMOOTHENABLE) {
+        if (!anti_aliasing && pg->regs[NV_PGRAPH_SETUPRASTER] &
+                                  NV_PGRAPH_SETUPRASTER_LINESMOOTHENABLE) {
             glEnable(GL_LINE_SMOOTH);
         } else {
             glDisable(GL_LINE_SMOOTH);
         }
-        if (pg->regs[NV_PGRAPH_SETUPRASTER] &
-                NV_PGRAPH_SETUPRASTER_POLYSMOOTHENABLE) {
+        if (!anti_aliasing && pg->regs[NV_PGRAPH_SETUPRASTER] &
+                                  NV_PGRAPH_SETUPRASTER_POLYSMOOTHENABLE) {
             glEnable(GL_POLYGON_SMOOTH);
         } else {
             glDisable(GL_POLYGON_SMOOTH);
@@ -3455,6 +3457,13 @@ DEF_METHOD(NV097, SET_ZMIN_MAX_CONTROL)
         assert(!"Invalid zclamp value");
         break;
     }
+}
+
+DEF_METHOD(NV097, SET_ANTI_ALIASING_CONTROL)
+{
+    SET_MASK(pg->regs[NV_PGRAPH_ANTIALIASING], NV_PGRAPH_ANTIALIASING_ENABLE,
+             GET_MASK(parameter, NV097_SET_ANTI_ALIASING_CONTROL_ENABLE));
+    // FIXME: Handle the remaining bits (observed values 0xFFFF0000, 0xFFFF0001)
 }
 
 DEF_METHOD(NV097, SET_ZSTENCIL_CLEAR_VALUE)
@@ -5341,6 +5350,11 @@ const uint8_t *nv2a_get_dac_palette(void)
     return g_nv2a->puserdac.palette;
 }
 
+int nv2a_get_screen_off(void)
+{
+    return g_nv2a->vga.sr[VGA_SEQ_CLOCK_MODE] & VGA_SR01_SCREEN_OFF;
+}
+
 int nv2a_get_framebuffer_surface(void)
 {
     NV2AState *d = g_nv2a;
@@ -6629,7 +6643,8 @@ static void pgraph_bind_textures(NV2AState *d)
                      1 << log_width, 1 << log_height, 1 << log_depth,
                      pitch,
                      cubemap ? "; cubemap" : "",
-                     min_filter, mag_filter,
+                     GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN),
+                     GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG),
                      min_mipmap_level, max_mipmap_level, levels,
                      lod_bias);
 

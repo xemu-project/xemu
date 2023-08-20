@@ -22,6 +22,7 @@
 #define M68K_CPU_H
 
 #include "exec/cpu-defs.h"
+#include "qemu/cpu-float.h"
 #include "cpu-qom.h"
 
 #define OS_BYTE     0
@@ -79,7 +80,7 @@
 
 typedef CPU_LDoubleU FPReg;
 
-typedef struct CPUM68KState {
+typedef struct CPUArchState {
     uint32_t dregs[8];
     uint32_t aregs[8];
     uint32_t pc;
@@ -121,6 +122,12 @@ typedef struct CPUM68KState {
 
     /* MMU status.  */
     struct {
+        /*
+         * Holds the "address" value in between raising an exception
+         * and creation of the exception stack frame.
+         * Used for both Format 7 exceptions (Access, i.e. mmu)
+         * and Format 2 exceptions (chk, div0, trapcc, etc).
+         */
         uint32_t ar;
         uint32_t ssw;
         /* 68040 */
@@ -147,7 +154,7 @@ typedef struct CPUM68KState {
     struct {} end_reset_fields;
 
     /* Fields from here on are preserved across CPU reset. */
-    uint32_t features;
+    uint64_t features;
 } CPUM68KState;
 
 /*
@@ -156,7 +163,7 @@ typedef struct CPUM68KState {
  *
  * A Motorola 68k CPU.
  */
-struct M68kCPU {
+struct ArchCPU {
     /*< private >*/
     CPUState parent_obj;
     /*< public >*/
@@ -166,8 +173,10 @@ struct M68kCPU {
 };
 
 
+#ifndef CONFIG_USER_ONLY
 void m68k_cpu_do_interrupt(CPUState *cpu);
 bool m68k_cpu_exec_interrupt(CPUState *cpu, int int_req);
+#endif /* !CONFIG_USER_ONLY */
 void m68k_cpu_dump_state(CPUState *cpu, FILE *f, int flags);
 hwaddr m68k_cpu_get_phys_page_debug(CPUState *cpu, vaddr addr);
 int m68k_cpu_gdb_read_register(CPUState *cpu, GByteArray *buf, int reg);
@@ -175,13 +184,6 @@ int m68k_cpu_gdb_write_register(CPUState *cpu, uint8_t *buf, int reg);
 
 void m68k_tcg_init(void);
 void m68k_cpu_init_gdb(M68kCPU *cpu);
-/*
- * you can call this signal handler from your SIGBUS and SIGSEGV
- * signal handlers to inform the virtual CPU of exceptions. non zero
- * is returned if the signal was handled by the virtual CPU.
- */
-int cpu_m68k_signal_handler(int host_signum, void *pinfo,
-                           void *puc);
 uint32_t cpu_m68k_get_ccr(CPUM68KState *env);
 void cpu_m68k_set_ccr(CPUM68KState *env, uint32_t);
 void cpu_m68k_set_sr(CPUM68KState *env, uint32_t);
@@ -478,8 +480,9 @@ void do_m68k_semihosting(CPUM68KState *env, int nr);
  */
 
 enum m68k_features {
-    /* Base m68k instruction set */
-    M68K_FEATURE_M68000,
+    /* Base Motorola CPU set (not set for Coldfire CPUs) */
+    M68K_FEATURE_M68K,
+    /* Motorola CPU feature sets */
     M68K_FEATURE_M68010,
     M68K_FEATURE_M68020,
     M68K_FEATURE_M68030,
@@ -532,11 +535,15 @@ enum m68k_features {
     M68K_FEATURE_MOVEC,
     /* Unaligned data accesses (680[2346]0) */
     M68K_FEATURE_UNALIGNED_DATA,
+    /* TRAPcc insn. (680[2346]0, and CPU32) */
+    M68K_FEATURE_TRAPCC,
+    /* MOVE from SR privileged (from 68010) */
+    M68K_FEATURE_MOVEFROMSR_PRIV,
 };
 
-static inline int m68k_feature(CPUM68KState *env, int feature)
+static inline bool m68k_feature(CPUM68KState *env, int feature)
 {
-    return (env->features & (1u << feature)) != 0;
+    return (env->features & BIT_ULL(feature)) != 0;
 }
 
 void m68k_cpu_list(void);
@@ -561,7 +568,6 @@ enum {
 #define M68K_CPU_TYPE_NAME(model) model M68K_CPU_TYPE_SUFFIX
 #define CPU_RESOLVING_TYPE TYPE_M68K_CPU
 
-#define cpu_signal_handler cpu_m68k_signal_handler
 #define cpu_list m68k_cpu_list
 
 /* MMU modes definitions */
@@ -579,9 +585,6 @@ void m68k_cpu_transaction_failed(CPUState *cs, hwaddr physaddr, vaddr addr,
                                  unsigned size, MMUAccessType access_type,
                                  int mmu_idx, MemTxAttrs attrs,
                                  MemTxResult response, uintptr_t retaddr);
-
-typedef CPUM68KState CPUArchState;
-typedef M68kCPU ArchCPU;
 
 #include "exec/cpu-all.h"
 

@@ -471,6 +471,10 @@ void MainMenuDisplayView::Draw()
     SectionTitle("Interface");
     Toggle("Show main menu bar", &g_config.display.ui.show_menubar,
            "Show main menu bar when mouse is activated");
+    Toggle("Show notifications", &g_config.display.ui.show_notifications,
+           "Display notifications in upper-right corner");
+    Toggle("Hide mouse cursor", &g_config.display.ui.hide_cursor,
+           "Hide the mouse cursor when it is not moving");
 
     int ui_scale_idx;
     if (g_config.display.ui.auto_scale) {
@@ -497,10 +501,14 @@ void MainMenuDisplayView::Draw()
     ChevronCombo("Display mode", &g_config.display.ui.fit,
                  "Center\0"
                  "Scale\0"
-                 "Scale (Widescreen 16:9)\0"
-                 "Scale (4:3)\0"
                  "Stretch\0",
                  "Select how the framebuffer should fit or scale into the window");
+    ChevronCombo("Aspect ratio", &g_config.display.ui.aspect_ratio,
+                 "Native\0"
+                 "Auto (Default)\0"
+                 "4:3\0"
+                 "16:9\0",
+                 "Select the displayed aspect ratio");
 }
 
 void MainMenuAudioView::Draw()
@@ -1410,8 +1418,8 @@ void MainMenuScene::HandleInput()
     // XXX: Ensure we have focus for two frames. If a user cancels a popup window, we do not want to cancel main
     //      window as well.
     if (nofocus || (focus && m_had_focus_last_frame &&
-                    ImGui::IsNavInputTest(ImGuiNavInput_Cancel,
-                                          ImGuiInputReadMode_Pressed))) {
+                    (ImGui::IsKeyDown(ImGuiKey_GamepadFaceRight)
+                     || ImGui::IsKeyDown(ImGuiKey_Escape)))) {
         Hide();
         return;
     }

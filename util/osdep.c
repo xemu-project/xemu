@@ -23,30 +23,20 @@
  */
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-
-/* Needed early for CONFIG_BSD etc. */
-
-#ifdef CONFIG_SOLARIS
-#include <sys/statvfs.h>
-/* See MySQL bug #7156 (http://bugs.mysql.com/bug.php?id=7156) for
-   discussion about Solaris header problems */
-extern int madvise(char *, size_t, int);
-#endif
-
-#include "qemu-common.h"
 #include "qemu/cutils.h"
 #include "qemu/sockets.h"
 #include "qemu/error-report.h"
+#include "qemu/madvise.h"
+#include "qemu/mprotect.h"
+#include "qemu/hw-version.h"
 #include "monitor/monitor.h"
-
-static bool fips_enabled = false;
 
 static const char *hw_version = QEMU_HW_VERSION;
 
 int socket_set_cork(int fd, int v)
 {
 #if defined(SOL_TCP) && defined(TCP_CORK)
-    return qemu_setsockopt(fd, SOL_TCP, TCP_CORK, &v, sizeof(v));
+    return setsockopt(fd, SOL_TCP, TCP_CORK, &v, sizeof(v));
 #else
     return 0;
 #endif
@@ -55,7 +45,7 @@ int socket_set_cork(int fd, int v)
 int socket_set_nodelay(int fd)
 {
     int v = 1;
-    return qemu_setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &v, sizeof(v));
+    return setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &v, sizeof(v));
 }
 
 int qemu_madvise(void *addr, size_t len, int advice)
@@ -76,8 +66,8 @@ int qemu_madvise(void *addr, size_t len, int advice)
 
 static int qemu_mprotect__osdep(void *addr, size_t size, int prot)
 {
-    g_assert(!((uintptr_t)addr & ~qemu_real_host_page_mask));
-    g_assert(!(size & ~qemu_real_host_page_mask));
+    g_assert(!((uintptr_t)addr & ~qemu_real_host_page_mask()));
+    g_assert(!(size & ~qemu_real_host_page_mask()));
 
 #ifdef _WIN32
     DWORD old_protect;
@@ -486,6 +476,8 @@ int qemu_mkdir(const char *path)
 	if (!dirResult) {
 		return -1;
 	}
+
+    return 0;
 #else
 	return mkdir(path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 #endif
@@ -567,6 +559,28 @@ int qemu_accept(int s, struct sockaddr *addr, socklen_t *addrlen)
     return ret;
 }
 
+ssize_t qemu_send_full(int s, const void *buf, size_t count)
+{
+    ssize_t ret = 0;
+    ssize_t total = 0;
+
+    while (count) {
+        ret = send(s, buf, count, 0);
+        if (ret < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            break;
+        }
+
+        count -= ret;
+        buf += ret;
+        total += ret;
+    }
+
+    return total;
+}
+
 void qemu_set_hw_version(const char *version)
 {
     hw_version = version;
@@ -575,32 +589,6 @@ void qemu_set_hw_version(const char *version)
 const char *qemu_hw_version(void)
 {
     return hw_version;
-}
-
-void fips_set_state(bool requested)
-{
-#ifdef __linux__
-    if (requested) {
-        FILE *fds = fopen("/proc/sys/crypto/fips_enabled", "r");
-        if (fds != NULL) {
-            fips_enabled = (fgetc(fds) == '1');
-            fclose(fds);
-        }
-    }
-#else
-    fips_enabled = false;
-#endif /* __linux__ */
-
-#ifdef _FIPS_DEBUG
-    fprintf(stderr, "FIPS mode %s (requested %s)\n",
-            (fips_enabled ? "enabled" : "disabled"),
-            (requested ? "enabled" : "disabled"));
-#endif
-}
-
-bool fips_get_state(void)
-{
-    return fips_enabled;
 }
 
 #ifdef _WIN32
@@ -629,18 +617,22 @@ int socket_init(void)
 
 
 #ifndef CONFIG_IOVEC
-/* helper function for iov_send_recv() */
 static ssize_t
 readv_writev(int fd, const struct iovec *iov, int iov_cnt, bool do_write)
 {
     unsigned i = 0;
     ssize_t ret = 0;
+    ssize_t off = 0;
     while (i < iov_cnt) {
         ssize_t r = do_write
-            ? write(fd, iov[i].iov_base, iov[i].iov_len)
-            : read(fd, iov[i].iov_base, iov[i].iov_len);
+            ? write(fd, iov[i].iov_base + off, iov[i].iov_len - off)
+            : read(fd, iov[i].iov_base + off, iov[i].iov_len - off);
         if (r > 0) {
             ret += r;
+            off += r;
+            if (off < iov[i].iov_len) {
+                continue;
+            }
         } else if (!r) {
             break;
         } else if (errno == EINTR) {
@@ -653,6 +645,7 @@ readv_writev(int fd, const struct iovec *iov, int iov_cnt, bool do_write)
             }
             break;
         }
+        off = 0;
         i++;
     }
     return ret;
@@ -670,3 +663,19 @@ writev(int fd, const struct iovec *iov, int iov_cnt)
     return readv_writev(fd, iov, iov_cnt, true);
 }
 #endif
+
+/*
+ * Make sure data goes on disk, but if possible do not bother to
+ * write out the inode just for timestamp updates.
+ *
+ * Unfortunately even in 2009 many operating systems do not support
+ * fdatasync and have to fall back to fsync.
+ */
+int qemu_fdatasync(int fd)
+{
+#ifdef CONFIG_FDATASYNC
+    return fdatasync(fd);
+#else
+    return fsync(fd);
+#endif
+}

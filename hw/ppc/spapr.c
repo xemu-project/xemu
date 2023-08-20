@@ -25,10 +25,12 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/datadir.h"
+#include "qemu/memalign.h"
+#include "qemu/guest-random.h"
 #include "qapi/error.h"
 #include "qapi/qapi-events-machine.h"
+#include "qapi/qapi-events-qdev.h"
 #include "qapi/visitor.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/hostmem.h"
@@ -175,8 +177,8 @@ static int spapr_fixup_cpu_smt_dt(void *fdt, int offset, PowerPCCPU *cpu,
                                   int smt_threads)
 {
     int i, ret = 0;
-    uint32_t servers_prop[smt_threads];
-    uint32_t gservers_prop[smt_threads * 2];
+    g_autofree uint32_t *servers_prop = g_new(uint32_t, smt_threads);
+    g_autofree uint32_t *gservers_prop = g_new(uint32_t, smt_threads * 2);
     int index = spapr_get_vcpu_id(cpu);
 
     if (cpu->compat_pvr) {
@@ -194,12 +196,12 @@ static int spapr_fixup_cpu_smt_dt(void *fdt, int offset, PowerPCCPU *cpu,
         gservers_prop[i*2 + 1] = 0;
     }
     ret = fdt_setprop(fdt, offset, "ibm,ppc-interrupt-server#s",
-                      servers_prop, sizeof(servers_prop));
+                      servers_prop, sizeof(*servers_prop) * smt_threads);
     if (ret < 0) {
         return ret;
     }
     ret = fdt_setprop(fdt, offset, "ibm,ppc-interrupt-gserver#s",
-                      gservers_prop, sizeof(gservers_prop));
+                      gservers_prop, sizeof(*gservers_prop) * smt_threads * 2);
 
     return ret;
 }
@@ -722,10 +724,12 @@ static void spapr_dt_cpu(CPUState *cs, void *fdt, int offset,
      *
      * Only CPUs for which we create core types in spapr_cpu_core.c
      * are possible, and all of those have VMX */
-    if (spapr_get_cap(spapr, SPAPR_CAP_VSX) != 0) {
-        _FDT((fdt_setprop_cell(fdt, offset, "ibm,vmx", 2)));
-    } else {
-        _FDT((fdt_setprop_cell(fdt, offset, "ibm,vmx", 1)));
+    if (env->insns_flags & PPC_ALTIVEC) {
+        if (spapr_get_cap(spapr, SPAPR_CAP_VSX) != 0) {
+            _FDT((fdt_setprop_cell(fdt, offset, "ibm,vmx", 2)));
+        } else {
+            _FDT((fdt_setprop_cell(fdt, offset, "ibm,vmx", 1)));
+        }
     }
 
     /* Advertise DFP (Decimal Floating Point) if available
@@ -895,6 +899,8 @@ static void spapr_dt_rtas(SpaprMachineState *spapr, void *fdt)
         add_str(hypertas, "hcall-hpt-resize");
     }
 
+    add_str(hypertas, "hcall-watchdog");
+
     _FDT(fdt_setprop(fdt, rtas, "ibm,hypertas-functions",
                      hypertas->str, hypertas->len));
     g_string_free(hypertas, TRUE);
@@ -1009,15 +1015,16 @@ static void spapr_dt_chosen(SpaprMachineState *spapr, void *fdt, bool reset)
 {
     MachineState *machine = MACHINE(spapr);
     SpaprMachineClass *smc = SPAPR_MACHINE_GET_CLASS(machine);
+    uint8_t rng_seed[32];
     int chosen;
 
     _FDT(chosen = fdt_add_subnode(fdt, 0, "chosen"));
 
     if (reset) {
         const char *boot_device = spapr->boot_device;
-        char *stdout_path = spapr_vio_stdout_path(spapr->vio_bus);
+        g_autofree char *stdout_path = spapr_vio_stdout_path(spapr->vio_bus);
         size_t cb = 0;
-        char *bootlist = get_boot_devices_list(&cb);
+        g_autofree char *bootlist = get_boot_devices_list(&cb);
 
         if (machine->kernel_cmdline && machine->kernel_cmdline[0]) {
             _FDT(fdt_setprop_string(fdt, chosen, "bootargs",
@@ -1041,8 +1048,8 @@ static void spapr_dt_chosen(SpaprMachineState *spapr, void *fdt, bool reset)
                 _FDT(fdt_setprop(fdt, chosen, "qemu,boot-kernel-le", NULL, 0));
             }
         }
-        if (boot_menu) {
-            _FDT((fdt_setprop_cell(fdt, chosen, "qemu,boot-menu", boot_menu)));
+        if (machine->boot_config.has_menu && machine->boot_config.menu) {
+            _FDT((fdt_setprop_cell(fdt, chosen, "qemu,boot-menu", true)));
         }
         _FDT(fdt_setprop_cell(fdt, chosen, "qemu,graphic-width", graphic_width));
         _FDT(fdt_setprop_cell(fdt, chosen, "qemu,graphic-height", graphic_height));
@@ -1063,7 +1070,7 @@ static void spapr_dt_chosen(SpaprMachineState *spapr, void *fdt, bool reset)
             _FDT(fdt_setprop_string(fdt, chosen, "qemu,boot-device", boot_device));
         }
 
-        if (!spapr->has_graphics && stdout_path) {
+        if (spapr->want_stdout_path && stdout_path) {
             /*
              * "linux,stdout-path" and "stdout" properties are
              * deprecated by linux kernel. New platforms should only
@@ -1084,10 +1091,10 @@ static void spapr_dt_chosen(SpaprMachineState *spapr, void *fdt, bool reset)
         }
 
         spapr_dt_ov5_platform_support(spapr, fdt, chosen);
-
-        g_free(stdout_path);
-        g_free(bootlist);
     }
+
+    qemu_guest_getrandom_nofail(rng_seed, sizeof(rng_seed));
+    _FDT(fdt_setprop(fdt, chosen, "rng-seed", rng_seed, sizeof(rng_seed)));
 
     _FDT(spapr_dt_ovec(fdt, chosen, spapr->ov5_cas, "ibm,architecture-vec-5"));
 }
@@ -1267,7 +1274,9 @@ static void emulate_spapr_hypercall(PPCVirtualHypervisor *vhyp,
     /* The TCG path should also be holding the BQL at this point */
     g_assert(qemu_mutex_iothread_locked());
 
-    if (msr_pr) {
+    g_assert(!vhyp_cpu_in_nested(cpu));
+
+    if (FIELD_EX64(env->msr, MSR, PR)) {
         hcall_dprintf("Hypercall made with MSR[PR]=1\n");
         env->gpr[3] = H_PRIVILEGE;
     } else {
@@ -1306,13 +1315,45 @@ void spapr_set_all_lpcrs(target_ulong value, target_ulong mask)
     }
 }
 
-static void spapr_get_pate(PPCVirtualHypervisor *vhyp, ppc_v3_pate_t *entry)
+static bool spapr_get_pate(PPCVirtualHypervisor *vhyp, PowerPCCPU *cpu,
+                           target_ulong lpid, ppc_v3_pate_t *entry)
 {
     SpaprMachineState *spapr = SPAPR_MACHINE(vhyp);
+    SpaprCpuState *spapr_cpu = spapr_cpu_state(cpu);
 
-    /* Copy PATE1:GR into PATE0:HR */
-    entry->dw0 = spapr->patb_entry & PATE0_HR;
-    entry->dw1 = spapr->patb_entry;
+    if (!spapr_cpu->in_nested) {
+        assert(lpid == 0);
+
+        /* Copy PATE1:GR into PATE0:HR */
+        entry->dw0 = spapr->patb_entry & PATE0_HR;
+        entry->dw1 = spapr->patb_entry;
+
+    } else {
+        uint64_t patb, pats;
+
+        assert(lpid != 0);
+
+        patb = spapr->nested_ptcr & PTCR_PATB;
+        pats = spapr->nested_ptcr & PTCR_PATS;
+
+        /* Check if partition table is properly aligned */
+        if (patb & MAKE_64BIT_MASK(0, pats + 12)) {
+            return false;
+        }
+
+        /* Calculate number of entries */
+        pats = 1ull << (pats + 12 - 4);
+        if (pats <= lpid) {
+            return false;
+        }
+
+        /* Grab entry */
+        patb += 16 * lpid;
+        entry->dw0 = ldq_phys(CPU(cpu)->as, patb);
+        entry->dw1 = ldq_phys(CPU(cpu)->as, patb + 8);
+    }
+
+    return true;
 }
 
 #define HPTE(_table, _i)   (void *)(((uint64_t *)(_table)) + ((_i) * 2))
@@ -1413,7 +1454,7 @@ void spapr_store_hpte(PowerPCCPU *cpu, hwaddr ptex,
         kvmppc_write_hpte(ptex, pte0, pte1);
     } else {
         if (pte0 & HPTE64_V_VALID) {
-            stq_p(spapr->htab + offset + HASH_PTE_SIZE_64 / 2, pte1);
+            stq_p(spapr->htab + offset + HPTE64_DW1, pte1);
             /*
              * When setting valid, we write PTE1 first. This ensures
              * proper synchronization with the reading code in
@@ -1429,7 +1470,7 @@ void spapr_store_hpte(PowerPCCPU *cpu, hwaddr ptex,
              * ppc_hash64_pteg_search()
              */
             smp_wmb();
-            stq_p(spapr->htab + offset + HASH_PTE_SIZE_64 / 2, pte1);
+            stq_p(spapr->htab + offset + HPTE64_DW1, pte1);
         }
     }
 }
@@ -1437,7 +1478,7 @@ void spapr_store_hpte(PowerPCCPU *cpu, hwaddr ptex,
 static void spapr_hpte_set_c(PPCVirtualHypervisor *vhyp, hwaddr ptex,
                              uint64_t pte1)
 {
-    hwaddr offset = ptex * HASH_PTE_SIZE_64 + 15;
+    hwaddr offset = ptex * HASH_PTE_SIZE_64 + HPTE64_DW1_C;
     SpaprMachineState *spapr = SPAPR_MACHINE(vhyp);
 
     if (!spapr->htab) {
@@ -1453,7 +1494,7 @@ static void spapr_hpte_set_c(PPCVirtualHypervisor *vhyp, hwaddr ptex,
 static void spapr_hpte_set_r(PPCVirtualHypervisor *vhyp, hwaddr ptex,
                              uint64_t pte1)
 {
-    hwaddr offset = ptex * HASH_PTE_SIZE_64 + 14;
+    hwaddr offset = ptex * HASH_PTE_SIZE_64 + HPTE64_DW1_R;
     SpaprMachineState *spapr = SPAPR_MACHINE(vhyp);
 
     if (!spapr->htab) {
@@ -1481,7 +1522,7 @@ int spapr_hpt_shift_for_ramsize(uint64_t ramsize)
 
 void spapr_free_hpt(SpaprMachineState *spapr)
 {
-    g_free(spapr->htab);
+    qemu_vfree(spapr->htab);
     spapr->htab = NULL;
     spapr->htab_shift = 0;
     close_htab_fd(spapr);
@@ -1582,7 +1623,7 @@ void spapr_check_mmu_mode(bool guest_radix)
     }
 }
 
-static void spapr_machine_reset(MachineState *machine)
+static void spapr_machine_reset(MachineState *machine, ShutdownCause reason)
 {
     SpaprMachineState *spapr = SPAPR_MACHINE(machine);
     PowerPCCPU *first_ppc_cpu;
@@ -1608,7 +1649,7 @@ static void spapr_machine_reset(MachineState *machine)
         spapr_setup_hpt(spapr);
     }
 
-    qemu_devices_reset();
+    qemu_devices_reset(reason);
 
     spapr_ovec_cleanup(spapr->ov5_cas);
     spapr->ov5_cas = spapr_ovec_new();
@@ -1630,6 +1671,8 @@ static void spapr_machine_reset(MachineState *machine)
         spapr_ovec_cleanup(spapr->ov5_cas);
         spapr->ov5_cas = spapr_ovec_clone(spapr->ov5);
     }
+
+    spapr_nvdimm_finish_flushes();
 
     /* DRC reset may cause a device to be unplugged. This will cause troubles
      * if this device is used by another device (eg, a running vhost backend
@@ -1669,6 +1712,9 @@ static void spapr_machine_reset(MachineState *machine)
     spapr->fdt_size = fdt_totalsize(fdt);
     spapr->fdt_initial_size = spapr->fdt_size;
     spapr->fdt_blob = fdt;
+
+    /* Set machine->fdt for 'dumpdtb' QMP/HMP command */
+    machine->fdt = fdt;
 
     /* Set up the entry state */
     first_ppc_cpu->env.gpr[5] = 0;
@@ -1711,6 +1757,7 @@ static void spapr_rtc_create(SpaprMachineState *spapr)
 /* Returns whether we want to use VGA or not */
 static bool spapr_vga_init(PCIBus *pci_bus, Error **errp)
 {
+    vga_interface_created = true;
     switch (vga_interface_type) {
     case VGA_NONE:
         return false;
@@ -2676,14 +2723,25 @@ static void spapr_machine_init(MachineState *machine)
     MachineClass *mc = MACHINE_GET_CLASS(machine);
     const char *bios_default = spapr->vof ? FW_FILE_NAME_VOF : FW_FILE_NAME;
     const char *bios_name = machine->firmware ?: bios_default;
+    g_autofree char *filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
     const char *kernel_filename = machine->kernel_filename;
     const char *initrd_filename = machine->initrd_filename;
     PCIHostState *phb;
+    bool has_vga;
     int i;
     MemoryRegion *sysmem = get_system_memory();
     long load_limit, fw_size;
-    char *filename;
     Error *resize_hpt_err = NULL;
+
+    if (!filename) {
+        error_report("Could not find LPAR firmware '%s'", bios_name);
+        exit(1);
+    }
+    fw_size = load_image_targphys(filename, 0, FW_MAX_SIZE);
+    if (fw_size <= 0) {
+        error_report("Could not load LPAR firmware '%s'", filename);
+        exit(1);
+    }
 
     /*
      * if Secure VM (PEF) support is configured, then initialize it
@@ -2752,6 +2810,11 @@ static void spapr_machine_init(MachineState *machine)
 
     spapr_ovec_set(spapr->ov5, OV5_FORM1_AFFINITY);
 
+    /* Do not advertise FORM2 NUMA support for pseries-6.1 and older */
+    if (!smc->pre_6_2_numa_affinity) {
+        spapr_ovec_set(spapr->ov5, OV5_FORM2_AFFINITY);
+    }
+
     /* advertise support for dedicated HP event source to guests */
     if (spapr->use_hotplug_event_source) {
         spapr_ovec_set(spapr->ov5, OV5_HP_EVT);
@@ -2772,39 +2835,6 @@ static void spapr_machine_init(MachineState *machine)
 
     /* init CPUs */
     spapr_init_cpus(spapr);
-
-    /*
-     * check we don't have a memory-less/cpu-less NUMA node
-     * Firmware relies on the existing memory/cpu topology to provide the
-     * NUMA topology to the kernel.
-     * And the linux kernel needs to know the NUMA topology at start
-     * to be able to hotplug CPUs later.
-     */
-    if (machine->numa_state->num_nodes) {
-        for (i = 0; i < machine->numa_state->num_nodes; ++i) {
-            /* check for memory-less node */
-            if (machine->numa_state->nodes[i].node_mem == 0) {
-                CPUState *cs;
-                int found = 0;
-                /* check for cpu-less node */
-                CPU_FOREACH(cs) {
-                    PowerPCCPU *cpu = POWERPC_CPU(cs);
-                    if (cpu->node_id == i) {
-                        found = 1;
-                        break;
-                    }
-                }
-                /* memory-less and cpu-less node */
-                if (!found) {
-                    error_report(
-                       "Memory-less/cpu-less nodes are not supported (node %d)",
-                                 i);
-                    exit(1);
-                }
-            }
-        }
-
-    }
 
     spapr->gpu_numa_id = spapr_numa_initial_nvgpu_numa_id(machine);
 
@@ -2936,9 +2966,12 @@ static void spapr_machine_init(MachineState *machine)
     }
 
     /* Graphics */
-    if (spapr_vga_init(phb->bus, &error_fatal)) {
-        spapr->has_graphics = true;
+    has_vga = spapr_vga_init(phb->bus, &error_fatal);
+    if (has_vga) {
+        spapr->want_stdout_path = !machine->enable_graphics;
         machine->usb |= defaults_enabled() && !machine->usb_disabled;
+    } else {
+        spapr->want_stdout_path = true;
     }
 
     if (machine->usb) {
@@ -2948,7 +2981,7 @@ static void spapr_machine_init(MachineState *machine)
             pci_create_simple(phb->bus, -1, "nec-usb-xhci");
         }
 
-        if (spapr->has_graphics) {
+        if (has_vga) {
             USBBus *usb_bus = usb_bus_find(-1);
 
             usb_create_simple(usb_bus, "usb-kbd");
@@ -2957,14 +2990,16 @@ static void spapr_machine_init(MachineState *machine)
     }
 
     if (kernel_filename) {
+        uint64_t loaded_addr = 0;
+
         spapr->kernel_size = load_elf(kernel_filename, NULL,
                                       translate_kernel_address, spapr,
-                                      NULL, NULL, NULL, NULL, 1,
+                                      NULL, &loaded_addr, NULL, NULL, 1,
                                       PPC_ELF_MACHINE, 0, 0);
         if (spapr->kernel_size == ELF_LOAD_WRONG_ENDIAN) {
             spapr->kernel_size = load_elf(kernel_filename, NULL,
                                           translate_kernel_address, spapr,
-                                          NULL, NULL, NULL, NULL, 0,
+                                          NULL, &loaded_addr, NULL, NULL, 0,
                                           PPC_ELF_MACHINE, 0, 0);
             spapr->kernel_le = spapr->kernel_size > 0;
         }
@@ -2972,6 +3007,13 @@ static void spapr_machine_init(MachineState *machine)
             error_report("error loading %s: %s", kernel_filename,
                          load_elf_strerror(spapr->kernel_size));
             exit(1);
+        }
+
+        if (spapr->kernel_addr != loaded_addr) {
+            warn_report("spapr: kernel_addr changed from 0x%"PRIx64
+                        " to 0x%"PRIx64,
+                        spapr->kernel_addr, loaded_addr);
+            spapr->kernel_addr = loaded_addr;
         }
 
         /* load initrd */
@@ -2992,18 +3034,6 @@ static void spapr_machine_init(MachineState *machine)
             }
         }
     }
-
-    filename = qemu_find_file(QEMU_FILE_TYPE_BIOS, bios_name);
-    if (!filename) {
-        error_report("Could not find LPAR firmware '%s'", bios_name);
-        exit(1);
-    }
-    fw_size = load_image_targphys(filename, 0, FW_MAX_SIZE);
-    if (fw_size <= 0) {
-        error_report("Could not load LPAR firmware '%s'", filename);
-        exit(1);
-    }
-    g_free(filename);
 
     /* FIXME: Should register things through the MachineState's qdev
      * interface, this is a legacy from the sPAPREnvironment structure
@@ -3036,6 +3066,8 @@ static void spapr_machine_init(MachineState *machine)
         spapr->vof->fw_size = fw_size; /* for claim() on itself */
         spapr_register_hypercall(KVMPPC_H_VOF_CLIENT, spapr_h_vof_client);
     }
+
+    spapr_watchdog_init(spapr);
 }
 
 #define DEFAULT_KVM_TYPE "auto"
@@ -3078,7 +3110,7 @@ static char *spapr_get_fw_dev_path(FWPathProvider *p, BusState *bus,
     VHostSCSICommon *vsc = CAST(VHostSCSICommon, dev, TYPE_VHOST_SCSI_COMMON);
     PCIDevice *pcidev = CAST(PCIDevice, dev, TYPE_PCI_DEVICE);
 
-    if (d) {
+    if (d && bus) {
         void *spapr = CAST(void, bus->parent, "spapr-vscsi");
         VirtIOSCSI *virtio = CAST(VirtIOSCSI, bus->parent, TYPE_VIRTIO_SCSI);
         USBDevice *usb = CAST(USBDevice, bus->parent, TYPE_USB_DEVICE);
@@ -3599,7 +3631,7 @@ static SpaprDimmState *spapr_pending_dimm_unplugs_add(SpaprMachineState *spapr,
      */
     ds = spapr_pending_dimm_unplugs_find(spapr, dimm);
     if (!ds) {
-        ds = g_malloc0(sizeof(SpaprDimmState));
+        ds = g_new0(SpaprDimmState, 1);
         ds->nr_lmbs = nr_lmbs;
         ds->dimm = dimm;
         QTAILQ_INSERT_HEAD(&spapr->pending_dimm_unplugs, ds, next);
@@ -3686,11 +3718,18 @@ void spapr_memory_unplug_rollback(SpaprMachineState *spapr, DeviceState *dev)
 
     /*
      * Tell QAPI that something happened and the memory
-     * hotunplug wasn't successful.
+     * hotunplug wasn't successful. Keep sending
+     * MEM_UNPLUG_ERROR even while sending
+     * DEVICE_UNPLUG_GUEST_ERROR until the deprecation of
+     * MEM_UNPLUG_ERROR is due.
      */
     qapi_error = g_strdup_printf("Memory hotunplug rejected by the guest "
                                  "for device %s", dev->id);
-    qapi_event_send_mem_unplug_error(dev->id, qapi_error);
+
+    qapi_event_send_mem_unplug_error(dev->id ? : "", qapi_error);
+
+    qapi_event_send_device_unplug_guest_error(!!dev->id, dev->id,
+                                              dev->canonical_path);
 }
 
 /* Callback to be called during DRC release. */
@@ -4483,6 +4522,13 @@ PowerPCCPU *spapr_find_cpu(int vcpu_id)
     return NULL;
 }
 
+static bool spapr_cpu_in_nested(PowerPCCPU *cpu)
+{
+    SpaprCpuState *spapr_cpu = spapr_cpu_state(cpu);
+
+    return spapr_cpu->in_nested;
+}
+
 static void spapr_cpu_exec_enter(PPCVirtualHypervisor *vhyp, PowerPCCPU *cpu)
 {
     SpaprCpuState *spapr_cpu = spapr_cpu_state(cpu);
@@ -4591,6 +4637,8 @@ static void spapr_machine_class_init(ObjectClass *oc, void *data)
     fwc->get_dev_path = spapr_get_fw_dev_path;
     nc->nmi_monitor_handler = spapr_nmi;
     smc->phb_placement = spapr_phb_placement;
+    vhc->cpu_in_nested = spapr_cpu_in_nested;
+    vhc->deliver_hv_excp = spapr_exit_nested;
     vhc->hypercall = emulate_spapr_hypercall;
     vhc->hpt_mask = spapr_hpt_mask;
     vhc->map_hptes = spapr_map_hptes;
@@ -4686,14 +4734,62 @@ static void spapr_machine_latest_class_options(MachineClass *mc)
     type_init(spapr_machine_register_##suffix)
 
 /*
- * pseries-6.1
+ * pseries-7.2
  */
-static void spapr_machine_6_1_class_options(MachineClass *mc)
+static void spapr_machine_7_2_class_options(MachineClass *mc)
 {
     /* Defaults for the latest behaviour inherited from the base class */
 }
 
-DEFINE_SPAPR_MACHINE(6_1, "6.1", true);
+DEFINE_SPAPR_MACHINE(7_2, "7.2", true);
+
+/*
+ * pseries-7.1
+ */
+static void spapr_machine_7_1_class_options(MachineClass *mc)
+{
+    spapr_machine_7_2_class_options(mc);
+    compat_props_add(mc->compat_props, hw_compat_7_1, hw_compat_7_1_len);
+}
+
+DEFINE_SPAPR_MACHINE(7_1, "7.1", false);
+
+/*
+ * pseries-7.0
+ */
+static void spapr_machine_7_0_class_options(MachineClass *mc)
+{
+    spapr_machine_7_1_class_options(mc);
+    compat_props_add(mc->compat_props, hw_compat_7_0, hw_compat_7_0_len);
+}
+
+DEFINE_SPAPR_MACHINE(7_0, "7.0", false);
+
+/*
+ * pseries-6.2
+ */
+static void spapr_machine_6_2_class_options(MachineClass *mc)
+{
+    spapr_machine_7_0_class_options(mc);
+    compat_props_add(mc->compat_props, hw_compat_6_2, hw_compat_6_2_len);
+}
+
+DEFINE_SPAPR_MACHINE(6_2, "6.2", false);
+
+/*
+ * pseries-6.1
+ */
+static void spapr_machine_6_1_class_options(MachineClass *mc)
+{
+    SpaprMachineClass *smc = SPAPR_MACHINE_CLASS(mc);
+
+    spapr_machine_6_2_class_options(mc);
+    compat_props_add(mc->compat_props, hw_compat_6_1, hw_compat_6_1_len);
+    smc->pre_6_2_numa_affinity = true;
+    mc->smp_props.prefer_sockets = true;
+}
+
+DEFINE_SPAPR_MACHINE(6_1, "6.1", false);
 
 /*
  * pseries-6.0

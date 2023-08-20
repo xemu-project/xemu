@@ -36,18 +36,20 @@
 #define GICV3_MAXIRQ 1020
 #define GICV3_MAXSPI (GICV3_MAXIRQ - GIC_INTERNAL)
 
+#define GICV3_LPI_INTID_START 8192
+
+/*
+ * The redistributor in GICv3 has two 64KB frames per CPU; in
+ * GICv4 it has four 64KB frames per CPU.
+ */
 #define GICV3_REDIST_SIZE 0x20000
+#define GICV4_REDIST_SIZE 0x40000
 
 /* Number of SGI target-list bits */
 #define GICV3_TARGETLIST_BITS 16
 
 /* Maximum number of list registers (architectural limit) */
 #define GICV3_LR_MAX 16
-
-/* Minimum BPR for Secure, or when security not enabled */
-#define GIC_MIN_BPR 0
-/* Minimum BPR for Nonsecure when security is enabled */
-#define GIC_MIN_BPR_NS (GIC_MIN_BPR + 1)
 
 /* For some distributor fields we want to model the array of 32-bit
  * register values which hold various bitmaps corresponding to enabled,
@@ -172,6 +174,9 @@ struct GICv3CPUState {
     uint32_t gicr_igrpmodr0;
     uint32_t gicr_nsacr;
     uint8_t gicr_ipriorityr[GIC_INTERNAL];
+    /* VLPI_base page registers */
+    uint64_t gicr_vpropbaser;
+    uint64_t gicr_vpendbaser;
 
     /* CPU interface */
     uint64_t icc_sre_el1;
@@ -196,15 +201,37 @@ struct GICv3CPUState {
     int num_list_regs;
     int vpribits; /* number of virtual priority bits */
     int vprebits; /* number of virtual preemption bits */
+    int pribits; /* number of physical priority bits */
+    int prebits; /* number of physical preemption bits */
 
     /* Current highest priority pending interrupt for this CPU.
      * This is cached information that can be recalculated from the
      * real state above; it doesn't need to be migrated.
      */
     PendingIrq hppi;
+
+    /*
+     * Cached information recalculated from LPI tables
+     * in guest memory
+     */
+    PendingIrq hpplpi;
+
+    /* Cached information recalculated from vLPI tables in guest memory */
+    PendingIrq hppvlpi;
+
     /* This is temporary working state, to avoid a malloc in gicv3_update() */
     bool seenbetter;
 };
+
+/*
+ * The redistributor pages might be split into more than one region
+ * on some machine types if there are many CPUs.
+ */
+typedef struct GICv3RedistRegion {
+    GICv3State *gic;
+    MemoryRegion iomem;
+    uint32_t cpuidx; /* index of first CPU this region covers */
+} GICv3RedistRegion;
 
 struct GICv3State {
     /*< private >*/
@@ -212,19 +239,24 @@ struct GICv3State {
     /*< public >*/
 
     MemoryRegion iomem_dist; /* Distributor */
-    MemoryRegion *iomem_redist; /* Redistributor Regions */
+    GICv3RedistRegion *redist_regions; /* Redistributor Regions */
     uint32_t *redist_region_count; /* redistributor count within each region */
     uint32_t nb_redist_regions; /* number of redist regions */
 
     uint32_t num_cpu;
     uint32_t num_irq;
     uint32_t revision;
+    bool lpi_enable;
     bool security_extn;
+    bool force_8bit_prio;
     bool irq_reset_nonsecure;
     bool gicd_no_migration_shift_bug;
 
     int dev_fd; /* kvm device fd if backed by kvm vgic support */
     Error *migration_blocker;
+
+    MemoryRegion *dma;
+    AddressSpace dma_as;
 
     /* Distributor */
 
@@ -249,6 +281,8 @@ struct GICv3State {
     uint32_t gicd_nsacr[DIV_ROUND_UP(GICV3_MAXIRQ, 16)];
 
     GICv3CPUState *cpu;
+    /* List of all ITSes connected to this GIC */
+    GPtrArray *itslist;
 };
 
 #define GICV3_BITMAP_ACCESSORS(BMP)                                     \
@@ -293,6 +327,6 @@ struct ARMGICv3CommonClass {
 };
 
 void gicv3_init_irqs_and_mmio(GICv3State *s, qemu_irq_handler handler,
-                              const MemoryRegionOps *ops, Error **errp);
+                              const MemoryRegionOps *ops);
 
 #endif

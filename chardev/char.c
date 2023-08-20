@@ -197,7 +197,7 @@ int qemu_chr_be_can_write(Chardev *s)
     return be->chr_can_read(be->opaque);
 }
 
-void qemu_chr_be_write_impl(Chardev *s, uint8_t *buf, int len)
+void qemu_chr_be_write_impl(Chardev *s, const uint8_t *buf, int len)
 {
     CharBackend *be = s->be;
 
@@ -206,7 +206,7 @@ void qemu_chr_be_write_impl(Chardev *s, uint8_t *buf, int len)
     }
 }
 
-void qemu_chr_be_write(Chardev *s, uint8_t *buf, int len)
+void qemu_chr_be_write(Chardev *s, const uint8_t *buf, int len)
 {
     if (qemu_chr_replay(s)) {
         if (replay_mode == REPLAY_MODE_PLAY) {
@@ -255,18 +255,15 @@ static void qemu_char_open(Chardev *chr, ChardevBackend *backend,
     ChardevCommon *common = backend ? backend->u.null.data : NULL;
 
     if (common && common->has_logfile) {
-        int flags = O_WRONLY | O_CREAT;
+        int flags = O_WRONLY;
         if (common->has_logappend &&
             common->logappend) {
             flags |= O_APPEND;
         } else {
             flags |= O_TRUNC;
         }
-        chr->logfd = qemu_open_old(common->logfile, flags, 0666);
+        chr->logfd = qemu_create(common->logfile, flags, 0666, errp);
         if (chr->logfd < 0) {
-            error_setg_errno(errp, errno,
-                             "Unable to open logfile %s",
-                             common->logfile);
             return;
         }
     }

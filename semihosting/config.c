@@ -27,11 +27,15 @@
 
 QemuOptsList qemu_semihosting_config_opts = {
     .name = "semihosting-config",
+    .merge_lists = true,
     .implied_opt_name = "enable",
     .head = QTAILQ_HEAD_INITIALIZER(qemu_semihosting_config_opts.head),
     .desc = {
         {
             .name = "enable",
+            .type = QEMU_OPT_BOOL,
+        }, {
+            .name = "userspace",
             .type = QEMU_OPT_BOOL,
         }, {
             .name = "target",
@@ -49,9 +53,9 @@ QemuOptsList qemu_semihosting_config_opts = {
 
 typedef struct SemihostingConfig {
     bool enabled;
+    bool userspace_enabled;
     SemihostingTarget target;
-    Chardev *chardev;
-    const char **argv;
+    char **argv;
     int argc;
     const char *cmdline; /* concatenated argv */
 } SemihostingConfig;
@@ -59,9 +63,9 @@ typedef struct SemihostingConfig {
 static SemihostingConfig semihosting;
 static const char *semihost_chardev;
 
-bool semihosting_enabled(void)
+bool semihosting_enabled(bool is_user)
 {
-    return semihosting.enabled;
+    return semihosting.enabled && (!is_user || semihosting.userspace_enabled);
 }
 
 SemihostingTarget semihosting_get_target(void)
@@ -98,8 +102,8 @@ static int add_semihosting_arg(void *opaque,
     if (strcmp(name, "arg") == 0) {
         s->argc++;
         /* one extra element as g_strjoinv() expects NULL-terminated array */
-        s->argv = g_realloc(s->argv, (s->argc + 1) * sizeof(void *));
-        s->argv[s->argc - 1] = val;
+        s->argv = g_renew(char *, s->argv, s->argc + 1);
+        s->argv[s->argc - 1] = g_strdup(val);
         s->argv[s->argc] = NULL;
     }
     return 0;
@@ -121,11 +125,6 @@ void semihosting_arg_fallback(const char *file, const char *cmd)
     }
 }
 
-Chardev *semihosting_get_chardev(void)
-{
-    return semihosting.chardev;
-}
-
 void qemu_semihosting_enable(void)
 {
     semihosting.enabled = true;
@@ -142,6 +141,8 @@ int qemu_semihosting_config_options(const char *optarg)
     if (opts != NULL) {
         semihosting.enabled = qemu_opt_get_bool(opts, "enable",
                                                 true);
+        semihosting.userspace_enabled = qemu_opt_get_bool(opts, "userspace",
+                                                          false);
         const char *target = qemu_opt_get(opts, "target");
         /* setup of chardev is deferred until they are initialised */
         semihost_chardev = qemu_opt_get(opts, "chardev");
@@ -171,16 +172,19 @@ int qemu_semihosting_config_options(const char *optarg)
     return 0;
 }
 
-void qemu_semihosting_connect_chardevs(void)
+/* We had to defer this until chardevs were created */
+void qemu_semihosting_chardev_init(void)
 {
-    /* We had to defer this until chardevs were created */
+    Chardev *chr = NULL;
+
     if (semihost_chardev) {
-        Chardev *chr = qemu_chr_find(semihost_chardev);
+        chr = qemu_chr_find(semihost_chardev);
         if (chr == NULL) {
             error_report("semihosting chardev '%s' not found",
                          semihost_chardev);
             exit(1);
         }
-        semihosting.chardev = chr;
     }
+
+    qemu_semihosting_console_init(chr);
 }

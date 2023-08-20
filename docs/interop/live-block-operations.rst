@@ -53,7 +53,7 @@ files in a disk image backing chain:
 
 (1) Directional: 'base' and 'top'.  Given the simple disk image chain
     above, image [A] can be referred to as 'base', and image [B] as
-    'top'.  (This terminology can be seen in in QAPI schema file,
+    'top'.  (This terminology can be seen in the QAPI schema file,
     block-core.json.)
 
 (2) Relational: 'backing file' and 'overlay'.  Again, taking the same
@@ -116,8 +116,8 @@ QEMU block layer supports.
 (3) ``drive-mirror`` (and ``blockdev-mirror``): Synchronize a running
     disk to another image.
 
-(4) ``drive-backup`` (and ``blockdev-backup``): Point-in-time (live) copy
-    of a block device to a destination.
+(4) ``blockdev-backup`` (and the deprecated ``drive-backup``):
+    Point-in-time (live) copy of a block device to a destination.
 
 
 .. _`Interacting with a QEMU instance`:
@@ -555,13 +555,14 @@ Currently, there are four different kinds:
 
 (3) ``none`` -- Synchronize only the new writes from this point on.
 
-    .. note:: In the case of ``drive-backup`` (or ``blockdev-backup``),
-              the behavior of ``none`` synchronization mode is different.
-              Normally, a ``backup`` job consists of two parts: Anything
-              that is overwritten by the guest is first copied out to
-              the backup, and in the background the whole image is
-              copied from start to end. With ``sync=none``, it's only
-              the first part.
+    .. note:: In the case of ``blockdev-backup`` (or deprecated
+              ``drive-backup``), the behavior of ``none``
+              synchronization mode is different.  Normally, a
+              ``backup`` job consists of two parts: Anything that is
+              overwritten by the guest is first copied out to the
+              backup, and in the background the whole image is copied
+              from start to end. With ``sync=none``, it's only the
+              first part.
 
 (4) ``incremental`` -- Synchronize content that is described by the
     dirty bitmap
@@ -640,7 +641,7 @@ at this point:
         (QEMU) block-job-complete device=job0
 
 In either of the above cases, if you once again run the
-`query-block-jobs` command, there should not be any active block
+``query-block-jobs`` command, there should not be any active block
 operation.
 
 Comparing 'commit' and 'mirror': In both then cases, the overlay images
@@ -824,7 +825,7 @@ entire disk image chain, to a target, using ``blockdev-mirror`` would be:
     job ready to be completed
 
 (5) Gracefully complete the 'mirror' block device job, and notice the
-    the event ``BLOCK_JOB_COMPLETED``
+    event ``BLOCK_JOB_COMPLETED``
 
 (6) Shutdown the guest by issuing the QMP ``quit`` command so that
     caches are flushed
@@ -928,18 +929,21 @@ Shutdown the guest, by issuing the ``quit`` QMP command::
     }
 
 
-Live disk backup --- ``drive-backup`` and ``blockdev-backup``
--------------------------------------------------------------
+Live disk backup --- ``blockdev-backup`` and the deprecated``drive-backup``
+---------------------------------------------------------------------------
 
-The ``drive-backup`` (and its newer equivalent ``blockdev-backup``) allows
+The ``blockdev-backup`` (and the deprecated ``drive-backup``) allows
 you to create a point-in-time snapshot.
 
-In this case, the point-in-time is when you *start* the ``drive-backup``
-(or its newer equivalent ``blockdev-backup``) command.
+In this case, the point-in-time is when you *start* the
+``blockdev-backup`` (or deprecated ``drive-backup``) command.
 
 
 QMP invocation for ``drive-backup``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Note that ``drive-backup`` command is deprecated since QEMU 6.2 and
+will be removed in future.
 
 Yet again, starting afresh with our example disk image chain::
 
@@ -965,11 +969,22 @@ will be issued, indicating the live block device job operation has
 completed, and no further action is required.
 
 
+Moving from the deprecated ``drive-backup`` to newer ``blockdev-backup``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``blockdev-backup`` differs from ``drive-backup`` in how you specify
+the backup target. With ``blockdev-backup`` you can't specify filename
+as a target.  Instead you use ``node-name`` of existing block node,
+which you may add by ``blockdev-add`` or ``blockdev-create`` commands.
+Correspondingly, ``blockdev-backup`` doesn't have ``mode`` and
+``format`` arguments which don't apply to an existing block node. See
+following sections for details and examples.
+
+
 Notes on ``blockdev-backup``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``blockdev-backup`` command is equivalent in functionality to
-``drive-backup``, except that it operates at node-level in a Block Driver
+The ``blockdev-backup`` command operates at node-level in a Block Driver
 State (BDS) graph.
 
 E.g. the sequence of actions to create a point-in-time backup

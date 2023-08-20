@@ -15,7 +15,8 @@
 #include <termios.h>
 #endif
 
-#include "qemu-common.h"
+#include "qemu/help-texts.h"
+#include "qemu/cutils.h"
 #include "qapi/error.h"
 #include "qemu-io.h"
 #include "qemu/error-report.h"
@@ -323,13 +324,13 @@ static char *get_prompt(void)
     static char prompt[FILENAME_MAX + 2 /*"> "*/ + 1 /*"\0"*/ ];
 
     if (!prompt[0]) {
-        snprintf(prompt, sizeof(prompt), "%s> ", error_get_progname());
+        snprintf(prompt, sizeof(prompt), "%s> ", g_get_prgname());
     }
 
     return prompt;
 }
 
-static void GCC_FMT_ATTR(2, 3) readline_printf_func(void *opaque,
+static void G_GNUC_PRINTF(2, 3) readline_printf_func(void *opaque,
                                                     const char *fmt, ...)
 {
     va_list ap;
@@ -529,7 +530,6 @@ int main(int argc, char **argv)
     int flags = BDRV_O_UNMAP;
     int ret;
     bool writethrough = true;
-    Error *local_error = NULL;
     QDict *opts = NULL;
     const char *format = NULL;
     bool force_share = false;
@@ -599,10 +599,10 @@ int main(int argc, char **argv)
             break;
         case 'V':
             printf("%s version " QEMU_FULL_VERSION "\n"
-                   QEMU_COPYRIGHT "\n", error_get_progname());
+                   QEMU_COPYRIGHT "\n", g_get_prgname());
             exit(0);
         case 'h':
-            usage(error_get_progname());
+            usage(g_get_prgname());
             exit(0);
         case 'U':
             force_share = true;
@@ -614,13 +614,13 @@ int main(int argc, char **argv)
             imageOpts = true;
             break;
         default:
-            usage(error_get_progname());
+            usage(g_get_prgname());
             exit(1);
         }
     }
 
     if ((argc - optind) > 1) {
-        usage(error_get_progname());
+        usage(g_get_prgname());
         exit(1);
     }
 
@@ -629,16 +629,13 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    if (qemu_init_main_loop(&local_error)) {
-        error_report_err(local_error);
-        exit(1);
-    }
+    qemu_init_main_loop(&error_fatal);
 
     if (!trace_init_backends()) {
         exit(1);
     }
     trace_init_file();
-    qemu_set_log(LOG_TRACE);
+    qemu_set_log(LOG_TRACE, &error_fatal);
 
     /* initialize commands */
     qemuio_add_command(&quit_cmd);

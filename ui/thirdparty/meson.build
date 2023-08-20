@@ -3,7 +3,7 @@ imgui_files = files(
   'imgui/imgui_draw.cpp',
   'imgui/imgui_tables.cpp',
   'imgui/imgui_widgets.cpp',
-  'imgui/backends/imgui_impl_sdl.cpp',
+  'imgui/backends/imgui_impl_sdl2.cpp',
   'imgui/backends/imgui_impl_opengl3.cpp',
   'imgui/misc/cpp/imgui_stdlib.cpp',
   #'imgui/imgui_demo.cpp',
@@ -34,7 +34,7 @@ implot = declare_dependency(link_with: libimplot,
                             include_directories: 'implot')
 
 noc_ss = ss.source_set()
-noc_ss.add(when: 'CONFIG_LINUX', if_true: [xemu_gtk, files('noc_file_dialog/noc_file_dialog_gtk.c')])
+noc_ss.add(when: 'CONFIG_LINUX', if_true: [gtk, files('noc_file_dialog/noc_file_dialog_gtk.c')])
 noc_ss.add(when: 'CONFIG_WIN32', if_true: files('noc_file_dialog/noc_file_dialog_win32.cc'))
 noc_ss.add(when: 'CONFIG_DARWIN', if_true: files('noc_file_dialog/noc_file_dialog_macos.m'))
 noc_ss = noc_ss.apply(config_all, strict: false)

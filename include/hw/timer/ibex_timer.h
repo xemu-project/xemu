@@ -33,6 +33,8 @@ OBJECT_DECLARE_SIMPLE_TYPE(IbexTimerState, IBEX_TIMER)
 struct IbexTimerState {
     /* <private> */
     SysBusDevice parent_obj;
+    uint64_t mtimecmp;
+    QEMUTimer *mtimer; /* Internal timer for M-mode interrupt */
 
     /* <public> */
     MemoryRegion mmio;
@@ -43,10 +45,11 @@ struct IbexTimerState {
     uint32_t timer_compare_upper0;
     uint32_t timer_intr_enable;
     uint32_t timer_intr_state;
-    uint32_t timer_intr_test;
 
     uint32_t timebase_freq;
 
     qemu_irq irq;
+
+    qemu_irq m_timer_irq;
 };
 #endif /* HW_IBEX_TIMER_H */

@@ -154,13 +154,23 @@ display:
     show_menubar:
       type: bool
       default: true
+    show_notifications:
+      type: bool
+      default: true
+    hide_cursor:
+      type: bool
+      default: true
     use_animations:
       type: bool
       default: true
     fit:
       type: enum
-      values: [center, scale, scale_16_9, scale_4_3, stretch]
+      values: [center, scale, stretch]
       default: scale
+    aspect_ratio:
+      type: enum
+      values: [native, auto, 4x3, 16x9]
+      default: auto
     scale:
       type: integer
       default: 1

@@ -18,10 +18,10 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "tcg/tcg.h"           /* MAX_OPC_PARAM_IARGS */
 #include "exec/cpu_ldst.h"
 #include "tcg/tcg-op.h"
+#include "tcg/tcg-ldst.h"
 #include "qemu/compiler.h"
 #include <ffi.h>
 
@@ -61,7 +61,7 @@ static uint64_t tci_uint64(uint32_t high, uint32_t low)
  *   i = immediate (uint32_t)
  *   I = immediate (tcg_target_ulong)
  *   l = label or pointer
- *   m = immediate (TCGMemOpIdx)
+ *   m = immediate (MemOpIdx)
  *   n = immediate (call return length)
  *   r = register
  *   s = signed ldst offset
@@ -105,7 +105,7 @@ static void tci_args_ri(uint32_t insn, TCGReg *r0, tcg_target_ulong *i1)
 }
 
 static void tci_args_rrm(uint32_t insn, TCGReg *r0,
-                         TCGReg *r1, TCGMemOpIdx *m2)
+                         TCGReg *r1, MemOpIdx *m2)
 {
     *r0 = extract32(insn, 8, 4);
     *r1 = extract32(insn, 12, 4);
@@ -145,7 +145,7 @@ static void tci_args_rrrc(uint32_t insn,
 }
 
 static void tci_args_rrrm(uint32_t insn,
-                          TCGReg *r0, TCGReg *r1, TCGReg *r2, TCGMemOpIdx *m3)
+                          TCGReg *r0, TCGReg *r1, TCGReg *r2, MemOpIdx *m3)
 {
     *r0 = extract32(insn, 8, 4);
     *r1 = extract32(insn, 12, 4);
@@ -289,13 +289,13 @@ static bool tci_compare64(uint64_t u0, uint64_t u1, TCGCond condition)
 }
 
 static uint64_t tci_qemu_ld(CPUArchState *env, target_ulong taddr,
-                            TCGMemOpIdx oi, const void *tb_ptr)
+                            MemOpIdx oi, const void *tb_ptr)
 {
-    MemOp mop = get_memop(oi) & (MO_BSWAP | MO_SSIZE);
+    MemOp mop = get_memop(oi);
     uintptr_t ra = (uintptr_t)tb_ptr;
 
 #ifdef CONFIG_SOFTMMU
-    switch (mop) {
+    switch (mop & (MO_BSWAP | MO_SSIZE)) {
     case MO_UB:
         return helper_ret_ldub_mmu(env, taddr, oi, ra);
     case MO_SB:
@@ -308,7 +308,7 @@ static uint64_t tci_qemu_ld(CPUArchState *env, target_ulong taddr,
         return helper_le_ldul_mmu(env, taddr, oi, ra);
     case MO_LESL:
         return helper_le_ldsl_mmu(env, taddr, oi, ra);
-    case MO_LEQ:
+    case MO_LEUQ:
         return helper_le_ldq_mmu(env, taddr, oi, ra);
     case MO_BEUW:
         return helper_be_lduw_mmu(env, taddr, oi, ra);
@@ -318,17 +318,21 @@ static uint64_t tci_qemu_ld(CPUArchState *env, target_ulong taddr,
         return helper_be_ldul_mmu(env, taddr, oi, ra);
     case MO_BESL:
         return helper_be_ldsl_mmu(env, taddr, oi, ra);
-    case MO_BEQ:
+    case MO_BEUQ:
         return helper_be_ldq_mmu(env, taddr, oi, ra);
     default:
         g_assert_not_reached();
     }
 #else
     void *haddr = g2h(env_cpu(env), taddr);
+    unsigned a_mask = (1u << get_alignment_bits(mop)) - 1;
     uint64_t ret;
 
     set_helper_retaddr(ra);
-    switch (mop) {
+    if (taddr & a_mask) {
+        helper_unaligned_ld(env, taddr);
+    }
+    switch (mop & (MO_BSWAP | MO_SSIZE)) {
     case MO_UB:
         ret = ldub_p(haddr);
         break;
@@ -347,7 +351,7 @@ static uint64_t tci_qemu_ld(CPUArchState *env, target_ulong taddr,
     case MO_LESL:
         ret = (int32_t)ldl_le_p(haddr);
         break;
-    case MO_LEQ:
+    case MO_LEUQ:
         ret = ldq_le_p(haddr);
         break;
     case MO_BEUW:
@@ -362,7 +366,7 @@ static uint64_t tci_qemu_ld(CPUArchState *env, target_ulong taddr,
     case MO_BESL:
         ret = (int32_t)ldl_be_p(haddr);
         break;
-    case MO_BEQ:
+    case MO_BEUQ:
         ret = ldq_be_p(haddr);
         break;
     default:
@@ -374,13 +378,13 @@ static uint64_t tci_qemu_ld(CPUArchState *env, target_ulong taddr,
 }
 
 static void tci_qemu_st(CPUArchState *env, target_ulong taddr, uint64_t val,
-                        TCGMemOpIdx oi, const void *tb_ptr)
+                        MemOpIdx oi, const void *tb_ptr)
 {
-    MemOp mop = get_memop(oi) & (MO_BSWAP | MO_SSIZE);
+    MemOp mop = get_memop(oi);
     uintptr_t ra = (uintptr_t)tb_ptr;
 
 #ifdef CONFIG_SOFTMMU
-    switch (mop) {
+    switch (mop & (MO_BSWAP | MO_SIZE)) {
     case MO_UB:
         helper_ret_stb_mmu(env, taddr, val, oi, ra);
         break;
@@ -390,7 +394,7 @@ static void tci_qemu_st(CPUArchState *env, target_ulong taddr, uint64_t val,
     case MO_LEUL:
         helper_le_stl_mmu(env, taddr, val, oi, ra);
         break;
-    case MO_LEQ:
+    case MO_LEUQ:
         helper_le_stq_mmu(env, taddr, val, oi, ra);
         break;
     case MO_BEUW:
@@ -399,7 +403,7 @@ static void tci_qemu_st(CPUArchState *env, target_ulong taddr, uint64_t val,
     case MO_BEUL:
         helper_be_stl_mmu(env, taddr, val, oi, ra);
         break;
-    case MO_BEQ:
+    case MO_BEUQ:
         helper_be_stq_mmu(env, taddr, val, oi, ra);
         break;
     default:
@@ -407,9 +411,13 @@ static void tci_qemu_st(CPUArchState *env, target_ulong taddr, uint64_t val,
     }
 #else
     void *haddr = g2h(env_cpu(env), taddr);
+    unsigned a_mask = (1u << get_alignment_bits(mop)) - 1;
 
     set_helper_retaddr(ra);
-    switch (mop) {
+    if (taddr & a_mask) {
+        helper_unaligned_st(env, taddr);
+    }
+    switch (mop & (MO_BSWAP | MO_SIZE)) {
     case MO_UB:
         stb_p(haddr, val);
         break;
@@ -419,7 +427,7 @@ static void tci_qemu_st(CPUArchState *env, target_ulong taddr, uint64_t val,
     case MO_LEUL:
         stl_le_p(haddr, val);
         break;
-    case MO_LEQ:
+    case MO_LEUQ:
         stq_le_p(haddr, val);
         break;
     case MO_BEUW:
@@ -428,7 +436,7 @@ static void tci_qemu_st(CPUArchState *env, target_ulong taddr, uint64_t val,
     case MO_BEUL:
         stl_be_p(haddr, val);
         break;
-    case MO_BEQ:
+    case MO_BEUQ:
         stq_be_p(haddr, val);
         break;
     default:
@@ -482,7 +490,7 @@ uintptr_t QEMU_DISABLE_CFI tcg_qemu_tb_exec(CPUArchState *env,
         uint32_t tmp32;
         uint64_t tmp64;
         uint64_t T1, T2;
-        TCGMemOpIdx oi;
+        MemOpIdx oi;
         int32_t ofs;
         void *ptr;
 
@@ -1148,7 +1156,7 @@ int print_insn_tci(bfd_vma addr, disassemble_info *info)
     tcg_target_ulong i1;
     int32_t s2;
     TCGCond c;
-    TCGMemOpIdx oi;
+    MemOpIdx oi;
     uint8_t pos, len;
     void *ptr;
 

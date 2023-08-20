@@ -25,10 +25,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-# Creator/Owner: Max Reitz <mreitz@redhat.com>
+# Creator/Owner: Hanna Reitz <hreitz@redhat.com>
 
 import iotests
-from iotests import log, qemu_img, qemu_io_silent
+from iotests import log, qemu_img, qemu_io
 
 iotests.script_initialize(supported_fmts=['qcow2', 'raw'])
 
@@ -145,9 +145,8 @@ log('')
 with iotests.VM() as vm, \
      iotests.FilePath('src.img') as src_img_path:
 
-    assert qemu_img('create', '-f', iotests.imgfmt, src_img_path, '64M') == 0
-    assert qemu_io_silent('-f', iotests.imgfmt, src_img_path,
-                          '-c', 'write -P 42 0M 64M') == 0
+    qemu_img('create', '-f', iotests.imgfmt, src_img_path, '64M')
+    qemu_io('-f', iotests.imgfmt, src_img_path, '-c', 'write -P 42 0M 64M')
 
     vm.launch()
 
@@ -187,4 +186,4 @@ with iotests.VM() as vm, \
     log(vm.qmp('quit'))
 
     with iotests.Timeout(5, 'Timeout waiting for VM to quit'):
-        vm.shutdown(has_quit=True)
+        vm.shutdown()
