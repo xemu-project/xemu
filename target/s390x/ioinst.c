@@ -123,7 +123,7 @@ static int ioinst_schib_valid(SCHIB *schib)
     }
     /* for MB format 1 bits 26-31 of word 11 must be 0 */
     /* MBA uses words 10 and 11, it means align on 2**6 */
-    if ((be16_to_cpu(schib->pmcw.chars) & PMCW_CHARS_MASK_MBFC) &&
+    if ((be32_to_cpu(schib->pmcw.chars) & PMCW_CHARS_MASK_MBFC) &&
         (be64_to_cpu(schib->mba) & 0x03fUL)) {
         return 0;
     }
@@ -284,8 +284,8 @@ void ioinst_handle_stsch(S390CPU *cpu, uint64_t reg1, uint32_t ipb,
         g_assert(!s390_is_pv());
         /*
          * As operand exceptions have a lower priority than access exceptions,
-         * we check whether the memory area is writeable (injecting the
-         * access execption if it is not) first.
+         * we check whether the memory area is writable (injecting the
+         * access exception if it is not) first.
          */
         if (!s390_cpu_virt_mem_check_write(cpu, addr, ar, sizeof(schib))) {
             s390_program_interrupt(env, PGM_OPERAND, ra);

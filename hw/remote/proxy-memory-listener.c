@@ -7,7 +7,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 
 #include "qemu/compiler.h"
 #include "qemu/int128.h"
@@ -16,6 +15,7 @@
 #include "exec/cpu-common.h"
 #include "exec/ram_addr.h"
 #include "qapi/error.h"
+#include "qemu/error-report.h"
 #include "hw/remote/mpqemu-link.h"
 #include "hw/remote/proxy-memory-listener.h"
 
@@ -219,6 +219,7 @@ void proxy_memory_listener_configure(ProxyMemoryListener *proxy_listener,
     proxy_listener->listener.region_add = proxy_memory_listener_region_addnop;
     proxy_listener->listener.region_nop = proxy_memory_listener_region_addnop;
     proxy_listener->listener.priority = 10;
+    proxy_listener->listener.name = "proxy";
 
     memory_listener_register(&proxy_listener->listener,
                              &address_space_memory);

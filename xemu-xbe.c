@@ -69,7 +69,8 @@ static ssize_t virt_dma_memory_read(vaddr vaddr, void *buf, size_t len)
         dma_memory_read(&address_space_memory,
                         phys_addr,
                         buf + num_bytes_read,
-                        num_bytes_to_read);
+                        num_bytes_to_read,
+                        MEMTXATTRS_UNSPECIFIED);
 
         num_bytes_read += num_bytes_to_read;
     }

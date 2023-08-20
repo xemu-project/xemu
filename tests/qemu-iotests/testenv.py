@@ -27,6 +27,7 @@ import subprocess
 import glob
 from typing import List, Dict, Any, Optional, ContextManager
 
+DEF_GDB_OPTIONS = 'localhost:12345'
 
 def isxfile(path: str) -> bool:
     return os.path.isfile(path) and os.access(path, os.X_OK)
@@ -65,14 +66,15 @@ class TestEnv(ContextManager['TestEnv']):
     # pylint: disable=too-many-instance-attributes
 
     env_variables = ['PYTHONPATH', 'TEST_DIR', 'SOCK_DIR', 'SAMPLE_IMG_DIR',
-                     'OUTPUT_DIR', 'PYTHON', 'QEMU_PROG', 'QEMU_IMG_PROG',
+                     'PYTHON', 'QEMU_PROG', 'QEMU_IMG_PROG',
                      'QEMU_IO_PROG', 'QEMU_NBD_PROG', 'QSD_PROG',
-                     'SOCKET_SCM_HELPER', 'QEMU_OPTIONS', 'QEMU_IMG_OPTIONS',
+                     'QEMU_OPTIONS', 'QEMU_IMG_OPTIONS',
                      'QEMU_IO_OPTIONS', 'QEMU_IO_OPTIONS_NO_FMT',
                      'QEMU_NBD_OPTIONS', 'IMGOPTS', 'IMGFMT', 'IMGPROTO',
                      'AIOMODE', 'CACHEMODE', 'VALGRIND_QEMU',
                      'CACHEMODE_IS_DEFAULT', 'IMGFMT_GENERIC', 'IMGOPTSSYNTAX',
-                     'IMGKEYSECRET', 'QEMU_DEFAULT_MACHINE', 'MALLOC_PERTURB_']
+                     'IMGKEYSECRET', 'QEMU_DEFAULT_MACHINE', 'MALLOC_PERTURB_',
+                     'GDB_OPTIONS', 'PRINT_QEMU']
 
     def prepare_subprocess(self, args: List[str]) -> Dict[str, str]:
         if self.debug:
@@ -104,14 +106,16 @@ class TestEnv(ContextManager['TestEnv']):
              TEST_DIR
              SOCK_DIR
              SAMPLE_IMG_DIR
-             OUTPUT_DIR
         """
-        self.pythonpath = os.getenv('PYTHONPATH')
-        if self.pythonpath:
-            self.pythonpath = self.source_iotests + os.pathsep + \
-                self.pythonpath
-        else:
-            self.pythonpath = self.source_iotests
+
+        # Path where qemu goodies live in this source tree.
+        qemu_srctree_path = Path(__file__, '../../../python').resolve()
+
+        self.pythonpath = os.pathsep.join(filter(None, (
+            self.source_iotests,
+            str(qemu_srctree_path),
+            os.getenv('PYTHONPATH'),
+        )))
 
         self.test_dir = os.getenv('TEST_DIR',
                                   os.path.join(os.getcwd(), 'scratch'))
@@ -129,13 +133,10 @@ class TestEnv(ContextManager['TestEnv']):
                                         os.path.join(self.source_iotests,
                                                      'sample_images'))
 
-        self.output_dir = os.getcwd()  # OUTPUT_DIR
-
     def init_binaries(self) -> None:
         """Init binary path variables:
              PYTHON (for bash tests)
              QEMU_PROG, QEMU_IMG_PROG, QEMU_IO_PROG, QEMU_NBD_PROG, QSD_PROG
-             SOCKET_SCM_HELPER
         """
         self.python = sys.executable
 
@@ -169,22 +170,32 @@ class TestEnv(ContextManager['TestEnv']):
             if not isxfile(b):
                 sys.exit('Not executable: ' + b)
 
-        helper_path = os.path.join(self.build_iotests, 'socket_scm_helper')
-        if isxfile(helper_path):
-            self.socket_scm_helper = helper_path  # SOCKET_SCM_HELPER
-
     def __init__(self, imgfmt: str, imgproto: str, aiomode: str,
                  cachemode: Optional[str] = None,
                  imgopts: Optional[str] = None,
                  misalign: bool = False,
                  debug: bool = False,
-                 valgrind: bool = False) -> None:
+                 valgrind: bool = False,
+                 gdb: bool = False,
+                 qprint: bool = False) -> None:
         self.imgfmt = imgfmt
         self.imgproto = imgproto
         self.aiomode = aiomode
         self.imgopts = imgopts
         self.misalign = misalign
         self.debug = debug
+
+        if qprint:
+            self.print_qemu = 'y'
+
+        if gdb:
+            self.gdb_options = os.getenv('GDB_OPTIONS', DEF_GDB_OPTIONS)
+            if not self.gdb_options:
+                # cover the case 'export GDB_OPTIONS='
+                self.gdb_options = DEF_GDB_OPTIONS
+        elif 'GDB_OPTIONS' in os.environ:
+            # to not propagate it in prepare_subprocess()
+            del os.environ['GDB_OPTIONS']
 
         if valgrind:
             self.valgrind_qemu = 'y'
@@ -224,6 +235,8 @@ class TestEnv(ContextManager['TestEnv']):
             ('aarch64', 'virt'),
             ('avr', 'mega2560'),
             ('m68k', 'virt'),
+            ('riscv32', 'virt'),
+            ('riscv64', 'virt'),
             ('rx', 'gdbsim-r5f562n8'),
             ('tricore', 'tricore_testboard')
         )
@@ -273,19 +286,21 @@ class TestEnv(ContextManager['TestEnv']):
     def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
         self.close()
 
-    def print_env(self) -> None:
+    def print_env(self, prefix: str = '') -> None:
         template = """\
-QEMU          -- "{QEMU_PROG}" {QEMU_OPTIONS}
-QEMU_IMG      -- "{QEMU_IMG_PROG}" {QEMU_IMG_OPTIONS}
-QEMU_IO       -- "{QEMU_IO_PROG}" {QEMU_IO_OPTIONS}
-QEMU_NBD      -- "{QEMU_NBD_PROG}" {QEMU_NBD_OPTIONS}
-IMGFMT        -- {IMGFMT}{imgopts}
-IMGPROTO      -- {IMGPROTO}
-PLATFORM      -- {platform}
-TEST_DIR      -- {TEST_DIR}
-SOCK_DIR      -- {SOCK_DIR}
-SOCKET_SCM_HELPER -- {SOCKET_SCM_HELPER}
-"""
+{prefix}QEMU          -- "{QEMU_PROG}" {QEMU_OPTIONS}
+{prefix}QEMU_IMG      -- "{QEMU_IMG_PROG}" {QEMU_IMG_OPTIONS}
+{prefix}QEMU_IO       -- "{QEMU_IO_PROG}" {QEMU_IO_OPTIONS}
+{prefix}QEMU_NBD      -- "{QEMU_NBD_PROG}" {QEMU_NBD_OPTIONS}
+{prefix}IMGFMT        -- {IMGFMT}{imgopts}
+{prefix}IMGPROTO      -- {IMGPROTO}
+{prefix}PLATFORM      -- {platform}
+{prefix}TEST_DIR      -- {TEST_DIR}
+{prefix}SOCK_DIR      -- {SOCK_DIR}
+{prefix}GDB_OPTIONS   -- {GDB_OPTIONS}
+{prefix}VALGRIND_QEMU -- {VALGRIND_QEMU}
+{prefix}PRINT_QEMU_OUTPUT -- {PRINT_QEMU}
+{prefix}"""
 
         args = collections.defaultdict(str, self.get_env())
 
@@ -294,5 +309,5 @@ SOCKET_SCM_HELPER -- {SOCKET_SCM_HELPER}
 
         u = os.uname()
         args['platform'] = f'{u.sysname}/{u.machine} {u.nodename} {u.release}'
-
+        args['prefix'] = prefix
         print(template.format_map(args))

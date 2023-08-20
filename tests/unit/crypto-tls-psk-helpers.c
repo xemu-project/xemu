@@ -24,18 +24,29 @@
 #include "crypto-tls-psk-helpers.h"
 #include "qemu/sockets.h"
 
-void test_tls_psk_init(const char *pskfile)
+static void
+test_tls_psk_init_common(const char *pskfile, const char *user, const char *key)
 {
-    FILE *fp;
+    g_autoptr(GError) gerr = NULL;
+    g_autofree char *line = g_strdup_printf("%s:%s\n", user, key);
 
-    fp = fopen(pskfile, "w");
-    if (fp == NULL) {
-        g_critical("Failed to create pskfile %s", pskfile);
+    g_file_set_contents(pskfile, line, strlen(line), &gerr);
+    if (gerr != NULL) {
+        g_critical("Failed to create pskfile %s: %s", pskfile, gerr->message);
         abort();
     }
-    /* Don't do this in real applications!  Use psktool. */
-    fprintf(fp, "qemu:009d5638c40fde0c\n");
-    fclose(fp);
+}
+
+void test_tls_psk_init(const char *pskfile)
+{
+    /* Don't hard code a key like this in real applications!  Use psktool. */
+    test_tls_psk_init_common(pskfile, "qemu", "009d5638c40fde0c");
+}
+
+void test_tls_psk_init_alt(const char *pskfile)
+{
+    /* Don't hard code a key like this in real applications!  Use psktool. */
+    test_tls_psk_init_common(pskfile, "qemu", "10ffa6a2c42f0388");
 }
 
 void test_tls_psk_cleanup(const char *pskfile)

@@ -21,12 +21,14 @@
 #include "qapi/qapi-visit-common.h"
 #include "qapi/qapi-visit-machine.h"
 #include "qapi/visitor.h"
+#include "qom/object_interfaces.h"
 #include "hw/sysbus.h"
 #include "sysemu/cpus.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/reset.h"
 #include "sysemu/runstate.h"
 #include "sysemu/numa.h"
+#include "sysemu/xen.h"
 #include "qemu/error-report.h"
 #include "sysemu/qtest.h"
 #include "hw/pci/pci.h"
@@ -36,6 +38,32 @@
 #include "exec/confidential-guest-support.h"
 #include "hw/virtio/virtio.h"
 #include "hw/virtio/virtio-pci.h"
+#include "qom/object_interfaces.h"
+
+GlobalProperty hw_compat_7_1[] = {
+    { "virtio-device", "queue_reset", "false" },
+    { "virtio-rng-pci", "vectors", "0" },
+    { "virtio-rng-pci-transitional", "vectors", "0" },
+    { "virtio-rng-pci-non-transitional", "vectors", "0" },
+};
+const size_t hw_compat_7_1_len = G_N_ELEMENTS(hw_compat_7_1);
+
+GlobalProperty hw_compat_7_0[] = {
+    { "arm-gicv3-common", "force-8-bit-prio", "on" },
+    { "nvme-ns", "eui64-default", "on"},
+};
+const size_t hw_compat_7_0_len = G_N_ELEMENTS(hw_compat_7_0);
+
+GlobalProperty hw_compat_6_2[] = {
+    { "PIIX4_PM", "x-not-migrate-acpi-index", "on"},
+};
+const size_t hw_compat_6_2_len = G_N_ELEMENTS(hw_compat_6_2);
+
+GlobalProperty hw_compat_6_1[] = {
+    { "vhost-user-vsock-device", "seqpacket", "off" },
+    { "nvme-ns", "shared", "off" },
+};
+const size_t hw_compat_6_1_len = G_N_ELEMENTS(hw_compat_6_1);
 
 GlobalProperty hw_compat_6_0[] = {
     { "gpex-pcihost", "allow-unmapped-accesses", "false" },
@@ -43,6 +71,7 @@ GlobalProperty hw_compat_6_0[] = {
     { "nvme-ns", "eui64-default", "off"},
     { "e1000", "init-vet", "off" },
     { "e1000e", "init-vet", "off" },
+    { "vhost-vsock-device", "seqpacket", "off" },
 };
 const size_t hw_compat_6_0_len = G_N_ELEMENTS(hw_compat_6_0);
 
@@ -50,7 +79,7 @@ GlobalProperty hw_compat_5_2[] = {
     { "ICH9-LPC", "smm-compat", "on"},
     { "PIIX4_PM", "smm-compat", "on"},
     { "virtio-blk-device", "report-discard-granularity", "off" },
-    { "virtio-net-pci", "vectors", "3"},
+    { "virtio-net-pci-base", "vectors", "3"},
 };
 const size_t hw_compat_5_2_len = G_N_ELEMENTS(hw_compat_5_2);
 
@@ -508,6 +537,78 @@ static void machine_set_hmat(Object *obj, bool value, Error **errp)
     ms->numa_state->hmat_enabled = value;
 }
 
+static void machine_get_mem(Object *obj, Visitor *v, const char *name,
+                            void *opaque, Error **errp)
+{
+    MachineState *ms = MACHINE(obj);
+    MemorySizeConfiguration mem = {
+        .has_size = true,
+        .size = ms->ram_size,
+        .has_max_size = !!ms->ram_slots,
+        .max_size = ms->maxram_size,
+        .has_slots = !!ms->ram_slots,
+        .slots = ms->ram_slots,
+    };
+    MemorySizeConfiguration *p_mem = &mem;
+
+    visit_type_MemorySizeConfiguration(v, name, &p_mem, &error_abort);
+}
+
+static void machine_set_mem(Object *obj, Visitor *v, const char *name,
+                            void *opaque, Error **errp)
+{
+    MachineState *ms = MACHINE(obj);
+    MachineClass *mc = MACHINE_GET_CLASS(obj);
+    MemorySizeConfiguration *mem;
+
+    ERRP_GUARD();
+
+    if (!visit_type_MemorySizeConfiguration(v, name, &mem, errp)) {
+        return;
+    }
+
+    if (!mem->has_size) {
+        mem->has_size = true;
+        mem->size = mc->default_ram_size;
+    }
+    mem->size = QEMU_ALIGN_UP(mem->size, 8192);
+    if (mc->fixup_ram_size) {
+        mem->size = mc->fixup_ram_size(mem->size);
+    }
+    if ((ram_addr_t)mem->size != mem->size) {
+        error_setg(errp, "ram size too large");
+        goto out_free;
+    }
+
+    if (mem->has_max_size) {
+        if (mem->max_size < mem->size) {
+            error_setg(errp, "invalid value of maxmem: "
+                       "maximum memory size (0x%" PRIx64 ") must be at least "
+                       "the initial memory size (0x%" PRIx64 ")",
+                       mem->max_size, mem->size);
+            goto out_free;
+        }
+        if (mem->has_slots && mem->slots && mem->max_size == mem->size) {
+            error_setg(errp, "invalid value of maxmem: "
+                       "memory slots were specified but maximum memory size "
+                       "(0x%" PRIx64 ") is equal to the initial memory size "
+                       "(0x%" PRIx64 ")", mem->max_size, mem->size);
+            goto out_free;
+        }
+        ms->maxram_size = mem->max_size;
+    } else {
+        if (mem->has_slots) {
+            error_setg(errp, "slots specified but no max-size");
+            goto out_free;
+        }
+        ms->maxram_size = mem->size;
+    }
+    ms->ram_size = mem->size;
+    ms->ram_slots = mem->has_slots ? mem->slots : 0;
+out_free:
+    qapi_free_MemorySizeConfiguration(mem);
+}
+
 static char *machine_get_nvdimm_persistence(Object *obj, Error **errp)
 {
     MachineState *ms = MACHINE(obj);
@@ -542,59 +643,28 @@ void machine_class_allow_dynamic_sysbus_dev(MachineClass *mc, const char *type)
 
 bool device_is_dynamic_sysbus(MachineClass *mc, DeviceState *dev)
 {
-    bool allowed = false;
-    strList *wl;
     Object *obj = OBJECT(dev);
 
     if (!object_dynamic_cast(obj, TYPE_SYS_BUS_DEVICE)) {
         return false;
     }
 
+    return device_type_is_dynamic_sysbus(mc, object_get_typename(obj));
+}
+
+bool device_type_is_dynamic_sysbus(MachineClass *mc, const char *type)
+{
+    bool allowed = false;
+    strList *wl;
+    ObjectClass *klass = object_class_by_name(type);
+
     for (wl = mc->allowed_dynamic_sysbus_devices;
          !allowed && wl;
          wl = wl->next) {
-        allowed |= !!object_dynamic_cast(obj, wl->value);
+        allowed |= !!object_class_dynamic_cast(klass, wl->value);
     }
 
     return allowed;
-}
-
-static void validate_sysbus_device(SysBusDevice *sbdev, void *opaque)
-{
-    MachineState *machine = opaque;
-    MachineClass *mc = MACHINE_GET_CLASS(machine);
-
-    if (!device_is_dynamic_sysbus(mc, DEVICE(sbdev))) {
-        error_report("Option '-device %s' cannot be handled by this machine",
-                     object_class_get_name(object_get_class(OBJECT(sbdev))));
-        exit(1);
-    }
-}
-
-static char *machine_get_memdev(Object *obj, Error **errp)
-{
-    MachineState *ms = MACHINE(obj);
-
-    return g_strdup(ms->ram_memdev_id);
-}
-
-static void machine_set_memdev(Object *obj, const char *value, Error **errp)
-{
-    MachineState *ms = MACHINE(obj);
-
-    g_free(ms->ram_memdev_id);
-    ms->ram_memdev_id = g_strdup(value);
-}
-
-static void machine_init_notify(Notifier *notifier, void *data)
-{
-    MachineState *machine = MACHINE(qdev_get_machine());
-
-    /*
-     * Loop through all dynamically created sysbus devices and check if they are
-     * all allowed.  If a device is not allowed, error out.
-     */
-    foreach_dynamic_sysbus_device(validate_sysbus_device, machine);
 }
 
 HotpluggableCPUList *machine_query_hotpluggable_cpus(MachineState *machine)
@@ -683,6 +753,11 @@ void machine_set_cpu_numa_node(MachineState *machine,
             return;
         }
 
+        if (props->has_cluster_id && !slot->props.has_cluster_id) {
+            error_setg(errp, "cluster-id is not supported");
+            return;
+        }
+
         if (props->has_socket_id && !slot->props.has_socket_id) {
             error_setg(errp, "socket-id is not supported");
             return;
@@ -699,6 +774,11 @@ void machine_set_cpu_numa_node(MachineState *machine,
         }
 
         if (props->has_core_id && props->core_id != slot->props.core_id) {
+                continue;
+        }
+
+        if (props->has_cluster_id &&
+            props->cluster_id != slot->props.cluster_id) {
                 continue;
         }
 
@@ -743,78 +823,20 @@ void machine_set_cpu_numa_node(MachineState *machine,
     }
 }
 
-static void smp_parse(MachineState *ms, SMPConfiguration *config, Error **errp)
-{
-    unsigned cpus    = config->has_cpus ? config->cpus : 0;
-    unsigned sockets = config->has_sockets ? config->sockets : 0;
-    unsigned cores   = config->has_cores ? config->cores : 0;
-    unsigned threads = config->has_threads ? config->threads : 0;
-
-    if (config->has_dies && config->dies != 0 && config->dies != 1) {
-        error_setg(errp, "dies not supported by this machine's CPU topology");
-        return;
-    }
-
-    /* compute missing values, prefer sockets over cores over threads */
-    if (cpus == 0 || sockets == 0) {
-        cores = cores > 0 ? cores : 1;
-        threads = threads > 0 ? threads : 1;
-        if (cpus == 0) {
-            sockets = sockets > 0 ? sockets : 1;
-            cpus = cores * threads * sockets;
-        } else {
-            ms->smp.max_cpus = config->has_maxcpus ? config->maxcpus : cpus;
-            sockets = ms->smp.max_cpus / (cores * threads);
-        }
-    } else if (cores == 0) {
-        threads = threads > 0 ? threads : 1;
-        cores = cpus / (sockets * threads);
-        cores = cores > 0 ? cores : 1;
-    } else if (threads == 0) {
-        threads = cpus / (cores * sockets);
-        threads = threads > 0 ? threads : 1;
-    } else if (sockets * cores * threads < cpus) {
-        error_setg(errp, "cpu topology: "
-                   "sockets (%u) * cores (%u) * threads (%u) < "
-                   "smp_cpus (%u)",
-                   sockets, cores, threads, cpus);
-        return;
-    }
-
-    ms->smp.max_cpus = config->has_maxcpus ? config->maxcpus : cpus;
-
-    if (ms->smp.max_cpus < cpus) {
-        error_setg(errp, "maxcpus must be equal to or greater than smp");
-        return;
-    }
-
-    if (sockets * cores * threads != ms->smp.max_cpus) {
-        error_setg(errp, "Invalid CPU topology: "
-                   "sockets (%u) * cores (%u) * threads (%u) "
-                   "!= maxcpus (%u)",
-                   sockets, cores, threads,
-                   ms->smp.max_cpus);
-        return;
-    }
-
-    ms->smp.cpus = cpus;
-    ms->smp.cores = cores;
-    ms->smp.threads = threads;
-    ms->smp.sockets = sockets;
-}
-
 static void machine_get_smp(Object *obj, Visitor *v, const char *name,
                             void *opaque, Error **errp)
 {
     MachineState *ms = MACHINE(obj);
     SMPConfiguration *config = &(SMPConfiguration){
-        .has_cores = true, .cores = ms->smp.cores,
+        .has_cpus = true, .cpus = ms->smp.cpus,
         .has_sockets = true, .sockets = ms->smp.sockets,
         .has_dies = true, .dies = ms->smp.dies,
+        .has_clusters = true, .clusters = ms->smp.clusters,
+        .has_cores = true, .cores = ms->smp.cores,
         .has_threads = true, .threads = ms->smp.threads,
-        .has_cpus = true, .cpus = ms->smp.cpus,
         .has_maxcpus = true, .maxcpus = ms->smp.max_cpus,
     };
+
     if (!visit_type_SMPConfiguration(v, name, &config, &error_abort)) {
         return;
     }
@@ -823,35 +845,73 @@ static void machine_get_smp(Object *obj, Visitor *v, const char *name,
 static void machine_set_smp(Object *obj, Visitor *v, const char *name,
                             void *opaque, Error **errp)
 {
-    MachineClass *mc = MACHINE_GET_CLASS(obj);
     MachineState *ms = MACHINE(obj);
-    SMPConfiguration *config;
-    ERRP_GUARD();
+    g_autoptr(SMPConfiguration) config = NULL;
 
     if (!visit_type_SMPConfiguration(v, name, &config, errp)) {
         return;
     }
 
-    mc->smp_parse(ms, config, errp);
-    if (*errp) {
-        goto out_free;
+    machine_parse_smp_config(ms, config, errp);
+}
+
+static void machine_get_boot(Object *obj, Visitor *v, const char *name,
+                            void *opaque, Error **errp)
+{
+    MachineState *ms = MACHINE(obj);
+    BootConfiguration *config = &ms->boot_config;
+    visit_type_BootConfiguration(v, name, &config, &error_abort);
+}
+
+static void machine_free_boot_config(MachineState *ms)
+{
+    g_free(ms->boot_config.order);
+    g_free(ms->boot_config.once);
+    g_free(ms->boot_config.splash);
+}
+
+static void machine_copy_boot_config(MachineState *ms, BootConfiguration *config)
+{
+    MachineClass *machine_class = MACHINE_GET_CLASS(ms);
+
+    machine_free_boot_config(ms);
+    ms->boot_config = *config;
+    if (!config->has_order) {
+        ms->boot_config.has_order = true;
+        ms->boot_config.order = g_strdup(machine_class->default_boot_order);
+    }
+}
+
+static void machine_set_boot(Object *obj, Visitor *v, const char *name,
+                            void *opaque, Error **errp)
+{
+    ERRP_GUARD();
+    MachineState *ms = MACHINE(obj);
+    BootConfiguration *config = NULL;
+
+    if (!visit_type_BootConfiguration(v, name, &config, errp)) {
+        return;
+    }
+    if (config->has_order) {
+        validate_bootdevices(config->order, errp);
+        if (*errp) {
+            goto out_free;
+        }
+    }
+    if (config->has_once) {
+        validate_bootdevices(config->once, errp);
+        if (*errp) {
+            goto out_free;
+        }
     }
 
-    /* sanity-check smp_cpus and max_cpus against mc */
-    if (ms->smp.cpus < mc->min_cpus) {
-        error_setg(errp, "Invalid SMP CPUs %d. The min CPUs "
-                   "supported by machine '%s' is %d",
-                   ms->smp.cpus,
-                   mc->name, mc->min_cpus);
-    } else if (ms->smp.max_cpus > mc->max_cpus) {
-        error_setg(errp, "Invalid SMP CPUs %d. The max CPUs "
-                   "supported by machine '%s' is %d",
-                   current_machine->smp.max_cpus,
-                   mc->name, mc->max_cpus);
-    }
+    machine_copy_boot_config(ms, config);
+    /* Strings live in ms->boot_config.  */
+    free(config);
+    return;
 
 out_free:
-    qapi_free_SMPConfiguration(config);
+    qapi_free_BootConfiguration(config);
 }
 
 static void machine_class_init(ObjectClass *oc, void *data)
@@ -861,7 +921,6 @@ static void machine_class_init(ObjectClass *oc, void *data)
     /* Default 128 MB as guest ram size */
     mc->default_ram_size = 128 * MiB;
     mc->rom_file_has_mr = true;
-    mc->smp_parse = smp_parse;
 
     /* numa node memory size aligned on 8MB by default.
      * On Linux, each node's border has to be 8MB aligned
@@ -892,6 +951,12 @@ static void machine_class_init(ObjectClass *oc, void *data)
         machine_get_dumpdtb, machine_set_dumpdtb);
     object_class_property_set_description(oc, "dumpdtb",
         "Dump current dtb to a file and quit");
+
+    object_class_property_add(oc, "boot", "BootConfiguration",
+        machine_get_boot, machine_set_boot,
+        NULL, NULL);
+    object_class_property_set_description(oc, "boot",
+        "Boot configuration");
 
     object_class_property_add(oc, "smp", "SMPConfiguration",
         machine_get_smp, machine_set_smp,
@@ -954,11 +1019,18 @@ static void machine_class_init(ObjectClass *oc, void *data)
     object_class_property_set_description(oc, "memory-encryption",
         "Set memory encryption object to use");
 
-    object_class_property_add_str(oc, "memory-backend",
-                                  machine_get_memdev, machine_set_memdev);
+    object_class_property_add_link(oc, "memory-backend", TYPE_MEMORY_BACKEND,
+                                   offsetof(MachineState, memdev), object_property_allow_set_link,
+                                   OBJ_PROP_LINK_STRONG);
     object_class_property_set_description(oc, "memory-backend",
                                           "Set RAM backend"
                                           "Valid value is ID of hostmem based backend");
+
+    object_class_property_add(oc, "memory", "MemorySizeConfiguration",
+        machine_get_mem, machine_set_mem,
+        NULL, NULL);
+    object_class_property_set_description(oc, "memory",
+        "Memory size configuration");
 }
 
 static void machine_class_base_init(ObjectClass *oc, void *data)
@@ -989,6 +1061,8 @@ static void machine_initfn(Object *obj)
     ms->mem_merge = true;
     ms->enable_graphics = true;
     ms->kernel_cmdline = g_strdup("");
+    ms->ram_size = mc->default_ram_size;
+    ms->maxram_size = mc->default_ram_size;
 
     if (mc->nvdimm_supported) {
         Object *obj = OBJECT(ms);
@@ -1018,23 +1092,23 @@ static void machine_initfn(Object *obj)
                                         "Table (HMAT)");
     }
 
-    /* Register notifier when init is done for sysbus sanity checks */
-    ms->sysbus_notifier.notify = machine_init_notify;
-    qemu_add_machine_init_done_notifier(&ms->sysbus_notifier);
-
     /* default to mc->default_cpus */
     ms->smp.cpus = mc->default_cpus;
     ms->smp.max_cpus = mc->default_cpus;
-    ms->smp.cores = 1;
-    ms->smp.dies = 1;
-    ms->smp.threads = 1;
     ms->smp.sockets = 1;
+    ms->smp.dies = 1;
+    ms->smp.clusters = 1;
+    ms->smp.cores = 1;
+    ms->smp.threads = 1;
+
+    machine_copy_boot_config(ms, &(BootConfiguration){ 0 });
 }
 
 static void machine_finalize(Object *obj)
 {
     MachineState *ms = MACHINE(obj);
 
+    machine_free_boot_config(ms);
     g_free(ms->kernel_filename);
     g_free(ms->initrd_filename);
     g_free(ms->kernel_cmdline);
@@ -1074,7 +1148,16 @@ static char *cpu_slot_to_string(const CPUArchId *cpu)
         g_string_append_printf(s, "socket-id: %"PRId64, cpu->props.socket_id);
     }
     if (cpu->props.has_die_id) {
+        if (s->len) {
+            g_string_append_printf(s, ", ");
+        }
         g_string_append_printf(s, "die-id: %"PRId64, cpu->props.die_id);
+    }
+    if (cpu->props.has_cluster_id) {
+        if (s->len) {
+            g_string_append_printf(s, ", ");
+        }
+        g_string_append_printf(s, "cluster-id: %"PRId64, cpu->props.cluster_id);
     }
     if (cpu->props.has_core_id) {
         if (s->len) {
@@ -1098,9 +1181,7 @@ static void numa_validate_initiator(NumaState *numa_state)
 
     for (i = 0; i < numa_state->num_nodes; i++) {
         if (numa_info[i].initiator == MAX_NODES) {
-            error_report("The initiator of NUMA node %d is missing, use "
-                         "'-numa node,initiator' option to declare it", i);
-            exit(1);
+            continue;
         }
 
         if (!numa_info[numa_info[i].initiator].present) {
@@ -1177,7 +1258,7 @@ MemoryRegion *machine_consume_memdev(MachineState *machine,
 {
     MemoryRegion *ret = host_memory_backend_get_memory(backend);
 
-    if (memory_region_is_mapped(ret)) {
+    if (host_memory_backend_is_mapped(backend)) {
         error_report("memory backend %s can't be used multiple times.",
                      object_get_canonical_path_component(OBJECT(backend)));
         exit(EXIT_FAILURE);
@@ -1187,7 +1268,40 @@ MemoryRegion *machine_consume_memdev(MachineState *machine,
     return ret;
 }
 
-void machine_run_board_init(MachineState *machine)
+static bool create_default_memdev(MachineState *ms, const char *path, Error **errp)
+{
+    Object *obj;
+    MachineClass *mc = MACHINE_GET_CLASS(ms);
+    bool r = false;
+
+    obj = object_new(path ? TYPE_MEMORY_BACKEND_FILE : TYPE_MEMORY_BACKEND_RAM);
+    if (path) {
+        if (!object_property_set_str(obj, "mem-path", path, errp)) {
+            goto out;
+        }
+    }
+    if (!object_property_set_int(obj, "size", ms->ram_size, errp)) {
+        goto out;
+    }
+    object_property_add_child(object_get_objects_root(), mc->default_ram_id,
+                              obj);
+    /* Ensure backend's memory region name is equal to mc->default_ram_id */
+    if (!object_property_set_bool(obj, "x-use-canonical-path-for-ramblock-id",
+                             false, errp)) {
+        goto out;
+    }
+    if (!user_creatable_complete(USER_CREATABLE(obj), errp)) {
+        goto out;
+    }
+    r = object_property_set_link(OBJECT(ms), "memory-backend", obj, errp);
+
+out:
+    object_unref(obj);
+    return r;
+}
+
+
+void machine_run_board_init(MachineState *machine, const char *mem_path, Error **errp)
 {
     MachineClass *machine_class = MACHINE_GET_CLASS(machine);
     ObjectClass *oc = object_class_by_name(machine->cpu_type);
@@ -1198,11 +1312,34 @@ void machine_run_board_init(MachineState *machine)
        clock values from the log. */
     replay_checkpoint(CHECKPOINT_INIT);
 
-    if (machine->ram_memdev_id) {
-        Object *o;
-        o = object_resolve_path_type(machine->ram_memdev_id,
-                                     TYPE_MEMORY_BACKEND, NULL);
-        machine->ram = machine_consume_memdev(machine, MEMORY_BACKEND(o));
+    if (!xen_enabled()) {
+        /* On 32-bit hosts, QEMU is limited by virtual address space */
+        if (machine->ram_size > (2047 << 20) && HOST_LONG_BITS == 32) {
+            error_setg(errp, "at most 2047 MB RAM can be simulated");
+            return;
+        }
+    }
+
+    if (machine->memdev) {
+        ram_addr_t backend_size = object_property_get_uint(OBJECT(machine->memdev),
+                                                           "size",  &error_abort);
+        if (backend_size != machine->ram_size) {
+            error_setg(errp, "Machine memory size does not match the size of the memory backend");
+            return;
+        }
+    } else if (machine_class->default_ram_id && machine->ram_size &&
+               numa_uses_legacy_mem()) {
+        if (object_property_find(object_get_objects_root(),
+                                 machine_class->default_ram_id)) {
+            error_setg(errp, "object name '%s' is reserved for the default"
+                " RAM backend, it can't be used for any other purposes."
+                " Change the object's 'id' to something else",
+                machine_class->default_ram_id);
+            return;
+        }
+        if (!create_default_memdev(current_machine, mem_path, errp)) {
+            return;
+        }
     }
 
     if (machine->numa_state) {
@@ -1210,6 +1347,10 @@ void machine_run_board_init(MachineState *machine)
         if (machine->numa_state->num_nodes) {
             machine_numa_finish_cpu_init(machine);
         }
+    }
+
+    if (!machine->ram && machine->memdev) {
+        machine->ram = machine_consume_memdev(machine, machine->memdev);
     }
 
     /* If the machine supports the valid_cpu_types check and the user
@@ -1294,9 +1435,9 @@ void qdev_machine_creation_done(void)
 {
     cpu_synchronize_all_post_init();
 
-    if (current_machine->boot_once) {
-        qemu_boot_set(current_machine->boot_once, &error_fatal);
-        qemu_register_reset(restore_boot_order, g_strdup(current_machine->boot_order));
+    if (current_machine->boot_config.has_once) {
+        qemu_boot_set(current_machine->boot_config.once, &error_fatal);
+        qemu_register_reset(restore_boot_order, g_strdup(current_machine->boot_config.order));
     }
 
     /*

@@ -174,7 +174,7 @@ Lib('qemu', 'https://www.qemu.org/',
 Lib('slirp', 'https://gitlab.freedesktop.org/slirp',
 	bsd_3clause, 'https://gitlab.freedesktop.org/slirp/libslirp/-/raw/master/COPYRIGHT', license_lines=(16,39),
 	ships_static=all_platforms,
-	submodule=Submodule('slirp')
+	pkgconfig=PkgConfig('slirp'), pkg_win='libslirp', pkg_mac='libslirp', pkg_ubuntu='libslirp-dev'
 	),
 
 Lib('imgui', 'https://github.com/ocornut/imgui',
@@ -192,7 +192,7 @@ Lib('implot', 'https://github.com/epezent/implot',
 Lib('httplib', 'https://github.com/yhirose/cpp-httplib',
 	mit, 'https://raw.githubusercontent.com/yhirose/cpp-httplib/master/LICENSE',
 	ships_static=all_platforms,
-	version='776b3ffbf95520047eb6e21ccdb9237eb5c4eaee'
+	submodule=Submodule('ui/thirdparty/httplib')
 	),
 
 Lib('noc', 'https://github.com/guillaumechereau/noc/blob/master/noc_file_dialog.h',

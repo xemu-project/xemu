@@ -21,6 +21,8 @@
 #ifndef NIOS2_MMU_H
 #define NIOS2_MMU_H
 
+#include "cpu.h"
+
 typedef struct Nios2TLBEntry {
     target_ulong tag;
     target_ulong data;
@@ -44,7 +46,6 @@ void mmu_flip_um(CPUNios2State *env, unsigned int um);
 unsigned int mmu_translate(CPUNios2State *env,
                            Nios2MMULookup *lu,
                            target_ulong vaddr, int rw, int mmu_idx);
-void mmu_read_debug(CPUNios2State *env, uint32_t rn);
 void mmu_write(CPUNios2State *env, uint32_t rn, uint32_t v);
 void mmu_init(CPUNios2State *env);
 

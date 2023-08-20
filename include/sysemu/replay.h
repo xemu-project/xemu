@@ -160,9 +160,14 @@ void replay_shutdown_request(ShutdownCause cause);
     Returns 0 in PLAY mode if checkpoint was not found.
     Returns 1 in all other cases. */
 bool replay_checkpoint(ReplayCheckpoint checkpoint);
-/*! Used to determine that checkpoint is pending.
+/*! Used to determine that checkpoint or async event is pending.
     Does not proceed to the next event in the log. */
-bool replay_has_checkpoint(void);
+bool replay_has_event(void);
+/*
+ * Processes the async events added to the queue (while recording)
+ * or reads the events from the file (while replaying).
+ */
+void replay_async_events(void);
 
 /* Asynchronous events queue */
 
@@ -193,7 +198,7 @@ uint64_t blkreplay_next_id(void);
 /*! Registers char driver to save it's events */
 void replay_register_char_driver(struct Chardev *chr);
 /*! Saves write to char device event to the log */
-void replay_chr_be_write(struct Chardev *s, uint8_t *buf, int len);
+void replay_chr_be_write(struct Chardev *s, const uint8_t *buf, int len);
 /*! Writes char write return value to the replay log. */
 void replay_char_write_event_save(int res, int offset);
 /*! Reads char write return value from the replay log. */

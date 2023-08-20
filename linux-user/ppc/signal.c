@@ -18,6 +18,7 @@
  */
 #include "qemu/osdep.h"
 #include "qemu.h"
+#include "user-internals.h"
 #include "signal-common.h"
 #include "linux-user/trace.h"
 
@@ -202,9 +203,6 @@ struct target_func_ptr {
 
 #endif
 
-/* We use the mc_pad field for the signal return trampoline.  */
-#define tramp mc_pad
-
 /* See arch/powerpc/kernel/signal.c.  */
 static target_ulong get_sigframe(struct target_sigaction *ka,
                                  CPUPPCState *env,
@@ -217,8 +215,7 @@ static target_ulong get_sigframe(struct target_sigaction *ka,
     return (oldsp - frame_size) & ~0xFUL;
 }
 
-#if ((defined(TARGET_WORDS_BIGENDIAN) && defined(HOST_WORDS_BIGENDIAN)) || \
-     (!defined(HOST_WORDS_BIGENDIAN) && !defined(TARGET_WORDS_BIGENDIAN)))
+#if TARGET_BIG_ENDIAN == HOST_BIG_ENDIAN
 #define PPC_VEC_HI      0
 #define PPC_VEC_LO      1
 #else
@@ -231,7 +228,7 @@ static void save_user_regs(CPUPPCState *env, struct target_mcontext *frame)
 {
     target_ulong msr = env->msr;
     int i;
-    target_ulong ccr = 0;
+    uint32_t ccr = 0;
 
     /* In general, the kernel attempts to be intelligent about what it
        needs to save for Altivec/FP/SPE registers.  We don't care that
@@ -244,7 +241,7 @@ static void save_user_regs(CPUPPCState *env, struct target_mcontext *frame)
     __put_user(env->nip, &frame->mc_gregs[TARGET_PT_NIP]);
     __put_user(env->ctr, &frame->mc_gregs[TARGET_PT_CTR]);
     __put_user(env->lr, &frame->mc_gregs[TARGET_PT_LNK]);
-    __put_user(env->xer, &frame->mc_gregs[TARGET_PT_XER]);
+    __put_user(cpu_read_xer(env), &frame->mc_gregs[TARGET_PT_XER]);
 
     for (i = 0; i < ARRAY_SIZE(env->crf); i++) {
         ccr |= env->crf[i] << (32 - ((i + 1) * 4));
@@ -308,10 +305,8 @@ static void save_user_regs(CPUPPCState *env, struct target_mcontext *frame)
 static void encode_trampoline(int sigret, uint32_t *tramp)
 {
     /* Set up the sigreturn trampoline: li r0,sigret; sc.  */
-    if (sigret) {
-        __put_user(0x38000000 | sigret, &tramp[0]);
-        __put_user(0x44000002, &tramp[1]);
-    }
+    __put_user(0x38000000 | sigret, &tramp[0]);
+    __put_user(0x44000002, &tramp[1]);
 }
 
 static void restore_user_regs(CPUPPCState *env,
@@ -319,6 +314,7 @@ static void restore_user_regs(CPUPPCState *env,
 {
     target_ulong save_r2 = 0;
     target_ulong msr;
+    target_ulong xer;
     target_ulong ccr;
 
     int i;
@@ -334,9 +330,11 @@ static void restore_user_regs(CPUPPCState *env,
     __get_user(env->nip, &frame->mc_gregs[TARGET_PT_NIP]);
     __get_user(env->ctr, &frame->mc_gregs[TARGET_PT_CTR]);
     __get_user(env->lr, &frame->mc_gregs[TARGET_PT_LNK]);
-    __get_user(env->xer, &frame->mc_gregs[TARGET_PT_XER]);
-    __get_user(ccr, &frame->mc_gregs[TARGET_PT_CCR]);
 
+    __get_user(xer, &frame->mc_gregs[TARGET_PT_XER]);
+    cpu_write_xer(env, xer);
+
+    __get_user(ccr, &frame->mc_gregs[TARGET_PT_CCR]);
     for (i = 0; i < ARRAY_SIZE(env->crf); i++) {
         env->crf[i] = (ccr >> (32 - ((i + 1) * 4))) & 0xf;
     }
@@ -437,12 +435,7 @@ void setup_frame(int sig, struct target_sigaction *ka,
     /* Save user regs.  */
     save_user_regs(env, &frame->mctx);
 
-    /* Construct the trampoline code on the stack. */
-    encode_trampoline(TARGET_NR_sigreturn, (uint32_t *)&frame->mctx.tramp);
-
-    /* The kernel checks for the presence of a VDSO here.  We don't
-       emulate a vdso, so use a sigreturn system call.  */
-    env->lr = (target_ulong) h2g(frame->mctx.tramp);
+    env->lr = default_sigreturn;
 
     /* Turn off all fp exceptions.  */
     env->fpscr = 0;
@@ -478,15 +471,12 @@ void setup_rt_frame(int sig, struct target_sigaction *ka,
                     target_sigset_t *set, CPUPPCState *env)
 {
     struct target_rt_sigframe *rt_sf;
-    uint32_t *trampptr = 0;
     struct target_mcontext *mctx = 0;
     target_ulong rt_sf_addr, newsp = 0;
     int i, err = 0;
 #if defined(TARGET_PPC64)
     struct target_sigcontext *sc = 0;
-#if !defined(TARGET_ABI32)
     struct image_info *image = ((TaskState *)thread_cpu->opaque)->info;
-#endif
 #endif
 
     rt_sf_addr = get_sigframe(ka, env, sizeof(*rt_sf));
@@ -508,22 +498,17 @@ void setup_rt_frame(int sig, struct target_sigaction *ka,
 
 #if defined(TARGET_PPC64)
     mctx = &rt_sf->uc.tuc_sigcontext.mcontext;
-    trampptr = &rt_sf->trampoline[0];
 
     sc = &rt_sf->uc.tuc_sigcontext;
     __put_user(h2g(mctx), &sc->regs);
     __put_user(sig, &sc->signal);
 #else
     mctx = &rt_sf->uc.tuc_mcontext;
-    trampptr = (uint32_t *)&rt_sf->uc.tuc_mcontext.tramp;
 #endif
 
     save_user_regs(env, mctx);
-    encode_trampoline(TARGET_NR_rt_sigreturn, trampptr);
 
-    /* The kernel checks for the presence of a VDSO here.  We don't
-       emulate a vdso, so use a sigreturn system call.  */
-    env->lr = (target_ulong) h2g(trampptr);
+    env->lr = default_rt_sigreturn;
 
     /* Turn off all fp exceptions.  */
     env->fpscr = 0;
@@ -542,7 +527,7 @@ void setup_rt_frame(int sig, struct target_sigaction *ka,
     env->gpr[5] = (target_ulong) h2g(&rt_sf->uc);
     env->gpr[6] = (target_ulong) h2g(rt_sf);
 
-#if defined(TARGET_PPC64) && !defined(TARGET_ABI32)
+#if defined(TARGET_PPC64)
     if (get_ppc64_abi(image) < 2) {
         /* ELFv1 PPC64 function pointers are pointers to OPD entries. */
         struct target_func_ptr *handler =
@@ -557,7 +542,7 @@ void setup_rt_frame(int sig, struct target_sigaction *ka,
     env->nip = (target_ulong) ka->_sa_handler;
 #endif
 
-#ifdef TARGET_WORDS_BIGENDIAN
+#if TARGET_BIG_ENDIAN
     /* Signal handlers are entered in big-endian mode.  */
     ppc_store_msr(env, env->msr & ~(1ull << MSR_LE));
 #else
@@ -574,7 +559,7 @@ sigsegv:
 
 }
 
-#if !defined(TARGET_PPC64) || defined(TARGET_ABI32)
+#if !defined(TARGET_PPC64)
 long do_sigreturn(CPUPPCState *env)
 {
     struct target_sigcontext *sc = NULL;
@@ -587,12 +572,9 @@ long do_sigreturn(CPUPPCState *env)
     if (!lock_user_struct(VERIFY_READ, sc, sc_addr, 1))
         goto sigsegv;
 
-#if defined(TARGET_PPC64)
-    set.sig[0] = sc->oldmask + ((uint64_t)(sc->_unused[3]) << 32);
-#else
     __get_user(set.sig[0], &sc->oldmask);
     __get_user(set.sig[1], &sc->_unused[3]);
-#endif
+
     target_to_host_sigset_internal(&blocked, &set);
     set_sigmask(&blocked);
 
@@ -603,13 +585,13 @@ long do_sigreturn(CPUPPCState *env)
 
     unlock_user_struct(sr, sr_addr, 1);
     unlock_user_struct(sc, sc_addr, 1);
-    return -TARGET_QEMU_ESIGRETURN;
+    return -QEMU_ESIGRETURN;
 
 sigsegv:
     unlock_user_struct(sr, sr_addr, 1);
     unlock_user_struct(sc, sc_addr, 1);
     force_sig(TARGET_SIGSEGV);
-    return -TARGET_QEMU_ESIGRETURN;
+    return -QEMU_ESIGRETURN;
 }
 #endif /* !defined(TARGET_PPC64) */
 
@@ -658,12 +640,12 @@ long do_rt_sigreturn(CPUPPCState *env)
     target_restore_altstack(&rt_sf->uc.tuc_stack, env);
 
     unlock_user_struct(rt_sf, rt_sf_addr, 1);
-    return -TARGET_QEMU_ESIGRETURN;
+    return -QEMU_ESIGRETURN;
 
 sigsegv:
     unlock_user_struct(rt_sf, rt_sf_addr, 1);
     force_sig(TARGET_SIGSEGV);
-    return -TARGET_QEMU_ESIGRETURN;
+    return -QEMU_ESIGRETURN;
 }
 
 /* This syscall implements {get,set,swap}context for userland.  */
@@ -716,8 +698,24 @@ abi_long do_swapcontext(CPUArchState *env, abi_ulong uold_ctx,
             /* We cannot return to a partially updated context.  */
             force_sig(TARGET_SIGSEGV);
         }
-        return -TARGET_QEMU_ESIGRETURN;
+        return -QEMU_ESIGRETURN;
     }
 
     return 0;
+}
+
+void setup_sigtramp(abi_ulong sigtramp_page)
+{
+    uint32_t *tramp = lock_user(VERIFY_WRITE, sigtramp_page, 2 * 8, 0);
+    assert(tramp != NULL);
+
+#ifdef TARGET_ARCH_HAS_SETUP_FRAME
+    default_sigreturn = sigtramp_page;
+    encode_trampoline(TARGET_NR_sigreturn, tramp + 0);
+#endif
+
+    default_rt_sigreturn = sigtramp_page + 8;
+    encode_trampoline(TARGET_NR_rt_sigreturn, tramp + 2);
+
+    unlock_user(tramp, sigtramp_page, 2 * 8);
 }

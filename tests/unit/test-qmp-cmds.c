@@ -51,6 +51,7 @@ FeatureStruct1 *qmp_test_features0(bool has_fs0, FeatureStruct0 *fs0,
                                    bool has_cfs1, CondFeatureStruct1 *cfs1,
                                    bool has_cfs2, CondFeatureStruct2 *cfs2,
                                    bool has_cfs3, CondFeatureStruct3 *cfs3,
+                                   bool has_cfs4, CondFeatureStruct4 *cfs4,
                                    Error **errp)
 {
     return g_new0(FeatureStruct1, 1);
@@ -81,8 +82,8 @@ UserDefTwo *qmp_user_def_cmd2(UserDefOne *ud1a,
                               Error **errp)
 {
     UserDefTwo *ret;
-    UserDefOne *ud1c = g_malloc0(sizeof(UserDefOne));
-    UserDefOne *ud1d = g_malloc0(sizeof(UserDefOne));
+    UserDefOne *ud1c = g_new0(UserDefOne, 1);
+    UserDefOne *ud1d = g_new0(UserDefOne, 1);
 
     ud1c->string = strdup(ud1a->string);
     ud1c->integer = ud1a->integer;
@@ -118,7 +119,7 @@ void qmp_boxed_struct(UserDefZero *arg, Error **errp)
 {
 }
 
-void qmp_boxed_union(UserDefListUnion *arg, Error **errp)
+void qmp_boxed_union(UserDefFlatUnion *arg, Error **errp)
 {
 }
 
@@ -126,22 +127,16 @@ void qmp_boxed_empty(Empty1 *arg, Error **errp)
 {
 }
 
-__org_qemu_x_Union1 *qmp___org_qemu_x_command(__org_qemu_x_EnumList *a,
-                                              __org_qemu_x_StructList *b,
-                                              __org_qemu_x_Union2 *c,
-                                              __org_qemu_x_Alt *d,
-                                              Error **errp)
+void qmp___org_qemu_x_command(__org_qemu_x_EnumList *a,
+                              __org_qemu_x_StructList *b,
+                              __org_qemu_x_Union *c,
+                              __org_qemu_x_Alt *d,
+                              Error **errp)
 {
-    __org_qemu_x_Union1 *ret = g_new0(__org_qemu_x_Union1, 1);
-
-    ret->type = ORG_QEMU_X_UNION1_KIND___ORG_QEMU_X_BRANCH;
-    ret->u.__org_qemu_x_branch.data = strdup("blah1");
-
     /* Also test that 'wchar-t' was munged to 'q_wchar_t' */
     if (b && b->value && !b->value->has_q_wchar_t) {
         b->value->q_wchar_t = 1;
     }
-    return ret;
 }
 
 
@@ -349,23 +344,23 @@ static void test_dealloc_types(void)
     UserDefOne *ud1test, *ud1a, *ud1b;
     UserDefOneList *ud1list;
 
-    ud1test = g_malloc0(sizeof(UserDefOne));
+    ud1test = g_new0(UserDefOne, 1);
     ud1test->integer = 42;
     ud1test->string = g_strdup("hi there 42");
 
     qapi_free_UserDefOne(ud1test);
 
-    ud1a = g_malloc0(sizeof(UserDefOne));
+    ud1a = g_new0(UserDefOne, 1);
     ud1a->integer = 43;
     ud1a->string = g_strdup("hi there 43");
 
-    ud1b = g_malloc0(sizeof(UserDefOne));
+    ud1b = g_new0(UserDefOne, 1);
     ud1b->integer = 44;
     ud1b->string = g_strdup("hi there 44");
 
-    ud1list = g_malloc0(sizeof(UserDefOneList));
+    ud1list = g_new0(UserDefOneList, 1);
     ud1list->value = ud1a;
-    ud1list->next = g_malloc0(sizeof(UserDefOneList));
+    ud1list->next = g_new0(UserDefOneList, 1);
     ud1list->next->value = ud1b;
 
     qapi_free_UserDefOneList(ud1list);

@@ -1,9 +1,9 @@
 #ifndef LIBQOS_H
 #define LIBQOS_H
 
-#include "libqtest.h"
+#include "../libqtest.h"
 #include "pci.h"
-#include "malloc.h"
+#include "libqos-malloc.h"
 
 typedef struct QOSState QOSState;
 

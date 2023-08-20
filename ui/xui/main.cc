@@ -256,6 +256,16 @@ void xemu_hud_render(void)
         }
     }
 
+    static uint32_t last_mouse_move = 0;
+    if (g_input_mgr.MouseMoved()) {
+        last_mouse_move = now;
+    }
+
+    // FIXME: Handle time wrap around
+    if (g_config.display.ui.hide_cursor && (now - last_mouse_move) > 3000) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+    }
+
     if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow) &&
         !g_scene_mgr.IsDisplayingScene()) {
 
@@ -284,7 +294,7 @@ void xemu_hud_render(void)
         
         bool mod_key_down = ImGui::IsKeyDown(ImGuiKey_ModShift);
         for (int f_key = 0; f_key < 4; ++f_key) {
-            if (ImGui::IsKeyPressed(f_key + ImGuiKey_F5)) {
+            if (ImGui::IsKeyPressed((enum ImGuiKey)(ImGuiKey_F5 + f_key))) {
                 ActionActivateBoundSnapshot(f_key, mod_key_down);
                 break;
             }

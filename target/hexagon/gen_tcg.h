@@ -66,11 +66,10 @@
     } while (0)
 #define GET_EA_pci \
     do { \
-        TCGv tcgv_siV = tcg_const_tl(siV); \
+        TCGv tcgv_siV = tcg_constant_tl(siV); \
         tcg_gen_mov_tl(EA, RxV); \
         gen_helper_fcircadd(RxV, RxV, tcgv_siV, MuV, \
                             hex_gpr[HEX_REG_CS0 + MuN]); \
-        tcg_temp_free(tcgv_siV); \
     } while (0)
 #define GET_EA_pcr(SHIFT) \
     do { \
@@ -340,12 +339,13 @@
     do { \
         TCGv LSB = tcg_temp_local_new(); \
         TCGLabel *label = gen_new_label(); \
-        GET_EA; \
+        tcg_gen_movi_tl(EA, 0); \
         PRED;  \
+        CHECK_NOSHUF_PRED(GET_EA, SIZE, LSB); \
         PRED_LOAD_CANCEL(LSB, EA); \
         tcg_gen_movi_tl(RdV, 0); \
         tcg_gen_brcondi_tl(TCG_COND_EQ, LSB, 0, label); \
-            fLOAD(1, SIZE, SIGN, EA, RdV); \
+        fLOAD(1, SIZE, SIGN, EA, RdV); \
         gen_set_label(label); \
         tcg_temp_free(LSB); \
     } while (0)
@@ -399,12 +399,13 @@
     do { \
         TCGv LSB = tcg_temp_local_new(); \
         TCGLabel *label = gen_new_label(); \
-        GET_EA; \
+        tcg_gen_movi_tl(EA, 0); \
         PRED;  \
+        CHECK_NOSHUF_PRED(GET_EA, 8, LSB); \
         PRED_LOAD_CANCEL(LSB, EA); \
         tcg_gen_movi_i64(RddV, 0); \
         tcg_gen_brcondi_tl(TCG_COND_EQ, LSB, 0, label); \
-            fLOAD(1, 8, u, EA, RddV); \
+        fLOAD(1, 8, u, EA, RddV); \
         gen_set_label(label); \
         tcg_temp_free(LSB); \
     } while (0)
@@ -557,7 +558,7 @@
 #define fGEN_TCG_A4_addp_c(SHORTCODE) \
     do { \
         TCGv_i64 carry = tcg_temp_new_i64(); \
-        TCGv_i64 zero = tcg_const_i64(0); \
+        TCGv_i64 zero = tcg_constant_i64(0); \
         tcg_gen_extu_i32_i64(carry, PxV); \
         tcg_gen_andi_i64(carry, carry, 1); \
         tcg_gen_add2_i64(RddV, carry, RssV, zero, carry, zero); \
@@ -565,14 +566,13 @@
         tcg_gen_extrl_i64_i32(PxV, carry); \
         gen_8bitsof(PxV, PxV); \
         tcg_temp_free_i64(carry); \
-        tcg_temp_free_i64(zero); \
     } while (0)
 
 /* r5:4 = sub(r1:0, r3:2, p1):carry */
 #define fGEN_TCG_A4_subp_c(SHORTCODE) \
     do { \
         TCGv_i64 carry = tcg_temp_new_i64(); \
-        TCGv_i64 zero = tcg_const_i64(0); \
+        TCGv_i64 zero = tcg_constant_i64(0); \
         TCGv_i64 not_RttV = tcg_temp_new_i64(); \
         tcg_gen_extu_i32_i64(carry, PxV); \
         tcg_gen_andi_i64(carry, carry, 1); \
@@ -582,7 +582,6 @@
         tcg_gen_extrl_i64_i32(PxV, carry); \
         gen_8bitsof(PxV, PxV); \
         tcg_temp_free_i64(carry); \
-        tcg_temp_free_i64(zero); \
         tcg_temp_free_i64(not_RttV); \
     } while (0)
 
@@ -684,9 +683,8 @@
     gen_helper_sfmin(RdV, cpu_env, RsV, RtV)
 #define fGEN_TCG_F2_sfclass(SHORTCODE) \
     do { \
-        TCGv imm = tcg_const_tl(uiV); \
+        TCGv imm = tcg_constant_tl(uiV); \
         gen_helper_sfclass(PdV, cpu_env, RsV, imm); \
-        tcg_temp_free(imm); \
     } while (0)
 #define fGEN_TCG_F2_sffixupn(SHORTCODE) \
     gen_helper_sffixupn(RdV, cpu_env, RsV, RtV)
@@ -712,9 +710,8 @@
     gen_helper_dfcmpuo(PdV, cpu_env, RssV, RttV)
 #define fGEN_TCG_F2_dfclass(SHORTCODE) \
     do { \
-        TCGv imm = tcg_const_tl(uiV); \
+        TCGv imm = tcg_constant_tl(uiV); \
         gen_helper_dfclass(PdV, cpu_env, RssV, imm); \
-        tcg_temp_free(imm); \
     } while (0)
 #define fGEN_TCG_F2_sfmpy(SHORTCODE) \
     gen_helper_sfmpy(RdV, cpu_env, RsV, RtV)

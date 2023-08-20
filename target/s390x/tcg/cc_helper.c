@@ -136,7 +136,7 @@ static uint32_t cc_calc_subu(uint64_t borrow_out, uint64_t result)
 
 static uint32_t cc_calc_add_64(int64_t a1, int64_t a2, int64_t ar)
 {
-    if ((a1 > 0 && a2 > 0 && ar < 0) || (a1 < 0 && a2 < 0 && ar > 0)) {
+    if ((a1 > 0 && a2 > 0 && ar < 0) || (a1 < 0 && a2 < 0 && ar >= 0)) {
         return 3; /* overflow */
     } else {
         if (ar < 0) {
@@ -151,7 +151,7 @@ static uint32_t cc_calc_add_64(int64_t a1, int64_t a2, int64_t ar)
 
 static uint32_t cc_calc_sub_64(int64_t a1, int64_t a2, int64_t ar)
 {
-    if ((a1 > 0 && a2 < 0 && ar < 0) || (a1 < 0 && a2 > 0 && ar > 0)) {
+    if ((a1 >= 0 && a2 < 0 && ar < 0) || (a1 < 0 && a2 > 0 && ar > 0)) {
         return 3; /* overflow */
     } else {
         if (ar < 0) {
@@ -196,7 +196,7 @@ static uint32_t cc_calc_comp_64(int64_t dst)
 
 static uint32_t cc_calc_add_32(int32_t a1, int32_t a2, int32_t ar)
 {
-    if ((a1 > 0 && a2 > 0 && ar < 0) || (a1 < 0 && a2 < 0 && ar > 0)) {
+    if ((a1 > 0 && a2 > 0 && ar < 0) || (a1 < 0 && a2 < 0 && ar >= 0)) {
         return 3; /* overflow */
     } else {
         if (ar < 0) {
@@ -211,7 +211,7 @@ static uint32_t cc_calc_add_32(int32_t a1, int32_t a2, int32_t ar)
 
 static uint32_t cc_calc_sub_32(int32_t a1, int32_t a2, int32_t ar)
 {
-    if ((a1 > 0 && a2 < 0 && ar < 0) || (a1 < 0 && a2 > 0 && ar > 0)) {
+    if ((a1 >= 0 && a2 < 0 && ar < 0) || (a1 < 0 && a2 > 0 && ar > 0)) {
         return 3; /* overflow */
     } else {
         if (ar < 0) {
@@ -268,36 +268,9 @@ static uint32_t cc_calc_icm(uint64_t mask, uint64_t val)
     }
 }
 
-static uint32_t cc_calc_sla_32(uint32_t src, int shift)
+static uint32_t cc_calc_sla(uint64_t src, int shift)
 {
-    uint32_t mask = ((1U << shift) - 1U) << (32 - shift);
-    uint32_t sign = 1U << 31;
-    uint32_t match;
-    int32_t r;
-
-    /* Check if the sign bit stays the same.  */
-    if (src & sign) {
-        match = mask;
-    } else {
-        match = 0;
-    }
-    if ((src & mask) != match) {
-        /* Overflow.  */
-        return 3;
-    }
-
-    r = ((src << shift) & ~sign) | (src & sign);
-    if (r == 0) {
-        return 0;
-    } else if (r < 0) {
-        return 1;
-    }
-    return 2;
-}
-
-static uint32_t cc_calc_sla_64(uint64_t src, int shift)
-{
-    uint64_t mask = ((1ULL << shift) - 1ULL) << (64 - shift);
+    uint64_t mask = -1ULL << (63 - shift);
     uint64_t sign = 1ULL << 63;
     uint64_t match;
     int64_t r;
@@ -459,11 +432,8 @@ static uint32_t do_calc_cc(CPUS390XState *env, uint32_t cc_op,
     case CC_OP_ICM:
         r =  cc_calc_icm(src, dst);
         break;
-    case CC_OP_SLA_32:
-        r =  cc_calc_sla_32(src, dst);
-        break;
-    case CC_OP_SLA_64:
-        r =  cc_calc_sla_64(src, dst);
+    case CC_OP_SLA:
+        r =  cc_calc_sla(src, dst);
         break;
     case CC_OP_FLOGR:
         r = cc_calc_flogr(dst);
@@ -517,6 +487,10 @@ void HELPER(sacf)(CPUS390XState *env, uint64_t a1)
 {
     HELPER_LOG("%s: %16" PRIx64 "\n", __func__, a1);
 
+    if (!(env->psw.mask & PSW_MASK_DAT)) {
+        tcg_s390_program_interrupt(env, PGM_SPECIAL_OP, GETPC());
+    }
+
     switch (a1 & 0xf00) {
     case 0x000:
         env->psw.mask &= ~PSW_MASK_ASC;
@@ -527,6 +501,9 @@ void HELPER(sacf)(CPUS390XState *env, uint64_t a1)
         env->psw.mask |= PSW_ASC_SECONDARY;
         break;
     case 0x300:
+        if ((env->psw.mask & PSW_MASK_PSTATE) != 0) {
+            tcg_s390_program_interrupt(env, PGM_PRIVILEGED, GETPC());
+        }
         env->psw.mask &= ~PSW_MASK_ASC;
         env->psw.mask |= PSW_ASC_HOME;
         break;
