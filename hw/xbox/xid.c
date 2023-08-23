@@ -44,6 +44,7 @@
 
 #define USB_VENDOR_MICROSOFT 0x045e
 #define USB_VENDOR_CAPCOM 0x0a7b
+#define USB_VENDOR_HORI 0x0F0D
 
 #define USB_CLASS_XID  0x58
 #define USB_DT_XID     0x42
@@ -55,9 +56,11 @@
 #define TYPE_USB_XID "usb-xbox-gamepad"
 #define TYPE_USB_XID_ALT "usb-xbox-gamepad-s"
 #define TYPE_USB_XID_SB "usb-steel-battalion"
+#define TYPE_USB_XID_FS "usb-xbox-fight-stick"
 #define USB_XID(obj) OBJECT_CHECK(USBXIDGamepadState, (obj), TYPE_USB_XID)
 #define USB_XID_S(obj) OBJECT_CHECK(USBXIDGamepadState, (obj), TYPE_USB_XID_ALT)
 #define USB_XID_SB(obj) OBJECT_CHECK(USBXIDSteelBattalionState, (obj), TYPE_USB_XID_SB)
+#define USB_XID_FS(obj) OBJECT_CHECK(USBXIDGamepadState, (obj), TYPE_USB_XID_FS)
 
 enum {
     STR_MANUFACTURER = 1,
@@ -174,6 +177,22 @@ static const USBDescIface desc_iface_xbox_gamepad = {
     },
 };
 
+static const USBDescIface desc_iface_fight_stick = {
+    .bInterfaceNumber              = 0,
+    .bNumEndpoints                 = 1,
+    .bInterfaceClass               = USB_CLASS_XID,
+    .bInterfaceSubClass            = 0x42,
+    .bInterfaceProtocol            = 0x00,
+    .eps = (USBDescEndpoint[]) {
+        {
+            .bEndpointAddress      = USB_DIR_IN | 0x01,
+            .bmAttributes          = USB_ENDPOINT_XFER_INT,
+            .wMaxPacketSize        = 0x40,
+            .bInterval             = 4,
+        }
+    },
+};
+
 static const USBDescIface desc_iface_steel_battalion = {
     .bInterfaceNumber              = 0,
     .bNumEndpoints                 = 2,
@@ -208,6 +227,22 @@ static const USBDescDevice desc_device_xbox_gamepad = {
             .bMaxPower             = 50,
             .nif = 1,
             .ifs = &desc_iface_xbox_gamepad,
+        },
+    },
+};
+
+static const USBDescDevice desc_device_xbox_fight_stick = {
+    .bcdUSB                        = 0x0110,
+    .bMaxPacketSize0               = 0x40,
+    .bNumConfigurations            = 1,
+    .confs = (USBDescConfig[]) {
+        {
+            .bNumInterfaces        = 1,
+            .bConfigurationValue   = 1,
+            .bmAttributes          = USB_CFG_ATT_ONE,
+            .bMaxPower             = 50,
+            .nif = 1,
+            .ifs = &desc_iface_fight_stick,
         },
     },
 };
@@ -254,6 +289,19 @@ static const USBDesc desc_xbox_gamepad_s = {
     .str  = desc_strings,
 };
 
+static const USBDesc desc_xbox_fight_stick = {
+    .id = {
+        .idVendor          = USB_VENDOR_HORI,
+        .idProduct         = 0x0001,
+        .bcdDevice         = 0x0100,
+        .iManufacturer     = STR_MANUFACTURER,
+        .iProduct          = STR_PRODUCT,
+        .iSerialNumber     = STR_SERIALNUMBER,
+    },
+    .full = &desc_device_xbox_fight_stick,
+    .str  = desc_strings,
+};
+
 static const USBDesc desc_xbox_steel_battalion = {
     .id = {
         .idVendor          = USB_VENDOR_CAPCOM,
@@ -284,6 +332,17 @@ static const XIDDesc desc_xid_xbox_gamepad_s = {
     .bcdXid               = 0x100,
     .bType                = 1,
     .bSubType             = 2,
+    .bMaxInputReportSize  = 20,
+    .bMaxOutputReportSize = 6,
+    .wAlternateProductIds = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF },
+};
+
+static const XIDDesc desc_xid_xbox_fight_stick = {
+    .bLength              = 0x10,
+    .bDescriptorType      = USB_DT_XID,
+    .bcdXid               = 0x100,
+    .bType                = 1,
+    .bSubType             = 0x20,
     .bMaxInputReportSize  = 20,
     .bMaxOutputReportSize = 6,
     .wAlternateProductIds = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF },
@@ -546,6 +605,15 @@ static void usb_xid_handle_data(USBDevice *dev, USBPacket *p)
             } else {
                 assert(false);
             }
+        }
+        else if(p->ep->nr == 1) {
+            if (desc->id.idVendor == USB_VENDOR_HORI) {
+                USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
+                update_input(s);
+                usb_packet_copy(p, &s->in_state, s->in_state.bLength);
+            } else {
+                assert(false);
+            }
         } else {
             assert(false);
         }
@@ -643,6 +711,30 @@ static void usb_xbox_gamepad_s_realize(USBDevice *dev, Error **errp)
     s->out_state_capabilities.report_id = 0;
 }
 
+static void usb_xbox_fight_stick_realize(USBDevice *dev, Error **errp)
+{
+    USBXIDGamepadState *s = USB_XID_FS(dev);
+    usb_desc_create_serial(dev);
+    usb_desc_init(dev);
+    s->intr = usb_ep_get(dev, USB_TOKEN_IN, 2);
+
+    s->in_state.bLength = sizeof(s->in_state);
+    s->in_state.bReportId = 0;
+
+    s->out_state.length = sizeof(s->out_state);
+    s->out_state.report_id = 0;
+
+    s->xid_desc = &desc_xid_xbox_fight_stick;
+
+    memset(&s->in_state_capabilities, 0xFF, sizeof(s->in_state_capabilities));
+    s->in_state_capabilities.bLength = sizeof(s->in_state_capabilities);
+    s->in_state_capabilities.bReportId = 0;
+
+    memset(&s->out_state_capabilities, 0xFF, sizeof(s->out_state_capabilities));
+    s->out_state_capabilities.length = sizeof(s->out_state_capabilities);
+    s->out_state_capabilities.report_id = 0;
+}
+
 static void usb_steel_battalion_realize(USBDevice *dev, Error **errp)
 {
     USBXIDSteelBattalionState *s = USB_XID_SB(dev);
@@ -699,6 +791,17 @@ static const VMStateDescription vmstate_usb_xbox_s = {
     },
 };
 
+static const VMStateDescription vmstate_usb_fight_stick = {
+    .name = TYPE_USB_XID_FS,
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (VMStateField[]) {
+        VMSTATE_USB_DEVICE(dev, USBXIDGamepadState),
+        // FIXME
+        VMSTATE_END_OF_LIST()
+    },
+};
+
 static const VMStateDescription vmstate_usb_sb = {
     .name = TYPE_USB_XID_SB,
     .version_id = 1,
@@ -742,6 +845,22 @@ static void usb_xbox_gamepad_s_class_initfn(ObjectClass *klass, void *data)
     dc->desc  = "Microsoft Xbox Controller S";
 }
 
+static void usb_xbox_fight_stick_class_initfn(ObjectClass *klass, void *data)
+{
+    DeviceClass *dc = DEVICE_CLASS(klass);
+    USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
+
+    uc->product_desc   = "Xbox Fight Stick";
+    uc->usb_desc       = &desc_xbox_fight_stick;
+    uc->realize        = usb_xbox_fight_stick_realize;
+    uc->unrealize      = usb_xbox_gamepad_unrealize;
+    usb_xid_class_initfn(klass, data);
+    set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
+    dc->vmsd  = &vmstate_usb_fight_stick;
+    device_class_set_props(dc, xid_properties);
+    dc->desc  = "Xbox Fight Stick";
+}
+
 static void usb_steel_battalion_class_initfn(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
@@ -772,6 +891,13 @@ static const TypeInfo usb_xbox_gamepad_s_info = {
     .class_init    = usb_xbox_gamepad_s_class_initfn,
 };
 
+static const TypeInfo usb_xbox_fight_stick_info = {
+    .name          = TYPE_USB_XID_FS,
+    .parent        = TYPE_USB_DEVICE,
+    .instance_size = sizeof(USBXIDGamepadState),
+    .class_init    = usb_xbox_fight_stick_class_initfn,
+};
+
 static const TypeInfo usb_steel_battalion_info = {
     .name          = TYPE_USB_XID_SB,
     .parent        = TYPE_USB_DEVICE,
@@ -784,6 +910,7 @@ static void usb_xid_register_types(void)
     type_register_static(&usb_xbox_gamepad_info);
     type_register_static(&usb_xbox_gamepad_s_info);
     type_register_static(&usb_steel_battalion_info);
+    type_register_static(&usb_xbox_fight_stick_info);
 }
 
 type_init(usb_xid_register_types)

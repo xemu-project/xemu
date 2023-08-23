@@ -164,19 +164,21 @@ void MainMenuInputView::Draw()
         driver = DRIVER_S_DISPLAY_NAME;
     else if(strcmp(driver, DRIVER_SB) == 0)
         driver = DRIVER_SB_DISPLAY_NAME;
+    else if(strcmp(driver, DRIVER_FIGHT_STICK) == 0)
+        driver = DRIVER_FIGHT_STICK_DISPLAY_NAME;
 
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::BeginCombo("###InputDrivers", driver, ImGuiComboFlags_NoArrowButton))
     {
-        const char *available_drivers[3] = { DRIVER_DUKE, DRIVER_S, DRIVER_SB };
-        const char *driver_display_names[3] = { DRIVER_DUKE_DISPLAY_NAME, DRIVER_S_DISPLAY_NAME, DRIVER_SB_DISPLAY_NAME };
+        const char *available_drivers[4] = { DRIVER_DUKE, DRIVER_S, DRIVER_SB, DRIVER_FIGHT_STICK };
+        const char *driver_display_names[4] = { DRIVER_DUKE_DISPLAY_NAME, DRIVER_S_DISPLAY_NAME, DRIVER_SB_DISPLAY_NAME, DRIVER_FIGHT_STICK_DISPLAY_NAME };
         bool is_selected = false;
-        for(int i = 0; i < 3; i++) {
+        for(int i = 0; i < 4; i++) {
             const char* iter = driver_display_names[i];
             is_selected = strcmp(driver, iter) == 0;
             ImGui::PushID(iter);
             if (ImGui::Selectable(iter, is_selected)) {
-                for(int j = 0; j < 3; j++) {
+                for(int j = 0; j < 4; j++) {
                     if(iter == driver_display_names[j])
                         bound_drivers[active] = available_drivers[j];
                 }
