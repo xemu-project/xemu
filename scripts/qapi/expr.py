@@ -171,7 +171,7 @@ def check_defn_name_str(name: str, info: QAPISourceInfo, meta: str) -> None:
       - 'event' names adhere to `check_name_upper()`.
       - 'command' names adhere to `check_name_lower()`.
       - Else, meta is a type, and must pass `check_name_camel()`.
-        These names must not end with ``Kind`` nor ``List``.
+        These names must not end with ``List``.
 
     :param name: Name to check.
     :param info: QAPI schema source file information.
@@ -187,9 +187,9 @@ def check_defn_name_str(name: str, info: QAPISourceInfo, meta: str) -> None:
             permit_underscore=name in info.pragma.command_name_exceptions)
     else:
         check_name_camel(name, info, meta)
-        if name.endswith('Kind') or name.endswith('List'):
+        if name.endswith('List'):
             raise QAPISemError(
-                info, "%s name should not end in '%s'" % (meta, name[-4:]))
+                info, "%s name should not end in 'List'" % meta)
 
 
 def check_keys(value: _JSONObject,
@@ -259,14 +259,9 @@ def check_flags(expr: _JSONObject, info: QAPISourceInfo) -> None:
 
 def check_if(expr: _JSONObject, info: QAPISourceInfo, source: str) -> None:
     """
-    Normalize and validate the ``if`` member of an object.
+    Validate the ``if`` member of an object.
 
-    The ``if`` member may be either a ``str`` or a ``List[str]``.
-    A ``str`` value will be normalized to ``List[str]``.
-
-    :forms:
-      :sugared: ``Union[str, List[str]]``
-      :canonical: ``List[str]``
+    The ``if`` member may be either a ``str`` or a dict.
 
     :param expr: The expression containing the ``if`` member to validate.
     :param info: QAPI schema source file information.
@@ -275,31 +270,53 @@ def check_if(expr: _JSONObject, info: QAPISourceInfo, source: str) -> None:
     :raise QAPISemError:
         When the "if" member fails validation, or when there are no
         non-empty conditions.
-    :return: None, ``expr`` is normalized in-place as needed.
+    :return: None
     """
+
+    def _check_if(cond: Union[str, object]) -> None:
+        if isinstance(cond, str):
+            if not re.fullmatch(r'[A-Z][A-Z0-9_]*', cond):
+                raise QAPISemError(
+                    info,
+                    "'if' condition '%s' of %s is not a valid identifier"
+                    % (cond, source))
+            return
+
+        if not isinstance(cond, dict):
+            raise QAPISemError(
+                info,
+                "'if' condition of %s must be a string or an object" % source)
+        check_keys(cond, info, "'if' condition of %s" % source, [],
+                   ["all", "any", "not"])
+        if len(cond) != 1:
+            raise QAPISemError(
+                info,
+                "'if' condition of %s has conflicting keys" % source)
+
+        if 'not' in cond:
+            _check_if(cond['not'])
+        elif 'all' in cond:
+            _check_infix('all', cond['all'])
+        else:
+            _check_infix('any', cond['any'])
+
+    def _check_infix(operator: str, operands: object) -> None:
+        if not isinstance(operands, list):
+            raise QAPISemError(
+                info,
+                "'%s' condition of %s must be an array"
+                % (operator, source))
+        if not operands:
+            raise QAPISemError(
+                info, "'if' condition [] of %s is useless" % source)
+        for operand in operands:
+            _check_if(operand)
+
     ifcond = expr.get('if')
     if ifcond is None:
         return
 
-    if isinstance(ifcond, list):
-        if not ifcond:
-            raise QAPISemError(
-                info, "'if' condition [] of %s is useless" % source)
-    else:
-        # Normalize to a list
-        ifcond = expr['if'] = [ifcond]
-
-    for elt in ifcond:
-        if not isinstance(elt, str):
-            raise QAPISemError(
-                info,
-                "'if' condition of %s must be a string or a list of strings"
-                % source)
-        if not elt.strip():
-            raise QAPISemError(
-                info,
-                "'if' condition '%s' of %s makes no sense"
-                % (elt, source))
+    _check_if(ifcond)
 
 
 def normalize_members(members: object) -> None:
@@ -426,7 +443,7 @@ def check_features(features: Optional[object],
         check_keys(feat, info, source, ['name'], ['if'])
         check_name_is_str(feat['name'], info, source)
         source = "%s '%s'" % (source, feat['name'])
-        check_name_str(feat['name'], info, source)
+        check_name_lower(feat['name'], info, source)
         check_if(feat, info, source)
 
 
@@ -455,7 +472,7 @@ def check_enum(expr: _JSONObject, info: QAPISourceInfo) -> None:
                   for m in members]
     for member in members:
         source = "'data' member"
-        check_keys(member, info, source, ['name'], ['if'])
+        check_keys(member, info, source, ['name'], ['if', 'features'])
         member_name = member['name']
         check_name_is_str(member_name, info, source)
         source = "%s '%s'" % (source, member_name)
@@ -466,6 +483,7 @@ def check_enum(expr: _JSONObject, info: QAPISourceInfo) -> None:
                          permit_upper=permissive,
                          permit_underscore=permissive)
         check_if(member, info, source)
+        check_features(member.get('features'), info)
 
 
 def check_struct(expr: _JSONObject, info: QAPISourceInfo) -> None:
@@ -496,27 +514,18 @@ def check_union(expr: _JSONObject, info: QAPISourceInfo) -> None:
     :return: None, ``expr`` is normalized in-place as needed.
     """
     name = cast(str, expr['union'])  # Checked in check_exprs
-    base = expr.get('base')
-    discriminator = expr.get('discriminator')
+    base = expr['base']
+    discriminator = expr['discriminator']
     members = expr['data']
 
-    if discriminator is None:   # simple union
-        if base is not None:
-            raise QAPISemError(info, "'base' requires 'discriminator'")
-    else:                       # flat union
-        check_type(base, info, "'base'", allow_dict=name)
-        if not base:
-            raise QAPISemError(info, "'discriminator' requires 'base'")
-        check_name_is_str(discriminator, info, "'discriminator'")
+    check_type(base, info, "'base'", allow_dict=name)
+    check_name_is_str(discriminator, info, "'discriminator'")
 
     if not isinstance(members, dict):
         raise QAPISemError(info, "'data' must be an object")
 
     for (key, value) in members.items():
         source = "'data' member '%s'" % key
-        if discriminator is None:
-            check_name_lower(key, info, source)
-        # else: name is in discriminator enum, which gets checked
         check_keys(value, info, source, ['type'], ['if'])
         check_if(value, info, source)
         check_type(value['type'], info, source, allow_array=not base)
@@ -545,7 +554,7 @@ def check_alternate(expr: _JSONObject, info: QAPISourceInfo) -> None:
         check_name_lower(key, info, source)
         check_keys(value, info, source, ['type'], ['if'])
         check_if(value, info, source)
-        check_type(value['type'], info, source)
+        check_type(value['type'], info, source, allow_array=True)
 
 
 def check_command(expr: _JSONObject, info: QAPISourceInfo) -> None:
@@ -617,20 +626,15 @@ def check_exprs(exprs: List[_JSONObject]) -> List[_JSONObject]:
         if 'include' in expr:
             continue
 
-        if 'enum' in expr:
-            meta = 'enum'
-        elif 'union' in expr:
-            meta = 'union'
-        elif 'alternate' in expr:
-            meta = 'alternate'
-        elif 'struct' in expr:
-            meta = 'struct'
-        elif 'command' in expr:
-            meta = 'command'
-        elif 'event' in expr:
-            meta = 'event'
-        else:
-            raise QAPISemError(info, "expression is missing metatype")
+        metas = expr.keys() & {'enum', 'struct', 'union', 'alternate',
+                               'command', 'event'}
+        if len(metas) != 1:
+            raise QAPISemError(
+                info,
+                "expression must have exactly one key"
+                " 'enum', 'struct', 'union', 'alternate',"
+                " 'command', 'event'")
+        meta = metas.pop()
 
         check_name_is_str(expr[meta], info, "'%s'" % meta)
         name = cast(str, expr[meta])
@@ -652,8 +656,8 @@ def check_exprs(exprs: List[_JSONObject]) -> List[_JSONObject]:
             check_enum(expr, info)
         elif meta == 'union':
             check_keys(expr, info, meta,
-                       ['union', 'data'],
-                       ['base', 'discriminator', 'if', 'features'])
+                       ['union', 'base', 'discriminator', 'data'],
+                       ['if', 'features'])
             normalize_members(expr.get('base'))
             normalize_members(expr['data'])
             check_union(expr, info)

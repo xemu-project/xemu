@@ -25,6 +25,11 @@ config APIC
     select MSI_NONBROKEN
     select I8259
 
+config ARM_GICV3_TCG
+    bool
+    default y
+    depends on ARM_GIC && TCG
+
 config ARM_GIC_KVM
     bool
     default y
@@ -62,7 +67,13 @@ config RX_ICU
 config LOONGSON_LIOINTC
     bool
 
-config SIFIVE_CLINT
+config RISCV_ACLINT
+    bool
+
+config RISCV_APLIC
+    bool
+
+config RISCV_IMSIC
     bool
 
 config SIFIVE_PLIC
@@ -72,4 +83,22 @@ config GOLDFISH_PIC
     bool
 
 config M68K_IRQC
+    bool
+
+config NIOS2_VIC
+    bool
+
+config LOONGARCH_IPI
+    bool
+
+config LOONGARCH_PCH_PIC
+    bool
+    select UNIMP
+
+config LOONGARCH_PCH_MSI
+    select MSI_NONBROKEN
+    bool
+    select UNIMP
+
+config LOONGARCH_EXTIOI
     bool

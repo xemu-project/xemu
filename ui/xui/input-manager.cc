@@ -85,32 +85,4 @@ void InputManager::Update()
     #undef MAP_BUTTON
     #undef MAP_ANALOG
     #undef IM_SATURATE
-
-    io.BackendUsingLegacyNavInputArray = true;
-
-    // Map to nav inputs
-    #define NAV_MAP_KEY(_KEY, _NAV_INPUT, _ACTIVATE_NAV) \
-        do { \
-            io.NavInputs[_NAV_INPUT] = io.KeysData[_KEY - ImGuiKey_KeysData_OFFSET].AnalogValue; \
-            if (_ACTIVATE_NAV && io.NavInputs[_NAV_INPUT] > 0.0f) { \
-                ImGui::GetCurrentContext()->NavInputSource = ImGuiInputSource_Gamepad; \
-            } \
-        } while (0)
-    NAV_MAP_KEY(ImGuiKey_GamepadFaceDown,    ImGuiNavInput_Activate,    true);
-    NAV_MAP_KEY(ImGuiKey_GamepadFaceRight,   ImGuiNavInput_Cancel,      true);
-    //NAV_MAP_KEY(ImGuiKey_Menu,             ImGuiNavInput_Menu,        true);
-    NAV_MAP_KEY(ImGuiKey_GamepadFaceUp,      ImGuiNavInput_Input,       true);
-    NAV_MAP_KEY(ImGuiKey_GamepadDpadLeft,    ImGuiNavInput_DpadLeft,    true);
-    NAV_MAP_KEY(ImGuiKey_GamepadDpadRight,   ImGuiNavInput_DpadRight,   true);
-    NAV_MAP_KEY(ImGuiKey_GamepadDpadUp,      ImGuiNavInput_DpadUp,      true);
-    NAV_MAP_KEY(ImGuiKey_GamepadDpadDown,    ImGuiNavInput_DpadDown,    true);
-    NAV_MAP_KEY(ImGuiKey_GamepadL1,          ImGuiNavInput_FocusPrev,   false);
-    NAV_MAP_KEY(ImGuiKey_GamepadR1,          ImGuiNavInput_FocusNext,   false);
-    NAV_MAP_KEY(ImGuiKey_GamepadL1,          ImGuiNavInput_TweakSlow,   false);
-    NAV_MAP_KEY(ImGuiKey_GamepadR1,          ImGuiNavInput_TweakFast,   false);
-    NAV_MAP_KEY(ImGuiKey_GamepadLStickLeft,  ImGuiNavInput_LStickLeft,  false);
-    NAV_MAP_KEY(ImGuiKey_GamepadLStickRight, ImGuiNavInput_LStickRight, false);
-    NAV_MAP_KEY(ImGuiKey_GamepadLStickUp,    ImGuiNavInput_LStickUp,    false);
-    NAV_MAP_KEY(ImGuiKey_GamepadLStickDown,  ImGuiNavInput_LStickDown,  false);
-    #undef NAV_MAP_KEY
 }

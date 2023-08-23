@@ -8,7 +8,7 @@
  */
 
 #include "qemu/osdep.h"
-#include "libqos/libqtest.h"
+#include "libqtest.h"
 #include "qemu/module.h"
 #include "libqos/qgraph.h"
 #include "libqos/pci.h"
@@ -28,7 +28,7 @@ static void *es1370_get_driver(void *obj, const char *interface)
         return &es1370->dev;
     }
 
-    fprintf(stderr, "%s not present in e1000e\n", interface);
+    fprintf(stderr, "%s not present in es1370\n", interface);
     g_assert_not_reached();
 }
 

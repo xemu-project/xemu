@@ -2450,6 +2450,76 @@ static void test_qemu_strtosz_metric(void)
     g_assert(endptr == str + 7);
 }
 
+static void test_freq_to_str(void)
+{
+    char *str;
+
+    str = freq_to_str(999);
+    g_assert_cmpstr(str, ==, "999 Hz");
+    g_free(str);
+
+    str = freq_to_str(1000);
+    g_assert_cmpstr(str, ==, "1 KHz");
+    g_free(str);
+
+    str = freq_to_str(1010);
+    g_assert_cmpstr(str, ==, "1.01 KHz");
+    g_free(str);
+}
+
+static void test_size_to_str(void)
+{
+    char *str;
+
+    str = size_to_str(0);
+    g_assert_cmpstr(str, ==, "0 B");
+    g_free(str);
+
+    str = size_to_str(1);
+    g_assert_cmpstr(str, ==, "1 B");
+    g_free(str);
+
+    str = size_to_str(1016);
+    g_assert_cmpstr(str, ==, "0.992 KiB");
+    g_free(str);
+
+    str = size_to_str(1024);
+    g_assert_cmpstr(str, ==, "1 KiB");
+    g_free(str);
+
+    str = size_to_str(512ull << 20);
+    g_assert_cmpstr(str, ==, "512 MiB");
+    g_free(str);
+}
+
+static void test_iec_binary_prefix(void)
+{
+    g_assert_cmpstr(iec_binary_prefix(0), ==, "");
+    g_assert_cmpstr(iec_binary_prefix(10), ==, "Ki");
+    g_assert_cmpstr(iec_binary_prefix(20), ==, "Mi");
+    g_assert_cmpstr(iec_binary_prefix(30), ==, "Gi");
+    g_assert_cmpstr(iec_binary_prefix(40), ==, "Ti");
+    g_assert_cmpstr(iec_binary_prefix(50), ==, "Pi");
+    g_assert_cmpstr(iec_binary_prefix(60), ==, "Ei");
+}
+
+static void test_si_prefix(void)
+{
+    g_assert_cmpstr(si_prefix(-18), ==, "a");
+    g_assert_cmpstr(si_prefix(-15), ==, "f");
+    g_assert_cmpstr(si_prefix(-12), ==, "p");
+    g_assert_cmpstr(si_prefix(-9), ==, "n");
+    g_assert_cmpstr(si_prefix(-6), ==, "u");
+    g_assert_cmpstr(si_prefix(-3), ==, "m");
+    g_assert_cmpstr(si_prefix(0), ==, "");
+    g_assert_cmpstr(si_prefix(3), ==, "K");
+    g_assert_cmpstr(si_prefix(6), ==, "M");
+    g_assert_cmpstr(si_prefix(9), ==, "G");
+    g_assert_cmpstr(si_prefix(12), ==, "T");
+    g_assert_cmpstr(si_prefix(15), ==, "P");
+    g_assert_cmpstr(si_prefix(18), ==, "E");
+}
+
 int main(int argc, char **argv)
 {
     g_test_init(&argc, &argv, NULL);
@@ -2729,5 +2799,13 @@ int main(int argc, char **argv)
     g_test_add_func("/cutils/strtosz/metric",
                     test_qemu_strtosz_metric);
 
+    g_test_add_func("/cutils/size_to_str",
+                    test_size_to_str);
+    g_test_add_func("/cutils/freq_to_str",
+                    test_freq_to_str);
+    g_test_add_func("/cutils/iec_binary_prefix",
+                    test_iec_binary_prefix);
+    g_test_add_func("/cutils/si_prefix",
+                    test_si_prefix);
     return g_test_run();
 }

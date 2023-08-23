@@ -34,6 +34,18 @@
 #include "exec/poison.h"
 #endif
 
+/*
+ * HOST_WORDS_BIGENDIAN was replaced with HOST_BIG_ENDIAN. Prevent it from
+ * creeping back in.
+ */
+#pragma GCC poison HOST_WORDS_BIGENDIAN
+
+/*
+ * TARGET_WORDS_BIGENDIAN was replaced with TARGET_BIG_ENDIAN. Prevent it from
+ * creeping back in.
+ */
+#pragma GCC poison TARGET_WORDS_BIGENDIAN
+
 #include "qemu/compiler.h"
 
 /* Older versions of C++ don't get definitions of various macros from
@@ -63,7 +75,7 @@ QEMU_EXTERN_C int daemon(int, int);
 #ifdef _WIN32
 /* as defined in sdkddkver.h */
 #ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0600 /* Vista */
+#define _WIN32_WINNT 0x0601 /* Windows 7 API (should be in sync with glib) */
 #endif
 /* reduces the number of implicitly included headers */
 #ifndef WIN32_LEAN_AND_MEAN
@@ -157,6 +169,31 @@ extern "C" {
 #define assert(x)  g_assert(x)
 #endif
 
+/**
+ * qemu_build_not_reached()
+ *
+ * The compiler, during optimization, is expected to prove that a call
+ * to this function cannot be reached and remove it.  If the compiler
+ * supports QEMU_ERROR, this will be reported at compile time; otherwise
+ * this will be reported at link time due to the missing symbol.
+ */
+G_NORETURN extern
+void QEMU_ERROR("code path is reachable")
+    qemu_build_not_reached_always(void);
+#if defined(__OPTIMIZE__) && !defined(__NO_INLINE__) && !defined(XEMU_DEBUG_BUILD)
+#define qemu_build_not_reached()  qemu_build_not_reached_always()
+#else
+#define qemu_build_not_reached()  g_assert_not_reached()
+#endif
+
+/**
+ * qemu_build_assert()
+ *
+ * The compiler, during optimization, is expected to prove that the
+ * assertion is true.
+ */
+#define qemu_build_assert(test)  while (!(test)) qemu_build_not_reached()
+
 /*
  * According to waitpid man page:
  * WCOREDUMP
@@ -214,6 +251,8 @@ extern "C" {
 #define ESHUTDOWN 4099
 #endif
 
+#define TFR(expr) do { if ((expr) != -1) break; } while (errno == EINTR)
+
 /* time_t may be either 32 or 64 bits depending on the host OS, and
  * can be either signed or unsigned, so we can't just hardcode a
  * specific maximum value. This is not a C preprocessor constant,
@@ -242,15 +281,6 @@ extern "C" {
 
 #ifndef TIME_MAX
 #define TIME_MAX TYPE_MAXIMUM(time_t)
-#endif
-
-/* HOST_LONG_BITS is the size of a native pointer in bits. */
-#if UINTPTR_MAX == UINT32_MAX
-# define HOST_LONG_BITS 32
-#elif UINTPTR_MAX == UINT64_MAX
-# define HOST_LONG_BITS 64
-#else
-# error Unknown pointer size
 #endif
 
 /* Mac OSX has a <stdint.h> bug that incorrectly defines SIZE_MAX with
@@ -379,126 +409,9 @@ extern "C" {
 #endif
 
 int qemu_daemon(int nochdir, int noclose);
-void *qemu_try_memalign(size_t alignment, size_t size);
-void *qemu_memalign(size_t alignment, size_t size);
 void *qemu_anon_ram_alloc(size_t size, uint64_t *align, bool shared,
                           bool noreserve);
-void qemu_vfree(void *ptr);
 void qemu_anon_ram_free(void *ptr, size_t size);
-
-/*
- * It's an analog of GLIB's g_autoptr_cleanup_generic_gfree(), used to define
- * g_autofree macro.
- */
-static inline void qemu_cleanup_generic_vfree(void *p)
-{
-  void **pp = (void **)p;
-  qemu_vfree(*pp);
-}
-
-/*
- * Analog of g_autofree, but qemu_vfree is called on cleanup instead of g_free.
- */
-#define QEMU_AUTO_VFREE __attribute__((cleanup(qemu_cleanup_generic_vfree)))
-
-/*
- * Abstraction of PROT_ and MAP_ flags as passed to mmap(), for example,
- * consumed by qemu_ram_mmap().
- */
-
-/* Map PROT_READ instead of PROT_READ | PROT_WRITE. */
-#define QEMU_MAP_READONLY   (1 << 0)
-
-/* Use MAP_SHARED instead of MAP_PRIVATE. */
-#define QEMU_MAP_SHARED     (1 << 1)
-
-/*
- * Use MAP_SYNC | MAP_SHARED_VALIDATE if supported. Ignored without
- * QEMU_MAP_SHARED. If mapping fails, warn and fallback to !QEMU_MAP_SYNC.
- */
-#define QEMU_MAP_SYNC       (1 << 2)
-
-/*
- * Use MAP_NORESERVE to skip reservation of swap space (or huge pages if
- * applicable). Bail out if not supported/effective.
- */
-#define QEMU_MAP_NORESERVE  (1 << 3)
-
-
-#define QEMU_MADV_INVALID -1
-
-#if defined(CONFIG_MADVISE)
-
-#define QEMU_MADV_WILLNEED  MADV_WILLNEED
-#define QEMU_MADV_DONTNEED  MADV_DONTNEED
-#ifdef MADV_DONTFORK
-#define QEMU_MADV_DONTFORK  MADV_DONTFORK
-#else
-#define QEMU_MADV_DONTFORK  QEMU_MADV_INVALID
-#endif
-#ifdef MADV_MERGEABLE
-#define QEMU_MADV_MERGEABLE MADV_MERGEABLE
-#else
-#define QEMU_MADV_MERGEABLE QEMU_MADV_INVALID
-#endif
-#ifdef MADV_UNMERGEABLE
-#define QEMU_MADV_UNMERGEABLE MADV_UNMERGEABLE
-#else
-#define QEMU_MADV_UNMERGEABLE QEMU_MADV_INVALID
-#endif
-#ifdef MADV_DODUMP
-#define QEMU_MADV_DODUMP MADV_DODUMP
-#else
-#define QEMU_MADV_DODUMP QEMU_MADV_INVALID
-#endif
-#ifdef MADV_DONTDUMP
-#define QEMU_MADV_DONTDUMP MADV_DONTDUMP
-#else
-#define QEMU_MADV_DONTDUMP QEMU_MADV_INVALID
-#endif
-#ifdef MADV_HUGEPAGE
-#define QEMU_MADV_HUGEPAGE MADV_HUGEPAGE
-#else
-#define QEMU_MADV_HUGEPAGE QEMU_MADV_INVALID
-#endif
-#ifdef MADV_NOHUGEPAGE
-#define QEMU_MADV_NOHUGEPAGE MADV_NOHUGEPAGE
-#else
-#define QEMU_MADV_NOHUGEPAGE QEMU_MADV_INVALID
-#endif
-#ifdef MADV_REMOVE
-#define QEMU_MADV_REMOVE MADV_REMOVE
-#else
-#define QEMU_MADV_REMOVE QEMU_MADV_DONTNEED
-#endif
-
-#elif defined(CONFIG_POSIX_MADVISE)
-
-#define QEMU_MADV_WILLNEED  POSIX_MADV_WILLNEED
-#define QEMU_MADV_DONTNEED  POSIX_MADV_DONTNEED
-#define QEMU_MADV_DONTFORK  QEMU_MADV_INVALID
-#define QEMU_MADV_MERGEABLE QEMU_MADV_INVALID
-#define QEMU_MADV_UNMERGEABLE QEMU_MADV_INVALID
-#define QEMU_MADV_DODUMP QEMU_MADV_INVALID
-#define QEMU_MADV_DONTDUMP QEMU_MADV_INVALID
-#define QEMU_MADV_HUGEPAGE  QEMU_MADV_INVALID
-#define QEMU_MADV_NOHUGEPAGE  QEMU_MADV_INVALID
-#define QEMU_MADV_REMOVE QEMU_MADV_DONTNEED
-
-#else /* no-op */
-
-#define QEMU_MADV_WILLNEED  QEMU_MADV_INVALID
-#define QEMU_MADV_DONTNEED  QEMU_MADV_INVALID
-#define QEMU_MADV_DONTFORK  QEMU_MADV_INVALID
-#define QEMU_MADV_MERGEABLE QEMU_MADV_INVALID
-#define QEMU_MADV_UNMERGEABLE QEMU_MADV_INVALID
-#define QEMU_MADV_DODUMP QEMU_MADV_INVALID
-#define QEMU_MADV_DONTDUMP QEMU_MADV_INVALID
-#define QEMU_MADV_HUGEPAGE  QEMU_MADV_INVALID
-#define QEMU_MADV_NOHUGEPAGE  QEMU_MADV_INVALID
-#define QEMU_MADV_REMOVE QEMU_MADV_INVALID
-
-#endif
 
 #ifdef _WIN32
 #define HAVE_CHARDEV_SERIAL 1
@@ -515,6 +428,14 @@ static inline void qemu_cleanup_generic_vfree(void *p)
 
 #if defined(__HAIKU__)
 #define SIGIO SIGPOLL
+#endif
+
+#ifdef HAVE_MADVISE_WITHOUT_PROTOTYPE
+/*
+ * See MySQL bug #7156 (http://bugs.mysql.com/bug.php?id=7156) for discussion
+ * about Solaris missing the madvise() prototype.
+ */
+extern int madvise(char *, size_t, int);
 #endif
 
 #if defined(CONFIG_LINUX)
@@ -537,9 +458,9 @@ static inline void qemu_cleanup_generic_vfree(void *p)
    /* Use 1 MiB (segment size) alignment so gmap can be used by KVM. */
 #  define QEMU_VMALLOC_ALIGN (256 * 4096)
 #elif defined(__linux__) && defined(__sparc__)
-#  define QEMU_VMALLOC_ALIGN MAX(qemu_real_host_page_size, SHMLBA)
+#  define QEMU_VMALLOC_ALIGN MAX(qemu_real_host_page_size(), SHMLBA)
 #else
-#  define QEMU_VMALLOC_ALIGN qemu_real_host_page_size
+#  define QEMU_VMALLOC_ALIGN qemu_real_host_page_size()
 #endif
 
 #ifdef CONFIG_POSIX
@@ -569,11 +490,6 @@ int qemu_signalfd(const sigset_t *mask);
 void sigaction_invoke(struct sigaction *action,
                       struct qemu_signalfd_siginfo *info);
 #endif
-
-int qemu_madvise(void *addr, size_t len, int advice);
-int qemu_mprotect_rw(void *addr, size_t size);
-int qemu_mprotect_rwx(void *addr, size_t size);
-int qemu_mprotect_none(void *addr, size_t size);
 
 /*
  * Don't introduce new usage of this function, prefer the following
@@ -654,45 +570,18 @@ static inline void qemu_timersub(const struct timeval *val1,
 #define qemu_timersub timersub
 #endif
 
+ssize_t qemu_write_full(int fd, const void *buf, size_t count)
+    G_GNUC_WARN_UNUSED_RESULT;
+
 void qemu_set_cloexec(int fd);
 
-/* Starting on QEMU 2.5, qemu_hw_version() returns "2.5+" by default
- * instead of QEMU_VERSION, so setting hw_version on MachineClass
- * is no longer mandatory.
- *
- * Do NOT change this string, or it will break compatibility on all
- * machine classes that don't set hw_version.
- */
-#define QEMU_HW_VERSION "2.5+"
-
-/* QEMU "hardware version" setting. Used to replace code that exposed
- * QEMU_VERSION to guests in the past and need to keep compatibility.
- * Do not use qemu_hw_version() in new code.
- */
-void qemu_set_hw_version(const char *);
-const char *qemu_hw_version(void);
-
-void fips_set_state(bool requested);
-bool fips_get_state(void);
-
-/* Return a dynamically allocated pathname denoting a file or directory that is
- * appropriate for storing local state.
- *
- * @relative_pathname need not start with a directory separator; one will be
- * added automatically.
+/* Return a dynamically allocated directory path that is appropriate for storing
+ * local state.
  *
  * The caller is responsible for releasing the value returned with g_free()
  * after use.
  */
-char *qemu_get_local_state_pathname(const char *relative_pathname);
-
-/* Find program directory, and save it for later usage with
- * qemu_get_exec_dir().
- * Try OS specific API first, if not working, parse from argv0. */
-void qemu_init_exec_dir(const char *argv0);
-
-/* Get the saved exec dir.  */
-const char *qemu_get_exec_dir(void);
+char *qemu_get_local_state_dir(void);
 
 /**
  * qemu_getauxval:
@@ -705,8 +594,23 @@ unsigned long qemu_getauxval(unsigned long type);
 
 void qemu_set_tty_echo(int fd, bool echo);
 
-void os_mem_prealloc(int fd, char *area, size_t sz, int smp_cpus,
-                     Error **errp);
+typedef struct ThreadContext ThreadContext;
+
+/**
+ * qemu_prealloc_mem:
+ * @fd: the fd mapped into the area, -1 for anonymous memory
+ * @area: start address of the are to preallocate
+ * @sz: the size of the area to preallocate
+ * @max_threads: maximum number of threads to use
+ * @errp: returns an error if this function fails
+ *
+ * Preallocate memory (populate/prefault page tables writable) for the virtual
+ * memory area starting at @area with the size of @sz. After a successful call,
+ * each page in the area was faulted in writable at least once, for example,
+ * after allocating file blocks for mapped files.
+ */
+void qemu_prealloc_mem(int fd, char *area, size_t sz, int max_threads,
+                       ThreadContext *tc, Error **errp);
 
 /**
  * qemu_get_pid_name:
@@ -735,13 +639,15 @@ pid_t qemu_fork(Error **errp);
 /* Using intptr_t ensures that qemu_*_page_mask is sign-extended even
  * when intptr_t is 32-bit and we are aligning a long long.
  */
-extern uintptr_t qemu_real_host_page_size;
-extern intptr_t qemu_real_host_page_mask;
+static inline uintptr_t qemu_real_host_page_size(void)
+{
+    return getpagesize();
+}
 
-extern int qemu_icache_linesize;
-extern int qemu_icache_linesize_log;
-extern int qemu_dcache_linesize;
-extern int qemu_dcache_linesize_log;
+static inline intptr_t qemu_real_host_page_mask(void)
+{
+    return -(intptr_t)qemu_real_host_page_size();
+}
 
 /*
  * After using getopt or getopt_long, if you need to parse another set
@@ -758,15 +664,20 @@ static inline void qemu_reset_optind(void)
 #endif
 }
 
+int qemu_fdatasync(int fd);
+
 /**
- * qemu_get_host_name:
- * @errp: Error object
+ * Sync changes made to the memory mapped file back to the backing
+ * storage. For POSIX compliant systems this will fallback
+ * to regular msync call. Otherwise it will trigger whole file sync
+ * (including the metadata case there is no support to skip that otherwise)
  *
- * Operating system agnostic way of querying host name.
- *
- * Returns allocated hostname (caller should free), NULL on failure.
+ * @addr   - start of the memory area to be synced
+ * @length - length of the are to be synced
+ * @fd     - file descriptor for the file to be synced
+ *           (mandatory only for POSIX non-compliant systems)
  */
-char *qemu_get_host_name(Error **errp);
+int qemu_msync(void *addr, size_t length, int fd);
 
 /**
  * qemu_get_host_physmem:
@@ -785,19 +696,15 @@ size_t qemu_get_host_physmem(void);
  * for the current thread.
  */
 #if defined(MAC_OS_VERSION_11_0) && \
-    MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_VERSION_11_0
+    MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_VERSION_11_0
 static inline void qemu_thread_jit_execute(void)
 {
-    if (__builtin_available(macOS 11.0, *)) {
-        pthread_jit_write_protect_np(true);
-    }
+    pthread_jit_write_protect_np(true);
 }
 
 static inline void qemu_thread_jit_write(void)
 {
-    if (__builtin_available(macOS 11.0, *)) {
-        pthread_jit_write_protect_np(false);
-    }
+    pthread_jit_write_protect_np(false);
 }
 #else
 static inline void qemu_thread_jit_write(void) {}

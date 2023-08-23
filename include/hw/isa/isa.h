@@ -16,20 +16,6 @@ OBJECT_DECLARE_TYPE(ISADevice, ISADeviceClass, ISA_DEVICE)
 #define TYPE_ISA_BUS "ISA"
 OBJECT_DECLARE_SIMPLE_TYPE(ISABus, ISA_BUS)
 
-#define TYPE_APPLE_SMC "isa-applesmc"
-#define APPLESMC_MAX_DATA_LENGTH       32
-#define APPLESMC_PROP_IO_BASE "iobase"
-
-static inline uint16_t applesmc_port(void)
-{
-    Object *obj = object_resolve_path_type("", TYPE_APPLE_SMC, NULL);
-
-    if (obj) {
-        return object_property_get_uint(obj, APPLESMC_PROP_IO_BASE, NULL);
-    }
-    return 0;
-}
-
 #define TYPE_ISADMA "isa-dma"
 
 typedef struct IsaDmaClass IsaDmaClass;
@@ -64,7 +50,6 @@ struct IsaDmaClass {
 
 struct ISADeviceClass {
     DeviceClass parent_class;
-    void (*build_aml)(ISADevice *dev, Aml *scope);
 };
 
 struct ISABus {
@@ -83,8 +68,6 @@ struct ISADevice {
     DeviceState parent_obj;
     /*< public >*/
 
-    int8_t isairq[2];      /* -1 = unassigned */
-    int nirqs;
     int ioport_id;
 };
 
@@ -92,7 +75,6 @@ ISABus *isa_bus_new(DeviceState *dev, MemoryRegion *address_space,
                     MemoryRegion *address_space_io, Error **errp);
 void isa_bus_irqs(ISABus *bus, qemu_irq *irqs);
 qemu_irq isa_get_irq(ISADevice *dev, unsigned isairq);
-void isa_init_irq(ISADevice *dev, qemu_irq *p, unsigned isairq);
 void isa_connect_gpio_out(ISADevice *isadev, int gpioirq, unsigned isairq);
 void isa_bus_dma(ISABus *bus, IsaDma *dma8, IsaDma *dma16);
 IsaDma *isa_get_dma(ISABus *bus, int nchan);
@@ -152,7 +134,5 @@ static inline ISABus *isa_bus_from_device(ISADevice *d)
 {
     return ISA_BUS(qdev_get_parent_bus(DEVICE(d)));
 }
-
-#define TYPE_PIIX4_PCI_DEVICE "piix4-isa"
 
 #endif

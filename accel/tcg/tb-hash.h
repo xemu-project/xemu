@@ -24,6 +24,7 @@
 #include "exec/exec-all.h"
 #include "qemu/xxhash.h"
 #include "qemu/fast-hash.h"
+#include "tb-jmp-cache.h"
 
 #ifdef CONFIG_SOFTMMU
 

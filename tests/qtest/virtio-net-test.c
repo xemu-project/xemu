@@ -8,7 +8,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "libqtest-single.h"
 #include "qemu/iov.h"
 #include "qemu/module.h"
@@ -87,11 +86,11 @@ static void tx_test(QVirtioDevice *dev,
                            QVIRTIO_NET_TIMEOUT_US);
     guest_free(alloc, req_addr);
 
-    ret = qemu_recv(socket, &len, sizeof(len), 0);
+    ret = recv(socket, &len, sizeof(len), 0);
     g_assert_cmpint(ret, ==, sizeof(len));
     len = ntohl(len);
 
-    ret = qemu_recv(socket, buffer, len, 0);
+    ret = recv(socket, buffer, len, 0);
     g_assert_cmpstr(buffer, ==, "TEST");
 }
 
@@ -166,13 +165,16 @@ static void stop_cont_test(void *obj, void *data, QGuestAllocator *t_alloc)
     rx_stop_cont_test(dev, t_alloc, rx, sv[0]);
 }
 
-#endif
-
 static void hotplug(void *obj, void *data, QGuestAllocator *t_alloc)
 {
     QVirtioPCIDevice *dev = obj;
     QTestState *qts = dev->pdev->bus->qts;
     const char *arch = qtest_get_arch();
+
+    if (dev->pdev->bus->not_hotpluggable) {
+        g_test_skip("pci bus does not support hotplug");
+        return;
+    }
 
     qtest_qmp_device_add(qts, "virtio-net-pci", "net1",
                          "{'addr': %s}", stringify(PCI_SLOT_HP));
@@ -202,11 +204,11 @@ static void announce_self(void *obj, void *data, QGuestAllocator *t_alloc)
     qobject_unref(rsp);
 
     /* Catch the first packet and make sure it's a RARP */
-    ret = qemu_recv(sv[0], &len, sizeof(len), 0);
+    ret = recv(sv[0], &len, sizeof(len), 0);
     g_assert_cmpint(ret, ==,  sizeof(len));
     len = ntohl(len);
 
-    ret = qemu_recv(sv[0], buffer, len, 0);
+    ret = recv(sv[0], buffer, len, 0);
     g_assert_cmpint(*proto, ==, htons(ETH_P_RARP));
 
     /*
@@ -230,7 +232,7 @@ static void announce_self(void *obj, void *data, QGuestAllocator *t_alloc)
 
     while (true) {
         int saved_err;
-        ret = qemu_recv(sv[0], buffer, 60, MSG_DONTWAIT);
+        ret = recv(sv[0], buffer, 60, MSG_DONTWAIT);
         saved_err = errno;
         now = g_get_monotonic_time();
         g_assert_cmpint(now, <, deadline);
@@ -282,6 +284,8 @@ static void *virtio_net_test_setup(GString *cmd_line, void *arg)
     return sv;
 }
 
+#endif /* _WIN32 */
+
 static void large_tx(void *obj, void *data, QGuestAllocator *t_alloc)
 {
     QVirtioNet *dev = obj;
@@ -315,16 +319,15 @@ static void *virtio_net_test_setup_nosocket(GString *cmd_line, void *arg)
 
 static void register_virtio_net_test(void)
 {
-    QOSGraphTestOptions opts = {
-        .before = virtio_net_test_setup,
-    };
+    QOSGraphTestOptions opts = { 0 };
 
-    qos_add_test("hotplug", "virtio-pci", hotplug, &opts);
 #ifndef _WIN32
+    opts.before = virtio_net_test_setup;
+    qos_add_test("hotplug", "virtio-net-pci", hotplug, &opts);
     qos_add_test("basic", "virtio-net", send_recv_test, &opts);
     qos_add_test("rx_stop_cont", "virtio-net", stop_cont_test, &opts);
-#endif
     qos_add_test("announce-self", "virtio-net", announce_self, &opts);
+#endif
 
     /* These tests do not need a loopback backend.  */
     opts.before = virtio_net_test_setup_nosocket;

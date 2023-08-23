@@ -31,9 +31,6 @@
 [submodule "ui/keycodemapdb"]
 	path = ui/keycodemapdb
 	url = https://gitlab.com/qemu-project/keycodemapdb.git
-[submodule "capstone"]
-	path = capstone
-	url = https://gitlab.com/qemu-project/capstone.git
 [submodule "roms/seabios-hppa"]
 	path = roms/seabios-hppa
 	url = https://gitlab.com/qemu-project/seabios-hppa.git
@@ -49,9 +46,6 @@
 [submodule "roms/edk2"]
 	path = roms/edk2
 	url = https://gitlab.com/qemu-project/edk2.git
-[submodule "slirp"]
-	path = slirp
-	url = https://gitlab.com/qemu-project/libslirp.git
 [submodule "roms/opensbi"]
 	path = roms/opensbi
 	url = 	https://gitlab.com/qemu-project/opensbi.git
@@ -64,9 +58,15 @@
 [submodule "roms/vbootrom"]
 	path = roms/vbootrom
 	url = https://gitlab.com/qemu-project/vbootrom.git
+[submodule "tests/lcitool/libvirt-ci"]
+	path = tests/lcitool/libvirt-ci
+	url = https://gitlab.com/libvirt/libvirt-ci.git
+[submodule "subprojects/libvfio-user"]
+	path = subprojects/libvfio-user
+	url = https://gitlab.com/qemu-project/libvfio-user.git
 [submodule "ui/thirdparty/imgui"]
 	path = ui/thirdparty/imgui
-	url = https://github.com/ocornut/imgui.git
+	url = https://github.com/xemu-project/imgui.git
 	ignore = untracked
 [submodule "ui/thirdparty/implot"]
 	path = ui/thirdparty/implot
@@ -85,3 +85,6 @@
 [submodule "hw/xbox/nv2a/thirdparty/nv2a_vsh_cpu"]
 	path = hw/xbox/nv2a/thirdparty/nv2a_vsh_cpu
 	url = https://github.com/abaire/nv2a_vsh_cpu.git
+[submodule "ui/thirdparty/httplib"]
+	path = ui/thirdparty/httplib
+	url = https://github.com/yhirose/cpp-httplib

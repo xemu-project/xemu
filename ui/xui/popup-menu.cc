@@ -459,9 +459,9 @@ void PopupMenuScene::PopFocus()
     m_focus_stack.pop_back();
     ImGuiContext *g = ImGui::GetCurrentContext();
     g->NavInitRequest = false;
-    g->NavInitResultId = next_focus.first;
-    g->NavInitResultRectRel = ImGui::WindowRectAbsToRel(g->CurrentWindow,
-                                                 next_focus.second);
+    g->NavInitResult.ID = next_focus.first;
+    g->NavInitResult.RectRel = ImGui::WindowRectAbsToRel(g->CurrentWindow,
+                                                         next_focus.second);
     // ImGui::NavUpdateAnyRequestFlag();
     g->NavAnyRequest = g->NavMoveScoringItems || g->NavInitRequest;// || (IMGUI_DEBUG_NAV_SCORING && g->NavWindow != NULL);
 }
@@ -480,7 +480,8 @@ void PopupMenuScene::ClearMenuStack()
 
 void PopupMenuScene::HandleInput()
 {
-    if (IsNavInputPressed(ImGuiNavInput_Cancel)) {
+    if (ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false)
+        || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         PopMenu();
     }
 }

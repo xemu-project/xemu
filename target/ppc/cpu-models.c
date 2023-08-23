@@ -67,40 +67,6 @@
     POWERPC_DEF_SVR(_name, _desc, _pvr, POWERPC_SVR_NONE, _type)
 
     /* Embedded PowerPC                                                      */
-    /* PowerPC 401 family                                                    */
-    POWERPC_DEF("401",           CPU_POWERPC_401,                    401,
-                "Generic PowerPC 401")
-    /* PowerPC 401 cores                                                     */
-    POWERPC_DEF("401a1",         CPU_POWERPC_401A1,                  401,
-                "PowerPC 401A1")
-    POWERPC_DEF("401b2",         CPU_POWERPC_401B2,                  401x2,
-                "PowerPC 401B2")
-    POWERPC_DEF("401c2",         CPU_POWERPC_401C2,                  401x2,
-                "PowerPC 401C2")
-    POWERPC_DEF("401d2",         CPU_POWERPC_401D2,                  401x2,
-                "PowerPC 401D2")
-    POWERPC_DEF("401e2",         CPU_POWERPC_401E2,                  401x2,
-                "PowerPC 401E2")
-    POWERPC_DEF("401f2",         CPU_POWERPC_401F2,                  401x2,
-                "PowerPC 401F2")
-    /* XXX: to be checked */
-    POWERPC_DEF("401g2",         CPU_POWERPC_401G2,                  401x2,
-                "PowerPC 401G2")
-    /* PowerPC 401 microcontrollers                                          */
-    POWERPC_DEF("iop480",        CPU_POWERPC_IOP480,                 IOP480,
-                "IOP480 (401 microcontroller)")
-    POWERPC_DEF("cobra",         CPU_POWERPC_COBRA,                  401,
-                "IBM Processor for Network Resources")
-    /* PowerPC 403 family                                                    */
-    /* PowerPC 403 microcontrollers                                          */
-    POWERPC_DEF("403ga",         CPU_POWERPC_403GA,                  403,
-                "PowerPC 403 GA")
-    POWERPC_DEF("403gb",         CPU_POWERPC_403GB,                  403,
-                "PowerPC 403 GB")
-    POWERPC_DEF("403gc",         CPU_POWERPC_403GC,                  403,
-                "PowerPC 403 GC")
-    POWERPC_DEF("403gcx",        CPU_POWERPC_403GCX,                 403GCX,
-                "PowerPC 403 GCX")
     /* PowerPC 405 family                                                    */
     /* PowerPC 405 cores                                                     */
     POWERPC_DEF("405d2",         CPU_POWERPC_405D2,                  405,
@@ -419,19 +385,19 @@
     POWERPC_DEF_SVR("mpc8548e_v21", "MPC8548E v2.1",
                     CPU_POWERPC_MPC8548E_v21, POWERPC_SVR_8548E_v21, e500v2)
     POWERPC_DEF_SVR("mpc8555_v10", "MPC8555 v1.0",
-                    CPU_POWERPC_MPC8555_v10,  POWERPC_SVR_8555_v10,  e500v2)
+                    CPU_POWERPC_MPC8555_v10,  POWERPC_SVR_8555_v10,  e500v1)
     POWERPC_DEF_SVR("mpc8555_v11", "MPC8555 v1.1",
-                    CPU_POWERPC_MPC8555_v11,  POWERPC_SVR_8555_v11,  e500v2)
+                    CPU_POWERPC_MPC8555_v11,  POWERPC_SVR_8555_v11,  e500v1)
     POWERPC_DEF_SVR("mpc8555e_v10", "MPC8555E v1.0",
-                    CPU_POWERPC_MPC8555E_v10, POWERPC_SVR_8555E_v10, e500v2)
+                    CPU_POWERPC_MPC8555E_v10, POWERPC_SVR_8555E_v10, e500v1)
     POWERPC_DEF_SVR("mpc8555e_v11", "MPC8555E v1.1",
-                    CPU_POWERPC_MPC8555E_v11, POWERPC_SVR_8555E_v11, e500v2)
+                    CPU_POWERPC_MPC8555E_v11, POWERPC_SVR_8555E_v11, e500v1)
     POWERPC_DEF_SVR("mpc8560_v10", "MPC8560 v1.0",
-                    CPU_POWERPC_MPC8560_v10,  POWERPC_SVR_8560_v10,  e500v2)
+                    CPU_POWERPC_MPC8560_v10,  POWERPC_SVR_8560_v10,  e500v1)
     POWERPC_DEF_SVR("mpc8560_v20", "MPC8560 v2.0",
-                    CPU_POWERPC_MPC8560_v20,  POWERPC_SVR_8560_v20,  e500v2)
+                    CPU_POWERPC_MPC8560_v20,  POWERPC_SVR_8560_v20,  e500v1)
     POWERPC_DEF_SVR("mpc8560_v21", "MPC8560 v2.1",
-                    CPU_POWERPC_MPC8560_v21,  POWERPC_SVR_8560_v21,  e500v2)
+                    CPU_POWERPC_MPC8560_v21,  POWERPC_SVR_8560_v21,  e500v1)
     POWERPC_DEF_SVR("mpc8567", "MPC8567",
                     CPU_POWERPC_MPC8567,      POWERPC_SVR_8567,      e500v2)
     POWERPC_DEF_SVR("mpc8567e", "MPC8567E",
@@ -456,14 +422,6 @@
                     CPU_POWERPC_MPC8641D,     POWERPC_SVR_8641D,     e600)
     /* 32 bits "classic" PowerPC                                             */
     /* PowerPC 6xx family                                                    */
-    POWERPC_DEF("601_v0",        CPU_POWERPC_601_v0,                 601,
-                "PowerPC 601v0")
-    POWERPC_DEF("601_v1",        CPU_POWERPC_601_v1,                 601,
-                "PowerPC 601v1")
-    POWERPC_DEF("601_v2",        CPU_POWERPC_601_v2,                 601v,
-                "PowerPC 601v2")
-    POWERPC_DEF("602",           CPU_POWERPC_602,                    602,
-                "PowerPC 602")
     POWERPC_DEF("603",           CPU_POWERPC_603,                    603,
                 "PowerPC 603")
     POWERPC_DEF("603e_v1.1",     CPU_POWERPC_603E_v11,               603E,
@@ -670,13 +628,13 @@
                 "PowerPC 7410 v1.3 (G4)")
     POWERPC_DEF("7410_v1.4",     CPU_POWERPC_7410_v14,               7410,
                 "PowerPC 7410 v1.4 (G4)")
-    POWERPC_DEF("7448_v1.0",     CPU_POWERPC_7448_v10,               7400,
+    POWERPC_DEF("7448_v1.0",     CPU_POWERPC_7448_v10,               7445,
                 "PowerPC 7448 v1.0 (G4)")
-    POWERPC_DEF("7448_v1.1",     CPU_POWERPC_7448_v11,               7400,
+    POWERPC_DEF("7448_v1.1",     CPU_POWERPC_7448_v11,               7445,
                 "PowerPC 7448 v1.1 (G4)")
-    POWERPC_DEF("7448_v2.0",     CPU_POWERPC_7448_v20,               7400,
+    POWERPC_DEF("7448_v2.0",     CPU_POWERPC_7448_v20,               7445,
                 "PowerPC 7448 v2.0 (G4)")
-    POWERPC_DEF("7448_v2.1",     CPU_POWERPC_7448_v21,               7400,
+    POWERPC_DEF("7448_v2.1",     CPU_POWERPC_7448_v21,               7445,
                 "PowerPC 7448 v2.1 (G4)")
     POWERPC_DEF("7450_v1.0",     CPU_POWERPC_7450_v10,               7450,
                 "PowerPC 7450 v1.0 (G4)")
@@ -776,13 +734,14 @@
                 "POWER9 v2.0")
     POWERPC_DEF("power10_v1.0",  CPU_POWERPC_POWER10_DD1,            POWER10,
                 "POWER10 v1.0")
+    POWERPC_DEF("power10_v2.0",  CPU_POWERPC_POWER10_DD20,           POWER10,
+                "POWER10 v2.0")
 #endif /* defined (TARGET_PPC64) */
 
 /***************************************************************************/
 /* PowerPC CPU aliases                                                     */
 
 PowerPCCPUAlias ppc_cpu_aliases[] = {
-    { "403", "403gc" },
     { "405", "405d4" },
     { "405cr", "405crc" },
     { "405gp", "405gpd" },
@@ -894,8 +853,6 @@ PowerPCCPUAlias ppc_cpu_aliases[] = {
     { "mpc8555", "mpc8555_v11" },
     { "mpc8555e", "mpc8555e_v11" },
     { "mpc8560", "mpc8560_v21" },
-    { "601",  "601_v2" },
-    { "601v", "601_v2" },
     { "vanilla", "603" },
     { "603e", "603e_v4.1" },
     { "stretch", "603e_v4.1" },
@@ -922,7 +879,6 @@ PowerPCCPUAlias ppc_cpu_aliases[] = {
     { "755", "755_v2.8" },
     { "goldfinger", "755_v2.8" },
     { "7400", "7400_v2.9" },
-    { "max", "7400_v2.9" },
     { "g4",  "7400_v2.9" },
     { "7410", "7410_v1.4" },
     { "nitro", "7410_v1.4" },
@@ -952,7 +908,7 @@ PowerPCCPUAlias ppc_cpu_aliases[] = {
     { "power8", "power8_v2.0" },
     { "power8nvl", "power8nvl_v1.0" },
     { "power9", "power9_v2.0" },
-    { "power10", "power10_v1.0" },
+    { "power10", "power10_v2.0" },
 #endif
 
     /* Generic PowerPCs */
@@ -961,6 +917,6 @@ PowerPCCPUAlias ppc_cpu_aliases[] = {
 #endif
     { "ppc32", "604" },
     { "ppc", "604" },
-    { "default", "604" },
+
     { NULL, NULL }
 };

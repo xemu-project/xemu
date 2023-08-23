@@ -20,13 +20,20 @@
 #define HW_OPENTITAN_H
 
 #include "hw/riscv/riscv_hart.h"
-#include "hw/intc/ibex_plic.h"
+#include "hw/intc/sifive_plic.h"
 #include "hw/char/ibex_uart.h"
 #include "hw/timer/ibex_timer.h"
+#include "hw/ssi/ibex_spi_host.h"
 #include "qom/object.h"
 
 #define TYPE_RISCV_IBEX_SOC "riscv.lowrisc.ibex.soc"
 OBJECT_DECLARE_SIMPLE_TYPE(LowRISCIbexSoCState, RISCV_IBEX_SOC)
+
+enum {
+    OPENTITAN_SPI_HOST0,
+    OPENTITAN_SPI_HOST1,
+    OPENTITAN_NUM_SPI_HOSTS,
+};
 
 struct LowRISCIbexSoCState {
     /*< private >*/
@@ -34,9 +41,12 @@ struct LowRISCIbexSoCState {
 
     /*< public >*/
     RISCVHartArrayState cpus;
-    IbexPlicState plic;
+    SiFivePLICState plic;
     IbexUartState uart;
     IbexTimerState timer;
+    IbexSPIHostState spi_host[OPENTITAN_NUM_SPI_HOSTS];
+
+    uint32_t resetvec;
 
     MemoryRegion flash_mem;
     MemoryRegion rom;
@@ -57,13 +67,16 @@ enum {
     IBEX_DEV_FLASH,
     IBEX_DEV_FLASH_VIRTUAL,
     IBEX_DEV_UART,
+    IBEX_DEV_SPI_DEVICE,
+    IBEX_DEV_SPI_HOST0,
+    IBEX_DEV_SPI_HOST1,
     IBEX_DEV_GPIO,
-    IBEX_DEV_SPI,
     IBEX_DEV_I2C,
     IBEX_DEV_PATTGEN,
     IBEX_DEV_TIMER,
     IBEX_DEV_SENSOR_CTRL,
     IBEX_DEV_OTP_CTRL,
+    IBEX_DEV_LC_CTRL,
     IBEX_DEV_PWRMGR,
     IBEX_DEV_RSTMGR,
     IBEX_DEV_CLKMGR,
@@ -87,15 +100,19 @@ enum {
 };
 
 enum {
-    IBEX_TIMER_TIMEREXPIRED0_0 = 125,
-    IBEX_UART0_RX_PARITY_ERR_IRQ = 8,
-    IBEX_UART0_RX_TIMEOUT_IRQ = 7,
-    IBEX_UART0_RX_BREAK_ERR_IRQ = 6,
-    IBEX_UART0_RX_FRAME_ERR_IRQ = 5,
-    IBEX_UART0_RX_OVERFLOW_IRQ = 4,
-    IBEX_UART0_TX_EMPTY_IRQ = 3,
-    IBEX_UART0_RX_WATERMARK_IRQ = 2,
-    IBEX_UART0_TX_WATERMARK_IRQ = 1,
+    IBEX_UART0_TX_WATERMARK_IRQ   = 1,
+    IBEX_UART0_RX_WATERMARK_IRQ   = 2,
+    IBEX_UART0_TX_EMPTY_IRQ       = 3,
+    IBEX_UART0_RX_OVERFLOW_IRQ    = 4,
+    IBEX_UART0_RX_FRAME_ERR_IRQ   = 5,
+    IBEX_UART0_RX_BREAK_ERR_IRQ   = 6,
+    IBEX_UART0_RX_TIMEOUT_IRQ     = 7,
+    IBEX_UART0_RX_PARITY_ERR_IRQ  = 8,
+    IBEX_TIMER_TIMEREXPIRED0_0    = 127,
+    IBEX_SPI_HOST0_ERR_IRQ        = 151,
+    IBEX_SPI_HOST0_SPI_EVENT_IRQ  = 152,
+    IBEX_SPI_HOST1_ERR_IRQ        = 153,
+    IBEX_SPI_HOST1_SPI_EVENT_IRQ  = 154,
 };
 
 #endif

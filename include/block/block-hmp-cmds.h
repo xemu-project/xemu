@@ -12,8 +12,8 @@
  * the COPYING file in the top-level directory.
  */
 
-#ifndef BLOCK_HMP_COMMANDS_H
-#define BLOCK_HMP_COMMANDS_H
+#ifndef BLOCK_BLOCK_HMP_CMDS_H
+#define BLOCK_BLOCK_HMP_CMDS_H
 
 void hmp_drive_add(Monitor *mon, const QDict *qdict);
 
@@ -38,7 +38,7 @@ void hmp_nbd_server_add(Monitor *mon, const QDict *qdict);
 void hmp_nbd_server_remove(Monitor *mon, const QDict *qdict);
 void hmp_nbd_server_stop(Monitor *mon, const QDict *qdict);
 
-void hmp_block_resize(Monitor *mon, const QDict *qdict);
+void coroutine_fn hmp_block_resize(Monitor *mon, const QDict *qdict);
 void hmp_block_stream(Monitor *mon, const QDict *qdict);
 void hmp_block_passwd(Monitor *mon, const QDict *qdict);
 void hmp_block_set_io_throttle(Monitor *mon, const QDict *qdict);
