@@ -256,6 +256,6 @@ perf:
   override_clockspeed: 
     type: bool
     default: false
-  cpu_clockspeed:
+  cpu_clockspeed_scale:
     type: number
     default: 1

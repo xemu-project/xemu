@@ -70,11 +70,11 @@ void MainMenuGeneralView::Draw()
            "Enables to override default CPU clock speed");
     
     char buf[32];
-    snprintf(buf, sizeof(buf), "Clock Speed %d%% (%.2f MHz)", (int)(g_config.perf.cpu_clockspeed * 100), (733333333 * g_config.perf.cpu_clockspeed)/1000000);
-    Slider("Virtual CPU clock", &g_config.perf.cpu_clockspeed, buf, 0.01f, 2.f, 0.01f);
+    snprintf(buf, sizeof(buf), "Clock Speed %d%% (%.2f MHz)", (int)(g_config.perf.cpu_clockspeed_scale * 100), (733333333 * g_config.perf.cpu_clockspeed_scale) / 1000000);
+    Slider("Virtual CPU clock", &g_config.perf.cpu_clockspeed_scale, buf, 0.01f, 2.f, 0.01f);
 
-    if (fabs(g_config.perf.cpu_clockspeed - 1.f) <= 0.0099f) {
-        g_config.perf.cpu_clockspeed = 1;
+    if (fabs(g_config.perf.cpu_clockspeed_scale - 1.f) <= 0.0099f) {
+        g_config.perf.cpu_clockspeed_scale = 1;
     }
     
     SectionTitle("Miscellaneous");
