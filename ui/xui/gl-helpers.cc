@@ -881,10 +881,6 @@ void RenderController_SB(float frame_x, float frame_y, uint32_t primary_color,
         { 205, 250,   7,  13 }  //SBC_BUTTON_COM5
     };
 
-    uint8_t alpha = 0;
-    uint32_t now = SDL_GetTicks();
-    float t;
-
     glUseProgram(g_decal_shader->prog);
     glBindVertexArray(g_decal_shader->vao);
     glActiveTexture(GL_TEXTURE0);
@@ -894,17 +890,9 @@ void RenderController_SB(float frame_x, float frame_y, uint32_t primary_color,
     // around to visualize rumble in action
     frame_x += 5;
     frame_y += 5;
-    float original_frame_x = frame_x;
-    float original_frame_y = frame_y;
-
-    // Floating point versions that will get scaled
-    float rumble_l = 0;
-    float rumble_r = 0;
-
+    
     glBlendEquation(GL_FUNC_ADD);
     glBlendFunc(GL_ONE, GL_ZERO);
-
-    uint32_t jewel_color = secondary_color;
 
     // Render controller texture
     RenderDecal(g_decal_shader, frame_x + 0, frame_y + 0,
@@ -1166,10 +1154,6 @@ void RenderFightStick(float frame_x, float frame_y, uint32_t primary_color,
         {  70, 225, 21, 23 }, // L
         {  93, 225, 21, 23 }  // R
     };
-
-    uint8_t alpha = 0;
-    uint32_t now = SDL_GetTicks();
-    float t;
 
     frame_x += 5;
 
