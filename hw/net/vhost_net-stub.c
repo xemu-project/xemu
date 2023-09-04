@@ -33,13 +33,13 @@ struct vhost_net *vhost_net_init(VhostNetOptions *options)
 
 int vhost_net_start(VirtIODevice *dev,
                     NetClientState *ncs,
-                    int total_queues)
+                    int data_queue_pairs, int cvq)
 {
     return -ENOSYS;
 }
 void vhost_net_stop(VirtIODevice *dev,
                     NetClientState *ncs,
-                    int total_queues)
+                    int data_queue_pairs, int cvq)
 {
 }
 
@@ -98,6 +98,18 @@ int vhost_set_vring_enable(NetClientState *nc, int enable)
 }
 
 int vhost_net_set_mtu(struct vhost_net *net, uint16_t mtu)
+{
+    return 0;
+}
+
+void vhost_net_virtqueue_reset(VirtIODevice *vdev, NetClientState *nc,
+                               int vq_index)
+{
+
+}
+
+int vhost_net_virtqueue_restart(VirtIODevice *vdev, NetClientState *nc,
+                                int vq_index)
 {
     return 0;
 }

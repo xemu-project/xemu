@@ -1,8 +1,7 @@
 #include "qemu/osdep.h"
 #include <glib/gstdio.h>
 #include <gio/gio.h>
-#include "libqos/libqtest.h"
-#include "qemu-common.h"
+#include "libqtest.h"
 #include "dbus-vmstate1.h"
 #include "migration-helpers.h"
 
@@ -234,7 +233,7 @@ test_dbus_vmstate(Test *test)
     test->src_qemu = src_qemu;
     if (test->migrate_fail) {
         wait_for_migration_fail(src_qemu, true);
-        qtest_set_expected_status(dst_qemu, 1);
+        qtest_set_expected_status(dst_qemu, EXIT_FAILURE);
     } else {
         wait_for_migration_complete(src_qemu);
     }

@@ -28,6 +28,7 @@
 #include "ui/shader/xemu-logo-frag.h"
 #include "data/xemu_64x64.png.h"
 #include "notifications.hh"
+#include "ui/xemu-widescreen.h"
 
 Fbo *controller_fbo,
     *logo_fbo;
@@ -700,7 +701,25 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip, float scale[
 
     glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
-    glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
+
+    if (!nv2a_get_screen_off()) {
+        glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
+    }
+}
+
+float GetDisplayAspectRatio(int width, int height)
+{
+    switch (g_config.display.ui.aspect_ratio) {
+    case CONFIG_DISPLAY_UI_ASPECT_RATIO_NATIVE:
+        return (float)width/(float)height;
+    case CONFIG_DISPLAY_UI_ASPECT_RATIO_16X9:
+        return 16.0f/9.0f;
+    case CONFIG_DISPLAY_UI_ASPECT_RATIO_4X3:
+        return 4.0f/3.0f;
+    case CONFIG_DISPLAY_UI_ASPECT_RATIO_AUTO:
+    default:
+        return xemu_get_widescreen() ? 16.0f/9.0f : 4.0f/3.0f;
+    }
 }
 
 void RenderFramebuffer(GLint tex, int width, int height, bool flip)
@@ -720,20 +739,11 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
         scale[1] = 1.0;
     } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_CENTER) {
         // Centered
-        scale[0] = (float)tw/(float)width;
+        float t_ratio = GetDisplayAspectRatio(tw, th);
+        scale[0] = t_ratio*(float)th/(float)width;
         scale[1] = (float)th/(float)height;
     } else {
-        float t_ratio;
-        if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_16_9) {
-            // Scale to fit window using a fixed 16:9 aspect ratio
-            t_ratio = 16.0f/9.0f;
-        } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_4_3) {
-            t_ratio = 4.0f/3.0f;
-        } else {
-            // Scale to fit, preserving framebuffer aspect ratio
-            t_ratio = (float)tw/(float)th;
-        }
-
+        float t_ratio = GetDisplayAspectRatio(tw, th);
         float w_ratio = (float)width/(float)height;
         if (w_ratio >= t_ratio) {
             scale[0] = t_ratio/w_ratio;
@@ -756,11 +766,7 @@ bool RenderFramebufferToPng(GLuint tex, bool flip, std::vector<uint8_t> &png, in
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &width);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &height);
 
-    if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_16_9) {
-        width = height * (16.0f / 9.0f);
-    } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_SCALE_4_3) {
-        width = height * (4.0f / 3.0f);
-    }
+    width = height * GetDisplayAspectRatio(width, height);
 
     if (!max_width) max_width = width;
     if (!max_height) max_height = height;

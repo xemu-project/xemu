@@ -90,12 +90,6 @@ int vmstate_load_state(QEMUFile *f, const VMStateDescription *vmsd,
         return -EINVAL;
     }
     if  (version_id < vmsd->minimum_version_id) {
-        if (vmsd->load_state_old &&
-            version_id >= vmsd->minimum_version_id_old) {
-            ret = vmsd->load_state_old(f, opaque, version_id);
-            trace_vmstate_load_state_end(vmsd->name, "old path", ret);
-            return ret;
-        }
         error_report("%s: incoming version_id %d is too old "
                      "for local minimum version_id  %d",
                      vmsd->name, version_id, vmsd->minimum_version_id);
@@ -366,7 +360,7 @@ int vmstate_save_state_v(QEMUFile *f, const VMStateDescription *vmsd,
                 void *curr_elem = first_elem + size * i;
 
                 vmsd_desc_field_start(vmsd, vmdesc_loop, field, i, n_elems);
-                old_offset = qemu_ftell_fast(f);
+                old_offset = qemu_file_total_transferred_fast(f);
                 if (field->flags & VMS_ARRAY_OF_POINTER) {
                     assert(curr_elem);
                     curr_elem = *(void **)curr_elem;
@@ -396,7 +390,8 @@ int vmstate_save_state_v(QEMUFile *f, const VMStateDescription *vmsd,
                     return ret;
                 }
 
-                written_bytes = qemu_ftell_fast(f) - old_offset;
+                written_bytes = qemu_file_total_transferred_fast(f) -
+                                    old_offset;
                 vmsd_desc_field_end(vmsd, vmdesc_loop, field, written_bytes, i);
 
                 /* Compressed arrays only care about the first element */

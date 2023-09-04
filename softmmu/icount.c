@@ -23,7 +23,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/cutils.h"
 #include "migration/vmstate.h"
 #include "qapi/error.h"
@@ -260,11 +259,16 @@ static void icount_warp_rt(void)
         warp_delta = clock - timers_state.vm_clock_warp_start;
         if (icount_enabled() == 2) {
             /*
-             * In adaptive mode, do not let QEMU_CLOCK_VIRTUAL run too
-             * far ahead of real time.
+             * In adaptive mode, do not let QEMU_CLOCK_VIRTUAL run too far
+             * ahead of real time (it might already be ahead so careful not
+             * to go backwards).
              */
             int64_t cur_icount = icount_get_locked();
             int64_t delta = clock - cur_icount;
+
+            if (delta < 0) {
+                delta = 0;
+            }
             warp_delta = MIN(warp_delta, delta);
         }
         qatomic_set_i64(&timers_state.qemu_icount_bias,
@@ -323,7 +327,7 @@ void icount_start_warp_timer(void)
              * to vCPU was processed in advance and vCPU went to sleep.
              * Therefore we have to wake it up for doing someting.
              */
-            if (replay_has_checkpoint()) {
+            if (replay_has_event()) {
                 qemu_clock_notify(QEMU_CLOCK_VIRTUAL);
             }
             return;
@@ -404,6 +408,8 @@ void icount_account_warp_timer(void)
     if (!runstate_is_running()) {
         return;
     }
+
+    replay_async_events();
 
     /* warp clock deterministically in record/replay mode */
     if (!replay_checkpoint(CHECKPOINT_CLOCK_WARP_ACCOUNT)) {
@@ -486,4 +492,12 @@ void icount_configure(QemuOpts *opts, Error **errp)
     timer_mod(timers_state.icount_vm_timer,
                    qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
                    NANOSECONDS_PER_SECOND / 10);
+}
+
+void icount_notify_exit(void)
+{
+    if (icount_enabled() && current_cpu) {
+        qemu_cpu_kick(current_cpu);
+        qemu_clock_notify(QEMU_CLOCK_VIRTUAL);
+    }
 }

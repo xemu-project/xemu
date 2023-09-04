@@ -110,7 +110,11 @@ static int glue (audio_pcm_sw_alloc_resources_, TYPE) (SW *sw)
         return 0;
     }
 
+#ifdef DAC
     samples = ((int64_t) sw->HWBUF->size << 32) / sw->ratio;
+#else
+    samples = (int64_t)sw->HWBUF->size * sw->ratio >> 32;
+#endif
 
     sw->buf = audio_calloc(__func__, samples, sizeof(struct st_sample));
     if (!sw->buf) {
@@ -327,6 +331,8 @@ AudiodevPerDirectionOptions *glue(audio_get_pdo_, TYPE)(Audiodev *dev)
     case AUDIODEV_DRIVER_COREAUDIO:
         return qapi_AudiodevCoreaudioPerDirectionOptions_base(
             dev->u.coreaudio.TYPE);
+    case AUDIODEV_DRIVER_DBUS:
+        return dev->u.dbus.TYPE;
     case AUDIODEV_DRIVER_DSOUND:
         return dev->u.dsound.TYPE;
     case AUDIODEV_DRIVER_JACK:
@@ -337,6 +343,8 @@ AudiodevPerDirectionOptions *glue(audio_get_pdo_, TYPE)(Audiodev *dev)
         return qapi_AudiodevPaPerDirectionOptions_base(dev->u.pa.TYPE);
     case AUDIODEV_DRIVER_SDL:
         return qapi_AudiodevSdlPerDirectionOptions_base(dev->u.sdl.TYPE);
+    case AUDIODEV_DRIVER_SNDIO:
+        return dev->u.sndio.TYPE;
     case AUDIODEV_DRIVER_SPICE:
         return dev->u.spice.TYPE;
     case AUDIODEV_DRIVER_WAV:

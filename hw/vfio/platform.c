@@ -71,7 +71,7 @@ static VFIOINTp *vfio_init_intp(VFIODevice *vbasedev,
     sysbus_init_irq(sbdev, &intp->qemuirq);
 
     /* Get an eventfd for trigger */
-    intp->interrupt = g_malloc0(sizeof(EventNotifier));
+    intp->interrupt = g_new0(EventNotifier, 1);
     ret = event_notifier_init(intp->interrupt, 0);
     if (ret) {
         g_free(intp->interrupt);
@@ -82,7 +82,7 @@ static VFIOINTp *vfio_init_intp(VFIODevice *vbasedev,
     }
     if (vfio_irq_is_automasked(intp)) {
         /* Get an eventfd for resample/unmask */
-        intp->unmask = g_malloc0(sizeof(EventNotifier));
+        intp->unmask = g_new0(EventNotifier, 1);
         ret = event_notifier_init(intp->unmask, 0);
         if (ret) {
             g_free(intp->interrupt);
@@ -156,7 +156,7 @@ static void vfio_mmap_set_enabled(VFIOPlatformDevice *vdev, bool enabled)
  * if there is no more active IRQ
  * @opaque: actually points to the VFIO platform device
  *
- * Called on mmap timer timout, this function checks whether the
+ * Called on mmap timer timeout, this function checks whether the
  * IRQ is still active and if not, restores the fast path.
  * by construction a single eventfd is handled at a time.
  * if the IRQ is still active, the timer is re-programmed.

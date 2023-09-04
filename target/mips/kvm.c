@@ -14,7 +14,6 @@
 
 #include <linux/kvm.h>
 
-#include "qemu-common.h"
 #include "cpu.h"
 #include "internal.h"
 #include "qemu/error-report.h"
@@ -1294,4 +1293,8 @@ int mips_kvm_type(MachineState *machine, const char *vm_type)
 bool kvm_arch_cpu_check_are_resettable(void)
 {
     return true;
+}
+
+void kvm_arch_accel_class_init(ObjectClass *oc)
+{
 }

@@ -10,20 +10,71 @@
 { 'include': 'sockets.json' }
 
 ##
-# @set_password:
+# @DisplayProtocol:
 #
-# Sets the password of a remote display session.
+# Display protocols which support changing password options.
+#
+# Since: 7.0
+##
+{ 'enum': 'DisplayProtocol',
+  'data': [ 'vnc', 'spice' ] }
+
+##
+# @SetPasswordAction:
+#
+# An action to take on changing a password on a connection with active clients.
+#
+# @keep: maintain existing clients
+#
+# @fail: fail the command if clients are connected
+#
+# @disconnect: disconnect existing clients
+#
+# Since: 7.0
+##
+{ 'enum': 'SetPasswordAction',
+  'data': [ 'keep', 'fail', 'disconnect' ] }
+
+##
+# @SetPasswordOptions:
+#
+# Options for set_password.
 #
 # @protocol: - 'vnc' to modify the VNC server password
 #            - 'spice' to modify the Spice server password
 #
 # @password: the new password
 #
-# @connected: how to handle existing clients when changing the
-#             password.  If nothing is specified, defaults to 'keep'
-#             'fail' to fail the command if clients are connected
-#             'disconnect' to disconnect existing clients
-#             'keep' to maintain existing clients
+# @connected: How to handle existing clients when changing the
+#             password. If nothing is specified, defaults to 'keep'.
+#             For VNC, only 'keep' is currently implemented.
+#
+# Since: 7.0
+##
+{ 'union': 'SetPasswordOptions',
+  'base': { 'protocol': 'DisplayProtocol',
+            'password': 'str',
+            '*connected': 'SetPasswordAction' },
+  'discriminator': 'protocol',
+  'data': { 'vnc': 'SetPasswordOptionsVnc' } }
+
+##
+# @SetPasswordOptionsVnc:
+#
+# Options for set_password specific to the VNC procotol.
+#
+# @display: The id of the display where the password should be changed.
+#           Defaults to the first.
+#
+# Since: 7.0
+##
+{ 'struct': 'SetPasswordOptionsVnc',
+  'data': { '*display': 'str' } }
+
+##
+# @set_password:
+#
+# Set the password of a remote display server.
 #
 # Returns: - Nothing on success
 #          - If Spice is not enabled, DeviceNotFound
@@ -37,15 +88,15 @@
 # <- { "return": {} }
 #
 ##
-{ 'command': 'set_password',
-  'data': {'protocol': 'str', 'password': 'str', '*connected': 'str'} }
+{ 'command': 'set_password', 'boxed': true, 'data': 'SetPasswordOptions' }
 
 ##
-# @expire_password:
+# @ExpirePasswordOptions:
 #
-# Expire the password of a remote display server.
+# General options for expire_password.
 #
-# @protocol: the name of the remote display protocol 'vnc' or 'spice'
+# @protocol: - 'vnc' to modify the VNC server expiration
+#            - 'spice' to modify the Spice server expiration
 #
 # @time: when to expire the password.
 #
@@ -54,15 +105,41 @@
 #        - '+INT' where INT is the number of seconds from now (integer)
 #        - 'INT' where INT is the absolute time in seconds
 #
-# Returns: - Nothing on success
-#          - If @protocol is 'spice' and Spice is not active, DeviceNotFound
-#
-# Since: 0.14
-#
 # Notes: Time is relative to the server and currently there is no way to
 #        coordinate server time with client time.  It is not recommended to
 #        use the absolute time version of the @time parameter unless you're
 #        sure you are on the same machine as the QEMU instance.
+#
+# Since: 7.0
+##
+{ 'union': 'ExpirePasswordOptions',
+  'base': { 'protocol': 'DisplayProtocol',
+            'time': 'str' },
+  'discriminator': 'protocol',
+  'data': { 'vnc': 'ExpirePasswordOptionsVnc' } }
+
+##
+# @ExpirePasswordOptionsVnc:
+#
+# Options for expire_password specific to the VNC procotol.
+#
+# @display: The id of the display where the expiration should be changed.
+#           Defaults to the first.
+#
+# Since: 7.0
+##
+{ 'struct': 'ExpirePasswordOptionsVnc',
+  'data': { '*display': 'str' } }
+
+##
+# @expire_password:
+#
+# Expire the password of a remote display server.
+#
+# Returns: - Nothing on success
+#          - If @protocol is 'spice' and Spice is not active, DeviceNotFound
+#
+# Since: 0.14
 #
 # Example:
 #
@@ -71,14 +148,28 @@
 # <- { "return": {} }
 #
 ##
-{ 'command': 'expire_password', 'data': {'protocol': 'str', 'time': 'str'} }
+{ 'command': 'expire_password', 'boxed': true, 'data': 'ExpirePasswordOptions' }
+
+##
+# @ImageFormat:
+#
+# Supported image format types.
+#
+# @png: PNG format
+#
+# @ppm: PPM format
+#
+# Since: 7.1
+##
+{ 'enum': 'ImageFormat',
+  'data': ['ppm', 'png'] }
 
 ##
 # @screendump:
 #
-# Write a PPM of the VGA screen to a file.
+# Capture the contents of a screen and write it to a file.
 #
-# @filename: the path of a new PPM file to store the image
+# @filename: the path of a new file to store the image
 #
 # @device: ID of the display device that should be dumped. If this parameter
 #          is missing, the primary display will be used. (Since 2.12)
@@ -86,6 +177,8 @@
 # @head: head to use in case the device supports multiple heads. If this
 #        parameter is missing, head #0 will be used. Also note that the head
 #        can only be specified in conjunction with the device ID. (Since 2.12)
+#
+# @format: image format for screendump. (default: ppm) (Since 7.1)
 #
 # Returns: Nothing on success
 #
@@ -99,7 +192,8 @@
 #
 ##
 { 'command': 'screendump',
-  'data': {'filename': 'str', '*device': 'str', '*head': 'int'},
+  'data': {'filename': 'str', '*device': 'str', '*head': 'int',
+           '*format': 'ImageFormat'},
   'coroutine': true }
 
 ##
@@ -123,7 +217,7 @@
   'data': { 'host': 'str',
             'port': 'str',
             'family': 'NetworkAddressFamily' },
-  'if': 'defined(CONFIG_SPICE)' }
+  'if': 'CONFIG_SPICE' }
 
 ##
 # @SpiceServerInfo:
@@ -137,7 +231,7 @@
 { 'struct': 'SpiceServerInfo',
   'base': 'SpiceBasicInfo',
   'data': { '*auth': 'str' },
-  'if': 'defined(CONFIG_SPICE)' }
+  'if': 'CONFIG_SPICE' }
 
 ##
 # @SpiceChannel:
@@ -163,7 +257,7 @@
   'base': 'SpiceBasicInfo',
   'data': {'connection-id': 'int', 'channel-type': 'int', 'channel-id': 'int',
            'tls': 'bool'},
-  'if': 'defined(CONFIG_SPICE)' }
+  'if': 'CONFIG_SPICE' }
 
 ##
 # @SpiceQueryMouseMode:
@@ -183,7 +277,7 @@
 ##
 { 'enum': 'SpiceQueryMouseMode',
   'data': [ 'client', 'server', 'unknown' ],
-  'if': 'defined(CONFIG_SPICE)' }
+  'if': 'CONFIG_SPICE' }
 
 ##
 # @SpiceInfo:
@@ -222,7 +316,7 @@
   'data': {'enabled': 'bool', 'migrated': 'bool', '*host': 'str', '*port': 'int',
            '*tls-port': 'int', '*auth': 'str', '*compiled-version': 'str',
            'mouse-mode': 'SpiceQueryMouseMode', '*channels': ['SpiceChannel']},
-  'if': 'defined(CONFIG_SPICE)' }
+  'if': 'CONFIG_SPICE' }
 
 ##
 # @query-spice:
@@ -240,8 +334,10 @@
 #          "enabled": true,
 #          "auth": "spice",
 #          "port": 5920,
+#          "migrated":false,
 #          "tls-port": 5921,
 #          "host": "0.0.0.0",
+#          "mouse-mode":"client",
 #          "channels": [
 #             {
 #                "port": "54924",
@@ -268,7 +364,7 @@
 #
 ##
 { 'command': 'query-spice', 'returns': 'SpiceInfo',
-  'if': 'defined(CONFIG_SPICE)' }
+  'if': 'CONFIG_SPICE' }
 
 ##
 # @SPICE_CONNECTED:
@@ -294,7 +390,7 @@
 { 'event': 'SPICE_CONNECTED',
   'data': { 'server': 'SpiceBasicInfo',
             'client': 'SpiceBasicInfo' },
-  'if': 'defined(CONFIG_SPICE)' }
+  'if': 'CONFIG_SPICE' }
 
 ##
 # @SPICE_INITIALIZED:
@@ -323,7 +419,7 @@
 { 'event': 'SPICE_INITIALIZED',
   'data': { 'server': 'SpiceServerInfo',
             'client': 'SpiceChannel' },
-  'if': 'defined(CONFIG_SPICE)' }
+  'if': 'CONFIG_SPICE' }
 
 ##
 # @SPICE_DISCONNECTED:
@@ -349,7 +445,7 @@
 { 'event': 'SPICE_DISCONNECTED',
   'data': { 'server': 'SpiceBasicInfo',
             'client': 'SpiceBasicInfo' },
-  'if': 'defined(CONFIG_SPICE)' }
+  'if': 'CONFIG_SPICE' }
 
 ##
 # @SPICE_MIGRATE_COMPLETED:
@@ -365,7 +461,7 @@
 #
 ##
 { 'event': 'SPICE_MIGRATE_COMPLETED',
-  'if': 'defined(CONFIG_SPICE)' }
+  'if': 'CONFIG_SPICE' }
 
 ##
 # == VNC
@@ -393,7 +489,7 @@
             'service': 'str',
             'family': 'NetworkAddressFamily',
             'websocket': 'bool' },
-  'if': 'defined(CONFIG_VNC)' }
+  'if': 'CONFIG_VNC' }
 
 ##
 # @VncServerInfo:
@@ -408,7 +504,7 @@
 { 'struct': 'VncServerInfo',
   'base': 'VncBasicInfo',
   'data': { '*auth': 'str' },
-  'if': 'defined(CONFIG_VNC)' }
+  'if': 'CONFIG_VNC' }
 
 ##
 # @VncClientInfo:
@@ -426,7 +522,7 @@
 { 'struct': 'VncClientInfo',
   'base': 'VncBasicInfo',
   'data': { '*x509_dname': 'str', '*sasl_username': 'str' },
-  'if': 'defined(CONFIG_VNC)' }
+  'if': 'CONFIG_VNC' }
 
 ##
 # @VncInfo:
@@ -469,7 +565,7 @@
   'data': {'enabled': 'bool', '*host': 'str',
            '*family': 'NetworkAddressFamily',
            '*service': 'str', '*auth': 'str', '*clients': ['VncClientInfo']},
-  'if': 'defined(CONFIG_VNC)' }
+  'if': 'CONFIG_VNC' }
 
 ##
 # @VncPrimaryAuth:
@@ -481,7 +577,7 @@
 { 'enum': 'VncPrimaryAuth',
   'data': [ 'none', 'vnc', 'ra2', 'ra2ne', 'tight', 'ultra',
             'tls', 'vencrypt', 'sasl' ],
-  'if': 'defined(CONFIG_VNC)' }
+  'if': 'CONFIG_VNC' }
 
 ##
 # @VncVencryptSubAuth:
@@ -496,7 +592,7 @@
             'tls-vnc',   'x509-vnc',
             'tls-plain', 'x509-plain',
             'tls-sasl',  'x509-sasl' ],
-  'if': 'defined(CONFIG_VNC)' }
+  'if': 'CONFIG_VNC' }
 
 ##
 # @VncServerInfo2:
@@ -514,7 +610,7 @@
   'base': 'VncBasicInfo',
   'data': { 'auth'      : 'VncPrimaryAuth',
             '*vencrypt' : 'VncVencryptSubAuth' },
-  'if': 'defined(CONFIG_VNC)' }
+  'if': 'CONFIG_VNC' }
 
 ##
 # @VncInfo2:
@@ -547,7 +643,7 @@
             'auth'      : 'VncPrimaryAuth',
             '*vencrypt' : 'VncVencryptSubAuth',
             '*display'  : 'str' },
-  'if': 'defined(CONFIG_VNC)' }
+  'if': 'CONFIG_VNC' }
 
 ##
 # @query-vnc:
@@ -571,7 +667,8 @@
 #             {
 #                "host":"127.0.0.1",
 #                "service":"50401",
-#                "family":"ipv4"
+#                "family":"ipv4",
+#                "websocket":false
 #             }
 #          ]
 #       }
@@ -579,7 +676,7 @@
 #
 ##
 { 'command': 'query-vnc', 'returns': 'VncInfo',
-  'if': 'defined(CONFIG_VNC)' }
+  'if': 'CONFIG_VNC' }
 ##
 # @query-vnc-servers:
 #
@@ -590,7 +687,7 @@
 # Since: 2.3
 ##
 { 'command': 'query-vnc-servers', 'returns': ['VncInfo2'],
-  'if': 'defined(CONFIG_VNC)' }
+  'if': 'CONFIG_VNC' }
 
 ##
 # @change-vnc-password:
@@ -606,7 +703,7 @@
 ##
 { 'command': 'change-vnc-password',
   'data': { 'password': 'str' },
-  'if': 'defined(CONFIG_VNC)' }
+  'if': 'CONFIG_VNC' }
 
 ##
 # @VNC_CONNECTED:
@@ -626,17 +723,17 @@
 #
 # <- { "event": "VNC_CONNECTED",
 #      "data": {
-#            "server": { "auth": "sasl", "family": "ipv4",
+#            "server": { "auth": "sasl", "family": "ipv4", "websocket": false,
 #                        "service": "5901", "host": "0.0.0.0" },
 #            "client": { "family": "ipv4", "service": "58425",
-#                        "host": "127.0.0.1" } },
+#                        "host": "127.0.0.1", "websocket": false } },
 #      "timestamp": { "seconds": 1262976601, "microseconds": 975795 } }
 #
 ##
 { 'event': 'VNC_CONNECTED',
   'data': { 'server': 'VncServerInfo',
             'client': 'VncBasicInfo' },
-  'if': 'defined(CONFIG_VNC)' }
+  'if': 'CONFIG_VNC' }
 
 ##
 # @VNC_INITIALIZED:
@@ -654,9 +751,9 @@
 #
 # <-  { "event": "VNC_INITIALIZED",
 #       "data": {
-#            "server": { "auth": "sasl", "family": "ipv4",
+#            "server": { "auth": "sasl", "family": "ipv4", "websocket": false,
 #                        "service": "5901", "host": "0.0.0.0"},
-#            "client": { "family": "ipv4", "service": "46089",
+#            "client": { "family": "ipv4", "service": "46089", "websocket": false,
 #                        "host": "127.0.0.1", "sasl_username": "luiz" } },
 #       "timestamp": { "seconds": 1263475302, "microseconds": 150772 } }
 #
@@ -664,7 +761,7 @@
 { 'event': 'VNC_INITIALIZED',
   'data': { 'server': 'VncServerInfo',
             'client': 'VncClientInfo' },
-  'if': 'defined(CONFIG_VNC)' }
+  'if': 'CONFIG_VNC' }
 
 ##
 # @VNC_DISCONNECTED:
@@ -681,9 +778,9 @@
 #
 # <- { "event": "VNC_DISCONNECTED",
 #      "data": {
-#            "server": { "auth": "sasl", "family": "ipv4",
+#            "server": { "auth": "sasl", "family": "ipv4", "websocket": false,
 #                        "service": "5901", "host": "0.0.0.0" },
-#            "client": { "family": "ipv4", "service": "58425",
+#            "client": { "family": "ipv4", "service": "58425", "websocket": false,
 #                        "host": "127.0.0.1", "sasl_username": "luiz" } },
 #      "timestamp": { "seconds": 1262976601, "microseconds": 975795 } }
 #
@@ -691,7 +788,7 @@
 { 'event': 'VNC_DISCONNECTED',
   'data': { 'server': 'VncServerInfo',
             'client': 'VncClientInfo' },
-  'if': 'defined(CONFIG_VNC)' }
+  'if': 'CONFIG_VNC' }
 
 ##
 # = Input
@@ -797,7 +894,6 @@
 # are effectively synonyms.
 #
 # Since: 1.3
-#
 ##
 { 'enum': 'QKeyCode',
   'data': [ 'unmapped',
@@ -825,6 +921,30 @@
             'lang1', 'lang2' ] }
 
 ##
+# @KeyValueKind:
+#
+# Since: 1.3
+##
+{ 'enum': 'KeyValueKind',
+  'data': [ 'number', 'qcode' ] }
+
+##
+# @IntWrapper:
+#
+# Since: 1.3
+##
+{ 'struct': 'IntWrapper',
+  'data': { 'data': 'int' } }
+
+##
+# @QKeyCodeWrapper:
+#
+# Since: 1.3
+##
+{ 'struct': 'QKeyCodeWrapper',
+  'data': { 'data': 'QKeyCode' } }
+
+##
 # @KeyValue:
 #
 # Represents a keyboard key.
@@ -832,9 +952,11 @@
 # Since: 1.3
 ##
 { 'union': 'KeyValue',
+  'base': { 'type': 'KeyValueKind' },
+  'discriminator': 'type',
   'data': {
-    'number': 'int',
-    'qcode': 'QKeyCode' } }
+    'number': 'IntWrapper',
+    'qcode': 'QKeyCodeWrapper' } }
 
 ##
 # @send-key:
@@ -879,7 +1001,7 @@
 ##
 { 'enum'  : 'InputButton',
   'data'  : [ 'left', 'middle', 'right', 'wheel-up', 'wheel-down', 'side',
-  'extra' ] }
+  'extra', 'wheel-left', 'wheel-right' ] }
 
 ##
 # @InputAxis:
@@ -896,8 +1018,8 @@
 #
 # Keyboard input event.
 #
-# @key:    Which key this event is for.
-# @down:   True for key-down and false for key-up events.
+# @key: Which key this event is for.
+# @down: True for key-down and false for key-up events.
 #
 # Since: 2.0
 ##
@@ -911,7 +1033,7 @@
 # Pointer button input event.
 #
 # @button: Which button this event is for.
-# @down:   True for key-down and false for key-up events.
+# @down: True for key-down and false for key-up events.
 #
 # Since: 2.0
 ##
@@ -935,6 +1057,38 @@
               'value'   : 'int' } }
 
 ##
+# @InputEventKind:
+#
+# Since: 2.0
+##
+{ 'enum': 'InputEventKind',
+  'data': [ 'key', 'btn', 'rel', 'abs' ] }
+
+##
+# @InputKeyEventWrapper:
+#
+# Since: 2.0
+##
+{ 'struct': 'InputKeyEventWrapper',
+  'data': { 'data': 'InputKeyEvent' } }
+
+##
+# @InputBtnEventWrapper:
+#
+# Since: 2.0
+##
+{ 'struct': 'InputBtnEventWrapper',
+  'data': { 'data': 'InputBtnEvent' } }
+
+##
+# @InputMoveEventWrapper:
+#
+# Since: 2.0
+##
+{ 'struct': 'InputMoveEventWrapper',
+  'data': { 'data': 'InputMoveEvent' } }
+
+##
 # @InputEvent:
 #
 # Input event union.
@@ -949,10 +1103,12 @@
 # Since: 2.0
 ##
 { 'union' : 'InputEvent',
-  'data'  : { 'key'     : 'InputKeyEvent',
-              'btn'     : 'InputBtnEvent',
-              'rel'     : 'InputMoveEvent',
-              'abs'     : 'InputMoveEvent' } }
+  'base': { 'type': 'InputEventKind' },
+  'discriminator': 'type',
+  'data'  : { 'key'     : 'InputKeyEventWrapper',
+              'btn'     : 'InputBtnEventWrapper',
+              'rel'     : 'InputMoveEventWrapper',
+              'abs'     : 'InputMoveEventWrapper' } }
 
 ##
 # @input-send-event:
@@ -1039,13 +1195,20 @@
 #               assuming the guest will resize the display to match
 #               the window size then.  Otherwise it defaults to "off".
 #               Since 3.1
+# @show-tabs:   Display the tab bar for switching between the various graphical
+#               interfaces (e.g. VGA and virtual console character devices)
+#               by default.
+#               Since 7.1
+# @show-menubar: Display the main window menubar. Defaults to "on".
+#                Since 8.0
 #
 # Since: 2.12
-#
 ##
 { 'struct'  : 'DisplayGTK',
   'data'    : { '*grab-on-hover' : 'bool',
-                '*zoom-to-fit'   : 'bool'  } }
+                '*zoom-to-fit'   : 'bool',
+                '*show-tabs'     : 'bool',
+                '*show-menubar'  : 'bool'  } }
 
 ##
 # @DisplayEGLHeadless:
@@ -1056,26 +1219,47 @@
 #              available node on the host.
 #
 # Since: 3.1
-#
 ##
 { 'struct'  : 'DisplayEGLHeadless',
   'data'    : { '*rendernode' : 'str' } }
 
- ##
- # @DisplayGLMode:
- #
- # Display OpenGL mode.
- #
- # @off: Disable OpenGL (default).
- # @on: Use OpenGL, pick context type automatically.
- #      Would better be named 'auto' but is called 'on' for backward
- #      compatibility with bool type.
- # @core: Use OpenGL with Core (desktop) Context.
- # @es: Use OpenGL with ES (embedded systems) Context.
- #
- # Since: 3.0
- #
- ##
+##
+# @DisplayDBus:
+#
+# DBus display options.
+#
+# @addr: The D-Bus bus address (default to the session bus).
+#
+# @rendernode: Which DRM render node should be used. Default is the first
+#              available node on the host.
+#
+# @p2p: Whether to use peer-to-peer connections (accepted through
+#       ``add_client``).
+#
+# @audiodev: Use the specified DBus audiodev to export audio.
+#
+# Since: 7.0
+##
+{ 'struct'  : 'DisplayDBus',
+  'data'    : { '*rendernode' : 'str',
+                '*addr': 'str',
+                '*p2p': 'bool',
+                '*audiodev': 'str' } }
+
+##
+# @DisplayGLMode:
+#
+# Display OpenGL mode.
+#
+# @off: Disable OpenGL (default).
+# @on: Use OpenGL, pick context type automatically.
+#      Would better be named 'auto' but is called 'on' for backward
+#      compatibility with bool type.
+# @core: Use OpenGL with Core (desktop) Context.
+# @es: Use OpenGL with ES (embedded systems) Context.
+#
+# Since: 3.0
+##
 { 'enum'    : 'DisplayGLMode',
   'data'    : [ 'off', 'on', 'core', 'es' ] }
 
@@ -1084,13 +1268,63 @@
 #
 # Curses display options.
 #
-# @charset:       Font charset used by guest (default: CP437).
+# @charset: Font charset used by guest (default: CP437).
 #
 # Since: 4.0
-#
 ##
 { 'struct'  : 'DisplayCurses',
   'data'    : { '*charset'       : 'str' } }
+
+##
+# @DisplayCocoa:
+#
+# Cocoa display options.
+#
+# @left-command-key: Enable/disable forwarding of left command key to
+#                    guest. Allows command-tab window switching on the
+#                    host without sending this key to the guest when
+#                    "off". Defaults to "on"
+#
+# @full-grab: Capture all key presses, including system combos. This
+#             requires accessibility permissions, since it performs
+#             a global grab on key events. (default: off)
+#             See https://support.apple.com/en-in/guide/mac-help/mh32356/mac
+#
+# @swap-opt-cmd: Swap the Option and Command keys so that their key codes match
+#                their position on non-Mac keyboards and you can use Meta/Super
+#                and Alt where you expect them. (default: off)
+#
+# Since: 7.0
+##
+{ 'struct': 'DisplayCocoa',
+  'data': {
+      '*left-command-key': 'bool',
+      '*full-grab': 'bool',
+      '*swap-opt-cmd': 'bool'
+  } }
+
+##
+# @HotKeyMod:
+#
+# Set of modifier keys that need to be held for shortcut key actions.
+#
+# Since: 7.1
+##
+{ 'enum'  : 'HotKeyMod',
+  'data'  : [ 'lctrl-lalt', 'lshift-lctrl-lalt', 'rctrl' ] }
+
+##
+# @DisplaySDL:
+#
+# SDL2 display options.
+#
+# @grab-mod:  Modifier keys that should be pressed together with the
+#             "G" key to release the mouse grab.
+#
+# Since: 7.1
+##
+{ 'struct'  : 'DisplaySDL',
+  'data'    : { '*grab-mod'   : 'HotKeyMod' } }
 
 ##
 # @DisplayType:
@@ -1126,36 +1360,38 @@
 #             application to connect to it. The server will redirect
 #             the serial console and QEMU monitors. (Since 4.0)
 #
-# Since: 2.12
+# @dbus: Start a D-Bus service for the display. (Since 7.0)
 #
+# Since: 2.12
 ##
 { 'enum'    : 'DisplayType',
   'data'    : [
     { 'name': 'default' },
     { 'name': 'none' },
-    { 'name': 'gtk', 'if': 'defined(CONFIG_GTK)' },
-    { 'name': 'sdl', 'if': 'defined(CONFIG_SDL)' },
+    { 'name': 'gtk', 'if': 'CONFIG_GTK' },
+    { 'name': 'sdl', 'if': 'CONFIG_SDL' },
     { 'name': 'egl-headless',
-              'if': 'defined(CONFIG_OPENGL) && defined(CONFIG_GBM)' },
-    { 'name': 'curses', 'if': 'defined(CONFIG_CURSES)' },
-    { 'name': 'cocoa', 'if': 'defined(CONFIG_COCOA)' },
-    { 'name': 'spice-app', 'if': 'defined(CONFIG_SPICE)'},
-    { 'name': 'xemu' } ] }
+              'if': { 'all': ['CONFIG_OPENGL', 'CONFIG_GBM'] } },
+    { 'name': 'curses', 'if': 'CONFIG_CURSES' },
+    { 'name': 'cocoa', 'if': 'CONFIG_COCOA' },
+    { 'name': 'spice-app', 'if': 'CONFIG_SPICE' },
+    { 'name': 'dbus', 'if': 'CONFIG_DBUS_DISPLAY' },
+    { 'name': 'xemu' }
+  ]
+}
 
 ##
 # @DisplayOptions:
 #
 # Display (user interface) options.
 #
-# @type:          Which DisplayType qemu should use.
-# @full-screen:   Start user interface in fullscreen mode (default: off).
-# @window-close:  Allow to quit qemu with window close button (default: on).
-# @show-cursor:   Force showing the mouse cursor (default: off).
-#                 (since: 5.0)
-# @gl:            Enable OpenGL support (default: off).
+# @type: Which DisplayType qemu should use.
+# @full-screen: Start user interface in fullscreen mode (default: off).
+# @window-close: Allow to quit qemu with window close button (default: on).
+# @show-cursor: Force showing the mouse cursor (default: off). (since: 5.0)
+# @gl: Enable OpenGL support (default: off).
 #
 # Since: 2.12
-#
 ##
 { 'union'   : 'DisplayOptions',
   'base'    : { 'type'           : 'DisplayType',
@@ -1165,10 +1401,13 @@
                 '*gl'            : 'DisplayGLMode' },
   'discriminator' : 'type',
   'data'    : {
-      'gtk': { 'type': 'DisplayGTK', 'if': 'defined(CONFIG_GTK)' },
-      'curses': { 'type': 'DisplayCurses', 'if': 'defined(CONFIG_CURSES)' },
+      'gtk': { 'type': 'DisplayGTK', 'if': 'CONFIG_GTK' },
+      'cocoa': { 'type': 'DisplayCocoa', 'if': 'CONFIG_COCOA' },
+      'curses': { 'type': 'DisplayCurses', 'if': 'CONFIG_CURSES' },
       'egl-headless': { 'type': 'DisplayEGLHeadless',
-                        'if': 'defined(CONFIG_OPENGL) && defined(CONFIG_GBM)' }
+                        'if': { 'all': ['CONFIG_OPENGL', 'CONFIG_GBM'] } },
+      'dbus': { 'type': 'DisplayDBus', 'if': 'CONFIG_DBUS_DISPLAY' },
+      'sdl': { 'type': 'DisplaySDL', 'if': 'CONFIG_SDL' }
   }
 }
 
@@ -1180,7 +1419,6 @@
 # Returns: @DisplayOptions
 #
 # Since: 3.1
-#
 ##
 { 'command': 'query-display-options',
   'returns': 'DisplayOptions' }
@@ -1193,7 +1431,6 @@
 # @vnc: VNC display
 #
 # Since: 6.0
-#
 ##
 { 'enum': 'DisplayReloadType',
   'data': ['vnc'] }
@@ -1206,7 +1443,6 @@
 # @tls-certs: reload tls certs or not.
 #
 # Since: 6.0
-#
 ##
 { 'struct': 'DisplayReloadOptionsVNC',
   'data': { '*tls-certs': 'bool' } }
@@ -1219,7 +1455,6 @@
 # @type: Specify the display type.
 #
 # Since: 6.0
-#
 ##
 { 'union': 'DisplayReloadOptions',
   'base': {'type': 'DisplayReloadType'},
@@ -1244,4 +1479,66 @@
 ##
 { 'command': 'display-reload',
   'data': 'DisplayReloadOptions',
+  'boxed' : true }
+
+##
+# @DisplayUpdateType:
+#
+# Available DisplayUpdate types.
+#
+# @vnc: VNC display
+#
+# Since: 7.1
+##
+{ 'enum': 'DisplayUpdateType',
+  'data': ['vnc'] }
+
+##
+# @DisplayUpdateOptionsVNC:
+#
+# Specify the VNC reload options.
+#
+# @addresses: If specified, change set of addresses
+#             to listen for connections. Addresses configured
+#             for websockets are not touched.
+#
+# Since: 7.1
+##
+{ 'struct': 'DisplayUpdateOptionsVNC',
+  'data': { '*addresses': ['SocketAddress'] } }
+
+##
+# @DisplayUpdateOptions:
+#
+# Options of the display configuration reload.
+#
+# @type: Specify the display type.
+#
+# Since: 7.1
+##
+{ 'union': 'DisplayUpdateOptions',
+  'base': {'type': 'DisplayUpdateType'},
+  'discriminator': 'type',
+  'data': { 'vnc': 'DisplayUpdateOptionsVNC' } }
+
+##
+# @display-update:
+#
+# Update display configuration.
+#
+# Returns: Nothing on success.
+#
+# Since: 7.1
+#
+# Example:
+#
+# -> { "execute": "display-update",
+#      "arguments": { "type": "vnc", "addresses":
+#                     [ { "type": "inet", "host": "0.0.0.0",
+#                         "port": "5901" } ] } }
+# <- { "return": {} }
+#
+##
+{ 'command': 'display-update',
+  'data': 'DisplayUpdateOptions',
   'boxed' : true }

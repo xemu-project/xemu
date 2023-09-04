@@ -89,6 +89,10 @@ void NotificationManager::Draw()
 
 void NotificationManager::DrawNotification(float t, const char *msg)
 {
+    if (!g_config.display.ui.show_notifications) {
+        return;
+    }
+
     const float DISTANCE = 10.0f;
     static int corner = 1;
     ImGuiIO& io = ImGui::GetIO();

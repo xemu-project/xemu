@@ -1,11 +1,12 @@
-===============
+.. _testing:
+
 Testing in QEMU
 ===============
 
 This document describes the testing infrastructure in QEMU.
 
 Testing with "make check"
-=========================
+-------------------------
 
 The "make check" testing family includes most of the C based tests in QEMU. For
 a quick help, run ``make check-help`` from the source tree.
@@ -24,7 +25,7 @@ expect the executables to exist and will fail with obscure messages if they
 cannot find them.
 
 Unit tests
-----------
+~~~~~~~~~~
 
 Unit tests, which can be invoked with ``make check-unit``, are simple C tests
 that typically link to individual QEMU object files and exercise them by
@@ -67,7 +68,7 @@ and copy the actual command line which executes the unit test, then run
 it from the command line.
 
 QTest
------
+~~~~~
 
 QTest is a device emulation testing framework.  It can be very useful to test
 device models; it could also control certain aspects of QEMU (such as virtual
@@ -80,8 +81,38 @@ QTest cases can be executed with
 
    make check-qtest
 
+Writing portable test cases
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Both unit tests and qtests can run on POSIX hosts as well as Windows hosts.
+Care must be taken when writing portable test cases that can be built and run
+successfully on various hosts. The following list shows some best practices:
+
+* Use portable APIs from glib whenever necessary, e.g.: g_setenv(),
+  g_mkdtemp(), g_mkdir().
+* Avoid using hardcoded /tmp for temporary file directory.
+  Use g_get_tmp_dir() instead.
+* Bear in mind that Windows has different special string representation for
+  stdin/stdout/stderr and null devices. For example if your test case uses
+  "/dev/fd/2" and "/dev/null" on Linux, remember to use "2" and "nul" on
+  Windows instead. Also IO redirection does not work on Windows, so avoid
+  using "2>nul" whenever necessary.
+* If your test cases uses the blkdebug feature, use relative path to pass
+  the config and image file paths in the command line as Windows absolute
+  path contains the delimiter ":" which will confuse the blkdebug parser.
+* Use double quotes in your extra QEMU command line in your test cases
+  instead of single quotes, as Windows does not drop single quotes when
+  passing the command line to QEMU.
+* Windows opens a file in text mode by default, while a POSIX compliant
+  implementation treats text files and binary files the same. So if your
+  test cases opens a file to write some data and later wants to compare the
+  written data with the original one, be sure to pass the letter 'b' as
+  part of the mode string to fopen(), or O_BINARY flag for the open() call.
+* If a certain test case can only run on POSIX or Linux hosts, use a proper
+  #ifdef in the codes. If the whole test suite cannot run on Windows, disable
+  the build in the meson.build file.
+
 QAPI schema tests
------------------
+~~~~~~~~~~~~~~~~~
 
 The QAPI schema tests validate the QAPI parser used by QMP, by feeding
 predefined input to the parser and comparing the result with the reference
@@ -108,33 +139,14 @@ parser (either fixing a bug or extending/modifying the syntax). To do this:
   ``qapi-schema += foo.json``
 
 check-block
------------
+~~~~~~~~~~~
 
 ``make check-block`` runs a subset of the block layer iotests (the tests that
 are in the "auto" group).
 See the "QEMU iotests" section below for more information.
 
-GCC gcov support
-----------------
-
-``gcov`` is a GCC tool to analyze the testing coverage by
-instrumenting the tested code. To use it, configure QEMU with
-``--enable-gcov`` option and build. Then run ``make check`` as usual.
-
-If you want to gather coverage information on a single test the ``make
-clean-gcda`` target can be used to delete any existing coverage
-information before running a single test.
-
-You can generate a HTML coverage report by executing ``make
-coverage-html`` which will create
-``meson-logs/coveragereport/index.html``.
-
-Further analysis can be conducted by running the ``gcov`` command
-directly on the various .gcda output files. Please read the ``gcov``
-documentation for more information.
-
 QEMU iotests
-============
+------------
 
 QEMU iotests, under the directory ``tests/qemu-iotests``, is the testing
 framework widely used to test block layer related features. It is higher level
@@ -171,7 +183,7 @@ More options are supported by the ``./check`` script, run ``./check -h`` for
 help.
 
 Writing a new test case
------------------------
+~~~~~~~~~~~~~~~~~~~~~~~
 
 Consider writing a tests case when you are making any changes to the block
 layer. An iotest case is usually the choice for that. There are already many
@@ -224,8 +236,38 @@ another application on the host may have locked the file, possibly leading to a
 test failure.  If using such devices are explicitly desired, consider adding
 ``locking=off`` option to disable image locking.
 
+Debugging a test case
+~~~~~~~~~~~~~~~~~~~~~
+
+The following options to the ``check`` script can be useful when debugging
+a failing test:
+
+* ``-gdb`` wraps every QEMU invocation in a ``gdbserver``, which waits for a
+  connection from a gdb client.  The options given to ``gdbserver`` (e.g. the
+  address on which to listen for connections) are taken from the ``$GDB_OPTIONS``
+  environment variable.  By default (if ``$GDB_OPTIONS`` is empty), it listens on
+  ``localhost:12345``.
+  It is possible to connect to it for example with
+  ``gdb -iex "target remote $addr"``, where ``$addr`` is the address
+  ``gdbserver`` listens on.
+  If the ``-gdb`` option is not used, ``$GDB_OPTIONS`` is ignored,
+  regardless of whether it is set or not.
+
+* ``-valgrind`` attaches a valgrind instance to QEMU. If it detects
+  warnings, it will print and save the log in
+  ``$TEST_DIR/<valgrind_pid>.valgrind``.
+  The final command line will be ``valgrind --log-file=$TEST_DIR/
+  <valgrind_pid>.valgrind --error-exitcode=99 $QEMU ...``
+
+* ``-d`` (debug) just increases the logging verbosity, showing
+  for example the QMP commands and answers.
+
+* ``-p`` (print) redirects QEMU’s stdout and stderr to the test output,
+  instead of saving it into a log file in
+  ``$TEST_DIR/qemu-machine-<random_string>``.
+
 Test case groups
-----------------
+~~~~~~~~~~~~~~~~
 
 "Tests may belong to one or more test groups, which are defined in the form
 of a comment in the test source file. By convention, test groups are listed
@@ -275,17 +317,17 @@ Note that the following group names have a special meaning:
 .. _container-ref:
 
 Container based tests
-=====================
+---------------------
 
 Introduction
-------------
+~~~~~~~~~~~~
 
 The container testing framework in QEMU utilizes public images to
 build and test QEMU in predefined and widely accessible Linux
 environments. This makes it possible to expand the test coverage
 across distros, toolchain flavors and library versions. The support
 was originally written for Docker although we also support Podman as
-an alternative container runtime. Although the many of the target
+an alternative container runtime. Although many of the target
 names and scripts are prefixed with "docker" the system will
 automatically run on whichever is configured.
 
@@ -293,7 +335,7 @@ The container images are also used to augment the generation of tests
 for testing TCG. See :ref:`checktcg-ref` for more details.
 
 Docker Prerequisites
---------------------
+~~~~~~~~~~~~~~~~~~~~
 
 Install "docker" with the system package manager and start the Docker service
 on your development machine, then make sure you have the privilege to run
@@ -324,7 +366,7 @@ exploit the whole host with Docker bind mounting or other privileged
 operations.  So only do it on development machines.
 
 Podman Prerequisites
---------------------
+~~~~~~~~~~~~~~~~~~~~
 
 Install "podman" with the system package manager.
 
@@ -336,7 +378,7 @@ Install "podman" with the system package manager.
 The last command should print an empty table, to verify the system is ready.
 
 Quickstart
-----------
+~~~~~~~~~~
 
 From source tree, type ``make docker-help`` to see the help. Testing
 can be started without configuring or building QEMU (``configure`` and
@@ -352,7 +394,7 @@ is downloaded and initialized automatically), in which the ``test-build`` job
 is executed.
 
 Registry
---------
+~~~~~~~~
 
 The QEMU project has a container registry hosted by GitLab at
 ``registry.gitlab.com/qemu-project/qemu`` which will automatically be
@@ -363,25 +405,123 @@ locally by using the ``NOCACHE`` build option:
 
 .. code::
 
-   make docker-image-debian10 NOCACHE=1
+   make docker-image-debian-arm64-cross NOCACHE=1
 
 Images
-------
+~~~~~~
 
 Along with many other images, the ``centos8`` image is defined in a Dockerfile
 in ``tests/docker/dockerfiles/``, called ``centos8.docker``. ``make docker-help``
 command will list all the available images.
-
-To add a new image, simply create a new ``.docker`` file under the
-``tests/docker/dockerfiles/`` directory.
 
 A ``.pre`` script can be added beside the ``.docker`` file, which will be
 executed before building the image under the build context directory. This is
 mainly used to do necessary host side setup. One such setup is ``binfmt_misc``,
 for example, to make qemu-user powered cross build containers work.
 
+Most of the existing Dockerfiles were written by hand, simply by creating a
+a new ``.docker`` file under the ``tests/docker/dockerfiles/`` directory.
+This has led to an inconsistent set of packages being present across the
+different containers.
+
+Thus going forward, QEMU is aiming to automatically generate the Dockerfiles
+using the ``lcitool`` program provided by the ``libvirt-ci`` project:
+
+  https://gitlab.com/libvirt/libvirt-ci
+
+In that project, there is a ``mappings.yml`` file defining the distro native
+package names for a wide variety of third party projects. This is processed
+in combination with a project defined list of build pre-requisites to determine
+the list of native packages to install on each distribution. This can be used
+to generate dockerfiles, VM package lists and Cirrus CI variables needed to
+setup build environments across OS distributions with a consistent set of
+packages present.
+
+When preparing a patch series that adds a new build pre-requisite to QEMU,
+updates to various lcitool data files may be required.
+
+
+Adding new build pre-requisites
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+In the simple case where the pre-requisite is already known to ``libvirt-ci``
+the following steps are needed
+
+ * Edit ``tests/lcitool/projects/qemu.yml`` and add the pre-requisite
+
+ * Run ``make lcitool-refresh`` to re-generate all relevant build environment
+   manifests
+
+In some cases ``libvirt-ci`` will not know about the build pre-requisite and
+thus some extra preparation steps will be required first
+
+ * Fork the ``libvirt-ci`` project on gitlab
+
+ * Edit the ``mappings.yml`` change to add an entry for the new build
+   prerequisite, listing its native package name on as many OS distros
+   as practical.
+
+ * Commit the ``mappings.yml`` change and submit a merge request to
+   the ``libvirt-ci`` project, noting in the description that this
+   is a new build pre-requisite desired for use with QEMU
+
+ * CI pipeline will run to validate that the changes to ``mappings.yml``
+   are correct, by attempting to install the newly listed package on
+   all OS distributions supported by ``libvirt-ci``.
+
+ * Once the merge request is accepted, go back to QEMU and update
+   the ``libvirt-ci`` submodule to point to a commit that contains
+   the ``mappings.yml`` update.
+
+
+Adding new OS distros
+^^^^^^^^^^^^^^^^^^^^^
+
+In some cases ``libvirt-ci`` will not know about the OS distro that is
+desired to be tested. Before adding a new OS distro, discuss the proposed
+addition:
+
+ * Send a mail to qemu-devel, copying people listed in the
+   MAINTAINERS file for ``Build and test automation``.
+
+   There are limited CI compute resources available to QEMU, so the
+   cost/benefit tradeoff of adding new OS distros needs to be considered.
+
+ * File an issue at https://gitlab.com/libvirt/libvirt-ci/-/issues
+   pointing to the qemu-devel mail thread in the archives.
+
+   This alerts other people who might be interested in the work
+   to avoid duplication, as well as to get feedback from libvirt-ci
+   maintainers on any tips to ease the addition
+
+Assuming there is agreement to add a new OS distro then
+
+ * Fork the ``libvirt-ci`` project on gitlab
+
+ * Add metadata under ``guests/lcitool/lcitool/ansible/group_vars/``
+   for the new OS distro. There might be code changes required if
+   the OS distro uses a package format not currently known. The
+   ``libvirt-ci`` maintainers can advise on this when the issue
+   is file.
+
+ * Edit the ``mappings.yml`` change to update all the existing package
+   entries, providing details of the new OS distro
+
+ * Commit the ``mappings.yml`` change and submit a merge request to
+   the ``libvirt-ci`` project, noting in the description that this
+   is a new build pre-requisite desired for use with QEMU
+
+ * CI pipeline will run to validate that the changes to ``mappings.yml``
+   are correct, by attempting to install the newly listed package on
+   all OS distributions supported by ``libvirt-ci``.
+
+ * Once the merge request is accepted, go back to QEMU and update
+   the ``libvirt-ci`` submodule to point to a commit that contains
+   the ``mappings.yml`` update.
+
+
 Tests
------
+~~~~~
 
 Different tests are added to cover various configurations to build and test
 QEMU.  Docker tests are the executables under ``tests/docker`` named
@@ -392,7 +532,7 @@ source and build it.
 The full list of tests is printed in the ``make docker-help`` help.
 
 Debugging a Docker test failure
--------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When CI tasks, maintainers or yourself report a Docker test failure, follow the
 below steps to debug it:
@@ -409,7 +549,7 @@ below steps to debug it:
    the prompt for debug.
 
 Options
--------
+~~~~~~~
 
 Various options can be used to affect how Docker tests are done. The full
 list is in the ``make docker`` help text. The frequently used ones are:
@@ -423,7 +563,7 @@ list is in the ``make docker`` help text. The frequently used ones are:
   failure" section.
 
 Thread Sanitizer
-================
+----------------
 
 Thread Sanitizer (TSan) is a tool which can detect data races.  QEMU supports
 building and testing with this tool.
@@ -433,7 +573,7 @@ For more information on TSan:
 https://github.com/google/sanitizers/wiki/ThreadSanitizerCppManual
 
 Thread Sanitizer in Docker
----------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 TSan is currently supported in the ubuntu2004 docker.
 
 The test-tsan test will build using TSan and then run make check.
@@ -448,7 +588,7 @@ We recommend using DEBUG=1 to allow launching the test from inside the docker,
 and to allow review of the warnings generated by TSan.
 
 Building and Testing with TSan
-------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 It is possible to build and test with TSan, with a few additional steps.
 These steps are normally done automatically in the docker.
@@ -487,7 +627,7 @@ This allows for running the test and then checking the warnings afterwards.
 If you want TSan to stop and exit with error on warnings, use exitcode=66.
 
 TSan Suppressions
------------------
+~~~~~~~~~~~~~~~~~
 Keep in mind that for any data race warning, although there might be a data race
 detected by TSan, there might be no actual bug here.  TSan provides several
 different mechanisms for suppressing warnings.  In general it is recommended
@@ -513,7 +653,7 @@ More information on the file format can be found here under "Blacklist Format":
 https://github.com/google/sanitizers/wiki/ThreadSanitizerFlags
 
 TSan Annotations
-----------------
+~~~~~~~~~~~~~~~~
 include/qemu/tsan.h defines annotations.  See this file for more descriptions
 of the annotations themselves.  Annotations can be used to suppress
 TSan warnings or give TSan more information so that it can detect proper
@@ -529,15 +669,53 @@ The full set of annotations can be found here:
 
 https://github.com/llvm/llvm-project/blob/master/compiler-rt/lib/tsan/rtl/tsan_interface_ann.cpp
 
+docker-binfmt-image-debian-% targets
+------------------------------------
+
+It is possible to combine Debian's bootstrap scripts with a configured
+``binfmt_misc`` to bootstrap a number of Debian's distros including
+experimental ports not yet supported by a released OS. This can
+simplify setting up a rootfs by using docker to contain the foreign
+rootfs rather than manually invoking chroot.
+
+Setting up ``binfmt_misc``
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can use the script ``qemu-binfmt-conf.sh`` to configure a QEMU
+user binary to automatically run binaries for the foreign
+architecture. While the scripts will try their best to work with
+dynamically linked QEMU's a statically linked one will present less
+potential complications when copying into the docker image. Modern
+kernels support the ``F`` (fix binary) flag which will open the QEMU
+executable on setup and avoids the need to find and re-open in the
+chroot environment. This is triggered with the ``--persistent`` flag.
+
+Example invocation
+~~~~~~~~~~~~~~~~~~
+
+For example to setup the HPPA ports builds of Debian::
+
+  make docker-binfmt-image-debian-sid-hppa \
+    DEB_TYPE=sid DEB_ARCH=hppa \
+    DEB_URL=http://ftp.ports.debian.org/debian-ports/ \
+    DEB_KEYRING=/usr/share/keyrings/debian-ports-archive-keyring.gpg \
+    EXECUTABLE=(pwd)/qemu-hppa V=1
+
+The ``DEB_`` variables are substitutions used by
+``debian-boostrap.pre`` which is called to do the initial debootstrap
+of the rootfs before it is copied into the container. The second stage
+is run as part of the build. The final image will be tagged as
+``qemu/debian-sid-hppa``.
+
 VM testing
-==========
+----------
 
 This test suite contains scripts that bootstrap various guest images that have
 necessary packages to build QEMU. The basic usage is documented in ``Makefile``
 help which is displayed with ``make vm-help``.
 
 Quickstart
-----------
+~~~~~~~~~~
 
 Run ``make vm-help`` to list available make targets. Invoke a specific make
 command to run build test in an image. For example, ``make vm-build-freebsd``
@@ -552,29 +730,29 @@ concerned about attackers taking control of the guest and potentially
 exploiting a QEMU security bug to compromise the host.
 
 QEMU binaries
--------------
+~~~~~~~~~~~~~
 
-By default, qemu-system-x86_64 is searched in $PATH to run the guest. If there
-isn't one, or if it is older than 2.10, the test won't work. In this case,
+By default, ``qemu-system-x86_64`` is searched in $PATH to run the guest. If
+there isn't one, or if it is older than 2.10, the test won't work. In this case,
 provide the QEMU binary in env var: ``QEMU=/path/to/qemu-2.10+``.
 
-Likewise the path to qemu-img can be set in QEMU_IMG environment variable.
+Likewise the path to ``qemu-img`` can be set in QEMU_IMG environment variable.
 
 Make jobs
----------
+~~~~~~~~~
 
 The ``-j$X`` option in the make command line is not propagated into the VM,
 specify ``J=$X`` to control the make jobs in the guest.
 
 Debugging
----------
+~~~~~~~~~
 
 Add ``DEBUG=1`` and/or ``V=1`` to the make command to allow interactive
 debugging and verbose output. If this is not enough, see the next section.
 ``V=1`` will be propagated down into the make jobs in the guest.
 
 Manual invocation
------------------
+~~~~~~~~~~~~~~~~~
 
 Each guest script is an executable script with the same command line options.
 For example to work with the netbsd guest, use ``$QEMU_SRC/tests/vm/netbsd``:
@@ -598,7 +776,7 @@ For example to work with the netbsd guest, use ``$QEMU_SRC/tests/vm/netbsd``:
     $ ./netbsd --interactive --image /var/tmp/netbsd.img sh
 
 Adding new guests
------------------
+~~~~~~~~~~~~~~~~~
 
 Please look at existing guest scripts for how to add new guests.
 
@@ -631,7 +809,7 @@ the script's ``main()``.
   recommended.
 
 Image fuzzer testing
-====================
+--------------------
 
 An image fuzzer was added to exercise format drivers. Currently only qcow2 is
 supported. To start the fuzzer, run
@@ -640,20 +818,19 @@ supported. To start the fuzzer, run
 
   tests/image-fuzzer/runner.py -c '[["qemu-img", "info", "$test_img"]]' /tmp/test qcow2
 
-Alternatively, some command different from "qemu-img info" can be tested, by
+Alternatively, some command different from ``qemu-img info`` can be tested, by
 changing the ``-c`` option.
 
-Acceptance tests using the Avocado Framework
-============================================
+Integration tests using the Avocado Framework
+---------------------------------------------
 
-The ``tests/acceptance`` directory hosts functional tests, also known
-as acceptance level tests.  They're usually higher level tests, and
-may interact with external resources and with various guest operating
-systems.
+The ``tests/avocado`` directory hosts integration tests. They're usually
+higher level tests, and may interact with external resources and with
+various guest operating systems.
 
 These tests are written using the Avocado Testing Framework (which must
 be installed separately) in conjunction with a the ``avocado_qemu.Test``
-class, implemented at ``tests/acceptance/avocado_qemu``.
+class, implemented at ``tests/avocado/avocado_qemu``.
 
 Tests based on ``avocado_qemu.Test`` can easily:
 
@@ -683,13 +860,13 @@ Tests based on ``avocado_qemu.Test`` can easily:
    - http://avocado-framework.readthedocs.io/en/latest/api/utils/avocado.utils.html
 
 Running tests
--------------
+~~~~~~~~~~~~~
 
-You can run the acceptance tests simply by executing:
+You can run the avocado tests simply by executing:
 
 .. code::
 
-  make check-acceptance
+  make check-avocado
 
 This involves the automatic creation of Python virtual environment
 within the build tree (at ``tests/venv``) which will have all the
@@ -703,16 +880,85 @@ available.  On Debian and Ubuntu based systems, depending on the
 specific version, they may be on packages named ``python3-venv`` and
 ``python3-pip``.
 
+It is also possible to run tests based on tags using the
+``make check-avocado`` command and the ``AVOCADO_TAGS`` environment
+variable:
+
+.. code::
+
+   make check-avocado AVOCADO_TAGS=quick
+
+Note that tags separated with commas have an AND behavior, while tags
+separated by spaces have an OR behavior. For more information on Avocado
+tags, see:
+
+ https://avocado-framework.readthedocs.io/en/latest/guides/user/chapters/tags.html
+
+To run a single test file, a couple of them, or a test within a file
+using the ``make check-avocado`` command, set the ``AVOCADO_TESTS``
+environment variable with the test files or test names. To run all
+tests from a single file, use:
+
+ .. code::
+
+  make check-avocado AVOCADO_TESTS=$FILEPATH
+
+The same is valid to run tests from multiple test files:
+
+ .. code::
+
+  make check-avocado AVOCADO_TESTS='$FILEPATH1 $FILEPATH2'
+
+To run a single test within a file, use:
+
+ .. code::
+
+  make check-avocado AVOCADO_TESTS=$FILEPATH:$TESTCLASS.$TESTNAME
+
+The same is valid to run single tests from multiple test files:
+
+ .. code::
+
+  make check-avocado AVOCADO_TESTS='$FILEPATH1:$TESTCLASS1.$TESTNAME1 $FILEPATH2:$TESTCLASS2.$TESTNAME2'
+
 The scripts installed inside the virtual environment may be used
 without an "activation".  For instance, the Avocado test runner
 may be invoked by running:
 
  .. code::
 
-  tests/venv/bin/avocado run $OPTION1 $OPTION2 tests/acceptance/
+  tests/venv/bin/avocado run $OPTION1 $OPTION2 tests/avocado/
+
+Note that if ``make check-avocado`` was not executed before, it is
+possible to create the Python virtual environment with the dependencies
+needed running:
+
+ .. code::
+
+  make check-venv
+
+It is also possible to run tests from a single file or a single test within
+a test file. To run tests from a single file within the build tree, use:
+
+ .. code::
+
+  tests/venv/bin/avocado run tests/avocado/$TESTFILE
+
+To run a single test within a test file, use:
+
+ .. code::
+
+  tests/venv/bin/avocado run tests/avocado/$TESTFILE:$TESTCLASS.$TESTNAME
+
+Valid test names are visible in the output from any previous execution
+of Avocado or ``make check-avocado``, and can also be queried using:
+
+ .. code::
+
+  tests/venv/bin/avocado list tests/avocado
 
 Manual Installation
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 To manually install Avocado and its dependencies, run:
 
@@ -725,18 +971,18 @@ Alternatively, follow the instructions on this link:
   https://avocado-framework.readthedocs.io/en/latest/guides/user/chapters/installing.html
 
 Overview
---------
+~~~~~~~~
 
-The ``tests/acceptance/avocado_qemu`` directory provides the
+The ``tests/avocado/avocado_qemu`` directory provides the
 ``avocado_qemu`` Python module, containing the ``avocado_qemu.Test``
 class.  Here's a simple usage example:
 
 .. code::
 
-  from avocado_qemu import Test
+  from avocado_qemu import QemuSystemTest
 
 
-  class Version(Test):
+  class Version(QemuSystemTest):
       """
       :avocado: tags=quick
       """
@@ -761,7 +1007,7 @@ in the current directory, tagged as "quick", run:
   avocado run -t quick .
 
 The ``avocado_qemu.Test`` base test class
------------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The ``avocado_qemu.Test`` class has a number of characteristics that
 are worth being mentioned right away.
@@ -781,10 +1027,10 @@ and hypothetical example follows:
 
 .. code::
 
-  from avocado_qemu import Test
+  from avocado_qemu import QemuSystemTest
 
 
-  class MultipleMachines(Test):
+  class MultipleMachines(QemuSystemTest):
       def test_multiple_machines(self):
           first_machine = self.get_vm()
           second_machine = self.get_vm()
@@ -811,7 +1057,7 @@ At test "tear down", ``avocado_qemu.Test`` handles all the QEMUMachines
 shutdown.
 
 The ``avocado_qemu.LinuxTest`` base test class
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The ``avocado_qemu.LinuxTest`` is further specialization of the
 ``avocado_qemu.Test`` class, so it contains all the characteristics of
@@ -834,7 +1080,7 @@ like this:
           self.ssh_command('some_command_to_be_run_in_the_guest')
 
 Please refer to tests that use ``avocado_qemu.LinuxTest`` under
-``tests/acceptance`` for more examples.
+``tests/avocado`` for more examples.
 
 QEMUMachine
 ~~~~~~~~~~~
@@ -854,7 +1100,7 @@ execution of a QEMU binary, giving its users:
    a more succinct and intuitive way
 
 QEMU binary selection
-~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^
 
 The QEMU binary used for the ``self.vm`` QEMUMachine instance will
 primarily depend on the value of the ``qemu_bin`` parameter.  If it's
@@ -875,20 +1121,23 @@ The resulting ``qemu_bin`` value will be preserved in the
 ``avocado_qemu.Test`` as an attribute with the same name.
 
 Attribute reference
--------------------
+~~~~~~~~~~~~~~~~~~~
+
+Test
+^^^^
 
 Besides the attributes and methods that are part of the base
 ``avocado.Test`` class, the following attributes are available on any
 ``avocado_qemu.Test`` instance.
 
 vm
-~~
+''
 
 A QEMUMachine instance, initially configured according to the given
 ``qemu_bin`` parameter.
 
 arch
-~~~~
+''''
 
 The architecture can be used on different levels of the stack, e.g. by
 the framework or by the test itself.  At the framework level, it will
@@ -905,7 +1154,7 @@ name.  If one is not given explicitly, it will either be set to
 ``:avocado: tags=arch:VALUE`` tag, it will be set to ``VALUE``.
 
 cpu
-~~~
+'''
 
 The cpu model that will be set to all QEMUMachine instances created
 by the test.
@@ -916,7 +1165,7 @@ name. If one is not given explicitly, it will either be set to
 ``:avocado: tags=cpu:VALUE`` tag, it will be set to ``VALUE``.
 
 machine
-~~~~~~~
+'''''''
 
 The machine type that will be set to all QEMUMachine instances created
 by the test.
@@ -927,20 +1176,20 @@ name.  If one is not given explicitly, it will either be set to
 ``:avocado: tags=machine:VALUE`` tag, it will be set to ``VALUE``.
 
 qemu_bin
-~~~~~~~~
+''''''''
 
 The preserved value of the ``qemu_bin`` parameter or the result of the
 dynamic probe for a QEMU binary in the current working directory or
 source tree.
 
 LinuxTest
-~~~~~~~~~
+^^^^^^^^^
 
 Besides the attributes present on the ``avocado_qemu.Test`` base
 class, the ``avocado_qemu.LinuxTest`` adds the following attributes:
 
 distro
-......
+''''''
 
 The name of the Linux distribution used as the guest image for the
 test.  The name should match the **Provider** column on the list
@@ -949,7 +1198,7 @@ of images supported by the avocado.utils.vmimage library:
 https://avocado-framework.readthedocs.io/en/latest/guides/writer/libs/vmimage.html#supported-images
 
 distro_version
-..............
+''''''''''''''
 
 The version of the Linux distribution as the guest image for the
 test.  The name should match the **Version** column on the list
@@ -958,7 +1207,7 @@ of images supported by the avocado.utils.vmimage library:
 https://avocado-framework.readthedocs.io/en/latest/guides/writer/libs/vmimage.html#supported-images
 
 distro_checksum
-...............
+'''''''''''''''
 
 The sha256 hash of the guest image file used for the test.
 
@@ -967,7 +1216,7 @@ same name), no validation on the integrity of the image will be
 performed.
 
 Parameter reference
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 To understand how Avocado parameters are accessed by tests, and how
 they can be passed to tests, please refer to::
@@ -981,8 +1230,11 @@ like the following:
 
   PARAMS (key=qemu_bin, path=*, default=./qemu-system-x86_64) => './qemu-system-x86_64
 
+Test
+^^^^
+
 arch
-~~~~
+''''
 
 The architecture that will influence the selection of a QEMU binary
 (when one is not explicitly given).
@@ -995,31 +1247,30 @@ This parameter has a direct relation with the ``arch`` attribute.  If
 not given, it will default to None.
 
 cpu
-~~~
+'''
 
 The cpu model that will be set to all QEMUMachine instances created
 by the test.
 
 machine
-~~~~~~~
+'''''''
 
 The machine type that will be set to all QEMUMachine instances created
 by the test.
 
-
 qemu_bin
-~~~~~~~~
+''''''''
 
 The exact QEMU binary to be used on QEMUMachine.
 
 LinuxTest
-~~~~~~~~~
+^^^^^^^^^
 
 Besides the parameters present on the ``avocado_qemu.Test`` base
 class, the ``avocado_qemu.LinuxTest`` adds the following parameters:
 
 distro
-......
+''''''
 
 The name of the Linux distribution used as the guest image for the
 test.  The name should match the **Provider** column on the list
@@ -1028,7 +1279,7 @@ of images supported by the avocado.utils.vmimage library:
 https://avocado-framework.readthedocs.io/en/latest/guides/writer/libs/vmimage.html#supported-images
 
 distro_version
-..............
+''''''''''''''
 
 The version of the Linux distribution as the guest image for the
 test.  The name should match the **Version** column on the list
@@ -1037,7 +1288,7 @@ of images supported by the avocado.utils.vmimage library:
 https://avocado-framework.readthedocs.io/en/latest/guides/writer/libs/vmimage.html#supported-images
 
 distro_checksum
-...............
+'''''''''''''''
 
 The sha256 hash of the guest image file used for the test.
 
@@ -1045,7 +1296,8 @@ If this value is not set in the code or by this parameter no
 validation on the integrity of the image will be performed.
 
 Skipping tests
---------------
+~~~~~~~~~~~~~~
+
 The Avocado framework provides Python decorators which allow for easily skip
 tests running under certain conditions. For example, on the lack of a binary
 on the test system or when the running environment is a CI system. For further
@@ -1060,7 +1312,7 @@ environment variables became a kind of standard way to enable/disable tests.
 Here is a list of the most used variables:
 
 AVOCADO_ALLOW_LARGE_STORAGE
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Tests which are going to fetch or produce assets considered *large* are not
 going to run unless that ``AVOCADO_ALLOW_LARGE_STORAGE=1`` is exported on
 the environment.
@@ -1069,7 +1321,7 @@ The definition of *large* is a bit arbitrary here, but it usually means an
 asset which occupies at least 1GB of size on disk when uncompressed.
 
 AVOCADO_ALLOW_UNTRUSTED_CODE
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 There are tests which will boot a kernel image or firmware that can be
 considered not safe to run on the developer's workstation, thus they are
 skipped by default. The definition of *not safe* is also arbitrary but
@@ -1080,7 +1332,7 @@ You should export ``AVOCADO_ALLOW_UNTRUSTED_CODE=1`` on the environment in
 order to allow tests which make use of those kind of assets.
 
 AVOCADO_TIMEOUT_EXPECTED
-~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^
 The Avocado framework has a timeout mechanism which interrupts tests to avoid the
 test suite of getting stuck. The timeout value can be set via test parameter or
 property defined in the test class, for further details::
@@ -1094,7 +1346,7 @@ compiled with debug flags. Therefore, the ``AVOCADO_TIMEOUT_EXPECTED`` variable
 has been used to determine whether those tests should run or not.
 
 GITLAB_CI
-~~~~~~~~~
+^^^^^^^^^
 A number of tests are flagged to not run on the GitLab CI. Usually because
 they proved to the flaky or there are constraints on the CI environment which
 would make them fail. If you encounter a similar situation then use that
@@ -1107,7 +1359,7 @@ variable as shown on the code snippet below to skip the test:
       do_something()
 
 Uninstalling Avocado
---------------------
+~~~~~~~~~~~~~~~~~~~~
 
 If you've followed the manual installation instructions above, you can
 easily uninstall Avocado.  Start by listing the packages you have
@@ -1119,13 +1371,13 @@ And remove any package you want with::
 
   pip uninstall <package_name>
 
-If you've used ``make check-acceptance``, the Python virtual environment where
+If you've used ``make check-avocado``, the Python virtual environment where
 Avocado is installed will be cleaned up as part of ``make check-clean``.
 
 .. _checktcg-ref:
 
 Testing with "make check-tcg"
-=============================
+-----------------------------
 
 The check-tcg tests are intended for simple smoke tests of both
 linux-user and softmmu TCG functionality. However to build test
@@ -1142,7 +1394,7 @@ for the architecture in question, for example::
 
   $(configure) --cross-cc-aarch64=aarch64-cc
 
-There is also a ``--cross-cc-flags-ARCH`` flag in case additional
+There is also a ``--cross-cc-cflags-ARCH`` flag in case additional
 compiler flags are needed to build for a given target.
 
 If you have the ability to run containers as the user the build system
@@ -1158,7 +1410,7 @@ itself.
 See :ref:`container-ref` for more details.
 
 Running subset of tests
------------------------
+~~~~~~~~~~~~~~~~~~~~~~~
 
 You can build the tests for one architecture::
 
@@ -1172,7 +1424,7 @@ Adding ``V=1`` to the invocation will show the details of how to
 invoke QEMU for the test which is useful for debugging tests.
 
 TCG test dependencies
----------------------
+~~~~~~~~~~~~~~~~~~~~~
 
 The TCG tests are deliberately very light on dependencies and are
 either totally bare with minimal gcc lib support (for softmmu tests)
@@ -1204,3 +1456,22 @@ exercise as many corner cases as possible. It is a useful test suite
 to run to exercise QEMU's linux-user code::
 
   https://linux-test-project.github.io/
+
+GCC gcov support
+----------------
+
+``gcov`` is a GCC tool to analyze the testing coverage by
+instrumenting the tested code. To use it, configure QEMU with
+``--enable-gcov`` option and build. Then run the tests as usual.
+
+If you want to gather coverage information on a single test the ``make
+clean-gcda`` target can be used to delete any existing coverage
+information before running a single test.
+
+You can generate a HTML coverage report by executing ``make
+coverage-html`` which will create
+``meson-logs/coveragereport/index.html``.
+
+Further analysis can be conducted by running the ``gcov`` command
+directly on the various .gcda output files. Please read the ``gcov``
+documentation for more information.

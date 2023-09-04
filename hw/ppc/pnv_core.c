@@ -58,6 +58,7 @@ static void pnv_core_cpu_reset(PnvCore *pc, PowerPCCPU *cpu)
     env->msr |= MSR_HVB; /* Hypervisor mode */
     env->spr[SPR_HRMOR] = pc->hrmor;
     hreg_compute_hflags(env);
+    ppc_maybe_interrupt(env);
 
     pcc->intc_reset(pc->chip, cpu);
 }
@@ -347,7 +348,7 @@ static const TypeInfo pnv_core_infos[] = {
     DEFINE_PNV_CORE_TYPE(power8, "power8_v2.0"),
     DEFINE_PNV_CORE_TYPE(power8, "power8nvl_v1.0"),
     DEFINE_PNV_CORE_TYPE(power9, "power9_v2.0"),
-    DEFINE_PNV_CORE_TYPE(power10, "power10_v1.0"),
+    DEFINE_PNV_CORE_TYPE(power10, "power10_v2.0"),
 };
 
 DEFINE_TYPES(pnv_core_infos)
@@ -407,13 +408,13 @@ static void pnv_quad_realize(DeviceState *dev, Error **errp)
     PnvQuad *eq = PNV_QUAD(dev);
     char name[32];
 
-    snprintf(name, sizeof(name), "xscom-quad.%d", eq->id);
+    snprintf(name, sizeof(name), "xscom-quad.%d", eq->quad_id);
     pnv_xscom_region_init(&eq->xscom_regs, OBJECT(dev), &pnv_quad_xscom_ops,
                           eq, name, PNV9_XSCOM_EQ_SIZE);
 }
 
 static Property pnv_quad_properties[] = {
-    DEFINE_PROP_UINT32("id", PnvQuad, id, 0),
+    DEFINE_PROP_UINT32("quad-id", PnvQuad, quad_id, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 

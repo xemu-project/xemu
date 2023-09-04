@@ -5350,6 +5350,11 @@ const uint8_t *nv2a_get_dac_palette(void)
     return g_nv2a->puserdac.palette;
 }
 
+int nv2a_get_screen_off(void)
+{
+    return g_nv2a->vga.sr[VGA_SEQ_CLOCK_MODE] & VGA_SR01_SCREEN_OFF;
+}
+
 int nv2a_get_framebuffer_surface(void)
 {
     NV2AState *d = g_nv2a;
@@ -6638,7 +6643,8 @@ static void pgraph_bind_textures(NV2AState *d)
                      1 << log_width, 1 << log_height, 1 << log_depth,
                      pitch,
                      cubemap ? "; cubemap" : "",
-                     min_filter, mag_filter,
+                     GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN),
+                     GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG),
                      min_mipmap_level, max_mipmap_level, levels,
                      lod_bias);
 

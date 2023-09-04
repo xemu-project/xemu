@@ -19,6 +19,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/log.h"
 #include "cpu.h"
 #include "s390x-internal.h"
 #include "tcg_s390x.h"
@@ -27,7 +28,7 @@
 #include "exec/cpu_ldst.h"
 #include "qemu/int128.h"
 #include "qemu/atomic128.h"
-#include "tcg/tcg.h"
+#include "trace.h"
 
 #if !defined(CONFIG_USER_ONLY)
 #include "hw/s390x/storage-keys.h"
@@ -141,24 +142,12 @@ static int s390_probe_access(CPUArchState *env, target_ulong addr, int size,
                              MMUAccessType access_type, int mmu_idx,
                              bool nonfault, void **phost, uintptr_t ra)
 {
+#if defined(CONFIG_USER_ONLY)
+    return probe_access_flags(env, addr, access_type, mmu_idx,
+                              nonfault, phost, ra);
+#else
     int flags;
 
-#if defined(CONFIG_USER_ONLY)
-    flags = page_get_flags(addr);
-    if (!(flags & (access_type == MMU_DATA_LOAD ?  PAGE_READ : PAGE_WRITE_ORG))) {
-        env->__excp_addr = addr;
-        flags = (flags & PAGE_VALID) ? PGM_PROTECTION : PGM_ADDRESSING;
-        if (nonfault) {
-            return flags;
-        }
-        tcg_s390_program_interrupt(env, flags, ra);
-    }
-    *phost = g2h(env_cpu(env), addr);
-#else
-    /*
-     * For !CONFIG_USER_ONLY, we cannot rely on TLB_INVALID_MASK or haddr==NULL
-     * to detect if there was an exception during tlb_fill().
-     */
     env->tlb_fill_exc = 0;
     flags = probe_access_flags(env, addr, access_type, mmu_idx, nonfault, phost,
                                ra);
@@ -173,8 +162,8 @@ static int s390_probe_access(CPUArchState *env, target_ulong addr, int size,
                              (access_type == MMU_DATA_STORE
                               ? BP_MEM_WRITE : BP_MEM_READ), ra);
     }
-#endif
     return 0;
+#endif
 }
 
 static int access_prepare_nf(S390Access *access, CPUS390XState *env,
@@ -238,7 +227,7 @@ static void do_access_memset(CPUS390XState *env, vaddr vaddr, char *haddr,
     g_assert(haddr);
     memset(haddr, byte, size);
 #else
-    TCGMemOpIdx oi = make_memop_idx(MO_UB, mmu_idx);
+    MemOpIdx oi = make_memop_idx(MO_UB, mmu_idx);
     int i;
 
     if (likely(haddr)) {
@@ -249,13 +238,13 @@ static void do_access_memset(CPUS390XState *env, vaddr vaddr, char *haddr,
          * page. This is especially relevant to speed up TLB_NOTDIRTY.
          */
         g_assert(size > 0);
-        helper_ret_stb_mmu(env, vaddr, byte, oi, ra);
+        cpu_stb_mmu(env, vaddr, byte, oi, ra);
         haddr = tlb_vaddr_to_host(env, vaddr, MMU_DATA_STORE, mmu_idx);
         if (likely(haddr)) {
             memset(haddr + 1, byte, size - 1);
         } else {
             for (i = 1; i < size; i++) {
-                helper_ret_stb_mmu(env, vaddr + i, byte, oi, ra);
+                cpu_stb_mmu(env, vaddr + i, byte, oi, ra);
             }
         }
     }
@@ -281,7 +270,7 @@ static uint8_t do_access_get_byte(CPUS390XState *env, vaddr vaddr, char **haddr,
 #ifdef CONFIG_USER_ONLY
     return ldub_p(*haddr + offset);
 #else
-    TCGMemOpIdx oi = make_memop_idx(MO_UB, mmu_idx);
+    MemOpIdx oi = make_memop_idx(MO_UB, mmu_idx);
     uint8_t byte;
 
     if (likely(*haddr)) {
@@ -291,7 +280,7 @@ static uint8_t do_access_get_byte(CPUS390XState *env, vaddr vaddr, char **haddr,
      * Do a single access and test if we can then get access to the
      * page. This is especially relevant to speed up TLB_NOTDIRTY.
      */
-    byte = helper_ret_ldub_mmu(env, vaddr + offset, oi, ra);
+    byte = cpu_ldb_mmu(env, vaddr + offset, oi, ra);
     *haddr = tlb_vaddr_to_host(env, vaddr, MMU_DATA_LOAD, mmu_idx);
     return byte;
 #endif
@@ -315,7 +304,7 @@ static void do_access_set_byte(CPUS390XState *env, vaddr vaddr, char **haddr,
 #ifdef CONFIG_USER_ONLY
     stb_p(*haddr + offset, byte);
 #else
-    TCGMemOpIdx oi = make_memop_idx(MO_UB, mmu_idx);
+    MemOpIdx oi = make_memop_idx(MO_UB, mmu_idx);
 
     if (likely(*haddr)) {
         stb_p(*haddr + offset, byte);
@@ -325,7 +314,7 @@ static void do_access_set_byte(CPUS390XState *env, vaddr vaddr, char **haddr,
      * Do a single access and test if we can then get access to the
      * page. This is especially relevant to speed up TLB_NOTDIRTY.
      */
-    helper_ret_stb_mmu(env, vaddr + offset, byte, oi, ra);
+    cpu_stb_mmu(env, vaddr + offset, byte, oi, ra);
     *haddr = tlb_vaddr_to_host(env, vaddr, MMU_DATA_STORE, mmu_idx);
 #endif
 }
@@ -552,6 +541,26 @@ static uint32_t do_helper_mvc(CPUS390XState *env, uint32_t l, uint64_t dest,
 void HELPER(mvc)(CPUS390XState *env, uint32_t l, uint64_t dest, uint64_t src)
 {
     do_helper_mvc(env, l, dest, src, GETPC());
+}
+
+/* move right to left */
+void HELPER(mvcrl)(CPUS390XState *env, uint64_t l, uint64_t dest, uint64_t src)
+{
+    const int mmu_idx = cpu_mmu_index(env, false);
+    const uint64_t ra = GETPC();
+    S390Access srca, desta;
+    int32_t i;
+
+    /* MVCRL always copies one more byte than specified - maximum is 256 */
+    l++;
+
+    srca = access_prepare(env, src, l, MMU_DATA_LOAD, mmu_idx, ra);
+    desta = access_prepare(env, dest, l, MMU_DATA_STORE, mmu_idx, ra);
+
+    for (i = l - 1; i >= 0; i--) {
+        uint8_t byte = access_get_byte(env, &srca, i, ra);
+        access_set_byte(env, &desta, i, byte, ra);
+    }
 }
 
 /* move inverse  */
@@ -1803,14 +1812,14 @@ void HELPER(cdsg_parallel)(CPUS390XState *env, uint64_t addr,
     Int128 cmpv = int128_make128(env->regs[r1 + 1], env->regs[r1]);
     Int128 newv = int128_make128(env->regs[r3 + 1], env->regs[r3]);
     int mem_idx;
-    TCGMemOpIdx oi;
+    MemOpIdx oi;
     Int128 oldv;
     bool fail;
 
     assert(HAVE_CMPXCHG128);
 
     mem_idx = cpu_mmu_index(env, false);
-    oi = make_memop_idx(MO_TEQ | MO_ALIGN_16, mem_idx);
+    oi = make_memop_idx(MO_TE | MO_128 | MO_ALIGN, mem_idx);
     oldv = cpu_atomic_cmpxchgo_be_mmu(env, addr, cmpv, newv, oi, ra);
     fail = !int128_eq(oldv, cmpv);
 
@@ -1883,7 +1892,7 @@ static uint32_t do_csst(CPUS390XState *env, uint32_t r3, uint64_t a1,
                 uint32_t *haddr = g2h(env_cpu(env), a1);
                 ov = qatomic_cmpxchg__nocheck(haddr, cv, nv);
 #else
-                TCGMemOpIdx oi = make_memop_idx(MO_TEUL | MO_ALIGN, mem_idx);
+                MemOpIdx oi = make_memop_idx(MO_TEUL | MO_ALIGN, mem_idx);
                 ov = cpu_atomic_cmpxchgl_be_mmu(env, a1, cv, nv, oi, ra);
 #endif
             } else {
@@ -1903,7 +1912,7 @@ static uint32_t do_csst(CPUS390XState *env, uint32_t r3, uint64_t a1,
 
             if (parallel) {
 #ifdef CONFIG_ATOMIC64
-                TCGMemOpIdx oi = make_memop_idx(MO_TEQ | MO_ALIGN, mem_idx);
+                MemOpIdx oi = make_memop_idx(MO_TEUQ | MO_ALIGN, mem_idx);
                 ov = cpu_atomic_cmpxchgq_be_mmu(env, a1, cv, nv, oi, ra);
 #else
                 /* Note that we asserted !parallel above.  */
@@ -1939,7 +1948,7 @@ static uint32_t do_csst(CPUS390XState *env, uint32_t r3, uint64_t a1,
                 cpu_stq_data_ra(env, a1 + 0, int128_gethi(nv), ra);
                 cpu_stq_data_ra(env, a1 + 8, int128_getlo(nv), ra);
             } else if (HAVE_CMPXCHG128) {
-                TCGMemOpIdx oi = make_memop_idx(MO_TEQ | MO_ALIGN_16, mem_idx);
+                MemOpIdx oi = make_memop_idx(MO_TE | MO_128 | MO_ALIGN, mem_idx);
                 ov = cpu_atomic_cmpxchgo_be_mmu(env, a1, cv, nv, oi, ra);
                 cc = !int128_eq(ov, cv);
             } else {
@@ -1978,7 +1987,7 @@ static uint32_t do_csst(CPUS390XState *env, uint32_t r3, uint64_t a1,
                 cpu_stq_data_ra(env, a2 + 0, svh, ra);
                 cpu_stq_data_ra(env, a2 + 8, svl, ra);
             } else if (HAVE_ATOMIC128) {
-                TCGMemOpIdx oi = make_memop_idx(MO_TEQ | MO_ALIGN_16, mem_idx);
+                MemOpIdx oi = make_memop_idx(MO_TEUQ | MO_ALIGN_16, mem_idx);
                 Int128 sv = int128_make128(svl, svh);
                 cpu_atomic_sto_be_mmu(env, a2, sv, oi, ra);
             } else {
@@ -2171,22 +2180,28 @@ uint32_t HELPER(tprot)(CPUS390XState *env, uint64_t a1, uint64_t a2)
 /* insert storage key extended */
 uint64_t HELPER(iske)(CPUS390XState *env, uint64_t r2)
 {
-    MachineState *ms = MACHINE(qdev_get_machine());
     static S390SKeysState *ss;
     static S390SKeysClass *skeyclass;
     uint64_t addr = wrap_address(env, r2);
     uint8_t key;
+    int rc;
 
-    if (addr > ms->ram_size) {
-        return 0;
+    addr = mmu_real2abs(env, addr);
+    if (!mmu_absolute_addr_valid(addr, false)) {
+        tcg_s390_program_interrupt(env, PGM_ADDRESSING, GETPC());
     }
 
     if (unlikely(!ss)) {
         ss = s390_get_skeys_device();
         skeyclass = S390_SKEYS_GET_CLASS(ss);
+        if (skeyclass->enable_skeys && !skeyclass->enable_skeys(ss)) {
+            tlb_flush_all_cpus_synced(env_cpu(env));
+        }
     }
 
-    if (skeyclass->get_skeys(ss, addr / TARGET_PAGE_SIZE, 1, &key)) {
+    rc = skeyclass->get_skeys(ss, addr / TARGET_PAGE_SIZE, 1, &key);
+    if (rc) {
+        trace_get_skeys_nonzero(rc);
         return 0;
     }
     return key;
@@ -2195,23 +2210,30 @@ uint64_t HELPER(iske)(CPUS390XState *env, uint64_t r2)
 /* set storage key extended */
 void HELPER(sske)(CPUS390XState *env, uint64_t r1, uint64_t r2)
 {
-    MachineState *ms = MACHINE(qdev_get_machine());
     static S390SKeysState *ss;
     static S390SKeysClass *skeyclass;
     uint64_t addr = wrap_address(env, r2);
     uint8_t key;
+    int rc;
 
-    if (addr > ms->ram_size) {
-        return;
+    addr = mmu_real2abs(env, addr);
+    if (!mmu_absolute_addr_valid(addr, false)) {
+        tcg_s390_program_interrupt(env, PGM_ADDRESSING, GETPC());
     }
 
     if (unlikely(!ss)) {
         ss = s390_get_skeys_device();
         skeyclass = S390_SKEYS_GET_CLASS(ss);
+        if (skeyclass->enable_skeys && !skeyclass->enable_skeys(ss)) {
+            tlb_flush_all_cpus_synced(env_cpu(env));
+        }
     }
 
-    key = (uint8_t) r1;
-    skeyclass->set_skeys(ss, addr / TARGET_PAGE_SIZE, 1, &key);
+    key = r1 & 0xfe;
+    rc = skeyclass->set_skeys(ss, addr / TARGET_PAGE_SIZE, 1, &key);
+    if (rc) {
+        trace_set_skeys_nonzero(rc);
+    }
    /*
     * As we can only flush by virtual address and not all the entries
     * that point to a physical address we have to flush the whole TLB.
@@ -2222,28 +2244,37 @@ void HELPER(sske)(CPUS390XState *env, uint64_t r1, uint64_t r2)
 /* reset reference bit extended */
 uint32_t HELPER(rrbe)(CPUS390XState *env, uint64_t r2)
 {
-    MachineState *ms = MACHINE(qdev_get_machine());
+    uint64_t addr = wrap_address(env, r2);
     static S390SKeysState *ss;
     static S390SKeysClass *skeyclass;
     uint8_t re, key;
+    int rc;
 
-    if (r2 > ms->ram_size) {
-        return 0;
+    addr = mmu_real2abs(env, addr);
+    if (!mmu_absolute_addr_valid(addr, false)) {
+        tcg_s390_program_interrupt(env, PGM_ADDRESSING, GETPC());
     }
 
     if (unlikely(!ss)) {
         ss = s390_get_skeys_device();
         skeyclass = S390_SKEYS_GET_CLASS(ss);
+        if (skeyclass->enable_skeys && !skeyclass->enable_skeys(ss)) {
+            tlb_flush_all_cpus_synced(env_cpu(env));
+        }
     }
 
-    if (skeyclass->get_skeys(ss, r2 / TARGET_PAGE_SIZE, 1, &key)) {
+    rc = skeyclass->get_skeys(ss, addr / TARGET_PAGE_SIZE, 1, &key);
+    if (rc) {
+        trace_get_skeys_nonzero(rc);
         return 0;
     }
 
     re = key & (SK_R | SK_C);
     key &= ~SK_R;
 
-    if (skeyclass->set_skeys(ss, r2 / TARGET_PAGE_SIZE, 1, &key)) {
+    rc = skeyclass->set_skeys(ss, addr / TARGET_PAGE_SIZE, 1, &key);
+    if (rc) {
+        trace_set_skeys_nonzero(rc);
         return 0;
     }
    /*
@@ -2441,7 +2472,7 @@ uint64_t HELPER(lra)(CPUS390XState *env, uint64_t addr)
         tcg_s390_program_interrupt(env, PGM_SPECIAL_OP, GETPC());
     }
 
-    exc = mmu_translate(env, addr, 0, asc, &ret, &flags, &tec);
+    exc = mmu_translate(env, addr, MMU_S390_LRA, asc, &ret, &flags, &tec);
     if (exc) {
         cc = 3;
         ret = exc | 0x80000000;
@@ -2474,13 +2505,13 @@ uint64_t HELPER(lpq_parallel)(CPUS390XState *env, uint64_t addr)
     uintptr_t ra = GETPC();
     uint64_t hi, lo;
     int mem_idx;
-    TCGMemOpIdx oi;
+    MemOpIdx oi;
     Int128 v;
 
     assert(HAVE_ATOMIC128);
 
     mem_idx = cpu_mmu_index(env, false);
-    oi = make_memop_idx(MO_TEQ | MO_ALIGN_16, mem_idx);
+    oi = make_memop_idx(MO_TEUQ | MO_ALIGN_16, mem_idx);
     v = cpu_atomic_ldo_be_mmu(env, addr, oi, ra);
     hi = int128_gethi(v);
     lo = int128_getlo(v);
@@ -2505,13 +2536,13 @@ void HELPER(stpq_parallel)(CPUS390XState *env, uint64_t addr,
 {
     uintptr_t ra = GETPC();
     int mem_idx;
-    TCGMemOpIdx oi;
+    MemOpIdx oi;
     Int128 v;
 
     assert(HAVE_ATOMIC128);
 
     mem_idx = cpu_mmu_index(env, false);
-    oi = make_memop_idx(MO_TEQ | MO_ALIGN_16, mem_idx);
+    oi = make_memop_idx(MO_TEUQ | MO_ALIGN_16, mem_idx);
     v = int128_make128(low, high);
     cpu_atomic_sto_be_mmu(env, addr, v, oi, ra);
 }
@@ -2587,6 +2618,7 @@ void HELPER(ex)(CPUS390XState *env, uint32_t ilen, uint64_t r1, uint64_t addr)
        that ex_value is non-zero, which flags that we are in a state
        that requires such execution.  */
     env->ex_value = insn | ilen;
+    env->ex_target = addr;
 }
 
 uint32_t HELPER(mvcos)(CPUS390XState *env, uint64_t dest, uint64_t src,

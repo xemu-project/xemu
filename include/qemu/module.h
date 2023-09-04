@@ -61,30 +61,57 @@ typedef enum {
 #define fuzz_target_init(function) module_init(function, \
                                                MODULE_INIT_FUZZ_TARGET)
 #define migration_init(function) module_init(function, MODULE_INIT_MIGRATION)
-#define block_module_load_one(lib) module_load_one("block-", lib, false)
-#define ui_module_load_one(lib) module_load_one("ui-", lib, false)
-#define audio_module_load_one(lib) module_load_one("audio-", lib, false)
+#define block_module_load(lib, errp) module_load("block-", lib, errp)
+#define ui_module_load(lib, errp) module_load("ui-", lib, errp)
+#define audio_module_load(lib, errp) module_load("audio-", lib, errp)
 
 void register_module_init(void (*fn)(void), module_init_type type);
 void register_dso_module_init(void (*fn)(void), module_init_type type);
 
 void module_call_init(module_init_type type);
-bool module_load_one(const char *prefix, const char *lib_name, bool mayfail);
-void module_load_qom_one(const char *type);
+
+/*
+ * module_load: attempt to load a module from a set of directories
+ *
+ * directories searched are:
+ * - getenv("QEMU_MODULE_DIR")
+ * - get_relocated_path(CONFIG_QEMU_MODDIR);
+ * - /var/run/qemu/${version_dir}
+ *
+ * prefix:         a subsystem prefix, or the empty string ("audio-", ..., "")
+ * name:           name of the module
+ * errp:           error to set in case the module is found, but load failed.
+ *
+ * Return value:   -1 on error (errp set if not NULL).
+ *                 0 if module or one of its dependencies are not installed,
+ *                 1 if the module is found and loaded,
+ *                 2 if the module is already loaded, or module is built-in.
+ */
+int module_load(const char *prefix, const char *name, Error **errp);
+
+/*
+ * module_load_qom: attempt to load a module to provide a QOM type
+ *
+ * type:           the type to be provided
+ * errp:           error to set.
+ *
+ * Return value:   as per module_load.
+ */
+int module_load_qom(const char *type, Error **errp);
 void module_load_qom_all(void);
 void module_allow_arch(const char *arch);
 
 /**
  * DOC: module info annotation macros
  *
- * `scripts/modinfo-collect.py` will collect module info,
+ * ``scripts/modinfo-collect.py`` will collect module info,
  * using the preprocessor and -DQEMU_MODINFO.
  *
- * `scripts/modinfo-generate.py` will create a module meta-data database
+ * ``scripts/modinfo-generate.py`` will create a module meta-data database
  * from the collected information so qemu knows about module
  * dependencies and QOM objects implemented by modules.
  *
- * See `*.modinfo` and `modinfo.c` in the build directory to check the
+ * See ``*.modinfo`` and ``modinfo.c`` in the build directory to check the
  * script results.
  */
 #ifdef QEMU_MODINFO
@@ -134,6 +161,16 @@ void module_allow_arch(const char *arch);
  * This module registers QemuOpts @name.
  */
 #define module_opts(name) modinfo(opts, name)
+
+/**
+ * module_kconfig
+ *
+ * @name: Kconfig requirement necessary to load the module
+ *
+ * This module requires a core module that should be implemented and
+ * enabled in Kconfig.
+ */
+#define module_kconfig(name) modinfo(kconfig, name)
 
 /*
  * module info database

@@ -28,13 +28,6 @@ extern "C" {
 #include <noc_file_dialog.h>
 }
 
-static inline
-bool IsNavInputPressed(ImGuiNavInput i) {
-    ImGuiIO &io = ImGui::GetIO();
-    return io.NavInputs[i] > 0.0f && io.NavInputsDownDuration[i] == 0.0f;
-}
-
-
 static inline const char *PausedFileOpen(int flags, const char *filters,
                                          const char *default_path,
                                          const char *default_name)
@@ -67,7 +60,7 @@ static inline bool IsShortcutKeyPressed(int scancode)
     ImGuiIO& io = ImGui::GetIO();
     const bool is_osx = io.ConfigMacOSXBehaviors;
     const bool is_shortcut_key = (is_osx ? (io.KeySuper && !io.KeyCtrl) : (io.KeyCtrl && !io.KeySuper)) && !io.KeyAlt && !io.KeyShift; // OS X style: Shortcuts using Cmd/Super instead of Ctrl
-    return is_shortcut_key && ImGui::IsKeyPressed(scancode);
+    return is_shortcut_key && ImGui::IsKeyPressed((enum ImGuiKey)scancode);
 }
 
 static inline float mix(float a, float b, float t)

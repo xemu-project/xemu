@@ -72,7 +72,6 @@ bool CompatibilityReport::Send()
 #endif
 
 	cli.set_follow_location(true);
-	cli.set_timeout_sec(5);
 	// cli.enable_server_certificate_verification(true); // FIXME: Package cert bundle
 
 	auto res = cli.Post("/compatibility", s, "application/json");

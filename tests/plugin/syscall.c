@@ -70,19 +70,17 @@ static void vcpu_syscall_ret(qemu_plugin_id_t id, unsigned int vcpu_idx,
         }
         g_mutex_unlock(&lock);
     } else {
-        g_autofree gchar *out;
-        out = g_strdup_printf("syscall #%" PRIi64 " returned -> %" PRIi64 "\n",
-                num, ret);
+        g_autofree gchar *out = g_strdup_printf(
+             "syscall #%" PRIi64 " returned -> %" PRIi64 "\n", num, ret);
         qemu_plugin_outs(out);
     }
 }
 
 static void print_entry(gpointer val, gpointer user_data)
 {
-    g_autofree gchar *out;
     SyscallStats *entry = (SyscallStats *) val;
     int64_t syscall_num = entry->num;
-    out = g_strdup_printf(
+    g_autofree gchar *out = g_strdup_printf(
         "%-13" PRIi64 "%-6" PRIi64 " %" PRIi64 "\n",
         syscall_num, entry->calls, entry->errors);
     qemu_plugin_outs(out);
@@ -119,15 +117,24 @@ QEMU_PLUGIN_EXPORT int qemu_plugin_install(qemu_plugin_id_t id,
                                            const qemu_info_t *info,
                                            int argc, char **argv)
 {
-    if (argc == 0) {
-        statistics = g_hash_table_new_full(NULL, g_direct_equal, NULL, g_free);
-    } else {
-        for (int i = 0; i < argc; i++) {
-            if (g_strcmp0(argv[i], "print") != 0) {
-                fprintf(stderr, "unsupported argument: %s\n", argv[i]);
-                return -1;
+    bool do_print = false;
+
+    for (int i = 0; i < argc; i++) {
+        char *opt = argv[i];
+        g_autofree char **tokens = g_strsplit(opt, "=", 2);
+
+        if (g_strcmp0(tokens[0], "print") == 0) {
+            if (!qemu_plugin_bool_parse(tokens[0], tokens[1], &do_print)) {
+                fprintf(stderr, "boolean argument parsing failed: %s\n", opt);
             }
+        } else {
+            fprintf(stderr, "unsupported argument: %s\n", argv[i]);
+            return -1;
         }
+    }
+
+    if (!do_print) {
+        statistics = g_hash_table_new_full(NULL, g_direct_equal, NULL, g_free);
     }
 
     qemu_plugin_register_vcpu_syscall_cb(id, vcpu_syscall);

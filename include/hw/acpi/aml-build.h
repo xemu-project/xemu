@@ -289,7 +289,7 @@ void free_aml_allocator(void);
 void aml_append(Aml *parent_ctx, Aml *child);
 
 /* non block AML object primitives */
-Aml *aml_name(const char *name_format, ...) GCC_FMT_ATTR(1, 2);
+Aml *aml_name(const char *name_format, ...) G_GNUC_PRINTF(1, 2);
 Aml *aml_name_decl(const char *name, Aml *val);
 Aml *aml_debug(void);
 Aml *aml_return(Aml *val);
@@ -344,13 +344,13 @@ Aml *aml_irq_no_flags(uint8_t irq);
 Aml *aml_named_field(const char *name, unsigned length);
 Aml *aml_reserved_field(unsigned length);
 Aml *aml_local(int num);
-Aml *aml_string(const char *name_format, ...) GCC_FMT_ATTR(1, 2);
+Aml *aml_string(const char *name_format, ...) G_GNUC_PRINTF(1, 2);
 Aml *aml_lnot(Aml *arg);
 Aml *aml_equal(Aml *arg1, Aml *arg2);
 Aml *aml_lgreater(Aml *arg1, Aml *arg2);
 Aml *aml_lgreater_equal(Aml *arg1, Aml *arg2);
 Aml *aml_processor(uint8_t proc_id, uint32_t pblk_addr, uint8_t pblk_len,
-                   const char *name_format, ...) GCC_FMT_ATTR(4, 5);
+                   const char *name_format, ...) G_GNUC_PRINTF(4, 5);
 Aml *aml_eisaid(const char *str);
 Aml *aml_word_bus_number(AmlMinFixed min_fixed, AmlMaxFixed max_fixed,
                          AmlDecode dec, uint16_t addr_gran,
@@ -384,8 +384,8 @@ Aml *aml_sleep(uint64_t msec);
 Aml *aml_i2c_serial_bus_device(uint16_t address, const char *resource_source);
 
 /* Block AML object primitives */
-Aml *aml_scope(const char *name_format, ...) GCC_FMT_ATTR(1, 2);
-Aml *aml_device(const char *name_format, ...) GCC_FMT_ATTR(1, 2);
+Aml *aml_scope(const char *name_format, ...) G_GNUC_PRINTF(1, 2);
+Aml *aml_device(const char *name_format, ...) G_GNUC_PRINTF(1, 2);
 Aml *aml_method(const char *name, int arg_count, AmlSerializeFlag sflag);
 Aml *aml_if(Aml *predicate);
 Aml *aml_else(void);
@@ -413,10 +413,37 @@ Aml *aml_concatenate(Aml *source1, Aml *source2, Aml *target);
 Aml *aml_object_type(Aml *object);
 
 void build_append_int_noprefix(GArray *table, uint64_t value, int size);
-void
-build_header(BIOSLinker *linker, GArray *table_data,
-             AcpiTableHeader *h, const char *sig, int len, uint8_t rev,
-             const char *oem_id, const char *oem_table_id);
+
+typedef struct AcpiTable {
+    const char *sig;
+    const uint8_t rev;
+    const char *oem_id;
+    const char *oem_table_id;
+    /* private vars tracking table state */
+    GArray *array;
+    unsigned table_offset;
+} AcpiTable;
+
+/**
+ * acpi_table_begin:
+ * initializes table header and keeps track of
+ * table data/offsets
+ * @desc: ACPI table descriptor
+ * @array: blob where the ACPI table will be composed/stored.
+ */
+void acpi_table_begin(AcpiTable *desc, GArray *array);
+
+/**
+ * acpi_table_end:
+ * sets actual table length and tells bios loader
+ * where table is for the later initialization on
+ * guest side.
+ * @linker: reference to BIOSLinker object to use for the table
+ * @table: ACPI table descriptor that was used with @acpi_table_begin
+ * counterpart
+ */
+void acpi_table_end(BIOSLinker *linker, AcpiTable *table);
+
 void *acpi_data_push(GArray *table_data, unsigned size);
 unsigned acpi_data_len(GArray *table);
 void acpi_add_table(GArray *table_offsets, GArray *table_data);
@@ -433,7 +460,7 @@ build_xsdt(GArray *table_data, BIOSLinker *linker, GArray *table_offsets,
 
 int
 build_append_named_dword(GArray *array, const char *name_format, ...)
-GCC_FMT_ATTR(2, 3);
+G_GNUC_PRINTF(2, 3);
 
 void build_append_gas(GArray *table, AmlAddressSpace as,
                       uint8_t bit_width, uint8_t bit_offset,
@@ -456,10 +483,13 @@ Aml *build_crs(PCIHostState *host, CrsRangeSet *range_set, uint32_t io_offset,
                uint32_t mmio32_offset, uint64_t mmio64_offset,
                uint16_t bus_nr_offset);
 
-void build_srat_memory(AcpiSratMemoryAffinity *numamem, uint64_t base,
+void build_srat_memory(GArray *table_data, uint64_t base,
                        uint64_t len, int node, MemoryAffinityFlags flags);
 
 void build_slit(GArray *table_data, BIOSLinker *linker, MachineState *ms,
+                const char *oem_id, const char *oem_table_id);
+
+void build_pptt(GArray *table_data, BIOSLinker *linker, MachineState *ms,
                 const char *oem_id, const char *oem_table_id);
 
 void build_fadt(GArray *tbl, BIOSLinker *linker, const AcpiFadtData *f,

@@ -26,6 +26,9 @@
 #ifdef CONFIG_VHOST_USER_BLK_SERVER
 #include "vhost-user-blk-server.h"
 #endif
+#ifdef CONFIG_VDUSE_BLK_EXPORT
+#include "vduse-blk.h"
+#endif
 
 static const BlockExportDriver *blk_exp_drivers[] = {
     &blk_exp_nbd,
@@ -34,6 +37,9 @@ static const BlockExportDriver *blk_exp_drivers[] = {
 #endif
 #ifdef CONFIG_FUSE
     &blk_exp_fuse,
+#endif
+#ifdef CONFIG_VDUSE_BLK_EXPORT
+    &blk_exp_vduse_blk,
 #endif
 };
 
@@ -123,7 +129,7 @@ BlockExport *blk_exp_add(BlockExportOptions *export, Error **errp)
 
         /* Ignore errors with fixed-iothread=false */
         set_context_errp = fixed_iothread ? errp : NULL;
-        ret = bdrv_try_set_aio_context(bs, new_ctx, set_context_errp);
+        ret = bdrv_try_change_aio_context(bs, new_ctx, NULL, set_context_errp);
         if (ret == 0) {
             aio_context_release(ctx);
             aio_context_acquire(new_ctx);
@@ -139,7 +145,7 @@ BlockExport *blk_exp_add(BlockExportOptions *export, Error **errp)
      * access since the export could be available before migration handover.
      * ctx was acquired in the caller.
      */
-    bdrv_invalidate_cache(bs, NULL);
+    bdrv_activate(bs, NULL);
 
     perm = BLK_PERM_CONSISTENT_READ;
     if (export->writable) {

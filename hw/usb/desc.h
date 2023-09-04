@@ -133,7 +133,7 @@ struct USBDescConfig {
     const USBDescIface        *ifs;
 };
 
-/* conceptually an Interface Association Descriptor, and releated interfaces */
+/* conceptually an Interface Association Descriptor, and related interfaces */
 struct USBDescIfaceAssoc {
     uint8_t                   bFirstInterface;
     uint8_t                   bInterfaceCount;
@@ -199,6 +199,7 @@ struct USBDesc {
     const USBDescMSOS         *msos;
 };
 
+#define USB_DESC_MAX_LEN    8192
 #define USB_DESC_FLAG_SUPER (1 << 1)
 
 /* little helpers */
