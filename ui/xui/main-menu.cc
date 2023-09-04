@@ -1001,7 +1001,7 @@ void MainMenuSystemView::Draw()
     if (ChevronCombo(
             "AV Pack", &g_config.sys.avpack,
             "SCART\0HDTV (Default)\0VGA\0RFU\0S-Video\0Composite\0None\0",
-            "Select the attached AV pack.")) {
+            "Select the attached AV pack")) {
         m_dirty = true;
     }
 
