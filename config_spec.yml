@@ -21,9 +21,13 @@ general:
 
 input:
   bindings:
+    port1_driver: string
     port1: string
+    port2_driver: string
     port2: string
+    port3_driver: string
     port3: string
+    port4_driver: string
     port4: string
   gamecontrollerdb_path: string
   auto_bind:

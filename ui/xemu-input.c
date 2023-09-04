@@ -95,8 +95,49 @@ static const char **port_index_to_settings_key_map[] = {
     &g_config.input.bindings.port4,
 };
 
+static const char **port_index_to_driver_settings_key_map[] = {
+    &g_config.input.bindings.port1_driver,
+    &g_config.input.bindings.port2_driver,
+    &g_config.input.bindings.port3_driver,
+    &g_config.input.bindings.port4_driver
+};
+
 static int sdl_kbd_scancode_map[25];
 static int sdl_sbc_kbd_scancode_map[56];
+
+const char *get_bound_driver(int port) {
+    assert(port >= 0 && port <= 3);
+    const char *driver = NULL;    
+    switch(port) {
+        case 0:
+            driver = g_config.input.bindings.port1_driver;
+            break;
+        case 1:
+            driver = g_config.input.bindings.port2_driver;
+            break;
+        case 2:
+            driver = g_config.input.bindings.port3_driver;
+            break;
+        case 3:
+            driver = g_config.input.bindings.port4_driver;
+            break;
+    }
+    if(driver == NULL)
+        return DRIVER_DUKE; // Shouldn't be possible
+    if(strlen(driver) == 0)
+        return DRIVER_DUKE;
+    if(strcmp(driver, DRIVER_DUKE) == 0)
+        return DRIVER_DUKE;
+    if(strcmp(driver, DRIVER_S) == 0)
+        return DRIVER_S;
+    if(strcmp(driver, DRIVER_SB) == 0)
+        return DRIVER_SB;
+    if(strcmp(driver, DRIVER_FIGHT_STICK) == 0)
+        return DRIVER_FIGHT_STICK;
+
+    // Shouldn't be possible
+    assert(false);
+}
 
 void xemu_input_init(void)
 {
@@ -214,6 +255,11 @@ void xemu_input_init(void)
             sdl_sbc_kbd_scancode_map[i] = SDL_SCANCODE_UNKNOWN;
         }
     }
+
+    bound_drivers[0] = get_bound_driver(0);
+    bound_drivers[1] = get_bound_driver(1);
+    bound_drivers[2] = get_bound_driver(2);
+    bound_drivers[3] = get_bound_driver(3);
 
     // Check to see if we should auto-bind the keyboard
     int port = xemu_input_get_controller_default_bind_port(new_con, 0);
@@ -692,6 +738,7 @@ void xemu_input_bind(int index, ControllerState *state, int save)
             }
         }
         xemu_settings_set_string(port_index_to_settings_key_map[index], guid_buf);
+        xemu_settings_set_string(port_index_to_driver_settings_key_map[index], bound_drivers[index]);
     }
 
     // Bind new controller
