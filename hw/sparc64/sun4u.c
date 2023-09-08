@@ -26,7 +26,6 @@
 #include "qemu/units.h"
 #include "qemu/error-report.h"
 #include "qapi/error.h"
-#include "qemu-common.h"
 #include "qemu/datadir.h"
 #include "cpu.h"
 #include "hw/pci/pci.h"
@@ -67,7 +66,6 @@
 #define PBM_PCI_IO_BASE      (PBM_SPECIAL_BASE + 0x02000000ULL)
 #define PROM_FILENAME        "openbios-sparc64"
 #define NVRAM_SIZE           0x2000
-#define MAX_IDE_BUS          2
 #define BIOS_CFG_IOPORT      0x510
 #define FW_CFG_SPARC64_WIDTH (FW_CFG_ARCH_LOCAL + 0x00)
 #define FW_CFG_SPARC64_HEIGHT (FW_CFG_ARCH_LOCAL + 0x01)
@@ -335,7 +333,7 @@ static void ebus_realize(PCIDevice *pci_dev, Error **errp)
     parallel_hds_isa_init(s->isa_bus, MAX_PARALLEL_PORTS);
 
     /* Keyboard */
-    isa_create_simple(s->isa_bus, "i8042");
+    isa_create_simple(s->isa_bus, TYPE_I8042);
 
     /* Floppy */
     for (i = 0; i < MAX_FD; i++) {
@@ -633,6 +631,7 @@ static void sun4uv_init(MemoryRegion *address_space_mem,
     switch (vga_interface_type) {
     case VGA_STD:
         pci_create_simple(pci_busA, PCI_DEVFN(2, 0), "VGA");
+        vga_interface_created = true;
         break;
     case VGA_NONE:
         break;
@@ -695,7 +694,7 @@ static void sun4uv_init(MemoryRegion *address_space_mem,
                                     &kernel_addr, &kernel_entry);
 
     sun4u_NVRAM_set_params(nvram, NVRAM_SIZE, "Sun4u", machine->ram_size,
-                           machine->boot_order,
+                           machine->boot_config.order,
                            kernel_addr, kernel_size,
                            machine->kernel_cmdline,
                            initrd_addr, initrd_size,
@@ -727,7 +726,7 @@ static void sun4uv_init(MemoryRegion *address_space_mem,
     }
     fw_cfg_add_i64(fw_cfg, FW_CFG_INITRD_ADDR, initrd_addr);
     fw_cfg_add_i64(fw_cfg, FW_CFG_INITRD_SIZE, initrd_size);
-    fw_cfg_add_i16(fw_cfg, FW_CFG_BOOT_DEVICE, machine->boot_order[0]);
+    fw_cfg_add_i16(fw_cfg, FW_CFG_BOOT_DEVICE, machine->boot_config.order[0]);
 
     fw_cfg_add_i16(fw_cfg, FW_CFG_SPARC64_WIDTH, graphic_width);
     fw_cfg_add_i16(fw_cfg, FW_CFG_SPARC64_HEIGHT, graphic_height);

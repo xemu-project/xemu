@@ -71,7 +71,7 @@ typedef struct {
     uint8_t    reserved_2;
     uint64_t   lun;
     uint8_t    cdb[16];
-    uint8_t    add_cdb[1];      /* not supported by QEMU */
+    uint8_t    add_cdb[1];
 } QEMU_PACKED  uas_iu_command;
 
 typedef struct {
@@ -699,6 +699,7 @@ static void usb_uas_command(UASDevice *uas, uas_iu *iu)
     UASRequest *req;
     uint32_t len;
     uint16_t tag = be16_to_cpu(iu->hdr.tag);
+    size_t cdb_len = sizeof(iu->command.cdb) + iu->command.add_cdb_length;
 
     if (iu->command.add_cdb_length > 0) {
         qemu_log_mask(LOG_UNIMP, "additional adb length not yet supported\n");
@@ -729,7 +730,7 @@ static void usb_uas_command(UASDevice *uas, uas_iu *iu)
 
     req->req = scsi_req_new(req->dev, req->tag,
                             usb_uas_get_lun(req->lun),
-                            iu->command.cdb, req);
+                            iu->command.cdb, cdb_len, req);
     if (uas->requestlog) {
         scsi_req_print(req->req);
     }
@@ -840,6 +841,9 @@ static void usb_uas_handle_data(USBDevice *dev, USBPacket *p)
         }
         break;
     case UAS_PIPE_ID_STATUS:
+        if (p->stream > UAS_MAX_STREAMS) {
+            goto err_stream;
+        }
         if (p->stream) {
             QTAILQ_FOREACH(st, &uas->results, next) {
                 if (st->stream == p->stream) {
@@ -867,6 +871,9 @@ static void usb_uas_handle_data(USBDevice *dev, USBPacket *p)
         break;
     case UAS_PIPE_ID_DATA_IN:
     case UAS_PIPE_ID_DATA_OUT:
+        if (p->stream > UAS_MAX_STREAMS) {
+            goto err_stream;
+        }
         if (p->stream) {
             req = usb_uas_find_request(uas, p->stream);
         } else {
@@ -902,6 +909,12 @@ static void usb_uas_handle_data(USBDevice *dev, USBPacket *p)
         p->status = USB_RET_STALL;
         break;
     }
+    return;
+
+err_stream:
+    error_report("%s: invalid stream %d", __func__, p->stream);
+    p->status = USB_RET_STALL;
+    return;
 }
 
 static void usb_uas_unrealize(USBDevice *dev)
@@ -927,8 +940,7 @@ static void usb_uas_realize(USBDevice *dev, Error **errp)
     uas->status_bh = qemu_bh_new(usb_uas_send_status_bh, uas);
 
     dev->flags |= (1 << USB_DEV_FLAG_IS_SCSI_STORAGE);
-    scsi_bus_new(&uas->bus, sizeof(uas->bus), DEVICE(dev),
-                 &usb_uas_scsi_info, NULL);
+    scsi_bus_init(&uas->bus, sizeof(uas->bus), DEVICE(dev), &usb_uas_scsi_info);
 }
 
 static const VMStateDescription vmstate_usb_uas = {

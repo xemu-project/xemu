@@ -26,6 +26,7 @@
 #include "hw/qdev-properties-system.h"
 #include "migration/vmstate.h"
 #include "chardev/char-fe.h"
+#include "chardev/char-serial.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "trace.h"
@@ -175,7 +176,7 @@ static unsigned int pl011_get_baudrate(const PL011State *s)
 {
     uint64_t clk;
 
-    if (s->fbrd == 0) {
+    if (s->ibrd == 0) {
         return 0;
     }
 
@@ -230,6 +231,11 @@ static void pl011_write(void *opaque, hwaddr offset,
         if ((s->lcr ^ value) & 0x10) {
             s->read_count = 0;
             s->read_pos = 0;
+        }
+        if ((s->lcr ^ value) & 0x1) {
+            int break_enable = value & 0x1;
+            qemu_chr_fe_ioctl(&s->chr, CHR_IOCTL_SERIAL_SET_BREAK,
+                              &break_enable);
         }
         s->lcr = value;
         pl011_set_read_trigger(s);

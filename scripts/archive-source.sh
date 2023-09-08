@@ -26,9 +26,9 @@ sub_file="${sub_tdir}/submodule.tar"
 # independent of what the developer currently has initialized
 # in their checkout, because the build environment is completely
 # different to the host OS.
-submodules="dtc slirp meson ui/keycodemapdb"
+submodules="dtc meson ui/keycodemapdb"
 submodules="$submodules tests/fp/berkeley-softfloat-3 tests/fp/berkeley-testfloat-3"
-submodules="$submodules ui/thirdparty/imgui ui/thirdparty/implot util/xxHash tomlplusplus genconfig" # xemu extras
+submodules="$submodules ui/thirdparty/imgui ui/thirdparty/implot ui/thirdparty/httplib util/xxHash tomlplusplus genconfig" # xemu extras
 submodules="$submodules hw/xbox/nv2a/thirdparty/nv2a_vsh_cpu"
 sub_deinit=""
 

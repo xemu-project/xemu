@@ -103,7 +103,7 @@ static void x86_cpu_to_dict(X86CPU *cpu, QDict *props)
 
 /* Convert CPU model data from X86CPU object to a property dictionary
  * that can recreate exactly the same CPU model, including every
- * writeable QOM property.
+ * writable QOM property.
  */
 static void x86_cpu_to_dict_full(X86CPU *cpu, QDict *props)
 {
@@ -313,7 +313,7 @@ GuestPanicInformation *x86_cpu_get_crash_info(CPUState *cs)
     GuestPanicInformation *panic_info = NULL;
 
     if (hyperv_feat_enabled(cpu, HYPERV_FEAT_CRASH)) {
-        panic_info = g_malloc0(sizeof(GuestPanicInformation));
+        panic_info = g_new0(GuestPanicInformation, 1);
 
         panic_info->type = GUEST_PANIC_INFORMATION_TYPE_HYPER_V;
 
@@ -335,7 +335,7 @@ void x86_cpu_get_crash_info_qom(Object *obj, Visitor *v,
     GuestPanicInformation *panic_info;
 
     if (!cs->crash_occurred) {
-        error_setg(errp, "No crash occured");
+        error_setg(errp, "No crash occurred");
         return;
     }
 

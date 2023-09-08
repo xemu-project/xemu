@@ -246,7 +246,7 @@ static void gen_st_2regs_64(TCGv rh, TCGv rl, TCGv address, DisasContext *ctx)
     TCGv_i64 temp = tcg_temp_new_i64();
 
     tcg_gen_concat_i32_i64(temp, rl, rh);
-    tcg_gen_qemu_st_i64(temp, address, ctx->mem_idx, MO_LEQ);
+    tcg_gen_qemu_st_i64(temp, address, ctx->mem_idx, MO_LEUQ);
 
     tcg_temp_free_i64(temp);
 }
@@ -264,7 +264,7 @@ static void gen_ld_2regs_64(TCGv rh, TCGv rl, TCGv address, DisasContext *ctx)
 {
     TCGv_i64 temp = tcg_temp_new_i64();
 
-    tcg_gen_qemu_ld_i64(temp, address, ctx->mem_idx, MO_LEQ);
+    tcg_gen_qemu_ld_i64(temp, address, ctx->mem_idx, MO_LEUQ);
     /* write back to two 32 bit regs */
     tcg_gen_extr_i64_i32(rl, rh, temp);
 
@@ -388,7 +388,7 @@ static inline void gen_mfcr(DisasContext *ctx, TCGv ret, int32_t offset)
         gen_helper_psw_read(ret, cpu_env);
     } else {
         switch (offset) {
-#include "csfr.def"
+#include "csfr.h.inc"
         }
     }
 }
@@ -418,7 +418,7 @@ static inline void gen_mtcr(DisasContext *ctx, TCGv r1,
             gen_helper_psw_write(cpu_env, r1);
         } else {
             switch (offset) {
-#include "csfr.def"
+#include "csfr.h.inc"
             }
         }
     } else {
@@ -3225,14 +3225,6 @@ static inline void gen_save_pc(target_ulong pc)
     tcg_gen_movi_tl(cpu_PC, pc);
 }
 
-static void generate_qemu_excp(DisasContext *ctx, int excp)
-{
-    TCGv_i32 tmp = tcg_const_i32(excp);
-    gen_helper_qemu_excp(cpu_env, tmp);
-    ctx->base.is_jmp = DISAS_NORETURN;
-    tcg_temp_free(tmp);
-}
-
 static void gen_goto_tb(DisasContext *ctx, int n, target_ulong dest)
 {
     if (translator_use_goto_tb(&ctx->base, dest)) {
@@ -3241,11 +3233,7 @@ static void gen_goto_tb(DisasContext *ctx, int n, target_ulong dest)
         tcg_gen_exit_tb(ctx->base.tb, n);
     } else {
         gen_save_pc(dest);
-        if (ctx->base.singlestep_enabled) {
-            generate_qemu_excp(ctx, EXCP_DEBUG);
-        } else {
-            tcg_gen_lookup_and_goto_ptr();
-        }
+        tcg_gen_lookup_and_goto_ptr();
     }
 }
 
@@ -8873,10 +8861,11 @@ static void tricore_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
     }
 }
 
-static void tricore_tr_disas_log(const DisasContextBase *dcbase, CPUState *cpu)
+static void tricore_tr_disas_log(const DisasContextBase *dcbase,
+                                 CPUState *cpu, FILE *logfile)
 {
-    qemu_log("IN: %s\n", lookup_symbol(dcbase->pc_first));
-    log_target_disas(cpu, dcbase->pc_first, dcbase->tb->size);
+    fprintf(logfile, "IN: %s\n", lookup_symbol(dcbase->pc_first));
+    target_disas(logfile, cpu, dcbase->pc_first, dcbase->tb->size);
 }
 
 static const TranslatorOps tricore_tr_ops = {
@@ -8889,18 +8878,14 @@ static const TranslatorOps tricore_tr_ops = {
 };
 
 
-void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
+void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns,
+                           target_ulong pc, void *host_pc)
 {
     DisasContext ctx;
-    translator_loop(&tricore_tr_ops, &ctx.base, cs, tb, max_insns);
+    translator_loop(cs, tb, max_insns, pc, host_pc,
+                    &tricore_tr_ops, &ctx.base);
 }
 
-void
-restore_state_to_opc(CPUTriCoreState *env, TranslationBlock *tb,
-                     target_ulong *data)
-{
-    env->PC = data[0];
-}
 /*
  *
  * Initialization

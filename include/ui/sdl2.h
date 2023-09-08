@@ -5,7 +5,18 @@
 #undef WIN32_LEAN_AND_MEAN
 
 #include <SDL.h>
+
+/* with Alpine / muslc SDL headers pull in directfb headers
+ * which in turn trigger warning about redundant decls for
+ * direct_waitqueue_deinit.
+ */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wredundant-decls"
+
 #include <SDL_syswm.h>
+
+#pragma GCC diagnostic pop
+
 #ifdef CONFIG_SDL_IMAGE
 # include <SDL_image.h>
 #endif
@@ -16,6 +27,7 @@
 #endif
 
 struct sdl2_console {
+    DisplayGLCtx dgc;
     DisplayChangeListener dcl;
     DisplaySurface *surface;
     DisplayOptions *opts;
@@ -65,10 +77,10 @@ void sdl2_gl_switch(DisplayChangeListener *dcl,
 void sdl2_gl_refresh(DisplayChangeListener *dcl);
 void sdl2_gl_redraw(struct sdl2_console *scon);
 
-QEMUGLContext sdl2_gl_create_context(DisplayChangeListener *dcl,
+QEMUGLContext sdl2_gl_create_context(DisplayGLCtx *dgc,
                                      QEMUGLParams *params);
-void sdl2_gl_destroy_context(DisplayChangeListener *dcl, QEMUGLContext ctx);
-int sdl2_gl_make_context_current(DisplayChangeListener *dcl,
+void sdl2_gl_destroy_context(DisplayGLCtx *dgc, QEMUGLContext ctx);
+int sdl2_gl_make_context_current(DisplayGLCtx *dgc,
                                  QEMUGLContext ctx);
 
 void sdl2_gl_scanout_disable(DisplayChangeListener *dcl);

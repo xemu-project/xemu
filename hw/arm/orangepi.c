@@ -25,9 +25,7 @@
 #include "hw/qdev-properties.h"
 #include "hw/arm/allwinner-h3.h"
 
-static struct arm_boot_info orangepi_binfo = {
-    .nb_cpus = AW_H3_NUM_CPUS,
-};
+static struct arm_boot_info orangepi_binfo;
 
 static void orangepi_init(MachineState *machine)
 {
@@ -85,7 +83,7 @@ static void orangepi_init(MachineState *machine)
     qdev_realize(DEVICE(h3), NULL, &error_abort);
 
     /* Retrieve SD bus */
-    di = drive_get_next(IF_SD);
+    di = drive_get(IF_SD, 0, 0);
     blk = di ? blk_by_legacy_dinfo(di) : NULL;
     bus = qdev_get_child_bus(DEVICE(h3), "sd-bus");
 
@@ -105,6 +103,7 @@ static void orangepi_init(MachineState *machine)
     }
     orangepi_binfo.loader_start = h3->memmap[AW_H3_DEV_SDRAM];
     orangepi_binfo.ram_size = machine->ram_size;
+    orangepi_binfo.psci_conduit = QEMU_PSCI_CONDUIT_SMC;
     arm_load_kernel(ARM_CPU(first_cpu), machine, &orangepi_binfo);
 }
 

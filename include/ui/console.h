@@ -70,6 +70,7 @@ void hmp_mouse_set(Monitor *mon, const QDict *qdict);
 /* keysym is a unicode code except for special keys (see QEMU_KEY_xxx
    constants) */
 #define QEMU_KEY_ESC1(c) ((c) | 0xe100)
+#define QEMU_KEY_TAB        0x0009
 #define QEMU_KEY_BACKSPACE  0x007f
 #define QEMU_KEY_UP         QEMU_KEY_ESC1('A')
 #define QEMU_KEY_DOWN       QEMU_KEY_ESC1('B')
@@ -108,6 +109,17 @@ struct QemuConsoleClass {
 #define QEMU_ALLOCATED_FLAG     0x01
 #define QEMU_PLACEHOLDER_FLAG   0x02
 
+typedef struct ScanoutTexture {
+    uint32_t backing_id;
+    bool backing_y_0_top;
+    uint32_t backing_width;
+    uint32_t backing_height;
+    uint32_t x;
+    uint32_t y;
+    uint32_t width;
+    uint32_t height;
+} ScanoutTexture;
+
 typedef struct DisplaySurface {
     pixman_format_code_t format;
     pixman_image_t *image;
@@ -128,6 +140,7 @@ typedef struct QemuUIInfo {
     int       yoff;
     uint32_t  width;
     uint32_t  height;
+    uint32_t  refresh_rate;
 } QemuUIInfo;
 
 /* cursor data format is 32bit RGBA */
@@ -167,10 +180,35 @@ typedef struct QemuDmaBuf {
     uint32_t  fourcc;
     uint64_t  modifier;
     uint32_t  texture;
+    uint32_t  x;
+    uint32_t  y;
+    uint32_t  scanout_width;
+    uint32_t  scanout_height;
     bool      y0_top;
+    void      *sync;
+    int       fence_fd;
+    bool      allow_fences;
+    bool      draw_submitted;
 } QemuDmaBuf;
 
+enum display_scanout {
+    SCANOUT_NONE,
+    SCANOUT_SURFACE,
+    SCANOUT_TEXTURE,
+    SCANOUT_DMABUF,
+};
+
+typedef struct DisplayScanout {
+    enum display_scanout kind;
+    union {
+        /* DisplaySurface *surface; is kept in QemuConsole */
+        ScanoutTexture texture;
+        QemuDmaBuf *dmabuf;
+    };
+} DisplayScanout;
+
 typedef struct DisplayState DisplayState;
+typedef struct DisplayGLCtx DisplayGLCtx;
 
 typedef struct DisplayChangeListenerOps {
     const char *dpy_name;
@@ -204,16 +242,6 @@ typedef struct DisplayChangeListenerOps {
     /* optional */
     void (*dpy_cursor_define)(DisplayChangeListener *dcl,
                               QEMUCursor *cursor);
-
-    /* required if GL */
-    QEMUGLContext (*dpy_gl_ctx_create)(DisplayChangeListener *dcl,
-                                       QEMUGLParams *params);
-    /* required if GL */
-    void (*dpy_gl_ctx_destroy)(DisplayChangeListener *dcl,
-                               QEMUGLContext ctx);
-    /* required if GL */
-    int (*dpy_gl_ctx_make_current)(DisplayChangeListener *dcl,
-                                   QEMUGLContext ctx);
 
     /* required if GL */
     void (*dpy_gl_scanout_disable)(DisplayChangeListener *dcl);
@@ -255,6 +283,31 @@ struct DisplayChangeListener {
     QLIST_ENTRY(DisplayChangeListener) next;
 };
 
+typedef struct DisplayGLCtxOps {
+    bool (*dpy_gl_ctx_is_compatible_dcl)(DisplayGLCtx *dgc,
+                                         DisplayChangeListener *dcl);
+    QEMUGLContext (*dpy_gl_ctx_create)(DisplayGLCtx *dgc,
+                                       QEMUGLParams *params);
+    void (*dpy_gl_ctx_destroy)(DisplayGLCtx *dgc,
+                               QEMUGLContext ctx);
+    int (*dpy_gl_ctx_make_current)(DisplayGLCtx *dgc,
+                                   QEMUGLContext ctx);
+    void (*dpy_gl_ctx_create_texture)(DisplayGLCtx *dgc,
+                                      DisplaySurface *surface);
+    void (*dpy_gl_ctx_destroy_texture)(DisplayGLCtx *dgc,
+                                      DisplaySurface *surface);
+    void (*dpy_gl_ctx_update_texture)(DisplayGLCtx *dgc,
+                                      DisplaySurface *surface,
+                                      int x, int y, int w, int h);
+} DisplayGLCtxOps;
+
+struct DisplayGLCtx {
+    const DisplayGLCtxOps *ops;
+#ifdef CONFIG_OPENGL
+    QemuGLShader *gls; /* optional shared shader */
+#endif
+};
+
 DisplayState *init_displaystate(void);
 DisplaySurface *qemu_create_displaysurface_from(int width, int height,
                                                 pixman_format_code_t format,
@@ -284,7 +337,7 @@ void unregister_displaychangelistener(DisplayChangeListener *dcl);
 
 bool dpy_ui_info_supported(QemuConsole *con);
 const QemuUIInfo *dpy_get_ui_info(const QemuConsole *con);
-int dpy_set_ui_info(QemuConsole *con, QemuUIInfo *info);
+int dpy_set_ui_info(QemuConsole *con, QemuUIInfo *info, bool delay);
 
 void dpy_gfx_update(QemuConsole *con, int x, int y, int w, int h);
 void dpy_gfx_update_full(QemuConsole *con);
@@ -380,10 +433,8 @@ typedef struct GraphicHwOps {
     void (*gfx_update)(void *opaque);
     bool gfx_update_async; /* if true, calls graphic_hw_update_done() */
     void (*text_update)(void *opaque, console_ch_t *text);
-    void (*update_interval)(void *opaque, uint64_t interval);
-    int (*ui_info)(void *opaque, uint32_t head, QemuUIInfo *info);
+    void (*ui_info)(void *opaque, uint32_t head, QemuUIInfo *info);
     void (*gl_block)(void *opaque, bool block);
-    void (*gl_flushed)(void *opaque);
 } GraphicHwOps;
 
 QemuConsole *graphic_console_init(DeviceState *dev, uint32_t head,
@@ -399,9 +450,10 @@ void graphic_hw_update_done(QemuConsole *con);
 void graphic_hw_invalidate(QemuConsole *con);
 void graphic_hw_text_update(QemuConsole *con, console_ch_t *chardata);
 void graphic_hw_gl_block(QemuConsole *con, bool block);
-void graphic_hw_gl_flushed(QemuConsole *con);
 
 void qemu_console_early_init(void);
+
+void qemu_console_set_display_gl_ctx(QemuConsole *con, DisplayGLCtx *ctx);
 
 QemuConsole *qemu_console_lookup_by_index(unsigned int index);
 QemuConsole *qemu_console_lookup_by_device(DeviceState *dev, uint32_t head);
@@ -412,6 +464,7 @@ bool qemu_console_is_visible(QemuConsole *con);
 bool qemu_console_is_graphic(QemuConsole *con);
 bool qemu_console_is_fixedsize(QemuConsole *con);
 bool qemu_console_is_gl_blocked(QemuConsole *con);
+bool qemu_console_is_multihead(DeviceState *dev);
 char *qemu_console_get_label(QemuConsole *con);
 int qemu_console_get_index(QemuConsole *con);
 uint32_t qemu_console_get_head(QemuConsole *con);
@@ -467,11 +520,20 @@ int vnc_display_pw_expire(const char *id, time_t expires);
 void vnc_parse(const char *str);
 int vnc_init_func(void *opaque, QemuOpts *opts, Error **errp);
 bool vnc_display_reload_certs(const char *id,  Error **errp);
+bool vnc_display_update(DisplayUpdateOptionsVNC *arg, Error **errp);
 
 /* input.c */
 int index_from_key(const char *key, size_t key_length);
 
+#ifdef CONFIG_LINUX
 /* udmabuf.c */
 int udmabuf_fd(void);
+#endif
+
+/* util.c */
+bool qemu_console_fill_device_address(QemuConsole *con,
+                                      char *device_address,
+                                      size_t size,
+                                      Error **errp);
 
 #endif

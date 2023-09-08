@@ -19,6 +19,7 @@
 #include "qapi/error.h"
 #include "qapi/visitor.h"
 #include "qemu/module.h"
+#include "qemu/hw-version.h"
 #include "qemu/qemu-print.h"
 #ifndef CONFIG_USER_ONLY
 #include "sysemu/sysemu.h"
@@ -85,10 +86,9 @@ static S390CPUDef s390_cpu_defs[] = {
     CPUDEF_INIT(0x3932, 16, 1, 47, 0x08000000U, "gen16b", "IBM 3932 GA1"),
 };
 
-#define QEMU_MAX_CPU_TYPE 0x3906
-#define QEMU_MAX_CPU_GEN 14
-#define QEMU_MAX_CPU_EC_GA 2
-static const S390FeatInit qemu_max_cpu_feat_init = { S390_FEAT_LIST_QEMU_MAX };
+#define QEMU_MAX_CPU_TYPE 0x8561
+#define QEMU_MAX_CPU_GEN 15
+#define QEMU_MAX_CPU_EC_GA 1
 static S390FeatBitmap qemu_max_cpu_feat;
 
 /* features part of a base model but not relevant for finding a base model */
@@ -334,18 +334,31 @@ const S390CPUDef *s390_find_cpu_def(uint16_t type, uint8_t gen, uint8_t ec_ga,
 static void s390_print_cpu_model_list_entry(gpointer data, gpointer user_data)
 {
     const S390CPUClass *scc = S390_CPU_CLASS((ObjectClass *)data);
+    CPUClass *cc = CPU_CLASS(scc);
     char *name = g_strdup(object_class_get_name((ObjectClass *)data));
-    const char *details = "";
+    g_autoptr(GString) details = g_string_new("");
 
     if (scc->is_static) {
-        details = "(static, migration-safe)";
-    } else if (scc->is_migration_safe) {
-        details = "(migration-safe)";
+        g_string_append(details, "static, ");
+    }
+    if (scc->is_migration_safe) {
+        g_string_append(details, "migration-safe, ");
+    }
+    if (cc->deprecation_note) {
+        g_string_append(details, "deprecated, ");
+    }
+    if (details->len) {
+        /* cull trailing ', ' */
+        g_string_truncate(details, details->len - 2);
     }
 
     /* strip off the -s390x-cpu */
     g_strrstr(name, "-" TYPE_S390_CPU)[0] = 0;
-    qemu_printf("s390 %-15s %-35s %s\n", name, scc->desc, details);
+    if (details->len) {
+        qemu_printf("s390 %-15s %-35s (%s)\n", name, scc->desc, details->str);
+    } else {
+        qemu_printf("s390 %-15s %-35s\n", name, scc->desc);
+    }
     g_free(name);
 }
 
@@ -398,14 +411,14 @@ void s390_cpu_list(void)
     for (feat = 0; feat < S390_FEAT_MAX; feat++) {
         const S390FeatDef *def = s390_feat_def(feat);
 
-        qemu_printf("%-20s %-50s\n", def->name, def->desc);
+        qemu_printf("%-20s %s\n", def->name, def->desc);
     }
 
     qemu_printf("\nRecognized feature groups:\n");
     for (group = 0; group < S390_FEAT_GROUP_MAX; group++) {
         const S390FeatGroupDef *def = s390_feat_group_def(group);
 
-        qemu_printf("%-20s %-50s\n", def->name, def->desc);
+        qemu_printf("%-20s %s\n", def->name, def->desc);
     }
 }
 
@@ -591,8 +604,8 @@ void s390_realize_cpu_model(CPUState *cs, Error **errp)
 #if !defined(CONFIG_USER_ONLY)
     cpu->env.cpuid = s390_cpuid_from_cpu_model(cpu->model);
     if (tcg_enabled()) {
-        /* basic mode, write the cpu address into the first 4 bit of the ID */
-        cpu->env.cpuid = deposit64(cpu->env.cpuid, 54, 4, cpu->env.core_id);
+        cpu->env.cpuid = deposit64(cpu->env.cpuid, CPU_PHYS_ADDR_SHIFT,
+                                   CPU_PHYS_ADDR_BITS, cpu->env.core_id);
     }
 #endif
 }
@@ -727,7 +740,6 @@ static void s390_cpu_model_initfn(Object *obj)
     }
 }
 
-static S390CPUDef s390_qemu_cpu_def;
 static S390CPUModel s390_qemu_cpu_model;
 
 /* Set the qemu CPU model (on machine initialization). Must not be called
@@ -741,17 +753,8 @@ void s390_set_qemu_cpu_model(uint16_t type, uint8_t gen, uint8_t ec_ga,
     g_assert(def);
     g_assert(QTAILQ_EMPTY_RCU(&cpus));
 
-    /* TCG emulates some features that can usually not be enabled with
-     * the emulated machine generation. Make sure they can be enabled
-     * when using the QEMU model by adding them to full_feat. We have
-     * to copy the definition to do that.
-     */
-    memcpy(&s390_qemu_cpu_def, def, sizeof(s390_qemu_cpu_def));
-    bitmap_or(s390_qemu_cpu_def.full_feat, s390_qemu_cpu_def.full_feat,
-              qemu_max_cpu_feat, S390_FEAT_MAX);
-
     /* build the CPU model */
-    s390_qemu_cpu_model.def = &s390_qemu_cpu_def;
+    s390_qemu_cpu_model.def = def;
     bitmap_zero(s390_qemu_cpu_model.features, S390_FEAT_MAX);
     s390_init_feat_bitmap(feat_init, s390_qemu_cpu_model.features);
 }
@@ -884,9 +887,8 @@ static void s390_max_cpu_model_class_init(ObjectClass *oc, void *data)
 
     /*
      * The "max" model is neither static nor migration safe. Under KVM
-     * it represents the "host" model. Under TCG it represents some kind of
-     * "qemu" CPU model without compat handling and maybe with some additional
-     * CPU features that are not yet unlocked in the "qemu" model.
+     * it represents the "host" model. Under TCG it represents the "qemu" CPU
+     * model of the latest QEMU machine.
      */
     xcc->desc =
         "Enables all features supported by the accelerator in the current host";
@@ -965,13 +967,13 @@ static void init_ignored_base_feat(void)
 
 static void register_types(void)
 {
-    static const S390FeatInit qemu_latest_init = { S390_FEAT_LIST_QEMU_LATEST };
+    static const S390FeatInit qemu_max_init = { S390_FEAT_LIST_QEMU_MAX };
     int i;
 
     init_ignored_base_feat();
 
     /* init all bitmaps from gnerated data initially */
-    s390_init_feat_bitmap(qemu_max_cpu_feat_init, qemu_max_cpu_feat);
+    s390_init_feat_bitmap(qemu_max_init, qemu_max_cpu_feat);
     for (i = 0; i < ARRAY_SIZE(s390_cpu_defs); i++) {
         s390_init_feat_bitmap(s390_cpu_defs[i].base_init,
                               s390_cpu_defs[i].base_feat);
@@ -981,9 +983,9 @@ static void register_types(void)
                               s390_cpu_defs[i].full_feat);
     }
 
-    /* initialize the qemu model with latest definition */
+    /* initialize the qemu model with the maximum definition ("max" model) */
     s390_set_qemu_cpu_model(QEMU_MAX_CPU_TYPE, QEMU_MAX_CPU_GEN,
-                            QEMU_MAX_CPU_EC_GA, qemu_latest_init);
+                            QEMU_MAX_CPU_EC_GA, qemu_max_init);
 
     for (i = 0; i < ARRAY_SIZE(s390_cpu_defs); i++) {
         char *base_name = s390_base_cpu_type_name(s390_cpu_defs[i].name);

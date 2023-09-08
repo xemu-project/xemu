@@ -34,7 +34,6 @@
 
 #undef TCGv
 #undef tcg_temp_new
-#undef tcg_global_reg_new
 #undef tcg_global_mem_new
 #undef tcg_temp_local_new
 #undef tcg_temp_free
@@ -59,7 +58,6 @@
 #define TCGv_reg             TCGv_i64
 
 #define tcg_temp_new         tcg_temp_new_i64
-#define tcg_global_reg_new   tcg_global_reg_new_i64
 #define tcg_global_mem_new   tcg_global_mem_new_i64
 #define tcg_temp_local_new   tcg_temp_local_new_i64
 #define tcg_temp_free        tcg_temp_free_i64
@@ -142,6 +140,7 @@
 #define tcg_gen_deposit_z_reg tcg_gen_deposit_z_i64
 #define tcg_gen_extract_reg  tcg_gen_extract_i64
 #define tcg_gen_sextract_reg tcg_gen_sextract_i64
+#define tcg_gen_extract2_reg tcg_gen_extract2_i64
 #define tcg_const_reg        tcg_const_i64
 #define tcg_const_local_reg  tcg_const_local_i64
 #define tcg_constant_reg     tcg_constant_i64
@@ -155,7 +154,6 @@
 #else
 #define TCGv_reg             TCGv_i32
 #define tcg_temp_new         tcg_temp_new_i32
-#define tcg_global_reg_new   tcg_global_reg_new_i32
 #define tcg_global_mem_new   tcg_global_mem_new_i32
 #define tcg_temp_local_new   tcg_temp_local_new_i32
 #define tcg_temp_free        tcg_temp_free_i32
@@ -237,6 +235,7 @@
 #define tcg_gen_deposit_z_reg tcg_gen_deposit_z_i32
 #define tcg_gen_extract_reg  tcg_gen_extract_i32
 #define tcg_gen_sextract_reg tcg_gen_sextract_i32
+#define tcg_gen_extract2_reg tcg_gen_extract2_i32
 #define tcg_const_reg        tcg_const_i32
 #define tcg_const_local_reg  tcg_const_local_i32
 #define tcg_constant_reg     tcg_constant_i32
@@ -275,7 +274,17 @@ typedef struct DisasContext {
     int mmu_idx;
     int privilege;
     bool psw_n_nonzero;
+
+#ifdef CONFIG_USER_ONLY
+    MemOp unalign;
+#endif
 } DisasContext;
+
+#ifdef CONFIG_USER_ONLY
+#define UNALIGN(C)  (C)->unalign
+#else
+#define UNALIGN(C)  0
+#endif
 
 /* Note that ssm/rsm instructions number PSW_W and PSW_E differently.  */
 static int expand_sm_imm(DisasContext *ctx, int val)
@@ -557,7 +566,7 @@ static void save_gpr(DisasContext *ctx, unsigned reg, TCGv_reg t)
     }
 }
 
-#ifdef HOST_WORDS_BIGENDIAN
+#if HOST_BIG_ENDIAN
 # define HI_OFS  0
 # define LO_OFS  4
 #else
@@ -817,11 +826,7 @@ static void gen_goto_tb(DisasContext *ctx, int which,
     } else {
         copy_iaoq_entry(cpu_iaoq_f, f, cpu_iaoq_b);
         copy_iaoq_entry(cpu_iaoq_b, b, ctx->iaoq_n_var);
-        if (ctx->base.singlestep_enabled) {
-            gen_excp_1(EXCP_DEBUG);
-        } else {
-            tcg_gen_lookup_and_goto_ptr();
-        }
+        tcg_gen_lookup_and_goto_ptr();
     }
 }
 
@@ -1480,7 +1485,7 @@ static void do_load_32(DisasContext *ctx, TCGv_i32 dest, unsigned rb,
 
     form_gva(ctx, &addr, &ofs, rb, rx, scale, disp, sp, modify,
              ctx->mmu_idx == MMU_PHYS_IDX);
-    tcg_gen_qemu_ld_reg(dest, addr, ctx->mmu_idx, mop);
+    tcg_gen_qemu_ld_reg(dest, addr, ctx->mmu_idx, mop | UNALIGN(ctx));
     if (modify) {
         save_gpr(ctx, rb, ofs);
     }
@@ -1498,7 +1503,7 @@ static void do_load_64(DisasContext *ctx, TCGv_i64 dest, unsigned rb,
 
     form_gva(ctx, &addr, &ofs, rb, rx, scale, disp, sp, modify,
              ctx->mmu_idx == MMU_PHYS_IDX);
-    tcg_gen_qemu_ld_i64(dest, addr, ctx->mmu_idx, mop);
+    tcg_gen_qemu_ld_i64(dest, addr, ctx->mmu_idx, mop | UNALIGN(ctx));
     if (modify) {
         save_gpr(ctx, rb, ofs);
     }
@@ -1516,7 +1521,7 @@ static void do_store_32(DisasContext *ctx, TCGv_i32 src, unsigned rb,
 
     form_gva(ctx, &addr, &ofs, rb, rx, scale, disp, sp, modify,
              ctx->mmu_idx == MMU_PHYS_IDX);
-    tcg_gen_qemu_st_i32(src, addr, ctx->mmu_idx, mop);
+    tcg_gen_qemu_st_i32(src, addr, ctx->mmu_idx, mop | UNALIGN(ctx));
     if (modify) {
         save_gpr(ctx, rb, ofs);
     }
@@ -1534,7 +1539,7 @@ static void do_store_64(DisasContext *ctx, TCGv_i64 src, unsigned rb,
 
     form_gva(ctx, &addr, &ofs, rb, rx, scale, disp, sp, modify,
              ctx->mmu_idx == MMU_PHYS_IDX);
-    tcg_gen_qemu_st_i64(src, addr, ctx->mmu_idx, mop);
+    tcg_gen_qemu_st_i64(src, addr, ctx->mmu_idx, mop | UNALIGN(ctx));
     if (modify) {
         save_gpr(ctx, rb, ofs);
     }
@@ -1604,7 +1609,7 @@ static bool do_floadd(DisasContext *ctx, unsigned rt, unsigned rb,
     nullify_over(ctx);
 
     tmp = tcg_temp_new_i64();
-    do_load_64(ctx, tmp, rb, rx, scale, disp, sp, modify, MO_TEQ);
+    do_load_64(ctx, tmp, rb, rx, scale, disp, sp, modify, MO_TEUQ);
     save_frd(rt, tmp);
     tcg_temp_free_i64(tmp);
 
@@ -1660,7 +1665,7 @@ static bool do_fstored(DisasContext *ctx, unsigned rt, unsigned rb,
     nullify_over(ctx);
 
     tmp = load_frd(rt);
-    do_store_64(ctx, tmp, rb, rx, scale, disp, sp, modify, MO_TEQ);
+    do_store_64(ctx, tmp, rb, rx, scale, disp, sp, modify, MO_TEUQ);
     tcg_temp_free_i64(tmp);
 
     return nullify_end(ctx);
@@ -2349,11 +2354,7 @@ static bool do_rfi(DisasContext *ctx, bool rfi_r)
         gen_helper_rfi(cpu_env);
     }
     /* Exit the TB to recognize new interrupts.  */
-    if (ctx->base.singlestep_enabled) {
-        gen_excp_1(EXCP_DEBUG);
-    } else {
-        tcg_gen_exit_tb(NULL, 0);
-    }
+    tcg_gen_exit_tb(NULL, 0);
     ctx->base.is_jmp = DISAS_NORETURN;
 
     return nullify_end(ctx);
@@ -2388,6 +2389,16 @@ static bool trans_reset(DisasContext *ctx, arg_reset *a)
     nullify_over(ctx);
     gen_helper_reset(cpu_env);
     ctx->base.is_jmp = DISAS_NORETURN;
+    return nullify_end(ctx);
+#endif
+}
+
+static bool trans_getshadowregs(DisasContext *ctx, arg_getshadowregs *a)
+{
+    CHECK_MOST_PRIVILEGED(EXCP_PRIV_OPR);
+#ifndef CONFIG_USER_ONLY
+    nullify_over(ctx);
+    gen_helper_getshadowregs(cpu_env);
     return nullify_end(ctx);
 #endif
 }
@@ -3215,19 +3226,22 @@ static bool trans_shrpw_imm(DisasContext *ctx, arg_shrpw_imm *a)
 
     dest = dest_gpr(ctx, a->t);
     t2 = load_gpr(ctx, a->r2);
-    if (a->r1 == a->r2) {
+    if (a->r1 == 0) {
+        tcg_gen_extract_reg(dest, t2, sa, 32 - sa);
+    } else if (TARGET_REGISTER_BITS == 32) {
+        tcg_gen_extract2_reg(dest, t2, cpu_gr[a->r1], sa);
+    } else if (a->r1 == a->r2) {
         TCGv_i32 t32 = tcg_temp_new_i32();
         tcg_gen_trunc_reg_i32(t32, t2);
         tcg_gen_rotri_i32(t32, t32, sa);
         tcg_gen_extu_i32_reg(dest, t32);
         tcg_temp_free_i32(t32);
-    } else if (a->r1 == 0) {
-        tcg_gen_extract_reg(dest, t2, sa, 32 - sa);
     } else {
-        TCGv_reg t0 = tcg_temp_new();
-        tcg_gen_extract_reg(t0, t2, sa, 32 - sa);
-        tcg_gen_deposit_reg(dest, t0, cpu_gr[a->r1], 32 - sa, sa);
-        tcg_temp_free(t0);
+        TCGv_i64 t64 = tcg_temp_new_i64();
+        tcg_gen_concat_reg_i64(t64, t2, cpu_gr[a->r1]);
+        tcg_gen_shri_i64(t64, t64, sa);
+        tcg_gen_trunc_i64_reg(dest, t64);
+        tcg_temp_free_i64(t64);
     }
     save_gpr(ctx, a->t, dest);
 
@@ -4113,6 +4127,7 @@ static void hppa_tr_init_disas_context(DisasContextBase *dcbase, CPUState *cs)
     ctx->mmu_idx = MMU_USER_IDX;
     ctx->iaoq_f = ctx->base.pc_first | MMU_USER_IDX;
     ctx->iaoq_b = ctx->base.tb->cs_base | MMU_USER_IDX;
+    ctx->unalign = (ctx->tb_flags & TB_FLAG_UNALIGN ? MO_UNALN : MO_ALIGN);
 #else
     ctx->privilege = (ctx->tb_flags >> TB_FLAG_PRIV_SHIFT) & 3;
     ctx->mmu_idx = (ctx->tb_flags & PSW_D ? ctx->privilege : MMU_PHYS_IDX);
@@ -4177,7 +4192,7 @@ static void hppa_tr_translate_insn(DisasContextBase *dcbase, CPUState *cs)
     {
         /* Always fetch the insn, even if nullified, so that we check
            the page permissions for execute.  */
-        uint32_t insn = translator_ldl(env, ctx->base.pc_next);
+        uint32_t insn = translator_ldl(env, &ctx->base, ctx->base.pc_next);
 
         /* Set up the IA queue for the next insn.
            This will be overwritten by a branch.  */
@@ -4277,10 +4292,9 @@ static void hppa_tr_tb_stop(DisasContextBase *dcbase, CPUState *cs)
         nullify_save(ctx);
         /* FALLTHRU */
     case DISAS_IAQ_N_UPDATED:
-        if (ctx->base.singlestep_enabled) {
-            gen_excp_1(EXCP_DEBUG);
-        } else if (is_jmp != DISAS_IAQ_N_STALE_EXIT) {
+        if (is_jmp != DISAS_IAQ_N_STALE_EXIT) {
             tcg_gen_lookup_and_goto_ptr();
+            break;
         }
         /* FALLTHRU */
     case DISAS_EXIT:
@@ -4291,29 +4305,30 @@ static void hppa_tr_tb_stop(DisasContextBase *dcbase, CPUState *cs)
     }
 }
 
-static void hppa_tr_disas_log(const DisasContextBase *dcbase, CPUState *cs)
+static void hppa_tr_disas_log(const DisasContextBase *dcbase,
+                              CPUState *cs, FILE *logfile)
 {
     target_ulong pc = dcbase->pc_first;
 
 #ifdef CONFIG_USER_ONLY
     switch (pc) {
     case 0x00:
-        qemu_log("IN:\n0x00000000:  (null)\n");
+        fprintf(logfile, "IN:\n0x00000000:  (null)\n");
         return;
     case 0xb0:
-        qemu_log("IN:\n0x000000b0:  light-weight-syscall\n");
+        fprintf(logfile, "IN:\n0x000000b0:  light-weight-syscall\n");
         return;
     case 0xe0:
-        qemu_log("IN:\n0x000000e0:  set-thread-pointer-syscall\n");
+        fprintf(logfile, "IN:\n0x000000e0:  set-thread-pointer-syscall\n");
         return;
     case 0x100:
-        qemu_log("IN:\n0x00000100:  syscall\n");
+        fprintf(logfile, "IN:\n0x00000100:  syscall\n");
         return;
     }
 #endif
 
-    qemu_log("IN: %s\n", lookup_symbol(pc));
-    log_target_disas(cs, pc, dcbase->tb->size);
+    fprintf(logfile, "IN: %s\n", lookup_symbol(pc));
+    target_disas(logfile, cs, pc, dcbase->tb->size);
 }
 
 static const TranslatorOps hppa_tr_ops = {
@@ -4325,21 +4340,9 @@ static const TranslatorOps hppa_tr_ops = {
     .disas_log          = hppa_tr_disas_log,
 };
 
-void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns)
+void gen_intermediate_code(CPUState *cs, TranslationBlock *tb, int max_insns,
+                           target_ulong pc, void *host_pc)
 {
     DisasContext ctx;
-    translator_loop(&hppa_tr_ops, &ctx.base, cs, tb, max_insns);
-}
-
-void restore_state_to_opc(CPUHPPAState *env, TranslationBlock *tb,
-                          target_ulong *data)
-{
-    env->iaoq_f = data[0];
-    if (data[1] != (target_ureg)-1) {
-        env->iaoq_b = data[1];
-    }
-    /* Since we were executing the instruction at IAOQ_F, and took some
-       sort of action that provoked the cpu_restore_state, we can infer
-       that the instruction was not nullified.  */
-    env->psw_n = 0;
+    translator_loop(cs, tb, max_insns, pc, host_pc, &hppa_tr_ops, &ctx.base);
 }

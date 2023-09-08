@@ -19,6 +19,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/log.h"
 #include "cpu.h"
 #include "s390x-internal.h"
 #include "exec/helper-proto.h"
@@ -33,20 +34,20 @@
 #include "hw/boards.h"
 #endif
 
-void QEMU_NORETURN tcg_s390_program_interrupt(CPUS390XState *env,
-                                              uint32_t code, uintptr_t ra)
+G_NORETURN void tcg_s390_program_interrupt(CPUS390XState *env,
+                                           uint32_t code, uintptr_t ra)
 {
     CPUState *cs = env_cpu(env);
 
-    cpu_restore_state(cs, ra, true);
+    cpu_restore_state(cs, ra);
     qemu_log_mask(CPU_LOG_INT, "program interrupt at %#" PRIx64 "\n",
                   env->psw.addr);
     trigger_pgm_exception(env, code);
     cpu_loop_exit(cs);
 }
 
-void QEMU_NORETURN tcg_s390_data_exception(CPUS390XState *env, uint32_t dxc,
-                                           uintptr_t ra)
+G_NORETURN void tcg_s390_data_exception(CPUS390XState *env, uint32_t dxc,
+                                        uintptr_t ra)
 {
     g_assert(dxc <= 0xff);
 #if !defined(CONFIG_USER_ONLY)
@@ -62,8 +63,8 @@ void QEMU_NORETURN tcg_s390_data_exception(CPUS390XState *env, uint32_t dxc,
     tcg_s390_program_interrupt(env, PGM_DATA, ra);
 }
 
-void QEMU_NORETURN tcg_s390_vector_exception(CPUS390XState *env, uint32_t vxc,
-                                             uintptr_t ra)
+G_NORETURN void tcg_s390_vector_exception(CPUS390XState *env, uint32_t vxc,
+                                          uintptr_t ra)
 {
     g_assert(vxc <= 0xff);
 #if !defined(CONFIG_USER_ONLY)
@@ -82,6 +83,20 @@ void HELPER(data_exception)(CPUS390XState *env, uint32_t dxc)
     tcg_s390_data_exception(env, dxc, GETPC());
 }
 
+/*
+ * Unaligned accesses are only diagnosed with MO_ALIGN.  At the moment,
+ * this is only for the atomic operations, for which we want to raise a
+ * specification exception.
+ */
+static G_NORETURN
+void do_unaligned_access(CPUState *cs, uintptr_t retaddr)
+{
+    S390CPU *cpu = S390_CPU(cs);
+    CPUS390XState *env = &cpu->env;
+
+    tcg_s390_program_interrupt(env, PGM_SPECIFICATION, retaddr);
+}
+
 #if defined(CONFIG_USER_ONLY)
 
 void s390_cpu_do_interrupt(CPUState *cs)
@@ -89,17 +104,27 @@ void s390_cpu_do_interrupt(CPUState *cs)
     cs->exception_index = -1;
 }
 
-bool s390_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
-                       MMUAccessType access_type, int mmu_idx,
-                       bool probe, uintptr_t retaddr)
+void s390_cpu_record_sigsegv(CPUState *cs, vaddr address,
+                             MMUAccessType access_type,
+                             bool maperr, uintptr_t retaddr)
 {
     S390CPU *cpu = S390_CPU(cs);
 
-    trigger_pgm_exception(&cpu->env, PGM_ADDRESSING);
-    /* On real machines this value is dropped into LowMem.  Since this
-       is userland, simply put this someplace that cpu_loop can find it.  */
-    cpu->env.__excp_addr = address;
+    trigger_pgm_exception(&cpu->env, maperr ? PGM_ADDRESSING : PGM_PROTECTION);
+    /*
+     * On real machines this value is dropped into LowMem. Since this
+     * is userland, simply put this someplace that cpu_loop can find it.
+     * S390 only gives the page of the fault, not the exact address.
+     * C.f. the construction of TEC in mmu_translate().
+     */
+    cpu->env.__excp_addr = address & TARGET_PAGE_MASK;
     cpu_loop_exit_restore(cs, retaddr);
+}
+
+void s390_cpu_record_sigbus(CPUState *cs, vaddr address,
+                            MMUAccessType access_type, uintptr_t retaddr)
+{
+    do_unaligned_access(cs, retaddr);
 }
 
 #else /* !CONFIG_USER_ONLY */
@@ -148,19 +173,6 @@ bool s390_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
         excp = mmu_translate_real(env, vaddr, access_type, &raddr, &prot, &tec);
     } else {
         g_assert_not_reached();
-    }
-
-    /* check out of RAM access */
-    if (!excp &&
-        !address_space_access_valid(&address_space_memory, raddr,
-                                    TARGET_PAGE_SIZE, access_type,
-                                    MEMTXATTRS_UNSPECIFIED)) {
-        MachineState *ms = MACHINE(qdev_get_machine());
-        qemu_log_mask(CPU_LOG_MMU,
-                      "%s: raddr %" PRIx64 " > ram_size %" PRIx64 "\n",
-                      __func__, (uint64_t)raddr, (uint64_t)ms->ram_size);
-        excp = PGM_ADDRESSING;
-        tec = 0; /* unused */
     }
 
     env->tlb_fill_exc = excp;
@@ -541,7 +553,7 @@ try_deliver:
         /* don't trigger a cpu_loop_exit(), use an interrupt instead */
         cpu_interrupt(CPU(cpu), CPU_INTERRUPT_HALT);
     } else if (cs->halted) {
-        /* unhalt if we had a WAIT PSW somehwere in our injection chain */
+        /* unhalt if we had a WAIT PSW somewhere in our injection chain */
         s390_cpu_unhalt(cpu);
     }
 }
@@ -602,22 +614,17 @@ void s390x_cpu_debug_excp_handler(CPUState *cs)
     }
 }
 
-/* Unaligned accesses are only diagnosed with MO_ALIGN.  At the moment,
-   this is only for the atomic operations, for which we want to raise a
-   specification exception.  */
 void s390x_cpu_do_unaligned_access(CPUState *cs, vaddr addr,
                                    MMUAccessType access_type,
                                    int mmu_idx, uintptr_t retaddr)
 {
-    S390CPU *cpu = S390_CPU(cs);
-    CPUS390XState *env = &cpu->env;
-
-    tcg_s390_program_interrupt(env, PGM_SPECIFICATION, retaddr);
+    do_unaligned_access(cs, retaddr);
 }
 
-static void QEMU_NORETURN monitor_event(CPUS390XState *env,
-                                        uint64_t monitor_code,
-                                        uint8_t monitor_class, uintptr_t ra)
+static G_NORETURN
+void monitor_event(CPUS390XState *env,
+                   uint64_t monitor_code,
+                   uint8_t monitor_class, uintptr_t ra)
 {
     /* Store the Monitor Code and the Monitor Class Number into the lowcore */
     stq_phys(env_cpu(env)->as,

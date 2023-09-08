@@ -263,12 +263,15 @@ static bool qemu_laio_poll_cb(void *opaque)
     LinuxAioState *s = container_of(e, LinuxAioState, e);
     struct io_event *events;
 
-    if (!io_getevents_peek(s->ctx, &events)) {
-        return false;
-    }
+    return io_getevents_peek(s->ctx, &events);
+}
+
+static void qemu_laio_poll_ready(EventNotifier *opaque)
+{
+    EventNotifier *e = opaque;
+    LinuxAioState *s = container_of(e, LinuxAioState, e);
 
     qemu_laio_process_completions_and_submit(s);
-    return true;
 }
 
 static void ioq_init(LaioQueue *io_q)
@@ -334,30 +337,53 @@ static void ioq_submit(LinuxAioState *s)
     }
 }
 
+static uint64_t laio_max_batch(LinuxAioState *s, uint64_t dev_max_batch)
+{
+    uint64_t max_batch = s->aio_context->aio_max_batch ?: DEFAULT_MAX_BATCH;
+
+    /*
+     * AIO context can be shared between multiple block devices, so
+     * `dev_max_batch` allows reducing the batch size for latency-sensitive
+     * devices.
+     */
+    max_batch = MIN_NON_ZERO(dev_max_batch, max_batch);
+
+    /* limit the batch with the number of available events */
+    max_batch = MIN_NON_ZERO(MAX_EVENTS - s->io_q.in_flight, max_batch);
+
+    return max_batch;
+}
+
 void laio_io_plug(BlockDriverState *bs, LinuxAioState *s)
 {
     s->io_q.plugged++;
 }
 
-void laio_io_unplug(BlockDriverState *bs, LinuxAioState *s)
+void laio_io_unplug(BlockDriverState *bs, LinuxAioState *s,
+                    uint64_t dev_max_batch)
 {
     assert(s->io_q.plugged);
-    if (--s->io_q.plugged == 0 &&
-        !s->io_q.blocked && !QSIMPLEQ_EMPTY(&s->io_q.pending)) {
+    s->io_q.plugged--;
+
+    /*
+     * Why max batch checking is performed here:
+     * Another BDS may have queued requests with a higher dev_max_batch and
+     * therefore in_queue could now exceed our dev_max_batch. Re-check the max
+     * batch so we can honor our device's dev_max_batch.
+     */
+    if (s->io_q.in_queue >= laio_max_batch(s, dev_max_batch) ||
+        (!s->io_q.plugged &&
+         !s->io_q.blocked && !QSIMPLEQ_EMPTY(&s->io_q.pending))) {
         ioq_submit(s);
     }
 }
 
 static int laio_do_submit(int fd, struct qemu_laiocb *laiocb, off_t offset,
-                          int type)
+                          int type, uint64_t dev_max_batch)
 {
     LinuxAioState *s = laiocb->ctx;
     struct iocb *iocbs = &laiocb->iocb;
     QEMUIOVector *qiov = laiocb->qiov;
-    int64_t max_batch = s->aio_context->aio_max_batch ?: DEFAULT_MAX_BATCH;
-
-    /* limit the batch with the number of available events */
-    max_batch = MIN_NON_ZERO(MAX_EVENTS - s->io_q.in_flight, max_batch);
 
     switch (type) {
     case QEMU_AIO_WRITE:
@@ -378,7 +404,7 @@ static int laio_do_submit(int fd, struct qemu_laiocb *laiocb, off_t offset,
     s->io_q.in_queue++;
     if (!s->io_q.blocked &&
         (!s->io_q.plugged ||
-         s->io_q.in_queue >= max_batch)) {
+         s->io_q.in_queue >= laio_max_batch(s, dev_max_batch))) {
         ioq_submit(s);
     }
 
@@ -386,7 +412,8 @@ static int laio_do_submit(int fd, struct qemu_laiocb *laiocb, off_t offset,
 }
 
 int coroutine_fn laio_co_submit(BlockDriverState *bs, LinuxAioState *s, int fd,
-                                uint64_t offset, QEMUIOVector *qiov, int type)
+                                uint64_t offset, QEMUIOVector *qiov, int type,
+                                uint64_t dev_max_batch)
 {
     int ret;
     struct qemu_laiocb laiocb = {
@@ -398,7 +425,7 @@ int coroutine_fn laio_co_submit(BlockDriverState *bs, LinuxAioState *s, int fd,
         .qiov       = qiov,
     };
 
-    ret = laio_do_submit(fd, &laiocb, offset, type);
+    ret = laio_do_submit(fd, &laiocb, offset, type, dev_max_batch);
     if (ret < 0) {
         return ret;
     }
@@ -411,7 +438,7 @@ int coroutine_fn laio_co_submit(BlockDriverState *bs, LinuxAioState *s, int fd,
 
 void laio_detach_aio_context(LinuxAioState *s, AioContext *old_context)
 {
-    aio_set_event_notifier(old_context, &s->e, false, NULL, NULL);
+    aio_set_event_notifier(old_context, &s->e, false, NULL, NULL, NULL);
     qemu_bh_delete(s->completion_bh);
     s->aio_context = NULL;
 }
@@ -422,7 +449,8 @@ void laio_attach_aio_context(LinuxAioState *s, AioContext *new_context)
     s->completion_bh = aio_bh_new(new_context, qemu_laio_completion_bh, s);
     aio_set_event_notifier(new_context, &s->e, false,
                            qemu_laio_completion_cb,
-                           qemu_laio_poll_cb);
+                           qemu_laio_poll_cb,
+                           qemu_laio_poll_ready);
 }
 
 LinuxAioState *laio_init(Error **errp)
@@ -433,7 +461,7 @@ LinuxAioState *laio_init(Error **errp)
     s = g_malloc0(sizeof(*s));
     rc = event_notifier_init(&s->e, false);
     if (rc < 0) {
-        error_setg_errno(errp, -rc, "failed to to initialize event notifier");
+        error_setg_errno(errp, -rc, "failed to initialize event notifier");
         goto out_free_state;
     }
 

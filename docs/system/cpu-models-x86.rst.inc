@@ -1,5 +1,5 @@
 Recommendations for KVM CPU model configuration on x86 hosts
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+============================================================
 
 The information that follows provides recommendations for configuring
 CPU models on x86 hosts. The goals are to maximise performance, while
@@ -49,7 +49,7 @@ future OS and toolchains are likely to target newer ABIs. The
 table that follows illustrates which ABI compatibility levels
 can be satisfied by the QEMU CPU models. Note that the table only
 lists the long term stable CPU model versions (eg Haswell-v4).
-In addition to whats listed, there are also many CPU model
+In addition to what is listed, there are also many CPU model
 aliases which resolve to a different CPU model version,
 depending on the machine type is in use.
 
@@ -368,7 +368,7 @@ featureset, which prevents guests having optimal performance.
 
 
 Syntax for configuring CPU models
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=================================
 
 The examples below illustrate the approach to configuring the various
 CPU models / features in QEMU and libvirt.

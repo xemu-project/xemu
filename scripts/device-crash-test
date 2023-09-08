@@ -33,9 +33,18 @@ import re
 import random
 import argparse
 from itertools import chain
+from pathlib import Path
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'python'))
-from qemu.machine import QEMUMachine
+try:
+    from qemu.machine import QEMUMachine
+    from qemu.qmp import ConnectError
+except ModuleNotFoundError as exc:
+    path = Path(__file__).resolve()
+    print(f"Module '{exc.name}' not found.")
+    print("  Try 'make check-venv' from your build directory,")
+    print("  and then one way to run this script is like so:")
+    print(f'  > $builddir/tests/venv/bin/python3 "{path}"')
+    sys.exit(1)
 
 logger = logging.getLogger('device-crash-test')
 dbg = logger.debug
@@ -92,6 +101,7 @@ ERROR_RULE_LIST = [
     {'device':'pci-bridge', 'expected':True},              # Bridge chassis not specified. Each bridge is required to be assigned a unique chassis id > 0.
     {'device':'pci-bridge-seat', 'expected':True},         # Bridge chassis not specified. Each bridge is required to be assigned a unique chassis id > 0.
     {'device':'pxb', 'expected':True},                     # Bridge chassis not specified. Each bridge is required to be assigned a unique chassis id > 0.
+    {'device':'pxb-cxl', 'expected':True},                 # pxb-cxl devices cannot reside on a PCI bus.
     {'device':'scsi-block', 'expected':True},              # drive property not set
     {'device':'scsi-generic', 'expected':True},            # drive property not set
     {'device':'scsi-hd', 'expected':True},                 # drive property not set
@@ -175,7 +185,6 @@ ERROR_RULE_LIST = [
     {'log':r"Multiple VT220 operator consoles are not supported"},
     {'log':r"core 0 already populated"},
     {'log':r"could not find stage1 bootloader"},
-    {'log':r"No '.*' bus found for device"},
 
     # other exitcode=1 failures not listed above will just generate INFO messages:
     {'exitcode':1, 'loglevel':logging.INFO},
@@ -317,9 +326,7 @@ class QemuBinaryInfo(object):
         try:
             vm.launch()
             mi['runnable'] = True
-        except KeyboardInterrupt:
-            raise
-        except:
+        except Exception:
             dbg("exception trying to run binary=%s machine=%s", self.binary, machine, exc_info=sys.exc_info())
             dbg("log: %r", vm.get_log())
             mi['runnable'] = False
@@ -355,14 +362,14 @@ def checkOneCase(args, testcase):
             '-device', qemuOptsEscape(device)]
     cmdline = ' '.join([binary] + args)
     dbg("will launch QEMU: %s", cmdline)
-    vm = QEMUMachine(binary=binary, args=args)
+    vm = QEMUMachine(binary=binary, args=args, qmp_timer=15)
 
+    exc = None
     exc_traceback = None
     try:
         vm.launch()
-    except KeyboardInterrupt:
-        raise
-    except:
+    except Exception as this_exc:
+        exc = this_exc
         exc_traceback = traceback.format_exc()
         dbg("Exception while running test case")
     finally:
@@ -370,8 +377,9 @@ def checkOneCase(args, testcase):
         ec = vm.exitcode()
         log = vm.get_log()
 
-    if exc_traceback is not None or ec != 0:
-        return {'exc_traceback':exc_traceback,
+    if exc is not None or ec != 0:
+        return {'exc': exc,
+                'exc_traceback':exc_traceback,
                 'exitcode':ec,
                 'log':log,
                 'testcase':testcase,
@@ -389,7 +397,7 @@ def binariesToTest(args, testcase):
 
 
 def accelsToTest(args, testcase):
-    if getBinaryInfo(args, testcase['binary']).kvm_available:
+    if getBinaryInfo(args, testcase['binary']).kvm_available and not args.tcg_only:
         yield 'kvm'
     yield 'tcg'
 
@@ -459,6 +467,17 @@ def logFailure(f, level):
     for l in f['log'].strip().split('\n'):
         logger.log(level, "log: %s", l)
     logger.log(level, "exit code: %r", f['exitcode'])
+
+    # If the Exception is merely a QMP connect error,
+    # reduce the logging level for its traceback to
+    # improve visual clarity.
+    if isinstance(f.get('exc'), ConnectError):
+        logger.log(level, "%s.%s: %s",
+                   type(f['exc']).__module__,
+                   type(f['exc']).__qualname__,
+                   str(f['exc']))
+        level = logging.DEBUG
+
     if f['exc_traceback']:
         logger.log(level, "exception:")
         for l in f['exc_traceback'].split('\n'):
@@ -491,6 +510,8 @@ def main():
                         help="Full mode: test cases that are expected to fail")
     parser.add_argument('--strict', action='store_true', dest='strict',
                         help="Treat all warnings as fatal")
+    parser.add_argument('--tcg-only', action='store_true', dest='tcg_only',
+                        help="Only test with TCG accelerator")
     parser.add_argument('qemu', nargs='*', metavar='QEMU',
                         help='QEMU binary to run')
     args = parser.parse_args()
@@ -502,6 +523,12 @@ def main():
     else:
         lvl = logging.WARN
     logging.basicConfig(stream=sys.stdout, level=lvl, format='%(levelname)s: %(message)s')
+
+    if not args.debug:
+        # Async QMP, when in use, is chatty about connection failures.
+        # This script knowingly generates a ton of connection errors.
+        # Silence this logger.
+        logging.getLogger('qemu.qmp.qmp_client').setLevel(logging.CRITICAL)
 
     fatal_failures = []
     wl_stats = {}

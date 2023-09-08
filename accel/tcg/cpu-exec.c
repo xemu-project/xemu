@@ -18,8 +18,10 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/qemu-print.h"
+#include "qapi/error.h"
+#include "qapi/qapi-commands-machine.h"
+#include "qapi/type-helpers.h"
 #include "hw/core/tcg-cpu-ops.h"
 #include "trace.h"
 #include "disas/disas.h"
@@ -38,7 +40,9 @@
 #include "exec/cpu-all.h"
 #include "sysemu/cpu-timers.h"
 #include "sysemu/replay.h"
+#include "sysemu/tcg.h"
 #include "exec/helper-proto.h"
+#include "tb-jmp-cache.h"
 #include "tb-hash.h"
 #include "tb-context.h"
 #include "internal.h"
@@ -167,22 +171,123 @@ uint32_t curr_cflags(CPUState *cpu)
     return cflags;
 }
 
+struct tb_desc {
+    target_ulong pc;
+    target_ulong cs_base;
+    CPUArchState *env;
+    tb_page_addr_t page_addr0;
+    uint32_t flags;
+    uint32_t cflags;
+    uint32_t trace_vcpu_dstate;
+};
+
+static bool tb_lookup_cmp(const void *p, const void *d)
+{
+    const TranslationBlock *tb = p;
+    const struct tb_desc *desc = d;
+
+    if ((TARGET_TB_PCREL || tb_pc(tb) == desc->pc) &&
+        tb_page_addr0(tb) == desc->page_addr0 &&
+        tb->cs_base == desc->cs_base &&
+        tb->flags == desc->flags &&
+        tb->trace_vcpu_dstate == desc->trace_vcpu_dstate &&
+        (tb_cflags(tb) & ~CF_INVALID) == desc->cflags) {
+        /* check next page if needed */
+        tb_page_addr_t tb_phys_page1 = tb_page_addr1(tb);
+        if (tb_phys_page1 == -1) {
+            return true;
+        } else {
+            tb_page_addr_t phys_page1;
+            target_ulong virt_page1;
+
+            /*
+             * We know that the first page matched, and an otherwise valid TB
+             * encountered an incomplete instruction at the end of that page,
+             * therefore we know that generating a new TB from the current PC
+             * must also require reading from the next page -- even if the
+             * second pages do not match, and therefore the resulting insn
+             * is different for the new TB.  Therefore any exception raised
+             * here by the faulting lookup is not premature.
+             */
+            virt_page1 = TARGET_PAGE_ALIGN(desc->pc);
+            phys_page1 = get_page_addr_code(desc->env, virt_page1);
+            if (tb_phys_page1 == phys_page1) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static TranslationBlock *
+tb_htable_lookup_common(CPUState *cpu, target_ulong pc,
+                        target_ulong cs_base, uint32_t flags,
+                        uint32_t cflags, const struct qht *ht,
+                        qht_lookup_func_t func)
+{
+    tb_page_addr_t phys_pc;
+    struct tb_desc desc;
+    uint32_t h;
+
+    desc.env = cpu->env_ptr;
+    desc.cs_base = cs_base;
+    desc.flags = flags;
+    desc.cflags = cflags;
+    desc.trace_vcpu_dstate = *cpu->trace_dstate;
+    desc.pc = pc;
+    phys_pc = get_page_addr_code(desc.env, pc);
+    if (phys_pc == -1) {
+        return NULL;
+    }
+    desc.page_addr0 = phys_pc;
+    h = tb_hash_func(phys_pc, (TARGET_TB_PCREL ? 0 : pc),
+                     flags, cflags, *cpu->trace_dstate);
+    return qht_lookup_custom(ht, &desc, h, func);
+}
+
+TranslationBlock *tb_htable_lookup(CPUState *cpu, target_ulong pc,
+                                   target_ulong cs_base, uint32_t flags,
+                                   uint32_t cflags)
+{
+    return tb_htable_lookup_common(cpu, pc, cs_base, flags, cflags,
+                                   &tb_ctx.htable, tb_lookup_cmp);
+}
+
+static bool inv_tb_lookup_cmp(const void *p, const void *d)
+{
+    const TranslationBlock *tb = p;
+    const struct tb_desc *desc = d;
+
+    return tb_lookup_cmp(p, d) &&
+           tb->ihash == tb_code_hash_func(desc->env, desc->pc, tb->size);
+}
+
+TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, target_ulong pc,
+                                       target_ulong cs_base, uint32_t flags,
+                                       uint32_t cflags)
+{
+    return tb_htable_lookup_common(cpu, pc, cs_base, flags, cflags,
+                                   &tb_ctx.inv_htable, inv_tb_lookup_cmp);
+}
+
 /* Might cause an exception, so have a longjmp destination ready */
 static inline TranslationBlock *tb_lookup(CPUState *cpu, target_ulong pc,
                                           target_ulong cs_base,
                                           uint32_t flags, uint32_t cflags)
 {
     TranslationBlock *tb;
+    CPUJumpCache *jc;
     uint32_t hash;
 
     /* we should never be trying to look up an INVALID tb */
     tcg_debug_assert(!(cflags & CF_INVALID));
 
     hash = tb_jmp_cache_hash_func(pc);
-    tb = qatomic_rcu_read(&cpu->tb_jmp_cache[hash]);
+    jc = cpu->tb_jmp_cache;
+    tb = tb_jmp_cache_get_tb(jc, hash);
 
     if (likely(tb &&
-               tb->pc == pc &&
+               tb_jmp_cache_get_pc(jc, hash, tb) == pc &&
                tb->cs_base == cs_base &&
                tb->flags == flags &&
                tb->trace_vcpu_dstate == *cpu->trace_dstate &&
@@ -193,16 +298,14 @@ static inline TranslationBlock *tb_lookup(CPUState *cpu, target_ulong pc,
     if (tb == NULL) {
         return NULL;
     }
-    qatomic_set(&cpu->tb_jmp_cache[hash], tb);
+    tb_jmp_cache_set(jc, hash, tb, pc);
     return tb;
 }
 
-static inline void log_cpu_exec(target_ulong pc, CPUState *cpu,
-                                const TranslationBlock *tb)
+static void log_cpu_exec(target_ulong pc, CPUState *cpu,
+                         const TranslationBlock *tb)
 {
-    if (unlikely(qemu_loglevel_mask(CPU_LOG_TB_CPU | CPU_LOG_EXEC))
-        && qemu_log_in_addr_range(pc)) {
-
+    if (qemu_log_in_addr_range(pc)) {
         qemu_log_mask(CPU_LOG_EXEC,
                       "Trace %d: %p [" TARGET_FMT_lx
                       "/" TARGET_FMT_lx "/%08x/%08x] %s\n",
@@ -211,31 +314,29 @@ static inline void log_cpu_exec(target_ulong pc, CPUState *cpu,
 
 #if defined(DEBUG_DISAS)
         if (qemu_loglevel_mask(CPU_LOG_TB_CPU)) {
-            FILE *logfile = qemu_log_lock();
-            int flags = 0;
+            FILE *logfile = qemu_log_trylock();
+            if (logfile) {
+                int flags = 0;
 
-            if (qemu_loglevel_mask(CPU_LOG_TB_FPU)) {
-                flags |= CPU_DUMP_FPU;
-            }
+                if (qemu_loglevel_mask(CPU_LOG_TB_FPU)) {
+                    flags |= CPU_DUMP_FPU;
+                }
 #if defined(TARGET_I386)
-            flags |= CPU_DUMP_CCOP;
+                flags |= CPU_DUMP_CCOP;
 #endif
-            log_cpu_state(cpu, flags);
-            qemu_log_unlock(logfile);
+                cpu_dump_state(cpu, logfile, flags);
+                qemu_log_unlock(logfile);
+            }
         }
 #endif /* DEBUG_DISAS */
     }
 }
 
-static bool check_for_breakpoints(CPUState *cpu, target_ulong pc,
-                                  uint32_t *cflags)
+static bool check_for_breakpoints_slow(CPUState *cpu, target_ulong pc,
+                                       uint32_t *cflags)
 {
     CPUBreakpoint *bp;
     bool match_page = false;
-
-    if (likely(QTAILQ_EMPTY(&cpu->breakpoints))) {
-        return false;
-    }
 
     /*
      * Singlestep overrides breakpoints.
@@ -297,6 +398,13 @@ static bool check_for_breakpoints(CPUState *cpu, target_ulong pc,
     return false;
 }
 
+static inline bool check_for_breakpoints(CPUState *cpu, target_ulong pc,
+                                         uint32_t *cflags)
+{
+    return unlikely(!QTAILQ_EMPTY(&cpu->breakpoints)) &&
+        check_for_breakpoints_slow(cpu, pc, cflags);
+}
+
 /**
  * helper_lookup_tb_ptr: quick check for next tb
  * @env: current cpu state
@@ -324,7 +432,9 @@ const void *HELPER(lookup_tb_ptr)(CPUArchState *env)
         return tcg_code_gen_epilogue;
     }
 
-    log_cpu_exec(pc, cpu, tb);
+    if (qemu_loglevel_mask(CPU_LOG_TB_CPU | CPU_LOG_EXEC)) {
+        log_cpu_exec(pc, cpu, tb);
+    }
 
     return tb->tc.ptr;
 }
@@ -347,7 +457,9 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
     TranslationBlock *last_tb;
     const void *tb_ptr = itb->tc.ptr;
 
-    log_cpu_exec(itb->pc, cpu, itb);
+    if (qemu_loglevel_mask(CPU_LOG_TB_CPU | CPU_LOG_EXEC)) {
+        log_cpu_exec(log_pc(cpu, itb), cpu, itb);
+    }
 
     qemu_thread_jit_execute();
     ret = tcg_qemu_tb_exec(env, tb_ptr);
@@ -371,18 +483,34 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
          * of the start of the TB.
          */
         CPUClass *cc = CPU_GET_CLASS(cpu);
-        qemu_log_mask_and_addr(CPU_LOG_EXEC, last_tb->pc,
-                               "Stopped execution of TB chain before %p ["
-                               TARGET_FMT_lx "] %s\n",
-                               last_tb->tc.ptr, last_tb->pc,
-                               lookup_symbol(last_tb->pc));
+
         if (cc->tcg_ops->synchronize_from_tb) {
             cc->tcg_ops->synchronize_from_tb(cpu, last_tb);
         } else {
+            assert(!TARGET_TB_PCREL);
             assert(cc->set_pc);
-            cc->set_pc(cpu, last_tb->pc);
+            cc->set_pc(cpu, tb_pc(last_tb));
+        }
+        if (qemu_loglevel_mask(CPU_LOG_EXEC)) {
+            target_ulong pc = log_pc(cpu, last_tb);
+            if (qemu_log_in_addr_range(pc)) {
+                qemu_log("Stopped execution of TB chain before %p ["
+                         TARGET_FMT_lx "] %s\n",
+                         last_tb->tc.ptr, pc, lookup_symbol(pc));
+            }
         }
     }
+
+    /*
+     * If gdb single-step, and we haven't raised another exception,
+     * raise a debug exception.  Single-step with another exception
+     * is handled in cpu_handle_exception.
+     */
+    if (unlikely(cpu->singlestep_enabled) && cpu->exception_index == -1) {
+        cpu->exception_index = EXCP_DEBUG;
+        cpu_loop_exit(cpu);
+    }
+
     return last_tb;
 }
 
@@ -407,7 +535,7 @@ static void cpu_exec_exit(CPUState *cpu)
 
 void cpu_exec_step_atomic(CPUState *cpu)
 {
-    CPUArchState *env = (CPUArchState *)cpu->env_ptr;
+    CPUArchState *env = cpu->env_ptr;
     TranslationBlock *tb;
     target_ulong cs_base, pc;
     uint32_t flags, cflags;
@@ -446,12 +574,11 @@ void cpu_exec_step_atomic(CPUState *cpu)
         cpu_tb_exec(cpu, tb, &tb_exit);
         cpu_exec_exit(cpu);
     } else {
-        /*
-         * The mmap_lock is dropped by tb_gen_code if it runs out of
-         * memory.
-         */
 #ifndef CONFIG_SOFTMMU
-        tcg_debug_assert(!have_mmap_lock());
+        clear_helper_retaddr();
+        if (have_mmap_lock()) {
+            mmap_unlock();
+        }
 #endif
         if (qemu_mutex_iothread_locked()) {
             qemu_mutex_unlock_iothread();
@@ -459,7 +586,6 @@ void cpu_exec_step_atomic(CPUState *cpu)
         assert_no_pages_locked();
         qemu_plugin_disable_mem_helpers(cpu);
     }
-
 
     /*
      * As we start the exclusive region before codegen we must still
@@ -469,93 +595,6 @@ void cpu_exec_step_atomic(CPUState *cpu)
     g_assert(cpu_in_exclusive_context(cpu));
     cpu->running = false;
     end_exclusive();
-}
-
-struct tb_desc {
-    target_ulong pc;
-    target_ulong cs_base;
-    CPUArchState *env;
-    tb_page_addr_t phys_page1;
-    uint32_t flags;
-    uint32_t cflags;
-    uint32_t trace_vcpu_dstate;
-};
-
-static bool tb_lookup_cmp(const void *p, const void *d)
-{
-    const TranslationBlock *tb = p;
-    const struct tb_desc *desc = d;
-
-    if (tb->pc == desc->pc &&
-        tb->page_addr[0] == desc->phys_page1 &&
-        tb->cs_base == desc->cs_base &&
-        tb->flags == desc->flags &&
-        tb->trace_vcpu_dstate == desc->trace_vcpu_dstate &&
-        (tb_cflags(tb) & ~CF_INVALID) == desc->cflags) {
-        /* check next page if needed */
-        if (tb->page_addr[1] == -1) {
-            return true;
-        } else {
-            tb_page_addr_t phys_page2;
-            target_ulong virt_page2;
-
-            virt_page2 = (desc->pc & TARGET_PAGE_MASK) + TARGET_PAGE_SIZE;
-            phys_page2 = get_page_addr_code(desc->env, virt_page2);
-            if (tb->page_addr[1] == phys_page2) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-static bool inv_tb_lookup_cmp(const void *p, const void *d)
-{
-    const TranslationBlock *tb = p;
-    const struct tb_desc *desc = d;
-
-    return tb_lookup_cmp(p, d) &&
-           tb->ihash == tb_code_hash_func(desc->env, tb->pc, tb->size);
-}
-
-static TranslationBlock *
-tb_htable_lookup_common(CPUState *cpu, target_ulong pc, target_ulong cs_base,
-                        uint32_t flags, uint32_t cflags, const struct qht *ht,
-                        qht_lookup_func_t func)
-{
-    tb_page_addr_t phys_pc;
-    struct tb_desc desc;
-    uint32_t h;
-
-    desc.env = (CPUArchState *)cpu->env_ptr;
-    desc.cs_base = cs_base;
-    desc.flags = flags;
-    desc.cflags = cflags;
-    desc.trace_vcpu_dstate = *cpu->trace_dstate;
-    desc.pc = pc;
-    phys_pc = get_page_addr_code(desc.env, pc);
-    if (phys_pc == -1) {
-        return NULL;
-    }
-    desc.phys_page1 = phys_pc & TARGET_PAGE_MASK;
-    h = tb_hash_func(phys_pc, pc, flags, cflags, *cpu->trace_dstate);
-    return qht_lookup_custom(ht, &desc, h, func);
-}
-
-TranslationBlock *tb_htable_lookup(CPUState *cpu, target_ulong pc,
-                                   target_ulong cs_base, uint32_t flags,
-                                   uint32_t cflags)
-{
-    return tb_htable_lookup_common(cpu, pc, cs_base, flags, cflags,
-                                   &tb_ctx.htable, tb_lookup_cmp);
-}
-
-TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, target_ulong pc,
-                                       target_ulong cs_base, uint32_t flags,
-                                       uint32_t cflags)
-{
-    return tb_htable_lookup_common(cpu, pc, cs_base, flags, cflags,
-                                   &tb_ctx.inv_htable, inv_tb_lookup_cmp);
 }
 
 void tb_set_jmp_target(TranslationBlock *tb, int n, uintptr_t addr)
@@ -600,11 +639,8 @@ static inline void tb_add_jump(TranslationBlock *tb, int n,
 
     qemu_spin_unlock(&tb_next->jmp_lock);
 
-    qemu_log_mask_and_addr(CPU_LOG_EXEC, tb->pc,
-                           "Linking TBs %p [" TARGET_FMT_lx
-                           "] index %d -> %p [" TARGET_FMT_lx "]\n",
-                           tb->tc.ptr, tb->pc, n,
-                           tb_next->tc.ptr, tb_next->pc);
+    qemu_log_mask(CPU_LOG_EXEC, "Linking TBs %p index %d -> %p\n",
+                  tb->tc.ptr, n, tb_next->tc.ptr);
     return;
 
  out_unlock_next:
@@ -614,8 +650,9 @@ static inline void tb_add_jump(TranslationBlock *tb, int n,
 
 static inline bool cpu_handle_halt(CPUState *cpu)
 {
+#ifndef CONFIG_USER_ONLY
     if (cpu->halted) {
-#if defined(TARGET_I386) && !defined(CONFIG_USER_ONLY)
+#if defined(TARGET_I386)
         if (cpu->interrupt_request & CPU_INTERRUPT_POLL) {
             X86CPU *x86_cpu = X86_CPU(cpu);
             qemu_mutex_lock_iothread();
@@ -623,13 +660,14 @@ static inline bool cpu_handle_halt(CPUState *cpu)
             cpu_reset_interrupt(cpu, CPU_INTERRUPT_POLL);
             qemu_mutex_unlock_iothread();
         }
-#endif
+#endif /* TARGET_I386 */
         if (!cpu_has_work(cpu)) {
             return true;
         }
 
         cpu->halted = 0;
     }
+#endif /* !CONFIG_USER_ONLY */
 
     return false;
 }
@@ -657,7 +695,8 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
         if (replay_has_exception()
             && cpu_neg(cpu)->icount_decr.u16.low + cpu->icount_extra == 0) {
             /* Execute just one insn to trigger exception pending in the log */
-            cpu->cflags_next_tb = (curr_cflags(cpu) & ~CF_USE_ICOUNT) | 1;
+            cpu->cflags_next_tb = (curr_cflags(cpu) & ~CF_USE_ICOUNT)
+                | CF_NOIRQ | 1;
         }
 #endif
         return false;
@@ -677,8 +716,8 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
            loop */
 #if defined(TARGET_I386)
         CPUClass *cc = CPU_GET_CLASS(cpu);
-        cc->tcg_ops->do_interrupt(cpu);
-#endif
+        cc->tcg_ops->fake_user_interrupt(cpu);
+#endif /* TARGET_I386 */
         *ret = cpu->exception_index;
         cpu->exception_index = -1;
         return true;
@@ -711,6 +750,7 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
     return false;
 }
 
+#ifndef CONFIG_USER_ONLY
 /*
  * CPU_INTERRUPT_POLL is a virtual event which gets converted into a
  * "real" interrupt event later. It does not need to be recorded for
@@ -724,11 +764,19 @@ static inline bool need_replay_interrupt(int interrupt_request)
     return true;
 #endif
 }
+#endif /* !CONFIG_USER_ONLY */
 
 static inline bool cpu_handle_interrupt(CPUState *cpu,
                                         TranslationBlock **last_tb)
 {
-    CPUClass *cc = CPU_GET_CLASS(cpu);
+    /*
+     * If we have requested custom cflags with CF_NOIRQ we should
+     * skip checking here. Any pending interrupts will get picked up
+     * by the next TB we execute under normal cflags.
+     */
+    if (cpu->cflags_next_tb != -1 && cpu->cflags_next_tb & CF_NOIRQ) {
+        return false;
+    }
 
     /* Clear the interrupt flag now since we're processing
      * cpu->interrupt_request and cpu->exit_request.
@@ -751,6 +799,7 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
             qemu_mutex_unlock_iothread();
             return true;
         }
+#if !defined(CONFIG_USER_ONLY)
         if (replay_mode == REPLAY_MODE_PLAY && !replay_has_interrupt()) {
             /* Do nothing */
         } else if (interrupt_request & CPU_INTERRUPT_HALT) {
@@ -779,12 +828,14 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
             qemu_mutex_unlock_iothread();
             return true;
         }
-#endif
+#endif /* !TARGET_I386 */
         /* The target hook has 3 exit conditions:
            False when the interrupt isn't processed,
            True when it is, and we should restart on a new TB,
            and via longjmp via cpu_loop_exit.  */
         else {
+            CPUClass *cc = CPU_GET_CLASS(cpu);
+
             if (cc->tcg_ops->cpu_exec_interrupt &&
                 cc->tcg_ops->cpu_exec_interrupt(cpu, interrupt_request)) {
                 if (need_replay_interrupt(interrupt_request)) {
@@ -795,14 +846,19 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
                  * raised when single-stepping so that GDB doesn't miss the
                  * next instruction.
                  */
-                cpu->exception_index =
-                    (cpu->singlestep_enabled ? EXCP_DEBUG : -1);
+                if (unlikely(cpu->singlestep_enabled)) {
+                    cpu->exception_index = EXCP_DEBUG;
+                    qemu_mutex_unlock_iothread();
+                    return true;
+                }
+                cpu->exception_index = -1;
                 *last_tb = NULL;
             }
             /* The target hook may have updated the 'cpu->interrupt_request';
              * reload the 'interrupt_request' value */
             interrupt_request = cpu->interrupt_request;
         }
+#endif /* !CONFIG_USER_ONLY */
         if (interrupt_request & CPU_INTERRUPT_EXITTB) {
             cpu->interrupt_request &= ~CPU_INTERRUPT_EXITTB;
             /* ensure that no TB jump will be modified as
@@ -830,11 +886,12 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
 }
 
 static inline void cpu_loop_exec_tb(CPUState *cpu, TranslationBlock *tb,
+                                    target_ulong pc,
                                     TranslationBlock **last_tb, int *tb_exit)
 {
     int32_t insns_left;
 
-    trace_exec_tb(tb, tb->pc);
+    trace_exec_tb(tb, pc);
     tb = cpu_tb_exec(cpu, tb, tb_exit);
     if (*tb_exit != TB_EXIT_REQUESTED) {
         *last_tb = tb;
@@ -925,7 +982,10 @@ int cpu_exec(CPUState *cpu)
 #endif
 
 #ifndef CONFIG_SOFTMMU
-        tcg_debug_assert(!have_mmap_lock());
+        clear_helper_retaddr();
+        if (have_mmap_lock()) {
+            mmap_unlock();
+        }
 #endif
         if (qemu_mutex_iothread_locked()) {
             qemu_mutex_unlock_iothread();
@@ -967,6 +1027,8 @@ int cpu_exec(CPUState *cpu)
 
             tb = tb_lookup(cpu, pc, cs_base, flags, cflags);
             if (tb == NULL) {
+                uint32_t h;
+
                 mmap_lock();
                 tb = tb_gen_code(cpu, pc, cs_base, flags, cflags);
                 mmap_unlock();
@@ -974,7 +1036,8 @@ int cpu_exec(CPUState *cpu)
                  * We add the TB in the virtual pc hash table
                  * for the fast lookup
                  */
-                qatomic_set(&cpu->tb_jmp_cache[tb_jmp_cache_hash_func(pc)], tb);
+                h = tb_jmp_cache_hash_func(pc);
+                tb_jmp_cache_set(cpu->tb_jmp_cache, h, tb, pc);
             }
 
 #ifndef CONFIG_USER_ONLY
@@ -984,7 +1047,7 @@ int cpu_exec(CPUState *cpu)
              * direct jump to a TB spanning two pages because the mapping
              * for the second page can change.
              */
-            if (tb->page_addr[1] != -1) {
+            if (tb_page_addr1(tb) != -1) {
                 last_tb = NULL;
             }
 #endif
@@ -993,7 +1056,7 @@ int cpu_exec(CPUState *cpu)
                 tb_add_jump(last_tb, tb_exit, tb);
             }
 
-            cpu_loop_exec_tb(cpu, tb, &last_tb, &tb_exit);
+            cpu_loop_exec_tb(cpu, tb, pc, &last_tb, &tb_exit);
 
             /* Try to align the host and virtual clocks
                if the guest is in advance */
@@ -1016,44 +1079,106 @@ void tcg_exec_realizefn(CPUState *cpu, Error **errp)
         cc->tcg_ops->initialize();
         tcg_target_initialized = true;
     }
-    tlb_init(cpu);
-    qemu_plugin_vcpu_init_hook(cpu);
 
+    cpu->tb_jmp_cache = g_new0(CPUJumpCache, 1);
+    tlb_init(cpu);
 #ifndef CONFIG_USER_ONLY
     tcg_iommu_init_notifier_list(cpu);
 #endif /* !CONFIG_USER_ONLY */
+    /* qemu_plugin_vcpu_init_hook delayed until cpu_index assigned. */
 }
 
 /* undo the initializations in reverse order */
 void tcg_exec_unrealizefn(CPUState *cpu)
 {
+    qemu_plugin_vcpu_exit_hook(cpu);
 #ifndef CONFIG_USER_ONLY
     tcg_iommu_free_notifier_list(cpu);
 #endif /* !CONFIG_USER_ONLY */
 
-    qemu_plugin_vcpu_exit_hook(cpu);
     tlb_destroy(cpu);
+    g_free(cpu->tb_jmp_cache);
 }
 
 #ifndef CONFIG_USER_ONLY
 
-void dump_drift_info(void)
+static void dump_drift_info(GString *buf)
 {
     if (!icount_enabled()) {
         return;
     }
 
-    qemu_printf("Host - Guest clock  %"PRIi64" ms\n",
-                (cpu_get_clock() - icount_get()) / SCALE_MS);
+    g_string_append_printf(buf, "Host - Guest clock  %"PRIi64" ms\n",
+                           (cpu_get_clock() - icount_get()) / SCALE_MS);
     if (icount_align_option) {
-        qemu_printf("Max guest delay     %"PRIi64" ms\n",
-                    -max_delay / SCALE_MS);
-        qemu_printf("Max guest advance   %"PRIi64" ms\n",
-                    max_advance / SCALE_MS);
+        g_string_append_printf(buf, "Max guest delay     %"PRIi64" ms\n",
+                               -max_delay / SCALE_MS);
+        g_string_append_printf(buf, "Max guest advance   %"PRIi64" ms\n",
+                               max_advance / SCALE_MS);
     } else {
-        qemu_printf("Max guest delay     NA\n");
-        qemu_printf("Max guest advance   NA\n");
+        g_string_append_printf(buf, "Max guest delay     NA\n");
+        g_string_append_printf(buf, "Max guest advance   NA\n");
     }
 }
+
+HumanReadableText *qmp_x_query_jit(Error **errp)
+{
+    g_autoptr(GString) buf = g_string_new("");
+
+    if (!tcg_enabled()) {
+        error_setg(errp, "JIT information is only available with accel=tcg");
+        return NULL;
+    }
+
+    dump_exec_info(buf);
+    dump_drift_info(buf);
+
+    return human_readable_text_from_str(buf);
+}
+
+HumanReadableText *qmp_x_query_opcount(Error **errp)
+{
+    g_autoptr(GString) buf = g_string_new("");
+
+    if (!tcg_enabled()) {
+        error_setg(errp, "Opcode count information is only available with accel=tcg");
+        return NULL;
+    }
+
+    tcg_dump_op_count(buf);
+
+    return human_readable_text_from_str(buf);
+}
+
+#ifdef CONFIG_PROFILER
+
+int64_t dev_time;
+
+HumanReadableText *qmp_x_query_profile(Error **errp)
+{
+    g_autoptr(GString) buf = g_string_new("");
+    static int64_t last_cpu_exec_time;
+    int64_t cpu_exec_time;
+    int64_t delta;
+
+    cpu_exec_time = tcg_cpu_exec_time();
+    delta = cpu_exec_time - last_cpu_exec_time;
+
+    g_string_append_printf(buf, "async time  %" PRId64 " (%0.3f)\n",
+                           dev_time, dev_time / (double)NANOSECONDS_PER_SECOND);
+    g_string_append_printf(buf, "qemu time   %" PRId64 " (%0.3f)\n",
+                           delta, delta / (double)NANOSECONDS_PER_SECOND);
+    last_cpu_exec_time = cpu_exec_time;
+    dev_time = 0;
+
+    return human_readable_text_from_str(buf);
+}
+#else
+HumanReadableText *qmp_x_query_profile(Error **errp)
+{
+    error_setg(errp, "Internal profiler not compiled");
+    return NULL;
+}
+#endif
 
 #endif /* !CONFIG_USER_ONLY */

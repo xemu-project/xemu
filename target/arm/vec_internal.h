@@ -17,8 +17,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TARGET_ARM_VEC_INTERNALS_H
-#define TARGET_ARM_VEC_INTERNALS_H
+#ifndef TARGET_ARM_VEC_INTERNAL_H
+#define TARGET_ARM_VEC_INTERNAL_H
 
 /*
  * Note that vector data is stored in host-endian 64-bit chunks,
@@ -29,7 +29,7 @@
  * The H1_<N> macros are used when performing byte arithmetic and then
  * casting the final pointer to a type of size N.
  */
-#ifdef HOST_WORDS_BIGENDIAN
+#if HOST_BIG_ENDIAN
 #define H1(x)   ((x) ^ 7)
 #define H1_2(x) ((x) ^ 6)
 #define H1_4(x) ((x) ^ 4)
@@ -50,8 +50,21 @@
 #define H8(x)   (x)
 #define H1_8(x) (x)
 
-/* Data for expanding active predicate bits to bytes, for byte elements. */
+/*
+ * Expand active predicate bits to bytes, for byte elements.
+ */
 extern const uint64_t expand_pred_b_data[256];
+static inline uint64_t expand_pred_b(uint8_t byte)
+{
+    return expand_pred_b_data[byte];
+}
+
+/* Similarly for half-word elements. */
+extern const uint64_t expand_pred_h_data[0x55 + 1];
+static inline uint64_t expand_pred_h(uint8_t byte)
+{
+    return expand_pred_h_data[byte & 0x55];
+}
 
 static inline void clear_tail(void *vd, uintptr_t opr_sz, uintptr_t max_sz)
 {
@@ -206,4 +219,28 @@ int16_t do_sqrdmlah_h(int16_t, int16_t, int16_t, bool, bool, uint32_t *);
 int32_t do_sqrdmlah_s(int32_t, int32_t, int32_t, bool, bool, uint32_t *);
 int64_t do_sqrdmlah_d(int64_t, int64_t, int64_t, bool, bool);
 
-#endif /* TARGET_ARM_VEC_INTERNALS_H */
+/*
+ * 8 x 8 -> 16 vector polynomial multiply where the inputs are
+ * in the low 8 bits of each 16-bit element
+*/
+uint64_t pmull_h(uint64_t op1, uint64_t op2);
+/*
+ * 16 x 16 -> 32 vector polynomial multiply where the inputs are
+ * in the low 16 bits of each 32-bit element
+ */
+uint64_t pmull_w(uint64_t op1, uint64_t op2);
+
+/**
+ * bfdotadd:
+ * @sum: addend
+ * @e1, @e2: multiplicand vectors
+ *
+ * BFloat16 2-way dot product of @e1 & @e2, accumulating with @sum.
+ * The @e1 and @e2 operands correspond to the 32-bit source vector
+ * slots and contain two Bfloat16 values each.
+ *
+ * Corresponds to the ARM pseudocode function BFDotAdd.
+ */
+float32 bfdotadd(float32 sum, uint32_t e1, uint32_t e2);
+
+#endif /* TARGET_ARM_VEC_INTERNAL_H */

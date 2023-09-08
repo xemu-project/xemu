@@ -696,6 +696,14 @@ static void do_tx_packet(lan9118_state *s)
     n = (s->tx_status_fifo_head + s->tx_status_fifo_used) & 511;
     s->tx_status_fifo[n] = status;
     s->tx_status_fifo_used++;
+
+    /*
+     * Generate TSFL interrupt if TX FIFO level exceeds the level
+     * specified in the FIFO_INT TX Status Level field.
+     */
+    if (s->tx_status_fifo_used > ((s->fifo_int >> 16) & 0xff)) {
+        s->int_sts |= TSFL_INT;
+    }
     if (s->tx_status_fifo_used == 512) {
         s->int_sts |= TSFF_INT;
         /* TODO: Stop transmission.  */
@@ -1363,7 +1371,7 @@ static void lan9118_realize(DeviceState *dev, Error **errp)
     s->pmt_ctrl = 1;
     s->txp = &s->tx_packet;
 
-    s->timer = ptimer_init(lan9118_tick, s, PTIMER_POLICY_DEFAULT);
+    s->timer = ptimer_init(lan9118_tick, s, PTIMER_POLICY_LEGACY);
     ptimer_transaction_begin(s->timer);
     ptimer_set_freq(s->timer, 10000);
     ptimer_set_limit(s->timer, 0xffff, 1);

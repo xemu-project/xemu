@@ -76,20 +76,9 @@ void hbitmap_truncate(HBitmap *hb, uint64_t size);
  *
  * Store result of merging @a and @b into @result.
  * @result is allowed to be equal to @a or @b.
- *
- * Return true if the merge was successful,
- *        false if it was not attempted.
+ * All bitmaps must have same size.
  */
-bool hbitmap_merge(const HBitmap *a, const HBitmap *b, HBitmap *result);
-
-/**
- * hbitmap_can_merge:
- *
- * hbitmap_can_merge(a, b) && hbitmap_can_merge(a, result) is sufficient and
- * necessary for hbitmap_merge will not fail.
- *
- */
-bool hbitmap_can_merge(const HBitmap *a, const HBitmap *b);
+void hbitmap_merge(const HBitmap *a, const HBitmap *b, HBitmap *result);
 
 /**
  * hbitmap_empty:
@@ -339,6 +328,18 @@ int64_t hbitmap_next_zero(const HBitmap *hb, int64_t start, int64_t count);
 bool hbitmap_next_dirty_area(const HBitmap *hb, int64_t start, int64_t end,
                              int64_t max_dirty_count,
                              int64_t *dirty_start, int64_t *dirty_count);
+
+/*
+ * bdrv_dirty_bitmap_status:
+ * @hb: The HBitmap to operate on
+ * @start: The bit to start from
+ * @count: Number of bits to proceed
+ * @pnum: Out-parameter. How many bits has same value starting from @start
+ *
+ * Returns true if bitmap is dirty at @start, false otherwise.
+ */
+bool hbitmap_status(const HBitmap *hb, int64_t start, int64_t count,
+                    int64_t *pnum);
 
 /**
  * hbitmap_iter_next:

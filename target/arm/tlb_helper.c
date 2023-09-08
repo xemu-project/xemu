@@ -9,6 +9,33 @@
 #include "cpu.h"
 #include "internals.h"
 #include "exec/exec-all.h"
+#include "exec/helper-proto.h"
+
+
+/* Return true if the translation regime is using LPAE format page tables */
+bool regime_using_lpae_format(CPUARMState *env, ARMMMUIdx mmu_idx)
+{
+    int el = regime_el(env, mmu_idx);
+    if (el == 2 || arm_el_is_aa64(env, el)) {
+        return true;
+    }
+    if (arm_feature(env, ARM_FEATURE_LPAE)
+        && (regime_tcr(env, mmu_idx) & TTBCR_EAE)) {
+        return true;
+    }
+    return false;
+}
+
+/*
+ * Returns true if the stage 1 translation regime is using LPAE format page
+ * tables. Used when raising alignment exceptions, whose FSR changes depending
+ * on whether the long or short descriptor format is in use.
+ */
+bool arm_s1_regime_using_lpae_format(CPUARMState *env, ARMMMUIdx mmu_idx)
+{
+    mmu_idx = stage_1_mmu_idx(mmu_idx);
+    return regime_using_lpae_format(env, mmu_idx);
+}
 
 static inline uint32_t merge_syn_data_abort(uint32_t template_syn,
                                             unsigned int target_el,
@@ -49,28 +76,23 @@ static inline uint32_t merge_syn_data_abort(uint32_t template_syn,
     return syn;
 }
 
-static void QEMU_NORETURN arm_deliver_fault(ARMCPU *cpu, vaddr addr,
-                                            MMUAccessType access_type,
-                                            int mmu_idx, ARMMMUFaultInfo *fi)
+static uint32_t compute_fsr_fsc(CPUARMState *env, ARMMMUFaultInfo *fi,
+                                int target_el, int mmu_idx, uint32_t *ret_fsc)
 {
-    CPUARMState *env = &cpu->env;
-    int target_el;
-    bool same_el;
-    uint32_t syn, exc, fsr, fsc;
     ARMMMUIdx arm_mmu_idx = core_to_arm_mmu_idx(env, mmu_idx);
+    uint32_t fsr, fsc;
 
-    target_el = exception_target_el(env);
-    if (fi->stage2) {
-        target_el = 2;
-        env->cp15.hpfar_el2 = extract64(fi->s2addr, 12, 47) << 4;
-        if (arm_is_secure_below_el3(env) && fi->s1ns) {
-            env->cp15.hpfar_el2 |= HPFAR_NS;
-        }
-    }
-    same_el = (arm_current_el(env) == target_el);
-
-    if (target_el == 2 || arm_el_is_aa64(env, target_el) ||
-        arm_s1_regime_using_lpae_format(env, arm_mmu_idx)) {
+    /*
+     * For M-profile there is no guest-facing FSR. We compute a
+     * short-form value for env->exception.fsr which we will then
+     * examine in arm_v7m_cpu_do_interrupt(). In theory we could
+     * use the LPAE format instead as long as both bits of code agree
+     * (and arm_fi_to_lfsc() handled the M-profile specific
+     * ARMFault_QEMU_NSCExec and ARMFault_QEMU_SFault cases).
+     */
+    if (!arm_feature(env, ARM_FEATURE_M) &&
+        (target_el == 2 || arm_el_is_aa64(env, target_el) ||
+         arm_s1_regime_using_lpae_format(env, arm_mmu_idx))) {
         /*
          * LPAE format fault status register : bottom 6 bits are
          * status code in the same form as needed for syndrome
@@ -87,6 +109,32 @@ static void QEMU_NORETURN arm_deliver_fault(ARMCPU *cpu, vaddr addr,
          */
         fsc = 0x3f;
     }
+
+    *ret_fsc = fsc;
+    return fsr;
+}
+
+static G_NORETURN
+void arm_deliver_fault(ARMCPU *cpu, vaddr addr,
+                       MMUAccessType access_type,
+                       int mmu_idx, ARMMMUFaultInfo *fi)
+{
+    CPUARMState *env = &cpu->env;
+    int target_el;
+    bool same_el;
+    uint32_t syn, exc, fsr, fsc;
+
+    target_el = exception_target_el(env);
+    if (fi->stage2) {
+        target_el = 2;
+        env->cp15.hpfar_el2 = extract64(fi->s2addr, 12, 47) << 4;
+        if (arm_is_secure_below_el3(env) && fi->s1ns) {
+            env->cp15.hpfar_el2 |= HPFAR_NS;
+        }
+    }
+    same_el = (arm_current_el(env) == target_el);
+
+    fsr = compute_fsr_fsc(env, fi, target_el, mmu_idx, &fsc);
 
     if (access_type == MMU_INST_FETCH) {
         syn = syn_insn_abort(same_el, fi->ea, fi->s1ptw, fsc);
@@ -117,10 +165,27 @@ void arm_cpu_do_unaligned_access(CPUState *cs, vaddr vaddr,
     ARMMMUFaultInfo fi = {};
 
     /* now we have a real cpu fault */
-    cpu_restore_state(cs, retaddr, true);
+    cpu_restore_state(cs, retaddr);
 
     fi.type = ARMFault_Alignment;
     arm_deliver_fault(cpu, vaddr, access_type, mmu_idx, &fi);
+}
+
+void helper_exception_pc_alignment(CPUARMState *env, target_ulong pc)
+{
+    ARMMMUFaultInfo fi = { .type = ARMFault_Alignment };
+    int target_el = exception_target_el(env);
+    int mmu_idx = cpu_mmu_index(env, true);
+    uint32_t fsc;
+
+    env->exception.vaddress = pc;
+
+    /*
+     * Note that the fsc is not applicable to this exception,
+     * since any syndrome is pcalignment not insn_abort.
+     */
+    env->exception.fsr = compute_fsr_fsc(env, &fi, target_el, mmu_idx, &fsc);
+    raise_exception(env, EXCP_PREFETCH_ABORT, syn_pcalignment(), target_el);
 }
 
 #if !defined(CONFIG_USER_ONLY)
@@ -140,40 +205,32 @@ void arm_cpu_do_transaction_failed(CPUState *cs, hwaddr physaddr,
     ARMMMUFaultInfo fi = {};
 
     /* now we have a real cpu fault */
-    cpu_restore_state(cs, retaddr, true);
+    cpu_restore_state(cs, retaddr);
 
     fi.ea = arm_extabort_type(response);
     fi.type = ARMFault_SyncExternal;
     arm_deliver_fault(cpu, addr, access_type, mmu_idx, &fi);
 }
 
-#endif /* !defined(CONFIG_USER_ONLY) */
-
 bool arm_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                       MMUAccessType access_type, int mmu_idx,
                       bool probe, uintptr_t retaddr)
 {
     ARMCPU *cpu = ARM_CPU(cs);
-    ARMMMUFaultInfo fi = {};
+    GetPhysAddrResult res = {};
+    ARMMMUFaultInfo local_fi, *fi;
+    int ret;
 
-#ifdef CONFIG_USER_ONLY
-    int flags = page_get_flags(useronly_clean_ptr(address));
-    if (flags & PAGE_VALID) {
-        fi.type = ARMFault_Permission;
+    /*
+     * Allow S1_ptw_translate to see any fault generated here.
+     * Since this may recurse, read and clear.
+     */
+    fi = cpu->env.tlb_fi;
+    if (fi) {
+        cpu->env.tlb_fi = NULL;
     } else {
-        fi.type = ARMFault_Translation;
+        fi = memset(&local_fi, 0, sizeof(local_fi));
     }
-    fi.level = 3;
-
-    /* now we have a real cpu fault */
-    cpu_restore_state(cs, retaddr, true);
-    arm_deliver_fault(cpu, address, access_type, mmu_idx, &fi);
-#else
-    hwaddr phys_addr;
-    target_ulong page_size;
-    int prot, ret;
-    MemTxAttrs attrs = {};
-    ARMCacheAttrs cacheattrs = {};
 
     /*
      * Walk the page table and (if the mapping exists) add the page
@@ -183,32 +240,53 @@ bool arm_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
      */
     ret = get_phys_addr(&cpu->env, address, access_type,
                         core_to_arm_mmu_idx(&cpu->env, mmu_idx),
-                        &phys_addr, &attrs, &prot, &page_size,
-                        &fi, &cacheattrs);
+                        &res, fi);
     if (likely(!ret)) {
         /*
          * Map a single [sub]page. Regions smaller than our declared
          * target page size are handled specially, so for those we
          * pass in the exact addresses.
          */
-        if (page_size >= TARGET_PAGE_SIZE) {
-            phys_addr &= TARGET_PAGE_MASK;
+        if (res.f.lg_page_size >= TARGET_PAGE_BITS) {
+            res.f.phys_addr &= TARGET_PAGE_MASK;
             address &= TARGET_PAGE_MASK;
         }
-        /* Notice and record tagged memory. */
-        if (cpu_isar_feature(aa64_mte, cpu) && cacheattrs.attrs == 0xf0) {
-            arm_tlb_mte_tagged(&attrs) = true;
-        }
 
-        tlb_set_page_with_attrs(cs, address, phys_addr, attrs,
-                                prot, mmu_idx, page_size);
+        res.f.pte_attrs = res.cacheattrs.attrs;
+        res.f.shareability = res.cacheattrs.shareability;
+
+        tlb_set_page_full(cs, mmu_idx, address, &res.f);
         return true;
     } else if (probe) {
         return false;
     } else {
         /* now we have a real cpu fault */
-        cpu_restore_state(cs, retaddr, true);
-        arm_deliver_fault(cpu, address, access_type, mmu_idx, &fi);
+        cpu_restore_state(cs, retaddr);
+        arm_deliver_fault(cpu, address, access_type, mmu_idx, fi);
     }
-#endif
 }
+#else
+void arm_cpu_record_sigsegv(CPUState *cs, vaddr addr,
+                            MMUAccessType access_type,
+                            bool maperr, uintptr_t ra)
+{
+    ARMMMUFaultInfo fi = {
+        .type = maperr ? ARMFault_Translation : ARMFault_Permission,
+        .level = 3,
+    };
+    ARMCPU *cpu = ARM_CPU(cs);
+
+    /*
+     * We report both ESR and FAR to signal handlers.
+     * For now, it's easiest to deliver the fault normally.
+     */
+    cpu_restore_state(cs, ra);
+    arm_deliver_fault(cpu, addr, access_type, MMU_USER_IDX, &fi);
+}
+
+void arm_cpu_record_sigbus(CPUState *cs, vaddr addr,
+                           MMUAccessType access_type, uintptr_t ra)
+{
+    arm_cpu_do_unaligned_access(cs, addr, access_type, MMU_USER_IDX, ra);
+}
+#endif /* !defined(CONFIG_USER_ONLY) */

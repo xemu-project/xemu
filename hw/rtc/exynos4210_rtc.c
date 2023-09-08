@@ -26,7 +26,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "hw/sysbus.h"
@@ -39,6 +38,7 @@
 
 #include "hw/arm/exynos4210.h"
 #include "qom/object.h"
+#include "sysemu/rtc.h"
 
 #define DEBUG_RTC 0
 
@@ -564,14 +564,14 @@ static void exynos4210_rtc_init(Object *obj)
     Exynos4210RTCState *s = EXYNOS4210_RTC(obj);
     SysBusDevice *dev = SYS_BUS_DEVICE(obj);
 
-    s->ptimer = ptimer_init(exynos4210_rtc_tick, s, PTIMER_POLICY_DEFAULT);
+    s->ptimer = ptimer_init(exynos4210_rtc_tick, s, PTIMER_POLICY_LEGACY);
     ptimer_transaction_begin(s->ptimer);
     ptimer_set_freq(s->ptimer, RTC_BASE_FREQ);
     exynos4210_rtc_update_freq(s, 0);
     ptimer_transaction_commit(s->ptimer);
 
     s->ptimer_1Hz = ptimer_init(exynos4210_rtc_1Hz_tick,
-                                s, PTIMER_POLICY_DEFAULT);
+                                s, PTIMER_POLICY_LEGACY);
     ptimer_transaction_begin(s->ptimer_1Hz);
     ptimer_set_freq(s->ptimer_1Hz, RTC_BASE_FREQ);
     ptimer_transaction_commit(s->ptimer_1Hz);

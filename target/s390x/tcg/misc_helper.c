@@ -151,13 +151,33 @@ void HELPER(diag)(CPUS390XState *env, uint32_t r1, uint32_t r3, uint32_t num)
 /* Set Prefix */
 void HELPER(spx)(CPUS390XState *env, uint64_t a1)
 {
+    const uint32_t prefix = a1 & 0x7fffe000;
+    const uint32_t old_prefix = env->psa;
     CPUState *cs = env_cpu(env);
-    uint32_t prefix = a1 & 0x7fffe000;
+
+    if (prefix == old_prefix) {
+        return;
+    }
+    /*
+     * Since prefix got aligned to 8k and memory increments are a multiple of
+     * 8k checking the first page is sufficient
+     */
+    if (!mmu_absolute_addr_valid(prefix, true)) {
+        tcg_s390_program_interrupt(env, PGM_ADDRESSING, GETPC());
+    }
 
     env->psa = prefix;
     HELPER_LOG("prefix: %#x\n", prefix);
     tlb_flush_page(cs, 0);
     tlb_flush_page(cs, TARGET_PAGE_SIZE);
+    if (prefix != 0) {
+        tlb_flush_page(cs, prefix);
+        tlb_flush_page(cs, prefix + TARGET_PAGE_SIZE);
+    }
+    if (old_prefix != 0) {
+        tlb_flush_page(cs, old_prefix);
+        tlb_flush_page(cs, old_prefix + TARGET_PAGE_SIZE);
+    }
 }
 
 static void update_ckc_timer(CPUS390XState *env)
@@ -313,7 +333,7 @@ uint32_t HELPER(stsi)(CPUS390XState *env, uint64_t a0, uint64_t r0, uint64_t r1)
             /* same as machine type number in STORE CPU ID, but in EBCDIC */
             snprintf(type, ARRAY_SIZE(type), "%X", cpu->model->def->type);
             ebcdic_put(sysib.sysib_111.type, type, 4);
-            /* model number (not stored in STORE CPU ID for z/Architecure) */
+            /* model number (not stored in STORE CPU ID for z/Architecture) */
             ebcdic_put(sysib.sysib_111.model, "QEMU            ", 16);
             ebcdic_put(sysib.sysib_111.sequence, "QEMU            ", 16);
             ebcdic_put(sysib.sysib_111.plant, "QEMU", 4);

@@ -100,23 +100,30 @@ typedef enum {
 
 #define FDT_MAX_SIZE                    0x200000
 
-/*
- * NUMA related macros. MAX_DISTANCE_REF_POINTS was taken
- * from Linux kernel arch/powerpc/mm/numa.h. It represents the
- * amount of associativity domains for non-CPU resources.
- *
- * NUMA_ASSOC_SIZE is the base array size of an ibm,associativity
- * array for any non-CPU resource.
- *
- * VCPU_ASSOC_SIZE represents the size of ibm,associativity array
- * for CPUs, which has an extra element (vcpu_id) in the end.
- */
-#define MAX_DISTANCE_REF_POINTS    4
-#define NUMA_ASSOC_SIZE            (MAX_DISTANCE_REF_POINTS + 1)
-#define VCPU_ASSOC_SIZE            (NUMA_ASSOC_SIZE + 1)
+/* Max number of GPUs per system */
+#define NVGPU_MAX_NUM              6
 
-/* Max number of these GPUsper a physical box */
-#define NVGPU_MAX_NUM                6
+/* Max number of NUMA nodes */
+#define NUMA_NODES_MAX_NUM         (MAX_NODES + NVGPU_MAX_NUM)
+
+/*
+ * NUMA FORM1 macros. FORM1_DIST_REF_POINTS was taken from
+ * MAX_DISTANCE_REF_POINTS in arch/powerpc/mm/numa.h from Linux
+ * kernel source. It represents the amount of associativity domains
+ * for non-CPU resources.
+ *
+ * FORM1_NUMA_ASSOC_SIZE is the base array size of an ibm,associativity
+ * array for any non-CPU resource.
+ */
+#define FORM1_DIST_REF_POINTS            4
+#define FORM1_NUMA_ASSOC_SIZE            (FORM1_DIST_REF_POINTS + 1)
+
+/*
+ * FORM2 NUMA affinity has a single associativity domain, giving
+ * us a assoc size of 2.
+ */
+#define FORM2_DIST_REF_POINTS            1
+#define FORM2_NUMA_ASSOC_SIZE            (FORM2_DIST_REF_POINTS + 1)
 
 typedef struct SpaprCapabilities SpaprCapabilities;
 struct SpaprCapabilities {
@@ -145,6 +152,7 @@ struct SpaprMachineClass {
     hwaddr rma_limit;          /* clamp the RMA to this size */
     bool pre_5_1_assoc_refpoints;
     bool pre_5_2_numa_associativity;
+    bool pre_6_2_numa_affinity;
 
     bool (*phb_placement)(SpaprMachineState *spapr, uint32_t index,
                           uint64_t *buid, hwaddr *pio,
@@ -155,6 +163,21 @@ struct SpaprMachineClass {
     SpaprCapabilities default_caps;
     SpaprIrq *irq;
 };
+
+#define WDT_MAX_WATCHDOGS       4      /* Maximum number of watchdog devices */
+
+#define TYPE_SPAPR_WDT "spapr-wdt"
+OBJECT_DECLARE_SIMPLE_TYPE(SpaprWatchdog, SPAPR_WDT)
+
+typedef struct SpaprWatchdog {
+    /*< private >*/
+    DeviceState parent_obj;
+    /*< public >*/
+
+    QEMUTimer timer;
+    uint8_t action;         /* One of PSERIES_WDTF_ACTION_xxx */
+    uint8_t leave_others;   /* leaveOtherWatchdogsRunningOnTimeout */
+} SpaprWatchdog;
 
 /**
  * SpaprMachineState:
@@ -186,8 +209,11 @@ struct SpaprMachineState {
     Vof *vof;
     uint64_t rtc_offset; /* Now used only during incoming migration */
     struct PPCTimebase tb;
-    bool has_graphics;
+    bool want_stdout_path;
     uint32_t vsmt;       /* Virtual SMT mode (KVM's "core stride") */
+
+    /* Nested HV support (TCG only) */
+    uint64_t nested_ptcr;
 
     Notifier epow_notifier;
     QTAILQ_HEAD(, SpaprEventLogEntry) pending_events;
@@ -249,9 +275,12 @@ struct SpaprMachineState {
     unsigned gpu_numa_id;
     SpaprTpmProxy *tpm_proxy;
 
-    uint32_t numa_assoc_array[MAX_NODES + NVGPU_MAX_NUM][NUMA_ASSOC_SIZE];
+    uint32_t FORM1_assoc_array[NUMA_NODES_MAX_NUM][FORM1_NUMA_ASSOC_SIZE];
+    uint32_t FORM2_assoc_array[NUMA_NODES_MAX_NUM][FORM2_NUMA_ASSOC_SIZE];
 
     Error *fwnmi_migration_blocker;
+
+    SpaprWatchdog wds[WDT_MAX_WATCHDOGS];
 };
 
 #define H_SUCCESS         0
@@ -332,6 +361,8 @@ struct SpaprMachineState {
 #define H_P7              -60
 #define H_P8              -61
 #define H_P9              -62
+#define H_NOOP            -63
+#define H_UNSUPPORTED     -67
 #define H_OVERLAP         -68
 #define H_UNSUPPORTED_FLAG -256
 #define H_MULTI_THREADS_ACTIVE -9005
@@ -550,8 +581,10 @@ struct SpaprMachineState {
 #define H_SCM_UNBIND_ALL        0x3FC
 #define H_SCM_HEALTH            0x400
 #define H_RPT_INVALIDATE        0x448
+#define H_SCM_FLUSH             0x44C
+#define H_WATCHDOG              0x45C
 
-#define MAX_HCALL_OPCODE        H_RPT_INVALIDATE
+#define MAX_HCALL_OPCODE        H_WATCHDOG
 
 /* The hcalls above are standardized in PAPR and implemented by pHyp
  * as well.
@@ -568,7 +601,14 @@ struct SpaprMachineState {
 #define KVMPPC_H_UPDATE_DT      (KVMPPC_HCALL_BASE + 0x3)
 /* 0x4 was used for KVMPPC_H_UPDATE_PHANDLE in SLOF */
 #define KVMPPC_H_VOF_CLIENT     (KVMPPC_HCALL_BASE + 0x5)
-#define KVMPPC_HCALL_MAX        KVMPPC_H_VOF_CLIENT
+
+/* Platform-specific hcalls used for nested HV KVM */
+#define KVMPPC_H_SET_PARTITION_TABLE   (KVMPPC_HCALL_BASE + 0x800)
+#define KVMPPC_H_ENTER_NESTED          (KVMPPC_HCALL_BASE + 0x804)
+#define KVMPPC_H_TLB_INVALIDATE        (KVMPPC_HCALL_BASE + 0x808)
+#define KVMPPC_H_COPY_TOFROM_GUEST     (KVMPPC_HCALL_BASE + 0x80C)
+
+#define KVMPPC_HCALL_MAX        KVMPPC_H_COPY_TOFROM_GUEST
 
 /*
  * The hcall range 0xEF00 to 0xEF80 is reserved for use in facilitating
@@ -578,6 +618,65 @@ struct SpaprMachineState {
 #define SVM_H_TPM_COMM              0xEF10
 #define SVM_HCALL_MAX               SVM_H_TPM_COMM
 
+/*
+ * Register state for entering a nested guest with H_ENTER_NESTED.
+ * New member must be added at the end.
+ */
+struct kvmppc_hv_guest_state {
+    uint64_t version;      /* version of this structure layout, must be first */
+    uint32_t lpid;
+    uint32_t vcpu_token;
+    /* These registers are hypervisor privileged (at least for writing) */
+    uint64_t lpcr;
+    uint64_t pcr;
+    uint64_t amor;
+    uint64_t dpdes;
+    uint64_t hfscr;
+    int64_t tb_offset;
+    uint64_t dawr0;
+    uint64_t dawrx0;
+    uint64_t ciabr;
+    uint64_t hdec_expiry;
+    uint64_t purr;
+    uint64_t spurr;
+    uint64_t ic;
+    uint64_t vtb;
+    uint64_t hdar;
+    uint64_t hdsisr;
+    uint64_t heir;
+    uint64_t asdr;
+    /* These are OS privileged but need to be set late in guest entry */
+    uint64_t srr0;
+    uint64_t srr1;
+    uint64_t sprg[4];
+    uint64_t pidr;
+    uint64_t cfar;
+    uint64_t ppr;
+    /* Version 1 ends here */
+    uint64_t dawr1;
+    uint64_t dawrx1;
+    /* Version 2 ends here */
+};
+
+/* Latest version of hv_guest_state structure */
+#define HV_GUEST_STATE_VERSION  2
+
+/* Linux 64-bit powerpc pt_regs struct, used by nested HV */
+struct kvmppc_pt_regs {
+    uint64_t gpr[32];
+    uint64_t nip;
+    uint64_t msr;
+    uint64_t orig_gpr3;    /* Used for restarting system calls */
+    uint64_t ctr;
+    uint64_t link;
+    uint64_t xer;
+    uint64_t ccr;
+    uint64_t softe;        /* Soft enabled/disabled */
+    uint64_t trap;         /* Reason for being here */
+    uint64_t dar;          /* Fault registers */
+    uint64_t dsisr;        /* on 4xx/Book-E used for ESR */
+    uint64_t result;       /* Result of a system call */
+};
 
 typedef struct SpaprDeviceTreeUpdateHeader {
     uint32_t version_id;
@@ -595,6 +694,9 @@ typedef target_ulong (*spapr_hcall_fn)(PowerPCCPU *cpu, SpaprMachineState *sm,
 void spapr_register_hypercall(target_ulong opcode, spapr_hcall_fn fn);
 target_ulong spapr_hypercall(PowerPCCPU *cpu, target_ulong opcode,
                              target_ulong *args);
+
+void spapr_exit_nested(PowerPCCPU *cpu, int excp);
+
 target_ulong softmmu_resize_hpt_prepare(PowerPCCPU *cpu, SpaprMachineState *spapr,
                                          target_ulong shift);
 target_ulong softmmu_resize_hpt_commit(PowerPCCPU *cpu, SpaprMachineState *spapr,
@@ -662,6 +764,7 @@ void push_sregs_to_kvm_pr(SpaprMachineState *spapr);
 #define RTAS_DDW_PGSIZE_128M     0x20
 #define RTAS_DDW_PGSIZE_256M     0x40
 #define RTAS_DDW_PGSIZE_16G      0x80
+#define RTAS_DDW_PGSIZE_2M       0x100
 
 /* RTAS tokens */
 #define RTAS_TOKEN_BASE      0x2000
@@ -745,7 +848,8 @@ static inline uint64_t ppc64_phys_to_real(uint64_t addr)
 
 static inline uint32_t rtas_ld(target_ulong phys, int n)
 {
-    return ldl_be_phys(&address_space_memory, ppc64_phys_to_real(phys + 4*n));
+    return ldl_be_phys(&address_space_memory,
+                       ppc64_phys_to_real(phys + 4 * n));
 }
 
 static inline uint64_t rtas_ldq(target_ulong phys, int n)
@@ -755,7 +859,7 @@ static inline uint64_t rtas_ldq(target_ulong phys, int n)
 
 static inline void rtas_st(target_ulong phys, int n, uint32_t val)
 {
-    stl_be_phys(&address_space_memory, ppc64_phys_to_real(phys + 4*n), val);
+    stl_be_phys(&address_space_memory, ppc64_phys_to_real(phys + 4 * n), val);
 }
 
 typedef void (*spapr_rtas_fn)(PowerPCCPU *cpu, SpaprMachineState *sm,
@@ -818,6 +922,7 @@ struct SpaprTceTable {
     bool bypass;
     bool need_vfio;
     bool skipping_replay;
+    bool def_win;
     int fd;
     MemoryRegion root;
     IOMMUMemoryRegion iommu;
@@ -943,6 +1048,7 @@ extern const VMStateDescription vmstate_spapr_cap_large_decr;
 extern const VMStateDescription vmstate_spapr_cap_ccf_assist;
 extern const VMStateDescription vmstate_spapr_cap_fwnmi;
 extern const VMStateDescription vmstate_spapr_cap_rpt_invalidate;
+extern const VMStateDescription vmstate_spapr_wdt;
 
 static inline uint8_t spapr_get_cap(SpaprMachineState *spapr, int cap)
 {
@@ -978,5 +1084,8 @@ target_ulong spapr_vof_client_architecture_support(MachineState *ms,
                                                    CPUState *cs,
                                                    target_ulong ovec_addr);
 void spapr_vof_client_dt_finalize(SpaprMachineState *spapr, void *fdt);
+
+/* H_WATCHDOG */
+void spapr_watchdog_init(SpaprMachineState *spapr);
 
 #endif /* HW_SPAPR_H */

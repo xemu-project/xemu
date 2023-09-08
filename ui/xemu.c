@@ -33,7 +33,7 @@
 #include "qemu/main-loop.h"
 #include "qemu/rcu.h"
 #include "qemu-version.h"
-#include "qemu-common.h"
+#include "qemu-main.h"
 #include "qapi/error.h"
 #include "qapi/qapi-commands-block.h"
 #include "qapi/qmp/qdict.h"
@@ -47,6 +47,7 @@
 #include "xemu-input.h"
 #include "xemu-settings.h"
 // #include "xemu-shaders.h"
+#include "xemu-snapshots.h"
 #include "xemu-version.h"
 #include "xemu-os-utils.h"
 
@@ -54,6 +55,7 @@
 
 #include "hw/xbox/smbus.h" // For eject, drive tray
 #include "hw/xbox/nv2a/nv2a.h"
+#include "ui/xemu-notifications.h"
 
 #include <stb_image.h>
 
@@ -98,6 +100,8 @@ static int sdl2_num_outputs;
 static struct sdl2_console *sdl2_console;
 static SDL_Surface *guest_sprite_surface;
 static int gui_grab; /* if true, all keyboard/mouse events are grabbed */
+static bool alt_grab;
+static bool ctrl_grab;
 static int gui_saved_grab;
 static int gui_fullscreen;
 static int gui_grab_code = KMOD_LALT | KMOD_LCTRL;
@@ -380,7 +384,9 @@ static void set_full_screen(struct sdl2_console *scon, bool set)
 
     if (gui_fullscreen) {
         SDL_SetWindowFullscreen(scon->real_window,
-                                SDL_WINDOW_FULLSCREEN_DESKTOP);
+                                (g_config.display.window.fullscreen_exclusive ?
+                                SDL_WINDOW_FULLSCREEN :
+                                SDL_WINDOW_FULLSCREEN_DESKTOP));
         gui_saved_grab = gui_grab;
         sdl_grab_start(scon);
     } else {
@@ -591,7 +597,7 @@ static void handle_windowevent(SDL_Event *ev)
             memset(&info, 0, sizeof(info));
             info.width = ev->window.data1;
             info.height = ev->window.data2;
-            dpy_set_ui_info(scon->dcl.con, &info);
+            dpy_set_ui_info(scon->dcl.con, &info, true);
 
             if (!gui_fullscreen) {
                 g_config.display.window.last_width = ev->window.data1;
@@ -788,13 +794,8 @@ static const DisplayChangeListenerOps dcl_gl_ops = {
     .dpy_gfx_update          = sdl2_gl_update,
     .dpy_gfx_switch          = sdl2_gl_switch,
     .dpy_gfx_check_format    = xb_console_gl_check_format,
-    // .dpy_refresh             = sdl2_gl_refresh,
     .dpy_mouse_set           = sdl_mouse_warp,
     .dpy_cursor_define       = sdl_mouse_define,
-
-    .dpy_gl_ctx_create       = sdl2_gl_create_context,
-    .dpy_gl_ctx_destroy      = sdl2_gl_destroy_context,
-    .dpy_gl_ctx_make_current = sdl2_gl_make_context_current,
     .dpy_gl_scanout_disable  = sdl2_gl_scanout_disable,
     .dpy_gl_scanout_texture  = sdl2_gl_scanout_texture,
     .dpy_gl_update           = sdl2_gl_scanout_flush,
@@ -1197,6 +1198,7 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
 
     glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
+    xemu_snapshots_set_framebuffer_texture(tex, flip_required);
     xemu_hud_set_framebuffer_texture(tex, flip_required);
     xemu_hud_render();
 
@@ -1431,14 +1433,14 @@ int gArgc;
 char **gArgv;
 
 // vl.c
-int qemu_main(int argc, char **argv, char **envp);
 
 static void *call_qemu_main(void *opaque)
 {
     int status;
 
     DPRINTF("Second thread: calling qemu_main()\n");
-    status = qemu_main(gArgc, gArgv, NULL);
+    qemu_init(gArgc, gArgv);
+    status = qemu_main();
     DPRINTF("Second thread: qemu_main() returned, exiting\n");
     exit(status);
 }
@@ -1546,31 +1548,44 @@ int main(int argc, char **argv)
 
     while (1) {
         sdl2_gl_refresh(&sdl2_console[0].dcl);
+        assert(glGetError() == GL_NO_ERROR);
     }
 
     // rcu_unregister_thread();
 }
 
-void xemu_eject_disc(void)
+void xemu_eject_disc(Error **errp)
 {
+    Error *error = NULL;
+
     xbox_smc_eject_button();
+    xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
 
     // Xbox software may request that the drive open, but do it now anyway
-    Error *err = NULL;
-    qmp_eject(true, "ide0-cd1", false, NULL, true, false, &err);
+    qmp_eject(true, "ide0-cd1", false, NULL, true, false, &error);
+    if (error) {
+        error_propagate(errp, error);
+    }
 
     xbox_smc_update_tray_state();
 }
 
-void xemu_load_disc(const char *path)
+void xemu_load_disc(const char *path, Error **errp)
 {
+    Error *error = NULL;
+
     // Ensure an eject sequence is always triggered so Xbox software reloads
     xbox_smc_eject_button();
+    xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
 
-    Error *err = NULL;
     qmp_blockdev_change_medium(true, "ide0-cd1", false, NULL, path,
-                               false, "", false, 0,
-                               &err);
+                               false, "",  false, false, false, 0,
+                               &error);
+    if (error) {
+        error_propagate(errp, error);
+    } else {
+        xemu_settings_set_string(&g_config.sys.files.dvd_path, path);
+    }
 
     xbox_smc_update_tray_state();
 }
