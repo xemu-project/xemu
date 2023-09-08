@@ -17,9 +17,9 @@
  */
 
 #include "qemu/osdep.h"
-#include "libqtest.h"
+#include "../libqtest.h"
 #include "qemu/module.h"
-#include "malloc.h"
+#include "libqos-malloc.h"
 #include "qgraph.h"
 #include "sdhci.h"
 

@@ -43,6 +43,8 @@ void DebugApuWindow::Draw()
 
 
     ImGui::Columns(2, "", false);
+    ImGui::SetColumnWidth(0, 360*g_viewport_mgr.m_scale);
+
     int now = SDL_GetTicks() % 1000;
     float t = now/1000.0f;
     float freq = 1;
@@ -56,8 +58,8 @@ void DebugApuWindow::Draw()
 
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
     ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0);
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, 2));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 4));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2*g_viewport_mgr.m_scale, 2*g_viewport_mgr.m_scale));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4*g_viewport_mgr.m_scale, 4*g_viewport_mgr.m_scale));
     for (int i = 0; i < 256; i++)
     {
         if (i % 16) {
@@ -164,8 +166,6 @@ void DebugApuWindow::Draw()
         mcpx_apu_debug_toggle_mute(voice_mute);
     }
 
-    ImGui::SameLine();
-    ImGui::SetColumnWidth(0, ImGui::GetCursorPosX());
     ImGui::NextColumn();
 
     ImGui::PushFont(g_font_mgr.m_fixed_width_font);
@@ -263,8 +263,8 @@ void DebugVideoWindow::Draw()
             ImPlot::SetupAxes(NULL, NULL, rt_axis, rt_axis | ImPlotAxisFlags_Lock);
             ImPlot::SetupAxesLimits(x_start, x_end, 0, 65, ImPlotCond_Always);
             if (fps.Data.size() > 0) {
-                ImPlot::PlotShaded("##fps", &fps.Data[0].x, &fps.Data[0].y, fps.Data.size(), 0, fps.Offset, 2 * sizeof(float));
-                ImPlot::PlotLine("##fps", &fps.Data[0].x, &fps.Data[0].y, fps.Data.size(), fps.Offset, 2 * sizeof(float));
+                ImPlot::PlotShaded("##fps", &fps.Data[0].x, &fps.Data[0].y, fps.Data.size(), 0, 0, fps.Offset, 2 * sizeof(float));
+                ImPlot::PlotLine("##fps", &fps.Data[0].x, &fps.Data[0].y, fps.Data.size(), 0, fps.Offset, 2 * sizeof(float));
             }
             ImPlot::Annotation(x_start, 65, ImPlot::GetLastItemColor(), ImVec2(0,0), true, "FPS: %d", g_nv2a_stats.increment_fps);
             ImPlot::EndPlot();
@@ -280,8 +280,8 @@ void DebugVideoWindow::Draw()
         if (ImPlot::BeginPlot("##ScrollingMSPF", ImVec2(plot_width,75*g_viewport_mgr.m_scale))) {
             ImPlot::SetupAxes(NULL, NULL, rt_axis, rt_axis | ImPlotAxisFlags_Lock);
             ImPlot::SetupAxesLimits(x_start, x_end, 0, 100, ImPlotCond_Always);
-            ImPlot::PlotShaded("##mspf", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 0, 1, x_start, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
-            ImPlot::PlotLine("##mspf", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 1, x_start, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
+            ImPlot::PlotShaded("##mspf", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 0, 1, x_start, 0, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
+            ImPlot::PlotLine("##mspf", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 1, x_start, 0, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
             ImPlot::Annotation(x_start, 100, ImPlot::GetLastItemColor(), ImVec2(0,0), true, "MSPF: %d", g_nv2a_stats.frame_history[(g_nv2a_stats.frame_ptr - 1) % NV2A_PROF_NUM_FRAMES].mspf);
             ImPlot::EndPlot();
         }
@@ -290,14 +290,16 @@ void DebugVideoWindow::Draw()
         if (ImGui::TreeNode("Advanced")) {
             ImGui::SetNextWindowBgAlpha(alpha);
             if (ImPlot::BeginPlot("##ScrollingDraws", ImVec2(-1,-1))) {
-                ImPlot::SetupAxes(NULL, NULL, ImPlotAxisFlags_None, ImPlotAxisFlags_LogScale | ImPlotAxisFlags_AutoFit);
+                ImPlot::SetupAxes(NULL, NULL, ImPlotAxisFlags_None, ImPlotAxisFlags_AutoFit);
+                ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Log10);
+
                 ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 1500);
                 ImPlot::SetupAxisLimits(ImAxis_X1, 0, NV2A_PROF_NUM_FRAMES);
 
                 ImGui::PushID(0);
                 ImPlot::PushStyleColor(ImPlotCol_Line, ImPlot::GetColormapColor(0));
                 ImPlot::PushStyleColor(ImPlotCol_Fill, ImPlot::GetColormapColor(0));
-                ImPlot::PlotLine("MSPF", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 1, 0, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
+                ImPlot::PlotLine("MSPF", &g_nv2a_stats.frame_history[0].mspf, NV2A_PROF_NUM_FRAMES, 1, 0, 0, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
                 ImPlot::PopStyleColor(2);
                 ImGui::PopID();
 
@@ -309,7 +311,7 @@ void DebugVideoWindow::Draw()
                         nv2a_profile_get_counter_value(i));
                     ImPlot::PushStyleColor(ImPlotCol_Line, ImPlot::GetColormapColor(i+1));
                     ImPlot::PushStyleColor(ImPlotCol_Fill, ImPlot::GetColormapColor(i+1));
-                    ImPlot::PlotLine(title, &g_nv2a_stats.frame_history[0].counters[i], NV2A_PROF_NUM_FRAMES, 1, 0, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
+                    ImPlot::PlotLine(title, &g_nv2a_stats.frame_history[0].counters[i], NV2A_PROF_NUM_FRAMES, 1, 0, 0, g_nv2a_stats.frame_ptr, sizeof(g_nv2a_stats.frame_working));
                     ImPlot::PopStyleColor(2);
                     ImGui::PopID();
                 }

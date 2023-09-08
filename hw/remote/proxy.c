@@ -7,7 +7,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 
 #include "hw/remote/proxy.h"
 #include "hw/pci/pci.h"
@@ -102,10 +101,18 @@ static void pci_proxy_dev_realize(PCIDevice *device, Error **errp)
     }
 
     dev->ioc = qio_channel_new_fd(fd, errp);
+    if (!dev->ioc) {
+        close(fd);
+        return;
+    }
 
     error_setg(&dev->migration_blocker, "%s does not support migration",
                TYPE_PCI_PROXY_DEV);
-    migrate_add_blocker(dev->migration_blocker, errp);
+    if (migrate_add_blocker(dev->migration_blocker, errp) < 0) {
+        error_free(dev->migration_blocker);
+        object_unref(dev->ioc);
+        return;
+    }
 
     qemu_mutex_init(&dev->io_mutex);
     qio_channel_set_blocking(dev->ioc, true, NULL);
@@ -316,6 +323,7 @@ static void probe_pci_info(PCIDevice *dev, Error **errp)
         set_bit(DEVICE_CATEGORY_STORAGE, dc->categories);
         break;
     case PCI_BASE_CLASS_NETWORK:
+    case PCI_BASE_CLASS_WIRELESS:
         set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
         break;
     case PCI_BASE_CLASS_INPUT:

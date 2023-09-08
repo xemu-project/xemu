@@ -114,8 +114,7 @@ static void imx25_pdk_init(MachineState *machine)
 
     imx25_pdk_binfo.ram_size = machine->ram_size;
     imx25_pdk_binfo.loader_start = FSL_IMX25_SDRAM0_ADDR;
-    imx25_pdk_binfo.board_id = 1771,
-    imx25_pdk_binfo.nb_cpus = 1;
+    imx25_pdk_binfo.board_id = 1771;
 
     for (i = 0; i < FSL_IMX25_NUM_ESDHCS; i++) {
         BusState *bus;
@@ -123,7 +122,7 @@ static void imx25_pdk_init(MachineState *machine)
         DriveInfo *di;
         BlockBackend *blk;
 
-        di = drive_get_next(IF_SD);
+        di = drive_get(IF_SD, 0, i);
         blk = di ? blk_by_legacy_dinfo(di) : NULL;
         bus = qdev_get_child_bus(DEVICE(&s->soc.esdhc[i]), "sd-bus");
         carddev = qdev_new(TYPE_SD_CARD);

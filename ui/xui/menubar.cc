@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+#include "ui/xemu-notifications.h"
 #include "common.hh"
 #include "main-menu.hh"
 #include "menubar.hh"
@@ -88,6 +89,48 @@ void ShowMainMenu()
             if (ImGui::MenuItem(running ? "Pause" : "Resume", SHORTCUT_MENU_TEXT(P))) ActionTogglePause();
             if (ImGui::MenuItem("Screenshot", "F12")) ActionScreenshot();
 
+            if (ImGui::BeginMenu("Snapshot")) {
+                if (ImGui::MenuItem("Create Snapshot")) {
+                    xemu_snapshots_save(NULL, NULL);
+                    xemu_queue_notification("Created new snapshot");
+                }
+
+                for (int i = 0; i < 4; ++i) {
+                    char *hotkey = g_strdup_printf("Shift+F%d", i + 5);
+
+                    char *load_name;
+                    char *save_name;
+
+                    assert(g_snapshot_shortcut_index_key_map[i]);
+                    bool bound = *(g_snapshot_shortcut_index_key_map[i]) &&
+                            (**(g_snapshot_shortcut_index_key_map[i]) != 0);
+
+                    if (bound) {
+                        load_name = g_strdup_printf("Load '%s'", *(g_snapshot_shortcut_index_key_map[i]));
+                        save_name = g_strdup_printf("Save '%s'", *(g_snapshot_shortcut_index_key_map[i]));
+                    } else {
+                        load_name = g_strdup_printf("Load F%d (Unbound)", i + 5);
+                        save_name = g_strdup_printf("Save F%d (Unbound)", i + 5);
+                    }
+
+                    ImGui::Separator();
+
+                    if (ImGui::MenuItem(load_name, hotkey + sizeof("Shift+") - 1, false, bound)) {
+                        ActionActivateBoundSnapshot(i, false);
+                    }
+
+                    if (ImGui::MenuItem(save_name, hotkey, false, bound)) {
+                        ActionActivateBoundSnapshot(i, false);
+                    }
+
+                    g_free(hotkey);
+                    g_free(load_name);
+                    g_free(save_name);
+                }
+
+                ImGui::EndMenu();
+            }
+
             ImGui::Separator();
 
             if (ImGui::MenuItem("Eject Disc", SHORTCUT_MENU_TEXT(E))) ActionEjectDisc();
@@ -101,6 +144,7 @@ void ShowMainMenu()
             if (ImGui::MenuItem(" Display")) g_main_menu.ShowDisplay();
             if (ImGui::MenuItem(" Audio")) g_main_menu.ShowAudio();
             if (ImGui::MenuItem(" Network")) g_main_menu.ShowNetwork();
+            if (ImGui::MenuItem(" Snapshots")) g_main_menu.ShowSnapshots();
             if (ImGui::MenuItem(" System")) g_main_menu.ShowSystem();
 
             ImGui::Separator();
@@ -147,8 +191,7 @@ void ShowMainMenu()
             }
 
             ImGui::Combo("Display Mode", &g_config.display.ui.fit,
-                         "Center\0Scale\0Scale (Widescreen 16:9)\0Scale "
-                         "(4:3)\0Stretch\0");
+                         "Center\0Scale\0Stretch\0");
             ImGui::SameLine();
             HelpMarker("Controls how the rendered content should be scaled "
                        "into the window");
@@ -156,6 +199,8 @@ void ShowMainMenu()
             if(ImGui::MenuItem("Scale Lines", SHORTCUT_MENU_TEXT(Alt + L), &scale_lines, true)) {
                 nv2a_set_line_width_scaling_enabled(scale_lines);
             }
+            ImGui::Combo("Aspect Ratio", &g_config.display.ui.aspect_ratio,
+                         "Native\0Auto\0""4:3\0""16:9\0");
             if (ImGui::MenuItem("Fullscreen", SHORTCUT_MENU_TEXT(Alt + F),
                                 xemu_is_fullscreen(), true)) {
                 xemu_toggle_fullscreen();

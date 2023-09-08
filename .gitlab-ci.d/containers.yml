@@ -7,32 +7,16 @@ amd64-alpine-container:
   variables:
     NAME: alpine
 
-amd64-debian11-container:
-  extends: .container_job_template
-  variables:
-    NAME: debian11
-
 amd64-debian-container:
   extends: .container_job_template
-  stage: containers-layer2
-  needs: ['amd64-debian10-container']
+  stage: containers
   variables:
     NAME: debian-amd64
-
-amd64-ubuntu1804-container:
-  extends: .container_job_template
-  variables:
-    NAME: ubuntu1804
 
 amd64-ubuntu2004-container:
   extends: .container_job_template
   variables:
     NAME: ubuntu2004
-
-amd64-ubuntu-container:
-  extends: .container_job_template
-  variables:
-    NAME: ubuntu
 
 amd64-opensuse-leap-container:
   extends: .container_job_template

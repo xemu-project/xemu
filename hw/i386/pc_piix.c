@@ -26,6 +26,7 @@
 #include CONFIG_DEVICES
 
 #include "qemu/units.h"
+#include "hw/dma/i8257.h"
 #include "hw/loader.h"
 #include "hw/i386/x86.h"
 #include "hw/i386/pc.h"
@@ -39,15 +40,16 @@
 #include "hw/usb.h"
 #include "net/net.h"
 #include "hw/ide/pci.h"
+#include "hw/ide/piix.h"
 #include "hw/irq.h"
 #include "sysemu/kvm.h"
 #include "hw/kvm/clock.h"
 #include "hw/sysbus.h"
-#include "sysemu/arch_init.h"
 #include "hw/i2c/smbus_eeprom.h"
 #include "hw/xen/xen-x86.h"
 #include "exec/memory.h"
 #include "hw/acpi/acpi.h"
+#include "hw/acpi/piix4.h"
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "sysemu/xen.h"
@@ -82,7 +84,6 @@ static void pc_init1(MachineState *machine,
     MemoryRegion *system_io = get_system_io();
     PCIBus *pci_bus;
     ISABus *isa_bus;
-    PCII440FXState *i440fx_state;
     int piix3_devfn = -1;
     qemu_irq smi_irq;
     GSIState *gsi_state;
@@ -92,6 +93,8 @@ static void pc_init1(MachineState *machine,
     MemoryRegion *pci_memory;
     MemoryRegion *rom_memory;
     ram_addr_t lowmem;
+    uint64_t hole64_size;
+    DeviceState *i440fx_host;
 
     /*
      * Calculate ram split, for memory below and above 4G.  It's a bit
@@ -154,6 +157,7 @@ static void pc_init1(MachineState *machine,
         }
     }
 
+    pc_machine_init_sgx_epc(pcms);
     x86_cpus_init(x86ms, pcmc->default_cpu_version);
 
     if (pcmc->kvmclock_enabled) {
@@ -164,9 +168,15 @@ static void pc_init1(MachineState *machine,
         pci_memory = g_new(MemoryRegion, 1);
         memory_region_init(pci_memory, NULL, "pci", UINT64_MAX);
         rom_memory = pci_memory;
+        i440fx_host = qdev_new(host_type);
+        hole64_size = object_property_get_uint(OBJECT(i440fx_host),
+                                               PCI_HOST_PROP_PCI_HOLE64_SIZE,
+                                               &error_abort);
     } else {
         pci_memory = NULL;
         rom_memory = system_memory;
+        i440fx_host = NULL;
+        hole64_size = 0;
     }
 
     pc_guest_info_init(pcms);
@@ -177,13 +187,13 @@ static void pc_init1(MachineState *machine,
         smbios_set_defaults("QEMU", "Standard PC (i440FX + PIIX, 1996)",
                             mc->name, pcmc->smbios_legacy_mode,
                             pcmc->smbios_uuid_encoded,
-                            SMBIOS_ENTRY_POINT_21);
+                            pcms->smbios_entry_point_type);
     }
 
     /* allocate ram and load rom/bios */
     if (!xen_enabled()) {
         pc_memory_init(pcms, system_memory,
-                       rom_memory, &ram_memory);
+                       rom_memory, &ram_memory, hole64_size);
     } else {
         pc_system_flash_cleanup_unused(pcms);
         if (machine->kernel_filename != NULL) {
@@ -196,29 +206,35 @@ static void pc_init1(MachineState *machine,
 
     if (pcmc->pci_enabled) {
         PIIX3State *piix3;
+        PCIDevice *pci_dev;
+        const char *type = xen_enabled() ? TYPE_PIIX3_XEN_DEVICE
+                                         : TYPE_PIIX3_DEVICE;
 
-        pci_bus = i440fx_init(host_type,
-                              pci_type,
-                              &i440fx_state,
+        pci_bus = i440fx_init(pci_type,
+                              i440fx_host,
                               system_memory, system_io, machine->ram_size,
                               x86ms->below_4g_mem_size,
                               x86ms->above_4g_mem_size,
                               pci_memory, ram_memory);
         pcms->bus = pci_bus;
 
-        piix3 = piix3_create(pci_bus, &isa_bus);
+        pci_dev = pci_create_simple_multifunction(pci_bus, -1, true, type);
+        piix3 = PIIX3_PCI_DEVICE(pci_dev);
         piix3->pic = x86ms->gsi;
         piix3_devfn = piix3->dev.devfn;
+        isa_bus = ISA_BUS(qdev_get_child_bus(DEVICE(piix3), "isa.0"));
     } else {
         pci_bus = NULL;
-        i440fx_state = NULL;
         isa_bus = isa_bus_new(NULL, get_system_memory(), system_io,
                               &error_abort);
+        i8257_dma_init(isa_bus, 0);
         pcms->hpet_enabled = false;
     }
     isa_bus_irqs(isa_bus, x86ms->gsi);
 
-    pc_i8259_create(isa_bus, gsi_state->i8259_irq);
+    if (x86ms->pic == ON_OFF_AUTO_ON || x86ms->pic == ON_OFF_AUTO_AUTO) {
+        pc_i8259_create(isa_bus, gsi_state->i8259_irq);
+    }
 
     if (pcmc->pci_enabled) {
         ioapic_init_gsi(gsi_state, "i440fx");
@@ -244,8 +260,7 @@ static void pc_init1(MachineState *machine,
     if (pcmc->pci_enabled) {
         PCIDevice *dev;
 
-        dev = pci_create_simple(pci_bus, piix3_devfn + 1,
-                                xen_enabled() ? "piix3-ide-xen" : "piix3-ide");
+        dev = pci_create_simple(pci_bus, piix3_devfn + 1, TYPE_PIIX3_IDE);
         pci_ide_create_devs(dev);
         idebus[0] = qdev_get_child_bus(&dev->qdev, "ide.0");
         idebus[1] = qdev_get_child_bus(&dev->qdev, "ide.1");
@@ -279,14 +294,19 @@ static void pc_init1(MachineState *machine,
     }
 
     if (pcmc->pci_enabled && x86_machine_is_acpi_enabled(X86_MACHINE(pcms))) {
-        DeviceState *piix4_pm;
+        PCIDevice *piix4_pm;
 
         smi_irq = qemu_allocate_irq(pc_acpi_smi_interrupt, first_cpu, 0);
+        piix4_pm = pci_new(piix3_devfn + 3, TYPE_PIIX4_PM);
+        qdev_prop_set_uint32(DEVICE(piix4_pm), "smb_io_base", 0xb100);
+        qdev_prop_set_bit(DEVICE(piix4_pm), "smm-enabled",
+                          x86_machine_is_smm_enabled(x86ms));
+        pci_realize_and_unref(piix4_pm, pci_bus, &error_fatal);
+
+        qdev_connect_gpio_out(DEVICE(piix4_pm), 0, x86ms->gsi[9]);
+        qdev_connect_gpio_out_named(DEVICE(piix4_pm), "smi-irq", 0, smi_irq);
+        pcms->smbus = I2C_BUS(qdev_get_child_bus(DEVICE(piix4_pm), "i2c"));
         /* TODO: Populate SPD eeprom data.  */
-        pcms->smbus = piix4_pm_init(pci_bus, piix3_devfn + 3, 0xb100,
-                                    x86ms->gsi[9], smi_irq,
-                                    x86_machine_is_smm_enabled(x86ms),
-                                    &piix4_pm);
         smbus_eeprom_init(pcms->smbus, 8, NULL, 0);
 
         object_property_add_link(OBJECT(machine), PC_MACHINE_ACPI_DEVICE_PROP,
@@ -357,10 +377,12 @@ static void pc_compat_1_4_fn(MachineState *machine)
     pc_compat_1_5_fn(machine);
 }
 
+#ifdef CONFIG_ISAPC
 static void pc_init_isa(MachineState *machine)
 {
     pc_init1(machine, TYPE_I440FX_PCI_HOST_BRIDGE, TYPE_I440FX_PCI_DEVICE);
 }
+#endif
 
 #ifdef CONFIG_XEN
 static void pc_xen_hvm_init_pci(MachineState *machine)
@@ -383,6 +405,7 @@ static void pc_xen_hvm_init(MachineState *machine)
     }
 
     pc_xen_hvm_init_pci(machine);
+    xen_igd_reserve_slot(pcms->bus);
     pci_create_simple(pcms->bus, -1, "xen-platform");
 }
 #endif
@@ -413,13 +436,64 @@ static void pc_i440fx_machine_options(MachineClass *m)
     machine_class_allow_dynamic_sysbus_dev(m, TYPE_VMBUS_BRIDGE);
 }
 
-static void pc_i440fx_6_1_machine_options(MachineClass *m)
+static void pc_i440fx_7_2_machine_options(MachineClass *m)
 {
     PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
     pc_i440fx_machine_options(m);
     m->alias = "pc";
     m->is_default = true;
     pcmc->default_cpu_version = 1;
+}
+
+DEFINE_I440FX_MACHINE(v7_2, "pc-i440fx-7.2", NULL,
+                      pc_i440fx_7_2_machine_options);
+
+static void pc_i440fx_7_1_machine_options(MachineClass *m)
+{
+    pc_i440fx_7_2_machine_options(m);
+    m->alias = NULL;
+    m->is_default = false;
+    compat_props_add(m->compat_props, hw_compat_7_1, hw_compat_7_1_len);
+    compat_props_add(m->compat_props, pc_compat_7_1, pc_compat_7_1_len);
+}
+
+DEFINE_I440FX_MACHINE(v7_1, "pc-i440fx-7.1", NULL,
+                      pc_i440fx_7_1_machine_options);
+
+static void pc_i440fx_7_0_machine_options(MachineClass *m)
+{
+    PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
+    pc_i440fx_7_1_machine_options(m);
+    m->alias = NULL;
+    m->is_default = false;
+    pcmc->enforce_amd_1tb_hole = false;
+    compat_props_add(m->compat_props, hw_compat_7_0, hw_compat_7_0_len);
+    compat_props_add(m->compat_props, pc_compat_7_0, pc_compat_7_0_len);
+}
+
+DEFINE_I440FX_MACHINE(v7_0, "pc-i440fx-7.0", NULL,
+                      pc_i440fx_7_0_machine_options);
+
+static void pc_i440fx_6_2_machine_options(MachineClass *m)
+{
+    pc_i440fx_7_0_machine_options(m);
+    m->alias = NULL;
+    m->is_default = false;
+    compat_props_add(m->compat_props, hw_compat_6_2, hw_compat_6_2_len);
+    compat_props_add(m->compat_props, pc_compat_6_2, pc_compat_6_2_len);
+}
+
+DEFINE_I440FX_MACHINE(v6_2, "pc-i440fx-6.2", NULL,
+                      pc_i440fx_6_2_machine_options);
+
+static void pc_i440fx_6_1_machine_options(MachineClass *m)
+{
+    pc_i440fx_6_2_machine_options(m);
+    m->alias = NULL;
+    m->is_default = false;
+    compat_props_add(m->compat_props, hw_compat_6_1, hw_compat_6_1_len);
+    compat_props_add(m->compat_props, pc_compat_6_1, pc_compat_6_1_len);
+    m->smp_props.prefer_sockets = true;
 }
 
 DEFINE_I440FX_MACHINE(v6_1, "pc-i440fx-6.1", NULL,
@@ -523,7 +597,6 @@ static void pc_i440fx_3_1_machine_options(MachineClass *m)
 
     pc_i440fx_4_0_machine_options(m);
     m->is_default = false;
-    pcmc->do_not_add_smb_acpi = true;
     m->smbus_no_migration_support = true;
     m->alias = NULL;
     pcmc->pvh_enabled = false;
@@ -607,11 +680,12 @@ DEFINE_I440FX_MACHINE(v2_7, "pc-i440fx-2.7", NULL,
 
 static void pc_i440fx_2_6_machine_options(MachineClass *m)
 {
+    X86MachineClass *x86mc = X86_MACHINE_CLASS(m);
     PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
 
     pc_i440fx_2_7_machine_options(m);
     pcmc->legacy_cpu_hotplug = true;
-    pcmc->linuxboot_dma_enabled = false;
+    x86mc->fwcfg_dma_enabled = false;
     compat_props_add(m->compat_props, hw_compat_2_6, hw_compat_2_6_len);
     compat_props_add(m->compat_props, pc_compat_2_6, pc_compat_2_6_len);
 }
@@ -729,6 +803,7 @@ static void pc_i440fx_1_7_machine_options(MachineClass *m)
     m->hw_version = "1.7.0";
     m->default_machine_opts = NULL;
     m->option_rom_has_mr = true;
+    m->deprecation_reason = "old and unattended - use a newer version instead";
     compat_props_add(m->compat_props, pc_compat_1_7, pc_compat_1_7_len);
     pcmc->smbios_defaults = false;
     pcmc->gigabyte_align = false;
@@ -772,124 +847,7 @@ static void pc_i440fx_1_4_machine_options(MachineClass *m)
 DEFINE_I440FX_MACHINE(v1_4, "pc-i440fx-1.4", pc_compat_1_4_fn,
                       pc_i440fx_1_4_machine_options);
 
-typedef struct {
-    uint16_t gpu_device_id;
-    uint16_t pch_device_id;
-    uint8_t pch_revision_id;
-} IGDDeviceIDInfo;
-
-/* In real world different GPU should have different PCH. But actually
- * the different PCH DIDs likely map to different PCH SKUs. We do the
- * same thing for the GPU. For PCH, the different SKUs are going to be
- * all the same silicon design and implementation, just different
- * features turn on and off with fuses. The SW interfaces should be
- * consistent across all SKUs in a given family (eg LPT). But just same
- * features may not be supported.
- *
- * Most of these different PCH features probably don't matter to the
- * Gfx driver, but obviously any difference in display port connections
- * will so it should be fine with any PCH in case of passthrough.
- *
- * So currently use one PCH version, 0x8c4e, to cover all HSW(Haswell)
- * scenarios, 0x9cc3 for BDW(Broadwell).
- */
-static const IGDDeviceIDInfo igd_combo_id_infos[] = {
-    /* HSW Classic */
-    {0x0402, 0x8c4e, 0x04}, /* HSWGT1D, HSWD_w7 */
-    {0x0406, 0x8c4e, 0x04}, /* HSWGT1M, HSWM_w7 */
-    {0x0412, 0x8c4e, 0x04}, /* HSWGT2D, HSWD_w7 */
-    {0x0416, 0x8c4e, 0x04}, /* HSWGT2M, HSWM_w7 */
-    {0x041E, 0x8c4e, 0x04}, /* HSWGT15D, HSWD_w7 */
-    /* HSW ULT */
-    {0x0A06, 0x8c4e, 0x04}, /* HSWGT1UT, HSWM_w7 */
-    {0x0A16, 0x8c4e, 0x04}, /* HSWGT2UT, HSWM_w7 */
-    {0x0A26, 0x8c4e, 0x06}, /* HSWGT3UT, HSWM_w7 */
-    {0x0A2E, 0x8c4e, 0x04}, /* HSWGT3UT28W, HSWM_w7 */
-    {0x0A1E, 0x8c4e, 0x04}, /* HSWGT2UX, HSWM_w7 */
-    {0x0A0E, 0x8c4e, 0x04}, /* HSWGT1ULX, HSWM_w7 */
-    /* HSW CRW */
-    {0x0D26, 0x8c4e, 0x04}, /* HSWGT3CW, HSWM_w7 */
-    {0x0D22, 0x8c4e, 0x04}, /* HSWGT3CWDT, HSWD_w7 */
-    /* HSW Server */
-    {0x041A, 0x8c4e, 0x04}, /* HSWSVGT2, HSWD_w7 */
-    /* HSW SRVR */
-    {0x040A, 0x8c4e, 0x04}, /* HSWSVGT1, HSWD_w7 */
-    /* BSW */
-    {0x1606, 0x9cc3, 0x03}, /* BDWULTGT1, BDWM_w7 */
-    {0x1616, 0x9cc3, 0x03}, /* BDWULTGT2, BDWM_w7 */
-    {0x1626, 0x9cc3, 0x03}, /* BDWULTGT3, BDWM_w7 */
-    {0x160E, 0x9cc3, 0x03}, /* BDWULXGT1, BDWM_w7 */
-    {0x161E, 0x9cc3, 0x03}, /* BDWULXGT2, BDWM_w7 */
-    {0x1602, 0x9cc3, 0x03}, /* BDWHALOGT1, BDWM_w7 */
-    {0x1612, 0x9cc3, 0x03}, /* BDWHALOGT2, BDWM_w7 */
-    {0x1622, 0x9cc3, 0x03}, /* BDWHALOGT3, BDWM_w7 */
-    {0x162B, 0x9cc3, 0x03}, /* BDWHALO28W, BDWM_w7 */
-    {0x162A, 0x9cc3, 0x03}, /* BDWGT3WRKS, BDWM_w7 */
-    {0x162D, 0x9cc3, 0x03}, /* BDWGT3SRVR, BDWM_w7 */
-};
-
-static void isa_bridge_class_init(ObjectClass *klass, void *data)
-{
-    DeviceClass *dc = DEVICE_CLASS(klass);
-    PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
-
-    dc->desc        = "ISA bridge faked to support IGD PT";
-    set_bit(DEVICE_CATEGORY_BRIDGE, dc->categories);
-    k->vendor_id    = PCI_VENDOR_ID_INTEL;
-    k->class_id     = PCI_CLASS_BRIDGE_ISA;
-};
-
-static TypeInfo isa_bridge_info = {
-    .name          = "igd-passthrough-isa-bridge",
-    .parent        = TYPE_PCI_DEVICE,
-    .instance_size = sizeof(PCIDevice),
-    .class_init = isa_bridge_class_init,
-    .interfaces = (InterfaceInfo[]) {
-        { INTERFACE_CONVENTIONAL_PCI_DEVICE },
-        { },
-    },
-};
-
-static void pt_graphics_register_types(void)
-{
-    type_register_static(&isa_bridge_info);
-}
-type_init(pt_graphics_register_types)
-
-void igd_passthrough_isa_bridge_create(PCIBus *bus, uint16_t gpu_dev_id)
-{
-    struct PCIDevice *bridge_dev;
-    int i, num;
-    uint16_t pch_dev_id = 0xffff;
-    uint8_t pch_rev_id = 0;
-
-    num = ARRAY_SIZE(igd_combo_id_infos);
-    for (i = 0; i < num; i++) {
-        if (gpu_dev_id == igd_combo_id_infos[i].gpu_device_id) {
-            pch_dev_id = igd_combo_id_infos[i].pch_device_id;
-            pch_rev_id = igd_combo_id_infos[i].pch_revision_id;
-        }
-    }
-
-    if (pch_dev_id == 0xffff) {
-        return;
-    }
-
-    /* Currently IGD drivers always need to access PCH by 1f.0. */
-    bridge_dev = pci_create_simple(bus, PCI_DEVFN(0x1f, 0),
-                                   "igd-passthrough-isa-bridge");
-
-    /*
-     * Note that vendor id is always PCI_VENDOR_ID_INTEL.
-     */
-    if (!bridge_dev) {
-        fprintf(stderr, "set igd-passthrough-isa-bridge failed!\n");
-        return;
-    }
-    pci_config_set_device_id(bridge_dev->config, pch_dev_id);
-    pci_config_set_revision(bridge_dev->config, pch_rev_id);
-}
-
+#ifdef CONFIG_ISAPC
 static void isapc_machine_options(MachineClass *m)
 {
     PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
@@ -909,7 +867,7 @@ static void isapc_machine_options(MachineClass *m)
 
 DEFINE_PC_MACHINE(isapc, "isapc", pc_init_isa,
                   isapc_machine_options);
-
+#endif
 
 #ifdef CONFIG_XEN
 static void xenfv_4_2_machine_options(MachineClass *m)

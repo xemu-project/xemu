@@ -25,8 +25,6 @@
 #include "qemu/osdep.h"
 #include "exec/cpu-common.h"
 #include "hw/display/vga.h"
-#include "hw/i386/pc.h"
-#include "hw/i386/x86.h"
 #include "hw/loader.h"
 #include "hw/xen/xen.h"
 #include "net/net.h"
@@ -42,6 +40,7 @@ int nb_nics;
 NICInfo nd_table[MAX_NICS];
 int autostart = 1;
 int vga_interface_type = VGA_NONE;
+bool vga_interface_created;
 Chardev *parallel_hds[MAX_PARALLEL_PORTS];
 int win2k_install_hack;
 int singlestep;
@@ -51,12 +50,8 @@ QEMUOptionRom option_rom[MAX_OPTION_ROMS];
 int nb_option_roms;
 int old_param;
 const char *qemu_name;
-int alt_grab;
-int ctrl_grab;
 unsigned int nb_prom_envs;
 const char *prom_envs[MAX_PROM_ENVS];
-int boot_menu;
-bool boot_strict;
 uint8_t *boot_splash_filedata;
 int only_migratable; /* turn it off unless user states otherwise */
 int icount_align_option;

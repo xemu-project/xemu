@@ -34,7 +34,9 @@
 #include "target/riscv/cpu.h"
 #include "migration/vmstate.h"
 
-REG32(CTRL, 0x00)
+REG32(ALERT_TEST, 0x00)
+    FIELD(ALERT_TEST, FATAL_FAULT, 0, 1)
+REG32(CTRL, 0x04)
     FIELD(CTRL, ACTIVE, 0, 1)
 REG32(CFG0, 0x100)
     FIELD(CFG0, PRESCALE, 0, 12)
@@ -58,8 +60,6 @@ static uint64_t cpu_riscv_read_rtc(uint32_t timebase_freq)
 
 static void ibex_timer_update_irqs(IbexTimerState *s)
 {
-    CPUState *cs = qemu_get_cpu(0);
-    RISCVCPU *cpu = RISCV_CPU(cs);
     uint64_t value = s->timer_compare_lower0 |
                          ((uint64_t)s->timer_compare_upper0 << 32);
     uint64_t next, diff;
@@ -71,13 +71,13 @@ static void ibex_timer_update_irqs(IbexTimerState *s)
     }
 
     /* Update the CPUs mtimecmp */
-    cpu->env.timecmp = value;
+    s->mtimecmp = value;
 
-    if (cpu->env.timecmp <= now) {
+    if (s->mtimecmp <= now) {
         /*
          * If the mtimecmp was in the past raise the interrupt now.
          */
-        riscv_cpu_update_mip(cpu, MIP_MTIP, BOOL_TO_MASK(1));
+        qemu_irq_raise(s->m_timer_irq);
         if (s->timer_intr_enable & R_INTR_ENABLE_IE_0_MASK) {
             s->timer_intr_state |= R_INTR_STATE_IS_0_MASK;
             qemu_set_irq(s->irq, true);
@@ -86,10 +86,10 @@ static void ibex_timer_update_irqs(IbexTimerState *s)
     }
 
     /* Setup a timer to trigger the interrupt in the future */
-    riscv_cpu_update_mip(cpu, MIP_MTIP, BOOL_TO_MASK(0));
+    qemu_irq_lower(s->m_timer_irq);
     qemu_set_irq(s->irq, false);
 
-    diff = cpu->env.timecmp - now;
+    diff = s->mtimecmp - now;
     next = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
                                  muldiv64(diff,
                                           NANOSECONDS_PER_SECOND,
@@ -97,19 +97,17 @@ static void ibex_timer_update_irqs(IbexTimerState *s)
 
     if (next < qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL)) {
         /* We overflowed the timer, just set it as large as we can */
-        timer_mod(cpu->env.timer, 0x7FFFFFFFFFFFFFFF);
+        timer_mod(s->mtimer, 0x7FFFFFFFFFFFFFFF);
     } else {
-        timer_mod(cpu->env.timer, next);
+        timer_mod(s->mtimer, next);
     }
 }
 
 static void ibex_timer_cb(void *opaque)
 {
     IbexTimerState *s = opaque;
-    CPUState *cs = qemu_get_cpu(0);
-    RISCVCPU *cpu = RISCV_CPU(cs);
 
-    riscv_cpu_update_mip(cpu, MIP_MTIP, BOOL_TO_MASK(1));
+    qemu_irq_raise(s->m_timer_irq);
     if (s->timer_intr_enable & R_INTR_ENABLE_IE_0_MASK) {
         s->timer_intr_state |= R_INTR_STATE_IS_0_MASK;
         qemu_set_irq(s->irq, true);
@@ -120,11 +118,9 @@ static void ibex_timer_reset(DeviceState *dev)
 {
     IbexTimerState *s = IBEX_TIMER(dev);
 
-    CPUState *cpu = qemu_get_cpu(0);
-    CPURISCVState *env = cpu->env_ptr;
-    env->timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
+    s->mtimer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
                               &ibex_timer_cb, s);
-    env->timecmp = 0;
+    s->mtimecmp = 0;
 
     s->timer_ctrl = 0x00000000;
     s->timer_cfg0 = 0x00010000;
@@ -132,7 +128,6 @@ static void ibex_timer_reset(DeviceState *dev)
     s->timer_compare_upper0 = 0xFFFFFFFF;
     s->timer_intr_enable = 0x00000000;
     s->timer_intr_state = 0x00000000;
-    s->timer_intr_test = 0x00000000;
 
     ibex_timer_update_irqs(s);
 }
@@ -145,6 +140,10 @@ static uint64_t ibex_timer_read(void *opaque, hwaddr addr,
     uint64_t retvalue = 0;
 
     switch (addr >> 2) {
+    case R_ALERT_TEST:
+        qemu_log_mask(LOG_GUEST_ERROR,
+                        "Attempted to read ALERT_TEST, a write only register");
+        break;
     case R_CTRL:
         retvalue = s->timer_ctrl;
         break;
@@ -170,7 +169,8 @@ static uint64_t ibex_timer_read(void *opaque, hwaddr addr,
         retvalue = s->timer_intr_state;
         break;
     case R_INTR_TEST:
-        retvalue = s->timer_intr_test;
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "Attempted to read INTR_TEST, a write only register");
         break;
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
@@ -188,6 +188,9 @@ static void ibex_timer_write(void *opaque, hwaddr addr,
     uint32_t val = val64;
 
     switch (addr >> 2) {
+    case R_ALERT_TEST:
+        qemu_log_mask(LOG_UNIMP, "Alert triggering not supported");
+        break;
     case R_CTRL:
         s->timer_ctrl = val;
         break;
@@ -217,10 +220,7 @@ static void ibex_timer_write(void *opaque, hwaddr addr,
         s->timer_intr_state &= ~val;
         break;
     case R_INTR_TEST:
-        s->timer_intr_test = val;
-        if (s->timer_intr_enable &
-            s->timer_intr_test &
-            R_INTR_ENABLE_IE_0_MASK) {
+        if (s->timer_intr_enable & val & R_INTR_ENABLE_IE_0_MASK) {
             s->timer_intr_state |= R_INTR_STATE_IS_0_MASK;
             qemu_set_irq(s->irq, true);
         }
@@ -249,8 +249,8 @@ static int ibex_timer_post_load(void *opaque, int version_id)
 
 static const VMStateDescription vmstate_ibex_timer = {
     .name = TYPE_IBEX_TIMER,
-    .version_id = 1,
-    .minimum_version_id = 1,
+    .version_id = 2,
+    .minimum_version_id = 2,
     .post_load = ibex_timer_post_load,
     .fields = (VMStateField[]) {
         VMSTATE_UINT32(timer_ctrl, IbexTimerState),
@@ -259,7 +259,6 @@ static const VMStateDescription vmstate_ibex_timer = {
         VMSTATE_UINT32(timer_compare_upper0, IbexTimerState),
         VMSTATE_UINT32(timer_intr_enable, IbexTimerState),
         VMSTATE_UINT32(timer_intr_state, IbexTimerState),
-        VMSTATE_UINT32(timer_intr_test, IbexTimerState),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -280,12 +279,21 @@ static void ibex_timer_init(Object *obj)
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mmio);
 }
 
+static void ibex_timer_realize(DeviceState *dev, Error **errp)
+{
+    IbexTimerState *s = IBEX_TIMER(dev);
+
+    qdev_init_gpio_out(dev, &s->m_timer_irq, 1);
+}
+
+
 static void ibex_timer_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->reset = ibex_timer_reset;
     dc->vmsd = &vmstate_ibex_timer;
+    dc->realize = ibex_timer_realize;
     device_class_set_props(dc, ibex_timer_properties);
 }
 

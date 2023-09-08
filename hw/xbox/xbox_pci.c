@@ -38,7 +38,6 @@
 #include "hw/pci/pci_bus.h"
 #include "hw/pci/pci_bridge.h"
 #include "exec/address-spaces.h"
-#include "qemu-common.h"
 #include "qemu/option.h"
 #include "hw/xbox/acpi_xbox.h"
 #include "hw/xbox/amd_smbus.h"

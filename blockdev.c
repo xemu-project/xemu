@@ -56,7 +56,6 @@
 #include "sysemu/iothread.h"
 #include "block/block_int.h"
 #include "block/trace.h"
-#include "sysemu/arch_init.h"
 #include "sysemu/runstate.h"
 #include "sysemu/replay.h"
 #include "qemu/cutils.h"
@@ -64,11 +63,13 @@
 #include "qemu/main-loop.h"
 #include "qemu/throttle-options.h"
 
+/* Protected by BQL */
 QTAILQ_HEAD(, BlockDriverState) monitor_bdrv_states =
     QTAILQ_HEAD_INITIALIZER(monitor_bdrv_states);
 
 void bdrv_set_monitor_owned(BlockDriverState *bs)
 {
+    GLOBAL_STATE_CODE();
     QTAILQ_INSERT_TAIL(&monitor_bdrv_states, bs, monitor_list);
 }
 
@@ -112,6 +113,8 @@ void override_max_devs(BlockInterfaceType type, int max_devs)
     BlockBackend *blk;
     DriveInfo *dinfo;
 
+    GLOBAL_STATE_CODE();
+
     if (max_devs <= 0) {
         return;
     }
@@ -141,20 +144,30 @@ void blockdev_mark_auto_del(BlockBackend *blk)
     DriveInfo *dinfo = blk_legacy_dinfo(blk);
     BlockJob *job;
 
+    GLOBAL_STATE_CODE();
+
     if (!dinfo) {
         return;
     }
 
-    for (job = block_job_next(NULL); job; job = block_job_next(job)) {
-        if (block_job_has_bdrv(job, blk_bs(blk))) {
-            AioContext *aio_context = job->job.aio_context;
-            aio_context_acquire(aio_context);
+    JOB_LOCK_GUARD();
 
-            job_cancel(&job->job, false);
-
-            aio_context_release(aio_context);
+    do {
+        job = block_job_next_locked(NULL);
+        while (job && (job->job.cancelled ||
+                       job->job.deferred_to_main_loop ||
+                       !block_job_has_bdrv(job, blk_bs(blk))))
+        {
+            job = block_job_next_locked(job);
         }
-    }
+        if (job) {
+            /*
+             * This drops the job lock temporarily and polls, so we need to
+             * restart processing the list from the start after this.
+             */
+            job_cancel_locked(&job->job, false);
+        }
+    } while (job);
 
     dinfo->auto_del = 1;
 }
@@ -162,28 +175,12 @@ void blockdev_mark_auto_del(BlockBackend *blk)
 void blockdev_auto_del(BlockBackend *blk)
 {
     DriveInfo *dinfo = blk_legacy_dinfo(blk);
+    GLOBAL_STATE_CODE();
 
     if (dinfo && dinfo->auto_del) {
         monitor_remove_blk(blk);
         blk_unref(blk);
     }
-}
-
-/**
- * Returns the current mapping of how many units per bus
- * a particular interface can support.
- *
- *  A positive integer indicates n units per bus.
- *  0 implies the mapping has not been established.
- * -1 indicates an invalid BlockInterfaceType was given.
- */
-int drive_get_max_devs(BlockInterfaceType type)
-{
-    if (type >= IF_IDE && type < IF_COUNT) {
-        return if_max_devs[type];
-    }
-
-    return -1;
 }
 
 static int drive_index_to_bus_id(BlockInterfaceType type, int index)
@@ -198,17 +195,14 @@ static int drive_index_to_unit_id(BlockInterfaceType type, int index)
     return max_devs ? index % max_devs : index;
 }
 
-QemuOpts *drive_def(const char *optstr)
-{
-    return qemu_opts_parse_noisily(qemu_find_opts("drive"), optstr, false);
-}
-
 QemuOpts *drive_add(BlockInterfaceType type, int index, const char *file,
                     const char *optstr)
 {
     QemuOpts *opts;
 
-    opts = drive_def(optstr);
+    GLOBAL_STATE_CODE();
+
+    opts = qemu_opts_parse_noisily(qemu_find_opts("drive"), optstr, false);
     if (!opts) {
         return NULL;
     }
@@ -227,6 +221,8 @@ DriveInfo *drive_get(BlockInterfaceType type, int bus, int unit)
 {
     BlockBackend *blk;
     DriveInfo *dinfo;
+
+    GLOBAL_STATE_CODE();
 
     for (blk = blk_next(NULL); blk; blk = blk_next(blk)) {
         dinfo = blk_legacy_dinfo(blk);
@@ -249,6 +245,8 @@ void drive_check_orphaned(void)
     DriveInfo *dinfo;
     Location loc;
     bool orphans = false;
+
+    GLOBAL_STATE_CODE();
 
     for (blk = blk_next(NULL); blk; blk = blk_next(blk)) {
         dinfo = blk_legacy_dinfo(blk);
@@ -283,6 +281,7 @@ void drive_check_orphaned(void)
 
 DriveInfo *drive_get_by_index(BlockInterfaceType type, int index)
 {
+    GLOBAL_STATE_CODE();
     return drive_get(type,
                      drive_index_to_bus_id(type, index),
                      drive_index_to_unit_id(type, index));
@@ -294,6 +293,8 @@ int drive_get_max_bus(BlockInterfaceType type)
     BlockBackend *blk;
     DriveInfo *dinfo;
 
+    GLOBAL_STATE_CODE();
+
     max_bus = -1;
     for (blk = blk_next(NULL); blk; blk = blk_next(blk)) {
         dinfo = blk_legacy_dinfo(blk);
@@ -302,16 +303,6 @@ int drive_get_max_bus(BlockInterfaceType type)
         }
     }
     return max_bus;
-}
-
-/* Get a block device.  This should only be used for single-drive devices
-   (e.g. SD/Floppy/MTD).  Multi-disk devices (scsi/ide) should use the
-   appropriate bus.  */
-DriveInfo *drive_get_next(BlockInterfaceType type)
-{
-    static int next_block_unit[IF_COUNT];
-
-    return drive_get(type, 0, next_block_unit[type]++);
 }
 
 static void bdrv_format_print(void *opaque, const char *name)
@@ -472,6 +463,17 @@ static void extract_common_blockdev_options(QemuOpts *opts, int *bdrv_flags,
     }
 }
 
+static OnOffAuto account_get_opt(QemuOpts *opts, const char *name)
+{
+    if (!qemu_opt_find(opts, name)) {
+        return ON_OFF_AUTO_AUTO;
+    }
+    if (qemu_opt_get_bool(opts, name, true)) {
+        return ON_OFF_AUTO_ON;
+    }
+    return ON_OFF_AUTO_OFF;
+}
+
 /* Takes the ownership of bs_opts */
 static BlockBackend *blockdev_init(const char *file, QDict *bs_opts,
                                    Error **errp)
@@ -479,7 +481,7 @@ static BlockBackend *blockdev_init(const char *file, QDict *bs_opts,
     const char *buf;
     int bdrv_flags = 0;
     int on_read_error, on_write_error;
-    bool account_invalid, account_failed;
+    OnOffAuto account_invalid, account_failed;
     bool writethrough, read_only;
     BlockBackend *blk;
     BlockDriverState *bs;
@@ -513,8 +515,8 @@ static BlockBackend *blockdev_init(const char *file, QDict *bs_opts,
     /* extract parameters */
     snapshot = qemu_opt_get_bool(opts, "snapshot", 0);
 
-    account_invalid = qemu_opt_get_bool(opts, "stats-account-invalid", true);
-    account_failed = qemu_opt_get_bool(opts, "stats-account-failed", true);
+    account_invalid = account_get_opt(opts, "stats-account-invalid");
+    account_failed = account_get_opt(opts, "stats-account-failed");
 
     writethrough = !qemu_opt_get_bool(opts, BDRV_OPT_CACHE_WB, true);
 
@@ -661,6 +663,7 @@ BlockDriverState *bds_tree_init(QDict *bs_opts, Error **errp)
 {
     int bdrv_flags = 0;
 
+    GLOBAL_STATE_CODE();
     /* bdrv_open() defaults to the values in bdrv_flags (for compatibility
      * with other callers) rather than what we want as the real defaults.
      * Apply the defaults here instead. */
@@ -679,6 +682,7 @@ void blockdev_close_all_bdrv_states(void)
 {
     BlockDriverState *bs, *next_bs;
 
+    GLOBAL_STATE_CODE();
     QTAILQ_FOREACH_SAFE(bs, &monitor_bdrv_states, monitor_list, next_bs) {
         AioContext *ctx = bdrv_get_aio_context(bs);
 
@@ -691,6 +695,7 @@ void blockdev_close_all_bdrv_states(void)
 /* Iterates over the list of monitor-owned BlockDriverStates */
 BlockDriverState *bdrv_next_monitor_owned(BlockDriverState *bs)
 {
+    GLOBAL_STATE_CODE();
     return bs ? QTAILQ_NEXT(bs, monitor_list)
               : QTAILQ_FIRST(&monitor_bdrv_states);
 }
@@ -791,6 +796,8 @@ DriveInfo *drive_new(QemuOpts *all_opts, BlockInterfaceType block_default_type,
     const char *filename;
     int i;
     bool locked;
+
+    GLOBAL_STATE_CODE();
 
     /* Change legacy command line options into QMP ones */
     static const struct {
@@ -1216,6 +1223,8 @@ typedef struct BlkActionState BlkActionState;
  *
  * Only prepare() may fail. In a single transaction, only one of commit() or
  * abort() will be called. clean() will always be called if it is present.
+ *
+ * Always run under BQL.
  */
 typedef struct BlkActionOps {
     size_t instance_size;
@@ -1277,7 +1286,7 @@ static void internal_snapshot_prepare(BlkActionState *common,
     BlockDriverState *bs;
     QEMUSnapshotInfo old_sn, *sn;
     bool ret;
-    qemu_timeval tv;
+    int64_t rt;
     BlockdevSnapshotInternal *internal;
     InternalSnapshotState *state;
     AioContext *aio_context;
@@ -1347,9 +1356,9 @@ static void internal_snapshot_prepare(BlkActionState *common,
     /* 3. take the snapshot */
     sn = &state->sn;
     pstrcpy(sn->name, sizeof(sn->name), name);
-    qemu_gettimeofday(&tv);
-    sn->date_sec = tv.tv_sec;
-    sn->date_nsec = tv.tv_usec * 1000;
+    rt = g_get_real_time();
+    sn->date_sec = rt / G_USEC_PER_SEC;
+    sn->date_nsec = (rt % G_USEC_PER_SEC) * 1000;
     sn->vm_clock_nsec = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
     if (replay_mode != REPLAY_MODE_NONE) {
         sn->icount = replay_get_current_icount();
@@ -1640,8 +1649,8 @@ static void external_snapshot_abort(BlkActionState *common)
                 aio_context_release(aio_context);
                 aio_context_acquire(tmp_context);
 
-                ret = bdrv_try_set_aio_context(state->old_bs,
-                                               aio_context, NULL);
+                ret = bdrv_try_change_aio_context(state->old_bs,
+                                                  aio_context, NULL, NULL);
                 assert(ret == 0);
 
                 aio_context_release(tmp_context);
@@ -1802,12 +1811,12 @@ static void drive_backup_prepare(BlkActionState *common, Error **errp)
         goto out;
     }
 
-    /* Honor bdrv_try_set_aio_context() context acquisition requirements. */
+    /* Honor bdrv_try_change_aio_context() context acquisition requirements. */
     old_context = bdrv_get_aio_context(target_bs);
     aio_context_release(aio_context);
     aio_context_acquire(old_context);
 
-    ret = bdrv_try_set_aio_context(target_bs, aio_context, errp);
+    ret = bdrv_try_change_aio_context(target_bs, aio_context, NULL, errp);
     if (ret < 0) {
         bdrv_unref(target_bs);
         aio_context_release(old_context);
@@ -1852,14 +1861,7 @@ static void drive_backup_abort(BlkActionState *common)
     DriveBackupState *state = DO_UPCAST(DriveBackupState, common, common);
 
     if (state->job) {
-        AioContext *aio_context;
-
-        aio_context = bdrv_get_aio_context(state->bs);
-        aio_context_acquire(aio_context);
-
-        job_cancel_sync(&state->job->job);
-
-        aio_context_release(aio_context);
+        job_cancel_sync(&state->job->job, true);
     }
 }
 
@@ -1909,12 +1911,12 @@ static void blockdev_backup_prepare(BlkActionState *common, Error **errp)
         return;
     }
 
-    /* Honor bdrv_try_set_aio_context() context acquisition requirements. */
+    /* Honor bdrv_try_change_aio_context() context acquisition requirements. */
     aio_context = bdrv_get_aio_context(bs);
     old_context = bdrv_get_aio_context(target_bs);
     aio_context_acquire(old_context);
 
-    ret = bdrv_try_set_aio_context(target_bs, aio_context, errp);
+    ret = bdrv_try_change_aio_context(target_bs, aio_context, NULL, errp);
     if (ret < 0) {
         aio_context_release(old_context);
         return;
@@ -1953,14 +1955,7 @@ static void blockdev_backup_abort(BlkActionState *common)
     BlockdevBackupState *state = DO_UPCAST(BlockdevBackupState, common, common);
 
     if (state->job) {
-        AioContext *aio_context;
-
-        aio_context = bdrv_get_aio_context(state->bs);
-        aio_context_acquire(aio_context);
-
-        job_cancel_sync(&state->job->job);
-
-        aio_context_release(aio_context);
+        job_cancel_sync(&state->job->job, true);
     }
 }
 
@@ -2325,6 +2320,8 @@ static TransactionProperties *get_transaction_properties(
 /*
  * 'Atomic' group operations.  The operations are performed as a set, and if
  * any fail then we roll back all operations in the group.
+ *
+ * Always run under BQL.
  */
 void qmp_transaction(TransactionActionList *dev_list,
                      bool has_props,
@@ -2335,6 +2332,8 @@ void qmp_transaction(TransactionActionList *dev_list,
     JobTxn *block_job_txn = NULL;
     BlkActionState *state, *next;
     Error *local_err = NULL;
+
+    GLOBAL_STATE_CODE();
 
     QTAILQ_HEAD(, BlkActionState) snap_bdrv_states;
     QTAILQ_INIT(&snap_bdrv_states);
@@ -2468,7 +2467,7 @@ void coroutine_fn qmp_block_resize(bool has_device, const char *device,
     bdrv_co_unlock(bs);
 
     old_ctx = bdrv_co_enter(bs);
-    blk_truncate(blk, size, false, PREALLOC_MODE_OFF, 0, errp);
+    blk_co_truncate(blk, size, false, PREALLOC_MODE_OFF, 0, errp);
     bdrv_co_leave(bs, old_ctx);
 
     bdrv_co_lock(bs);
@@ -3214,12 +3213,12 @@ void qmp_drive_mirror(DriveMirror *arg, Error **errp)
                     !bdrv_has_zero_init(target_bs)));
 
 
-    /* Honor bdrv_try_set_aio_context() context acquisition requirements. */
+    /* Honor bdrv_try_change_aio_context() context acquisition requirements. */
     old_context = bdrv_get_aio_context(target_bs);
     aio_context_release(aio_context);
     aio_context_acquire(old_context);
 
-    ret = bdrv_try_set_aio_context(target_bs, aio_context, errp);
+    ret = bdrv_try_change_aio_context(target_bs, aio_context, NULL, errp);
     if (ret < 0) {
         bdrv_unref(target_bs);
         aio_context_release(old_context);
@@ -3286,12 +3285,12 @@ void qmp_blockdev_mirror(bool has_job_id, const char *job_id,
 
     zero_target = (sync == MIRROR_SYNC_MODE_FULL);
 
-    /* Honor bdrv_try_set_aio_context() context acquisition requirements. */
+    /* Honor bdrv_try_change_aio_context() context acquisition requirements. */
     old_context = bdrv_get_aio_context(target_bs);
     aio_context = bdrv_get_aio_context(bs);
     aio_context_acquire(old_context);
 
-    ret = bdrv_try_set_aio_context(target_bs, aio_context, errp);
+    ret = bdrv_try_change_aio_context(target_bs, aio_context, NULL, errp);
 
     aio_context_release(old_context);
     aio_context_acquire(aio_context);
@@ -3317,17 +3316,16 @@ out:
     aio_context_release(aio_context);
 }
 
-/* Get a block job using its ID and acquire its AioContext */
-static BlockJob *find_block_job(const char *id, AioContext **aio_context,
-                                Error **errp)
+/*
+ * Get a block job using its ID. Called with job_mutex held.
+ */
+static BlockJob *find_block_job_locked(const char *id, Error **errp)
 {
     BlockJob *job;
 
     assert(id != NULL);
 
-    *aio_context = NULL;
-
-    job = block_job_get(id);
+    job = block_job_get_locked(id);
 
     if (!job) {
         error_set(errp, ERROR_CLASS_DEVICE_NOT_ACTIVE,
@@ -3335,30 +3333,30 @@ static BlockJob *find_block_job(const char *id, AioContext **aio_context,
         return NULL;
     }
 
-    *aio_context = blk_get_aio_context(job->blk);
-    aio_context_acquire(*aio_context);
-
     return job;
 }
 
 void qmp_block_job_set_speed(const char *device, int64_t speed, Error **errp)
 {
-    AioContext *aio_context;
-    BlockJob *job = find_block_job(device, &aio_context, errp);
+    BlockJob *job;
+
+    JOB_LOCK_GUARD();
+    job = find_block_job_locked(device, errp);
 
     if (!job) {
         return;
     }
 
-    block_job_set_speed(job, speed, errp);
-    aio_context_release(aio_context);
+    block_job_set_speed_locked(job, speed, errp);
 }
 
 void qmp_block_job_cancel(const char *device,
                           bool has_force, bool force, Error **errp)
 {
-    AioContext *aio_context;
-    BlockJob *job = find_block_job(device, &aio_context, errp);
+    BlockJob *job;
+
+    JOB_LOCK_GUARD();
+    job = find_block_job_locked(device, errp);
 
     if (!job) {
         return;
@@ -3368,88 +3366,86 @@ void qmp_block_job_cancel(const char *device,
         force = false;
     }
 
-    if (job_user_paused(&job->job) && !force) {
+    if (job_user_paused_locked(&job->job) && !force) {
         error_setg(errp, "The block job for device '%s' is currently paused",
                    device);
-        goto out;
+        return;
     }
 
     trace_qmp_block_job_cancel(job);
-    job_user_cancel(&job->job, force, errp);
-out:
-    aio_context_release(aio_context);
+    job_user_cancel_locked(&job->job, force, errp);
 }
 
 void qmp_block_job_pause(const char *device, Error **errp)
 {
-    AioContext *aio_context;
-    BlockJob *job = find_block_job(device, &aio_context, errp);
+    BlockJob *job;
+
+    JOB_LOCK_GUARD();
+    job = find_block_job_locked(device, errp);
 
     if (!job) {
         return;
     }
 
     trace_qmp_block_job_pause(job);
-    job_user_pause(&job->job, errp);
-    aio_context_release(aio_context);
+    job_user_pause_locked(&job->job, errp);
 }
 
 void qmp_block_job_resume(const char *device, Error **errp)
 {
-    AioContext *aio_context;
-    BlockJob *job = find_block_job(device, &aio_context, errp);
+    BlockJob *job;
+
+    JOB_LOCK_GUARD();
+    job = find_block_job_locked(device, errp);
 
     if (!job) {
         return;
     }
 
     trace_qmp_block_job_resume(job);
-    job_user_resume(&job->job, errp);
-    aio_context_release(aio_context);
+    job_user_resume_locked(&job->job, errp);
 }
 
 void qmp_block_job_complete(const char *device, Error **errp)
 {
-    AioContext *aio_context;
-    BlockJob *job = find_block_job(device, &aio_context, errp);
+    BlockJob *job;
+
+    JOB_LOCK_GUARD();
+    job = find_block_job_locked(device, errp);
 
     if (!job) {
         return;
     }
 
     trace_qmp_block_job_complete(job);
-    job_complete(&job->job, errp);
-    aio_context_release(aio_context);
+    job_complete_locked(&job->job, errp);
 }
 
 void qmp_block_job_finalize(const char *id, Error **errp)
 {
-    AioContext *aio_context;
-    BlockJob *job = find_block_job(id, &aio_context, errp);
+    BlockJob *job;
+
+    JOB_LOCK_GUARD();
+    job = find_block_job_locked(id, errp);
 
     if (!job) {
         return;
     }
 
     trace_qmp_block_job_finalize(job);
-    job_ref(&job->job);
-    job_finalize(&job->job, errp);
+    job_ref_locked(&job->job);
+    job_finalize_locked(&job->job, errp);
 
-    /*
-     * Job's context might have changed via job_finalize (and job_txn_apply
-     * automatically acquires the new one), so make sure we release the correct
-     * one.
-     */
-    aio_context = blk_get_aio_context(job->blk);
-    job_unref(&job->job);
-    aio_context_release(aio_context);
+    job_unref_locked(&job->job);
 }
 
 void qmp_block_job_dismiss(const char *id, Error **errp)
 {
-    AioContext *aio_context;
-    BlockJob *bjob = find_block_job(id, &aio_context, errp);
+    BlockJob *bjob;
     Job *job;
+
+    JOB_LOCK_GUARD();
+    bjob = find_block_job_locked(id, errp);
 
     if (!bjob) {
         return;
@@ -3457,8 +3453,7 @@ void qmp_block_job_dismiss(const char *id, Error **errp)
 
     trace_qmp_block_job_dismiss(bjob);
     job = &bjob->job;
-    job_dismiss(&job, errp);
-    aio_context_release(aio_context);
+    job_dismiss_locked(&job, errp);
 }
 
 void qmp_change_backing_file(const char *device,
@@ -3572,6 +3567,7 @@ void qmp_blockdev_reopen(BlockdevOptionsList *reopen_list, Error **errp)
 {
     BlockReopenQueue *queue = NULL;
     GSList *drained = NULL;
+    GSList *p;
 
     /* Add each one of the BDS that we want to reopen to the queue */
     for (; reopen_list != NULL; reopen_list = reopen_list->next) {
@@ -3621,13 +3617,23 @@ void qmp_blockdev_reopen(BlockdevOptionsList *reopen_list, Error **errp)
 
 fail:
     bdrv_reopen_queue_free(queue);
-    g_slist_free_full(drained, (GDestroyNotify) bdrv_subtree_drained_end);
+    for (p = drained; p; p = p->next) {
+        BlockDriverState *bs = p->data;
+        AioContext *ctx = bdrv_get_aio_context(bs);
+
+        aio_context_acquire(ctx);
+        bdrv_subtree_drained_end(bs);
+        aio_context_release(ctx);
+    }
+    g_slist_free(drained);
 }
 
 void qmp_blockdev_del(const char *node_name, Error **errp)
 {
     AioContext *aio_context;
     BlockDriverState *bs;
+
+    GLOBAL_STATE_CODE();
 
     bs = bdrv_find_node(node_name);
     if (!bs) {
@@ -3724,17 +3730,16 @@ BlockJobInfoList *qmp_query_block_jobs(Error **errp)
     BlockJobInfoList *head = NULL, **tail = &head;
     BlockJob *job;
 
-    for (job = block_job_next(NULL); job; job = block_job_next(job)) {
+    JOB_LOCK_GUARD();
+
+    for (job = block_job_next_locked(NULL); job;
+         job = block_job_next_locked(job)) {
         BlockJobInfo *value;
-        AioContext *aio_context;
 
         if (block_job_is_internal(job)) {
             continue;
         }
-        aio_context = blk_get_aio_context(job->blk);
-        aio_context_acquire(aio_context);
-        value = block_job_query(job, errp);
-        aio_context_release(aio_context);
+        value = block_job_query_locked(job, errp);
         if (!value) {
             qapi_free_BlockJobInfoList(head);
             return NULL;
@@ -3781,7 +3786,7 @@ void qmp_x_blockdev_set_iothread(const char *node_name, StrOrNull *iothread,
     old_context = bdrv_get_aio_context(bs);
     aio_context_acquire(old_context);
 
-    bdrv_try_set_aio_context(bs, new_context, errp);
+    bdrv_try_change_aio_context(bs, new_context, NULL, errp);
 
     aio_context_release(old_context);
 }

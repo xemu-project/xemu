@@ -58,7 +58,7 @@ DEF_FEAT(ENHANCED_MONITOR, "emon", STFL, 36, "Enhanced-monitor facility")
 DEF_FEAT(FLOATING_POINT_EXT, "fpe", STFL, 37, "Floating-point extension facility")
 DEF_FEAT(ORDER_PRESERVING_COMPRESSION, "opc", STFL, 38, "Order Preserving Compression facility")
 DEF_FEAT(SET_PROGRAM_PARAMETERS, "sprogp", STFL, 40, "Set-program-parameters facility")
-DEF_FEAT(FLOATING_POINT_SUPPPORT_ENH, "fpseh", STFL, 41, "Floating-point-support-enhancement facilities")
+DEF_FEAT(FLOATING_POINT_SUPPORT_ENH, "fpseh", STFL, 41, "Floating-point-support-enhancement facilities")
 DEF_FEAT(DFP, "dfp", STFL, 42, "DFP (decimal-floating-point) facility")
 DEF_FEAT(DFP_FAST, "dfphp", STFL, 43, "DFP (decimal-floating-point) facility has high performance")
 DEF_FEAT(PFPO, "pfpo", STFL, 44, "PFPO instruction")
@@ -114,6 +114,7 @@ DEF_FEAT(VECTOR_PACKED_DECIMAL_ENH2, "vxpdeh2", STFL, 192, "Vector-Packed-Decima
 DEF_FEAT(BEAR_ENH, "beareh", STFL, 193, "BEAR-enhancement facility")
 DEF_FEAT(RDP, "rdp", STFL, 194, "Reset-DAT-protection facility")
 DEF_FEAT(PAI, "pai", STFL, 196, "Processor-Activity-Instrumentation facility")
+DEF_FEAT(PAIE, "paie", STFL, 197, "Processor-Activity-Instrumentation extension-1")
 
 /* Features exposed via SCLP SCCB Byte 80 - 98  (bit numbers relative to byte-80) */
 DEF_FEAT(SIE_GSLS, "gsls", SCLP_CONF_CHAR, 40, "SIE: Guest-storage-limit-suppression facility")

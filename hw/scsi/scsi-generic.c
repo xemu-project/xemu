@@ -147,6 +147,18 @@ static int execute_command(BlockBackend *blk,
     return 0;
 }
 
+static uint64_t calculate_max_transfer(SCSIDevice *s)
+{
+    uint64_t max_transfer = blk_get_max_hw_transfer(s->conf.blk);
+    uint32_t max_iov = blk_get_max_hw_iov(s->conf.blk);
+
+    assert(max_transfer);
+    max_transfer = MIN_NON_ZERO(max_transfer,
+                                max_iov * qemu_real_host_page_size());
+
+    return max_transfer / s->blocksize;
+}
+
 static int scsi_handle_inquiry_reply(SCSIGenericReq *r, SCSIDevice *s, int len)
 {
     uint8_t page, page_idx;
@@ -178,17 +190,16 @@ static int scsi_handle_inquiry_reply(SCSIGenericReq *r, SCSIDevice *s, int len)
     if ((s->type == TYPE_DISK || s->type == TYPE_ZBC) &&
         (r->req.cmd.buf[1] & 0x01)) {
         page = r->req.cmd.buf[2];
-        if (page == 0xb0) {
-            uint64_t max_transfer = blk_get_max_hw_transfer(s->conf.blk);
-            uint32_t max_iov = blk_get_max_iov(s->conf.blk);
+        if (page == 0xb0 && r->buflen >= 8) {
+            uint8_t buf[16] = {};
+            uint8_t buf_used = MIN(r->buflen, 16);
+            uint64_t max_transfer = calculate_max_transfer(s);
 
-            assert(max_transfer);
-            max_transfer = MIN_NON_ZERO(max_transfer, max_iov * qemu_real_host_page_size)
-                / s->blocksize;
-            stl_be_p(&r->buf[8], max_transfer);
-            /* Also take care of the opt xfer len. */
-            stl_be_p(&r->buf[12],
-                    MIN_NON_ZERO(max_transfer, ldl_be_p(&r->buf[12])));
+            memcpy(buf, r->buf, buf_used);
+            stl_be_p(&buf[8], max_transfer);
+            stl_be_p(&buf[12], MIN_NON_ZERO(max_transfer, ldl_be_p(&buf[12])));
+            memcpy(r->buf + 8, buf + 8, buf_used - 8);
+
         } else if (s->needs_vpd_bl_emulation && page == 0x00 && r->buflen >= 4) {
             /*
              * Now we're capable of supplying the VPD Block Limits
@@ -230,7 +241,7 @@ static int scsi_generic_emulate_block_limits(SCSIGenericReq *r, SCSIDevice *s)
     uint8_t buf[64];
 
     SCSIBlockLimits bl = {
-        .max_io_sectors = blk_get_max_transfer(s->conf.blk) / s->blocksize
+        .max_io_sectors = calculate_max_transfer(s),
     };
 
     memset(r->buf, 0, r->buflen);
@@ -321,7 +332,6 @@ static void scsi_read_complete(void * opaque, int ret)
         s->blocksize = ldl_be_p(&r->buf[8]);
         s->max_lba = ldq_be_p(&r->buf[0]);
     }
-    blk_set_guest_block_size(s->conf.blk, s->blocksize);
 
     /*
      * Patch MODE SENSE device specific parameters if the BDS is opened
@@ -785,9 +795,10 @@ static Property scsi_generic_properties[] = {
 };
 
 static int scsi_generic_parse_cdb(SCSIDevice *dev, SCSICommand *cmd,
-                                  uint8_t *buf, void *hba_private)
+                                  uint8_t *buf, size_t buf_len,
+                                  void *hba_private)
 {
-    return scsi_bus_parse_cdb(dev, cmd, buf, hba_private);
+    return scsi_bus_parse_cdb(dev, cmd, buf, buf_len, hba_private);
 }
 
 static void scsi_generic_class_initfn(ObjectClass *klass, void *data)

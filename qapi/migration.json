@@ -46,6 +46,19 @@
 # @pages-per-second: the number of memory pages transferred per second
 #                    (Since 4.0)
 #
+# @precopy-bytes: The number of bytes sent in the pre-copy phase
+#                 (since 7.0).
+#
+# @downtime-bytes: The number of bytes sent while the guest is paused
+#                  (since 7.0).
+#
+# @postcopy-bytes: The number of bytes sent during the post-copy phase
+#                  (since 7.0).
+#
+# @dirty-sync-missed-zero-copy: Number of times dirty RAM synchronization could
+#                               not avoid copying dirty pages. This is between
+#                               0 and @dirty-sync-count * @multifd-channels.
+#                               (since 7.1)
 # Since: 0.14
 ##
 { 'struct': 'MigrationStats',
@@ -54,7 +67,10 @@
            'normal-bytes': 'int', 'dirty-pages-rate' : 'int',
            'mbps' : 'number', 'dirty-sync-count' : 'int',
            'postcopy-requests' : 'int', 'page-size' : 'int',
-           'multifd-bytes' : 'uint64', 'pages-per-second' : 'uint64' } }
+           'multifd-bytes' : 'uint64', 'pages-per-second' : 'uint64',
+           'precopy-bytes' : 'uint64', 'downtime-bytes' : 'uint64',
+           'postcopy-bytes' : 'uint64',
+           'dirty-sync-missed-zero-copy' : 'uint64' } }
 
 ##
 # @XBZRLECacheStats:
@@ -140,7 +156,6 @@
 #               (since 4.2)
 #
 # Since: 2.3
-#
 ##
 { 'enum': 'MigrationStatus',
   'data': [ 'none', 'setup', 'cancelling', 'cancelled',
@@ -155,7 +170,6 @@
 # @transferred: amount of bytes transferred to the target VM by VFIO devices
 #
 # Since: 5.2
-#
 ##
 { 'struct': 'VfioStats',
   'data': {'transferred': 'int' } }
@@ -452,14 +466,33 @@
 #                       procedure starts. The VM RAM is saved with running VM.
 #                       (since 6.0)
 #
+# @zero-copy-send: Controls behavior on sending memory pages on migration.
+#                  When true, enables a zero-copy mechanism for sending
+#                  memory pages, if host supports it.
+#                  Requires that QEMU be permitted to use locked memory
+#                  for guest RAM pages.
+#                  (since 7.1)
+# @postcopy-preempt: If enabled, the migration process will allow postcopy
+#                    requests to preempt precopy stream, so postcopy requests
+#                    will be handled faster.  This is a performance feature and
+#                    should not affect the correctness of postcopy migration.
+#                    (since 7.1)
+#
+# Features:
+# @unstable: Members @x-colo and @x-ignore-shared are experimental.
+#
 # Since: 1.2
 ##
 { 'enum': 'MigrationCapability',
   'data': ['xbzrle', 'rdma-pin-all', 'auto-converge', 'zero-blocks',
-           'compress', 'events', 'postcopy-ram', 'x-colo', 'release-ram',
+           'compress', 'events', 'postcopy-ram',
+           { 'name': 'x-colo', 'features': [ 'unstable' ] },
+           'release-ram',
            'block', 'return-path', 'pause-before-switchover', 'multifd',
            'dirty-bitmaps', 'postcopy-blocktime', 'late-block-activate',
-           'x-ignore-shared', 'validate-uuid', 'background-snapshot'] }
+           { 'name': 'x-ignore-shared', 'features': [ 'unstable' ] },
+           'validate-uuid', 'background-snapshot',
+           'zero-copy-send', 'postcopy-preempt'] }
 
 ##
 # @MigrationCapabilityStatus:
@@ -529,11 +562,10 @@
 # @zstd: use zstd compression method.
 #
 # Since: 5.0
-#
 ##
 { 'enum': 'MultiFDCompression',
   'data': [ 'none', 'zlib',
-            { 'name': 'zstd', 'if': 'defined(CONFIG_ZSTD)' } ] }
+            { 'name': 'zstd', 'if': 'CONFIG_ZSTD' } ] }
 
 ##
 # @BitmapMigrationBitmapAliasTransform:
@@ -724,6 +756,7 @@
 #                      will consume more CPU.
 #                      Defaults to 1. (Since 5.0)
 #
+#
 # @block-bitmap-mapping: Maps block nodes and bitmaps on them to
 #                        aliases for the purpose of dirty bitmap migration.  Such
 #                        aliases may for example be the corresponding names on the
@@ -743,6 +776,9 @@
 #                        block device name if there is one, and to their node name
 #                        otherwise. (Since 5.2)
 #
+# Features:
+# @unstable: Member @x-checkpoint-delay is experimental.
+#
 # Since: 2.4
 ##
 { 'enum': 'MigrationParameter',
@@ -753,7 +789,9 @@
            'cpu-throttle-initial', 'cpu-throttle-increment',
            'cpu-throttle-tailslow',
            'tls-creds', 'tls-hostname', 'tls-authz', 'max-bandwidth',
-           'downtime-limit', 'x-checkpoint-delay', 'block-incremental',
+           'downtime-limit',
+           { 'name': 'x-checkpoint-delay', 'features': [ 'unstable' ] },
+           'block-incremental',
            'multifd-channels',
            'xbzrle-cache-size', 'max-postcopy-bandwidth',
            'max-cpu-throttle', 'multifd-compression',
@@ -903,6 +941,9 @@
 #                        block device name if there is one, and to their node name
 #                        otherwise. (Since 5.2)
 #
+# Features:
+# @unstable: Member @x-checkpoint-delay is experimental.
+#
 # Since: 2.4
 ##
 # TODO either fuse back into MigrationParameters, or make
@@ -925,7 +966,8 @@
             '*tls-authz': 'StrOrNull',
             '*max-bandwidth': 'size',
             '*downtime-limit': 'uint64',
-            '*x-checkpoint-delay': 'uint32',
+            '*x-checkpoint-delay': { 'type': 'uint32',
+                                     'features': [ 'unstable' ] },
             '*block-incremental': 'bool',
             '*multifd-channels': 'uint8',
             '*xbzrle-cache-size': 'size',
@@ -1099,6 +1141,9 @@
 #                        block device name if there is one, and to their node name
 #                        otherwise. (Since 5.2)
 #
+# Features:
+# @unstable: Member @x-checkpoint-delay is experimental.
+#
 # Since: 2.4
 ##
 { 'struct': 'MigrationParameters',
@@ -1119,7 +1164,8 @@
             '*tls-authz': 'str',
             '*max-bandwidth': 'size',
             '*downtime-limit': 'uint64',
-            '*x-checkpoint-delay': 'uint32',
+            '*x-checkpoint-delay': { 'type': 'uint32',
+                                     'features': [ 'unstable' ] },
             '*block-incremental': 'bool',
             '*multifd-channels': 'uint8',
             '*xbzrle-cache-size': 'size',
@@ -1164,10 +1210,10 @@
 # ask the client to automatically reconnect using the new parameters
 # once migration finished successfully.  Only implemented for SPICE.
 #
-# @protocol:     must be "spice"
-# @hostname:     migration target hostname
-# @port:         spice tcp port for plaintext channels
-# @tls-port:     spice tcp port for tls-secured channels
+# @protocol: must be "spice"
+# @hostname: migration target hostname
+# @port: spice tcp port for plaintext channels
+# @tls-port: spice tcp port for tls-secured channels
 # @cert-subject: server certificate subject
 #
 # Since: 0.14
@@ -1351,6 +1397,9 @@
 # If sent to the Secondary, the Secondary side will run failover work,
 # then takes over server operation to become the service VM.
 #
+# Features:
+# @unstable: This command is experimental.
+#
 # Since: 2.8
 #
 # Example:
@@ -1359,7 +1408,8 @@
 # <- { "return": {} }
 #
 ##
-{ 'command': 'x-colo-lost-heartbeat' }
+{ 'command': 'x-colo-lost-heartbeat',
+  'features': [ 'unstable' ] }
 
 ##
 # @migrate_cancel:
@@ -1388,7 +1438,9 @@
 # @state: The state the migration is currently expected to be in
 #
 # Returns: nothing on success
+#
 # Since: 2.11
+#
 # Example:
 #
 # -> { "execute": "migrate-continue" , "arguments":
@@ -1562,7 +1614,7 @@
 ##
 { 'command': 'xen-set-replication',
   'data': { 'enable': 'bool', 'primary': 'bool', '*failover' : 'bool' },
-  'if': 'defined(CONFIG_REPLICATION)' }
+  'if': 'CONFIG_REPLICATION' }
 
 ##
 # @ReplicationStatus:
@@ -1578,14 +1630,14 @@
 ##
 { 'struct': 'ReplicationStatus',
   'data': { 'error': 'bool', '*desc': 'str' },
-  'if': 'defined(CONFIG_REPLICATION)' }
+  'if': 'CONFIG_REPLICATION' }
 
 ##
 # @query-xen-replication-status:
 #
 # Query replication status while the vm is running.
 #
-# Returns: A @ReplicationResult object showing the status.
+# Returns: A @ReplicationStatus object showing the status.
 #
 # Example:
 #
@@ -1596,7 +1648,7 @@
 ##
 { 'command': 'query-xen-replication-status',
   'returns': 'ReplicationStatus',
-  'if': 'defined(CONFIG_REPLICATION)' }
+  'if': 'CONFIG_REPLICATION' }
 
 ##
 # @xen-colo-do-checkpoint:
@@ -1613,7 +1665,7 @@
 # Since: 2.9
 ##
 { 'command': 'xen-colo-do-checkpoint',
-  'if': 'defined(CONFIG_REPLICATION)' }
+  'if': 'CONFIG_REPLICATION' }
 
 ##
 # @COLOStatus:
@@ -1645,7 +1697,7 @@
 # Example:
 #
 # -> { "execute": "query-colo-status" }
-# <- { "return": { "mode": "primary", "reason": "request" } }
+# <- { "return": { "mode": "primary", "last-mode": "none", "reason": "request" } }
 #
 # Since: 3.1
 ##
@@ -1702,11 +1754,28 @@
 # Since: 4.2
 #
 # Example:
-#   {"event": "UNPLUG_PRIMARY", "data": {"device-id": "hostdev0"} }
+#
+# <- { "event": "UNPLUG_PRIMARY",
+#      "data": { "device-id": "hostdev0" },
+#      "timestamp": { "seconds": 1265044230, "microseconds": 450486 } }
 #
 ##
 { 'event': 'UNPLUG_PRIMARY',
   'data': { 'device-id': 'str' } }
+
+##
+# @DirtyRateVcpu:
+#
+# Dirty rate of vcpu.
+#
+# @id: vcpu index.
+#
+# @dirty-rate: dirty rate.
+#
+# Since: 6.2
+##
+{ 'struct': 'DirtyRateVcpu',
+  'data': { 'id': 'int', 'dirty-rate': 'int64' } }
 
 ##
 # @DirtyRateStatus:
@@ -1720,10 +1789,25 @@
 # @measured: the dirtyrate thread has measured and results are available.
 #
 # Since: 5.2
-#
 ##
 { 'enum': 'DirtyRateStatus',
   'data': [ 'unstarted', 'measuring', 'measured'] }
+
+##
+# @DirtyRateMeasureMode:
+#
+# An enumeration of mode of measuring dirtyrate.
+#
+# @page-sampling: calculate dirtyrate by sampling pages.
+#
+# @dirty-ring: calculate dirtyrate by dirty ring.
+#
+# @dirty-bitmap: calculate dirtyrate by dirty bitmap.
+#
+# Since: 6.2
+##
+{ 'enum': 'DirtyRateMeasureMode',
+  'data': ['page-sampling', 'dirty-ring', 'dirty-bitmap'] }
 
 ##
 # @DirtyRateInfo:
@@ -1743,15 +1827,22 @@
 # @sample-pages: page count per GB for sample dirty pages
 #                the default value is 512 (since 6.1)
 #
-# Since: 5.2
+# @mode: mode containing method of calculate dirtyrate includes
+#        'page-sampling' and 'dirty-ring' (Since 6.2)
 #
+# @vcpu-dirty-rate: dirtyrate for each vcpu if dirty-ring
+#                   mode specified (Since 6.2)
+#
+# Since: 5.2
 ##
 { 'struct': 'DirtyRateInfo',
   'data': {'*dirty-rate': 'int64',
            'status': 'DirtyRateStatus',
            'start-time': 'int64',
            'calc-time': 'int64',
-           'sample-pages': 'uint64'} }
+           'sample-pages': 'uint64',
+           'mode': 'DirtyRateMeasureMode',
+           '*vcpu-dirty-rate': [ 'DirtyRateVcpu' ] } }
 
 ##
 # @calc-dirty-rate:
@@ -1763,15 +1854,20 @@
 # @sample-pages: page count per GB for sample dirty pages
 #                the default value is 512 (since 6.1)
 #
+# @mode: mechanism of calculating dirtyrate includes
+#        'page-sampling' and 'dirty-ring' (Since 6.1)
+#
 # Since: 5.2
 #
 # Example:
-#   {"command": "calc-dirty-rate", "data": {"calc-time": 1,
-#                                           'sample-pages': 512} }
+#
+#   {"execute": "calc-dirty-rate", "arguments": {"calc-time": 1,
+#                                                'sample-pages': 512} }
 #
 ##
 { 'command': 'calc-dirty-rate', 'data': {'calc-time': 'int64',
-                                         '*sample-pages': 'int'} }
+                                         '*sample-pages': 'int',
+                                         '*mode': 'DirtyRateMeasureMode'} }
 
 ##
 # @query-dirty-rate:
@@ -1781,6 +1877,86 @@
 # Since: 5.2
 ##
 { 'command': 'query-dirty-rate', 'returns': 'DirtyRateInfo' }
+
+##
+# @DirtyLimitInfo:
+#
+# Dirty page rate limit information of a virtual CPU.
+#
+# @cpu-index: index of a virtual CPU.
+#
+# @limit-rate: upper limit of dirty page rate (MB/s) for a virtual
+#              CPU, 0 means unlimited.
+#
+# @current-rate: current dirty page rate (MB/s) for a virtual CPU.
+#
+# Since: 7.1
+#
+##
+{ 'struct': 'DirtyLimitInfo',
+  'data': { 'cpu-index': 'int',
+            'limit-rate': 'uint64',
+            'current-rate': 'uint64' } }
+
+##
+# @set-vcpu-dirty-limit:
+#
+# Set the upper limit of dirty page rate for virtual CPUs.
+#
+# Requires KVM with accelerator property "dirty-ring-size" set.
+# A virtual CPU's dirty page rate is a measure of its memory load.
+# To observe dirty page rates, use @calc-dirty-rate.
+#
+# @cpu-index: index of a virtual CPU, default is all.
+#
+# @dirty-rate: upper limit of dirty page rate (MB/s) for virtual CPUs.
+#
+# Since: 7.1
+#
+# Example:
+#   {"execute": "set-vcpu-dirty-limit"}
+#    "arguments": { "dirty-rate": 200,
+#                   "cpu-index": 1 } }
+#
+##
+{ 'command': 'set-vcpu-dirty-limit',
+  'data': { '*cpu-index': 'int',
+            'dirty-rate': 'uint64' } }
+
+##
+# @cancel-vcpu-dirty-limit:
+#
+# Cancel the upper limit of dirty page rate for virtual CPUs.
+#
+# Cancel the dirty page limit for the vCPU which has been set with
+# set-vcpu-dirty-limit command. Note that this command requires
+# support from dirty ring, same as the "set-vcpu-dirty-limit".
+#
+# @cpu-index: index of a virtual CPU, default is all.
+#
+# Since: 7.1
+#
+# Example:
+#   {"execute": "cancel-vcpu-dirty-limit"}
+#    "arguments": { "cpu-index": 1 } }
+#
+##
+{ 'command': 'cancel-vcpu-dirty-limit',
+  'data': { '*cpu-index': 'int'} }
+
+##
+# @query-vcpu-dirty-limit:
+#
+# Returns information about virtual CPU dirty page rate limits, if any.
+#
+# Since: 7.1
+#
+# Example:
+#   {"execute": "query-vcpu-dirty-limit"}
+#
+##
+{ 'command': 'query-vcpu-dirty-limit',
+  'returns': [ 'DirtyLimitInfo' ] }
 
 ##
 # @snapshot-save:
@@ -1810,7 +1986,7 @@
 # Example:
 #
 # -> { "execute": "snapshot-save",
-#      "data": {
+#      "arguments": {
 #         "job-id": "snapsave0",
 #         "tag": "my-snap",
 #         "vmstate": "disk0",
@@ -1819,16 +1995,23 @@
 #    }
 # <- { "return": { } }
 # <- {"event": "JOB_STATUS_CHANGE",
+#     "timestamp": {"seconds": 1432121972, "microseconds": 744001},
 #     "data": {"status": "created", "id": "snapsave0"}}
 # <- {"event": "JOB_STATUS_CHANGE",
+#     "timestamp": {"seconds": 1432122172, "microseconds": 744001},
 #     "data": {"status": "running", "id": "snapsave0"}}
-# <- {"event": "STOP"}
-# <- {"event": "RESUME"}
+# <- {"event": "STOP",
+#     "timestamp": {"seconds": 1432122372, "microseconds": 744001} }
+# <- {"event": "RESUME",
+#     "timestamp": {"seconds": 1432122572, "microseconds": 744001} }
 # <- {"event": "JOB_STATUS_CHANGE",
+#     "timestamp": {"seconds": 1432122772, "microseconds": 744001},
 #     "data": {"status": "waiting", "id": "snapsave0"}}
 # <- {"event": "JOB_STATUS_CHANGE",
+#     "timestamp": {"seconds": 1432122972, "microseconds": 744001},
 #     "data": {"status": "pending", "id": "snapsave0"}}
 # <- {"event": "JOB_STATUS_CHANGE",
+#     "timestamp": {"seconds": 1432123172, "microseconds": 744001},
 #     "data": {"status": "concluded", "id": "snapsave0"}}
 # -> {"execute": "query-jobs"}
 # <- {"return": [{"current-progress": 1,
@@ -1871,7 +2054,7 @@
 # Example:
 #
 # -> { "execute": "snapshot-load",
-#      "data": {
+#      "arguments": {
 #         "job-id": "snapload0",
 #         "tag": "my-snap",
 #         "vmstate": "disk0",
@@ -1880,16 +2063,23 @@
 #    }
 # <- { "return": { } }
 # <- {"event": "JOB_STATUS_CHANGE",
+#     "timestamp": {"seconds": 1472124172, "microseconds": 744001},
 #     "data": {"status": "created", "id": "snapload0"}}
 # <- {"event": "JOB_STATUS_CHANGE",
+#     "timestamp": {"seconds": 1472125172, "microseconds": 744001},
 #     "data": {"status": "running", "id": "snapload0"}}
-# <- {"event": "STOP"}
-# <- {"event": "RESUME"}
+# <- {"event": "STOP",
+#     "timestamp": {"seconds": 1472125472, "microseconds": 744001} }
+# <- {"event": "RESUME",
+#     "timestamp": {"seconds": 1472125872, "microseconds": 744001} }
 # <- {"event": "JOB_STATUS_CHANGE",
+#     "timestamp": {"seconds": 1472126172, "microseconds": 744001},
 #     "data": {"status": "waiting", "id": "snapload0"}}
 # <- {"event": "JOB_STATUS_CHANGE",
+#     "timestamp": {"seconds": 1472127172, "microseconds": 744001},
 #     "data": {"status": "pending", "id": "snapload0"}}
 # <- {"event": "JOB_STATUS_CHANGE",
+#     "timestamp": {"seconds": 1472128172, "microseconds": 744001},
 #     "data": {"status": "concluded", "id": "snapload0"}}
 # -> {"execute": "query-jobs"}
 # <- {"return": [{"current-progress": 1,
@@ -1924,7 +2114,7 @@
 # Example:
 #
 # -> { "execute": "snapshot-delete",
-#      "data": {
+#      "arguments": {
 #         "job-id": "snapdelete0",
 #         "tag": "my-snap",
 #         "devices": ["disk0", "disk1"]
@@ -1932,14 +2122,19 @@
 #    }
 # <- { "return": { } }
 # <- {"event": "JOB_STATUS_CHANGE",
+#     "timestamp": {"seconds": 1442124172, "microseconds": 744001},
 #     "data": {"status": "created", "id": "snapdelete0"}}
 # <- {"event": "JOB_STATUS_CHANGE",
+#     "timestamp": {"seconds": 1442125172, "microseconds": 744001},
 #     "data": {"status": "running", "id": "snapdelete0"}}
 # <- {"event": "JOB_STATUS_CHANGE",
+#     "timestamp": {"seconds": 1442126172, "microseconds": 744001},
 #     "data": {"status": "waiting", "id": "snapdelete0"}}
 # <- {"event": "JOB_STATUS_CHANGE",
+#     "timestamp": {"seconds": 1442127172, "microseconds": 744001},
 #     "data": {"status": "pending", "id": "snapdelete0"}}
 # <- {"event": "JOB_STATUS_CHANGE",
+#     "timestamp": {"seconds": 1442128172, "microseconds": 744001},
 #     "data": {"status": "concluded", "id": "snapdelete0"}}
 # -> {"execute": "query-jobs"}
 # <- {"return": [{"current-progress": 1,

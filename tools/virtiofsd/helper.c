@@ -187,6 +187,10 @@ void fuse_cmdline_help(void)
            "                               default: no_allow_direct_io\n"
            "    -o announce_submounts      Announce sub-mount points to the guest\n"
            "    -o posix_acl/no_posix_acl  Enable/Disable posix_acl. (default: disabled)\n"
+           "    -o security_label/no_security_label  Enable/Disable security label. (default: disabled)\n"
+           "    -o killpriv_v2/no_killpriv_v2\n"
+           "                               Enable/Disable FUSE_HANDLE_KILLPRIV_V2.\n"
+           "                               (default: enabled as long as client supports it)\n"
            );
 }
 
@@ -271,7 +275,7 @@ int fuse_daemonize(int foreground)
         int waiter[2];
         char completed;
 
-        if (pipe(waiter)) {
+        if (!g_unix_open_pipe(waiter, FD_CLOEXEC, NULL)) {
             fuse_log(FUSE_LOG_ERR, "fuse_daemonize: pipe: %s\n",
                      strerror(errno));
             return -1;

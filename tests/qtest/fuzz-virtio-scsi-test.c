@@ -9,7 +9,7 @@
 
 #include "qemu/osdep.h"
 
-#include "libqos/libqtest.h"
+#include "libqtest.h"
 
 /*
  * Here a MemoryRegionCache pointed to an MMIO region but had a
@@ -19,7 +19,7 @@ static void test_mmio_oob_from_memory_region_cache(void)
 {
     QTestState *s;
 
-    s = qtest_init("-M pc-q35-5.2 -display none -m 512M "
+    s = qtest_init("-M pc-q35-5.2 -m 512M "
                    "-device virtio-scsi,num_queues=8,addr=03.0 ");
 
     qtest_outl(s, 0xcf8, 0x80001811);
@@ -62,14 +62,10 @@ static void test_mmio_oob_from_memory_region_cache(void)
 
 int main(int argc, char **argv)
 {
-    const char *arch = qtest_get_arch();
-
     g_test_init(&argc, &argv, NULL);
 
-    if (strcmp(arch, "i386") == 0 || strcmp(arch, "x86_64") == 0) {
-        qtest_add_func("fuzz/test_mmio_oob_from_memory_region_cache",
-                       test_mmio_oob_from_memory_region_cache);
-    }
+    qtest_add_func("fuzz/test_mmio_oob_from_memory_region_cache",
+                   test_mmio_oob_from_memory_region_cache);
 
     return g_test_run();
 }

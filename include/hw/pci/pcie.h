@@ -24,7 +24,9 @@
 #include "hw/pci/pci_regs.h"
 #include "hw/pci/pcie_regs.h"
 #include "hw/pci/pcie_aer.h"
+#include "hw/pci/pcie_sriov.h"
 #include "hw/hotplug.h"
+#include "hw/pci/pcie_doe.h"
 
 typedef enum {
     /* for attention and power indicator */
@@ -81,6 +83,11 @@ struct PCIExpressDevice {
 
     /* ACS */
     uint16_t acs_cap;
+
+    /* SR/IOV */
+    uint16_t sriov_cap;
+    PCIESriovPF sriov_pf;
+    PCIESriovVF sriov_vf;
 };
 
 #define COMPAT_PROP_PCP "power_controller_present"
@@ -112,6 +119,7 @@ void pcie_cap_slot_write_config(PCIDevice *dev,
                                 uint32_t addr, uint32_t val, int len);
 int pcie_cap_slot_post_load(void *opaque, int version_id);
 void pcie_cap_slot_push_attention_button(PCIDevice *dev);
+void pcie_cap_slot_enable_power(PCIDevice *dev);
 
 void pcie_cap_root_init(PCIDevice *dev);
 void pcie_cap_root_reset(PCIDevice *dev);

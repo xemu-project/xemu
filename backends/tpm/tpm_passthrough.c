@@ -23,7 +23,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
 #include "qemu/sockets.h"
@@ -321,7 +320,7 @@ static TpmTypeOptions *tpm_passthrough_get_tpm_options(TPMBackend *tb)
 {
     TpmTypeOptions *options = g_new0(TpmTypeOptions, 1);
 
-    options->type = TPM_TYPE_OPTIONS_KIND_PASSTHROUGH;
+    options->type = TPM_TYPE_PASSTHROUGH;
     options->u.passthrough.data = QAPI_CLONE(TPMPassthroughOptions,
                                              TPM_PASSTHROUGH(tb)->options);
 

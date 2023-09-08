@@ -1,5 +1,6 @@
+----------------
 System Emulation
-================
+----------------
 
 This section of the manual is the overall guide for users using QEMU
 for full system emulation (as opposed to user-mode emulation).
@@ -26,6 +27,7 @@ or Hypervisor.Framework.
    secrets
    authz
    gdb
+   replay
    managed-startup
    bootindex
    cpu-hotplug
@@ -33,3 +35,4 @@ or Hypervisor.Framework.
    targets
    security
    multi-process
+   confidential-guest-support

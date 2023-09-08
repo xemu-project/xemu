@@ -29,6 +29,7 @@
 #include "parallels.h"
 #include "crypto/hash.h"
 #include "qemu/uuid.h"
+#include "qemu/memalign.h"
 
 #define PARALLELS_FORMAT_EXTENSION_MAGIC 0xAB234CEF23DCEA87ULL
 
@@ -92,8 +93,8 @@ static int parallels_load_bitmap_data(BlockDriverState *bs,
         if (entry == 1) {
             bdrv_dirty_bitmap_deserialize_ones(bitmap, offset, count, false);
         } else {
-            ret = bdrv_pread(bs->file, entry << BDRV_SECTOR_BITS, buf,
-                             s->cluster_size);
+            ret = bdrv_pread(bs->file, entry << BDRV_SECTOR_BITS,
+                             s->cluster_size, buf, 0);
             if (ret < 0) {
                 error_setg_errno(errp, -ret,
                                  "Failed to read bitmap data cluster");
@@ -260,7 +261,7 @@ static int parallels_parse_format_extension(BlockDriverState *bs,
             break;
 
         default:
-            error_setg(errp, "Unknown feature: 0x%" PRIu64, fh.magic);
+            error_setg(errp, "Unknown feature: 0x%" PRIx64, fh.magic);
             goto fail;
         }
 
@@ -285,7 +286,7 @@ int parallels_read_format_extension(BlockDriverState *bs,
 
     assert(ext_off > 0);
 
-    ret = bdrv_pread(bs->file, ext_off, ext_cluster, s->cluster_size);
+    ret = bdrv_pread(bs->file, ext_off, s->cluster_size, ext_cluster, 0);
     if (ret < 0) {
         error_setg_errno(errp, -ret, "Failed to read Format Extension cluster");
         goto out;

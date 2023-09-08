@@ -27,7 +27,6 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu-common.h"
 #include "hw/sysbus.h"
 #include "hw/irq.h"
 #include "hw/ptimer.h"
@@ -394,7 +393,7 @@ static void etsec_realize(DeviceState *dev, Error **errp)
                               object_get_typename(OBJECT(dev)), dev->id, etsec);
     qemu_format_nic_info_str(qemu_get_queue(etsec->nic), etsec->conf.macaddr.a);
 
-    etsec->ptimer = ptimer_init(etsec_timer_hit, etsec, PTIMER_POLICY_DEFAULT);
+    etsec->ptimer = ptimer_init(etsec_timer_hit, etsec, PTIMER_POLICY_LEGACY);
     ptimer_transaction_begin(etsec->ptimer);
     ptimer_set_freq(etsec->ptimer, 100);
     ptimer_transaction_commit(etsec->ptimer);
@@ -430,7 +429,7 @@ static void etsec_class_init(ObjectClass *klass, void *data)
     dc->user_creatable = true;
 }
 
-static TypeInfo etsec_info = {
+static const TypeInfo etsec_info = {
     .name                  = TYPE_ETSEC_COMMON,
     .parent                = TYPE_SYS_BUS_DEVICE,
     .instance_size         = sizeof(eTSEC),
@@ -444,26 +443,3 @@ static void etsec_register_types(void)
 }
 
 type_init(etsec_register_types)
-
-DeviceState *etsec_create(hwaddr         base,
-                          MemoryRegion * mr,
-                          NICInfo      * nd,
-                          qemu_irq       tx_irq,
-                          qemu_irq       rx_irq,
-                          qemu_irq       err_irq)
-{
-    DeviceState *dev;
-
-    dev = qdev_new("eTSEC");
-    qdev_set_nic_properties(dev, nd);
-    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
-
-    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, tx_irq);
-    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 1, rx_irq);
-    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 2, err_irq);
-
-    memory_region_add_subregion(mr, base,
-                                SYS_BUS_DEVICE(dev)->mmio[0].memory);
-
-    return dev;
-}
