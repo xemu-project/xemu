@@ -429,7 +429,7 @@ static const struct rect tex_items[] = {
 };
 
 static const struct rect sb_tex_items[] = {
-    {  18, 170, 430, 337 },  // obj_controller
+    {   0, 148, 467, 364 },  // obj_controller
     {   2,  79,   7,   7 },  // radio_dial
     {  21,  55,  48,  29 },  // transmission lever
     {  70,   0,  50,  79 },  // Slide Step Pedal
@@ -826,59 +826,59 @@ void RenderController_SB(float frame_x, float frame_y, uint32_t primary_color,
 {
     // Location within the controller texture of masked button locations,
     // relative to the origin of the controller
-    const struct rect lstick_ctr = { 104, 241, 0, 0 };
-    const struct rect rstick_ctr = { 331, 242, 0, 0 };
-    const struct rect accel_pedal = { 263, 70, 0, 0 };
-    const struct rect brake_pedal = { 198, 74, 0, 0 };
-    const struct rect slide_step_pedal = { 115, 70, 0, 0 };
-    const struct rect radio_dial_ctr = { 187, 221, 0, 0 };
-    const struct rect sight_change_ctr = { 105, 307, 0, 0 };
-    const struct rect transmission_lever_ctr_R = { 26, 188, 0, 0 };
-    const struct rect transmission_lever_ctr_N = { 26, 197, 0, 0 };
-    const struct rect transmission_lever_ctr_1 = { 26, 206, 0, 0 };
-    const struct rect transmission_lever_ctr_2 = { 26, 216, 0, 0 };
-    const struct rect transmission_lever_ctr_3 = { 26, 226, 0, 0 };
-    const struct rect transmission_lever_ctr_4 = { 26, 236, 0, 0 };
-    const struct rect transmission_lever_ctr_5 = { 26, 246, 0, 0 };
-    const struct rect filt_ctrl_sys_ctr           = {  85, 172,   0,   0 };
-    const struct rect oxygen_supply_system_ctr    = {  94, 183,   0,   0 };
-    const struct rect fuel_flow_rate_ctr          = { 108, 166,   0,   0 };
-    const struct rect buffer_material_ctr         = { 117, 178,   0,   0 };
-    const struct rect vt_location_measurement_ctr = { 127, 188,   0,   0 };
+    const struct rect lstick_ctr = { 122, 263, 0, 0 };
+    const struct rect rstick_ctr = { 349, 263, 0, 0 };
+    const struct rect accel_pedal = { 281, 92, 0, 0 };
+    const struct rect brake_pedal = { 216, 96, 0, 0 };
+    const struct rect slide_step_pedal = { 133, 92, 0, 0 };
+    const struct rect radio_dial_ctr = { 215, 243, 0, 0 };
+    const struct rect sight_change_ctr = { 123, 329, 0, 0 };
+    const struct rect transmission_lever_ctr_R = { 44, 210, 0, 0 };
+    const struct rect transmission_lever_ctr_N = { 44, 219, 0, 0 };
+    const struct rect transmission_lever_ctr_1 = { 44, 228, 0, 0 };
+    const struct rect transmission_lever_ctr_2 = { 44, 238, 0, 0 };
+    const struct rect transmission_lever_ctr_3 = { 44, 248, 0, 0 };
+    const struct rect transmission_lever_ctr_4 = { 44, 258, 0, 0 };
+    const struct rect transmission_lever_ctr_5 = { 44, 268, 0, 0 };
+    const struct rect filt_ctrl_sys_ctr           = { 103, 194,   0,   0 };
+    const struct rect oxygen_supply_system_ctr    = { 112, 205,   0,   0 };
+    const struct rect fuel_flow_rate_ctr          = { 126, 188,   0,   0 };
+    const struct rect buffer_material_ctr         = { 135, 200,   0,   0 };
+    const struct rect vt_location_measurement_ctr = { 145, 210,   0,   0 };
     const struct rect buttons[33] = {
-        { 332, 287,  11,  29 }, //SBC_BUTTON_MAIN_WEAPON
-        { 362, 286,   9,  35 }, //SBC_BUTTON_SUB_WEAPON
-        { 318, 294,  12,  12 }, //SBC_BUTTON_LOCK_ON
-        { 400, 241,  16,  15 }, //SBC_BUTTON_EJECT
-        { 400, 206,  16,  15 }, //SBC_BUTTON_COCKPIT_HATCH
-        { 400, 184,  16,  15 }, //SBC_BUTTON_IGNITION
-        { 400, 162,  16,  15 }, //SBC_BUTTON_START
-        { 321, 187,  22,   6 }, //SBC_BUTTON_OPEN_CLOSE
-        { 357, 187,  22,   6 }, //SBC_BUTTON_MAP_ZOOM_IN_OUT
-        { 321, 176,  22,   6 }, //SBC_BUTTON_MODE_SELECT
-        { 357, 176,  22,   6 }, //SBC_BUTTON_SUB_MONITOR_MODE_SELECT
-        { 321, 164,  22,   6 }, //SBC_BUTTON_ZOOM_IN
-        { 357, 164,  22,   6 }, //SBC_BUTTON_ZOOM_OUT
-        { 261, 252,   7,  13 }, //SBC_BUTTON_FSS
-        { 261, 230,   7,  13 }, //SBC_BUTTON_MANIPULATOR
-        { 261, 208,   7,  13 }, //SBC_BUTTON_LINE_COLOR_CHANGE
-        { 172, 182,  22,   6 }, //SBC_BUTTON_WASHING
-        { 205, 182,  22,   6 }, //SBC_BUTTON_EXTINGUISHER
-        { 238, 182,  22,   6 }, //SBC_BUTTON_CHAFF
-        { 250, 252,   7,  13 }, //SBC_BUTTON_TANK_DETACH
-        { 250, 230,   7,  13 }, //SBC_BUTTON_OVERRIDE
-        { 250, 208,   7,  13 }, //SBC_BUTTON_NIGHT_SCOPE
-        { 239, 252,   7,  13 }, //SBC_BUTTON_FUNC1
-        { 239, 230,   7,  13 }, //SBC_BUTTON_FUNC2
-        { 239, 208,   7,  13 }, //SBC_BUTTON_FUNC3
-        { 172, 167,  22,   6 }, //SBC_BUTTON_MAIN_WEAPON_CONTROL
-        { 205, 167,  22,   6 }, //SBC_BUTTON_SUB_WEAPON_CONTROL
-        { 238, 167,  22,   6 }, //SBC_BUTTON_MAGAZINE_CHANGE
-        { 163, 250,   7,  13 }, //SBC_BUTTON_COM1
-        { 174, 250,   7,  13 }, //SBC_BUTTON_COM2
-        { 184, 250,   7,  13 }, //SBC_BUTTON_COM3
-        { 195, 250,   7,  13 }, //SBC_BUTTON_COM4
-        { 205, 250,   7,  13 }  //SBC_BUTTON_COM5
+        { 350, 309,  11,  29 }, //SBC_BUTTON_MAIN_WEAPON
+        { 380, 308,   9,  35 }, //SBC_BUTTON_SUB_WEAPON
+        { 336, 316,  12,  12 }, //SBC_BUTTON_LOCK_ON
+        { 418, 263,  16,  15 }, //SBC_BUTTON_EJECT
+        { 418, 228,  16,  15 }, //SBC_BUTTON_COCKPIT_HATCH
+        { 418, 206,  16,  15 }, //SBC_BUTTON_IGNITION
+        { 418, 184,  16,  15 }, //SBC_BUTTON_START
+        { 339, 209,  22,   6 }, //SBC_BUTTON_OPEN_CLOSE
+        { 375, 209,  22,   6 }, //SBC_BUTTON_MAP_ZOOM_IN_OUT
+        { 339, 198,  22,   6 }, //SBC_BUTTON_MODE_SELECT
+        { 375, 198,  22,   6 }, //SBC_BUTTON_SUB_MONITOR_MODE_SELECT
+        { 339, 186,  22,   6 }, //SBC_BUTTON_ZOOM_IN
+        { 375, 186,  22,   6 }, //SBC_BUTTON_ZOOM_OUT
+        { 279, 274,   7,  13 }, //SBC_BUTTON_FSS
+        { 279, 252,   7,  13 }, //SBC_BUTTON_MANIPULATOR
+        { 279, 230,   7,  13 }, //SBC_BUTTON_LINE_COLOR_CHANGE
+        { 190, 204,  22,   6 }, //SBC_BUTTON_WASHING
+        { 223, 204,  22,   6 }, //SBC_BUTTON_EXTINGUISHER
+        { 256, 204,  22,   6 }, //SBC_BUTTON_CHAFF
+        { 268, 274,   7,  13 }, //SBC_BUTTON_TANK_DETACH
+        { 268, 252,   7,  13 }, //SBC_BUTTON_OVERRIDE
+        { 268, 230,   7,  13 }, //SBC_BUTTON_NIGHT_SCOPE
+        { 257, 274,   7,  13 }, //SBC_BUTTON_FUNC1
+        { 257, 252,   7,  13 }, //SBC_BUTTON_FUNC2
+        { 257, 230,   7,  13 }, //SBC_BUTTON_FUNC3
+        { 190, 189,  22,   6 }, //SBC_BUTTON_MAIN_WEAPON_CONTROL
+        { 223, 189,  22,   6 }, //SBC_BUTTON_SUB_WEAPON_CONTROL
+        { 256, 189,  22,   6 }, //SBC_BUTTON_MAGAZINE_CHANGE
+        { 181, 272,   7,  13 }, //SBC_BUTTON_COM1
+        { 192, 272,   7,  13 }, //SBC_BUTTON_COM2
+        { 202, 272,   7,  13 }, //SBC_BUTTON_COM3
+        { 213, 272,   7,  13 }, //SBC_BUTTON_COM4
+        { 223, 272,   7,  13 }  //SBC_BUTTON_COM5
     };
 
     glUseProgram(g_decal_shader->prog);

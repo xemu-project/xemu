@@ -136,7 +136,7 @@ const char *get_bound_driver(int port) {
         return DRIVER_FIGHT_STICK;
 
     // Shouldn't be possible
-    assert(false);
+    return DRIVER_DUKE;
 }
 
 void xemu_input_init(void)

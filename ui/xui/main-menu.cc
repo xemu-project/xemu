@@ -192,6 +192,7 @@ void MainMenuInputView::Draw()
 
         ImGui::EndCombo();
     }
+    DrawComboChevron();
 
     //
     // Render input device combo
