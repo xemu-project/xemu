@@ -285,6 +285,8 @@ void MainMenuInputView::Draw()
         ImGui::GetCursorPosX() +
         (int)((ImGui::GetColumnWidth() - controller_display_size.x) / 2.0));
 
+    cur = ImGui::GetCursorPos();
+
     ImGui::Image(id,
         controller_display_size,
         ImVec2(0, controller_height/t_h),
