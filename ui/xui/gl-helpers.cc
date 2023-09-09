@@ -831,7 +831,7 @@ void RenderController_SB(float frame_x, float frame_y, uint32_t primary_color,
     const struct rect accel_pedal = { 281, 92, 0, 0 };
     const struct rect brake_pedal = { 216, 96, 0, 0 };
     const struct rect slide_step_pedal = { 133, 92, 0, 0 };
-    const struct rect radio_dial_ctr = { 215, 243, 0, 0 };
+    const struct rect radio_dial_ctr = { 205, 243, 0, 0 };
     const struct rect sight_change_ctr = { 123, 329, 0, 0 };
     const struct rect transmission_lever_ctr_R = { 44, 210, 0, 0 };
     const struct rect transmission_lever_ctr_N = { 44, 219, 0, 0 };
