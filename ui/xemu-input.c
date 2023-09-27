@@ -514,8 +514,7 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
 
     // Gear Lever Up
     if((state->sbc.buttons & SBC_BUTTON_GEAR_UP) && !(state->sbc.previousButtons & SBC_BUTTON_GEAR_UP)) {
-        if(state->sbc.gearLever != 5)
-        {
+        if(state->sbc.gearLever != 5) {
             if(state->sbc.gearLever == 255)
                 state->sbc.gearLever = 1;
             else
@@ -525,8 +524,7 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
 
     // Gear Lever Down
     if((state->sbc.buttons & SBC_BUTTON_GEAR_DOWN) && !(state->sbc.previousButtons & SBC_BUTTON_GEAR_DOWN)) {
-        if(state->sbc.gearLever != 254)
-        {
+        if(state->sbc.gearLever != 254) {
             if(state->sbc.gearLever == 1)
                 state->sbc.gearLever = 255;
             else
@@ -659,8 +657,7 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
 
     // Gear Lever Up
     if((state->sbc.buttons & SBC_BUTTON_GEAR_UP) && !(state->sbc.previousButtons & SBC_BUTTON_GEAR_UP)) {
-        if(state->sbc.gearLever != 5)
-        {
+        if(state->sbc.gearLever != 5) {
             if(state->sbc.gearLever == 255)
                 state->sbc.gearLever = 1;
             else
@@ -670,8 +667,7 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
 
     // Gear Lever Down
     if((state->sbc.buttons & SBC_BUTTON_GEAR_DOWN) && !(state->sbc.previousButtons & SBC_BUTTON_GEAR_DOWN)) {
-        if(state->sbc.gearLever != 254)
-        {
+        if(state->sbc.gearLever != 254) {
             if(state->sbc.gearLever == 1)
                 state->sbc.gearLever = 255;
             else

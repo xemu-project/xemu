@@ -46,6 +46,12 @@
 #define USB_VENDOR_CAPCOM 0x0a7b
 #define USB_VENDOR_HORI 0x0F0D
 
+#define GAMEPAD_IN_ENDPOINT_ID 0x02
+#define GAMEPAD_OUT_ENDPOINT_ID 0x02
+#define FIGHT_STICK_IN_ENDPOINT_ID 0x01
+#define STEEL_BATTALION_IN_ENDPOINT_ID 0x02
+#define STEEL_BATTALION_OUT_ENDPOINT_ID 0x01
+
 #define USB_CLASS_XID  0x58
 #define USB_DT_XID     0x42
 
@@ -163,13 +169,13 @@ static const USBDescIface desc_iface_xbox_gamepad = {
     .bInterfaceProtocol            = 0x00,
     .eps = (USBDescEndpoint[]) {
         {
-            .bEndpointAddress      = USB_DIR_IN | 0x02,
+            .bEndpointAddress      = USB_DIR_IN | GAMEPAD_IN_ENDPOINT_ID,
             .bmAttributes          = USB_ENDPOINT_XFER_INT,
             .wMaxPacketSize        = 0x20,
             .bInterval             = 4,
         },
         {
-            .bEndpointAddress      = USB_DIR_OUT | 0x02,
+            .bEndpointAddress      = USB_DIR_OUT | GAMEPAD_OUT_ENDPOINT_ID,
             .bmAttributes          = USB_ENDPOINT_XFER_INT,
             .wMaxPacketSize        = 0x20,
             .bInterval             = 4,
@@ -185,7 +191,7 @@ static const USBDescIface desc_iface_fight_stick = {
     .bInterfaceProtocol            = 0x00,
     .eps = (USBDescEndpoint[]) {
         {
-            .bEndpointAddress      = USB_DIR_IN | 0x01,
+            .bEndpointAddress      = USB_DIR_IN | FIGHT_STICK_IN_ENDPOINT_ID,
             .bmAttributes          = USB_ENDPOINT_XFER_INT,
             .wMaxPacketSize        = 0x40,
             .bInterval             = 4,
@@ -201,13 +207,13 @@ static const USBDescIface desc_iface_steel_battalion = {
     .bInterfaceProtocol            = 0x00,
     .eps = (USBDescEndpoint[]) {
         {
-            .bEndpointAddress      = USB_DIR_IN | 0x02,
+            .bEndpointAddress      = USB_DIR_IN | STEEL_BATTALION_IN_ENDPOINT_ID,
             .bmAttributes          = USB_ENDPOINT_XFER_INT,
             .wMaxPacketSize        = 0x20,
             .bInterval             = 4,
         },
         {
-            .bEndpointAddress      = USB_DIR_OUT | 0x01,
+            .bEndpointAddress      = USB_DIR_OUT | STEEL_BATTALION_OUT_ENDPOINT_ID,
             .bmAttributes          = USB_ENDPOINT_XFER_INT,
             .wMaxPacketSize        = 0x20,
             .bInterval             = 4,
@@ -584,7 +590,7 @@ static void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
     }
 }
 
-static void usb_xid_handle_data(USBDevice *dev, USBPacket *p)
+static void usb_xid_handle_gamepad_data(USBDevice *dev, USBPacket *p)
 {
     DPRINTF("xid handle_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
 
@@ -593,42 +599,74 @@ static void usb_xid_handle_data(USBDevice *dev, USBPacket *p)
 
     switch (p->pid) {
     case USB_TOKEN_IN:
-        if (p->ep->nr == 2) {
-            if (desc->id.idVendor == USB_VENDOR_CAPCOM) {
-                USBXIDSteelBattalionState *s = DO_UPCAST(USBXIDSteelBattalionState, dev, dev);
-                update_sb_input(s);
-                usb_packet_copy(p, &s->in_state, s->in_state.bLength);
-            } else if (desc->id.idVendor == USB_VENDOR_MICROSOFT) {
-                USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
-                update_input(s);
-                usb_packet_copy(p, &s->in_state, s->in_state.bLength);
-            } else {
-                assert(false);
-            }
-        }
-        else if(p->ep->nr == 1) {
-            if (desc->id.idVendor == USB_VENDOR_HORI) {
-                USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
-                update_input(s);
-                usb_packet_copy(p, &s->in_state, s->in_state.bLength);
-            } else {
-                assert(false);
-            }
+        if (p->ep->nr == GAMEPAD_IN_ENDPOINT_ID) {
+            USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
+            update_input(s);
+            usb_packet_copy(p, &s->in_state, s->in_state.bLength);
         } else {
             assert(false);
         }
         break;
     case USB_TOKEN_OUT:
-        if (p->ep->nr == 1) {
+        if (p->ep->nr == GAMEPAD_OUT_ENDPOINT_ID) {
+            USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
+            usb_packet_copy(p, &s->out_state, s->out_state.length);
+            update_output(s);
+        } else {
+            assert(false);
+        }
+        break;
+    default:
+        p->status = USB_RET_STALL;
+        assert(false);
+        break;
+    }
+}
+
+static void usb_xid_handle_steel_battalion_data(USBDevice *dev, USBPacket *p)
+{
+    DPRINTF("xid handle_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
+
+    const USBDesc * desc = usb_device_get_usb_desc(dev);
+    assert(desc);
+
+    switch (p->pid) {
+    case USB_TOKEN_IN:
+        if (p->ep->nr == STEEL_BATTALION_IN_ENDPOINT_ID) {
+            USBXIDSteelBattalionState *s = DO_UPCAST(USBXIDSteelBattalionState, dev, dev);
+            update_sb_input(s);
+            usb_packet_copy(p, &s->in_state, s->in_state.bLength);
+        } else {
+            assert(false);
+        }
+        break;
+    case USB_TOKEN_OUT:
+        if (p->ep->nr == STEEL_BATTALION_OUT_ENDPOINT_ID) {
             // TODO: Update output for Steel Battalion Controller here
-        } else if (p->ep->nr == 2) {
-            if (desc->id.idVendor == USB_VENDOR_MICROSOFT) {
-                USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
-                usb_packet_copy(p, &s->out_state, s->out_state.length);
-                update_output(s);
-            } else {
-                assert(false);
-            }
+        } else {
+            assert(false);
+        }
+        break;
+    default:
+        p->status = USB_RET_STALL;
+        assert(false);
+        break;
+    }
+}
+
+static void usb_xid_handle_fight_stick_data(USBDevice *dev, USBPacket *p)
+{
+    DPRINTF("xid handle_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
+
+    const USBDesc * desc = usb_device_get_usb_desc(dev);
+    assert(desc);
+
+    switch (p->pid) {
+    case USB_TOKEN_IN:
+        if (p->ep->nr == FIGHT_STICK_IN_ENDPOINT_ID) {
+            USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
+            update_input(s);
+            usb_packet_copy(p, &s->in_state, s->in_state.bLength);
         } else {
             assert(false);
         }
@@ -652,13 +690,35 @@ static void usb_xbox_gamepad_unrealize(USBDevice *dev)
 {
 }
 
-static void usb_xid_class_initfn(ObjectClass *klass, void *data)
+static void usb_xid_gamepad_class_initfn(ObjectClass *klass, void *data)
 {
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
     uc->handle_reset   = usb_xid_handle_reset;
     uc->handle_control = usb_xid_handle_control;
-    uc->handle_data    = usb_xid_handle_data;
+    uc->handle_data    = usb_xid_handle_gamepad_data;
+    // uc->handle_destroy = usb_xid_handle_destroy;
+    uc->handle_attach  = usb_desc_attach;
+}
+
+static void usb_xid_fight_stick_class_initfn(ObjectClass *klass, void *data)
+{
+    USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
+
+    uc->handle_reset   = usb_xid_handle_reset;
+    uc->handle_control = usb_xid_handle_control;
+    uc->handle_data    = usb_xid_handle_fight_stick_data;
+    // uc->handle_destroy = usb_xid_handle_destroy;
+    uc->handle_attach  = usb_desc_attach;
+}
+
+static void usb_xid_steel_battalion_class_initfn(ObjectClass *klass, void *data)
+{
+    USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
+
+    uc->handle_reset   = usb_xid_handle_reset;
+    uc->handle_control = usb_xid_handle_control;
+    uc->handle_data    = usb_xid_handle_steel_battalion_data;
     // uc->handle_destroy = usb_xid_handle_destroy;
     uc->handle_attach  = usb_desc_attach;
 }
@@ -822,7 +882,7 @@ static void usb_xbox_gamepad_class_initfn(ObjectClass *klass, void *data)
     uc->usb_desc       = &desc_xbox_gamepad;
     uc->realize        = usb_xbox_gamepad_realize;
     uc->unrealize      = usb_xbox_gamepad_unrealize;
-    usb_xid_class_initfn(klass, data);
+    usb_xid_gamepad_class_initfn(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     dc->vmsd  = &vmstate_usb_xbox;
     device_class_set_props(dc, xid_properties);
@@ -838,7 +898,7 @@ static void usb_xbox_gamepad_s_class_initfn(ObjectClass *klass, void *data)
     uc->usb_desc       = &desc_xbox_gamepad_s;
     uc->realize        = usb_xbox_gamepad_s_realize;
     uc->unrealize      = usb_xbox_gamepad_unrealize;
-    usb_xid_class_initfn(klass, data);
+    usb_xid_gamepad_class_initfn(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     dc->vmsd  = &vmstate_usb_xbox_s;
     device_class_set_props(dc, xid_properties);
@@ -854,7 +914,7 @@ static void usb_xbox_fight_stick_class_initfn(ObjectClass *klass, void *data)
     uc->usb_desc       = &desc_xbox_fight_stick;
     uc->realize        = usb_xbox_fight_stick_realize;
     uc->unrealize      = usb_xbox_gamepad_unrealize;
-    usb_xid_class_initfn(klass, data);
+    usb_xid_fight_stick_class_initfn(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     dc->vmsd  = &vmstate_usb_fight_stick;
     device_class_set_props(dc, xid_properties);
@@ -870,7 +930,7 @@ static void usb_steel_battalion_class_initfn(ObjectClass *klass, void *data)
     uc->usb_desc       = &desc_xbox_steel_battalion;
     uc->realize        = usb_steel_battalion_realize;
     uc->unrealize      = usb_xbox_gamepad_unrealize;
-    usb_xid_class_initfn(klass, data);
+    usb_xid_steel_battalion_class_initfn(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
     dc->vmsd  = &vmstate_usb_sb;
     device_class_set_props(dc, xid_sb_properties);

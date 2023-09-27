@@ -168,8 +168,7 @@ void MainMenuInputView::Draw()
         driver = DRIVER_FIGHT_STICK_DISPLAY_NAME;
 
     ImGui::SetNextItemWidth(-FLT_MIN);
-    if (ImGui::BeginCombo("###InputDrivers", driver, ImGuiComboFlags_NoArrowButton))
-    {
+    if (ImGui::BeginCombo("###InputDrivers", driver, ImGuiComboFlags_NoArrowButton)) {
         const char *available_drivers[4] = { DRIVER_DUKE, DRIVER_S, DRIVER_SB, DRIVER_FIGHT_STICK };
         const char *driver_display_names[4] = { DRIVER_DUKE_DISPLAY_NAME, DRIVER_S_DISPLAY_NAME, DRIVER_SB_DISPLAY_NAME, DRIVER_FIGHT_STICK_DISPLAY_NAME };
         bool is_selected = false;
@@ -211,8 +210,7 @@ void MainMenuInputView::Draw()
     }
 
     ImGui::SetNextItemWidth(-FLT_MIN);
-    if (ImGui::BeginCombo("###InputDevices", name, ImGuiComboFlags_NoArrowButton))
-    {
+    if (ImGui::BeginCombo("###InputDevices", name, ImGuiComboFlags_NoArrowButton)) {
         // Handle "Not connected"
         bool is_selected = bound_state == NULL;
         if (ImGui::Selectable(not_connected, is_selected)) {
