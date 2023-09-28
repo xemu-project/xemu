@@ -592,15 +592,13 @@ static void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
 
 static void usb_xid_handle_gamepad_data(USBDevice *dev, USBPacket *p)
 {
-    DPRINTF("xid handle_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
+    USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
 
-    const USBDesc * desc = usb_device_get_usb_desc(dev);
-    assert(desc);
+    DPRINTF("xid handle_gamepad_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
 
     switch (p->pid) {
     case USB_TOKEN_IN:
         if (p->ep->nr == GAMEPAD_IN_ENDPOINT_ID) {
-            USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
             update_input(s);
             usb_packet_copy(p, &s->in_state, s->in_state.bLength);
         } else {
@@ -609,7 +607,6 @@ static void usb_xid_handle_gamepad_data(USBDevice *dev, USBPacket *p)
         break;
     case USB_TOKEN_OUT:
         if (p->ep->nr == GAMEPAD_OUT_ENDPOINT_ID) {
-            USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
             usb_packet_copy(p, &s->out_state, s->out_state.length);
             update_output(s);
         } else {
@@ -625,15 +622,13 @@ static void usb_xid_handle_gamepad_data(USBDevice *dev, USBPacket *p)
 
 static void usb_xid_handle_steel_battalion_data(USBDevice *dev, USBPacket *p)
 {
-    DPRINTF("xid handle_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
+    USBXIDSteelBattalionState *s = DO_UPCAST(USBXIDSteelBattalionState, dev, dev);
 
-    const USBDesc * desc = usb_device_get_usb_desc(dev);
-    assert(desc);
+    DPRINTF("xid handle_steel_battalion_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
 
     switch (p->pid) {
     case USB_TOKEN_IN:
         if (p->ep->nr == STEEL_BATTALION_IN_ENDPOINT_ID) {
-            USBXIDSteelBattalionState *s = DO_UPCAST(USBXIDSteelBattalionState, dev, dev);
             update_sb_input(s);
             usb_packet_copy(p, &s->in_state, s->in_state.bLength);
         } else {
@@ -656,15 +651,13 @@ static void usb_xid_handle_steel_battalion_data(USBDevice *dev, USBPacket *p)
 
 static void usb_xid_handle_fight_stick_data(USBDevice *dev, USBPacket *p)
 {
-    DPRINTF("xid handle_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
+    USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
 
-    const USBDesc * desc = usb_device_get_usb_desc(dev);
-    assert(desc);
+    DPRINTF("xid handle_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
 
     switch (p->pid) {
     case USB_TOKEN_IN:
         if (p->ep->nr == FIGHT_STICK_IN_ENDPOINT_ID) {
-            USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
             update_input(s);
             usb_packet_copy(p, &s->in_state, s->in_state.bLength);
         } else {
