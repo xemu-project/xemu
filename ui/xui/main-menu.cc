@@ -162,15 +162,15 @@ void MainMenuInputView::Draw()
         driver = DRIVER_DUKE_DISPLAY_NAME;
     else if(strcmp(driver, DRIVER_S) == 0)
         driver = DRIVER_S_DISPLAY_NAME;
-    else if(strcmp(driver, DRIVER_SB) == 0)
-        driver = DRIVER_SB_DISPLAY_NAME;
-    else if(strcmp(driver, DRIVER_FIGHT_STICK) == 0)
-        driver = DRIVER_FIGHT_STICK_DISPLAY_NAME;
+    else if(strcmp(driver, DRIVER_STEEL_BATTALION) == 0)
+        driver = DRIVER_STEEL_BATTALION_DISPLAY_NAME;
+    else if(strcmp(driver, DRIVER_ARCADE_STICK) == 0)
+        driver = DRIVER_ARCADE_STICK_DISPLAY_NAME;
 
     ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::BeginCombo("###InputDrivers", driver, ImGuiComboFlags_NoArrowButton)) {
-        const char *available_drivers[4] = { DRIVER_DUKE, DRIVER_S, DRIVER_SB, DRIVER_FIGHT_STICK };
-        const char *driver_display_names[4] = { DRIVER_DUKE_DISPLAY_NAME, DRIVER_S_DISPLAY_NAME, DRIVER_SB_DISPLAY_NAME, DRIVER_FIGHT_STICK_DISPLAY_NAME };
+        const char *available_drivers[4] = { DRIVER_DUKE, DRIVER_S, DRIVER_STEEL_BATTALION, DRIVER_ARCADE_STICK };
+        const char *driver_display_names[4] = { DRIVER_DUKE_DISPLAY_NAME, DRIVER_S_DISPLAY_NAME, DRIVER_STEEL_BATTALION_DISPLAY_NAME, DRIVER_ARCADE_STICK_DISPLAY_NAME };
         bool is_selected = false;
         for(int i = 0; i < 4; i++) {
             const char* iter = driver_display_names[i];

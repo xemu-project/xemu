@@ -30,13 +30,13 @@
 
 #define DRIVER_DUKE "usb-xbox-gamepad"
 #define DRIVER_S "usb-xbox-gamepad-s"
-#define DRIVER_SB "usb-steel-battalion"
-#define DRIVER_FIGHT_STICK "usb-xbox-fight-stick"
+#define DRIVER_STEEL_BATTALION "usb-steel-battalion"
+#define DRIVER_ARCADE_STICK "usb-xbox-arcade-stick"
 
 #define DRIVER_DUKE_DISPLAY_NAME "Xbox Controller"
 #define DRIVER_S_DISPLAY_NAME "Xbox Controller S"
-#define DRIVER_SB_DISPLAY_NAME "Steel Battalion Controller"
-#define DRIVER_FIGHT_STICK_DISPLAY_NAME "HORI Fight Stick"
+#define DRIVER_STEEL_BATTALION_DISPLAY_NAME "Steel Battalion Controller"
+#define DRIVER_ARCADE_STICK_DISPLAY_NAME "Arcade Stick"
 
 enum controller_state_buttons_mask {
     CONTROLLER_BUTTON_A          = (1 << 0),

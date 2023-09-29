@@ -130,10 +130,10 @@ const char *get_bound_driver(int port) {
         return DRIVER_DUKE;
     if(strcmp(driver, DRIVER_S) == 0)
         return DRIVER_S;
-    if(strcmp(driver, DRIVER_SB) == 0)
-        return DRIVER_SB;
-    if(strcmp(driver, DRIVER_FIGHT_STICK) == 0)
-        return DRIVER_FIGHT_STICK;
+    if(strcmp(driver, DRIVER_STEEL_BATTALION) == 0)
+        return DRIVER_STEEL_BATTALION;
+    if(strcmp(driver, DRIVER_ARCADE_STICK) == 0)
+        return DRIVER_ARCADE_STICK;
 
     // Shouldn't be possible
     return DRIVER_DUKE;
