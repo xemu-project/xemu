@@ -52,11 +52,37 @@ typedef struct XIDSteelBattalionReport {
     uint8_t   	ucGearLever;    // gear lever 1~5 for gear 1~5, 7~13 for gear R,N,1~5, 15 for gear R
 } QEMU_PACKED XIDSteelBattalionReport;
 
+// Based on: https://github.com/Ryzee119/ogx360/blob/master/Firmware/src/usbd/usbd_xid.h:195
 typedef struct XIDSteelBattalionOutputReport {
-    uint8_t report_id;
-    uint8_t length;
-    uint8_t led_data[32]; // Not Used
+    uint8_t     report_id;
+    uint8_t     length;
+    uint8_t     CockpitHatch_EmergencyEject;
+    uint8_t     Start_Ignition;
+    uint8_t     MapZoomInOut_OpenClose;
+    uint8_t     SubMonitorModeSelect_ModeSelect;
+    uint8_t     MainMonitorZoomOut_MainMonitorZoomIn;
+    uint8_t     Manipulator_ForecastShootingSystem;
+    uint8_t     Washing_LineColorChange;
+    uint8_t     Chaff_Extinguisher;
+    uint8_t     Override_TankDetach;
+    uint8_t     F1_NightScope;
+    uint8_t     F3_F2;
+    uint8_t     SubWeaponControl_MainWeaponControl;
+    uint8_t     Comm1_MagazineChange;
+    uint8_t     Comm3_Comm2;
+    uint8_t     Comm5_Comm4;
+    uint8_t     GearR_;
+    uint8_t     Gear1_GearN;
+    uint8_t     Gear3_Gear2;
+    uint8_t     Gear5_Gear4;
+    uint8_t     not_used;
 } QEMU_PACKED XIDSteelBattalionOutputReport;
+
+// Macro for accessing the high nibble of a byte, useful for reading the Steel Battalion controller output data
+#define HiNibble(x) ((0xF0 & x) >> 4)
+
+// Macro for accessing the low nibble of a byte, useful for reading the Steel Battalion controller output data
+#define LoNibble(x) (0x0F & x)
 
 typedef struct USBXIDSteelBattalionState {
     USBDevice                       dev;
@@ -268,6 +294,41 @@ static void usb_xid_steel_battalion_handle_control(USBDevice *dev, USBPacket *p,
     }
 }
 
+#if 0
+
+inline void print_steel_battalion_leds(const char *hiNibbleName, const char *loNibbleName, uint8_t byte)
+{
+    if(HiNibble(byte))
+        fprintf(stderr, "%s: %d\n", hiNibbleName, HiNibble(byte));
+    if(LoNibble(byte))
+        fprintf(stderr, "%s: %d\n", loNibbleName, LoNibble(byte));
+}
+
+static void print_xid_steel_battalion_output_data(XIDSteelBattalionOutputReport *state)
+{
+    print_steel_battalion_leds("Cockpit Hatch", "Emergency Eject", state->CockpitHatch_EmergencyEject);
+    print_steel_battalion_leds("Start", "Ignition", state->Start_Ignition);
+    print_steel_battalion_leds("Map Zoom In/Out", "Open/Close", state->MapZoomInOut_OpenClose);
+    print_steel_battalion_leds("Sub Monitor Mode Select", "Mode Select", state->SubMonitorModeSelect_ModeSelect);
+    print_steel_battalion_leds("Main Monitor Zoom Out", "Main Monitor Zoom In", state->MainMonitorZoomOut_MainMonitorZoomIn);
+    print_steel_battalion_leds("Manipulator", "Forecast Shooting System", state->Manipulator_ForecastShootingSystem);
+    print_steel_battalion_leds("Washing", "Line Color Change", state->Washing_LineColorChange);
+    print_steel_battalion_leds("Chaff", "Extinguisher", state->Chaff_Extinguisher);
+    print_steel_battalion_leds("Override", "Tank Detach", state->Override_TankDetach);
+    print_steel_battalion_leds("F1", "Night Scope", state->F1_NightScope);
+    print_steel_battalion_leds("F3", "F2", state->F3_F2);
+    print_steel_battalion_leds("Sub Weapon Control", "Main Weapon Control", state->SubWeaponControl_MainWeaponControl);
+    print_steel_battalion_leds("Comm1", "Magazine Change", state->Comm1_MagazineChange);
+    print_steel_battalion_leds("Comm3", "Comm2", state->Comm3_Comm2);
+    print_steel_battalion_leds("Comm5", "Comm4", state->Comm5_Comm4);
+    print_steel_battalion_leds("Gear R", "Gear X", state->GearR_);
+    print_steel_battalion_leds("Gear1", "GearN", state->Gear1_GearN);
+    print_steel_battalion_leds("Gear3", "Gear2", state->Gear3_Gear2);
+    print_steel_battalion_leds("Gear5", "Gear4", state->Gear5_Gear4);
+}
+
+#endif
+
 static void usb_xid_steel_battalion_handle_data(USBDevice *dev, USBPacket *p)
 {
     USBXIDSteelBattalionState *s = DO_UPCAST(USBXIDSteelBattalionState, dev, dev);
@@ -285,7 +346,7 @@ static void usb_xid_steel_battalion_handle_data(USBDevice *dev, USBPacket *p)
         break;
     case USB_TOKEN_OUT:
         if (p->ep->nr == STEEL_BATTALION_OUT_ENDPOINT_ID) {
-            // usb_packet_copy(p, &s->out_state, s->out_state.length);
+            usb_packet_copy(p, &s->out_state, s->out_state.length);
             // TODO: Update output for Steel Battalion Controller here, if we want to. 
             // It's LED data, so, maybe use it for RGB integration with RGB Keyboards?
         } else {
