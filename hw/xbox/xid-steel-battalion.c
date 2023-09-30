@@ -285,7 +285,7 @@ static void usb_xid_steel_battalion_handle_data(USBDevice *dev, USBPacket *p)
         break;
     case USB_TOKEN_OUT:
         if (p->ep->nr == STEEL_BATTALION_OUT_ENDPOINT_ID) {
-            usb_packet_copy(p, &s->out_state, s->out_state.length);
+            // usb_packet_copy(p, &s->out_state, s->out_state.length);
             // TODO: Update output for Steel Battalion Controller here, if we want to. 
             // It's LED data, so, maybe use it for RGB integration with RGB Keyboards?
         } else {
