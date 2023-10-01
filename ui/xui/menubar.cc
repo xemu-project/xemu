@@ -120,7 +120,7 @@ void ShowMainMenu()
                     }
 
                     if (ImGui::MenuItem(save_name, hotkey, false, bound)) {
-                        ActionActivateBoundSnapshot(i, false);
+                        ActionActivateBoundSnapshot(i, true);
                     }
 
                     g_free(hotkey);
