@@ -1163,7 +1163,8 @@ static int ohci_service_ed_list(OHCIState *ohci, uint32_t head)
                     QTAILQ_FOREACH(iter, &ohci->active_packets, next) {
                         if(iter->ep == ep) {
                             if (iter->async_td && addr == iter->async_td) {
-                                usb_cancel_packet(&iter->usb_packet);
+                                if(usb_packet_is_inflight(&iter->usb_packet))
+                                    usb_cancel_packet(&iter->usb_packet);
                                 iter->async_td = 0;
                                 usb_device_ep_stopped(iter->usb_packet.ep->dev,
                                                       iter->usb_packet.ep);
