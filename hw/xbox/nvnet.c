@@ -472,7 +472,7 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
         dma_addr_t rx_ring_addr = nvnet_get_reg(s, NvRegRxRingPhysAddr, 4);
         rx_ring_addr += s->rx_ring_index * sizeof(desc);
         pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
-        NVNET_DPRINTF("RX: Looking at ring descriptor %d (0x%llx): ",
+        NVNET_DPRINTF("RX: Looking at ring descriptor %d (0x%" HWADDR_PRIx "): ",
                       s->rx_ring_index, rx_ring_addr);
         NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
         NVNET_DPRINTF("Length: 0x%x, ", desc.length);
@@ -539,7 +539,7 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
         dma_addr_t tx_ring_addr = nvnet_get_reg(s, NvRegTxRingPhysAddr, 4);
         tx_ring_addr += s->tx_ring_index * sizeof(desc);
         pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
-        NVNET_DPRINTF("TX: Looking at ring desc %d (%llx): ",
+        NVNET_DPRINTF("TX: Looking at ring desc %d (%" HWADDR_PRIx "): ",
                       s->tx_ring_index, tx_ring_addr);
         NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
         NVNET_DPRINTF("Length: 0x%x, ", desc.length);
@@ -847,7 +847,7 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
         dma_addr_t tx_ring_addr = nvnet_get_reg(s, NvRegTxRingPhysAddr, 4);
         tx_ring_addr += i * sizeof(desc);
         pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
-        NVNET_DPRINTF("TX: Dumping ring desc %d (%llx): ",
+        NVNET_DPRINTF("TX: Dumping ring desc %d (%" HWADDR_PRIx "): ",
                       i, tx_ring_addr);
         NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
         NVNET_DPRINTF("Length: 0x%x, ", desc.length);
@@ -860,7 +860,7 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
         dma_addr_t rx_ring_addr = nvnet_get_reg(s, NvRegRxRingPhysAddr, 4);
         rx_ring_addr += i * sizeof(desc);
         pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
-        NVNET_DPRINTF("RX: Dumping ring desc %d (%llx): ",
+        NVNET_DPRINTF("RX: Dumping ring desc %d (%" HWADDR_PRIx "): ",
                       i, rx_ring_addr);
         NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
         NVNET_DPRINTF("Length: 0x%x, ", desc.length);
