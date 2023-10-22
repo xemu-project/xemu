@@ -2945,6 +2945,10 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             glDisable(GL_CULL_FACE);
         }
 
+        /* Clipping */
+        glEnable(GL_CLIP_DISTANCE0);
+        glEnable(GL_CLIP_DISTANCE1);
+
         /* Front-face select */
         glFrontFace(pg->regs[NV_PGRAPH_SETUPRASTER]
                         & NV_PGRAPH_SETUPRASTER_FRONTFACE
@@ -4179,7 +4183,6 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
                     *(float*)&pg->regs[NV_PGRAPH_FOGPARAM1]);
     }
 
-    /* FIXME: Handle NV_PGRAPH_ZCLIPMIN, NV_PGRAPH_ZCLIPMAX */
     float zmax;
     switch (pg->surface_shape.zeta_format) {
     case NV097_SET_SURFACE_FORMAT_ZETA_Z16:
@@ -4289,7 +4292,9 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
     }
 
     if (binding->clip_range_loc != -1) {
-        glUniform2f(binding->clip_range_loc, 0, zmax);
+        float zclip_min = *(float*)&pg->regs[NV_PGRAPH_ZCLIPMIN] / zmax * 2.0 - 1.0;
+        float zclip_max = *(float*)&pg->regs[NV_PGRAPH_ZCLIPMAX] / zmax * 2.0 - 1.0;
+        glUniform4f(binding->clip_range_loc, 0, zmax, zclip_min, zclip_max);
     }
 
     /* Clipping regions */
