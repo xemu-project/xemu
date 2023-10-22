@@ -98,7 +98,6 @@ struct OHCIState {
 
     /* Active packets.  */
     uint32_t old_ctl;
-    // union  { struct USBActivePacket *tqh_first; QTailQLink tqh_circ; }
     QTAILQ_HEAD(, USBActivePacket) active_packets;
 
     void (*ohci_die)(struct OHCIState *ohci);

@@ -917,7 +917,7 @@ static int ohci_service_td(OHCIState *ohci, struct ohci_ed *ed)
         }
     }
 
-    // A packet for this endpoint doesn't exist yet. Make one
+    /* A packet for this endpoint doesn't exist yet. Make one */
     if(packet == NULL) {
         packet = g_malloc(sizeof(USBActivePacket));
         usb_packet_init(&packet->usb_packet);
@@ -1825,12 +1825,11 @@ static void ohci_child_detach(USBPort *port1, USBDevice *dev)
 
     USBActivePacket *iter, *iter2;
     QTAILQ_FOREACH_SAFE(iter, &ohci->active_packets, next, iter2) {
-        if(iter->usb_packet.ep->dev == dev) {
+        if (iter->usb_packet.ep->dev == dev) {
             if (iter->async_td &&
                 usb_packet_is_inflight(&iter->usb_packet) &&
                 iter->usb_packet.ep->dev == dev) {
                 usb_cancel_packet(&iter->usb_packet);
-                iter->async_td = 0;
             }
 
             QTAILQ_REMOVE(&ohci->active_packets, iter, next);
@@ -1971,9 +1970,7 @@ void usb_ohci_init(OHCIState *ohci, DeviceState *dev, uint32_t num_ports,
 
     ohci->name = object_get_typename(OBJECT(dev));
     
-    // Inialize the QTAILQ_HEAD. QTAILQ_HEAD_INITIALIZER doesn't work here
-    ohci->active_packets.tqh_circ.tql_next = NULL;
-    ohci->active_packets.tqh_circ.tql_prev = &(ohci->active_packets).tqh_circ;
+    QTAILQ_INIT(&ohci->active_packets);
 
     ohci->eof_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
                                    ohci_frame_boundary, ohci);
