@@ -1,0 +1,24 @@
+---
+Checks: '-*,readability-identifier-naming'
+WarningsAsErrors: true
+CheckOptions:
+  - key:    readability-identifier-naming.VariableCase
+    value:  lower_case
+  - key:    readability-identifier-naming.MemberCase
+    value:  lower_case
+  - key:    readability-identifier-naming.ClassMemberPrefix
+    value:  m_
+  - key:    readability-identifier-naming.GlobalVariablePrefix
+    value:  g_
+  - key:    readability-identifier-naming.ConstantPrefix
+    value:  ''
+  - key:    readability-identifier-naming.EnumConstantCase
+    value:  UPPER_CASE
+  - key:    readability-identifier-naming.FunctionCase
+    value:  lower_case
+  - key:    readability-identifier-naming.MethodCase
+    value:  CamelCase
+  - key:    readability-identifier-naming.StructCase
+    value:  CamelCase
+  - key:    readability-identifier-naming.UnionCase
+    value:  CamelCase
