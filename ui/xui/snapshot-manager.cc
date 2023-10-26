@@ -17,9 +17,10 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+#include "ui/xemu-settings.h"
+#include "snapshot-manager.hh"
 #include "common.hh"
 #include "notifications.hh"
-#include "snapshot-manager.hh"
 #include "xemu-hud.h"
 
 SnapshotManager g_snapshot_mgr;
@@ -104,6 +105,41 @@ void SnapshotManager::LoadSnapshot(const char *name)
         xemu_queue_error_message(error_get_pretty(err));
         error_free(err);
     }
+}
+
+static const char **snapshot_shortcut_index_key_map[] = {
+    &g_config.general.snapshots.shortcuts.f5,
+    &g_config.general.snapshots.shortcuts.f6,
+    &g_config.general.snapshots.shortcuts.f7,
+    &g_config.general.snapshots.shortcuts.f8,
+};
+
+static bool *snapshot_shortcut_index_present_map[] = {
+    &g_config.general.snapshots.shortcuts.f5_present,
+    &g_config.general.snapshots.shortcuts.f6_present,
+    &g_config.general.snapshots.shortcuts.f7_present,
+    &g_config.general.snapshots.shortcuts.f8_present,
+};
+
+std::optional<const char *> SnapshotManager::GetSnapshotShortcut(int index)
+{
+    assert(index >= 0 && index < 4);
+    bool bound = *snapshot_shortcut_index_present_map[index] ||
+                 **(snapshot_shortcut_index_key_map[index]) != 0;
+    if (!bound)
+        return std::nullopt;
+
+    return *(snapshot_shortcut_index_key_map[index]);
+}
+
+void SnapshotManager::SetSnapshotShortcut(
+    int index, std::optional<const char *> snapshot_name)
+{
+    assert(index >= 0 && index < 4);
+
+    *(snapshot_shortcut_index_present_map[index]) = snapshot_name.has_value();
+    xemu_settings_set_string(snapshot_shortcut_index_key_map[index],
+                             snapshot_name ? *snapshot_name : "");
 }
 
 void SnapshotManager::Draw()

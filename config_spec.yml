@@ -14,9 +14,13 @@ general:
   snapshots:
     shortcuts:
       f5: string
+      f5_present: bool
       f6: string
+      f6_present: bool
       f7: string
+      f7_present: bool
       f8: string
+      f8_present: bool
     filter_current_game: bool
 
 input:
