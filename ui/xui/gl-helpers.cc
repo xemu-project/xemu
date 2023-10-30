@@ -190,8 +190,8 @@ static GLuint Shader(GLenum type, const char *src)
     if (status != GL_TRUE) {
         glGetShaderInfoLog(shader, sizeof(err_buf), NULL, err_buf);
         fprintf(stderr, "Shader compilation failed: %s\n\n"
-                        "[Shader Source]\n"
-                        "%s\n", err_buf, src);
+                "[Shader Source]\n"
+                "%s\n", err_buf, src);
         assert(0);
     }
 
@@ -225,15 +225,15 @@ void main() {
     GLuint vert = Shader(GL_VERTEX_SHADER, vert_src);
     assert(vert != 0);
 
-//     const char *image_frag_src = R"(
-// #version 150 core
-// uniform sampler2D tex;
-// in  vec2 Texcoord;
-// out vec4 out_Color;
-// void main() {
-//     out_Color.rgba = texture(tex, Texcoord);
-// }
-// )";
+    //     const char *image_frag_src = R"(
+    // #version 150 core
+    // uniform sampler2D tex;
+    // in  vec2 Texcoord;
+    // out vec4 out_Color;
+    // void main() {
+    //     out_Color.rgba = texture(tex, Texcoord);
+    // }
+    // )";
 
     const char *image_gamma_frag_src = R"(
 #version 400 core
@@ -373,7 +373,7 @@ void RenderDecal(DecalShader *s, float x, float y, float w, float h,
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &th_i);
     float tw = tw_i, th = th_i;
 
-    #define COL(color, c) (float)(((color)>>((c)*8)) & 0xff)/255.0
+#define COL(color, c) (float)(((color)>>((c)*8)) & 0xff)/255.0
     if (s->flipy_loc >= 0) {
         glUniform1i(s->flipy_loc, s->flip);
     }
@@ -406,7 +406,7 @@ void RenderDecal(DecalShader *s, float x, float y, float w, float h,
     if (s->scale_loc >= 0) {
         glUniform1f(s->scale_loc, s->scale);
     }
-    #undef COL
+#undef COL
     glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
 }
 
@@ -654,7 +654,9 @@ void RenderControllerPort(float frame_x, float frame_y, int i,
     glUseProgram(0);
 }
 
-void RenderXmu(float frame_x, float frame_y, uint32_t primary_color, uint32_t secondary_color) {
+void RenderXmu(float frame_x, float frame_y, uint32_t primary_color,
+               uint32_t secondary_color)
+{
     glUseProgram(g_decal_shader->prog);
     glBindVertexArray(g_decal_shader->vao);
     glActiveTexture(GL_TEXTURE0);
@@ -663,11 +665,10 @@ void RenderXmu(float frame_x, float frame_y, uint32_t primary_color, uint32_t se
     glBlendFunc(GL_ONE, GL_ZERO);
 
     // Render xmu
-    RenderDecal(g_decal_shader, frame_x, frame_y, 
-                256, 256, 
-                tex_items[obj_xmu].x, tex_items[obj_xmu].y, 
-                tex_items[obj_xmu].w, tex_items[obj_xmu].h, 
-                primary_color, secondary_color, 0);
+    RenderDecal(g_decal_shader, frame_x, frame_y, 256, 256,
+                tex_items[obj_xmu].x, tex_items[obj_xmu].y,
+                tex_items[obj_xmu].w, tex_items[obj_xmu].h, primary_color,
+                secondary_color, 0);
 
     glBindVertexArray(0);
     glUseProgram(0);
@@ -828,7 +829,7 @@ void SaveScreenshot(GLuint tex, bool flip)
         time_t t = time(NULL);
         struct tm *tmp = localtime(&t);
         if (tmp) {
-            strftime(fname, sizeof(fname), "xemu-%Y-%m-%d-%H-%M-%S.png",
+            strftime(fname, sizeof(fname), "xemu-%Y-%m-%d-%H-%M-%S.png", 
                      tmp);
         } else {
             strcpy(fname, "xemu.png");

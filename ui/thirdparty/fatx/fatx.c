@@ -15,14 +15,13 @@ struct fatx_superblock {
 };
 #pragma pack()
 
-bool create_fatx_image(const char* filename, unsigned int size)
+bool create_fatx_image(const char *filename, unsigned int size)
 {
     unsigned int empty_fat = cpu_to_le32(0xfffffff8);
     unsigned char zero = 0;
 
     FILE *fp = qemu_fopen(filename, "wb");
-    if (fp != NULL)
-    {
+    if (fp != NULL) {
         struct fatx_superblock superblock;
         memset(&superblock, 0xff, sizeof(struct fatx_superblock));
 
@@ -38,7 +37,7 @@ bool create_fatx_image(const char* filename, unsigned int size)
         // Write the FAT
         fwrite(&empty_fat, sizeof(empty_fat), 1, fp);
 
-        fseek(fp, size-sizeof(unsigned char), SEEK_SET);
+        fseek(fp, size - sizeof(unsigned char), SEEK_SET);
         fwrite(&zero, sizeof(unsigned char), 1, fp);
 
         fflush(fp);

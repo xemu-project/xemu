@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-bool create_fatx_image(const char* filename, unsigned int size);
+bool create_fatx_image(const char *filename, unsigned int size);
 
 #ifdef __cplusplus
 }
