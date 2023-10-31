@@ -340,6 +340,11 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
                 if (iter->sdl_gamecontroller) {
                     SDL_GameControllerClose(iter->sdl_gamecontroller);
                 }
+
+                for (int i = 0; i < 2; i++) {
+                    if(iter->peripherals[i])
+                        g_free(iter->peripherals[i]);
+                }
                 free(iter);
 
                 handled = 1;
@@ -485,8 +490,15 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         Error *err = NULL;
 
         // Unbind any XMUs
-        for (int i = 0; i < 2; i++)
-            xemu_input_unbind_xmu(index, i);
+        for (int i = 0; i < 2; i++) {
+            if(bound_controllers[index]->peripherals[i]) {
+                if(bound_controllers[index]->peripheral_types[i] == PERIPHERAL_XMU)
+                    xemu_input_unbind_xmu(index, i);
+                g_free(bound_controllers[index]->peripherals[i]);
+                bound_controllers[index]->peripherals[i] = NULL;
+                bound_controllers[index]->peripheral_types[i] = PERIPHERAL_NONE;
+            }
+        }
 
         qdev_unplug((DeviceState *)bound_controllers[index]->device, &err);
         assert(err == NULL);
@@ -564,23 +576,23 @@ void xemu_input_bind(int index, ControllerState *state, int save)
     }
 }
 
-void xemu_input_bind_xmu(int player_index, int peripheral_port_index,
+void xemu_input_bind_xmu(int player_index, int expansion_slot_index,
                          const char *filename)
 {
     assert(player_index >= 0 && player_index < 4);
-    assert(peripheral_port_index >= 0 && peripheral_port_index < 2);
+    assert(expansion_slot_index >= 0 && expansion_slot_index < 2);
 
     ControllerState *player = bound_controllers[player_index];
     enum peripheral_type peripheral_type =
-        player->peripheral_types[peripheral_port_index];
+        player->peripheral_types[expansion_slot_index];
     if (peripheral_type != PERIPHERAL_XMU)
         return;
 
-    XmuState *xmu = (XmuState *)player->peripherals[peripheral_port_index];
+    XmuState *xmu = (XmuState *)player->peripherals[expansion_slot_index];
 
     // Unbind existing XMU
     if (xmu->dev != NULL) {
-        xemu_input_unbind_xmu(player_index, peripheral_port_index);
+        xemu_input_unbind_xmu(player_index, expansion_slot_index);
     }
 
     if (filename == NULL)
@@ -643,7 +655,7 @@ void xemu_input_bind_xmu(int player_index, int peripheral_port_index,
 
     // Specify index/port
     tmp = g_strdup_printf("1.%d.%d", port_map[player_index],
-                          xmu_map[peripheral_port_index]);
+                          xmu_map[expansion_slot_index]);
     qdict_put_str(qdict2, "port", tmp);
     g_free(tmp);
 
@@ -661,20 +673,20 @@ void xemu_input_bind_xmu(int player_index, int peripheral_port_index,
     qobject_unref(qdict2);
 
     xemu_save_peripheral_settings(
-        player_index, peripheral_port_index, peripheral_type,
+        player_index, expansion_slot_index, peripheral_type,
         xmu->filename);
 }
 
-void xemu_input_unbind_xmu(int player_index, int peripheral_port_index)
+void xemu_input_unbind_xmu(int player_index, int expansion_slot_index)
 {
     assert(player_index >= 0 && player_index < 4);
-    assert(peripheral_port_index >= 0 && peripheral_port_index < 2);
+    assert(expansion_slot_index >= 0 && expansion_slot_index < 2);
 
     ControllerState *state = bound_controllers[player_index];
-    if (state->peripheral_types[peripheral_port_index] != PERIPHERAL_XMU)
+    if (state->peripheral_types[expansion_slot_index] != PERIPHERAL_XMU)
         return;
 
-    XmuState *xmu = (XmuState *)state->peripherals[peripheral_port_index];
+    XmuState *xmu = (XmuState *)state->peripherals[expansion_slot_index];
     if (xmu != NULL) {
         if (xmu->dev != NULL) {
             qdev_unplug((DeviceState *)xmu->dev, &error_abort);

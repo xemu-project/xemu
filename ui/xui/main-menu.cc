@@ -200,6 +200,16 @@ void MainMenuInputView::Draw()
             }
             if (ImGui::Selectable(selectable_label, is_selected)) {
                 xemu_input_bind(active, iter, 1);
+
+                // FIXME: We want to bind the XMU here, but we can't because we
+                // just unbound it and we need to wait for Qemu to release the
+                // file
+
+                // If we previously had no controller connected, we can rebind 
+                // the XMU
+                if(bound_state == NULL)
+                    xemu_input_rebind_xmu(active);
+
                 bound_state = iter;
             }
             if (is_selected) {
@@ -299,6 +309,7 @@ void MainMenuInputView::Draw()
                     const char *selectable_label = peripheral_type_names[j];
 
                     if (ImGui::Selectable(selectable_label, is_selected)) {
+                        // Free any existing peripheral
                         if (bound_state->peripherals[i] != NULL) {
                             if (bound_state->peripheral_types[i] ==
                                 PERIPHERAL_XMU) {
@@ -306,18 +317,22 @@ void MainMenuInputView::Draw()
                                 // Unplugging
                                 xemu_input_unbind_xmu(active, i);
                             }
+
+                            // Free the existing state
+                            g_free((void *)bound_state->peripherals[i]);
+                            bound_state->peripherals[i] = NULL;
                         }
+
+                        // Change the peripheral type to the newly selected type
                         bound_state->peripheral_types[i] =
                             (enum peripheral_type)j;
+
+                        // Allocate state for the new peripheral
                         if (j == PERIPHERAL_XMU) {
                             bound_state->peripherals[i] =
                                 g_malloc(sizeof(XmuState));
                             memset(bound_state->peripherals[i], 0,
                                    sizeof(XmuState));
-                        } else if (bound_state->peripherals[i] != NULL) {
-                            // 'None' was selected. Deleting the XmuState
-                            g_free((void *)bound_state->peripherals[i]);
-                            bound_state->peripherals[i] = NULL;
                         }
 
                         xemu_save_peripheral_settings(
