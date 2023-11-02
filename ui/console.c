@@ -1560,14 +1560,13 @@ DisplaySurface *qemu_create_placeholder_surface(int w, int h,
     pixman_image_t *glyph;
     int len, x, y, i;
 
-    //Horizontal center x on 640x480 is 5.
     len = strlen(msg);
-    x = (w / FONT_WIDTH  - 70) / 2;
-    y = (h / FONT_HEIGHT - 1) / 2;
+    x = (w / FONT_WIDTH  - len) / 2;
+    y = (h / FONT_HEIGHT - 1)   / 2;
     for (i = 0; i < len; i++) {
         glyph  = qemu_pixman_glyph_from_vgafont(FONT_HEIGHT, vgafont16, msg[i]);
         qemu_pixman_glyph_render(glyph, surface->image, &fg, &bg,
-                                 x+i % 70, y + i / 70, FONT_WIDTH, FONT_HEIGHT);
+                                 x+i, y, FONT_WIDTH, FONT_HEIGHT);
         qemu_pixman_image_unref(glyph);
     }
     surface->flags |= QEMU_PLACEHOLDER_FLAG;
@@ -2156,9 +2155,7 @@ QemuConsole *graphic_console_init(DeviceState *dev, uint32_t head,
                                   void *opaque)
 {
     static const char noinit[] = 
-            "Guest has not initialized the display (yet). If this message remains: "
-            "-Check if you have set up all the required files in System > Files    "
-            "-Check if the AV Pack option is different than 'None'                 ";
+            "Guest has not initialized the display (yet).";
     int width = 640;
     int height = 480;
     QemuConsole *s;
