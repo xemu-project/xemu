@@ -156,6 +156,26 @@ display:
     auto_scale:
       type: bool
       default: true
+  debug:
+    video:
+      transparency:
+        type: bool
+        default: false
+      x_pos:
+        type: number
+        default: 100.0
+      y_pos:
+        type: number
+        default: 100.0
+      x_winsize:
+        type: number
+        default: 600.0
+      y_winsize:
+        type: number
+        default: 150.0
+      advanced_tree_state:
+        type: bool
+        default: false
 
 audio:
   use_dsp: bool
