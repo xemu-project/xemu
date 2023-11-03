@@ -492,8 +492,11 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         // Unbind any XMUs
         for (int i = 0; i < 2; i++) {
             if(bound_controllers[index]->peripherals[i]) {
+                // If this was an XMU, unbind the XMU
                 if(bound_controllers[index]->peripheral_types[i] == PERIPHERAL_XMU)
                     xemu_input_unbind_xmu(index, i);
+
+                // Free up the XmuState and set the peripheral type to none
                 g_free(bound_controllers[index]->peripherals[i]);
                 bound_controllers[index]->peripherals[i] = NULL;
                 bound_controllers[index]->peripheral_types[i] = PERIPHERAL_NONE;
@@ -719,7 +722,7 @@ void xemu_input_rebind_xmu(int port)
         if (peripheral_type == PERIPHERAL_XMU) {
             if (param != NULL && strlen(param) > 0) {
                 // This is an XMU and needs to be bound to this controller
-                if (qemu_access(param, F_OK) == 0) {
+                if (qemu_access(param, R_OK | W_OK) == 0) {
                     bound_controllers[port]->peripheral_types[i] = peripheral_type;
                     bound_controllers[port]->peripherals[i] = g_malloc(sizeof(XmuState));
                     memset(bound_controllers[port]->peripherals[i], 0, sizeof(XmuState));
