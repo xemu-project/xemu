@@ -988,6 +988,9 @@ void MainMenuSystemView::Draw()
     if (m_dirty) {
         ImGui::TextColored(ImVec4(1,0,0,1), "Application restart required to apply settings");
     }
+        
+    ImGui::TextColored(ImVec4(1,0,0,1), "Setting AV Pack to NONE disables video output.");
+    
 
     SectionTitle("System Configuration");
 
