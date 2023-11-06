@@ -183,6 +183,7 @@ protected:
 public:
     MainMenuScene();
     void ShowSettings();
+    void ShowSystem();
     void SetNextViewIndexWithFocus(int i);
     void Show() override;
     void Hide() override;

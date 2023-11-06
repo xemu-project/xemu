@@ -1189,6 +1189,11 @@ void MainMenuScene::ShowSettings()
     SetNextViewIndexWithFocus(m_current_view_index);
 }
 
+void MainMenuScene::ShowSystem()
+{
+    SetNextViewIndexWithFocus(6);
+}
+
 void MainMenuScene::SetNextViewIndexWithFocus(int i)
 {
     m_focus_view = true;
