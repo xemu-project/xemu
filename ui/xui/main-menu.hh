@@ -184,6 +184,8 @@ public:
     MainMenuScene();
     void ShowSettings();
     void ShowSystem();
+    void ShowAbout();
+    void ShowSnapshots();
     void SetNextViewIndexWithFocus(int i);
     void Show() override;
     void Hide() override;
