@@ -224,6 +224,7 @@ void ShowMainMenu()
 #endif
 
             ImGui::Separator();
+            if (ImGui::MenuItem("About")) g_main_menu.ShowAbout();
             ImGui::EndMenu();
         }
 
