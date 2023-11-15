@@ -1186,7 +1186,7 @@ MainMenuScene::MainMenuScene()
 
 void MainMenuScene::ShowSettings()
 {
-    SetNextViewIndexWithFocus(m_current_view_index);
+    SetNextViewIndexWithFocus(g_config.general.last_viewed_menu_index);
 }
 
 void MainMenuScene::ShowSnapshots()
