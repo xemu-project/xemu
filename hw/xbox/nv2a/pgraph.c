@@ -28,6 +28,9 @@
 #include "ui/xemu-settings.h"
 #include "qemu/fast-hash.h"
 
+const float f16_max = 511.9375f;
+const float f24_max = 1.0E30;
+
 static NV2AState *g_nv2a;
 GloContext *g_nv2a_context_render;
 GloContext *g_nv2a_context_display;
@@ -2942,6 +2945,10 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             glDisable(GL_CULL_FACE);
         }
 
+        /* Clipping */
+        glEnable(GL_CLIP_DISTANCE0);
+        glEnable(GL_CLIP_DISTANCE1);
+
         /* Front-face select */
         glFrontFace(pg->regs[NV_PGRAPH_SETUPRASTER]
                         & NV_PGRAPH_SETUPRASTER_FRONTFACE
@@ -3492,10 +3499,6 @@ DEF_METHOD(NV097, CLEAR_SURFACE)
             d->pgraph.regs[NV_PGRAPH_ZSTENCILCLEARVALUE];
         GLint gl_clear_stencil;
         GLfloat gl_clear_depth;
-
-        /* FIXME: Put these in some lookup table */
-        const float f16_max = 511.9375f;
-        const float f24_max = 1.0E30;
 
         switch(pg->surface_shape.zeta_format) {
         case NV097_SET_SURFACE_FORMAT_ZETA_Z16: {
@@ -4180,8 +4183,17 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
                     *(float*)&pg->regs[NV_PGRAPH_FOGPARAM1]);
     }
 
-    float zclip_max = *(float*)&pg->regs[NV_PGRAPH_ZCLIPMAX];
-    float zclip_min = *(float*)&pg->regs[NV_PGRAPH_ZCLIPMIN];
+    float zmax;
+    switch (pg->surface_shape.zeta_format) {
+    case NV097_SET_SURFACE_FORMAT_ZETA_Z16:
+        zmax = pg->surface_shape.z_format ? f16_max : (float)0xFFFF;
+        break;
+    case NV097_SET_SURFACE_FORMAT_ZETA_Z24S8:
+        zmax = pg->surface_shape.z_format ? f24_max : (float)0xFFFFFF;
+        break;
+    default:
+        assert(0);
+    }
 
     if (fixed_function) {
         /* update lighting constants */
@@ -4238,19 +4250,15 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
 
         float m11 = 0.5 * (pg->surface_binding_dim.width/aa_width);
         float m22 = -0.5 * (pg->surface_binding_dim.height/aa_height);
-        float m33 = zclip_max - zclip_min;
+        float m33 = zmax;
         float m41 = *(float*)&pg->vsh_constants[NV_IGRAPH_XF_XFCTX_VPOFF][0];
         float m42 = *(float*)&pg->vsh_constants[NV_IGRAPH_XF_XFCTX_VPOFF][1];
-        float m43 = zclip_min;
-        if (m33 == 0.0) {
-            m33 = 1.0;
-        }
 
         float invViewport[16] = {
             1.0/m11, 0, 0, 0,
             0, 1.0/m22, 0, 0,
             0, 0, 1.0/m33, 0,
-            -1.0+m41/m11, 1.0+m42/m22, -m43/m33, 1.0
+            -1.0+m41/m11, 1.0+m42/m22, 0, 1.0
         };
 
         if (binding->inv_viewport_loc != -1) {
@@ -4284,7 +4292,9 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
     }
 
     if (binding->clip_range_loc != -1) {
-        glUniform2f(binding->clip_range_loc, zclip_min, zclip_max);
+        float zclip_min = *(float*)&pg->regs[NV_PGRAPH_ZCLIPMIN] / zmax * 2.0 - 1.0;
+        float zclip_max = *(float*)&pg->regs[NV_PGRAPH_ZCLIPMAX] / zmax * 2.0 - 1.0;
+        glUniform4f(binding->clip_range_loc, 0, zmax, zclip_min, zclip_max);
     }
 
     /* Clipping regions */
