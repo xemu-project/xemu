@@ -2093,6 +2093,9 @@ const VMStateDescription vmstate_ohci_state = {
         VMSTATE_UINT32(hreset, OHCIState),
         VMSTATE_UINT32(htest, OHCIState),
         VMSTATE_UINT32(old_ctl, OHCIState),
+        VMSTATE_UINT8_ARRAY(usb_buf, OHCIState, 8192),
+        VMSTATE_UINT32(async_td, OHCIState),
+        VMSTATE_BOOL(async_complete, OHCIState),
         VMSTATE_END_OF_LIST()
     },
     .subsections = (const VMStateDescription*[]) {
