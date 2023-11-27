@@ -2853,7 +2853,7 @@ void qemu_init(int argc, char **argv)
     }
 
     if (strlen(dvd_path) > 0) {
-        if (xemu_check_file(dvd_path)) {
+        if (xemu_check_file(dvd_path) || strcmp(dvd_path, hdd_path) == 0) {
             char *msg = g_strdup_printf("Failed to open DVD image file '%s'. Please check machine settings.", dvd_path);
             xemu_queue_error_message(msg);
             g_free(msg);
