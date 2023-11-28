@@ -2864,18 +2864,6 @@ void qemu_init(int argc, char **argv)
     }
 
     if (strlen(dvd_path) > 0) {
-        // Allow clearing the dvd path on boot.
-        for (int i = 1; i < argc; i++) {
-            if (argv[i] && strcmp(argv[i], "-no_dvd") == 0) {
-                argv[i] = NULL;
-                dvd_path = "";
-                xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
-                break;
-            }
-        }
-    }
-
-    if (strlen(dvd_path) > 0) {
         if (xemu_check_file(dvd_path) || strcmp(dvd_path, hdd_path) == 0) {
             char *msg = g_strdup_printf("Failed to open DVD image file '%s'. Please check machine settings.", dvd_path);
             xemu_queue_error_message(msg);
