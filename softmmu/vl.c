@@ -2783,7 +2783,6 @@ void qemu_init(int argc, char **argv)
     }[g_config.sys.avpack];
 
     bool eject_after_boot = false;
-    // Allow overriding the dvd path from command line
     for (int i = 1; i < argc; i++) {
         if (argv[i] && strcmp(argv[i], "-eject_after_boot") == 0) {
             argv[i] = NULL;
