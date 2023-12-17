@@ -130,7 +130,6 @@ void xemu_save_peripheral_settings(int player_index, int peripheral_index,
 
 void xemu_input_set_test_mode(int enabled);
 int xemu_input_get_test_mode(void);
-bool xemu_new_xmu(const char *filename, unsigned int size);
 
 #ifdef __cplusplus
 }

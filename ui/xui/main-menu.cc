@@ -278,7 +278,6 @@ void MainMenuInputView::Draw()
     ImGui::SetCursorPos(pos);
 
     if (bound_state) {
-        ///
         SectionTitle("Expansion Slots");
         // Begin a 2-column layout to render the expansion slots
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
