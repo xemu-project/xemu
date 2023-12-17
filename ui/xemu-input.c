@@ -119,7 +119,7 @@ static const char **peripheral_params_settings_map[4][2] = {
 
 static int sdl_kbd_scancode_map[25];
 
-static const int port_map[4] = {3, 4, 1, 2};
+static const int port_map[4] = { 3, 4, 1, 2 };
 
 void xemu_input_init(void)
 {
@@ -250,10 +250,10 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         new_con->sdl_joystick_id      = SDL_JoystickInstanceID(new_con->sdl_joystick);
         new_con->sdl_joystick_guid    = SDL_JoystickGetGUID(new_con->sdl_joystick);
         new_con->bound                = -1;
-        new_con->peripheral_types[0]  = PERIPHERAL_NONE;
-        new_con->peripheral_types[1]  = PERIPHERAL_NONE;
-        new_con->peripherals[0]       = NULL;
-        new_con->peripherals[1]       = NULL;
+        new_con->peripheral_types[0] = PERIPHERAL_NONE;
+        new_con->peripheral_types[1] = PERIPHERAL_NONE;
+        new_con->peripherals[0] = NULL;
+        new_con->peripherals[1] = NULL;
 
         char guid_buf[35] = { 0 };
         SDL_JoystickGetGUIDString(new_con->sdl_joystick_guid, guid_buf, sizeof(guid_buf));
@@ -342,7 +342,7 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
                 }
 
                 for (int i = 0; i < 2; i++) {
-                    if(iter->peripherals[i])
+                    if (iter->peripherals[i])
                         g_free(iter->peripherals[i]);
                 }
                 free(iter);
@@ -439,12 +439,9 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
     }
 
     const SDL_GameControllerAxis sdl_axis_map[6] = {
-        SDL_CONTROLLER_AXIS_TRIGGERLEFT, 
-        SDL_CONTROLLER_AXIS_TRIGGERRIGHT,
-        SDL_CONTROLLER_AXIS_LEFTX,
-        SDL_CONTROLLER_AXIS_LEFTY,
-        SDL_CONTROLLER_AXIS_RIGHTX,
-        SDL_CONTROLLER_AXIS_RIGHTY,
+        SDL_CONTROLLER_AXIS_TRIGGERLEFT, SDL_CONTROLLER_AXIS_TRIGGERRIGHT,
+        SDL_CONTROLLER_AXIS_LEFTX,       SDL_CONTROLLER_AXIS_LEFTY,
+        SDL_CONTROLLER_AXIS_RIGHTX,      SDL_CONTROLLER_AXIS_RIGHTY,
     };
 
     for (int i = 0; i < 6; i++) {
@@ -491,9 +488,10 @@ void xemu_input_bind(int index, ControllerState *state, int save)
 
         // Unbind any XMUs
         for (int i = 0; i < 2; i++) {
-            if(bound_controllers[index]->peripherals[i]) {
+            if (bound_controllers[index]->peripherals[i]) {
                 // If this was an XMU, unbind the XMU
-                if(bound_controllers[index]->peripheral_types[i] == PERIPHERAL_XMU)
+                if (bound_controllers[index]->peripheral_types[i] ==
+                    PERIPHERAL_XMU)
                     xemu_input_unbind_xmu(index, i);
 
                 // Free up the XmuState and set the peripheral type to none
@@ -675,9 +673,8 @@ void xemu_input_bind_xmu(int player_index, int expansion_slot_index,
     qobject_unref(qdict1);
     qobject_unref(qdict2);
 
-    xemu_save_peripheral_settings(
-        player_index, expansion_slot_index, peripheral_type,
-        xmu->filename);
+    xemu_save_peripheral_settings(player_index, expansion_slot_index,
+                                  peripheral_type, xmu->filename);
 }
 
 void xemu_input_unbind_xmu(int player_index, int expansion_slot_index)
@@ -723,9 +720,12 @@ void xemu_input_rebind_xmu(int port)
             if (param != NULL && strlen(param) > 0) {
                 // This is an XMU and needs to be bound to this controller
                 if (qemu_access(param, R_OK | W_OK) == 0) {
-                    bound_controllers[port]->peripheral_types[i] = peripheral_type;
-                    bound_controllers[port]->peripherals[i] = g_malloc(sizeof(XmuState));
-                    memset(bound_controllers[port]->peripherals[i], 0, sizeof(XmuState));
+                    bound_controllers[port]->peripheral_types[i] =
+                        peripheral_type;
+                    bound_controllers[port]->peripherals[i] =
+                        g_malloc(sizeof(XmuState));
+                    memset(bound_controllers[port]->peripherals[i], 0,
+                           sizeof(XmuState));
                     xemu_input_bind_xmu(port, i, param);
 
                     char *buf = g_strdup_printf("Connected XMU %s to port %d%c",
@@ -733,8 +733,9 @@ void xemu_input_rebind_xmu(int port)
                     xemu_queue_notification(buf);
                     g_free(buf);
                 } else {
-                    char *buf = g_strdup_printf("Unable to bind XMU at %s to port %d%c",
-                                                param, port + 1, 'A' + i);
+                    char *buf =
+                        g_strdup_printf("Unable to bind XMU at %s to port %d%c",
+                                        param, port + 1, 'A' + i);
                     xemu_queue_error_message(buf);
                     g_free(buf);
                 }

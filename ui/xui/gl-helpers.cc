@@ -16,28 +16,24 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
-#include "common.hh"
-#include <stdio.h>
-#include <math.h>
-#include <vector>
-#include <fpng.h>
-#include "gl-helpers.hh"
-#include "stb_image.h"
-#include "data/controller_mask.png.h"
-#include "data/xmu_mask.png.h"
-#include "data/logo_sdf.png.h"
-#include "ui/shader/xemu-logo-frag.h"
-#include "data/xemu_64x64.png.h"
-#include "notifications.hh"
 #include "ui/xemu-widescreen.h"
+#include "gl-helpers.hh"
+#include "common.hh"
+#include "data/controller_mask.png.h"
+#include "data/logo_sdf.png.h"
+#include "data/xemu_64x64.png.h"
+#include "data/xmu_mask.png.h"
+#include "notifications.hh"
+#include "stb_image.h"
+#include <fpng.h>
+#include <math.h>
+#include <stdio.h>
+#include <vector>
 
-Fbo *controller_fbo,
-    *xmu_fbo,
-    *logo_fbo;
-GLuint g_controller_tex,
-       g_logo_tex,
-       g_icon_tex,
-       g_xmu_tex;
+#include "ui/shader/xemu-logo-frag.h"
+
+Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
+GLuint g_controller_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
 
 enum class ShaderType {
     Blit,
@@ -189,9 +185,11 @@ static GLuint Shader(GLenum type, const char *src)
     glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
     if (status != GL_TRUE) {
         glGetShaderInfoLog(shader, sizeof(err_buf), NULL, err_buf);
-        fprintf(stderr, "Shader compilation failed: %s\n\n"
+        fprintf(stderr,
+                "Shader compilation failed: %s\n\n"
                 "[Shader Source]\n"
-                "%s\n", err_buf, src);
+                "%s\n",
+                err_buf, src);
         assert(0);
     }
 
@@ -373,7 +371,7 @@ void RenderDecal(DecalShader *s, float x, float y, float w, float h,
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &th_i);
     float tw = tw_i, th = th_i;
 
-#define COL(color, c) (float)(((color)>>((c)*8)) & 0xff)/255.0
+#define COL(color, c) (float)(((color) >> ((c)*8)) & 0xff) / 255.0
     if (s->flipy_loc >= 0) {
         glUniform1i(s->flipy_loc, s->flip);
     }
@@ -415,15 +413,15 @@ struct rect {
 };
 
 static const struct rect tex_items[] = {
-    {   0, 148, 467, 364 }, // obj_controller
-    {   0,  81,  67,  67 }, // obj_lstick
-    {   0,  14,  67,  67 }, // obj_rstick
-    {  67, 104,  68,  44 }, // obj_port_socket
-    {  67,  76,  28,  28 }, // obj_port_lbl_1
-    {  67,  48,  28,  28 }, // obj_port_lbl_2
-    {  67,  20,  28,  28 }, // obj_port_lbl_3
-    {  95,  76,  28,  28 }, // obj_port_lbl_4
-    {   0,   0, 512, 512 }  // obj_xmu
+    { 0, 148, 467, 364 }, // obj_controller
+    { 0, 81, 67, 67 }, // obj_lstick
+    { 0, 14, 67, 67 }, // obj_rstick
+    { 67, 104, 68, 44 }, // obj_port_socket
+    { 67, 76, 28, 28 }, // obj_port_lbl_1
+    { 67, 48, 28, 28 }, // obj_port_lbl_2
+    { 67, 20, 28, 28 }, // obj_port_lbl_3
+    { 95, 76, 28, 28 }, // obj_port_lbl_4
+    { 0, 0, 512, 512 } // obj_xmu
 };
 
 enum tex_item_names {
@@ -829,8 +827,7 @@ void SaveScreenshot(GLuint tex, bool flip)
         time_t t = time(NULL);
         struct tm *tmp = localtime(&t);
         if (tmp) {
-            strftime(fname, sizeof(fname), "xemu-%Y-%m-%d-%H-%M-%S.png", 
-                     tmp);
+            strftime(fname, sizeof(fname), "xemu-%Y-%m-%d-%H-%M-%S.png", tmp);
         } else {
             strcpy(fname, "xemu.png");
         }

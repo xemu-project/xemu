@@ -1,4 +1,5 @@
 #include "fatx.h"
+
 #include "qemu/bswap.h"
 
 #define FATX_SIGNATURE 0x58544146
@@ -11,7 +12,7 @@ struct fatx_superblock {
     uint32_t sectors_per_cluster;
     uint32_t root_cluster;
     uint16_t unknown1;
-    uint8_t  padding[4078];
+    uint8_t padding[4078];
 };
 #pragma pack()
 

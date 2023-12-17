@@ -205,9 +205,9 @@ void MainMenuInputView::Draw()
                 // just unbound it and we need to wait for Qemu to release the
                 // file
 
-                // If we previously had no controller connected, we can rebind 
+                // If we previously had no controller connected, we can rebind
                 // the XMU
-                if(bound_state == NULL)
+                if (bound_state == NULL)
                     xemu_input_rebind_xmu(active);
 
                 bound_state = iter;
