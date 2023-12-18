@@ -577,8 +577,8 @@ void xemu_input_bind(int index, ControllerState *state, int save)
     }
 }
 
-void xemu_input_bind_xmu(int player_index, int expansion_slot_index,
-                         const char *filename)
+bool xemu_input_bind_xmu(int player_index, int expansion_slot_index,
+                         const char *filename, bool is_rebind)
 {
     assert(player_index >= 0 && player_index < 4);
     assert(expansion_slot_index >= 0 && expansion_slot_index < 2);
@@ -587,7 +587,7 @@ void xemu_input_bind_xmu(int player_index, int expansion_slot_index,
     enum peripheral_type peripheral_type =
         player->peripheral_types[expansion_slot_index];
     if (peripheral_type != PERIPHERAL_XMU)
-        return;
+        return false;
 
     XmuState *xmu = (XmuState *)player->peripherals[expansion_slot_index];
 
@@ -597,7 +597,7 @@ void xemu_input_bind_xmu(int player_index, int expansion_slot_index,
     }
 
     if (filename == NULL)
-        return;
+        return false;
 
     // Look for any other XMUs that are using this file, and unbind them
     for (int player_i = 0; player_i < 4; player_i++) {
@@ -617,7 +617,7 @@ void xemu_input_bind_xmu(int player_index, int expansion_slot_index,
                                             player_i + 1, 'A' + peripheral_i);
                         xemu_queue_notification(buf);
                         g_free(buf);
-                        return;
+                        return false;
                     }
                 }
             }
@@ -673,8 +673,12 @@ void xemu_input_bind_xmu(int player_index, int expansion_slot_index,
     qobject_unref(qdict1);
     qobject_unref(qdict2);
 
-    xemu_save_peripheral_settings(player_index, expansion_slot_index,
-                                  peripheral_type, xmu->filename);
+    if (!is_rebind) {
+        xemu_save_peripheral_settings(player_index, expansion_slot_index,
+                                      peripheral_type, xmu->filename);
+    }
+
+    return true;
 }
 
 void xemu_input_unbind_xmu(int player_index, int expansion_slot_index)
@@ -726,12 +730,14 @@ void xemu_input_rebind_xmu(int port)
                         g_malloc(sizeof(XmuState));
                     memset(bound_controllers[port]->peripherals[i], 0,
                            sizeof(XmuState));
-                    xemu_input_bind_xmu(port, i, param);
-
-                    char *buf = g_strdup_printf("Connected XMU %s to port %d%c",
-                                                param, port + 1, 'A' + i);
-                    xemu_queue_notification(buf);
-                    g_free(buf);
+                    bool did_bind = xemu_input_bind_xmu(port, i, param, true);
+                    if (did_bind) {
+                        char *buf =
+                            g_strdup_printf("Connected XMU %s to port %d%c",
+                                            param, port + 1, 'A' + i);
+                        xemu_queue_notification(buf);
+                        g_free(buf);
+                    }
                 } else {
                     char *buf =
                         g_strdup_printf("Unable to bind XMU at %s to port %d%c",

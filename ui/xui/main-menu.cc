@@ -402,7 +402,7 @@ void MainMenuInputView::Draw()
                     if (new_path) {
                         if (create_fatx_image(new_path, DEFAULT_XMU_SIZE)) {
                             // XMU was created successfully. Bind it
-                            xemu_input_bind_xmu(active, i, new_path);
+                            xemu_input_bind_xmu(active, i, new_path, false);
                         } else {
                             // Show alert message
                             char *msg = g_strdup_printf(
@@ -422,7 +422,7 @@ void MainMenuInputView::Draw()
                     if (strlen(xmu_port_path) == 0) {
                         xemu_input_unbind_xmu(active, i);
                     } else {
-                        xemu_input_bind_xmu(active, i, xmu_port_path);
+                        xemu_input_bind_xmu(active, i, xmu_port_path, false);
                     }
                 }
                 g_free((void *)xmu_port_path);
