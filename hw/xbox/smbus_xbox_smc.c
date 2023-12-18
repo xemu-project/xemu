@@ -296,11 +296,11 @@ static void smbus_smc_realize(DeviceState *dev, Error **errp)
 
     if (object_property_get_bool(qdev_get_machine(), "eject-after-boot",
                                  NULL)) {
-        smc->scratch_reg = SMC_REG_SCRATCH_EJECT_AFTER_BOOT;
+        smc->scratch_reg |= SMC_REG_SCRATCH_EJECT_AFTER_BOOT;
     }
 
     if (object_property_get_bool(qdev_get_machine(), "short-animation", NULL)) {
-        smc->scratch_reg = SMC_REG_SCRATCH_SHORT_ANIMATION;
+        smc->scratch_reg |= SMC_REG_SCRATCH_SHORT_ANIMATION;
     }
 
     avpack = object_property_get_str(qdev_get_machine(), "avpack", NULL);
