@@ -42,18 +42,6 @@
 #define TYPE_XBOX_SMC "smbus-xbox-smc"
 #define XBOX_SMC(obj) OBJECT_CHECK(SMBusSMCDevice, (obj), TYPE_XBOX_SMC)
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#include "../../xemu-config.h"
-
-extern struct config g_config;
-
-#ifdef __cplusplus
-}
-#endif
-
 // #define DEBUG
 #ifdef DEBUG
 # define DPRINTF(format, ...) printf(format, ## __VA_ARGS__)
