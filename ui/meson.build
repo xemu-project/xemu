@@ -47,7 +47,7 @@ endif
 xemu_ss.add(when: 'CONFIG_LINUX', if_true: [gtk, files('xemu-os-utils-linux.c')])
 xemu_ss.add(when: 'CONFIG_WIN32', if_true: files('xemu-os-utils-windows.c'))
 xemu_ss.add(when: 'CONFIG_DARWIN', if_true: files('xemu-os-utils-macos.m'))
-xemu_ss.add(imgui, implot, stb_image, noc, sdl, opengl, openssl, fa, fpng, json, httplib)
+xemu_ss.add(imgui, implot, stb_image, noc, sdl, opengl, openssl, fa, fpng, json, httplib, fatx)
 
 softmmu_ss.add_all(xemu_ss)
 
