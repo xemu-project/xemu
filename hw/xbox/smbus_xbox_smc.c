@@ -24,20 +24,20 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/option.h"
-#include "hw/hw.h"
 #include "hw/acpi/acpi.h"
+#include "hw/hw.h"
 #include "hw/i2c/i2c.h"
 #include "hw/i2c/smbus_slave.h"
-#include "qemu/config-file.h"
+#include "hw/qdev-properties.h"
 #include "qapi/error.h"
+#include "qemu/config-file.h"
+#include "qemu/option.h"
 #include "sysemu/block-backend.h"
 #include "sysemu/blockdev.h"
-#include "sysemu/sysemu.h"
-#include "smbus.h"
 #include "sysemu/runstate.h"
-#include "hw/qdev-properties.h"
+#include "sysemu/sysemu.h"
 #include "ui/xemu-settings.h"
+#include "smbus.h"
 
 #define TYPE_XBOX_SMC "smbus-xbox-smc"
 #define XBOX_SMC(obj) OBJECT_CHECK(SMBusSMCDevice, (obj), TYPE_XBOX_SMC)
@@ -104,10 +104,10 @@ extern struct config g_config;
 #define SMC_REG_RESETONEJECT        0x19
 #define SMC_REG_INTEN               0x1a
 #define SMC_REG_SCRATCH             0x1b
-#define     SMC_REG_SCRATCH_EJECT_AFTER_BOOT 0x01
-#define     SMC_REG_SCRATCH_ERROR_AFTER_BOOT 0x02
+#define SMC_REG_SCRATCH_EJECT_AFTER_BOOT 0x01
+#define SMC_REG_SCRATCH_ERROR_AFTER_BOOT 0x02
 #define     SMC_REG_SCRATCH_SHORT_ANIMATION 0x04
-#define     SMC_REG_SCRATCH_FORCE_DASH_BOOT 0x08
+#define SMC_REG_SCRATCH_FORCE_DASH_BOOT 0x08
 
 #define SMC_VERSION_LENGTH 3
 
@@ -132,7 +132,7 @@ static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
 {
     Error *error = NULL;
     SMBusSMCDevice *smc = XBOX_SMC(dev);
-    
+
     smc->cmd = buf[0];
     uint8_t cmd = smc->cmd;
     buf++;
@@ -161,8 +161,8 @@ static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
         if (buf[0]) {
             const char *path = g_config.sys.files.dvd_path;
             qmp_blockdev_change_medium(true, "ide0-cd1", false, NULL, path,
-                                        false, "",  false, false, false, 0,
-                                        &error);
+                                       false, "", false, false, false, 0,
+                                       &error);
         } else {
             xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
             qmp_eject(true, "ide0-cd1", false, NULL, true, false, &error);
@@ -294,7 +294,8 @@ static void smbus_smc_realize(DeviceState *dev, Error **errp)
     smc->cmd = 0;
     smc->error_reg = 0;
 
-    if (object_property_get_bool(qdev_get_machine(), "eject-after-boot", NULL)) {
+    if (object_property_get_bool(qdev_get_machine(), "eject-after-boot",
+                                 NULL)) {
         smc->scratch_reg = SMC_REG_SCRATCH_EJECT_AFTER_BOOT;
     }
 

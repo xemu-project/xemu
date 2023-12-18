@@ -437,8 +437,7 @@ static bool machine_get_short_animation(Object *obj, Error **errp)
     return ms->short_animation;
 }
 
-static void machine_set_eject_after_boot(Object *obj, bool value,
-                                        Error **errp)
+static void machine_set_eject_after_boot(Object *obj, bool value, Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
     ms->eject_after_boot = value;
