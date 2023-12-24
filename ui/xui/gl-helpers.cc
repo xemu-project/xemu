@@ -16,31 +16,34 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
-#include "common.hh"
-#include <stdio.h>
-#include <math.h>
-#include <vector>
-#include <fpng.h>
+#include "ui/xemu-widescreen.h"
 #include "gl-helpers.hh"
-#include "stb_image.h"
+#include "common.hh"
 #include "data/controller_mask.png.h"
 #include "data/controller_mask_s.png.h"
 #include "data/sb_controller_mask.png.h"
 #include "data/fight_stick_mask.png.h"
 #include "data/logo_sdf.png.h"
-#include "ui/shader/xemu-logo-frag.h"
 #include "data/xemu_64x64.png.h"
+#include "data/xmu_mask.png.h"
 #include "notifications.hh"
-#include "ui/xemu-widescreen.h"
+#include "stb_image.h"
+#include <fpng.h>
+#include <math.h>
+#include <stdio.h>
+#include <vector>
+#include "ui/shader/xemu-logo-frag.h"
 
-Fbo *controller_fbo,
+Fbo *controller_fbo, 
+    *xmu_fbo,
     *logo_fbo;
 GLuint g_controller_tex,
        g_controller_s_tex,
        g_sb_controller_tex,
        g_fight_stick_tex,
        g_logo_tex,
-       g_icon_tex;
+       g_icon_tex, 
+       g_xmu_tex;
 
 enum class ShaderType {
     Blit,
@@ -192,9 +195,11 @@ static GLuint Shader(GLenum type, const char *src)
     glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
     if (status != GL_TRUE) {
         glGetShaderInfoLog(shader, sizeof(err_buf), NULL, err_buf);
-        fprintf(stderr, "Shader compilation failed: %s\n\n"
-                        "[Shader Source]\n"
-                        "%s\n", err_buf, src);
+        fprintf(stderr,
+                "Shader compilation failed: %s\n\n"
+                "[Shader Source]\n"
+                "%s\n",
+                err_buf, src);
         assert(0);
     }
 
@@ -228,15 +233,15 @@ void main() {
     GLuint vert = Shader(GL_VERTEX_SHADER, vert_src);
     assert(vert != 0);
 
-//     const char *image_frag_src = R"(
-// #version 150 core
-// uniform sampler2D tex;
-// in  vec2 Texcoord;
-// out vec4 out_Color;
-// void main() {
-//     out_Color.rgba = texture(tex, Texcoord);
-// }
-// )";
+    //     const char *image_frag_src = R"(
+    // #version 150 core
+    // uniform sampler2D tex;
+    // in  vec2 Texcoord;
+    // out vec4 out_Color;
+    // void main() {
+    //     out_Color.rgba = texture(tex, Texcoord);
+    // }
+    // )";
 
     const char *image_gamma_frag_src = R"(
 #version 400 core
@@ -376,7 +381,7 @@ void RenderDecal(DecalShader *s, float x, float y, float w, float h,
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &th_i);
     float tw = tw_i, th = th_i;
 
-    #define COL(color, c) (float)(((color)>>((c)*8)) & 0xff)/255.0
+#define COL(color, c) (float)(((color) >> ((c)*8)) & 0xff) / 255.0
     if (s->flipy_loc >= 0) {
         glUniform1i(s->flipy_loc, s->flip);
     }
@@ -409,7 +414,7 @@ void RenderDecal(DecalShader *s, float x, float y, float w, float h,
     if (s->scale_loc >= 0) {
         glUniform1f(s->scale_loc, s->scale);
     }
-    #undef COL
+#undef COL
     glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, NULL);
 }
 
@@ -418,14 +423,15 @@ struct rect {
 };
 
 static const struct rect tex_items[] = {
-    {   0, 148, 467, 364 }, // obj_controller
-    {   0,  81,  67,  67 }, // obj_lstick
-    {   0,  14,  67,  67 }, // obj_rstick
-    {  67, 104,  68,  44 }, // obj_port_socket
-    {  67,  76,  28,  28 }, // obj_port_lbl_1
-    {  67,  48,  28,  28 }, // obj_port_lbl_2
-    {  67,  20,  28,  28 }, // obj_port_lbl_3
-    {  95,  76,  28,  28 }, // obj_port_lbl_4
+    { 0, 148, 467, 364 }, // obj_controller
+    { 0, 81, 67, 67 }, // obj_lstick
+    { 0, 14, 67, 67 }, // obj_rstick
+    { 67, 104, 68, 44 }, // obj_port_socket
+    { 67, 76, 28, 28 }, // obj_port_lbl_1
+    { 67, 48, 28, 28 }, // obj_port_lbl_2
+    { 67, 20, 28, 28 }, // obj_port_lbl_3
+    { 95, 76, 28, 28 }, // obj_port_lbl_4
+    { 0, 0, 512, 512 } // obj_xmu
 };
 
 static const struct rect sb_tex_items[] = {
@@ -460,6 +466,7 @@ enum tex_item_names {
     obj_port_lbl_2,
     obj_port_lbl_3,
     obj_port_lbl_4,
+    obj_xmu
 };
 
 enum sb_tex_item_names {
@@ -485,6 +492,9 @@ void InitCustomRendering(void)
 
     g_decal_shader = NewDecalShader(ShaderType::Mask);
     controller_fbo = new Fbo(512, 512);
+
+    g_xmu_tex = LoadTextureFromMemory(xmu_mask_data, xmu_mask_size);
+    xmu_fbo = new Fbo(512, 256);
 
     g_logo_tex = LoadTextureFromMemory(logo_sdf_data, logo_sdf_size);
     g_logo_shader = NewDecalShader(ShaderType::Logo);
@@ -640,7 +650,7 @@ void RenderController_Duke(float frame_x, float frame_y, uint32_t primary_color,
 
     // Animate trigger alpha down after a period of inactivity
     alpha = 0x80;
-    if (state->animate_trigger_end > now) {
+    if (state->gp.animate_trigger_end > now) {
         t = 1.0f - (float)(state->gp.animate_trigger_end-now)/(float)animate_trigger_duration;
         float sin_wav = (1-sin(M_PI * t / 2.0f));
         alpha += fmin(sin_wav * 0x40, 0x80);
@@ -1264,6 +1274,26 @@ void RenderControllerPort(float frame_x, float frame_y, int i,
     glUseProgram(0);
 }
 
+void RenderXmu(float frame_x, float frame_y, uint32_t primary_color,
+               uint32_t secondary_color)
+{
+    glUseProgram(g_decal_shader->prog);
+    glBindVertexArray(g_decal_shader->vao);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_xmu_tex);
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFunc(GL_ONE, GL_ZERO);
+
+    // Render xmu
+    RenderDecal(g_decal_shader, frame_x, frame_y, 256, 256,
+                tex_items[obj_xmu].x, tex_items[obj_xmu].y,
+                tex_items[obj_xmu].w, tex_items[obj_xmu].h, primary_color,
+                secondary_color, 0);
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
 void RenderLogo(uint32_t time)
 {
     uint32_t color = 0x62ca13ff;
@@ -1419,8 +1449,7 @@ void SaveScreenshot(GLuint tex, bool flip)
         time_t t = time(NULL);
         struct tm *tmp = localtime(&t);
         if (tmp) {
-            strftime(fname, sizeof(fname), "xemu-%Y-%m-%d-%H-%M-%S.png",
-                     tmp);
+            strftime(fname, sizeof(fname), "xemu-%Y-%m-%d-%H-%M-%S.png", tmp);
         } else {
             strcpy(fname, "xemu.png");
         }

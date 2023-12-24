@@ -285,6 +285,9 @@ const char *noc_file_dialog_open(int flags,
     ofn.lpstrInitialDir = initialDir;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
 
+    if (flags & NOC_FILE_DIALOG_OVERWRITE_CONFIRMATION)
+        ofn.Flags |= OFN_OVERWRITEPROMPT;
+
     if (flags & NOC_FILE_DIALOG_OPEN) {
         ret = GetOpenFileNameW(&ofn);
     } else {
