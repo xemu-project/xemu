@@ -129,7 +129,7 @@ static const char **peripheral_params_settings_map[4][2] = {
 static int sdl_kbd_scancode_map[25];
 static int sdl_sbc_kbd_scancode_map[56];
 
-const char *get_bound_driver(int port) {
+static const char *get_bound_driver(int port) {
     assert(port >= 0 && port <= 3);
     const char *driver = NULL;    
     switch(port) {
@@ -820,16 +820,22 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         bound_controllers[index]->bound = index;
 
         char *tmp;
+        QDict *usbhub_qdict = NULL;
+        DeviceState *usbhub_dev = NULL;
 
-        // Create controller's internal USB hub.
-        QDict *usbhub_qdict = qdict_new();
-        qdict_put_str(usbhub_qdict, "driver", "usb-hub");
-        tmp = g_strdup_printf("1.%d", port_map[index]);
-        qdict_put_str(usbhub_qdict, "port", tmp);
-        qdict_put_int(usbhub_qdict, "ports", 3);
-        QemuOpts *usbhub_opts = qemu_opts_from_qdict(qemu_find_opts("device"), usbhub_qdict, &error_abort);
-        DeviceState *usbhub_dev = qdev_device_add(usbhub_opts, &error_abort);
-        g_free(tmp);
+        bool hasInternalHub = strcmp(bound_drivers[index], DRIVER_STEEL_BATTALION) != 0;
+
+        if(hasInternalHub) {
+            // Create controller's internal USB hub.
+            usbhub_qdict = qdict_new();
+            qdict_put_str(usbhub_qdict, "driver", "usb-hub");
+            tmp = g_strdup_printf("1.%d", port_map[index]);
+            qdict_put_str(usbhub_qdict, "port", tmp);
+            qdict_put_int(usbhub_qdict, "ports", 3);
+            QemuOpts *usbhub_opts = qemu_opts_from_qdict(qemu_find_opts("device"), usbhub_qdict, &error_abort);
+            usbhub_dev = qdev_device_add(usbhub_opts, &error_abort);
+            g_free(tmp);
+        }
 
         // Create XID controller. This is connected to Port 1 of the controller's internal USB Hub
         QDict *qdict = qdict_new();
@@ -845,7 +851,8 @@ void xemu_input_bind(int index, ControllerState *state, int save)
 
         // Specify index/port
         qdict_put_int(qdict, "index", index);
-        tmp = g_strdup_printf("1.%d.1", port_map[index]);
+        const char *fmt = hasInternalHub ? "1.%d.1" : "1.%d";
+        tmp = g_strdup_printf(fmt, port_map[index]);
         qdict_put_str(qdict, "port", tmp);
         g_free(tmp);
 
@@ -855,12 +862,14 @@ void xemu_input_bind(int index, ControllerState *state, int save)
         assert(dev);
 
         // Unref for eventual cleanup
-        qobject_unref(usbhub_qdict);
-        object_unref(OBJECT(usbhub_dev));
+        if(usbhub_qdict != NULL)
+            qobject_unref(usbhub_qdict);
+        if(usbhub_dev != NULL)
+            object_unref(OBJECT(usbhub_dev));
         qobject_unref(qdict);
         object_unref(OBJECT(dev));
 
-        state->device = usbhub_dev;
+        state->device = hasInternalHub ? usbhub_dev : dev;
     }
 }
 
@@ -869,6 +878,9 @@ bool xemu_input_bind_xmu(int player_index, int expansion_slot_index,
 {
     assert(player_index >= 0 && player_index < 4);
     assert(expansion_slot_index >= 0 && expansion_slot_index < 2);
+
+    bool hasInternalHub = strcmp(bound_drivers[player_index], DRIVER_STEEL_BATTALION) != 0;
+    assert(hasInternalHub);
 
     ControllerState *player = bound_controllers[player_index];
     enum peripheral_type peripheral_type =
@@ -992,6 +1004,10 @@ void xemu_input_unbind_xmu(int player_index, int expansion_slot_index)
 
 void xemu_input_rebind_xmu(int port)
 {
+    bool hasInternalHub = strcmp(bound_drivers[port], DRIVER_STEEL_BATTALION) != 0;
+    if(!hasInternalHub)
+        return;
+
     // Try to bind peripherals back to controller
     for (int i = 0; i < 2; i++) {
         enum peripheral_type peripheral_type =
