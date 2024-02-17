@@ -47,7 +47,21 @@ ERST
         .cmd        = hmp_quit,
         .flags      = "p",
     },
+	
+SRST
+``write`` or ``w``
+  Quit the emulator.
+ERST
 
+    {
+        .name       = "write|w",
+        .args_type  = "addr:l,size:i,data:i",
+        .params     = "addr size data",
+        .help       = "write to ram",
+        .cmd        = hmp_write,
+        .flags      = "p",
+    },
+	
 SRST
 ``quit`` or ``q``
   Quit the emulator.
