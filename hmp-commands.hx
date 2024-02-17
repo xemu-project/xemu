@@ -50,14 +50,14 @@ ERST
 	
 SRST
 ``write`` or ``w``
-  Quit the emulator.
+  Write to physical memory.
 ERST
 
     {
         .name       = "write|w",
         .args_type  = "addr:l,size:i,data:i",
         .params     = "addr size data",
-        .help       = "write to ram",
+        .help       = "write to physical memory",
         .cmd        = hmp_write,
         .flags      = "p",
     },
