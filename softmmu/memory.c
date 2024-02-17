@@ -3596,15 +3596,14 @@ void mtree_info(bool flatview, bool dispatch_tree, bool owner, bool disabled)
 }
 
 
-void ram_write(hwaddr addr, void* ptr, hwaddr len)
+void ram_write(hwaddr addr, void *ptr, hwaddr len)
 {
-    MemoryRegion* sm = get_system_memory();
-    MemoryRegion* mr;
-    const uint8_t* buf = ptr;
-    QTAILQ_FOREACH(mr, &sm->subregions, subregions_link) {
-        if (strcmp(memory_region_name(mr), "xbox.ram") == 0)
-        {
-            uint8_t* ram_ptr = qemu_map_ram_ptr(mr->ram_block, addr);
+    MemoryRegion *sm = get_system_memory();
+    MemoryRegion *mr;
+    const uint8_t *buf = ptr;
+    QTAILQ_FOREACH (mr, &sm->subregions, subregions_link) {
+        if (strcmp(memory_region_name(mr), "xbox.ram") == 0) {
+            uint8_t *ram_ptr = qemu_map_ram_ptr(mr->ram_block, addr);
             memcpy(ram_ptr, buf, len);
             break;
         }
