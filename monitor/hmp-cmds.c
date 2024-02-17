@@ -59,6 +59,8 @@
 #include "hw/intc/intc.h"
 #include "migration/snapshot.h"
 #include "migration/misc.h"
+#include "exec/memory.h"
+#include "exec/memory.h"
 
 #ifdef CONFIG_SPICE
 #include <spice/enums.h>
@@ -121,6 +123,14 @@ void hmp_info_version(Monitor *mon, const QDict *qdict)
                    info->package);
 
     qapi_free_VersionInfo(info);
+}
+
+void hmp_write(Monitor *mon, const QDict *qdict)
+{
+    uint32_t addr = qdict_get_int(qdict, "addr");
+    int data = qdict_get_int(qdict, "data");
+    int size = qdict_get_int(qdict, "size");
+    ram_write(addr, &data, size);
 }
 
 void hmp_info_kvm(Monitor *mon, const QDict *qdict)
