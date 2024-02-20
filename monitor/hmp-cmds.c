@@ -129,7 +129,15 @@ void hmp_write(Monitor *mon, const QDict *qdict)
     uint32_t addr = qdict_get_int(qdict, "addr");
     int data = qdict_get_int(qdict, "data");
     int size = qdict_get_int(qdict, "size");
-    ram_write(addr, &data, size);
+    ram_write(addr, &data, size, 0);
+}
+
+void hmp_write_physical(Monitor *mon, const QDict *qdict)
+{
+    uint32_t addr = qdict_get_int(qdict, "addr");
+    int data = qdict_get_int(qdict, "data");
+    int size = qdict_get_int(qdict, "size");
+    ram_write(addr, &data, size, 1);
 }
 
 void hmp_info_kvm(Monitor *mon, const QDict *qdict)
