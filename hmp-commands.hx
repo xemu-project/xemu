@@ -49,16 +49,30 @@ ERST
     },
 	
 SRST
-``write`` or ``w``
+``w``
+  Write to virtual memory.
+ERST
+
+    {
+        .name       = "w",
+        .args_type  = "addr:l,size:i,data:i",
+        .params     = "addr size data",
+        .help       = "write to virtual memory",
+        .cmd        = hmp_write,
+        .flags      = "p",
+    },
+	
+SRST
+``wp``
   Write to physical memory.
 ERST
 
     {
-        .name       = "write|w",
+        .name       = "wp",
         .args_type  = "addr:l,size:i,data:i",
         .params     = "addr size data",
         .help       = "write to physical memory",
-        .cmd        = hmp_write,
+        .cmd        = hmp_write_physical,
         .flags      = "p",
     },
 	
