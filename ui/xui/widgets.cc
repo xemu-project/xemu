@@ -312,7 +312,8 @@ bool FilePicker(const char *str_id, const char **buf, const char *filters,
               GetWidgetTitleDescriptionHeight(str_id, desc));
     ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0, 0));
     ImGui::PushID(str_id);
-    bool status = ImGui::Button("###file_button", bb);
+    bool status =
+        ImGui::ButtonEx("###file_button", bb, ImGuiButtonFlags_AllowOverlap);
     ImGui::SetItemAllowOverlap();
     if (status) {
         int flags = NOC_FILE_DIALOG_OPEN;
