@@ -184,7 +184,7 @@ def main():
 		'openssl11',
 		'libpcap',
 		'libslirp',
-		'libusb1'])
+		'libusb'])
 
 if __name__ == '__main__':
 	main()
