@@ -183,7 +183,8 @@ def main():
 		'libepoxy',
 		'openssl11',
 		'libpcap',
-		'libslirp'])
+		'libslirp',
+		'libusb1'])
 
 if __name__ == '__main__':
 	main()
