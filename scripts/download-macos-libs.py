@@ -42,9 +42,13 @@ class LibInstaller:
 
 	def get_latest_pkg_filename_url(self, pkg_name):
 		pkg_base_url = f'{MIRROR}/{pkg_name}'
+		print(f'    [*] [DEBUG] pkg_base_url {pkg_base_url}')
 		pkg_list = urlopen(pkg_base_url).read().decode('utf-8')
+		print('    [*] [DEBUG] url opened')
 		pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.' + self._darwin_target + r'\.' + self._arch + r'\.tbz2', pkg_list)
+		print('    [*] [DEBUG] pkgs retrieved')
 		pkg_filename = pkgs[-1]
+		print('    [*] [DEBUG] returning pkg_filename, pkg_url')
 		return pkg_filename, f'{pkg_base_url}/{pkg_filename}'
 
 	def is_pkg_installed(self, pkg_name):
@@ -101,8 +105,11 @@ class LibInstaller:
 
 		print(f'[*] Fetching {pkg_name}')
 		pkg_filename, pkg_url = self.get_latest_pkg_filename_url(pkg_name)
+		print(f'    [*] [DEBUG] pkg_url {pkg_url}')
 		pkg_version = pkg_filename[re.search(r'-\d', pkg_filename).span()[0]+1:]
+		print('test')
 		pkg_version = pkg_version[:pkg_version.find('.'+self._darwin_target)]
+		print(f'    [*] [DEBUG] pkg_filename {pkg_filename}')
 		dst_pkg_filename = os.path.join(self._pkgs_path, pkg_filename)
 		print(f'    [*] Found package {pkg_filename}')
 		self.download_file(pkg_filename, pkg_url, dst_pkg_filename)
