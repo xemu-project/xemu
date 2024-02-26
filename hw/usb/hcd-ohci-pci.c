@@ -81,18 +81,21 @@ static void usb_ohci_realize_pci(PCIDevice *dev, Error **errp)
 
 static void usb_ohci_exit(PCIDevice *dev)
 {
+    fprintf(stderr, "usb_ohci_exit\n");
     OHCIPCIState *ohci = PCI_OHCI(dev);
     OHCIState *s = &ohci->state;
 
     trace_usb_ohci_exit(s->name);
     ohci_bus_stop(s);
 
-    USBActivePacket *iter;
-    QTAILQ_FOREACH(iter, &s->active_packets, next) {
+    USBActivePacket *iter, *iter2;
+    QTAILQ_FOREACH_SAFE(iter, &s->active_packets, next, iter2) {
         if (iter->async_td) {
             usb_cancel_packet(&iter->usb_packet);
-            iter->async_td = 0;
         }
+
+        QTAILQ_REMOVE(&s->active_packets, iter, next);
+        g_free(iter);
     }
     ohci_stop_endpoints(s);
 
