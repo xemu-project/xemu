@@ -88,15 +88,6 @@ static void usb_ohci_exit(PCIDevice *dev)
     trace_usb_ohci_exit(s->name);
     ohci_bus_stop(s);
 
-    USBActivePacket *iter, *iter2;
-    QTAILQ_FOREACH_SAFE(iter, &s->active_packets, next, iter2) {
-        if (iter->async_td) {
-            usb_cancel_packet(&iter->usb_packet);
-        }
-
-        QTAILQ_REMOVE(&s->active_packets, iter, next);
-        g_free(iter);
-    }
     ohci_stop_endpoints(s);
 
     if (!ohci->masterbus) {
