@@ -849,11 +849,6 @@ void vsh_translate(uint16_t version,
         mstring_append(body, "  oPos.z = oPos.w;\n");
     }
     mstring_append(body,
-        /* Map the clip range into clip space so z is clipped correctly.
-         * Note this makes the values in the depth buffer wrong. This should be
-         * handled with gl_ClipDistance instead, but that has performance issues
-         * on OS X.
-         */
         "  if (clipRange.y != clipRange.x) {\n"
         "    oPos.z = (oPos.z - clipRange.x)/(0.5*(clipRange.y - clipRange.x)) - 1;\n"
         "  }\n"

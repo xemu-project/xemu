@@ -230,6 +230,9 @@ DebugVideoWindow::DebugVideoWindow()
 {
     m_is_open = false;
     m_transparent = false;
+    m_position_restored = false;
+    m_resize_init_complete = false;
+    m_prev_scale = g_viewport_mgr.m_scale;
 }
 
 void DebugVideoWindow::Draw()
@@ -237,9 +240,25 @@ void DebugVideoWindow::Draw()
     if (!m_is_open)
         return;
 
+    if (!m_position_restored) {
+        ImGui::SetNextWindowPos(ImVec2(g_config.display.debug.video.x_pos,
+                                       g_config.display.debug.video.y_pos),
+                                ImGuiCond_Once, ImVec2(0, 0));
+        m_transparent = g_config.display.debug.video.transparency;
+        m_position_restored = true;
+    }
+
     float alpha = m_transparent ? 0.2 : 1.0;
     PushWindowTransparencySettings(m_transparent, 0.2);
-    ImGui::SetNextWindowSize(ImVec2(600.0f*g_viewport_mgr.m_scale, 150.0f*g_viewport_mgr.m_scale), ImGuiCond_Once);
+
+    if (!m_resize_init_complete || (g_viewport_mgr.m_scale != m_prev_scale)) {
+        ImGui::SetNextWindowSize(ImVec2(
+            g_config.display.debug.video.x_winsize * g_viewport_mgr.m_scale,
+            g_config.display.debug.video.y_winsize * g_viewport_mgr.m_scale));
+        m_resize_init_complete = true;
+    }
+    m_prev_scale = g_viewport_mgr.m_scale;
+
     if (ImGui::Begin("Video Debug", &m_is_open)) {
         double x_start, x_end;
         static ImPlotAxisFlags rt_axis = ImPlotAxisFlags_NoTickLabels;
@@ -287,7 +306,12 @@ void DebugVideoWindow::Draw()
         }
         ImPlot::PopStyleColor();
 
-        if (ImGui::TreeNode("Advanced")) {
+        ImGui::SetNextItemOpen(g_config.display.debug.video.advanced_tree_state,
+                               ImGuiCond_Once);
+        g_config.display.debug.video.advanced_tree_state =
+            ImGui::TreeNode("Advanced");
+
+        if (g_config.display.debug.video.advanced_tree_state) {
             ImGui::SetNextWindowBgAlpha(alpha);
             if (ImPlot::BeginPlot("##ScrollingDraws", ImVec2(-1,-1))) {
                 ImPlot::SetupAxes(NULL, NULL, ImPlotAxisFlags_None, ImPlotAxisFlags_AutoFit);
@@ -326,6 +350,17 @@ void DebugVideoWindow::Draw()
         }
 
         ImPlot::PopStyleVar(2);
+
+        ImVec2 debug_window_pos = ImGui::GetWindowPos();
+        g_config.display.debug.video.x_pos = debug_window_pos.x;
+        g_config.display.debug.video.y_pos = debug_window_pos.y;
+
+        ImVec2 debug_window_size = ImGui::GetWindowSize();
+        g_config.display.debug.video.x_winsize =
+            debug_window_size.x / g_viewport_mgr.m_scale;
+        g_config.display.debug.video.y_winsize =
+            debug_window_size.y / g_viewport_mgr.m_scale;
+        g_config.display.debug.video.transparency = m_transparent;
     }
     ImGui::End();
     ImGui::PopStyleColor(5);
