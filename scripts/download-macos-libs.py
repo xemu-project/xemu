@@ -19,7 +19,7 @@ MIRROR = 'http://nue.de.packages.macports.org/macports/packages'
 
 class LibInstaller:
 	DARWIN_TARGET_X64="darwin_17" # macOS 10.13
-	DARWIN_TARGET_ARM64="darwin_20" # macOS 11.x
+	DARWIN_TARGET_ARM64="darwin_21" # macOS 11.x
 
 	def __init__(self, arch):
 		self._queue = []
@@ -48,7 +48,7 @@ class LibInstaller:
 		pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.' + self._darwin_target + r'\.' + self._arch + r'\.tbz2', pkg_list)
 		print(f'    [*] [DEBUG] len(pkgs) {len(pkgs)}')
 		if len(pkgs) < 1:
-			print(f'    [*] [ERROR] package {pkg_name} not found for arch {self._arch}')
+			print(f'    [*] [ERROR] package {pkg_name} not found for arch {self._darwin_target}.{self._arch}')
 			print(f'    [*] [DEBUG] pkg_list: {pkg_list}')
 		pkg_filename = pkgs[-1]
 		print('    [*] [DEBUG] returning pkg_filename, pkg_url')
