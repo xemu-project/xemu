@@ -46,7 +46,7 @@ class LibInstaller:
 		pkg_list = urlopen(pkg_base_url).read().decode('utf-8')
 		print('    [*] [DEBUG] url opened')
 		pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.' + self._darwin_target + r'\.' + self._arch + r'\.tbz2', pkg_list)
-		print('    [*] [DEBUG] pkgs retrieved')
+		print(f'    [*] [DEBUG] len(pkgs) {len(pkgs)}')
 		pkg_filename = pkgs[-1]
 		print('    [*] [DEBUG] returning pkg_filename, pkg_url')
 		return pkg_filename, f'{pkg_base_url}/{pkg_filename}'
