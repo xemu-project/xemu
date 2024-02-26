@@ -47,8 +47,18 @@ class LibInstaller:
 		print('    [*] [DEBUG] url opened')
 		pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.' + self._darwin_target + r'\.' + self._arch + r'\.tbz2', pkg_list)
 		print(f'    [*] [DEBUG] len(pkgs) {len(pkgs)}')
+
 		if len(pkgs) < 1:
-			print(f'    [*] [ERROR] package {pkg_name} not found for arch {self._darwin_target}.{self._arch}')
+			pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.' + r'darwin_any\.' + self._arch + r'\.tbz2', pkg_list)
+
+		if len(pkgs) < 1:
+			pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.' + self._darwin_target + r'\.noarch\.tbz2', pkg_list)
+
+		if len(pkgs) < 1:
+			pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.' + r'darwin_any\.noarch\.tbz2', pkg_list)
+
+		if len(pkgs) < 1:
+			print(f'    [*] [ERROR] package {pkg_name} not found for arch {self._darwin_target}.{self._arch} or darwin_any.noarch')
 			print(f'    [*] [DEBUG] pkg_list: {pkg_list}')
 		pkg_filename = pkgs[-1]
 		print('    [*] [DEBUG] returning pkg_filename, pkg_url')
