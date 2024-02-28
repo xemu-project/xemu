@@ -16,14 +16,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
+#include "ui/shader/xemu-logo-frag.h"
 #include "ui/xemu-widescreen.h"
 #include "gl-helpers.hh"
 #include "common.hh"
 #include "data/controller_mask.png.h"
 #include "data/controller_mask_s.png.h"
-#include "data/sb_controller_mask.png.h"
 #include "data/fight_stick_mask.png.h"
 #include "data/logo_sdf.png.h"
+#include "data/sb_controller_mask.png.h"
 #include "data/xemu_64x64.png.h"
 #include "data/xmu_mask.png.h"
 #include "notifications.hh"
@@ -32,18 +33,10 @@
 #include <math.h>
 #include <stdio.h>
 #include <vector>
-#include "ui/shader/xemu-logo-frag.h"
 
-Fbo *controller_fbo, 
-    *xmu_fbo,
-    *logo_fbo;
-GLuint g_controller_tex,
-       g_controller_s_tex,
-       g_sb_controller_tex,
-       g_fight_stick_tex,
-       g_logo_tex,
-       g_icon_tex, 
-       g_xmu_tex;
+Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
+GLuint g_controller_tex, g_controller_s_tex, g_sb_controller_tex,
+    g_fight_stick_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
 
 enum class ShaderType {
     Blit,
@@ -435,26 +428,26 @@ static const struct rect tex_items[] = {
 };
 
 static const struct rect sb_tex_items[] = {
-    {   0, 148, 467, 364 },  // obj_controller
-    {   2,  79,   7,   7 },  // radio_dial
-    {  21,  55,  48,  29 },  // transmission lever
-    {  70,   0,  50,  79 },  // Slide Step Pedal
-    { 121,   4,  39,  63 },  // Brake Pedal
-    { 160,   2,  40,  74 },  // Accel Pedal
-    {   1,  55,  20,  22 },  // Sight Change Stick
-    {   0,   0,  34,  55 },  // Left Stick
-    {  34,   0,  33,  55 },  // Right Stick
-    {  21,   2,   3,   3 },  // Toggle
+    { 0, 148, 467, 364 }, // obj_controller
+    { 2, 79, 7, 7 }, // radio_dial
+    { 21, 55, 48, 29 }, // transmission lever
+    { 70, 0, 50, 79 }, // Slide Step Pedal
+    { 121, 4, 39, 63 }, // Brake Pedal
+    { 160, 2, 40, 74 }, // Accel Pedal
+    { 1, 55, 20, 22 }, // Sight Change Stick
+    { 0, 0, 34, 55 }, // Left Stick
+    { 34, 0, 33, 55 }, // Right Stick
+    { 21, 2, 3, 3 }, // Toggle
 };
 
 static const struct rect fight_stick_tex_items[] = {
-    {   0, 183, 467, 329 }, // obj_controller
-    {   0,   0,  60,  60 }, // obj_stick
-    {  67, 104,  68,  44 }, // obj_port_socket
-    {  67,  76,  28,  28 }, // obj_port_lbl_1
-    {  67,  48,  28,  28 }, // obj_port_lbl_2
-    {  67,  20,  28,  28 }, // obj_port_lbl_3
-    {  95,  76,  28,  28 }, // obj_port_lbl_4
+    { 0, 183, 467, 329 }, // obj_controller
+    { 0, 0, 60, 60 }, // obj_stick
+    { 67, 104, 68, 44 }, // obj_port_socket
+    { 67, 76, 28, 28 }, // obj_port_lbl_1
+    { 67, 48, 28, 28 }, // obj_port_lbl_2
+    { 67, 20, 28, 28 }, // obj_port_lbl_3
+    { 95, 76, 28, 28 }, // obj_port_lbl_4
 };
 
 enum tex_item_names {
@@ -484,11 +477,15 @@ enum sb_tex_item_names {
 void InitCustomRendering(void)
 {
     glActiveTexture(GL_TEXTURE0);
-    
-    g_controller_tex = LoadTextureFromMemory(controller_mask_data, controller_mask_size);
-    g_controller_s_tex = LoadTextureFromMemory(controller_mask_s_data, controller_mask_s_size);
-    g_sb_controller_tex = LoadTextureFromMemory(sb_controller_mask_data, sb_controller_mask_size);
-    g_fight_stick_tex = LoadTextureFromMemory(fight_stick_mask_data, fight_stick_mask_size);
+
+    g_controller_tex =
+        LoadTextureFromMemory(controller_mask_data, controller_mask_size);
+    g_controller_s_tex =
+        LoadTextureFromMemory(controller_mask_s_data, controller_mask_s_size);
+    g_sb_controller_tex =
+        LoadTextureFromMemory(sb_controller_mask_data, sb_controller_mask_size);
+    g_fight_stick_tex =
+        LoadTextureFromMemory(fight_stick_mask_data, fight_stick_mask_size);
 
     g_decal_shader = NewDecalShader(ShaderType::Mask);
     controller_fbo = new Fbo(512, 512);
@@ -514,7 +511,7 @@ static void RenderMeter(DecalShader *s, float x, float y, float width,
 }
 
 void RenderController_Duke(float frame_x, float frame_y, uint32_t primary_color,
-                      uint32_t secondary_color, ControllerState *state)
+                           uint32_t secondary_color, ControllerState *state)
 {
     // Location within the controller texture of masked button locations,
     // relative to the origin of the controller
@@ -564,11 +561,13 @@ void RenderController_Duke(float frame_x, float frame_y, uint32_t primary_color,
     // Check to see if the guide button is pressed
     const uint32_t animate_guide_button_duration = 2000;
     if (state->gp.buttons & CONTROLLER_BUTTON_GUIDE) {
-        state->gp.animate_guide_button_end = now + animate_guide_button_duration;
+        state->gp.animate_guide_button_end =
+            now + animate_guide_button_duration;
     }
 
     if (now < state->gp.animate_guide_button_end) {
-        t = 1.0f - (float)(state->gp.animate_guide_button_end-now)/(float)animate_guide_button_duration;
+        t = 1.0f - (float)(state->gp.animate_guide_button_end - now) /
+                       (float)animate_guide_button_duration;
         float sin_wav = (1-sin(M_PI * t / 2.0f));
 
         // Animate guide button by highlighting logo jewel and fading out over time
@@ -609,32 +608,34 @@ void RenderController_Duke(float frame_x, float frame_y, uint32_t primary_color,
     float h = tex_items[obj_lstick].h;
     float c_x = frame_x+lstick_ctr.x;
     float c_y = frame_y+lstick_ctr.y;
-    float lstick_x = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_X]/32768.0;
-    float lstick_y = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_Y]/32768.0;
-    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * lstick_x),
-                (int)(c_y - h / 2.0f + 10.0f * lstick_y), w, h,
-                tex_items[obj_lstick].x, tex_items[obj_lstick].y, w, h,
-                (state->gp.buttons & CONTROLLER_BUTTON_LSTICK) ? secondary_color :
-                                                              primary_color,
-                (state->gp.buttons & CONTROLLER_BUTTON_LSTICK) ? primary_color :
-                                                              secondary_color,
-                0);
+    float lstick_x = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_X] / 32768.0;
+    float lstick_y = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_Y] / 32768.0;
+    RenderDecal(
+        g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * lstick_x),
+        (int)(c_y - h / 2.0f + 10.0f * lstick_y), w, h, tex_items[obj_lstick].x,
+        tex_items[obj_lstick].y, w, h,
+        (state->gp.buttons & CONTROLLER_BUTTON_LSTICK) ? secondary_color :
+                                                         primary_color,
+        (state->gp.buttons & CONTROLLER_BUTTON_LSTICK) ? primary_color :
+                                                         secondary_color,
+        0);
 
     // Render right thumbstick
     w = tex_items[obj_rstick].w;
     h = tex_items[obj_rstick].h;
     c_x = frame_x+rstick_ctr.x;
     c_y = frame_y+rstick_ctr.y;
-    float rstick_x = (float)state->gp.axis[CONTROLLER_AXIS_RSTICK_X]/32768.0;
-    float rstick_y = (float)state->gp.axis[CONTROLLER_AXIS_RSTICK_Y]/32768.0;
-    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * rstick_x),
-                (int)(c_y - h / 2.0f + 10.0f * rstick_y), w, h,
-                tex_items[obj_rstick].x, tex_items[obj_rstick].y, w, h,
-                (state->gp.buttons & CONTROLLER_BUTTON_RSTICK) ? secondary_color :
-                                                              primary_color,
-                (state->gp.buttons & CONTROLLER_BUTTON_RSTICK) ? primary_color :
-                                                              secondary_color,
-                0);
+    float rstick_x = (float)state->gp.axis[CONTROLLER_AXIS_RSTICK_X] / 32768.0;
+    float rstick_y = (float)state->gp.axis[CONTROLLER_AXIS_RSTICK_Y] / 32768.0;
+    RenderDecal(
+        g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * rstick_x),
+        (int)(c_y - h / 2.0f + 10.0f * rstick_y), w, h, tex_items[obj_rstick].x,
+        tex_items[obj_rstick].y, w, h,
+        (state->gp.buttons & CONTROLLER_BUTTON_RSTICK) ? secondary_color :
+                                                         primary_color,
+        (state->gp.buttons & CONTROLLER_BUTTON_RSTICK) ? primary_color :
+                                                         secondary_color,
+        0);
 
     glBlendFunc(GL_ONE, GL_ZERO); // Don't blend, just overwrite values in buffer
 
@@ -651,7 +652,8 @@ void RenderController_Duke(float frame_x, float frame_y, uint32_t primary_color,
     // Animate trigger alpha down after a period of inactivity
     alpha = 0x80;
     if (state->gp.animate_trigger_end > now) {
-        t = 1.0f - (float)(state->gp.animate_trigger_end-now)/(float)animate_trigger_duration;
+        t = 1.0f - (float)(state->gp.animate_trigger_end - now) /
+                       (float)animate_trigger_duration;
         float sin_wav = (1-sin(M_PI * t / 2.0f));
         alpha += fmin(sin_wav * 0x40, 0x80);
     }
@@ -673,13 +675,13 @@ void RenderController_Duke(float frame_x, float frame_y, uint32_t primary_color,
 }
 
 void RenderController_S(float frame_x, float frame_y, uint32_t primary_color,
-                      uint32_t secondary_color, ControllerState *state)
+                        uint32_t secondary_color, ControllerState *state)
 {
     // Location within the controller texture of masked button locations,
     // relative to the origin of the controller
     const struct rect jewel = { 194, 213, 84, 84 };
     const struct rect lstick_ctr = { 103, 254, 0, 0 };
-    const struct rect rstick_ctr = { 295, 176,   0,   0 };
+    const struct rect rstick_ctr = { 295, 176, 0, 0 };
     const struct rect buttons[12] = {
         { 347, 200, 34, 34 }, // A
         { 381, 235, 34, 34 }, // B
@@ -689,8 +691,8 @@ void RenderController_S(float frame_x, float frame_y, uint32_t primary_color,
         { 150, 187, 26, 31 }, // D-Up
         { 173, 165, 31, 26 }, // D-Right
         { 150, 135, 26, 31 }, // D-Down
-        {  45, 195, 20, 24 }, // Back
-        {  70, 163, 26, 26 }, // Start
+        { 45, 195, 20, 24 }, // Back
+        { 70, 163, 26, 26 }, // Start
         { 352, 145, 30, 30 }, // White
         { 388, 172, 30, 30 }, // Black
     };
@@ -723,20 +725,23 @@ void RenderController_S(float frame_x, float frame_y, uint32_t primary_color,
     // Check to see if the guide button is pressed
     const uint32_t animate_guide_button_duration = 2000;
     if (state->gp.buttons & CONTROLLER_BUTTON_GUIDE) {
-        state->gp.animate_guide_button_end = now + animate_guide_button_duration;
+        state->gp.animate_guide_button_end =
+            now + animate_guide_button_duration;
     }
 
     if (now < state->gp.animate_guide_button_end) {
-        t = 1.0f - (float)(state->gp.animate_guide_button_end-now)/(float)animate_guide_button_duration;
-        float sin_wav = (1-sin(M_PI * t / 2.0f));
+        t = 1.0f - (float)(state->gp.animate_guide_button_end - now) /
+                       (float)animate_guide_button_duration;
+        float sin_wav = (1 - sin(M_PI * t / 2.0f));
 
-        // Animate guide button by highlighting logo jewel and fading out over time
+        // Animate guide button by highlighting logo jewel and fading out over
+        // time
         alpha = sin_wav * 255.0f;
         jewel_color = primary_color + alpha;
 
         // Add a little extra flare: wiggle the frame around while we rumble
-        frame_x += ((float)(rand() % 5)-2.5) * (1-t);
-        frame_y += ((float)(rand() % 5)-2.5) * (1-t);
+        frame_x += ((float)(rand() % 5) - 2.5) * (1 - t);
+        frame_y += ((float)(rand() % 5) - 2.5) * (1 - t);
         rumble_l = rumble_r = sin_wav;
     }
 
@@ -747,7 +752,8 @@ void RenderController_S(float frame_x, float frame_y, uint32_t primary_color,
                 tex_items[obj_controller].w, tex_items[obj_controller].h,
                 primary_color, secondary_color, 0);
 
-    glBlendFunc(GL_ONE_MINUS_DST_ALPHA, GL_ONE); // Blend with controller cutouts
+    glBlendFunc(GL_ONE_MINUS_DST_ALPHA,
+                GL_ONE); // Blend with controller cutouts
     RenderDecal(g_decal_shader, frame_x + jewel.x, frame_y + jewel.y, jewel.w,
                 jewel.h, 0, 0, 1, 1, 0, 0, jewel_color);
 
@@ -766,36 +772,39 @@ void RenderController_S(float frame_x, float frame_y, uint32_t primary_color,
     // Render left thumbstick
     float w = tex_items[obj_lstick].w;
     float h = tex_items[obj_lstick].h;
-    float c_x = frame_x+lstick_ctr.x;
-    float c_y = frame_y+lstick_ctr.y;
-    float lstick_x = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_X]/32768.0;
-    float lstick_y = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_Y]/32768.0;
-    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * lstick_x),
-                (int)(c_y - h / 2.0f + 10.0f * lstick_y), w, h,
-                tex_items[obj_lstick].x, tex_items[obj_lstick].y, w, h,
-                (state->gp.buttons & CONTROLLER_BUTTON_LSTICK) ? secondary_color :
-                                                              primary_color,
-                (state->gp.buttons & CONTROLLER_BUTTON_LSTICK) ? primary_color :
-                                                              secondary_color,
-                0);
+    float c_x = frame_x + lstick_ctr.x;
+    float c_y = frame_y + lstick_ctr.y;
+    float lstick_x = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_X] / 32768.0;
+    float lstick_y = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_Y] / 32768.0;
+    RenderDecal(
+        g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * lstick_x),
+        (int)(c_y - h / 2.0f + 10.0f * lstick_y), w, h, tex_items[obj_lstick].x,
+        tex_items[obj_lstick].y, w, h,
+        (state->gp.buttons & CONTROLLER_BUTTON_LSTICK) ? secondary_color :
+                                                         primary_color,
+        (state->gp.buttons & CONTROLLER_BUTTON_LSTICK) ? primary_color :
+                                                         secondary_color,
+        0);
 
     // Render right thumbstick
     w = tex_items[obj_rstick].w;
     h = tex_items[obj_rstick].h;
-    c_x = frame_x+rstick_ctr.x;
-    c_y = frame_y+rstick_ctr.y;
-    float rstick_x = (float)state->gp.axis[CONTROLLER_AXIS_RSTICK_X]/32768.0;
-    float rstick_y = (float)state->gp.axis[CONTROLLER_AXIS_RSTICK_Y]/32768.0;
-    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * rstick_x),
-                (int)(c_y - h / 2.0f + 10.0f * rstick_y), w, h,
-                tex_items[obj_rstick].x, tex_items[obj_rstick].y, w, h,
-                (state->gp.buttons & CONTROLLER_BUTTON_RSTICK) ? secondary_color :
-                                                              primary_color,
-                (state->gp.buttons & CONTROLLER_BUTTON_RSTICK) ? primary_color :
-                                                              secondary_color,
-                0);
+    c_x = frame_x + rstick_ctr.x;
+    c_y = frame_y + rstick_ctr.y;
+    float rstick_x = (float)state->gp.axis[CONTROLLER_AXIS_RSTICK_X] / 32768.0;
+    float rstick_y = (float)state->gp.axis[CONTROLLER_AXIS_RSTICK_Y] / 32768.0;
+    RenderDecal(
+        g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * rstick_x),
+        (int)(c_y - h / 2.0f + 10.0f * rstick_y), w, h, tex_items[obj_rstick].x,
+        tex_items[obj_rstick].y, w, h,
+        (state->gp.buttons & CONTROLLER_BUTTON_RSTICK) ? secondary_color :
+                                                         primary_color,
+        (state->gp.buttons & CONTROLLER_BUTTON_RSTICK) ? primary_color :
+                                                         secondary_color,
+        0);
 
-    glBlendFunc(GL_ONE, GL_ZERO); // Don't blend, just overwrite values in buffer
+    glBlendFunc(GL_ONE,
+                GL_ZERO); // Don't blend, just overwrite values in buffer
 
     // Render trigger bars
     float ltrig = state->gp.axis[CONTROLLER_AXIS_LTRIG] / 32767.0;
@@ -810,8 +819,9 @@ void RenderController_S(float frame_x, float frame_y, uint32_t primary_color,
     // Animate trigger alpha down after a period of inactivity
     alpha = 0x80;
     if (state->gp.animate_trigger_end > now) {
-        t = 1.0f - (float)(state->gp.animate_trigger_end-now)/(float)animate_trigger_duration;
-        float sin_wav = (1-sin(M_PI * t / 2.0f));
+        t = 1.0f - (float)(state->gp.animate_trigger_end - now) /
+                       (float)animate_trigger_duration;
+        float sin_wav = (1 - sin(M_PI * t / 2.0f));
         alpha += fmin(sin_wav * 0x40, 0x80);
     }
 
@@ -832,7 +842,7 @@ void RenderController_S(float frame_x, float frame_y, uint32_t primary_color,
 }
 
 void RenderController_SB(float frame_x, float frame_y, uint32_t primary_color,
-                      uint32_t secondary_color, ControllerState *state)
+                         uint32_t secondary_color, ControllerState *state)
 {
     // Location within the controller texture of masked button locations,
     // relative to the origin of the controller
@@ -850,45 +860,45 @@ void RenderController_SB(float frame_x, float frame_y, uint32_t primary_color,
     const struct rect transmission_lever_ctr_3 = { 44, 248, 0, 0 };
     const struct rect transmission_lever_ctr_4 = { 44, 258, 0, 0 };
     const struct rect transmission_lever_ctr_5 = { 44, 268, 0, 0 };
-    const struct rect filt_ctrl_sys_ctr           = { 103, 194,   0,   0 };
-    const struct rect oxygen_supply_system_ctr    = { 112, 205,   0,   0 };
-    const struct rect fuel_flow_rate_ctr          = { 126, 188,   0,   0 };
-    const struct rect buffer_material_ctr         = { 135, 200,   0,   0 };
-    const struct rect vt_location_measurement_ctr = { 145, 210,   0,   0 };
+    const struct rect filt_ctrl_sys_ctr = { 103, 194, 0, 0 };
+    const struct rect oxygen_supply_system_ctr = { 112, 205, 0, 0 };
+    const struct rect fuel_flow_rate_ctr = { 126, 188, 0, 0 };
+    const struct rect buffer_material_ctr = { 135, 200, 0, 0 };
+    const struct rect vt_location_measurement_ctr = { 145, 210, 0, 0 };
     const struct rect buttons[33] = {
-        { 350, 309,  11,  29 }, //SBC_BUTTON_MAIN_WEAPON
-        { 380, 308,   9,  35 }, //SBC_BUTTON_SUB_WEAPON
-        { 336, 316,  12,  12 }, //SBC_BUTTON_LOCK_ON
-        { 418, 263,  16,  15 }, //SBC_BUTTON_EJECT
-        { 418, 228,  16,  15 }, //SBC_BUTTON_COCKPIT_HATCH
-        { 418, 206,  16,  15 }, //SBC_BUTTON_IGNITION
-        { 418, 184,  16,  15 }, //SBC_BUTTON_START
-        { 339, 209,  22,   6 }, //SBC_BUTTON_OPEN_CLOSE
-        { 375, 209,  22,   6 }, //SBC_BUTTON_MAP_ZOOM_IN_OUT
-        { 339, 198,  22,   6 }, //SBC_BUTTON_MODE_SELECT
-        { 375, 198,  22,   6 }, //SBC_BUTTON_SUB_MONITOR_MODE_SELECT
-        { 339, 186,  22,   6 }, //SBC_BUTTON_ZOOM_IN
-        { 375, 186,  22,   6 }, //SBC_BUTTON_ZOOM_OUT
-        { 279, 274,   7,  13 }, //SBC_BUTTON_FSS
-        { 279, 252,   7,  13 }, //SBC_BUTTON_MANIPULATOR
-        { 279, 230,   7,  13 }, //SBC_BUTTON_LINE_COLOR_CHANGE
-        { 190, 204,  22,   6 }, //SBC_BUTTON_WASHING
-        { 223, 204,  22,   6 }, //SBC_BUTTON_EXTINGUISHER
-        { 256, 204,  22,   6 }, //SBC_BUTTON_CHAFF
-        { 268, 274,   7,  13 }, //SBC_BUTTON_TANK_DETACH
-        { 268, 252,   7,  13 }, //SBC_BUTTON_OVERRIDE
-        { 268, 230,   7,  13 }, //SBC_BUTTON_NIGHT_SCOPE
-        { 257, 274,   7,  13 }, //SBC_BUTTON_FUNC1
-        { 257, 252,   7,  13 }, //SBC_BUTTON_FUNC2
-        { 257, 230,   7,  13 }, //SBC_BUTTON_FUNC3
-        { 190, 189,  22,   6 }, //SBC_BUTTON_MAIN_WEAPON_CONTROL
-        { 223, 189,  22,   6 }, //SBC_BUTTON_SUB_WEAPON_CONTROL
-        { 256, 189,  22,   6 }, //SBC_BUTTON_MAGAZINE_CHANGE
-        { 181, 272,   7,  13 }, //SBC_BUTTON_COM1
-        { 192, 272,   7,  13 }, //SBC_BUTTON_COM2
-        { 202, 272,   7,  13 }, //SBC_BUTTON_COM3
-        { 213, 272,   7,  13 }, //SBC_BUTTON_COM4
-        { 223, 272,   7,  13 }  //SBC_BUTTON_COM5
+        { 350, 309, 11, 29 }, // SBC_BUTTON_MAIN_WEAPON
+        { 380, 308, 9, 35 }, // SBC_BUTTON_SUB_WEAPON
+        { 336, 316, 12, 12 }, // SBC_BUTTON_LOCK_ON
+        { 418, 263, 16, 15 }, // SBC_BUTTON_EJECT
+        { 418, 228, 16, 15 }, // SBC_BUTTON_COCKPIT_HATCH
+        { 418, 206, 16, 15 }, // SBC_BUTTON_IGNITION
+        { 418, 184, 16, 15 }, // SBC_BUTTON_START
+        { 339, 209, 22, 6 }, // SBC_BUTTON_OPEN_CLOSE
+        { 375, 209, 22, 6 }, // SBC_BUTTON_MAP_ZOOM_IN_OUT
+        { 339, 198, 22, 6 }, // SBC_BUTTON_MODE_SELECT
+        { 375, 198, 22, 6 }, // SBC_BUTTON_SUB_MONITOR_MODE_SELECT
+        { 339, 186, 22, 6 }, // SBC_BUTTON_ZOOM_IN
+        { 375, 186, 22, 6 }, // SBC_BUTTON_ZOOM_OUT
+        { 279, 274, 7, 13 }, // SBC_BUTTON_FSS
+        { 279, 252, 7, 13 }, // SBC_BUTTON_MANIPULATOR
+        { 279, 230, 7, 13 }, // SBC_BUTTON_LINE_COLOR_CHANGE
+        { 190, 204, 22, 6 }, // SBC_BUTTON_WASHING
+        { 223, 204, 22, 6 }, // SBC_BUTTON_EXTINGUISHER
+        { 256, 204, 22, 6 }, // SBC_BUTTON_CHAFF
+        { 268, 274, 7, 13 }, // SBC_BUTTON_TANK_DETACH
+        { 268, 252, 7, 13 }, // SBC_BUTTON_OVERRIDE
+        { 268, 230, 7, 13 }, // SBC_BUTTON_NIGHT_SCOPE
+        { 257, 274, 7, 13 }, // SBC_BUTTON_FUNC1
+        { 257, 252, 7, 13 }, // SBC_BUTTON_FUNC2
+        { 257, 230, 7, 13 }, // SBC_BUTTON_FUNC3
+        { 190, 189, 22, 6 }, // SBC_BUTTON_MAIN_WEAPON_CONTROL
+        { 223, 189, 22, 6 }, // SBC_BUTTON_SUB_WEAPON_CONTROL
+        { 256, 189, 22, 6 }, // SBC_BUTTON_MAGAZINE_CHANGE
+        { 181, 272, 7, 13 }, // SBC_BUTTON_COM1
+        { 192, 272, 7, 13 }, // SBC_BUTTON_COM2
+        { 202, 272, 7, 13 }, // SBC_BUTTON_COM3
+        { 213, 272, 7, 13 }, // SBC_BUTTON_COM4
+        { 223, 272, 7, 13 } // SBC_BUTTON_COM5
     };
 
     glUseProgram(g_decal_shader->prog);
@@ -900,7 +910,7 @@ void RenderController_SB(float frame_x, float frame_y, uint32_t primary_color,
     // around to visualize rumble in action
     frame_x += 5;
     frame_y += 5;
-    
+
     glBlendEquation(GL_FUNC_ADD);
     glBlendFunc(GL_ONE, GL_ZERO);
 
@@ -911,19 +921,16 @@ void RenderController_SB(float frame_x, float frame_y, uint32_t primary_color,
                 sb_tex_items[obj_controller].w, sb_tex_items[obj_controller].h,
                 primary_color, secondary_color, 0);
 
-    glBlendFunc(GL_ONE_MINUS_DST_ALPHA, GL_ONE); // Blend with controller cutouts
+    glBlendFunc(GL_ONE_MINUS_DST_ALPHA,
+                GL_ONE); // Blend with controller cutouts
 
-    //The controller has alpha cutouts where the buttons are. Draw a surface
-    //behind the buttons if they are activated
+    // The controller has alpha cutouts where the buttons are. Draw a surface
+    // behind the buttons if they are activated
     for (int i = 0; i < 33; i++) {
         if (state->sbc.buttons & (1ULL << i)) {
-            RenderDecal(g_decal_shader, 
-                frame_x + buttons[i].x,
-                frame_y + buttons[i].y, 
-                buttons[i].w, 
-                buttons[i].h, 
-                0, 0, 1, 1, 0, 0, 
-                primary_color + 0xff);
+            RenderDecal(g_decal_shader, frame_x + buttons[i].x,
+                        frame_y + buttons[i].y, buttons[i].w, buttons[i].h, 0,
+                        0, 1, 1, 0, 0, primary_color + 0xff);
         }
     }
 
@@ -932,148 +939,138 @@ void RenderController_SB(float frame_x, float frame_y, uint32_t primary_color,
     // Render sight change joystick
     float w = sb_tex_items[obj_sight_change_stick].w;
     float h = sb_tex_items[obj_sight_change_stick].h;
-    float c_x = frame_x+sight_change_ctr.x;
-    float c_y = frame_y+sight_change_ctr.y;
-    float scstick_x = (float)state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X]/32768.0;
-    float scstick_y = (float)state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y]/32768.0;    
-    RenderDecal(g_decal_shader, 
-                (int)(c_x - w / 2.0f + 5.0f * scstick_x),
-                (int)(c_y - h / 2.0f - 5.0f * scstick_y), w, h,
-                sb_tex_items[obj_sight_change_stick].x, sb_tex_items[obj_sight_change_stick].y, w, h,
-                (state->sbc.buttons & SBC_BUTTON_SIGHT_CHANGE) ? secondary_color :
-                                                              primary_color,
-                (state->sbc.buttons & SBC_BUTTON_SIGHT_CHANGE) ? primary_color :
-                                                              secondary_color,
-                0);
+    float c_x = frame_x + sight_change_ctr.x;
+    float c_y = frame_y + sight_change_ctr.y;
+    float scstick_x = (float)state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X] / 32768.0;
+    float scstick_y = (float)state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y] / 32768.0;
+    RenderDecal(
+        g_decal_shader, (int)(c_x - w / 2.0f + 5.0f * scstick_x),
+        (int)(c_y - h / 2.0f - 5.0f * scstick_y), w, h,
+        sb_tex_items[obj_sight_change_stick].x,
+        sb_tex_items[obj_sight_change_stick].y, w, h,
+        (state->sbc.buttons & SBC_BUTTON_SIGHT_CHANGE) ? secondary_color :
+                                                         primary_color,
+        (state->sbc.buttons & SBC_BUTTON_SIGHT_CHANGE) ? primary_color :
+                                                         secondary_color,
+        0);
 
     // Render left joystick
     w = sb_tex_items[obj_left_stick].w;
     h = sb_tex_items[obj_left_stick].h;
-    c_x = frame_x+lstick_ctr.x;
-    c_y = frame_y+lstick_ctr.y;
-    float lstick_x = (float)state->sbc.axis[SBC_AXIS_ROTATION_LEVER]/32768.0;
+    c_x = frame_x + lstick_ctr.x;
+    c_y = frame_y + lstick_ctr.y;
+    float lstick_x = (float)state->sbc.axis[SBC_AXIS_ROTATION_LEVER] / 32768.0;
     RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f + 23.0f * lstick_x),
-                (int)(c_y - h / 2.0f), w, h,
-                sb_tex_items[obj_left_stick].x, sb_tex_items[obj_left_stick].y, w, h,
-                primary_color,
-                secondary_color,
-                0);
+                (int)(c_y - h / 2.0f), w, h, sb_tex_items[obj_left_stick].x,
+                sb_tex_items[obj_left_stick].y, w, h, primary_color,
+                secondary_color, 0);
 
     // Render right joystick
     w = sb_tex_items[obj_right_stick].w;
     h = sb_tex_items[obj_right_stick].h;
-    c_x = frame_x+rstick_ctr.x;
-    c_y = frame_y+rstick_ctr.y;
-    float rstick_x = (float)state->sbc.axis[SBC_AXIS_AIMING_X]/32768.0;
-    float rstick_y = (float)state->sbc.axis[SBC_AXIS_AIMING_Y]/32768.0;
-    RenderDecal(g_decal_shader, 
-                (int)(c_x - w / 2.0f + 23.0f * rstick_x),
+    c_x = frame_x + rstick_ctr.x;
+    c_y = frame_y + rstick_ctr.y;
+    float rstick_x = (float)state->sbc.axis[SBC_AXIS_AIMING_X] / 32768.0;
+    float rstick_y = (float)state->sbc.axis[SBC_AXIS_AIMING_Y] / 32768.0;
+    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f + 23.0f * rstick_x),
                 (int)(c_y - h / 2.0f - 20.0f * rstick_y), w, h,
-                sb_tex_items[obj_right_stick].x, sb_tex_items[obj_right_stick].y, w, h,
-                primary_color,
-                secondary_color,
-                0);
+                sb_tex_items[obj_right_stick].x,
+                sb_tex_items[obj_right_stick].y, w, h, primary_color,
+                secondary_color, 0);
 
     // Render accel pedal
     w = sb_tex_items[obj_accel_pedal].w;
     h = sb_tex_items[obj_accel_pedal].h;
-    c_x = frame_x+accel_pedal.x;
-    c_y = frame_y+accel_pedal.y;
-    RenderDecal(g_decal_shader, 
-                c_x, c_y + 10.0f * state->sbc.axis[SBC_AXIS_RIGHT_PEDAL] / 32768.0f, w, h,
-                sb_tex_items[obj_accel_pedal].x, sb_tex_items[obj_accel_pedal].y, w, h,
-                primary_color,
-                secondary_color,
-                0);
+    c_x = frame_x + accel_pedal.x;
+    c_y = frame_y + accel_pedal.y;
+    RenderDecal(g_decal_shader, c_x,
+                c_y + 10.0f * state->sbc.axis[SBC_AXIS_RIGHT_PEDAL] / 32768.0f,
+                w, h, sb_tex_items[obj_accel_pedal].x,
+                sb_tex_items[obj_accel_pedal].y, w, h, primary_color,
+                secondary_color, 0);
 
     // Brake accel pedal
     w = sb_tex_items[obj_brake_pedal].w;
     h = sb_tex_items[obj_brake_pedal].h;
-    c_x = frame_x+brake_pedal.x;
-    c_y = frame_y+brake_pedal.y;
-    RenderDecal(g_decal_shader, 
-                c_x, c_y + 10.0f * state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL] / 32768.0f, w, h,
-                sb_tex_items[obj_brake_pedal].x, sb_tex_items[obj_brake_pedal].y, w, h,
-                primary_color,
-                secondary_color,
-                0);
+    c_x = frame_x + brake_pedal.x;
+    c_y = frame_y + brake_pedal.y;
+    RenderDecal(g_decal_shader, c_x,
+                c_y + 10.0f * state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL] / 32768.0f,
+                w, h, sb_tex_items[obj_brake_pedal].x,
+                sb_tex_items[obj_brake_pedal].y, w, h, primary_color,
+                secondary_color, 0);
 
     // Slide step pedal
     w = sb_tex_items[obj_slide_step_pedal].w;
     h = sb_tex_items[obj_slide_step_pedal].h;
-    c_x = frame_x+slide_step_pedal.x;
-    c_y = frame_y+slide_step_pedal.y;
-    RenderDecal(g_decal_shader, 
-                c_x, c_y + 10.0f * state->sbc.axis[SBC_AXIS_LEFT_PEDAL] / 32768.0f, w, h,
-                sb_tex_items[obj_slide_step_pedal].x, sb_tex_items[obj_slide_step_pedal].y, w, h,
-                primary_color,
-                secondary_color,
-                0);
+    c_x = frame_x + slide_step_pedal.x;
+    c_y = frame_y + slide_step_pedal.y;
+    RenderDecal(g_decal_shader, c_x,
+                c_y + 10.0f * state->sbc.axis[SBC_AXIS_LEFT_PEDAL] / 32768.0f,
+                w, h, sb_tex_items[obj_slide_step_pedal].x,
+                sb_tex_items[obj_slide_step_pedal].y, w, h, primary_color,
+                secondary_color, 0);
 
     // Render the radio dial
     w = sb_tex_items[obj_radio_dial].w;
     h = sb_tex_items[obj_radio_dial].h;
     c_x = frame_x + radio_dial_ctr.x;
     c_y = frame_x + radio_dial_ctr.y;
-    float tunerStep = 0.125f * 3.14159f;    
-    // TODO: Figure out a way to either rotate the decal or remove the dot and move the dot based on current radio channel
-    RenderDecal(g_decal_shader,
-                (int)(c_x - w / 2.0f - 9 * cosf(tunerStep * state->sbc.tunerDial)), 
-                (int)(c_y - h / 2.0f + 11 * sinf(tunerStep * state->sbc.tunerDial)), w, h,
-                sb_tex_items[obj_radio_dial].x, sb_tex_items[obj_radio_dial].y, w, h,
-                primary_color,
-                secondary_color,
-                0);
+    float tunerStep = 0.125f * 3.14159f;
+    // TODO: Figure out a way to either rotate the decal or remove the dot and
+    // move the dot based on current radio channel
+    RenderDecal(
+        g_decal_shader,
+        (int)(c_x - w / 2.0f - 9 * cosf(tunerStep * state->sbc.tunerDial)),
+        (int)(c_y - h / 2.0f + 11 * sinf(tunerStep * state->sbc.tunerDial)), w,
+        h, sb_tex_items[obj_radio_dial].x, sb_tex_items[obj_radio_dial].y, w, h,
+        primary_color, secondary_color, 0);
 
     // Render the transmission lever
     w = sb_tex_items[obj_transmission_lever].w;
     h = sb_tex_items[obj_transmission_lever].h;
     c_x = frame_x + transmission_lever_ctr_1.x;
     c_y = frame_x + transmission_lever_ctr_1.y;
-    switch(state->sbc.gearLever)
-    {
-        case 254:
-            c_y = frame_y + transmission_lever_ctr_R.y;
-            break;
-        case 255:
-            c_y = frame_y + transmission_lever_ctr_N.y;
-            break;
-        case 1:
-            c_y = frame_y + transmission_lever_ctr_1.y;
-            break;
-        case 2:
-            c_y = frame_y + transmission_lever_ctr_2.y;
-            break;
-        case 3:
-            c_y = frame_y + transmission_lever_ctr_3.y;
-            break;
-        case 4:
-            c_y = frame_y + transmission_lever_ctr_4.y;
-            break;
-        case 5:
-            c_y = frame_y + transmission_lever_ctr_5.y;
-            break;
+    switch (state->sbc.gearLever) {
+    case 254:
+        c_y = frame_y + transmission_lever_ctr_R.y;
+        break;
+    case 255:
+        c_y = frame_y + transmission_lever_ctr_N.y;
+        break;
+    case 1:
+        c_y = frame_y + transmission_lever_ctr_1.y;
+        break;
+    case 2:
+        c_y = frame_y + transmission_lever_ctr_2.y;
+        break;
+    case 3:
+        c_y = frame_y + transmission_lever_ctr_3.y;
+        break;
+    case 4:
+        c_y = frame_y + transmission_lever_ctr_4.y;
+        break;
+    case 5:
+        c_y = frame_y + transmission_lever_ctr_5.y;
+        break;
     }
     // Determine the correct value for c_y based on the currently selected gear
-    RenderDecal(g_decal_shader,
-                (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w, h,
-                sb_tex_items[obj_transmission_lever].x, sb_tex_items[obj_transmission_lever].y, w, h,
-                primary_color,
-                secondary_color,
-                0);
+    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w,
+                h, sb_tex_items[obj_transmission_lever].x,
+                sb_tex_items[obj_transmission_lever].y, w, h, primary_color,
+                secondary_color, 0);
 
     // Filter Control System
     w = sb_tex_items[obj_toggle].w;
     h = sb_tex_items[obj_toggle].h;
     c_x = frame_x + filt_ctrl_sys_ctr.x;
     c_y = frame_y + filt_ctrl_sys_ctr.y;
-    if(state->sbc.toggleSwitches & (SBC_BUTTON_FILT_CONTROL_SYSTEM >> 32)) {
+    if (state->sbc.toggleSwitches & (SBC_BUTTON_FILT_CONTROL_SYSTEM >> 32)) {
         c_x -= 3;
         c_y += 4;
     }
-    RenderDecal(g_decal_shader,
-                (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w, h,
-                sb_tex_items[obj_toggle].x, sb_tex_items[obj_toggle].y, w, h,
+    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w,
+                h, sb_tex_items[obj_toggle].x, sb_tex_items[obj_toggle].y, w, h,
                 primary_color, secondary_color, 0);
 
     // Oxygen Supply System
@@ -1081,13 +1078,12 @@ void RenderController_SB(float frame_x, float frame_y, uint32_t primary_color,
     h = sb_tex_items[obj_toggle].h;
     c_x = frame_x + oxygen_supply_system_ctr.x;
     c_y = frame_y + oxygen_supply_system_ctr.y;
-    if(state->sbc.toggleSwitches & (SBC_BUTTON_OXYGEN_SUPPLY_SYSTEM >> 32)) {
+    if (state->sbc.toggleSwitches & (SBC_BUTTON_OXYGEN_SUPPLY_SYSTEM >> 32)) {
         c_x -= 3;
         c_y += 4;
     }
-    RenderDecal(g_decal_shader,
-                (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w, h,
-                sb_tex_items[obj_toggle].x, sb_tex_items[obj_toggle].y, w, h,
+    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w,
+                h, sb_tex_items[obj_toggle].x, sb_tex_items[obj_toggle].y, w, h,
                 primary_color, secondary_color, 0);
 
     // Fuel Flow Rate
@@ -1095,27 +1091,25 @@ void RenderController_SB(float frame_x, float frame_y, uint32_t primary_color,
     h = sb_tex_items[obj_toggle].h;
     c_x = frame_x + fuel_flow_rate_ctr.x;
     c_y = frame_y + fuel_flow_rate_ctr.y;
-    if(state->sbc.toggleSwitches & (SBC_BUTTON_FUEL_FLOW_RATE >> 32)) {
+    if (state->sbc.toggleSwitches & (SBC_BUTTON_FUEL_FLOW_RATE >> 32)) {
         c_x -= 3;
         c_y += 4;
     }
-    RenderDecal(g_decal_shader,
-                (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w, h,
-                sb_tex_items[obj_toggle].x, sb_tex_items[obj_toggle].y, w, h,
+    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w,
+                h, sb_tex_items[obj_toggle].x, sb_tex_items[obj_toggle].y, w, h,
                 primary_color, secondary_color, 0);
-    
+
     // Buffer Material
     w = sb_tex_items[obj_toggle].w;
     h = sb_tex_items[obj_toggle].h;
     c_x = frame_x + buffer_material_ctr.x;
     c_y = frame_y + buffer_material_ctr.y;
-    if(state->sbc.toggleSwitches & (SBC_BUTTON_BUFFER_MATERIAL >> 32)) {
+    if (state->sbc.toggleSwitches & (SBC_BUTTON_BUFFER_MATERIAL >> 32)) {
         c_x -= 3;
         c_y += 4;
     }
-    RenderDecal(g_decal_shader,
-                (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w, h,
-                sb_tex_items[obj_toggle].x, sb_tex_items[obj_toggle].y, w, h,
+    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w,
+                h, sb_tex_items[obj_toggle].x, sb_tex_items[obj_toggle].y, w, h,
                 primary_color, secondary_color, 0);
 
     // VT Location Measurement
@@ -1123,17 +1117,18 @@ void RenderController_SB(float frame_x, float frame_y, uint32_t primary_color,
     h = sb_tex_items[obj_toggle].h;
     c_x = frame_x + vt_location_measurement_ctr.x;
     c_y = frame_y + vt_location_measurement_ctr.y;
-    if(state->sbc.toggleSwitches & (SBC_BUTTON_VT_LOCATION_MEASUREMENT >> 32)) {
+    if (state->sbc.toggleSwitches &
+        (SBC_BUTTON_VT_LOCATION_MEASUREMENT >> 32)) {
         c_x -= 3;
         c_y += 4;
     }
-    RenderDecal(g_decal_shader,
-                (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w, h,
-                sb_tex_items[obj_toggle].x, sb_tex_items[obj_toggle].y, w, h,
+    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f), (int)(c_y - h / 2.0f), w,
+                h, sb_tex_items[obj_toggle].x, sb_tex_items[obj_toggle].y, w, h,
                 primary_color, secondary_color, 0);
 
-    glBlendFunc(GL_ONE, GL_ZERO); // Don't blend, just overwrite values in buffer
-    
+    glBlendFunc(GL_ONE,
+                GL_ZERO); // Don't blend, just overwrite values in buffer
+
     glBindVertexArray(0);
     glUseProgram(0);
 }
@@ -1150,10 +1145,10 @@ void RenderFightStick(float frame_x, float frame_y, uint32_t primary_color,
         { 224, 182, 37, 39 }, // B
         { 272, 207, 37, 39 }, // X
         { 324, 200, 37, 39 }, // Y
-        {   0,   0,  0,  0 }, // D-Left
-        {   0,   0,  0,  0 }, // D-Up
-        {   0,   0,  0,  0 }, // D-Right
-        {   0,   0,  0,  0 }, // D-Down
+        { 0, 0, 0, 0 }, // D-Left
+        { 0, 0, 0, 0 }, // D-Up
+        { 0, 0, 0, 0 }, // D-Right
+        { 0, 0, 0, 0 }, // D-Down
         { 378, 282, 21, 23 }, // Back
         { 402, 282, 21, 23 }, // Start
         { 118, 225, 21, 23 }, // White
@@ -1161,8 +1156,8 @@ void RenderFightStick(float frame_x, float frame_y, uint32_t primary_color,
     };
 
     const struct rect triggers[2] = {
-        {  70, 225, 21, 23 }, // L
-        {  93, 225, 21, 23 }  // R
+        { 70, 225, 21, 23 }, // L
+        { 93, 225, 21, 23 } // R
     };
 
     frame_x += 5;
@@ -1177,12 +1172,16 @@ void RenderFightStick(float frame_x, float frame_y, uint32_t primary_color,
 
     // Render controller texture
     RenderDecal(g_decal_shader, frame_x + 0, frame_y + 0,
-                fight_stick_tex_items[obj_controller].w, fight_stick_tex_items[obj_controller].h,
-                fight_stick_tex_items[obj_controller].x, fight_stick_tex_items[obj_controller].y,
-                fight_stick_tex_items[obj_controller].w, fight_stick_tex_items[obj_controller].h,
-                primary_color, secondary_color, 0);
+                fight_stick_tex_items[obj_controller].w,
+                fight_stick_tex_items[obj_controller].h,
+                fight_stick_tex_items[obj_controller].x,
+                fight_stick_tex_items[obj_controller].y,
+                fight_stick_tex_items[obj_controller].w,
+                fight_stick_tex_items[obj_controller].h, primary_color,
+                secondary_color, 0);
 
-    glBlendFunc(GL_ONE_MINUS_DST_ALPHA, GL_ONE); // Blend with controller cutouts
+    glBlendFunc(GL_ONE_MINUS_DST_ALPHA,
+                GL_ONE); // Blend with controller cutouts
 
     // The controller has alpha cutouts where the buttons are. Draw a surface
     // behind the buttons if they are activated
@@ -1197,17 +1196,15 @@ void RenderFightStick(float frame_x, float frame_y, uint32_t primary_color,
     // Render trigger bars
     float ltrig = state->gp.axis[CONTROLLER_AXIS_LTRIG] / 32767.0;
     float rtrig = state->gp.axis[CONTROLLER_AXIS_RTRIG] / 32767.0;
-    if(ltrig > 0.5)
-    {
+    if (ltrig > 0.5) {
         RenderDecal(g_decal_shader, frame_x + triggers[0].x,
-                    frame_y + triggers[0].y, triggers[0].w, triggers[0].h, 0,
-                    0, 1, 1, 0, 0, primary_color + 0xff);
+                    frame_y + triggers[0].y, triggers[0].w, triggers[0].h, 0, 0,
+                    1, 1, 0, 0, primary_color + 0xff);
     }
-    if(rtrig > 0.5)
-    {
+    if (rtrig > 0.5) {
         RenderDecal(g_decal_shader, frame_x + triggers[1].x,
-                    frame_y + triggers[1].y, triggers[1].w, triggers[1].h, 0,
-                    0, 1, 1, 0, 0, primary_color + 0xff);
+                    frame_y + triggers[1].y, triggers[1].w, triggers[1].h, 0, 0,
+                    1, 1, 0, 0, primary_color + 0xff);
     }
 
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Blend with controller
@@ -1215,18 +1212,20 @@ void RenderFightStick(float frame_x, float frame_y, uint32_t primary_color,
     // Render left thumbstick
     float w = fight_stick_tex_items[obj_lstick].w;
     float h = fight_stick_tex_items[obj_lstick].h;
-    float c_x = frame_x+stick_ctr.x;
-    float c_y = frame_y+stick_ctr.y;
-    float stick_x = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_X]/32768.0;
-    float stick_y = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_Y]/32768.0;
-    RenderDecal(g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * stick_x),
-                (int)(c_y - h / 2.0f + 10.0f * stick_y), w, h,
-                fight_stick_tex_items[obj_lstick].x, fight_stick_tex_items[obj_lstick].y, w, h,
-                (state->gp.buttons & CONTROLLER_BUTTON_LSTICK) ? secondary_color :
-                                                              primary_color,
-                (state->gp.buttons & CONTROLLER_BUTTON_LSTICK) ? primary_color :
-                                                              secondary_color,
-                0);
+    float c_x = frame_x + stick_ctr.x;
+    float c_y = frame_y + stick_ctr.y;
+    float stick_x = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_X] / 32768.0;
+    float stick_y = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_Y] / 32768.0;
+    RenderDecal(
+        g_decal_shader, (int)(c_x - w / 2.0f + 10.0f * stick_x),
+        (int)(c_y - h / 2.0f + 10.0f * stick_y), w, h,
+        fight_stick_tex_items[obj_lstick].x,
+        fight_stick_tex_items[obj_lstick].y, w, h,
+        (state->gp.buttons & CONTROLLER_BUTTON_LSTICK) ? secondary_color :
+                                                         primary_color,
+        (state->gp.buttons & CONTROLLER_BUTTON_LSTICK) ? primary_color :
+                                                         secondary_color,
+        0);
 
     glBindVertexArray(0);
     glUseProgram(0);
@@ -1235,14 +1234,18 @@ void RenderFightStick(float frame_x, float frame_y, uint32_t primary_color,
 void RenderController(float frame_x, float frame_y, uint32_t primary_color,
                       uint32_t secondary_color, ControllerState *state)
 {
-    if(strcmp(bound_drivers[state->bound], DRIVER_S) == 0)
-        RenderController_S(frame_x, frame_y, primary_color, secondary_color, state);
-    else if(strcmp(bound_drivers[state->bound], DRIVER_DUKE) == 0)
-        RenderController_Duke(frame_x, frame_y, primary_color, secondary_color, state);
-    else if(strcmp(bound_drivers[state->bound], DRIVER_STEEL_BATTALION) == 0)
-        RenderController_SB(frame_x, frame_y, primary_color, secondary_color, state);
-    else if(strcmp(bound_drivers[state->bound], DRIVER_ARCADE_STICK) == 0)
-        RenderFightStick(frame_x, frame_y, primary_color, secondary_color, state);
+    if (strcmp(bound_drivers[state->bound], DRIVER_S) == 0)
+        RenderController_S(frame_x, frame_y, primary_color, secondary_color,
+                           state);
+    else if (strcmp(bound_drivers[state->bound], DRIVER_DUKE) == 0)
+        RenderController_Duke(frame_x, frame_y, primary_color, secondary_color,
+                              state);
+    else if (strcmp(bound_drivers[state->bound], DRIVER_STEEL_BATTALION) == 0)
+        RenderController_SB(frame_x, frame_y, primary_color, secondary_color,
+                            state);
+    else if (strcmp(bound_drivers[state->bound], DRIVER_ARCADE_STICK) == 0)
+        RenderFightStick(frame_x, frame_y, primary_color, secondary_color,
+                         state);
 }
 
 void RenderControllerPort(float frame_x, float frame_y, int i,

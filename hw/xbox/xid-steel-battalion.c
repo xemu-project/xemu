@@ -21,7 +21,7 @@
 
 #include "xid.h"
 
-//#define DEBUG_XID
+// #define DEBUG_XID
 #ifdef DEBUG_XID
 #define DPRINTF printf
 #else
@@ -34,118 +34,125 @@
 #define STEEL_BATTALION_OUT_ENDPOINT_ID 0x01
 
 typedef struct XIDSteelBattalionReport {
-    uint8_t     bReportId;
-    uint8_t     bLength;
-    uint32_t    dwButtons;
-    uint8_t     bMoreButtons;
-    uint16_t    wPadding;
-    uint8_t  	bAimingX;
-    uint8_t     bPadding;
-    uint8_t  	bAimingY;
-    int16_t   	sRotationLever; // only high byte is used
-    int16_t   	sSightChangeX;  // only high byte is used
-    int16_t   	sSightChangeY;  // only high byte is used
-    uint16_t    wLeftPedal;     // only high byte is used
-    uint16_t    wMiddlePedal;   // only high byte is used
-    uint16_t    wRightPedal;    // only high byte is used
-    uint8_t   	ucTunerDial;    // low nibble, The 9 o'clock postion is 0, and the 6 o'clock position is 12
-    uint8_t   	ucGearLever;    // gear lever 1~5 for gear 1~5, 7~13 for gear R,N,1~5, 15 for gear R
+    uint8_t bReportId;
+    uint8_t bLength;
+    uint32_t dwButtons;
+    uint8_t bMoreButtons;
+    uint16_t wPadding;
+    uint8_t bAimingX;
+    uint8_t bPadding;
+    uint8_t bAimingY;
+    int16_t sRotationLever; // only high byte is used
+    int16_t sSightChangeX; // only high byte is used
+    int16_t sSightChangeY; // only high byte is used
+    uint16_t wLeftPedal; // only high byte is used
+    uint16_t wMiddlePedal; // only high byte is used
+    uint16_t wRightPedal; // only high byte is used
+    uint8_t ucTunerDial; // low nibble, The 9 o'clock postion is 0, and the 6
+                         // o'clock position is 12
+    uint8_t ucGearLever; // gear lever 1~5 for gear 1~5, 7~13 for gear R,N,1~5,
+                         // 15 for gear R
 } QEMU_PACKED XIDSteelBattalionReport;
 
-// Based on: https://github.com/Ryzee119/ogx360/blob/master/Firmware/src/usbd/usbd_xid.h:195
+// Based on:
+// https://github.com/Ryzee119/ogx360/blob/master/Firmware/src/usbd/usbd_xid.h:195
 typedef struct XIDSteelBattalionOutputReport {
-    uint8_t     report_id;
-    uint8_t     length;
-    uint8_t     EmergencyEject          : 4;
-    uint8_t     CockpitHatch            : 4;
-    uint8_t     Ignition                : 4;
-    uint8_t     Start                   : 4;
-    uint8_t     OpenClose               : 4;
-    uint8_t     MapZoomInOut            : 4;
-    uint8_t     ModeSelect              : 4;
-    uint8_t     SubMonitorModeSelect    : 4;
-    uint8_t     MainMonitorZoomIn       : 4;
-    uint8_t     MainMonitorZoomOut      : 4;
-    uint8_t     ForecastShootingSystem  : 4;
-    uint8_t     Manipulator             : 4;
-    uint8_t     LineColorChange         : 4;
-    uint8_t     Washing                 : 4;
-    uint8_t     Extinguisher            : 4;
-    uint8_t     Chaff                   : 4;
-    uint8_t     TankDetach              : 4;
-    uint8_t     Override                : 4;
-    uint8_t     NightScope              : 4;
-    uint8_t     F1                      : 4;
-    uint8_t     F2                      : 4;
-    uint8_t     F3                      : 4;
-    uint8_t     MainWeaponControl       : 4;
-    uint8_t     SubWeaponControl        : 4;
-    uint8_t     MagazineChange          : 4;
-    uint8_t     Comm1                   : 4;
-    uint8_t     Comm2                   : 4;
-    uint8_t     Comm3                   : 4;
-    uint8_t     Comm4                   : 4;
-    uint8_t     Comm5                   : 4;
-    uint8_t                             : 4;
-    uint8_t     GearR                   : 4;
-    uint8_t     GearN                   : 4;
-    uint8_t     Gear1                   : 4;
-    uint8_t     Gear2                   : 4;
-    uint8_t     Gear3                   : 4;
-    uint8_t     Gear4                   : 4;
-    uint8_t     Gear5                   : 4;
-    uint8_t     not_used;
+    uint8_t report_id;
+    uint8_t length;
+    uint8_t EmergencyEject : 4;
+    uint8_t CockpitHatch : 4;
+    uint8_t Ignition : 4;
+    uint8_t Start : 4;
+    uint8_t OpenClose : 4;
+    uint8_t MapZoomInOut : 4;
+    uint8_t ModeSelect : 4;
+    uint8_t SubMonitorModeSelect : 4;
+    uint8_t MainMonitorZoomIn : 4;
+    uint8_t MainMonitorZoomOut : 4;
+    uint8_t ForecastShootingSystem : 4;
+    uint8_t Manipulator : 4;
+    uint8_t LineColorChange : 4;
+    uint8_t Washing : 4;
+    uint8_t Extinguisher : 4;
+    uint8_t Chaff : 4;
+    uint8_t TankDetach : 4;
+    uint8_t Override : 4;
+    uint8_t NightScope : 4;
+    uint8_t F1 : 4;
+    uint8_t F2 : 4;
+    uint8_t F3 : 4;
+    uint8_t MainWeaponControl : 4;
+    uint8_t SubWeaponControl : 4;
+    uint8_t MagazineChange : 4;
+    uint8_t Comm1 : 4;
+    uint8_t Comm2 : 4;
+    uint8_t Comm3 : 4;
+    uint8_t Comm4 : 4;
+    uint8_t Comm5 : 4;
+    uint8_t : 4;
+    uint8_t GearR : 4;
+    uint8_t GearN : 4;
+    uint8_t Gear1 : 4;
+    uint8_t Gear2 : 4;
+    uint8_t Gear3 : 4;
+    uint8_t Gear4 : 4;
+    uint8_t Gear5 : 4;
+    uint8_t not_used;
 } QEMU_PACKED XIDSteelBattalionOutputReport;
 
 typedef struct USBXIDSteelBattalionState {
-    USBDevice                       dev;
-    USBEndpoint                    *intr;
-    const XIDDesc                  *xid_desc;
-    XIDSteelBattalionReport         in_state;
-    XIDSteelBattalionReport         in_state_capabilities;
-    XIDSteelBattalionOutputReport   out_state;
-    XIDSteelBattalionOutputReport   out_state_capabilities;
-    uint8_t                         device_index;
+    USBDevice dev;
+    USBEndpoint *intr;
+    const XIDDesc *xid_desc;
+    XIDSteelBattalionReport in_state;
+    XIDSteelBattalionReport in_state_capabilities;
+    XIDSteelBattalionOutputReport out_state;
+    XIDSteelBattalionOutputReport out_state_capabilities;
+    uint8_t device_index;
 } USBXIDSteelBattalionState;
 
-#define USB_XID_SB(obj) OBJECT_CHECK(USBXIDSteelBattalionState, (obj), TYPE_USB_XID_STEEL_BATTALION)
+#define USB_XID_SB(obj) \
+    OBJECT_CHECK(USBXIDSteelBattalionState, (obj), TYPE_USB_XID_STEEL_BATTALION)
 
 static const USBDescIface desc_iface_steel_battalion = {
-    .bInterfaceNumber              = 0,
-    .bNumEndpoints                 = 2,
-    .bInterfaceClass               = USB_CLASS_XID,
-    .bInterfaceSubClass            = 0x42,
-    .bInterfaceProtocol            = 0x00,
-    .eps = (USBDescEndpoint[]) {
-        {
-            .bEndpointAddress      = USB_DIR_IN | STEEL_BATTALION_IN_ENDPOINT_ID,
-            .bmAttributes          = USB_ENDPOINT_XFER_INT,
-            .wMaxPacketSize        = 0x20,
-            .bInterval             = 4,
+    .bInterfaceNumber = 0,
+    .bNumEndpoints = 2,
+    .bInterfaceClass = USB_CLASS_XID,
+    .bInterfaceSubClass = 0x42,
+    .bInterfaceProtocol = 0x00,
+    .eps =
+        (USBDescEndpoint[]){
+            {
+                .bEndpointAddress = USB_DIR_IN | STEEL_BATTALION_IN_ENDPOINT_ID,
+                .bmAttributes = USB_ENDPOINT_XFER_INT,
+                .wMaxPacketSize = 0x20,
+                .bInterval = 4,
+            },
+            {
+                .bEndpointAddress =
+                    USB_DIR_OUT | STEEL_BATTALION_OUT_ENDPOINT_ID,
+                .bmAttributes = USB_ENDPOINT_XFER_INT,
+                .wMaxPacketSize = 0x20,
+                .bInterval = 4,
+            },
         },
-        {
-            .bEndpointAddress      = USB_DIR_OUT | STEEL_BATTALION_OUT_ENDPOINT_ID,
-            .bmAttributes          = USB_ENDPOINT_XFER_INT,
-            .wMaxPacketSize        = 0x20,
-            .bInterval             = 4,
-        },
-    },
 };
 
 static const USBDescDevice desc_device_steel_battalion = {
-    .bcdUSB                        = 0x0110,
-    .bMaxPacketSize0               = 0x40,
-    .bNumConfigurations            = 1,
-    .confs = (USBDescConfig[]) {
-        {
-            .bNumInterfaces        = 1,
-            .bConfigurationValue   = 1,
-            .bmAttributes          = USB_CFG_ATT_ONE,
-            .bMaxPower             = 50,
-            .nif = 1,
-            .ifs = &desc_iface_steel_battalion,
+    .bcdUSB = 0x0110,
+    .bMaxPacketSize0 = 0x40,
+    .bNumConfigurations = 1,
+    .confs =
+        (USBDescConfig[]){
+            {
+                .bNumInterfaces = 1,
+                .bConfigurationValue = 1,
+                .bmAttributes = USB_CFG_ATT_ONE,
+                .bMaxPower = 50,
+                .nif = 1,
+                .ifs = &desc_iface_steel_battalion,
+            },
         },
-    },
 };
 
 static const USBDesc desc_xbox_steel_battalion = {
@@ -162,19 +169,19 @@ static const USBDesc desc_xbox_steel_battalion = {
 };
 
 static const XIDDesc desc_xid_steel_battalion = {
-    .bLength              = 0x10,
-    .bDescriptorType      = USB_DT_XID,
-    .bcdXid               = 0x100,
-    .bType                = XID_DEVICETYPE_STEEL_BATTALION,
-    .bSubType             = XID_DEVICESUBTYPE_GAMEPAD,
-    .bMaxInputReportSize  = 26,
+    .bLength = 0x10,
+    .bDescriptorType = USB_DT_XID,
+    .bcdXid = 0x100,
+    .bType = XID_DEVICETYPE_STEEL_BATTALION,
+    .bSubType = XID_DEVICESUBTYPE_GAMEPAD,
+    .bMaxInputReportSize = 26,
     .bMaxOutputReportSize = 32,
     .wAlternateProductIds = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF },
 };
 
 static void update_sbc_input(USBXIDSteelBattalionState *s)
 {
-    if(xemu_input_get_test_mode()) {
+    if (xemu_input_get_test_mode()) {
         // Don't report changes if we are testing the controller while running
         return;
     }
@@ -189,8 +196,12 @@ static void update_sbc_input(USBXIDSteelBattalionState *s)
 
     s->in_state.sSightChangeX = state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X];
     s->in_state.sSightChangeY = state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y];
-    s->in_state.bAimingX = (uint8_t)(128 + (state->sbc.axis[SBC_AXIS_AIMING_X] / 256));          // Convert from int16_t to uint8_t
-    s->in_state.bAimingY = (uint8_t)(128 + (state->sbc.axis[SBC_AXIS_AIMING_Y] / 256));          // Convert from int16_t to uint8_t
+    s->in_state.bAimingX =
+        (uint8_t)(128 + (state->sbc.axis[SBC_AXIS_AIMING_X] /
+                         256)); // Convert from int16_t to uint8_t
+    s->in_state.bAimingY =
+        (uint8_t)(128 + (state->sbc.axis[SBC_AXIS_AIMING_Y] /
+                         256)); // Convert from int16_t to uint8_t
     s->in_state.sRotationLever = state->sbc.axis[SBC_AXIS_ROTATION_LEVER];
     s->in_state.wLeftPedal = (uint16_t)state->sbc.axis[SBC_AXIS_LEFT_PEDAL];
     s->in_state.wMiddlePedal = (uint16_t)state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL];
@@ -201,13 +212,17 @@ static void update_sbc_input(USBXIDSteelBattalionState *s)
 }
 
 static void usb_xid_steel_battalion_handle_control(USBDevice *dev, USBPacket *p,
-               int request, int value, int index, int length, uint8_t *data)
+                                                   int request, int value,
+                                                   int index, int length,
+                                                   uint8_t *data)
 {
-    USBXIDSteelBattalionState *s = DO_UPCAST(USBXIDSteelBattalionState, dev, dev);
+    USBXIDSteelBattalionState *s =
+        DO_UPCAST(USBXIDSteelBattalionState, dev, dev);
 
     DPRINTF("xid handle_control 0x%x 0x%x\n", request, value);
 
-    int ret = usb_desc_handle_control(dev, p, request, value, index, length, data);
+    int ret =
+        usb_desc_handle_control(dev, p, request, value, index, length, data);
     if (ret >= 0) {
         DPRINTF("xid handled by usb_desc_handle_control: %d\n", ret);
         return;
@@ -244,7 +259,7 @@ static void usb_xid_steel_battalion_handle_control(USBDevice *dev, USBPacket *p,
             } else {
                 p->status = USB_RET_STALL;
             }
-            //update_output(s);
+            // update_output(s);
         } else {
             p->status = USB_RET_STALL;
             assert(false);
@@ -281,21 +296,21 @@ static void usb_xid_steel_battalion_handle_control(USBDevice *dev, USBPacket *p,
             assert(false);
         }
         break;
-    case ((USB_DIR_IN|USB_TYPE_CLASS|USB_RECIP_DEVICE)<<8)
-             | USB_REQ_GET_DESCRIPTOR:
+    case ((USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_DEVICE) << 8) |
+        USB_REQ_GET_DESCRIPTOR:
         /* FIXME: ! */
-        DPRINTF("xid unknown xpad request 0x%x: value = 0x%x\n",
-                request, value);
+        DPRINTF("xid unknown xpad request 0x%x: value = 0x%x\n", request,
+                value);
         memset(data, 0x00, length);
-        //FIXME: Intended for the hub: usbd_get_hub_descriptor, UT_READ_CLASS?!
+        // FIXME: Intended for the hub: usbd_get_hub_descriptor, UT_READ_CLASS?!
         p->status = USB_RET_STALL;
-        //assert(false);
+        // assert(false);
         break;
-    case ((USB_DIR_OUT|USB_TYPE_STANDARD|USB_RECIP_ENDPOINT)<<8)
-             | USB_REQ_CLEAR_FEATURE:
+    case ((USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_ENDPOINT) << 8) |
+        USB_REQ_CLEAR_FEATURE:
         /* FIXME: ! */
-        DPRINTF("xid unknown xpad request 0x%x: value = 0x%x\n",
-                request, value);
+        DPRINTF("xid unknown xpad request 0x%x: value = 0x%x\n", request,
+                value);
         memset(data, 0x00, length);
         p->status = USB_RET_STALL;
         break;
@@ -307,62 +322,14 @@ static void usb_xid_steel_battalion_handle_control(USBDevice *dev, USBPacket *p,
     }
 }
 
-#if 0
-
-static inline void print_steel_battalion_leds(const char *name, uint8_t byte)
-{
-    if(byte)
-        fprintf(stderr, "%s: %d\n", name, byte);
-}
-
-static void print_xid_steel_battalion_output_data(XIDSteelBattalionOutputReport *state)
-{
-    print_steel_battalion_leds("Emergency Eject", state->EmergencyEject);
-    print_steel_battalion_leds("Cockpit Hatch", state->CockpitHatch);
-    print_steel_battalion_leds("Ignition", state->Ignition);
-    print_steel_battalion_leds("Start", state->Start);
-    print_steel_battalion_leds("Open/Close", state->OpenClose);
-    print_steel_battalion_leds("Map Zoom In/Out", state->MapZoomInOut);
-    print_steel_battalion_leds("Mode Select", state->ModeSelect);
-    print_steel_battalion_leds("Sub Monitor Mode Select", state->SubMonitorModeSelect);
-    print_steel_battalion_leds("Main Monitor Zoom In", state->MainMonitorZoomIn);
-    print_steel_battalion_leds("Main Monitor Zoom Out", state->MainMonitorZoomOut);
-    print_steel_battalion_leds("Forecast Shooting System", state->ForecastShootingSystem);
-    print_steel_battalion_leds("Manipulator", state->Manipulator);
-    print_steel_battalion_leds("Line Color Change", state->LineColorChange);
-    print_steel_battalion_leds("Washing", state->Washing);
-    print_steel_battalion_leds("Extinguisher", state->Extinguisher);
-    print_steel_battalion_leds("Chaff", state->Chaff);
-    print_steel_battalion_leds("Tank Detach", state->TankDetach);
-    print_steel_battalion_leds("Override", state->Override);
-    print_steel_battalion_leds("Night Scope", state->NightScope);
-    print_steel_battalion_leds("F1", state->F1);
-    print_steel_battalion_leds("F2", state->F2);
-    print_steel_battalion_leds("F3", state->F3);
-    print_steel_battalion_leds("Main Weapon Control", state->MainWeaponControl);
-    print_steel_battalion_leds("Sub Weapon Control", state->SubWeaponControl);
-    print_steel_battalion_leds("Magazine Change", state->MagazineChange);
-    print_steel_battalion_leds("Comm1", state->Comm1);
-    print_steel_battalion_leds("Comm2", state->Comm2);
-    print_steel_battalion_leds("Comm3", state->Comm3);
-    print_steel_battalion_leds("Comm4", state->Comm4);
-    print_steel_battalion_leds("Comm5", state->Comm5);
-    print_steel_battalion_leds("GearR", state->GearR);
-    print_steel_battalion_leds("GearN", state->GearN);
-    print_steel_battalion_leds("Gear1", state->Gear1);
-    print_steel_battalion_leds("Gear2", state->Gear2);
-    print_steel_battalion_leds("Gear3", state->Gear3);
-    print_steel_battalion_leds("Gear4", state->Gear4);
-    print_steel_battalion_leds("Gear5", state->Gear5);
-}
-
-#endif
 
 static void usb_xid_steel_battalion_handle_data(USBDevice *dev, USBPacket *p)
 {
-    USBXIDSteelBattalionState *s = DO_UPCAST(USBXIDSteelBattalionState, dev, dev);
+    USBXIDSteelBattalionState *s =
+        DO_UPCAST(USBXIDSteelBattalionState, dev, dev);
 
-    DPRINTF("xid handle_steel_battalion_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
+    DPRINTF("xid handle_steel_battalion_data 0x%x %d 0x%zx\n", p->pid,
+            p->ep->nr, p->iov.size);
 
     switch (p->pid) {
     case USB_TOKEN_IN:
@@ -376,9 +343,9 @@ static void usb_xid_steel_battalion_handle_data(USBDevice *dev, USBPacket *p)
     case USB_TOKEN_OUT:
         if (p->ep->nr == STEEL_BATTALION_OUT_ENDPOINT_ID) {
             usb_packet_copy(p, &s->out_state, s->out_state.length);
-            // TODO: Update output for Steel Battalion Controller here, if we want to. 
-            // It's LED data, so, maybe use it for RGB integration with RGB Keyboards?
-            // print_xid_steel_battalion_output_data(&s->out_state);
+            // TODO: Update output for Steel Battalion Controller here, if we
+            // want to. It's LED data, so, maybe use it for RGB integration with
+            // RGB Keyboards?
         } else {
             assert(false);
         }
@@ -394,11 +361,11 @@ static void usb_xid_steel_battalion_class_initfn(ObjectClass *klass, void *data)
 {
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
-    uc->handle_reset   = usb_xid_handle_reset;
+    uc->handle_reset = usb_xid_handle_reset;
     uc->handle_control = usb_xid_steel_battalion_handle_control;
-    uc->handle_data    = usb_xid_steel_battalion_handle_data;
+    uc->handle_data = usb_xid_steel_battalion_handle_data;
     // uc->handle_destroy = usb_xid_handle_destroy;
-    uc->handle_attach  = usb_desc_attach;
+    uc->handle_attach = usb_desc_attach;
 }
 
 static void usb_steel_battalion_realize(USBDevice *dev, Error **errp)
@@ -434,11 +401,10 @@ static const VMStateDescription vmstate_usb_sb = {
     .name = TYPE_USB_XID_STEEL_BATTALION,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
-        VMSTATE_USB_DEVICE(dev, USBXIDSteelBattalionState),
-        // FIXME
-        VMSTATE_END_OF_LIST()
-    },
+    .fields =
+        (VMStateField[]){ VMSTATE_USB_DEVICE(dev, USBXIDSteelBattalionState),
+                          // FIXME
+                          VMSTATE_END_OF_LIST() },
 };
 
 static void usb_steel_battalion_class_initfn(ObjectClass *klass, void *data)
@@ -446,22 +412,22 @@ static void usb_steel_battalion_class_initfn(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
-    uc->product_desc   = "Steel Battalion Controller";
-    uc->usb_desc       = &desc_xbox_steel_battalion;
-    uc->realize        = usb_steel_battalion_realize;
-    uc->unrealize      = usb_xbox_gamepad_unrealize;
+    uc->product_desc = "Steel Battalion Controller";
+    uc->usb_desc = &desc_xbox_steel_battalion;
+    uc->realize = usb_steel_battalion_realize;
+    uc->unrealize = usb_xbox_gamepad_unrealize;
     usb_xid_steel_battalion_class_initfn(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
-    dc->vmsd  = &vmstate_usb_sb;
+    dc->vmsd = &vmstate_usb_sb;
     device_class_set_props(dc, xid_properties);
-    dc->desc  = "Steel Battalion Controller";
+    dc->desc = "Steel Battalion Controller";
 }
 
 static const TypeInfo usb_steel_battalion_info = {
-    .name          = TYPE_USB_XID_STEEL_BATTALION,
-    .parent        = TYPE_USB_DEVICE,
+    .name = TYPE_USB_XID_STEEL_BATTALION,
+    .parent = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBXIDSteelBattalionState),
-    .class_init    = usb_steel_battalion_class_initfn,
+    .class_init = usb_steel_battalion_class_initfn,
 };
 
 static void usb_xid_register_types(void)

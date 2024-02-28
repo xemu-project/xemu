@@ -34,7 +34,7 @@ typedef enum HapticEmulationMode {
 
 const USBDescStrings desc_strings = {
     [STR_MANUFACTURER] = "QEMU",
-    [STR_PRODUCT]      = "Microsoft Xbox Controller",
+    [STR_PRODUCT] = "Microsoft Xbox Controller",
     [STR_SERIALNUMBER] = "1",
 };
 
@@ -95,8 +95,10 @@ void update_input(USBXIDGamepadState *s)
         }
     }
 
-    s->in_state.bAnalogButtons[GAMEPAD_LEFT_TRIGGER] = state->gp.axis[CONTROLLER_AXIS_LTRIG] >> 7;
-    s->in_state.bAnalogButtons[GAMEPAD_RIGHT_TRIGGER] = state->gp.axis[CONTROLLER_AXIS_RTRIG] >> 7;
+    s->in_state.bAnalogButtons[GAMEPAD_LEFT_TRIGGER] =
+        state->gp.axis[CONTROLLER_AXIS_LTRIG] >> 7;
+    s->in_state.bAnalogButtons[GAMEPAD_RIGHT_TRIGGER] =
+        state->gp.axis[CONTROLLER_AXIS_RTRIG] >> 7;
     s->in_state.sThumbLX = state->gp.axis[CONTROLLER_AXIS_LSTICK_X];
     s->in_state.sThumbLY = state->gp.axis[CONTROLLER_AXIS_LSTICK_Y];
     s->in_state.sThumbRX = state->gp.axis[CONTROLLER_AXIS_RSTICK_X];
@@ -108,8 +110,8 @@ void usb_xid_handle_reset(USBDevice *dev)
     DPRINTF("xid reset\n");
 }
 
-void usb_xid_handle_control(USBDevice *dev, USBPacket *p,
-               int request, int value, int index, int length, uint8_t *data)
+void usb_xid_handle_control(USBDevice *dev, USBPacket *p, int request,
+                            int value, int index, int length, uint8_t *data)
 {
     USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
 

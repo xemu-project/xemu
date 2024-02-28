@@ -21,7 +21,7 @@
 
 #include "xid.h"
 
-//#define DEBUG_XID
+// #define DEBUG_XID
 #ifdef DEBUG_XID
 #define DPRINTF printf
 #else
@@ -33,45 +33,49 @@
 #define GAMEPAD_IN_ENDPOINT_ID 0x02
 #define GAMEPAD_OUT_ENDPOINT_ID 0x02
 
-#define USB_XID(obj) OBJECT_CHECK(USBXIDGamepadState, (obj), TYPE_USB_XID_GAMEPAD)
-#define USB_XID_S(obj) OBJECT_CHECK(USBXIDGamepadState, (obj), TYPE_USB_XID_GAMEPAD_S)
+#define USB_XID(obj) \
+    OBJECT_CHECK(USBXIDGamepadState, (obj), TYPE_USB_XID_GAMEPAD)
+#define USB_XID_S(obj) \
+    OBJECT_CHECK(USBXIDGamepadState, (obj), TYPE_USB_XID_GAMEPAD_S)
 
 static const USBDescIface desc_iface_xbox_gamepad = {
-    .bInterfaceNumber              = 0,
-    .bNumEndpoints                 = 2,
-    .bInterfaceClass               = USB_CLASS_XID,
-    .bInterfaceSubClass            = 0x42,
-    .bInterfaceProtocol            = 0x00,
-    .eps = (USBDescEndpoint[]) {
-        {
-            .bEndpointAddress      = USB_DIR_IN | GAMEPAD_IN_ENDPOINT_ID,
-            .bmAttributes          = USB_ENDPOINT_XFER_INT,
-            .wMaxPacketSize        = 0x20,
-            .bInterval             = 4,
+    .bInterfaceNumber = 0,
+    .bNumEndpoints = 2,
+    .bInterfaceClass = USB_CLASS_XID,
+    .bInterfaceSubClass = 0x42,
+    .bInterfaceProtocol = 0x00,
+    .eps =
+        (USBDescEndpoint[]){
+            {
+                .bEndpointAddress = USB_DIR_IN | GAMEPAD_IN_ENDPOINT_ID,
+                .bmAttributes = USB_ENDPOINT_XFER_INT,
+                .wMaxPacketSize = 0x20,
+                .bInterval = 4,
+            },
+            {
+                .bEndpointAddress = USB_DIR_OUT | GAMEPAD_OUT_ENDPOINT_ID,
+                .bmAttributes = USB_ENDPOINT_XFER_INT,
+                .wMaxPacketSize = 0x20,
+                .bInterval = 4,
+            },
         },
-        {
-            .bEndpointAddress      = USB_DIR_OUT | GAMEPAD_OUT_ENDPOINT_ID,
-            .bmAttributes          = USB_ENDPOINT_XFER_INT,
-            .wMaxPacketSize        = 0x20,
-            .bInterval             = 4,
-        },
-    },
 };
 
 static const USBDescDevice desc_device_xbox_gamepad = {
-    .bcdUSB                        = 0x0110,
-    .bMaxPacketSize0               = 0x40,
-    .bNumConfigurations            = 1,
-    .confs = (USBDescConfig[]) {
-        {
-            .bNumInterfaces        = 1,
-            .bConfigurationValue   = 1,
-            .bmAttributes          = USB_CFG_ATT_ONE,
-            .bMaxPower             = 50,
-            .nif = 1,
-            .ifs = &desc_iface_xbox_gamepad,
+    .bcdUSB = 0x0110,
+    .bMaxPacketSize0 = 0x40,
+    .bNumConfigurations = 1,
+    .confs =
+        (USBDescConfig[]){
+            {
+                .bNumInterfaces = 1,
+                .bConfigurationValue = 1,
+                .bmAttributes = USB_CFG_ATT_ONE,
+                .bMaxPower = 50,
+                .nif = 1,
+                .ifs = &desc_iface_xbox_gamepad,
+            },
         },
-    },
 };
 
 static const USBDesc desc_xbox_gamepad = {
@@ -101,23 +105,23 @@ static const USBDesc desc_xbox_gamepad_s = {
 };
 
 static const XIDDesc desc_xid_xbox_gamepad = {
-    .bLength              = 0x10,
-    .bDescriptorType      = USB_DT_XID,
-    .bcdXid               = 0x100,
-    .bType                = XID_DEVICETYPE_GAMEPAD,
-    .bSubType             = XID_DEVICESUBTYPE_GAMEPAD,
-    .bMaxInputReportSize  = 20,
+    .bLength = 0x10,
+    .bDescriptorType = USB_DT_XID,
+    .bcdXid = 0x100,
+    .bType = XID_DEVICETYPE_GAMEPAD,
+    .bSubType = XID_DEVICESUBTYPE_GAMEPAD,
+    .bMaxInputReportSize = 20,
     .bMaxOutputReportSize = 6,
     .wAlternateProductIds = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF },
 };
 
 static const XIDDesc desc_xid_xbox_gamepad_s = {
-    .bLength              = 0x10,
-    .bDescriptorType      = USB_DT_XID,
-    .bcdXid               = 0x100,
-    .bType                = XID_DEVICETYPE_GAMEPAD,
-    .bSubType             = XID_DEVICESUBTYPE_GAMEPAD_S,
-    .bMaxInputReportSize  = 20,
+    .bLength = 0x10,
+    .bDescriptorType = USB_DT_XID,
+    .bcdXid = 0x100,
+    .bType = XID_DEVICETYPE_GAMEPAD,
+    .bSubType = XID_DEVICESUBTYPE_GAMEPAD_S,
+    .bMaxInputReportSize = 20,
     .bMaxOutputReportSize = 6,
     .wAlternateProductIds = { 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF },
 };
@@ -126,7 +130,8 @@ static void usb_xid_gamepad_handle_data(USBDevice *dev, USBPacket *p)
 {
     USBXIDGamepadState *s = DO_UPCAST(USBXIDGamepadState, dev, dev);
 
-    DPRINTF("xid handle_gamepad_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr, p->iov.size);
+    DPRINTF("xid handle_gamepad_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr,
+            p->iov.size);
 
     switch (p->pid) {
     case USB_TOKEN_IN:
@@ -156,11 +161,11 @@ static void usb_xid_gamepad_class_initfn(ObjectClass *klass, void *data)
 {
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
-    uc->handle_reset   = usb_xid_handle_reset;
+    uc->handle_reset = usb_xid_handle_reset;
     uc->handle_control = usb_xid_handle_control;
-    uc->handle_data    = usb_xid_gamepad_handle_data;
+    uc->handle_data = usb_xid_gamepad_handle_data;
     // uc->handle_destroy = usb_xid_handle_destroy;
-    uc->handle_attach  = usb_desc_attach;
+    uc->handle_attach = usb_desc_attach;
 }
 
 static void usb_xbox_gamepad_realize(USBDevice *dev, Error **errp)
@@ -220,21 +225,17 @@ static const VMStateDescription vmstate_usb_xbox = {
     .name = TYPE_USB_XID_GAMEPAD,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
-        VMSTATE_USB_DEVICE(dev, USBXIDGamepadState),
-        // FIXME
-        VMSTATE_END_OF_LIST()
-    },
+    .fields = (VMStateField[]){ VMSTATE_USB_DEVICE(dev, USBXIDGamepadState),
+                                // FIXME
+                                VMSTATE_END_OF_LIST() },
 };
 
 static const VMStateDescription vmstate_usb_xbox_s = {
     .name = TYPE_USB_XID_GAMEPAD_S,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
-        VMSTATE_USB_DEVICE(dev, USBXIDGamepadState),
-        // FIXME
-        VMSTATE_END_OF_LIST()
-    },
+    .fields = (VMStateField[]){ VMSTATE_USB_DEVICE(dev, USBXIDGamepadState),
+                                // FIXME
+                                VMSTATE_END_OF_LIST() },
 };
 
 static void usb_xbox_gamepad_class_initfn(ObjectClass *klass, void *data)
@@ -242,15 +243,15 @@ static void usb_xbox_gamepad_class_initfn(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
-    uc->product_desc   = "Microsoft Xbox Controller";
-    uc->usb_desc       = &desc_xbox_gamepad;
-    uc->realize        = usb_xbox_gamepad_realize;
-    uc->unrealize      = usb_xbox_gamepad_unrealize;
+    uc->product_desc = "Microsoft Xbox Controller";
+    uc->usb_desc = &desc_xbox_gamepad;
+    uc->realize = usb_xbox_gamepad_realize;
+    uc->unrealize = usb_xbox_gamepad_unrealize;
     usb_xid_gamepad_class_initfn(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
-    dc->vmsd  = &vmstate_usb_xbox;
+    dc->vmsd = &vmstate_usb_xbox;
     device_class_set_props(dc, xid_properties);
-    dc->desc  = "Microsoft Xbox Controller";
+    dc->desc = "Microsoft Xbox Controller";
 }
 
 static void usb_xbox_gamepad_s_class_initfn(ObjectClass *klass, void *data)
@@ -258,29 +259,29 @@ static void usb_xbox_gamepad_s_class_initfn(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     USBDeviceClass *uc = USB_DEVICE_CLASS(klass);
 
-    uc->product_desc   = "Microsoft Xbox Controller S";
-    uc->usb_desc       = &desc_xbox_gamepad_s;
-    uc->realize        = usb_xbox_gamepad_s_realize;
-    uc->unrealize      = usb_xbox_gamepad_unrealize;
+    uc->product_desc = "Microsoft Xbox Controller S";
+    uc->usb_desc = &desc_xbox_gamepad_s;
+    uc->realize = usb_xbox_gamepad_s_realize;
+    uc->unrealize = usb_xbox_gamepad_unrealize;
     usb_xid_gamepad_class_initfn(klass, data);
     set_bit(DEVICE_CATEGORY_INPUT, dc->categories);
-    dc->vmsd  = &vmstate_usb_xbox_s;
+    dc->vmsd = &vmstate_usb_xbox_s;
     device_class_set_props(dc, xid_properties);
-    dc->desc  = "Microsoft Xbox Controller S";
+    dc->desc = "Microsoft Xbox Controller S";
 }
 
 static const TypeInfo usb_xbox_gamepad_info = {
-    .name          = TYPE_USB_XID_GAMEPAD,
-    .parent        = TYPE_USB_DEVICE,
+    .name = TYPE_USB_XID_GAMEPAD,
+    .parent = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBXIDGamepadState),
-    .class_init    = usb_xbox_gamepad_class_initfn,
+    .class_init = usb_xbox_gamepad_class_initfn,
 };
 
 static const TypeInfo usb_xbox_gamepad_s_info = {
-    .name          = TYPE_USB_XID_GAMEPAD_S,
-    .parent        = TYPE_USB_DEVICE,
+    .name = TYPE_USB_XID_GAMEPAD_S,
+    .parent = TYPE_USB_DEVICE,
     .instance_size = sizeof(USBXIDGamepadState),
-    .class_init    = usb_xbox_gamepad_s_class_initfn,
+    .class_init = usb_xbox_gamepad_s_class_initfn,
 };
 
 static void usb_xid_register_types(void)
