@@ -19,7 +19,7 @@ MIRROR = 'http://nue.de.packages.macports.org/macports/packages'
 
 class LibInstaller:
 	DARWIN_TARGET_X64="darwin_17" # macOS 10.13
-	DARWIN_TARGET_ARM64="darwin_21" # macOS 11.x
+	DARWIN_TARGET_ARM64="darwin_21" # macOS 12.x
 
 	def __init__(self, arch):
 		self._queue = []
@@ -42,26 +42,20 @@ class LibInstaller:
 
 	def get_latest_pkg_filename_url(self, pkg_name):
 		pkg_base_url = f'{MIRROR}/{pkg_name}'
-		print(f'    [*] [DEBUG] pkg_base_url {pkg_base_url}')
 		pkg_list = urlopen(pkg_base_url).read().decode('utf-8')
-		print('    [*] [DEBUG] url opened')
 		pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.' + self._darwin_target + r'\.' + self._arch + r'\.tbz2', pkg_list)
-		print(f'    [*] [DEBUG] len(pkgs) {len(pkgs)}')
-
+		
 		if len(pkgs) < 1:
-			pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.' + r'darwin_any\.' + self._arch + r'\.tbz2', pkg_list)
-
+			pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.darwin_any\.' + self._arch + r'\.tbz2', pkg_list)
 		if len(pkgs) < 1:
 			pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.' + self._darwin_target + r'\.noarch\.tbz2', pkg_list)
-
 		if len(pkgs) < 1:
-			pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.' + r'darwin_any\.noarch\.tbz2', pkg_list)
-
+			pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.darwin_any\.noarch\.tbz2', pkg_list)
+		
 		if len(pkgs) < 1:
-			print(f'    [*] [ERROR] package {pkg_name} not found for arch {self._darwin_target}.{self._arch} or darwin_any.noarch')
-			print(f'    [*] [DEBUG] pkg_list: {pkg_list}')
+			print(f'    [*] [ERROR] Unable to find version of {pkg_name} compatible with {self._darwin_target}.{self._arch}')
+
 		pkg_filename = pkgs[-1]
-		print('    [*] [DEBUG] returning pkg_filename, pkg_url')
 		return pkg_filename, f'{pkg_base_url}/{pkg_filename}'
 
 	def is_pkg_installed(self, pkg_name):
@@ -118,11 +112,8 @@ class LibInstaller:
 
 		print(f'[*] Fetching {pkg_name}')
 		pkg_filename, pkg_url = self.get_latest_pkg_filename_url(pkg_name)
-		print(f'    [*] [DEBUG] pkg_url {pkg_url}')
 		pkg_version = pkg_filename[re.search(r'-\d', pkg_filename).span()[0]+1:]
-		print('test')
 		pkg_version = pkg_version[:pkg_version.find('.'+self._darwin_target)]
-		print(f'    [*] [DEBUG] pkg_filename {pkg_filename}')
 		dst_pkg_filename = os.path.join(self._pkgs_path, pkg_filename)
 		print(f'    [*] Found package {pkg_filename}')
 		self.download_file(pkg_filename, pkg_url, dst_pkg_filename)
