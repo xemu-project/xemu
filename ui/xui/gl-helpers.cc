@@ -16,7 +16,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
-#include "ui/shader/xemu-logo-frag.h"
 #include "ui/xemu-widescreen.h"
 #include "gl-helpers.hh"
 #include "common.hh"
@@ -33,6 +32,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <vector>
+#include "ui/shader/xemu-logo-frag.h"
 
 Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
 GLuint g_controller_tex, g_controller_s_tex, g_sb_controller_tex,
