@@ -910,15 +910,15 @@ static int ohci_service_td(OHCIState *ohci, struct ohci_ed *ed)
     ep = usb_ep_get(dev, pid, OHCI_BM(ed->flags, ED_EN));
     USBActivePacket *packet = NULL;
     USBActivePacket *iter;
-    QTAILQ_FOREACH(iter, &ohci->active_packets, next) {
-        if(iter->ep == ep) {
+    QTAILQ_FOREACH (iter, &ohci->active_packets, next) {
+        if (iter->ep == ep) {
             packet = iter;
             break;
         }
     }
 
     /* A packet for this endpoint doesn't exist yet. Make one */
-    if(packet == NULL) {
+    if (packet == NULL) {
         packet = g_malloc(sizeof(USBActivePacket));
         usb_packet_init(&packet->usb_packet);
         packet->ep = ep;
@@ -934,7 +934,7 @@ static int ohci_service_td(OHCIState *ohci, struct ohci_ed *ed)
         trace_usb_ohci_td_skip_async();
         return 1;
     }
-    
+
     if (td.cbp && td.be) {
         if ((td.cbp & 0xfffff000) != (td.be & 0xfffff000)) {
             len = (td.be & 0xfff) + 0x1001 - (td.cbp & 0xfff);
@@ -1158,12 +1158,12 @@ static int ohci_service_ed_list(OHCIState *ohci, uint32_t head)
             if (dev != NULL) {
                 ep = usb_ep_get(dev, pid, OHCI_BM(ed.flags, ED_EN));
 
-                if(ep != NULL) {
+                if (ep != NULL) {
                     USBActivePacket *iter;
-                    QTAILQ_FOREACH(iter, &ohci->active_packets, next) {
-                        if(iter->ep == ep) {
+                    QTAILQ_FOREACH (iter, &ohci->active_packets, next) {
+                        if (iter->ep == ep) {
                             if (iter->async_td && addr == iter->async_td) {
-                                if(usb_packet_is_inflight(&iter->usb_packet))
+                                if (usb_packet_is_inflight(&iter->usb_packet))
                                     usb_cancel_packet(&iter->usb_packet);
                                 iter->async_td = 0;
                                 usb_device_ep_stopped(iter->usb_packet.ep->dev,
@@ -1824,10 +1824,9 @@ static void ohci_child_detach(USBPort *port1, USBDevice *dev)
     OHCIState *ohci = port1->opaque;
 
     USBActivePacket *iter, *iter2;
-    QTAILQ_FOREACH_SAFE(iter, &ohci->active_packets, next, iter2) {
+    QTAILQ_FOREACH_SAFE (iter, &ohci->active_packets, next, iter2) {
         if (iter->usb_packet.ep->dev == dev) {
-            if (iter->async_td &&
-                usb_packet_is_inflight(&iter->usb_packet) &&
+            if (iter->async_td && usb_packet_is_inflight(&iter->usb_packet) &&
                 iter->usb_packet.ep->dev == dev) {
                 usb_cancel_packet(&iter->usb_packet);
             }
@@ -1891,8 +1890,9 @@ static void ohci_wakeup(USBPort *port1)
 
 static void ohci_async_complete_packet(USBPort *port, USBPacket *packet)
 {
-    USBActivePacket *active_packet = container_of(packet, USBActivePacket, usb_packet);
-    
+    USBActivePacket *active_packet =
+        container_of(packet, USBActivePacket, usb_packet);
+
     trace_usb_ohci_async_complete();
     active_packet->async_complete = true;
     ohci_process_lists(active_packet->ohci);
@@ -1969,7 +1969,7 @@ void usb_ohci_init(OHCIState *ohci, DeviceState *dev, uint32_t num_ports,
     ohci->localmem_base = localmem_base;
 
     ohci->name = object_get_typename(OBJECT(dev));
-    
+
     QTAILQ_INIT(&ohci->active_packets);
 
     ohci->eof_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL,
@@ -1991,12 +1991,12 @@ void ohci_sysbus_die(struct OHCIState *ohci)
 
 void ohci_clear_active_packets(struct OHCIState *ohci)
 {
-    while(!QTAILQ_EMPTY(&ohci->active_packets)) {
+    while (!QTAILQ_EMPTY(&ohci->active_packets)) {
         USBActivePacket *packet = QTAILQ_FIRST(&ohci->active_packets);
-        if(packet->async_td) {
+        if (packet->async_td) {
             usb_cancel_packet(&packet->usb_packet);
             packet->async_td = 0;
-            usb_device_ep_stopped(packet->usb_packet.ep->dev, 
+            usb_device_ep_stopped(packet->usb_packet.ep->dev,
                                   packet->usb_packet.ep);
         }
         QTAILQ_REMOVE(&ohci->active_packets, packet, next);
