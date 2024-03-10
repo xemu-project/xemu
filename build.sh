@@ -195,6 +195,9 @@ case "$platform" in # Adjust compilation options based on platform
         sys_cflags='-Wno-error=redundant-decls'
         opts="$opts --disable-werror"
         postbuild='package_linux'
+        if [ "$target_arch" == "x86_64" ]; then
+            sys_cflags="$sys_cflags -msse4.2 -mavx"
+        fi
         ;;
     Darwin)
         echo "Compiling for MacOS for $target_arch..."
@@ -233,7 +236,7 @@ case "$platform" in # Adjust compilation options based on platform
         ;;
     CYGWIN*|MINGW*|MSYS*)
         echo 'Compiling for Windows...'
-        sys_cflags='-Wno-error'
+        sys_cflags='-Wno-error -msse4.2 -mavx'
         opts="$opts --disable-fortify-source"
         postbuild='package_windows' # set the above function to be called after build
         target="qemu-system-i386w.exe"
@@ -241,7 +244,7 @@ case "$platform" in # Adjust compilation options based on platform
     win64-cross)
         echo 'Cross-compiling for Windows...'
         export AR=${AR:-$CROSSAR}
-        sys_cflags='-Wno-error'
+        sys_cflags='-Wno-error -msse4.2 -mavx'
         opts="$opts --cross-prefix=$CROSSPREFIX --static --disable-fortify-source"
         postbuild='package_wincross' # set the above function to be called after build
         target="qemu-system-i386w.exe"
