@@ -54,6 +54,7 @@ class LibInstaller:
 		
 		if len(pkgs) < 1:
 			print(f'    [*] [ERROR] Unable to find version of {pkg_name} compatible with {self._darwin_target}.{self._arch}')
+			exit(1)
 
 		pkg_filename = pkgs[-1]
 		return pkg_filename, f'{pkg_base_url}/{pkg_filename}'
