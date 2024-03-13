@@ -55,32 +55,55 @@ static void generate_swizzle_masks(unsigned int width,
     *mask_z = z;
 }
 
-/* This fills a pattern with a value if your value has bits abcd and your
- * pattern is 11010100100 this will return: 0a0b0c00d00
+/* Move low bits to positions given by a mask, while keeping bits in order.
+ * e.g.
+ * expand(0000abcd, 10011010) = a00bc0d0.
+ *
+ * Implementation from Hacker's delight chapter 7 "Expand"
+ * https://stackoverflow.com/questions/77834169/what-is-a-fast-fallback-algorithm-which-emulates-pdep-and-pext-in-software
  */
-static uint32_t fill_pattern(uint32_t pattern, uint32_t value)
-{
-    uint32_t result = 0;
-    uint32_t bit = 1;
-    while(value) {
-        if (pattern & bit) {
-            /* Copy bit to result */
-            result |= value & 1 ? bit : 0;
-            value >>= 1;
-        }
-        bit <<= 1;
+typedef struct expand_mask {
+    uint32_t mask;
+    uint32_t moves[5];
+} expand_mask;
+
+static void generate_expand_mask_moves(expand_mask* expand_mask) {
+    uint32_t mk, mp, mv;
+    uint32_t mask = expand_mask->mask;
+    int i;
+    mk = ~mask << 1; // We will count 0's to right.
+    for (i = 0; i < 5; i++) {
+        mp = mk ^ (mk << 1); // Parallel suffix.
+        mp = mp ^ (mp << 2);
+        mp = mp ^ (mp << 4);
+        mp = mp ^ (mp << 8);
+        mp = mp ^ (mp << 16);
+        mv = mp & mask; // Bits to move.
+        expand_mask->moves[i] = mv;
+        mask = (mask ^ mv) | (mv >> (1 << i)); // Compress m.
+        mk = mk & ~mp;
     }
-    return result;
+
 }
 
-static unsigned int get_swizzled_offset(
+static uint32_t expand(uint32_t x, expand_mask* expand_mask) {
+    uint32_t mv, t;
+    for (int i = 4; i >= 0; i--) {
+        mv = expand_mask->moves[i];
+        t = x << (1 << i);
+        x = (x & ~mv) | (t & mv);
+    }
+    return x & expand_mask->mask; // Clear out extraneous bits.
+}
+
+static inline unsigned int get_swizzled_offset(
     unsigned int x, unsigned int y, unsigned int z,
-    uint32_t mask_x, uint32_t mask_y, uint32_t mask_z,
+    expand_mask *mask_x, expand_mask *mask_y, expand_mask *mask_z,
     unsigned int bytes_per_pixel)
 {
-    return bytes_per_pixel * (fill_pattern(mask_x, x)
-                           | fill_pattern(mask_y, y)
-                           | fill_pattern(mask_z, z));
+    return bytes_per_pixel * (expand(x, mask_x)
+                           | expand(y, mask_y)
+                           | expand(z, mask_z));
 }
 
 void swizzle_box(
@@ -93,8 +116,11 @@ void swizzle_box(
     unsigned int slice_pitch,
     unsigned int bytes_per_pixel)
 {
-    uint32_t mask_x, mask_y, mask_z;
-    generate_swizzle_masks(width, height, depth, &mask_x, &mask_y, &mask_z);
+    expand_mask mask_x, mask_y, mask_z;
+    generate_swizzle_masks(width, height, depth, &mask_x.mask, &mask_y.mask, &mask_z.mask);
+    generate_expand_mask_moves(&mask_x);
+    generate_expand_mask_moves(&mask_y);
+    generate_expand_mask_moves(&mask_z);
 
     int x, y, z;
     for (z = 0; z < depth; z++) {
@@ -103,7 +129,7 @@ void swizzle_box(
                 const uint8_t *src = src_buf
                                          + y * row_pitch + x * bytes_per_pixel;
                 uint8_t *dst = dst_buf +
-                    get_swizzled_offset(x, y, z, mask_x, mask_y, mask_z,
+                    get_swizzled_offset(x, y, z, &mask_x, &mask_y, &mask_z,
                                         bytes_per_pixel);
                 memcpy(dst, src, bytes_per_pixel);
             }
@@ -122,15 +148,18 @@ void unswizzle_box(
     unsigned int slice_pitch,
     unsigned int bytes_per_pixel)
 {
-    uint32_t mask_x, mask_y, mask_z;
-    generate_swizzle_masks(width, height, depth, &mask_x, &mask_y, &mask_z);
+    expand_mask mask_x, mask_y, mask_z;
+    generate_swizzle_masks(width, height, depth, &mask_x.mask, &mask_y.mask, &mask_z.mask);
+    generate_expand_mask_moves(&mask_x);
+    generate_expand_mask_moves(&mask_y);
+    generate_expand_mask_moves(&mask_z);
 
     int x, y, z;
     for (z = 0; z < depth; z++) {
         for (y = 0; y < height; y++) {
             for (x = 0; x < width; x++) {
                 const uint8_t *src = src_buf
-                    + get_swizzled_offset(x, y, z, mask_x, mask_y, mask_z,
+                    + get_swizzled_offset(x, y, z, &mask_x, &mask_y, &mask_z,
                                           bytes_per_pixel);
                 uint8_t *dst = dst_buf + y * row_pitch + x * bytes_per_pixel;
                 memcpy(dst, src, bytes_per_pixel);
