@@ -234,6 +234,7 @@ case "$platform" in # Adjust compilation options based on platform
     CYGWIN*|MINGW*|MSYS*)
         echo 'Compiling for Windows...'
         sys_cflags='-Wno-error'
+        CFLAGS="${CFLAGS} -lIphlpapi -lCrypt32" # workaround for linking libs on mingw
         opts="$opts --disable-fortify-source"
         postbuild='package_windows' # set the above function to be called after build
         target="qemu-system-i386w.exe"
