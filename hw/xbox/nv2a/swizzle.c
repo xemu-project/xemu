@@ -26,6 +26,10 @@
 
 #include "swizzle.h"
 
+#ifdef __BMI2__
+#include <x86intrin.h>
+#endif
+
 /* This should be pretty straightforward.
  * It creates a bit pattern like ..zyxzyxzyx from ..xxx, ..yyy and ..zzz
  * If there are no bits left from any component it will pack the other masks
@@ -87,6 +91,9 @@ static void generate_expand_mask_moves(expand_mask* expand_mask) {
 }
 
 static uint32_t expand(uint32_t x, expand_mask* expand_mask) {
+    #ifdef __BMI2__
+    return _pdep_u32(x, expand_mask->mask);
+    #else
     uint32_t mv, t;
     for (int i = 4; i >= 0; i--) {
         mv = expand_mask->moves[i];
@@ -94,13 +101,14 @@ static uint32_t expand(uint32_t x, expand_mask* expand_mask) {
         x = (x & ~mv) | (t & mv);
     }
     return x & expand_mask->mask; // Clear out extraneous bits.
+    #endif
 }
 
 static inline unsigned int get_swizzled_offset(
     unsigned int x, unsigned int y, unsigned int z,
     expand_mask *mask_x, expand_mask *mask_y, expand_mask *mask_z,
     unsigned int bytes_per_pixel)
-{
+{ 
     return bytes_per_pixel * (expand(x, mask_x)
                            | expand(y, mask_y)
                            | expand(z, mask_z));
