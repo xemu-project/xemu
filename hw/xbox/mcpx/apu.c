@@ -1981,6 +1981,21 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
                             ldl_le_phys(&address_space_memory, addr);
                         linear_addr += 4;
                     }
+                    /* WAR: Deactivate voice if ACPM header values are non-zero
+                     * and identical. Something overwrites voice memory region
+                     * before NV1BA0_PIO_VOICE_OFF is set. Mitigates loud
+                     * crackling produced by decoding/playing such data.
+                     */
+                    if (adpcm_block[0] != 0) {
+                        uint32_t diff = 0;
+                        for (uint8_t i = 1; i < 8; i++) {
+                            diff |= adpcm_block[i] ^ adpcm_block[0];
+                        }
+                        if (diff == 0) {
+                            voice_off(d, v);
+                            return -1;
+                        }
+                    }
                 }
                 adpcm_decode_block(adpcm_decoded, (uint8_t *)adpcm_block,
                                    block_size, channels);
