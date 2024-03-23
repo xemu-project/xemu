@@ -1220,7 +1220,8 @@ void MainMenuSystemView::Draw()
     }
 
     if ((int)g_config.sys.avpack == CONFIG_SYS_AVPACK_NONE) {
-        ImGui::TextColored(ImVec4(1,0,0,1), "Setting AV Pack to NONE disables video output.");
+        ImGui::TextColored(ImVec4(1, 0, 0, 1),
+                           "Setting AV Pack to NONE disables video output.");
     }
 
     SectionTitle("System Configuration");
