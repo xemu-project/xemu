@@ -85,7 +85,10 @@ int pcap_load_library(void)
 
 	HANDLE hwpcap = LoadLibrary("wpcap.dll");
 	if (hwpcap == NULL) {
-		return 1;
+		HANDLE hwpcap = LoadLibrary("packet.dll");
+		if ( hwpcap == NULL ) {
+			return 1;
+		}
 	}
 
 	#define LOAD_FN(fname) do {\
