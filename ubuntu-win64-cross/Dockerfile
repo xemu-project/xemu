@@ -4,7 +4,7 @@
 
 FROM ubuntu:22.04
 
-ENV MXE_VERSION=1707285df63b8590ce6b91c7ff3a5b56e3cc8980
+ENV MXE_VERSION=ea373fe51c02f60111ef0b7597f52dc380c5c162
 
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive \
@@ -59,6 +59,7 @@ RUN cd /opt \
             cc \
             glib \
             libepoxy \
+            libusb1 \
             pixman \
             libsamplerate \
             openssl \
