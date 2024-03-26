@@ -21,6 +21,8 @@
 
 #include "hw/xbox/nv2a/nv2a_int.h"
 
+static NV2AState *g_nv2a;
+
 void nv2a_update_irq(NV2AState *d)
 {
     /* PFIFO */
@@ -362,17 +364,7 @@ static void qdev_nv2a_reset(DeviceState *dev)
 static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
 {
     NV2AState *d = opaque;
-    if (state == RUN_STATE_SAVE_VM) {
-        nv2a_lock_fifo(d);
-        qatomic_set(&d->pfifo.halt, true);
-        qatomic_set(&d->pgraph.download_dirty_surfaces_pending, true);
-        qemu_event_reset(&d->pgraph.dirty_surfaces_download_complete);
-        nv2a_unlock_fifo(d);
-        qemu_mutex_unlock_iothread();
-        qemu_event_wait(&d->pgraph.dirty_surfaces_download_complete);
-        qemu_mutex_lock_iothread();
-        nv2a_lock_fifo(d);
-    } else if (state == RUN_STATE_RESTORE_VM) {
+    if (state == RUN_STATE_RESTORE_VM) {
         nv2a_lock_fifo(d);
         qatomic_set(&d->pfifo.halt, true);
         nv2a_unlock_fifo(d);
@@ -389,6 +381,19 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
         qemu_event_wait(&d->pgraph.shader_cache_writeback_complete);
         qemu_mutex_lock_iothread();
     }
+}
+
+void nv2a_save_vm_state(void)
+{
+    nv2a_lock_fifo(g_nv2a);
+    qatomic_set(&g_nv2a->pfifo.halt, true);
+    qatomic_set(&g_nv2a->pgraph.download_dirty_surfaces_pending, true);
+    qemu_event_reset(&g_nv2a->pgraph.dirty_surfaces_download_complete);
+    nv2a_unlock_fifo(g_nv2a);
+    qemu_mutex_unlock_iothread();
+    qemu_event_wait(&g_nv2a->pgraph.dirty_surfaces_download_complete);
+    qemu_mutex_lock_iothread();
+    nv2a_lock_fifo(g_nv2a);
 }
 
 static int nv2a_post_save(void *opaque)
@@ -590,6 +595,7 @@ void nv2a_init(PCIBus *bus, int devfn, MemoryRegion *ram)
 {
     PCIDevice *dev = pci_create_simple(bus, devfn, "nv2a");
     NV2AState *d = NV2A_DEVICE(dev);
+    g_nv2a = d;
     nv2a_init_memory(d, ram);
     nv2a_init_vga(d);
     qemu_add_vm_change_state_handler(nv2a_vm_state_change, d);
