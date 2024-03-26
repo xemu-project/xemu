@@ -849,8 +849,10 @@ void vsh_translate(uint16_t version,
         mstring_append(body, "  oPos.z = oPos.w;\n");
     }
     mstring_append(body,
-        "  if (clipRange.y != clipRange.x) {\n"
-        "    oPos.z = (oPos.z - clipRange.x)/(0.5*(clipRange.y - clipRange.x)) - 1;\n"
+        "  if (clipRange.y > clipRange.x) {\n"
+        "    oPos.z = (oPos.z - clipRange.x)/(0.5 * (clipRange.y - clipRange.x)) - 1;\n"
+        "  } else {\n"
+        "    oPos.z = (oPos.z - clipRange.y)/(0.5 * (clipRange.x - clipRange.y)) - 1;\n"
         "  }\n"
 
         /* Correct for the perspective divide */
