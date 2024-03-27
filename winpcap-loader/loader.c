@@ -21,7 +21,7 @@
 #include <pcap/pcap.h>
 #include <string.h>
 
-const char *lib_not_loaded_err = "winpcap library is not loaded";
+const char *lib_not_loaded_err = "pcap library is not loaded, is npcap installed?";
 
 static pcap_t *pcap_open_live_stub(const char *device, int snaplen, int promisc, int to_ms, char *errbuf)
 {
@@ -83,9 +83,10 @@ int pcap_load_library(void)
 		return 0;
 	}
 
-	HANDLE hwpcap = LoadLibrary("wpcap.dll");
+	HANDLE hwpcap = LoadLibrary("\\Npcap\\wpcap.dll");
+
 	if (hwpcap == NULL) {
-		HANDLE hwpcap = LoadLibrary("packet.dll");
+		hwpcap = LoadLibrary("packet.dll");
 		if ( hwpcap == NULL ) {
 			return 1;
 		}
