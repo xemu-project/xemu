@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone tree
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Extract image metadata (tags, labels)
         id: meta
         uses: docker/metadata-action@v4.3.0
