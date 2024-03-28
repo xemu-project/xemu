@@ -2631,6 +2631,16 @@ void mcpx_apu_init(PCIBus *bus, int devfn, MemoryRegion *ram)
         exit(1);
     }
 
+    if (SDL_GetNumAudioDevices(0) == 0) {
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        
+        if (SDL_AudioInit("dummy") < 0) {
+            fprintf(stderr, "Failed to initalize 'dummy' audio device\n");
+            assert(!"SDL_AudioInit failed!");
+            exit(1);
+        }
+    }
+    
     SDL_AudioDeviceID sdl_audio_dev;
     sdl_audio_dev = SDL_OpenAudioDevice(NULL, 0, &sdl_audio_spec, NULL, 0);
     if (sdl_audio_dev == 0) {
