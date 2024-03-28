@@ -83,10 +83,10 @@ int pcap_load_library(void)
 		return 0;
 	}
 
-	HANDLE hwpcap = LoadLibrary("wpcap.dll");
+	HANDLE hwpcap = LoadLibrary("\\Npcap\\wpcap.dll");
 
 	if (hwpcap == NULL) {
-		hwpcap = LoadLibrary("packet.dll");
+		hwpcap = LoadLibrary("wpcap.dll");
 		if ( hwpcap == NULL ) {
 			return 1;
 		}
