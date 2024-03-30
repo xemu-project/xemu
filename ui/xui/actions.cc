@@ -36,8 +36,6 @@ void ActionEjectDisc(void)
 
 void ActionLoadDisc(void)
 {
-    Error *err = NULL;
-
     const char *iso_file_filters =
         "Disc Image Files (*.iso, *.xiso)\0*.iso;*.xiso\0All Files\0*.*\0";
     const char *new_disc_path =
@@ -48,7 +46,14 @@ void ActionLoadDisc(void)
         return;
     }
 
-    xemu_load_disc(new_disc_path, &err);
+    ActionLoadDiscFile(new_disc_path);
+}
+
+void ActionLoadDiscFile(const char *file_path)
+{
+    Error *err = NULL;
+    xemu_load_disc(file_path, &err);
+
     if (err) {
         xemu_queue_error_message(error_get_pretty(err));
         error_free(err);
