@@ -71,7 +71,7 @@ jobs:
 
     steps:
     - name: Download source package
-      uses: actions/download-artifact@v4@v4
+      uses: actions/download-artifact@v4
       with:
         name: src.tar.gz
     - name: Extract source package
@@ -318,12 +318,12 @@ jobs:
         configuration: ["debug", "release"]
     steps:
     - name: Download x86_64 build
-      uses: actions/download-artifact@v4@v4
+      uses: actions/download-artifact@v4
       with:
         name: xemu-macos-x86_64-${{ matrix.configuration }}
         path: xemu-macos-x86_64-${{ matrix.configuration }}
     - name: Download arm64 build
-      uses: actions/download-artifact@v4@v4
+      uses: actions/download-artifact@v4
       with:
         name: xemu-macos-arm64-${{ matrix.configuration }}
         path: xemu-macos-arm64-${{ matrix.configuration }}
