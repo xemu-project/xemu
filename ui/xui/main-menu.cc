@@ -53,23 +53,23 @@ void MainMenuGeneralView::Draw()
 {
 #if defined(_WIN32)
     SectionTitle("Updates");
-    Toggle("Check for updates", &g_config.general.updates.check,
-           "Check for updates whenever xemu is opened");
+    Toggle("Check For Updates", &g_config.general.updates.check,
+           "Checks for updates whenever xemu is opened");
 #endif
 
 #if defined(__x86_64__)
     SectionTitle("Performance");
-    Toggle("Hard FPU emulation", &g_config.perf.hard_fpu,
+    Toggle("Hard FPU Emulation", &g_config.perf.hard_fpu,
            "Use hardware-accelerated floating point emulation (requires restart)");
 #endif
 
-    Toggle("Cache shaders to disk", &g_config.perf.cache_shaders,
-           "Reduce stutter in games by caching previously generated shaders");
+    Toggle("Cache Shaders To Disk", &g_config.perf.cache_shaders,
+           "Reduces stutter in games by caching previously generated shaders");
 
     SectionTitle("Miscellaneous");
-    Toggle("Skip startup animation", &g_config.general.skip_boot_anim,
-           "Skip the full Xbox boot animation sequence");
-    FilePicker("Screenshot output directory", &g_config.general.screenshot_dir,
+    Toggle("Fast Boot", &g_config.general.skip_boot_anim,
+           "Skips the Xbox startup animation");
+    FilePicker("Screenshot Output Directory", &g_config.general.screenshot_dir,
                NULL, true);
     // toggle("Throttle DVD/HDD speeds", &g_config.general.throttle_io,
     //        "Limit DVD/HDD throughput to approximate Xbox load times");
@@ -440,9 +440,9 @@ void MainMenuInputView::Draw()
     }
 
     SectionTitle("Options");
-    Toggle("Auto-bind controllers", &g_config.input.auto_bind,
+    Toggle("Auto-Bind Controllers", &g_config.input.auto_bind,
            "Bind newly connected controllers to any open port");
-    Toggle("Background controller input capture",
+    Toggle("Background Controller Input Capture",
            &g_config.input.background_input_capture,
            "Capture even if window is unfocused (requires restart)");
 }
@@ -452,7 +452,7 @@ void MainMenuDisplayView::Draw()
     SectionTitle("Quality");
     int rendering_scale = nv2a_get_surface_scale_factor() - 1;
     if (ChevronCombo("Internal resolution scale", &rendering_scale,
-                     "1x\0"
+                     "1x (Default)\0"
                      "2x\0"
                      "3x\0"
                      "4x\0"
@@ -462,40 +462,77 @@ void MainMenuDisplayView::Draw()
                      "8x\0"
                      "9x\0"
                      "10x\0",
-                     "Increase surface scaling factor for higher quality")) {
+                     "11x\0",
+                     "12x\0",
+                     "13x\0",
+                     "14x\0",
+                     "15x\0",
+                     "16x\0",
+                     "17x\0",
+                     "18x\0",
+                     "19x\0",
+                     "20x\0",
+                     "Increase surface scaling factor for higher visual quality")) {
         nv2a_set_surface_scale_factor(rendering_scale+1);
     }
 
     SectionTitle("Window");
     bool fs = xemu_is_fullscreen();
-    if (Toggle("Fullscreen", &fs, "Enable fullscreen now")) {
+    if (Toggle("Fullscreen", &fs, "Enable Fullscreen")) {
         xemu_toggle_fullscreen();
     }
-    Toggle("Fullscreen on startup",
+    Toggle("Fullscreen On Startup",
            &g_config.display.window.fullscreen_on_startup,
            "Start xemu in fullscreen when opened");
     if (ChevronCombo("Window size", &g_config.display.window.startup_size,
                      "Last Used\0"
+                     "320x180\0"
+                     "320x240\0"
+                     "400x225\0"
+                     "400x300\0"
+                     "512x288\0"
+                     "512x384\0"
+                     "640x360\0"
                      "640x480\0"
+                     "800x450\0"
+                     "800x600\0"
+                     "960x540\0"
+                     "960x720\0"
+                     "1024x576\0"
+                     "1024x768\0"
+                     "1152x648\0"
+                     "1152x864\0"
                      "1280x720\0"
                      "1280x800\0"
                      "1280x960\0"
+                     "1366x768\0"
+                     "1366x1025\0"
+                     "1400x788\0"
+                     "1400x1050\0"
+                     "1536x864\0"
+                     "1536x1152\0"
+                     "1600x900\0"
+                     "1600x1200\0"
                      "1920x1080\0"
+                     "1920x1440\0"
+                     "2048x1152\0"
+                     "2048x1536\0"
                      "2560x1440\0"
                      "2560x1600\0"
                      "2560x1920\0"
                      "3840x2160\0",
+                     "3840x2880\0",
                      "Select preferred startup window size")) {
     }
-    Toggle("Vertical refresh sync", &g_config.display.window.vsync,
-           "Sync to screen vertical refresh to reduce tearing artifacts");
+    Toggle("VSync", &g_config.display.window.vsync,
+           "Syncs xemu to the refresh rate of current display to eliminate screen tearing");
 
     SectionTitle("Interface");
-    Toggle("Show main menu bar", &g_config.display.ui.show_menubar,
+    Toggle("Show Main Menu Bar", &g_config.display.ui.show_menubar,
            "Show main menu bar when mouse is activated");
-    Toggle("Show notifications", &g_config.display.ui.show_notifications,
-           "Display notifications in upper-right corner");
-    Toggle("Hide mouse cursor", &g_config.display.ui.hide_cursor,
+    Toggle("Show Notifications", &g_config.display.ui.show_notifications,
+           "Displays notifications in upper-right hand corner");
+    Toggle("Hide Mouse Cursor", &g_config.display.ui.hide_cursor,
            "Hide the mouse cursor when it is not moving");
 
     int ui_scale_idx;
@@ -506,10 +543,17 @@ void MainMenuDisplayView::Draw()
         if (ui_scale_idx < 0) ui_scale_idx = 0;
         else if (ui_scale_idx > 2) ui_scale_idx = 2;
     }
-    if (ChevronCombo("UI scale", &ui_scale_idx,
+    if (ChevronCombo("UI Scale", &ui_scale_idx,
                      "Auto\0"
                      "1x\0"
+                     "1.25x\0"
+                     "1.5x\0"
+                     "1.75x\0"
                      "2x\0",
+                     "2.25x\0",
+                     "2.5x\0",
+                     "2.75x\0",
+                     "3x\0",
                      "Interface element scale")) {
         if (ui_scale_idx == 0) {
             g_config.display.ui.auto_scale = true;
@@ -529,7 +573,11 @@ void MainMenuDisplayView::Draw()
                  "Native\0"
                  "Auto (Default)\0"
                  "4:3\0"
+                 "5:4\0"
                  "16:9\0",
+                 "16:10\0",
+                 "21:9\0",
+                 "32:9\0",
                  "Select the displayed aspect ratio");
 }
 
@@ -539,11 +587,11 @@ void MainMenuAudioView::Draw()
     char buf[32];
     snprintf(buf, sizeof(buf), "Limit output volume (%d%%)",
              (int)(g_config.audio.volume_limit * 100));
-    Slider("Output volume limit", &g_config.audio.volume_limit, buf);
+    Slider("Output Volume Limit", &g_config.audio.volume_limit, buf);
 
     SectionTitle("Quality");
-    Toggle("Real-time DSP processing", &g_config.audio.use_dsp,
-           "Enable improved audio accuracy (experimental)");
+    Toggle("Real-time DSP Processing", &g_config.audio.use_dsp,
+           "Enable improved audio accuracy (Experimental)");
 
 }
 
@@ -921,7 +969,7 @@ bool MainMenuSnapshotsView::BigSnapshotButton(QEMUSnapshotInfo *snapshot,
     // Snapshot XBE title name
     ImGui::PushFont(g_font_mgr.m_menu_font_small);
     const char *title_name = data->xbe_title_name ? data->xbe_title_name :
-                                                    "(Unknown XBE Title Name)";
+                                                    "(Unknown XBE Title)";
     draw_list->AddText(ImVec2(p0.x + title_pos.x, p0.y + title_pos.y),
                        IM_COL32(255, 255, 255, 200), title_name);
 
@@ -990,7 +1038,7 @@ void MainMenuSnapshotsView::Draw()
     g_snapshot_mgr.Refresh();
 
     SectionTitle("Snapshots");
-    Toggle("Filter by current title",
+    Toggle("Filter Snapshots By Currently Running Title",
            &g_config.general.snapshots.filter_current_game,
            "Only display snapshots created while running the currently running "
            "XBE");
@@ -1049,7 +1097,7 @@ void MainMenuSnapshotsView::Draw()
 
     if (snapshot_with_create_name_exists && ImGui::IsItemHovered()) {
         ImGui::SetTooltip("A snapshot with the name \"%s\" already exists. "
-                          "This button will overwrite the existing snapshot.",
+                          "Overwrite existing snapshot by selecting Replace.",
                           m_search_buf.c_str());
     }
     ImGui::PopFont();
@@ -1127,7 +1175,7 @@ void MainMenuSnapshotsView::Draw()
         const char *msg;
         if (g_snapshot_mgr.m_snapshots_len) {
             if (!m_search_buf.empty()) {
-                msg = "Press Create to create new snapshot";
+                msg = "Select Create to create new snapshot";
             } else {
                 msg = "No snapshots match filter criteria";
             }
