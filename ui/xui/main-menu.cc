@@ -524,7 +524,7 @@ void MainMenuDisplayView::Draw()
                      "3840x2880\0",
                      "Select preferred startup window size")) {
     }
-    Toggle("VSync", &g_config.display.window.vsync,
+    Toggle("V-Sync", &g_config.display.window.vsync,
            "Syncs xemu to the refresh rate of current display to eliminate screen tearing");
 
     SectionTitle("Interface");
