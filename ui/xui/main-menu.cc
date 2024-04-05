@@ -54,7 +54,7 @@ void MainMenuGeneralView::Draw()
 #if defined(_WIN32)
     SectionTitle("Updates");
     Toggle("Check for Updates", &g_config.general.updates.check,
-           "Checks for updates whenever xemu is opened");
+           "Check for updates whenever xemu is opened");
 #endif
 
 #if defined(__x86_64__)
