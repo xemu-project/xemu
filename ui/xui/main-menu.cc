@@ -63,7 +63,7 @@ void MainMenuGeneralView::Draw()
            "Use hardware-accelerated floating point emulation (requires restart)");
 #endif
 
-    Toggle("Cache Shaders To Disk", &g_config.perf.cache_shaders,
+    Toggle("Cache Shaders to Disk", &g_config.perf.cache_shaders,
            "Reduces stutter in games by caching previously generated shaders");
 
     SectionTitle("Miscellaneous");
