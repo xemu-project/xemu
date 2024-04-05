@@ -22,7 +22,7 @@
 #include "main-menu.hh"
 #include "font-manager.hh"
 #include "input-manager.hh"
-#include "snapshot-manager.hh"
+#include "-manager.hh"
 #include "viewport-manager.hh"
 #include "xemu-hud.h"
 #include "misc.hh"
@@ -481,7 +481,7 @@ void MainMenuDisplayView::Draw()
     if (Toggle("Fullscreen", &fs, "Enable Fullscreen")) {
         xemu_toggle_fullscreen();
     }
-    Toggle("Fullscreen On Startup",
+    Toggle("Fullscreen on Startup",
            &g_config.display.window.fullscreen_on_startup,
            "Start xemu in fullscreen when opened");
     if (ChevronCombo("Window size", &g_config.display.window.startup_size,
@@ -878,20 +878,20 @@ void MainMenuNetworkView::DrawUdpOptions(bool appearing)
     ImGui::PopFont();
 }
 
-MainMenuSnapshotsView::MainMenuSnapshotsView() : MainMenuTabView()
+MainMenusView::MainMenusView() : MainMenuTabView()
 {
-    xemu_snapshots_mark_dirty();
+    xemu_s_mark_dirty();
 
     m_search_regex = NULL;
     m_current_title_id = 0;
 }
 
-MainMenuSnapshotsView::~MainMenuSnapshotsView()
+MainMenusView::~MainMenusView()
 {
     g_free(m_search_regex);
 }
 
-bool MainMenuSnapshotsView::BigSnapshotButton(QEMUSnapshotInfo *snapshot,
+bool MainMenusView::BigButton(QEMUInfo *,
                                               XemuSnapshotData *data,
                                               int current_snapshot_binding)
 {
@@ -1097,7 +1097,7 @@ void MainMenuSnapshotsView::Draw()
 
     if (snapshot_with_create_name_exists && ImGui::IsItemHovered()) {
         ImGui::SetTooltip("A snapshot with the name \"%s\" already exists. "
-                          "Overwrite existing snapshot by selecting Replace.",
+                          "This button will overwrite the existing snapshot.",
                           m_search_buf.c_str());
     }
     ImGui::PopFont();
@@ -1175,7 +1175,7 @@ void MainMenuSnapshotsView::Draw()
         const char *msg;
         if (g_snapshot_mgr.m_snapshots_len) {
             if (!m_search_buf.empty()) {
-                msg = "Press Create to create new snapshot";
+                msg = "Select Create to Generate New Snapshot";
             } else {
                 msg = "No snapshots match filter criteria";
             }
@@ -1456,7 +1456,7 @@ MainMenuScene::MainMenuScene()
     m_tabs.push_back(&m_display_button);
     m_tabs.push_back(&m_audio_button);
     m_tabs.push_back(&m_network_button);
-    m_tabs.push_back(&m_snapshots_button);
+    m_tabs.push_back(&m_s_button);
     m_tabs.push_back(&m_system_button);
     m_tabs.push_back(&m_about_button);
 
@@ -1465,7 +1465,7 @@ MainMenuScene::MainMenuScene()
     m_views.push_back(&m_display_view);
     m_views.push_back(&m_audio_view);
     m_views.push_back(&m_network_view);
-    m_views.push_back(&m_snapshots_view);
+    m_views.push_back(&m_s_view);
     m_views.push_back(&m_system_view);
     m_views.push_back(&m_about_view);
 
@@ -1478,7 +1478,7 @@ void MainMenuScene::ShowSettings()
     SetNextViewIndexWithFocus(g_config.general.last_viewed_menu_index);
 }
 
-void MainMenuScene::ShowSnapshots()
+void MainMenuScene::Shows()
 {
     SetNextViewIndexWithFocus(5);
 }
