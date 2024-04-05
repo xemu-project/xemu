@@ -1175,7 +1175,7 @@ void MainMenuSnapshotsView::Draw()
         const char *msg;
         if (g_snapshot_mgr.m_snapshots_len) {
             if (!m_search_buf.empty()) {
-                msg = "Select Create to create new snapshot";
+                msg = "Press Create to create new snapshot";
             } else {
                 msg = "No snapshots match filter criteria";
             }
