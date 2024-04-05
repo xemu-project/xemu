@@ -67,7 +67,7 @@ void MainMenuGeneralView::Draw()
            "Reduces stutter in games by caching previously generated shaders");
 
     SectionTitle("Miscellaneous");
-    Toggle("Fast Boot", &g_config.general.skip_boot_anim,
+    Toggle("Skip Startup Animation", &g_config.general.skip_boot_anim,
            "Skips the Xbox startup animation");
     FilePicker("Screenshot Output Directory", &g_config.general.screenshot_dir,
                NULL, true);
