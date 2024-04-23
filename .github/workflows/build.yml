@@ -219,7 +219,7 @@ jobs:
         ar x dist/*.deb
         mkdir appimage
         tar -C appimage -xf data.tar*
-        install -DT src/xemu.appdata.xml appimage/usr/share/metainfo/xemu.appdata.xml
+        install -DT src/xemu.metainfo.xml appimage/usr/share/metainfo/xemu.metainfo.xml
 
         export VERSION=v$(cat src/XEMU_VERSION)
         if [[ "${{ matrix.configuration }}" == "Debug" ]]; then
