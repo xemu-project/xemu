@@ -842,8 +842,8 @@ void vsh_translate(uint16_t version,
          * opengl expects it in clip space.
          * TODO: the pixel-center co-ordinate differences should handled
          */
-        "  oPos.x = 2.0 * (oPos.x - surfaceSize.x * 0.5) / surfaceSize.x;\n"
-        "  oPos.y = -2.0 * (oPos.y - surfaceSize.y * 0.5) / surfaceSize.y;\n"
+        "  oPos.x = 2.0 * (oPos.x / surfaceSize.x) - 1;\n"
+        "  oPos.y = -2.0 * (oPos.y / surfaceSize.y) + 1;\n"
     );
     if (z_perspective) {
         mstring_append(body, "  oPos.z = oPos.w;\n");
@@ -861,6 +861,10 @@ void vsh_translate(uint16_t version,
         "  } else {\n"
             /* we don't want the OpenGL perspective divide to happen, but we
              * can't multiply by W because it could be meaningless here */
+            /* clamp z to 1 */
+        "    if (oPos.z > 1.0) {\n"
+        "      oPos.z = 1.0;\n"
+        "    }\n"
         "    oPos.w = 1.0;\n"
         "  }\n"
     );
