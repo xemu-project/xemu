@@ -17,21 +17,21 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include "ui/xemu-notifications.h"
-#include "popup-menu.hh"
-#include "../xemu-snapshots.h"
-#include "IconsFontAwesome6.h"
-#include "actions.hh"
-#include "font-manager.hh"
-#include "input-manager.hh"
-#include "main-menu.hh"
-#include "misc.hh"
-#include "scene-manager.hh"
-#include "viewport-manager.hh"
-#include "xemu-hud.h"
-#include <filesystem>
-#include <map>
 #include <string>
 #include <vector>
+#include <filesystem>
+#include <map>
+#include "misc.hh"
+#include "actions.hh"
+#include "font-manager.hh"
+#include "viewport-manager.hh"
+#include "scene-manager.hh"
+#include "popup-menu.hh"
+#include "input-manager.hh"
+#include "xemu-hud.h"
+#include "IconsFontAwesome6.h"
+#include "../xemu-snapshots.h"
+#include "main-menu.hh"
 
 PopupMenuItemDelegate::~PopupMenuItemDelegate() {}
 void PopupMenuItemDelegate::PushMenu(PopupMenu &menu) {}
@@ -341,7 +341,16 @@ public:
 };
 
 class GamesPopupMenu : public virtual PopupMenu {
+protected:
+    std::multimap<std::string, std::string> sorted_file_names;
+
 public:
+    void Show(const ImVec2 &direction) override
+    {
+        PopupMenu::Show(direction);
+        PopulateGameList();
+    }
+
     bool DrawItems(PopupMenuItemDelegate &nav) override
     {
         bool pop = false;
@@ -350,24 +359,8 @@ public:
             ImGui::SetKeyboardFocusHere();
         }
 
-        const char *games_dir = g_config.general.games_dir;
-        std::filesystem::path directory(games_dir);
-        std::multimap<std::string, std::string> sorted_file_names;
-
-        if (std::filesystem::is_directory(directory)) {
-            for (const auto &entry :
-                 std::filesystem::directory_iterator(directory)) {
-                const auto &entry_path = entry.path();
-                if (std::filesystem::is_regular_file(entry_path) &&
-                    entry_path.extension() == ".iso") {
-                    sorted_file_names.insert(
-                        { entry_path.stem().string(), entry_path });
-                }
-            }
-        }
-
         for (const auto &[label, file_path] : sorted_file_names) {
-            if (PopupMenuButton(label, ICON_FA_GAMEPAD)) {
+            if (PopupMenuButton(label, ICON_FA_COMPACT_DISC)) {
                 ActionLoadDiscFile(file_path.c_str());
                 nav.ClearMenuStack();
                 pop = true;
@@ -385,6 +378,24 @@ public:
             nav.PopFocus();
         }
         return pop;
+    }
+
+    void PopulateGameList() {
+        const char *games_dir = g_config.general.games_dir;
+
+        sorted_file_names.clear();
+        std::filesystem::path directory(games_dir);
+        if (std::filesystem::is_directory(directory)) {
+            for (const auto &file :
+                 std::filesystem::directory_iterator(directory)) {
+                const auto &file_path = file.path();
+                if (std::filesystem::is_regular_file(file_path) &&
+                    file_path.extension() == ".iso") {
+                    sorted_file_names.insert(
+                        { file_path.stem().string(), file_path });
+                }
+            }
+        }
     }
 };
 
