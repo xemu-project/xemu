@@ -846,13 +846,19 @@ void vsh_translate(uint16_t version,
         "  oPos.y = -2.0 * (oPos.y - surfaceSize.y * 0.5) / surfaceSize.y;\n"
     );
     if (z_perspective) {
-        mstring_append(body, "  oPos.z = oPos.w;\n");
+        mstring_append(body, 
+            "  if (oPos.w != oPos.z) {\n"
+            "    oPos.z = 2.0 * (oPos.w - clipRange.x)/(clipRange.y - clipRange.x) - 1.0;\n"
+            "  }\n"
+        );
+    } else {
+        mstring_append(body, 
+            "  if (clipRange.y != clipRange.x) {\n"
+            "    oPos.z = 2.0 * (oPos.z - clipRange.x)/(clipRange.y - clipRange.x) - 1.0;\n"
+            "  }\n"
+        );
     }
-    mstring_append(body,
-        "  if (clipRange.y != clipRange.x) {\n"
-        "    oPos.z = (oPos.z - clipRange.x)/(0.5*(clipRange.y - clipRange.x)) - 1;\n"
-        "  }\n"
-
+    mstring_append(body,      
         /* Correct for the perspective divide */
         "  if (oPos.w < 0.0) {\n"
             /* undo the perspective divide in the case where the point would be
