@@ -856,6 +856,9 @@ void vsh_translate(uint16_t version,
             "  if (clipRange.y != clipRange.x) {\n"
             "    oPos.z = 2.0 * (oPos.z - clipRange.x)/(clipRange.y - clipRange.x) - 1.0;\n"
             "  }\n"
+            "  if (oPos.w >= 0.0) {\n"
+            "    oPos.z = min(1.0, oPos.z);\n"
+            "  }\n"
         );
     }
     mstring_append(body,      
