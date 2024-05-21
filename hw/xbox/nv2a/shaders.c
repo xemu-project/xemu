@@ -976,8 +976,8 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
                       "  vtxT3 = oT3 * vtx_inv_w;\n"
                       "  gl_Position = oPos;\n"
                       "  gl_PointSize = oPts.x;\n"
-                      "  gl_ClipDistance[0] = oPos.z - oPos.w*clipRange.z;\n" // Near
-                      "  gl_ClipDistance[1] = oPos.w*clipRange.w - oPos.z;\n" // Far
+                      "  gl_ClipDistance[0] = clipRange.x;\n" // Near
+                      "  gl_ClipDistance[1] = oPos.w*clipRange.w - min(0.0, oPos.z);\n" // Far
                       "\n"
                       "}\n",
                        shade_model_mult,
