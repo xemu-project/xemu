@@ -847,6 +847,9 @@ void vsh_translate(uint16_t version,
     );
     if (z_perspective) {
         mstring_append(body, 
+            "  perspective = true;\n"
+            "  depth = 2.0 * (oPos.w - clipRange.x)/(clipRange.y - clipRange.x) - 1.0;\n"
+
             "  if (oPos.w != oPos.z) {\n"
             "    oPos.z = 2.0 * (oPos.z - clipRange.x)/(clipRange.y - clipRange.x) - 1.0;\n"
             "  } else {\n" 
@@ -855,6 +858,8 @@ void vsh_translate(uint16_t version,
         );
     } else {
         mstring_append(body, 
+            "  perspective = false;\n"
+
             "  if (clipRange.y != clipRange.x) {\n"
             "    oPos.z = 2.0 * (oPos.z - clipRange.x)/(clipRange.y - clipRange.x) - 1.0;\n"
             "  }\n"
