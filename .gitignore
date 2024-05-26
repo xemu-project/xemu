@@ -27,3 +27,4 @@ build.log
 /macos-libs/
 /macos-pkgs/
 /xemu.iconset/
+/ccache

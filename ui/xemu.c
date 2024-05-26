@@ -1556,7 +1556,9 @@ int main(int argc, char **argv)
 
 void xemu_eject_disc(Error **errp)
 {
-    Error *error = NULL;
+    xbox_smc_eject_button();
+
+    /*Error *error = NULL;
 
     xbox_smc_eject_button();
     xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
@@ -1567,25 +1569,28 @@ void xemu_eject_disc(Error **errp)
         error_propagate(errp, error);
     }
 
-    xbox_smc_update_tray_state();
+    xbox_smc_update_tray_state();*/
 }
 
 void xemu_load_disc(const char *path, Error **errp)
 {
-    Error *error = NULL;
+    xemu_settings_set_string(&g_config.sys.files.dvd_path, path);
+    xbox_smc_tray_eject(1); // issue smc tray load command
 
-    // Ensure an eject sequence is always triggered so Xbox software reloads
-    xbox_smc_eject_button();
-    xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
+    // /*Error *error = NULL;
 
-    qmp_blockdev_change_medium(true, "ide0-cd1", false, NULL, path,
-                               false, "",  false, false, false, 0,
-                               &error);
-    if (error) {
-        error_propagate(errp, error);
-    } else {
-        xemu_settings_set_string(&g_config.sys.files.dvd_path, path);
-    }
+    // // Ensure an eject sequence is always triggered so Xbox software reloads
+    // xbox_smc_eject_button();
+    // xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
 
-    xbox_smc_update_tray_state();
+    // qmp_blockdev_change_medium(true, "ide0-cd1", false, NULL, path,
+    //                            false, "",  false, false, false, 0,
+    //                            &error);
+    // if (error) {
+    //     error_propagate(errp, error);
+    // } else {
+    //     xemu_settings_set_string(&g_config.sys.files.dvd_path, path);
+    // }
+
+    // xbox_smc_update_tray_state();*/    
 }

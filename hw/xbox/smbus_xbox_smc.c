@@ -376,6 +376,15 @@ void xbox_smc_eject_button(void)
     xbox_assert_extsmi();
 }
 
+void xbox_smc_tray_eject(uint8_t val)
+{
+    Object *obj = object_resolve_path_type("", TYPE_XBOX_SMC, NULL);
+    uint8_t buf[2];
+    buf[0] = 0x0c;
+    buf[1] = val;
+    smc_write_data(obj,buf,2);
+}
+
 // FIXME: Ideally this would be called on a tray state change callback (see
 // tray_moved event), for now it's called explicitly from UI upon user
 // interaction.
