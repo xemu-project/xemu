@@ -19,41 +19,41 @@
  */
 
 #include "qemu/osdep.h"
-#include "qemu/option.h"
-#include "qemu/datadir.h"
+#include "hw/boards.h"
+#include "hw/dma/i8257.h"
 #include "hw/hw.h"
-#include "hw/loader.h"
 #include "hw/i386/pc.h"
+#include "hw/ide/pci.h"
+#include "hw/kvm/clock.h"
+#include "hw/loader.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_ids.h"
 #include "hw/usb.h"
 #include "net/net.h"
-#include "hw/boards.h"
-#include "hw/ide/pci.h"
-#include "sysemu/sysemu.h"
+#include "qemu/datadir.h"
+#include "qemu/option.h"
 #include "sysemu/kvm.h"
+#include "sysemu/sysemu.h"
 #include "kvm/kvm_i386.h"
-#include "hw/kvm/clock.h"
-#include "hw/dma/i8257.h"
 
+#include "exec/address-spaces.h"
+#include "exec/memory.h"
 #include "hw/sysbus.h"
 #include "sysemu/arch_init.h"
-#include "exec/memory.h"
-#include "exec/address-spaces.h"
 #include "cpu.h"
 
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 
-#include "hw/timer/i8254.h"
 #include "hw/audio/pcspk.h"
 #include "hw/rtc/mc146818rtc.h"
+#include "hw/timer/i8254.h"
 
-#include "hw/xbox/xbox_pci.h"
 #include "hw/i2c/i2c.h"
 #include "hw/i2c/smbus_eeprom.h"
-#include "hw/xbox/nv2a/nv2a.h"
 #include "hw/xbox/mcpx/apu.h"
+#include "hw/xbox/nv2a/nv2a.h"
+#include "hw/xbox/xbox_pci.h"
 
 #include "hw/xbox/xbox.h"
 #include "smbus.h"
@@ -98,7 +98,8 @@ static void xbox_flash_init(MachineState *ms, MemoryRegion *rom_memory)
     }
 
     if (failed_to_load_bios) {
-        fprintf(stderr, "Failed to load BIOS '%s'\n", filename ? filename : "(null)");
+        fprintf(stderr, "Failed to load BIOS '%s'\n",
+                filename ? filename : "(null)");
         memset(bios_data, 0xff, bios_size);
     }
     if (filename != NULL) {
@@ -173,13 +174,12 @@ static void xbox_flash_init(MachineState *ms, MemoryRegion *rom_memory)
     g_free(bios_data); /* duplicated by `rom_add_blob_fixed` */
 }
 
-static void xbox_memory_init(PCMachineState *pcms,
-                             MemoryRegion *system_memory,
+static void xbox_memory_init(PCMachineState *pcms, MemoryRegion *system_memory,
                              MemoryRegion *rom_memory,
                              MemoryRegion **ram_memory)
 {
     // int linux_boot, i;
-    MemoryRegion *ram;//, *option_rom_mr;
+    MemoryRegion *ram; //, *option_rom_mr;
     // FWCfgState *fw_cfg;
     MachineState *machine = MACHINE(pcms);
     // PCMachineClass *pcmc = PC_MACHINE_GET_CLASS(pcms);
@@ -191,8 +191,8 @@ static void xbox_memory_init(PCMachineState *pcms,
      * with older qemus that used qemu_ram_alloc().
      */
     ram = g_malloc(sizeof(*ram));
-    memory_region_init_ram(ram, NULL, "xbox.ram",
-                           machine->ram_size, &error_fatal);
+    memory_region_init_ram(ram, NULL, "xbox.ram", machine->ram_size,
+                           &error_fatal);
 
     *ram_memory = ram;
     memory_region_add_subregion(system_memory, 0, ram);
@@ -207,8 +207,7 @@ static void xbox_init(MachineState *machine)
     xbox_init_common(machine, NULL, NULL);
 }
 
-void xbox_init_common(MachineState *machine,
-                      PCIBus **pci_bus_out,
+void xbox_init_common(MachineState *machine, PCIBus **pci_bus_out,
                       ISABus **isa_bus_out)
 {
     PCMachineState *pcms = PC_MACHINE(machine);
@@ -259,13 +258,8 @@ void xbox_init_common(MachineState *machine,
 
     gsi_state = pc_gsi_create(&x86ms->gsi, pcmc->pci_enabled);
 
-    xbox_pci_init(x86ms->gsi,
-                  get_system_memory(), get_system_io(),
-                  pci_memory, ram_memory, rom_memory,
-                  &pci_bus,
-                  &isa_bus,
-                  &smbus,
-                  &agp_bus);
+    xbox_pci_init(x86ms->gsi, get_system_memory(), get_system_io(), pci_memory,
+                  ram_memory, rom_memory, &pci_bus, &isa_bus, &smbus, &agp_bus);
 
     pcms->bus = pci_bus;
 
@@ -366,23 +360,21 @@ void xbox_init_common(MachineState *machine,
 static void xbox_machine_options(MachineClass *m)
 {
     PCMachineClass *pcmc = PC_MACHINE_CLASS(m);
-    m->desc              = "Microsoft Xbox";
-    m->max_cpus          = 1;
+    m->desc = "Microsoft Xbox";
+    m->max_cpus = 1;
     m->option_rom_has_mr = true;
-    m->rom_file_has_mr   = false;
-    m->no_floppy         = 1,
-    m->no_cdrom          = 1,
-    m->no_sdcard         = 1,
-    m->default_cpu_type  = X86_CPU_TYPE_NAME("pentium3");
-    m->is_default        = true;
+    m->rom_file_has_mr = false;
+    m->no_floppy = 1, m->no_cdrom = 1, m->no_sdcard = 1,
+    m->default_cpu_type = X86_CPU_TYPE_NAME("pentium3");
+    m->is_default = true;
 
-    pcmc->pci_enabled         = true;
-    pcmc->has_acpi_build      = false;
-    pcmc->smbios_defaults     = false;
-    pcmc->gigabyte_align      = false;
-    pcmc->smbios_legacy_mode  = true;
+    pcmc->pci_enabled = true;
+    pcmc->has_acpi_build = false;
+    pcmc->smbios_defaults = false;
+    pcmc->gigabyte_align = false;
+    pcmc->smbios_legacy_mode = true;
     pcmc->has_reserved_memory = false;
-    pcmc->default_nic_model   = "nvnet";
+    pcmc->default_nic_model = "nvnet";
 }
 
 static char *machine_get_bootrom(Object *obj, Error **errp)
@@ -392,8 +384,7 @@ static char *machine_get_bootrom(Object *obj, Error **errp)
     return g_strdup(ms->bootrom);
 }
 
-static void machine_set_bootrom(Object *obj, const char *value,
-                                        Error **errp)
+static void machine_set_bootrom(Object *obj, const char *value, Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
 
@@ -408,8 +399,7 @@ static char *machine_get_avpack(Object *obj, Error **errp)
     return g_strdup(ms->avpack);
 }
 
-static void machine_set_avpack(Object *obj, const char *value,
-                               Error **errp)
+static void machine_set_avpack(Object *obj, const char *value, Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
 
@@ -423,8 +413,7 @@ static void machine_set_avpack(Object *obj, const char *value,
     ms->avpack = g_strdup(value);
 }
 
-static void machine_set_short_animation(Object *obj, bool value,
-                                        Error **errp)
+static void machine_set_short_animation(Object *obj, bool value, Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
 
@@ -457,7 +446,7 @@ static char *machine_get_smc_version(Object *obj, Error **errp)
 }
 
 static void machine_set_smc_version(Object *obj, const char *value,
-                               Error **errp)
+                                    Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
 
@@ -479,17 +468,17 @@ static char *machine_get_video_encoder(Object *obj, Error **errp)
 }
 
 static void machine_set_video_encoder(Object *obj, const char *value,
-                               Error **errp)
+                                      Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
 
-    if (strcmp(value, "conexant") != 0 &&
-            strcmp(value, "focus") != 0 &&
-            strcmp(value, "xcalibur") != 0
-    ) {
-        error_setg(errp, "-machine video_encoder=%s: unsupported option", value);
-        error_append_hint(errp, "Valid options are: conexant (default), focus, xcalibur\n");
-        return; 
+    if (strcmp(value, "conexant") != 0 && strcmp(value, "focus") != 0 &&
+        strcmp(value, "xcalibur") != 0) {
+        error_setg(errp, "-machine video_encoder=%s: unsupported option",
+                   value);
+        error_append_hint(
+            errp, "Valid options are: conexant (default), focus, xcalibur\n");
+        return;
     }
 
     g_free(ms->video_encoder);
@@ -500,13 +489,13 @@ static inline void xbox_machine_initfn(Object *obj)
 {
     object_property_add_str(obj, "bootrom", machine_get_bootrom,
                             machine_set_bootrom);
-    object_property_set_description(obj, "bootrom",
-                                    "Xbox bootrom file");
+    object_property_set_description(obj, "bootrom", "Xbox bootrom file");
 
     object_property_add_str(obj, "avpack", machine_get_avpack,
                             machine_set_avpack);
     object_property_set_description(obj, "avpack",
-                                    "Xbox video connector: composite, scart, svideo, vga, rfu, hdtv (default), none");
+                                    "Xbox video connector: composite, scart, "
+                                    "svideo, vga, rfu, hdtv (default), none");
     object_property_set_str(obj, "avpack", "hdtv", &error_fatal);
 
     object_property_add_bool(obj, "short-animation",
@@ -525,16 +514,16 @@ static inline void xbox_machine_initfn(Object *obj)
 
     object_property_add_str(obj, "smc-version", machine_get_smc_version,
                             machine_set_smc_version);
-    object_property_set_description(obj, "smc-version",
-                                    "Set the SMC version number, default is P01");
+    object_property_set_description(
+        obj, "smc-version", "Set the SMC version number, default is P01");
     object_property_set_str(obj, "smc-version", "P01", &error_fatal);
 
     object_property_add_str(obj, "video-encoder", machine_get_video_encoder,
                             machine_set_video_encoder);
     object_property_set_description(obj, "video-encoder",
-                                    "Set the encoder presented to the OS: conexant (default), focus, xcalibur");
+                                    "Set the encoder presented to the OS: "
+                                    "conexant (default), focus, xcalibur");
     object_property_set_str(obj, "video-encoder", "conexant", &error_fatal);
-
 }
 
 static void xbox_machine_class_init(ObjectClass *oc, void *data)
@@ -552,11 +541,10 @@ static const TypeInfo pc_machine_type_xbox = {
     .instance_init = xbox_machine_initfn,
     .class_size = sizeof(XboxMachineClass),
     .class_init = xbox_machine_class_init,
-    .interfaces = (InterfaceInfo[]) {
-         // { TYPE_HOTPLUG_HANDLER },
-         // { TYPE_NMI },
-         { }
-    },
+    .interfaces =
+        (InterfaceInfo[]){ // { TYPE_HOTPLUG_HANDLER },
+                           // { TYPE_NMI },
+                           {} },
 };
 
 static void pc_machine_init_xbox(void)

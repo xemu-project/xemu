@@ -16,28 +16,28 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
-#include "common.hh"
-#include "scene-manager.hh"
-#include "widgets.hh"
+#include "qapi/error.h"
 #include "main-menu.hh"
+#include "actions.hh"
+#include "common.hh"
 #include "font-manager.hh"
+#include "gl-helpers.hh"
 #include "input-manager.hh"
+#include "misc.hh"
+#include "reporting.hh"
+#include "scene-manager.hh"
 #include "snapshot-manager.hh"
 #include "viewport-manager.hh"
+#include "widgets.hh"
 #include "xemu-hud.h"
-#include "misc.hh"
-#include "gl-helpers.hh"
-#include "reporting.hh"
-#include "qapi/error.h"
-#include "actions.hh"
 
 #include "../xemu-input.h"
-#include "../xemu-notifications.h"
-#include "../xemu-settings.h"
 #include "../xemu-monitor.h"
-#include "../xemu-version.h"
 #include "../xemu-net.h"
+#include "../xemu-notifications.h"
 #include "../xemu-os-utils.h"
+#include "../xemu-settings.h"
+#include "../xemu-version.h"
 #include "../xemu-xbe.h"
 
 #include "../thirdparty/fatx/fatx.h"
@@ -46,8 +46,12 @@
 
 MainMenuScene g_main_menu;
 
-MainMenuTabView::~MainMenuTabView() {}
-void MainMenuTabView::Draw() {}
+MainMenuTabView::~MainMenuTabView()
+{
+}
+void MainMenuTabView::Draw()
+{
+}
 
 void MainMenuGeneralView::Draw()
 {
@@ -59,8 +63,9 @@ void MainMenuGeneralView::Draw()
 
 #if defined(__x86_64__)
     SectionTitle("Performance");
-    Toggle("Hard FPU emulation", &g_config.perf.hard_fpu,
-           "Use hardware-accelerated floating point emulation (requires restart)");
+    Toggle(
+        "Hard FPU emulation", &g_config.perf.hard_fpu,
+        "Use hardware-accelerated floating point emulation (requires restart)");
 #endif
 
     Toggle("Cache shaders to disk", &g_config.perf.cache_shaders,
@@ -88,7 +93,7 @@ void MainMenuInputView::Draw()
     float b_x = 0, b_x_stride = 100, b_y = 400;
     float b_w = 68, b_h = 81;
     // Dimensions of controller (rendered at origin)
-    float controller_width  = 477.0f;
+    float controller_width = 477.0f;
     float controller_height = 395.0f;
     // Dimensions of XMU
     float xmu_x = 0, xmu_x_stride = 256, xmu_y = 0;
@@ -175,8 +180,8 @@ void MainMenuInputView::Draw()
     }
 
     ImGui::SetNextItemWidth(-FLT_MIN);
-    if (ImGui::BeginCombo("###InputDevices", name, ImGuiComboFlags_NoArrowButton))
-    {
+    if (ImGui::BeginCombo("###InputDevices", name,
+                          ImGuiComboFlags_NoArrowButton)) {
         // Handle "Not connected"
         bool is_selected = bound_state == NULL;
         if (ImGui::Selectable(not_connected, is_selected)) {
@@ -189,13 +194,14 @@ void MainMenuInputView::Draw()
 
         // Handle all available input devices
         ControllerState *iter;
-        QTAILQ_FOREACH(iter, &available_controllers, entry) {
+        QTAILQ_FOREACH (iter, &available_controllers, entry) {
             is_selected = bound_state == iter;
             ImGui::PushID(iter);
             const char *selectable_label = iter->name;
             char buf[128];
             if (iter->bound >= 0) {
-                snprintf(buf, sizeof(buf), "%s (Port %d)", iter->name, iter->bound+1);
+                snprintf(buf, sizeof(buf), "%s (Port %d)", iter->name,
+                         iter->bound + 1);
                 selectable_label = buf;
             }
             if (ImGui::Selectable(selectable_label, is_selected)) {
@@ -245,7 +251,8 @@ void MainMenuInputView::Draw()
     ImVec2 cur = ImGui::GetCursorPos();
 
     ImVec2 controller_display_size;
-    if (ImGui::GetContentRegionMax().x < controller_width*g_viewport_mgr.m_scale) {
+    if (ImGui::GetContentRegionMax().x <
+        controller_width * g_viewport_mgr.m_scale) {
         controller_display_size.x = ImGui::GetContentRegionMax().x;
         controller_display_size.y =
             controller_display_size.x * controller_height / controller_width;
@@ -259,16 +266,15 @@ void MainMenuInputView::Draw()
         ImGui::GetCursorPosX() +
         (int)((ImGui::GetColumnWidth() - controller_display_size.x) / 2.0));
 
-    ImGui::Image(id,
-        controller_display_size,
-        ImVec2(0, controller_height/t_h),
-        ImVec2(controller_width/t_w, 0));
+    ImGui::Image(id, controller_display_size,
+                 ImVec2(0, controller_height / t_h),
+                 ImVec2(controller_width / t_w, 0));
     ImVec2 pos = ImGui::GetCursorPos();
     if (!device_selected) {
         const char *msg = "Please select an available input device";
         ImVec2 dim = ImGui::CalcTextSize(msg);
-        ImGui::SetCursorPosX(cur.x + (controller_display_size.x-dim.x)/2);
-        ImGui::SetCursorPosY(cur.y + (controller_display_size.y-dim.y)/2);
+        ImGui::SetCursorPosX(cur.x + (controller_display_size.x - dim.x) / 2);
+        ImGui::SetCursorPosY(cur.y + (controller_display_size.y - dim.y) / 2);
         ImGui::Text("%s", msg);
     }
 
@@ -463,7 +469,7 @@ void MainMenuDisplayView::Draw()
                      "9x\0"
                      "10x\0",
                      "Increase surface scaling factor for higher quality")) {
-        nv2a_set_surface_scale_factor(rendering_scale+1);
+        nv2a_set_surface_scale_factor(rendering_scale + 1);
     }
 
     SectionTitle("Window");
@@ -503,8 +509,10 @@ void MainMenuDisplayView::Draw()
         ui_scale_idx = 0;
     } else {
         ui_scale_idx = g_config.display.ui.scale;
-        if (ui_scale_idx < 0) ui_scale_idx = 0;
-        else if (ui_scale_idx > 2) ui_scale_idx = 2;
+        if (ui_scale_idx < 0)
+            ui_scale_idx = 0;
+        else if (ui_scale_idx > 2)
+            ui_scale_idx = 2;
     }
     if (ChevronCombo("UI scale", &ui_scale_idx,
                      "Auto\0"
@@ -520,11 +528,12 @@ void MainMenuDisplayView::Draw()
     }
     Toggle("Animations", &g_config.display.ui.use_animations,
            "Enable xemu user interface animations");
-    ChevronCombo("Display mode", &g_config.display.ui.fit,
-                 "Center\0"
-                 "Scale\0"
-                 "Stretch\0",
-                 "Select how the framebuffer should fit or scale into the window");
+    ChevronCombo(
+        "Display mode", &g_config.display.ui.fit,
+        "Center\0"
+        "Scale\0"
+        "Stretch\0",
+        "Select how the framebuffer should fit or scale into the window");
     ChevronCombo("Aspect ratio", &g_config.display.ui.aspect_ratio,
                  "Native\0"
                  "Auto (Default)\0"
@@ -544,7 +553,6 @@ void MainMenuAudioView::Draw()
     SectionTitle("Quality");
     Toggle("Real-time DSP processing", &g_config.audio.use_dsp,
            "Enable improved audio accuracy (experimental)");
-
 }
 
 NetworkInterface::NetworkInterface(pcap_if_t *pcap_desc, char *_friendlyname)
@@ -590,7 +598,7 @@ void NetworkInterfaceManager::Refresh(void)
         return;
     }
 
-    for (iter=alldevs; iter != NULL; iter=iter->next) {
+    for (iter = alldevs; iter != NULL; iter = iter->next) {
 #if defined(_WIN32)
         char *friendly_name = get_windows_interface_friendly_name(iter->name);
         m_ifaces.emplace_back(new NetworkInterface(iter, friendly_name));
@@ -642,7 +650,8 @@ void MainMenuNetworkView::Draw()
     }
 
     bool appearing = ImGui::IsWindowAppearing();
-    if (enabled) ImGui::BeginDisabled();
+    if (enabled)
+        ImGui::BeginDisabled();
     if (ChevronCombo(
             "Attached to", &g_config.net.backend,
             "NAT\0"
@@ -662,9 +671,11 @@ void MainMenuNetworkView::Draw()
     case CONFIG_NET_BACKEND_UDP:
         DrawUdpOptions(appearing);
         break;
-    default: break;
+    default:
+        break;
     }
-    if (enabled) ImGui::EndDisabled();
+    if (enabled)
+        ImGui::EndDisabled();
 }
 
 void MainMenuNetworkView::DrawPcapOptions(bool appearing)
@@ -679,9 +690,11 @@ void MainMenuNetworkView::DrawPcapOptions(bool appearing)
         const char *msg = "npcap library could not be loaded.\n"
                           "To use this backend, please install npcap.";
         ImGui::Text("%s", msg);
-        ImGui::Dummy(ImVec2(0,10*g_viewport_mgr.m_scale));
-        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120*g_viewport_mgr.m_scale)/2);
-        if (ImGui::Button("Install npcap", ImVec2(120*g_viewport_mgr.m_scale, 0))) {
+        ImGui::Dummy(ImVec2(0, 10 * g_viewport_mgr.m_scale));
+        ImGui::SetCursorPosX(
+            (ImGui::GetWindowWidth() - 120 * g_viewport_mgr.m_scale) / 2);
+        if (ImGui::Button("Install npcap",
+                          ImVec2(120 * g_viewport_mgr.m_scale, 0))) {
             xemu_open_web_browser("https://nmap.org/npcap/");
         }
 #endif
@@ -713,7 +726,8 @@ void MainMenuNetworkView::DrawPcapOptions(bool appearing)
                                       is_selected)) {
                     iface_mgr->Select((*iface));
                 }
-                if (is_selected) ImGui::SetItemDefaultFocus();
+                if (is_selected)
+                    ImGui::SetItemDefaultFocus();
                 ImGui::PopID();
             }
             ImGui::EndCombo();
@@ -727,22 +741,22 @@ void MainMenuNetworkView::DrawPcapOptions(bool appearing)
 
 void MainMenuNetworkView::DrawNatOptions(bool appearing)
 {
-    static ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg;
+    static ImGuiTableFlags flags =
+        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg;
     WidgetTitleDescriptionItem(
         "Port Forwarding",
         "Configure xemu to forward connections to guest on these ports");
     float p = ImGui::GetFrameHeight() * 0.3;
     ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(p, p));
-    if (ImGui::BeginTable("port_forward_tbl", 4, flags))
-    {
+    if (ImGui::BeginTable("port_forward_tbl", 4, flags)) {
         ImGui::TableSetupColumn("Host Port");
         ImGui::TableSetupColumn("Guest Port");
         ImGui::TableSetupColumn("Protocol");
         ImGui::TableSetupColumn("Action");
         ImGui::TableHeadersRow();
 
-        for (unsigned int row = 0; row < g_config.net.nat.forward_ports_count; row++)
-        {
+        for (unsigned int row = 0; row < g_config.net.nat.forward_ports_count;
+             row++) {
             ImGui::TableNextRow();
 
             ImGui::TableSetColumnIndex(0);
@@ -754,10 +768,13 @@ void MainMenuNetworkView::DrawNatOptions(bool appearing)
             ImGui::TableSetColumnIndex(2);
             switch (g_config.net.nat.forward_ports[row].protocol) {
             case CONFIG_NET_NAT_FORWARD_PORTS_PROTOCOL_TCP:
-                ImGui::TextUnformatted("TCP"); break;
+                ImGui::TextUnformatted("TCP");
+                break;
             case CONFIG_NET_NAT_FORWARD_PORTS_PROTOCOL_UDP:
-                ImGui::TextUnformatted("UDP"); break;
-            default: assert(0);
+                ImGui::TextUnformatted("UDP");
+                break;
+            default:
+                assert(0);
             }
 
             ImGui::TableSetColumnIndex(3);
@@ -771,12 +788,12 @@ void MainMenuNetworkView::DrawNatOptions(bool appearing)
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
-        static char buf[8] = {"1234"};
+        static char buf[8] = { "1234" };
         ImGui::SetNextItemWidth(ImGui::GetColumnWidth());
         ImGui::InputText("###hostport", buf, sizeof(buf));
 
         ImGui::TableSetColumnIndex(1);
-        static char buf2[8] = {"1234"};
+        static char buf2[8] = { "1234" };
         ImGui::SetNextItemWidth(ImGui::GetColumnWidth());
         ImGui::InputText("###guestport", buf2, sizeof(buf2));
 

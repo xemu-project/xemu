@@ -25,8 +25,7 @@
 
 #define MAX_IDE_BUS 2
 
-void xbox_init_common(MachineState *machine,
-                      PCIBus **pci_bus_out,
+void xbox_init_common(MachineState *machine, PCIBus **pci_bus_out,
                       ISABus **isa_bus_out);
 
 #define TYPE_XBOX_MACHINE MACHINE_TYPE_NAME("xbox")
