@@ -24,20 +24,21 @@
  */
 
 #include "qemu/osdep.h"
-#include "hw/acpi/acpi.h"
+#include "qemu/option.h"
 #include "hw/hw.h"
+#include "hw/acpi/acpi.h"
 #include "hw/i2c/i2c.h"
 #include "hw/i2c/smbus_slave.h"
-#include "hw/qdev-properties.h"
-#include "qapi/error.h"
 #include "qemu/config-file.h"
-#include "qemu/option.h"
+#include "qapi/error.h"
 #include "sysemu/block-backend.h"
 #include "sysemu/blockdev.h"
-#include "sysemu/runstate.h"
 #include "sysemu/sysemu.h"
-#include "ui/xemu-settings.h"
 #include "smbus.h"
+#include "sysemu/runstate.h"
+#include "hw/qdev-properties.h"
+
+#include "ui/xemu-settings.h"
 
 #define TYPE_XBOX_SMC "smbus-xbox-smc"
 #define XBOX_SMC(obj) OBJECT_CHECK(SMBusSMCDevice, (obj), TYPE_XBOX_SMC)
