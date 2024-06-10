@@ -857,6 +857,47 @@ static void cmd_get_configuration(IDEState *s, uint8_t *buf)
     ide_atapi_cmd_reply(s, len, max_len);
 }
 
+#ifdef XBOX
+static void cmd_mode_select_cb(void *opaque, int ret)
+{
+    IDEState *s = opaque;
+    uint8_t *buf = s->io_buffer;
+
+    if (ret < 0) {
+        block_acct_failed(blk_get_stats(s->blk), &s->acct);
+        ide_set_inactive(s, false);
+        return;
+    }
+
+    if (s->bus->dma->ops->rw_buf(s->bus->dma, 0))
+    {
+        s->status = READY_STAT | SEEK_STAT;
+        s->nsector = (s->nsector & ~7) | ATAPI_INT_REASON_IO | ATAPI_INT_REASON_CD;
+        ide_bus_set_irq(s->bus);
+    }
+    block_acct_done(blk_get_stats(s->blk), &s->acct);
+    ide_set_inactive(s, false);
+}
+
+static void cmd_mode_select(IDEState *s, uint8_t *buf)
+{
+    int parameter_list_len = lduw_be_p(buf + 7);
+
+    // Does MODE SELECT contain more data? Read it out
+    if (parameter_list_len > 0)
+    {
+        s->lba = -1;
+        s->packet_transfer_size = parameter_list_len;
+        s->io_buffer_size = parameter_list_len;
+        s->elementary_transfer_size = 0;
+
+        block_acct_start(blk_get_stats(s->blk), &s->acct, parameter_list_len, BLOCK_ACCT_WRITE);
+        s->status = READY_STAT | SEEK_STAT | DRQ_STAT;
+        ide_start_dma(s, cmd_mode_select_cb);
+    }
+}
+#endif
+
 static void cmd_mode_sense(IDEState *s, uint8_t *buf)
 {
     int action, code;
@@ -1293,6 +1334,9 @@ static const struct AtapiCmd {
     [ 0x46 ] = { cmd_get_configuration,             ALLOW_UA },
     [ 0x4a ] = { cmd_get_event_status_notification, ALLOW_UA },
     [ 0x51 ] = { cmd_read_disc_information,         CHECK_READY },
+#ifdef XBOX
+    [ 0x55 ] = { cmd_mode_select,/* (10) */         0 },
+#endif
     [ 0x5a ] = { cmd_mode_sense, /* (10) */         0 },
     [ 0xa8 ] = { cmd_read, /* (12) */               CHECK_READY },
     [ 0xad ] = { cmd_read_dvd_structure,            CHECK_READY },
