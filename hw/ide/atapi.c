@@ -75,11 +75,27 @@ static inline int media_present(IDEState *s)
 /* XXX: DVDs that could fit on a CD will be reported as a CD */
 static inline int media_is_dvd(IDEState *s)
 {
+#ifdef XBOX
+    // We need to prevent small XISOs from being reported as CD-ROMs
+    // If the DVD security path is set, we can assume it is an XISO.
+    const char *dvd_security_path = g_config.sys.files.dvd_security_path;
+    if (strlen(dvd_security_path) > 0) {
+        return media_present(s);
+    }
+#endif
     return (media_present(s) && s->nb_sectors > CD_MAX_SECTORS);
 }
 
 static inline int media_is_cd(IDEState *s)
 {
+#ifdef XBOX
+    // We need to prevent small XISOs from being reported as CD-ROMs
+    // If the DVD security path is set, we can assume it is an XISO.
+    const char *dvd_security_path = g_config.sys.files.dvd_security_path;
+    if (strlen(dvd_security_path) > 0) {
+        return 0;
+    }
+#endif
     return (media_present(s) && s->nb_sectors <= CD_MAX_SECTORS);
 }
 
