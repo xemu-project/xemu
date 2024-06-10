@@ -1101,6 +1101,12 @@ static void cmd_read(IDEState *s, uint8_t* buf)
     }
 
     lba = ldl_be_p(buf + 2);
+
+#ifdef XBOX
+    lba = xdvd_get_lba_offset(&s->xdvd_security, total_sectors, lba);
+    total_sectors = xdvd_get_sector_cnt(&s->xdvd_security, total_sectors);
+#endif
+
     if (lba >= total_sectors || lba + nb_sectors - 1 >= total_sectors) {
         ide_atapi_cmd_error(s, ILLEGAL_REQUEST, ASC_LOGICAL_BLOCK_OOR);
         return;
@@ -1256,6 +1262,10 @@ static void cmd_read_toc_pma_atip(IDEState *s, uint8_t* buf)
 static void cmd_read_cdvd_capacity(IDEState *s, uint8_t* buf)
 {
     uint64_t total_sectors = s->nb_sectors >> 2;
+
+#ifdef XBOX
+    total_sectors = xdvd_get_sector_cnt(&s->xdvd_security, total_sectors);
+#endif
 
     /* NOTE: it is really the number of sectors minus 1 */
     stl_be_p(buf, total_sectors - 1);
