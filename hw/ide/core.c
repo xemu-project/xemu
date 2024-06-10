@@ -1413,6 +1413,13 @@ static void ide_reset(IDEState *s)
     s->end_transfer_func = ide_dummy_transfer_stop;
     ide_dummy_transfer_stop(s);
     s->media_changed = 0;
+
+#ifdef XBOX
+    memset(s->xdvd_challenges_encrypted, 0, sizeof(s->xdvd_challenges_encrypted));
+    memset(s->xdvd_challenges_decrypted, 0, sizeof(s->xdvd_challenges_decrypted));
+    memset(&s->xdvd_security, 0, sizeof(s->xdvd_security));
+#endif
+
 }
 
 static bool cmd_nop(IDEState *s, uint8_t cmd)
