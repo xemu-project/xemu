@@ -34,11 +34,13 @@
 #define DRIVER_S "usb-xbox-gamepad-s"
 #define DRIVER_STEEL_BATTALION "usb-steel-battalion"
 #define DRIVER_ARCADE_STICK "usb-xbox-arcade-stick"
+#define DRIVER_LIGHT_GUN "usb-xbox-light-gun"
 
 #define DRIVER_DUKE_DISPLAY_NAME "Xbox Controller"
 #define DRIVER_S_DISPLAY_NAME "Xbox Controller S"
 #define DRIVER_STEEL_BATTALION_DISPLAY_NAME "Steel Battalion Controller"
 #define DRIVER_ARCADE_STICK_DISPLAY_NAME "Arcade Stick"
+#define DRIVER_LIGHT_GUN_DISPLAY_NAME "Light Gun"
 
 enum controller_state_buttons_mask {
     CONTROLLER_BUTTON_A          = (1 << 0),
@@ -156,6 +158,19 @@ typedef struct GamepadState {
     uint16_t rumble_l, rumble_r;
 } GamepadState;
 
+typedef struct LightGunState {
+    // Input State
+    uint16_t buttons;
+    uint8_t status;
+    int16_t axis[2];
+
+    // Calibration
+    int16_t offsetX;
+    int16_t offsetY;
+    float scaleX;
+    float scaleY;
+} LightGunState;
+
 typedef struct SteelBattalionState {
     uint64_t buttons;
     uint64_t previousButtons;
@@ -172,6 +187,7 @@ typedef struct ControllerState {
     int64_t last_rumble_updated_ts;
 
     GamepadState gp;
+    LightGunState lg;
     SteelBattalionState sbc;
 
     enum controller_input_device_type type;
@@ -202,6 +218,7 @@ void xemu_input_process_sdl_events(const SDL_Event *event); // SDL_CONTROLLERDEV
 void xemu_input_update_controllers(void);
 void xemu_input_update_controller(ControllerState *state);
 void xemu_input_update_sdl_kbd_controller_state(ControllerState *state);
+void xemu_input_update_sdl_mouse_controller_state(ControllerState *state);
 void xemu_input_update_sdl_controller_state(ControllerState *state);
 void xemu_input_update_rumble(ControllerState *state);
 ControllerState *xemu_input_get_bound(int index);

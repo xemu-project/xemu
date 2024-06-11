@@ -22,6 +22,7 @@
 #include "data/controller_mask.png.h"
 #include "data/controller_mask_s.png.h"
 #include "data/fight_stick_mask.png.h"
+#include "data/light_gun_mask.png.h"
 #include "data/logo_sdf.png.h"
 #include "data/sb_controller_mask.png.h"
 #include "data/xemu_64x64.png.h"
@@ -36,7 +37,7 @@
 
 Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
 GLuint g_controller_tex, g_controller_s_tex, g_sb_controller_tex,
-    g_fight_stick_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
+    g_fight_stick_tex, g_light_gun_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
 
 enum class ShaderType {
     Blit,
@@ -437,17 +438,16 @@ static const struct rect sb_tex_items[] = {
     { 1, 55, 20, 22 }, // Sight Change Stick
     { 0, 0, 34, 55 }, // Left Stick
     { 34, 0, 33, 55 }, // Right Stick
-    { 21, 2, 3, 3 }, // Toggle
+    { 21, 2, 3, 3 }  // Toggle
 };
 
 static const struct rect fight_stick_tex_items[] = {
     { 0, 183, 467, 329 }, // obj_controller
-    { 0, 0, 60, 60 }, // obj_stick
-    { 67, 104, 68, 44 }, // obj_port_socket
-    { 67, 76, 28, 28 }, // obj_port_lbl_1
-    { 67, 48, 28, 28 }, // obj_port_lbl_2
-    { 67, 20, 28, 28 }, // obj_port_lbl_3
-    { 95, 76, 28, 28 }, // obj_port_lbl_4
+    { 0, 0, 60, 60 } // obj_stick
+};
+
+static const struct rect light_gun_tex_items[] = {
+    { 0, 137, 473, 374 } // obj_controller
 };
 
 enum tex_item_names {
@@ -486,6 +486,8 @@ void InitCustomRendering(void)
         LoadTextureFromMemory(sb_controller_mask_data, sb_controller_mask_size);
     g_fight_stick_tex =
         LoadTextureFromMemory(fight_stick_mask_data, fight_stick_mask_size);
+    g_light_gun_tex =
+        LoadTextureFromMemory(light_gun_mask_data, light_gun_mask_size);
 
     g_decal_shader = NewDecalShader(ShaderType::Mask);
     controller_fbo = new Fbo(512, 512);
@@ -1133,7 +1135,6 @@ void RenderController_SB(float frame_x, float frame_y, uint32_t primary_color,
     glUseProgram(0);
 }
 
-
 void RenderFightStick(float frame_x, float frame_y, uint32_t primary_color,
                       uint32_t secondary_color, ControllerState *state)
 {
@@ -1231,6 +1232,50 @@ void RenderFightStick(float frame_x, float frame_y, uint32_t primary_color,
     glUseProgram(0);
 }
 
+void RenderLightGun(float frame_x, float frame_y, uint32_t primary_color,
+                      uint32_t secondary_color, ControllerState *state)
+{
+    // Location within the controller texture of masked button locations,
+    // relative to the origin of the controller
+    const struct rect buttons[] = {
+        { 216, 127, 37, 39 } // A
+    };
+
+    glUseProgram(g_decal_shader->prog);
+    glBindVertexArray(g_decal_shader->vao);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_light_gun_tex);
+
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFunc(GL_ONE, GL_ZERO);
+
+    // Render controller texture
+    RenderDecal(g_decal_shader, frame_x, frame_y,
+                light_gun_tex_items[obj_controller].w,
+                light_gun_tex_items[obj_controller].h,
+                light_gun_tex_items[obj_controller].x,
+                light_gun_tex_items[obj_controller].y,
+                light_gun_tex_items[obj_controller].w,
+                light_gun_tex_items[obj_controller].h, primary_color,
+                secondary_color, 0);
+
+    glBlendFunc(GL_ONE_MINUS_DST_ALPHA,
+                GL_ONE); // Blend with controller cutouts
+
+    // The controller has alpha cutouts where the buttons are. Draw a surface
+    // behind the buttons if they are activated
+    for (int i = 0; i < 1; i++) {
+        if (state->gp.buttons & (1 << i)) {
+            RenderDecal(g_decal_shader, frame_x + buttons[i].x,
+                        frame_y + buttons[i].y, buttons[i].w, buttons[i].h, 0,
+                        0, 1, 1, 0, 0, primary_color + 0xff);
+        }
+    }
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
 void RenderController(float frame_x, float frame_y, uint32_t primary_color,
                       uint32_t secondary_color, ControllerState *state)
 {
@@ -1246,6 +1291,9 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
     else if (strcmp(bound_drivers[state->bound], DRIVER_ARCADE_STICK) == 0)
         RenderFightStick(frame_x, frame_y, primary_color, secondary_color,
                          state);
+    else if(strcmp(bound_drivers[state->bound], DRIVER_LIGHT_GUN) == 0)
+        RenderLightGun(frame_x, frame_y, primary_color, secondary_color,
+                       state);
 }
 
 void RenderControllerPort(float frame_x, float frame_y, int i,

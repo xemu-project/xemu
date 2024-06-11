@@ -54,11 +54,13 @@
 #define XID_DEVICESUBTYPE_GAMEPAD_S 0x02
 #define XID_DEVICESUBTYPE_ARCADE_STICK 0x20
 #define XID_DEVICESUBTYPE_DIGITAL_ARCADE_STICK 0x21
+#define XID_DEVICESUBTYPE_LIGHT_GUN 0x50
 
 #define TYPE_USB_XID_GAMEPAD "usb-xbox-gamepad"
 #define TYPE_USB_XID_GAMEPAD_S "usb-xbox-gamepad-s"
 #define TYPE_USB_XID_STEEL_BATTALION "usb-steel-battalion"
 #define TYPE_USB_XID_ARCADE_STICK "usb-xbox-arcade-stick"
+#define TYPE_USB_XID_LIGHT_GUN "usb-xbox-light-gun"
 
 #define GAMEPAD_A 0
 #define GAMEPAD_B 1

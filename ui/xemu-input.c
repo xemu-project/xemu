@@ -34,6 +34,8 @@
 
 #include "sysemu/blockdev.h"
 
+extern SDL_Window *m_window;
+
 // #define DEBUG_INPUT
 
 #ifdef DEBUG_INPUT
@@ -90,6 +92,9 @@ ControllerState *bound_controllers[4] = { NULL, NULL, NULL, NULL };
 const char *bound_drivers[4] = { DRIVER_DUKE, DRIVER_DUKE, DRIVER_DUKE,
                                  DRIVER_DUKE };
 int test_mode;
+
+static int m_mouseX;
+static int m_mouseY;
 
 static const char **port_index_to_settings_key_map[] = {
     &g_config.input.bindings.port1,
@@ -159,6 +164,8 @@ static const char *get_bound_driver(int port)
         return DRIVER_STEEL_BATTALION;
     if (strcmp(driver, DRIVER_ARCADE_STICK) == 0)
         return DRIVER_ARCADE_STICK;
+    if(strcmp(driver, DRIVER_LIGHT_GUN) == 0)
+        return DRIVER_LIGHT_GUN;
 
     // Shouldn't be possible
     return DRIVER_DUKE;
@@ -187,6 +194,8 @@ void xemu_input_init(void)
     new_con->peripheral_types[1] = PERIPHERAL_NONE;
     new_con->peripherals[0] = NULL;
     new_con->peripherals[1] = NULL;
+    new_con->lg.scaleX = 1.0f;
+    new_con->lg.scaleY = 1.0f;
 
     sdl_kbd_scancode_map[0] = g_config.input.keyboard_controller_scancode_map.a;
     sdl_kbd_scancode_map[1] = g_config.input.keyboard_controller_scancode_map.b;
@@ -427,6 +436,8 @@ void xemu_input_process_sdl_events(const SDL_Event *event)
         new_con->peripheral_types[1] = PERIPHERAL_NONE;
         new_con->peripherals[0] = NULL;
         new_con->peripherals[1] = NULL;
+        new_con->lg.scaleX = 1.0f;
+        new_con->lg.scaleY = 1.0f;
 
         char guid_buf[35] = { 0 };
         SDL_JoystickGetGUIDString(new_con->sdl_joystick_guid, guid_buf, sizeof(guid_buf));
@@ -560,142 +571,213 @@ void xemu_input_update_controllers(void)
     }
 }
 
+void xemu_input_set_mouse_x_y(int x, int y)
+{
+    m_mouseX = x;
+    m_mouseY = y;
+}
+
 void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
 {
     state->gp.buttons = 0;
     state->sbc.buttons = 0;
+    state->lg.buttons = 0;
     memset(state->gp.axis, 0, sizeof(state->gp.axis));
     memset(state->sbc.axis, 0, sizeof(state->sbc.axis));
+    memset(state->lg.axis, 0, sizeof(state->lg.axis));
 
     const uint8_t *kbd = SDL_GetKeyboardState(NULL);
 
-    // Update Gamepad Buttons
-    for (int i = 0; i < 15; i++) {
-        state->gp.buttons |= kbd[sdl_kbd_scancode_map[i]] << i;
-    }
+    if(state->bound < 0)
+        return;
 
-    // Update Gamepad Axes
-    if (kbd[sdl_kbd_scancode_map[15]])
-        state->gp.axis[CONTROLLER_AXIS_LSTICK_Y] = 32767;
-    if (kbd[sdl_kbd_scancode_map[16]])
-        state->gp.axis[CONTROLLER_AXIS_LSTICK_X] = -32768;
-    if (kbd[sdl_kbd_scancode_map[17]])
-        state->gp.axis[CONTROLLER_AXIS_LSTICK_X] = 32767;
-    if (kbd[sdl_kbd_scancode_map[18]])
-        state->gp.axis[CONTROLLER_AXIS_LSTICK_Y] = -32768;
-    if (kbd[sdl_kbd_scancode_map[19]])
-        state->gp.axis[CONTROLLER_AXIS_LTRIG] = 32767;
+    const char *bound_driver = get_bound_driver(state->bound);
+    if(strcmp(bound_driver, DRIVER_LIGHT_GUN) == 0) {
 
-    if (kbd[sdl_kbd_scancode_map[20]])
-        state->gp.axis[CONTROLLER_AXIS_RSTICK_Y] = 32767;
-    if (kbd[sdl_kbd_scancode_map[21]])
-        state->gp.axis[CONTROLLER_AXIS_RSTICK_X] = -32768;
-    if (kbd[sdl_kbd_scancode_map[22]])
-        state->gp.axis[CONTROLLER_AXIS_RSTICK_X] = 32767;
-    if (kbd[sdl_kbd_scancode_map[23]])
-        state->gp.axis[CONTROLLER_AXIS_RSTICK_Y] = -32768;
-    if (kbd[sdl_kbd_scancode_map[24]])
-        state->gp.axis[CONTROLLER_AXIS_RTRIG] = 32767;
+        uint32_t mouseBtn = SDL_GetMouseState(&m_mouseX, &m_mouseY);
 
-    state->sbc.buttons = 0;
+        int32_t windowWidth, windowHeight;
+        SDL_GL_GetDrawableSize(m_window, &windowWidth, &windowHeight); // TODO: get the mouse location relative to the Viewport, not the Window
+        
+        // Calculate the position of the mouse coordinates in [-32768,32768]
 
-    if (state->sbc.gearLever == 0)
-        state->sbc.gearLever = 255;
+        DPRINTF("Real Mouse X: %d, Real MouseY Y: %d\n", m_mouseX, m_mouseY);
 
-    // Update SBC Buttons
-    for (int i = 0; i < 43; i++) {
-        if (kbd[sdl_sbc_kbd_scancode_map[i]])
-            state->sbc.buttons |= (1ULL << i);
-    }
-
-    const uint64_t toggles[5] = { SBC_BUTTON_FILT_CONTROL_SYSTEM,
-                                  SBC_BUTTON_OXYGEN_SUPPLY_SYSTEM,
-                                  SBC_BUTTON_FUEL_FLOW_RATE,
-                                  SBC_BUTTON_BUFFER_MATERIAL,
-                                  SBC_BUTTON_VT_LOCATION_MEASUREMENT };
-
-    for (int i = 0; i < 5; i++) {
-        if ((state->sbc.buttons & toggles[i]) &&
-            !(state->sbc.previousButtons &
-              toggles[i])) { // When the for the toggle is pressed
-            uint8_t byteMask = (uint8_t)(toggles[i] >> 32);
-            // Toggle the toggle switch
-            state->sbc.toggleSwitches ^= byteMask;
+        if (m_mouseX >= 0 && m_mouseX <= windowWidth &&
+            m_mouseY >= 0 && m_mouseY <= windowHeight) {
+            int32_t x = (int32_t)((m_mouseX - (windowWidth / 2)) * state->lg.scaleX * 65535 / windowWidth) + state->lg.offsetX;
+            int32_t y = (int32_t)(((windowHeight / 2) - m_mouseY) * state->lg.scaleY * 65535 / windowHeight) + state->lg.offsetY;
+            state->lg.axis[0] = (int16_t)MIN(MAX(x, -32768), 32767);
+            state->lg.axis[1] = (int16_t)MIN(MAX(y, -32768), 32767);
+            state->lg.status = 0x20; // Light Visible
+            
+            DPRINTF("SS Mouse X: %d, SS MouseY Y: %d\n", state->lg.axis[0], state->lg.axis[1]);
+        } else {
+            state->lg.status = 0x00;
         }
-    }
 
-    // Tuner Dial Left
-    if ((state->sbc.buttons & SBC_BUTTON_TUNER_LEFT) &&
-        !(state->sbc.previousButtons & SBC_BUTTON_TUNER_LEFT)) {
-        if (state->sbc.tunerDial == 0)
-            state->sbc.tunerDial = 15;
-        else
-            state->sbc.tunerDial--;
-    }
+        // Left mouse button is the trigger (A), right mouse button is B
+        if(mouseBtn & SDL_BUTTON(SDL_BUTTON_LEFT)) {
+            state->lg.buttons |= CONTROLLER_BUTTON_A;
+        }
+        if(mouseBtn & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
+            state->lg.buttons |= CONTROLLER_BUTTON_B;
+        }
 
-    // Tuner Dial Right
-    if ((state->sbc.buttons & SBC_BUTTON_TUNER_RIGHT) &&
-        !(state->sbc.previousButtons & SBC_BUTTON_TUNER_RIGHT)) {
-        if (state->sbc.tunerDial == 15)
-            state->sbc.tunerDial = 0;
-        else
-            state->sbc.tunerDial++;
-    }
+        if(kbd[g_config.input.keyboard_controller_scancode_map.a])
+            state->lg.buttons |= CONTROLLER_BUTTON_A;
+        if(kbd[g_config.input.keyboard_controller_scancode_map.b])
+            state->lg.buttons |= CONTROLLER_BUTTON_B;
+        if(kbd[g_config.input.keyboard_controller_scancode_map.x])
+            state->lg.buttons |= CONTROLLER_BUTTON_X;
+        if(kbd[g_config.input.keyboard_controller_scancode_map.y])
+            state->lg.buttons |= CONTROLLER_BUTTON_Y;
+        if(kbd[g_config.input.keyboard_controller_scancode_map.start])
+            state->lg.buttons |= CONTROLLER_BUTTON_START;
+        if(kbd[g_config.input.keyboard_controller_scancode_map.back])
+            state->lg.buttons |= CONTROLLER_BUTTON_BACK;
+        if(kbd[g_config.input.keyboard_controller_scancode_map.black])
+            state->lg.buttons |= CONTROLLER_BUTTON_BLACK;
+        if(kbd[g_config.input.keyboard_controller_scancode_map.white])
+            state->lg.buttons |= CONTROLLER_BUTTON_WHITE;
+        if(kbd[g_config.input.keyboard_controller_scancode_map.dpad_up])
+            state->lg.buttons |= CONTROLLER_BUTTON_DPAD_UP;
+        if(kbd[g_config.input.keyboard_controller_scancode_map.dpad_down])
+            state->lg.buttons |= CONTROLLER_BUTTON_DPAD_DOWN;
+        if(kbd[g_config.input.keyboard_controller_scancode_map.dpad_left])
+            state->lg.buttons |= CONTROLLER_BUTTON_DPAD_LEFT;
+        if(kbd[g_config.input.keyboard_controller_scancode_map.dpad_right])
+            state->lg.buttons |= CONTROLLER_BUTTON_DPAD_RIGHT;
 
-    // Gear Lever Up
-    if ((state->sbc.buttons & SBC_BUTTON_GEAR_UP) &&
-        !(state->sbc.previousButtons & SBC_BUTTON_GEAR_UP)) {
-        if (state->sbc.gearLever != 5) {
-            if (state->sbc.gearLever == 255)
-                state->sbc.gearLever = 1;
+    } else if(strcmp(bound_driver, DRIVER_STEEL_BATTALION) == 0) {
+        state->sbc.buttons = 0;
+
+        if (state->sbc.gearLever == 0)
+            state->sbc.gearLever = 255;
+
+        // Update SBC Buttons
+        for (int i = 0; i < 43; i++) {
+            if (kbd[sdl_sbc_kbd_scancode_map[i]])
+                state->sbc.buttons |= (1ULL << i);
+        }
+
+        const uint64_t toggles[5] = { SBC_BUTTON_FILT_CONTROL_SYSTEM,
+                                    SBC_BUTTON_OXYGEN_SUPPLY_SYSTEM,
+                                    SBC_BUTTON_FUEL_FLOW_RATE,
+                                    SBC_BUTTON_BUFFER_MATERIAL,
+                                    SBC_BUTTON_VT_LOCATION_MEASUREMENT };
+
+        for (int i = 0; i < 5; i++) {
+            if ((state->sbc.buttons & toggles[i]) &&
+                !(state->sbc.previousButtons &
+                toggles[i])) { // When the for the toggle is pressed
+                uint8_t byteMask = (uint8_t)(toggles[i] >> 32);
+                // Toggle the toggle switch
+                state->sbc.toggleSwitches ^= byteMask;
+            }
+        }
+
+        // Tuner Dial Left
+        if ((state->sbc.buttons & SBC_BUTTON_TUNER_LEFT) &&
+            !(state->sbc.previousButtons & SBC_BUTTON_TUNER_LEFT)) {
+            if (state->sbc.tunerDial == 0)
+                state->sbc.tunerDial = 15;
             else
-                state->sbc.gearLever++;
+                state->sbc.tunerDial--;
         }
-    }
 
-    // Gear Lever Down
-    if ((state->sbc.buttons & SBC_BUTTON_GEAR_DOWN) &&
-        !(state->sbc.previousButtons & SBC_BUTTON_GEAR_DOWN)) {
-        if (state->sbc.gearLever != 254) {
-            if (state->sbc.gearLever == 1)
-                state->sbc.gearLever = 255;
+        // Tuner Dial Right
+        if ((state->sbc.buttons & SBC_BUTTON_TUNER_RIGHT) &&
+            !(state->sbc.previousButtons & SBC_BUTTON_TUNER_RIGHT)) {
+            if (state->sbc.tunerDial == 15)
+                state->sbc.tunerDial = 0;
             else
-                state->sbc.gearLever--;
+                state->sbc.tunerDial++;
         }
+
+        // Gear Lever Up
+        if ((state->sbc.buttons & SBC_BUTTON_GEAR_UP) &&
+            !(state->sbc.previousButtons & SBC_BUTTON_GEAR_UP)) {
+            if (state->sbc.gearLever != 5) {
+                if (state->sbc.gearLever == 255)
+                    state->sbc.gearLever = 1;
+                else
+                    state->sbc.gearLever++;
+            }
+        }
+
+        // Gear Lever Down
+        if ((state->sbc.buttons & SBC_BUTTON_GEAR_DOWN) &&
+            !(state->sbc.previousButtons & SBC_BUTTON_GEAR_DOWN)) {
+            if (state->sbc.gearLever != 254) {
+                if (state->sbc.gearLever == 1)
+                    state->sbc.gearLever = 255;
+                else
+                    state->sbc.gearLever--;
+            }
+        }
+
+        // Update SBC Axes
+        if (kbd[sdl_sbc_kbd_scancode_map[43]])
+            state->sbc.axis[SBC_AXIS_AIMING_Y] = -32768;
+        if (kbd[sdl_sbc_kbd_scancode_map[44]])
+            state->sbc.axis[SBC_AXIS_AIMING_Y] = 32767;
+        if (kbd[sdl_sbc_kbd_scancode_map[45]])
+            state->sbc.axis[SBC_AXIS_AIMING_X] = -32768;
+        if (kbd[sdl_sbc_kbd_scancode_map[46]])
+            state->sbc.axis[SBC_AXIS_AIMING_X] = 32767;
+
+        if (kbd[sdl_sbc_kbd_scancode_map[47]])
+            state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y] = -32768;
+        if (kbd[sdl_sbc_kbd_scancode_map[48]])
+            state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y] = 32767;
+        if (kbd[sdl_sbc_kbd_scancode_map[49]])
+            state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X] = -32768;
+        if (kbd[sdl_sbc_kbd_scancode_map[50]])
+            state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X] = 32767;
+
+        if (kbd[sdl_sbc_kbd_scancode_map[51]])
+            state->sbc.axis[SBC_AXIS_ROTATION_LEVER] = -32768;
+        if (kbd[sdl_sbc_kbd_scancode_map[52]])
+            state->sbc.axis[SBC_AXIS_ROTATION_LEVER] = 32767;
+
+        if (kbd[sdl_sbc_kbd_scancode_map[53]])
+            state->sbc.axis[SBC_AXIS_LEFT_PEDAL] = 32767;
+        if (kbd[sdl_sbc_kbd_scancode_map[54]])
+            state->sbc.axis[SBC_AXIS_RIGHT_PEDAL] = 32767;
+        if (kbd[sdl_sbc_kbd_scancode_map[55]])
+            state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL] = 32767;
+
+        state->sbc.previousButtons = state->sbc.buttons;
+    } else {
+        // Update Gamepad Buttons
+        for (int i = 0; i < 15; i++) {
+            state->gp.buttons |= kbd[sdl_kbd_scancode_map[i]] << i;
+        }
+
+        // Update Gamepad Axes
+        if (kbd[sdl_kbd_scancode_map[15]])
+            state->gp.axis[CONTROLLER_AXIS_LSTICK_Y] = 32767;
+        if (kbd[sdl_kbd_scancode_map[16]])
+            state->gp.axis[CONTROLLER_AXIS_LSTICK_X] = -32768;
+        if (kbd[sdl_kbd_scancode_map[17]])
+            state->gp.axis[CONTROLLER_AXIS_LSTICK_X] = 32767;
+        if (kbd[sdl_kbd_scancode_map[18]])
+            state->gp.axis[CONTROLLER_AXIS_LSTICK_Y] = -32768;
+        if (kbd[sdl_kbd_scancode_map[19]])
+            state->gp.axis[CONTROLLER_AXIS_LTRIG] = 32767;
+
+        if (kbd[sdl_kbd_scancode_map[20]])
+            state->gp.axis[CONTROLLER_AXIS_RSTICK_Y] = 32767;
+        if (kbd[sdl_kbd_scancode_map[21]])
+            state->gp.axis[CONTROLLER_AXIS_RSTICK_X] = -32768;
+        if (kbd[sdl_kbd_scancode_map[22]])
+            state->gp.axis[CONTROLLER_AXIS_RSTICK_X] = 32767;
+        if (kbd[sdl_kbd_scancode_map[23]])
+            state->gp.axis[CONTROLLER_AXIS_RSTICK_Y] = -32768;
+        if (kbd[sdl_kbd_scancode_map[24]])
+            state->gp.axis[CONTROLLER_AXIS_RTRIG] = 32767;
     }
-
-    // Update SBC Axes
-    if (kbd[sdl_sbc_kbd_scancode_map[43]])
-        state->sbc.axis[SBC_AXIS_AIMING_Y] = -32768;
-    if (kbd[sdl_sbc_kbd_scancode_map[44]])
-        state->sbc.axis[SBC_AXIS_AIMING_Y] = 32767;
-    if (kbd[sdl_sbc_kbd_scancode_map[45]])
-        state->sbc.axis[SBC_AXIS_AIMING_X] = -32768;
-    if (kbd[sdl_sbc_kbd_scancode_map[46]])
-        state->sbc.axis[SBC_AXIS_AIMING_X] = 32767;
-
-    if (kbd[sdl_sbc_kbd_scancode_map[47]])
-        state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y] = -32768;
-    if (kbd[sdl_sbc_kbd_scancode_map[48]])
-        state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y] = 32767;
-    if (kbd[sdl_sbc_kbd_scancode_map[49]])
-        state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X] = -32768;
-    if (kbd[sdl_sbc_kbd_scancode_map[50]])
-        state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X] = 32767;
-
-    if (kbd[sdl_sbc_kbd_scancode_map[51]])
-        state->sbc.axis[SBC_AXIS_ROTATION_LEVER] = -32768;
-    if (kbd[sdl_sbc_kbd_scancode_map[52]])
-        state->sbc.axis[SBC_AXIS_ROTATION_LEVER] = 32767;
-
-    if (kbd[sdl_sbc_kbd_scancode_map[53]])
-        state->sbc.axis[SBC_AXIS_LEFT_PEDAL] = 32767;
-    if (kbd[sdl_sbc_kbd_scancode_map[54]])
-        state->sbc.axis[SBC_AXIS_RIGHT_PEDAL] = 32767;
-    if (kbd[sdl_sbc_kbd_scancode_map[55]])
-        state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL] = 32767;
-
-    state->sbc.previousButtons = state->sbc.buttons;
 }
 
 void xemu_input_update_sdl_controller_state(ControllerState *state)
@@ -705,142 +787,193 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
     memset(state->gp.axis, 0, sizeof(state->gp.axis));
     memset(state->sbc.axis, 0, sizeof(state->sbc.axis));
 
-    const SDL_GameControllerButton sdl_button_map[15] = {
-        SDL_CONTROLLER_BUTTON_A,
-        SDL_CONTROLLER_BUTTON_B,
-        SDL_CONTROLLER_BUTTON_X,
-        SDL_CONTROLLER_BUTTON_Y,
-        SDL_CONTROLLER_BUTTON_DPAD_LEFT,
-        SDL_CONTROLLER_BUTTON_DPAD_UP,
-        SDL_CONTROLLER_BUTTON_DPAD_RIGHT,
-        SDL_CONTROLLER_BUTTON_DPAD_DOWN,
-        SDL_CONTROLLER_BUTTON_BACK,
-        SDL_CONTROLLER_BUTTON_START,
-        SDL_CONTROLLER_BUTTON_LEFTSHOULDER,
-        SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
-        SDL_CONTROLLER_BUTTON_LEFTSTICK,
-        SDL_CONTROLLER_BUTTON_RIGHTSTICK,
-        SDL_CONTROLLER_BUTTON_GUIDE
-    };
+    if(state->bound < 0)
+        return;
 
-    for (int i = 0; i < 15; i++) {
-        state->gp.buttons |= SDL_GameControllerGetButton(
-                                 state->sdl_gamecontroller, sdl_button_map[i])
-                             << i;
-    }
+    const char *bound_driver = get_bound_driver(state->bound);
+    if(strcmp(bound_driver, DRIVER_LIGHT_GUN) == 0) {
 
-    const SDL_GameControllerAxis sdl_axis_map[6] = {
-        SDL_CONTROLLER_AXIS_TRIGGERLEFT, SDL_CONTROLLER_AXIS_TRIGGERRIGHT,
-        SDL_CONTROLLER_AXIS_LEFTX,       SDL_CONTROLLER_AXIS_LEFTY,
-        SDL_CONTROLLER_AXIS_RIGHTX,      SDL_CONTROLLER_AXIS_RIGHTY,
-    };
+        if(SDL_GameControllerGetButton(state->sdl_gamecontroller, SDL_CONTROLLER_BUTTON_B))
+            state->lg.buttons |= CONTROLLER_BUTTON_A;
+        if(SDL_GameControllerGetButton(state->sdl_gamecontroller, SDL_CONTROLLER_BUTTON_A))
+            state->lg.buttons |= CONTROLLER_BUTTON_B;
+        if(SDL_GameControllerGetButton(state->sdl_gamecontroller, SDL_CONTROLLER_BUTTON_X))
+            state->lg.buttons |= CONTROLLER_BUTTON_X;
+        if(SDL_GameControllerGetButton(state->sdl_gamecontroller, SDL_CONTROLLER_BUTTON_Y))
+            state->lg.buttons |= CONTROLLER_BUTTON_Y;
+        if(SDL_GameControllerGetButton(state->sdl_gamecontroller, SDL_CONTROLLER_BUTTON_START))
+            state->lg.buttons |= CONTROLLER_BUTTON_START;
+        if(SDL_GameControllerGetButton(state->sdl_gamecontroller, SDL_CONTROLLER_BUTTON_BACK))
+            state->lg.buttons |= CONTROLLER_BUTTON_BACK;
+        if(SDL_GameControllerGetButton(state->sdl_gamecontroller, SDL_CONTROLLER_BUTTON_LEFTSHOULDER))
+            state->lg.buttons |= CONTROLLER_BUTTON_BLACK;
+        if(SDL_GameControllerGetButton(state->sdl_gamecontroller, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER))
+            state->lg.buttons |= CONTROLLER_BUTTON_WHITE;
+        if(SDL_GameControllerGetButton(state->sdl_gamecontroller, SDL_CONTROLLER_BUTTON_DPAD_UP))
+            state->lg.buttons |= CONTROLLER_BUTTON_DPAD_UP;
+        if(SDL_GameControllerGetButton(state->sdl_gamecontroller, SDL_CONTROLLER_BUTTON_DPAD_DOWN))
+            state->lg.buttons |= CONTROLLER_BUTTON_DPAD_DOWN;
+        if(SDL_GameControllerGetButton(state->sdl_gamecontroller, SDL_CONTROLLER_BUTTON_DPAD_LEFT))
+            state->lg.buttons |= CONTROLLER_BUTTON_DPAD_LEFT;
+        if(SDL_GameControllerGetButton(state->sdl_gamecontroller, SDL_CONTROLLER_BUTTON_DPAD_RIGHT))
+            state->lg.buttons |= CONTROLLER_BUTTON_DPAD_RIGHT;
 
-    for (int i = 0; i < 6; i++) {
-        state->gp.axis[i] = SDL_GameControllerGetAxis(state->sdl_gamecontroller,
-                                                      sdl_axis_map[i]);
-    }
+        state->lg.axis[0] = SDL_GameControllerGetAxis(state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_LEFTX);
+        state->lg.axis[1] = SDL_GameControllerGetAxis(state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_LEFTY);
 
-    // FIXME: Check range
-    state->gp.axis[CONTROLLER_AXIS_LSTICK_Y] =
-        -1 - state->gp.axis[CONTROLLER_AXIS_LSTICK_Y];
-    state->gp.axis[CONTROLLER_AXIS_RSTICK_Y] =
-        -1 - state->gp.axis[CONTROLLER_AXIS_RSTICK_Y];
+        // xemu_input_print_controller_state(state);
 
-    // xemu_input_print_controller_state(state);
+    } else if(strcmp(bound_driver, DRIVER_STEEL_BATTALION) == 0) {
 
-    // Update the SBC too, just in case
-    const uint64_t sdl_button_map_sbc[8][2] = {
-        { SDL_CONTROLLER_BUTTON_A, SBC_BUTTON_MAIN_WEAPON },
-        { SDL_CONTROLLER_BUTTON_B, SBC_BUTTON_LOCK_ON },
-        { SDL_CONTROLLER_BUTTON_LEFTSHOULDER, SBC_BUTTON_FUNC1 },
-        { SDL_CONTROLLER_BUTTON_LEFTSTICK, SBC_BUTTON_SIGHT_CHANGE },
-        { SDL_CONTROLLER_BUTTON_DPAD_UP, SBC_BUTTON_GEAR_UP },
-        { SDL_CONTROLLER_BUTTON_DPAD_DOWN, SBC_BUTTON_GEAR_DOWN },
-        { SDL_CONTROLLER_BUTTON_DPAD_LEFT, SBC_BUTTON_TUNER_LEFT },
-        { SDL_CONTROLLER_BUTTON_DPAD_RIGHT, SBC_BUTTON_TUNER_RIGHT }
-    };
+        state->sbc.buttons = 0;
 
-    state->sbc.buttons = 0;
+        // Update the SBC too, just in case
+        const uint64_t sdl_button_map_sbc[8][2] = {
+            { SDL_CONTROLLER_BUTTON_A, SBC_BUTTON_MAIN_WEAPON },
+            { SDL_CONTROLLER_BUTTON_B, SBC_BUTTON_LOCK_ON },
+            { SDL_CONTROLLER_BUTTON_LEFTSHOULDER, SBC_BUTTON_FUNC1 },
+            { SDL_CONTROLLER_BUTTON_LEFTSTICK, SBC_BUTTON_SIGHT_CHANGE },
+            { SDL_CONTROLLER_BUTTON_DPAD_UP, SBC_BUTTON_GEAR_UP },
+            { SDL_CONTROLLER_BUTTON_DPAD_DOWN, SBC_BUTTON_GEAR_DOWN },
+            { SDL_CONTROLLER_BUTTON_DPAD_LEFT, SBC_BUTTON_TUNER_LEFT },
+            { SDL_CONTROLLER_BUTTON_DPAD_RIGHT, SBC_BUTTON_TUNER_RIGHT }
+        };
 
-    if (state->sbc.gearLever == 0)
-        state->sbc.gearLever = 255;
+        if (state->sbc.gearLever == 0)
+            state->sbc.gearLever = 255;
 
-    for (int i = 0; i < 8; i++) {
-        if (SDL_GameControllerGetButton(state->sdl_gamecontroller,
-                                        sdl_button_map_sbc[i][0]))
-            state->sbc.buttons |= sdl_button_map_sbc[i][1];
-    }
-
-    const uint64_t toggles[5] = { SBC_BUTTON_FILT_CONTROL_SYSTEM,
-                                  SBC_BUTTON_OXYGEN_SUPPLY_SYSTEM,
-                                  SBC_BUTTON_FUEL_FLOW_RATE,
-                                  SBC_BUTTON_BUFFER_MATERIAL,
-                                  SBC_BUTTON_VT_LOCATION_MEASUREMENT };
-
-    for (int i = 0; i < 5; i++) {
-        if ((state->sbc.buttons & toggles[i]) &&
-            !(state->sbc.previousButtons &
-              toggles[i])) { // When the for the toggle is pressed
-            uint8_t byteMask = (uint8_t)(toggles[i] >> 32);
-            // Toggle the toggle switch
-            state->sbc.toggleSwitches ^= byteMask;
+        for (int i = 0; i < 8; i++) {
+            if (SDL_GameControllerGetButton(state->sdl_gamecontroller,
+                                            sdl_button_map_sbc[i][0]))
+                state->sbc.buttons |= sdl_button_map_sbc[i][1];
         }
-    }
 
-    // Tuner Dial Left
-    if ((state->sbc.buttons & SBC_BUTTON_TUNER_LEFT) &&
-        !(state->sbc.previousButtons & SBC_BUTTON_TUNER_LEFT)) {
-        if (state->sbc.tunerDial == 0)
-            state->sbc.tunerDial = 15;
-        else
-            state->sbc.tunerDial--;
-    }
+        const uint64_t toggles[5] = { SBC_BUTTON_FILT_CONTROL_SYSTEM,
+                                    SBC_BUTTON_OXYGEN_SUPPLY_SYSTEM,
+                                    SBC_BUTTON_FUEL_FLOW_RATE,
+                                    SBC_BUTTON_BUFFER_MATERIAL,
+                                    SBC_BUTTON_VT_LOCATION_MEASUREMENT };
 
-    // Tuner Dial Right
-    if ((state->sbc.buttons & SBC_BUTTON_TUNER_RIGHT) &&
-        !(state->sbc.previousButtons & SBC_BUTTON_TUNER_RIGHT)) {
-        if (state->sbc.tunerDial == 15)
-            state->sbc.tunerDial = 0;
-        else
-            state->sbc.tunerDial++;
-    }
+        for (int i = 0; i < 5; i++) {
+            if ((state->sbc.buttons & toggles[i]) &&
+                !(state->sbc.previousButtons &
+                toggles[i])) { // When the for the toggle is pressed
+                uint8_t byteMask = (uint8_t)(toggles[i] >> 32);
+                // Toggle the toggle switch
+                state->sbc.toggleSwitches ^= byteMask;
+            }
+        }
 
-    // Gear Lever Up
-    if ((state->sbc.buttons & SBC_BUTTON_GEAR_UP) &&
-        !(state->sbc.previousButtons & SBC_BUTTON_GEAR_UP)) {
-        if (state->sbc.gearLever != 5) {
-            if (state->sbc.gearLever == 255)
-                state->sbc.gearLever = 1;
+        // Tuner Dial Left
+        if ((state->sbc.buttons & SBC_BUTTON_TUNER_LEFT) &&
+            !(state->sbc.previousButtons & SBC_BUTTON_TUNER_LEFT)) {
+            if (state->sbc.tunerDial == 0)
+                state->sbc.tunerDial = 15;
             else
-                state->sbc.gearLever++;
+                state->sbc.tunerDial--;
         }
-    }
 
-    // Gear Lever Down
-    if ((state->sbc.buttons & SBC_BUTTON_GEAR_DOWN) &&
-        !(state->sbc.previousButtons & SBC_BUTTON_GEAR_DOWN)) {
-        if (state->sbc.gearLever != 254) {
-            if (state->sbc.gearLever == 1)
-                state->sbc.gearLever = 255;
+        // Tuner Dial Right
+        if ((state->sbc.buttons & SBC_BUTTON_TUNER_RIGHT) &&
+            !(state->sbc.previousButtons & SBC_BUTTON_TUNER_RIGHT)) {
+            if (state->sbc.tunerDial == 15)
+                state->sbc.tunerDial = 0;
             else
-                state->sbc.gearLever--;
+                state->sbc.tunerDial++;
         }
+
+        // Gear Lever Up
+        if ((state->sbc.buttons & SBC_BUTTON_GEAR_UP) &&
+            !(state->sbc.previousButtons & SBC_BUTTON_GEAR_UP)) {
+            if (state->sbc.gearLever != 5) {
+                if (state->sbc.gearLever == 255)
+                    state->sbc.gearLever = 1;
+                else
+                    state->sbc.gearLever++;
+            }
+        }
+
+        // Gear Lever Down
+        if ((state->sbc.buttons & SBC_BUTTON_GEAR_DOWN) &&
+            !(state->sbc.previousButtons & SBC_BUTTON_GEAR_DOWN)) {
+            if (state->sbc.gearLever != 254) {
+                if (state->sbc.gearLever == 1)
+                    state->sbc.gearLever = 255;
+                else
+                    state->sbc.gearLever--;
+            }
+        }
+
+        state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X] = SDL_GameControllerGetAxis(
+            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_LEFTX);
+        state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y] = SDL_GameControllerGetAxis(
+            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_LEFTY);
+        state->sbc.axis[SBC_AXIS_AIMING_X] = SDL_GameControllerGetAxis(
+            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_RIGHTX);
+        state->sbc.axis[SBC_AXIS_AIMING_Y] = SDL_GameControllerGetAxis(
+            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_RIGHTY);
+        state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL] = SDL_GameControllerGetAxis(
+            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
+        state->sbc.axis[SBC_AXIS_RIGHT_PEDAL] = SDL_GameControllerGetAxis(
+            state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+
+        state->sbc.previousButtons = state->sbc.buttons;
+    } else {
+        const SDL_GameControllerButton sdl_button_map[15] = {
+            SDL_CONTROLLER_BUTTON_A,
+            SDL_CONTROLLER_BUTTON_B,
+            SDL_CONTROLLER_BUTTON_X,
+            SDL_CONTROLLER_BUTTON_Y,
+            SDL_CONTROLLER_BUTTON_DPAD_LEFT,
+            SDL_CONTROLLER_BUTTON_DPAD_UP,
+            SDL_CONTROLLER_BUTTON_DPAD_RIGHT,
+            SDL_CONTROLLER_BUTTON_DPAD_DOWN,
+            SDL_CONTROLLER_BUTTON_BACK,
+            SDL_CONTROLLER_BUTTON_START,
+            SDL_CONTROLLER_BUTTON_LEFTSHOULDER,
+            SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
+            SDL_CONTROLLER_BUTTON_LEFTSTICK,
+            SDL_CONTROLLER_BUTTON_RIGHTSTICK,
+            SDL_CONTROLLER_BUTTON_GUIDE
+        };
+
+        for (int i = 0; i < 15; i++) {
+            state->gp.buttons |= SDL_GameControllerGetButton(
+                                    state->sdl_gamecontroller, sdl_button_map[i])
+                                << i;
+        }
+
+        const SDL_GameControllerAxis sdl_axis_map[6] = {
+            SDL_CONTROLLER_AXIS_TRIGGERLEFT, SDL_CONTROLLER_AXIS_TRIGGERRIGHT,
+            SDL_CONTROLLER_AXIS_LEFTX,       SDL_CONTROLLER_AXIS_LEFTY,
+            SDL_CONTROLLER_AXIS_RIGHTX,      SDL_CONTROLLER_AXIS_RIGHTY,
+        };
+
+        for (int i = 0; i < 6; i++) {
+            state->gp.axis[i] = SDL_GameControllerGetAxis(state->sdl_gamecontroller,
+                                                        sdl_axis_map[i]);
+        }
+
+        // FIXME: Check range
+        state->gp.axis[CONTROLLER_AXIS_LSTICK_Y] =
+            -1 - state->gp.axis[CONTROLLER_AXIS_LSTICK_Y];
+        state->gp.axis[CONTROLLER_AXIS_RSTICK_Y] =
+            -1 - state->gp.axis[CONTROLLER_AXIS_RSTICK_Y];
+
+        // xemu_input_print_controller_state(state);
+
+        // Update the SBC too, just in case
+        const uint64_t sdl_button_map_sbc[8][2] = {
+            { SDL_CONTROLLER_BUTTON_A, SBC_BUTTON_MAIN_WEAPON },
+            { SDL_CONTROLLER_BUTTON_B, SBC_BUTTON_LOCK_ON },
+            { SDL_CONTROLLER_BUTTON_LEFTSHOULDER, SBC_BUTTON_FUNC1 },
+            { SDL_CONTROLLER_BUTTON_LEFTSTICK, SBC_BUTTON_SIGHT_CHANGE },
+            { SDL_CONTROLLER_BUTTON_DPAD_UP, SBC_BUTTON_GEAR_UP },
+            { SDL_CONTROLLER_BUTTON_DPAD_DOWN, SBC_BUTTON_GEAR_DOWN },
+            { SDL_CONTROLLER_BUTTON_DPAD_LEFT, SBC_BUTTON_TUNER_LEFT },
+            { SDL_CONTROLLER_BUTTON_DPAD_RIGHT, SBC_BUTTON_TUNER_RIGHT }
+        };
     }
-
-    state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X] = SDL_GameControllerGetAxis(
-        state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_LEFTX);
-    state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y] = SDL_GameControllerGetAxis(
-        state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_LEFTY);
-    state->sbc.axis[SBC_AXIS_AIMING_X] = SDL_GameControllerGetAxis(
-        state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_RIGHTX);
-    state->sbc.axis[SBC_AXIS_AIMING_Y] = SDL_GameControllerGetAxis(
-        state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_RIGHTY);
-    state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL] = SDL_GameControllerGetAxis(
-        state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
-    state->sbc.axis[SBC_AXIS_RIGHT_PEDAL] = SDL_GameControllerGetAxis(
-        state->sdl_gamecontroller, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
-
-    state->sbc.previousButtons = state->sbc.buttons;
 }
 
 void xemu_input_update_rumble(ControllerState *state)

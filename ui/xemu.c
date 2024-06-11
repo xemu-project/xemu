@@ -112,7 +112,7 @@ static int guest_cursor;
 static int guest_x, guest_y;
 static SDL_Cursor *guest_sprite;
 static Notifier mouse_mode_notifier;
-static SDL_Window *m_window;
+SDL_Window *m_window;
 static SDL_GLContext m_context;
 // struct decal_shader *blit;
 
@@ -554,6 +554,7 @@ static void handle_mousebutton(SDL_Event *ev)
             buttonstate &= ~SDL_BUTTON(bev->button);
         }
         sdl_send_mouse_event(scon, 0, 0, bev->x, bev->y, buttonstate);
+        xemu_input_set_mouse_x_y(bev->x, bev->y);
     }
 }
 
