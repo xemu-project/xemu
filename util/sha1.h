@@ -29,7 +29,7 @@ typedef struct SHA1Context {
     bool computed;
 } SHA1Context;
 
-void xbox_sha1_fill(SHA1Context *ctx, uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e);
-void xbox_sha1_input(SHA1Context *ctx, uint8_t *data, size_t len);
-void xbox_sha1_result(SHA1Context *ctx, uint8_t *data);
-void xbox_sha1_reset(SHA1Context *ctx, XboxEEPROMVersion ver, bool first);
+void sha1_fill(SHA1Context *ctx, uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e);
+void sha1_input(SHA1Context *ctx, uint8_t *data, size_t len);
+void sha1_result(SHA1Context *ctx, uint8_t *data);
+void sha1_reset(SHA1Context *ctx);

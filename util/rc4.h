@@ -25,5 +25,5 @@ typedef struct RC4Context {
     uint8_t s[256];
 } RC4Context;
 
-void xbox_rc4_init(RC4Context *ctx, uint8_t *data, size_t len);
-void xbox_rc4_crypt(RC4Context *ctx, uint8_t *data, size_t len);
+void rc4_init(RC4Context *ctx, uint8_t *data, size_t len);
+void rc4_crypt(RC4Context *ctx, uint8_t *data, size_t len);
