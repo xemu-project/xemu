@@ -27,7 +27,7 @@
 #define LIGHT_GUN_OUT_ENDPOINT_ID 0x02
 
 #define USB_XID(obj) \
-    OBJECT_CHECK(USBXIDGamepadState, (obj), TYPE_USB_XID_LIGHT_GUN)
+    OBJECT_CHECK(USBXIDLightGunState, (obj), TYPE_USB_XID_LIGHT_GUN)
 
 typedef struct XIDLightGunReport {
     uint8_t bReportId;
