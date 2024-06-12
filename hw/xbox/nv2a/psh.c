@@ -728,29 +728,35 @@ static MString* psh_convert(struct PixelShader *ps)
         "    if (x >= 0) return x/2;\n"
         "           else return 1+x/2;\n"
         "}\n"
-        "vec3 dotmap_zero_to_one(vec3 col) {\n"
-        "    return col;\n"
+        "vec3 dotmap_zero_to_one(vec4 col) {\n"
+        "    return col.rgb;\n"
         "}\n"
-        "vec3 dotmap_minus1_to_1_d3d(vec3 col) {\n"
+        "vec3 dotmap_minus1_to_1_d3d(vec4 col) {\n"
         "    return vec3(sign1(col.r),sign1(col.g),sign1(col.b));\n"
         "}\n"
-        "vec3 dotmap_minus1_to_1_gl(vec3 col) {\n"
+        "vec3 dotmap_minus1_to_1_gl(vec4 col) {\n"
         "    return vec3(sign2(col.r),sign2(col.g),sign2(col.b));\n"
         "}\n"
-        "vec3 dotmap_minus1_to_1(vec3 col) {\n"
+        "vec3 dotmap_minus1_to_1(vec4 col) {\n"
         "    return vec3(sign3(col.r),sign3(col.g),sign3(col.b));\n"
         "}\n"
-        "vec3 dotmap_hilo_1(vec3 col) {\n"
-        "    return col;\n" // FIXME
+        "vec3 dotmap_hilo_1(vec4 col) {\n"
+        "    uint hi_i = uint(col.a * float(0xff)) << 8\n"
+        "              | uint(col.r * float(0xff));\n"
+        "    uint lo_i = uint(col.g * float(0xff)) << 8\n"
+        "              | uint(col.b * float(0xff));\n"
+        "    float hi_f = float(hi_i) / float(0xffff);\n"
+        "    float lo_f = float(lo_i) / float(0xffff);\n"
+        "    return vec3(hi_f, lo_f, 1.0);\n"
         "}\n"
-        "vec3 dotmap_hilo_hemisphere_d3d(vec3 col) {\n"
-        "    return col;\n" // FIXME
+        "vec3 dotmap_hilo_hemisphere_d3d(vec4 col) {\n"
+        "    return col.rgb;\n" // FIXME
         "}\n"
-        "vec3 dotmap_hilo_hemisphere_gl(vec3 col) {\n"
-        "    return col;\n" // FIXME
+        "vec3 dotmap_hilo_hemisphere_gl(vec4 col) {\n"
+        "    return col.rgb;\n" // FIXME
         "}\n"
-        "vec3 dotmap_hilo_hemisphere(vec3 col) {\n"
-        "    return col;\n" // FIXME
+        "vec3 dotmap_hilo_hemisphere(vec4 col) {\n"
+        "    return col.rgb;\n" // FIXME
         "}\n"
         "const float[9] gaussian3x3 = float[9](\n"
         "    1.0/16.0, 2.0/16.0, 1.0/16.0,\n"
@@ -950,7 +956,7 @@ static MString* psh_convert(struct PixelShader *ps)
             assert(i >= 2);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_ST */\n");
             mstring_append_fmt(vars,
-               "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n"
+               "float dot%d = dot(pT%d.xyz, %s(t%d));\n"
                "vec2 dotST%d = vec2(dot%d, dot%d);\n",
                 i, i, dotmap_func, ps->input_tex[i], i, i-1, i);
 
@@ -961,7 +967,7 @@ static MString* psh_convert(struct PixelShader *ps)
         case PS_TEXTUREMODES_DOT_ZW:
             assert(i >= 2);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_ZW */\n");
-            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
+            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
             mstring_append_fmt(vars, "vec4 t%d = vec4(0.0);\n", i);
             // FIXME: mstring_append_fmt(vars, "gl_FragDepth = t%d.x;\n", i);
@@ -969,10 +975,10 @@ static MString* psh_convert(struct PixelShader *ps)
         case PS_TEXTUREMODES_DOT_RFLCT_DIFF:
             assert(i == 2);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_RFLCT_DIFF */\n");
-            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
+            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
             assert(ps->dot_map[i+1] < 8);
-            mstring_append_fmt(vars, "float dot%d_n = dot(pT%d.xyz, %s(t%d.rgb));\n",
+            mstring_append_fmt(vars, "float dot%d_n = dot(pT%d.xyz, %s(t%d));\n",
                 i, i+1, dotmap_funcs[ps->dot_map[i+1]], ps->input_tex[i+1]);
             mstring_append_fmt(vars, "vec3 n_%d = vec3(dot%d, dot%d, dot%d_n);\n",
                 i, i-1, i, i);
@@ -983,7 +989,7 @@ static MString* psh_convert(struct PixelShader *ps)
         case PS_TEXTUREMODES_DOT_RFLCT_SPEC:
             assert(i == 3);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_RFLCT_SPEC */\n");
-            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
+            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
             mstring_append_fmt(vars, "vec3 n_%d = vec3(dot%d, dot%d, dot%d);\n",
                 i, i-2, i-1, i);
@@ -999,7 +1005,7 @@ static MString* psh_convert(struct PixelShader *ps)
             assert(i == 3);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_3D */\n");
             mstring_append_fmt(vars,
-               "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n"
+               "float dot%d = dot(pT%d.xyz, %s(t%d));\n"
                "vec3 dotSTR%d = vec3(dot%d, dot%d, dot%d);\n",
                 i, i, dotmap_func, ps->input_tex[i],
                 i, i-2, i-1, i);
@@ -1011,7 +1017,7 @@ static MString* psh_convert(struct PixelShader *ps)
         case PS_TEXTUREMODES_DOT_STR_CUBE:
             assert(i == 3);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOT_STR_CUBE */\n");
-            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
+            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
             mstring_append_fmt(vars, "vec3 dotSTR%dCube = vec3(dot%d, dot%d, dot%d);\n",
                                i, i-2, i-1, i);
@@ -1038,7 +1044,7 @@ static MString* psh_convert(struct PixelShader *ps)
         case PS_TEXTUREMODES_DOTPRODUCT:
             assert(i == 1 || i == 2);
             mstring_append_fmt(vars, "/* PS_TEXTUREMODES_DOTPRODUCT */\n");
-            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d.rgb));\n",
+            mstring_append_fmt(vars, "float dot%d = dot(pT%d.xyz, %s(t%d));\n",
                 i, i, dotmap_func, ps->input_tex[i]);
             mstring_append_fmt(vars, "vec4 t%d = vec4(0.0);\n", i);
             break;

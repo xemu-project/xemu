@@ -46,4 +46,7 @@
   <provides>
     <binary>xemu</binary>
   </provides>
+  <developer id="xemu.app">
+    <name>xemu project</name>
+  </developer>
 </component>
