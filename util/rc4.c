@@ -20,30 +20,30 @@
 
 #include "rc4.h"
 
-static void xbox_rc4_swap(RC4Context *ctx, int first, int second)
+static void rc4_swap(RC4Context *ctx, int first, int second)
 {
     uint8_t temp = ctx->s[first];
     ctx->s[first] = ctx->s[second];
     ctx->s[second] = temp;
 }
 
-void xbox_rc4_init(RC4Context *ctx, uint8_t *data, size_t len)
+void rc4_init(RC4Context *ctx, uint8_t *data, size_t len)
 {
     for (int i = 0; i < 256; i++) {
         ctx->s[i] = i;
     }
     for (int i = 0, j = 0; i < 256; i++) {
         j = (j + ctx->s[i] + data[i % len]) % 256;
-        xbox_rc4_swap(ctx, i, j);
+        rc4_swap(ctx, i, j);
     }
 }
 
-void xbox_rc4_crypt(RC4Context *ctx, uint8_t *data, size_t len)
+void rc4_crypt(RC4Context *ctx, uint8_t *data, size_t len)
 {
     for (int i = 0, j = 0, k = 0; k < len; k++) {
         i = (i + 1) % 256;
         j = (j + ctx->s[i]) % 256;
-        xbox_rc4_swap(ctx, i, j);
+        rc4_swap(ctx, i, j);
         data[k] ^= ctx->s[(ctx->s[i] + ctx->s[j]) % 256];
     }
 }
