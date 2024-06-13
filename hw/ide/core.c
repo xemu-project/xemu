@@ -1217,6 +1217,13 @@ static void ide_cd_change_cb(void *opaque, bool load, Error **errp)
     s->cdrom_changed = 1;
     s->events.new_media = true;
     s->events.eject_request = false;
+
+#ifdef XBOX
+    memset(s->xdvd_challenges_encrypted, 0, sizeof(s->xdvd_challenges_encrypted));
+    memset(s->xdvd_challenges_decrypted, 0, sizeof(s->xdvd_challenges_decrypted));
+    memset(&s->xdvd_security, 0, sizeof(s->xdvd_security));
+#endif
+
     ide_bus_set_irq(s->bus);
 }
 
