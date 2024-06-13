@@ -1546,7 +1546,7 @@ if not get_option('usb_redir').auto() or have_system
 endif
 libusb = not_found
 if not get_option('libusb').auto() or have_system
-  libusb = dependency('libusb-1.0', required: get_option('libusb'),
+  libusb = dependency('libusb-1.0', required: get_option('libusb').enabled(),
                       version: '>=1.0.13', method: 'pkg-config',
                       kwargs: static_kwargs)
 endif
