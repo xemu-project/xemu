@@ -282,7 +282,6 @@ jobs:
           ccache \
           coreutils \
           dylibbundler \
-          pkg-config \
           ninja
         pip install pyyaml requests
     - name: Initialize compiler, library cache
