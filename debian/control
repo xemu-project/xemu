@@ -5,7 +5,6 @@ Maintainer: Matt Borgerson <contact@mborgerson.com>
 Build-Depends: debhelper (>= 11),
  git,
  python3:any,
- python3-distutils,
  python3-yaml,
  ninja-build,
  libgtk-3-dev,
