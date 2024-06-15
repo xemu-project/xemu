@@ -2,7 +2,7 @@
 # Environment to cross-compile xemu for Windows
 #
 
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ENV MXE_VERSION=8fa8c126f64a0ca6d263c641632645db4f941f00
 
