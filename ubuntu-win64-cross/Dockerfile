@@ -55,7 +55,7 @@ RUN cd /opt \
  && cd mxe \
  && git checkout ${MXE_VERSION} \
  && make MXE_TARGETS=x86_64-w64-mingw32.static \
-         MXE_PLUGIN_DIRS=plugins/gcc10 \
+         MXE_PLUGIN_DIRS=plugins/gcc13 \
             cc \
             glib \
             libepoxy \
@@ -68,7 +68,7 @@ RUN rm /opt/mxe/src/sdl2*.patch
 COPY sdl2.mk /opt/mxe/src/sdl2.mk
 RUN V=1 MXE_VERBOSE=1 make -C /opt/mxe \
         MXE_TARGETS=x86_64-w64-mingw32.static \
-        MXE_PLUGIN_DIRS=plugins/gcc10 \
+        MXE_PLUGIN_DIRS=plugins/gcc13 \
             sdl2
 
 RUN find /opt/mxe/usr -executable -type f -exec chmod a+x {} \;
