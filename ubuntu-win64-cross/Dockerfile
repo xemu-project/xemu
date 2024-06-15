@@ -62,7 +62,8 @@ RUN cd /opt \
             pixman \
             libsamplerate \
             openssl \
-            cmake
+            cmake \
+            libslirp
 
 RUN rm /opt/mxe/src/sdl2*.patch
 COPY sdl2.mk /opt/mxe/src/sdl2.mk
