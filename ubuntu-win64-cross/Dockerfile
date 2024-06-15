@@ -4,7 +4,7 @@
 
 FROM ubuntu:22.04
 
-ENV MXE_VERSION=1707285df63b8590ce6b91c7ff3a5b56e3cc8980
+ENV MXE_VERSION=8fa8c126f64a0ca6d263c641632645db4f941f00
 
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive \
@@ -70,13 +70,6 @@ RUN V=1 MXE_VERBOSE=1 make -C /opt/mxe \
         MXE_TARGETS=x86_64-w64-mingw32.static \
         MXE_PLUGIN_DIRS=plugins/gcc10 \
             sdl2
-
-COPY libslirp.mk /opt/mxe/src/libslirp.mk
-COPY libslirp-1.patch /opt/mxe/src/libslirp-1.patch
-RUN V=1 MXE_VERBOSE=1 make -C /opt/mxe \
-        MXE_TARGETS=x86_64-w64-mingw32.static \
-        MXE_PLUGIN_DIRS=plugins/gcc10 \
-            libslirp
 
 RUN find /opt/mxe/usr -executable -type f -exec chmod a+x {} \;
 
