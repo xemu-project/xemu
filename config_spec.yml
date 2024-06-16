@@ -245,6 +245,7 @@ sys:
     eeprom_path: string
     hdd_path: string
     dvd_path: string
+    dvd_security_path: string
 
 perf:
   hard_fpu:
