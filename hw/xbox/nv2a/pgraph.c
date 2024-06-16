@@ -5057,7 +5057,7 @@ static void pgraph_init_display_renderer(NV2AState *d)
         "{\n"
         "    vec2 texCoord = gl_FragCoord.xy/display_size;\n"
         "    float rel = display_size.y/textureSize(tex, 0).y/line_offset;\n"
-        "    texCoord.y = 1 + rel*(texCoord.y - 1);"
+        "    texCoord.y = 1 + rel*(texCoord.y - 1);\n"
         "    out_Color.rgba = texture(tex, texCoord);\n"
         "    if (pvideo_enable) {\n"
         "        vec2 screenCoord = gl_FragCoord.xy - 0.5;\n"
@@ -5091,7 +5091,19 @@ static void pgraph_init_display_renderer(NV2AState *d)
     glBindBuffer(GL_ARRAY_BUFFER, pg->disp_rndr.vbo);
     glBufferData(GL_ARRAY_BUFFER, 0, NULL, GL_STATIC_DRAW);
     glGenFramebuffers(1, &pg->disp_rndr.fbo);
+
+    glGenTextures(1, &pg->disp_rndr.vga_framebuffer_tex);
+    glBindTexture(GL_TEXTURE_2D, pg->disp_rndr.vga_framebuffer_tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
     glGenTextures(1, &pg->disp_rndr.pvideo_tex);
+    glBindTexture(GL_TEXTURE_2D, pg->disp_rndr.pvideo_tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
     assert(glGetError() == GL_NO_ERROR);
 }
 
@@ -5223,9 +5235,6 @@ static void pgraph_render_display_pvideo_overlay(NV2AState *d)
 
     glActiveTexture(GL_TEXTURE0 + 1);
     glBindTexture(GL_TEXTURE_2D, g_nv2a->pgraph.disp_rndr.pvideo_tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     uint8_t *tex_rgba = convert_texture_data__CR8YB8CB8YA8(
         d->vram_ptr + base + offset, in_width, in_height, in_pitch);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, in_width, in_height, 0, GL_RGBA,
@@ -5239,33 +5248,250 @@ static void pgraph_render_display_pvideo_overlay(NV2AState *d)
                 scale_x, scale_y, 1.0f / pg->surface_scale_factor);
 }
 
+static void surface_copy_expand_row(uint8_t *out, uint8_t *in,
+                                    unsigned int width,
+                                    unsigned int bytes_per_pixel,
+                                    unsigned int factor)
+{
+    if (bytes_per_pixel == 4) {
+        for (unsigned int x = 0; x < width; x++) {
+            for (unsigned int i = 0; i < factor; i++) {
+                *(uint32_t *)out = *(uint32_t *)in;
+                out += bytes_per_pixel;
+            }
+            in += bytes_per_pixel;
+        }
+    } else if (bytes_per_pixel == 2) {
+        for (unsigned int x = 0; x < width; x++) {
+            for (unsigned int i = 0; i < factor; i++) {
+                *(uint16_t *)out = *(uint16_t *)in;
+                out += bytes_per_pixel;
+            }
+            in += bytes_per_pixel;
+        }
+    } else {
+        for (unsigned int x = 0; x < width; x++) {
+            for (unsigned int i = 0; i < factor; i++) {
+                memcpy(out, in, bytes_per_pixel);
+                out += bytes_per_pixel;
+            }
+            in += bytes_per_pixel;
+        }
+    }
+}
+
+static void surface_copy_expand(uint8_t *out, uint8_t *in, unsigned int width,
+                                unsigned int height,
+                                unsigned int bytes_per_pixel,
+                                unsigned int factor)
+{
+    size_t out_pitch = width * bytes_per_pixel * factor;
+
+    for (unsigned int y = 0; y < height; y++) {
+        surface_copy_expand_row(out, in, width, bytes_per_pixel, factor);
+        uint8_t *row_in = out;
+        for (unsigned int i = 1; i < factor; i++) {
+            out += out_pitch;
+            memcpy(out, row_in, out_pitch);
+        }
+        in += width * bytes_per_pixel;
+        out += out_pitch;
+    }
+}
+
+// Uploads the pixel data at the given VRAM address into the currently bound
+// texture.
+static void upload_vram_to_bound_texture(NV2AState *d,
+                                         hwaddr vram_addr,
+                                         bool swizzle,
+                                         unsigned int surface_width,
+                                         unsigned int surface_height,
+                                         unsigned int pitch,
+                                         size_t size,
+                                         const SurfaceFormatInfo *fmt)
+{
+    PGRAPHState *pg = &d->pgraph;
+    uint8_t *data = d->vram_ptr;
+    uint8_t *buf = data + vram_addr;
+
+    if (swizzle) {
+        buf = (uint8_t*)g_malloc(size);
+        unswizzle_rect(data + vram_addr,
+                       surface_width, surface_height,
+                       buf,
+                       pitch,
+                       fmt->bytes_per_pixel);
+    }
+
+    /* FIXME: Replace this flip/scaling */
+
+    // This is VRAM so we can't do this inplace!
+    unsigned int compact_pitch = surface_width * fmt->bytes_per_pixel;
+    uint8_t *flipped_buf = (uint8_t *)g_malloc(surface_height * compact_pitch);
+    unsigned int irow;
+    for (irow = 0; irow < surface_height; irow++) {
+        memcpy(&flipped_buf[compact_pitch * (surface_height - irow - 1)],
+               &buf[pitch * irow],
+               compact_pitch);
+    }
+
+    uint8_t *gl_read_buf = flipped_buf;
+    unsigned int width = surface_width;
+    unsigned int height = surface_height;
+
+    if (pg->surface_scale_factor > 1) {
+        pgraph_apply_scaling_factor(pg, &width, &height);
+        pg->scale_buf = (uint8_t *)g_realloc(
+            pg->scale_buf, width * height * fmt->bytes_per_pixel);
+        gl_read_buf = pg->scale_buf;
+        uint8_t *out = gl_read_buf, *in = flipped_buf;
+        surface_copy_expand(out, in, surface_width, surface_height,
+                            fmt->bytes_per_pixel,
+                            d->pgraph.surface_scale_factor);
+    }
+
+    if (unlikely((width * fmt->bytes_per_pixel) % 4 != 0)) {
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    } else {
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    }
+
+    glTexImage2D(GL_TEXTURE_2D, 0, fmt->gl_internal_format, width,
+                 height, 0, fmt->gl_format, fmt->gl_type,
+                 gl_read_buf);
+    g_free(flipped_buf);
+    if (swizzle) {
+        g_free(buf);
+    }
+}
+
+static void pgraph_download_overlapping_surfaces(NV2AState *d,
+                                                 hwaddr start,
+                                                 hwaddr end)
+{
+    SurfaceBinding *surface;
+    QTAILQ_FOREACH (surface, &d->pgraph.surfaces, entry) {
+        hwaddr surf_vram_end = surface->vram_addr + surface->size - 1;
+        bool overlapping = !(surface->vram_addr >= end ||
+                             start >= surf_vram_end);
+        if (overlapping) {
+            pgraph_download_surface_data_if_dirty(d, surface);
+        }
+    }
+}
+
+static bool check_framebuffer_dirty(NV2AState *d,
+                                    hwaddr framebuffer,
+                                    hwaddr framebuffer_end)
+{
+    framebuffer &= TARGET_PAGE_MASK;
+    assert(framebuffer_end < memory_region_size(d->vram));
+    return memory_region_test_and_clear_dirty(d->vram,
+                                              framebuffer,
+                                              framebuffer_end - framebuffer,
+                                              DIRTY_MEMORY_VGA);
+}
+
+static inline void get_vga_buffer_format(NV2AState *d,
+                                         const SurfaceFormatInfo **format,
+                                         int *framebuffer_bytes_per_pixel)
+{
+    int framebuffer_bpp = d->vga.get_bpp(&d->vga);
+    switch (framebuffer_bpp) {
+    case 15:
+        *format = &kelvin_surface_color_format_map[NV097_SET_SURFACE_FORMAT_COLOR_LE_X1R5G5B5_Z1R5G5B5];
+        *framebuffer_bytes_per_pixel = 2;
+        break;
+    case 16:
+        *format = &kelvin_surface_color_format_map[NV097_SET_SURFACE_FORMAT_COLOR_LE_R5G6B5];
+        *framebuffer_bytes_per_pixel = 2;
+        break;
+    case 0:
+        /* See note in nv2a_get_bpp. For the purposes of selecting a surface,
+         * this is treated as 32bpp. */
+    case 32:
+        *format = &kelvin_surface_color_format_map[NV097_SET_SURFACE_FORMAT_COLOR_LE_X8R8G8B8_Z8R8G8B8];
+        *framebuffer_bytes_per_pixel = 4;
+        break;
+    default:
+        fprintf(stderr, "Unexpected framebuffer_bpp %d\n", framebuffer_bpp);
+        assert(!"Unexpected framebuffer_bpp value");
+    }
+}
+
 static void pgraph_render_display(NV2AState *d, SurfaceBinding *surface)
 {
     struct PGRAPHState *pg = &d->pgraph;
 
-    unsigned int width, height;
+    int vga_width, vga_height;
     uint32_t pline_offset, pstart_addr, pline_compare;
-    d->vga.get_resolution(&d->vga, (int*)&width, (int*)&height);
+    d->vga.get_resolution(&d->vga, &vga_width, &vga_height);
     d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
-    int line_offset = surface->pitch / pline_offset;
 
     /* Adjust viewport height for interlaced mode, used only in 1080i */
     if (d->vga.cr[NV_PRMCIO_INTERLACE_MODE] != NV_PRMCIO_INTERLACE_MODE_DISABLED) {
-        height *= 2;
+        vga_height *= 2;
     }
 
+    unsigned int width = vga_width;
+    unsigned int height = vga_height;
     pgraph_apply_scaling_factor(pg, &width, &height);
+
+    int line_offset = 1;
+    const SurfaceFormatInfo *format;
+    int framebuffer_bytes_per_pixel;
+    get_vga_buffer_format(d, &format, &framebuffer_bytes_per_pixel);
+
+    if (surface
+        && surface->color
+        && surface->width == vga_width
+        && surface->height == vga_height) {
+
+        line_offset = surface->pitch / pline_offset;
+        format = &surface->fmt;
+    } else {
+        if (vga_width * framebuffer_bytes_per_pixel > pline_offset) {
+            // Some games without widescreen support (e.g.,
+            // Pirates: The Legend of Black Kat) will set a VGA resolution that
+            // is wider than a single line when run with widescreen enabled in
+            // the dashboard.
+            vga_width = pline_offset / framebuffer_bytes_per_pixel;
+            width = vga_width;
+            height = vga_height;
+            pgraph_apply_scaling_factor(pg, &width, &height);
+        }
+        hwaddr framebuffer = d->pcrtc.start;
+        size_t length = pline_offset * vga_height;
+        hwaddr framebuffer_end = framebuffer + length - 1;
+
+        pgraph_download_overlapping_surfaces(d, framebuffer, framebuffer_end);
+
+        bool dirty = check_framebuffer_dirty(d, framebuffer, framebuffer_end);
+        if (dirty) {
+            nv2a_profile_inc_counter(NV2A_PROF_SURF_UPLOAD);
+            glBindTexture(GL_TEXTURE_2D, pg->disp_rndr.vga_framebuffer_tex);
+            upload_vram_to_bound_texture(d,
+                                         framebuffer,
+                                         false,
+                                         vga_width,
+                                         vga_height,
+                                         pline_offset,
+                                         pline_offset * vga_height,
+                                         format);
+            assert(glGetError() == GL_NO_ERROR);
+        }
+        surface = NULL;
+    }
 
     glBindFramebuffer(GL_FRAMEBUFFER, d->pgraph.disp_rndr.fbo);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, pg->gl_display_buffer);
-    bool recreate = (
-        surface->fmt.gl_internal_format != pg->gl_display_buffer_internal_format
-        || width != pg->gl_display_buffer_width
-        || height != pg->gl_display_buffer_height
-        || surface->fmt.gl_format != pg->gl_display_buffer_format
-        || surface->fmt.gl_type != pg->gl_display_buffer_type
-        );
+
+    bool recreate = width != pg->gl_display_buffer_width
+            || height != pg->gl_display_buffer_height
+            || format->gl_internal_format != pg->gl_display_buffer_internal_format
+            || format->gl_format != pg->gl_display_buffer_format
+            || format->gl_type != pg->gl_display_buffer_type;
 
     if (recreate) {
         /* XXX: There's apparently a bug in some Intel OpenGL drivers for
@@ -5279,11 +5505,11 @@ static void pgraph_render_display(NV2AState *d, SurfaceBinding *surface)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        pg->gl_display_buffer_internal_format = surface->fmt.gl_internal_format;
         pg->gl_display_buffer_width = width;
         pg->gl_display_buffer_height = height;
-        pg->gl_display_buffer_format = surface->fmt.gl_format;
-        pg->gl_display_buffer_type = surface->fmt.gl_type;
+        pg->gl_display_buffer_internal_format = format->gl_internal_format;
+        pg->gl_display_buffer_format = format->gl_format;
+        pg->gl_display_buffer_type = format->gl_type;
         glTexImage2D(GL_TEXTURE_2D, 0,
             pg->gl_display_buffer_internal_format,
             pg->gl_display_buffer_width,
@@ -5300,13 +5526,15 @@ static void pgraph_render_display(NV2AState *d, SurfaceBinding *surface)
     glDrawBuffers(1, DrawBuffers);
     assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 
-    glBindTexture(GL_TEXTURE_2D, surface->gl_buffer);
+    glBindTexture(GL_TEXTURE_2D,
+                  surface ? surface->gl_buffer : pg->disp_rndr.vga_framebuffer_tex);
+
     glBindVertexArray(pg->disp_rndr.vao);
     glBindBuffer(GL_ARRAY_BUFFER, pg->disp_rndr.vbo);
     glUseProgram(pg->disp_rndr.prog);
     glProgramUniform1i(pg->disp_rndr.prog, pg->disp_rndr.tex_loc, 0);
-    glUniform2f(d->pgraph.disp_rndr.display_size_loc, width, height);
-    glUniform1f(d->pgraph.disp_rndr.line_offset_loc, line_offset);
+    glUniform2f(pg->disp_rndr.display_size_loc, width, height);
+    glUniform1f(pg->disp_rndr.line_offset_loc, line_offset);
     pgraph_render_display_pvideo_overlay(d);
 
     glViewport(0, 0, width, height);
@@ -5329,16 +5557,18 @@ void pgraph_gl_sync(NV2AState *d)
 {
     uint32_t pline_offset, pstart_addr, pline_compare;
     d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
-    SurfaceBinding *surface = pgraph_surface_get_within(d, d->pcrtc.start + pline_offset);
-    if (surface == NULL) {
+    hwaddr framebuffer = d->pcrtc.start + pline_offset;
+    if (!framebuffer) {
         qemu_event_set(&d->pgraph.gl_sync_complete);
         return;
     }
+    SurfaceBinding *surface = pgraph_surface_get_within(d, framebuffer);
+    if (surface) {
+        /* FIXME: Sanity check surface dimensions */
 
-    /* FIXME: Sanity check surface dimensions */
-
-    /* Wait for queued commands to complete */
-    pgraph_upload_surface_data(d, surface, !tcg_enabled());
+        /* Wait for queued commands to complete */
+        pgraph_upload_surface_data(d, surface, !tcg_enabled());
+    }
     pgraph_gl_fence();
     assert(glGetError() == GL_NO_ERROR);
 
@@ -5374,21 +5604,24 @@ int nv2a_get_framebuffer_surface(void)
     // FIXME: Possible race condition with pgraph, consider lock
     uint32_t pline_offset, pstart_addr, pline_compare;
     d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
-    SurfaceBinding *surface = pgraph_surface_get_within(d, d->pcrtc.start + pline_offset);
-    if (surface == NULL || !surface->color) {
+    const hwaddr framebuffer = d->pcrtc.start + pline_offset;
+    if (!framebuffer) {
         qemu_mutex_unlock(&d->pfifo.lock);
         return 0;
     }
 
-    assert(surface->color);
-    assert(surface->fmt.gl_attachment == GL_COLOR_ATTACHMENT0);
-    assert(surface->fmt.gl_format == GL_RGBA
-        || surface->fmt.gl_format == GL_RGB
-        || surface->fmt.gl_format == GL_BGR
-        || surface->fmt.gl_format == GL_BGRA
+    SurfaceBinding *surface = pgraph_surface_get_within(d, framebuffer);
+    if (surface && surface->color) {
+        assert(surface->fmt.gl_attachment == GL_COLOR_ATTACHMENT0);
+        assert(surface->fmt.gl_format == GL_RGBA
+                       || surface->fmt.gl_format == GL_RGB
+                       || surface->fmt.gl_format == GL_BGR
+                       || surface->fmt.gl_format == GL_BGRA
         );
 
-    surface->frame_time = pg->frame_time;
+        surface->frame_time = pg->frame_time;
+    }
+
     qemu_event_reset(&d->pgraph.gl_sync_complete);
     qatomic_set(&pg->gl_sync_pending, true);
     pfifo_kick(d);
@@ -5812,58 +6045,6 @@ void pgraph_download_dirty_surfaces(NV2AState *d)
     qemu_event_set(&d->pgraph.dirty_surfaces_download_complete);
 }
 
-
-static void surface_copy_expand_row(uint8_t *out, uint8_t *in,
-                                    unsigned int width,
-                                    unsigned int bytes_per_pixel,
-                                    unsigned int factor)
-{
-    if (bytes_per_pixel == 4) {
-        for (unsigned int x = 0; x < width; x++) {
-            for (unsigned int i = 0; i < factor; i++) {
-                *(uint32_t *)out = *(uint32_t *)in;
-                out += bytes_per_pixel;
-            }
-            in += bytes_per_pixel;
-        }
-    } else if (bytes_per_pixel == 2) {
-        for (unsigned int x = 0; x < width; x++) {
-            for (unsigned int i = 0; i < factor; i++) {
-                *(uint16_t *)out = *(uint16_t *)in;
-                out += bytes_per_pixel;
-            }
-            in += bytes_per_pixel;
-        }
-    } else {
-        for (unsigned int x = 0; x < width; x++) {
-            for (unsigned int i = 0; i < factor; i++) {
-                memcpy(out, in, bytes_per_pixel);
-                out += bytes_per_pixel;
-            }
-            in += bytes_per_pixel;
-        }
-    }
-}
-
-static void surface_copy_expand(uint8_t *out, uint8_t *in, unsigned int width,
-                                unsigned int height,
-                                unsigned int bytes_per_pixel,
-                                unsigned int factor)
-{
-    size_t out_pitch = width * bytes_per_pixel * factor;
-
-    for (unsigned int y = 0; y < height; y++) {
-        surface_copy_expand_row(out, in, width, bytes_per_pixel, factor);
-        uint8_t *row_in = out;
-        for (unsigned int i = 1; i < factor; i++) {
-            out += out_pitch;
-            memcpy(out, row_in, out_pitch);
-        }
-        in += width * bytes_per_pixel;
-        out += out_pitch;
-    }
-}
-
 static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                                        bool force)
 {
@@ -5896,62 +6077,19 @@ static void pgraph_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
                            GL_TEXTURE_2D, 0, 0);
 
-    uint8_t *data = d->vram_ptr;
-    uint8_t *buf = data + surface->vram_addr;
-
-    if (surface->swizzle) {
-        buf = (uint8_t*)g_malloc(surface->size);
-        unswizzle_rect(data + surface->vram_addr,
-                       surface->width, surface->height,
-                       buf,
-                       surface->pitch,
-                       surface->fmt.bytes_per_pixel);
-    }
-
-    /* FIXME: Replace this flip/scaling */
-
-    // This is VRAM so we can't do this inplace!
-    uint8_t *flipped_buf = (uint8_t *)g_malloc(
-        surface->height * surface->width * surface->fmt.bytes_per_pixel);
-    unsigned int irow;
-    for (irow = 0; irow < surface->height; irow++) {
-        memcpy(&flipped_buf[surface->width * (surface->height - irow - 1)
-                                 * surface->fmt.bytes_per_pixel],
-               &buf[surface->pitch * irow],
-               surface->width * surface->fmt.bytes_per_pixel);
-    }
-
-    uint8_t *gl_read_buf = flipped_buf;
-    unsigned int width = surface->width, height = surface->height;
-
-    if (pg->surface_scale_factor > 1) {
-        pgraph_apply_scaling_factor(pg, &width, &height);
-        pg->scale_buf = (uint8_t *)g_realloc(
-            pg->scale_buf, width * height * surface->fmt.bytes_per_pixel);
-        gl_read_buf = pg->scale_buf;
-        uint8_t *out = gl_read_buf, *in = flipped_buf;
-        surface_copy_expand(out, in, surface->width, surface->height,
-                            surface->fmt.bytes_per_pixel,
-                            d->pgraph.surface_scale_factor);
-    }
-
     int prev_unpack_alignment;
     glGetIntegerv(GL_UNPACK_ALIGNMENT, &prev_unpack_alignment);
-    if (unlikely((width * surface->fmt.bytes_per_pixel) % 4 != 0)) {
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    } else {
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    }
 
     glBindTexture(GL_TEXTURE_2D, surface->gl_buffer);
-    glTexImage2D(GL_TEXTURE_2D, 0, surface->fmt.gl_internal_format, width,
-                 height, 0, surface->fmt.gl_format, surface->fmt.gl_type,
-                 gl_read_buf);
+    upload_vram_to_bound_texture(d,
+                                 surface->vram_addr,
+                                 surface->swizzle,
+                                 surface->width,
+                                 surface->height,
+                                 surface->pitch,
+                                 surface->size,
+                                 &surface->fmt);
     glPixelStorei(GL_UNPACK_ALIGNMENT, prev_unpack_alignment);
-    g_free(flipped_buf);
-    if (surface->swizzle) {
-        g_free(buf);
-    }
 
     // Rebind previous framebuffer binding
     glBindTexture(GL_TEXTURE_2D, last_texture_binding);
@@ -6823,14 +6961,7 @@ static void pgraph_bind_textures(NV2AState *d)
 
             // Writeback any surfaces which this texture may index
             hwaddr tex_vram_end = texture_vram_offset + length - 1;
-            QTAILQ_FOREACH(surface, &d->pgraph.surfaces, entry) {
-                hwaddr surf_vram_end = surface->vram_addr + surface->size - 1;
-                bool overlapping = !(surface->vram_addr >= tex_vram_end
-                                     || texture_vram_offset >= surf_vram_end);
-                if (overlapping) {
-                    pgraph_download_surface_data_if_dirty(d, surface);
-                }
-            }
+            pgraph_download_overlapping_surfaces(d, texture_vram_offset, tex_vram_end);
         }
 
         TextureKey key;
