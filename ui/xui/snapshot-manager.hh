@@ -18,8 +18,9 @@
 //
 
 #pragma once
-#include <string>
 #include "../xemu-snapshots.h"
+#include <optional>
+#include <string>
 
 class SnapshotManager
 {
@@ -39,6 +40,10 @@ public:
     void Refresh();
     void LoadSnapshot(const char *name);
     void LoadSnapshotChecked(const char *name);
+
+    std::optional<const char *> GetSnapshotShortcut(int index);
+    void SetSnapshotShortcut(int index,
+                             std::optional<const char *> snapshot_name);
 
     void Draw();
     void DrawSnapshotDiscLoadDialog();
