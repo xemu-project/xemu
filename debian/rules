@@ -1,0 +1,84 @@
+#!/usr/bin/make -f
+SHELL = /bin/sh -e
+
+# in order to keep output non-intermixed together, disable parallel building
+# of different targets in this d/rules but allow running parallel submakes
+.NOTPARALLEL:
+
+# get DEB_VERSION
+include /usr/share/dpkg/pkg-info.mk
+# get DEB_HOST_ARCH DEB_HOST_ARCH_OS DEB_HOST_GNU_TYPE DEB_HOST_MULTIARCH DEB_BUILD_GNU_TYPE
+include /usr/share/dpkg/architecture.mk
+# get CFLAGS LDFLAGS etc
+include /usr/share/dpkg/buildflags.mk
+
+libdir = /usr/lib/${DEB_HOST_MULTIARCH}
+
+ifeq ($(shell dpkg-vendor --derives-from Ubuntu && echo yes),yes)
+VENDOR := UBUNTU
+DEB_BUILD_PARALLEL = yes
+else
+VENDOR := DEBIAN
+endif
+
+# support parallel build using DEB_BUILD_OPTIONS=parallel=N
+ifneq (,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+  MAKEFLAGS += -j$(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
+endif
+
+# verbose build
+V ?= 1
+
+sysdatadir = debian/xemu/usr/share/xemu
+
+# we add another set of configure options from debian/control
+common_configure_opts = \
+	--with-pkgversion="Debian $(DEB_VERSION)" \
+	--extra-cflags="$(CFLAGS) $(CPPFLAGS)" --extra-ldflags="$(LDFLAGS) -Wl,--as-needed" \
+	--localstatedir=/var
+
+# Cross compiling support
+ifneq ($(DEB_BUILD_GNU_TYPE), $(DEB_HOST_GNU_TYPE))
+common_configure_opts  += --cross-prefix=$(DEB_HOST_GNU_TYPE)-
+endif
+
+ifneq ($(filter $(DEB_HOST_ARCH),i386 x32),)
+# XXX as of 2020-04-29, i386 buildd fails to link -static-pie executable:
+# /usr/bin/ld: /usr/lib/i386-linux-gnu/libc.a(memset_chk-nonshared.o):
+#	unsupported non-PIC call to IFUNC `memset'
+# so disable PIE for qemu-user-static build on i386 for now.
+# On x32 -static-pie fails in different way.
+# On amd64 -static-pie appears to work fine.
+# On other architectures qemu correctly detect that -static-pie is not available
+XXXstaticpie = --disable-pie
+else
+XXXstaticpie =
+endif
+
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+
+override_dh_auto_build:
+	./build.sh ${XEMU_BUILD_OPTIONS} ${common_configure_opts} || \
+	{ echo ===== BUILD FAILED ===; tail -n 50 config.log; exit 1; }
+	cp debian/copyright debian/qemu.deb.copyright
+	cp dist/LICENSE.txt debian/copyright
+
+override_dh_auto_test:
+
+override_dh_auto_install:
+	# mkdir -p $(sysdatadir)
+	# cp -r dist/data $(sysdatadir)
+	install -DT debian/qemu.deb.copyright debian/xemu/usr/share/doc/xemu/qemu.deb.copyright
+	install -DTm 0755 dist/xemu debian/xemu/usr/bin/xemu
+	install -DT ui/xemu.desktop debian/xemu/usr/share/applications/xemu.desktop
+	install -DT ui/icons/xemu_16x16.png debian/xemu/usr/share/icons/hicolor/16x16/apps/xemu.png
+	install -DT ui/icons/xemu_24x24.png debian/xemu/usr/share/icons/hicolor/24x24/apps/xemu.png
+	install -DT ui/icons/xemu_32x32.png debian/xemu/usr/share/icons/hicolor/32x32/apps/xemu.png
+	install -DT ui/icons/xemu_48x48.png debian/xemu/usr/share/icons/hicolor/48x48/apps/xemu.png
+	install -DT ui/icons/xemu_256x256.png debian/xemu/usr/share/icons/hicolor/256x256/apps/xemu.png
+	install -DT ui/icons/xemu_512x512.png debian/xemu/usr/share/icons/hicolor/512x512/apps/xemu.png
+	install -DT ui/icons/xemu.svg debian/xemu/usr/share/icons/hicolor/scalable/apps/xemu.svg

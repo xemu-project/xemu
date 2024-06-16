@@ -1,0 +1,410 @@
+#!/usr/bin/env bash
+# group: rw
+#
+# Test exiting qemu while jobs are still running
+#
+# Copyright (C) 2017 Red Hat, Inc.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+# creator
+owner=kwolf@redhat.com
+
+seq=`basename $0`
+echo "QA output created by $seq"
+
+status=1 # failure is the default!
+
+_cleanup()
+{
+    _rm_test_img "${TEST_IMG}.mid"
+    _rm_test_img "${TEST_IMG}.copy"
+    _cleanup_test_img
+    _cleanup_qemu
+
+    if [ -f "$TEST_DIR/qsd.pid" ]; then
+        kill -SIGKILL "$(cat "$TEST_DIR/qsd.pid")"
+        rm -f "$TEST_DIR/qsd.pid"
+    fi
+    rm -f "$SOCK_DIR/qsd.sock"
+}
+trap "_cleanup; exit \$status" 0 1 2 3 15
+
+# get standard environment, filters and checks
+. ./common.rc
+. ./common.filter
+. ./common.qemu
+
+_supported_fmt qcow2
+_supported_proto file
+_supported_os Linux
+
+size=$((64 * 1048576))
+TEST_IMG="${TEST_IMG}.base" _make_test_img $size
+
+echo
+echo === Starting VM ===
+echo
+
+qemu_comm_method="qmp"
+
+_launch_qemu \
+    -drive file="${TEST_IMG}.base",cache=$CACHEMODE,aio=$AIOMODE,driver=$IMGFMT,id=disk
+h=$QEMU_HANDLE
+_send_qemu_cmd $h "{ 'execute': 'qmp_capabilities' }" 'return'
+
+echo
+echo === Creating backing chain ===
+echo
+
+_send_qemu_cmd $h \
+    "{ 'execute': 'blockdev-snapshot-sync',
+       'arguments': { 'device': 'disk',
+                      'snapshot-file': '$TEST_IMG.mid',
+                      'format': '$IMGFMT',
+                      'mode': 'absolute-paths' } }" \
+    "return"
+
+_send_qemu_cmd $h \
+    "{ 'execute': 'human-monitor-command',
+       'arguments': { 'command-line':
+                      'qemu-io disk \"write 0 4M\"' } }" \
+    "return"
+
+_send_qemu_cmd $h \
+    "{ 'execute': 'blockdev-snapshot-sync',
+       'arguments': { 'device': 'disk',
+                      'snapshot-file': '$TEST_IMG',
+                      'format': '$IMGFMT',
+                      'mode': 'absolute-paths' } }" \
+    "return"
+
+echo
+echo === Start commit job and exit qemu ===
+echo
+
+# Note that the reference output intentionally includes the 'offset' field in
+# BLOCK_JOB_* events for all of the following block jobs. They are predictable
+# and any change in the offsets would hint at a bug in the job throttling code.
+#
+# In order to achieve these predictable offsets, all of the following tests
+# use speed=65536. Each job will perform exactly one iteration before it has
+# to sleep at least for a second, which is plenty of time for the 'quit' QMP
+# command to be received (after receiving the command, the rest runs
+# synchronously, so jobs can arbitrarily continue or complete).
+#
+# The buffer size for commit and streaming is 512k (waiting for 8 seconds after
+# the first request), for active commit and mirror it's large enough to cover
+# the full 4M, and for backup it's the qcow2 cluster size, which we know is
+# 64k. As all of these are at least as large as the speed, we are sure that the
+# offset advances exactly once before qemu exits.
+
+_send_qemu_cmd $h \
+    "{ 'execute': 'block-commit',
+       'arguments': { 'device': 'disk',
+                      'base':'$TEST_IMG.base',
+                      'top': '$TEST_IMG.mid',
+                      'speed': 65536 } }" \
+    "return"
+
+# If we don't sleep here 'quit' command races with disk I/O
+sleep 0.5
+
+# Ignore the JOB_STATUS_CHANGE events while shutting down the VM. Depending on
+# the timing, jobs may or may not transition through a paused state.
+_send_qemu_cmd $h "{ 'execute': 'quit' }" "return"
+wait=1 _cleanup_qemu | grep -v 'JOB_STATUS_CHANGE'
+
+echo
+echo === Start active commit job and exit qemu ===
+echo
+
+_launch_qemu \
+    -drive file="${TEST_IMG}",cache=$CACHEMODE,aio=$AIOMODE,driver=$IMGFMT,id=disk
+h=$QEMU_HANDLE
+_send_qemu_cmd $h "{ 'execute': 'qmp_capabilities' }" 'return'
+
+_send_qemu_cmd $h \
+    "{ 'execute': 'block-commit',
+       'arguments': { 'device': 'disk',
+                      'base':'$TEST_IMG.base',
+                      'speed': 65536 } }" \
+    "return"
+
+# If we don't sleep here 'quit' command races with disk I/O
+sleep 0.5
+
+_send_qemu_cmd $h "{ 'execute': 'quit' }" "return"
+wait=1 _cleanup_qemu | grep -v 'JOB_STATUS_CHANGE'
+
+echo
+echo === Start mirror job and exit qemu ===
+echo
+
+_launch_qemu \
+    -drive file="${TEST_IMG}",cache=$CACHEMODE,aio=$AIOMODE,driver=$IMGFMT,id=disk
+h=$QEMU_HANDLE
+_send_qemu_cmd $h "{ 'execute': 'qmp_capabilities' }" 'return'
+
+_send_qemu_cmd $h \
+    "{ 'execute': 'drive-mirror',
+       'arguments': { 'device': 'disk',
+                      'target': '$TEST_IMG.copy',
+                      'format': '$IMGFMT',
+                      'sync': 'full',
+                      'speed': 65536 } }" \
+    "return"
+
+# If we don't sleep here 'quit' command may be handled before
+# the first mirror iteration is done
+sleep 0.5
+
+_send_qemu_cmd $h "{ 'execute': 'quit' }" "return"
+wait=1 _cleanup_qemu | grep -v 'JOB_STATUS_CHANGE'
+
+echo
+echo === Start backup job and exit qemu ===
+echo
+
+_launch_qemu \
+    -drive file="${TEST_IMG}",cache=$CACHEMODE,aio=$AIOMODE,driver=$IMGFMT,id=disk
+h=$QEMU_HANDLE
+_send_qemu_cmd $h "{ 'execute': 'qmp_capabilities' }" 'return'
+
+_send_qemu_cmd $h \
+    "{ 'execute': 'drive-backup',
+       'arguments': { 'device': 'disk',
+                      'target': '$TEST_IMG.copy',
+                      'format': '$IMGFMT',
+                      'sync': 'full',
+                      'speed': 65536,
+                      'x-perf': {'max-chunk': 65536} } }" \
+    "return"
+
+# If we don't sleep here 'quit' command races with disk I/O
+sleep 0.5
+
+_send_qemu_cmd $h "{ 'execute': 'quit' }" "return"
+wait=1 _cleanup_qemu | grep -v 'JOB_STATUS_CHANGE'
+
+echo
+echo === Start streaming job and exit qemu ===
+echo
+
+_launch_qemu \
+    -drive file="${TEST_IMG}",cache=$CACHEMODE,aio=$AIOMODE,driver=$IMGFMT,id=disk
+h=$QEMU_HANDLE
+_send_qemu_cmd $h "{ 'execute': 'qmp_capabilities' }" 'return'
+
+_send_qemu_cmd $h \
+    "{ 'execute': 'block-stream',
+       'arguments': { 'device': 'disk',
+                      'speed': 65536 } }" \
+    "return"
+
+# If we don't sleep here 'quit' command races with disk I/O
+sleep 0.5
+
+_send_qemu_cmd $h "{ 'execute': 'quit' }" "return"
+wait=1 _cleanup_qemu | grep -v 'JOB_STATUS_CHANGE'
+
+_check_test_img
+
+echo
+echo === Start mirror to throttled QSD and exit qemu ===
+echo
+
+# Mirror to a throttled QSD instance (so that qemu cannot drain the
+# throttling), wait for READY, then write some data to the device,
+# and then quit qemu.
+# (qemu should force-cancel the job and not wait for the data to be
+# written to the target.)
+
+_make_test_img $size
+
+# Will be used by this and the next case
+set_up_throttled_qsd() {
+    $QSD \
+        --object throttle-group,id=thrgr,limits.bps-total=1048576 \
+        --blockdev null-co,node-name=null,size=$size \
+        --blockdev throttle,node-name=throttled,throttle-group=thrgr,file=null \
+        --nbd-server addr.type=unix,addr.path="$SOCK_DIR/qsd.sock" \
+        --export nbd,id=exp,node-name=throttled,name=target,writable=true \
+        --pidfile "$TEST_DIR/qsd.pid" \
+        --daemonize
+}
+
+set_up_throttled_qsd
+
+# Need a virtio-blk device so that qemu-io writes will not block the monitor
+_launch_qemu \
+    --blockdev file,node-name=source-proto,filename="$TEST_IMG" \
+    --blockdev qcow2,node-name=source-fmt,file=source-proto \
+    --device virtio-blk,id=vblk,drive=source-fmt \
+    --blockdev "{\"driver\": \"nbd\",
+                 \"node-name\": \"target\",
+                 \"server\": {
+                     \"type\": \"unix\",
+                     \"path\": \"$SOCK_DIR/qsd.sock\"
+                 },
+                 \"export\": \"target\"}"
+
+h=$QEMU_HANDLE
+_send_qemu_cmd $h '{"execute": "qmp_capabilities"}' 'return'
+
+# Use sync=top, so the first pass will not copy the whole image
+_send_qemu_cmd $h \
+    '{"execute": "blockdev-mirror",
+      "arguments": {
+          "job-id": "mirror",
+          "device": "source-fmt",
+          "target": "target",
+          "sync": "top"
+      }}' \
+    'return' \
+    | grep -v JOB_STATUS_CHANGE # Ignore these events during creation
+
+# This too will be used by this and the next case
+# $1: QEMU handle
+# $2: Image size
+wait_for_job_and_quit() {
+    h=$1
+    size=$2
+
+    # List of expected events
+    capture_events='BLOCK_JOB_READY JOB_STATUS_CHANGE'
+    _wait_event $h 'BLOCK_JOB_READY'
+    QEMU_EVENTS= # Ignore all JOB_STATUS_CHANGE events that came before READY
+
+    # Write something to the device for post-READY mirroring.  Write it in
+    # blocks matching the cluster size, each spaced one block apart, so
+    # that the mirror job will have to spawn one request per cluster.
+    # Because the number of concurrent requests is limited (to 16), this
+    # limits the number of bytes concurrently in flight, which speeds up
+    # cancelling the job (in-flight requests still are waited for).
+    # To limit the number of bytes in flight, we could alternatively pass
+    # something for blockdev-mirror's @buf-size parameter, but
+    # block-commit does not have such a parameter, so we need to figure
+    # something out that works for both.
+
+    cluster_size=65536
+    step=$((cluster_size * 2))
+
+    echo '--- Writing data to the virtio-blk device ---'
+
+    for ofs in $(seq 0 $step $((size - step))); do
+        qemu_io_cmd="qemu-io -d vblk/virtio-backend "
+        qemu_io_cmd+="\\\"aio_write $ofs $cluster_size\\\""
+
+        # Do not include these requests in the reference output
+        # (it's just too much)
+        silent=yes _send_qemu_cmd $h \
+            "{\"execute\": \"human-monitor-command\",
+              \"arguments\": {
+                  \"command-line\": \"$qemu_io_cmd\"
+              }}" \
+            'return'
+    done
+
+    # Wait until the job's length is updated to reflect the write requests
+
+    # We have written to half of the device, so this is the expected job length
+    final_len=$((size / 2))
+    timeout=100 # unit: 0.1 seconds
+    while true; do
+        len=$(
+            _send_qemu_cmd $h \
+                '{"execute": "query-block-jobs"}' \
+                'return.*"len": [0-9]\+' \
+                | grep 'return.*"len": [0-9]\+' \
+                | sed -e 's/.*"len": \([0-9]\+\).*/\1/'
+        )
+        if [ "$len" -eq "$final_len" ]; then
+            break
+        fi
+        timeout=$((timeout - 1))
+        if [ "$timeout" -eq 0 ]; then
+            echo "ERROR: Timeout waiting for job to reach len=$final_len"
+            break
+        fi
+        sleep 0.1
+    done
+
+    sleep 1
+
+    _send_qemu_cmd $h \
+        '{"execute": "quit"}' \
+        'return'
+
+    # List of expected events
+    capture_events='BLOCK_JOB_CANCELLED JOB_STATUS_CHANGE SHUTDOWN'
+    _wait_event $h 'SHUTDOWN'
+    QEMU_EVENTS= # Ignore all JOB_STATUS_CHANGE events that came before SHUTDOWN
+    _wait_event $h 'JOB_STATUS_CHANGE' # standby
+    _wait_event $h 'JOB_STATUS_CHANGE' # ready
+    _wait_event $h 'JOB_STATUS_CHANGE' # aborting
+    # Filter the offset (depends on when exactly `quit` was issued)
+    _wait_event $h 'BLOCK_JOB_CANCELLED' \
+        | sed -e 's/"offset": [0-9]\+/"offset": (filtered)/'
+    _wait_event $h 'JOB_STATUS_CHANGE' # concluded
+    _wait_event $h 'JOB_STATUS_CHANGE' # null
+
+    wait=yes _cleanup_qemu
+
+    kill -SIGTERM "$(cat "$TEST_DIR/qsd.pid")"
+}
+
+wait_for_job_and_quit $h $size
+
+echo
+echo === Start active commit to throttled QSD and exit qemu ===
+echo
+
+# Same as the above, but instead of mirroring, do an active commit
+
+_make_test_img $size
+
+set_up_throttled_qsd
+
+_launch_qemu \
+    --blockdev "{\"driver\": \"nbd\",
+                 \"node-name\": \"target\",
+                 \"server\": {
+                     \"type\": \"unix\",
+                     \"path\": \"$SOCK_DIR/qsd.sock\"
+                 },
+                 \"export\": \"target\"}" \
+    --blockdev file,node-name=source-proto,filename="$TEST_IMG" \
+    --blockdev qcow2,node-name=source-fmt,file=source-proto,backing=target \
+    --device virtio-blk,id=vblk,drive=source-fmt
+
+h=$QEMU_HANDLE
+_send_qemu_cmd $h '{"execute": "qmp_capabilities"}' 'return'
+
+_send_qemu_cmd $h \
+    '{"execute": "block-commit",
+      "arguments": {
+          "job-id": "commit",
+          "device": "source-fmt"
+      }}' \
+    'return' \
+    | grep -v JOB_STATUS_CHANGE # Ignore these events during creation
+
+wait_for_job_and_quit $h $size
+
+# success, all done
+echo "*** done"
+rm -f $seq.full
+status=0

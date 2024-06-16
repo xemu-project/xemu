@@ -1,0 +1,48 @@
+check-patch:
+  extends: .base_job_template
+  stage: build
+  image: python:3.10-alpine
+  needs: []
+  script:
+    - .gitlab-ci.d/check-patch.py
+  variables:
+    GIT_DEPTH: 1000
+    QEMU_JOB_ONLY_FORKS: 1
+  before_script:
+    - apk -U add git perl
+  allow_failure: true
+
+check-dco:
+  extends: .base_job_template
+  stage: build
+  image: python:3.10-alpine
+  needs: []
+  script: .gitlab-ci.d/check-dco.py
+  variables:
+    GIT_DEPTH: 1000
+  before_script:
+    - apk -U add git
+
+check-python-pipenv:
+  extends: .base_job_template
+  stage: test
+  image: $CI_REGISTRY_IMAGE/qemu/python:latest
+  script:
+    - make -C python check-pipenv
+  variables:
+    GIT_DEPTH: 1
+  needs:
+    job: python-container
+
+check-python-tox:
+  extends: .base_job_template
+  stage: test
+  image: $CI_REGISTRY_IMAGE/qemu/python:latest
+  script:
+    - make -C python check-tox
+  variables:
+    GIT_DEPTH: 1
+    QEMU_TOX_EXTRA_ARGS: --skip-missing-interpreters=false
+    QEMU_JOB_OPTIONAL: 1
+  needs:
+    job: python-container

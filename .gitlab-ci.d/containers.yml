@@ -1,0 +1,29 @@
+include:
+  - local: '/.gitlab-ci.d/container-core.yml'
+  - local: '/.gitlab-ci.d/container-cross.yml'
+
+amd64-alpine-container:
+  extends: .container_job_template
+  variables:
+    NAME: alpine
+
+amd64-debian-container:
+  extends: .container_job_template
+  stage: containers
+  variables:
+    NAME: debian-amd64
+
+amd64-ubuntu2004-container:
+  extends: .container_job_template
+  variables:
+    NAME: ubuntu2004
+
+amd64-opensuse-leap-container:
+  extends: .container_job_template
+  variables:
+    NAME: opensuse-leap
+
+python-container:
+  extends: .container_job_template
+  variables:
+    NAME: python
