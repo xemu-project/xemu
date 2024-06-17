@@ -980,9 +980,9 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
                       "  gl_PointSize = oPts.x;\n"
                       "  if (perspective) {\n"
                       "    gl_ClipDistance[0] = oPos.z - oPos.w*clipRange.z;\n" // Near
-                      "    gl_ClipDistance[1] = oPos.w*clipRange.w - min(0.0, depth);\n" // Far
+                      "    gl_ClipDistance[1] = oPos.w*clipRange.w - min(0.0, oPos.z);\n" // Far
                       "  } else { \n"
-                      "    gl_ClipDistance[0] = oPos.z - oPos.w*clipRange.z;\n" // Near
+                      "    gl_ClipDistance[0] = clipRange.x;\n;"//oPos.z - oPos.w*clipRange.z;\n" // Near
                       "    gl_ClipDistance[1] = oPos.w*clipRange.w - oPos.z;\n" // Far
                       "  }\n"
                       "\n"
