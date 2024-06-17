@@ -2721,6 +2721,8 @@ int64_t address_space_cache_init(MemoryRegionCache *cache,
                                  hwaddr len,
                                  bool is_write);
 
+void ram_write(hwaddr addr, void *ptr, hwaddr len, int is_physcial);
+
 /**
  * address_space_cache_invalidate: complete a write to a #MemoryRegionCache
  *
