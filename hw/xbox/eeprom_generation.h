@@ -25,18 +25,6 @@
 #include "crypto/random.h"
 #include "include/qemu/bswap.h"
 
-typedef struct RC4Context {
-    uint8_t s[256];
-} RC4Context;
-
-typedef struct SHA1Context {
-    uint32_t intermediate[5];
-    uint8_t msg_blk[64];
-    uint32_t msg_blk_index;
-    uint32_t length;
-    bool computed;
-} SHA1Context;
-
 #pragma pack(push,1)
 typedef struct XboxEEPROM {
     uint8_t hash[20];
