@@ -59,6 +59,10 @@
 #include CONFIG_DEVICES
 #include "kvm/kvm_i386.h"
 
+#ifdef XBOX
+#include "ui/xemu-settings.h"
+#endif
+
 /* Physical Address of PVH entry point read from kernel ELF NOTE */
 static size_t pvh_start_addr;
 
@@ -532,8 +536,12 @@ static long get_file_size(FILE *f)
 uint64_t cpu_get_tsc(CPUX86State *env)
 {
 #ifdef XBOX
-    return muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), 733333333,
-                    NANOSECONDS_PER_SECOND);
+    int cpu_clock_hz = 733333333;
+    
+    if (g_config.perf.override_clockspeed) {
+        cpu_clock_hz *= g_config.perf.cpu_clockspeed_scale;
+    }
+    return muldiv64(qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), cpu_clock_hz, NANOSECONDS_PER_SECOND);
 #else
     return cpus_get_elapsed_ticks();
 #endif
