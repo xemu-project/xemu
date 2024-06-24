@@ -26,10 +26,9 @@
 #include "xemu-version.h"
 
 #if defined(_WIN32)
-const char *version_host = "raw.githubusercontent.com";
-const char *version_uri = "/mborgerson/xemu/ppa-snapshot/XEMU_VERSION";
-const char *download_host = "github.com";
-const char *download_uri = "/mborgerson/xemu/releases/latest/download/xemu-win-release.zip";
+const char *download_host = "download.xemu.app";
+const char *version_uri = "/version";
+const char *download_uri = "/windows";
 #else
 FIXME
 #endif
@@ -148,7 +147,7 @@ void *Updater::checker_thread_worker_func(void *updater)
 
 void Updater::check_for_update_internal()
 {
-    httplib::SSLClient cli(version_host, 443);
+    httplib::SSLClient cli(download_host, 443);
     cli.set_follow_location(true);
     auto res = cli.Get(version_uri, [this](uint64_t len, uint64_t total) {
         m_update_percentage = len*100/total;
