@@ -266,8 +266,12 @@ Lib('glib-2.0', 'https://gitlab.gnome.org/GNOME/glib',
 # glib dep
 Lib('pcre', 'http://pcre.org/',
 	bsd, 'http://www.pcre.org/original/license.txt',
-	ships_static={windows}, ships_dynamic={macos},
-	pkgconfig=PkgConfig('libpcre'), pkg_win='pcre', pkg_mac='pcre', pkg_ubuntu='libpcre3-dev'
+	pkgconfig=PkgConfig('libpcre'), pkg_ubuntu='libpcre3-dev'
+	),
+Lib('pcre2', 'http://pcre.org/',
+	bsd, 'https://www.pcre.org/licence.txt',
+	ships_static={windows},	ships_dynamic={macos},
+	pkgconfig=PkgConfig('libpcre2-8'), pkg_win='pcre2', pkg_mac='pcre2', pkg_ubuntu='libpcre2-dev'
 	),
 
 # glib dep
