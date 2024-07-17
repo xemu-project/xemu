@@ -863,6 +863,19 @@ void vsh_translate(uint16_t version,
              * can't multiply by W because it could be meaningless here */
         "    oPos.w = 1.0;\n"
         "  }\n"
+        diff --git a/hw/xbox/nv2a/vsh.c b/hw/xbox/nv2a/vsh.c
+		index 87318419c9..c3ad53411e 100644
+		--- a/hw/xbox/nv2a/vsh.c
+		+++ b/hw/xbox/nv2a/vsh.c
+		@@ -859,6 +859,7 @@ void vsh_translate(uint16_t version,
+					/* can't multiply by W because it could be meaningless here */
+				"    oPos.w = 1.0;\n"
+				"  }\n"
+		+        "  if (oFog.x != oFog.x) { oFog.x = 1; }\n"
+			);
+
+		}
+		/* line 866 to 877 is the NaN check thingy btw :P */
     );
 
 }
