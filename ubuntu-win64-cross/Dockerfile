@@ -72,6 +72,19 @@ RUN V=1 MXE_VERBOSE=1 make -C /opt/mxe \
         MXE_PLUGIN_DIRS=plugins/gcc13 \
             sdl2
 
+COPY vulkan-headers.mk \
+     spirv-headers.mk \
+     spirv-tools.mk \
+     glslang.mk \
+     /opt/mxe/src/
+RUN V=1 MXE_VERBOSE=1 make -C /opt/mxe \
+        MXE_TARGETS=x86_64-w64-mingw32.static \
+        MXE_PLUGIN_DIRS=plugins/gcc13 \
+            vulkan-headers \
+            spirv-headers \
+            spirv-tools \
+            glslang
+
 RUN find /opt/mxe/usr -executable -type f -exec chmod a+x {} \;
 
 ENV CROSSPREFIX=x86_64-w64-mingw32.static-
