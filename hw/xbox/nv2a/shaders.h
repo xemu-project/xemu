@@ -78,8 +78,6 @@ typedef struct ShaderState {
     enum MaterialColorSource diffuse_src;
     enum MaterialColorSource specular_src;
 
-    float material_alpha;
-
     bool lighting;
     enum VshLight light[NV2A_MAX_LIGHTS];
 
