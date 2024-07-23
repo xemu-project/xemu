@@ -369,6 +369,10 @@ typedef struct IDEBufferedRequest {
     bool orphaned;
 } IDEBufferedRequest;
 
+#ifdef XBOX
+#include "hw/xbox/xdvd/xdvd.h"
+#endif
+
 /* NOTE: IDEState represents in fact one drive */
 struct IDEState {
     IDEBus *bus;
@@ -457,6 +461,11 @@ struct IDEState {
     uint8_t *smart_selftest_data;
     /* AHCI */
     int ncq_queues;
+#ifdef XBOX
+    uint8_t xdvd_challenges_encrypted[XDVD_STRUCTURE_LEN];
+    uint8_t xdvd_challenges_decrypted[XDVD_STRUCTURE_LEN];
+    XBOX_DVD_SECURITY xdvd_security;
+#endif
 };
 
 struct IDEDMAOps {

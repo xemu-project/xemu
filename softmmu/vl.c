@@ -2861,6 +2861,28 @@ void qemu_init(int argc, char **argv)
         }
     }
 
+    const char *dvd_security_path = g_config.sys.files.dvd_security_path;
+    for (int i = 1; i < argc; i++) {
+        if (argv[i] && strcmp(argv[i], "-dvd_security_path") == 0) {
+            argv[i] = NULL;
+            if (i < argc - 1 && argv[i+1]) {
+                dvd_security_path = argv[i+1];
+                argv[i+1] = NULL;
+                xemu_settings_set_string(&g_config.sys.files.dvd_security_path, dvd_security_path);
+            }
+            break;
+        }
+    }
+
+    if (strlen(dvd_security_path) > 0) {
+        if (xemu_check_file(dvd_security_path)) {
+            char *msg = g_strdup_printf("Failed to open DVD security file '%s'. Please check machine settings.", dvd_security_path);
+            xemu_queue_error_message(msg);
+            g_free(msg);
+            dvd_security_path = "";
+        }
+    }
+
     // Always populate DVD drive. If disc path is the empty string, drive is
     // connected but no media present.
     fake_argv[fake_argc++] = strdup("-drive");
