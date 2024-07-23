@@ -272,6 +272,7 @@ typedef struct PGRAPHState {
         GLuint display_size_loc;
         GLuint line_offset_loc;
         GLuint tex_loc;
+        GLuint vga_framebuffer_tex;
         GLuint pvideo_tex;
         GLint pvideo_enable_loc;
         GLint pvideo_tex_loc;
