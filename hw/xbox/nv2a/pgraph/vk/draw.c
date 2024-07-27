@@ -188,6 +188,14 @@ static void init_clear_shaders(PGRAPHState *pg)
         r, VK_SHADER_STAGE_FRAGMENT_BIT, solid_frag_glsl);
 }
 
+static void finalize_clear_shaders(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    pgraph_vk_destroy_shader_module(r, r->quad_vert_module);
+    pgraph_vk_destroy_shader_module(r, r->solid_frag_module);
+}
+
 void pgraph_vk_init_pipelines(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -212,6 +220,7 @@ void pgraph_vk_finalize_pipelines(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    finalize_clear_shaders(pg);
     finalize_pipeline_cache(pg);
 
     vkDestroyFence(r->device, r->command_buffer_fence, NULL);
