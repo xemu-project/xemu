@@ -366,13 +366,14 @@ Lib('miniz', 'https://github.com/richgel999/miniz',
 Lib('glslang', 'https://github.com/KhronosGroup/glslang',
 	bsd_3clause, 'https://raw.githubusercontent.com/KhronosGroup/glslang/main/LICENSE.txt',
 	ships_static={windows},	platform={windows},
+	version='14.3.0'
 	),
 
 Lib('SPIRV-Tools', 'https://github.com/KhronosGroup/SPIRV-Tools',
 	apache2, 'https://raw.githubusercontent.com/KhronosGroup/SPIRV-Tools/main/LICENSE',
 	ships_static={windows},	platform={windows},
+	pkgconfig=PkgConfig('SPIRV-Tools')
 	),
-
 ]
 
 def gen_license():
