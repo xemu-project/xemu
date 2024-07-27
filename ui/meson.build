@@ -40,10 +40,6 @@ xemu_cocoa = dependency('appleframeworks', modules: 'Cocoa')
 xemu_ss.add(xemu_cocoa)
 endif
 
-if 'CONFIG_LINUX' in config_host
-xemu_ss.add(gtk)
-endif
-
 xemu_ss.add(when: 'CONFIG_LINUX', if_true: [gtk, files('xemu-os-utils-linux.c')])
 xemu_ss.add(when: 'CONFIG_WIN32', if_true: files('xemu-os-utils-windows.c'))
 xemu_ss.add(when: 'CONFIG_DARWIN', if_true: files('xemu-os-utils-macos.m'))
