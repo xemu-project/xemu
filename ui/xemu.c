@@ -426,6 +426,7 @@ static void handle_keydown(SDL_Event *ev)
 {
     int win;
     struct sdl2_console *scon = get_scon_from_window(ev->key.windowID);
+    if (scon == NULL) return; 
     int gui_key_modifier_pressed = get_mod_state();
     int gui_keysym = 0;
 
@@ -484,6 +485,7 @@ static void handle_keydown(SDL_Event *ev)
 static void handle_keyup(SDL_Event *ev)
 {
     struct sdl2_console *scon = get_scon_from_window(ev->key.windowID);
+    if (!scon) return;
 
     scon->ignore_hotkeys = false;
     sdl2_process_key(scon, &ev->key);
@@ -944,7 +946,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
     fprintf(stderr, "GL_SHADING_LANGUAGE_VERSION: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
 
     // Initialize offscreen rendering context now
-    nv2a_gl_context_init();
+    nv2a_context_init();
     SDL_GL_MakeCurrent(NULL, NULL);
 
     // FIXME: atexit(sdl_cleanup);
