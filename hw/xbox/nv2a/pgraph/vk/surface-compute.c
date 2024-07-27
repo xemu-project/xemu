@@ -129,7 +129,7 @@ static void create_descriptor_pool(PGRAPHState *pg)
     VkDescriptorPoolSize pool_sizes[] = {
         {
             .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            .descriptorCount = 3,
+            .descriptorCount = 3 * ARRAY_SIZE(r->compute.descriptor_sets),
         },
     };
 
