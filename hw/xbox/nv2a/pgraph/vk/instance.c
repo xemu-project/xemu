@@ -694,10 +694,14 @@ void pgraph_vk_init_instance(PGRAPHState *pg, Error **errp)
         return;
     }
 
-    if (*errp) {
-        error_prepend(errp, "Failed to initialize Vulkan renderer: ");
-    }
     pgraph_vk_finalize_instance(pg);
+
+    const char *msg = "Failed to initialize Vulkan renderer";
+    if (*errp) {
+        error_prepend(errp, "%s: ", msg);
+    } else {
+        error_setg(errp, "%s", msg);
+    }
 }
 
 void pgraph_vk_finalize_instance(PGRAPHState *pg)
