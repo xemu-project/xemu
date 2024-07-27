@@ -1673,16 +1673,18 @@ void pgraph_vk_clear_surface(NV2AState *d, uint32_t parameter)
     bool write_zeta =
         (parameter & (NV097_CLEAR_SURFACE_Z | NV097_CLEAR_SURFACE_STENCIL));
 
+    pg->clearing = true;
+
     // FIXME: If doing a full surface clear, mark the surface for full clear
     // and we can just do the clear as part of the surface load.
     pgraph_vk_surface_update(d, true, write_color, write_zeta);
 
     if (!(r->color_binding || r->zeta_binding)) {
         /* Nothing bound to clear */
+        pg->clearing = false;
         return;
     }
 
-    pg->clearing = true;
     r->clear_parameter = parameter;
 
     unsigned int xmin =
