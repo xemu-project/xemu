@@ -303,9 +303,7 @@ typedef struct PGRAPHVkState {
     bool framebuffer_dirty;
 
     VkRenderPass render_pass;
-    RenderPass *render_passes;
-    int render_passes_index;
-    int render_passes_capacity;
+    GArray *render_passes; // RenderPass
     bool in_render_pass;
     bool in_draw;
 
