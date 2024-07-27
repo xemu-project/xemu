@@ -1175,7 +1175,7 @@ static MString* psh_convert(struct PixelShader *ps)
     }
 
     for (i = 0; i < ps->num_var_refs; i++) {
-        mstring_append_fmt(vars, "vec4 %s;\n", ps->var_refs[i]);
+        mstring_append_fmt(vars, "vec4 %s = vec4(0);\n", ps->var_refs[i]);
         if (strcmp(ps->var_refs[i], "r0") == 0) {
             if (ps->tex_modes[0] != PS_TEXTUREMODES_NONE) {
                 mstring_append(vars, "r0.a = t0.a;\n");
