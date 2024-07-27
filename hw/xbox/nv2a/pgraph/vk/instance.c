@@ -478,9 +478,6 @@ static bool select_physical_device(PGRAPHState *pg, Error **errp)
             VK_VERSION_MINOR(r->device_props.driverVersion),
             VK_VERSION_PATCH(r->device_props.driverVersion));
 
-    size_t vsh_attr_values_size =
-        NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float);
-    assert(r->device_props.limits.maxPushConstantsSize >= vsh_attr_values_size);
     return true;
 }
 

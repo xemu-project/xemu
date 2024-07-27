@@ -82,6 +82,26 @@ void pgraph_update_inline_value(VertexAttribute *attr, const uint8_t *data)
     }
 }
 
+void pgraph_get_inline_values(PGRAPHState *pg, uint16_t attrs,
+                               float values[NV2A_VERTEXSHADER_ATTRIBUTES][4],
+                               int *count)
+{
+    int num_attributes = 0;
+
+    for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
+        if (attrs & (1 << i)) {
+            memcpy(values[num_attributes],
+                   pg->vertex_attributes[i].inline_value, 4 * sizeof(float));
+            num_attributes += 1;
+        }
+    }
+
+    if (count) {
+        *count = num_attributes;
+    }
+}
+
+
 void pgraph_allocate_inline_buffer_vertices(PGRAPHState *pg, unsigned int attr)
 {
     VertexAttribute *attribute = &pg->vertex_attributes[attr];
