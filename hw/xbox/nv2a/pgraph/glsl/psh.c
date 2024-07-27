@@ -562,6 +562,24 @@ static void add_final_stage_code(struct PixelShader *ps, struct FCInputInfo fina
     ps->varE = ps->varF = NULL;
 }
 
+static enum PS_TEXTUREMODES correct_texture_mode_for_dimensionality(enum PS_TEXTUREMODES mode, const PshState *state, int i)
+{
+    int dim = state->dim_tex[i];
+
+    switch (mode) {
+    case PS_TEXTUREMODES_PROJECT2D:
+        return dim == 2 ? PS_TEXTUREMODES_PROJECT2D :
+               dim == 3 ? PS_TEXTUREMODES_PROJECT3D :
+                          mode;
+    case PS_TEXTUREMODES_PROJECT3D:
+        return dim == 2 ? PS_TEXTUREMODES_PROJECT2D : mode;
+    case PS_TEXTUREMODES_DOT_STR_3D:
+        return dim == 2 ? PS_TEXTUREMODES_DOT_ST : mode;
+    default:
+        return mode;
+    }
+}
+
 static const char sampler2D[] = "sampler2D";
 static const char sampler3D[] = "sampler3D";
 static const char samplerCube[] = "samplerCube";
@@ -575,6 +593,7 @@ static const char* get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
         return NULL;
 
     case PS_TEXTUREMODES_PROJECT2D:
+        assert(state->dim_tex[i] == 2);
         return (state->rect_tex[i] && !state->vulkan) ? sampler2DRect : sampler2D;
 
     case PS_TEXTUREMODES_BUMPENVMAP:
@@ -584,6 +603,7 @@ static const char* get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
             fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
             assert(!"Shadow map support not implemented for this mode");
         }
+        assert(state->dim_tex[i] == 2);
         return (state->rect_tex[i] && !state->vulkan) ? sampler2DRect : sampler2D;
 
     case PS_TEXTUREMODES_PROJECT3D:
@@ -594,6 +614,7 @@ static const char* get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
         if (state->shadow_map[i]) {
             return (state->rect_tex[i] && !state->vulkan) ? sampler2DRect : sampler2D;
         }
+        assert(state->dim_tex[i] == 3);
         return sampler3D;
 
     case PS_TEXTUREMODES_CUBEMAP:
@@ -604,6 +625,7 @@ static const char* get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
             fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
             assert(!"Shadow map support not implemented for this mode");
         }
+        assert(state->dim_tex[i] == 2);
         return samplerCube;
 
     case PS_TEXTUREMODES_DPNDNT_AR:
@@ -612,6 +634,7 @@ static const char* get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
             fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
             assert(!"Shadow map support not implemented for this mode");
         }
+        assert(state->dim_tex[i] == 2);
         return sampler2D;
     }
 }
@@ -1245,6 +1268,7 @@ MString *pgraph_gen_psh_glsl(const PshState state)
     ps.flags = state.combiner_control >> 8;
     for (i = 0; i < 4; i++) {
         ps.tex_modes[i] = (state.shader_stage_program >> (i * 5)) & 0x1F;
+        ps.tex_modes[i] = correct_texture_mode_for_dimensionality(ps.tex_modes[i], &state, i);
     }
 
     ps.dot_map[0] = 0;
