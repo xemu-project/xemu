@@ -17,6 +17,7 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "ui/xemu-settings.h"
 #include "renderer.h"
 
 #include <assert.h>
@@ -206,14 +207,22 @@ GByteArray *pgraph_vk_compile_glsl_to_spv(glslang_stage_t stage,
 
     glslang_spv_options_t spv_options = {
         .validate = true,
-
-#if defined(CONFIG_RENDERDOC)
-        .disable_optimizer = true,
-        .generate_debug_info = true,
-        .emit_nonsemantic_shader_debug_info = true,
-        .emit_nonsemantic_shader_debug_source = true,
-#endif
     };
+
+    if (g_config.display.vulkan.debug_shaders) {
+        spv_options.disable_optimizer = true;
+        spv_options.generate_debug_info = true;
+        spv_options.emit_nonsemantic_shader_debug_info = true;
+        spv_options.emit_nonsemantic_shader_debug_source = true;
+
+        // XXX: Note emit_nonsemantic_shader_debug_source actually does nothing
+        // as of 2024.07.25. To actually get glsl source embedded in spv, we
+        // must do the following...
+        //
+        // ref: https://github.com/KhronosGroup/glslang/issues/3252
+        glslang_program_add_source_text(program, input.stage, input.code,
+                                        strlen(input.code));
+    }
     glslang_program_SPIRV_generate_with_options(program, stage, &spv_options);
 
     const char *spirv_messages = glslang_program_SPIRV_get_messages(program);
