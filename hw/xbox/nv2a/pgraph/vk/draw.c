@@ -1679,7 +1679,8 @@ void pgraph_vk_clear_surface(NV2AState *d, uint32_t parameter)
     // and we can just do the clear as part of the surface load.
     pgraph_vk_surface_update(d, true, write_color, write_zeta);
 
-    if (!(r->color_binding || r->zeta_binding)) {
+    SurfaceBinding *binding = r->color_binding ?: r->zeta_binding;
+    if (!binding) {
         /* Nothing bound to clear */
         pg->clearing = false;
         return;
@@ -1699,6 +1700,11 @@ void pgraph_vk_clear_surface(NV2AState *d, uint32_t parameter)
     NV2A_VK_DGROUP_BEGIN("CLEAR min=(%d,%d) max=(%d,%d)%s%s", xmin, ymin, xmax,
                          ymax, write_color ? " color" : "",
                          write_zeta ? " zeta" : "");
+
+    xmin = MIN(xmin, binding->width - 1);
+    ymin = MIN(xmin, binding->height - 1);
+    xmax = MIN(xmax, binding->width - 1);
+    ymax = MIN(ymax, binding->height - 1);
 
     begin_pre_draw(pg);
     begin_draw(pg);
