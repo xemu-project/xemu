@@ -271,6 +271,7 @@ typedef struct PGRAPHVkComputeState {
 typedef struct PGRAPHVkState {
     void *window;
     VkInstance instance;
+    VkDebugUtilsMessengerEXT debug_messenger;
 
     bool debug_utils_extension_enabled;
     bool custom_border_color_extension_enabled;
