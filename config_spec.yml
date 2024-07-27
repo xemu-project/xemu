@@ -137,6 +137,7 @@ display:
   vulkan:
     validation_layers: bool
     debug_shaders: bool
+    assert_on_validation_msg: bool
   quality:
     surface_scale:
       type: integer
