@@ -748,7 +748,6 @@ static bool check_invalid_surface_is_compatibile(SurfaceBinding *surface,
     return surface->host_fmt.vk_format == target->host_fmt.vk_format &&
            surface->width == target->width &&
            surface->height == target->height &&
-           surface->pitch == target->pitch &&
            surface->host_fmt.usage == target->host_fmt.usage;
 }
 
