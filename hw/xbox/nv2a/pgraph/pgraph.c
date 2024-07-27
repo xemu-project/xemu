@@ -218,6 +218,7 @@ void pgraph_init(NV2AState *d)
 
     PGRAPHState *pg = &d->pgraph;
     qemu_mutex_init(&pg->lock);
+    qemu_mutex_init(&pg->renderer_lock);
     qemu_event_init(&pg->sync_complete, false);
     qemu_event_init(&pg->flush_complete, false);
 
@@ -279,8 +280,17 @@ void nv2a_context_init(void)
                 renderers[g_config.display.renderer]->name);
     }
 
-    if (renderers[g_config.display.renderer]->ops.early_context_init) {
-        renderers[g_config.display.renderer]->ops.early_context_init();
+    // FIXME: We need a mechanism for renderer to initialize new GL contexts
+    //        on the main thread at run time. For now, just let them all create
+    //        what they need.
+    for (int i = 0; i < ARRAY_SIZE(renderers); i++) {
+        const PGRAPHRenderer *r = renderers[i];
+        if (!r) {
+            continue;
+        }
+        if (r->ops.early_context_init) {
+            r->ops.early_context_init();
+        }
     }
 }
 
@@ -298,32 +308,40 @@ void pgraph_destroy(PGRAPHState *pg)
 int nv2a_get_framebuffer_surface(void)
 {
     NV2AState *d = g_nv2a;
+    int s = 0;
 
+    qemu_mutex_lock(&d->pgraph.renderer_lock);
     if (d->pgraph.renderer->ops.get_framebuffer_surface) {
-        return d->pgraph.renderer->ops.get_framebuffer_surface(d);
+        s = d->pgraph.renderer->ops.get_framebuffer_surface(d);
     }
+    qemu_mutex_unlock(&d->pgraph.renderer_lock);
 
-    return 0;
+    return s;
 }
 
 void nv2a_set_surface_scale_factor(unsigned int scale)
 {
     NV2AState *d = g_nv2a;
 
+    qemu_mutex_lock(&d->pgraph.renderer_lock);
     if (d->pgraph.renderer->ops.set_surface_scale_factor) {
         d->pgraph.renderer->ops.set_surface_scale_factor(d, scale);
     }
+    qemu_mutex_unlock(&d->pgraph.renderer_lock);
 }
 
 unsigned int nv2a_get_surface_scale_factor(void)
 {
     NV2AState *d = g_nv2a;
+    int s = 1;
 
+    qemu_mutex_lock(&d->pgraph.renderer_lock);
     if (d->pgraph.renderer->ops.get_surface_scale_factor) {
-        return d->pgraph.renderer->ops.get_surface_scale_factor(d);
+        s = d->pgraph.renderer->ops.get_surface_scale_factor(d);
     }
+    qemu_mutex_unlock(&d->pgraph.renderer_lock);
 
-    return 1;
+    return s;
 }
 
 #define METHOD_ADDR(gclass, name) \
@@ -2877,6 +2895,45 @@ void pgraph_process_pending(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
     pg->renderer->ops.process_pending(d);
+
+    if (g_config.display.renderer != pg->renderer->type) {
+        qemu_mutex_lock(&d->pgraph.renderer_lock);
+        qemu_mutex_unlock(&d->pfifo.lock);
+        qemu_mutex_lock(&d->pgraph.lock);
+
+        if (pg->renderer) {
+            qemu_event_reset(&pg->flush_complete);
+            pg->flush_pending = true;
+
+            qemu_mutex_lock(&d->pfifo.lock);
+            qemu_mutex_unlock(&d->pgraph.lock);
+
+            if (pg->renderer->ops.process_pending) {
+                pg->renderer->ops.process_pending(d);
+            }
+
+            qemu_mutex_unlock(&d->pfifo.lock);
+            qemu_mutex_lock(&d->pgraph.lock);
+
+            if (pg->renderer->ops.finalize) {
+                pg->renderer->ops.finalize(d);
+            }
+        }
+
+        // FIXME: Handle missing renderer, init errors
+        pg->renderer = renderers[g_config.display.renderer];
+
+        if (pg->renderer->ops.init) {
+            pg->renderer->ops.init(d);
+        }
+        if (pg->renderer->ops.init_thread) {
+            pg->renderer->ops.init_thread(d);
+        }
+
+        qemu_mutex_unlock(&d->pgraph.renderer_lock);
+        qemu_mutex_unlock(&d->pgraph.lock);
+        qemu_mutex_lock(&d->pfifo.lock);
+    }
 }
 
 void pgraph_process_pending_reports(NV2AState *d)

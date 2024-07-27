@@ -127,6 +127,7 @@ typedef struct PGRAPHRenderer {
 
 typedef struct PGRAPHState {
     QemuMutex lock;
+    QemuMutex renderer_lock;
 
     uint32_t pending_interrupts;
     uint32_t enabled_interrupts;
