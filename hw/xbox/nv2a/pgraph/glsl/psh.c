@@ -587,6 +587,7 @@ static const char sampler2DRect[] = "sampler2DRect";
 
 static const char* get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *state, int i)
 {
+    // FIXME: Cleanup
     switch (mode) {
     default:
     case PS_TEXTUREMODES_NONE:
@@ -594,6 +595,9 @@ static const char* get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
 
     case PS_TEXTUREMODES_PROJECT2D:
         assert(state->dim_tex[i] == 2);
+        if (state->tex_x8y24[i] && state->vulkan) {
+            return "usampler2D";
+        }
         return (state->rect_tex[i] && !state->vulkan) ? sampler2DRect : sampler2D;
 
     case PS_TEXTUREMODES_BUMPENVMAP:
