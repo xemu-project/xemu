@@ -156,6 +156,8 @@ typedef struct ShaderModuleInfo {
 
 typedef struct ShaderBinding {
     LruNode node;
+    bool initialized;
+
     ShaderState state;
     ShaderModuleInfo *geometry;
     ShaderModuleInfo *vertex;
