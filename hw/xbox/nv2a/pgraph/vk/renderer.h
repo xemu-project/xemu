@@ -20,8 +20,6 @@
 #ifndef HW_XBOX_NV2A_PGRAPH_VK_RENDERER_H
 #define HW_XBOX_NV2A_PGRAPH_VK_RENDERER_H
 
-#define VK_NO_PROTOTYPES 1
-
 #include "qemu/osdep.h"
 #include "qemu/thread.h"
 #include "qemu/queue.h"
