@@ -24,12 +24,14 @@
 
 #if HAVE_EXTERNAL_MEMORY
 static GloContext *g_gl_context;
-
-static void gl_context_init(void)
-{
-    g_gl_context = glo_context_create();
-}
 #endif
+
+static void early_context_init(void)
+{
+#if HAVE_EXTERNAL_MEMORY
+    g_gl_context = glo_context_create();
+#endif
+}
 
 static void pgraph_vk_init_thread(NV2AState *d)
 {
@@ -201,9 +203,7 @@ static PGRAPHRenderer pgraph_vk_renderer = {
     .name = "Vulkan",
     .ops = {
         .init = pgraph_vk_init,
-#if HAVE_EXTERNAL_MEMORY
-        .early_context_init = gl_context_init,
-#endif
+        .early_context_init = early_context_init,
         .init_thread = pgraph_vk_init_thread,
         .finalize = pgraph_vk_finalize,
         .clear_report_value = pgraph_vk_clear_report_value,
