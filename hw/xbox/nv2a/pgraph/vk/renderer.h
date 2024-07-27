@@ -257,16 +257,26 @@ typedef struct PGRAPHVkDisplayState {
     GLuint gl_texture_id;
 } PGRAPHVkDisplayState;
 
+typedef struct ComputePipelineKey {
+    VkFormat host_fmt;
+    bool pack;
+    int workgroup_size;
+} ComputePipelineKey;
+
+typedef struct ComputePipeline {
+    LruNode node;
+    ComputePipelineKey key;
+    VkPipeline pipeline;
+} ComputePipeline;
+
 typedef struct PGRAPHVkComputeState {
     VkDescriptorPool descriptor_pool;
     VkDescriptorSetLayout descriptor_set_layout;
     VkDescriptorSet descriptor_sets[1024];
     int descriptor_set_index;
     VkPipelineLayout pipeline_layout;
-    VkPipeline pipeline_pack_d24s8;
-    VkPipeline pipeline_unpack_d24s8;
-    VkPipeline pipeline_pack_f32s8;
-    VkPipeline pipeline_unpack_f32s8;
+    Lru pipeline_cache;
+    ComputePipeline *pipeline_cache_entries;
 } PGRAPHVkComputeState;
 
 typedef struct PGRAPHVkState {

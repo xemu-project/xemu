@@ -18,6 +18,8 @@
  */
 
 #include "hw/xbox/nv2a/pgraph/pgraph.h"
+#include "qemu/fast-hash.h"
+#include "qemu/lru.h"
 #include "renderer.h"
 #include <vulkan/vulkan_core.h>
 
@@ -28,14 +30,12 @@
 //        swizzle shader we will need more flexibility.
 
 const char *pack_d24_unorm_s8_uint_to_z24s8_glsl =
-    "#version 450\n"
-    "layout(local_size_x = 256) in;\n"
     "layout(push_constant) uniform PushConstants { uint width_in, width_out; };\n"
     "layout(binding = 0) buffer DepthIn { uint depth_in[]; };\n"
     "layout(binding = 1) buffer StencilIn { uint stencil_in[]; };\n"
     "layout(binding = 2) buffer DepthStencilOut { uint depth_stencil_out[]; };\n"
     "uint get_input_idx(uint idx_out) {\n"
-    "    uint scale = width_in / width_out;"
+    "    uint scale = width_in / width_out;\n"
     "    uint y = (idx_out / width_out) * scale;\n"
     "    uint x = (idx_out % width_out) * scale;\n"
     "    return y * width_in + x;\n"
@@ -49,14 +49,12 @@ const char *pack_d24_unorm_s8_uint_to_z24s8_glsl =
     "}\n";
 
 const char *unpack_z24s8_to_d24_unorm_s8_uint_glsl =
-    "#version 450\n"
-    "layout(local_size_x = 256) in;\n"
     "layout(push_constant) uniform PushConstants { uint width_in, width_out; };\n"
     "layout(binding = 0) buffer DepthOut { uint depth_out[]; };\n"
     "layout(binding = 1) buffer StencilOut { uint stencil_out[]; };\n"
     "layout(binding = 2) buffer DepthStencilIn { uint depth_stencil_in[]; };\n"
     "uint get_input_idx(uint idx_out) {\n"
-    "    uint scale = width_out / width_in;"
+    "    uint scale = width_out / width_in;\n"
     "    uint y = (idx_out / width_out) / scale;\n"
     "    uint x = (idx_out % width_out) / scale;\n"
     "    return y * width_in + x;\n"
@@ -76,14 +74,12 @@ const char *unpack_z24s8_to_d24_unorm_s8_uint_glsl =
     "}\n";
 
 const char *pack_d32_sfloat_s8_uint_to_z24s8_glsl =
-    "#version 450\n"
-    "layout(local_size_x = 256) in;\n"
     "layout(push_constant) uniform PushConstants { uint width_in, width_out; };\n"
     "layout(binding = 0) buffer DepthIn { float depth_in[]; };\n"
     "layout(binding = 1) buffer StencilIn { uint stencil_in[]; };\n"
     "layout(binding = 2) buffer DepthStencilOut { uint depth_stencil_out[]; };\n"
     "uint get_input_idx(uint idx_out) {\n"
-    "    uint scale = width_in / width_out;"
+    "    uint scale = width_in / width_out;\n"
     "    uint y = (idx_out / width_out) * scale;\n"
     "    uint x = (idx_out % width_out) * scale;\n"
     "    return y * width_in + x;\n"
@@ -97,14 +93,12 @@ const char *pack_d32_sfloat_s8_uint_to_z24s8_glsl =
     "}\n";
 
 const char *unpack_z24s8_to_d32_sfloat_s8_uint_glsl =
-    "#version 450\n"
-    "layout(local_size_x = 256) in;\n"
     "layout(push_constant) uniform PushConstants { uint width_in, width_out; };\n"
     "layout(binding = 0) buffer DepthOut { float depth_out[]; };\n"
     "layout(binding = 1) buffer StencilOut { uint stencil_out[]; };\n"
     "layout(binding = 2) buffer DepthStencilIn { uint depth_stencil_in[]; };\n"
     "uint get_input_idx(uint idx_out) {\n"
-    "    uint scale = width_out / width_in;"
+    "    uint scale = width_out / width_in;\n"
     "    uint y = (idx_out / width_out) / scale;\n"
     "    uint x = (idx_out % width_out) / scale;\n"
     "    return y * width_in + x;\n"
@@ -122,6 +116,35 @@ const char *unpack_z24s8_to_d32_sfloat_s8_uint_glsl =
     "       stencil_out[idx_out / 4] = stencil_value;\n"
     "    }\n"
     "}\n";
+
+static gchar *get_compute_shader_glsl(VkFormat host_fmt, bool pack,
+                                      int workgroup_size)
+{
+    const char *template;
+
+    switch (host_fmt) {
+    case VK_FORMAT_D24_UNORM_S8_UINT:
+        template = pack ? pack_d24_unorm_s8_uint_to_z24s8_glsl :
+                          unpack_z24s8_to_d24_unorm_s8_uint_glsl;
+        break;
+    case VK_FORMAT_D32_SFLOAT_S8_UINT:
+        template = pack ? pack_d32_sfloat_s8_uint_to_z24s8_glsl :
+                          unpack_z24s8_to_d32_sfloat_s8_uint_glsl;
+        break;
+    default:
+        assert(!"Unsupported host fmt");
+        break;
+    }
+    assert(template);
+
+    gchar *glsl = g_strdup_printf(
+        "#version 450\n"
+        "layout(local_size_x = %d) in;\n"
+        "%s", workgroup_size, template);
+    assert(glsl);
+
+    return glsl;
+}
 
 static void create_descriptor_pool(PGRAPHState *pg)
 {
@@ -235,10 +258,14 @@ static void create_compute_pipeline_layout(PGRAPHState *pg)
                                     &r->compute.pipeline_layout));
 }
 
-static VkPipeline create_compute_pipeline(PGRAPHState *pg, const char *glsl)
+static void destroy_compute_pipeline_layout(PGRAPHVkState *r)
 {
-    PGRAPHVkState *r = pg->vk_renderer_state;
+    vkDestroyPipelineLayout(r->device, r->compute.pipeline_layout, NULL);
+    r->compute.pipeline_layout = VK_NULL_HANDLE;
+}
 
+static VkPipeline create_compute_pipeline(PGRAPHVkState *r, const char *glsl)
+{
     ShaderModuleInfo *module = pgraph_vk_create_shader_module_from_glsl(
         r, VK_SHADER_STAGE_COMPUTE_BIT, glsl);
 
@@ -304,6 +331,47 @@ void pgraph_vk_compute_finish_complete(PGRAPHVkState *r)
     r->compute.descriptor_set_index = 0;
 }
 
+static int get_workgroup_size_for_output_units(PGRAPHVkState *r, int output_units)
+{
+    int group_size = 1024;
+
+    // FIXME: Smarter workgroup size calculation could factor in multiple
+    //        submissions. For now we will just pick the highest number that
+    //        evenly divides output_units.
+
+    while (group_size > 1) {
+        if (group_size > r->device_props.limits.maxComputeWorkGroupSize[0]) {
+            continue;
+        }
+        if (output_units % group_size == 0) {
+            break;
+        }
+        group_size /= 2;
+    }
+
+    return group_size;
+}
+
+static ComputePipeline *get_compute_pipeline(PGRAPHVkState *r, VkFormat host_fmt, bool pack, int output_units)
+{
+    int workgroup_size = get_workgroup_size_for_output_units(r, output_units);
+
+    ComputePipelineKey key;
+    memset(&key, 0, sizeof(key));
+
+    key.host_fmt = host_fmt;
+    key.pack = pack;
+    key.workgroup_size = workgroup_size;
+
+    LruNode *node = lru_lookup(&r->compute.pipeline_cache,
+                      fast_hash((void *)&key, sizeof(key)), &key);
+    ComputePipeline *pipeline = container_of(node, ComputePipeline, node);
+
+    assert(pipeline);
+
+    return pipeline;
+}
+
 //
 // Pack depth+stencil into NV097_SET_SURFACE_FORMAT_ZETA_Z24S8
 // formatted buffer with depth in bits 31-8 and stencil in bits 7-0.
@@ -351,15 +419,20 @@ void pgraph_vk_pack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
 
     update_descriptor_sets(pg, buffers, ARRAY_SIZE(buffers));
 
-    if (surface->host_fmt.vk_format == VK_FORMAT_D24_UNORM_S8_UINT) {
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                          r->compute.pipeline_pack_d24s8);
-    } else if (surface->host_fmt.vk_format == VK_FORMAT_D32_SFLOAT_S8_UINT) {
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                          r->compute.pipeline_pack_f32s8);
-    } else {
-        assert(!"Unsupported pack format");
-    }
+    size_t output_size_in_units = output_width * output_height;
+    ComputePipeline *pipeline = get_compute_pipeline(
+        r, surface->host_fmt.vk_format, true, output_size_in_units);
+
+    size_t workgroup_size_in_units = pipeline->key.workgroup_size;
+    assert(output_size_in_units % workgroup_size_in_units == 0);
+    size_t group_count = output_size_in_units / workgroup_size_in_units;
+
+    assert(r->device_props.limits.maxComputeWorkGroupSize[0] >= workgroup_size_in_units);
+    assert(r->device_props.limits.maxComputeWorkGroupCount[0] >= group_count);
+
+    // FIXME: Smarter workgroup scaling
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->pipeline);
     vkCmdBindDescriptorSets(
         cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->compute.pipeline_layout, 0, 1,
         &r->compute.descriptor_sets[r->compute.descriptor_set_index - 1], 0,
@@ -370,11 +443,6 @@ void pgraph_vk_pack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
     vkCmdPushConstants(cmd, r->compute.pipeline_layout,
                        VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_constants),
                        push_constants);
-
-    size_t workgroup_size_in_units = 256;
-    size_t output_size_in_units = output_width * output_height;
-    assert(output_size_in_units % workgroup_size_in_units == 0);
-    size_t group_count = output_size_in_units / workgroup_size_in_units;
 
     // FIXME: Check max group count
 
@@ -420,15 +488,20 @@ void pgraph_vk_unpack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
     };
     update_descriptor_sets(pg, buffers, ARRAY_SIZE(buffers));
 
-    if (surface->host_fmt.vk_format == VK_FORMAT_D24_UNORM_S8_UINT) {
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                          r->compute.pipeline_unpack_d24s8);
-    } else if (surface->host_fmt.vk_format == VK_FORMAT_D32_SFLOAT_S8_UINT) {
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                          r->compute.pipeline_unpack_f32s8);
-    } else {
-        assert(!"Unsupported pack format");
-    }
+    size_t output_size_in_units = output_width * output_height;
+    ComputePipeline *pipeline = get_compute_pipeline(
+        r, surface->host_fmt.vk_format, false, output_size_in_units);
+
+    size_t workgroup_size_in_units = pipeline->key.workgroup_size;
+    assert(output_size_in_units % workgroup_size_in_units == 0);
+    size_t group_count = output_size_in_units / workgroup_size_in_units;
+
+    assert(r->device_props.limits.maxComputeWorkGroupSize[0] >= workgroup_size_in_units);
+    assert(r->device_props.limits.maxComputeWorkGroupCount[0] >= group_count);
+
+    // FIXME: Smarter workgroup scaling
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->pipeline);
     vkCmdBindDescriptorSets(
         cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->compute.pipeline_layout, 0, 1,
         &r->compute.descriptor_sets[r->compute.descriptor_set_index - 1], 0,
@@ -440,15 +513,73 @@ void pgraph_vk_unpack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
     vkCmdPushConstants(cmd, r->compute.pipeline_layout,
                        VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_constants),
                        push_constants);
-
-    size_t workgroup_size_in_units = 256;
-    size_t output_size_in_units = output_width * output_height;
-    assert(output_size_in_units % workgroup_size_in_units == 0);
-    size_t group_count = output_size_in_units / workgroup_size_in_units;
-
-    // FIXME: Check max group count
-
     vkCmdDispatch(cmd, group_count, 1, 1);
+}
+
+static void pipeline_cache_entry_init(Lru *lru, LruNode *node, void *state)
+{
+    PGRAPHVkState *r = container_of(lru, PGRAPHVkState, compute.pipeline_cache);
+    ComputePipeline *snode = container_of(node, ComputePipeline, node);
+
+    memcpy(&snode->key, state, sizeof(snode->key));
+
+    if (snode->key.workgroup_size == 1) {
+        fprintf(stderr,
+                "Warning: Needed compute shader with workgroup size = 1\n");
+    }
+
+    gchar *glsl = get_compute_shader_glsl(
+        snode->key.host_fmt, snode->key.pack, snode->key.workgroup_size);
+    assert(glsl);
+    snode->pipeline = create_compute_pipeline(r, glsl);
+    g_free(glsl);
+}
+
+static void pipeline_cache_release_node_resources(PGRAPHVkState *r, ComputePipeline *snode)
+{
+    vkDestroyPipeline(r->device, snode->pipeline, NULL);
+    snode->pipeline = VK_NULL_HANDLE;
+}
+
+static bool pipeline_cache_entry_pre_evict(Lru *lru, LruNode *node)
+{
+    // FIXME: Check pipeline not in use
+    return false;
+}
+
+static void pipeline_cache_entry_post_evict(Lru *lru, LruNode *node)
+{
+    PGRAPHVkState *r = container_of(lru, PGRAPHVkState, pipeline_cache);
+    ComputePipeline *snode = container_of(node, ComputePipeline, node);
+    pipeline_cache_release_node_resources(r, snode);
+}
+
+static bool pipeline_cache_entry_compare(Lru *lru, LruNode *node, void *key)
+{
+    ComputePipeline *snode = container_of(node, ComputePipeline, node);
+    return memcmp(&snode->key, key, sizeof(ComputePipelineKey));
+}
+
+static void pipeline_cache_init(PGRAPHVkState *r)
+{
+    const size_t pipeline_cache_size = 100; // FIXME: Trim
+    lru_init(&r->compute.pipeline_cache);
+    r->compute.pipeline_cache_entries = g_malloc_n(pipeline_cache_size, sizeof(ComputePipeline));
+    assert(r->compute.pipeline_cache_entries != NULL);
+    for (int i = 0; i < pipeline_cache_size; i++) {
+        lru_add_free(&r->compute.pipeline_cache, &r->compute.pipeline_cache_entries[i].node);
+    }
+    r->compute.pipeline_cache.init_node = pipeline_cache_entry_init;
+    r->compute.pipeline_cache.compare_nodes = pipeline_cache_entry_compare;
+    r->compute.pipeline_cache.pre_node_evict = pipeline_cache_entry_pre_evict;
+    r->compute.pipeline_cache.post_node_evict = pipeline_cache_entry_post_evict;
+}
+
+static void pipeline_cache_finalize(PGRAPHVkState *r)
+{
+    lru_flush(&r->compute.pipeline_cache);
+    g_free(r->compute.pipeline_cache_entries);
+    r->compute.pipeline_cache_entries = NULL;
 }
 
 void pgraph_vk_init_compute(PGRAPHState *pg)
@@ -459,36 +590,15 @@ void pgraph_vk_init_compute(PGRAPHState *pg)
     create_descriptor_set_layout(pg);
     create_descriptor_sets(pg);
     create_compute_pipeline_layout(pg);
-
-    r->compute.pipeline_pack_d24s8 =
-        create_compute_pipeline(pg, pack_d24_unorm_s8_uint_to_z24s8_glsl);
-    r->compute.pipeline_unpack_d24s8 =
-        create_compute_pipeline(pg, unpack_z24s8_to_d24_unorm_s8_uint_glsl);
-    r->compute.pipeline_pack_f32s8 =
-        create_compute_pipeline(pg, pack_d32_sfloat_s8_uint_to_z24s8_glsl);
-    r->compute.pipeline_unpack_f32s8 =
-        create_compute_pipeline(pg, unpack_z24s8_to_d32_sfloat_s8_uint_glsl);
+    pipeline_cache_init(r);
 }
 
 void pgraph_vk_finalize_compute(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    VkPipeline *pipelines[] = {
-        &r->compute.pipeline_pack_d24s8,
-        &r->compute.pipeline_unpack_d24s8,
-        &r->compute.pipeline_pack_f32s8,
-        &r->compute.pipeline_unpack_f32s8,
-    };
-
-    for (int i = 0; i < ARRAY_SIZE(pipelines); i++) {
-        vkDestroyPipeline(r->device, *pipelines[i], NULL);
-        pipelines[i] = VK_NULL_HANDLE;
-    }
-
-    vkDestroyPipelineLayout(r->device, r->compute.pipeline_layout, NULL);
-    r->compute.pipeline_layout = VK_NULL_HANDLE;
-
+    pipeline_cache_finalize(r);
+    destroy_compute_pipeline_layout(r);
     destroy_descriptor_sets(pg);
     destroy_descriptor_set_layout(pg);
     destroy_descriptor_pool(pg);
