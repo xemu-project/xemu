@@ -1283,8 +1283,10 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
 
 static bool check_textures_dirty(PGRAPHState *pg)
 {
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
     for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
-        if (pg->texture_dirty[i]) {
+        if (!r->texture_bindings[i] || pg->texture_dirty[i]) {
             return true;
         }
     }
@@ -1324,7 +1326,8 @@ void pgraph_vk_bind_textures(NV2AState *d)
             r->texture_bindings[i] = &r->dummy_texture;
             continue;
         }
-        if (!pg->texture_dirty[i]) { // FIXME: Fails to check memory
+        if (r->texture_bindings[i] && !pg->texture_dirty[i]) {
+            // FIXME: Fails to check memory
             continue;
         }
 
