@@ -2884,3 +2884,28 @@ void pgraph_process_pending_reports(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     pg->renderer->ops.process_pending_reports(d);
 }
+
+void pgraph_pre_savevm_trigger(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    pg->renderer->ops.pre_savevm_trigger(d);
+}
+
+void pgraph_pre_savevm_wait(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    pg->renderer->ops.pre_savevm_wait(d);
+}
+
+void pgraph_pre_shutdown_trigger(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    pg->renderer->ops.pre_shutdown_trigger(d);
+}
+
+void pgraph_pre_shutdown_wait(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    pg->renderer->ops.pre_shutdown_wait(d);
+}
+
