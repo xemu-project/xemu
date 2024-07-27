@@ -1477,6 +1477,9 @@ void pgraph_vk_surface_flush(NV2AState *d)
 
     SurfaceBinding *s, *next;
     QTAILQ_FOREACH_SAFE(s, &r->surfaces, entry, next) {
+        // FIXME: We should download all surfaces to ram, but need to
+        //        investigate corruption issue
+        pgraph_vk_surface_download_if_dirty(d, s);
         invalidate_surface(d, s);
     }
     prune_invalid_surfaces(r, 0);
