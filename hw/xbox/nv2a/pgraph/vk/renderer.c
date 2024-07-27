@@ -49,6 +49,9 @@ static void pgraph_vk_init_thread(NV2AState *d)
     pgraph_vk_init_reports(pg);
     pgraph_vk_init_compute(pg);
     pgraph_vk_init_display(pg);
+
+    pgraph_vk_update_vertex_ram_buffer(&d->pgraph, 0, d->vram_ptr,
+                                   memory_region_size(d->vram));
 }
 
 static void pgraph_vk_finalize(NV2AState *d)
