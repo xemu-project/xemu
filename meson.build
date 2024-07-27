@@ -1181,10 +1181,10 @@ if not get_option('opengl').auto() or have_system or have_vhost_user_gpu
 endif
 
 vulkan = not_found
+libglslang = not_found
+
 if targetos == 'windows'
-  vulkan = declare_dependency(
-      compile_args: ['-DVK_USE_PLATFORM_WIN32_KHR', '-DVK_NO_PROTOTYPES'],
-      )
+  vulkan = declare_dependency(compile_args: ['-DVK_USE_PLATFORM_WIN32_KHR'])
   libglslang = declare_dependency(link_args: [
         '-lglslang',
         '-lMachineIndependent',
@@ -1195,14 +1195,21 @@ if targetos == 'windows'
       ])
 elif targetos == 'linux'
   vulkan = dependency('vulkan')
-  libglslang = declare_dependency(link_args: [
-        '-lglslang',
-        '-lMachineIndependent',
-        '-lGenericCodeGen',
-        '-lSPIRV',
-        '-lSPIRV-Tools',
-        '-lSPIRV-Tools-opt'
-      ])
+endif
+
+if vulkan.found() and not libglslang.found()
+  cmake = import('cmake')
+  # FIXME: Get spirv-tools to enable opt.
+  glslang_opts = cmake.subproject_options()
+  glslang_opts.add_cmake_defines({'ENABLE_OPT': false})
+  glslang_subpro = cmake.subproject('glslang', options: glslang_opts)
+  libglslang = declare_dependency(link_with: [
+        glslang_subpro.target('glslang'),
+        glslang_subpro.target('MachineIndependent'),
+        glslang_subpro.target('GenericCodeGen'),
+        glslang_subpro.target('SPIRV'),
+      ], include_directories: ['subprojects' / 'glslang']
+    )
 endif
 
 subdir('thirdparty')
