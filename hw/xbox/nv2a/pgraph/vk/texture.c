@@ -1207,12 +1207,17 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     } else {
         // FIXME: Handle custom color in shader
         if (border_color_pack32 == 0x00000000) {
-            vk_border_color = VK_BORDER_COLOR_INT_TRANSPARENT_BLACK;
+            vk_border_color = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
         } else if (border_color_pack32 == 0xff000000) {
-            vk_border_color = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+            vk_border_color = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
         } else {
-            vk_border_color = VK_BORDER_COLOR_INT_OPAQUE_WHITE;
+            vk_border_color = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
         }
+    }
+
+    if (vkf.vk_format == VK_FORMAT_R32_UINT) {
+        // Border color type must match sampled type
+        vk_border_color = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     }
 
     uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + texture_idx * 4);
