@@ -137,4 +137,13 @@ void pgraph_vk_process_pending_reports_internal(NV2AState *d)
 
 void pgraph_vk_process_pending_reports(NV2AState *d)
 {
+    PGRAPHState *pg = &d->pgraph;
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    uint32_t *dma_get = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_GET];
+    uint32_t *dma_put = &d->pfifo.regs[NV_PFIFO_CACHE1_DMA_PUT];
+
+    if (*dma_get == *dma_put && r->in_command_buffer) {
+        pgraph_vk_finish(pg, VK_FINISH_REASON_STALLED);
+    }
 }
