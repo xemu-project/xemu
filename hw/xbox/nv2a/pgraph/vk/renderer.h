@@ -35,9 +35,6 @@
 #include <glslang/Include/glslang_c_interface.h>
 #include <volk.h>
 #include <spirv_reflect.h>
-
-#define VMA_STATIC_VULKAN_FUNCTIONS 1
-#define VMA_DYNAMIC_VULKAN_FUNCTIONS 0
 #include <vk_mem_alloc.h>
 
 #include "debug.h"
