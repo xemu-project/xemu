@@ -204,6 +204,8 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
         state.psh.alphakill[i] = ctl_0 & NV_PGRAPH_TEXCTL0_0_ALPHAKILLEN;
 
         uint32_t tex_fmt = pgraph_reg_r(pg, NV_PGRAPH_TEXFMT0 + i * 4);
+        state.psh.dim_tex[i] = GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_DIMENSIONALITY);
+
         unsigned int color_format = GET_MASK(tex_fmt, NV_PGRAPH_TEXFMT0_COLOR);
         BasicColorFormatInfo f = kelvin_color_format_info_map[color_format];
         state.psh.rect_tex[i] = f.linear;
