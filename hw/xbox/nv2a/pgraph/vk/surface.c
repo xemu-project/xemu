@@ -1178,7 +1178,11 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
                                            d->vram, target.vram_addr,
                                            target.size, DIRTY_MEMORY_NV2A);
 
-    if (upload && (pg_surface->buffer_dirty || mem_dirty)) {
+    SurfaceBinding *current_binding = color ? r->color_binding
+                                            : r->zeta_binding;
+
+    if (!current_binding ||
+        (upload && (pg_surface->buffer_dirty || mem_dirty))) {
         // FIXME: We don't need to be so aggressive flushing the command list
         // pgraph_vk_finish(pg, VK_FINISH_REASON_SURFACE_CREATE);
         pgraph_vk_ensure_not_in_render_pass(pg);
