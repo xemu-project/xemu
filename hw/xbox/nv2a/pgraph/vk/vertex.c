@@ -47,6 +47,8 @@ void pgraph_vk_update_vertex_ram_buffer(PGRAPHState *pg, hwaddr offset,
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    pgraph_vk_download_surfaces_in_range_if_dirty(pg, offset, size);
+
     size_t offset_bit = offset / 4096;
     size_t nbits = size / 4096;
     if (find_next_bit(r->uploaded_bitmap, nbits, offset_bit) < nbits) {
