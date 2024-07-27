@@ -2872,3 +2872,15 @@ void pgraph_write_zpass_pixel_cnt_report(NV2AState *d, uint32_t parameter,
 
     NV2A_DPRINTF("Report result %d @%" HWADDR_PRIx, result, offset);
 }
+
+void pgraph_process_pending(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    pg->renderer->ops.process_pending(d);
+}
+
+void pgraph_process_pending_reports(NV2AState *d)
+{
+    PGRAPHState *pg = &d->pgraph;
+    pg->renderer->ops.process_pending_reports(d);
+}
