@@ -122,6 +122,23 @@ static void memcpy_image(void *dst, void const *src, int dst_stride,
     }
 }
 
+void pgraph_vk_download_surfaces_in_range_if_dirty(PGRAPHState *pg, hwaddr start, hwaddr size)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    SurfaceBinding *surface;
+
+    hwaddr end = start + size - 1;
+
+    QTAILQ_FOREACH(surface, &r->surfaces, entry) {
+        hwaddr surf_end = surface->vram_addr + surface->size - 1;
+        bool overlapping = !(surface->vram_addr >= end || start >= surf_end);
+        if (overlapping) {
+            pgraph_vk_surface_download_if_dirty(
+                container_of(pg, NV2AState, pgraph), surface);
+        }
+    }
+}
+
 static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                                        uint8_t *pixels)
 {
