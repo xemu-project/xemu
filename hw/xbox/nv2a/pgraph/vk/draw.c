@@ -1796,6 +1796,10 @@ static void bind_vertex_buffer(PGRAPHState *pg, int buffer_idx,
     assert(buffer_idx == BUFFER_VERTEX_RAM ||
            buffer_idx == BUFFER_VERTEX_INLINE);
 
+    if (r->num_active_vertex_binding_descriptions == 0) {
+        return;
+    }
+
     VkBuffer buffers[NV2A_VERTEXSHADER_ATTRIBUTES];
     VkDeviceSize offsets[NV2A_VERTEXSHADER_ATTRIBUTES];
 
