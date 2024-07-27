@@ -1192,38 +1192,42 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     uint32_t border_color_pack32 =
         pgraph_reg_r(pg, NV_PGRAPH_BORDERCOLOR0 + texture_idx * 4);
 
-    if (r->custom_border_color_extension_enabled) {
-        float border_color_rgba[4];
-        pgraph_argb_pack32_to_rgba_float(border_color_pack32, border_color_rgba);
+    bool is_integer_type = vkf.vk_format == VK_FORMAT_R32_UINT;
 
+    if (r->custom_border_color_extension_enabled) {
+        vk_border_color = is_integer_type ? VK_BORDER_COLOR_INT_CUSTOM_EXT :
+                                            VK_BORDER_COLOR_FLOAT_CUSTOM_EXT;
         custom_border_color_create_info =
             (VkSamplerCustomBorderColorCreateInfoEXT){
                 .sType =
                     VK_STRUCTURE_TYPE_SAMPLER_CUSTOM_BORDER_COLOR_CREATE_INFO_EXT,
-                .customBorderColor.float32 = { border_color_rgba[0],
-                                               border_color_rgba[1],
-                                               border_color_rgba[2],
-                                               border_color_rgba[3] },
                 .format = image_view_create_info.format,
                 .pNext = sampler_next_struct
             };
-
-        vk_border_color = VK_BORDER_COLOR_FLOAT_CUSTOM_EXT;
+        if (is_integer_type) {
+            float rgba[4];
+            pgraph_argb_pack32_to_rgba_float(border_color_pack32, rgba);
+            for (int i = 0; i < 4; i++) {
+                custom_border_color_create_info.customBorderColor.uint32[i] =
+                    (uint32_t)((double)rgba[i] * (double)0xffffffff);
+            }
+        } else {
+            pgraph_argb_pack32_to_rgba_float(
+                border_color_pack32,
+                custom_border_color_create_info.customBorderColor.float32);
+        }
         sampler_next_struct = &custom_border_color_create_info;
     } else {
         // FIXME: Handle custom color in shader
-        if (border_color_pack32 == 0x00000000) {
+        if (is_integer_type) {
+            vk_border_color = VK_BORDER_COLOR_INT_TRANSPARENT_BLACK;
+        } else if (border_color_pack32 == 0x00000000) {
             vk_border_color = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
         } else if (border_color_pack32 == 0xff000000) {
             vk_border_color = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
         } else {
             vk_border_color = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
         }
-    }
-
-    if (vkf.vk_format == VK_FORMAT_R32_UINT) {
-        // Border color type must match sampled type
-        vk_border_color = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
     }
 
     uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + texture_idx * 4);
@@ -1248,7 +1252,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         vk_min_filter = pgraph_texture_min_filter_vk_map[min_filter];
 
         if (f_basic.linear && vk_mag_filter != vk_min_filter) {
-            // Per spec, if coordinates unnormalized, filters must be same
+            // FIXME: Per spec, if coordinates unnormalized, filters must be
+            // same.
             vk_mag_filter = vk_min_filter = VK_FILTER_LINEAR;
         }
     } else {
