@@ -43,6 +43,12 @@ void pgraph_vk_finalize_reports(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    QueryReport *q, *next;
+    QSIMPLEQ_FOREACH_SAFE (q, &r->report_queue, entry, next) {
+        QSIMPLEQ_REMOVE_HEAD(&r->report_queue, entry);
+        g_free(q);
+    }
+
     vkDestroyQueryPool(r->device, r->query_pool, NULL);
 }
 
