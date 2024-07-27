@@ -643,10 +643,10 @@ static void psh_append_shadowmap(const struct PixelShader *ps, int i, bool compa
         if (ps->state.tex_x8y24[i]) {
             mstring_append_fmt(
                 vars,
-                "uvec4 t%d_depth_raw = texture(texSamp%d, pT%d.xy/pT%d.w);\n", i, i, i, i);
+                "uvec4 t%d_depth_raw = textureLod(texSamp%d, pT%d.xy/pT%d.w, 0);\n", i, i, i, i);
             mstring_append_fmt(
                 vars,
-                "vec4 t%d_depth = vec4(float(t%d_depth_raw.x & 0xFFFFFF), 1.0, 0.0, 0.0);",
+                "vec4 t%d_depth = vec4(float(t%d_depth_raw.x & 0xFFFFFF), 1.0, 0.0, 0.0);\n",
                 i, i);
         } else {
             mstring_append_fmt(
