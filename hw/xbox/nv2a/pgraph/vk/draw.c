@@ -208,6 +208,7 @@ static void finalize_render_passes(PGRAPHVkState *r)
         vkDestroyRenderPass(r->device, p->render_pass, NULL);
     }
     g_array_free(r->render_passes, true);
+    r->render_passes = NULL;
 }
 
 void pgraph_vk_init_pipelines(PGRAPHState *pg)
