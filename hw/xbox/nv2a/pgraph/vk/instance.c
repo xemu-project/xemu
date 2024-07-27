@@ -60,7 +60,6 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     VkDebugUtilsMessageTypeFlagsEXT messageType,
     const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData)
 {
-    NV2A_VK_DPRINTF("[vk] %s", pCallbackData->pMessage);
     fprintf(stderr, "[vk] %s\n", pCallbackData->pMessage);
 
     if ((messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) &&
@@ -270,20 +269,6 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
             &g_array_index(enabled_extension_names, const char *, 0),
     };
 
-    VkDebugUtilsMessengerCreateInfoEXT dbg_create_info;
-    if (r->debug_utils_extension_enabled) {
-        dbg_create_info = (VkDebugUtilsMessengerCreateInfoEXT){
-            .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-            .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-                               VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                               VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-            .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
-                           VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-                           VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-            .pfnUserCallback = debugCallback,
-        };
-    }
-
     enable_validation = g_config.display.vulkan.validation_layers;
 
     if (enable_validation) {
@@ -292,10 +277,6 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
                             "performance impact.\n");
             create_info.enabledLayerCount = ARRAY_SIZE(validation_layers);
             create_info.ppEnabledLayerNames = validation_layers;
-            if (r->debug_utils_extension_enabled) {
-                create_info.pNext =
-                    (VkDebugUtilsMessengerCreateInfoEXT *)&dbg_create_info;
-            }
         } else {
             fprintf(stderr, "Warning: validation layers not available\n");
             enable_validation = false;
@@ -309,6 +290,22 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
     }
 
     volkLoadInstance(r->instance);
+
+    if (r->debug_utils_extension_enabled) {
+        VkDebugUtilsMessengerCreateInfoEXT messenger_info = {
+            .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+            .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+                               VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                               VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+            .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+            .pfnUserCallback = debugCallback,
+        };
+        VK_CHECK(vkCreateDebugUtilsMessengerEXT(r->instance, &messenger_info,
+                                                NULL, &r->debug_messenger));
+    }
+
     return true;
 
 error:
@@ -716,6 +713,11 @@ void pgraph_vk_finalize_instance(PGRAPHState *pg)
     if (r->device != VK_NULL_HANDLE) {
         vkDestroyDevice(r->device, NULL);
         r->device = VK_NULL_HANDLE;
+    }
+
+    if (r->debug_messenger != VK_NULL_HANDLE) {
+        vkDestroyDebugUtilsMessengerEXT(r->instance, r->debug_messenger, NULL);
+        r->debug_messenger = VK_NULL_HANDLE;
     }
 
     if (r->instance != VK_NULL_HANDLE) {
