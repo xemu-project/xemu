@@ -260,7 +260,8 @@ typedef struct PGRAPHVkDisplayState {
 typedef struct PGRAPHVkComputeState {
     VkDescriptorPool descriptor_pool;
     VkDescriptorSetLayout descriptor_set_layout;
-    VkDescriptorSet descriptor_sets[1];
+    VkDescriptorSet descriptor_sets[1024];
+    int descriptor_set_index;
     VkPipelineLayout pipeline_layout;
     VkPipeline pipeline_pack_d24s8;
     VkPipeline pipeline_unpack_d24s8;
@@ -458,6 +459,8 @@ void pgraph_vk_reload_surface_scale_factor(PGRAPHState *pg);
 
 // surface-compute.c
 void pgraph_vk_init_compute(PGRAPHState *pg);
+bool pgraph_vk_compute_needs_finish(PGRAPHVkState *r);
+void pgraph_vk_compute_finish_complete(PGRAPHVkState *r);
 void pgraph_vk_finalize_compute(PGRAPHState *pg);
 void pgraph_vk_pack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
                                   VkCommandBuffer cmd, VkBuffer src,

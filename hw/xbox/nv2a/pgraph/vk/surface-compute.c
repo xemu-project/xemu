@@ -189,7 +189,7 @@ static void create_descriptor_sets(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    VkDescriptorSetLayout layouts[ARRAY_SIZE(r->descriptor_sets)];
+    VkDescriptorSetLayout layouts[ARRAY_SIZE(r->compute.descriptor_sets)];
     for (int i = 0; i < ARRAY_SIZE(layouts); i++) {
         layouts[i] = r->compute.descriptor_set_layout;
     }
@@ -269,12 +269,15 @@ static void update_descriptor_sets(PGRAPHState *pg,
 
     assert(count == 3);
     VkWriteDescriptorSet descriptor_writes[3];
-    const int descriptor_set_index = 0;
+
+    assert(r->compute.descriptor_set_index <
+           ARRAY_SIZE(r->compute.descriptor_sets));
 
     for (int i = 0; i < count; i++) {
         descriptor_writes[i] = (VkWriteDescriptorSet){
             .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = r->compute.descriptor_sets[descriptor_set_index],
+            .dstSet =
+                r->compute.descriptor_sets[r->compute.descriptor_set_index],
             .dstBinding = i,
             .dstArrayElement = 0,
             .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -283,6 +286,21 @@ static void update_descriptor_sets(PGRAPHState *pg,
         };
     }
     vkUpdateDescriptorSets(r->device, count, descriptor_writes, 0, NULL);
+
+    r->compute.descriptor_set_index += 1;
+}
+
+bool pgraph_vk_compute_needs_finish(PGRAPHVkState *r)
+{
+    bool need_descriptor_write_reset = (r->compute.descriptor_set_index >=
+                                        ARRAY_SIZE(r->compute.descriptor_sets));
+
+    return need_descriptor_write_reset;
+}
+
+void pgraph_vk_compute_finish_complete(PGRAPHVkState *r)
+{
+    r->compute.descriptor_set_index = 0;
 }
 
 //
@@ -329,6 +347,7 @@ void pgraph_vk_pack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
             .range = output_size,
         },
     };
+
     update_descriptor_sets(pg, buffers, ARRAY_SIZE(buffers));
 
     if (surface->host_fmt.vk_format == VK_FORMAT_D24_UNORM_S8_UINT) {
@@ -340,9 +359,10 @@ void pgraph_vk_pack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
     } else {
         assert(!"Unsupported pack format");
     }
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                            r->compute.pipeline_layout, 0, 1,
-                            &r->compute.descriptor_sets[0], 0, NULL);
+    vkCmdBindDescriptorSets(
+        cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->compute.pipeline_layout, 0, 1,
+        &r->compute.descriptor_sets[r->compute.descriptor_set_index - 1], 0,
+        NULL);
 
     uint32_t push_constants[2] = { input_width, output_width };
     assert(sizeof(push_constants) == 8);
@@ -408,9 +428,10 @@ void pgraph_vk_unpack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
     } else {
         assert(!"Unsupported pack format");
     }
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                            r->compute.pipeline_layout, 0, 1,
-                            &r->compute.descriptor_sets[0], 0, NULL);
+    vkCmdBindDescriptorSets(
+        cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->compute.pipeline_layout, 0, 1,
+        &r->compute.descriptor_sets[r->compute.descriptor_set_index - 1], 0,
+        NULL);
 
     assert(output_width >= input_width);
     uint32_t push_constants[2] = { input_width, output_width };
