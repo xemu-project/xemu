@@ -146,7 +146,7 @@ void pgraph_vk_transition_image_layout(PGRAPHState *pg, VkCommandBuffer cmd,
     // Color -> Dst
     } else if (oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL &&
                newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-        barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+        barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         sourceStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
         destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -171,7 +171,7 @@ void pgraph_vk_transition_image_layout(PGRAPHState *pg, VkCommandBuffer cmd,
     // Depth -> Dst
     } else if (oldLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL &&
                newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-        barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
+        barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         sourceStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
         destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -179,7 +179,7 @@ void pgraph_vk_transition_image_layout(PGRAPHState *pg, VkCommandBuffer cmd,
     // Src -> Color
     } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL &&
                newLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
-        barrier.srcAccessMask = 0;
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
         barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         destinationStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -187,7 +187,7 @@ void pgraph_vk_transition_image_layout(PGRAPHState *pg, VkCommandBuffer cmd,
     // Src -> Depth
     } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL &&
                newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-        barrier.srcAccessMask = 0;
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
         barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
         sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
