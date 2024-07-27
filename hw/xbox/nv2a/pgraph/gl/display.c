@@ -25,7 +25,7 @@
 
 #include <math.h>
 
-void pgraph_gl_init_display_renderer(NV2AState *d)
+void pgraph_gl_init_display(NV2AState *d)
 {
     struct PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;

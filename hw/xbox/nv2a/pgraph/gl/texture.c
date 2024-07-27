@@ -791,7 +791,7 @@ static bool texture_cache_entry_compare(Lru *lru, LruNode *node, void *key)
     return memcmp(&tnode->key, key, sizeof(TextureKey));
 }
 
-void pgraph_gl_init_texture_cache(NV2AState *d)
+void pgraph_gl_init_textures(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
