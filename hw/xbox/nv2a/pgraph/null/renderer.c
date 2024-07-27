@@ -111,7 +111,7 @@ static void pgraph_null_surface_update(NV2AState *d, bool upload,
 {
 }
 
-static void pgraph_null_init(NV2AState *d)
+static void pgraph_null_init(NV2AState *d, Error **errp)
 {
     PGRAPHState *pg = &d->pgraph;
     pg->null_renderer_state = NULL;

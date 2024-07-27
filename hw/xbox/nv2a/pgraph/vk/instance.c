@@ -98,19 +98,23 @@ static bool check_validation_layer_support(void)
     return true;
 }
 
-static SDL_Window *create_window(void)
+static void create_window(PGRAPHVkState *r, Error **errp)
 {
-    SDL_Window *window = SDL_CreateWindow(
+    r->window = SDL_CreateWindow(
         "SDL Offscreen Window", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         640, 480, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN);
 
-    if (window == NULL) {
-        fprintf(stderr, "%s: Failed to create window\n", __func__);
-        SDL_Quit();
-        exit(1);
+    if (r->window == NULL) {
+        error_setg(errp, "SDL_CreateWindow failed: %s", SDL_GetError());
     }
+}
 
-    return window;
+static void destroy_window(PGRAPHVkState *r)
+{
+    if (r->window) {
+        SDL_DestroyWindow(r->window);
+        r->window = NULL;
+    }
 }
 
 static VkExtensionPropertiesArray *
@@ -199,13 +203,22 @@ add_optional_instance_extension_names(PGRAPHState *pg,
                                    VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 }
 
-static void create_instance(PGRAPHState *pg)
+static bool create_instance(PGRAPHState *pg, Error **errp)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+    VkResult result;
 
-    r->window = create_window();
+    create_window(r, errp);
+    if (*errp) {
+        return false;
+    }
 
-    VK_CHECK(volkInitialize());
+    result = volkInitialize();
+    if (result != VK_SUCCESS) {
+        error_setg(errp, "volkInitialize failed");
+        destroy_window(r);
+        return false;
+    }
 
     VkApplicationInfo app_info = {
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -234,14 +247,19 @@ static void create_instance(PGRAPHState *pg)
             all_required_extensions_available = false;
         }
     }
-    assert(all_required_extensions_available);
+
+    if (!all_required_extensions_available) {
+        error_setg(errp, "Required instance extensions not available");
+        goto error;
+    }
 
     add_optional_instance_extension_names(pg, available_extensions,
                                           enabled_extension_names);
 
     fprintf(stderr, "Enabled instance extensions:\n");
     for (int i = 0; i < enabled_extension_names->len; i++) {
-        fprintf(stderr, "- %s\n", g_array_index(enabled_extension_names, char *, i));
+        fprintf(stderr, "- %s\n",
+                g_array_index(enabled_extension_names, char *, i));
     }
 
     VkInstanceCreateInfo create_info = {
@@ -270,7 +288,8 @@ static void create_instance(PGRAPHState *pg)
 
     if (enable_validation) {
         if (check_validation_layer_support()) {
-            fprintf(stderr, "Warning: Validation layers enabled. Expect performance impact.\n");
+            fprintf(stderr, "Warning: Validation layers enabled. Expect "
+                            "performance impact.\n");
             create_info.enabledLayerCount = ARRAY_SIZE(validation_layers);
             create_info.ppEnabledLayerNames = validation_layers;
             if (r->debug_utils_extension_enabled) {
@@ -283,9 +302,19 @@ static void create_instance(PGRAPHState *pg)
         }
     }
 
-    VK_CHECK(vkCreateInstance(&create_info, NULL, &r->instance));
+    result = vkCreateInstance(&create_info, NULL, &r->instance);
+    if (result != VK_SUCCESS) {
+        error_setg(errp, "Failed to create instance");
+        return false;
+    }
 
     volkLoadInstance(r->instance);
+    return true;
+
+error:
+    volkFinalize();
+    destroy_window(r);
+    return false;
 }
 
 static bool is_queue_family_indicies_complete(QueueFamilyIndices indices)
@@ -399,15 +428,18 @@ static bool is_device_compatible(VkPhysicalDevice device)
     // FIXME: Check vram
 }
 
-static void select_physical_device(PGRAPHState *pg)
+static bool select_physical_device(PGRAPHState *pg, Error **errp)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+    VkResult result;
 
     uint32_t num_physical_devices = 0;
 
-    vkEnumeratePhysicalDevices(r->instance, &num_physical_devices, NULL);
-    if (num_physical_devices == 0) {
-        assert(!"failed to find GPUs with Vulkan support");
+    result =
+        vkEnumeratePhysicalDevices(r->instance, &num_physical_devices, NULL);
+    if (result != VK_SUCCESS || num_physical_devices == 0) {
+        error_setg(errp, "Failed to find GPUs with Vulkan support");
+        return false;
     }
 
     g_autofree VkPhysicalDevice *devices =
@@ -430,7 +462,8 @@ static void select_physical_device(PGRAPHState *pg)
         }
     }
     if (r->physical_device == VK_NULL_HANDLE) {
-        assert(!"failed to find a suitable GPU");
+        error_setg(errp, "Failed to find a suitable GPU");
+        return false;
     }
 
     vkGetPhysicalDeviceProperties(r->physical_device, &r->device_props);
@@ -448,11 +481,13 @@ static void select_physical_device(PGRAPHState *pg)
     size_t vsh_attr_values_size =
         NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float);
     assert(r->device_props.limits.maxPushConstantsSize >= vsh_attr_values_size);
+    return true;
 }
 
-static void create_logical_device(PGRAPHState *pg)
+static bool create_logical_device(PGRAPHState *pg, Error **errp)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+    VkResult result;
 
     QueueFamilyIndices indices =
         pgraph_vk_find_queue_families(r->physical_device);
@@ -468,7 +503,8 @@ static void create_logical_device(PGRAPHState *pg)
 
     fprintf(stderr, "Enabled device extensions:\n");
     for (int i = 0; i < enabled_extension_names->len; i++) {
-        fprintf(stderr, "- %s\n", g_array_index(enabled_extension_names, char *, i));
+        fprintf(stderr, "- %s\n",
+                g_array_index(enabled_extension_names, char *, i));
     }
 
     float queuePriority = 1.0f;
@@ -501,12 +537,18 @@ static void create_logical_device(PGRAPHState *pg)
     bool all_features_available = true;
     for (int i = 0; i < ARRAY_SIZE(required_features); i++) {
         if (required_features[i].available != VK_TRUE) {
-            fprintf(stderr, "Error: Device does not support required feature %s\n", required_features[i].name);
+            fprintf(stderr,
+                    "Error: Device does not support required feature %s\n",
+                    required_features[i].name);
             all_features_available = false;
         }
         *required_features[i].enabled = VK_TRUE;
     }
-    assert(all_features_available);
+
+    if (!all_features_available) {
+        error_setg(errp, "Device does not support required features");
+        return false;
+    }
 
     void *next_struct = NULL;
 
@@ -548,10 +590,15 @@ static void create_logical_device(PGRAPHState *pg)
         device_create_info.ppEnabledLayerNames = validation_layers;
     }
 
-    VK_CHECK(vkCreateDevice(r->physical_device, &device_create_info, NULL,
-                            &r->device));
+    result = vkCreateDevice(r->physical_device, &device_create_info, NULL,
+                            &r->device);
+    if (result != VK_SUCCESS) {
+        error_setg(errp, "Failed to create logical device");
+        return false;
+    }
 
     vkGetDeviceQueue(r->device, indices.queue_family, 0, &r->queue);
+    return true;
 }
 
 uint32_t pgraph_vk_get_memory_type(PGRAPHState *pg, uint32_t type_bits,
@@ -570,9 +617,10 @@ uint32_t pgraph_vk_get_memory_type(PGRAPHState *pg, uint32_t type_bits,
     return 0xFFFFFFFF; // Unable to find memoryType
 }
 
-static void init_allocator(PGRAPHState *pg)
+static bool init_allocator(PGRAPHState *pg, Error **errp)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+    VkResult result;
 
     VmaVulkanFunctions vulkanFunctions = {
         /// Required when using VMA_DYNAMIC_VULKAN_FUNCTIONS.
@@ -631,32 +679,49 @@ static void init_allocator(PGRAPHState *pg)
         .pVulkanFunctions = &vulkanFunctions,
     };
 
-    VK_CHECK(vmaCreateAllocator(&create_info, &r->allocator));
+    result = vmaCreateAllocator(&create_info, &r->allocator);
+    if (result != VK_SUCCESS) {
+        error_setg(errp, "vmaCreateAllocator failed");
+        return false;
+    }
+
+    return true;
 }
 
-static void finalize_allocator(PGRAPHState *pg)
+void pgraph_vk_init_instance(PGRAPHState *pg, Error **errp)
 {
-    PGRAPHVkState *r = pg->vk_renderer_state;
+    if (create_instance(pg, errp) &&
+        select_physical_device(pg, errp) &&
+        create_logical_device(pg, errp) &&
+        init_allocator(pg, errp)) {
+        return;
+    }
 
-    vmaDestroyAllocator(r->allocator);
-}
-
-void pgraph_vk_init_instance(PGRAPHState *pg)
-{
-    create_instance(pg);
-    select_physical_device(pg);
-    create_logical_device(pg);
-    init_allocator(pg);
+    if (*errp) {
+        error_prepend(errp, "Failed to initialize Vulkan renderer: ");
+    }
+    pgraph_vk_finalize_instance(pg);
 }
 
 void pgraph_vk_finalize_instance(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    finalize_allocator(pg);
-    vkDestroyDevice(r->device, NULL);
-    r->device = VK_NULL_HANDLE;
+    if (r->allocator != VK_NULL_HANDLE) {
+        vmaDestroyAllocator(r->allocator);
+        r->allocator = VK_NULL_HANDLE;
+    }
 
-    vkDestroyInstance(r->instance, NULL);
-    r->instance = VK_NULL_HANDLE;
+    if (r->device != VK_NULL_HANDLE) {
+        vkDestroyDevice(r->device, NULL);
+        r->device = VK_NULL_HANDLE;
+    }
+
+    if (r->instance != VK_NULL_HANDLE) {
+        vkDestroyInstance(r->instance, NULL);
+        r->instance = VK_NULL_HANDLE;
+    }
+
+    volkFinalize();
+    destroy_window(r);
 }
