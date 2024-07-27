@@ -20,6 +20,7 @@
  */
 
 #include "../nv2a_int.h"
+#include "ui/xemu-notifications.h"
 #include "ui/xemu-settings.h"
 #include "util.h"
 #include "swizzle.h"
@@ -238,20 +239,11 @@ void pgraph_init(NV2AState *d)
     }
 
     pgraph_clear_dirty_reg_map(pg);
-
-    pg->renderer = renderers[g_config.display.renderer];
 }
 
 void pgraph_clear_dirty_reg_map(PGRAPHState *pg)
 {
     memset(pg->regs_dirty, 0, sizeof(pg->regs_dirty));
-}
-
-void pgraph_init_thread(NV2AState *d)
-{
-    if (d->pgraph.renderer->ops.init) {
-        d->pgraph.renderer->ops.init(d);
-    }
 }
 
 static CONFIG_DISPLAY_RENDERER get_default_renderer(void)
@@ -291,6 +283,59 @@ void nv2a_context_init(void)
             r->ops.early_context_init();
         }
     }
+}
+
+static bool attempt_renderer_init(PGRAPHState *pg)
+{
+    NV2AState *d = container_of(pg, NV2AState, pgraph);
+
+    pg->renderer = renderers[g_config.display.renderer];
+    if (!pg->renderer) {
+        xemu_queue_error_message("Configured renderer not available");
+        return false;
+    }
+
+    Error *local_err = NULL;
+    if (pg->renderer->ops.init) {
+        pg->renderer->ops.init(d, &local_err);
+    }
+    if (local_err) {
+        const char *msg = error_get_pretty(local_err);
+        xemu_queue_error_message(msg);
+        error_free(local_err);
+        local_err = NULL;
+        return false;
+    }
+
+    return true;
+}
+
+static void init_renderer(PGRAPHState *pg)
+{
+    if (attempt_renderer_init(pg)) {
+        return;  // Success
+    }
+
+    CONFIG_DISPLAY_RENDERER default_renderer = get_default_renderer();
+    if (default_renderer != g_config.display.renderer) {
+        g_config.display.renderer = default_renderer;
+        if (attempt_renderer_init(pg)) {
+            g_autofree gchar *msg = g_strdup_printf(
+                "Switched to default renderer: %s", pg->renderer->name);
+            xemu_queue_notification(msg);
+            return;
+        }
+    }
+
+    // FIXME: Try others
+
+    fprintf(stderr, "Fatal error: cannot initialize renderer\n");
+    exit(1);
+}
+
+void pgraph_init_thread(NV2AState *d)
+{
+    init_renderer(&d->pgraph);
 }
 
 void pgraph_destroy(PGRAPHState *pg)
@@ -2919,12 +2964,7 @@ void pgraph_process_pending(NV2AState *d)
             }
         }
 
-        // FIXME: Handle missing renderer, init errors
-        pg->renderer = renderers[g_config.display.renderer];
-
-        if (pg->renderer->ops.init) {
-            pg->renderer->ops.init(d);
-        }
+        init_renderer(pg);
 
         qemu_mutex_unlock(&d->pgraph.renderer_lock);
         qemu_mutex_unlock(&d->pgraph.lock);

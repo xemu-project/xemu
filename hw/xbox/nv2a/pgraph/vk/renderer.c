@@ -33,7 +33,7 @@ static void early_context_init(void)
 #endif
 }
 
-static void pgraph_vk_init(NV2AState *d)
+static void pgraph_vk_init(NV2AState *d, Error **errp)
 {
     PGRAPHState *pg = &d->pgraph;
 
@@ -45,7 +45,11 @@ static void pgraph_vk_init(NV2AState *d)
 
     pgraph_vk_debug_init();
 
-    pgraph_vk_init_instance(pg);
+    pgraph_vk_init_instance(pg, errp);
+    if (*errp) {
+        return;
+    }
+
     pgraph_vk_init_command_buffers(pg);
     pgraph_vk_init_buffers(d);
     pgraph_vk_init_surfaces(pg);

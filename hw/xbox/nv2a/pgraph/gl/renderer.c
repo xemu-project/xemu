@@ -33,7 +33,7 @@ static void early_context_init(void)
     g_nv2a_context_display = glo_context_create();
 }
 
-static void pgraph_gl_init(NV2AState *d)
+static void pgraph_gl_init(NV2AState *d, Error **errp)
 {
     PGRAPHState *pg = &d->pgraph;
 
