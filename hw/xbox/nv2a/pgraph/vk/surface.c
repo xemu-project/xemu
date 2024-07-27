@@ -291,6 +291,19 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
             .size = packed_size,
         };
         vkCmdCopyBuffer(cmd, pack_buffer, copy_buffer, 1, &buffer_copy_region);
+
+        VkBufferMemoryBarrier barrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_HOST_READ_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = copy_buffer,
+            .size = VK_WHOLE_SIZE
+        };
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_HOST_BIT, 0, 0, NULL, 1,
+                             &barrier, 0, NULL);
     }
 
     size_t downloaded_image_size = surface->host_fmt.host_bytes_per_pixel *
