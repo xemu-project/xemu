@@ -382,8 +382,7 @@ static void destroy_current_display_image(PGRAPHState *pg)
 // FIXME: We may need to use two images. One for actually rendering display,
 // and another for GL in the correct tiling mode
 
-static void create_display_image_from_surface(PGRAPHState *pg,
-                                              SurfaceBinding *surface)
+static void create_display_image(PGRAPHState *pg, int width, int height)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
     PGRAPHVkDisplayState *d = &r->display;
@@ -418,8 +417,8 @@ static void create_display_image_from_surface(PGRAPHState *pg,
     VkImageCreateInfo image_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType = VK_IMAGE_TYPE_2D,
-        .extent.width = surface->width,
-        .extent.height = surface->height,
+        .extent.width = width,
+        .extent.height = height,
         .extent.depth = 1,
         .mipLevels = 1,
         .arrayLayers = 1,
@@ -430,8 +429,6 @@ static void create_display_image_from_surface(PGRAPHState *pg,
         .samples = VK_SAMPLE_COUNT_1_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
     };
-    pgraph_apply_scaling_factor(pg, &image_create_info.extent.width,
-                                &image_create_info.extent.height);
 
     VkExternalMemoryImageCreateInfo external_memory_image_create_info = {
         .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
@@ -581,24 +578,15 @@ static void update_uniforms(PGRAPHState *pg, SurfaceBinding *surface)
 {
     NV2AState *d = container_of(pg, NV2AState, pgraph);
     PGRAPHVkState *r = pg->vk_renderer_state;
+    ShaderUniformLayout *l = &r->display.display_frag->push_constants;
 
-    unsigned int width, height;
+    int display_size_loc = uniform_index(l, "display_size");  // FIXME: Cache
+    uniform2f(l, display_size_loc, r->display.width, r->display.height);
+
     uint32_t pline_offset, pstart_addr, pline_compare;
-    d->vga.get_resolution(&d->vga, (int*)&width, (int*)&height);
     d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
     int line_offset = surface->pitch / pline_offset;
-
-    /* Adjust viewport height for interlaced mode, used only in 1080i */
-    if (d->vga.cr[NV_PRMCIO_INTERLACE_MODE] != NV_PRMCIO_INTERLACE_MODE_DISABLED) {
-        height *= 2;
-    }
-
-    pgraph_apply_scaling_factor(pg, &width, &height);
-
-    ShaderUniformLayout *l = &r->display.display_frag->push_constants;
-    int display_size_loc = uniform_index(l, "display_size");  // FIXME: Cache
     int line_offset_loc = uniform_index(l, "line_offset");
-    uniform2f(l, display_size_loc, width, height);
     uniform1f(l, line_offset_loc, line_offset);
 
 #if 0  // FIXME: PVIDEO overlay 
@@ -878,18 +866,26 @@ void pgraph_vk_render_display(PGRAPHState *pg)
 
     uint32_t pline_offset, pstart_addr, pline_compare;
     d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
+
     SurfaceBinding *surface =
         pgraph_vk_surface_get_within(d, d->pcrtc.start + pline_offset);
     if (surface == NULL || !surface->color) {
         return;
     }
 
-    unsigned int width = surface->width, height = surface->height;
+    unsigned int width = 0, height = 0;
+    d->vga.get_resolution(&d->vga, (int *)&width, (int *)&height);
+
+    /* Adjust viewport height for interlaced mode, used only in 1080i */
+    if (d->vga.cr[NV_PRMCIO_INTERLACE_MODE] != NV_PRMCIO_INTERLACE_MODE_DISABLED) {
+        height *= 2;
+    }
+
     pgraph_apply_scaling_factor(pg, &width, &height);
 
     PGRAPHVkDisplayState *disp = &r->display;
     if (!disp->image || disp->width != width || disp->height != height) {
-        create_display_image_from_surface(pg, surface);
+        create_display_image(pg, width, height);
     }
 
     render_display(pg, surface);
