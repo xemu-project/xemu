@@ -70,6 +70,9 @@ static void pgraph_vk_finalize(NV2AState *d)
     pgraph_vk_finalize_buffers(d);
     pgraph_vk_finalize_command_buffers(pg);
     pgraph_vk_finalize_instance(pg);
+
+    g_free(pg->vk_renderer_state);
+    pg->vk_renderer_state = NULL;
 }
 
 static void pgraph_vk_flush(NV2AState *d)
