@@ -109,3 +109,23 @@ void pgraph_gl_get_report(NV2AState *d, uint32_t parameter)
     r->gl_zpass_pixel_count_query_count = 0;
     r->gl_zpass_pixel_count_queries = NULL;
 }
+
+void pgraph_gl_finalize_reports(PGRAPHState *pg)
+{
+    PGRAPHGLState *r = pg->gl_renderer_state;
+
+    QueryReport *report, *next;
+    QSIMPLEQ_FOREACH_SAFE (report, &r->report_queue, entry, next) {
+        if (report->query_count) {
+            glDeleteQueries(report->query_count, report->queries);
+        }
+        QSIMPLEQ_REMOVE_HEAD(&r->report_queue, entry);
+        g_free(report);
+    }
+
+    if (r->gl_zpass_pixel_count_query_count) {
+        glDeleteQueries(r->gl_zpass_pixel_count_query_count,
+                        r->gl_zpass_pixel_count_queries);
+        r->gl_zpass_pixel_count_query_count = 0;
+    }
+}
