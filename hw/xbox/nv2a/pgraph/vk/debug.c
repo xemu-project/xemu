@@ -57,3 +57,16 @@ void pgraph_vk_debug_frame_terminator(void)
     }
 #endif
 }
+
+void pgraph_vk_insert_debug_marker(PGRAPHVkState *r, VkCommandBuffer cmd,
+                                   const char *name, float color[4])
+{
+    if (r->debug_utils_extension_enabled) {
+        VkDebugUtilsLabelEXT label_info = {
+            .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+            .pLabelName = name,
+        };
+        memcpy(label_info.color, color, 4 * sizeof(float));
+        vkCmdInsertDebugUtilsLabelEXT(cmd, &label_info);
+    }
+}
