@@ -250,6 +250,8 @@ void pgraph_init(NV2AState *d);
 void pgraph_init_thread(NV2AState *d);
 void pgraph_destroy(PGRAPHState *pg);
 void pgraph_context_switch(NV2AState *d, unsigned int channel_id);
+void pgraph_process_pending(NV2AState *d);
+void pgraph_process_pending_reports(NV2AState *d);
 int pgraph_method(NV2AState *d, unsigned int subchannel, unsigned int method,
                   uint32_t parameter, uint32_t *parameters,
                   size_t num_words_available, size_t max_lookahead_words,

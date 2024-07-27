@@ -461,13 +461,13 @@ void *pfifo_thread(void *arg)
     while (true) {
         d->pfifo.fifo_kick = false;
 
-        d->pgraph.renderer->ops.process_pending(d);
+        pgraph_process_pending(d);
 
         if (!d->pfifo.halt) {
             pfifo_run_pusher(d);
         }
 
-        d->pgraph.renderer->ops.process_pending_reports(d);
+        pgraph_process_pending_reports(d);
 
         if (!d->pfifo.fifo_kick) {
             qemu_cond_broadcast(&d->pfifo.fifo_idle_cond);
