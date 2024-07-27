@@ -317,6 +317,12 @@ static void destroy_display_pipeline(PGRAPHState *pg)
 
     vkDestroyPipeline(r->device, r->display.pipeline, NULL);
     r->display.pipeline = VK_NULL_HANDLE;
+
+    vkDestroyPipelineLayout(r->device, r->display.pipeline_layout, NULL);
+    r->display.pipeline_layout = VK_NULL_HANDLE;
+
+    pgraph_vk_destroy_shader_module(r, r->display.display_frag);
+    r->display.display_frag = NULL;
 }
 
 static void create_frame_buffer(PGRAPHState *pg)
