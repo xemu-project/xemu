@@ -1158,6 +1158,30 @@ static void sync_staging_buffer(PGRAPHState *pg, VkCommandBuffer cmd,
     b_src->buffer_offset = 0;
 }
 
+static void flush_memory_buffer(PGRAPHState *pg, VkCommandBuffer cmd)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    VK_CHECK(vmaFlushAllocation(
+        r->allocator, r->storage_buffers[BUFFER_VERTEX_RAM].allocation, 0,
+        VK_WHOLE_SIZE));
+
+    VkBufferMemoryBarrier barrier = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = r->storage_buffers[BUFFER_VERTEX_RAM].buffer,
+        .offset = 0,
+        .size = VK_WHOLE_SIZE,
+    };
+
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
+                         VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 0, NULL, 1,
+                         &barrier, 0, NULL);
+}
+
 static void begin_render_pass(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -1231,6 +1255,7 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
                                 BUFFER_VERTEX_INLINE);
         sync_staging_buffer(pg, cmd, BUFFER_UNIFORM_STAGING, BUFFER_UNIFORM);
         bitmap_clear(r->uploaded_bitmap, 0, r->bitmap_size);
+        flush_memory_buffer(pg, cmd);
         VK_CHECK(vkEndCommandBuffer(r->aux_command_buffer));
         r->in_aux_command_buffer = false;
 
