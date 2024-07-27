@@ -397,7 +397,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
                 mstring_get_str(geometry_shader_code));
             mstring_unref(geometry_shader_code);
         } else {
-            memset(&snode->geometry, 0, sizeof(snode->geometry));
+            snode->geometry = NULL;
         }
 
         MString *vertex_shader_code =
