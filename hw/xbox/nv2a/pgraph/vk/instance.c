@@ -65,7 +65,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     if ((messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) &&
         (messageSeverity & (VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
                             VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT))) {
-        assert(false);
+        assert(!g_config.display.vulkan.assert_on_validation_msg);
     }
     return VK_FALSE;
 }
