@@ -1270,8 +1270,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
 
     VkSamplerCreateInfo sampler_create_info = {
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter = vk_min_filter,
-        .minFilter = vk_mag_filter,
+        .magFilter = vk_mag_filter,
+        .minFilter = vk_min_filter,
         .addressModeU = lookup_texture_address_mode(
             GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU)),
         .addressModeV = lookup_texture_address_mode(
