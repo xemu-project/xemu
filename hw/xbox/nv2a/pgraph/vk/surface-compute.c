@@ -407,7 +407,9 @@ void pgraph_vk_pack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
         },
         {
             .buffer = src,
-            .offset = depth_size,
+            .offset = ROUND_UP(
+                depth_size,
+                r->device_props.limits.minStorageBufferOffsetAlignment),
             .range = stencil_size,
         },
         {
@@ -477,7 +479,9 @@ void pgraph_vk_unpack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
         },
         {
             .buffer = dst,
-            .offset = depth_size,
+            .offset = ROUND_UP(
+                depth_size,
+                r->device_props.limits.minStorageBufferOffsetAlignment),
             .range = stencil_size,
         },
         {

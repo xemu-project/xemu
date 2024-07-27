@@ -252,11 +252,14 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
     }
 
     if (surface->host_fmt.aspect & VK_IMAGE_ASPECT_STENCIL_BIT) {
+        size_t depth_size = scaled_width * scaled_height * 4;
         copy_regions[num_copy_regions++] = (VkBufferImageCopy){
-            .bufferOffset = scaled_width * scaled_height * 4,
+            .bufferOffset = ROUND_UP(
+                depth_size,
+                r->device_props.limits.minStorageBufferOffsetAlignment),
             .imageSubresource.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT,
             .imageSubresource.layerCount = 1,
-            .imageExtent = (VkExtent3D){scaled_width, scaled_height, 1},
+            .imageExtent = (VkExtent3D){ scaled_width, scaled_height, 1 },
         };
     }
 
@@ -961,7 +964,9 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
         // Already scaled during compute. Adjust copy regions.
         regions[0].imageExtent = (VkExtent3D){ scaled_width, scaled_height, 1 };
         regions[1].imageExtent = regions[0].imageExtent;
-        regions[1].bufferOffset = unpacked_depth_image_size;
+        regions[1].bufferOffset =
+            ROUND_UP(unpacked_depth_image_size,
+                     r->device_props.limits.minStorageBufferOffsetAlignment);
 
         copy_buffer = unpack_buffer;
     }
