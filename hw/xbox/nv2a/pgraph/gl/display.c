@@ -102,6 +102,33 @@ void pgraph_gl_init_display_renderer(NV2AState *d)
     assert(glGetError() == GL_NO_ERROR);
 }
 
+void pgraph_gl_finalize_display(PGRAPHState *pg)
+{
+    PGRAPHGLState *r = pg->gl_renderer_state;
+
+    glo_set_current(g_nv2a_context_display);
+
+    glDeleteTextures(1, &r->gl_display_buffer);
+    r->gl_display_buffer = 0;
+
+    glDeleteProgram(r->disp_rndr.prog);
+    r->disp_rndr.prog = 0;
+
+    glDeleteVertexArrays(1, &r->disp_rndr.vao);
+    r->disp_rndr.vao = 0;
+
+    glDeleteBuffers(1, &r->disp_rndr.vbo);
+    r->disp_rndr.vbo = 0;
+
+    glDeleteFramebuffers(1, &r->disp_rndr.fbo);
+    r->disp_rndr.fbo = 0;
+
+    glDeleteTextures(1, &r->disp_rndr.pvideo_tex);
+    r->disp_rndr.pvideo_tex = 0;
+
+    glo_set_current(g_nv2a_context_render);
+}
+
 static uint8_t *convert_texture_data__CR8YB8CB8YA8(const uint8_t *data,
                                                    unsigned int width,
                                                    unsigned int height,

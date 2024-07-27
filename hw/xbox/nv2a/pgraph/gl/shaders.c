@@ -581,13 +581,15 @@ void pgraph_gl_init_shader_cache(PGRAPHState *pg)
                        shader_reload_lru_from_disk, pg, QEMU_THREAD_JOINABLE);
 }
 
-void pgraph_gl_deinit_shader_cache(PGRAPHState *pg)
+void pgraph_gl_finalize_shaders(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
 
     // Clear out shader cache
-    pgraph_gl_shader_write_cache_reload_list(pg);
+    pgraph_gl_shader_write_cache_reload_list(pg); // FIXME: also flushes, rename for clarity
     free(r->shader_cache_entries);
+    r->shader_cache_entries = NULL;
+
     qemu_mutex_destroy(&r->shader_cache_lock);
 }
 
