@@ -222,6 +222,7 @@ void pgraph_init(NV2AState *d)
     qemu_mutex_init(&pg->renderer_lock);
     qemu_event_init(&pg->sync_complete, false);
     qemu_event_init(&pg->flush_complete, false);
+    qemu_cond_init(&pg->framebuffer_released);
 
     pg->frame_time = 0;
     pg->draw_time = 0;
@@ -352,26 +353,41 @@ void pgraph_destroy(PGRAPHState *pg)
 int nv2a_get_framebuffer_surface(void)
 {
     NV2AState *d = g_nv2a;
+    PGRAPHState *pg = &d->pgraph;
     int s = 0;
 
-    qemu_mutex_lock(&d->pgraph.renderer_lock);
-    if (d->pgraph.renderer->ops.get_framebuffer_surface) {
-        s = d->pgraph.renderer->ops.get_framebuffer_surface(d);
+    qemu_mutex_lock(&pg->renderer_lock);
+    assert(!pg->framebuffer_in_use);
+    pg->framebuffer_in_use = true;
+    if (pg->renderer->ops.get_framebuffer_surface) {
+        s = pg->renderer->ops.get_framebuffer_surface(d);
     }
-    qemu_mutex_unlock(&d->pgraph.renderer_lock);
+    qemu_mutex_unlock(&pg->renderer_lock);
 
     return s;
+}
+
+void nv2a_release_framebuffer_surface(void)
+{
+    NV2AState *d = g_nv2a;
+    PGRAPHState *pg = &d->pgraph;
+    qemu_mutex_lock(&pg->renderer_lock);
+    pg->framebuffer_in_use = false;
+    qemu_cond_broadcast(&pg->framebuffer_released);
+    qemu_mutex_unlock(&pg->renderer_lock);
 }
 
 void nv2a_set_surface_scale_factor(unsigned int scale)
 {
     NV2AState *d = g_nv2a;
 
+    qemu_mutex_unlock_iothread();
     qemu_mutex_lock(&d->pgraph.renderer_lock);
     if (d->pgraph.renderer->ops.set_surface_scale_factor) {
         d->pgraph.renderer->ops.set_surface_scale_factor(d, scale);
     }
     qemu_mutex_unlock(&d->pgraph.renderer_lock);
+    qemu_mutex_lock_iothread();
 }
 
 unsigned int nv2a_get_surface_scale_factor(void)
@@ -379,11 +395,13 @@ unsigned int nv2a_get_surface_scale_factor(void)
     NV2AState *d = g_nv2a;
     int s = 1;
 
+    qemu_mutex_unlock_iothread();
     qemu_mutex_lock(&d->pgraph.renderer_lock);
     if (d->pgraph.renderer->ops.get_surface_scale_factor) {
         s = d->pgraph.renderer->ops.get_surface_scale_factor(d);
     }
     qemu_mutex_unlock(&d->pgraph.renderer_lock);
+    qemu_mutex_lock_iothread();
 
     return s;
 }
@@ -2958,6 +2976,9 @@ void pgraph_process_pending(NV2AState *d)
 
             qemu_mutex_unlock(&d->pfifo.lock);
             qemu_mutex_lock(&d->pgraph.lock);
+            while (pg->framebuffer_in_use) {
+                qemu_cond_wait(&d->pgraph.framebuffer_released, &d->pgraph.renderer_lock);
+            }
 
             if (pg->renderer->ops.finalize) {
                 pg->renderer->ops.finalize(d);
