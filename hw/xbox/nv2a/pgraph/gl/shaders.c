@@ -1027,6 +1027,7 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
     ShaderBinding* old_binding = r->shader_binding;
 
     ShaderState state = pgraph_get_shader_state(pg);
+    assert(!state.vulkan);
 
     uint64_t shader_state_hash = fast_hash((uint8_t*) &state, sizeof(ShaderState));
     qemu_mutex_lock(&r->shader_cache_lock);
