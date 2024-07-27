@@ -235,6 +235,9 @@ typedef struct PGRAPHState {
     bool sync_pending;
     QemuEvent sync_complete;
 
+    bool framebuffer_in_use;
+    QemuCond framebuffer_released;
+
     unsigned int surface_scale_factor;
     uint8_t *scale_buf;
 

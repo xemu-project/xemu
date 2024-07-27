@@ -39,8 +39,6 @@ void pgraph_gl_set_surface_scale_factor(NV2AState *d, unsigned int scale)
 
     g_config.display.quality.surface_scale = scale < 1 ? 1 : scale;
 
-    qemu_mutex_unlock_iothread();
-
     qemu_mutex_lock(&d->pfifo.lock);
     qatomic_set(&d->pfifo.halt, true);
     qemu_mutex_unlock(&d->pfifo.lock);
@@ -67,8 +65,6 @@ void pgraph_gl_set_surface_scale_factor(NV2AState *d, unsigned int scale)
     qatomic_set(&d->pfifo.halt, false);
     pfifo_kick(d);
     qemu_mutex_unlock(&d->pfifo.lock);
-
-    qemu_mutex_lock_iothread();
 }
 
 unsigned int pgraph_gl_get_surface_scale_factor(NV2AState *d)
