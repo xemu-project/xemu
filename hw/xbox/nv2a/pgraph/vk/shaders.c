@@ -34,6 +34,8 @@
 #include "renderer.h"
 #include <locale.h>
 
+const size_t MAX_UNIFORM_ATTR_VALUES_SIZE = NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float);
+
 static void create_descriptor_pool(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
@@ -305,6 +307,9 @@ static void update_shader_constant_locations(ShaderBinding *binding)
 
     binding->material_alpha_loc =
         uniform_index(&binding->vertex->uniforms, "material_alpha");
+
+    binding->uniform_attrs_loc =
+        uniform_index(&binding->vertex->uniforms, "inlineValue");
 }
 
 static void shader_cache_entry_init(Lru *lru, LruNode *node, void *state)
@@ -430,11 +435,26 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
     return snode;
 }
 
+static void update_uniform_attr_values(PGRAPHState *pg, ShaderBinding *binding)
+{
+    float values[NV2A_VERTEXSHADER_ATTRIBUTES][4];
+    int num_uniform_attrs = 0;
+
+    pgraph_get_inline_values(pg, binding->state.uniform_attrs, values,
+                             &num_uniform_attrs);
+
+    if (num_uniform_attrs > 0) {
+        uniform1fv(&binding->vertex->uniforms, binding->uniform_attrs_loc,
+                   num_uniform_attrs * 4, &values[0][0]);
+    }
+}
+
 // FIXME: Move to common
 static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
                                     bool binding_changed, bool vertex_program,
                                     bool fixed_function)
 {
+    ShaderState *state = &binding->state;
     int i, j;
 
     /* update combiner constants */
@@ -662,6 +682,10 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
         uniform1f(&binding->vertex->uniforms, binding->material_alpha_loc,
                          pg->material_alpha);
     }
+
+    if (!state->use_push_constants_for_uniform_attrs && state->uniform_attrs) {
+        update_uniform_attr_values(pg, binding);
+    }
 }
 
 // Quickly check PGRAPH state to see if any registers have changed that
@@ -742,6 +766,12 @@ void pgraph_vk_bind_shaders(PGRAPHState *pg)
         ShaderState new_state;
         memset(&new_state, 0, sizeof(ShaderState));
         new_state = pgraph_get_shader_state(pg);
+        new_state.vulkan = true;
+        new_state.psh.vulkan = true;
+        new_state.use_push_constants_for_uniform_attrs =
+            (r->device_props.limits.maxPushConstantsSize >=
+             MAX_UNIFORM_ATTR_VALUES_SIZE);
+
         if (!r->shader_binding || memcmp(&r->shader_binding->state, &new_state, sizeof(ShaderState))) {
             r->shader_binding = gen_shaders(pg, &new_state);
             r->shader_bindings_changed = true;

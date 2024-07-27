@@ -39,10 +39,9 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
 
     ShaderState state;
 
-    // We will hash it, so make sure any padding is zerod
+    // We will hash it, so make sure any padding is zeroed
     memset(&state, 0, sizeof(ShaderState));
 
-    state.vulkan = pg->renderer->type == CONFIG_DISPLAY_RENDERER_VULKAN;
     state.surface_scale_factor = pg->surface_scale_factor;
 
     state.compressed_attrs = pg->compressed_attrs;
@@ -50,7 +49,6 @@ ShaderState pgraph_get_shader_state(PGRAPHState *pg)
     state.swizzle_attrs = pg->swizzle_attrs;
 
     /* register combiner stuff */
-    state.psh.vulkan = state.vulkan;
     state.psh.window_clip_exclusive =
         pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) & NV_PGRAPH_SETUPRASTER_WINDOWCLIPTYPE;
     state.psh.combiner_control = pgraph_reg_r(pg, NV_PGRAPH_COMBINECTL);

@@ -982,19 +982,29 @@ static void create_pipeline(PGRAPHState *pg)
     // FIXME: No direct analog. Just do it with MSAA.
     // }
 
-    VkPushConstantRange push_constant_range = {
-        .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-        .offset = 0,
-        // FIXME: Minimize push constants
-        .size = NV2A_VERTEXSHADER_ATTRIBUTES * 4 * sizeof(float),
-    };
+
     VkPipelineLayoutCreateInfo pipeline_layout_info = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount = 1,
         .pSetLayouts = &r->descriptor_set_layout,
-        .pushConstantRangeCount = 1,
-        .pPushConstantRanges = &push_constant_range,
     };
+
+    VkPushConstantRange push_constant_range;
+    if (r->shader_binding->state.use_push_constants_for_uniform_attrs) {
+        int num_uniform_attributes =
+            __builtin_popcount(r->shader_binding->state.uniform_attrs);
+        if (num_uniform_attributes) {
+            push_constant_range = (VkPushConstantRange){
+                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                .offset = 0,
+                // FIXME: Minimize push constants
+                .size = num_uniform_attributes * 4 * sizeof(float),
+            };
+            pipeline_layout_info.pushConstantRangeCount = 1;
+            pipeline_layout_info.pPushConstantRanges = &push_constant_range;
+        }
+    }
+
     VkPipelineLayout layout;
     VK_CHECK(vkCreatePipelineLayout(r->device, &pipeline_layout_info, NULL,
                                     &layout));
@@ -1031,23 +1041,28 @@ static void create_pipeline(PGRAPHState *pg)
     NV2A_VK_DGROUP_END();
 }
 
-static void push_vertex_attrib_values(PGRAPHState *pg)
+static void push_vertex_attr_values(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    // FIXME: Do partial updates
-
-    float attrib_values[NV2A_VERTEXSHADER_ATTRIBUTES * 4];
-    for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
-        attrib_values[i * 4 + 0] = pg->vertex_attributes[i].inline_value[0];
-        attrib_values[i * 4 + 1] = pg->vertex_attributes[i].inline_value[1];
-        attrib_values[i * 4 + 2] = pg->vertex_attributes[i].inline_value[2];
-        attrib_values[i * 4 + 3] = pg->vertex_attributes[i].inline_value[3];
+    if (!r->shader_binding->state.use_push_constants_for_uniform_attrs) {
+        return;
     }
 
-    vkCmdPushConstants(r->command_buffer, r->pipeline_binding->layout,
-                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(attrib_values),
-                       &attrib_values);
+    // FIXME: Partial updates
+
+    float values[NV2A_VERTEXSHADER_ATTRIBUTES][4];
+    int num_uniform_attrs = 0;
+
+    pgraph_get_inline_values(pg, r->shader_binding->state.uniform_attrs, values,
+                             &num_uniform_attrs);
+
+    if (num_uniform_attrs > 0) {
+        vkCmdPushConstants(r->command_buffer, r->pipeline_binding->layout,
+                           VK_SHADER_STAGE_VERTEX_BIT, 0,
+                           num_uniform_attrs * 4 * sizeof(float),
+                           &values);
+    }
 }
 
 static void bind_descriptor_sets(PGRAPHState *pg)
@@ -1405,7 +1420,7 @@ static void begin_draw(PGRAPHState *pg)
 
     if (!pg->clearing) {
         bind_descriptor_sets(pg);
-        push_vertex_attrib_values(pg);
+        push_vertex_attr_values(pg);
     }
 
     r->in_draw = true;
