@@ -28,8 +28,8 @@
 
 #include <volk.h>
 
-typedef GArray VkExtensionPropertiesArray;
-typedef GArray StringArray;
+#define VkExtensionPropertiesArray GArray
+#define StringArray GArray
 
 static bool enable_validation = false;
 
@@ -217,10 +217,10 @@ static void create_instance(PGRAPHState *pg)
         .apiVersion = VK_API_VERSION_1_3,
     };
 
-    g_autofree VkExtensionPropertiesArray *available_extensions =
+    g_autoptr(VkExtensionPropertiesArray) available_extensions =
         get_available_instance_extensions(pg);
 
-    g_autofree StringArray *enabled_extension_names =
+    g_autoptr(StringArray) enabled_extension_names =
         get_required_instance_extension_names(pg);
 
     bool all_required_extensions_available = true;
@@ -374,7 +374,7 @@ static void add_optional_device_extension_names(
 
 static bool check_device_support_required_extensions(VkPhysicalDevice device)
 {
-    g_autofree VkExtensionPropertiesArray *available_extensions =
+    g_autoptr(VkExtensionPropertiesArray) available_extensions =
         get_available_device_extensions(device);
 
     for (int i = 0; i < ARRAY_SIZE(required_device_extensions); i++) {
@@ -457,10 +457,10 @@ static void create_logical_device(PGRAPHState *pg)
     QueueFamilyIndices indices =
         pgraph_vk_find_queue_families(r->physical_device);
 
-    g_autofree VkExtensionPropertiesArray *available_extensions =
+    g_autoptr(VkExtensionPropertiesArray) available_extensions =
         get_available_device_extensions(r->physical_device);
 
-    g_autofree StringArray *enabled_extension_names =
+    g_autoptr(StringArray) enabled_extension_names =
         get_required_device_extension_names();
 
     add_optional_device_extension_names(pg, available_extensions,
