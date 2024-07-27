@@ -247,7 +247,7 @@ static bool vertex_cache_entry_compare(Lru *lru, LruNode *node, void *key)
 
 static const size_t element_cache_size = 50*1024;
 
-void pgraph_gl_init_vertex_cache(NV2AState *d)
+void pgraph_gl_init_buffers(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
@@ -283,7 +283,7 @@ void pgraph_gl_init_vertex_cache(NV2AState *d)
     assert(glGetError() == GL_NO_ERROR);
 }
 
-void pgraph_gl_finalize_vertex(PGRAPHState *pg)
+void pgraph_gl_finalize_buffers(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
 

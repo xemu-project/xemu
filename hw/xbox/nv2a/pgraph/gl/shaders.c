@@ -551,7 +551,7 @@ static bool shader_cache_entry_compare(Lru *lru, LruNode *node, void *key)
     return memcmp(&snode->state, key, sizeof(ShaderState));
 }
 
-void pgraph_gl_init_shader_cache(PGRAPHState *pg)
+void pgraph_gl_init_shaders(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
 

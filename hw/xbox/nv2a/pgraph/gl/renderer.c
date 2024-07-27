@@ -53,10 +53,10 @@ static void pgraph_gl_init(NV2AState *d)
 
     pgraph_gl_init_surfaces(pg);
     pgraph_gl_init_reports(d);
-    pgraph_gl_init_texture_cache(d);
-    pgraph_gl_init_vertex_cache(d);
-    pgraph_gl_init_shader_cache(pg);
-    pgraph_gl_init_display_renderer(d);
+    pgraph_gl_init_textures(d);
+    pgraph_gl_init_buffers(d);
+    pgraph_gl_init_shaders(pg);
+    pgraph_gl_init_display(d);
 
     pgraph_gl_update_entire_memory_buffer(d);
 
@@ -74,7 +74,7 @@ static void pgraph_gl_finalize(NV2AState *d)
     pgraph_gl_finalize_shaders(pg);
     pgraph_gl_finalize_textures(pg);
     pgraph_gl_finalize_reports(pg);
-    pgraph_gl_finalize_vertex(pg);
+    pgraph_gl_finalize_buffers(pg);
     pgraph_gl_finalize_display(pg);
 
     glo_set_current(NULL);
