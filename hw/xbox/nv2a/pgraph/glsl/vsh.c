@@ -256,14 +256,16 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
     /* Return combined header + source */
     if (state->vulkan) {
         // FIXME: Optimize uniforms
-        if (state->use_push_constants_for_uniform_attrs) {
-            mstring_append_fmt(output,
-                "layout(push_constant) uniform PushConstants {\n"
-                "    vec4 inlineValue[%d];\n"
-                "};\n\n", num_uniform_attrs);
-        } else {
-            mstring_append_fmt(uniforms, "    vec4 inlineValue[%d];\n",
-                               num_uniform_attrs);
+        if (num_uniform_attrs > 0) {
+            if (state->use_push_constants_for_uniform_attrs) {
+                mstring_append_fmt(output,
+                    "layout(push_constant) uniform PushConstants {\n"
+                    "    vec4 inlineValue[%d];\n"
+                    "};\n\n", num_uniform_attrs);
+            } else {
+                mstring_append_fmt(uniforms, "    vec4 inlineValue[%d];\n",
+                                   num_uniform_attrs);
+            }
         }
         mstring_append_fmt(
             output,
