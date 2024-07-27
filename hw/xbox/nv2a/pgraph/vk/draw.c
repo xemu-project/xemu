@@ -1201,7 +1201,7 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
         VK_CHECK(vkEndCommandBuffer(r->aux_command_buffer));
         r->in_aux_command_buffer = false;
 
-        VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
         VkSubmitInfo submit_infos[] = {
             {
                 .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
