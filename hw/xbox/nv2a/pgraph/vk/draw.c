@@ -115,8 +115,6 @@ static void pipeline_cache_entry_post_evict(Lru *lru, LruNode *node)
 
     vkDestroyPipelineLayout(r->device, snode->layout, NULL);
     snode->layout = VK_NULL_HANDLE;
-
-    fprintf(stderr, "released pipeline\n");
 }
 
 static bool pipeline_cache_entry_compare(Lru *lru, LruNode *node, void *key)
