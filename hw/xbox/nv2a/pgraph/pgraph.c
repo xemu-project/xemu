@@ -240,7 +240,6 @@ void pgraph_init(NV2AState *d)
     pgraph_clear_dirty_reg_map(pg);
 
     pg->renderer = renderers[g_config.display.renderer];
-    pg->renderer->ops.init(d);
 }
 
 void pgraph_clear_dirty_reg_map(PGRAPHState *pg)
@@ -250,8 +249,8 @@ void pgraph_clear_dirty_reg_map(PGRAPHState *pg)
 
 void pgraph_init_thread(NV2AState *d)
 {
-    if (d->pgraph.renderer->ops.init_thread) {
-        d->pgraph.renderer->ops.init_thread(d);
+    if (d->pgraph.renderer->ops.init) {
+        d->pgraph.renderer->ops.init(d);
     }
 }
 
@@ -2925,9 +2924,6 @@ void pgraph_process_pending(NV2AState *d)
 
         if (pg->renderer->ops.init) {
             pg->renderer->ops.init(d);
-        }
-        if (pg->renderer->ops.init_thread) {
-            pg->renderer->ops.init_thread(d);
         }
 
         qemu_mutex_unlock(&d->pgraph.renderer_lock);

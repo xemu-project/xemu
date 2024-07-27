@@ -27,7 +27,7 @@
 GloContext *g_nv2a_context_render;
 GloContext *g_nv2a_context_display;
 
-static void nv2a_gl_context_init(void)
+static void early_context_init(void)
 {
     g_nv2a_context_render = glo_context_create();
     g_nv2a_context_display = glo_context_create();
@@ -56,21 +56,12 @@ static void pgraph_gl_init(NV2AState *d)
     pgraph_gl_init_texture_cache(d);
     pgraph_gl_init_vertex_cache(d);
     pgraph_gl_init_shader_cache(pg);
-
-    glo_set_current(g_nv2a_context_display);
     pgraph_gl_init_display_renderer(d);
 
     pgraph_gl_update_entire_memory_buffer(d);
 
-    glo_set_current(NULL);
-
     pg->uniform_attrs = 0;
     pg->swizzle_attrs = 0;
-}
-
-static void pgraph_gl_init_thread(NV2AState *d)
-{
-    glo_set_current(g_nv2a_context_render);
 }
 
 static void pgraph_gl_finalize(NV2AState *d)
@@ -172,7 +163,7 @@ static void pgraph_gl_pre_shutdown_wait(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    qemu_event_wait(&r->shader_cache_writeback_complete);   
+    qemu_event_wait(&r->shader_cache_writeback_complete);
 }
 
 static PGRAPHRenderer pgraph_gl_renderer = {
@@ -180,8 +171,7 @@ static PGRAPHRenderer pgraph_gl_renderer = {
     .name = "OpenGL",
     .ops = {
         .init = pgraph_gl_init,
-        .early_context_init = nv2a_gl_context_init,
-        .init_thread = pgraph_gl_init_thread,
+        .early_context_init = early_context_init,
         .finalize = pgraph_gl_finalize,
         .clear_report_value = pgraph_gl_clear_report_value,
         .clear_surface = pgraph_gl_clear_surface,

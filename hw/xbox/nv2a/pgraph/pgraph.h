@@ -101,7 +101,6 @@ typedef struct PGRAPHRenderer {
     struct {
         void (*early_context_init)(void);
         void (*init)(NV2AState *d);
-        void (*init_thread)(NV2AState *d);
         void (*finalize)(NV2AState *d);
         void (*clear_report_value)(NV2AState *d);
         void (*clear_surface)(NV2AState *d, uint32_t parameter);
