@@ -1122,6 +1122,39 @@ static void sync_staging_buffer(PGRAPHState *pg, VkCommandBuffer cmd,
     VkBufferCopy copy_region = { .size = b_src->buffer_offset };
     vkCmdCopyBuffer(cmd, b_src->buffer, b_dst->buffer, 1, &copy_region);
 
+    VkAccessFlags dst_access_mask;
+    VkPipelineStageFlags dst_stage_mask;
+
+    switch (index_dst) {
+    case BUFFER_INDEX:
+        dst_access_mask = VK_ACCESS_INDEX_READ_BIT;
+        dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+        break;
+    case BUFFER_VERTEX_INLINE:
+        dst_access_mask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+        dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+        break;
+    case BUFFER_UNIFORM:
+        dst_access_mask = VK_ACCESS_UNIFORM_READ_BIT;
+        dst_stage_mask = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+        break;
+    default:
+        assert(0);
+        break;
+    }
+
+    VkBufferMemoryBarrier barrier = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+        .dstAccessMask = dst_access_mask,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = b_dst->buffer,
+        .size = b_src->buffer_offset
+    };
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, dst_stage_mask, 0,
+                         0, NULL, 1, &barrier, 0, NULL);
+
     b_src->buffer_offset = 0;
 }
 
