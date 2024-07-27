@@ -1066,15 +1066,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         // FIXME: Restructure to support rendering surfaces to cubemap faces
 
         // Writeback any surfaces which this texture may index
-        hwaddr tex_vram_end = texture_vram_offset + texture_length - 1;
-        QTAILQ_FOREACH(surface, &r->surfaces, entry) {
-            hwaddr surf_vram_end = surface->vram_addr + surface->size - 1;
-            bool overlapping = !(surface->vram_addr >= tex_vram_end
-                                 || texture_vram_offset >= surf_vram_end);
-            if (overlapping) {
-                pgraph_vk_surface_download_if_dirty(d, surface);
-            }
-        }
+        pgraph_vk_download_surfaces_in_range_if_dirty(
+            pg, texture_vram_offset, texture_length);
     }
 
     if (surface_to_texture && pg->surface_scale_factor > 1) {
