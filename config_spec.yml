@@ -136,6 +136,7 @@ display:
     default: OPENGL
   vulkan:
     validation_layers: bool
+    debug_shaders: bool
   quality:
     surface_scale:
       type: integer
