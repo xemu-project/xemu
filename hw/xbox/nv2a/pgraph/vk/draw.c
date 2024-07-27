@@ -1322,6 +1322,8 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
 
     NV2AState *d = container_of(pg, NV2AState, pgraph);
     pgraph_vk_process_pending_reports_internal(d);
+
+    pgraph_vk_compute_finish_complete(r);
 }
 
 void pgraph_vk_begin_command_buffer(PGRAPHState *pg)
