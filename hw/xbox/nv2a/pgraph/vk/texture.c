@@ -638,7 +638,9 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
     };
 
     if (surface->host_fmt.aspect & VK_IMAGE_ASPECT_STENCIL_BIT) {
-        stencil_buffer_offset = scaled_width * scaled_height * 4;
+        stencil_buffer_offset =
+            ROUND_UP(scaled_width * scaled_height * 4,
+                     r->device_props.limits.minStorageBufferOffsetAlignment);
         stencil_buffer_size = scaled_width * scaled_height;
         copied_image_size += stencil_buffer_size;
 
