@@ -375,10 +375,10 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
     if (state == RUN_STATE_SAVE_VM) {
         nv2a_lock_fifo(d);
         qatomic_set(&d->pfifo.halt, true);
-        d->pgraph.renderer->ops.pre_savevm_trigger(d);
+        pgraph_pre_savevm_trigger(d);
         nv2a_unlock_fifo(d);
         qemu_mutex_unlock_iothread();
-        d->pgraph.renderer->ops.pre_savevm_wait(d);
+        pgraph_pre_savevm_wait(d);
         qemu_mutex_lock_iothread();
         nv2a_lock_fifo(d);
     } else if (state == RUN_STATE_RESTORE_VM) {
@@ -391,10 +391,10 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
         nv2a_unlock_fifo(d);
     } else if (state == RUN_STATE_SHUTDOWN) {
         nv2a_lock_fifo(d);
-        d->pgraph.renderer->ops.pre_shutdown_trigger(d);
+        pgraph_pre_shutdown_trigger(d);
         nv2a_unlock_fifo(d);
         qemu_mutex_unlock_iothread();
-        d->pgraph.renderer->ops.pre_shutdown_wait(d);
+        pgraph_pre_shutdown_wait(d);
         qemu_mutex_lock_iothread();
     }
 }
