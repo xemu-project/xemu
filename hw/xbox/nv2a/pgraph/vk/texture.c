@@ -1005,6 +1005,13 @@ static void set_texture_label(PGRAPHState *pg, TextureBinding *texture)
     vmaSetAllocationName(r->allocator, texture->allocation, label);
 }
 
+static bool is_linear_filter_supported_for_format(PGRAPHVkState *r,
+                                                  int kelvin_format)
+{
+    return r->texture_format_properties[kelvin_format].optimalTilingFeatures &
+           VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+}
+
 static void create_texture(PGRAPHState *pg, int texture_idx)
 {
     NV2A_VK_DGROUP_BEGIN("Creating texture %d", texture_idx);
@@ -1230,11 +1237,24 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     if (filter & NV_PGRAPH_TEXFILTER0_BSIGNED)
         NV2A_UNIMPLEMENTED("NV_PGRAPH_TEXFILTER0_BSIGNED");
 
+    VkFilter vk_min_filter, vk_mag_filter;
     unsigned int mag_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MAG);
     assert(mag_filter < ARRAY_SIZE(pgraph_texture_mag_filter_vk_map));
 
     unsigned int min_filter = GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIN);
     assert(min_filter < ARRAY_SIZE(pgraph_texture_min_filter_vk_map));
+
+    if (is_linear_filter_supported_for_format(r, state.color_format)) {
+        vk_mag_filter = pgraph_texture_min_filter_vk_map[mag_filter];
+        vk_min_filter = pgraph_texture_min_filter_vk_map[min_filter];
+
+        if (f_basic.linear && vk_mag_filter != vk_min_filter) {
+            // Per spec, if coordinates unnormalized, filters must be same
+            vk_mag_filter = vk_min_filter = VK_FILTER_LINEAR;
+        }
+    } else {
+        vk_mag_filter = vk_min_filter = VK_FILTER_NEAREST;
+    }
 
     bool mipmap_nearest =
         f_basic.linear || image_create_info.mipLevels == 1 ||
@@ -1246,8 +1266,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
 
     VkSamplerCreateInfo sampler_create_info = {
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter = VK_FILTER_LINEAR, // FIXME
-        .minFilter = VK_FILTER_LINEAR, // FIXME
+        .magFilter = vk_min_filter,
+        .minFilter = vk_mag_filter,
         .addressModeU = lookup_texture_address_mode(
             GET_MASK(address, NV_PGRAPH_TEXADDRESS0_ADDRU)),
         .addressModeV = lookup_texture_address_mode(
@@ -1449,6 +1469,14 @@ void pgraph_vk_init_textures(PGRAPHState *pg)
 
     texture_cache_init(r);
     create_dummy_texture(pg);
+
+    r->texture_format_properties = g_malloc0_n(
+        ARRAY_SIZE(kelvin_color_format_vk_map), sizeof(VkFormatProperties));
+    for (int i = 0; i < ARRAY_SIZE(kelvin_color_format_vk_map); i++) {
+        vkGetPhysicalDeviceFormatProperties(
+            r->physical_device, kelvin_color_format_vk_map[i].vk_format,
+            &r->texture_format_properties[i]);
+    }
 }
 
 void pgraph_vk_finalize_textures(PGRAPHState *pg)
@@ -1461,4 +1489,7 @@ void pgraph_vk_finalize_textures(PGRAPHState *pg)
 
     destroy_dummy_texture(r);
     texture_cache_finalize(r);
+
+    g_free(r->texture_format_properties);
+    r->texture_format_properties = NULL;
 }

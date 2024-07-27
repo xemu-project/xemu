@@ -348,6 +348,7 @@ typedef struct PGRAPHVkState {
     TextureBinding *texture_bindings[NV2A_MAX_TEXTURES];
     TextureBinding dummy_texture;
     bool texture_bindings_changed;
+    VkFormatProperties *texture_format_properties;
 
     Lru shader_cache;
     ShaderBinding *shader_cache_entries;
