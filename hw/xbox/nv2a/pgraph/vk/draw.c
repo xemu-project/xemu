@@ -1312,6 +1312,8 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
                                r->command_buffer_fence));
         r->submit_count += 1;
 
+        bool check_budget = false;
+
         // Periodically check memory budget
         const int max_num_submits_before_budget_update = 5;
         if (finish_reason == VK_FINISH_REASON_FLIP_STALL ||
@@ -1321,8 +1323,7 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
             // VMA queries budget via vmaSetCurrentFrameIndex
             vmaSetCurrentFrameIndex(r->allocator, r->submit_count);
             r->allocator_last_submit_index = r->submit_count;
-
-            pgraph_vk_check_memory_budget(pg);
+            check_budget = true;
         }
 
         VK_CHECK(vkWaitForFences(r->device, 1, &r->command_buffer_fence,
@@ -1331,6 +1332,10 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
         r->descriptor_set_index = 0;
         r->in_command_buffer = false;
         destroy_framebuffers(pg);
+
+        if (check_budget) {
+            pgraph_vk_check_memory_budget(pg);
+        }
     }
 
     NV2AState *d = container_of(pg, NV2AState, pgraph);
