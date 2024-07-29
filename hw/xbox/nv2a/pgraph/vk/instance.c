@@ -297,7 +297,7 @@ static bool create_instance(PGRAPHState *pg, Error **errp)
 
     result = vkCreateInstance(&create_info, NULL, &r->instance);
     if (result != VK_SUCCESS) {
-        error_setg(errp, "Failed to create instance");
+        error_setg(errp, "Failed to create instance (%d)", result);
         return false;
     }
 
@@ -599,7 +599,7 @@ static bool create_logical_device(PGRAPHState *pg, Error **errp)
     result = vkCreateDevice(r->physical_device, &device_create_info, NULL,
                             &r->device);
     if (result != VK_SUCCESS) {
-        error_setg(errp, "Failed to create logical device");
+        error_setg(errp, "Failed to create logical device (%d)", result);
         return false;
     }
 
