@@ -45,26 +45,37 @@ void nv2a_dbg_renderdoc_init(void)
 
 #ifdef _WIN32
     HMODULE renderdoc = GetModuleHandleA("renderdoc.dll");
-    if (renderdoc) {
-        pRENDERDOC_GetAPI RENDERDOC_GetAPI =
-            (pRENDERDOC_GetAPI)GetProcAddress(renderdoc, "RENDERDOC_GetAPI");
-#else
-    void *renderdoc = dlopen(
+    if (!renderdoc) {
+        fprintf(stderr, "Error: Failed to open renderdoc library: 0x%lx\n",
+                GetLastError());
+        return;
+    }
+    pRENDERDOC_GetAPI RENDERDOC_GetAPI =
+        (pRENDERDOC_GetAPI)GetProcAddress(renderdoc, "RENDERDOC_GetAPI");
+#else // _WIN32
 #ifdef __APPLE__
-                              "librenderdoc.dylib",
+    void *renderdoc = dlopen("librenderdoc.dylib", RTLD_LAZY);
 #else
-                              "librenderdoc.so",
+    void *renderdoc = dlopen("librenderdoc.so", RTLD_LAZY);
 #endif
-                              RTLD_LAZY);
-    if (renderdoc) {
-        pRENDERDOC_GetAPI RENDERDOC_GetAPI =
-            (pRENDERDOC_GetAPI)dlsym(renderdoc, "RENDERDOC_GetAPI");
+    if (!renderdoc) {
+        fprintf(stderr, "Error: Failed to open renderdoc library: %s\n",
+                dlerror());
+        return;
+    }
+    pRENDERDOC_GetAPI RENDERDOC_GetAPI =
+        (pRENDERDOC_GetAPI)dlsym(renderdoc, "RENDERDOC_GetAPI");
 #endif // _WIN32
-        int ret =
-            RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_6_0, (void **)&rdoc_api);
-        assert(ret == 1 && "Failed to retrieve RenderDoc API.");
-    } else {
-        fprintf(stderr, "Error: Failed to open renderdoc library: %s\n", dlerror());
+
+    if (!RENDERDOC_GetAPI) {
+        fprintf(stderr, "Error: Could not get RENDERDOC_GetAPI address\n");
+        return;
+    }
+
+    int ret =
+        RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_6_0, (void **)&rdoc_api);
+    if (ret != 1) {
+        fprintf(stderr, "Error: Failed to retrieve RenderDoc API.\n");
     }
 }
 
