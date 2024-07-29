@@ -139,7 +139,7 @@ static gchar *get_compute_shader_glsl(VkFormat host_fmt, bool pack,
 
     gchar *glsl = g_strdup_printf(
         "#version 450\n"
-        "layout(local_size_x = %d) in;\n"
+        "layout(local_size_x = %d, local_size_y = 1, local_size_z = 1) in;\n"
         "%s", workgroup_size, template);
     assert(glsl);
 
