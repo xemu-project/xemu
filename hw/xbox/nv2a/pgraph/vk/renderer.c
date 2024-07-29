@@ -235,6 +235,7 @@ static void __attribute__((constructor)) register_renderer(void)
 
 void pgraph_vk_check_memory_budget(PGRAPHState *pg)
 {
+#if 0 // FIXME
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     VkPhysicalDeviceMemoryProperties const *props;
@@ -260,6 +261,7 @@ void pgraph_vk_check_memory_budget(PGRAPHState *pg)
     if (near_budget) {
         pgraph_vk_trim_texture_cache(pg);
     }
+#endif
 
 #if 0
     char *s;
