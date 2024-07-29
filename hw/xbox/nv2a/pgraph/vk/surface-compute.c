@@ -31,9 +31,9 @@
 
 const char *pack_d24_unorm_s8_uint_to_z24s8_glsl =
     "layout(push_constant) uniform PushConstants { uint width_in, width_out; };\n"
-    "layout(binding = 0) buffer DepthIn { uint depth_in[]; };\n"
-    "layout(binding = 1) buffer StencilIn { uint stencil_in[]; };\n"
-    "layout(binding = 2) buffer DepthStencilOut { uint depth_stencil_out[]; };\n"
+    "layout(set = 0, binding = 0) buffer DepthIn { uint depth_in[]; };\n"
+    "layout(set = 0, binding = 1) buffer StencilIn { uint stencil_in[]; };\n"
+    "layout(set = 0, binding = 2) buffer DepthStencilOut { uint depth_stencil_out[]; };\n"
     "uint get_input_idx(uint idx_out) {\n"
     "    uint scale = width_in / width_out;\n"
     "    uint y = (idx_out / width_out) * scale;\n"
@@ -50,9 +50,9 @@ const char *pack_d24_unorm_s8_uint_to_z24s8_glsl =
 
 const char *unpack_z24s8_to_d24_unorm_s8_uint_glsl =
     "layout(push_constant) uniform PushConstants { uint width_in, width_out; };\n"
-    "layout(binding = 0) buffer DepthOut { uint depth_out[]; };\n"
-    "layout(binding = 1) buffer StencilOut { uint stencil_out[]; };\n"
-    "layout(binding = 2) buffer DepthStencilIn { uint depth_stencil_in[]; };\n"
+    "layout(set = 0, binding = 0) buffer DepthOut { uint depth_out[]; };\n"
+    "layout(set = 0, binding = 1) buffer StencilOut { uint stencil_out[]; };\n"
+    "layout(set = 0, binding = 2) buffer DepthStencilIn { uint depth_stencil_in[]; };\n"
     "uint get_input_idx(uint idx_out) {\n"
     "    uint scale = width_out / width_in;\n"
     "    uint y = (idx_out / width_out) / scale;\n"
@@ -75,9 +75,9 @@ const char *unpack_z24s8_to_d24_unorm_s8_uint_glsl =
 
 const char *pack_d32_sfloat_s8_uint_to_z24s8_glsl =
     "layout(push_constant) uniform PushConstants { uint width_in, width_out; };\n"
-    "layout(binding = 0) buffer DepthIn { float depth_in[]; };\n"
-    "layout(binding = 1) buffer StencilIn { uint stencil_in[]; };\n"
-    "layout(binding = 2) buffer DepthStencilOut { uint depth_stencil_out[]; };\n"
+    "layout(set = 0, binding = 0) buffer DepthIn { float depth_in[]; };\n"
+    "layout(set = 0, binding = 1) buffer StencilIn { uint stencil_in[]; };\n"
+    "layout(set = 0, binding = 2) buffer DepthStencilOut { uint depth_stencil_out[]; };\n"
     "uint get_input_idx(uint idx_out) {\n"
     "    uint scale = width_in / width_out;\n"
     "    uint y = (idx_out / width_out) * scale;\n"
@@ -94,9 +94,9 @@ const char *pack_d32_sfloat_s8_uint_to_z24s8_glsl =
 
 const char *unpack_z24s8_to_d32_sfloat_s8_uint_glsl =
     "layout(push_constant) uniform PushConstants { uint width_in, width_out; };\n"
-    "layout(binding = 0) buffer DepthOut { float depth_out[]; };\n"
-    "layout(binding = 1) buffer StencilOut { uint stencil_out[]; };\n"
-    "layout(binding = 2) buffer DepthStencilIn { uint depth_stencil_in[]; };\n"
+    "layout(set = 0, binding = 0) buffer DepthOut { float depth_out[]; };\n"
+    "layout(set = 0, binding = 1) buffer StencilOut { uint stencil_out[]; };\n"
+    "layout(set = 0, binding = 2) buffer DepthStencilIn { uint depth_stencil_in[]; };\n"
     "uint get_input_idx(uint idx_out) {\n"
     "    uint scale = width_out / width_in;\n"
     "    uint y = (idx_out / width_out) / scale;\n"
