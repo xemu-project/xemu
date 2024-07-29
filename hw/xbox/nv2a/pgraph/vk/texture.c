@@ -1523,12 +1523,16 @@ void pgraph_vk_finalize_textures(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    assert(!r->in_command_buffer);
+
     for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
         r->texture_bindings[i] = NULL;
     }
 
     destroy_dummy_texture(r);
     texture_cache_finalize(r);
+
+    assert(r->texture_cache.num_used == 0);
 
     g_free(r->texture_format_properties);
     r->texture_format_properties = NULL;
