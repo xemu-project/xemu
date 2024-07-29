@@ -757,7 +757,6 @@ static void create_surface_image(PGRAPHState *pg, SurfaceBinding *surface)
 
     VmaAllocationCreateInfo alloc_create_info = {
         .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
-        .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT
     };
 
     VK_CHECK(vmaCreateImage(r->allocator, &image_create_info,
