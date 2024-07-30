@@ -1315,6 +1315,12 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         vk_mag_filter = vk_min_filter = VK_FILTER_NEAREST;
     }
 
+    bool mipmap_en =
+        !f_basic.linear &&
+        !(min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_LOD0 ||
+          min_filter == NV_PGRAPH_TEXFILTER0_MIN_TENT_LOD0 ||
+          min_filter == NV_PGRAPH_TEXFILTER0_MIN_CONVOLUTION_2D_LOD0);
+
     bool mipmap_nearest =
         f_basic.linear || image_create_info.mipLevels == 1 ||
         min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD ||
@@ -1342,8 +1348,8 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         .compareOp = VK_COMPARE_OP_ALWAYS,
         .mipmapMode = mipmap_nearest ? VK_SAMPLER_MIPMAP_MODE_NEAREST :
                                        VK_SAMPLER_MIPMAP_MODE_LINEAR,
-        .minLod = 0.0,
-        .maxLod = f_basic.linear ? 0.0 : image_create_info.mipLevels,
+        .minLod = mipmap_en ? MIN(state.min_mipmap_level, state.levels - 1) : 0.0,
+        .maxLod = mipmap_en ? MIN(state.max_mipmap_level, state.levels - 1) : 0.0,
         .mipLodBias = 0.0,
         .pNext = sampler_next_struct,
     };
