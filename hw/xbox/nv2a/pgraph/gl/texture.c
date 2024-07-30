@@ -203,7 +203,6 @@ void pgraph_gl_bind_textures(NV2AState *d)
         glActiveTexture(GL_TEXTURE0 + i);
         if (!enabled) {
             glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
-            glBindTexture(GL_TEXTURE_RECTANGLE, 0);
             glBindTexture(GL_TEXTURE_1D, 0);
             glBindTexture(GL_TEXTURE_2D, 0);
             glBindTexture(GL_TEXTURE_3D, 0);
@@ -363,11 +362,7 @@ void pgraph_gl_bind_textures(NV2AState *d)
                 surface->vram_addr, surface->width, surface->height);
             pgraph_gl_render_surface_to_texture(d, surface, binding, &state, i);
             binding->draw_time = surface->draw_time;
-            if (binding->gl_target == GL_TEXTURE_RECTANGLE) {
-                binding->scale = pg->surface_scale_factor;
-            } else {
-                binding->scale = 1;
-            }
+            binding->scale = pg->surface_scale_factor;
         }
 
         apply_texture_parameters(binding,
@@ -428,28 +423,29 @@ static void upload_gl_texture(GLenum gl_target,
     case GL_TEXTURE_1D:
         assert(false);
         break;
-    case GL_TEXTURE_RECTANGLE: {
-        /* Can't handle strides unaligned to pixels */
-        assert(s.pitch % f.bytes_per_pixel == 0);
-
-        uint8_t *converted = pgraph_convert_texture_data(
-            s, texture_data, palette_data, adjusted_width, adjusted_height, 1,
-            adjusted_pitch, 0, NULL);
-        glPixelStorei(GL_UNPACK_ROW_LENGTH,
-                      converted ? 0 : adjusted_pitch / f.bytes_per_pixel);
-        glTexImage2D(gl_target, 0, f.gl_internal_format,
-                     adjusted_width, adjusted_height, 0,
-                     f.gl_format, f.gl_type,
-                     converted ? converted : texture_data);
-
-        if (converted) {
-          g_free(converted);
-        }
-
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-        break;
-    }
     case GL_TEXTURE_2D:
+        if (f.linear) {
+            /* Can't handle strides unaligned to pixels */
+            assert(s.pitch % f.bytes_per_pixel == 0);
+
+            uint8_t *converted = pgraph_convert_texture_data(
+                s, texture_data, palette_data, adjusted_width, adjusted_height, 1,
+                adjusted_pitch, 0, NULL);
+            glPixelStorei(GL_UNPACK_ROW_LENGTH,
+                          converted ? 0 : adjusted_pitch / f.bytes_per_pixel);
+            glTexImage2D(GL_TEXTURE_2D, 0, f.gl_internal_format,
+                         adjusted_width, adjusted_height, 0,
+                         f.gl_format, f.gl_type,
+                         converted ? converted : texture_data);
+
+            if (converted) {
+              g_free(converted);
+            }
+
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+            break;
+        }
+        /* fallthru */
     case GL_TEXTURE_CUBE_MAP_POSITIVE_X:
     case GL_TEXTURE_CUBE_MAP_NEGATIVE_X:
     case GL_TEXTURE_CUBE_MAP_POSITIVE_Y:
@@ -645,15 +641,7 @@ static TextureBinding* generate_texture(const TextureShape s,
         gl_target = GL_TEXTURE_CUBE_MAP;
     } else {
         if (f.linear) {
-            /* linear textures use unnormalised texcoords.
-             * GL_TEXTURE_RECTANGLE_ARB conveniently also does, but
-             * does not allow repeat and mirror wrap modes.
-             *  (or mipmapping, but xbox d3d says 'Non swizzled and non
-             *   compressed textures cannot be mip mapped.')
-             * Not sure if that'll be an issue. */
-
-            /* FIXME: GLSL 330 provides us with textureSize()! Use that? */
-            gl_target = GL_TEXTURE_RECTANGLE;
+            gl_target = GL_TEXTURE_2D;
             assert(s.dimensionality == 2);
         } else {
             switch(s.dimensionality) {
