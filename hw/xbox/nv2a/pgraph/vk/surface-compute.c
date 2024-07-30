@@ -545,15 +545,9 @@ static void pipeline_cache_release_node_resources(PGRAPHVkState *r, ComputePipel
     snode->pipeline = VK_NULL_HANDLE;
 }
 
-static bool pipeline_cache_entry_pre_evict(Lru *lru, LruNode *node)
-{
-    // FIXME: Check pipeline not in use
-    return false;
-}
-
 static void pipeline_cache_entry_post_evict(Lru *lru, LruNode *node)
 {
-    PGRAPHVkState *r = container_of(lru, PGRAPHVkState, pipeline_cache);
+    PGRAPHVkState *r = container_of(lru, PGRAPHVkState, compute.pipeline_cache);
     ComputePipeline *snode = container_of(node, ComputePipeline, node);
     pipeline_cache_release_node_resources(r, snode);
 }
@@ -575,7 +569,6 @@ static void pipeline_cache_init(PGRAPHVkState *r)
     }
     r->compute.pipeline_cache.init_node = pipeline_cache_entry_init;
     r->compute.pipeline_cache.compare_nodes = pipeline_cache_entry_compare;
-    r->compute.pipeline_cache.pre_node_evict = pipeline_cache_entry_pre_evict;
     r->compute.pipeline_cache.post_node_evict = pipeline_cache_entry_post_evict;
 }
 
@@ -600,6 +593,8 @@ void pgraph_vk_init_compute(PGRAPHState *pg)
 void pgraph_vk_finalize_compute(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+
+    assert(!r->in_command_buffer);
 
     pipeline_cache_finalize(r);
     destroy_compute_pipeline_layout(r);
