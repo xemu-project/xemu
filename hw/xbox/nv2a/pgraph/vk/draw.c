@@ -1710,7 +1710,7 @@ void pgraph_vk_clear_surface(NV2AState *d, uint32_t parameter)
 
     // FIXME: What does hardware do when min <= max?
     xmin = MIN(xmin, binding->width - 1);
-    ymin = MIN(xmin, binding->height - 1);
+    ymin = MIN(ymin, binding->height - 1);
     xmax = MIN(xmax, binding->width - 1);
     ymax = MIN(ymax, binding->height - 1);
 
