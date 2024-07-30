@@ -1305,12 +1305,6 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     if (is_linear_filter_supported_for_format(r, state.color_format)) {
         vk_mag_filter = pgraph_texture_min_filter_vk_map[mag_filter];
         vk_min_filter = pgraph_texture_min_filter_vk_map[min_filter];
-
-        if (f_basic.linear && vk_mag_filter != vk_min_filter) {
-            // FIXME: Per spec, if coordinates unnormalized, filters must be
-            // same.
-            vk_mag_filter = vk_min_filter = VK_FILTER_LINEAR;
-        }
     } else {
         vk_mag_filter = vk_min_filter = VK_FILTER_NEAREST;
     }
@@ -1343,7 +1337,6 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         // .anisotropyEnable = VK_TRUE,
         // .maxAnisotropy = properties.limits.maxSamplerAnisotropy,
         .borderColor = vk_border_color,
-        .unnormalizedCoordinates = f_basic.linear ? VK_TRUE : VK_FALSE,
         .compareEnable = VK_FALSE,
         .compareOp = VK_COMPARE_OP_ALWAYS,
         .mipmapMode = mipmap_nearest ? VK_SAMPLER_MIPMAP_MODE_NEAREST :
