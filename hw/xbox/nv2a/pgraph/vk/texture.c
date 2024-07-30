@@ -229,11 +229,7 @@ static TextureLayout *get_texture_layout(PGRAPHState *pg, int texture_idx)
     }
 
     if (s.dimensionality == 2) {
-        hwaddr layer_size = 0;
-        if (s.cubemap) {
-            layer_size = get_cubemap_layer_size(pg, s);
-        }
-
+        hwaddr layer_size = s.cubemap ? get_cubemap_layer_size(pg, s) : 0;
         const int num_layers = s.cubemap ? 6 : 1;
         for (int layer = 0; layer < num_layers; layer++) {
             unsigned int width = adjusted_width, height = adjusted_height;
