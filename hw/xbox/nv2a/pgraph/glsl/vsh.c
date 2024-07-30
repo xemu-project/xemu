@@ -98,9 +98,11 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
 
     for (i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
         bool is_uniform = state->uniform_attrs & (1 << i);
+        bool is_swizzled = state->swizzle_attrs & (1 << i);
         bool is_compressed = state->compressed_attrs & (1 << i);
 
         assert(!(is_uniform && is_compressed));
+        assert(!(is_uniform && is_swizzled));
 
         if (is_uniform) {
             mstring_append_fmt(header, "vec4 v%d = inlineValue[%d];\n", i,
