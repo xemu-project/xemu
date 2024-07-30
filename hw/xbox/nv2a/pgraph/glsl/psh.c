@@ -930,7 +930,6 @@ static MString* psh_convert(struct PixelShader *ps)
             if (ps->state.shadow_map[i]) {
                 psh_append_shadowmap(ps, i, true, vars);
             } else {
-                assert(!ps->state.rect_tex[i]);
                 apply_border_adjustment(ps, vars, i, "pT%d");
                 mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, pT%d.xyzw);\n",
                                    i, i, i);
