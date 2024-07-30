@@ -1764,10 +1764,13 @@ void pgraph_vk_clear_surface(NV2AState *d, uint32_t parameter)
         pgraph_get_clear_depth_stencil_value(pg, &depth_value, &stencil_value);
 
         VkImageAspectFlags aspect = 0;
-        if (parameter & NV097_CLEAR_SURFACE_Z)
+        if (parameter & NV097_CLEAR_SURFACE_Z) {
             aspect |= VK_IMAGE_ASPECT_DEPTH_BIT;
-        if (parameter & NV097_CLEAR_SURFACE_STENCIL)
+        }
+        if ((parameter & NV097_CLEAR_SURFACE_STENCIL) &&
+            (r->zeta_binding->host_fmt.aspect & VK_IMAGE_ASPECT_STENCIL_BIT)) {
             aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
 
         attachments[num_attachments++] = (VkClearAttachment){
             .aspectMask = aspect,
