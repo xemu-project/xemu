@@ -1693,29 +1693,29 @@ void pgraph_vk_clear_surface(NV2AState *d, uint32_t parameter)
 
     r->clear_parameter = parameter;
 
-    unsigned int xmin =
-        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTX), NV_PGRAPH_CLEARRECTX_XMIN);
-    unsigned int xmax =
-        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTX), NV_PGRAPH_CLEARRECTX_XMAX);
-    unsigned int ymin =
-        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTY), NV_PGRAPH_CLEARRECTY_YMIN);
-    unsigned int ymax =
-        GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTY), NV_PGRAPH_CLEARRECTY_YMAX);
+    uint32_t clearrectx = pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTX);
+    uint32_t clearrecty = pgraph_reg_r(pg, NV_PGRAPH_CLEARRECTY);
+
+    int xmin = GET_MASK(clearrectx, NV_PGRAPH_CLEARRECTX_XMIN);
+    int xmax = GET_MASK(clearrectx, NV_PGRAPH_CLEARRECTX_XMAX);
+    int ymin = GET_MASK(clearrecty, NV_PGRAPH_CLEARRECTY_YMIN);
+    int ymax = GET_MASK(clearrecty, NV_PGRAPH_CLEARRECTY_YMAX);
 
     NV2A_VK_DGROUP_BEGIN("CLEAR min=(%d,%d) max=(%d,%d)%s%s", xmin, ymin, xmax,
                          ymax, write_color ? " color" : "",
                          write_zeta ? " zeta" : "");
 
+    begin_pre_draw(pg);
+    begin_draw(pg);
+
+    // FIXME: What does hardware do when min <= max?
     xmin = MIN(xmin, binding->width - 1);
     ymin = MIN(xmin, binding->height - 1);
     xmax = MIN(xmax, binding->width - 1);
     ymax = MIN(ymax, binding->height - 1);
 
-    begin_pre_draw(pg);
-    begin_draw(pg);
-
-    unsigned int scissor_width = xmax - xmin + 1,
-                 scissor_height = ymax - ymin + 1;
+    int scissor_width = MAX(0, xmax - xmin + 1),
+        scissor_height = MAX(0, ymax - ymin + 1);
 
     pgraph_apply_anti_aliasing_factor(pg, &xmin, &ymin);
     pgraph_apply_anti_aliasing_factor(pg, &scissor_width, &scissor_height);
