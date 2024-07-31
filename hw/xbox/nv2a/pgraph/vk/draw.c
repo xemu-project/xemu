@@ -762,15 +762,13 @@ static void create_pipeline(PGRAPHState *pg)
                 .pName = "main",
             };
     }
-    if (r->color_binding) {
-        shader_stages[num_active_shader_stages++] =
-            (VkPipelineShaderStageCreateInfo){
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-                .module = r->shader_binding->fragment->module,
-                .pName = "main",
-            };
-    }
+    shader_stages[num_active_shader_stages++] =
+        (VkPipelineShaderStageCreateInfo){
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .module = r->shader_binding->fragment->module,
+            .pName = "main",
+        };
 
     VkPipelineVertexInputStateCreateInfo vertex_input = {
         .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
