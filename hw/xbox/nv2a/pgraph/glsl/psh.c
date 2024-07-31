@@ -931,8 +931,8 @@ static MString* psh_convert(struct PixelShader *ps)
                 psh_append_shadowmap(ps, i, true, vars);
             } else {
                 apply_border_adjustment(ps, vars, i, "pT%d");
-                mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, pT%d.xyzw);\n",
-                                   i, i, i);
+                mstring_append_fmt(vars, "vec4 t%d = textureProj(texSamp%d, %s(pT%d.xyzw));\n",
+                                   i, i, tex_remap, i);
             }
             break;
         case PS_TEXTUREMODES_CUBEMAP:
@@ -1127,6 +1127,11 @@ static MString* psh_convert(struct PixelShader *ps)
                 mstring_append_fmt(preflight,
                 "vec3 norm%d(vec3 coord) {\n"
                 "    return vec3(norm%d(coord.xy), coord.z);\n"
+                "}\n",
+                i, i);
+                mstring_append_fmt(preflight,
+                "vec4 norm%d(vec4 coord) {\n"
+                "    return vec4(norm%d(coord.xy), 0, coord.w);\n"
                 "}\n",
                 i, i);
             }
