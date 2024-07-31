@@ -470,7 +470,7 @@ static void create_clear_pipeline(PGRAPHState *pg)
             .module = r->quad_vert_module->module,
             .pName = "main",
         };
-    if (clear_any_color_channels) {
+    if (partial_color_clear) {
         shader_stages[num_active_shader_stages++] =
             (VkPipelineShaderStageCreateInfo){
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
