@@ -26,7 +26,7 @@ void pgraph_vk_init_reports(PGRAPHState *pg)
     QSIMPLEQ_INIT(&r->report_queue);
     r->num_queries_in_flight = 0;
     r->max_queries_in_flight = 1024;
-    r->new_query_needed = true;
+    r->new_query_needed = false;
     r->query_in_flight = false;
     r->zpass_pixel_count_result = 0;
 
@@ -43,10 +43,10 @@ void pgraph_vk_finalize_reports(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    QueryReport *q, *next;
-    QSIMPLEQ_FOREACH_SAFE (q, &r->report_queue, entry, next) {
+    QueryReport *report;
+    while ((report = QSIMPLEQ_FIRST(&r->report_queue)) != NULL) {
         QSIMPLEQ_REMOVE_HEAD(&r->report_queue, entry);
-        g_free(q);
+        g_free(report);
     }
 
     vkDestroyQueryPool(r->device, r->query_pool, NULL);
@@ -57,9 +57,13 @@ void pgraph_vk_clear_report_value(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    QueryReport *q = g_malloc(sizeof(QueryReport)); // FIXME: Pre-allocate
-    q->clear = true;
-    QSIMPLEQ_INSERT_TAIL(&r->report_queue, q, entry);
+    QueryReport *report = g_malloc(sizeof(QueryReport)); // FIXME: Pre-allocate
+    report->clear = true;
+    report->parameter = 0;
+    report->query_count = r->num_queries_in_flight;
+    QSIMPLEQ_INSERT_TAIL(&r->report_queue, report, entry);
+
+    r->new_query_needed = true;
 }
 
 void pgraph_vk_get_report(NV2AState *d, uint32_t parameter)
@@ -70,11 +74,11 @@ void pgraph_vk_get_report(NV2AState *d, uint32_t parameter)
     uint8_t type = GET_MASK(parameter, NV097_GET_REPORT_TYPE);
     assert(type == NV097_GET_REPORT_TYPE_ZPASS_PIXEL_CNT);
 
-    QueryReport *q = g_malloc(sizeof(QueryReport)); // FIXME: Pre-allocate
-    q->clear = false;
-    q->parameter = parameter;
-    q->query_count = r->num_queries_in_flight;
-    QSIMPLEQ_INSERT_TAIL(&r->report_queue, q, entry);
+    QueryReport *report = g_malloc(sizeof(QueryReport)); // FIXME: Pre-allocate
+    report->clear = false;
+    report->parameter = parameter;
+    report->query_count = r->num_queries_in_flight;
+    QSIMPLEQ_INSERT_TAIL(&r->report_queue, report, entry);
 
     r->new_query_needed = true;
 }
@@ -105,30 +109,36 @@ void pgraph_vk_process_pending_reports_internal(NV2AState *d)
     }
 
     // Write out queries
-    QueryReport *q, *next;
     int num_results_counted = 0;
+    const int result_divisor =
+        pg->surface_scale_factor * pg->surface_scale_factor;
 
-    int result_divisor = pg->surface_scale_factor * pg->surface_scale_factor;
+    QueryReport *report;
+    while ((report = QSIMPLEQ_FIRST(&r->report_queue)) != NULL) {
+        assert(report->query_count >= num_results_counted);
+        assert(report->query_count <= r->num_queries_in_flight);
 
-    QSIMPLEQ_FOREACH_SAFE (q, &r->report_queue, entry, next) {
-        if (q->clear) {
+        while (num_results_counted < report->query_count) {
+            r->zpass_pixel_count_result +=
+                query_results[num_results_counted++];
+        }
+
+        if (report->clear) {
             NV2A_VK_DPRINTF("Cleared");
             r->zpass_pixel_count_result = 0;
         } else {
-            assert(q->query_count >= num_results_counted);
-            assert(q->query_count <= r->num_queries_in_flight);
-
-            while (num_results_counted < q->query_count) {
-                r->zpass_pixel_count_result +=
-                    query_results[num_results_counted++];
-            }
-
             pgraph_write_zpass_pixel_cnt_report(
-                d, q->parameter,
+                d, report->parameter,
                 r->zpass_pixel_count_result / result_divisor);
         }
+
         QSIMPLEQ_REMOVE_HEAD(&r->report_queue, entry);
-        g_free(q);
+        g_free(report);
+    }
+
+    // Add remaining results
+    while (num_results_counted < r->num_queries_in_flight) {
+        r->zpass_pixel_count_result += query_results[num_results_counted++];
     }
 
     r->num_queries_in_flight = 0;
