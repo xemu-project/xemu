@@ -59,14 +59,25 @@ void pgraph_vk_debug_frame_terminator(void)
 }
 
 void pgraph_vk_insert_debug_marker(PGRAPHVkState *r, VkCommandBuffer cmd,
-                                   const char *name, float color[4])
+                                   float color[4], const char *format, ...)
 {
-    if (r->debug_utils_extension_enabled) {
-        VkDebugUtilsLabelEXT label_info = {
-            .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
-            .pLabelName = name,
-        };
-        memcpy(label_info.color, color, 4 * sizeof(float));
-        vkCmdInsertDebugUtilsLabelEXT(cmd, &label_info);
+    if (!r->debug_utils_extension_enabled) {
+        return;
     }
+
+    char *buf = NULL;
+
+    va_list args;
+    va_start(args, format);
+    int err = vasprintf(&buf, format, args);
+    assert(err >= 0);
+    va_end(args);
+
+    VkDebugUtilsLabelEXT label_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+        .pLabelName = buf,
+    };
+    memcpy(label_info.color, color, 4 * sizeof(float));
+    vkCmdInsertDebugUtilsLabelEXT(cmd, &label_info);
+    free(buf);
 }
