@@ -1456,6 +1456,10 @@ static void begin_draw(PGRAPHState *pg)
         end_query(r);
     }
 
+    if (pg->clearing) {
+        end_render_pass(r);
+    }
+
     bool must_bind_pipeline = r->pipeline_binding_changed;
 
     if (!r->in_render_pass) {
@@ -1523,6 +1527,10 @@ static void end_draw(PGRAPHState *pg)
 
     assert(r->in_command_buffer);
     assert(r->in_render_pass);
+
+    if (pg->clearing) {
+        end_render_pass(r);
+    }
 
     r->in_draw = false;
 
