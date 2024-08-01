@@ -263,7 +263,6 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
             };
 
         r->vertex_attribute_offsets[i] = attrib_data_addr;
-        // FIXME: Data alignment may not meet requirements
 
         NV2A_VK_DGROUP_END();
     }

@@ -343,6 +343,7 @@ typedef struct PGRAPHVkState {
     VkVertexInputBindingDescription vertex_binding_descriptions[NV2A_VERTEXSHADER_ATTRIBUTES];
     int num_active_vertex_binding_descriptions;
     hwaddr vertex_attribute_offsets[NV2A_VERTEXSHADER_ATTRIBUTES];
+    uint16_t vertex_buffer_inline;
 
     QTAILQ_HEAD(, SurfaceBinding) surfaces;
     QTAILQ_HEAD(, SurfaceBinding) invalid_surfaces;
