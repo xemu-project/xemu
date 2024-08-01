@@ -42,7 +42,6 @@ void pgraph_vk_draw_begin(NV2AState *d)
 
     if (is_nop_draw) {
         NV2A_VK_DPRINTF("nop!");
-        NV2A_VK_DGROUP_END();
         return;
     }
 }
@@ -709,6 +708,8 @@ static void create_pipeline(PGRAPHState *pg)
     // FIXME: If nothing was dirty, don't even try creating the key or hashing.
     //        Just use the same pipeline.
     if (r->pipeline_binding && !check_pipeline_dirty(pg)) {
+        NV2A_VK_DPRINTF("Cache hit");
+        NV2A_VK_DGROUP_END();
         return;
     }
 
