@@ -203,6 +203,9 @@ typedef struct TextureKey {
     hwaddr palette_vram_offset;
     hwaddr palette_length;
     float scale;
+    uint32_t filter;
+    uint32_t address;
+    uint32_t border_color;
 } TextureKey;
 
 typedef struct TextureBinding {

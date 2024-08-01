@@ -1090,6 +1090,13 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
 
     size_t texture_length = pgraph_get_texture_length(pg, &state);
 
+    uint32_t filter =
+        pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + texture_idx * 4);
+    uint32_t address =
+        pgraph_reg_r(pg, NV_PGRAPH_TEXADDRESS0 + texture_idx * 4);
+    uint32_t border_color_pack32 =
+        pgraph_reg_r(pg, NV_PGRAPH_BORDERCOLOR0 + texture_idx * 4);
+
     TextureKey key;
     memset(&key, 0, sizeof(key));
     key.state = state;
@@ -1098,6 +1105,11 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     key.palette_vram_offset = texture_palette_vram_offset;
     key.palette_length = texture_palette_data_size;
     key.scale = 1;
+
+    // FIXME: Separate sampler from texture
+    key.filter = filter;
+    key.address = address;
+    key.border_color = border_color_pack32;
 
     bool is_indexed = (state.color_format ==
             NV097_SET_TEXTURE_FORMAT_COLOR_SZ_I8_A8R8G8B8);
@@ -1244,8 +1256,6 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
 
     VkSamplerCustomBorderColorCreateInfoEXT custom_border_color_create_info;
     VkBorderColor vk_border_color;
-    uint32_t border_color_pack32 =
-        pgraph_reg_r(pg, NV_PGRAPH_BORDERCOLOR0 + texture_idx * 4);
 
     bool is_integer_type = vkf.vk_format == VK_FORMAT_R32_UINT;
 
@@ -1285,7 +1295,6 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         }
     }
 
-    uint32_t filter = pgraph_reg_r(pg, NV_PGRAPH_TEXFILTER0 + texture_idx * 4);
     if (filter & NV_PGRAPH_TEXFILTER0_ASIGNED)
         NV2A_UNIMPLEMENTED("NV_PGRAPH_TEXFILTER0_ASIGNED");
     if (filter & NV_PGRAPH_TEXFILTER0_RSIGNED)
@@ -1319,9 +1328,6 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         f_basic.linear || image_create_info.mipLevels == 1 ||
         min_filter == NV_PGRAPH_TEXFILTER0_MIN_BOX_NEARESTLOD ||
         min_filter == NV_PGRAPH_TEXFILTER0_MIN_TENT_NEARESTLOD;
-
-    uint32_t address =
-        pgraph_reg_r(pg, NV_PGRAPH_TEXADDRESS0 + texture_idx * 4);
 
     VkSamplerCreateInfo sampler_create_info = {
         .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
