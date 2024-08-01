@@ -1442,7 +1442,7 @@ static void begin_draw(PGRAPHState *pg)
     assert(r->in_command_buffer);
 
     // Visibility testing
-    if (pg->zpass_pixel_count_enable) {
+    if (!pg->clearing && pg->zpass_pixel_count_enable) {
         if (r->new_query_needed && r->query_in_flight) {
             end_render_pass(r);
             end_query(r);
