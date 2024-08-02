@@ -18,6 +18,7 @@
  */
 
 #include "renderer.h"
+#include <math.h>
 
 static uint8_t *convert_texture_data__CR8YB8CB8YA8(uint8_t *data_out,
                                                    const uint8_t *data_in,
