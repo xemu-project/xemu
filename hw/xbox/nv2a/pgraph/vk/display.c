@@ -19,40 +19,220 @@
 
 #include "renderer.h"
 
+static uint8_t *convert_texture_data__CR8YB8CB8YA8(uint8_t *data_out,
+                                                   const uint8_t *data_in,
+                                                   unsigned int width,
+                                                   unsigned int height,
+                                                   unsigned int pitch)
+{
+    int x, y;
+    for (y = 0; y < height; y++) {
+        const uint8_t *line = &data_in[y * pitch];
+        const uint32_t row_offset = y * width;
+        for (x = 0; x < width; x++) {
+            uint8_t *pixel = &data_out[(row_offset + x) * 4];
+            convert_yuy2_to_rgb(line, x, &pixel[0], &pixel[1], &pixel[2]);
+            pixel[3] = 255;
+        }
+    }
+    return data_out;
+}
+
+static float pvideo_calculate_scale(unsigned int din_dout,
+                                    unsigned int output_size)
+{
+    float calculated_in = din_dout * (output_size - 1);
+    calculated_in = floorf(calculated_in / (1 << 20) + 0.5f);
+    return (calculated_in + 1.0f) / output_size;
+}
+
+static void destroy_pvideo_image(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    PGRAPHVkDisplayState *d = &r->display;
+
+    if (d->pvideo.sampler != VK_NULL_HANDLE) {
+        vkDestroySampler(r->device, d->pvideo.sampler, NULL);
+        d->pvideo.sampler = VK_NULL_HANDLE;
+    }
+
+    if (d->pvideo.image_view != VK_NULL_HANDLE) {
+        vkDestroyImageView(r->device, d->pvideo.image_view, NULL);
+        d->pvideo.image_view = VK_NULL_HANDLE;
+    }
+
+    if (d->pvideo.image != VK_NULL_HANDLE) {
+        vmaDestroyImage(r->allocator, d->pvideo.image, d->pvideo.allocation);
+        d->pvideo.image = VK_NULL_HANDLE;
+        d->pvideo.allocation = VK_NULL_HANDLE;
+    }
+}
+
+static void create_pvideo_image(PGRAPHState *pg, int width, int height)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    PGRAPHVkDisplayState *d = &r->display;
+
+    if (d->pvideo.image == VK_NULL_HANDLE || d->pvideo.width != width ||
+        d->pvideo.height != height) {
+        destroy_pvideo_image(pg);
+    }
+
+    VkImageCreateInfo image_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .extent.width = width,
+        .extent.height = height,
+        .extent.depth = 1,
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .format = VK_FORMAT_R8G8B8A8_UNORM,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .flags = 0,
+    };
+    VmaAllocationCreateInfo alloc_create_info = {
+        .usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE,
+    };
+    VK_CHECK(vmaCreateImage(r->allocator, &image_create_info,
+                            &alloc_create_info, &d->pvideo.image,
+                            &d->pvideo.allocation, NULL));
+
+    VkImageViewCreateInfo image_view_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = d->pvideo.image,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = VK_FORMAT_R8G8B8A8_UNORM,
+        .subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .subresourceRange.baseMipLevel = 0,
+        .subresourceRange.levelCount = image_create_info.mipLevels,
+        .subresourceRange.baseArrayLayer = 0,
+        .subresourceRange.layerCount = image_create_info.arrayLayers,
+    };
+    VK_CHECK(vkCreateImageView(r->device, &image_view_create_info, NULL,
+                               &d->pvideo.image_view));
+
+    VkSamplerCreateInfo sampler_create_info = {
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter = VK_FILTER_LINEAR,
+        .minFilter = VK_FILTER_NEAREST,
+        .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .borderColor = VK_BORDER_COLOR_INT_OPAQUE_WHITE,
+        .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+    };
+    VK_CHECK(vkCreateSampler(r->device, &sampler_create_info, NULL,
+                             &d->pvideo.sampler));
+}
+
+static void upload_pvideo_image(PGRAPHState *pg, PvideoState state)
+{
+    NV2AState *d = container_of(pg, NV2AState, pgraph);
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    PGRAPHVkDisplayState *disp = &r->display;
+
+    create_pvideo_image(pg, state.in_width, state.in_height);
+
+    // FIXME: Dirty tracking. We don't necessarily need to upload so much.
+
+    // Copy texture data to mapped device buffer
+    uint8_t *mapped_memory_ptr;
+
+    VK_CHECK(vmaMapMemory(r->allocator,
+                          r->storage_buffers[BUFFER_STAGING_SRC].allocation,
+                          (void *)&mapped_memory_ptr));
+
+    convert_texture_data__CR8YB8CB8YA8(
+        mapped_memory_ptr, d->vram_ptr + state.base + state.offset,
+        state.in_width, state.in_height, state.pitch);
+
+    vmaFlushAllocation(r->allocator,
+                       r->storage_buffers[BUFFER_STAGING_SRC].allocation, 0,
+                       VK_WHOLE_SIZE);
+
+    vmaUnmapMemory(r->allocator,
+                   r->storage_buffers[BUFFER_STAGING_SRC].allocation);
+
+    // FIXME: Merge with display renderer command buffer
+
+    VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
+
+    VkBufferMemoryBarrier host_barrier = {
+        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_HOST_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .buffer = r->storage_buffers[BUFFER_STAGING_SRC].buffer,
+        .size = VK_WHOLE_SIZE
+    };
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
+                         &host_barrier, 0, NULL);
+
+    pgraph_vk_transition_image_layout(
+        pg, cmd, disp->pvideo.image, VK_FORMAT_R8_UNORM,
+        VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    VkBufferImageCopy region = {
+        .bufferOffset = 0,
+        .bufferRowLength = 0,
+        .bufferImageHeight = 0,
+        .imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+        .imageSubresource.mipLevel = 0,
+        .imageSubresource.baseArrayLayer = 0,
+        .imageSubresource.layerCount = 1,
+        .imageOffset = (VkOffset3D){ 0, 0, 0 },
+        .imageExtent = (VkExtent3D){ state.in_width, state.in_height, 1 },
+    };
+    vkCmdCopyBufferToImage(cmd, r->storage_buffers[BUFFER_STAGING_SRC].buffer,
+                           disp->pvideo.image,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    pgraph_vk_transition_image_layout(pg, cmd, disp->pvideo.image,
+                                      VK_FORMAT_R8G8B8A8_UNORM,
+                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    pgraph_vk_end_single_time_commands(pg, cmd);
+}
+
 static const char *display_frag_glsl =
     "#version 450\n"
     "layout(binding = 0) uniform sampler2D tex;\n"
     "layout(binding = 1) uniform sampler2D pvideo_tex;\n"
     "layout(push_constant, std430) uniform PushConstants {\n"
+    "    float line_offset;\n"
+    "    vec2 display_size;\n"
     "    bool pvideo_enable;\n"
     "    vec2 pvideo_in_pos;\n"
     "    vec4 pvideo_pos;\n"
-    "    vec3 pvideo_scale;\n"
+    "    vec4 pvideo_scale;\n"
     "    bool pvideo_color_key_enable;\n"
-    "    vec2 display_size;\n"
-    "    float line_offset;\n"
     "    vec4 pvideo_color_key;\n"
     "};\n"
     "layout(location = 0) out vec4 out_Color;\n"
     "void main()\n"
     "{\n"
-    "    vec2 texCoord = gl_FragCoord.xy/display_size;\n"
-    "    texCoord.y = 1 - texCoord.y;\n" // GL compat
+    "    vec2 tex_coord = gl_FragCoord.xy/display_size;\n"
+    "    tex_coord.y = 1 - tex_coord.y;\n" // GL compat
     "    float rel = display_size.y/textureSize(tex, 0).y/line_offset;\n"
-    "    texCoord.y = 1 + rel*(texCoord.y - 1);"
-    "    out_Color.rgba = texture(tex, texCoord);\n"
-    // "    if (pvideo_enable) {\n"
-    // "        vec2 screenCoord = gl_FragCoord.xy - 0.5;\n"
-    // "        vec4 output_region = vec4(pvideo_pos.xy, pvideo_pos.xy + pvideo_pos.zw);\n"
-    // "        bvec4 clip = bvec4(lessThan(screenCoord, output_region.xy),\n"
-    // "                           greaterThan(screenCoord, output_region.zw));\n"
-    // "        if (!any(clip) && (!pvideo_color_key_enable || out_Color.rgba == pvideo_color_key)) {\n"
-    // "            vec2 out_xy = (screenCoord - pvideo_pos.xy) * pvideo_scale.z;\n"
-    // "            vec2 in_st = (pvideo_in_pos + out_xy * pvideo_scale.xy) / textureSize(pvideo_tex, 0);\n"
-    // "            in_st.y *= -1.0;\n"
-    // "            out_Color.rgba = texture(pvideo_tex, in_st);\n"
-    // "        }\n"
-    // "    }\n"
+    "    tex_coord.y = 1 + rel*(tex_coord.y - 1);"
+    "    out_Color.rgba = texture(tex, tex_coord);\n"
+    "    if (pvideo_enable) {\n"
+    "        vec2 screen_coord = vec2(gl_FragCoord.x, display_size.y - gl_FragCoord.y) * pvideo_scale.z;\n"
+    "        vec4 output_region = vec4(pvideo_pos.xy, pvideo_pos.xy + pvideo_pos.zw);\n"
+    "        bvec4 clip = bvec4(lessThan(screen_coord, output_region.xy),\n"
+    "                           greaterThan(screen_coord, output_region.zw));\n"
+    "        if (!any(clip) && (!pvideo_color_key_enable || out_Color.rgba == pvideo_color_key)) {\n"
+    "            vec2 out_xy = screen_coord - pvideo_pos.xy;\n"
+    "            vec2 in_st = (pvideo_in_pos + out_xy * pvideo_scale.xy) / textureSize(pvideo_tex, 0);\n"
+    "            out_Color.rgba = texture(pvideo_tex, in_st);\n"
+    "        }\n"
+    "    }\n"
     "}\n";
 
 static void create_descriptor_pool(PGRAPHState *pg)
@@ -516,7 +696,7 @@ static void create_display_image(PGRAPHState *pg, int width, int height)
     assert(glGetError() == GL_NO_ERROR);
 
 #endif // WIN32
- 
+
     glGenTextures(1, &d->gl_texture_id);
     glBindTexture(GL_TEXTURE_2D, d->gl_texture_id);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -561,11 +741,21 @@ static void update_descriptor_set(PGRAPHState *pg, SurfaceBinding *surface)
     };
 
     // FIXME: PVIDEO Overlay
-    image_infos[1] = (VkDescriptorImageInfo){
-        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        .imageView = r->dummy_texture.image_view,
-        .sampler = r->dummy_texture.sampler,
-    };
+    if (r->display.pvideo.state.enabled) {
+        assert(r->display.pvideo.image_view != VK_NULL_HANDLE);
+        assert(r->display.pvideo.sampler != VK_NULL_HANDLE);
+        image_infos[1] = (VkDescriptorImageInfo){
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .imageView = r->display.pvideo.image_view,
+            .sampler = r->display.pvideo.sampler,
+        };
+    } else {
+        image_infos[1] = (VkDescriptorImageInfo){
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .imageView = r->dummy_texture.image_view,
+            .sampler = r->dummy_texture.sampler,
+        };
+    }
     descriptor_writes[1] = (VkWriteDescriptorSet){
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .dstSet = r->display.descriptor_set,
@@ -578,6 +768,93 @@ static void update_descriptor_set(PGRAPHState *pg, SurfaceBinding *surface)
 
     vkUpdateDescriptorSets(r->device, ARRAY_SIZE(descriptor_writes),
                            descriptor_writes, 0, NULL);
+}
+
+static PvideoState get_pvideo_state(PGRAPHState *pg)
+{
+    NV2AState *d = container_of(pg, NV2AState, pgraph);
+    PvideoState state;
+
+    // FIXME: This check against PVIDEO_SIZE_IN does not match HW behavior.
+    // Many games seem to pass this value when initializing or tearing down
+    // PVIDEO. On its own, this generally does not result in the overlay being
+    // hidden, however there are certain games (e.g., Ultimate Beach Soccer)
+    // that use an unknown mechanism to hide the overlay without explicitly
+    // stopping it.
+    // Since the value seems to be set to 0xFFFFFFFF only in cases where the
+    // content is not valid, it is probably good enough to treat it as an
+    // implicit stop.
+    state.enabled = (d->pvideo.regs[NV_PVIDEO_BUFFER] & NV_PVIDEO_BUFFER_0_USE)
+        && d->pvideo.regs[NV_PVIDEO_SIZE_IN] != 0xFFFFFFFF;
+    if (!state.enabled) {
+        return state;
+    }
+
+    state.base = d->pvideo.regs[NV_PVIDEO_BASE];
+    state.limit = d->pvideo.regs[NV_PVIDEO_LIMIT];
+    state.offset = d->pvideo.regs[NV_PVIDEO_OFFSET];
+
+    state.pitch =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_FORMAT], NV_PVIDEO_FORMAT_PITCH);
+    state.format =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_FORMAT], NV_PVIDEO_FORMAT_COLOR);
+
+    /* TODO: support other color formats */
+    assert(state.format == NV_PVIDEO_FORMAT_COLOR_LE_CR8YB8CB8YA8);
+
+    state.in_width =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_IN], NV_PVIDEO_SIZE_IN_WIDTH);
+    state.in_height =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_IN], NV_PVIDEO_SIZE_IN_HEIGHT);
+
+    state.out_width =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_OUT], NV_PVIDEO_SIZE_OUT_WIDTH);
+    state.out_height =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_OUT], NV_PVIDEO_SIZE_OUT_HEIGHT);
+
+    state.in_s = GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_IN],
+                        NV_PVIDEO_POINT_IN_S);
+    state.in_t = GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_IN],
+                        NV_PVIDEO_POINT_IN_T);
+
+    uint32_t ds_dx = d->pvideo.regs[NV_PVIDEO_DS_DX];
+    uint32_t dt_dy = d->pvideo.regs[NV_PVIDEO_DT_DY];
+    state.scale_x = ds_dx == NV_PVIDEO_DIN_DOUT_UNITY ?
+                        1.0f :
+                        pvideo_calculate_scale(ds_dx, state.out_width);
+    state.scale_y = dt_dy == NV_PVIDEO_DIN_DOUT_UNITY ?
+                        1.0f :
+                        pvideo_calculate_scale(dt_dy, state.out_height);
+
+    // On HW, setting NV_PVIDEO_SIZE_IN larger than NV_PVIDEO_SIZE_OUT results
+    // in them being capped to the output size, content is not scaled. This is
+    // particularly important as NV_PVIDEO_SIZE_IN may be set to 0xFFFFFFFF
+    // during initialization or teardown.
+    if (state.in_width > state.out_width) {
+        state.in_width = floorf((float)state.out_width * state.scale_x + 0.5f);
+    }
+    if (state.in_height > state.out_height) {
+        state.in_height = floorf((float)state.out_height * state.scale_y + 0.5f);
+    }
+
+    state.out_x =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_OUT], NV_PVIDEO_POINT_OUT_X);
+    state.out_y =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_OUT], NV_PVIDEO_POINT_OUT_Y);
+
+    state.color_key_enabled =
+        GET_MASK(d->pvideo.regs[NV_PVIDEO_FORMAT], NV_PVIDEO_FORMAT_DISPLAY);
+
+    // TODO: Verify that masking off the top byte is correct.
+    // SeaBlade sets a color key of 0x80000000 but the texture passed into the
+    // shader is cleared to 0 alpha.
+    state.color_key = d->pvideo.regs[NV_PVIDEO_COLOR_KEY] & 0xFFFFFF;
+
+    assert(state.offset + state.pitch * state.in_height <= state.limit);
+    hwaddr end = state.base + state.offset + state.pitch * state.in_height;
+    assert(end <= memory_region_size(d->vram));
+
+    return state;
 }
 
 static void update_uniforms(PGRAPHState *pg, SurfaceBinding *surface)
@@ -595,119 +872,24 @@ static void update_uniforms(PGRAPHState *pg, SurfaceBinding *surface)
     int line_offset_loc = uniform_index(l, "line_offset");
     uniform1f(l, line_offset_loc, line_offset);
 
-#if 0  // FIXME: PVIDEO overlay 
-    // FIXME: This check against PVIDEO_SIZE_IN does not match HW behavior.
-    // Many games seem to pass this value when initializing or tearing down
-    // PVIDEO. On its own, this generally does not result in the overlay being
-    // hidden, however there are certain games (e.g., Ultimate Beach Soccer)
-    // that use an unknown mechanism to hide the overlay without explicitly
-    // stopping it.
-    // Since the value seems to be set to 0xFFFFFFFF only in cases where the
-    // content is not valid, it is probably good enough to treat it as an
-    // implicit stop.
-    bool enabled = (d->pvideo.regs[NV_PVIDEO_BUFFER] & NV_PVIDEO_BUFFER_0_USE)
-        && d->pvideo.regs[NV_PVIDEO_SIZE_IN] != 0xFFFFFFFF;
-    glUniform1ui(d->pgraph.renderer_state->disp_rndr.pvideo_enable_loc, enabled);
-    if (!enabled) {
-        return;
+    PvideoState *pvideo = &r->display.pvideo.state;
+    uniform1i(l, uniform_index(l, "pvideo_enable"), pvideo->enabled);
+    if (pvideo->enabled) {
+        uniform1i(l, uniform_index(l, "pvideo_color_key_enable"),
+                  pvideo->color_key_enabled);
+        uniform4f(
+            l, uniform_index(l, "pvideo_color_key"),
+            GET_MASK(pvideo->color_key, NV_PVIDEO_COLOR_KEY_RED) / 255.0,
+            GET_MASK(pvideo->color_key, NV_PVIDEO_COLOR_KEY_GREEN) / 255.0,
+            GET_MASK(pvideo->color_key, NV_PVIDEO_COLOR_KEY_BLUE) / 255.0,
+            GET_MASK(pvideo->color_key, NV_PVIDEO_COLOR_KEY_ALPHA) / 255.0);
+        uniform2f(l, uniform_index(l, "pvideo_in_pos"), pvideo->in_s,
+                  pvideo->in_t);
+        uniform4f(l, uniform_index(l, "pvideo_pos"), pvideo->out_x,
+                  pvideo->out_y, pvideo->out_width, pvideo->out_height);
+        uniform4f(l, uniform_index(l, "pvideo_scale"), pvideo->scale_x,
+                  pvideo->scale_y, 1.0f / pg->surface_scale_factor, 1.0);
     }
-
-    hwaddr base = d->pvideo.regs[NV_PVIDEO_BASE];
-    hwaddr limit = d->pvideo.regs[NV_PVIDEO_LIMIT];
-    hwaddr offset = d->pvideo.regs[NV_PVIDEO_OFFSET];
-
-    int in_width =
-        GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_IN], NV_PVIDEO_SIZE_IN_WIDTH);
-    int in_height =
-        GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_IN], NV_PVIDEO_SIZE_IN_HEIGHT);
-
-    int in_s = GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_IN],
-                        NV_PVIDEO_POINT_IN_S);
-    int in_t = GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_IN],
-                        NV_PVIDEO_POINT_IN_T);
-
-    int in_pitch =
-        GET_MASK(d->pvideo.regs[NV_PVIDEO_FORMAT], NV_PVIDEO_FORMAT_PITCH);
-    int in_color =
-        GET_MASK(d->pvideo.regs[NV_PVIDEO_FORMAT], NV_PVIDEO_FORMAT_COLOR);
-
-    unsigned int out_width =
-        GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_OUT], NV_PVIDEO_SIZE_OUT_WIDTH);
-    unsigned int out_height =
-        GET_MASK(d->pvideo.regs[NV_PVIDEO_SIZE_OUT], NV_PVIDEO_SIZE_OUT_HEIGHT);
-
-    float scale_x = 1.0f;
-    float scale_y = 1.0f;
-    unsigned int ds_dx = d->pvideo.regs[NV_PVIDEO_DS_DX];
-    unsigned int dt_dy = d->pvideo.regs[NV_PVIDEO_DT_DY];
-    if (ds_dx != NV_PVIDEO_DIN_DOUT_UNITY) {
-        scale_x = pvideo_calculate_scale(ds_dx, out_width);
-    }
-    if (dt_dy != NV_PVIDEO_DIN_DOUT_UNITY) {
-        scale_y = pvideo_calculate_scale(dt_dy, out_height);
-    }
-
-    // On HW, setting NV_PVIDEO_SIZE_IN larger than NV_PVIDEO_SIZE_OUT results
-    // in them being capped to the output size, content is not scaled. This is
-    // particularly important as NV_PVIDEO_SIZE_IN may be set to 0xFFFFFFFF
-    // during initialization or teardown.
-    if (in_width > out_width) {
-        in_width = floorf((float)out_width * scale_x + 0.5f);
-    }
-    if (in_height > out_height) {
-        in_height = floorf((float)out_height * scale_y + 0.5f);
-    }
-
-    /* TODO: support other color formats */
-    assert(in_color == NV_PVIDEO_FORMAT_COLOR_LE_CR8YB8CB8YA8);
-
-    unsigned int out_x =
-        GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_OUT], NV_PVIDEO_POINT_OUT_X);
-    unsigned int out_y =
-        GET_MASK(d->pvideo.regs[NV_PVIDEO_POINT_OUT], NV_PVIDEO_POINT_OUT_Y);
-
-    unsigned int color_key_enabled =
-        GET_MASK(d->pvideo.regs[NV_PVIDEO_FORMAT], NV_PVIDEO_FORMAT_DISPLAY);
-    glUniform1ui(d->pgraph.renderer_state->disp_rndr.pvideo_color_key_enable_loc,
-                 color_key_enabled);
-
-    // TODO: Verify that masking off the top byte is correct.
-    // SeaBlade sets a color key of 0x80000000 but the texture passed into the
-    // shader is cleared to 0 alpha.
-    unsigned int color_key = d->pvideo.regs[NV_PVIDEO_COLOR_KEY] & 0xFFFFFF;
-    glUniform4f(d->pgraph.renderer_state->disp_rndr.pvideo_color_key_loc,
-                GET_MASK(color_key, NV_PVIDEO_COLOR_KEY_RED) / 255.0,
-                GET_MASK(color_key, NV_PVIDEO_COLOR_KEY_GREEN) / 255.0,
-                GET_MASK(color_key, NV_PVIDEO_COLOR_KEY_BLUE) / 255.0,
-                GET_MASK(color_key, NV_PVIDEO_COLOR_KEY_ALPHA) / 255.0);
-
-    assert(offset + in_pitch * in_height <= limit);
-    hwaddr end = base + offset + in_pitch * in_height;
-    assert(end <= memory_region_size(d->vram));
-
-    pgraph_apply_scaling_factor(pg, &out_x, &out_y);
-    pgraph_apply_scaling_factor(pg, &out_width, &out_height);
-
-    // Translate for the GL viewport origin.
-    out_y = MAX(pg->renderer_state->gl_display_buffer_height - 1 - (int)(out_y + out_height), 0);
-
-    glActiveTexture(GL_TEXTURE0 + 1);
-    glBindTexture(GL_TEXTURE_2D, d->pgraph.renderer_state->disp_rndr.pvideo_tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    uint8_t *tex_rgba = convert_texture_data__CR8YB8CB8YA8(
-        d->vram_ptr + base + offset, in_width, in_height, in_pitch);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, in_width, in_height, 0, GL_RGBA,
-                 GL_UNSIGNED_BYTE, tex_rgba);
-    g_free(tex_rgba);
-    glUniform1i(d->pgraph.renderer_state->disp_rndr.pvideo_tex_loc, 1);
-    glUniform2f(d->pgraph.renderer_state->disp_rndr.pvideo_in_pos_loc, in_s, in_t);
-    glUniform4f(d->pgraph.renderer_state->disp_rndr.pvideo_pos_loc,
-                out_x, out_y, out_width, out_height);
-    glUniform3f(d->pgraph.renderer_state->disp_rndr.pvideo_scale_loc,
-                scale_x, scale_y, 1.0f / pg->surface_scale_factor);
-#endif
 }
 
 static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
@@ -722,6 +904,11 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     if (r->in_command_buffer &&
         surface->draw_time >= r->command_buffer_start_time) {
         pgraph_vk_finish(pg, VK_FINISH_REASON_PRESENTING);
+    }
+
+    disp->pvideo.state = get_pvideo_state(pg);
+    if (disp->pvideo.state.enabled) {
+        upload_pvideo_image(pg, disp->pvideo.state);
     }
 
     update_uniforms(pg, surface);
@@ -853,6 +1040,8 @@ void pgraph_vk_init_display(PGRAPHState *pg)
 void pgraph_vk_finalize_display(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+
+    destroy_pvideo_image(pg);
 
     if (r->display.image != VK_NULL_HANDLE) {
         destroy_current_display_image(pg);

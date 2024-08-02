@@ -229,6 +229,32 @@ typedef struct QueryReport {
     unsigned int query_count;
 } QueryReport;
 
+typedef struct PvideoState {
+    bool enabled;
+    hwaddr base;
+    hwaddr limit;
+    hwaddr offset;
+
+    int pitch;
+    int format;
+
+    int in_width;
+    int in_height;
+    int out_width;
+    int out_height;
+
+    int in_s;
+    int in_t;
+    int out_x;
+    int out_y;
+
+    float scale_x;
+    float scale_y;
+
+    bool color_key_enabled;
+    uint32_t color_key;
+} PvideoState;
+
 typedef struct PGRAPHVkDisplayState {
     ShaderModuleInfo *display_frag;
 
@@ -246,6 +272,15 @@ typedef struct PGRAPHVkDisplayState {
     VkImageView image_view;
     VkDeviceMemory memory;
     VkSampler sampler;
+
+    struct {
+        PvideoState state;
+        int width, height;
+        VkImage image;
+        VkImageView image_view;
+        VmaAllocation allocation;
+        VkSampler sampler;
+    } pvideo;
 
     int width, height;
     int draw_time;
