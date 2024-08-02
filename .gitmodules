@@ -82,9 +82,18 @@
 [submodule "tomlplusplus"]
 	path = tomlplusplus
 	url = https://github.com/marzer/tomlplusplus
-[submodule "hw/xbox/nv2a/thirdparty/nv2a_vsh_cpu"]
-	path = hw/xbox/nv2a/thirdparty/nv2a_vsh_cpu
+[submodule "hw/xbox/nv2a/pgraph/thirdparty/nv2a_vsh_cpu"]
+	path = hw/xbox/nv2a/pgraph/thirdparty/nv2a_vsh_cpu
 	url = https://github.com/abaire/nv2a_vsh_cpu.git
 [submodule "ui/thirdparty/httplib"]
 	path = ui/thirdparty/httplib
 	url = https://github.com/yhirose/cpp-httplib
+[submodule "hw/xbox/nv2a/pgraph/vk/thirdparty/VulkanMemoryAllocator"]
+	path = thirdparty/VulkanMemoryAllocator
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+[submodule "thirdparty/volk"]
+	path = thirdparty/volk
+	url = https://github.com/zeux/volk
+[submodule "thirdparty/SPIRV-Reflect"]
+	path = thirdparty/SPIRV-Reflect
+	url = https://github.com/KhronosGroup/SPIRV-Reflect
