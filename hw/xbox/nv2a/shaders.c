@@ -859,6 +859,7 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
     }
     mstring_append(header, "\n");
 
+    unsigned int scale = state->surface_scale_factor;
     mstring_append_fmt(header, "\n"
             "vec2 adjust_pixel_center(vec2 screen_pos, float w) {\n"
             "  if (w == 0.0 || isinf(w)) {\n"
@@ -875,9 +876,9 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
             "  vec2 bias = vec2(0.002);\n"
             "  subpixel += mix(bias, -bias, round_down);\n"
 
-            "  return w * (pixel + subpixel);\n"
-            "}\n"
-            );
+            "  return w * (pixel + subpixel / %d);\n"
+            "}\n",
+            scale);
 
     MString *body = mstring_from_str("void main() {\n");
 
