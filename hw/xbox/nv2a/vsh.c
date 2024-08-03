@@ -840,10 +840,9 @@ void vsh_translate(uint16_t version,
     mstring_append(body,
         /* the shaders leave the result in screen space, while
          * opengl expects it in clip space.
-         * TODO: the pixel-center co-ordinate differences should handled
          */
-        "  oPos.x = 2.0 * (oPos.x - surfaceSize.x * 0.5) / surfaceSize.x;\n"
-        "  oPos.y = -2.0 * (oPos.y - surfaceSize.y * 0.5) / surfaceSize.y;\n"
+        "  oPos.xy = 2.0 * adjust_pixel_center(oPos.xy, 1.0) / surfaceSize - vec2(1.0);\n"
+        "  oPos.y *= -1;\n"
     );
     if (z_perspective) {
         mstring_append(body, "  oPos.z = oPos.w;\n");
