@@ -63,7 +63,7 @@ override_dh_auto_configure:
 
 override_dh_auto_build:
 	./build.sh ${XEMU_BUILD_OPTIONS} ${common_configure_opts} || \
-	{ echo ===== BUILD FAILED ===; tail -n 50 config.log; exit 1; }
+	{ echo ===== BUILD FAILED ===; cat build/meson-logs/meson-log.txt; exit 1; }
 	cp debian/copyright debian/qemu.deb.copyright
 	cp dist/LICENSE.txt debian/copyright
 

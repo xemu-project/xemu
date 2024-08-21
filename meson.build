@@ -1173,6 +1173,41 @@ if not get_option('opengl').auto() or have_system or have_vhost_user_gpu
                               link_args: config_host['EPOXY_LIBS'].split() + opengl_libs)
 endif
 
+vulkan = not_found
+libglslang = not_found
+
+if targetos == 'windows'
+  vulkan = declare_dependency(compile_args: ['-DVK_USE_PLATFORM_WIN32_KHR'])
+  libglslang = declare_dependency(link_args: [
+        '-lglslang',
+        '-lMachineIndependent',
+        '-lGenericCodeGen',
+        '-lSPIRV',
+        '-lSPIRV-Tools',
+        '-lSPIRV-Tools-opt'
+      ])
+elif targetos == 'linux'
+  vulkan = dependency('vulkan')
+endif
+
+if vulkan.found() and not libglslang.found()
+  cmake = import('cmake')
+  # FIXME: Get spirv-tools to enable opt.
+  glslang_opts = cmake.subproject_options()
+  glslang_opts.add_cmake_defines({'ENABLE_OPT': false})
+  glslang_subpro = cmake.subproject('glslang', options: glslang_opts)
+  libglslang = declare_dependency(link_with: [
+        glslang_subpro.target('glslang'),
+        glslang_subpro.target('MachineIndependent'),
+        glslang_subpro.target('GenericCodeGen'),
+        glslang_subpro.target('SPIRV'),
+      ], include_directories: ['subprojects' / 'glslang']
+    )
+endif
+
+subdir('thirdparty')
+
+
 gbm = not_found
 if (have_system or have_tools) and (virgl.found() or opengl.found())
   gbm = dependency('gbm', method: 'pkg-config', required: false,
@@ -1924,6 +1959,7 @@ config_host_data.set('CONFIG_LINUX_IO_URING', linux_io_uring.found())
 config_host_data.set('CONFIG_LIBPMEM', libpmem.found())
 config_host_data.set('CONFIG_NUMA', numa.found())
 config_host_data.set('CONFIG_OPENGL', opengl.found())
+config_host_data.set('CONFIG_VULKAN', vulkan.found())
 config_host_data.set('CONFIG_PROFILER', get_option('profiler'))
 config_host_data.set('CONFIG_RBD', rbd.found())
 config_host_data.set('CONFIG_RDMA', rdma.found())
@@ -4047,6 +4083,7 @@ summary_info += {'U2F support':       u2f}
 summary_info += {'libusb':            libusb}
 summary_info += {'usb net redir':     usbredir}
 summary_info += {'OpenGL support (epoxy)': opengl}
+summary_info += {'Vulkan support':    vulkan}
 summary_info += {'GBM':               gbm}
 summary_info += {'libiscsi support':  libiscsi}
 summary_info += {'libnfs support':    libnfs}
