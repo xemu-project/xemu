@@ -21,6 +21,7 @@
 #include "qemu/osdep.h"
 #include <linux/vfio.h>
 #include <sys/ioctl.h>
+#include <libgen.h>
 
 #include "hw/hw.h"
 #include "hw/pci/msi.h"
