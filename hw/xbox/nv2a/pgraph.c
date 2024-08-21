@@ -2845,6 +2845,8 @@ DEF_METHOD(NV097, SET_BEGIN_END)
     bool stencil_test =
         pg->regs[NV_PGRAPH_CONTROL_1] & NV_PGRAPH_CONTROL_1_STENCIL_TEST_ENABLE;
     bool is_nop_draw = !(color_write || depth_test || stencil_test);
+    bool z_perspective = control_0 & NV_PGRAPH_CONTROL_0_Z_PERSPECTIVE_ENABLE;
+    bool clip_planes_enabled = z_perspective;
 
     if (parameter == NV097_SET_BEGIN_END_OP_END) {
         if (pg->primitive_mode == PRIM_TYPE_INVALID) {
@@ -2945,10 +2947,6 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             glDisable(GL_CULL_FACE);
         }
 
-        /* Clipping */
-        glEnable(GL_CLIP_DISTANCE0);
-        glEnable(GL_CLIP_DISTANCE1);
-
         /* Front-face select */
         glFrontFace(pg->regs[NV_PGRAPH_SETUPRASTER]
                         & NV_PGRAPH_SETUPRASTER_FRONTFACE
@@ -2981,6 +2979,10 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             GLfloat zfactor = *(float*)&pg->regs[NV_PGRAPH_ZOFFSETFACTOR];
             GLfloat zbias = *(float*)&pg->regs[NV_PGRAPH_ZOFFSETBIAS];
             glPolygonOffset(zfactor, zbias);
+            // TODO: emulate zfactor when z_perspective true, i.e. w-buffering
+            pg->fragment_depth_offset = zbias;
+        } else {
+            pg->fragment_depth_offset = 0.0f;
         }
 
         /* Depth testing */
@@ -2993,14 +2995,29 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             glDepthFunc(pgraph_depth_func_map[depth_func]);
         } else {
             glDisable(GL_DEPTH_TEST);
+            clip_planes_enabled = false;
         }
 
         if (GET_MASK(pg->regs[NV_PGRAPH_ZCOMPRESSOCCLUDE],
                      NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN) ==
             NV_PGRAPH_ZCOMPRESSOCCLUDE_ZCLAMP_EN_CLAMP) {
             glEnable(GL_DEPTH_CLAMP);
+            clip_planes_enabled = false;
         } else {
-            glDisable(GL_DEPTH_CLAMP);
+            if (z_perspective) {
+                glEnable(GL_DEPTH_CLAMP);
+            } else {
+                glDisable(GL_DEPTH_CLAMP);
+            }
+        }
+
+        /* Clipping */
+        if (z_perspective && clip_planes_enabled) {
+            glEnable(GL_CLIP_DISTANCE0);
+            glEnable(GL_CLIP_DISTANCE1);
+        } else {
+            glDisable(GL_CLIP_DISTANCE0);
+            glDisable(GL_CLIP_DISTANCE1);
         }
 
         if (GET_MASK(pg->regs[NV_PGRAPH_CONTROL_3],
@@ -4292,9 +4309,13 @@ static void pgraph_shader_update_constants(PGRAPHState *pg,
     }
 
     if (binding->clip_range_loc != -1) {
-        float zclip_min = *(float*)&pg->regs[NV_PGRAPH_ZCLIPMIN] / zmax * 2.0 - 1.0;
-        float zclip_max = *(float*)&pg->regs[NV_PGRAPH_ZCLIPMAX] / zmax * 2.0 - 1.0;
+        float zclip_min = *(float*)&pg->regs[NV_PGRAPH_ZCLIPMIN]; // zmax * 2.0 - 1.0;
+        float zclip_max = *(float*)&pg->regs[NV_PGRAPH_ZCLIPMAX]; // zmax * 2.0 - 1.0;
         glUniform4f(binding->clip_range_loc, 0, zmax, zclip_min, zclip_max);
+    }
+
+    if (binding->depth_offset_loc != -1) {
+        glUniform1f(binding->depth_offset_loc, pg->fragment_depth_offset);
     }
 
     /* Clipping regions */

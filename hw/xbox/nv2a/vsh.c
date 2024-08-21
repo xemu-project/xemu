@@ -828,6 +828,7 @@ void vsh_translate(uint16_t version,
     /* pre-divide and output the generated W so we can do persepctive correct
      * interpolation manually. OpenGL can't, since we give it a W of 1 to work
      * around the perspective divide */
+    if (!z_perspective) {
     mstring_append(body,
         "  if (oPos.w == 0.0 || isinf(oPos.w)) {\n"
         "    vtx_inv_w = 1.0;\n"
@@ -837,6 +838,7 @@ void vsh_translate(uint16_t version,
         "  vtx_inv_w_flat = vtx_inv_w;\n"
     );
 
+    }
     mstring_append(body,
         /* the shaders leave the result in screen space, while
          * opengl expects it in clip space.
@@ -844,25 +846,16 @@ void vsh_translate(uint16_t version,
          */
         "  oPos.x = 2.0 * (oPos.x - surfaceSize.x * 0.5) / surfaceSize.x;\n"
         "  oPos.y = -2.0 * (oPos.y - surfaceSize.y * 0.5) / surfaceSize.y;\n"
-    );
-    if (z_perspective) {
-        mstring_append(body, "  oPos.z = oPos.w;\n");
-    }
-    mstring_append(body,
-        "  if (clipRange.y != clipRange.x) {\n"
-        "    oPos.z = (oPos.z - clipRange.x)/(0.5*(clipRange.y - clipRange.x)) - 1;\n"
+   
+        "  oPos.z = (oPos.z - clipRange.z)/(0.5*(clipRange.w - clipRange.z)) - 1;\n"
+           
+        "  if (oPos.w < 0.0) {\n"
+        "    oPos.w = clamp(oPos.w, -1.8446744e19, -5.421011e-20);\n"
+        "  } else {\n"
+        "    oPos.w = clamp(oPos.w, 5.421011e-20, 1.8446744e19);\n"
         "  }\n"
 
-        /* Correct for the perspective divide */
-        "  if (oPos.w < 0.0) {\n"
-            /* undo the perspective divide in the case where the point would be
-             * clipped so opengl can clip it correctly */
-        "    oPos.xyz *= oPos.w;\n"
-        "  } else {\n"
-            /* we don't want the OpenGL perspective divide to happen, but we
-             * can't multiply by W because it could be meaningless here */
-        "    oPos.w = 1.0;\n"
-        "  }\n"
-    );
+        "  oPos.xyz *= oPos.w;\n"
+        );
 
 }
