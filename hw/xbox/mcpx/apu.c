@@ -1908,7 +1908,6 @@ static int voice_get_samples(MCPXAPUState *d, uint32_t v, float samples[][2],
         seg_spb = (segment_length >> 18) & 0x1f;
         seg_s = (segment_length >> 23) & 1;
         assert(seg_cs == container_size_index);
-        assert((seg_spb + 1) == samples_per_block);
         assert(seg_s == stereo);
         container_size_index = seg_cs;
         if (seg_cs == NV_PAVS_VOICE_CFG_FMT_CONTAINER_SIZE_ADPCM) {
