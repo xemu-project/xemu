@@ -35,6 +35,8 @@
 #include <vector>
 #include "ui/shader/xemu-logo-frag.h"
 
+extern int viewport_coords[4];
+
 Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
 GLuint g_controller_tex, g_controller_s_tex, g_sb_controller_tex,
     g_fight_stick_tex, g_light_gun_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
@@ -1425,12 +1427,13 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
 {
     int tw, th;
     float scale[2];
+    int viewport_width, viewport_height;
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tw);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &th);
-
+    
     // Calculate scaling factors
     if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_STRETCH) {
         // Stretch to fit
@@ -1452,7 +1455,15 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
             scale[1] = w_ratio/t_ratio;
         }
     }
+    
+    viewport_width = (int)(width * scale[0]);
+    viewport_height = (int)(height * scale[1]);
 
+    viewport_coords[0] = (width - viewport_width) / 2;
+    viewport_coords[1] = (height - viewport_height) / 2;
+    viewport_coords[2] = viewport_width;
+    viewport_coords[3] = viewport_height;
+    
     RenderFramebuffer(tex, width, height, flip, scale);
 }
 

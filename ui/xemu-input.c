@@ -35,6 +35,7 @@
 #include "sysemu/blockdev.h"
 
 extern SDL_Window *m_window;
+extern int viewport_coords[4];
 
 // #define DEBUG_INPUT
 
@@ -571,12 +572,6 @@ void xemu_input_update_controllers(void)
     }
 }
 
-void xemu_input_set_mouse_x_y(int x, int y)
-{
-    m_mouseX = x;
-    m_mouseY = y;
-}
-
 void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
 {
     state->gp.buttons = 0;
@@ -597,16 +592,30 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
         uint32_t mouseBtn = SDL_GetMouseState(&m_mouseX, &m_mouseY);
 
         int32_t windowWidth, windowHeight;
-        SDL_GL_GetDrawableSize(m_window, &windowWidth, &windowHeight); // TODO: get the mouse location relative to the Viewport, not the Window
+        SDL_GL_GetDrawableSize(m_window, &windowWidth, &windowHeight); // get the mouse location relative to the Viewport, not the Window
         
         // Calculate the position of the mouse coordinates in [-32768,32768]
 
         DPRINTF("Real Mouse X: %d, Real MouseY Y: %d\n", m_mouseX, m_mouseY);
 
+        // Check that the mouse position is within the window coordinates
         if (m_mouseX >= 0 && m_mouseX <= windowWidth &&
             m_mouseY >= 0 && m_mouseY <= windowHeight) {
+
+            if(viewport_coords[2] > 0 && viewport_coords[3] > 0) {
+                // Switch from Window coordinates to Viewport Coordinates
+                fprintf(stderr, "Viewport Coordinates: %d, %d, %d, %d", viewport_coords[0], viewport_coords[1], viewport_coords[2], viewport_coords[3]);
+                m_mouseX -= viewport_coords[0];
+                m_mouseY -= viewport_coords[1];
+                windowWidth = viewport_coords[2];
+                windowHeight = viewport_coords[3];
+            }
+
+            fprintf(stderr, "mouse_x: %d, mouse_y: %d\n", m_mouseX, m_mouseY);
+            
             int32_t x = (int32_t)((m_mouseX - (windowWidth / 2)) * state->lg.scaleX * 65535 / windowWidth) + state->lg.offsetX;
             int32_t y = (int32_t)(((windowHeight / 2) - m_mouseY) * state->lg.scaleY * 65535 / windowHeight) + state->lg.offsetY;
+
             state->lg.axis[0] = (int16_t)MIN(MAX(x, -32768), 32767);
             state->lg.axis[1] = (int16_t)MIN(MAX(y, -32768), 32767);
             state->lg.status = 0x20; // Light Visible
