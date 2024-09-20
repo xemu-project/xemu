@@ -199,9 +199,9 @@ case "$platform" in # Adjust compilation options based on platform
     Darwin)
         echo "Compiling for MacOS for $target_arch..."
         if [ "$target_arch" == "arm64" ]; then
-            macos_min_ver=11.3
+            macos_min_ver=12.7.5
         elif [ "$target_arch" == "x86_64" ]; then
-            macos_min_ver=10.13
+            macos_min_ver=12.7.5
         else
             echo "Unsupported arch $target_arch"
             exit 1
@@ -234,6 +234,7 @@ case "$platform" in # Adjust compilation options based on platform
     CYGWIN*|MINGW*|MSYS*)
         echo 'Compiling for Windows...'
         sys_cflags='-Wno-error'
+        CFLAGS="${CFLAGS} -lIphlpapi -lCrypt32" # workaround for linking libs on mingw
         opts="$opts --disable-fortify-source"
         postbuild='package_windows' # set the above function to be called after build
         target="qemu-system-i386w.exe"

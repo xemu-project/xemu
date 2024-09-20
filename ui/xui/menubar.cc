@@ -120,7 +120,7 @@ void ShowMainMenu()
                     }
 
                     if (ImGui::MenuItem(save_name, hotkey, false, bound)) {
-                        ActionActivateBoundSnapshot(i, false);
+                        ActionActivateBoundSnapshot(i, true);
                     }
 
                     g_free(hotkey);
@@ -138,14 +138,7 @@ void ShowMainMenu()
 
             ImGui::Separator();
 
-            ImGui::MenuItem("Settings", NULL, false, false);
-            if (ImGui::MenuItem(" General")) g_main_menu.ShowGeneral();
-            if (ImGui::MenuItem(" Input")) g_main_menu.ShowInput();
-            if (ImGui::MenuItem(" Display")) g_main_menu.ShowDisplay();
-            if (ImGui::MenuItem(" Audio")) g_main_menu.ShowAudio();
-            if (ImGui::MenuItem(" Network")) g_main_menu.ShowNetwork();
-            if (ImGui::MenuItem(" Snapshots")) g_main_menu.ShowSnapshots();
-            if (ImGui::MenuItem(" System")) g_main_menu.ShowSystem();
+            if (ImGui::MenuItem("Settings...")) g_main_menu.ShowSettings();
 
             ImGui::Separator();
 

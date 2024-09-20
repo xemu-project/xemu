@@ -25,6 +25,27 @@ input:
     port2: string
     port3: string
     port4: string
+  peripherals:
+    port1:
+      peripheral_type_0: integer
+      peripheral_param_0: string
+      peripheral_type_1: integer
+      peripheral_param_1: string
+    port2:
+      peripheral_type_0: integer
+      peripheral_param_0: string
+      peripheral_type_1: integer
+      peripheral_param_1: string
+    port3:
+      peripheral_type_0: integer
+      peripheral_param_0: string
+      peripheral_type_1: integer
+      peripheral_param_1: string
+    port4:
+      peripheral_type_0: integer
+      peripheral_param_0: string
+      peripheral_type_1: integer
+      peripheral_param_1: string
   gamecontrollerdb_path: string
   auto_bind:
     type: bool
@@ -159,6 +180,26 @@ display:
     auto_scale:
       type: bool
       default: true
+  debug:
+    video:
+      transparency:
+        type: bool
+        default: false
+      x_pos:
+        type: number
+        default: 100.0
+      y_pos:
+        type: number
+        default: 100.0
+      x_winsize:
+        type: number
+        default: 600.0
+      y_winsize:
+        type: number
+        default: 150.0
+      advanced_tree_state:
+        type: bool
+        default: false
 
 audio:
   use_dsp: bool

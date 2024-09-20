@@ -19,7 +19,7 @@ MIRROR = 'http://nue.de.packages.macports.org/macports/packages'
 
 class LibInstaller:
 	DARWIN_TARGET_X64="darwin_17" # macOS 10.13
-	DARWIN_TARGET_ARM64="darwin_20" # macOS 11.x
+	DARWIN_TARGET_ARM64="darwin_21" # macOS 12.x
 
 	def __init__(self, arch):
 		self._queue = []
@@ -43,7 +43,11 @@ class LibInstaller:
 	def get_latest_pkg_filename_url(self, pkg_name):
 		pkg_base_url = f'{MIRROR}/{pkg_name}'
 		pkg_list = urlopen(pkg_base_url).read().decode('utf-8')
-		pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.' + self._darwin_target + r'\.' + self._arch + r'\.tbz2', pkg_list)
+		pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.(?:any_any|darwin_any|' + self._darwin_target + r')\.(?:noarch|' + self._arch + r')\.tbz2', pkg_list)
+		if len(pkgs) < 1:
+			print(f'    [*] [ERROR] Unable to find version of {pkg_name} compatible with {self._darwin_target}.{self._arch}')
+			exit(1)
+
 		pkg_filename = pkgs[-1]
 		return pkg_filename, f'{pkg_base_url}/{pkg_filename}'
 

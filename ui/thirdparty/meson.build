@@ -62,3 +62,6 @@ fpng = declare_dependency(include_directories: 'fpng', link_with: libfpng)
 
 json = declare_dependency(include_directories: 'json')
 httplib = declare_dependency(include_directories: 'httplib')
+
+libfatx = static_library('fatx', sources: 'fatx/fatx.c')
+fatx = declare_dependency(include_directories: 'fatx', link_with: libfatx)

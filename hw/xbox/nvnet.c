@@ -25,12 +25,15 @@
 #include "hw/pci/pci.h"
 #include "hw/qdev-properties.h"
 #include "net/net.h"
+#include "qemu/bswap.h"
 #include "qemu/iov.h"
 #include "migration/vmstate.h"
 #include "nvnet_regs.h"
 
 #define IOPORT_SIZE 0x8
 #define MMIO_SIZE   0x400
+
+static const uint8_t bcast[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 
 // #define DEBUG
 #ifdef DEBUG
@@ -432,6 +435,58 @@ static bool nvnet_is_packet_oversized(size_t size)
     return size > RX_ALLOC_BUFSIZE;
 }
 
+static bool receive_filter(NvNetState *s, const uint8_t *buf, int size)
+{
+    if (size < 6) {
+        return false;
+    }
+
+    uint32_t rctl = nvnet_get_reg(s, NvRegPacketFilterFlags, 4);
+    int isbcast = !memcmp(buf, bcast, sizeof bcast);
+
+    /* Broadcast */
+    if (isbcast) {
+        /* FIXME: bcast filtering */
+        trace_nvnet_rx_filter_bcast_match();
+        return true;
+    }
+
+    if (!(rctl & NVREG_PFF_MYADDR)) {
+        /* FIXME: Confirm PFF_MYADDR filters mcast */
+        return true;
+    }
+
+    /* Multicast */
+    uint32_t addr[2];
+    addr[0] = cpu_to_le32(nvnet_get_reg(s, NvRegMulticastAddrA, 4));
+    addr[1] = cpu_to_le32(nvnet_get_reg(s, NvRegMulticastAddrB, 4));
+    if (memcmp(addr, bcast, sizeof bcast)) {
+        uint32_t dest_addr[2];
+        memcpy(dest_addr, buf, 6);
+        dest_addr[0] &= cpu_to_le32(nvnet_get_reg(s, NvRegMulticastMaskA, 4));
+        dest_addr[1] &= cpu_to_le32(nvnet_get_reg(s, NvRegMulticastMaskB, 4));
+
+        if (!memcmp(dest_addr, addr, 6)) {
+            trace_nvnet_rx_filter_mcast_match(MAC_ARG(dest_addr));
+            return true;
+        } else {
+            trace_nvnet_rx_filter_mcast_mismatch(MAC_ARG(dest_addr));
+        }
+    }
+
+    /* Unicast */
+    addr[0] = cpu_to_le32(nvnet_get_reg(s, NvRegMacAddrA, 4));
+    addr[1] = cpu_to_le32(nvnet_get_reg(s, NvRegMacAddrB, 4));
+    if (!memcmp(buf, addr, 6)) {
+        trace_nvnet_rx_filter_ucast_match(MAC_ARG(buf));
+        return true;
+    } else {
+        trace_nvnet_rx_filter_ucast_mismatch(MAC_ARG(buf));
+    }
+
+    return false;
+}
+
 static ssize_t nvnet_receive_iov(NetClientState *nc,
                                  const struct iovec *iov, int iovcnt)
 {
@@ -443,10 +498,17 @@ static ssize_t nvnet_receive_iov(NetClientState *nc,
     if (nvnet_is_packet_oversized(size)) {
         /* Drop */
         NVNET_DPRINTF("%s packet too large!\n", __func__);
+        trace_nvnet_rx_oversized(size);
         return size;
     }
 
     iov_to_buf(iov, iovcnt, 0, s->rx_dma_buf, size);
+
+    if (!receive_filter(s, s->rx_dma_buf, size)) {
+        trace_nvnet_rx_filter_dropped();
+        return size;
+    }
+
 #ifdef DEBUG
     nvnet_hex_dump(s, s->rx_dma_buf, size);
 #endif
@@ -472,7 +534,7 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
         dma_addr_t rx_ring_addr = nvnet_get_reg(s, NvRegRxRingPhysAddr, 4);
         rx_ring_addr += s->rx_ring_index * sizeof(desc);
         pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
-        NVNET_DPRINTF("RX: Looking at ring descriptor %d (0x%llx): ",
+        NVNET_DPRINTF("RX: Looking at ring descriptor %d (0x%" HWADDR_PRIx "): ",
                       s->rx_ring_index, rx_ring_addr);
         NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
         NVNET_DPRINTF("Length: 0x%x, ", desc.length);
@@ -539,7 +601,7 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
         dma_addr_t tx_ring_addr = nvnet_get_reg(s, NvRegTxRingPhysAddr, 4);
         tx_ring_addr += s->tx_ring_index * sizeof(desc);
         pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
-        NVNET_DPRINTF("TX: Looking at ring desc %d (%llx): ",
+        NVNET_DPRINTF("TX: Looking at ring desc %d (%" HWADDR_PRIx "): ",
                       s->tx_ring_index, tx_ring_addr);
         NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
         NVNET_DPRINTF("Length: 0x%x, ", desc.length);
@@ -847,7 +909,7 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
         dma_addr_t tx_ring_addr = nvnet_get_reg(s, NvRegTxRingPhysAddr, 4);
         tx_ring_addr += i * sizeof(desc);
         pci_dma_read(d, tx_ring_addr, &desc, sizeof(desc));
-        NVNET_DPRINTF("TX: Dumping ring desc %d (%llx): ",
+        NVNET_DPRINTF("TX: Dumping ring desc %d (%" HWADDR_PRIx "): ",
                       i, tx_ring_addr);
         NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
         NVNET_DPRINTF("Length: 0x%x, ", desc.length);
@@ -860,7 +922,7 @@ static void nvnet_dump_ring_descriptors(NvNetState *s)
         dma_addr_t rx_ring_addr = nvnet_get_reg(s, NvRegRxRingPhysAddr, 4);
         rx_ring_addr += i * sizeof(desc);
         pci_dma_read(d, rx_ring_addr, &desc, sizeof(desc));
-        NVNET_DPRINTF("RX: Dumping ring desc %d (%llx): ",
+        NVNET_DPRINTF("RX: Dumping ring desc %d (%" HWADDR_PRIx "): ",
                       i, rx_ring_addr);
         NVNET_DPRINTF("Buffer: 0x%x, ", desc.packet_buffer);
         NVNET_DPRINTF("Length: 0x%x, ", desc.length);

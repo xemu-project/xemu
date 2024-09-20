@@ -267,6 +267,8 @@ static MString* generate_geometry_shader(
                        "void emit_vertex(int index, int _unused) {\n"
                        "  gl_Position = gl_in[index].gl_Position;\n"
                        "  gl_PointSize = gl_in[index].gl_PointSize;\n"
+                       "  gl_ClipDistance[0] = gl_in[index].gl_ClipDistance[0];\n"
+                       "  gl_ClipDistance[1] = gl_in[index].gl_ClipDistance[1];\n"
                        "  vtx_inv_w = v_vtx_inv_w[index];\n"
                        "  vtx_inv_w_flat = v_vtx_inv_w[index];\n"
                        "  vtxD0 = v_vtxD0[index];\n"
@@ -289,6 +291,8 @@ static MString* generate_geometry_shader(
                        "void emit_vertex(int index, int provoking_index) {\n"
                        "  gl_Position = gl_in[index].gl_Position;\n"
                        "  gl_PointSize = gl_in[index].gl_PointSize;\n"
+                       "  gl_ClipDistance[0] = gl_in[index].gl_ClipDistance[0];\n"
+                       "  gl_ClipDistance[1] = gl_in[index].gl_ClipDistance[1];\n"
                        "  vtx_inv_w = v_vtx_inv_w[index];\n"
                        "  vtx_inv_w_flat = v_vtx_inv_w[provoking_index];\n"
                        "  vtxD0 = v_vtxD0[provoking_index];\n"
@@ -784,7 +788,7 @@ static MString *generate_vertex_shader(const ShaderState *state,
     MString *header = mstring_from_str(
 "#version 400\n"
 "\n"
-"uniform vec2 clipRange;\n"
+"uniform vec4 clipRange;\n"
 "uniform vec2 surfaceSize;\n"
 "\n"
 /* All constants in 1 array declaration */
@@ -864,7 +868,6 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
 
     if (state->fixed_function) {
         generate_fixed_function(state, header, body);
-
     } else if (state->vertex_program) {
         vsh_translate(VSH_VERSION_XVS,
                       (uint32_t*)state->program_data,
@@ -973,6 +976,8 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
                       "  vtxT3 = oT3 * vtx_inv_w;\n"
                       "  gl_Position = oPos;\n"
                       "  gl_PointSize = oPts.x;\n"
+                      "  gl_ClipDistance[0] = oPos.z - oPos.w*clipRange.z;\n" // Near
+                      "  gl_ClipDistance[1] = oPos.w*clipRange.w - oPos.z;\n" // Far
                       "\n"
                       "}\n",
                        shade_model_mult,
