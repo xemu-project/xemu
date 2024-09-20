@@ -1164,7 +1164,7 @@ if not get_option('opengl').auto() or have_system or have_vhost_user_gpu
   elif targetos == 'windows'
     opengl_libs=['-lopengl32', '-lgdi32']
   elif targetos == 'linux'
-    opengl_libs=['-lGLU', '-lGL']
+    opengl_libs=['-lGL']
   else
     error('Unknown GL platform')
   endif

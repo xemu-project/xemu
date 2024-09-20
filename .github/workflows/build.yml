@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Clone tree
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
     # On push to master, increment patch version and create a new tag on release
@@ -48,7 +48,7 @@ jobs:
         ./scripts/archive-source.sh src.tar
         gzip -1 src.tar
     - name: Upload source package artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: src.tar.gz
         path: src.tar.gz
@@ -67,18 +67,18 @@ jobs:
           build_param:
           artifact_name: xemu-win-release
     env:
-      DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-d0d3e7b
+      DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-8152913
 
     steps:
     - name: Download source package
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: src.tar.gz
     - name: Extract source package
       run: tar xf src.tar.gz
     - name: Initialize compiler cache
       id: cache
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: /tmp/xemu-ccache
         key: cache-wincross-${{ runner.os }}-${{ matrix.configuration }}-${{ github.sha }}
@@ -97,7 +97,7 @@ jobs:
           $DOCKER_IMAGE_NAME \
             bash -c "ccache -z; ./build.sh -p win64-cross ${{ matrix.build_param }} && ccache -s"
     - name: Upload build artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact_name }}
         path: dist
@@ -118,7 +118,7 @@ jobs:
           artifact_name: xemu-win-release
     steps:
     - name: Download artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: ${{ matrix.artifact_name }}
         path: ${{ matrix.artifact_name }}
@@ -132,7 +132,7 @@ jobs:
         7z a -tzip ../dist/${{ matrix.artifact_name }}.zip * "-xr!*.pdb"
         7z a -tzip ../dist/${{ matrix.artifact_name }}-pdb.zip "-ir!*.pdb"
     - name: Upload build artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact_name }}-pdb
         path: dist
@@ -155,28 +155,21 @@ jobs:
     steps:
     - name: Initialize compiler cache
       id: cache
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: /tmp/xemu-ccache
         key: cache-${{ runner.os }}-${{ matrix.configuration }}-${{ github.sha }}
         restore-keys: cache-${{ runner.os }}-${{ matrix.configuration }}-
     - name: Download source package
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: src.tar.gz
     - name: Extract source package
       run: |
         mkdir src
         tar -C src -xf src.tar.gz
-    - name: Clone Debian packaging
-      uses: actions/checkout@v3
-      with:
-        ref: deb
-        path: debian-tmp
-    - name: Integrate Debian packaging
+    - name: Create debian changelog
       run: |
-        mv debian-tmp/debian src
-        rm -rf debian-tmp
         pushd src
         echo -e "\
         xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
@@ -219,7 +212,7 @@ jobs:
         ar x dist/*.deb
         mkdir appimage
         tar -C appimage -xf data.tar*
-        install -DT src/xemu.appdata.xml appimage/usr/share/metainfo/xemu.appdata.xml
+        install -DT src/xemu.metainfo.xml appimage/usr/share/metainfo/xemu.metainfo.xml
 
         export VERSION=v$(cat src/XEMU_VERSION)
         if [[ "${{ matrix.configuration }}" == "Debug" ]]; then
@@ -232,14 +225,14 @@ jobs:
       run: |
         tar -czvf ${{ matrix.artifact_filename }} --transform "s#^dist#xemu#" dist
     - name: Upload build artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact_name }}
         path: ${{ matrix.artifact_filename }}
 
   macOS:
     name: Build for macOS (${{ matrix.arch }}, ${{ matrix.configuration }})
-    runs-on: macOS-11
+    runs-on: macOS-14
     needs: Init
     strategy:
       matrix:
@@ -266,11 +259,14 @@ jobs:
           artifact_filename: xemu-macos-arm64-release.zip
     steps:
     - name: Download source package
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: src.tar.gz
     - name: Extract source package
       run: tar xf src.tar.gz
+    - uses: actions/setup-python@v5.1.0
+      with:
+        python-version: '3.12'
     - name: Install dependencies
       run: |
         export HOMEBREW_NO_AUTO_UPDATE=1
@@ -279,12 +275,11 @@ jobs:
           ccache \
           coreutils \
           dylibbundler \
-          pkg-config \
           ninja
-        python3 -m pip install pyyaml requests
+        pip install pyyaml requests
     - name: Initialize compiler, library cache
       id: cache
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           xemu-ccache
@@ -304,26 +299,26 @@ jobs:
         zip -r ../${{ matrix.artifact_filename }} *
         popd
     - name: Upload build artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact_name }}
         path: ${{ matrix.artifact_filename }}
 
   macOSUniversal:
     name: Build macOS Universal Bundle (${{ matrix.configuration }})
-    runs-on: macOS-11
+    runs-on: macOS-14
     needs: [macOS]
     strategy:
       matrix:
         configuration: ["debug", "release"]
     steps:
     - name: Download x86_64 build
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: xemu-macos-x86_64-${{ matrix.configuration }}
         path: xemu-macos-x86_64-${{ matrix.configuration }}
     - name: Download arm64 build
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: xemu-macos-arm64-${{ matrix.configuration }}
         path: xemu-macos-arm64-${{ matrix.configuration }}
@@ -347,7 +342,7 @@ jobs:
         zip -r ../xemu-macos-universal-${{ matrix.configuration }}.zip *
         popd
     - name: Upload build artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: xemu-macos-universal-${{ matrix.configuration }}
         path: xemu-macos-universal-${{ matrix.configuration }}.zip
@@ -358,7 +353,7 @@ jobs:
     needs: [Ubuntu, macOSUniversal, WindowsPdb]
     steps:
     - name: Download artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: dist
     - name: Extract source package
@@ -411,22 +406,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Download source package
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: src.tar.gz
     - name: Extract source package
       run: |
         mkdir src
         tar -C src -xf src.tar.gz
-    - name: Clone Debian packaging
-      uses: actions/checkout@v3
-      with:
-        ref: deb
-        path: debian-tmp
     - name: Integrate Debian packaging
       run: |
-        mv debian-tmp/debian src
-        rm -rf debian-tmp
         pushd src
         echo -e "\
         xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
