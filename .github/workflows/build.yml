@@ -67,7 +67,7 @@ jobs:
           build_param:
           artifact_name: xemu-win-release
     env:
-      DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-d0d3e7b
+      DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-8152913
 
     steps:
     - name: Download source package
@@ -168,15 +168,8 @@ jobs:
       run: |
         mkdir src
         tar -C src -xf src.tar.gz
-    - name: Clone Debian packaging
-      uses: actions/checkout@v4
-      with:
-        ref: deb
-        path: debian-tmp
-    - name: Integrate Debian packaging
+    - name: Create debian changelog
       run: |
-        mv debian-tmp/debian src
-        rm -rf debian-tmp
         pushd src
         echo -e "\
         xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
@@ -239,7 +232,7 @@ jobs:
 
   macOS:
     name: Build for macOS (${{ matrix.arch }}, ${{ matrix.configuration }})
-    runs-on: macOS-11
+    runs-on: macOS-14
     needs: Init
     strategy:
       matrix:
@@ -271,6 +264,9 @@ jobs:
         name: src.tar.gz
     - name: Extract source package
       run: tar xf src.tar.gz
+    - uses: actions/setup-python@v5.1.0
+      with:
+        python-version: '3.12'
     - name: Install dependencies
       run: |
         export HOMEBREW_NO_AUTO_UPDATE=1
@@ -279,9 +275,8 @@ jobs:
           ccache \
           coreutils \
           dylibbundler \
-          pkg-config \
           ninja
-        python3 -m pip install pyyaml requests
+        pip install pyyaml requests
     - name: Initialize compiler, library cache
       id: cache
       uses: actions/cache@v4
@@ -311,7 +306,7 @@ jobs:
 
   macOSUniversal:
     name: Build macOS Universal Bundle (${{ matrix.configuration }})
-    runs-on: macOS-11
+    runs-on: macOS-14
     needs: [macOS]
     strategy:
       matrix:
@@ -418,15 +413,8 @@ jobs:
       run: |
         mkdir src
         tar -C src -xf src.tar.gz
-    - name: Clone Debian packaging
-      uses: actions/checkout@v4
-      with:
-        ref: deb
-        path: debian-tmp
     - name: Integrate Debian packaging
       run: |
-        mv debian-tmp/debian src
-        rm -rf debian-tmp
         pushd src
         echo -e "\
         xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
