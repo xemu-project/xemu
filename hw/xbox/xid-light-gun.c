@@ -82,7 +82,7 @@ static const USBDescIface desc_iface_xbox_light_gun = {
         },
 };
 
-static const USBDescDevice desc_device_xbox_light_gun  = {
+static const USBDescDevice desc_device_xbox_light_gun = {
     .bcdUSB = 0x0110,
     .bMaxPacketSize0 = 0x40,
     .bNumConfigurations = 1,
@@ -131,34 +131,40 @@ static void update_lg_input(USBXIDLightGunState *s)
     }
 
     ControllerState *state = xemu_input_get_bound(s->device_index);
-    //assert(state);
-    if(state == NULL)
+    // assert(state);
+    if (state == NULL)
         return;
 
     xemu_input_update_controller(state);
 
     s->in_state.wButtons = 0;
-    if(state->lg.buttons & CONTROLLER_BUTTON_DPAD_UP)
+    if (state->lg.buttons & CONTROLLER_BUTTON_DPAD_UP)
         s->in_state.wButtons |= 0x01;
-    if(state->lg.buttons & CONTROLLER_BUTTON_DPAD_DOWN)
+    if (state->lg.buttons & CONTROLLER_BUTTON_DPAD_DOWN)
         s->in_state.wButtons |= 0x02;
-    if(state->lg.buttons & CONTROLLER_BUTTON_DPAD_LEFT)
+    if (state->lg.buttons & CONTROLLER_BUTTON_DPAD_LEFT)
         s->in_state.wButtons |= 0x04;
-    if(state->lg.buttons & CONTROLLER_BUTTON_DPAD_RIGHT)
+    if (state->lg.buttons & CONTROLLER_BUTTON_DPAD_RIGHT)
         s->in_state.wButtons |= 0x08;
-    if(state->lg.buttons & CONTROLLER_BUTTON_START)
+    if (state->lg.buttons & CONTROLLER_BUTTON_START)
         s->in_state.wButtons |= 0x10;
-    if(state->lg.buttons & CONTROLLER_BUTTON_BACK)
+    if (state->lg.buttons & CONTROLLER_BUTTON_BACK)
         s->in_state.wButtons |= 0x20;
 
     s->in_state.wState = state->lg.status;
 
-    s->in_state.bAnalogButtons[0] = (state->lg.buttons & CONTROLLER_BUTTON_A) ? 0xFF : 0x00;
-    s->in_state.bAnalogButtons[1] = (state->lg.buttons & CONTROLLER_BUTTON_B) ? 0xFF : 0x00;
-    s->in_state.bAnalogButtons[2] = (state->lg.buttons & CONTROLLER_BUTTON_X) ? 0xFF : 0x00;
-    s->in_state.bAnalogButtons[3] = (state->lg.buttons & CONTROLLER_BUTTON_Y) ? 0xFF : 0x00;
-    s->in_state.bAnalogButtons[4] = (state->lg.buttons & CONTROLLER_BUTTON_BLACK) ? 0xFF : 0x00;
-    s->in_state.bAnalogButtons[5] = (state->lg.buttons & CONTROLLER_BUTTON_WHITE) ? 0xFF : 0x00;
+    s->in_state.bAnalogButtons[0] =
+        (state->lg.buttons & CONTROLLER_BUTTON_A) ? 0xFF : 0x00;
+    s->in_state.bAnalogButtons[1] =
+        (state->lg.buttons & CONTROLLER_BUTTON_B) ? 0xFF : 0x00;
+    s->in_state.bAnalogButtons[2] =
+        (state->lg.buttons & CONTROLLER_BUTTON_X) ? 0xFF : 0x00;
+    s->in_state.bAnalogButtons[3] =
+        (state->lg.buttons & CONTROLLER_BUTTON_Y) ? 0xFF : 0x00;
+    s->in_state.bAnalogButtons[4] =
+        (state->lg.buttons & CONTROLLER_BUTTON_BLACK) ? 0xFF : 0x00;
+    s->in_state.bAnalogButtons[5] =
+        (state->lg.buttons & CONTROLLER_BUTTON_WHITE) ? 0xFF : 0x00;
 
     s->in_state.sThumbLX = state->lg.axis[0];
     s->in_state.sThumbLY = state->lg.axis[1];
@@ -166,34 +172,38 @@ static void update_lg_input(USBXIDLightGunState *s)
 
 static void update_lg_output(USBXIDLightGunState *s)
 {
-    if(s->out_state.bLength == 6) {
+    if (s->out_state.bLength == 6) {
         // Rumble Data, do nothing (for now)
-    } else if(s->out_state.bLength == 10) {
+    } else if (s->out_state.bLength == 10) {
         ControllerState *state = xemu_input_get_bound(s->device_index);
         assert(state);
         xemu_input_update_controller(state);
 
         // Calibration Data
-        s->out_state.sTopLeftCalibrationX = -25000 - s->out_state.sTopLeftCalibrationX;
-        s->out_state.sTopLeftCalibrationY = 25000 - s->out_state.sTopLeftCalibrationY;
+        s->out_state.sTopLeftCalibrationX =
+            -25000 - s->out_state.sTopLeftCalibrationX;
+        s->out_state.sTopLeftCalibrationY =
+            25000 - s->out_state.sTopLeftCalibrationY;
 
         state->lg.offsetX = s->out_state.sCenterCalibrationX;
         state->lg.offsetY = s->out_state.sCenterCalibrationY;
-        state->lg.scaleX = 25000.0f / (s->out_state.sCenterCalibrationX - s->out_state.sTopLeftCalibrationX);
-        state->lg.scaleY = 25000.0f / (s->out_state.sTopLeftCalibrationY - s->out_state.sCenterCalibrationY);
-        fprintf(stderr, "ScaleX: %0.3f\n", state->lg.scaleX);
-        fprintf(stderr, "ScaleY: %0.3f\n", state->lg.scaleY);
+        state->lg.scaleX = 25000.0f / (s->out_state.sCenterCalibrationX -
+                                       s->out_state.sTopLeftCalibrationX);
+        state->lg.scaleY = 25000.0f / (s->out_state.sTopLeftCalibrationY -
+                                       s->out_state.sCenterCalibrationY);
     }
 }
 
-static void usb_xid_light_gun_handle_control(USBDevice *dev, USBPacket *p, int request,
-                            int value, int index, int length, uint8_t *data)
+static void usb_xid_light_gun_handle_control(USBDevice *dev, USBPacket *p,
+                                             int request, int value, int index,
+                                             int length, uint8_t *data)
 {
     USBXIDLightGunState *s = DO_UPCAST(USBXIDLightGunState, dev, dev);
 
     DPRINTF("xid light_gun handle_control 0x%x 0x%x\n", request, value);
 
-    int ret = usb_desc_handle_control(dev, p, request, value, index, length, data);
+    int ret =
+        usb_desc_handle_control(dev, p, request, value, index, length, data);
     if (ret >= 0) {
         DPRINTF("xid handled by usb_desc_handle_control: %d\n", ret);
         return;
@@ -232,17 +242,19 @@ static void usb_xid_light_gun_handle_control(USBDevice *dev, USBPacket *p, int r
             }
             update_lg_output(s);
         } else if (value == 0x0201) { /* light gun calibration */
-            if(length == sizeof(XIDLightGunCalibrationReport)) {
-                memcpy(&s->out_state, data, sizeof(XIDLightGunCalibrationReport));
+            if (length == sizeof(XIDLightGunCalibrationReport)) {
+                memcpy(&s->out_state, data,
+                       sizeof(XIDLightGunCalibrationReport));
 
-                DPRINTF("xid Light Gun Calibration Data: %d, %d, %d, %d\n", 
-                    s->out_state.sCenterCalibrationX, 
-                    s->out_state.sCenterCalibrationY, 
-                    s->out_state.sTopLeftCalibrationX, 
-                    s->out_state.sTopLeftCalibrationY);
-                
+                DPRINTF("xid Light Gun Calibration Data: %d, %d, %d, %d\n",
+                        s->out_state.sCenterCalibrationX,
+                        s->out_state.sCenterCalibrationY,
+                        s->out_state.sTopLeftCalibrationX,
+                        s->out_state.sTopLeftCalibrationY);
+
                 /* FIXME: This should also be a STALL */
-                assert(s->out_state.bLength == sizeof(XIDLightGunCalibrationReport));                
+                assert(s->out_state.bLength ==
+                       sizeof(XIDLightGunCalibrationReport));
 
                 p->actual_length = length;
             } else {
@@ -285,21 +297,21 @@ static void usb_xid_light_gun_handle_control(USBDevice *dev, USBPacket *p, int r
             assert(false);
         }
         break;
-    case ((USB_DIR_IN|USB_TYPE_CLASS|USB_RECIP_DEVICE)<<8)
-             | USB_REQ_GET_DESCRIPTOR:
+    case ((USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_DEVICE) << 8) |
+        USB_REQ_GET_DESCRIPTOR:
         /* FIXME: ! */
-        DPRINTF("xid unknown xpad request 0x%x: value = 0x%x\n",
-                request, value);
+        DPRINTF("xid unknown xpad request 0x%x: value = 0x%x\n", request,
+                value);
         memset(data, 0x00, length);
-        //FIXME: Intended for the hub: usbd_get_hub_descriptor, UT_READ_CLASS?!
+        // FIXME: Intended for the hub: usbd_get_hub_descriptor, UT_READ_CLASS?!
         p->status = USB_RET_STALL;
-        //assert(false);
+        // assert(false);
         break;
-    case ((USB_DIR_OUT|USB_TYPE_STANDARD|USB_RECIP_ENDPOINT)<<8)
-             | USB_REQ_CLEAR_FEATURE:
+    case ((USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_ENDPOINT) << 8) |
+        USB_REQ_CLEAR_FEATURE:
         /* FIXME: ! */
-        DPRINTF("xid unknown xpad request 0x%x: value = 0x%x\n",
-                request, value);
+        DPRINTF("xid unknown xpad request 0x%x: value = 0x%x\n", request,
+                value);
         memset(data, 0x00, length);
         p->status = USB_RET_STALL;
         break;
@@ -315,8 +327,8 @@ static void usb_xid_light_gun_handle_data(USBDevice *dev, USBPacket *p)
 {
     USBXIDLightGunState *s = DO_UPCAST(USBXIDLightGunState, dev, dev);
 
-    DPRINTF("xid light_gun handle_gamepad_data 0x%x %d 0x%zx\n", p->pid, p->ep->nr,
-            p->iov.size);
+    DPRINTF("xid light_gun handle_gamepad_data 0x%x %d 0x%zx\n", p->pid,
+            p->ep->nr, p->iov.size);
 
     switch (p->pid) {
     case USB_TOKEN_IN:

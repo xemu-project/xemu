@@ -80,7 +80,7 @@
 #define GAMEPAD_LEFT_THUMB 14
 #define GAMEPAD_RIGHT_THUMB 15
 
-#define BUTTON_MASK(button) (1 << ((button)-GAMEPAD_DPAD_UP))
+#define BUTTON_MASK(button) (1 << ((button) - GAMEPAD_DPAD_UP))
 
 enum {
     STR_MANUFACTURER = 1,

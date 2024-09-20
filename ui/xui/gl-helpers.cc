@@ -66,8 +66,8 @@ typedef struct DecalShader_
     GLint palette_loc[256];
 } DecalShader;
 
-static DecalShader *g_decal_shader,
-                   *g_logo_shader,
+static DecalShader *g_decal_shader, 
+                   *g_logo_shader, 
                    *g_framebuffer_shader;
 
 GLint Fbo::vp[4];
@@ -80,7 +80,7 @@ void DeleteDecalShader(DecalShader *s);
 static GLint GetCurrentFbo()
 {
     GLint fbo;
-    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, (GLint*)&fbo);
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, (GLint *)&fbo);
     return fbo;
 }
 
@@ -97,8 +97,8 @@ Fbo::Fbo(int width, int height)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA,
-                 GL_UNSIGNED_BYTE, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                 NULL);
 
     GLint original = GetCurrentFbo();
 
@@ -154,22 +154,26 @@ static GLuint InitTexture(unsigned char *data, int width, int height,
     glGenTextures(1, &tex);
     assert(tex != 0);
     glBindTexture(GL_TEXTURE_2D, tex);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL,  0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_BORDER);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_BORDER);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                    GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, data);
     return tex;
 }
 
-static GLuint LoadTextureFromMemory(const unsigned char *buf, unsigned int size, bool flip=true)
+static GLuint LoadTextureFromMemory(const unsigned char *buf, unsigned int size,
+                                    bool flip = true)
 {
     // Flip vertically so textures are loaded according to GL convention.
     stbi_set_flip_vertically_on_load(flip);
 
     int width, height, channels = 0;
-    unsigned char *data = stbi_load_from_memory(buf, size, &width, &height, &channels, 4);
+    unsigned char *data =
+        stbi_load_from_memory(buf, size, &width, &height, &channels, 4);
     assert(data != NULL);
 
     GLuint tex = InitTexture(data, width, height, channels);
@@ -261,7 +265,8 @@ void main() {
 
     // Simple 2-color decal shader
     // - in_ColorFill is first pass
-    // - Red channel of the texture is used as primary color, mixed with 1-Red for
+    // - Red channel of the texture is used as primary color, mixed with 1-Red
+    // for
     //   secondary color.
     // - Blue is a lazy alpha removal for now
     // - Alpha channel passed through
@@ -283,11 +288,18 @@ void main() {
 
     const char *frag_src = NULL;
     switch (type) {
-    case ShaderType::Mask: frag_src = mask_frag_src; break;
+    case ShaderType::Mask:
+        frag_src = mask_frag_src;
+        break;
     // case ShaderType::Blit: frag_src = image_frag_src; break;
-    case ShaderType::BlitGamma: frag_src = image_gamma_frag_src; break;
-    case ShaderType::Logo: frag_src = xemu_logo_frag_src; break;
-    default: assert(0);
+    case ShaderType::BlitGamma:
+        frag_src = image_gamma_frag_src;
+        break;
+    case ShaderType::Logo:
+        frag_src = xemu_logo_frag_src;
+        break;
+    default:
+        assert(0);
     }
     GLuint frag = Shader(GL_FRAGMENT_SHADER, frag_src);
     assert(frag != 0);
@@ -322,10 +334,10 @@ void main() {
 
     const GLfloat verts[6][4] = {
         //  x      y      s      t
-        { -1.0f, -1.0f,  0.0f,  0.0f }, // BL
-        { -1.0f,  1.0f,  0.0f,  1.0f }, // TL
-        {  1.0f,  1.0f,  1.0f,  1.0f }, // TR
-        {  1.0f, -1.0f,  1.0f,  0.0f }, // BR
+        { -1.0f, -1.0f, 0.0f, 0.0f }, // BL
+        { -1.0f, 1.0f, 0.0f, 1.0f }, // TL
+        { 1.0f, 1.0f, 1.0f, 1.0f }, // TR
+        { 1.0f, -1.0f, 1.0f, 0.0f }, // BR
     };
     const GLint indicies[] = { 0, 1, 2, 3 };
 
@@ -334,21 +346,24 @@ void main() {
 
     glGenBuffers(1, &s->vbo);
     glBindBuffer(GL_ARRAY_BUFFER, s->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts,  GL_STATIC_COPY);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_COPY);
 
     glGenBuffers(1, &s->ebo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, s->ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indicies), indicies, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indicies), indicies,
+                 GL_STATIC_DRAW);
 
     GLint loc = glGetAttribLocation(s->prog, "in_Position");
     if (loc >= 0) {
-        glVertexAttribPointer(loc, 2, GL_FLOAT, GL_FALSE, 4*sizeof(GLfloat), (void*)0);
+        glVertexAttribPointer(loc, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat),
+                              (void *)0);
         glEnableVertexAttribArray(loc);
     }
 
     loc = glGetAttribLocation(s->prog, "in_Texcoord");
     if (loc >= 0) {
-        glVertexAttribPointer(loc, 2, GL_FLOAT, GL_FALSE, 4*sizeof(GLfloat), (void*)(2*sizeof(GLfloat)));
+        glVertexAttribPointer(loc, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat),
+                              (void *)(2 * sizeof(GLfloat)));
         glEnableVertexAttribArray(loc);
     }
 
@@ -373,17 +388,17 @@ void RenderDecal(DecalShader *s, float x, float y, float w, float h,
     tex_h = (int)tex_h;
 
     int tw_i, th_i;
-    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH,  &tw_i);
+    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tw_i);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &th_i);
     float tw = tw_i, th = th_i;
 
-#define COL(color, c) (float)(((color) >> ((c)*8)) & 0xff) / 255.0
+#define COL(color, c) (float)(((color) >> ((c) * 8)) & 0xff) / 255.0
     if (s->flipy_loc >= 0) {
         glUniform1i(s->flipy_loc, s->flip);
     }
     if (s->scale_offset_loc >= 0) {
-        glUniform4f(s->scale_offset_loc, w / ww, h / wh, -1 + ((2 * x + w) / ww),
-                    -1 + ((2 * y + h) / wh));
+        glUniform4f(s->scale_offset_loc, w / ww, h / wh,
+                    -1 + ((2 * x + w) / ww), -1 + ((2 * y + h) / wh));
     }
     if (s->tex_scale_offset_loc >= 0) {
         glUniform4f(s->tex_scale_offset_loc, tex_w / tw, tex_h / th, tex_x / tw,
@@ -397,15 +412,15 @@ void RenderDecal(DecalShader *s, float x, float y, float w, float h,
                     COL(primary, 1), COL(primary, 0));
     }
     if (s->color_secondary_loc >= 0) {
-        glUniform4f(s->color_secondary_loc, COL(secondary, 3), COL(secondary, 2),
-                    COL(secondary, 1), COL(secondary, 0));
+        glUniform4f(s->color_secondary_loc, COL(secondary, 3),
+                    COL(secondary, 2), COL(secondary, 1), COL(secondary, 0));
     }
     if (s->color_fill_loc >= 0) {
         glUniform4f(s->color_fill_loc, COL(fill, 3), COL(fill, 2), COL(fill, 1),
                     COL(fill, 0));
     }
     if (s->time_loc >= 0) {
-        glUniform1f(s->time_loc, s->time/1000.0f);
+        glUniform1f(s->time_loc, s->time / 1000.0f);
     }
     if (s->scale_loc >= 0) {
         glUniform1f(s->scale_loc, s->scale);
@@ -440,7 +455,7 @@ static const struct rect sb_tex_items[] = {
     { 1, 55, 20, 22 }, // Sight Change Stick
     { 0, 0, 34, 55 }, // Left Stick
     { 34, 0, 33, 55 }, // Right Stick
-    { 21, 2, 3, 3 }  // Toggle
+    { 21, 2, 3, 3 } // Toggle
 };
 
 static const struct rect fight_stick_tex_items[] = {
@@ -572,15 +587,15 @@ void RenderController_Duke(float frame_x, float frame_y, uint32_t primary_color,
     if (now < state->gp.animate_guide_button_end) {
         t = 1.0f - (float)(state->gp.animate_guide_button_end - now) /
                        (float)animate_guide_button_duration;
-        float sin_wav = (1-sin(M_PI * t / 2.0f));
+        float sin_wav = (1 - sin(M_PI * t / 2.0f));
 
         // Animate guide button by highlighting logo jewel and fading out over time
         alpha = sin_wav * 255.0f;
         jewel_color = primary_color + alpha;
 
         // Add a little extra flare: wiggle the frame around while we rumble
-        frame_x += ((float)(rand() % 5)-2.5) * (1-t);
-        frame_y += ((float)(rand() % 5)-2.5) * (1-t);
+        frame_x += ((float)(rand() % 5) - 2.5) * (1 - t);
+        frame_y += ((float)(rand() % 5) - 2.5) * (1 - t);
         rumble_l = rumble_r = sin_wav;
     }
 
@@ -610,8 +625,8 @@ void RenderController_Duke(float frame_x, float frame_y, uint32_t primary_color,
     // Render left thumbstick
     float w = tex_items[obj_lstick].w;
     float h = tex_items[obj_lstick].h;
-    float c_x = frame_x+lstick_ctr.x;
-    float c_y = frame_y+lstick_ctr.y;
+    float c_x = frame_x + lstick_ctr.x;
+    float c_y = frame_y + lstick_ctr.y;
     float lstick_x = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_X] / 32768.0;
     float lstick_y = (float)state->gp.axis[CONTROLLER_AXIS_LSTICK_Y] / 32768.0;
     RenderDecal(
@@ -627,8 +642,8 @@ void RenderController_Duke(float frame_x, float frame_y, uint32_t primary_color,
     // Render right thumbstick
     w = tex_items[obj_rstick].w;
     h = tex_items[obj_rstick].h;
-    c_x = frame_x+rstick_ctr.x;
-    c_y = frame_y+rstick_ctr.y;
+    c_x = frame_x + rstick_ctr.x;
+    c_y = frame_y + rstick_ctr.y;
     float rstick_x = (float)state->gp.axis[CONTROLLER_AXIS_RSTICK_X] / 32768.0;
     float rstick_y = (float)state->gp.axis[CONTROLLER_AXIS_RSTICK_Y] / 32768.0;
     RenderDecal(
@@ -658,7 +673,7 @@ void RenderController_Duke(float frame_x, float frame_y, uint32_t primary_color,
     if (state->gp.animate_trigger_end > now) {
         t = 1.0f - (float)(state->gp.animate_trigger_end - now) /
                        (float)animate_trigger_duration;
-        float sin_wav = (1-sin(M_PI * t / 2.0f));
+        float sin_wav = (1 - sin(M_PI * t / 2.0f));
         alpha += fmin(sin_wav * 0x40, 0x80);
     }
 
@@ -1235,7 +1250,7 @@ void RenderFightStick(float frame_x, float frame_y, uint32_t primary_color,
 }
 
 void RenderLightGun(float frame_x, float frame_y, uint32_t primary_color,
-                      uint32_t secondary_color, ControllerState *state)
+                    uint32_t secondary_color, ControllerState *state)
 {
     // Location within the controller texture of masked button locations,
     // relative to the origin of the controller
@@ -1293,9 +1308,8 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
     else if (strcmp(bound_drivers[state->bound], DRIVER_ARCADE_STICK) == 0)
         RenderFightStick(frame_x, frame_y, primary_color, secondary_color,
                          state);
-    else if(strcmp(bound_drivers[state->bound], DRIVER_LIGHT_GUN) == 0)
-        RenderLightGun(frame_x, frame_y, primary_color, secondary_color,
-                       state);
+    else if (strcmp(bound_drivers[state->bound], DRIVER_LIGHT_GUN) == 0)
+        RenderLightGun(frame_x, frame_y, primary_color, secondary_color, state);
 }
 
 void RenderControllerPort(float frame_x, float frame_y, int i,
@@ -1313,7 +1327,7 @@ void RenderControllerPort(float frame_x, float frame_y, int i,
                 tex_items[obj_port_socket].y, tex_items[obj_port_socket].w,
                 tex_items[obj_port_socket].h, port_color, port_color, 0);
 
-    frame_x += (tex_items[obj_port_socket].w-tex_items[obj_port_lbl_1].w)/2;
+    frame_x += (tex_items[obj_port_socket].w - tex_items[obj_port_lbl_1].w) / 2;
     frame_y += tex_items[obj_port_socket].h + 8;
 
     // Render port label
@@ -1357,28 +1371,30 @@ void RenderLogo(uint32_t time)
     glBlendFunc(GL_ONE, GL_ZERO);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, g_logo_tex);
-    RenderDecal(g_logo_shader, 0, 0, 512, 512, 0, 0, 128, 128, color,
-        color, 0x00000000);
+    RenderDecal(g_logo_shader, 0, 0, 512, 512, 0, 0, 128, 128, color, color,
+                0x00000000);
     glBindVertexArray(0);
     glUseProgram(0);
 }
 
 // Scale <src> proportionally to fit in <max>
-void ScaleDimensions(int src_width, int src_height, int max_width, int max_height, int *out_width, int *out_height)
+void ScaleDimensions(int src_width, int src_height, int max_width,
+                     int max_height, int *out_width, int *out_height)
 {
-    float w_ratio = (float)max_width/(float)max_height;
-    float t_ratio = (float)src_width/(float)src_height;
+    float w_ratio = (float)max_width / (float)max_height;
+    float t_ratio = (float)src_width / (float)src_height;
 
     if (w_ratio >= t_ratio) {
-        *out_width = (float)max_width * t_ratio/w_ratio;
+        *out_width = (float)max_width * t_ratio / w_ratio;
         *out_height = max_height;
     } else {
         *out_width = max_width;
-        *out_height = (float)max_height * w_ratio/t_ratio;
+        *out_height = (float)max_height * w_ratio / t_ratio;
     }
 }
 
-void RenderFramebuffer(GLint tex, int width, int height, bool flip, float scale[2])
+void RenderFramebuffer(GLint tex, int width, int height, bool flip,
+                       float scale[2])
 {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -1412,14 +1428,14 @@ float GetDisplayAspectRatio(int width, int height)
 {
     switch (g_config.display.ui.aspect_ratio) {
     case CONFIG_DISPLAY_UI_ASPECT_RATIO_NATIVE:
-        return (float)width/(float)height;
+        return (float)width / (float)height;
     case CONFIG_DISPLAY_UI_ASPECT_RATIO_16X9:
-        return 16.0f/9.0f;
+        return 16.0f / 9.0f;
     case CONFIG_DISPLAY_UI_ASPECT_RATIO_4X3:
-        return 4.0f/3.0f;
+        return 4.0f / 3.0f;
     case CONFIG_DISPLAY_UI_ASPECT_RATIO_AUTO:
     default:
-        return xemu_get_widescreen() ? 16.0f/9.0f : 4.0f/3.0f;
+        return xemu_get_widescreen() ? 16.0f / 9.0f : 4.0f / 3.0f;
     }
 }
 
@@ -1433,7 +1449,7 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
     glBindTexture(GL_TEXTURE_2D, tex);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tw);
     glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &th);
-    
+
     // Calculate scaling factors
     if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_STRETCH) {
         // Stretch to fit
@@ -1442,20 +1458,20 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
     } else if (g_config.display.ui.fit == CONFIG_DISPLAY_UI_FIT_CENTER) {
         // Centered
         float t_ratio = GetDisplayAspectRatio(tw, th);
-        scale[0] = t_ratio*(float)th/(float)width;
-        scale[1] = (float)th/(float)height;
+        scale[0] = t_ratio * (float)th / (float)width;
+        scale[1] = (float)th / (float)height;
     } else {
         float t_ratio = GetDisplayAspectRatio(tw, th);
-        float w_ratio = (float)width/(float)height;
+        float w_ratio = (float)width / (float)height;
         if (w_ratio >= t_ratio) {
-            scale[0] = t_ratio/w_ratio;
+            scale[0] = t_ratio / w_ratio;
             scale[1] = 1.0;
         } else {
             scale[0] = 1.0;
-            scale[1] = w_ratio/t_ratio;
+            scale[1] = w_ratio / t_ratio;
         }
     }
-    
+
     viewport_width = (int)(width * scale[0]);
     viewport_height = (int)(height * scale[1]);
 
@@ -1463,11 +1479,12 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
     viewport_coords[1] = (height - viewport_height) / 2;
     viewport_coords[2] = viewport_width;
     viewport_coords[3] = viewport_height;
-    
+
     RenderFramebuffer(tex, width, height, flip, scale);
 }
 
-bool RenderFramebufferToPng(GLuint tex, bool flip, std::vector<uint8_t> &png, int max_width, int max_height)
+bool RenderFramebufferToPng(GLuint tex, bool flip, std::vector<uint8_t> &png,
+                            int max_width, int max_height)
 {
     int width, height;
 
@@ -1489,7 +1506,7 @@ bool RenderFramebufferToPng(GLuint tex, bool flip, std::vector<uint8_t> &png, in
     fbo.Target();
     bool blend = glIsEnabled(GL_BLEND);
     if (blend) glDisable(GL_BLEND);
-    float scale[2] = {1.0, 1.0};
+    float scale[2] = { 1.0, 1.0 };
     RenderFramebuffer(tex, width, height, !flip, scale);
     if (blend) glEnable(GL_BLEND);
     glPixelStorei(GL_PACK_ROW_LENGTH, width);
@@ -1498,7 +1515,8 @@ bool RenderFramebufferToPng(GLuint tex, bool flip, std::vector<uint8_t> &png, in
     glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
     fbo.Restore();
 
-    return fpng::fpng_encode_image_to_memory(pixels.data(), width, height, 3, png);
+    return fpng::fpng_encode_image_to_memory(pixels.data(), width, height, 3,
+                                             png);
 }
 
 void SaveScreenshot(GLuint tex, bool flip)

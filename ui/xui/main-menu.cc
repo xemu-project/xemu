@@ -186,7 +186,7 @@ void MainMenuInputView::Draw()
         const char *driver_display_names[] = {
             DRIVER_DUKE_DISPLAY_NAME, DRIVER_S_DISPLAY_NAME,
             DRIVER_STEEL_BATTALION_DISPLAY_NAME,
-            DRIVER_ARCADE_STICK_DISPLAY_NAME,
+            DRIVER_ARCADE_STICK_DISPLAY_NAME, 
             DRIVER_LIGHT_GUN_DISPLAY_NAME
         };
         bool is_selected = false;
@@ -243,13 +243,14 @@ void MainMenuInputView::Draw()
 
         // Handle all available input devices
         ControllerState *iter;
-        QTAILQ_FOREACH(iter, &available_controllers, entry) {
+        QTAILQ_FOREACH (iter, &available_controllers, entry) {
             is_selected = bound_state == iter;
             ImGui::PushID(iter);
             const char *selectable_label = iter->name;
             char buf[128];
             if (iter->bound >= 0) {
-                snprintf(buf, sizeof(buf), "%s (Port %d)", iter->name, iter->bound+1);
+                snprintf(buf, sizeof(buf), "%s (Port %d)", iter->name,
+                         iter->bound + 1);
                 selectable_label = buf;
             }
             if (ImGui::Selectable(selectable_label, is_selected)) {
@@ -299,7 +300,7 @@ void MainMenuInputView::Draw()
     ImVec2 cur = ImGui::GetCursorPos();
 
     ImVec2 controller_display_size;
-    if (ImGui::GetContentRegionMax().x < controller_width*g_viewport_mgr.m_scale) {
+    if (ImGui::GetContentRegionMax().x < controller_width * g_viewport_mgr.m_scale) {
         controller_display_size.x = ImGui::GetContentRegionMax().x;
         controller_display_size.y =
             controller_display_size.x * controller_height / controller_width;
@@ -315,16 +316,15 @@ void MainMenuInputView::Draw()
 
     cur = ImGui::GetCursorPos();
 
-    ImGui::Image(id,
-        controller_display_size,
-        ImVec2(0, controller_height/t_h),
-        ImVec2(controller_width/t_w, 0));
+    ImGui::Image(id, controller_display_size,
+                 ImVec2(0, controller_height / t_h),
+                 ImVec2(controller_width / t_w, 0));
     ImVec2 pos = ImGui::GetCursorPos();
     if (!device_selected) {
         const char *msg = "Please select an available input device";
         ImVec2 dim = ImGui::CalcTextSize(msg);
-        ImGui::SetCursorPosX(cur.x + (controller_display_size.x-dim.x)/2);
-        ImGui::SetCursorPosY(cur.y + (controller_display_size.y-dim.y)/2);
+        ImGui::SetCursorPosX(cur.x + (controller_display_size.x - dim.x) / 2);
+        ImGui::SetCursorPosY(cur.y + (controller_display_size.y - dim.y) / 2);
         ImGui::Text("%s", msg);
     }
 
@@ -530,7 +530,7 @@ void MainMenuDisplayView::Draw()
                      "9x\0"
                      "10x\0",
                      "Increase surface scaling factor for higher quality")) {
-        nv2a_set_surface_scale_factor(rendering_scale+1);
+        nv2a_set_surface_scale_factor(rendering_scale + 1);
     }
 
     SectionTitle("Window");
@@ -611,7 +611,6 @@ void MainMenuAudioView::Draw()
     SectionTitle("Quality");
     Toggle("Real-time DSP processing", &g_config.audio.use_dsp,
            "Enable improved audio accuracy (experimental)");
-
 }
 
 NetworkInterface::NetworkInterface(pcap_if_t *pcap_desc, char *_friendlyname)
@@ -657,7 +656,7 @@ void NetworkInterfaceManager::Refresh(void)
         return;
     }
 
-    for (iter=alldevs; iter != NULL; iter=iter->next) {
+    for (iter = alldevs; iter != NULL; iter = iter->next) {
 #if defined(_WIN32)
         char *friendly_name = get_windows_interface_friendly_name(iter->name);
         m_ifaces.emplace_back(new NetworkInterface(iter, friendly_name));
@@ -746,9 +745,9 @@ void MainMenuNetworkView::DrawPcapOptions(bool appearing)
         const char *msg = "npcap library could not be loaded.\n"
                           "To use this backend, please install npcap.";
         ImGui::Text("%s", msg);
-        ImGui::Dummy(ImVec2(0,10*g_viewport_mgr.m_scale));
-        ImGui::SetCursorPosX((ImGui::GetWindowWidth()-120*g_viewport_mgr.m_scale)/2);
-        if (ImGui::Button("Install npcap", ImVec2(120*g_viewport_mgr.m_scale, 0))) {
+        ImGui::Dummy(ImVec2(0, 10 * g_viewport_mgr.m_scale));
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth() - 120 * g_viewport_mgr.m_scale) / 2);
+        if (ImGui::Button("Install npcap", ImVec2(120 * g_viewport_mgr.m_scale, 0))) {
             xemu_open_web_browser("https://nmap.org/npcap/");
         }
 #endif
@@ -794,22 +793,21 @@ void MainMenuNetworkView::DrawPcapOptions(bool appearing)
 
 void MainMenuNetworkView::DrawNatOptions(bool appearing)
 {
-    static ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg;
+    static ImGuiTableFlags flags =
+        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg;
     WidgetTitleDescriptionItem(
         "Port Forwarding",
         "Configure xemu to forward connections to guest on these ports");
     float p = ImGui::GetFrameHeight() * 0.3;
     ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(p, p));
-    if (ImGui::BeginTable("port_forward_tbl", 4, flags))
-    {
+    if (ImGui::BeginTable("port_forward_tbl", 4, flags)) {
         ImGui::TableSetupColumn("Host Port");
         ImGui::TableSetupColumn("Guest Port");
         ImGui::TableSetupColumn("Protocol");
         ImGui::TableSetupColumn("Action");
         ImGui::TableHeadersRow();
 
-        for (unsigned int row = 0; row < g_config.net.nat.forward_ports_count; row++)
-        {
+        for (unsigned int row = 0; row < g_config.net.nat.forward_ports_count; row++) {
             ImGui::TableNextRow();
 
             ImGui::TableSetColumnIndex(0);
@@ -838,12 +836,12 @@ void MainMenuNetworkView::DrawNatOptions(bool appearing)
         ImGui::TableNextRow();
 
         ImGui::TableSetColumnIndex(0);
-        static char buf[8] = {"1234"};
+        static char buf[8] = { "1234" };
         ImGui::SetNextItemWidth(ImGui::GetColumnWidth());
         ImGui::InputText("###hostport", buf, sizeof(buf));
 
         ImGui::TableSetColumnIndex(1);
-        static char buf2[8] = {"1234"};
+        static char buf2[8] = { "1234" };
         ImGui::SetNextItemWidth(ImGui::GetColumnWidth());
         ImGui::InputText("###guestport", buf2, sizeof(buf2));
 
@@ -1287,7 +1285,8 @@ void MainMenuSystemView::Draw()
     }
 
     if ((int)g_config.sys.avpack == CONFIG_SYS_AVPACK_NONE) {
-        ImGui::TextColored(ImVec4(1,0,0,1), "Setting AV Pack to NONE disables video output.");
+        ImGui::TextColored(ImVec4(1, 0, 0, 1),
+                           "Setting AV Pack to NONE disables video output.");
     }
 
     SectionTitle("System Configuration");

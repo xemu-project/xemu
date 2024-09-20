@@ -85,7 +85,8 @@ void update_input(USBXIDGamepadState *s)
 
     for (int i = 0; i < 6; i++) {
         int pressed = state->gp.buttons & button_map_analog[i][1];
-        s->in_state.bAnalogButtons[button_map_analog[i][0]] = pressed ? 0xff : 0;
+        s->in_state.bAnalogButtons[button_map_analog[i][0]] =
+            pressed ? 0xff : 0;
     }
 
     s->in_state.wButtons = 0;
@@ -117,7 +118,8 @@ void usb_xid_handle_control(USBDevice *dev, USBPacket *p, int request,
 
     DPRINTF("xid handle_control 0x%x 0x%x\n", request, value);
 
-    int ret = usb_desc_handle_control(dev, p, request, value, index, length, data);
+    int ret =
+        usb_desc_handle_control(dev, p, request, value, index, length, data);
     if (ret >= 0) {
         DPRINTF("xid handled by usb_desc_handle_control: %d\n", ret);
         return;
@@ -191,21 +193,21 @@ void usb_xid_handle_control(USBDevice *dev, USBPacket *p, int request,
             assert(false);
         }
         break;
-    case ((USB_DIR_IN|USB_TYPE_CLASS|USB_RECIP_DEVICE)<<8)
-             | USB_REQ_GET_DESCRIPTOR:
+    case ((USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_DEVICE) << 8) |
+        USB_REQ_GET_DESCRIPTOR:
         /* FIXME: ! */
-        DPRINTF("xid unknown xpad request 0x%x: value = 0x%x\n",
-                request, value);
+        DPRINTF("xid unknown xpad request 0x%x: value = 0x%x\n", request,
+                value);
         memset(data, 0x00, length);
-        //FIXME: Intended for the hub: usbd_get_hub_descriptor, UT_READ_CLASS?!
+        // FIXME: Intended for the hub: usbd_get_hub_descriptor, UT_READ_CLASS?!
         p->status = USB_RET_STALL;
-        //assert(false);
+        // assert(false);
         break;
-    case ((USB_DIR_OUT|USB_TYPE_STANDARD|USB_RECIP_ENDPOINT)<<8)
-             | USB_REQ_CLEAR_FEATURE:
+    case ((USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_ENDPOINT) << 8) |
+        USB_REQ_CLEAR_FEATURE:
         /* FIXME: ! */
-        DPRINTF("xid unknown xpad request 0x%x: value = 0x%x\n",
-                request, value);
+        DPRINTF("xid unknown xpad request 0x%x: value = 0x%x\n", request,
+                value);
         memset(data, 0x00, length);
         p->status = USB_RET_STALL;
         break;

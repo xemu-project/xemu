@@ -108,7 +108,7 @@ enum steel_battalion_controller_state_buttons_mask {
 #define SBC_BUTTON_TUNER_LEFT 0x20000000000ULL
 #define SBC_BUTTON_TUNER_RIGHT 0x40000000000ULL
 
-#define CONTROLLER_STATE_BUTTON_ID_TO_MASK(x) (1<<x)
+#define CONTROLLER_STATE_BUTTON_ID_TO_MASK(x) (1 << x)
 
 enum controller_state_axis_index {
     CONTROLLER_AXIS_LTRIG,
@@ -149,7 +149,8 @@ typedef struct GamepadState {
     uint16_t buttons;
     int16_t  axis[CONTROLLER_AXIS__COUNT];
 
-    // Rendering state hacked on here for convenience but needs to be moved (FIXME)
+    // Rendering state hacked on here for convenience but needs to be moved
+    // (FIXME)
     uint32_t animate_guide_button_end;
     uint32_t animate_trigger_end;
 
@@ -227,7 +228,8 @@ bool xemu_input_bind_xmu(int player_index, int peripheral_port_index,
                          const char *filename, bool is_rebind);
 void xemu_input_rebind_xmu(int port);
 void xemu_input_unbind_xmu(int player_index, int peripheral_port_index);
-int xemu_input_get_controller_default_bind_port(ControllerState *state, int start);
+int xemu_input_get_controller_default_bind_port(ControllerState *state,
+                                                int start);
 void xemu_save_peripheral_settings(int player_index, int peripheral_index,
                                    int peripheral_type,
                                    const char *peripheral_parameter);
