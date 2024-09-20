@@ -43,15 +43,7 @@ class LibInstaller:
 	def get_latest_pkg_filename_url(self, pkg_name):
 		pkg_base_url = f'{MIRROR}/{pkg_name}'
 		pkg_list = urlopen(pkg_base_url).read().decode('utf-8')
-		pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.' + self._darwin_target + r'\.' + self._arch + r'\.tbz2', pkg_list)
-		
-		if len(pkgs) < 1:
-			pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.darwin_any\.' + self._arch + r'\.tbz2', pkg_list)
-		if len(pkgs) < 1:
-			pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.' + self._darwin_target + r'\.noarch\.tbz2', pkg_list)
-		if len(pkgs) < 1:
-			pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.darwin_any\.noarch\.tbz2', pkg_list)
-		
+		pkgs = re.findall(pkg_name + r'[\w\.\-\_\+]*?\.(?:any_any|darwin_any|' + self._darwin_target + r')\.(?:noarch|' + self._arch + r')\.tbz2', pkg_list)
 		if len(pkgs) < 1:
 			print(f'    [*] [ERROR] Unable to find version of {pkg_name} compatible with {self._darwin_target}.{self._arch}')
 			exit(1)

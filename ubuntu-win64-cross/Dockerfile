@@ -2,9 +2,9 @@
 # Environment to cross-compile xemu for Windows
 #
 
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
-ENV MXE_VERSION=ea373fe51c02f60111ef0b7597f52dc380c5c162
+ENV MXE_VERSION=8fa8c126f64a0ca6d263c641632645db4f941f00
 
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive \
@@ -55,7 +55,7 @@ RUN cd /opt \
  && cd mxe \
  && git checkout ${MXE_VERSION} \
  && make MXE_TARGETS=x86_64-w64-mingw32.static \
-         MXE_PLUGIN_DIRS=plugins/gcc10 \
+         MXE_PLUGIN_DIRS=plugins/gcc13 \
             cc \
             glib \
             libepoxy \
@@ -63,21 +63,28 @@ RUN cd /opt \
             pixman \
             libsamplerate \
             openssl \
-            cmake
+            cmake \
+            libslirp
 
 RUN rm /opt/mxe/src/sdl2*.patch
 COPY sdl2.mk /opt/mxe/src/sdl2.mk
 RUN V=1 MXE_VERBOSE=1 make -C /opt/mxe \
         MXE_TARGETS=x86_64-w64-mingw32.static \
-        MXE_PLUGIN_DIRS=plugins/gcc10 \
+        MXE_PLUGIN_DIRS=plugins/gcc13 \
             sdl2
 
-COPY libslirp.mk /opt/mxe/src/libslirp.mk
-COPY libslirp-1.patch /opt/mxe/src/libslirp-1.patch
+COPY vulkan-headers.mk \
+     spirv-headers.mk \
+     spirv-tools.mk \
+     glslang.mk \
+     /opt/mxe/src/
 RUN V=1 MXE_VERBOSE=1 make -C /opt/mxe \
         MXE_TARGETS=x86_64-w64-mingw32.static \
-        MXE_PLUGIN_DIRS=plugins/gcc10 \
-            libslirp
+        MXE_PLUGIN_DIRS=plugins/gcc13 \
+            vulkan-headers \
+            spirv-headers \
+            spirv-tools \
+            glslang
 
 RUN find /opt/mxe/usr -executable -type f -exec chmod a+x {} \;
 

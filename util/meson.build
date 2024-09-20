@@ -106,3 +106,4 @@ if have_block
   endif
   util_ss.add(when: 'CONFIG_LINUX', if_true: files('vfio-helpers.c'))
 endif
+util_ss.add(files('sha1.c','rc4.c'))
