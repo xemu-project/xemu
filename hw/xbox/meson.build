@@ -15,6 +15,10 @@ specific_ss.add(files(
 	'xbox.c',
 	'xbox_pci.c',
 	'xid.c',
+	'xid-gamepad.c',
+	'xid-arcade-stick.c',
+	'xid-steel-battalion.c',
+	'xid-light-gun.c'
 	))
 subdir('nv2a')
 subdir('mcpx')
