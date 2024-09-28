@@ -168,15 +168,8 @@ jobs:
       run: |
         mkdir src
         tar -C src -xf src.tar.gz
-    - name: Clone Debian packaging
-      uses: actions/checkout@v4
-      with:
-        ref: deb
-        path: debian-tmp
-    - name: Integrate Debian packaging
+    - name: Create debian changelog
       run: |
-        mv debian-tmp/debian src
-        rm -rf debian-tmp
         pushd src
         echo -e "\
         xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
@@ -420,15 +413,8 @@ jobs:
       run: |
         mkdir src
         tar -C src -xf src.tar.gz
-    - name: Clone Debian packaging
-      uses: actions/checkout@v4
-      with:
-        ref: deb
-        path: debian-tmp
     - name: Integrate Debian packaging
       run: |
-        mv debian-tmp/debian src
-        rm -rf debian-tmp
         pushd src
         echo -e "\
         xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
