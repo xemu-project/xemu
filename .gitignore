@@ -2,6 +2,7 @@
 /build/
 /.cache/
 /.vscode/
+/.vs/
 *.pyc
 .sdk
 .stgit-*
@@ -22,7 +23,8 @@ GTAGS
 *.gcov
 
 build.log
-/dist
+/dist/
+/ccache/
 /xemu.ini
 /macos-libs/
 /macos-pkgs/
