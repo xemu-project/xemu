@@ -895,6 +895,7 @@ static void update_uniforms(PGRAPHState *pg, SurfaceBinding *surface)
 
 static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
 {
+    NV2AState *d = container_of(pg, NV2AState, pgraph);
     PGRAPHVkState *r = pg->vk_renderer_state;
     PGRAPHVkDisplayState *disp = &r->display;
 
@@ -906,6 +907,8 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
         surface->draw_time >= r->command_buffer_start_time) {
         pgraph_vk_finish(pg, VK_FINISH_REASON_PRESENTING);
     }
+
+    pgraph_vk_upload_surface_data(d, surface, !tcg_enabled());
 
     disp->pvideo.state = get_pvideo_state(pg);
     if (disp->pvideo.state.enabled) {
