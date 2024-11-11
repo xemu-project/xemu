@@ -434,6 +434,7 @@ void pgraph_vk_pack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
 
     // FIXME: Smarter workgroup scaling
 
+    pgraph_vk_begin_debug_marker(r, cmd, RGBA_PINK, __func__);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->pipeline);
     vkCmdBindDescriptorSets(
         cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->compute.pipeline_layout, 0, 1,
@@ -449,6 +450,7 @@ void pgraph_vk_pack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
     // FIXME: Check max group count
 
     vkCmdDispatch(cmd, group_count, 1, 1);
+    pgraph_vk_end_debug_marker(r, cmd);
 }
 
 void pgraph_vk_unpack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
@@ -505,6 +507,7 @@ void pgraph_vk_unpack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
 
     // FIXME: Smarter workgroup scaling
 
+    pgraph_vk_begin_debug_marker(r, cmd, RGBA_PINK, __func__);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->pipeline);
     vkCmdBindDescriptorSets(
         cmd, VK_PIPELINE_BIND_POINT_COMPUTE, r->compute.pipeline_layout, 0, 1,
@@ -518,6 +521,7 @@ void pgraph_vk_unpack_depth_stencil(PGRAPHState *pg, SurfaceBinding *surface,
                        VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push_constants),
                        push_constants);
     vkCmdDispatch(cmd, group_count, 1, 1);
+    pgraph_vk_end_debug_marker(r, cmd);
 }
 
 static void pipeline_cache_entry_init(Lru *lru, LruNode *node, void *state)

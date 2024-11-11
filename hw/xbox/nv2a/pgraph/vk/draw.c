@@ -1263,9 +1263,9 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     assert(!r->in_draw);
+    assert(r->debug_depth == 0);
 
     if (r->in_command_buffer) {
-
         nv2a_profile_inc_counter(finish_reason_to_counter_enum[finish_reason]);
 
         if (r->in_render_pass) {
@@ -1713,6 +1713,9 @@ void pgraph_vk_clear_surface(NV2AState *d, uint32_t parameter)
                          write_zeta ? " zeta" : "");
 
     begin_pre_draw(pg);
+    pgraph_vk_begin_debug_marker(r, r->command_buffer,
+        RGBA_BLUE, "Clear %08" HWADDR_PRIx,
+        binding->vram_addr);
     begin_draw(pg);
 
     // FIXME: What does hardware do when min <= max?
@@ -1791,6 +1794,7 @@ void pgraph_vk_clear_surface(NV2AState *d, uint32_t parameter)
                               1, &clear_rect);
     }
     end_draw(pg);
+    pgraph_vk_end_debug_marker(r, r->command_buffer);
 
     pg->clearing = false;
 
@@ -2082,6 +2086,8 @@ void pgraph_vk_flush_draw(NV2AState *d)
         copy_remapped_attributes_to_inline_buffer(pg, remap, 0, max_element);
 
         begin_pre_draw(pg);
+        pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
+                                     "Draw Arrays");
         begin_draw(pg);
         bind_vertex_buffer(pg, remap.attributes, 0);
         for (int i = 0; i < pg->draw_arrays_length; i++) {
@@ -2091,6 +2097,7 @@ void pgraph_vk_flush_draw(NV2AState *d)
             vkCmdDraw(r->command_buffer, count, 1, start, 0);
         }
         end_draw(pg);
+        pgraph_vk_end_debug_marker(r, r->command_buffer);
 
         NV2A_VK_DGROUP_END();
     } else if (pg->inline_elements_length) {
@@ -2121,6 +2128,8 @@ void pgraph_vk_flush_draw(NV2AState *d)
         begin_pre_draw(pg);
         VkDeviceSize buffer_offset = pgraph_vk_update_index_buffer(
             pg, pg->inline_elements, index_data_size);
+        pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
+                                     "Inline Elements");
         begin_draw(pg);
         bind_vertex_buffer(pg, remap.attributes, 0);
         vkCmdBindIndexBuffer(r->command_buffer,
@@ -2129,6 +2138,7 @@ void pgraph_vk_flush_draw(NV2AState *d)
         vkCmdDrawIndexed(r->command_buffer, pg->inline_elements_length, 1, 0, 0,
                          0);
         end_draw(pg);
+        pgraph_vk_end_debug_marker(r, r->command_buffer);
 
         NV2A_VK_DGROUP_END();
     } else if (pg->inline_buffer_length) {
@@ -2159,10 +2169,13 @@ void pgraph_vk_flush_draw(NV2AState *d)
         begin_pre_draw(pg);
         VkDeviceSize buffer_offset = pgraph_vk_update_vertex_inline_buffer(
             pg, data, sizes, r->num_active_vertex_attribute_descriptions);
+        pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
+                                     "Inline Buffer");
         begin_draw(pg);
         bind_inline_vertex_buffer(pg, buffer_offset);
         vkCmdDraw(r->command_buffer, pg->inline_buffer_length, 1, 0, 0);
         end_draw(pg);
+        pgraph_vk_end_debug_marker(r, r->command_buffer);
 
         NV2A_VK_DGROUP_END();
     } else if (pg->inline_array_length) {
@@ -2200,10 +2213,13 @@ void pgraph_vk_flush_draw(NV2AState *d)
         void *inline_array_data = pg->inline_array;
         VkDeviceSize buffer_offset = pgraph_vk_update_vertex_inline_buffer(
             pg, &inline_array_data, &inline_array_data_size, 1);
+        pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
+                                     "Inline Array");
         begin_draw(pg);
         bind_inline_vertex_buffer(pg, buffer_offset);
         vkCmdDraw(r->command_buffer, index_count, 1, 0, 0);
         end_draw(pg);
+        pgraph_vk_end_debug_marker(r, r->command_buffer);
         NV2A_VK_DGROUP_END();
     } else {
         NV2A_VK_DPRINTF("EMPTY NV097_SET_BEGIN_END");

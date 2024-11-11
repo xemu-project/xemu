@@ -556,6 +556,7 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
 
     // FIXME: Use nondraw. Need to fill and copy tex buffer at once
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
+    pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
 
     VkBufferMemoryBarrier host_barrier = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
@@ -585,6 +586,7 @@ static void upload_texture_image(PGRAPHState *pg, int texture_idx,
     binding->current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
     nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_4);
+    pgraph_vk_end_debug_marker(r, cmd);
     pgraph_vk_end_single_time_commands(pg, cmd);
 
     // Release decoded texture data
@@ -621,6 +623,7 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
         surface->vram_addr, surface->width, surface->height);
 
     VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
+    pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
 
     unsigned int scaled_width = surface->width,
                  scaled_height = surface->height;
@@ -781,6 +784,7 @@ static void copy_zeta_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surfac
                                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     texture->current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
+    pgraph_vk_end_debug_marker(r, cmd);
     pgraph_vk_end_nondraw_commands(pg, cmd);
 
     texture->draw_time = surface->draw_time;
@@ -795,6 +799,7 @@ static void copy_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surface,
         return;
     }
 
+    PGRAPHVkState *r = pg->vk_renderer_state;
     TextureShape *state = &texture->key.state;
     VkColorFormatInfo vkf = kelvin_color_format_vk_map[state->color_format];
 
@@ -804,6 +809,7 @@ static void copy_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surface,
         surface->vram_addr, surface->width, surface->height);
 
     VkCommandBuffer cmd = pgraph_vk_begin_nondraw_commands(pg);
+    pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
 
     pgraph_vk_transition_image_layout(
         pg, cmd, surface->image, surface->host_fmt.vk_format,
@@ -842,6 +848,7 @@ static void copy_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surface,
                                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     texture->current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
+    pgraph_vk_end_debug_marker(r, cmd);
     pgraph_vk_end_nondraw_commands(pg, cmd);
 
     texture->draw_time = surface->draw_time;
@@ -1001,6 +1008,7 @@ static void create_dummy_texture(PGRAPHState *pg)
                    r->storage_buffers[BUFFER_STAGING_SRC].allocation);
 
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
+    pgraph_vk_begin_debug_marker(r, cmd, RGBA_GREEN, __func__);
 
     pgraph_vk_transition_image_layout(
         pg, cmd, texture_image, VK_FORMAT_R8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED,
@@ -1026,6 +1034,8 @@ static void create_dummy_texture(PGRAPHState *pg)
                                       VK_FORMAT_R8_UNORM,
                                       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+    pgraph_vk_end_debug_marker(r, cmd);
     pgraph_vk_end_single_time_commands(pg, cmd);
 
     r->dummy_texture = (TextureBinding){
