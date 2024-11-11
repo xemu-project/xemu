@@ -81,3 +81,41 @@ void pgraph_vk_insert_debug_marker(PGRAPHVkState *r, VkCommandBuffer cmd,
     vkCmdInsertDebugUtilsLabelEXT(cmd, &label_info);
     free(buf);
 }
+
+void pgraph_vk_begin_debug_marker(PGRAPHVkState *r, VkCommandBuffer cmd,
+                                  float color[4], const char *format, ...)
+{
+    if (!r->debug_utils_extension_enabled) {
+        return;
+    }
+
+    char *buf = NULL;
+
+    va_list args;
+    va_start(args, format);
+    int err = vasprintf(&buf, format, args);
+    assert(err >= 0);
+    va_end(args);
+
+    VkDebugUtilsLabelEXT label_info = {
+        .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+        .pLabelName = buf,
+    };
+    memcpy(label_info.color, color, 4 * sizeof(float));
+    vkCmdBeginDebugUtilsLabelEXT(cmd, &label_info);
+    free(buf);
+
+    r->debug_depth += 1;
+    assert(r->debug_depth < 10 && "Missing pgraph_vk_debug_marker_end?");
+}
+
+void pgraph_vk_end_debug_marker(PGRAPHVkState *r, VkCommandBuffer cmd)
+{
+    if (!r->debug_utils_extension_enabled) {
+        return;
+    }
+
+    vkCmdEndDebugUtilsLabelEXT(cmd);
+    assert(r->debug_depth > 0);
+    r->debug_depth -= 1;
+}

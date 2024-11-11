@@ -321,6 +321,7 @@ typedef struct PGRAPHVkState {
     void *window;
     VkInstance instance;
     VkDebugUtilsMessengerEXT debug_messenger;
+    int debug_depth;
 
     bool debug_utils_extension_enabled;
     bool custom_border_color_extension_enabled;
@@ -429,9 +430,19 @@ typedef struct PGRAPHVkState {
 void pgraph_vk_check_memory_budget(PGRAPHState *pg);
 
 // debug.c
+#define RGBA_RED     (float[4]){1,0,0,1}
+#define RGBA_YELLOW  (float[4]){1,1,0,1}
+#define RGBA_GREEN   (float[4]){0,1,0,1}
+#define RGBA_BLUE    (float[4]){0,0,1,1}
+#define RGBA_PINK    (float[4]){1,0,1,1}
+#define RGBA_DEFAULT (float[4]){0,0,0,0}
+
 void pgraph_vk_debug_init(void);
 void pgraph_vk_insert_debug_marker(PGRAPHVkState *r, VkCommandBuffer cmd,
                                    float color[4], const char *format, ...) __attribute__ ((format (printf, 4, 5)));
+void pgraph_vk_begin_debug_marker(PGRAPHVkState *r, VkCommandBuffer cmd,
+                                  float color[4], const char *format, ...) __attribute__ ((format (printf, 4, 5)));
+void pgraph_vk_end_debug_marker(PGRAPHVkState *r, VkCommandBuffer cmd);
 
 // instance.c
 void pgraph_vk_init_instance(PGRAPHState *pg, Error **errp);

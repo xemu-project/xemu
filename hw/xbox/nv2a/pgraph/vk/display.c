@@ -919,6 +919,8 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     update_descriptor_set(pg, surface);
 
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
+    pgraph_vk_begin_debug_marker(r, cmd, RGBA_YELLOW,
+        "Display Surface %08"HWADDR_PRIx);
 
     pgraph_vk_transition_image_layout(pg, cmd, surface->image,
                                       surface->host_fmt.vk_format,
@@ -994,6 +996,7 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
                                       VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
+    pgraph_vk_end_debug_marker(r, cmd);
     pgraph_vk_end_single_time_commands(pg, cmd);
     nv2a_profile_inc_counter(NV2A_PROF_QUEUE_SUBMIT_5);
 
