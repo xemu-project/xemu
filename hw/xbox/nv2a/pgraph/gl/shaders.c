@@ -1012,10 +1012,6 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
 {
     PGRAPHGLState *r = pg->gl_renderer_state;
 
-    NV2A_GL_DGROUP_BEGIN("%s (VP: %s FFP: %s)", __func__,
-                         vertex_program ? "yes" : "no",
-                         fixed_function ? "yes" : "no");
-
     bool binding_changed = false;
     if (r->shader_binding && !test_shaders_dirty(pg) && !pg->program_data_dirty) {
         nv2a_profile_inc_counter(NV2A_PROF_SHADER_BIND_NOTDIRTY);
@@ -1028,6 +1024,10 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
 
     ShaderState state = pgraph_get_shader_state(pg);
     assert(!state.vulkan);
+
+    NV2A_GL_DGROUP_BEGIN("%s (VP: %s FFP: %s)", __func__,
+                         state.vertex_program ? "yes" : "no",
+                         state.fixed_function ? "yes" : "no");
 
     uint64_t shader_state_hash = fast_hash((uint8_t*) &state, sizeof(ShaderState));
     qemu_mutex_lock(&r->shader_cache_lock);
@@ -1054,11 +1054,11 @@ void pgraph_gl_bind_shaders(PGRAPHState *pg)
         glUseProgram(r->shader_binding->gl_program);
     }
 
+    NV2A_GL_DGROUP_END();
+
 update_constants:
     shader_update_constants(pg, r->shader_binding, binding_changed,
                                    state.vertex_program, state.fixed_function);
-
-    NV2A_GL_DGROUP_END();
 }
 
 GLuint pgraph_gl_compile_shader(const char *vs_src, const char *fs_src)
