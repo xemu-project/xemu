@@ -1415,10 +1415,6 @@ void pgraph_vk_bind_textures(NV2AState *d)
             r->texture_bindings[i] = &r->dummy_texture;
             continue;
         }
-        if (r->texture_bindings[i] && !pg->texture_dirty[i]) {
-            // FIXME: Fails to check memory
-            continue;
-        }
 
         create_texture(pg, i);
 
