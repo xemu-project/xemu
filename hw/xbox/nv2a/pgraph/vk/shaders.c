@@ -710,15 +710,19 @@ static bool check_shaders_dirty(PGRAPHState *pg)
             return true;
         }
     }
+
     unsigned int regs[] = {
         NV_PGRAPH_COMBINECTL,
         NV_PGRAPH_COMBINESPECFOG0,
         NV_PGRAPH_COMBINESPECFOG1,
+        NV_PGRAPH_CONTROL_0,
+        NV_PGRAPH_CONTROL_3,
         NV_PGRAPH_CSV0_C,
         NV_PGRAPH_CSV0_D,
         NV_PGRAPH_CSV1_A,
         NV_PGRAPH_CSV1_B,
         NV_PGRAPH_POINTSIZE,
+        NV_PGRAPH_SETUPRASTER,
         NV_PGRAPH_SHADERCLIPMODE,
         NV_PGRAPH_SHADERCTL,
         NV_PGRAPH_SHADERPROG,
