@@ -71,8 +71,8 @@ void ProcessKeyboardShortcuts(void)
         ActionScreenshot();
     }
 
-#if defined(DEBUG_NV2A_GL) && defined(CONFIG_RENDERDOC)
-    if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
+#ifdef CONFIG_RENDERDOC
+    if (ImGui::IsKeyPressed(ImGuiKey_F10) && nv2a_dbg_renderdoc_available()) {
         nv2a_dbg_renderdoc_capture_frames(1);
     }
 #endif
@@ -168,6 +168,15 @@ void ShowMainMenu()
                     g_config.display.ui.scale = ui_scale_idx;
                 }
             }
+
+            ImGui::Combo("Backend", &g_config.display.renderer,
+                 "Null\0"
+                 "OpenGL\0"
+#ifdef CONFIG_VULKAN
+                 "Vulkan\0"
+#endif
+                );
+
             int rendering_scale = nv2a_get_surface_scale_factor() - 1;
             if (ImGui::Combo("Int. Resolution Scale", &rendering_scale,
                              "1x\0"
@@ -203,7 +212,7 @@ void ShowMainMenu()
             ImGui::MenuItem("Monitor", "~", &monitor_window.is_open);
             ImGui::MenuItem("Audio", NULL, &apu_window.m_is_open);
             ImGui::MenuItem("Video", NULL, &video_window.m_is_open);
-#if defined(DEBUG_NV2A_GL) && defined(CONFIG_RENDERDOC)
+#ifdef CONFIG_RENDERDOC
             if (nv2a_dbg_renderdoc_available()) {
                 ImGui::MenuItem("RenderDoc: Capture", NULL, &g_capture_renderdoc_frame);
             }

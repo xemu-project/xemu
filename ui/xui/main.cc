@@ -216,7 +216,7 @@ void xemu_hud_render(void)
     ImGui::NewFrame();
     ProcessKeyboardShortcuts();
 
-#if defined(DEBUG_NV2A_GL) && defined(CONFIG_RENDERDOC)
+#if defined(CONFIG_RENDERDOC)
     if (g_capture_renderdoc_frame) {
         nv2a_dbg_renderdoc_capture_frames(1);
         g_capture_renderdoc_frame = false;
