@@ -899,10 +899,6 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
     PGRAPHVkState *r = pg->vk_renderer_state;
     PGRAPHVkDisplayState *disp = &r->display;
 
-    if (disp->draw_time >= surface->draw_time) {
-        return;
-    }
-
     if (r->in_command_buffer &&
         surface->draw_time >= r->command_buffer_start_time) {
         pgraph_vk_finish(pg, VK_FINISH_REASON_PRESENTING);
