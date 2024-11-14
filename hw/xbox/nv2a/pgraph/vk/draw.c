@@ -717,12 +717,6 @@ static void create_pipeline(PGRAPHState *pg)
     init_pipeline_key(pg, &key);
     uint64_t hash = fast_hash((void *)&key, sizeof(key));
 
-    static uint64_t last_hash;
-    if (hash == last_hash) {
-        nv2a_profile_inc_counter(NV2A_PROF_PIPELINE_MERGE);
-    }
-    last_hash = hash;
-
     LruNode *node = lru_lookup(&r->pipeline_cache, hash, &key);
     PipelineBinding *snode = container_of(node, PipelineBinding, node);
     if (snode->pipeline != VK_NULL_HANDLE) {
