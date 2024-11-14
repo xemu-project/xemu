@@ -219,9 +219,9 @@ static const char *display_frag_glsl =
     "void main()\n"
     "{\n"
     "    vec2 tex_coord = gl_FragCoord.xy/display_size;\n"
-    "    tex_coord.y = 1 - tex_coord.y;\n" // GL compat
     "    float rel = display_size.y/textureSize(tex, 0).y/line_offset;\n"
     "    tex_coord.y = 1 + rel*(tex_coord.y - 1);"
+    "    tex_coord.y = 1 - tex_coord.y;\n" // GL compat
     "    out_Color.rgba = texture(tex, tex_coord);\n"
     "    if (pvideo_enable) {\n"
     "        vec2 screen_coord = vec2(gl_FragCoord.x, display_size.y - gl_FragCoord.y) * pvideo_scale.z;\n"
