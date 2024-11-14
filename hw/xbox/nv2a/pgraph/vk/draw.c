@@ -628,10 +628,9 @@ static bool check_render_pass_dirty(PGRAPHState *pg)
 static bool check_pipeline_dirty(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
-    assert(r->pipeline_binding);
 
-    if (r->shader_bindings_changed || r->texture_bindings_changed ||
-        check_render_pass_dirty(pg)) {
+    if (!r->pipeline_binding || r->shader_bindings_changed ||
+        r->texture_bindings_changed || check_render_pass_dirty(pg)) {
         return true;
     }
 
