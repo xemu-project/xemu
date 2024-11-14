@@ -707,7 +707,12 @@ static void create_pipeline(PGRAPHState *pg)
 
     // FIXME: If nothing was dirty, don't even try creating the key or hashing.
     //        Just use the same pipeline.
-    if (r->pipeline_binding && !check_pipeline_dirty(pg)) {
+    bool pipeline_dirty = check_pipeline_dirty(pg);
+
+    pgraph_clear_dirty_reg_map(pg);
+    // FIXME: We could clear less
+
+    if (r->pipeline_binding && !pipeline_dirty) {
         NV2A_VK_DPRINTF("Cache hit");
         NV2A_VK_DGROUP_END();
         return;
@@ -1528,9 +1533,6 @@ static void end_draw(PGRAPHState *pg)
     }
 
     r->in_draw = false;
-
-    // FIXME: We could clear less
-    pgraph_clear_dirty_reg_map(pg);
 }
 
 void pgraph_vk_draw_end(NV2AState *d)
