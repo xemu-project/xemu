@@ -1,0 +1,40 @@
+config TMP105
+    bool
+    depends on I2C
+    default y if I2C_DEVICES
+
+config TMP421
+    bool
+    depends on I2C
+    default y if I2C_DEVICES
+
+config DPS310
+    bool
+    depends on I2C
+    default y if I2C_DEVICES
+
+config EMC141X
+    bool
+    depends on I2C
+    default y if I2C_DEVICES
+
+config ADM1272
+    bool
+    depends on I2C
+
+config MAX34451
+    bool
+    depends on I2C
+
+config LSM303DLHC_MAG
+    bool
+    depends on I2C
+    default y if I2C_DEVICES
+
+config ISL_PMBUS_VR
+    bool
+    depends on PMBUS
+
+config MAX31785
+    bool
+    depends on PMBUS

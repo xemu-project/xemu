@@ -1,0 +1,182 @@
+#
+# RISC-V translation routines for the RVXI Base Integer Instruction Set.
+#
+# Copyright (c) 2018 Peer Adelt, peer.adelt@hni.uni-paderborn.de
+#                    Bastian Koppelmann, kbastian@mail.uni-paderborn.de
+#
+# This program is free software; you can redistribute it and/or modify it
+# under the terms and conditions of the GNU General Public License,
+# version 2 or later, as published by the Free Software Foundation.
+#
+# This program is distributed in the hope it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+# FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+# more details.
+#
+# You should have received a copy of the GNU General Public License along with
+# this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Fields:
+%rd        7:5
+%rs1_3     7:3                !function=ex_rvc_register
+%rs2_3     2:3                !function=ex_rvc_register
+%rs2_5     2:5
+
+# Immediates:
+%imm_ci        12:s1 2:5
+%nzuimm_ciw    7:4 11:2 5:1 6:1   !function=ex_shift_2
+%uimm_cl_q     10:1 5:2 11:2      !function=ex_shift_4
+%uimm_cl_d     5:2 10:3           !function=ex_shift_3
+%uimm_cl_w     5:1 10:3 6:1       !function=ex_shift_2
+%imm_cb        12:s1 5:2 2:1 10:2 3:2 !function=ex_shift_1
+%imm_cj        12:s1 8:1 9:2 6:1 7:1 2:1 11:1 3:3 !function=ex_shift_1
+
+%shlimm_6bit  12:1 2:5               !function=ex_rvc_shiftli
+%shrimm_6bit  12:1 2:5               !function=ex_rvc_shiftri
+%uimm_6bit_lq 2:4 12:1 6:1           !function=ex_shift_4
+%uimm_6bit_ld 2:3 12:1 5:2           !function=ex_shift_3
+%uimm_6bit_lw 2:2 12:1 4:3           !function=ex_shift_2
+%uimm_6bit_sq 7:4 11:2               !function=ex_shift_4
+%uimm_6bit_sd 7:3 10:3               !function=ex_shift_3
+%uimm_6bit_sw 7:2 9:4                !function=ex_shift_2
+
+%imm_addi16sp  12:s1 3:2 5:1 2:1 6:1 !function=ex_shift_4
+%imm_lui       12:s1 2:5             !function=ex_shift_12
+
+
+# Argument sets imported from insn32.decode:
+&empty                  !extern
+&r         rd rs1 rs2   !extern
+&i         imm rs1 rd   !extern
+&s         imm rs1 rs2  !extern
+&j         imm rd       !extern
+&b         imm rs2 rs1  !extern
+&u         imm rd       !extern
+&shift     shamt rs1 rd !extern
+
+
+# Formats 16:
+@cr        ....  ..... .....  .. &r      rs2=%rs2_5       rs1=%rd     %rd
+@ci        ... . ..... .....  .. &i      imm=%imm_ci      rs1=%rd     %rd
+@cl_q      ... . .....  ..... .. &i      imm=%uimm_cl_q   rs1=%rs1_3  rd=%rs2_3
+@cl_d      ... ... ... .. ... .. &i      imm=%uimm_cl_d   rs1=%rs1_3  rd=%rs2_3
+@cl_w      ... ... ... .. ... .. &i      imm=%uimm_cl_w   rs1=%rs1_3  rd=%rs2_3
+@cs_2      ... ... ... .. ... .. &r      rs2=%rs2_3       rs1=%rs1_3  rd=%rs1_3
+@cs_q      ... ... ... .. ... .. &s      imm=%uimm_cl_q   rs1=%rs1_3  rs2=%rs2_3
+@cs_d      ... ... ... .. ... .. &s      imm=%uimm_cl_d   rs1=%rs1_3  rs2=%rs2_3
+@cs_w      ... ... ... .. ... .. &s      imm=%uimm_cl_w   rs1=%rs1_3  rs2=%rs2_3
+@cj        ...    ........... .. &j      imm=%imm_cj
+@cb_z      ... ... ... .. ... .. &b      imm=%imm_cb      rs1=%rs1_3  rs2=0
+
+@c_lqsp    ... . .....  ..... .. &i      imm=%uimm_6bit_lq rs1=2 %rd
+@c_ldsp    ... . .....  ..... .. &i      imm=%uimm_6bit_ld rs1=2 %rd
+@c_lwsp    ... . .....  ..... .. &i      imm=%uimm_6bit_lw rs1=2 %rd
+@c_sqsp    ... . .....  ..... .. &s      imm=%uimm_6bit_sq rs1=2 rs2=%rs2_5
+@c_sdsp    ... . .....  ..... .. &s      imm=%uimm_6bit_sd rs1=2 rs2=%rs2_5
+@c_swsp    ... . .....  ..... .. &s      imm=%uimm_6bit_sw rs1=2 rs2=%rs2_5
+@c_li      ... . .....  ..... .. &i      imm=%imm_ci rs1=0 %rd
+@c_lui     ... . .....  ..... .. &u      imm=%imm_lui %rd
+@c_jalr    ... . .....  ..... .. &i      imm=0 rs1=%rd
+@c_mv      ... . ..... .....  .. &i      imm=0 rs1=%rs2_5 %rd
+
+@c_addi4spn     ... .  ..... ..... .. &i imm=%nzuimm_ciw rs1=2 rd=%rs2_3
+@c_addi16sp     ... .  ..... ..... .. &i imm=%imm_addi16sp rs1=2 rd=2
+
+@c_shift        ... . .. ... ..... .. \
+                &shift rd=%rs1_3 rs1=%rs1_3 shamt=%shrimm_6bit
+@c_shift2       ... . .. ... ..... .. \
+                &shift rd=%rd rs1=%rd shamt=%shlimm_6bit
+
+@c_andi         ... . .. ... ..... .. &i imm=%imm_ci rs1=%rs1_3 rd=%rs1_3
+
+# *** RV32/64C Standard Extension (Quadrant 0) ***
+{
+  # Opcode of all zeros is illegal; rd != 0, nzuimm == 0 is reserved.
+  illegal         000  000 000 00 --- 00
+  addi            000  ... ... .. ... 00 @c_addi4spn
+}
+{
+  lq              001  ... ... .. ... 00 @cl_q
+  fld             001  ... ... .. ... 00 @cl_d
+}
+lw                010  ... ... .. ... 00 @cl_w
+{
+  sq              101  ... ... .. ... 00 @cs_q
+  fsd             101  ... ... .. ... 00 @cs_d
+}
+sw                110  ... ... .. ... 00 @cs_w
+
+# *** RV32C and RV64C specific Standard Extension (Quadrant 0) ***
+{
+  ld              011  ... ... .. ... 00 @cl_d
+  flw             011  ... ... .. ... 00 @cl_w
+}
+{
+  sd              111  ... ... .. ... 00 @cs_d
+  fsw             111  ... ... .. ... 00 @cs_w
+}
+
+# *** RV32/64C Standard Extension (Quadrant 1) ***
+addi              000 .  .....  ..... 01 @ci
+addi              010 .  .....  ..... 01 @c_li
+{
+  illegal         011 0  -----  00000 01 # c.addi16sp and c.lui, RES nzimm=0
+  addi            011 .  00010  ..... 01 @c_addi16sp
+  lui             011 .  .....  ..... 01 @c_lui
+}
+srli              100 . 00 ...  ..... 01 @c_shift
+srai              100 . 01 ...  ..... 01 @c_shift
+andi              100 . 10 ...  ..... 01 @c_andi
+sub               100 0 11 ... 00 ... 01 @cs_2
+xor               100 0 11 ... 01 ... 01 @cs_2
+or                100 0 11 ... 10 ... 01 @cs_2
+and               100 0 11 ... 11 ... 01 @cs_2
+jal               101     ........... 01 @cj    rd=0  # C.J
+beq               110  ... ...  ..... 01 @cb_z
+bne               111  ... ...  ..... 01 @cb_z
+
+# *** RV64C and RV32C specific Standard Extension (Quadrant 1) ***
+{
+  c64_illegal     001 -  00000  ----- 01 # c.addiw, RES rd=0
+  addiw           001 .  .....  ..... 01 @ci
+  jal             001     ........... 01 @cj    rd=1  # C.JAL
+}
+subw              100 1 11 ... 00 ... 01 @cs_2
+addw              100 1 11 ... 01 ... 01 @cs_2
+
+# *** RV32/64C Standard Extension (Quadrant 2) ***
+slli              000 .  .....  ..... 10 @c_shift2
+{
+  lq              001  ... ... .. ... 10 @c_lqsp
+  fld             001 .  .....  ..... 10 @c_ldsp
+}
+{
+  illegal         010 -  00000  ----- 10 # c.lwsp, RES rd=0
+  lw              010 .  .....  ..... 10 @c_lwsp
+}
+{
+  illegal         100 0  00000  00000 10 # c.jr, RES rs1=0
+  jalr            100 0  .....  00000 10 @c_jalr rd=0  # C.JR
+  addi            100 0  .....  ..... 10 @c_mv
+}
+{
+  ebreak          100 1  00000  00000 10
+  jalr            100 1  .....  00000 10 @c_jalr rd=1  # C.JALR
+  add             100 1  .....  ..... 10 @cr
+}
+{
+  sq              101  ... ... .. ... 10 @c_sqsp
+  fsd             101   ......  ..... 10 @c_sdsp
+}
+sw                110 .  .....  ..... 10 @c_swsp
+
+# *** RV32C and RV64C specific Standard Extension (Quadrant 2) ***
+{
+  c64_illegal     011 -  00000  ----- 10 # c.ldsp, RES rd=0
+  ld              011 .  .....  ..... 10 @c_ldsp
+  flw             011 .  .....  ..... 10 @c_lwsp
+}
+{
+  sd              111 .  .....  ..... 10 @c_sdsp
+  fsw             111 .  .....  ..... 10 @c_swsp
+}
