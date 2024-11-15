@@ -188,10 +188,6 @@ void ShowMainMenu()
             ImGui::SameLine();
             HelpMarker("Controls how the rendered content should be scaled "
                        "into the window");
-            bool scale_lines = nv2a_get_line_width_scaling_enabled();
-            if(ImGui::MenuItem("Scale Lines", SHORTCUT_MENU_TEXT(Alt + L), &scale_lines, true)) {
-                nv2a_set_line_width_scaling_enabled(scale_lines);
-            }
             ImGui::Combo("Aspect Ratio", &g_config.display.ui.aspect_ratio,
                          "Native\0Auto\0""4:3\0""16:9\0");
             if (ImGui::MenuItem("Fullscreen", SHORTCUT_MENU_TEXT(Alt + F),

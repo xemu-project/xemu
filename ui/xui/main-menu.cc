@@ -465,12 +465,7 @@ void MainMenuDisplayView::Draw()
                      "Increase surface scaling factor for higher quality")) {
         nv2a_set_surface_scale_factor(rendering_scale+1);
     }
-    bool scale_lines = nv2a_get_line_width_scaling_enabled();
-    if(Toggle("Scale Line Widths", &scale_lines,
-           "Scale Line Widths to match Internal resolution scale")) {
-        nv2a_set_line_width_scaling_enabled(scale_lines);
-    }
-
+    
     SectionTitle("Window");
     bool fs = xemu_is_fullscreen();
     if (Toggle("Fullscreen", &fs, "Enable fullscreen now")) {

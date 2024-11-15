@@ -3913,8 +3913,12 @@ void nv2a_gl_context_init(void)
     g_nv2a_context_display = glo_context_create();
 }
 
-static void apply_surface_scale_changes(NV2AState *d)
+void nv2a_set_surface_scale_factor(unsigned int scale)
 {
+    NV2AState *d = g_nv2a;
+
+    g_config.display.quality.surface_scale = MAX(1, scale);
+    
     qemu_mutex_unlock_iothread();
 
     qemu_mutex_lock(&d->pfifo.lock);
@@ -3947,32 +3951,9 @@ static void apply_surface_scale_changes(NV2AState *d)
     qemu_mutex_lock_iothread();
 }
 
-void nv2a_set_surface_scale_factor(unsigned int scale)
-{
-    NV2AState *d = g_nv2a;
-
-    g_config.display.quality.surface_scale = MAX(1, scale);
-
-    apply_surface_scale_changes(d);
-}
-
 unsigned int nv2a_get_surface_scale_factor(void)
 {
     return g_nv2a->pgraph.surface_scale_factor;
-}
-
-void nv2a_set_line_width_scaling_enabled(bool enable)
-{
-    NV2AState *d = g_nv2a;
-
-    g_config.display.quality.scale_lines = enable;
-    
-    apply_surface_scale_changes(d);
-}
-
-bool nv2a_get_line_width_scaling_enabled()
-{
-    return g_config.display.quality.scale_lines;
 }
 
 static void pgraph_reload_surface_scale_factor(NV2AState *d)
@@ -3982,11 +3963,7 @@ static void pgraph_reload_surface_scale_factor(NV2AState *d)
 
 static void pgraph_reload_line_width(NV2AState *d)
 {
-    float lineWidth = 1.0f;
-
-    if (g_config.display.quality.scale_lines)
-        lineWidth = (float)MAX(1, g_config.display.quality.surface_scale);
-        
+    float lineWidth = (float)MAX(1, g_config.display.quality.surface_scale);
     glLineWidth(lineWidth);
 }
 
