@@ -3917,7 +3917,7 @@ void nv2a_set_surface_scale_factor(unsigned int scale)
     NV2AState *d = g_nv2a;
 
     g_config.display.quality.surface_scale = scale < 1 ? 1 : scale;
-    
+
     qemu_mutex_unlock_iothread();
 
     qemu_mutex_lock(&d->pfifo.lock);
