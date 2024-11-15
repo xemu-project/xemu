@@ -3053,8 +3053,7 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             glDisable(GL_DITHER);
         }
 
-        float lineWidth = (float)MAX(1, g_config.display.quality.surface_scale);
-        glLineWidth(lineWidth);
+        glLineWidth(pg->surface_scale_factor);
         glEnable(GL_PROGRAM_POINT_SIZE);
 
         bool anti_aliasing = GET_MASK(pg->regs[NV_PGRAPH_ANTIALIASING], NV_PGRAPH_ANTIALIASING_ENABLE);
@@ -3917,7 +3916,7 @@ void nv2a_set_surface_scale_factor(unsigned int scale)
 {
     NV2AState *d = g_nv2a;
 
-    g_config.display.quality.surface_scale = MAX(1, scale);
+    g_config.display.quality.surface_scale = scale < 1 ? 1 : scale;
     
     qemu_mutex_unlock_iothread();
 
@@ -3958,7 +3957,8 @@ unsigned int nv2a_get_surface_scale_factor(void)
 
 static void pgraph_reload_surface_scale_factor(NV2AState *d)
 {
-    d->pgraph.surface_scale_factor = MAX(1, g_config.display.quality.surface_scale);
+    int factor = g_config.display.quality.surface_scale;
+    d->pgraph.surface_scale_factor = factor < 1 ? 1 : factor;
 }
 
 void pgraph_init(NV2AState *d)
