@@ -458,7 +458,6 @@ static unsigned int kelvin_map_stencil_op(uint32_t parameter);
 static unsigned int kelvin_map_polygon_mode(uint32_t parameter);
 static unsigned int kelvin_map_texgen(uint32_t parameter, unsigned int channel);
 static void pgraph_reload_surface_scale_factor(NV2AState *d);
-static void pgraph_reload_line_width(NV2AState *d);
 
 static uint32_t pgraph_rdi_read(PGRAPHState *pg,
                                 unsigned int select, unsigned int address)
@@ -664,7 +663,6 @@ void pgraph_flush(NV2AState *d)
     /* FIXME: Flush more? */
 
     pgraph_reload_surface_scale_factor(d);
-    pgraph_reload_line_width(d);
 
     if (update_surface) {
         pgraph_update_surface(d, true, true, true);
@@ -3055,6 +3053,8 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             glDisable(GL_DITHER);
         }
 
+        float lineWidth = (float)MAX(1, g_config.display.quality.surface_scale);
+        glLineWidth(lineWidth);
         glEnable(GL_PROGRAM_POINT_SIZE);
 
         bool anti_aliasing = GET_MASK(pg->regs[NV_PGRAPH_ANTIALIASING], NV_PGRAPH_ANTIALIASING_ENABLE);
@@ -3961,12 +3961,6 @@ static void pgraph_reload_surface_scale_factor(NV2AState *d)
     d->pgraph.surface_scale_factor = MAX(1, g_config.display.quality.surface_scale);
 }
 
-static void pgraph_reload_line_width(NV2AState *d)
-{
-    float lineWidth = (float)MAX(1, g_config.display.quality.surface_scale);
-    glLineWidth(lineWidth);
-}
-
 void pgraph_init(NV2AState *d)
 {
     int i;
@@ -3975,7 +3969,6 @@ void pgraph_init(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
 
     pgraph_reload_surface_scale_factor(d);
-    pgraph_reload_line_width(d);
 
     pg->frame_time = 0;
     pg->draw_time = 0;
