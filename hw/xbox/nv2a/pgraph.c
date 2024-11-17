@@ -3063,16 +3063,12 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         if (!anti_aliasing && pg->regs[NV_PGRAPH_SETUPRASTER] &
                                   NV_PGRAPH_SETUPRASTER_LINESMOOTHENABLE) {
             glEnable(GL_LINE_SMOOTH);
-
             glGetFloatv(GL_SMOOTH_LINE_WIDTH_RANGE, supportedLineWidthRange);
-            glLineWidth(MIN(supportedLineWidthRange[1], pg->surface_scale_factor));
         } else {
             glDisable(GL_LINE_SMOOTH);
-
-
             glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, supportedLineWidthRange);
-            glLineWidth(MIN(supportedLineWidthRange[1], pg->surface_scale_factor));
         }
+        glLineWidth(MIN(supportedLineWidthRange[1], pg->surface_scale_factor));
         if (!anti_aliasing && pg->regs[NV_PGRAPH_SETUPRASTER] &
                                   NV_PGRAPH_SETUPRASTER_POLYSMOOTHENABLE) {
             glEnable(GL_POLYGON_SMOOTH);
