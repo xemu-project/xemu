@@ -3053,6 +3053,7 @@ DEF_METHOD(NV097, SET_BEGIN_END)
             glDisable(GL_DITHER);
         }
 
+        glLineWidth(pg->surface_scale_factor);
         glEnable(GL_PROGRAM_POINT_SIZE);
 
         bool anti_aliasing = GET_MASK(pg->regs[NV_PGRAPH_ANTIALIASING], NV_PGRAPH_ANTIALIASING_ENABLE);
