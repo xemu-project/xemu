@@ -3060,16 +3060,14 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         bool anti_aliasing = GET_MASK(pg->regs[NV_PGRAPH_ANTIALIASING], NV_PGRAPH_ANTIALIASING_ENABLE);
 
         /* Edge Antialiasing */
-        GLfloat lineWidth;
         if (!anti_aliasing && pg->regs[NV_PGRAPH_SETUPRASTER] &
                                   NV_PGRAPH_SETUPRASTER_LINESMOOTHENABLE) {
             glEnable(GL_LINE_SMOOTH);
-            lineWidth = MIN(supportedSmoothLineWidthRange[1], pg->surface_scale_factor);
+            glLineWidth(MIN(supportedSmoothLineWidthRange[1], pg->surface_scale_factor));
         } else {
             glDisable(GL_LINE_SMOOTH);
-            lineWidth = MIN(supportedAliasedLineWidthRange[1], pg->surface_scale_factor);
+            glLineWidth(MIN(supportedAliasedLineWidthRange[1], pg->surface_scale_factor));
         }
-        glLineWidth(lineWidth);
         if (!anti_aliasing && pg->regs[NV_PGRAPH_SETUPRASTER] &
                                   NV_PGRAPH_SETUPRASTER_POLYSMOOTHENABLE) {
             glEnable(GL_POLYGON_SMOOTH);
