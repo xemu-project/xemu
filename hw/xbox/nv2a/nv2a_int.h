@@ -417,6 +417,7 @@ typedef struct PGRAPHState {
 
     unsigned int surface_scale_factor;
     uint8_t *scale_buf;
+    float fragment_depth_offset;
 } PGRAPHState;
 
 typedef struct NV2AState {
