@@ -26,10 +26,23 @@
 
 #include "swizzle.h"
 
-/* This should be pretty straightforward.
- * It creates a bit pattern like ..zyxzyxzyx from ..xxx, ..yyy and ..zzz
- * If there are no bits left from any component it will pack the other masks
- * more tighly (Example: zzxzxzyx = Fewer x than z and even fewer y)
+/*
+ * Helpers for converting to and from swizzled (Z-ordered) texture formats.
+ * Swizzled textures store pixels in a more cache-friendly layout for rendering
+ * than linear textures.
+ * Width, height, and depth must be powers of two.
+ * See also:
+ * https://en.wikipedia.org/wiki/Z-order_curve
+ */
+
+/*
+ * Create masks representing the interleaving of each linear texture dimension (x, y, z).
+ * These can be used to map linear texture coordinates to a swizzled "Z" offset.
+ * For example, a 2D 8x32 texture needs 3 bits for x, and 5 bits for y:
+ * mask_x:  00010101
+ * mask_y:  11101010
+ * mask_z:  00000000
+ * for "Z": yyyxyxyx
  */
 static void generate_swizzle_masks(unsigned int width,
                                    unsigned int height,
@@ -49,38 +62,10 @@ static void generate_swizzle_masks(unsigned int width,
         if (bit < depth) { z |= mask_bit; mask_bit <<= 1; done = false; }
         bit <<= 1;
     } while(!done);
-    assert((x ^ y ^ z) == (mask_bit - 1));
+    assert((x ^ y ^ z) == (mask_bit - 1)); /* masks are mutually exclusive */
     *mask_x = x;
     *mask_y = y;
     *mask_z = z;
-}
-
-/* This fills a pattern with a value if your value has bits abcd and your
- * pattern is 11010100100 this will return: 0a0b0c00d00
- */
-static uint32_t fill_pattern(uint32_t pattern, uint32_t value)
-{
-    uint32_t result = 0;
-    uint32_t bit = 1;
-    while(value) {
-        if (pattern & bit) {
-            /* Copy bit to result */
-            result |= value & 1 ? bit : 0;
-            value >>= 1;
-        }
-        bit <<= 1;
-    }
-    return result;
-}
-
-static unsigned int get_swizzled_offset(
-    unsigned int x, unsigned int y, unsigned int z,
-    uint32_t mask_x, uint32_t mask_y, uint32_t mask_z,
-    unsigned int bytes_per_pixel)
-{
-    return bytes_per_pixel * (fill_pattern(mask_x, x)
-                           | fill_pattern(mask_y, y)
-                           | fill_pattern(mask_z, z));
 }
 
 void swizzle_box(
@@ -96,19 +81,36 @@ void swizzle_box(
     uint32_t mask_x, mask_y, mask_z;
     generate_swizzle_masks(width, height, depth, &mask_x, &mask_y, &mask_z);
 
+    /*
+     * Map linear texture to swizzled texture using swizzle masks.
+     * https://fgiesen.wordpress.com/2011/01/17/texture-tiling-and-swizzling/
+     */
+
     int x, y, z;
+    int off_z = 0;
     for (z = 0; z < depth; z++) {
+        int off_y = 0;
         for (y = 0; y < height; y++) {
+            int off_x = 0;
+            const uint8_t *src_tmp = src_buf + y * row_pitch;
+            uint8_t *dst_tmp = dst_buf + (off_y + off_z) * bytes_per_pixel;
             for (x = 0; x < width; x++) {
-                const uint8_t *src = src_buf
-                                         + y * row_pitch + x * bytes_per_pixel;
-                uint8_t *dst = dst_buf +
-                    get_swizzled_offset(x, y, z, mask_x, mask_y, mask_z,
-                                        bytes_per_pixel);
+                const uint8_t *src = src_tmp + x * bytes_per_pixel;
+                uint8_t *dst = dst_tmp + off_x * bytes_per_pixel;
                 memcpy(dst, src, bytes_per_pixel);
+
+                /*
+                 * Increment x offset, letting the increment
+                 * ripple through bits that aren't in the mask.
+                 * Equivalent to:
+                 * off_x = (off_x + (~mask_x + 1)) & mask_x;
+                 */
+                off_x = (off_x - mask_x) & mask_x;
             }
+            off_y = (off_y - mask_y) & mask_y;
         }
         src_buf += slice_pitch;
+        off_z = (off_z - mask_z) & mask_z;
     }
 }
 
@@ -126,17 +128,24 @@ void unswizzle_box(
     generate_swizzle_masks(width, height, depth, &mask_x, &mask_y, &mask_z);
 
     int x, y, z;
+    int off_z = 0;
     for (z = 0; z < depth; z++) {
+        int off_y = 0;
         for (y = 0; y < height; y++) {
+            int off_x = 0;
+            const uint8_t *src_tmp = src_buf + (off_y + off_z) * bytes_per_pixel;
+            uint8_t *dst_tmp = dst_buf + y * row_pitch;
             for (x = 0; x < width; x++) {
-                const uint8_t *src = src_buf
-                    + get_swizzled_offset(x, y, z, mask_x, mask_y, mask_z,
-                                          bytes_per_pixel);
-                uint8_t *dst = dst_buf + y * row_pitch + x * bytes_per_pixel;
+                const uint8_t *src = src_tmp + off_x * bytes_per_pixel;
+                uint8_t *dst = dst_tmp + x * bytes_per_pixel;
                 memcpy(dst, src, bytes_per_pixel);
+
+                off_x = (off_x - mask_x) & mask_x;
             }
+            off_y = (off_y - mask_y) & mask_y;
         }
         dst_buf += slice_pitch;
+        off_z = (off_z - mask_z) & mask_z;
     }
 }
 
