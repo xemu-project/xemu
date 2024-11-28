@@ -59,6 +59,7 @@ RUN cd /opt \
             cc \
             glib \
             libepoxy \
+            libusb1 \
             pixman \
             libsamplerate \
             openssl \
