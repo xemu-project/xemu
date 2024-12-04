@@ -30,6 +30,12 @@
 
 #include "qemu/queue.h"
 
+#define DRIVER_DUKE "usb-xbox-gamepad"
+#define DRIVER_S "usb-xbox-gamepad-s"
+
+#define DRIVER_DUKE_DISPLAY_NAME "Xbox Controller"
+#define DRIVER_S_DISPLAY_NAME "Xbox Controller S"
+
 enum controller_state_buttons_mask {
     CONTROLLER_BUTTON_A          = (1 << 0),
     CONTROLLER_BUTTON_B          = (1 << 1),
@@ -81,7 +87,7 @@ typedef struct ControllerState {
     // Input state
     uint16_t buttons;
     int16_t  axis[CONTROLLER_AXIS__COUNT];
-
+    
     // Rendering state hacked on here for convenience but needs to be moved (FIXME)
     uint32_t animate_guide_button_end;
     uint32_t animate_trigger_end;
@@ -107,6 +113,7 @@ typedef struct ControllerState {
 typedef QTAILQ_HEAD(, ControllerState) ControllerStateList;
 extern ControllerStateList available_controllers;
 extern ControllerState *bound_controllers[4];
+extern const char *bound_drivers[4];
 
 #ifdef __cplusplus
 extern "C" {
