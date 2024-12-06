@@ -34,7 +34,7 @@
 #include "ui/shader/xemu-logo-frag.h"
 
 Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
-GLuint g_controller_tex, g_controller_s_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
+GLuint g_controller_duke_tex, g_controller_s_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
 
 enum class ShaderType {
     Blit,
@@ -440,7 +440,7 @@ enum tex_item_names {
 void InitCustomRendering(void)
 {
     glActiveTexture(GL_TEXTURE0);
-    g_controller_tex =
+    g_controller_duke_tex =
         LoadTextureFromMemory(controller_mask_data, controller_mask_size);
     g_controller_s_tex =
         LoadTextureFromMemory(controller_mask_s_data, controller_mask_s_size);
@@ -467,7 +467,7 @@ static void RenderMeter(DecalShader *s, float x, float y, float width,
     RenderDecal(s, x, y, width * p, height, 0, 0, 1, 1, 0, 0, color_fg);
 }
 
-static void RenderController_Duke(float frame_x, float frame_y, uint32_t primary_color,
+static void RenderDukeController(float frame_x, float frame_y, uint32_t primary_color,
                       uint32_t secondary_color, ControllerState *state)
 {
     // Location within the controller texture of masked button locations,
@@ -497,7 +497,7 @@ static void RenderController_Duke(float frame_x, float frame_y, uint32_t primary
     glUseProgram(g_decal_shader->prog);
     glBindVertexArray(g_decal_shader->vao);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, g_controller_tex);
+    glBindTexture(GL_TEXTURE_2D, g_controller_duke_tex);
 
     // Add a 5 pixel space around the controller so we can wiggle the controller
     // around to visualize rumble in action
@@ -626,7 +626,7 @@ static void RenderController_Duke(float frame_x, float frame_y, uint32_t primary
     glUseProgram(0);
 }
 
-static void RenderController_S(float frame_x, float frame_y, uint32_t primary_color,
+static void RenderControllerS(float frame_x, float frame_y, uint32_t primary_color,
                         uint32_t secondary_color, ControllerState *state)
 {
     // Location within the controller texture of masked button locations,
@@ -797,11 +797,11 @@ void RenderController(float frame_x, float frame_y, uint32_t primary_color,
                       uint32_t secondary_color, ControllerState *state)
 {
     if (strcmp(bound_drivers[state->bound], DRIVER_S) == 0)
-        RenderController_S(frame_x, frame_y, primary_color, secondary_color,
-                           state);
+        RenderControllerS(frame_x, frame_y, primary_color, secondary_color,
+                          state);
     else if (strcmp(bound_drivers[state->bound], DRIVER_DUKE) == 0)
-        RenderController_Duke(frame_x, frame_y, primary_color, secondary_color,
-                              state);
+        RenderDukeController(frame_x, frame_y, primary_color, secondary_color,
+                             state);
 }
 
 void RenderControllerPort(float frame_x, float frame_y, int i,
@@ -810,7 +810,7 @@ void RenderControllerPort(float frame_x, float frame_y, int i,
     glUseProgram(g_decal_shader->prog);
     glBindVertexArray(g_decal_shader->vao);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, g_controller_tex);
+    glBindTexture(GL_TEXTURE_2D, g_controller_duke_tex);
     glBlendFunc(GL_ONE, GL_ZERO);
 
     // Render port socket
