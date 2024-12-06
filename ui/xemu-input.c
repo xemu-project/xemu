@@ -1116,6 +1116,11 @@ void xemu_input_unbind_xmu(int player_index, int expansion_slot_index)
 
 void xemu_input_rebind_xmu(int port)
 {
+    bool hasInternalHub =
+        strcmp(bound_drivers[port], DRIVER_STEEL_BATTALION) != 0;
+    if (!hasInternalHub)
+        return;
+        
     // Try to bind peripherals back to controller
     for (int i = 0; i < 2; i++) {
         enum peripheral_type peripheral_type =
