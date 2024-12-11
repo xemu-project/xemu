@@ -2861,6 +2861,7 @@ void qemu_init(int argc, char **argv)
         }
     }
 
+#ifndef CHIHIRO
     // Always populate DVD drive. If disc path is the empty string, drive is
     // connected but no media present.
     fake_argv[fake_argc++] = strdup("-drive");
@@ -2868,6 +2869,7 @@ void qemu_init(int argc, char **argv)
     fake_argv[fake_argc++] = g_strdup_printf("index=1,media=cdrom,file=%s",
         escaped_dvd_path);
     free(escaped_dvd_path);
+#endif
 
     fake_argv[fake_argc++] = strdup("-display");
     fake_argv[fake_argc++] = strdup("xemu");

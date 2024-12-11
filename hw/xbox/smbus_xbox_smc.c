@@ -351,6 +351,7 @@ void xbox_smc_eject_button(void)
 // interaction.
 void xbox_smc_update_tray_state(void)
 {
+#ifndef CHIHIRO
     Object *obj = object_resolve_path_type("", TYPE_XBOX_SMC, NULL);
     SMBusSMCDevice *smc = XBOX_SMC(obj);
 
@@ -370,4 +371,5 @@ void xbox_smc_update_tray_state(void)
     }
 
     xbox_assert_extsmi();
+#endif
 }
