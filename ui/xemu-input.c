@@ -34,6 +34,9 @@
 
 #include "sysemu/blockdev.h"
 
+extern SDL_Window *m_window;
+extern int viewport_coords[4];
+
 // #define DEBUG_INPUT
 
 #ifdef DEBUG_INPUT
@@ -128,7 +131,7 @@ static const char **peripheral_params_settings_map[4][2] = {
 };
 
 static int sdl_kbd_scancode_map[25];
-static int sdl_sbc_kbd_scancode_map[56];
+static int sdl_sbc_kbd_scancode_map[52];
 
 static const char *get_bound_driver(int port)
 {
@@ -207,12 +210,6 @@ void xemu_input_init(void)
         }
     }
     
-    sdl_sbc_kbd_scancode_map[0] =
-        g_config.input.keyboard_sbc_scancode_map.main_weapon;
-    sdl_sbc_kbd_scancode_map[1] =
-        g_config.input.keyboard_sbc_scancode_map.sub_weapon;
-    sdl_sbc_kbd_scancode_map[2] =
-        g_config.input.keyboard_sbc_scancode_map.lock_on;
     sdl_sbc_kbd_scancode_map[3] =
         g_config.input.keyboard_sbc_scancode_map.eject;
     sdl_sbc_kbd_scancode_map[4] =
@@ -293,33 +290,25 @@ void xemu_input_init(void)
     sdl_sbc_kbd_scancode_map[42] =
         g_config.input.keyboard_sbc_scancode_map.tuner_right;
     sdl_sbc_kbd_scancode_map[43] =
-        g_config.input.keyboard_sbc_scancode_map.aiming_up;
-    sdl_sbc_kbd_scancode_map[44] =
-        g_config.input.keyboard_sbc_scancode_map.aiming_down;
-    sdl_sbc_kbd_scancode_map[45] =
-        g_config.input.keyboard_sbc_scancode_map.aiming_left;
-    sdl_sbc_kbd_scancode_map[46] =
-        g_config.input.keyboard_sbc_scancode_map.aiming_right;
-    sdl_sbc_kbd_scancode_map[47] =
         g_config.input.keyboard_sbc_scancode_map.sight_change_up;
-    sdl_sbc_kbd_scancode_map[48] =
+    sdl_sbc_kbd_scancode_map[44] =
         g_config.input.keyboard_sbc_scancode_map.sight_change_down;
-    sdl_sbc_kbd_scancode_map[49] =
+    sdl_sbc_kbd_scancode_map[45] =
         g_config.input.keyboard_sbc_scancode_map.sight_change_left;
-    sdl_sbc_kbd_scancode_map[50] =
+    sdl_sbc_kbd_scancode_map[46] =
         g_config.input.keyboard_sbc_scancode_map.sight_change_right;
-    sdl_sbc_kbd_scancode_map[51] =
+    sdl_sbc_kbd_scancode_map[47] =
         g_config.input.keyboard_sbc_scancode_map.rotation_left;
-    sdl_sbc_kbd_scancode_map[52] =
+    sdl_sbc_kbd_scancode_map[48] =
         g_config.input.keyboard_sbc_scancode_map.rotation_right;
-    sdl_sbc_kbd_scancode_map[53] =
+    sdl_sbc_kbd_scancode_map[49] =
         g_config.input.keyboard_sbc_scancode_map.left_pedal;
-    sdl_sbc_kbd_scancode_map[54] =
+    sdl_sbc_kbd_scancode_map[50] =
         g_config.input.keyboard_sbc_scancode_map.right_pedal;
-    sdl_sbc_kbd_scancode_map[55] =
+    sdl_sbc_kbd_scancode_map[51] =
         g_config.input.keyboard_sbc_scancode_map.middle_pedal;
 
-    for (int i = 0; i < 56; i++) {
+    for (int i = 0; i < 49; i++) {
         if ((sdl_sbc_kbd_scancode_map[i] < SDL_SCANCODE_UNKNOWN) ||
             (sdl_sbc_kbd_scancode_map[i] >= SDL_NUM_SCANCODES)) {
             fprintf(stderr,
@@ -565,7 +554,7 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
             state->sbc.gearLever = 255;
 
         // Update SBC Buttons
-        for (int i = 0; i < 43; i++) {
+        for (int i = 3; i < 43; i++) {
             if (kbd[sdl_sbc_kbd_scancode_map[i]])
                 state->sbc.buttons |= (1ULL << i);
         }
@@ -627,34 +616,75 @@ void xemu_input_update_sdl_kbd_controller_state(ControllerState *state)
         }
 
         // Update SBC Axes
-        if (kbd[sdl_sbc_kbd_scancode_map[43]])
-            state->sbc.axis[SBC_AXIS_AIMING_Y] = -32768;
-        if (kbd[sdl_sbc_kbd_scancode_map[44]])
-            state->sbc.axis[SBC_AXIS_AIMING_Y] = 32767;
-        if (kbd[sdl_sbc_kbd_scancode_map[45]])
-            state->sbc.axis[SBC_AXIS_AIMING_X] = -32768;
-        if (kbd[sdl_sbc_kbd_scancode_map[46]])
-            state->sbc.axis[SBC_AXIS_AIMING_X] = 32767;
+        int mouseX, mouseY;
+        uint32_t mouseBtn = SDL_GetMouseState(&mouseX, &mouseY);
 
-        if (kbd[sdl_sbc_kbd_scancode_map[47]])
+        if (mouseBtn & SDL_BUTTON(SDL_BUTTON_LEFT)) {
+            state->sbc.buttons |= SBC_BUTTON_MAIN_WEAPON;
+        }
+        if (mouseBtn & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
+            state->sbc.buttons |= SBC_BUTTON_LOCK_ON;
+        }
+        if(mouseBtn & SDL_BUTTON(SDL_BUTTON_X1) ||
+           mouseBtn & SDL_BUTTON(SDL_BUTTON_X2)) {
+            state->sbc.buttons |= SBC_BUTTON_SUB_WEAPON;
+        }
+
+        int32_t windowWidth, windowHeight;
+        SDL_GL_GetDrawableSize(
+            m_window, &windowWidth,
+            &windowHeight); // get the mouse location relative to the Viewport,
+                            // not the Window
+
+        // Calculate the position of the mouse coordinates in [-32768,32768]
+        DPRINTF("[Steel Battalion] Window Coordinates: %d, %d\n", mouseX, mouseY);
+
+        // Check that the mouse position is within the window coordinates
+        if (mouseX >= 0 && mouseX <= windowWidth && mouseY >= 0 &&
+            mouseY <= windowHeight) {
+            if (viewport_coords[2] > 0 && viewport_coords[3] > 0) {
+                // Switch from Window coordinates to Viewport Coordinates
+                mouseX -= viewport_coords[0];
+                mouseY -= viewport_coords[1];
+                windowWidth = viewport_coords[2];
+                windowHeight = viewport_coords[3];
+            }
+
+            DPRINTF("[Steel Battalion] Viewport Coordinates: %d, %d\n", mouseX, mouseY);
+            int32_t x = (int32_t)((mouseX - (windowWidth / 2)) *
+                                  65535 / windowWidth);
+            int32_t y = (int32_t)((mouseY - (windowHeight / 2)) *
+                                  65535 / windowHeight);
+
+            state->sbc.axis[SBC_AXIS_AIMING_X] = 
+                (int16_t)MIN(MAX(x, -32768), 32767);
+            state->sbc.axis[SBC_AXIS_AIMING_Y] = 
+                (int16_t)MIN(MAX(y, -32768), 32767);
+
+            DPRINTF("[Steel Battalion] X: %d, Y: %d", 
+                    state->sbc.axis[SBC_AXIS_AIMING_X], 
+                    state->sbc.axis[SBC_AXIS_AIMING_Y]);
+        }
+
+        if (kbd[sdl_sbc_kbd_scancode_map[43]])
             state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y] = -32768;
-        if (kbd[sdl_sbc_kbd_scancode_map[48]])
+        if (kbd[sdl_sbc_kbd_scancode_map[44]])
             state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_Y] = 32767;
-        if (kbd[sdl_sbc_kbd_scancode_map[49]])
+        if (kbd[sdl_sbc_kbd_scancode_map[45]])
             state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X] = -32768;
-        if (kbd[sdl_sbc_kbd_scancode_map[50]])
+        if (kbd[sdl_sbc_kbd_scancode_map[46]])
             state->sbc.axis[SBC_AXIS_SIGHT_CHANGE_X] = 32767;
 
-        if (kbd[sdl_sbc_kbd_scancode_map[51]])
+        if (kbd[sdl_sbc_kbd_scancode_map[47]])
             state->sbc.axis[SBC_AXIS_ROTATION_LEVER] = -32768;
-        if (kbd[sdl_sbc_kbd_scancode_map[52]])
+        if (kbd[sdl_sbc_kbd_scancode_map[48]])
             state->sbc.axis[SBC_AXIS_ROTATION_LEVER] = 32767;
 
-        if (kbd[sdl_sbc_kbd_scancode_map[53]])
+        if (kbd[sdl_sbc_kbd_scancode_map[49]])
             state->sbc.axis[SBC_AXIS_LEFT_PEDAL] = 32767;
-        if (kbd[sdl_sbc_kbd_scancode_map[54]])
+        if (kbd[sdl_sbc_kbd_scancode_map[50]])
             state->sbc.axis[SBC_AXIS_RIGHT_PEDAL] = 32767;
-        if (kbd[sdl_sbc_kbd_scancode_map[55]])
+        if (kbd[sdl_sbc_kbd_scancode_map[51]])
             state->sbc.axis[SBC_AXIS_MIDDLE_PEDAL] = 32767;
 
         state->sbc.previousButtons = state->sbc.buttons;
@@ -703,7 +733,6 @@ void xemu_input_update_sdl_controller_state(ControllerState *state)
     if (strcmp(bound_driver, DRIVER_STEEL_BATTALION) == 0) {
         state->sbc.buttons = 0;
 
-        // Update the SBC too, just in case
         const uint64_t sdl_button_map_sbc[8][2] = {
             { SDL_CONTROLLER_BUTTON_A, SBC_BUTTON_MAIN_WEAPON },
             { SDL_CONTROLLER_BUTTON_B, SBC_BUTTON_LOCK_ON },

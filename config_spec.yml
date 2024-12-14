@@ -133,15 +133,6 @@ input:
       type: integer
       default: 18 # w
   keyboard_sbc_scancode_map:
-    main_weapon:
-      type: integer
-      default: 40 # enter
-    sub_weapon:
-      type: integer
-      default: 229 # right shift
-    lock_on:
-      type: integer
-      default: 42 # backspace
     eject:
       type: integer
       default: 41 # esc
@@ -174,13 +165,13 @@ input:
       default: 78 # Page Down
     fss:
       type: integer
-      default: 9 # f
+      default: 97 # numpad 9
     manipulator:
       type: integer
-      default: 16 # m
+      default: 94 # numpad 6
     line_color_change:
       type: integer
-      default: 46 # =
+      default: 91 # numpad 3
     washing:
       type: integer
       default: 45 # -
@@ -192,22 +183,22 @@ input:
       default: 6 # c
     tank_detach:
       type: integer
-      default: 23 # t
+      default: 96 # numpad 8
     override:
       type: integer
-      default: 18 # o
+      default: 93 # numpad 5
     night_scope:
       type: integer
-      default: 17 # n
+      default: 90 # numpad 2
     func1:
       type: integer
-      default: 58 # F1
+      default: 95 # numpad 7
     func2:
       type: integer
-      default: 59 # F2
+      default: 92 # numpad 4
     func3:
       type: integer
-      default: 60 # F3
+      default: 89 # numpad 1
     main_weapon_control:
       type: integer
       default: 35 # 6
@@ -262,18 +253,6 @@ input:
     tuner_right:
       type: integer
       default: 55 # >
-    aiming_up:
-      type: integer
-      default: 96 # numpad 8
-    aiming_down:
-      type: integer
-      default: 90 # numpad 2
-    aiming_left:
-      type: integer
-      default: 92 # numpad 4
-    aiming_right:
-      type: integer
-      default: 94 # numpad 6
     sight_change_up:
       type: integer
       default: 82 # up

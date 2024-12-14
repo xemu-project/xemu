@@ -33,6 +33,8 @@
 
 #include "ui/shader/xemu-logo-frag.h"
 
+extern int viewport_coords[4];
+
 Fbo *controller_fbo, *xmu_fbo, *logo_fbo;
 GLuint g_controller_duke_tex, g_sb_controller_tex, g_logo_tex, g_icon_tex, g_xmu_tex;
 
@@ -1083,6 +1085,7 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
 {
     int tw, th;
     float scale[2];
+    int viewport_width, viewport_height;
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -1110,6 +1113,14 @@ void RenderFramebuffer(GLint tex, int width, int height, bool flip)
             scale[1] = w_ratio/t_ratio;
         }
     }
+
+    viewport_width = (int)(width * scale[0]);
+    viewport_height = (int)(height * scale[1]);
+
+    viewport_coords[0] = (width - viewport_width) / 2;
+    viewport_coords[1] = (height - viewport_height) / 2;
+    viewport_coords[2] = viewport_width;
+    viewport_coords[3] = viewport_height;
 
     RenderFramebuffer(tex, width, height, flip, scale);
 }
