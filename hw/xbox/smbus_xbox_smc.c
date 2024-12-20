@@ -38,18 +38,14 @@
 #include "sysemu/runstate.h"
 #include "hw/qdev-properties.h"
 
-#include "ui/xemu-settings.h"
-
 #define TYPE_XBOX_SMC "smbus-xbox-smc"
 #define XBOX_SMC(obj) OBJECT_CHECK(SMBusSMCDevice, (obj), TYPE_XBOX_SMC)
 
 // #define DEBUG
 #ifdef DEBUG
-#define DPRINTF(format, ...) printf(format, ##__VA_ARGS__)
+# define DPRINTF(format, ...) printf(format, ## __VA_ARGS__)
 #else
-#define DPRINTF(format, ...) \
-    do {                     \
-    } while (0)
+# define DPRINTF(format, ...) do { } while (0)
 #endif
 
 /*
@@ -57,48 +53,45 @@
  * http://www.xbox-linux.org/wiki/PIC
  */
 
-#define SMC_REG_VER 0x01
-#define SMC_REG_POWER 0x02
-#define SMC_REG_POWER_RESET 0x01
-#define SMC_REG_POWER_CYCLE 0x40
-#define SMC_REG_POWER_SHUTDOWN 0x80
-#define SMC_REG_TRAYSTATE 0x03
-#define SMC_REG_TRAYSTATE_OPEN 0x10
-#define SMC_REG_TRAYSTATE_NO_MEDIA_DETECTED 0x40
-#define SMC_REG_TRAYSTATE_MEDIA_DETECTED 0x60
-#define SMC_REG_AVPACK 0x04
-#define SMC_REG_AVPACK_SCART 0x00
-#define SMC_REG_AVPACK_HDTV 0x01
-#define SMC_REG_AVPACK_VGA 0x02
-#define SMC_REG_AVPACK_RFU 0x03
-#define SMC_REG_AVPACK_SVIDEO 0x04
-#define SMC_REG_AVPACK_COMPOSITE 0x06
-#define SMC_REG_AVPACK_NONE 0x07
-#define SMC_REG_FANMODE 0x05
-#define SMC_REG_FANSPEED 0x06
-#define SMC_REG_LEDMODE 0x07
-#define SMC_REG_LEDSEQ 0x08
-#define SMC_REG_CPUTEMP 0x09
-#define SMC_REG_BOARDTEMP 0x0a
-#define SMC_REG_TRAYEJECT 0x0c
-#define SMC_REG_INTACK 0x0d
-#define SMC_REG_ERROR_WRITE 0x0e
-#define SMC_REG_ERROR_READ 0x0f
-#define SMC_REG_INTSTATUS 0x11
-#define SMC_REG_INTSTATUS_POWER 0x01
-#define SMC_REG_INTSTATUS_TRAYCLOSED 0x02
-#define SMC_REG_INTSTATUS_TRAYOPENING 0x04
-#define SMC_REG_INTSTATUS_AVPACK_PLUG 0x08
-#define SMC_REG_INTSTATUS_AVPACK_UNPLUG 0x10
-#define SMC_REG_INTSTATUS_EJECT_BUTTON 0x20
-#define SMC_REG_INTSTATUS_TRAYCLOSING 0x40
-#define SMC_REG_RESETONEJECT 0x19
-#define SMC_REG_INTEN 0x1a
-#define SMC_REG_SCRATCH 0x1b
-#define SMC_REG_SCRATCH_EJECT_AFTER_BOOT 0x01
-#define SMC_REG_SCRATCH_ERROR_AFTER_BOOT 0x02
-#define SMC_REG_SCRATCH_SHORT_ANIMATION 0x04
-#define SMC_REG_SCRATCH_FORCE_DASH_BOOT 0x08
+#define SMC_REG_VER                 0x01
+#define SMC_REG_POWER               0x02
+#define     SMC_REG_POWER_RESET         0x01
+#define     SMC_REG_POWER_CYCLE         0x40
+#define     SMC_REG_POWER_SHUTDOWN      0x80
+#define SMC_REG_TRAYSTATE           0x03
+#define     SMC_REG_TRAYSTATE_OPEN              0x10
+#define     SMC_REG_TRAYSTATE_NO_MEDIA_DETECTED 0x40
+#define     SMC_REG_TRAYSTATE_MEDIA_DETECTED    0x60
+#define SMC_REG_AVPACK              0x04
+#define     SMC_REG_AVPACK_SCART        0x00
+#define     SMC_REG_AVPACK_HDTV         0x01
+#define     SMC_REG_AVPACK_VGA          0x02
+#define     SMC_REG_AVPACK_RFU          0x03
+#define     SMC_REG_AVPACK_SVIDEO       0x04
+#define     SMC_REG_AVPACK_COMPOSITE    0x06
+#define     SMC_REG_AVPACK_NONE         0x07
+#define SMC_REG_FANMODE             0x05
+#define SMC_REG_FANSPEED            0x06
+#define SMC_REG_LEDMODE             0x07
+#define SMC_REG_LEDSEQ              0x08
+#define SMC_REG_CPUTEMP             0x09
+#define SMC_REG_BOARDTEMP           0x0a
+#define SMC_REG_TRAYEJECT           0x0c
+#define SMC_REG_INTACK              0x0d
+#define SMC_REG_ERROR_WRITE         0x0e
+#define SMC_REG_ERROR_READ          0x0f
+#define SMC_REG_INTSTATUS           0x11
+#define     SMC_REG_INTSTATUS_POWER         0x01
+#define     SMC_REG_INTSTATUS_TRAYCLOSED    0x02
+#define     SMC_REG_INTSTATUS_TRAYOPENING   0x04
+#define     SMC_REG_INTSTATUS_AVPACK_PLUG   0x08
+#define     SMC_REG_INTSTATUS_AVPACK_UNPLUG 0x10
+#define     SMC_REG_INTSTATUS_EJECT_BUTTON  0x20
+#define     SMC_REG_INTSTATUS_TRAYCLOSING   0x40
+#define SMC_REG_RESETONEJECT        0x19
+#define SMC_REG_INTEN               0x1a
+#define SMC_REG_SCRATCH             0x1b
+#define     SMC_REG_SCRATCH_SHORT_ANIMATION 0x04
 
 #define SMC_VERSION_LENGTH 3
 
@@ -121,7 +114,6 @@ static void smc_quick_cmd(SMBusDevice *dev, uint8_t read)
 
 static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
 {
-    Error *error = NULL;
     SMBusSMCDevice *smc = XBOX_SMC(dev);
 
     smc->cmd = buf[0];
@@ -129,11 +121,10 @@ static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
     buf++;
     len--;
 
-    if (len < 1)
-        return 0;
+    if (len < 1) return 0;
 
     DPRINTF("smc_write_byte: addr=0x%02x cmd=0x%02x val=0x%02x\n",
-            dev->i2c.address, cmd, buf[0]);
+           dev->i2c.address, cmd, buf[0]);
 
     switch (cmd) {
     case SMC_REG_VER:
@@ -147,19 +138,6 @@ static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
         } else if (buf[0] & SMC_REG_POWER_SHUTDOWN) {
             qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
         }
-        break;
-
-    case SMC_REG_TRAYEJECT:
-        if (buf[0]) {
-            const char *path = g_config.sys.files.dvd_path;
-            qmp_blockdev_change_medium(true, "ide0-cd1", false, NULL, path,
-                                       false, "", false, false, false, 0,
-                                       &error);
-        } else {
-            xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
-            qmp_eject(true, "ide0-cd1", false, NULL, true, false, &error);
-        }
-        xbox_smc_update_tray_state();
         break;
 
     case SMC_REG_ERROR_WRITE:
@@ -187,15 +165,15 @@ static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
 static uint8_t smc_receive_byte(SMBusDevice *dev)
 {
     SMBusSMCDevice *smc = XBOX_SMC(dev);
-    DPRINTF("smc_receive_byte: addr=0x%02x cmd=0x%02x\n", dev->i2c.address,
-            smc->cmd);
+    DPRINTF("smc_receive_byte: addr=0x%02x cmd=0x%02x\n",
+            dev->i2c.address, smc->cmd);
 
     uint8_t cmd = smc->cmd++;
 
     switch (cmd) {
     case SMC_REG_VER:
-        return smc
-            ->version_string[smc->version_string_index++ % SMC_VERSION_LENGTH];
+        return smc->version_string[
+            smc->version_string_index++ % SMC_VERSION_LENGTH];
 
     case SMC_REG_TRAYSTATE:
         return smc->traystate_reg;
@@ -263,8 +241,7 @@ bool xbox_smc_avpack_to_reg(const char *avpack, uint8_t *value)
 
 void xbox_smc_append_avpack_hint(Error **errp)
 {
-    error_append_hint(errp, "Valid options are: composite, scart, svideo, vga, "
-                            "rfu, hdtv (default), none\n");
+    error_append_hint(errp, "Valid options are: composite, scart, svideo, vga, rfu, hdtv (default), none\n");
 }
 
 void xbox_smc_append_smc_version_hint(Error **errp)
@@ -287,13 +264,8 @@ static void smbus_smc_realize(DeviceState *dev, Error **errp)
     smc->cmd = 0;
     smc->error_reg = 0;
 
-    if (object_property_get_bool(qdev_get_machine(), "eject-after-boot",
-                                 NULL)) {
-        smc->scratch_reg |= SMC_REG_SCRATCH_EJECT_AFTER_BOOT;
-    }
-
     if (object_property_get_bool(qdev_get_machine(), "short-animation", NULL)) {
-        smc->scratch_reg |= SMC_REG_SCRATCH_SHORT_ANIMATION;
+        smc->scratch_reg = SMC_REG_SCRATCH_SHORT_ANIMATION;
     }
 
     avpack = object_property_get_str(qdev_get_machine(), "avpack", NULL);
@@ -306,12 +278,10 @@ static void smbus_smc_realize(DeviceState *dev, Error **errp)
         g_free(avpack);
     }
 
-    smc_version =
-        object_property_get_str(qdev_get_machine(), "smc-version", NULL);
+    smc_version = object_property_get_str(qdev_get_machine(), "smc-version", NULL);
     if (smc_version) {
         if (strlen(smc_version) != SMC_VERSION_LENGTH) {
-            error_setg(errp, "Unsupported SMC version string '%s'",
-                       smc_version);
+            error_setg(errp, "Unsupported SMC version string '%s'", smc_version);
             xbox_smc_append_smc_version_hint(errp);
         }
         smc->version_string = g_strdup(smc_version);
@@ -346,7 +316,7 @@ static void smbus_smc_register_devices(void)
 
 type_init(smbus_smc_register_devices)
 
-    void smbus_xbox_smc_init(I2CBus *smbus, int address)
+void smbus_xbox_smc_init(I2CBus *smbus, int address)
 {
     DeviceState *dev;
     dev = qdev_new(TYPE_XBOX_SMC);
@@ -376,15 +346,6 @@ void xbox_smc_eject_button(void)
     xbox_assert_extsmi();
 }
 
-void xbox_smc_tray_eject(uint8_t val)
-{
-    Object *obj = object_resolve_path_type("", TYPE_XBOX_SMC, NULL);
-    uint8_t buf[2];
-    buf[0] = 0x0c;
-    buf[1] = val;
-    smc_write_data(obj,buf,2);
-}
-
 // FIXME: Ideally this would be called on a tray state change callback (see
 // tray_moved event), for now it's called explicitly from UI upon user
 // interaction.
@@ -402,9 +363,9 @@ void xbox_smc_update_tray_state(void)
         smc->intstatus_reg |= SMC_REG_INTSTATUS_TRAYOPENING;
     } else {
         BlockDriverState *bs = blk_bs(blk);
-        smc->traystate_reg = (bs && bs->drv) ?
-                                 SMC_REG_TRAYSTATE_MEDIA_DETECTED :
-                                 SMC_REG_TRAYSTATE_NO_MEDIA_DETECTED;
+        smc->traystate_reg = (bs && bs->drv)
+                                ? SMC_REG_TRAYSTATE_MEDIA_DETECTED
+                                : SMC_REG_TRAYSTATE_NO_MEDIA_DETECTED;
         smc->intstatus_reg |= SMC_REG_INTSTATUS_TRAYCLOSED;
     }
 
