@@ -37,6 +37,7 @@
 #include "smbus.h"
 #include "sysemu/runstate.h"
 #include "hw/qdev-properties.h"
+#include "ui/xemu-settings.h"
 
 #define TYPE_XBOX_SMC "smbus-xbox-smc"
 #define XBOX_SMC(obj) OBJECT_CHECK(SMBusSMCDevice, (obj), TYPE_XBOX_SMC)
@@ -91,7 +92,10 @@
 #define SMC_REG_RESETONEJECT        0x19
 #define SMC_REG_INTEN               0x1a
 #define SMC_REG_SCRATCH             0x1b
-#define     SMC_REG_SCRATCH_SHORT_ANIMATION 0x04
+#define SMC_REG_SCRATCH_EJECT_AFTER_BOOT 0x01
+#define SMC_REG_SCRATCH_ERROR_AFTER_BOOT 0x02
+#define SMC_REG_SCRATCH_SHORT_ANIMATION  0x04
+#define SMC_REG_SCRATCH_FORCE_DASH_BOOT  0x08
 
 #define SMC_VERSION_LENGTH 3
 
@@ -114,6 +118,7 @@ static void smc_quick_cmd(SMBusDevice *dev, uint8_t read)
 
 static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
 {
+    Error *error = NULL;
     SMBusSMCDevice *smc = XBOX_SMC(dev);
 
     smc->cmd = buf[0];
@@ -138,6 +143,19 @@ static int smc_write_data(SMBusDevice *dev, uint8_t *buf, uint8_t len)
         } else if (buf[0] & SMC_REG_POWER_SHUTDOWN) {
             qemu_system_shutdown_request(SHUTDOWN_CAUSE_GUEST_SHUTDOWN);
         }
+        break;
+
+    case SMC_REG_TRAYEJECT:
+        if (buf[0]) {
+            const char *path = g_config.sys.files.dvd_path;
+            qmp_blockdev_change_medium(true, "ide0-cd1", false, NULL, path,
+                                       false, "", false, false, false, 0,
+                                       &error);
+        } else {
+            xemu_settings_set_string(&g_config.sys.files.dvd_path, "");            
+            qmp_eject(true, "ide0-cd1", false, NULL, true, false, &error);
+        }
+        xbox_smc_update_tray_state();
         break;
 
     case SMC_REG_ERROR_WRITE:
@@ -264,8 +282,12 @@ static void smbus_smc_realize(DeviceState *dev, Error **errp)
     smc->cmd = 0;
     smc->error_reg = 0;
 
+    if (object_property_get_bool(qdev_get_machine(), "eject-after-boot", NULL)) {
+        smc->scratch_reg |= SMC_REG_SCRATCH_EJECT_AFTER_BOOT;
+    }
+
     if (object_property_get_bool(qdev_get_machine(), "short-animation", NULL)) {
-        smc->scratch_reg = SMC_REG_SCRATCH_SHORT_ANIMATION;
+        smc->scratch_reg |= SMC_REG_SCRATCH_SHORT_ANIMATION;
     }
 
     avpack = object_property_get_str(qdev_get_machine(), "avpack", NULL);
@@ -344,6 +366,15 @@ void xbox_smc_eject_button(void)
     SMBusSMCDevice *smc = XBOX_SMC(obj);
     smc->intstatus_reg |= SMC_REG_INTSTATUS_EJECT_BUTTON;
     xbox_assert_extsmi();
+}
+
+void xbox_smc_tray_eject(uint8_t val)
+{
+    Object *obj = object_resolve_path_type("", TYPE_XBOX_SMC, NULL);
+    uint8_t buf[2];
+    buf[0] = 0x0c;
+    buf[1] = val;
+    smc_write_data(obj,buf,2);
 }
 
 // FIXME: Ideally this would be called on a tray state change callback (see

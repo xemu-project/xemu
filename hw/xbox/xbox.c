@@ -437,6 +437,20 @@ static bool machine_get_short_animation(Object *obj, Error **errp)
     return ms->short_animation;
 }
 
+static void machine_set_eject_after_boot(Object *obj, bool value,
+                                        Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+
+    ms->eject_after_boot = value;
+}
+
+static bool machine_get_eject_after_boot(Object *obj, Error **errp)
+{
+    XboxMachineState *ms = XBOX_MACHINE(obj);
+    return ms->eject_after_boot;
+}
+
 static char *machine_get_smc_version(Object *obj, Error **errp)
 {
     XboxMachineState *ms = XBOX_MACHINE(obj);
@@ -503,6 +517,13 @@ static inline void xbox_machine_initfn(Object *obj)
     object_property_set_description(obj, "short-animation",
                                     "Skip Xbox boot animation");
     object_property_set_bool(obj, "short-animation", false, &error_fatal);
+
+    object_property_add_bool(obj, "eject-after-boot",
+                             machine_get_eject_after_boot,
+                             machine_set_eject_after_boot);
+    object_property_set_description(obj, "eject-after-boot",
+                                    "Eject disc tray after boot");
+    object_property_set_bool(obj, "eject-after-boot", false, &error_fatal);
 
     object_property_add_str(obj, "smc-version", machine_get_smc_version,
                             machine_set_smc_version);
