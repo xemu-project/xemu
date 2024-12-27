@@ -287,7 +287,7 @@ static void render_display(NV2AState *d, SurfaceBinding *surface)
     uint32_t pline_offset, pstart_addr, pline_compare;
     d->vga.get_resolution(&d->vga, (int*)&width, (int*)&height);
     d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
-    int line_offset = surface->pitch / pline_offset;
+    int line_offset = pline_offset ? surface->pitch / pline_offset : 1;
 
     /* Adjust viewport height for interlaced mode, used only in 1080i */
     if (d->vga.cr[NV_PRMCIO_INTERLACE_MODE] != NV_PRMCIO_INTERLACE_MODE_DISABLED) {

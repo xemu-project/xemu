@@ -869,7 +869,7 @@ static void update_uniforms(PGRAPHState *pg, SurfaceBinding *surface)
 
     uint32_t pline_offset, pstart_addr, pline_compare;
     d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
-    int line_offset = surface->pitch / pline_offset;
+    int line_offset = pline_offset ? surface->pitch / pline_offset : 1;
     int line_offset_loc = uniform_index(l, "line_offset");
     uniform1f(l, line_offset_loc, line_offset);
 
