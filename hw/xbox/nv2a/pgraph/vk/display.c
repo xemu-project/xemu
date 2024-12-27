@@ -654,8 +654,7 @@ static void create_display_image(PGRAPHState *pg, int width, int height)
     alloc_info.pNext = &export_memory_alloc_info;
 
     VK_CHECK(vkAllocateMemory(r->device, &alloc_info, NULL, &d->memory));
-
-    vkBindImageMemory(r->device, d->image, d->memory, 0);
+    VK_CHECK(vkBindImageMemory(r->device, d->image, d->memory, 0));
 
     // Create Image View
     VkImageViewCreateInfo image_view_create_info = {
