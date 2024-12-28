@@ -23,6 +23,22 @@
 #include "qemu/cutils.h"
 #include "qemu/memalign.h"
 
+#ifdef _WIN32
+/* clock_gettime depends on pthreads. We only use it for measuring IO perf below
+ * so simply implement it here for now. */
+static int clock_gettime_monotonic(struct timespec *tp)
+{
+    LARGE_INTEGER freq, ticks;
+    if (!QueryPerformanceFrequency(&freq) || !QueryPerformanceCounter(&ticks)) {
+        return -1;
+    }
+    tp->tv_sec = ticks.QuadPart / freq.QuadPart;
+    tp->tv_nsec = (ticks.QuadPart % freq.QuadPart) * 1000000000 / freq.QuadPart;
+    return 0;
+}
+#define clock_gettime(c, ts) clock_gettime_monotonic(ts)
+#endif
+
 #define CMD_NOFILE_OK   0x01
 
 bool qemuio_misalign;
