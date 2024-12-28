@@ -388,7 +388,13 @@ have_vhost_net = have_vhost_net_kernel or have_vhost_net_user or have_vhost_net_
 
 # Target-specific libraries and flags
 libm = cc.find_library('m', required: false)
-threads = dependency('threads')
+
+if targetos == 'windows'
+  threads = dependency('', required: false)
+else
+  threads = dependency('threads')
+endif
+
 util = cc.find_library('util', required: false)
 winmm = []
 socket = []
