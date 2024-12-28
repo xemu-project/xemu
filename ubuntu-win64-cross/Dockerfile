@@ -83,6 +83,7 @@ COPY vulkan-headers.mk \
      glslang.mk \
      glib.mk \
      sdl2.mk \
+     libsamplerate.mk \
      ${MXE_PATH}/src/
 
 RUN make \
