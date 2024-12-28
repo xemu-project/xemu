@@ -19,9 +19,4 @@ define $(PKG)_BUILD
         -DVERBOSE=1
     $(MAKE) -C '$(BUILD_DIR)' -j '$(JOBS)'
     $(MAKE) -C '$(BUILD_DIR)' -j 1 install
-
-    '$(TARGET)-gcc' \
-        -W -Wall -Werror -ansi -pedantic \
-        '$(TEST_FILE)' -o '$(PREFIX)/$(TARGET)/bin/test-sdl2.exe' \
-        `'$(TARGET)-pkg-config' sdl2 --cflags --libs`
 endef

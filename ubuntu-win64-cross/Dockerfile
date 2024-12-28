@@ -4,13 +4,21 @@
 
 FROM ubuntu:24.04
 
-ENV MXE_VERSION=8fa8c126f64a0ca6d263c641632645db4f941f00
+ENV MXE_PATH=/opt/mxe
+ENV MXE_REPO=https://github.com/mxe/mxe.git
+ENV MXE_VERSION=ab676e8ce5ba921daaa80a123ff2e415aac4524a
+
+ENV MXE_LLVM_MINGW_REPO=https://github.com/libvips/build-win64-mxe
+ENV MXE_LLVM_MINGW_VERSION=21e02f87c282fcfe17c8376217b0a4f44f14d01b
+ENV MXE_LLVM_MINGW_PATH=/opt/build-win64-mxe
+
+ARG PLUGIN_DIRS="${MXE_LLVM_MINGW_PATH} ${MXE_LLVM_MINGW_PATH}/build/plugins/llvm-mingw"
+ARG TARGETS="x86_64-w64-mingw32.static"
+ARG JOBS=
 
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive \
     apt-get -qy install \
-        software-properties-common \
-        lsb-release \
         autoconf \
         automake \
         autopoint \
@@ -26,67 +34,78 @@ RUN apt-get update \
         intltool \
         libc6-dev-i386 \
         libgdk-pixbuf2.0-dev \
-        libltdl-dev \
         libgl-dev \
+        libltdl-dev \
         libssl-dev \
         libtool-bin \
         libxml-parser-perl \
+        lsb-release \
         lzip \
         make \
+        ninja-build \
         openssl \
         p7zip-full \
         patch \
         perl \
+        python-is-python3 \
         python3 \
         python3-mako \
+        python3-pip \
         python3-pkg-resources \
-        python-is-python3 \
+        python3-yaml \
         ruby \
         sed \
+        software-properties-common \
         unzip \
         wget \
-        xz-utils \
-        ninja-build \
-        python3-pip \
-        python3-yaml
+        xz-utils
 
-RUN cd /opt \
- && git clone https://github.com/mxe/mxe.git \
- && cd mxe \
+RUN git clone ${MXE_LLVM_MINGW_REPO} ${MXE_LLVM_MINGW_PATH} \
+ && cd ${MXE_LLVM_MINGW_PATH} \
+ && git checkout ${MXE_LLVM_MINGW_VERSION} \
+ \
+ && git clone ${MXE_REPO} ${MXE_PATH} \
+ && cd ${MXE_PATH} \
  && git checkout ${MXE_VERSION} \
- && make MXE_TARGETS=x86_64-w64-mingw32.static \
-         MXE_PLUGIN_DIRS=plugins/gcc13 \
-            cc \
-            glib \
-            libepoxy \
-            pixman \
-            libsamplerate \
-            openssl \
-            cmake \
-            libslirp
+ && git apply ${MXE_LLVM_MINGW_PATH}/build/patches/mxe-fixes.patch
 
-RUN rm /opt/mxe/src/sdl2*.patch
-COPY sdl2.mk /opt/mxe/src/sdl2.mk
-RUN V=1 MXE_VERBOSE=1 make -C /opt/mxe \
-        MXE_TARGETS=x86_64-w64-mingw32.static \
-        MXE_PLUGIN_DIRS=plugins/gcc13 \
-            sdl2
+RUN make \
+    MXE_TARGETS="${TARGETS}" \
+    MXE_PLUGIN_DIRS="${PLUGIN_DIRS}" \
+    JOBS=${JOBS} \
+    -C ${MXE_PATH} \
+        cc
 
+RUN rm ${MXE_PATH}/src/sdl2*.patch
 COPY vulkan-headers.mk \
      spirv-headers.mk \
      spirv-tools.mk \
      glslang.mk \
-     /opt/mxe/src/
-RUN V=1 MXE_VERBOSE=1 make -C /opt/mxe \
-        MXE_TARGETS=x86_64-w64-mingw32.static \
-        MXE_PLUGIN_DIRS=plugins/gcc13 \
-            vulkan-headers \
-            spirv-headers \
-            spirv-tools \
-            glslang
+     glib.mk \
+     sdl2.mk \
+     ${MXE_PATH}/src/
 
-RUN find /opt/mxe/usr -executable -type f -exec chmod a+x {} \;
+RUN make \
+    MXE_TARGETS="${TARGETS}" \
+    MXE_PLUGIN_DIRS="${PLUGIN_DIRS}" \
+    JOBS=${JOBS} \
+    CFLAGS=-O2 \
+    -C ${MXE_PATH} \
+        glib \
+        libepoxy \
+        pixman \
+        libsamplerate \
+        openssl \
+        cmake \
+        libslirp \
+        sdl2 \
+        vulkan-headers \
+        spirv-headers \
+        spirv-tools \
+        glslang
+
+RUN find ${MXE_PATH}/usr -executable -type f -exec chmod a+x {} \;
 
 ENV CROSSPREFIX=x86_64-w64-mingw32.static-
-ENV CROSSAR=${CROSSPREFIX}gcc-ar
-ENV PATH="/opt/mxe/.ccache/bin:/opt/mxe/usr/x86_64-pc-linux-gnu/bin:/opt/mxe/usr/bin:${PATH}"
+ENV CROSSAR=${CROSSPREFIX}ar
+ENV PATH="${MXE_PATH}/.ccache/bin:${MXE_PATH}/usr/x86_64-pc-linux-gnu/bin:${MXE_PATH}/usr/bin:${PATH}"
