@@ -23,6 +23,7 @@
 #include "xemu-settings.h"
 
 #include "qemu/osdep.h"
+#include "qemu/sockets.h"
 #include "hw/qdev-core.h"
 #include "hw/qdev-properties.h"
 #include "qapi/error.h"
