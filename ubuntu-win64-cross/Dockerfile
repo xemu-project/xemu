@@ -14,7 +14,7 @@ ENV MXE_LLVM_MINGW_PATH=/opt/build-win64-mxe
 
 ARG PLUGIN_DIRS="${MXE_LLVM_MINGW_PATH} ${MXE_LLVM_MINGW_PATH}/build/plugins/llvm-mingw"
 ARG TARGETS="x86_64-w64-mingw32.static aarch64-w64-mingw32.static"
-ARG JOBS=
+ARG JOBS=6
 
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive \
