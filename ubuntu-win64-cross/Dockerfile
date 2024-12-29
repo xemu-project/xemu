@@ -84,6 +84,7 @@ COPY vulkan-headers.mk \
      glib.mk \
      sdl2.mk \
      libsamplerate.mk \
+     libressl.mk \
      ${MXE_PATH}/src/
 
 RUN make \
@@ -96,7 +97,7 @@ RUN make \
         libepoxy \
         pixman \
         libsamplerate \
-        openssl \
+        libressl \
         cmake \
         libslirp \
         sdl2 \
