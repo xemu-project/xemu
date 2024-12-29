@@ -414,6 +414,7 @@ if targetos == 'windows'
   pathcch = cc.find_library('pathcch')
   socket = cc.find_library('ws2_32')
   winmm = cc.find_library('winmm')
+  crypt32 = cc.find_library('crypt32')
 
   win = import('windows')
   version_res = win.compile_resources('version.rc',
