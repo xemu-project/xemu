@@ -54,7 +54,7 @@ jobs:
         path: src.tar.gz
 
   Windows:
-    name: Build for Windows (${{ matrix.configuration }}) on Ubuntu
+    name: Build for Windows (${{ matrix.arch }}, ${{ matrix.configuration }}) on Ubuntu
     runs-on: ubuntu-latest
     needs: Init
     strategy:
@@ -62,10 +62,20 @@ jobs:
         include:
         - configuration: Debug
           build_param: --debug
-          artifact_name: xemu-win-debug
+          artifact_name: xemu-win-x86_64-debug
+          arch: x86_64
         - configuration: Release
           build_param:
-          artifact_name: xemu-win-release
+          artifact_name: xemu-win-x86_64-release
+          arch: x86_64
+        - configuration: Debug
+          build_param: --debug
+          artifact_name: xemu-win-aarch64-debug
+          arch: aarch64
+        - configuration: Release
+          build_param:
+          artifact_name: xemu-win-aarch64-release
+          arch: aarch64
     env:
       DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-8152913
 
@@ -93,6 +103,8 @@ jobs:
           -v /tmp/xemu-ccache:/tmp/xemu-ccache \
           -e CCACHE_DIR=/tmp/xemu-ccache \
           -e CCACHE_MAXSIZE=512M \
+          -e CROSSPREFIX=${{ matrix.arch }}-w64-mingw32.static- \
+          -e CROSSAR=${{ matrix.arch }}-w64-mingw32.static-ar \
           -u $(id -u):$(id -g) \
           $DOCKER_IMAGE_NAME \
             bash -c "ccache -z; ./build.sh -p win64-cross ${{ matrix.build_param }} && ccache -s"
@@ -106,16 +118,20 @@ jobs:
   # DWARF and update + strip the executable. Re-package the original release
   # and create symbols package.
   WindowsPdb:
-    name: Generate PDB for Windows (${{ matrix.configuration }})
+    name: Generate PDB for Windows (${{ matrix.arch }}, ${{ matrix.configuration }})
     runs-on: windows-latest
     needs: Windows
     strategy:
       matrix:
         include:
         - configuration: Debug
-          artifact_name: xemu-win-debug
+          artifact_name: xemu-win-x86_64-debug
         - configuration: Release
-          artifact_name: xemu-win-release
+          artifact_name: xemu-win-x86_64-release
+        - configuration: Debug
+          artifact_name: xemu-win-aarch64-debug
+        - configuration: Release
+          artifact_name: xemu-win-aarch64-release
     steps:
     - name: Download artifacts
       uses: actions/download-artifact@v4
@@ -350,7 +366,7 @@ jobs:
   Release:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
-    needs: [Ubuntu, macOSUniversal, WindowsPdb]
+    needs: [Ubuntu, macOSUniversal, Windows, WindowsPdb]
     steps:
     - name: Download artifacts
       uses: actions/download-artifact@v4
@@ -402,7 +418,7 @@ jobs:
   PushToPPA:
     name: Push to PPA Snapshot Branch
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [Ubuntu, macOSUniversal, WindowsPdb]
+    needs: [Ubuntu, macOSUniversal, Windows, WindowsPdb]
     runs-on: ubuntu-latest
     steps:
     - name: Download source package
