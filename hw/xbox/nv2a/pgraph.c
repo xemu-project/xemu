@@ -381,6 +381,8 @@ static const SurfaceFormatInfo kelvin_surface_zeta_fixed_format_map[] = {
         {4, GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, GL_DEPTH_STENCIL_ATTACHMENT},
 };
 
+static GLfloat supportedAliasedLineWidthRange[2] = { 0.0f, 0.0f };
+static GLfloat supportedSmoothLineWidthRange[2] = { 0.0f, 0.0f };
 
 // static void pgraph_set_context_user(NV2AState *d, uint32_t val);
 static void pgraph_gl_fence(void);
@@ -3061,8 +3063,10 @@ DEF_METHOD(NV097, SET_BEGIN_END)
         if (!anti_aliasing && pg->regs[NV_PGRAPH_SETUPRASTER] &
                                   NV_PGRAPH_SETUPRASTER_LINESMOOTHENABLE) {
             glEnable(GL_LINE_SMOOTH);
+            glLineWidth(MIN(supportedSmoothLineWidthRange[1], pg->surface_scale_factor));
         } else {
             glDisable(GL_LINE_SMOOTH);
+            glLineWidth(MIN(supportedAliasedLineWidthRange[1], pg->surface_scale_factor));
         }
         if (!anti_aliasing && pg->regs[NV_PGRAPH_SETUPRASTER] &
                                   NV_PGRAPH_SETUPRASTER_POLYSMOOTHENABLE) {
@@ -3909,6 +3913,9 @@ void nv2a_gl_context_init(void)
 {
     g_nv2a_context_render = glo_context_create();
     g_nv2a_context_display = glo_context_create();
+
+    glGetFloatv(GL_SMOOTH_LINE_WIDTH_RANGE, supportedSmoothLineWidthRange);
+    glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, supportedAliasedLineWidthRange);
 }
 
 void nv2a_set_surface_scale_factor(unsigned int scale)
