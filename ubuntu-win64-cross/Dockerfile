@@ -13,7 +13,7 @@ ENV MXE_LLVM_MINGW_VERSION=21e02f87c282fcfe17c8376217b0a4f44f14d01b
 ENV MXE_LLVM_MINGW_PATH=/opt/build-win64-mxe
 
 ARG PLUGIN_DIRS="${MXE_LLVM_MINGW_PATH} ${MXE_LLVM_MINGW_PATH}/build/plugins/llvm-mingw"
-ARG TARGETS="x86_64-w64-mingw32.static"
+ARG TARGETS="x86_64-w64-mingw32.static aarch64-w64-mingw32.static"
 ARG JOBS=
 
 RUN apt-get update \
