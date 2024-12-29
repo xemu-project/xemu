@@ -61,7 +61,7 @@ libfpng = static_library('fpng', sources: 'fpng/fpng.cpp', cpp_args: libfpng_cpp
 fpng = declare_dependency(include_directories: 'fpng', link_with: libfpng)
 
 json = declare_dependency(include_directories: 'json')
-httplib = declare_dependency(include_directories: 'httplib')
+httplib = declare_dependency(include_directories: 'httplib', dependencies: targetos == 'windows' ? [crypt32] : [])
 
 libfatx = static_library('fatx', sources: 'fatx/fatx.c')
 fatx = declare_dependency(include_directories: 'fatx', link_with: libfatx)
