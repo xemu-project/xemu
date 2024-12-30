@@ -2009,8 +2009,6 @@ static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
     PGRAPHVkState *r = pg->vk_renderer_state;
     StorageBuffer *buffer = &r->storage_buffers[BUFFER_VERTEX_INLINE_STAGING];
 
-    r->vertex_buffer_inline = remap.attributes;
-
     if (!remap.attributes) {
         return;
     }
