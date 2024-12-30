@@ -379,6 +379,10 @@ static int raw_open(BlockDriverState *bs, QDict *options, int flags,
     }
 
     filename = qemu_opt_get(opts, "filename");
+    if (filename == NULL) {
+        ret = -EINVAL;
+        goto fail;
+    }
 
     use_aio = get_aio_option(opts, flags, &local_err);
     if (local_err) {
@@ -401,7 +405,8 @@ static int raw_open(BlockDriverState *bs, QDict *options, int flags,
     }
 
     wfilename = g_utf8_to_utf16(filename, -1, NULL, NULL, NULL);
-    if (!filename) {
+    if (!wfilename) {
+        ret = -EINVAL;
         goto fail;
     }
 
@@ -420,6 +425,7 @@ static int raw_open(BlockDriverState *bs, QDict *options, int flags,
                            OPEN_EXISTING, overlapped, NULL);
 #endif
     g_free(wfilename);
+
     if (s->hfile == INVALID_HANDLE_VALUE) {
         int err = GetLastError();
 
