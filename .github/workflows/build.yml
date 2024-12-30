@@ -395,10 +395,10 @@ jobs:
         draft: false
         files: |
           dist/src.tar.gz/src.tar.gz
-          dist/xemu-win-debug-pdb/xemu-win-debug.zip
-          dist/xemu-win-debug-pdb/xemu-win-debug-pdb.zip
-          dist/xemu-win-release-pdb/xemu-win-release.zip
-          dist/xemu-win-release-pdb/xemu-win-release-pdb.zip
+          dist/xemu-win-x86_64-debug-pdb/xemu-win-x86_64-debug.zip
+          dist/xemu-win-x86_64-debug-pdb/xemu-win-x86_64-debug-pdb.zip
+          dist/xemu-win-x86_64-release-pdb/xemu-win-x86_64-release.zip
+          dist/xemu-win-x86_64-release-pdb/xemu-win-x86_64-release-pdb.zip
           dist/xemu-macos-universal-release/xemu-macos-universal-release.zip
           dist/xemu-macos-universal-debug/xemu-macos-universal-debug.zip
           dist/xemu-ubuntu-release/xemu/xemu-v${{ env.XEMU_VERSION }}-x86_64.AppImage
