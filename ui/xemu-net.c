@@ -42,8 +42,6 @@
 static const char *id = "xemu-netdev";
 static const char *id_hubport = "xemu-netdev-hubport";
 
-void *slirp_get_state_from_netdev(const char *id);
-
 void xemu_net_enable(void)
 {
     Error *local_err = NULL;
