@@ -80,9 +80,9 @@ void AutoUpdateWindow::Draw()
     };
 
     if (updater.get_status() == UPDATER_IDLE) {
-        ImGui::Text(available_msg[updater.get_update_availability()]);
+        ImGui::Text("%s", available_msg[updater.get_update_availability()]);
     } else {
-        ImGui::Text(status_msg[updater.get_status()]);
+        ImGui::Text("%s", status_msg[updater.get_status()]);
     }
 
     if (updater.is_updating()) {
