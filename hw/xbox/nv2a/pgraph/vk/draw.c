@@ -1930,7 +1930,8 @@ typedef struct VertexBufferRemap {
     size_t buffer_space_required;
     struct {
         VkDeviceAddress offset;
-        VkDeviceSize stride;
+        VkDeviceSize old_stride;
+        VkDeviceSize new_stride;
     } map[NV2A_VERTEXSHADER_ATTRIBUTES];
 } VertexBufferRemap;
 
@@ -1967,21 +1968,35 @@ static VertexBufferRemap remap_unaligned_attributes(PGRAPHState *pg,
 
         remap.attributes |= 1 << attr_id;
         remap.map[attr_id].offset = ROUND_UP(output_offset, element_size);
-        remap.map[attr_id].stride = element_size * element_count;
+        remap.map[attr_id].old_stride = desc->stride;
+        remap.map[attr_id].new_stride = element_size * element_count;
 
         // fprintf(stderr,
         //         "attr %02d remapped: "
         //         "%08" HWADDR_PRIx "->%08" HWADDR_PRIx " "
         //         "stride=%d->%zd\n",
         //         attr_id, r->vertex_attribute_offsets[attr_id],
-        //         remap.map[attr_id].offset, desc->stride,
-        //         remap.map[attr_id].stride);
+        //         remap.map[attr_id].offset,
+        //         remap.map[attr_id].old_stride,
+        //         remap.map[attr_id].new_stride);
 
         output_offset =
-            remap.map[attr_id].offset + remap.map[attr_id].stride * num_vertices;
+            remap.map[attr_id].offset + remap.map[attr_id].new_stride * num_vertices;
+        desc->stride = remap.map[attr_id].new_stride;
     }
 
     remap.buffer_space_required = output_offset;
+
+    // reserve space
+    if (remap.attributes) {
+        StorageBuffer *buffer = &r->storage_buffers[BUFFER_VERTEX_INLINE_STAGING];
+        VkDeviceSize starting_offset = ROUND_UP(buffer->buffer_offset, 16);
+        size_t total_space_required =
+            (starting_offset - buffer->buffer_offset) + remap.buffer_space_required;
+        ensure_buffer_space(pg, BUFFER_VERTEX_INLINE_STAGING, total_space_required);
+        buffer->buffer_offset = ROUND_UP(buffer->buffer_offset, 16);
+    }
+
     return remap;
 }
 
@@ -2000,14 +2015,8 @@ static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
         return;
     }
 
-    VkDeviceSize starting_offset = ROUND_UP(buffer->buffer_offset, 16);
-    size_t total_space_required =
-        (starting_offset - buffer->buffer_offset) + remap.buffer_space_required;
-    ensure_buffer_space(pg, BUFFER_VERTEX_INLINE_STAGING, total_space_required);
     assert(pgraph_vk_buffer_has_space_for(pg, BUFFER_VERTEX_INLINE_STAGING,
-                                          total_space_required, 1));
-
-    buffer->buffer_offset = starting_offset; // Aligned
+                                          remap.buffer_space_required, 256));
 
     // FIXME: SIMD memcpy
     // FIXME: Caching
@@ -2021,13 +2030,6 @@ static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
             continue;
         }
 
-        int bind_desc_loc =
-            r->vertex_attribute_to_description_location[attr_id];
-        assert(bind_desc_loc >= 0);
-
-        VkVertexInputBindingDescription *bind_desc =
-            &r->vertex_binding_descriptions[bind_desc_loc];
-
         VkDeviceSize attr_buffer_offset =
             buffer->buffer_offset + remap.map[attr_id].offset;
 
@@ -2035,14 +2037,14 @@ static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
         uint8_t *in_ptr = d->vram_ptr + r->vertex_attribute_offsets[attr_id];
 
         for (int vertex_id = 0; vertex_id < num_vertices; vertex_id++) {
-            memcpy(out_ptr, in_ptr, remap.map[attr_id].stride);
-            out_ptr += remap.map[attr_id].stride;
-            in_ptr += bind_desc->stride;
+            memcpy(out_ptr, in_ptr, remap.map[attr_id].new_stride);
+            out_ptr += remap.map[attr_id].new_stride;
+            in_ptr += remap.map[attr_id].old_stride;
         }
 
         r->vertex_attribute_offsets[attr_id] = attr_buffer_offset;
-        bind_desc->stride = remap.map[attr_id].stride;
     }
+
 
     buffer->buffer_offset += remap.buffer_space_required;
 }
@@ -2078,9 +2080,9 @@ void pgraph_vk_flush_draw(NV2AState *d)
         }
         sync_vertex_ram_buffer(pg);
         VertexBufferRemap remap = remap_unaligned_attributes(pg, max_element);
-        copy_remapped_attributes_to_inline_buffer(pg, remap, 0, max_element);
 
         begin_pre_draw(pg);
+        copy_remapped_attributes_to_inline_buffer(pg, remap, 0, max_element);
         pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
                                      "Draw Arrays");
         begin_draw(pg);
@@ -2118,9 +2120,9 @@ void pgraph_vk_flush_draw(NV2AState *d)
             pg->inline_elements[pg->inline_elements_length - 1]);
         sync_vertex_ram_buffer(pg);
         VertexBufferRemap remap = remap_unaligned_attributes(pg, max_element + 1);
-        copy_remapped_attributes_to_inline_buffer(pg, remap, 0, max_element + 1);
 
         begin_pre_draw(pg);
+        copy_remapped_attributes_to_inline_buffer(pg, remap, 0, max_element + 1);
         VkDeviceSize buffer_offset = pgraph_vk_update_index_buffer(
             pg, pg->inline_elements, index_data_size);
         pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
