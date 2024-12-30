@@ -1225,8 +1225,10 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     static int64_t last_update = 0;
     int64_t deadline = last_update + 16666666;
 
+#ifdef DEBUG_XEMU_C
     int64_t sleep_acc = 0;
     int64_t spin_acc = 0;
+#endif
 
 #ifndef _WIN32
     const int64_t sleep_threshold = 2000000;
@@ -1241,12 +1243,16 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
             if (time_remaining > sleep_threshold) {
                 // Try to sleep until the until reaching the sleep threshold.
                 sleep_ns(time_remaining - sleep_threshold);
+#ifdef DEBUG_XEMU_C
                 sleep_acc += qemu_clock_get_ns(QEMU_CLOCK_REALTIME)-now;
+#endif
             } else {
                 // Simply spin to avoid extra delays incurred with swapping to
                 // another process and back in the event of being within
                 // threshold to desired event.
+#ifdef DEBUG_XEMU_C
                 spin_acc++;
+#endif
             }
         } else {
             DPRINTF("zzZz %g %ld\n", (double)sleep_acc/1000000.0, spin_acc);
