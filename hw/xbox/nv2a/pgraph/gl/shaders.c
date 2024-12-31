@@ -376,17 +376,15 @@ bool pgraph_gl_shader_load_from_memory(ShaderLruNode *snode)
 static char *shader_get_bin_directory(uint64_t hash)
 {
     const char *cfg_dir = xemu_settings_get_base_path();
-    uint64_t bin_mask = 0xffffUL << 48;
-    char *shader_bin_dir = g_strdup_printf("%s/shaders/%04lx",
-                                           cfg_dir, (hash & bin_mask) >> 48);
+    char *shader_bin_dir =
+        g_strdup_printf("%s/shaders/%04x", cfg_dir, (uint32_t)(hash >> 48));
     return shader_bin_dir;
 }
 
 static char *shader_get_binary_path(const char *shader_bin_dir, uint64_t hash)
 {
-    uint64_t bin_mask = 0xffffUL << 48;
-    return g_strdup_printf("%s/%012lx", shader_bin_dir,
-                           hash & (~bin_mask));
+    uint64_t bin_mask = (uint64_t)0xffff << 48;
+    return g_strdup_printf("%s/%012" PRIx64, shader_bin_dir, hash & ~bin_mask);
 }
 
 static void shader_load_from_disk(PGRAPHState *pg, uint64_t hash)
