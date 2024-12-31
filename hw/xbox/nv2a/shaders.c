@@ -753,7 +753,9 @@ GLSL_DEFINE(materialEmissionColor, GLSL_LTCTXA(NV_IGRAPH_XF_LTCTXA_CM_COL) ".xyz
     }
 
     mstring_append(body,
-    "   oPos = invViewport * (tPosition * compositeMat);\n"
+    "   oPos = tPosition * compositeMat;\n"
+    "   oPos.xy = adjust_pixel_center(oPos.xy, oPos.w);\n"
+    "   oPos = invViewport * oPos;\n"
     "   oPos.z = oPos.z * 2.0 - oPos.w;\n");
 
     /* FIXME: Testing */
@@ -856,6 +858,27 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
         }
     }
     mstring_append(header, "\n");
+
+    unsigned int scale = state->surface_scale_factor;
+    mstring_append_fmt(header, "\n"
+            "vec2 adjust_pixel_center(vec2 screen_pos, float w) {\n"
+            "  if (w == 0.0 || isinf(w)) {\n"
+            "    w = 1.0;\n"
+            "  }\n"
+
+            "  screen_pos /= w;\n"
+            "  vec2 pixel = floor(screen_pos);\n"
+            "  vec2 subpixel = screen_pos - pixel;\n"
+            "  vec2 round_down = vec2(lessThan(subpixel, vec2(0.5625)));\n"
+
+            "  subpixel -= vec2(0.0625);\n"
+
+            "  vec2 bias = vec2(0.002);\n"
+            "  subpixel += mix(bias, -bias, round_down);\n"
+
+            "  return w * (pixel + subpixel / %d);\n"
+            "}\n",
+            scale);
 
     MString *body = mstring_from_str("void main() {\n");
 
@@ -985,12 +1008,10 @@ GLSL_DEFINE(texMat3, GLSL_C_MAT4(NV_IGRAPH_XF_XFCTX_T3MAT))
                        shade_model_mult,
                        shade_model_mult);
 
-
     /* Return combined header + source */
     mstring_append(header, mstring_get_str(body));
     mstring_unref(body);
     return header;
-
 }
 
 static GLuint create_gl_shader(GLenum gl_shader_type,
