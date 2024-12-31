@@ -1,7 +1,12 @@
 if vulkan.found()
 
-libvolk = static_library('volk', sources: 'volk/volk.c', c_args: ['-DVK_NO_PROTOTYPES'], dependencies: vulkan)
-volk = declare_dependency(compile_args: ['-DVK_NO_PROTOTYPES'], include_directories: 'volk', link_with: libvolk, dependencies: vulkan)
+volk_opts = cmake.subproject_options()
+volk_opts.add_cmake_defines({'VOLK_STATIC_DEFINES': 'VK_NO_PROTOTYPES'})
+volk_subproj = cmake.subproject('volk', options: volk_opts)
+volk = declare_dependency(compile_args: ['-DVK_NO_PROTOTYPES'],
+                          include_directories: volk_subproj.include_directories('volk'),
+                          link_with: volk_subproj.target('volk'),
+                          dependencies: vulkan)
 
 debug_vma = false
 
