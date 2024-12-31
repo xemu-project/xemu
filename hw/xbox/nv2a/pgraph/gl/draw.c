@@ -321,8 +321,10 @@ void pgraph_gl_draw_begin(NV2AState *d)
     if (!anti_aliasing && pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
                               NV_PGRAPH_SETUPRASTER_LINESMOOTHENABLE) {
         glEnable(GL_LINE_SMOOTH);
+        glLineWidth(MIN(r->supportedSmoothLineWidthRange[1], pg->surface_scale_factor));
     } else {
         glDisable(GL_LINE_SMOOTH);
+        glLineWidth(MIN(r->supportedAliasedLineWidthRange[1], pg->surface_scale_factor));
     }
     if (!anti_aliasing && pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER) &
                               NV_PGRAPH_SETUPRASTER_POLYSMOOTHENABLE) {

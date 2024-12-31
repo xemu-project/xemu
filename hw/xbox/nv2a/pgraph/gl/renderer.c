@@ -38,6 +38,7 @@ static void pgraph_gl_init(NV2AState *d, Error **errp)
     PGRAPHState *pg = &d->pgraph;
 
     pg->gl_renderer_state = g_malloc0(sizeof(*pg->gl_renderer_state));
+    PGRAPHGLState *r = pg->gl_renderer_state;
 
     /* fire up opengl */
     glo_set_current(g_nv2a_context_render);
@@ -50,6 +51,9 @@ static void pgraph_gl_init(NV2AState *d, Error **errp)
     assert(glo_check_extension("GL_EXT_texture_compression_s3tc"));
     /*  Internal RGB565 texture format */
     assert(glo_check_extension("GL_ARB_ES2_compatibility"));
+
+    glGetFloatv(GL_SMOOTH_LINE_WIDTH_RANGE, r->supportedSmoothLineWidthRange);
+    glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, r->supportedAliasedLineWidthRange);
 
     pgraph_gl_init_surfaces(pg);
     pgraph_gl_init_reports(d);
