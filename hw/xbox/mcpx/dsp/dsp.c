@@ -166,7 +166,6 @@ void dsp_run(DSPState* dsp, int cycles)
 
     if (dsp->save_cycles <= 0) return;
 
-    int count = 0;
     int dma_timer = 0;
 
     while (dsp->save_cycles > 0)
@@ -174,7 +173,6 @@ void dsp_run(DSPState* dsp, int cycles)
         dsp56k_execute_instruction(&dsp->core);
         dsp->save_cycles -= dsp->core.instr_cycle;
         dsp->core.cycle_count++;
-        count++;
 
         if (dsp->dma.control & DMA_CONTROL_RUNNING) {
             dma_timer++;

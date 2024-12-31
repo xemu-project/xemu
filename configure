@@ -237,7 +237,7 @@ else
     git_submodules_action="ignore"
 fi
 
-git_submodules="ui/keycodemapdb ui/thirdparty/imgui ui/thirdparty/implot ui/thirdparty/httplib util/xxHash tomlplusplus genconfig hw/xbox/nv2a/thirdparty/nv2a_vsh_cpu"
+git_submodules="ui/keycodemapdb ui/thirdparty/imgui ui/thirdparty/implot ui/thirdparty/httplib util/xxHash tomlplusplus genconfig hw/xbox/nv2a/pgraph/thirdparty/nv2a_vsh_cpu"
 git="git"
 
 # Don't accept a target_list environment variable.
@@ -1333,6 +1333,13 @@ EOF
 
 # Meson currently only handles pie as a boolean for now so if we have
 # explicitly disabled PIE we need to extend our cflags because it wont.
+
+if echo | $cc -dM -E - | grep __clang__ > /dev/null 2>&1; then
+  NO_PIE_LDFLAG=""
+else
+  NO_PIE_LDFLAG="-no-pie"
+fi
+
 if test "$static" = "yes"; then
   if test "$pie" != "no" && compile_prog "-Werror -fPIE -DPIE" "-static-pie"; then
     CONFIGURE_CFLAGS="-fPIE -DPIE $CONFIGURE_CFLAGS"
@@ -1341,13 +1348,13 @@ if test "$static" = "yes"; then
     error_exit "-static-pie not available due to missing toolchain support"
   else
     pie="no"
-    QEMU_CFLAGS="-fno-pie -no-pie $QEMU_CFLAGS"
+    QEMU_CFLAGS="-fno-pie $NO_PIE_LDFLAG $QEMU_CFLAGS"
   fi
 elif test "$pie" = "no"; then
-  if compile_prog "-Werror -fno-pie" "-no-pie"; then
+  if compile_prog "-Werror -fno-pie" $NO_PIE_LDFLAG; then
     CONFIGURE_CFLAGS="-fno-pie $CONFIGURE_CFLAGS"
-    CONFIGURE_LDFLAGS="-no-pie $CONFIGURE_LDFLAGS"
-    QEMU_CFLAGS="-fno-pie -no-pie $QEMU_CFLAGS"
+    CONFIGURE_LDFLAGS="$NO_PIE_LDFLAG $CONFIGURE_LDFLAGS"
+    QEMU_CFLAGS="-fno-pie $NO_PIE_LDFLAG $QEMU_CFLAGS"
   fi
 elif compile_prog "-Werror -fPIE -DPIE" "-pie"; then
   CONFIGURE_CFLAGS="-fPIE -DPIE $CONFIGURE_CFLAGS"

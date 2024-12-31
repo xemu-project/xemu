@@ -95,23 +95,25 @@ void pfifo_kick(NV2AState *d)
     qemu_cond_broadcast(&d->pfifo.fifo_cond);
 }
 
-static bool pgraph_can_fifo_access(NV2AState *d) {
-    return qatomic_read(&d->pgraph.regs[NV_PGRAPH_FIFO]) & NV_PGRAPH_FIFO_ACCESS;
+static bool can_fifo_access(NV2AState *d) {
+    return qatomic_read(&d->pgraph.regs_[NV_PGRAPH_FIFO]) &
+           NV_PGRAPH_FIFO_ACCESS;
 }
 
 /* If NV097_FLIP_STALL was executed, check if the flip has completed.
  * This will usually happen in the VSYNC interrupt handler.
  */
-static bool pgraph_is_flip_stall_complete(NV2AState *d)
+static bool is_flip_stall_complete(NV2AState *d)
 {
     PGRAPHState *pg = &d->pgraph;
 
-    NV2A_DPRINTF("flip stall read: %d, write: %d, modulo: %d\n",
-        GET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_READ_3D),
-        GET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_WRITE_3D),
-        GET_MASK(pg->regs[NV_PGRAPH_SURFACE], NV_PGRAPH_SURFACE_MODULO_3D));
+    uint32_t s = pgraph_reg_r(pg, NV_PGRAPH_SURFACE);
 
-    uint32_t s = pg->regs[NV_PGRAPH_SURFACE];
+    NV2A_DPRINTF("flip stall read: %d, write: %d, modulo: %d\n",
+        GET_MASK(s, NV_PGRAPH_SURFACE_READ_3D),
+        GET_MASK(s, NV_PGRAPH_SURFACE_WRITE_3D),
+        GET_MASK(s, NV_PGRAPH_SURFACE_MODULO_3D));
+
     if (GET_MASK(s, NV_PGRAPH_SURFACE_READ_3D)
         != GET_MASK(s, NV_PGRAPH_SURFACE_WRITE_3D)) {
         return true;
@@ -126,7 +128,7 @@ static bool pfifo_stall_for_flip(NV2AState *d)
 
     if (qatomic_read(&d->pgraph.waiting_for_flip)) {
         qemu_mutex_lock(&d->pgraph.lock);
-        if (!pgraph_is_flip_stall_complete(d)) {
+        if (!is_flip_stall_complete(d)) {
             should_stall = true;
         } else {
             d->pgraph.waiting_for_flip = false;
@@ -141,7 +143,7 @@ static bool pfifo_puller_should_stall(NV2AState *d)
 {
     return pfifo_stall_for_flip(d) || qatomic_read(&d->pgraph.waiting_for_nop) ||
            qatomic_read(&d->pgraph.waiting_for_context_switch) ||
-           !pgraph_can_fifo_access(d);
+           !can_fifo_access(d);
 }
 
 static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
@@ -187,7 +189,7 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         qemu_mutex_lock(&d->pgraph.lock);
 
         // Switch contexts if necessary
-        if (pgraph_can_fifo_access(d)) {
+        if (can_fifo_access(d)) {
             pgraph_context_switch(d, entry.channel_id);
             if (!d->pgraph.waiting_for_context_switch) {
                 num_proc =
@@ -221,7 +223,7 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         qemu_mutex_unlock(&d->pfifo.lock);
         qemu_mutex_lock(&d->pgraph.lock);
 
-        if (pgraph_can_fifo_access(d)) {
+        if (can_fifo_access(d)) {
             num_proc =
                 pgraph_method(d, subchannel, method, parameter, parameters,
                               num_words_available, max_lookahead_words, inc);
@@ -242,7 +244,7 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
 
 static bool pfifo_pusher_should_stall(NV2AState *d)
 {
-    return !pgraph_can_fifo_access(d) ||
+    return !can_fifo_access(d) ||
            qatomic_read(&d->pgraph.waiting_for_nop);
 }
 
@@ -447,39 +449,11 @@ static void pfifo_run_pusher(NV2AState *d)
     }
 }
 
-static void process_requests(NV2AState *d)
-{
-    if (qatomic_read(&d->pgraph.downloads_pending) ||
-        qatomic_read(&d->pgraph.download_dirty_surfaces_pending) ||
-        qatomic_read(&d->pgraph.gl_sync_pending) ||
-        qatomic_read(&d->pgraph.flush_pending) ||
-        qatomic_read(&d->pgraph.shader_cache_writeback_pending)) {
-        qemu_mutex_unlock(&d->pfifo.lock);
-        qemu_mutex_lock(&d->pgraph.lock);
-        if (qatomic_read(&d->pgraph.downloads_pending)) {
-            pgraph_process_pending_downloads(d);
-        }
-        if (qatomic_read(&d->pgraph.download_dirty_surfaces_pending)) {
-            pgraph_download_dirty_surfaces(d);
-        }
-        if (qatomic_read(&d->pgraph.gl_sync_pending)) {
-            pgraph_gl_sync(d);
-        }
-        if (qatomic_read(&d->pgraph.flush_pending)) {
-            pgraph_flush(d);
-        }
-        if (qatomic_read(&d->pgraph.shader_cache_writeback_pending)) {
-            shader_write_cache_reload_list(&d->pgraph);
-        }
-        qemu_mutex_unlock(&d->pgraph.lock);
-        qemu_mutex_lock(&d->pfifo.lock);
-    }
-}
-
 void *pfifo_thread(void *arg)
 {
     NV2AState *d = (NV2AState *)arg;
-    glo_set_current(g_nv2a_context_render);
+
+    pgraph_init_thread(d);
 
     rcu_register_thread();
 
@@ -487,7 +461,7 @@ void *pfifo_thread(void *arg)
     while (true) {
         d->pfifo.fifo_kick = false;
 
-        process_requests(d);
+        pgraph_process_pending(d);
 
         if (!d->pfifo.halt) {
             pfifo_run_pusher(d);

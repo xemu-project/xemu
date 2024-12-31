@@ -1497,11 +1497,15 @@ static inline bool accel_uses_host_cpuid(void)
     return kvm_enabled() || hvf_enabled();
 }
 
+#ifndef XBOX
+
 static inline uint64_t x86_cpu_xsave_xcr0_components(X86CPU *cpu)
 {
     return ((uint64_t)cpu->env.features[FEAT_XSAVE_XCR0_HI]) << 32 |
            cpu->env.features[FEAT_XSAVE_XCR0_LO];
 }
+
+#endif
 
 /* Return name of 32-bit register, from a R_* constant */
 static const char *get_register_name_32(unsigned int reg)
@@ -1512,11 +1516,15 @@ static const char *get_register_name_32(unsigned int reg)
     return x86_reg_info_32[reg].name;
 }
 
+#ifndef XBOX
+
 static inline uint64_t x86_cpu_xsave_xss_components(X86CPU *cpu)
 {
     return ((uint64_t)cpu->env.features[FEAT_XSAVE_XSS_HI]) << 32 |
            cpu->env.features[FEAT_XSAVE_XSS_LO];
 }
+
+#endif
 
 /*
  * Returns the set of feature flags that are supported and migratable by
