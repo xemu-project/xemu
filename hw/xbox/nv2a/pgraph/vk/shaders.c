@@ -377,7 +377,7 @@ static ShaderBinding *gen_shaders(PGRAPHState *pg, ShaderState *state)
     LruNode *node = lru_lookup(&r->shader_cache, hash, state);
     ShaderBinding *snode = container_of(node, ShaderBinding, node);
 
-    NV2A_VK_DPRINTF("shader state hash: %016lx, %p", hash, snode);
+    NV2A_VK_DPRINTF("shader state hash: %016" PRIx64 " %p", hash, snode);
 
     if (!snode->initialized) {
         NV2A_VK_DPRINTF("cache miss");
