@@ -218,7 +218,7 @@ Lib('stb_image', 'https://github.com/nothings/stb',
 Lib('tomlplusplus', 'https://github.com/marzer/tomlplusplus',
 	mit, 'https://raw.githubusercontent.com/marzer/tomlplusplus/master/LICENSE',
 	ships_static=all_platforms,
-	submodule=Submodule('tomlplusplus')
+	submodule=Submodule('subprojects/tomlplusplus.wrap')
 	),
 
 Lib('xxHash', 'https://github.com/Cyan4973/xxHash.git',

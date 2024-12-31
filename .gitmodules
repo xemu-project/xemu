@@ -79,9 +79,6 @@
 [submodule "genconfig"]
 	path = genconfig
 	url = https://github.com/mborgerson/genconfig.git
-[submodule "tomlplusplus"]
-	path = tomlplusplus
-	url = https://github.com/marzer/tomlplusplus
 [submodule "ui/thirdparty/httplib"]
 	path = ui/thirdparty/httplib
 	url = https://github.com/yhirose/cpp-httplib
