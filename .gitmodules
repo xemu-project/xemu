@@ -91,6 +91,3 @@
 [submodule "hw/xbox/nv2a/pgraph/vk/thirdparty/VulkanMemoryAllocator"]
 	path = thirdparty/VulkanMemoryAllocator
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
-[submodule "thirdparty/SPIRV-Reflect"]
-	path = thirdparty/SPIRV-Reflect
-	url = https://github.com/KhronosGroup/SPIRV-Reflect

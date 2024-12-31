@@ -254,7 +254,7 @@ Lib('VulkanMemoryAllocator', 'https://github.com/GPUOpen-LibrariesAndSDKs/Vulkan
 Lib('SPIRV-Reflect', 'https://github.com/KhronosGroup/SPIRV-Reflect',
 	apache2, 'https://raw.githubusercontent.com/KhronosGroup/SPIRV-Reflect/main/LICENSE',
 	ships_static=all_platforms,
-	submodule=Submodule('thirdparty/SPIRV-Reflect')
+	submodule=Submodule('subprojects/SPIRV-Reflect.wrap')
 	),
 
 #

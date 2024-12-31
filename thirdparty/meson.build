@@ -25,7 +25,11 @@ endif
 libvma = static_library('vma', sources: 'vma.cc', cpp_args: vma_defns, include_directories: 'VulkanMemoryAllocator/include', dependencies: [vulkan, volk])
 vma = declare_dependency(compile_args: vma_defns, include_directories: 'VulkanMemoryAllocator/include', link_with: libvma)
 
-libspirv_reflect = static_library('spirv_reflect', sources: 'SPIRV-Reflect/spirv_reflect.c', dependencies: vulkan)
-spirv_reflect = declare_dependency(include_directories: 'SPIRV-Reflect', link_with: libspirv_reflect, dependencies: vulkan)
+spirv_reflect_opts = cmake.subproject_options()
+spirv_reflect_opts.add_cmake_defines({'SPIRV_REFLECT_STATIC_LIB': 'ON'})
+spirv_reflect_subproj = cmake.subproject('SPIRV-Reflect', options: spirv_reflect_opts)
+spirv_reflect = declare_dependency(include_directories: spirv_reflect_subproj.include_directories('spirv-reflect-static'),
+                                   link_with: spirv_reflect_subproj.target('spirv-reflect-static'),
+                                   dependencies: vulkan)
 
 endif
