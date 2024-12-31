@@ -248,7 +248,7 @@ Lib('volk', 'https://github.com/zeux/volk',
 Lib('VulkanMemoryAllocator', 'https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator',
 	mit, 'https://raw.githubusercontent.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/master/LICENSE.txt',
 	ships_static=all_platforms,
-	submodule=Submodule('thirdparty/VulkanMemoryAllocator')
+	submodule=Submodule('subprojects/VulkanMemoryAllocator.wrap')
 	),
 
 Lib('SPIRV-Reflect', 'https://github.com/KhronosGroup/SPIRV-Reflect',

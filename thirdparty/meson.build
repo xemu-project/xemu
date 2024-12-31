@@ -11,19 +11,27 @@ volk = declare_dependency(compile_args: ['-DVK_NO_PROTOTYPES'],
 debug_vma = false
 
 vma_defns = [
-	'-DVMA_STATIC_VULKAN_FUNCTIONS=0',
-	'-DVMA_DYNAMIC_VULKAN_FUNCTIONS=0',
-	]
+    '-DVMA_STATIC_VULKAN_FUNCTIONS=0',
+    '-DVMA_DYNAMIC_VULKAN_FUNCTIONS=0',
+    ]
 
 if debug_vma
-	vma_defns += [
-		'-DVMA_DEBUG_MARGIN=16',
-		'-DVMA_DEBUG_DETECT_CORRUPTION=1',
-		'-DVMA_DEBUG_MIN_BUFFER_IMAGE_GRANULARITY=256',
-	]
+    vma_defns += [
+        '-DVMA_DEBUG_MARGIN=16',
+        '-DVMA_DEBUG_DETECT_CORRUPTION=1',
+        '-DVMA_DEBUG_MIN_BUFFER_IMAGE_GRANULARITY=256',
+    ]
 endif
-libvma = static_library('vma', sources: 'vma.cc', cpp_args: vma_defns, include_directories: 'VulkanMemoryAllocator/include', dependencies: [vulkan, volk])
-vma = declare_dependency(compile_args: vma_defns, include_directories: 'VulkanMemoryAllocator/include', link_with: libvma)
+
+vma_subproj = cmake.subproject('VulkanMemoryAllocator')
+libvma = static_library('vma',
+                        sources: 'vma.cc',
+                        cpp_args: vma_defns,
+                        include_directories: vma_subproj.include_directories('VulkanMemoryAllocator'),
+                        dependencies: [vulkan, volk])
+vma = declare_dependency(include_directories: vma_subproj.include_directories('VulkanMemoryAllocator'),
+                         link_with: libvma,
+                         dependencies: vulkan)
 
 spirv_reflect_opts = cmake.subproject_options()
 spirv_reflect_opts.add_cmake_defines({'SPIRV_REFLECT_STATIC_LIB': 'ON'})

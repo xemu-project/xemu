@@ -88,6 +88,3 @@
 [submodule "ui/thirdparty/httplib"]
 	path = ui/thirdparty/httplib
 	url = https://github.com/yhirose/cpp-httplib
-[submodule "hw/xbox/nv2a/pgraph/vk/thirdparty/VulkanMemoryAllocator"]
-	path = thirdparty/VulkanMemoryAllocator
-	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
