@@ -589,8 +589,10 @@ static const char *get_sampler_type(enum PS_TEXTUREMODES mode, const PshState *s
             fprintf(stderr, "Shadow map support not implemented for mode %d\n", mode);
             assert(!"Shadow map support not implemented for this mode");
         }
-        assert(state->dim_tex[i] == 2);
-        return sampler2D;
+        if (state->dim_tex[i] == 2) return sampler2D;
+        if (state->dim_tex[i] == 3 && mode != PS_TEXTUREMODES_DOT_ST) return sampler3D;
+        assert(!"Unhandled texture dimensions");
+        return NULL;
 
     case PS_TEXTUREMODES_PROJECT3D:
     case PS_TEXTUREMODES_DOT_STR_3D:
@@ -969,8 +971,17 @@ static MString* psh_convert(struct PixelShader *ps)
 
             mstring_append_fmt(vars, "dsdt%d = bumpMat%d * dsdt%d;\n",
                 i, i, i, i);
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(pT%d.xy + dsdt%d));\n",
-                i, i, tex_remap, i, i);
+
+            if (ps->state.dim_tex[i] == 2) {
+                mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(pT%d.xy + dsdt%d));\n",
+                    i, i, tex_remap, i, i);
+            } else if (ps->state.dim_tex[i] == 3) {
+                // FIXME: Does hardware pass through the r/z coordinate or is it 0?
+                mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(pT%d.xy + dsdt%d, pT%d.z));\n",
+                    i, i, i, i, i);
+            } else {
+                assert(!"Unhandled texture dimensions");
+            }
             break;
         case PS_TEXTUREMODES_BUMPENVMAP_LUM:
             assert(i >= 1);
@@ -987,8 +998,18 @@ static MString* psh_convert(struct PixelShader *ps)
 
             mstring_append_fmt(vars, "dsdtl%d.st = bumpMat%d * dsdtl%d.st;\n",
                 i, i, i, i);
-            mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(pT%d.xy + dsdtl%d.st));\n",
-                i, i, tex_remap, i, i);
+
+            if (ps->state.dim_tex[i] == 2) {
+                mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(pT%d.xy + dsdtl%d.st));\n",
+                    i, i, tex_remap, i, i);
+            } else if (ps->state.dim_tex[i] == 3) {
+                // FIXME: Does hardware pass through the r/z coordinate or is it 0?
+                mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, vec3(pT%d.xy + dsdtl%d.st, pT%d.z));\n",
+                    i, i, i, i, i);
+            } else {
+                assert(!"Unhandled texture dimensions");
+            }
+
             mstring_append_fmt(vars, "t%d = t%d * (bumpScale%d * dsdtl%d.p + bumpOffset%d);\n",
                 i, i, i, i, i);
             break;
