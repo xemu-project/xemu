@@ -1216,6 +1216,9 @@ if vulkan.found()
 
   volk_opts = cmake.subproject_options()
   volk_opts.add_cmake_defines({'VOLK_STATIC_DEFINES': 'VK_NO_PROTOTYPES'})
+  if targetos == 'windows'
+    volk_opts.append_compile_args('c', '-DVK_USE_PLATFORM_WIN32_KHR=1')
+  endif
   volk_subproj = cmake.subproject('volk', options: volk_opts)
   volk = declare_dependency(compile_args: ['-DVK_NO_PROTOTYPES'],
                             include_directories: volk_subproj.include_directories('volk'),
