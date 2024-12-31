@@ -146,6 +146,14 @@ class Submodule:
 
 	@property
 	def head(self):
+		if self.path.endswith(".wrap"):
+			with open(self.path, "r", encoding="utf-8") as file:
+				for line in file.readlines():
+					revision_pfx = "revision="
+					if line.startswith(revision_pfx):
+						return line[len(revision_pfx):].strip()
+			assert False, "revision not found for subproject"
+
 		try:
 			return subprocess.run(['git', 'rev-parse', 'HEAD'],
 				                 cwd=self.path, capture_output=True,
@@ -228,7 +236,25 @@ Lib('fpng', 'https://github.com/richgel999/fpng',
 Lib('nv2a_vsh_cpu', 'https://github.com/abaire/nv2a_vsh_cpu',
 	unlicense, 'https://raw.githubusercontent.com/abaire/nv2a_vsh_cpu/main/LICENSE',
 	ships_static=all_platforms,
-	submodule=Submodule('hw/xbox/nv2a/thirdparty/nv2a_vsh_cpu')
+	submodule=Submodule('hw/xbox/nv2a/pgraph/thirdparty/nv2a_vsh_cpu')
+	),
+
+Lib('volk', 'https://github.com/zeux/volk',
+	mit, 'https://raw.githubusercontent.com/zeux/volk/master/LICENSE.md',
+	ships_static=all_platforms,
+	submodule=Submodule('subprojects/volk.wrap')
+	),
+
+Lib('VulkanMemoryAllocator', 'https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator',
+	mit, 'https://raw.githubusercontent.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/master/LICENSE.txt',
+	ships_static=all_platforms,
+	submodule=Submodule('subprojects/VulkanMemoryAllocator.wrap')
+	),
+
+Lib('SPIRV-Reflect', 'https://github.com/KhronosGroup/SPIRV-Reflect',
+	apache2, 'https://raw.githubusercontent.com/KhronosGroup/SPIRV-Reflect/main/LICENSE',
+	ships_static=all_platforms,
+	submodule=Submodule('subprojects/SPIRV-Reflect.wrap')
 	),
 
 #
@@ -343,6 +369,18 @@ Lib('miniz', 'https://github.com/richgel999/miniz',
 	lgplv2_1, 'https://raw.githubusercontent.com/richgel999/miniz/master/LICENSE',
 	ships_static={windows},	platform={windows},
 	version='2.1.0'
+	),
+
+Lib('glslang', 'https://github.com/KhronosGroup/glslang',
+	bsd_3clause, 'https://raw.githubusercontent.com/KhronosGroup/glslang/main/LICENSE.txt',
+	ships_static={windows},	platform={windows},
+	version='14.3.0'
+	),
+
+Lib('SPIRV-Tools', 'https://github.com/KhronosGroup/SPIRV-Tools',
+	apache2, 'https://raw.githubusercontent.com/KhronosGroup/SPIRV-Tools/main/LICENSE',
+	ships_static={windows},	platform={windows},
+	pkgconfig=PkgConfig('SPIRV-Tools')
 	),
 ]
 

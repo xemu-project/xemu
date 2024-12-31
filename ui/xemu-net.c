@@ -23,6 +23,7 @@
 #include "xemu-settings.h"
 
 #include "qemu/osdep.h"
+#include "qemu/sockets.h"
 #include "hw/qdev-core.h"
 #include "hw/qdev-properties.h"
 #include "qapi/error.h"
@@ -41,8 +42,6 @@
 
 static const char *id = "xemu-netdev";
 static const char *id_hubport = "xemu-netdev-hubport";
-
-void *slirp_get_state_from_netdev(const char *id);
 
 void xemu_net_enable(void)
 {

@@ -28,8 +28,13 @@ sub_file="${sub_tdir}/submodule.tar"
 # different to the host OS.
 submodules="dtc meson ui/keycodemapdb"
 submodules="$submodules tests/fp/berkeley-softfloat-3 tests/fp/berkeley-testfloat-3"
-submodules="$submodules ui/thirdparty/imgui ui/thirdparty/implot ui/thirdparty/httplib util/xxHash tomlplusplus genconfig" # xemu extras
-submodules="$submodules hw/xbox/nv2a/thirdparty/nv2a_vsh_cpu"
+
+# xemu extras
+submodules="$submodules ui/thirdparty/imgui ui/thirdparty/implot ui/thirdparty/httplib util/xxHash tomlplusplus genconfig"
+submodules="$submodules hw/xbox/nv2a/pgraph/thirdparty/nv2a_vsh_cpu"
+
+subprojects="glslang SPIRV-Reflect volk VulkanMemoryAllocator"
+
 sub_deinit=""
 
 function cleanup() {
@@ -53,6 +58,14 @@ function tree_ish() {
 
 git archive --format tar "$(tree_ish)" > "$tar_file"
 test $? -ne 0 && error "failed to archive qemu"
+
+for sp in $subprojects; do
+    meson subprojects download $sp
+    # test $? -ne 0 && error "failed to download subproject $sp"
+    tar --append --file "$tar_file" --exclude=.git subprojects/$sp
+    test $? -ne 0 && error "failed to append subproject $sp to $tar_file"
+done
+
 for sm in $submodules; do
     status="$(git submodule status "$sm")"
     smhash="${status#[ +-]}"

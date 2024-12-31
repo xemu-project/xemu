@@ -2,10 +2,10 @@ PKG             := spirv-tools
 $(PKG)_WEBSITE  := https://github.com/KhronosGroup/SPIRV-Tools
 $(PKG)_DESCR    := SPIRV-Tools
 $(PKG)_IGNORE   :=
-$(PKG)_VERSION  := vulkan-sdk-1.3.283.0
+$(PKG)_VERSION  := vulkan-sdk-1.3.296.0
 $(PKG)_SUBDIR   := SPIRV-Tools-$($(PKG)_VERSION)
 $(PKG)_FILE     := spirv-tools-$($(PKG)_VERSION).tar.gz
-$(PKG)_CHECKSUM := 5e2e5158bdd7442f9e01e13b5b33417b06cddff4965c9c19aab9763ab3603aae
+$(PKG)_CHECKSUM := 75aafdf7e731b4b6bfb36a590ddfbb38ebc605d80487f38254da24fe0cb95837
 $(PKG)_URL      := https://github.com/KhronosGroup/SPIRV-Tools/archive/refs/tags/$($(PKG)_VERSION).tar.gz
 $(PKG)_DEPS     := cc spirv-headers
 

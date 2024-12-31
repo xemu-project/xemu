@@ -172,6 +172,16 @@ static void nv2a_get_offsets(VGACommonState *s,
     *pline_compare = line_compare;
 }
 
+const uint8_t *nv2a_get_dac_palette(void)
+{
+    return g_nv2a->puserdac.palette;
+}
+
+int nv2a_get_screen_off(void)
+{
+    return g_nv2a->vga.sr[VGA_SEQ_CLOCK_MODE] & VGA_SR01_SCREEN_OFF;
+}
+
 static void nv2a_vga_gfx_update(void *opaque)
 {
     VGACommonState *vga = opaque;
@@ -277,7 +287,7 @@ static void nv2a_reset(NV2AState *d)
     }
 
     memset(d->pfifo.regs, 0, sizeof(d->pfifo.regs));
-    memset(d->pgraph.regs, 0, sizeof(d->pgraph.regs));
+    memset(d->pgraph.regs_, 0, sizeof(d->pgraph.regs_));
     memset(d->pvideo.regs, 0, sizeof(d->pvideo.regs));
 
     d->pcrtc.start = 0;
@@ -365,11 +375,10 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
     if (state == RUN_STATE_SAVE_VM) {
         nv2a_lock_fifo(d);
         qatomic_set(&d->pfifo.halt, true);
-        qatomic_set(&d->pgraph.download_dirty_surfaces_pending, true);
-        qemu_event_reset(&d->pgraph.dirty_surfaces_download_complete);
+        pgraph_pre_savevm_trigger(d);
         nv2a_unlock_fifo(d);
         qemu_mutex_unlock_iothread();
-        qemu_event_wait(&d->pgraph.dirty_surfaces_download_complete);
+        pgraph_pre_savevm_wait(d);
         qemu_mutex_lock_iothread();
         nv2a_lock_fifo(d);
     } else if (state == RUN_STATE_RESTORE_VM) {
@@ -382,11 +391,10 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
         nv2a_unlock_fifo(d);
     } else if (state == RUN_STATE_SHUTDOWN) {
         nv2a_lock_fifo(d);
-        qatomic_set(&d->pgraph.shader_cache_writeback_pending, true);
-        qemu_event_reset(&d->pgraph.shader_cache_writeback_complete);
+        pgraph_pre_shutdown_trigger(d);
         nv2a_unlock_fifo(d);
         qemu_mutex_unlock_iothread();
-        qemu_event_wait(&d->pgraph.shader_cache_writeback_complete);
+        pgraph_pre_shutdown_wait(d);
         qemu_mutex_lock_iothread();
     }
 }
@@ -515,9 +523,9 @@ static const VMStateDescription vmstate_nv2a = {
         VMSTATE_UINT32(pgraph.inline_buffer_length, NV2AState), // fixme
         VMSTATE_UINT32(pgraph.draw_arrays_length, NV2AState),
         VMSTATE_UINT32(pgraph.draw_arrays_max_count, NV2AState),
-        VMSTATE_INT32_ARRAY(pgraph.gl_draw_arrays_start, NV2AState, 1250),
-        VMSTATE_INT32_ARRAY(pgraph.gl_draw_arrays_count, NV2AState, 1250),
-        VMSTATE_UINT32_ARRAY(pgraph.regs, NV2AState, 0x2000),
+        VMSTATE_INT32_ARRAY(pgraph.draw_arrays_start, NV2AState, 1250),
+        VMSTATE_INT32_ARRAY(pgraph.draw_arrays_count, NV2AState, 1250),
+        VMSTATE_UINT32_ARRAY(pgraph.regs_, NV2AState, 0x2000),
         VMSTATE_UINT32(pmc.pending_interrupts, NV2AState),
         VMSTATE_UINT32(pmc.enabled_interrupts, NV2AState),
         VMSTATE_UINT32(pfifo.pending_interrupts, NV2AState),

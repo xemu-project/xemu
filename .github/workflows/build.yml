@@ -23,6 +23,8 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+    - name: Install dependencies
+      run: sudo apt-get install meson
     # On push to master, increment patch version and create a new tag on release
     - name: Increment patch version
       if: github.event_name == 'push' && github.ref == 'refs/heads/master'
@@ -54,7 +56,7 @@ jobs:
         path: src.tar.gz
 
   Windows:
-    name: Build for Windows (${{ matrix.configuration }}) on Ubuntu
+    name: Build for Windows (${{ matrix.arch }}, ${{ matrix.configuration }}) on Ubuntu
     runs-on: ubuntu-latest
     needs: Init
     strategy:
@@ -62,12 +64,22 @@ jobs:
         include:
         - configuration: Debug
           build_param: --debug
-          artifact_name: xemu-win-debug
+          artifact_name: xemu-win-x86_64-debug
+          arch: x86_64
         - configuration: Release
           build_param:
-          artifact_name: xemu-win-release
+          artifact_name: xemu-win-x86_64-release
+          arch: x86_64
+        - configuration: Debug
+          build_param: --debug
+          artifact_name: xemu-win-aarch64-debug
+          arch: aarch64
+        - configuration: Release
+          build_param:
+          artifact_name: xemu-win-aarch64-release
+          arch: aarch64
     env:
-      DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-8152913
+      DOCKER_IMAGE_NAME: ghcr.io/xemu-project/xemu-win64-toolchain:sha-b6d29d4
 
     steps:
     - name: Download source package
@@ -93,6 +105,8 @@ jobs:
           -v /tmp/xemu-ccache:/tmp/xemu-ccache \
           -e CCACHE_DIR=/tmp/xemu-ccache \
           -e CCACHE_MAXSIZE=512M \
+          -e CROSSPREFIX=${{ matrix.arch }}-w64-mingw32.static- \
+          -e CROSSAR=${{ matrix.arch }}-w64-mingw32.static-ar \
           -u $(id -u):$(id -g) \
           $DOCKER_IMAGE_NAME \
             bash -c "ccache -z; ./build.sh -p win64-cross ${{ matrix.build_param }} && ccache -s"
@@ -106,16 +120,24 @@ jobs:
   # DWARF and update + strip the executable. Re-package the original release
   # and create symbols package.
   WindowsPdb:
-    name: Generate PDB for Windows (${{ matrix.configuration }})
+    name: Generate PDB for Windows (${{ matrix.arch }}, ${{ matrix.configuration }})
     runs-on: windows-latest
     needs: Windows
     strategy:
       matrix:
         include:
         - configuration: Debug
-          artifact_name: xemu-win-debug
+          artifact_name: xemu-win-x86_64-debug
+          arch: x86_64
         - configuration: Release
-          artifact_name: xemu-win-release
+          artifact_name: xemu-win-x86_64-release
+          arch: x86_64
+        - configuration: Debug
+          artifact_name: xemu-win-aarch64-debug
+          arch: aarch64
+        - configuration: Release
+          artifact_name: xemu-win-aarch64-release
+          arch: aarch64
     steps:
     - name: Download artifacts
       uses: actions/download-artifact@v4
@@ -125,9 +147,12 @@ jobs:
     - name: Generate PDB
       run: |
         Invoke-WebRequest -Uri "https://github.com/rainers/cv2pdb/releases/download/v0.52/cv2pdb-0.52.zip" -OutFile "cv2pdb.zip"
+        Invoke-WebRequest -Uri "https://github.com/mstorsjo/llvm-mingw/releases/download/20241217/llvm-mingw-20241217-ucrt-x86_64.zip" -OutFile "llvm-mingw.zip"
         7z x -ocv2pdb -y cv2pdb.zip
+        7z x -y llvm-mingw.zip
         cd ${{ matrix.artifact_name }}
         ../cv2pdb/cv2pdb64.exe xemu.exe
+        ../llvm-mingw-20241217-ucrt-x86_64/bin/${{ matrix.arch }}-w64-mingw32-strip.exe xemu.exe
         mkdir ../dist
         7z a -tzip ../dist/${{ matrix.artifact_name }}.zip * "-xr!*.pdb"
         7z a -tzip ../dist/${{ matrix.artifact_name }}-pdb.zip "-ir!*.pdb"
@@ -350,7 +375,7 @@ jobs:
   Release:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
-    needs: [Ubuntu, macOSUniversal, WindowsPdb]
+    needs: [Ubuntu, macOSUniversal, Windows, WindowsPdb]
     steps:
     - name: Download artifacts
       uses: actions/download-artifact@v4
@@ -370,6 +395,10 @@ jobs:
         pushd dist/xemu-ubuntu-debug
         tar xvf xemu-ubuntu-debug.tgz
         popd
+    # Architecture tags were recently added to the Windows release path. Provide an alias with the former name for a while.
+    - name: Add transitionary package alias
+      run: |
+        cp dist/xemu-win-x86_64-release-pdb/xemu-win-x86_64-release.zip dist/xemu-win-x86_64-release-pdb/xemu-win-release.zip
     - name: Publish release
       uses: softprops/action-gh-release@v1
       with:
@@ -379,10 +408,11 @@ jobs:
         draft: false
         files: |
           dist/src.tar.gz/src.tar.gz
-          dist/xemu-win-debug-pdb/xemu-win-debug.zip
-          dist/xemu-win-debug-pdb/xemu-win-debug-pdb.zip
-          dist/xemu-win-release-pdb/xemu-win-release.zip
-          dist/xemu-win-release-pdb/xemu-win-release-pdb.zip
+          dist/xemu-win-x86_64-debug-pdb/xemu-win-x86_64-debug.zip
+          dist/xemu-win-x86_64-debug-pdb/xemu-win-x86_64-debug-pdb.zip
+          dist/xemu-win-x86_64-release-pdb/xemu-win-x86_64-release.zip
+          dist/xemu-win-x86_64-release-pdb/xemu-win-release.zip
+          dist/xemu-win-x86_64-release-pdb/xemu-win-x86_64-release-pdb.zip
           dist/xemu-macos-universal-release/xemu-macos-universal-release.zip
           dist/xemu-macos-universal-debug/xemu-macos-universal-debug.zip
           dist/xemu-ubuntu-release/xemu/xemu-v${{ env.XEMU_VERSION }}-x86_64.AppImage
@@ -402,7 +432,7 @@ jobs:
   PushToPPA:
     name: Push to PPA Snapshot Branch
     if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [Ubuntu, macOSUniversal, WindowsPdb]
+    needs: [Ubuntu, macOSUniversal, Windows, WindowsPdb]
     runs-on: ubuntu-latest
     steps:
     - name: Download source package

@@ -426,6 +426,7 @@ static void handle_keydown(SDL_Event *ev)
 {
     int win;
     struct sdl2_console *scon = get_scon_from_window(ev->key.windowID);
+    if (scon == NULL) return; 
     int gui_key_modifier_pressed = get_mod_state();
     int gui_keysym = 0;
 
@@ -484,6 +485,7 @@ static void handle_keydown(SDL_Event *ev)
 static void handle_keyup(SDL_Event *ev)
 {
     struct sdl2_console *scon = get_scon_from_window(ev->key.windowID);
+    if (!scon) return;
 
     scon->ignore_hotkeys = false;
     sdl2_process_key(scon, &ev->key);
@@ -944,7 +946,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
     fprintf(stderr, "GL_SHADING_LANGUAGE_VERSION: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
 
     // Initialize offscreen rendering context now
-    nv2a_gl_context_init();
+    nv2a_context_init();
     SDL_GL_MakeCurrent(NULL, NULL);
 
     // FIXME: atexit(sdl_cleanup);
@@ -1207,6 +1209,7 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     qemu_mutex_unlock_main_loop();
 
     glFinish();
+    nv2a_release_framebuffer_surface();
     SDL_GL_SwapWindow(scon->real_window);
 
     /* VGA update (see note above) + vblank */
@@ -1225,8 +1228,10 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     static int64_t last_update = 0;
     int64_t deadline = last_update + 16666666;
 
+#ifdef DEBUG_XEMU_C
     int64_t sleep_acc = 0;
     int64_t spin_acc = 0;
+#endif
 
 #ifndef _WIN32
     const int64_t sleep_threshold = 2000000;
@@ -1241,12 +1246,16 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
             if (time_remaining > sleep_threshold) {
                 // Try to sleep until the until reaching the sleep threshold.
                 sleep_ns(time_remaining - sleep_threshold);
+#ifdef DEBUG_XEMU_C
                 sleep_acc += qemu_clock_get_ns(QEMU_CLOCK_REALTIME)-now;
+#endif
             } else {
                 // Simply spin to avoid extra delays incurred with swapping to
                 // another process and back in the event of being within
                 // threshold to desired event.
+#ifdef DEBUG_XEMU_C
                 spin_acc++;
+#endif
             }
         } else {
             DPRINTF("zzZz %g %ld\n", (double)sleep_acc/1000000.0, spin_acc);
