@@ -1244,12 +1244,6 @@ if (have_system or have_tools) and (virgl.found() or opengl.found())
 endif
 have_vhost_user_gpu = have_vhost_user_gpu and virgl.found() and opengl.found() and gbm.found()
 
-tomllib = static_library('tomlpp', sources: files('toml.cpp'),
-                         include_directories: 'tomlplusplus/include')
-toml = declare_dependency(compile_args: ['-DTOML_HEADER_ONLY=0'],
-                          include_directories: 'tomlplusplus/include',
-                          link_with: tomllib)
-
 genconfig = declare_dependency(include_directories: 'genconfig')
 
 openssl = dependency('openssl', method: 'pkg-config', required: true,
@@ -2901,6 +2895,9 @@ config_host_data.set('CONFIG_CAPSTONE', capstone.found())
 config_host_data.set('CONFIG_FDT', fdt.found())
 config_host_data.set('CONFIG_SLIRP', slirp.found())
 
+tomlplusplus_proj = subproject('tomlplusplus')
+tomlplusplus = tomlplusplus_proj.get_variable('tomlplusplus_dep')
+
 #####################
 # Generated sources #
 #####################
@@ -3253,7 +3250,7 @@ specific_ss.add(files('xemu-xbe.c', 'xemu-version.c'))
 
 common_ss.add(files('cpus-common.c'))
 
-common_ss.add(toml)
+common_ss.add(tomlplusplus)
 common_ss.add(genconfig)
 
 subdir('softmmu')
