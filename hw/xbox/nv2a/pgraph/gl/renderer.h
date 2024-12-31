@@ -229,6 +229,9 @@ typedef struct PGRAPHGLState {
         GLint pvideo_color_key_loc;
         GLint palette_loc[256];
     } disp_rndr;
+
+    GLfloat supportedAliasedLineWidthRange[2];
+    GLfloat supportedSmoothLineWidthRange[2];
 } PGRAPHGLState;
 
 extern GloContext *g_nv2a_context_render;
