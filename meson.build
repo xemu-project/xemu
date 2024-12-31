@@ -1210,7 +1210,7 @@ if vulkan.found()
           glslang_subpro.target('MachineIndependent'),
           glslang_subpro.target('GenericCodeGen'),
           glslang_subpro.target('SPIRV'),
-        ], include_directories: ['subprojects' / 'glslang']
+        ], include_directories: glslang_subpro.include_directories('glslang')
       )
   endif
 
