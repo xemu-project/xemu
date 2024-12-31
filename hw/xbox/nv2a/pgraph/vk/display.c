@@ -919,7 +919,7 @@ static void render_display(PGRAPHState *pg, SurfaceBinding *surface)
 
     VkCommandBuffer cmd = pgraph_vk_begin_single_time_commands(pg);
     pgraph_vk_begin_debug_marker(r, cmd, RGBA_YELLOW,
-        "Display Surface %08"HWADDR_PRIx);
+        "Display Surface %08"HWADDR_PRIx, surface->vram_addr);
 
     pgraph_vk_transition_image_layout(pg, cmd, surface->image,
                                       surface->host_fmt.vk_format,
