@@ -52,8 +52,8 @@ static void pgraph_gl_init(NV2AState *d, Error **errp)
     /*  Internal RGB565 texture format */
     assert(glo_check_extension("GL_ARB_ES2_compatibility"));
 
-    glGetFloatv(GL_SMOOTH_LINE_WIDTH_RANGE, r->supportedSmoothLineWidthRange);
-    glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, r->supportedAliasedLineWidthRange);
+    glGetFloatv(GL_SMOOTH_LINE_WIDTH_RANGE, r->supported_smooth_line_width_range);
+    glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, r->supported_aliased_line_width_range);
 
     pgraph_gl_init_surfaces(pg);
     pgraph_gl_init_reports(d);
