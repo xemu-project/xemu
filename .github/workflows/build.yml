@@ -126,12 +126,16 @@ jobs:
         include:
         - configuration: Debug
           artifact_name: xemu-win-x86_64-debug
+          arch: x86_64
         - configuration: Release
           artifact_name: xemu-win-x86_64-release
+          arch: x86_64
         - configuration: Debug
           artifact_name: xemu-win-aarch64-debug
+          arch: aarch64
         - configuration: Release
           artifact_name: xemu-win-aarch64-release
+          arch: aarch64
     steps:
     - name: Download artifacts
       uses: actions/download-artifact@v4
