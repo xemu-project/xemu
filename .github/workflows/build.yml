@@ -393,6 +393,10 @@ jobs:
         pushd dist/xemu-ubuntu-debug
         tar xvf xemu-ubuntu-debug.tgz
         popd
+    # Architecture tags were recently added to the Windows release path. Provide an alias with the former name for a while.
+    - name: Add transitionary package alias
+      run: |
+        cp dist/xemu-win-x86_64-release-pdb/xemu-win-x86_64-release.zip dist/xemu-win-x86_64-release-pdb/xemu-win-release.zip
     - name: Publish release
       uses: softprops/action-gh-release@v1
       with:
@@ -405,6 +409,7 @@ jobs:
           dist/xemu-win-x86_64-debug-pdb/xemu-win-x86_64-debug.zip
           dist/xemu-win-x86_64-debug-pdb/xemu-win-x86_64-debug-pdb.zip
           dist/xemu-win-x86_64-release-pdb/xemu-win-x86_64-release.zip
+          dist/xemu-win-x86_64-release-pdb/xemu-win-release.zip
           dist/xemu-win-x86_64-release-pdb/xemu-win-x86_64-release-pdb.zip
           dist/xemu-macos-universal-release/xemu-macos-universal-release.zip
           dist/xemu-macos-universal-debug/xemu-macos-universal-debug.zip
