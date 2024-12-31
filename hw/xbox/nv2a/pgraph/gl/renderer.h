@@ -230,8 +230,8 @@ typedef struct PGRAPHGLState {
         GLint palette_loc[256];
     } disp_rndr;
 
-    GLfloat supportedAliasedLineWidthRange[2];
-    GLfloat supportedSmoothLineWidthRange[2];
+    GLfloat supported_aliased_line_width_range[2];
+    GLfloat supported_smooth_line_width_range[2];
 } PGRAPHGLState;
 
 extern GloContext *g_nv2a_context_render;
