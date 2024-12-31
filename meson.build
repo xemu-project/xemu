@@ -1197,19 +1197,37 @@ elif targetos == 'linux'
   vulkan = dependency('vulkan')
 endif
 
-if vulkan.found() and not libglslang.found()
+if vulkan.found()
   cmake = import('cmake')
-  # FIXME: Get spirv-tools to enable opt.
-  glslang_opts = cmake.subproject_options()
-  glslang_opts.add_cmake_defines({'ENABLE_OPT': false})
-  glslang_subpro = cmake.subproject('glslang', options: glslang_opts)
-  libglslang = declare_dependency(link_with: [
-        glslang_subpro.target('glslang'),
-        glslang_subpro.target('MachineIndependent'),
-        glslang_subpro.target('GenericCodeGen'),
-        glslang_subpro.target('SPIRV'),
-      ], include_directories: ['subprojects' / 'glslang']
-    )
+
+  if not libglslang.found()
+    # FIXME: Get spirv-tools to enable opt.
+    glslang_opts = cmake.subproject_options()
+    glslang_opts.add_cmake_defines({'ENABLE_OPT': false})
+    glslang_subpro = cmake.subproject('glslang', options: glslang_opts)
+    libglslang = declare_dependency(link_with: [
+          glslang_subpro.target('glslang'),
+          glslang_subpro.target('MachineIndependent'),
+          glslang_subpro.target('GenericCodeGen'),
+          glslang_subpro.target('SPIRV'),
+        ], include_directories: ['subprojects' / 'glslang']
+      )
+  endif
+
+  volk_opts = cmake.subproject_options()
+  volk_opts.add_cmake_defines({'VOLK_STATIC_DEFINES': 'VK_NO_PROTOTYPES'})
+  volk_subproj = cmake.subproject('volk', options: volk_opts)
+  volk = declare_dependency(compile_args: ['-DVK_NO_PROTOTYPES'],
+                            include_directories: volk_subproj.include_directories('volk'),
+                            link_with: volk_subproj.target('volk'),
+                            dependencies: vulkan)
+
+  spirv_reflect_opts = cmake.subproject_options()
+  spirv_reflect_opts.add_cmake_defines({'SPIRV_REFLECT_STATIC_LIB': 'ON'})
+  spirv_reflect_subproj = cmake.subproject('SPIRV-Reflect', options: spirv_reflect_opts)
+  spirv_reflect = declare_dependency(include_directories: spirv_reflect_subproj.include_directories('spirv-reflect-static'),
+                                     link_with: spirv_reflect_subproj.target('spirv-reflect-static'),
+                                     dependencies: vulkan)
 endif
 
 subdir('thirdparty')
