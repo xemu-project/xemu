@@ -146,6 +146,14 @@ class Submodule:
 
 	@property
 	def head(self):
+		if self.path.endswith(".wrap"):
+			with open(self.path, "r", encoding="utf-8") as file:
+				for line in file.readlines():
+					revision_pfx = "revision="
+					if line.startswith(revision_pfx):
+						return line[len(revision_pfx):].strip()
+			assert False, "revision not found for subproject"
+
 		try:
 			return subprocess.run(['git', 'rev-parse', 'HEAD'],
 				                 cwd=self.path, capture_output=True,
@@ -234,7 +242,7 @@ Lib('nv2a_vsh_cpu', 'https://github.com/abaire/nv2a_vsh_cpu',
 Lib('volk', 'https://github.com/zeux/volk',
 	mit, 'https://raw.githubusercontent.com/zeux/volk/master/LICENSE.md',
 	ships_static=all_platforms,
-	submodule=Submodule('thirdparty/volk')
+	submodule=Submodule('subprojects/volk.wrap')
 	),
 
 Lib('VulkanMemoryAllocator', 'https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator',
