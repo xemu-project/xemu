@@ -2,10 +2,10 @@ PKG             := glslang
 $(PKG)_WEBSITE  := https://github.com/KhronosGroup/glslang
 $(PKG)_DESCR    := glslang
 $(PKG)_IGNORE   :=
-$(PKG)_VERSION  := 14.3.0
+$(PKG)_VERSION  := 15.0.0
 $(PKG)_SUBDIR   := glslang-$($(PKG)_VERSION)
 $(PKG)_FILE     := glslang-$($(PKG)_VERSION).tar.gz
-$(PKG)_CHECKSUM := be6339048e20280938d9cb399fcdd06e04f8654d43e170e8cce5a56c9a754284
+$(PKG)_CHECKSUM := c31c8c2e89af907507c0631273989526ee7d5cdf7df95ececd628fd7b811e064
 $(PKG)_URL      := https://github.com/KhronosGroup/glslang/archive/refs/tags/$($(PKG)_VERSION).tar.gz
 $(PKG)_DEPS     := cc spirv-tools
 

@@ -21,6 +21,17 @@
 #ifndef HW_NV2A_REGS_H
 #define HW_NV2A_REGS_H
 
+
+#define GET_MASK(v, mask) (((v) & (mask)) >> ctz32(mask))
+
+#define SET_MASK(v, mask, val)                            \
+    ({                                                    \
+        const unsigned int __val = (val);                 \
+        const unsigned int __mask = (mask);               \
+        (v) &= ~(__mask);                                 \
+        (v) |= ((__val) << ctz32(__mask)) & (__mask);     \
+    })
+
 #define NV_NUM_BLOCKS 21
 #define NV_PMC          0   /* card master control */
 #define NV_PBUS         1   /* bus control */

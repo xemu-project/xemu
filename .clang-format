@@ -71,8 +71,8 @@ IndentWidth:     4
 AccessModifierOffset: -4
 IndentWrappedFunctionNames: false
 KeepEmptyLinesAtTheStartOfBlocks: false
-MacroBlockBegin: '.*_BEGIN$' # only PREC_BEGIN ?
-MacroBlockEnd:   '.*_END$'
+#MacroBlockBegin: '.*_BEGIN$' # only PREC_BEGIN ?
+#MacroBlockEnd:   '.*_END$'
 MaxEmptyLinesToKeep: 2
 #PenaltyBreakBeforeFirstCallParameter: 19
 #PenaltyBreakComment: 300
