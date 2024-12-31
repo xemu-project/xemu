@@ -33,6 +33,6 @@
 
 #define GLSL_DEFINE(a, b) "#define " stringify(a) " " b "\n"
 
-MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bool in, bool prefix, bool array);
+MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bool in, bool prefix, bool array, bool z_perspective);
 
 #endif

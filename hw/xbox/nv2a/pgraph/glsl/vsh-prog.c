@@ -831,11 +831,12 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
      * interpolation manually. OpenGL can't, since we give it a W of 1 to work
      * around the perspective divide */
     mstring_append(body,
-        "  if (oPos.w == 0.0 || isinf(oPos.w)) {\n"
-        "    vtx_inv_w = 1.0;\n"
+        "  if (oPos.w < 0.0) {\n"
+        "    oPos.w = clamp(oPos.w, -1.884467e+019, -5.421011e-20);\n"
         "  } else {\n"
-        "    vtx_inv_w = 1.0 / oPos.w;\n"
+        "    oPos.w = clamp(oPos.w, 5.421011e-20, 1.884467e+019);\n"
         "  }\n"
+        "  vtx_inv_w = 1.0 / oPos.w;\n"
         "  vtx_inv_w_flat = vtx_inv_w;\n"
     );
 
@@ -855,10 +856,6 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
                              "/ surfaceSize.y;\n");
     }
 
-    if (z_perspective) {
-        mstring_append(body, "  oPos.z = oPos.w;\n");
-    }
-
     mstring_append(body,
         "  if (clipRange.y != clipRange.x) {\n");
     if (vulkan) {
@@ -870,6 +867,12 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
     }
     mstring_append(body,
         "  }\n"
+    );  
+    if(z_perspective) {
+        mstring_append(body, "  oPos.xyz *= oPos.w;\n");
+    } else {
+        mstring_append(
+            body,
 
         /* Correct for the perspective divide */
         "  if (oPos.w < 0.0) {\n"
@@ -882,5 +885,5 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
         "    oPos.w = 1.0;\n"
         "  }\n"
     );
-
+    }
 }

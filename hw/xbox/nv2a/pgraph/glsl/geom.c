@@ -27,7 +27,8 @@ MString *pgraph_gen_geom_glsl(enum ShaderPolygonMode polygon_front_mode,
                               enum ShaderPolygonMode polygon_back_mode,
                               enum ShaderPrimitiveMode primitive_mode,
                               bool smooth_shading,
-                              bool vulkan)
+                              bool vulkan,
+                              bool z_perspective)
 {
     /* FIXME: Missing support for 2-sided-poly mode */
     assert(polygon_front_mode == polygon_back_mode);
@@ -174,8 +175,8 @@ MString *pgraph_gen_geom_glsl(enum ShaderPolygonMode polygon_front_mode,
     mstring_append(s, layout_in);
     mstring_append(s, layout_out);
     mstring_append(s, "\n");
-    pgraph_get_glsl_vtx_header(s, vulkan, smooth_shading, true, true, true);
-    pgraph_get_glsl_vtx_header(s, vulkan, smooth_shading, false, false, false);
+    pgraph_get_glsl_vtx_header(s, vulkan, smooth_shading, true, true, true, z_perspective);
+    pgraph_get_glsl_vtx_header(s, vulkan, smooth_shading, false, false, false, z_perspective);
 
     if (smooth_shading) {
         mstring_append(s,

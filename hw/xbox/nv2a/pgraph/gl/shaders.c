@@ -219,7 +219,9 @@ static ShaderBinding *generate_shaders(const ShaderState *state)
                                  state->polygon_back_mode,
                                  state->primitive_mode,
                                  state->smooth_shading,
-                                 false);
+                                 false,
+                                 state->z_perspective
+            );
     if (geometry_shader_code) {
         const char* geometry_shader_code_str =
              mstring_get_str(geometry_shader_code);
@@ -240,7 +242,7 @@ static ShaderBinding *generate_shaders(const ShaderState *state)
     mstring_unref(vertex_shader_code);
 
     /* generate a fragment shader from register combiners */
-    MString *fragment_shader_code = pgraph_gen_psh_glsl(state->psh);
+    MString *fragment_shader_code = pgraph_gen_psh_glsl(state->psh, state->z_perspective);
     const char *fragment_shader_code_str =
         mstring_get_str(fragment_shader_code);
     GLuint fragment_shader = create_gl_shader(GL_FRAGMENT_SHADER,
