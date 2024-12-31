@@ -31,9 +31,8 @@ submodules="$submodules tests/fp/berkeley-softfloat-3 tests/fp/berkeley-testfloa
 
 # xemu extras
 submodules="$submodules ui/thirdparty/imgui ui/thirdparty/implot ui/thirdparty/httplib util/xxHash tomlplusplus genconfig"
-submodules="$submodules hw/xbox/nv2a/pgraph/thirdparty/nv2a_vsh_cpu"
 
-subprojects="glslang SPIRV-Reflect volk VulkanMemoryAllocator"
+subprojects="glslang SPIRV-Reflect volk VulkanMemoryAllocator nv2a_vsh_cpu"
 
 sub_deinit=""
 

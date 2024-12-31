@@ -82,6 +82,7 @@ have_block = have_system or have_tools
 
 python = import('python').find_installation()
 cmake = import('cmake')
+cmake_macos_arch = host_machine.cpu() == 'aarch64' ? 'arm64' : host_machine.cpu()
 
 if cpu not in supported_cpus
   host_arch = 'unknown'
@@ -391,7 +392,8 @@ have_vhost_net = have_vhost_net_kernel or have_vhost_net_user or have_vhost_net_
 libm = cc.find_library('m', required: false)
 
 if targetos == 'windows'
-  threads = dependency('', required: false)
+  threads = declare_dependency()
+  meson.override_dependency('threads', threads)
 else
   threads = dependency('threads')
 endif

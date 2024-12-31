@@ -233,10 +233,10 @@ Lib('fpng', 'https://github.com/richgel999/fpng',
 	version='6926f5a0a78f22d42b074a0ab8032e07736babd4'
 	),
 
-Lib('nv2a_vsh_cpu', 'https://github.com/abaire/nv2a_vsh_cpu',
-	unlicense, 'https://raw.githubusercontent.com/abaire/nv2a_vsh_cpu/main/LICENSE',
+Lib('nv2a_vsh_cpu', 'https://github.com/xemu-project/nv2a_vsh_cpu',
+	unlicense, 'https://raw.githubusercontent.com/xemu-project/nv2a_vsh_cpu/main/LICENSE',
 	ships_static=all_platforms,
-	submodule=Submodule('hw/xbox/nv2a/pgraph/thirdparty/nv2a_vsh_cpu')
+	submodule=Submodule('subprojects/nv2a_vsh_cpu.wrap')
 	),
 
 Lib('volk', 'https://github.com/zeux/volk',
