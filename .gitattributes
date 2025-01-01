@@ -2,3 +2,5 @@
 *.h.inc         diff=c
 *.m             diff=objc
 *.py            diff=python
+.gitignore      export-ignore
+.gitattributes  export-ignore
