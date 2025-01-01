@@ -197,10 +197,10 @@ Lib('implot', 'https://github.com/epezent/implot',
 	submodule=Submodule('ui/thirdparty/implot')
 	),
 
-Lib('httplib', 'https://github.com/yhirose/cpp-httplib',
+Lib('cpp-httplib', 'https://github.com/yhirose/cpp-httplib',
 	mit, 'https://raw.githubusercontent.com/yhirose/cpp-httplib/master/LICENSE',
 	ships_static=all_platforms,
-	submodule=Submodule('ui/thirdparty/httplib')
+	submodule=Submodule('subprojects/cpp-httplib.wrap')
 	),
 
 Lib('noc', 'https://github.com/guillaumechereau/noc/blob/master/noc_file_dialog.h',
