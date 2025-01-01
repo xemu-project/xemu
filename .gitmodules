@@ -79,6 +79,3 @@
 [submodule "genconfig"]
 	path = genconfig
 	url = https://github.com/mborgerson/genconfig.git
-[submodule "ui/thirdparty/httplib"]
-	path = ui/thirdparty/httplib
-	url = https://github.com/yhirose/cpp-httplib

@@ -30,9 +30,9 @@ submodules="dtc meson ui/keycodemapdb"
 submodules="$submodules tests/fp/berkeley-softfloat-3 tests/fp/berkeley-testfloat-3"
 
 # xemu extras
-submodules="$submodules ui/thirdparty/imgui ui/thirdparty/implot ui/thirdparty/httplib util/xxHash genconfig"
+submodules="$submodules ui/thirdparty/imgui ui/thirdparty/implot util/xxHash genconfig"
 
-subprojects="glslang SPIRV-Reflect volk VulkanMemoryAllocator nv2a_vsh_cpu tomlplusplus"
+subprojects="glslang SPIRV-Reflect volk VulkanMemoryAllocator nv2a_vsh_cpu tomlplusplus cpp-httplib"
 
 sub_deinit=""
 
