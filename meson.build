@@ -81,6 +81,7 @@ have_ga = get_option('guest_agent') \
 have_block = have_system or have_tools
 
 python = import('python').find_installation()
+cmake = import('cmake')
 
 if cpu not in supported_cpus
   host_arch = 'unknown'
@@ -1198,8 +1199,6 @@ elif targetos == 'linux'
 endif
 
 if vulkan.found()
-  cmake = import('cmake')
-
   if not libglslang.found()
     # FIXME: Get spirv-tools to enable opt.
     glslang_opts = cmake.subproject_options()
