@@ -2895,7 +2895,7 @@ config_host_data.set('CONFIG_CAPSTONE', capstone.found())
 config_host_data.set('CONFIG_FDT', fdt.found())
 config_host_data.set('CONFIG_SLIRP', slirp.found())
 
-tomlplusplus_proj = subproject('tomlplusplus')
+tomlplusplus_proj = subproject('tomlplusplus', default_options: ['default_library=static'])
 tomlplusplus = tomlplusplus_proj.get_variable('tomlplusplus_dep')
 
 #####################
