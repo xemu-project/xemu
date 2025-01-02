@@ -3,6 +3,7 @@ Section: games
 Priority: optional
 Maintainer: Matt Borgerson <contact@mborgerson.com>
 Build-Depends: debhelper (>= 11),
+ cmake,
  git,
  python3:any,
  python3-yaml,
