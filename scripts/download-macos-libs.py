@@ -148,7 +148,7 @@ class LibInstaller:
 					if l.strip().startswith('prefix'):
 						new_prefix = f'prefix={self._extract_path}/opt/local\n'
 						if pkg_name.startswith('openssl'): # FIXME
-							new_prefix = f'prefix={self._extract_path}/opt/local/libexec/openssl11\n'
+							new_prefix = f'prefix={self._extract_path}/opt/local/libexec/openssl3\n'
 						lines[i] = new_prefix
 						break
 				with open(extracted_path, 'w') as f:
@@ -185,7 +185,7 @@ def main():
 		'libsamplerate',
 		'libpixman',
 		'libepoxy',
-		'openssl11',
+		'openssl3',
 		'libpcap',
 		'libslirp'])
 
