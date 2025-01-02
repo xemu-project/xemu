@@ -18,9 +18,9 @@
 //
 
 #pragma once
+#include <string>
 #include "../xemu-snapshots.h"
 #include <optional>
-#include <string>
 
 class SnapshotManager
 {

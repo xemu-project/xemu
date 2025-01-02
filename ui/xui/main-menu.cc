@@ -32,13 +32,14 @@
 #include "actions.hh"
 
 #include "../xemu-input.h"
-#include "../xemu-monitor.h"
-#include "../xemu-net.h"
 #include "../xemu-notifications.h"
-#include "../xemu-os-utils.h"
 #include "../xemu-settings.h"
+#include "../xemu-monitor.h"
 #include "../xemu-version.h"
+#include "../xemu-net.h"
+#include "../xemu-os-utils.h"
 #include "../xemu-xbe.h"
+
 #include <optional>
 
 #include "../thirdparty/fatx/fatx.h"

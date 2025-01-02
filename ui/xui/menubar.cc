@@ -18,16 +18,16 @@
 //
 #include "ui/xemu-notifications.h"
 #include "ui/xui/snapshot-manager.hh"
-#include "menubar.hh"
-#include "actions.hh"
 #include "common.hh"
-#include "compat.hh"
-#include "debug.hh"
 #include "main-menu.hh"
+#include "menubar.hh"
 #include "misc.hh"
-#include "monitor.hh"
-#include "update.hh"
 #include "widgets.hh"
+#include "monitor.hh"
+#include "debug.hh"
+#include "actions.hh"
+#include "compat.hh"
+#include "update.hh"
 
 #include "../xemu-os-utils.h"
 

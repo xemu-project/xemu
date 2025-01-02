@@ -18,9 +18,9 @@
 //
 
 #include "ui/xemu-settings.h"
-#include "snapshot-manager.hh"
 #include "common.hh"
 #include "notifications.hh"
+#include "snapshot-manager.hh"
 #include "xemu-hud.h"
 
 SnapshotManager g_snapshot_mgr;
