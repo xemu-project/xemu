@@ -72,10 +72,6 @@
 	path = ui/thirdparty/implot
 	url = https://github.com/epezent/implot.git
 	ignore = untracked
-[submodule "hw/xbox/nv2a/xxHash"]
-	path = util/xxHash
-	url = https://github.com/Cyan4973/xxHash.git
-	ignore = untracked
 [submodule "genconfig"]
 	path = genconfig
 	url = https://github.com/mborgerson/genconfig.git
