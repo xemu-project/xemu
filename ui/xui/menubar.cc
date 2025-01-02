@@ -28,7 +28,6 @@
 #include "actions.hh"
 #include "compat.hh"
 #include "update.hh"
-
 #include "../xemu-os-utils.h"
 
 extern float g_main_menu_height; // FIXME
