@@ -224,7 +224,7 @@ Lib('tomlplusplus', 'https://github.com/marzer/tomlplusplus',
 Lib('xxHash', 'https://github.com/Cyan4973/xxHash.git',
 	bsd, 'https://raw.githubusercontent.com/Cyan4973/xxHash/dev/LICENSE', license_lines=(1,26),
 	ships_static=all_platforms,
-	submodule=Submodule('util/xxHash')
+	submodule=Submodule('subprojects/xxhash.wrap')
 	),
 
 Lib('fpng', 'https://github.com/richgel999/fpng',

@@ -237,7 +237,7 @@ else
     git_submodules_action="ignore"
 fi
 
-git_submodules="ui/keycodemapdb ui/thirdparty/imgui ui/thirdparty/implot util/xxHash genconfig"
+git_submodules="ui/keycodemapdb ui/thirdparty/imgui ui/thirdparty/implot genconfig"
 git="git"
 
 # Don't accept a target_list environment variable.

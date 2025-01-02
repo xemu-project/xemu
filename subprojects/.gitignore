@@ -5,3 +5,4 @@ VulkanMemoryAllocator
 nv2a_vsh_cpu
 tomlplusplus
 cpp-httplib
+xxHash-*

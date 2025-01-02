@@ -2898,6 +2898,9 @@ config_host_data.set('CONFIG_SLIRP', slirp.found())
 tomlplusplus_proj = subproject('tomlplusplus', default_options: ['default_library=static'])
 tomlplusplus = tomlplusplus_proj.get_variable('tomlplusplus_dep')
 
+xxhash_proj = subproject('xxhash', default_options: ['default_library=static'])
+xxhash = xxhash_proj.get_variable('xxhash_dep')
+
 #####################
 # Generated sources #
 #####################
@@ -3198,8 +3201,7 @@ util_ss.add_all(trace_ss)
 util_ss = util_ss.apply(config_all, strict: false)
 libqemuutil = static_library('qemuutil',
                              sources: util_ss.sources() + stub_ss.sources() + genh,
-                             include_directories: 'util/xxHash',
-                             dependencies: [util_ss.dependencies(), libm, threads, glib, socket, malloc, pixman])
+                             dependencies: [util_ss.dependencies(), libm, threads, glib, socket, malloc, pixman, xxhash])
 qemuutil = declare_dependency(link_with: libqemuutil,
                               sources: genh + version_res,
                               dependencies: [event_loop_base])
