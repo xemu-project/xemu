@@ -135,7 +135,7 @@ class LibInstaller:
 			assert extracted_path.startswith(self._extract_path), f'tarball has a global file: {fname}'
 
 		print(f'    [*] Extracting to {self._extract_path}')
-		tb.extractall(self._extract_path, numeric_owner=True)
+		subprocess.check_call(["tar", "--numeric-owner", "-C", self._extract_path, "-xf", dst_pkg_filename])
 
 		for fpath in tb.getnames():
 			# FIXME: Symlinks
