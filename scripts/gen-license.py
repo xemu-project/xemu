@@ -10,6 +10,7 @@ used to build the binary.
 
 import subprocess
 import os.path
+import re
 import sys
 
 gplv2 = 'gplv2'
@@ -148,10 +149,13 @@ class Submodule:
 	def head(self):
 		if self.path.endswith(".wrap"):
 			with open(self.path, "r", encoding="utf-8") as file:
-				for line in file.readlines():
-					revision_pfx = "revision="
-					if line.startswith(revision_pfx):
-						return line[len(revision_pfx):].strip()
+				contents = file.read()
+				revision = re.search(r"^revision\s*=\s*(.*)", contents, re.MULTILINE)
+				if revision:
+					return revision.group(1)
+				wrapdb_version = re.search(r"^wrapdb_version\s*=\s*([^-]*)", contents, re.MULTILINE)
+				if wrapdb_version:
+					return wrapdb_version.group(1)
 			assert False, "revision not found for subproject"
 
 		try:
