@@ -1,0 +1,11 @@
+osx2win32.*
+osx2win32_name.*
+osx2xkb.*
+osx2xkb_name.*
+html2win32.*
+html2win32_name.*
+osx.*
+osx_name.*
+stdc
+stdc++
+node_modules/

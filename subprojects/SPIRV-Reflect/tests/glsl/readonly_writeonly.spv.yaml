@@ -1,0 +1,219 @@
+%YAML 1.0
+---
+all_type_descriptions:
+  - &td0
+    id: 18
+    op: 28
+    type_name: 
+    struct_member_name: "a"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000008 # ARRAY FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [64,], stride: 4 }
+    member_count: 0
+    members:
+  - &td1
+    id: 19
+    op: 28
+    type_name: 
+    struct_member_name: "b"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000008 # ARRAY FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [64,], stride: 4 }
+    member_count: 0
+    members:
+  - &td2
+    id: 20
+    op: 28
+    type_name: 
+    struct_member_name: "bar"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000008 # ARRAY FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [64,], stride: 4 }
+    member_count: 0
+    members:
+  - &td3
+    id: 21
+    op: 30
+    type_name: "storage_buffer"
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000002 # BUFFER_BLOCK 
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 3
+    members:
+      - *td0
+      - *td1
+      - *td2
+  - &td4
+    id: 9
+    op: 23
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00000104 # VECTOR INT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+all_block_variables:
+  - &bv0
+    name: "a"
+    offset: 0
+    absolute_offset: 0
+    size: 256
+    padded_size: 256
+    decorations: 0x00000080 # NON_WRITABLE 
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 1, dims: [64,], stride: 4 }
+    member_count: 0
+    members:
+    type_description: *td0
+  - &bv1
+    name: "b"
+    offset: 256
+    absolute_offset: 256
+    size: 256
+    padded_size: 256
+    decorations: 0x00000200 # NON_READABLE 
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 1, dims: [64,], stride: 4 }
+    member_count: 0
+    members:
+    type_description: *td1
+  - &bv2
+    name: "bar"
+    offset: 512
+    absolute_offset: 512
+    size: 256
+    padded_size: 256
+    decorations: 0x00000280 # NON_WRITABLE NON_READABLE 
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 1, dims: [64,], stride: 4 }
+    member_count: 0
+    members:
+    type_description: *td2
+  - &bv3
+    name: "foo"
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000080 # NON_WRITABLE 
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 3
+    members:
+      - *bv0
+      - *bv1
+      - *bv2
+    type_description: *td3
+all_descriptor_bindings:
+  - &db0
+    spirv_id: 23
+    name: "foo"
+    binding: 0
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000000 # NONE
+    descriptor_type: 7 # VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+    resource_type: 4 # SRV
+    image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+    block: *bv3 # "foo"
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td3
+    word_offset: { binding: 124, set: 120 }
+all_interface_variables:
+  - &iv0
+    spirv_id: 11
+    name: "gl_GlobalInvocationID"
+    location: 4294967295
+    storage_class: 1 # Input
+    semantic: 
+    decoration_flags: 0x00000010 # BUILT_IN 
+    built_in: 28 # GlobalInvocationId
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    format: 104 # VK_FORMAT_R32G32B32_UINT
+    type_description: *td4
+    word_offset: { location: 0 }
+module:
+  generator: 8 # Khronos Glslang Reference Front End
+  entry_point_name: "main"
+  entry_point_id: 4
+  source_language: 2 # GLSL
+  source_language_version: 450
+  spirv_execution_model: 5 # GLCompute
+  shader_stage: 0x00000020 # CS
+  descriptor_binding_count: 1
+  descriptor_bindings:
+    - *db0 # "foo"
+  descriptor_set_count: 1
+  descriptor_sets:
+  - set: 0
+    binding_count: 1
+    bindings:
+      - *db0 # "foo"
+  input_variable_count: 1,
+  input_variables:
+    - *iv0 # "gl_GlobalInvocationID"
+  output_variable_count: 0,
+  output_variables:
+  push_constant_count: 0,
+  push_constants:
+  specialization_constant_count: 0,
+  specialization_constants:
+...

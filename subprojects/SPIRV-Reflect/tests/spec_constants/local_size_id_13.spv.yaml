@@ -1,0 +1,39 @@
+%YAML 1.0
+---
+all_type_descriptions:
+all_block_variables:
+all_descriptor_bindings:
+all_interface_variables:
+module:
+  generator: 8 # Khronos Glslang Reference Front End
+  entry_point_name: "main"
+  entry_point_id: 4
+  source_language: 2 # GLSL
+  source_language_version: 450
+  spirv_execution_model: 5 # GLCompute
+  shader_stage: 0x00000020 # CS
+  descriptor_binding_count: 0
+  descriptor_bindings:
+  descriptor_set_count: 0
+  descriptor_sets:
+  input_variable_count: 0,
+  input_variables:
+  output_variable_count: 0,
+  output_variables:
+  push_constant_count: 0,
+  push_constants:
+  specialization_constant_count: 4,
+  specialization_constants:
+      - name: 
+        spirv_id: 7
+        constant_id: 8
+      - name: 
+        spirv_id: 8
+        constant_id: 4
+      - name: 
+        spirv_id: 10
+        constant_id: 8
+      - name: 
+        spirv_id: 11
+        constant_id: 4
+...

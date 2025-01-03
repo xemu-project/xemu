@@ -1,0 +1,25 @@
+xemu_ss.add(files(
+  'actions.cc',
+  'animation.cc',
+  'compat.cc',
+  'debug.cc',
+  'font-manager.cc',
+  'gl-helpers.cc',
+  'input-manager.cc',
+  'main-menu.cc',
+  'main.cc',
+  'menubar.cc',
+  'monitor.cc',
+  'notifications.cc',
+  'popup-menu.cc',
+  'reporting.cc',
+  'scene-components.cc',
+  'scene-manager.cc',
+  'scene.cc',
+  'snapshot-manager.cc',
+  'viewport-manager.cc',
+  'welcome.cc',
+  'widgets.cc',
+))
+
+xemu_ss.add(when: 'CONFIG_WIN32', if_true: files('update.cc'))

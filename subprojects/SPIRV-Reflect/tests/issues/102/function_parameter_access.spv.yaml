@@ -1,0 +1,321 @@
+%YAML 1.0
+---
+all_type_descriptions:
+  - &td0
+    id: 9
+    op: 26
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00020000 # EXTERNAL_SAMPLER 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td1
+    id: 7
+    op: 25
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00010008 # EXTERNAL_IMAGE FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 1, depth: 0, arrayed: 0, ms: 0, sampled: 1, image_format: 0 } # dim=2D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td2
+    id: 20
+    op: 27
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00050008 # EXTERNAL_SAMPLED_IMAGE EXTERNAL_IMAGE FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 1, depth: 0, arrayed: 0, ms: 0, sampled: 1, image_format: 0 } # dim=2D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td3
+    id: 13
+    op: 23
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00000108 # VECTOR FLOAT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 4 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+all_block_variables:
+  - &bv0
+    name: 
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    type_description:
+  - &bv1
+    name: 
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    type_description:
+  - &bv2
+    name: 
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    type_description:
+  - &bv3
+    name: 
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    type_description:
+  - &bv4
+    name: 
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    type_description:
+  - &bv5
+    name: 
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    type_description:
+all_descriptor_bindings:
+  - &db0
+    spirv_id: 117
+    name: 
+    binding: 0
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000000 # NONE
+    descriptor_type: 0 # VK_DESCRIPTOR_TYPE_SAMPLER
+    resource_type: 1 # SAMPLER
+    image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+    block: *bv0 # 
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td0
+    word_offset: { binding: 76, set: 72 }
+  - &db1
+    spirv_id: 116
+    name: 
+    binding: 1
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000000 # NONE
+    descriptor_type: 2 # VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+    resource_type: 4 # SRV
+    image: { dim: 1, depth: 0, arrayed: 0, ms: 0, sampled: 1, image_format: 0 } # dim=2D image_format=Unknown
+    block: *bv1 # 
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td1
+    word_offset: { binding: 68, set: 64 }
+  - &db2
+    spirv_id: 71
+    name: 
+    binding: 2
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000000 # NONE
+    descriptor_type: 1 # VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+    resource_type: 5 # ???
+    image: { dim: 1, depth: 0, arrayed: 0, ms: 0, sampled: 1, image_format: 0 } # dim=2D image_format=Unknown
+    block: *bv2 # 
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td2
+    word_offset: { binding: 32, set: 28 }
+  - &db3
+    spirv_id: 98
+    name: 
+    binding: 3
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000000 # NONE
+    descriptor_type: 0 # VK_DESCRIPTOR_TYPE_SAMPLER
+    resource_type: 1 # SAMPLER
+    image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+    block: *bv3 # 
+    array: { dims_count: 0, dims: [] }
+    accessed: 0
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td0
+    word_offset: { binding: 48, set: 44 }
+  - &db4
+    spirv_id: 96
+    name: 
+    binding: 4
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000000 # NONE
+    descriptor_type: 2 # VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+    resource_type: 4 # SRV
+    image: { dim: 1, depth: 0, arrayed: 0, ms: 0, sampled: 1, image_format: 0 } # dim=2D image_format=Unknown
+    block: *bv4 # 
+    array: { dims_count: 0, dims: [] }
+    accessed: 0
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td1
+    word_offset: { binding: 40, set: 36 }
+  - &db5
+    spirv_id: 103
+    name: 
+    binding: 5
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000000 # NONE
+    descriptor_type: 1 # VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+    resource_type: 5 # ???
+    image: { dim: 1, depth: 0, arrayed: 0, ms: 0, sampled: 1, image_format: 0 } # dim=2D image_format=Unknown
+    block: *bv5 # 
+    array: { dims_count: 0, dims: [] }
+    accessed: 0
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td2
+    word_offset: { binding: 56, set: 52 }
+all_interface_variables:
+  - &iv0
+    spirv_id: 113
+    name: 
+    location: 0
+    storage_class: 3 # Output
+    semantic: 
+    decoration_flags: 0x00000000 # NONE
+    built_in: -1 # ??? (-1)
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 4 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    format: 109 # VK_FORMAT_R32G32B32A32_SFLOAT
+    type_description: *td3
+    word_offset: { location: 60 }
+module:
+  generator: 8 # Khronos Glslang Reference Front End
+  entry_point_name: "main"
+  entry_point_id: 4
+  source_language: 0 # Unknown
+  source_language_version: 0
+  spirv_execution_model: 4 # Fragment
+  shader_stage: 0x00000010 # PS
+  descriptor_binding_count: 6
+  descriptor_bindings:
+    - *db0 # 
+    - *db1 # 
+    - *db2 # 
+    - *db3 # 
+    - *db4 # 
+    - *db5 # 
+  descriptor_set_count: 1
+  descriptor_sets:
+  - set: 0
+    binding_count: 6
+    bindings:
+      - *db0 # 
+      - *db1 # 
+      - *db2 # 
+      - *db3 # 
+      - *db4 # 
+      - *db5 # 
+  input_variable_count: 0,
+  input_variables:
+  output_variable_count: 1,
+  output_variables:
+    - *iv0 # 
+  push_constant_count: 0,
+  push_constants:
+  specialization_constant_count: 0,
+  specialization_constants:
+...

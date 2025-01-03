@@ -1,0 +1,327 @@
+%YAML 1.0
+---
+all_type_descriptions:
+  - &td0
+    id: 11
+    op: 21
+    type_name: 
+    struct_member_name: "g_global"
+    storage_class: 0 # UniformConstant
+    type_flags: 0x00000004 # INT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+  - &td1
+    id: 6
+    op: 30
+    type_name: "type.$Globals"
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000001 # BLOCK 
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 1
+    members:
+      - *td0
+  - &td2
+    id: 10
+    op: 29
+    type_name: 
+    struct_member_name: 
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000104 # ARRAY VECTOR INT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 2 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [0,], stride: 8 }
+    member_count: 0
+    members:
+  - &td3
+    id: 8
+    op: 30
+    type_name: "type.RWStructuredBuffer.v2uint"
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000001 # BLOCK 
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 1
+    members:
+      - *td2
+  - &td4
+    id: 9
+    op: 29
+    type_name: 
+    struct_member_name: 
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000004 # ARRAY INT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [0,], stride: 4 }
+    member_count: 0
+    members:
+  - &td5
+    id: 7
+    op: 30
+    type_name: "type.ByteAddressBuffer"
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000001 # BLOCK 
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 1
+    members:
+      - *td4
+  - &td6
+    id: 21
+    op: 23
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00000104 # VECTOR INT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 3 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+all_block_variables:
+  - &bv0
+    name: "g_global"
+    offset: 0
+    absolute_offset: 0
+    size: 4
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    type_description: *td0
+  - &bv1
+    name: "$Globals"
+    offset: 0
+    absolute_offset: 0
+    size: 16
+    padded_size: 16
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 1
+    members:
+      - *bv0
+    type_description: *td1
+  - &bv2
+    name: 
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 2 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    type_description: *td2
+  - &bv3
+    name: "Output"
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000000 # NONE
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 1
+    members:
+      - *bv2
+    type_description: *td3
+  - &bv4
+    name: 
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000080 # NON_WRITABLE 
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    type_description: *td4
+  - &bv5
+    name: "g_MaterialData"
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000080 # NON_WRITABLE 
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 1
+    members:
+      - *bv4
+    type_description: *td5
+all_descriptor_bindings:
+  - &db0
+    spirv_id: 3
+    name: "$Globals"
+    binding: 0
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000000 # NONE
+    descriptor_type: 6 # VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+    resource_type: 2 # CBV
+    image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+    block: *bv1 # "$Globals"
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td1
+    word_offset: { binding: 128, set: 124 }
+  - &db1
+    spirv_id: 5
+    name: "Output"
+    binding: 1
+    input_attachment_index: 0
+    set: 0
+    decoration_flags: 0x00000000 # NONE
+    descriptor_type: 7 # VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+    resource_type: 8 # UAV
+    image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+    block: *bv3 # "Output"
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    type_description: *td3
+    word_offset: { binding: 120, set: 116 }
+    user_type: RWStructuredBuffer
+  - &db2
+    spirv_id: 4
+    name: "g_MaterialData"
+    binding: 4
+    input_attachment_index: 0
+    set: 1
+    decoration_flags: 0x00000080 # NON_WRITABLE 
+    descriptor_type: 7 # VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+    resource_type: 4 # SRV
+    image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+    block: *bv5 # "g_MaterialData"
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    ByteAddressBuffer offsets: [1, 2]
+    type_description: *td5
+    word_offset: { binding: 112, set: 108 }
+    user_type: ByteAddressBuffer
+all_interface_variables:
+  - &iv0
+    spirv_id: 2
+    name: 
+    location: 4294967295
+    storage_class: 1 # Input
+    semantic: "SV_DispatchThreadID"
+    decoration_flags: 0x00000010 # BUILT_IN 
+    built_in: 28 # GlobalInvocationId
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 3 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    format: 104 # VK_FORMAT_R32G32B32_UINT
+    type_description: *td6
+    word_offset: { location: 0 }
+module:
+  generator: 14 # Google spiregg
+  entry_point_name: "csmain"
+  entry_point_id: 1
+  source_language: 5 # HLSL
+  source_language_version: 600
+  spirv_execution_model: 5 # GLCompute
+  shader_stage: 0x00000020 # CS
+  descriptor_binding_count: 3
+  descriptor_bindings:
+    - *db0 # "$Globals"
+    - *db1 # "Output"
+    - *db2 # "g_MaterialData"
+  descriptor_set_count: 2
+  descriptor_sets:
+  - set: 0
+    binding_count: 2
+    bindings:
+      - *db0 # "$Globals"
+      - *db1 # "Output"
+  - set: 1
+    binding_count: 1
+    bindings:
+      - *db2 # "g_MaterialData"
+  input_variable_count: 1,
+  input_variables:
+    - *iv0 # 
+  output_variable_count: 0,
+  output_variables:
+  push_constant_count: 0,
+  push_constants:
+  specialization_constant_count: 0,
+  specialization_constants:
+...

@@ -1,0 +1,153 @@
+%YAML 1.0
+---
+all_type_descriptions:
+  - &td0
+    id: 9
+    op: 29
+    type_name: 
+    struct_member_name: 
+    storage_class: 0 # UniformConstant
+    type_flags: 0x20000004 # ARRAY INT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 1, dims: [0,], stride: 4 }
+    member_count: 0
+    members:
+  - &td1
+    id: 7
+    op: 30
+    type_name: "type.ByteAddressBuffer"
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x10080000 # STRUCT EXTERNAL_BLOCK 
+    decoration_flags: 0x00000001 # BLOCK 
+    traits:
+      numeric:
+        scalar: { width: 0, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 1
+    members:
+      - *td0
+  - &td2
+    id: 11
+    op: 21
+    type_name: 
+    struct_member_name: 
+    storage_class: -1 # NOT APPLICABLE
+    type_flags: 0x00000004 # INT 
+    decoration_flags: 0x00000000 # NONE
+    traits:
+      numeric:
+        scalar: { width: 32, signedness: 0 }
+        vector: { component_count: 0 }
+        matrix: { column_count: 0, row_count: 0, stride: 0 }
+      image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+      array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+all_block_variables:
+  - &bv0
+    name: 
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000080 # NON_WRITABLE 
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    type_description: *td0
+  - &bv1
+    name: "g_MaterialData"
+    offset: 0
+    absolute_offset: 0
+    size: 0
+    padded_size: 0
+    decorations: 0x00000080 # NON_WRITABLE 
+    numeric:
+      scalar: { width: 0, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 1
+    members:
+      - *bv0
+    type_description: *td1
+all_descriptor_bindings:
+  - &db0
+    spirv_id: 3
+    name: "g_MaterialData"
+    binding: 4
+    input_attachment_index: 0
+    set: 1
+    decoration_flags: 0x00000080 # NON_WRITABLE 
+    descriptor_type: 7 # VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+    resource_type: 4 # SRV
+    image: { dim: 0, depth: 0, arrayed: 0, ms: 0, sampled: 0, image_format: 0 } # dim=1D image_format=Unknown
+    block: *bv1 # "g_MaterialData"
+    array: { dims_count: 0, dims: [] }
+    accessed: 1
+    uav_counter_id: 4294967295
+    uav_counter_binding:
+    ByteAddressBuffer offsets: [4, 8, 12]
+    type_description: *td1
+    word_offset: { binding: 107, set: 103 }
+    user_type: ByteAddressBuffer
+all_interface_variables:
+  - &iv0
+    spirv_id: 2
+    name: 
+    location: 4294967295
+    storage_class: 1 # Input
+    semantic: 
+    decoration_flags: 0x00000010 # BUILT_IN 
+    built_in: 6 # InstanceId
+    numeric:
+      scalar: { width: 32, signedness: 0 }
+      vector: { component_count: 0 }
+      matrix: { column_count: 0, row_count: 0, stride: 0 }
+    array: { dims_count: 0, dims: [], stride: 0 }
+    member_count: 0
+    members:
+    format: 98 # VK_FORMAT_R32_UINT
+    type_description: *td2
+    word_offset: { location: 0 }
+module:
+  generator: 7 # Khronos SPIR-V Tools Assembler
+  entry_point_name: "AnyHit1"
+  entry_point_id: 1
+  source_language: 5 # HLSL
+  source_language_version: 640
+  spirv_execution_model: 5315 # AnyHitKHR
+  shader_stage: 0x00000200 # ANY_HIT
+  descriptor_binding_count: 1
+  descriptor_bindings:
+    - *db0 # "g_MaterialData"
+  descriptor_set_count: 1
+  descriptor_sets:
+  - set: 1
+    binding_count: 1
+    bindings:
+      - *db0 # "g_MaterialData"
+  input_variable_count: 1,
+  input_variables:
+    - *iv0 # 
+  output_variable_count: 0,
+  output_variables:
+  push_constant_count: 0,
+  push_constants:
+  specialization_constant_count: 0,
+  specialization_constants:
+...

@@ -1,0 +1,118 @@
+# -*- Mode: makefile -*-
+#
+# Multiarch Tests - included from tests/tcg/Makefile.target
+#
+# These tests are plain C and built without any architecture specific code.
+#
+
+MULTIARCH_SRC=$(SRC_PATH)/tests/tcg/multiarch
+
+# Set search path for all sources
+VPATH 	       += $(MULTIARCH_SRC)
+MULTIARCH_SRCS =  $(notdir $(wildcard $(MULTIARCH_SRC)/*.c))
+ifeq ($(filter %-linux-user, $(TARGET)),$(TARGET))
+VPATH 	       += $(MULTIARCH_SRC)/linux
+MULTIARCH_SRCS += $(notdir $(wildcard $(MULTIARCH_SRC)/linux/*.c))
+endif
+MULTIARCH_TESTS = $(MULTIARCH_SRCS:.c=)
+
+#
+# The following are any additional rules needed to build things
+#
+
+
+float_%: LDFLAGS+=-lm
+float_%: float_%.c libs/float_helpers.c
+	$(CC) $(CFLAGS) $(EXTRA_CFLAGS) $< $(MULTIARCH_SRC)/libs/float_helpers.c -o $@ $(LDFLAGS)
+
+run-float_%: float_%
+	$(call run-test,$<, $(QEMU) $(QEMU_OPTS) $<)
+	$(call conditional-diff-out,$<,$(SRC_PATH)/tests/tcg/$(TARGET_NAME)/$<.ref)
+
+
+testthread: LDFLAGS+=-lpthread
+
+threadcount: LDFLAGS+=-lpthread
+
+signals: LDFLAGS+=-lrt -lpthread
+
+munmap-pthread: CFLAGS+=-pthread
+munmap-pthread: LDFLAGS+=-pthread
+
+# We define the runner for test-mmap after the individual
+# architectures have defined their supported pages sizes. If no
+# additional page sizes are defined we only run the default test.
+
+# default case (host page size)
+run-test-mmap: test-mmap
+	$(call run-test, test-mmap, $(QEMU) $<, $< (default))
+
+# additional page sizes (defined by each architecture adding to EXTRA_RUNS)
+run-test-mmap-%: test-mmap
+	$(call run-test, test-mmap-$*, $(QEMU) -p $* $<, $< ($* byte pages))
+
+ifneq ($(HAVE_GDB_BIN),)
+GDB_SCRIPT=$(SRC_PATH)/tests/guest-debug/run-test.py
+
+run-gdbstub-sha1: sha1
+	$(call run-test, $@, $(GDB_SCRIPT) \
+		--gdb $(HAVE_GDB_BIN) \
+		--qemu $(QEMU) --qargs "$(QEMU_OPTS)" \
+		--bin $< --test $(MULTIARCH_SRC)/gdbstub/sha1.py, \
+	basic gdbstub support)
+
+run-gdbstub-qxfer-auxv-read: sha1
+	$(call run-test, $@, $(GDB_SCRIPT) \
+		--gdb $(HAVE_GDB_BIN) \
+		--qemu $(QEMU) --qargs "$(QEMU_OPTS)" \
+		--bin $< --test $(MULTIARCH_SRC)/gdbstub/test-qxfer-auxv-read.py, \
+	basic gdbstub qXfer:auxv:read support)
+
+run-gdbstub-thread-breakpoint: testthread
+	$(call run-test, $@, $(GDB_SCRIPT) \
+		--gdb $(HAVE_GDB_BIN) \
+		--qemu $(QEMU) --qargs "$(QEMU_OPTS)" \
+		--bin $< --test $(MULTIARCH_SRC)/gdbstub/test-thread-breakpoint.py, \
+	hitting a breakpoint on non-main thread)
+
+else
+run-gdbstub-%:
+	$(call skip-test, "gdbstub test $*", "need working gdb")
+endif
+EXTRA_RUNS += run-gdbstub-sha1 run-gdbstub-qxfer-auxv-read \
+	      run-gdbstub-thread-breakpoint
+
+# ARM Compatible Semi Hosting Tests
+#
+# Despite having ARM in the name we actually have several
+# architectures that implement it. We gate the tests on the feature
+# appearing in config.
+#
+ifeq ($(CONFIG_ARM_COMPATIBLE_SEMIHOSTING),y)
+VPATH += $(MULTIARCH_SRC)/arm-compat-semi
+
+# Add -I path back to TARGET_NAME for semicall.h
+semihosting: CFLAGS+=-I$(SRC_PATH)/tests/tcg/$(TARGET_NAME)
+
+run-semihosting: semihosting
+	$(call run-test,$<,$(QEMU) $< 2> $<.err)
+
+run-plugin-semihosting-with-%:
+	$(call run-test, $@, $(QEMU) $(QEMU_OPTS) \
+		-plugin $(PLUGIN_LIB)/$(call extract-plugin,$@) \
+		 $(call strip-plugin,$<) 2> $<.err, \
+		$< with $*)
+
+semiconsole: CFLAGS+=-I$(SRC_PATH)/tests/tcg/$(TARGET_NAME)
+
+run-semiconsole: semiconsole
+	$(call skip-test, $<, "MANUAL ONLY")
+
+run-plugin-semiconsole-with-%:
+	$(call skip-test, $<, "MANUAL ONLY")
+
+TESTS += semihosting semiconsole
+endif
+
+# Update TESTS
+TESTS += $(MULTIARCH_TESTS)
