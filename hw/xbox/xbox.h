@@ -45,6 +45,7 @@ typedef struct XboxMachineState {
     char *bootrom;
     char *avpack;
     bool short_animation;
+    bool eject_after_boot;    
     char *smc_version;
     char *video_encoder;
 } XboxMachineState;
