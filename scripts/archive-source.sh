@@ -30,10 +30,9 @@ submodules="dtc meson ui/keycodemapdb"
 submodules="$submodules tests/fp/berkeley-softfloat-3 tests/fp/berkeley-testfloat-3"
 
 # xemu extras
-submodules="$submodules ui/thirdparty/imgui ui/thirdparty/implot ui/thirdparty/httplib util/xxHash tomlplusplus genconfig"
-submodules="$submodules hw/xbox/nv2a/pgraph/thirdparty/nv2a_vsh_cpu"
+submodules="$submodules ui/thirdparty/imgui ui/thirdparty/implot genconfig"
 
-subprojects="glslang SPIRV-Reflect volk VulkanMemoryAllocator"
+subprojects="glslang SPIRV-Reflect volk VulkanMemoryAllocator nv2a_vsh_cpu tomlplusplus cpp-httplib xxhash"
 
 sub_deinit=""
 
@@ -61,8 +60,9 @@ test $? -ne 0 && error "failed to archive qemu"
 
 for sp in $subprojects; do
     meson subprojects download $sp
+    sp_dir=$(grep -oP '^directory = \K.*' subprojects/${sp}.wrap || echo ${sp})
     # test $? -ne 0 && error "failed to download subproject $sp"
-    tar --append --file "$tar_file" --exclude=.git subprojects/$sp
+    tar --append --file "$tar_file" --exclude=.git subprojects/$sp_dir
     test $? -ne 0 && error "failed to append subproject $sp to $tar_file"
 done
 

@@ -443,6 +443,9 @@ jobs:
       run: |
         mkdir src
         tar -C src -xf src.tar.gz
+
+        # Ensure subprojects are uploaded
+        rm src/subprojects/.gitignore
     - name: Integrate Debian packaging
       run: |
         pushd src

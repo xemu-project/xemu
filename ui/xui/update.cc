@@ -40,7 +40,6 @@ const char *download_uri = "/xemu-project/xemu/releases/latest/download/xemu-win
 FIXME
 #endif
 
-#define CPPHTTPLIB_OPENSSL_SUPPORT 1
 #include <httplib.h>
 
 #define DPRINTF(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__);

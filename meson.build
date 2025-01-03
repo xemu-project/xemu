@@ -81,6 +81,8 @@ have_ga = get_option('guest_agent') \
 have_block = have_system or have_tools
 
 python = import('python').find_installation()
+cmake = import('cmake')
+cmake_macos_arch = host_machine.cpu() == 'aarch64' ? 'arm64' : host_machine.cpu()
 
 if cpu not in supported_cpus
   host_arch = 'unknown'
@@ -390,7 +392,8 @@ have_vhost_net = have_vhost_net_kernel or have_vhost_net_user or have_vhost_net_
 libm = cc.find_library('m', required: false)
 
 if targetos == 'windows'
-  threads = dependency('', required: false)
+  threads = declare_dependency()
+  meson.override_dependency('threads', threads)
 else
   threads = dependency('threads')
 endif
@@ -1198,8 +1201,6 @@ elif targetos == 'linux'
 endif
 
 if vulkan.found()
-  cmake = import('cmake')
-
   if not libglslang.found()
     # FIXME: Get spirv-tools to enable opt.
     glslang_opts = cmake.subproject_options()
@@ -1242,12 +1243,6 @@ if (have_system or have_tools) and (virgl.found() or opengl.found())
                    kwargs: static_kwargs)
 endif
 have_vhost_user_gpu = have_vhost_user_gpu and virgl.found() and opengl.found() and gbm.found()
-
-tomllib = static_library('tomlpp', sources: files('toml.cpp'),
-                         include_directories: 'tomlplusplus/include')
-toml = declare_dependency(compile_args: ['-DTOML_HEADER_ONLY=0'],
-                          include_directories: 'tomlplusplus/include',
-                          link_with: tomllib)
 
 genconfig = declare_dependency(include_directories: 'genconfig')
 
@@ -2900,6 +2895,12 @@ config_host_data.set('CONFIG_CAPSTONE', capstone.found())
 config_host_data.set('CONFIG_FDT', fdt.found())
 config_host_data.set('CONFIG_SLIRP', slirp.found())
 
+tomlplusplus_proj = subproject('tomlplusplus', default_options: ['default_library=static'])
+tomlplusplus = tomlplusplus_proj.get_variable('tomlplusplus_dep')
+
+xxhash_proj = subproject('xxhash', default_options: ['default_library=static'])
+xxhash = xxhash_proj.get_variable('xxhash_dep')
+
 #####################
 # Generated sources #
 #####################
@@ -3200,8 +3201,7 @@ util_ss.add_all(trace_ss)
 util_ss = util_ss.apply(config_all, strict: false)
 libqemuutil = static_library('qemuutil',
                              sources: util_ss.sources() + stub_ss.sources() + genh,
-                             include_directories: 'util/xxHash',
-                             dependencies: [util_ss.dependencies(), libm, threads, glib, socket, malloc, pixman])
+                             dependencies: [util_ss.dependencies(), libm, threads, glib, socket, malloc, pixman, xxhash])
 qemuutil = declare_dependency(link_with: libqemuutil,
                               sources: genh + version_res,
                               dependencies: [event_loop_base])
@@ -3252,7 +3252,7 @@ specific_ss.add(files('xemu-xbe.c', 'xemu-version.c'))
 
 common_ss.add(files('cpus-common.c'))
 
-common_ss.add(toml)
+common_ss.add(tomlplusplus)
 common_ss.add(genconfig)
 
 subdir('softmmu')

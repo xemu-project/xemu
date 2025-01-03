@@ -72,19 +72,6 @@
 	path = ui/thirdparty/implot
 	url = https://github.com/epezent/implot.git
 	ignore = untracked
-[submodule "hw/xbox/nv2a/xxHash"]
-	path = util/xxHash
-	url = https://github.com/Cyan4973/xxHash.git
-	ignore = untracked
 [submodule "genconfig"]
 	path = genconfig
 	url = https://github.com/mborgerson/genconfig.git
-[submodule "tomlplusplus"]
-	path = tomlplusplus
-	url = https://github.com/marzer/tomlplusplus
-[submodule "hw/xbox/nv2a/pgraph/thirdparty/nv2a_vsh_cpu"]
-	path = hw/xbox/nv2a/pgraph/thirdparty/nv2a_vsh_cpu
-	url = https://github.com/abaire/nv2a_vsh_cpu.git
-[submodule "ui/thirdparty/httplib"]
-	path = ui/thirdparty/httplib
-	url = https://github.com/yhirose/cpp-httplib
