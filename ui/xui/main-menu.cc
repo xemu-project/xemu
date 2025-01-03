@@ -66,6 +66,17 @@ void MainMenuGeneralView::Draw()
     Toggle("Cache shaders to disk", &g_config.perf.cache_shaders,
            "Reduce stutter in games by caching previously generated shaders");
 
+    Toggle("Emulated CPU clock override", &g_config.perf.override_clockspeed,
+           "Enables to override default CPU clock speed");
+    
+    char buf[32];
+    snprintf(buf, sizeof(buf), "Clock Speed %d%% (%.2f MHz)", (int)(g_config.perf.cpu_clockspeed_scale * 100), (733333333 * g_config.perf.cpu_clockspeed_scale) / 1000000);
+    Slider("Virtual CPU clock", &g_config.perf.cpu_clockspeed_scale, buf, 0.01f, 2.f, 0.01f);
+
+    if (fabs(g_config.perf.cpu_clockspeed_scale - 1.f) <= 0.0099f) {
+        g_config.perf.cpu_clockspeed_scale = 1;
+    }
+    
     SectionTitle("Miscellaneous");
     Toggle("Skip startup animation", &g_config.general.skip_boot_anim,
            "Skip the full Xbox boot animation sequence");
