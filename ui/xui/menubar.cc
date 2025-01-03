@@ -17,6 +17,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include "ui/xemu-notifications.h"
+#include "ui/xui/snapshot-manager.hh"
 #include "common.hh"
 #include "main-menu.hh"
 #include "menubar.hh"
@@ -101,13 +102,13 @@ void ShowMainMenu()
                     char *load_name;
                     char *save_name;
 
-                    assert(g_snapshot_shortcut_index_key_map[i]);
-                    bool bound = *(g_snapshot_shortcut_index_key_map[i]) &&
-                            (**(g_snapshot_shortcut_index_key_map[i]) != 0);
+                    auto bound_snapshot = g_snapshot_mgr.GetSnapshotShortcut(i);
 
-                    if (bound) {
-                        load_name = g_strdup_printf("Load '%s'", *(g_snapshot_shortcut_index_key_map[i]));
-                        save_name = g_strdup_printf("Save '%s'", *(g_snapshot_shortcut_index_key_map[i]));
+                    if (bound_snapshot) {
+                        load_name =
+                            g_strdup_printf("Load '%s'", *bound_snapshot);
+                        save_name =
+                            g_strdup_printf("Save '%s'", *bound_snapshot);
                     } else {
                         load_name = g_strdup_printf("Load F%d (Unbound)", i + 5);
                         save_name = g_strdup_printf("Save F%d (Unbound)", i + 5);
@@ -115,11 +116,14 @@ void ShowMainMenu()
 
                     ImGui::Separator();
 
-                    if (ImGui::MenuItem(load_name, hotkey + sizeof("Shift+") - 1, false, bound)) {
+                    if (ImGui::MenuItem(load_name,
+                                        hotkey + sizeof("Shift+") - 1, false,
+                                        bound_snapshot.has_value())) {
                         ActionActivateBoundSnapshot(i, false);
                     }
 
-                    if (ImGui::MenuItem(save_name, hotkey, false, bound)) {
+                    if (ImGui::MenuItem(save_name, hotkey, false,
+                                        bound_snapshot.has_value())) {
                         ActionActivateBoundSnapshot(i, true);
                     }
 

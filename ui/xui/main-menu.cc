@@ -40,6 +40,8 @@
 #include "../xemu-os-utils.h"
 #include "../xemu-xbe.h"
 
+#include <optional>
+
 #include "../thirdparty/fatx/fatx.h"
 
 #define DEFAULT_XMU_SIZE 8388608
@@ -1031,11 +1033,13 @@ void MainMenuSnapshotsView::Draw()
                              &OnSearchTextUpdate, this);
 
     bool snapshot_with_create_name_exists = false;
-    for (int i = 0; i < g_snapshot_mgr.m_snapshots_len; ++i) {
-        if (g_strcmp0(m_search_buf.c_str(),
-                      g_snapshot_mgr.m_snapshots[i].name) == 0) {
-            snapshot_with_create_name_exists = true;
-            break;
+    if (!m_search_buf.empty()) {
+        for (int i = 0; i < g_snapshot_mgr.m_snapshots_len; ++i) {
+            if (g_strcmp0(m_search_buf.c_str(),
+                          g_snapshot_mgr.m_snapshots[i].name) == 0) {
+                snapshot_with_create_name_exists = true;
+                break;
+            }
         }
     }
 
@@ -1100,8 +1104,9 @@ void MainMenuSnapshotsView::Draw()
 
         int current_snapshot_binding = -1;
         for (int i = 0; i < 4; ++i) {
-            if (g_strcmp0(*(g_snapshot_shortcut_index_key_map[i]),
-                          snapshot->name) == 0) {
+            auto shortcut_name = g_snapshot_mgr.GetSnapshotShortcut(i);
+            if (shortcut_name &&
+                g_strcmp0(*shortcut_name, snapshot->name) == 0) {
                 assert(current_snapshot_binding == -1);
                 current_snapshot_binding = i;
             }
@@ -1167,12 +1172,10 @@ void MainMenuSnapshotsView::DrawSnapshotContextMenu(
 
             if (ImGui::MenuItem(item_name)) {
                 if (current_snapshot_binding >= 0) {
-                    xemu_settings_set_string(g_snapshot_shortcut_index_key_map
-                                                 [current_snapshot_binding],
-                                             "");
+                    g_snapshot_mgr.SetSnapshotShortcut(current_snapshot_binding,
+                                                       std::nullopt);
                 }
-                xemu_settings_set_string(g_snapshot_shortcut_index_key_map[i],
-                                         snapshot->name);
+                g_snapshot_mgr.SetSnapshotShortcut(i, snapshot->name);
                 current_snapshot_binding = i;
 
                 ImGui::CloseCurrentPopup();
@@ -1183,9 +1186,8 @@ void MainMenuSnapshotsView::DrawSnapshotContextMenu(
 
         if (current_snapshot_binding >= 0) {
             if (ImGui::MenuItem("Unbind")) {
-                xemu_settings_set_string(
-                    g_snapshot_shortcut_index_key_map[current_snapshot_binding],
-                    "");
+                g_snapshot_mgr.SetSnapshotShortcut(current_snapshot_binding,
+                                                   std::nullopt);
                 current_snapshot_binding = -1;
             }
         }
