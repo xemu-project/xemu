@@ -175,7 +175,7 @@ class Submodule:
 LIBS = [
 
 Lib('qemu', 'https://www.qemu.org/',
-	gplv2, 'https://raw.githubusercontent.com/mborgerson/xemu/master/LICENSE',
+	gplv2, 'https://raw.githubusercontent.com/xemu-project/xemu/master/LICENSE',
 	version='6.0.0'
 	),
 
@@ -208,7 +208,7 @@ Lib('cpp-httplib', 'https://github.com/yhirose/cpp-httplib',
 	),
 
 Lib('noc', 'https://github.com/guillaumechereau/noc/blob/master/noc_file_dialog.h',
-	mit, 'https://raw.githubusercontent.com/mborgerson/xemu/master/ui/noc_file_dialog.h', license_lines=(1,22),
+	mit, 'https://raw.githubusercontent.com/xemu-project/xemu/master/ui/noc_file_dialog.h', license_lines=(1,22),
 	ships_static=all_platforms,
 	version='78b2e7b22506429dd1755ffff197c7da11507fd9'
 	),
