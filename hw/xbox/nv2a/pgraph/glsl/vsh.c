@@ -75,7 +75,7 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
         "}\n");
 
     pgraph_get_glsl_vtx_header(header, state->vulkan, state->smooth_shading,
-                             false, prefix_outputs, false);
+                             false, prefix_outputs, false, state->z_perspective);
 
     if (prefix_outputs) {
         mstring_append(header,
@@ -233,28 +233,49 @@ MString *pgraph_gen_vsh_glsl(const ShaderState *state, bool prefix_outputs)
     }
 
     /* Set outputs */
-    const char *shade_model_mult = state->smooth_shading ? "vtx_inv_w" : "vtx_inv_w_flat";
-    mstring_append_fmt(body, "\n"
-                      "  vtxD0 = clamp(oD0, 0.0, 1.0) * %s;\n"
-                      "  vtxD1 = clamp(oD1, 0.0, 1.0) * %s;\n"
-                      "  vtxB0 = clamp(oB0, 0.0, 1.0) * %s;\n"
-                      "  vtxB1 = clamp(oB1, 0.0, 1.0) * %s;\n"
-                      "  vtxFog = oFog.x * vtx_inv_w;\n"
-                      "  vtxT0 = oT0 * vtx_inv_w;\n"
-                      "  vtxT1 = oT1 * vtx_inv_w;\n"
-                      "  vtxT2 = oT2 * vtx_inv_w;\n"
-                      "  vtxT3 = oT3 * vtx_inv_w;\n"
-                      "  gl_Position = oPos;\n"
-                      "  gl_PointSize = oPts.x;\n"
-                      // "  gl_ClipDistance[0] = oPos.z - oPos.w*clipRange.z;\n" // Near
-                      // "  gl_ClipDistance[1] = oPos.w*clipRange.w - oPos.z;\n" // Far
-                      "\n"
-                      "}\n",
-                       shade_model_mult,
-                       shade_model_mult,
-                       shade_model_mult,
-                       shade_model_mult);
-
+    if (state->z_perspective == false) {
+        const char *shade_model_mult = state->smooth_shading ? "vtx_inv_w" : "vtx_inv_w_flat";
+        mstring_append_fmt(body, "\n"
+                          "  vtxD0 = clamp(oD0, 0.0, 1.0) * %s;\n"
+                          "  vtxD1 = clamp(oD1, 0.0, 1.0) * %s;\n"
+                          "  vtxB0 = clamp(oB0, 0.0, 1.0) * %s;\n"
+                          "  vtxB1 = clamp(oB1, 0.0, 1.0) * %s;\n"
+                          "  vtxFog = oFog.x * vtx_inv_w;\n"
+                          "  vtxT0 = oT0 * vtx_inv_w;\n"
+                          "  vtxT1 = oT1 * vtx_inv_w;\n"
+                          "  vtxT2 = oT2 * vtx_inv_w;\n"
+                          "  vtxT3 = oT3 * vtx_inv_w;\n"
+                          "  gl_Position = oPos;\n"
+                          "  gl_PointSize = oPts.x;\n"
+                          // "  gl_ClipDistance[0] = oPos.z - oPos.w*clipRange.z;\n" // Near
+                          // "  gl_ClipDistance[1] = oPos.w*clipRange.w - oPos.z;\n" // Far
+                          "\n"
+                          "}\n",
+                           shade_model_mult,
+                           shade_model_mult,
+                           shade_model_mult,
+                           shade_model_mult
+        );
+    } else {
+        mstring_append_fmt(
+            body, "\n"
+                  "  vtxD0 = clamp(oD0, 0.0, 1.0);\n"
+                  "  vtxD1 = clamp(oD1, 0.0, 1.0);\n"
+                  "  vtxB0 = clamp(oB0, 0.0, 1.0);\n"
+                  "  vtxB1 = clamp(oB1, 0.0, 1.0);\n"
+                  "  vtxFog = oFog.x;\n"
+                  "  vtxT0 = oT0;\n"
+                  "  vtxT1 = oT1;\n"
+                  "  vtxT2 = oT2;\n"
+                  "  vtxT3 = oT3;\n"
+                  "  gl_Position = oPos;\n"
+                  "  gl_PointSize = oPts.x;\n"
+                  //"  gl_ClipDistance[0] = oPos.w - clipRange.z;\n" // Near
+                  //"  gl_ClipDistance[1] = clipRange.w - oPos.w;\n" // Far
+                  "\n"
+                  "}\n"
+        );
+    }
     /* Return combined header + source */
     if (state->vulkan) {
         // FIXME: Optimize uniforms

@@ -21,13 +21,13 @@
 #include "common.h"
 
 
-MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bool in, bool prefix, bool array)
+MString *pgraph_get_glsl_vtx_header(MString *out, bool location, bool smooth, bool in, bool prefix, bool array, bool z_perspective)
 {
     const char *flat_s = "flat";
-    const char *noperspective_s = "noperspective";
+    const char *noperspective_s = z_perspective ? "" : "noperspective";
     const char *qualifier_s = smooth ? noperspective_s : flat_s;
     const char *qualifiers[11] = {
-        noperspective_s, flat_s,          qualifier_s,     qualifier_s,
+        "noperspective", flat_s,          qualifier_s,     qualifier_s,
         qualifier_s,     qualifier_s,     noperspective_s, noperspective_s,
         noperspective_s, noperspective_s, noperspective_s
     };
