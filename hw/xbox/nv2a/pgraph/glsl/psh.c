@@ -1219,7 +1219,7 @@ static MString *psh_convert(struct PixelShader *ps, bool z_perspective)
     }
 
     if (z_perspective) {     
-        mstring_append(ps->code, "gl_FragDepth = (1.0/gl_FragCoord.w)/clipRange.y;\n");
+        mstring_append(ps->code, "gl_FragDepth = 1.0/(gl_FragCoord.w * clipRange.y);\n");
     }
 
     for (i = 0; i < ps->num_var_refs; i++) {

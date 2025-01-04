@@ -879,7 +879,7 @@ void pgraph_gen_vsh_prog_glsl(uint16_t version,
             body,
 
         /* Correct for the perspective divide */
-        "  if (oPos.w < 0.0) {\n"
+        "  if (oPos.w < clipRange.z) {\n"
             /* undo the perspective divide in the case where the point would be
              * clipped so opengl can clip it correctly */
         "    oPos.xyz *= oPos.w;\n"
