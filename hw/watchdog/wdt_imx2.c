@@ -17,10 +17,13 @@
 #include "hw/qdev-properties.h"
 
 #include "hw/watchdog/wdt_imx2.h"
+#include "trace.h"
 
 static void imx2_wdt_interrupt(void *opaque)
 {
     IMX2WdtState *s = IMX2_WDT(opaque);
+
+    trace_imx2_wdt_interrupt();
 
     s->wicr |= IMX2_WDT_WICR_WTIS;
     qemu_set_irq(s->irq, 1);
@@ -30,11 +33,12 @@ static void imx2_wdt_expired(void *opaque)
 {
     IMX2WdtState *s = IMX2_WDT(opaque);
 
+    trace_imx2_wdt_expired();
+
     s->wrsr = IMX2_WDT_WRSR_TOUT;
 
     /* Perform watchdog action if watchdog is enabled */
     if (s->wcr & IMX2_WDT_WCR_WDE) {
-        s->wrsr = IMX2_WDT_WRSR_TOUT;
         watchdog_perform_action();
     }
 }
@@ -67,20 +71,29 @@ static void imx2_wdt_reset(DeviceState *dev)
 static uint64_t imx2_wdt_read(void *opaque, hwaddr addr, unsigned int size)
 {
     IMX2WdtState *s = IMX2_WDT(opaque);
+    uint16_t value = 0;
 
     switch (addr) {
     case IMX2_WDT_WCR:
-        return s->wcr;
+        value = s->wcr;
+        break;
     case IMX2_WDT_WSR:
-        return s->wsr;
+        value = s->wsr;
+        break;
     case IMX2_WDT_WRSR:
-        return s->wrsr;
+        value = s->wrsr;
+        break;
     case IMX2_WDT_WICR:
-        return s->wicr;
+        value = s->wicr;
+        break;
     case IMX2_WDT_WMCR:
-        return s->wmcr;
+        value = s->wmcr;
+        break;
     }
-    return 0;
+
+    trace_imx2_wdt_read(addr, value);
+
+    return value;
 }
 
 static void imx_wdt2_update_itimer(IMX2WdtState *s, bool start)
@@ -136,6 +149,8 @@ static void imx2_wdt_write(void *opaque, hwaddr addr,
                            uint64_t value, unsigned int size)
 {
     IMX2WdtState *s = IMX2_WDT(opaque);
+
+    trace_imx2_wdt_write(addr, value);
 
     switch (addr) {
     case IMX2_WDT_WCR:
@@ -218,7 +233,7 @@ static const MemoryRegionOps imx2_wdt_ops = {
 
 static const VMStateDescription vmstate_imx2_wdt = {
     .name = "imx2.wdt",
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_PTIMER(timer, IMX2WdtState),
         VMSTATE_PTIMER(itimer, IMX2WdtState),
         VMSTATE_BOOL(wicr_locked, IMX2WdtState),
@@ -278,7 +293,7 @@ static void imx2_wdt_class_init(ObjectClass *klass, void *data)
 
     device_class_set_props(dc, imx2_wdt_properties);
     dc->realize = imx2_wdt_realize;
-    dc->reset = imx2_wdt_reset;
+    device_class_set_legacy_reset(dc, imx2_wdt_reset);
     dc->vmsd = &vmstate_imx2_wdt;
     dc->desc = "i.MX2 watchdog timer";
     set_bit(DEVICE_CATEGORY_WATCHDOG, dc->categories);

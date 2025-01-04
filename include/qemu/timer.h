@@ -191,16 +191,6 @@ bool qemu_clock_use_for_deadline(QEMUClockType type);
 int64_t qemu_clock_deadline_ns_all(QEMUClockType type, int attr_mask);
 
 /**
- * qemu_clock_get_main_loop_timerlist:
- * @type: the clock type
- *
- * Return the default timer list associated with a clock.
- *
- * Returns: the default timer list
- */
-QEMUTimerList *qemu_clock_get_main_loop_timerlist(QEMUClockType type);
-
-/**
  * qemu_clock_nofify:
  * @type: the clock type
  *
@@ -245,6 +235,21 @@ bool qemu_clock_run_timers(QEMUClockType type);
  */
 bool qemu_clock_run_all_timers(void);
 
+/**
+ * qemu_clock_advance_virtual_time(): advance the virtual time tick
+ * @target_ns: target time in nanoseconds
+ *
+ * This function is used where the control of the flow of time has
+ * been delegated to outside the clock subsystem (be it qtest, icount
+ * or some other external source). You can ask the clock system to
+ * return @early at the first expired timer.
+ *
+ * Time can only move forward, attempts to reverse time would lead to
+ * an error.
+ *
+ * Returns: new virtual time.
+ */
+int64_t qemu_clock_advance_virtual_time(int64_t target_ns);
 
 /*
  * QEMUTimerList
@@ -310,17 +315,6 @@ bool timerlist_expired(QEMUTimerList *timer_list);
  * timer expires -1 if none
  */
 int64_t timerlist_deadline_ns(QEMUTimerList *timer_list);
-
-/**
- * timerlist_get_clock:
- * @timer_list: the timer list to operate on
- *
- * Determine the clock type associated with a timer list.
- *
- * Returns: the clock type associated with the
- * timer list.
- */
-QEMUClockType timerlist_get_clock(QEMUTimerList *timer_list);
 
 /**
  * timerlist_run_timers:
@@ -979,6 +973,37 @@ static inline int64_t cpu_get_host_ticks(void)
     return cur - ofs;
 }
 
+#elif defined(__riscv) && __riscv_xlen == 32
+static inline int64_t cpu_get_host_ticks(void)
+{
+    uint32_t lo, hi, tmph;
+    do {
+        asm volatile("RDTIMEH %0\n\t"
+                     "RDTIME %1\n\t"
+                     "RDTIMEH %2"
+                     : "=r"(hi), "=r"(lo), "=r"(tmph));
+    } while (unlikely(tmph != hi));
+    return lo | (uint64_t)hi << 32;
+}
+
+#elif defined(__riscv) && __riscv_xlen > 32
+static inline int64_t cpu_get_host_ticks(void)
+{
+    int64_t val;
+
+    asm volatile("RDTIME %0" : "=r"(val));
+    return val;
+}
+
+#elif defined(__loongarch64)
+static inline int64_t cpu_get_host_ticks(void)
+{
+    uint64_t val;
+
+    asm volatile("rdtime.d %0, $zero" : "=r"(val));
+    return val;
+}
+
 #else
 /* The host CPU doesn't have an easily accessible cycle counter.
    Just return a monotonically increasing value.  This will be
@@ -987,15 +1012,6 @@ static inline int64_t cpu_get_host_ticks(void)
 {
     return get_clock();
 }
-#endif
-
-#ifdef CONFIG_PROFILER
-static inline int64_t profile_getclock(void)
-{
-    return get_clock();
-}
-
-extern int64_t dev_time;
 #endif
 
 #endif

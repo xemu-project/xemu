@@ -307,11 +307,11 @@ static gboolean cadence_uart_xmit(void *do_not_use, GIOCondition cond,
     /* instant drain the fifo when there's no back-end */
     if (!qemu_chr_fe_backend_connected(&s->chr)) {
         s->tx_count = 0;
-        return FALSE;
+        return G_SOURCE_REMOVE;
     }
 
     if (!s->tx_count) {
-        return FALSE;
+        return G_SOURCE_REMOVE;
     }
 
     ret = qemu_chr_fe_write(&s->chr, s->tx_fifo, s->tx_count);
@@ -326,12 +326,12 @@ static gboolean cadence_uart_xmit(void *do_not_use, GIOCondition cond,
                                         cadence_uart_xmit, s);
         if (!r) {
             s->tx_count = 0;
-            return FALSE;
+            return G_SOURCE_REMOVE;
         }
     }
 
     uart_update_status(s);
-    return FALSE;
+    return G_SOURCE_REMOVE;
 }
 
 static void uart_write_tx_fifo(CadenceUARTState *s, const uint8_t *buf,
@@ -450,13 +450,15 @@ static MemTxResult uart_write(void *opaque, hwaddr offset,
         }
         break;
     case R_BRGR: /* Baud rate generator */
+        value &= 0xffff;
         if (value >= 0x01) {
-            s->r[offset] = value & 0xFFFF;
+            s->r[offset] = value;
         }
         break;
     case R_BDIV:    /* Baud rate divider */
+        value &= 0xff;
         if (value >= 0x04) {
-            s->r[offset] = value & 0xFF;
+            s->r[offset] = value;
         }
         break;
     default:
@@ -523,7 +525,7 @@ static void cadence_uart_reset_init(Object *obj, ResetType type)
     s->r[R_TTRIG] = 0x00000020;
 }
 
-static void cadence_uart_reset_hold(Object *obj)
+static void cadence_uart_reset_hold(Object *obj, ResetType type)
 {
     CadenceUARTState *s = CADENCE_UART(obj);
 
@@ -573,7 +575,7 @@ static int cadence_uart_pre_load(void *opaque)
 {
     CadenceUARTState *s = opaque;
 
-    /* the frequency will be overriden if the refclk field is present */
+    /* the frequency will be overridden if the refclk field is present */
     clock_set_hz(s->refclk, UART_DEFAULT_REF_CLK);
     return 0;
 }
@@ -600,7 +602,7 @@ static const VMStateDescription vmstate_cadence_uart = {
     .minimum_version_id = 2,
     .pre_load = cadence_uart_pre_load,
     .post_load = cadence_uart_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(r, CadenceUARTState, CADENCE_UART_R_MAX),
         VMSTATE_UINT8_ARRAY(rx_fifo, CadenceUARTState,
                             CADENCE_UART_RX_FIFO_SIZE),

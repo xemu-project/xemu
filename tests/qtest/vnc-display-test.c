@@ -19,6 +19,8 @@ typedef struct Test {
     GMainLoop *loop;
 } Test;
 
+#if !defined(CONFIG_DARWIN)
+
 static void on_vnc_error(VncConnection* self,
                          const char* msg)
 {
@@ -31,16 +33,18 @@ static void on_vnc_auth_failure(VncConnection *self,
     g_error("vnc-auth-failure: %s", msg);
 }
 
+#endif
+
 static bool
 test_setup(Test *test)
 {
-#ifdef WIN32
-    g_test_skip("Not supported on Windows yet");
+#if defined(CONFIG_DARWIN)
+    g_test_skip("Broken on Darwin");
     return false;
 #else
     int pair[2];
 
-    test->qts = qtest_init("-vnc none -name vnc-test");
+    test->qts = qtest_init("-M none -vnc none -name vnc-test");
 
     g_assert_cmpint(qemu_socketpair(AF_UNIX, SOCK_STREAM, 0, pair), ==, 0);
 
@@ -52,7 +56,12 @@ test_setup(Test *test)
     g_signal_connect(test->conn, "vnc-auth-failure",
                      G_CALLBACK(on_vnc_auth_failure), NULL);
     vnc_connection_set_auth_type(test->conn, VNC_CONNECTION_AUTH_NONE);
+
+#ifdef WIN32
+    vnc_connection_open_fd(test->conn, _get_osfhandle(pair[0]));
+#else
     vnc_connection_open_fd(test->conn, pair[0]);
+#endif
 
     test->loop = g_main_loop_new(NULL, FALSE);
     return true;

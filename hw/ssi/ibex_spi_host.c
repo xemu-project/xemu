@@ -26,6 +26,7 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
+#include "hw/registerfields.h"
 #include "hw/ssi/ibex_spi_host.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
@@ -204,8 +205,9 @@ static void ibex_spi_host_irq(IbexSPIHostState *s)
         if (err_irq) {
             s->regs[IBEX_SPI_HOST_INTR_STATE] |= R_INTR_STATE_ERROR_MASK;
         }
-        qemu_set_irq(s->host_err, err_irq);
     }
+
+    qemu_set_irq(s->host_err, err_irq);
 
     /* Event IRQ Enabled and Event IRQ Cleared */
     if (event_en && !status_pending) {
@@ -228,8 +230,9 @@ static void ibex_spi_host_irq(IbexSPIHostState *s)
         if (event_irq) {
             s->regs[IBEX_SPI_HOST_INTR_STATE] |= R_INTR_STATE_SPI_EVENT_MASK;
         }
-        qemu_set_irq(s->event, event_irq);
     }
+
+    qemu_set_irq(s->event, event_irq);
 }
 
 static void ibex_spi_host_transfer(IbexSPIHostState *s)
@@ -567,7 +570,7 @@ static const VMStateDescription vmstate_ibex = {
     .name = TYPE_IBEX_SPI_HOST,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, IbexSPIHostState, IBEX_SPI_HOST_MAX_REGS),
         VMSTATE_VARRAY_UINT32(config_opts, IbexSPIHostState,
                               num_cs, 0, vmstate_info_uint32, uint32_t),
@@ -625,7 +628,7 @@ static void ibex_spi_host_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     dc->realize = ibex_spi_host_realize;
-    dc->reset = ibex_spi_host_reset;
+    device_class_set_legacy_reset(dc, ibex_spi_host_reset);
     dc->vmsd = &vmstate_ibex;
     device_class_set_props(dc, ibex_spi_properties);
 }

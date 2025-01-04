@@ -179,7 +179,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
 
     addr &= 0xfc;
 
-    IVSHMEM_DPRINTF("writing to addr " TARGET_FMT_plx "\n", addr);
+    IVSHMEM_DPRINTF("writing to addr " HWADDR_FMT_plx "\n", addr);
     switch (addr)
     {
         case INTRMASK:
@@ -207,7 +207,7 @@ static void ivshmem_io_write(void *opaque, hwaddr addr,
             }
             break;
         default:
-            IVSHMEM_DPRINTF("Unhandled write " TARGET_FMT_plx "\n", addr);
+            IVSHMEM_DPRINTF("Unhandled write " HWADDR_FMT_plx "\n", addr);
     }
 }
 
@@ -233,7 +233,7 @@ static uint64_t ivshmem_io_read(void *opaque, hwaddr addr,
             break;
 
         default:
-            IVSHMEM_DPRINTF("why are we reading " TARGET_FMT_plx "\n", addr);
+            IVSHMEM_DPRINTF("why are we reading " HWADDR_FMT_plx "\n", addr);
             ret = 0;
     }
 
@@ -476,7 +476,6 @@ static void setup_interrupt(IVShmemState *s, int vector, Error **errp)
 
 static void process_msg_shmem(IVShmemState *s, int fd, Error **errp)
 {
-    Error *local_err = NULL;
     struct stat buf;
     size_t size;
 
@@ -496,10 +495,9 @@ static void process_msg_shmem(IVShmemState *s, int fd, Error **errp)
     size = buf.st_size;
 
     /* mmap the region and map into the BAR2 */
-    memory_region_init_ram_from_fd(&s->server_bar2, OBJECT(s), "ivshmem.bar2",
-                                   size, RAM_SHARED, fd, 0, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!memory_region_init_ram_from_fd(&s->server_bar2, OBJECT(s),
+                                        "ivshmem.bar2", size, RAM_SHARED,
+                                        fd, 0, errp)) {
         return;
     }
 
@@ -834,6 +832,7 @@ static void ivshmem_write_config(PCIDevice *pdev, uint32_t address,
 
 static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
 {
+    ERRP_GUARD();
     IVShmemState *s = IVSHMEM_COMMON(dev);
     Error *err = NULL;
     uint8_t *pci_conf;
@@ -903,8 +902,7 @@ static void ivshmem_common_realize(PCIDevice *dev, Error **errp)
     if (!ivshmem_is_master(s)) {
         error_setg(&s->migration_blocker,
                    "Migration is disabled when using feature 'peer mode' in device 'ivshmem'");
-        if (migrate_add_blocker(s->migration_blocker, errp) < 0) {
-            error_free(s->migration_blocker);
+        if (migrate_add_blocker(&s->migration_blocker, errp) < 0) {
             return;
         }
     }
@@ -922,10 +920,7 @@ static void ivshmem_exit(PCIDevice *dev)
     IVShmemState *s = IVSHMEM_COMMON(dev);
     int i;
 
-    if (s->migration_blocker) {
-        migrate_del_blocker(s->migration_blocker);
-        error_free(s->migration_blocker);
-    }
+    migrate_del_blocker(&s->migration_blocker);
 
     if (memory_region_is_mapped(s->ivshmem_bar2)) {
         if (!s->hostmem) {
@@ -996,7 +991,7 @@ static void ivshmem_common_class_init(ObjectClass *klass, void *data)
     k->device_id = PCI_DEVICE_ID_IVSHMEM;
     k->class_id = PCI_CLASS_MEMORY_RAM;
     k->revision = 1;
-    dc->reset = ivshmem_reset;
+    device_class_set_legacy_reset(dc, ivshmem_reset);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
     dc->desc = "Inter-VM shared memory";
 }
@@ -1019,7 +1014,7 @@ static const VMStateDescription ivshmem_plain_vmsd = {
     .minimum_version_id = 0,
     .pre_load = ivshmem_pre_load,
     .post_load = ivshmem_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_PCI_DEVICE(parent_obj, IVShmemState),
         VMSTATE_UINT32(intrstatus, IVShmemState),
         VMSTATE_UINT32(intrmask, IVShmemState),
@@ -1073,7 +1068,7 @@ static const VMStateDescription ivshmem_doorbell_vmsd = {
     .minimum_version_id = 0,
     .pre_load = ivshmem_pre_load,
     .post_load = ivshmem_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_PCI_DEVICE(parent_obj, IVShmemState),
         VMSTATE_MSIX(parent_obj, IVShmemState),
         VMSTATE_UINT32(intrstatus, IVShmemState),

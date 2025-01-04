@@ -25,7 +25,7 @@
 #include "migration/vmstate.h"
 #include "qapi/error.h"
 #include "hw/ipmi/ipmi_bt.h"
-#include "hw/pci/pci.h"
+#include "hw/pci/pci_device.h"
 #include "qom/object.h"
 
 #define TYPE_PCI_IPMI_BT "pci-ipmi-bt"
@@ -87,7 +87,7 @@ const VMStateDescription vmstate_PCIIPMIBTDevice = {
     .name = TYPE_IPMI_INTERFACE_PREFIX "pci-bt",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields      = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_PCI_DEVICE(dev, PCIIPMIBTDevice),
         VMSTATE_STRUCT(bt, PCIIPMIBTDevice, 1, vmstate_IPMIBT, IPMIBT),
         VMSTATE_END_OF_LIST()

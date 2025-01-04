@@ -732,7 +732,8 @@ static void sysbus_open_eth_realize(DeviceState *dev, Error **errp)
     sysbus_init_irq(sbd, &s->irq);
 
     s->nic = qemu_new_nic(&net_open_eth_info, &s->conf,
-                          object_get_typename(OBJECT(s)), dev->id, s);
+                          object_get_typename(OBJECT(s)), dev->id,
+                          &dev->mem_reentrancy_guard, s);
 }
 
 static void qdev_open_eth_reset(DeviceState *dev)
@@ -754,7 +755,7 @@ static void open_eth_class_init(ObjectClass *klass, void *data)
     dc->realize = sysbus_open_eth_realize;
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
     dc->desc = "Opencores 10/100 Mbit Ethernet";
-    dc->reset = qdev_open_eth_reset;
+    device_class_set_legacy_reset(dc, qdev_open_eth_reset);
     device_class_set_props(dc, open_eth_properties);
 }
 

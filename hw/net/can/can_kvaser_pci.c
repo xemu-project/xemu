@@ -37,7 +37,7 @@
 #include "qapi/error.h"
 #include "chardev/char.h"
 #include "hw/irq.h"
-#include "hw/pci/pci.h"
+#include "hw/pci/pci_device.h"
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
 #include "net/can_emu.h"
@@ -266,7 +266,7 @@ static const VMStateDescription vmstate_kvaser_pci = {
     .name = "kvaser_pci",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_PCI_DEVICE(dev, KvaserPCIState),
         /* Load this before sja_state.  */
         VMSTATE_UINT32(s5920_intcsr, KvaserPCIState),
@@ -299,7 +299,7 @@ static void kvaser_pci_class_init(ObjectClass *klass, void *data)
     k->class_id = 0x00ff00;
     dc->desc = "Kvaser PCICANx";
     dc->vmsd = &vmstate_kvaser_pci;
-    dc->reset = kvaser_pci_reset;
+    device_class_set_legacy_reset(dc, kvaser_pci_reset);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }
 

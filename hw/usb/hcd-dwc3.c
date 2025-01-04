@@ -648,7 +648,7 @@ static void usb_dwc3_init(Object *obj)
 static const VMStateDescription vmstate_usb_dwc3 = {
     .name = "usb-dwc3",
     .version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, USBDWC3, USB_DWC3_R_MAX),
         VMSTATE_UINT8(cfg.mode, USBDWC3),
         VMSTATE_UINT32(cfg.dwc_usb3_user, USBDWC3),
@@ -666,7 +666,7 @@ static void usb_dwc3_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = usb_dwc3_reset;
+    device_class_set_legacy_reset(dc, usb_dwc3_reset);
     dc->realize = usb_dwc3_realize;
     dc->vmsd = &vmstate_usb_dwc3;
     device_class_set_props(dc, usb_dwc3_properties);

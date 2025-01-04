@@ -837,7 +837,7 @@ static void ospi_do_ind_read(XlnxVersalOspi *s)
     /* Continue to read flash until we run out of space in sram */
     while (!ospi_ind_op_completed(op) &&
            !fifo8_is_full(&s->rx_sram)) {
-        /* Read reqested number of bytes, max bytes limited to size of sram */
+        /* Read requested number of bytes, max bytes limited to size of sram */
         next_b = ind_op_next_byte(op);
         end_b = next_b + fifo8_num_free(&s->rx_sram);
         end_b = MIN(end_b, ind_op_end_byte(op));
@@ -1772,6 +1772,12 @@ static void xlnx_versal_ospi_init(Object *obj)
     memory_region_init_io(&s->iomem_dac, obj, &ospi_dac_ops, s,
                           TYPE_XILINX_VERSAL_OSPI "-dac", 0x20000000);
     sysbus_init_mmio(sbd, &s->iomem_dac);
+    /*
+     * The OSPI DMA reads flash data through the OSPI linear address space (the
+     * iomem_dac region), because of this the reentrancy guard needs to be
+     * disabled.
+     */
+    s->iomem_dac.disable_reentrancy_guard = true;
 
     sysbus_init_irq(sbd, &s->irq);
 
@@ -1787,7 +1793,7 @@ static const VMStateDescription vmstate_ind_op = {
     .name = "OSPIIndOp",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(flash_addr, IndOp),
         VMSTATE_UINT32(num_bytes, IndOp),
         VMSTATE_UINT32(done_bytes, IndOp),
@@ -1800,7 +1806,7 @@ static const VMStateDescription vmstate_xlnx_versal_ospi = {
     .name = TYPE_XILINX_VERSAL_OSPI,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_FIFO8(rx_fifo, XlnxVersalOspi),
         VMSTATE_FIFO8(tx_fifo, XlnxVersalOspi),
         VMSTATE_FIFO8(rx_sram, XlnxVersalOspi),
@@ -1830,7 +1836,7 @@ static void xlnx_versal_ospi_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = xlnx_versal_ospi_reset;
+    device_class_set_legacy_reset(dc, xlnx_versal_ospi_reset);
     dc->realize = xlnx_versal_ospi_realize;
     dc->vmsd = &vmstate_xlnx_versal_ospi;
     device_class_set_props(dc, xlnx_versal_ospi_properties);

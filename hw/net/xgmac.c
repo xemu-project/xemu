@@ -159,7 +159,7 @@ static const VMStateDescription vmstate_rxtx_stats = {
     .name = "xgmac_stats",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT64(rx_bytes, RxTxStats),
         VMSTATE_UINT64(tx_bytes, RxTxStats),
         VMSTATE_UINT64(rx, RxTxStats),
@@ -173,7 +173,7 @@ static const VMStateDescription vmstate_xgmac = {
     .name = "xgmac",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_STRUCT(stats, XgmacState, 0, vmstate_rxtx_stats, RxTxStats),
         VMSTATE_UINT32_ARRAY(regs, XgmacState, R_MAX),
         VMSTATE_END_OF_LIST()
@@ -402,7 +402,8 @@ static void xgmac_enet_realize(DeviceState *dev, Error **errp)
 
     qemu_macaddr_default_if_unset(&s->conf.macaddr);
     s->nic = qemu_new_nic(&net_xgmac_enet_info, &s->conf,
-                          object_get_typename(OBJECT(dev)), dev->id, s);
+                          object_get_typename(OBJECT(dev)), dev->id,
+                          &dev->mem_reentrancy_guard, s);
     qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
 
     s->regs[XGMAC_ADDR_HIGH(0)] = (s->conf.macaddr.a[5] << 8) |

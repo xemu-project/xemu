@@ -33,7 +33,6 @@
 #include "block/thread-pool.h"
 #include "qemu/error-report.h"
 #include "qemu/queue.h"
-#include "qemu/compiler.h"
 #include "qom/object.h"
 
 #ifdef XBOX
@@ -70,7 +69,7 @@ QemuMutex qemu_main_loop_lock;
  */
 /*
  * Disable CFI checks.
- * We are going to call a signal hander directly. Such handler may or may not
+ * We are going to call a signal handler directly. Such handler may or may not
  * have been defined in our binary, so there's no guarantee that the pointer
  * used to set the handler is a cfi-valid pointer. Since the handlers are
  * stored in kernel memory, changing the handler to an attacker-defined
@@ -86,9 +85,7 @@ static void sigfd_handler(void *opaque)
     ssize_t len;
 
     while (1) {
-        do {
-            len = read(fd, &info, sizeof(info));
-        } while (len == -1 && errno == EINTR);
+        len = RETRY_ON_EINTR(read(fd, &info, sizeof(info)));
 
         if (len == -1 && errno == EAGAIN) {
             break;
@@ -249,10 +246,7 @@ static void main_loop_update_params(EventLoopBase *base, Error **errp)
         return;
     }
 
-    aio_context_set_aio_params(qemu_aio_context, base->aio_max_batch, errp);
-    if (*errp) {
-        return;
-    }
+    aio_context_set_aio_params(qemu_aio_context, base->aio_max_batch);
 
     aio_context_set_thread_pool_params(qemu_aio_context, base->thread_pool_min,
                                        base->thread_pool_max, errp);
@@ -308,10 +302,6 @@ static int max_priority;
 #ifndef _WIN32
 static int glib_pollfds_idx;
 static int glib_n_poll_fds;
-
-void qemu_fd_register(int fd)
-{
-}
 
 static void glib_pollfds_fill(int64_t *cur_timeout)
 {
@@ -375,7 +365,7 @@ static int os_host_main_loop_wait(int64_t timeout)
 
     glib_pollfds_fill(&timeout);
 
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
     replay_mutex_unlock();
 
 #ifdef XBOX
@@ -387,7 +377,7 @@ static int os_host_main_loop_wait(int64_t timeout)
 #endif
 
     replay_mutex_lock();
-    qemu_mutex_lock_iothread();
+    bql_lock();
 
     glib_pollfds_poll();
 
@@ -487,13 +477,6 @@ void qemu_del_wait_object(HANDLE handle, WaitObjectFunc *func, void *opaque)
     if (found) {
         w->num--;
     }
-}
-
-void qemu_fd_register(int fd)
-{
-    WSAEventSelect(fd, event_notifier_get_handle(&qemu_aio_context->notifier),
-                   FD_READ | FD_ACCEPT | FD_CLOSE |
-                   FD_CONNECT | FD_WRITE | FD_OOB);
 }
 
 static int pollfds_fill(GArray *pollfds, fd_set *rfds, fd_set *wfds,
@@ -597,7 +580,7 @@ static int os_host_main_loop_wait(int64_t timeout)
 
     poll_timeout_ns = qemu_soonest_timeout(poll_timeout_ns, timeout);
 
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
 
     replay_mutex_unlock();
 
@@ -611,7 +594,7 @@ static int os_host_main_loop_wait(int64_t timeout)
 
     replay_mutex_lock();
 
-    qemu_mutex_lock_iothread();
+    bql_lock();
     if (g_poll_ret > 0) {
         for (i = 0; i < w->num; i++) {
             w->revents[i] = poll_fds[n_poll_fds + i].revents;
@@ -701,9 +684,11 @@ void main_loop_wait(int nonblocking)
 
 /* Functions to operate on the main QEMU AioContext.  */
 
-QEMUBH *qemu_bh_new_full(QEMUBHFunc *cb, void *opaque, const char *name)
+QEMUBH *qemu_bh_new_full(QEMUBHFunc *cb, void *opaque, const char *name,
+                         MemReentrancyGuard *reentrancy_guard)
 {
-    return aio_bh_new_full(qemu_aio_context, cb, opaque, name);
+    return aio_bh_new_full(qemu_aio_context, cb, opaque, name,
+                           reentrancy_guard);
 }
 
 /*
@@ -738,14 +723,13 @@ void qemu_set_fd_handler(int fd,
                          void *opaque)
 {
     iohandler_init();
-    aio_set_fd_handler(iohandler_ctx, fd, false,
-                       fd_read, fd_write, NULL, NULL, opaque);
+    aio_set_fd_handler(iohandler_ctx, fd, fd_read, fd_write, NULL, NULL,
+                       opaque);
 }
 
 void event_notifier_set_handler(EventNotifier *e,
                                 EventNotifierHandler *handler)
 {
     iohandler_init();
-    aio_set_event_notifier(iohandler_ctx, e, false,
-                           handler, NULL, NULL);
+    aio_set_event_notifier(iohandler_ctx, e, handler, NULL, NULL);
 }

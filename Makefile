@@ -26,9 +26,9 @@ quiet-command-run = $(if $(V),,$(if $2,printf "  %-7s %s\n" $2 $3 && ))$1
 quiet-@ = $(if $(V),,@)
 quiet-command = $(quiet-@)$(call quiet-command-run,$1,$2,$3)
 
-UNCHECKED_GOALS := %clean TAGS cscope ctags dist \
+UNCHECKED_GOALS := TAGS gtags cscope ctags dist \
     help check-help print-% \
-    docker docker-% vm-help vm-test vm-build-%
+    docker docker-% lcitool-refresh vm-help vm-test vm-build-%
 
 all:
 .PHONY: all clean distclean recurse-all dist msi FORCE
@@ -44,18 +44,6 @@ include config-host.mak
 
 include Makefile.prereqs
 Makefile.prereqs: config-host.mak
-
-git-submodule-update:
-.git-submodule-status: git-submodule-update config-host.mak
-Makefile: .git-submodule-status
-
-.PHONY: git-submodule-update
-git-submodule-update:
-ifneq ($(GIT_SUBMODULES_ACTION),ignore)
-	$(call quiet-command, \
-		(GIT="$(GIT)" "$(SRC_PATH)/scripts/git-submodule.sh" $(GIT_SUBMODULES_ACTION) $(GIT_SUBMODULES)), \
-		"GIT","$(GIT_SUBMODULES)")
-endif
 
 # 0. ensure the build tree is okay
 
@@ -90,21 +78,23 @@ x := $(shell rm -rf meson-private meson-info meson-logs)
 endif
 
 # 1. ensure config-host.mak is up-to-date
-config-host.mak: $(SRC_PATH)/configure $(SRC_PATH)/scripts/meson-buildoptions.sh $(SRC_PATH)/QEMU_VERSION
+config-host.mak: $(SRC_PATH)/configure $(SRC_PATH)/scripts/meson-buildoptions.sh \
+		$(SRC_PATH)/pythondeps.toml $(SRC_PATH)/QEMU_VERSION
 	@echo config-host.mak is out-of-date, running configure
 	@if test -f meson-private/coredata.dat; then \
 	  ./config.status --skip-meson; \
 	else \
-	  ./config.status && touch build.ninja.stamp; \
+	  ./config.status; \
 	fi
 
 # 2. meson.stamp exists if meson has run at least once (so ninja reconfigure
 # works), but otherwise never needs to be updated
+
 meson-private/coredata.dat: meson.stamp
 meson.stamp: config-host.mak
 	@touch meson.stamp
 
-# 3. ensure generated build files are up-to-date
+# 3. ensure meson-generated build files are up-to-date
 
 ifneq ($(NINJA),)
 Makefile.ninja: build.ninja
@@ -115,15 +105,23 @@ Makefile.ninja: build.ninja
 	  $(NINJA) -t query build.ninja | sed -n '1,/^  input:/d; /^  outputs:/q; s/$$/ \\/p'; \
 	} > $@.tmp && mv $@.tmp $@
 -include Makefile.ninja
-
-# A separate rule is needed for Makefile dependencies to avoid -n
-build.ninja: build.ninja.stamp
-$(build-files):
-build.ninja.stamp: meson.stamp $(build-files)
-	$(NINJA) $(if $V,-v,) build.ninja && touch $@
 endif
 
 ifneq ($(MESON),)
+# The path to meson always points to pyvenv/bin/meson, but the absolute
+# paths could change.  In that case, force a regeneration of build.ninja.
+# Note that this invocation of $(NINJA), just like when Make rebuilds
+# Makefiles, does not include -n.
+build.ninja: build.ninja.stamp
+$(build-files):
+build.ninja.stamp: meson.stamp $(build-files)
+	@if test "$$(cat build.ninja.stamp)" = "$(MESON)" && test -n "$(NINJA)"; then \
+	  $(NINJA) build.ninja; \
+	else \
+	  echo "$(MESON) setup --reconfigure $(SRC_PATH)"; \
+	  $(MESON) setup --reconfigure $(SRC_PATH); \
+	fi && echo "$(MESON)" > $@
+
 Makefile.mtest: build.ninja scripts/mtest2make.py
 	$(MESON) introspect --targets --tests --benchmarks | $(PYTHON) scripts/mtest2make.py > $@
 -include Makefile.mtest
@@ -144,13 +142,18 @@ MAKE.n = $(findstring n,$(firstword $(filter-out --%,$(MAKEFLAGS))))
 MAKE.k = $(findstring k,$(firstword $(filter-out --%,$(MAKEFLAGS))))
 MAKE.q = $(findstring q,$(firstword $(filter-out --%,$(MAKEFLAGS))))
 MAKE.nq = $(if $(word 2, $(MAKE.n) $(MAKE.q)),nq)
-NINJAFLAGS = $(if $V,-v) $(if $(MAKE.n), -n) $(if $(MAKE.k), -k0) \
-        $(filter-out -j, $(lastword -j1 $(filter -l% -j%, $(MAKEFLAGS)))) \
+NINJAFLAGS = \
+        $(if $V,-v) \
+        $(if $(MAKE.n), -n) \
+        $(if $(MAKE.k), -k0) \
+        $(filter-out -j, \
+          $(or $(filter -l% -j%, $(MAKEFLAGS)), \
+               $(if $(filter --jobserver-auth=%, $(MAKEFLAGS)),, -j1))) \
         -d keepdepfile
 ninja-cmd-goals = $(or $(MAKECMDGOALS), all)
 ninja-cmd-goals += $(foreach g, $(MAKECMDGOALS), $(.ninja-goals.$g))
 
-makefile-targets := build.ninja ctags TAGS cscope dist clean uninstall
+makefile-targets := build.ninja ctags TAGS cscope dist clean
 # "ninja -t targets" also lists all prerequisites.  If build system
 # files are marked as PHONY, however, Make will always try to execute
 # "ninja build.ninja".
@@ -167,19 +170,9 @@ ifneq ($(filter $(ninja-targets), $(ninja-cmd-goals)),)
 endif
 endif
 
-ifeq ($(CONFIG_PLUGIN),y)
-.PHONY: plugins
-plugins:
-	$(call quiet-command,\
-		$(MAKE) $(SUBDIR_MAKEFLAGS) -C contrib/plugins V="$(V)", \
-		"BUILD", "example plugins")
-endif # $(CONFIG_PLUGIN)
-
 else # config-host.mak does not exist
-config-host.mak:
 ifneq ($(filter-out $(UNCHECKED_GOALS),$(MAKECMDGOALS)),$(if $(MAKECMDGOALS),,fail))
-	@echo "Please call configure before running make!"
-	@exit 1
+$(error Please call configure before running make)
 endif
 endif # config-host.mak does not exist
 
@@ -189,15 +182,15 @@ include $(SRC_PATH)/tests/Makefile.include
 
 all: recurse-all
 
-ROMS_RULES=$(foreach t, all clean distclean, $(addsuffix /$(t), $(ROMS)))
-.PHONY: $(ROMS_RULES)
-$(ROMS_RULES):
+SUBDIR_RULES=$(foreach t, all clean distclean, $(addsuffix /$(t), $(SUBDIRS)))
+.PHONY: $(SUBDIR_RULES)
+$(SUBDIR_RULES):
 	$(call quiet-command,$(MAKE) $(SUBDIR_MAKEFLAGS) -C $(dir $@) V="$(V)" TARGET_DIR="$(dir $@)" $(notdir $@),)
 
 .PHONY: recurse-all recurse-clean
-recurse-all: $(addsuffix /all, $(ROMS))
-recurse-clean: $(addsuffix /clean, $(ROMS))
-recurse-distclean: $(addsuffix /distclean, $(ROMS))
+recurse-all: $(addsuffix /all, $(SUBDIRS))
+recurse-clean: $(addsuffix /clean, $(SUBDIRS))
+recurse-distclean: $(addsuffix /distclean, $(SUBDIRS))
 
 ######################################################################
 
@@ -210,6 +203,7 @@ clean: recurse-clean
 		! -path ./roms/edk2/ArmPkg/Library/GccLto/liblto-arm.a \
 		-exec rm {} +
 	rm -f TAGS cscope.* *~ */*~
+	@$(MAKE) -Ctests/qemu-iotests clean
 
 VERSION = $(shell cat $(SRC_PATH)/QEMU_VERSION)
 
@@ -220,7 +214,7 @@ qemu-%.tar.bz2:
 
 distclean: clean recurse-distclean
 	-$(quiet-@)test -f build.ninja && $(NINJA) $(NINJAFLAGS) -t clean -g || :
-	rm -f config-host.mak Makefile.prereqs qemu-bundle
+	rm -f config-host.mak Makefile.prereqs
 	rm -f tests/tcg/*/config-target.mak tests/tcg/config-host.mak
 	rm -f config.status
 	rm -f roms/seabios/config.mak
@@ -230,7 +224,7 @@ distclean: clean recurse-distclean
 	rm -f Makefile.ninja Makefile.mtest build.ninja.stamp meson.stamp
 	rm -f config.log
 	rm -f linux-headers/asm
-	rm -Rf .sdk
+	rm -Rf .sdk qemu-bundle
 
 find-src-path = find "$(SRC_PATH)" -path "$(SRC_PATH)/meson" -prune -o \
 	-type l -prune -o \( -name "*.[chsS]" -o -name "*.[ch].inc" \)
@@ -291,6 +285,13 @@ include $(SRC_PATH)/tests/vm/Makefile.include
 print-help-run = printf "  %-30s - %s\\n" "$1" "$2"
 print-help = @$(call print-help-run,$1,$2)
 
+.PHONY: update-linux-vdso
+update-linux-vdso:
+	@for m in $(SRC_PATH)/linux-user/*/Makefile.vdso; do \
+	  $(MAKE) $(SUBDIR_MAKEFLAGS) -C $$(dirname $$m) -f Makefile.vdso \
+		SRC_PATH=$(SRC_PATH) BUILD_DIR=$(BUILD_DIR); \
+	done
+
 .PHONY: help
 help:
 	@echo  'Generic targets:'
@@ -301,15 +302,13 @@ help:
 	$(call print-help,cscope,Generate cscope index)
 	$(call print-help,sparse,Run sparse on the QEMU source)
 	@echo  ''
-ifeq ($(CONFIG_PLUGIN),y)
-	@echo  'Plugin targets:'
-	$(call print-help,plugins,Build the example TCG plugins)
-	@echo  ''
-endif
 	@echo  'Cleaning targets:'
 	$(call print-help,clean,Remove most generated files but keep the config)
 	$(call print-help,distclean,Remove all generated files)
 	$(call print-help,dist,Build a distributable tarball)
+	@echo  ''
+	@echo  'Linux-user targets:'
+	$(call print-help,update-linux-vdso,Build linux-user vdso images)
 	@echo  ''
 	@echo  'Test targets:'
 	$(call print-help,check,Run all tests (check-help for details))
@@ -321,7 +320,7 @@ endif
 	@echo  'Documentation targets:'
 	$(call print-help,html man,Build documentation in specified format)
 	@echo  ''
-ifdef CONFIG_WIN32
+ifneq ($(filter msi, $(ninja-targets)),)
 	@echo  'Windows targets:'
 	$(call print-help,installer,Build NSIS-based installer for QEMU)
 	$(call print-help,msi,Build MSI-based installer for qemu-ga)

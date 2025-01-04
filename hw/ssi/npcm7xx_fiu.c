@@ -483,7 +483,7 @@ static void npcm7xx_fiu_enter_reset(Object *obj, ResetType type)
     s->regs[NPCM7XX_FIU_CFG] = 0x0000000b;
 }
 
-static void npcm7xx_fiu_hold_reset(Object *obj)
+static void npcm7xx_fiu_hold_reset(Object *obj, ResetType type)
 {
     NPCM7xxFIUState *s = NPCM7XX_FIU(obj);
     int i;
@@ -534,7 +534,7 @@ static const VMStateDescription vmstate_npcm7xx_fiu = {
     .name = "npcm7xx-fiu",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_INT32(active_cs, NPCM7xxFIUState),
         VMSTATE_UINT32_ARRAY(regs, NPCM7xxFIUState, NPCM7XX_FIU_NR_REGS),
         VMSTATE_END_OF_LIST(),

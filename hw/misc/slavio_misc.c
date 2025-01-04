@@ -408,7 +408,7 @@ static const VMStateDescription vmstate_misc = {
     .name ="slavio_misc",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(dummy, MiscState),
         VMSTATE_UINT8(config, MiscState),
         VMSTATE_UINT8(aux1, MiscState),
@@ -487,7 +487,7 @@ static void slavio_misc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = slavio_misc_reset;
+    device_class_set_legacy_reset(dc, slavio_misc_reset);
     dc->vmsd = &vmstate_misc;
 }
 

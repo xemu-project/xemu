@@ -31,6 +31,7 @@
 #include "cpu.h"
 #include "exec/helper-proto.h"
 #include "qemu/host-utils.h"
+#include "qemu/atomic.h"
 #include "exec/exec-all.h"
 
 void HELPER(exception)(CPUXtensaState *env, uint32_t excp)
@@ -104,9 +105,9 @@ void HELPER(waiti)(CPUXtensaState *env, uint32_t pc, uint32_t intlevel)
     env->sregs[PS] = (env->sregs[PS] & ~PS_INTLEVEL) |
         (intlevel << PS_INTLEVEL_SHIFT);
 
-    qemu_mutex_lock_iothread();
+    bql_lock();
     check_interrupts(env);
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
 
     if (env->pending_irq_level) {
         cpu_loop_exit(cpu);
@@ -119,9 +120,9 @@ void HELPER(waiti)(CPUXtensaState *env, uint32_t pc, uint32_t intlevel)
 
 void HELPER(check_interrupts)(CPUXtensaState *env)
 {
-    qemu_mutex_lock_iothread();
+    bql_lock();
     check_interrupts(env);
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
 }
 
 void HELPER(intset)(CPUXtensaState *env, uint32_t v)
@@ -169,6 +170,9 @@ static void handle_interrupt(CPUXtensaState *env)
         CPUState *cs = env_cpu(env);
 
         if (level > 1) {
+            /* env->config->nlevel check should have ensured this */
+            assert(level < ARRAY_SIZE(env->config->interrupt_vector));
+
             env->sregs[EPC1 + level - 1] = env->pc;
             env->sregs[EPS2 + level - 2] = env->sregs[PS];
             env->sregs[PS] =
@@ -201,8 +205,7 @@ static void handle_interrupt(CPUXtensaState *env)
 /* Called from cpu_handle_interrupt with BQL held */
 void xtensa_cpu_do_interrupt(CPUState *cs)
 {
-    XtensaCPU *cpu = XTENSA_CPU(cs);
-    CPUXtensaState *env = &cpu->env;
+    CPUXtensaState *env = cpu_env(cs);
 
     if (cs->exception_index == EXC_IRQ) {
         qemu_log_mask(CPU_LOG_INT,

@@ -53,9 +53,11 @@ virtio_gpu_cmd_ctx_submit(uint32_t ctx, uint32_t size) "ctx 0x%x, size %d"
 virtio_gpu_update_cursor(uint32_t scanout, uint32_t x, uint32_t y, const char *type, uint32_t res) "scanout %d, x %d, y %d, %s, res 0x%x"
 virtio_gpu_fence_ctrl(uint64_t fence, uint32_t type) "fence 0x%" PRIx64 ", type 0x%x"
 virtio_gpu_fence_resp(uint64_t fence) "fence 0x%" PRIx64
+virtio_gpu_inc_inflight_fences(uint32_t inflight) "in-flight+ %u"
+virtio_gpu_dec_inflight_fences(uint32_t inflight) "in-flight- %u"
+virtio_gpu_cmd_suspended(uint32_t cmd) "cmd 0x%x"
 
 # qxl.c
-disable qxl_interface_set_mm_time(int qid, uint32_t mm_time) "%d %d"
 disable qxl_io_write_vga(int qid, const char *mode, uint32_t addr, uint32_t val) "%d %s addr=%u val=%u"
 qxl_create_guest_primary(int qid, uint32_t width, uint32_t height, uint64_t mem, uint32_t format, uint32_t position) "%d %ux%u mem=0x%" PRIx64 " %u,%u"
 qxl_create_guest_primary_rest(int qid, int32_t stride, uint32_t type, uint32_t flags) "%d %d,%d,%d"
@@ -178,3 +180,17 @@ macfb_ctrl_write(uint64_t addr, uint64_t value, unsigned int size) "addr 0x%"PRI
 macfb_sense_read(uint32_t value) "video sense: 0x%"PRIx32
 macfb_sense_write(uint32_t value) "video sense: 0x%"PRIx32
 macfb_update_mode(uint32_t width, uint32_t height, uint8_t depth) "setting mode to width %"PRId32 " height %"PRId32 " size %d"
+
+# dm163.c
+dm163_redraw(uint8_t redraw) "0x%02x"
+dm163_dck(unsigned new_state) "dck : %u"
+dm163_en_b(unsigned new_state) "en_b : %u"
+dm163_rst_b(unsigned new_state) "rst_b : %u"
+dm163_lat_b(unsigned new_state) "lat_b : %u"
+dm163_sin(unsigned new_state) "sin : %u"
+dm163_selbk(unsigned new_state) "selbk : %u"
+dm163_activated_rows(int new_state) "Activated rows : 0x%" PRIx32 ""
+dm163_bits_ppi(unsigned dest_width) "dest_width : %u"
+dm163_leds(int led, uint32_t value) "led %d: 0x%x"
+dm163_channels(int channel, uint8_t value) "channel %d: 0x%x"
+dm163_refresh_rate(uint32_t rr) "refresh rate %d"

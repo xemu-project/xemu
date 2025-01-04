@@ -95,8 +95,7 @@ static void enter_long_mode(hv_vcpuid_t vcpu, uint64_t cr0, uint64_t efer)
     efer |= MSR_EFER_LMA;
     wvmcs(vcpu, VMCS_GUEST_IA32_EFER, efer);
     entry_ctls = rvmcs(vcpu, VMCS_ENTRY_CTLS);
-    wvmcs(vcpu, VMCS_ENTRY_CTLS, rvmcs(vcpu, VMCS_ENTRY_CTLS) |
-          VM_ENTRY_GUEST_LMA);
+    wvmcs(vcpu, VMCS_ENTRY_CTLS, entry_ctls | VM_ENTRY_GUEST_LMA);
 
     uint64_t guest_tr_ar = rvmcs(vcpu, VMCS_GUEST_TR_ACCESS_RIGHTS);
     if ((efer & MSR_EFER_LME) &&
@@ -180,15 +179,15 @@ static inline void macvm_set_rip(CPUState *cpu, uint64_t rip)
     uint64_t val;
 
     /* BUG, should take considering overlap.. */
-    wreg(cpu->hvf->fd, HV_X86_RIP, rip);
+    wreg(cpu->accel->fd, HV_X86_RIP, rip);
     env->eip = rip;
 
     /* after moving forward in rip, we need to clean INTERRUPTABILITY */
-   val = rvmcs(cpu->hvf->fd, VMCS_GUEST_INTERRUPTIBILITY);
+   val = rvmcs(cpu->accel->fd, VMCS_GUEST_INTERRUPTIBILITY);
    if (val & (VMCS_INTERRUPTIBILITY_STI_BLOCKING |
                VMCS_INTERRUPTIBILITY_MOVSS_BLOCKING)) {
         env->hflags &= ~HF_INHIBIT_IRQ_MASK;
-        wvmcs(cpu->hvf->fd, VMCS_GUEST_INTERRUPTIBILITY,
+        wvmcs(cpu->accel->fd, VMCS_GUEST_INTERRUPTIBILITY,
                val & ~(VMCS_INTERRUPTIBILITY_STI_BLOCKING |
                VMCS_INTERRUPTIBILITY_MOVSS_BLOCKING));
    }
@@ -200,9 +199,9 @@ static inline void vmx_clear_nmi_blocking(CPUState *cpu)
     CPUX86State *env = &x86_cpu->env;
 
     env->hflags2 &= ~HF2_NMI_MASK;
-    uint32_t gi = (uint32_t) rvmcs(cpu->hvf->fd, VMCS_GUEST_INTERRUPTIBILITY);
+    uint32_t gi = (uint32_t) rvmcs(cpu->accel->fd, VMCS_GUEST_INTERRUPTIBILITY);
     gi &= ~VMCS_INTERRUPTIBILITY_NMI_BLOCKING;
-    wvmcs(cpu->hvf->fd, VMCS_GUEST_INTERRUPTIBILITY, gi);
+    wvmcs(cpu->accel->fd, VMCS_GUEST_INTERRUPTIBILITY, gi);
 }
 
 static inline void vmx_set_nmi_blocking(CPUState *cpu)
@@ -211,16 +210,16 @@ static inline void vmx_set_nmi_blocking(CPUState *cpu)
     CPUX86State *env = &x86_cpu->env;
 
     env->hflags2 |= HF2_NMI_MASK;
-    uint32_t gi = (uint32_t)rvmcs(cpu->hvf->fd, VMCS_GUEST_INTERRUPTIBILITY);
+    uint32_t gi = (uint32_t)rvmcs(cpu->accel->fd, VMCS_GUEST_INTERRUPTIBILITY);
     gi |= VMCS_INTERRUPTIBILITY_NMI_BLOCKING;
-    wvmcs(cpu->hvf->fd, VMCS_GUEST_INTERRUPTIBILITY, gi);
+    wvmcs(cpu->accel->fd, VMCS_GUEST_INTERRUPTIBILITY, gi);
 }
 
 static inline void vmx_set_nmi_window_exiting(CPUState *cpu)
 {
     uint64_t val;
-    val = rvmcs(cpu->hvf->fd, VMCS_PRI_PROC_BASED_CTLS);
-    wvmcs(cpu->hvf->fd, VMCS_PRI_PROC_BASED_CTLS, val |
+    val = rvmcs(cpu->accel->fd, VMCS_PRI_PROC_BASED_CTLS);
+    wvmcs(cpu->accel->fd, VMCS_PRI_PROC_BASED_CTLS, val |
           VMCS_PRI_PROC_BASED_CTLS_NMI_WINDOW_EXITING);
 
 }
@@ -229,8 +228,8 @@ static inline void vmx_clear_nmi_window_exiting(CPUState *cpu)
 {
 
     uint64_t val;
-    val = rvmcs(cpu->hvf->fd, VMCS_PRI_PROC_BASED_CTLS);
-    wvmcs(cpu->hvf->fd, VMCS_PRI_PROC_BASED_CTLS, val &
+    val = rvmcs(cpu->accel->fd, VMCS_PRI_PROC_BASED_CTLS);
+    wvmcs(cpu->accel->fd, VMCS_PRI_PROC_BASED_CTLS, val &
           ~VMCS_PRI_PROC_BASED_CTLS_NMI_WINDOW_EXITING);
 }
 

@@ -24,7 +24,7 @@ Deterministic replay has the following features:
  * Writes execution log into the file for later replaying for multiple times
    on different machines.
  * Supports i386, x86_64, ARM, AArch64, Risc-V, MIPS, MIPS64, S390X, Alpha,
-   PowerPC, PowerPC64, M68000, Microblaze, OpenRISC, Nios II, SPARC,
+   PowerPC, PowerPC64, M68000, Microblaze, OpenRISC, SPARC,
    and Xtensa hardware platforms.
  * Performs deterministic replay of all operations with keyboard and mouse
    input devices, serial ports, and network.
@@ -181,7 +181,7 @@ Audio data is recorded and replay automatically. The command line for recording
 and replaying must contain identical specifications of audio hardware, e.g.:
 
 .. parsed-literal::
-    -soundhw ac97
+    -audio pa,model=ac97
 
 Serial ports
 ------------

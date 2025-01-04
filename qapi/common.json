@@ -52,17 +52,6 @@
   'data': [ 'on', 'off', 'split' ] }
 
 ##
-# @String:
-#
-# A fat type wrapping 'str', to be embedded in lists.
-#
-# Since: 1.2
-##
-{ 'struct': 'String',
-  'data': {
-    'str': 'str' } }
-
-##
 # @StrOrNull:
 #
 # This is a string value or the explicit lack of a string (null
@@ -70,6 +59,7 @@
 # has a different meaning.
 #
 # @s: the string value
+#
 # @n: no string value
 #
 # Since: 2.10
@@ -117,10 +107,14 @@
 #
 # @16: 16.0GT/s
 #
+# @32: 32.0GT/s (since 9.0)
+#
+# @64: 64.0GT/s (since 9.0)
+#
 # Since: 4.0
 ##
 { 'enum': 'PCIELinkSpeed',
-  'data': [ '2_5', '5', '8', '16' ] }
+  'data': [ '2_5', '5', '8', '16', '32', '64' ] }
 
 ##
 # @PCIELinkWidth:
@@ -155,11 +149,11 @@
 #
 # @preferred: set the preferred host nodes for allocation
 #
-# @bind: a strict policy that restricts memory allocation to the
-#        host nodes specified
+# @bind: a strict policy that restricts memory allocation to the host
+#     nodes specified
 #
-# @interleave: memory allocations are interleaved across the set
-#              of host nodes specified
+# @interleave: memory allocations are interleaved across the set of
+#     host nodes specified
 #
 # Since: 2.1
 ##
@@ -169,17 +163,17 @@
 ##
 # @NetFilterDirection:
 #
-# Indicates whether a netfilter is attached to a netdev's transmit queue or
-# receive queue or both.
+# Indicates whether a netfilter is attached to a netdev's transmit
+# queue or receive queue or both.
 #
 # @all: the filter is attached both to the receive and the transmit
-#       queue of the netdev (default).
+#     queue of the netdev (default).
 #
 # @rx: the filter is attached to the receive queue of the netdev,
-#      where it will receive packets sent to the netdev.
+#     where it will receive packets sent to the netdev.
 #
 # @tx: the filter is attached to the transmit queue of the netdev,
-#      where it will receive packets sent by the netdev.
+#     where it will receive packets sent by the netdev.
 #
 # Since: 2.5
 ##
@@ -189,7 +183,19 @@
 ##
 # @GrabToggleKeys:
 #
-# Keys to toggle input-linux between host and guest.
+# Key combinations to toggle input-linux between host and guest.
+#
+# @ctrl-ctrl: left and right control key
+#
+# @alt-alt: left and right alt key
+#
+# @shift-shift: left and right shift key
+#
+# @meta-meta: left and right meta key
+#
+# @scrolllock: scroll lock key
+#
+# @ctrl-scrolllock: either control key and scroll lock key
 #
 # Since: 4.0
 ##

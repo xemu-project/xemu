@@ -20,6 +20,7 @@
 
 #include "qemu/osdep.h"
 #include "io/channel-command.h"
+#include "io/channel-util.h"
 #include "io/channel-watch.h"
 #include "qapi/error.h"
 #include "qemu/module.h"
@@ -203,6 +204,7 @@ static ssize_t qio_channel_command_readv(QIOChannel *ioc,
                                          size_t niov,
                                          int **fds,
                                          size_t *nfds,
+                                         int flags,
                                          Error **errp)
 {
     QIOChannelCommand *cioc = QIO_CHANNEL_COMMAND(ioc);
@@ -330,16 +332,17 @@ static int qio_channel_command_close(QIOChannel *ioc,
 
 
 static void qio_channel_command_set_aio_fd_handler(QIOChannel *ioc,
-                                                   AioContext *ctx,
+                                                   AioContext *read_ctx,
                                                    IOHandler *io_read,
+                                                   AioContext *write_ctx,
                                                    IOHandler *io_write,
                                                    void *opaque)
 {
     QIOChannelCommand *cioc = QIO_CHANNEL_COMMAND(ioc);
-    aio_set_fd_handler(ctx, cioc->readfd, false,
-                       io_read, NULL, NULL, NULL, opaque);
-    aio_set_fd_handler(ctx, cioc->writefd, false,
-                       NULL, io_write, NULL, NULL, opaque);
+
+    qio_channel_util_set_aio_fd_handler(cioc->readfd, read_ctx, io_read,
+                                        cioc->writefd, write_ctx, io_write,
+                                        opaque);
 }
 
 

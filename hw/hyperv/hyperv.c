@@ -12,6 +12,7 @@
 #include "qemu/module.h"
 #include "qapi/error.h"
 #include "exec/address-spaces.h"
+#include "exec/memory.h"
 #include "sysemu/kvm.h"
 #include "qemu/bitops.h"
 #include "qemu/error-report.h"
@@ -21,6 +22,9 @@
 #include "qemu/rcu_queue.h"
 #include "hw/hyperv/hyperv.h"
 #include "qom/object.h"
+#include "target/i386/kvm/hyperv-proto.h"
+#include "target/i386/cpu.h"
+#include "exec/cpu-all.h"
 
 struct SynICState {
     DeviceState parent_obj;
@@ -134,7 +138,7 @@ static void synic_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = synic_realize;
-    dc->reset = synic_reset;
+    device_class_set_legacy_reset(dc, synic_reset);
     dc->user_creatable = false;
 }
 
@@ -367,6 +371,31 @@ int hyperv_set_event_flag(HvSintRoute *sint_route, unsigned eventno)
         ret = 0;
     }
     return ret;
+}
+
+static int kvm_irqchip_add_hv_sint_route(KVMState *s, uint32_t vcpu, uint32_t sint)
+{
+    struct kvm_irq_routing_entry kroute = {};
+    int virq;
+
+    if (!kvm_gsi_routing_enabled()) {
+        return -ENOSYS;
+    }
+    virq = kvm_irqchip_get_virq(s);
+    if (virq < 0) {
+        return virq;
+    }
+
+    kroute.gsi = virq;
+    kroute.type = KVM_IRQ_ROUTING_HV_SINT;
+    kroute.flags = 0;
+    kroute.u.hv_sint.vcpu = vcpu;
+    kroute.u.hv_sint.sint = sint;
+
+    kvm_add_routing_entry(s, &kroute);
+    kvm_irqchip_commit_routes(s);
+
+    return virq;
 }
 
 HvSintRoute *hyperv_sint_route_new(uint32_t vp_index, uint32_t sint,
@@ -946,4 +975,16 @@ uint64_t hyperv_syndbg_query_options(void)
     }
 
     return msg.u.query_options.options;
+}
+
+static bool vmbus_recommended_features_enabled;
+
+bool hyperv_are_vmbus_recommended_features_enabled(void)
+{
+    return vmbus_recommended_features_enabled;
+}
+
+void hyperv_set_vmbus_recommended_features_enabled(void)
+{
+    vmbus_recommended_features_enabled = true;
 }

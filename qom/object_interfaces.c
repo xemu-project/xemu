@@ -2,8 +2,8 @@
 
 #include "qemu/cutils.h"
 #include "qapi/error.h"
-#include "qapi/qapi-commands-qom.h"
 #include "qapi/qapi-visit-qom.h"
+#include "qapi/qmp/qobject.h"
 #include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qerror.h"
 #include "qapi/qmp/qjson.h"
@@ -90,7 +90,7 @@ Object *user_creatable_add_type(const char *type, const char *id,
         return NULL;
     }
 
-    klass = object_class_by_name(type);
+    klass = module_object_class_by_name(type);
     if (!klass) {
         error_setg(errp, "invalid object type: %s", type);
         return NULL;
@@ -108,7 +108,7 @@ Object *user_creatable_add_type(const char *type, const char *id,
     }
 
     assert(qdict);
-    obj = object_new(type);
+    obj = object_new_with_class(klass);
     object_set_properties_from_qdict(obj, qdict, v, &local_err);
     if (local_err) {
         goto out;
@@ -259,7 +259,7 @@ static void user_creatable_print_help_from_qdict(QDict *args)
     }
 }
 
-ObjectOptions *user_creatable_parse_str(const char *optarg, Error **errp)
+ObjectOptions *user_creatable_parse_str(const char *str, Error **errp)
 {
     ERRP_GUARD();
     QObject *obj;
@@ -267,14 +267,14 @@ ObjectOptions *user_creatable_parse_str(const char *optarg, Error **errp)
     Visitor *v;
     ObjectOptions *options;
 
-    if (optarg[0] == '{') {
-        obj = qobject_from_json(optarg, errp);
+    if (str[0] == '{') {
+        obj = qobject_from_json(str, errp);
         if (!obj) {
             return NULL;
         }
         v = qobject_input_visitor_new(obj);
     } else {
-        QDict *args = keyval_parse(optarg, "qom-type", &help, errp);
+        QDict *args = keyval_parse(str, "qom-type", &help, errp);
         if (*errp) {
             return NULL;
         }
@@ -295,12 +295,12 @@ ObjectOptions *user_creatable_parse_str(const char *optarg, Error **errp)
     return options;
 }
 
-bool user_creatable_add_from_str(const char *optarg, Error **errp)
+bool user_creatable_add_from_str(const char *str, Error **errp)
 {
     ERRP_GUARD();
     ObjectOptions *options;
 
-    options = user_creatable_parse_str(optarg, errp);
+    options = user_creatable_parse_str(str, errp);
     if (!options) {
         return false;
     }
@@ -310,9 +310,9 @@ bool user_creatable_add_from_str(const char *optarg, Error **errp)
     return !*errp;
 }
 
-void user_creatable_process_cmdline(const char *optarg)
+void user_creatable_process_cmdline(const char *cmdline)
 {
-    if (!user_creatable_add_from_str(optarg, &error_fatal)) {
+    if (!user_creatable_add_from_str(cmdline, &error_fatal)) {
         /* Help was printed */
         exit(EXIT_SUCCESS);
     }

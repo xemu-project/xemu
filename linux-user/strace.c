@@ -13,6 +13,9 @@
 #include <linux/if_packet.h>
 #include <linux/in6.h>
 #include <linux/netlink.h>
+#ifdef HAVE_OPENAT2_H
+#include <linux/openat2.h>
+#endif
 #include <sched.h>
 #include "qemu.h"
 #include "user-internals.h"
@@ -46,15 +49,21 @@ struct syscallname {
  */
 struct flags {
     abi_long    f_value;  /* flag */
+    abi_long    f_mask;   /* mask */
     const char  *f_string; /* stringified flag */
 };
 
+/* No 'struct flags' element should have a zero mask. */
+#define FLAG_BASIC(V, M, N)      { V, M | QEMU_BUILD_BUG_ON_ZERO(!(M)), N }
+
 /* common flags for all architectures */
-#define FLAG_GENERIC(name) { name, #name }
+#define FLAG_GENERIC_MASK(V, M)  FLAG_BASIC(V, M, #V)
+#define FLAG_GENERIC(V)          FLAG_BASIC(V, V, #V)
 /* target specific flags (syscall_defs.h has TARGET_<flag>) */
-#define FLAG_TARGET(name)  { TARGET_ ## name, #name }
+#define FLAG_TARGET_MASK(V, M)   FLAG_BASIC(TARGET_##V, TARGET_##M, #V)
+#define FLAG_TARGET(V)           FLAG_BASIC(TARGET_##V, TARGET_##V, #V)
 /* end of flags array */
-#define FLAG_END           { 0, NULL }
+#define FLAG_END           { 0, 0, NULL }
 
 /* Structure used to translate enumerated values into strings */
 struct enums {
@@ -81,6 +90,7 @@ UNUSED static void print_syscall_epilogue(const struct syscallname *);
 UNUSED static void print_string(abi_long, int);
 UNUSED static void print_buf(abi_long addr, abi_long len, int last);
 UNUSED static void print_raw_param(const char *, abi_long, int);
+UNUSED static void print_raw_param64(const char *, long long, int last);
 UNUSED static void print_timeval(abi_ulong, int);
 UNUSED static void print_timespec(abi_ulong, int);
 UNUSED static void print_timespec64(abi_ulong, int);
@@ -151,19 +161,20 @@ static const char * const target_signal_name[] = {
 };
 
 static void
+print_signal_1(abi_ulong arg)
+{
+    if (arg < ARRAY_SIZE(target_signal_name)) {
+        qemu_log("%s", target_signal_name[arg]);
+    } else {
+        qemu_log(TARGET_ABI_FMT_lu, arg);
+    }
+}
+
+static void
 print_signal(abi_ulong arg, int last)
 {
-    const char *signal_name = NULL;
-
-    if (arg < ARRAY_SIZE(target_signal_name)) {
-        signal_name = target_signal_name[arg];
-    }
-
-    if (signal_name == NULL) {
-        print_raw_param("%ld", arg, last);
-        return;
-    }
-    qemu_log("%s%s", signal_name, get_comma(last));
+    print_signal_1(arg);
+    qemu_log("%s", get_comma(last));
 }
 
 static void print_si_code(int arg)
@@ -360,14 +371,13 @@ print_sockaddr(abi_ulong addr, abi_long addrlen, int last)
         switch (sa_family) {
         case AF_UNIX: {
             struct target_sockaddr_un *un = (struct target_sockaddr_un *)sa;
-            int i;
             qemu_log("{sun_family=AF_UNIX,sun_path=\"");
             for (i = 0; i < addrlen -
                             offsetof(struct target_sockaddr_un, sun_path) &&
                  un->sun_path[i]; i++) {
                 qemu_log("%c", un->sun_path[i]);
             }
-            qemu_log("\"}");
+            qemu_log("\"},");
             break;
         }
         case AF_INET: {
@@ -377,7 +387,7 @@ print_sockaddr(abi_ulong addr, abi_long addrlen, int last)
                      ntohs(in->sin_port));
             qemu_log("sin_addr=inet_addr(\"%d.%d.%d.%d\")",
                      c[0], c[1], c[2], c[3]);
-            qemu_log("}");
+            qemu_log("},");
             break;
         }
         case AF_PACKET: {
@@ -408,12 +418,12 @@ print_sockaddr(abi_ulong addr, abi_long addrlen, int last)
             }
             qemu_log(",sll_addr=%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
                      c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]);
-            qemu_log("}");
+            qemu_log("},");
             break;
         }
         case AF_NETLINK: {
             struct target_sockaddr_nl *nl = (struct target_sockaddr_nl *)sa;
-            qemu_log("{nl_family=AF_NETLINK,nl_pid=%u,nl_groups=%u}",
+            qemu_log("{nl_family=AF_NETLINK,nl_pid=%u,nl_groups=%u},",
                      tswap32(nl->nl_pid), tswap32(nl->nl_groups));
             break;
         }
@@ -423,14 +433,14 @@ print_sockaddr(abi_ulong addr, abi_long addrlen, int last)
                 qemu_log("%02x, ", sa->sa_data[i]);
             }
             qemu_log("%02x}", sa->sa_data[i]);
-            qemu_log("}");
+            qemu_log("},");
             break;
         }
         unlock_user(sa, addr, 0);
     } else {
-        print_raw_param("0x"TARGET_ABI_FMT_lx, addr, 0);
+        print_pointer(addr, 0);
     }
-    qemu_log(", "TARGET_ABI_FMT_ld"%s", addrlen, get_comma(last));
+    qemu_log(TARGET_ABI_FMT_ld"%s", addrlen, get_comma(last));
 }
 
 static void
@@ -506,20 +516,68 @@ print_socket_protocol(int domain, int type, int protocol)
         case NETLINK_ROUTE:
             qemu_log("NETLINK_ROUTE");
             break;
+        case NETLINK_UNUSED:
+            qemu_log("NETLINK_UNUSED");
+            break;
+        case NETLINK_USERSOCK:
+            qemu_log("NETLINK_USERSOCK");
+            break;
+        case NETLINK_FIREWALL:
+            qemu_log("NETLINK_FIREWALL");
+            break;
+        case NETLINK_SOCK_DIAG:
+            qemu_log("NETLINK_SOCK_DIAG");
+            break;
+        case NETLINK_NFLOG:
+            qemu_log("NETLINK_NFLOG");
+            break;
+        case NETLINK_XFRM:
+            qemu_log("NETLINK_XFRM");
+            break;
+        case NETLINK_SELINUX:
+            qemu_log("NETLINK_SELINUX");
+            break;
+        case NETLINK_ISCSI:
+            qemu_log("NETLINK_ISCSI");
+            break;
         case NETLINK_AUDIT:
             qemu_log("NETLINK_AUDIT");
+            break;
+        case NETLINK_FIB_LOOKUP:
+            qemu_log("NETLINK_FIB_LOOKUP");
+            break;
+        case NETLINK_CONNECTOR:
+            qemu_log("NETLINK_CONNECTOR");
             break;
         case NETLINK_NETFILTER:
             qemu_log("NETLINK_NETFILTER");
             break;
+        case NETLINK_IP6_FW:
+            qemu_log("NETLINK_IP6_FW");
+            break;
+        case NETLINK_DNRTMSG:
+            qemu_log("NETLINK_DNRTMSG");
+            break;
         case NETLINK_KOBJECT_UEVENT:
             qemu_log("NETLINK_KOBJECT_UEVENT");
+            break;
+        case NETLINK_GENERIC:
+            qemu_log("NETLINK_GENERIC");
+            break;
+        case NETLINK_SCSITRANSPORT:
+            qemu_log("NETLINK_SCSITRANSPORT");
+            break;
+        case NETLINK_ECRYPTFS:
+            qemu_log("NETLINK_ECRYPTFS");
             break;
         case NETLINK_RDMA:
             qemu_log("NETLINK_RDMA");
             break;
         case NETLINK_CRYPTO:
             qemu_log("NETLINK_CRYPTO");
+            break;
+        case NETLINK_SMC:
+            qemu_log("NETLINK_SMC");
             break;
         default:
             qemu_log("%d", protocol);
@@ -603,7 +661,6 @@ print_newselect(CPUArchState *cpu_env, const struct syscallname *name,
 }
 #endif
 
-#ifdef TARGET_NR_semctl
 static void
 print_semctl(CPUArchState *cpu_env, const struct syscallname *name,
              abi_long arg1, abi_long arg2, abi_long arg3,
@@ -614,38 +671,25 @@ print_semctl(CPUArchState *cpu_env, const struct syscallname *name,
     print_ipc_cmd(arg3);
     qemu_log(",0x" TARGET_ABI_FMT_lx ")", arg4);
 }
-#endif
 
 static void
-print_execve(CPUArchState *cpu_env, const struct syscallname *name,
-             abi_long arg1, abi_long arg2, abi_long arg3,
-             abi_long arg4, abi_long arg5, abi_long arg6)
+print_shmat(CPUArchState *cpu_env, const struct syscallname *name,
+            abi_long arg0, abi_long arg1, abi_long arg2,
+            abi_long arg3, abi_long arg4, abi_long arg5)
 {
-    abi_ulong arg_ptr_addr;
-    char *s;
+    static const struct flags shmat_flags[] = {
+        FLAG_GENERIC(SHM_RND),
+        FLAG_GENERIC(SHM_REMAP),
+        FLAG_GENERIC(SHM_RDONLY),
+        FLAG_GENERIC(SHM_EXEC),
+        FLAG_END
+    };
 
-    if (!(s = lock_user_string(arg1)))
-        return;
-    qemu_log("%s(\"%s\",{", name->name, s);
-    unlock_user(s, arg1, 0);
-
-    for (arg_ptr_addr = arg2; ; arg_ptr_addr += sizeof(abi_ulong)) {
-        abi_ulong *arg_ptr, arg_addr;
-
-        arg_ptr = lock_user(VERIFY_READ, arg_ptr_addr, sizeof(abi_ulong), 1);
-        if (!arg_ptr)
-            return;
-    arg_addr = tswapal(*arg_ptr);
-        unlock_user(arg_ptr, arg_ptr_addr, 0);
-        if (!arg_addr)
-            break;
-        if ((s = lock_user_string(arg_addr))) {
-            qemu_log("\"%s\",", s);
-            unlock_user(s, arg_addr, 0);
-        }
-    }
-
-    qemu_log("NULL})");
+    print_syscall_prologue(name);
+    print_raw_param(TARGET_ABI_FMT_ld, arg0, 0);
+    print_pointer(arg1, 0);
+    print_flags(shmat_flags, arg2, 1);
+    print_syscall_epilogue(name);
 }
 
 #ifdef TARGET_NR_ipc
@@ -656,10 +700,12 @@ print_ipc(CPUArchState *cpu_env, const struct syscallname *name,
 {
     switch(arg1) {
     case IPCOP_semctl:
-        qemu_log("semctl(" TARGET_ABI_FMT_ld "," TARGET_ABI_FMT_ld ",",
-                 arg1, arg2);
-        print_ipc_cmd(arg3);
-        qemu_log(",0x" TARGET_ABI_FMT_lx ")", arg4);
+        print_semctl(cpu_env, &(const struct syscallname){ .name = "semctl" },
+                     arg2, arg3, arg4, arg5, 0, 0);
+        break;
+    case IPCOP_shmat:
+        print_shmat(cpu_env, &(const struct syscallname){ .name = "shmat" },
+                    arg2, arg5, arg3, 0, 0, 0);
         break;
     default:
         qemu_log(("%s("
@@ -669,6 +715,51 @@ print_ipc(CPUArchState *cpu_env, const struct syscallname *name,
                   TARGET_ABI_FMT_ld
                   ")"),
                  name->name, arg1, arg2, arg3, arg4);
+    }
+}
+#endif
+
+#ifdef TARGET_NR_rt_sigprocmask
+static void print_target_sigset_t_1(target_sigset_t *set, int last)
+{
+    bool first = true;
+    int i, sig = 1;
+
+    qemu_log("[");
+    for (i = 0; i < TARGET_NSIG_WORDS; i++) {
+        abi_ulong bits = 0;
+        int j;
+
+        __get_user(bits, &set->sig[i]);
+        for (j = 0; j < sizeof(bits) * 8; j++) {
+            if (bits & ((abi_ulong)1 << j)) {
+                if (first) {
+                    first = false;
+                } else {
+                    qemu_log(" ");
+                }
+                print_signal_1(sig);
+            }
+            sig++;
+        }
+    }
+    qemu_log("]%s", get_comma(last));
+}
+
+static void print_target_sigset_t(abi_ulong addr, abi_ulong size, int last)
+{
+    if (addr && size == sizeof(target_sigset_t)) {
+        target_sigset_t *set;
+
+        set = lock_user(VERIFY_READ, addr, sizeof(target_sigset_t), 1);
+        if (set) {
+            print_target_sigset_t_1(set, last);
+            unlock_user(set, addr, 0);
+        } else {
+            print_pointer(addr, last);
+        }
+    } else {
+        print_pointer(addr, last);
     }
 }
 #endif
@@ -945,15 +1036,15 @@ print_syscall_ret_ioctl(CPUArchState *cpu_env, const struct syscallname *name,
 }
 #endif
 
-UNUSED static struct flags access_flags[] = {
-    FLAG_GENERIC(F_OK),
+UNUSED static const struct flags access_flags[] = {
+    FLAG_GENERIC_MASK(F_OK, R_OK | W_OK | X_OK),
     FLAG_GENERIC(R_OK),
     FLAG_GENERIC(W_OK),
     FLAG_GENERIC(X_OK),
     FLAG_END,
 };
 
-UNUSED static struct flags at_file_flags[] = {
+UNUSED static const struct flags at_file_flags[] = {
 #ifdef AT_EACCESS
     FLAG_GENERIC(AT_EACCESS),
 #endif
@@ -963,14 +1054,14 @@ UNUSED static struct flags at_file_flags[] = {
     FLAG_END,
 };
 
-UNUSED static struct flags unlinkat_flags[] = {
+UNUSED static const struct flags unlinkat_flags[] = {
 #ifdef AT_REMOVEDIR
     FLAG_GENERIC(AT_REMOVEDIR),
 #endif
     FLAG_END,
 };
 
-UNUSED static struct flags mode_flags[] = {
+UNUSED static const struct flags mode_flags[] = {
     FLAG_GENERIC(S_IFSOCK),
     FLAG_GENERIC(S_IFLNK),
     FLAG_GENERIC(S_IFREG),
@@ -981,19 +1072,21 @@ UNUSED static struct flags mode_flags[] = {
     FLAG_END,
 };
 
-UNUSED static struct flags open_access_flags[] = {
-    FLAG_TARGET(O_RDONLY),
-    FLAG_TARGET(O_WRONLY),
-    FLAG_TARGET(O_RDWR),
+UNUSED static const struct flags open_access_flags[] = {
+    FLAG_TARGET_MASK(O_RDONLY, O_ACCMODE),
+    FLAG_TARGET_MASK(O_WRONLY, O_ACCMODE),
+    FLAG_TARGET_MASK(O_RDWR, O_ACCMODE),
     FLAG_END,
 };
 
-UNUSED static struct flags open_flags[] = {
+UNUSED static const struct flags open_flags[] = {
     FLAG_TARGET(O_APPEND),
     FLAG_TARGET(O_CREAT),
     FLAG_TARGET(O_DIRECTORY),
     FLAG_TARGET(O_EXCL),
+#if TARGET_O_LARGEFILE != 0
     FLAG_TARGET(O_LARGEFILE),
+#endif
     FLAG_TARGET(O_NOCTTY),
     FLAG_TARGET(O_NOFOLLOW),
     FLAG_TARGET(O_NONBLOCK),      /* also O_NDELAY */
@@ -1019,7 +1112,19 @@ UNUSED static struct flags open_flags[] = {
     FLAG_END,
 };
 
-UNUSED static struct flags mount_flags[] = {
+UNUSED static const struct flags openat2_resolve_flags[] = {
+#ifdef HAVE_OPENAT2_H
+    FLAG_GENERIC(RESOLVE_NO_XDEV),
+    FLAG_GENERIC(RESOLVE_NO_MAGICLINKS),
+    FLAG_GENERIC(RESOLVE_NO_SYMLINKS),
+    FLAG_GENERIC(RESOLVE_BENEATH),
+    FLAG_GENERIC(RESOLVE_IN_ROOT),
+    FLAG_GENERIC(RESOLVE_CACHED),
+#endif
+    FLAG_END,
+};
+
+UNUSED static const struct flags mount_flags[] = {
 #ifdef MS_BIND
     FLAG_GENERIC(MS_BIND),
 #endif
@@ -1044,7 +1149,7 @@ UNUSED static struct flags mount_flags[] = {
     FLAG_END,
 };
 
-UNUSED static struct flags umount2_flags[] = {
+UNUSED static const struct flags umount2_flags[] = {
 #ifdef MNT_FORCE
     FLAG_GENERIC(MNT_FORCE),
 #endif
@@ -1057,8 +1162,8 @@ UNUSED static struct flags umount2_flags[] = {
     FLAG_END,
 };
 
-UNUSED static struct flags mmap_prot_flags[] = {
-    FLAG_GENERIC(PROT_NONE),
+UNUSED static const struct flags mmap_prot_flags[] = {
+    FLAG_GENERIC_MASK(PROT_NONE, PROT_READ | PROT_WRITE | PROT_EXEC),
     FLAG_GENERIC(PROT_EXEC),
     FLAG_GENERIC(PROT_READ),
     FLAG_GENERIC(PROT_WRITE),
@@ -1068,35 +1173,39 @@ UNUSED static struct flags mmap_prot_flags[] = {
     FLAG_END,
 };
 
-UNUSED static struct flags mmap_flags[] = {
-    FLAG_TARGET(MAP_SHARED),
-    FLAG_TARGET(MAP_PRIVATE),
+UNUSED static const struct flags mmap_flags[] = {
+    FLAG_TARGET_MASK(MAP_SHARED, MAP_TYPE),
+    FLAG_TARGET_MASK(MAP_PRIVATE, MAP_TYPE),
+    FLAG_TARGET_MASK(MAP_SHARED_VALIDATE, MAP_TYPE),
     FLAG_TARGET(MAP_ANONYMOUS),
     FLAG_TARGET(MAP_DENYWRITE),
-    FLAG_TARGET(MAP_FIXED),
-    FLAG_TARGET(MAP_GROWSDOWN),
     FLAG_TARGET(MAP_EXECUTABLE),
-#ifdef MAP_LOCKED
+    FLAG_TARGET(MAP_FIXED),
+    FLAG_TARGET(MAP_FIXED_NOREPLACE),
+    FLAG_TARGET(MAP_GROWSDOWN),
+    FLAG_TARGET(MAP_HUGETLB),
     FLAG_TARGET(MAP_LOCKED),
-#endif
-#ifdef MAP_NONBLOCK
     FLAG_TARGET(MAP_NONBLOCK),
-#endif
     FLAG_TARGET(MAP_NORESERVE),
-#ifdef MAP_POPULATE
     FLAG_TARGET(MAP_POPULATE),
-#endif
-#ifdef TARGET_MAP_UNINITIALIZED
+    FLAG_TARGET(MAP_STACK),
+    FLAG_TARGET(MAP_SYNC),
+#if TARGET_MAP_UNINITIALIZED != 0
     FLAG_TARGET(MAP_UNINITIALIZED),
 #endif
     FLAG_END,
 };
 
-UNUSED static struct flags clone_flags[] = {
+#ifndef CLONE_PIDFD
+# define CLONE_PIDFD 0x00001000
+#endif
+
+UNUSED static const struct flags clone_flags[] = {
     FLAG_GENERIC(CLONE_VM),
     FLAG_GENERIC(CLONE_FS),
     FLAG_GENERIC(CLONE_FILES),
     FLAG_GENERIC(CLONE_SIGHAND),
+    FLAG_GENERIC(CLONE_PIDFD),
     FLAG_GENERIC(CLONE_PTRACE),
     FLAG_GENERIC(CLONE_VFORK),
     FLAG_GENERIC(CLONE_PARENT),
@@ -1136,7 +1245,17 @@ UNUSED static struct flags clone_flags[] = {
     FLAG_END,
 };
 
-UNUSED static struct flags msg_flags[] = {
+UNUSED static const struct flags execveat_flags[] = {
+#ifdef AT_EMPTY_PATH
+    FLAG_GENERIC(AT_EMPTY_PATH),
+#endif
+#ifdef AT_SYMLINK_NOFOLLOW
+    FLAG_GENERIC(AT_SYMLINK_NOFOLLOW),
+#endif
+    FLAG_END,
+};
+
+UNUSED static const struct flags msg_flags[] = {
     /* send */
     FLAG_GENERIC(MSG_CONFIRM),
     FLAG_GENERIC(MSG_DONTROUTE),
@@ -1156,7 +1275,7 @@ UNUSED static struct flags msg_flags[] = {
     FLAG_END,
 };
 
-UNUSED static struct flags statx_flags[] = {
+UNUSED static const struct flags statx_flags[] = {
 #ifdef AT_EMPTY_PATH
     FLAG_GENERIC(AT_EMPTY_PATH),
 #endif
@@ -1167,18 +1286,18 @@ UNUSED static struct flags statx_flags[] = {
     FLAG_GENERIC(AT_SYMLINK_NOFOLLOW),
 #endif
 #ifdef AT_STATX_SYNC_AS_STAT
-    FLAG_GENERIC(AT_STATX_SYNC_AS_STAT),
+    FLAG_GENERIC_MASK(AT_STATX_SYNC_AS_STAT, AT_STATX_SYNC_TYPE),
 #endif
 #ifdef AT_STATX_FORCE_SYNC
-    FLAG_GENERIC(AT_STATX_FORCE_SYNC),
+    FLAG_GENERIC_MASK(AT_STATX_FORCE_SYNC, AT_STATX_SYNC_TYPE),
 #endif
 #ifdef AT_STATX_DONT_SYNC
-    FLAG_GENERIC(AT_STATX_DONT_SYNC),
+    FLAG_GENERIC_MASK(AT_STATX_DONT_SYNC, AT_STATX_SYNC_TYPE),
 #endif
     FLAG_END,
 };
 
-UNUSED static struct flags statx_mask[] = {
+UNUSED static const struct flags statx_mask[] = {
 /* This must come first, because it includes everything.  */
 #ifdef STATX_ALL
     FLAG_GENERIC(STATX_ALL),
@@ -1226,7 +1345,7 @@ UNUSED static struct flags statx_mask[] = {
     FLAG_END,
 };
 
-UNUSED static struct flags falloc_flags[] = {
+UNUSED static const struct flags falloc_flags[] = {
     FLAG_GENERIC(FALLOC_FL_KEEP_SIZE),
     FLAG_GENERIC(FALLOC_FL_PUNCH_HOLE),
 #ifdef FALLOC_FL_NO_HIDE_STALE
@@ -1246,7 +1365,7 @@ UNUSED static struct flags falloc_flags[] = {
 #endif
 };
 
-UNUSED static struct flags termios_iflags[] = {
+UNUSED static const struct flags termios_iflags[] = {
     FLAG_TARGET(IGNBRK),
     FLAG_TARGET(BRKINT),
     FLAG_TARGET(IGNPAR),
@@ -1265,7 +1384,7 @@ UNUSED static struct flags termios_iflags[] = {
     FLAG_END,
 };
 
-UNUSED static struct flags termios_oflags[] = {
+UNUSED static const struct flags termios_oflags[] = {
     FLAG_TARGET(OPOST),
     FLAG_TARGET(OLCUC),
     FLAG_TARGET(ONLCR),
@@ -1349,7 +1468,7 @@ UNUSED static struct enums termios_cflags_CSIZE[] = {
     ENUM_END,
 };
 
-UNUSED static struct flags termios_cflags[] = {
+UNUSED static const struct flags termios_cflags[] = {
     FLAG_TARGET(CSTOPB),
     FLAG_TARGET(CREAD),
     FLAG_TARGET(PARENB),
@@ -1360,7 +1479,7 @@ UNUSED static struct flags termios_cflags[] = {
     FLAG_END,
 };
 
-UNUSED static struct flags termios_lflags[] = {
+UNUSED static const struct flags termios_lflags[] = {
     FLAG_TARGET(ISIG),
     FLAG_TARGET(ICANON),
     FLAG_TARGET(XCASE),
@@ -1380,7 +1499,8 @@ UNUSED static struct flags termios_lflags[] = {
     FLAG_END,
 };
 
-UNUSED static struct flags mlockall_flags[] = {
+#ifdef TARGET_NR_mlockall
+static const struct flags mlockall_flags[] = {
     FLAG_TARGET(MCL_CURRENT),
     FLAG_TARGET(MCL_FUTURE),
 #ifdef MCL_ONFAULT
@@ -1388,6 +1508,7 @@ UNUSED static struct flags mlockall_flags[] = {
 #endif
     FLAG_END,
 };
+#endif
 
 /* IDs of the various system clocks */
 #define TARGET_CLOCK_REALTIME              0
@@ -1445,14 +1566,10 @@ print_flags(const struct flags *f, abi_long flags, int last)
     const char *sep = "";
     int n;
 
-    if ((flags == 0) && (f->f_value == 0)) {
-        qemu_log("%s%s", f->f_string, get_comma(last));
-        return;
-    }
     for (n = 0; f->f_string != NULL; f++) {
-        if ((f->f_value != 0) && ((flags & f->f_value) == f->f_value)) {
+        if ((flags & f->f_mask) == f->f_value) {
             qemu_log("%s%s", sep, f->f_string);
-            flags &= ~f->f_value;
+            flags &= ~f->f_mask;
             sep = "|";
             n++;
         }
@@ -1599,6 +1716,13 @@ print_buf(abi_long addr, abi_long len, int last)
     }
 }
 
+static void
+print_buf_len(abi_long addr, abi_long len, int last)
+{
+    print_buf(addr, len, 0);
+    print_raw_param(TARGET_ABI_FMT_ld, len, last);
+}
+
 /*
  * Prints out raw parameter using given format.  Caller needs
  * to do byte swapping if needed.
@@ -1611,6 +1735,19 @@ print_raw_param(const char *fmt, abi_long param, int last)
     (void) snprintf(format, sizeof (format), "%s%s", fmt, get_comma(last));
     qemu_log(format, param);
 }
+
+/*
+ * Same as print_raw_param() but prints out raw 64-bit parameter.
+ */
+static void
+print_raw_param64(const char *fmt, long long param, int last)
+{
+    char format[64];
+
+    (void)snprintf(format, sizeof(format), "%s%s", fmt, get_comma(last));
+    qemu_log(format, param);
+}
+
 
 static void
 print_pointer(abi_long p, int last)
@@ -1688,10 +1825,8 @@ print_timespec64(abi_ulong ts_addr, int last)
             print_pointer(ts_addr, last);
             return;
         }
-        qemu_log("{tv_sec = %lld"
-                 ",tv_nsec = %lld}%s",
-                 (long long)tswap64(ts->tv_sec), (long long)tswap64(ts->tv_nsec),
-                 get_comma(last));
+        print_raw_param64("{tv_sec=%" PRId64, tswap64(ts->tv_sec), 0);
+        print_raw_param64("tv_nsec=%" PRId64 "}", tswap64(ts->tv_nsec), last);
         unlock_user(ts, ts_addr, 0);
     } else {
         qemu_log("NULL%s", get_comma(last));
@@ -1968,6 +2103,58 @@ print_execv(CPUArchState *cpu_env, const struct syscallname *name,
     print_syscall_epilogue(name);
 }
 #endif
+
+static void
+print_execve_argv(abi_long argv, int last)
+{
+    abi_ulong arg_ptr_addr;
+    char *s;
+
+    qemu_log("{");
+    for (arg_ptr_addr = argv; ; arg_ptr_addr += sizeof(abi_ulong)) {
+        abi_ulong *arg_ptr, arg_addr;
+
+        arg_ptr = lock_user(VERIFY_READ, arg_ptr_addr, sizeof(abi_ulong), 1);
+        if (!arg_ptr) {
+            return;
+        }
+        arg_addr = tswapal(*arg_ptr);
+        unlock_user(arg_ptr, arg_ptr_addr, 0);
+        if (!arg_addr) {
+            break;
+        }
+        s = lock_user_string(arg_addr);
+        if (s) {
+            qemu_log("\"%s\",", s);
+            unlock_user(s, arg_addr, 0);
+        }
+    }
+    qemu_log("NULL}%s", get_comma(last));
+}
+
+static void
+print_execve(CPUArchState *cpu_env, const struct syscallname *name,
+             abi_long arg1, abi_long arg2, abi_long arg3,
+             abi_long arg4, abi_long arg5, abi_long arg6)
+{
+    print_syscall_prologue(name);
+    print_string(arg1, 0);
+    print_execve_argv(arg2, 1);
+    print_syscall_epilogue(name);
+}
+
+static void
+print_execveat(CPUArchState *cpu_env, const struct syscallname *name,
+               abi_long arg1, abi_long arg2, abi_long arg3,
+               abi_long arg4, abi_long arg5, abi_long arg6)
+{
+    print_syscall_prologue(name);
+    print_at_dirfd(arg1, 0);
+    print_string(arg2, 0);
+    print_execve_argv(arg3, 0);
+    print_flags(execveat_flags, arg5, 1);
+    print_syscall_epilogue(name);
+}
 
 #if defined(TARGET_NR_faccessat) || defined(TARGET_NR_faccessat2)
 static void
@@ -2623,8 +2810,7 @@ static void do_print_sendrecv(const char *name, abi_long arg1)
 
     qemu_log("%s(", name);
     print_sockfd(sockfd, 0);
-    print_buf(msg, len, 0);
-    print_raw_param(TARGET_ABI_FMT_ld, len, 0);
+    print_buf_len(msg, len, 0);
     print_flags(msg_flags, flags, 1);
     qemu_log(")");
 }
@@ -2642,8 +2828,7 @@ static void do_print_msgaddr(const char *name, abi_long arg1)
 
     qemu_log("%s(", name);
     print_sockfd(sockfd, 0);
-    print_buf(msg, len, 0);
-    print_raw_param(TARGET_ABI_FMT_ld, len, 0);
+    print_buf_len(msg, len, 0);
     print_flags(msg_flags, flags, 0);
     print_sockaddr(addr, addrlen, 0);
     qemu_log(")");
@@ -3003,6 +3188,38 @@ print_bind(CPUArchState *cpu_env, const struct syscallname *name,
 }
 #endif
 
+#ifdef TARGET_NR_recvfrom
+static void
+print_recvfrom(CPUArchState *cpu_env, const struct syscallname *name,
+               abi_long arg0, abi_long arg1, abi_long arg2,
+               abi_long arg3, abi_long arg4, abi_long arg5)
+{
+    print_syscall_prologue(name);
+    print_sockfd(arg0, 0);
+    print_pointer(arg1, 0); /* output */
+    print_raw_param(TARGET_ABI_FMT_ld, arg2, 0);
+    print_flags(msg_flags, arg3, 0);
+    print_pointer(arg4, 0); /* output */
+    print_pointer(arg5, 1); /* in/out */
+    print_syscall_epilogue(name);
+}
+#endif
+
+#ifdef TARGET_NR_sendto
+static void
+print_sendto(CPUArchState *cpu_env, const struct syscallname *name,
+             abi_long arg0, abi_long arg1, abi_long arg2,
+             abi_long arg3, abi_long arg4, abi_long arg5)
+{
+    print_syscall_prologue(name);
+    print_sockfd(arg0, 0);
+    print_buf_len(arg1, arg2, 0);
+    print_flags(msg_flags, arg3, 0);
+    print_sockaddr(arg4, arg5, 1);
+    print_syscall_epilogue(name);
+}
+#endif
+
 #if defined(TARGET_NR_stat) || defined(TARGET_NR_stat64) || \
     defined(TARGET_NR_lstat) || defined(TARGET_NR_lstat64)
 static void
@@ -3141,9 +3358,28 @@ print_rt_sigprocmask(CPUArchState *cpu_env, const struct syscallname *name,
     case TARGET_SIG_SETMASK: how = "SIG_SETMASK"; break;
     }
     qemu_log("%s,", how);
-    print_pointer(arg1, 0);
-    print_pointer(arg2, 1);
+    print_target_sigset_t(arg1, arg3, 0);
+    print_pointer(arg2, 0);
+    print_raw_param("%u", arg3, 1);
     print_syscall_epilogue(name);
+}
+
+static void
+print_rt_sigprocmask_ret(CPUArchState *cpu_env, const struct syscallname *name,
+                         abi_long ret, abi_long arg0, abi_long arg1,
+                         abi_long arg2, abi_long arg3, abi_long arg4,
+                         abi_long arg5)
+{
+    if (!print_syscall_err(ret)) {
+        qemu_log(TARGET_ABI_FMT_ld, ret);
+        if (arg2) {
+            qemu_log(" (oldset=");
+            print_target_sigset_t(arg2, arg3, 1);
+            qemu_log(")");
+        }
+    }
+
+    qemu_log("\n");
 }
 #endif
 
@@ -3359,6 +3595,38 @@ print_openat(CPUArchState *cpu_env, const struct syscallname *name,
     print_open_flags(arg2, (is_creat == 0));
     if (is_creat)
         print_file_mode(arg3, 1);
+    print_syscall_epilogue(name);
+}
+#endif
+
+#ifdef TARGET_NR_openat2
+static void
+print_openat2(CPUArchState *cpu_env, const struct syscallname *name,
+              abi_long arg0, abi_long arg1, abi_long arg2,
+              abi_long arg3, abi_long arg4, abi_long arg5)
+{
+    struct open_how_ver0 how;
+
+    print_syscall_prologue(name);
+    print_at_dirfd(arg0, 0);
+    print_string(arg1, 0);
+
+    if ((abi_ulong)arg3 >= sizeof(struct target_open_how_ver0) &&
+        copy_struct_from_user(&how, sizeof(how), arg2, arg3) == 0) {
+        how.flags = tswap64(how.flags);
+        how.mode = tswap64(how.mode);
+        how.resolve = tswap64(how.resolve);
+        qemu_log("{");
+        print_open_flags(how.flags, 0);
+        if (how.flags & TARGET_O_CREAT) {
+            print_file_mode(how.mode, 0);
+        }
+        print_flags(openat2_resolve_flags, how.resolve, 1);
+        qemu_log("},");
+    } else {
+        print_pointer(arg2, 0);
+    }
+    print_raw_param(TARGET_ABI_FMT_lu, arg3, 1);
     print_syscall_epilogue(name);
 }
 #endif
@@ -3666,10 +3934,24 @@ print_utimensat(CPUArchState *cpu_env, const struct syscallname *name,
 
 #if defined(TARGET_NR_mmap) || defined(TARGET_NR_mmap2)
 static void
-print_mmap(CPUArchState *cpu_env, const struct syscallname *name,
+print_mmap_both(CPUArchState *cpu_env, const struct syscallname *name,
            abi_long arg0, abi_long arg1, abi_long arg2,
-           abi_long arg3, abi_long arg4, abi_long arg5)
+           abi_long arg3, abi_long arg4, abi_long arg5,
+           bool is_old_mmap)
 {
+    if (is_old_mmap) {
+            abi_ulong *v;
+            abi_ulong argp = arg0;
+            if (!(v = lock_user(VERIFY_READ, argp, 6 * sizeof(abi_ulong), 1)))
+                return;
+            arg0 = tswapal(v[0]);
+            arg1 = tswapal(v[1]);
+            arg2 = tswapal(v[2]);
+            arg3 = tswapal(v[3]);
+            arg4 = tswapal(v[4]);
+            arg5 = tswapal(v[5]);
+            unlock_user(v, argp, 0);
+        }
     print_syscall_prologue(name);
     print_pointer(arg0, 0);
     print_raw_param("%d", arg1, 0);
@@ -3679,7 +3961,34 @@ print_mmap(CPUArchState *cpu_env, const struct syscallname *name,
     print_raw_param("%#x", arg5, 1);
     print_syscall_epilogue(name);
 }
-#define print_mmap2     print_mmap
+#endif
+
+#if defined(TARGET_NR_mmap)
+static void
+print_mmap(CPUArchState *cpu_env, const struct syscallname *name,
+           abi_long arg0, abi_long arg1, abi_long arg2,
+           abi_long arg3, abi_long arg4, abi_long arg5)
+{
+    return print_mmap_both(cpu_env, name, arg0, arg1, arg2, arg3,
+                           arg4, arg5,
+#ifdef TARGET_ARCH_WANT_SYS_OLD_MMAP
+                            true
+#else
+                            false
+#endif
+                            );
+}
+#endif
+
+#if defined(TARGET_NR_mmap2)
+static void
+print_mmap2(CPUArchState *cpu_env, const struct syscallname *name,
+           abi_long arg0, abi_long arg1, abi_long arg2,
+           abi_long arg3, abi_long arg4, abi_long arg5)
+{
+    return print_mmap_both(cpu_env, name, arg0, arg1, arg2, arg3,
+                           arg4, arg5, false);
+}
 #endif
 
 #ifdef TARGET_NR_mprotect
@@ -3771,6 +4080,94 @@ print_futex(CPUArchState *cpu_env, const struct syscallname *name,
 }
 #endif
 
+#ifdef TARGET_NR_prlimit64
+static const char *target_ressource_string(abi_ulong r)
+{
+    #define RET_RES_ENTRY(res) case TARGET_##res:  return #res;
+    switch (r) {
+    RET_RES_ENTRY(RLIMIT_AS);
+    RET_RES_ENTRY(RLIMIT_CORE);
+    RET_RES_ENTRY(RLIMIT_CPU);
+    RET_RES_ENTRY(RLIMIT_DATA);
+    RET_RES_ENTRY(RLIMIT_FSIZE);
+    RET_RES_ENTRY(RLIMIT_LOCKS);
+    RET_RES_ENTRY(RLIMIT_MEMLOCK);
+    RET_RES_ENTRY(RLIMIT_MSGQUEUE);
+    RET_RES_ENTRY(RLIMIT_NICE);
+    RET_RES_ENTRY(RLIMIT_NOFILE);
+    RET_RES_ENTRY(RLIMIT_NPROC);
+    RET_RES_ENTRY(RLIMIT_RSS);
+    RET_RES_ENTRY(RLIMIT_RTPRIO);
+#ifdef RLIMIT_RTTIME
+    RET_RES_ENTRY(RLIMIT_RTTIME);
+#endif
+    RET_RES_ENTRY(RLIMIT_SIGPENDING);
+    RET_RES_ENTRY(RLIMIT_STACK);
+    default:
+        return NULL;
+    }
+    #undef RET_RES_ENTRY
+}
+
+static void
+print_rlimit64(abi_ulong rlim_addr, int last)
+{
+    if (rlim_addr) {
+        struct target_rlimit64 *rl;
+
+        rl = lock_user(VERIFY_READ, rlim_addr, sizeof(*rl), 1);
+        if (!rl) {
+            print_pointer(rlim_addr, last);
+            return;
+        }
+        print_raw_param64("{rlim_cur=%" PRId64, tswap64(rl->rlim_cur), 0);
+        print_raw_param64("rlim_max=%" PRId64 "}", tswap64(rl->rlim_max),
+                            last);
+        unlock_user(rl, rlim_addr, 0);
+    } else {
+        qemu_log("NULL%s", get_comma(last));
+    }
+}
+
+static void
+print_prlimit64(CPUArchState *cpu_env, const struct syscallname *name,
+           abi_long arg0, abi_long arg1, abi_long arg2,
+           abi_long arg3, abi_long arg4, abi_long arg5)
+{
+    const char *rlim_name;
+
+    print_syscall_prologue(name);
+    print_raw_param("%d", arg0, 0);
+    rlim_name = target_ressource_string(arg1);
+    if (rlim_name) {
+        qemu_log("%s,", rlim_name);
+    } else {
+        print_raw_param("%d", arg1, 0);
+    }
+    print_rlimit64(arg2, 0);
+    print_pointer(arg3, 1);
+    print_syscall_epilogue(name);
+}
+
+static void
+print_syscall_ret_prlimit64(CPUArchState *cpu_env,
+                       const struct syscallname *name,
+                       abi_long ret, abi_long arg0, abi_long arg1,
+                       abi_long arg2, abi_long arg3, abi_long arg4,
+                       abi_long arg5)
+{
+    if (!print_syscall_err(ret)) {
+        qemu_log(TARGET_ABI_FMT_ld, ret);
+        if (arg3) {
+            qemu_log(" (");
+            print_rlimit64(arg3, 1);
+            qemu_log(")");
+        }
+    }
+    qemu_log("\n");
+}
+#endif
+
 #ifdef TARGET_NR_kill
 static void
 print_kill(CPUArchState *cpu_env, const struct syscallname *name,
@@ -3807,6 +4204,25 @@ print_tgkill(CPUArchState *cpu_env, const struct syscallname *name,
     print_raw_param("%d", arg0, 0);
     print_raw_param("%d", arg1, 0);
     print_signal(arg2, 1);
+    print_syscall_epilogue(name);
+}
+#endif
+
+#if defined(TARGET_NR_pread64) || defined(TARGET_NR_pwrite64)
+static void
+print_pread64(CPUArchState *cpu_env, const struct syscallname *name,
+        abi_long arg0, abi_long arg1, abi_long arg2,
+        abi_long arg3, abi_long arg4, abi_long arg5)
+{
+    if (regpairs_aligned(cpu_env, TARGET_NR_pread64)) {
+        arg3 = arg4;
+        arg4 = arg5;
+    }
+    print_syscall_prologue(name);
+    print_raw_param("%d", arg0, 0);
+    print_pointer(arg1, 0);
+    print_raw_param("%d", arg2, 0);
+    print_raw_param("%" PRIu64, target_offset64(arg3, arg4), 1);
     print_syscall_epilogue(name);
 }
 #endif
@@ -3900,6 +4316,63 @@ print_ioctl(CPUArchState *cpu_env, const struct syscallname *name,
 }
 #endif
 
+#if defined(TARGET_NR_wait4) || defined(TARGET_NR_waitpid)
+static void print_wstatus(int wstatus)
+{
+    if (WIFSIGNALED(wstatus)) {
+        qemu_log("{WIFSIGNALED(s) && WTERMSIG(s) == ");
+        print_signal(WTERMSIG(wstatus), 1);
+        if (WCOREDUMP(wstatus)) {
+            qemu_log(" && WCOREDUMP(s)");
+        }
+        qemu_log("}");
+    } else if (WIFEXITED(wstatus)) {
+        qemu_log("{WIFEXITED(s) && WEXITSTATUS(s) == %d}",
+                 WEXITSTATUS(wstatus));
+    } else {
+        print_number(wstatus, 1);
+    }
+}
+
+static void print_ret_wstatus(abi_long ret, abi_long wstatus_addr)
+{
+    int wstatus;
+
+    if (!print_syscall_err(ret)
+        && wstatus_addr
+        && get_user_s32(wstatus, wstatus_addr)) {
+        qemu_log(TARGET_ABI_FMT_ld " (wstatus=", ret);
+        print_wstatus(wstatus);
+        qemu_log(")");
+    }
+    qemu_log("\n");
+}
+#endif
+
+#ifdef TARGET_NR_wait4
+static void
+print_syscall_ret_wait4(CPUArchState *cpu_env,
+                        const struct syscallname *name,
+                        abi_long ret, abi_long arg0, abi_long arg1,
+                        abi_long arg2, abi_long arg3, abi_long arg4,
+                        abi_long arg5)
+{
+    print_ret_wstatus(ret, arg1);
+}
+#endif
+
+#ifdef TARGET_NR_waitpid
+static void
+print_syscall_ret_waitpid(CPUArchState *cpu_env,
+                          const struct syscallname *name,
+                          abi_long ret, abi_long arg0, abi_long arg1,
+                          abi_long arg2, abi_long arg3, abi_long arg4,
+                          abi_long arg5)
+{
+    print_ret_wstatus(ret, arg1);
+}
+#endif
+
 /*
  * An array of all of the syscalls we know about
  */
@@ -3928,7 +4401,7 @@ print_syscall(CPUArchState *cpu_env, int num,
     if (!f) {
         return;
     }
-    fprintf(f, "%d ", getpid());
+    fprintf(f, "%d ", get_task_state(env_cpu(cpu_env))->ts_tid);
 
     for (i = 0; i < nsyscalls; i++) {
         if (scnames[i].nr == num) {

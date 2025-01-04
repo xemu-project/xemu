@@ -1,14 +1,12 @@
 # Makefile for VM tests
 
 # Hack to allow running in an unconfigured build tree
-ifeq ($(wildcard $(SRC_PATH)/config-host.mak),)
+ifeq ($(realpath $(SRC_PATH)),$(realpath .))
 VM_PYTHON = PYTHONPATH=$(SRC_PATH)/python /usr/bin/env python3
 VM_VENV =
-HOST_ARCH := $(shell uname -m)
 else
-VM_PYTHON = $(TESTS_PYTHON)
+VM_PYTHON = $(PYTHON)
 VM_VENV = check-venv
-HOST_ARCH = $(ARCH)
 endif
 
 .PHONY: vm-build-all vm-clean-all
@@ -23,6 +21,7 @@ ARM64_IMAGES += ubuntu.aarch64 centos.aarch64
 endif
 endif
 
+HOST_ARCH = $(shell uname -m)
 ifeq ($(HOST_ARCH),x86_64)
 IMAGES=$(X86_IMAGES) $(if $(USE_TCG),$(ARM64_IMAGES))
 else ifeq ($(HOST_ARCH),aarch64)
@@ -46,7 +45,6 @@ vm-help vm-test:
 	@echo "  vm-build-netbsd                 - Build QEMU in NetBSD VM"
 	@echo "  vm-build-openbsd                - Build QEMU in OpenBSD VM"
 ifneq ($(GENISOIMAGE),)
-	@echo "  vm-build-centos                 - Build QEMU in CentOS VM, with Docker"
 ifneq ($(EFI_AARCH64),)
 	@echo "  vm-build-ubuntu.aarch64         - Build QEMU in ubuntu aarch64 VM"
 	@echo "  vm-build-centos.aarch64         - Build QEMU in CentOS aarch64 VM"
@@ -82,7 +80,7 @@ endif
 	@echo "    QEMU_IMG=/path/to/qemu-img	 - Change path to qemu-img tool"
 	@echo "    QEMU_LOCAL=1                 - Use QEMU binary local to this build."
 	@echo "    TARGET_LIST=a,b,c    	 - Override target list in builds"
-	@echo "    V=1				 - Enable verbose ouput on host and guest commands"
+	@echo "    V=1				 - Enable verbose output on host and guest commands"
 
 vm-build-all: $(addprefix vm-build-, $(IMAGES))
 
@@ -103,7 +101,7 @@ $(IMAGES_DIR)/%.img:	$(SRC_PATH)/tests/vm/% \
 		$(if $(LOG_CONSOLE),--log-console) \
 		--source-path $(SRC_PATH) \
 		--image "$@" \
-		--force \
+		$(if $(filter-out check-venv, $?), --force) \
 		--build-image $@, \
 		"  VM-IMAGE $*")
 

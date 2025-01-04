@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause) */
+/* SPDX-License-Identifier: (GPL-2.0-or-later OR BSD-3-Clause) */
 /*
  * Imported from the Linux kernel file drivers/usb/dwc2/hw.h, commit
  * a89bae709b3492b478480a2c9734e7e9393b279c ("usb: dwc2: Move
@@ -838,7 +838,7 @@
 struct dwc2_dma_desc {
         uint32_t status;
         uint32_t buf;
-} __packed;
+} QEMU_PACKED;
 
 /* Host Mode DMA descriptor status quadlet */
 

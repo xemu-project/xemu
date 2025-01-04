@@ -54,7 +54,7 @@ static const VMStateDescription vmstate_exynos4210_combiner_group_state = {
     .name = "exynos4210.combiner.groupstate",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT8(src_mask, CombinerGroupState),
         VMSTATE_UINT8(src_pending, CombinerGroupState),
         VMSTATE_END_OF_LIST()
@@ -65,7 +65,7 @@ static const VMStateDescription vmstate_exynos4210_combiner = {
     .name = "exynos4210.combiner",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_STRUCT_ARRAY(group, Exynos4210CombinerState, IIC_NGRP, 0,
                 vmstate_exynos4210_combiner_group_state, CombinerGroupState),
         VMSTATE_UINT32_ARRAY(reg_set, Exynos4210CombinerState,
@@ -120,7 +120,7 @@ exynos4210_combiner_read(void *opaque, hwaddr offset, unsigned size)
     default:
         if (offset >> 2 >= IIC_REGSET_SIZE) {
             hw_error("exynos4210.combiner: overflow of reg_set by 0x"
-                    TARGET_FMT_plx "offset\n", offset);
+                    HWADDR_FMT_plx "offset\n", offset);
         }
         val = s->reg_set[offset >> 2];
     }
@@ -184,19 +184,19 @@ static void exynos4210_combiner_write(void *opaque, hwaddr offset,
 
     if (req_quad_base_n >= IIC_NGRP) {
         hw_error("exynos4210.combiner: unallowed write access at offset 0x"
-                TARGET_FMT_plx "\n", offset);
+                HWADDR_FMT_plx "\n", offset);
         return;
     }
 
     if (reg_n > 1) {
         hw_error("exynos4210.combiner: unallowed write access at offset 0x"
-                TARGET_FMT_plx "\n", offset);
+                HWADDR_FMT_plx "\n", offset);
         return;
     }
 
     if (offset >> 2 >= IIC_REGSET_SIZE) {
         hw_error("exynos4210.combiner: overflow of reg_set by 0x"
-                TARGET_FMT_plx "offset\n", offset);
+                HWADDR_FMT_plx "offset\n", offset);
     }
     s->reg_set[offset >> 2] = val;
 
@@ -246,7 +246,7 @@ static void exynos4210_combiner_write(void *opaque, hwaddr offset,
         break;
     default:
         hw_error("exynos4210.combiner: unallowed write access at offset 0x"
-                TARGET_FMT_plx "\n", offset);
+                HWADDR_FMT_plx "\n", offset);
         break;
     }
 }
@@ -334,7 +334,7 @@ static void exynos4210_combiner_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = exynos4210_combiner_reset;
+    device_class_set_legacy_reset(dc, exynos4210_combiner_reset);
     device_class_set_props(dc, exynos4210_combiner_properties);
     dc->vmsd = &vmstate_exynos4210_combiner;
 }

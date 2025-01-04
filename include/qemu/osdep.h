@@ -27,8 +27,12 @@
 #ifndef QEMU_OSDEP_H
 #define QEMU_OSDEP_H
 
+#if !defined _FORTIFY_SOURCE && defined __OPTIMIZE__ && __OPTIMIZE__ && defined __linux__
+# define _FORTIFY_SOURCE 2
+#endif
+
 #include "config-host.h"
-#ifdef NEED_CPU_H
+#ifdef COMPILING_PER_TARGET
 #include CONFIG_TARGET
 #else
 #include "exec/poison.h"
@@ -75,7 +79,7 @@ QEMU_EXTERN_C int daemon(int, int);
 #ifdef _WIN32
 /* as defined in sdkddkver.h */
 #ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0601 /* Windows 7 API (should be in sync with glib) */
+#define _WIN32_WINNT 0x0602 /* Windows 8 API (should be >= the one from glib) */
 #endif
 /* reduces the number of implicitly included headers */
 #ifndef WIN32_LEAN_AND_MEAN
@@ -86,6 +90,19 @@ QEMU_EXTERN_C int daemon(int, int);
 /* enable C99/POSIX format strings (needs mingw32-runtime 3.15 or later) */
 #ifdef __MINGW32__
 #define __USE_MINGW_ANSI_STDIO 1
+#endif
+
+/*
+ * We need the FreeBSD "legacy" definitions. Rust needs the FreeBSD 11 system
+ * calls since it doesn't use libc at all, so we have to emulate that despite
+ * FreeBSD 11 being EOL'd.
+ */
+#ifdef __FreeBSD__
+#define _WANT_FREEBSD11_STAT
+#define _WANT_FREEBSD11_STATFS
+#define _WANT_FREEBSD11_DIRENT
+#define _WANT_KERNEL_ERRNO
+#define _WANT_SEMUN
 #endif
 
 #include <stdarg.h>
@@ -157,6 +174,66 @@ extern "C" {
 
 #include "qemu/typedefs.h"
 
+/**
+ * Mark a function that executes in coroutine context
+ *
+ * Functions that execute in coroutine context cannot be called directly from
+ * normal functions.  In the future it would be nice to enable compiler or
+ * static checker support for catching such errors.  This annotation might make
+ * it possible and in the meantime it serves as documentation.
+ *
+ * For example:
+ *
+ *   static void coroutine_fn foo(void) {
+ *       ....
+ *   }
+ */
+#ifdef __clang__
+#define coroutine_fn QEMU_ANNOTATE("coroutine_fn")
+#else
+#define coroutine_fn
+#endif
+
+/**
+ * Mark a function that can suspend when executed in coroutine context,
+ * but can handle running in non-coroutine context too.
+ */
+#ifdef __clang__
+#define coroutine_mixed_fn QEMU_ANNOTATE("coroutine_mixed_fn")
+#else
+#define coroutine_mixed_fn
+#endif
+
+/**
+ * Mark a function that should not be called from a coroutine context.
+ * Usually there will be an analogous, coroutine_fn function that should
+ * be used instead.
+ *
+ * When the function is also marked as coroutine_mixed_fn, the function should
+ * only be called if the caller does not know whether it is in coroutine
+ * context.
+ *
+ * Functions that are only no_coroutine_fn, on the other hand, should not
+ * be called from within coroutines at all.  This for example includes
+ * functions that block.
+ *
+ * In the future it would be nice to enable compiler or static checker
+ * support for catching such errors.  This annotation is the first step
+ * towards this, and in the meantime it serves as documentation.
+ *
+ * For example:
+ *
+ *   static void no_coroutine_fn foo(void) {
+ *       ....
+ *   }
+ */
+#ifdef __clang__
+#define no_coroutine_fn QEMU_ANNOTATE("no_coroutine_fn")
+#else
+#define no_coroutine_fn
+#endif
+
+
 /*
  * For mingw, as of v6.0.0, the function implementing the assert macro is
  * not marked as noreturn, so the compiler cannot delete code following an
@@ -177,7 +254,7 @@ extern "C" {
  * supports QEMU_ERROR, this will be reported at compile time; otherwise
  * this will be reported at link time due to the missing symbol.
  */
-G_NORETURN extern
+G_NORETURN
 void QEMU_ERROR("code path is reachable")
     qemu_build_not_reached_always(void);
 #if defined(__OPTIMIZE__) && !defined(__NO_INLINE__) && !defined(XEMU_DEBUG_BUILD)
@@ -220,6 +297,10 @@ void QEMU_ERROR("code path is reachable")
 #error building with G_DISABLE_ASSERT is not supported
 #endif
 
+#ifndef OFF_MAX
+#define OFF_MAX (sizeof (off_t) == 8 ? INT64_MAX : INT32_MAX)
+#endif
+
 #ifndef O_LARGEFILE
 #define O_LARGEFILE 0
 #endif
@@ -228,9 +309,6 @@ void QEMU_ERROR("code path is reachable")
 #endif
 #ifndef MAP_ANONYMOUS
 #define MAP_ANONYMOUS MAP_ANON
-#endif
-#ifndef MAP_FIXED_NOREPLACE
-#define MAP_FIXED_NOREPLACE 0
 #endif
 #ifndef MAP_NORESERVE
 #define MAP_NORESERVE 0
@@ -251,7 +329,13 @@ void QEMU_ERROR("code path is reachable")
 #define ESHUTDOWN 4099
 #endif
 
-#define TFR(expr) do { if ((expr) != -1) break; } while (errno == EINTR)
+#define RETRY_ON_EINTR(expr) \
+    (__extension__                                          \
+        ({ typeof(expr) __result;                               \
+           do {                                             \
+                __result = (expr);         \
+           } while (__result == -1 && errno == EINTR);     \
+           __result; }))
 
 /* time_t may be either 32 or 64 bits depending on the host OS, and
  * can be either signed or unsigned, so we can't just hardcode a
@@ -307,19 +391,28 @@ void QEMU_ERROR("code path is reachable")
  * determined by the pre-processor instead of the compiler, you'll
  * have to open-code it.  Sadly, Coverity is severely confused by the
  * constant variants, so we have to dumb things down there.
+ *
+ * Preprocessor sorcery ahead: use different identifiers for the local
+ * variables in each expansion, so we can nest macro calls without
+ * shadowing variables.
  */
-#undef MIN
-#define MIN(a, b)                                       \
+#define MIN_INTERNAL(a, b, _a, _b)                      \
     ({                                                  \
         typeof(1 ? (a) : (b)) _a = (a), _b = (b);       \
         _a < _b ? _a : _b;                              \
     })
-#undef MAX
-#define MAX(a, b)                                       \
+#undef MIN
+#define MIN(a, b) \
+    MIN_INTERNAL((a), (b), MAKE_IDENTIFIER(_a), MAKE_IDENTIFIER(_b))
+
+#define MAX_INTERNAL(a, b, _a, _b)                      \
     ({                                                  \
         typeof(1 ? (a) : (b)) _a = (a), _b = (b);       \
         _a > _b ? _a : _b;                              \
     })
+#undef MAX
+#define MAX(a, b) \
+    MAX_INTERNAL((a), (b), MAKE_IDENTIFIER(_a), MAKE_IDENTIFIER(_b))
 
 #ifdef __COVERITY__
 # define MIN_CONST(a, b) ((a) < (b) ? (a) : (b))
@@ -340,14 +433,18 @@ void QEMU_ERROR("code path is reachable")
 /*
  * Minimum function that returns zero only if both values are zero.
  * Intended for use with unsigned values only.
+ *
+ * Preprocessor sorcery ahead: use different identifiers for the local
+ * variables in each expansion, so we can nest macro calls without
+ * shadowing variables.
  */
-#ifndef MIN_NON_ZERO
-#define MIN_NON_ZERO(a, b)                              \
+#define MIN_NON_ZERO_INTERNAL(a, b, _a, _b)             \
     ({                                                  \
         typeof(1 ? (a) : (b)) _a = (a), _b = (b);       \
         _a == 0 ? _b : (_b == 0 || _b > _a) ? _a : _b;  \
     })
-#endif
+#define MIN_NON_ZERO(a, b) \
+    MIN_NON_ZERO_INTERNAL((a), (b), MAKE_IDENTIFIER(_a), MAKE_IDENTIFIER(_b))
 
 /*
  * Round number down to multiple. Safe when m is not a power of 2 (see
@@ -415,15 +512,17 @@ void qemu_anon_ram_free(void *ptr, size_t size);
 
 #ifdef _WIN32
 #define HAVE_CHARDEV_SERIAL 1
-#elif defined(__linux__) || defined(__sun__) || defined(__FreeBSD__)    \
+#define HAVE_CHARDEV_PARALLEL 1
+#else
+#if defined(__linux__) || defined(__sun__) || defined(__FreeBSD__)   \
     || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) \
     || defined(__GLIBC__) || defined(__APPLE__)
 #define HAVE_CHARDEV_SERIAL 1
 #endif
-
-#if defined(__linux__) || defined(__FreeBSD__) ||               \
-    defined(__FreeBSD_kernel__) || defined(__DragonFly__)
-#define HAVE_CHARDEV_PARPORT 1
+#if defined(__linux__) || defined(__FreeBSD__) \
+    || defined(__FreeBSD_kernel__) || defined(__DragonFly__)
+#define HAVE_CHARDEV_PARALLEL 1
+#endif
 #endif
 
 #if defined(__HAIKU__)
@@ -435,7 +534,7 @@ void qemu_anon_ram_free(void *ptr, size_t size);
  * See MySQL bug #7156 (http://bugs.mysql.com/bug.php?id=7156) for discussion
  * about Solaris missing the madvise() prototype.
  */
-extern int madvise(char *, size_t, int);
+int madvise(char *, size_t, int);
 #endif
 
 #if defined(CONFIG_LINUX)
@@ -459,6 +558,14 @@ extern int madvise(char *, size_t, int);
 #  define QEMU_VMALLOC_ALIGN (256 * 4096)
 #elif defined(__linux__) && defined(__sparc__)
 #  define QEMU_VMALLOC_ALIGN MAX(qemu_real_host_page_size(), SHMLBA)
+#elif defined(__linux__) && defined(__loongarch__)
+   /*
+    * For transparent hugepage optimization, it has better be huge page
+    * aligned. LoongArch host system supports two kinds of pagesize: 4K
+    * and 16K, here calculate huge page size from host page size
+    */
+#  define QEMU_VMALLOC_ALIGN (qemu_real_host_page_size() * \
+                         qemu_real_host_page_size() / sizeof(long))
 #else
 #  define QEMU_VMALLOC_ALIGN qemu_real_host_page_size()
 #endif
@@ -526,6 +633,8 @@ static inline int qemu_access(const char *pathname, int mode)
     return access(pathname, mode);
 }
 #endif
+
+bool qemu_has_direct_io(void);
 
 #if defined(__HAIKU__) && defined(__i386__)
 #define FMT_pid "%ld"
@@ -602,15 +711,33 @@ typedef struct ThreadContext ThreadContext;
  * @area: start address of the are to preallocate
  * @sz: the size of the area to preallocate
  * @max_threads: maximum number of threads to use
+ * @tc: prealloc context threads pointer, NULL if not in use
+ * @async: request asynchronous preallocation, requires @tc
  * @errp: returns an error if this function fails
  *
  * Preallocate memory (populate/prefault page tables writable) for the virtual
  * memory area starting at @area with the size of @sz. After a successful call,
  * each page in the area was faulted in writable at least once, for example,
  * after allocating file blocks for mapped files.
+ *
+ * When setting @async, allocation might be performed asynchronously.
+ * qemu_finish_async_prealloc_mem() must be called to finish any asynchronous
+ * preallocation.
+ *
+ * Return: true on success, else false setting @errp with error.
  */
-void qemu_prealloc_mem(int fd, char *area, size_t sz, int max_threads,
-                       ThreadContext *tc, Error **errp);
+bool qemu_prealloc_mem(int fd, char *area, size_t sz, int max_threads,
+                       ThreadContext *tc, bool async, Error **errp);
+
+/**
+ * qemu_finish_async_prealloc_mem:
+ * @errp: returns an error if this function fails
+ *
+ * Finish all outstanding asynchronous memory preallocation.
+ *
+ * Return: true on success, else false setting @errp with error.
+ */
+bool qemu_finish_async_prealloc_mem(Error **errp);
 
 /**
  * qemu_get_pid_name:
@@ -621,20 +748,6 @@ void qemu_prealloc_mem(int fd, char *area, size_t sz, int max_threads,
  * Returns allocated string on success, NULL on failure.
  */
 char *qemu_get_pid_name(pid_t pid);
-
-/**
- * qemu_fork:
- *
- * A version of fork that avoids signal handler race
- * conditions that can lead to child process getting
- * signals that are otherwise only expected by the
- * parent. It also resets all signal handlers to the
- * default settings.
- *
- * Returns 0 to child process, pid number to parent
- * or -1 on failure.
- */
-pid_t qemu_fork(Error **errp);
 
 /* Using intptr_t ensures that qemu_*_page_mask is sign-extended even
  * when intptr_t is 32-bit and we are aligning a long long.
@@ -667,6 +780,17 @@ static inline void qemu_reset_optind(void)
 int qemu_fdatasync(int fd);
 
 /**
+ * qemu_close_all_open_fd:
+ *
+ * Close all open file descriptors except the ones supplied in the @skip array
+ *
+ * @skip: ordered array of distinct file descriptors that should not be closed
+ *        if any, or NULL.
+ * @nskip: number of entries in the @skip array or 0 if @skip is NULL.
+ */
+void qemu_close_all_open_fd(const int *skip, unsigned int nskip);
+
+/**
  * Sync changes made to the memory mapped file back to the backing
  * storage. For POSIX compliant systems this will fallback
  * to regular msync call. Otherwise it will trigger whole file sync
@@ -695,8 +819,7 @@ size_t qemu_get_host_physmem(void);
  * Toggle write/execute on the pages marked MAP_JIT
  * for the current thread.
  */
-#if defined(MAC_OS_VERSION_11_0) && \
-    MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_VERSION_11_0
+#ifdef __APPLE__
 static inline void qemu_thread_jit_execute(void)
 {
     pthread_jit_write_protect_np(true);

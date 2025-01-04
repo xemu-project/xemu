@@ -244,7 +244,7 @@ static const VMStateDescription vmstate_rtc = {
     .minimum_version_id = 1,
     .pre_save = rtc_pre_save,
     .post_load = rtc_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, XlnxZynqMPRTC, XLNX_ZYNQMP_RTC_R_MAX),
         VMSTATE_UINT32(tick_offset, XlnxZynqMPRTC),
         VMSTATE_END_OF_LIST(),
@@ -255,7 +255,7 @@ static void rtc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = rtc_reset;
+    device_class_set_legacy_reset(dc, rtc_reset);
     dc->vmsd = &vmstate_rtc;
 }
 

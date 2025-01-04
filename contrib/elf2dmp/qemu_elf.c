@@ -6,6 +6,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "qemu/host-utils.h"
 #include "err.h"
 #include "qemu_elf.h"
 
@@ -15,34 +16,9 @@
 #define ROUND_UP(n, d) (((n) + (d) - 1) & -(0 ? (n) : (d)))
 #endif
 
-#ifndef DIV_ROUND_UP
-#define DIV_ROUND_UP(n, d) (((n) + (d) - 1) / (d))
-#endif
-
-#define ELF_NOTE_SIZE(hdr_size, name_size, desc_size)   \
-    ((DIV_ROUND_UP((hdr_size), 4) +                     \
-      DIV_ROUND_UP((name_size), 4) +                    \
-      DIV_ROUND_UP((desc_size), 4)) * 4)
-
 int is_system(QEMUCPUState *s)
 {
     return s->gs.base >> 63;
-}
-
-static char *nhdr_get_name(Elf64_Nhdr *nhdr)
-{
-    return (char *)nhdr + ROUND_UP(sizeof(*nhdr), 4);
-}
-
-static void *nhdr_get_desc(Elf64_Nhdr *nhdr)
-{
-    return nhdr_get_name(nhdr) + ROUND_UP(nhdr->n_namesz, 4);
-}
-
-static Elf64_Nhdr *nhdr_get_next(Elf64_Nhdr *nhdr)
-{
-    return (void *)((uint8_t *)nhdr + ELF_NOTE_SIZE(sizeof(*nhdr),
-                nhdr->n_namesz, nhdr->n_descsz));
 }
 
 Elf64_Phdr *elf64_getphdr(void *map)
@@ -60,67 +36,103 @@ Elf64_Half elf_getphdrnum(void *map)
     return ehdr->e_phnum;
 }
 
-static int init_states(QEMU_Elf *qe)
+static bool advance_note_offset(uint64_t *offsetp, uint64_t size, uint64_t end)
+{
+    uint64_t offset = *offsetp;
+
+    if (uadd64_overflow(offset, size, &offset) || offset > UINT64_MAX - 3) {
+        return false;
+    }
+
+    offset = ROUND_UP(offset, 4);
+
+    if (offset > end) {
+        return false;
+    }
+
+    *offsetp = offset;
+
+    return true;
+}
+
+static bool init_states(QEMU_Elf *qe)
 {
     Elf64_Phdr *phdr = elf64_getphdr(qe->map);
-    Elf64_Nhdr *start = (void *)((uint8_t *)qe->map + phdr[0].p_offset);
-    Elf64_Nhdr *end = (void *)((uint8_t *)start + phdr[0].p_memsz);
     Elf64_Nhdr *nhdr;
-    size_t cpu_nr = 0;
+    GPtrArray *states;
+    QEMUCPUState *state;
+    uint32_t state_size;
+    uint64_t offset;
+    uint64_t end_offset;
+    char *name;
 
     if (phdr[0].p_type != PT_NOTE) {
         eprintf("Failed to find PT_NOTE\n");
-        return 1;
+        return false;
     }
 
     qe->has_kernel_gs_base = 1;
+    offset = phdr[0].p_offset;
+    states = g_ptr_array_new();
 
-    for (nhdr = start; nhdr < end; nhdr = nhdr_get_next(nhdr)) {
-        if (!strcmp(nhdr_get_name(nhdr), QEMU_NOTE_NAME)) {
-            QEMUCPUState *state = nhdr_get_desc(nhdr);
+    if (uadd64_overflow(offset, phdr[0].p_memsz, &end_offset) ||
+        end_offset > qe->size) {
+        end_offset = qe->size;
+    }
 
-            if (state->size < sizeof(*state)) {
-                eprintf("CPU #%zu: QEMU CPU state size %u doesn't match\n",
-                        cpu_nr, state->size);
+    while (offset < end_offset) {
+        nhdr = (void *)((uint8_t *)qe->map + offset);
+
+        if (!advance_note_offset(&offset, sizeof(*nhdr), end_offset)) {
+            break;
+        }
+
+        name = (char *)qe->map + offset;
+
+        if (!advance_note_offset(&offset, nhdr->n_namesz, end_offset)) {
+            break;
+        }
+
+        state = (void *)((uint8_t *)qe->map + offset);
+
+        if (!advance_note_offset(&offset, nhdr->n_descsz, end_offset)) {
+            break;
+        }
+
+        if (!strcmp(name, QEMU_NOTE_NAME) &&
+            nhdr->n_descsz >= offsetof(QEMUCPUState, kernel_gs_base)) {
+            state_size = MIN(state->size, nhdr->n_descsz);
+
+            if (state_size < sizeof(*state)) {
+                eprintf("CPU #%u: QEMU CPU state size %u doesn't match\n",
+                        states->len, state_size);
                 /*
                  * We assume either every QEMU CPU state has KERNEL_GS_BASE or
                  * no one has.
                  */
                 qe->has_kernel_gs_base = 0;
             }
-            cpu_nr++;
+            g_ptr_array_add(states, state);
         }
     }
 
-    printf("%zu CPU states has been found\n", cpu_nr);
+    printf("%u CPU states has been found\n", states->len);
 
-    qe->state = malloc(sizeof(*qe->state) * cpu_nr);
-    if (!qe->state) {
-        return 1;
-    }
+    qe->state_nr = states->len;
+    qe->state = (void *)g_ptr_array_free(states, FALSE);
 
-    cpu_nr = 0;
-
-    for (nhdr = start; nhdr < end; nhdr = nhdr_get_next(nhdr)) {
-        if (!strcmp(nhdr_get_name(nhdr), QEMU_NOTE_NAME)) {
-            qe->state[cpu_nr] = nhdr_get_desc(nhdr);
-            cpu_nr++;
-        }
-    }
-
-    qe->state_nr = cpu_nr;
-
-    return 0;
+    return true;
 }
 
 static void exit_states(QEMU_Elf *qe)
 {
-    free(qe->state);
+    g_free(qe->state);
 }
 
 static bool check_ehdr(QEMU_Elf *qe)
 {
     Elf64_Ehdr *ehdr = qe->map;
+    uint64_t phendoff;
 
     if (sizeof(Elf64_Ehdr) > qe->size) {
         eprintf("Invalid input dump file size\n");
@@ -162,46 +174,97 @@ static bool check_ehdr(QEMU_Elf *qe)
         return false;
     }
 
+    if (umul64_overflow(ehdr->e_phnum, sizeof(Elf64_Phdr), &phendoff) ||
+        uadd64_overflow(phendoff, ehdr->e_phoff, &phendoff) ||
+        phendoff > qe->size) {
+        eprintf("phdrs do not fit in file\n");
+        return false;
+    }
+
     return true;
 }
 
-int QEMU_Elf_init(QEMU_Elf *qe, const char *filename)
+static bool QEMU_Elf_map(QEMU_Elf *qe, const char *filename)
 {
+#ifdef CONFIG_LINUX
+    struct stat st;
+    int fd;
+
+    printf("Using Linux mmap\n");
+
+    fd = open(filename, O_RDONLY, 0);
+    if (fd == -1) {
+        eprintf("Failed to open ELF dump file \'%s\'\n", filename);
+        return false;
+    }
+
+    if (fstat(fd, &st)) {
+        eprintf("Failed to get size of ELF dump file\n");
+        close(fd);
+        return false;
+    }
+    qe->size = st.st_size;
+
+    qe->map = mmap(NULL, qe->size, PROT_READ | PROT_WRITE,
+            MAP_PRIVATE | MAP_NORESERVE, fd, 0);
+    if (qe->map == MAP_FAILED) {
+        eprintf("Failed to map ELF file\n");
+        close(fd);
+        return false;
+    }
+
+    close(fd);
+#else
     GError *gerr = NULL;
-    int err = 0;
+
+    printf("Using GLib mmap\n");
 
     qe->gmf = g_mapped_file_new(filename, TRUE, &gerr);
     if (gerr) {
         eprintf("Failed to map ELF dump file \'%s\'\n", filename);
         g_error_free(gerr);
-        return 1;
+        return false;
     }
 
     qe->map = g_mapped_file_get_contents(qe->gmf);
     qe->size = g_mapped_file_get_length(qe->gmf);
+#endif
+
+    return true;
+}
+
+static void QEMU_Elf_unmap(QEMU_Elf *qe)
+{
+#ifdef CONFIG_LINUX
+    munmap(qe->map, qe->size);
+#else
+    g_mapped_file_unref(qe->gmf);
+#endif
+}
+
+bool QEMU_Elf_init(QEMU_Elf *qe, const char *filename)
+{
+    if (!QEMU_Elf_map(qe, filename)) {
+        return false;
+    }
 
     if (!check_ehdr(qe)) {
         eprintf("Input file has the wrong format\n");
-        err = 1;
-        goto out_unmap;
+        QEMU_Elf_unmap(qe);
+        return false;
     }
 
-    if (init_states(qe)) {
+    if (!init_states(qe)) {
         eprintf("Failed to extract QEMU CPU states\n");
-        err = 1;
-        goto out_unmap;
+        QEMU_Elf_unmap(qe);
+        return false;
     }
 
-    return 0;
-
-out_unmap:
-    g_mapped_file_unref(qe->gmf);
-
-    return err;
+    return true;
 }
 
 void QEMU_Elf_exit(QEMU_Elf *qe)
 {
     exit_states(qe);
-    g_mapped_file_unref(qe->gmf);
+    QEMU_Elf_unmap(qe);
 }

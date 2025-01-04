@@ -168,7 +168,7 @@ static const VMStateDescription aspeed_i3c_device_vmstate = {
     .name = TYPE_ASPEED_I3C,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]){
+    .fields = (const VMStateField[]){
         VMSTATE_UINT32_ARRAY(regs, AspeedI3CDevice, ASPEED_I3C_DEVICE_NR_REGS),
         VMSTATE_END_OF_LIST(),
     }
@@ -296,13 +296,13 @@ static void aspeed_i3c_realize(DeviceState *dev, Error **errp)
     memory_region_add_subregion(&s->iomem_container, 0x0, &s->iomem);
 
     for (i = 0; i < ASPEED_I3C_NR_DEVICES; ++i) {
-        Object *dev = OBJECT(&s->devices[i]);
+        Object *i3c_dev = OBJECT(&s->devices[i]);
 
-        if (!object_property_set_uint(dev, "device-id", i, errp)) {
+        if (!object_property_set_uint(i3c_dev, "device-id", i, errp)) {
             return;
         }
 
-        if (!sysbus_realize(SYS_BUS_DEVICE(dev), errp)) {
+        if (!sysbus_realize(SYS_BUS_DEVICE(i3c_dev), errp)) {
             return;
         }
 
@@ -334,7 +334,7 @@ static void aspeed_i3c_device_class_init(ObjectClass *klass, void *data)
 
     dc->desc = "Aspeed I3C Device";
     dc->realize = aspeed_i3c_device_realize;
-    dc->reset = aspeed_i3c_device_reset;
+    device_class_set_legacy_reset(dc, aspeed_i3c_device_reset);
     device_class_set_props(dc, aspeed_i3c_device_properties);
 }
 
@@ -349,7 +349,7 @@ static const VMStateDescription vmstate_aspeed_i3c = {
     .name = TYPE_ASPEED_I3C,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, AspeedI3CState, ASPEED_I3C_NR_REGS),
         VMSTATE_STRUCT_ARRAY(devices, AspeedI3CState, ASPEED_I3C_NR_DEVICES, 1,
                              aspeed_i3c_device_vmstate, AspeedI3CDevice),
@@ -362,7 +362,7 @@ static void aspeed_i3c_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = aspeed_i3c_realize;
-    dc->reset = aspeed_i3c_reset;
+    device_class_set_legacy_reset(dc, aspeed_i3c_reset);
     dc->desc = "Aspeed I3C Controller";
     dc->vmsd = &vmstate_aspeed_i3c;
 }

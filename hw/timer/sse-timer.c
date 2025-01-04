@@ -428,7 +428,7 @@ static const VMStateDescription sse_timer_vmstate = {
     .name = "sse-timer",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_TIMER(timer, SSETimer),
         VMSTATE_UINT32(cntfrq, SSETimer),
         VMSTATE_UINT32(cntp_ctl, SSETimer),
@@ -451,7 +451,7 @@ static void sse_timer_class_init(ObjectClass *klass, void *data)
 
     dc->realize = sse_timer_realize;
     dc->vmsd = &sse_timer_vmstate;
-    dc->reset = sse_timer_reset;
+    device_class_set_legacy_reset(dc, sse_timer_reset);
     device_class_set_props(dc, sse_timer_properties);
 }
 

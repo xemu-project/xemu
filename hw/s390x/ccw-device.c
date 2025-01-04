@@ -13,6 +13,10 @@
 #include "ccw-device.h"
 #include "hw/qdev-properties.h"
 #include "qemu/module.h"
+#include "ipl.h"
+#include "qapi/visitor.h"
+#include "qemu/ctype.h"
+#include "qapi/error.h"
 
 static void ccw_device_refill_ids(CcwDevice *dev)
 {
@@ -31,10 +35,51 @@ static void ccw_device_refill_ids(CcwDevice *dev)
     dev->subch_id.valid = true;
 }
 
-static void ccw_device_realize(CcwDevice *dev, Error **errp)
+static bool ccw_device_realize(CcwDevice *dev, Error **errp)
 {
     ccw_device_refill_ids(dev);
+    return true;
 }
+
+static void ccw_device_get_loadparm(Object *obj, Visitor *v,
+                                 const char *name, void *opaque,
+                                 Error **errp)
+{
+    CcwDevice *dev = CCW_DEVICE(obj);
+    char *str = g_strndup((char *) dev->loadparm, sizeof(dev->loadparm));
+
+    visit_type_str(v, name, &str, errp);
+    g_free(str);
+}
+
+static void ccw_device_set_loadparm(Object *obj, Visitor *v,
+                                 const char *name, void *opaque,
+                                 Error **errp)
+{
+    CcwDevice *dev = CCW_DEVICE(obj);
+    char *val;
+    int index;
+
+    index = object_property_get_int(obj, "bootindex", NULL);
+
+    if (index < 0) {
+        error_setg(errp, "LOADPARM is only valid for boot devices!");
+    }
+
+    if (!visit_type_str(v, name, &val, errp)) {
+        return;
+    }
+
+    s390_ipl_fmt_loadparm(dev->loadparm, val, errp);
+}
+
+const PropertyInfo ccw_loadparm = {
+    .name  = "ccw_loadparm",
+    .description = "Up to 8 chars in set of [A-Za-z0-9. ] to pass"
+            " to the guest loader/kernel",
+    .get = ccw_device_get_loadparm,
+    .set = ccw_device_set_loadparm,
+};
 
 static Property ccw_device_properties[] = {
     DEFINE_PROP_CSS_DEV_ID("devno", CcwDevice, devno),
@@ -43,9 +88,9 @@ static Property ccw_device_properties[] = {
     DEFINE_PROP_END_OF_LIST(),
 };
 
-static void ccw_device_reset(DeviceState *d)
+static void ccw_device_reset_hold(Object *obj, ResetType type)
 {
-    CcwDevice *ccw_dev = CCW_DEVICE(d);
+    CcwDevice *ccw_dev = CCW_DEVICE(obj);
 
     css_reset_sch(ccw_dev->sch);
 }
@@ -54,11 +99,12 @@ static void ccw_device_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     CCWDeviceClass *k = CCW_DEVICE_CLASS(klass);
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
 
     k->realize = ccw_device_realize;
     k->refill_ids = ccw_device_refill_ids;
     device_class_set_props(dc, ccw_device_properties);
-    dc->reset = ccw_device_reset;
+    rc->phases.hold = ccw_device_reset_hold;
     dc->bus_type = TYPE_VIRTUAL_CSS_BUS;
 }
 
@@ -66,7 +112,7 @@ const VMStateDescription vmstate_ccw_dev = {
     .name = "s390_ccw_dev",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_STRUCT_POINTER(sch, CcwDevice, vmstate_subch_dev, SubchDev),
         VMSTATE_END_OF_LIST()
     }

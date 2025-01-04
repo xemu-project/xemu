@@ -258,7 +258,7 @@ static const VMStateDescription vmstate_pl190 = {
     .name = "pl190",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(level, PL190State),
         VMSTATE_UINT32(soft_level, PL190State),
         VMSTATE_UINT32(irq_enable, PL190State),
@@ -277,7 +277,7 @@ static void pl190_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = pl190_reset;
+    device_class_set_legacy_reset(dc, pl190_reset);
     dc->vmsd = &vmstate_pl190;
 }
 

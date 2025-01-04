@@ -26,6 +26,7 @@
 #include "hw/qdev-properties.h"
 #include "sysemu/kvm.h"
 #include "kvm_arm.h"
+#include "target/arm/gtimer.h"
 
 static void a15mp_priv_set_irq(void *opaque, int irq, int level)
 {
@@ -161,7 +162,7 @@ static void a15mp_priv_class_init(ObjectClass *klass, void *data)
 
     dc->realize = a15mp_priv_realize;
     device_class_set_props(dc, a15mp_priv_properties);
-    /* We currently have no savable state */
+    /* We currently have no saveable state */
 }
 
 static const TypeInfo a15mp_priv_info = {

@@ -21,10 +21,11 @@
 #include "cpu.h"
 #include "internal.h"
 #include "qemu/host-utils.h"
-#include "qemu/main-loop.h"
 #include "qemu/log.h"
 #include "exec/helper-proto.h"
 #include "crypto/aes.h"
+#include "crypto/aes-round.h"
+#include "crypto/clmul.h"
 #include "fpu/softfloat.h"
 #include "qapi/error.h"
 #include "qemu/guest-random.h"
@@ -43,7 +44,7 @@ static inline void helper_update_ov_legacy(CPUPPCState *env, int ov)
     }
 }
 
-target_ulong helper_divweu(CPUPPCState *env, target_ulong ra, target_ulong rb,
+target_ulong helper_DIVWEU(CPUPPCState *env, target_ulong ra, target_ulong rb,
                            uint32_t oe)
 {
     uint64_t rt = 0;
@@ -70,7 +71,7 @@ target_ulong helper_divweu(CPUPPCState *env, target_ulong ra, target_ulong rb,
     return (target_ulong)rt;
 }
 
-target_ulong helper_divwe(CPUPPCState *env, target_ulong ra, target_ulong rb,
+target_ulong helper_DIVWE(CPUPPCState *env, target_ulong ra, target_ulong rb,
                           uint32_t oe)
 {
     int64_t rt = 0;
@@ -100,7 +101,7 @@ target_ulong helper_divwe(CPUPPCState *env, target_ulong ra, target_ulong rb,
 
 #if defined(TARGET_PPC64)
 
-uint64_t helper_divdeu(CPUPPCState *env, uint64_t ra, uint64_t rb, uint32_t oe)
+uint64_t helper_DIVDEU(CPUPPCState *env, uint64_t ra, uint64_t rb, uint32_t oe)
 {
     uint64_t rt = 0;
     int overflow = 0;
@@ -119,7 +120,7 @@ uint64_t helper_divdeu(CPUPPCState *env, uint64_t ra, uint64_t rb, uint32_t oe)
     return rt;
 }
 
-uint64_t helper_divde(CPUPPCState *env, uint64_t rau, uint64_t rbu, uint32_t oe)
+uint64_t helper_DIVDE(CPUPPCState *env, uint64_t rau, uint64_t rbu, uint32_t oe)
 {
     uint64_t rt = 0;
     int64_t ra = (int64_t)rau;
@@ -158,7 +159,7 @@ uint64_t helper_divde(CPUPPCState *env, uint64_t rau, uint64_t rbu, uint32_t oe)
 /* When you XOR the pattern and there is a match, that byte will be zero */
 #define hasvalue(x, n)  (haszero((x) ^ pattern(n)))
 
-uint32_t helper_cmpeqb(target_ulong ra, target_ulong rb)
+uint32_t helper_CMPEQB(target_ulong ra, target_ulong rb)
 {
     return hasvalue(rb, ra) ? CRF_GT : 0;
 }
@@ -170,7 +171,7 @@ uint32_t helper_cmpeqb(target_ulong ra, target_ulong rb)
 /*
  * Return a random number.
  */
-uint64_t helper_darn32(void)
+uint64_t helper_DARN32(void)
 {
     Error *err = NULL;
     uint32_t ret;
@@ -185,7 +186,7 @@ uint64_t helper_darn32(void)
     return ret;
 }
 
-uint64_t helper_darn64(void)
+uint64_t helper_DARN64(void)
 {
     Error *err = NULL;
     uint64_t ret;
@@ -200,7 +201,7 @@ uint64_t helper_darn64(void)
     return ret;
 }
 
-uint64_t helper_bpermd(uint64_t rs, uint64_t rb)
+uint64_t helper_BPERMD(uint64_t rs, uint64_t rb)
 {
     int i;
     uint64_t ra = 0;
@@ -218,7 +219,7 @@ uint64_t helper_bpermd(uint64_t rs, uint64_t rb)
 
 #endif
 
-target_ulong helper_cmpb(target_ulong rs, target_ulong rb)
+target_ulong helper_CMPB(target_ulong rs, target_ulong rb)
 {
     target_ulong mask = 0xff;
     target_ulong ra = 0;
@@ -287,7 +288,7 @@ target_ulong helper_srad(CPUPPCState *env, target_ulong value,
 #endif
 
 #if defined(TARGET_PPC64)
-target_ulong helper_popcntb(target_ulong val)
+target_ulong helper_POPCNTB(target_ulong val)
 {
     /* Note that we don't fold past bytes */
     val = (val & 0x5555555555555555ULL) + ((val >>  1) &
@@ -299,7 +300,7 @@ target_ulong helper_popcntb(target_ulong val)
     return val;
 }
 
-target_ulong helper_popcntw(target_ulong val)
+target_ulong helper_POPCNTW(target_ulong val)
 {
     /* Note that we don't fold past words.  */
     val = (val & 0x5555555555555555ULL) + ((val >>  1) &
@@ -315,7 +316,7 @@ target_ulong helper_popcntw(target_ulong val)
     return val;
 }
 #else
-target_ulong helper_popcntb(target_ulong val)
+target_ulong helper_POPCNTB(target_ulong val)
 {
     /* Note that we don't fold past bytes */
     val = (val & 0x55555555) + ((val >>  1) & 0x55555555);
@@ -540,7 +541,7 @@ VARITHFPFMA(nmsubfp, float_muladd_negate_result | float_muladd_negate_c);
     }
 
 #define VARITHSAT_DO(name, op, optype, cvt, element)                    \
-    void helper_v##name(ppc_avr_t *r, ppc_avr_t *vscr_sat,              \
+    void helper_V##name(ppc_avr_t *r, ppc_avr_t *vscr_sat,              \
                         ppc_avr_t *a, ppc_avr_t *b, uint32_t desc)      \
     {                                                                   \
         int sat = 0;                                                    \
@@ -554,17 +555,17 @@ VARITHFPFMA(nmsubfp, float_muladd_negate_result | float_muladd_negate_c);
         }                                                               \
     }
 #define VARITHSAT_SIGNED(suffix, element, optype, cvt)          \
-    VARITHSAT_DO(adds##suffix##s, +, optype, cvt, element)      \
-    VARITHSAT_DO(subs##suffix##s, -, optype, cvt, element)
+    VARITHSAT_DO(ADDS##suffix##S, +, optype, cvt, element)      \
+    VARITHSAT_DO(SUBS##suffix##S, -, optype, cvt, element)
 #define VARITHSAT_UNSIGNED(suffix, element, optype, cvt)        \
-    VARITHSAT_DO(addu##suffix##s, +, optype, cvt, element)      \
-    VARITHSAT_DO(subu##suffix##s, -, optype, cvt, element)
-VARITHSAT_SIGNED(b, s8, int16_t, cvtshsb)
-VARITHSAT_SIGNED(h, s16, int32_t, cvtswsh)
-VARITHSAT_SIGNED(w, s32, int64_t, cvtsdsw)
-VARITHSAT_UNSIGNED(b, u8, uint16_t, cvtshub)
-VARITHSAT_UNSIGNED(h, u16, uint32_t, cvtswuh)
-VARITHSAT_UNSIGNED(w, u32, uint64_t, cvtsduw)
+    VARITHSAT_DO(ADDU##suffix##S, +, optype, cvt, element)      \
+    VARITHSAT_DO(SUBU##suffix##S, -, optype, cvt, element)
+VARITHSAT_SIGNED(B, s8, int16_t, cvtshsb)
+VARITHSAT_SIGNED(H, s16, int32_t, cvtswsh)
+VARITHSAT_SIGNED(W, s32, int64_t, cvtsdsw)
+VARITHSAT_UNSIGNED(B, u8, uint16_t, cvtshub)
+VARITHSAT_UNSIGNED(H, u16, uint32_t, cvtswuh)
+VARITHSAT_UNSIGNED(W, u32, uint64_t, cvtsduw)
 #undef VARITHSAT_CASE
 #undef VARITHSAT_DO
 #undef VARITHSAT_SIGNED
@@ -1424,46 +1425,39 @@ void helper_vbpermq(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
 #undef VBPERMQ_INDEX
 #undef VBPERMQ_DW
 
-#define PMSUM(name, srcfld, trgfld, trgtyp)                   \
-void helper_##name(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)  \
-{                                                             \
-    int i, j;                                                 \
-    trgtyp prod[sizeof(ppc_avr_t) / sizeof(a->srcfld[0])];    \
-                                                              \
-    VECTOR_FOR_INORDER_I(i, srcfld) {                         \
-        prod[i] = 0;                                          \
-        for (j = 0; j < sizeof(a->srcfld[0]) * 8; j++) {      \
-            if (a->srcfld[i] & (1ull << j)) {                 \
-                prod[i] ^= ((trgtyp)b->srcfld[i] << j);       \
-            }                                                 \
-        }                                                     \
-    }                                                         \
-                                                              \
-    VECTOR_FOR_INORDER_I(i, trgfld) {                         \
-        r->trgfld[i] = prod[2 * i] ^ prod[2 * i + 1];         \
-    }                                                         \
+/*
+ * There is no carry across the two doublewords, so their order does
+ * not matter.  Nor is there partial overlap between registers.
+ */
+void helper_vpmsumb(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
+{
+    for (int i = 0; i < 2; ++i) {
+        uint64_t aa = a->u64[i], bb = b->u64[i];
+        r->u64[i] = clmul_8x4_even(aa, bb) ^ clmul_8x4_odd(aa, bb);
+    }
 }
 
-PMSUM(vpmsumb, u8, u16, uint16_t)
-PMSUM(vpmsumh, u16, u32, uint32_t)
-PMSUM(vpmsumw, u32, u64, uint64_t)
+void helper_vpmsumh(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
+{
+    for (int i = 0; i < 2; ++i) {
+        uint64_t aa = a->u64[i], bb = b->u64[i];
+        r->u64[i] = clmul_16x2_even(aa, bb) ^ clmul_16x2_odd(aa, bb);
+    }
+}
+
+void helper_vpmsumw(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
+{
+    for (int i = 0; i < 2; ++i) {
+        uint64_t aa = a->u64[i], bb = b->u64[i];
+        r->u64[i] = clmul_32(aa, bb) ^ clmul_32(aa >> 32, bb >> 32);
+    }
+}
 
 void helper_VPMSUMD(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
 {
-    int i, j;
-    Int128 tmp, prod[2] = {int128_zero(), int128_zero()};
-
-    for (j = 0; j < 64; j++) {
-        for (i = 0; i < ARRAY_SIZE(r->u64); i++) {
-            if (a->VsrD(i) & (1ull << j)) {
-                tmp = int128_make64(b->VsrD(i));
-                tmp = int128_lshift(tmp, j);
-                prod[i] = int128_xor(prod[i], tmp);
-            }
-        }
-    }
-
-    r->s128 = int128_xor(prod[0], prod[1]);
+    Int128 e = clmul_64(a->u64[0], b->u64[0]);
+    Int128 o = clmul_64(a->u64[1], b->u64[1]);
+    r->s128 = int128_xor(e, o);
 }
 
 #if HOST_BIG_ENDIAN
@@ -2026,13 +2020,13 @@ void helper_vsum4ubs(CPUPPCState *env, ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
         ppc_avr_t result;                                               \
                                                                         \
         for (i = 0; i < ARRAY_SIZE(r->u32); i++) {                      \
-            uint16_t e = b->u16[hi ? i : i + 4];                        \
-            uint8_t a = (e >> 15) ? 0xff : 0;                           \
-            uint8_t r = (e >> 10) & 0x1f;                               \
-            uint8_t g = (e >> 5) & 0x1f;                                \
-            uint8_t b = e & 0x1f;                                       \
+            uint16_t _e = b->u16[hi ? i : i + 4];                       \
+            uint8_t _a = (_e >> 15) ? 0xff : 0;                         \
+            uint8_t _r = (_e >> 10) & 0x1f;                             \
+            uint8_t _g = (_e >> 5) & 0x1f;                              \
+            uint8_t _b = _e & 0x1f;                                     \
                                                                         \
-            result.u32[i] = (a << 24) | (r << 16) | (g << 8) | b;       \
+            result.u32[i] = (_a << 24) | (_r << 16) | (_g << 8) | _b;   \
         }                                                               \
         *r = result;                                                    \
     }
@@ -2932,59 +2926,30 @@ void helper_vsbox(ppc_avr_t *r, ppc_avr_t *a)
 
 void helper_vcipher(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
 {
-    ppc_avr_t result;
-    int i;
+    AESState *ad = (AESState *)r;
+    AESState *st = (AESState *)a;
+    AESState *rk = (AESState *)b;
 
-    VECTOR_FOR_INORDER_I(i, u32) {
-        result.VsrW(i) = b->VsrW(i) ^
-            (AES_Te0[a->VsrB(AES_shifts[4 * i + 0])] ^
-             AES_Te1[a->VsrB(AES_shifts[4 * i + 1])] ^
-             AES_Te2[a->VsrB(AES_shifts[4 * i + 2])] ^
-             AES_Te3[a->VsrB(AES_shifts[4 * i + 3])]);
-    }
-    *r = result;
+    aesenc_SB_SR_MC_AK(ad, st, rk, true);
 }
 
 void helper_vcipherlast(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
 {
-    ppc_avr_t result;
-    int i;
-
-    VECTOR_FOR_INORDER_I(i, u8) {
-        result.VsrB(i) = b->VsrB(i) ^ (AES_sbox[a->VsrB(AES_shifts[i])]);
-    }
-    *r = result;
+    aesenc_SB_SR_AK((AESState *)r, (AESState *)a, (AESState *)b, true);
 }
 
 void helper_vncipher(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
 {
-    /* This differs from what is written in ISA V2.07.  The RTL is */
-    /* incorrect and will be fixed in V2.07B.                      */
-    int i;
-    ppc_avr_t tmp;
+    AESState *ad = (AESState *)r;
+    AESState *st = (AESState *)a;
+    AESState *rk = (AESState *)b;
 
-    VECTOR_FOR_INORDER_I(i, u8) {
-        tmp.VsrB(i) = b->VsrB(i) ^ AES_isbox[a->VsrB(AES_ishifts[i])];
-    }
-
-    VECTOR_FOR_INORDER_I(i, u32) {
-        r->VsrW(i) =
-            AES_imc[tmp.VsrB(4 * i + 0)][0] ^
-            AES_imc[tmp.VsrB(4 * i + 1)][1] ^
-            AES_imc[tmp.VsrB(4 * i + 2)][2] ^
-            AES_imc[tmp.VsrB(4 * i + 3)][3];
-    }
+    aesdec_ISB_ISR_AK_IMC(ad, st, rk, true);
 }
 
 void helper_vncipherlast(ppc_avr_t *r, ppc_avr_t *a, ppc_avr_t *b)
 {
-    ppc_avr_t result;
-    int i;
-
-    VECTOR_FOR_INORDER_I(i, u8) {
-        result.VsrB(i) = b->VsrB(i) ^ (AES_isbox[a->VsrB(AES_ishifts[i])]);
-    }
-    *r = result;
+    aesdec_ISB_ISR_AK((AESState *)r, (AESState *)a, (AESState *)b, true);
 }
 
 void helper_vshasigmaw(ppc_avr_t *r,  ppc_avr_t *a, uint32_t st_six)

@@ -530,7 +530,8 @@ static void msf2_emac_realize(DeviceState *dev, Error **errp)
 
     qemu_macaddr_default_if_unset(&s->conf.macaddr);
     s->nic = qemu_new_nic(&net_msf2_emac_info, &s->conf,
-                          object_get_typename(OBJECT(dev)), dev->id, s);
+                          object_get_typename(OBJECT(dev)), dev->id,
+                          &dev->mem_reentrancy_guard, s);
     qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
 }
 
@@ -556,7 +557,7 @@ static const VMStateDescription vmstate_msf2_emac = {
     .name = TYPE_MSS_EMAC,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT8_ARRAY(mac_addr, MSF2EmacState, ETH_ALEN),
         VMSTATE_UINT32(rx_desc, MSF2EmacState),
         VMSTATE_UINT16_ARRAY(phy_regs, MSF2EmacState, PHY_MAX_REGS),
@@ -570,7 +571,7 @@ static void msf2_emac_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = msf2_emac_realize;
-    dc->reset = msf2_emac_reset;
+    device_class_set_legacy_reset(dc, msf2_emac_reset);
     dc->vmsd = &vmstate_msf2_emac;
     device_class_set_props(dc, msf2_emac_properties);
 }
