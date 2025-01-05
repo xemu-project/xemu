@@ -42,13 +42,6 @@ static XemuSnapshotData *xemu_snapshots_extra_data = NULL;
 static int xemu_snapshots_len = 0;
 static bool xemu_snapshots_dirty = true;
 
-const char **g_snapshot_shortcut_index_key_map[] = {
-    &g_config.general.snapshots.shortcuts.f5,
-    &g_config.general.snapshots.shortcuts.f6,
-    &g_config.general.snapshots.shortcuts.f7,
-    &g_config.general.snapshots.shortcuts.f8,
-};
-
 static void xemu_snapshots_load_data(BlockDriverState *bs_ro,
                                      QEMUSnapshotInfo *info,
                                      XemuSnapshotData *data, Error **err)

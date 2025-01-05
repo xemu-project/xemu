@@ -80,9 +80,8 @@ void ActionScreenshot(void)
 
 void ActionActivateBoundSnapshot(int slot, bool save)
 {
-    assert(slot < 4 && slot >= 0);
-    const char *snapshot_name = *(g_snapshot_shortcut_index_key_map[slot]);
-    if (!snapshot_name || !(snapshot_name[0])) {
+    auto snapshot_name = g_snapshot_mgr.GetSnapshotShortcut(slot);
+    if (!snapshot_name) {
         char *msg = g_strdup_printf("F%d is not bound to a snapshot", slot + 5);
         xemu_queue_notification(msg);
         g_free(msg);
@@ -91,9 +90,9 @@ void ActionActivateBoundSnapshot(int slot, bool save)
 
     Error *err = NULL;
     if (save) {
-        xemu_snapshots_save(snapshot_name, &err);
+        xemu_snapshots_save(*snapshot_name, &err);
     } else {
-        ActionLoadSnapshotChecked(snapshot_name);
+        ActionLoadSnapshotChecked(*snapshot_name);
     }
 
     if (err) {
