@@ -25,15 +25,16 @@
 #include "qom/object.h"
 #include "trace.h"
 
+#include "exec/address-spaces.h"
 #include "exec/memory-internal.h"
 #include "exec/ram_addr.h"
+#include "hw/boards.h"
+#include "hw/core/cpu.h"
+#include "migration/vmstate.h"
+#include "qemu/accel.h"
 #include "sysemu/kvm.h"
 #include "sysemu/runstate.h"
 #include "sysemu/tcg.h"
-#include "qemu/accel.h"
-#include "hw/boards.h"
-#include "migration/vmstate.h"
-#include "exec/address-spaces.h"
 
 //#define DEBUG_UNASSIGNED
 
@@ -3592,6 +3593,28 @@ void mtree_info(bool flatview, bool dispatch_tree, bool owner, bool disabled)
         mtree_info_flatview(dispatch_tree, owner);
     } else {
         mtree_info_as(dispatch_tree, owner, disabled);
+    }
+}
+
+
+void ram_write(hwaddr addr, void *ptr, hwaddr len, int is_physical)
+{
+    MemoryRegion *sm = get_system_memory();
+    MemoryRegion *mr;
+    uint8_t *buf = ptr;
+    CPUState *cs = qemu_get_cpu(0);
+    if (is_physical) {
+        QTAILQ_FOREACH (mr, &sm->subregions, subregions_link) {
+            if (strcmp(memory_region_name(mr), "xbox.ram") == 0) {
+                uint8_t *ram_ptr = qemu_map_ram_ptr(mr->ram_block, addr);
+                memcpy(ram_ptr, buf, len);
+                break;
+            }
+        }
+    } else {
+        if (cpu_memory_rw_debug(cs, addr, buf, len, 1) < 0) {
+            qemu_printf("Cannot access memory\n");
+        }
     }
 }
 

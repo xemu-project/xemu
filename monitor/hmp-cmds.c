@@ -14,20 +14,18 @@
  */
 
 #include "qemu/osdep.h"
-#include "monitor/hmp.h"
-#include "net/net.h"
-#include "net/eth.h"
 #include "chardev/char.h"
-#include "sysemu/block-backend.h"
-#include "sysemu/runstate.h"
-#include "qemu/config-file.h"
-#include "qemu/option.h"
-#include "qemu/timer.h"
-#include "qemu/sockets.h"
-#include "qemu/help_option.h"
+#include "exec/memory.h"
+#include "hw/core/cpu.h"
+#include "hw/intc/intc.h"
+#include "migration/misc.h"
+#include "migration/snapshot.h"
+#include "monitor/hmp.h"
 #include "monitor/monitor-internal.h"
-#include "qapi/error.h"
+#include "net/eth.h"
+#include "net/net.h"
 #include "qapi/clone-visitor.h"
+#include "qapi/error.h"
 #include "qapi/opts-visitor.h"
 #include "qapi/qapi-builtin-visit.h"
 #include "qapi/qapi-commands-block.h"
@@ -44,21 +42,24 @@
 #include "qapi/qapi-commands-tpm.h"
 #include "qapi/qapi-commands-ui.h"
 #include "qapi/qapi-commands-virtio.h"
-#include "qapi/qapi-visit-virtio.h"
-#include "qapi/qapi-visit-net.h"
 #include "qapi/qapi-visit-migration.h"
+#include "qapi/qapi-visit-net.h"
+#include "qapi/qapi-visit-virtio.h"
 #include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qerror.h"
 #include "qapi/string-input-visitor.h"
 #include "qapi/string-output-visitor.h"
-#include "qom/object_interfaces.h"
-#include "ui/console.h"
+#include "qemu/config-file.h"
 #include "qemu/cutils.h"
 #include "qemu/error-report.h"
-#include "hw/core/cpu.h"
-#include "hw/intc/intc.h"
-#include "migration/snapshot.h"
-#include "migration/misc.h"
+#include "qemu/help_option.h"
+#include "qemu/option.h"
+#include "qemu/sockets.h"
+#include "qemu/timer.h"
+#include "qom/object_interfaces.h"
+#include "sysemu/block-backend.h"
+#include "sysemu/runstate.h"
+#include "ui/console.h"
 
 #ifdef CONFIG_SPICE
 #include <spice/enums.h>
@@ -121,6 +122,22 @@ void hmp_info_version(Monitor *mon, const QDict *qdict)
                    info->package);
 
     qapi_free_VersionInfo(info);
+}
+
+void hmp_write(Monitor *mon, const QDict *qdict)
+{
+    uint32_t addr = qdict_get_int(qdict, "addr");
+    int data = qdict_get_int(qdict, "data");
+    int size = qdict_get_int(qdict, "size");
+    ram_write(addr, &data, size, 0);
+}
+
+void hmp_write_physical(Monitor *mon, const QDict *qdict)
+{
+    uint32_t addr = qdict_get_int(qdict, "addr");
+    int data = qdict_get_int(qdict, "data");
+    int size = qdict_get_int(qdict, "size");
+    ram_write(addr, &data, size, 1);
 }
 
 void hmp_info_kvm(Monitor *mon, const QDict *qdict)

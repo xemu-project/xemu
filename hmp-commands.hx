@@ -47,7 +47,35 @@ ERST
         .cmd        = hmp_quit,
         .flags      = "p",
     },
+	
+SRST
+``w``
+  Write to virtual memory.
+ERST
 
+    {
+        .name       = "w",
+        .args_type  = "addr:l,size:i,data:i",
+        .params     = "addr size data",
+        .help       = "write to virtual memory",
+        .cmd        = hmp_write,
+        .flags      = "p",
+    },
+	
+SRST
+``wp``
+  Write to physical memory.
+ERST
+
+    {
+        .name       = "wp",
+        .args_type  = "addr:l,size:i,data:i",
+        .params     = "addr size data",
+        .help       = "write to physical memory",
+        .cmd        = hmp_write_physical,
+        .flags      = "p",
+    },
+	
 SRST
 ``quit`` or ``q``
   Quit the emulator.
