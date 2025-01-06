@@ -854,7 +854,7 @@ int mem_access_callback_insert(CPUState *cpu, MemoryRegion *mr, hwaddr offset,
     }
 
     // FIXME: flush only applicable pages
-    tlb_flush(cpu);
+    tlb_flush_all_cpus_synced(cpu);
 
     return 0;
 }
@@ -865,7 +865,7 @@ void mem_access_callback_remove_by_ref(CPUState *cpu, MemAccessCallback *cb)
     g_free(cb);
 
     // FIXME: flush only applicable pages
-    tlb_flush(cpu);
+    tlb_flush_all_cpus_synced(cpu);
 }
 
 void mem_check_access_callback_vaddr(CPUState *cpu,
