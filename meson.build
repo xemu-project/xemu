@@ -2284,6 +2284,72 @@ if not get_option('libdw').auto() or \
                        required: get_option('libdw'))
 endif
 
+vulkan = not_found
+libglslang = not_found
+
+if host_os == 'windows'
+  vulkan = declare_dependency(compile_args: ['-DVK_USE_PLATFORM_WIN32_KHR'])
+  libglslang = declare_dependency(link_args: [
+        '-lglslang',
+        '-lMachineIndependent',
+        '-lGenericCodeGen',
+        '-lSPIRV',
+        '-lSPIRV-Tools',
+        '-lSPIRV-Tools-opt'
+      ])
+elif host_os == 'linux'
+  vulkan = dependency('vulkan')
+endif
+
+if vulkan.found()
+  if not libglslang.found()
+    # FIXME: Get spirv-tools to enable opt.
+    glslang_opts = cmake.subproject_options()
+    glslang_opts.add_cmake_defines({'ENABLE_OPT': false})
+    glslang_subpro = cmake.subproject('glslang', options: glslang_opts)
+    libglslang = declare_dependency(link_with: [
+          glslang_subpro.target('glslang'),
+          glslang_subpro.target('MachineIndependent'),
+          glslang_subpro.target('GenericCodeGen'),
+          glslang_subpro.target('SPIRV'),
+        ], include_directories: glslang_subpro.include_directories('glslang')
+      )
+  endif
+
+  volk_opts = cmake.subproject_options()
+  volk_opts.add_cmake_defines({'VOLK_STATIC_DEFINES': 'VK_NO_PROTOTYPES'})
+  if host_os == 'windows'
+    volk_opts.append_compile_args('c', '-DVK_USE_PLATFORM_WIN32_KHR=1')
+  endif
+  volk_subproj = cmake.subproject('volk', options: volk_opts)
+  volk = declare_dependency(compile_args: ['-DVK_NO_PROTOTYPES'],
+                            include_directories: volk_subproj.include_directories('volk'),
+                            link_with: volk_subproj.target('volk'),
+                            dependencies: vulkan)
+
+  spirv_reflect_opts = cmake.subproject_options()
+  spirv_reflect_opts.add_cmake_defines({'SPIRV_REFLECT_STATIC_LIB': 'ON'})
+  spirv_reflect_subproj = cmake.subproject('SPIRV-Reflect', options: spirv_reflect_opts)
+  spirv_reflect = declare_dependency(include_directories: spirv_reflect_subproj.include_directories('spirv-reflect-static'),
+                                     link_with: spirv_reflect_subproj.target('spirv-reflect-static'),
+                                     dependencies: vulkan)
+endif
+
+genconfig = declare_dependency(include_directories: 'genconfig')
+
+openssl = dependency('openssl', method: 'pkg-config', required: true)
+
+if host_os == 'windows'
+  libpcap = declare_dependency(include_directories: 'winpcap-loader/include',
+                               link_args: ['-lws2_32'])
+else
+  libpcap = dependency('libpcap', method: 'pkg-config', required: true)
+endif
+
+libsamplerate = dependency('samplerate', method: 'pkg-config', required: true)
+
+subdir('thirdparty')
+
 #################
 # config-host.h #
 #################
