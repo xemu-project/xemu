@@ -227,7 +227,6 @@ static void mcpx_apu_vm_state_change(void *opaque, bool running, RunState state)
 static int mcpx_apu_post_save(void *opaque);
 static int mcpx_apu_pre_load(void *opaque);
 static int mcpx_apu_post_load(void *opaque, int version_id);
-static void qdev_mcpx_apu_reset(DeviceState *dev);
 static void mcpx_apu_register(void);
 static void *mcpx_apu_frame_thread(void *arg);
 
@@ -2383,9 +2382,9 @@ static int mcpx_apu_post_load(void *opaque, int version_id)
     return 0;
 }
 
-static void qdev_mcpx_apu_reset(DeviceState *dev)
+static void mcpx_apu_reset_hold(Object *obj, ResetType type)
 {
-    MCPXAPUState *d = MCPX_APU_DEVICE(dev);
+    MCPXAPUState *d = MCPX_APU_DEVICE(obj);
     mcpx_apu_reset(d);
 }
 
@@ -2506,6 +2505,7 @@ static const VMStateDescription vmstate_mcpx_apu = {
 static void mcpx_apu_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
     k->vendor_id = PCI_VENDOR_ID_NVIDIA;
@@ -2515,8 +2515,9 @@ static void mcpx_apu_class_init(ObjectClass *klass, void *data)
     k->realize = mcpx_apu_realize;
     k->exit = mcpx_apu_exitfn;
 
+    rc->phases.hold = mcpx_apu_reset_hold;
+
     dc->desc = "MCPX Audio Processing Unit";
-    dc->reset = qdev_mcpx_apu_reset;
     dc->vmsd = &vmstate_mcpx_apu;
 }
 
