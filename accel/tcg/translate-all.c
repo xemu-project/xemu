@@ -326,6 +326,12 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
                                   tb->flags, tb->cs_base, tb->cflags);
         bool removed = qht_remove(&tb_ctx.inv_htable, tb, h);
         g_assert(removed);
+        if (phys_pc != -1) {
+            tb_lock_page0(phys_pc);
+            if (tb->page_addr[1] != -1) {
+                tb_lock_page1(phys_pc, tb->page_addr[1]);
+            }
+        }
         recycled = true;
         goto recycle_tb;
     }
