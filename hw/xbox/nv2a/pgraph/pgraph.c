@@ -136,7 +136,7 @@ void pgraph_write(void *opaque, hwaddr addr, uint64_t val, unsigned int size)
                      NV_PGRAPH_CHANNEL_CTX_POINTER_INST) << 4;
 
         if (val & NV_PGRAPH_CHANNEL_CTX_TRIGGER_READ_IN) {
-#ifdef DEBUG_NV2A
+#if DEBUG_NV2A
             unsigned pgraph_channel_id =
                 PG_GET_MASK(NV_PGRAPH_CTX_USER, NV_PGRAPH_CTX_USER_CHID);
 #endif

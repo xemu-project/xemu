@@ -43,7 +43,7 @@ static void pgraph_gl_init(NV2AState *d, Error **errp)
     /* fire up opengl */
     glo_set_current(g_nv2a_context_render);
 
-#ifdef DEBUG_NV2A_GL
+#if DEBUG_NV2A_GL
     gl_debug_initialize();
 #endif
 
