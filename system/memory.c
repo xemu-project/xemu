@@ -2368,7 +2368,7 @@ bool memory_region_test_and_clear_dirty(MemoryRegion *mr, hwaddr addr,
                                                   size, client);
     }
     assert(mr->terminates);
-    memory_region_sync_dirty_bitmap(mr);
+    memory_region_sync_dirty_bitmap(mr, false);
     return cpu_physical_memory_test_and_clear_dirty(
             memory_region_get_ram_addr(mr) + addr, size, client);
 }
