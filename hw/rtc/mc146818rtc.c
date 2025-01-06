@@ -436,8 +436,10 @@ static void cmos_ioport_write(void *opaque, hwaddr addr,
     uint32_t old_period;
     bool update_periodic_timer;
 
-    if ((addr & 1) == 0) {
+    if (addr == 0) {
         s->cmos_index = data & 0x7f;
+    } else if (addr == 2) {
+        s->cmos_index = data;
     } else {
         CMOS_DPRINTF("cmos: write index=0x%02x val=0x%02" PRIx64 "\n",
                      s->cmos_index, data);
@@ -448,10 +450,14 @@ static void cmos_ioport_write(void *opaque, hwaddr addr,
             s->cmos_data[s->cmos_index] = data;
             check_update_timer(s);
             break;
+#ifdef XBOX
+        case RTC_XBOX_CENTURY:
+#else
         case RTC_IBM_PS2_CENTURY_BYTE:
             s->cmos_index = RTC_CENTURY;
             /* fall through */
         case RTC_CENTURY:
+#endif
         case RTC_SECONDS:
         case RTC_MINUTES:
         case RTC_HOURS:
@@ -587,7 +593,11 @@ static void rtc_get_time(MC146818RtcState *s, struct tm *tm)
     tm->tm_mon = rtc_from_bcd(s, s->cmos_data[RTC_MONTH]) - 1;
     tm->tm_year =
         rtc_from_bcd(s, s->cmos_data[RTC_YEAR]) + s->base_year +
+#ifdef XBOX
+        rtc_from_bcd(s, s->cmos_data[RTC_XBOX_CENTURY]) * 100 - 1900;
+#else
         rtc_from_bcd(s, s->cmos_data[RTC_CENTURY]) * 100 - 1900;
+#endif
 }
 
 static void rtc_set_time(MC146818RtcState *s)
@@ -623,7 +633,11 @@ static void rtc_set_cmos(MC146818RtcState *s, const struct tm *tm)
     s->cmos_data[RTC_MONTH] = rtc_to_bcd(s, tm->tm_mon + 1);
     year = tm->tm_year + 1900 - s->base_year;
     s->cmos_data[RTC_YEAR] = rtc_to_bcd(s, year % 100);
+#ifdef XBOX
+    s->cmos_data[RTC_XBOX_CENTURY] = rtc_to_bcd(s, year / 100);
+#else
     s->cmos_data[RTC_CENTURY] = rtc_to_bcd(s, year / 100);
+#endif
 }
 
 static void rtc_update_time(MC146818RtcState *s)
@@ -677,10 +691,14 @@ static uint64_t cmos_ioport_read(void *opaque, hwaddr addr,
         return 0xff;
     } else {
         switch(s->cmos_index) {
+#ifdef XBOX
+        case RTC_XBOX_CENTURY:
+#else
         case RTC_IBM_PS2_CENTURY_BYTE:
             s->cmos_index = RTC_CENTURY;
             /* fall through */
         case RTC_CENTURY:
+#endif
         case RTC_SECONDS:
         case RTC_MINUTES:
         case RTC_HOURS:
@@ -734,13 +752,13 @@ static uint64_t cmos_ioport_read(void *opaque, hwaddr addr,
 
 void mc146818rtc_set_cmos_data(MC146818RtcState *s, int addr, int val)
 {
-    if (addr >= 0 && addr <= 127)
+    if (addr >= 0 && addr < sizeof(s->cmos_data))
         s->cmos_data[addr] = val;
 }
 
 int mc146818rtc_get_cmos_data(MC146818RtcState *s, int addr)
 {
-    assert(addr >= 0 && addr <= 127);
+    assert(addr >= 0 && addr < sizeof(s->cmos_data));
     return s->cmos_data[addr];
 }
 
@@ -919,7 +937,7 @@ static void rtc_realizefn(DeviceState *dev, Error **errp)
     s->suspend_notifier.notify = rtc_notify_suspend;
     qemu_register_suspend_notifier(&s->suspend_notifier);
 
-    memory_region_init_io(&s->io, OBJECT(s), &cmos_ops, s, "rtc", 2);
+    memory_region_init_io(&s->io, OBJECT(s), &cmos_ops, s, "rtc", 4);
     isa_register_ioport(isadev, &s->io, s->io_base);
 
     /* register rtc 0x70 port for coalesced_pio */
