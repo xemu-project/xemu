@@ -267,7 +267,7 @@ void xbox_init_common(MachineState *machine,
                   &smbus,
                   &agp_bus);
 
-    pcms->bus = pci_bus;
+    pcms->pcibus = pci_bus;
 
     isa_bus_irqs(isa_bus, x86ms->gsi);
 
