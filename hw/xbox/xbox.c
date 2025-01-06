@@ -24,6 +24,7 @@
 #include "hw/hw.h"
 #include "hw/loader.h"
 #include "hw/i386/pc.h"
+#include "hw/i386/kvm/clock.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_ids.h"
 #include "hw/usb.h"
@@ -33,7 +34,6 @@
 #include "sysemu/sysemu.h"
 #include "sysemu/kvm.h"
 #include "kvm/kvm_i386.h"
-#include "hw/kvm/clock.h"
 #include "hw/dma/i8257.h"
 
 #include "hw/sysbus.h"
@@ -244,7 +244,7 @@ void xbox_init_common(MachineState *machine,
 
     x86_cpus_init(x86ms, pcmc->default_cpu_version);
 
-    if (kvm_enabled() && pcmc->kvmclock_enabled) {
+    if (kvm_enabled()) {
         kvmclock_create(pcmc->kvmclock_create_always);
     }
 
