@@ -197,10 +197,10 @@ void pgraph_context_switch(NV2AState *d, unsigned int channel_id)
 
         pg->waiting_for_context_switch = true;
         qemu_mutex_unlock(&pg->lock);
-        qemu_mutex_lock_iothread();
+        bql_lock();
         pg->pending_interrupts |= NV_PGRAPH_INTR_CONTEXT_SWITCH;
         nv2a_update_irq(d);
-        qemu_mutex_unlock_iothread();
+        bql_unlock();
         qemu_mutex_lock(&pg->lock);
     }
 }
@@ -381,13 +381,13 @@ void nv2a_set_surface_scale_factor(unsigned int scale)
 {
     NV2AState *d = g_nv2a;
 
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
     qemu_mutex_lock(&d->pgraph.renderer_lock);
     if (d->pgraph.renderer->ops.set_surface_scale_factor) {
         d->pgraph.renderer->ops.set_surface_scale_factor(d, scale);
     }
     qemu_mutex_unlock(&d->pgraph.renderer_lock);
-    qemu_mutex_lock_iothread();
+    bql_lock();
 }
 
 unsigned int nv2a_get_surface_scale_factor(void)
@@ -395,13 +395,13 @@ unsigned int nv2a_get_surface_scale_factor(void)
     NV2AState *d = g_nv2a;
     int s = 1;
 
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
     qemu_mutex_lock(&d->pgraph.renderer_lock);
     if (d->pgraph.renderer->ops.get_surface_scale_factor) {
         s = d->pgraph.renderer->ops.get_surface_scale_factor(d);
     }
     qemu_mutex_unlock(&d->pgraph.renderer_lock);
-    qemu_mutex_lock_iothread();
+    bql_lock();
 
     return s;
 }
@@ -846,9 +846,9 @@ DEF_METHOD(NV097, NO_OPERATION)
     pg->waiting_for_nop = true;
 
     qemu_mutex_unlock(&pg->lock);
-    qemu_mutex_lock_iothread();
+    bql_lock();
     nv2a_update_irq(d);
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
     qemu_mutex_lock(&pg->lock);
 }
 
@@ -2649,7 +2649,7 @@ DEF_METHOD(NV097, BACK_END_WRITE_SEMAPHORE_RELEASE)
     d->pgraph.renderer->ops.surface_update(d, false, true, true);
 
     //qemu_mutex_unlock(&d->pgraph.lock);
-    //qemu_mutex_lock_iothread();
+    //bql_lock();
 
     uint32_t semaphore_offset = pgraph_reg_r(pg, NV_PGRAPH_SEMAPHOREOFFSET);
 
@@ -2662,7 +2662,7 @@ DEF_METHOD(NV097, BACK_END_WRITE_SEMAPHORE_RELEASE)
     stl_le_p((uint32_t*)semaphore_data, parameter);
 
     //qemu_mutex_lock(&d->pgraph.lock);
-    //qemu_mutex_unlock_iothread();
+    //bql_unlock();
 }
 
 DEF_METHOD(NV097, SET_ZMIN_MAX_CONTROL)

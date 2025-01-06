@@ -20,6 +20,7 @@
  */
 
 #include "hw/xbox/nv2a/nv2a_int.h"
+#include "qemu/main-loop.h"
 
 void nv2a_update_irq(NV2AState *d)
 {
@@ -244,9 +245,9 @@ static void nv2a_lock_fifo(NV2AState *d)
 {
     qemu_mutex_lock(&d->pfifo.lock);
     qemu_cond_broadcast(&d->pfifo.fifo_cond);
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
     qemu_cond_wait(&d->pfifo.fifo_idle_cond, &d->pfifo.lock);
-    qemu_mutex_lock_iothread();
+    bql_lock();
     qemu_mutex_lock(&d->pgraph.lock);
 }
 
@@ -267,9 +268,9 @@ static void nv2a_reset(NV2AState *d)
     qemu_event_reset(&d->pgraph.flush_complete);
     qatomic_set(&d->pgraph.flush_pending, true);
     nv2a_unlock_fifo(d);
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
     qemu_event_wait(&d->pgraph.flush_complete);
-    qemu_mutex_lock_iothread();
+    bql_lock();
     nv2a_lock_fifo(d);
     if (!halted) {
         qatomic_set(&d->pfifo.halt, false);
@@ -366,9 +367,9 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
         qatomic_set(&d->pfifo.halt, true);
         pgraph_pre_savevm_trigger(d);
         nv2a_unlock_fifo(d);
-        qemu_mutex_unlock_iothread();
+        bql_unlock();
         pgraph_pre_savevm_wait(d);
-        qemu_mutex_lock_iothread();
+        bql_lock();
         nv2a_lock_fifo(d);
     } else if (state == RUN_STATE_RESTORE_VM) {
         nv2a_lock_fifo(d);
@@ -382,9 +383,9 @@ static void nv2a_vm_state_change(void *opaque, bool running, RunState state)
         nv2a_lock_fifo(d);
         pgraph_pre_shutdown_trigger(d);
         nv2a_unlock_fifo(d);
-        qemu_mutex_unlock_iothread();
+        bql_unlock();
         pgraph_pre_shutdown_wait(d);
-        qemu_mutex_lock_iothread();
+        bql_lock();
     }
 }
 

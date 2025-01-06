@@ -482,12 +482,12 @@ static SurfaceBinding *surface_put(NV2AState *d, hwaddr addr,
 
     if (tcg_enabled()) {
         qemu_mutex_unlock(&d->pgraph.lock);
-        qemu_mutex_lock_iothread();
+        bql_lock();
         mem_access_callback_insert(qemu_get_cpu(0),
             d->vram, surface_out->vram_addr, surface_out->size,
             &surface_out->access_cb, &surface_access_callback,
             surface_out);
-        qemu_mutex_unlock_iothread();
+        bql_unlock();
         qemu_mutex_lock(&d->pgraph.lock);
     }
 
@@ -545,9 +545,9 @@ void pgraph_gl_surface_invalidate(NV2AState *d, SurfaceBinding *surface)
 
     if (tcg_enabled()) {
         qemu_mutex_unlock(&d->pgraph.lock);
-        qemu_mutex_lock_iothread();
+        bql_lock();
         mem_access_callback_remove_by_ref(qemu_get_cpu(0), surface->access_cb);
-        qemu_mutex_unlock_iothread();
+        bql_unlock();
         qemu_mutex_lock(&d->pgraph.lock);
     }
 

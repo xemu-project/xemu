@@ -546,12 +546,12 @@ static void register_cpu_access_callback(NV2AState *d, SurfaceBinding *surface)
 {
     if (tcg_enabled()) {
         qemu_mutex_unlock(&d->pgraph.lock);
-        qemu_mutex_lock_iothread();
+        bql_lock();
         mem_access_callback_insert(qemu_get_cpu(0),
             d->vram, surface->vram_addr, surface->size,
             &surface->access_cb, &surface_access_callback,
             surface);
-        qemu_mutex_unlock_iothread();
+        bql_unlock();
         qemu_mutex_lock(&d->pgraph.lock);
     }
 }
@@ -561,9 +561,9 @@ static void unregister_cpu_access_callback(NV2AState *d,
 {
     if (tcg_enabled()) {
         qemu_mutex_unlock(&d->pgraph.lock);
-        qemu_mutex_lock_iothread();
+        bql_lock();
         mem_access_callback_remove_by_ref(qemu_get_cpu(0), surface->access_cb);
-        qemu_mutex_unlock_iothread();
+        bql_unlock();
         qemu_mutex_lock(&d->pgraph.lock);
     }
 }

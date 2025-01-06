@@ -207,12 +207,12 @@ static ssize_t pfifo_run_puller(NV2AState *d, uint32_t method_entry,
         /* methods that take objects.
          * TODO: Check this range is correct for the nv2a */
         if (method >= 0x180 && method < 0x200) {
-            //qemu_mutex_lock_iothread();
+            //bql_lock();
             RAMHTEntry entry = ramht_lookup(d, parameter);
             assert(entry.valid);
             // assert(entry.channel_id == state->channel_id);
             parameter = entry.instance;
-            //qemu_mutex_unlock_iothread();
+            //bql_unlock();
         }
 
         enum FIFOEngine engine = GET_MASK(*engine_reg, 3 << (4*subchannel));
