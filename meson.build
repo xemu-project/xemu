@@ -1748,13 +1748,19 @@ endif
 
 opengl = not_found
 if not get_option('opengl').auto() or have_system or have_vhost_user_gpu
-  epoxy = dependency('epoxy', method: 'pkg-config',
-                      required: get_option('opengl'))
-  if cc.has_header('epoxy/egl.h', dependencies: epoxy)
-    opengl = epoxy
-  elif get_option('opengl').enabled()
-    error('epoxy/egl.h not found')
+  # FIXME: Use meson's 'gl' dep
+  if host_os == 'darwin'
+    opengl_libs=['-framework', 'OpenGL']
+  elif host_os == 'windows'
+    opengl_libs=['-lopengl32', '-lgdi32']
+  elif host_os == 'linux'
+    opengl_libs=['-lGL']
+  else
+    error('Unknown GL platform')
   endif
+
+  opengl = declare_dependency(compile_args: config_host['EPOXY_CFLAGS'].split(),
+                              link_args: config_host['EPOXY_LIBS'].split() + opengl_libs)
 endif
 
 gbm = not_found
