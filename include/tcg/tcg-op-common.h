@@ -562,4 +562,47 @@ static inline void tcg_gen_trunc_ptr_i32(TCGv_i32 r, TCGv_ptr a)
 #undef PTR
 #undef NAT
 
+/* FP */
+void tcg_gen_flcr(TCGv_i32 arg);
+void tcg_gen_st80f_f32(TCGv_f32 arg, TCGv_ptr dst);
+void tcg_gen_st80f_f64(TCGv_f64 arg, TCGv_ptr dst);
+void tcg_gen_ld80f_f32(TCGv_f32 ret, TCGv_ptr src);
+void tcg_gen_ld80f_f64(TCGv_f64 ret, TCGv_ptr src);
+void tcg_gen_abs_f32(TCGv_f32 ret, TCGv_f32 src);
+void tcg_gen_abs_f64(TCGv_f64 ret, TCGv_f64 src);
+void tcg_gen_add_f32(TCGv_f32 ret, TCGv_f32 arg1, TCGv_f32 arg2);
+void tcg_gen_add_f64(TCGv_f64 ret, TCGv_f64 arg1, TCGv_f64 arg2);
+void tcg_gen_chs_f32(TCGv_f32 ret, TCGv_f32 src);
+void tcg_gen_chs_f64(TCGv_f64 ret, TCGv_f64 src);
+void tcg_gen_com_f32(TCGv_i64 ret, TCGv_f32 arg1, TCGv_f32 arg2);
+void tcg_gen_com_f64(TCGv_i64 ret, TCGv_f64 arg1, TCGv_f64 arg2);
+void tcg_gen_cos_f32(TCGv_f32 ret, TCGv_f32 arg);
+void tcg_gen_cos_f64(TCGv_f64 ret, TCGv_f64 arg);
+void tcg_gen_cvt32f_f64(TCGv_f64 ret, TCGv_f32 arg);
+void tcg_gen_cvt32f_i32(TCGv_i32 ret, TCGv_f32 arg);
+void tcg_gen_cvt32f_i64(TCGv_i64 ret, TCGv_f32 arg);
+void tcg_gen_cvt32i_f32(TCGv_f32 ret, TCGv_i32 arg);
+void tcg_gen_cvt32i_f64(TCGv_f64 ret, TCGv_i32 arg);
+void tcg_gen_cvt64f_f32(TCGv_f32 ret, TCGv_f64 arg);
+void tcg_gen_cvt64f_i32(TCGv_i32 ret, TCGv_f64 src);
+void tcg_gen_cvt64f_i64(TCGv_i64 ret, TCGv_f64 src);
+void tcg_gen_cvt64i_f32(TCGv_f32 ret, TCGv_i64 arg);
+void tcg_gen_cvt64i_f64(TCGv_f64 ret, TCGv_i64 arg);
+void tcg_gen_div_f32(TCGv_f32 ret, TCGv_f32 arg1, TCGv_f32 arg2);
+void tcg_gen_div_f64(TCGv_f64 ret, TCGv_f64 arg1, TCGv_f64 arg2);
+void tcg_gen_mov32f_i32(TCGv_i32 ret, TCGv_f32 src);
+void tcg_gen_mov32i_f32(TCGv_f32 ret, TCGv_i32 arg);
+void tcg_gen_mov64f_i64(TCGv_i64 ret, TCGv_f64 src);
+void tcg_gen_mov64i_f64(TCGv_f64 ret, TCGv_i64 arg);
+void tcg_gen_mov_f32(TCGv_f32 ret, TCGv_f32 src);
+void tcg_gen_mov_f64(TCGv_f64 ret, TCGv_f64 src);
+void tcg_gen_mul_f32(TCGv_f32 ret, TCGv_f32 arg1, TCGv_f32 arg2);
+void tcg_gen_mul_f64(TCGv_f64 ret, TCGv_f64 arg1, TCGv_f64 arg2);
+void tcg_gen_sin_f32(TCGv_f32 ret, TCGv_f32 arg);
+void tcg_gen_sin_f64(TCGv_f64 ret, TCGv_f64 arg);
+void tcg_gen_sqrt_f32(TCGv_f32 ret, TCGv_f32 arg);
+void tcg_gen_sqrt_f64(TCGv_f64 ret, TCGv_f64 arg);
+void tcg_gen_sub_f32(TCGv_f32 ret, TCGv_f32 arg1, TCGv_f32 arg2);
+void tcg_gen_sub_f64(TCGv_f64 ret, TCGv_f64 arg1, TCGv_f64 arg2);
+
 #endif /* TCG_TCG_OP_COMMON_H */
