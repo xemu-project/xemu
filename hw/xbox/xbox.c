@@ -217,8 +217,6 @@ void xbox_init_common(MachineState *machine,
     MemoryRegion *system_memory = get_system_memory();
     // MemoryRegion *system_io = get_system_io();
 
-    int i;
-
     PCIBus *pci_bus;
     ISABus *isa_bus;
 
@@ -297,18 +295,6 @@ void xbox_init_common(MachineState *machine,
     pci_ide_create_devs(dev);
     // idebus[0] = qdev_get_child_bus(&dev->qdev, "ide.0");
     // idebus[1] = qdev_get_child_bus(&dev->qdev, "ide.1");
-
-    // xbox bios wants this bit pattern set to mark the data as valid
-    uint8_t bits = 0x55;
-    for (i = 0x10; i < 0x70; i++) {
-        mc146818rtc_set_cmos_data(rtc_state, i, bits);
-        bits = ~bits;
-    }
-    bits = 0x55;
-    for (i = 0x80; i < 0x100; i++) {
-        mc146818rtc_set_cmos_data(rtc_state, i, bits);
-        bits = ~bits;
-    }
 
     /* smbus devices */
     smbus_xbox_smc_init(smbus, 0x10);

@@ -1006,6 +1006,20 @@ static void rtc_reset_enter(Object *obj, ResetType type)
         s->irq_coalesced = 0;
         s->irq_reinject_on_ack_count = 0;
     }
+
+    // xbox bios wants this bit pattern set to mark the data as valid
+#ifdef XBOX
+    uint8_t bits = 0x55;
+    for (int i = 0x10; i < 0x70; i++) {
+        mc146818rtc_set_cmos_data(s, i, bits);
+        bits = ~bits;
+    }
+    bits = 0x55;
+    for (int i = 0x80; i < 0x100; i++) {
+        mc146818rtc_set_cmos_data(s, i, bits);
+        bits = ~bits;
+    }
+#endif
 }
 
 static void rtc_reset_hold(Object *obj, ResetType type)
