@@ -28,6 +28,7 @@
 #include "block/block_int.h"
 #include "block/qapi.h"
 #include "block/qdict.h"
+#include "block/block-io.h"
 #include "migration/qemu-file.h"
 #include "migration/snapshot.h"
 #include "qapi/error.h"
