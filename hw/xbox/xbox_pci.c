@@ -208,8 +208,9 @@ void xbox_pci_init(qemu_irq *pic,
     lpc_state->pic = pic;
     lpc_state->rom_memory = rom_memory;
 
-    pci_bus_irqs(host_bus, xbox_lpc_set_irq, xbox_lpc_map_irq, lpc_state,
+    pci_bus_irqs(host_bus, xbox_lpc_set_irq, lpc_state,
                  XBOX_NUM_INT_IRQS + XBOX_NUM_PIRQS);
+    pci_bus_map_irqs(host_bus, xbox_lpc_map_irq);
 
     qemu_irq *acpi_irq = qemu_allocate_irqs(xbox_lpc_set_acpi_irq,
                                             lpc_state, 2);
