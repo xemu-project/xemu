@@ -229,7 +229,7 @@ void xbox_init_common(MachineState *machine,
 
     // DriveInfo *hd[MAX_IDE_BUS * MAX_IDE_DEVS];
     // BusState *idebus[MAX_IDE_BUS];
-    ISADevice *rtc_state;
+    MC146818RtcState *rtc_state;
     ISADevice *pit = NULL;
     int pit_isa_irq = 0;
     qemu_irq pit_alt_irq = NULL;
@@ -279,6 +279,7 @@ void xbox_init_common(MachineState *machine,
 
     /* init basic PC hardware */
     rtc_state = mc146818_rtc_init(isa_bus, 2000, NULL);
+    x86ms->rtc = ISA_DEVICE(rtc_state);
 
     if (kvm_pit_in_kernel()) {
         pit = kvm_pit_init(isa_bus, 0x40);
@@ -298,12 +299,12 @@ void xbox_init_common(MachineState *machine,
     // xbox bios wants this bit pattern set to mark the data as valid
     uint8_t bits = 0x55;
     for (i = 0x10; i < 0x70; i++) {
-        rtc_set_memory(rtc_state, i, bits);
+        mc146818rtc_set_cmos_data(rtc_state, i, bits);
         bits = ~bits;
     }
     bits = 0x55;
     for (i = 0x80; i < 0x100; i++) {
-        rtc_set_memory(rtc_state, i, bits);
+        mc146818rtc_set_cmos_data(rtc_state, i, bits);
         bits = ~bits;
     }
 
