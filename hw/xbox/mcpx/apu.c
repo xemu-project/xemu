@@ -25,8 +25,10 @@
 #include <SDL.h>
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
+#include "hw/pci/pci_device.h"
 #include "cpu.h"
 #include "migration/vmstate.h"
+#include "qemu/main-loop.h"
 #include "sysemu/runstate.h"
 #include "audio/audio.h"
 #include "qemu/fifo8.h"
