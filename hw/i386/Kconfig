@@ -169,7 +169,7 @@ config XBOX
     select PC_ACPI
     select ACPI_SMBUS
     select PCI_I440FX
-    select PIIX3
+    select PIIX
     select IDE_PIIX
     select DIMM
     select AC97
