@@ -1195,7 +1195,7 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
      * possible lengthy blocking (for vsync).
      */
     qemu_mutex_lock_main_loop();
-    qemu_mutex_lock_iothread();
+    bql_lock();
     sdl2_poll_events(scon);
 
     glClearColor(0, 0, 0, 0);
@@ -1205,7 +1205,7 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
     xemu_hud_render();
 
     // Release BQL before swapping (which may sleep if swap interval is not immediate)
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
     qemu_mutex_unlock_main_loop();
 
     glFinish();
@@ -1214,12 +1214,12 @@ void sdl2_gl_refresh(DisplayChangeListener *dcl)
 
     /* VGA update (see note above) + vblank */
     qemu_mutex_lock_main_loop();
-    qemu_mutex_lock_iothread();
+    bql_lock();
     graphic_hw_update(scon->dcl.con);
     if (scon->updates && scon->surface) {
         scon->updates = 0;
     }
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
     qemu_mutex_unlock_main_loop();
 
     /*
@@ -1550,9 +1550,9 @@ int main(int argc, char **argv)
     DPRINTF("Main thread: initializing app\n");
 
     qemu_mutex_lock_main_loop();
-    qemu_mutex_lock_iothread();
+    bql_lock();
     xemu_input_init();
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
     qemu_mutex_unlock_main_loop();
 
     while (1) {
