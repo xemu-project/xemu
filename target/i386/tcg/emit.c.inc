@@ -1324,9 +1324,6 @@ static void gen_BEXTR(DisasContext *s, X86DecodedInsn *decode)
      * Shifts larger than operand size get zeros.
      */
     tcg_gen_ext8u_tl(s->A0, s->T1);
-    if (TARGET_LONG_BITS == 64 && ot == MO_32) {
-        tcg_gen_ext32u_tl(s->T0, s->T0);
-    }
     tcg_gen_shr_tl(s->T0, s->T0, s->A0);
 
     tcg_gen_movcond_tl(TCG_COND_LEU, s->T0, s->A0, bound, s->T0, zero);
