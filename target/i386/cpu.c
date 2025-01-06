@@ -1882,8 +1882,6 @@ ExtSaveArea x86_ext_save_areas[XSAVE_STATE_AREA_COUNT] = {
     },
 };
 
-#ifndef XBOX
-
 uint32_t xsave_area_size(uint64_t mask, bool compacted)
 {
     uint64_t ret = x86_ext_save_areas[0].size;
@@ -1900,8 +1898,6 @@ uint32_t xsave_area_size(uint64_t mask, bool compacted)
     }
     return ret;
 }
-
-#endif /* XBOX */
 
 static inline bool accel_uses_host_cpuid(void)
 {
@@ -6239,11 +6235,11 @@ uint64_t x86_cpu_get_supported_feature_word(X86CPU *cpu, FeatureWord w)
     return r;
 }
 
-#ifndef XBOX
 static void x86_cpu_get_supported_cpuid(uint32_t func, uint32_t index,
                                         uint32_t *eax, uint32_t *ebx,
                                         uint32_t *ecx, uint32_t *edx)
 {
+#ifndef XBOX
     if (kvm_enabled()) {
         *eax = kvm_arch_get_supported_cpuid(kvm_state, func, index, R_EAX);
         *ebx = kvm_arch_get_supported_cpuid(kvm_state, func, index, R_EBX);
@@ -6255,13 +6251,17 @@ static void x86_cpu_get_supported_cpuid(uint32_t func, uint32_t index,
         *ecx = hvf_get_supported_cpuid(func, index, R_ECX);
         *edx = hvf_get_supported_cpuid(func, index, R_EDX);
     } else {
+#endif
         *eax = 0;
         *ebx = 0;
         *ecx = 0;
         *edx = 0;
+#ifndef XBOX
     }
+#endif
 }
 
+#ifndef XBOX
 static void x86_cpu_get_cache_cpuid(uint32_t func, uint32_t index,
                                     uint32_t *eax, uint32_t *ebx,
                                     uint32_t *ecx, uint32_t *edx)
@@ -6532,6 +6532,7 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
 #ifndef XBOX
     uint32_t die_offset;
     uint32_t signature[3];
+#endif
     X86CPUTopoInfo topo_info;
     uint32_t cores_per_pkg;
     uint32_t threads_per_pkg;
@@ -6540,7 +6541,6 @@ void cpu_x86_cpuid(CPUX86State *env, uint32_t index, uint32_t count,
     topo_info.modules_per_die = env->nr_modules;
     topo_info.cores_per_module = cs->nr_cores / env->nr_dies / env->nr_modules;
     topo_info.threads_per_core = cs->nr_threads;
-#endif
 
     cores_per_pkg = topo_info.cores_per_module * topo_info.modules_per_die *
                     topo_info.dies_per_pkg;
