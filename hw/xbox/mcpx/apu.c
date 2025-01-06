@@ -2555,9 +2555,9 @@ static void *mcpx_apu_frame_thread(void *arg)
 
         if (d->set_irq) {
             qemu_mutex_unlock(&d->lock);
-            qemu_mutex_lock_iothread();
+            bql_lock();
             update_irq(d);
-            qemu_mutex_unlock_iothread();
+            bql_unlock();
             qemu_mutex_lock(&d->lock);
             d->set_irq = false;
         }
