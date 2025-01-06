@@ -33,8 +33,9 @@ subprojects="keycodemapdb libvfio-user berkeley-softfloat-3
   syn-2-rs unicode-ident-1-rs"
 sub_deinit=""
 
-# xemu extras
-subprojects="$subprojects glslang SPIRV-Reflect volk VulkanMemoryAllocator
+# xemu only
+subbprojects="keycodemapdb berkeley-softfloat-3"
+subprojects="glslang SPIRV-Reflect volk VulkanMemoryAllocator
   nv2a_vsh_cpu tomlplusplus cpp-httplib xxhash imgui implot genconfig"
 
 function cleanup() {
