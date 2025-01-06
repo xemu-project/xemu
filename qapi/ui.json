@@ -1505,6 +1505,8 @@
 #
 # @dbus: Start a D-Bus service for the display.  (Since 7.0)
 #
+# @xemu: The xemu user interface.
+#
 # Since: 2.12
 ##
 { 'enum'    : 'DisplayType',
