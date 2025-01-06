@@ -35,6 +35,7 @@
 #include "sysemu/runstate.h"
 #include "ui/console.h"
 #include "hw/display/vga_int.h"
+#include "hw/pci/pci_device.h"
 
 #include "hw/hw.h"
 #include "hw/display/vga.h"
