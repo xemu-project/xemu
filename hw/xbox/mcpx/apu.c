@@ -88,7 +88,10 @@ typedef struct MCPXAPUVoiceFilter {
 } MCPXAPUVoiceFilter;
 
 typedef struct MCPXAPUState {
-    PCIDevice dev;
+    /*< private >*/
+    PCIDevice parent_obj;
+    /*< public >*/
+
     bool exiting;
     bool set_irq;
 
@@ -365,12 +368,12 @@ static void update_irq(MCPXAPUState *d)
         qatomic_or(&d->regs[NV_PAPU_ISTS], NV_PAPU_ISTS_GINTSTS);
         // fprintf(stderr, "mcpx irq raise ien=%08x ists=%08x\n",
         //         d->regs[NV_PAPU_IEN], d->regs[NV_PAPU_ISTS]);
-        pci_irq_assert(&d->dev);
+        pci_irq_assert(PCI_DEVICE(d));
     } else {
         qatomic_and(&d->regs[NV_PAPU_ISTS], ~NV_PAPU_ISTS_GINTSTS);
         // fprintf(stderr, "mcpx irq lower ien=%08x ists=%08x\n",
         //         d->regs[NV_PAPU_IEN], d->regs[NV_PAPU_ISTS]);
-        pci_irq_deassert(&d->dev);
+        pci_irq_deassert(PCI_DEVICE(d));
     }
 }
 
@@ -2313,7 +2316,7 @@ static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
                           "mcpx-apu-ep", 0x10000);
     memory_region_add_subregion(&d->mmio, 0x50000, &d->ep.mmio);
 
-    pci_register_bar(&d->dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
+    pci_register_bar(dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
 }
 
 static void mcpx_apu_exitfn(PCIDevice *dev)
@@ -2481,7 +2484,7 @@ static const VMStateDescription vmstate_mcpx_apu = {
     .pre_load = mcpx_apu_pre_load,
     .post_load = mcpx_apu_post_load,
     .fields = (VMStateField[]) {
-        VMSTATE_PCI_DEVICE(dev, MCPXAPUState),
+        VMSTATE_PCI_DEVICE(parent_obj, MCPXAPUState),
         VMSTATE_STRUCT_POINTER(gp.dsp, MCPXAPUState, vmstate_vp_dsp_state,
                                DSPState),
         VMSTATE_UINT32_ARRAY(gp.regs, MCPXAPUState, 0x10000),
