@@ -2508,10 +2508,6 @@ void *memory_region_get_ram_ptr(MemoryRegion *mr)
 {
     uint64_t offset = 0;
 
-    if (mr->alias) {
-        return memory_region_get_ram_ptr(mr->alias) + mr->alias_offset;
-    }
-
     RCU_READ_LOCK_GUARD();
     while (mr->alias) {
         offset += mr->alias_offset;
