@@ -452,11 +452,11 @@ void tb_phys_invalidate(TranslationBlock *tb, tb_page_addr_t page_addr);
 void tb_invalidate_phys_range(tb_page_addr_t start, tb_page_addr_t last);
 void tb_set_jmp_target(TranslationBlock *tb, int n, uintptr_t addr);
 
-TranslationBlock *tb_htable_lookup(CPUState *cpu, target_ulong pc,
-                                   target_ulong cs_base, uint32_t flags,
+TranslationBlock *tb_htable_lookup(CPUState *cpu, uint64_t pc,
+                                   uint64_t cs_base, uint32_t flags,
                                    uint32_t cflags);
-TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, target_ulong pc,
-                                       target_ulong cs_base, uint32_t flags,
+TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, uint64_t pc,
+                                       uint64_t cs_base, uint32_t flags,
                                        uint32_t cflags);
 
 /* GETPC is the true target of the return instruction that we'll execute.  */

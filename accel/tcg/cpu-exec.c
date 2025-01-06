@@ -246,8 +246,8 @@ tb_htable_lookup_common(CPUState *cpu, vaddr pc, uint64_t cs_base,
     return qht_lookup_custom(ht, &desc, h, func);
 }
 
-TranslationBlock *tb_htable_lookup(CPUState *cpu, target_ulong pc,
-                                   target_ulong cs_base, uint32_t flags,
+TranslationBlock *tb_htable_lookup(CPUState *cpu, uint64_t pc,
+                                   uint64_t cs_base, uint32_t flags,
                                    uint32_t cflags)
 {
     return tb_htable_lookup_common(cpu, pc, cs_base, flags, cflags,
@@ -263,8 +263,8 @@ static bool inv_tb_lookup_cmp(const void *p, const void *d)
            tb->ihash == tb_code_hash_func(desc->env, desc->pc, tb->size);
 }
 
-TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, target_ulong pc,
-                                       target_ulong cs_base, uint32_t flags,
+TranslationBlock *inv_tb_htable_lookup(CPUState *cpu, uint64_t pc,
+                                       uint64_t cs_base, uint32_t flags,
                                        uint32_t cflags)
 {
     return tb_htable_lookup_common(cpu, pc, cs_base, flags, cflags,
