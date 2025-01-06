@@ -84,7 +84,7 @@ static void tcg_cpu_reset_hold(CPUState *cpu)
 {
     tcg_flush_jmp_cache(cpu);
 
-    tlb_flush(cpu);
+    tlb_flush_all_cpus_synced(cpu);
 }
 
 /* mask must never be zero, except for A20 change call */
