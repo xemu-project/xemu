@@ -287,7 +287,7 @@ void xbox_init_common(MachineState *machine,
         pit = i8254_pit_init(isa_bus, 0x40, pit_isa_irq, pit_alt_irq);
     }
 
-    i8257_dma_init(isa_bus, 0);
+    i8257_dma_init(OBJECT(machine), isa_bus, 0);
 
     pcspk_init(pcms->pcspk, isa_bus, pit);
 
