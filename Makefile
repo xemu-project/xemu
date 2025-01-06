@@ -172,7 +172,7 @@ endif
 
 else # config-host.mak does not exist
 ifneq ($(filter-out $(UNCHECKED_GOALS),$(MAKECMDGOALS)),$(if $(MAKECMDGOALS),,fail))
-$(error Please call configure before running make)
+# $(error Please call configure before running make)
 endif
 endif # config-host.mak does not exist
 
