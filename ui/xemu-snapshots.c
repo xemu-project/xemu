@@ -229,11 +229,8 @@ char *xemu_get_currently_loaded_disc_path(void)
             continue;
         }
 
-        if (info->value->has_inserted) {
-            BlockDeviceInfo *inserted = info->value->inserted;
-            if (inserted->has_node_name) {
-                file = g_strdup(inserted->file);
-            }
+        if (info->value->inserted && info->value->inserted->node_name) {
+            file = g_strdup(info->value->inserted->file);
         }
     }
 
