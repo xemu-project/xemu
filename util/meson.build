@@ -64,7 +64,9 @@ util_ss.add(files('int128.c'))
 util_ss.add(files('memalign.c'))
 util_ss.add(files('interval-tree.c'))
 util_ss.add(files('lockcnt.c'))
-util_ss.add(when: 'CONFIG_WIN32', if_true: files('miniz/miniz.c'))
+if host_os == 'windows'
+  util_ss.add(files('miniz/miniz.c'))
+endif
 util_ss.add(files('fast-hash.c'))
 util_ss.add(files('mstring.c'))
 

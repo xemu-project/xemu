@@ -800,7 +800,7 @@ endif
 
 libm = cc.find_library('m', required: false)
 
-if targetos == 'windows'
+if host_os == 'windows'
   threads = declare_dependency()
   meson.override_dependency('threads', threads)
 else
@@ -1935,7 +1935,7 @@ have_gtk_clipboard = get_option('gtk_clipboard').enabled()
 
 # xemu: GTK is required in Linux builds for file selection interfaces. In the
 # future, this may be relaxed in the future with alternative options.
-require_gtk = targetos == 'linux'
+require_gtk = host_os == 'linux'
 
 if require_gtk or get_option('gtk') \
              .disable_auto_if(not have_system) \

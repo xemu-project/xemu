@@ -34,10 +34,14 @@ implot = declare_dependency(link_with: libimplot,
                             include_directories: 'implot')
 
 noc_ss = ss.source_set()
-noc_ss.add(when: 'CONFIG_LINUX', if_true: [gtk, files('noc_file_dialog/noc_file_dialog_gtk.c')])
-noc_ss.add(when: 'CONFIG_WIN32', if_true: files('noc_file_dialog/noc_file_dialog_win32.cc'))
-noc_ss.add(when: 'CONFIG_DARWIN', if_true: files('noc_file_dialog/noc_file_dialog_macos.m'))
-noc_ss = noc_ss.apply(config_all, strict: false)
+if host_os == 'linux'
+  noc_ss.add([gtk, files('noc_file_dialog/noc_file_dialog_gtk.c')])
+elif host_os == 'windows'
+  noc_ss.add(files('noc_file_dialog/noc_file_dialog_win32.cc'))
+elif host_os == 'darwin'
+  noc_ss.add(files('noc_file_dialog/noc_file_dialog_macos.m'))
+endif
+noc_ss = noc_ss.apply(config_target, strict: false)
 noclib = static_library('noc',
                         sources: noc_ss.sources(),
                         dependencies: noc_ss.dependencies(),
@@ -64,7 +68,7 @@ json = declare_dependency(include_directories: 'json')
 
 httplib_proj = subproject('cpp-httplib', default_options: ['cpp-httplib_openssl=enabled'])
 httplib_deps = [httplib_proj.get_variable('cpp_httplib_dep')]
-if targetos == 'windows'
+if host_os == 'windows'
   httplib_deps += [crypt32]
 endif
 httplib = declare_dependency(dependencies: httplib_deps)

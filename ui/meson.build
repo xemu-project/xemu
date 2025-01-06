@@ -43,9 +43,13 @@ xemu_cocoa = dependency('appleframeworks', modules: 'Cocoa')
 xemu_ss.add(xemu_cocoa)
 endif
 
-xemu_ss.add(when: 'CONFIG_LINUX', if_true: [gtk, files('xemu-os-utils-linux.c')])
-xemu_ss.add(when: 'CONFIG_WIN32', if_true: files('xemu-os-utils-windows.c'))
-xemu_ss.add(when: 'CONFIG_DARWIN', if_true: files('xemu-os-utils-macos.m'))
+if host_os == 'linux'
+  xemu_ss.add([gtk, files('xemu-os-utils-linux.c')])
+elif host_os == 'windows'
+  xemu_ss.add(files('xemu-os-utils-windows.c'))
+elif host_os == 'darwin'
+  xemu_ss.add(files('xemu-os-utils-macos.m'))
+endif
 xemu_ss.add(imgui, implot, stb_image, noc, sdl, opengl, openssl, fa, fpng, json, httplib, fatx)
 system_ss.add_all(xemu_ss)
 
