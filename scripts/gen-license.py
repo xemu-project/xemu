@@ -192,7 +192,7 @@ Lib('slirp', 'https://gitlab.freedesktop.org/slirp',
 Lib('imgui', 'https://github.com/ocornut/imgui',
 	mit, 'https://raw.githubusercontent.com/ocornut/imgui/master/LICENSE.txt',
 	ships_static=all_platforms,
-	submodule=Submodule('ui/thirdparty/imgui')
+	submodule=Submodule('subprojects/imgui.wrap')
 	),
 
 Lib('implot', 'https://github.com/epezent/implot',

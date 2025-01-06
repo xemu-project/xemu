@@ -1,25 +1,3 @@
-imgui_files = files(
-  'imgui/imgui.cpp',
-  'imgui/imgui_draw.cpp',
-  'imgui/imgui_tables.cpp',
-  'imgui/imgui_widgets.cpp',
-  'imgui/backends/imgui_impl_sdl2.cpp',
-  'imgui/backends/imgui_impl_opengl3.cpp',
-  'imgui/misc/cpp/imgui_stdlib.cpp',
-  #'imgui/imgui_demo.cpp',
-)
-
-imgui_cppargs = ['-DIMGUI_IMPL_OPENGL_LOADER_CUSTOM',
-                 '-include', 'imgui_impl_opengl3_loader_override.h']
-
-libimgui = static_library('imgui',
-                          sources: imgui_files,
-                          cpp_args: imgui_cppargs,
-                          include_directories: ['.', 'imgui'],
-                          dependencies: [sdl, opengl])
-imgui = declare_dependency(link_with: libimgui,
-                           include_directories: ['imgui', 'imgui/backends'])
-
 implot_files = files(
   'implot/implot.cpp',
   'implot/implot_items.cpp'
