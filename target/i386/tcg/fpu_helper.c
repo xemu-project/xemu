@@ -328,7 +328,6 @@ static void fpu_set_exception(CPUX86State *env, int mask)
         env->fpus |= FPUS_SE | FPUS_B;
     }
 }
-#endif
 
 void cpu_init_fp_statuses(CPUX86State *env)
 {
@@ -369,6 +368,7 @@ void cpu_init_fp_statuses(CPUX86State *env)
     set_float_2nan_prop_rule(float_2nan_prop_x87, &env->mmx_status);
     set_float_2nan_prop_rule(float_2nan_prop_x87, &env->sse_status);
 }
+#endif
 
 static inline uint8_t save_exception_flags(CPUX86State *env)
 {
