@@ -549,18 +549,17 @@ static const TypeInfo xbox_pci_info = {
 static void xbox_pcihost_realize(DeviceState *dev, Error **errp)
 {
     PCIHostState *s = PCI_HOST_BRIDGE(dev);
-    SysBusDevice *sbd = SYS_BUS_DEVICE(dev);
 
     memory_region_init_io(&s->conf_mem, OBJECT(dev),
                           &pci_host_conf_le_ops, s,
                           "pci-conf-idx", 4);
-    sysbus_add_io(sbd, CONFIG_ADDR, &s->conf_mem);
+    memory_region_add_subregion(get_system_io(), CONFIG_ADDR, &s->conf_mem);
     sysbus_init_ioports(&s->busdev, CONFIG_ADDR, 4);
 
     memory_region_init_io(&s->data_mem, OBJECT(dev),
                           &pci_host_data_le_ops, s,
                           "pci-conf-data", 4);
-    sysbus_add_io(sbd, CONFIG_DATA, &s->data_mem);
+    memory_region_add_subregion(get_system_io(), CONFIG_DATA, &s->data_mem);
     sysbus_init_ioports(&s->busdev, CONFIG_DATA, 4);
 }
 
