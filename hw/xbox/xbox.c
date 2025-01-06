@@ -269,7 +269,7 @@ void xbox_init_common(MachineState *machine,
 
     pcms->pcibus = pci_bus;
 
-    isa_bus_irqs(isa_bus, x86ms->gsi);
+    isa_bus_register_input_irqs(isa_bus, x86ms->gsi);
 
     pc_i8259_create(isa_bus, gsi_state->i8259_irq);
 
