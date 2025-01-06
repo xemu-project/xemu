@@ -338,13 +338,8 @@ void xbox_init_common(MachineState *machine,
 
     /* Ethernet! */
     PCIDevice *nvnet = pci_new(PCI_DEVFN(4, 0), "nvnet");
-
-    for (i = 0; i < nb_nics; i++) {
-        NICInfo *nd = &nd_table[i];
-        qemu_check_nic_model(nd, "nvnet");
-        qdev_set_nic_properties(&nvnet->qdev, nd);
-        pci_realize_and_unref(nvnet, pci_bus, &error_fatal);
-    }
+    // qemu_create_nic_device("nvnet", true, NULL);
+    pci_realize_and_unref(nvnet, pci_bus, &error_fatal);
 
     /* APU! */
     mcpx_apu_init(pci_bus, PCI_DEVFN(5, 0), ram_memory);
@@ -378,6 +373,7 @@ static void xbox_machine_options(MachineClass *m)
     m->no_sdcard         = 1,
     m->default_cpu_type  = X86_CPU_TYPE_NAME("pentium3");
     m->is_default        = true;
+    m->default_nic       = "nvnet";
 
     pcmc->pci_enabled         = true;
     pcmc->has_acpi_build      = false;
@@ -385,7 +381,6 @@ static void xbox_machine_options(MachineClass *m)
     pcmc->gigabyte_align      = false;
     pcmc->smbios_legacy_mode  = true;
     pcmc->has_reserved_memory = false;
-    pcmc->default_nic_model   = "nvnet";
 }
 
 static char *machine_get_bootrom(Object *obj, Error **errp)
