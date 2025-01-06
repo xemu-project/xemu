@@ -1285,7 +1285,7 @@ void ac97_common_init(AC97LinkState *s, PCIDevice *pci_dev, AddressSpace *as)
   s->pci_dev = pci_dev;
   s->as = as;
 
-  AUD_register_card("ac97", &s->card);
+  AUD_register_card("ac97", &s->card, &error_fatal);
   ac97_on_reset(s);
 }
 
