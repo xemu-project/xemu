@@ -2959,3 +2959,10 @@ uint64_t cpu_ldq_code_mmu(CPUArchState *env, abi_ptr addr,
 {
     return do_ld8_mmu(env_cpu(env), addr, oi, retaddr, MMU_INST_FETCH);
 }
+
+void cpu_ld_code(CPUArchState *env, abi_ptr addr, size_t len, uint8_t *out)
+{
+    for (size_t i = 0; i < len; i++) {
+        out[i] = cpu_ldub_code(env, addr+i);
+    }
+}
