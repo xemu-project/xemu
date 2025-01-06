@@ -1696,6 +1696,8 @@ TCGTemp *tcg_temp_new_internal(TCGType type, TCGTempKind kind)
 
     switch (type) {
     case TCG_TYPE_I32:
+    case TCG_TYPE_F32:
+    case TCG_TYPE_F64:
     case TCG_TYPE_V64:
     case TCG_TYPE_V128:
     case TCG_TYPE_V256:
