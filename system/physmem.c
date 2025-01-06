@@ -2898,7 +2898,7 @@ static MemTxResult flatview_write_continue(FlatView *fv, hwaddr addr,
 
 #ifdef XBOX
     CPUState *cpu = qemu_get_cpu(0);
-    ram_addr_t ram_addr = addr1 + memory_region_get_ram_addr(mr);
+    ram_addr_t ram_addr = mr_addr + memory_region_get_ram_addr(mr);
     mem_check_access_callback_ramaddr(cpu, ram_addr, len, BP_MEM_WRITE);
 #endif
 
@@ -2995,7 +2995,7 @@ MemTxResult flatview_read_continue(FlatView *fv, hwaddr addr,
 
 #ifdef XBOX
     CPUState *cpu = qemu_get_cpu(0);
-    ram_addr_t ram_addr = addr1 + memory_region_get_ram_addr(mr);
+    ram_addr_t ram_addr = mr_addr + memory_region_get_ram_addr(mr);
     mem_check_access_callback_ramaddr(cpu, ram_addr, len, BP_MEM_READ);
 #endif
 
