@@ -928,7 +928,7 @@ void xb_surface_gl_create_texture(DisplaySurface *surface)
 {
     assert(QEMU_IS_ALIGNED(surface_stride(surface), surface_bytes_per_pixel(surface)));
 
-    switch (surface->format) {
+    switch (surface_format(surface)) {
     case PIXMAN_BE_b8g8r8x8:
     case PIXMAN_BE_b8g8r8a8:
         surface->glformat = GL_BGRA_EXT;
