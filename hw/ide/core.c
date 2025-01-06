@@ -2565,7 +2565,7 @@ static void ide_security_cmd(IDEState *s)
 
     s->error = 0;
     s->status = READY_STAT | SEEK_STAT;
-    ide_set_irq(s->bus);
+    ide_bus_set_irq(s->bus);
 }
 
 void ide_bus_reset(IDEBus *bus)
