@@ -73,13 +73,6 @@ static inline TCGv_i32 load_cpu_offset(int offset)
         load_cpu_offset(offsetoflow32(CPUARMState, name));              \
     })
 
-/* Load from the low half of a 64-bit field to a TCGv_i32 */
-#define load_cpu_field_low32(name)                                      \
-    ({                                                                  \
-        QEMU_BUILD_BUG_ON(sizeof_field(CPUARMState, name) != 8);        \
-        load_cpu_offset(offsetoflow32(CPUARMState, name));              \
-    })
-
 void store_cpu_offset(TCGv_i32 var, int offset, int size);
 
 #define store_cpu_field(val, name)                                      \

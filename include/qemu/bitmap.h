@@ -78,7 +78,7 @@
         uint32_t name[BITS_TO_U32S(bits)]
 
 #define small_nbits(nbits)                      \
-        ((unsigned long)(nbits) <= BITS_PER_LONG)
+        ((nbits) <= BITS_PER_LONG)
 
 int slow_bitmap_empty(const unsigned long *bitmap, long bits);
 int slow_bitmap_full(const unsigned long *bitmap, long bits);

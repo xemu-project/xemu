@@ -3305,7 +3305,6 @@ void tcg_gen_exit_tb(const TranslationBlock *tb, unsigned idx)
      * This requires coordination with targets that do not use
      * the translator_loop.
      */
-
     uintptr_t val = (uintptr_t)tcg_splitwx_to_rx((void *)tb) + idx;
 
     if (tb == NULL) {
