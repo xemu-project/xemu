@@ -183,7 +183,7 @@ void xbox_pci_init(qemu_irq *pic,
     sysbus_realize_and_unref(SYS_BUS_DEVICE(host), &error_fatal);
 
     bridge = pci_create_simple_multifunction(host_bus, PCI_DEVFN(0, 0),
-                                             true, "xbox-pci");
+                                             "xbox-pci");
     bridge_state = XBOX_PCI_DEVICE(bridge);
     bridge_state->ram_memory = ram_memory;
     bridge_state->pci_address_space = pci_memory;
@@ -203,7 +203,7 @@ void xbox_pci_init(qemu_irq *pic,
 
     /* lpc bridge */
     PCIDevice *lpc = pci_create_simple_multifunction(host_bus, PCI_DEVFN(1, 0),
-                                                     true, "xbox-lpc");
+                                                     "xbox-lpc");
     XBOX_LPCState *lpc_state = XBOX_LPC_DEVICE(lpc);
     lpc_state->pic = pic;
     lpc_state->rom_memory = rom_memory;
@@ -219,7 +219,7 @@ void xbox_pci_init(qemu_irq *pic,
     /* smbus */
     PCIDevice *smbus = pci_create_simple_multifunction(host_bus,
                                                        PCI_DEVFN(1, 1),
-                                                       true, "xbox-smbus");
+                                                       "xbox-smbus");
 
     XBOX_SMBState *smbus_state = XBOX_SMBUS_DEVICE(smbus);
     amd756_smbus_init(&smbus->qdev, &smbus_state->smb, acpi_irq[1]);
