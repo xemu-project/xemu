@@ -289,7 +289,9 @@ void xbox_init_common(MachineState *machine,
 
     i8257_dma_init(OBJECT(machine), isa_bus, 0);
 
-    pcspk_init(pcms->pcspk, isa_bus, pit);
+    object_property_set_link(OBJECT(pcms->pcspk), "pit",
+                             OBJECT(pit), &error_fatal);
+    isa_realize_and_unref(pcms->pcspk, isa_bus, &error_fatal);
 
     PCIDevice *dev = pci_create_simple(pci_bus, PCI_DEVFN(9, 0), "piix3-ide");
     pci_ide_create_devs(dev);
