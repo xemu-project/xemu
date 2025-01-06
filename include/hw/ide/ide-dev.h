@@ -155,6 +155,7 @@ struct IDEDevice {
     char *version;
     char *serial;
     char *model;
+    bool locked;
     uint64_t wwn;
     /*
      * 0x0000        - rotation rate not reported
