@@ -1459,16 +1459,15 @@ static TCGv_ptr gen_stn_ptr(int opreg)
     tcg_gen_addi_i32(offset, offset, offsetof(CPUX86State, fpregs[0].d));
     TCGv_ptr ptr = tcg_temp_new_ptr();
     tcg_gen_ext_i32_ptr(ptr, offset);
-    tcg_gen_add_ptr(ptr, ptr, cpu_env);
+    tcg_gen_add_ptr(ptr, ptr, tcg_env);
 
-    tcg_temp_free_i32(offset);
     return ptr;
 }
 
 static TCGv_ptr gen_ft0_ptr(void)
 {
     TCGv_ptr ft0 = tcg_temp_new_ptr();
-    tcg_gen_addi_ptr(ft0, cpu_env, offsetof(CPUX86State, ft0));
+    tcg_gen_addi_ptr(ft0, tcg_env, offsetof(CPUX86State, ft0));
     return ft0;
 }
 
@@ -1476,11 +1475,9 @@ static void gen_set_fptag(int offs, int value)
 {
     TCGv_ptr p = tcg_temp_new_ptr();
     tcg_gen_ext_i32_ptr(p, fpstt);
-    tcg_gen_add_ptr(p, cpu_env, p);
+    tcg_gen_add_ptr(p, tcg_env, p);
     TCGv_i32 tmp = tcg_constant_i32(value);
     tcg_gen_st8_i32(tmp, p, offsetof(CPUX86State, fptags[0]) + offs);
-    tcg_temp_free_i32(tmp);
-    tcg_temp_free_ptr(p);
 }
 
 static bool fpu_using_double_precision(DisasContext *s)
@@ -1510,12 +1507,11 @@ static void gen_flcr(DisasContext *s)
     }
 
     TCGv_i32 v = tcg_temp_new_i32();
-    tcg_gen_ld16u_i32(v, cpu_env, offsetof(CPUX86State, fpuc));
+    tcg_gen_ld16u_i32(v, tcg_env, offsetof(CPUX86State, fpuc));
     tcg_gen_andi_i32(v, v, 0xc00);
     tcg_gen_shli_i32(v, v, 3);
     tcg_gen_ori_i32(v, v, 0x1f80);
     tcg_gen_flcr(v);
-    tcg_temp_free_i32(v);
     s->flcr_set = true;
 }
 
@@ -1524,7 +1520,6 @@ static void gen_mov32f_i64(TCGv_i64 ret, TCGv_f32 arg)
     TCGv_f64 t = tcg_temp_new_f64();
     tcg_gen_cvt32f_f64(t, arg);
     tcg_gen_mov64f_i64(ret, t);
-    tcg_temp_free_f64(t);
 }
 
 static void gen_mov32f_i32(TCGv_i32 ret, TCGv_f32 arg)
@@ -1537,7 +1532,6 @@ static void gen_mov32i_f64(TCGv_f64 ret, TCGv_i32 arg)
     TCGv_f32 t = tcg_temp_new_f32();
     tcg_gen_mov32i_f32(t, arg);
     tcg_gen_cvt32f_f64(ret, t);
-    tcg_temp_free_f32(t);
 }
 
 static void gen_mov32i_f32(TCGv_f32 ret, TCGv_i32 arg)
@@ -1550,7 +1544,6 @@ static void gen_mov64f_i32(TCGv_i32 ret, TCGv_f64 arg)
     TCGv_f32 t = tcg_temp_new_f32();
     tcg_gen_cvt64f_f32(t, arg);
     tcg_gen_mov32f_i32(ret, t);
-    tcg_temp_free_f32(t);
 }
 
 static void gen_mov64f_i64(TCGv_i64 ret, TCGv_f64 arg)
@@ -1563,7 +1556,6 @@ static void gen_mov64i_f32(TCGv_f32 ret, TCGv_i64 arg)
     TCGv_f64 t = tcg_temp_new_f64();
     tcg_gen_mov64i_f64(t, arg);
     tcg_gen_cvt64f_f32(ret, t);
-    tcg_temp_free_f64(t);
 }
 
 static void gen_mov64i_f64(TCGv_f64 ret, TCGv_i64 arg)
@@ -1594,25 +1586,25 @@ static void gen_flush_fp(DisasContext *s)
  */
 #define GEN_HELPER_FALLBACK_v_v(func) do { \
         if (!g_use_hard_fpu) { \
-            gen_helper_ ## func(cpu_env); \
+            gen_helper_ ## func(tcg_env); \
             return; \
         }} while(0)
 
 #define GEN_HELPER_FALLBACK_v_i(func, arg) do { \
         if (!g_use_hard_fpu) { \
-            gen_helper_ ## func(cpu_env, tcg_const_i32(arg)); \
+            gen_helper_ ## func(tcg_env, tcg_constant_i32(arg)); \
             return; \
         }} while(0)
 
 #define GEN_HELPER_FALLBACK_v_T(func, arg) do { \
         if (!g_use_hard_fpu) { \
-            gen_helper_ ## func(cpu_env, arg); \
+            gen_helper_ ## func(tcg_env, arg); \
             return; \
         }} while(0)
 
 #define GEN_HELPER_FALLBACK_T_v(func, arg) do { \
         if (!g_use_hard_fpu) { \
-            gen_helper_ ## func(arg, cpu_env); \
+            gen_helper_ ## func(arg, tcg_env); \
             return; \
         }} while(0)
 
@@ -1683,11 +1675,10 @@ static void gen_enter_mmx(DisasContext *s)
 
     tcg_gen_movi_i32(fpstt, 0);
 
-    TCGv_i32 v = tcg_const_i32(0);
+    TCGv_i32 v = tcg_constant_i32(0);
     for (int i = 0; i < 8; i++) {
-        tcg_gen_st8_i32(v, cpu_env, offsetof(CPUX86State, fptags[0]) + i);
+        tcg_gen_st8_i32(v, tcg_env, offsetof(CPUX86State, fptags[0]) + i);
     }
-    tcg_temp_free_i32(v);
 }
 
 static void gen_flds_FT0(DisasContext *s, TCGv_i32 arg)
@@ -1781,9 +1772,9 @@ static void gen_fsqrt(DisasContext *s)
 static void gen_clear_fpus_c2(DisasContext *s)
 {
     TCGv_i32 v = tcg_temp_new_i32();
-    tcg_gen_ld16u_i32(v, cpu_env, offsetof(CPUX86State, fpus));
+    tcg_gen_ld16u_i32(v, tcg_env, offsetof(CPUX86State, fpus));
     tcg_gen_andi_i32(v, v, ~0x400); /* C2 <-- 0 */
-    tcg_gen_st16_i32(v, cpu_env, offsetof(CPUX86State, fpus));
+    tcg_gen_st16_i32(v, tcg_env, offsetof(CPUX86State, fpus));
 }
 
 static void gen_fsin(DisasContext *s)
@@ -2965,7 +2956,7 @@ static void gen_x87(DisasContext *s, X86DecodedInsn *decode)
                               tcg_constant_i32(s->dflag - 1));
             update_fip = update_fdp = false;
             gen_update_eip_next(s);
-            gen_eob(s);
+            gen_eob(s, DISAS_EOB_ONLY);
             break;
         case 0x0d: /* fldcw mem */
             tcg_gen_qemu_ld_i32(s->tmp2_i32, s->A0,
@@ -2973,7 +2964,7 @@ static void gen_x87(DisasContext *s, X86DecodedInsn *decode)
             gen_helper_fldcw(tcg_env, s->tmp2_i32);
             update_fip = update_fdp = false;
             gen_update_eip_next(s);
-            gen_eob(s);
+            gen_eob(s, DISAS_EOB_ONLY);
             break;
         case 0x0e: /* fnstenv mem */
             gen_helper_fstenv(tcg_env, s->A0,
@@ -3198,7 +3189,7 @@ static void gen_x87(DisasContext *s, X86DecodedInsn *decode)
                     }
                 } else {
                     gen_fmov_FT0_STN(s, opreg);
-                    gen_fp_arith_ST0_FT0(s, op1);
+                    gen_helper_fp_arith_ST0_FT0(s, op1);
                 }
             }
             break;
@@ -3240,7 +3231,7 @@ static void gen_x87(DisasContext *s, X86DecodedInsn *decode)
                 gen_helper_fninit(tcg_env);
                 update_fip = false;
                 gen_update_eip_next(s);
-                gen_eob(s);
+                gen_eob(s, DISAS_EOB_ONLY);
                 break;
             case 4: /* fsetpm (287 only, just do nop here) */
                 break;
@@ -4106,7 +4097,7 @@ void tcg_x86_init(void)
                                      bnd_regu_names[i]);
     }
 
-    fpstt = tcg_global_mem_new_i32(cpu_env,
+    fpstt = tcg_global_mem_new_i32(tcg_env,
                                    offsetof(CPUX86State, fpstt), "fpstt");
 
 #if defined(XBOX) && defined(__x86_64__)
