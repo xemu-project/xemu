@@ -2280,10 +2280,8 @@ static void mcpx_vp_out_cb(void *opaque, uint8_t *stream, int free_b)
     while (to_copy > 0) {
         uint32_t chunk_len = 0;
         qemu_spin_lock(&s->vp.out_buf_lock);
-        const uint8_t *samples =
-            fifo8_pop_buf(&s->vp.out_buf, to_copy, &chunk_len);
+        chunk_len = fifo8_pop_buf(&s->vp.out_buf, stream, to_copy);
         assert(chunk_len <= to_copy);
-        memcpy(stream, samples, chunk_len);
         qemu_spin_unlock(&s->vp.out_buf_lock);
         stream += chunk_len;
         to_copy -= chunk_len;
