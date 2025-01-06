@@ -19,6 +19,8 @@
  * License along with this library; if not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "qemu/osdep.h"
+#include "hw/display/vga_int.h"
 #include "hw/xbox/nv2a/nv2a_int.h"
 #include "hw/xbox/nv2a/pgraph/util.h"
 #include "renderer.h"
@@ -284,10 +286,10 @@ static void render_display(NV2AState *d, SurfaceBinding *surface)
     PGRAPHGLState *r = pg->gl_renderer_state;
 
     unsigned int width, height;
-    uint32_t pline_offset, pstart_addr, pline_compare;
+    VGADisplayParams vga_display_params;
     d->vga.get_resolution(&d->vga, (int*)&width, (int*)&height);
-    d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
-    int line_offset = pline_offset ? surface->pitch / pline_offset : 1;
+    d->vga.get_params(&d->vga, &vga_display_params);
+    int line_offset = vga_display_params.line_offset ? surface->pitch / vga_display_params.line_offset : 1;
 
     /* Adjust viewport height for interlaced mode, used only in 1080i */
     if (d->vga.cr[NV_PRMCIO_INTERLACE_MODE] != NV_PRMCIO_INTERLACE_MODE_DISABLED) {
@@ -376,9 +378,10 @@ static void gl_fence(void)
 
 void pgraph_gl_sync(NV2AState *d)
 {
-    uint32_t pline_offset, pstart_addr, pline_compare;
-    d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
-    SurfaceBinding *surface = pgraph_gl_surface_get_within(d, d->pcrtc.start + pline_offset);
+    VGADisplayParams vga_display_params;
+    d->vga.get_params(&d->vga, &vga_display_params);
+
+    SurfaceBinding *surface = pgraph_gl_surface_get_within(d, d->pcrtc.start + vga_display_params.line_offset);
     if (surface == NULL) {
         qemu_event_set(&d->pgraph.sync_complete);
         return;
@@ -411,9 +414,12 @@ int pgraph_gl_get_framebuffer_surface(NV2AState *d)
 
     qemu_mutex_lock(&d->pfifo.lock);
     // FIXME: Possible race condition with pgraph, consider lock
-    uint32_t pline_offset, pstart_addr, pline_compare;
-    d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
-    SurfaceBinding *surface = pgraph_gl_surface_get_within(d, d->pcrtc.start + pline_offset);
+
+    VGADisplayParams vga_display_params;
+    d->vga.get_params(&d->vga, &vga_display_params);
+
+    SurfaceBinding *surface = pgraph_gl_surface_get_within(
+        d, d->pcrtc.start + vga_display_params.line_offset);
     if (surface == NULL || !surface->color) {
         qemu_mutex_unlock(&d->pfifo.lock);
         return 0;

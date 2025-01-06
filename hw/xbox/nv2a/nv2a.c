@@ -149,27 +149,16 @@ static int nv2a_get_bpp(VGACommonState *s)
     return bpp;
 }
 
-static void nv2a_get_offsets(VGACommonState *s,
-                             uint32_t *pline_offset,
-                             uint32_t *pstart_addr,
-                             uint32_t *pline_compare)
+static void nv2a_get_params(VGACommonState *s, VGADisplayParams *params)
 {
     NV2AState *d = container_of(s, NV2AState, vga);
-    uint32_t start_addr, line_offset, line_compare;
-
-    line_offset = s->cr[0x13]
-        | ((s->cr[0x19] & 0xe0) << 3)
-        | ((s->cr[0x25] & 0x20) << 6);
-    line_offset <<= 3;
-    *pline_offset = line_offset;
-
-    start_addr = d->pcrtc.start / 4;
-    *pstart_addr = start_addr;
-
-    line_compare = s->cr[VGA_CRTC_LINE_COMPARE] |
-                   ((s->cr[VGA_CRTC_OVERFLOW] & 0x10) << 4) |
-                   ((s->cr[VGA_CRTC_MAX_SCAN] & 0x40) << 3);
-    *pline_compare = line_compare;
+    params->line_offset = (s->cr[0x13] | ((s->cr[0x19] & 0xe0) << 3) |
+                           ((s->cr[0x25] & 0x20) << 6))
+                          << 3;
+    params->start_addr = d->pcrtc.start / 4;
+    params->line_compare = s->cr[VGA_CRTC_LINE_COMPARE] |
+                           ((s->cr[VGA_CRTC_OVERFLOW] & 0x10) << 4) |
+                           ((s->cr[VGA_CRTC_MAX_SCAN] & 0x40) << 3);
 }
 
 const uint8_t *nv2a_get_dac_palette(void)
@@ -235,7 +224,7 @@ static void nv2a_init_vga(NV2AState *d)
 
     vga_common_init(vga, OBJECT(d), &error_fatal);
     vga->get_bpp = nv2a_get_bpp;
-    vga->get_offsets = nv2a_get_offsets;
+    vga->get_params = nv2a_get_params;
     // vga->overlay_draw_line = nv2a_overlay_draw_line;
 
     d->hw_ops = *vga->hw_ops;
