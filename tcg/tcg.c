@@ -1655,13 +1655,13 @@ TCGv_i64 tcg_global_mem_new_i64(TCGv_ptr reg, intptr_t off, const char *name)
 
 TCGv_f32 tcg_global_mem_new_f32(TCGv_ptr reg, intptr_t offset, const char *name)
 {
-    TCGTemp *t = tcg_global_mem_new_internal(TCG_TYPE_F32, reg, offset, name);
+    TCGTemp *t = tcg_global_mem_new_internal(reg, offset, name, TCG_TYPE_F32);
     return temp_tcgv_f32(t);
 }
 
 TCGv_f64 tcg_global_mem_new_f64(TCGv_ptr reg, intptr_t offset, const char *name)
 {
-    TCGTemp *t = tcg_global_mem_new_internal(TCG_TYPE_F64, reg, offset, name);
+    TCGTemp *t = tcg_global_mem_new_internal(reg, offset, name, TCG_TYPE_F64);
     return temp_tcgv_f64(t);
 }
 
