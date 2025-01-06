@@ -346,6 +346,12 @@ static void xbox_lpc_reset(DeviceState *dev)
     xbox_lpc_enable_mcpx_rom(PCI_DEVICE(dev), true);
 }
 
+static void xbox_lpc_reset_hold(Object *obj, ResetType type)
+{
+    XBOX_LPCState *s = XBOX_LPC_DEVICE(obj);
+    xbox_lpc_reset(DEVICE(s));
+}
+
 static void xbox_lpc_config_write(PCIDevice *dev,
                                     uint32_t addr, uint32_t val, int len)
 {
@@ -428,6 +434,7 @@ static const VMStateDescription vmstate_xbox_lpc = {
 static void xbox_lpc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
     AcpiDeviceIfClass *adevc = ACPI_DEVICE_IF_CLASS(klass);
 
@@ -439,9 +446,10 @@ static void xbox_lpc_class_init(ObjectClass *klass, void *data)
     k->revision = 178;
     k->class_id = PCI_CLASS_BRIDGE_ISA;
 
+    rc->phases.hold = xbox_lpc_reset_hold;
+
     dc->desc = "nForce LPC Bridge";
     dc->user_creatable = false;
-    dc->reset = xbox_lpc_reset;
     dc->vmsd = &vmstate_xbox_lpc;
     adevc->send_event = xbox_send_gpe;
 }
@@ -473,14 +481,13 @@ static void xbox_agp_class_init(ObjectClass *klass, void *data)
     k->realize = xbox_agp_realize;
     k->exit = pci_bridge_exitfn;
     k->config_write = pci_bridge_write_config;
-    k->is_bridge = 1;
     k->vendor_id = PCI_VENDOR_ID_NVIDIA;
     k->device_id = PCI_DEVICE_ID_NVIDIA_NFORCE_AGP;
     k->revision = 161;
 
     dc->desc = "nForce AGP to PCI Bridge";
     dc->vmsd = &vmstate_pci_device;
-    dc->reset = pci_bridge_reset;
+    device_class_set_legacy_reset(dc, pci_bridge_reset);
 }
 
 static const TypeInfo xbox_agp_info = {
