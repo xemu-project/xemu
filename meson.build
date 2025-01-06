@@ -1,4 +1,4 @@
-project('qemu', ['c'], meson_version: '>=1.5.0',
+project('qemu', ['c', 'cpp'], meson_version: '>=1.5.0',
         default_options: ['warning_level=1', 'c_std=gnu11', 'cpp_std=c++17', 'b_colorout=auto',
                           'b_staticpic=false', 'stdsplit=false', 'optimization=3', 'b_pie=true'],
         version: files('QEMU_VERSION'))
@@ -74,11 +74,8 @@ cmake = import('cmake')
 cmake_macos_arch = host_machine.cpu() == 'aarch64' ? 'arm64' : host_machine.cpu()
 
 cc = meson.get_compiler('c')
-all_languages = ['c']
-if host_os == 'windows' and add_languages('cpp', required: false, native: false)
-  all_languages += ['cpp']
-  cxx = meson.get_compiler('cpp')
-endif
+cxx = meson.get_compiler('cpp')
+all_languages = ['c', 'cpp']
 if host_os == 'darwin' and \
    add_languages('objc', required: true, native: false)
   all_languages += ['objc']
