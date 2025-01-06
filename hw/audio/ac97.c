@@ -1300,10 +1300,6 @@ static void ac97_realize (PCIDevice *dev, Error **errp)
     AC97DeviceState *s = AC97_DEVICE(dev);
     uint8_t *c = s->dev.config;
 
-    if (!AUD_register_card ("ac97", &s->card, errp)) {
-        return;
-    }
-
     /* TODO: no need to override */
     c[PCI_COMMAND] = 0x00;      /* pcicmd pci command rw, ro */
     c[PCI_COMMAND + 1] = 0x00;
