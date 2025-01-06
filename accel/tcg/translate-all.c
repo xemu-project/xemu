@@ -322,9 +322,8 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
         qemu_spin_lock(&tb->jmp_lock);
         qatomic_set(&tb->cflags, tb->cflags & ~CF_INVALID);
         qemu_spin_unlock(&tb->jmp_lock);
-        uint32_t h = tb_hash_func(phys_pc, (TARGET_TB_PCREL ? 0 : tb_pc(tb)),
-                                  tb->flags, tb_cflags(tb),
-                                  tb->trace_vcpu_dstate);
+        uint32_t h = tb_hash_func(phys_pc, (tb->cflags & CF_PCREL ? 0 : tb->pc),
+                                  tb->flags, tb->cs_base, tb->cflags);
         bool removed = qht_remove(&tb_ctx.inv_htable, tb, h);
         g_assert(removed);
         recycled = true;
