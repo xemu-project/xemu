@@ -175,7 +175,7 @@ meson_options_help() {
   printf "%s\n" '  qpl             Query Processing Library support'
   printf "%s\n" '  rbd             Ceph block device driver'
   printf "%s\n" '  rdma            Enable RDMA-based migration'
-  printf "%s\n" '  renderdoc       improved RenderDoc frame capture support'
+  printf "%s\n" '  renderdoc       RenderDoc frame capture support'
   printf "%s\n" '  replication     replication support'
   printf "%s\n" '  rust            Rust support'
   printf "%s\n" '  rutabaga-gfx    rutabaga_gfx support'
@@ -456,10 +456,10 @@ _meson_option_parse() {
     --disable-rbd) printf "%s" -Drbd=disabled ;;
     --enable-rdma) printf "%s" -Drdma=enabled ;;
     --disable-rdma) printf "%s" -Drdma=disabled ;;
-    --enable-renderdoc) printf "%s" -Drenderdoc=enabled ;;
-    --disable-renderdoc) printf "%s" -Drenderdoc=disabled ;;
     --enable-relocatable) printf "%s" -Drelocatable=true ;;
     --disable-relocatable) printf "%s" -Drelocatable=false ;;
+    --enable-renderdoc) printf "%s" -Drenderdoc=enabled ;;
+    --disable-renderdoc) printf "%s" -Drenderdoc=disabled ;;
     --enable-replication) printf "%s" -Dreplication=enabled ;;
     --disable-replication) printf "%s" -Dreplication=disabled ;;
     --enable-rng-none) printf "%s" -Drng_none=true ;;
