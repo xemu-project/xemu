@@ -35,7 +35,7 @@ sub_deinit=""
 
 # xemu extras
 subprojects="$subprojects glslang SPIRV-Reflect volk VulkanMemoryAllocator
-  nv2a_vsh_cpu tomlplusplus cpp-httplib xxhash imgui implot"
+  nv2a_vsh_cpu tomlplusplus cpp-httplib xxhash imgui implot genconfig"
 
 function cleanup() {
     local status=$?

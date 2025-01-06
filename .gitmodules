@@ -43,6 +43,3 @@
 [submodule "tests/lcitool/libvirt-ci"]
 	path = tests/lcitool/libvirt-ci
 	url = https://gitlab.com/libvirt/libvirt-ci.git
-[submodule "genconfig"]
-	path = genconfig
-	url = https://github.com/mborgerson/genconfig.git

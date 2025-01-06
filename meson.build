@@ -2336,8 +2336,6 @@ if vulkan.found()
                                      dependencies: vulkan)
 endif
 
-genconfig = declare_dependency(include_directories: 'genconfig')
-
 openssl = dependency('openssl', method: 'pkg-config', required: true)
 
 if host_os == 'windows'
@@ -2374,6 +2372,9 @@ imgui = imgui_proj.get_variable('imgui_dep')
 implot_proj = subproject('implot', required: true,
                          default_options: ['default_library=static'])
 implot = implot_proj.get_variable('implot_dep')
+
+genconfig_proj = subproject('genconfig', required: true)
+genconfig = genconfig_proj.get_variable('cnode_dep')
 
 subdir('thirdparty')
 
@@ -3627,16 +3628,11 @@ qemu_version = custom_target('qemu-version.h',
                              build_by_default: true,
                              build_always_stale: true)
 
-genconfig_cmd = [
-  python, files('genconfig/gen_config.py'),
-  meson.current_source_dir() / 'config_spec.yml', 'xemu-config.h'
-]
-
 xemu_config = custom_target('xemu-config.h',
                             output: 'xemu-config.h',
                             input: [ files('config_spec.yml') ],
-                            command: genconfig_cmd,
-                            depend_files: files('config_spec.yml'))
+                            command : [python, genconfig_proj.get_variable('gen_config_script_path'), '@INPUT@', '@OUTPUT@'],
+                            )
 
 genh += qemu_version
 genh += xemu_version
