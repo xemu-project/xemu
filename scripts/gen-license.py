@@ -198,7 +198,7 @@ Lib('imgui', 'https://github.com/ocornut/imgui',
 Lib('implot', 'https://github.com/epezent/implot',
 	mit, 'https://raw.githubusercontent.com/epezent/implot/master/LICENSE',
 	ships_static=all_platforms,
-	submodule=Submodule('ui/thirdparty/implot')
+	submodule=Submodule('subprojects/implot.wrap')
 	),
 
 Lib('cpp-httplib', 'https://github.com/yhirose/cpp-httplib',

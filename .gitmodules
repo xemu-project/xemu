@@ -43,10 +43,6 @@
 [submodule "tests/lcitool/libvirt-ci"]
 	path = tests/lcitool/libvirt-ci
 	url = https://gitlab.com/libvirt/libvirt-ci.git
-[submodule "ui/thirdparty/implot"]
-	path = ui/thirdparty/implot
-	url = https://github.com/epezent/implot.git
-	ignore = untracked
 [submodule "genconfig"]
 	path = genconfig
 	url = https://github.com/mborgerson/genconfig.git

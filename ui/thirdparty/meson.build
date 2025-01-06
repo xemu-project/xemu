@@ -1,16 +1,3 @@
-implot_files = files(
-  'implot/implot.cpp',
-  'implot/implot_items.cpp'
-  #'implot/implot_demo.cpp',
-)
-
-libimplot = static_library('implot',
-                           sources: implot_files,
-                           include_directories: 'implot',
-                           dependencies: [imgui])
-implot = declare_dependency(link_with: libimplot,
-                            include_directories: 'implot')
-
 noc_ss = ss.source_set()
 if host_os == 'linux'
   noc_ss.add([gtk, files('noc_file_dialog/noc_file_dialog_gtk.c')])

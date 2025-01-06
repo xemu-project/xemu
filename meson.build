@@ -2371,6 +2371,10 @@ imgui_proj = subproject('imgui', required: true,
                         ])
 imgui = imgui_proj.get_variable('imgui_dep')
 
+implot_proj = subproject('implot', required: true,
+                         default_options: ['default_library=static'])
+implot = implot_proj.get_variable('implot_dep')
+
 subdir('thirdparty')
 
 #################
