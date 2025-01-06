@@ -98,7 +98,7 @@ static void nvnet_uninit(PCIDevice *dev);
 static void nvnet_class_init(ObjectClass *klass, void *data);
 static void nvnet_cleanup(NetClientState *nc);
 static void nvnet_reset(void *opaque);
-static void qdev_nvnet_reset(DeviceState *dev);
+static void nvnet_reset_hold(Object *obj, ResetType type);
 static void nvnet_register(void);
 
 /* MMIO / IO / Phy / Device Register Access */
@@ -781,9 +781,9 @@ static void nvnet_reset(void *opaque)
     memset(&s->rx_dma_buf, 0, sizeof(s->rx_dma_buf));
 }
 
-static void qdev_nvnet_reset(DeviceState *dev)
+static void nvnet_reset_hold(Object *obj, ResetType type)
 {
-    NvNetState *s = NVNET_DEVICE(dev);
+    NvNetState *s = NVNET_DEVICE(obj);
     nvnet_reset(s);
 }
 
@@ -955,6 +955,7 @@ static const VMStateDescription vmstate_nvnet = {
 static void nvnet_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
     k->vendor_id = PCI_VENDOR_ID_NVIDIA;
@@ -964,9 +965,10 @@ static void nvnet_class_init(ObjectClass *klass, void *data)
     k->realize = nvnet_realize;
     k->exit = nvnet_uninit;
 
+    rc->phases.hold = nvnet_reset_hold;
+
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
     dc->desc = "nForce Ethernet Controller";
-    dc->reset = qdev_nvnet_reset;
     dc->vmsd = &vmstate_nvnet;
     device_class_set_props(dc, nvnet_properties);
 }
