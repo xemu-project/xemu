@@ -1571,7 +1571,7 @@ void xemu_eject_disc(Error **errp)
     xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
 
     // Xbox software may request that the drive open, but do it now anyway
-    qmp_eject(true, "ide0-cd1", false, NULL, true, false, &error);
+    qmp_eject("ide0-cd1", NULL, true, false, &error);
     if (error) {
         error_propagate(errp, error);
     }
@@ -1587,9 +1587,8 @@ void xemu_load_disc(const char *path, Error **errp)
     xbox_smc_eject_button();
     xemu_settings_set_string(&g_config.sys.files.dvd_path, "");
 
-    qmp_blockdev_change_medium(true, "ide0-cd1", false, NULL, path,
-                               false, "",  false, false, false, 0,
-                               &error);
+    qmp_blockdev_change_medium("ide0-cd1", NULL, path, "raw", false, false,
+                               false, 0, &error);
     if (error) {
         error_propagate(errp, error);
     } else {
