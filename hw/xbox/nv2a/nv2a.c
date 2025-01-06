@@ -350,10 +350,10 @@ static void nv2a_exitfn(PCIDevice *dev)
     pgraph_destroy(&d->pgraph);
 }
 
-static void qdev_nv2a_reset(DeviceState *dev)
+static void nv2a_reset_hold(Object *obj, ResetType type)
 {
-    NV2AState *d = NV2A_DEVICE(dev);
-    nv2a_reset(d);
+    NV2AState *s = NV2A_DEVICE(obj);
+    nv2a_reset(s);
 }
 
 // Note: This is handled as a VM state change and not as a `pre_save` callback
@@ -548,6 +548,7 @@ static const VMStateDescription vmstate_nv2a = {
 static void nv2a_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
     k->vendor_id = PCI_VENDOR_ID_NVIDIA;
@@ -562,9 +563,10 @@ static void nv2a_class_init(ObjectClass *klass, void *data)
     k->realize   = nv2a_realize;
     k->exit      = nv2a_exitfn;
 
+    rc->phases.hold = nv2a_reset_hold;
+
     dc->desc = "GeForce NV2A Integrated Graphics";
     dc->vmsd = &vmstate_nv2a;
-    dc->reset = qdev_nv2a_reset;
 }
 
 static const TypeInfo nv2a_info = {
