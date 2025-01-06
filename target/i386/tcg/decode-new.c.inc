@@ -2822,7 +2822,7 @@ static void disas_insn(DisasContext *s, CPUState *cpu)
 
     if (decode.e.special == X86_SPECIAL_MMX &&
         !(s->prefix & (PREFIX_REPZ | PREFIX_REPNZ | PREFIX_DATA))) {
-        gen_enter_mmx(tcg_env);
+        gen_enter_mmx(s);
     }
 
     if (decode.e.special != X86_SPECIAL_NoLoadEA &&
