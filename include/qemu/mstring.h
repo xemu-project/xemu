@@ -38,18 +38,6 @@ void mstring_append(MString *mstr, const char *str)
 }
 
 static inline
-void mstring_append_chr(MString *mstr, char chr)
-{
-   mstring_append_fmt(mstr, "%c", chr);
-}
-
-static inline
-void mstring_append_int(MString *mstr, int val)
-{
-   mstring_append_fmt(mstr, "%" PRId64, val);
-}
-
-static inline
 MString *mstring_new(void)
 {
    MString *mstr = g_malloc(sizeof(MString));
