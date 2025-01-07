@@ -967,8 +967,7 @@ static MString* psh_convert(struct PixelShader *ps)
                                    i, ps->input_tex[i], ps->input_tex[i]);
             }
 
-            mstring_append_fmt(vars, "dsdt%d = bumpMat%d * dsdt%d;\n",
-                i, i, i, i);
+            mstring_append_fmt(vars, "dsdt%d = bumpMat%d * dsdt%d;\n", i, i, i);
 
             if (ps->state.dim_tex[i] == 2) {
                 mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(pT%d.xy + dsdt%d));\n",
@@ -995,7 +994,7 @@ static MString* psh_convert(struct PixelShader *ps)
             }
 
             mstring_append_fmt(vars, "dsdtl%d.st = bumpMat%d * dsdtl%d.st;\n",
-                i, i, i, i);
+                               i, i, i);
 
             if (ps->state.dim_tex[i] == 2) {
                 mstring_append_fmt(vars, "vec4 t%d = texture(texSamp%d, %s(pT%d.xy + dsdtl%d.st));\n",
