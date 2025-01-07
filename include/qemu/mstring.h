@@ -9,9 +9,9 @@ typedef struct {
    gchar *string;
 } MString;
 
-void mstring_append_fmt(MString *mstring, const char *fmt, ...);
-MString *mstring_from_fmt(const char *fmt, ...);
-void mstring_append_va(MString *mstring, const char *fmt, va_list va);
+void mstring_append_fmt(MString *mstring, const char *fmt, ...) __attribute__ ((format (printf, 2, 3)));
+MString *mstring_from_fmt(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
+void mstring_append_va(MString *mstring, const char *fmt, va_list va) __attribute__ ((format (printf, 2, 0)));
 
 static inline
 void mstring_ref(MString *mstr)
