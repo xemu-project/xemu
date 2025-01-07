@@ -492,7 +492,7 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
     case NV1BA0_PIO_SET_ANTECEDENT_VOICE:
         d->regs[NV_PAPU_FEAV] = argument;
         break;
-    case NV1BA0_PIO_VOICE_ON:
+    case NV1BA0_PIO_VOICE_ON: {
         selected_handle = argument & NV1BA0_PIO_VOICE_ON_HANDLE;
         DPRINTF("VOICE %d ON\n", selected_handle);
 
@@ -583,6 +583,7 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         }
 
         break;
+    }
     case NV1BA0_PIO_VOICE_RELEASE: {
         selected_handle = argument & NV1BA0_PIO_VOICE_ON_HANDLE;
 
@@ -2235,7 +2236,7 @@ static void se_frame(MCPXAPUState *d)
         }
 
         qemu_spin_lock(&d->vp.out_buf_lock);
-        int num_bytes_free = fifo8_num_free(&d->vp.out_buf);
+        num_bytes_free = fifo8_num_free(&d->vp.out_buf);
         assert(num_bytes_free >= sizeof(d->apu_fifo_output));
         fifo8_push_all(&d->vp.out_buf, (uint8_t *)d->apu_fifo_output,
                        sizeof(d->apu_fifo_output));
