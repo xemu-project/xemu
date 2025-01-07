@@ -415,7 +415,7 @@ static void nvnet_send_packet(NvNetState *s, const uint8_t *buf, int size)
 static bool nvnet_can_receive(NetClientState *nc)
 {
     NVNET_DPRINTF("nvnet_can_receive called\n");
-    return 1;
+    return true;
 }
 
 static ssize_t nvnet_receive(NetClientState *nc,
