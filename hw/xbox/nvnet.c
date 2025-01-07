@@ -290,10 +290,8 @@ out:
  */
 static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
 {
-    NvNetState *s;
+    NvNetState *s = NVNET_DEVICE(opaque);
     uint64_t retval;
-
-    s = NVNET_DEVICE(opaque);
 
     switch (addr) {
     case NvRegMIIData:
@@ -520,16 +518,15 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
                                          const uint8_t *buf, size_t size)
 {
     PCIDevice *d = PCI_DEVICE(s);
-    struct RingDesc desc;
-    int i;
     bool did_receive = false;
 
     nvnet_set_reg(s, NvRegTxRxControl,
         nvnet_get_reg(s, NvRegTxRxControl, 4) & ~NVREG_TXRXCTL_IDLE,
         4);
 
-    for (i = 0; i < s->rx_ring_size; i++) {
+    for (int i = 0; i < s->rx_ring_size; i++) {
         /* Read current ring descriptor */
+        struct RingDesc desc;
         s->rx_ring_index %= s->rx_ring_size;
         dma_addr_t rx_ring_addr = nvnet_get_reg(s, NvRegRxRingPhysAddr, 4);
         rx_ring_addr += s->rx_ring_index * sizeof(desc);
@@ -586,17 +583,15 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
 static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
 {
     PCIDevice *d = PCI_DEVICE(s);
-    struct RingDesc desc;
-    bool is_last_packet;
     bool packet_sent = false;
-    int i;
 
     nvnet_set_reg(s, NvRegTxRxControl,
         nvnet_get_reg(s, NvRegTxRxControl, 4) & ~NVREG_TXRXCTL_IDLE,
         4);
 
-    for (i = 0; i < s->tx_ring_size; i++) {
+    for (int i = 0; i < s->tx_ring_size; i++) {
         /* Read ring descriptor */
+        struct RingDesc desc;
         s->tx_ring_index %= s->tx_ring_size;
         dma_addr_t tx_ring_addr = nvnet_get_reg(s, NvRegTxRingPhysAddr, 4);
         tx_ring_addr += s->tx_ring_index * sizeof(desc);
@@ -621,7 +616,7 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
         s->tx_dma_buf_offset += desc.length + 1;
 
         /* Update descriptor */
-        is_last_packet = desc.flags & NV_TX_LASTPACKET;
+        bool is_last_packet = desc.flags & NV_TX_LASTPACKET;
         if (is_last_packet) {
             NVNET_DPRINTF("Sending packet...\n");
             nvnet_send_packet(s, s->tx_dma_buf, s->tx_dma_buf_offset);
