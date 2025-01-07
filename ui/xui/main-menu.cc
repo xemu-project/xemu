@@ -387,9 +387,6 @@ void MainMenuInputView::Draw()
 
                 ImGui::Image(id, xmu_display_size, ImVec2(0.5f * i, 1),
                              ImVec2(0.5f * (i + 1), 0));
-                ImVec2 pos = ImGui::GetCursorPos();
-
-                ImGui::SetCursorPos(pos);
 
                 // Button to generate a new XMU
                 ImGui::PushID(i);
