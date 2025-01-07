@@ -2996,11 +2996,8 @@ void qemu_init(int argc, char **argv)
     fake_argv[fake_argc++] = strdup("-device");
     fake_argv[fake_argc++] = strdup("usb-hub,port=1,ports=4");
 
-#ifdef _WIN32
-    // FIXME: Create this dummy device to prevent logspam
-    fake_argv[fake_argc++] = strdup("-audiodev");
-    fake_argv[fake_argc++] = strdup("none,id=snd0");
-#endif
+    fake_argv[fake_argc++] = strdup("-audio");
+    fake_argv[fake_argc++] = strdup("none");
 
     for (int i = 1; i < argc; i++) {
         if (argv[i] != NULL) {
