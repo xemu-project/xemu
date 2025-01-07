@@ -2,7 +2,7 @@
  * QEMU SMSC LPC47M157 (Super I/O)
  *
  * Copyright (c) 2013 espes
- * Copyright (c) 2018-2021 Matt Borgerson
+ * Copyright (c) 2018-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public

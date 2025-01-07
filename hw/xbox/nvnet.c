@@ -2,7 +2,7 @@
  * QEMU nForce Ethernet Controller implementation
  *
  * Copyright (c) 2013 espes
- * Copyright (c) 2015-2021 Matt Borgerson
+ * Copyright (c) 2015-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
