@@ -324,7 +324,7 @@ void xbox_init_common(MachineState *machine,
 
     /* Ethernet! */
     PCIDevice *nvnet = pci_new(PCI_DEVFN(4, 0), "nvnet");
-    // qemu_create_nic_device("nvnet", true, NULL);
+    qemu_configure_nic_device(DEVICE(nvnet), true, "nvnet");
     pci_realize_and_unref(nvnet, pci_bus, &error_fatal);
 
     /* APU! */
