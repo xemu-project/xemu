@@ -21,6 +21,7 @@
 #define EXEC_TB_HASH_H
 
 #include "exec/cpu-defs.h"
+#include "exec/cpu_ldst.h"
 #include "exec/exec-all.h"
 #include "qemu/xxhash.h"
 #include "qemu/fast-hash.h"
