@@ -717,8 +717,8 @@ warn_flags = [
   '-Wshadow=local',
   '-Wstrict-prototypes',
   '-Wtype-limits',
-  '-Wundef',
-  '-Wvla',
+  # '-Wundef',
+  # '-Wvla',
   '-Wwrite-strings',
 
   # Then disable some undesirable warnings
