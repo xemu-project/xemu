@@ -38,9 +38,9 @@ xemu_ss.add(files(
 
 subdir('xui')
 
-if 'CONFIG_DARWIN' in config_host
-xemu_cocoa = dependency('appleframeworks', modules: 'Cocoa')
-xemu_ss.add(xemu_cocoa)
+if host_os == 'darwin'
+  xemu_cocoa = dependency('appleframeworks', modules: 'Cocoa')
+  xemu_ss.add(xemu_cocoa)
 endif
 
 if host_os == 'linux'
