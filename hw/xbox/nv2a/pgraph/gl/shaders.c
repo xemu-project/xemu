@@ -104,11 +104,10 @@ static GLuint create_gl_shader(GLenum gl_shader_type,
 
 static void update_shader_constant_locations(ShaderBinding *binding, const ShaderState *state)
 {
-    int i, j;
     char tmp[64];
 
     /* set texture samplers */
-    for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
+    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
         char samplerName[16];
         snprintf(samplerName, sizeof(samplerName), "texSamp%d", i);
         GLint texSampLoc = glGetUniformLocation(binding->gl_program, samplerName);
@@ -129,14 +128,14 @@ static void update_shader_constant_locations(ShaderBinding *binding, const Shade
     }
 
     /* lookup fragment shader uniforms */
-    for (i = 0; i < 9; i++) {
-        for (j = 0; j < 2; j++) {
+    for (int i = 0; i < 9; i++) {
+        for (int j = 0; j < 2; j++) {
             snprintf(tmp, sizeof(tmp), "c%d_%d", j, i);
             binding->psh_constant_loc[i][j] = glGetUniformLocation(binding->gl_program, tmp);
         }
     }
     binding->alpha_ref_loc = glGetUniformLocation(binding->gl_program, "alphaRef");
-    for (i = 1; i < NV2A_MAX_TEXTURES; i++) {
+    for (int i = 1; i < NV2A_MAX_TEXTURES; i++) {
         snprintf(tmp, sizeof(tmp), "bumpMat%d", i);
         binding->bump_mat_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
         snprintf(tmp, sizeof(tmp), "bumpScale%d", i);
@@ -151,7 +150,7 @@ static void update_shader_constant_locations(ShaderBinding *binding, const Shade
     }
 
     /* lookup vertex shader uniforms */
-    for(i = 0; i < NV2A_VERTEXSHADER_CONSTANTS; i++) {
+    for (int i = 0; i < NV2A_VERTEXSHADER_CONSTANTS; i++) {
         snprintf(tmp, sizeof(tmp), "c[%d]", i);
         binding->vsh_constant_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
     }
@@ -161,19 +160,19 @@ static void update_shader_constant_locations(ShaderBinding *binding, const Shade
     binding->fog_param_loc = glGetUniformLocation(binding->gl_program, "fogParam");
 
     binding->inv_viewport_loc = glGetUniformLocation(binding->gl_program, "invViewport");
-    for (i = 0; i < NV2A_LTCTXA_COUNT; i++) {
+    for (int i = 0; i < NV2A_LTCTXA_COUNT; i++) {
         snprintf(tmp, sizeof(tmp), "ltctxa[%d]", i);
         binding->ltctxa_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
     }
-    for (i = 0; i < NV2A_LTCTXB_COUNT; i++) {
+    for (int i = 0; i < NV2A_LTCTXB_COUNT; i++) {
         snprintf(tmp, sizeof(tmp), "ltctxb[%d]", i);
         binding->ltctxb_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
     }
-    for (i = 0; i < NV2A_LTC1_COUNT; i++) {
+    for (int i = 0; i < NV2A_LTC1_COUNT; i++) {
         snprintf(tmp, sizeof(tmp), "ltc1[%d]", i);
         binding->ltc1_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
     }
-    for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
+    for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
         snprintf(tmp, sizeof(tmp), "lightInfiniteHalfVector%d", i);
         binding->light_infinite_half_vector_loc[i] =
             glGetUniformLocation(binding->gl_program, tmp);
@@ -187,7 +186,7 @@ static void update_shader_constant_locations(ShaderBinding *binding, const Shade
         binding->light_local_attenuation_loc[i] =
             glGetUniformLocation(binding->gl_program, tmp);
     }
-    for (i = 0; i < 8; i++) {
+    for (int i = 0; i < 8; i++) {
         snprintf(tmp, sizeof(tmp), "clipRegion[%d]", i);
         binding->clip_region_loc[i] = glGetUniformLocation(binding->gl_program, tmp);
     }

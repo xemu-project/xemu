@@ -284,19 +284,20 @@ static void download_surface_to_buffer(NV2AState *d, SurfaceBinding *surface,
                              BUFFER_STAGING_DST;
     VkBuffer copy_buffer = r->storage_buffers[copy_buffer_idx].buffer;
 
-    VkBufferMemoryBarrier pre_copy_dst_barrier = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
-        .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .buffer = copy_buffer,
-        .size = VK_WHOLE_SIZE
-    };
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
-                         &pre_copy_dst_barrier, 0, NULL);
-
+    {
+        VkBufferMemoryBarrier pre_copy_dst_barrier = {
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = copy_buffer,
+            .size = VK_WHOLE_SIZE
+        };
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 1,
+                             &pre_copy_dst_barrier, 0, NULL);
+    }
     vkCmdCopyImageToBuffer(cmd, surface_image_loc,
                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, copy_buffer,
                            num_copy_regions, copy_regions);
@@ -1179,10 +1180,6 @@ void pgraph_vk_upload_surface_data(NV2AState *d, SurfaceBinding *surface,
                    !use_compute_to_convert_depth_stencil_format;
 
     if (upscale) {
-        unsigned int scaled_width = surface->width,
-                     scaled_height = surface->height;
-        pgraph_apply_scaling_factor(pg, &scaled_width, &scaled_height);
-
         VkImageBlit blitRegion = {
             .srcSubresource.aspectMask = surface->host_fmt.aspect,
             .srcSubresource.mipLevel = 0,
