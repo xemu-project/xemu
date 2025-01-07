@@ -728,8 +728,6 @@ static void apply_convolution_filter(const struct PixelShader *ps, MString *vars
 
 static MString* psh_convert(struct PixelShader *ps)
 {
-    int i;
-
     const char *u = ps->state.vulkan ? "" : "uniform "; // FIXME: Remove
 
     MString *preflight = mstring_new();
@@ -895,7 +893,7 @@ static MString* psh_convert(struct PixelShader *ps)
 
     ps->code = mstring_new();
 
-    for (i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++) {
 
         const char *sampler_type = get_sampler_type(ps->tex_modes[i], &ps->state, i);
 
@@ -1159,7 +1157,7 @@ static MString* psh_convert(struct PixelShader *ps)
         }
     }
 
-    for (i = 0; i < ps->num_stages; i++) {
+    for (int i = 0; i < ps->num_stages; i++) {
         ps->cur_stage = i;
         mstring_append_fmt(ps->code, "// Stage %d\n", i);
         MString* color = add_stage_code(ps, ps->stage[i].rgb_input, ps->stage[i].rgb_output, "rgb", false);
@@ -1198,7 +1196,7 @@ static MString* psh_convert(struct PixelShader *ps)
         }
     }
 
-    for (i = 0; i < ps->num_var_refs; i++) {
+    for (int i = 0; i < ps->num_var_refs; i++) {
         mstring_append_fmt(vars, "vec4 %s = vec4(0);\n", ps->var_refs[i]);
         if (strcmp(ps->var_refs[i], "r0") == 0) {
             if (ps->tex_modes[0] != PS_TEXTUREMODES_NONE) {
