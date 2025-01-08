@@ -83,6 +83,16 @@ typedef struct TextureBinding {
 } TextureBinding;
 
 typedef struct ShaderBinding {
+    LruNode node;
+    bool initialized;
+
+    bool cached;
+    void *program;
+    size_t program_size;
+    GLenum program_format;
+    ShaderState state;
+    QemuThread *save_thread;
+
     GLuint gl_program;
     GLenum gl_primitive_mode;
 
@@ -116,17 +126,6 @@ typedef struct ShaderBinding {
 
     GLint material_alpha_loc;
 } ShaderBinding;
-
-typedef struct ShaderLruNode {
-    LruNode node;
-    bool cached;
-    void *program;
-    size_t program_size;
-    GLenum program_format;
-    ShaderState state;
-    ShaderBinding *binding;
-    QemuThread *save_thread;
-} ShaderLruNode;
 
 typedef struct VertexKey {
     size_t count;
@@ -196,7 +195,7 @@ typedef struct PGRAPHGLState {
     TextureLruNode *texture_cache_entries;
 
     Lru shader_cache;
-    ShaderLruNode *shader_cache_entries;
+    ShaderBinding *shader_cache_entries;
     ShaderBinding *shader_binding;
     QemuMutex shader_cache_lock;
     QemuThread shader_disk_thread;
@@ -279,8 +278,8 @@ SurfaceBinding *pgraph_gl_surface_get_within(NV2AState *d, hwaddr addr);
 void pgraph_gl_surface_invalidate(NV2AState *d, SurfaceBinding *e);
 void pgraph_gl_unbind_surface(NV2AState *d, bool color);
 void pgraph_gl_upload_surface_data(NV2AState *d, SurfaceBinding *surface, bool force);
-void pgraph_gl_shader_cache_to_disk(ShaderLruNode *snode);
-bool pgraph_gl_shader_load_from_memory(ShaderLruNode *snode);
+void pgraph_gl_shader_cache_to_disk(ShaderBinding *snode);
+bool pgraph_gl_shader_load_from_memory(ShaderBinding *snode);
 void pgraph_gl_shader_write_cache_reload_list(PGRAPHState *pg);
 void pgraph_gl_set_surface_scale_factor(NV2AState *d, unsigned int scale);
 unsigned int pgraph_gl_get_surface_scale_factor(NV2AState *d);
