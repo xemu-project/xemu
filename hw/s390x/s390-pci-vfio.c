@@ -66,6 +66,10 @@ S390PCIDMACount *s390_pci_start_dma_count(S390pciState *s,
 
     assert(vpdev);
 
+    if (!vpdev->vbasedev.group) {
+        return NULL;
+    }
+
     id = vpdev->vbasedev.group->container->fd;
 
     if (!s390_pci_update_dma_avail(id, &avail)) {
@@ -84,6 +88,7 @@ S390PCIDMACount *s390_pci_start_dma_count(S390pciState *s,
     cnt->users = 1;
     cnt->avail = avail;
     QTAILQ_INSERT_TAIL(&s->zpci_dma_limit, cnt, link);
+    pbdev->iommu->max_dma_limit = avail;
     return cnt;
 }
 
@@ -103,6 +108,7 @@ static void s390_pci_read_base(S390PCIBusDevice *pbdev,
     struct vfio_info_cap_header *hdr;
     struct vfio_device_info_cap_zpci_base *cap;
     VFIOPCIDevice *vpci =  container_of(pbdev->pdev, VFIOPCIDevice, pdev);
+    uint64_t vfio_size;
 
     hdr = vfio_get_device_info_cap(info, VFIO_DEVICE_INFO_CAP_ZPCI_BASE);
 
@@ -122,6 +128,17 @@ static void s390_pci_read_base(S390PCIBusDevice *pbdev,
     /* The following values remain 0 until we support other FMB formats */
     pbdev->zpci_fn.fmbl = 0;
     pbdev->zpci_fn.pft = 0;
+    /* Store function type separately for type-specific behavior */
+    pbdev->pft = cap->pft;
+
+    /*
+     * If appropriate, reduce the size of the supported DMA aperture reported
+     * to the guest based upon the vfio DMA limit.
+     */
+    vfio_size = pbdev->iommu->max_dma_limit << TARGET_PAGE_BITS;
+    if (vfio_size > 0 && vfio_size < cap->end_dma - cap->start_dma + 1) {
+        pbdev->zpci_fn.edma = cap->start_dma + vfio_size - 1;
+    }
 }
 
 static bool get_host_fh(S390PCIBusDevice *pbdev, struct vfio_device_info *info,
@@ -276,38 +293,11 @@ static void s390_pci_read_pfip(S390PCIBusDevice *pbdev,
     memcpy(pbdev->zpci_fn.pfip, cap->pfip, CLP_PFIP_NR_SEGMENTS);
 }
 
-static struct vfio_device_info *get_device_info(S390PCIBusDevice *pbdev,
-                                                uint32_t argsz)
+static struct vfio_device_info *get_device_info(S390PCIBusDevice *pbdev)
 {
-    struct vfio_device_info *info = g_malloc0(argsz);
-    VFIOPCIDevice *vfio_pci;
-    int fd;
+    VFIOPCIDevice *vfio_pci = container_of(pbdev->pdev, VFIOPCIDevice, pdev);
 
-    vfio_pci = container_of(pbdev->pdev, VFIOPCIDevice, pdev);
-    fd = vfio_pci->vbasedev.fd;
-
-    /*
-     * If the specified argsz is not large enough to contain all capabilities
-     * it will be updated upon return from the ioctl.  Retry until we have
-     * a big enough buffer to hold the entire capability chain.  On error,
-     * just exit and rely on CLP defaults.
-     */
-retry:
-    info->argsz = argsz;
-
-    if (ioctl(fd, VFIO_DEVICE_GET_INFO, info)) {
-        trace_s390_pci_clp_dev_info(vfio_pci->vbasedev.name);
-        g_free(info);
-        return NULL;
-    }
-
-    if (info->argsz > argsz) {
-        argsz = info->argsz;
-        info = g_realloc(info, argsz);
-        goto retry;
-    }
-
-    return info;
+    return vfio_get_device_info(vfio_pci->vbasedev.fd);
 }
 
 /*
@@ -322,7 +312,7 @@ bool s390_pci_get_host_fh(S390PCIBusDevice *pbdev, uint32_t *fh)
 
     assert(fh);
 
-    info = get_device_info(pbdev, sizeof(*info));
+    info = get_device_info(pbdev);
     if (!info) {
         return false;
     }
@@ -343,7 +333,7 @@ void s390_pci_get_clp_info(S390PCIBusDevice *pbdev)
 {
     g_autofree struct vfio_device_info *info = NULL;
 
-    info = get_device_info(pbdev, sizeof(*info));
+    info = get_device_info(pbdev);
     if (!info) {
         return;
     }

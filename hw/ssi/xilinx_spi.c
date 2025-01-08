@@ -156,6 +156,7 @@ static void xlx_spi_do_reset(XilinxSPI *s)
     txfifo_reset(s);
 
     s->regs[R_SPISSR] = ~0;
+    s->regs[R_SPICR] = R_SPICR_MTI;
     xlx_spi_update_irq(s);
     xlx_spi_update_cs(s);
 }
@@ -232,7 +233,7 @@ spi_read(void *opaque, hwaddr addr, unsigned int size)
         break;
 
     }
-    DB_PRINT("addr=" TARGET_FMT_plx " = %x\n", addr * 4, r);
+    DB_PRINT("addr=" HWADDR_FMT_plx " = %x\n", addr * 4, r);
     xlx_spi_update_irq(s);
     return r;
 }
@@ -244,7 +245,7 @@ spi_write(void *opaque, hwaddr addr,
     XilinxSPI *s = opaque;
     uint32_t value = val64;
 
-    DB_PRINT("addr=" TARGET_FMT_plx " = %x\n", addr, value);
+    DB_PRINT("addr=" HWADDR_FMT_plx " = %x\n", addr, value);
     addr >>= 2;
     switch (addr) {
     case R_SRR:
@@ -352,7 +353,7 @@ static const VMStateDescription vmstate_xilinx_spi = {
     .name = "xilinx_spi",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_FIFO8(tx_fifo, XilinxSPI),
         VMSTATE_FIFO8(rx_fifo, XilinxSPI),
         VMSTATE_UINT32_ARRAY(regs, XilinxSPI, R_MAX),
@@ -370,7 +371,7 @@ static void xilinx_spi_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = xilinx_spi_realize;
-    dc->reset = xlx_spi_reset;
+    device_class_set_legacy_reset(dc, xlx_spi_reset);
     device_class_set_props(dc, xilinx_spi_properties);
     dc->vmsd = &vmstate_xilinx_spi;
 }

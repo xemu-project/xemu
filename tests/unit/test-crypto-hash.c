@@ -1,6 +1,7 @@
 /*
  * QEMU Crypto hash algorithms
  *
+ * Copyright (c) 2024 Seagate Technology LLC and/or its Affiliates
  * Copyright (c) 2015 Red Hat, Inc.
  *
  * This library is free software; you can redistribute it and/or
@@ -42,6 +43,9 @@
                       "63b54e4cb2d2032b393994aa263c0dbb" \
                       "e00a9f2fe9ef6037352232a1eec55ee7"
 #define OUTPUT_RIPEMD160 "f3d658fad3fdfb2b52c9369cf0d441249ddfa8a0"
+#ifdef CONFIG_CRYPTO_SM3
+#define OUTPUT_SM3 "d4a97db105b477b84c4f20ec9c31a6c814e2705a0b83a5a89748d75f0ef456a1"
+#endif
 
 #define OUTPUT_MD5_B64 "Yo0gY3FWMDWrjvYvSSveyQ=="
 #define OUTPUT_SHA1_B64 "sudPJnWKOkIeUJzuBFJEt4dTzAI="
@@ -54,32 +58,45 @@
                           "7sVe5w=="
 #define OUTPUT_RIPEMD160_B64 "89ZY+tP9+ytSyTac8NRBJJ3fqKA="
 
+#ifdef CONFIG_CRYPTO_SM3
+#define OUTPUT_SM3_B64 "1Kl9sQW0d7hMTyDsnDGmyBTicFoLg6Wol0jXXw70VqE="
+#endif
+
 static const char *expected_outputs[] = {
-    [QCRYPTO_HASH_ALG_MD5] = OUTPUT_MD5,
-    [QCRYPTO_HASH_ALG_SHA1] = OUTPUT_SHA1,
-    [QCRYPTO_HASH_ALG_SHA224] = OUTPUT_SHA224,
-    [QCRYPTO_HASH_ALG_SHA256] = OUTPUT_SHA256,
-    [QCRYPTO_HASH_ALG_SHA384] = OUTPUT_SHA384,
-    [QCRYPTO_HASH_ALG_SHA512] = OUTPUT_SHA512,
-    [QCRYPTO_HASH_ALG_RIPEMD160] = OUTPUT_RIPEMD160,
+    [QCRYPTO_HASH_ALGO_MD5] = OUTPUT_MD5,
+    [QCRYPTO_HASH_ALGO_SHA1] = OUTPUT_SHA1,
+    [QCRYPTO_HASH_ALGO_SHA224] = OUTPUT_SHA224,
+    [QCRYPTO_HASH_ALGO_SHA256] = OUTPUT_SHA256,
+    [QCRYPTO_HASH_ALGO_SHA384] = OUTPUT_SHA384,
+    [QCRYPTO_HASH_ALGO_SHA512] = OUTPUT_SHA512,
+    [QCRYPTO_HASH_ALGO_RIPEMD160] = OUTPUT_RIPEMD160,
+#ifdef CONFIG_CRYPTO_SM3
+    [QCRYPTO_HASH_ALGO_SM3] = OUTPUT_SM3,
+#endif
 };
 static const char *expected_outputs_b64[] = {
-    [QCRYPTO_HASH_ALG_MD5] = OUTPUT_MD5_B64,
-    [QCRYPTO_HASH_ALG_SHA1] = OUTPUT_SHA1_B64,
-    [QCRYPTO_HASH_ALG_SHA224] = OUTPUT_SHA224_B64,
-    [QCRYPTO_HASH_ALG_SHA256] = OUTPUT_SHA256_B64,
-    [QCRYPTO_HASH_ALG_SHA384] = OUTPUT_SHA384_B64,
-    [QCRYPTO_HASH_ALG_SHA512] = OUTPUT_SHA512_B64,
-    [QCRYPTO_HASH_ALG_RIPEMD160] = OUTPUT_RIPEMD160_B64,
+    [QCRYPTO_HASH_ALGO_MD5] = OUTPUT_MD5_B64,
+    [QCRYPTO_HASH_ALGO_SHA1] = OUTPUT_SHA1_B64,
+    [QCRYPTO_HASH_ALGO_SHA224] = OUTPUT_SHA224_B64,
+    [QCRYPTO_HASH_ALGO_SHA256] = OUTPUT_SHA256_B64,
+    [QCRYPTO_HASH_ALGO_SHA384] = OUTPUT_SHA384_B64,
+    [QCRYPTO_HASH_ALGO_SHA512] = OUTPUT_SHA512_B64,
+    [QCRYPTO_HASH_ALGO_RIPEMD160] = OUTPUT_RIPEMD160_B64,
+#ifdef CONFIG_CRYPTO_SM3
+    [QCRYPTO_HASH_ALGO_SM3] = OUTPUT_SM3_B64,
+#endif
 };
 static const int expected_lens[] = {
-    [QCRYPTO_HASH_ALG_MD5] = 16,
-    [QCRYPTO_HASH_ALG_SHA1] = 20,
-    [QCRYPTO_HASH_ALG_SHA224] = 28,
-    [QCRYPTO_HASH_ALG_SHA256] = 32,
-    [QCRYPTO_HASH_ALG_SHA384] = 48,
-    [QCRYPTO_HASH_ALG_SHA512] = 64,
-    [QCRYPTO_HASH_ALG_RIPEMD160] = 20,
+    [QCRYPTO_HASH_ALGO_MD5] = 16,
+    [QCRYPTO_HASH_ALGO_SHA1] = 20,
+    [QCRYPTO_HASH_ALGO_SHA224] = 28,
+    [QCRYPTO_HASH_ALGO_SHA256] = 32,
+    [QCRYPTO_HASH_ALGO_SHA384] = 48,
+    [QCRYPTO_HASH_ALGO_SHA512] = 64,
+    [QCRYPTO_HASH_ALGO_RIPEMD160] = 20,
+#ifdef CONFIG_CRYPTO_SM3
+    [QCRYPTO_HASH_ALGO_SM3] = 32,
+#endif
 };
 
 static const char hex[] = "0123456789abcdef";
@@ -122,7 +139,7 @@ static void test_hash_prealloc(void)
     size_t i;
 
     for (i = 0; i < G_N_ELEMENTS(expected_outputs) ; i++) {
-        uint8_t *result;
+        uint8_t *result, *origresult;
         size_t resultlen;
         int ret;
         size_t j;
@@ -132,7 +149,7 @@ static void test_hash_prealloc(void)
         }
 
         resultlen = expected_lens[i];
-        result = g_new0(uint8_t, resultlen);
+        origresult = result = g_new0(uint8_t, resultlen);
 
         ret = qcrypto_hash_bytes(i,
                                  INPUT_TEXT,
@@ -141,7 +158,8 @@ static void test_hash_prealloc(void)
                                  &resultlen,
                                  &error_fatal);
         g_assert(ret == 0);
-
+        /* Validate that our pre-allocated pointer was not replaced */
+        g_assert(result == origresult);
         g_assert(resultlen == expected_lens[i]);
         for (j = 0; j < resultlen; j++) {
             g_assert(expected_outputs[i][j * 2] == hex[(result[j] >> 4) & 0xf]);
@@ -241,6 +259,50 @@ static void test_hash_base64(void)
     }
 }
 
+static void test_hash_accumulate(void)
+{
+    size_t i;
+
+    for (i = 0; i < G_N_ELEMENTS(expected_outputs) ; i++) {
+        g_autoptr(QCryptoHash) hash = NULL;
+        struct iovec iov[] = {
+            { .iov_base = (char *)INPUT_TEXT1, .iov_len = strlen(INPUT_TEXT1) },
+            { .iov_base = (char *)INPUT_TEXT2, .iov_len = strlen(INPUT_TEXT2) },
+            { .iov_base = (char *)INPUT_TEXT3, .iov_len = strlen(INPUT_TEXT3) },
+        };
+        g_autofree uint8_t *result = NULL;
+        size_t resultlen = 0;
+        int ret;
+        size_t j;
+
+        if (!qcrypto_hash_supports(i)) {
+            continue;
+        }
+
+        hash = qcrypto_hash_new(i, &error_fatal);
+        g_assert(hash != NULL);
+
+        /* Add each iovec to the hash context separately */
+        for (j = 0; j < G_N_ELEMENTS(iov); j++) {
+            ret = qcrypto_hash_updatev(hash,
+                                      &iov[j], 1,
+                                      &error_fatal);
+
+            g_assert(ret == 0);
+        }
+
+        ret = qcrypto_hash_finalize_bytes(hash, &result, &resultlen,
+                                          &error_fatal);
+
+        g_assert(ret == 0);
+        g_assert(resultlen == expected_lens[i]);
+        for (j = 0; j < resultlen; j++) {
+            g_assert(expected_outputs[i][j * 2] == hex[(result[j] >> 4) & 0xf]);
+            g_assert(expected_outputs[i][j * 2 + 1] == hex[result[j] & 0xf]);
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     int ret = qcrypto_init(&error_fatal);
@@ -252,5 +314,6 @@ int main(int argc, char **argv)
     g_test_add_func("/crypto/hash/prealloc", test_hash_prealloc);
     g_test_add_func("/crypto/hash/digest", test_hash_digest);
     g_test_add_func("/crypto/hash/base64", test_hash_base64);
+    g_test_add_func("/crypto/hash/accumulate", test_hash_accumulate);
     return g_test_run();
 }

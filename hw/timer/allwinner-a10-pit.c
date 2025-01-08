@@ -200,7 +200,7 @@ static const VMStateDescription vmstate_a10_pit = {
     .name = "a10.pit",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(irq_enable, AwA10PITState),
         VMSTATE_UINT32(irq_status, AwA10PITState),
         VMSTATE_UINT32_ARRAY(control, AwA10PITState, AW_A10_PIT_TIMER_NR),
@@ -293,7 +293,7 @@ static void a10_pit_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = a10_pit_reset;
+    device_class_set_legacy_reset(dc, a10_pit_reset);
     device_class_set_props(dc, a10_pit_properties);
     dc->desc = "allwinner a10 timer";
     dc->vmsd = &vmstate_a10_pit;

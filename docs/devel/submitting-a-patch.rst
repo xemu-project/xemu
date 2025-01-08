@@ -18,7 +18,7 @@ one-shot fix, the bare minimum we ask is that:
 
    * - Check
      - Reason
-   * - Patches contain Signed-off-by: Real Name <author@email>
+   * - Patches contain Signed-off-by: Your Name <author@email>
      - States you are legally able to contribute the code. See :ref:`patch_emails_must_include_a_signed_off_by_line`
    * - Sent as patch emails to ``qemu-devel@nongnu.org``
      - The project uses an email list based workflow. See :ref:`submitting_your_patches`
@@ -177,7 +177,7 @@ add an additional line with "Fixes: <at-least-12-digits-of-SHA-commit-id>
 
 If your patch fixes a bug in the gitlab bug tracker, please add a line
 with "Resolves: <URL-of-the-bug>" to the commit message, too. Gitlab can
-close bugs automatically once commits with the "Resolved:" keyword get
+close bugs automatically once commits with the "Resolves:" keyword get
 merged into the master branch of the project. And if your patch addresses
 a bug in another public bug tracker, you can also use a line with
 "Buglink: <URL-of-the-bug>" for reference here, too.
@@ -334,6 +334,11 @@ commit just confuses things. If someone else wrote the patch, git will
 include a "From:" line in the body of the email (different from your
 envelope From:) that will give credit to the correct author; but again,
 that author's Signed-off-by: line is mandatory, with the same spelling.
+
+The name used with "Signed-off-by" does not need to be your legal name,
+nor birth name, nor appear on any government ID. It is the identity you
+choose to be known by in the community, but should not be anonymous,
+nor misrepresent whom you are.
 
 There are various tooling options for automatically adding these tags
 include using ``git commit -s`` or ``git format-patch -s``. For more

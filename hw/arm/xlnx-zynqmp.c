@@ -25,6 +25,8 @@
 #include "sysemu/kvm.h"
 #include "sysemu/sysemu.h"
 #include "kvm_arm.h"
+#include "target/arm/cpu-qom.h"
+#include "target/arm/gtimer.h"
 
 #define GIC_NUM_SPI_INTR 160
 
@@ -392,6 +394,8 @@ static void xlnx_zynqmp_init(Object *obj)
 
     for (i = 0; i < XLNX_ZYNQMP_NUM_GEMS; i++) {
         object_initialize_child(obj, "gem[*]", &s->gem[i], TYPE_CADENCE_GEM);
+        object_initialize_child(obj, "gem-irq-orgate[*]",
+                                &s->gem_irq_orgate[i], TYPE_OR_IRQ);
     }
 
     for (i = 0; i < XLNX_ZYNQMP_NUM_UARTS; i++) {
@@ -616,25 +620,26 @@ static void xlnx_zynqmp_realize(DeviceState *dev, Error **errp)
     }
 
     for (i = 0; i < XLNX_ZYNQMP_NUM_GEMS; i++) {
-        NICInfo *nd = &nd_table[i];
-
-        /* FIXME use qdev NIC properties instead of nd_table[] */
-        if (nd->used) {
-            qemu_check_nic_model(nd, TYPE_CADENCE_GEM);
-            qdev_set_nic_properties(DEVICE(&s->gem[i]), nd);
-        }
+        qemu_configure_nic_device(DEVICE(&s->gem[i]), true, NULL);
         object_property_set_int(OBJECT(&s->gem[i]), "revision", GEM_REVISION,
                                 &error_abort);
         object_property_set_int(OBJECT(&s->gem[i]), "phy-addr", 23,
                                 &error_abort);
         object_property_set_int(OBJECT(&s->gem[i]), "num-priority-queues", 2,
                                 &error_abort);
+        object_property_set_int(OBJECT(&s->gem_irq_orgate[i]),
+                                "num-lines", 2, &error_fatal);
+        qdev_realize(DEVICE(&s->gem_irq_orgate[i]), NULL, &error_fatal);
+        qdev_connect_gpio_out(DEVICE(&s->gem_irq_orgate[i]), 0, gic_spi[gem_intr[i]]);
+
         if (!sysbus_realize(SYS_BUS_DEVICE(&s->gem[i]), errp)) {
             return;
         }
         sysbus_mmio_map(SYS_BUS_DEVICE(&s->gem[i]), 0, gem_addr[i]);
         sysbus_connect_irq(SYS_BUS_DEVICE(&s->gem[i]), 0,
-                           gic_spi[gem_intr[i]]);
+                           qdev_get_gpio_in(DEVICE(&s->gem_irq_orgate[i]), 0));
+        sysbus_connect_irq(SYS_BUS_DEVICE(&s->gem[i]), 1,
+                           qdev_get_gpio_in(DEVICE(&s->gem_irq_orgate[i]), 1));
     }
 
     for (i = 0; i < XLNX_ZYNQMP_NUM_UARTS; i++) {

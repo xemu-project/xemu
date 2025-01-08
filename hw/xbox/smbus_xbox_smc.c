@@ -2,7 +2,7 @@
  * QEMU SMBus Xbox System Management Controller
  *
  * Copyright (c) 2011 espes
- * Copyright (c) 2020-2021 Matt Borgerson
+ * Copyright (c) 2020-2025 Matt Borgerson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -37,6 +37,7 @@
 #include "smbus.h"
 #include "sysemu/runstate.h"
 #include "hw/qdev-properties.h"
+#include "block/block_int-io.h"
 
 #define TYPE_XBOX_SMC "smbus-xbox-smc"
 #define XBOX_SMC(obj) OBJECT_CHECK(SMBusSMCDevice, (obj), TYPE_XBOX_SMC)

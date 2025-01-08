@@ -13,7 +13,6 @@
 #include "hw/pci-host/pnv_phb3.h"
 #include "hw/ppc/pnv.h"
 #include "hw/pci/msi.h"
-#include "monitor/monitor.h"
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
 #include "sysemu/reset.h"
@@ -228,20 +227,17 @@ static void phb3_msi_resend(ICSState *ics)
     }
 }
 
-static void phb3_msi_reset(DeviceState *dev)
+static void phb3_msi_reset_hold(Object *obj, ResetType type)
 {
-    Phb3MsiState *msi = PHB3_MSI(dev);
-    ICSStateClass *icsc = ICS_GET_CLASS(dev);
+    Phb3MsiState *msi = PHB3_MSI(obj);
+    ICSStateClass *icsc = ICS_GET_CLASS(obj);
 
-    icsc->parent_reset(dev);
+    if (icsc->parent_phases.hold) {
+        icsc->parent_phases.hold(obj, type);
+    }
 
     memset(msi->rba, 0, sizeof(msi->rba));
     msi->rba_sum = 0;
-}
-
-static void phb3_msi_reset_handler(void *dev)
-{
-    phb3_msi_reset(dev);
 }
 
 void pnv_phb3_msi_update_config(Phb3MsiState *msi, uint32_t base,
@@ -272,8 +268,6 @@ static void phb3_msi_realize(DeviceState *dev, Error **errp)
     }
 
     msi->qirqs = qemu_allocate_irqs(phb3_msi_set_irq, msi, ics->nr_irqs);
-
-    qemu_register_reset(phb3_msi_reset_handler, dev);
 }
 
 static void phb3_msi_instance_init(Object *obj)
@@ -286,7 +280,7 @@ static void phb3_msi_instance_init(Object *obj)
                              object_property_allow_set_link,
                              OBJ_PROP_LINK_STRONG);
 
-    /* Will be overriden later */
+    /* Will be overridden later */
     ics->offset = 0;
 }
 
@@ -294,11 +288,12 @@ static void phb3_msi_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ICSStateClass *isc = ICS_CLASS(klass);
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
 
     device_class_set_parent_realize(dc, phb3_msi_realize,
                                     &isc->parent_realize);
-    device_class_set_parent_reset(dc, phb3_msi_reset,
-                                  &isc->parent_reset);
+    resettable_class_set_parent_phases(rc, NULL, phb3_msi_reset_hold, NULL,
+                                       &isc->parent_phases);
 
     isc->reject = phb3_msi_reject;
     isc->resend = phb3_msi_resend;
@@ -320,13 +315,13 @@ static void pnv_phb3_msi_register_types(void)
 
 type_init(pnv_phb3_msi_register_types);
 
-void pnv_phb3_msi_pic_print_info(Phb3MsiState *msi, Monitor *mon)
+void pnv_phb3_msi_pic_print_info(Phb3MsiState *msi, GString *buf)
 {
     ICSState *ics = ICS(msi);
     int i;
 
-    monitor_printf(mon, "ICS %4x..%4x %p\n",
-                   ics->offset, ics->offset + ics->nr_irqs - 1, ics);
+    g_string_append_printf(buf, "ICS %4x..%4x %p\n",
+                           ics->offset, ics->offset + ics->nr_irqs - 1, ics);
 
     for (i = 0; i < ics->nr_irqs; i++) {
         uint64_t ive;
@@ -339,12 +334,12 @@ void pnv_phb3_msi_pic_print_info(Phb3MsiState *msi, Monitor *mon)
             continue;
         }
 
-        monitor_printf(mon, "  %4x %c%c server=%04x prio=%02x gen=%d\n",
-                       ics->offset + i,
-                       GETFIELD(IODA2_IVT_P, ive) ? 'P' : '-',
-                       GETFIELD(IODA2_IVT_Q, ive) ? 'Q' : '-',
-                       (uint32_t) GETFIELD(IODA2_IVT_SERVER, ive) >> 2,
-                       (uint32_t) GETFIELD(IODA2_IVT_PRIORITY, ive),
-                       (uint32_t) GETFIELD(IODA2_IVT_GEN, ive));
+        g_string_append_printf(buf, "  %4x %c%c server=%04x prio=%02x gen=%d\n",
+                               ics->offset + i,
+                               GETFIELD(IODA2_IVT_P, ive) ? 'P' : '-',
+                               GETFIELD(IODA2_IVT_Q, ive) ? 'Q' : '-',
+                               (uint32_t) GETFIELD(IODA2_IVT_SERVER, ive) >> 2,
+                               (uint32_t) GETFIELD(IODA2_IVT_PRIORITY, ive),
+                               (uint32_t) GETFIELD(IODA2_IVT_GEN, ive));
     }
 }

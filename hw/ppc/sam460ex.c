@@ -21,17 +21,20 @@
 #include "kvm_ppc.h"
 #include "sysemu/device_tree.h"
 #include "sysemu/block-backend.h"
+#include "exec/page-protection.h"
 #include "hw/loader.h"
 #include "elf.h"
 #include "exec/memory.h"
 #include "ppc440.h"
+#include "hw/pci-host/ppc4xx.h"
 #include "hw/block/flash.h"
 #include "sysemu/sysemu.h"
 #include "sysemu/reset.h"
 #include "hw/sysbus.h"
-#include "hw/char/serial.h"
+#include "hw/char/serial-mm.h"
 #include "hw/i2c/ppc4xx_i2c.h"
 #include "hw/i2c/smbus_eeprom.h"
+#include "hw/ide/pci.h"
 #include "hw/usb/hcd-ehci.h"
 #include "hw/ppc/fdt.h"
 #include "hw/qdev-properties.h"
@@ -44,6 +47,9 @@
 /* to extract the official U-Boot bin from the updater: */
 /* dd bs=1 skip=$(($(stat -c '%s' updater/updater-460) - 0x80000)) \
      if=updater/updater-460 of=u-boot-sam460-20100605.bin */
+
+#define PCIE0_DCRN_BASE 0x100
+#define PCIE1_DCRN_BASE 0x120
 
 /* from Sam460 U-Boot include/configs/Sam460ex.h */
 #define FLASH_BASE             0xfff00000
@@ -207,38 +213,6 @@ static int sam460ex_load_device_tree(MachineState *machine,
     return fdt_size;
 }
 
-/* Create reset TLB entries for BookE, mapping only the flash memory.  */
-static void mmubooke_create_initial_mapping_uboot(CPUPPCState *env)
-{
-    ppcemb_tlb_t *tlb = &env->tlb.tlbe[0];
-
-    /* on reset the flash is mapped by a shadow TLB,
-     * but since we don't implement them we need to use
-     * the same values U-Boot will use to avoid a fault.
-     */
-    tlb->attr = 0;
-    tlb->prot = PAGE_VALID | ((PAGE_READ | PAGE_WRITE | PAGE_EXEC) << 4);
-    tlb->size = 0x10000000; /* up to 0xffffffff  */
-    tlb->EPN = 0xf0000000 & TARGET_PAGE_MASK;
-    tlb->RPN = (0xf0000000 & TARGET_PAGE_MASK) | 0x4;
-    tlb->PID = 0;
-}
-
-/* Create reset TLB entries for BookE, spanning the 32bit addr space.  */
-static void mmubooke_create_initial_mapping(CPUPPCState *env,
-                                     target_ulong va,
-                                     hwaddr pa)
-{
-    ppcemb_tlb_t *tlb = &env->tlb.tlbe[0];
-
-    tlb->attr = 0;
-    tlb->prot = PAGE_VALID | ((PAGE_READ | PAGE_WRITE | PAGE_EXEC) << 4);
-    tlb->size = 1 << 31; /* up to 0x80000000  */
-    tlb->EPN = va & TARGET_PAGE_MASK;
-    tlb->RPN = pa & TARGET_PAGE_MASK;
-    tlb->PID = 0;
-}
-
 static void main_cpu_reset(void *opaque)
 {
     PowerPCCPU *cpu = opaque;
@@ -247,31 +221,37 @@ static void main_cpu_reset(void *opaque)
 
     cpu_reset(CPU(cpu));
 
-    /* either we have a kernel to boot or we jump to U-Boot */
+    /*
+     * On reset the flash is mapped by a shadow TLB, but since we
+     * don't implement them we need to use the same values U-Boot
+     * will use to avoid a fault.
+     * either we have a kernel to boot or we jump to U-Boot
+     */
     if (bi->entry != UBOOT_ENTRY) {
         env->gpr[1] = (16 * MiB) - 8;
         env->gpr[3] = FDT_ADDR;
         env->nip = bi->entry;
 
         /* Create a mapping for the kernel.  */
-        mmubooke_create_initial_mapping(env, 0, 0);
+        booke_set_tlb(&env->tlb.tlbe[0], 0, 0, 1 << 31);
         env->gpr[6] = tswap32(EPAPR_MAGIC);
         env->gpr[7] = (16 * MiB) - 8; /* bi->ima_size; */
 
     } else {
         env->nip = UBOOT_ENTRY;
-        mmubooke_create_initial_mapping_uboot(env);
+        /* Create a mapping for U-Boot. */
+        booke_set_tlb(&env->tlb.tlbe[0], 0xf0000000, 0xf0000000, 0x10000000);
+        env->tlb.tlbe[0].RPN |= 4;
     }
 }
 
 static void sam460ex_init(MachineState *machine)
 {
-    MemoryRegion *address_space_mem = get_system_memory();
-    MemoryRegion *isa = g_new(MemoryRegion, 1);
     MemoryRegion *l2cache_ram = g_new(MemoryRegion, 1);
     DeviceState *uic[4];
     int i;
     PCIBus *pci_bus;
+    USBBus *usb_bus;
     PowerPCCPU *cpu;
     CPUPPCState *env;
     I2CBus *i2c;
@@ -389,8 +369,8 @@ static void sam460ex_init(MachineState *machine)
 
     /* MAL */
     dev = qdev_new(TYPE_PPC4xx_MAL);
-    qdev_prop_set_uint32(dev, "txc-num", 4);
-    qdev_prop_set_uint32(dev, "rxc-num", 16);
+    qdev_prop_set_uint8(dev, "txc-num", 4);
+    qdev_prop_set_uint8(dev, "rxc-num", 16);
     ppc4xx_dcr_realize(PPC4xx_DCR_DEVICE(dev), cpu, &error_fatal);
     object_unref(OBJECT(dev));
     sbdev = SYS_BUS_DEVICE(dev);
@@ -406,7 +386,8 @@ static void sam460ex_init(MachineState *machine)
     /* FIXME: remove this after fixing l2sram mapping in ppc440_uc.c? */
     memory_region_init_ram(l2cache_ram, NULL, "ppc440.l2cache_ram", 256 * KiB,
                            &error_abort);
-    memory_region_add_subregion(address_space_mem, 0x400000000LL, l2cache_ram);
+    memory_region_add_subregion(get_system_memory(), 0x400000000LL,
+                                l2cache_ram);
 
     /* USB */
     sysbus_create_simple(TYPE_PPC4xx_EHCI, 0x4bffd0400,
@@ -418,39 +399,62 @@ static void sam460ex_init(MachineState *machine)
     sysbus_realize_and_unref(sbdev, &error_fatal);
     sysbus_mmio_map(sbdev, 0, 0x4bffd0000);
     sysbus_connect_irq(sbdev, 0, qdev_get_gpio_in(uic[2], 30));
-    usb_create_simple(usb_bus_find(-1), "usb-kbd");
-    usb_create_simple(usb_bus_find(-1), "usb-mouse");
+    usb_bus = USB_BUS(object_resolve_type_unambiguous(TYPE_USB_BUS,
+                                                      &error_abort));
+    usb_create_simple(usb_bus, "usb-kbd");
+    usb_create_simple(usb_bus, "usb-mouse");
+
+    /* PCIe buses */
+    dev = qdev_new(TYPE_PPC460EX_PCIE_HOST);
+    qdev_prop_set_int32(dev, "busnum", 0);
+    qdev_prop_set_int32(dev, "dcrn-base", PCIE0_DCRN_BASE);
+    object_property_set_link(OBJECT(dev), "cpu", OBJECT(cpu), &error_abort);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
+
+    dev = qdev_new(TYPE_PPC460EX_PCIE_HOST);
+    qdev_prop_set_int32(dev, "busnum", 1);
+    qdev_prop_set_int32(dev, "dcrn-base", PCIE1_DCRN_BASE);
+    object_property_set_link(OBJECT(dev), "cpu", OBJECT(cpu), &error_abort);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
 
     /* PCI bus */
-    ppc460ex_pcie_init(env);
     /* All PCI irqs are connected to the same UIC pin (cf. UBoot source) */
-    dev = sysbus_create_simple("ppc440-pcix-host", 0xc0ec00000,
+    dev = sysbus_create_simple(TYPE_PPC440_PCIX_HOST, 0xc0ec00000,
                                qdev_get_gpio_in(uic[1], 0));
+    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 1, 0xc08000000);
     pci_bus = PCI_BUS(qdev_get_child_bus(dev, "pci.0"));
-
-    memory_region_init_alias(isa, NULL, "isa_mmio", get_system_io(),
-                             0, 0x10000);
-    memory_region_add_subregion(get_system_memory(), 0xc08000000, isa);
 
     /* PCI devices */
     pci_create_simple(pci_bus, PCI_DEVFN(6, 0), "sm501");
-    /* SoC has a single SATA port but we don't emulate that yet
+    /*
+     * SoC has a single SATA port but we don't emulate that
      * However, firmware and usual clients have driver for SiI311x
-     * so add one for convenience by default */
+     * PCI SATA card so add one for convenience by default
+     */
     if (defaults_enabled()) {
-        pci_create_simple(pci_bus, -1, "sii3112");
+        PCIIDEState *s = PCI_IDE(pci_create_simple(pci_bus, -1, "sii3112"));
+        DriveInfo *di;
+
+        di = drive_get_by_index(IF_IDE, 0);
+        if (di) {
+            ide_bus_create_drive(&s->bus[0], 0, di);
+        }
+        /* Use index 2 only if 1 does not exist, this allows -cdrom */
+        di = drive_get_by_index(IF_IDE, 1) ?: drive_get_by_index(IF_IDE, 2);
+        if (di) {
+            ide_bus_create_drive(&s->bus[1], 0, di);
+        }
     }
 
-    /* SoC has 4 UARTs
-     * but board has only one wired and two are present in fdt */
+    /* SoC has 4 UARTs but board has only one wired and two described in fdt */
     if (serial_hd(0) != NULL) {
-        serial_mm_init(address_space_mem, 0x4ef600300, 0,
+        serial_mm_init(get_system_memory(), 0x4ef600300, 0,
                        qdev_get_gpio_in(uic[1], 1),
                        PPC_SERIAL_MM_BAUDBASE, serial_hd(0),
                        DEVICE_BIG_ENDIAN);
     }
     if (serial_hd(1) != NULL) {
-        serial_mm_init(address_space_mem, 0x4ef600400, 0,
+        serial_mm_init(get_system_memory(), 0x4ef600400, 0,
                        qdev_get_gpio_in(uic[0], 1),
                        PPC_SERIAL_MM_BAUDBASE, serial_hd(1),
                        DEVICE_BIG_ENDIAN);
@@ -516,6 +520,7 @@ static void sam460ex_machine_init(MachineClass *mc)
 {
     mc->desc = "aCube Sam460ex";
     mc->init = sam460ex_init;
+    mc->block_default_type = IF_IDE;
     mc->default_cpu_type = POWERPC_CPU_TYPE_NAME("460exb");
     mc->default_ram_size = 512 * MiB;
     mc->default_ram_id = "ppc4xx.sdram";

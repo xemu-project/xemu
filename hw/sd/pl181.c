@@ -63,7 +63,7 @@ static const VMStateDescription vmstate_pl181 = {
     .name = "pl181",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(clock, PL181State),
         VMSTATE_UINT32(power, PL181State),
         VMSTATE_UINT32(cmdarg, PL181State),
@@ -514,18 +514,10 @@ static void pl181_class_init(ObjectClass *klass, void *data)
     DeviceClass *k = DEVICE_CLASS(klass);
 
     k->vmsd = &vmstate_pl181;
-    k->reset = pl181_reset;
+    device_class_set_legacy_reset(k, pl181_reset);
     /* Reason: output IRQs should be wired up */
     k->user_creatable = false;
 }
-
-static const TypeInfo pl181_info = {
-    .name          = TYPE_PL181,
-    .parent        = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(PL181State),
-    .instance_init = pl181_init,
-    .class_init    = pl181_class_init,
-};
 
 static void pl181_bus_class_init(ObjectClass *klass, void *data)
 {
@@ -535,17 +527,20 @@ static void pl181_bus_class_init(ObjectClass *klass, void *data)
     sbc->set_readonly = pl181_set_readonly;
 }
 
-static const TypeInfo pl181_bus_info = {
-    .name = TYPE_PL181_BUS,
-    .parent = TYPE_SD_BUS,
-    .instance_size = sizeof(SDBus),
-    .class_init = pl181_bus_class_init,
+static const TypeInfo pl181_info[] = {
+    {
+        .name           = TYPE_PL181,
+        .parent         = TYPE_SYS_BUS_DEVICE,
+        .instance_size  = sizeof(PL181State),
+        .instance_init  = pl181_init,
+        .class_init     = pl181_class_init,
+    },
+    {
+        .name           = TYPE_PL181_BUS,
+        .parent         = TYPE_SD_BUS,
+        .instance_size  = sizeof(SDBus),
+        .class_init     = pl181_bus_class_init,
+    },
 };
 
-static void pl181_register_types(void)
-{
-    type_register_static(&pl181_info);
-    type_register_static(&pl181_bus_info);
-}
-
-type_init(pl181_register_types)
+DEFINE_TYPES(pl181_info)

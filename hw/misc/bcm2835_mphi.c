@@ -156,7 +156,7 @@ const VMStateDescription vmstate_mphi_state = {
     .name = "mphi",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(outdda, BCM2835MphiState),
         VMSTATE_UINT32(outddb, BCM2835MphiState),
         VMSTATE_UINT32(ctrl, BCM2835MphiState),
@@ -171,7 +171,7 @@ static void mphi_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = mphi_realize;
-    dc->reset = mphi_reset;
+    device_class_set_legacy_reset(dc, mphi_reset);
     dc->vmsd = &vmstate_mphi_state;
 }
 

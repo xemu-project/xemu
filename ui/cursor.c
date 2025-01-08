@@ -90,11 +90,12 @@ QEMUCursor *cursor_builtin_left_ptr(void)
     return cursor_parse_xpm(cursor_left_ptr_xpm);
 }
 
-QEMUCursor *cursor_alloc(int width, int height)
+QEMUCursor *cursor_alloc(uint16_t width, uint16_t height)
 {
     QEMUCursor *c;
     size_t datasize = width * height * sizeof(uint32_t);
 
+    /* Modern physical hardware typically uses 512x512 sprites */
     if (width > 512 || height > 512) {
         return NULL;
     }
@@ -106,12 +107,13 @@ QEMUCursor *cursor_alloc(int width, int height)
     return c;
 }
 
-void cursor_get(QEMUCursor *c)
+QEMUCursor *cursor_ref(QEMUCursor *c)
 {
     c->refcount++;
+    return c;
 }
 
-void cursor_put(QEMUCursor *c)
+void cursor_unref(QEMUCursor *c)
 {
     if (c == NULL)
         return;
@@ -195,30 +197,6 @@ void cursor_set_mono(QEMUCursor *c,
     }
 }
 
-void cursor_get_mono_image(QEMUCursor *c, int foreground, uint8_t *image)
-{
-    uint32_t *data = c->data;
-    uint8_t bit;
-    int x,y,bpl;
-
-    bpl = cursor_get_mono_bpl(c);
-    memset(image, 0, bpl * c->height);
-    for (y = 0; y < c->height; y++) {
-        bit = 0x80;
-        for (x = 0; x < c->width; x++, data++) {
-            if (((*data & 0xff000000) == 0xff000000) &&
-                ((*data & 0x00ffffff) == foreground)) {
-                image[x/8] |= bit;
-            }
-            bit >>= 1;
-            if (bit == 0) {
-                bit = 0x80;
-            }
-        }
-        image += bpl;
-    }
-}
-
 void cursor_get_mono_mask(QEMUCursor *c, int transparent, uint8_t *mask)
 {
     uint32_t *data = c->data;
@@ -230,7 +208,7 @@ void cursor_get_mono_mask(QEMUCursor *c, int transparent, uint8_t *mask)
     for (y = 0; y < c->height; y++) {
         bit = 0x80;
         for (x = 0; x < c->width; x++, data++) {
-            if ((*data & 0xff000000) != 0xff000000) {
+            if ((*data & 0x80000000) == 0x0) { /* Alpha < 0x80 (128) */
                 if (transparent != 0) {
                     mask[x/8] |= bit;
                 }

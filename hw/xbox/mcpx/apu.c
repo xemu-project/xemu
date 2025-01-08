@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2012 espes
  * Copyright (c) 2018-2019 Jannik Vogel
- * Copyright (c) 2019-2021 Matt Borgerson
+ * Copyright (c) 2019-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -25,8 +25,10 @@
 #include <SDL.h>
 #include "hw/hw.h"
 #include "hw/pci/pci.h"
+#include "hw/pci/pci_device.h"
 #include "cpu.h"
 #include "migration/vmstate.h"
+#include "qemu/main-loop.h"
 #include "sysemu/runstate.h"
 #include "audio/audio.h"
 #include "qemu/fifo8.h"
@@ -86,7 +88,10 @@ typedef struct MCPXAPUVoiceFilter {
 } MCPXAPUVoiceFilter;
 
 typedef struct MCPXAPUState {
-    PCIDevice dev;
+    /*< private >*/
+    PCIDevice parent_obj;
+    /*< public >*/
+
     bool exiting;
     bool set_irq;
 
@@ -227,7 +232,6 @@ static void mcpx_apu_vm_state_change(void *opaque, bool running, RunState state)
 static int mcpx_apu_post_save(void *opaque);
 static int mcpx_apu_pre_load(void *opaque);
 static int mcpx_apu_post_load(void *opaque, int version_id);
-static void qdev_mcpx_apu_reset(DeviceState *dev);
 static void mcpx_apu_register(void);
 static void *mcpx_apu_frame_thread(void *arg);
 
@@ -364,12 +368,12 @@ static void update_irq(MCPXAPUState *d)
         qatomic_or(&d->regs[NV_PAPU_ISTS], NV_PAPU_ISTS_GINTSTS);
         // fprintf(stderr, "mcpx irq raise ien=%08x ists=%08x\n",
         //         d->regs[NV_PAPU_IEN], d->regs[NV_PAPU_ISTS]);
-        pci_irq_assert(&d->dev);
+        pci_irq_assert(PCI_DEVICE(d));
     } else {
         qatomic_and(&d->regs[NV_PAPU_ISTS], ~NV_PAPU_ISTS_GINTSTS);
         // fprintf(stderr, "mcpx irq lower ien=%08x ists=%08x\n",
         //         d->regs[NV_PAPU_IEN], d->regs[NV_PAPU_ISTS]);
-        pci_irq_deassert(&d->dev);
+        pci_irq_deassert(PCI_DEVICE(d));
     }
 }
 
@@ -488,7 +492,7 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
     case NV1BA0_PIO_SET_ANTECEDENT_VOICE:
         d->regs[NV_PAPU_FEAV] = argument;
         break;
-    case NV1BA0_PIO_VOICE_ON:
+    case NV1BA0_PIO_VOICE_ON: {
         selected_handle = argument & NV1BA0_PIO_VOICE_ON_HANDLE;
         DPRINTF("VOICE %d ON\n", selected_handle);
 
@@ -579,6 +583,7 @@ static void fe_method(MCPXAPUState *d, uint32_t method, uint32_t argument)
         }
 
         break;
+    }
     case NV1BA0_PIO_VOICE_RELEASE: {
         selected_handle = argument & NV1BA0_PIO_VOICE_ON_HANDLE;
 
@@ -2231,7 +2236,7 @@ static void se_frame(MCPXAPUState *d)
         }
 
         qemu_spin_lock(&d->vp.out_buf_lock);
-        int num_bytes_free = fifo8_num_free(&d->vp.out_buf);
+        num_bytes_free = fifo8_num_free(&d->vp.out_buf);
         assert(num_bytes_free >= sizeof(d->apu_fifo_output));
         fifo8_push_all(&d->vp.out_buf, (uint8_t *)d->apu_fifo_output,
                        sizeof(d->apu_fifo_output));
@@ -2281,10 +2286,8 @@ static void mcpx_vp_out_cb(void *opaque, uint8_t *stream, int free_b)
     while (to_copy > 0) {
         uint32_t chunk_len = 0;
         qemu_spin_lock(&s->vp.out_buf_lock);
-        const uint8_t *samples =
-            fifo8_pop_buf(&s->vp.out_buf, to_copy, &chunk_len);
+        chunk_len = fifo8_pop_buf(&s->vp.out_buf, stream, to_copy);
         assert(chunk_len <= to_copy);
-        memcpy(stream, samples, chunk_len);
         qemu_spin_unlock(&s->vp.out_buf_lock);
         stream += chunk_len;
         to_copy -= chunk_len;
@@ -2314,7 +2317,7 @@ static void mcpx_apu_realize(PCIDevice *dev, Error **errp)
                           "mcpx-apu-ep", 0x10000);
     memory_region_add_subregion(&d->mmio, 0x50000, &d->ep.mmio);
 
-    pci_register_bar(&d->dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
+    pci_register_bar(dev, 0, PCI_BASE_ADDRESS_SPACE_MEMORY, &d->mmio);
 }
 
 static void mcpx_apu_exitfn(PCIDevice *dev)
@@ -2383,9 +2386,9 @@ static int mcpx_apu_post_load(void *opaque, int version_id)
     return 0;
 }
 
-static void qdev_mcpx_apu_reset(DeviceState *dev)
+static void mcpx_apu_reset_hold(Object *obj, ResetType type)
 {
-    MCPXAPUState *d = MCPX_APU_DEVICE(dev);
+    MCPXAPUState *d = MCPX_APU_DEVICE(obj);
     mcpx_apu_reset(d);
 }
 
@@ -2482,7 +2485,7 @@ static const VMStateDescription vmstate_mcpx_apu = {
     .pre_load = mcpx_apu_pre_load,
     .post_load = mcpx_apu_post_load,
     .fields = (VMStateField[]) {
-        VMSTATE_PCI_DEVICE(dev, MCPXAPUState),
+        VMSTATE_PCI_DEVICE(parent_obj, MCPXAPUState),
         VMSTATE_STRUCT_POINTER(gp.dsp, MCPXAPUState, vmstate_vp_dsp_state,
                                DSPState),
         VMSTATE_UINT32_ARRAY(gp.regs, MCPXAPUState, 0x10000),
@@ -2506,6 +2509,7 @@ static const VMStateDescription vmstate_mcpx_apu = {
 static void mcpx_apu_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
     k->vendor_id = PCI_VENDOR_ID_NVIDIA;
@@ -2515,8 +2519,9 @@ static void mcpx_apu_class_init(ObjectClass *klass, void *data)
     k->realize = mcpx_apu_realize;
     k->exit = mcpx_apu_exitfn;
 
+    rc->phases.hold = mcpx_apu_reset_hold;
+
     dc->desc = "MCPX Audio Processing Unit";
-    dc->reset = qdev_mcpx_apu_reset;
     dc->vmsd = &vmstate_mcpx_apu;
 }
 
@@ -2554,9 +2559,9 @@ static void *mcpx_apu_frame_thread(void *arg)
 
         if (d->set_irq) {
             qemu_mutex_unlock(&d->lock);
-            qemu_mutex_lock_iothread();
+            bql_lock();
             update_irq(d);
-            qemu_mutex_unlock_iothread();
+            bql_unlock();
             qemu_mutex_lock(&d->lock);
             d->set_irq = false;
         }

@@ -29,8 +29,7 @@
 
 #include "qemu/osdep.h"
 
-/* For crc32 */
-#include <zlib.h>
+#include <zlib.h> /* for crc32 */
 
 #include "hw/irq.h"
 #include "hw/qdev-clock.h"
@@ -98,6 +97,8 @@ static const char *emc_reg_name(int regno)
 
 static void emc_reset(NPCM7xxEMCState *emc)
 {
+    uint32_t value;
+
     trace_npcm7xx_emc_reset(emc->emc_num);
 
     memset(&emc->regs[0], 0, sizeof(emc->regs));
@@ -112,6 +113,16 @@ static void emc_reset(NPCM7xxEMCState *emc)
 
     emc->tx_active = false;
     emc->rx_active = false;
+
+    /* Set the MAC address in the register space. */
+    value = (emc->conf.macaddr.a[0] << 24) |
+        (emc->conf.macaddr.a[1] << 16) |
+        (emc->conf.macaddr.a[2] << 8) |
+        emc->conf.macaddr.a[3];
+    emc->regs[REG_CAMM_BASE] = value;
+
+    value = (emc->conf.macaddr.a[4] << 24) | (emc->conf.macaddr.a[5] << 16);
+    emc->regs[REG_CAML_BASE] = value;
 }
 
 static void npcm7xx_emc_reset(DeviceState *dev)
@@ -432,13 +443,25 @@ static bool emc_receive_filter1(NPCM7xxEMCState *emc, const uint8_t *buf,
         }
     case ETH_PKT_UCAST: {
         bool matches;
+        uint32_t value;
+        struct MACAddr mac;
         if (emc->regs[REG_CAMCMR] & REG_CAMCMR_AUP) {
             return true;
         }
+
+        value = emc->regs[REG_CAMM_BASE];
+        mac.a[0] = value >> 24;
+        mac.a[1] = value >> 16;
+        mac.a[2] = value >> 8;
+        mac.a[3] = value >> 0;
+        value = emc->regs[REG_CAML_BASE];
+        mac.a[4] = value >> 24;
+        mac.a[5] = value >> 16;
+
         matches = ((emc->regs[REG_CAMCMR] & REG_CAMCMR_ECMP) &&
                    /* We only support one CAM register, CAM0. */
                    (emc->regs[REG_CAMEN] & (1 << 0)) &&
-                   memcmp(buf, emc->conf.macaddr.a, ETH_ALEN) == 0);
+                   memcmp(buf, mac.a, ETH_ALEN) == 0);
         if (emc->regs[REG_CAMCMR] & REG_CAMCMR_CCAM) {
             *fail_reason = "MACADDR matched, comparison complemented";
             return !matches;
@@ -661,15 +684,9 @@ static void npcm7xx_emc_write(void *opaque, hwaddr offset,
         break;
     case REG_CAMM_BASE + 0:
         emc->regs[reg] = value;
-        emc->conf.macaddr.a[0] = value >> 24;
-        emc->conf.macaddr.a[1] = value >> 16;
-        emc->conf.macaddr.a[2] = value >> 8;
-        emc->conf.macaddr.a[3] = value >> 0;
         break;
     case REG_CAML_BASE + 0:
         emc->regs[reg] = value;
-        emc->conf.macaddr.a[4] = value >> 24;
-        emc->conf.macaddr.a[5] = value >> 16;
         break;
     case REG_MCMDR: {
         uint32_t prev;
@@ -803,7 +820,8 @@ static void npcm7xx_emc_realize(DeviceState *dev, Error **errp)
 
     qemu_macaddr_default_if_unset(&emc->conf.macaddr);
     emc->nic = qemu_new_nic(&net_npcm7xx_emc_info, &emc->conf,
-                            object_get_typename(OBJECT(dev)), dev->id, emc);
+                            object_get_typename(OBJECT(dev)), dev->id,
+                            &dev->mem_reentrancy_guard, emc);
     qemu_format_nic_info_str(qemu_get_queue(emc->nic), emc->conf.macaddr.a);
 }
 
@@ -818,7 +836,7 @@ static const VMStateDescription vmstate_npcm7xx_emc = {
     .name = TYPE_NPCM7XX_EMC,
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT8(emc_num, NPCM7xxEMCState),
         VMSTATE_UINT32_ARRAY(regs, NPCM7xxEMCState, NPCM7XX_NUM_EMC_REGS),
         VMSTATE_BOOL(tx_active, NPCM7xxEMCState),
@@ -840,7 +858,7 @@ static void npcm7xx_emc_class_init(ObjectClass *klass, void *data)
     dc->desc = "NPCM7xx EMC Controller";
     dc->realize = npcm7xx_emc_realize;
     dc->unrealize = npcm7xx_emc_unrealize;
-    dc->reset = npcm7xx_emc_reset;
+    device_class_set_legacy_reset(dc, npcm7xx_emc_reset);
     dc->vmsd = &vmstate_npcm7xx_emc;
     device_class_set_props(dc, npcm7xx_emc_properties);
 }

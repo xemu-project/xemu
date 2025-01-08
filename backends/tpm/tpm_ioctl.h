@@ -12,8 +12,6 @@
 # define __USE_LINUX_IOCTL_DEFS
 #endif
 
-#include <stdint.h>
-#include <sys/types.h>
 #ifndef _WIN32
 #include <sys/uio.h>
 #include <sys/ioctl.h>
@@ -30,6 +28,16 @@
  */
 
 typedef uint32_t ptm_res;
+
+/* PTM_GET_CAPABILITY: Get supported capabilities (ioctl's) */
+struct ptm_cap_n {
+    union {
+        struct {
+            ptm_res tpm_result; /* will always be TPM_SUCCESS (0) */
+            uint32_t caps;
+        } resp; /* response */
+    } u;
+};
 
 /* PTM_GET_TPMESTABLISHED: get the establishment bit */
 struct ptm_est {
@@ -240,11 +248,12 @@ struct ptm_lockstorage {
         } req; /* request */
         struct {
             ptm_res tpm_result;
-        } resp; /* reponse */
+        } resp; /* response */
     } u;
 };
 
-typedef uint64_t ptm_cap;
+typedef uint64_t ptm_cap; /* CUSE-only; use ptm_cap_n otherwise */
+typedef struct ptm_cap_n ptm_cap_n;
 typedef struct ptm_est ptm_est;
 typedef struct ptm_reset_est ptm_reset_est;
 typedef struct ptm_loc ptm_loc;

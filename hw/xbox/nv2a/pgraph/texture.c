@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2012 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2018-2024 Matt Borgerson
+ * Copyright (c) 2018-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -238,7 +238,7 @@ TextureShape pgraph_get_texture_shape(PGRAPHState *pg, int texture_idx)
     unsigned int rect_height =
         GET_MASK(pgraph_reg_r(pg, NV_PGRAPH_TEXIMAGERECT0 + i*4),
                  NV_PGRAPH_TEXIMAGERECT0_HEIGHT);
-#ifdef DEBUG_NV2A
+#if DEBUG_NV2A
     unsigned int lod_bias =
         GET_MASK(filter, NV_PGRAPH_TEXFILTER0_MIPMAP_LOD_BIAS);
 #endif

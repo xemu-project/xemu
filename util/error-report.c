@@ -172,18 +172,8 @@ static void print_loc(void)
 static char *
 real_time_iso8601(void)
 {
-#if GLIB_CHECK_VERSION(2,62,0)
     g_autoptr(GDateTime) dt = g_date_time_new_now_utc();
-    /* ignore deprecation warning, since GLIB_VERSION_MAX_ALLOWED is 2.56 */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
     return g_date_time_format_iso8601(dt);
-#pragma GCC diagnostic pop
-#else
-    GTimeVal tv;
-    g_get_current_time(&tv);
-    return g_time_val_to_iso8601(&tv);
-#endif
 }
 
 /*
@@ -193,6 +183,7 @@ real_time_iso8601(void)
  * a single phrase, with no newline or trailing punctuation.
  * Prepend the current location and append a newline.
  */
+G_GNUC_PRINTF(2, 0)
 static void vreport(report_type type, const char *fmt, va_list ap)
 {
     gchar *timestr;

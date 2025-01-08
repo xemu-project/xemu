@@ -1,5 +1,5 @@
 /*
- * HP-PARISC Dino PCI chipset emulation, as in B160L and similiar machines
+ * HP-PARISC Dino PCI chipset emulation, as in B160L and similar machines
  *
  * (C) 2017-2019 by Helge Deller <deller@gmx.de>
  *
@@ -15,7 +15,7 @@
 #include "qemu/units.h"
 #include "qapi/error.h"
 #include "hw/irq.h"
-#include "hw/pci/pci.h"
+#include "hw/pci/pci_device.h"
 #include "hw/pci/pci_bus.h"
 #include "hw/qdev-properties.h"
 #include "hw/pci-host/dino.h"
@@ -287,7 +287,7 @@ static const VMStateDescription vmstate_dino = {
     .name = "Dino",
     .version_id = 2,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(iar0, DinoState),
         VMSTATE_UINT32(iar1, DinoState),
         VMSTATE_UINT32(imr, DinoState),
@@ -353,6 +353,10 @@ static AddressSpace *dino_pcihost_set_iommu(PCIBus *bus, void *opaque,
 
     return &s->bm_as;
 }
+
+static const PCIIOMMUOps dino_iommu_ops = {
+    .get_address_space = dino_pcihost_set_iommu,
+};
 
 /*
  * Dino interrupts are connected as shown on Page 78, Table 23
@@ -481,7 +485,7 @@ static void dino_pcihost_init(Object *obj)
         g_free(name);
     }
 
-    pci_setup_iommu(phb->bus, dino_pcihost_set_iommu, s);
+    pci_setup_iommu(phb->bus, &dino_iommu_ops, s);
 
     sysbus_init_mmio(sbd, &s->this_mem);
 
@@ -498,7 +502,7 @@ static void dino_pcihost_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = dino_pcihost_reset;
+    device_class_set_legacy_reset(dc, dino_pcihost_reset);
     dc->realize = dino_pcihost_realize;
     dc->unrealize = dino_pcihost_unrealize;
     device_class_set_props(dc, dino_pcihost_properties);

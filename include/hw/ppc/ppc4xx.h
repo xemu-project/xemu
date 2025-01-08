@@ -29,8 +29,6 @@
 #include "exec/memory.h"
 #include "hw/sysbus.h"
 
-#define TYPE_PPC4xx_PCI_HOST_BRIDGE "ppc4xx-pcihost"
-
 /*
  * Generic DCR device
  */

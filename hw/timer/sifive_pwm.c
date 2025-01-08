@@ -395,7 +395,7 @@ static const VMStateDescription vmstate_sifive_pwm = {
     .name = TYPE_SIFIVE_PWM,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_TIMER_ARRAY(timer, SiFivePwmState, 4),
         VMSTATE_UINT64(tick_offset, SiFivePwmState),
         VMSTATE_UINT32(pwmcfg, SiFivePwmState),
@@ -446,7 +446,7 @@ static void sifive_pwm_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = sifive_pwm_reset;
+    device_class_set_legacy_reset(dc, sifive_pwm_reset);
     device_class_set_props(dc, sifive_pwm_properties);
     dc->vmsd = &vmstate_sifive_pwm;
     dc->realize = sifive_pwm_realize;

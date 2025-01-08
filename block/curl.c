@@ -27,6 +27,7 @@
 #include "qemu/error-report.h"
 #include "qemu/module.h"
 #include "qemu/option.h"
+#include "block/block-io.h"
 #include "block/block_int.h"
 #include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qstring.h"
@@ -131,7 +132,7 @@ static gboolean curl_drop_socket(void *key, void *value, void *opaque)
     CURLSocket *socket = value;
     BDRVCURLState *s = socket->s;
 
-    aio_set_fd_handler(s->aio_context, socket->fd, false,
+    aio_set_fd_handler(s->aio_context, socket->fd,
                        NULL, NULL, NULL, NULL, NULL);
     return true;
 }
@@ -179,20 +180,20 @@ static int curl_sock_cb(CURL *curl, curl_socket_t fd, int action,
     trace_curl_sock_cb(action, (int)fd);
     switch (action) {
         case CURL_POLL_IN:
-            aio_set_fd_handler(s->aio_context, fd, false,
+            aio_set_fd_handler(s->aio_context, fd,
                                curl_multi_do, NULL, NULL, NULL, socket);
             break;
         case CURL_POLL_OUT:
-            aio_set_fd_handler(s->aio_context, fd, false,
+            aio_set_fd_handler(s->aio_context, fd,
                                NULL, curl_multi_do, NULL, NULL, socket);
             break;
         case CURL_POLL_INOUT:
-            aio_set_fd_handler(s->aio_context, fd, false,
+            aio_set_fd_handler(s->aio_context, fd,
                                curl_multi_do, curl_multi_do,
                                NULL, NULL, socket);
             break;
         case CURL_POLL_REMOVE:
-            aio_set_fd_handler(s->aio_context, fd, false,
+            aio_set_fd_handler(s->aio_context, fd,
                                NULL, NULL, NULL, NULL, NULL);
             break;
     }
@@ -209,35 +210,27 @@ static size_t curl_header_cb(void *ptr, size_t size, size_t nmemb, void *opaque)
 {
     BDRVCURLState *s = opaque;
     size_t realsize = size * nmemb;
-    const char *header = (char *)ptr;
-    const char *end = header + realsize;
-    const char *accept_ranges = "accept-ranges:";
-    const char *bytes = "bytes";
+    const char *p = ptr;
+    const char *end = p + realsize;
+    const char *t = "accept-ranges : bytes "; /* A lowercase template */
 
-    if (realsize >= strlen(accept_ranges)
-        && g_ascii_strncasecmp(header, accept_ranges,
-                               strlen(accept_ranges)) == 0) {
-
-        char *p = strchr(header, ':') + 1;
-
-        /* Skip whitespace between the header name and value. */
-        while (p < end && *p && g_ascii_isspace(*p)) {
-            p++;
-        }
-
-        if (end - p >= strlen(bytes)
-            && strncmp(p, bytes, strlen(bytes)) == 0) {
-
-            /* Check that there is nothing but whitespace after the value. */
-            p += strlen(bytes);
-            while (p < end && *p && g_ascii_isspace(*p)) {
-                p++;
+    /* check if header matches the "t" template */
+    for (;;) {
+        if (*t == ' ') { /* space in t matches any amount of isspace in p */
+            if (p < end && g_ascii_isspace(*p)) {
+                ++p;
+            } else {
+                ++t;
             }
-
-            if (p == end || !*p) {
-                s->accept_range = true;
-            }
+        } else if (*t && p < end && *t == g_ascii_tolower(*p)) {
+            ++p, ++t;
+        } else {
+            break;
         }
+    }
+
+    if (!*t && p == end) { /* if we managed to reach ends of both strings */
+        s->accept_range = true;
     }
 
     return realsize;
@@ -695,8 +688,10 @@ static int curl_open(BlockDriverState *bs, QDict *options, int flags,
     const char *protocol_delimiter;
     int ret;
 
+    bdrv_graph_rdlock_main_loop();
     ret = bdrv_apply_auto_read_only(bs, "curl driver does not support writes",
                                     errp);
+    bdrv_graph_rdunlock_main_loop();
     if (ret < 0) {
         return ret;
     }
@@ -879,8 +874,10 @@ out_noclean:
     g_free(s->username);
     g_free(s->proxyusername);
     g_free(s->proxypassword);
-    curl_drop_all_sockets(s->sockets);
-    g_hash_table_destroy(s->sockets);
+    if (s->sockets) {
+        curl_drop_all_sockets(s->sockets);
+        g_hash_table_destroy(s->sockets);
+    }
     qemu_opts_del(opts);
     return -EINVAL;
 }
@@ -987,7 +984,7 @@ static void curl_close(BlockDriverState *bs)
     g_free(s->proxypassword);
 }
 
-static int64_t curl_getlength(BlockDriverState *bs)
+static int64_t coroutine_fn curl_co_getlength(BlockDriverState *bs)
 {
     BDRVCURLState *s = bs->opaque;
     return s->len;
@@ -1029,9 +1026,9 @@ static BlockDriver bdrv_http = {
 
     .instance_size              = sizeof(BDRVCURLState),
     .bdrv_parse_filename        = curl_parse_filename,
-    .bdrv_file_open             = curl_open,
+    .bdrv_open                  = curl_open,
     .bdrv_close                 = curl_close,
-    .bdrv_getlength             = curl_getlength,
+    .bdrv_co_getlength          = curl_co_getlength,
 
     .bdrv_co_preadv             = curl_co_preadv,
 
@@ -1048,9 +1045,9 @@ static BlockDriver bdrv_https = {
 
     .instance_size              = sizeof(BDRVCURLState),
     .bdrv_parse_filename        = curl_parse_filename,
-    .bdrv_file_open             = curl_open,
+    .bdrv_open                  = curl_open,
     .bdrv_close                 = curl_close,
-    .bdrv_getlength             = curl_getlength,
+    .bdrv_co_getlength          = curl_co_getlength,
 
     .bdrv_co_preadv             = curl_co_preadv,
 
@@ -1067,9 +1064,9 @@ static BlockDriver bdrv_ftp = {
 
     .instance_size              = sizeof(BDRVCURLState),
     .bdrv_parse_filename        = curl_parse_filename,
-    .bdrv_file_open             = curl_open,
+    .bdrv_open                  = curl_open,
     .bdrv_close                 = curl_close,
-    .bdrv_getlength             = curl_getlength,
+    .bdrv_co_getlength          = curl_co_getlength,
 
     .bdrv_co_preadv             = curl_co_preadv,
 
@@ -1086,9 +1083,9 @@ static BlockDriver bdrv_ftps = {
 
     .instance_size              = sizeof(BDRVCURLState),
     .bdrv_parse_filename        = curl_parse_filename,
-    .bdrv_file_open             = curl_open,
+    .bdrv_open                  = curl_open,
     .bdrv_close                 = curl_close,
-    .bdrv_getlength             = curl_getlength,
+    .bdrv_co_getlength          = curl_co_getlength,
 
     .bdrv_co_preadv             = curl_co_preadv,
 

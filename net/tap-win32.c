@@ -214,7 +214,7 @@ static int is_tap_win32_dev(const char *guid)
 
     for (;;) {
         char enum_name[256];
-        char unit_string[256];
+        g_autofree char *unit_string = NULL;
         HKEY unit_key;
         char component_id_string[] = "ComponentId";
         char component_id[256];
@@ -239,8 +239,7 @@ static int is_tap_win32_dev(const char *guid)
             return FALSE;
         }
 
-        snprintf (unit_string, sizeof(unit_string), "%s\\%s",
-                  ADAPTER_KEY, enum_name);
+        unit_string = g_strdup_printf("%s\\%s", ADAPTER_KEY, enum_name);
 
         status = RegOpenKeyEx(
             HKEY_LOCAL_MACHINE,
@@ -315,7 +314,7 @@ static int get_device_guid(
     while (!stop)
     {
         char enum_name[256];
-        char connection_string[256];
+        g_autofree char *connection_string = NULL;
         HKEY connection_key;
         char name_data[256];
         DWORD name_type;
@@ -338,9 +337,7 @@ static int get_device_guid(
             return -1;
         }
 
-        snprintf(connection_string,
-             sizeof(connection_string),
-             "%s\\%s\\Connection",
+        connection_string = g_strdup_printf("%s\\%s\\Connection",
              NETWORK_CONNECTIONS_KEY, enum_name);
 
         status = RegOpenKeyEx(
@@ -595,7 +592,7 @@ static void tap_win32_free_buffer(tap_win32_overlapped_t *overlapped,
 static int tap_win32_open(tap_win32_overlapped_t **phandle,
                           const char *preferred_name)
 {
-    char device_path[256];
+    g_autofree char *device_path = NULL;
     char device_guid[0x100];
     int rc;
     HANDLE handle;
@@ -617,7 +614,7 @@ static int tap_win32_open(tap_win32_overlapped_t **phandle,
     if (rc)
         return -1;
 
-    snprintf (device_path, sizeof(device_path), "%s%s%s",
+    device_path = g_strdup_printf("%s%s%s",
               USERMODEDEVICEDIR,
               device_guid,
               TAPSUFFIX);
@@ -707,57 +704,9 @@ static void tap_win32_send(void *opaque)
     }
 }
 
-static bool tap_has_ufo(NetClientState *nc)
-{
-    return false;
-}
-
-static bool tap_has_vnet_hdr(NetClientState *nc)
-{
-    return false;
-}
-
-int tap_probe_vnet_hdr_len(int fd, int len)
-{
-    return 0;
-}
-
-void tap_fd_set_vnet_hdr_len(int fd, int len)
-{
-}
-
-int tap_fd_set_vnet_le(int fd, int is_le)
-{
-    return -EINVAL;
-}
-
-int tap_fd_set_vnet_be(int fd, int is_be)
-{
-    return -EINVAL;
-}
-
-static void tap_using_vnet_hdr(NetClientState *nc, bool using_vnet_hdr)
-{
-}
-
-static void tap_set_offload(NetClientState *nc, int csum, int tso4,
-                     int tso6, int ecn, int ufo)
-{
-}
-
 struct vhost_net *tap_get_vhost_net(NetClientState *nc)
 {
     return NULL;
-}
-
-static bool tap_has_vnet_hdr_len(NetClientState *nc, int len)
-{
-    return false;
-}
-
-static void tap_set_vnet_hdr_len(NetClientState *nc, int len)
-{
-    abort();
 }
 
 static NetClientInfo net_tap_win32_info = {
@@ -765,12 +714,6 @@ static NetClientInfo net_tap_win32_info = {
     .size = sizeof(TAPState),
     .receive = tap_receive,
     .cleanup = tap_cleanup,
-    .has_ufo = tap_has_ufo,
-    .has_vnet_hdr = tap_has_vnet_hdr,
-    .has_vnet_hdr_len = tap_has_vnet_hdr_len,
-    .using_vnet_hdr = tap_using_vnet_hdr,
-    .set_offload = tap_set_offload,
-    .set_vnet_hdr_len = tap_set_vnet_hdr_len,
 };
 
 static int tap_win32_init(NetClientState *peer, const char *model,
@@ -807,7 +750,7 @@ int net_init_tap(const Netdev *netdev, const char *name,
     assert(netdev->type == NET_CLIENT_DRIVER_TAP);
     tap = &netdev->u.tap;
 
-    if (!tap->has_ifname) {
+    if (!tap->ifname) {
         error_report("tap: no interface name");
         return -1;
     }

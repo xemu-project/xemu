@@ -158,8 +158,6 @@ target="qemu-system-i386"
 if test ! -z "$debug"; then
     build_cflags='-DXEMU_DEBUG_BUILD=1'
     opts="--enable-debug --enable-trace-backends=log"
-else
-    opts="--enable-lto"
 fi
 
 most_recent_macosx_sdk_ver () {

@@ -205,14 +205,14 @@ static const VMStateDescription vmstate_mips_gcr = {
     .name = "mips-gcr",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT64(cpc_base, MIPSGCRState),
         VMSTATE_END_OF_LIST()
     },
 };
 
 static Property mips_gcr_properties[] = {
-    DEFINE_PROP_INT32("num-vp", MIPSGCRState, num_vps, 1),
+    DEFINE_PROP_UINT32("num-vp", MIPSGCRState, num_vps, 1),
     DEFINE_PROP_INT32("gcr-rev", MIPSGCRState, gcr_rev, 0x800),
     DEFINE_PROP_UINT64("gcr-base", MIPSGCRState, gcr_base, GCR_BASE_ADDR),
     DEFINE_PROP_LINK("gic", MIPSGCRState, gic_mr, TYPE_MEMORY_REGION,
@@ -235,7 +235,7 @@ static void mips_gcr_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     device_class_set_props(dc, mips_gcr_properties);
     dc->vmsd = &vmstate_mips_gcr;
-    dc->reset = mips_gcr_reset;
+    device_class_set_legacy_reset(dc, mips_gcr_reset);
     dc->realize = mips_gcr_realize;
 }
 

@@ -100,6 +100,13 @@ static const CompatInfo compat_table[] = {
         .pcr_level = PCR_COMPAT_3_10,
         .max_vthreads = 8,
     },
+    { /* POWER11, ISA3.10 */
+        .name = "power11",
+        .pvr = CPU_POWERPC_LOGICAL_3_10_P11,
+        .pcr = PCR_COMPAT_3_10,
+        .pcr_level = PCR_COMPAT_3_10,
+        .max_vthreads = 8,
+    },
 };
 
 static const CompatInfo *compat_by_pvr(uint32_t pvr)
@@ -130,6 +137,10 @@ static bool pcc_compat(PowerPCCPUClass *pcc, uint32_t compat_pvr,
     }
     if ((min && (compat < min)) || (max && (compat > max))) {
         /* Outside specified range */
+        return false;
+    }
+    if (compat->pvr > pcc->spapr_logical_pvr) {
+        /* Older CPU cannot support a newer processor's compat mode */
         return false;
     }
     if (!(pcc->pcr_supported & compat->pcr_level)) {
@@ -223,6 +234,25 @@ int ppc_set_compat_all(uint32_t compat_pvr, Error **errp)
 
         if (s.ret < 0) {
             return s.ret;
+        }
+    }
+
+    return 0;
+}
+
+/* To be used when the machine is not running */
+int ppc_init_compat_all(uint32_t compat_pvr, Error **errp)
+{
+    CPUState *cs;
+
+    CPU_FOREACH(cs) {
+        PowerPCCPU *cpu = POWERPC_CPU(cs);
+        int ret;
+
+        ret = ppc_set_compat(cpu, compat_pvr, errp);
+
+        if (ret < 0) {
+            return ret;
         }
     }
 

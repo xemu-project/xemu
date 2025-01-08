@@ -9,7 +9,6 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "cpu.h"
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "hw/boards.h"
@@ -27,6 +26,8 @@
 #include "hw/irq.h"
 #include "hw/sd/sd.h"
 #include "qom/object.h"
+#include "audio/audio.h"
+#include "target/arm/cpu-qom.h"
 
 #define TYPE_INTEGRATOR_CM "integrator_core"
 OBJECT_DECLARE_SIMPLE_TYPE(IntegratorCMState, INTEGRATOR_CM)
@@ -62,7 +63,7 @@ static const VMStateDescription vmstate_integratorcm = {
     .name = "integratorcm",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields      = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(cm_osc, IntegratorCMState),
         VMSTATE_UINT32(cm_ctrl, IntegratorCMState),
         VMSTATE_UINT32(cm_lock, IntegratorCMState),
@@ -290,12 +291,9 @@ static void integratorcm_realize(DeviceState *d, Error **errp)
 {
     IntegratorCMState *s = INTEGRATOR_CM(d);
     SysBusDevice *dev = SYS_BUS_DEVICE(d);
-    Error *local_err = NULL;
 
-    memory_region_init_ram(&s->flash, OBJECT(d), "integrator.flash", 0x100000,
-                           &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!memory_region_init_ram(&s->flash, OBJECT(d), "integrator.flash",
+                                0x100000, errp)) {
         return;
     }
 
@@ -345,7 +343,7 @@ static const VMStateDescription vmstate_icp_pic = {
     .name = "icp_pic",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields      = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(level, icp_pic_state),
         VMSTATE_UINT32(irq_enabled, icp_pic_state),
         VMSTATE_UINT32(fiq_enabled, icp_pic_state),
@@ -487,7 +485,7 @@ static const VMStateDescription vmstate_icp_control = {
     .name = "icp_control",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields      = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(intreg_state, ICPCtrlRegsState),
         VMSTATE_END_OF_LIST()
     }
@@ -660,12 +658,24 @@ static void integratorcp_init(MachineState *machine)
                                &error_fatal);
     }
 
-    sysbus_create_varargs("pl041", 0x1d000000, pic[25], NULL);
+    dev = qdev_new("pl041");
+    if (machine->audiodev) {
+        qdev_prop_set_string(dev, "audiodev", machine->audiodev);
+    }
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
+    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0x1d000000);
+    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, pic[25]);
 
-    if (nd_table[0].used)
-        smc91c111_init(&nd_table[0], 0xc8000000, pic[27]);
+    if (qemu_find_nic_info("smc91c111", true, NULL)) {
+        smc91c111_init(0xc8000000, pic[27]);
+    }
 
-    sysbus_create_simple("pl110", 0xc0000000, pic[22]);
+    dev = qdev_new("pl110");
+    object_property_set_link(OBJECT(dev), "framebuffer-memory",
+                             OBJECT(address_space_mem), &error_fatal);
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
+    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, 0xc0000000);
+    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, pic[22]);
 
     integrator_binfo.ram_size = ram_size;
     arm_load_kernel(cpu, machine, &integrator_binfo);
@@ -678,6 +688,8 @@ static void integratorcp_machine_init(MachineClass *mc)
     mc->ignore_memory_transaction_failures = true;
     mc->default_cpu_type = ARM_CPU_TYPE_NAME("arm926");
     mc->default_ram_id = "integrator.ram";
+
+    machine_add_audiodev_property(mc);
 }
 
 DEFINE_MACHINE("integratorcp", integratorcp_machine_init)

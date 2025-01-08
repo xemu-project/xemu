@@ -33,6 +33,7 @@
 #include "qemu/error-report.h"
 #include "qemu/bitops.h"
 #include "qemu/bitmap.h"
+#include "block/block-io.h"
 #include "block/block_int.h"
 #include "block/qdict.h"
 #include "scsi/constants.h"
@@ -362,7 +363,6 @@ iscsi_set_events(IscsiLun *iscsilun)
 
     if (ev != iscsilun->events) {
         aio_set_fd_handler(iscsilun->aio_context, iscsi_get_fd(iscsi),
-                           false,
                            (ev & POLLIN) ? iscsi_process_read : NULL,
                            (ev & POLLOUT) ? iscsi_process_write : NULL,
                            NULL, NULL,
@@ -1058,6 +1058,7 @@ static BlockAIOCB *iscsi_aio_ioctl(BlockDriverState *bs,
         return NULL;
     }
 
+    /* Must use malloc(): this is freed via scsi_free_scsi_task() */
     acb->task = malloc(sizeof(struct scsi_task));
     if (acb->task == NULL) {
         error_report("iSCSI: Failed to allocate task for scsi command. %s",
@@ -1127,8 +1128,8 @@ static BlockAIOCB *iscsi_aio_ioctl(BlockDriverState *bs,
 
 #endif
 
-static int64_t
-iscsi_getlength(BlockDriverState *bs)
+static int64_t coroutine_fn
+iscsi_co_getlength(BlockDriverState *bs)
 {
     IscsiLun *iscsilun = bs->opaque;
     int64_t len;
@@ -1353,6 +1354,9 @@ static void apply_chap(struct iscsi_context *iscsi, QemuOpts *opts,
     } else if (!password) {
         error_setg(errp, "CHAP username specified but no password was given");
         return;
+    } else {
+        warn_report("iSCSI block driver 'password' option is deprecated, "
+                    "use 'password-secret' instead");
     }
 
     if (iscsi_set_initiator_username_pwd(iscsi, user, password)) {
@@ -1536,7 +1540,7 @@ static void iscsi_detach_aio_context(BlockDriverState *bs)
     IscsiLun *iscsilun = bs->opaque;
 
     aio_set_fd_handler(iscsilun->aio_context, iscsi_get_fd(iscsilun->iscsi),
-                       false, NULL, NULL, NULL, NULL, NULL);
+                       NULL, NULL, NULL, NULL, NULL);
     iscsilun->events = 0;
 
     if (iscsilun->nop_timer) {
@@ -1921,7 +1925,9 @@ static int iscsi_open(BlockDriverState *bs, QDict *options, int flags,
     /* Check the write protect flag of the LUN if we want to write */
     if (iscsilun->type == TYPE_DISK && (flags & BDRV_O_RDWR) &&
         iscsilun->write_protected) {
+        bdrv_graph_rdlock_main_loop();
         ret = bdrv_apply_auto_read_only(bs, "LUN is write protected", errp);
+        bdrv_graph_rdunlock_main_loop();
         if (ret < 0) {
             goto out;
         }
@@ -2155,7 +2161,7 @@ static int coroutine_fn iscsi_co_truncate(BlockDriverState *bs, int64_t offset,
         return -EIO;
     }
 
-    cur_length = iscsi_getlength(bs);
+    cur_length = iscsi_co_getlength(bs);
     if (offset != cur_length && exact) {
         error_setg(errp, "Cannot resize iSCSI devices");
         return -ENOTSUP;
@@ -2171,7 +2177,8 @@ static int coroutine_fn iscsi_co_truncate(BlockDriverState *bs, int64_t offset,
     return 0;
 }
 
-static int iscsi_get_info(BlockDriverState *bs, BlockDriverInfo *bdi)
+static int coroutine_fn
+iscsi_co_get_info(BlockDriverState *bs, BlockDriverInfo *bdi)
 {
     IscsiLun *iscsilun = bs->opaque;
     bdi->cluster_size = iscsilun->cluster_size;
@@ -2185,14 +2192,12 @@ static void coroutine_fn iscsi_co_invalidate_cache(BlockDriverState *bs,
     iscsi_allocmap_invalidate(iscsilun);
 }
 
-static int coroutine_fn iscsi_co_copy_range_from(BlockDriverState *bs,
-                                                 BdrvChild *src,
-                                                 int64_t src_offset,
-                                                 BdrvChild *dst,
-                                                 int64_t dst_offset,
-                                                 int64_t bytes,
-                                                 BdrvRequestFlags read_flags,
-                                                 BdrvRequestFlags write_flags)
+static int coroutine_fn GRAPH_RDLOCK
+iscsi_co_copy_range_from(BlockDriverState *bs,
+                         BdrvChild *src, int64_t src_offset,
+                         BdrvChild *dst, int64_t dst_offset,
+                         int64_t bytes, BdrvRequestFlags read_flags,
+                         BdrvRequestFlags write_flags)
 {
     return bdrv_co_copy_range_to(src, src_offset, dst, dst_offset, bytes,
                                  read_flags, write_flags);
@@ -2326,14 +2331,12 @@ static void iscsi_xcopy_data(struct iscsi_data *data,
                               src_lba, dst_lba);
 }
 
-static int coroutine_fn iscsi_co_copy_range_to(BlockDriverState *bs,
-                                               BdrvChild *src,
-                                               int64_t src_offset,
-                                               BdrvChild *dst,
-                                               int64_t dst_offset,
-                                               int64_t bytes,
-                                               BdrvRequestFlags read_flags,
-                                               BdrvRequestFlags write_flags)
+static int coroutine_fn GRAPH_RDLOCK
+iscsi_co_copy_range_to(BlockDriverState *bs,
+                       BdrvChild *src, int64_t src_offset,
+                       BdrvChild *dst, int64_t dst_offset,
+                       int64_t bytes, BdrvRequestFlags read_flags,
+                       BdrvRequestFlags write_flags)
 {
     IscsiLun *dst_lun = dst->bs->opaque;
     IscsiLun *src_lun;
@@ -2426,7 +2429,7 @@ static BlockDriver bdrv_iscsi = {
 
     .instance_size          = sizeof(IscsiLun),
     .bdrv_parse_filename    = iscsi_parse_filename,
-    .bdrv_file_open         = iscsi_open,
+    .bdrv_open              = iscsi_open,
     .bdrv_close             = iscsi_close,
     .bdrv_co_create_opts    = bdrv_co_create_opts_simple,
     .create_opts            = &bdrv_create_opts_simple,
@@ -2434,8 +2437,8 @@ static BlockDriver bdrv_iscsi = {
     .bdrv_reopen_commit     = iscsi_reopen_commit,
     .bdrv_co_invalidate_cache = iscsi_co_invalidate_cache,
 
-    .bdrv_getlength  = iscsi_getlength,
-    .bdrv_get_info   = iscsi_get_info,
+    .bdrv_co_getlength   = iscsi_co_getlength,
+    .bdrv_co_get_info    = iscsi_co_get_info,
     .bdrv_co_truncate    = iscsi_co_truncate,
     .bdrv_refresh_limits = iscsi_refresh_limits,
 
@@ -2465,7 +2468,7 @@ static BlockDriver bdrv_iser = {
 
     .instance_size          = sizeof(IscsiLun),
     .bdrv_parse_filename    = iscsi_parse_filename,
-    .bdrv_file_open         = iscsi_open,
+    .bdrv_open              = iscsi_open,
     .bdrv_close             = iscsi_close,
     .bdrv_co_create_opts    = bdrv_co_create_opts_simple,
     .create_opts            = &bdrv_create_opts_simple,
@@ -2473,8 +2476,8 @@ static BlockDriver bdrv_iser = {
     .bdrv_reopen_commit     = iscsi_reopen_commit,
     .bdrv_co_invalidate_cache  = iscsi_co_invalidate_cache,
 
-    .bdrv_getlength  = iscsi_getlength,
-    .bdrv_get_info   = iscsi_get_info,
+    .bdrv_co_getlength   = iscsi_co_getlength,
+    .bdrv_co_get_info    = iscsi_co_get_info,
     .bdrv_co_truncate    = iscsi_co_truncate,
     .bdrv_refresh_limits = iscsi_refresh_limits,
 

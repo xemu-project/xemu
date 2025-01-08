@@ -16,16 +16,16 @@
 # @finish-migrate: guest is paused to finish the migration process
 #
 # @inmigrate: guest is paused waiting for an incoming migration.  Note
-#             that this state does not tell whether the machine will start at the
-#             end of the migration.  This depends on the command-line -S option and
-#             any invocation of 'stop' or 'cont' that has happened since QEMU was
-#             started.
+#     that this state does not tell whether the machine will start at
+#     the end of the migration.  This depends on the command-line -S
+#     option and any invocation of 'stop' or 'cont' that has happened
+#     since QEMU was started.
 #
-# @internal-error: An internal error that prevents further guest execution
-#                  has occurred
+# @internal-error: An internal error that prevents further guest
+#     execution has occurred
 #
-# @io-error: the last IOP has failed and the device is configured to pause
-#            on I/O errors
+# @io-error: the last IOP has failed and the device is configured to
+#     pause on I/O errors
 #
 # @paused: guest has been paused via the 'stop' command
 #
@@ -43,13 +43,15 @@
 #
 # @suspended: guest is suspended (ACPI S3)
 #
-# @watchdog: the watchdog action is configured to pause and has been triggered
+# @watchdog: the watchdog action is configured to pause and has been
+#     triggered
 #
-# @guest-panicked: guest has been panicked as a result of guest OS panic
+# @guest-panicked: guest has been panicked as a result of guest OS
+#     panic
 #
-# @colo: guest is paused to save/restore VM state under colo checkpoint,
-#        VM can not get into this state unless colo capability is enabled
-#        for migration. (since 2.8)
+# @colo: guest is paused to save/restore VM state under colo
+#     checkpoint, VM can not get into this state unless colo
+#     capability is enabled for migration.  (since 2.8)
 ##
 { 'enum': 'RunState',
   'data': [ 'debug', 'inmigrate', 'internal-error', 'io-error', 'paused',
@@ -75,21 +77,21 @@
 # @host-ui: Reaction to a UI event, like window close
 #
 # @guest-shutdown: Guest shutdown/suspend request, via ACPI or other
-#                  hardware-specific means
+#     hardware-specific means
 #
 # @guest-reset: Guest reset request, and command line turns that into
-#               a shutdown
+#     a shutdown
 #
-# @guest-panic: Guest panicked, and command line turns that into a shutdown
+# @guest-panic: Guest panicked, and command line turns that into a
+#     shutdown
 #
-# @subsystem-reset: Partial guest reset that does not trigger QMP events and
-#                   ignores --no-reboot. This is useful for sanitizing
-#                   hypercalls on s390 that are used during kexec/kdump/boot
+# @subsystem-reset: Partial guest reset that does not trigger QMP
+#     events and ignores --no-reboot.  This is useful for sanitizing
+#     hypercalls on s390 that are used during kexec/kdump/boot
 #
 # @snapshot-load: A snapshot is being loaded by the record & replay
-#                 subsystem. This value is used only within QEMU.  It
-#                 doesn't occur in QMP. (since 7.2)
-#
+#     subsystem.  This value is used only within QEMU.  It doesn't
+#     occur in QMP.  (since 7.2)
 ##
 { 'enum': 'ShutdownCause',
   # Beware, shutdown_caused_by_guest() depends on enumeration order
@@ -100,37 +102,32 @@
 ##
 # @StatusInfo:
 #
-# Information about VCPU run state
+# Information about VM run state
 #
 # @running: true if all VCPUs are runnable, false if not runnable
-#
-# @singlestep: true if VCPUs are in single-step mode
 #
 # @status: the virtual machine @RunState
 #
 # Since: 0.14
-#
-# Notes: @singlestep is enabled through the GDB stub
 ##
 { 'struct': 'StatusInfo',
-  'data': {'running': 'bool', 'singlestep': 'bool', 'status': 'RunState'} }
+  'data': {'running': 'bool',
+           'status': 'RunState'} }
 
 ##
 # @query-status:
 #
-# Query the run status of all VCPUs
+# Query the run status of the VM
 #
-# Returns: @StatusInfo reflecting all VCPUs
+# Returns: @StatusInfo reflecting the VM
 #
 # Since: 0.14
 #
-# Example:
+# .. qmp-example::
 #
-# -> { "execute": "query-status" }
-# <- { "return": { "running": true,
-#                  "singlestep": false,
-#                  "status": "running" } }
-#
+#     -> { "execute": "query-status" }
+#     <- { "return": { "running": true,
+#                      "status": "running" } }
 ##
 { 'command': 'query-status', 'returns': 'StatusInfo',
   'allow-preconfig': true }
@@ -138,42 +135,43 @@
 ##
 # @SHUTDOWN:
 #
-# Emitted when the virtual machine has shut down, indicating that qemu is
-# about to exit.
+# Emitted when the virtual machine has shut down, indicating that qemu
+# is about to exit.
 #
-# @guest: If true, the shutdown was triggered by a guest request (such as
-#         a guest-initiated ACPI shutdown request or other hardware-specific action)
-#         rather than a host request (such as sending qemu a SIGINT). (since 2.10)
+# @guest: If true, the shutdown was triggered by a guest request (such
+#     as a guest-initiated ACPI shutdown request or other
+#     hardware-specific action) rather than a host request (such as
+#     sending qemu a SIGINT).  (since 2.10)
 #
-# @reason: The @ShutdownCause which resulted in the SHUTDOWN. (since 4.0)
+# @reason: The @ShutdownCause which resulted in the SHUTDOWN.
+#     (since 4.0)
 #
-# Note: If the command-line option "-no-shutdown" has been specified, qemu will
-#       not exit, and a STOP event will eventually follow the SHUTDOWN event
+# .. note:: If the command-line option ``-no-shutdown`` has been
+#    specified, qemu will not exit, and a STOP event will eventually
+#    follow the SHUTDOWN event.
 #
 # Since: 0.12
 #
-# Example:
+# .. qmp-example::
 #
-# <- { "event": "SHUTDOWN",
-#      "data": { "guest": true, "reason": "guest-shutdown" },
-#      "timestamp": { "seconds": 1267040730, "microseconds": 682951 } }
-#
+#     <- { "event": "SHUTDOWN",
+#          "data": { "guest": true, "reason": "guest-shutdown" },
+#          "timestamp": { "seconds": 1267040730, "microseconds": 682951 } }
 ##
 { 'event': 'SHUTDOWN', 'data': { 'guest': 'bool', 'reason': 'ShutdownCause' } }
 
 ##
 # @POWERDOWN:
 #
-# Emitted when the virtual machine is powered down through the power control
-# system, such as via ACPI.
+# Emitted when the virtual machine is powered down through the power
+# control system, such as via ACPI.
 #
 # Since: 0.12
 #
-# Example:
+# .. qmp-example::
 #
-# <- { "event": "POWERDOWN",
-#      "timestamp": { "seconds": 1267040730, "microseconds": 682951 } }
-#
+#     <- { "event": "POWERDOWN",
+#          "timestamp": { "seconds": 1267040730, "microseconds": 682951 } }
 ##
 { 'event': 'POWERDOWN' }
 
@@ -183,20 +181,19 @@
 # Emitted when the virtual machine is reset
 #
 # @guest: If true, the reset was triggered by a guest request (such as
-#         a guest-initiated ACPI reboot request or other hardware-specific action)
-#         rather than a host request (such as the QMP command system_reset).
-#         (since 2.10)
+#     a guest-initiated ACPI reboot request or other hardware-specific
+#     action) rather than a host request (such as the QMP command
+#     system_reset).  (since 2.10)
 #
-# @reason: The @ShutdownCause of the RESET. (since 4.0)
+# @reason: The @ShutdownCause of the RESET.  (since 4.0)
 #
 # Since: 0.12
 #
-# Example:
+# .. qmp-example::
 #
-# <- { "event": "RESET",
-#      "data": { "guest": false, "reason": "guest-reset" },
-#      "timestamp": { "seconds": 1267041653, "microseconds": 9518 } }
-#
+#     <- { "event": "RESET",
+#          "data": { "guest": false, "reason": "guest-reset" },
+#          "timestamp": { "seconds": 1267041653, "microseconds": 9518 } }
 ##
 { 'event': 'RESET', 'data': { 'guest': 'bool', 'reason': 'ShutdownCause' } }
 
@@ -207,11 +204,10 @@
 #
 # Since: 0.12
 #
-# Example:
+# .. qmp-example::
 #
-# <- { "event": "STOP",
-#      "timestamp": { "seconds": 1267041730, "microseconds": 281295 } }
-#
+#     <- { "event": "STOP",
+#          "timestamp": { "seconds": 1267041730, "microseconds": 281295 } }
 ##
 { 'event': 'STOP' }
 
@@ -222,60 +218,59 @@
 #
 # Since: 0.12
 #
-# Example:
+# .. qmp-example::
 #
-# <- { "event": "RESUME",
-#      "timestamp": { "seconds": 1271770767, "microseconds": 582542 } }
-#
+#     <- { "event": "RESUME",
+#          "timestamp": { "seconds": 1271770767, "microseconds": 582542 } }
 ##
 { 'event': 'RESUME' }
 
 ##
 # @SUSPEND:
 #
-# Emitted when guest enters a hardware suspension state, for example, S3 state,
-# which is sometimes called standby state
+# Emitted when guest enters a hardware suspension state, for example,
+# S3 state, which is sometimes called standby state
 #
 # Since: 1.1
 #
-# Example:
+# .. qmp-example::
 #
-# <- { "event": "SUSPEND",
-#      "timestamp": { "seconds": 1344456160, "microseconds": 309119 } }
-#
+#     <- { "event": "SUSPEND",
+#          "timestamp": { "seconds": 1344456160, "microseconds": 309119 } }
 ##
 { 'event': 'SUSPEND' }
 
 ##
 # @SUSPEND_DISK:
 #
-# Emitted when guest enters a hardware suspension state with data saved on
-# disk, for example, S4 state, which is sometimes called hibernate state
+# Emitted when guest enters a hardware suspension state with data
+# saved on disk, for example, S4 state, which is sometimes called
+# hibernate state
 #
-# Note: QEMU shuts down (similar to event @SHUTDOWN) when entering this state
+# .. note:: QEMU shuts down (similar to event @SHUTDOWN) when entering
+#    this state.
 #
 # Since: 1.2
 #
-# Example:
+# .. qmp-example::
 #
-# <-   { "event": "SUSPEND_DISK",
-#        "timestamp": { "seconds": 1344456160, "microseconds": 309119 } }
-#
+#     <- { "event": "SUSPEND_DISK",
+#          "timestamp": { "seconds": 1344456160, "microseconds": 309119 } }
 ##
 { 'event': 'SUSPEND_DISK' }
 
 ##
 # @WAKEUP:
 #
-# Emitted when the guest has woken up from suspend state and is running
+# Emitted when the guest has woken up from suspend state and is
+# running
 #
 # Since: 1.1
 #
-# Example:
+# .. qmp-example::
 #
-# <- { "event": "WAKEUP",
-#      "timestamp": { "seconds": 1344522075, "microseconds": 745528 } }
-#
+#     <- { "event": "WAKEUP",
+#          "timestamp": { "seconds": 1344522075, "microseconds": 745528 } }
 ##
 { 'event': 'WAKEUP' }
 
@@ -286,19 +281,19 @@
 #
 # @action: action that has been taken
 #
-# Note: If action is "reset", "shutdown", or "pause" the WATCHDOG event is
-#       followed respectively by the RESET, SHUTDOWN, or STOP events
+# .. note:: If action is "reset", "shutdown", or "pause" the WATCHDOG
+#    event is followed respectively by the RESET, SHUTDOWN, or STOP
+#    events.
 #
-# Note: This event is rate-limited.
+# .. note:: This event is rate-limited.
 #
 # Since: 0.13
 #
-# Example:
+# .. qmp-example::
 #
-# <- { "event": "WATCHDOG",
-#      "data": { "action": "reset" },
-#      "timestamp": { "seconds": 1267061043, "microseconds": 959568 } }
-#
+#     <- { "event": "WATCHDOG",
+#          "data": { "action": "reset" },
+#          "timestamp": { "seconds": 1267061043, "microseconds": 959568 } }
 ##
 { 'event': 'WATCHDOG',
   'data': { 'action': 'WatchdogAction' } }
@@ -306,13 +301,13 @@
 ##
 # @WatchdogAction:
 #
-# An enumeration of the actions taken when the watchdog device's timer is
-# expired
+# An enumeration of the actions taken when the watchdog device's timer
+# is expired
 #
 # @reset: system resets
 #
-# @shutdown: system shutdown, note that it is similar to @powerdown, which
-#            tries to set to system status and notify guest
+# @shutdown: system shutdown, note that it is similar to @powerdown,
+#     which tries to set to system status and notify guest
 #
 # @poweroff: system poweroff, the emulator program exits
 #
@@ -322,8 +317,8 @@
 #
 # @none: nothing is done
 #
-# @inject-nmi: a non-maskable interrupt is injected into the first VCPU (all
-#              VCPUS on x86) (since 2.4)
+# @inject-nmi: a non-maskable interrupt is injected into the first
+#     VCPU (all VCPUS on x86) (since 2.4)
 #
 # Since: 2.1
 ##
@@ -338,7 +333,8 @@
 #
 # @reset: Reset the VM
 #
-# @shutdown: Shutdown the VM and exit, according to the shutdown action
+# @shutdown: Shutdown the VM and exit, according to the shutdown
+#     action
 #
 # Since: 6.0
 ##
@@ -366,10 +362,11 @@
 #
 # @pause: Pause the VM
 #
-# @shutdown: Shutdown the VM and exit, according to the shutdown action
+# @shutdown: Shutdown the VM and exit, according to the shutdown
+#     action
 #
-# @exit-failure: Shutdown the VM and exit with nonzero status
-#                (since 7.1)
+# @exit-failure: Shutdown the VM and exit with nonzero status (since
+#     7.1)
 #
 # Since: 6.0
 ##
@@ -379,17 +376,25 @@
 ##
 # @watchdog-set-action:
 #
-# Set watchdog action
+# Set watchdog action.
+#
+# @action: @WatchdogAction action taken when watchdog timer expires.
 #
 # Since: 2.11
+#
+# .. qmp-example::
+#
+#     -> { "execute": "watchdog-set-action",
+#          "arguments": { "action": "inject-nmi" } }
+#     <- { "return": {} }
 ##
 { 'command': 'watchdog-set-action', 'data' : {'action': 'WatchdogAction'} }
 
 ##
 # @set-action:
 #
-# Set the actions that will be taken by the emulator in response to guest
-# events.
+# Set the actions that will be taken by the emulator in response to
+# guest events.
 #
 # @reboot: @RebootAction action taken on guest reboot.
 #
@@ -397,20 +402,18 @@
 #
 # @panic: @PanicAction action taken on guest panic.
 #
-# @watchdog: @WatchdogAction action taken when watchdog timer expires .
-#
-# Returns: Nothing on success.
+# @watchdog: @WatchdogAction action taken when watchdog timer expires.
 #
 # Since: 6.0
 #
-# Example:
+# .. qmp-example::
 #
-# -> { "execute": "set-action",
-#      "arguments": { "reboot": "shutdown",
-#                     "shutdown" : "pause",
-#                     "panic": "pause",
-#                     "watchdog": "inject-nmi" } }
-# <- { "return": {} }
+#     -> { "execute": "set-action",
+#          "arguments": { "reboot": "shutdown",
+#                         "shutdown" : "pause",
+#                         "panic": "pause",
+#                         "watchdog": "inject-nmi" } }
+#     <- { "return": {} }
 ##
 { 'command': 'set-action',
   'data': { '*reboot': 'RebootAction',
@@ -430,12 +433,11 @@
 #
 # Since: 1.5
 #
-# Example:
+# .. qmp-example::
 #
-# <- { "event": "GUEST_PANICKED",
-#      "data": { "action": "pause" },
-#      "timestamp": { "seconds": 1648245231, "microseconds": 900001 } }
-#
+#     <- { "event": "GUEST_PANICKED",
+#          "data": { "action": "pause" },
+#          "timestamp": { "seconds": 1648245231, "microseconds": 900001 } }
 ##
 { 'event': 'GUEST_PANICKED',
   'data': { 'action': 'GuestPanicAction', '*info': 'GuestPanicInformation' } }
@@ -451,15 +453,28 @@
 #
 # Since: 5.0
 #
-# Example:
+# .. qmp-example::
 #
-# <- { "event": "GUEST_CRASHLOADED",
-#      "data": { "action": "run" },
-#      "timestamp": { "seconds": 1648245259, "microseconds": 893771 } }
-#
+#     <- { "event": "GUEST_CRASHLOADED",
+#          "data": { "action": "run" },
+#          "timestamp": { "seconds": 1648245259, "microseconds": 893771 } }
 ##
 { 'event': 'GUEST_CRASHLOADED',
   'data': { 'action': 'GuestPanicAction', '*info': 'GuestPanicInformation' } }
+
+##
+# @GUEST_PVSHUTDOWN:
+#
+# Emitted when guest submits a shutdown request via pvpanic interface
+#
+# Since: 9.1
+#
+# .. qmp-example::
+#
+#     <- { "event": "GUEST_PVSHUTDOWN",
+#          "timestamp": { "seconds": 1648245259, "microseconds": 893771 } }
+##
+{ 'event': 'GUEST_PVSHUTDOWN' }
 
 ##
 # @GuestPanicAction:
@@ -468,7 +483,11 @@
 #
 # @pause: system pauses
 #
-# Since: 2.1 (poweroff since 2.8, run since 5.0)
+# @poweroff: system powers off (since 2.8)
+#
+# @run: system continues to run (since 5.0)
+#
+# Since: 2.1
 ##
 { 'enum': 'GuestPanicAction',
   'data': [ 'pause', 'poweroff', 'run' ] }
@@ -499,22 +518,38 @@
 {'union': 'GuestPanicInformation',
  'base': {'type': 'GuestPanicInformationType'},
  'discriminator': 'type',
- 'data': { 'hyper-v': 'GuestPanicInformationHyperV',
-           's390': 'GuestPanicInformationS390' } }
+ 'data': {'hyper-v': 'GuestPanicInformationHyperV',
+          's390': 'GuestPanicInformationS390'}}
 
 ##
 # @GuestPanicInformationHyperV:
 #
 # Hyper-V specific guest panic information (HV crash MSRs)
 #
+# @arg1: for Windows, STOP code for the guest crash.  For Linux,
+#     an error code.
+#
+# @arg2: for Windows, first argument of the STOP.  For Linux, the
+#     guest OS ID, which has the kernel version in bits 16-47 and
+#     0x8100 in bits 48-63.
+#
+# @arg3: for Windows, second argument of the STOP.  For Linux, the
+#     program counter of the guest.
+#
+# @arg4: for Windows, third argument of the STOP.  For Linux, the
+#     RAX register (x86) or the stack pointer (aarch64) of the guest.
+#
+# @arg5: for Windows, fourth argument of the STOP.  For x86 Linux, the
+#     stack pointer of the guest.
+#
 # Since: 2.9
 ##
 {'struct': 'GuestPanicInformationHyperV',
- 'data': { 'arg1': 'uint64',
-           'arg2': 'uint64',
-           'arg3': 'uint64',
-           'arg4': 'uint64',
-           'arg5': 'uint64' } }
+ 'data': {'arg1': 'uint64',
+          'arg2': 'uint64',
+          'arg3': 'uint64',
+          'arg4': 'uint64',
+          'arg5': 'uint64'}}
 
 ##
 # @S390CrashReason:
@@ -525,13 +560,13 @@
 #
 # @disabled-wait: the CPU has entered a disabled wait state
 #
-# @extint-loop: clock comparator or cpu timer interrupt with new PSW enabled
-#               for external interrupts
+# @extint-loop: clock comparator or cpu timer interrupt with new PSW
+#     enabled for external interrupts
 #
 # @pgmint-loop: program interrupt with BAD new PSW
 #
-# @opint-loop: operation exception interrupt with invalid code at the program
-#              interrupt new PSW
+# @opint-loop: operation exception interrupt with invalid code at the
+#     program interrupt new PSW
 #
 # Since: 2.12
 ##
@@ -548,17 +583,20 @@
 # S390 specific guest panic information (PSW)
 #
 # @core: core id of the CPU that crashed
+#
 # @psw-mask: control fields of guest PSW
+#
 # @psw-addr: guest instruction address
+#
 # @reason: guest crash reason
 #
 # Since: 2.12
 ##
 {'struct': 'GuestPanicInformationS390',
- 'data': { 'core': 'uint32',
-           'psw-mask': 'uint64',
-           'psw-addr': 'uint64',
-           'reason': 'S390CrashReason' } }
+ 'data': {'core': 'uint32',
+          'psw-mask': 'uint64',
+          'psw-addr': 'uint64',
+          'reason': 'S390CrashReason'}}
 
 ##
 # @MEMORY_FAILURE:
@@ -567,21 +605,20 @@
 #
 # @recipient: recipient is defined as @MemoryFailureRecipient.
 #
-# @action: action that has been taken. action is defined as @MemoryFailureAction.
+# @action: action that has been taken.
 #
-# @flags: flags for MemoryFailureAction. action is defined as @MemoryFailureFlags.
+# @flags: flags for MemoryFailureAction.
 #
 # Since: 5.2
 #
-# Example:
+# .. qmp-example::
 #
-# <- { "event": "MEMORY_FAILURE",
-#      "data": { "recipient": "hypervisor",
-#                "action": "fatal",
-#                "flags": { "action-required": false,
-#                           "recursive": false } },
-#      "timestamp": { "seconds": 1267061043, "microseconds": 959568 } }
-#
+#     <- { "event": "MEMORY_FAILURE",
+#          "data": { "recipient": "hypervisor",
+#                    "action": "fatal",
+#                    "flags": { "action-required": false,
+#                               "recursive": false } },
+#          "timestamp": { "seconds": 1267061043, "microseconds": 959568 } }
 ##
 { 'event': 'MEMORY_FAILURE',
   'data': { 'recipient': 'MemoryFailureRecipient',
@@ -593,8 +630,8 @@
 #
 # Hardware memory failure occurs, handled by recipient.
 #
-# @hypervisor: memory failure at QEMU process address space.
-#              (none guest memory, but used by QEMU itself).
+# @hypervisor: memory failure at QEMU process address space.  (none
+#     guest memory, but used by QEMU itself).
 #
 # @guest: memory failure at guest memory,
 #
@@ -609,19 +646,20 @@
 #
 # Actions taken by QEMU in response to a hardware memory failure.
 #
-# @ignore: the memory failure could be ignored.  This will only be the case
-#          for action-optional failures.
+# @ignore: the memory failure could be ignored.  This will only be the
+#     case for action-optional failures.
 #
-# @inject: memory failure occurred in guest memory, the guest enabled MCE
-#          handling mechanism, and QEMU could inject the MCE into the guest
-#          successfully.
+# @inject: memory failure occurred in guest memory, the guest enabled
+#     MCE handling mechanism, and QEMU could inject the MCE into the
+#     guest successfully.
 #
-# @fatal: the failure is unrecoverable.  This occurs for action-required
-#         failures if the recipient is the hypervisor; QEMU will exit.
+# @fatal: the failure is unrecoverable.  This occurs for
+#     action-required failures if the recipient is the hypervisor;
+#     QEMU will exit.
 #
-# @reset: the failure is unrecoverable but confined to the guest.  This
-#         occurs if the recipient is a guest guest which is not ready
-#         to handle memory failures.
+# @reset: the failure is unrecoverable but confined to the guest.
+#     This occurs if the recipient is a guest guest which is not ready
+#     to handle memory failures.
 #
 # Since: 5.2
 ##
@@ -637,10 +675,10 @@
 # Additional information on memory failures.
 #
 # @action-required: whether a memory failure event is action-required
-#                   or action-optional (e.g. a failure during memory scrub).
+#     or action-optional (e.g. a failure during memory scrub).
 #
-# @recursive: whether the failure occurred while the previous
-#             failure was still in progress.
+# @recursive: whether the failure occurred while the previous failure
+#     was still in progress.
 #
 # Since: 5.2
 ##
@@ -653,10 +691,11 @@
 #
 # An enumeration of the options specified when enabling notify VM exit
 #
-# @run: enable the feature, do nothing and continue if the notify VM exit happens.
+# @run: enable the feature, do nothing and continue if the notify VM
+#     exit happens.
 #
-# @internal-error: enable the feature, raise a internal error if the notify
-#                  VM exit happens.
+# @internal-error: enable the feature, raise a internal error if the
+#     notify VM exit happens.
 #
 # @disable: disable the feature.
 #

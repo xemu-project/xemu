@@ -39,17 +39,15 @@
 #endif
 
 static QCryptoBlockCreateOptions qcow_create_opts = {
-    .format = Q_CRYPTO_BLOCK_FORMAT_QCOW,
+    .format = QCRYPTO_BLOCK_FORMAT_QCOW,
     .u.qcow = {
-        .has_key_secret = true,
         .key_secret = (char *)"sec0",
     },
 };
 
 static QCryptoBlockOpenOptions qcow_open_opts = {
-    .format = Q_CRYPTO_BLOCK_FORMAT_QCOW,
+    .format = QCRYPTO_BLOCK_FORMAT_QCOW,
     .u.qcow = {
-        .has_key_secret = true,
         .key_secret = (char *)"sec0",
     },
 };
@@ -57,9 +55,8 @@ static QCryptoBlockOpenOptions qcow_open_opts = {
 
 #ifdef TEST_LUKS
 static QCryptoBlockOpenOptions luks_open_opts = {
-    .format = Q_CRYPTO_BLOCK_FORMAT_LUKS,
+    .format = QCRYPTO_BLOCK_FORMAT_LUKS,
     .u.luks = {
-        .has_key_secret = true,
         .key_secret = (char *)"sec0",
     },
 };
@@ -67,9 +64,8 @@ static QCryptoBlockOpenOptions luks_open_opts = {
 
 /* Creation with all default values */
 static QCryptoBlockCreateOptions luks_create_opts_default = {
-    .format = Q_CRYPTO_BLOCK_FORMAT_LUKS,
+    .format = QCRYPTO_BLOCK_FORMAT_LUKS,
     .u.luks = {
-        .has_key_secret = true,
         .key_secret = (char *)"sec0",
     },
 };
@@ -77,35 +73,33 @@ static QCryptoBlockCreateOptions luks_create_opts_default = {
 
 /* ...and with explicit values */
 static QCryptoBlockCreateOptions luks_create_opts_aes256_cbc_plain64 = {
-    .format = Q_CRYPTO_BLOCK_FORMAT_LUKS,
+    .format = QCRYPTO_BLOCK_FORMAT_LUKS,
     .u.luks = {
-        .has_key_secret = true,
         .key_secret = (char *)"sec0",
         .has_cipher_alg = true,
-        .cipher_alg = QCRYPTO_CIPHER_ALG_AES_256,
+        .cipher_alg = QCRYPTO_CIPHER_ALGO_AES_256,
         .has_cipher_mode = true,
         .cipher_mode = QCRYPTO_CIPHER_MODE_CBC,
         .has_ivgen_alg = true,
-        .ivgen_alg = QCRYPTO_IVGEN_ALG_PLAIN64,
+        .ivgen_alg = QCRYPTO_IV_GEN_ALGO_PLAIN64,
     },
 };
 
 
 static QCryptoBlockCreateOptions luks_create_opts_aes256_cbc_essiv = {
-    .format = Q_CRYPTO_BLOCK_FORMAT_LUKS,
+    .format = QCRYPTO_BLOCK_FORMAT_LUKS,
     .u.luks = {
-        .has_key_secret = true,
         .key_secret = (char *)"sec0",
         .has_cipher_alg = true,
-        .cipher_alg = QCRYPTO_CIPHER_ALG_AES_256,
+        .cipher_alg = QCRYPTO_CIPHER_ALGO_AES_256,
         .has_cipher_mode = true,
         .cipher_mode = QCRYPTO_CIPHER_MODE_CBC,
         .has_ivgen_alg = true,
-        .ivgen_alg = QCRYPTO_IVGEN_ALG_ESSIV,
+        .ivgen_alg = QCRYPTO_IV_GEN_ALGO_ESSIV,
         .has_ivgen_hash_alg = true,
-        .ivgen_hash_alg = QCRYPTO_HASH_ALG_SHA256,
+        .ivgen_hash_alg = QCRYPTO_HASH_ALGO_SHA256,
         .has_hash_alg = true,
-        .hash_alg = QCRYPTO_HASH_ALG_SHA1,
+        .hash_alg = QCRYPTO_HASH_ALGO_SHA1,
     },
 };
 #endif /* TEST_LUKS */
@@ -118,12 +112,12 @@ static struct QCryptoBlockTestData {
 
     bool expect_header;
 
-    QCryptoCipherAlgorithm cipher_alg;
+    QCryptoCipherAlgo cipher_alg;
     QCryptoCipherMode cipher_mode;
-    QCryptoHashAlgorithm hash_alg;
+    QCryptoHashAlgo hash_alg;
 
-    QCryptoIVGenAlgorithm ivgen_alg;
-    QCryptoHashAlgorithm ivgen_hash;
+    QCryptoIVGenAlgo ivgen_alg;
+    QCryptoHashAlgo ivgen_hash;
 
     bool slow;
 } test_data[] = {
@@ -134,10 +128,10 @@ static struct QCryptoBlockTestData {
 
         .expect_header = false,
 
-        .cipher_alg = QCRYPTO_CIPHER_ALG_AES_128,
+        .cipher_alg = QCRYPTO_CIPHER_ALGO_AES_128,
         .cipher_mode = QCRYPTO_CIPHER_MODE_CBC,
 
-        .ivgen_alg = QCRYPTO_IVGEN_ALG_PLAIN64,
+        .ivgen_alg = QCRYPTO_IV_GEN_ALGO_PLAIN64,
     },
 #ifdef TEST_LUKS
     {
@@ -147,11 +141,11 @@ static struct QCryptoBlockTestData {
 
         .expect_header = true,
 
-        .cipher_alg = QCRYPTO_CIPHER_ALG_AES_256,
+        .cipher_alg = QCRYPTO_CIPHER_ALGO_AES_256,
         .cipher_mode = QCRYPTO_CIPHER_MODE_XTS,
-        .hash_alg = QCRYPTO_HASH_ALG_SHA256,
+        .hash_alg = QCRYPTO_HASH_ALGO_SHA256,
 
-        .ivgen_alg = QCRYPTO_IVGEN_ALG_PLAIN64,
+        .ivgen_alg = QCRYPTO_IV_GEN_ALGO_PLAIN64,
 
         .slow = true,
     },
@@ -162,11 +156,11 @@ static struct QCryptoBlockTestData {
 
         .expect_header = true,
 
-        .cipher_alg = QCRYPTO_CIPHER_ALG_AES_256,
+        .cipher_alg = QCRYPTO_CIPHER_ALGO_AES_256,
         .cipher_mode = QCRYPTO_CIPHER_MODE_CBC,
-        .hash_alg = QCRYPTO_HASH_ALG_SHA256,
+        .hash_alg = QCRYPTO_HASH_ALGO_SHA256,
 
-        .ivgen_alg = QCRYPTO_IVGEN_ALG_PLAIN64,
+        .ivgen_alg = QCRYPTO_IV_GEN_ALGO_PLAIN64,
 
         .slow = true,
     },
@@ -177,12 +171,12 @@ static struct QCryptoBlockTestData {
 
         .expect_header = true,
 
-        .cipher_alg = QCRYPTO_CIPHER_ALG_AES_256,
+        .cipher_alg = QCRYPTO_CIPHER_ALGO_AES_256,
         .cipher_mode = QCRYPTO_CIPHER_MODE_CBC,
-        .hash_alg = QCRYPTO_HASH_ALG_SHA1,
+        .hash_alg = QCRYPTO_HASH_ALGO_SHA1,
 
-        .ivgen_alg = QCRYPTO_IVGEN_ALG_ESSIV,
-        .ivgen_hash = QCRYPTO_HASH_ALG_SHA256,
+        .ivgen_alg = QCRYPTO_IV_GEN_ALGO_ESSIV,
+        .ivgen_hash = QCRYPTO_HASH_ALGO_SHA256,
 
         .slow = true,
     },
@@ -289,6 +283,7 @@ static void test_block(gconstpointer opaque)
                                test_block_init_func,
                                test_block_write_func,
                                &header,
+                               0,
                                &error_abort);
     g_assert(blk);
 
@@ -308,7 +303,6 @@ static void test_block(gconstpointer opaque)
                              test_block_read_func,
                              &header,
                              0,
-                             1,
                              NULL);
     g_assert(blk == NULL);
 
@@ -317,7 +311,6 @@ static void test_block(gconstpointer opaque)
                              test_block_read_func,
                              &header,
                              QCRYPTO_BLOCK_OPEN_NO_IO,
-                             1,
                              &error_abort);
 
     g_assert(qcrypto_block_get_cipher(blk) == NULL);
@@ -332,7 +325,6 @@ static void test_block(gconstpointer opaque)
                              test_block_read_func,
                              &header,
                              0,
-                             1,
                              &error_abort);
     g_assert(blk);
 
@@ -368,6 +360,7 @@ test_luks_bad_header(gconstpointer data)
                                test_block_init_func,
                                test_block_write_func,
                                &buf,
+                               0,
                                &error_abort);
     g_assert(blk);
 
@@ -388,7 +381,6 @@ test_luks_bad_header(gconstpointer data)
                              test_block_read_func,
                              &buf,
                              0,
-                             1,
                              &err);
     g_assert(!blk);
     g_assert(err);
@@ -580,7 +572,7 @@ int main(int argc, char **argv)
     g_assert(qcrypto_init(NULL) == 0);
 
     for (i = 0; i < G_N_ELEMENTS(test_data); i++) {
-        if (test_data[i].open_opts->format == Q_CRYPTO_BLOCK_FORMAT_LUKS &&
+        if (test_data[i].open_opts->format == QCRYPTO_BLOCK_FORMAT_LUKS &&
             !qcrypto_hash_supports(test_data[i].hash_alg)) {
             continue;
         }

@@ -628,7 +628,7 @@ static const VMStateDescription vmstate_exynos4210_uart_fifo = {
     .name = "exynos4210.uart.fifo",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(sp, Exynos4210UartFIFO),
         VMSTATE_UINT32(rp, Exynos4210UartFIFO),
         VMSTATE_VBUFFER_UINT32(data, Exynos4210UartFIFO, 1, NULL, size),
@@ -641,7 +641,7 @@ static const VMStateDescription vmstate_exynos4210_uart = {
     .version_id = 1,
     .minimum_version_id = 1,
     .post_load = exynos4210_uart_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_STRUCT(rx, Exynos4210UartState, 1,
                        vmstate_exynos4210_uart_fifo, Exynos4210UartFIFO),
         VMSTATE_UINT32_ARRAY(reg, Exynos4210UartState,
@@ -717,7 +717,7 @@ static void exynos4210_uart_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = exynos4210_uart_realize;
-    dc->reset = exynos4210_uart_reset;
+    device_class_set_legacy_reset(dc, exynos4210_uart_reset);
     device_class_set_props(dc, exynos4210_uart_properties);
     dc->vmsd = &vmstate_exynos4210_uart;
 }

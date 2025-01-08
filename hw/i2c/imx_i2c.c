@@ -285,7 +285,7 @@ static const VMStateDescription imx_i2c_vmstate = {
     .name = TYPE_IMX_I2C,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT16(address, IMXI2CState),
         VMSTATE_UINT16(iadr, IMXI2CState),
         VMSTATE_UINT16(ifdr, IMXI2CState),
@@ -313,7 +313,7 @@ static void imx_i2c_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->vmsd = &imx_i2c_vmstate;
-    dc->reset = imx_i2c_reset;
+    device_class_set_legacy_reset(dc, imx_i2c_reset);
     dc->realize = imx_i2c_realize;
     dc->desc = "i.MX I2C Controller";
 }

@@ -12,7 +12,6 @@
 #include "qemu/error-report.h"
 #include "qemu/notify.h"
 #include "qom/object_interfaces.h"
-#include "hw/qdev-core.h"
 #include "io/channel.h"
 #include "hw/qdev-core.h"
 #include "hw/remote/machine.h"
@@ -50,6 +49,7 @@ struct RemoteObject {
 
 static void remote_object_set_fd(Object *obj, const char *str, Error **errp)
 {
+    ERRP_GUARD();
     RemoteObject *o = REMOTE_OBJECT(obj);
     int fd = -1;
 

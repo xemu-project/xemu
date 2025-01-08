@@ -12,10 +12,6 @@ config IOAPIC
     bool
     select I8259
 
-config ARM_GIC
-    bool
-    select MSI_NONBROKEN
-
 config OPENPIC
     bool
     select MSI_NONBROKEN
@@ -25,14 +21,18 @@ config APIC
     select MSI_NONBROKEN
     select I8259
 
+config ARM_GIC
+    bool
+    select ARM_GICV3_TCG if TCG
+    select ARM_GIC_KVM if KVM
+    select MSI_NONBROKEN
+
 config ARM_GICV3_TCG
     bool
-    default y
     depends on ARM_GIC && TCG
 
 config ARM_GIC_KVM
     bool
-    default y
     depends on ARM_GIC && KVM
 
 config XICS
@@ -49,7 +49,6 @@ config S390_FLIC
 
 config S390_FLIC_KVM
     bool
-    default y
     depends on S390_FLIC && KVM
 
 config OMPIC
@@ -72,12 +71,15 @@ config RISCV_ACLINT
 
 config RISCV_APLIC
     bool
+    select MSI_NONBROKEN
 
 config RISCV_IMSIC
     bool
+    select MSI_NONBROKEN
 
 config SIFIVE_PLIC
     bool
+    select MSI_NONBROKEN
 
 config GOLDFISH_PIC
     bool
@@ -85,11 +87,16 @@ config GOLDFISH_PIC
 config M68K_IRQC
     bool
 
-config NIOS2_VIC
+config LOONGSON_IPI_COMMON
     bool
+
+config LOONGSON_IPI
+    bool
+    select LOONGSON_IPI_COMMON
 
 config LOONGARCH_IPI
     bool
+    select LOONGSON_IPI_COMMON
 
 config LOONGARCH_PCH_PIC
     bool

@@ -302,7 +302,7 @@ static const VMStateDescription vmstate_rsci = {
     .name = "renesas-sci",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_INT64(trtime, RSCIState),
         VMSTATE_INT64(rx_next, RSCIState),
         VMSTATE_UINT8(smr, RSCIState),
@@ -331,7 +331,7 @@ static void rsci_class_init(ObjectClass *klass, void *data)
 
     dc->realize = rsci_realize;
     dc->vmsd = &vmstate_rsci;
-    dc->reset = rsci_reset;
+    device_class_set_legacy_reset(dc, rsci_reset);
     device_class_set_props(dc, rsci_properties);
 }
 

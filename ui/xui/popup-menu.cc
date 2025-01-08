@@ -56,13 +56,13 @@ bool PopupMenuCheck(std::string text, std::string icon = "", bool v = false)
         ImGui::PushFont(g_font_mgr.m_menu_font);
         const ImVec2 p0 = ImGui::GetItemRectMin();
         const ImVec2 p1 = ImGui::GetItemRectMax();
-        const char *icon = ICON_FA_CHECK;
-        ImVec2 ts_icon = ImGui::CalcTextSize(icon);
+        const char *check_icon = ICON_FA_CHECK;
+        ImVec2 ts_icon = ImGui::CalcTextSize(check_icon);
         ImDrawList *draw_list = ImGui::GetWindowDrawList();
         ImGuiStyle &style = ImGui::GetStyle();
         draw_list->AddText(ImVec2(p1.x - style.FramePadding.x - ts_icon.x,
                                   p0.y + (p1.y - p0.y - ts_icon.y) / 2),
-                           ImGui::GetColorU32(ImGuiCol_Text), icon);
+                           ImGui::GetColorU32(ImGuiCol_Text), check_icon);
         ImGui::PopFont();
     }
     return status;

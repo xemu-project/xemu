@@ -88,7 +88,7 @@ static void i2c_ddc_init(Object *obj)
 static const VMStateDescription vmstate_i2c_ddc = {
     .name = TYPE_I2CDDC,
     .version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_BOOL(firstbyte, I2CDDCState),
         VMSTATE_UINT8(reg, I2CDDCState),
         VMSTATE_END_OF_LIST()
@@ -105,7 +105,7 @@ static void i2c_ddc_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
     I2CSlaveClass *isc = I2C_SLAVE_CLASS(oc);
 
-    dc->reset = i2c_ddc_reset;
+    device_class_set_legacy_reset(dc, i2c_ddc_reset);
     dc->vmsd = &vmstate_i2c_ddc;
     device_class_set_props(dc, i2c_ddc_properties);
     isc->event = i2c_ddc_event;

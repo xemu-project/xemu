@@ -225,21 +225,14 @@ static int *packet_test_init(int module_num, GString *cmd_line)
     g_assert_cmpint(ret, != , -1);
 
     /*
-     * KISS and use -nic. We specify two nics (both emc{0,1}) because there's
-     * currently no way to specify only emc1: The driver implicitly relies on
-     * emc[i] == nd_table[i].
+     * KISS and use -nic. The driver accepts 'emc0' and 'emc1' as aliases
+     * in the 'model' field to specify the device to match.
      */
-    if (module_num == 0) {
-        g_string_append_printf(cmd_line,
-                               " -nic socket,fd=%d,model=" TYPE_NPCM7XX_EMC " "
-                               " -nic user,model=" TYPE_NPCM7XX_EMC " ",
-                               test_sockets[1]);
-    } else {
-        g_string_append_printf(cmd_line,
-                               " -nic user,model=" TYPE_NPCM7XX_EMC " "
-                               " -nic socket,fd=%d,model=" TYPE_NPCM7XX_EMC " ",
-                               test_sockets[1]);
-    }
+    g_string_append_printf(cmd_line, " -nic socket,fd=%d,model=emc%d "
+                           "-nic user,model=npcm7xx-emc "
+                           "-nic user,model=npcm-gmac "
+                           "-nic user,model=npcm-gmac",
+                           test_sockets[1], module_num);
 
     g_test_queue_destroy(packet_test_clear, test_sockets);
     return test_sockets;
@@ -796,7 +789,7 @@ static void emc_test_ptle(QTestState *qts, const EMCModule *mod, int fd)
 static void test_tx(gconstpointer test_data)
 {
     const TestData *td = test_data;
-    GString *cmd_line = g_string_new("-machine quanta-gsj");
+    g_autoptr(GString) cmd_line = g_string_new("-machine quanta-gsj");
     int *test_sockets = packet_test_init(emc_module_index(td->module),
                                          cmd_line);
     QTestState *qts = qtest_init(cmd_line->str);
@@ -821,7 +814,7 @@ static void test_tx(gconstpointer test_data)
 static void test_rx(gconstpointer test_data)
 {
     const TestData *td = test_data;
-    GString *cmd_line = g_string_new("-machine quanta-gsj");
+    g_autoptr(GString) cmd_line = g_string_new("-machine quanta-gsj");
     int *test_sockets = packet_test_init(emc_module_index(td->module),
                                          cmd_line);
     QTestState *qts = qtest_init(cmd_line->str);
