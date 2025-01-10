@@ -65,7 +65,7 @@ void qkbd_state_key_event(QKbdState *kbd, QKeyCode qcode, bool down);
  * using qemu_input_event_send_key_delay().
  *
  * @kbd: state tracker state.
- * @delay_ms: the delay in miliseconds.
+ * @delay_ms: the delay in milliseconds.
  */
 void qkbd_state_set_delay(QKbdState *kbd, int delay_ms);
 
@@ -98,5 +98,16 @@ bool qkbd_state_modifier_get(QKbdState *kbd, QKbdModifier mod);
  * @kbd: state tracker state.
  */
 void qkbd_state_lift_all_keys(QKbdState *kbd);
+
+/**
+ * qkbd_state_switch_console: Switch console.
+ *
+ * This sends key up events to the previous console for all keys which are in
+ * down state to prevent keys being stuck, and remembers the new console.
+ *
+ * @kbd: state tracker state.
+ * @con: new QemuConsole for this state tracker.
+ */
+void qkbd_state_switch_console(QKbdState *kbd, QemuConsole *con);
 
 #endif /* QEMU_UI_KBD_STATE_H */

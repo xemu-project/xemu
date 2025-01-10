@@ -65,6 +65,7 @@ struct StringOutputVisitor
     } range_start, range_end;
     GList *ranges;
     void *list; /* Only needed for sanity checking the caller */
+    unsigned int struct_nesting;
 };
 
 static StringOutputVisitor *to_sov(Visitor *v)
@@ -74,11 +75,27 @@ static StringOutputVisitor *to_sov(Visitor *v)
 
 static void string_output_set(StringOutputVisitor *sov, char *string)
 {
-    if (sov->string) {
-        g_string_free(sov->string, true);
+    switch (sov->list_mode) {
+    case LM_STARTED:
+        sov->list_mode = LM_IN_PROGRESS;
+        /* fall through */
+    case LM_NONE:
+        if (sov->string) {
+            g_string_free(sov->string, true);
+        }
+        sov->string = g_string_new(string);
+        g_free(string);
+        break;
+
+    case LM_IN_PROGRESS:
+    case LM_END:
+        g_string_append(sov->string, ", ");
+        g_string_append(sov->string, string);
+        break;
+
+    default:
+        abort();
     }
-    sov->string = g_string_new(string);
-    g_free(string);
 }
 
 static void string_output_append(StringOutputVisitor *sov, int64_t a)
@@ -127,6 +144,10 @@ static bool print_type_int64(Visitor *v, const char *name, int64_t *obj,
 {
     StringOutputVisitor *sov = to_sov(v);
     GList *l;
+
+    if (sov->struct_nesting) {
+        return true;
+    }
 
     switch (sov->list_mode) {
     case LM_NONE:
@@ -215,6 +236,10 @@ static bool print_type_size(Visitor *v, const char *name, uint64_t *obj,
     uint64_t val;
     char *out, *psize;
 
+    if (sov->struct_nesting) {
+        return true;
+    }
+
     if (!sov->human) {
         out = g_strdup_printf("%"PRIu64, *obj);
         string_output_set(sov, out);
@@ -234,6 +259,11 @@ static bool print_type_bool(Visitor *v, const char *name, bool *obj,
                             Error **errp)
 {
     StringOutputVisitor *sov = to_sov(v);
+
+    if (sov->struct_nesting) {
+        return true;
+    }
+
     string_output_set(sov, g_strdup(*obj ? "true" : "false"));
     return true;
 }
@@ -243,6 +273,10 @@ static bool print_type_str(Visitor *v, const char *name, char **obj,
 {
     StringOutputVisitor *sov = to_sov(v);
     char *out;
+
+    if (sov->struct_nesting) {
+        return true;
+    }
 
     if (sov->human) {
         out = *obj ? g_strdup_printf("\"%s\"", *obj) : g_strdup("<null>");
@@ -257,6 +291,11 @@ static bool print_type_number(Visitor *v, const char *name, double *obj,
                               Error **errp)
 {
     StringOutputVisitor *sov = to_sov(v);
+
+    if (sov->struct_nesting) {
+        return true;
+    }
+
     string_output_set(sov, g_strdup_printf("%.17g", *obj));
     return true;
 }
@@ -267,6 +306,10 @@ static bool print_type_null(Visitor *v, const char *name, QNull **obj,
     StringOutputVisitor *sov = to_sov(v);
     char *out;
 
+    if (sov->struct_nesting) {
+        return true;
+    }
+
     if (sov->human) {
         out = g_strdup("<null>");
     } else {
@@ -276,11 +319,36 @@ static bool print_type_null(Visitor *v, const char *name, QNull **obj,
     return true;
 }
 
+static bool start_struct(Visitor *v, const char *name, void **obj,
+                         size_t size, Error **errp)
+{
+    StringOutputVisitor *sov = to_sov(v);
+
+    sov->struct_nesting++;
+    return true;
+}
+
+static void end_struct(Visitor *v, void **obj)
+{
+    StringOutputVisitor *sov = to_sov(v);
+
+    if (--sov->struct_nesting) {
+        return;
+    }
+
+    /* TODO actually print struct fields */
+    string_output_set(sov, g_strdup("<omitted>"));
+}
+
 static bool
 start_list(Visitor *v, const char *name, GenericList **list, size_t size,
            Error **errp)
 {
     StringOutputVisitor *sov = to_sov(v);
+
+    if (sov->struct_nesting) {
+        return true;
+    }
 
     /* we can't traverse a list in a list */
     assert(sov->list_mode == LM_NONE);
@@ -299,6 +367,10 @@ static GenericList *next_list(Visitor *v, GenericList *tail, size_t size)
     StringOutputVisitor *sov = to_sov(v);
     GenericList *ret = tail->next;
 
+    if (sov->struct_nesting) {
+        return ret;
+    }
+
     if (ret && !ret->next) {
         sov->list_mode = LM_END;
     }
@@ -308,6 +380,10 @@ static GenericList *next_list(Visitor *v, GenericList *tail, size_t size)
 static void end_list(Visitor *v, void **obj)
 {
     StringOutputVisitor *sov = to_sov(v);
+
+    if (sov->struct_nesting) {
+        return;
+    }
 
     assert(sov->list == obj);
     assert(sov->list_mode == LM_STARTED ||
@@ -363,6 +439,8 @@ Visitor *string_output_visitor_new(bool human, char **result)
     v->visitor.type_str = print_type_str;
     v->visitor.type_number = print_type_number;
     v->visitor.type_null = print_type_null;
+    v->visitor.start_struct = start_struct;
+    v->visitor.end_struct = end_struct;
     v->visitor.start_list = start_list;
     v->visitor.next_list = next_list;
     v->visitor.end_list = end_list;

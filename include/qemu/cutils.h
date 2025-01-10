@@ -163,9 +163,8 @@ int qemu_strtou64(const char *nptr, const char **endptr, int base,
 int qemu_strtod(const char *nptr, const char **endptr, double *result);
 int qemu_strtod_finite(const char *nptr, const char **endptr, double *result);
 
-int parse_uint(const char *s, unsigned long long *value, char **endptr,
-               int base);
-int parse_uint_full(const char *s, unsigned long long *value, int base);
+int parse_uint(const char *s, const char **endptr, int base, uint64_t *value);
+int parse_uint_full(const char *s, int base, uint64_t *value);
 
 int qemu_strtosz(const char *nptr, const char **end, uint64_t *result);
 int qemu_strtosz_MiB(const char *nptr, const char **end, uint64_t *result);
@@ -188,8 +187,38 @@ char *freq_to_str(uint64_t freq_hz);
 /* used to print char* safely */
 #define STR_OR_NULL(str) ((str) ? (str) : "null")
 
-bool buffer_is_zero(const void *buf, size_t len);
+/*
+ * Check if a buffer is all zeroes.
+ */
+
+bool buffer_is_zero_ool(const void *vbuf, size_t len);
+bool buffer_is_zero_ge256(const void *vbuf, size_t len);
 bool test_buffer_is_zero_next_accel(void);
+
+static inline bool buffer_is_zero_sample3(const char *buf, size_t len)
+{
+    /*
+     * For any reasonably sized buffer, these three samples come from
+     * three different cachelines.  In qemu-img usage, we find that
+     * each byte eliminates more than half of all buffer testing.
+     * It is therefore critical to performance that the byte tests
+     * short-circuit, so that we do not pull in additional cache lines.
+     * Do not "optimize" this to !(a | b | c).
+     */
+    return !buf[0] && !buf[len - 1] && !buf[len / 2];
+}
+
+#ifdef __OPTIMIZE__
+static inline bool buffer_is_zero(const void *buf, size_t len)
+{
+    return (__builtin_constant_p(len) && len >= 256
+            ? buffer_is_zero_sample3(buf, len) &&
+              buffer_is_zero_ge256(buf, len)
+            : buffer_is_zero_ool(buf, len));
+}
+#else
+#define buffer_is_zero  buffer_is_zero_ool
+#endif
 
 /*
  * Implementation of ULEB128 (http://en.wikipedia.org/wiki/LEB128)
@@ -212,12 +241,9 @@ int uleb128_decode_small(const uint8_t *in, uint32_t *n);
 int qemu_pstrcmp0(const char **str1, const char **str2);
 
 /* Find program directory, and save it for later usage with
- * qemu_get_exec_dir().
+ * get_relocated_path().
  * Try OS specific API first, if not working, parse from argv0. */
 void qemu_init_exec_dir(const char *argv0);
-
-/* Get the saved exec dir.  */
-const char *qemu_get_exec_dir(void);
 
 /**
  * get_relocated_path:
@@ -253,13 +279,21 @@ static inline const char *yes_no(bool b)
  */
 int parse_debug_env(const char *name, int max, int initial);
 
-/*
- * Hexdump a line of a byte buffer into a hexadecimal/ASCII buffer
+/**
+ * qemu_hexdump_line:
+ * @str: GString into which to append
+ * @buf: buffer to dump
+ * @len: number of bytes to dump
+ * @unit_len: add a space between every @unit_len bytes
+ * @block_len: add an extra space between every @block_len bytes
+ *
+ * Append @len bytes of @buf as hexadecimal into @str.
+ * Add spaces between every @unit_len and @block_len bytes.
+ * If @str is NULL, allocate a new string and return it;
+ * otherwise return @str.
  */
-#define QEMU_HEXDUMP_LINE_BYTES 16 /* Number of bytes to dump */
-#define QEMU_HEXDUMP_LINE_LEN 75   /* Number of characters in line */
-void qemu_hexdump_line(char *line, unsigned int b, const void *bufptr,
-                       unsigned int len, bool ascii);
+GString *qemu_hexdump_line(GString *str, const void *buf, size_t len,
+                           size_t unit_len, size_t block_len);
 
 /*
  * Hexdump a buffer to a file. An optional string prefix is added to every line

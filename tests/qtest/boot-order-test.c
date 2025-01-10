@@ -16,9 +16,6 @@
 #include "qapi/qmp/qdict.h"
 #include "standard-headers/linux/qemu_fw_cfg.h"
 
-/* TODO actually test the results and get rid of this */
-#define qmp_discard_response(qs, ...) qobject_unref(qtest_qmp(qs, __VA_ARGS__))
-
 typedef struct {
     const char *args;
     uint64_t expected_boot;
@@ -34,7 +31,7 @@ static void test_a_boot_order(const char *machine,
     uint64_t actual;
     QTestState *qts;
 
-    if (machine && !qtest_has_machine(machine)) {
+    if (!qtest_has_machine(machine)) {
         g_test_skip("Machine is not available");
         return;
     }
@@ -43,7 +40,7 @@ static void test_a_boot_order(const char *machine,
                       machine ?: "", test_args);
     actual = read_boot_order(qts);
     g_assert_cmphex(actual, ==, expected_boot);
-    qmp_discard_response(qts, "{ 'execute': 'system_reset' }");
+    qtest_qmp_assert_success(qts, "{ 'execute': 'system_reset' }");
     /*
      * system_reset only requests reset.  We get a RESET event after
      * the actual reset completes.  Need to wait for that.
@@ -110,7 +107,7 @@ static const boot_order_test test_cases_pc[] = {
 
 static void test_pc_boot_order(void)
 {
-    test_boot_orders(NULL, read_boot_order_pc, test_cases_pc);
+    test_boot_orders("pc", read_boot_order_pc, test_cases_pc);
 }
 
 static uint64_t read_boot_order_pmac(QTestState *qts)

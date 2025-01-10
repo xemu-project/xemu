@@ -11,6 +11,10 @@ config USB_OHCI
     bool
     select USB
 
+config USB_OHCI_SYSBUS
+    bool
+    select USB_OHCI
+
 config USB_OHCI_PCI
     bool
     default y if PCI_DEVICES
@@ -36,7 +40,7 @@ config USB_XHCI
 
 config USB_XHCI_PCI
     bool
-    default y if PCI_DEVICES
+    default y if PCI_DEVICES || PCIE_DEVICES
     depends on PCI
     select USB_XHCI
 
@@ -49,17 +53,19 @@ config USB_XHCI_SYSBUS
     bool
     select USB_XHCI
 
-config USB_MUSB
-    bool
-    select USB
-
 config USB_DWC2
     bool
     select USB
 
-config TUSB6010
+config USB_HUB
     bool
-    select USB_MUSB
+    default y
+    depends on USB
+
+config USB_HID
+    bool
+    default y
+    depends on USB
 
 config USB_TABLET_WACOM
     bool
@@ -136,5 +142,4 @@ config USB_DWC3
 
 config XLNX_USB_SUBSYS
     bool
-    default y if XLNX_VERSAL
     select USB_DWC3

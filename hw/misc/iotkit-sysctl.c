@@ -30,7 +30,6 @@
 #include "hw/qdev-properties.h"
 #include "hw/arm/armsse-version.h"
 #include "target/arm/arm-powerctl.h"
-#include "target/arm/cpu.h"
 
 REG32(SECDBGSTAT, 0x0)
 REG32(SECDBGSET, 0x4)
@@ -778,7 +777,7 @@ static const VMStateDescription iotkit_sysctl_sse300_vmstate = {
     .version_id = 1,
     .minimum_version_id = 1,
     .needed = sse300_needed,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(pwrctrl, IoTKitSysCtl),
         VMSTATE_UINT32(pdcm_pd_cpu0_sense, IoTKitSysCtl),
         VMSTATE_UINT32(pdcm_pd_vmr0_sense, IoTKitSysCtl),
@@ -799,7 +798,7 @@ static const VMStateDescription iotkit_sysctl_sse200_vmstate = {
     .version_id = 1,
     .minimum_version_id = 1,
     .needed = sse200_needed,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(scsecctrl, IoTKitSysCtl),
         VMSTATE_UINT32(fclk_div, IoTKitSysCtl),
         VMSTATE_UINT32(sysclk_div, IoTKitSysCtl),
@@ -819,7 +818,7 @@ static const VMStateDescription iotkit_sysctl_vmstate = {
     .name = "iotkit-sysctl",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(secure_debug, IoTKitSysCtl),
         VMSTATE_UINT32(reset_syndrome, IoTKitSysCtl),
         VMSTATE_UINT32(reset_mask, IoTKitSysCtl),
@@ -829,7 +828,7 @@ static const VMStateDescription iotkit_sysctl_vmstate = {
         VMSTATE_UINT32(wicctrl, IoTKitSysCtl),
         VMSTATE_END_OF_LIST()
     },
-    .subsections = (const VMStateDescription*[]) {
+    .subsections = (const VMStateDescription * const []) {
         &iotkit_sysctl_sse200_vmstate,
         &iotkit_sysctl_sse300_vmstate,
         NULL
@@ -851,7 +850,7 @@ static void iotkit_sysctl_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->vmsd = &iotkit_sysctl_vmstate;
-    dc->reset = iotkit_sysctl_reset;
+    device_class_set_legacy_reset(dc, iotkit_sysctl_reset);
     device_class_set_props(dc, iotkit_sysctl_props);
     dc->realize = iotkit_sysctl_realize;
 }

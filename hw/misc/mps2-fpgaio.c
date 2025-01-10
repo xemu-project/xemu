@@ -305,7 +305,7 @@ static const VMStateDescription mps2_fpgaio_vmstate = {
     .name = "mps2-fpgaio",
     .version_id = 3,
     .minimum_version_id = 3,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(led0, MPS2FPGAIO),
         VMSTATE_UINT32(prescale, MPS2FPGAIO),
         VMSTATE_UINT32(misc, MPS2FPGAIO),
@@ -335,7 +335,7 @@ static void mps2_fpgaio_class_init(ObjectClass *klass, void *data)
 
     dc->vmsd = &mps2_fpgaio_vmstate;
     dc->realize = mps2_fpgaio_realize;
-    dc->reset = mps2_fpgaio_reset;
+    device_class_set_legacy_reset(dc, mps2_fpgaio_reset);
     device_class_set_props(dc, mps2_fpgaio_properties);
 }
 

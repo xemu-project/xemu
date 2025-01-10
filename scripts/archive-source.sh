@@ -26,15 +26,17 @@ sub_file="${sub_tdir}/submodule.tar"
 # independent of what the developer currently has initialized
 # in their checkout, because the build environment is completely
 # different to the host OS.
-submodules="dtc meson ui/keycodemapdb"
-submodules="$submodules tests/fp/berkeley-softfloat-3 tests/fp/berkeley-testfloat-3"
-
-# xemu extras
-submodules="$submodules ui/thirdparty/imgui ui/thirdparty/implot genconfig"
-
-subprojects="glslang SPIRV-Reflect volk VulkanMemoryAllocator nv2a_vsh_cpu tomlplusplus cpp-httplib xxhash"
-
+subprojects="keycodemapdb libvfio-user berkeley-softfloat-3
+  berkeley-testfloat-3 arbitrary-int-1-rs bilge-0.2-rs
+  bilge-impl-0.2-rs either-1-rs itertools-0.11-rs proc-macro2-1-rs
+  proc-macro-error-1-rs proc-macro-error-attr-1-rs quote-1-rs
+  syn-2-rs unicode-ident-1-rs"
 sub_deinit=""
+
+# xemu only
+subprojects="keycodemapdb berkeley-softfloat-3 berkeley-testfloat-3
+  glslang SPIRV-Reflect  volk VulkanMemoryAllocator nv2a_vsh_cpu
+  tomlplusplus cpp-httplib xxhash imgui implot genconfig"
 
 function cleanup() {
     local status=$?
@@ -55,37 +57,35 @@ function tree_ish() {
     echo "$retval"
 }
 
+function subproject_dir() {
+    if test ! -f "subprojects/$1.wrap"; then
+      error "scripts/archive-source.sh should only process wrap subprojects"
+    fi
+
+    # Print the directory key of the wrap file, defaulting to the
+    # subproject name.  The wrap file is in ini format and should
+    # have a single section only.  There should be only one section
+    # named "[wrap-*]", which helps keeping the script simple.
+    local dir
+    dir=$(sed -n \
+      -e '/^\[wrap-[a-z][a-z]*\]$/,/^\[/{' \
+      -e    '/^directory *= */!b' \
+      -e    's///p' \
+      -e    'q' \
+      -e '}' \
+      "subprojects/$1.wrap")
+
+    echo "${dir:-$1}"
+}
+
 git archive --format tar "$(tree_ish)" > "$tar_file"
 test $? -ne 0 && error "failed to archive qemu"
 
 for sp in $subprojects; do
     meson subprojects download $sp
-    sp_dir=$(grep -oP '^directory = \K.*' subprojects/${sp}.wrap || echo ${sp})
     # test $? -ne 0 && error "failed to download subproject $sp"
-    tar --append --file "$tar_file" --exclude=.git subprojects/$sp_dir
+    tar --append --file "$tar_file" --exclude=.git subprojects/"$(subproject_dir $sp)"
     test $? -ne 0 && error "failed to append subproject $sp to $tar_file"
-done
-
-for sm in $submodules; do
-    status="$(git submodule status "$sm")"
-    smhash="${status#[ +-]}"
-    smhash="${smhash%% *}"
-    case "$status" in
-        -*)
-            sub_deinit="$sub_deinit $sm"
-            git submodule update --init "$sm"
-            test $? -ne 0 && error "failed to update submodule $sm"
-            ;;
-        +*)
-            echo "WARNING: submodule $sm is out of sync"
-            ;;
-    esac
-    (cd "$sm"; git rev-parse HEAD 2>/dev/null >HEAD)
-    (cd $sm; git archive --format tar --prefix "$sm/" $(tree_ish)) > "$sub_file"
-    test $? -ne 0 && error "failed to archive submodule $sm ($smhash)"
-    tar --concatenate --file "$tar_file" "$sub_file"
-    test $? -ne 0 && error "failed append submodule $sm to $tar_file"
-    tar --append --file "$tar_file" "$sm"/HEAD
 done
 
 git rev-parse HEAD 2>/dev/null | tr -d '\n' > XEMU_COMMIT

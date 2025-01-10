@@ -447,7 +447,7 @@ static const VMStateDescription vmstate_aspeed_lpc = {
     .name = TYPE_ASPEED_LPC,
     .version_id = 2,
     .minimum_version_id = 2,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, AspeedLPCState, ASPEED_LPC_NR_REGS),
         VMSTATE_UINT32(subdevice_irqs_pending, AspeedLPCState),
         VMSTATE_END_OF_LIST(),
@@ -464,7 +464,7 @@ static void aspeed_lpc_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = aspeed_lpc_realize;
-    dc->reset = aspeed_lpc_reset;
+    device_class_set_legacy_reset(dc, aspeed_lpc_reset);
     dc->desc = "Aspeed LPC Controller",
     dc->vmsd = &vmstate_aspeed_lpc;
     device_class_set_props(dc, aspeed_lpc_properties);

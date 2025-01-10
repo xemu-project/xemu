@@ -34,10 +34,8 @@
 #include "hw/pci/pci_ids.h"
 #include "hw/pci/pci_regs.h"
 
-/* TODO actually test the results and get rid of this */
-#define qmp_discard_response(q, ...) qobject_unref(qtest_qmp(q, __VA_ARGS__))
-
-#define TEST_IMAGE_SIZE 64 * 1024 * 1024
+/* Specified by ATA (physical) CHS geometry for ~64 MiB device.  */
+#define TEST_IMAGE_SIZE ((130 * 16 * 63) * 512)
 
 #define IDE_PCI_DEV     1
 #define IDE_PCI_FUNC    1
@@ -91,11 +89,13 @@ enum {
 enum {
     CMD_DSM         = 0x06,
     CMD_DIAGNOSE    = 0x90,
+    CMD_INIT_DP     = 0x91,  /* INITIALIZE DEVICE PARAMETERS */
     CMD_READ_DMA    = 0xc8,
     CMD_WRITE_DMA   = 0xca,
     CMD_FLUSH_CACHE = 0xe7,
     CMD_IDENTIFY    = 0xec,
     CMD_PACKET      = 0xa0,
+    CMD_READ_NATIVE = 0xf8,  /* READ NATIVE MAX ADDRESS */
 
     CMDF_ABORT      = 0x100,
     CMDF_NO_BM      = 0x200,
@@ -125,6 +125,7 @@ static QGuestAllocator guest_malloc;
 static char *tmp_path[2];
 static char *debug_path;
 
+G_GNUC_PRINTF(1, 2)
 static QTestState *ide_test_start(const char *cmdline_fmt, ...)
 {
     QTestState *qts;
@@ -562,6 +563,46 @@ static void string_cpu_to_be16(uint16_t *s, size_t bytes)
     }
 }
 
+static void test_specify(void)
+{
+    QTestState *qts;
+    QPCIDevice *dev;
+    QPCIBar bmdma_bar, ide_bar;
+    uint16_t cyls;
+    uint8_t heads, spt;
+
+    qts = ide_test_start(
+        "-blockdev driver=file,node-name=hda,filename=%s "
+        "-device ide-hd,drive=hda,bus=ide.0,unit=0 ",
+        tmp_path[0]);
+
+    dev = get_pci_device(qts, &bmdma_bar, &ide_bar);
+
+    /* Initialize drive with zero sectors per track and one head.  */
+    qpci_io_writeb(dev, ide_bar, reg_nsectors, 0);
+    qpci_io_writeb(dev, ide_bar, reg_device, 0);
+    qpci_io_writeb(dev, ide_bar, reg_command, CMD_INIT_DP);
+
+    /* READ NATIVE MAX ADDRESS (CHS mode).  */
+    qpci_io_writeb(dev, ide_bar, reg_device, 0xa0);
+    qpci_io_writeb(dev, ide_bar, reg_command, CMD_READ_NATIVE);
+
+    heads = qpci_io_readb(dev, ide_bar, reg_device) & 0xf;
+    ++heads;
+    g_assert_cmpint(heads, ==, 16);
+
+    cyls = qpci_io_readb(dev, ide_bar, reg_lba_high) << 8;
+    cyls |= qpci_io_readb(dev, ide_bar, reg_lba_middle);
+    ++cyls;
+    g_assert_cmpint(cyls, ==, 130);
+
+    spt = qpci_io_readb(dev, ide_bar, reg_lba_low);
+    g_assert_cmpint(spt, ==, 63);
+
+    ide_test_quit(qts);
+    free_pci_device(dev);
+}
+
 static void test_identify(void)
 {
     QTestState *qts;
@@ -765,7 +806,7 @@ static void test_pci_retry_flush(void)
     qtest_qmp_eventwait(qts, "STOP");
 
     /* Complete the command */
-    qmp_discard_response(qts, "{'execute':'cont' }");
+    qtest_qmp_assert_success(qts, "{'execute':'cont' }");
 
     /* Check registers */
     data = qpci_io_readb(dev, ide_bar, reg_device);
@@ -788,7 +829,7 @@ static void test_flush_nodev(void)
     QPCIDevice *dev;
     QPCIBar bmdma_bar, ide_bar;
 
-    qts = ide_test_start("");
+    qts = ide_test_start("%s", "");
 
     dev = get_pci_device(qts, &bmdma_bar, &ide_bar);
 
@@ -1078,6 +1119,8 @@ int main(int argc, char **argv)
 
     /* Run the tests */
     g_test_init(&argc, &argv, NULL);
+
+    qtest_add_func("/ide/read_native", test_specify);
 
     qtest_add_func("/ide/identify", test_identify);
 

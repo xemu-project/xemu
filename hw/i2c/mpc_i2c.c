@@ -20,10 +20,10 @@
 #include "qemu/osdep.h"
 #include "hw/i2c/i2c.h"
 #include "hw/irq.h"
-#include "qemu/module.h"
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "qom/object.h"
+#include "trace.h"
 
 /* #define DEBUG_I2C */
 
@@ -82,7 +82,7 @@ struct MPCI2CState {
     uint8_t cr;
     uint8_t sr;
     uint8_t dr;
-    uint8_t dfssr;
+    uint8_t dfsrr;
 };
 
 static bool mpc_i2c_is_enabled(MPCI2CState *s)
@@ -224,8 +224,8 @@ static uint64_t mpc_i2c_read(void *opaque, hwaddr addr, unsigned size)
         break;
     }
 
-    DPRINTF("%s: addr " TARGET_FMT_plx " %02" PRIx32 "\n", __func__,
-                                         addr, value);
+    trace_mpc_i2c_read(addr, value);
+
     return (uint64_t)value;
 }
 
@@ -234,8 +234,8 @@ static void mpc_i2c_write(void *opaque, hwaddr addr,
 {
     MPCI2CState *s = opaque;
 
-    DPRINTF("%s: addr " TARGET_FMT_plx " val %08" PRIx64 "\n", __func__,
-                                             addr, value);
+    trace_mpc_i2c_write(addr, value);
+
     switch (addr) {
     case MPC_I2C_ADR:
         s->adr = value & CADR_MASK;
@@ -293,7 +293,7 @@ static void mpc_i2c_write(void *opaque, hwaddr addr,
         }
         break;
     case MPC_I2C_DFSRR:
-        s->dfssr = value;
+        s->dfsrr = value;
         break;
     default:
         DPRINTF("ERROR: Bad write addr 0x%x\n", (unsigned int)addr);
@@ -312,14 +312,14 @@ static const VMStateDescription mpc_i2c_vmstate = {
     .name = TYPE_MPC_I2C,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT8(address, MPCI2CState),
         VMSTATE_UINT8(adr, MPCI2CState),
         VMSTATE_UINT8(fdr, MPCI2CState),
         VMSTATE_UINT8(cr, MPCI2CState),
         VMSTATE_UINT8(sr, MPCI2CState),
         VMSTATE_UINT8(dr, MPCI2CState),
-        VMSTATE_UINT8(dfssr, MPCI2CState),
+        VMSTATE_UINT8(dfsrr, MPCI2CState),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -329,7 +329,7 @@ static void mpc_i2c_realize(DeviceState *dev, Error **errp)
     MPCI2CState  *i2c = MPC_I2C(dev);
     sysbus_init_irq(SYS_BUS_DEVICE(dev), &i2c->irq);
     memory_region_init_io(&i2c->iomem, OBJECT(i2c), &i2c_ops, i2c,
-                          "mpc-i2c", 0x14);
+                          "mpc-i2c", 0x15);
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &i2c->iomem);
     i2c->bus = i2c_init_bus(dev, "i2c");
 }
@@ -339,21 +339,18 @@ static void mpc_i2c_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->vmsd  = &mpc_i2c_vmstate ;
-    dc->reset = mpc_i2c_reset;
+    device_class_set_legacy_reset(dc, mpc_i2c_reset);
     dc->realize = mpc_i2c_realize;
     dc->desc = "MPC I2C Controller";
 }
 
-static const TypeInfo mpc_i2c_type_info = {
-    .name          = TYPE_MPC_I2C,
-    .parent        = TYPE_SYS_BUS_DEVICE,
-    .instance_size = sizeof(MPCI2CState),
-    .class_init    = mpc_i2c_class_init,
+static const TypeInfo mpc_i2c_types[] = {
+    {
+        .name          = TYPE_MPC_I2C,
+        .parent        = TYPE_SYS_BUS_DEVICE,
+        .instance_size = sizeof(MPCI2CState),
+        .class_init    = mpc_i2c_class_init,
+    },
 };
 
-static void mpc_i2c_register_types(void)
-{
-    type_register_static(&mpc_i2c_type_info);
-}
-
-type_init(mpc_i2c_register_types)
+DEFINE_TYPES(mpc_i2c_types)

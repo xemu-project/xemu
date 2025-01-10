@@ -27,70 +27,70 @@
 /***********************************************************/
 /* x86 debug */
 
-static const char *cc_op_str[CC_OP_NB] = {
-    "DYNAMIC",
-    "EFLAGS",
+static const char * const cc_op_str[] = {
+    [CC_OP_DYNAMIC] = "DYNAMIC",
 
-    "MULB",
-    "MULW",
-    "MULL",
-    "MULQ",
+    [CC_OP_EFLAGS] = "EFLAGS",
+    [CC_OP_ADCX] = "ADCX",
+    [CC_OP_ADOX] = "ADOX",
+    [CC_OP_ADCOX] = "ADCOX",
 
-    "ADDB",
-    "ADDW",
-    "ADDL",
-    "ADDQ",
+    [CC_OP_MULB] = "MULB",
+    [CC_OP_MULW] = "MULW",
+    [CC_OP_MULL] = "MULL",
+    [CC_OP_MULQ] = "MULQ",
 
-    "ADCB",
-    "ADCW",
-    "ADCL",
-    "ADCQ",
+    [CC_OP_ADDB] = "ADDB",
+    [CC_OP_ADDW] = "ADDW",
+    [CC_OP_ADDL] = "ADDL",
+    [CC_OP_ADDQ] = "ADDQ",
 
-    "SUBB",
-    "SUBW",
-    "SUBL",
-    "SUBQ",
+    [CC_OP_ADCB] = "ADCB",
+    [CC_OP_ADCW] = "ADCW",
+    [CC_OP_ADCL] = "ADCL",
+    [CC_OP_ADCQ] = "ADCQ",
 
-    "SBBB",
-    "SBBW",
-    "SBBL",
-    "SBBQ",
+    [CC_OP_SUBB] = "SUBB",
+    [CC_OP_SUBW] = "SUBW",
+    [CC_OP_SUBL] = "SUBL",
+    [CC_OP_SUBQ] = "SUBQ",
 
-    "LOGICB",
-    "LOGICW",
-    "LOGICL",
-    "LOGICQ",
+    [CC_OP_SBBB] = "SBBB",
+    [CC_OP_SBBW] = "SBBW",
+    [CC_OP_SBBL] = "SBBL",
+    [CC_OP_SBBQ] = "SBBQ",
 
-    "INCB",
-    "INCW",
-    "INCL",
-    "INCQ",
+    [CC_OP_LOGICB] = "LOGICB",
+    [CC_OP_LOGICW] = "LOGICW",
+    [CC_OP_LOGICL] = "LOGICL",
+    [CC_OP_LOGICQ] = "LOGICQ",
 
-    "DECB",
-    "DECW",
-    "DECL",
-    "DECQ",
+    [CC_OP_INCB] = "INCB",
+    [CC_OP_INCW] = "INCW",
+    [CC_OP_INCL] = "INCL",
+    [CC_OP_INCQ] = "INCQ",
 
-    "SHLB",
-    "SHLW",
-    "SHLL",
-    "SHLQ",
+    [CC_OP_DECB] = "DECB",
+    [CC_OP_DECW] = "DECW",
+    [CC_OP_DECL] = "DECL",
+    [CC_OP_DECQ] = "DECQ",
 
-    "SARB",
-    "SARW",
-    "SARL",
-    "SARQ",
+    [CC_OP_SHLB] = "SHLB",
+    [CC_OP_SHLW] = "SHLW",
+    [CC_OP_SHLL] = "SHLL",
+    [CC_OP_SHLQ] = "SHLQ",
 
-    "BMILGB",
-    "BMILGW",
-    "BMILGL",
-    "BMILGQ",
+    [CC_OP_SARB] = "SARB",
+    [CC_OP_SARW] = "SARW",
+    [CC_OP_SARL] = "SARL",
+    [CC_OP_SARQ] = "SARQ",
 
-    "ADCX",
-    "ADOX",
-    "ADCOX",
+    [CC_OP_BMILGB] = "BMILGB",
+    [CC_OP_BMILGW] = "BMILGW",
+    [CC_OP_BMILGL] = "BMILGL",
+    [CC_OP_BMILGQ] = "BMILGQ",
 
-    "CLR",
+    [CC_OP_POPCNT] = "POPCNT",
 };
 
 static void
@@ -335,10 +335,7 @@ void x86_cpu_dump_local_apic_state(CPUState *cs, int flags)
     }
     qemu_printf(" PPR 0x%02x\n", apic_get_ppr(s));
 }
-#else
-void x86_cpu_dump_local_apic_state(CPUState *cs, int flags)
-{
-}
+
 #endif /* !CONFIG_USER_ONLY */
 
 #define DUMP_CODE_BYTES_TOTAL    50
@@ -349,7 +346,6 @@ void x86_cpu_dump_state(CPUState *cs, FILE *f, int flags)
     X86CPU *cpu = X86_CPU(cs);
     CPUX86State *env = &cpu->env;
     int eflags, i, nb;
-    char cc_op_name[32];
     static const char *seg_name[6] = { "ES", "CS", "SS", "DS", "FS", "GS" };
 
     eflags = cpu_compute_eflags(env);
@@ -458,10 +454,16 @@ void x86_cpu_dump_state(CPUState *cs, FILE *f, int flags)
                      env->dr[6], env->dr[7]);
     }
     if (flags & CPU_DUMP_CCOP) {
-        if ((unsigned)env->cc_op < CC_OP_NB)
-            snprintf(cc_op_name, sizeof(cc_op_name), "%s", cc_op_str[env->cc_op]);
-        else
-            snprintf(cc_op_name, sizeof(cc_op_name), "[%d]", env->cc_op);
+        const char *cc_op_name = NULL;
+        char cc_op_buf[32];
+
+        if ((unsigned)env->cc_op < ARRAY_SIZE(cc_op_str)) {
+            cc_op_name = cc_op_str[env->cc_op];
+        }
+        if (cc_op_name == NULL) {
+            snprintf(cc_op_buf, sizeof(cc_op_buf), "[%d]", env->cc_op);
+            cc_op_name = cc_op_buf;
+        }
 #ifdef TARGET_X86_64
         if (env->hflags & HF_CS64_MASK) {
             qemu_fprintf(f, "CCS=%016" PRIx64 " CCD=%016" PRIx64 " CCO=%s\n",

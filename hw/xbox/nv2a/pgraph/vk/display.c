@@ -1,7 +1,7 @@
 /*
  * Geforce NV2A PGRAPH Vulkan Renderer
  *
- * Copyright (c) 2024 Matt Borgerson
+ * Copyright (c) 2024-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -870,9 +870,11 @@ static void update_uniforms(PGRAPHState *pg, SurfaceBinding *surface)
     int display_size_loc = uniform_index(l, "display_size");  // FIXME: Cache
     uniform2f(l, display_size_loc, r->display.width, r->display.height);
 
-    uint32_t pline_offset, pstart_addr, pline_compare;
-    d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
-    int line_offset = pline_offset ? surface->pitch / pline_offset : 1;
+    VGADisplayParams vga_display_params;
+    d->vga.get_params(&d->vga, &vga_display_params);
+    int line_offset = vga_display_params.line_offset ?
+                          surface->pitch / vga_display_params.line_offset :
+                          1;
     int line_offset_loc = uniform_index(l, "line_offset");
     uniform1f(l, line_offset_loc, line_offset);
 
@@ -1065,11 +1067,11 @@ void pgraph_vk_render_display(PGRAPHState *pg)
     NV2AState *d = container_of(pg, NV2AState, pgraph);
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    uint32_t pline_offset, pstart_addr, pline_compare;
-    d->vga.get_offsets(&d->vga, &pline_offset, &pstart_addr, &pline_compare);
+    VGADisplayParams vga_display_params;
+    d->vga.get_params(&d->vga, &vga_display_params);
 
-    SurfaceBinding *surface =
-        pgraph_vk_surface_get_within(d, d->pcrtc.start + pline_offset);
+    SurfaceBinding *surface = pgraph_vk_surface_get_within(
+        d, d->pcrtc.start + vga_display_params.line_offset);
     if (surface == NULL || !surface->color) {
         return;
     }

@@ -12,12 +12,12 @@
 #include "hw/qdev-properties.h"
 #include "qemu/timer.h"
 #include "sysemu/runstate.h"
-#include "hw/arm/pxa.h"
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "qom/object.h"
+#include "sysemu/watchdog.h"
 
 #define OSMR0	0x00
 #define OSMR1	0x04
@@ -54,7 +54,6 @@
 #define OSNR	0x20
 
 #define PXA25X_FREQ	3686400	/* 3.6864 MHz */
-#define PXA27X_FREQ	3250000	/* 3.25 MHz */
 
 static int pxa2xx_timer4_freq[8] = {
     [0] = 0,
@@ -417,7 +416,7 @@ static void pxa2xx_timer_tick(void *opaque)
     if (t->num == 3)
         if (i->reset3 & 1) {
             i->reset3 = 0;
-            qemu_system_reset_request(SHUTDOWN_CAUSE_GUEST_RESET);
+            watchdog_perform_action();
         }
 }
 
@@ -501,7 +500,7 @@ static const VMStateDescription vmstate_pxa2xx_timer0_regs = {
     .name = "pxa2xx_timer0",
     .version_id = 2,
     .minimum_version_id = 2,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(value, PXA2xxTimer0),
         VMSTATE_END_OF_LIST(),
     },
@@ -511,7 +510,7 @@ static const VMStateDescription vmstate_pxa2xx_timer4_regs = {
     .name = "pxa2xx_timer4",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_STRUCT(tm, PXA2xxTimer4, 1,
                         vmstate_pxa2xx_timer0_regs, PXA2xxTimer0),
         VMSTATE_INT32(oldclock, PXA2xxTimer4),
@@ -533,7 +532,7 @@ static const VMStateDescription vmstate_pxa2xx_timer_regs = {
     .version_id = 1,
     .minimum_version_id = 1,
     .post_load = pxa25x_timer_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_INT32(clock, PXA2xxTimerInfo),
         VMSTATE_INT32(oldclock, PXA2xxTimerInfo),
         VMSTATE_UINT64(lastload, PXA2xxTimerInfo),
@@ -572,28 +571,6 @@ static const TypeInfo pxa25x_timer_dev_info = {
     .class_init    = pxa25x_timer_dev_class_init,
 };
 
-static Property pxa27x_timer_dev_properties[] = {
-    DEFINE_PROP_UINT32("freq", PXA2xxTimerInfo, freq, PXA27X_FREQ),
-    DEFINE_PROP_BIT("tm4", PXA2xxTimerInfo, flags,
-                    PXA2XX_TIMER_HAVE_TM4, true),
-    DEFINE_PROP_END_OF_LIST(),
-};
-
-static void pxa27x_timer_dev_class_init(ObjectClass *klass, void *data)
-{
-    DeviceClass *dc = DEVICE_CLASS(klass);
-
-    dc->desc = "PXA27x timer";
-    device_class_set_props(dc, pxa27x_timer_dev_properties);
-}
-
-static const TypeInfo pxa27x_timer_dev_info = {
-    .name          = "pxa27x-timer",
-    .parent        = TYPE_PXA2XX_TIMER,
-    .instance_size = sizeof(PXA2xxTimerInfo),
-    .class_init    = pxa27x_timer_dev_class_init,
-};
-
 static void pxa2xx_timer_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
@@ -615,7 +592,6 @@ static void pxa2xx_timer_register_types(void)
 {
     type_register_static(&pxa2xx_timer_type_info);
     type_register_static(&pxa25x_timer_dev_info);
-    type_register_static(&pxa27x_timer_dev_info);
 }
 
 type_init(pxa2xx_timer_register_types)

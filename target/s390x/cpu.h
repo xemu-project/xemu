@@ -29,11 +29,11 @@
 #include "cpu_models.h"
 #include "exec/cpu-defs.h"
 #include "qemu/cpu-float.h"
+#include "qapi/qapi-types-machine-common.h"
 
 #define ELF_MACHINE_UNAME "S390X"
 
-/* The z/Architecture has a strong memory model with some store-after-load re-ordering */
-#define TCG_GUEST_DEFAULT_MO      (TCG_MO_ALL & ~TCG_MO_ST_LD)
+#define TARGET_HAS_PRECISE_SMC
 
 #define TARGET_INSN_START_EXTRA_WORDS 2
 
@@ -52,7 +52,7 @@ typedef struct PSW {
     uint64_t addr;
 } PSW;
 
-struct CPUArchState {
+typedef struct CPUArchState {
     uint64_t regs[16];     /* GP registers */
     /*
      * The floating point registers are part of the vector registers.
@@ -74,9 +74,6 @@ struct CPUArchState {
     bool bpbc;             /* branch prediction blocking */
 
     float_status fpu_status; /* passed to softfloat lib */
-
-    /* The low part of a 128-bit return, or remainder of a divide.  */
-    uint64_t retxl;
 
     PSW psw;
 
@@ -132,6 +129,11 @@ struct CPUArchState {
 
 #if !defined(CONFIG_USER_ONLY)
     uint32_t core_id; /* PoP "CPU address", same as cpu_index */
+    int32_t socket_id;
+    int32_t book_id;
+    int32_t drawer_id;
+    bool dedicated;
+    S390CpuEntitlement entitlement; /* Used only for vertical polarization */
     uint64_t cpuid;
 #endif
 
@@ -152,7 +154,7 @@ struct CPUArchState {
     /* currently processed sigp order */
     uint8_t sigp_order;
 
-};
+} CPUS390XState;
 
 static inline uint64_t *get_freg(CPUS390XState *cs, int nr)
 {
@@ -166,11 +168,8 @@ static inline uint64_t *get_freg(CPUS390XState *cs, int nr)
  * An S/390 CPU.
  */
 struct ArchCPU {
-    /*< private >*/
     CPUState parent_obj;
-    /*< public >*/
 
-    CPUNegativeOffsetState neg;
     CPUS390XState env;
     S390CPUModel *model;
     /* needed for live migration */
@@ -178,6 +177,27 @@ struct ArchCPU {
     uint32_t irqstate_saved_size;
 };
 
+/**
+ * S390CPUClass:
+ * @parent_realize: The parent class' realize handler.
+ * @parent_phases: The parent class' reset phase handlers.
+ * @load_normal: Performs a load normal.
+ *
+ * An S/390 CPU model.
+ */
+struct S390CPUClass {
+    CPUClass parent_class;
+
+    const S390CPUDef *cpu_def;
+    bool kvm_required;
+    bool is_static;
+    bool is_migration_safe;
+    const char *desc;
+
+    DeviceRealize parent_realize;
+    ResettablePhases parent_phases;
+    void (*load_normal)(CPUState *cpu);
+};
 
 #ifndef CONFIG_USER_ONLY
 extern const VMStateDescription vmstate_s390_cpu;
@@ -293,6 +313,7 @@ extern const VMStateDescription vmstate_s390_cpu;
 #define PSW_MASK_32             0x0000000080000000ULL
 #define PSW_MASK_SHORT_ADDR     0x000000007fffffffULL
 #define PSW_MASK_SHORT_CTRL     0xffffffff80000000ULL
+#define PSW_MASK_RESERVED       0xb80800fe7fffffffULL
 
 #undef PSW_ASC_PRIMARY
 #undef PSW_ASC_ACCREG
@@ -312,19 +333,32 @@ extern const VMStateDescription vmstate_s390_cpu;
 
 /* tb flags */
 
-#define FLAG_MASK_PSW_SHIFT     31
-#define FLAG_MASK_PER           (PSW_MASK_PER    >> FLAG_MASK_PSW_SHIFT)
-#define FLAG_MASK_DAT           (PSW_MASK_DAT    >> FLAG_MASK_PSW_SHIFT)
-#define FLAG_MASK_PSTATE        (PSW_MASK_PSTATE >> FLAG_MASK_PSW_SHIFT)
-#define FLAG_MASK_ASC           (PSW_MASK_ASC    >> FLAG_MASK_PSW_SHIFT)
-#define FLAG_MASK_64            (PSW_MASK_64     >> FLAG_MASK_PSW_SHIFT)
-#define FLAG_MASK_32            (PSW_MASK_32     >> FLAG_MASK_PSW_SHIFT)
-#define FLAG_MASK_PSW           (FLAG_MASK_PER | FLAG_MASK_DAT | FLAG_MASK_PSTATE \
-                                | FLAG_MASK_ASC | FLAG_MASK_64 | FLAG_MASK_32)
+#define FLAG_MASK_PSW_SHIFT             31
+#define FLAG_MASK_32                    0x00000001u
+#define FLAG_MASK_64                    0x00000002u
+#define FLAG_MASK_AFP                   0x00000004u
+#define FLAG_MASK_VECTOR                0x00000008u
+#define FLAG_MASK_ASC                   0x00018000u
+#define FLAG_MASK_PSTATE                0x00020000u
+#define FLAG_MASK_PER_IFETCH_NULLIFY    0x01000000u
+#define FLAG_MASK_DAT                   0x08000000u
+#define FLAG_MASK_PER_STORE_REAL        0x20000000u
+#define FLAG_MASK_PER_IFETCH            0x40000000u
+#define FLAG_MASK_PER_BRANCH            0x80000000u
 
-/* we'll use some unused PSW positions to store CR flags in tb flags */
-#define FLAG_MASK_AFP           (PSW_MASK_UNUSED_2 >> FLAG_MASK_PSW_SHIFT)
-#define FLAG_MASK_VECTOR        (PSW_MASK_UNUSED_3 >> FLAG_MASK_PSW_SHIFT)
+QEMU_BUILD_BUG_ON(FLAG_MASK_32 != PSW_MASK_32 >> FLAG_MASK_PSW_SHIFT);
+QEMU_BUILD_BUG_ON(FLAG_MASK_64 != PSW_MASK_64 >> FLAG_MASK_PSW_SHIFT);
+QEMU_BUILD_BUG_ON(FLAG_MASK_ASC != PSW_MASK_ASC >> FLAG_MASK_PSW_SHIFT);
+QEMU_BUILD_BUG_ON(FLAG_MASK_PSTATE != PSW_MASK_PSTATE >> FLAG_MASK_PSW_SHIFT);
+QEMU_BUILD_BUG_ON(FLAG_MASK_DAT != PSW_MASK_DAT >> FLAG_MASK_PSW_SHIFT);
+
+#define FLAG_MASK_PSW           (FLAG_MASK_DAT | FLAG_MASK_PSTATE | \
+                                 FLAG_MASK_ASC | FLAG_MASK_64 | FLAG_MASK_32)
+#define FLAG_MASK_CR9           (FLAG_MASK_PER_BRANCH | FLAG_MASK_PER_IFETCH)
+#define FLAG_MASK_PER           (FLAG_MASK_PER_BRANCH | \
+                                 FLAG_MASK_PER_IFETCH | \
+                                 FLAG_MASK_PER_IFETCH_NULLIFY | \
+                                 FLAG_MASK_PER_STORE_REAL)
 
 /* Control register 0 bits */
 #define CR0_LOWPROT             0x0000000010000000ULL
@@ -348,7 +382,7 @@ extern const VMStateDescription vmstate_s390_cpu;
 #define MMU_HOME_IDX            2
 #define MMU_REAL_IDX            3
 
-static inline int cpu_mmu_index(CPUS390XState *env, bool ifetch)
+static inline int s390x_env_mmu_index(CPUS390XState *env, bool ifetch)
 {
 #ifdef CONFIG_USER_ONLY
     return MMU_USER_IDX;
@@ -379,28 +413,32 @@ static inline int cpu_mmu_index(CPUS390XState *env, bool ifetch)
 #endif
 }
 
-static inline void cpu_get_tb_cpu_state(CPUS390XState* env, target_ulong *pc,
-                                        target_ulong *cs_base, uint32_t *flags)
-{
-    *pc = env->psw.addr;
-    *cs_base = env->ex_value;
-    *flags = (env->psw.mask >> FLAG_MASK_PSW_SHIFT) & FLAG_MASK_PSW;
-    if (env->cregs[0] & CR0_AFP) {
-        *flags |= FLAG_MASK_AFP;
-    }
-    if (env->cregs[0] & CR0_VECTOR) {
-        *flags |= FLAG_MASK_VECTOR;
-    }
-}
+#ifdef CONFIG_TCG
+
+#include "tcg/tcg_s390x.h"
+
+void cpu_get_tb_cpu_state(CPUS390XState *env, vaddr *pc,
+                          uint64_t *cs_base, uint32_t *flags);
+
+#endif /* CONFIG_TCG */
 
 /* PER bits from control register 9 */
-#define PER_CR9_EVENT_BRANCH           0x80000000
-#define PER_CR9_EVENT_IFETCH           0x40000000
-#define PER_CR9_EVENT_STORE            0x20000000
-#define PER_CR9_EVENT_STORE_REAL       0x08000000
-#define PER_CR9_EVENT_NULLIFICATION    0x01000000
-#define PER_CR9_CONTROL_BRANCH_ADDRESS 0x00800000
-#define PER_CR9_CONTROL_ALTERATION     0x00200000
+#define PER_CR9_EVENT_BRANCH                    0x80000000
+#define PER_CR9_EVENT_IFETCH                    0x40000000
+#define PER_CR9_EVENT_STORE                     0x20000000
+#define PER_CR9_EVENT_STORAGE_KEY_ALTERATION    0x10000000
+#define PER_CR9_EVENT_STORE_REAL                0x08000000
+#define PER_CR9_EVENT_ZERO_ADDRESS_DETECTION    0x04000000
+#define PER_CR9_EVENT_TRANSACTION_END           0x02000000
+#define PER_CR9_EVENT_IFETCH_NULLIFICATION      0x01000000
+#define PER_CR9_CONTROL_BRANCH_ADDRESS          0x00800000
+#define PER_CR9_CONTROL_TRANSACTION_SUPRESS     0x00400000
+#define PER_CR9_CONTROL_STORAGE_ALTERATION      0x00200000
+
+QEMU_BUILD_BUG_ON(FLAG_MASK_PER_BRANCH != PER_CR9_EVENT_BRANCH);
+QEMU_BUILD_BUG_ON(FLAG_MASK_PER_IFETCH != PER_CR9_EVENT_IFETCH);
+QEMU_BUILD_BUG_ON(FLAG_MASK_PER_IFETCH_NULLIFY !=
+                  PER_CR9_EVENT_IFETCH_NULLIFICATION);
 
 /* PER bits from the PER CODE/ATMID/AI in lowcore */
 #define PER_CODE_EVENT_BRANCH          0x8000
@@ -444,8 +482,6 @@ static inline void cpu_get_tb_cpu_state(CPUS390XState* env, target_ulong *pc,
 #define S390_R13_REGNUM 15
 #define S390_R14_REGNUM 16
 #define S390_R15_REGNUM 17
-/* Total Core Registers. */
-#define S390_NUM_CORE_REGS 18
 
 static inline void setcc(S390CPU *cpu, uint64_t cc)
 {
@@ -556,6 +592,29 @@ typedef struct SysIB_322 {
 } SysIB_322;
 QEMU_BUILD_BUG_ON(sizeof(SysIB_322) != 4096);
 
+/*
+ * Topology Magnitude fields (MAG) indicates the maximum number of
+ * topology list entries (TLE) at the corresponding nesting level.
+ */
+#define S390_TOPOLOGY_MAG  6
+#define S390_TOPOLOGY_MAG6 0
+#define S390_TOPOLOGY_MAG5 1
+#define S390_TOPOLOGY_MAG4 2
+#define S390_TOPOLOGY_MAG3 3
+#define S390_TOPOLOGY_MAG2 4
+#define S390_TOPOLOGY_MAG1 5
+/* Configuration topology */
+typedef struct SysIB_151x {
+    uint8_t  reserved0[2];
+    uint16_t length;
+    uint8_t  mag[S390_TOPOLOGY_MAG];
+    uint8_t  reserved1;
+    uint8_t  mnest;
+    uint32_t reserved2;
+    char tle[];
+} SysIB_151x;
+QEMU_BUILD_BUG_ON(sizeof(SysIB_151x) != 16);
+
 typedef union SysIB {
     SysIB_111 sysib_111;
     SysIB_121 sysib_121;
@@ -563,8 +622,61 @@ typedef union SysIB {
     SysIB_221 sysib_221;
     SysIB_222 sysib_222;
     SysIB_322 sysib_322;
+    SysIB_151x sysib_151x;
 } SysIB;
 QEMU_BUILD_BUG_ON(sizeof(SysIB) != 4096);
+
+/*
+ * CPU Topology List provided by STSI with fc=15 provides a list
+ * of two different Topology List Entries (TLE) types to specify
+ * the topology hierarchy.
+ *
+ * - Container Topology List Entry
+ *   Defines a container to contain other Topology List Entries
+ *   of any type, nested containers or CPU.
+ * - CPU Topology List Entry
+ *   Specifies the CPUs position, type, entitlement and polarization
+ *   of the CPUs contained in the last container TLE.
+ *
+ * There can be theoretically up to five levels of containers, QEMU
+ * uses only three levels, the drawer's, book's and socket's level.
+ *
+ * A container with a nesting level (NL) greater than 1 can only
+ * contain another container of nesting level NL-1.
+ *
+ * A container of nesting level 1 (socket), contains as many CPU TLE
+ * as needed to describe the position and qualities of all CPUs inside
+ * the container.
+ * The qualities of a CPU are polarization, entitlement and type.
+ *
+ * The CPU TLE defines the position of the CPUs of identical qualities
+ * using a 64bits mask which first bit has its offset defined by
+ * the CPU address origin field of the CPU TLE like in:
+ * CPU address = origin * 64 + bit position within the mask
+ */
+/* Container type Topology List Entry */
+typedef struct SYSIBContainerListEntry {
+        uint8_t nl;
+        uint8_t reserved[6];
+        uint8_t id;
+} SYSIBContainerListEntry;
+QEMU_BUILD_BUG_ON(sizeof(SYSIBContainerListEntry) != 8);
+
+/* CPU type Topology List Entry */
+typedef struct SysIBCPUListEntry {
+        uint8_t nl;
+        uint8_t reserved0[3];
+#define SYSIB_TLE_POLARITY_MASK 0x03
+#define SYSIB_TLE_DEDICATED     0x04
+        uint8_t flags;
+        uint8_t type;
+        uint16_t origin;
+        uint64_t mask;
+} SysIBCPUListEntry;
+QEMU_BUILD_BUG_ON(sizeof(SysIBCPUListEntry) != 16);
+
+void insert_stsi_15_1_x(S390CPU *cpu, int sel2, uint64_t addr, uint8_t ar, uintptr_t ra);
+void s390_cpu_topology_set_changed(bool changed);
 
 /* MMU defines */
 #define ASCE_ORIGIN           (~0xfffULL) /* segment table origin             */
@@ -751,16 +863,12 @@ static inline void s390_do_cpu_full_reset(CPUState *cs, run_on_cpu_data arg)
 
 static inline void s390_do_cpu_reset(CPUState *cs, run_on_cpu_data arg)
 {
-    S390CPUClass *scc = S390_CPU_GET_CLASS(cs);
-
-    scc->reset(cs, S390_CPU_RESET_NORMAL);
+    resettable_reset(OBJECT(cs), RESET_TYPE_S390_CPU_NORMAL);
 }
 
 static inline void s390_do_cpu_initial_reset(CPUState *cs, run_on_cpu_data arg)
 {
-    S390CPUClass *scc = S390_CPU_GET_CLASS(cs);
-
-    scc->reset(cs, S390_CPU_RESET_INITIAL);
+    resettable_reset(OBJECT(cs), RESET_TYPE_S390_CPU_INITIAL);
 }
 
 static inline void s390_do_cpu_load_normal(CPUState *cs, run_on_cpu_data arg)
@@ -802,8 +910,6 @@ void s390_set_qemu_cpu_model(uint16_t type, uint8_t gen, uint8_t ec_ga,
 
 
 /* helper.c */
-#define S390_CPU_TYPE_SUFFIX "-" TYPE_S390_CPU
-#define S390_CPU_TYPE_NAME(name) (name S390_CPU_TYPE_SUFFIX)
 #define CPU_RESOLVING_TYPE TYPE_S390_CPU
 
 /* interrupt.c */

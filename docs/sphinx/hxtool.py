@@ -24,16 +24,10 @@ from docutils import nodes
 from docutils.statemachine import ViewList
 from docutils.parsers.rst import directives, Directive
 from sphinx.errors import ExtensionError
+from sphinx.util.docutils import switch_source_input
 from sphinx.util.nodes import nested_parse_with_titles
 import sphinx
 
-# Sphinx up to 1.6 uses AutodocReporter; 1.7 and later
-# use switch_source_input. Check borrowed from kerneldoc.py.
-Use_SSI = sphinx.__version__[:3] >= '1.7'
-if Use_SSI:
-    from sphinx.util.docutils import switch_source_input
-else:
-    from sphinx.ext.autodoc import AutodocReporter
 
 __version__ = '1.0'
 
@@ -49,7 +43,7 @@ def serror(file, lnum, errtext):
 
 def parse_directive(line):
     """Return first word of line, if any"""
-    return re.split('\W', line)[0]
+    return re.split(r'\W', line)[0]
 
 def parse_defheading(file, lnum, line):
     """Handle a DEFHEADING directive"""
@@ -77,6 +71,14 @@ def parse_archheading(file, lnum, line):
     if match is None:
         serror(file, lnum, "Invalid ARCHHEADING line")
     return match.group(1)
+
+def parse_srst(file, lnum, line):
+    """Handle an SRST directive"""
+    # The input should be either "SRST", or "SRST(label)".
+    match = re.match(r'SRST(\((.*?)\))?', line)
+    if match is None:
+        serror(file, lnum, "Invalid SRST line")
+    return match.group(2)
 
 class HxtoolDocDirective(Directive):
     """Extract rST fragments from the specified .hx file"""
@@ -113,6 +115,14 @@ class HxtoolDocDirective(Directive):
                         serror(hxfile, lnum, 'expected ERST, found SRST')
                     else:
                         state = HxState.RST
+                        label = parse_srst(hxfile, lnum, line)
+                        if label:
+                            rstlist.append("", hxfile, lnum - 1)
+                            # Build label as _DOCNAME-HXNAME-LABEL
+                            hx = os.path.splitext(os.path.basename(hxfile))[0]
+                            refline = ".. _" + env.docname + "-" + hx + \
+                                "-" + label + ":"
+                            rstlist.append(refline, hxfile, lnum - 1)
                 elif directive == 'ERST':
                     if state == HxState.CTEXT:
                         serror(hxfile, lnum, 'expected SRST, found ERST')
@@ -169,16 +179,9 @@ class HxtoolDocDirective(Directive):
     # of title_styles and section_level that kerneldoc.py does,
     # because nested_parse_with_titles() does that for us.
     def do_parse(self, result, node):
-        if Use_SSI:
-            with switch_source_input(self.state, result):
-                nested_parse_with_titles(self.state, result, node)
-        else:
-            save = self.state.memo.reporter
-            self.state.memo.reporter = AutodocReporter(result, self.state.memo.reporter)
-            try:
-                nested_parse_with_titles(self.state, result, node)
-            finally:
-                self.state.memo.reporter = save
+        with switch_source_input(self.state, result):
+            nested_parse_with_titles(self.state, result, node)
+
 
 def setup(app):
     """ Register hxtool-doc directive with Sphinx"""

@@ -23,6 +23,7 @@
 
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "exec/tswap.h"
 #include "cpu.h"
 #include "hw/cpu/a9mpcore.h"
 #include "hw/irq.h"
@@ -35,6 +36,7 @@
 #include "hw/arm/exynos4210.h"
 #include "hw/sd/sdhci.h"
 #include "hw/usb/hcd-ehci.h"
+#include "target/arm/cpu-qom.h"
 
 #define EXYNOS4210_CHIPID_ADDR         0x10000000
 
@@ -326,7 +328,7 @@ static int mapline_size(const int *mapline)
 
 /*
  * Initialize board IRQs.
- * These IRQs contain splitted Int/External Combiner and External Gic IRQs.
+ * These IRQs contain split Int/External Combiner and External Gic IRQs.
  */
 static void exynos4210_init_board_irqs(Exynos4210State *s)
 {
@@ -507,7 +509,7 @@ static uint64_t exynos4210_calc_affinity(int cpu)
     return (0x9 << ARM_AFF1_SHIFT) | cpu;
 }
 
-static DeviceState *pl330_create(uint32_t base, qemu_or_irq *orgate,
+static DeviceState *pl330_create(uint32_t base, OrIRQState *orgate,
                                  qemu_irq irq, int nreq, int nevents, int width)
 {
     SysBusDevice *busdev;
@@ -554,6 +556,7 @@ static void exynos4210_realize(DeviceState *socdev, Error **errp)
     for (n = 0; n < EXYNOS4210_NCPUS; n++) {
         Object *cpuobj = object_new(ARM_CPU_TYPE_NAME("cortex-a9"));
 
+        object_property_add_child(OBJECT(s), "cpu[*]", cpuobj);
         /* By default A9 CPUs have EL3 enabled.  This board does not currently
          * support EL3 so the CPU EL3 property is disabled before realization.
          */
@@ -744,7 +747,7 @@ static void exynos4210_realize(DeviceState *socdev, Error **errp)
          * - SDMA
          * - ADMA2
          *
-         * As this part of the Exynos4210 is not publically available,
+         * As this part of the Exynos4210 is not publicly available,
          * we used the "HS-MMC Controller S3C2416X RISC Microprocessor"
          * public datasheet which is very similar (implementing
          * MMC Specification Version 4.0 being the only difference noted)
@@ -766,11 +769,15 @@ static void exynos4210_realize(DeviceState *socdev, Error **errp)
     }
 
     /*** Display controller (FIMD) ***/
-    sysbus_create_varargs("exynos4210.fimd", EXYNOS4210_FIMD0_BASE_ADDR,
-            s->irq_table[exynos4210_get_irq(11, 0)],
-            s->irq_table[exynos4210_get_irq(11, 1)],
-            s->irq_table[exynos4210_get_irq(11, 2)],
-            NULL);
+    dev = qdev_new("exynos4210.fimd");
+    object_property_set_link(OBJECT(dev), "framebuffer-memory",
+                             OBJECT(system_mem), &error_fatal);
+    busdev = SYS_BUS_DEVICE(dev);
+    sysbus_realize_and_unref(busdev, &error_fatal);
+    sysbus_mmio_map(busdev, 0, EXYNOS4210_FIMD0_BASE_ADDR);
+    for (n = 0; n < 3; n++) {
+        sysbus_connect_irq(busdev, n, s->irq_table[exynos4210_get_irq(11, n)]);
+    }
 
     sysbus_create_simple(TYPE_EXYNOS4210_EHCI, EXYNOS4210_EHCI_BASE_ADDR,
             s->irq_table[exynos4210_get_irq(28, 3)]);
@@ -806,7 +813,7 @@ static void exynos4210_init(Object *obj)
 
     for (i = 0; i < ARRAY_SIZE(s->pl330_irq_orgate); i++) {
         char *name = g_strdup_printf("pl330-irq-orgate%d", i);
-        qemu_or_irq *orgate = &s->pl330_irq_orgate[i];
+        OrIRQState *orgate = &s->pl330_irq_orgate[i];
 
         object_initialize_child(obj, name, orgate, TYPE_OR_IRQ);
         g_free(name);

@@ -58,9 +58,9 @@ static inline void mips_vpe_wake(MIPSCPU *c)
      * because there might be other conditions that state that c should
      * be sleeping.
      */
-    qemu_mutex_lock_iothread();
+    bql_lock();
     cpu_interrupt(CPU(c), CPU_INTERRUPT_WAKE);
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
 }
 
 static inline void mips_vpe_sleep(MIPSCPU *cpu)
@@ -370,22 +370,6 @@ target_ulong helper_mfc0_count(CPUMIPSState *env)
     return (int32_t)cpu_mips_get_count(env);
 }
 
-target_ulong helper_mfc0_saar(CPUMIPSState *env)
-{
-    if ((env->CP0_SAARI & 0x3f) < 2) {
-        return (int32_t) env->CP0_SAAR[env->CP0_SAARI & 0x3f];
-    }
-    return 0;
-}
-
-target_ulong helper_mfhc0_saar(CPUMIPSState *env)
-{
-    if ((env->CP0_SAARI & 0x3f) < 2) {
-        return env->CP0_SAAR[env->CP0_SAARI & 0x3f] >> 32;
-    }
-    return 0;
-}
-
 target_ulong helper_mftc0_entryhi(CPUMIPSState *env)
 {
     int other_tc = env->CP0_VPEControl & (0xff << CP0VPECo_TargTC);
@@ -513,13 +497,6 @@ target_ulong helper_dmfc0_watchhi(CPUMIPSState *env, uint32_t sel)
     return env->CP0_WatchHi[sel];
 }
 
-target_ulong helper_dmfc0_saar(CPUMIPSState *env)
-{
-    if ((env->CP0_SAARI & 0x3f) < 2) {
-        return env->CP0_SAAR[env->CP0_SAARI & 0x3f];
-    }
-    return 0;
-}
 #endif /* TARGET_MIPS64 */
 
 void helper_mtc0_index(CPUMIPSState *env, target_ulong arg1)
@@ -1099,46 +1076,6 @@ void helper_mtc0_count(CPUMIPSState *env, target_ulong arg1)
     cpu_mips_store_count(env, arg1);
 }
 
-void helper_mtc0_saari(CPUMIPSState *env, target_ulong arg1)
-{
-    uint32_t target = arg1 & 0x3f;
-    if (target <= 1) {
-        env->CP0_SAARI = target;
-    }
-}
-
-void helper_mtc0_saar(CPUMIPSState *env, target_ulong arg1)
-{
-    uint32_t target = env->CP0_SAARI & 0x3f;
-    if (target < 2) {
-        env->CP0_SAAR[target] = arg1 & 0x00000ffffffff03fULL;
-        switch (target) {
-        case 0:
-            if (env->itu) {
-                itc_reconfigure(env->itu);
-            }
-            break;
-        }
-    }
-}
-
-void helper_mthc0_saar(CPUMIPSState *env, target_ulong arg1)
-{
-    uint32_t target = env->CP0_SAARI & 0x3f;
-    if (target < 2) {
-        env->CP0_SAAR[target] =
-            (((uint64_t) arg1 << 32) & 0x00000fff00000000ULL) |
-            (env->CP0_SAAR[target] & 0x00000000ffffffffULL);
-        switch (target) {
-        case 0:
-            if (env->itu) {
-                itc_reconfigure(env->itu);
-            }
-            break;
-        }
-    }
-}
-
 void helper_mtc0_entryhi(CPUMIPSState *env, target_ulong arg1)
 {
     target_ulong old, val, mask;
@@ -1201,7 +1138,7 @@ void helper_mtc0_status(CPUMIPSState *env, target_ulong arg1)
                 old, old & env->CP0_Cause & CP0Ca_IP_mask,
                 val, val & env->CP0_Cause & CP0Ca_IP_mask,
                 env->CP0_Cause);
-        switch (cpu_mmu_index(env, false)) {
+        switch (mips_env_mmu_index(env)) {
         case 3:
             qemu_log(", ERL\n");
             break;

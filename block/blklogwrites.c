@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2017 Tuomas Tynkkynen <tuomas@tuxera.com>
  * Copyright (c) 2018 Aapo Vienamo <aapo@tuxera.com>
- * Copyright (c) 2018 Ari Sundholm <ari@tuxera.com>
+ * Copyright (c) 2018-2024 Ari Sundholm <ari@tuxera.com>
  *
  * This work is licensed under the terms of the GNU GPL, version 2 or later.
  * See the COPYING file in the top-level directory.
@@ -12,6 +12,7 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
 #include "qemu/sockets.h" /* for EINPROGRESS on Windows */
+#include "block/block-io.h"
 #include "block/block_int.h"
 #include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qstring.h"
@@ -54,9 +55,34 @@ typedef struct {
     BdrvChild *log_file;
     uint32_t sectorsize;
     uint32_t sectorbits;
+    uint64_t update_interval;
+
+    /*
+     * The mutable state of the driver, consisting of the current log sector
+     * and the number of log entries.
+     *
+     * May be read and/or written from multiple threads, and the mutex must be
+     * held when accessing these fields.
+     */
     uint64_t cur_log_sector;
     uint64_t nr_entries;
-    uint64_t update_interval;
+    QemuMutex mutex;
+
+    /*
+     * The super block sequence number. Non-zero if a super block update is in
+     * progress.
+     *
+     * The mutex must be held when accessing this field.
+     */
+    uint64_t super_update_seq;
+
+    /*
+     * A coroutine-aware queue to serialize super block updates.
+     *
+     * Used with the mutex to ensure that only one thread be updating the super
+     * block at a time.
+     */
+    CoQueue super_update_queue;
 } BDRVBlkLogWritesState;
 
 static QemuOptsList runtime_opts = {
@@ -168,6 +194,9 @@ static int blk_log_writes_open(BlockDriverState *bs, QDict *options, int flags,
         goto fail;
     }
 
+    qemu_mutex_init(&s->mutex);
+    qemu_co_queue_init(&s->super_update_queue);
+
     log_append = qemu_opt_get_bool(opts, "log-append", false);
 
     if (log_append) {
@@ -230,6 +259,8 @@ static int blk_log_writes_open(BlockDriverState *bs, QDict *options, int flags,
         s->nr_entries = 0;
     }
 
+    s->super_update_seq = 0;
+
     if (!blk_log_writes_sector_size_valid(log_sector_size)) {
         ret = -EINVAL;
         error_setg(errp, "Invalid log sector size %"PRIu64, log_sector_size);
@@ -250,8 +281,11 @@ static int blk_log_writes_open(BlockDriverState *bs, QDict *options, int flags,
     ret = 0;
 fail_log:
     if (ret < 0) {
+        bdrv_graph_wrlock();
         bdrv_unref_child(bs, s->log_file);
+        bdrv_graph_wrunlock();
         s->log_file = NULL;
+        qemu_mutex_destroy(&s->mutex);
     }
 fail:
     qemu_opts_del(opts);
@@ -262,13 +296,17 @@ static void blk_log_writes_close(BlockDriverState *bs)
 {
     BDRVBlkLogWritesState *s = bs->opaque;
 
+    bdrv_graph_wrlock();
     bdrv_unref_child(bs, s->log_file);
     s->log_file = NULL;
+    bdrv_graph_wrunlock();
+    qemu_mutex_destroy(&s->mutex);
 }
 
-static int64_t blk_log_writes_getlength(BlockDriverState *bs)
+static int64_t coroutine_fn GRAPH_RDLOCK
+blk_log_writes_co_getlength(BlockDriverState *bs)
 {
-    return bdrv_getlength(bs->file->bs);
+    return bdrv_co_getlength(bs->file->bs);
 }
 
 static void blk_log_writes_child_perm(BlockDriverState *bs, BdrvChild *c,
@@ -289,11 +327,11 @@ static void blk_log_writes_child_perm(BlockDriverState *bs, BdrvChild *c,
 
 static void blk_log_writes_refresh_limits(BlockDriverState *bs, Error **errp)
 {
-    BDRVBlkLogWritesState *s = bs->opaque;
+    const BDRVBlkLogWritesState *s = bs->opaque;
     bs->bl.request_alignment = s->sectorsize;
 }
 
-static int coroutine_fn
+static int coroutine_fn GRAPH_RDLOCK
 blk_log_writes_co_preadv(BlockDriverState *bs, int64_t offset, int64_t bytes,
                          QEMUIOVector *qiov, BdrvRequestFlags flags)
 {
@@ -306,7 +344,7 @@ typedef struct BlkLogWritesFileReq {
     uint64_t bytes;
     int file_flags;
     QEMUIOVector *qiov;
-    int (*func)(struct BlkLogWritesFileReq *r);
+    int GRAPH_RDLOCK_PTR (*func)(struct BlkLogWritesFileReq *r);
     int file_ret;
 } BlkLogWritesFileReq;
 
@@ -318,40 +356,88 @@ typedef struct {
     int log_ret;
 } BlkLogWritesLogReq;
 
-static void coroutine_fn blk_log_writes_co_do_log(BlkLogWritesLogReq *lr)
+static void coroutine_fn GRAPH_RDLOCK
+blk_log_writes_co_do_log(BlkLogWritesLogReq *lr)
 {
     BDRVBlkLogWritesState *s = lr->bs->opaque;
-    uint64_t cur_log_offset = s->cur_log_sector << s->sectorbits;
 
-    s->nr_entries++;
-    s->cur_log_sector +=
-            ROUND_UP(lr->qiov->size, s->sectorsize) >> s->sectorbits;
+    /*
+     * Determine the offsets and sizes of different parts of the entry, and
+     * update the state of the driver.
+     *
+     * This needs to be done in one go, before any actual I/O is done, as the
+     * log entry may have to be written in two parts, and the state of the
+     * driver may be modified by other driver operations while waiting for the
+     * I/O to complete.
+     */
+    qemu_mutex_lock(&s->mutex);
+    const uint64_t entry_start_sector = s->cur_log_sector;
+    const uint64_t entry_offset = entry_start_sector << s->sectorbits;
+    const uint64_t qiov_aligned_size = ROUND_UP(lr->qiov->size, s->sectorsize);
+    const uint64_t entry_aligned_size = qiov_aligned_size +
+        ROUND_UP(lr->zero_size, s->sectorsize);
+    const uint64_t entry_nr_sectors = entry_aligned_size >> s->sectorbits;
+    const uint64_t entry_seq = s->nr_entries + 1;
 
-    lr->log_ret = bdrv_co_pwritev(s->log_file, cur_log_offset, lr->qiov->size,
+    s->nr_entries = entry_seq;
+    s->cur_log_sector += entry_nr_sectors;
+    qemu_mutex_unlock(&s->mutex);
+
+    /*
+     * Write the log entry. Note that if this is a "write zeroes" operation,
+     * only the entry header is written here, with the zeroing being done
+     * separately below.
+     */
+    lr->log_ret = bdrv_co_pwritev(s->log_file, entry_offset, lr->qiov->size,
                                   lr->qiov, 0);
 
     /* Logging for the "write zeroes" operation */
     if (lr->log_ret == 0 && lr->zero_size) {
-        cur_log_offset = s->cur_log_sector << s->sectorbits;
-        s->cur_log_sector +=
-                ROUND_UP(lr->zero_size, s->sectorsize) >> s->sectorbits;
+        const uint64_t zeroes_offset = entry_offset + qiov_aligned_size;
 
-        lr->log_ret = bdrv_co_pwrite_zeroes(s->log_file, cur_log_offset,
+        lr->log_ret = bdrv_co_pwrite_zeroes(s->log_file, zeroes_offset,
                                             lr->zero_size, 0);
     }
 
     /* Update super block on flush or every update interval */
     if (lr->log_ret == 0 && ((lr->entry.flags & LOG_FLUSH_FLAG)
-        || (s->nr_entries % s->update_interval == 0)))
+        || (entry_seq % s->update_interval == 0)))
     {
         struct log_write_super super = {
             .magic      = cpu_to_le64(WRITE_LOG_MAGIC),
             .version    = cpu_to_le64(WRITE_LOG_VERSION),
-            .nr_entries = cpu_to_le64(s->nr_entries),
+            .nr_entries = 0, /* updated below */
             .sectorsize = cpu_to_le32(s->sectorsize),
         };
-        void *zeroes = g_malloc0(s->sectorsize - sizeof(super));
+        void *zeroes;
         QEMUIOVector qiov;
+
+        /*
+         * Wait if a super block update is already in progress.
+         * Bail out if a newer update got its turn before us.
+         */
+        WITH_QEMU_LOCK_GUARD(&s->mutex) {
+            CoQueueWaitFlags wait_flags = 0;
+            while (s->super_update_seq) {
+                if (entry_seq < s->super_update_seq) {
+                    return;
+                }
+                qemu_co_queue_wait_flags(&s->super_update_queue,
+                    &s->mutex, wait_flags);
+
+                /*
+                 * In case the wait condition remains true after wakeup,
+                 * to avoid starvation, make sure that this request is
+                 * scheduled to rerun next by pushing it to the front of the
+                 * queue.
+                 */
+                wait_flags = CO_QUEUE_WAIT_FRONT;
+            }
+            s->super_update_seq = entry_seq;
+            super.nr_entries = cpu_to_le64(s->nr_entries);
+        }
+
+        zeroes = g_malloc0(s->sectorsize - sizeof(super));
 
         qemu_iovec_init(&qiov, 2);
         qemu_iovec_add(&qiov, &super, sizeof(super));
@@ -362,25 +448,33 @@ static void coroutine_fn blk_log_writes_co_do_log(BlkLogWritesLogReq *lr)
         if (lr->log_ret == 0) {
             lr->log_ret = bdrv_co_flush(s->log_file->bs);
         }
+
+        /* The super block has been updated. Let another request have a go. */
+        qemu_mutex_lock(&s->mutex);
+        s->super_update_seq = 0;
+        (void) qemu_co_queue_next(&s->super_update_queue);
+        qemu_mutex_unlock(&s->mutex);
+
         qemu_iovec_destroy(&qiov);
         g_free(zeroes);
     }
 }
 
-static void coroutine_fn blk_log_writes_co_do_file(BlkLogWritesFileReq *fr)
+static void coroutine_fn GRAPH_RDLOCK
+blk_log_writes_co_do_file(BlkLogWritesFileReq *fr)
 {
     fr->file_ret = fr->func(fr);
 }
 
-static int coroutine_fn
+static int coroutine_fn GRAPH_RDLOCK
 blk_log_writes_co_log(BlockDriverState *bs, uint64_t offset, uint64_t bytes,
                       QEMUIOVector *qiov, int flags,
-                      int (*file_func)(BlkLogWritesFileReq *r),
+                      int /*GRAPH_RDLOCK*/ (*file_func)(BlkLogWritesFileReq *r),
                       uint64_t entry_flags, bool is_zero_write)
 {
     QEMUIOVector log_qiov;
     size_t niov = qiov ? qiov->niov : 0;
-    BDRVBlkLogWritesState *s = bs->opaque;
+    const BDRVBlkLogWritesState *s = bs->opaque;
     BlkLogWritesFileReq fr = {
         .bs         = bs,
         .offset     = offset,
@@ -427,32 +521,33 @@ blk_log_writes_co_log(BlockDriverState *bs, uint64_t offset, uint64_t bytes,
     return fr.file_ret;
 }
 
-static int coroutine_fn
+static int coroutine_fn GRAPH_RDLOCK
 blk_log_writes_co_do_file_pwritev(BlkLogWritesFileReq *fr)
 {
     return bdrv_co_pwritev(fr->bs->file, fr->offset, fr->bytes,
                            fr->qiov, fr->file_flags);
 }
 
-static int coroutine_fn
+static int coroutine_fn GRAPH_RDLOCK
 blk_log_writes_co_do_file_pwrite_zeroes(BlkLogWritesFileReq *fr)
 {
     return bdrv_co_pwrite_zeroes(fr->bs->file, fr->offset, fr->bytes,
                                  fr->file_flags);
 }
 
-static int coroutine_fn blk_log_writes_co_do_file_flush(BlkLogWritesFileReq *fr)
+static int coroutine_fn GRAPH_RDLOCK
+blk_log_writes_co_do_file_flush(BlkLogWritesFileReq *fr)
 {
     return bdrv_co_flush(fr->bs->file->bs);
 }
 
-static int coroutine_fn
+static int coroutine_fn GRAPH_RDLOCK
 blk_log_writes_co_do_file_pdiscard(BlkLogWritesFileReq *fr)
 {
     return bdrv_co_pdiscard(fr->bs->file, fr->offset, fr->bytes);
 }
 
-static int coroutine_fn
+static int coroutine_fn GRAPH_RDLOCK
 blk_log_writes_co_pwritev(BlockDriverState *bs, int64_t offset, int64_t bytes,
                           QEMUIOVector *qiov, BdrvRequestFlags flags)
 {
@@ -460,7 +555,7 @@ blk_log_writes_co_pwritev(BlockDriverState *bs, int64_t offset, int64_t bytes,
                                  blk_log_writes_co_do_file_pwritev, 0, false);
 }
 
-static int coroutine_fn
+static int coroutine_fn GRAPH_RDLOCK
 blk_log_writes_co_pwrite_zeroes(BlockDriverState *bs, int64_t offset,
                                 int64_t bytes, BdrvRequestFlags flags)
 {
@@ -469,14 +564,15 @@ blk_log_writes_co_pwrite_zeroes(BlockDriverState *bs, int64_t offset,
                                  true);
 }
 
-static int coroutine_fn blk_log_writes_co_flush_to_disk(BlockDriverState *bs)
+static int coroutine_fn GRAPH_RDLOCK
+blk_log_writes_co_flush_to_disk(BlockDriverState *bs)
 {
     return blk_log_writes_co_log(bs, 0, 0, NULL, 0,
                                  blk_log_writes_co_do_file_flush,
                                  LOG_FLUSH_FLAG, false);
 }
 
-static int coroutine_fn
+static int coroutine_fn GRAPH_RDLOCK
 blk_log_writes_co_pdiscard(BlockDriverState *bs, int64_t offset, int64_t bytes)
 {
     return blk_log_writes_co_log(bs, offset, bytes, NULL, 0,
@@ -497,7 +593,7 @@ static BlockDriver bdrv_blk_log_writes = {
 
     .bdrv_open              = blk_log_writes_open,
     .bdrv_close             = blk_log_writes_close,
-    .bdrv_getlength         = blk_log_writes_getlength,
+    .bdrv_co_getlength      = blk_log_writes_co_getlength,
     .bdrv_child_perm        = blk_log_writes_child_perm,
     .bdrv_refresh_limits    = blk_log_writes_refresh_limits,
 

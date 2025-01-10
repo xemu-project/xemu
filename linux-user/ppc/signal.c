@@ -21,14 +21,8 @@
 #include "user-internals.h"
 #include "signal-common.h"
 #include "linux-user/trace.h"
-
-/* Size of dummy stack frame allocated when calling signal handler.
-   See arch/powerpc/include/asm/ptrace.h.  */
-#if defined(TARGET_PPC64)
-#define SIGNAL_FRAMESIZE 128
-#else
-#define SIGNAL_FRAMESIZE 64
-#endif
+#include "user/tswap-target.h"
+#include "vdso-asmoffset.h"
 
 /* See arch/powerpc/include/asm/ucontext.h.  Only used for 32-bit PPC;
    on 64-bit PPC, sigcontext and mcontext are one and the same.  */
@@ -72,6 +66,16 @@ struct target_mcontext {
     } mc_vregs;
 #endif
 };
+
+QEMU_BUILD_BUG_ON(offsetof(struct target_mcontext, mc_fregs)
+                  != offsetof_mcontext_fregs);
+#if defined(TARGET_PPC64)
+QEMU_BUILD_BUG_ON(offsetof(struct target_mcontext, v_regs)
+                  != offsetof_mcontext_vregs_ptr);
+#else
+QEMU_BUILD_BUG_ON(offsetof(struct target_mcontext, mc_vregs)
+                  != offsetof_mcontext_vregs);
+#endif
 
 /* See arch/powerpc/include/asm/sigcontext.h.  */
 struct target_sigcontext {
@@ -161,12 +165,17 @@ struct target_ucontext {
 #endif
 };
 
+#if !defined(TARGET_PPC64)
 /* See arch/powerpc/kernel/signal_32.c.  */
 struct target_sigframe {
     struct target_sigcontext sctx;
     struct target_mcontext mctx;
     int32_t abigap[56];
 };
+
+QEMU_BUILD_BUG_ON(offsetof(struct target_sigframe, mctx)
+                  != offsetof_sigframe_mcontext);
+#endif
 
 #if defined(TARGET_PPC64)
 
@@ -184,6 +193,10 @@ struct target_rt_sigframe {
     char abigap[288];
 } __attribute__((aligned(16)));
 
+QEMU_BUILD_BUG_ON(offsetof(struct target_rt_sigframe,
+                           uc.tuc_sigcontext.mcontext)
+                  != offsetof_rt_sigframe_mcontext);
+
 #else
 
 struct target_rt_sigframe {
@@ -191,6 +204,9 @@ struct target_rt_sigframe {
     struct target_ucontext uc;
     int32_t abigap[56];
 };
+
+QEMU_BUILD_BUG_ON(offsetof(struct target_rt_sigframe, uc.tuc_mcontext)
+                  != offsetof_rt_sigframe_mcontext);
 
 #endif
 
@@ -243,9 +259,7 @@ static void save_user_regs(CPUPPCState *env, struct target_mcontext *frame)
     __put_user(env->lr, &frame->mc_gregs[TARGET_PT_LNK]);
     __put_user(cpu_read_xer(env), &frame->mc_gregs[TARGET_PT_XER]);
 
-    for (i = 0; i < ARRAY_SIZE(env->crf); i++) {
-        ccr |= env->crf[i] << (32 - ((i + 1) * 4));
-    }
+    ccr = ppc_get_cr(env);
     __put_user(ccr, &frame->mc_gregs[TARGET_PT_CCR]);
 
     /* Save Altivec registers if necessary.  */
@@ -335,10 +349,7 @@ static void restore_user_regs(CPUPPCState *env,
     cpu_write_xer(env, xer);
 
     __get_user(ccr, &frame->mc_gregs[TARGET_PT_CCR]);
-    for (i = 0; i < ARRAY_SIZE(env->crf); i++) {
-        env->crf[i] = (ccr >> (32 - ((i + 1) * 4))) & 0xf;
-    }
-
+    ppc_set_cr(env, ccr);
     if (!sig) {
         env->gpr[2] = save_r2;
     }
@@ -476,14 +487,14 @@ void setup_rt_frame(int sig, struct target_sigaction *ka,
     int i, err = 0;
 #if defined(TARGET_PPC64)
     struct target_sigcontext *sc = 0;
-    struct image_info *image = ((TaskState *)thread_cpu->opaque)->info;
+    struct image_info *image = get_task_state(thread_cpu)->info;
 #endif
 
     rt_sf_addr = get_sigframe(ka, env, sizeof(*rt_sf));
     if (!lock_user_struct(VERIFY_WRITE, rt_sf, rt_sf_addr, 1))
         goto sigsegv;
 
-    tswap_siginfo(&rt_sf->info, info);
+    rt_sf->info = *info;
 
     __put_user(0, &rt_sf->uc.tuc_flags);
     __put_user(0, &rt_sf->uc.tuc_link);
@@ -492,7 +503,7 @@ void setup_rt_frame(int sig, struct target_sigaction *ka,
     __put_user(h2g (&rt_sf->uc.tuc_mcontext),
                &rt_sf->uc.tuc_regs);
 #endif
-    for(i = 0; i < TARGET_NSIG_WORDS; i++) {
+    for (i = 0; i < TARGET_NSIG_WORDS; i++) {
         __put_user(set->sig[i], &rt_sf->uc.tuc_sigmask.sig[i]);
     }
 
@@ -617,7 +628,7 @@ static int do_setcontext(struct target_ucontext *ucp, CPUPPCState *env, int sig)
     if (!lock_user_struct(VERIFY_READ, mcp, mcp_addr, 1))
         return 1;
 
-    target_to_host_sigset_internal(&blocked, &set);
+    target_to_host_sigset(&blocked, &set);
     set_sigmask(&blocked);
     restore_user_regs(env, mcp, sig);
 
@@ -663,7 +674,7 @@ abi_long do_swapcontext(CPUArchState *env, abi_ulong uold_ctx,
     }
 
     if (uold_ctx) {
-        TaskState *ts = (TaskState *)thread_cpu->opaque;
+        TaskState *ts = get_task_state(thread_cpu);
 
         if (!lock_user_struct(VERIFY_WRITE, uctx, uold_ctx, 1)) {
             return -TARGET_EFAULT;

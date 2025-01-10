@@ -17,6 +17,7 @@
  *  along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 #include "qemu/osdep.h"
+#include "exec/page-protection.h"
 
 #include "qemu.h"
 
@@ -32,6 +33,7 @@ void mmap_lock(void)
 
 void mmap_unlock(void)
 {
+    assert(mmap_lock_count > 0);
     if (--mmap_lock_count == 0) {
         pthread_mutex_unlock(&mmap_mutex);
     }
@@ -95,7 +97,7 @@ int target_mprotect(abi_ulong start, abi_ulong len, int prot)
             end = host_end;
         }
         ret = mprotect(g2h_untagged(host_start),
-                       qemu_host_page_size, prot1 & PAGE_BITS);
+                       qemu_host_page_size, prot1 & PAGE_RWX);
         if (ret != 0)
             goto error;
         host_start += qemu_host_page_size;
@@ -106,7 +108,7 @@ int target_mprotect(abi_ulong start, abi_ulong len, int prot)
             prot1 |= page_get_flags(addr);
         }
         ret = mprotect(g2h_untagged(host_end - qemu_host_page_size),
-                       qemu_host_page_size, prot1 & PAGE_BITS);
+                       qemu_host_page_size, prot1 & PAGE_RWX);
         if (ret != 0)
             goto error;
         host_end -= qemu_host_page_size;
@@ -118,12 +120,46 @@ int target_mprotect(abi_ulong start, abi_ulong len, int prot)
         if (ret != 0)
             goto error;
     }
-    page_set_flags(start, start + len, prot | PAGE_VALID);
+    page_set_flags(start, start + len - 1, prot | PAGE_VALID);
     mmap_unlock();
     return 0;
 error:
     mmap_unlock();
     return ret;
+}
+
+/*
+ * Perform a pread on behalf of target_mmap.  We can reach EOF, we can be
+ * interrupted by signals, and in general there's no good error return path.
+ * If @zero, zero the rest of the block at EOF.
+ * Return true on success.
+ */
+static bool mmap_pread(int fd, void *p, size_t len, off_t offset, bool zero)
+{
+    while (1) {
+        ssize_t r = pread(fd, p, len, offset);
+
+        if (likely(r == len)) {
+            /* Complete */
+            return true;
+        }
+        if (r == 0) {
+            /* EOF */
+            if (zero) {
+                memset(p, 0, len);
+            }
+            return true;
+        }
+        if (r > 0) {
+            /* Short read */
+            p += r;
+            len -= r;
+            offset += r;
+        } else if (errno != EINTR) {
+            /* Error */
+            return false;
+        }
+    }
 }
 
 /*
@@ -173,7 +209,7 @@ static int mmap_frag(abi_ulong real_start,
             return -1;
         prot1 = prot;
     }
-    prot1 &= PAGE_BITS;
+    prot1 &= PAGE_RWX;
 
     prot_new = prot | prot1;
     if (fd != -1) {
@@ -188,7 +224,7 @@ static int mmap_frag(abi_ulong real_start,
             mprotect(host_start, qemu_host_page_size, prot1 | PROT_WRITE);
 
         /* read the corresponding file data */
-        if (pread(fd, g2h_untagged(start), end - start, offset) == -1) {
+        if (!mmap_pread(fd, g2h_untagged(start), end - start, offset, true)) {
             return -1;
         }
 
@@ -213,8 +249,6 @@ static int mmap_frag(abi_ulong real_start,
 #endif
 abi_ulong mmap_next_start = TASK_UNMAPPED_BASE;
 
-unsigned long last_brk;
-
 /*
  * Subroutine of mmap_find_vma, used when we have pre-allocated a chunk of guest
  * address space.
@@ -222,50 +256,16 @@ unsigned long last_brk;
 static abi_ulong mmap_find_vma_reserved(abi_ulong start, abi_ulong size,
                                         abi_ulong alignment)
 {
-    abi_ulong addr;
-    abi_ulong end_addr;
-    int prot;
-    int looped = 0;
+    abi_ulong ret;
 
-    if (size > reserved_va) {
-        return (abi_ulong)-1;
-    }
-
-    size = HOST_PAGE_ALIGN(size) + alignment;
-    end_addr = start + size;
-    if (end_addr > reserved_va) {
-        end_addr = reserved_va;
-    }
-    addr = end_addr - qemu_host_page_size;
-
-    while (1) {
-        if (addr > end_addr) {
-            if (looped) {
-                return (abi_ulong)-1;
-            }
-            end_addr = reserved_va;
-            addr = end_addr - qemu_host_page_size;
-            looped = 1;
-            continue;
-        }
-        prot = page_get_flags(addr);
-        if (prot) {
-            end_addr = addr;
-        }
-        if (end_addr - addr >= size) {
-            break;
-        }
-        addr -= qemu_host_page_size;
+    ret = page_find_range_empty(start, reserved_va, size, alignment);
+    if (ret == -1 && start > TARGET_PAGE_SIZE) {
+        /* Restart at the beginning of the address space. */
+        ret = page_find_range_empty(TARGET_PAGE_SIZE, start - 1,
+                                    size, alignment);
     }
 
-    if (start == mmap_next_start) {
-        mmap_next_start = addr;
-    }
-    /* addr is sufficiently low to align it up */
-    if (alignment != 0) {
-        addr = (addr + alignment) & ~(alignment - 1);
-    }
-    return addr;
+    return ret;
 }
 
 /*
@@ -293,7 +293,8 @@ static abi_ulong mmap_find_vma_aligned(abi_ulong start, abi_ulong size,
 
     if (reserved_va) {
         return mmap_find_vma_reserved(start, size,
-            (alignment != 0 ? 1 << alignment : 0));
+            (alignment != 0 ? 1 << alignment :
+             MAX(qemu_host_page_size, TARGET_PAGE_SIZE)));
     }
 
     addr = start;
@@ -598,7 +599,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int prot,
                                   -1, 0);
             if (retaddr == -1)
                 goto fail;
-            if (pread(fd, g2h_untagged(start), len, offset) == -1) {
+            if (!mmap_pread(fd, g2h_untagged(start), len, offset, false)) {
                 goto fail;
             }
             if (!(prot & PROT_WRITE)) {
@@ -609,7 +610,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int prot,
         }
 
         /* Reject the mapping if any page within the range is mapped */
-        if ((flags & MAP_EXCL) && page_check_range(start, len, 0) < 0) {
+        if ((flags & MAP_EXCL) && !page_check_range_empty(start, end - 1)) {
             errno = EINVAL;
             goto fail;
         }
@@ -656,7 +657,7 @@ abi_long target_mmap(abi_ulong start, abi_ulong len, int prot,
         }
     }
  the_end1:
-    page_set_flags(start, start + len, prot | PAGE_VALID);
+    page_set_flags(start, start + len - 1, prot | PAGE_VALID);
  the_end:
 #ifdef DEBUG_MMAP
     printf("ret=0x" TARGET_ABI_FMT_lx "\n", start);
@@ -670,7 +671,7 @@ fail:
     return -1;
 }
 
-static void mmap_reserve(abi_ulong start, abi_ulong size)
+void mmap_reserve(abi_ulong start, abi_ulong size)
 {
     abi_ulong real_start;
     abi_ulong real_end;
@@ -767,7 +768,7 @@ int target_munmap(abi_ulong start, abi_ulong len)
     }
 
     if (ret == 0) {
-        page_set_flags(start, start + len, 0);
+        page_set_flags(start, start + len - 1, 0);
     }
     mmap_unlock();
     return ret;

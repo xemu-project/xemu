@@ -25,7 +25,12 @@ import collections
 import random
 import subprocess
 import glob
-from typing import List, Dict, Any, Optional, ContextManager
+from typing import List, Dict, Any, Optional
+
+if sys.version_info >= (3, 9):
+    from contextlib import AbstractContextManager as ContextManager
+else:
+    from typing import ContextManager
 
 DEF_GDB_OPTIONS = 'localhost:12345'
 
@@ -40,7 +45,7 @@ def get_default_machine(qemu_prog: str) -> str:
 
     machines = outp.split('\n')
     try:
-        default_machine = next(m for m in machines if m.endswith(' (default)'))
+        default_machine = next(m for m in machines if ' (default)' in m)
     except StopIteration:
         return ''
     default_machine = default_machine.split(' ', 1)[0]
@@ -126,7 +131,7 @@ class TestEnv(ContextManager['TestEnv']):
             self.tmp_sock_dir = False
             Path(self.sock_dir).mkdir(parents=True, exist_ok=True)
         except KeyError:
-            self.sock_dir = tempfile.mkdtemp()
+            self.sock_dir = tempfile.mkdtemp(prefix="qemu-iotests-")
             self.tmp_sock_dir = True
 
         self.sample_img_dir = os.getenv('SAMPLE_IMG_DIR',
@@ -170,14 +175,16 @@ class TestEnv(ContextManager['TestEnv']):
             if not isxfile(b):
                 sys.exit('Not executable: ' + b)
 
-    def __init__(self, imgfmt: str, imgproto: str, aiomode: str,
+    def __init__(self, source_dir: str, build_dir: str,
+                 imgfmt: str, imgproto: str, aiomode: str,
                  cachemode: Optional[str] = None,
                  imgopts: Optional[str] = None,
                  misalign: bool = False,
                  debug: bool = False,
                  valgrind: bool = False,
                  gdb: bool = False,
-                 qprint: bool = False) -> None:
+                 qprint: bool = False,
+                 dry_run: bool = False) -> None:
         self.imgfmt = imgfmt
         self.imgproto = imgproto
         self.aiomode = aiomode
@@ -211,18 +218,16 @@ class TestEnv(ContextManager['TestEnv']):
         # which are needed to initialize some environment variables. They are
         # used by init_*() functions as well.
 
-        if os.path.islink(sys.argv[0]):
-            # called from the build tree
-            self.source_iotests = os.path.dirname(os.readlink(sys.argv[0]))
-            self.build_iotests = os.path.dirname(os.path.abspath(sys.argv[0]))
-        else:
-            # called from the source tree
-            self.source_iotests = os.getcwd()
-            self.build_iotests = self.source_iotests
+        self.source_iotests = source_dir
+        self.build_iotests = build_dir
 
-        self.build_root = os.path.join(self.build_iotests, '..', '..')
+        self.build_root = Path(self.build_iotests).parent.parent
 
         self.init_directories()
+
+        if dry_run:
+            return
+
         self.init_binaries()
 
         self.malloc_perturb_ = os.getenv('MALLOC_PERTURB_',
@@ -235,9 +240,12 @@ class TestEnv(ContextManager['TestEnv']):
             ('aarch64', 'virt'),
             ('avr', 'mega2560'),
             ('m68k', 'virt'),
+            ('or1k', 'virt'),
             ('riscv32', 'virt'),
             ('riscv64', 'virt'),
             ('rx', 'gdbsim-r5f562n8'),
+            ('sh4', 'r2d'),
+            ('sh4eb', 'r2d'),
             ('tricore', 'tricore_testboard')
         )
         for suffix, machine in machine_map:
@@ -250,7 +258,7 @@ class TestEnv(ContextManager['TestEnv']):
         self.qemu_img_options = os.getenv('QEMU_IMG_OPTIONS')
         self.qemu_nbd_options = os.getenv('QEMU_NBD_OPTIONS')
 
-        is_generic = self.imgfmt not in ['bochs', 'cloop', 'dmg']
+        is_generic = self.imgfmt not in ['bochs', 'cloop', 'dmg', 'vvfat']
         self.imgfmt_generic = 'true' if is_generic else 'false'
 
         self.qemu_io_options = f'--cache {self.cachemode} --aio {self.aiomode}'

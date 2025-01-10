@@ -2,7 +2,7 @@
  * QEMU nForce Ethernet Controller implementation
  *
  * Copyright (c) 2013 espes
- * Copyright (c) 2015-2021 Matt Borgerson
+ * Copyright (c) 2015-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -21,8 +21,8 @@
 #include "qemu/osdep.h"
 #include "trace.h"
 #include "hw/hw.h"
-#include "hw/i386/pc.h"
 #include "hw/pci/pci.h"
+#include "hw/pci/pci_device.h"
 #include "hw/qdev-properties.h"
 #include "net/net.h"
 #include "qemu/bswap.h"
@@ -98,7 +98,7 @@ static void nvnet_uninit(PCIDevice *dev);
 static void nvnet_class_init(ObjectClass *klass, void *data);
 static void nvnet_cleanup(NetClientState *nc);
 static void nvnet_reset(void *opaque);
-static void qdev_nvnet_reset(DeviceState *dev);
+static void nvnet_reset_hold(Object *obj, ResetType type);
 static void nvnet_register(void);
 
 /* MMIO / IO / Phy / Device Register Access */
@@ -290,10 +290,8 @@ out:
  */
 static uint64_t nvnet_mmio_read(void *opaque, hwaddr addr, unsigned int size)
 {
-    NvNetState *s;
+    NvNetState *s = NVNET_DEVICE(opaque);
     uint64_t retval;
-
-    s = NVNET_DEVICE(opaque);
 
     switch (addr) {
     case NvRegMIIData:
@@ -415,7 +413,7 @@ static void nvnet_send_packet(NvNetState *s, const uint8_t *buf, int size)
 static bool nvnet_can_receive(NetClientState *nc)
 {
     NVNET_DPRINTF("nvnet_can_receive called\n");
-    return 1;
+    return true;
 }
 
 static ssize_t nvnet_receive(NetClientState *nc,
@@ -520,16 +518,15 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
                                          const uint8_t *buf, size_t size)
 {
     PCIDevice *d = PCI_DEVICE(s);
-    struct RingDesc desc;
-    int i;
     bool did_receive = false;
 
     nvnet_set_reg(s, NvRegTxRxControl,
         nvnet_get_reg(s, NvRegTxRxControl, 4) & ~NVREG_TXRXCTL_IDLE,
         4);
 
-    for (i = 0; i < s->rx_ring_size; i++) {
+    for (int i = 0; i < s->rx_ring_size; i++) {
         /* Read current ring descriptor */
+        struct RingDesc desc;
         s->rx_ring_index %= s->rx_ring_size;
         dma_addr_t rx_ring_addr = nvnet_get_reg(s, NvRegRxRingPhysAddr, 4);
         rx_ring_addr += s->rx_ring_index * sizeof(desc);
@@ -586,17 +583,15 @@ static ssize_t nvnet_dma_packet_to_guest(NvNetState *s,
 static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
 {
     PCIDevice *d = PCI_DEVICE(s);
-    struct RingDesc desc;
-    bool is_last_packet;
     bool packet_sent = false;
-    int i;
 
     nvnet_set_reg(s, NvRegTxRxControl,
         nvnet_get_reg(s, NvRegTxRxControl, 4) & ~NVREG_TXRXCTL_IDLE,
         4);
 
-    for (i = 0; i < s->tx_ring_size; i++) {
+    for (int i = 0; i < s->tx_ring_size; i++) {
         /* Read ring descriptor */
+        struct RingDesc desc;
         s->tx_ring_index %= s->tx_ring_size;
         dma_addr_t tx_ring_addr = nvnet_get_reg(s, NvRegTxRingPhysAddr, 4);
         tx_ring_addr += s->tx_ring_index * sizeof(desc);
@@ -621,7 +616,7 @@ static ssize_t nvnet_dma_packet_from_guest(NvNetState *s)
         s->tx_dma_buf_offset += desc.length + 1;
 
         /* Update descriptor */
-        is_last_packet = desc.flags & NV_TX_LASTPACKET;
+        bool is_last_packet = desc.flags & NV_TX_LASTPACKET;
         if (is_last_packet) {
             NVNET_DPRINTF("Sending packet...\n");
             nvnet_send_packet(s, s->tx_dma_buf, s->tx_dma_buf_offset);
@@ -741,7 +736,7 @@ static void nvnet_realize(PCIDevice *pci_dev, Error **errp)
 
     qemu_macaddr_default_if_unset(&s->conf.macaddr);
     s->nic = qemu_new_nic(&net_nvnet_info, &s->conf,
-        object_get_typename(OBJECT(s)), dev->id, s);
+        object_get_typename(OBJECT(s)), dev->id, &dev->mem_reentrancy_guard, s);
     assert(s->nic);
 }
 
@@ -781,9 +776,9 @@ static void nvnet_reset(void *opaque)
     memset(&s->rx_dma_buf, 0, sizeof(s->rx_dma_buf));
 }
 
-static void qdev_nvnet_reset(DeviceState *dev)
+static void nvnet_reset_hold(Object *obj, ResetType type)
 {
-    NvNetState *s = NVNET_DEVICE(dev);
+    NvNetState *s = NVNET_DEVICE(obj);
     nvnet_reset(s);
 }
 
@@ -955,6 +950,7 @@ static const VMStateDescription vmstate_nvnet = {
 static void nvnet_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
     PCIDeviceClass *k = PCI_DEVICE_CLASS(klass);
 
     k->vendor_id = PCI_VENDOR_ID_NVIDIA;
@@ -964,9 +960,10 @@ static void nvnet_class_init(ObjectClass *klass, void *data)
     k->realize = nvnet_realize;
     k->exit = nvnet_uninit;
 
+    rc->phases.hold = nvnet_reset_hold;
+
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
     dc->desc = "nForce Ethernet Controller";
-    dc->reset = qdev_nvnet_reset;
     dc->vmsd = &vmstate_nvnet;
     device_class_set_props(dc, nvnet_properties);
 }

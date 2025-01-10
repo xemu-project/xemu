@@ -355,13 +355,13 @@ The ``-writeconfig`` option was not able to serialize the entire contents
 of the QEMU command line.  It is thus considered a failed experiment
 and removed without a replacement.
 
-``loaded`` property of ``secret`` and ``secret_keyring`` objects (removed in 7.1)
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+``loaded`` property of secret and TLS credential objects (removed in 9.2)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 The ``loaded=on`` option in the command line or QMP ``object-add`` either had
 no effect (if ``loaded`` was the last option) or caused options to be
 effectively ignored as if they were not given.  The property is therefore
-useless and should simply be removed.
+useless and has been removed.
 
 ``opened`` property of ``rng-*`` objects (removed in 7.1)
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -407,6 +407,163 @@ pcspk-audiodev=<name>``.
 '''''''''''''''''''''''''
 
 Use ``-device`` instead.
+
+Hexadecimal sizes with scaling multipliers (since 8.0)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Input parameters that take a size value should only use a size suffix
+(such as 'k' or 'M') when the base is written in decimal, and not when
+the value is hexadecimal.  That is, '0x20M' should be written either as
+'32M' or as '0x2000000'.
+
+``-chardev`` backend aliases ``tty`` and ``parport`` (removed in 8.0)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+``tty`` and ``parport`` used to be aliases for ``serial`` and ``parallel``
+respectively. The actual backend names should be used instead.
+
+``-drive if=none`` for the sifive_u OTP device (removed in 8.0)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Use ``-drive if=pflash`` to configure the OTP device of the sifive_u
+RISC-V machine instead.
+
+``-spice password=string`` (removed in 8.0)
+'''''''''''''''''''''''''''''''''''''''''''
+
+This option was insecure because the SPICE password remained visible in
+the process listing. This was replaced by the new ``password-secret``
+option which lets the password be securely provided on the command
+line using a ``secret`` object instance.
+
+``QEMU_AUDIO_`` environment variables and ``-audio-help`` (removed in 8.2)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+The ``-audiodev`` and ``-audio`` command line options are now the only
+way to specify audio backend settings.
+
+Using ``-audiodev`` to define the default audio backend (removed in 8.2)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+If no audiodev property is specified, previous versions would use the
+first ``-audiodev`` command line option as a fallback.  Starting with
+version 8.2, audio backends created with ``-audiodev`` will only be
+used by clients (sound cards, machines with embedded sound hardware, VNC)
+that refer to it in an ``audiodev=`` property.
+
+In order to configure a default audio backend, use the ``-audio``
+command line option without specifying a ``model``; while previous
+versions of QEMU required a model, starting with version 8.2
+QEMU does not require a model and will not create any sound card
+in this case.
+
+Note that the default audio backend must be configured on the command
+line if the ``-nodefaults`` options is used.
+
+``-no-hpet`` (removed in 9.0)
+'''''''''''''''''''''''''''''
+
+The HPET setting has been turned into a machine property.
+Use ``-machine hpet=off`` instead.
+
+``-no-acpi`` (removed in 9.0)
+'''''''''''''''''''''''''''''
+
+The ``-no-acpi`` setting has been turned into a machine property.
+Use ``-machine acpi=off`` instead.
+
+``-async-teardown`` (removed in 9.0)
+''''''''''''''''''''''''''''''''''''
+
+Use ``-run-with async-teardown=on`` instead.
+
+``-chroot`` (removed in 9.0)
+''''''''''''''''''''''''''''
+
+Use ``-run-with chroot=dir`` instead.
+
+``-singlestep`` (removed in 9.0)
+''''''''''''''''''''''''''''''''
+
+The ``-singlestep`` option has been turned into an accelerator property,
+and given a name that better reflects what it actually does.
+Use ``-accel tcg,one-insn-per-tb=on`` instead.
+
+``-smp`` ("parameter=0" SMP configurations) (removed in 9.0)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Specified CPU topology parameters must be greater than zero.
+
+In the SMP configuration, users should either provide a CPU topology
+parameter with a reasonable value (greater than zero) or just omit it
+and QEMU will compute the missing value.
+
+However, historically it was implicitly allowed for users to provide
+a parameter with zero value, which is meaningless and could also possibly
+cause unexpected results in the -smp parsing. So support for this kind of
+configurations (e.g. -smp 8,sockets=0) is removed since 9.0, users have
+to ensure that all the topology members described with -smp are greater
+than zero.
+
+``-global migration.decompress-error-check`` (removed in 9.1)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Removed along with the ``compression`` migration capability.
+
+``-device virtio-blk,scsi=on|off`` (since 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''
+
+The virtio-blk SCSI passthrough feature is a legacy VIRTIO feature.  VIRTIO 1.0
+and later do not support it because the virtio-scsi device was introduced for
+full SCSI support.  Use virtio-scsi instead when SCSI passthrough is required.
+
+``-fsdev proxy`` and ``-virtfs proxy`` (since 9.2)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The 9p ``proxy`` filesystem backend driver was originally developed to
+enhance security by dispatching low level filesystem operations from 9p
+server (QEMU process) over to a separate process (the virtfs-proxy-helper
+binary). However the proxy backend was much slower than the local backend,
+didn't see any development in years, and showed to be less secure,
+especially due to the fact that its helper daemon must be run as root.
+
+Use ``local``, possibly mapping permissions et al by using its 'mapped'
+security model option, or switch to ``virtiofs``.   The virtiofs daemon
+``virtiofsd`` uses vhost to eliminate the high latency costs of the 9p
+``proxy`` backend.
+
+``-portrait`` and ``-rotate`` (since 9.2)
+'''''''''''''''''''''''''''''''''''''''''
+
+The ``-portrait`` and ``-rotate`` options were documented as only
+working with the PXA LCD device, and all the machine types using
+that display device were removed in 9.2, so these options also
+have been dropped.
+
+These options were intended to simulate a mobile device being
+rotated by the user, and had three effects:
+
+* the display output was rotated by 90, 180 or 270 degrees
+* the mouse/trackpad input was rotated the opposite way
+* the machine model would signal to the guest about its
+  orientation
+
+Of these three things, the input-rotation was coded without being
+restricted to boards which supported the full set of device-rotation
+handling, so in theory the options were usable on other machine models
+to produce an odd effect (rotating input but not display output). But
+this was never intended or documented behaviour, so we have dropped
+the options along with the machine models they were intended for.
+
+User-mode emulator command line arguments
+-----------------------------------------
+
+``-singlestep`` (removed in 9.0)
+''''''''''''''''''''''''''''''''
+
+The ``-singlestep`` option has been given a name that better reflects
+what it actually does. For both linux-user and bsd-user, use the
+``-one-insn-per-tb`` option instead.
 
 
 QEMU Machine Protocol (QMP) commands
@@ -494,6 +651,86 @@ type of array items in query-named-block-nodes.
 
 Specify the properties for the object as top-level arguments instead.
 
+``query-sgx`` return value member ``section-size`` (removed in 8.0)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Member ``section-size`` in the return value of ``query-sgx``
+was superseded by ``sections``.
+
+
+``query-sgx-capabilities`` return value member ``section-size`` (removed in 8.0)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Member ``section-size`` in the return value of ``query-sgx-capabilities``
+was superseded by ``sections``.
+
+``query-migrate`` return value member ``skipped`` (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Member ``skipped`` of the ``MigrationStats`` struct hasn't been used
+for more than 10 years. Removed with no replacement.
+
+``migrate`` command option ``inc`` (removed in 9.1)
+'''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Use blockdev-mirror with NBD instead. See "QMP invocation for live
+storage migration with ``blockdev-mirror`` + NBD" in
+docs/interop/live-block-operations.rst for a detailed explanation.
+
+``migrate`` command option ``blk`` (removed in 9.1)
+'''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Use blockdev-mirror with NBD instead. See "QMP invocation for live
+storage migration with ``blockdev-mirror`` + NBD" in
+docs/interop/live-block-operations.rst for a detailed explanation.
+
+``migrate-set-capabilities`` ``block`` option (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Block migration has been removed. For a replacement, see "QMP
+invocation for live storage migration with ``blockdev-mirror`` + NBD"
+in docs/interop/live-block-operations.rst.
+
+``migrate-set-parameter`` ``compress-level`` option (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Use ``multifd-zlib-level`` or ``multifd-zstd-level`` instead.
+
+``migrate-set-parameter`` ``compress-threads`` option (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Use ``multifd-channels`` instead.
+
+``migrate-set-parameter`` ``compress-wait-thread`` option (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Removed with no replacement.
+
+``migrate-set-parameter`` ``decompress-threads`` option (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Use ``multifd-channels`` instead.
+
+``migrate-set-capability`` ``compress`` option (removed in 9.1)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Use ``multifd-compression`` instead.
+
+QEMU Machine Protocol (QMP) events
+----------------------------------
+
+``MEM_UNPLUG_ERROR`` (removed in 9.1)
+'''''''''''''''''''''''''''''''''''''
+
+MEM_UNPLUG_ERROR has been replaced by the more generic ``DEVICE_UNPLUG_GUEST_ERROR`` event.
+
+``vcpu`` trace events (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''
+
+The ability to instrument QEMU helper functions with vCPU-aware trace
+points was removed in 7.0.
+
+
 Human Monitor Protocol (HMP) commands
 -------------------------------------
 
@@ -548,6 +785,73 @@ Use ``migrate-set-parameters`` instead.
 
 This command didn't produce any output already. Removed with no replacement.
 
+``singlestep`` (removed in 9.0)
+'''''''''''''''''''''''''''''''
+
+The ``singlestep`` command has been replaced by the ``one-insn-per-tb``
+command, which has the same behaviour but a less misleading name.
+
+``migrate`` command ``-i`` option (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Use blockdev-mirror with NBD instead. See "QMP invocation for live
+storage migration with ``blockdev-mirror`` + NBD" in
+docs/interop/live-block-operations.rst for a detailed explanation.
+
+``migrate`` command ``-b`` option (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Use blockdev-mirror with NBD instead. See "QMP invocation for live
+storage migration with ``blockdev-mirror`` + NBD" in
+docs/interop/live-block-operations.rst for a detailed explanation.
+
+``migrate_set_capability`` ``block`` option (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Block migration has been removed. For a replacement, see "QMP
+invocation for live storage migration with ``blockdev-mirror`` + NBD"
+in docs/interop/live-block-operations.rst.
+
+``migrate_set_parameter`` ``compress-level`` option (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Use ``multifd-zlib-level`` or ``multifd-zstd-level`` instead.
+
+``migrate_set_parameter`` ``compress-threads`` option (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Use ``multifd-channels`` instead.
+
+``migrate_set_parameter`` ``compress-wait-thread`` option (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Removed with no replacement.
+
+``migrate_set_parameter`` ``decompress-threads`` option (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Use ``multifd-channels`` instead.
+
+``migrate_set_capability`` ``compress`` option (removed in 9.1)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Use ``multifd-compression`` instead.
+
+Host Architectures
+------------------
+
+System emulation on 32-bit Windows hosts (removed in 9.0)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Windows 11 has no support for 32-bit host installs, and Windows 10 did
+not support new 32-bit installs, only upgrades. 32-bit Windows support
+has now been dropped by the MSYS2 project. QEMU also is deprecating
+and dropping support for 32-bit x86 host deployments in
+general. 32-bit Windows is therefore no longer a supported host for
+QEMU.  Since all recent x86 hardware from the past >10 years is
+capable of the 64-bit x86 extensions, a corresponding 64-bit OS should
+be used instead.
+
 Guest Emulator ISAs
 -------------------
 
@@ -565,9 +869,8 @@ KVM guest support on 32-bit Arm hosts (removed in 5.2)
 ''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 The Linux kernel has dropped support for allowing 32-bit Arm systems
-to host KVM guests as of the 5.7 kernel. Accordingly, QEMU is deprecating
-its support for this configuration and will remove it in a future version.
-Running 32-bit guests on a 64-bit Arm host remains supported.
+to host KVM guests as of the 5.7 kernel, and was thus removed from QEMU
+as well.  Running 32-bit guests on a 64-bit Arm host remains supported.
 
 RISC-V ISA Specific CPUs (removed in 5.1)
 '''''''''''''''''''''''''''''''''''''''''
@@ -583,6 +886,14 @@ RISC-V no MMU CPUs (removed in 5.1)
 The RISC-V no MMU cpus have been removed. The two CPUs: ``rv32imacu-nommu`` and
 ``rv64imacu-nommu`` can no longer be used. Instead the MMU status can be specified
 via the CPU ``mmu`` option when using the ``rv32`` or ``rv64`` CPUs.
+
+RISC-V 'any' CPU type ``-cpu any`` (removed in 9.2)
+'''''''''''''''''''''''''''''''''''''''''''''''''''
+
+The 'any' CPU type was introduced back in 2018 and was around since the
+initial RISC-V QEMU port. Its usage was always been unclear: users don't know
+what to expect from a CPU called 'any', and in fact the CPU does not do anything
+special that isn't already done by the default CPUs rv32/rv64.
 
 ``compat`` property of server class POWER CPUs (removed in 6.0)
 '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
@@ -616,6 +927,41 @@ x86 ``Icelake-Client`` CPU (removed in 7.1)
 
 There isn't ever Icelake Client CPU, it is some wrong and imaginary one.
 Use ``Icelake-Server`` instead.
+
+Nios II CPU (removed in 9.1)
+''''''''''''''''''''''''''''
+
+QEMU Nios II architecture was orphan; Intel has EOL'ed the Nios II
+processor IP (see `Intel discontinuance notification`_).
+
+CRIS CPU architecture (removed in 9.2)
+''''''''''''''''''''''''''''''''''''''
+
+The CRIS architecture was pulled from Linux in 4.17 and the compiler
+was no longer packaged in any distro making it harder to run the
+``check-tcg`` tests.
+
+System accelerators
+-------------------
+
+Userspace local APIC with KVM (x86, removed in 8.0)
+'''''''''''''''''''''''''''''''''''''''''''''''''''
+
+``-M kernel-irqchip=off`` cannot be used on KVM if the CPU model includes
+a local APIC.  The ``split`` setting is supported, as is using ``-M
+kernel-irqchip=off`` when the CPU does not have a local APIC.
+
+HAXM (``-accel hax``) (removed in 8.2)
+''''''''''''''''''''''''''''''''''''''
+
+The HAXM project has been retired (see https://github.com/intel/haxm#status).
+Use "whpx" (on Windows) or "hvf" (on macOS) instead.
+
+MIPS "Trap-and-Emulate" KVM support (removed in 8.0)
+''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+The MIPS "Trap-and-Emulate" KVM host and guest support was removed
+from Linux in 2021, and is not supported anymore by QEMU either.
 
 System emulator machines
 ------------------------
@@ -654,8 +1000,8 @@ mips ``fulong2e`` machine alias (removed in 6.0)
 
 This machine has been renamed ``fuloong2e``.
 
-``pc-0.10`` up to ``pc-1.3`` (removed in 4.0 up to 6.0)
-'''''''''''''''''''''''''''''''''''''''''''''''''''''''
+``pc-0.10`` up to ``pc-i440fx-2.3`` (removed in 4.0 up to 9.0)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
 
 These machine types were very old and likely could not be used for live
 migration from old QEMU versions anymore. Use a newer machine type instead.
@@ -679,6 +1025,30 @@ ppc ``taihu`` machine (removed in 7.2)
 This machine was removed because it was partially emulated and 405
 machines are very similar. Use the ``ref405ep`` machine instead.
 
+Nios II ``10m50-ghrd`` and ``nios2-generic-nommu`` machines (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+The Nios II architecture was orphan.
+
+``shix`` (removed in 9.2)
+'''''''''''''''''''''''''
+
+The machine was unmaintained.
+
+Arm machines ``akita``, ``borzoi``, ``cheetah``, ``connex``, ``mainstone``, ``n800``, ``n810``, ``spitz``, ``terrier``, ``tosa``, ``verdex``, ``z2`` (removed in 9.2)
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+QEMU included models of some machine types where the QEMU code that
+emulates their SoCs was very old and unmaintained. This code was
+blocking our ability to move forward with various changes across
+the codebase, and over many years nobody has been interested in
+trying to modernise it. We don't expect any of these machines to have
+a large number of users, because they're all modelling hardware that
+has now passed away into history. We are therefore dropping support
+for all machine types using the PXA2xx and OMAP2 SoCs. We are also
+dropping the ``cheetah`` OMAP1 board, because we don't have any
+test images for it and don't know of anybody who does.
+
 linux-user mode CPUs
 --------------------
 
@@ -698,6 +1068,11 @@ The ``ppc64abi32`` architecture has a number of issues which regularly
 tripped up the CI testing and was suspected to be quite broken. For that
 reason the maintainers strongly suspected no one actually used it.
 
+``nios2`` CPU (removed in 9.1)
+''''''''''''''''''''''''''''''
+
+QEMU Nios II architecture was orphan; Intel has EOL'ed the Nios II
+processor IP (see `Intel discontinuance notification`_).
 
 TCG introspection features
 --------------------------
@@ -737,6 +1112,20 @@ The 'ide-drive' device has been removed. Users should use 'ide-hd' or
 
 The 'scsi-disk' device has been removed. Users should use 'scsi-hd' or
 'scsi-cd' as appropriate to get a SCSI hard disk or CD-ROM as needed.
+
+``sga`` (removed in 8.0)
+''''''''''''''''''''''''
+
+The ``sga`` device loaded an option ROM for x86 targets which enabled
+SeaBIOS to send messages to the serial console. SeaBIOS 1.11.0 onwards
+contains native support for this feature and thus use of the option
+ROM approach was obsolete. The native SeaBIOS support can be activated
+by using ``-machine graphics=off``.
+
+``pvrdma`` and the RDMA subsystem (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''
+
+The 'pvrdma' device and the whole RDMA subsystem have been removed.
 
 Related binaries
 ----------------
@@ -821,3 +1210,35 @@ The VXHS code did not compile since v2.12.0. It was removed in 5.1.
 The corresponding upstream server project is no longer maintained.
 Users are recommended to switch to an alternative distributed block
 device driver such as RBD.
+
+Tools
+-----
+
+virtiofsd (removed in 8.0)
+''''''''''''''''''''''''''
+
+There is a newer Rust implementation of ``virtiofsd`` at
+``https://gitlab.com/virtio-fs/virtiofsd``; this has been
+stable for some time and is now widely used.
+The command line and feature set is very close to the removed
+C implementation.
+
+QEMU guest agent
+----------------
+
+``--blacklist`` command line option (removed in 9.1)
+''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+``--blacklist`` has been replaced by ``--block-rpcs`` (which is a better
+wording for what this option does). The short form ``-b`` still stays
+the same and thus is the preferred way for scripts that should run with
+both, older and future versions of QEMU.
+
+``blacklist`` config file option (removed in 9.1)
+'''''''''''''''''''''''''''''''''''''''''''''''''
+
+The ``blacklist`` config file option has been renamed to ``block-rpcs``
+(to be in sync with the renaming of the corresponding command line
+option).
+
+.. _Intel discontinuance notification: https://www.intel.com/content/www/us/en/content-details/781327/intel-is-discontinuing-ip-ordering-codes-listed-in-pdn2312-for-nios-ii-ip.html

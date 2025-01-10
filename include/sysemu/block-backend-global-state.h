@@ -23,13 +23,29 @@
  */
 
 BlockBackend *blk_new(AioContext *ctx, uint64_t perm, uint64_t shared_perm);
-BlockBackend *blk_new_with_bs(BlockDriverState *bs, uint64_t perm,
-                              uint64_t shared_perm, Error **errp);
-BlockBackend *blk_new_open(const char *filename, const char *reference,
-                           QDict *options, int flags, Error **errp);
+
+BlockBackend * no_coroutine_fn
+blk_new_with_bs(BlockDriverState *bs, uint64_t perm, uint64_t shared_perm,
+                Error **errp);
+
+BlockBackend * coroutine_fn no_co_wrapper
+blk_co_new_with_bs(BlockDriverState *bs, uint64_t perm, uint64_t shared_perm,
+                   Error **errp);
+
+BlockBackend * no_coroutine_fn
+blk_new_open(const char *filename, const char *reference, QDict *options,
+             int flags, Error **errp);
+
+BlockBackend * coroutine_fn no_co_wrapper
+blk_co_new_open(const char *filename, const char *reference, QDict *options,
+                int flags, Error **errp);
+
 int blk_get_refcnt(BlockBackend *blk);
 void blk_ref(BlockBackend *blk);
-void blk_unref(BlockBackend *blk);
+
+void no_coroutine_fn blk_unref(BlockBackend *blk);
+void coroutine_fn no_co_wrapper blk_co_unref(BlockBackend *blk);
+
 void blk_remove_all_bs(void);
 BlockBackend *blk_by_name(const char *name);
 BlockBackend *blk_next(BlockBackend *blk);
@@ -38,20 +54,18 @@ bool monitor_add_blk(BlockBackend *blk, const char *name, Error **errp);
 void monitor_remove_blk(BlockBackend *blk);
 
 BlockBackendPublic *blk_get_public(BlockBackend *blk);
-BlockBackend *blk_by_public(BlockBackendPublic *public);
 
 void blk_remove_bs(BlockBackend *blk);
 int blk_insert_bs(BlockBackend *blk, BlockDriverState *bs, Error **errp);
 int blk_replace_bs(BlockBackend *blk, BlockDriverState *new_bs, Error **errp);
-bool bdrv_has_blk(BlockDriverState *bs);
-bool bdrv_is_root_node(BlockDriverState *bs);
-int blk_set_perm(BlockBackend *blk, uint64_t perm, uint64_t shared_perm,
-                 Error **errp);
+bool GRAPH_RDLOCK bdrv_has_blk(BlockDriverState *bs);
+bool GRAPH_RDLOCK bdrv_is_root_node(BlockDriverState *bs);
+int GRAPH_UNLOCKED blk_set_perm(BlockBackend *blk, uint64_t perm,
+                                uint64_t shared_perm, Error **errp);
 void blk_get_perm(BlockBackend *blk, uint64_t *perm, uint64_t *shared_perm);
 
 void blk_iostatus_enable(BlockBackend *blk);
 BlockDeviceIoStatus blk_iostatus(const BlockBackend *blk);
-void blk_iostatus_disable(BlockBackend *blk);
 void blk_iostatus_reset(BlockBackend *blk);
 int blk_attach_dev(BlockBackend *blk, DeviceState *dev);
 void blk_detach_dev(BlockBackend *blk, DeviceState *dev);
@@ -60,11 +74,10 @@ BlockBackend *blk_by_dev(void *dev);
 BlockBackend *blk_by_qdev_id(const char *id, Error **errp);
 void blk_set_dev_ops(BlockBackend *blk, const BlockDevOps *ops, void *opaque);
 
-void blk_activate(BlockBackend *blk, Error **errp);
-
 int blk_make_zero(BlockBackend *blk, BdrvRequestFlags flags);
 void blk_aio_cancel(BlockAIOCB *acb);
 int blk_commit_all(void);
+bool blk_in_drain(BlockBackend *blk);
 void blk_drain(BlockBackend *blk);
 void blk_drain_all(void);
 void blk_set_on_error(BlockBackend *blk, BlockdevOnError on_read_error,
@@ -74,9 +87,6 @@ bool blk_is_sg(BlockBackend *blk);
 void blk_set_enable_write_cache(BlockBackend *blk, bool wce);
 int blk_get_flags(BlockBackend *blk);
 bool blk_op_is_blocked(BlockBackend *blk, BlockOpType op, Error **errp);
-void blk_op_unblock(BlockBackend *blk, BlockOpType op, Error *reason);
-void blk_op_block_all(BlockBackend *blk, Error *reason);
-void blk_op_unblock_all(BlockBackend *blk, Error *reason);
 int blk_set_aio_context(BlockBackend *blk, AioContext *new_context,
                         Error **errp);
 void blk_add_aio_context_notifier(BlockBackend *blk,
@@ -88,7 +98,6 @@ void blk_remove_aio_context_notifier(BlockBackend *blk,
                                      void (*detach_aio_context)(void *),
                                      void *opaque);
 void blk_add_remove_bs_notifier(BlockBackend *blk, Notifier *notify);
-void blk_add_insert_bs_notifier(BlockBackend *blk, Notifier *notify);
 BlockBackendRootState *blk_get_root_state(BlockBackend *blk);
 void blk_update_root_state(BlockBackend *blk);
 bool blk_get_detect_zeroes_from_root_state(BlockBackend *blk);

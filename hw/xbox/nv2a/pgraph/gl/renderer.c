@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2012 espes
  * Copyright (c) 2015 Jannik Vogel
- * Copyright (c) 2018-2024 Matt Borgerson
+ * Copyright (c) 2018-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -43,7 +43,7 @@ static void pgraph_gl_init(NV2AState *d, Error **errp)
     /* fire up opengl */
     glo_set_current(g_nv2a_context_render);
 
-#ifdef DEBUG_NV2A_GL
+#if DEBUG_NV2A_GL
     gl_debug_initialize();
 #endif
 

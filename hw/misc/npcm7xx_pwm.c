@@ -468,7 +468,7 @@ static void npcm7xx_pwm_enter_reset(Object *obj, ResetType type)
     s->piir = 0x00000000;
 }
 
-static void npcm7xx_pwm_hold_reset(Object *obj)
+static void npcm7xx_pwm_hold_reset(Object *obj, ResetType type)
 {
     NPCM7xxPWMState *s = NPCM7XX_PWM(obj);
     int i;
@@ -511,7 +511,7 @@ static const VMStateDescription vmstate_npcm7xx_pwm = {
     .name = "npcm7xx-pwm",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_BOOL(running, NPCM7xxPWM),
         VMSTATE_BOOL(inverted, NPCM7xxPWM),
         VMSTATE_UINT8(index, NPCM7xxPWM),
@@ -529,7 +529,7 @@ static const VMStateDescription vmstate_npcm7xx_pwm_module = {
     .name = "npcm7xx-pwm-module",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_CLOCK(clock, NPCM7xxPWMState),
         VMSTATE_STRUCT_ARRAY(pwm, NPCM7xxPWMState,
                              NPCM7XX_PWM_PER_MODULE, 0, vmstate_npcm7xx_pwm,

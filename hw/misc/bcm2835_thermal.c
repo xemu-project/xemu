@@ -80,8 +80,10 @@ static void bcm2835_thermal_write(void *opaque, hwaddr addr,
 static const MemoryRegionOps bcm2835_thermal_ops = {
     .read = bcm2835_thermal_read,
     .write = bcm2835_thermal_write,
+    .impl.min_access_size = 4,
     .impl.max_access_size = 4,
     .valid.min_access_size = 4,
+    .valid.max_access_size = 4,
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
@@ -105,7 +107,7 @@ static const VMStateDescription bcm2835_thermal_vmstate = {
     .name = "bcm2835_thermal",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(ctl, Bcm2835ThermalState),
         VMSTATE_END_OF_LIST()
     }
@@ -116,7 +118,7 @@ static void bcm2835_thermal_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = bcm2835_thermal_realize;
-    dc->reset = bcm2835_thermal_reset;
+    device_class_set_legacy_reset(dc, bcm2835_thermal_reset);
     dc->vmsd = &bcm2835_thermal_vmstate;
 }
 

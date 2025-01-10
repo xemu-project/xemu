@@ -24,12 +24,10 @@
 
 #include "qemu/osdep.h"
 
-#include "../migration/migration.h"
 #include "migration/vmstate.h"
 #include "migration/qemu-file-types.h"
 #include "../migration/qemu-file.h"
 #include "../migration/savevm.h"
-#include "qemu/coroutine.h"
 #include "qemu/module.h"
 #include "io/channel-file.h"
 
@@ -198,7 +196,7 @@ static const VMStateDescription vmstate_simple_primitive = {
     .name = "simple/primitive",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_BOOL(b_1, TestSimple),
         VMSTATE_BOOL(b_2, TestSimple),
         VMSTATE_UINT8(u8_1, TestSimple),
@@ -300,7 +298,7 @@ static const VMStateDescription vmstate_simple_arr = {
     .name = "simple/array",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT16_ARRAY(u16_1, TestSimpleArray, 3),
         VMSTATE_END_OF_LIST()
     }
@@ -342,7 +340,7 @@ static const VMStateDescription vmstate_versioned = {
     .name = "test/versioned",
     .version_id = 2,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(a, TestStruct),
         VMSTATE_UINT32_V(b, TestStruct, 2), /* Versioned field in the middle, so
                                              * we catch bugs more easily.
@@ -413,7 +411,7 @@ static const VMStateDescription vmstate_skipping = {
     .name = "test/skip",
     .version_id = 2,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(a, TestStruct),
         VMSTATE_UINT32(b, TestStruct),
         VMSTATE_UINT32_TEST(c, TestStruct, test_skip),
@@ -525,7 +523,7 @@ const VMStateDescription vmsd_tst = {
     .name = "test/tst",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_INT32(i, TestStructTriv),
         VMSTATE_END_OF_LIST()
     }
@@ -543,7 +541,7 @@ const VMStateDescription vmsd_arps = {
     .name = "test/arps",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_ARRAY_OF_POINTER_TO_STRUCT(ar, TestArrayOfPtrToStuct,
                 AR_SIZE, 0, vmsd_tst, TestStructTriv),
         VMSTATE_END_OF_LIST()
@@ -631,7 +629,7 @@ const VMStateDescription vmsd_arpp = {
     .name = "test/arps",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_ARRAY_OF_POINTER(ar, TestArrayOfPtrToInt,
                 AR_SIZE, 0, vmstate_info_int32, int32_t*),
         VMSTATE_END_OF_LIST()
@@ -686,7 +684,7 @@ static const VMStateDescription vmstate_q_element = {
     .name = "test/queue-element",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_BOOL(b, TestQtailqElement),
         VMSTATE_UINT8(u8, TestQtailqElement),
         VMSTATE_END_OF_LIST()
@@ -697,7 +695,7 @@ static const VMStateDescription vmstate_q = {
     .name = "test/queue",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_INT16(i16, TestQtailq),
         VMSTATE_QTAILQ_V(q, TestQtailq, 1, vmstate_q_element, TestQtailqElement,
                          next),
@@ -822,7 +820,7 @@ typedef struct TestGTreeInterval {
     .name = "interval",                                \
     .version_id = 1,                                   \
     .minimum_version_id = 1,                           \
-    .fields = (VMStateField[]) {                       \
+    .fields = (const VMStateField[]) {                 \
         VMSTATE_UINT64(low, TestGTreeInterval),        \
         VMSTATE_UINT64(high, TestGTreeInterval),       \
         VMSTATE_END_OF_LIST()                          \
@@ -840,7 +838,7 @@ typedef struct TestGTreeMapping {
     .name = "mapping",                                \
     .version_id = 1,                                  \
     .minimum_version_id = 1,                          \
-    .fields = (VMStateField[]) {                      \
+    .fields = (const VMStateField[]) {                \
         VMSTATE_UINT64(phys_addr, TestGTreeMapping),  \
         VMSTATE_UINT32(flags, TestGTreeMapping),      \
         VMSTATE_END_OF_LIST()                         \
@@ -916,7 +914,7 @@ static const VMStateDescription vmstate_domain = {
     .version_id = 1,
     .minimum_version_id = 1,
     .pre_load = domain_preload,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_INT32(id, TestGTreeDomain),
         VMSTATE_GTREE_V(mappings, TestGTreeDomain, 1,
                         vmstate_interval_mapping,
@@ -941,7 +939,7 @@ static const VMStateDescription vmstate_qlist_element = {
     .name = "test/queue list",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(id, TestQListElement),
         VMSTATE_END_OF_LIST()
     }
@@ -952,7 +950,7 @@ static const VMStateDescription vmstate_iommu = {
     .version_id = 1,
     .minimum_version_id = 1,
     .pre_load = iommu_preload,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_INT32(id, TestGTreeIOMMU),
         VMSTATE_GTREE_DIRECT_KEY_V(domains, TestGTreeIOMMU, 1,
                                    &vmstate_domain, TestGTreeDomain),
@@ -964,7 +962,7 @@ static const VMStateDescription vmstate_container = {
     .name = "test/container/qlist",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(id, TestQListContainer),
         VMSTATE_QLIST_V(list, TestQListContainer, 1, vmstate_qlist_element,
                         TestQListElement, next),
@@ -1074,7 +1072,6 @@ static gboolean diff_tree(gpointer key, gpointer value, gpointer data)
     struct match_node_data d = {tp->tree2, key, value};
 
     g_tree_foreach(tp->tree2, tp->match_node, &d);
-    g_tree_remove(tp->tree1, key);
     return false;
 }
 
@@ -1083,9 +1080,9 @@ static void compare_trees(GTree *tree1, GTree *tree2,
 {
     struct tree_cmp_data tp = {tree1, tree2, function};
 
+    assert(g_tree_nnodes(tree1) == g_tree_nnodes(tree2));
     g_tree_foreach(tree1, diff_tree, &tp);
-    assert(g_tree_nnodes(tree1) == 0);
-    assert(g_tree_nnodes(tree2) == 0);
+    g_tree_destroy(g_tree_ref(tree1));
 }
 
 static void diff_domain(TestGTreeDomain *d1, TestGTreeDomain *d2)
@@ -1416,7 +1413,7 @@ static int tmp_child_post_load(void *opaque, int version_id)
 
 static const VMStateDescription vmstate_tmp_back_to_parent = {
     .name = "test/tmp_child_parent",
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT64(f, TestStruct),
         VMSTATE_END_OF_LIST()
     }
@@ -1426,7 +1423,7 @@ static const VMStateDescription vmstate_tmp_child = {
     .name = "test/tmp_child",
     .pre_save = tmp_child_pre_save,
     .post_load = tmp_child_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_INT64(diff, TmpTestStruct),
         VMSTATE_STRUCT_POINTER(parent, TmpTestStruct,
                                vmstate_tmp_back_to_parent, TestStruct),
@@ -1437,7 +1434,7 @@ static const VMStateDescription vmstate_tmp_child = {
 static const VMStateDescription vmstate_with_tmp = {
     .name = "test/with_tmp",
     .version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(a, TestStruct),
         VMSTATE_UINT64(d, TestStruct),
         VMSTATE_WITH_TMP(TestStruct, TmpTestStruct, vmstate_tmp_child),

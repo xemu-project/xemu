@@ -1435,7 +1435,7 @@ static const VMStateDescription vmstate_artist = {
     .version_id = 2,
     .minimum_version_id = 2,
     .post_load = vmstate_artist_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT16(height, ARTISTState),
         VMSTATE_UINT16(width, ARTISTState),
         VMSTATE_UINT16(depth, ARTISTState),
@@ -1491,7 +1491,7 @@ static void artist_class_init(ObjectClass *klass, void *data)
 
     dc->realize = artist_realizefn;
     dc->vmsd = &vmstate_artist;
-    dc->reset = artist_reset;
+    device_class_set_legacy_reset(dc, artist_reset);
     device_class_set_props(dc, artist_properties);
 }
 

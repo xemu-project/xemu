@@ -13,6 +13,10 @@
  * later.  See the COPYING file in the top-level directory.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 /* this code avoids GLib dependency */
 #include <stdlib.h>
 #include <stdio.h>
@@ -28,11 +32,19 @@
 #include <sys/mman.h>
 #include <endian.h>
 
+/* Necessary to provide VIRTIO_F_VERSION_1 on system
+ * with older linux headers. Must appear before
+ * <linux/vhost.h> below.
+ */
+#include "standard-headers/linux/virtio_config.h"
+
 #if defined(__linux__)
 #include <sys/syscall.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <linux/vhost.h>
+#include <sys/vfs.h>
+#include <linux/magic.h>
 
 #ifdef __NR_userfaultfd
 #include <linux/userfaultfd.h>
@@ -58,8 +70,8 @@
 #endif  /* !__GNUC__ */
 #ifndef MIN
 #define MIN(x, y) ({                            \
-            typeof(x) _min1 = (x);              \
-            typeof(y) _min2 = (y);              \
+            __typeof__(x) _min1 = (x);          \
+            __typeof__(y) _min2 = (y);          \
             (void) (&_min1 == &_min2);          \
             _min1 < _min2 ? _min1 : _min2; })
 #endif
@@ -136,7 +148,7 @@ vu_request_to_string(unsigned int req)
         REQ(VHOST_USER_SET_VRING_ENABLE),
         REQ(VHOST_USER_SEND_RARP),
         REQ(VHOST_USER_NET_SET_MTU),
-        REQ(VHOST_USER_SET_SLAVE_REQ_FD),
+        REQ(VHOST_USER_SET_BACKEND_REQ_FD),
         REQ(VHOST_USER_IOTLB_MSG),
         REQ(VHOST_USER_SET_VRING_ENDIAN),
         REQ(VHOST_USER_GET_CONFIG),
@@ -151,6 +163,7 @@ vu_request_to_string(unsigned int req)
         REQ(VHOST_USER_GET_MAX_MEM_SLOTS),
         REQ(VHOST_USER_ADD_MEM_REG),
         REQ(VHOST_USER_REM_MEM_REG),
+        REQ(VHOST_USER_GET_SHARED_OBJECT),
         REQ(VHOST_USER_MAX),
     };
 #undef REQ
@@ -184,37 +197,65 @@ vu_panic(VuDev *dev, const char *msg, ...)
      */
 }
 
+/* Search for a memory region that covers this guest physical address. */
+static VuDevRegion *
+vu_gpa_to_mem_region(VuDev *dev, uint64_t guest_addr)
+{
+    int low = 0;
+    int high = dev->nregions - 1;
+
+    /*
+     * Memory regions cannot overlap in guest physical address space. Each
+     * GPA belongs to exactly one memory region, so there can only be one
+     * match.
+     *
+     * We store our memory regions ordered by GPA and can simply perform a
+     * binary search.
+     */
+    while (low <= high) {
+        unsigned int mid = low + (high - low) / 2;
+        VuDevRegion *cur = &dev->regions[mid];
+
+        if (guest_addr >= cur->gpa && guest_addr < cur->gpa + cur->size) {
+            return cur;
+        }
+        if (guest_addr >= cur->gpa + cur->size) {
+            low = mid + 1;
+        }
+        if (guest_addr < cur->gpa) {
+            high = mid - 1;
+        }
+    }
+    return NULL;
+}
+
 /* Translate guest physical address to our virtual address.  */
 void *
 vu_gpa_to_va(VuDev *dev, uint64_t *plen, uint64_t guest_addr)
 {
-    int i;
+    VuDevRegion *r;
 
     if (*plen == 0) {
         return NULL;
     }
 
-    /* Find matching memory region.  */
-    for (i = 0; i < dev->nregions; i++) {
-        VuDevRegion *r = &dev->regions[i];
-
-        if ((guest_addr >= r->gpa) && (guest_addr < (r->gpa + r->size))) {
-            if ((guest_addr + *plen) > (r->gpa + r->size)) {
-                *plen = r->gpa + r->size - guest_addr;
-            }
-            return (void *)(uintptr_t)
-                guest_addr - r->gpa + r->mmap_addr + r->mmap_offset;
-        }
+    r = vu_gpa_to_mem_region(dev, guest_addr);
+    if (!r) {
+        return NULL;
     }
 
-    return NULL;
+    if ((guest_addr + *plen) > (r->gpa + r->size)) {
+        *plen = r->gpa + r->size - guest_addr;
+    }
+    return (void *)(uintptr_t)guest_addr - r->gpa + r->mmap_addr +
+           r->mmap_offset;
 }
 
 /* Translate qemu virtual address to our virtual address.  */
 static void *
 qva_to_va(VuDev *dev, uint64_t qemu_addr)
 {
-    int i;
+    unsigned int i;
 
     /* Find matching memory region.  */
     for (i = 0; i < dev->nregions; i++) {
@@ -227,6 +268,221 @@ qva_to_va(VuDev *dev, uint64_t qemu_addr)
     }
 
     return NULL;
+}
+
+static void
+vu_remove_all_mem_regs(VuDev *dev)
+{
+    unsigned int i;
+
+    for (i = 0; i < dev->nregions; i++) {
+        VuDevRegion *r = &dev->regions[i];
+
+        munmap((void *)(uintptr_t)r->mmap_addr, r->size + r->mmap_offset);
+    }
+    dev->nregions = 0;
+}
+
+static bool
+map_ring(VuDev *dev, VuVirtq *vq)
+{
+    vq->vring.desc = qva_to_va(dev, vq->vra.desc_user_addr);
+    vq->vring.used = qva_to_va(dev, vq->vra.used_user_addr);
+    vq->vring.avail = qva_to_va(dev, vq->vra.avail_user_addr);
+
+    DPRINT("Setting virtq addresses:\n");
+    DPRINT("    vring_desc  at %p\n", vq->vring.desc);
+    DPRINT("    vring_used  at %p\n", vq->vring.used);
+    DPRINT("    vring_avail at %p\n", vq->vring.avail);
+
+    return !(vq->vring.desc && vq->vring.used && vq->vring.avail);
+}
+
+static bool
+vu_is_vq_usable(VuDev *dev, VuVirtq *vq)
+{
+    if (unlikely(dev->broken)) {
+        return false;
+    }
+
+    if (likely(vq->vring.avail)) {
+        return true;
+    }
+
+    /*
+     * In corner cases, we might temporarily remove a memory region that
+     * mapped a ring. When removing a memory region we make sure to
+     * unmap any rings that would be impacted. Let's try to remap if we
+     * already succeeded mapping this ring once.
+     */
+    if (!vq->vra.desc_user_addr || !vq->vra.used_user_addr ||
+        !vq->vra.avail_user_addr) {
+        return false;
+    }
+    if (map_ring(dev, vq)) {
+        vu_panic(dev, "remapping queue on access");
+        return false;
+    }
+    return true;
+}
+
+static void
+unmap_rings(VuDev *dev, VuDevRegion *r)
+{
+    int i;
+
+    for (i = 0; i < dev->max_queues; i++) {
+        VuVirtq *vq = &dev->vq[i];
+        const uintptr_t desc = (uintptr_t)vq->vring.desc;
+        const uintptr_t used = (uintptr_t)vq->vring.used;
+        const uintptr_t avail = (uintptr_t)vq->vring.avail;
+
+        if (desc < r->mmap_addr || desc >= r->mmap_addr + r->size) {
+            continue;
+        }
+        if (used < r->mmap_addr || used >= r->mmap_addr + r->size) {
+            continue;
+        }
+        if (avail < r->mmap_addr || avail >= r->mmap_addr + r->size) {
+            continue;
+        }
+
+        DPRINT("Unmapping rings of queue %d\n", i);
+        vq->vring.desc = NULL;
+        vq->vring.used = NULL;
+        vq->vring.avail = NULL;
+    }
+}
+
+static size_t
+get_fd_hugepagesize(int fd)
+{
+#if defined(__linux__)
+    struct statfs fs;
+    int ret;
+
+    do {
+        ret = fstatfs(fd, &fs);
+    } while (ret != 0 && errno == EINTR);
+
+    if (!ret && (unsigned int)fs.f_type == HUGETLBFS_MAGIC) {
+        return fs.f_bsize;
+    }
+#endif
+    return 0;
+}
+
+static void
+_vu_add_mem_reg(VuDev *dev, VhostUserMemoryRegion *msg_region, int fd)
+{
+    const uint64_t start_gpa = msg_region->guest_phys_addr;
+    const uint64_t end_gpa = start_gpa + msg_region->memory_size;
+    int prot = PROT_READ | PROT_WRITE;
+    uint64_t mmap_offset, fd_offset;
+    size_t hugepagesize;
+    VuDevRegion *r;
+    void *mmap_addr;
+    int low = 0;
+    int high = dev->nregions - 1;
+    unsigned int idx;
+
+    DPRINT("Adding region %d\n", dev->nregions);
+    DPRINT("    guest_phys_addr: 0x%016"PRIx64"\n",
+           msg_region->guest_phys_addr);
+    DPRINT("    memory_size:     0x%016"PRIx64"\n",
+           msg_region->memory_size);
+    DPRINT("    userspace_addr:  0x%016"PRIx64"\n",
+           msg_region->userspace_addr);
+    DPRINT("    old mmap_offset: 0x%016"PRIx64"\n",
+           msg_region->mmap_offset);
+
+    if (dev->postcopy_listening) {
+        /*
+         * In postcopy we're using PROT_NONE here to catch anyone
+         * accessing it before we userfault
+         */
+        prot = PROT_NONE;
+    }
+
+    /*
+     * We will add memory regions into the array sorted by GPA. Perform a
+     * binary search to locate the insertion point: it will be at the low
+     * index.
+     */
+    while (low <= high) {
+        unsigned int mid = low + (high - low)  / 2;
+        VuDevRegion *cur = &dev->regions[mid];
+
+        /* Overlap of GPA addresses. */
+        if (start_gpa < cur->gpa + cur->size && cur->gpa < end_gpa) {
+            vu_panic(dev, "regions with overlapping guest physical addresses");
+            return;
+        }
+        if (start_gpa >= cur->gpa + cur->size) {
+            low = mid + 1;
+        }
+        if (start_gpa < cur->gpa) {
+            high = mid - 1;
+        }
+    }
+    idx = low;
+
+    /*
+     * Convert most of msg_region->mmap_offset to fd_offset. In almost all
+     * cases, this will leave us with mmap_offset == 0, mmap()'ing only
+     * what we really need. Only if a memory region would partially cover
+     * hugetlb pages, we'd get mmap_offset != 0, which usually doesn't happen
+     * anymore (i.e., modern QEMU).
+     *
+     * Note that mmap() with hugetlb would fail if the offset into the file
+     * is not aligned to the huge page size.
+     */
+    hugepagesize = get_fd_hugepagesize(fd);
+    if (hugepagesize) {
+        fd_offset = ALIGN_DOWN(msg_region->mmap_offset, hugepagesize);
+        mmap_offset = msg_region->mmap_offset - fd_offset;
+    } else {
+        fd_offset = msg_region->mmap_offset;
+        mmap_offset = 0;
+    }
+
+    DPRINT("    fd_offset:       0x%016"PRIx64"\n",
+           fd_offset);
+    DPRINT("    new mmap_offset: 0x%016"PRIx64"\n",
+           mmap_offset);
+
+    mmap_addr = mmap(0, msg_region->memory_size + mmap_offset,
+                     prot, MAP_SHARED | MAP_NORESERVE, fd, fd_offset);
+    if (mmap_addr == MAP_FAILED) {
+        vu_panic(dev, "region mmap error: %s", strerror(errno));
+        return;
+    }
+    DPRINT("    mmap_addr:       0x%016"PRIx64"\n",
+           (uint64_t)(uintptr_t)mmap_addr);
+
+#if defined(__linux__)
+    /* Don't include all guest memory in a coredump. */
+    madvise(mmap_addr, msg_region->memory_size + mmap_offset,
+            MADV_DONTDUMP);
+#endif
+
+    /* Shift all affected entries by 1 to open a hole at idx. */
+    r = &dev->regions[idx];
+    memmove(r + 1, r, sizeof(VuDevRegion) * (dev->nregions - idx));
+    r->gpa = msg_region->guest_phys_addr;
+    r->size = msg_region->memory_size;
+    r->qva = msg_region->userspace_addr;
+    r->mmap_addr = (uint64_t)(uintptr_t)mmap_addr;
+    r->mmap_offset = mmap_offset;
+    dev->nregions++;
+
+    if (dev->postcopy_listening) {
+        /*
+         * Return the address to QEMU so that it can translate the ufd
+         * fault addresses back.
+         */
+        msg_region->userspace_addr = r->mmap_addr + r->mmap_offset;
+    }
 }
 
 static void
@@ -312,6 +568,7 @@ vu_message_read_default(VuDev *dev, int conn_fd, VhostUserMsg *vmsg)
         if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS) {
             fd_size = cmsg->cmsg_len - CMSG_LEN(0);
             vmsg->fd_num = fd_size / sizeof(int);
+            assert(vmsg->fd_num <= VHOST_MEMORY_BASELINE_NREGIONS);
             memcpy(vmsg->fds, CMSG_DATA(cmsg), fd_size);
             break;
         }
@@ -335,7 +592,7 @@ vu_message_read_default(VuDev *dev, int conn_fd, VhostUserMsg *vmsg)
             goto fail;
         }
 
-        assert(rc == vmsg->size);
+        assert((uint32_t)rc == vmsg->size);
     }
 
     return true;
@@ -375,11 +632,17 @@ vu_message_write(VuDev *dev, int conn_fd, VhostUserMsg *vmsg)
         memcpy(CMSG_DATA(cmsg), vmsg->fds, fdsize);
     } else {
         msg.msg_controllen = 0;
+        msg.msg_control = NULL;
     }
 
     do {
         rc = sendmsg(conn_fd, &msg, 0);
     } while (rc < 0 && (errno == EINTR || errno == EAGAIN));
+
+    if (rc <= 0) {
+        vu_panic(dev, "Error while writing: %s", strerror(errno));
+        return false;
+    }
 
     if (vmsg->size) {
         do {
@@ -411,8 +674,8 @@ vu_send_reply(VuDev *dev, int conn_fd, VhostUserMsg *vmsg)
 }
 
 /*
- * Processes a reply on the slave channel.
- * Entered with slave_mutex held and releases it before exit.
+ * Processes a reply on the backend channel.
+ * Entered with backend_mutex held and releases it before exit.
  * Returns true on success.
  */
 static bool
@@ -426,7 +689,7 @@ vu_process_message_reply(VuDev *dev, const VhostUserMsg *vmsg)
         goto out;
     }
 
-    if (!vu_message_read_default(dev, dev->slave_fd, &msg_reply)) {
+    if (!vu_message_read_default(dev, dev->backend_fd, &msg_reply)) {
         goto out;
     }
 
@@ -439,7 +702,7 @@ vu_process_message_reply(VuDev *dev, const VhostUserMsg *vmsg)
     result = msg_reply.payload.u64 == 0;
 
 out:
-    pthread_mutex_unlock(&dev->slave_mutex);
+    pthread_mutex_unlock(&dev->backend_mutex);
     return result;
 }
 
@@ -601,27 +864,14 @@ vu_reset_device_exec(VuDev *dev, VhostUserMsg *vmsg)
 }
 
 static bool
-map_ring(VuDev *dev, VuVirtq *vq)
-{
-    vq->vring.desc = qva_to_va(dev, vq->vra.desc_user_addr);
-    vq->vring.used = qva_to_va(dev, vq->vra.used_user_addr);
-    vq->vring.avail = qva_to_va(dev, vq->vra.avail_user_addr);
-
-    DPRINT("Setting virtq addresses:\n");
-    DPRINT("    vring_desc  at %p\n", vq->vring.desc);
-    DPRINT("    vring_used  at %p\n", vq->vring.used);
-    DPRINT("    vring_avail at %p\n", vq->vring.avail);
-
-    return !(vq->vring.desc && vq->vring.used && vq->vring.avail);
-}
-
-static bool
 generate_faults(VuDev *dev) {
-    int i;
+    unsigned int i;
     for (i = 0; i < dev->nregions; i++) {
+#ifdef UFFDIO_REGISTER
         VuDevRegion *dev_region = &dev->regions[i];
         int ret;
-#ifdef UFFDIO_REGISTER
+        struct uffdio_register reg_struct;
+
         /*
          * We should already have an open ufd. Mark each memory
          * range as ufd.
@@ -655,7 +905,7 @@ generate_faults(VuDev *dev) {
                     "%s: Failed to madvise(NOHUGEPAGE) region %d: %s\n",
                     __func__, i, strerror(errno));
         }
-        struct uffdio_register reg_struct;
+
         reg_struct.range.start = (uintptr_t)dev_region->mmap_addr;
         reg_struct.range.len = dev_region->size + dev_region->mmap_offset;
         reg_struct.mode = UFFDIO_REGISTER_MODE_MISSING;
@@ -670,7 +920,7 @@ generate_faults(VuDev *dev) {
                      dev->postcopy_ufd, strerror(errno));
             return false;
         }
-        if (!(reg_struct.ioctls & ((__u64)1 << _UFFDIO_COPY))) {
+        if (!(reg_struct.ioctls & (1ULL << _UFFDIO_COPY))) {
             vu_panic(dev, "%s Region (%d) doesn't support COPY",
                      __func__, i);
             return false;
@@ -696,11 +946,7 @@ generate_faults(VuDev *dev) {
 
 static bool
 vu_add_mem_reg(VuDev *dev, VhostUserMsg *vmsg) {
-    int i;
-    bool track_ramblocks = dev->postcopy_listening;
     VhostUserMemoryRegion m = vmsg->payload.memreg.region, *msg_region = &m;
-    VuDevRegion *dev_region = &dev->regions[dev->nregions];
-    void *mmap_addr;
 
     if (vmsg->fd_num != 1) {
         vmsg_close_fds(vmsg);
@@ -730,84 +976,24 @@ vu_add_mem_reg(VuDev *dev, VhostUserMsg *vmsg) {
      * we know all the postcopy client bases have been received, and we
      * should start generating faults.
      */
-    if (track_ramblocks &&
+    if (dev->postcopy_listening &&
         vmsg->size == sizeof(vmsg->payload.u64) &&
         vmsg->payload.u64 == 0) {
         (void)generate_faults(dev);
         return false;
     }
 
-    DPRINT("Adding region: %u\n", dev->nregions);
-    DPRINT("    guest_phys_addr: 0x%016"PRIx64"\n",
-           msg_region->guest_phys_addr);
-    DPRINT("    memory_size:     0x%016"PRIx64"\n",
-           msg_region->memory_size);
-    DPRINT("    userspace_addr   0x%016"PRIx64"\n",
-           msg_region->userspace_addr);
-    DPRINT("    mmap_offset      0x%016"PRIx64"\n",
-           msg_region->mmap_offset);
-
-    dev_region->gpa = msg_region->guest_phys_addr;
-    dev_region->size = msg_region->memory_size;
-    dev_region->qva = msg_region->userspace_addr;
-    dev_region->mmap_offset = msg_region->mmap_offset;
-
-    /*
-     * We don't use offset argument of mmap() since the
-     * mapped address has to be page aligned, and we use huge
-     * pages.
-     */
-    if (track_ramblocks) {
-        /*
-         * In postcopy we're using PROT_NONE here to catch anyone
-         * accessing it before we userfault.
-         */
-        mmap_addr = mmap(0, dev_region->size + dev_region->mmap_offset,
-                         PROT_NONE, MAP_SHARED | MAP_NORESERVE,
-                         vmsg->fds[0], 0);
-    } else {
-        mmap_addr = mmap(0, dev_region->size + dev_region->mmap_offset,
-                         PROT_READ | PROT_WRITE, MAP_SHARED | MAP_NORESERVE,
-                         vmsg->fds[0], 0);
-    }
-
-    if (mmap_addr == MAP_FAILED) {
-        vu_panic(dev, "region mmap error: %s", strerror(errno));
-    } else {
-        dev_region->mmap_addr = (uint64_t)(uintptr_t)mmap_addr;
-        DPRINT("    mmap_addr:       0x%016"PRIx64"\n",
-               dev_region->mmap_addr);
-    }
-
+    _vu_add_mem_reg(dev, msg_region, vmsg->fds[0]);
     close(vmsg->fds[0]);
 
-    if (track_ramblocks) {
-        /*
-         * Return the address to QEMU so that it can translate the ufd
-         * fault addresses back.
-         */
-        msg_region->userspace_addr = (uintptr_t)(mmap_addr +
-                                                 dev_region->mmap_offset);
-
+    if (dev->postcopy_listening) {
         /* Send the message back to qemu with the addresses filled in. */
         vmsg->fd_num = 0;
         DPRINT("Successfully added new region in postcopy\n");
-        dev->nregions++;
         return true;
-    } else {
-        for (i = 0; i < dev->max_queues; i++) {
-            if (dev->vq[i].vring.desc) {
-                if (map_ring(dev, &dev->vq[i])) {
-                    vu_panic(dev, "remapping queue %d for new memory region",
-                             i);
-                }
-            }
-        }
-
-        DPRINT("Successfully added new region\n");
-        dev->nregions++;
-        return false;
     }
+    DPRINT("Successfully added new region\n");
+    return false;
 }
 
 static inline bool reg_equal(VuDevRegion *vudev_reg,
@@ -825,8 +1011,8 @@ static inline bool reg_equal(VuDevRegion *vudev_reg,
 static bool
 vu_rem_mem_reg(VuDev *dev, VhostUserMsg *vmsg) {
     VhostUserMemoryRegion m = vmsg->payload.memreg.region, *msg_region = &m;
-    int i;
-    bool found = false;
+    unsigned int idx;
+    VuDevRegion *r;
 
     if (vmsg->fd_num > 1) {
         vmsg_close_fds(vmsg);
@@ -853,35 +1039,31 @@ vu_rem_mem_reg(VuDev *dev, VhostUserMsg *vmsg) {
     DPRINT("    mmap_offset      0x%016"PRIx64"\n",
            msg_region->mmap_offset);
 
-    for (i = 0; i < dev->nregions; i++) {
-        if (reg_equal(&dev->regions[i], msg_region)) {
-            VuDevRegion *r = &dev->regions[i];
-            void *m = (void *) (uintptr_t) r->mmap_addr;
-
-            if (m) {
-                munmap(m, r->size + r->mmap_offset);
-            }
-
-            /*
-             * Shift all affected entries by 1 to close the hole at index i and
-             * zero out the last entry.
-             */
-            memmove(dev->regions + i, dev->regions + i + 1,
-                    sizeof(VuDevRegion) * (dev->nregions - i - 1));
-            memset(dev->regions + dev->nregions - 1, 0, sizeof(VuDevRegion));
-            DPRINT("Successfully removed a region\n");
-            dev->nregions--;
-            i--;
-
-            found = true;
-
-            /* Continue the search for eventual duplicates. */
-        }
-    }
-
-    if (!found) {
+    r = vu_gpa_to_mem_region(dev, msg_region->guest_phys_addr);
+    if (!r || !reg_equal(r, msg_region)) {
+        vmsg_close_fds(vmsg);
         vu_panic(dev, "Specified region not found\n");
+        return false;
     }
+
+    /*
+     * There might be valid cases where we temporarily remove memory regions
+     * to readd them again, or remove memory regions and don't use the rings
+     * anymore before we set the ring addresses and restart the device.
+     *
+     * Unmap all affected rings, remapping them on demand later. This should
+     * be a corner case.
+     */
+    unmap_rings(dev, r);
+
+    munmap((void *)(uintptr_t)r->mmap_addr, r->size + r->mmap_offset);
+
+    idx = r - dev->regions;
+    assert(idx < dev->nregions);
+    /* Shift all affected entries by 1 to close the hole. */
+    memmove(r, r + 1, sizeof(VuDevRegion) * (dev->nregions - idx - 1));
+    DPRINT("Successfully removed a region\n");
+    dev->nregions--;
 
     vmsg_close_fds(vmsg);
 
@@ -889,139 +1071,59 @@ vu_rem_mem_reg(VuDev *dev, VhostUserMsg *vmsg) {
 }
 
 static bool
-vu_set_mem_table_exec_postcopy(VuDev *dev, VhostUserMsg *vmsg)
+vu_get_shared_object(VuDev *dev, VhostUserMsg *vmsg)
 {
-    int i;
-    VhostUserMemory m = vmsg->payload.memory, *memory = &m;
-    dev->nregions = memory->nregions;
-
-    DPRINT("Nregions: %u\n", memory->nregions);
-    for (i = 0; i < dev->nregions; i++) {
-        void *mmap_addr;
-        VhostUserMemoryRegion *msg_region = &memory->regions[i];
-        VuDevRegion *dev_region = &dev->regions[i];
-
-        DPRINT("Region %d\n", i);
-        DPRINT("    guest_phys_addr: 0x%016"PRIx64"\n",
-               msg_region->guest_phys_addr);
-        DPRINT("    memory_size:     0x%016"PRIx64"\n",
-               msg_region->memory_size);
-        DPRINT("    userspace_addr   0x%016"PRIx64"\n",
-               msg_region->userspace_addr);
-        DPRINT("    mmap_offset      0x%016"PRIx64"\n",
-               msg_region->mmap_offset);
-
-        dev_region->gpa = msg_region->guest_phys_addr;
-        dev_region->size = msg_region->memory_size;
-        dev_region->qva = msg_region->userspace_addr;
-        dev_region->mmap_offset = msg_region->mmap_offset;
-
-        /* We don't use offset argument of mmap() since the
-         * mapped address has to be page aligned, and we use huge
-         * pages.
-         * In postcopy we're using PROT_NONE here to catch anyone
-         * accessing it before we userfault
-         */
-        mmap_addr = mmap(0, dev_region->size + dev_region->mmap_offset,
-                         PROT_NONE, MAP_SHARED | MAP_NORESERVE,
-                         vmsg->fds[i], 0);
-
-        if (mmap_addr == MAP_FAILED) {
-            vu_panic(dev, "region mmap error: %s", strerror(errno));
-        } else {
-            dev_region->mmap_addr = (uint64_t)(uintptr_t)mmap_addr;
-            DPRINT("    mmap_addr:       0x%016"PRIx64"\n",
-                   dev_region->mmap_addr);
-        }
-
-        /* Return the address to QEMU so that it can translate the ufd
-         * fault addresses back.
-         */
-        msg_region->userspace_addr = (uintptr_t)(mmap_addr +
-                                                 dev_region->mmap_offset);
-        close(vmsg->fds[i]);
+    int fd_num = 0;
+    int dmabuf_fd = -1;
+    if (dev->iface->get_shared_object) {
+        dmabuf_fd = dev->iface->get_shared_object(
+            dev, &vmsg->payload.object.uuid[0]);
     }
-
-    /* Send the message back to qemu with the addresses filled in */
-    vmsg->fd_num = 0;
-    if (!vu_send_reply(dev, dev->sock, vmsg)) {
-        vu_panic(dev, "failed to respond to set-mem-table for postcopy");
-        return false;
+    if (dmabuf_fd != -1) {
+        DPRINT("dmabuf_fd found for requested UUID\n");
+        vmsg->fds[fd_num++] = dmabuf_fd;
     }
+    vmsg->fd_num = fd_num;
 
-    /* Wait for QEMU to confirm that it's registered the handler for the
-     * faults.
-     */
-    if (!dev->read_msg(dev, dev->sock, vmsg) ||
-        vmsg->size != sizeof(vmsg->payload.u64) ||
-        vmsg->payload.u64 != 0) {
-        vu_panic(dev, "failed to receive valid ack for postcopy set-mem-table");
-        return false;
-    }
-
-    /* OK, now we can go and register the memory and generate faults */
-    (void)generate_faults(dev);
-
-    return false;
+    return true;
 }
 
 static bool
 vu_set_mem_table_exec(VuDev *dev, VhostUserMsg *vmsg)
 {
-    int i;
     VhostUserMemory m = vmsg->payload.memory, *memory = &m;
+    unsigned int i;
 
-    for (i = 0; i < dev->nregions; i++) {
-        VuDevRegion *r = &dev->regions[i];
-        void *m = (void *) (uintptr_t) r->mmap_addr;
-
-        if (m) {
-            munmap(m, r->size + r->mmap_offset);
-        }
-    }
-    dev->nregions = memory->nregions;
-
-    if (dev->postcopy_listening) {
-        return vu_set_mem_table_exec_postcopy(dev, vmsg);
-    }
+    vu_remove_all_mem_regs(dev);
 
     DPRINT("Nregions: %u\n", memory->nregions);
-    for (i = 0; i < dev->nregions; i++) {
-        void *mmap_addr;
-        VhostUserMemoryRegion *msg_region = &memory->regions[i];
-        VuDevRegion *dev_region = &dev->regions[i];
+    for (i = 0; i < memory->nregions; i++) {
+        _vu_add_mem_reg(dev, &memory->regions[i], vmsg->fds[i]);
+        close(vmsg->fds[i]);
+    }
 
-        DPRINT("Region %d\n", i);
-        DPRINT("    guest_phys_addr: 0x%016"PRIx64"\n",
-               msg_region->guest_phys_addr);
-        DPRINT("    memory_size:     0x%016"PRIx64"\n",
-               msg_region->memory_size);
-        DPRINT("    userspace_addr   0x%016"PRIx64"\n",
-               msg_region->userspace_addr);
-        DPRINT("    mmap_offset      0x%016"PRIx64"\n",
-               msg_region->mmap_offset);
-
-        dev_region->gpa = msg_region->guest_phys_addr;
-        dev_region->size = msg_region->memory_size;
-        dev_region->qva = msg_region->userspace_addr;
-        dev_region->mmap_offset = msg_region->mmap_offset;
-
-        /* We don't use offset argument of mmap() since the
-         * mapped address has to be page aligned, and we use huge
-         * pages.  */
-        mmap_addr = mmap(0, dev_region->size + dev_region->mmap_offset,
-                         PROT_READ | PROT_WRITE, MAP_SHARED | MAP_NORESERVE,
-                         vmsg->fds[i], 0);
-
-        if (mmap_addr == MAP_FAILED) {
-            vu_panic(dev, "region mmap error: %s", strerror(errno));
-        } else {
-            dev_region->mmap_addr = (uint64_t)(uintptr_t)mmap_addr;
-            DPRINT("    mmap_addr:       0x%016"PRIx64"\n",
-                   dev_region->mmap_addr);
+    if (dev->postcopy_listening) {
+        /* Send the message back to qemu with the addresses filled in */
+        vmsg->fd_num = 0;
+        if (!vu_send_reply(dev, dev->sock, vmsg)) {
+            vu_panic(dev, "failed to respond to set-mem-table for postcopy");
+            return false;
         }
 
-        close(vmsg->fds[i]);
+        /*
+         * Wait for QEMU to confirm that it's registered the handler for the
+         * faults.
+         */
+        if (!dev->read_msg(dev, dev->sock, vmsg) ||
+            vmsg->size != sizeof(vmsg->payload.u64) ||
+            vmsg->payload.u64 != 0) {
+            vu_panic(dev, "failed to receive valid ack for postcopy set-mem-table");
+            return false;
+        }
+
+        /* OK, now we can go and register the memory and generate faults */
+        (void)generate_faults(dev);
+        return false;
     }
 
     for (i = 0; i < dev->max_queues; i++) {
@@ -1359,7 +1461,7 @@ bool vu_set_queue_host_notifier(VuDev *dev, VuVirtq *vq, int fd,
     int qidx = vq - dev->vq;
     int fd_num = 0;
     VhostUserMsg vmsg = {
-        .request = VHOST_USER_SLAVE_VRING_HOST_NOTIFIER_MSG,
+        .request = VHOST_USER_BACKEND_VRING_HOST_NOTIFIER_MSG,
         .flags = VHOST_USER_VERSION | VHOST_USER_NEED_REPLY_MASK,
         .size = sizeof(vmsg.payload.area),
         .payload.area = {
@@ -1377,18 +1479,117 @@ bool vu_set_queue_host_notifier(VuDev *dev, VuVirtq *vq, int fd,
 
     vmsg.fd_num = fd_num;
 
-    if (!vu_has_protocol_feature(dev, VHOST_USER_PROTOCOL_F_SLAVE_SEND_FD)) {
+    if (!vu_has_protocol_feature(dev, VHOST_USER_PROTOCOL_F_BACKEND_SEND_FD)) {
         return false;
     }
 
-    pthread_mutex_lock(&dev->slave_mutex);
-    if (!vu_message_write(dev, dev->slave_fd, &vmsg)) {
-        pthread_mutex_unlock(&dev->slave_mutex);
+    pthread_mutex_lock(&dev->backend_mutex);
+    if (!vu_message_write(dev, dev->backend_fd, &vmsg)) {
+        pthread_mutex_unlock(&dev->backend_mutex);
         return false;
     }
 
-    /* Also unlocks the slave_mutex */
+    /* Also unlocks the backend_mutex */
     return vu_process_message_reply(dev, &vmsg);
+}
+
+bool
+vu_lookup_shared_object(VuDev *dev, unsigned char uuid[UUID_LEN],
+                        int *dmabuf_fd)
+{
+    bool result = false;
+    VhostUserMsg msg_reply;
+    VhostUserMsg msg = {
+        .request = VHOST_USER_BACKEND_SHARED_OBJECT_LOOKUP,
+        .size = sizeof(msg.payload.object),
+        .flags = VHOST_USER_VERSION | VHOST_USER_NEED_REPLY_MASK,
+    };
+
+    memcpy(msg.payload.object.uuid, uuid, sizeof(uuid[0]) * UUID_LEN);
+
+    if (!vu_has_protocol_feature(dev, VHOST_USER_PROTOCOL_F_SHARED_OBJECT)) {
+        return false;
+    }
+
+    pthread_mutex_lock(&dev->backend_mutex);
+    if (!vu_message_write(dev, dev->backend_fd, &msg)) {
+        goto out;
+    }
+
+    if (!vu_message_read_default(dev, dev->backend_fd, &msg_reply)) {
+        goto out;
+    }
+
+    if (msg_reply.request != msg.request) {
+        DPRINT("Received unexpected msg type. Expected %d, received %d",
+               msg.request, msg_reply.request);
+        goto out;
+    }
+
+    if (msg_reply.fd_num != 1) {
+        DPRINT("Received unexpected number of fds. Expected 1, received %d",
+               msg_reply.fd_num);
+        goto out;
+    }
+
+    *dmabuf_fd = msg_reply.fds[0];
+    result = *dmabuf_fd > 0 && msg_reply.payload.u64 == 0;
+out:
+    pthread_mutex_unlock(&dev->backend_mutex);
+
+    return result;
+}
+
+static bool
+vu_send_message(VuDev *dev, VhostUserMsg *vmsg)
+{
+    bool result = false;
+    pthread_mutex_lock(&dev->backend_mutex);
+    if (!vu_message_write(dev, dev->backend_fd, vmsg)) {
+        goto out;
+    }
+
+    result = true;
+out:
+    pthread_mutex_unlock(&dev->backend_mutex);
+
+    return result;
+}
+
+bool
+vu_add_shared_object(VuDev *dev, unsigned char uuid[UUID_LEN])
+{
+    VhostUserMsg msg = {
+        .request = VHOST_USER_BACKEND_SHARED_OBJECT_ADD,
+        .size = sizeof(msg.payload.object),
+        .flags = VHOST_USER_VERSION,
+    };
+
+    memcpy(msg.payload.object.uuid, uuid, sizeof(uuid[0]) * UUID_LEN);
+
+    if (!vu_has_protocol_feature(dev, VHOST_USER_PROTOCOL_F_SHARED_OBJECT)) {
+        return false;
+    }
+
+    return vu_send_message(dev, &msg);
+}
+
+bool
+vu_rm_shared_object(VuDev *dev, unsigned char uuid[UUID_LEN])
+{
+    VhostUserMsg msg = {
+        .request = VHOST_USER_BACKEND_SHARED_OBJECT_REMOVE,
+        .size = sizeof(msg.payload.object),
+        .flags = VHOST_USER_VERSION,
+    };
+
+    memcpy(msg.payload.object.uuid, uuid, sizeof(uuid[0]) * UUID_LEN);
+
+    if (!vu_has_protocol_feature(dev, VHOST_USER_PROTOCOL_F_SHARED_OBJECT)) {
+        return false;
+    }
+
+    return vu_send_message(dev, &msg);
 }
 
 static bool
@@ -1451,13 +1652,13 @@ vu_get_protocol_features_exec(VuDev *dev, VhostUserMsg *vmsg)
      * a device implementation can return it in its callback
      * (get_protocol_features) if it wants to use this for
      * simulation, but it is otherwise not desirable (if even
-     * implemented by the master.)
+     * implemented by the frontend.)
      */
     uint64_t features = 1ULL << VHOST_USER_PROTOCOL_F_MQ |
                         1ULL << VHOST_USER_PROTOCOL_F_LOG_SHMFD |
-                        1ULL << VHOST_USER_PROTOCOL_F_SLAVE_REQ |
+                        1ULL << VHOST_USER_PROTOCOL_F_BACKEND_REQ |
                         1ULL << VHOST_USER_PROTOCOL_F_HOST_NOTIFIER |
-                        1ULL << VHOST_USER_PROTOCOL_F_SLAVE_SEND_FD |
+                        1ULL << VHOST_USER_PROTOCOL_F_BACKEND_SEND_FD |
                         1ULL << VHOST_USER_PROTOCOL_F_REPLY_ACK |
                         1ULL << VHOST_USER_PROTOCOL_F_CONFIGURE_MEM_SLOTS;
 
@@ -1472,6 +1673,17 @@ vu_get_protocol_features_exec(VuDev *dev, VhostUserMsg *vmsg)
     if (dev->iface->get_protocol_features) {
         features |= dev->iface->get_protocol_features(dev);
     }
+
+#ifndef MFD_ALLOW_SEALING
+    /*
+     * If MFD_ALLOW_SEALING is not defined, we are not able to handle
+     * VHOST_USER_GET_INFLIGHT_FD messages, since we can't create a memfd.
+     * Those messages are used only if VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD
+     * is negotiated. A device implementation can enable it, so let's mask
+     * it to avoid a runtime panic.
+     */
+    features &= ~(1ULL << VHOST_USER_PROTOCOL_F_INFLIGHT_SHMFD);
+#endif
 
     vmsg_set_reply_u64(vmsg, features);
     return true;
@@ -1488,7 +1700,7 @@ vu_set_protocol_features_exec(VuDev *dev, VhostUserMsg *vmsg)
 
     if (vu_has_protocol_feature(dev,
                                 VHOST_USER_PROTOCOL_F_INBAND_NOTIFICATIONS) &&
-        (!vu_has_protocol_feature(dev, VHOST_USER_PROTOCOL_F_SLAVE_REQ) ||
+        (!vu_has_protocol_feature(dev, VHOST_USER_PROTOCOL_F_BACKEND_REQ) ||
          !vu_has_protocol_feature(dev, VHOST_USER_PROTOCOL_F_REPLY_ACK))) {
         /*
          * The use case for using messages for kick/call is simulation, to make
@@ -1496,12 +1708,12 @@ vu_set_protocol_features_exec(VuDev *dev, VhostUserMsg *vmsg)
          * of the other features are required.
          * Theoretically, one could use only kick messages, or do them without
          * having F_REPLY_ACK, but too many (possibly pending) messages on the
-         * socket will eventually cause the master to hang, to avoid this in
+         * socket will eventually cause the frontend to hang, to avoid this in
          * scenarios where not desired enforce that the settings are in a way
          * that actually enables the simulation case.
          */
         vu_panic(dev,
-                 "F_IN_BAND_NOTIFICATIONS requires F_SLAVE_REQ && F_REPLY_ACK");
+                 "F_IN_BAND_NOTIFICATIONS requires F_BACKEND_REQ && F_REPLY_ACK");
         return false;
     }
 
@@ -1538,18 +1750,18 @@ vu_set_vring_enable_exec(VuDev *dev, VhostUserMsg *vmsg)
 }
 
 static bool
-vu_set_slave_req_fd(VuDev *dev, VhostUserMsg *vmsg)
+vu_set_backend_req_fd(VuDev *dev, VhostUserMsg *vmsg)
 {
     if (vmsg->fd_num != 1) {
-        vu_panic(dev, "Invalid slave_req_fd message (%d fd's)", vmsg->fd_num);
+        vu_panic(dev, "Invalid backend_req_fd message (%d fd's)", vmsg->fd_num);
         return false;
     }
 
-    if (dev->slave_fd != -1) {
-        close(dev->slave_fd);
+    if (dev->backend_fd != -1) {
+        close(dev->backend_fd);
     }
-    dev->slave_fd = vmsg->fds[0];
-    DPRINT("Got slave_fd: %d\n", vmsg->fds[0]);
+    dev->backend_fd = vmsg->fds[0];
+    DPRINT("Got backend_fd: %d\n", vmsg->fds[0]);
 
     return false;
 }
@@ -1565,7 +1777,7 @@ vu_get_config(VuDev *dev, VhostUserMsg *vmsg)
     }
 
     if (ret) {
-        /* resize to zero to indicate an error to master */
+        /* resize to zero to indicate an error to frontend */
         vmsg->size = 0;
     }
 
@@ -1593,12 +1805,13 @@ vu_set_config(VuDev *dev, VhostUserMsg *vmsg)
 static bool
 vu_set_postcopy_advise(VuDev *dev, VhostUserMsg *vmsg)
 {
-    dev->postcopy_ufd = -1;
 #ifdef UFFDIO_API
     struct uffdio_api api_struct;
 
     dev->postcopy_ufd = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK);
     vmsg->size = 0;
+#else
+    dev->postcopy_ufd = -1;
 #endif
 
     if (dev->postcopy_ufd == -1) {
@@ -1903,8 +2116,8 @@ vu_process_message(VuDev *dev, VhostUserMsg *vmsg)
         return vu_get_queue_num_exec(dev, vmsg);
     case VHOST_USER_SET_VRING_ENABLE:
         return vu_set_vring_enable_exec(dev, vmsg);
-    case VHOST_USER_SET_SLAVE_REQ_FD:
-        return vu_set_slave_req_fd(dev, vmsg);
+    case VHOST_USER_SET_BACKEND_REQ_FD:
+        return vu_set_backend_req_fd(dev, vmsg);
     case VHOST_USER_GET_CONFIG:
         return vu_get_config(dev, vmsg);
     case VHOST_USER_SET_CONFIG:
@@ -1930,6 +2143,8 @@ vu_process_message(VuDev *dev, VhostUserMsg *vmsg)
         return vu_add_mem_reg(dev, vmsg);
     case VHOST_USER_REM_MEM_REG:
         return vu_rem_mem_reg(dev, vmsg);
+    case VHOST_USER_GET_SHARED_OBJECT:
+        return vu_get_shared_object(dev, vmsg);
     default:
         vmsg_close_fds(vmsg);
         vu_panic(dev, "Unhandled request: %d", vmsg->request);
@@ -1976,16 +2191,9 @@ end:
 void
 vu_deinit(VuDev *dev)
 {
-    int i;
+    unsigned int i;
 
-    for (i = 0; i < dev->nregions; i++) {
-        VuDevRegion *r = &dev->regions[i];
-        void *m = (void *) (uintptr_t) r->mmap_addr;
-        if (m != MAP_FAILED) {
-            munmap(m, r->size + r->mmap_offset);
-        }
-    }
-    dev->nregions = 0;
+    vu_remove_all_mem_regs(dev);
 
     for (i = 0; i < dev->max_queues; i++) {
         VuVirtq *vq = &dev->vq[i];
@@ -2025,11 +2233,11 @@ vu_deinit(VuDev *dev)
     }
 
     vu_close_log(dev);
-    if (dev->slave_fd != -1) {
-        close(dev->slave_fd);
-        dev->slave_fd = -1;
+    if (dev->backend_fd != -1) {
+        close(dev->backend_fd);
+        dev->backend_fd = -1;
     }
-    pthread_mutex_destroy(&dev->slave_mutex);
+    pthread_mutex_destroy(&dev->backend_mutex);
 
     if (dev->sock != -1) {
         close(dev->sock);
@@ -2037,6 +2245,8 @@ vu_deinit(VuDev *dev)
 
     free(dev->vq);
     dev->vq = NULL;
+    free(dev->regions);
+    dev->regions = NULL;
 }
 
 bool
@@ -2067,13 +2277,21 @@ vu_init(VuDev *dev,
     dev->remove_watch = remove_watch;
     dev->iface = iface;
     dev->log_call_fd = -1;
-    pthread_mutex_init(&dev->slave_mutex, NULL);
-    dev->slave_fd = -1;
+    pthread_mutex_init(&dev->backend_mutex, NULL);
+    dev->backend_fd = -1;
     dev->max_queues = max_queues;
+
+    dev->regions = malloc(VHOST_USER_MAX_RAM_SLOTS * sizeof(dev->regions[0]));
+    if (!dev->regions) {
+        DPRINT("%s: failed to malloc mem regions\n", __func__);
+        return false;
+    }
 
     dev->vq = malloc(max_queues * sizeof(dev->vq[0]));
     if (!dev->vq) {
         DPRINT("%s: failed to malloc virtqueues\n", __func__);
+        free(dev->regions);
+        dev->regions = NULL;
         return false;
     }
 
@@ -2240,8 +2458,7 @@ vu_queue_get_avail_bytes(VuDev *dev, VuVirtq *vq, unsigned int *in_bytes,
     idx = vq->last_avail_idx;
 
     total_bufs = in_total = out_total = 0;
-    if (unlikely(dev->broken) ||
-        unlikely(!vq->vring.avail)) {
+    if (!vu_is_vq_usable(dev, vq)) {
         goto done;
     }
 
@@ -2356,8 +2573,7 @@ vu_queue_avail_bytes(VuDev *dev, VuVirtq *vq, unsigned int in_bytes,
 bool
 vu_queue_empty(VuDev *dev, VuVirtq *vq)
 {
-    if (unlikely(dev->broken) ||
-        unlikely(!vq->vring.avail)) {
+    if (!vu_is_vq_usable(dev, vq)) {
         return true;
     }
 
@@ -2396,8 +2612,7 @@ vring_notify(VuDev *dev, VuVirtq *vq)
 
 static void _vu_queue_notify(VuDev *dev, VuVirtq *vq, bool sync)
 {
-    if (unlikely(dev->broken) ||
-        unlikely(!vq->vring.avail)) {
+    if (!vu_is_vq_usable(dev, vq)) {
         return;
     }
 
@@ -2409,9 +2624,9 @@ static void _vu_queue_notify(VuDev *dev, VuVirtq *vq, bool sync)
     if (vq->call_fd < 0 &&
         vu_has_protocol_feature(dev,
                                 VHOST_USER_PROTOCOL_F_INBAND_NOTIFICATIONS) &&
-        vu_has_protocol_feature(dev, VHOST_USER_PROTOCOL_F_SLAVE_REQ)) {
+        vu_has_protocol_feature(dev, VHOST_USER_PROTOCOL_F_BACKEND_REQ)) {
         VhostUserMsg vmsg = {
-            .request = VHOST_USER_SLAVE_VRING_CALL,
+            .request = VHOST_USER_BACKEND_VRING_CALL,
             .flags = VHOST_USER_VERSION,
             .size = sizeof(vmsg.payload.state),
             .payload.state = {
@@ -2426,9 +2641,9 @@ static void _vu_queue_notify(VuDev *dev, VuVirtq *vq, bool sync)
             vmsg.flags |= VHOST_USER_NEED_REPLY_MASK;
         }
 
-        vu_message_write(dev, dev->slave_fd, &vmsg);
+        vu_message_write(dev, dev->backend_fd, &vmsg);
         if (ack) {
-            vu_message_read_default(dev, dev->slave_fd, &vmsg);
+            vu_message_read_default(dev, dev->backend_fd, &vmsg);
         }
         return;
     }
@@ -2446,6 +2661,16 @@ void vu_queue_notify(VuDev *dev, VuVirtq *vq)
 void vu_queue_notify_sync(VuDev *dev, VuVirtq *vq)
 {
     _vu_queue_notify(dev, vq, true);
+}
+
+void vu_config_change_msg(VuDev *dev)
+{
+    VhostUserMsg vmsg = {
+        .request = VHOST_USER_BACKEND_CONFIG_CHANGE_MSG,
+        .flags = VHOST_USER_VERSION,
+    };
+
+    vu_message_write(dev, dev->backend_fd, &vmsg);
 }
 
 static inline void
@@ -2471,14 +2696,13 @@ vring_used_flags_unset_bit(VuVirtq *vq, int mask)
 static inline void
 vring_set_avail_event(VuVirtq *vq, uint16_t val)
 {
-    uint16_t *avail;
+    uint16_t val_le = htole16(val);
 
     if (!vq->notification) {
         return;
     }
 
-    avail = (uint16_t *)&vq->vring.used->ring[vq->vring.num];
-    *avail = htole16(val);
+    memcpy(&vq->vring.used->ring[vq->vring.num], &val_le, sizeof(uint16_t));
 }
 
 void
@@ -2713,8 +2937,7 @@ vu_queue_pop(VuDev *dev, VuVirtq *vq, size_t sz)
     unsigned int head;
     VuVirtqElement *elem;
 
-    if (unlikely(dev->broken) ||
-        unlikely(!vq->vring.avail)) {
+    if (!vu_is_vq_usable(dev, vq)) {
         return NULL;
     }
 
@@ -2871,8 +3094,7 @@ vu_queue_fill(VuDev *dev, VuVirtq *vq,
 {
     struct vring_used_elem uelem;
 
-    if (unlikely(dev->broken) ||
-        unlikely(!vq->vring.avail)) {
+    if (!vu_is_vq_usable(dev, vq)) {
         return;
     }
 
@@ -2901,8 +3123,7 @@ vu_queue_flush(VuDev *dev, VuVirtq *vq, unsigned int count)
 {
     uint16_t old, new;
 
-    if (unlikely(dev->broken) ||
-        unlikely(!vq->vring.avail)) {
+    if (!vu_is_vq_usable(dev, vq)) {
         return;
     }
 

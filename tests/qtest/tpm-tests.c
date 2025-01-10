@@ -1,5 +1,5 @@
 /*
- * QTest TPM commont test code
+ * QTest TPM common test code
  *
  * Copyright (c) 2018 IBM Corporation
  * Copyright (c) 2018 Red Hat, Inc.
@@ -114,7 +114,7 @@ void tpm_test_swtpm_migration_test(const char *src_tpm_path,
                      sizeof(tpm_pcrread_resp));
 
     tpm_util_migrate(src_qemu, uri);
-    tpm_util_wait_for_migration_complete(src_qemu);
+    tpm_util_wait_for_migration_complete(dst_qemu);
 
     tpm_util_pcrread(dst_qemu, tx, tpm_pcrread_resp,
                      sizeof(tpm_pcrread_resp));
