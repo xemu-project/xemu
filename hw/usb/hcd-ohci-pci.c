@@ -81,7 +81,6 @@ static void usb_ohci_realize_pci(PCIDevice *dev, Error **errp)
 
 static void usb_ohci_exit(PCIDevice *dev)
 {
-    fprintf(stderr, "usb_ohci_exit\n");
     OHCIPCIState *ohci = PCI_OHCI(dev);
     OHCIState *s = &ohci->state;
 
