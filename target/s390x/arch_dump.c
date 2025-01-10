@@ -17,8 +17,8 @@
 #include "s390x-internal.h"
 #include "elf.h"
 #include "sysemu/dump.h"
-#include "hw/s390x/pv.h"
 #include "kvm/kvm_s390x.h"
+#include "target/s390x/kvm/pv.h"
 
 struct S390xUserRegsStruct {
     uint64_t psw[2];
@@ -102,7 +102,7 @@ static void s390x_write_elf64_prstatus(Note *note, S390CPU *cpu, int id)
         regs->acrs[i] = cpu_to_be32(cpu->env.aregs[i]);
         regs->gprs[i] = cpu_to_be64(cpu->env.regs[i]);
     }
-    note->contents.prstatus.pid = id;
+    note->contents.prstatus.pid = cpu_to_be32(id);
 }
 
 static void s390x_write_elf64_fpregset(Note *note, S390CPU *cpu, int id)
@@ -227,25 +227,25 @@ static int s390x_write_elf64_notes(const char *note_name,
                                        DumpState *s,
                                        const NoteFuncDesc *funcs)
 {
-    Note note, *notep;
+    g_autofree Note *notep = NULL;
     const NoteFuncDesc *nf;
-    int note_size, content_size;
+    int note_size, prev_size = 0, content_size;
     int ret = -1;
 
-    assert(strlen(note_name) < sizeof(note.name));
+    assert(strlen(note_name) < sizeof(notep->name));
 
     for (nf = funcs; nf->note_contents_func; nf++) {
-        notep = &note;
         if (nf->pvonly && !s390_is_pv()) {
             continue;
         }
 
         content_size = nf->note_size_func ? nf->note_size_func() : nf->contents_size;
-        note_size = sizeof(note) - sizeof(notep->contents) + content_size;
+        note_size = sizeof(Note) - sizeof(notep->contents) + content_size;
 
-        /* Notes with dynamic sizes need to allocate a note */
-        if (nf->note_size_func) {
+        if (prev_size < note_size) {
+            g_free(notep);
             notep = g_malloc(note_size);
+            prev_size = note_size;
         }
 
         memset(notep, 0, note_size);
@@ -258,15 +258,9 @@ static int s390x_write_elf64_notes(const char *note_name,
         /* Get contents and write them out */
         (*nf->note_contents_func)(notep, cpu, id);
         ret = f(notep, note_size, s);
-
-        if (nf->note_size_func) {
-            g_free(notep);
-        }
-
         if (ret < 0) {
             return -1;
         }
-
     }
 
     return 0;
@@ -439,6 +433,22 @@ static int arch_sections_write(DumpState *s, uint8_t *buff)
     return 0;
 }
 
+static void arch_cleanup(DumpState *s)
+{
+    g_autofree uint8_t *buff = NULL;
+    int rc;
+
+    if (!pv_dump_initialized) {
+        return;
+    }
+
+    buff = g_malloc(kvm_s390_pv_dmp_get_size_completion_data());
+    rc = kvm_s390_dump_completion_data(buff);
+    if (!rc) {
+            pv_dump_initialized = false;
+    }
+}
+
 int cpu_get_dump_info(ArchDumpInfo *info,
                       const struct GuestPhysBlockList *guest_phys_blocks)
 {
@@ -454,10 +464,7 @@ int cpu_get_dump_info(ArchDumpInfo *info,
         info->arch_sections_add_fn = *arch_sections_add;
         info->arch_sections_write_hdr_fn = *arch_sections_write_hdr;
         info->arch_sections_write_fn = *arch_sections_write;
-    } else {
-        info->arch_sections_add_fn = NULL;
-        info->arch_sections_write_hdr_fn = NULL;
-        info->arch_sections_write_fn = NULL;
+        info->arch_cleanup_fn = *arch_cleanup;
     }
     return 0;
 }

@@ -1,0 +1,110 @@
+mappings:
+  # Too old on Ubuntu 22.04; we install it from cargo instead
+  bindgen:
+    Ubuntu2204:
+
+  flake8:
+    OpenSUSELeap15:
+
+  # Due to https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1081535 we
+  # have to disable all packages that depend on libgl1-mesa-dri:mips64el
+  gtk3:
+    mips64el-deb:
+
+  libdrm:
+    mips64el-deb:
+
+  libepoxy:
+    mips64el-deb:
+
+  gtk-vnc:
+    mips64el-deb:
+
+  mesa-libgbm:
+    mips64el-deb:
+
+  meson:
+    OpenSUSELeap15:
+
+  python3:
+    OpenSUSELeap15: python311-base
+
+  python3-PyYAML:
+    OpenSUSELeap15:
+
+  python3-devel:
+    OpenSUSELeap15: python311-devel
+
+  python3-docutils:
+    OpenSUSELeap15:
+
+  python3-numpy:
+    OpenSUSELeap15:
+
+  python3-opencv:
+    OpenSUSELeap15:
+
+  python3-pillow:
+    OpenSUSELeap15:
+
+  python3-pip:
+    OpenSUSELeap15: python311-pip
+
+  python3-pillow:
+    OpenSUSELeap15:
+
+  python3-selinux:
+    OpenSUSELeap15:
+
+  python3-setuptools:
+    OpenSUSELeap15: python311-setuptools
+
+  python3-sphinx:
+    OpenSUSELeap15:
+
+  python3-sphinx-rtd-theme:
+    OpenSUSELeap15:
+
+  python3-sqlite3:
+    OpenSUSELeap15: python311
+
+  python3-tomli:
+    # test using tomllib
+    apk:
+    Fedora:
+    Debian12:
+    OpenSUSELeap15:
+
+  python3-venv:
+    OpenSUSELeap15: python311-base
+
+  python3-wheel:
+    OpenSUSELeap15: python311-pip
+
+  sdl2:
+    mips64el-deb:
+
+  sdl2-image:
+    mips64el-deb:
+
+  virglrenderer:
+    mips64el-deb:
+
+  vte:
+    mips64el-deb:
+
+pypi_mappings:
+  # Request more recent version
+  meson:
+    default: meson==1.5.0
+
+  # Drop packages that need devel headers
+  python3-numpy:
+    OpenSUSELeap15:
+
+  # see above
+  python3-tomli:
+    apk:
+    Fedora:
+    Debian12:
+    OpenSUSELeap15:

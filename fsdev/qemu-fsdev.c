@@ -89,17 +89,6 @@ static FsDriverTable FsDrivers[] = {
             NULL
         },
     },
-    {
-        .name = "proxy",
-        .ops = &proxy_ops,
-        .opts = (const char * []) {
-            COMMON_FS_DRIVER_OPTIONS,
-            "socket",
-            "sock_fd",
-            "writeout",
-            NULL
-        },
-    },
 };
 
 static int validate_opt(void *opaque, const char *name, const char *value,

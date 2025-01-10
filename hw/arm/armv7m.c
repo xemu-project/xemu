@@ -21,6 +21,9 @@
 #include "qemu/module.h"
 #include "qemu/log.h"
 #include "target/arm/idau.h"
+#include "target/arm/cpu.h"
+#include "target/arm/cpu-features.h"
+#include "target/arm/cpu-qom.h"
 #include "migration/vmstate.h"
 
 /* Bitbanded IO.  Each word corresponds to a single bit.  */
@@ -255,6 +258,8 @@ static void armv7m_instance_init(Object *obj)
     object_initialize_child(obj, "nvic", &s->nvic, TYPE_NVIC);
     object_property_add_alias(obj, "num-irq",
                               OBJECT(&s->nvic), "num-irq");
+    object_property_add_alias(obj, "num-prio-bits",
+                              OBJECT(&s->nvic), "num-prio-bits");
 
     object_initialize_child(obj, "systick-reg-ns", &s->systick[M_REG_NS],
                             TYPE_SYSTICK);
@@ -317,12 +322,6 @@ static void armv7m_realize(DeviceState *dev, Error **errp)
             return;
         }
     }
-    if (object_property_find(OBJECT(s->cpu), "start-powered-off")) {
-        if (!object_property_set_bool(OBJECT(s->cpu), "start-powered-off",
-                                      s->start_powered_off, errp)) {
-            return;
-        }
-    }
     if (object_property_find(OBJECT(s->cpu), "vfp")) {
         if (!object_property_set_bool(OBJECT(s->cpu), "vfp", s->vfp, errp)) {
             return;
@@ -330,6 +329,27 @@ static void armv7m_realize(DeviceState *dev, Error **errp)
     }
     if (object_property_find(OBJECT(s->cpu), "dsp")) {
         if (!object_property_set_bool(OBJECT(s->cpu), "dsp", s->dsp, errp)) {
+            return;
+        }
+    }
+    object_property_set_bool(OBJECT(s->cpu), "start-powered-off",
+                             s->start_powered_off, &error_abort);
+
+    /*
+     * Real M-profile hardware can be configured with a different number of
+     * MPU regions for Secure vs NonSecure. QEMU's CPU implementation doesn't
+     * support that yet, so catch attempts to select that.
+     */
+    if (arm_feature(&s->cpu->env, ARM_FEATURE_M_SECURITY) &&
+        s->mpu_ns_regions != s->mpu_s_regions) {
+        error_setg(errp,
+                   "mpu-ns-regions and mpu-s-regions properties must have the same value");
+        return;
+    }
+    if (s->mpu_ns_regions != UINT_MAX &&
+        object_property_find(OBJECT(s->cpu), "pmsav7-dregion")) {
+        if (!object_property_set_uint(OBJECT(s->cpu), "pmsav7-dregion",
+                                      s->mpu_ns_regions, errp)) {
             return;
         }
     }
@@ -498,7 +518,7 @@ static void armv7m_realize(DeviceState *dev, Error **errp)
     for (i = 0; i < ARRAY_SIZE(s->bitband); i++) {
         if (s->enable_bitband) {
             Object *obj = OBJECT(&s->bitband[i]);
-            SysBusDevice *sbd = SYS_BUS_DEVICE(&s->bitband[i]);
+            sbd = SYS_BUS_DEVICE(&s->bitband[i]);
 
             if (!object_property_set_int(obj, "base",
                                          bitband_input_addr[i], errp)) {
@@ -530,6 +550,8 @@ static Property armv7m_properties[] = {
                      false),
     DEFINE_PROP_BOOL("vfp", ARMv7MState, vfp, true),
     DEFINE_PROP_BOOL("dsp", ARMv7MState, dsp, true),
+    DEFINE_PROP_UINT32("mpu-ns-regions", ARMv7MState, mpu_ns_regions, UINT_MAX),
+    DEFINE_PROP_UINT32("mpu-s-regions", ARMv7MState, mpu_s_regions, UINT_MAX),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -537,7 +559,7 @@ static const VMStateDescription vmstate_armv7m = {
     .name = "armv7m",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_CLOCK(refclk, ARMv7MState),
         VMSTATE_CLOCK(cpuclk, ARMv7MState),
         VMSTATE_END_OF_LIST()

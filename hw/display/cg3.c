@@ -334,7 +334,7 @@ static const VMStateDescription vmstate_cg3 = {
     .version_id = 1,
     .minimum_version_id = 1,
     .post_load = vmstate_cg3_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT16(height, CG3State),
         VMSTATE_UINT16(width, CG3State),
         VMSTATE_UINT16(depth, CG3State),
@@ -374,7 +374,7 @@ static void cg3_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = cg3_realizefn;
-    dc->reset = cg3_reset;
+    device_class_set_legacy_reset(dc, cg3_reset);
     dc->vmsd = &vmstate_cg3;
     device_class_set_props(dc, cg3_properties);
 }

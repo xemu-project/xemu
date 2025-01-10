@@ -24,7 +24,6 @@
 
 #include "qemu/osdep.h"
 #include "migration/vmstate.h"
-#include "monitor/monitor.h"
 #include "qemu/module.h"
 #include "hw/sysbus.h"
 #include "hw/intc/intc.h"
@@ -353,7 +352,7 @@ static const VMStateDescription vmstate_intctl_cpu = {
     .name ="slavio_intctl_cpu",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(intreg_pending, SLAVIO_CPUINTCTLState),
         VMSTATE_END_OF_LIST()
     }
@@ -364,7 +363,7 @@ static const VMStateDescription vmstate_intctl = {
     .version_id = 1,
     .minimum_version_id = 1,
     .post_load = vmstate_intctl_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_STRUCT_ARRAY(slaves, SLAVIO_INTCTLState, MAX_CPUS, 1,
                              vmstate_intctl_cpu, SLAVIO_CPUINTCTLState),
         VMSTATE_UINT32(intregm_pending, SLAVIO_INTCTLState),
@@ -401,17 +400,17 @@ static bool slavio_intctl_get_statistics(InterruptStatsProvider *obj,
 }
 #endif
 
-static void slavio_intctl_print_info(InterruptStatsProvider *obj, Monitor *mon)
+static void slavio_intctl_print_info(InterruptStatsProvider *obj, GString *buf)
 {
     SLAVIO_INTCTLState *s = SLAVIO_INTCTL(obj);
     int i;
 
     for (i = 0; i < MAX_CPUS; i++) {
-        monitor_printf(mon, "per-cpu %d: pending 0x%08x\n", i,
-                       s->slaves[i].intreg_pending);
+        g_string_append_printf(buf, "per-cpu %d: pending 0x%08x\n", i,
+                               s->slaves[i].intreg_pending);
     }
-    monitor_printf(mon, "master: pending 0x%08x, disabled 0x%08x\n",
-                   s->intregm_pending, s->intregm_disabled);
+    g_string_append_printf(buf, "master: pending 0x%08x, disabled 0x%08x\n",
+                           s->intregm_pending, s->intregm_disabled);
 }
 
 static void slavio_intctl_init(Object *obj)
@@ -447,7 +446,7 @@ static void slavio_intctl_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     InterruptStatsProviderClass *ic = INTERRUPT_STATS_PROVIDER_CLASS(klass);
 
-    dc->reset = slavio_intctl_reset;
+    device_class_set_legacy_reset(dc, slavio_intctl_reset);
     dc->vmsd = &vmstate_intctl;
 #ifdef DEBUG_IRQ_COUNT
     ic->get_statistics = slavio_intctl_get_statistics;

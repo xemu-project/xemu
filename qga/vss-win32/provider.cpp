@@ -12,6 +12,7 @@
 
 #include "qemu/osdep.h"
 #include "vss-common.h"
+#include "vss-debug.h"
 #ifdef HAVE_VSS_SDK
 #include <vscoordint.h>
 #else
@@ -44,7 +45,7 @@ const IID IID_IVssEnumObject = { 0xAE1C7110, 0x2F60, 0x11d3,
     {0x8A, 0x39, 0x00, 0xC0, 0x4F, 0x72, 0xD8, 0xE3} };
 
 
-void LockModule(BOOL lock)
+static void LockModule(BOOL lock)
 {
     if (lock) {
         InterlockedIncrement(&g_nComObjsInUse);
@@ -527,11 +528,16 @@ STDAPI DllCanUnloadNow()
 }
 
 EXTERN_C
+BOOL WINAPI DllMain(HINSTANCE hinstDll, DWORD dwReason, LPVOID lpReserved);
+
+EXTERN_C
 BOOL WINAPI DllMain(HINSTANCE hinstDll, DWORD dwReason, LPVOID lpReserved)
 {
+    qga_debug("begin, reason = %lu", dwReason);
     if (dwReason == DLL_PROCESS_ATTACH) {
         g_hinstDll = hinstDll;
         DisableThreadLibraryCalls(hinstDll);
     }
+    qga_debug_end;
     return TRUE;
 }

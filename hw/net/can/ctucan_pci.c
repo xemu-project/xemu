@@ -34,7 +34,7 @@
 #include "qapi/error.h"
 #include "chardev/char.h"
 #include "hw/irq.h"
-#include "hw/pci/pci.h"
+#include "hw/pci/pci_device.h"
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
 #include "net/can_emu.h"
@@ -215,7 +215,7 @@ static const VMStateDescription vmstate_ctucan_pci = {
     .name = "ctucan_pci",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_PCI_DEVICE(dev, CtuCanPCIState),
         VMSTATE_STRUCT(ctucan_state[0], CtuCanPCIState, 0, vmstate_ctucan,
                        CtuCanCoreState),
@@ -257,7 +257,7 @@ static void ctucan_pci_class_init(ObjectClass *klass, void *data)
     dc->desc = "CTU CAN PCI";
     dc->vmsd = &vmstate_ctucan_pci;
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
-    dc->reset = ctucan_pci_reset;
+    device_class_set_legacy_reset(dc, ctucan_pci_reset);
 }
 
 static const TypeInfo ctucan_pci_info = {

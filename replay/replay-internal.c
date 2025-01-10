@@ -175,11 +175,12 @@ void replay_fetch_data_kind(void)
     if (replay_file) {
         if (!replay_state.has_unread_data) {
             replay_state.data_kind = replay_get_byte();
+            replay_state.current_event++;
             if (replay_state.data_kind == EVENT_INSTRUCTION) {
                 replay_state.instruction_count = replay_get_dword();
             }
             replay_check_error();
-            replay_state.has_unread_data = 1;
+            replay_state.has_unread_data = true;
             if (replay_state.data_kind >= EVENT_COUNT) {
                 error_report("Replay: unknown event kind %d",
                              replay_state.data_kind);
@@ -191,7 +192,7 @@ void replay_fetch_data_kind(void)
 
 void replay_finish_event(void)
 {
-    replay_state.has_unread_data = 0;
+    replay_state.has_unread_data = false;
     replay_fetch_data_kind();
 }
 
@@ -216,7 +217,7 @@ void replay_mutex_lock(void)
 {
     if (replay_mode != REPLAY_MODE_NONE) {
         unsigned long id;
-        g_assert(!qemu_mutex_iothread_locked());
+        g_assert(!bql_locked());
         g_assert(!replay_mutex_locked());
         qemu_mutex_lock(&lock);
         id = mutex_tail++;

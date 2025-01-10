@@ -18,7 +18,6 @@
 #include "qemu/osdep.h"
 #include "qemu/units.h"
 #include "qapi/error.h"
-#include "cpu.h"
 #include "hw/sysbus.h"
 #include "hw/arm/boot.h"
 #include "net/net.h"
@@ -35,8 +34,12 @@
 #include "hw/net/cadence_gem.h"
 #include "hw/cpu/a9mpcore.h"
 #include "hw/qdev-clock.h"
+#include "hw/misc/unimp.h"
 #include "sysemu/reset.h"
 #include "qom/object.h"
+#include "exec/tswap.h"
+#include "target/arm/cpu-qom.h"
+#include "qapi/visitor.h"
 
 #define TYPE_ZYNQ_MACHINE MACHINE_TYPE_NAME("xilinx-zynq-a9")
 OBJECT_DECLARE_SIMPLE_TYPE(ZynqMachineState, ZYNQ_MACHINE)
@@ -83,9 +86,13 @@ static const int dma_irqs[8] = {
     0xe3401000 + ARMV7_IMM16(extract32((val), 16, 16)), /* movt r1 ... */ \
     0xe5801000 + (addr)
 
+#define ZYNQ_MAX_CPUS 2
+
 struct ZynqMachineState {
     MachineState parent;
     Clock *ps_clk;
+    ARMCPU *cpu[ZYNQ_MAX_CPUS];
+    uint8_t boot_mode;
 };
 
 static void zynq_write_board_setup(ARMCPU *cpu,
@@ -108,16 +115,13 @@ static void zynq_write_board_setup(ARMCPU *cpu,
 
 static struct arm_boot_info zynq_binfo = {};
 
-static void gem_init(NICInfo *nd, uint32_t base, qemu_irq irq)
+static void gem_init(uint32_t base, qemu_irq irq)
 {
     DeviceState *dev;
     SysBusDevice *s;
 
     dev = qdev_new(TYPE_CADENCE_GEM);
-    if (nd->used) {
-        qemu_check_nic_model(nd, TYPE_CADENCE_GEM);
-        qdev_set_nic_properties(dev, nd);
-    }
+    qemu_configure_nic_device(dev, true, NULL);
     object_property_set_int(OBJECT(dev), "phy-addr", 7, &error_abort);
     s = SYS_BUS_DEVICE(dev);
     sysbus_realize_and_unref(s, &error_fatal);
@@ -164,6 +168,7 @@ static inline int zynq_init_spi_flashes(uint32_t base_addr, qemu_irq irq,
                                         blk_by_legacy_dinfo(dinfo),
                                         &error_fatal);
             }
+            qdev_prop_set_uint8(flash_dev, "cs", j);
             qdev_realize_and_unref(flash_dev, BUS(spi), &error_fatal);
 
             cs_line = qdev_get_gpio_in_named(flash_dev, SSI_GPIO_CS, 0);
@@ -174,16 +179,37 @@ static inline int zynq_init_spi_flashes(uint32_t base_addr, qemu_irq irq,
     return unit;
 }
 
+static void zynq_set_boot_mode(Object *obj, const char *str,
+                                               Error **errp)
+{
+    ZynqMachineState *m = ZYNQ_MACHINE(obj);
+    uint8_t mode = 0;
+
+    if (!strncasecmp(str, "qspi", 4)) {
+        mode = 1;
+    } else if (!strncasecmp(str, "sd", 2)) {
+        mode = 5;
+    } else if (!strncasecmp(str, "nor", 3)) {
+        mode = 2;
+    } else if (!strncasecmp(str, "jtag", 4)) {
+        mode = 0;
+    } else {
+        error_setg(errp, "%s boot mode not supported", str);
+        return;
+    }
+    m->boot_mode = mode;
+}
+
 static void zynq_init(MachineState *machine)
 {
     ZynqMachineState *zynq_machine = ZYNQ_MACHINE(machine);
-    ARMCPU *cpu;
     MemoryRegion *address_space_mem = get_system_memory();
     MemoryRegion *ocm_ram = g_new(MemoryRegion, 1);
     DeviceState *dev, *slcr;
     SysBusDevice *busdev;
     qemu_irq pic[64];
     int n;
+    unsigned int smp_cpus = machine->smp.cpus;
 
     /* max 2GB ram */
     if (machine->ram_size > 2 * GiB) {
@@ -191,21 +217,18 @@ static void zynq_init(MachineState *machine)
         exit(EXIT_FAILURE);
     }
 
-    cpu = ARM_CPU(object_new(machine->cpu_type));
+    for (n = 0; n < smp_cpus; n++) {
+        Object *cpuobj = object_new(machine->cpu_type);
 
-    /* By default A9 CPUs have EL3 enabled.  This board does not
-     * currently support EL3 so the CPU EL3 property is disabled before
-     * realization.
-     */
-    if (object_property_find(OBJECT(cpu), "has_el3")) {
-        object_property_set_bool(OBJECT(cpu), "has_el3", false, &error_fatal);
+        object_property_set_int(cpuobj, "midr", ZYNQ_BOARD_MIDR,
+                                &error_fatal);
+        object_property_set_int(cpuobj, "reset-cbar", MPCORE_PERIPHBASE,
+                                &error_fatal);
+
+        qdev_realize(DEVICE(cpuobj), NULL, &error_fatal);
+
+        zynq_machine->cpu[n] = ARM_CPU(cpuobj);
     }
-
-    object_property_set_int(OBJECT(cpu), "midr", ZYNQ_BOARD_MIDR,
-                            &error_fatal);
-    object_property_set_int(OBJECT(cpu), "reset-cbar", MPCORE_PERIPHBASE,
-                            &error_fatal);
-    qdev_realize(DEVICE(cpu), NULL, &error_fatal);
 
     /* DDR remapped to address zero.  */
     memory_region_add_subregion(address_space_mem, 0, machine->ram);
@@ -234,16 +257,25 @@ static void zynq_init(MachineState *machine)
     /* Create slcr, keep a pointer to connect clocks */
     slcr = qdev_new("xilinx-zynq_slcr");
     qdev_connect_clock_in(slcr, "ps_clk", zynq_machine->ps_clk);
+    qdev_prop_set_uint8(slcr, "boot-mode", zynq_machine->boot_mode);
     sysbus_realize_and_unref(SYS_BUS_DEVICE(slcr), &error_fatal);
     sysbus_mmio_map(SYS_BUS_DEVICE(slcr), 0, 0xF8000000);
 
     dev = qdev_new(TYPE_A9MPCORE_PRIV);
-    qdev_prop_set_uint32(dev, "num-cpu", 1);
+    qdev_prop_set_uint32(dev, "num-cpu", smp_cpus);
     busdev = SYS_BUS_DEVICE(dev);
     sysbus_realize_and_unref(busdev, &error_fatal);
     sysbus_mmio_map(busdev, 0, MPCORE_PERIPHBASE);
-    sysbus_connect_irq(busdev, 0,
-                       qdev_get_gpio_in(DEVICE(cpu), ARM_CPU_IRQ));
+    zynq_binfo.gic_cpu_if_addr = MPCORE_PERIPHBASE + 0x100;
+    sysbus_create_varargs("l2x0", MPCORE_PERIPHBASE + 0x2000, NULL);
+    for (n = 0; n < smp_cpus; n++) {
+        /* See "hw/intc/arm_gic.h" for the IRQ line association */
+        DeviceState *cpudev = DEVICE(zynq_machine->cpu[n]);
+        sysbus_connect_irq(busdev, n,
+                           qdev_get_gpio_in(cpudev, ARM_CPU_IRQ));
+        sysbus_connect_irq(busdev, smp_cpus + n,
+                           qdev_get_gpio_in(cpudev, ARM_CPU_FIQ));
+    }
 
     for (n = 0; n < 64; n++) {
         pic[n] = qdev_get_gpio_in(dev, n);
@@ -278,8 +310,8 @@ static void zynq_init(MachineState *machine)
     sysbus_create_varargs("cadence_ttc", 0xF8002000,
             pic[69-IRQ_OFFSET], pic[70-IRQ_OFFSET], pic[71-IRQ_OFFSET], NULL);
 
-    gem_init(&nd_table[0], 0xE000B000, pic[54-IRQ_OFFSET]);
-    gem_init(&nd_table[1], 0xE000C000, pic[77-IRQ_OFFSET]);
+    gem_init(0xE000B000, pic[54 - IRQ_OFFSET]);
+    gem_init(0xE000C000, pic[77 - IRQ_OFFSET]);
 
     for (n = 0; n < 2; n++) {
         int hci_irq = n ? 79 : 56;
@@ -342,25 +374,105 @@ static void zynq_init(MachineState *machine)
     sysbus_connect_irq(busdev, 0, pic[40 - IRQ_OFFSET]);
     sysbus_mmio_map(busdev, 0, 0xF8007000);
 
+    /*
+     * Refer to the ug585-Zynq-7000-TRM manual B.3 (Module Summary) and
+     * the zynq-7000.dtsi. Add placeholders for unimplemented devices.
+     */
+    create_unimplemented_device("zynq.i2c0", 0xE0004000, 4 * KiB);
+    create_unimplemented_device("zynq.i2c1", 0xE0005000, 4 * KiB);
+    create_unimplemented_device("zynq.can0", 0xE0008000, 4 * KiB);
+    create_unimplemented_device("zynq.can1", 0xE0009000, 4 * KiB);
+    create_unimplemented_device("zynq.gpio", 0xE000A000, 4 * KiB);
+    create_unimplemented_device("zynq.smcc", 0xE000E000, 4 * KiB);
+
+    /* Direct Memory Access Controller, PL330, Non-Secure Mode */
+    create_unimplemented_device("zynq.dma_ns", 0xF8004000, 4 * KiB);
+
+    /* System Watchdog Timer Registers */
+    create_unimplemented_device("zynq.swdt", 0xF8005000, 4 * KiB);
+
+    /* DDR memory controller */
+    create_unimplemented_device("zynq.ddrc", 0xF8006000, 4 * KiB);
+
+    /* AXI_HP Interface (AFI) */
+    create_unimplemented_device("zynq.axi_hp0", 0xF8008000, 0x28);
+    create_unimplemented_device("zynq.axi_hp1", 0xF8009000, 0x28);
+    create_unimplemented_device("zynq.axi_hp2", 0xF800A000, 0x28);
+    create_unimplemented_device("zynq.axi_hp3", 0xF800B000, 0x28);
+
+    create_unimplemented_device("zynq.efuse", 0xF800d000, 0x20);
+
+    /* Embedded Trace Buffer */
+    create_unimplemented_device("zynq.etb", 0xF8801000, 4 * KiB);
+
+    /* Cross Trigger Interface, ETB and TPIU */
+    create_unimplemented_device("zynq.cti_etb_tpiu", 0xF8802000, 4 * KiB);
+
+    /* Trace Port Interface Unit */
+    create_unimplemented_device("zynq.tpiu", 0xF8803000, 4 * KiB);
+
+    /* CoreSight Trace Funnel */
+    create_unimplemented_device("zynq.funnel", 0xF8804000, 4 * KiB);
+
+    /* Instrumentation Trace Macrocell */
+    create_unimplemented_device("zynq.itm", 0xF8805000, 4 * KiB);
+
+    /* Cross Trigger Interface, FTM */
+    create_unimplemented_device("zynq.cti_ftm", 0xF8809000, 4 * KiB);
+
+    /* Fabric Trace Macrocell */
+    create_unimplemented_device("zynq.ftm", 0xF880B000, 4 * KiB);
+
+    /* Cortex A9 Performance Monitoring Unit, CPU */
+    create_unimplemented_device("cortex-a9.pmu0", 0xF8891000, 4 * KiB);
+    create_unimplemented_device("cortex-a9.pmu1", 0xF8893000, 4 * KiB);
+
+    /* Cross Trigger Interface, CPU */
+    create_unimplemented_device("zynq.cpu_cti0", 0xF8898000, 4 * KiB);
+    create_unimplemented_device("zynq.cpu_cti1", 0xF8899000, 4 * KiB);
+
+    /* CoreSight PTM-A9, CPU */
+    create_unimplemented_device("cortex-a9.ptm0", 0xF889c000, 4 * KiB);
+    create_unimplemented_device("cortex-a9.ptm1", 0xF889d000, 4 * KiB);
+
+    /* AMBA NIC301 TrustZone */
+    create_unimplemented_device("zynq.trustZone", 0xF8900000, 0x20);
+
+    /* AMBA Network Interconnect Advanced Quality of Service (QoS-301) */
+    create_unimplemented_device("zynq.qos301_cpu", 0xF8946000, 0x130);
+    create_unimplemented_device("zynq.qos301_dmac", 0xF8947000, 0x130);
+    create_unimplemented_device("zynq.qos301_iou", 0xF8948000, 0x130);
+
     zynq_binfo.ram_size = machine->ram_size;
     zynq_binfo.board_id = 0xd32;
     zynq_binfo.loader_start = 0;
     zynq_binfo.board_setup_addr = BOARD_SETUP_ADDR;
     zynq_binfo.write_board_setup = zynq_write_board_setup;
 
-    arm_load_kernel(ARM_CPU(first_cpu), machine, &zynq_binfo);
+    arm_load_kernel(zynq_machine->cpu[0], machine, &zynq_binfo);
 }
 
 static void zynq_machine_class_init(ObjectClass *oc, void *data)
 {
+    static const char * const valid_cpu_types[] = {
+        ARM_CPU_TYPE_NAME("cortex-a9"),
+        NULL
+    };
     MachineClass *mc = MACHINE_CLASS(oc);
+    ObjectProperty *prop;
     mc->desc = "Xilinx Zynq Platform Baseboard for Cortex-A9";
     mc->init = zynq_init;
-    mc->max_cpus = 1;
+    mc->max_cpus = ZYNQ_MAX_CPUS;
     mc->no_sdcard = 1;
     mc->ignore_memory_transaction_failures = true;
-    mc->default_cpu_type = ARM_CPU_TYPE_NAME("cortex-a9");
+    mc->valid_cpu_types = valid_cpu_types;
     mc->default_ram_id = "zynq.ext_ram";
+    prop = object_class_property_add_str(oc, "boot-mode", NULL,
+                                         zynq_set_boot_mode);
+    object_class_property_set_description(oc, "boot-mode",
+                                          "Supported boot modes:"
+                                          " jtag qspi sd nor");
+    object_property_set_default_str(prop, "qspi");
 }
 
 static const TypeInfo zynq_machine_type = {

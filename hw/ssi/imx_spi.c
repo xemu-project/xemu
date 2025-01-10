@@ -53,7 +53,7 @@ static const char *imx_spi_reg_name(uint32_t reg)
     case ECSPI_MSGDATA:
         return  "ECSPI_MSGDATA";
     default:
-        sprintf(unknown, "%u ?", reg);
+        snprintf(unknown, sizeof(unknown), "%u ?", reg);
         return unknown;
     }
 }
@@ -62,7 +62,7 @@ static const VMStateDescription vmstate_imx_spi = {
     .name = TYPE_IMX_SPI,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_FIFO32(tx_fifo, IMXSPIState),
         VMSTATE_FIFO32(rx_fifo, IMXSPIState),
         VMSTATE_INT16(burst_length, IMXSPIState),
@@ -481,7 +481,7 @@ static void imx_spi_class_init(ObjectClass *klass, void *data)
 
     dc->realize = imx_spi_realize;
     dc->vmsd = &vmstate_imx_spi;
-    dc->reset = imx_spi_reset;
+    device_class_set_legacy_reset(dc, imx_spi_reset);
     dc->desc = "i.MX SPI Controller";
 }
 

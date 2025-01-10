@@ -1022,7 +1022,7 @@ static void npcm7xx_smbus_enter_reset(Object *obj, ResetType type)
     s->rx_cur = 0;
 }
 
-static void npcm7xx_smbus_hold_reset(Object *obj)
+static void npcm7xx_smbus_hold_reset(Object *obj, ResetType type)
 {
     NPCM7xxSMBusState *s = NPCM7XX_SMBUS(obj);
 
@@ -1046,7 +1046,7 @@ static const VMStateDescription vmstate_npcm7xx_smbus = {
     .name = "npcm7xx-smbus",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT8(sda, NPCM7xxSMBusState),
         VMSTATE_UINT8(st, NPCM7xxSMBusState),
         VMSTATE_UINT8(cst, NPCM7xxSMBusState),

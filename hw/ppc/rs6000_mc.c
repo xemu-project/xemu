@@ -3,10 +3,12 @@
  *
  * Copyright (c) 2017 Hervé Poussineau
  *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 2 of the License, or
- * (at your option) version 3 or any later version.
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -143,7 +145,6 @@ static void rs6000mc_realize(DeviceState *dev, Error **errp)
     RS6000MCState *s = RS6000MC(dev);
     int socket = 0;
     unsigned int ram_size = s->ram_size / MiB;
-    Error *local_err = NULL;
 
     while (socket < 6) {
         if (ram_size >= 64) {
@@ -165,10 +166,8 @@ static void rs6000mc_realize(DeviceState *dev, Error **errp)
         if (s->simm_size[socket]) {
             char name[] = "simm.?";
             name[5] = socket + '0';
-            memory_region_init_ram(&s->simm[socket], OBJECT(dev), name,
-                                   s->simm_size[socket] * MiB, &local_err);
-            if (local_err) {
-                error_propagate(errp, local_err);
+            if (!memory_region_init_ram(&s->simm[socket], OBJECT(dev), name,
+                                        s->simm_size[socket] * MiB, errp)) {
                 return;
             }
             memory_region_add_subregion_overlap(get_system_memory(), 0,
@@ -202,7 +201,7 @@ static const VMStateDescription vmstate_rs6000mc = {
     .name = "rs6000-mc",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT8(port0820_index, RS6000MCState),
         VMSTATE_END_OF_LIST()
     },

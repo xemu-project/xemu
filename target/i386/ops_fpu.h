@@ -22,7 +22,6 @@
 #define PREC_SUFFIX glue(_, fPREC)
 #define PREC_TYPE glue(TCGv_, fPREC)
 #define tcg_temp_new_fp glue(tcg_temp_new_, fPREC)
-#define tcg_temp_free_fp glue(tcg_temp_free_, fPREC)
 #define tcg_gen_st80f_fp glue(tcg_gen_st80f, PREC_SUFFIX)
 #define tcg_gen_ld80f_fp glue(tcg_gen_ld80f, PREC_SUFFIX)
 #define get_ft0 glue(get_ft0, PREC_SUFFIX)
@@ -39,7 +38,6 @@ static PREC_TYPE get_ft0(DisasContext *s)
         *v = tcg_temp_new_fp();
         TCGv_ptr p = gen_ft0_ptr();
         tcg_gen_ld80f_fp(*v, p);
-        tcg_temp_free_ptr(p);
     }
 
     return *v;
@@ -56,7 +54,6 @@ static PREC_TYPE get_stn(DisasContext *s, int opreg)
         *t = tcg_temp_new_fp();
         TCGv_ptr p = gen_stn_ptr(opreg);
         tcg_gen_ld80f_fp(*t, p);
-        tcg_temp_free_ptr(p);
     }
 
     return *t;
@@ -74,8 +71,6 @@ static void glue(flush_fp_regs, PREC_SUFFIX)(DisasContext *s)
         if (*t) {
             TCGv_ptr ptr = gen_stn_ptr(i);
             tcg_gen_st80f_fp(*t, ptr);
-            tcg_temp_free_fp(*t);
-            tcg_temp_free_ptr(ptr);
             *t = NULL;
         }
    }
@@ -83,7 +78,6 @@ static void glue(flush_fp_regs, PREC_SUFFIX)(DisasContext *s)
     if (s->ft0) {
         TCGv_ptr ptr = gen_ft0_ptr();
         tcg_gen_st80f_fp((PREC_TYPE)s->ft0, ptr);
-        tcg_temp_free_ptr(ptr);
         s->ft0 = NULL;
     }
 }
@@ -92,7 +86,6 @@ static void glue(gen_fpop, PREC_SUFFIX)(DisasContext *s)
 {
     PREC_TYPE *t = (PREC_TYPE *)&s->fpregs[s->fpstt_delta & 7];
     if (*t) {
-        tcg_temp_free_fp(*t);
         *t = NULL;
     }
 }
@@ -123,13 +116,11 @@ static void glue(gen_fcom, PREC_SUFFIX)(DisasContext *s, PREC_TYPE arg1,
     tcg_gen_shli_i64(res, res, 8);
 
     TCGv_i64 fpus = tcg_temp_new_i64();
-    tcg_gen_ld16u_i64(fpus, cpu_env, offsetof(CPUX86State, fpus));
+    tcg_gen_ld16u_i64(fpus, tcg_env, offsetof(CPUX86State, fpus));
     tcg_gen_andi_i64(fpus, fpus, ~0x4500);
     tcg_gen_or_i64(fpus, fpus, res);
-    tcg_gen_st16_i64(fpus, cpu_env, offsetof(CPUX86State, fpus));
+    tcg_gen_st16_i64(fpus, tcg_env, offsetof(CPUX86State, fpus));
 
-    tcg_temp_free_i64(fpus);
-    tcg_temp_free_i64(res);
 
     /* FIXME: Exceptions */
 }

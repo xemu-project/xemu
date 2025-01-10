@@ -249,7 +249,7 @@ static const VMStateDescription vmstate_sparc32_dma_device = {
     .name ="sparc32_dma",
     .version_id = 2,
     .minimum_version_id = 2,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(dmaregs, DMADeviceState, DMA_REGS),
         VMSTATE_END_OF_LIST()
     }
@@ -278,7 +278,7 @@ static void sparc32_dma_device_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = sparc32_dma_device_reset;
+    device_class_set_legacy_reset(dc, sparc32_dma_device_reset);
     dc->vmsd = &vmstate_sparc32_dma_device;
 }
 

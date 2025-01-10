@@ -574,7 +574,7 @@ static const VMStateDescription tz_mpc_vmstate = {
     .version_id = 1,
     .minimum_version_id = 1,
     .post_load = tz_mpc_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(ctrl, TZMPC),
         VMSTATE_UINT32(blk_idx, TZMPC),
         VMSTATE_UINT32(int_stat, TZMPC),
@@ -599,7 +599,7 @@ static void tz_mpc_class_init(ObjectClass *klass, void *data)
 
     dc->realize = tz_mpc_realize;
     dc->vmsd = &tz_mpc_vmstate;
-    dc->reset = tz_mpc_reset;
+    device_class_set_legacy_reset(dc, tz_mpc_reset);
     device_class_set_props(dc, tz_mpc_properties);
 }
 

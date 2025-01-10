@@ -104,6 +104,14 @@ static void unwind_gusa(CPUSH4State *regs)
 
         /* Reset the SP to the saved version in R1.  */
         regs->gregs[15] = regs->gregs[1];
+    } else if (regs->gregs[15] >= -128u && regs->pc == regs->gregs[0]) {
+        /* If we are on the last instruction of a gUSA region, we must reset
+           the SP, otherwise we would be pushing the signal context to
+           invalid memory.  */
+        regs->gregs[15] = regs->gregs[1];
+    } else if (regs->flags & TB_FLAG_DELAY_SLOT) {
+        /* If we are in a delay slot, push the previous instruction.  */
+        regs->pc -= 2;
     }
 }
 
@@ -225,7 +233,7 @@ void setup_rt_frame(int sig, struct target_sigaction *ka,
         goto give_sigsegv;
     }
 
-    tswap_siginfo(&frame->info, info);
+    frame->info = *info;
 
     /* Create the ucontext.  */
     __put_user(0, &frame->uc.tuc_flags);

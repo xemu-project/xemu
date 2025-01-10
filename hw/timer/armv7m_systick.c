@@ -275,7 +275,7 @@ static const VMStateDescription vmstate_systick = {
     .name = "armv7m_systick",
     .version_id = 3,
     .minimum_version_id = 3,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_CLOCK(refclk, SysTickState),
         VMSTATE_CLOCK(cpuclk, SysTickState),
         VMSTATE_UINT32(control, SysTickState),
@@ -290,7 +290,7 @@ static void systick_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->vmsd = &vmstate_systick;
-    dc->reset = systick_reset;
+    device_class_set_legacy_reset(dc, systick_reset);
     dc->realize = systick_realize;
 }
 

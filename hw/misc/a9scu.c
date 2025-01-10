@@ -116,7 +116,7 @@ static const VMStateDescription vmstate_a9_scu = {
     .name = "a9-scu",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(control, A9SCUState),
         VMSTATE_UINT32(status, A9SCUState),
         VMSTATE_END_OF_LIST()
@@ -134,7 +134,7 @@ static void a9_scu_class_init(ObjectClass *klass, void *data)
 
     device_class_set_props(dc, a9_scu_properties);
     dc->vmsd = &vmstate_a9_scu;
-    dc->reset = a9_scu_reset;
+    device_class_set_legacy_reset(dc, a9_scu_reset);
     dc->realize = a9_scu_realize;
 }
 

@@ -1128,7 +1128,10 @@ static uint64_t dwc2_hsotg_read(void *ptr, hwaddr addr, unsigned size)
         val = dwc2_pcgreg_read(ptr, addr, (addr - HSOTG_REG(0xe00)) >> 2, size);
         break;
     default:
-        g_assert_not_reached();
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
+        val = 0;
+        break;
     }
 
     return val;
@@ -1160,7 +1163,9 @@ static void dwc2_hsotg_write(void *ptr, hwaddr addr, uint64_t val,
         dwc2_pcgreg_write(ptr, addr, (addr - HSOTG_REG(0xe00)) >> 2, val, size);
         break;
     default:
-        g_assert_not_reached();
+        qemu_log_mask(LOG_GUEST_ERROR, "%s: Bad offset 0x%"HWADDR_PRIx"\n",
+                      __func__, addr);
+        break;
     }
 }
 
@@ -1305,7 +1310,7 @@ static void dwc2_reset_enter(Object *obj, ResetType type)
     }
 }
 
-static void dwc2_reset_hold(Object *obj)
+static void dwc2_reset_hold(Object *obj, ResetType type)
 {
     DWC2Class *c = DWC2_USB_GET_CLASS(obj);
     DWC2State *s = DWC2_USB(obj);
@@ -1313,13 +1318,13 @@ static void dwc2_reset_hold(Object *obj)
     trace_usb_dwc2_reset_hold();
 
     if (c->parent_phases.hold) {
-        c->parent_phases.hold(obj);
+        c->parent_phases.hold(obj, type);
     }
 
     dwc2_update_irq(s);
 }
 
-static void dwc2_reset_exit(Object *obj)
+static void dwc2_reset_exit(Object *obj, ResetType type)
 {
     DWC2Class *c = DWC2_USB_GET_CLASS(obj);
     DWC2State *s = DWC2_USB(obj);
@@ -1327,7 +1332,7 @@ static void dwc2_reset_exit(Object *obj)
     trace_usb_dwc2_reset_exit();
 
     if (c->parent_phases.exit) {
-        c->parent_phases.exit(obj);
+        c->parent_phases.exit(obj, type);
     }
 
     s->hprt0 = HPRT0_PWR;
@@ -1364,7 +1369,8 @@ static void dwc2_realize(DeviceState *dev, Error **errp)
     s->fi = USB_FRMINTVL - 1;
     s->eof_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, dwc2_frame_boundary, s);
     s->frame_timer = timer_new_ns(QEMU_CLOCK_VIRTUAL, dwc2_work_timer, s);
-    s->async_bh = qemu_bh_new(dwc2_work_bh, s);
+    s->async_bh = qemu_bh_new_guarded(dwc2_work_bh, s,
+                                      &dev->mem_reentrancy_guard);
 
     sysbus_init_irq(sbd, &s->irq);
 }
@@ -1390,7 +1396,7 @@ static const VMStateDescription vmstate_dwc2_state_packet = {
     .name = "dwc2/packet",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(devadr, DWC2Packet),
         VMSTATE_UINT32(epnum, DWC2Packet),
         VMSTATE_UINT32(epdir, DWC2Packet),
@@ -1410,7 +1416,7 @@ const VMStateDescription vmstate_dwc2_state = {
     .name = "dwc2",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(glbreg, DWC2State,
                              DWC2_GLBREG_SIZE / sizeof(uint32_t)),
         VMSTATE_UINT32_ARRAY(fszreg, DWC2State,

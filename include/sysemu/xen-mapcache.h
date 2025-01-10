@@ -10,15 +10,18 @@
 #define XEN_MAPCACHE_H
 
 #include "exec/cpu-common.h"
+#include "sysemu/xen.h"
 
 typedef hwaddr (*phys_offset_to_gaddr_t)(hwaddr phys_offset,
                                          ram_addr_t size);
-#ifdef CONFIG_XEN
+#ifdef CONFIG_XEN_IS_POSSIBLE
 
 void xen_map_cache_init(phys_offset_to_gaddr_t f,
                         void *opaque);
-uint8_t *xen_map_cache(hwaddr phys_addr, hwaddr size,
-                       uint8_t lock, bool dma);
+uint8_t *xen_map_cache(MemoryRegion *mr, hwaddr phys_addr, hwaddr size,
+                       ram_addr_t ram_addr_offset,
+                       uint8_t lock, bool dma,
+                       bool is_write);
 ram_addr_t xen_ram_addr_from_mapcache(void *ptr);
 void xen_invalidate_map_cache_entry(uint8_t *buffer);
 void xen_invalidate_map_cache(void);
@@ -32,10 +35,13 @@ static inline void xen_map_cache_init(phys_offset_to_gaddr_t f,
 {
 }
 
-static inline uint8_t *xen_map_cache(hwaddr phys_addr,
+static inline uint8_t *xen_map_cache(MemoryRegion *mr,
+                                     hwaddr phys_addr,
                                      hwaddr size,
+                                     ram_addr_t ram_addr_offset,
                                      uint8_t lock,
-                                     bool dma)
+                                     bool dma,
+                                     bool is_write)
 {
     abort();
 }

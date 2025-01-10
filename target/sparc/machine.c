@@ -10,7 +10,7 @@ static const VMStateDescription vmstate_cpu_timer = {
     .name = "cpu_timer",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(frequency, CPUTimer),
         VMSTATE_UINT32(disabled, CPUTimer),
         VMSTATE_UINT64(disabled_mask, CPUTimer),
@@ -29,7 +29,7 @@ static const VMStateDescription vmstate_trap_state = {
     .name = "trap_state",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT64(tpc, trap_state),
         VMSTATE_UINT64(tnpc, trap_state),
         VMSTATE_UINT64(tstate, trap_state),
@@ -42,7 +42,7 @@ static const VMStateDescription vmstate_tlb_entry = {
     .name = "tlb_entry",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT64(tag, SparcTLBEntry),
         VMSTATE_UINT64(tte, SparcTLBEntry),
         VMSTATE_END_OF_LIST()
@@ -83,6 +83,86 @@ static const VMStateInfo vmstate_psr = {
     .put = put_psr,
 };
 
+static int get_fsr(QEMUFile *f, void *opaque, size_t size,
+                   const VMStateField *field)
+{
+    SPARCCPU *cpu = opaque;
+    target_ulong val = qemu_get_betl(f);
+
+    cpu_put_fsr(&cpu->env, val);
+    return 0;
+}
+
+static int put_fsr(QEMUFile *f, void *opaque, size_t size,
+                   const VMStateField *field, JSONWriter *vmdesc)
+{
+    SPARCCPU *cpu = opaque;
+    target_ulong val = cpu_get_fsr(&cpu->env);
+
+    qemu_put_betl(f, val);
+    return 0;
+}
+
+static const VMStateInfo vmstate_fsr = {
+    .name = "fsr",
+    .get = get_fsr,
+    .put = put_fsr,
+};
+
+#ifdef TARGET_SPARC64
+static int get_xcc(QEMUFile *f, void *opaque, size_t size,
+                   const VMStateField *field)
+{
+    SPARCCPU *cpu = opaque;
+    CPUSPARCState *env = &cpu->env;
+    uint32_t val = qemu_get_be32(f);
+
+    /* Do not clobber icc.[NV] */
+    env->cc_N = deposit64(env->cc_N, 32, 32, -(val & PSR_NEG));
+    env->cc_V = deposit64(env->cc_V, 32, 32, -(val & PSR_OVF));
+    env->xcc_Z = ~val & PSR_ZERO;
+    env->xcc_C = (val >> PSR_CARRY_SHIFT) & 1;
+
+    return 0;
+}
+
+static int put_xcc(QEMUFile *f, void *opaque, size_t size,
+                   const VMStateField *field, JSONWriter *vmdesc)
+{
+    SPARCCPU *cpu = opaque;
+    CPUSPARCState *env = &cpu->env;
+    uint32_t val = cpu_get_ccr(env);
+
+    /* Extract just xcc out of ccr and shift into legacy position. */
+    qemu_put_be32(f, (val & 0xf0) << (20 - 4));
+    return 0;
+}
+
+static const VMStateInfo vmstate_xcc = {
+    .name = "xcc",
+    .get = get_xcc,
+    .put = put_xcc,
+};
+#else
+static bool fq_needed(void *opaque)
+{
+    SPARCCPU *cpu = opaque;
+    return cpu->env.fsr_qne;
+}
+
+static const VMStateDescription vmstate_fq = {
+    .name = "cpu/fq",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .needed = fq_needed,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT32(env.fq.s.addr, SPARCCPU),
+        VMSTATE_UINT32(env.fq.s.insn, SPARCCPU),
+        VMSTATE_END_OF_LIST()
+    },
+};
+#endif
+
 static int cpu_pre_save(void *opaque)
 {
     SPARCCPU *cpu = opaque;
@@ -111,7 +191,7 @@ const VMStateDescription vmstate_sparc_cpu = {
     .version_id = SPARC_VMSTATE_VER,
     .minimum_version_id = SPARC_VMSTATE_VER,
     .pre_save = cpu_pre_save,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINTTL_ARRAY(env.gregs, SPARCCPU, 8),
         VMSTATE_UINT32(env.nwindows, SPARCCPU),
         VMSTATE_VARRAY_MULTIPLY(env.regbase, SPARCCPU, env.nwindows, 16,
@@ -121,7 +201,6 @@ const VMStateDescription vmstate_sparc_cpu = {
         VMSTATE_UINTTL(env.npc, SPARCCPU),
         VMSTATE_UINTTL(env.y, SPARCCPU),
         {
-
             .name = "psr",
             .version_id = 0,
             .size = sizeof(uint32_t),
@@ -129,7 +208,14 @@ const VMStateDescription vmstate_sparc_cpu = {
             .flags = VMS_SINGLE,
             .offset = 0,
         },
-        VMSTATE_UINTTL(env.fsr, SPARCCPU),
+        {
+            .name = "fsr",
+            .version_id = 0,
+            .size = sizeof(target_ulong),
+            .info = &vmstate_fsr,
+            .flags = VMS_SINGLE,
+            .offset = 0,
+        },
         VMSTATE_UINTTL(env.tbr, SPARCCPU),
         VMSTATE_INT32(env.interrupt_index, SPARCCPU),
         VMSTATE_UINT32(env.pil_in, SPARCCPU),
@@ -155,7 +241,14 @@ const VMStateDescription vmstate_sparc_cpu = {
         VMSTATE_UINT32(env.mmu_version, SPARCCPU),
         VMSTATE_STRUCT_ARRAY(env.ts, SPARCCPU, MAXTL_MAX, 0,
                              vmstate_trap_state, trap_state),
-        VMSTATE_UINT32(env.xcc, SPARCCPU),
+        {
+            .name = "xcc",
+            .version_id = 0,
+            .size = sizeof(uint32_t),
+            .info = &vmstate_xcc,
+            .flags = VMS_SINGLE,
+            .offset = 0,
+        },
         VMSTATE_UINT32(env.asi, SPARCCPU),
         VMSTATE_UINT32(env.pstate, SPARCCPU),
         VMSTATE_UINT32(env.tl, SPARCCPU),
@@ -168,7 +261,8 @@ const VMStateDescription vmstate_sparc_cpu = {
         VMSTATE_UINT64_ARRAY(env.bgregs, SPARCCPU, 8),
         VMSTATE_UINT64_ARRAY(env.igregs, SPARCCPU, 8),
         VMSTATE_UINT64_ARRAY(env.mgregs, SPARCCPU, 8),
-        VMSTATE_UINT64(env.fprs, SPARCCPU),
+        VMSTATE_UNUSED(4), /* was unused high half of uint64_t fprs */
+        VMSTATE_UINT32(env.fprs, SPARCCPU),
         VMSTATE_UINT64(env.tick_cmpr, SPARCCPU),
         VMSTATE_UINT64(env.stick_cmpr, SPARCCPU),
         VMSTATE_CPU_TIMER(env.tick, SPARCCPU),
@@ -189,4 +283,11 @@ const VMStateDescription vmstate_sparc_cpu = {
 #endif
         VMSTATE_END_OF_LIST()
     },
+#ifndef TARGET_SPARC64
+    .subsections = (const VMStateDescription * const []) {
+        &vmstate_fq,
+        NULL
+    },
+#endif
+
 };

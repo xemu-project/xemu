@@ -4,8 +4,11 @@
  */
 
 #include "qemu/osdep.h"
+#include "qapi/error.h"
 #include "ui/console.h"
+#include "qemu/memfd.h"
 #include "standard-headers/drm/drm_fourcc.h"
+#include "trace.h"
 
 PixelFormat qemu_pixelformat_from_pixman(pixman_format_code_t format)
 {
@@ -48,7 +51,6 @@ PixelFormat qemu_pixelformat_from_pixman(pixman_format_code_t format)
         break;
     default:
         g_assert_not_reached();
-        break;
     }
 
     pf.amax = (1 << pf.abits) - 1;
@@ -95,7 +97,9 @@ static const struct {
 } drm_format_pixman_map[] = {
     { DRM_FORMAT_RGB888,   PIXMAN_LE_r8g8b8   },
     { DRM_FORMAT_ARGB8888, PIXMAN_LE_a8r8g8b8 },
-    { DRM_FORMAT_XRGB8888, PIXMAN_LE_x8r8g8b8 }
+    { DRM_FORMAT_XRGB8888, PIXMAN_LE_x8r8g8b8 },
+    { DRM_FORMAT_XBGR8888, PIXMAN_LE_x8b8g8r8 },
+    { DRM_FORMAT_ABGR8888, PIXMAN_LE_a8b8g8r8 },
 };
 
 pixman_format_code_t qemu_drm_format_to_pixman(uint32_t drm_format)
@@ -142,6 +146,7 @@ int qemu_pixman_get_type(int rshift, int gshift, int bshift)
     return type;
 }
 
+#ifdef CONFIG_PIXMAN
 pixman_format_code_t qemu_pixman_get_format(PixelFormat *pf)
 {
     pixman_format_code_t format;
@@ -155,6 +160,7 @@ pixman_format_code_t qemu_pixman_get_format(PixelFormat *pf)
     }
     return format;
 }
+#endif
 
 /*
  * Return true for known-good pixman conversions.
@@ -183,6 +189,7 @@ bool qemu_pixman_check_format(DisplayChangeListener *dcl,
     }
 }
 
+#ifdef CONFIG_PIXMAN
 pixman_image_t *qemu_pixman_linebuf_create(pixman_format_code_t format,
                                            int width)
 {
@@ -199,14 +206,6 @@ void qemu_pixman_linebuf_fill(pixman_image_t *linebuf, pixman_image_t *fb,
                            x, y, 0, 0, 0, 0, width, 1);
 }
 
-/* copy linebuf to framebuffer */
-void qemu_pixman_linebuf_copy(pixman_image_t *fb, int width, int x, int y,
-                              pixman_image_t *linebuf)
-{
-    pixman_image_composite(PIXMAN_OP_SRC, linebuf, NULL, fb,
-                           0, 0, 0, 0, x, y, width, 1);
-}
-
 pixman_image_t *qemu_pixman_mirror_create(pixman_format_code_t format,
                                           pixman_image_t *image)
 {
@@ -216,6 +215,7 @@ pixman_image_t *qemu_pixman_mirror_create(pixman_format_code_t format,
                                     NULL,
                                     pixman_image_get_stride(image));
 }
+#endif
 
 void qemu_pixman_image_unref(pixman_image_t *image)
 {
@@ -225,17 +225,7 @@ void qemu_pixman_image_unref(pixman_image_t *image)
     pixman_image_unref(image);
 }
 
-pixman_color_t qemu_pixman_color(PixelFormat *pf, uint32_t color)
-{
-    pixman_color_t c;
-
-    c.red   = ((color & pf->rmask) >> pf->rshift) << (16 - pf->rbits);
-    c.green = ((color & pf->gmask) >> pf->gshift) << (16 - pf->gbits);
-    c.blue  = ((color & pf->bmask) >> pf->bshift) << (16 - pf->bbits);
-    c.alpha = ((color & pf->amask) >> pf->ashift) << (16 - pf->abits);
-    return c;
-}
-
+#ifdef CONFIG_PIXMAN
 pixman_image_t *qemu_pixman_glyph_from_vgafont(int height, const uint8_t *font,
                                                unsigned int ch)
 {
@@ -277,4 +267,74 @@ void qemu_pixman_glyph_render(pixman_image_t *glyph,
                            cw, ch);
     pixman_image_unref(ifg);
     pixman_image_unref(ibg);
+}
+#endif /* CONFIG_PIXMAN */
+
+static void *
+qemu_pixman_shareable_alloc(const char *name, size_t size,
+                            qemu_pixman_shareable *handle,
+                            Error **errp)
+{
+#ifdef WIN32
+    return qemu_win32_map_alloc(size, handle, errp);
+#else
+    return qemu_memfd_alloc(name, size, 0, handle, errp);
+#endif
+}
+
+static void
+qemu_pixman_shareable_free(qemu_pixman_shareable handle,
+                           void *ptr, size_t size)
+{
+#ifdef WIN32
+    qemu_win32_map_free(ptr, handle, &error_warn);
+#else
+    qemu_memfd_free(ptr, size, handle);
+#endif
+}
+
+static void
+qemu_pixman_shared_image_destroy(pixman_image_t *image, void *data)
+{
+    qemu_pixman_shareable handle = PTR_TO_SHAREABLE(data);
+    void *ptr = pixman_image_get_data(image);
+    size_t size = pixman_image_get_height(image) * pixman_image_get_stride(image);
+
+    qemu_pixman_shareable_free(handle, ptr, size);
+}
+
+bool
+qemu_pixman_image_new_shareable(pixman_image_t **image,
+                                qemu_pixman_shareable *handle,
+                                const char *name,
+                                pixman_format_code_t format,
+                                int width,
+                                int height,
+                                int rowstride_bytes,
+                                Error **errp)
+{
+    ERRP_GUARD();
+    size_t size = height * rowstride_bytes;
+    void *bits = NULL;
+
+    g_return_val_if_fail(image != NULL, false);
+    g_return_val_if_fail(handle != NULL, false);
+
+    bits = qemu_pixman_shareable_alloc(name, size, handle, errp);
+    if (!bits) {
+        return false;
+    }
+
+    *image = pixman_image_create_bits(format, width, height, bits, rowstride_bytes);
+    if (!*image) {
+        error_setg(errp, "Failed to allocate image");
+        qemu_pixman_shareable_free(*handle, bits, size);
+        return false;
+    }
+
+    pixman_image_set_destroy_function(*image,
+                                      qemu_pixman_shared_image_destroy,
+                                      SHAREABLE_TO_PTR(*handle));
+
+    return true;
 }

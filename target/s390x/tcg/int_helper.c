@@ -25,6 +25,7 @@
 #include "exec/exec-all.h"
 #include "qemu/host-utils.h"
 #include "exec/helper-proto.h"
+#include "exec/cpu_ldst.h"
 
 /* #define DEBUG_HELPER */
 #ifdef DEBUG_HELPER
@@ -34,88 +35,143 @@
 #endif
 
 /* 64/32 -> 32 signed division */
-int64_t HELPER(divs32)(CPUS390XState *env, int64_t a, int64_t b64)
+uint64_t HELPER(divs32)(CPUS390XState *env, int64_t a, int64_t b64)
 {
-    int32_t ret, b = b64;
-    int64_t q;
+    int32_t b = b64;
+    int64_t q, r;
 
     if (b == 0) {
         tcg_s390_program_interrupt(env, PGM_FIXPT_DIVIDE, GETPC());
     }
 
-    ret = q = a / b;
-    env->retxl = a % b;
+    q = a / b;
+    r = a % b;
 
     /* Catch non-representable quotient.  */
-    if (ret != q) {
+    if (q != (int32_t)q) {
         tcg_s390_program_interrupt(env, PGM_FIXPT_DIVIDE, GETPC());
     }
 
-    return ret;
+    return deposit64(q, 32, 32, r);
 }
 
 /* 64/32 -> 32 unsigned division */
 uint64_t HELPER(divu32)(CPUS390XState *env, uint64_t a, uint64_t b64)
 {
-    uint32_t ret, b = b64;
-    uint64_t q;
+    uint32_t b = b64;
+    uint64_t q, r;
 
     if (b == 0) {
         tcg_s390_program_interrupt(env, PGM_FIXPT_DIVIDE, GETPC());
     }
 
-    ret = q = a / b;
-    env->retxl = a % b;
+    q = a / b;
+    r = a % b;
 
     /* Catch non-representable quotient.  */
-    if (ret != q) {
+    if (q != (uint32_t)q) {
         tcg_s390_program_interrupt(env, PGM_FIXPT_DIVIDE, GETPC());
     }
 
-    return ret;
+    return deposit64(q, 32, 32, r);
 }
 
 /* 64/64 -> 64 signed division */
-int64_t HELPER(divs64)(CPUS390XState *env, int64_t a, int64_t b)
+Int128 HELPER(divs64)(CPUS390XState *env, int64_t a, int64_t b)
 {
     /* Catch divide by zero, and non-representable quotient (MIN / -1).  */
     if (b == 0 || (b == -1 && a == (1ll << 63))) {
         tcg_s390_program_interrupt(env, PGM_FIXPT_DIVIDE, GETPC());
     }
-    env->retxl = a % b;
-    return a / b;
+    return int128_make128(a / b, a % b);
 }
 
 /* 128 -> 64/64 unsigned division */
-uint64_t HELPER(divu64)(CPUS390XState *env, uint64_t ah, uint64_t al,
-                        uint64_t b)
+Int128 HELPER(divu64)(CPUS390XState *env, uint64_t ah, uint64_t al, uint64_t b)
 {
-    uint64_t ret;
-    /* Signal divide by zero.  */
-    if (b == 0) {
+    if (b != 0) {
+        uint64_t r = divu128(&al, &ah, b);
+        if (ah == 0) {
+            return int128_make128(al, r);
+        }
+    }
+    /* divide by zero or overflow */
+    tcg_s390_program_interrupt(env, PGM_FIXPT_DIVIDE, GETPC());
+}
+
+void HELPER(cvb)(CPUS390XState *env, uint32_t r1, uint64_t dec)
+{
+    int64_t pow10 = 1, bin = 0;
+    int digit, sign;
+
+    sign = dec & 0xf;
+    if (sign < 0xa) {
+        tcg_s390_data_exception(env, 0, GETPC());
+    }
+    dec >>= 4;
+
+    while (dec) {
+        digit = dec & 0xf;
+        if (digit > 0x9) {
+            tcg_s390_data_exception(env, 0, GETPC());
+        }
+        dec >>= 4;
+        bin += digit * pow10;
+        pow10 *= 10;
+    }
+
+    if (sign == 0xb || sign == 0xd) {
+        bin = -bin;
+    }
+
+    /* R1 is updated even on fixed-point-divide exception. */
+    env->regs[r1] = (env->regs[r1] & 0xffffffff00000000ULL) | (uint32_t)bin;
+    if (bin != (int32_t)bin) {
         tcg_s390_program_interrupt(env, PGM_FIXPT_DIVIDE, GETPC());
     }
-    if (ah == 0) {
-        /* 64 -> 64/64 case */
-        env->retxl = al % b;
-        ret = al / b;
-    } else {
-        /* ??? Move i386 idivq helper to host-utils.  */
-#ifdef CONFIG_INT128
-        __uint128_t a = ((__uint128_t)ah << 64) | al;
-        __uint128_t q = a / b;
-        env->retxl = a % b;
-        ret = q;
-        if (ret != q) {
+}
+
+uint64_t HELPER(cvbg)(CPUS390XState *env, Int128 dec)
+{
+    uint64_t dec64[] = {int128_getlo(dec), int128_gethi(dec)};
+    int64_t bin = 0, pow10, tmp;
+    int digit, i, sign;
+
+    sign = dec64[0] & 0xf;
+    if (sign < 0xa) {
+        tcg_s390_data_exception(env, 0, GETPC());
+    }
+    dec64[0] >>= 4;
+    pow10 = (sign == 0xb || sign == 0xd) ? -1 : 1;
+
+    for (i = 1; i < 20; i++) {
+        digit = dec64[i >> 4] & 0xf;
+        if (digit > 0x9) {
+            tcg_s390_data_exception(env, 0, GETPC());
+        }
+        dec64[i >> 4] >>= 4;
+        /*
+         * Prepend the next digit and check for overflow. The multiplication
+         * cannot overflow, since, conveniently, the int64_t limits are
+         * approximately +-9.2E+18. If bin is zero, the addition cannot
+         * overflow. Otherwise bin is known to have the same sign as the rhs
+         * addend, in which case overflow happens if and only if the result
+         * has a different sign.
+         */
+        tmp = bin + pow10 * digit;
+        if (bin && ((tmp ^ bin) < 0)) {
             tcg_s390_program_interrupt(env, PGM_FIXPT_DIVIDE, GETPC());
         }
-#else
-        /* 32-bit hosts would need special wrapper functionality - just abort if
-           we encounter such a case; it's very unlikely anyways. */
-        cpu_abort(env_cpu(env), "128 -> 64/64 division not implemented\n");
-#endif
+        bin = tmp;
+        pow10 *= 10;
     }
-    return ret;
+
+    g_assert(!dec64[0]);
+    if (dec64[1]) {
+        tcg_s390_program_interrupt(env, PGM_FIXPT_DIVIDE, GETPC());
+    }
+
+    return bin;
 }
 
 uint64_t HELPER(cvd)(int32_t reg)
@@ -133,6 +189,27 @@ uint64_t HELPER(cvd)(int32_t reg)
     for (shift = 4; (shift < 64) && bin; shift += 4) {
         dec |= (bin % 10) << shift;
         bin /= 10;
+    }
+
+    return dec;
+}
+
+Int128 HELPER(cvdg)(int64_t reg)
+{
+    /* positive 0 */
+    Int128 dec = int128_make64(0x0c);
+    Int128 bin = int128_makes64(reg);
+    Int128 base = int128_make64(10);
+    int shift;
+
+    if (!int128_nonneg(bin)) {
+        bin = int128_neg(bin);
+        dec = int128_make64(0x0d);
+    }
+
+    for (shift = 4; (shift < 128) && int128_nz(bin); shift += 4) {
+        dec = int128_or(dec, int128_lshift(int128_remu(bin, base), shift));
+        bin = int128_divu(bin, base);
     }
 
     return dec;

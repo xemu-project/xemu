@@ -3,7 +3,7 @@
 
 #include "exec/memory.h"
 #include "hw/hotplug.h"
-#include "hw/pci/pci.h"
+#include "hw/pci/pci_device.h"
 #include "migration/vmstate.h"
 
 struct SHPCDevice {
@@ -52,7 +52,7 @@ void shpc_device_unplug_cb(HotplugHandler *hotplug_dev, DeviceState *dev,
 void shpc_device_unplug_request_cb(HotplugHandler *hotplug_dev,
                                    DeviceState *dev, Error **errp);
 
-extern VMStateInfo shpc_vmstate_info;
+extern const VMStateInfo shpc_vmstate_info;
 #define SHPC_VMSTATE(_field, _type,  _test) \
     VMSTATE_BUFFER_UNSAFE_INFO_TEST(_field, _type, _test, 0, \
                                     shpc_vmstate_info, 0)

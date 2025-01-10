@@ -795,18 +795,13 @@ static void zdma_init(Object *obj)
                           TYPE_XLNX_ZDMA, ZDMA_R_MAX * 4);
     sysbus_init_mmio(sbd, &s->iomem);
     sysbus_init_irq(sbd, &s->irq_zdma_ch_imr);
-
-    object_property_add_link(obj, "dma", TYPE_MEMORY_REGION,
-                             (Object **)&s->dma_mr,
-                             qdev_prop_allow_set_link_before_realize,
-                             OBJ_PROP_LINK_STRONG);
 }
 
 static const VMStateDescription vmstate_zdma = {
     .name = TYPE_XLNX_ZDMA,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, XlnxZDMA, ZDMA_R_MAX),
         VMSTATE_UINT32(state, XlnxZDMA),
         VMSTATE_UINT32_ARRAY(dsc_src.words, XlnxZDMA, 4),
@@ -817,6 +812,8 @@ static const VMStateDescription vmstate_zdma = {
 
 static Property zdma_props[] = {
     DEFINE_PROP_UINT32("bus-width", XlnxZDMA, cfg.bus_width, 64),
+    DEFINE_PROP_LINK("dma", XlnxZDMA, dma_mr,
+                     TYPE_MEMORY_REGION, MemoryRegion *),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -824,7 +821,7 @@ static void zdma_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = zdma_reset;
+    device_class_set_legacy_reset(dc, zdma_reset);
     dc->realize = zdma_realize;
     device_class_set_props(dc, zdma_props);
     dc->vmsd = &vmstate_zdma;

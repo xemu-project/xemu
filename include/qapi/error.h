@@ -207,7 +207,7 @@
  *
  * Without ERRP_GUARD(), use of the @errp parameter is restricted:
  * - It must not be dereferenced, because it may be null.
- * - It should not be passed to error_prepend() or
+ * - It should not be passed to error_prepend(), error_vprepend(), or
  *   error_append_hint(), because that doesn't work with &error_fatal.
  * ERRP_GUARD() lifts these restrictions.
  *
@@ -518,6 +518,12 @@ static inline void error_propagator_cleanup(ErrorPropagator *prop)
 }
 
 G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC(ErrorPropagator, error_propagator_cleanup);
+
+/*
+ * Special error destination to warn on error.
+ * See error_setg() and error_propagate() for details.
+ */
+extern Error *error_warn;
 
 /*
  * Special error destination to abort on error.

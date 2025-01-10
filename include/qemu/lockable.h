@@ -13,16 +13,16 @@
 #ifndef QEMU_LOCKABLE_H
 #define QEMU_LOCKABLE_H
 
-#include "qemu/coroutine.h"
+#include "qemu/coroutine-core.h"
 #include "qemu/thread.h"
 
 typedef void QemuLockUnlockFunc(void *);
 
-struct QemuLockable {
+typedef struct QemuLockable {
     void *object;
     QemuLockUnlockFunc *lock;
     QemuLockUnlockFunc *unlock;
-};
+} QemuLockable;
 
 static inline __attribute__((__always_inline__)) QemuLockable *
 qemu_make_lockable(void *x, QemuLockable *lockable)
@@ -43,15 +43,30 @@ qemu_null_lockable(void *x)
     return NULL;
 }
 
+#define QML_FUNC_(name)                                           \
+    static inline void qemu_lockable_ ## name ## _lock(void *x)   \
+    {                                                             \
+        qemu_ ## name ## _lock(x);                                \
+    }                                                             \
+    static inline void qemu_lockable_ ## name ## _unlock(void *x) \
+    {                                                             \
+        qemu_ ## name ## _unlock(x);                              \
+    }
+
+QML_FUNC_(mutex)
+QML_FUNC_(rec_mutex)
+QML_FUNC_(co_mutex)
+QML_FUNC_(spin)
+
 /*
  * In C, compound literals have the lifetime of an automatic variable.
  * In C++ it would be different, but then C++ wouldn't need QemuLockable
  * either...
  */
-#define QML_OBJ_(x, name) (&(QemuLockable) {                            \
-        .object = (x),                                                  \
-        .lock = (QemuLockUnlockFunc *) qemu_ ## name ## _lock,          \
-        .unlock = (QemuLockUnlockFunc *) qemu_ ## name ## _unlock       \
+#define QML_OBJ_(x, name) (&(QemuLockable) {        \
+        .object = (x),                              \
+        .lock = qemu_lockable_ ## name ## _lock,    \
+        .unlock = qemu_lockable_ ## name ## _unlock \
     })
 
 /**

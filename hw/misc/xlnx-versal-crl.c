@@ -19,6 +19,7 @@
 #include "hw/resettable.h"
 
 #include "target/arm/arm-powerctl.h"
+#include "target/arm/multiprocessing.h"
 #include "hw/misc/xlnx-versal-crl.h"
 
 #ifndef XLNX_VERSAL_CRL_ERR_DEBUG
@@ -67,9 +68,9 @@ static void crl_reset_cpu(XlnxVersalCRL *s, ARMCPU *armcpu,
                           bool rst_old, bool rst_new)
 {
     if (rst_new) {
-        arm_set_cpu_off(armcpu->mp_affinity);
+        arm_set_cpu_off(arm_cpu_mp_affinity(armcpu));
     } else {
-        arm_set_cpu_on_and_reset(armcpu->mp_affinity);
+        arm_set_cpu_on_and_reset(arm_cpu_mp_affinity(armcpu));
     }
 }
 
@@ -310,7 +311,7 @@ static void crl_reset_enter(Object *obj, ResetType type)
     }
 }
 
-static void crl_reset_hold(Object *obj)
+static void crl_reset_hold(Object *obj, ResetType type)
 {
     XlnxVersalCRL *s = XLNX_VERSAL_CRL(obj);
 
@@ -387,7 +388,7 @@ static const VMStateDescription vmstate_crl = {
     .name = TYPE_XLNX_VERSAL_CRL,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, XlnxVersalCRL, CRL_R_MAX),
         VMSTATE_END_OF_LIST(),
     }

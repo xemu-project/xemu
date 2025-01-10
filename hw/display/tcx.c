@@ -344,7 +344,7 @@ static const VMStateDescription vmstate_tcx = {
     .version_id = 4,
     .minimum_version_id = 4,
     .post_load = vmstate_tcx_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT16(height, TCXState),
         VMSTATE_UINT16(width, TCXState),
         VMSTATE_UINT16(depth, TCXState),
@@ -892,7 +892,7 @@ static void tcx_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = tcx_realizefn;
-    dc->reset = tcx_reset;
+    device_class_set_legacy_reset(dc, tcx_reset);
     dc->vmsd = &vmstate_tcx;
     device_class_set_props(dc, tcx_properties);
 }

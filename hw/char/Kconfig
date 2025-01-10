@@ -21,6 +21,10 @@ config SERIAL_ISA
     depends on ISA_BUS
     select SERIAL
 
+config SERIAL_MM
+    bool
+    select SERIAL
+
 config SERIAL_PCI
     bool
     default y if PCI_DEVICES
@@ -39,6 +43,9 @@ config VIRTIO_SERIAL
     depends on VIRTIO
 
 config STM32F2XX_USART
+    bool
+
+config STM32L4X5_USART
     bool
 
 config CMSDK_APB_UART

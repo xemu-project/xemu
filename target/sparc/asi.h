@@ -144,15 +144,17 @@
  * ASIs, "(4V)" designates SUN4V specific ASIs.  "(NG4)" designates SPARC-T4
  * and later ASIs.
  */
-#define ASI_REAL                0x14 /* Real address, cachable          */
-#define ASI_PHYS_USE_EC		0x14 /* PADDR, E-cachable		*/
-#define ASI_REAL_IO             0x15 /* Real address, non-cachable      */
+#define ASI_MON_AIUP            0x12 /* (VIS4) Primary, user, monitor   */
+#define ASI_MON_AIUS            0x13 /* (VIS4) Secondary, user, monitor */
+#define ASI_REAL                0x14 /* Real address, cacheable          */
+#define ASI_PHYS_USE_EC		0x14 /* PADDR, E-cacheable		*/
+#define ASI_REAL_IO             0x15 /* Real address, non-cacheable      */
 #define ASI_PHYS_BYPASS_EC_E	0x15 /* PADDR, E-bit			*/
 #define ASI_BLK_AIUP_4V		0x16 /* (4V) Prim, user, block ld/st	*/
 #define ASI_BLK_AIUS_4V		0x17 /* (4V) Sec, user, block ld/st	*/
-#define ASI_REAL_L              0x1c /* Real address, cachable, LE      */
-#define ASI_PHYS_USE_EC_L	0x1c /* PADDR, E-cachable, little endian*/
-#define ASI_REAL_IO_L           0x1d /* Real address, non-cachable, LE  */
+#define ASI_REAL_L              0x1c /* Real address, cacheable, LE      */
+#define ASI_PHYS_USE_EC_L	0x1c /* PADDR, E-cacheable, little endian*/
+#define ASI_REAL_IO_L           0x1d /* Real address, non-cacheable, LE  */
 #define ASI_PHYS_BYPASS_EC_E_L	0x1d /* PADDR, E-bit, little endian	*/
 #define ASI_BLK_AIUP_L_4V	0x1e /* (4V) Prim, user, block, l-endian*/
 #define ASI_BLK_AIUS_L_4V	0x1f /* (4V) Sec, user, block, l-endian	*/
@@ -163,15 +165,15 @@
 #define ASI_BLK_INIT_QUAD_LDD_AIUS 0x23 /* (NG) init-store, twin load,
 					 * secondary, user
 					 */
-#define ASI_NUCLEUS_QUAD_LDD	0x24 /* Cachable, qword load		*/
+#define ASI_NUCLEUS_QUAD_LDD	0x24 /* Cacheable, qword load		*/
 #define ASI_QUEUE		0x25 /* (4V) Interrupt Queue Registers	*/
-#define ASI_TWINX_REAL          0x26 /* twin load, real, cachable       */
+#define ASI_TWINX_REAL          0x26 /* twin load, real, cacheable	*/
 #define ASI_QUAD_LDD_PHYS_4V	0x26 /* (4V) Physical, qword load	*/
 #define ASI_TWINX_N             0x27 /* twin load, nucleus              */
 #define ASI_TWINX_AIUP_L        0x2a /* twin load, primary user, LE     */
 #define ASI_TWINX_AIUS_L        0x2b /* twin load, secondary user, LE   */
-#define ASI_NUCLEUS_QUAD_LDD_L	0x2c /* Cachable, qword load, l-endian 	*/
-#define ASI_TWINX_REAL_L        0x2e /* twin load, real, cachable, LE   */
+#define ASI_NUCLEUS_QUAD_LDD_L	0x2c /* Cacheable, qword load, l-endian */
+#define ASI_TWINX_REAL_L        0x2e /* twin load, real, cacheable, LE	*/
 #define ASI_QUAD_LDD_PHYS_L_4V	0x2e /* (4V) Phys, qword load, l-endian	*/
 #define ASI_TWINX_NL            0x2f /* twin load, nucleus, LE          */
 #define ASI_PCACHE_DATA_STATUS	0x30 /* (III) PCache data stat RAM diag	*/
@@ -231,7 +233,7 @@
 #define ASI_INTR_ID		0x63 /* (CMT) Interrupt ID register	*/
 #define ASI_CORE_ID		0x63 /* (CMT) LP ID register		*/
 #define ASI_CESR_ID		0x63 /* (CMT) CESR ID register		*/
-#define ASI_IC_INSTR		0x66 /* Insn cache instrucion ram diag	*/
+#define ASI_IC_INSTR		0x66 /* Insn cache instruction ram diag	*/
 #define ASI_IC_TAG		0x67 /* Insn cache tag/valid ram diag 	*/
 #define ASI_IC_STAG		0x68 /* (III) Insn cache snoop tag ram	*/
 #define ASI_IC_PRE_DECODE	0x6e /* Insn cache pre-decode ram diag	*/
@@ -257,6 +259,8 @@
 #define ASI_UDBL_CONTROL_R	0x7f /* External UDB control regs rd low*/
 #define ASI_INTR_R		0x7f /* IRQ vector dispatch read	*/
 #define ASI_INTR_DATAN_R	0x7f /* (III) In irq vector data reg N	*/
+#define ASI_MON_P               0x84 /* (VIS4) Primary, monitor         */
+#define ASI_MON_S               0x85 /* (VIS4) Secondary, monitor       */
 #define ASI_PIC			0xb0 /* (NG4) PIC registers		*/
 #define ASI_PST8_P		0xc0 /* Primary, 8 8-bit, partial	*/
 #define ASI_PST8_S		0xc1 /* Secondary, 8 8-bit, partial	*/

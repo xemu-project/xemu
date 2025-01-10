@@ -1,6 +1,7 @@
 #include "qemu/osdep.h"
 #include <glib/gstdio.h>
 
+#include "qapi/error.h"
 #include "qemu/config-file.h"
 #include "qemu/module.h"
 #include "qemu/option.h"
@@ -184,6 +185,21 @@ static void char_mux_test(void)
     char *data;
     FeHandler h1 = { 0, false, 0, false, }, h2 = { 0, false, 0, false, };
     CharBackend chr_be1, chr_be2;
+    Error *error = NULL;
+
+    /* Create mux and chardev to be immediately removed */
+    opts = qemu_opts_create(qemu_find_opts("chardev"), "mux-label",
+                            1, &error_abort);
+    qemu_opt_set(opts, "backend", "ringbuf", &error_abort);
+    qemu_opt_set(opts, "size", "128", &error_abort);
+    qemu_opt_set(opts, "mux", "on", &error_abort);
+    chr = qemu_chr_new_from_opts(opts, NULL, &error_abort);
+    g_assert_nonnull(chr);
+    qemu_opts_del(opts);
+
+    /* Remove just created mux and chardev */
+    qmp_chardev_remove("mux-label", &error_abort);
+    qmp_chardev_remove("mux-label-base", &error_abort);
 
     opts = qemu_opts_create(qemu_find_opts("chardev"), "mux-label",
                             1, &error_abort);
@@ -334,7 +350,13 @@ static void char_mux_test(void)
     g_free(data);
 
     qemu_chr_fe_deinit(&chr_be1, false);
-    qemu_chr_fe_deinit(&chr_be2, true);
+
+    qmp_chardev_remove("mux-label", &error);
+    g_assert_cmpstr(error_get_pretty(error), ==, "Chardev 'mux-label' is busy");
+    error_free(error);
+
+    qemu_chr_fe_deinit(&chr_be2, false);
+    qmp_chardev_remove("mux-label", &error_abort);
 }
 
 
@@ -556,7 +578,7 @@ static int make_udp_socket(int *port)
     socklen_t alen = sizeof(addr);
     int ret, sock = qemu_socket(PF_INET, SOCK_DGRAM, 0);
 
-    g_assert_cmpint(sock, >, 0);
+    g_assert_cmpint(sock, >=, 0);
     addr.sin_family = AF_INET ;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
     addr.sin_port = 0;
@@ -1203,6 +1225,30 @@ static void char_serial_test(void)
 }
 #endif
 
+#if defined(HAVE_CHARDEV_PARALLEL) && !defined(WIN32)
+static void char_parallel_test(void)
+{
+    QemuOpts *opts;
+    Chardev *chr;
+
+    opts = qemu_opts_create(qemu_find_opts("chardev"), "parallel-id",
+                            1, &error_abort);
+    qemu_opt_set(opts, "backend", "parallel", &error_abort);
+    qemu_opt_set(opts, "path", "/dev/null", &error_abort);
+
+    chr = qemu_chr_new_from_opts(opts, NULL, NULL);
+#ifdef __linux__
+    /* fails to PPCLAIM, see qemu_chr_open_pp_fd() */
+    g_assert_null(chr);
+#else
+    g_assert_nonnull(chr);
+    object_unparent(OBJECT(chr));
+#endif
+
+    qemu_opts_del(opts);
+}
+#endif
+
 #ifndef _WIN32
 static void char_file_fifo_test(void)
 {
@@ -1212,7 +1258,6 @@ static void char_file_fifo_test(void)
     char *fifo = g_build_filename(tmp_path, "fifo", NULL);
     char *out = g_build_filename(tmp_path, "out", NULL);
     ChardevFile file = { .in = fifo,
-                         .has_in = true,
                          .out = out };
     ChardevBackend backend = { .type = CHARDEV_BACKEND_KIND_FILE,
                                .u.file.data = &file };
@@ -1384,7 +1429,7 @@ static void char_hotswap_test(void)
 
     int port;
     int sock = make_udp_socket(&port);
-    g_assert_cmpint(sock, >, 0);
+    g_assert_cmpint(sock, >=, 0);
 
     chr_args = g_strdup_printf("udp:127.0.0.1:%d", port);
 
@@ -1500,18 +1545,18 @@ int main(int argc, char **argv)
     static CharSocketClientTestConfig client2 ## name =                 \
         { addr, NULL, true, false, char_socket_event };                 \
     static CharSocketClientTestConfig client3 ## name =                 \
-        { addr, ",reconnect=1", false, false, char_socket_event };      \
+        { addr, ",reconnect-ms=1000", false, false, char_socket_event }; \
     static CharSocketClientTestConfig client4 ## name =                 \
-        { addr, ",reconnect=1", true, false, char_socket_event };       \
+        { addr, ",reconnect-ms=1000", true, false, char_socket_event }; \
     static CharSocketClientTestConfig client5 ## name =                 \
         { addr, NULL, false, true, char_socket_event };                 \
     static CharSocketClientTestConfig client6 ## name =                 \
         { addr, NULL, true, true, char_socket_event };                  \
     static CharSocketClientTestConfig client7 ## name =                 \
-        { addr, ",reconnect=1", true, false,                            \
+        { addr, ",reconnect-ms=1000", true, false,                      \
             char_socket_event_with_error };                             \
     static CharSocketClientTestConfig client8 ## name =                 \
-        { addr, ",reconnect=1", false, false, char_socket_event };      \
+        { addr, ",reconnect-ms=1000", false, false, char_socket_event };\
     g_test_add_data_func("/char/socket/client/mainloop/" # name,        \
                          &client1 ##name, char_socket_client_test);     \
     g_test_add_data_func("/char/socket/client/wait-conn/" # name,       \
@@ -1545,6 +1590,9 @@ int main(int argc, char **argv)
     g_test_add_func("/char/udp", char_udp_test);
 #if defined(HAVE_CHARDEV_SERIAL) && !defined(WIN32)
     g_test_add_func("/char/serial", char_serial_test);
+#endif
+#if defined(HAVE_CHARDEV_PARALLEL) && !defined(WIN32)
+    g_test_add_func("/char/parallel", char_parallel_test);
 #endif
     g_test_add_func("/char/hotswap", char_hotswap_test);
     g_test_add_func("/char/websocket", char_websock_test);

@@ -8,7 +8,7 @@
  */
 
 /* The controller can support a variety of different displays, but we only
-   implement one.  Most of the commends relating to brightness and geometry
+   implement one.  Most of the commands relating to brightness and geometry
    setup are ignored. */
 
 #include "qemu/osdep.h"
@@ -324,7 +324,7 @@ static const VMStateDescription vmstate_ssd0323 = {
     .version_id = 2,
     .minimum_version_id = 2,
     .post_load = ssd0323_post_load,
-    .fields      = (VMStateField []) {
+    .fields = (const VMStateField []) {
         VMSTATE_UINT32(cmd_len, ssd0323_state),
         VMSTATE_INT32(cmd, ssd0323_state),
         VMSTATE_INT32_ARRAY(cmd_data, ssd0323_state, 8),

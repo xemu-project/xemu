@@ -249,7 +249,7 @@ static const VMStateDescription vmstate_pl022 = {
     .version_id = 1,
     .minimum_version_id = 1,
     .post_load = pl022_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(cr0, PL022State),
         VMSTATE_UINT32(cr1, PL022State),
         VMSTATE_UINT32(bitmask, PL022State),
@@ -296,7 +296,7 @@ static void pl022_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = pl022_reset;
+    device_class_set_legacy_reset(dc, pl022_reset);
     dc->vmsd = &vmstate_pl022;
     dc->realize = pl022_realize;
 }

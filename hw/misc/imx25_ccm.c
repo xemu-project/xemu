@@ -91,7 +91,7 @@ static const char *imx25_ccm_reg_name(uint32_t reg)
     case IMX25_CCM_LPIMR1_REG:
         return "lpimr1";
     default:
-        sprintf(unknown, "[%u ?]", reg);
+        snprintf(unknown, sizeof(unknown), "[%u ?]", reg);
         return unknown;
     }
 }
@@ -101,7 +101,7 @@ static const VMStateDescription vmstate_imx25_ccm = {
     .name = TYPE_IMX25_CCM,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(reg, IMX25CCMState, IMX25_CCM_MAX_REG),
         VMSTATE_END_OF_LIST()
     },
@@ -297,7 +297,7 @@ static void imx25_ccm_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     IMXCCMClass *ccm = IMX_CCM_CLASS(klass);
 
-    dc->reset = imx25_ccm_reset;
+    device_class_set_legacy_reset(dc, imx25_ccm_reset);
     dc->vmsd = &vmstate_imx25_ccm;
     dc->desc = "i.MX25 Clock Control Module";
 

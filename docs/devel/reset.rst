@@ -11,15 +11,15 @@ whole group can be reset consistently. Each individual member object does not
 have to care about others; in particular, problems of order (which object is
 reset first) are addressed.
 
-As of now DeviceClass and BusClass implement this interface.
-
+The main object types which implement this interface are DeviceClass
+and BusClass.
 
 Triggering reset
 ----------------
 
 This section documents the APIs which "users" of a resettable object should use
 to control it. All resettable control functions must be called while holding
-the iothread lock.
+the BQL.
 
 You can apply a reset to an object using ``resettable_assert_reset()``. You need
 to call ``resettable_release_reset()`` to release the object from reset. To
@@ -27,15 +27,46 @@ instantly reset an object, without keeping it in reset state, just call
 ``resettable_reset()``. These functions take two parameters: a pointer to the
 object to reset and a reset type.
 
-Several types of reset will be supported. For now only cold reset is defined;
-others may be added later. The Resettable interface handles reset types with an
-enum:
+The Resettable interface handles reset types with an enum ``ResetType``:
 
 ``RESET_TYPE_COLD``
   Cold reset is supported by every resettable object. In QEMU, it means we reset
   to the initial state corresponding to the start of QEMU; this might differ
   from what is a real hardware cold reset. It differs from other resets (like
   warm or bus resets) which may keep certain parts untouched.
+
+``RESET_TYPE_SNAPSHOT_LOAD``
+  This is called for a reset which is being done to put the system into a
+  clean state prior to loading a snapshot. (This corresponds to a reset
+  with ``SHUTDOWN_CAUSE_SNAPSHOT_LOAD``.) Almost all devices should treat
+  this the same as ``RESET_TYPE_COLD``. The main exception is devices which
+  have some non-deterministic state they want to reinitialize to a different
+  value on each cold reset, such as RNG seed information, and which they
+  must not reinitialize on a snapshot-load reset.
+
+``RESET_TYPE_WAKEUP``
+  If the machine supports waking up from a suspended state and needs to reset
+  its devices during wake-up (from the ``MachineClass::wakeup()`` method), this
+  reset type should be used for such a request. Devices can utilize this reset
+  type to differentiate the reset requested during machine wake-up from other
+  reset requests. For example, RAM content must not be lost during wake-up, and
+  memory devices like virtio-mem that provide additional RAM must not reset
+  such state during wake-ups, but might do so during cold resets. However, this
+  reset type should not be used for wake-up detection, as not every machine
+  type issues a device reset request during wake-up.
+
+``RESET_TYPE_S390_CPU_NORMAL``
+  This is only used for S390 CPU objects; it clears interrupts, stops
+  processing, and clears the TLB, but does not touch register contents.
+
+``RESET_TYPE_S390_CPU_INITIAL``
+  This is only used for S390 CPU objects; it does everything
+  ``RESET_TYPE_S390_CPU_NORMAL`` does and also clears the PSW, prefix,
+  FPC, timer and control registers. It does not touch gprs, fprs or acrs.
+
+Devices which implement reset methods must treat any unknown ``ResetType``
+as equivalent to ``RESET_TYPE_COLD``; this will reduce the amount of
+existing code we need to change if we add more types in future.
 
 Calling ``resettable_reset()`` is equivalent to calling
 ``resettable_assert_reset()`` then ``resettable_release_reset()``. It is
@@ -150,25 +181,25 @@ in reset.
         mydev->var = 0;
     }
 
-    static void mydev_reset_hold(Object *obj)
+    static void mydev_reset_hold(Object *obj, ResetType type)
     {
         MyDevClass *myclass = MYDEV_GET_CLASS(obj);
         MyDevState *mydev = MYDEV(obj);
         /* call parent class hold phase */
         if (myclass->parent_phases.hold) {
-            myclass->parent_phases.hold(obj);
+            myclass->parent_phases.hold(obj, type);
         }
         /* set an IO */
         qemu_set_irq(mydev->irq, 1);
     }
 
-    static void mydev_reset_exit(Object *obj)
+    static void mydev_reset_exit(Object *obj, ResetType type)
     {
         MyDevClass *myclass = MYDEV_GET_CLASS(obj);
         MyDevState *mydev = MYDEV(obj);
         /* call parent class exit phase */
         if (myclass->parent_phases.exit) {
-            myclass->parent_phases.exit(obj);
+            myclass->parent_phases.exit(obj, type);
         }
         /* clear an IO */
         qemu_set_irq(mydev->irq, 0);
@@ -184,21 +215,20 @@ in reset.
     {
         MyDevClass *myclass = MYDEV_CLASS(class);
         ResettableClass *rc = RESETTABLE_CLASS(class);
-        resettable_class_set_parent_reset_phases(rc,
-                                                 mydev_reset_enter,
-                                                 mydev_reset_hold,
-                                                 mydev_reset_exit,
-                                                 &myclass->parent_phases);
+        resettable_class_set_parent_phases(rc,
+                                           mydev_reset_enter,
+                                           mydev_reset_hold,
+                                           mydev_reset_exit,
+                                           &myclass->parent_phases);
     }
 
 In the above example, we override all three phases. It is possible to override
 only some of them by passing NULL instead of a function pointer to
-``resettable_class_set_parent_reset_phases()``. For example, the following will
+``resettable_class_set_parent_phases()``. For example, the following will
 only override the *enter* phase and leave *hold* and *exit* untouched::
 
-    resettable_class_set_parent_reset_phases(rc, mydev_reset_enter,
-                                             NULL, NULL,
-                                             &myclass->parent_phases);
+    resettable_class_set_parent_phases(rc, mydev_reset_enter, NULL, NULL,
+                                       &myclass->parent_phases);
 
 This is equivalent to providing a trivial implementation of the hold and exit
 phases which does nothing but call the parent class's implementation of the
@@ -256,8 +286,8 @@ every reset child of the given resettable object. All children must be
 resettable too. Additional parameters (a reset type and an opaque pointer) must
 be passed to the callback too.
 
-In ``DeviceClass`` and ``BusClass`` the ``ResettableState`` is located
-``DeviceState`` and ``BusState`` structure. ``child_foreach()`` is implemented
+In ``DeviceClass`` and ``BusClass`` the ``ResettableState`` is located in the
+``DeviceState`` and ``BusState`` structures. ``child_foreach()`` is implemented
 to follow the bus hierarchy; for a bus, it calls the function on every child
 device; for a device, it calls the function on every bus child. When we reset
 the main system bus, we reset the whole machine bus tree.
@@ -289,3 +319,43 @@ There is currently 2 cases where this function is used:
 2. *hot bus change*; it means an existing live device is added, moved or
    removed in the bus hierarchy. At the moment, it occurs only in the raspi
    machines for changing the sdbus used by sd card.
+
+Reset of the complete system
+----------------------------
+
+Reset of the complete system is a little complicated. The typical
+flow is:
+
+1. Code which wishes to reset the entire system does so by calling
+   ``qemu_system_reset_request()``. This schedules a reset, but the
+   reset will happen asynchronously after the function returns.
+   That makes this safe to call from, for example, device models.
+
+2. The function which is called to make the reset happen is
+   ``qemu_system_reset()``. Generally only core system code should
+   call this directly.
+
+3. ``qemu_system_reset()`` calls the ``MachineClass::reset`` method of
+   the current machine, if it has one. That method must call
+   ``qemu_devices_reset()``. If the machine has no reset method,
+   ``qemu_system_reset()`` calls ``qemu_devices_reset()`` directly.
+
+4. ``qemu_devices_reset()`` performs a reset of the system, using
+   the three-phase mechanism listed above. It resets all objects
+   that were registered with it using ``qemu_register_resettable()``.
+   It also calls all the functions registered with it using
+   ``qemu_register_reset()``. Those functions are called during the
+   "hold" phase of this reset.
+
+5. The most important object that this reset resets is the
+   'sysbus' bus. The sysbus bus is the root of the qbus tree. This
+   means that all devices on the sysbus are reset, and all their
+   child buses, and all the devices on those child buses.
+
+6. Devices which are not on the qbus tree are *not* automatically
+   reset! (The most obvious example of this is CPU objects, but
+   anything that directly inherits from ``TYPE_OBJECT`` or ``TYPE_DEVICE``
+   rather than from ``TYPE_SYS_BUS_DEVICE`` or some other plugs-into-a-bus
+   type will be in this category.) You need to therefore arrange for these
+   to be reset in some other way (e.g. using ``qemu_register_resettable()``
+   or ``qemu_register_reset()``).

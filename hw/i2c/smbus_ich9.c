@@ -27,7 +27,7 @@
 #include "migration/vmstate.h"
 #include "qemu/module.h"
 
-#include "hw/i386/ich9.h"
+#include "hw/southbridge/ich9.h"
 #include "qom/object.h"
 #include "hw/acpi/acpi_aml_interface.h"
 
@@ -50,7 +50,7 @@ static const VMStateDescription vmstate_ich9_smbus = {
     .name = "ich9_smb",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_PCI_DEVICE(dev, ICH9SMBState),
         VMSTATE_BOOL_TEST(irq_enabled, ICH9SMBState, ich9_vmstate_need_smbus),
         VMSTATE_STRUCT_TEST(smb, ICH9SMBState, ich9_vmstate_need_smbus, 1,
@@ -80,6 +80,18 @@ static void ich9_smbus_write_config(PCIDevice *d, uint32_t address,
     }
 }
 
+static void ich9_smb_set_irq(PMSMBus *pmsmb, bool enabled)
+{
+    ICH9SMBState *s = pmsmb->opaque;
+
+    if (enabled == s->irq_enabled) {
+        return;
+    }
+
+    s->irq_enabled = enabled;
+    pci_set_irq(&s->dev, enabled);
+}
+
 static void ich9_smbus_realize(PCIDevice *d, Error **errp)
 {
     ICH9SMBState *s = ICH9_SMB_DEVICE(d);
@@ -93,17 +105,17 @@ static void ich9_smbus_realize(PCIDevice *d, Error **errp)
     pm_smbus_init(&d->qdev, &s->smb, false);
     pci_register_bar(d, ICH9_SMB_SMB_BASE_BAR, PCI_BASE_ADDRESS_SPACE_IO,
                      &s->smb.io);
+
+    s->smb.set_irq = ich9_smb_set_irq;
+    s->smb.opaque = s;
 }
 
 static void build_ich9_smb_aml(AcpiDevAmlIf *adev, Aml *scope)
 {
-    BusChild *kid;
     ICH9SMBState *s = ICH9_SMB_DEVICE(adev);
     BusState *bus = BUS(s->smb.smbus);
 
-    QTAILQ_FOREACH(kid, &bus->children, sibling) {
-            call_dev_aml_func(DEVICE(kid->child), scope);
-    }
+    qbus_build_aml(bus, scope);
 }
 
 static void ich9_smb_class_init(ObjectClass *klass, void *data)
@@ -126,28 +138,6 @@ static void ich9_smb_class_init(ObjectClass *klass, void *data)
      */
     dc->user_creatable = false;
     adevc->build_dev_aml = build_ich9_smb_aml;
-}
-
-static void ich9_smb_set_irq(PMSMBus *pmsmb, bool enabled)
-{
-    ICH9SMBState *s = pmsmb->opaque;
-
-    if (enabled == s->irq_enabled) {
-        return;
-    }
-
-    s->irq_enabled = enabled;
-    pci_set_irq(&s->dev, enabled);
-}
-
-I2CBus *ich9_smb_init(PCIBus *bus, int devfn, uint32_t smb_io_base)
-{
-    PCIDevice *d =
-        pci_create_simple_multifunction(bus, devfn, true, TYPE_ICH9_SMB_DEVICE);
-    ICH9SMBState *s = ICH9_SMB_DEVICE(d);
-    s->smb.set_irq = ich9_smb_set_irq;
-    s->smb.opaque = s;
-    return s->smb.smbus;
 }
 
 static const TypeInfo ich9_smb_info = {

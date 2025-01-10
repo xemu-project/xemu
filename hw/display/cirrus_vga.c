@@ -39,10 +39,11 @@
 #include "sysemu/reset.h"
 #include "qapi/error.h"
 #include "trace.h"
-#include "hw/pci/pci.h"
+#include "hw/pci/pci_device.h"
 #include "hw/qdev-properties.h"
 #include "migration/vmstate.h"
 #include "ui/pixel_ops.h"
+#include "vga_regs.h"
 #include "cirrus_vga_internal.h"
 #include "qom/object.h"
 #include "ui/console.h"
@@ -798,9 +799,9 @@ static int cirrus_bitblt_videotovideo_copy(CirrusVGAState * s)
     if (blit_is_unsafe(s, false))
         return 0;
 
-    return cirrus_do_copy(s, s->cirrus_blt_dstaddr - s->vga.start_addr,
-            s->cirrus_blt_srcaddr - s->vga.start_addr,
-            s->cirrus_blt_width, s->cirrus_blt_height);
+    return cirrus_do_copy(s, s->cirrus_blt_dstaddr - s->vga.params.start_addr,
+                          s->cirrus_blt_srcaddr - s->vga.params.start_addr,
+                          s->cirrus_blt_width, s->cirrus_blt_height);
 }
 
 /***************************************
@@ -1101,30 +1102,29 @@ static void cirrus_write_bitblt(CirrusVGAState * s, unsigned reg_value)
  *
  ***************************************/
 
-static void cirrus_get_offsets(VGACommonState *s1,
-                               uint32_t *pline_offset,
-                               uint32_t *pstart_addr,
-                               uint32_t *pline_compare)
+static void cirrus_get_params(VGACommonState *s1,
+                              VGADisplayParams *params)
 {
     CirrusVGAState * s = container_of(s1, CirrusVGAState, vga);
-    uint32_t start_addr, line_offset, line_compare;
+    uint32_t line_offset;
 
     line_offset = s->vga.cr[0x13]
         | ((s->vga.cr[0x1b] & 0x10) << 4);
     line_offset <<= 3;
-    *pline_offset = line_offset;
+    params->line_offset = line_offset;
 
-    start_addr = (s->vga.cr[0x0c] << 8)
+    params->start_addr = (s->vga.cr[0x0c] << 8)
         | s->vga.cr[0x0d]
         | ((s->vga.cr[0x1b] & 0x01) << 16)
         | ((s->vga.cr[0x1b] & 0x0c) << 15)
         | ((s->vga.cr[0x1d] & 0x80) << 12);
-    *pstart_addr = start_addr;
 
-    line_compare = s->vga.cr[0x18] |
+    params->line_compare = s->vga.cr[0x18] |
         ((s->vga.cr[0x07] & 0x10) << 4) |
         ((s->vga.cr[0x09] & 0x40) << 3);
-    *pline_compare = line_compare;
+
+    params->hpel = s->vga.ar[VGA_ATC_PEL];
+    params->hpel_split = s->vga.ar[VGA_ATC_MODE] & 0x20;
 }
 
 static uint32_t cirrus_get_bpp16_depth(CirrusVGAState * s)
@@ -2041,7 +2041,7 @@ static uint64_t cirrus_vga_mem_read(void *opaque,
     } else {
         val = 0xff;
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "cirrus: mem_readb 0x" TARGET_FMT_plx "\n", addr);
+                      "cirrus: mem_readb 0x" HWADDR_FMT_plx "\n", addr);
     }
     return val;
 }
@@ -2105,7 +2105,7 @@ static void cirrus_vga_mem_write(void *opaque,
         }
     } else {
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "cirrus: mem_writeb 0x" TARGET_FMT_plx " "
+                      "cirrus: mem_writeb 0x" HWADDR_FMT_plx " "
                       "value 0x%02" PRIx64 "\n", addr, mem_value);
     }
 }
@@ -2739,7 +2739,7 @@ const VMStateDescription vmstate_cirrus_vga = {
     .version_id = 2,
     .minimum_version_id = 1,
     .post_load = cirrus_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(vga.latch, CirrusVGAState),
         VMSTATE_UINT8(vga.sr_index, CirrusVGAState),
         VMSTATE_BUFFER(vga.sr, CirrusVGAState),
@@ -2777,7 +2777,7 @@ static const VMStateDescription vmstate_pci_cirrus_vga = {
     .name = "cirrus_vga",
     .version_id = 2,
     .minimum_version_id = 2,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_PCI_DEVICE(dev, PCICirrusVGAState),
         VMSTATE_STRUCT(cirrus_vga, PCICirrusVGAState, 0,
                        vmstate_cirrus_vga, CirrusVGAState),
@@ -2925,7 +2925,7 @@ void cirrus_init_common(CirrusVGAState *s, Object *owner,
     s->linear_mmio_mask = s->real_vram_size - 256;
 
     s->vga.get_bpp = cirrus_get_bpp;
-    s->vga.get_offsets = cirrus_get_offsets;
+    s->vga.get_params = cirrus_get_params;
     s->vga.get_resolution = cirrus_get_resolution;
     s->vga.cursor_invalidate = cirrus_cursor_invalidate;
     s->vga.cursor_draw_line = cirrus_cursor_draw_line;

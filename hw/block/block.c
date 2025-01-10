@@ -8,6 +8,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "block/block_int-common.h"
 #include "sysemu/blockdev.h"
 #include "sysemu/block-backend.h"
 #include "hw/block/block.h"
@@ -23,34 +24,68 @@ void blkconf_locked(BlockConf *conf, bool *locked)
 }
 
 /*
+ * Read the non-zeroes parts of @blk into @buf
+ * Reading all of the @blk is expensive if the zeroes parts of @blk
+ * is large enough. Therefore check the block status and only write
+ * the non-zeroes block into @buf.
+ *
+ * Return 0 on success, non-zero on error.
+ */
+static int blk_pread_nonzeroes(BlockBackend *blk, hwaddr size, void *buf)
+{
+    int ret;
+    int64_t bytes, offset = 0;
+    BlockDriverState *bs = blk_bs(blk);
+
+    for (;;) {
+        bytes = MIN(size - offset, BDRV_REQUEST_MAX_BYTES);
+        if (bytes <= 0) {
+            return 0;
+        }
+        ret = bdrv_block_status(bs, offset, bytes, &bytes, NULL, NULL);
+        if (ret < 0) {
+            return ret;
+        }
+        if (!(ret & BDRV_BLOCK_ZERO)) {
+            ret = blk_pread(blk, offset, bytes, (uint8_t *) buf + offset, 0);
+            if (ret < 0) {
+                return ret;
+            }
+        }
+        offset += bytes;
+    }
+}
+
+/*
  * Read the entire contents of @blk into @buf.
  * @blk's contents must be @size bytes, and @size must be at most
  * BDRV_REQUEST_MAX_BYTES.
  * On success, return true.
  * On failure, store an error through @errp and return false.
- * Note that the error messages do not identify the block backend.
- * TODO Since callers don't either, this can result in confusing
- * errors.
+ *
  * This function not intended for actual block devices, which read on
  * demand.  It's for things like memory devices that (ab)use a block
  * backend to provide persistence.
  */
-bool blk_check_size_and_read_all(BlockBackend *blk, void *buf, hwaddr size,
-                                 Error **errp)
+bool blk_check_size_and_read_all(BlockBackend *blk, DeviceState *dev,
+                                 void *buf, hwaddr size, Error **errp)
 {
     int64_t blk_len;
     int ret;
+    g_autofree char *dev_id = NULL;
 
     blk_len = blk_getlength(blk);
     if (blk_len < 0) {
         error_setg_errno(errp, -blk_len,
-                         "can't get size of block backend");
+                         "can't get size of %s block backend", blk_name(blk));
         return false;
     }
     if (blk_len != size) {
-        error_setg(errp, "device requires %" HWADDR_PRIu " bytes, "
-                   "block backend provides %" PRIu64 " bytes",
-                   size, blk_len);
+        dev_id = qdev_get_human_name(dev);
+        error_setg(errp, "%s device '%s' requires %" HWADDR_PRIu
+                   " bytes, %s block backend provides %" PRIu64 " bytes",
+                   object_get_typename(OBJECT(dev)), dev_id, size,
+                   blk_name(blk), blk_len);
         return false;
     }
 
@@ -61,9 +96,13 @@ bool blk_check_size_and_read_all(BlockBackend *blk, void *buf, hwaddr size,
      * block device and read only on demand.
      */
     assert(size <= BDRV_REQUEST_MAX_BYTES);
-    ret = blk_pread(blk, 0, size, buf, 0);
+    ret = blk_pread_nonzeroes(blk, size, buf);
     if (ret < 0) {
-        error_setg_errno(errp, -ret, "can't read block backend");
+        dev_id = qdev_get_human_name(dev);
+        error_setg_errno(errp, -ret, "can't read %s block backend"
+                         " for %s device '%s'",
+                         blk_name(blk), object_get_typename(OBJECT(dev)),
+                         dev_id);
         return false;
     }
     return true;

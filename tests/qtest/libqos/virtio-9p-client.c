@@ -235,10 +235,11 @@ static const char *rmessage_name(uint8_t id)
         id == P9_RMKDIR ? "RMKDIR" :
         id == P9_RLCREATE ? "RLCREATE" :
         id == P9_RSYMLINK ? "RSYMLINK" :
+        id == P9_RGETATTR ? "RGETATTR" :
         id == P9_RLINK ? "RLINK" :
         id == P9_RUNLINKAT ? "RUNLINKAT" :
         id == P9_RFLUSH ? "RFLUSH" :
-        id == P9_RREADDIR ? "READDIR" :
+        id == P9_RREADDIR ? "RREADDIR" :
         "<unknown>";
 }
 
@@ -594,6 +595,8 @@ void v9fs_rreaddir(P9Req *req, uint32_t *count, uint32_t *nentries,
 {
     uint32_t local_count;
     struct V9fsDirent *e = NULL;
+    /* only used to avoid a leak if entries was NULL */
+    struct V9fsDirent *unused_entries = NULL;
     uint16_t slen;
     uint32_t n = 0;
 
@@ -612,6 +615,8 @@ void v9fs_rreaddir(P9Req *req, uint32_t *count, uint32_t *nentries,
             e = g_new(struct V9fsDirent, 1);
             if (entries) {
                 *entries = e;
+            } else {
+                unused_entries = e;
             }
         } else {
             e = e->next = g_new(struct V9fsDirent, 1);
@@ -628,6 +633,7 @@ void v9fs_rreaddir(P9Req *req, uint32_t *count, uint32_t *nentries,
         *nentries = n;
     }
 
+    v9fs_free_dirents(unused_entries);
     v9fs_req_free(req);
 }
 

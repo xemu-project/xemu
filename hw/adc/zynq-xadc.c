@@ -269,7 +269,7 @@ static const VMStateDescription vmstate_zynq_xadc = {
     .name = "zynq-xadc",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, ZynqXADCState, ZYNQ_XADC_NUM_IO_REGS),
         VMSTATE_UINT16_ARRAY(xadc_regs, ZynqXADCState,
                              ZYNQ_XADC_NUM_ADC_REGS),
@@ -286,7 +286,7 @@ static void zynq_xadc_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->vmsd = &vmstate_zynq_xadc;
-    dc->reset = zynq_xadc_reset;
+    device_class_set_legacy_reset(dc, zynq_xadc_reset);
 }
 
 static const TypeInfo zynq_xadc_info = {

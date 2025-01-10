@@ -175,24 +175,24 @@ static uint64_t xlnx_dpdma_desc_get_source_address(DPDMADescriptor *desc,
 
     switch (frag) {
     case 0:
-        addr = desc->source_address
-            + (extract32(desc->address_extension, 16, 12) << 20);
+        addr = (uint64_t)desc->source_address
+            + (extract64(desc->address_extension, 16, 16) << 32);
         break;
     case 1:
-        addr = desc->source_address2
-            + (extract32(desc->address_extension_23, 0, 12) << 8);
+        addr = (uint64_t)desc->source_address2
+            + (extract64(desc->address_extension_23, 0, 16) << 32);
         break;
     case 2:
-        addr = desc->source_address3
-            + (extract32(desc->address_extension_23, 16, 12) << 20);
+        addr = (uint64_t)desc->source_address3
+            + (extract64(desc->address_extension_23, 16, 16) << 32);
         break;
     case 3:
-        addr = desc->source_address4
-            + (extract32(desc->address_extension_45, 0, 12) << 8);
+        addr = (uint64_t)desc->source_address4
+            + (extract64(desc->address_extension_45, 0, 16) << 32);
         break;
     case 4:
-        addr = desc->source_address5
-            + (extract32(desc->address_extension_45, 16, 12) << 20);
+        addr = (uint64_t)desc->source_address5
+            + (extract64(desc->address_extension_45, 16, 16) << 32);
         break;
     default:
         addr = 0;
@@ -277,7 +277,7 @@ static inline bool xlnx_dpdma_desc_ignore_done_bit(DPDMADescriptor *desc)
 static const VMStateDescription vmstate_xlnx_dpdma = {
     .name = TYPE_XLNX_DPDMA,
     .version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(registers, XlnxDPDMAState,
                              XLNX_DPDMA_REG_ARRAY_SIZE),
         VMSTATE_BOOL_ARRAY(operation_finished, XlnxDPDMAState, 6),
@@ -598,7 +598,7 @@ static void xlnx_dpdma_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     dc->vmsd = &vmstate_xlnx_dpdma;
-    dc->reset = xlnx_dpdma_reset;
+    device_class_set_legacy_reset(dc, xlnx_dpdma_reset);
 }
 
 static const TypeInfo xlnx_dpdma_info = {
@@ -612,6 +612,65 @@ static const TypeInfo xlnx_dpdma_info = {
 static void xlnx_dpdma_register_types(void)
 {
     type_register_static(&xlnx_dpdma_info);
+}
+
+static MemTxResult xlnx_dpdma_read_descriptor(XlnxDPDMAState *s,
+                                              uint64_t desc_addr,
+                                              DPDMADescriptor *desc)
+{
+    MemTxResult res = dma_memory_read(&address_space_memory, desc_addr,
+                                      desc, sizeof(DPDMADescriptor),
+                                      MEMTXATTRS_UNSPECIFIED);
+    if (res) {
+        return res;
+    }
+
+    /* Convert from LE into host endianness.  */
+    desc->control = le32_to_cpu(desc->control);
+    desc->descriptor_id = le32_to_cpu(desc->descriptor_id);
+    desc->xfer_size = le32_to_cpu(desc->xfer_size);
+    desc->line_size_stride = le32_to_cpu(desc->line_size_stride);
+    desc->timestamp_lsb = le32_to_cpu(desc->timestamp_lsb);
+    desc->timestamp_msb = le32_to_cpu(desc->timestamp_msb);
+    desc->address_extension = le32_to_cpu(desc->address_extension);
+    desc->next_descriptor = le32_to_cpu(desc->next_descriptor);
+    desc->source_address = le32_to_cpu(desc->source_address);
+    desc->address_extension_23 = le32_to_cpu(desc->address_extension_23);
+    desc->address_extension_45 = le32_to_cpu(desc->address_extension_45);
+    desc->source_address2 = le32_to_cpu(desc->source_address2);
+    desc->source_address3 = le32_to_cpu(desc->source_address3);
+    desc->source_address4 = le32_to_cpu(desc->source_address4);
+    desc->source_address5 = le32_to_cpu(desc->source_address5);
+    desc->crc = le32_to_cpu(desc->crc);
+
+    return res;
+}
+
+static MemTxResult xlnx_dpdma_write_descriptor(uint64_t desc_addr,
+                                               DPDMADescriptor *desc)
+{
+    DPDMADescriptor tmp_desc = *desc;
+
+    /* Convert from host endianness into LE.  */
+    tmp_desc.control = cpu_to_le32(tmp_desc.control);
+    tmp_desc.descriptor_id = cpu_to_le32(tmp_desc.descriptor_id);
+    tmp_desc.xfer_size = cpu_to_le32(tmp_desc.xfer_size);
+    tmp_desc.line_size_stride = cpu_to_le32(tmp_desc.line_size_stride);
+    tmp_desc.timestamp_lsb = cpu_to_le32(tmp_desc.timestamp_lsb);
+    tmp_desc.timestamp_msb = cpu_to_le32(tmp_desc.timestamp_msb);
+    tmp_desc.address_extension = cpu_to_le32(tmp_desc.address_extension);
+    tmp_desc.next_descriptor = cpu_to_le32(tmp_desc.next_descriptor);
+    tmp_desc.source_address = cpu_to_le32(tmp_desc.source_address);
+    tmp_desc.address_extension_23 = cpu_to_le32(tmp_desc.address_extension_23);
+    tmp_desc.address_extension_45 = cpu_to_le32(tmp_desc.address_extension_45);
+    tmp_desc.source_address2 = cpu_to_le32(tmp_desc.source_address2);
+    tmp_desc.source_address3 = cpu_to_le32(tmp_desc.source_address3);
+    tmp_desc.source_address4 = cpu_to_le32(tmp_desc.source_address4);
+    tmp_desc.source_address5 = cpu_to_le32(tmp_desc.source_address5);
+    tmp_desc.crc = cpu_to_le32(tmp_desc.crc);
+
+    return dma_memory_write(&address_space_memory, desc_addr, &tmp_desc,
+                            sizeof(DPDMADescriptor), MEMTXATTRS_UNSPECIFIED);
 }
 
 size_t xlnx_dpdma_start_operation(XlnxDPDMAState *s, uint8_t channel,
@@ -651,8 +710,7 @@ size_t xlnx_dpdma_start_operation(XlnxDPDMAState *s, uint8_t channel,
             desc_addr = xlnx_dpdma_descriptor_next_address(s, channel);
         }
 
-        if (dma_memory_read(&address_space_memory, desc_addr, &desc,
-                            sizeof(DPDMADescriptor), MEMTXATTRS_UNSPECIFIED)) {
+        if (xlnx_dpdma_read_descriptor(s, desc_addr, &desc)) {
             s->registers[DPDMA_EISR] |= ((1 << 1) << channel);
             xlnx_dpdma_update_irq(s);
             s->operation_finished[channel] = true;
@@ -755,8 +813,10 @@ size_t xlnx_dpdma_start_operation(XlnxDPDMAState *s, uint8_t channel,
             /* The descriptor need to be updated when it's completed. */
             DPRINTF("update the descriptor with the done flag set.\n");
             xlnx_dpdma_desc_set_done(&desc);
-            dma_memory_write(&address_space_memory, desc_addr, &desc,
-                             sizeof(DPDMADescriptor), MEMTXATTRS_UNSPECIFIED);
+            if (xlnx_dpdma_write_descriptor(desc_addr, &desc)) {
+                DPRINTF("Can't write the descriptor.\n");
+                /* TODO: check hardware behaviour for memory write failure */
+            }
         }
 
         if (xlnx_dpdma_desc_completion_interrupt(&desc)) {

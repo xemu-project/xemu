@@ -193,8 +193,8 @@ any IP's here, except for the $primary_ip variable.
    -device piix3-usb-uhci -device usb-tablet -name secondary \
    -netdev tap,id=hn0,vhost=off,helper=/usr/lib/qemu/qemu-bridge-helper \
    -device rtl8139,id=e0,netdev=hn0 \
-   -chardev socket,id=red0,host=$primary_ip,port=9003,reconnect=1 \
-   -chardev socket,id=red1,host=$primary_ip,port=9004,reconnect=1 \
+   -chardev socket,id=red0,host=$primary_ip,port=9003,reconnect-ms=1000 \
+   -chardev socket,id=red1,host=$primary_ip,port=9004,reconnect-ms=1000 \
    -object filter-redirector,id=f1,netdev=hn0,queue=tx,indev=red0 \
    -object filter-redirector,id=f2,netdev=hn0,queue=rx,outdev=red1 \
    -object filter-rewriter,id=rew0,netdev=hn0,queue=all \
@@ -210,6 +210,7 @@ children.0=childs0 \
 
 3. On Secondary VM's QEMU monitor, issue command
 {"execute":"qmp_capabilities"}
+{"execute": "migrate-set-capabilities", "arguments": {"capabilities": [ {"capability": "x-colo", "state": true } ] } }
 {"execute": "nbd-server-start", "arguments": {"addr": {"type": "inet", "data": {"host": "0.0.0.0", "port": "9999"} } } }
 {"execute": "nbd-server-add", "arguments": {"device": "parent0", "writable": true } }
 

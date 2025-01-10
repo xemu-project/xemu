@@ -2,7 +2,7 @@
  * QEMU Xbox System Emulator
  *
  * Copyright (c) 2012 espes
- * Copyright (c) 2018-2021 Matt Borgerson
+ * Copyright (c) 2018-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -24,6 +24,7 @@
 #include "hw/hw.h"
 #include "hw/loader.h"
 #include "hw/i386/pc.h"
+#include "hw/i386/kvm/clock.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/pci_ids.h"
 #include "hw/usb.h"
@@ -33,7 +34,6 @@
 #include "sysemu/sysemu.h"
 #include "sysemu/kvm.h"
 #include "kvm/kvm_i386.h"
-#include "hw/kvm/clock.h"
 #include "hw/dma/i8257.h"
 
 #include "hw/sysbus.h"
@@ -217,8 +217,6 @@ void xbox_init_common(MachineState *machine,
     MemoryRegion *system_memory = get_system_memory();
     // MemoryRegion *system_io = get_system_io();
 
-    int i;
-
     PCIBus *pci_bus;
     ISABus *isa_bus;
 
@@ -229,7 +227,7 @@ void xbox_init_common(MachineState *machine,
 
     // DriveInfo *hd[MAX_IDE_BUS * MAX_IDE_DEVS];
     // BusState *idebus[MAX_IDE_BUS];
-    ISADevice *rtc_state;
+    MC146818RtcState *rtc_state;
     ISADevice *pit = NULL;
     int pit_isa_irq = 0;
     qemu_irq pit_alt_irq = NULL;
@@ -244,7 +242,7 @@ void xbox_init_common(MachineState *machine,
 
     x86_cpus_init(x86ms, pcmc->default_cpu_version);
 
-    if (kvm_enabled() && pcmc->kvmclock_enabled) {
+    if (kvm_enabled()) {
         kvmclock_create(pcmc->kvmclock_create_always);
     }
 
@@ -267,9 +265,9 @@ void xbox_init_common(MachineState *machine,
                   &smbus,
                   &agp_bus);
 
-    pcms->bus = pci_bus;
+    pcms->pcibus = pci_bus;
 
-    isa_bus_irqs(isa_bus, x86ms->gsi);
+    isa_bus_register_input_irqs(isa_bus, x86ms->gsi);
 
     pc_i8259_create(isa_bus, gsi_state->i8259_irq);
 
@@ -279,6 +277,7 @@ void xbox_init_common(MachineState *machine,
 
     /* init basic PC hardware */
     rtc_state = mc146818_rtc_init(isa_bus, 2000, NULL);
+    x86ms->rtc = ISA_DEVICE(rtc_state);
 
     if (kvm_pit_in_kernel()) {
         pit = kvm_pit_init(isa_bus, 0x40);
@@ -286,26 +285,16 @@ void xbox_init_common(MachineState *machine,
         pit = i8254_pit_init(isa_bus, 0x40, pit_isa_irq, pit_alt_irq);
     }
 
-    i8257_dma_init(isa_bus, 0);
+    i8257_dma_init(OBJECT(machine), isa_bus, 0);
 
-    pcspk_init(pcms->pcspk, isa_bus, pit);
+    object_property_set_link(OBJECT(pcms->pcspk), "pit",
+                             OBJECT(pit), &error_fatal);
+    isa_realize_and_unref(pcms->pcspk, isa_bus, &error_fatal);
 
     PCIDevice *dev = pci_create_simple(pci_bus, PCI_DEVFN(9, 0), "piix3-ide");
     pci_ide_create_devs(dev);
     // idebus[0] = qdev_get_child_bus(&dev->qdev, "ide.0");
     // idebus[1] = qdev_get_child_bus(&dev->qdev, "ide.1");
-
-    // xbox bios wants this bit pattern set to mark the data as valid
-    uint8_t bits = 0x55;
-    for (i = 0x10; i < 0x70; i++) {
-        rtc_set_memory(rtc_state, i, bits);
-        bits = ~bits;
-    }
-    bits = 0x55;
-    for (i = 0x80; i < 0x100; i++) {
-        rtc_set_memory(rtc_state, i, bits);
-        bits = ~bits;
-    }
 
     /* smbus devices */
     smbus_xbox_smc_init(smbus, 0x10);
@@ -335,13 +324,8 @@ void xbox_init_common(MachineState *machine,
 
     /* Ethernet! */
     PCIDevice *nvnet = pci_new(PCI_DEVFN(4, 0), "nvnet");
-
-    for (i = 0; i < nb_nics; i++) {
-        NICInfo *nd = &nd_table[i];
-        qemu_check_nic_model(nd, "nvnet");
-        qdev_set_nic_properties(&nvnet->qdev, nd);
-        pci_realize_and_unref(nvnet, pci_bus, &error_fatal);
-    }
+    qemu_configure_nic_device(DEVICE(nvnet), true, "nvnet");
+    pci_realize_and_unref(nvnet, pci_bus, &error_fatal);
 
     /* APU! */
     mcpx_apu_init(pci_bus, PCI_DEVFN(5, 0), ram_memory);
@@ -375,6 +359,7 @@ static void xbox_machine_options(MachineClass *m)
     m->no_sdcard         = 1,
     m->default_cpu_type  = X86_CPU_TYPE_NAME("pentium3");
     m->is_default        = true;
+    m->default_nic       = "nvnet";
 
     pcmc->pci_enabled         = true;
     pcmc->has_acpi_build      = false;
@@ -382,7 +367,6 @@ static void xbox_machine_options(MachineClass *m)
     pcmc->gigabyte_align      = false;
     pcmc->smbios_legacy_mode  = true;
     pcmc->has_reserved_memory = false;
-    pcmc->default_nic_model   = "nvnet";
 }
 
 static char *machine_get_bootrom(Object *obj, Error **errp)

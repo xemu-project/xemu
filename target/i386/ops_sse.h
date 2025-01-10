@@ -19,6 +19,8 @@
  */
 
 #include "crypto/aes.h"
+#include "crypto/aes-round.h"
+#include "crypto/clmul.h"
 
 #if SHIFT == 0
 #define Reg MMXReg
@@ -1109,6 +1111,7 @@ void helper_ucomiss(CPUX86State *env, Reg *d, Reg *s)
     s1 = s->ZMM_S(0);
     ret = float32_compare_quiet(s0, s1, &env->sse_status);
     CC_SRC = comis_eflags[ret + 1];
+    CC_OP = CC_OP_EFLAGS;
 }
 
 void helper_comiss(CPUX86State *env, Reg *d, Reg *s)
@@ -1120,6 +1123,7 @@ void helper_comiss(CPUX86State *env, Reg *d, Reg *s)
     s1 = s->ZMM_S(0);
     ret = float32_compare(s0, s1, &env->sse_status);
     CC_SRC = comis_eflags[ret + 1];
+    CC_OP = CC_OP_EFLAGS;
 }
 
 void helper_ucomisd(CPUX86State *env, Reg *d, Reg *s)
@@ -1131,6 +1135,7 @@ void helper_ucomisd(CPUX86State *env, Reg *d, Reg *s)
     d1 = s->ZMM_D(0);
     ret = float64_compare_quiet(d0, d1, &env->sse_status);
     CC_SRC = comis_eflags[ret + 1];
+    CC_OP = CC_OP_EFLAGS;
 }
 
 void helper_comisd(CPUX86State *env, Reg *d, Reg *s)
@@ -1142,6 +1147,7 @@ void helper_comisd(CPUX86State *env, Reg *d, Reg *s)
     d1 = s->ZMM_D(0);
     ret = float64_compare(d0, d1, &env->sse_status);
     CC_SRC = comis_eflags[ret + 1];
+    CC_OP = CC_OP_EFLAGS;
 }
 #endif
 
@@ -1608,6 +1614,7 @@ void glue(helper_ptest, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
         cf |= (s->Q(i) & ~d->Q(i));
     }
     CC_SRC = (zf ? 0 : CC_Z) | (cf ? 0 : CC_C);
+    CC_OP = CC_OP_EFLAGS;
 }
 
 #define FMOVSLDUP(i) s->L((i) & ~1)
@@ -1964,6 +1971,7 @@ static inline unsigned pcmpxstrx(CPUX86State *env, Reg *d, Reg *s,
     validd--;
 
     CC_SRC = (valids < upper ? CC_Z : 0) | (validd < upper ? CC_S : 0);
+    CC_OP = CC_OP_EFLAGS;
 
     switch ((ctrl >> 2) & 3) {
     case 0:
@@ -2121,108 +2129,72 @@ target_ulong helper_crc32(uint32_t crc1, target_ulong msg, uint32_t len)
 
 #endif
 
-#if SHIFT == 1
-static void clmulq(uint64_t *dest_l, uint64_t *dest_h,
-                          uint64_t a, uint64_t b)
-{
-    uint64_t al, ah, resh, resl;
-
-    ah = 0;
-    al = a;
-    resh = resl = 0;
-
-    while (b) {
-        if (b & 1) {
-            resl ^= al;
-            resh ^= ah;
-        }
-        ah = (ah << 1) | (al >> 63);
-        al <<= 1;
-        b >>= 1;
-    }
-
-    *dest_l = resl;
-    *dest_h = resh;
-}
-#endif
-
 void glue(helper_pclmulqdq, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s,
                                     uint32_t ctrl)
 {
-    uint64_t a, b;
-    int i;
+    int a_idx = (ctrl & 1) != 0;
+    int b_idx = (ctrl & 16) != 0;
 
-    for (i = 0; i < 1 << SHIFT; i += 2) {
-        a = v->Q(((ctrl & 1) != 0) + i);
-        b = s->Q(((ctrl & 16) != 0) + i);
-        clmulq(&d->Q(i), &d->Q(i + 1), a, b);
+    for (int i = 0; i < SHIFT; i++) {
+        uint64_t a = v->Q(2 * i + a_idx);
+        uint64_t b = s->Q(2 * i + b_idx);
+        Int128 *r = (Int128 *)&d->ZMM_X(i);
+
+        *r = clmul_64(a, b);
     }
 }
 
 void glue(helper_aesdec, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
-    int i;
-    Reg st = *v;
-    Reg rk = *s;
+    for (int i = 0; i < SHIFT; i++) {
+        AESState *ad = (AESState *)&d->ZMM_X(i);
+        AESState *st = (AESState *)&v->ZMM_X(i);
+        AESState *rk = (AESState *)&s->ZMM_X(i);
 
-    for (i = 0 ; i < 2 << SHIFT ; i++) {
-        int j = i & 3;
-        d->L(i) = rk.L(i) ^ bswap32(AES_Td0[st.B(AES_ishifts[4 * j + 0])] ^
-                                    AES_Td1[st.B(AES_ishifts[4 * j + 1])] ^
-                                    AES_Td2[st.B(AES_ishifts[4 * j + 2])] ^
-                                    AES_Td3[st.B(AES_ishifts[4 * j + 3])]);
+        aesdec_ISB_ISR_IMC_AK(ad, st, rk, false);
     }
 }
 
 void glue(helper_aesdeclast, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
-    int i;
-    Reg st = *v;
-    Reg rk = *s;
+    for (int i = 0; i < SHIFT; i++) {
+        AESState *ad = (AESState *)&d->ZMM_X(i);
+        AESState *st = (AESState *)&v->ZMM_X(i);
+        AESState *rk = (AESState *)&s->ZMM_X(i);
 
-    for (i = 0; i < 8 << SHIFT; i++) {
-        d->B(i) = rk.B(i) ^ (AES_isbox[st.B(AES_ishifts[i & 15] + (i & ~15))]);
+        aesdec_ISB_ISR_AK(ad, st, rk, false);
     }
 }
 
 void glue(helper_aesenc, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
-    int i;
-    Reg st = *v;
-    Reg rk = *s;
+    for (int i = 0; i < SHIFT; i++) {
+        AESState *ad = (AESState *)&d->ZMM_X(i);
+        AESState *st = (AESState *)&v->ZMM_X(i);
+        AESState *rk = (AESState *)&s->ZMM_X(i);
 
-    for (i = 0 ; i < 2 << SHIFT ; i++) {
-        int j = i & 3;
-        d->L(i) = rk.L(i) ^ bswap32(AES_Te0[st.B(AES_shifts[4 * j + 0])] ^
-                                    AES_Te1[st.B(AES_shifts[4 * j + 1])] ^
-                                    AES_Te2[st.B(AES_shifts[4 * j + 2])] ^
-                                    AES_Te3[st.B(AES_shifts[4 * j + 3])]);
+        aesenc_SB_SR_MC_AK(ad, st, rk, false);
     }
 }
 
 void glue(helper_aesenclast, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
-    int i;
-    Reg st = *v;
-    Reg rk = *s;
+    for (int i = 0; i < SHIFT; i++) {
+        AESState *ad = (AESState *)&d->ZMM_X(i);
+        AESState *st = (AESState *)&v->ZMM_X(i);
+        AESState *rk = (AESState *)&s->ZMM_X(i);
 
-    for (i = 0; i < 8 << SHIFT; i++) {
-        d->B(i) = rk.B(i) ^ (AES_sbox[st.B(AES_shifts[i & 15] + (i & ~15))]);
+        aesenc_SB_SR_AK(ad, st, rk, false);
     }
 }
 
 #if SHIFT == 1
 void glue(helper_aesimc, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
-    int i;
-    Reg tmp = *s;
+    AESState *ad = (AESState *)&d->ZMM_X(0);
+    AESState *st = (AESState *)&s->ZMM_X(0);
 
-    for (i = 0 ; i < 4 ; i++) {
-        d->L(i) = bswap32(AES_imc[tmp.B(4 * i + 0)][0] ^
-                          AES_imc[tmp.B(4 * i + 1)][1] ^
-                          AES_imc[tmp.B(4 * i + 2)][2] ^
-                          AES_imc[tmp.B(4 * i + 3)][3]);
-    }
+    aesdec_IMC(ad, st, false);
 }
 
 void glue(helper_aeskeygenassist, SUFFIX)(CPUX86State *env, Reg *d, Reg *s,
@@ -2331,6 +2303,7 @@ void glue(helper_vtestps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
         cf |= (s->L(i) & ~d->L(i));
     }
     CC_SRC = ((zf >> 31) ? 0 : CC_Z) | ((cf >> 31) ? 0 : CC_C);
+    CC_OP = CC_OP_EFLAGS;
 }
 
 void glue(helper_vtestpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
@@ -2343,6 +2316,7 @@ void glue(helper_vtestpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
         cf |= (s->Q(i) & ~d->Q(i));
     }
     CC_SRC = ((zf >> 63) ? 0 : CC_Z) | ((cf >> 63) ? 0 : CC_C);
+    CC_OP = CC_OP_EFLAGS;
 }
 
 void glue(helper_vpmaskmovd_st, SUFFIX)(CPUX86State *env,
@@ -2470,6 +2444,8 @@ void helper_vpermdq_ymm(Reg *d, Reg *v, Reg *s, uint32_t order)
         r0 = s->Q(2);
         r1 = s->Q(3);
         break;
+    default: /* default case added to help the compiler to avoid warnings */
+        g_assert_not_reached();
     }
     switch ((order >> 4) & 3) {
     case 0:
@@ -2488,6 +2464,8 @@ void helper_vpermdq_ymm(Reg *d, Reg *v, Reg *s, uint32_t order)
         r2 = s->Q(2);
         r3 = s->Q(3);
         break;
+    default: /* default case added to help the compiler to avoid warnings */
+        g_assert_not_reached();
     }
     d->Q(0) = r0;
     d->Q(1) = r1;
@@ -2555,6 +2533,134 @@ SSE_HELPER_FMAS(helper_fma4sd,  ZMM_D, float64_muladd)
 #if SHIFT >= 1
 SSE_HELPER_FMAP(helper_fma4ps,  ZMM_S, 2 << SHIFT, float32_muladd)
 SSE_HELPER_FMAP(helper_fma4pd,  ZMM_D, 1 << SHIFT, float64_muladd)
+#endif
+
+#if SHIFT == 1
+#define SSE_HELPER_SHA1RNDS4(name, F, K) \
+    void name(Reg *d, Reg *a, Reg *b)                                       \
+    {                                                                       \
+        uint32_t A, B, C, D, E, t, i;                                       \
+                                                                            \
+        A = a->L(3);                                                        \
+        B = a->L(2);                                                        \
+        C = a->L(1);                                                        \
+        D = a->L(0);                                                        \
+        E = 0;                                                              \
+                                                                            \
+        for (i = 0; i <= 3; i++) {                                          \
+            t = F(B, C, D) + rol32(A, 5) + b->L(3 - i) + E + K;             \
+            E = D;                                                          \
+            D = C;                                                          \
+            C = rol32(B, 30);                                               \
+            B = A;                                                          \
+            A = t;                                                          \
+        }                                                                   \
+                                                                            \
+        d->L(3) = A;                                                        \
+        d->L(2) = B;                                                        \
+        d->L(1) = C;                                                        \
+        d->L(0) = D;                                                        \
+    }
+
+#define SHA1_F0(b, c, d) (((b) & (c)) ^ (~(b) & (d)))
+#define SHA1_F1(b, c, d) ((b) ^ (c) ^ (d))
+#define SHA1_F2(b, c, d) (((b) & (c)) ^ ((b) & (d)) ^ ((c) & (d)))
+
+SSE_HELPER_SHA1RNDS4(helper_sha1rnds4_f0, SHA1_F0, 0x5A827999)
+SSE_HELPER_SHA1RNDS4(helper_sha1rnds4_f1, SHA1_F1, 0x6ED9EBA1)
+SSE_HELPER_SHA1RNDS4(helper_sha1rnds4_f2, SHA1_F2, 0x8F1BBCDC)
+SSE_HELPER_SHA1RNDS4(helper_sha1rnds4_f3, SHA1_F1, 0xCA62C1D6)
+
+void helper_sha1nexte(Reg *d, Reg *a, Reg *b)
+{
+    d->L(3) = b->L(3) + rol32(a->L(3), 30);
+    d->L(2) = b->L(2);
+    d->L(1) = b->L(1);
+    d->L(0) = b->L(0);
+}
+
+void helper_sha1msg1(Reg *d, Reg *a, Reg *b)
+{
+    /* These could be overwritten by the first two assignments, save them.  */
+    uint32_t b3 = b->L(3);
+    uint32_t b2 = b->L(2);
+
+    d->L(3) = a->L(3) ^ a->L(1);
+    d->L(2) = a->L(2) ^ a->L(0);
+    d->L(1) = a->L(1) ^ b3;
+    d->L(0) = a->L(0) ^ b2;
+}
+
+void helper_sha1msg2(Reg *d, Reg *a, Reg *b)
+{
+    d->L(3) = rol32(a->L(3) ^ b->L(2), 1);
+    d->L(2) = rol32(a->L(2) ^ b->L(1), 1);
+    d->L(1) = rol32(a->L(1) ^ b->L(0), 1);
+    d->L(0) = rol32(a->L(0) ^ d->L(3), 1);
+}
+
+#define SHA256_CH(e, f, g)  (((e) & (f)) ^ (~(e) & (g)))
+#define SHA256_MAJ(a, b, c) (((a) & (b)) ^ ((a) & (c)) ^ ((b) & (c)))
+
+#define SHA256_RNDS0(w) (ror32((w), 2) ^ ror32((w), 13) ^ ror32((w), 22))
+#define SHA256_RNDS1(w) (ror32((w), 6) ^ ror32((w), 11) ^ ror32((w), 25))
+#define SHA256_MSGS0(w) (ror32((w), 7) ^ ror32((w), 18) ^ ((w) >> 3))
+#define SHA256_MSGS1(w) (ror32((w), 17) ^ ror32((w), 19) ^ ((w) >> 10))
+
+void helper_sha256rnds2(Reg *d, Reg *a, Reg *b, uint32_t wk0, uint32_t wk1)
+{
+    uint32_t t, AA, EE;
+
+    uint32_t A = b->L(3);
+    uint32_t B = b->L(2);
+    uint32_t C = a->L(3);
+    uint32_t D = a->L(2);
+    uint32_t E = b->L(1);
+    uint32_t F = b->L(0);
+    uint32_t G = a->L(1);
+    uint32_t H = a->L(0);
+
+    /* Even round */
+    t = SHA256_CH(E, F, G) + SHA256_RNDS1(E) + wk0 + H;
+    AA = t + SHA256_MAJ(A, B, C) + SHA256_RNDS0(A);
+    EE = t + D;
+
+    /* These will be B and F at the end of the odd round */
+    d->L(2) = AA;
+    d->L(0) = EE;
+
+    D = C, C = B, B = A, A = AA;
+    H = G, G = F, F = E, E = EE;
+
+    /* Odd round */
+    t = SHA256_CH(E, F, G) + SHA256_RNDS1(E) + wk1 + H;
+    AA = t + SHA256_MAJ(A, B, C) + SHA256_RNDS0(A);
+    EE = t + D;
+
+    d->L(3) = AA;
+    d->L(1) = EE;
+}
+
+void helper_sha256msg1(Reg *d, Reg *a, Reg *b)
+{
+    /* b->L(0) could be overwritten by the first assignment, save it.  */
+    uint32_t b0 = b->L(0);
+
+    d->L(0) = a->L(0) + SHA256_MSGS0(a->L(1));
+    d->L(1) = a->L(1) + SHA256_MSGS0(a->L(2));
+    d->L(2) = a->L(2) + SHA256_MSGS0(a->L(3));
+    d->L(3) = a->L(3) + SHA256_MSGS0(b0);
+}
+
+void helper_sha256msg2(Reg *d, Reg *a, Reg *b)
+{
+    /* Earlier assignments cannot overwrite any of the two operands.  */
+    d->L(0) = a->L(0) + SHA256_MSGS1(b->L(2));
+    d->L(1) = a->L(1) + SHA256_MSGS1(b->L(3));
+    /* Yes, this reuses the previously computed values.  */
+    d->L(2) = a->L(2) + SHA256_MSGS1(d->L(0));
+    d->L(3) = a->L(3) + SHA256_MSGS1(d->L(1));
+}
 #endif
 
 #undef SSE_HELPER_S

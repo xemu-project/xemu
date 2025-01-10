@@ -61,6 +61,7 @@
 #include "qemu/osdep.h"
 #include "block/block.h"
 #include "block/block_int.h"
+#include "block/dirty-bitmap.h"
 #include "sysemu/block-backend.h"
 #include "sysemu/runstate.h"
 #include "qemu/main-loop.h"
@@ -78,6 +79,7 @@
 #include "qapi/qapi-visit-migration.h"
 #include "qapi/clone-visitor.h"
 #include "trace.h"
+#include "options.h"
 
 #define CHUNK_SIZE     (1 << 10)
 
@@ -462,7 +464,7 @@ static void send_bitmap_bits(QEMUFile *f, DBMSaveState *s,
     g_free(buf);
 }
 
-/* Called with iothread lock taken.  */
+/* Called with the BQL taken.  */
 static void dirty_bitmap_do_save_cleanup(DBMSaveState *s)
 {
     SaveBitmapState *dbms;
@@ -477,15 +479,15 @@ static void dirty_bitmap_do_save_cleanup(DBMSaveState *s)
     }
 }
 
-/* Called with iothread lock taken. */
+/* Called with the BQL taken. */
 static int add_bitmaps_to_list(DBMSaveState *s, BlockDriverState *bs,
-                               const char *bs_name, GHashTable *alias_map)
+                               const char *bs_name, GHashTable *alias_map,
+                               Error **errp)
 {
     BdrvDirtyBitmap *bitmap;
     SaveBitmapState *dbms;
     GHashTable *bitmap_aliases;
     const char *node_alias, *bitmap_name, *bitmap_alias;
-    Error *local_err = NULL;
 
     /* When an alias map is given, @bs_name must be @bs's node name */
     assert(!alias_map || !strcmp(bs_name, bdrv_get_node_name(bs)));
@@ -502,8 +504,8 @@ static int add_bitmaps_to_list(DBMSaveState *s, BlockDriverState *bs,
     bitmap_name = bdrv_dirty_bitmap_name(bitmap);
 
     if (!bs_name || strcmp(bs_name, "") == 0) {
-        error_report("Bitmap '%s' in unnamed node can't be migrated",
-                     bitmap_name);
+        error_setg(errp, "Bitmap '%s' in unnamed node can't be migrated",
+                   bitmap_name);
         return -1;
     }
 
@@ -523,9 +525,9 @@ static int add_bitmaps_to_list(DBMSaveState *s, BlockDriverState *bs,
     }
 
     if (node_alias[0] == '#') {
-        error_report("Bitmap '%s' in a node with auto-generated "
-                     "name '%s' can't be migrated",
-                     bitmap_name, node_alias);
+        error_setg(errp, "Bitmap '%s' in a node with auto-generated "
+                   "name '%s' can't be migrated",
+                   bitmap_name, node_alias);
         return -1;
     }
 
@@ -536,8 +538,7 @@ static int add_bitmaps_to_list(DBMSaveState *s, BlockDriverState *bs,
             continue;
         }
 
-        if (bdrv_dirty_bitmap_check(bitmap, BDRV_BITMAP_DEFAULT, &local_err)) {
-            error_report_err(local_err);
+        if (bdrv_dirty_bitmap_check(bitmap, BDRV_BITMAP_DEFAULT, errp)) {
             return -1;
         }
 
@@ -551,14 +552,14 @@ static int add_bitmaps_to_list(DBMSaveState *s, BlockDriverState *bs,
             }
 
             bitmap_alias = bmap_inner->alias;
-            if (bmap_inner->has_transform) {
+            if (bmap_inner->transform) {
                 bitmap_transform = bmap_inner->transform;
             }
         } else {
             if (strlen(bitmap_name) > UINT8_MAX) {
-                error_report("Cannot migrate bitmap '%s' on node '%s': "
-                             "Name is longer than %u bytes",
-                             bitmap_name, bs_name, UINT8_MAX);
+                error_setg(errp, "Cannot migrate bitmap '%s' on node '%s': "
+                           "Name is longer than %u bytes",
+                           bitmap_name, bs_name, UINT8_MAX);
                 return -1;
             }
             bitmap_alias = bitmap_name;
@@ -596,18 +597,21 @@ static int add_bitmaps_to_list(DBMSaveState *s, BlockDriverState *bs,
     return 0;
 }
 
-/* Called with iothread lock taken. */
-static int init_dirty_bitmap_migration(DBMSaveState *s)
+/* Called with the BQL taken. */
+static int init_dirty_bitmap_migration(DBMSaveState *s, Error **errp)
 {
     BlockDriverState *bs;
     SaveBitmapState *dbms;
     GHashTable *handled_by_blk = g_hash_table_new(NULL, NULL);
     BlockBackend *blk;
-    const MigrationParameters *mig_params = &migrate_get_current()->parameters;
     GHashTable *alias_map = NULL;
 
-    if (mig_params->has_block_bitmap_mapping) {
-        alias_map = construct_alias_map(mig_params->block_bitmap_mapping, true,
+    /* Runs in the migration thread, but holds the BQL */
+    GLOBAL_STATE_CODE();
+    GRAPH_RDLOCK_GUARD_MAINLOOP();
+
+    if (migrate_has_block_bitmap_mapping()) {
+        alias_map = construct_alias_map(migrate_block_bitmap_mapping(), true,
                                         &error_abort);
     }
 
@@ -638,7 +642,7 @@ static int init_dirty_bitmap_migration(DBMSaveState *s)
             }
 
             if (bs && bs->drv && !bs->drv->is_filter) {
-                if (add_bitmaps_to_list(s, bs, name, NULL)) {
+                if (add_bitmaps_to_list(s, bs, name, NULL, errp)) {
                     goto fail;
                 }
                 g_hash_table_add(handled_by_blk, bs);
@@ -651,7 +655,8 @@ static int init_dirty_bitmap_migration(DBMSaveState *s)
             continue;
         }
 
-        if (add_bitmaps_to_list(s, bs, bdrv_get_node_name(bs), alias_map)) {
+        if (add_bitmaps_to_list(s, bs, bdrv_get_node_name(bs), alias_map,
+                                errp)) {
             goto fail;
         }
     }
@@ -705,7 +710,7 @@ static void bulk_phase(QEMUFile *f, DBMSaveState *s, bool limit)
     QSIMPLEQ_FOREACH(dbms, &s->dbms_list, entry) {
         while (!dbms->bulk_completed) {
             bulk_phase_send_chunk(f, s, dbms);
-            if (limit && qemu_file_rate_limit(f)) {
+            if (limit && migration_rate_exceeded(f)) {
                 return;
             }
         }
@@ -737,7 +742,7 @@ static int dirty_bitmap_save_iterate(QEMUFile *f, void *opaque)
     return s->bulk_completed;
 }
 
-/* Called with iothread lock taken.  */
+/* Called with the BQL taken.  */
 
 static int dirty_bitmap_save_complete(QEMUFile *f, void *opaque)
 {
@@ -761,17 +766,15 @@ static int dirty_bitmap_save_complete(QEMUFile *f, void *opaque)
     return 0;
 }
 
-static void dirty_bitmap_save_pending(QEMUFile *f, void *opaque,
-                                      uint64_t max_size,
-                                      uint64_t *res_precopy_only,
-                                      uint64_t *res_compatible,
-                                      uint64_t *res_postcopy_only)
+static void dirty_bitmap_state_pending(void *opaque,
+                                       uint64_t *must_precopy,
+                                       uint64_t *can_postcopy)
 {
     DBMSaveState *s = &((DBMState *)opaque)->save;
     SaveBitmapState *dbms;
     uint64_t pending = 0;
 
-    qemu_mutex_lock_iothread();
+    bql_lock();
 
     QSIMPLEQ_FOREACH(dbms, &s->dbms_list, entry) {
         uint64_t gran = bdrv_dirty_bitmap_granularity(dbms->bitmap);
@@ -781,11 +784,11 @@ static void dirty_bitmap_save_pending(QEMUFile *f, void *opaque,
         pending += DIV_ROUND_UP(sectors * BDRV_SECTOR_SIZE, gran);
     }
 
-    qemu_mutex_unlock_iothread();
+    bql_unlock();
 
-    trace_dirty_bitmap_save_pending(pending, max_size);
+    trace_dirty_bitmap_state_pending(pending);
 
-    *res_postcopy_only += pending;
+    *can_postcopy += pending;
 }
 
 /* First occurrence of this bitmap. It should be created if doesn't exist */
@@ -821,7 +824,7 @@ static int dirty_bitmap_load_start(QEMUFile *f, DBMLoadState *s)
     }
 
     if (s->bmap_inner &&
-        s->bmap_inner->has_transform &&
+        s->bmap_inner->transform &&
         s->bmap_inner->transform->has_persistent) {
         persistent = s->bmap_inner->transform->persistent;
     } else {
@@ -1158,7 +1161,6 @@ static int dirty_bitmap_load_header(QEMUFile *f, DBMLoadState *s,
 static int dirty_bitmap_load(QEMUFile *f, void *opaque, int version_id)
 {
     GHashTable *alias_map = NULL;
-    const MigrationParameters *mig_params = &migrate_get_current()->parameters;
     DBMLoadState *s = &((DBMState *)opaque)->load;
     int ret = 0;
 
@@ -1170,9 +1172,9 @@ static int dirty_bitmap_load(QEMUFile *f, void *opaque, int version_id)
         return -EINVAL;
     }
 
-    if (mig_params->has_block_bitmap_mapping) {
-        alias_map = construct_alias_map(mig_params->block_bitmap_mapping,
-                                        false, &error_abort);
+    if (migrate_has_block_bitmap_mapping()) {
+        alias_map = construct_alias_map(migrate_block_bitmap_mapping(), false,
+                                        &error_abort);
     }
 
     do {
@@ -1211,14 +1213,12 @@ fail:
     return ret;
 }
 
-static int dirty_bitmap_save_setup(QEMUFile *f, void *opaque)
+static int dirty_bitmap_save_setup(QEMUFile *f, void *opaque, Error **errp)
 {
     DBMSaveState *s = &((DBMState *)opaque)->save;
     SaveBitmapState *dbms = NULL;
 
-    qemu_mutex_lock_iothread();
-    if (init_dirty_bitmap_migration(s) < 0) {
-        qemu_mutex_unlock_iothread();
+    if (init_dirty_bitmap_migration(s, errp) < 0) {
         return -1;
     }
 
@@ -1226,7 +1226,6 @@ static int dirty_bitmap_save_setup(QEMUFile *f, void *opaque)
         send_bitmap_start(f, s, dbms);
     }
     qemu_put_bitmap_flags(f, DIRTY_BITMAP_MIG_FLAG_EOS);
-    qemu_mutex_unlock_iothread();
     return 0;
 }
 
@@ -1252,7 +1251,8 @@ static SaveVMHandlers savevm_dirty_bitmap_handlers = {
     .save_live_complete_postcopy = dirty_bitmap_save_complete,
     .save_live_complete_precopy = dirty_bitmap_save_complete,
     .has_postcopy = dirty_bitmap_has_postcopy,
-    .save_live_pending = dirty_bitmap_save_pending,
+    .state_pending_exact = dirty_bitmap_state_pending,
+    .state_pending_estimate = dirty_bitmap_state_pending,
     .save_live_iterate = dirty_bitmap_save_iterate,
     .is_active_iterate = dirty_bitmap_is_active_iterate,
     .load_state = dirty_bitmap_load,

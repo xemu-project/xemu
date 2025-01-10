@@ -14,7 +14,7 @@
 #include "hw/isa/i8259_internal.h"
 #include "hw/intc/i8259.h"
 #include "qemu/module.h"
-#include "hw/i386/apic_internal.h"
+#include "hw/intc/kvm_irqcount.h"
 #include "hw/irq.h"
 #include "sysemu/kvm.h"
 #include "qom/object.h"
@@ -117,7 +117,7 @@ static void kvm_pic_set_irq(void *opaque, int irq, int level)
 
     pic_stat_update_irq(irq, level);
     delivered = kvm_set_irq(kvm_state, irq, level);
-    apic_report_irq_delivered(delivered);
+    kvm_report_irq_delivered(delivered);
 }
 
 static void kvm_pic_realize(DeviceState *dev, Error **errp)
@@ -145,7 +145,7 @@ static void kvm_i8259_class_init(ObjectClass *klass, void *data)
     PICCommonClass *k = PIC_COMMON_CLASS(klass);
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset     = kvm_pic_reset;
+    device_class_set_legacy_reset(dc, kvm_pic_reset);
     device_class_set_parent_realize(dc, kvm_pic_realize, &kpc->parent_realize);
     k->pre_save   = kvm_pic_get;
     k->post_load  = kvm_pic_put;

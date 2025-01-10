@@ -141,7 +141,7 @@ static const VMStateDescription vmstate_heathrow_pic_one = {
     .name = "heathrow_pic_one",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(events, HeathrowPICState),
         VMSTATE_UINT32(mask, HeathrowPICState),
         VMSTATE_UINT32(levels, HeathrowPICState),
@@ -154,7 +154,7 @@ static const VMStateDescription vmstate_heathrow = {
     .name = "heathrow_pic",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_STRUCT_ARRAY(pics, HeathrowState, 2, 1,
                              vmstate_heathrow_pic_one, HeathrowPICState),
         VMSTATE_END_OF_LIST()
@@ -188,7 +188,7 @@ static void heathrow_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
-    dc->reset = heathrow_reset;
+    device_class_set_legacy_reset(dc, heathrow_reset);
     dc->vmsd = &vmstate_heathrow;
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
 }

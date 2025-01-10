@@ -873,20 +873,13 @@ static void npcm7xx_clk_enter_reset(Object *obj, ResetType type)
 
     QEMU_BUILD_BUG_ON(sizeof(s->regs) != sizeof(cold_reset_values));
 
-    switch (type) {
-    case RESET_TYPE_COLD:
-        memcpy(s->regs, cold_reset_values, sizeof(cold_reset_values));
-        s->ref_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
-        npcm7xx_clk_update_all_clocks(s);
-        return;
-    }
-
+    memcpy(s->regs, cold_reset_values, sizeof(cold_reset_values));
+    s->ref_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    npcm7xx_clk_update_all_clocks(s);
     /*
      * A small number of registers need to be reset on a core domain reset,
      * but no such reset type exists yet.
      */
-    qemu_log_mask(LOG_UNIMP, "%s: reset type %d not implemented.",
-                  __func__, type);
 }
 
 static void npcm7xx_clk_init_clock_hierarchy(NPCM7xxCLKState *s)
@@ -976,7 +969,7 @@ static const VMStateDescription vmstate_npcm7xx_clk_pll = {
     .name = "npcm7xx-clock-pll",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields =  (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_CLOCK(clock_in, NPCM7xxClockPLLState),
         VMSTATE_END_OF_LIST(),
     },
@@ -986,7 +979,7 @@ static const VMStateDescription vmstate_npcm7xx_clk_sel = {
     .name = "npcm7xx-clock-sel",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields =  (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_ARRAY_OF_POINTER_TO_STRUCT(clock_in, NPCM7xxClockSELState,
                 NPCM7XX_CLK_SEL_MAX_INPUT, 0, vmstate_clock, Clock),
         VMSTATE_END_OF_LIST(),
@@ -997,7 +990,7 @@ static const VMStateDescription vmstate_npcm7xx_clk_divider = {
     .name = "npcm7xx-clock-divider",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields =  (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_CLOCK(clock_in, NPCM7xxClockDividerState),
         VMSTATE_END_OF_LIST(),
     },
@@ -1008,7 +1001,7 @@ static const VMStateDescription vmstate_npcm7xx_clk = {
     .version_id = 1,
     .minimum_version_id = 1,
     .post_load = npcm7xx_clk_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, NPCM7xxCLKState, NPCM7XX_CLK_NR_REGS),
         VMSTATE_INT64(ref_ns, NPCM7xxCLKState),
         VMSTATE_CLOCK(clkref, NPCM7xxCLKState),
