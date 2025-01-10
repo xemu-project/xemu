@@ -32,14 +32,12 @@
 #include "hw/irq.h"
 #include "hw/qdev-properties.h"
 #include "ppc405.h"
-#include "hw/char/serial.h"
+#include "hw/char/serial-mm.h"
 #include "qemu/timer.h"
 #include "sysemu/reset.h"
 #include "sysemu/sysemu.h"
 #include "exec/address-spaces.h"
 #include "hw/intc/ppc-uic.h"
-#include "hw/qdev-properties.h"
-#include "qapi/error.h"
 #include "trace.h"
 
 /*****************************************************************************/
@@ -121,7 +119,7 @@ static void ppc405_pob_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     dc->realize = ppc405_pob_realize;
-    dc->reset = ppc405_pob_reset;
+    device_class_set_legacy_reset(dc, ppc405_pob_reset);
     /* Reason: only works as function of a ppc4xx SoC */
     dc->user_creatable = false;
 }
@@ -198,7 +196,7 @@ static void ppc405_opba_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     dc->realize = ppc405_opba_realize;
-    dc->reset = ppc405_opba_reset;
+    device_class_set_legacy_reset(dc, ppc405_opba_reset);
     /* Reason: only works as function of a ppc4xx SoC */
     dc->user_creatable = false;
 }
@@ -304,7 +302,7 @@ static void ppc405_dma_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     dc->realize = ppc405_dma_realize;
-    dc->reset = ppc405_dma_reset;
+    device_class_set_legacy_reset(dc, ppc405_dma_reset);
     /* Reason: only works as function of a ppc4xx SoC */
     dc->user_creatable = false;
 }
@@ -494,7 +492,7 @@ static void ppc405_ocm_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     dc->realize = ppc405_ocm_realize;
-    dc->reset = ppc405_ocm_reset;
+    device_class_set_legacy_reset(dc, ppc405_ocm_reset);
     /* Reason: only works as function of a ppc4xx SoC */
     dc->user_creatable = false;
 }
@@ -728,7 +726,7 @@ static void ppc405_gpt_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     dc->realize = ppc405_gpt_realize;
-    dc->reset = ppc405_gpt_reset;
+    device_class_set_legacy_reset(dc, ppc405_gpt_reset);
     /* Reason: only works as function of a ppc4xx SoC */
     dc->user_creatable = false;
 }
@@ -977,7 +975,7 @@ static void ppc405_cpc_class_init(ObjectClass *oc, void *data)
     DeviceClass *dc = DEVICE_CLASS(oc);
 
     dc->realize = ppc405_cpc_realize;
-    dc->reset = ppc405_cpc_reset;
+    device_class_set_legacy_reset(dc, ppc405_cpc_reset);
     /* Reason: only works as function of a ppc4xx SoC */
     dc->user_creatable = false;
     device_class_set_props(dc, ppc405_cpc_properties);

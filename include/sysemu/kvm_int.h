@@ -12,7 +12,11 @@
 #include "exec/memory.h"
 #include "qapi/qapi-types-common.h"
 #include "qemu/accel.h"
+#include "qemu/queue.h"
 #include "sysemu/kvm.h"
+#include "hw/boards.h"
+#include "hw/i386/topology.h"
+#include "io/channel-socket.h"
 
 typedef struct KVMSlot
 {
@@ -29,15 +33,54 @@ typedef struct KVMSlot
     int as_id;
     /* Cache of the offset in ram address space */
     ram_addr_t ram_start_offset;
+    int guest_memfd;
+    hwaddr guest_memfd_offset;
 } KVMSlot;
+
+typedef struct KVMMemoryUpdate {
+    QSIMPLEQ_ENTRY(KVMMemoryUpdate) next;
+    MemoryRegionSection section;
+} KVMMemoryUpdate;
 
 typedef struct KVMMemoryListener {
     MemoryListener listener;
     KVMSlot *slots;
+    unsigned int nr_slots_used;
+    unsigned int nr_slots_allocated;
     int as_id;
+    QSIMPLEQ_HEAD(, KVMMemoryUpdate) transaction_add;
+    QSIMPLEQ_HEAD(, KVMMemoryUpdate) transaction_del;
 } KVMMemoryListener;
 
 #define KVM_MSI_HASHTAB_SIZE    256
+
+typedef struct KVMHostTopoInfo {
+    /* Number of package on the Host */
+    unsigned int maxpkgs;
+    /* Number of cpus on the Host */
+    unsigned int maxcpus;
+    /* Number of cpus on each different package */
+    unsigned int *pkg_cpu_count;
+    /* Each package can have different maxticks */
+    unsigned int *maxticks;
+} KVMHostTopoInfo;
+
+struct KVMMsrEnergy {
+    pid_t pid;
+    bool enable;
+    char *socket_path;
+    QIOChannelSocket *sioc;
+    QemuThread msr_thr;
+    unsigned int guest_vcpus;
+    unsigned int guest_vsockets;
+    X86CPUTopoInfo guest_topo_info;
+    KVMHostTopoInfo host_topo;
+    const CPUArchIdList *guest_cpu_list;
+    uint64_t *msr_value;
+    uint64_t msr_unit;
+    uint64_t msr_limit;
+    uint64_t msr_info;
+};
 
 enum KVMDirtyRingReaperState {
     KVM_DIRTY_RING_REAPER_NONE = 0,
@@ -60,8 +103,8 @@ struct KVMDirtyRingReaper {
 struct KVMState
 {
     AccelState parent_obj;
-
-    int nr_slots;
+    /* Max number of KVM slots supported */
+    int nr_slots_max;
     int fd;
     int vmfd;
     int coalesced_mmio;
@@ -69,24 +112,30 @@ struct KVMState
     struct kvm_coalesced_mmio_ring *coalesced_mmio_ring;
     bool coalesced_flush_in_progress;
     int vcpu_events;
-    int robust_singlestep;
-    int debugregs;
-#ifdef KVM_CAP_SET_GUEST_DEBUG
+#ifdef TARGET_KVM_HAVE_GUEST_DEBUG
     QTAILQ_HEAD(, kvm_sw_breakpoint) kvm_sw_breakpoints;
 #endif
     int max_nested_state_len;
-    int many_ioeventfds;
-    int intx_set_mask;
     int kvm_shadow_mem;
     bool kernel_irqchip_allowed;
     bool kernel_irqchip_required;
     OnOffAuto kernel_irqchip_split;
     bool sync_mmu;
+    bool guest_state_protected;
     uint64_t manual_dirty_log_protect;
-    /* The man page (and posix) say ioctl numbers are signed int, but
-     * they're not.  Linux, glibc and *BSD all treat ioctl numbers as
-     * unsigned, and treating them as signed here can break things */
-    unsigned irq_set_ioctl;
+    /*
+     * Older POSIX says that ioctl numbers are signed int, but in
+     * practice they are not. (Newer POSIX doesn't specify ioctl
+     * at all.) Linux, glibc and *BSD all treat ioctl numbers as
+     * unsigned, and real-world ioctl values like KVM_GET_XSAVE have
+     * bit 31 set, which means that passing them via an 'int' will
+     * result in sign-extension when they get converted back to the
+     * 'unsigned long' which the ioctl() prototype uses. Luckily Linux
+     * always treats the argument as an unsigned 32-bit int, so any
+     * possible sign-extension is deliberately ignored, but for
+     * consistency we keep to the same type that glibc is using.
+     */
+    unsigned long irq_set_ioctl;
     unsigned int sigmask_len;
     GHashTable *gsimap;
 #ifdef KVM_CAP_IRQ_ROUTING
@@ -94,7 +143,6 @@ struct KVMState
     int nr_allocated_irq_routes;
     unsigned long *used_gsi_bitmap;
     unsigned int gsi_count;
-    QTAILQ_HEAD(, KVMMSIRoute) msi_hashtab[KVM_MSI_HASHTAB_SIZE];
 #endif
     KVMMemoryListener memory_listener;
     QLIST_HEAD(, KVMParkedVcpu) kvm_parked_vcpus;
@@ -107,9 +155,17 @@ struct KVMState
     } *as;
     uint64_t kvm_dirty_ring_bytes;  /* Size of the per-vcpu dirty ring */
     uint32_t kvm_dirty_ring_size;   /* Number of dirty GFNs per ring */
+    bool kvm_dirty_ring_with_bitmap;
+    uint64_t kvm_eager_split_size;  /* Eager Page Splitting chunk size */
     struct KVMDirtyRingReaper reaper;
+    struct KVMMsrEnergy msr_energy;
     NotifyVmexitOption notify_vmexit;
     uint32_t notify_window;
+    uint32_t xen_version;
+    uint32_t xen_caps;
+    uint16_t xen_gnttab_max_frames;
+    uint16_t xen_evtchn_max_pirq;
+    char *device;
 };
 
 void kvm_memory_listener_register(KVMState *s, KVMMemoryListener *kml,

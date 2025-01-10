@@ -31,15 +31,39 @@
     } \
 } while (0)
 
+#define REQUIRE_ZCD_OR_DC(ctx) do { \
+    if (!ctx->cfg_ptr->ext_zcd) { \
+        if (!has_ext(ctx, RVD) || !has_ext(ctx, RVC)) { \
+            return false; \
+        } \
+    } \
+} while (0)
+
 static bool trans_fld(DisasContext *ctx, arg_fld *a)
 {
     TCGv addr;
+    MemOp memop = MO_TEUQ;
 
     REQUIRE_FPU;
     REQUIRE_EXT(ctx, RVD);
 
+    /*
+     * FLD and FSD are only guaranteed to execute atomically if the effective
+     * address is naturally aligned and XLEN≥64. Also, zama16b applies to
+     * loads and stores of no more than MXLEN bits defined in the F, D, and
+     * Q extensions.
+     */
+    if (get_xl_max(ctx) == MXL_RV32) {
+        memop |= MO_ATOM_NONE;
+    } else if (ctx->cfg_ptr->ext_zama16b) {
+        memop |= MO_ATOM_WITHIN16;
+    } else {
+        memop |= MO_ATOM_IFALIGN;
+    }
+
+    decode_save_opc(ctx, 0);
     addr = get_address(ctx, a->rs1, a->imm);
-    tcg_gen_qemu_ld_i64(cpu_fpr[a->rd], addr, ctx->mem_idx, MO_TEUQ);
+    tcg_gen_qemu_ld_i64(cpu_fpr[a->rd], addr, ctx->mem_idx, memop);
 
     mark_fs_dirty(ctx);
     return true;
@@ -48,13 +72,35 @@ static bool trans_fld(DisasContext *ctx, arg_fld *a)
 static bool trans_fsd(DisasContext *ctx, arg_fsd *a)
 {
     TCGv addr;
+    MemOp memop = MO_TEUQ;
 
     REQUIRE_FPU;
     REQUIRE_EXT(ctx, RVD);
 
+    if (get_xl_max(ctx) == MXL_RV32) {
+        memop |= MO_ATOM_NONE;
+    } else if (ctx->cfg_ptr->ext_zama16b) {
+        memop |= MO_ATOM_WITHIN16;
+    } else {
+        memop |= MO_ATOM_IFALIGN;
+    }
+
+    decode_save_opc(ctx, 0);
     addr = get_address(ctx, a->rs1, a->imm);
-    tcg_gen_qemu_st_i64(cpu_fpr[a->rs2], addr, ctx->mem_idx, MO_TEUQ);
+    tcg_gen_qemu_st_i64(cpu_fpr[a->rs2], addr, ctx->mem_idx, memop);
     return true;
+}
+
+static bool trans_c_fld(DisasContext *ctx, arg_fld *a)
+{
+    REQUIRE_ZCD_OR_DC(ctx);
+    return trans_fld(ctx, a);
+}
+
+static bool trans_c_fsd(DisasContext *ctx, arg_fsd *a)
+{
+    REQUIRE_ZCD_OR_DC(ctx);
+    return trans_fsd(ctx, a);
 }
 
 static bool trans_fmadd_d(DisasContext *ctx, arg_fmadd_d *a)
@@ -69,7 +115,7 @@ static bool trans_fmadd_d(DisasContext *ctx, arg_fmadd_d *a)
     TCGv_i64 src3 = get_fpr_d(ctx, a->rs3);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fmadd_d(dest, cpu_env, src1, src2, src3);
+    gen_helper_fmadd_d(dest, tcg_env, src1, src2, src3);
     gen_set_fpr_d(ctx, a->rd, dest);
     mark_fs_dirty(ctx);
     return true;
@@ -87,7 +133,7 @@ static bool trans_fmsub_d(DisasContext *ctx, arg_fmsub_d *a)
     TCGv_i64 src3 = get_fpr_d(ctx, a->rs3);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fmsub_d(dest, cpu_env, src1, src2, src3);
+    gen_helper_fmsub_d(dest, tcg_env, src1, src2, src3);
     gen_set_fpr_d(ctx, a->rd, dest);
     mark_fs_dirty(ctx);
     return true;
@@ -105,7 +151,7 @@ static bool trans_fnmsub_d(DisasContext *ctx, arg_fnmsub_d *a)
     TCGv_i64 src3 = get_fpr_d(ctx, a->rs3);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fnmsub_d(dest, cpu_env, src1, src2, src3);
+    gen_helper_fnmsub_d(dest, tcg_env, src1, src2, src3);
     gen_set_fpr_d(ctx, a->rd, dest);
     mark_fs_dirty(ctx);
     return true;
@@ -123,7 +169,7 @@ static bool trans_fnmadd_d(DisasContext *ctx, arg_fnmadd_d *a)
     TCGv_i64 src3 = get_fpr_d(ctx, a->rs3);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fnmadd_d(dest, cpu_env, src1, src2, src3);
+    gen_helper_fnmadd_d(dest, tcg_env, src1, src2, src3);
     gen_set_fpr_d(ctx, a->rd, dest);
     mark_fs_dirty(ctx);
     return true;
@@ -140,7 +186,7 @@ static bool trans_fadd_d(DisasContext *ctx, arg_fadd_d *a)
     TCGv_i64 src2 = get_fpr_d(ctx, a->rs2);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fadd_d(dest, cpu_env, src1, src2);
+    gen_helper_fadd_d(dest, tcg_env, src1, src2);
     gen_set_fpr_d(ctx, a->rd, dest);
     mark_fs_dirty(ctx);
     return true;
@@ -157,7 +203,7 @@ static bool trans_fsub_d(DisasContext *ctx, arg_fsub_d *a)
     TCGv_i64 src2 = get_fpr_d(ctx, a->rs2);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fsub_d(dest, cpu_env, src1, src2);
+    gen_helper_fsub_d(dest, tcg_env, src1, src2);
     gen_set_fpr_d(ctx, a->rd, dest);
     mark_fs_dirty(ctx);
     return true;
@@ -174,7 +220,7 @@ static bool trans_fmul_d(DisasContext *ctx, arg_fmul_d *a)
     TCGv_i64 src2 = get_fpr_d(ctx, a->rs2);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fmul_d(dest, cpu_env, src1, src2);
+    gen_helper_fmul_d(dest, tcg_env, src1, src2);
     gen_set_fpr_d(ctx, a->rd, dest);
     mark_fs_dirty(ctx);
     return true;
@@ -191,7 +237,7 @@ static bool trans_fdiv_d(DisasContext *ctx, arg_fdiv_d *a)
     TCGv_i64 src2 = get_fpr_d(ctx, a->rs2);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fdiv_d(dest, cpu_env, src1, src2);
+    gen_helper_fdiv_d(dest, tcg_env, src1, src2);
     gen_set_fpr_d(ctx, a->rd, dest);
     mark_fs_dirty(ctx);
     return true;
@@ -207,7 +253,7 @@ static bool trans_fsqrt_d(DisasContext *ctx, arg_fsqrt_d *a)
     TCGv_i64 src1 = get_fpr_d(ctx, a->rs1);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fsqrt_d(dest, cpu_env, src1);
+    gen_helper_fsqrt_d(dest, tcg_env, src1);
     gen_set_fpr_d(ctx, a->rd, dest);
     mark_fs_dirty(ctx);
     return true;
@@ -248,7 +294,6 @@ static bool trans_fsgnjn_d(DisasContext *ctx, arg_fsgnjn_d *a)
         TCGv_i64 t0 = tcg_temp_new_i64();
         tcg_gen_not_i64(t0, src2);
         tcg_gen_deposit_i64(dest, t0, src1, 0, 63);
-        tcg_temp_free_i64(t0);
     }
     gen_set_fpr_d(ctx, a->rd, dest);
     mark_fs_dirty(ctx);
@@ -271,7 +316,6 @@ static bool trans_fsgnjx_d(DisasContext *ctx, arg_fsgnjx_d *a)
         TCGv_i64 t0 = tcg_temp_new_i64();
         tcg_gen_andi_i64(t0, src2, INT64_MIN);
         tcg_gen_xor_i64(dest, src1, t0);
-        tcg_temp_free_i64(t0);
     }
     gen_set_fpr_d(ctx, a->rd, dest);
     mark_fs_dirty(ctx);
@@ -288,7 +332,7 @@ static bool trans_fmin_d(DisasContext *ctx, arg_fmin_d *a)
     TCGv_i64 src1 = get_fpr_d(ctx, a->rs1);
     TCGv_i64 src2 = get_fpr_d(ctx, a->rs2);
 
-    gen_helper_fmin_d(dest, cpu_env, src1, src2);
+    gen_helper_fmin_d(dest, tcg_env, src1, src2);
     gen_set_fpr_d(ctx, a->rd, dest);
     mark_fs_dirty(ctx);
     return true;
@@ -304,7 +348,7 @@ static bool trans_fmax_d(DisasContext *ctx, arg_fmax_d *a)
     TCGv_i64 src1 = get_fpr_d(ctx, a->rs1);
     TCGv_i64 src2 = get_fpr_d(ctx, a->rs2);
 
-    gen_helper_fmax_d(dest, cpu_env, src1, src2);
+    gen_helper_fmax_d(dest, tcg_env, src1, src2);
     gen_set_fpr_d(ctx, a->rd, dest);
     mark_fs_dirty(ctx);
     return true;
@@ -320,7 +364,7 @@ static bool trans_fcvt_s_d(DisasContext *ctx, arg_fcvt_s_d *a)
     TCGv_i64 src1 = get_fpr_d(ctx, a->rs1);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fcvt_s_d(dest, cpu_env, src1);
+    gen_helper_fcvt_s_d(dest, tcg_env, src1);
     gen_set_fpr_hs(ctx, a->rd, dest);
     mark_fs_dirty(ctx);
     return true;
@@ -336,7 +380,7 @@ static bool trans_fcvt_d_s(DisasContext *ctx, arg_fcvt_d_s *a)
     TCGv_i64 src1 = get_fpr_hs(ctx, a->rs1);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fcvt_d_s(dest, cpu_env, src1);
+    gen_helper_fcvt_d_s(dest, tcg_env, src1);
     gen_set_fpr_d(ctx, a->rd, dest);
     mark_fs_dirty(ctx);
     return true;
@@ -352,7 +396,7 @@ static bool trans_feq_d(DisasContext *ctx, arg_feq_d *a)
     TCGv_i64 src1 = get_fpr_d(ctx, a->rs1);
     TCGv_i64 src2 = get_fpr_d(ctx, a->rs2);
 
-    gen_helper_feq_d(dest, cpu_env, src1, src2);
+    gen_helper_feq_d(dest, tcg_env, src1, src2);
     gen_set_gpr(ctx, a->rd, dest);
     return true;
 }
@@ -367,7 +411,7 @@ static bool trans_flt_d(DisasContext *ctx, arg_flt_d *a)
     TCGv_i64 src1 = get_fpr_d(ctx, a->rs1);
     TCGv_i64 src2 = get_fpr_d(ctx, a->rs2);
 
-    gen_helper_flt_d(dest, cpu_env, src1, src2);
+    gen_helper_flt_d(dest, tcg_env, src1, src2);
     gen_set_gpr(ctx, a->rd, dest);
     return true;
 }
@@ -382,7 +426,7 @@ static bool trans_fle_d(DisasContext *ctx, arg_fle_d *a)
     TCGv_i64 src1 = get_fpr_d(ctx, a->rs1);
     TCGv_i64 src2 = get_fpr_d(ctx, a->rs2);
 
-    gen_helper_fle_d(dest, cpu_env, src1, src2);
+    gen_helper_fle_d(dest, tcg_env, src1, src2);
     gen_set_gpr(ctx, a->rd, dest);
     return true;
 }
@@ -411,7 +455,7 @@ static bool trans_fcvt_w_d(DisasContext *ctx, arg_fcvt_w_d *a)
     TCGv_i64 src1 = get_fpr_d(ctx, a->rs1);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fcvt_w_d(dest, cpu_env, src1);
+    gen_helper_fcvt_w_d(dest, tcg_env, src1);
     gen_set_gpr(ctx, a->rd, dest);
     return true;
 }
@@ -426,7 +470,7 @@ static bool trans_fcvt_wu_d(DisasContext *ctx, arg_fcvt_wu_d *a)
     TCGv_i64 src1 = get_fpr_d(ctx, a->rs1);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fcvt_wu_d(dest, cpu_env, src1);
+    gen_helper_fcvt_wu_d(dest, tcg_env, src1);
     gen_set_gpr(ctx, a->rd, dest);
     return true;
 }
@@ -441,7 +485,7 @@ static bool trans_fcvt_d_w(DisasContext *ctx, arg_fcvt_d_w *a)
     TCGv src = get_gpr(ctx, a->rs1, EXT_SIGN);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fcvt_d_w(dest, cpu_env, src);
+    gen_helper_fcvt_d_w(dest, tcg_env, src);
     gen_set_fpr_d(ctx, a->rd, dest);
 
     mark_fs_dirty(ctx);
@@ -458,7 +502,7 @@ static bool trans_fcvt_d_wu(DisasContext *ctx, arg_fcvt_d_wu *a)
     TCGv src = get_gpr(ctx, a->rs1, EXT_ZERO);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fcvt_d_wu(dest, cpu_env, src);
+    gen_helper_fcvt_d_wu(dest, tcg_env, src);
     gen_set_fpr_d(ctx, a->rd, dest);
 
     mark_fs_dirty(ctx);
@@ -476,7 +520,7 @@ static bool trans_fcvt_l_d(DisasContext *ctx, arg_fcvt_l_d *a)
     TCGv_i64 src1 = get_fpr_d(ctx, a->rs1);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fcvt_l_d(dest, cpu_env, src1);
+    gen_helper_fcvt_l_d(dest, tcg_env, src1);
     gen_set_gpr(ctx, a->rd, dest);
     return true;
 }
@@ -492,7 +536,7 @@ static bool trans_fcvt_lu_d(DisasContext *ctx, arg_fcvt_lu_d *a)
     TCGv_i64 src1 = get_fpr_d(ctx, a->rs1);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fcvt_lu_d(dest, cpu_env, src1);
+    gen_helper_fcvt_lu_d(dest, tcg_env, src1);
     gen_set_gpr(ctx, a->rd, dest);
     return true;
 }
@@ -522,7 +566,7 @@ static bool trans_fcvt_d_l(DisasContext *ctx, arg_fcvt_d_l *a)
     TCGv src = get_gpr(ctx, a->rs1, EXT_SIGN);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fcvt_d_l(dest, cpu_env, src);
+    gen_helper_fcvt_d_l(dest, tcg_env, src);
     gen_set_fpr_d(ctx, a->rd, dest);
 
     mark_fs_dirty(ctx);
@@ -540,7 +584,7 @@ static bool trans_fcvt_d_lu(DisasContext *ctx, arg_fcvt_d_lu *a)
     TCGv src = get_gpr(ctx, a->rs1, EXT_ZERO);
 
     gen_set_rm(ctx, a->rm);
-    gen_helper_fcvt_d_lu(dest, cpu_env, src);
+    gen_helper_fcvt_d_lu(dest, tcg_env, src);
     gen_set_fpr_d(ctx, a->rd, dest);
 
     mark_fs_dirty(ctx);

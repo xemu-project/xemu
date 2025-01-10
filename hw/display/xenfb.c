@@ -29,6 +29,7 @@
 
 #include "ui/input.h"
 #include "ui/console.h"
+#include "sysemu/sysemu.h"
 #include "hw/xen/xen-legacy-backend.h"
 
 #include "hw/xen/interface/io/fbif.h"
@@ -98,8 +99,9 @@ static int common_bind(struct common *c)
     if (xenstore_read_fe_int(&c->xendev, "event-channel", &c->xendev.remote_port) == -1)
         return -1;
 
-    c->page = xenforeignmemory_map(xen_fmem, c->xendev.dom,
-                                   PROT_READ | PROT_WRITE, 1, &mfn, NULL);
+    c->page = qemu_xen_foreignmem_map(c->xendev.dom, NULL,
+                                      PROT_READ | PROT_WRITE, 1, &mfn,
+                                      NULL);
     if (c->page == NULL)
         return -1;
 
@@ -115,7 +117,7 @@ static void common_unbind(struct common *c)
 {
     xen_pv_unbind_evtchn(&c->xendev);
     if (c->page) {
-        xenforeignmemory_unmap(xen_fmem, c->page, 1);
+        qemu_xen_foreignmem_unmap(c->page, 1);
         c->page = NULL;
     }
 }
@@ -320,20 +322,20 @@ static void xenfb_mouse_sync(DeviceState *dev)
     xenfb->wheel = 0;
 }
 
-static QemuInputHandler xenfb_keyboard = {
+static const QemuInputHandler xenfb_keyboard = {
     .name  = "Xen PV Keyboard",
     .mask  = INPUT_EVENT_MASK_KEY,
     .event = xenfb_key_event,
 };
 
-static QemuInputHandler xenfb_abs_mouse = {
+static const QemuInputHandler xenfb_abs_mouse = {
     .name  = "Xen PV Mouse",
     .mask  = INPUT_EVENT_MASK_BTN | INPUT_EVENT_MASK_ABS,
     .event = xenfb_mouse_event,
     .sync  = xenfb_mouse_sync,
 };
 
-static QemuInputHandler xenfb_rel_mouse = {
+static const QemuInputHandler xenfb_rel_mouse = {
     .name  = "Xen PV Mouse",
     .mask  = INPUT_EVENT_MASK_BTN | INPUT_EVENT_MASK_REL,
     .event = xenfb_mouse_event,
@@ -488,27 +490,28 @@ static int xenfb_map_fb(struct XenFB *xenfb)
     }
 
     if (xenfb->pixels) {
-        munmap(xenfb->pixels, xenfb->fbpages * XC_PAGE_SIZE);
+        munmap(xenfb->pixels, xenfb->fbpages * XEN_PAGE_SIZE);
         xenfb->pixels = NULL;
     }
 
-    xenfb->fbpages = DIV_ROUND_UP(xenfb->fb_len, XC_PAGE_SIZE);
+    xenfb->fbpages = DIV_ROUND_UP(xenfb->fb_len, XEN_PAGE_SIZE);
     n_fbdirs = xenfb->fbpages * mode / 8;
-    n_fbdirs = DIV_ROUND_UP(n_fbdirs, XC_PAGE_SIZE);
+    n_fbdirs = DIV_ROUND_UP(n_fbdirs, XEN_PAGE_SIZE);
 
     pgmfns = g_new0(xen_pfn_t, n_fbdirs);
     fbmfns = g_new0(xen_pfn_t, xenfb->fbpages);
 
     xenfb_copy_mfns(mode, n_fbdirs, pgmfns, pd);
-    map = xenforeignmemory_map(xen_fmem, xenfb->c.xendev.dom,
-                               PROT_READ, n_fbdirs, pgmfns, NULL);
+    map = qemu_xen_foreignmem_map(xenfb->c.xendev.dom, NULL, PROT_READ,
+                                  n_fbdirs, pgmfns, NULL);
     if (map == NULL)
         goto out;
     xenfb_copy_mfns(mode, xenfb->fbpages, fbmfns, map);
-    xenforeignmemory_unmap(xen_fmem, map, n_fbdirs);
+    qemu_xen_foreignmem_unmap(map, n_fbdirs);
 
-    xenfb->pixels = xenforeignmemory_map(xen_fmem, xenfb->c.xendev.dom,
-            PROT_READ, xenfb->fbpages, fbmfns, NULL);
+    xenfb->pixels = qemu_xen_foreignmem_map(xenfb->c.xendev.dom, NULL,
+                                            PROT_READ, xenfb->fbpages,
+                                            fbmfns, NULL);
     if (xenfb->pixels == NULL)
         goto out;
 
@@ -526,8 +529,8 @@ static int xenfb_configure_fb(struct XenFB *xenfb, size_t fb_len_lim,
 {
     size_t mfn_sz = sizeof_field(struct xenfb_page, pd[0]);
     size_t pd_len = sizeof_field(struct xenfb_page, pd) / mfn_sz;
-    size_t fb_pages = pd_len * XC_PAGE_SIZE / mfn_sz;
-    size_t fb_len_max = fb_pages * XC_PAGE_SIZE;
+    size_t fb_pages = pd_len * XEN_PAGE_SIZE / mfn_sz;
+    size_t fb_len_max = fb_pages * XEN_PAGE_SIZE;
     int max_width, max_height;
 
     if (fb_len_lim > fb_len_max) {
@@ -635,7 +638,7 @@ static void xenfb_guest_copy(struct XenFB *xenfb, int x, int y, int w, int h)
     int linesize = surface_stride(surface);
     uint8_t *data = surface_data(surface);
 
-    if (!is_buffer_shared(surface)) {
+    if (surface_is_allocated(surface)) {
         switch (xenfb->depth) {
         case 8:
             if (bpp == 16) {
@@ -753,7 +756,8 @@ static void xenfb_update(void *opaque)
         xen_pv_printf(&xenfb->c.xendev, 1,
                       "update: resizing: %dx%d @ %d bpp%s\n",
                       xenfb->width, xenfb->height, xenfb->depth,
-                      is_buffer_shared(surface) ? " (shared)" : "");
+                      surface_is_allocated(surface)
+                      ? " (allocated)" : " (borrowed)");
         xenfb->up_fullscreen = 1;
     }
 
@@ -927,8 +931,8 @@ static void fb_disconnect(struct XenLegacyDevice *xendev)
      *   Replacing the framebuffer with anonymous shared memory
      *   instead.  This releases the guest pages and keeps qemu happy.
      */
-    xenforeignmemory_unmap(xen_fmem, fb->pixels, fb->fbpages);
-    fb->pixels = mmap(fb->pixels, fb->fbpages * XC_PAGE_SIZE,
+    qemu_xen_foreignmem_unmap(fb->pixels, fb->fbpages);
+    fb->pixels = mmap(fb->pixels, fb->fbpages * XEN_PAGE_SIZE,
                       PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON,
                       -1, 0);
     if (fb->pixels == MAP_FAILED) {
@@ -970,7 +974,7 @@ static void fb_event(struct XenLegacyDevice *xendev)
 
 /* -------------------------------------------------------------------- */
 
-struct XenDevOps xen_kbdmouse_ops = {
+static const struct XenDevOps xen_kbdmouse_ops = {
     .size       = sizeof(struct XenInput),
     .init       = input_init,
     .initialise = input_initialise,
@@ -979,7 +983,7 @@ struct XenDevOps xen_kbdmouse_ops = {
     .event      = input_event,
 };
 
-struct XenDevOps xen_framebuffer_ops = {
+const struct XenDevOps xen_framebuffer_ops = {
     .size       = sizeof(struct XenFB),
     .init       = fb_init,
     .initialise = fb_initialise,
@@ -993,3 +997,13 @@ static const GraphicHwOps xenfb_ops = {
     .gfx_update  = xenfb_update,
     .ui_info     = xenfb_ui_info,
 };
+
+static void xen_ui_register_backend(void)
+{
+    xen_be_register("vkbd", &xen_kbdmouse_ops);
+
+    if (vga_interface_type == VGA_XENFB) {
+        xen_be_register("vfb", &xen_framebuffer_ops);
+    }
+}
+xen_backend_init(xen_ui_register_backend);

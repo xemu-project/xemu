@@ -51,13 +51,13 @@
 /* Maximum number of list registers (architectural limit) */
 #define GICV3_LR_MAX 16
 
-/* For some distributor fields we want to model the array of 32-bit
+/*
+ * For some distributor fields we want to model the array of 32-bit
  * register values which hold various bitmaps corresponding to enabled,
- * pending, etc bits. These macros and functions facilitate that; the
- * APIs are generally modelled on the generic bitmap.h functions
- * (which are unsuitable here because they use 'unsigned long' as the
- * underlying storage type, which is very awkward when you need to
- * access the data as 32-bit values.)
+ * pending, etc bits. We use the set_bit32() etc family of functions
+ * from bitops.h for this. For a few cases we need to implement some
+ * extra operations.
+ *
  * Each bitmap contains a bit for each interrupt. Although there is
  * space for the PPIs and SGIs, those bits (the first 32) are never
  * used as that state lives in the redistributor. The unused bits are
@@ -65,39 +65,13 @@
  * avoids bugs where we forget to subtract GIC_INTERNAL from an
  * interrupt number.
  */
-#define GICV3_BMP_SIZE DIV_ROUND_UP(GICV3_MAXIRQ, 32)
-
-#define GIC_DECLARE_BITMAP(name) \
-    uint32_t name[GICV3_BMP_SIZE]
-
-#define GIC_BIT_MASK(nr) (1U << ((nr) % 32))
-#define GIC_BIT_WORD(nr) ((nr) / 32)
-
-static inline void gic_bmp_set_bit(int nr, uint32_t *addr)
-{
-    uint32_t mask = GIC_BIT_MASK(nr);
-    uint32_t *p = addr + GIC_BIT_WORD(nr);
-
-    *p |= mask;
-}
-
-static inline void gic_bmp_clear_bit(int nr, uint32_t *addr)
-{
-    uint32_t mask = GIC_BIT_MASK(nr);
-    uint32_t *p = addr + GIC_BIT_WORD(nr);
-
-    *p &= ~mask;
-}
-
-static inline int gic_bmp_test_bit(int nr, const uint32_t *addr)
-{
-    return 1U & (addr[GIC_BIT_WORD(nr)] >> (nr & 31));
-}
+#define GIC_DECLARE_BITMAP(name) DECLARE_BITMAP32(name, GICV3_MAXIRQ)
+#define GICV3_BMP_SIZE BITS_TO_U32S(GICV3_MAXIRQ)
 
 static inline void gic_bmp_replace_bit(int nr, uint32_t *addr, int val)
 {
-    uint32_t mask = GIC_BIT_MASK(nr);
-    uint32_t *p = addr + GIC_BIT_WORD(nr);
+    uint32_t mask = BIT32_MASK(nr);
+    uint32_t *p = addr + BIT32_WORD(nr);
 
     *p &= ~mask;
     *p |= (val & 1U) << (nr % 32);
@@ -106,7 +80,7 @@ static inline void gic_bmp_replace_bit(int nr, uint32_t *addr, int val)
 /* Return a pointer to the 32-bit word containing the specified bit. */
 static inline uint32_t *gic_bmp_ptr32(uint32_t *addr, int nr)
 {
-    return addr + GIC_BIT_WORD(nr);
+    return addr + BIT32_WORD(nr);
 }
 
 typedef struct GICv3State GICv3State;
@@ -146,6 +120,7 @@ typedef struct {
     int irq;
     uint8_t prio;
     int grp;
+    bool nmi;
 } PendingIrq;
 
 struct GICv3CPUState {
@@ -155,6 +130,8 @@ struct GICv3CPUState {
     qemu_irq parent_fiq;
     qemu_irq parent_virq;
     qemu_irq parent_vfiq;
+    qemu_irq parent_nmi;
+    qemu_irq parent_vnmi;
 
     /* Redistributor */
     uint32_t level;                  /* Current IRQ level */
@@ -170,6 +147,7 @@ struct GICv3CPUState {
     uint32_t gicr_ienabler0;
     uint32_t gicr_ipendr0;
     uint32_t gicr_iactiver0;
+    uint32_t gicr_inmir0;
     uint32_t edge_trigger; /* ICFGR0 and ICFGR1 even bits */
     uint32_t gicr_igrpmodr0;
     uint32_t gicr_nsacr;
@@ -221,6 +199,13 @@ struct GICv3CPUState {
 
     /* This is temporary working state, to avoid a malloc in gicv3_update() */
     bool seenbetter;
+
+    /*
+     * Whether the CPU interface has NMI support (FEAT_GICv3_NMI). The
+     * CPU interface may support NMIs even when the GIC proper (what the
+     * spec calls the IRI; the redistributors and distributor) does not.
+     */
+    bool nmi_support;
 };
 
 /*
@@ -247,6 +232,7 @@ struct GICv3State {
     uint32_t num_irq;
     uint32_t revision;
     bool lpi_enable;
+    bool nmi_support;
     bool security_extn;
     bool force_8bit_prio;
     bool irq_reset_nonsecure;
@@ -272,6 +258,7 @@ struct GICv3State {
     GIC_DECLARE_BITMAP(active);       /* GICD_ISACTIVER */
     GIC_DECLARE_BITMAP(level);        /* Current level */
     GIC_DECLARE_BITMAP(edge_trigger); /* GICD_ICFGR even bits */
+    GIC_DECLARE_BITMAP(nmi);          /* GICD_INMIR */
     uint8_t gicd_ipriority[GICV3_MAXIRQ];
     uint64_t gicd_irouter[GICV3_MAXIRQ];
     /* Cached information: pointer to the cpu i/f for the CPUs specified
@@ -288,15 +275,15 @@ struct GICv3State {
 #define GICV3_BITMAP_ACCESSORS(BMP)                                     \
     static inline void gicv3_gicd_##BMP##_set(GICv3State *s, int irq)   \
     {                                                                   \
-        gic_bmp_set_bit(irq, s->BMP);                                   \
+        set_bit32(irq, s->BMP);                                         \
     }                                                                   \
     static inline int gicv3_gicd_##BMP##_test(GICv3State *s, int irq)   \
     {                                                                   \
-        return gic_bmp_test_bit(irq, s->BMP);                           \
+        return test_bit32(irq, s->BMP);                                 \
     }                                                                   \
     static inline void gicv3_gicd_##BMP##_clear(GICv3State *s, int irq) \
     {                                                                   \
-        gic_bmp_clear_bit(irq, s->BMP);                                 \
+        clear_bit32(irq, s->BMP);                                       \
     }                                                                   \
     static inline void gicv3_gicd_##BMP##_replace(GICv3State *s,        \
                                                   int irq, int value)   \
@@ -311,6 +298,7 @@ GICV3_BITMAP_ACCESSORS(pending)
 GICV3_BITMAP_ACCESSORS(active)
 GICV3_BITMAP_ACCESSORS(level)
 GICV3_BITMAP_ACCESSORS(edge_trigger)
+GICV3_BITMAP_ACCESSORS(nmi)
 
 #define TYPE_ARM_GICV3_COMMON "arm-gicv3-common"
 typedef struct ARMGICv3CommonClass ARMGICv3CommonClass;
@@ -328,5 +316,15 @@ struct ARMGICv3CommonClass {
 
 void gicv3_init_irqs_and_mmio(GICv3State *s, qemu_irq_handler handler,
                               const MemoryRegionOps *ops);
+
+/**
+ * gicv3_class_name
+ *
+ * Return name of GICv3 class to use depending on whether KVM acceleration is
+ * in use. May throw an error if the chosen implementation is not available.
+ *
+ * Returns: class name to use
+ */
+const char *gicv3_class_name(void);
 
 #endif

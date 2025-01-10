@@ -1,8 +1,9 @@
 # All ubuntu-22.04 jobs should run successfully in an environment
-# setup by the scripts/ci/setup/qemu/build-environment.yml task
-# "Install basic packages to build QEMU on Ubuntu 20.04"
+# setup by the scripts/ci/setup/ubuntu/build-environment.yml task
+# "Install basic packages to build QEMU on Ubuntu 22.04"
 
 ubuntu-22.04-aarch32-all:
+ extends: .custom_runner_template
  needs: []
  stage: build
  tags:
@@ -21,5 +22,4 @@ ubuntu-22.04-aarch32-all:
  - ../configure --cross-prefix=arm-linux-gnueabihf-
    || { cat config.log meson-logs/meson-log.txt; exit 1; }
  - make --output-sync -j`nproc --ignore=40`
- - make --output-sync -j`nproc --ignore=40` check V=1
-   || { cat meson-logs/testlog.txt; exit 1; } ;
+ - make --output-sync -j`nproc --ignore=40` check

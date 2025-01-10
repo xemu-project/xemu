@@ -10,6 +10,7 @@ used to build the binary.
 
 import subprocess
 import os.path
+import re
 import sys
 
 gplv2 = 'gplv2'
@@ -146,6 +147,17 @@ class Submodule:
 
 	@property
 	def head(self):
+		if self.path.endswith(".wrap"):
+			with open(self.path, "r", encoding="utf-8") as file:
+				contents = file.read()
+				revision = re.search(r"^revision\s*=\s*(.*)", contents, re.MULTILINE)
+				if revision:
+					return revision.group(1)
+				wrapdb_version = re.search(r"^wrapdb_version\s*=\s*([^-]*)", contents, re.MULTILINE)
+				if wrapdb_version:
+					return wrapdb_version.group(1)
+			assert False, "revision not found for subproject"
+
 		try:
 			return subprocess.run(['git', 'rev-parse', 'HEAD'],
 				                 cwd=self.path, capture_output=True,
@@ -163,7 +175,7 @@ class Submodule:
 LIBS = [
 
 Lib('qemu', 'https://www.qemu.org/',
-	gplv2, 'https://raw.githubusercontent.com/mborgerson/xemu/master/LICENSE',
+	gplv2, 'https://raw.githubusercontent.com/xemu-project/xemu/master/LICENSE',
 	version='6.0.0'
 	),
 
@@ -180,23 +192,23 @@ Lib('slirp', 'https://gitlab.freedesktop.org/slirp',
 Lib('imgui', 'https://github.com/ocornut/imgui',
 	mit, 'https://raw.githubusercontent.com/ocornut/imgui/master/LICENSE.txt',
 	ships_static=all_platforms,
-	submodule=Submodule('ui/thirdparty/imgui')
+	submodule=Submodule('subprojects/imgui.wrap')
 	),
 
 Lib('implot', 'https://github.com/epezent/implot',
 	mit, 'https://raw.githubusercontent.com/epezent/implot/master/LICENSE',
 	ships_static=all_platforms,
-	submodule=Submodule('ui/thirdparty/implot')
+	submodule=Submodule('subprojects/implot.wrap')
 	),
 
-Lib('httplib', 'https://github.com/yhirose/cpp-httplib',
+Lib('cpp-httplib', 'https://github.com/yhirose/cpp-httplib',
 	mit, 'https://raw.githubusercontent.com/yhirose/cpp-httplib/master/LICENSE',
 	ships_static=all_platforms,
-	submodule=Submodule('ui/thirdparty/httplib')
+	submodule=Submodule('subprojects/cpp-httplib.wrap')
 	),
 
 Lib('noc', 'https://github.com/guillaumechereau/noc/blob/master/noc_file_dialog.h',
-	mit, 'https://raw.githubusercontent.com/mborgerson/xemu/master/ui/noc_file_dialog.h', license_lines=(1,22),
+	mit, 'https://raw.githubusercontent.com/xemu-project/xemu/master/ui/noc_file_dialog.h', license_lines=(1,22),
 	ships_static=all_platforms,
 	version='78b2e7b22506429dd1755ffff197c7da11507fd9'
 	),
@@ -210,13 +222,13 @@ Lib('stb_image', 'https://github.com/nothings/stb',
 Lib('tomlplusplus', 'https://github.com/marzer/tomlplusplus',
 	mit, 'https://raw.githubusercontent.com/marzer/tomlplusplus/master/LICENSE',
 	ships_static=all_platforms,
-	submodule=Submodule('tomlplusplus')
+	submodule=Submodule('subprojects/tomlplusplus.wrap')
 	),
 
 Lib('xxHash', 'https://github.com/Cyan4973/xxHash.git',
 	bsd, 'https://raw.githubusercontent.com/Cyan4973/xxHash/dev/LICENSE', license_lines=(1,26),
 	ships_static=all_platforms,
-	submodule=Submodule('util/xxHash')
+	submodule=Submodule('subprojects/xxhash.wrap')
 	),
 
 Lib('fpng', 'https://github.com/richgel999/fpng',
@@ -225,10 +237,28 @@ Lib('fpng', 'https://github.com/richgel999/fpng',
 	version='6926f5a0a78f22d42b074a0ab8032e07736babd4'
 	),
 
-Lib('nv2a_vsh_cpu', 'https://github.com/abaire/nv2a_vsh_cpu',
-	unlicense, 'https://raw.githubusercontent.com/abaire/nv2a_vsh_cpu/main/LICENSE',
+Lib('nv2a_vsh_cpu', 'https://github.com/xemu-project/nv2a_vsh_cpu',
+	unlicense, 'https://raw.githubusercontent.com/xemu-project/nv2a_vsh_cpu/main/LICENSE',
 	ships_static=all_platforms,
-	submodule=Submodule('hw/xbox/nv2a/thirdparty/nv2a_vsh_cpu')
+	submodule=Submodule('subprojects/nv2a_vsh_cpu.wrap')
+	),
+
+Lib('volk', 'https://github.com/zeux/volk',
+	mit, 'https://raw.githubusercontent.com/zeux/volk/master/LICENSE.md',
+	ships_static=all_platforms,
+	submodule=Submodule('subprojects/volk.wrap')
+	),
+
+Lib('VulkanMemoryAllocator', 'https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator',
+	mit, 'https://raw.githubusercontent.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator/master/LICENSE.txt',
+	ships_static=all_platforms,
+	submodule=Submodule('subprojects/VulkanMemoryAllocator.wrap')
+	),
+
+Lib('SPIRV-Reflect', 'https://github.com/KhronosGroup/SPIRV-Reflect',
+	apache2, 'https://raw.githubusercontent.com/KhronosGroup/SPIRV-Reflect/main/LICENSE',
+	ships_static=all_platforms,
+	submodule=Submodule('subprojects/SPIRV-Reflect.wrap')
 	),
 
 #
@@ -343,6 +373,18 @@ Lib('miniz', 'https://github.com/richgel999/miniz',
 	lgplv2_1, 'https://raw.githubusercontent.com/richgel999/miniz/master/LICENSE',
 	ships_static={windows},	platform={windows},
 	version='2.1.0'
+	),
+
+Lib('glslang', 'https://github.com/KhronosGroup/glslang',
+	bsd_3clause, 'https://raw.githubusercontent.com/KhronosGroup/glslang/main/LICENSE.txt',
+	ships_static={windows},	platform={windows},
+	version='14.3.0'
+	),
+
+Lib('SPIRV-Tools', 'https://github.com/KhronosGroup/SPIRV-Tools',
+	apache2, 'https://raw.githubusercontent.com/KhronosGroup/SPIRV-Tools/main/LICENSE',
+	ships_static={windows},	platform={windows},
+	pkgconfig=PkgConfig('SPIRV-Tools')
 	),
 ]
 

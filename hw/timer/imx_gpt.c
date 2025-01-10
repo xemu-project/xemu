@@ -18,18 +18,11 @@
 #include "migration/vmstate.h"
 #include "qemu/module.h"
 #include "qemu/log.h"
+#include "trace.h"
 
 #ifndef DEBUG_IMX_GPT
 #define DEBUG_IMX_GPT 0
 #endif
-
-#define DPRINTF(fmt, args...) \
-    do { \
-        if (DEBUG_IMX_GPT) { \
-            fprintf(stderr, "[%s]%s: " fmt , TYPE_IMX_GPT, \
-                                             __func__, ##args); \
-        } \
-    } while (0)
 
 static const char *imx_gpt_reg_name(uint32_t reg)
 {
@@ -63,7 +56,7 @@ static const VMStateDescription vmstate_imx_timer_gpt = {
     .name = TYPE_IMX_GPT,
     .version_id = 3,
     .minimum_version_id = 3,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(cr, IMXGPTState),
         VMSTATE_UINT32(pr, IMXGPTState),
         VMSTATE_UINT32(sr, IMXGPTState),
@@ -115,6 +108,17 @@ static const IMXClk imx6_gpt_clocks[] = {
     CLK_HIGH,      /* 111 reference clock */
 };
 
+static const IMXClk imx6ul_gpt_clocks[] = {
+    CLK_NONE,      /* 000 No clock source */
+    CLK_IPG,       /* 001 ipg_clk, 532MHz*/
+    CLK_IPG_HIGH,  /* 010 ipg_clk_highfreq */
+    CLK_EXT,       /* 011 External clock */
+    CLK_32k,       /* 100 ipg_clk_32k */
+    CLK_NONE,      /* 101 not defined */
+    CLK_NONE,      /* 110 not defined */
+    CLK_NONE,      /* 111 not defined */
+};
+
 static const IMXClk imx7_gpt_clocks[] = {
     CLK_NONE,      /* 000 No clock source */
     CLK_IPG,       /* 001 ipg_clk, 532MHz*/
@@ -134,7 +138,7 @@ static void imx_gpt_set_freq(IMXGPTState *s)
     s->freq = imx_ccm_get_clock_frequency(s->ccm,
                                           s->clocks[clksrc]) / (1 + s->pr);
 
-    DPRINTF("Setting clksrc %d to frequency %d\n", clksrc, s->freq);
+    trace_imx_gpt_set_freq(clksrc, s->freq);
 
     if (s->freq) {
         ptimer_set_freq(s->timer, s->freq);
@@ -306,7 +310,7 @@ static uint64_t imx_gpt_read(void *opaque, hwaddr offset, unsigned size)
         break;
     }
 
-    DPRINTF("(%s) = 0x%08x\n", imx_gpt_reg_name(offset >> 2), reg_value);
+    trace_imx_gpt_read(imx_gpt_reg_name(offset >> 2), reg_value);
 
     return reg_value;
 }
@@ -373,8 +377,7 @@ static void imx_gpt_write(void *opaque, hwaddr offset, uint64_t value,
     IMXGPTState *s = IMX_GPT(opaque);
     uint32_t oldreg;
 
-    DPRINTF("(%s, value = 0x%08x)\n", imx_gpt_reg_name(offset >> 2),
-            (uint32_t)value);
+    trace_imx_gpt_write(imx_gpt_reg_name(offset >> 2), (uint32_t)value);
 
     switch (offset >> 2) {
     case 0:
@@ -474,7 +477,7 @@ static void imx_gpt_timeout(void *opaque)
 {
     IMXGPTState *s = IMX_GPT(opaque);
 
-    DPRINTF("\n");
+    trace_imx_gpt_timeout();
 
     s->sr |= s->next_int;
     s->next_int = 0;
@@ -513,7 +516,7 @@ static void imx_gpt_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = imx_gpt_realize;
-    dc->reset = imx_gpt_reset;
+    device_class_set_legacy_reset(dc, imx_gpt_reset);
     dc->vmsd = &vmstate_imx_timer_gpt;
     dc->desc = "i.MX general timer";
 }
@@ -537,6 +540,13 @@ static void imx6_gpt_init(Object *obj)
     IMXGPTState *s = IMX_GPT(obj);
 
     s->clocks = imx6_gpt_clocks;
+}
+
+static void imx6ul_gpt_init(Object *obj)
+{
+    IMXGPTState *s = IMX_GPT(obj);
+
+    s->clocks = imx6ul_gpt_clocks;
 }
 
 static void imx7_gpt_init(Object *obj)
@@ -566,6 +576,12 @@ static const TypeInfo imx6_gpt_info = {
     .instance_init = imx6_gpt_init,
 };
 
+static const TypeInfo imx6ul_gpt_info = {
+    .name = TYPE_IMX6UL_GPT,
+    .parent = TYPE_IMX25_GPT,
+    .instance_init = imx6ul_gpt_init,
+};
+
 static const TypeInfo imx7_gpt_info = {
     .name = TYPE_IMX7_GPT,
     .parent = TYPE_IMX25_GPT,
@@ -577,6 +593,7 @@ static void imx_gpt_register_types(void)
     type_register_static(&imx25_gpt_info);
     type_register_static(&imx31_gpt_info);
     type_register_static(&imx6_gpt_info);
+    type_register_static(&imx6ul_gpt_info);
     type_register_static(&imx7_gpt_info);
 }
 

@@ -985,7 +985,7 @@ static void virtser_port_device_realize(DeviceState *dev, Error **errp)
         return;
     }
 
-    port->bh = qemu_bh_new(flush_queued_data_bh, port);
+    port->bh = virtio_bh_new_guarded(dev, flush_queued_data_bh, port);
     port->elem = NULL;
 }
 
@@ -1147,7 +1147,7 @@ static const VMStateDescription vmstate_virtio_console = {
     .name = "virtio-console",
     .minimum_version_id = 3,
     .version_id = 3,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_VIRTIO_DEVICE,
         VMSTATE_END_OF_LIST()
     },

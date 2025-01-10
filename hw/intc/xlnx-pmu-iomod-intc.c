@@ -526,7 +526,7 @@ static const VMStateDescription vmstate_xlnx_pmu_io_intc = {
     .name = TYPE_XLNX_PMU_IO_INTC,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, XlnxPMUIOIntc, XLNXPMUIOINTC_R_MAX),
         VMSTATE_END_OF_LIST(),
     }
@@ -536,7 +536,7 @@ static void xlnx_pmu_io_intc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = xlnx_pmu_io_intc_reset;
+    device_class_set_legacy_reset(dc, xlnx_pmu_io_intc_reset);
     dc->realize = xlnx_pmu_io_intc_realize;
     dc->vmsd = &vmstate_xlnx_pmu_io_intc;
     device_class_set_props(dc, xlnx_pmu_io_intc_properties);

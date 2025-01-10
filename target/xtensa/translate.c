@@ -32,11 +32,9 @@
 
 #include "cpu.h"
 #include "exec/exec-all.h"
-#include "disas/disas.h"
 #include "tcg/tcg-op.h"
 #include "qemu/log.h"
 #include "qemu/qemu-print.h"
-#include "exec/cpu_ldst.h"
 #include "semihosting/semihost.h"
 #include "exec/translator.h"
 
@@ -44,6 +42,10 @@
 #include "exec/helper-gen.h"
 
 #include "exec/log.h"
+
+#define HELPER_H "helper.h"
+#include "exec/helper-info.c.inc"
+#undef  HELPER_H
 
 
 struct DisasContext {
@@ -57,7 +59,6 @@ struct DisasContext {
 
     bool sar_5bit;
     bool sar_m32_5bit;
-    bool sar_m32_allocated;
     TCGv_i32 sar_m32;
 
     unsigned window;
@@ -90,8 +91,6 @@ static TCGv_i32 cpu_exclusive_addr;
 static TCGv_i32 cpu_exclusive_val;
 
 static GHashTable *xtensa_regfile_table;
-
-#include "exec/gen-icount.h"
 
 static char *sr_name[256];
 static char *ur_name[256];
@@ -153,49 +152,49 @@ void xtensa_translate_init(void)
     };
     int i;
 
-    cpu_pc = tcg_global_mem_new_i32(cpu_env,
+    cpu_pc = tcg_global_mem_new_i32(tcg_env,
             offsetof(CPUXtensaState, pc), "pc");
 
     for (i = 0; i < 16; i++) {
-        cpu_R[i] = tcg_global_mem_new_i32(cpu_env,
+        cpu_R[i] = tcg_global_mem_new_i32(tcg_env,
                                           offsetof(CPUXtensaState, regs[i]),
                                           regnames[i]);
     }
 
     for (i = 0; i < 16; i++) {
-        cpu_FR[i] = tcg_global_mem_new_i32(cpu_env,
+        cpu_FR[i] = tcg_global_mem_new_i32(tcg_env,
                                            offsetof(CPUXtensaState,
                                                     fregs[i].f32[FP_F32_LOW]),
                                            fregnames[i]);
     }
 
     for (i = 0; i < 16; i++) {
-        cpu_FRD[i] = tcg_global_mem_new_i64(cpu_env,
+        cpu_FRD[i] = tcg_global_mem_new_i64(tcg_env,
                                             offsetof(CPUXtensaState,
                                                      fregs[i].f64),
                                             fregnames[i]);
     }
 
     for (i = 0; i < 4; i++) {
-        cpu_MR[i] = tcg_global_mem_new_i32(cpu_env,
+        cpu_MR[i] = tcg_global_mem_new_i32(tcg_env,
                                            offsetof(CPUXtensaState,
                                                     sregs[MR + i]),
                                            mregnames[i]);
     }
 
     for (i = 0; i < 16; i++) {
-        cpu_BR[i] = tcg_global_mem_new_i32(cpu_env,
+        cpu_BR[i] = tcg_global_mem_new_i32(tcg_env,
                                            offsetof(CPUXtensaState,
                                                     sregs[BR]),
                                            bregnames[i]);
         if (i % 4 == 0) {
-            cpu_BR4[i / 4] = tcg_global_mem_new_i32(cpu_env,
+            cpu_BR4[i / 4] = tcg_global_mem_new_i32(tcg_env,
                                                     offsetof(CPUXtensaState,
                                                              sregs[BR]),
                                                     bregnames[i]);
         }
         if (i % 8 == 0) {
-            cpu_BR8[i / 8] = tcg_global_mem_new_i32(cpu_env,
+            cpu_BR8[i / 8] = tcg_global_mem_new_i32(tcg_env,
                                                     offsetof(CPUXtensaState,
                                                              sregs[BR]),
                                                     bregnames[i]);
@@ -204,7 +203,7 @@ void xtensa_translate_init(void)
 
     for (i = 0; i < 256; ++i) {
         if (sr_name[i]) {
-            cpu_SR[i] = tcg_global_mem_new_i32(cpu_env,
+            cpu_SR[i] = tcg_global_mem_new_i32(tcg_env,
                                                offsetof(CPUXtensaState,
                                                         sregs[i]),
                                                sr_name[i]);
@@ -213,7 +212,7 @@ void xtensa_translate_init(void)
 
     for (i = 0; i < 256; ++i) {
         if (ur_name[i]) {
-            cpu_UR[i] = tcg_global_mem_new_i32(cpu_env,
+            cpu_UR[i] = tcg_global_mem_new_i32(tcg_env,
                                                offsetof(CPUXtensaState,
                                                         uregs[i]),
                                                ur_name[i]);
@@ -221,15 +220,15 @@ void xtensa_translate_init(void)
     }
 
     cpu_windowbase_next =
-        tcg_global_mem_new_i32(cpu_env,
+        tcg_global_mem_new_i32(tcg_env,
                                offsetof(CPUXtensaState, windowbase_next),
                                "windowbase_next");
     cpu_exclusive_addr =
-        tcg_global_mem_new_i32(cpu_env,
+        tcg_global_mem_new_i32(tcg_env,
                                offsetof(CPUXtensaState, exclusive_addr),
                                "exclusive_addr");
     cpu_exclusive_val =
-        tcg_global_mem_new_i32(cpu_env,
+        tcg_global_mem_new_i32(tcg_env,
                                offsetof(CPUXtensaState, exclusive_val),
                                "exclusive_val");
 }
@@ -284,14 +283,7 @@ static void init_sar_tracker(DisasContext *dc)
 {
     dc->sar_5bit = false;
     dc->sar_m32_5bit = false;
-    dc->sar_m32_allocated = false;
-}
-
-static void reset_sar_tracker(DisasContext *dc)
-{
-    if (dc->sar_m32_allocated) {
-        tcg_temp_free(dc->sar_m32);
-    }
+    dc->sar_m32 = NULL;
 }
 
 static void gen_right_shift_sar(DisasContext *dc, TCGv_i32 sa)
@@ -306,9 +298,8 @@ static void gen_right_shift_sar(DisasContext *dc, TCGv_i32 sa)
 
 static void gen_left_shift_sar(DisasContext *dc, TCGv_i32 sa)
 {
-    if (!dc->sar_m32_allocated) {
-        dc->sar_m32 = tcg_temp_local_new_i32();
-        dc->sar_m32_allocated = true;
+    if (!dc->sar_m32) {
+        dc->sar_m32 = tcg_temp_new_i32();
     }
     tcg_gen_andi_i32(dc->sar_m32, sa, 0x1f);
     tcg_gen_sub_i32(cpu_SR[SAR], tcg_constant_i32(32), dc->sar_m32);
@@ -318,13 +309,13 @@ static void gen_left_shift_sar(DisasContext *dc, TCGv_i32 sa)
 
 static void gen_exception(DisasContext *dc, int excp)
 {
-    gen_helper_exception(cpu_env, tcg_constant_i32(excp));
+    gen_helper_exception(tcg_env, tcg_constant_i32(excp));
 }
 
 static void gen_exception_cause(DisasContext *dc, uint32_t cause)
 {
     TCGv_i32 pc = tcg_constant_i32(dc->pc);
-    gen_helper_exception_cause(cpu_env, pc, tcg_constant_i32(cause));
+    gen_helper_exception_cause(tcg_env, pc, tcg_constant_i32(cause));
     if (cause == ILLEGAL_INSTRUCTION_CAUSE ||
             cause == SYSCALL_CAUSE) {
         dc->base.is_jmp = DISAS_NORETURN;
@@ -334,7 +325,7 @@ static void gen_exception_cause(DisasContext *dc, uint32_t cause)
 static void gen_debug_exception(DisasContext *dc, uint32_t cause)
 {
     TCGv_i32 pc = tcg_constant_i32(dc->pc);
-    gen_helper_debug_exception(cpu_env, pc, tcg_constant_i32(cause));
+    gen_helper_debug_exception(tcg_env, pc, tcg_constant_i32(cause));
     if (cause & (DEBUGCAUSE_IB | DEBUGCAUSE_BI | DEBUGCAUSE_BN)) {
         dc->base.is_jmp = DISAS_NORETURN;
     }
@@ -530,7 +521,7 @@ static MemOp gen_load_store_alignment(DisasContext *dc, MemOp mop,
         mop |= MO_ALIGN;
     }
     if (!option_enabled(dc, XTENSA_OPTION_UNALIGNED_EXCEPTION)) {
-        tcg_gen_andi_i32(addr, addr, ~0 << get_alignment_bits(mop));
+        tcg_gen_andi_i32(addr, addr, ~0 << memop_alignment_bits(mop));
     }
     return mop;
 }
@@ -543,7 +534,7 @@ static bool gen_window_check(DisasContext *dc, uint32_t mask)
         TCGv_i32 pc = tcg_constant_i32(dc->pc);
         TCGv_i32 w = tcg_constant_i32(r / 4);
 
-        gen_helper_window_check(cpu_env, pc, w);
+        gen_helper_window_check(tcg_env, pc, w);
         dc->base.is_jmp = DISAS_NORETURN;
         return false;
     }
@@ -582,14 +573,12 @@ static int gen_postprocess(DisasContext *dc, int slot)
 
 #ifndef CONFIG_USER_ONLY
     if (op_flags & XTENSA_OP_CHECK_INTERRUPTS) {
-        if (tb_cflags(dc->base.tb) & CF_USE_ICOUNT) {
-            gen_io_start();
-        }
-        gen_helper_check_interrupts(cpu_env);
+        translator_io_start(&dc->base);
+        gen_helper_check_interrupts(tcg_env);
     }
 #endif
     if (op_flags & XTENSA_OP_SYNC_REGISTER_WINDOW) {
-        gen_helper_sync_windowbase(cpu_env);
+        gen_helper_sync_windowbase(tcg_env);
     }
     if (op_flags & XTENSA_OP_EXIT_TB_M1) {
         slot = -1;
@@ -1051,13 +1040,13 @@ static void disas_xtensa_insn(CPUXtensaState *env, DisasContext *dc)
     if (op_flags & XTENSA_OP_UNDERFLOW) {
         TCGv_i32 pc = tcg_constant_i32(dc->pc);
 
-        gen_helper_test_underflow_retw(cpu_env, pc);
+        gen_helper_test_underflow_retw(tcg_env, pc);
     }
 
     if (op_flags & XTENSA_OP_ALLOCA) {
         TCGv_i32 pc = tcg_constant_i32(dc->pc);
 
-        gen_helper_movsp(cpu_env, pc);
+        gen_helper_movsp(tcg_env, pc);
     }
 
     if (coprocessor && !gen_check_cpenable(dc, coprocessor)) {
@@ -1074,10 +1063,10 @@ static void disas_xtensa_insn(CPUXtensaState *env, DisasContext *dc)
             if (i == 0 || arg_copy[i].resource != resource) {
                 resource = arg_copy[i].resource;
                 if (arg_copy[i].arg->num_bits <= 32) {
-                    temp = tcg_temp_local_new_i32();
+                    temp = tcg_temp_new_i32();
                     tcg_gen_mov_i32(temp, arg_copy[i].arg->in);
                 } else if (arg_copy[i].arg->num_bits <= 64) {
-                    temp = tcg_temp_local_new_i64();
+                    temp = tcg_temp_new_i64();
                     tcg_gen_mov_i64(temp, arg_copy[i].arg->in);
                 } else {
                     g_assert_not_reached();
@@ -1111,16 +1100,6 @@ static void disas_xtensa_insn(CPUXtensaState *env, DisasContext *dc)
         ops->translate(dc, pslot->arg, ops->par);
     }
 
-    for (i = 0; i < n_arg_copy; ++i) {
-        if (arg_copy[i].arg->num_bits <= 32) {
-            tcg_temp_free_i32(arg_copy[i].temp);
-        } else if (arg_copy[i].arg->num_bits <= 64) {
-            tcg_temp_free_i64(arg_copy[i].temp);
-        } else {
-            g_assert_not_reached();
-        }
-    }
-
     if (dc->base.is_jmp == DISAS_NEXT) {
         gen_postprocess(dc, 0);
         dc->op_flags = 0;
@@ -1138,31 +1117,17 @@ static void disas_xtensa_insn(CPUXtensaState *env, DisasContext *dc)
 
 static inline unsigned xtensa_insn_len(CPUXtensaState *env, DisasContext *dc)
 {
-    uint8_t b0 = cpu_ldub_code(env, dc->pc);
+    uint8_t b0 = translator_ldub(env, &dc->base, dc->pc);
     return xtensa_op0_insn_len(dc, b0);
-}
-
-static void gen_ibreak_check(CPUXtensaState *env, DisasContext *dc)
-{
-    unsigned i;
-
-    for (i = 0; i < dc->config->nibreak; ++i) {
-        if ((env->sregs[IBREAKENABLE] & (1 << i)) &&
-                env->sregs[IBREAKA + i] == dc->pc) {
-            gen_debug_exception(dc, DEBUGCAUSE_IB);
-            break;
-        }
-    }
 }
 
 static void xtensa_tr_init_disas_context(DisasContextBase *dcbase,
                                          CPUState *cpu)
 {
     DisasContext *dc = container_of(dcbase, DisasContext, base);
-    CPUXtensaState *env = cpu->env_ptr;
     uint32_t tb_flags = dc->base.tb->flags;
 
-    dc->config = env->config;
+    dc->config = cpu_env(cpu)->config;
     dc->pc = dc->base.pc_first;
     dc->ring = tb_flags & XTENSA_TBFLAG_RING_MASK;
     dc->cring = (tb_flags & XTENSA_TBFLAG_EXCM) ? 0 : dc->ring;
@@ -1187,7 +1152,7 @@ static void xtensa_tr_tb_start(DisasContextBase *dcbase, CPUState *cpu)
     DisasContext *dc = container_of(dcbase, DisasContext, base);
 
     if (dc->icount) {
-        dc->next_icount = tcg_temp_local_new_i32();
+        dc->next_icount = tcg_temp_new_i32();
     }
 }
 
@@ -1199,7 +1164,7 @@ static void xtensa_tr_insn_start(DisasContextBase *dcbase, CPUState *cpu)
 static void xtensa_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
 {
     DisasContext *dc = container_of(dcbase, DisasContext, base);
-    CPUXtensaState *env = cpu->env_ptr;
+    CPUXtensaState *env = cpu_env(cpu);
     target_ulong page_start;
 
     /* These two conditions only apply to the first insn in the TB,
@@ -1224,10 +1189,6 @@ static void xtensa_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
         gen_set_label(label);
     }
 
-    if (dc->debug) {
-        gen_ibreak_check(env, dc);
-    }
-
     disas_xtensa_insn(env, dc);
 
     if (dc->icount) {
@@ -1247,11 +1208,6 @@ static void xtensa_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
 {
     DisasContext *dc = container_of(dcbase, DisasContext, base);
 
-    reset_sar_tracker(dc);
-    if (dc->icount) {
-        tcg_temp_free(dc->next_icount);
-    }
-
     switch (dc->base.is_jmp) {
     case DISAS_NORETURN:
         break;
@@ -1263,24 +1219,16 @@ static void xtensa_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
     }
 }
 
-static void xtensa_tr_disas_log(const DisasContextBase *dcbase,
-                                CPUState *cpu, FILE *logfile)
-{
-    fprintf(logfile, "IN: %s\n", lookup_symbol(dcbase->pc_first));
-    target_disas(logfile, cpu, dcbase->pc_first, dcbase->tb->size);
-}
-
 static const TranslatorOps xtensa_translator_ops = {
     .init_disas_context = xtensa_tr_init_disas_context,
     .tb_start           = xtensa_tr_tb_start,
     .insn_start         = xtensa_tr_insn_start,
     .translate_insn     = xtensa_tr_translate_insn,
     .tb_stop            = xtensa_tr_tb_stop,
-    .disas_log          = xtensa_tr_disas_log,
 };
 
-void gen_intermediate_code(CPUState *cpu, TranslationBlock *tb, int max_insns,
-                           target_ulong pc, void *host_pc)
+void gen_intermediate_code(CPUState *cpu, TranslationBlock *tb, int *max_insns,
+                           vaddr pc, void *host_pc)
 {
     DisasContext dc = {};
     translator_loop(cpu, tb, max_insns, pc, host_pc,
@@ -1289,8 +1237,7 @@ void gen_intermediate_code(CPUState *cpu, TranslationBlock *tb, int max_insns,
 
 void xtensa_cpu_dump_state(CPUState *cs, FILE *f, int flags)
 {
-    XtensaCPU *cpu = XTENSA_CPU(cs);
-    CPUXtensaState *env = &cpu->env;
+    CPUXtensaState *env = cpu_env(cs);
     xtensa_isa isa = env->config->isa;
     int i, j;
 
@@ -1379,14 +1326,13 @@ static void translate_addx(DisasContext *dc, const OpcodeArg arg[],
     TCGv_i32 tmp = tcg_temp_new_i32();
     tcg_gen_shli_i32(tmp, arg[1].in, par[0]);
     tcg_gen_add_i32(arg[0].out, tmp, arg[2].in);
-    tcg_temp_free(tmp);
 }
 
 static void translate_all(DisasContext *dc, const OpcodeArg arg[],
                           const uint32_t par[])
 {
     uint32_t shift = par[1];
-    TCGv_i32 mask = tcg_const_i32(((1 << shift) - 1) << arg[1].imm);
+    TCGv_i32 mask = tcg_constant_i32(((1 << shift) - 1) << arg[1].imm);
     TCGv_i32 tmp = tcg_temp_new_i32();
 
     tcg_gen_and_i32(tmp, arg[1].in, mask);
@@ -1398,8 +1344,6 @@ static void translate_all(DisasContext *dc, const OpcodeArg arg[],
     tcg_gen_shri_i32(tmp, tmp, arg[1].imm + shift);
     tcg_gen_deposit_i32(arg[0].out, arg[0].out,
                         tmp, arg[0].imm, 1);
-    tcg_temp_free(mask);
-    tcg_temp_free(tmp);
 }
 
 static void translate_and(DisasContext *dc, const OpcodeArg arg[],
@@ -1414,7 +1358,6 @@ static void translate_ball(DisasContext *dc, const OpcodeArg arg[],
     TCGv_i32 tmp = tcg_temp_new_i32();
     tcg_gen_and_i32(tmp, arg[0].in, arg[1].in);
     gen_brcond(dc, par[0], tmp, arg[1].in, arg[2].imm);
-    tcg_temp_free(tmp);
 }
 
 static void translate_bany(DisasContext *dc, const OpcodeArg arg[],
@@ -1423,7 +1366,6 @@ static void translate_bany(DisasContext *dc, const OpcodeArg arg[],
     TCGv_i32 tmp = tcg_temp_new_i32();
     tcg_gen_and_i32(tmp, arg[0].in, arg[1].in);
     gen_brcondi(dc, par[0], tmp, 0, arg[2].imm);
-    tcg_temp_free(tmp);
 }
 
 static void translate_b(DisasContext *dc, const OpcodeArg arg[],
@@ -1435,22 +1377,16 @@ static void translate_b(DisasContext *dc, const OpcodeArg arg[],
 static void translate_bb(DisasContext *dc, const OpcodeArg arg[],
                          const uint32_t par[])
 {
-#if TARGET_BIG_ENDIAN
-    TCGv_i32 bit = tcg_const_i32(0x80000000u);
-#else
-    TCGv_i32 bit = tcg_const_i32(0x00000001u);
-#endif
     TCGv_i32 tmp = tcg_temp_new_i32();
+
     tcg_gen_andi_i32(tmp, arg[1].in, 0x1f);
-#if TARGET_BIG_ENDIAN
-    tcg_gen_shr_i32(bit, bit, tmp);
-#else
-    tcg_gen_shl_i32(bit, bit, tmp);
-#endif
-    tcg_gen_and_i32(tmp, arg[0].in, bit);
+    if (TARGET_BIG_ENDIAN) {
+        tcg_gen_shr_i32(tmp, tcg_constant_i32(0x80000000u), tmp);
+    } else {
+        tcg_gen_shl_i32(tmp, tcg_constant_i32(0x00000001u), tmp);
+    }
+    tcg_gen_and_i32(tmp, arg[0].in, tmp);
     gen_brcondi(dc, par[0], tmp, 0, arg[2].imm);
-    tcg_temp_free(tmp);
-    tcg_temp_free(bit);
 }
 
 static void translate_bbi(DisasContext *dc, const OpcodeArg arg[],
@@ -1463,7 +1399,6 @@ static void translate_bbi(DisasContext *dc, const OpcodeArg arg[],
     tcg_gen_andi_i32(tmp, arg[0].in, 0x00000001u << arg[1].imm);
 #endif
     gen_brcondi(dc, par[0], tmp, 0, arg[2].imm);
-    tcg_temp_free(tmp);
 }
 
 static void translate_bi(DisasContext *dc, const OpcodeArg arg[],
@@ -1504,8 +1439,6 @@ static void translate_boolean(DisasContext *dc, const OpcodeArg arg[],
     tcg_gen_shri_i32(tmp2, arg[2].in, arg[2].imm);
     op[par[0]](tmp1, tmp1, tmp2);
     tcg_gen_deposit_i32(arg[0].out, arg[0].out, tmp1, arg[0].imm, 1);
-    tcg_temp_free(tmp1);
-    tcg_temp_free(tmp2);
 }
 
 static void translate_bp(DisasContext *dc, const OpcodeArg arg[],
@@ -1515,7 +1448,6 @@ static void translate_bp(DisasContext *dc, const OpcodeArg arg[],
 
     tcg_gen_andi_i32(tmp, arg[0].in, 1 << arg[0].imm);
     gen_brcondi(dc, par[0], tmp, 0, arg[1].imm);
-    tcg_temp_free(tmp);
 }
 
 static void translate_call0(DisasContext *dc, const OpcodeArg arg[],
@@ -1528,9 +1460,8 @@ static void translate_call0(DisasContext *dc, const OpcodeArg arg[],
 static void translate_callw(DisasContext *dc, const OpcodeArg arg[],
                             const uint32_t par[])
 {
-    TCGv_i32 tmp = tcg_const_i32(arg[0].imm);
+    TCGv_i32 tmp = tcg_constant_i32(arg[0].imm);
     gen_callw_slot(dc, par[0], tmp, adjust_jump_slot(dc, arg[0].imm, 0));
-    tcg_temp_free(tmp);
 }
 
 static void translate_callx0(DisasContext *dc, const OpcodeArg arg[],
@@ -1540,7 +1471,6 @@ static void translate_callx0(DisasContext *dc, const OpcodeArg arg[],
     tcg_gen_mov_i32(tmp, arg[0].in);
     tcg_gen_movi_i32(cpu_R[0], dc->base.pc_next);
     gen_jump(dc, tmp);
-    tcg_temp_free(tmp);
 }
 
 static void translate_callxw(DisasContext *dc, const OpcodeArg arg[],
@@ -1550,19 +1480,16 @@ static void translate_callxw(DisasContext *dc, const OpcodeArg arg[],
 
     tcg_gen_mov_i32(tmp, arg[0].in);
     gen_callw_slot(dc, par[0], tmp, -1);
-    tcg_temp_free(tmp);
 }
 
 static void translate_clamps(DisasContext *dc, const OpcodeArg arg[],
                              const uint32_t par[])
 {
-    TCGv_i32 tmp1 = tcg_const_i32(-1u << arg[2].imm);
-    TCGv_i32 tmp2 = tcg_const_i32((1 << arg[2].imm) - 1);
+    TCGv_i32 tmp1 = tcg_constant_i32(-1u << arg[2].imm);
+    TCGv_i32 tmp2 = tcg_constant_i32((1 << arg[2].imm) - 1);
 
-    tcg_gen_smax_i32(tmp1, tmp1, arg[1].in);
-    tcg_gen_smin_i32(arg[0].out, tmp1, tmp2);
-    tcg_temp_free(tmp1);
-    tcg_temp_free(tmp2);
+    tcg_gen_smax_i32(arg[0].out, tmp1, arg[1].in);
+    tcg_gen_smin_i32(arg[0].out, arg[0].out, tmp2);
 }
 
 static void translate_clrb_expstate(DisasContext *dc, const OpcodeArg arg[],
@@ -1581,10 +1508,9 @@ static void translate_clrex(DisasContext *dc, const OpcodeArg arg[],
 static void translate_const16(DisasContext *dc, const OpcodeArg arg[],
                              const uint32_t par[])
 {
-    TCGv_i32 c = tcg_const_i32(arg[1].imm);
+    TCGv_i32 c = tcg_constant_i32(arg[1].imm);
 
     tcg_gen_deposit_i32(arg[0].out, c, arg[0].in, 16, 16);
-    tcg_temp_free(c);
 }
 
 static void translate_dcache(DisasContext *dc, const OpcodeArg arg[],
@@ -1594,9 +1520,7 @@ static void translate_dcache(DisasContext *dc, const OpcodeArg arg[],
     TCGv_i32 res = tcg_temp_new_i32();
 
     tcg_gen_addi_i32(addr, arg[0].in, arg[1].imm);
-    tcg_gen_qemu_ld8u(res, addr, dc->cring);
-    tcg_temp_free(addr);
-    tcg_temp_free(res);
+    tcg_gen_qemu_ld_i32(res, addr, dc->cring, MO_UB);
 }
 
 static void translate_depbits(DisasContext *dc, const OpcodeArg arg[],
@@ -1636,7 +1560,7 @@ static void translate_entry(DisasContext *dc, const OpcodeArg arg[],
     TCGv_i32 pc = tcg_constant_i32(dc->pc);
     TCGv_i32 s = tcg_constant_i32(arg[0].imm);
     TCGv_i32 imm = tcg_constant_i32(arg[1].imm);
-    gen_helper_entry(cpu_env, pc, s, imm);
+    gen_helper_entry(tcg_env, pc, s, imm);
 }
 
 static void translate_extui(DisasContext *dc, const OpcodeArg arg[],
@@ -1647,7 +1571,6 @@ static void translate_extui(DisasContext *dc, const OpcodeArg arg[],
     TCGv_i32 tmp = tcg_temp_new_i32();
     tcg_gen_shri_i32(tmp, arg[1].in, arg[2].imm);
     tcg_gen_andi_i32(arg[0].out, tmp, maskimm);
-    tcg_temp_free(tmp);
 }
 
 static void translate_getex(DisasContext *dc, const OpcodeArg arg[],
@@ -1658,7 +1581,6 @@ static void translate_getex(DisasContext *dc, const OpcodeArg arg[],
     tcg_gen_extract_i32(tmp, cpu_SR[ATOMCTL], 8, 1);
     tcg_gen_deposit_i32(cpu_SR[ATOMCTL], cpu_SR[ATOMCTL], arg[0].in, 8, 1);
     tcg_gen_mov_i32(arg[0].out, tmp);
-    tcg_temp_free(tmp);
 }
 
 static void translate_icache(DisasContext *dc, const OpcodeArg arg[],
@@ -1669,8 +1591,7 @@ static void translate_icache(DisasContext *dc, const OpcodeArg arg[],
 
     tcg_gen_movi_i32(cpu_pc, dc->pc);
     tcg_gen_addi_i32(addr, arg[0].in, arg[1].imm);
-    gen_helper_itlb_hit_test(cpu_env, addr);
-    tcg_temp_free(addr);
+    gen_helper_itlb_hit_test(tcg_env, addr);
 #endif
 }
 
@@ -1680,7 +1601,7 @@ static void translate_itlb(DisasContext *dc, const OpcodeArg arg[],
 #ifndef CONFIG_USER_ONLY
     TCGv_i32 dtlb = tcg_constant_i32(par[0]);
 
-    gen_helper_itlb(cpu_env, arg[0].in, dtlb);
+    gen_helper_itlb(tcg_env, arg[0].in, dtlb);
 #endif
 }
 
@@ -1705,7 +1626,6 @@ static void translate_l32e(DisasContext *dc, const OpcodeArg arg[],
     tcg_gen_addi_i32(addr, arg[1].in, arg[2].imm);
     mop = gen_load_store_alignment(dc, MO_TEUL, addr);
     tcg_gen_qemu_ld_tl(arg[0].out, addr, dc->ring, mop);
-    tcg_temp_free(addr);
 }
 
 #ifdef CONFIG_USER_ONLY
@@ -1718,7 +1638,7 @@ static void gen_check_exclusive(DisasContext *dc, TCGv_i32 addr, bool is_write)
     if (!option_enabled(dc, XTENSA_OPTION_MPU)) {
         TCGv_i32 pc = tcg_constant_i32(dc->pc);
 
-        gen_helper_check_exclusive(cpu_env, pc, addr,
+        gen_helper_check_exclusive(tcg_env, pc, addr,
                                    tcg_constant_i32(is_write));
     }
 }
@@ -1736,7 +1656,6 @@ static void translate_l32ex(DisasContext *dc, const OpcodeArg arg[],
     tcg_gen_qemu_ld_i32(arg[0].out, addr, dc->cring, mop);
     tcg_gen_mov_i32(cpu_exclusive_addr, addr);
     tcg_gen_mov_i32(cpu_exclusive_val, arg[0].out);
-    tcg_temp_free(addr);
 }
 
 static void translate_ldst(DisasContext *dc, const OpcodeArg arg[],
@@ -1759,7 +1678,6 @@ static void translate_ldst(DisasContext *dc, const OpcodeArg arg[],
             tcg_gen_mb(TCG_BAR_LDAQ | TCG_MO_ALL);
         }
     }
-    tcg_temp_free(addr);
 }
 
 static void translate_lct(DisasContext *dc, const OpcodeArg arg[],
@@ -1774,13 +1692,12 @@ static void translate_l32r(DisasContext *dc, const OpcodeArg arg[],
     TCGv_i32 tmp;
 
     if (dc->base.tb->flags & XTENSA_TBFLAG_LITBASE) {
-        tmp = tcg_const_i32(arg[1].raw_imm - 1);
-        tcg_gen_add_i32(tmp, cpu_SR[LITBASE], tmp);
+        tmp = tcg_temp_new();
+        tcg_gen_addi_i32(tmp, cpu_SR[LITBASE], arg[1].raw_imm - 1);
     } else {
-        tmp = tcg_const_i32(arg[1].imm);
+        tmp = tcg_constant_i32(arg[1].imm);
     }
-    tcg_gen_qemu_ld32u(arg[0].out, tmp, dc->cring);
-    tcg_temp_free(tmp);
+    tcg_gen_qemu_ld_i32(arg[0].out, tmp, dc->cring, MO_TEUL);
 }
 
 static void translate_loop(DisasContext *dc, const OpcodeArg arg[],
@@ -1866,19 +1783,12 @@ static void translate_mac16(DisasContext *dc, const OpcodeArg arg[],
                                  lo, hi);
             }
             tcg_gen_ext8s_i32(cpu_SR[ACCHI], cpu_SR[ACCHI]);
-
-            tcg_temp_free_i32(lo);
-            tcg_temp_free_i32(hi);
         }
-        tcg_temp_free(m1);
-        tcg_temp_free(m2);
     }
     if (ld_offset) {
         tcg_gen_mov_i32(arg[1].out, vaddr);
         tcg_gen_mov_i32(cpu_SR[MR + arg[0].imm], mem32);
     }
-    tcg_temp_free(vaddr);
-    tcg_temp_free(mem32);
 }
 
 static void translate_memw(DisasContext *dc, const OpcodeArg arg[],
@@ -1942,7 +1852,6 @@ static void translate_movp(DisasContext *dc, const OpcodeArg arg[],
     tcg_gen_movcond_i32(par[0],
                         arg[0].out, tmp, zero,
                         arg[1].in, arg[0].in);
-    tcg_temp_free(tmp);
 }
 
 static void translate_movsp(DisasContext *dc, const OpcodeArg arg[],
@@ -1965,8 +1874,6 @@ static void translate_mul16(DisasContext *dc, const OpcodeArg arg[],
         tcg_gen_ext16u_i32(v2, arg[2].in);
     }
     tcg_gen_mul_i32(arg[0].out, v1, v2);
-    tcg_temp_free(v2);
-    tcg_temp_free(v1);
 }
 
 static void translate_mull(DisasContext *dc, const OpcodeArg arg[],
@@ -1985,7 +1892,6 @@ static void translate_mulh(DisasContext *dc, const OpcodeArg arg[],
     } else {
         tcg_gen_mulu2_i32(lo, arg[0].out, arg[1].in, arg[2].in);
     }
-    tcg_temp_free(lo);
 }
 
 static void translate_neg(DisasContext *dc, const OpcodeArg arg[],
@@ -2024,7 +1930,7 @@ static void translate_ptlb(DisasContext *dc, const OpcodeArg arg[],
     TCGv_i32 dtlb = tcg_constant_i32(par[0]);
 
     tcg_gen_movi_i32(cpu_pc, dc->pc);
-    gen_helper_ptlb(arg[0].out, cpu_env, arg[1].in, dtlb);
+    gen_helper_ptlb(arg[0].out, tcg_env, arg[1].in, dtlb);
 #endif
 }
 
@@ -2033,7 +1939,7 @@ static void translate_pptlb(DisasContext *dc, const OpcodeArg arg[],
 {
 #ifndef CONFIG_USER_ONLY
     tcg_gen_movi_i32(cpu_pc, dc->pc);
-    gen_helper_pptlb(arg[0].out, cpu_env, arg[1].in);
+    gen_helper_pptlb(arg[0].out, tcg_env, arg[1].in);
 #endif
 }
 
@@ -2085,7 +1991,7 @@ static void translate_remu(DisasContext *dc, const OpcodeArg arg[],
 static void translate_rer(DisasContext *dc, const OpcodeArg arg[],
                           const uint32_t par[])
 {
-    gen_helper_rer(arg[0].out, cpu_env, arg[1].in);
+    gen_helper_rer(arg[0].out, tcg_env, arg[1].in);
 }
 
 static void translate_ret(DisasContext *dc, const OpcodeArg arg[],
@@ -2104,7 +2010,7 @@ static uint32_t test_exceptions_retw(DisasContext *dc, const OpcodeArg arg[],
     } else {
         TCGv_i32 pc = tcg_constant_i32(dc->pc);
 
-        gen_helper_test_ill_retw(cpu_env, pc);
+        gen_helper_test_ill_retw(tcg_env, pc);
         return 0;
     }
 }
@@ -2112,15 +2018,14 @@ static uint32_t test_exceptions_retw(DisasContext *dc, const OpcodeArg arg[],
 static void translate_retw(DisasContext *dc, const OpcodeArg arg[],
                            const uint32_t par[])
 {
-    TCGv_i32 tmp = tcg_const_i32(1);
-    tcg_gen_shl_i32(tmp, tmp, cpu_SR[WINDOW_BASE]);
+    TCGv_i32 tmp = tcg_temp_new();
+    tcg_gen_shl_i32(tmp, tcg_constant_i32(1), cpu_SR[WINDOW_BASE]);
     tcg_gen_andc_i32(cpu_SR[WINDOW_START],
                      cpu_SR[WINDOW_START], tmp);
     tcg_gen_movi_i32(tmp, dc->pc);
     tcg_gen_deposit_i32(tmp, tmp, cpu_R[0], 0, 30);
-    gen_helper_retw(cpu_env, cpu_R[0]);
+    gen_helper_retw(tcg_env, cpu_R[0]);
     gen_jump(dc, tmp);
-    tcg_temp_free(tmp);
 }
 
 static void translate_rfde(DisasContext *dc, const OpcodeArg arg[],
@@ -2146,10 +2051,10 @@ static void translate_rfi(DisasContext *dc, const OpcodeArg arg[],
 static void translate_rfw(DisasContext *dc, const OpcodeArg arg[],
                           const uint32_t par[])
 {
-    TCGv_i32 tmp = tcg_const_i32(1);
+    TCGv_i32 tmp = tcg_temp_new();
 
     tcg_gen_andi_i32(cpu_SR[PS], cpu_SR[PS], ~PS_EXCM);
-    tcg_gen_shl_i32(tmp, tmp, cpu_SR[WINDOW_BASE]);
+    tcg_gen_shl_i32(tmp, tcg_constant_i32(1), cpu_SR[WINDOW_BASE]);
 
     if (par[0]) {
         tcg_gen_andc_i32(cpu_SR[WINDOW_START],
@@ -2159,8 +2064,7 @@ static void translate_rfw(DisasContext *dc, const OpcodeArg arg[],
                        cpu_SR[WINDOW_START], tmp);
     }
 
-    tcg_temp_free(tmp);
-    gen_helper_restore_owb(cpu_env);
+    gen_helper_restore_owb(tcg_env);
     gen_jump(dc, cpu_SR[EPC1]);
 }
 
@@ -2192,10 +2096,8 @@ static void translate_rsr_ccount(DisasContext *dc, const OpcodeArg arg[],
                                  const uint32_t par[])
 {
 #ifndef CONFIG_USER_ONLY
-    if (tb_cflags(dc->base.tb) & CF_USE_ICOUNT) {
-        gen_io_start();
-    }
-    gen_helper_update_ccount(cpu_env);
+    translator_io_start(&dc->base);
+    gen_helper_update_ccount(tcg_env);
     tcg_gen_mov_i32(arg[0].out, cpu_SR[par[0]]);
 #endif
 }
@@ -2209,7 +2111,6 @@ static void translate_rsr_ptevaddr(DisasContext *dc, const OpcodeArg arg[],
     tcg_gen_shri_i32(tmp, cpu_SR[EXCVADDR], 10);
     tcg_gen_or_i32(tmp, tmp, cpu_SR[PTEVADDR]);
     tcg_gen_andi_i32(arg[0].out, tmp, 0xfffffffc);
-    tcg_temp_free(tmp);
 #endif
 }
 
@@ -2224,7 +2125,7 @@ static void translate_rtlb(DisasContext *dc, const OpcodeArg arg[],
     };
     TCGv_i32 dtlb = tcg_constant_i32(par[0]);
 
-    helper[par[1]](arg[0].out, cpu_env, arg[1].in, dtlb);
+    helper[par[1]](arg[0].out, tcg_env, arg[1].in, dtlb);
 #endif
 }
 
@@ -2232,7 +2133,7 @@ static void translate_rptlb0(DisasContext *dc, const OpcodeArg arg[],
                              const uint32_t par[])
 {
 #ifndef CONFIG_USER_ONLY
-    gen_helper_rptlb0(arg[0].out, cpu_env, arg[1].in);
+    gen_helper_rptlb0(arg[0].out, tcg_env, arg[1].in);
 #endif
 }
 
@@ -2240,7 +2141,7 @@ static void translate_rptlb1(DisasContext *dc, const OpcodeArg arg[],
                              const uint32_t par[])
 {
 #ifndef CONFIG_USER_ONLY
-    gen_helper_rptlb1(arg[0].out, cpu_env, arg[1].in);
+    gen_helper_rptlb1(arg[0].out, tcg_env, arg[1].in);
 #endif
 }
 
@@ -2266,15 +2167,15 @@ static void gen_check_atomctl(DisasContext *dc, TCGv_i32 addr)
 {
     TCGv_i32 pc = tcg_constant_i32(dc->pc);
 
-    gen_helper_check_atomctl(cpu_env, pc, addr);
+    gen_helper_check_atomctl(tcg_env, pc, addr);
 }
 #endif
 
 static void translate_s32c1i(DisasContext *dc, const OpcodeArg arg[],
                              const uint32_t par[])
 {
-    TCGv_i32 tmp = tcg_temp_local_new_i32();
-    TCGv_i32 addr = tcg_temp_local_new_i32();
+    TCGv_i32 tmp = tcg_temp_new_i32();
+    TCGv_i32 addr = tcg_temp_new_i32();
     MemOp mop;
 
     tcg_gen_mov_i32(tmp, arg[0].in);
@@ -2283,8 +2184,6 @@ static void translate_s32c1i(DisasContext *dc, const OpcodeArg arg[],
     gen_check_atomctl(dc, addr);
     tcg_gen_atomic_cmpxchg_i32(arg[0].out, addr, cpu_SR[SCOMPARE1],
                                tmp, dc->cring, mop);
-    tcg_temp_free(addr);
-    tcg_temp_free(tmp);
 }
 
 static void translate_s32e(DisasContext *dc, const OpcodeArg arg[],
@@ -2296,15 +2195,14 @@ static void translate_s32e(DisasContext *dc, const OpcodeArg arg[],
     tcg_gen_addi_i32(addr, arg[1].in, arg[2].imm);
     mop = gen_load_store_alignment(dc, MO_TEUL, addr);
     tcg_gen_qemu_st_tl(arg[0].in, addr, dc->ring, mop);
-    tcg_temp_free(addr);
 }
 
 static void translate_s32ex(DisasContext *dc, const OpcodeArg arg[],
                             const uint32_t par[])
 {
     TCGv_i32 prev = tcg_temp_new_i32();
-    TCGv_i32 addr = tcg_temp_local_new_i32();
-    TCGv_i32 res = tcg_temp_local_new_i32();
+    TCGv_i32 addr = tcg_temp_new_i32();
+    TCGv_i32 res = tcg_temp_new_i32();
     TCGLabel *label = gen_new_label();
     MemOp mop;
 
@@ -2322,9 +2220,6 @@ static void translate_s32ex(DisasContext *dc, const OpcodeArg arg[],
     gen_set_label(label);
     tcg_gen_extract_i32(arg[0].out, cpu_SR[ATOMCTL], 8, 1);
     tcg_gen_deposit_i32(cpu_SR[ATOMCTL], cpu_SR[ATOMCTL], res, 8, 1);
-    tcg_temp_free(prev);
-    tcg_temp_free(addr);
-    tcg_temp_free(res);
 }
 
 static void translate_salt(DisasContext *dc, const OpcodeArg arg[],
@@ -2338,18 +2233,7 @@ static void translate_salt(DisasContext *dc, const OpcodeArg arg[],
 static void translate_sext(DisasContext *dc, const OpcodeArg arg[],
                            const uint32_t par[])
 {
-    int shift = 31 - arg[2].imm;
-
-    if (shift == 24) {
-        tcg_gen_ext8s_i32(arg[0].out, arg[1].in);
-    } else if (shift == 16) {
-        tcg_gen_ext16s_i32(arg[0].out, arg[1].in);
-    } else {
-        TCGv_i32 tmp = tcg_temp_new_i32();
-        tcg_gen_shli_i32(tmp, arg[1].in, shift);
-        tcg_gen_sari_i32(arg[0].out, tmp, shift);
-        tcg_temp_free(tmp);
-    }
+    tcg_gen_sextract_i32(arg[0].out, arg[1].in, 0, arg[2].imm + 1);
 }
 
 static uint32_t test_exceptions_simcall(DisasContext *dc,
@@ -2374,7 +2258,7 @@ static void translate_simcall(DisasContext *dc, const OpcodeArg arg[],
 {
 #ifndef CONFIG_USER_ONLY
     if (semihosting_enabled(dc->cring != 0)) {
-        gen_helper_simcall(cpu_env);
+        gen_helper_simcall(tcg_env);
     }
 #endif
 }
@@ -2388,8 +2272,6 @@ static void translate_simcall(DisasContext *dc, const OpcodeArg arg[],
                     tcg_gen_extu_i32_i64(tmp, reg); \
                     tcg_gen_##cmd##_i64(v, v, tmp); \
                     tcg_gen_extrl_i64_i32(arg[0].out, v); \
-                    tcg_temp_free_i64(v); \
-                    tcg_temp_free_i64(tmp); \
                 } while (0)
 
 #define gen_shift(cmd) gen_shift_reg(cmd, cpu_SR[SAR])
@@ -2401,12 +2283,11 @@ static void translate_sll(DisasContext *dc, const OpcodeArg arg[],
         tcg_gen_shl_i32(arg[0].out, arg[1].in, dc->sar_m32);
     } else {
         TCGv_i64 v = tcg_temp_new_i64();
-        TCGv_i32 s = tcg_const_i32(32);
-        tcg_gen_sub_i32(s, s, cpu_SR[SAR]);
+        TCGv_i32 s = tcg_temp_new();
+        tcg_gen_subfi_i32(s, 32, cpu_SR[SAR]);
         tcg_gen_andi_i32(s, s, 0x3f);
         tcg_gen_extu_i32_i64(v, arg[1].in);
         gen_shift_reg(shl, s);
-        tcg_temp_free(s);
     }
 }
 
@@ -2473,7 +2354,6 @@ static void translate_ssa8b(DisasContext *dc, const OpcodeArg arg[],
     TCGv_i32 tmp = tcg_temp_new_i32();
     tcg_gen_shli_i32(tmp, arg[0].in, 3);
     gen_left_shift_sar(dc, tmp);
-    tcg_temp_free(tmp);
 }
 
 static void translate_ssa8l(DisasContext *dc, const OpcodeArg arg[],
@@ -2482,7 +2362,6 @@ static void translate_ssa8l(DisasContext *dc, const OpcodeArg arg[],
     TCGv_i32 tmp = tcg_temp_new_i32();
     tcg_gen_shli_i32(tmp, arg[0].in, 3);
     gen_right_shift_sar(dc, tmp);
-    tcg_temp_free(tmp);
 }
 
 static void translate_ssai(DisasContext *dc, const OpcodeArg arg[],
@@ -2515,7 +2394,6 @@ static void translate_subx(DisasContext *dc, const OpcodeArg arg[],
     TCGv_i32 tmp = tcg_temp_new_i32();
     tcg_gen_shli_i32(tmp, arg[1].in, par[0]);
     tcg_gen_sub_i32(arg[0].out, tmp, arg[2].in);
-    tcg_temp_free(tmp);
 }
 
 static void translate_waiti(DisasContext *dc, const OpcodeArg arg[],
@@ -2524,10 +2402,8 @@ static void translate_waiti(DisasContext *dc, const OpcodeArg arg[],
 #ifndef CONFIG_USER_ONLY
     TCGv_i32 pc = tcg_constant_i32(dc->base.pc_next);
 
-    if (tb_cflags(dc->base.tb) & CF_USE_ICOUNT) {
-        gen_io_start();
-    }
-    gen_helper_waiti(cpu_env, pc, tcg_constant_i32(arg[0].imm));
+    translator_io_start(&dc->base);
+    gen_helper_waiti(tcg_env, pc, tcg_constant_i32(arg[0].imm));
 #endif
 }
 
@@ -2537,7 +2413,7 @@ static void translate_wtlb(DisasContext *dc, const OpcodeArg arg[],
 #ifndef CONFIG_USER_ONLY
     TCGv_i32 dtlb = tcg_constant_i32(par[0]);
 
-    gen_helper_wtlb(cpu_env, arg[0].in, arg[1].in, dtlb);
+    gen_helper_wtlb(tcg_env, arg[0].in, arg[1].in, dtlb);
 #endif
 }
 
@@ -2545,14 +2421,14 @@ static void translate_wptlb(DisasContext *dc, const OpcodeArg arg[],
                             const uint32_t par[])
 {
 #ifndef CONFIG_USER_ONLY
-    gen_helper_wptlb(cpu_env, arg[0].in, arg[1].in);
+    gen_helper_wptlb(tcg_env, arg[0].in, arg[1].in);
 #endif
 }
 
 static void translate_wer(DisasContext *dc, const OpcodeArg arg[],
                           const uint32_t par[])
 {
-    gen_helper_wer(cpu_env, arg[0].in, arg[1].in);
+    gen_helper_wer(tcg_env, arg[0].in, arg[1].in);
 }
 
 static void translate_wrmsk_expstate(DisasContext *dc, const OpcodeArg arg[],
@@ -2591,11 +2467,9 @@ static void translate_wsr_ccompare(DisasContext *dc, const OpcodeArg arg[],
     uint32_t id = par[0] - CCOMPARE;
 
     assert(id < dc->config->nccompare);
-    if (tb_cflags(dc->base.tb) & CF_USE_ICOUNT) {
-        gen_io_start();
-    }
+    translator_io_start(&dc->base);
     tcg_gen_mov_i32(cpu_SR[par[0]], arg[0].in);
-    gen_helper_update_ccompare(cpu_env, tcg_constant_i32(id));
+    gen_helper_update_ccompare(tcg_env, tcg_constant_i32(id));
 #endif
 }
 
@@ -2603,10 +2477,8 @@ static void translate_wsr_ccount(DisasContext *dc, const OpcodeArg arg[],
                                  const uint32_t par[])
 {
 #ifndef CONFIG_USER_ONLY
-    if (tb_cflags(dc->base.tb) & CF_USE_ICOUNT) {
-        gen_io_start();
-    }
-    gen_helper_wsr_ccount(cpu_env, arg[0].in);
+    translator_io_start(&dc->base);
+    gen_helper_wsr_ccount(tcg_env, arg[0].in);
 #endif
 }
 
@@ -2617,7 +2489,7 @@ static void translate_wsr_dbreaka(DisasContext *dc, const OpcodeArg arg[],
     unsigned id = par[0] - DBREAKA;
 
     assert(id < dc->config->ndbreak);
-    gen_helper_wsr_dbreaka(cpu_env, tcg_constant_i32(id), arg[0].in);
+    gen_helper_wsr_dbreaka(tcg_env, tcg_constant_i32(id), arg[0].in);
 #endif
 }
 
@@ -2628,7 +2500,7 @@ static void translate_wsr_dbreakc(DisasContext *dc, const OpcodeArg arg[],
     unsigned id = par[0] - DBREAKC;
 
     assert(id < dc->config->ndbreak);
-    gen_helper_wsr_dbreakc(cpu_env, tcg_constant_i32(id), arg[0].in);
+    gen_helper_wsr_dbreakc(tcg_env, tcg_constant_i32(id), arg[0].in);
 #endif
 }
 
@@ -2639,7 +2511,7 @@ static void translate_wsr_ibreaka(DisasContext *dc, const OpcodeArg arg[],
     unsigned id = par[0] - IBREAKA;
 
     assert(id < dc->config->nibreak);
-    gen_helper_wsr_ibreaka(cpu_env, tcg_constant_i32(id), arg[0].in);
+    gen_helper_wsr_ibreaka(tcg_env, tcg_constant_i32(id), arg[0].in);
 #endif
 }
 
@@ -2647,7 +2519,7 @@ static void translate_wsr_ibreakenable(DisasContext *dc, const OpcodeArg arg[],
                                        const uint32_t par[])
 {
 #ifndef CONFIG_USER_ONLY
-    gen_helper_wsr_ibreakenable(cpu_env, arg[0].in);
+    gen_helper_wsr_ibreakenable(tcg_env, arg[0].in);
 #endif
 }
 
@@ -2667,7 +2539,7 @@ static void translate_wsr_intclear(DisasContext *dc, const OpcodeArg arg[],
                                    const uint32_t par[])
 {
 #ifndef CONFIG_USER_ONLY
-    gen_helper_intclear(cpu_env, arg[0].in);
+    gen_helper_intclear(tcg_env, arg[0].in);
 #endif
 }
 
@@ -2675,7 +2547,7 @@ static void translate_wsr_intset(DisasContext *dc, const OpcodeArg arg[],
                                  const uint32_t par[])
 {
 #ifndef CONFIG_USER_ONLY
-    gen_helper_intset(cpu_env, arg[0].in);
+    gen_helper_intset(tcg_env, arg[0].in);
 #endif
 }
 
@@ -2683,7 +2555,7 @@ static void translate_wsr_memctl(DisasContext *dc, const OpcodeArg arg[],
                                  const uint32_t par[])
 {
 #ifndef CONFIG_USER_ONLY
-    gen_helper_wsr_memctl(cpu_env, arg[0].in);
+    gen_helper_wsr_memctl(tcg_env, arg[0].in);
 #endif
 }
 
@@ -2691,7 +2563,7 @@ static void translate_wsr_mpuenb(DisasContext *dc, const OpcodeArg arg[],
                                  const uint32_t par[])
 {
 #ifndef CONFIG_USER_ONLY
-    gen_helper_wsr_mpuenb(cpu_env, arg[0].in);
+    gen_helper_wsr_mpuenb(tcg_env, arg[0].in);
 #endif
 }
 
@@ -2714,7 +2586,7 @@ static void translate_wsr_rasid(DisasContext *dc, const OpcodeArg arg[],
                                 const uint32_t par[])
 {
 #ifndef CONFIG_USER_ONLY
-    gen_helper_wsr_rasid(cpu_env, arg[0].in);
+    gen_helper_wsr_rasid(tcg_env, arg[0].in);
 #endif
 }
 
@@ -2767,7 +2639,6 @@ static void translate_xsr(DisasContext *dc, const OpcodeArg arg[],
         tcg_gen_mov_i32(tmp, arg[0].in);
         tcg_gen_mov_i32(arg[0].out, cpu_SR[par[0]]);
         tcg_gen_mov_i32(cpu_SR[par[0]], tmp);
-        tcg_temp_free(tmp);
     } else {
         tcg_gen_movi_i32(arg[0].out, 0);
     }
@@ -2782,7 +2653,6 @@ static void translate_xsr_mask(DisasContext *dc, const OpcodeArg arg[],
         tcg_gen_mov_i32(tmp, arg[0].in);
         tcg_gen_mov_i32(arg[0].out, cpu_SR[par[0]]);
         tcg_gen_andi_i32(cpu_SR[par[0]], tmp, par[2]);
-        tcg_temp_free(tmp);
     } else {
         tcg_gen_movi_i32(arg[0].out, 0);
     }
@@ -2794,15 +2664,11 @@ static void translate_xsr_ccount(DisasContext *dc, const OpcodeArg arg[],
 #ifndef CONFIG_USER_ONLY
     TCGv_i32 tmp = tcg_temp_new_i32();
 
-    if (tb_cflags(dc->base.tb) & CF_USE_ICOUNT) {
-        gen_io_start();
-    }
-
-    gen_helper_update_ccount(cpu_env);
+    translator_io_start(&dc->base);
+    gen_helper_update_ccount(tcg_env);
     tcg_gen_mov_i32(tmp, cpu_SR[par[0]]);
-    gen_helper_wsr_ccount(cpu_env, arg[0].in);
+    gen_helper_wsr_ccount(tcg_env, arg[0].in);
     tcg_gen_mov_i32(arg[0].out, tmp);
-    tcg_temp_free(tmp);
 
 #endif
 }
@@ -2820,7 +2686,6 @@ static void translate_xsr_ccount(DisasContext *dc, const OpcodeArg arg[],
     } \
     translate_wsr_##name(dc, arg, par); \
     tcg_gen_mov_i32(arg[0].out, tmp); \
-    tcg_temp_free(tmp); \
 }
 
 gen_translate_xsr(acchi)
@@ -6307,16 +6172,6 @@ static inline void put_f32_o1_i3(const OpcodeArg *arg, const OpcodeArg *arg32,
         (o0 >= 0 && arg[o0].num_bits == 64)) {
         if (o0 >= 0) {
             tcg_gen_extu_i32_i64(arg[o0].out, arg32[o0].out);
-            tcg_temp_free_i32(arg32[o0].out);
-        }
-        if (i0 >= 0) {
-            tcg_temp_free_i32(arg32[i0].in);
-        }
-        if (i1 >= 0) {
-            tcg_temp_free_i32(arg32[i1].in);
-        }
-        if (i2 >= 0) {
-            tcg_temp_free_i32(arg32[i2].in);
         }
     }
 }
@@ -6401,7 +6256,7 @@ static void translate_abs_s(DisasContext *dc, const OpcodeArg arg[],
 static void translate_fpu2k_add_s(DisasContext *dc, const OpcodeArg arg[],
                                   const uint32_t par[])
 {
-    gen_helper_fpu2k_add_s(arg[0].out, cpu_env,
+    gen_helper_fpu2k_add_s(arg[0].out, tcg_env,
                            arg[1].in, arg[2].in);
 }
 
@@ -6436,13 +6291,10 @@ static void translate_compare_d(DisasContext *dc, const OpcodeArg arg[],
     tcg_gen_ori_i32(set_br, arg[0].in, 1 << arg[0].imm);
     tcg_gen_andi_i32(clr_br, arg[0].in, ~(1 << arg[0].imm));
 
-    helper[par[0]](res, cpu_env, arg[1].in, arg[2].in);
+    helper[par[0]](res, tcg_env, arg[1].in, arg[2].in);
     tcg_gen_movcond_i32(TCG_COND_NE,
                         arg[0].out, res, zero,
                         set_br, clr_br);
-    tcg_temp_free(res);
-    tcg_temp_free(set_br);
-    tcg_temp_free(clr_br);
 }
 
 static void translate_compare_s(DisasContext *dc, const OpcodeArg arg[],
@@ -6468,14 +6320,11 @@ static void translate_compare_s(DisasContext *dc, const OpcodeArg arg[],
     tcg_gen_andi_i32(clr_br, arg[0].in, ~(1 << arg[0].imm));
 
     get_f32_i2(arg, arg32, 1, 2);
-    helper[par[0]](res, cpu_env, arg32[1].in, arg32[2].in);
+    helper[par[0]](res, tcg_env, arg32[1].in, arg32[2].in);
     tcg_gen_movcond_i32(TCG_COND_NE,
                         arg[0].out, res, zero,
                         set_br, clr_br);
     put_f32_i2(arg, arg32, 1, 2);
-    tcg_temp_free(res);
-    tcg_temp_free(set_br);
-    tcg_temp_free(clr_br);
 }
 
 static void translate_const_d(DisasContext *dc, const OpcodeArg arg[],
@@ -6524,9 +6373,9 @@ static void translate_float_d(DisasContext *dc, const OpcodeArg arg[],
     TCGv_i32 scale = tcg_constant_i32(-arg[2].imm);
 
     if (par[0]) {
-        gen_helper_uitof_d(arg[0].out, cpu_env, arg[1].in, scale);
+        gen_helper_uitof_d(arg[0].out, tcg_env, arg[1].in, scale);
     } else {
-        gen_helper_itof_d(arg[0].out, cpu_env, arg[1].in, scale);
+        gen_helper_itof_d(arg[0].out, tcg_env, arg[1].in, scale);
     }
 }
 
@@ -6538,9 +6387,9 @@ static void translate_float_s(DisasContext *dc, const OpcodeArg arg[],
 
     get_f32_o1(arg, arg32, 0);
     if (par[0]) {
-        gen_helper_uitof_s(arg32[0].out, cpu_env, arg[1].in, scale);
+        gen_helper_uitof_s(arg32[0].out, tcg_env, arg[1].in, scale);
     } else {
-        gen_helper_itof_s(arg32[0].out, cpu_env, arg[1].in, scale);
+        gen_helper_itof_s(arg32[0].out, tcg_env, arg[1].in, scale);
     }
     put_f32_o1(arg, arg32, 0);
 }
@@ -6552,10 +6401,10 @@ static void translate_ftoi_d(DisasContext *dc, const OpcodeArg arg[],
     TCGv_i32 scale = tcg_constant_i32(arg[2].imm);
 
     if (par[1]) {
-        gen_helper_ftoui_d(arg[0].out, cpu_env, arg[1].in,
+        gen_helper_ftoui_d(arg[0].out, tcg_env, arg[1].in,
                            rounding_mode, scale);
     } else {
-        gen_helper_ftoi_d(arg[0].out, cpu_env, arg[1].in,
+        gen_helper_ftoi_d(arg[0].out, tcg_env, arg[1].in,
                           rounding_mode, scale);
     }
 }
@@ -6569,10 +6418,10 @@ static void translate_ftoi_s(DisasContext *dc, const OpcodeArg arg[],
 
     get_f32_i1(arg, arg32, 1);
     if (par[1]) {
-        gen_helper_ftoui_s(arg[0].out, cpu_env, arg32[1].in,
+        gen_helper_ftoui_s(arg[0].out, tcg_env, arg32[1].in,
                            rounding_mode, scale);
     } else {
-        gen_helper_ftoi_s(arg[0].out, cpu_env, arg32[1].in,
+        gen_helper_ftoi_s(arg[0].out, tcg_env, arg32[1].in,
                           rounding_mode, scale);
     }
     put_f32_i1(arg, arg32, 1);
@@ -6594,7 +6443,6 @@ static void translate_ldsti(DisasContext *dc, const OpcodeArg arg[],
     if (par[1]) {
         tcg_gen_mov_i32(arg[1].out, addr);
     }
-    tcg_temp_free(addr);
 }
 
 static void translate_ldstx(DisasContext *dc, const OpcodeArg arg[],
@@ -6613,13 +6461,12 @@ static void translate_ldstx(DisasContext *dc, const OpcodeArg arg[],
     if (par[1]) {
         tcg_gen_mov_i32(arg[1].out, addr);
     }
-    tcg_temp_free(addr);
 }
 
 static void translate_fpu2k_madd_s(DisasContext *dc, const OpcodeArg arg[],
                                    const uint32_t par[])
 {
-    gen_helper_fpu2k_madd_s(arg[0].out, cpu_env,
+    gen_helper_fpu2k_madd_s(arg[0].out, tcg_env,
                             arg[0].in, arg[1].in, arg[2].in);
 }
 
@@ -6649,7 +6496,6 @@ static void translate_movcond_d(DisasContext *dc, const OpcodeArg arg[],
     tcg_gen_movcond_i64(par[0], arg[0].out,
                         arg2, zero,
                         arg[1].in, arg[0].in);
-    tcg_temp_free_i64(arg2);
 }
 
 static void translate_movcond_s(DisasContext *dc, const OpcodeArg arg[],
@@ -6678,8 +6524,6 @@ static void translate_movp_d(DisasContext *dc, const OpcodeArg arg[],
     tcg_gen_movcond_i64(par[0],
                         arg[0].out, tmp2, zero,
                         arg[1].in, arg[0].in);
-    tcg_temp_free_i32(tmp1);
-    tcg_temp_free_i64(tmp2);
 }
 
 static void translate_movp_s(DisasContext *dc, const OpcodeArg arg[],
@@ -6693,7 +6537,6 @@ static void translate_movp_s(DisasContext *dc, const OpcodeArg arg[],
         tcg_gen_movcond_i32(par[0],
                             arg[0].out, tmp, zero,
                             arg[1].in, arg[0].in);
-        tcg_temp_free(tmp);
     } else {
         translate_movp_d(dc, arg, par);
     }
@@ -6702,14 +6545,14 @@ static void translate_movp_s(DisasContext *dc, const OpcodeArg arg[],
 static void translate_fpu2k_mul_s(DisasContext *dc, const OpcodeArg arg[],
                                   const uint32_t par[])
 {
-    gen_helper_fpu2k_mul_s(arg[0].out, cpu_env,
+    gen_helper_fpu2k_mul_s(arg[0].out, tcg_env,
                            arg[1].in, arg[2].in);
 }
 
 static void translate_fpu2k_msub_s(DisasContext *dc, const OpcodeArg arg[],
                                    const uint32_t par[])
 {
-    gen_helper_fpu2k_msub_s(arg[0].out, cpu_env,
+    gen_helper_fpu2k_msub_s(arg[0].out, tcg_env,
                             arg[0].in, arg[1].in, arg[2].in);
 }
 
@@ -6748,7 +6591,7 @@ static void translate_rfr_s(DisasContext *dc, const OpcodeArg arg[],
 static void translate_fpu2k_sub_s(DisasContext *dc, const OpcodeArg arg[],
                                   const uint32_t par[])
 {
-    gen_helper_fpu2k_sub_s(arg[0].out, cpu_env,
+    gen_helper_fpu2k_sub_s(arg[0].out, tcg_env,
                            arg[1].in, arg[2].in);
 }
 
@@ -6771,7 +6614,7 @@ static void translate_wfr_s(DisasContext *dc, const OpcodeArg arg[],
 static void translate_wur_fpu2k_fcr(DisasContext *dc, const OpcodeArg arg[],
                                     const uint32_t par[])
 {
-    gen_helper_wur_fpu2k_fcr(cpu_env, arg[0].in);
+    gen_helper_wur_fpu2k_fcr(tcg_env, arg[0].in);
 }
 
 static void translate_wur_fpu2k_fsr(DisasContext *dc, const OpcodeArg arg[],
@@ -7000,20 +6843,20 @@ const XtensaOpcodeTranslators xtensa_fpu2000_opcodes = {
 static void translate_add_d(DisasContext *dc, const OpcodeArg arg[],
                             const uint32_t par[])
 {
-    gen_helper_add_d(arg[0].out, cpu_env, arg[1].in, arg[2].in);
+    gen_helper_add_d(arg[0].out, tcg_env, arg[1].in, arg[2].in);
 }
 
 static void translate_add_s(DisasContext *dc, const OpcodeArg arg[],
                                 const uint32_t par[])
 {
     if (option_enabled(dc, XTENSA_OPTION_DFPU_SINGLE_ONLY)) {
-        gen_helper_fpu2k_add_s(arg[0].out, cpu_env,
+        gen_helper_fpu2k_add_s(arg[0].out, tcg_env,
                                arg[1].in, arg[2].in);
     } else {
         OpcodeArg arg32[3];
 
         get_f32_o1_i2(arg, arg32, 0, 1, 2);
-        gen_helper_add_s(arg32[0].out, cpu_env, arg32[1].in, arg32[2].in);
+        gen_helper_add_s(arg32[0].out, tcg_env, arg32[1].in, arg32[2].in);
         put_f32_o1_i2(arg, arg32, 0, 1, 2);
     }
 }
@@ -7024,8 +6867,7 @@ static void translate_cvtd_s(DisasContext *dc, const OpcodeArg arg[],
     TCGv_i32 v = tcg_temp_new_i32();
 
     tcg_gen_extrl_i64_i32(v, arg[1].in);
-    gen_helper_cvtd_s(arg[0].out, cpu_env, v);
-    tcg_temp_free_i32(v);
+    gen_helper_cvtd_s(arg[0].out, tcg_env, v);
 }
 
 static void translate_cvts_d(DisasContext *dc, const OpcodeArg arg[],
@@ -7033,9 +6875,8 @@ static void translate_cvts_d(DisasContext *dc, const OpcodeArg arg[],
 {
     TCGv_i32 v = tcg_temp_new_i32();
 
-    gen_helper_cvts_d(v, cpu_env, arg[1].in);
+    gen_helper_cvts_d(v, tcg_env, arg[1].in);
     tcg_gen_extu_i32_i64(arg[0].out, v);
-    tcg_temp_free_i32(v);
 }
 
 static void translate_ldsti_d(DisasContext *dc, const OpcodeArg arg[],
@@ -7062,9 +6903,6 @@ static void translate_ldsti_d(DisasContext *dc, const OpcodeArg arg[],
         } else {
             tcg_gen_addi_i32(arg[1].out, arg[1].in, arg[2].imm);
         }
-    }
-    if (par[1]) {
-        tcg_temp_free(addr);
     }
 }
 
@@ -7098,9 +6936,6 @@ static void translate_ldsti_s(DisasContext *dc, const OpcodeArg arg[],
             tcg_gen_addi_i32(arg[1].out, arg[1].in, arg[2].imm);
         }
     }
-    if (par[1]) {
-        tcg_temp_free(addr);
-    }
 }
 
 static void translate_ldstx_d(DisasContext *dc, const OpcodeArg arg[],
@@ -7127,9 +6962,6 @@ static void translate_ldstx_d(DisasContext *dc, const OpcodeArg arg[],
         } else {
             tcg_gen_add_i32(arg[1].out, arg[1].in, arg[2].in);
         }
-    }
-    if (par[1]) {
-        tcg_temp_free(addr);
     }
 }
 
@@ -7163,15 +6995,12 @@ static void translate_ldstx_s(DisasContext *dc, const OpcodeArg arg[],
             tcg_gen_add_i32(arg[1].out, arg[1].in, arg[2].in);
         }
     }
-    if (par[1]) {
-        tcg_temp_free(addr);
-    }
 }
 
 static void translate_madd_d(DisasContext *dc, const OpcodeArg arg[],
                              const uint32_t par[])
 {
-    gen_helper_madd_d(arg[0].out, cpu_env,
+    gen_helper_madd_d(arg[0].out, tcg_env,
                       arg[0].in, arg[1].in, arg[2].in);
 }
 
@@ -7179,13 +7008,13 @@ static void translate_madd_s(DisasContext *dc, const OpcodeArg arg[],
                              const uint32_t par[])
 {
     if (option_enabled(dc, XTENSA_OPTION_DFPU_SINGLE_ONLY)) {
-        gen_helper_fpu2k_madd_s(arg[0].out, cpu_env,
+        gen_helper_fpu2k_madd_s(arg[0].out, tcg_env,
                                 arg[0].in, arg[1].in, arg[2].in);
     } else {
         OpcodeArg arg32[3];
 
         get_f32_o1_i3(arg, arg32, 0, 0, 1, 2);
-        gen_helper_madd_s(arg32[0].out, cpu_env,
+        gen_helper_madd_s(arg32[0].out, tcg_env,
                           arg32[0].in, arg32[1].in, arg32[2].in);
         put_f32_o1_i3(arg, arg32, 0, 0, 1, 2);
     }
@@ -7194,20 +7023,20 @@ static void translate_madd_s(DisasContext *dc, const OpcodeArg arg[],
 static void translate_mul_d(DisasContext *dc, const OpcodeArg arg[],
                             const uint32_t par[])
 {
-    gen_helper_mul_d(arg[0].out, cpu_env, arg[1].in, arg[2].in);
+    gen_helper_mul_d(arg[0].out, tcg_env, arg[1].in, arg[2].in);
 }
 
 static void translate_mul_s(DisasContext *dc, const OpcodeArg arg[],
                             const uint32_t par[])
 {
     if (option_enabled(dc, XTENSA_OPTION_DFPU_SINGLE_ONLY)) {
-        gen_helper_fpu2k_mul_s(arg[0].out, cpu_env,
+        gen_helper_fpu2k_mul_s(arg[0].out, tcg_env,
                                arg[1].in, arg[2].in);
     } else {
         OpcodeArg arg32[3];
 
         get_f32_o1_i2(arg, arg32, 0, 1, 2);
-        gen_helper_mul_s(arg32[0].out, cpu_env, arg32[1].in, arg32[2].in);
+        gen_helper_mul_s(arg32[0].out, tcg_env, arg32[1].in, arg32[2].in);
         put_f32_o1_i2(arg, arg32, 0, 1, 2);
     }
 }
@@ -7215,7 +7044,7 @@ static void translate_mul_s(DisasContext *dc, const OpcodeArg arg[],
 static void translate_msub_d(DisasContext *dc, const OpcodeArg arg[],
                              const uint32_t par[])
 {
-    gen_helper_msub_d(arg[0].out, cpu_env,
+    gen_helper_msub_d(arg[0].out, tcg_env,
                       arg[0].in, arg[1].in, arg[2].in);
 }
 
@@ -7223,13 +7052,13 @@ static void translate_msub_s(DisasContext *dc, const OpcodeArg arg[],
                              const uint32_t par[])
 {
     if (option_enabled(dc, XTENSA_OPTION_DFPU_SINGLE_ONLY)) {
-        gen_helper_fpu2k_msub_s(arg[0].out, cpu_env,
+        gen_helper_fpu2k_msub_s(arg[0].out, tcg_env,
                                 arg[0].in, arg[1].in, arg[2].in);
     } else {
         OpcodeArg arg32[3];
 
         get_f32_o1_i3(arg, arg32, 0, 0, 1, 2);
-        gen_helper_msub_s(arg32[0].out, cpu_env,
+        gen_helper_msub_s(arg32[0].out, tcg_env,
                           arg32[0].in, arg32[1].in, arg32[2].in);
         put_f32_o1_i3(arg, arg32, 0, 0, 1, 2);
     }
@@ -7238,20 +7067,20 @@ static void translate_msub_s(DisasContext *dc, const OpcodeArg arg[],
 static void translate_sub_d(DisasContext *dc, const OpcodeArg arg[],
                             const uint32_t par[])
 {
-    gen_helper_sub_d(arg[0].out, cpu_env, arg[1].in, arg[2].in);
+    gen_helper_sub_d(arg[0].out, tcg_env, arg[1].in, arg[2].in);
 }
 
 static void translate_sub_s(DisasContext *dc, const OpcodeArg arg[],
                             const uint32_t par[])
 {
     if (option_enabled(dc, XTENSA_OPTION_DFPU_SINGLE_ONLY)) {
-        gen_helper_fpu2k_sub_s(arg[0].out, cpu_env,
+        gen_helper_fpu2k_sub_s(arg[0].out, tcg_env,
                                arg[1].in, arg[2].in);
     } else {
         OpcodeArg arg32[3];
 
         get_f32_o1_i2(arg, arg32, 0, 1, 2);
-        gen_helper_sub_s(arg32[0].out, cpu_env, arg32[1].in, arg32[2].in);
+        gen_helper_sub_s(arg32[0].out, tcg_env, arg32[1].in, arg32[2].in);
         put_f32_o1_i2(arg, arg32, 0, 1, 2);
     }
 }
@@ -7259,7 +7088,7 @@ static void translate_sub_s(DisasContext *dc, const OpcodeArg arg[],
 static void translate_mkdadj_d(DisasContext *dc, const OpcodeArg arg[],
                                const uint32_t par[])
 {
-    gen_helper_mkdadj_d(arg[0].out, cpu_env, arg[0].in, arg[1].in);
+    gen_helper_mkdadj_d(arg[0].out, tcg_env, arg[0].in, arg[1].in);
 }
 
 static void translate_mkdadj_s(DisasContext *dc, const OpcodeArg arg[],
@@ -7268,14 +7097,14 @@ static void translate_mkdadj_s(DisasContext *dc, const OpcodeArg arg[],
     OpcodeArg arg32[2];
 
     get_f32_o1_i2(arg, arg32, 0, 0, 1);
-    gen_helper_mkdadj_s(arg32[0].out, cpu_env, arg32[0].in, arg32[1].in);
+    gen_helper_mkdadj_s(arg32[0].out, tcg_env, arg32[0].in, arg32[1].in);
     put_f32_o1_i2(arg, arg32, 0, 0, 1);
 }
 
 static void translate_mksadj_d(DisasContext *dc, const OpcodeArg arg[],
                                const uint32_t par[])
 {
-    gen_helper_mksadj_d(arg[0].out, cpu_env, arg[1].in);
+    gen_helper_mksadj_d(arg[0].out, tcg_env, arg[1].in);
 }
 
 static void translate_mksadj_s(DisasContext *dc, const OpcodeArg arg[],
@@ -7284,26 +7113,26 @@ static void translate_mksadj_s(DisasContext *dc, const OpcodeArg arg[],
     OpcodeArg arg32[2];
 
     get_f32_o1_i1(arg, arg32, 0, 1);
-    gen_helper_mksadj_s(arg32[0].out, cpu_env, arg32[1].in);
+    gen_helper_mksadj_s(arg32[0].out, tcg_env, arg32[1].in);
     put_f32_o1_i1(arg, arg32, 0, 1);
 }
 
 static void translate_wur_fpu_fcr(DisasContext *dc, const OpcodeArg arg[],
                                   const uint32_t par[])
 {
-    gen_helper_wur_fpu_fcr(cpu_env, arg[0].in);
+    gen_helper_wur_fpu_fcr(tcg_env, arg[0].in);
 }
 
 static void translate_rur_fpu_fsr(DisasContext *dc, const OpcodeArg arg[],
                                   const uint32_t par[])
 {
-    gen_helper_rur_fpu_fsr(arg[0].out, cpu_env);
+    gen_helper_rur_fpu_fsr(arg[0].out, tcg_env);
 }
 
 static void translate_wur_fpu_fsr(DisasContext *dc, const OpcodeArg arg[],
                                   const uint32_t par[])
 {
-    gen_helper_wur_fpu_fsr(cpu_env, arg[0].in);
+    gen_helper_wur_fpu_fsr(tcg_env, arg[0].in);
 }
 
 static const XtensaOpcodeOps fpu_ops[] = {

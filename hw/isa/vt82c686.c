@@ -15,6 +15,9 @@
 
 #include "qemu/osdep.h"
 #include "hw/isa/vt82c686.h"
+#include "hw/block/fdc.h"
+#include "hw/char/parallel-isa.h"
+#include "hw/char/serial-isa.h"
 #include "hw/pci/pci.h"
 #include "hw/qdev-properties.h"
 #include "hw/ide/pci.h"
@@ -82,7 +85,7 @@ static const VMStateDescription vmstate_acpi = {
     .version_id = 1,
     .minimum_version_id = 1,
     .post_load = vmstate_acpi_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_PCI_DEVICE(dev, ViaPMState),
         VMSTATE_UINT16(ar.pm1.evt.sts, ViaPMState),
         VMSTATE_UINT16(ar.pm1.evt.en, ViaPMState),
@@ -229,7 +232,7 @@ static void via_pm_class_init(ObjectClass *klass, void *data)
     k->device_id = info->device_id;
     k->class_id = PCI_CLASS_BRIDGE_OTHER;
     k->revision = 0x40;
-    dc->reset = via_pm_reset;
+    device_class_set_legacy_reset(dc, via_pm_reset);
     /* Reason: part of VIA south bridge, does not exist stand alone */
     dc->user_creatable = false;
     dc->vmsd = &vmstate_acpi;
@@ -323,13 +326,24 @@ static uint64_t via_superio_cfg_read(void *opaque, hwaddr addr, unsigned size)
     return val;
 }
 
+static void via_superio_devices_enable(ViaSuperIOState *s, uint8_t data)
+{
+    ISASuperIOClass *ic = ISA_SUPERIO_GET_CLASS(s);
+
+    isa_parallel_set_enabled(s->superio.parallel[0], (data & 0x3) != 3);
+    for (int i = 0; i < ic->serial.count; i++) {
+        isa_serial_set_enabled(s->superio.serial[i], data & BIT(i + 2));
+    }
+    isa_fdc_set_enabled(s->superio.floppy, data & BIT(4));
+}
+
 static void via_superio_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ISASuperIOClass *sc = ISA_SUPERIO_CLASS(klass);
 
-    sc->parent_realize = dc->realize;
-    dc->realize = via_superio_realize;
+    device_class_set_parent_realize(dc, via_superio_realize,
+                                    &sc->parent_realize);
 }
 
 static const TypeInfo via_superio_info = {
@@ -368,7 +382,25 @@ static void vt82c686b_superio_cfg_write(void *opaque, hwaddr addr,
     case 0xfd ... 0xff:
         /* ignore write to read only registers */
         return;
-    /* case 0xe6 ... 0xe8: Should set base port of parallel and serial */
+    case 0xe2:
+        data &= 0x1f;
+        via_superio_devices_enable(sc, data);
+        break;
+    case 0xe3:
+        data &= 0xfc;
+        isa_fdc_set_iobase(sc->superio.floppy, data << 2);
+        break;
+    case 0xe6:
+        isa_parallel_set_iobase(sc->superio.parallel[0], data << 2);
+        break;
+    case 0xe7:
+        data &= 0xfe;
+        isa_serial_set_iobase(sc->superio.serial[0], data << 2);
+        break;
+    case 0xe8:
+        data &= 0xfe;
+        isa_serial_set_iobase(sc->superio.serial[1], data << 2);
+        break;
     default:
         qemu_log_mask(LOG_UNIMP,
                       "via_superio_cfg: unimplemented register 0x%x\n", idx);
@@ -395,9 +427,14 @@ static void vt82c686b_superio_reset(DeviceState *dev)
     /* Device ID */
     vt82c686b_superio_cfg_write(s, 0, 0xe0, 1);
     vt82c686b_superio_cfg_write(s, 1, 0x3c, 1);
-    /* Function select - all disabled */
+    /*
+     * Function select - only serial enabled
+     * Fuloong 2e's rescue-yl prints to the serial console w/o enabling it. This
+     * suggests that the serial ports are enabled by default, so override the
+     * datasheet.
+     */
     vt82c686b_superio_cfg_write(s, 0, 0xe2, 1);
-    vt82c686b_superio_cfg_write(s, 1, 0x03, 1);
+    vt82c686b_superio_cfg_write(s, 1, 0x0f, 1);
     /* Floppy ctrl base addr 0x3f0-7 */
     vt82c686b_superio_cfg_write(s, 0, 0xe3, 1);
     vt82c686b_superio_cfg_write(s, 1, 0xfc, 1);
@@ -424,7 +461,7 @@ static void vt82c686b_superio_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
     ISASuperIOClass *sc = ISA_SUPERIO_CLASS(klass);
 
-    dc->reset = vt82c686b_superio_reset;
+    device_class_set_legacy_reset(dc, vt82c686b_superio_reset);
     sc->serial.count = 2;
     sc->parallel.count = 1;
     sc->ide.count = 0; /* emulated by via-ide */
@@ -465,6 +502,21 @@ static void vt8231_superio_cfg_write(void *opaque, hwaddr addr,
     case 0xfd:
         /* ignore write to read only registers */
         return;
+    case 0xf2:
+        data &= 0x17;
+        via_superio_devices_enable(sc, data);
+        break;
+    case 0xf4:
+        data &= 0xfe;
+        isa_serial_set_iobase(sc->superio.serial[0], data << 2);
+        break;
+    case 0xf6:
+        isa_parallel_set_iobase(sc->superio.parallel[0], data << 2);
+        break;
+    case 0xf7:
+        data &= 0xfc;
+        isa_fdc_set_iobase(sc->superio.floppy, data << 2);
+        break;
     default:
         qemu_log_mask(LOG_UNIMP,
                       "via_superio_cfg: unimplemented register 0x%x\n", idx);
@@ -513,20 +565,13 @@ static void vt8231_superio_init(Object *obj)
     VIA_SUPERIO(obj)->io_ops = &vt8231_superio_cfg_ops;
 }
 
-static uint16_t vt8231_superio_serial_iobase(ISASuperIODevice *sio,
-                                             uint8_t index)
-{
-        return 0x2f8; /* FIXME: This should be settable via registers f2-f4 */
-}
-
 static void vt8231_superio_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
     ISASuperIOClass *sc = ISA_SUPERIO_CLASS(klass);
 
-    dc->reset = vt8231_superio_reset;
+    device_class_set_legacy_reset(dc, vt8231_superio_reset);
     sc->serial.count = 1;
-    sc->serial.get_iobase = vt8231_superio_serial_iobase;
     sc->parallel.count = 1;
     sc->ide.count = 0; /* emulated by via-ide */
     sc->floppy.count = 1;
@@ -547,14 +592,17 @@ OBJECT_DECLARE_SIMPLE_TYPE(ViaISAState, VIA_ISA)
 
 struct ViaISAState {
     PCIDevice dev;
+
+    IRQState i8259_irq;
     qemu_irq cpu_intr;
-    qemu_irq *isa_irqs;
+    qemu_irq *isa_irqs_in;
+    uint16_t irq_state[ISA_NUM_IRQS];
     ViaSuperIOState via_sio;
-    RTCState rtc;
+    MC146818RtcState rtc;
     PCIIDEState ide;
     UHCIState uhci[2];
     ViaPMState pm;
-    PCIDevice ac97;
+    ViaAC97State ac97;
     PCIDevice mc97;
 };
 
@@ -562,7 +610,7 @@ static const VMStateDescription vmstate_via = {
     .name = "via-isa",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_PCI_DEVICE(dev, ViaISAState),
         VMSTATE_END_OF_LIST()
     }
@@ -592,10 +640,70 @@ static const TypeInfo via_isa_info = {
     },
 };
 
-void via_isa_set_irq(PCIDevice *d, int n, int level)
+static int via_isa_get_pci_irq(const ViaISAState *s, int pin)
 {
-    ViaISAState *s = VIA_ISA(d);
-    qemu_set_irq(s->isa_irqs[n], level);
+    switch (pin) {
+    case 0:
+        return s->dev.config[0x55] >> 4;
+    case 1:
+        return s->dev.config[0x56] & 0xf;
+    case 2:
+        return s->dev.config[0x56] >> 4;
+    case 3:
+        return s->dev.config[0x57] >> 4;
+    }
+    return 0;
+}
+
+void via_isa_set_irq(PCIDevice *d, int pin, int level)
+{
+    ViaISAState *s = VIA_ISA(pci_get_function_0(d));
+    uint8_t irq = d->config[PCI_INTERRUPT_LINE], max_irq = 15;
+    int f = PCI_FUNC(d->devfn);
+    uint16_t mask;
+
+    switch (f) {
+    case 0: /* PIRQ/PINT inputs */
+        irq = via_isa_get_pci_irq(s, pin);
+        f = 8 + pin; /* Use function 8-11 for PCI interrupt inputs */
+        break;
+    case 2: /* USB ports 0-1 */
+    case 3: /* USB ports 2-3 */
+    case 5: /* AC97 audio */
+        max_irq = 14;
+        break;
+    }
+
+    /* Keep track of the state of all sources */
+    mask = BIT(f);
+    if (level) {
+        s->irq_state[0] |= mask;
+    } else {
+        s->irq_state[0] &= ~mask;
+    }
+    if (irq == 0 || irq == 0xff) {
+        return; /* disabled */
+    }
+    if (unlikely(irq > max_irq || irq == 2)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "Invalid ISA IRQ routing %d for %d",
+                      irq, f);
+        return;
+    }
+    /* Record source state at mapped IRQ */
+    if (level) {
+        s->irq_state[irq] |= mask;
+    } else {
+        s->irq_state[irq] &= ~mask;
+    }
+    /* Make sure there are no stuck bits if mapping has changed */
+    s->irq_state[irq] &= s->irq_state[0];
+    /* ISA IRQ level is the OR of all sources routed to it */
+    qemu_set_irq(s->isa_irqs_in[irq], !!s->irq_state[irq]);
+}
+
+static void via_isa_pirq(void *opaque, int pin, int level)
+{
+    via_isa_set_irq(opaque, pin, level);
 }
 
 static void via_isa_request_i8259_irq(void *opaque, int irq, int level)
@@ -609,12 +717,12 @@ static void via_isa_realize(PCIDevice *d, Error **errp)
     ViaISAState *s = VIA_ISA(d);
     DeviceState *dev = DEVICE(d);
     PCIBus *pci_bus = pci_get_bus(d);
-    qemu_irq *isa_irq;
     ISABus *isa_bus;
     int i;
 
-    qdev_init_gpio_out(dev, &s->cpu_intr, 1);
-    isa_irq = qemu_allocate_irqs(via_isa_request_i8259_irq, s, 1);
+    qdev_init_gpio_out_named(dev, &s->cpu_intr, "intr", 1);
+    qdev_init_gpio_in_named(dev, via_isa_pirq, "pirq", PCI_NUM_PINS);
+    qemu_init_irq(&s->i8259_irq, via_isa_request_i8259_irq, s, 0);
     isa_bus = isa_bus_new(dev, pci_address_space(d), pci_address_space_io(d),
                           errp);
 
@@ -622,10 +730,10 @@ static void via_isa_realize(PCIDevice *d, Error **errp)
         return;
     }
 
-    s->isa_irqs = i8259_init(isa_bus, *isa_irq);
-    isa_bus_irqs(isa_bus, s->isa_irqs);
+    s->isa_irqs_in = i8259_init(isa_bus, &s->i8259_irq);
+    isa_bus_register_input_irqs(isa_bus, s->isa_irqs_in);
     i8254_pit_init(isa_bus, 0x40, 0, NULL);
-    i8257_dma_init(isa_bus, 0);
+    i8257_dma_init(OBJECT(d), isa_bus, 0);
 
     /* RTC */
     qdev_prop_set_int32(DEVICE(&s->rtc), "base_year", 2000);
@@ -649,6 +757,10 @@ static void via_isa_realize(PCIDevice *d, Error **errp)
     qdev_prop_set_int32(DEVICE(&s->ide), "addr", d->devfn + 1);
     if (!qdev_realize(DEVICE(&s->ide), BUS(pci_bus), errp)) {
         return;
+    }
+    for (i = 0; i < 2; i++) {
+        qdev_connect_gpio_out_named(DEVICE(&s->ide), "isa-irq", i,
+                                    s->isa_irqs_in[14 + i]);
     }
 
     /* Functions 2-3: USB Ports */
@@ -732,7 +844,7 @@ static void vt82c686b_class_init(ObjectClass *klass, void *data)
     k->device_id = PCI_DEVICE_ID_VIA_82C686B_ISA;
     k->class_id = PCI_CLASS_BRIDGE_ISA;
     k->revision = 0x40;
-    dc->reset = vt82c686b_isa_reset;
+    device_class_set_legacy_reset(dc, vt82c686b_isa_reset);
     dc->desc = "ISA bridge";
     dc->vmsd = &vmstate_via;
     /* Reason: part of VIA VT82C686 southbridge, needs to be wired up */
@@ -772,6 +884,7 @@ static void vt8231_isa_reset(DeviceState *dev)
                  PCI_COMMAND_MASTER | PCI_COMMAND_SPECIAL);
     pci_set_word(pci_conf + PCI_STATUS, PCI_STATUS_DEVSEL_MEDIUM);
 
+    pci_conf[0x4c] = 0x04; /* IDE interrupt Routing */
     pci_conf[0x58] = 0x40; /* Miscellaneous Control 0 */
     pci_conf[0x67] = 0x08; /* Fast IR Config */
     pci_conf[0x6b] = 0x01; /* Fast IR I/O Base */
@@ -796,7 +909,7 @@ static void vt8231_class_init(ObjectClass *klass, void *data)
     k->device_id = PCI_DEVICE_ID_VIA_8231_ISA;
     k->class_id = PCI_CLASS_BRIDGE_ISA;
     k->revision = 0x10;
-    dc->reset = vt8231_isa_reset;
+    device_class_set_legacy_reset(dc, vt8231_isa_reset);
     dc->desc = "ISA bridge";
     dc->vmsd = &vmstate_via;
     /* Reason: part of VIA VT8231 southbridge, needs to be wired up */

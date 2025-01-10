@@ -83,16 +83,17 @@ void show_valid_soundhw(void)
 static struct soundhw *selected = NULL;
 static const char *audiodev_id;
 
-void select_soundhw(const char *optarg, const char *audiodev)
+void select_soundhw(const char *name, const char *audiodev)
 {
     struct soundhw *c;
 
     if (selected) {
-        error_setg(&error_fatal, "only one -soundhw option is allowed");
+        error_report("only one -soundhw option is allowed");
+        exit(1);
     }
 
     for (c = soundhw; c->name; ++c) {
-        if (g_str_equal(c->name, optarg)) {
+        if (g_str_equal(c->name, name)) {
             selected = c;
             audiodev_id = audiodev;
             break;
@@ -100,7 +101,7 @@ void select_soundhw(const char *optarg, const char *audiodev)
     }
 
     if (!c->name) {
-        error_report("Unknown sound card name `%s'", optarg);
+        error_report("Unknown sound card name `%s'", name);
         show_valid_soundhw();
         exit(1);
     }

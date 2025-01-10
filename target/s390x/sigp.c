@@ -11,6 +11,7 @@
 #include "qemu/osdep.h"
 #include "cpu.h"
 #include "s390x-internal.h"
+#include "hw/boards.h"
 #include "sysemu/hw_accel.h"
 #include "sysemu/runstate.h"
 #include "exec/address-spaces.h"
@@ -250,24 +251,20 @@ static void sigp_restart(CPUState *cs, run_on_cpu_data arg)
 
 static void sigp_initial_cpu_reset(CPUState *cs, run_on_cpu_data arg)
 {
-    S390CPU *cpu = S390_CPU(cs);
-    S390CPUClass *scc = S390_CPU_GET_CLASS(cpu);
     SigpInfo *si = arg.host_ptr;
 
     cpu_synchronize_state(cs);
-    scc->reset(cs, S390_CPU_RESET_INITIAL);
+    resettable_reset(OBJECT(cs), RESET_TYPE_S390_CPU_INITIAL);
     cpu_synchronize_post_reset(cs);
     si->cc = SIGP_CC_ORDER_CODE_ACCEPTED;
 }
 
 static void sigp_cpu_reset(CPUState *cs, run_on_cpu_data arg)
 {
-    S390CPU *cpu = S390_CPU(cs);
-    S390CPUClass *scc = S390_CPU_GET_CLASS(cpu);
     SigpInfo *si = arg.host_ptr;
 
     cpu_synchronize_state(cs);
-    scc->reset(cs, S390_CPU_RESET_NORMAL);
+    resettable_reset(OBJECT(cs), RESET_TYPE_S390_CPU_NORMAL);
     cpu_synchronize_post_reset(cs);
     si->cc = SIGP_CC_ORDER_CODE_ACCEPTED;
 }
@@ -433,6 +430,22 @@ static int sigp_set_architecture(S390CPU *cpu, uint32_t param,
     /* Reject set arch order, with czam we're always in z/Arch mode. */
     *status_reg |= SIGP_STAT_INVALID_PARAMETER;
     return SIGP_CC_STATUS_STORED;
+}
+
+S390CPU *s390_cpu_addr2state(uint16_t cpu_addr)
+{
+    static MachineState *ms;
+
+    if (!ms) {
+        ms = MACHINE(qdev_get_machine());
+        g_assert(ms->possible_cpus);
+    }
+
+    /* CPU address corresponds to the core_id and the index */
+    if (cpu_addr >= ms->possible_cpus->len) {
+        return NULL;
+    }
+    return S390_CPU(ms->possible_cpus->cpus[cpu_addr].cpu);
 }
 
 int handle_sigp(CPUS390XState *env, uint8_t order, uint64_t r1, uint64_t r3)

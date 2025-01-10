@@ -18,6 +18,7 @@
 #include "qemu/osdep.h"
 #include "sysemu/reset.h"
 #include "sysemu/watchdog.h"
+#include "hw/qdev-properties.h"
 #include "hw/watchdog/sbsa_gwdt.h"
 #include "qemu/timer.h"
 #include "migration/vmstate.h"
@@ -28,7 +29,7 @@ static const VMStateDescription vmstate_sbsa_gwdt = {
     .name = "sbsa-gwdt",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_TIMER_PTR(timer, SBSA_GWDTState),
         VMSTATE_UINT32(wcs, SBSA_GWDTState),
         VMSTATE_UINT32(worl, SBSA_GWDTState),
@@ -109,7 +110,7 @@ static void sbsa_gwdt_update_timer(SBSA_GWDTState *s, WdtRefreshType rtype)
         timeout = s->woru;
         timeout <<= 32;
         timeout |= s->worl;
-        timeout = muldiv64(timeout, NANOSECONDS_PER_SECOND, SBSA_TIMER_FREQ);
+        timeout = muldiv64(timeout, NANOSECONDS_PER_SECOND, s->freq);
         timeout += qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
 
         if ((rtype == EXPLICIT_REFRESH) || ((rtype == TIMEOUT_REFRESH) &&
@@ -261,16 +262,28 @@ static void wdt_sbsa_gwdt_realize(DeviceState *dev, Error **errp)
                 dev);
 }
 
+static Property wdt_sbsa_gwdt_props[] = {
+    /*
+     * Timer frequency in Hz. This must match the frequency used by
+     * the CPU's generic timer. Default 62.5Hz matches QEMU's legacy
+     * CPU timer frequency default.
+     */
+    DEFINE_PROP_UINT64("clock-frequency", struct SBSA_GWDTState, freq,
+                       62500000),
+    DEFINE_PROP_END_OF_LIST(),
+};
+
 static void wdt_sbsa_gwdt_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = wdt_sbsa_gwdt_realize;
-    dc->reset = wdt_sbsa_gwdt_reset;
+    device_class_set_legacy_reset(dc, wdt_sbsa_gwdt_reset);
     dc->hotpluggable = false;
     set_bit(DEVICE_CATEGORY_WATCHDOG, dc->categories);
     dc->vmsd = &vmstate_sbsa_gwdt;
     dc->desc = "SBSA-compliant generic watchdog device";
+    device_class_set_props(dc, wdt_sbsa_gwdt_props);
 }
 
 static const TypeInfo wdt_sbsa_gwdt_info = {

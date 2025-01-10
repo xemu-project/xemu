@@ -16,7 +16,7 @@
 #include "hw/s390x/ioinst.h"
 #include "trace.h"
 #include "hw/s390x/s390-pci-bus.h"
-#include "hw/s390x/pv.h"
+#include "target/s390x/kvm/pv.h"
 
 /* All I/O instructions but chsc use the s format */
 static uint64_t get_address_from_regs(CPUS390XState *env, uint32_t ipb,
@@ -603,7 +603,7 @@ static int chsc_sei_nt2_have_event(void)
 #define CHSC_SEI_NT2    (1ULL << 61)
 static void ioinst_handle_chsc_sei(ChscReq *req, ChscResp *res)
 {
-    uint64_t selection_mask = ldq_p(&req->param1);
+    uint64_t selection_mask = ldq_be_p(&req->param1);
     uint8_t *res_flags = (uint8_t *)res->data;
     int have_event = 0;
     int have_more = 0;

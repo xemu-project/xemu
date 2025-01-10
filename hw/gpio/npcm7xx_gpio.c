@@ -352,7 +352,7 @@ static void npcm7xx_gpio_enter_reset(Object *obj, ResetType type)
     s->regs[NPCM7XX_GPIO_ODSC] = s->reset_odsc;
 }
 
-static void npcm7xx_gpio_hold_reset(Object *obj)
+static void npcm7xx_gpio_hold_reset(Object *obj, ResetType type)
 {
     NPCM7xxGPIOState *s = NPCM7XX_GPIO(obj);
 
@@ -377,7 +377,7 @@ static const VMStateDescription vmstate_npcm7xx_gpio = {
     .name = "npcm7xx-gpio",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(pin_level, NPCM7xxGPIOState),
         VMSTATE_UINT32(ext_level, NPCM7xxGPIOState),
         VMSTATE_UINT32(ext_driven, NPCM7xxGPIOState),

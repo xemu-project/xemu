@@ -264,6 +264,51 @@ struct Object
 
 
 /**
+ * DO_OBJECT_DEFINE_TYPE_EXTENDED:
+ * @ModuleObjName: the object name with initial caps
+ * @module_obj_name: the object name in lowercase with underscore separators
+ * @MODULE_OBJ_NAME: the object name in uppercase with underscore separators
+ * @PARENT_MODULE_OBJ_NAME: the parent object name in uppercase with underscore
+ *                          separators
+ * @ABSTRACT: boolean flag to indicate whether the object can be instantiated
+ * @CLASS_SIZE: size of the type's class
+ * @...: list of initializers for "InterfaceInfo" to declare implemented interfaces
+ *
+ * This is the base macro used to implement all the OBJECT_DEFINE_*
+ * macros. It should never be used directly in a source file.
+ */
+#define DO_OBJECT_DEFINE_TYPE_EXTENDED(ModuleObjName, module_obj_name, \
+                                       MODULE_OBJ_NAME, \
+                                       PARENT_MODULE_OBJ_NAME, \
+                                       ABSTRACT, CLASS_SIZE, ...) \
+    static void \
+    module_obj_name##_finalize(Object *obj); \
+    static void \
+    module_obj_name##_class_init(ObjectClass *oc, void *data); \
+    static void \
+    module_obj_name##_init(Object *obj); \
+    \
+    static const TypeInfo module_obj_name##_info = { \
+        .parent = TYPE_##PARENT_MODULE_OBJ_NAME, \
+        .name = TYPE_##MODULE_OBJ_NAME, \
+        .instance_size = sizeof(ModuleObjName), \
+        .instance_align = __alignof__(ModuleObjName), \
+        .instance_init = module_obj_name##_init, \
+        .instance_finalize = module_obj_name##_finalize, \
+        .class_size = CLASS_SIZE, \
+        .class_init = module_obj_name##_class_init, \
+        .abstract = ABSTRACT, \
+        .interfaces = (InterfaceInfo[]) { __VA_ARGS__ } , \
+    }; \
+    \
+    static void \
+    module_obj_name##_register_types(void) \
+    { \
+        type_register_static(&module_obj_name##_info); \
+    } \
+    type_init(module_obj_name##_register_types);
+
+/**
  * OBJECT_DEFINE_TYPE_EXTENDED:
  * @ModuleObjName: the object name with initial caps
  * @module_obj_name: the object name in lowercase with underscore separators
@@ -289,32 +334,10 @@ struct Object
 #define OBJECT_DEFINE_TYPE_EXTENDED(ModuleObjName, module_obj_name, \
                                     MODULE_OBJ_NAME, PARENT_MODULE_OBJ_NAME, \
                                     ABSTRACT, ...) \
-    static void \
-    module_obj_name##_finalize(Object *obj); \
-    static void \
-    module_obj_name##_class_init(ObjectClass *oc, void *data); \
-    static void \
-    module_obj_name##_init(Object *obj); \
-    \
-    static const TypeInfo module_obj_name##_info = { \
-        .parent = TYPE_##PARENT_MODULE_OBJ_NAME, \
-        .name = TYPE_##MODULE_OBJ_NAME, \
-        .instance_size = sizeof(ModuleObjName), \
-        .instance_align = __alignof__(ModuleObjName), \
-        .instance_init = module_obj_name##_init, \
-        .instance_finalize = module_obj_name##_finalize, \
-        .class_size = sizeof(ModuleObjName##Class), \
-        .class_init = module_obj_name##_class_init, \
-        .abstract = ABSTRACT, \
-        .interfaces = (InterfaceInfo[]) { __VA_ARGS__ } , \
-    }; \
-    \
-    static void \
-    module_obj_name##_register_types(void) \
-    { \
-        type_register_static(&module_obj_name##_info); \
-    } \
-    type_init(module_obj_name##_register_types);
+    DO_OBJECT_DEFINE_TYPE_EXTENDED(ModuleObjName, module_obj_name, \
+                                   MODULE_OBJ_NAME, PARENT_MODULE_OBJ_NAME, \
+                                   ABSTRACT, sizeof(ModuleObjName##Class), \
+                                   __VA_ARGS__)
 
 /**
  * OBJECT_DEFINE_TYPE:
@@ -372,6 +395,45 @@ struct Object
     OBJECT_DEFINE_TYPE_EXTENDED(ModuleObjName, module_obj_name, \
                                 MODULE_OBJ_NAME, PARENT_MODULE_OBJ_NAME, \
                                 true, { NULL })
+
+/**
+ * OBJECT_DEFINE_SIMPLE_TYPE_WITH_INTERFACES:
+ * @ModuleObjName: the object name with initial caps
+ * @module_obj_name: the object name in lowercase with underscore separators
+ * @MODULE_OBJ_NAME: the object name in uppercase with underscore separators
+ * @PARENT_MODULE_OBJ_NAME: the parent object name in uppercase with underscore
+ *                          separators
+ *
+ * This is a variant of OBJECT_DEFINE_TYPE_EXTENDED, which is suitable for
+ * the case of a non-abstract type, with interfaces, and with no requirement
+ * for a class struct.
+ */
+#define OBJECT_DEFINE_SIMPLE_TYPE_WITH_INTERFACES(ModuleObjName, \
+                                                  module_obj_name, \
+                                                  MODULE_OBJ_NAME, \
+                                                  PARENT_MODULE_OBJ_NAME, ...) \
+    DO_OBJECT_DEFINE_TYPE_EXTENDED(ModuleObjName, module_obj_name, \
+                                   MODULE_OBJ_NAME, PARENT_MODULE_OBJ_NAME, \
+                                   false, 0, __VA_ARGS__)
+
+/**
+ * OBJECT_DEFINE_SIMPLE_TYPE:
+ * @ModuleObjName: the object name with initial caps
+ * @module_obj_name: the object name in lowercase with underscore separators
+ * @MODULE_OBJ_NAME: the object name in uppercase with underscore separators
+ * @PARENT_MODULE_OBJ_NAME: the parent object name in uppercase with underscore
+ *                          separators
+ *
+ * This is a variant of OBJECT_DEFINE_TYPE_EXTENDED, which is suitable for
+ * the common case of a non-abstract type, without any interfaces, and with
+ * no requirement for a class struct. If you declared your type with
+ * OBJECT_DECLARE_SIMPLE_TYPE then this is probably the right choice for
+ * defining it.
+ */
+#define OBJECT_DEFINE_SIMPLE_TYPE(ModuleObjName, module_obj_name, \
+                                  MODULE_OBJ_NAME, PARENT_MODULE_OBJ_NAME) \
+    OBJECT_DEFINE_SIMPLE_TYPE_WITH_INTERFACES(ModuleObjName, module_obj_name, \
+        MODULE_OBJ_NAME, PARENT_MODULE_OBJ_NAME, { NULL })
 
 /**
  * struct TypeInfo:
@@ -1099,6 +1161,14 @@ void object_property_set_default_bool(ObjectProperty *prop, bool value);
 void object_property_set_default_str(ObjectProperty *prop, const char *value);
 
 /**
+ * object_property_set_default_list:
+ * @prop: the property to set
+ *
+ * Set the property default value to be an empty list.
+ */
+void object_property_set_default_list(ObjectProperty *prop);
+
+/**
  * object_property_set_default_int:
  * @prop: the property to set
  * @value: the value to be written to the property
@@ -1504,8 +1574,8 @@ char *object_get_canonical_path(const Object *obj);
 /**
  * object_resolve_path:
  * @path: the path to resolve
- * @ambiguous: returns true if the path resolution failed because of an
- *   ambiguous match
+ * @ambiguous: (out) (optional): location to store whether the lookup failed
+ *   because it was ambiguous, or %NULL. Set to %false on success.
  *
  * There are two types of supported paths--absolute paths and partial paths.
  * 
@@ -1522,7 +1592,7 @@ char *object_get_canonical_path(const Object *obj);
  * only one match is found.  If more than one match is found, a flag is
  * returned to indicate that the match was ambiguous.
  *
- * Returns: The matched object or NULL on path lookup failure.
+ * Returns: The matched object or %NULL on path lookup failure.
  */
 Object *object_resolve_path(const char *path, bool *ambiguous);
 
@@ -1530,10 +1600,10 @@ Object *object_resolve_path(const char *path, bool *ambiguous);
  * object_resolve_path_type:
  * @path: the path to resolve
  * @typename: the type to look for.
- * @ambiguous: returns true if the path resolution failed because of an
- *   ambiguous match
+ * @ambiguous: (out) (optional): location to store whether the lookup failed
+ *   because it was ambiguous, or %NULL. Set to %false on success.
  *
- * This is similar to object_resolve_path.  However, when looking for a
+ * This is similar to object_resolve_path().  However, when looking for a
  * partial path only matches that implement the given type are considered.
  * This restricts the search and avoids spuriously flagging matches as
  * ambiguous.
@@ -1546,6 +1616,19 @@ Object *object_resolve_path(const char *path, bool *ambiguous);
  */
 Object *object_resolve_path_type(const char *path, const char *typename,
                                  bool *ambiguous);
+
+/**
+ * object_resolve_type_unambiguous:
+ * @typename: the type to look for
+ * @errp: pointer to error object
+ *
+ * Return the only object in the QOM tree of type @typename.
+ * If no match or more than one match is found, an error is
+ * returned.
+ *
+ * Returns: The matched object or NULL on path lookup failure.
+ */
+Object *object_resolve_type_unambiguous(const char *typename, Error **errp);
 
 /**
  * object_resolve_path_at:
@@ -1953,14 +2036,6 @@ int object_child_foreach_recursive(Object *obj,
  * Returns: the container object.
  */
 Object *container_get(Object *root, const char *path);
-
-/**
- * object_type_get_instance_size:
- * @typename: Name of the Type whose instance_size is required
- *
- * Returns the instance_size of the given @typename.
- */
-size_t object_type_get_instance_size(const char *typename);
 
 /**
  * object_property_help:

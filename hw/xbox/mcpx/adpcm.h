@@ -75,14 +75,14 @@ static int adpcm_decode_block (int16_t *outbuf, const uint8_t *inbuf, size_t inb
         -1, -1, -1, -1, 2, 4, 6, 8
     };
 
-    int ch, samples = 1, chunks;
+    int samples = 1, chunks;
     int32_t pcmdata[2];
     int8_t index[2];
 
     if (inbufsize < (uint32_t) channels * 4)
         return 0;
 
-    for (ch = 0; ch < channels; ch++) {
+    for (int ch = 0; ch < channels; ch++) {
         *outbuf++ = pcmdata[ch] = (int16_t) (inbuf [0] | (inbuf [1] << 8));
         index[ch] = inbuf [2];
 
@@ -97,11 +97,10 @@ static int adpcm_decode_block (int16_t *outbuf, const uint8_t *inbuf, size_t inb
     samples += chunks * 8;
 
     while (chunks--) {
-        int ch, i;
 
-        for (ch = 0; ch < channels; ++ch) {
+        for (int ch = 0; ch < channels; ++ch) {
 
-            for (i = 0; i < 4; ++i) {
+            for (int i = 0; i < 4; ++i) {
                 int step = step_table [index [ch]], delta = step >> 3;
 
                 if (*inbuf & 1) delta += (step >> 2);

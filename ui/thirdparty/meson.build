@@ -1,43 +1,12 @@
-imgui_files = files(
-  'imgui/imgui.cpp',
-  'imgui/imgui_draw.cpp',
-  'imgui/imgui_tables.cpp',
-  'imgui/imgui_widgets.cpp',
-  'imgui/backends/imgui_impl_sdl2.cpp',
-  'imgui/backends/imgui_impl_opengl3.cpp',
-  'imgui/misc/cpp/imgui_stdlib.cpp',
-  #'imgui/imgui_demo.cpp',
-)
-
-imgui_cppargs = ['-DIMGUI_IMPL_OPENGL_LOADER_CUSTOM',
-                 '-include', 'imgui_impl_opengl3_loader_override.h']
-
-libimgui = static_library('imgui',
-                          sources: imgui_files,
-                          cpp_args: imgui_cppargs,
-                          include_directories: ['.', 'imgui'],
-                          dependencies: [sdl, opengl])
-imgui = declare_dependency(link_with: libimgui,
-                           include_directories: ['imgui', 'imgui/backends'])
-
-implot_files = files(
-  'implot/implot.cpp',
-  'implot/implot_items.cpp'
-  #'implot/implot_demo.cpp',
-)
-
-libimplot = static_library('implot',
-                           sources: implot_files,
-                           include_directories: 'implot',
-                           dependencies: [imgui])
-implot = declare_dependency(link_with: libimplot,
-                            include_directories: 'implot')
-
 noc_ss = ss.source_set()
-noc_ss.add(when: 'CONFIG_LINUX', if_true: [gtk, files('noc_file_dialog/noc_file_dialog_gtk.c')])
-noc_ss.add(when: 'CONFIG_WIN32', if_true: files('noc_file_dialog/noc_file_dialog_win32.cc'))
-noc_ss.add(when: 'CONFIG_DARWIN', if_true: files('noc_file_dialog/noc_file_dialog_macos.m'))
-noc_ss = noc_ss.apply(config_all, strict: false)
+if host_os == 'linux'
+  noc_ss.add([gtk, files('noc_file_dialog/noc_file_dialog_gtk.c')])
+elif host_os == 'windows'
+  noc_ss.add(files('noc_file_dialog/noc_file_dialog_win32.cc'))
+elif host_os == 'darwin'
+  noc_ss.add(files('noc_file_dialog/noc_file_dialog_macos.m'))
+endif
+noc_ss = noc_ss.apply(config_target, strict: false)
 noclib = static_library('noc',
                         sources: noc_ss.sources(),
                         dependencies: noc_ss.dependencies(),
@@ -61,7 +30,13 @@ libfpng = static_library('fpng', sources: 'fpng/fpng.cpp', cpp_args: libfpng_cpp
 fpng = declare_dependency(include_directories: 'fpng', link_with: libfpng)
 
 json = declare_dependency(include_directories: 'json')
-httplib = declare_dependency(include_directories: 'httplib')
+
+httplib_proj = subproject('cpp-httplib', default_options: ['cpp-httplib_openssl=enabled'])
+httplib_deps = [httplib_proj.get_variable('cpp_httplib_dep')]
+if host_os == 'windows'
+  httplib_deps += [crypt32]
+endif
+httplib = declare_dependency(dependencies: httplib_deps)
 
 libfatx = static_library('fatx', sources: 'fatx/fatx.c')
 fatx = declare_dependency(include_directories: 'fatx', link_with: libfatx)

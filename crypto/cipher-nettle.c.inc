@@ -33,6 +33,9 @@
 #ifndef CONFIG_QEMU_PRIVATE_XTS
 #include <nettle/xts.h>
 #endif
+#ifdef CONFIG_CRYPTO_SM4
+#include <nettle/sm4.h>
+#endif
 
 static inline bool qcrypto_length_check(size_t len, size_t blocksize,
                                         Error **errp)
@@ -426,23 +429,50 @@ DEFINE_ECB_CBC_CTR_XTS(qcrypto_nettle_twofish,
                        QCryptoNettleTwofish, TWOFISH_BLOCK_SIZE,
                        twofish_encrypt_native, twofish_decrypt_native)
 
+#ifdef CONFIG_CRYPTO_SM4
+typedef struct QCryptoNettleSm4 {
+    QCryptoCipher base;
+    struct sm4_ctx key[2];
+} QCryptoNettleSm4;
 
-bool qcrypto_cipher_supports(QCryptoCipherAlgorithm alg,
+static void sm4_encrypt_native(void *ctx, size_t length,
+                               uint8_t *dst, const uint8_t *src)
+{
+    struct sm4_ctx *keys = ctx;
+    sm4_crypt(&keys[0], length, dst, src);
+}
+
+static void sm4_decrypt_native(void *ctx, size_t length,
+                               uint8_t *dst, const uint8_t *src)
+{
+    struct sm4_ctx *keys = ctx;
+    sm4_crypt(&keys[1], length, dst, src);
+}
+
+DEFINE_ECB(qcrypto_nettle_sm4,
+           QCryptoNettleSm4, SM4_BLOCK_SIZE,
+           sm4_encrypt_native, sm4_decrypt_native)
+#endif
+
+bool qcrypto_cipher_supports(QCryptoCipherAlgo alg,
                              QCryptoCipherMode mode)
 {
     switch (alg) {
-    case QCRYPTO_CIPHER_ALG_DES:
-    case QCRYPTO_CIPHER_ALG_3DES:
-    case QCRYPTO_CIPHER_ALG_AES_128:
-    case QCRYPTO_CIPHER_ALG_AES_192:
-    case QCRYPTO_CIPHER_ALG_AES_256:
-    case QCRYPTO_CIPHER_ALG_CAST5_128:
-    case QCRYPTO_CIPHER_ALG_SERPENT_128:
-    case QCRYPTO_CIPHER_ALG_SERPENT_192:
-    case QCRYPTO_CIPHER_ALG_SERPENT_256:
-    case QCRYPTO_CIPHER_ALG_TWOFISH_128:
-    case QCRYPTO_CIPHER_ALG_TWOFISH_192:
-    case QCRYPTO_CIPHER_ALG_TWOFISH_256:
+    case QCRYPTO_CIPHER_ALGO_DES:
+    case QCRYPTO_CIPHER_ALGO_3DES:
+    case QCRYPTO_CIPHER_ALGO_AES_128:
+    case QCRYPTO_CIPHER_ALGO_AES_192:
+    case QCRYPTO_CIPHER_ALGO_AES_256:
+    case QCRYPTO_CIPHER_ALGO_CAST5_128:
+    case QCRYPTO_CIPHER_ALGO_SERPENT_128:
+    case QCRYPTO_CIPHER_ALGO_SERPENT_192:
+    case QCRYPTO_CIPHER_ALGO_SERPENT_256:
+    case QCRYPTO_CIPHER_ALGO_TWOFISH_128:
+    case QCRYPTO_CIPHER_ALGO_TWOFISH_192:
+    case QCRYPTO_CIPHER_ALGO_TWOFISH_256:
+#ifdef CONFIG_CRYPTO_SM4
+    case QCRYPTO_CIPHER_ALGO_SM4:
+#endif
         break;
     default:
         return false;
@@ -459,7 +489,7 @@ bool qcrypto_cipher_supports(QCryptoCipherAlgorithm alg,
     }
 }
 
-static QCryptoCipher *qcrypto_cipher_ctx_new(QCryptoCipherAlgorithm alg,
+static QCryptoCipher *qcrypto_cipher_ctx_new(QCryptoCipherAlgo alg,
                                              QCryptoCipherMode mode,
                                              const uint8_t *key,
                                              size_t nkey,
@@ -480,7 +510,7 @@ static QCryptoCipher *qcrypto_cipher_ctx_new(QCryptoCipherAlgorithm alg,
     }
 
     switch (alg) {
-    case QCRYPTO_CIPHER_ALG_DES:
+    case QCRYPTO_CIPHER_ALGO_DES:
         {
             QCryptoNettleDES *ctx;
             const QCryptoCipherDriver *drv;
@@ -495,8 +525,10 @@ static QCryptoCipher *qcrypto_cipher_ctx_new(QCryptoCipherAlgorithm alg,
             case QCRYPTO_CIPHER_MODE_CTR:
                 drv = &qcrypto_nettle_des_driver_ctr;
                 break;
-            default:
+            case QCRYPTO_CIPHER_MODE_XTS:
                 goto bad_cipher_mode;
+            default:
+                g_assert_not_reached();
             }
 
             ctx = g_new0(QCryptoNettleDES, 1);
@@ -506,7 +538,7 @@ static QCryptoCipher *qcrypto_cipher_ctx_new(QCryptoCipherAlgorithm alg,
             return &ctx->base;
         }
 
-    case QCRYPTO_CIPHER_ALG_3DES:
+    case QCRYPTO_CIPHER_ALGO_3DES:
         {
             QCryptoNettleDES3 *ctx;
             const QCryptoCipherDriver *drv;
@@ -521,8 +553,10 @@ static QCryptoCipher *qcrypto_cipher_ctx_new(QCryptoCipherAlgorithm alg,
             case QCRYPTO_CIPHER_MODE_CTR:
                 drv = &qcrypto_nettle_des3_driver_ctr;
                 break;
-            default:
+            case QCRYPTO_CIPHER_MODE_XTS:
                 goto bad_cipher_mode;
+            default:
+                g_assert_not_reached();
             }
 
             ctx = g_new0(QCryptoNettleDES3, 1);
@@ -531,7 +565,7 @@ static QCryptoCipher *qcrypto_cipher_ctx_new(QCryptoCipherAlgorithm alg,
             return &ctx->base;
         }
 
-    case QCRYPTO_CIPHER_ALG_AES_128:
+    case QCRYPTO_CIPHER_ALGO_AES_128:
         {
             QCryptoNettleAES128 *ctx = g_new0(QCryptoNettleAES128, 1);
 
@@ -560,7 +594,7 @@ static QCryptoCipher *qcrypto_cipher_ctx_new(QCryptoCipherAlgorithm alg,
             return &ctx->base;
         }
 
-    case QCRYPTO_CIPHER_ALG_AES_192:
+    case QCRYPTO_CIPHER_ALGO_AES_192:
         {
             QCryptoNettleAES192 *ctx = g_new0(QCryptoNettleAES192, 1);
 
@@ -589,7 +623,7 @@ static QCryptoCipher *qcrypto_cipher_ctx_new(QCryptoCipherAlgorithm alg,
             return &ctx->base;
         }
 
-    case QCRYPTO_CIPHER_ALG_AES_256:
+    case QCRYPTO_CIPHER_ALGO_AES_256:
         {
             QCryptoNettleAES256 *ctx = g_new0(QCryptoNettleAES256, 1);
 
@@ -618,7 +652,7 @@ static QCryptoCipher *qcrypto_cipher_ctx_new(QCryptoCipherAlgorithm alg,
             return &ctx->base;
         }
 
-    case QCRYPTO_CIPHER_ALG_CAST5_128:
+    case QCRYPTO_CIPHER_ALGO_CAST5_128:
         {
             QCryptoNettleCAST128 *ctx;
             const QCryptoCipherDriver *drv;
@@ -633,8 +667,10 @@ static QCryptoCipher *qcrypto_cipher_ctx_new(QCryptoCipherAlgorithm alg,
             case QCRYPTO_CIPHER_MODE_CTR:
                 drv = &qcrypto_nettle_cast128_driver_ctr;
                 break;
-            default:
+            case QCRYPTO_CIPHER_MODE_XTS:
                 goto bad_cipher_mode;
+            default:
+                g_assert_not_reached();
             }
 
             ctx = g_new0(QCryptoNettleCAST128, 1);
@@ -644,9 +680,9 @@ static QCryptoCipher *qcrypto_cipher_ctx_new(QCryptoCipherAlgorithm alg,
             return &ctx->base;
         }
 
-    case QCRYPTO_CIPHER_ALG_SERPENT_128:
-    case QCRYPTO_CIPHER_ALG_SERPENT_192:
-    case QCRYPTO_CIPHER_ALG_SERPENT_256:
+    case QCRYPTO_CIPHER_ALGO_SERPENT_128:
+    case QCRYPTO_CIPHER_ALGO_SERPENT_192:
+    case QCRYPTO_CIPHER_ALGO_SERPENT_256:
         {
             QCryptoNettleSerpent *ctx = g_new0(QCryptoNettleSerpent, 1);
 
@@ -673,9 +709,9 @@ static QCryptoCipher *qcrypto_cipher_ctx_new(QCryptoCipherAlgorithm alg,
             return &ctx->base;
         }
 
-    case QCRYPTO_CIPHER_ALG_TWOFISH_128:
-    case QCRYPTO_CIPHER_ALG_TWOFISH_192:
-    case QCRYPTO_CIPHER_ALG_TWOFISH_256:
+    case QCRYPTO_CIPHER_ALGO_TWOFISH_128:
+    case QCRYPTO_CIPHER_ALGO_TWOFISH_192:
+    case QCRYPTO_CIPHER_ALGO_TWOFISH_256:
         {
             QCryptoNettleTwofish *ctx = g_new0(QCryptoNettleTwofish, 1);
 
@@ -701,10 +737,36 @@ static QCryptoCipher *qcrypto_cipher_ctx_new(QCryptoCipherAlgorithm alg,
 
             return &ctx->base;
         }
+#ifdef CONFIG_CRYPTO_SM4
+    case QCRYPTO_CIPHER_ALGO_SM4:
+        {
+            QCryptoNettleSm4 *ctx;
+            const QCryptoCipherDriver *drv;
+
+            switch (mode) {
+            case QCRYPTO_CIPHER_MODE_ECB:
+                drv = &qcrypto_nettle_sm4_driver_ecb;
+                break;
+            case QCRYPTO_CIPHER_MODE_CBC:
+            case QCRYPTO_CIPHER_MODE_CTR:
+            case QCRYPTO_CIPHER_MODE_XTS:
+                goto bad_cipher_mode;
+            default:
+                g_assert_not_reached();
+            }
+
+            ctx = g_new0(QCryptoNettleSm4, 1);
+            ctx->base.driver = drv;
+            sm4_set_encrypt_key(&ctx->key[0], key);
+            sm4_set_decrypt_key(&ctx->key[1], key);
+
+            return &ctx->base;
+        }
+#endif
 
     default:
         error_setg(errp, "Unsupported cipher algorithm %s",
-                   QCryptoCipherAlgorithm_str(alg));
+                   QCryptoCipherAlgo_str(alg));
         return NULL;
     }
 

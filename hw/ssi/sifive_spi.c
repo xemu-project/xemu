@@ -267,7 +267,7 @@ static void sifive_spi_write(void *opaque, hwaddr addr,
     case R_RXDATA:
     case R_IP:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: invalid write to read-only reigster 0x%"
+                      "%s: invalid write to read-only register 0x%"
                       HWADDR_PRIx " with 0x%x\n", __func__, addr << 2, value);
         break;
 
@@ -338,7 +338,7 @@ static void sifive_spi_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     device_class_set_props(dc, sifive_spi_properties);
-    dc->reset = sifive_spi_reset;
+    device_class_set_legacy_reset(dc, sifive_spi_reset);
     dc->realize = sifive_spi_realize;
 }
 

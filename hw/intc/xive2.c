@@ -15,7 +15,6 @@
 #include "sysemu/cpus.h"
 #include "sysemu/dma.h"
 #include "hw/qdev-properties.h"
-#include "monitor/monitor.h"
 #include "hw/ppc/xive.h"
 #include "hw/ppc/xive2.h"
 #include "hw/ppc/xive2_regs.h"
@@ -27,21 +26,57 @@ uint32_t xive2_router_get_config(Xive2Router *xrtr)
     return xrc->get_config(xrtr);
 }
 
-void xive2_eas_pic_print_info(Xive2Eas *eas, uint32_t lisn, Monitor *mon)
+static int xive2_router_get_block_id(Xive2Router *xrtr)
+{
+   Xive2RouterClass *xrc = XIVE2_ROUTER_GET_CLASS(xrtr);
+
+   return xrc->get_block_id(xrtr);
+}
+
+static uint64_t xive2_nvp_reporting_addr(Xive2Nvp *nvp)
+{
+    uint64_t cache_addr;
+
+    cache_addr = xive_get_field32(NVP2_W6_REPORTING_LINE, nvp->w6) << 24 |
+        xive_get_field32(NVP2_W7_REPORTING_LINE, nvp->w7);
+    cache_addr <<= 8; /* aligned on a cache line pair */
+    return cache_addr;
+}
+
+static uint32_t xive2_nvgc_get_backlog(Xive2Nvgc *nvgc, uint8_t priority)
+{
+    uint32_t val = 0;
+    uint8_t *ptr, i;
+
+    if (priority > 7) {
+        return 0;
+    }
+
+    /*
+     * The per-priority backlog counters are 24-bit and the structure
+     * is stored in big endian
+     */
+    ptr = (uint8_t *)&nvgc->w2 + priority * 3;
+    for (i = 0; i < 3; i++, ptr++) {
+        val = (val << 8) + *ptr;
+    }
+    return val;
+}
+
+void xive2_eas_pic_print_info(Xive2Eas *eas, uint32_t lisn, GString *buf)
 {
     if (!xive2_eas_is_valid(eas)) {
         return;
     }
 
-    monitor_printf(mon, "  %08x %s end:%02x/%04x data:%08x\n",
-                   lisn, xive2_eas_is_masked(eas) ? "M" : " ",
-                   (uint8_t)  xive_get_field64(EAS2_END_BLOCK, eas->w),
-                   (uint32_t) xive_get_field64(EAS2_END_INDEX, eas->w),
-                   (uint32_t) xive_get_field64(EAS2_END_DATA, eas->w));
+    g_string_append_printf(buf, "  %08x %s end:%02x/%04x data:%08x\n",
+                           lisn, xive2_eas_is_masked(eas) ? "M" : " ",
+                           (uint8_t)  xive_get_field64(EAS2_END_BLOCK, eas->w),
+                           (uint32_t) xive_get_field64(EAS2_END_INDEX, eas->w),
+                           (uint32_t) xive_get_field64(EAS2_END_DATA, eas->w));
 }
 
-void xive2_end_queue_pic_print_info(Xive2End *end, uint32_t width,
-                                    Monitor *mon)
+void xive2_end_queue_pic_print_info(Xive2End *end, uint32_t width, GString *buf)
 {
     uint64_t qaddr_base = xive2_end_qaddr(end);
     uint32_t qsize = xive_get_field32(END2_W3_QSIZE, end->w3);
@@ -52,7 +87,7 @@ void xive2_end_queue_pic_print_info(Xive2End *end, uint32_t width,
     /*
      * print out the [ (qindex - (width - 1)) .. (qindex + 1)] window
      */
-    monitor_printf(mon, " [ ");
+    g_string_append_printf(buf, " [ ");
     qindex = (qindex - (width - 1)) & (qentries - 1);
     for (i = 0; i < width; i++) {
         uint64_t qaddr = qaddr_base + (qindex << 2);
@@ -64,14 +99,14 @@ void xive2_end_queue_pic_print_info(Xive2End *end, uint32_t width,
                           HWADDR_PRIx "\n", qaddr);
             return;
         }
-        monitor_printf(mon, "%s%08x ", i == width - 1 ? "^" : "",
-                       be32_to_cpu(qdata));
+        g_string_append_printf(buf, "%s%08x ", i == width - 1 ? "^" : "",
+                               be32_to_cpu(qdata));
         qindex = (qindex + 1) & (qentries - 1);
     }
-    monitor_printf(mon, "]");
+    g_string_append_printf(buf, "]");
 }
 
-void xive2_end_pic_print_info(Xive2End *end, uint32_t end_idx, Monitor *mon)
+void xive2_end_pic_print_info(Xive2End *end, uint32_t end_idx, GString *buf)
 {
     uint64_t qaddr_base = xive2_end_qaddr(end);
     uint32_t qindex = xive_get_field32(END2_W1_PAGE_OFF, end->w1);
@@ -90,33 +125,37 @@ void xive2_end_pic_print_info(Xive2End *end, uint32_t end_idx, Monitor *mon)
 
     pq = xive_get_field32(END2_W1_ESn, end->w1);
 
-    monitor_printf(mon,
-                   "  %08x %c%c %c%c%c%c%c%c%c%c%c%c prio:%d nvp:%02x/%04x",
-                   end_idx,
-                   pq & XIVE_ESB_VAL_P ? 'P' : '-',
-                   pq & XIVE_ESB_VAL_Q ? 'Q' : '-',
-                   xive2_end_is_valid(end)    ? 'v' : '-',
-                   xive2_end_is_enqueue(end)  ? 'q' : '-',
-                   xive2_end_is_notify(end)   ? 'n' : '-',
-                   xive2_end_is_backlog(end)  ? 'b' : '-',
-                   xive2_end_is_escalate(end) ? 'e' : '-',
-                   xive2_end_is_escalate_end(end) ? 'N' : '-',
-                   xive2_end_is_uncond_escalation(end)   ? 'u' : '-',
-                   xive2_end_is_silent_escalation(end)   ? 's' : '-',
-                   xive2_end_is_firmware1(end)   ? 'f' : '-',
-                   xive2_end_is_firmware2(end)   ? 'F' : '-',
-                   priority, nvp_blk, nvp_idx);
+    g_string_append_printf(buf,
+                           "  %08x %c%c %c%c%c%c%c%c%c%c%c%c%c %c%c "
+                           "prio:%d nvp:%02x/%04x",
+                           end_idx,
+                           pq & XIVE_ESB_VAL_P ? 'P' : '-',
+                           pq & XIVE_ESB_VAL_Q ? 'Q' : '-',
+                           xive2_end_is_valid(end)    ? 'v' : '-',
+                           xive2_end_is_enqueue(end)  ? 'q' : '-',
+                           xive2_end_is_notify(end)   ? 'n' : '-',
+                           xive2_end_is_backlog(end)  ? 'b' : '-',
+                           xive2_end_is_precluded_escalation(end) ? 'p' : '-',
+                           xive2_end_is_escalate(end) ? 'e' : '-',
+                           xive2_end_is_escalate_end(end) ? 'N' : '-',
+                           xive2_end_is_uncond_escalation(end)   ? 'u' : '-',
+                           xive2_end_is_silent_escalation(end)   ? 's' : '-',
+                           xive2_end_is_firmware1(end)   ? 'f' : '-',
+                           xive2_end_is_firmware2(end)   ? 'F' : '-',
+                           xive2_end_is_ignore(end) ? 'i' : '-',
+                           xive2_end_is_crowd(end)  ? 'c' : '-',
+                           priority, nvp_blk, nvp_idx);
 
     if (qaddr_base) {
-        monitor_printf(mon, " eq:@%08"PRIx64"% 6d/%5d ^%d",
-                       qaddr_base, qindex, qentries, qgen);
-        xive2_end_queue_pic_print_info(end, 6, mon);
+        g_string_append_printf(buf, " eq:@%08"PRIx64"% 6d/%5d ^%d",
+                               qaddr_base, qindex, qentries, qgen);
+        xive2_end_queue_pic_print_info(end, 6, buf);
     }
-    monitor_printf(mon, "\n");
+    g_string_append_c(buf, '\n');
 }
 
 void xive2_end_eas_pic_print_info(Xive2End *end, uint32_t end_idx,
-                                  Monitor *mon)
+                                  GString *buf)
 {
     Xive2Eas *eas = (Xive2Eas *) &end->w4;
     uint8_t pq;
@@ -127,15 +166,64 @@ void xive2_end_eas_pic_print_info(Xive2End *end, uint32_t end_idx,
 
     pq = xive_get_field32(END2_W1_ESe, end->w1);
 
-    monitor_printf(mon, "  %08x %c%c %c%c end:%02x/%04x data:%08x\n",
-                   end_idx,
-                   pq & XIVE_ESB_VAL_P ? 'P' : '-',
-                   pq & XIVE_ESB_VAL_Q ? 'Q' : '-',
-                   xive2_eas_is_valid(eas) ? 'v' : ' ',
-                   xive2_eas_is_masked(eas) ? 'M' : ' ',
-                   (uint8_t)  xive_get_field64(EAS2_END_BLOCK, eas->w),
-                   (uint32_t) xive_get_field64(EAS2_END_INDEX, eas->w),
-                   (uint32_t) xive_get_field64(EAS2_END_DATA, eas->w));
+    g_string_append_printf(buf, "  %08x %c%c %c%c end:%02x/%04x data:%08x\n",
+                           end_idx,
+                           pq & XIVE_ESB_VAL_P ? 'P' : '-',
+                           pq & XIVE_ESB_VAL_Q ? 'Q' : '-',
+                           xive2_eas_is_valid(eas) ? 'v' : ' ',
+                           xive2_eas_is_masked(eas) ? 'M' : ' ',
+                           (uint8_t)  xive_get_field64(EAS2_END_BLOCK, eas->w),
+                           (uint32_t) xive_get_field64(EAS2_END_INDEX, eas->w),
+                           (uint32_t) xive_get_field64(EAS2_END_DATA, eas->w));
+}
+
+void xive2_nvp_pic_print_info(Xive2Nvp *nvp, uint32_t nvp_idx, GString *buf)
+{
+    uint8_t  eq_blk = xive_get_field32(NVP2_W5_VP_END_BLOCK, nvp->w5);
+    uint32_t eq_idx = xive_get_field32(NVP2_W5_VP_END_INDEX, nvp->w5);
+    uint64_t cache_line = xive2_nvp_reporting_addr(nvp);
+
+    if (!xive2_nvp_is_valid(nvp)) {
+        return;
+    }
+
+    g_string_append_printf(buf, "  %08x end:%02x/%04x IPB:%02x PGoFirst:%02x",
+                           nvp_idx, eq_blk, eq_idx,
+                           xive_get_field32(NVP2_W2_IPB, nvp->w2),
+                           xive_get_field32(NVP2_W0_PGOFIRST, nvp->w0));
+    if (cache_line) {
+        g_string_append_printf(buf, "  reporting CL:%016"PRIx64, cache_line);
+    }
+
+    /*
+     * When the NVP is HW controlled, more fields are updated
+     */
+    if (xive2_nvp_is_hw(nvp)) {
+        g_string_append_printf(buf, " CPPR:%02x",
+                               xive_get_field32(NVP2_W2_CPPR, nvp->w2));
+        if (xive2_nvp_is_co(nvp)) {
+            g_string_append_printf(buf, " CO:%04x",
+                                   xive_get_field32(NVP2_W1_CO_THRID, nvp->w1));
+        }
+    }
+    g_string_append_c(buf, '\n');
+}
+
+void xive2_nvgc_pic_print_info(Xive2Nvgc *nvgc, uint32_t nvgc_idx, GString *buf)
+{
+    uint8_t i;
+
+    if (!xive2_nvgc_is_valid(nvgc)) {
+        return;
+    }
+
+    g_string_append_printf(buf, "  %08x PGoNext:%02x bklog: ", nvgc_idx,
+                           xive_get_field32(NVGC2_W0_PGONEXT, nvgc->w0));
+    for (i = 0; i <= XIVE_PRIORITY_MAX; i++) {
+        g_string_append_printf(buf, "[%d]=0x%x ",
+                               i, xive2_nvgc_get_backlog(nvgc, i));
+    }
+    g_string_append_printf(buf, "\n");
 }
 
 static void xive2_end_enqueue(Xive2End *end, uint32_t data)
@@ -182,13 +270,14 @@ static void xive2_end_enqueue(Xive2End *end, uint32_t data)
  *     the NVP by changing the H bit while the context is enabled
  */
 
-static void xive2_tctx_save_os_ctx(Xive2Router *xrtr, XiveTCTX *tctx,
-                                   uint8_t nvp_blk, uint32_t nvp_idx)
+static void xive2_tctx_save_ctx(Xive2Router *xrtr, XiveTCTX *tctx,
+                                uint8_t nvp_blk, uint32_t nvp_idx,
+                                uint8_t ring)
 {
     CPUPPCState *env = &POWERPC_CPU(tctx->cs)->env;
     uint32_t pir = env->spr_cb[SPR_PIR].default_value;
     Xive2Nvp nvp;
-    uint8_t *regs = &tctx->regs[TM_QW1_OS];
+    uint8_t *regs = &tctx->regs[ring];
 
     if (xive2_router_get_nvp(xrtr, nvp_blk, nvp_idx, &nvp)) {
         qemu_log_mask(LOG_GUEST_ERROR, "XIVE: No NVP %x/%x\n",
@@ -233,44 +322,190 @@ static void xive2_tctx_save_os_ctx(Xive2Router *xrtr, XiveTCTX *tctx,
     xive2_router_write_nvp(xrtr, nvp_blk, nvp_idx, &nvp, 1);
 }
 
-static void xive2_os_cam_decode(uint32_t cam, uint8_t *nvp_blk,
-                                uint32_t *nvp_idx, bool *vo, bool *ho)
+static void xive2_cam_decode(uint32_t cam, uint8_t *nvp_blk,
+                             uint32_t *nvp_idx, bool *valid, bool *hw)
 {
     *nvp_blk = xive2_nvp_blk(cam);
     *nvp_idx = xive2_nvp_idx(cam);
-    *vo = !!(cam & TM2_QW1W2_VO);
-    *ho = !!(cam & TM2_QW1W2_HO);
+    *valid = !!(cam & TM2_W2_VALID);
+    *hw = !!(cam & TM2_W2_HW);
+}
+
+/*
+ * Encode the HW CAM line with 7bit or 8bit thread id. The thread id
+ * width and block id width is configurable at the IC level.
+ *
+ *    chipid << 24 | 0000 0000 0000 0000 1 threadid (7Bit)
+ *    chipid << 24 | 0000 0000 0000 0001 threadid   (8Bit)
+ */
+static uint32_t xive2_tctx_hw_cam_line(XivePresenter *xptr, XiveTCTX *tctx)
+{
+    Xive2Router *xrtr = XIVE2_ROUTER(xptr);
+    CPUPPCState *env = &POWERPC_CPU(tctx->cs)->env;
+    uint32_t pir = env->spr_cb[SPR_PIR].default_value;
+    uint8_t blk = xive2_router_get_block_id(xrtr);
+    uint8_t tid_shift =
+        xive2_router_get_config(xrtr) & XIVE2_THREADID_8BITS ? 8 : 7;
+    uint8_t tid_mask = (1 << tid_shift) - 1;
+
+    return xive2_nvp_cam_line(blk, 1 << tid_shift | (pir & tid_mask));
+}
+
+static uint64_t xive2_tm_pull_ctx(XivePresenter *xptr, XiveTCTX *tctx,
+                                  hwaddr offset, unsigned size, uint8_t ring)
+{
+    Xive2Router *xrtr = XIVE2_ROUTER(xptr);
+    uint32_t target_ringw2 = xive_tctx_word2(&tctx->regs[ring]);
+    uint32_t cam = be32_to_cpu(target_ringw2);
+    uint8_t nvp_blk;
+    uint32_t nvp_idx;
+    uint8_t cur_ring;
+    bool valid;
+    bool do_save;
+
+    xive2_cam_decode(cam, &nvp_blk, &nvp_idx, &valid, &do_save);
+
+    if (!valid) {
+        qemu_log_mask(LOG_GUEST_ERROR, "XIVE: pulling invalid NVP %x/%x !?\n",
+                      nvp_blk, nvp_idx);
+    }
+
+    /* Invalidate CAM line of requested ring and all lower rings */
+    for (cur_ring = TM_QW0_USER; cur_ring <= ring;
+         cur_ring += XIVE_TM_RING_SIZE) {
+        uint32_t ringw2 = xive_tctx_word2(&tctx->regs[cur_ring]);
+        uint32_t ringw2_new = xive_set_field32(TM2_QW1W2_VO, ringw2, 0);
+        memcpy(&tctx->regs[cur_ring + TM_WORD2], &ringw2_new, 4);
+    }
+
+    if (xive2_router_get_config(xrtr) & XIVE2_VP_SAVE_RESTORE && do_save) {
+        xive2_tctx_save_ctx(xrtr, tctx, nvp_blk, nvp_idx, ring);
+    }
+
+    /*
+     * Lower external interrupt line of requested ring and below except for
+     * USER, which doesn't exist.
+     */
+    for (cur_ring = TM_QW1_OS; cur_ring <= ring;
+         cur_ring += XIVE_TM_RING_SIZE) {
+        xive_tctx_reset_signal(tctx, cur_ring);
+    }
+    return target_ringw2;
 }
 
 uint64_t xive2_tm_pull_os_ctx(XivePresenter *xptr, XiveTCTX *tctx,
                               hwaddr offset, unsigned size)
 {
+    return xive2_tm_pull_ctx(xptr, tctx, offset, size, TM_QW1_OS);
+}
+
+#define REPORT_LINE_GEN1_SIZE       16
+
+static void xive2_tm_report_line_gen1(XiveTCTX *tctx, uint8_t *data,
+                                      uint8_t size)
+{
+    uint8_t *regs = tctx->regs;
+
+    g_assert(size == REPORT_LINE_GEN1_SIZE);
+    memset(data, 0, size);
+    /*
+     * See xive architecture for description of what is saved. It is
+     * hand-picked information to fit in 16 bytes.
+     */
+    data[0x0] = regs[TM_QW3_HV_PHYS + TM_NSR];
+    data[0x1] = regs[TM_QW3_HV_PHYS + TM_CPPR];
+    data[0x2] = regs[TM_QW3_HV_PHYS + TM_IPB];
+    data[0x3] = regs[TM_QW2_HV_POOL + TM_IPB];
+    data[0x4] = regs[TM_QW1_OS + TM_ACK_CNT];
+    data[0x5] = regs[TM_QW3_HV_PHYS + TM_LGS];
+    data[0x6] = 0xFF;
+    data[0x7] = regs[TM_QW3_HV_PHYS + TM_WORD2] & 0x80;
+    data[0x7] |= (regs[TM_QW2_HV_POOL + TM_WORD2] & 0x80) >> 1;
+    data[0x7] |= (regs[TM_QW1_OS + TM_WORD2] & 0x80) >> 2;
+    data[0x7] |= (regs[TM_QW3_HV_PHYS + TM_WORD2] & 0x3);
+    data[0x8] = regs[TM_QW1_OS + TM_NSR];
+    data[0x9] = regs[TM_QW1_OS + TM_CPPR];
+    data[0xA] = regs[TM_QW1_OS + TM_IPB];
+    data[0xB] = regs[TM_QW1_OS + TM_LGS];
+    if (regs[TM_QW0_USER + TM_WORD2] & 0x80) {
+        /*
+         * Logical server extension, except VU bit replaced by EB bit
+         * from NSR
+         */
+        data[0xC] = regs[TM_QW0_USER + TM_WORD2];
+        data[0xC] &= ~0x80;
+        data[0xC] |= regs[TM_QW0_USER + TM_NSR] & 0x80;
+        data[0xD] = regs[TM_QW0_USER + TM_WORD2 + 1];
+        data[0xE] = regs[TM_QW0_USER + TM_WORD2 + 2];
+        data[0xF] = regs[TM_QW0_USER + TM_WORD2 + 3];
+    }
+}
+
+static void xive2_tm_pull_ctx_ol(XivePresenter *xptr, XiveTCTX *tctx,
+                                 hwaddr offset, uint64_t value,
+                                 unsigned size, uint8_t ring)
+{
     Xive2Router *xrtr = XIVE2_ROUTER(xptr);
-    uint32_t qw1w2 = xive_tctx_word2(&tctx->regs[TM_QW1_OS]);
-    uint32_t qw1w2_new;
-    uint32_t cam = be32_to_cpu(qw1w2);
+    uint32_t hw_cam, nvp_idx, xive2_cfg, reserved;
     uint8_t nvp_blk;
-    uint32_t nvp_idx;
-    bool vo;
-    bool do_save;
+    Xive2Nvp nvp;
+    uint64_t phys_addr;
+    MemTxResult result;
 
-    xive2_os_cam_decode(cam, &nvp_blk, &nvp_idx, &vo, &do_save);
+    hw_cam = xive2_tctx_hw_cam_line(xptr, tctx);
+    nvp_blk = xive2_nvp_blk(hw_cam);
+    nvp_idx = xive2_nvp_idx(hw_cam);
 
-    if (!vo) {
-        qemu_log_mask(LOG_GUEST_ERROR, "XIVE: pulling invalid NVP %x/%x !?\n",
+    if (xive2_router_get_nvp(xrtr, nvp_blk, nvp_idx, &nvp)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "XIVE: No NVP %x/%x\n",
                       nvp_blk, nvp_idx);
+        return;
     }
 
-    /* Invalidate CAM line */
-    qw1w2_new = xive_set_field32(TM2_QW1W2_VO, qw1w2, 0);
-    memcpy(&tctx->regs[TM_QW1_OS + TM_WORD2], &qw1w2_new, 4);
-
-    if (xive2_router_get_config(xrtr) & XIVE2_VP_SAVE_RESTORE && do_save) {
-        xive2_tctx_save_os_ctx(xrtr, tctx, nvp_blk, nvp_idx);
+    if (!xive2_nvp_is_valid(&nvp)) {
+        qemu_log_mask(LOG_GUEST_ERROR, "XIVE: invalid NVP %x/%x\n",
+                      nvp_blk, nvp_idx);
+        return;
     }
 
-    xive_tctx_reset_os_signal(tctx);
-    return qw1w2;
+    xive2_cfg = xive2_router_get_config(xrtr);
+
+    phys_addr = xive2_nvp_reporting_addr(&nvp) + 0x80; /* odd line */
+    if (xive2_cfg & XIVE2_GEN1_TIMA_OS) {
+        uint8_t pull_ctxt[REPORT_LINE_GEN1_SIZE];
+
+        xive2_tm_report_line_gen1(tctx, pull_ctxt, REPORT_LINE_GEN1_SIZE);
+        result = dma_memory_write(&address_space_memory, phys_addr,
+                                  pull_ctxt, REPORT_LINE_GEN1_SIZE,
+                                  MEMTXATTRS_UNSPECIFIED);
+        assert(result == MEMTX_OK);
+    } else {
+        result = dma_memory_write(&address_space_memory, phys_addr,
+                                  &tctx->regs, sizeof(tctx->regs),
+                                  MEMTXATTRS_UNSPECIFIED);
+        assert(result == MEMTX_OK);
+        reserved = 0xFFFFFFFF;
+        result = dma_memory_write(&address_space_memory, phys_addr + 12,
+                                  &reserved, sizeof(reserved),
+                                  MEMTXATTRS_UNSPECIFIED);
+        assert(result == MEMTX_OK);
+    }
+
+    /* the rest is similar to pull context to registers */
+    xive2_tm_pull_ctx(xptr, tctx, offset, size, ring);
+}
+
+void xive2_tm_pull_os_ctx_ol(XivePresenter *xptr, XiveTCTX *tctx,
+                             hwaddr offset, uint64_t value, unsigned size)
+{
+    xive2_tm_pull_ctx_ol(xptr, tctx, offset, value, size, TM_QW1_OS);
+}
+
+
+void xive2_tm_pull_phys_ctx_ol(XivePresenter *xptr, XiveTCTX *tctx,
+                               hwaddr offset, uint64_t value, unsigned size)
+{
+    xive2_tm_pull_ctx_ol(xptr, tctx, offset, value, size, TM_QW3_HV_PHYS);
 }
 
 static uint8_t xive2_tctx_restore_os_ctx(Xive2Router *xrtr, XiveTCTX *tctx,
@@ -362,23 +597,50 @@ static void xive2_tctx_need_resend(Xive2Router *xrtr, XiveTCTX *tctx,
 void xive2_tm_push_os_ctx(XivePresenter *xptr, XiveTCTX *tctx,
                           hwaddr offset, uint64_t value, unsigned size)
 {
-    uint32_t cam = value;
-    uint32_t qw1w2 = cpu_to_be32(cam);
+    uint32_t cam;
+    uint32_t qw1w2;
+    uint64_t qw1dw1;
     uint8_t nvp_blk;
     uint32_t nvp_idx;
     bool vo;
     bool do_restore;
 
-    xive2_os_cam_decode(cam, &nvp_blk, &nvp_idx, &vo, &do_restore);
-
     /* First update the thead context */
-    memcpy(&tctx->regs[TM_QW1_OS + TM_WORD2], &qw1w2, 4);
+    switch (size) {
+    case 4:
+        cam = value;
+        qw1w2 = cpu_to_be32(cam);
+        memcpy(&tctx->regs[TM_QW1_OS + TM_WORD2], &qw1w2, 4);
+        break;
+    case 8:
+        cam = value >> 32;
+        qw1dw1 = cpu_to_be64(value);
+        memcpy(&tctx->regs[TM_QW1_OS + TM_WORD2], &qw1dw1, 8);
+        break;
+    default:
+        g_assert_not_reached();
+    }
+
+    xive2_cam_decode(cam, &nvp_blk, &nvp_idx, &vo, &do_restore);
 
     /* Check the interrupt pending bits */
     if (vo) {
         xive2_tctx_need_resend(XIVE2_ROUTER(xptr), tctx, nvp_blk, nvp_idx,
                                do_restore);
     }
+}
+
+static void xive2_tctx_set_target(XiveTCTX *tctx, uint8_t ring, uint8_t target)
+{
+    uint8_t *regs = &tctx->regs[ring];
+
+    regs[TM_T] = target;
+}
+
+void xive2_tm_set_hv_target(XivePresenter *xptr, XiveTCTX *tctx,
+                            hwaddr offset, uint64_t value, unsigned size)
+{
+    xive2_tctx_set_target(tctx, TM_QW3_HV_PHYS, value & 0xff);
 }
 
 /*
@@ -443,31 +705,22 @@ int xive2_router_write_nvp(Xive2Router *xrtr, uint8_t nvp_blk, uint32_t nvp_idx,
    return xrc->write_nvp(xrtr, nvp_blk, nvp_idx, nvp, word_number);
 }
 
-static int xive2_router_get_block_id(Xive2Router *xrtr)
+int xive2_router_get_nvgc(Xive2Router *xrtr, bool crowd,
+                          uint8_t nvgc_blk, uint32_t nvgc_idx,
+                          Xive2Nvgc *nvgc)
 {
    Xive2RouterClass *xrc = XIVE2_ROUTER_GET_CLASS(xrtr);
 
-   return xrc->get_block_id(xrtr);
+   return xrc->get_nvgc(xrtr, crowd, nvgc_blk, nvgc_idx, nvgc);
 }
 
-/*
- * Encode the HW CAM line with 7bit or 8bit thread id. The thread id
- * width and block id width is configurable at the IC level.
- *
- *    chipid << 24 | 0000 0000 0000 0000 1 threadid (7Bit)
- *    chipid << 24 | 0000 0000 0000 0001 threadid   (8Bit)
- */
-static uint32_t xive2_tctx_hw_cam_line(XivePresenter *xptr, XiveTCTX *tctx)
+int xive2_router_write_nvgc(Xive2Router *xrtr, bool crowd,
+                            uint8_t nvgc_blk, uint32_t nvgc_idx,
+                            Xive2Nvgc *nvgc)
 {
-    Xive2Router *xrtr = XIVE2_ROUTER(xptr);
-    CPUPPCState *env = &POWERPC_CPU(tctx->cs)->env;
-    uint32_t pir = env->spr_cb[SPR_PIR].default_value;
-    uint8_t blk = xive2_router_get_block_id(xrtr);
-    uint8_t tid_shift =
-        xive2_router_get_config(xrtr) & XIVE2_THREADID_8BITS ? 8 : 7;
-    uint8_t tid_mask = (1 << tid_shift) - 1;
+   Xive2RouterClass *xrc = XIVE2_ROUTER_GET_CLASS(xrtr);
 
-    return xive2_nvp_cam_line(blk, 1 << tid_shift | (pir & tid_mask));
+   return xrc->write_nvgc(xrtr, crowd, nvgc_blk, nvgc_idx, nvgc);
 }
 
 /*
@@ -542,7 +795,7 @@ static void xive2_router_realize(DeviceState *dev, Error **errp)
 
 /*
  * Notification using the END ESe/ESn bit (Event State Buffer for
- * escalation and notification). Profide futher coalescing in the
+ * escalation and notification). Profide further coalescing in the
  * Router.
  */
 static bool xive2_router_end_es_notify(Xive2Router *xrtr, uint8_t end_blk,
@@ -621,7 +874,7 @@ static void xive2_router_end_notify(Xive2Router *xrtr, uint8_t end_blk,
 
     /*
      * Check the END ESn (Event State Buffer for notification) for
-     * even futher coalescing in the Router
+     * even further coalescing in the Router
      */
     if (!xive2_end_is_notify(&end)) {
         /* ESn[Q]=1 : end of notification */
@@ -651,7 +904,7 @@ static void xive2_router_end_notify(Xive2Router *xrtr, uint8_t end_blk,
     }
 
     found = xive_presenter_notify(xrtr->xfb, format, nvp_blk, nvp_idx,
-                          xive_get_field32(END2_W6_IGNORE, end.w7),
+                          xive2_end_is_ignore(&end),
                           priority,
                           xive_get_field32(END2_W7_F1_LOG_SERVER_ID, end.w7));
 
@@ -702,7 +955,7 @@ do_escalation:
 
     /*
      * Check the END ESe (Event State Buffer for escalation) for even
-     * futher coalescing in the Router
+     * further coalescing in the Router
      */
     if (!xive2_end_is_uncond_escalation(&end)) {
         /* ESe[Q]=1 : end of escalation notification */
@@ -954,11 +1207,11 @@ static const MemoryRegionOps xive2_end_source_ops = {
     .write = xive2_end_source_write,
     .endianness = DEVICE_BIG_ENDIAN,
     .valid = {
-        .min_access_size = 8,
+        .min_access_size = 1,
         .max_access_size = 8,
     },
     .impl = {
-        .min_access_size = 8,
+        .min_access_size = 1,
         .max_access_size = 8,
     },
 };

@@ -10,14 +10,11 @@
 #ifndef PCI_HOST_PNV_PHB3_H
 #define PCI_HOST_PNV_PHB3_H
 
-#include "hw/pci/pcie_host.h"
-#include "hw/pci/pcie_port.h"
 #include "hw/ppc/xics.h"
 #include "qom/object.h"
 #include "hw/pci-host/pnv_phb.h"
 
 typedef struct PnvPHB3 PnvPHB3;
-typedef struct PnvChip PnvChip;
 
 /*
  * PHB3 XICS Source for MSIs
@@ -43,7 +40,7 @@ void pnv_phb3_msi_update_config(Phb3MsiState *msis, uint32_t base,
 void pnv_phb3_msi_send(Phb3MsiState *msis, uint64_t addr, uint16_t data,
                        int32_t dev_pe);
 void pnv_phb3_msi_ffi(Phb3MsiState *msis, uint64_t val);
-void pnv_phb3_msi_pic_print_info(Phb3MsiState *msis, Monitor *mon);
+void pnv_phb3_msi_pic_print_info(Phb3MsiState *msis, GString *buf);
 
 
 /*

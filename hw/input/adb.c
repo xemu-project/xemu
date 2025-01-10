@@ -43,7 +43,7 @@ static const char *adb_commands[] = {
 
 static void adb_device_reset(ADBDevice *d)
 {
-    qdev_reset_all(DEVICE(d));
+    device_cold_reset(DEVICE(d));
 }
 
 static int do_adb_request(ADBBusState *s, uint8_t *obuf, const uint8_t *buf,
@@ -221,7 +221,7 @@ static const VMStateDescription vmstate_adb_bus = {
     .name = "adb_bus",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_TIMER_PTR(autopoll_timer, ADBBusState),
         VMSTATE_BOOL(autopoll_enabled, ADBBusState),
         VMSTATE_UINT8(autopoll_rate_ms, ADBBusState),
@@ -231,9 +231,9 @@ static const VMStateDescription vmstate_adb_bus = {
     }
 };
 
-static void adb_bus_reset(BusState *qbus)
+static void adb_bus_reset_hold(Object *obj, ResetType type)
 {
-    ADBBusState *adb_bus = ADB_BUS(qbus);
+    ADBBusState *adb_bus = ADB_BUS(obj);
 
     adb_bus->autopoll_enabled = false;
     adb_bus->autopoll_mask = 0xffff;
@@ -247,7 +247,7 @@ static void adb_bus_realize(BusState *qbus, Error **errp)
     adb_bus->autopoll_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL, adb_autopoll,
                                            adb_bus);
 
-    vmstate_register(NULL, -1, &vmstate_adb_bus, adb_bus);
+    vmstate_register_any(NULL, &vmstate_adb_bus, adb_bus);
 }
 
 static void adb_bus_unrealize(BusState *qbus)
@@ -262,10 +262,11 @@ static void adb_bus_unrealize(BusState *qbus)
 static void adb_bus_class_init(ObjectClass *klass, void *data)
 {
     BusClass *k = BUS_CLASS(klass);
+    ResettableClass *rc = RESETTABLE_CLASS(klass);
 
     k->realize = adb_bus_realize;
     k->unrealize = adb_bus_unrealize;
-    k->reset = adb_bus_reset;
+    rc->phases.hold = adb_bus_reset_hold;
 }
 
 static const TypeInfo adb_bus_type_info = {
@@ -279,7 +280,7 @@ const VMStateDescription vmstate_adb_device = {
     .name = "adb_device",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_INT32(devaddr, ADBDevice),
         VMSTATE_INT32(handler, ADBDevice),
         VMSTATE_END_OF_LIST()

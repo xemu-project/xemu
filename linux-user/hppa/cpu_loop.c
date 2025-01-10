@@ -99,6 +99,8 @@ static abi_ulong hppa_lws(CPUHPPAState *env)
 #endif
             }
             break;
+        default:
+            g_assert_not_reached();
         }
         break;
     }
@@ -129,8 +131,8 @@ void cpu_loop(CPUHPPAState *env)
             default:
                 env->gr[28] = ret;
                 /* We arrived here by faking the gateway page.  Return.  */
-                env->iaoq_f = env->gr[31];
-                env->iaoq_b = env->gr[31] + 4;
+                env->iaoq_f = env->gr[31] | PRIV_USER;
+                env->iaoq_b = env->iaoq_f + 4;
                 break;
             case -QEMU_ERESTARTSYS:
             case -QEMU_ESIGRETURN:
@@ -140,27 +142,24 @@ void cpu_loop(CPUHPPAState *env)
         case EXCP_SYSCALL_LWS:
             env->gr[21] = hppa_lws(env);
             /* We arrived here by faking the gateway page.  Return.  */
-            env->iaoq_f = env->gr[31];
-            env->iaoq_b = env->gr[31] + 4;
+            env->iaoq_f = env->gr[31] | PRIV_USER;
+            env->iaoq_b = env->iaoq_f + 4;
             break;
         case EXCP_IMP:
             force_sig_fault(TARGET_SIGSEGV, TARGET_SEGV_MAPERR, env->iaoq_f);
             break;
         case EXCP_ILL:
-            EXCP_DUMP(env, "qemu: EXCP_ILL exception %#x\n", trapnr);
             force_sig_fault(TARGET_SIGILL, TARGET_ILL_ILLOPC, env->iaoq_f);
             break;
         case EXCP_PRIV_OPR:
             /* check for glibc ABORT_INSTRUCTION "iitlbp %r0,(%sr0, %r0)" */
-            EXCP_DUMP(env, "qemu: EXCP_PRIV_OPR exception %#x\n", trapnr);
             if (env->cr[CR_IIR] == 0x04000000) {
-		    force_sig_fault(TARGET_SIGILL, TARGET_ILL_ILLOPC, env->iaoq_f);
+                force_sig_fault(TARGET_SIGILL, TARGET_ILL_ILLOPC, env->iaoq_f);
             } else {
-		    force_sig_fault(TARGET_SIGILL, TARGET_ILL_PRVOPC, env->iaoq_f);
+                force_sig_fault(TARGET_SIGILL, TARGET_ILL_PRVOPC, env->iaoq_f);
             }
             break;
         case EXCP_PRIV_REG:
-            EXCP_DUMP(env, "qemu: EXCP_PRIV_REG exception %#x\n", trapnr);
             force_sig_fault(TARGET_SIGILL, TARGET_ILL_PRVREG, env->iaoq_f);
             break;
         case EXCP_OVERFLOW:
@@ -173,8 +172,7 @@ void cpu_loop(CPUHPPAState *env)
             force_sig_fault(TARGET_SIGFPE, 0, env->iaoq_f);
             break;
         case EXCP_BREAK:
-            EXCP_DUMP(env, "qemu: EXCP_BREAK exception %#x\n", trapnr);
-            force_sig_fault(TARGET_SIGTRAP, TARGET_TRAP_BRKPT, env->iaoq_f & ~3);
+            force_sig_fault(TARGET_SIGTRAP, TARGET_TRAP_BRKPT, env->iaoq_f);
             break;
         case EXCP_DEBUG:
             force_sig_fault(TARGET_SIGTRAP, TARGET_TRAP_BRKPT, env->iaoq_f);

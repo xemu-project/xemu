@@ -1,12 +1,13 @@
 # THIS FILE WAS AUTO-GENERATED
 #
-#  $ lcitool dockerfile --layers all opensuse-leap-153 qemu
+#  $ lcitool dockerfile --layers all opensuse-leap-15 qemu
 #
 # https://gitlab.com/libvirt/libvirt-ci
 
-FROM registry.opensuse.org/opensuse/leap:15.3
+FROM registry.opensuse.org/opensuse/leap:15.6
 
 RUN zypper update -y && \
+    zypper addrepo -fc https://download.opensuse.org/update/leap/15.6/backports/openSUSE:Backports:SLE-15-SP6:Update.repo && \
     zypper install -y \
            Mesa-devel \
            alsa-lib-devel \
@@ -26,7 +27,6 @@ RUN zypper update -y && \
            flex \
            fuse3-devel \
            gcc \
-           gcc-c++ \
            gcovr \
            gettext-runtime \
            git \
@@ -34,18 +34,20 @@ RUN zypper update -y && \
            glibc-locale \
            glibc-static \
            glusterfs-devel \
+           gtk-vnc-devel \
            gtk3-devel \
            hostname \
            jemalloc-devel \
            libSDL2-devel \
            libSDL2_image-devel \
            libaio-devel \
-           libasan6 \
+           libasan8 \
            libattr-devel \
            libbpf-devel \
            libbz2-devel \
            libcacard-devel \
            libcap-ng-devel \
+           libcbor-devel \
            libcmocka-devel \
            libcurl-devel \
            libdrm-devel \
@@ -81,60 +83,66 @@ RUN zypper update -y && \
            lttng-ust-devel \
            lzo-devel \
            make \
-           mkisofs \
+           mtools \
            ncat \
            ncurses-devel \
            ninja \
            openssh \
            pam-devel \
            pcre-devel-static \
-           perl-base \
+           pipewire-devel \
            pkgconfig \
-           python3-Pillow \
-           python3-PyYAML \
-           python3-Sphinx \
-           python3-base \
-           python3-numpy \
-           python3-opencv \
-           python3-pip \
-           python3-setuptools \
-           python3-sphinx_rtd_theme \
-           python3-wheel \
+           python311 \
+           python311-base \
+           python311-pip \
+           python311-setuptools \
            rdma-core-devel \
-           rpm \
+           rust \
+           rust-bindgen \
            sed \
            snappy-devel \
            sndio-devel \
+           socat \
            sparse \
            spice-protocol-devel \
+           swtpm \
            systemd-devel \
            systemtap-sdt-devel \
            tar \
            tesseract-ocr \
            tesseract-ocr-traineddata-english \
-           texinfo \
            usbredir-devel \
            util-linux \
            virglrenderer-devel \
            vte-devel \
            which \
            xen-devel \
-           xfsprogs-devel \
+           xorriso \
            zlib-devel \
-           zlib-devel-static && \
+           zlib-devel-static \
+           zstd && \
     zypper clean --all && \
+    rm -f /usr/lib*/python3*/EXTERNALLY-MANAGED && \
     rpm -qa | sort > /packages.txt && \
     mkdir -p /usr/libexec/ccache-wrappers && \
-    ln -s /usr/bin/ccache /usr/libexec/ccache-wrappers/c++ && \
     ln -s /usr/bin/ccache /usr/libexec/ccache-wrappers/cc && \
     ln -s /usr/bin/ccache /usr/libexec/ccache-wrappers/clang && \
-    ln -s /usr/bin/ccache /usr/libexec/ccache-wrappers/g++ && \
     ln -s /usr/bin/ccache /usr/libexec/ccache-wrappers/gcc
 
-RUN /usr/bin/pip3 install meson==0.56.0
+RUN /usr/bin/pip3.11 install \
+                     PyYAML \
+                     meson==1.5.0 \
+                     pillow \
+                     sphinx \
+                     sphinx-rtd-theme
 
 ENV CCACHE_WRAPPERSDIR "/usr/libexec/ccache-wrappers"
 ENV LANG "en_US.UTF-8"
 ENV MAKE "/usr/bin/make"
 ENV NINJA "/usr/bin/ninja"
-ENV PYTHON "/usr/bin/python3"
+ENV PYTHON "/usr/bin/python3.11"
+# As a final step configure the user (if env is defined)
+ARG USER
+ARG UID
+RUN if [ "${USER}" ]; then \
+  id ${USER} 2>/dev/null || useradd -u ${UID} -U ${USER}; fi

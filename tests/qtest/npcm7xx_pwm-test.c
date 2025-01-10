@@ -20,6 +20,8 @@
 #include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qnum.h"
 
+static int verbosity_level;
+
 #define REF_HZ          25000000
 
 /* Register field definitions. */
@@ -221,7 +223,9 @@ static uint64_t pwm_qom_get(QTestState *qts, const char *path, const char *name)
     QDict *response;
     uint64_t val;
 
-    g_test_message("Getting properties %s from %s", name, path);
+    if (verbosity_level >= 2) {
+        g_test_message("Getting properties %s from %s", name, path);
+    }
     response = qtest_qmp(qts, "{ 'execute': 'qom-get',"
             " 'arguments': { 'path': %s, 'property': %s}}",
             path, name);
@@ -260,8 +264,10 @@ static void mft_qom_set(QTestState *qts, int index, const char *name,
     QDict *response;
     char *path = g_strdup_printf("/machine/soc/mft[%d]", index);
 
-    g_test_message("Setting properties %s of mft[%d] with value %u",
-                   name, index, value);
+    if (verbosity_level >= 2) {
+        g_test_message("Setting properties %s of mft[%d] with value %u",
+                       name, index, value);
+    }
     response = qtest_qmp(qts, "{ 'execute': 'qom-set',"
             " 'arguments': { 'path': %s, "
             " 'property': %s, 'value': %u}}",
@@ -506,9 +512,12 @@ static void mft_verify_rpm(QTestState *qts, const TestData *td, uint64_t duty)
     int32_t expected_cnt = mft_compute_cnt(rpm, clk);
 
     qtest_irq_intercept_in(qts, "/machine/soc/a9mpcore/gic");
-    g_test_message(
-        "verifying rpm for mft[%d]: clk: %" PRIu64 ", duty: %" PRIu64 ", rpm: %u, cnt: %d",
-        index, clk, duty, rpm, expected_cnt);
+    if (verbosity_level >= 2) {
+        g_test_message(
+            "verifying rpm for mft[%d]: clk: %" PRIu64 ", duty: %" PRIu64
+            ", rpm: %u, cnt: %d",
+            index, clk, duty, rpm, expected_cnt);
+    }
 
     /* Verify rpm for fan A */
     /* Stop capture */
@@ -597,6 +606,7 @@ static void test_toggle(gconstpointer test_data)
     uint32_t ppr, csr, pcr, cnr, cmr;
     int i, j, k, l;
     uint64_t expected_freq, expected_duty;
+    int cnr_step = g_test_quick() ? 2 : 1;
 
     mft_init(qts, td);
 
@@ -609,7 +619,7 @@ static void test_toggle(gconstpointer test_data)
             csr = csr_list[j];
             pwm_write_csr(qts, td, csr);
 
-            for (k = 0; k < ARRAY_SIZE(cnr_list); ++k) {
+            for (k = 0; k < ARRAY_SIZE(cnr_list); k += cnr_step) {
                 cnr = cnr_list[k];
                 pwm_write_cnr(qts, td, cnr);
 
@@ -669,11 +679,23 @@ static void pwm_add_test(const char *name, const TestData* td,
 int main(int argc, char **argv)
 {
     TestData test_data_list[ARRAY_SIZE(pwm_module_list) * ARRAY_SIZE(pwm_list)];
+    int pwm_module_list_cnt = 1, pwm_list_cnt = 1;
+
+    char *v_env = getenv("V");
+
+    if (v_env) {
+        verbosity_level = atoi(v_env);
+    }
 
     g_test_init(&argc, &argv, NULL);
 
-    for (int i = 0; i < ARRAY_SIZE(pwm_module_list); ++i) {
-        for (int j = 0; j < ARRAY_SIZE(pwm_list); ++j) {
+    if (!g_test_quick()) {
+        pwm_module_list_cnt = ARRAY_SIZE(pwm_module_list);
+        pwm_list_cnt = ARRAY_SIZE(pwm_list);
+    }
+
+    for (int i = 0; i < pwm_module_list_cnt; ++i) {
+        for (int j = 0; j < pwm_list_cnt; ++j) {
             TestData *td = &test_data_list[i * ARRAY_SIZE(pwm_list) + j];
 
             td->module = &pwm_module_list[i];

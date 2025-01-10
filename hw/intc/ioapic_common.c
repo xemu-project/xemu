@@ -23,10 +23,9 @@
 #include "qapi/error.h"
 #include "qemu/module.h"
 #include "migration/vmstate.h"
-#include "monitor/monitor.h"
-#include "hw/i386/ioapic.h"
-#include "hw/i386/ioapic_internal.h"
 #include "hw/intc/intc.h"
+#include "hw/intc/ioapic.h"
+#include "hw/intc/ioapic_internal.h"
 #include "hw/sysbus.h"
 
 /* ioapic_no count start from 0 to MAX_IOAPICS,
@@ -59,59 +58,62 @@ static bool ioapic_get_statistics(InterruptStatsProvider *obj,
     return true;
 }
 
-static void ioapic_irr_dump(Monitor *mon, const char *name, uint32_t bitmap)
+static void ioapic_irr_dump(GString *buf, const char *name, uint32_t bitmap)
 {
     int i;
 
-    monitor_printf(mon, "%-10s ", name);
+    g_string_append_printf(buf, "%-10s ", name);
     if (bitmap == 0) {
-        monitor_printf(mon, "(none)\n");
+        g_string_append_printf(buf, "(none)\n");
         return;
     }
     for (i = 0; i < IOAPIC_NUM_PINS; i++) {
         if (bitmap & (1 << i)) {
-            monitor_printf(mon, "%-2u ", i);
+            g_string_append_printf(buf, "%-2u ", i);
         }
     }
-    monitor_printf(mon, "\n");
+    g_string_append_c(buf, '\n');
 }
 
-static void ioapic_print_redtbl(Monitor *mon, IOAPICCommonState *s)
+static void ioapic_print_redtbl(GString *buf, IOAPICCommonState *s)
 {
     static const char *delm_str[] = {
         "fixed", "lowest", "SMI", "...", "NMI", "INIT", "...", "extINT"};
     uint32_t remote_irr = 0;
     int i;
 
-    monitor_printf(mon, "ioapic0: ver=0x%x id=0x%02x sel=0x%02x",
-                   s->version, s->id, s->ioregsel);
+    g_string_append_printf(buf, "ioapic0: ver=0x%x id=0x%02x sel=0x%02x",
+                           s->version, s->id, s->ioregsel);
     if (s->ioregsel) {
-        monitor_printf(mon, " (redir[%u])\n",
-                       (s->ioregsel - IOAPIC_REG_REDTBL_BASE) >> 1);
+        g_string_append_printf(buf, " (redir[%u])\n",
+                               (s->ioregsel - IOAPIC_REG_REDTBL_BASE) >> 1);
     } else {
-        monitor_printf(mon, "\n");
+        g_string_append_c(buf, '\n');
     }
     for (i = 0; i < IOAPIC_NUM_PINS; i++) {
         uint64_t entry = s->ioredtbl[i];
         uint32_t delm = (uint32_t)((entry & IOAPIC_LVT_DELIV_MODE) >>
                                    IOAPIC_LVT_DELIV_MODE_SHIFT);
-        monitor_printf(mon, "  pin %-2u 0x%016"PRIx64" dest=%"PRIx64
-                       " vec=%-3"PRIu64" %s %-5s %-6s %-6s %s\n",
-                       i, entry,
-                       (entry >> IOAPIC_LVT_DEST_SHIFT) &
-                            (entry & IOAPIC_LVT_DEST_MODE ? 0xff : 0xf),
-                       entry & IOAPIC_VECTOR_MASK,
-                       entry & IOAPIC_LVT_POLARITY ? "active-lo" : "active-hi",
-                       entry & IOAPIC_LVT_TRIGGER_MODE ? "level" : "edge",
-                       entry & IOAPIC_LVT_MASKED ? "masked" : "",
-                       delm_str[delm],
-                       entry & IOAPIC_LVT_DEST_MODE ? "logical" : "physical");
+        g_string_append_printf(buf, "  pin %-2u 0x%016"PRIx64" dest=%"PRIx64
+                               " vec=%-3"PRIu64" %s %-5s %-6s %-6s %s\n",
+                               i, entry,
+                               (entry >> IOAPIC_LVT_DEST_SHIFT) &
+                                    (entry & IOAPIC_LVT_DEST_MODE ? 0xff : 0xf),
+                               entry & IOAPIC_VECTOR_MASK,
+                               entry & IOAPIC_LVT_POLARITY
+                                    ? "active-lo" : "active-hi",
+                               entry & IOAPIC_LVT_TRIGGER_MODE
+                                    ? "level" : "edge",
+                               entry & IOAPIC_LVT_MASKED ? "masked" : "",
+                               delm_str[delm],
+                               entry & IOAPIC_LVT_DEST_MODE
+                                    ? "logical" : "physical");
 
         remote_irr |= entry & IOAPIC_LVT_TRIGGER_MODE ?
                         (entry & IOAPIC_LVT_REMOTE_IRR ? (1 << i) : 0) : 0;
     }
-    ioapic_irr_dump(mon, "  IRR", s->irr);
-    ioapic_irr_dump(mon, "  Remote IRR", remote_irr);
+    ioapic_irr_dump(buf, "  IRR", s->irr);
+    ioapic_irr_dump(buf, "  Remote IRR", remote_irr);
 }
 
 void ioapic_reset_common(DeviceState *dev)
@@ -152,6 +154,7 @@ static int ioapic_dispatch_post_load(void *opaque, int version_id)
 
 static void ioapic_common_realize(DeviceState *dev, Error **errp)
 {
+    ERRP_GUARD();
     IOAPICCommonState *s = IOAPIC_COMMON(dev);
     IOAPICCommonClass *info;
 
@@ -162,18 +165,20 @@ static void ioapic_common_realize(DeviceState *dev, Error **errp)
 
     info = IOAPIC_COMMON_GET_CLASS(s);
     info->realize(dev, errp);
+    if (*errp) {
+        return;
+    }
 
     sysbus_init_mmio(SYS_BUS_DEVICE(s), &s->io_memory);
     ioapic_no++;
 }
 
-static void ioapic_print_info(InterruptStatsProvider *obj,
-                              Monitor *mon)
+static void ioapic_print_info(InterruptStatsProvider *obj, GString *buf)
 {
     IOAPICCommonState *s = IOAPIC_COMMON(obj);
 
     ioapic_dispatch_pre_save(s);
-    ioapic_print_redtbl(mon, s);
+    ioapic_print_redtbl(buf, s);
 }
 
 static const VMStateDescription vmstate_ioapic_common = {
@@ -182,7 +187,7 @@ static const VMStateDescription vmstate_ioapic_common = {
     .minimum_version_id = 1,
     .pre_save = ioapic_dispatch_pre_save,
     .post_load = ioapic_dispatch_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT8(id, IOAPICCommonState),
         VMSTATE_UINT8(ioregsel, IOAPICCommonState),
         VMSTATE_UNUSED_V(2, 8), /* to account for qemu-kvm's v2 format */

@@ -145,7 +145,7 @@ static bool fb_use_offsets(BCM2835FBConfig *config)
      * viewport size is larger than the physical screen. (It doesn't
      * prevent the guest setting this silly viewport setting, though...)
      */
-    return config->xres_virtual > config->xres &&
+    return config->xres_virtual > config->xres ||
         config->yres_virtual > config->yres;
 }
 
@@ -355,7 +355,7 @@ static const VMStateDescription vmstate_bcm2835_fb = {
     .name = TYPE_BCM2835_FB,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_BOOL(lock, BCM2835FBState),
         VMSTATE_BOOL(invalidate, BCM2835FBState),
         VMSTATE_BOOL(pending, BCM2835FBState),
@@ -449,7 +449,7 @@ static void bcm2835_fb_class_init(ObjectClass *klass, void *data)
 
     device_class_set_props(dc, bcm2835_fb_props);
     dc->realize = bcm2835_fb_realize;
-    dc->reset = bcm2835_fb_reset;
+    device_class_set_legacy_reset(dc, bcm2835_fb_reset);
     dc->vmsd = &vmstate_bcm2835_fb;
 }
 

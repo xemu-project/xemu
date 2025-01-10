@@ -13,15 +13,15 @@
 
 /* #define DEBUG */
 
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+
 typedef unsigned char      u8;
 typedef unsigned short     u16;
 typedef unsigned int       u32;
 typedef unsigned long long u64;
-typedef unsigned long      ulong;
-typedef unsigned char      __u8;
-typedef unsigned short     __u16;
-typedef unsigned int       __u32;
-typedef unsigned long long __u64;
 
 #define true 1
 #define false 0
@@ -30,10 +30,8 @@ typedef unsigned long long __u64;
 #define EIO     1
 #define EBUSY   2
 #define ENODEV  3
+#define EINVAL  4
 
-#ifndef NULL
-#define NULL    0
-#endif
 #ifndef MIN
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #endif
@@ -55,9 +53,11 @@ void consume_io_int(void);
 /* main.c */
 void write_subsystem_identification(void);
 void write_iplb_location(void);
-extern char stack[PAGE_SIZE * 8] __attribute__((__aligned__(PAGE_SIZE)));
 unsigned int get_loadparm_index(void);
 void main(void);
+
+/* netmain.c */
+int netmain(void);
 
 /* sclp.c */
 void sclp_print(const char *string);
@@ -67,18 +67,18 @@ void sclp_get_loadparm_ascii(char *loadparm);
 int sclp_read(char *str, size_t count);
 
 /* virtio.c */
-unsigned long virtio_load_direct(ulong rec_list1, ulong rec_list2,
-                                 ulong subchan_id, void *load_addr);
+unsigned long virtio_load_direct(unsigned long rec_list1, unsigned long rec_list2,
+                                 unsigned long subchan_id, void *load_addr);
 bool virtio_is_supported(SubChannelId schid);
 int virtio_blk_setup_device(SubChannelId schid);
-int virtio_read(ulong sector, void *load_addr);
+int virtio_read(unsigned long sector, void *load_addr);
 
 /* bootmap.c */
 void zipl_load(void);
 
 /* jump2ipl.c */
 void write_reset_psw(uint64_t psw);
-void jump_to_IPL_code(uint64_t address);
+int jump_to_IPL_code(uint64_t address);
 void jump_to_low_kernel(void);
 
 /* menu.c */
@@ -93,7 +93,7 @@ bool menu_is_enabled_enum(void);
 __attribute__ ((__noreturn__))
 static inline void panic(const char *string)
 {
-    sclp_print(string);
+    printf("ERROR: %s\n ", string);
     disabled_wait();
 }
 
@@ -115,20 +115,10 @@ static inline void fill_hex_val(char *out, void *ptr, unsigned size)
     }
 }
 
-static inline void print_int(const char *desc, u64 addr)
-{
-    char out[] = ": 0xffffffffffffffff\n";
-
-    fill_hex_val(&out[4], &addr, sizeof(addr));
-
-    sclp_print(desc);
-    sclp_print(out);
-}
-
 static inline void debug_print_int(const char *desc, u64 addr)
 {
 #ifdef DEBUG
-    print_int(desc, addr);
+    printf("%s 0x%X\n", desc, addr);
 #endif
 }
 
@@ -153,18 +143,14 @@ static inline void debug_print_addr(const char *desc, void *p)
 static inline void IPL_assert(bool term, const char *message)
 {
     if (!term) {
-        sclp_print("\n! ");
-        sclp_print(message);
-        panic(" !\n"); /* no return */
+        panic(message); /* no return */
     }
 }
 
 static inline void IPL_check(bool term, const char *message)
 {
     if (!term) {
-        sclp_print("\n! WARNING: ");
-        sclp_print(message);
-        sclp_print(" !\n");
+        printf("WARNING: %s\n", message);
     }
 }
 

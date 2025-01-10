@@ -122,7 +122,7 @@ static const VMStateDescription vmstate_exynos4210_rtc_state = {
     .name = "exynos4210.rtc",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(reg_intp, Exynos4210RTCState),
         VMSTATE_UINT32(reg_rtccon, Exynos4210RTCState),
         VMSTATE_UINT32(reg_ticcnt, Exynos4210RTCState),
@@ -202,7 +202,7 @@ static void exynos4210_rtc_update_freq(Exynos4210RTCState *s,
     uint32_t freq;
 
     freq = s->freq;
-    /* set frequncy for time generator */
+    /* set frequency for time generator */
     s->freq = RTC_BASE_FREQ / (1 << TICCKSEL(reg_value));
 
     if (freq != s->freq) {
@@ -374,7 +374,7 @@ static uint64_t exynos4210_rtc_read(void *opaque, hwaddr offset,
 
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "exynos4210.rtc: bad read offset " TARGET_FMT_plx,
+                      "exynos4210.rtc: bad read offset " HWADDR_FMT_plx,
                       offset);
         break;
     }
@@ -508,7 +508,7 @@ static void exynos4210_rtc_write(void *opaque, hwaddr offset,
 
     default:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "exynos4210.rtc: bad write offset " TARGET_FMT_plx,
+                      "exynos4210.rtc: bad write offset " HWADDR_FMT_plx,
                       offset);
         break;
 
@@ -596,7 +596,7 @@ static void exynos4210_rtc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = exynos4210_rtc_reset;
+    device_class_set_legacy_reset(dc, exynos4210_rtc_reset);
     dc->vmsd = &vmstate_exynos4210_rtc_state;
 }
 

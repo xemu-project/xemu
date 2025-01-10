@@ -32,6 +32,10 @@ void hmp_hostfwd_remove(Monitor *mon, const QDict *qdict);
 
 void hmp_info_usernet(Monitor *mon, const QDict *qdict);
 
+#ifdef XBOX
+void *slirp_get_state_from_netdev(const char *id);
+#endif
+
 #endif
 
 #endif /* QEMU_NET_SLIRP_H */

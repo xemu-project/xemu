@@ -9,10 +9,10 @@
 # later.  See the COPYING file in the top-level directory.
 import os
 
-from avocado import skipIf
-from avocado_qemu import LinuxTest
+from avocado import skipUnless
+from avocado_qemu.linuxtest import LinuxTest
 
-@skipIf(os.getenv('GITLAB_CI'), 'Running on GitLab')
+@skipUnless(os.getenv('QEMU_TEST_FLAKY_TESTS'), 'Test is unstable on GitLab')
 class IntelIOMMU(LinuxTest):
     """
     :avocado: tags=arch:x86_64
@@ -21,6 +21,7 @@ class IntelIOMMU(LinuxTest):
     :avocado: tags=machine:q35
     :avocado: tags=accel:kvm
     :avocado: tags=intel_iommu
+    :avocado: tags=flaky
     """
 
     IOMMU_ADDON = ',iommu_platform=on,disable-modern=off,disable-legacy=on'
@@ -30,7 +31,7 @@ class IntelIOMMU(LinuxTest):
 
     def set_up_boot(self):
         path = self.download_boot()
-        self.vm.add_args('-device', 'virtio-blk-pci,bus=pcie.0,scsi=off,' +
+        self.vm.add_args('-device', 'virtio-blk-pci,bus=pcie.0,' +
                          'drive=drv0,id=virtio-disk0,bootindex=1,'
                          'werror=stop,rerror=stop' + self.IOMMU_ADDON)
         self.vm.add_args('-device', 'virtio-gpu-pci' + self.IOMMU_ADDON)
@@ -54,9 +55,11 @@ class IntelIOMMU(LinuxTest):
             return
 
         kernel_url = self.distro.pxeboot_url + 'vmlinuz'
+        kernel_hash = '5b6f6876e1b5bda314f93893271da0d5777b1f3c'
         initrd_url = self.distro.pxeboot_url + 'initrd.img'
-        self.kernel_path = self.fetch_asset(kernel_url)
-        self.initrd_path = self.fetch_asset(initrd_url)
+        initrd_hash = 'dd0340a1b39bd28f88532babd4581c67649ec5b1'
+        self.kernel_path = self.fetch_asset(kernel_url, asset_hash=kernel_hash)
+        self.initrd_path = self.fetch_asset(initrd_url, asset_hash=initrd_hash)
 
     def run_and_check(self):
         if self.kernel_path:

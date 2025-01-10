@@ -27,7 +27,8 @@ SPEED = quick
 .speed.slow = $(foreach s,$(sort $(filter-out %-thorough, $1)), --suite $s)
 .speed.thorough = $(foreach s,$(sort $1), --suite $s)
 
-.mtestargs = --no-rebuild -t 0
+TIMEOUT_MULTIPLIER = 1
+.mtestargs = --no-rebuild -t $(TIMEOUT_MULTIPLIER)
 ifneq ($(SPEED), quick)
 .mtestargs += --setup $(SPEED)
 endif
@@ -51,10 +52,11 @@ def process_tests(test, targets, suites):
 
     test_suites = test['suite'] or ['default']
     for s in test_suites:
-        # The suite name in the introspection info is "PROJECT:SUITE"
-        s = s.split(':')[1]
-        if s == 'slow' or s == 'thorough':
-            continue
+        # The suite name in the introspection info is "PROJECT" or "PROJECT:SUITE"
+        if ':' in s:
+            s = s.split(':')[1]
+            if s == 'slow' or s == 'thorough':
+                continue
         if s.endswith('-slow'):
             s = s[:-5]
             suites[s].speeds.append('slow')
