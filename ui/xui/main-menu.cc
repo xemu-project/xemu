@@ -430,9 +430,6 @@ void MainMenuInputView::Draw()
 
                 ImGui::Image(id, xmu_display_size, ImVec2(0.5f * i, 1),
                              ImVec2(0.5f * (i + 1), 0));
-                ImVec2 pos = ImGui::GetCursorPos();
-
-                ImGui::SetCursorPos(pos);
 
                 // Button to generate a new XMU
                 ImGui::PushID(i);
@@ -1142,11 +1139,11 @@ void MainMenuSnapshotsView::Draw()
         XemuSnapshotData *data = &g_snapshot_mgr.m_extra_data[i];
 
         int current_snapshot_binding = -1;
-        for (int i = 0; i < 4; ++i) {
-            if (g_strcmp0(*(g_snapshot_shortcut_index_key_map[i]),
+        for (int j = 0; j < 4; ++j) {
+            if (g_strcmp0(*(g_snapshot_shortcut_index_key_map[j]),
                           snapshot->name) == 0) {
                 assert(current_snapshot_binding == -1);
-                current_snapshot_binding = i;
+                current_snapshot_binding = j;
             }
         }
 

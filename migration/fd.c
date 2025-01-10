@@ -17,11 +17,37 @@
 #include "qemu/osdep.h"
 #include "channel.h"
 #include "fd.h"
+#include "file.h"
 #include "migration.h"
 #include "monitor/monitor.h"
+#include "qemu/error-report.h"
+#include "qemu/sockets.h"
 #include "io/channel-util.h"
 #include "trace.h"
 
+static bool fd_is_pipe(int fd)
+{
+    struct stat statbuf;
+
+    if (fstat(fd, &statbuf) == -1) {
+        return false;
+    }
+
+    return S_ISFIFO(statbuf.st_mode);
+}
+
+static bool migration_fd_valid(int fd)
+{
+    if (fd_is_socket(fd)) {
+        return true;
+    }
+
+    if (fd_is_pipe(fd)) {
+        return true;
+    }
+
+    return false;
+}
 
 void fd_start_outgoing_migration(MigrationState *s, const char *fdname, Error **errp)
 {
@@ -31,6 +57,11 @@ void fd_start_outgoing_migration(MigrationState *s, const char *fdname, Error **
         return;
     }
 
+    if (!migration_fd_valid(fd)) {
+        warn_report("fd: migration to a file is deprecated."
+                    " Use file: instead.");
+    }
+
     trace_migration_fd_outgoing(fd);
     ioc = qio_channel_new_fd(fd, errp);
     if (!ioc) {
@@ -38,7 +69,7 @@ void fd_start_outgoing_migration(MigrationState *s, const char *fdname, Error **
         return;
     }
 
-    qio_channel_set_name(QIO_CHANNEL(ioc), "migration-fd-outgoing");
+    qio_channel_set_name(ioc, "migration-fd-outgoing");
     migration_channel_connect(s, ioc, NULL, NULL);
     object_unref(OBJECT(ioc));
 }
@@ -60,6 +91,11 @@ void fd_start_incoming_migration(const char *fdname, Error **errp)
         return;
     }
 
+    if (!migration_fd_valid(fd)) {
+        warn_report("fd: migration to a file is deprecated."
+                    " Use file: instead.");
+    }
+
     trace_migration_fd_incoming(fd);
 
     ioc = qio_channel_new_fd(fd, errp);
@@ -68,7 +104,7 @@ void fd_start_incoming_migration(const char *fdname, Error **errp)
         return;
     }
 
-    qio_channel_set_name(QIO_CHANNEL(ioc), "migration-fd-incoming");
+    qio_channel_set_name(ioc, "migration-fd-incoming");
     qio_channel_add_watch_full(ioc, G_IO_IN,
                                fd_accept_incoming_migration,
                                NULL, NULL,

@@ -26,18 +26,43 @@
 #include "s390x-internal.h"
 #include "kvm/kvm_s390x.h"
 #include "sysemu/kvm.h"
-#include "sysemu/reset.h"
 #include "qemu/module.h"
 #include "trace.h"
 #include "qapi/qapi-types-machine.h"
 #include "sysemu/hw_accel.h"
 #include "hw/qdev-properties.h"
+#include "hw/qdev-properties-system.h"
+#include "hw/resettable.h"
 #include "fpu/softfloat-helpers.h"
 #include "disas/capstone.h"
 #include "sysemu/tcg.h"
+#ifndef CONFIG_USER_ONLY
+#include "sysemu/reset.h"
+#endif
+#include "hw/s390x/cpu-topology.h"
 
 #define CR0_RESET       0xE0UL
 #define CR14_RESET      0xC2000000UL;
+
+#ifndef CONFIG_USER_ONLY
+static bool is_early_exception_psw(uint64_t mask, uint64_t addr)
+{
+    if (mask & PSW_MASK_RESERVED) {
+        return true;
+    }
+
+    switch (mask & (PSW_MASK_32 | PSW_MASK_64)) {
+    case 0:
+        return addr & ~0xffffffULL;
+    case PSW_MASK_32:
+        return addr & ~0x7fffffffULL;
+    case PSW_MASK_32 | PSW_MASK_64:
+        return false;
+    default: /* PSW_MASK_64 */
+        return true;
+    }
+}
+#endif
 
 void s390_cpu_set_psw(CPUS390XState *env, uint64_t mask, uint64_t addr)
 {
@@ -55,6 +80,12 @@ void s390_cpu_set_psw(CPUS390XState *env, uint64_t mask, uint64_t addr)
     env->cc_op = (mask >> 44) & 3;
 
 #ifndef CONFIG_USER_ONLY
+    if (is_early_exception_psw(mask, addr)) {
+        env->int_pgm_ilen = 0;
+        trigger_pgm_exception(env, PGM_SPECIFICATION);
+        return;
+    }
+
     if ((old_mask ^ mask) & PSW_MASK_PER) {
         s390_cpu_recompute_watchpoints(env_cpu(env));
     }
@@ -112,23 +143,45 @@ static bool s390_cpu_has_work(CPUState *cs)
     return s390_cpu_has_int(cpu);
 }
 
-/* S390CPUClass::reset() */
-static void s390_cpu_reset(CPUState *s, cpu_reset_type type)
+static int s390x_cpu_mmu_index(CPUState *cs, bool ifetch)
 {
-    S390CPU *cpu = S390_CPU(s);
+    return s390x_env_mmu_index(cpu_env(cs), ifetch);
+}
+
+static void s390_query_cpu_fast(CPUState *cpu, CpuInfoFast *value)
+{
+    S390CPU *s390_cpu = S390_CPU(cpu);
+
+    value->u.s390x.cpu_state = s390_cpu->env.cpu_state;
+#if !defined(CONFIG_USER_ONLY)
+    if (s390_has_topology()) {
+        value->u.s390x.has_dedicated = true;
+        value->u.s390x.dedicated = s390_cpu->env.dedicated;
+        value->u.s390x.has_entitlement = true;
+        value->u.s390x.entitlement = s390_cpu->env.entitlement;
+    }
+#endif
+}
+
+/* S390CPUClass Resettable reset_hold phase method */
+static void s390_cpu_reset_hold(Object *obj, ResetType type)
+{
+    S390CPU *cpu = S390_CPU(obj);
     S390CPUClass *scc = S390_CPU_GET_CLASS(cpu);
     CPUS390XState *env = &cpu->env;
-    DeviceState *dev = DEVICE(s);
 
-    scc->parent_reset(dev);
+    if (scc->parent_phases.hold) {
+        scc->parent_phases.hold(obj, type);
+    }
     cpu->env.sigp_order = 0;
     s390_cpu_set_state(S390_CPU_STATE_STOPPED, cpu);
 
     switch (type) {
-    case S390_CPU_RESET_CLEAR:
+    default:
+        /* RESET_TYPE_COLD: power on or "clear" reset */
         memset(env, 0, offsetof(CPUS390XState, start_initial_reset_fields));
         /* fall through */
-    case S390_CPU_RESET_INITIAL:
+    case RESET_TYPE_S390_CPU_INITIAL:
         /* initial reset does not clear everything! */
         memset(&env->start_initial_reset_fields, 0,
                offsetof(CPUS390XState, start_normal_reset_fields) -
@@ -152,8 +205,9 @@ static void s390_cpu_reset(CPUState *s, cpu_reset_type type)
         /* tininess for underflow is detected before rounding */
         set_float_detect_tininess(float_tininess_before_rounding,
                                   &env->fpu_status);
+        set_float_2nan_prop_rule(float_2nan_prop_s_ab, &env->fpu_status);
        /* fall through */
-    case S390_CPU_RESET_NORMAL:
+    case RESET_TYPE_S390_CPU_NORMAL:
         env->psw.mask &= ~PSW_MASK_RI;
         memset(&env->start_normal_reset_fields, 0,
                offsetof(CPUS390XState, end_reset_fields) -
@@ -162,20 +216,18 @@ static void s390_cpu_reset(CPUState *s, cpu_reset_type type)
         env->pfault_token = -1UL;
         env->bpbc = false;
         break;
-    default:
-        g_assert_not_reached();
     }
 
     /* Reset state inside the kernel that we cannot access yet from QEMU. */
     if (kvm_enabled()) {
         switch (type) {
-        case S390_CPU_RESET_CLEAR:
+        default:
             kvm_s390_reset_vcpu_clear(cpu);
             break;
-        case S390_CPU_RESET_INITIAL:
+        case RESET_TYPE_S390_CPU_INITIAL:
             kvm_s390_reset_vcpu_initial(cpu);
             break;
-        case S390_CPU_RESET_NORMAL:
+        case RESET_TYPE_S390_CPU_NORMAL:
             kvm_s390_reset_vcpu_normal(cpu);
             break;
         }
@@ -239,9 +291,7 @@ out:
 static void s390_cpu_initfn(Object *obj)
 {
     CPUState *cs = CPU(obj);
-    S390CPU *cpu = S390_CPU(obj);
 
-    cpu_set_cpustate_pointers(cpu);
     cs->exception_index = EXCP_HLT;
 
 #if !defined(CONFIG_USER_ONLY)
@@ -249,28 +299,64 @@ static void s390_cpu_initfn(Object *obj)
 #endif
 }
 
-static gchar *s390_gdb_arch_name(CPUState *cs)
+static const gchar *s390_gdb_arch_name(CPUState *cs)
 {
-    return g_strdup("s390:64-bit");
+    return "s390:64-bit";
 }
 
 static Property s390x_cpu_properties[] = {
 #if !defined(CONFIG_USER_ONLY)
     DEFINE_PROP_UINT32("core-id", S390CPU, env.core_id, 0),
+    DEFINE_PROP_INT32("socket-id", S390CPU, env.socket_id, -1),
+    DEFINE_PROP_INT32("book-id", S390CPU, env.book_id, -1),
+    DEFINE_PROP_INT32("drawer-id", S390CPU, env.drawer_id, -1),
+    DEFINE_PROP_BOOL("dedicated", S390CPU, env.dedicated, false),
+    DEFINE_PROP_CPUS390ENTITLEMENT("entitlement", S390CPU, env.entitlement,
+                                   S390_CPU_ENTITLEMENT_AUTO),
 #endif
     DEFINE_PROP_END_OF_LIST()
 };
 
-static void s390_cpu_reset_full(DeviceState *dev)
-{
-    CPUState *s = CPU(dev);
-    return s390_cpu_reset(s, S390_CPU_RESET_CLEAR);
-}
-
 #ifdef CONFIG_TCG
 #include "hw/core/tcg-cpu-ops.h"
 
-static const struct TCGCPUOps s390_tcg_ops = {
+void cpu_get_tb_cpu_state(CPUS390XState *env, vaddr *pc,
+                          uint64_t *cs_base, uint32_t *pflags)
+{
+    uint32_t flags;
+
+    if (env->psw.addr & 1) {
+        /*
+         * Instructions must be at even addresses.
+         * This needs to be checked before address translation.
+         */
+        env->int_pgm_ilen = 2; /* see s390_cpu_tlb_fill() */
+        tcg_s390_program_interrupt(env, PGM_SPECIFICATION, 0);
+    }
+
+    *pc = env->psw.addr;
+    *cs_base = env->ex_value;
+
+    flags = (env->psw.mask >> FLAG_MASK_PSW_SHIFT) & FLAG_MASK_PSW;
+    if (env->psw.mask & PSW_MASK_PER) {
+        flags |= env->cregs[9] & (FLAG_MASK_PER_BRANCH |
+                                  FLAG_MASK_PER_IFETCH |
+                                  FLAG_MASK_PER_IFETCH_NULLIFY);
+        if ((env->cregs[9] & PER_CR9_EVENT_STORE) &&
+            (env->cregs[9] & PER_CR9_EVENT_STORE_REAL)) {
+            flags |= FLAG_MASK_PER_STORE_REAL;
+        }
+    }
+    if (env->cregs[0] & CR0_AFP) {
+        flags |= FLAG_MASK_AFP;
+    }
+    if (env->cregs[0] & CR0_VECTOR) {
+        flags |= FLAG_MASK_VECTOR;
+    }
+    *pflags = flags;
+}
+
+static const TCGCPUOps s390_tcg_ops = {
     .initialize = s390x_translate_init,
     .restore_state_to_opc = s390x_restore_state_to_opc,
 
@@ -280,6 +366,7 @@ static const struct TCGCPUOps s390_tcg_ops = {
 #else
     .tlb_fill = s390_cpu_tlb_fill,
     .cpu_exec_interrupt = s390_cpu_exec_interrupt,
+    .cpu_exec_halt = s390_cpu_has_work,
     .do_interrupt = s390_cpu_do_interrupt,
     .debug_excp_handler = s390x_cpu_debug_excp_handler,
     .do_unaligned_access = s390x_cpu_do_unaligned_access,
@@ -292,18 +379,21 @@ static void s390_cpu_class_init(ObjectClass *oc, void *data)
     S390CPUClass *scc = S390_CPU_CLASS(oc);
     CPUClass *cc = CPU_CLASS(scc);
     DeviceClass *dc = DEVICE_CLASS(oc);
+    ResettableClass *rc = RESETTABLE_CLASS(oc);
 
     device_class_set_parent_realize(dc, s390_cpu_realizefn,
                                     &scc->parent_realize);
     device_class_set_props(dc, s390x_cpu_properties);
     dc->user_creatable = true;
 
-    device_class_set_parent_reset(dc, s390_cpu_reset_full, &scc->parent_reset);
+    resettable_class_set_parent_phases(rc, NULL, s390_cpu_reset_hold, NULL,
+                                       &scc->parent_phases);
 
-    scc->reset = s390_cpu_reset;
     cc->class_by_name = s390_cpu_class_by_name,
     cc->has_work = s390_cpu_has_work;
+    cc->mmu_index = s390x_cpu_mmu_index;
     cc->dump_state = s390_cpu_dump_state;
+    cc->query_cpu_fast = s390_query_cpu_fast;
     cc->set_pc = s390_cpu_set_pc;
     cc->get_pc = s390_cpu_get_pc;
     cc->gdb_read_register = s390_cpu_gdb_read_register;
@@ -312,7 +402,6 @@ static void s390_cpu_class_init(ObjectClass *oc, void *data)
     s390_cpu_class_init_sysemu(cc);
 #endif
     cc->disas_set_info = s390_cpu_disas_set_info;
-    cc->gdb_num_core_regs = S390_NUM_CORE_REGS;
     cc->gdb_core_xml_file = "s390x-core64.xml";
     cc->gdb_arch_name = s390_gdb_arch_name;
 

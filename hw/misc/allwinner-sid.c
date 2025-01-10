@@ -136,7 +136,7 @@ static const VMStateDescription allwinner_sid_vmstate = {
     .name = "allwinner-sid",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(control, AwSidState),
         VMSTATE_UINT32(rdkey, AwSidState),
         VMSTATE_UINT8_ARRAY_V(identifier.data, AwSidState, sizeof(QemuUUID), 1),
@@ -148,7 +148,7 @@ static void allwinner_sid_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = allwinner_sid_reset;
+    device_class_set_legacy_reset(dc, allwinner_sid_reset);
     dc->vmsd = &allwinner_sid_vmstate;
     device_class_set_props(dc, allwinner_sid_properties);
 }

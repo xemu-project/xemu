@@ -32,7 +32,6 @@ extern "C" {
 
 // Implemented in xemu.c
 int xemu_is_fullscreen(void);
-void xemu_monitor_init(void);
 void xemu_toggle_fullscreen(void);
 void xemu_eject_disc(Error **errp);
 void xemu_load_disc(const char *path, Error **errp);

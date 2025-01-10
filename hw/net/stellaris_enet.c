@@ -15,7 +15,7 @@
 #include "net/net.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
-#include <zlib.h>
+#include <zlib.h> /* for crc32 */
 #include "qom/object.h"
 
 //#define DEBUG_STELLARIS_ENET 1
@@ -88,7 +88,7 @@ static const VMStateDescription vmstate_rx_frame = {
     .name = "stellaris_enet/rx_frame",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT8_ARRAY(data, StellarisEnetRxFrame, 2048),
         VMSTATE_UINT32(len, StellarisEnetRxFrame),
         VMSTATE_END_OF_LIST()
@@ -133,7 +133,7 @@ static const VMStateDescription vmstate_stellaris_enet = {
     .version_id = 2,
     .minimum_version_id = 2,
     .post_load = stellaris_enet_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(ris, stellaris_enet_state),
         VMSTATE_UINT32(im, stellaris_enet_state),
         VMSTATE_UINT32(rctl, stellaris_enet_state),
@@ -492,7 +492,8 @@ static void stellaris_enet_realize(DeviceState *dev, Error **errp)
     qemu_macaddr_default_if_unset(&s->conf.macaddr);
 
     s->nic = qemu_new_nic(&net_stellaris_enet_info, &s->conf,
-                          object_get_typename(OBJECT(dev)), dev->id, s);
+                          object_get_typename(OBJECT(dev)), dev->id,
+                          &dev->mem_reentrancy_guard, s);
     qemu_format_nic_info_str(qemu_get_queue(s->nic), s->conf.macaddr.a);
 }
 
@@ -506,7 +507,7 @@ static void stellaris_enet_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = stellaris_enet_realize;
-    dc->reset = stellaris_enet_reset;
+    device_class_set_legacy_reset(dc, stellaris_enet_reset);
     device_class_set_props(dc, stellaris_enet_properties);
     dc->vmsd = &vmstate_stellaris_enet;
 }

@@ -124,7 +124,6 @@ static const USBDescIface desc_iface[] = {
         .bNumEndpoints                 = 0,
         .bInterfaceClass               = USB_CLASS_AUDIO,
         .bInterfaceSubClass            = USB_SUBCLASS_AUDIO_CONTROL,
-        .bInterfaceProtocol            = 0x04,
         .iInterface                    = STRING_USBAUDIO_CONTROL,
         .ndesc                         = 4,
         .descs = (USBDescOther[]) {
@@ -282,7 +281,6 @@ static const USBDescIface desc_iface_multi[] = {
         .bNumEndpoints                 = 0,
         .bInterfaceClass               = USB_CLASS_AUDIO,
         .bInterfaceSubClass            = USB_SUBCLASS_AUDIO_CONTROL,
-        .bInterfaceProtocol            = 0x04,
         .iInterface                    = STRING_USBAUDIO_CONTROL,
         .ndesc                         = 4,
         .descs = (USBDescOther[]) {
@@ -293,7 +291,7 @@ static const USBDescIface desc_iface_multi[] = {
                     USB_DT_CS_INTERFACE,        /*  u8  bDescriptorType */
                     DST_AC_HEADER,              /*  u8  bDescriptorSubtype */
                     U16(0x0100),                /* u16  bcdADC */
-                    U16(0x38),                  /* u16  wTotalLength */
+                    U16(0x37),                  /* u16  wTotalLength */
                     0x01,                       /*  u8  bInCollection */
                     0x01,                       /*  u8  baInterfaceNr */
                 }
@@ -944,12 +942,15 @@ static void usb_audio_realize(USBDevice *dev, Error **errp)
     USBAudioState *s = USB_AUDIO(dev);
     int i;
 
+    if (!AUD_register_card(TYPE_USB_AUDIO, &s->card, errp)) {
+        return;
+    }
+
     dev->usb_desc = s->multi ? &desc_audio_multi : &desc_audio;
 
     usb_desc_create_serial(dev);
     usb_desc_init(dev);
     s->dev.opaque = s;
-    AUD_register_card(TYPE_USB_AUDIO, &s->card);
 
     s->out.altset        = ALTSET_OFF;
     s->out.vol.mute      = false;

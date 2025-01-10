@@ -444,7 +444,7 @@ static int max31785_write_data(PMBusDevice *pmdev, const uint8_t *buf,
     return 0;
 }
 
-static void max31785_exit_reset(Object *obj)
+static void max31785_exit_reset(Object *obj, ResetType type)
 {
     PMBusDevice *pmdev = PMBUS_DEVICE(obj);
     MAX31785State *s = MAX31785(obj);
@@ -487,7 +487,7 @@ static const VMStateDescription vmstate_max31785 = {
     .name = TYPE_MAX31785,
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]){
+    .fields = (const VMStateField[]){
         VMSTATE_PMBUS_DEVICE(parent, MAX31785State),
         VMSTATE_UINT16_ARRAY(mfr_mode, MAX31785State,
                              MAX31785_TOTAL_NUM_PAGES),

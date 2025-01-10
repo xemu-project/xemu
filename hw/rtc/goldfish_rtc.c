@@ -242,7 +242,7 @@ static const VMStateDescription goldfish_rtc_vmstate = {
     .version_id = 2,
     .pre_save = goldfish_rtc_pre_save,
     .post_load = goldfish_rtc_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT64(tick_offset_vmstate, GoldfishRTCState),
         VMSTATE_UINT64(alarm_next, GoldfishRTCState),
         VMSTATE_UINT32(alarm_running, GoldfishRTCState),
@@ -298,7 +298,7 @@ static void goldfish_rtc_class_init(ObjectClass *klass, void *data)
 
     device_class_set_props(dc, goldfish_rtc_properties);
     dc->realize = goldfish_rtc_realize;
-    dc->reset = goldfish_rtc_reset;
+    device_class_set_legacy_reset(dc, goldfish_rtc_reset);
     dc->vmsd = &goldfish_rtc_vmstate;
 }
 

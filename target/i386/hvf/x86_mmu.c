@@ -38,6 +38,7 @@
 #define LEGACY_PTE_PAGE_MASK        (0xffffffffllu << 12)
 #define PAE_PTE_PAGE_MASK           ((-1llu << 12) & ((1llu << 52) - 1))
 #define PAE_PTE_LARGE_PAGE_MASK     ((-1llu << (21)) & ((1llu << 52) - 1))
+#define PAE_PTE_SUPER_PAGE_MASK     ((-1llu << (30)) & ((1llu << 52) - 1))
 
 struct gpt_translation {
     target_ulong  gva;
@@ -49,7 +50,7 @@ struct gpt_translation {
     bool exec_access;
 };
 
-static int gpt_top_level(struct CPUState *cpu, bool pae)
+static int gpt_top_level(CPUState *cpu, bool pae)
 {
     if (!pae) {
         return 2;
@@ -73,7 +74,7 @@ static inline int pte_size(bool pae)
 }
 
 
-static bool get_pt_entry(struct CPUState *cpu, struct gpt_translation *pt,
+static bool get_pt_entry(CPUState *cpu, struct gpt_translation *pt,
                          int level, bool pae)
 {
     int index;
@@ -95,8 +96,8 @@ static bool get_pt_entry(struct CPUState *cpu, struct gpt_translation *pt,
 }
 
 /* test page table entry */
-static bool test_pt_entry(struct CPUState *cpu, struct gpt_translation *pt,
-                          int level, bool *is_large, bool pae)
+static bool test_pt_entry(CPUState *cpu, struct gpt_translation *pt,
+                          int level, int *largeness, bool pae)
 {
     uint64_t pte = pt->pte[level];
 
@@ -118,15 +119,15 @@ static bool test_pt_entry(struct CPUState *cpu, struct gpt_translation *pt,
         goto exit;
     }
 
-    if (1 == level && pte_large_page(pte)) {
+    if (level && pte_large_page(pte)) {
         pt->err_code |= MMU_PAGE_PT;
-        *is_large = true;
+        *largeness = level;
     }
     if (!level) {
         pt->err_code |= MMU_PAGE_PT;
     }
 
-    uint32_t cr0 = rvmcs(cpu->hvf->fd, VMCS_GUEST_CR0);
+    uint32_t cr0 = rvmcs(cpu->accel->fd, VMCS_GUEST_CR0);
     /* check protection */
     if (cr0 & CR0_WP_MASK) {
         if (pt->write_access && !pte_write_access(pte)) {
@@ -152,9 +153,18 @@ static inline uint64_t pse_pte_to_page(uint64_t pte)
     return ((pte & 0x1fe000) << 19) | (pte & 0xffc00000);
 }
 
-static inline uint64_t large_page_gpa(struct gpt_translation *pt, bool pae)
+static inline uint64_t large_page_gpa(struct gpt_translation *pt, bool pae,
+                                      int largeness)
 {
-    VM_PANIC_ON(!pte_large_page(pt->pte[1]))
+    VM_PANIC_ON(!pte_large_page(pt->pte[largeness]))
+
+    /* 1Gib large page  */
+    if (pae && largeness == 2) {
+        return (pt->pte[2] & PAE_PTE_SUPER_PAGE_MASK) | (pt->gva & 0x3fffffff);
+    }
+
+    VM_PANIC_ON(largeness != 1)
+
     /* 2Mb large page  */
     if (pae) {
         return (pt->pte[1] & PAE_PTE_LARGE_PAGE_MASK) | (pt->gva & 0x1fffff);
@@ -166,12 +176,12 @@ static inline uint64_t large_page_gpa(struct gpt_translation *pt, bool pae)
 
 
 
-static bool walk_gpt(struct CPUState *cpu, target_ulong addr, int err_code,
+static bool walk_gpt(CPUState *cpu, target_ulong addr, int err_code,
                      struct gpt_translation *pt, bool pae)
 {
     int top_level, level;
-    bool is_large = false;
-    target_ulong cr3 = rvmcs(cpu->hvf->fd, VMCS_GUEST_CR3);
+    int largeness = 0;
+    target_ulong cr3 = rvmcs(cpu->accel->fd, VMCS_GUEST_CR3);
     uint64_t page_mask = pae ? PAE_PTE_PAGE_MASK : LEGACY_PTE_PAGE_MASK;
     
     memset(pt, 0, sizeof(*pt));
@@ -186,26 +196,26 @@ static bool walk_gpt(struct CPUState *cpu, target_ulong addr, int err_code,
     for (level = top_level; level > 0; level--) {
         get_pt_entry(cpu, pt, level, pae);
 
-        if (!test_pt_entry(cpu, pt, level - 1, &is_large, pae)) {
+        if (!test_pt_entry(cpu, pt, level - 1, &largeness, pae)) {
             return false;
         }
 
-        if (is_large) {
+        if (largeness) {
             break;
         }
     }
 
-    if (!is_large) {
+    if (!largeness) {
         pt->gpa = (pt->pte[0] & page_mask) | (pt->gva & 0xfff);
     } else {
-        pt->gpa = large_page_gpa(pt, pae);
+        pt->gpa = large_page_gpa(pt, pae, largeness);
     }
 
     return true;
 }
 
 
-bool mmu_gva_to_gpa(struct CPUState *cpu, target_ulong gva, uint64_t *gpa)
+bool mmu_gva_to_gpa(CPUState *cpu, target_ulong gva, uint64_t *gpa)
 {
     bool res;
     struct gpt_translation pt;
@@ -225,7 +235,7 @@ bool mmu_gva_to_gpa(struct CPUState *cpu, target_ulong gva, uint64_t *gpa)
     return false;
 }
 
-void vmx_write_mem(struct CPUState *cpu, target_ulong gva, void *data, int bytes)
+void vmx_write_mem(CPUState *cpu, target_ulong gva, void *data, int bytes)
 {
     uint64_t gpa;
 
@@ -234,7 +244,7 @@ void vmx_write_mem(struct CPUState *cpu, target_ulong gva, void *data, int bytes
         int copy = MIN(bytes, 0x1000 - (gva & 0xfff));
 
         if (!mmu_gva_to_gpa(cpu, gva, &gpa)) {
-            VM_PANIC_EX("%s: mmu_gva_to_gpa 0x" TARGET_FMT_lx " failed\n", __func__, gva);
+            VM_PANIC_EX("%s: mmu_gva_to_gpa %llx failed\n", __func__, gva);
         } else {
             address_space_write(&address_space_memory, gpa,
                                 MEMTXATTRS_UNSPECIFIED, data, copy);
@@ -246,7 +256,7 @@ void vmx_write_mem(struct CPUState *cpu, target_ulong gva, void *data, int bytes
     }
 }
 
-void vmx_read_mem(struct CPUState *cpu, void *data, target_ulong gva, int bytes)
+void vmx_read_mem(CPUState *cpu, void *data, target_ulong gva, int bytes)
 {
     uint64_t gpa;
 
@@ -255,7 +265,7 @@ void vmx_read_mem(struct CPUState *cpu, void *data, target_ulong gva, int bytes)
         int copy = MIN(bytes, 0x1000 - (gva & 0xfff));
 
         if (!mmu_gva_to_gpa(cpu, gva, &gpa)) {
-            VM_PANIC_EX("%s: mmu_gva_to_gpa 0x" TARGET_FMT_lx " failed\n", __func__, gva);
+            VM_PANIC_EX("%s: mmu_gva_to_gpa %llx failed\n", __func__, gva);
         }
         address_space_read(&address_space_memory, gpa, MEMTXATTRS_UNSPECIFIED,
                            data, copy);

@@ -77,14 +77,31 @@ ssize_t load_image_targphys(const char *filename, hwaddr,
 ssize_t load_image_mr(const char *filename, MemoryRegion *mr);
 
 /* This is the limit on the maximum uncompressed image size that
- * load_image_gzipped_buffer() and load_image_gzipped() will read. It prevents
+ * load_image_gzipped_buffer() will read. It prevents
  * g_malloc() in those functions from allocating a huge amount of memory.
  */
 #define LOAD_IMAGE_MAX_GUNZIP_BYTES (256 << 20)
 
 ssize_t load_image_gzipped_buffer(const char *filename, uint64_t max_sz,
                                   uint8_t **buffer);
-ssize_t load_image_gzipped(const char *filename, hwaddr addr, uint64_t max_sz);
+/**
+ * unpack_efi_zboot_image:
+ * @buffer: pointer to a variable holding the address of a buffer containing the
+ *          image
+ * @size: pointer to a variable holding the size of the buffer
+ *
+ * Check whether the buffer contains a EFI zboot image, and if it does, extract
+ * the compressed payload and decompress it into a new buffer. If successful,
+ * the old buffer is freed, and the *buffer and size variables pointed to by the
+ * function arguments are updated to refer to the newly populated buffer.
+ *
+ * Returns 0 if the image could not be identified as a EFI zboot image.
+ * Returns -1 if the buffer contents were identified as a EFI zboot image, but
+ * unpacking failed for any reason.
+ * Returns the size of the decompressed payload if decompression was performed
+ * successfully.
+ */
+ssize_t unpack_efi_zboot_image(uint8_t **buffer, int *size);
 
 #define ELF_LOAD_FAILED       -1
 #define ELF_LOAD_NOT_ELF      -2
@@ -251,12 +268,9 @@ void pstrcpy_targphys(const char *name,
                       hwaddr dest, int buf_size,
                       const char *source);
 
-extern bool option_rom_has_mr;
-extern bool rom_file_has_mr;
-
 ssize_t rom_add_file(const char *file, const char *fw_dir,
                      hwaddr addr, int32_t bootindex,
-                     bool option_rom, MemoryRegion *mr, AddressSpace *as);
+                     bool has_option_rom, MemoryRegion *mr, AddressSpace *as);
 MemoryRegion *rom_add_blob(const char *name, const void *blob, size_t len,
                            size_t max_len, hwaddr addr,
                            const char *fw_file_name,
@@ -322,7 +336,6 @@ void *rom_ptr(hwaddr addr, size_t size);
  * rom_ptr().
  */
 void *rom_ptr_for_as(AddressSpace *as, hwaddr addr, size_t size);
-void hmp_info_roms(Monitor *mon, const QDict *qdict);
 
 #define rom_add_file_fixed(_f, _a, _i)          \
     rom_add_file(_f, NULL, _a, _i, false, NULL, NULL)

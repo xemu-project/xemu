@@ -164,7 +164,7 @@ static void restore_pt_regs(struct target_pt_regs *regs, CPUSPARCState *env)
      */
     uint32_t psr;
     __get_user(psr, &regs->psr);
-    env->psr = (psr & PSR_ICC) | (env->psr & ~PSR_ICC);
+    cpu_put_psr_icc(env, psr);
 #endif
 
     /* Note that pc and npc are handled in the caller. */
@@ -199,20 +199,21 @@ static void save_fpu(struct target_siginfo_fpu *fpu, CPUSPARCState *env)
     for (i = 0; i < 32; ++i) {
         __put_user(env->fpr[i].ll, &fpu->si_double_regs[i]);
     }
-    __put_user(env->fsr, &fpu->si_fsr);
+    __put_user(cpu_get_fsr(env), &fpu->si_fsr);
     __put_user(env->gsr, &fpu->si_gsr);
     __put_user(env->fprs, &fpu->si_fprs);
 #else
     for (i = 0; i < 16; ++i) {
         __put_user(env->fpr[i].ll, &fpu->si_double_regs[i]);
     }
-    __put_user(env->fsr, &fpu->si_fsr);
+    __put_user(cpu_get_fsr(env), &fpu->si_fsr);
     __put_user(0, &fpu->si_fpqdepth);
 #endif
 }
 
 static void restore_fpu(struct target_siginfo_fpu *fpu, CPUSPARCState *env)
 {
+    target_ulong fsr;
     int i;
 
 #ifdef TARGET_SPARC64
@@ -230,15 +231,16 @@ static void restore_fpu(struct target_siginfo_fpu *fpu, CPUSPARCState *env)
             __get_user(env->fpr[i].ll, &fpu->si_double_regs[i]);
         }
     }
-    __get_user(env->fsr, &fpu->si_fsr);
     __get_user(env->gsr, &fpu->si_gsr);
     env->fprs |= fprs;
 #else
     for (i = 0; i < 16; ++i) {
         __get_user(env->fpr[i].ll, &fpu->si_double_regs[i]);
     }
-    __get_user(env->fsr, &fpu->si_fsr);
 #endif
+
+    __get_user(fsr, &fpu->si_fsr);
+    cpu_put_fsr(env, fsr);
 }
 
 #ifdef TARGET_ARCH_HAS_SETUP_FRAME
@@ -331,7 +333,7 @@ void setup_rt_frame(int sig, struct target_sigaction *ka,
 
     __put_user(0, &sf->rwin_save);  /* TODO: save_rwin_state */
 
-    tswap_siginfo(&sf->info, info);
+    sf->info = *info;
     tswap_sigset(&sf->mask, set);
     target_save_altstack(&sf->stack, env);
 
@@ -503,7 +505,23 @@ long do_rt_sigreturn(CPUSPARCState *env)
     return -QEMU_ESIGRETURN;
 }
 
-#if defined(TARGET_SPARC64) && !defined(TARGET_ABI32)
+#ifdef TARGET_ABI32
+void setup_sigtramp(abi_ulong sigtramp_page)
+{
+    uint32_t *tramp = lock_user(VERIFY_WRITE, sigtramp_page, 2 * 8, 0);
+    assert(tramp != NULL);
+
+    default_sigreturn = sigtramp_page;
+    install_sigtramp(tramp, TARGET_NR_sigreturn);
+
+    default_rt_sigreturn = sigtramp_page + 8;
+    install_sigtramp(tramp + 2, TARGET_NR_rt_sigreturn);
+
+    unlock_user(tramp, sigtramp_page, 2 * 8);
+}
+#endif
+
+#ifdef TARGET_SPARC64
 #define SPARC_MC_TSTATE 0
 #define SPARC_MC_PC 1
 #define SPARC_MC_NPC 2
@@ -527,11 +545,6 @@ long do_rt_sigreturn(CPUSPARCState *env)
 
 typedef abi_ulong target_mc_greg_t;
 typedef target_mc_greg_t target_mc_gregset_t[SPARC_MC_NGREG];
-
-struct target_mc_fq {
-    abi_ulong mcfq_addr;
-    uint32_t mcfq_insn;
-};
 
 /*
  * Note the manual 16-alignment; the kernel gets this because it
@@ -575,7 +588,7 @@ void sparc64_set_context(CPUSPARCState *env)
     struct target_ucontext *ucp;
     target_mc_gregset_t *grp;
     target_mc_fpu_t *fpup;
-    abi_ulong pc, npc, tstate;
+    target_ulong pc, npc, tstate;
     unsigned int i;
     unsigned char fenab;
 
@@ -646,6 +659,7 @@ void sparc64_set_context(CPUSPARCState *env)
     __get_user(fenab, &(fpup->mcfpu_enab));
     if (fenab) {
         abi_ulong fprs;
+        abi_ulong fsr;
 
         /*
          * We use the FPRS from the guest only in deciding whether
@@ -674,7 +688,8 @@ void sparc64_set_context(CPUSPARCState *env)
                 __get_user(env->fpr[i].ll, &(fpup->mcfpu_fregs.dregs[i]));
             }
         }
-        __get_user(env->fsr, &(fpup->mcfpu_fsr));
+        __get_user(fsr, &(fpup->mcfpu_fsr));
+        cpu_put_fsr(env, fsr);
         __get_user(env->gsr, &(fpup->mcfpu_gsr));
     }
     unlock_user_struct(ucp, ucp_addr, 0);
@@ -773,18 +788,4 @@ do_sigsegv:
     unlock_user_struct(ucp, ucp_addr, 1);
     force_sig(TARGET_SIGSEGV);
 }
-#else
-void setup_sigtramp(abi_ulong sigtramp_page)
-{
-    uint32_t *tramp = lock_user(VERIFY_WRITE, sigtramp_page, 2 * 8, 0);
-    assert(tramp != NULL);
-
-    default_sigreturn = sigtramp_page;
-    install_sigtramp(tramp, TARGET_NR_sigreturn);
-
-    default_rt_sigreturn = sigtramp_page + 8;
-    install_sigtramp(tramp + 2, TARGET_NR_rt_sigreturn);
-
-    unlock_user(tramp, sigtramp_page, 2 * 8);
-}
-#endif
+#endif /* TARGET_SPARC64 */

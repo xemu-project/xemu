@@ -29,22 +29,6 @@
 
 //#define DEBUG_MULDIV
 
-/* modulo 9 table */
-static const uint8_t rclb_table[32] = {
-    0, 1, 2, 3, 4, 5, 6, 7,
-    8, 0, 1, 2, 3, 4, 5, 6,
-    7, 8, 0, 1, 2, 3, 4, 5,
-    6, 7, 8, 0, 1, 2, 3, 4,
-};
-
-/* modulo 17 table */
-static const uint8_t rclw_table[32] = {
-    0, 1, 2, 3, 4, 5, 6, 7,
-    8, 9, 10, 11, 12, 13, 14, 15,
-    16, 0, 1, 2, 3, 4, 5, 6,
-    7, 8, 9, 10, 11, 12, 13, 14,
-};
-
 /* division, flags are undefined */
 
 void helper_divb_AL(CPUX86State *env, target_ulong t0)
@@ -161,27 +145,24 @@ void helper_idivl_EAX(CPUX86State *env, target_ulong t0)
 
 /* bcd */
 
-/* XXX: exception */
-void helper_aam(CPUX86State *env, int base)
+target_ulong helper_aam(target_ulong al, target_ulong base)
 {
-    int al, ah;
+    int ah;
 
-    al = env->regs[R_EAX] & 0xff;
+    al &= 0xff;
     ah = al / base;
     al = al % base;
-    env->regs[R_EAX] = (env->regs[R_EAX] & ~0xffff) | al | (ah << 8);
-    CC_DST = al;
+    return al | (ah << 8);
 }
 
-void helper_aad(CPUX86State *env, int base)
+target_ulong helper_aad(target_ulong ax, target_ulong base)
 {
     int al, ah;
 
-    al = env->regs[R_EAX] & 0xff;
-    ah = (env->regs[R_EAX] >> 8) & 0xff;
+    al = ax & 0xff;
+    ah = (ax >> 8) & 0xff;
     al = ((ah * base) + al) & 0xff;
-    env->regs[R_EAX] = (env->regs[R_EAX] & ~0xffff) | al;
-    CC_DST = al;
+    return al;
 }
 
 void helper_aaa(CPUX86State *env)
@@ -190,7 +171,7 @@ void helper_aaa(CPUX86State *env)
     int al, ah, af;
     int eflags;
 
-    eflags = cpu_cc_compute_all(env, CC_OP);
+    eflags = cpu_cc_compute_all(env);
     af = eflags & CC_A;
     al = env->regs[R_EAX] & 0xff;
     ah = (env->regs[R_EAX] >> 8) & 0xff;
@@ -206,6 +187,7 @@ void helper_aaa(CPUX86State *env)
     }
     env->regs[R_EAX] = (env->regs[R_EAX] & ~0xffff) | al | (ah << 8);
     CC_SRC = eflags;
+    CC_OP = CC_OP_EFLAGS;
 }
 
 void helper_aas(CPUX86State *env)
@@ -214,7 +196,7 @@ void helper_aas(CPUX86State *env)
     int al, ah, af;
     int eflags;
 
-    eflags = cpu_cc_compute_all(env, CC_OP);
+    eflags = cpu_cc_compute_all(env);
     af = eflags & CC_A;
     al = env->regs[R_EAX] & 0xff;
     ah = (env->regs[R_EAX] >> 8) & 0xff;
@@ -230,6 +212,7 @@ void helper_aas(CPUX86State *env)
     }
     env->regs[R_EAX] = (env->regs[R_EAX] & ~0xffff) | al | (ah << 8);
     CC_SRC = eflags;
+    CC_OP = CC_OP_EFLAGS;
 }
 
 void helper_daa(CPUX86State *env)
@@ -237,7 +220,7 @@ void helper_daa(CPUX86State *env)
     int old_al, al, af, cf;
     int eflags;
 
-    eflags = cpu_cc_compute_all(env, CC_OP);
+    eflags = cpu_cc_compute_all(env);
     cf = eflags & CC_C;
     af = eflags & CC_A;
     old_al = al = env->regs[R_EAX] & 0xff;
@@ -254,9 +237,10 @@ void helper_daa(CPUX86State *env)
     env->regs[R_EAX] = (env->regs[R_EAX] & ~0xff) | al;
     /* well, speed is not an issue here, so we compute the flags by hand */
     eflags |= (al == 0) << 6; /* zf */
-    eflags |= parity_table[al]; /* pf */
+    eflags |= compute_pf(al);
     eflags |= (al & 0x80); /* sf */
     CC_SRC = eflags;
+    CC_OP = CC_OP_EFLAGS;
 }
 
 void helper_das(CPUX86State *env)
@@ -264,7 +248,7 @@ void helper_das(CPUX86State *env)
     int al, al1, af, cf;
     int eflags;
 
-    eflags = cpu_cc_compute_all(env, CC_OP);
+    eflags = cpu_cc_compute_all(env);
     cf = eflags & CC_C;
     af = eflags & CC_A;
     al = env->regs[R_EAX] & 0xff;
@@ -285,9 +269,10 @@ void helper_das(CPUX86State *env)
     env->regs[R_EAX] = (env->regs[R_EAX] & ~0xff) | al;
     /* well, speed is not an issue here, so we compute the flags by hand */
     eflags |= (al == 0) << 6; /* zf */
-    eflags |= parity_table[al]; /* pf */
+    eflags |= compute_pf(al);
     eflags |= (al & 0x80); /* sf */
     CC_SRC = eflags;
+    CC_OP = CC_OP_EFLAGS;
 }
 
 #ifdef TARGET_X86_64
@@ -447,24 +432,6 @@ target_ulong helper_pext(target_ulong src, target_ulong mask)
     return dest;
 }
 
-#define SHIFT 0
-#include "shift_helper_template.h"
-#undef SHIFT
-
-#define SHIFT 1
-#include "shift_helper_template.h"
-#undef SHIFT
-
-#define SHIFT 2
-#include "shift_helper_template.h"
-#undef SHIFT
-
-#ifdef TARGET_X86_64
-#define SHIFT 3
-#include "shift_helper_template.h"
-#undef SHIFT
-#endif
-
 /* Test that BIT is enabled in CR4.  If not, raise an illegal opcode
    exception.  This reduces the requirements for rare CR4 bits being
    mapped into HFLAGS.  */
@@ -486,10 +453,11 @@ target_ulong HELPER(rdrand)(CPUX86State *env)
         error_free(err);
         /* Failure clears CF and all other flags, and returns 0.  */
         env->cc_src = 0;
-        return 0;
+        ret = 0;
+    } else {
+        /* Success sets CF and clears all others.  */
+        env->cc_src = CC_C;
     }
-
-    /* Success sets CF and clears all others.  */
-    env->cc_src = CC_C;
+    env->cc_op = CC_OP_EFLAGS;
     return ret;
 }

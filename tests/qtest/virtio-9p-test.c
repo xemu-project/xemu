@@ -693,9 +693,64 @@ static void fs_unlinkat_hardlink(void *obj, void *data,
     g_assert(stat(real_file, &st_real) == 0);
 }
 
+static void fs_use_after_unlink(void *obj, void *data,
+                                QGuestAllocator *t_alloc)
+{
+    QVirtio9P *v9p = obj;
+    v9fs_set_allocator(t_alloc);
+    static const uint32_t write_count = P9_MAX_SIZE / 2;
+    g_autofree char *real_file = virtio_9p_test_path("09/doa_file");
+    g_autofree char *buf = g_malloc0(write_count);
+    struct stat st_file;
+    struct v9fs_attr attr;
+    uint32_t fid_file;
+    uint32_t count;
+
+    tattach({ .client = v9p });
+
+    /* create a file "09/doa_file" and make sure it exists and is regular */
+    tmkdir({ .client = v9p, .atPath = "/", .name = "09" });
+    tlcreate({ .client = v9p, .atPath = "09", .name = "doa_file" });
+    g_assert(stat(real_file, &st_file) == 0);
+    g_assert((st_file.st_mode & S_IFMT) == S_IFREG);
+
+    /* request a FID for that regular file that we can work with next */
+    fid_file = twalk({
+        .client = v9p, .fid = 0, .path = "09/doa_file"
+    }).newfid;
+    g_assert(fid_file != 0);
+
+    /* now first open the file in write mode before ... */
+    tlopen({ .client = v9p, .fid = fid_file, .flags = O_WRONLY });
+    /* ... removing the file from file system */
+    tunlinkat({ .client = v9p, .atPath = "09", .name = "doa_file" });
+
+    /* file is removed, but we still have it open, so this should succeed */
+    tgetattr({
+        .client = v9p, .fid = fid_file, .request_mask = P9_GETATTR_BASIC,
+        .rgetattr.attr = &attr
+    });
+    count = twrite({
+        .client = v9p, .fid = fid_file, .offset = 0, .count = write_count,
+        .data = buf
+    }).count;
+    g_assert_cmpint(count, ==, write_count);
+}
+
+static void cleanup_9p_local_driver(void *data)
+{
+    /* remove previously created test dir when test is completed */
+    virtio_9p_remove_local_test_dir();
+}
+
 static void *assign_9p_local_driver(GString *cmd_line, void *arg)
 {
+    /* make sure test dir for the 'local' tests exists */
+    virtio_9p_create_local_test_dir();
+
     virtio_9p_assign_local_driver(cmd_line, "security_model=mapped-xattr");
+
+    g_test_queue_destroy(cleanup_9p_local_driver, NULL);
     return arg;
 }
 
@@ -735,15 +790,6 @@ static void register_virtio_9p_test(void)
 
 
     /* 9pfs test cases using the 'local' filesystem driver */
-
-    /*
-     * XXX: Until we are sure that these tests can run everywhere,
-     * keep them as "slow" so that they aren't run with "make check".
-     */
-    if (!g_test_slow()) {
-        return;
-    }
-
     opts.before = assign_9p_local_driver;
     qos_add_test("local/config", "virtio-9p", pci_config,  &opts);
     qos_add_test("local/create_dir", "virtio-9p", fs_create_dir, &opts);
@@ -756,18 +802,8 @@ static void register_virtio_9p_test(void)
     qos_add_test("local/hardlink_file", "virtio-9p", fs_hardlink_file, &opts);
     qos_add_test("local/unlinkat_hardlink", "virtio-9p", fs_unlinkat_hardlink,
                  &opts);
+    qos_add_test("local/use_after_unlink", "virtio-9p", fs_use_after_unlink,
+                 &opts);
 }
 
 libqos_init(register_virtio_9p_test);
-
-static void __attribute__((constructor)) construct_9p_test(void)
-{
-    /* make sure test dir for the 'local' tests exists */
-    virtio_9p_create_local_test_dir();
-}
-
-static void __attribute__((destructor)) destruct_9p_test(void)
-{
-    /* remove previously created test dir when test suite completed */
-    virtio_9p_remove_local_test_dir();
-}

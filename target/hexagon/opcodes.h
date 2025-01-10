@@ -40,10 +40,6 @@ typedef enum {
 
 extern const char * const opcode_names[];
 
-extern const char * const opcode_reginfo[];
-extern const char * const opcode_rregs[];
-extern const char * const opcode_wregs[];
-
 typedef struct {
     const char * const encoding;
     const EncClass enc_class;
@@ -52,7 +48,5 @@ typedef struct {
 extern const OpcodeEncoding opcode_encodings[XX_LAST_OPCODE];
 
 void opcode_init(void);
-
-int opcode_which_immediate_is_extended(Opcode opcode);
 
 #endif

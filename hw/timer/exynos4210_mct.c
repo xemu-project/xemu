@@ -264,7 +264,7 @@ static const VMStateDescription vmstate_tick_timer = {
     .name = "exynos4210.mct.tick_timer",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(cnt_run, struct tick_timer),
         VMSTATE_UINT32(int_run, struct tick_timer),
         VMSTATE_UINT32(last_icnto, struct tick_timer),
@@ -283,7 +283,7 @@ static const VMStateDescription vmstate_lregs = {
     .name = "exynos4210.mct.lregs",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(cnt, struct lregs, L_REG_CNT_AMOUNT),
         VMSTATE_UINT32(tcon, struct lregs),
         VMSTATE_UINT32(int_cstat, struct lregs),
@@ -297,7 +297,7 @@ static const VMStateDescription vmstate_exynos4210_mct_lt = {
     .name = "exynos4210.mct.lt",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_INT32(id, Exynos4210MCTLT),
         VMSTATE_STRUCT(tick_timer, Exynos4210MCTLT, 0,
                 vmstate_tick_timer,
@@ -314,7 +314,7 @@ static const VMStateDescription vmstate_gregs = {
     .name = "exynos4210.mct.lregs",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT64(cnt, struct gregs),
         VMSTATE_UINT32(cnt_wstat, struct gregs),
         VMSTATE_UINT32(tcon, struct gregs),
@@ -332,7 +332,7 @@ static const VMStateDescription vmstate_exynos4210_mct_gt = {
     .name = "exynos4210.mct.lt",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_STRUCT(reg, Exynos4210MCTGT, 0, vmstate_gregs,
                 struct gregs),
         VMSTATE_UINT64(count, Exynos4210MCTGT),
@@ -346,7 +346,7 @@ static const VMStateDescription vmstate_exynos4210_mct_state = {
     .name = "exynos4210.mct",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(reg_mct_cfg, Exynos4210MCTState),
         VMSTATE_STRUCT_ARRAY(l_timer, Exynos4210MCTState, 2, 0,
             vmstate_exynos4210_mct_lt, Exynos4210MCTLT),
@@ -480,11 +480,14 @@ static int32_t exynos4210_gcomp_find(Exynos4210MCTState *s)
         res = min_comp_i;
     }
 
-    DPRINTF("found comparator %d: comp 0x%llx distance 0x%llx, gfrc 0x%llx\n",
-            res,
-            s->g_timer.reg.comp[res],
-            distance_min,
-            gfrc);
+    if (res >= 0) {
+        DPRINTF("found comparator %d: "
+                "comp 0x%llx distance 0x%llx, gfrc 0x%llx\n",
+                res,
+                s->g_timer.reg.comp[res],
+                distance_min,
+                gfrc);
+    }
 
     return res;
 }
@@ -812,7 +815,7 @@ static uint32_t exynos4210_ltick_cnt_get_cnto(struct tick_timer *s)
         /* Both are counting */
         icnto = remain / s->tcntb;
         if (icnto) {
-            tcnto = remain % (icnto * s->tcntb);
+            tcnto = remain % ((uint64_t)icnto * s->tcntb);
         } else {
             tcnto = remain % s->tcntb;
         }
@@ -1445,7 +1448,7 @@ static void exynos4210_mct_write(void *opaque, hwaddr offset,
     case L0_ICNTO: case L1_ICNTO:
     case L0_FRCNTO: case L1_FRCNTO:
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "exynos4210.mct: write to RO register " TARGET_FMT_plx,
+                      "exynos4210.mct: write to RO register " HWADDR_FMT_plx,
                       offset);
         break;
 
@@ -1547,7 +1550,7 @@ static void exynos4210_mct_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = exynos4210_mct_reset;
+    device_class_set_legacy_reset(dc, exynos4210_mct_reset);
     dc->vmsd = &vmstate_exynos4210_mct_state;
 }
 

@@ -42,6 +42,7 @@
 #include "sysemu/block-backend.h"
 #include "sysemu/blockdev.h"
 #include "sysemu/sysemu.h"
+#include "exec/ioport.h"
 #include "qemu/log.h"
 #include "qemu/main-loop.h"
 #include "qemu/module.h"
@@ -60,6 +61,7 @@ struct FDCtrlISABus {
     uint32_t irq;
     uint32_t dma;
     struct FDCtrl state;
+    PortioList portio_list;
     int32_t bootindexA;
     int32_t bootindexB;
 };
@@ -86,19 +88,20 @@ static const MemoryRegionPortio fdc_portio_list[] = {
 static void isabus_fdc_realize(DeviceState *dev, Error **errp)
 {
     ISADevice *isadev = ISA_DEVICE(dev);
+    ISABus *bus = isa_bus_from_device(isadev);
     FDCtrlISABus *isa = ISA_FDC(dev);
     FDCtrl *fdctrl = &isa->state;
     Error *err = NULL;
 
-    isa_register_portio_list(isadev, &fdctrl->portio_list,
+    isa_register_portio_list(isadev, &isa->portio_list,
                              isa->iobase, fdc_portio_list, fdctrl,
                              "fdc");
 
-    fdctrl->irq = isa_get_irq(isadev, isa->irq);
+    fdctrl->irq = isa_bus_get_irq(bus, isa->irq);
     fdctrl->dma_chann = isa->dma;
     if (fdctrl->dma_chann != -1) {
         IsaDmaClass *k;
-        fdctrl->dma = isa_get_dma(isa_bus_from_device(isadev), isa->dma);
+        fdctrl->dma = isa_bus_get_dma(bus, isa->dma);
         if (!fdctrl->dma) {
             error_setg(errp, "ISA controller does not support DMA");
             return;
@@ -144,6 +147,8 @@ static void isa_fdc_get_drive_max_chs(FloppyDriveType type, uint8_t *maxc,
             *maxs = fdf->last_sect;
         }
     }
+    /* fd_formats must contain at least one entry per FloppyDriveType */
+    assert(*maxc);
     (*maxc)--;
 }
 
@@ -187,6 +192,20 @@ static Aml *build_fdinfo_aml(int idx, FloppyDriveType type)
 
     aml_append(dev, aml_name_decl("_FDI", fdi));
     return dev;
+}
+
+void isa_fdc_set_iobase(ISADevice *fdc, hwaddr iobase)
+{
+    FDCtrlISABus *isa = ISA_FDC(fdc);
+
+    fdc->ioport_id = iobase;
+    isa->iobase = iobase;
+    portio_list_set_address(&isa->portio_list, isa->iobase);
+}
+
+void isa_fdc_set_enabled(ISADevice *fdc, bool enabled)
+{
+    portio_list_set_enabled(&ISA_FDC(fdc)->portio_list, enabled);
 }
 
 int cmos_get_fd_drive_type(FloppyDriveType fd0)
@@ -258,7 +277,7 @@ static const VMStateDescription vmstate_isa_fdc = {
     .name = "fdc",
     .version_id = 2,
     .minimum_version_id = 2,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_STRUCT(state, FDCtrlISABus, 0, vmstate_fdc, FDCtrl),
         VMSTATE_END_OF_LIST()
     }
@@ -288,7 +307,7 @@ static void isabus_fdc_class_init(ObjectClass *klass, void *data)
     dc->desc = "virtual floppy controller";
     dc->realize = isabus_fdc_realize;
     dc->fw_name = "fdc";
-    dc->reset = fdctrl_external_reset_isa;
+    device_class_set_legacy_reset(dc, fdctrl_external_reset_isa);
     dc->vmsd = &vmstate_isa_fdc;
     adevc->build_dev_aml = build_fdc_aml;
     device_class_set_props(dc, isa_fdc_properties);

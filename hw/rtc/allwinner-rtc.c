@@ -305,7 +305,7 @@ static const VMStateDescription allwinner_rtc_vmstate = {
     .name = "allwinner-rtc",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, AwRtcState, AW_RTC_REGS_NUM),
         VMSTATE_END_OF_LIST()
     }
@@ -320,7 +320,7 @@ static void allwinner_rtc_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = allwinner_rtc_reset;
+    device_class_set_legacy_reset(dc, allwinner_rtc_reset);
     dc->vmsd = &allwinner_rtc_vmstate;
     device_class_set_props(dc, allwinner_rtc_properties);
 }

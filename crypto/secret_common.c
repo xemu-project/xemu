@@ -71,7 +71,7 @@ static void qcrypto_secret_decrypt(QCryptoSecretCommon *secret,
         return;
     }
 
-    aes = qcrypto_cipher_new(QCRYPTO_CIPHER_ALG_AES_256,
+    aes = qcrypto_cipher_new(QCRYPTO_CIPHER_ALGO_AES_256,
                              QCRYPTO_CIPHER_MODE_CBC,
                              key, keylen,
                              errp);
@@ -191,15 +191,6 @@ qcrypto_secret_complete(UserCreatable *uc, Error **errp)
 }
 
 
-static bool
-qcrypto_secret_prop_get_loaded(Object *obj,
-                               Error **errp G_GNUC_UNUSED)
-{
-    QCryptoSecretCommon *secret = QCRYPTO_SECRET_COMMON(obj);
-    return secret->rawdata != NULL;
-}
-
-
 static void
 qcrypto_secret_prop_set_format(Object *obj,
                                int value,
@@ -278,9 +269,6 @@ qcrypto_secret_class_init(ObjectClass *oc, void *data)
 
     ucc->complete = qcrypto_secret_complete;
 
-    object_class_property_add_bool(oc, "loaded",
-                                   qcrypto_secret_prop_get_loaded,
-                                   NULL);
     object_class_property_add_enum(oc, "format",
                                    "QCryptoSecretFormat",
                                    &QCryptoSecretFormat_lookup,

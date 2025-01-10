@@ -59,21 +59,21 @@ qcrypto_afalg_socket_bind(const char *type, const char *name,
 
     if (bind(sbind, (const struct sockaddr *)&salg, sizeof(salg)) != 0) {
         error_setg_errno(errp, errno, "Failed to bind socket");
-        closesocket(sbind);
+        close(sbind);
         return -1;
     }
 
     return sbind;
 }
 
-QCryptoAFAlg *
+QCryptoAFAlgo *
 qcrypto_afalg_comm_alloc(const char *type, const char *name,
                          Error **errp)
 {
-    QCryptoAFAlg *afalg;
+    QCryptoAFAlgo *afalg;
 
-    afalg = g_new0(QCryptoAFAlg, 1);
-    /* initilize crypto API socket */
+    afalg = g_new0(QCryptoAFAlgo, 1);
+    /* initialize crypto API socket */
     afalg->opfd = -1;
     afalg->tfmfd = qcrypto_afalg_socket_bind(type, name, errp);
     if (afalg->tfmfd == -1) {
@@ -93,7 +93,7 @@ error:
     return NULL;
 }
 
-void qcrypto_afalg_comm_free(QCryptoAFAlg *afalg)
+void qcrypto_afalg_comm_free(QCryptoAFAlgo *afalg)
 {
     if (!afalg) {
         return;
@@ -105,11 +105,11 @@ void qcrypto_afalg_comm_free(QCryptoAFAlg *afalg)
     }
 
     if (afalg->tfmfd != -1) {
-        closesocket(afalg->tfmfd);
+        close(afalg->tfmfd);
     }
 
     if (afalg->opfd != -1) {
-        closesocket(afalg->opfd);
+        close(afalg->opfd);
     }
 
     g_free(afalg);

@@ -11,21 +11,22 @@
 #define CXL_CDAT_H
 
 #include "hw/cxl/cxl_pci.h"
+#include "hw/pci/pcie_doe.h"
 
 /*
  * Reference:
  *   Coherent Device Attribute Table (CDAT) Specification, Rev. 1.03, July. 2022
- *   Compute Express Link (CXL) Specification, Rev. 3.0, Aug. 2022
+ *   Compute Express Link (CXL) Specification, Rev. 3.1, Aug. 2023
  */
-/* Table Access DOE - CXL r3.0 8.1.11 */
+/* Table Access DOE - CXL r3.1 8.1.11 */
 #define CXL_DOE_TABLE_ACCESS      2
 #define CXL_DOE_PROTOCOL_CDAT     ((CXL_DOE_TABLE_ACCESS << 16) | CXL_VENDOR_ID)
 
-/* Read Entry - CXL r3.0 8.1.11.1 */
+/* Read Entry - CXL r3.1 8.1.11.1 */
 #define CXL_DOE_TAB_TYPE_CDAT 0
 #define CXL_DOE_TAB_ENT_MAX 0xFFFF
 
-/* Read Entry Request - CXL r3.0 8.1.11.1 Table 8-13 */
+/* Read Entry Request - CXL r3.1 8.1.11.1 Table 8-13 */
 #define CXL_DOE_TAB_REQ 0
 typedef struct CDATReq {
     DOEHeader header;
@@ -34,7 +35,7 @@ typedef struct CDATReq {
     uint16_t entry_handle;
 } QEMU_PACKED CDATReq;
 
-/* Read Entry Response - CXL r3.0 8.1.11.1 Table 8-14 */
+/* Read Entry Response - CXL r3.1 8.1.11.1 Table 8-14 */
 #define CXL_DOE_TAB_RSP 0
 typedef struct CDATRsp {
     DOEHeader header;
@@ -81,7 +82,8 @@ typedef struct CDATDsmas {
     uint16_t reserved;
     uint64_t DPA_base;
     uint64_t DPA_length;
-} QEMU_PACKED CDATDsmas;
+} CDATDsmas;
+QEMU_BUILD_BUG_ON(sizeof(CDATDsmas) != 24);
 
 /* Device Scoped Latency and Bandwidth Information Structure - CDAT Table 5 */
 typedef struct CDATDslbis {
@@ -94,7 +96,8 @@ typedef struct CDATDslbis {
     uint64_t entry_base_unit;
     uint16_t entry[3];
     uint16_t reserved2;
-} QEMU_PACKED CDATDslbis;
+} CDATDslbis;
+QEMU_BUILD_BUG_ON(sizeof(CDATDslbis) != 24);
 
 /* Device Scoped Memory Side Cache Information Structure - CDAT Table 6 */
 typedef struct CDATDsmscis {
@@ -121,7 +124,8 @@ typedef struct CDATDsemts {
     uint16_t reserved;
     uint64_t DPA_offset;
     uint64_t DPA_length;
-} QEMU_PACKED CDATDsemts;
+} CDATDsemts;
+QEMU_BUILD_BUG_ON(sizeof(CDATDsemts) != 24);
 
 /* Switch Scoped Latency and Bandwidth Information Structure - CDAT Table 9 */
 typedef struct CDATSslbisHeader {
@@ -129,7 +133,8 @@ typedef struct CDATSslbisHeader {
     uint8_t data_type;
     uint8_t reserved[3];
     uint64_t entry_base_unit;
-} QEMU_PACKED CDATSslbisHeader;
+} CDATSslbisHeader;
+QEMU_BUILD_BUG_ON(sizeof(CDATSslbisHeader) != 16);
 
 #define CDAT_PORT_ID_USP 0x100
 /* Switch Scoped Latency and Bandwidth Entry - CDAT Table 10 */
@@ -138,12 +143,13 @@ typedef struct CDATSslbe {
     uint16_t port_y_id;
     uint16_t latency_bandwidth;
     uint16_t reserved;
-} QEMU_PACKED CDATSslbe;
+} CDATSslbe;
+QEMU_BUILD_BUG_ON(sizeof(CDATSslbe) != 8);
 
 typedef struct CDATSslbis {
     CDATSslbisHeader sslbis_header;
     CDATSslbe sslbe[];
-} QEMU_PACKED CDATSslbis;
+} CDATSslbis;
 
 typedef struct CDATEntry {
     void *base;

@@ -26,8 +26,8 @@
 #ifndef BLOCKJOB_H
 #define BLOCKJOB_H
 
+#include "qapi/qapi-types-block-core.h"
 #include "qemu/job.h"
-#include "block/block.h"
 #include "qemu/ratelimit.h"
 
 #define BLOCK_JOB_SLICE_TIME 100000000ULL /* ns */
@@ -54,7 +54,7 @@ typedef struct BlockJob {
 
     /**
      * Speed that was set with @block_job_set_speed.
-     * Always modified and read under QEMU global mutex (GLOBAL_STATE_CODE).
+     * Always modified and read under the BQL (GLOBAL_STATE_CODE).
      */
     int64_t speed;
 
@@ -66,7 +66,7 @@ typedef struct BlockJob {
 
     /**
      * Block other operations when block job is running.
-     * Always modified and read under QEMU global mutex (GLOBAL_STATE_CODE).
+     * Always modified and read under the BQL (GLOBAL_STATE_CODE).
      */
     Error *blocker;
 
@@ -89,7 +89,7 @@ typedef struct BlockJob {
 
     /**
      * BlockDriverStates that are involved in this block job.
-     * Always modified and read under QEMU global mutex (GLOBAL_STATE_CODE).
+     * Always modified and read under the BQL (GLOBAL_STATE_CODE).
      */
     GSList *nodes;
 } BlockJob;
@@ -138,8 +138,9 @@ BlockJob *block_job_get_locked(const char *id);
  * @job. This means that all operations will be blocked on @bs while
  * @job exists.
  */
-int block_job_add_bdrv(BlockJob *job, const char *name, BlockDriverState *bs,
-                       uint64_t perm, uint64_t shared_perm, Error **errp);
+int GRAPH_WRLOCK
+block_job_add_bdrv(BlockJob *job, const char *name, BlockDriverState *bs,
+                   uint64_t perm, uint64_t shared_perm, Error **errp);
 
 /**
  * block_job_remove_all_bdrv:
@@ -171,6 +172,17 @@ bool block_job_has_bdrv(BlockJob *job, BlockDriverState *bs);
  * Called with job lock held, but might release it temporarily.
  */
 bool block_job_set_speed_locked(BlockJob *job, int64_t speed, Error **errp);
+
+/**
+ * block_job_change_locked:
+ * @job: The job to change.
+ * @opts: The new options.
+ * @errp: Error object.
+ *
+ * Change the job according to opts.
+ */
+void block_job_change_locked(BlockJob *job, BlockJobChangeOptions *opts,
+                             Error **errp);
 
 /**
  * block_job_query_locked:

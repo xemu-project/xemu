@@ -108,7 +108,7 @@ static const VMStateDescription vmstate_virt_ctrl = {
     .name = "virt-ctrl",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(irq_enabled, VirtCtrlState),
         VMSTATE_END_OF_LIST()
     }
@@ -129,7 +129,7 @@ static void virt_ctrl_class_init(ObjectClass *oc, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(oc);
 
-    dc->reset = virt_ctrl_reset;
+    device_class_set_legacy_reset(dc, virt_ctrl_reset);
     dc->realize = virt_ctrl_realize;
     dc->vmsd = &vmstate_virt_ctrl;
 }

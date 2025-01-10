@@ -4,6 +4,8 @@
     This work is licensed under the terms of the GNU GPL, version 2 or
     later.  See the COPYING file in the top-level directory.
 
+.. _Live Block Operations:
+
 ============================
 Live Block Device Operations
 ============================
@@ -929,8 +931,8 @@ Shutdown the guest, by issuing the ``quit`` QMP command::
     }
 
 
-Live disk backup --- ``blockdev-backup`` and the deprecated``drive-backup``
----------------------------------------------------------------------------
+Live disk backup --- ``blockdev-backup`` and the deprecated ``drive-backup``
+----------------------------------------------------------------------------
 
 The ``blockdev-backup`` (and the deprecated ``drive-backup``) allows
 you to create a point-in-time snapshot.

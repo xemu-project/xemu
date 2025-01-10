@@ -9,6 +9,11 @@ generated from in-code annotations to function prototypes.
 
    bitops
    loads-stores
+   lockcnt
    memory
    modules
+   pci
+   qom-api
+   qdev-api
    ui
+   zoned-storage

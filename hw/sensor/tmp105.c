@@ -26,22 +26,28 @@
 #include "qapi/error.h"
 #include "qapi/visitor.h"
 #include "qemu/module.h"
+#include "hw/registerfields.h"
+#include "trace.h"
+
+FIELD(CONFIG, SHUTDOWN_MODE,        0, 1)
+FIELD(CONFIG, THERMOSTAT_MODE,      1, 1)
+FIELD(CONFIG, POLARITY,             2, 1)
+FIELD(CONFIG, FAULT_QUEUE,          3, 2)
+FIELD(CONFIG, CONVERTER_RESOLUTION, 5, 2)
+FIELD(CONFIG, ONE_SHOT,             7, 1)
 
 static void tmp105_interrupt_update(TMP105State *s)
 {
-    qemu_set_irq(s->pin, s->alarm ^ ((~s->config >> 2) & 1));	/* POL */
+    qemu_set_irq(s->pin, s->alarm ^ FIELD_EX8(~s->config, CONFIG, POLARITY));
 }
 
-static void tmp105_alarm_update(TMP105State *s)
+static void tmp105_alarm_update(TMP105State *s, bool one_shot)
 {
-    if ((s->config >> 0) & 1) {					/* SD */
-        if ((s->config >> 7) & 1)				/* OS */
-            s->config &= ~(1 << 7);				/* OS */
-        else
-            return;
+    if (FIELD_EX8(s->config, CONFIG, SHUTDOWN_MODE) && !one_shot) {
+        return;
     }
 
-    if (s->config >> 1 & 1) {
+    if (FIELD_EX8(s->config, CONFIG, THERMOSTAT_MODE)) {
         /*
          * TM == 1 : Interrupt mode. We signal Alert when the
          * temperature rises above T_high, and expect the guest to clear
@@ -89,7 +95,8 @@ static void tmp105_get_temperature(Object *obj, Visitor *v, const char *name,
     visit_type_int(v, name, &value, errp);
 }
 
-/* Units are 0.001 centigrades relative to 0 C.  s->temperature is 8.8
+/*
+ * Units are 0.001 centigrades relative to 0 C.  s->temperature is 8.8
  * fixed point, so units are 1/256 centigrades.  A simple ratio will do.
  */
 static void tmp105_set_temperature(Object *obj, Visitor *v, const char *name,
@@ -109,7 +116,7 @@ static void tmp105_set_temperature(Object *obj, Visitor *v, const char *name,
 
     s->temperature = (int16_t) (temp * 256 / 1000);
 
-    tmp105_alarm_update(s);
+    tmp105_alarm_update(s, false);
 }
 
 static const int tmp105_faultq[4] = { 1, 2, 4, 6 };
@@ -118,54 +125,60 @@ static void tmp105_read(TMP105State *s)
 {
     s->len = 0;
 
-    if ((s->config >> 1) & 1) {					/* TM */
+    if (FIELD_EX8(s->config, CONFIG, THERMOSTAT_MODE)) {
         s->alarm = 0;
         tmp105_interrupt_update(s);
     }
 
     switch (s->pointer & 3) {
     case TMP105_REG_TEMPERATURE:
-        s->buf[s->len ++] = (((uint16_t) s->temperature) >> 8);
-        s->buf[s->len ++] = (((uint16_t) s->temperature) >> 0) &
-                (0xf0 << ((~s->config >> 5) & 3));		/* R */
+        s->buf[s->len++] = (((uint16_t) s->temperature) >> 8);
+        s->buf[s->len++] = (((uint16_t) s->temperature) >> 0) &
+                (0xf0 << (FIELD_EX8(~s->config, CONFIG, CONVERTER_RESOLUTION)));
         break;
 
     case TMP105_REG_CONFIG:
-        s->buf[s->len ++] = s->config;
+        s->buf[s->len++] = s->config;
         break;
 
     case TMP105_REG_T_LOW:
-        s->buf[s->len ++] = ((uint16_t) s->limit[0]) >> 8;
-        s->buf[s->len ++] = ((uint16_t) s->limit[0]) >> 0;
+        s->buf[s->len++] = ((uint16_t) s->limit[0]) >> 8;
+        s->buf[s->len++] = ((uint16_t) s->limit[0]) >> 0;
         break;
 
     case TMP105_REG_T_HIGH:
-        s->buf[s->len ++] = ((uint16_t) s->limit[1]) >> 8;
-        s->buf[s->len ++] = ((uint16_t) s->limit[1]) >> 0;
+        s->buf[s->len++] = ((uint16_t) s->limit[1]) >> 8;
+        s->buf[s->len++] = ((uint16_t) s->limit[1]) >> 0;
         break;
     }
+
+    trace_tmp105_read(s->i2c.address, s->pointer);
 }
 
 static void tmp105_write(TMP105State *s)
 {
+    trace_tmp105_write(s->i2c.address, s->pointer);
+
     switch (s->pointer & 3) {
     case TMP105_REG_TEMPERATURE:
         break;
 
     case TMP105_REG_CONFIG:
-        if (s->buf[0] & ~s->config & (1 << 0))			/* SD */
-            printf("%s: TMP105 shutdown\n", __func__);
-        s->config = s->buf[0];
-        s->faults = tmp105_faultq[(s->config >> 3) & 3];	/* F */
-        tmp105_alarm_update(s);
+        if (FIELD_EX8(s->buf[0] & ~s->config, CONFIG, SHUTDOWN_MODE)) {
+            trace_tmp105_write_shutdown(s->i2c.address);
+        }
+        s->config = FIELD_DP8(s->buf[0], CONFIG, ONE_SHOT, 0);
+        s->faults = tmp105_faultq[FIELD_EX8(s->config, CONFIG, FAULT_QUEUE)];
+        tmp105_alarm_update(s, FIELD_EX8(s->buf[0], CONFIG, ONE_SHOT));
         break;
 
     case TMP105_REG_T_LOW:
     case TMP105_REG_T_HIGH:
-        if (s->len >= 3)
+        if (s->len >= 3) {
             s->limit[s->pointer & 1] = (int16_t)
-                    ((((uint16_t) s->buf[0]) << 8) | s->buf[1]);
-        tmp105_alarm_update(s);
+                    ((((uint16_t) s->buf[0]) << 8) | (s->buf[1] & 0xf0));
+        }
+        tmp105_alarm_update(s, false);
         break;
     }
 }
@@ -175,7 +188,7 @@ static uint8_t tmp105_rx(I2CSlave *i2c)
     TMP105State *s = TMP105(i2c);
 
     if (s->len < 2) {
-        return s->buf[s->len ++];
+        return s->buf[s->len++];
     } else {
         return 0xff;
     }
@@ -215,7 +228,7 @@ static int tmp105_post_load(void *opaque, int version_id)
 {
     TMP105State *s = opaque;
 
-    s->faults = tmp105_faultq[(s->config >> 3) & 3];		/* F */
+    s->faults = tmp105_faultq[FIELD_EX8(s->config, CONFIG, FAULT_QUEUE)];
 
     tmp105_interrupt_update(s);
     return 0;
@@ -238,7 +251,7 @@ static const VMStateDescription vmstate_tmp105_detect_falling = {
     .version_id = 1,
     .minimum_version_id = 1,
     .needed = detect_falling_needed,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_BOOL(detect_falling, TMP105State),
         VMSTATE_END_OF_LIST()
     }
@@ -249,7 +262,7 @@ static const VMStateDescription vmstate_tmp105 = {
     .version_id = 0,
     .minimum_version_id = 0,
     .post_load = tmp105_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT8(len, TMP105State),
         VMSTATE_UINT8_ARRAY(buf, TMP105State, 2),
         VMSTATE_UINT8(pointer, TMP105State),
@@ -260,7 +273,7 @@ static const VMStateDescription vmstate_tmp105 = {
         VMSTATE_I2C_SLAVE(i2c, TMP105State),
         VMSTATE_END_OF_LIST()
     },
-    .subsections = (const VMStateDescription*[]) {
+    .subsections = (const VMStateDescription * const []) {
         &vmstate_tmp105_detect_falling,
         NULL
     }
@@ -273,7 +286,7 @@ static void tmp105_reset(I2CSlave *i2c)
     s->temperature = 0;
     s->pointer = 0;
     s->config = 0;
-    s->faults = tmp105_faultq[(s->config >> 3) & 3];
+    s->faults = tmp105_faultq[FIELD_EX8(s->config, CONFIG, FAULT_QUEUE)];
     s->alarm = 0;
     s->detect_falling = false;
 

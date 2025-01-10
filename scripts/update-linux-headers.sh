@@ -27,6 +27,8 @@
 #   types like "__u64".  This work is done in the cp_portable function.
 
 tmpdir=$(mktemp -d)
+hdrdir="$tmpdir/headers"
+blddir="$tmpdir/build"
 linux="$1"
 output="$2"
 
@@ -55,13 +57,13 @@ cp_portable() {
                                      -e 'linux/if_ether' \
                                      -e 'input-event-codes' \
                                      -e 'sys/' \
-                                     -e 'pvrdma_verbs' \
                                      -e 'drm.h' \
                                      -e 'limits' \
                                      -e 'linux/const' \
                                      -e 'linux/kernel' \
                                      -e 'linux/sysinfo' \
-                                     -e 'asm-generic/kvm_para' \
+                                     -e 'asm/setup_data.h' \
+                                     -e 'asm/kvm_para.h' \
                                      > /dev/null
     then
         echo "Unexpected #include in input file $f".
@@ -69,6 +71,15 @@ cp_portable() {
     fi
 
     header=$(basename "$f");
+
+    if test -z "$arch"; then
+        # Let users of include/standard-headers/linux/ headers pick the
+        # asm-* header that they care about
+        arch_cmd='/<asm\/\([^>]*\)>/d'
+    else
+        arch_cmd='s/<asm\/\([^>]*\)>/"standard-headers\/asm-'$arch'\/\1"/'
+    fi
+
     sed -e 's/__aligned_u64/__u64 __attribute__((aligned(8)))/g' \
         -e 's/__u\([0-9][0-9]*\)/uint\1_t/g' \
         -e 's/u\([0-9][0-9]*\)/uint\1_t/g' \
@@ -77,6 +88,7 @@ cp_portable() {
         -e 's/__be\([0-9][0-9]*\)/uint\1_t/g' \
         -e 's/"\(input-event-codes\.h\)"/"standard-headers\/linux\/\1"/' \
         -e 's/<linux\/\([^>]*\)>/"standard-headers\/linux\/\1"/' \
+        -e "$arch_cmd" \
         -e 's/__bitwise//' \
         -e 's/__attribute__((packed))/QEMU_PACKED/' \
         -e 's/__inline__/inline/' \
@@ -110,65 +122,92 @@ for arch in $ARCHLIST; do
         arch_var=ARCH
     fi
 
-    make -C "$linux" INSTALL_HDR_PATH="$tmpdir" $arch_var=$arch headers_install
+    rm -rf "$hdrdir"
+    make -C "$linux" O="$blddir" INSTALL_HDR_PATH="$hdrdir" $arch_var=$arch headers_install
 
     rm -rf "$output/linux-headers/asm-$arch"
     mkdir -p "$output/linux-headers/asm-$arch"
     for header in kvm.h unistd.h bitsperlong.h mman.h; do
-        cp "$tmpdir/include/asm/$header" "$output/linux-headers/asm-$arch"
+        if test -f "$hdrdir/include/asm/$header"; then
+            cp "$hdrdir/include/asm/$header" "$output/linux-headers/asm-$arch"
+        elif test -f "$hdrdir/include/asm-generic/$header"; then
+            # not installed as <asm/$header>, but used as such in kernel sources
+            cat <<EOF >$output/linux-headers/asm-$arch/$header
+#include <asm-generic/$header>
+EOF
+        fi
     done
 
     if [ $arch = mips ]; then
-        cp "$tmpdir/include/asm/sgidefs.h" "$output/linux-headers/asm-mips/"
-        cp "$tmpdir/include/asm/unistd_o32.h" "$output/linux-headers/asm-mips/"
-        cp "$tmpdir/include/asm/unistd_n32.h" "$output/linux-headers/asm-mips/"
-        cp "$tmpdir/include/asm/unistd_n64.h" "$output/linux-headers/asm-mips/"
+        cp "$hdrdir/include/asm/sgidefs.h" "$output/linux-headers/asm-mips/"
+        cp "$hdrdir/include/asm/unistd_o32.h" "$output/linux-headers/asm-mips/"
+        cp "$hdrdir/include/asm/unistd_n32.h" "$output/linux-headers/asm-mips/"
+        cp "$hdrdir/include/asm/unistd_n64.h" "$output/linux-headers/asm-mips/"
     fi
     if [ $arch = powerpc ]; then
-        cp "$tmpdir/include/asm/unistd_32.h" "$output/linux-headers/asm-powerpc/"
-        cp "$tmpdir/include/asm/unistd_64.h" "$output/linux-headers/asm-powerpc/"
+        cp "$hdrdir/include/asm/unistd_32.h" "$output/linux-headers/asm-powerpc/"
+        cp "$hdrdir/include/asm/unistd_64.h" "$output/linux-headers/asm-powerpc/"
     fi
 
     rm -rf "$output/include/standard-headers/asm-$arch"
     mkdir -p "$output/include/standard-headers/asm-$arch"
     if [ $arch = s390 ]; then
-        cp_portable "$tmpdir/include/asm/virtio-ccw.h" "$output/include/standard-headers/asm-s390/"
-        cp "$tmpdir/include/asm/unistd_32.h" "$output/linux-headers/asm-s390/"
-        cp "$tmpdir/include/asm/unistd_64.h" "$output/linux-headers/asm-s390/"
+        cp_portable "$hdrdir/include/asm/virtio-ccw.h" "$output/include/standard-headers/asm-s390/"
+        cp "$hdrdir/include/asm/unistd_32.h" "$output/linux-headers/asm-s390/"
+        cp "$hdrdir/include/asm/unistd_64.h" "$output/linux-headers/asm-s390/"
     fi
     if [ $arch = arm ]; then
-        cp "$tmpdir/include/asm/unistd-eabi.h" "$output/linux-headers/asm-arm/"
-        cp "$tmpdir/include/asm/unistd-oabi.h" "$output/linux-headers/asm-arm/"
-        cp "$tmpdir/include/asm/unistd-common.h" "$output/linux-headers/asm-arm/"
+        cp "$hdrdir/include/asm/unistd-eabi.h" "$output/linux-headers/asm-arm/"
+        cp "$hdrdir/include/asm/unistd-oabi.h" "$output/linux-headers/asm-arm/"
+        cp "$hdrdir/include/asm/unistd-common.h" "$output/linux-headers/asm-arm/"
     fi
     if [ $arch = arm64 ]; then
-        cp "$tmpdir/include/asm/sve_context.h" "$output/linux-headers/asm-arm64/"
+        cp "$hdrdir/include/asm/sve_context.h" "$output/linux-headers/asm-arm64/"
+        cp "$hdrdir/include/asm/unistd_64.h" "$output/linux-headers/asm-arm64/"
     fi
     if [ $arch = x86 ]; then
-        cp "$tmpdir/include/asm/unistd_32.h" "$output/linux-headers/asm-x86/"
-        cp "$tmpdir/include/asm/unistd_x32.h" "$output/linux-headers/asm-x86/"
-        cp "$tmpdir/include/asm/unistd_64.h" "$output/linux-headers/asm-x86/"
-        cp_portable "$tmpdir/include/asm/kvm_para.h" "$output/include/standard-headers/asm-$arch"
+        cp "$hdrdir/include/asm/unistd_32.h" "$output/linux-headers/asm-x86/"
+        cp "$hdrdir/include/asm/unistd_x32.h" "$output/linux-headers/asm-x86/"
+        cp "$hdrdir/include/asm/unistd_64.h" "$output/linux-headers/asm-x86/"
+
+        cp_portable "$hdrdir/include/asm/kvm_para.h" "$output/include/standard-headers/asm-$arch"
+        cat <<EOF >$output/linux-headers/asm-$arch/kvm_para.h
+#include "standard-headers/asm-$arch/kvm_para.h"
+EOF
+
         # Remove everything except the macros from bootparam.h avoiding the
         # unnecessary import of several video/ist/etc headers
         sed -e '/__ASSEMBLY__/,/__ASSEMBLY__/d' \
-               "$tmpdir/include/asm/bootparam.h" > "$tmpdir/bootparam.h"
-        cp_portable "$tmpdir/bootparam.h" \
+               "$hdrdir/include/asm/bootparam.h" > "$hdrdir/bootparam.h"
+        cp_portable "$hdrdir/bootparam.h" \
                     "$output/include/standard-headers/asm-$arch"
+        cp_portable "$hdrdir/include/asm/setup_data.h" \
+                    "$output/include/standard-headers/asm-x86"
+    fi
+    if [ $arch = riscv ]; then
+        cp "$hdrdir/include/asm/ptrace.h" "$output/linux-headers/asm-riscv/"
+        cp "$hdrdir/include/asm/unistd_32.h" "$output/linux-headers/asm-riscv/"
+        cp "$hdrdir/include/asm/unistd_64.h" "$output/linux-headers/asm-riscv/"
+    fi
+    if [ $arch = loongarch ]; then
+        cp "$hdrdir/include/asm/kvm_para.h" "$output/linux-headers/asm-loongarch/"
+        cp "$hdrdir/include/asm/unistd_64.h" "$output/linux-headers/asm-loongarch/"
     fi
 done
+arch=
 
 rm -rf "$output/linux-headers/linux"
 mkdir -p "$output/linux-headers/linux"
-for header in kvm.h vfio.h vfio_ccw.h vfio_zdev.h vhost.h \
-              psci.h psp-sev.h userfaultfd.h mman.h vduse.h; do
-    cp "$tmpdir/include/linux/$header" "$output/linux-headers/linux"
+for header in const.h stddef.h kvm.h vfio.h vfio_ccw.h vfio_zdev.h vhost.h \
+              psci.h psp-sev.h userfaultfd.h memfd.h mman.h nvme_ioctl.h \
+              vduse.h iommufd.h bits.h; do
+    cp "$hdrdir/include/linux/$header" "$output/linux-headers/linux"
 done
 
 rm -rf "$output/linux-headers/asm-generic"
 mkdir -p "$output/linux-headers/asm-generic"
 for header in unistd.h bitsperlong.h mman-common.h mman.h hugetlb_encode.h; do
-    cp "$tmpdir/include/asm-generic/$header" "$output/linux-headers/asm-generic"
+    cp "$hdrdir/include/asm-generic/$header" "$output/linux-headers/asm-generic"
 done
 
 if [ -L "$linux/source" ]; then
@@ -191,6 +230,10 @@ if [ -d "$linux/LICENSES" ]; then
     done
 fi
 
+cat <<EOF >$output/linux-headers/linux/kvm_para.h
+#include "standard-headers/linux/kvm_para.h"
+#include <asm/kvm_para.h>
+EOF
 cat <<EOF >$output/linux-headers/linux/virtio_config.h
 #include "standard-headers/linux/virtio_config.h"
 EOF
@@ -203,50 +246,27 @@ EOF
 
 rm -rf "$output/include/standard-headers/linux"
 mkdir -p "$output/include/standard-headers/linux"
-for i in "$tmpdir"/include/linux/*virtio*.h \
-         "$tmpdir/include/linux/qemu_fw_cfg.h" \
-         "$tmpdir/include/linux/fuse.h" \
-         "$tmpdir/include/linux/input.h" \
-         "$tmpdir/include/linux/input-event-codes.h" \
-         "$tmpdir/include/linux/udmabuf.h" \
-         "$tmpdir/include/linux/pci_regs.h" \
-         "$tmpdir/include/linux/ethtool.h" \
-         "$tmpdir/include/linux/const.h" \
-         "$tmpdir/include/linux/kernel.h" \
-         "$tmpdir/include/linux/vhost_types.h" \
-         "$tmpdir/include/linux/sysinfo.h" \
-         "$tmpdir/include/misc/pvpanic.h"; do
+for i in "$hdrdir"/include/linux/*virtio*.h \
+         "$hdrdir/include/linux/qemu_fw_cfg.h" \
+         "$hdrdir/include/linux/fuse.h" \
+         "$hdrdir/include/linux/input.h" \
+         "$hdrdir/include/linux/input-event-codes.h" \
+         "$hdrdir/include/linux/udmabuf.h" \
+         "$hdrdir/include/linux/pci_regs.h" \
+         "$hdrdir/include/linux/ethtool.h" \
+         "$hdrdir/include/linux/const.h" \
+         "$hdrdir/include/linux/kernel.h" \
+         "$hdrdir/include/linux/kvm_para.h" \
+         "$hdrdir/include/linux/vhost_types.h" \
+         "$hdrdir/include/linux/sysinfo.h"; do
     cp_portable "$i" "$output/include/standard-headers/linux"
 done
+mkdir -p "$output/include/standard-headers/misc"
+cp_portable "$hdrdir/include/misc/pvpanic.h" \
+            "$output/include/standard-headers/misc"
 mkdir -p "$output/include/standard-headers/drm"
-cp_portable "$tmpdir/include/drm/drm_fourcc.h" \
+cp_portable "$hdrdir/include/drm/drm_fourcc.h" \
             "$output/include/standard-headers/drm"
-
-rm -rf "$output/include/standard-headers/drivers/infiniband/hw/vmw_pvrdma"
-mkdir -p "$output/include/standard-headers/drivers/infiniband/hw/vmw_pvrdma"
-
-# Remove the unused functions from pvrdma_verbs.h avoiding the unnecessary
-# import of several infiniband/networking/other headers
-tmp_pvrdma_verbs="$tmpdir/pvrdma_verbs.h"
-# Parse the entire file instead of single lines to match
-# function declarations expanding over multiple lines
-# and strip the declarations starting with pvrdma prefix.
-sed  -e '1h;2,$H;$!d;g'  -e 's/[^};]*pvrdma[^(| ]*([^)]*);//g' \
-    "$linux/drivers/infiniband/hw/vmw_pvrdma/pvrdma_verbs.h" > \
-    "$tmp_pvrdma_verbs";
-
-for i in "$linux/drivers/infiniband/hw/vmw_pvrdma/pvrdma_dev_api.h" \
-         "$tmp_pvrdma_verbs"; do \
-    cp_portable "$i" \
-         "$output/include/standard-headers/drivers/infiniband/hw/vmw_pvrdma/"
-done
-
-rm -rf "$output/include/standard-headers/rdma/"
-mkdir -p "$output/include/standard-headers/rdma/"
-for i in "$tmpdir/include/rdma/vmw_pvrdma-abi.h"; do
-    cp_portable "$i" \
-         "$output/include/standard-headers/rdma/"
-done
 
 cat <<EOF >$output/include/standard-headers/linux/types.h
 /* For QEMU all types are already defined via osdep.h, so this

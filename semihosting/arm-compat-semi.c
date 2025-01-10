@@ -34,6 +34,7 @@
 #include "qemu/osdep.h"
 #include "qemu/timer.h"
 #include "exec/gdbstub.h"
+#include "gdbstub/syscalls.h"
 #include "semihosting/semihost.h"
 #include "semihosting/console.h"
 #include "semihosting/common-semi.h"
@@ -201,19 +202,19 @@ static LayoutInfo common_semi_find_bases(CPUState *cs)
  * The semihosting API has no concept of its errno being thread-safe,
  * as the API design predates SMP CPUs and was intended as a simple
  * real-hardware set of debug functionality. For QEMU, we make the
- * errno be per-thread in linux-user mode; in softmmu it is a simple
+ * errno be per-thread in linux-user mode; in system-mode it is a simple
  * global, and we assume that the guest takes care of avoiding any races.
  */
 #ifndef CONFIG_USER_ONLY
 static target_ulong syscall_err;
 
-#include "semihosting/softmmu-uaccess.h"
+#include "semihosting/uaccess.h"
 #endif
 
 static inline uint32_t get_swi_errno(CPUState *cs)
 {
 #ifdef CONFIG_USER_ONLY
-    TaskState *ts = cs->opaque;
+    TaskState *ts = get_task_state(cs);
 
     return ts->swi_errno;
 #else
@@ -225,7 +226,7 @@ static void common_semi_cb(CPUState *cs, uint64_t ret, int err)
 {
     if (err) {
 #ifdef CONFIG_USER_ONLY
-        TaskState *ts = cs->opaque;
+        TaskState *ts = get_task_state(cs);
         ts->swi_errno = err;
 #else
         syscall_err = err;
@@ -250,7 +251,7 @@ static void common_semi_dead_cb(CPUState *cs, uint64_t ret, int err)
 static void common_semi_rw_cb(CPUState *cs, uint64_t ret, int err)
 {
     /* Recover the original length from the third argument. */
-    CPUArchState *env G_GNUC_UNUSED = cs->env_ptr;
+    CPUArchState *env G_GNUC_UNUSED = cpu_env(cs);
     target_ulong args = common_semi_arg(cs, 1);
     target_ulong arg2;
     GET_ARG(2);
@@ -321,7 +322,7 @@ static void
 common_semi_readc_cb(CPUState *cs, uint64_t ret, int err)
 {
     if (!err) {
-        CPUArchState *env G_GNUC_UNUSED = cs->env_ptr;
+        CPUArchState *env G_GNUC_UNUSED = cpu_env(cs);
         uint8_t ch;
 
         if (get_user_u8(ch, common_semi_stack_bottom(cs) - 1)) {
@@ -360,13 +361,12 @@ static const uint8_t featurefile_data[] = {
  */
 void do_common_semihosting(CPUState *cs)
 {
-    CPUArchState *env = cs->env_ptr;
+    CPUArchState *env = cpu_env(cs);
     target_ulong args;
     target_ulong arg0, arg1, arg2, arg3;
     target_ulong ul_ret;
     char * s;
     int nr;
-    uint32_t ret;
     int64_t elapsed;
 
     nr = common_semi_arg(cs, 0) & 0xffffffffU;
@@ -586,7 +586,7 @@ void do_common_semihosting(CPUState *cs)
 #if !defined(CONFIG_USER_ONLY)
             const char *cmdline;
 #else
-            TaskState *ts = cs->opaque;
+            TaskState *ts = get_task_state(cs);
 #endif
             GET_ARG(0);
             GET_ARG(1);
@@ -664,7 +664,7 @@ void do_common_semihosting(CPUState *cs)
             target_ulong retvals[4];
             int i;
 #ifdef CONFIG_USER_ONLY
-            TaskState *ts = cs->opaque;
+            TaskState *ts = get_task_state(cs);
             target_ulong limit;
 #else
             LayoutInfo info = common_semi_find_bases(cs);
@@ -724,6 +724,9 @@ void do_common_semihosting(CPUState *cs)
 
     case TARGET_SYS_EXIT:
     case TARGET_SYS_EXIT_EXTENDED:
+    {
+        uint32_t ret;
+
         if (common_semi_sys_exit_extended(cs, nr)) {
             /*
              * The A64 version of SYS_EXIT takes a parameter block,
@@ -751,6 +754,7 @@ void do_common_semihosting(CPUState *cs)
         }
         gdb_exit(ret);
         exit(ret);
+    }
 
     case TARGET_SYS_ELAPSED:
         elapsed = get_clock() - clock_start;

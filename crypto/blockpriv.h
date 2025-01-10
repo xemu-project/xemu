@@ -32,16 +32,24 @@ struct QCryptoBlock {
     const QCryptoBlockDriver *driver;
     void *opaque;
 
-    QCryptoCipher **ciphers;
-    size_t n_ciphers;
+    /* Cipher parameters */
+    QCryptoCipherAlgo alg;
+    QCryptoCipherMode mode;
+    uint8_t *key;
+    size_t nkey;
+
+    QCryptoCipher **free_ciphers;
+    size_t max_free_ciphers;
     size_t n_free_ciphers;
     QCryptoIVGen *ivgen;
     QemuMutex mutex;
 
-    QCryptoHashAlgorithm kdfhash;
+    QCryptoHashAlgo kdfhash;
     size_t niv;
     uint64_t payload_offset; /* In bytes */
     uint64_t sector_size; /* In bytes */
+
+    bool detached_header; /* True if disk has a detached LUKS header */
 };
 
 struct QCryptoBlockDriver {
@@ -51,7 +59,6 @@ struct QCryptoBlockDriver {
                 QCryptoBlockReadFunc readfunc,
                 void *opaque,
                 unsigned int flags,
-                size_t n_threads,
                 Error **errp);
 
     int (*create)(QCryptoBlock *block,
@@ -125,10 +132,10 @@ int qcrypto_block_encrypt_helper(QCryptoBlock *block,
                                  Error **errp);
 
 int qcrypto_block_init_cipher(QCryptoBlock *block,
-                              QCryptoCipherAlgorithm alg,
+                              QCryptoCipherAlgo alg,
                               QCryptoCipherMode mode,
                               const uint8_t *key, size_t nkey,
-                              size_t n_threads, Error **errp);
+                              Error **errp);
 
 void qcrypto_block_free_cipher(QCryptoBlock *block);
 

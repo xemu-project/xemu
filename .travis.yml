@@ -1,5 +1,5 @@
 os: linux
-dist: focal
+dist: jammy
 language: c
 compiler:
   - gcc
@@ -7,50 +7,11 @@ cache:
   # There is one cache per branch and compiler version.
   # characteristics of each job are used to identify the cache:
   # - OS name (currently only linux)
-  # - OS distribution (for Linux, bionic or focal)
+  # - OS distribution (e.g. "jammy" for Linux)
   # - Names and values of visible environment variables set in .travis.yml or Settings panel
   timeout: 1200
   ccache: true
   pip: true
-  directories:
-  - $HOME/avocado/data/cache
-
-
-addons:
-  apt:
-    packages:
-      # Build dependencies
-      - libaio-dev
-      - libattr1-dev
-      - libbrlapi-dev
-      - libcap-ng-dev
-      - libcacard-dev
-      - libgcc-7-dev
-      - libgnutls28-dev
-      - libgtk-3-dev
-      - libiscsi-dev
-      - liblttng-ust-dev
-      - libncurses5-dev
-      - libnfs-dev
-      - libpixman-1-dev
-      - libpng-dev
-      - librados-dev
-      - libsdl2-dev
-      - libsdl2-image-dev
-      - libseccomp-dev
-      - libspice-protocol-dev
-      - libspice-server-dev
-      - libssh-dev
-      - liburcu-dev
-      - libusb-1.0-0-dev
-      - libvdeplug-dev
-      - libvte-2.91-dev
-      - libzstd-dev
-      - ninja-build
-      - sparse
-      - uuid-dev
-      # Tests dependencies
-      - genisoimage
 
 
 # The channel name "irc.oftc.net#qemu" is encrypted against qemu/qemu
@@ -71,8 +32,8 @@ env:
     - BASE_CONFIG="--disable-docs --disable-tools"
     - TEST_BUILD_CMD=""
     - TEST_CMD="make check V=1"
-    # This is broadly a list of "mainline" softmmu targets which have support across the major distros
-    - MAIN_SOFTMMU_TARGETS="aarch64-softmmu,mips64-softmmu,ppc64-softmmu,riscv64-softmmu,s390x-softmmu,x86_64-softmmu"
+    # This is broadly a list of "mainline" system targets which have support across the major distros
+    - MAIN_SYSTEM_TARGETS="aarch64-softmmu,mips64-softmmu,ppc64-softmmu,riscv64-softmmu,s390x-softmmu,x86_64-softmmu"
     - CCACHE_SLOPPINESS="include_file_ctime,include_file_mtime"
     - CCACHE_MAXSIZE=1G
     - G_MESSAGES_DEBUG=error
@@ -120,7 +81,6 @@ jobs:
 
     - name: "[aarch64] GCC check-tcg"
       arch: arm64
-      dist: focal
       addons:
         apt_packages:
           - libaio-dev
@@ -128,6 +88,7 @@ jobs:
           - libbrlapi-dev
           - libcacard-dev
           - libcap-ng-dev
+          - libfdt-dev
           - libgcrypt20-dev
           - libgnutls28-dev
           - libgtk-3-dev
@@ -145,16 +106,17 @@ jobs:
           - libvdeplug-dev
           - libvte-2.91-dev
           - ninja-build
+          - python3-tomli
           # Tests dependencies
           - genisoimage
       env:
         - TEST_CMD="make check check-tcg V=1"
-        - CONFIG="--disable-containers --target-list=${MAIN_SOFTMMU_TARGETS} --cxx=/bin/false"
-        - UNRELIABLE=true
+        - CONFIG="--disable-containers --enable-fdt=system
+                  --target-list=${MAIN_SYSTEM_TARGETS} --cxx=/bin/false"
 
-    - name: "[ppc64] GCC check-tcg"
+    - name: "[ppc64] Clang check-tcg"
       arch: ppc64le
-      dist: focal
+      compiler: clang
       addons:
         apt_packages:
           - libaio-dev
@@ -162,6 +124,7 @@ jobs:
           - libbrlapi-dev
           - libcacard-dev
           - libcap-ng-dev
+          - libfdt-dev
           - libgcrypt20-dev
           - libgnutls28-dev
           - libgtk-3-dev
@@ -179,15 +142,16 @@ jobs:
           - libvdeplug-dev
           - libvte-2.91-dev
           - ninja-build
+          - python3-tomli
           # Tests dependencies
           - genisoimage
       env:
         - TEST_CMD="make check check-tcg V=1"
-        - CONFIG="--disable-containers --target-list=ppc64-softmmu,ppc64le-linux-user"
+        - CONFIG="--disable-containers --enable-fdt=system
+                  --target-list=ppc64-softmmu,ppc64le-linux-user"
 
     - name: "[s390x] GCC check-tcg"
       arch: s390x
-      dist: focal
       addons:
         apt_packages:
           - libaio-dev
@@ -195,6 +159,7 @@ jobs:
           - libbrlapi-dev
           - libcacard-dev
           - libcap-ng-dev
+          - libfdt-dev
           - libgcrypt20-dev
           - libgnutls28-dev
           - libgtk-3-dev
@@ -212,12 +177,13 @@ jobs:
           - libvdeplug-dev
           - libvte-2.91-dev
           - ninja-build
+          - python3-tomli
           # Tests dependencies
           - genisoimage
       env:
         - TEST_CMD="make check check-tcg V=1"
-        - CONFIG="--disable-containers --target-list=${MAIN_SOFTMMU_TARGETS},s390x-linux-user"
-        - UNRELIABLE=true
+        - CONFIG="--disable-containers
+            --target-list=hppa-softmmu,mips64-softmmu,ppc64-softmmu,riscv64-softmmu,s390x-softmmu,x86_64-softmmu"
       script:
         - BUILD_RC=0 && make -j${JOBS} || BUILD_RC=$?
         - |
@@ -228,15 +194,16 @@ jobs:
               $(exit $BUILD_RC);
           fi
 
-    - name: "[s390x] GCC (other-softmmu)"
+    - name: "[s390x] Clang (other-system)"
       arch: s390x
-      dist: focal
+      compiler: clang
       addons:
         apt_packages:
           - libaio-dev
           - libattr1-dev
           - libcacard-dev
           - libcap-ng-dev
+          - libfdt-dev
           - libgnutls28-dev
           - libiscsi-dev
           - liblttng-ust-dev
@@ -250,29 +217,31 @@ jobs:
           - libsnappy-dev
           - libzstd-dev
           - nettle-dev
-          - xfslibs-dev
           - ninja-build
+          - python3-tomli
           # Tests dependencies
           - genisoimage
       env:
         - CONFIG="--disable-containers --audio-drv-list=sdl --disable-user
-                  --target-list-exclude=${MAIN_SOFTMMU_TARGETS}"
+            --target-list=arm-softmmu,avr-softmmu,microblaze-softmmu,sh4eb-softmmu,sparc64-softmmu,xtensaeb-softmmu"
 
     - name: "[s390x] GCC (user)"
       arch: s390x
-      dist: focal
       addons:
         apt_packages:
           - libgcrypt20-dev
           - libglib2.0-dev
           - libgnutls28-dev
           - ninja-build
+          - flex
+          - bison
+          - python3-tomli
       env:
+        - TEST_CMD="make check check-tcg V=1"
         - CONFIG="--disable-containers --disable-system"
 
     - name: "[s390x] Clang (disable-tcg)"
       arch: s390x
-      dist: focal
       compiler: clang
       addons:
         apt_packages:
@@ -281,6 +250,7 @@ jobs:
           - libbrlapi-dev
           - libcacard-dev
           - libcap-ng-dev
+          - libfdt-dev
           - libgcrypt20-dev
           - libgnutls28-dev
           - libgtk-3-dev
@@ -298,8 +268,8 @@ jobs:
           - libvdeplug-dev
           - libvte-2.91-dev
           - ninja-build
+          - python3-tomli
       env:
         - TEST_CMD="make check-unit"
-        - CONFIG="--disable-containers --disable-tcg --enable-kvm
-                  --disable-tools --host-cc=clang --cxx=clang++"
-        - UNRELIABLE=true
+        - CONFIG="--disable-containers --disable-tcg --enable-kvm --disable-tools
+                  --enable-fdt=system --host-cc=clang --cxx=clang++"

@@ -14,6 +14,7 @@
 #ifndef QTEST_H
 #define QTEST_H
 
+#include "chardev/char.h"
 
 extern bool qtest_allowed;
 
@@ -22,6 +23,10 @@ static inline bool qtest_enabled(void)
     return qtest_allowed;
 }
 
+#ifndef CONFIG_USER_ONLY
+void qtest_send_prefix(CharBackend *chr);
+void G_GNUC_PRINTF(2, 3) qtest_sendf(CharBackend *chr, const char *fmt, ...);
+void qtest_set_command_cb(bool (*pc_cb)(CharBackend *chr, gchar **words));
 bool qtest_driver(void);
 
 void qtest_server_init(const char *qtest_chrdev, const char *qtest_log, Error **errp);
@@ -29,7 +34,6 @@ void qtest_server_init(const char *qtest_chrdev, const char *qtest_log, Error **
 void qtest_server_set_send_handler(void (*send)(void *, const char *),
                                  void *opaque);
 void qtest_server_inproc_recv(void *opaque, const char *buf);
-
-int64_t qtest_get_virtual_clock(void);
+#endif
 
 #endif

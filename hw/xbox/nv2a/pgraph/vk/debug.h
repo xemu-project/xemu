@@ -24,13 +24,12 @@
 
 extern int nv2a_vk_dgroup_indent;
 
-#define NV2A_VK_XDPRINTF(x, fmt, ...)                       \
-    do {                                                    \
-        if (x) {                                            \
-            for (int i = 0; i < nv2a_vk_dgroup_indent; i++) \
-                fprintf(stderr, "  ");                      \
-            fprintf(stderr, fmt "\n", ##__VA_ARGS__);       \
-        }                                                   \
+#define NV2A_VK_XDPRINTF(x, fmt, ...)                                  \
+    do {                                                               \
+        if (x) {                                                       \
+            fprintf(stderr, "%*s" fmt "\n", nv2a_vk_dgroup_indent, "", \
+                    ##__VA_ARGS__);                                    \
+        }                                                              \
     } while (0)
 
 #define NV2A_VK_DPRINTF(fmt, ...) NV2A_VK_XDPRINTF(DEBUG_VK, fmt, ##__VA_ARGS__)

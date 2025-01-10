@@ -9,10 +9,11 @@
 # later.  See the COPYING file in the top-level directory.
 import os
 
-from avocado import skipIf
-from avocado_qemu import LinuxTest, BUILD_DIR
+from avocado import skipUnless
+from avocado_qemu import BUILD_DIR
+from avocado_qemu.linuxtest import LinuxTest
 
-@skipIf(os.getenv('GITLAB_CI'), 'Running on GitLab')
+@skipUnless(os.getenv('QEMU_TEST_FLAKY_TESTS'), 'Test is unstable on GitLab')
 class SMMU(LinuxTest):
     """
     :avocado: tags=accel:kvm
@@ -21,6 +22,7 @@ class SMMU(LinuxTest):
     :avocado: tags=machine:virt
     :avocado: tags=distro:fedora
     :avocado: tags=smmu
+    :avocado: tags=flaky
     """
 
     IOMMU_ADDON = ',iommu_platform=on,disable-modern=off,disable-legacy=on'
@@ -30,7 +32,7 @@ class SMMU(LinuxTest):
 
     def set_up_boot(self):
         path = self.download_boot()
-        self.vm.add_args('-device', 'virtio-blk-pci,bus=pcie.0,scsi=off,' +
+        self.vm.add_args('-device', 'virtio-blk-pci,bus=pcie.0,' +
                          'drive=drv0,id=virtio-disk0,bootindex=1,'
                          'werror=stop,rerror=stop' + self.IOMMU_ADDON)
         self.vm.add_args('-drive',

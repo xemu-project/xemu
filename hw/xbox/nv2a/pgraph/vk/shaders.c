@@ -238,12 +238,11 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
 
 static void update_shader_constant_locations(ShaderBinding *binding)
 {
-    int i, j;
     char tmp[64];
 
     /* lookup fragment shader uniforms */
-    for (i = 0; i < 9; i++) {
-        for (j = 0; j < 2; j++) {
+    for (int i = 0; i < 9; i++) {
+        for (int j = 0; j < 2; j++) {
             snprintf(tmp, sizeof(tmp), "c%d_%d", j, i);
             binding->psh_constant_loc[i][j] =
                 uniform_index(&binding->fragment->uniforms, tmp);
@@ -253,7 +252,7 @@ static void update_shader_constant_locations(ShaderBinding *binding)
         uniform_index(&binding->fragment->uniforms, "alphaRef");
     binding->fog_color_loc =
         uniform_index(&binding->fragment->uniforms, "fogColor");
-    for (i = 1; i < NV2A_MAX_TEXTURES; i++) {
+    for (int i = 1; i < NV2A_MAX_TEXTURES; i++) {
         snprintf(tmp, sizeof(tmp), "bumpMat%d", i);
         binding->bump_mat_loc[i] =
             uniform_index(&binding->fragment->uniforms, tmp);
@@ -286,7 +285,7 @@ static void update_shader_constant_locations(ShaderBinding *binding)
     binding->ltctxb_loc = uniform_index(&binding->vertex->uniforms, "ltctxb");
     binding->ltc1_loc = uniform_index(&binding->vertex->uniforms, "ltc1");
 
-    for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
+    for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
         snprintf(tmp, sizeof(tmp), "lightInfiniteHalfVector%d", i);
         binding->light_infinite_half_vector_loc[i] =
             uniform_index(&binding->vertex->uniforms, tmp);
@@ -455,10 +454,9 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
                                     bool fixed_function)
 {
     ShaderState *state = &binding->state;
-    int i, j;
 
     /* update combiner constants */
-    for (i = 0; i < 9; i++) {
+    for (int i = 0; i < 9; i++) {
         uint32_t constant[2];
         if (i == 8) {
             /* final combiner */
@@ -469,7 +467,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
             constant[1] = pgraph_reg_r(pg, NV_PGRAPH_COMBINEFACTOR1 + i * 4);
         }
 
-        for (j = 0; j < 2; j++) {
+        for (int j = 0; j < 2; j++) {
             GLint loc = binding->psh_constant_loc[i][j];
             if (loc != -1) {
                 float value[4];
@@ -488,7 +486,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
 
 
     /* For each texture stage */
-    for (i = 0; i < NV2A_MAX_TEXTURES; i++) {
+    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
         int loc;
 
         /* Bump luminance only during stages 1 - 3 */
@@ -576,13 +574,13 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
             { &pg->ltc1[0][0], binding->ltc1_loc, NV2A_LTC1_COUNT },
         };
 
-        for (i = 0; i < ARRAY_SIZE(lighting_arrays); i++) {
+        for (int i = 0; i < ARRAY_SIZE(lighting_arrays); i++) {
             uniform1iv(
                 &binding->vertex->uniforms, lighting_arrays[i].locs,
                 lighting_arrays[i].len * 4, (void *)lighting_arrays[i].v);
         }
 
-        for (i = 0; i < NV2A_MAX_LIGHTS; i++) {
+        for (int i = 0; i < NV2A_MAX_LIGHTS; i++) {
             int loc = binding->light_infinite_half_vector_loc[i];
             if (loc != -1) {
                 uniform1fv(&binding->vertex->uniforms, loc, 3,
@@ -657,7 +655,7 @@ static void shader_update_constants(PGRAPHState *pg, ShaderBinding *binding,
 
     uint32_t clip_regions[8][4];
 
-    for (i = 0; i < 8; i++) {
+    for (int i = 0; i < 8; i++) {
         uint32_t x = pgraph_reg_r(pg, NV_PGRAPH_WINDOWCLIPX0 + i * 4);
         unsigned int x_min = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMIN);
         unsigned int x_max = GET_MASK(x, NV_PGRAPH_WINDOWCLIPX0_XMAX) + 1;

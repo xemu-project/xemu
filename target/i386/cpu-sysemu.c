@@ -19,18 +19,12 @@
 
 #include "qemu/osdep.h"
 #include "cpu.h"
-#include "sysemu/xen.h"
-#include "sysemu/whpx.h"
-#include "kvm/kvm_i386.h"
 #include "qapi/error.h"
 #include "qapi/qapi-visit-run-state.h"
 #include "qapi/qmp/qdict.h"
+#include "qapi/qobject-input-visitor.h"
 #include "qom/qom-qobject.h"
 #include "qapi/qapi-commands-machine-target.h"
-#include "hw/qdev-properties.h"
-
-#include "exec/address-spaces.h"
-#include "hw/i386/apic_internal.h"
 
 #include "cpu-internal.h"
 
@@ -129,20 +123,36 @@ static void x86_cpu_to_dict_full(X86CPU *cpu, QDict *props)
     }
 }
 
-static void object_apply_props(Object *obj, QDict *props, Error **errp)
+static void object_apply_props(Object *obj, QObject *props,
+                               const char *props_arg_name, Error **errp)
 {
+    Visitor *visitor;
+    QDict *qdict;
     const QDictEntry *prop;
 
-    for (prop = qdict_first(props); prop; prop = qdict_next(props, prop)) {
-        if (!object_property_set_qobject(obj, qdict_entry_key(prop),
-                                         qdict_entry_value(prop), errp)) {
-            break;
+    visitor = qobject_input_visitor_new(props);
+    if (!visit_start_struct(visitor, props_arg_name, NULL, 0, errp)) {
+        visit_free(visitor);
+        return;
+    }
+
+    qdict = qobject_to(QDict, props);
+    for (prop = qdict_first(qdict); prop; prop = qdict_next(qdict, prop)) {
+        if (!object_property_set(obj, qdict_entry_key(prop),
+                                 visitor, errp)) {
+            goto out;
         }
     }
+
+    visit_check_struct(visitor, errp);
+out:
+    visit_end_struct(visitor, NULL);
+    visit_free(visitor);
 }
 
 /* Create X86CPU object according to model+props specification */
-static X86CPU *x86_cpu_from_model(const char *model, QDict *props, Error **errp)
+static X86CPU *x86_cpu_from_model(const char *model, QObject *props,
+                                  const char *props_arg_name, Error **errp)
 {
     X86CPU *xc = NULL;
     X86CPUClass *xcc;
@@ -156,7 +166,7 @@ static X86CPU *x86_cpu_from_model(const char *model, QDict *props, Error **errp)
 
     xc = X86_CPU(object_new_with_class(OBJECT_CLASS(xcc)));
     if (props) {
-        object_apply_props(OBJECT(xc), props, &err);
+        object_apply_props(OBJECT(xc), props, props_arg_name, &err);
         if (err) {
             goto out;
         }
@@ -187,10 +197,7 @@ qmp_query_cpu_model_expansion(CpuModelExpansionType type,
     QDict *props = NULL;
     const char *base_name;
 
-    xc = x86_cpu_from_model(model->name,
-                            model->has_props ?
-                                qobject_to(QDict, model->props) :
-                                NULL, &err);
+    xc = x86_cpu_from_model(model->name, model->props, "model.props", &err);
     if (err) {
         goto out;
     }
@@ -198,7 +205,6 @@ qmp_query_cpu_model_expansion(CpuModelExpansionType type,
     props = qdict_new();
     ret->model = g_new0(CpuModelInfo, 1);
     ret->model->props = QOBJECT(props);
-    ret->model->has_props = true;
 
     switch (type) {
     case CPU_MODEL_EXPANSION_TYPE_STATIC:
@@ -238,6 +244,16 @@ void cpu_clear_apic_feature(CPUX86State *env)
     env->features[FEAT_1_EDX] &= ~CPUID_APIC;
 }
 
+void cpu_set_apic_feature(CPUX86State *env)
+{
+    env->features[FEAT_1_EDX] |= CPUID_APIC;
+}
+
+bool cpu_has_x2apic_feature(CPUX86State *env)
+{
+    return env->features[FEAT_1_ECX] & CPUID_EXT_X2APIC;
+}
+
 bool cpu_is_bsp(X86CPU *cpu)
 {
     return cpu_get_apic_base(cpu->apic_state) & MSR_IA32_APICBASE_BSP;
@@ -248,62 +264,6 @@ void x86_cpu_machine_reset_cb(void *opaque)
 {
     X86CPU *cpu = opaque;
     cpu_reset(CPU(cpu));
-}
-
-APICCommonClass *apic_get_class(void)
-{
-    const char *apic_type = "apic";
-
-    /* TODO: in-kernel irqchip for hvf */
-    if (kvm_apic_in_kernel()) {
-        apic_type = "kvm-apic";
-    } else if (xen_enabled()) {
-        apic_type = "xen-apic";
-    } else if (whpx_apic_in_platform()) {
-        apic_type = "whpx-apic";
-    }
-
-    return APIC_COMMON_CLASS(object_class_by_name(apic_type));
-}
-
-void x86_cpu_apic_create(X86CPU *cpu, Error **errp)
-{
-    APICCommonState *apic;
-    ObjectClass *apic_class = OBJECT_CLASS(apic_get_class());
-
-    cpu->apic_state = DEVICE(object_new_with_class(apic_class));
-
-    object_property_add_child(OBJECT(cpu), "lapic",
-                              OBJECT(cpu->apic_state));
-    object_unref(OBJECT(cpu->apic_state));
-
-    qdev_prop_set_uint32(cpu->apic_state, "id", cpu->apic_id);
-    /* TODO: convert to link<> */
-    apic = APIC_COMMON(cpu->apic_state);
-    apic->cpu = cpu;
-    apic->apicbase = APIC_DEFAULT_ADDRESS | MSR_IA32_APICBASE_ENABLE;
-}
-
-void x86_cpu_apic_realize(X86CPU *cpu, Error **errp)
-{
-    APICCommonState *apic;
-    static bool apic_mmio_map_once;
-
-    if (cpu->apic_state == NULL) {
-        return;
-    }
-    qdev_realize(DEVICE(cpu->apic_state), NULL, errp);
-
-    /* Map APIC MMIO area */
-    apic = APIC_COMMON(cpu->apic_state);
-    if (!apic_mmio_map_once) {
-        memory_region_add_subregion_overlap(get_system_memory(),
-                                            apic->apicbase &
-                                            MSR_IA32_APICBASE_BASE,
-                                            &apic->io_memory,
-                                            0x1000);
-        apic_mmio_map_once = true;
-     }
 }
 
 GuestPanicInformation *x86_cpu_get_crash_info(CPUState *cs)
@@ -349,4 +309,3 @@ void x86_cpu_get_crash_info_qom(Object *obj, Visitor *v,
                                      errp);
     qapi_free_GuestPanicInformation(panic_info);
 }
-

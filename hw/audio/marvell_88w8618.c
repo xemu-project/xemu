@@ -273,7 +273,7 @@ static const VMStateDescription mv88w8618_audio_vmsd = {
     .name = "mv88w8618_audio",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(playback_mode, mv88w8618_audio_state),
         VMSTATE_UINT32(status, mv88w8618_audio_state),
         VMSTATE_UINT32(irq_enable, mv88w8618_audio_state),
@@ -292,7 +292,7 @@ static void mv88w8618_audio_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = mv88w8618_audio_realize;
-    dc->reset = mv88w8618_audio_reset;
+    device_class_set_legacy_reset(dc, mv88w8618_audio_reset);
     dc->vmsd = &mv88w8618_audio_vmsd;
     dc->user_creatable = false;
 }

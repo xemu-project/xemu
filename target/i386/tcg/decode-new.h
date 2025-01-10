@@ -47,7 +47,10 @@ typedef enum X86OpType {
     X86_TYPE_Y, /* string destination */
 
     /* Custom */
+    X86_TYPE_EM, /* modrm byte selects an ALU memory operand */
     X86_TYPE_WM, /* modrm byte selects an XMM/YMM memory operand */
+    X86_TYPE_I_unsigned, /* Immediate, zero-extended */
+    X86_TYPE_nop, /* modrm operand decoded but not loaded into s->T{0,1} */
     X86_TYPE_2op, /* 2-operand RMW instruction */
     X86_TYPE_LoBits, /* encoded in bits 0-2 of the operand + REX.B */
     X86_TYPE_0, /* Hard-coded GPRs (RAX..RDI) */
@@ -87,12 +90,14 @@ typedef enum X86OpSize {
     X86_SIZE_w,  /* 16-bit */
     X86_SIZE_x,  /* 128/256-bit, based on operand size */
     X86_SIZE_y,  /* 32/64-bit, based on operand size */
+    X86_SIZE_y_d64,  /* 32/64-bit, based on 64-bit mode */
     X86_SIZE_z,  /* 16-bit for 16-bit operand size, else 32-bit */
+    X86_SIZE_z_f64,  /* 32-bit for 32-bit operand size or 64-bit mode, else 16-bit */
 
     /* Custom */
     X86_SIZE_d64,
     X86_SIZE_f64,
-    X86_SIZE_ph, /* SSE/AVX packed half precision */
+    X86_SIZE_xh, /* SSE/AVX packed half register */
 } X86OpSize;
 
 typedef enum X86CPUIDFeature {
@@ -104,10 +109,21 @@ typedef enum X86CPUIDFeature {
     X86_FEAT_AVX2,
     X86_FEAT_BMI1,
     X86_FEAT_BMI2,
+    X86_FEAT_CLFLUSH,
+    X86_FEAT_CLFLUSHOPT,
+    X86_FEAT_CLWB,
+    X86_FEAT_CMOV,
+    X86_FEAT_CMPCCXADD,
+    X86_FEAT_CX8,
+    X86_FEAT_CX16,
     X86_FEAT_F16C,
     X86_FEAT_FMA,
+    X86_FEAT_FSGSBASE,
+    X86_FEAT_FXSR,
     X86_FEAT_MOVBE,
     X86_FEAT_PCLMULQDQ,
+    X86_FEAT_POPCNT,
+    X86_FEAT_SHA_NI,
     X86_FEAT_SSE,
     X86_FEAT_SSE2,
     X86_FEAT_SSE3,
@@ -115,6 +131,8 @@ typedef enum X86CPUIDFeature {
     X86_FEAT_SSE41,
     X86_FEAT_SSE42,
     X86_FEAT_SSE4A,
+    X86_FEAT_XSAVE,
+    X86_FEAT_XSAVEOPT,
 } X86CPUIDFeature;
 
 /* Execution flags */
@@ -130,21 +148,71 @@ typedef enum X86OpUnit {
     X86_OP_MMX,     /* address in either s->ptrX or s->A0 depending on has_ea */
 } X86OpUnit;
 
+typedef enum X86InsnCheck {
+    /* Illegal or exclusive to 64-bit mode */
+    X86_CHECK_i64 = 1,
+    X86_CHECK_o64 = 2,
+
+    /* Fault in vm86 mode */
+    X86_CHECK_no_vm86 = 4,
+
+    /* Privileged instruction checks */
+    X86_CHECK_cpl0 = 8,
+    X86_CHECK_vm86_iopl = 16,
+    X86_CHECK_cpl_iopl = 32,
+    X86_CHECK_iopl = X86_CHECK_cpl_iopl | X86_CHECK_vm86_iopl,
+
+    /* Fault if VEX.L=1 */
+    X86_CHECK_VEX128 = 64,
+
+    /* Fault if VEX.W=1 */
+    X86_CHECK_W0 = 128,
+
+    /* Fault if VEX.W=0 */
+    X86_CHECK_W1 = 256,
+
+    /* Fault outside protected mode, possibly including vm86 mode */
+    X86_CHECK_prot_or_vm86 = 512,
+    X86_CHECK_prot = X86_CHECK_prot_or_vm86 | X86_CHECK_no_vm86,
+
+    /* Fault outside SMM */
+    X86_CHECK_smm = 1024,
+
+    /* Vendor-specific checks for Intel/AMD differences */
+    X86_CHECK_i64_amd = 2048,
+    X86_CHECK_o64_intel = 4096,
+} X86InsnCheck;
+
 typedef enum X86InsnSpecial {
     X86_SPECIAL_None,
+
+    /* Accepts LOCK prefix; LOCKed operations do not load or writeback operand 0 */
+    X86_SPECIAL_HasLock,
 
     /* Always locked if it has a memory operand (XCHG) */
     X86_SPECIAL_Locked,
 
-    /* Fault outside protected mode */
-    X86_SPECIAL_ProtMode,
+    /* Like HasLock, but also operand 2 provides bit displacement into memory.  */
+    X86_SPECIAL_BitTest,
+
+    /* Do not load effective address in s->A0 */
+    X86_SPECIAL_NoLoadEA,
 
     /*
-     * Register operand 0/2 is zero extended to 32 bits.  Rd/Mb or Rd/Mw
-     * in the manual.
+     * Rd/Mb or Rd/Mw in the manual: register operand 0 is treated as 32 bits
+     * (and writeback zero-extends it to 64 bits if applicable).  PREFIX_DATA
+     * does not trigger 16-bit writeback and, as a side effect, high-byte
+     * registers are never used.
      */
-    X86_SPECIAL_ZExtOp0,
-    X86_SPECIAL_ZExtOp2,
+    X86_SPECIAL_Op0_Rd,
+
+    /*
+     * Ry/Mb in the manual (PINSRB).  However, the high bits are never used by
+     * the instruction in either the register or memory cases; the *real* effect
+     * of this modifier is that high-byte registers are never used, even without
+     * a REX prefix.  Therefore, PINSRW does not need it despite having Ry/Mw.
+     */
+    X86_SPECIAL_Op2_Ry,
 
     /*
      * Register operand 2 is extended to full width, while a memory operand
@@ -158,9 +226,12 @@ typedef enum X86InsnSpecial {
      */
     X86_SPECIAL_MMX,
 
-    /* Illegal or exclusive to 64-bit mode */
-    X86_SPECIAL_i64,
-    X86_SPECIAL_o64,
+    /* When loaded into s->T0, register operand 1 is zero/sign extended.  */
+    X86_SPECIAL_SExtT0,
+    X86_SPECIAL_ZExtT0,
+
+    /* Memory operand size of MOV from segment register is MO_16 */
+    X86_SPECIAL_Op0_Mw,
 } X86InsnSpecial;
 
 /*
@@ -195,12 +266,13 @@ typedef enum X86VEXSpecial {
 
 typedef struct X86OpEntry  X86OpEntry;
 typedef struct X86DecodedInsn X86DecodedInsn;
+struct DisasContext;
 
 /* Decode function for multibyte opcodes.  */
-typedef void (*X86DecodeFunc)(DisasContext *s, CPUX86State *env, X86OpEntry *entry, uint8_t *b);
+typedef void (*X86DecodeFunc)(struct DisasContext *s, CPUX86State *env, X86OpEntry *entry, uint8_t *b);
 
 /* Code generation function.  */
-typedef void (*X86GenFunc)(DisasContext *s, CPUX86State *env, X86DecodedInsn *decode);
+typedef void (*X86GenFunc)(struct DisasContext *s, X86DecodedInsn *decode);
 
 struct X86OpEntry {
     /* Based on the is_decode flags.  */
@@ -223,7 +295,10 @@ struct X86OpEntry {
     X86CPUIDFeature cpuid:8;
     unsigned     vex_class:8;
     X86VEXSpecial vex_special:8;
-    uint16_t     valid_prefix:16;
+    unsigned     valid_prefix:16;
+    unsigned     check:16;
+    unsigned     intercept:8;
+    bool         has_intercept:1;
     bool         is_decode:1;
 };
 
@@ -234,19 +309,39 @@ typedef struct X86DecodedOp {
     bool has_ea;
     int offset;   /* For MMX and SSE */
 
-    /*
-     * This field is used internally by macros OP0_PTR/OP1_PTR/OP2_PTR,
-     * do not access directly!
-     */
-    TCGv_ptr v_ptr;
+    union {
+	target_ulong imm;
+        /*
+         * This field is used internally by macros OP0_PTR/OP1_PTR/OP2_PTR,
+         * do not access directly!
+         */
+        TCGv_ptr v_ptr;
+    };
 } X86DecodedOp;
+
+typedef struct AddressParts {
+    int def_seg;
+    int base;
+    int index;
+    int scale;
+    target_long disp;
+} AddressParts;
 
 struct X86DecodedInsn {
     X86OpEntry e;
     X86DecodedOp op[3];
+    /*
+     * Rightmost immediate, for convenience since most instructions have
+     * one (and also for 4-operand instructions).
+     */
     target_ulong immediate;
     AddressParts mem;
+
+    TCGv cc_dst, cc_src, cc_src2;
+    TCGv_i32 cc_op_dynamic;
+    int8_t cc_op;
 
     uint8_t b;
 };
 
+static void gen_lea_modrm(struct DisasContext *s, X86DecodedInsn *decode);
