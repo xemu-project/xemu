@@ -869,42 +869,20 @@ static MString *psh_convert(struct PixelShader *ps, bool z_perspective)
 
     /* calculate perspective-correct inputs */
     MString *vars = mstring_new();
-    if (!z_perspective) {
-        if (ps->state.smooth_shading) {
-            mstring_append(vars, "vec4 pD0 = vtxD0 / vtx_inv_w;\n");
-            mstring_append(vars, "vec4 pD1 = vtxD1 / vtx_inv_w;\n");
-            mstring_append(vars, "vec4 pB0 = vtxB0 / vtx_inv_w;\n");
-            mstring_append(vars, "vec4 pB1 = vtxB1 / vtx_inv_w;\n");
-        } else {
-            mstring_append(vars, "vec4 pD0 = vtxD0 / vtx_inv_w_flat;\n");
-            mstring_append(vars, "vec4 pD1 = vtxD1 / vtx_inv_w_flat;\n");
-            mstring_append(vars, "vec4 pB0 = vtxB0 / vtx_inv_w_flat;\n");
-            mstring_append(vars, "vec4 pB1 = vtxB1 / vtx_inv_w_flat;\n");
-        }
-        mstring_append(vars, "vec4 pFog = vec4(fogColor.rgb, clamp(vtxFog / vtx_inv_w, 0.0, 1.0));\n");
-        mstring_append(vars, "vec4 pT0 = vtxT0 / vtx_inv_w;\n");
-        mstring_append(vars, "vec4 pT1 = vtxT1 / vtx_inv_w;\n");
-        mstring_append(vars, "vec4 pT2 = vtxT2 / vtx_inv_w;\n");
-    } else {
-        mstring_append(vars, "vec4 pD0 = vtxD0;\n");
-        mstring_append(vars, "vec4 pD1 = vtxD1;\n");
-        mstring_append(vars, "vec4 pB0 = vtxB0;\n");
-        mstring_append(vars, "vec4 pB1 = vtxB1;\n");
-        mstring_append(vars, "vec4 pFog = vec4(fogColor.rgb, clamp(vtxFog, 0.0, 1.0));\n");
-        mstring_append(vars, "vec4 pT0 = vtxT0;\n");
-        mstring_append(vars, "vec4 pT1 = vtxT1;\n");
-        mstring_append(vars, "vec4 pT2 = vtxT2;\n");
-    }
+    mstring_append(vars, "vec4 pD0 = vtxD0;\n");
+    mstring_append(vars, "vec4 pD1 = vtxD1;\n");
+    mstring_append(vars, "vec4 pB0 = vtxB0;\n");
+    mstring_append(vars, "vec4 pB1 = vtxB1;\n");
+    mstring_append(vars, "vec4 pFog = vec4(fogColor.rgb, clamp(vtxFog, 0.0, 1.0));\n");
+    mstring_append(vars, "vec4 pT0 = vtxT0;\n");
+    mstring_append(vars, "vec4 pT1 = vtxT1;\n");
+    mstring_append(vars, "vec4 pT2 = vtxT2;\n");
 
     if (ps->state.point_sprite) {
         assert(!ps->state.rect_tex[3]);
         mstring_append(vars, "vec4 pT3 = vec4(gl_PointCoord, 1.0, 1.0);\n");
     } else {
-        if (!z_perspective) {
-            mstring_append(vars, "vec4 pT3 = vtxT3 / vtx_inv_w;\n");
-        } else {
-            mstring_append(vars, "vec4 pT3 = vtxT3;\n");
-        }
+        mstring_append(vars, "vec4 pT3 = vtxT3;\n");
     }
     mstring_append(vars, "\n");
     mstring_append(vars, "vec4 v0 = pD0;\n");
