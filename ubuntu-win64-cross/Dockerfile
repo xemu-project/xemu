@@ -95,6 +95,7 @@ RUN make \
     -C ${MXE_PATH} \
         glib \
         libepoxy \
+        libusb1 \
         pixman \
         libsamplerate \
         libressl \
