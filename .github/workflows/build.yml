@@ -316,6 +316,8 @@ jobs:
         export CCACHE_DIR=${GITHUB_WORKSPACE}/xemu-ccache
         export CCACHE_MAXSIZE=512M
         export PATH="/usr/local/opt/ccache/libexec:$PATH"
+        export PKG_CONFIG_DIR=""
+        export PKG_CONFIG_LIBDIR="/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig"
         ccache -z
         ./build.sh ${{ matrix.build_param }}
         echo -e "\nCompiler Cache Stats:"

@@ -2,3 +2,4 @@
 url=https://github.com/zeux/volk
 revision=1.3.295
 depth=1
+method=cmake

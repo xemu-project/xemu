@@ -23,7 +23,7 @@
 #include <stdio.h>
 #include "reporting.hh"
 #include <httplib.h>
-#include <json.hpp>
+#include <nlohmann/json.hpp>
 using json = nlohmann::json;
 
 #define DEBUG_COMPAT_SERVICE 0

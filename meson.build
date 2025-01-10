@@ -2302,6 +2302,7 @@ if host_os == 'windows'
       ])
 elif host_os == 'linux'
   vulkan = dependency('vulkan')
+  libglslang = dependency('glslang', required: false)
 endif
 
 if vulkan.found()
@@ -3533,11 +3534,9 @@ if have_libvduse
   libvduse = libvduse_proj.get_variable('libvduse_dep')
 endif
 
-tomlplusplus_proj = subproject('tomlplusplus', default_options: ['default_library=static'])
-tomlplusplus = tomlplusplus_proj.get_variable('tomlplusplus_dep')
+tomlplusplus = dependency('tomlplusplus', fallback: ['tomlplusplus', 'tomlplusplus_dep'], default_options: ['default_library=static'])
 
-xxhash_proj = subproject('xxhash', default_options: ['default_library=static'])
-xxhash = xxhash_proj.get_variable('xxhash_dep')
+xxhash = dependency('libxxhash', fallback: ['xxhash', 'xxhash_dep'], default_options: ['default_library=static'])
 
 #####################
 # Generated sources #
