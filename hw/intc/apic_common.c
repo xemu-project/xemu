@@ -25,31 +25,29 @@
 #include "qapi/visitor.h"
 #include "hw/i386/apic.h"
 #include "hw/i386/apic_internal.h"
+#include "hw/intc/kvm_irqcount.h"
 #include "trace.h"
 #include "hw/boards.h"
-#include "sysemu/hax.h"
 #include "sysemu/kvm.h"
 #include "hw/qdev-properties.h"
 #include "hw/sysbus.h"
 #include "migration/vmstate.h"
 
-static int apic_irq_delivered;
 bool apic_report_tpr_access;
 
-void cpu_set_apic_base(DeviceState *dev, uint64_t val)
+int cpu_set_apic_base(DeviceState *dev, uint64_t val)
 {
     trace_cpu_set_apic_base(val);
 
     if (dev) {
         APICCommonState *s = APIC_COMMON(dev);
         APICCommonClass *info = APIC_COMMON_GET_CLASS(s);
-        /* switching to x2APIC, reset possibly modified xAPIC ID */
-        if (!(s->apicbase & MSR_IA32_APICBASE_EXTD) &&
-            (val & MSR_IA32_APICBASE_EXTD)) {
-            s->id = s->initial_apic_id;
-        }
-        info->set_base(s, val);
+        /* Reset possibly modified xAPIC ID */
+        s->id = s->initial_apic_id;
+        return info->set_base(s, val);
     }
+
+    return 0;
 }
 
 uint64_t cpu_get_apic_base(DeviceState *dev)
@@ -62,6 +60,19 @@ uint64_t cpu_get_apic_base(DeviceState *dev)
         trace_cpu_get_apic_base(MSR_IA32_APICBASE_BSP);
         return MSR_IA32_APICBASE_BSP;
     }
+}
+
+bool cpu_is_apic_enabled(DeviceState *dev)
+{
+    APICCommonState *s;
+
+    if (!dev) {
+        return false;
+    }
+
+    s = APIC_COMMON(dev);
+
+    return s->apicbase & MSR_IA32_APICBASE_ENABLE;
 }
 
 void cpu_set_apic_tpr(DeviceState *dev, uint8_t val)
@@ -120,32 +131,6 @@ void apic_handle_tpr_access_report(DeviceState *dev, target_ulong ip,
     APICCommonState *s = APIC_COMMON(dev);
 
     vapic_report_tpr_access(s->vapic, CPU(s->cpu), ip, access);
-}
-
-void apic_report_irq_delivered(int delivered)
-{
-    apic_irq_delivered += delivered;
-
-    trace_apic_report_irq_delivered(apic_irq_delivered);
-}
-
-void apic_reset_irq_delivered(void)
-{
-    /* Copy this into a local variable to encourage gcc to emit a plain
-     * register for a sys/sdt.h marker.  For details on this workaround, see:
-     * https://sourceware.org/bugzilla/show_bug.cgi?id=13296
-     */
-    volatile int a_i_d = apic_irq_delivered;
-    trace_apic_reset_irq_delivered(a_i_d);
-
-    apic_irq_delivered = 0;
-}
-
-int apic_get_irq_delivered(void)
-{
-    trace_apic_get_irq_delivered(apic_irq_delivered);
-
-    return apic_irq_delivered;
 }
 
 void apic_deliver_nmi(DeviceState *dev)
@@ -272,7 +257,7 @@ static void apic_reset_common(DeviceState *dev)
     s->apicbase = APIC_DEFAULT_ADDRESS | bsp | MSR_IA32_APICBASE_ENABLE;
     s->id = s->initial_apic_id;
 
-    apic_reset_irq_delivered();
+    kvm_reset_irq_delivered();
 
     s->vapic_paddr = 0;
     info->vapic_base_update(s);
@@ -305,6 +290,7 @@ static const VMStateDescription vmstate_apic_common;
 
 static void apic_common_realize(DeviceState *dev, Error **errp)
 {
+    ERRP_GUARD();
     APICCommonState *s = APIC_COMMON(dev);
     APICCommonClass *info;
     static DeviceState *vapic;
@@ -315,10 +301,13 @@ static void apic_common_realize(DeviceState *dev, Error **errp)
 
     info = APIC_COMMON_GET_CLASS(s);
     info->realize(dev, errp);
+    if (*errp) {
+        return;
+    }
 
     /* Note: We need at least 1M to map the VAPIC option ROM */
     if (!vapic && s->vapic_control & VAPIC_ENABLE_MASK &&
-        !hax_enabled() && current_machine->ram_size >= 1024 * 1024) {
+            current_machine->ram_size >= 1024 * 1024) {
         vapic = sysbus_create_simple("kvmvapic", -1, NULL);
     }
     s->vapic = vapic;
@@ -331,6 +320,10 @@ static void apic_common_realize(DeviceState *dev, Error **errp)
     }
     vmstate_register_with_alias_id(NULL, instance_id, &vmstate_apic_common,
                                    s, -1, 0, NULL);
+
+    /* APIC LDR in x2APIC mode */
+    s->extended_log_dest = ((s->initial_apic_id >> 4) << 16) |
+                            (1 << (s->initial_apic_id & 0xf));
 }
 
 static void apic_common_unrealize(DeviceState *dev)
@@ -393,7 +386,7 @@ static const VMStateDescription vmstate_apic_common_sipi = {
     .version_id = 1,
     .minimum_version_id = 1,
     .needed = apic_common_sipi_needed,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_INT32(sipi_vector, APICCommonState),
         VMSTATE_INT32(wait_for_sipi, APICCommonState),
         VMSTATE_END_OF_LIST()
@@ -407,7 +400,7 @@ static const VMStateDescription vmstate_apic_common = {
     .pre_load = apic_pre_load,
     .pre_save = apic_dispatch_pre_save,
     .post_load = apic_dispatch_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(apicbase, APICCommonState),
         VMSTATE_UINT8(id, APICCommonState),
         VMSTATE_UINT8(arb_id, APICCommonState),
@@ -430,7 +423,7 @@ static const VMStateDescription vmstate_apic_common = {
                       APICCommonState), /* open-coded timer state */
         VMSTATE_END_OF_LIST()
     },
-    .subsections = (const VMStateDescription*[]) {
+    .subsections = (const VMStateDescription * const []) {
         &vmstate_apic_common_sipi,
         NULL
     }
@@ -461,6 +454,7 @@ static void apic_common_set_id(Object *obj, Visitor *v, const char *name,
     APICCommonState *s = APIC_COMMON(obj);
     DeviceState *dev = DEVICE(obj);
     uint32_t value;
+    Error *local_err = NULL;
 
     if (dev->realized) {
         qdev_prop_set_after_realize(dev, name, errp);
@@ -468,6 +462,15 @@ static void apic_common_set_id(Object *obj, Visitor *v, const char *name,
     }
 
     if (!visit_type_uint32(v, name, &value, errp)) {
+        return;
+    }
+
+    if (value >= 255 && !cpu_has_x2apic_feature(&s->cpu->env)) {
+        error_setg(&local_err,
+                   "APIC ID %d requires x2APIC feature in CPU",
+                   value);
+        error_append_hint(&local_err, "Try x2apic=on in -cpu.\n");
+        error_propagate(errp, local_err);
         return;
     }
 
@@ -489,7 +492,7 @@ static void apic_common_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = apic_reset_common;
+    device_class_set_legacy_reset(dc, apic_reset_common);
     device_class_set_props(dc, apic_properties_common);
     dc->realize = apic_common_realize;
     dc->unrealize = apic_common_unrealize;

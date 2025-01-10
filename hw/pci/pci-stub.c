@@ -19,11 +19,9 @@
  */
 
 #include "qemu/osdep.h"
-#include "sysemu/sysemu.h"
 #include "monitor/monitor.h"
-#include "qapi/error.h"
+#include "monitor/hmp.h"
 #include "qapi/qapi-commands-pci.h"
-#include "qapi/qmp/qerror.h"
 #include "hw/pci/pci.h"
 #include "hw/pci/msi.h"
 #include "hw/pci/msix.h"
@@ -33,8 +31,11 @@ bool pci_available;
 
 PciInfoList *qmp_query_pci(Error **errp)
 {
-    error_setg(errp, QERR_UNSUPPORTED);
     return NULL;
+}
+
+void hmp_info_pci(Monitor *mon, const QDict *qdict)
+{
 }
 
 void hmp_pcie_aer_inject_error(Monitor *mon, const QDict *qdict)
@@ -45,14 +46,12 @@ void hmp_pcie_aer_inject_error(Monitor *mon, const QDict *qdict)
 /* kvm-all wants this */
 MSIMessage pci_get_msi_message(PCIDevice *dev, int vector)
 {
-    g_assert(false);
-    return (MSIMessage){};
+    g_assert_not_reached();
 }
 
 uint16_t pci_requester_id(PCIDevice *dev)
 {
-    g_assert(false);
-    return 0;
+    g_assert_not_reached();
 }
 
 /* Required by ahci.c */

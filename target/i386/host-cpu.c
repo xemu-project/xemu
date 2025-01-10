@@ -11,6 +11,7 @@
 #include "cpu.h"
 #include "host-cpu.h"
 #include "qapi/error.h"
+#include "qemu/error-report.h"
 #include "sysemu/sysemu.h"
 
 /* Note: Only safe for use on x86(-64) hosts */
@@ -41,31 +42,19 @@ static uint32_t host_cpu_phys_bits(void)
     return host_phys_bits;
 }
 
-static void host_cpu_enable_cpu_pm(X86CPU *cpu)
-{
-    CPUX86State *env = &cpu->env;
-
-    host_cpuid(5, 0, &cpu->mwait.eax, &cpu->mwait.ebx,
-               &cpu->mwait.ecx, &cpu->mwait.edx);
-    env->features[FEAT_1_ECX] |= CPUID_EXT_MONITOR;
-}
-
-static uint32_t host_cpu_adjust_phys_bits(X86CPU *cpu)
+static void host_cpu_adjust_phys_bits(X86CPU *cpu)
 {
     uint32_t host_phys_bits = host_cpu_phys_bits();
     uint32_t phys_bits = cpu->phys_bits;
-    static bool warned;
 
     /*
      * Print a warning if the user set it to a value that's not the
      * host value.
      */
-    if (phys_bits != host_phys_bits && phys_bits != 0 &&
-        !warned) {
-        warn_report("Host physical bits (%u)"
-                    " does not match phys-bits property (%u)",
-                    host_phys_bits, phys_bits);
-        warned = true;
+    if (phys_bits != host_phys_bits && phys_bits != 0) {
+        warn_report_once("Host physical bits (%u)"
+                         " does not match phys-bits property (%u)",
+                         host_phys_bits, phys_bits);
     }
 
     if (cpu->host_phys_bits) {
@@ -77,7 +66,7 @@ static uint32_t host_cpu_adjust_phys_bits(X86CPU *cpu)
         }
     }
 
-    return phys_bits;
+    cpu->phys_bits = phys_bits;
 }
 
 bool host_cpu_realizefn(CPUState *cs, Error **errp)
@@ -85,21 +74,8 @@ bool host_cpu_realizefn(CPUState *cs, Error **errp)
     X86CPU *cpu = X86_CPU(cs);
     CPUX86State *env = &cpu->env;
 
-    if (cpu->max_features && enable_cpu_pm) {
-        host_cpu_enable_cpu_pm(cpu);
-    }
     if (env->features[FEAT_8000_0001_EDX] & CPUID_EXT2_LM) {
-        uint32_t phys_bits = host_cpu_adjust_phys_bits(cpu);
-
-        if (phys_bits &&
-            (phys_bits > TARGET_PHYS_ADDR_SPACE_BITS ||
-             phys_bits < 32)) {
-            error_setg(errp, "phys-bits should be between 32 and %u "
-                       " (but is %u)",
-                       TARGET_PHYS_ADDR_SPACE_BITS, phys_bits);
-            return false;
-        }
-        cpu->phys_bits = phys_bits;
+        host_cpu_adjust_phys_bits(cpu);
     }
     return true;
 }

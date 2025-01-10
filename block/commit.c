@@ -18,7 +18,6 @@
 #include "block/block_int.h"
 #include "block/blockjob_int.h"
 #include "qapi/error.h"
-#include "qapi/qmp/qerror.h"
 #include "qemu/ratelimit.h"
 #include "qemu/memalign.h"
 #include "sysemu/block-backend.h"
@@ -43,14 +42,17 @@ typedef struct CommitBlockJob {
     bool base_read_only;
     bool chain_frozen;
     char *backing_file_str;
+    bool backing_mask_protocol;
 } CommitBlockJob;
 
 static int commit_prepare(Job *job)
 {
     CommitBlockJob *s = container_of(job, CommitBlockJob, common.job);
 
+    bdrv_graph_rdlock_main_loop();
     bdrv_unfreeze_backing_chain(s->commit_top_bs, s->base_bs);
     s->chain_frozen = false;
+    bdrv_graph_rdunlock_main_loop();
 
     /* Remove base node parent that still uses BLK_PERM_WRITE/RESIZE before
      * the normal backing chain can be restored. */
@@ -60,16 +62,20 @@ static int commit_prepare(Job *job)
     /* FIXME: bdrv_drop_intermediate treats total failures and partial failures
      * identically. Further work is needed to disambiguate these cases. */
     return bdrv_drop_intermediate(s->commit_top_bs, s->base_bs,
-                                  s->backing_file_str);
+                                  s->backing_file_str,
+                                  s->backing_mask_protocol);
 }
 
 static void commit_abort(Job *job)
 {
     CommitBlockJob *s = container_of(job, CommitBlockJob, common.job);
     BlockDriverState *top_bs = blk_bs(s->top);
+    BlockDriverState *commit_top_backing_bs;
 
     if (s->chain_frozen) {
+        bdrv_graph_rdlock_main_loop();
         bdrv_unfreeze_backing_chain(s->commit_top_bs, s->base_bs);
+        bdrv_graph_rdunlock_main_loop();
     }
 
     /* Make sure commit_top_bs and top stay around until bdrv_replace_node() */
@@ -91,8 +97,15 @@ static void commit_abort(Job *job)
      * XXX Can (or should) we somehow keep 'consistent read' blocked even
      * after the failed/cancelled commit job is gone? If we already wrote
      * something to base, the intermediate images aren't valid any more. */
-    bdrv_replace_node(s->commit_top_bs, s->commit_top_bs->backing->bs,
-                      &error_abort);
+    bdrv_graph_rdlock_main_loop();
+    commit_top_backing_bs = s->commit_top_bs->backing->bs;
+    bdrv_graph_rdunlock_main_loop();
+
+    bdrv_drained_begin(commit_top_backing_bs);
+    bdrv_graph_wrlock();
+    bdrv_replace_node(s->commit_top_bs, commit_top_backing_bs, &error_abort);
+    bdrv_graph_wrunlock();
+    bdrv_drained_end(commit_top_backing_bs);
 
     bdrv_unref(s->commit_top_bs);
     bdrv_unref(top_bs);
@@ -117,19 +130,18 @@ static int coroutine_fn commit_run(Job *job, Error **errp)
 {
     CommitBlockJob *s = container_of(job, CommitBlockJob, common.job);
     int64_t offset;
-    uint64_t delay_ns = 0;
     int ret = 0;
     int64_t n = 0; /* bytes */
     QEMU_AUTO_VFREE void *buf = NULL;
     int64_t len, base_len;
 
-    len = blk_getlength(s->top);
+    len = blk_co_getlength(s->top);
     if (len < 0) {
         return len;
     }
     job_progress_set_remaining(&s->common.job, len);
 
-    base_len = blk_getlength(s->base);
+    base_len = blk_co_getlength(s->base);
     if (base_len < 0) {
         return base_len;
     }
@@ -150,13 +162,13 @@ static int coroutine_fn commit_run(Job *job, Error **errp)
         /* Note that even when no rate limit is applied we need to yield
          * with no pending I/O here so that bdrv_drain_all() returns.
          */
-        job_sleep_ns(&s->common.job, delay_ns);
+        block_job_ratelimit_sleep(&s->common);
         if (job_is_cancelled(&s->common.job)) {
             break;
         }
         /* Copy if allocated above the base */
-        ret = bdrv_is_allocated_above(blk_bs(s->top), s->base_overlay, true,
-                                      offset, COMMIT_BUFFER_SIZE, &n);
+        ret = blk_co_is_allocated_above(s->top, s->base_overlay, true,
+                                        offset, COMMIT_BUFFER_SIZE, &n);
         copy = (ret > 0);
         trace_commit_one_iteration(s, offset, n, ret);
         if (copy) {
@@ -185,9 +197,7 @@ static int coroutine_fn commit_run(Job *job, Error **errp)
         job_progress_update(&s->common.job, n);
 
         if (copy) {
-            delay_ns = block_job_ratelimit_get_delay(&s->common, n);
-        } else {
-            delay_ns = 0;
+            block_job_ratelimit_processed_bytes(&s->common, n);
         }
     }
 
@@ -207,13 +217,14 @@ static const BlockJobDriver commit_job_driver = {
     },
 };
 
-static int coroutine_fn bdrv_commit_top_preadv(BlockDriverState *bs,
-    int64_t offset, int64_t bytes, QEMUIOVector *qiov, BdrvRequestFlags flags)
+static int coroutine_fn GRAPH_RDLOCK
+bdrv_commit_top_preadv(BlockDriverState *bs, int64_t offset, int64_t bytes,
+                       QEMUIOVector *qiov, BdrvRequestFlags flags)
 {
     return bdrv_co_preadv(bs->backing, offset, bytes, qiov, flags);
 }
 
-static void bdrv_commit_top_refresh_filename(BlockDriverState *bs)
+static GRAPH_RDLOCK void bdrv_commit_top_refresh_filename(BlockDriverState *bs)
 {
     pstrcpy(bs->exact_filename, sizeof(bs->exact_filename),
             bs->backing->bs->filename);
@@ -245,6 +256,7 @@ void commit_start(const char *job_id, BlockDriverState *bs,
                   BlockDriverState *base, BlockDriverState *top,
                   int creation_flags, int64_t speed,
                   BlockdevOnError on_error, const char *backing_file_str,
+                  bool backing_mask_protocol,
                   const char *filter_node_name, Error **errp)
 {
     CommitBlockJob *s;
@@ -258,10 +270,13 @@ void commit_start(const char *job_id, BlockDriverState *bs,
     GLOBAL_STATE_CODE();
 
     assert(top != bs);
+    bdrv_graph_rdlock_main_loop();
     if (bdrv_skip_filters(top) == bdrv_skip_filters(base)) {
         error_setg(errp, "Invalid files for merge: top and base are the same");
+        bdrv_graph_rdunlock_main_loop();
         return;
     }
+    bdrv_graph_rdunlock_main_loop();
 
     base_size = bdrv_getlength(base);
     if (base_size < 0) {
@@ -327,6 +342,7 @@ void commit_start(const char *job_id, BlockDriverState *bs,
      * this is the responsibility of the interface (i.e. whoever calls
      * commit_start()).
      */
+    bdrv_graph_wrlock();
     s->base_overlay = bdrv_find_overlay(top, base);
     assert(s->base_overlay);
 
@@ -357,16 +373,20 @@ void commit_start(const char *job_id, BlockDriverState *bs,
         ret = block_job_add_bdrv(&s->common, "intermediate node", iter, 0,
                                  iter_shared_perms, errp);
         if (ret < 0) {
+            bdrv_graph_wrunlock();
             goto fail;
         }
     }
 
     if (bdrv_freeze_backing_chain(commit_top_bs, base, errp) < 0) {
+        bdrv_graph_wrunlock();
         goto fail;
     }
     s->chain_frozen = true;
 
     ret = block_job_add_bdrv(&s->common, "base", base, 0, BLK_PERM_ALL, errp);
+    bdrv_graph_wrunlock();
+
     if (ret < 0) {
         goto fail;
     }
@@ -391,6 +411,7 @@ void commit_start(const char *job_id, BlockDriverState *bs,
     blk_set_disable_request_queuing(s->top, true);
 
     s->backing_file_str = g_strdup(backing_file_str);
+    s->backing_mask_protocol = backing_mask_protocol;
     s->on_error = on_error;
 
     trace_commit_start(bs, base, top, s);
@@ -399,7 +420,9 @@ void commit_start(const char *job_id, BlockDriverState *bs,
 
 fail:
     if (s->chain_frozen) {
+        bdrv_graph_rdlock_main_loop();
         bdrv_unfreeze_backing_chain(commit_top_bs, base);
+        bdrv_graph_rdunlock_main_loop();
     }
     if (s->base) {
         blk_unref(s->base);
@@ -414,7 +437,11 @@ fail:
     /* commit_top_bs has to be replaced after deleting the block job,
      * otherwise this would fail because of lack of permissions. */
     if (commit_top_bs) {
+        bdrv_drained_begin(top);
+        bdrv_graph_wrlock();
         bdrv_replace_node(commit_top_bs, top, &error_abort);
+        bdrv_graph_wrunlock();
+        bdrv_drained_end(top);
     }
 }
 
@@ -437,6 +464,7 @@ int bdrv_commit(BlockDriverState *bs)
     Error *local_err = NULL;
 
     GLOBAL_STATE_CODE();
+    GRAPH_RDLOCK_GUARD_MAINLOOP();
 
     if (!drv)
         return -ENOMEDIUM;

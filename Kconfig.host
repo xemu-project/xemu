@@ -5,10 +5,19 @@
 config LINUX
     bool
 
+config LIBCBOR
+    bool
+
+config GNUTLS
+    bool
+
 config OPENGL
     bool
 
 config X11
+    bool
+
+config PIXMAN
     bool
 
 config SPICE
@@ -18,6 +27,9 @@ config IVSHMEM
     bool
 
 config TPM
+    bool
+
+config FDT
     bool
 
 config VHOST_USER
@@ -32,9 +44,6 @@ config VHOST_KERNEL
 config VIRTFS
     bool
 
-config PVRDMA
-    bool
-
 config MULTIPROCESS_ALLOWED
     bool
     imply MULTIPROCESS
@@ -46,3 +55,9 @@ config FUZZ
 config VFIO_USER_SERVER_ALLOWED
     bool
     imply VFIO_USER_SERVER
+
+config HV_BALLOON_POSSIBLE
+    bool
+
+config HAVE_RUST
+    bool

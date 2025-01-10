@@ -157,7 +157,7 @@ static const VMStateDescription vmstate_mips_cpc = {
     .name = "mips-cpc",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT64(vp_running, MIPSCPCState),
         VMSTATE_END_OF_LIST()
     },
@@ -174,7 +174,7 @@ static void mips_cpc_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = mips_cpc_realize;
-    dc->reset = mips_cpc_reset;
+    device_class_set_legacy_reset(dc, mips_cpc_reset);
     dc->vmsd = &vmstate_mips_cpc;
     device_class_set_props(dc, mips_cpc_properties);
 }

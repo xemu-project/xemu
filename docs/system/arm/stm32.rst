@@ -1,5 +1,5 @@
-STMicroelectronics STM32 boards (``netduino2``, ``netduinoplus2``, ``stm32vldiscovery``)
-========================================================================================
+STMicroelectronics STM32 boards (``netduino2``, ``netduinoplus2``, ``olimex-stm32-h405``, ``stm32vldiscovery``)
+===============================================================================================================
 
 The `STM32`_ chips are a family of 32-bit ARM-based microcontroller by
 STMicroelectronics.
@@ -16,10 +16,13 @@ based on this chip :
 
 - ``netduino2``         Netduino 2 board with STM32F205RFT6 microcontroller
 
-The STM32F4 series is based on ARM Cortex-M4F core. This series is pin-to-pin
-compatible with STM32F2 series. The following machines are based on this chip :
+The STM32F4 series is based on ARM Cortex-M4F core, as well as the STM32L4
+ultra-low-power series. The STM32F4 series is pin-to-pin compatible with STM32F2 series.
+The following machines are based on this ARM Cortex-M4F chip :
 
 - ``netduinoplus2``     Netduino Plus 2 board with STM32F405RGT6 microcontroller
+- ``olimex-stm32-h405`` Olimex STM32 H405 board with STM32F405RGT6 microcontroller
+- ``b-l475e-iot01a``     :doc:`B-L475E-IOT01A IoT Node </system/arm/b-l475e-iot01a>` board with STM32L475VG microcontroller
 
 There are many other STM32 series that are currently not supported by QEMU.
 
@@ -33,6 +36,7 @@ Supported devices
  * SPI controller
  * System configuration (SYSCFG)
  * Timer controller (TIMER)
+ * Reset and Clock Controller (RCC) (STM32F4 only, reset and enable only)
 
 Missing devices
 ---------------
@@ -50,7 +54,7 @@ Missing devices
  * Power supply configuration (PWR)
  * Random Number Generator (RNG)
  * Real-Time Clock (RTC) controller
- * Reset and Clock Controller (RCC)
+ * Reset and Clock Controller (RCC) (other features than reset and enable)
  * Secure Digital Input/Output (SDIO) interface
  * USB OTG
  * Watchdog controller (IWDG, WWDG)

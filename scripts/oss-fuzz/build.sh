@@ -43,10 +43,10 @@ EXTRA_CFLAGS="$CFLAGS -U __OPTIMIZE__"
 if ! { [ -e "./COPYING" ] &&
    [ -e "./MAINTAINERS" ] &&
    [ -e "./Makefile" ] &&
-   [ -e "./docs" ] &&
+   [ -d "./docs" ] &&
    [ -e "./VERSION" ] &&
-   [ -e "./linux-user" ] &&
-   [ -e "./softmmu" ];} ; then
+   [ -d "./linux-user" ] &&
+   [ -d "./system" ];} ; then
     fatal "Please run the script from the top of the QEMU tree"
 fi
 
@@ -92,6 +92,7 @@ make install DESTDIR=$DEST_DIR/qemu-bundle
 rm -rf $DEST_DIR/qemu-bundle/opt/qemu-oss-fuzz/bin
 rm -rf $DEST_DIR/qemu-bundle/opt/qemu-oss-fuzz/libexec
 
+export ASAN_OPTIONS=detect_leaks=0
 targets=$(./qemu-fuzz-i386 | grep generic-fuzz | awk '$1 ~ /\*/  {print $2}')
 base_copy="$DEST_DIR/qemu-fuzz-i386-target-$(echo "$targets" | head -n 1)"
 

@@ -32,7 +32,9 @@ typedef struct QEMUCPUState {
 int is_system(QEMUCPUState *s);
 
 typedef struct QEMU_Elf {
+#ifndef CONFIG_LINUX
     GMappedFile *gmf;
+#endif
     size_t size;
     void *map;
     QEMUCPUState **state;
@@ -40,7 +42,7 @@ typedef struct QEMU_Elf {
     int has_kernel_gs_base;
 } QEMU_Elf;
 
-int QEMU_Elf_init(QEMU_Elf *qe, const char *filename);
+bool QEMU_Elf_init(QEMU_Elf *qe, const char *filename);
 void QEMU_Elf_exit(QEMU_Elf *qe);
 
 Elf64_Phdr *elf64_getphdr(void *map);

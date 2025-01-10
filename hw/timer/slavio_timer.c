@@ -344,7 +344,7 @@ static const VMStateDescription vmstate_timer = {
     .name ="timer",
     .version_id = 3,
     .minimum_version_id = 3,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT64(limit, CPUTimerState),
         VMSTATE_UINT32(count, CPUTimerState),
         VMSTATE_UINT32(counthigh, CPUTimerState),
@@ -359,7 +359,7 @@ static const VMStateDescription vmstate_slavio_timer = {
     .name ="slavio_timer",
     .version_id = 3,
     .minimum_version_id = 3,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_STRUCT_ARRAY(cputimer, SLAVIO_TIMERState, MAX_CPUS + 1, 3,
                              vmstate_timer, CPUTimerState),
         VMSTATE_END_OF_LIST()
@@ -429,7 +429,7 @@ static void slavio_timer_class_init(ObjectClass *klass, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
-    dc->reset = slavio_timer_reset;
+    device_class_set_legacy_reset(dc, slavio_timer_reset);
     dc->vmsd = &vmstate_slavio_timer;
     device_class_set_props(dc, slavio_timer_properties);
 }

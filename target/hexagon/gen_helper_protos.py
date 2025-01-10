@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 ##
-##  Copyright(c) 2019-2021 Qualcomm Innovation Center, Inc. All Rights Reserved.
+##  Copyright(c) 2019-2024 Qualcomm Innovation Center, Inc. All Rights Reserved.
 ##
 ##  This program is free software; you can redistribute it and/or modify
 ##  it under the terms of the GNU General Public License as published by
@@ -23,37 +23,6 @@ import string
 import hex_common
 
 ##
-## Helpers for gen_helper_prototype
-##
-def_helper_types = {
-    'N' : 's32',
-    'O' : 's32',
-    'P' : 's32',
-    'M' : 's32',
-    'C' : 's32',
-    'R' : 's32',
-    'V' : 'ptr',
-    'Q' : 'ptr'
-}
-
-def_helper_types_pair = {
-    'R' : 's64',
-    'C' : 's64',
-    'S' : 's64',
-    'G' : 's64',
-    'V' : 'ptr',
-    'Q' : 'ptr'
-}
-
-def gen_def_helper_opn(f, tag, regtype, regid, toss, numregs, i):
-    if (hex_common.is_pair(regid)):
-        f.write(", %s" % (def_helper_types_pair[regtype]))
-    elif (hex_common.is_single(regid)):
-        f.write(", %s" % (def_helper_types[regtype]))
-    else:
-        print("Bad register parse: ",regtype,regid,toss,numregs)
-
-##
 ## Generate the DEF_HELPER prototype for an instruction
 ##     For A2_add: Rd32=add(Rs32,Rt32)
 ##     We produce:
@@ -63,103 +32,54 @@ def gen_helper_prototype(f, tag, tagregs, tagimms):
     regs = tagregs[tag]
     imms = tagimms[tag]
 
-    numresults = 0
-    numscalarresults = 0
-    numscalarreadwrite = 0
-    for regtype,regid,toss,numregs in regs:
-        if (hex_common.is_written(regid)):
-            numresults += 1
-            if (hex_common.is_scalar_reg(regtype)):
-                numscalarresults += 1
-        if (hex_common.is_readwrite(regid)):
-            if (hex_common.is_scalar_reg(regtype)):
-                numscalarreadwrite += 1
+    declared = []
+    ret_type = hex_common.helper_ret_type(tag, regs).proto_arg
+    declared.append(ret_type)
 
-    if (numscalarresults > 1):
-        ## The helper is bogus when there is more than one result
-        f.write('DEF_HELPER_1(%s, void, env)\n' % tag)
+    for arg in hex_common.helper_args(tag, regs, imms):
+        declared.append(arg.proto_arg)
+
+    arguments = ", ".join(declared)
+
+    ## Add the TCG_CALL_NO_RWG_SE flag to helpers that don't take the env
+    ## argument and aren't HVX instructions.  Since HVX instructions take
+    ## pointers to their arguments, they will have side effects.
+    if hex_common.need_env(tag) or hex_common.is_hvx_insn(tag):
+        f.write(f"DEF_HELPER_{len(declared) - 1}({tag}, {arguments})\n")
     else:
-        ## Figure out how many arguments the helper will take
-        if (numscalarresults == 0):
-            def_helper_size = len(regs)+len(imms)+numscalarreadwrite+1
-            if hex_common.need_part1(tag): def_helper_size += 1
-            if hex_common.need_slot(tag): def_helper_size += 1
-            f.write('DEF_HELPER_%s(%s' % (def_helper_size, tag))
-            ## The return type is void
-            f.write(', void' )
-        else:
-            def_helper_size = len(regs)+len(imms)+numscalarreadwrite
-            if hex_common.need_part1(tag): def_helper_size += 1
-            if hex_common.need_slot(tag): def_helper_size += 1
-            f.write('DEF_HELPER_%s(%s' % (def_helper_size, tag))
+        f.write(f"DEF_HELPER_FLAGS_{len(declared) - 1}({tag}, "
+                f"TCG_CALL_NO_RWG_SE, {arguments})\n")
 
-        ## Generate the qemu DEF_HELPER type for each result
-        ## Iterate over this list twice
-        ## - Emit the scalar result
-        ## - Emit the vector result
-        i=0
-        for regtype,regid,toss,numregs in regs:
-            if (hex_common.is_written(regid)):
-                if (not hex_common.is_hvx_reg(regtype)):
-                    gen_def_helper_opn(f, tag, regtype, regid, toss, numregs, i)
-                i += 1
-
-        ## Put the env between the outputs and inputs
-        f.write(', env' )
-        i += 1
-
-        # Second pass
-        for regtype,regid,toss,numregs in regs:
-            if (hex_common.is_written(regid)):
-                if (hex_common.is_hvx_reg(regtype)):
-                    gen_def_helper_opn(f, tag, regtype, regid, toss, numregs, i)
-                    i += 1
-
-        ## Generate the qemu type for each input operand (regs and immediates)
-        for regtype,regid,toss,numregs in regs:
-            if (hex_common.is_read(regid)):
-                if (hex_common.is_hvx_reg(regtype) and
-                    hex_common.is_readwrite(regid)):
-                    continue
-                gen_def_helper_opn(f, tag, regtype, regid, toss, numregs, i)
-                i += 1
-        for immlett,bits,immshift in imms:
-            f.write(", s32")
-
-        ## Add the arguments for the instruction slot and part1 (if needed)
-        if hex_common.need_slot(tag): f.write(', i32' )
-        if hex_common.need_part1(tag): f.write(' , i32' )
-        f.write(')\n')
 
 def main():
-    hex_common.read_semantics_file(sys.argv[1])
-    hex_common.read_attribs_file(sys.argv[2])
-    hex_common.read_overrides_file(sys.argv[3])
-    hex_common.read_overrides_file(sys.argv[4])
-    hex_common.calculate_attribs()
+    hex_common.read_common_files()
     tagregs = hex_common.get_tagregs()
     tagimms = hex_common.get_tagimms()
 
-    with open(sys.argv[5], 'w') as f:
+    output_file = sys.argv[-1]
+    with open(output_file, "w") as f:
         for tag in hex_common.tags:
             ## Skip the priv instructions
-            if ( "A_PRIV" in hex_common.attribdict[tag] ) :
+            if "A_PRIV" in hex_common.attribdict[tag]:
                 continue
             ## Skip the guest instructions
-            if ( "A_GUEST" in hex_common.attribdict[tag] ) :
+            if "A_GUEST" in hex_common.attribdict[tag]:
                 continue
             ## Skip the diag instructions
-            if ( tag == "Y6_diag" ) :
+            if tag == "Y6_diag":
                 continue
-            if ( tag == "Y6_diag0" ) :
+            if tag == "Y6_diag0":
                 continue
-            if ( tag == "Y6_diag1" ) :
+            if tag == "Y6_diag1":
                 continue
 
-            if ( hex_common.skip_qemu_helper(tag) ):
+            if hex_common.skip_qemu_helper(tag):
+                continue
+            if hex_common.is_idef_parser_enabled(tag):
                 continue
 
             gen_helper_prototype(f, tag, tagregs, tagimms)
+
 
 if __name__ == "__main__":
     main()

@@ -40,8 +40,8 @@ Those hosts are officially supported, with various accelerators:
    * - CPU Architecture
      - Accelerators
    * - Arm
-     - kvm (64 bit only), tcg, xen
-   * - MIPS (little endian only)
+     - hvf (64 bit only), kvm (64 bit only), tcg, xen
+   * - MIPS (64 bit little endian only)
      - kvm, tcg
    * - PPC
      - kvm, tcg
@@ -52,7 +52,7 @@ Those hosts are officially supported, with various accelerators:
    * - SPARC
      - tcg
    * - x86
-     - hax, hvf (64 bit only), kvm, nvmm, tcg, whpx (64 bit only), xen
+     - hvf (64 bit only), kvm, nvmm, tcg, whpx (64 bit only), xen
 
 Other host architectures are not supported. It is possible to build QEMU system
 emulation on an unsupported host architecture using the configure
@@ -67,7 +67,8 @@ Non-supported architectures may be removed in the future following the
 Linux OS, macOS, FreeBSD, NetBSD, OpenBSD
 -----------------------------------------
 
-The project aims to support the most recent major version at all times. Support
+The project aims to support the most recent major version at all times for
+up to five years after its initial release. Support
 for the previous major version will be dropped 2 years after the new major
 version is released or when the vendor itself drops support, whichever comes
 first. In this context, third-party efforts to extend the lifetime of a distro
@@ -85,6 +86,50 @@ respective ports repository, while NetBSD will use the pkgsrc repository.
 
 For macOS, `Homebrew`_ will be used, although `MacPorts`_ is expected to carry
 similar versions.
+
+Some build dependencies may follow less conservative rules:
+
+Python runtime
+  Distributions with long-term support often provide multiple versions
+  of the Python runtime.  While QEMU will initially aim to support the
+  distribution's default runtime, it may later increase its minimum version
+  to any newer python that is available as an option from the vendor.
+  In this case, it will be necessary to use the ``--python`` command line
+  option of the ``configure`` script to point QEMU to a supported
+  version of the Python runtime.
+
+  As of QEMU |version|, the minimum supported version of Python is 3.7.
+
+Python build dependencies
+  Some of QEMU's build dependencies are written in Python.  Usually these
+  are only packaged by distributions for the default Python runtime.
+  If QEMU bumps its minimum Python version and a non-default runtime is
+  required, it may be necessary to fetch python modules from the Python
+  Package Index (PyPI) via ``pip``, in order to build QEMU.
+
+Rust build dependencies
+  QEMU is generally conservative in adding new Rust dependencies, and all
+  of them are included in the distributed tarballs.  One exception is the
+  bindgen tool, which is too big to package and distribute.  The minimum
+  supported version of bindgen is 0.60.x.  For distributions that do not
+  include bindgen or have an older version, it is recommended to install
+  a newer version using ``cargo install bindgen-cli``.
+
+  Developers may want to use Cargo-based tools in the QEMU source tree;
+  this requires Cargo 1.74.0.  Note that Cargo is not required in order
+  to build QEMU.
+
+Optional build dependencies
+  Build components whose absence does not affect the ability to build
+  QEMU may not be available in distros, or may be too old for QEMU's
+  requirements.  Many of these, such as the Avocado testing framework
+  or various linters, are written in Python and therefore can also
+  be installed using ``pip``.  Cross compilers are another example
+  of optional build-time dependency; in this case it is possible to
+  download them from repositories such as EPEL, to use container-based
+  cross compilation using ``docker`` or ``podman``, or to use pre-built
+  binaries distributed with QEMU.
+
 
 Windows
 -------
@@ -105,6 +150,8 @@ build process to successfully complete. On newer versions of Windows 10,
 unprivileged accounts can create symlinks if Developer Mode is enabled.
 When Developer Mode is not available/enabled, the SeCreateSymbolicLinkPrivilege
 privilege is required, or the process must be run as an administrator.
+
+Only 64-bit Windows is supported.
 
 .. _Homebrew: https://brew.sh/
 .. _MacPorts: https://www.macports.org/

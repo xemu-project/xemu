@@ -11,12 +11,12 @@
 #include "qemu/osdep.h"
 #include "qemu/units.h"
 #include <glusterfs/api/glfs.h>
+#include "block/block-io.h"
 #include "block/block_int.h"
 #include "block/qdict.h"
 #include "qapi/error.h"
 #include "qapi/qmp/qdict.h"
 #include "qapi/qmp/qerror.h"
-#include "qemu/uri.h"
 #include "qemu/error-report.h"
 #include "qemu/module.h"
 #include "qemu/option.h"
@@ -288,9 +288,9 @@ static void glfs_clear_preopened(glfs_t *fs)
     }
 }
 
-static int parse_volume_options(BlockdevOptionsGluster *gconf, char *path)
+static int parse_volume_options(BlockdevOptionsGluster *gconf, const char *path)
 {
-    char *p, *q;
+    const char *p, *q;
 
     if (!path) {
         return -EINVAL;
@@ -348,13 +348,13 @@ static int parse_volume_options(BlockdevOptionsGluster *gconf, char *path)
 static int qemu_gluster_parse_uri(BlockdevOptionsGluster *gconf,
                                   const char *filename)
 {
+    g_autoptr(GUri) uri = g_uri_parse(filename, G_URI_FLAGS_NONE, NULL);
+    g_autoptr(GHashTable) qp = NULL;
     SocketAddress *gsconf;
-    URI *uri;
-    QueryParams *qp = NULL;
     bool is_unix = false;
-    int ret = 0;
+    const char *uri_scheme, *uri_query, *uri_server;
+    int uri_port, ret;
 
-    uri = uri_parse(filename);
     if (!uri) {
         return -EINVAL;
     }
@@ -363,57 +363,54 @@ static int qemu_gluster_parse_uri(BlockdevOptionsGluster *gconf,
     QAPI_LIST_PREPEND(gconf->server, gsconf);
 
     /* transport */
-    if (!uri->scheme || !strcmp(uri->scheme, "gluster")) {
+    uri_scheme = g_uri_get_scheme(uri);
+    if (!uri_scheme || !strcmp(uri_scheme, "gluster")) {
         gsconf->type = SOCKET_ADDRESS_TYPE_INET;
-    } else if (!strcmp(uri->scheme, "gluster+tcp")) {
+    } else if (!strcmp(uri_scheme, "gluster+tcp")) {
         gsconf->type = SOCKET_ADDRESS_TYPE_INET;
-    } else if (!strcmp(uri->scheme, "gluster+unix")) {
+    } else if (!strcmp(uri_scheme, "gluster+unix")) {
         gsconf->type = SOCKET_ADDRESS_TYPE_UNIX;
         is_unix = true;
-    } else if (!strcmp(uri->scheme, "gluster+rdma")) {
-        gsconf->type = SOCKET_ADDRESS_TYPE_INET;
-        warn_report("rdma feature is not supported, falling back to tcp");
     } else {
-        ret = -EINVAL;
-        goto out;
+        return -EINVAL;
     }
 
-    ret = parse_volume_options(gconf, uri->path);
+    ret = parse_volume_options(gconf, g_uri_get_path(uri));
     if (ret < 0) {
-        goto out;
+        return ret;
     }
 
-    qp = query_params_parse(uri->query);
-    if (qp->n > 1 || (is_unix && !qp->n) || (!is_unix && qp->n)) {
-        ret = -EINVAL;
-        goto out;
+    uri_query = g_uri_get_query(uri);
+    if (uri_query) {
+        qp = g_uri_parse_params(uri_query, -1, "&", G_URI_PARAMS_NONE, NULL);
+        if (!qp) {
+            return -EINVAL;
+        }
+        ret = g_hash_table_size(qp);
+        if (ret > 1 || (is_unix && !ret) || (!is_unix && ret)) {
+            return -EINVAL;
+        }
     }
+
+    uri_server = g_uri_get_host(uri);
+    uri_port = g_uri_get_port(uri);
 
     if (is_unix) {
-        if (uri->server || uri->port) {
-            ret = -EINVAL;
-            goto out;
+        char *uri_socket = g_hash_table_lookup(qp, "socket");
+        if (uri_server || uri_port != -1 || !uri_socket) {
+            return -EINVAL;
         }
-        if (strcmp(qp->p[0].name, "socket")) {
-            ret = -EINVAL;
-            goto out;
-        }
-        gsconf->u.q_unix.path = g_strdup(qp->p[0].value);
+        gsconf->u.q_unix.path = g_strdup(uri_socket);
     } else {
-        gsconf->u.inet.host = g_strdup(uri->server ? uri->server : "localhost");
-        if (uri->port) {
-            gsconf->u.inet.port = g_strdup_printf("%d", uri->port);
+        gsconf->u.inet.host = g_strdup(uri_server ? uri_server : "localhost");
+        if (uri_port > 0) {
+            gsconf->u.inet.port = g_strdup_printf("%d", uri_port);
         } else {
             gsconf->u.inet.port = g_strdup_printf("%d", GLUSTER_DEFAULT_PORT);
         }
     }
 
-out:
-    if (qp) {
-        query_params_free(qp);
-    }
-    uri_free(uri);
-    return ret;
+    return 0;
 }
 
 static struct glfs *qemu_gluster_glfs_init(BlockdevOptionsGluster *gconf,
@@ -423,7 +420,7 @@ static struct glfs *qemu_gluster_glfs_init(BlockdevOptionsGluster *gconf,
     int ret;
     int old_errno;
     SocketAddressList *server;
-    unsigned long long port;
+    uint64_t port;
 
     glfs = glfs_find_preopened(gconf->volume);
     if (glfs) {
@@ -444,7 +441,7 @@ static struct glfs *qemu_gluster_glfs_init(BlockdevOptionsGluster *gconf,
                                    server->value->u.q_unix.path, 0);
             break;
         case SOCKET_ADDRESS_TYPE_INET:
-            if (parse_uint_full(server->value->u.inet.port, &port, 10) < 0 ||
+            if (parse_uint_full(server->value->u.inet.port, 10, &port) < 0 ||
                 port > 65535) {
                 error_setg(errp, "'%s' is not a valid port number",
                            server->value->u.inet.port);
@@ -517,7 +514,6 @@ static int qemu_gluster_parse_json(BlockdevOptionsGluster *gconf,
     SocketAddressList **tail;
     QDict *backing_options = NULL;
     Error *local_err = NULL;
-    char *str = NULL;
     const char *ptr;
     int i, type, num_servers;
 
@@ -550,7 +546,8 @@ static int qemu_gluster_parse_json(BlockdevOptionsGluster *gconf,
     tail = &gconf->server;
 
     for (i = 0; i < num_servers; i++) {
-        str = g_strdup_printf(GLUSTER_OPT_SERVER_PATTERN"%d.", i);
+        g_autofree char *str = g_strdup_printf(GLUSTER_OPT_SERVER_PATTERN"%d.",
+                                               i);
         qdict_extract_subqdict(options, &backing_options, str);
 
         /* create opts info from runtime_type_opts list */
@@ -661,8 +658,6 @@ static int qemu_gluster_parse_json(BlockdevOptionsGluster *gconf,
 
         qobject_unref(backing_options);
         backing_options = NULL;
-        g_free(str);
-        str = NULL;
     }
 
     return 0;
@@ -671,7 +666,6 @@ out:
     error_propagate(errp, local_err);
     qapi_free_SocketAddress(gsconf);
     qemu_opts_del(opts);
-    g_free(str);
     qobject_unref(backing_options);
     errno = EINVAL;
     return -errno;
@@ -812,6 +806,8 @@ static int qemu_gluster_open(BlockDriverState *bs,  QDict *options,
         goto out;
     }
 
+    warn_report_once("'gluster' is deprecated");
+
     filename = qemu_opt_get(opts, GLUSTER_OPT_FILENAME);
 
     s->debug = qemu_opt_get_number(opts, GLUSTER_OPT_DEBUG,
@@ -830,7 +826,6 @@ static int qemu_gluster_open(BlockDriverState *bs,  QDict *options,
     s->logfile = g_strdup(logfile ? logfile : GLUSTER_LOGFILE_DEFAULT);
 
     gconf->logfile = g_strdup(s->logfile);
-    gconf->has_logfile = true;
 
     s->glfs = qemu_gluster_init(gconf, filename, options, errp);
     if (!s->glfs) {
@@ -863,11 +858,13 @@ static int qemu_gluster_open(BlockDriverState *bs,  QDict *options,
     if (ret == -EACCES || ret == -EROFS) {
         /* Try to degrade to read-only, but if it doesn't work, still use the
          * normal error message. */
+        bdrv_graph_rdlock_main_loop();
         if (bdrv_apply_auto_read_only(bs, NULL, NULL) == 0) {
             open_flags = (open_flags & ~O_RDWR) | O_RDONLY;
             s->fd = glfs_open(s->glfs, gconf->path, open_flags);
             ret = s->fd ? 0 : -errno;
         }
+        bdrv_graph_rdunlock_main_loop();
     }
 
     s->supports_seek_data = qemu_gluster_test_seek(s->fd);
@@ -917,7 +914,6 @@ static int qemu_gluster_reopen_prepare(BDRVReopenState *state,
     gconf->debug = s->debug;
     gconf->has_debug = true;
     gconf->logfile = g_strdup(s->logfile);
-    gconf->has_logfile = true;
 
     /*
      * If 'state->bs->exact_filename' is empty, 'state->options' should contain
@@ -1162,7 +1158,6 @@ static int coroutine_fn qemu_gluster_co_create_opts(BlockDriver *drv,
     if (!gconf->logfile) {
         gconf->logfile = g_strdup(GLUSTER_LOGFILE_DEFAULT);
     }
-    gconf->has_logfile = true;
 
     ret = qemu_gluster_parse(gconf, filename, NULL, errp);
     if (ret < 0) {
@@ -1320,7 +1315,7 @@ static coroutine_fn int qemu_gluster_co_pdiscard(BlockDriverState *bs,
 }
 #endif
 
-static int64_t qemu_gluster_getlength(BlockDriverState *bs)
+static int64_t coroutine_fn qemu_gluster_co_getlength(BlockDriverState *bs)
 {
     BDRVGlusterState *s = bs->opaque;
     int64_t ret;
@@ -1333,7 +1328,8 @@ static int64_t qemu_gluster_getlength(BlockDriverState *bs)
     }
 }
 
-static int64_t qemu_gluster_allocated_file_size(BlockDriverState *bs)
+static int64_t coroutine_fn
+qemu_gluster_co_get_allocated_file_size(BlockDriverState *bs)
 {
     BDRVGlusterState *s = bs->opaque;
     struct stat st;
@@ -1512,7 +1508,7 @@ static int coroutine_fn qemu_gluster_co_block_status(BlockDriverState *bs,
          * round up if necessary.
          */
         if (!QEMU_IS_ALIGNED(*pnum, bs->bl.request_alignment)) {
-            int64_t file_length = qemu_gluster_getlength(bs);
+            int64_t file_length = qemu_gluster_co_getlength(bs);
             if (file_length > 0) {
                 /* Ignore errors, this is just a safeguard */
                 assert(hole == file_length);
@@ -1554,15 +1550,15 @@ static BlockDriver bdrv_gluster = {
     .format_name                  = "gluster",
     .protocol_name                = "gluster",
     .instance_size                = sizeof(BDRVGlusterState),
-    .bdrv_file_open               = qemu_gluster_open,
+    .bdrv_open                    = qemu_gluster_open,
     .bdrv_reopen_prepare          = qemu_gluster_reopen_prepare,
     .bdrv_reopen_commit           = qemu_gluster_reopen_commit,
     .bdrv_reopen_abort            = qemu_gluster_reopen_abort,
     .bdrv_close                   = qemu_gluster_close,
     .bdrv_co_create               = qemu_gluster_co_create,
     .bdrv_co_create_opts          = qemu_gluster_co_create_opts,
-    .bdrv_getlength               = qemu_gluster_getlength,
-    .bdrv_get_allocated_file_size = qemu_gluster_allocated_file_size,
+    .bdrv_co_getlength            = qemu_gluster_co_getlength,
+    .bdrv_co_get_allocated_file_size = qemu_gluster_co_get_allocated_file_size,
     .bdrv_co_truncate             = qemu_gluster_co_truncate,
     .bdrv_co_readv                = qemu_gluster_co_readv,
     .bdrv_co_writev               = qemu_gluster_co_writev,
@@ -1583,15 +1579,15 @@ static BlockDriver bdrv_gluster_tcp = {
     .format_name                  = "gluster",
     .protocol_name                = "gluster+tcp",
     .instance_size                = sizeof(BDRVGlusterState),
-    .bdrv_file_open               = qemu_gluster_open,
+    .bdrv_open                    = qemu_gluster_open,
     .bdrv_reopen_prepare          = qemu_gluster_reopen_prepare,
     .bdrv_reopen_commit           = qemu_gluster_reopen_commit,
     .bdrv_reopen_abort            = qemu_gluster_reopen_abort,
     .bdrv_close                   = qemu_gluster_close,
     .bdrv_co_create               = qemu_gluster_co_create,
     .bdrv_co_create_opts          = qemu_gluster_co_create_opts,
-    .bdrv_getlength               = qemu_gluster_getlength,
-    .bdrv_get_allocated_file_size = qemu_gluster_allocated_file_size,
+    .bdrv_co_getlength            = qemu_gluster_co_getlength,
+    .bdrv_co_get_allocated_file_size = qemu_gluster_co_get_allocated_file_size,
     .bdrv_co_truncate             = qemu_gluster_co_truncate,
     .bdrv_co_readv                = qemu_gluster_co_readv,
     .bdrv_co_writev               = qemu_gluster_co_writev,
@@ -1612,50 +1608,15 @@ static BlockDriver bdrv_gluster_unix = {
     .format_name                  = "gluster",
     .protocol_name                = "gluster+unix",
     .instance_size                = sizeof(BDRVGlusterState),
-    .bdrv_file_open               = qemu_gluster_open,
+    .bdrv_open                    = qemu_gluster_open,
     .bdrv_reopen_prepare          = qemu_gluster_reopen_prepare,
     .bdrv_reopen_commit           = qemu_gluster_reopen_commit,
     .bdrv_reopen_abort            = qemu_gluster_reopen_abort,
     .bdrv_close                   = qemu_gluster_close,
     .bdrv_co_create               = qemu_gluster_co_create,
     .bdrv_co_create_opts          = qemu_gluster_co_create_opts,
-    .bdrv_getlength               = qemu_gluster_getlength,
-    .bdrv_get_allocated_file_size = qemu_gluster_allocated_file_size,
-    .bdrv_co_truncate             = qemu_gluster_co_truncate,
-    .bdrv_co_readv                = qemu_gluster_co_readv,
-    .bdrv_co_writev               = qemu_gluster_co_writev,
-    .bdrv_co_flush_to_disk        = qemu_gluster_co_flush_to_disk,
-#ifdef CONFIG_GLUSTERFS_DISCARD
-    .bdrv_co_pdiscard             = qemu_gluster_co_pdiscard,
-#endif
-#ifdef CONFIG_GLUSTERFS_ZEROFILL
-    .bdrv_co_pwrite_zeroes        = qemu_gluster_co_pwrite_zeroes,
-#endif
-    .bdrv_co_block_status         = qemu_gluster_co_block_status,
-    .bdrv_refresh_limits          = qemu_gluster_refresh_limits,
-    .create_opts                  = &qemu_gluster_create_opts,
-    .strong_runtime_opts          = gluster_strong_open_opts,
-};
-
-/* rdma is deprecated (actually never supported for volfile fetch).
- * Let's maintain it for the protocol compatibility, to make sure things
- * won't break immediately. For now, gluster+rdma will fall back to gluster+tcp
- * protocol with a warning.
- * TODO: remove gluster+rdma interface support
- */
-static BlockDriver bdrv_gluster_rdma = {
-    .format_name                  = "gluster",
-    .protocol_name                = "gluster+rdma",
-    .instance_size                = sizeof(BDRVGlusterState),
-    .bdrv_file_open               = qemu_gluster_open,
-    .bdrv_reopen_prepare          = qemu_gluster_reopen_prepare,
-    .bdrv_reopen_commit           = qemu_gluster_reopen_commit,
-    .bdrv_reopen_abort            = qemu_gluster_reopen_abort,
-    .bdrv_close                   = qemu_gluster_close,
-    .bdrv_co_create               = qemu_gluster_co_create,
-    .bdrv_co_create_opts          = qemu_gluster_co_create_opts,
-    .bdrv_getlength               = qemu_gluster_getlength,
-    .bdrv_get_allocated_file_size = qemu_gluster_allocated_file_size,
+    .bdrv_co_getlength            = qemu_gluster_co_getlength,
+    .bdrv_co_get_allocated_file_size = qemu_gluster_co_get_allocated_file_size,
     .bdrv_co_truncate             = qemu_gluster_co_truncate,
     .bdrv_co_readv                = qemu_gluster_co_readv,
     .bdrv_co_writev               = qemu_gluster_co_writev,
@@ -1674,7 +1635,6 @@ static BlockDriver bdrv_gluster_rdma = {
 
 static void bdrv_gluster_init(void)
 {
-    bdrv_register(&bdrv_gluster_rdma);
     bdrv_register(&bdrv_gluster_unix);
     bdrv_register(&bdrv_gluster_tcp);
     bdrv_register(&bdrv_gluster);

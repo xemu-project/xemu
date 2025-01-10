@@ -26,15 +26,16 @@
 #
 # Return rocker switch information.
 #
+# @name: switch name
+#
 # Returns: @Rocker information
 #
 # Since: 2.4
 #
-# Example:
+# .. qmp-example::
 #
-# -> { "execute": "query-rocker", "arguments": { "name": "sw1" } }
-# <- { "return": {"name": "sw1", "ports": 2, "id": 1327446905938}}
-#
+#     -> { "execute": "query-rocker", "arguments": { "name": "sw1" } }
+#     <- { "return": {"name": "sw1", "ports": 2, "id": 1327446905938}}
 ##
 { 'command': 'query-rocker',
   'data': { 'name': 'str' },
@@ -43,7 +44,7 @@
 ##
 # @RockerPortDuplex:
 #
-# An eumeration of port duplex states.
+# An enumeration of port duplex states.
 #
 # @half: half duplex
 #
@@ -56,7 +57,7 @@
 ##
 # @RockerPortAutoneg:
 #
-# An eumeration of port autoneg states.
+# An enumeration of port autoneg states.
 #
 # @off: autoneg is off
 #
@@ -95,19 +96,20 @@
 #
 # Return rocker switch port information.
 #
+# @name: port name
+#
 # Returns: a list of @RockerPort information
 #
 # Since: 2.4
 #
-# Example:
+# .. qmp-example::
 #
-# -> { "execute": "query-rocker-ports", "arguments": { "name": "sw1" } }
-# <- { "return": [ {"duplex": "full", "enabled": true, "name": "sw1.1",
-#                   "autoneg": "off", "link-up": true, "speed": 10000},
-#                  {"duplex": "full", "enabled": true, "name": "sw1.2",
-#                   "autoneg": "off", "link-up": true, "speed": 10000}
-#    ]}
-#
+#     -> { "execute": "query-rocker-ports", "arguments": { "name": "sw1" } }
+#     <- { "return": [ {"duplex": "full", "enabled": true, "name": "sw1.1",
+#                       "autoneg": "off", "link-up": true, "speed": 10000},
+#                      {"duplex": "full", "enabled": true, "name": "sw1.2",
+#                       "autoneg": "off", "link-up": true, "speed": 10000}
+#        ]}
 ##
 { 'command': 'query-rocker-ports',
   'data': { 'name': 'str' },
@@ -140,8 +142,8 @@
 #
 # @ip-dst: IP header destination address
 #
-# Note: optional members may or may not appear in the flow key
-#       depending if they're relevant to the flow key.
+# .. note:: Optional members may or may not appear in the flow key
+#    depending if they're relevant to the flow key.
 #
 # Since: 2.4
 ##
@@ -170,8 +172,8 @@
 #
 # @ip-tos: IP header TOS field
 #
-# Note: optional members may or may not appear in the flow mask
-#       depending if they're relevant to the flow mask.
+# .. note:: Optional members may or may not appear in the flow mask
+#    depending if they're relevant to the flow mask.
 #
 # Since: 2.4
 ##
@@ -197,8 +199,8 @@
 #
 # @out-pport: physical output port
 #
-# Note: optional members may or may not appear in the flow action
-#       depending if they're relevant to the flow action.
+# .. note:: Optional members may or may not appear in the flow action
+#    depending if they're relevant to the flow action.
 #
 # Since: 2.4
 ##
@@ -235,26 +237,25 @@
 #
 # @name: switch name
 #
-# @tbl-id: flow table ID.  If tbl-id is not specified, returns
-#          flow information for all tables.
+# @tbl-id: flow table ID.  If tbl-id is not specified, returns flow
+#     information for all tables.
 #
 # Returns: rocker OF-DPA flow information
 #
 # Since: 2.4
 #
-# Example:
+# .. qmp-example::
 #
-# -> { "execute": "query-rocker-of-dpa-flows",
-#      "arguments": { "name": "sw1" } }
-# <- { "return": [ {"key": {"in-pport": 0, "priority": 1, "tbl-id": 0},
-#                   "hits": 138,
-#                   "cookie": 0,
-#                   "action": {"goto-tbl": 10},
-#                   "mask": {"in-pport": 4294901760}
-#                  },
-#                  {...more...},
-#    ]}
-#
+#     -> { "execute": "query-rocker-of-dpa-flows",
+#          "arguments": { "name": "sw1" } }
+#     <- { "return": [ {"key": {"in-pport": 0, "priority": 1, "tbl-id": 0},
+#                       "hits": 138,
+#                       "cookie": 0,
+#                       "action": {"goto-tbl": 10},
+#                       "mask": {"in-pport": 4294901760}
+#                      },
+#                      {...},
+#        ]}
 ##
 { 'command': 'query-rocker-of-dpa-flows',
   'data': { 'name': 'str', '*tbl-id': 'uint32' },
@@ -291,8 +292,8 @@
 #
 # @ttl-check: perform TTL check
 #
-# Note: optional members may or may not appear in the group depending
-#       if they're relevant to the group type.
+# .. note:: Optional members may or may not appear in the group
+#    depending if they're relevant to the group type.
 #
 # Since: 2.4
 ##
@@ -311,31 +312,30 @@
 #
 # @name: switch name
 #
-# @type: group type.  If type is not specified, returns
-#        group information for all group types.
+# @type: group type.  If type is not specified, returns group
+#     information for all group types.
 #
 # Returns: rocker OF-DPA group information
 #
 # Since: 2.4
 #
-# Example:
+# .. qmp-example::
 #
-# -> { "execute": "query-rocker-of-dpa-groups",
-#      "arguments": { "name": "sw1" } }
-# <- { "return": [ {"type": 0, "out-pport": 2,
-#                   "pport": 2, "vlan-id": 3841,
-#                   "pop-vlan": 1, "id": 251723778},
-#                  {"type": 0, "out-pport": 0,
-#                   "pport": 0, "vlan-id": 3841,
-#                   "pop-vlan": 1, "id": 251723776},
-#                  {"type": 0, "out-pport": 1,
-#                   "pport": 1, "vlan-id": 3840,
-#                   "pop-vlan": 1, "id": 251658241},
-#                  {"type": 0, "out-pport": 0,
-#                   "pport": 0, "vlan-id": 3840,
-#                   "pop-vlan": 1, "id": 251658240}
-#    ]}
-#
+#     -> { "execute": "query-rocker-of-dpa-groups",
+#          "arguments": { "name": "sw1" } }
+#     <- { "return": [ {"type": 0, "out-pport": 2,
+#                       "pport": 2, "vlan-id": 3841,
+#                       "pop-vlan": 1, "id": 251723778},
+#                      {"type": 0, "out-pport": 0,
+#                       "pport": 0, "vlan-id": 3841,
+#                       "pop-vlan": 1, "id": 251723776},
+#                      {"type": 0, "out-pport": 1,
+#                       "pport": 1, "vlan-id": 3840,
+#                       "pop-vlan": 1, "id": 251658241},
+#                      {"type": 0, "out-pport": 0,
+#                       "pport": 0, "vlan-id": 3840,
+#                       "pop-vlan": 1, "id": 251658240}
+#        ]}
 ##
 { 'command': 'query-rocker-of-dpa-groups',
   'data': { 'name': 'str', '*type': 'uint8' },

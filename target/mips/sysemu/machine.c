@@ -44,7 +44,7 @@ static int put_fpr(QEMUFile *f, void *pv, size_t size,
     return 0;
 }
 
-const VMStateInfo vmstate_info_fpr = {
+static const VMStateInfo vmstate_info_fpr = {
     .name = "fpr",
     .get  = get_fpr,
     .put  = put_fpr,
@@ -56,21 +56,21 @@ const VMStateInfo vmstate_info_fpr = {
 #define VMSTATE_FPR_ARRAY(_f, _s, _n)                           \
     VMSTATE_FPR_ARRAY_V(_f, _s, _n, 0)
 
-static VMStateField vmstate_fpu_fields[] = {
+static const VMStateField vmstate_fpu_fields[] = {
     VMSTATE_FPR_ARRAY(fpr, CPUMIPSFPUContext, 32),
     VMSTATE_UINT32(fcr0, CPUMIPSFPUContext),
     VMSTATE_UINT32(fcr31, CPUMIPSFPUContext),
     VMSTATE_END_OF_LIST()
 };
 
-const VMStateDescription vmstate_fpu = {
+static const VMStateDescription vmstate_fpu = {
     .name = "cpu/fpu",
     .version_id = 1,
     .minimum_version_id = 1,
     .fields = vmstate_fpu_fields
 };
 
-const VMStateDescription vmstate_inactive_fpu = {
+static const VMStateDescription vmstate_inactive_fpu = {
     .name = "cpu/inactive_fpu",
     .version_id = 1,
     .minimum_version_id = 1,
@@ -79,7 +79,7 @@ const VMStateDescription vmstate_inactive_fpu = {
 
 /* TC state */
 
-static VMStateField vmstate_tc_fields[] = {
+static const VMStateField vmstate_tc_fields[] = {
     VMSTATE_UINTTL_ARRAY(gpr, TCState, 32),
 #if defined(TARGET_MIPS64)
     VMSTATE_UINT64_ARRAY(gpr_hi, TCState, 32),
@@ -103,14 +103,14 @@ static VMStateField vmstate_tc_fields[] = {
     VMSTATE_END_OF_LIST()
 };
 
-const VMStateDescription vmstate_tc = {
+static const VMStateDescription vmstate_tc = {
     .name = "cpu/tc",
     .version_id = 2,
     .minimum_version_id = 2,
     .fields = vmstate_tc_fields
 };
 
-const VMStateDescription vmstate_inactive_tc = {
+static const VMStateDescription vmstate_inactive_tc = {
     .name = "cpu/inactive_tc",
     .version_id = 2,
     .minimum_version_id = 2,
@@ -119,11 +119,11 @@ const VMStateDescription vmstate_inactive_tc = {
 
 /* MVP state */
 
-const VMStateDescription vmstate_mvp = {
+static const VMStateDescription vmstate_mvp = {
     .name = "cpu/mvp",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_INT32(CP0_MVPControl, CPUMIPSMVPContext),
         VMSTATE_INT32(CP0_MVPConf0, CPUMIPSMVPContext),
         VMSTATE_INT32(CP0_MVPConf1, CPUMIPSMVPContext),
@@ -142,6 +142,7 @@ static int get_tlb(QEMUFile *f, void *pv, size_t size,
     qemu_get_betls(f, &v->VPN);
     qemu_get_be32s(f, &v->PageMask);
     qemu_get_be16s(f, &v->ASID);
+    qemu_get_be32s(f, &v->MMID);
     qemu_get_be16s(f, &flags);
     v->G = (flags >> 10) & 1;
     v->C0 = (flags >> 7) & 3;
@@ -167,6 +168,7 @@ static int put_tlb(QEMUFile *f, void *pv, size_t size,
     r4k_tlb_t *v = pv;
 
     uint16_t asid = v->ASID;
+    uint32_t mmid = v->MMID;
     uint16_t flags = ((v->EHINV << 15) |
                       (v->RI1 << 14) |
                       (v->RI0 << 13) |
@@ -183,6 +185,7 @@ static int put_tlb(QEMUFile *f, void *pv, size_t size,
     qemu_put_betls(f, &v->VPN);
     qemu_put_be32s(f, &v->PageMask);
     qemu_put_be16s(f, &asid);
+    qemu_put_be32s(f, &mmid);
     qemu_put_be16s(f, &flags);
     qemu_put_be64s(f, &v->PFN[0]);
     qemu_put_be64s(f, &v->PFN[1]);
@@ -190,7 +193,7 @@ static int put_tlb(QEMUFile *f, void *pv, size_t size,
     return 0;
 }
 
-const VMStateInfo vmstate_info_tlb = {
+static const VMStateInfo vmstate_info_tlb = {
     .name = "tlb_entry",
     .get  = get_tlb,
     .put  = put_tlb,
@@ -202,11 +205,11 @@ const VMStateInfo vmstate_info_tlb = {
 #define VMSTATE_TLB_ARRAY(_f, _s, _n)                           \
     VMSTATE_TLB_ARRAY_V(_f, _s, _n, 0)
 
-const VMStateDescription vmstate_tlb = {
+static const VMStateDescription vmstate_tlb = {
     .name = "cpu/tlb",
-    .version_id = 2,
-    .minimum_version_id = 2,
-    .fields = (VMStateField[]) {
+    .version_id = 3,
+    .minimum_version_id = 3,
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(nb_tlb, CPUMIPSTLBContext),
         VMSTATE_UINT32(tlb_in_use, CPUMIPSTLBContext),
         VMSTATE_TLB_ARRAY(mmu.r4k.tlb, CPUMIPSTLBContext, MIPS_TLB_MAX),
@@ -221,7 +224,7 @@ const VMStateDescription vmstate_mips_cpu = {
     .version_id = 21,
     .minimum_version_id = 21,
     .post_load = cpu_post_load,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         /* Active TC */
         VMSTATE_STRUCT(env.active_tc, MIPSCPU, 1, vmstate_tc, TCState),
 
@@ -239,7 +242,7 @@ const VMStateDescription vmstate_mips_cpu = {
 
         /* CPU metastate */
         VMSTATE_UINT32(env.current_tc, MIPSCPU),
-        VMSTATE_UINT32(env.current_fpu, MIPSCPU),
+        VMSTATE_UNUSED(sizeof(uint32_t)), /* was current_fpu */
         VMSTATE_INT32(env.error_code, MIPSCPU),
         VMSTATE_UINTTL(env.btarget, MIPSCPU),
         VMSTATE_UINTTL(env.bcond, MIPSCPU),
@@ -281,8 +284,8 @@ const VMStateDescription vmstate_mips_cpu = {
         VMSTATE_UINT32(env.CP0_BadInstrP, MIPSCPU),
         VMSTATE_UINT32(env.CP0_BadInstrX, MIPSCPU),
         VMSTATE_INT32(env.CP0_Count, MIPSCPU),
-        VMSTATE_UINT32(env.CP0_SAARI, MIPSCPU),
-        VMSTATE_UINT64_ARRAY(env.CP0_SAAR, MIPSCPU, 2),
+        VMSTATE_UNUSED(sizeof(uint32_t)), /* was CP0_SAARI */
+        VMSTATE_UNUSED(2 * sizeof(uint64_t)), /* was CP0_SAAR[2] */
         VMSTATE_UINTTL(env.CP0_EntryHi, MIPSCPU),
         VMSTATE_INT32(env.CP0_Compare, MIPSCPU),
         VMSTATE_INT32(env.CP0_Status, MIPSCPU),

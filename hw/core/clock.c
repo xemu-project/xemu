@@ -13,6 +13,8 @@
 
 #include "qemu/osdep.h"
 #include "qemu/cutils.h"
+#include "qapi/visitor.h"
+#include "sysemu/qtest.h"
 #include "hw/clock.h"
 #include "trace.h"
 
@@ -108,7 +110,6 @@ static void clock_propagate_period(Clock *clk, bool call_callbacks)
 
 void clock_propagate(Clock *clk)
 {
-    assert(clk->source == NULL);
     trace_clock_propagate(CLOCK_PATH(clk));
     clock_propagate_period(clk, true);
 }
@@ -143,15 +144,30 @@ char *clock_display_freq(Clock *clk)
     return freq_to_str(clock_get_hz(clk));
 }
 
-void clock_set_mul_div(Clock *clk, uint32_t multiplier, uint32_t divider)
+bool clock_set_mul_div(Clock *clk, uint32_t multiplier, uint32_t divider)
 {
     assert(divider != 0);
+
+    if (clk->multiplier == multiplier && clk->divider == divider) {
+        return false;
+    }
 
     trace_clock_set_mul_div(CLOCK_PATH(clk), clk->multiplier, multiplier,
                             clk->divider, divider);
     clk->multiplier = multiplier;
     clk->divider = divider;
+
+    return true;
 }
+
+static void clock_period_prop_get(Object *obj, Visitor *v, const char *name,
+                                void *opaque, Error **errp)
+{
+    Clock *clk = CLOCK(obj);
+    uint64_t period = clock_get(clk);
+    visit_type_uint64(v, name, &period, errp);
+}
+
 
 static void clock_initfn(Object *obj)
 {
@@ -161,6 +177,11 @@ static void clock_initfn(Object *obj)
     clk->divider = 1;
 
     QLIST_INIT(&clk->children);
+
+    if (qtest_enabled()) {
+        object_property_add(obj, "qtest-clock-period", "uint64",
+                            clock_period_prop_get, NULL, NULL, NULL);
+    }
 }
 
 static void clock_finalizefn(Object *obj)

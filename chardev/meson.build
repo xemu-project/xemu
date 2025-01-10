@@ -12,20 +12,27 @@ chardev_ss.add(files(
   'char-udp.c',
   'char.c',
 ))
-chardev_ss.add(when: 'CONFIG_POSIX', if_true: [files(
-  'char-fd.c',
-  'char-parallel.c',
-  'char-pty.c',
-), util])
-chardev_ss.add(when: 'CONFIG_WIN32', if_true: files(
-  'char-console.c',
-  'char-win-stdio.c',
-  'char-win.c',
-))
+if host_os == 'windows'
+  chardev_ss.add(files(
+    'char-console.c',
+    'char-win-stdio.c',
+    'char-win.c',
+  ))
+else
+  chardev_ss.add(files(
+      'char-fd.c',
+      'char-parallel.c',
+      'char-pty.c',
+    ), util)
+endif
 
-chardev_ss = chardev_ss.apply(config_host, strict: false)
+chardev_ss = chardev_ss.apply({})
 
-softmmu_ss.add(files('msmouse.c', 'wctablet.c', 'testdev.c'))
+system_ss.add(files(
+    'char-hmp-cmds.c',
+    'msmouse.c',
+    'wctablet.c',
+    'testdev.c'))
 
 chardev_modules = {}
 

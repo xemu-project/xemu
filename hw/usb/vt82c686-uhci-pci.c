@@ -6,10 +6,7 @@
 static void uhci_isa_set_irq(void *opaque, int irq_num, int level)
 {
     UHCIState *s = opaque;
-    uint8_t irq = pci_get_byte(s->dev.config + PCI_INTERRUPT_LINE);
-    if (irq > 0 && irq < 15) {
-        via_isa_set_irq(pci_get_function_0(&s->dev), irq, level);
-    }
+    via_isa_set_irq(&s->dev, 0, level);
 }
 
 static void usb_uhci_vt82c686b_realize(PCIDevice *dev, Error **errp)

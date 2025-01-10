@@ -13,7 +13,7 @@
 #define HW_VFIO_VFIO_PCI_H
 
 #include "exec/memory.h"
-#include "hw/pci/pci.h"
+#include "hw/pci/pci_device.h"
 #include "hw/vfio/vfio-common.h"
 #include "qemu/event_notifier.h"
 #include "qemu/queue.h"
@@ -113,6 +113,7 @@ typedef struct VFIOMSIXInfo {
     uint32_t table_offset;
     uint32_t pba_offset;
     unsigned long *pending;
+    bool noresize;
 } VFIOMSIXInfo;
 
 #define TYPE_VFIO_PCI "vfio-pci"
@@ -137,6 +138,7 @@ struct VFIOPCIDevice {
     VFIOVGA *vga; /* 0xa0000, 0x3b0, 0x3c0 */
     void *igd_opregion;
     PCIHostDeviceAddress host;
+    QemuUUID vf_token;
     EventNotifier err_notifier;
     EventNotifier req_notifier;
     int (*resetfn)(struct VFIOPCIDevice *);
@@ -172,7 +174,10 @@ struct VFIOPCIDevice {
     bool no_kvm_ioeventfd;
     bool no_vfio_ioeventfd;
     bool enable_ramfb;
+    OnOffAuto ramfb_migrate;
     bool defer_kvm_irq_routing;
+    bool clear_parent_atomics_on_exit;
+    bool skip_vsc_check;
     VFIODisplay *dpy;
     Notifier irqchip_change_notifier;
 };
@@ -207,23 +212,30 @@ void vfio_bar_quirk_setup(VFIOPCIDevice *vdev, int nr);
 void vfio_bar_quirk_exit(VFIOPCIDevice *vdev, int nr);
 void vfio_bar_quirk_finalize(VFIOPCIDevice *vdev, int nr);
 void vfio_setup_resetfn_quirk(VFIOPCIDevice *vdev);
-int vfio_add_virt_caps(VFIOPCIDevice *vdev, Error **errp);
+bool vfio_add_virt_caps(VFIOPCIDevice *vdev, Error **errp);
 void vfio_quirk_reset(VFIOPCIDevice *vdev);
 VFIOQuirk *vfio_quirk_alloc(int nr_mem);
+void vfio_probe_igd_bar0_quirk(VFIOPCIDevice *vdev, int nr);
 void vfio_probe_igd_bar4_quirk(VFIOPCIDevice *vdev, int nr);
 
 extern const PropertyInfo qdev_prop_nv_gpudirect_clique;
 
-int vfio_populate_vga(VFIOPCIDevice *vdev, Error **errp);
+void vfio_pci_pre_reset(VFIOPCIDevice *vdev);
+void vfio_pci_post_reset(VFIOPCIDevice *vdev);
+bool vfio_pci_host_match(PCIHostDeviceAddress *addr, const char *name);
+int vfio_pci_get_pci_hot_reset_info(VFIOPCIDevice *vdev,
+                                    struct vfio_pci_hot_reset_info **info_p);
 
-int vfio_pci_igd_opregion_init(VFIOPCIDevice *vdev,
-                               struct vfio_region_info *info,
-                               Error **errp);
-int vfio_pci_nvidia_v100_ram_init(VFIOPCIDevice *vdev, Error **errp);
-int vfio_pci_nvlink2_init(VFIOPCIDevice *vdev, Error **errp);
+bool vfio_populate_vga(VFIOPCIDevice *vdev, Error **errp);
+
+bool vfio_pci_igd_opregion_init(VFIOPCIDevice *vdev,
+                                struct vfio_region_info *info,
+                                Error **errp);
 
 void vfio_display_reset(VFIOPCIDevice *vdev);
-int vfio_display_probe(VFIOPCIDevice *vdev, Error **errp);
+bool vfio_display_probe(VFIOPCIDevice *vdev, Error **errp);
 void vfio_display_finalize(VFIOPCIDevice *vdev);
+
+extern const VMStateDescription vfio_display_vmstate;
 
 #endif /* HW_VFIO_VFIO_PCI_H */

@@ -272,7 +272,7 @@ static const VMStateDescription vmstate_ecc = {
     .name ="ECC",
     .version_id = 3,
     .minimum_version_id = 3,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32_ARRAY(regs, ECCState, ECC_NREGS),
         VMSTATE_BUFFER(diag, ECCState),
         VMSTATE_UINT32(version, ECCState),
@@ -335,7 +335,7 @@ static void ecc_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = ecc_realize;
-    dc->reset = ecc_reset;
+    device_class_set_legacy_reset(dc, ecc_reset);
     dc->vmsd = &vmstate_ecc;
     device_class_set_props(dc, ecc_properties);
 }

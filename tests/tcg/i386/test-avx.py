@@ -9,7 +9,7 @@ from fnmatch import fnmatch
 archs = [
     "SSE", "SSE2", "SSE3", "SSSE3", "SSE4_1", "SSE4_2",
     "AES", "AVX", "AVX2", "AES+AVX", "VAES+AVX",
-    "F16C", "FMA",
+    "F16C", "FMA", "SHA",
 ]
 
 ignore = set(["FISTTP",
@@ -43,13 +43,14 @@ imask = {
     'vPS[LR][AL][WDQ]': 0x3f,
     'vPS[RL]LDQ': 0x1f,
     'vROUND[PS][SD]': 0x7,
+    'SHA1RNDS4': 0x03,
     'vSHUFPD': 0x0f,
     'vSHUFPS': 0xff,
     'vAESKEYGENASSIST': 0xff,
     'VEXTRACT[FI]128': 0x01,
     'VINSERT[FI]128': 0x01,
     'VPBLENDD': 0xff,
-    'VPERM2[FI]128': 0x33,
+    'VPERM2[FI]128': 0xbb,
     'VPERMPD': 0xff,
     'VPERMQ': 0xff,
     'VPERMILPS': 0xff,

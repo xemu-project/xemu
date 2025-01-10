@@ -13,9 +13,9 @@
 #include "target/ppc/cpu.h"
 #include "sysemu/cpus.h"
 #include "sysemu/dma.h"
-#include "monitor/monitor.h"
 #include "hw/ppc/fdt.h"
 #include "hw/ppc/pnv.h"
+#include "hw/ppc/pnv_chip.h"
 #include "hw/ppc/pnv_core.h"
 #include "hw/ppc/pnv_xscom.h"
 #include "hw/ppc/xive2.h"
@@ -25,12 +25,23 @@
 #include "hw/ppc/ppc.h"
 #include "hw/qdev-properties.h"
 #include "sysemu/reset.h"
+#include "sysemu/qtest.h"
 
 #include <libfdt.h>
 
 #include "pnv_xive2_regs.h"
 
 #undef XIVE2_DEBUG
+
+/* XIVE Sync or Flush Notification Block */
+typedef struct XiveSfnBlock {
+    uint8_t bytes[32];
+} XiveSfnBlock;
+
+/* XIVE Thread Sync or Flush Notification Area */
+typedef struct XiveThreadNA {
+    XiveSfnBlock topo[16];
+} XiveThreadNA;
 
 /*
  * Virtual structures table (VST)
@@ -45,16 +56,16 @@ typedef struct XiveVstInfo {
 
 static const XiveVstInfo vst_infos[] = {
 
-    [VST_EAS]  = { "EAT",  sizeof(Xive2Eas),  16 },
-    [VST_ESB]  = { "ESB",  1,                  16 },
-    [VST_END]  = { "ENDT", sizeof(Xive2End),  16 },
+    [VST_EAS]  = { "EAT",  sizeof(Xive2Eas),     16 },
+    [VST_ESB]  = { "ESB",  1,                    16 },
+    [VST_END]  = { "ENDT", sizeof(Xive2End),     16 },
 
-    [VST_NVP]  = { "NVPT", sizeof(Xive2Nvp),  16 },
-    [VST_NVG]  = { "NVGT", sizeof(Xive2Nvgc), 16 },
-    [VST_NVC]  = { "NVCT", sizeof(Xive2Nvgc), 16 },
+    [VST_NVP]  = { "NVPT", sizeof(Xive2Nvp),     16 },
+    [VST_NVG]  = { "NVGT", sizeof(Xive2Nvgc),    16 },
+    [VST_NVC]  = { "NVCT", sizeof(Xive2Nvgc),    16 },
 
-    [VST_IC]  =  { "IC",   1 /* ? */         , 16 }, /* Topology # */
-    [VST_SYNC] = { "SYNC", 1 /* ? */         , 16 }, /* Topology # */
+    [VST_IC]  =  { "IC",   1, /* ? */            16 }, /* Topology # */
+    [VST_SYNC] = { "SYNC", sizeof(XiveThreadNA), 16 }, /* Topology # */
 
     /*
      * This table contains the backing store pages for the interrupt
@@ -162,7 +173,9 @@ static uint64_t pnv_xive2_vst_addr_indirect(PnvXive2 *xive, uint32_t type,
     ldq_be_dma(&address_space_memory, vsd_addr, &vsd, MEMTXATTRS_UNSPECIFIED);
 
     if (!(vsd & VSD_ADDRESS_MASK)) {
+#ifdef XIVE2_DEBUG
         xive2_error(xive, "VST: invalid %s entry %x !?", info->name, idx);
+#endif
         return 0;
     }
 
@@ -184,7 +197,9 @@ static uint64_t pnv_xive2_vst_addr_indirect(PnvXive2 *xive, uint32_t type,
                    MEMTXATTRS_UNSPECIFIED);
 
         if (!(vsd & VSD_ADDRESS_MASK)) {
+#ifdef XIVE2_DEBUG
             xive2_error(xive, "VST: invalid %s entry %x !?", info->name, idx);
+#endif
             return 0;
         }
 
@@ -202,6 +217,20 @@ static uint64_t pnv_xive2_vst_addr_indirect(PnvXive2 *xive, uint32_t type,
     return pnv_xive2_vst_addr_direct(xive, type, vsd, (idx % vst_per_page));
 }
 
+static uint8_t pnv_xive2_nvc_table_compress_shift(PnvXive2 *xive)
+{
+    uint8_t shift =  GETFIELD(PC_NXC_PROC_CONFIG_NVC_TABLE_COMPRESS,
+                              xive->pc_regs[PC_NXC_PROC_CONFIG >> 3]);
+    return shift > 8 ? 0 : shift;
+}
+
+static uint8_t pnv_xive2_nvg_table_compress_shift(PnvXive2 *xive)
+{
+    uint8_t shift = GETFIELD(PC_NXC_PROC_CONFIG_NVG_TABLE_COMPRESS,
+                             xive->pc_regs[PC_NXC_PROC_CONFIG >> 3]);
+    return shift > 8 ? 0 : shift;
+}
+
 static uint64_t pnv_xive2_vst_addr(PnvXive2 *xive, uint32_t type, uint8_t blk,
                                    uint32_t idx)
 {
@@ -215,12 +244,23 @@ static uint64_t pnv_xive2_vst_addr(PnvXive2 *xive, uint32_t type, uint8_t blk,
     }
 
     vsd = xive->vsds[type][blk];
+    if (vsd == 0) {
+        xive2_error(xive, "VST: vsd == 0 block id %d for VST %s %d !?",
+                   blk, info->name, idx);
+        return 0;
+    }
 
     /* Remote VST access */
     if (GETFIELD(VSD_MODE, vsd) == VSD_MODE_FORWARD) {
         xive = pnv_xive2_get_remote(blk);
 
         return xive ? pnv_xive2_vst_addr(xive, type, blk, idx) : 0;
+    }
+
+    if (type == VST_NVG) {
+        idx >>= pnv_xive2_nvg_table_compress_shift(xive);
+    } else if (type == VST_NVC) {
+        idx >>= pnv_xive2_nvc_table_compress_shift(xive);
     }
 
     if (VSD_INDIRECT & vsd) {
@@ -235,12 +275,20 @@ static int pnv_xive2_vst_read(PnvXive2 *xive, uint32_t type, uint8_t blk,
 {
     const XiveVstInfo *info = &vst_infos[type];
     uint64_t addr = pnv_xive2_vst_addr(xive, type, blk, idx);
+    MemTxResult result;
 
     if (!addr) {
         return -1;
     }
 
-    cpu_physical_memory_read(addr, data, info->size);
+    result = address_space_read(&address_space_memory, addr,
+                                MEMTXATTRS_UNSPECIFIED, data,
+                                info->size);
+    if (result != MEMTX_OK) {
+        xive2_error(xive, "VST: read failed at @0x%" HWADDR_PRIx
+                   " for VST %s %x/%x\n", addr, info->name, blk, idx);
+        return -1;
+    }
     return 0;
 }
 
@@ -251,16 +299,27 @@ static int pnv_xive2_vst_write(PnvXive2 *xive, uint32_t type, uint8_t blk,
 {
     const XiveVstInfo *info = &vst_infos[type];
     uint64_t addr = pnv_xive2_vst_addr(xive, type, blk, idx);
+    MemTxResult result;
 
     if (!addr) {
         return -1;
     }
 
     if (word_number == XIVE_VST_WORD_ALL) {
-        cpu_physical_memory_write(addr, data, info->size);
+        result = address_space_write(&address_space_memory, addr,
+                                     MEMTXATTRS_UNSPECIFIED, data,
+                                     info->size);
     } else {
-        cpu_physical_memory_write(addr + word_number * 4,
-                                  data + word_number * 4, 4);
+        result = address_space_write(&address_space_memory,
+                                     addr + word_number * 4,
+                                     MEMTXATTRS_UNSPECIFIED,
+                                     data + word_number * 4, 4);
+    }
+
+    if (result != MEMTX_OK) {
+        xive2_error(xive, "VST: write failed at @0x%" HWADDR_PRIx
+                   "for VST %s %x/%x\n", addr, info->name, blk, idx);
+        return -1;
     }
     return 0;
 }
@@ -306,40 +365,115 @@ static int pnv_xive2_write_end(Xive2Router *xrtr, uint8_t blk, uint32_t idx,
                               word_number);
 }
 
-static int pnv_xive2_end_update(PnvXive2 *xive)
+static inline int pnv_xive2_get_current_pir(PnvXive2 *xive)
 {
-    uint8_t  blk = GETFIELD(VC_ENDC_WATCH_BLOCK_ID,
-                           xive->vc_regs[(VC_ENDC_WATCH0_SPEC >> 3)]);
-    uint32_t idx = GETFIELD(VC_ENDC_WATCH_INDEX,
-                           xive->vc_regs[(VC_ENDC_WATCH0_SPEC >> 3)]);
-    int i;
+    if (!qtest_enabled()) {
+        PowerPCCPU *cpu = POWERPC_CPU(current_cpu);
+        return ppc_cpu_pir(cpu);
+    }
+    return 0;
+}
+
+/*
+ * After SW injects a Queue Sync or Cache Flush operation, HW will notify
+ * SW of the completion of the operation by writing a byte of all 1's (0xff)
+ * to a specific memory location.  The memory location is calculated by first
+ * looking up a base address in the SYNC VSD using the Topology ID of the
+ * originating thread as the "block" number.  This points to a
+ * 64k block of memory that is further divided into 128 512 byte chunks of
+ * memory, which is indexed by the thread id of the requesting thread.
+ * Finally, this 512 byte chunk of memory is divided into 16 32 byte
+ * chunks which are indexed by the topology id of the targeted IC's chip.
+ * The values below are the offsets into that 32 byte chunk of memory for
+ * each type of cache flush or queue sync operation.
+ */
+#define PNV_XIVE2_QUEUE_IPI              0x00
+#define PNV_XIVE2_QUEUE_HW               0x01
+#define PNV_XIVE2_QUEUE_NXC              0x02
+#define PNV_XIVE2_QUEUE_INT              0x03
+#define PNV_XIVE2_QUEUE_OS               0x04
+#define PNV_XIVE2_QUEUE_POOL             0x05
+#define PNV_XIVE2_QUEUE_HARD             0x06
+#define PNV_XIVE2_CACHE_ENDC             0x08
+#define PNV_XIVE2_CACHE_ESBC             0x09
+#define PNV_XIVE2_CACHE_EASC             0x0a
+#define PNV_XIVE2_QUEUE_NXC_LD_LCL_NCO   0x10
+#define PNV_XIVE2_QUEUE_NXC_LD_LCL_CO    0x11
+#define PNV_XIVE2_QUEUE_NXC_ST_LCL_NCI   0x12
+#define PNV_XIVE2_QUEUE_NXC_ST_LCL_CI    0x13
+#define PNV_XIVE2_QUEUE_NXC_ST_RMT_NCI   0x14
+#define PNV_XIVE2_QUEUE_NXC_ST_RMT_CI    0x15
+#define PNV_XIVE2_CACHE_NXC              0x18
+
+static int pnv_xive2_inject_notify(PnvXive2 *xive, int type)
+{
+    uint64_t addr;
+    int pir = pnv_xive2_get_current_pir(xive);
+    int thread_nr = PNV10_PIR2THREAD(pir);
+    int thread_topo_id = PNV10_PIR2CHIP(pir);
+    int ic_topo_id = xive->chip->chip_id;
+    uint64_t offset = ic_topo_id * sizeof(XiveSfnBlock);
+    uint8_t byte = 0xff;
+    MemTxResult result;
+
+    /* Retrieve the address of requesting thread's notification area */
+    addr = pnv_xive2_vst_addr(xive, VST_SYNC, thread_topo_id, thread_nr);
+
+    if (!addr) {
+        xive2_error(xive, "VST: no SYNC entry %x/%x !?",
+                    thread_topo_id, thread_nr);
+        return -1;
+    }
+
+    address_space_stb(&address_space_memory, addr + offset + type, byte,
+                      MEMTXATTRS_UNSPECIFIED, &result);
+    assert(result == MEMTX_OK);
+
+    return 0;
+}
+
+static int pnv_xive2_end_update(PnvXive2 *xive, uint8_t watch_engine)
+{
+    uint8_t  blk;
+    uint32_t idx;
+    int i, spec_reg, data_reg;
     uint64_t endc_watch[4];
 
+    assert(watch_engine < ARRAY_SIZE(endc_watch));
+
+    spec_reg = (VC_ENDC_WATCH0_SPEC + watch_engine * 0x40) >> 3;
+    data_reg = (VC_ENDC_WATCH0_DATA0 + watch_engine * 0x40) >> 3;
+    blk = GETFIELD(VC_ENDC_WATCH_BLOCK_ID, xive->vc_regs[spec_reg]);
+    idx = GETFIELD(VC_ENDC_WATCH_INDEX, xive->vc_regs[spec_reg]);
+
     for (i = 0; i < ARRAY_SIZE(endc_watch); i++) {
-        endc_watch[i] =
-            cpu_to_be64(xive->vc_regs[(VC_ENDC_WATCH0_DATA0 >> 3) + i]);
+        endc_watch[i] = cpu_to_be64(xive->vc_regs[data_reg + i]);
     }
 
     return pnv_xive2_vst_write(xive, VST_END, blk, idx, endc_watch,
                               XIVE_VST_WORD_ALL);
 }
 
-static void pnv_xive2_end_cache_load(PnvXive2 *xive)
+static void pnv_xive2_end_cache_load(PnvXive2 *xive, uint8_t watch_engine)
 {
-    uint8_t  blk = GETFIELD(VC_ENDC_WATCH_BLOCK_ID,
-                           xive->vc_regs[(VC_ENDC_WATCH0_SPEC >> 3)]);
-    uint32_t idx = GETFIELD(VC_ENDC_WATCH_INDEX,
-                           xive->vc_regs[(VC_ENDC_WATCH0_SPEC >> 3)]);
+    uint8_t  blk;
+    uint32_t idx;
     uint64_t endc_watch[4] = { 0 };
-    int i;
+    int i, spec_reg, data_reg;
+
+    assert(watch_engine < ARRAY_SIZE(endc_watch));
+
+    spec_reg = (VC_ENDC_WATCH0_SPEC + watch_engine * 0x40) >> 3;
+    data_reg = (VC_ENDC_WATCH0_DATA0 + watch_engine * 0x40) >> 3;
+    blk = GETFIELD(VC_ENDC_WATCH_BLOCK_ID, xive->vc_regs[spec_reg]);
+    idx = GETFIELD(VC_ENDC_WATCH_INDEX, xive->vc_regs[spec_reg]);
 
     if (pnv_xive2_vst_read(xive, VST_END, blk, idx, endc_watch)) {
         xive2_error(xive, "VST: no END entry %x/%x !?", blk, idx);
     }
 
     for (i = 0; i < ARRAY_SIZE(endc_watch); i++) {
-        xive->vc_regs[(VC_ENDC_WATCH0_DATA0 >> 3) + i] =
-            be64_to_cpu(endc_watch[i]);
+        xive->vc_regs[data_reg + i] = be64_to_cpu(endc_watch[i]);
     }
 }
 
@@ -356,40 +490,92 @@ static int pnv_xive2_write_nvp(Xive2Router *xrtr, uint8_t blk, uint32_t idx,
                               word_number);
 }
 
-static int pnv_xive2_nvp_update(PnvXive2 *xive)
+static int pnv_xive2_get_nvgc(Xive2Router *xrtr, bool crowd,
+                              uint8_t blk, uint32_t idx,
+                              Xive2Nvgc *nvgc)
 {
-    uint8_t  blk = GETFIELD(PC_NXC_WATCH_BLOCK_ID,
-                            xive->pc_regs[(PC_NXC_WATCH0_SPEC >> 3)]);
-    uint32_t idx = GETFIELD(PC_NXC_WATCH_INDEX,
-                            xive->pc_regs[(PC_NXC_WATCH0_SPEC >> 3)]);
-    int i;
+    return pnv_xive2_vst_read(PNV_XIVE2(xrtr), crowd ? VST_NVC : VST_NVG,
+                              blk, idx, nvgc);
+}
+
+static int pnv_xive2_write_nvgc(Xive2Router *xrtr, bool crowd,
+                                uint8_t blk, uint32_t idx,
+                                Xive2Nvgc *nvgc)
+{
+    return pnv_xive2_vst_write(PNV_XIVE2(xrtr), crowd ? VST_NVC : VST_NVG,
+                               blk, idx, nvgc,
+                               XIVE_VST_WORD_ALL);
+}
+
+static int pnv_xive2_nxc_to_table_type(uint8_t nxc_type, uint32_t *table_type)
+{
+    switch (nxc_type) {
+    case PC_NXC_WATCH_NXC_NVP:
+        *table_type = VST_NVP;
+        break;
+    case PC_NXC_WATCH_NXC_NVG:
+        *table_type = VST_NVG;
+        break;
+    case PC_NXC_WATCH_NXC_NVC:
+        *table_type = VST_NVC;
+        break;
+    default:
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "XIVE: invalid table type for nxc operation\n");
+        return -1;
+    }
+    return 0;
+}
+
+static int pnv_xive2_nxc_update(PnvXive2 *xive, uint8_t watch_engine)
+{
+    uint8_t  blk, nxc_type;
+    uint32_t idx, table_type = -1;
+    int i, spec_reg, data_reg;
     uint64_t nxc_watch[4];
 
+    assert(watch_engine < ARRAY_SIZE(nxc_watch));
+
+    spec_reg = (PC_NXC_WATCH0_SPEC + watch_engine * 0x40) >> 3;
+    data_reg = (PC_NXC_WATCH0_DATA0 + watch_engine * 0x40) >> 3;
+    nxc_type = GETFIELD(PC_NXC_WATCH_NXC_TYPE, xive->pc_regs[spec_reg]);
+    blk = GETFIELD(PC_NXC_WATCH_BLOCK_ID, xive->pc_regs[spec_reg]);
+    idx = GETFIELD(PC_NXC_WATCH_INDEX, xive->pc_regs[spec_reg]);
+
+    assert(!pnv_xive2_nxc_to_table_type(nxc_type, &table_type));
+
     for (i = 0; i < ARRAY_SIZE(nxc_watch); i++) {
-        nxc_watch[i] =
-            cpu_to_be64(xive->pc_regs[(PC_NXC_WATCH0_DATA0 >> 3) + i]);
+        nxc_watch[i] = cpu_to_be64(xive->pc_regs[data_reg + i]);
     }
 
-    return pnv_xive2_vst_write(xive, VST_NVP, blk, idx, nxc_watch,
+    return pnv_xive2_vst_write(xive, table_type, blk, idx, nxc_watch,
                               XIVE_VST_WORD_ALL);
 }
 
-static void pnv_xive2_nvp_cache_load(PnvXive2 *xive)
+static void pnv_xive2_nxc_cache_load(PnvXive2 *xive, uint8_t watch_engine)
 {
-    uint8_t  blk = GETFIELD(PC_NXC_WATCH_BLOCK_ID,
-                           xive->pc_regs[(PC_NXC_WATCH0_SPEC >> 3)]);
-    uint32_t idx = GETFIELD(PC_NXC_WATCH_INDEX,
-                           xive->pc_regs[(PC_NXC_WATCH0_SPEC >> 3)]);
+    uint8_t  blk, nxc_type;
+    uint32_t idx, table_type = -1;
     uint64_t nxc_watch[4] = { 0 };
-    int i;
+    int i, spec_reg, data_reg;
 
-    if (pnv_xive2_vst_read(xive, VST_NVP, blk, idx, nxc_watch)) {
-        xive2_error(xive, "VST: no NVP entry %x/%x !?", blk, idx);
+    assert(watch_engine < ARRAY_SIZE(nxc_watch));
+
+    spec_reg = (PC_NXC_WATCH0_SPEC + watch_engine * 0x40) >> 3;
+    data_reg = (PC_NXC_WATCH0_DATA0 + watch_engine * 0x40) >> 3;
+    nxc_type = GETFIELD(PC_NXC_WATCH_NXC_TYPE, xive->pc_regs[spec_reg]);
+    blk = GETFIELD(PC_NXC_WATCH_BLOCK_ID, xive->pc_regs[spec_reg]);
+    idx = GETFIELD(PC_NXC_WATCH_INDEX, xive->pc_regs[spec_reg]);
+
+    assert(!pnv_xive2_nxc_to_table_type(nxc_type, &table_type));
+
+    if (pnv_xive2_vst_read(xive, table_type, blk, idx, nxc_watch)) {
+        xive2_error(xive, "VST: no NXC entry %x/%x in %s table!?",
+                    blk, idx, vst_infos[table_type].name);
     }
 
     for (i = 0; i < ARRAY_SIZE(nxc_watch); i++) {
-        xive->pc_regs[(PC_NXC_WATCH0_DATA0 >> 3) + i] =
-            be64_to_cpu(nxc_watch[i]);
+        xive->pc_regs[data_reg + i] = be64_to_cpu(nxc_watch[i]);
     }
 }
 
@@ -496,6 +682,17 @@ static int pnv_xive2_match_nvt(XivePresenter *xptr, uint8_t format,
     return count;
 }
 
+static uint32_t pnv_xive2_presenter_get_config(XivePresenter *xptr)
+{
+    PnvXive2 *xive = PNV_XIVE2(xptr);
+    uint32_t cfg = 0;
+
+    if (xive->cq_regs[CQ_XIVE_CFG >> 3] & CQ_XIVE_CFG_GEN1_TIMA_OS) {
+        cfg |= XIVE_PRESENTER_GEN1_TIMA_OS;
+    }
+    return cfg;
+}
+
 static uint8_t pnv_xive2_get_block_id(Xive2Router *xrtr)
 {
     return pnv_xive2_block_id(PNV_XIVE2(xrtr));
@@ -547,6 +744,7 @@ static int pnv_xive2_stt_set_data(PnvXive2 *xive, uint64_t val)
     case CQ_TAR_NVPG:
     case CQ_TAR_ESB:
     case CQ_TAR_END:
+    case CQ_TAR_NVC:
         xive->tables[tsel][entry] = val;
         break;
     default:
@@ -607,6 +805,9 @@ static void pnv_xive2_vst_set_exclusive(PnvXive2 *xive, uint8_t type,
          * entries provisioned by FW (such as skiboot) and resize the
          * ESB window accordingly.
          */
+        if (memory_region_is_mapped(&xsrc->esb_mmio)) {
+            memory_region_del_subregion(&xive->esb_mmio, &xsrc->esb_mmio);
+        }
         if (!(VSD_INDIRECT & vsd)) {
             memory_region_set_size(&xsrc->esb_mmio, vst_tsize * SBE_PER_BYTE
                                    * (1ull << xsrc->esb_shift));
@@ -622,6 +823,9 @@ static void pnv_xive2_vst_set_exclusive(PnvXive2 *xive, uint8_t type,
         /*
          * Backing store pages for the END.
          */
+        if (memory_region_is_mapped(&end_xsrc->esb_mmio)) {
+            memory_region_del_subregion(&xive->end_mmio, &end_xsrc->esb_mmio);
+        }
         if (!(VSD_INDIRECT & vsd)) {
             memory_region_set_size(&end_xsrc->esb_mmio, (vst_tsize / info->size)
                                    * (1ull << end_xsrc->esb_shift));
@@ -646,13 +850,10 @@ static void pnv_xive2_vst_set_exclusive(PnvXive2 *xive, uint8_t type,
  * Both PC and VC sub-engines are configured as each use the Virtual
  * Structure Tables
  */
-static void pnv_xive2_vst_set_data(PnvXive2 *xive, uint64_t vsd)
+static void pnv_xive2_vst_set_data(PnvXive2 *xive, uint64_t vsd,
+                                   uint8_t type, uint8_t blk)
 {
     uint8_t mode = GETFIELD(VSD_MODE, vsd);
-    uint8_t type = GETFIELD(VC_VSD_TABLE_SELECT,
-                            xive->vc_regs[VC_VSD_TABLE_ADDR >> 3]);
-    uint8_t blk = GETFIELD(VC_VSD_TABLE_ADDRESS,
-                           xive->vc_regs[VC_VSD_TABLE_ADDR >> 3]);
     uint64_t vst_addr = vsd & VSD_ADDRESS_MASK;
 
     if (type > VST_ERQ) {
@@ -685,6 +886,16 @@ static void pnv_xive2_vst_set_data(PnvXive2 *xive, uint64_t vsd)
         xive2_error(xive, "VST: unsupported table mode %d", mode);
         return;
     }
+}
+
+static void pnv_xive2_vc_vst_set_data(PnvXive2 *xive, uint64_t vsd)
+{
+    uint8_t type = GETFIELD(VC_VSD_TABLE_SELECT,
+                            xive->vc_regs[VC_VSD_TABLE_ADDR >> 3]);
+    uint8_t blk = GETFIELD(VC_VSD_TABLE_ADDRESS,
+                           xive->vc_regs[VC_VSD_TABLE_ADDR >> 3]);
+
+    pnv_xive2_vst_set_data(xive, vsd, type, blk);
 }
 
 /*
@@ -930,12 +1141,70 @@ static const MemoryRegionOps pnv_xive2_ic_cq_ops = {
     },
 };
 
+static uint8_t pnv_xive2_cache_watch_assign(uint64_t engine_mask,
+                                            uint64_t *state)
+{
+    uint8_t val = 0xFF;
+    int i;
+
+    for (i = 3; i >= 0; i--) {
+        if (BIT(i) & engine_mask) {
+            if (!(BIT(i) & *state)) {
+                *state |= BIT(i);
+                val = 3 - i;
+                break;
+            }
+        }
+    }
+    return val;
+}
+
+static void pnv_xive2_cache_watch_release(uint64_t *state, uint8_t watch_engine)
+{
+    uint8_t engine_bit = 3 - watch_engine;
+
+    if (*state & BIT(engine_bit)) {
+        *state &= ~BIT(engine_bit);
+    }
+}
+
+static uint8_t pnv_xive2_endc_cache_watch_assign(PnvXive2 *xive)
+{
+    uint64_t engine_mask = GETFIELD(VC_ENDC_CFG_CACHE_WATCH_ASSIGN,
+                                    xive->vc_regs[VC_ENDC_CFG >> 3]);
+    uint64_t state = xive->vc_regs[VC_ENDC_WATCH_ASSIGN >> 3];
+    uint8_t val;
+
+    /*
+     * We keep track of which engines are currently busy in the
+     * VC_ENDC_WATCH_ASSIGN register directly. When the firmware reads
+     * the register, we don't return its value but the ID of an engine
+     * it can use.
+     * There are 4 engines. 0xFF means no engine is available.
+     */
+    val = pnv_xive2_cache_watch_assign(engine_mask, &state);
+    if (val != 0xFF) {
+        xive->vc_regs[VC_ENDC_WATCH_ASSIGN >> 3] = state;
+    }
+    return val;
+}
+
+static void pnv_xive2_endc_cache_watch_release(PnvXive2 *xive,
+                                               uint8_t watch_engine)
+{
+    uint64_t state = xive->vc_regs[VC_ENDC_WATCH_ASSIGN >> 3];
+
+    pnv_xive2_cache_watch_release(&state, watch_engine);
+    xive->vc_regs[VC_ENDC_WATCH_ASSIGN >> 3] = state;
+}
+
 static uint64_t pnv_xive2_ic_vc_read(void *opaque, hwaddr offset,
                                      unsigned size)
 {
     PnvXive2 *xive = PNV_XIVE2(opaque);
     uint64_t val = 0;
     uint32_t reg = offset >> 3;
+    uint8_t watch_engine;
 
     switch (offset) {
     /*
@@ -954,6 +1223,10 @@ static uint64_t pnv_xive2_ic_vc_read(void *opaque, hwaddr offset,
         val = xive->vc_regs[reg];
         break;
 
+    case VC_ESBC_CFG:
+        val = xive->vc_regs[reg];
+        break;
+
     /*
      * EAS cache updates (not modeled)
      */
@@ -962,24 +1235,44 @@ static uint64_t pnv_xive2_ic_vc_read(void *opaque, hwaddr offset,
         val = xive->vc_regs[reg];
         break;
 
+    case VC_ENDC_WATCH_ASSIGN:
+        val = pnv_xive2_endc_cache_watch_assign(xive);
+        break;
+
+    case VC_ENDC_CFG:
+        val = xive->vc_regs[reg];
+        break;
+
     /*
      * END cache updates
      */
     case VC_ENDC_WATCH0_SPEC:
+    case VC_ENDC_WATCH1_SPEC:
+    case VC_ENDC_WATCH2_SPEC:
+    case VC_ENDC_WATCH3_SPEC:
+        watch_engine = (offset - VC_ENDC_WATCH0_SPEC) >> 6;
         xive->vc_regs[reg] &= ~(VC_ENDC_WATCH_FULL | VC_ENDC_WATCH_CONFLICT);
+        pnv_xive2_endc_cache_watch_release(xive, watch_engine);
         val = xive->vc_regs[reg];
         break;
 
     case VC_ENDC_WATCH0_DATA0:
+    case VC_ENDC_WATCH1_DATA0:
+    case VC_ENDC_WATCH2_DATA0:
+    case VC_ENDC_WATCH3_DATA0:
         /*
          * Load DATA registers from cache with data requested by the
          * SPEC register
          */
-        pnv_xive2_end_cache_load(xive);
+        watch_engine = (offset - VC_ENDC_WATCH0_DATA0) >> 6;
+        pnv_xive2_end_cache_load(xive, watch_engine);
         val = xive->vc_regs[reg];
         break;
 
     case VC_ENDC_WATCH0_DATA1 ... VC_ENDC_WATCH0_DATA3:
+    case VC_ENDC_WATCH1_DATA1 ... VC_ENDC_WATCH1_DATA3:
+    case VC_ENDC_WATCH2_DATA1 ... VC_ENDC_WATCH2_DATA3:
+    case VC_ENDC_WATCH3_DATA1 ... VC_ENDC_WATCH3_DATA3:
         val = xive->vc_regs[reg];
         break;
 
@@ -1025,6 +1318,7 @@ static void pnv_xive2_ic_vc_write(void *opaque, hwaddr offset,
 {
     PnvXive2 *xive = PNV_XIVE2(opaque);
     uint32_t reg = offset >> 3;
+    uint8_t watch_engine;
 
     switch (offset) {
     /*
@@ -1033,7 +1327,7 @@ static void pnv_xive2_ic_vc_write(void *opaque, hwaddr offset,
     case VC_VSD_TABLE_ADDR:
        break;
     case VC_VSD_TABLE_DATA:
-        pnv_xive2_vst_set_data(xive, val);
+        pnv_xive2_vc_vst_set_data(xive, val);
         break;
 
     /*
@@ -1045,6 +1339,13 @@ static void pnv_xive2_ic_vc_write(void *opaque, hwaddr offset,
         /* ESB update */
         break;
 
+    case VC_ESBC_FLUSH_INJECT:
+        pnv_xive2_inject_notify(xive, PNV_XIVE2_CACHE_ESBC);
+        break;
+
+    case VC_ESBC_CFG:
+        break;
+
     /*
      * EAS cache updates (not modeled)
      */
@@ -1054,25 +1355,46 @@ static void pnv_xive2_ic_vc_write(void *opaque, hwaddr offset,
         /* EAS update */
         break;
 
+    case VC_EASC_FLUSH_INJECT:
+        pnv_xive2_inject_notify(xive, PNV_XIVE2_CACHE_EASC);
+        break;
+
+    case VC_ENDC_CFG:
+        break;
+
     /*
      * END cache updates
      */
     case VC_ENDC_WATCH0_SPEC:
+    case VC_ENDC_WATCH1_SPEC:
+    case VC_ENDC_WATCH2_SPEC:
+    case VC_ENDC_WATCH3_SPEC:
          val &= ~VC_ENDC_WATCH_CONFLICT; /* HW will set this bit */
         break;
 
     case VC_ENDC_WATCH0_DATA1 ... VC_ENDC_WATCH0_DATA3:
+    case VC_ENDC_WATCH1_DATA1 ... VC_ENDC_WATCH1_DATA3:
+    case VC_ENDC_WATCH2_DATA1 ... VC_ENDC_WATCH2_DATA3:
+    case VC_ENDC_WATCH3_DATA1 ... VC_ENDC_WATCH3_DATA3:
         break;
     case VC_ENDC_WATCH0_DATA0:
+    case VC_ENDC_WATCH1_DATA0:
+    case VC_ENDC_WATCH2_DATA0:
+    case VC_ENDC_WATCH3_DATA0:
         /* writing to DATA0 triggers the cache write */
+        watch_engine = (offset - VC_ENDC_WATCH0_DATA0) >> 6;
         xive->vc_regs[reg] = val;
-        pnv_xive2_end_update(xive);
+        pnv_xive2_end_update(xive, watch_engine);
         break;
 
 
     /* case VC_ENDC_FLUSH_CTRL: */
     case VC_ENDC_FLUSH_POLL:
         xive->vc_regs[VC_ENDC_FLUSH_CTRL >> 3] |= VC_ENDC_FLUSH_CTRL_POLL_VALID;
+        break;
+
+    case VC_ENDC_FLUSH_INJECT:
+        pnv_xive2_inject_notify(xive, PNV_XIVE2_CACHE_ENDC);
         break;
 
     /*
@@ -1116,12 +1438,43 @@ static const MemoryRegionOps pnv_xive2_ic_vc_ops = {
     },
 };
 
+static uint8_t pnv_xive2_nxc_cache_watch_assign(PnvXive2 *xive)
+{
+    uint64_t engine_mask = GETFIELD(PC_NXC_PROC_CONFIG_WATCH_ASSIGN,
+                                    xive->pc_regs[PC_NXC_PROC_CONFIG >> 3]);
+    uint64_t state = xive->pc_regs[PC_NXC_WATCH_ASSIGN >> 3];
+    uint8_t val;
+
+    /*
+     * We keep track of which engines are currently busy in the
+     * PC_NXC_WATCH_ASSIGN register directly. When the firmware reads
+     * the register, we don't return its value but the ID of an engine
+     * it can use.
+     * There are 4 engines. 0xFF means no engine is available.
+     */
+    val = pnv_xive2_cache_watch_assign(engine_mask, &state);
+    if (val != 0xFF) {
+        xive->pc_regs[PC_NXC_WATCH_ASSIGN >> 3] = state;
+    }
+    return val;
+}
+
+static void pnv_xive2_nxc_cache_watch_release(PnvXive2 *xive,
+                                              uint8_t watch_engine)
+{
+    uint64_t state = xive->pc_regs[PC_NXC_WATCH_ASSIGN >> 3];
+
+    pnv_xive2_cache_watch_release(&state, watch_engine);
+    xive->pc_regs[PC_NXC_WATCH_ASSIGN >> 3] = state;
+}
+
 static uint64_t pnv_xive2_ic_pc_read(void *opaque, hwaddr offset,
                                      unsigned size)
 {
     PnvXive2 *xive = PNV_XIVE2(opaque);
     uint64_t val = -1;
     uint32_t reg = offset >> 3;
+    uint8_t watch_engine;
 
     switch (offset) {
     /*
@@ -1132,24 +1485,44 @@ static uint64_t pnv_xive2_ic_pc_read(void *opaque, hwaddr offset,
         val = xive->pc_regs[reg];
         break;
 
+    case PC_NXC_WATCH_ASSIGN:
+        val = pnv_xive2_nxc_cache_watch_assign(xive);
+        break;
+
+    case PC_NXC_PROC_CONFIG:
+        val = xive->pc_regs[reg];
+        break;
+
     /*
      * cache updates
      */
     case PC_NXC_WATCH0_SPEC:
+    case PC_NXC_WATCH1_SPEC:
+    case PC_NXC_WATCH2_SPEC:
+    case PC_NXC_WATCH3_SPEC:
+        watch_engine = (offset - PC_NXC_WATCH0_SPEC) >> 6;
         xive->pc_regs[reg] &= ~(PC_NXC_WATCH_FULL | PC_NXC_WATCH_CONFLICT);
+        pnv_xive2_nxc_cache_watch_release(xive, watch_engine);
         val = xive->pc_regs[reg];
         break;
 
     case PC_NXC_WATCH0_DATA0:
+    case PC_NXC_WATCH1_DATA0:
+    case PC_NXC_WATCH2_DATA0:
+    case PC_NXC_WATCH3_DATA0:
        /*
         * Load DATA registers from cache with data requested by the
         * SPEC register
         */
-        pnv_xive2_nvp_cache_load(xive);
+        watch_engine = (offset - PC_NXC_WATCH0_DATA0) >> 6;
+        pnv_xive2_nxc_cache_load(xive, watch_engine);
         val = xive->pc_regs[reg];
         break;
 
     case PC_NXC_WATCH0_DATA1 ... PC_NXC_WATCH0_DATA3:
+    case PC_NXC_WATCH1_DATA1 ... PC_NXC_WATCH1_DATA3:
+    case PC_NXC_WATCH2_DATA1 ... PC_NXC_WATCH2_DATA3:
+    case PC_NXC_WATCH3_DATA1 ... PC_NXC_WATCH3_DATA3:
         val = xive->pc_regs[reg];
         break;
 
@@ -1173,41 +1546,75 @@ static uint64_t pnv_xive2_ic_pc_read(void *opaque, hwaddr offset,
     return val;
 }
 
+static void pnv_xive2_pc_vst_set_data(PnvXive2 *xive, uint64_t vsd)
+{
+    uint8_t type = GETFIELD(PC_VSD_TABLE_SELECT,
+                            xive->pc_regs[PC_VSD_TABLE_ADDR >> 3]);
+    uint8_t blk = GETFIELD(PC_VSD_TABLE_ADDRESS,
+                           xive->pc_regs[PC_VSD_TABLE_ADDR >> 3]);
+
+    pnv_xive2_vst_set_data(xive, vsd, type, blk);
+}
+
 static void pnv_xive2_ic_pc_write(void *opaque, hwaddr offset,
                                   uint64_t val, unsigned size)
 {
     PnvXive2 *xive = PNV_XIVE2(opaque);
     uint32_t reg = offset >> 3;
+    uint8_t watch_engine;
 
     switch (offset) {
 
     /*
-     * VSD table settings. Only taken into account in the VC
-     * sub-engine because the Xive2Router model combines both VC and PC
-     * sub-engines
+     * VSD table settings.
+     * The Xive2Router model combines both VC and PC sub-engines. We
+     * allow to configure the tables through both, for the rare cases
+     * where a table only really needs to be configured for one of
+     * them (e.g. the NVG table for the presenter). It assumes that
+     * firmware passes the same address to the VC and PC when tables
+     * are defined for both, which seems acceptable.
      */
     case PC_VSD_TABLE_ADDR:
+        break;
     case PC_VSD_TABLE_DATA:
+        pnv_xive2_pc_vst_set_data(xive, val);
+        break;
+
+    case PC_NXC_PROC_CONFIG:
         break;
 
     /*
      * cache updates
      */
     case PC_NXC_WATCH0_SPEC:
+    case PC_NXC_WATCH1_SPEC:
+    case PC_NXC_WATCH2_SPEC:
+    case PC_NXC_WATCH3_SPEC:
         val &= ~PC_NXC_WATCH_CONFLICT; /* HW will set this bit */
         break;
 
     case PC_NXC_WATCH0_DATA1 ... PC_NXC_WATCH0_DATA3:
+    case PC_NXC_WATCH1_DATA1 ... PC_NXC_WATCH1_DATA3:
+    case PC_NXC_WATCH2_DATA1 ... PC_NXC_WATCH2_DATA3:
+    case PC_NXC_WATCH3_DATA1 ... PC_NXC_WATCH3_DATA3:
         break;
     case PC_NXC_WATCH0_DATA0:
+    case PC_NXC_WATCH1_DATA0:
+    case PC_NXC_WATCH2_DATA0:
+    case PC_NXC_WATCH3_DATA0:
         /* writing to DATA0 triggers the cache write */
+        watch_engine = (offset - PC_NXC_WATCH0_DATA0) >> 6;
         xive->pc_regs[reg] = val;
-        pnv_xive2_nvp_update(xive);
+        pnv_xive2_nxc_update(xive, watch_engine);
         break;
 
    /* case PC_NXC_FLUSH_CTRL: */
     case PC_NXC_FLUSH_POLL:
         xive->pc_regs[PC_NXC_FLUSH_CTRL >> 3] |= PC_NXC_FLUSH_CTRL_POLL_VALID;
+        break;
+
+    case PC_NXC_FLUSH_INJECT:
+        pnv_xive2_inject_notify(xive, PNV_XIVE2_CACHE_NXC);
         break;
 
     /*
@@ -1264,6 +1671,9 @@ static uint64_t pnv_xive2_ic_tctxt_read(void *opaque, hwaddr offset,
     case TCTXT_EN1_RESET:
         val = xive->tctxt_regs[TCTXT_EN1 >> 3];
         break;
+    case TCTXT_CFG:
+        val = xive->tctxt_regs[reg];
+        break;
     default:
         xive2_error(xive, "TCTXT: invalid read @%"HWADDR_PRIx, offset);
     }
@@ -1275,6 +1685,7 @@ static void pnv_xive2_ic_tctxt_write(void *opaque, hwaddr offset,
                                      uint64_t val, unsigned size)
 {
     PnvXive2 *xive = PNV_XIVE2(opaque);
+    uint32_t reg = offset >> 3;
 
     switch (offset) {
     /*
@@ -1282,6 +1693,7 @@ static void pnv_xive2_ic_tctxt_write(void *opaque, hwaddr offset,
      */
     case TCTXT_EN0: /* Physical Thread Enable */
     case TCTXT_EN1: /* Physical Thread Enable (fused core) */
+        xive->tctxt_regs[reg] = val;
         break;
 
     case TCTXT_EN0_SET:
@@ -1296,7 +1708,9 @@ static void pnv_xive2_ic_tctxt_write(void *opaque, hwaddr offset,
     case TCTXT_EN1_RESET:
         xive->tctxt_regs[TCTXT_EN1 >> 3] &= ~val;
         break;
-
+    case TCTXT_CFG:
+        xive->tctxt_regs[reg] = val;
+        break;
     default:
         xive2_error(xive, "TCTXT: invalid write @%"HWADDR_PRIx, offset);
         return;
@@ -1499,13 +1913,19 @@ static const MemoryRegionOps pnv_xive2_ic_lsi_ops = {
 /*
  * Sync MMIO page (write only)
  */
-#define PNV_XIVE2_SYNC_IPI      0x000
-#define PNV_XIVE2_SYNC_HW       0x080
-#define PNV_XIVE2_SYNC_NxC      0x100
-#define PNV_XIVE2_SYNC_INT      0x180
-#define PNV_XIVE2_SYNC_OS_ESC   0x200
-#define PNV_XIVE2_SYNC_POOL_ESC 0x280
-#define PNV_XIVE2_SYNC_HARD_ESC 0x300
+#define PNV_XIVE2_SYNC_IPI              0x000
+#define PNV_XIVE2_SYNC_HW               0x080
+#define PNV_XIVE2_SYNC_NxC              0x100
+#define PNV_XIVE2_SYNC_INT              0x180
+#define PNV_XIVE2_SYNC_OS_ESC           0x200
+#define PNV_XIVE2_SYNC_POOL_ESC         0x280
+#define PNV_XIVE2_SYNC_HARD_ESC         0x300
+#define PNV_XIVE2_SYNC_NXC_LD_LCL_NCO   0x800
+#define PNV_XIVE2_SYNC_NXC_LD_LCL_CO    0x880
+#define PNV_XIVE2_SYNC_NXC_ST_LCL_NCI   0x900
+#define PNV_XIVE2_SYNC_NXC_ST_LCL_CI    0x980
+#define PNV_XIVE2_SYNC_NXC_ST_RMT_NCI   0xA00
+#define PNV_XIVE2_SYNC_NXC_ST_RMT_CI    0xA80
 
 static uint64_t pnv_xive2_ic_sync_read(void *opaque, hwaddr offset,
                                        unsigned size)
@@ -1517,22 +1937,72 @@ static uint64_t pnv_xive2_ic_sync_read(void *opaque, hwaddr offset,
     return -1;
 }
 
+/*
+ * The sync MMIO space spans two pages.  The lower page is use for
+ * queue sync "poll" requests while the upper page is used for queue
+ * sync "inject" requests.  Inject requests require the HW to write
+ * a byte of all 1's to a predetermined location in memory in order
+ * to signal completion of the request.  Both pages have the same
+ * layout, so it is easiest to handle both with a single function.
+ */
 static void pnv_xive2_ic_sync_write(void *opaque, hwaddr offset,
                                     uint64_t val, unsigned size)
 {
     PnvXive2 *xive = PNV_XIVE2(opaque);
+    int inject_type;
+    hwaddr pg_offset_mask = (1ull << xive->ic_shift) - 1;
 
-    switch (offset) {
+    /* adjust offset for inject page */
+    hwaddr adj_offset = offset & pg_offset_mask;
+
+    switch (adj_offset) {
     case PNV_XIVE2_SYNC_IPI:
+        inject_type = PNV_XIVE2_QUEUE_IPI;
+        break;
     case PNV_XIVE2_SYNC_HW:
+        inject_type = PNV_XIVE2_QUEUE_HW;
+        break;
     case PNV_XIVE2_SYNC_NxC:
+        inject_type = PNV_XIVE2_QUEUE_NXC;
+        break;
     case PNV_XIVE2_SYNC_INT:
+        inject_type = PNV_XIVE2_QUEUE_INT;
+        break;
     case PNV_XIVE2_SYNC_OS_ESC:
+        inject_type = PNV_XIVE2_QUEUE_OS;
+        break;
     case PNV_XIVE2_SYNC_POOL_ESC:
+        inject_type = PNV_XIVE2_QUEUE_POOL;
+        break;
     case PNV_XIVE2_SYNC_HARD_ESC:
+        inject_type = PNV_XIVE2_QUEUE_HARD;
+        break;
+    case PNV_XIVE2_SYNC_NXC_LD_LCL_NCO:
+        inject_type = PNV_XIVE2_QUEUE_NXC_LD_LCL_NCO;
+        break;
+    case PNV_XIVE2_SYNC_NXC_LD_LCL_CO:
+        inject_type = PNV_XIVE2_QUEUE_NXC_LD_LCL_CO;
+        break;
+    case PNV_XIVE2_SYNC_NXC_ST_LCL_NCI:
+        inject_type = PNV_XIVE2_QUEUE_NXC_ST_LCL_NCI;
+        break;
+    case PNV_XIVE2_SYNC_NXC_ST_LCL_CI:
+        inject_type = PNV_XIVE2_QUEUE_NXC_ST_LCL_CI;
+        break;
+    case PNV_XIVE2_SYNC_NXC_ST_RMT_NCI:
+        inject_type = PNV_XIVE2_QUEUE_NXC_ST_RMT_NCI;
+        break;
+    case PNV_XIVE2_SYNC_NXC_ST_RMT_CI:
+        inject_type = PNV_XIVE2_QUEUE_NXC_ST_RMT_CI;
         break;
     default:
         xive2_error(xive, "SYNC: invalid write @%"HWADDR_PRIx, offset);
+        return;
+    }
+
+    /* Write Queue Sync notification byte if writing to sync inject page */
+    if ((offset & ~pg_offset_mask) != 0) {
+        pnv_xive2_inject_notify(xive, inject_type);
     }
 }
 
@@ -1560,6 +2030,18 @@ static uint32_t pnv_xive2_ic_tm_get_pir(PnvXive2 *xive, hwaddr offset)
     return xive->chip->chip_id << 8 | offset >> xive->ic_shift;
 }
 
+static uint32_t pnv_xive2_ic_tm_get_hw_page_offset(PnvXive2 *xive,
+                                                   hwaddr offset)
+{
+    /*
+     * Indirect TIMA accesses are similar to direct accesses for
+     * privilege ring 0. So remove any traces of the hw thread ID from
+     * the offset in the IC BAR as it could be interpreted as the ring
+     * privilege when calling the underlying direct access functions.
+     */
+    return offset & ((1ull << xive->ic_shift) - 1);
+}
+
 static XiveTCTX *pnv_xive2_get_indirect_tctx(PnvXive2 *xive, uint32_t pir)
 {
     PnvChip *chip = xive->chip;
@@ -1582,14 +2064,17 @@ static uint64_t pnv_xive2_ic_tm_indirect_read(void *opaque, hwaddr offset,
                                               unsigned size)
 {
     PnvXive2 *xive = PNV_XIVE2(opaque);
+    XivePresenter *xptr = XIVE_PRESENTER(xive);
+    hwaddr hw_page_offset;
     uint32_t pir;
     XiveTCTX *tctx;
     uint64_t val = -1;
 
     pir = pnv_xive2_ic_tm_get_pir(xive, offset);
+    hw_page_offset = pnv_xive2_ic_tm_get_hw_page_offset(xive, offset);
     tctx = pnv_xive2_get_indirect_tctx(xive, pir);
     if (tctx) {
-        val = xive_tctx_tm_read(NULL, tctx, offset, size);
+        val = xive_tctx_tm_read(xptr, tctx, hw_page_offset, size);
     }
 
     return val;
@@ -1599,13 +2084,16 @@ static void pnv_xive2_ic_tm_indirect_write(void *opaque, hwaddr offset,
                                            uint64_t val, unsigned size)
 {
     PnvXive2 *xive = PNV_XIVE2(opaque);
+    XivePresenter *xptr = XIVE_PRESENTER(xive);
+    hwaddr hw_page_offset;
     uint32_t pir;
     XiveTCTX *tctx;
 
     pir = pnv_xive2_ic_tm_get_pir(xive, offset);
+    hw_page_offset = pnv_xive2_ic_tm_get_hw_page_offset(xive, offset);
     tctx = pnv_xive2_get_indirect_tctx(xive, pir);
     if (tctx) {
-        xive_tctx_tm_write(NULL, tctx, offset, val, size);
+        xive_tctx_tm_write(xptr, tctx, hw_page_offset, val, size);
     }
 }
 
@@ -1614,11 +2102,11 @@ static const MemoryRegionOps pnv_xive2_ic_tm_indirect_ops = {
     .write = pnv_xive2_ic_tm_indirect_write,
     .endianness = DEVICE_BIG_ENDIAN,
     .valid = {
-        .min_access_size = 8,
+        .min_access_size = 1,
         .max_access_size = 8,
     },
     .impl = {
-        .min_access_size = 8,
+        .min_access_size = 1,
         .max_access_size = 8,
     },
 };
@@ -1626,17 +2114,6 @@ static const MemoryRegionOps pnv_xive2_ic_tm_indirect_ops = {
 /*
  * TIMA ops
  */
-
-/*
- * Special TIMA offsets to handle accesses in a POWER10 way.
- *
- * Only the CAM line updates done by the hypervisor should be handled
- * specifically.
- */
-#define HV_PAGE_OFFSET         (XIVE_TM_HV_PAGE << TM_SHIFT)
-#define HV_PUSH_OS_CTX_OFFSET  (HV_PAGE_OFFSET | (TM_QW1_OS + TM_WORD2))
-#define HV_PULL_OS_CTX_OFFSET  (HV_PAGE_OFFSET | TM_SPC_PULL_OS_CTX)
-
 static void pnv_xive2_tm_write(void *opaque, hwaddr offset,
                                uint64_t value, unsigned size)
 {
@@ -1644,16 +2121,7 @@ static void pnv_xive2_tm_write(void *opaque, hwaddr offset,
     PnvXive2 *xive = pnv_xive2_tm_get_xive(cpu);
     XiveTCTX *tctx = XIVE_TCTX(pnv_cpu_state(cpu)->intc);
     XivePresenter *xptr = XIVE_PRESENTER(xive);
-    bool gen1_tima_os =
-        xive->cq_regs[CQ_XIVE_CFG >> 3] & CQ_XIVE_CFG_GEN1_TIMA_OS;
 
-    /* TODO: should we switch the TM ops table instead ? */
-    if (!gen1_tima_os && offset == HV_PUSH_OS_CTX_OFFSET) {
-        xive2_tm_push_os_ctx(xptr, tctx, offset, value, size);
-        return;
-    }
-
-    /* Other TM ops are the same as XIVE1 */
     xive_tctx_tm_write(xptr, tctx, offset, value, size);
 }
 
@@ -1663,15 +2131,7 @@ static uint64_t pnv_xive2_tm_read(void *opaque, hwaddr offset, unsigned size)
     PnvXive2 *xive = pnv_xive2_tm_get_xive(cpu);
     XiveTCTX *tctx = XIVE_TCTX(pnv_cpu_state(cpu)->intc);
     XivePresenter *xptr = XIVE_PRESENTER(xive);
-    bool gen1_tima_os =
-        xive->cq_regs[CQ_XIVE_CFG >> 3] & CQ_XIVE_CFG_GEN1_TIMA_OS;
 
-    /* TODO: should we switch the TM ops table instead ? */
-    if (!gen1_tima_os && offset == HV_PULL_OS_CTX_OFFSET) {
-        return xive2_tm_pull_os_ctx(xptr, tctx, offset, size);
-    }
-
-    /* Other TM ops are the same as XIVE1 */
     return xive_tctx_tm_read(xptr, tctx, offset, size);
 }
 
@@ -1775,6 +2235,12 @@ static void pnv_xive2_reset(void *dev)
     /* HW hardwires the #Topology of the chip in the block field */
     xive->cq_regs[CQ_XIVE_CFG >> 3] |=
         SETFIELD(CQ_XIVE_CFG_HYP_HARD_BLOCK_ID, 0ull, xive->chip->chip_id);
+
+    /* VC and PC cache watch assign mechanism */
+    xive->vc_regs[VC_ENDC_CFG >> 3] =
+        SETFIELD(VC_ENDC_CFG_CACHE_WATCH_ASSIGN, 0ull, 0b0111);
+    xive->pc_regs[PC_NXC_PROC_CONFIG >> 3] =
+        SETFIELD(PC_NXC_PROC_CONFIG_WATCH_ASSIGN, 0ull, 0b0111);
 
     /* Set default page size to 64k */
     xive->ic_shift = xive->esb_shift = xive->end_shift = 16;
@@ -1958,12 +2424,15 @@ static void pnv_xive2_class_init(ObjectClass *klass, void *data)
     xrc->write_end = pnv_xive2_write_end;
     xrc->get_nvp   = pnv_xive2_get_nvp;
     xrc->write_nvp = pnv_xive2_write_nvp;
+    xrc->get_nvgc   = pnv_xive2_get_nvgc;
+    xrc->write_nvgc = pnv_xive2_write_nvgc;
     xrc->get_config  = pnv_xive2_get_config;
     xrc->get_block_id = pnv_xive2_get_block_id;
 
     xnc->notify    = pnv_xive2_notify;
 
     xpc->match_nvt  = pnv_xive2_match_nvt;
+    xpc->get_config = pnv_xive2_presenter_get_config;
 };
 
 static const TypeInfo pnv_xive2_info = {
@@ -1985,33 +2454,6 @@ static void pnv_xive2_register_types(void)
 }
 
 type_init(pnv_xive2_register_types)
-
-static void xive2_nvp_pic_print_info(Xive2Nvp *nvp, uint32_t nvp_idx,
-                                     Monitor *mon)
-{
-    uint8_t  eq_blk = xive_get_field32(NVP2_W5_VP_END_BLOCK, nvp->w5);
-    uint32_t eq_idx = xive_get_field32(NVP2_W5_VP_END_INDEX, nvp->w5);
-
-    if (!xive2_nvp_is_valid(nvp)) {
-        return;
-    }
-
-    monitor_printf(mon, "  %08x end:%02x/%04x IPB:%02x",
-                   nvp_idx, eq_blk, eq_idx,
-                   xive_get_field32(NVP2_W2_IPB, nvp->w2));
-    /*
-     * When the NVP is HW controlled, more fields are updated
-     */
-    if (xive2_nvp_is_hw(nvp)) {
-        monitor_printf(mon, " CPPR:%02x",
-                       xive_get_field32(NVP2_W2_CPPR, nvp->w2));
-        if (xive2_nvp_is_co(nvp)) {
-            monitor_printf(mon, " CO:%04x",
-                           xive_get_field32(NVP2_W1_CO_THRID, nvp->w1));
-        }
-    }
-    monitor_printf(mon, "\n");
-}
 
 /*
  * If the table is direct, we can compute the number of PQ entries
@@ -2064,7 +2506,7 @@ static uint64_t pnv_xive2_vst_per_subpage(PnvXive2 *xive, uint32_t type)
     return (1ull << page_shift) / info->size;
 }
 
-void pnv_xive2_pic_print_info(PnvXive2 *xive, Monitor *mon)
+void pnv_xive2_pic_print_info(PnvXive2 *xive, GString *buf)
 {
     Xive2Router *xrtr = XIVE2_ROUTER(xive);
     uint8_t blk = pnv_xive2_block_id(xive);
@@ -2074,42 +2516,62 @@ void pnv_xive2_pic_print_info(PnvXive2 *xive, Monitor *mon)
     Xive2Eas eas;
     Xive2End end;
     Xive2Nvp nvp;
+    Xive2Nvgc nvgc;
     int i;
-    uint64_t xive_nvp_per_subpage;
+    uint64_t entries_per_subpage;
 
-    monitor_printf(mon, "XIVE[%x] Source %08x .. %08x\n", blk, srcno0,
-                   srcno0 + nr_esbs - 1);
-    xive_source_pic_print_info(&xive->ipi_source, srcno0, mon);
+    g_string_append_printf(buf, "XIVE[%x] Source %08x .. %08x\n",
+                           blk, srcno0, srcno0 + nr_esbs - 1);
+    xive_source_pic_print_info(&xive->ipi_source, srcno0, buf);
 
-    monitor_printf(mon, "XIVE[%x] EAT %08x .. %08x\n", blk, srcno0,
-                   srcno0 + nr_esbs - 1);
+    g_string_append_printf(buf, "XIVE[%x] EAT %08x .. %08x\n",
+                           blk, srcno0, srcno0 + nr_esbs - 1);
     for (i = 0; i < nr_esbs; i++) {
         if (xive2_router_get_eas(xrtr, blk, i, &eas)) {
             break;
         }
         if (!xive2_eas_is_masked(&eas)) {
-            xive2_eas_pic_print_info(&eas, i, mon);
+            xive2_eas_pic_print_info(&eas, i, buf);
         }
     }
 
-    monitor_printf(mon, "XIVE[%x] #%d END Escalation EAT\n", chip_id, blk);
+    g_string_append_printf(buf, "XIVE[%x] #%d END Escalation EAT\n",
+                           chip_id, blk);
     i = 0;
     while (!xive2_router_get_end(xrtr, blk, i, &end)) {
-        xive2_end_eas_pic_print_info(&end, i++, mon);
+        xive2_end_eas_pic_print_info(&end, i++, buf);
     }
 
-    monitor_printf(mon, "XIVE[%x] #%d ENDT\n", chip_id, blk);
+    g_string_append_printf(buf, "XIVE[%x] #%d ENDT\n", chip_id, blk);
     i = 0;
     while (!xive2_router_get_end(xrtr, blk, i, &end)) {
-        xive2_end_pic_print_info(&end, i++, mon);
+        xive2_end_pic_print_info(&end, i++, buf);
     }
 
-    monitor_printf(mon, "XIVE[%x] #%d NVPT %08x .. %08x\n", chip_id, blk,
-                   0, XIVE2_NVP_COUNT - 1);
-    xive_nvp_per_subpage = pnv_xive2_vst_per_subpage(xive, VST_NVP);
-    for (i = 0; i < XIVE2_NVP_COUNT; i += xive_nvp_per_subpage) {
+    g_string_append_printf(buf, "XIVE[%x] #%d NVPT %08x .. %08x\n",
+                           chip_id, blk, 0, XIVE2_NVP_COUNT - 1);
+    entries_per_subpage = pnv_xive2_vst_per_subpage(xive, VST_NVP);
+    for (i = 0; i < XIVE2_NVP_COUNT; i += entries_per_subpage) {
         while (!xive2_router_get_nvp(xrtr, blk, i, &nvp)) {
-            xive2_nvp_pic_print_info(&nvp, i++, mon);
+            xive2_nvp_pic_print_info(&nvp, i++, buf);
+        }
+    }
+
+    g_string_append_printf(buf, "XIVE[%x] #%d NVGT %08x .. %08x\n",
+                           chip_id, blk, 0, XIVE2_NVP_COUNT - 1);
+    entries_per_subpage = pnv_xive2_vst_per_subpage(xive, VST_NVG);
+    for (i = 0; i < XIVE2_NVP_COUNT; i += entries_per_subpage) {
+        while (!xive2_router_get_nvgc(xrtr, false, blk, i, &nvgc)) {
+            xive2_nvgc_pic_print_info(&nvgc, i++, buf);
+        }
+    }
+
+    g_string_append_printf(buf, "XIVE[%x] #%d NVCT %08x .. %08x\n",
+                          chip_id, blk, 0, XIVE2_NVP_COUNT - 1);
+    entries_per_subpage = pnv_xive2_vst_per_subpage(xive, VST_NVC);
+    for (i = 0; i < XIVE2_NVP_COUNT; i += entries_per_subpage) {
+        while (!xive2_router_get_nvgc(xrtr, true, blk, i, &nvgc)) {
+            xive2_nvgc_pic_print_info(&nvgc, i++, buf);
         }
     }
 }

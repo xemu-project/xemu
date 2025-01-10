@@ -63,7 +63,7 @@ static void led_set_state_gpio_handler(void *opaque, int line, int new_state)
     LEDState *s = LED(opaque);
 
     assert(line == 0);
-    led_set_state(s, !!new_state != s->gpio_active_high);
+    led_set_state(s, !!new_state == s->gpio_active_high);
 }
 
 static void led_reset(DeviceState *dev)
@@ -77,7 +77,7 @@ static const VMStateDescription vmstate_led = {
     .name = TYPE_LED,
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT8(intensity_percent, LEDState),
         VMSTATE_END_OF_LIST()
     }
@@ -114,7 +114,7 @@ static void led_class_init(ObjectClass *klass, void *data)
 
     dc->desc = "LED";
     dc->vmsd = &vmstate_led;
-    dc->reset = led_reset;
+    device_class_set_legacy_reset(dc, led_reset);
     dc->realize = led_realize;
     set_bit(DEVICE_CATEGORY_DISPLAY, dc->categories);
     device_class_set_props(dc, led_properties);

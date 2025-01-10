@@ -94,7 +94,7 @@ static const VMStateDescription vmstate_lance = {
     .name = "pcnet",
     .version_id = 3,
     .minimum_version_id = 2,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_STRUCT(state, SysBusPCNetState, 0, vmstate_pcnet, PCNetState),
         VMSTATE_END_OF_LIST()
     }
@@ -151,7 +151,7 @@ static void lance_class_init(ObjectClass *klass, void *data)
     dc->realize = lance_realize;
     set_bit(DEVICE_CATEGORY_NETWORK, dc->categories);
     dc->fw_name = "ethernet";
-    dc->reset = lance_reset;
+    device_class_set_legacy_reset(dc, lance_reset);
     dc->vmsd = &vmstate_lance;
     device_class_set_props(dc, lance_properties);
 }

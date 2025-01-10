@@ -292,7 +292,7 @@ static const VMStateDescription vmstate_sclplmconsole = {
     .name = "sclplmconsole",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_BOOL(event.event_pending, SCLPConsoleLM),
         VMSTATE_UINT32(write_errors, SCLPConsoleLM),
         VMSTATE_UINT32(length, SCLPConsoleLM),
@@ -346,7 +346,7 @@ static void console_class_init(ObjectClass *klass, void *data)
     SCLPEventClass *ec = SCLP_EVENT_CLASS(klass);
 
     device_class_set_props(dc, console_properties);
-    dc->reset = console_reset;
+    device_class_set_legacy_reset(dc, console_reset);
     dc->vmsd = &vmstate_sclplmconsole;
     ec->init = console_init;
     ec->get_send_mask = send_mask;

@@ -29,7 +29,6 @@
 #include "qapi/error.h"
 #include "qapi/qapi-events-qdev.h"
 #include "qapi/qmp/qdict.h"
-#include "qapi/qmp/qerror.h"
 #include "qapi/visitor.h"
 #include "qemu/error-report.h"
 #include "qemu/option.h"
@@ -147,31 +146,16 @@ bool qdev_set_parent_bus(DeviceState *dev, BusState *bus, Error **errp)
 
 DeviceState *qdev_new(const char *name)
 {
-    ObjectClass *oc = object_class_by_name(name);
-#ifdef CONFIG_MODULES
-    if (!oc) {
-        int rv = module_load_qom(name, &error_fatal);
-        if (rv > 0) {
-            oc = object_class_by_name(name);
-        } else {
-            error_report("could not find a module for type '%s'", name);
-            exit(1);
-        }
-    }
-#endif
-    if (!oc) {
-        error_report("unknown type '%s'", name);
-        abort();
-    }
     return DEVICE(object_new(name));
 }
 
 DeviceState *qdev_try_new(const char *name)
 {
-    if (!module_object_class_by_name(name)) {
+    ObjectClass *oc = module_object_class_by_name(name);
+    if (!oc) {
         return NULL;
     }
-    return DEVICE(object_new(name));
+    return DEVICE(object_new_with_class(oc));
 }
 
 static QTAILQ_HEAD(, DeviceListener) device_listeners
@@ -248,60 +232,6 @@ void qdev_set_legacy_instance_id(DeviceState *dev, int alias_id,
     assert(!dev->realized);
     dev->instance_id_alias = alias_id;
     dev->alias_required_for_version = required_for_version;
-}
-
-static int qdev_prereset(DeviceState *dev, void *opaque)
-{
-    trace_qdev_reset_tree(dev, object_get_typename(OBJECT(dev)));
-    return 0;
-}
-
-static int qbus_prereset(BusState *bus, void *opaque)
-{
-    trace_qbus_reset_tree(bus, object_get_typename(OBJECT(bus)));
-    return 0;
-}
-
-static int qdev_reset_one(DeviceState *dev, void *opaque)
-{
-    device_legacy_reset(dev);
-
-    return 0;
-}
-
-static int qbus_reset_one(BusState *bus, void *opaque)
-{
-    BusClass *bc = BUS_GET_CLASS(bus);
-    trace_qbus_reset(bus, object_get_typename(OBJECT(bus)));
-    if (bc->reset) {
-        bc->reset(bus);
-    }
-    return 0;
-}
-
-void qdev_reset_all(DeviceState *dev)
-{
-    trace_qdev_reset_all(dev, object_get_typename(OBJECT(dev)));
-    qdev_walk_children(dev, qdev_prereset, qbus_prereset,
-                       qdev_reset_one, qbus_reset_one, NULL);
-}
-
-void qdev_reset_all_fn(void *opaque)
-{
-    qdev_reset_all(DEVICE(opaque));
-}
-
-void qbus_reset_all(BusState *bus)
-{
-    trace_qbus_reset_all(bus, object_get_typename(OBJECT(bus)));
-    qbus_walk_children(bus, qdev_prereset, qbus_prereset,
-                       qdev_reset_one, qbus_reset_one, NULL);
-}
-
-void qbus_reset_all_fn(void *opaque)
-{
-    BusState *bus = opaque;
-    qbus_reset_all(bus);
 }
 
 void device_cold_reset(DeviceState *dev)
@@ -384,7 +314,7 @@ bool qdev_machine_modified(void)
     return qdev_hot_added || qdev_hot_removed;
 }
 
-BusState *qdev_get_parent_bus(DeviceState *dev)
+BusState *qdev_get_parent_bus(const DeviceState *dev)
 {
     return dev->parent_bus;
 }
@@ -493,8 +423,6 @@ void qdev_del_unplug_blocker(DeviceState *dev, Error *reason)
 
 bool qdev_unplug_blocked(DeviceState *dev, Error **errp)
 {
-    ERRP_GUARD();
-
     if (dev->unplug_blockers) {
         error_propagate(errp, error_copy(dev->unplug_blockers->data));
         return true;
@@ -535,7 +463,8 @@ static void device_set_realized(Object *obj, bool value, Error **errp)
     static int unattached_count;
 
     if (dev->hotplugged && !dc->hotpluggable) {
-        error_setg(errp, QERR_DEVICE_NO_HOTPLUG, object_get_typename(obj));
+        error_setg(errp, "Device '%s' does not support hotplugging",
+                   object_get_typename(obj));
         return;
     }
 
@@ -757,7 +686,7 @@ static void device_finalize(Object *obj)
     if (dev->pending_deleted_event) {
         g_assert(dev->canonical_path);
 
-        qapi_event_send_device_deleted(!!dev->id, dev->id, dev->canonical_path);
+        qapi_event_send_device_deleted(dev->id, dev->canonical_path);
         g_free(dev->canonical_path);
         dev->canonical_path = NULL;
     }
@@ -803,57 +732,6 @@ device_vmstate_if_get_id(VMStateIf *obj)
     return qdev_get_dev_path(dev);
 }
 
-/**
- * device_phases_reset:
- * Transition reset method for devices to allow moving
- * smoothly from legacy reset method to multi-phases
- */
-static void device_phases_reset(DeviceState *dev)
-{
-    ResettableClass *rc = RESETTABLE_GET_CLASS(dev);
-
-    if (rc->phases.enter) {
-        rc->phases.enter(OBJECT(dev), RESET_TYPE_COLD);
-    }
-    if (rc->phases.hold) {
-        rc->phases.hold(OBJECT(dev));
-    }
-    if (rc->phases.exit) {
-        rc->phases.exit(OBJECT(dev));
-    }
-}
-
-static void device_transitional_reset(Object *obj)
-{
-    DeviceClass *dc = DEVICE_GET_CLASS(obj);
-
-    /*
-     * This will call either @device_phases_reset (for multi-phases transitioned
-     * devices) or a device's specific method for not-yet transitioned devices.
-     * In both case, it does not reset children.
-     */
-    if (dc->reset) {
-        dc->reset(DEVICE(obj));
-    }
-}
-
-/**
- * device_get_transitional_reset:
- * check if the device's class is ready for multi-phase
- */
-static ResettableTrFunction device_get_transitional_reset(Object *obj)
-{
-    DeviceClass *dc = DEVICE_GET_CLASS(obj);
-    if (dc->reset != device_phases_reset) {
-        /*
-         * dc->reset has been overridden by a subclass,
-         * the device is not ready for multi phase yet.
-         */
-        return device_transitional_reset;
-    }
-    return NULL;
-}
-
 static void device_class_init(ObjectClass *class, void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(class);
@@ -875,20 +753,12 @@ static void device_class_init(ObjectClass *class, void *data)
     rc->child_foreach = device_reset_child_foreach;
 
     /*
-     * @device_phases_reset is put as the default reset method below, allowing
-     * to do the multi-phase transition from base classes to leaf classes. It
-     * allows a legacy-reset Device class to extend a multi-phases-reset
-     * Device class for the following reason:
-     * + If a base class B has been moved to multi-phase, then it does not
-     *   override this default reset method and may have defined phase methods.
-     * + A child class C (extending class B) which uses
-     *   device_class_set_parent_reset() (or similar means) to override the
-     *   reset method will still work as expected. @device_phases_reset function
-     *   will be registered as the parent reset method and effectively call
-     *   parent reset phases.
+     * A NULL legacy_reset implies a three-phase reset device. Devices can
+     * only be reset using three-phase aware mechanisms, but we still support
+     * for transitional purposes leaf classes which set the old legacy_reset
+     * method via device_class_set_legacy_reset().
      */
-    dc->reset = device_phases_reset;
-    rc->get_transitional_function = device_get_transitional_reset;
+    dc->legacy_reset = NULL;
 
     object_class_property_add_bool(class, "realized",
                                    device_get_realized, device_set_realized);
@@ -900,12 +770,30 @@ static void device_class_init(ObjectClass *class, void *data)
                                    offsetof(DeviceState, parent_bus), NULL, 0);
 }
 
-void device_class_set_parent_reset(DeviceClass *dc,
-                                   DeviceReset dev_reset,
-                                   DeviceReset *parent_reset)
+static void do_legacy_reset(Object *obj, ResetType type)
 {
-    *parent_reset = dc->reset;
-    dc->reset = dev_reset;
+    DeviceClass *dc = DEVICE_GET_CLASS(obj);
+
+    dc->legacy_reset(DEVICE(obj));
+}
+
+void device_class_set_legacy_reset(DeviceClass *dc, DeviceReset dev_reset)
+{
+    /*
+     * A legacy DeviceClass::reset has identical semantics to the
+     * three-phase "hold" method, with no "enter" or "exit"
+     * behaviour. Classes that use this legacy function must be leaf
+     * classes that do not chain up to their parent class reset.
+     * There is no mechanism for resetting a device that does not
+     * use the three-phase APIs, so the only place which calls
+     * the legacy_reset hook is do_legacy_reset().
+     */
+    ResettableClass *rc = RESETTABLE_CLASS(dc);
+
+    rc->phases.enter = NULL;
+    rc->phases.hold = do_legacy_reset;
+    rc->phases.exit = NULL;
+    dc->legacy_reset = dev_reset;
 }
 
 void device_class_set_parent_realize(DeviceClass *dc,
@@ -924,16 +812,6 @@ void device_class_set_parent_unrealize(DeviceClass *dc,
     dc->unrealize = dev_unrealize;
 }
 
-void device_legacy_reset(DeviceState *dev)
-{
-    DeviceClass *klass = DEVICE_GET_CLASS(dev);
-
-    trace_qdev_reset(dev, object_get_typename(OBJECT(dev)));
-    if (klass->reset) {
-        klass->reset(dev);
-    }
-}
-
 Object *qdev_get_machine(void)
 {
     static Object *dev;
@@ -943,6 +821,14 @@ Object *qdev_get_machine(void)
     }
 
     return dev;
+}
+
+char *qdev_get_human_name(DeviceState *dev)
+{
+    g_assert(dev != NULL);
+
+    return dev->id ?
+           g_strdup(dev->id) : object_get_canonical_path(OBJECT(dev));
 }
 
 static MachineInitPhase machine_phase;

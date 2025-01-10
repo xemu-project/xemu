@@ -55,6 +55,9 @@
 #define ETHLITE_IRQ         1
 #define UARTLITE_IRQ        3
 
+#define TYPE_PETALOGIX_S3ADSP1800_MACHINE \
+            MACHINE_TYPE_NAME("petalogix-s3adsp1800")
+
 static void
 petalogix_s3adsp1800_init(MachineState *machine)
 {
@@ -71,6 +74,8 @@ petalogix_s3adsp1800_init(MachineState *machine)
 
     cpu = MICROBLAZE_CPU(object_new(TYPE_MICROBLAZE_CPU));
     object_property_set_str(OBJECT(cpu), "version", "7.10.d", &error_abort);
+    object_property_set_bool(OBJECT(cpu), "little-endian",
+                             !TARGET_BIG_ENDIAN, &error_abort);
     qdev_realize(DEVICE(cpu), NULL, &error_abort);
 
     /* Attach emulated BRAM through the LMB.  */
@@ -100,8 +105,11 @@ petalogix_s3adsp1800_init(MachineState *machine)
         irq[i] = qdev_get_gpio_in(dev, i);
     }
 
-    xilinx_uartlite_create(UARTLITE_BASEADDR, irq[UARTLITE_IRQ],
-                           serial_hd(0));
+    dev = qdev_new(TYPE_XILINX_UARTLITE);
+    qdev_prop_set_chr(dev, "chardev", serial_hd(0));
+    sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
+    sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, UARTLITE_BASEADDR);
+    sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, irq[UARTLITE_IRQ]);
 
     /* 2 timers at irq 2 @ 62 Mhz.  */
     dev = qdev_new("xlnx.xps-timer");
@@ -111,16 +119,15 @@ petalogix_s3adsp1800_init(MachineState *machine)
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, TIMER_BASEADDR);
     sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, irq[TIMER_IRQ]);
 
-    qemu_check_nic_model(&nd_table[0], "xlnx.xps-ethernetlite");
     dev = qdev_new("xlnx.xps-ethernetlite");
-    qdev_set_nic_properties(dev, &nd_table[0]);
+    qemu_configure_nic_device(dev, true, NULL);
     qdev_prop_set_uint32(dev, "tx-ping-pong", 0);
     qdev_prop_set_uint32(dev, "rx-ping-pong", 0);
     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, ETHLITE_BASEADDR);
     sysbus_connect_irq(SYS_BUS_DEVICE(dev), 0, irq[ETHLITE_IRQ]);
 
-    create_unimplemented_device("gpio", GPIO_BASEADDR, 0x10000);
+    create_unimplemented_device("xps_gpio", GPIO_BASEADDR, 0x10000);
 
     microblaze_load_kernel(cpu, ddr_base, ram_size,
                            machine->initrd_filename,
@@ -128,11 +135,21 @@ petalogix_s3adsp1800_init(MachineState *machine)
                            NULL);
 }
 
-static void petalogix_s3adsp1800_machine_init(MachineClass *mc)
+static void petalogix_s3adsp1800_machine_class_init(ObjectClass *oc, void *data)
 {
+    MachineClass *mc = MACHINE_CLASS(oc);
+
     mc->desc = "PetaLogix linux refdesign for xilinx Spartan 3ADSP1800";
     mc->init = petalogix_s3adsp1800_init;
     mc->is_default = true;
 }
 
-DEFINE_MACHINE("petalogix-s3adsp1800", petalogix_s3adsp1800_machine_init)
+static const TypeInfo petalogix_s3adsp1800_machine_types[] = {
+    {
+        .name           = TYPE_PETALOGIX_S3ADSP1800_MACHINE,
+        .parent         = TYPE_MACHINE,
+        .class_init     = petalogix_s3adsp1800_machine_class_init,
+    },
+};
+
+DEFINE_TYPES(petalogix_s3adsp1800_machine_types)

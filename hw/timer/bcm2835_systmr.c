@@ -146,7 +146,7 @@ static const VMStateDescription bcm2835_systmr_vmstate = {
     .name = "bcm2835_sys_timer",
     .version_id = 1,
     .minimum_version_id = 1,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_UINT32(reg.ctrl_status, BCM2835SystemTimerState),
         VMSTATE_UINT32_ARRAY(reg.compare, BCM2835SystemTimerState,
                              BCM2835_SYSTIMER_COUNT),
@@ -159,7 +159,7 @@ static void bcm2835_systmr_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = bcm2835_systmr_realize;
-    dc->reset = bcm2835_systmr_reset;
+    device_class_set_legacy_reset(dc, bcm2835_systmr_reset);
     dc->vmsd = &bcm2835_systmr_vmstate;
 }
 

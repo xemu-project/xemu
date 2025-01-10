@@ -21,15 +21,14 @@
 #include "qemu/osdep.h"
 #include "qemu/log.h"
 #include "cpu.h"
-#include "s390x-internal.h"
 #include "exec/helper-proto.h"
-#include "qemu/timer.h"
 #include "exec/exec-all.h"
-#include "exec/cpu_ldst.h"
-#include "hw/s390x/ioinst.h"
-#include "exec/address-spaces.h"
+#include "s390x-internal.h"
 #include "tcg_s390x.h"
 #ifndef CONFIG_USER_ONLY
+#include "qemu/timer.h"
+#include "exec/address-spaces.h"
+#include "hw/s390x/ioinst.h"
 #include "hw/s390x/s390_flic.h"
 #include "hw/boards.h"
 #endif
@@ -85,16 +84,13 @@ void HELPER(data_exception)(CPUS390XState *env, uint32_t dxc)
 
 /*
  * Unaligned accesses are only diagnosed with MO_ALIGN.  At the moment,
- * this is only for the atomic operations, for which we want to raise a
- * specification exception.
+ * this is only for the atomic and relative long operations, for which we want
+ * to raise a specification exception.
  */
 static G_NORETURN
 void do_unaligned_access(CPUState *cs, uintptr_t retaddr)
 {
-    S390CPU *cpu = S390_CPU(cs);
-    CPUS390XState *env = &cpu->env;
-
-    tcg_s390_program_interrupt(env, PGM_SPECIFICATION, retaddr);
+    tcg_s390_program_interrupt(cpu_env(cs), PGM_SPECIFICATION, retaddr);
 }
 
 #if defined(CONFIG_USER_ONLY)
@@ -147,8 +143,7 @@ bool s390_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                        MMUAccessType access_type, int mmu_idx,
                        bool probe, uintptr_t retaddr)
 {
-    S390CPU *cpu = S390_CPU(cs);
-    CPUS390XState *env = &cpu->env;
+    CPUS390XState *env = cpu_env(cs);
     target_ulong vaddr, raddr;
     uint64_t asc, tec;
     int prot, excp;
@@ -190,11 +185,6 @@ bool s390_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
         return false;
     }
 
-    if (excp != PGM_ADDRESSING) {
-        stq_phys(env_cpu(env)->as,
-                 env->psa + offsetof(LowCore, trans_exc_code), tec);
-    }
-
     /*
      * For data accesses, ILEN will be filled in from the unwind info,
      * within cpu_loop_exit_restore.  For code accesses, retaddr == 0,
@@ -211,19 +201,33 @@ static void do_program_interrupt(CPUS390XState *env)
     uint64_t mask, addr;
     LowCore *lowcore;
     int ilen = env->int_pgm_ilen;
+    bool set_trans_exc_code = false;
+    bool advance = false;
 
-    assert(ilen == 2 || ilen == 4 || ilen == 6);
+    assert((env->int_pgm_code == PGM_SPECIFICATION && ilen == 0) ||
+           ilen == 2 || ilen == 4 || ilen == 6);
 
     switch (env->int_pgm_code) {
     case PGM_PER:
-        if (env->per_perc_atmid & PER_CODE_EVENT_NULLIFICATION) {
-            break;
-        }
-        /* FALL THROUGH */
+        /* advance already handled */
+        break;
+    case PGM_ASCE_TYPE:
+    case PGM_REG_FIRST_TRANS:
+    case PGM_REG_SEC_TRANS:
+    case PGM_REG_THIRD_TRANS:
+    case PGM_SEGMENT_TRANS:
+    case PGM_PAGE_TRANS:
+        assert(env->int_pgm_code == env->tlb_fill_exc);
+        set_trans_exc_code = true;
+        break;
+    case PGM_PROTECTION:
+        assert(env->int_pgm_code == env->tlb_fill_exc);
+        set_trans_exc_code = true;
+        advance = true;
+        break;
     case PGM_OPERATION:
     case PGM_PRIVILEGED:
     case PGM_EXECUTE:
-    case PGM_PROTECTION:
     case PGM_ADDRESSING:
     case PGM_SPECIFICATION:
     case PGM_DATA:
@@ -242,9 +246,13 @@ static void do_program_interrupt(CPUS390XState *env)
     case PGM_PC_TRANS_SPEC:
     case PGM_ALET_SPEC:
     case PGM_MONITOR:
-        /* advance the PSW if our exception is not nullifying */
-        env->psw.addr += ilen;
+        advance = true;
         break;
+    }
+
+    /* advance the PSW if our exception is not nullifying */
+    if (advance) {
+        env->psw.addr += ilen;
     }
 
     qemu_log_mask(CPU_LOG_INT,
@@ -260,6 +268,10 @@ static void do_program_interrupt(CPUS390XState *env)
         lowcore->per_address = cpu_to_be64(env->per_address);
         lowcore->per_perc_atmid = cpu_to_be16(env->per_perc_atmid);
         env->per_perc_atmid = 0;
+    }
+
+    if (set_trans_exc_code) {
+        lowcore->trans_exc_code = cpu_to_be64(env->tlb_fill_tec);
     }
 
     lowcore->pgm_ilen = cpu_to_be16(ilen);
@@ -584,8 +596,7 @@ bool s390_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
 
 void s390x_cpu_debug_excp_handler(CPUState *cs)
 {
-    S390CPU *cpu = S390_CPU(cs);
-    CPUS390XState *env = &cpu->env;
+    CPUS390XState *env = cpu_env(cs);
     CPUWatchpoint *wp_hit = cs->watchpoint_hit;
 
     if (wp_hit && wp_hit->flags & BP_CPU) {
@@ -638,7 +649,7 @@ void monitor_event(CPUS390XState *env,
 void HELPER(monitor_call)(CPUS390XState *env, uint64_t monitor_code,
                           uint32_t monitor_class)
 {
-    g_assert(monitor_class <= 0xff);
+    g_assert(monitor_class <= 0xf);
 
     if (env->cregs[8] & (0x8000 >> monitor_class)) {
         monitor_event(env, monitor_code, monitor_class, GETPC());

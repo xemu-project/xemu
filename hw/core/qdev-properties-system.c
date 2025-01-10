@@ -18,6 +18,7 @@
 #include "qapi/qapi-types-block.h"
 #include "qapi/qapi-types-machine.h"
 #include "qapi/qapi-types-migration.h"
+#include "qapi/qapi-visit-virtio.h"
 #include "qapi/qmp/qerror.h"
 #include "qemu/ctype.h"
 #include "qemu/cutils.h"
@@ -32,6 +33,8 @@
 #include "sysemu/blockdev.h"
 #include "net/net.h"
 #include "hw/pci/pci.h"
+#include "hw/pci/pcie.h"
+#include "hw/i386/x86.h"
 #include "util/block-helpers.h"
 
 static bool check_prop_still_unset(Object *obj, const char *name,
@@ -55,6 +58,32 @@ static bool check_prop_still_unset(Object *obj, const char *name,
     return false;
 }
 
+bool qdev_prop_sanitize_s390x_loadparm(uint8_t *loadparm, const char *str,
+                                       Error **errp)
+{
+    int i, len;
+
+    len = strlen(str);
+    if (len > 8) {
+        error_setg(errp, "'loadparm' can only contain up to 8 characters");
+        return false;
+    }
+
+    for (i = 0; i < len; i++) {
+        uint8_t c = qemu_toupper(str[i]); /* mimic HMC */
+
+        if (qemu_isalnum(c) || c == '.' || c == ' ') {
+            loadparm[i] = c;
+        } else {
+            error_setg(errp,
+                       "invalid character in 'loadparm': '%c' (ASCII 0x%02x)",
+                       c, c);
+            return false;
+        }
+    }
+
+    return true;
+}
 
 /* --- drive --- */
 
@@ -105,7 +134,7 @@ static void set_drive_helper(Object *obj, Visitor *v, const char *name,
     }
 
     if (*ptr) {
-        /* BlockBackend alread exists. So, we want to change attached node */
+        /* BlockBackend already exists. So, we want to change attached node */
         blk = *ptr;
         ctx = blk_get_aio_context(blk);
         bs = bdrv_lookup_bs(NULL, str, errp);
@@ -118,9 +147,7 @@ static void set_drive_helper(Object *obj, Visitor *v, const char *name,
                        "node");
         }
 
-        aio_context_acquire(ctx);
         blk_replace_bs(blk, bs, errp);
-        aio_context_release(ctx);
         return;
     }
 
@@ -141,8 +168,9 @@ static void set_drive_helper(Object *obj, Visitor *v, const char *name,
              * aware of iothreads require their BlockBackends to be in the main
              * AioContext.
              */
-            ctx = iothread ? bdrv_get_aio_context(bs) : qemu_get_aio_context();
-            blk = blk_new(ctx, 0, BLK_PERM_ALL);
+            ctx = bdrv_get_aio_context(bs);
+            blk = blk_new(iothread ? ctx : qemu_get_aio_context(),
+                          0, BLK_PERM_ALL);
             blk_created = true;
 
             ret = blk_insert_bs(blk, bs, errp);
@@ -201,12 +229,8 @@ static void release_drive(Object *obj, const char *name, void *opaque)
     BlockBackend **ptr = object_field_prop_ptr(obj, prop);
 
     if (*ptr) {
-        AioContext *ctx = blk_get_aio_context(*ptr);
-
-        aio_context_acquire(ctx);
         blockdev_auto_del(*ptr);
         blk_detach_dev(*ptr, dev);
-        aio_context_release(ctx);
     }
 }
 
@@ -244,6 +268,7 @@ static void get_chr(Object *obj, Visitor *v, const char *name, void *opaque,
 static void set_chr(Object *obj, Visitor *v, const char *name, void *opaque,
                     Error **errp)
 {
+    ERRP_GUARD();
     Property *prop = opaque;
     CharBackend *be = object_field_prop_ptr(obj, prop);
     Chardev *s;
@@ -444,7 +469,7 @@ static void set_netdev(Object *obj, Visitor *v, const char *name,
     peers_ptr->queues = queues;
 
 out:
-    error_set_from_qdev_prop_error(errp, err, obj, name, str);
+    error_set_from_qdev_prop_error(errp, err, obj, prop->name, str);
     g_free(str);
 }
 
@@ -474,24 +499,16 @@ static void set_audiodev(Object *obj, Visitor *v, const char* name,
     Property *prop = opaque;
     QEMUSoundCard *card = object_field_prop_ptr(obj, prop);
     AudioState *state;
-    int err = 0;
-    char *str;
+    g_autofree char *str = NULL;
 
     if (!visit_type_str(v, name, &str, errp)) {
         return;
     }
 
-    state = audio_state_by_name(str);
-
-    if (!state) {
-        err = -ENOENT;
-        goto out;
+    state = audio_state_by_name(str, errp);
+    if (state) {
+        card->state = state;
     }
-    card->state = state;
-
-out:
-    error_set_from_qdev_prop_error(errp, err, obj, name, str);
-    g_free(str);
 }
 
 const PropertyInfo qdev_prop_audiodev = {
@@ -557,13 +574,38 @@ void qdev_set_nic_properties(DeviceState *dev, NICInfo *nd)
 
 /* --- lost tick policy --- */
 
+static void qdev_propinfo_set_losttickpolicy(Object *obj, Visitor *v,
+                                             const char *name, void *opaque,
+                                             Error **errp)
+{
+    Property *prop = opaque;
+    int *ptr = object_field_prop_ptr(obj, prop);
+    int value;
+
+    if (!visit_type_enum(v, name, &value, prop->info->enum_table, errp)) {
+        return;
+    }
+
+    if (value == LOST_TICK_POLICY_SLEW) {
+        MachineState *ms = MACHINE(qdev_get_machine());
+
+        if (!object_dynamic_cast(OBJECT(ms), TYPE_X86_MACHINE)) {
+            error_setg(errp,
+                       "the 'slew' policy is only available for x86 machines");
+            return;
+        }
+    }
+
+    *ptr = value;
+}
+
 QEMU_BUILD_BUG_ON(sizeof(LostTickPolicy) != sizeof(int));
 
 const PropertyInfo qdev_prop_losttickpolicy = {
     .name  = "LostTickPolicy",
     .enum_table  = &LostTickPolicy_lookup,
     .get   = qdev_propinfo_get_enum,
-    .set   = qdev_propinfo_set_enum,
+    .set   = qdev_propinfo_set_losttickpolicy,
     .set_default_value = qdev_propinfo_set_default_value_enum,
 };
 
@@ -572,18 +614,14 @@ const PropertyInfo qdev_prop_losttickpolicy = {
 static void set_blocksize(Object *obj, Visitor *v, const char *name,
                           void *opaque, Error **errp)
 {
-    DeviceState *dev = DEVICE(obj);
     Property *prop = opaque;
     uint32_t *ptr = object_field_prop_ptr(obj, prop);
     uint64_t value;
-    Error *local_err = NULL;
 
     if (!visit_type_size(v, name, &value, errp)) {
         return;
     }
-    check_block_size(dev->id ? : "", name, value, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!check_block_size(name, value, errp)) {
         return;
     }
     *ptr = value;
@@ -643,8 +681,46 @@ const PropertyInfo qdev_prop_fdc_drive_type = {
 const PropertyInfo qdev_prop_multifd_compression = {
     .name = "MultiFDCompression",
     .description = "multifd_compression values, "
-                   "none/zlib/zstd",
+                   "none/zlib/zstd/qpl/uadk/qatzip",
     .enum_table = &MultiFDCompression_lookup,
+    .get = qdev_propinfo_get_enum,
+    .set = qdev_propinfo_set_enum,
+    .set_default_value = qdev_propinfo_set_default_value_enum,
+};
+
+/* --- MigMode --- */
+
+QEMU_BUILD_BUG_ON(sizeof(MigMode) != sizeof(int));
+
+const PropertyInfo qdev_prop_mig_mode = {
+    .name = "MigMode",
+    .description = "mig_mode values, "
+                   "normal,cpr-reboot",
+    .enum_table = &MigMode_lookup,
+    .get = qdev_propinfo_get_enum,
+    .set = qdev_propinfo_set_enum,
+    .set_default_value = qdev_propinfo_set_default_value_enum,
+};
+
+/* --- GranuleMode --- */
+
+QEMU_BUILD_BUG_ON(sizeof(GranuleMode) != sizeof(int));
+
+const PropertyInfo qdev_prop_granule_mode = {
+    .name = "GranuleMode",
+    .description = "granule_mode values, "
+                   "4k, 8k, 16k, 64k, host",
+    .enum_table = &GranuleMode_lookup,
+    .get = qdev_propinfo_get_enum,
+    .set = qdev_propinfo_set_enum,
+    .set_default_value = qdev_propinfo_set_default_value_enum,
+};
+
+const PropertyInfo qdev_prop_zero_page_detection = {
+    .name = "ZeroPageDetection",
+    .description = "zero_page_detection values, "
+                   "none,legacy,multifd",
+    .enum_table = &ZeroPageDetection_lookup,
     .get = qdev_propinfo_get_enum,
     .set = qdev_propinfo_set_enum,
     .set_default_value = qdev_propinfo_set_default_value_enum,
@@ -668,7 +744,7 @@ static void get_reserved_region(Object *obj, Visitor *v, const char *name,
     int rc;
 
     rc = snprintf(buffer, sizeof(buffer), "0x%"PRIx64":0x%"PRIx64":%u",
-                  rr->low, rr->high, rr->type);
+                  range_lob(&rr->range), range_upb(&rr->range), rr->type);
     assert(rc < sizeof(buffer));
 
     visit_type_str(v, name, &p, errp);
@@ -679,18 +755,16 @@ static void set_reserved_region(Object *obj, Visitor *v, const char *name,
 {
     Property *prop = opaque;
     ReservedRegion *rr = object_field_prop_ptr(obj, prop);
-    Error *local_err = NULL;
     const char *endptr;
+    uint64_t lob, upb;
     char *str;
     int ret;
 
-    visit_type_str(v, name, &str, &local_err);
-    if (local_err) {
-        error_propagate(errp, local_err);
+    if (!visit_type_str(v, name, &str, errp)) {
         return;
     }
 
-    ret = qemu_strtou64(str, &endptr, 16, &rr->low);
+    ret = qemu_strtou64(str, &endptr, 16, &lob);
     if (ret) {
         error_setg(errp, "start address of '%s'"
                    " must be a hexadecimal integer", name);
@@ -700,7 +774,7 @@ static void set_reserved_region(Object *obj, Visitor *v, const char *name,
         goto separator_error;
     }
 
-    ret = qemu_strtou64(endptr + 1, &endptr, 16, &rr->high);
+    ret = qemu_strtou64(endptr + 1, &endptr, 16, &upb);
     if (ret) {
         error_setg(errp, "end address of '%s'"
                    " must be a hexadecimal integer", name);
@@ -709,6 +783,8 @@ static void set_reserved_region(Object *obj, Visitor *v, const char *name,
     if (*endptr != ':') {
         goto separator_error;
     }
+
+    range_set_bounds(&rr->range, lob, upb);
 
     ret = qemu_strtoui(endptr + 1, &endptr, 10, &rr->type);
     if (ret) {
@@ -740,39 +816,57 @@ static void set_pci_devfn(Object *obj, Visitor *v, const char *name,
                           void *opaque, Error **errp)
 {
     Property *prop = opaque;
+    g_autofree GenericAlternate *alt;
     int32_t value, *ptr = object_field_prop_ptr(obj, prop);
     unsigned int slot, fn, n;
-    char *str;
+    g_autofree char *str = NULL;
 
-    if (!visit_type_str(v, name, &str, NULL)) {
+    if (!visit_start_alternate(v, name, &alt, sizeof(*alt), errp)) {
+        return;
+    }
+
+    switch (alt->type) {
+    case QTYPE_QSTRING:
+        if (!visit_type_str(v, name, &str, errp)) {
+            goto out;
+        }
+
+        if (sscanf(str, "%x.%x%n", &slot, &fn, &n) != 2) {
+            fn = 0;
+            if (sscanf(str, "%x%n", &slot, &n) != 1) {
+                goto invalid;
+            }
+        }
+        if (str[n] != '\0' || fn > 7 || slot > 31) {
+            goto invalid;
+        }
+        *ptr = slot << 3 | fn;
+        break;
+
+    case QTYPE_QNUM:
         if (!visit_type_int32(v, name, &value, errp)) {
-            return;
+            goto out;
         }
         if (value < -1 || value > 255) {
             error_setg(errp, QERR_INVALID_PARAMETER_VALUE,
                        name ? name : "null", "a value between -1 and 255");
-            return;
+            goto out;
         }
         *ptr = value;
-        return;
+        break;
+
+    default:
+        error_setg(errp, "Invalid parameter type for '%s', expected int or str",
+                   name ? name : "null");
+        goto out;
     }
 
-    if (sscanf(str, "%x.%x%n", &slot, &fn, &n) != 2) {
-        fn = 0;
-        if (sscanf(str, "%x%n", &slot, &n) != 1) {
-            goto invalid;
-        }
-    }
-    if (str[n] != '\0' || fn > 7 || slot > 31) {
-        goto invalid;
-    }
-    *ptr = slot << 3 | fn;
-    g_free(str);
-    return;
+    goto out;
 
 invalid:
     error_set_from_qdev_prop_error(errp, EINVAL, obj, name, str);
-    g_free(str);
+out:
+    visit_end_alternate(v, (void **) &alt);
 }
 
 static int print_pci_devfn(Object *obj, Property *prop, char *dest,
@@ -912,7 +1006,7 @@ const PropertyInfo qdev_prop_off_auto_pcibar = {
     .set_default_value = qdev_propinfo_set_default_value_enum,
 };
 
-/* --- PCIELinkSpeed 2_5/5/8/16 -- */
+/* --- PCIELinkSpeed 2_5/5/8/16/32/64 -- */
 
 static void get_prop_pcielinkspeed(Object *obj, Visitor *v, const char *name,
                                    void *opaque, Error **errp)
@@ -933,6 +1027,12 @@ static void get_prop_pcielinkspeed(Object *obj, Visitor *v, const char *name,
         break;
     case QEMU_PCI_EXP_LNK_16GT:
         speed = PCIE_LINK_SPEED_16;
+        break;
+    case QEMU_PCI_EXP_LNK_32GT:
+        speed = PCIE_LINK_SPEED_32;
+        break;
+    case QEMU_PCI_EXP_LNK_64GT:
+        speed = PCIE_LINK_SPEED_64;
         break;
     default:
         /* Unreachable */
@@ -967,6 +1067,12 @@ static void set_prop_pcielinkspeed(Object *obj, Visitor *v, const char *name,
     case PCIE_LINK_SPEED_16:
         *p = QEMU_PCI_EXP_LNK_16GT;
         break;
+    case PCIE_LINK_SPEED_32:
+        *p = QEMU_PCI_EXP_LNK_32GT;
+        break;
+    case PCIE_LINK_SPEED_64:
+        *p = QEMU_PCI_EXP_LNK_64GT;
+        break;
     default:
         /* Unreachable */
         abort();
@@ -975,7 +1081,7 @@ static void set_prop_pcielinkspeed(Object *obj, Visitor *v, const char *name,
 
 const PropertyInfo qdev_prop_pcie_link_speed = {
     .name = "PCIELinkSpeed",
-    .description = "2_5/5/8/16",
+    .description = "2_5/5/8/16/32/64",
     .enum_table = &PCIELinkSpeed_lookup,
     .get = get_prop_pcielinkspeed,
     .set = set_prop_pcielinkspeed,
@@ -1077,7 +1183,7 @@ static void get_uuid(Object *obj, Visitor *v, const char *name, void *opaque,
 {
     Property *prop = opaque;
     QemuUUID *uuid = object_field_prop_ptr(obj, prop);
-    char buffer[UUID_FMT_LEN + 1];
+    char buffer[UUID_STR_LEN];
     char *p = buffer;
 
     qemu_uuid_unparse(uuid, buffer);
@@ -1118,4 +1224,62 @@ const PropertyInfo qdev_prop_uuid = {
     .get   = get_uuid,
     .set   = set_uuid,
     .set_default_value = set_default_uuid_auto,
+};
+
+/* --- s390 cpu entitlement policy --- */
+
+QEMU_BUILD_BUG_ON(sizeof(S390CpuEntitlement) != sizeof(int));
+
+const PropertyInfo qdev_prop_cpus390entitlement = {
+    .name  = "S390CpuEntitlement",
+    .description = "low/medium (default)/high",
+    .enum_table  = &S390CpuEntitlement_lookup,
+    .get   = qdev_propinfo_get_enum,
+    .set   = qdev_propinfo_set_enum,
+    .set_default_value = qdev_propinfo_set_default_value_enum,
+};
+
+/* --- IOThreadVirtQueueMappingList --- */
+
+static void get_iothread_vq_mapping_list(Object *obj, Visitor *v,
+        const char *name, void *opaque, Error **errp)
+{
+    IOThreadVirtQueueMappingList **prop_ptr =
+        object_field_prop_ptr(obj, opaque);
+
+    visit_type_IOThreadVirtQueueMappingList(v, name, prop_ptr, errp);
+}
+
+static void set_iothread_vq_mapping_list(Object *obj, Visitor *v,
+        const char *name, void *opaque, Error **errp)
+{
+    IOThreadVirtQueueMappingList **prop_ptr =
+        object_field_prop_ptr(obj, opaque);
+    IOThreadVirtQueueMappingList *list;
+
+    if (!visit_type_IOThreadVirtQueueMappingList(v, name, &list, errp)) {
+        return;
+    }
+
+    qapi_free_IOThreadVirtQueueMappingList(*prop_ptr);
+    *prop_ptr = list;
+}
+
+static void release_iothread_vq_mapping_list(Object *obj,
+        const char *name, void *opaque)
+{
+    IOThreadVirtQueueMappingList **prop_ptr =
+        object_field_prop_ptr(obj, opaque);
+
+    qapi_free_IOThreadVirtQueueMappingList(*prop_ptr);
+    *prop_ptr = NULL;
+}
+
+const PropertyInfo qdev_prop_iothread_vq_mapping_list = {
+    .name = "IOThreadVirtQueueMappingList",
+    .description = "IOThread virtqueue mapping list [{\"iothread\":\"<id>\", "
+                   "\"vqs\":[1,2,3,...]},...]",
+    .get = get_iothread_vq_mapping_list,
+    .set = set_iothread_vq_mapping_list,
+    .release = release_iothread_vq_mapping_list,
 };

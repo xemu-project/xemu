@@ -11,6 +11,7 @@
  */
 
 #include "qemu/osdep.h"
+#include "block/block-io.h"
 #include "block/block_int.h"
 #include "block/write-threshold.h"
 #include "qapi/error.h"
@@ -32,7 +33,6 @@ void qmp_block_set_write_threshold(const char *node_name,
                                    Error **errp)
 {
     BlockDriverState *bs;
-    AioContext *aio_context;
 
     bs = bdrv_find_node(node_name);
     if (!bs) {
@@ -40,12 +40,7 @@ void qmp_block_set_write_threshold(const char *node_name,
         return;
     }
 
-    aio_context = bdrv_get_aio_context(bs);
-    aio_context_acquire(aio_context);
-
     bdrv_write_threshold_set(bs, threshold_bytes);
-
-    aio_context_release(aio_context);
 }
 
 void bdrv_write_threshold_check_write(BlockDriverState *bs, int64_t offset,

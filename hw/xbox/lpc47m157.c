@@ -2,7 +2,7 @@
  * QEMU SMSC LPC47M157 (Super I/O)
  *
  * Copyright (c) 2013 espes
- * Copyright (c) 2018-2021 Matt Borgerson
+ * Copyright (c) 2018-2025 Matt Borgerson
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -127,7 +127,6 @@ static void update_devices(ISALPC47M157State *isa)
             memory_region_init_io(&ss->io, OBJECT(s),
                                   &serial_io_ops, ss, "serial", 8);
             isa_register_ioport(NULL, &ss->io, iobase);
-            serial_set_frequency(ss, 115200);
             serial->iobase = iobase;
             serial->irq = irq;
             serial->active = true;

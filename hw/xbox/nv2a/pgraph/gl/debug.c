@@ -21,7 +21,7 @@
 #include "renderer.h"
 #include "debug.h"
 
-#ifdef DEBUG_NV2A_GL
+#if DEBUG_NV2A_GL
 
 #include <stdio.h>
 #include <stdbool.h>

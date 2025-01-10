@@ -30,7 +30,7 @@
 /*#define IB700_DEBUG 1*/
 
 #ifdef IB700_DEBUG
-#define ib700_debug(fs,...)					\
+#define ib700_debug(fs,...)                                    \
     fprintf(stderr,"ib700: %s: "fs,__func__,##__VA_ARGS__)
 #else
 #define ib700_debug(fs,...)
@@ -95,7 +95,7 @@ static const VMStateDescription vmstate_ib700 = {
     .name = "ib700_wdt",
     .version_id = 0,
     .minimum_version_id = 0,
-    .fields = (VMStateField[]) {
+    .fields = (const VMStateField[]) {
         VMSTATE_TIMER_PTR(timer, IB700State),
         VMSTATE_END_OF_LIST()
     }
@@ -133,7 +133,7 @@ static void wdt_ib700_class_init(ObjectClass *klass, void *data)
     DeviceClass *dc = DEVICE_CLASS(klass);
 
     dc->realize = wdt_ib700_realize;
-    dc->reset = wdt_ib700_reset;
+    device_class_set_legacy_reset(dc, wdt_ib700_reset);
     dc->vmsd = &vmstate_ib700;
     set_bit(DEVICE_CATEGORY_WATCHDOG, dc->categories);
     dc->desc = "iBASE 700";
