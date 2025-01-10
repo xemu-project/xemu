@@ -29,7 +29,10 @@ endif
 libfpng = static_library('fpng', sources: 'fpng/fpng.cpp', cpp_args: libfpng_cpp_args)
 fpng = declare_dependency(include_directories: 'fpng', link_with: libfpng)
 
-json = declare_dependency(include_directories: 'json')
+json = dependency('nlohmann_json', required: false)
+if not json.found()
+  json = declare_dependency(include_directories: 'json')
+endif
 
-libfatx = static_library('fatx', sources: 'fatx/fatx.c')
+libfatx = static_library('fatx', sources: files('fatx/fatx.c') + genh)
 fatx = declare_dependency(include_directories: 'fatx', link_with: libfatx)

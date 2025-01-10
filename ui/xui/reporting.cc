@@ -26,7 +26,7 @@
 #include <glib/gi18n.h>
 #include <stdio.h>
 #include "reporting.hh"
-#include <json.hpp>
+#include <nlohmann/json.hpp>
 using json = nlohmann::json;
 
 static const char *compat_report_endpoint_url = "https://reports.xemu.app/compatibility";
