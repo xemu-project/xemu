@@ -334,6 +334,7 @@ typedef struct PGRAPHVkState {
     bool memory_budget_extension_enabled;
 
     VkPhysicalDevice physical_device;
+    VkPhysicalDeviceFeatures physical_device_features;
     VkPhysicalDeviceProperties device_props;
     VkDevice device;
     VmaAllocator allocator;
