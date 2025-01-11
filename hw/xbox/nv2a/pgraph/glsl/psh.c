@@ -728,8 +728,6 @@ static void apply_convolution_filter(const struct PixelShader *ps, MString *vars
 
 static MString* psh_convert(struct PixelShader *ps)
 {
-    int i;
-
     bool z_perspective = ps->state.z_perspective;
     bool tex = ps->state.texture_perspective;
     const char *u = ps->state.vulkan ? "" : "uniform "; // FIXME: Remove
@@ -895,7 +893,7 @@ static MString* psh_convert(struct PixelShader *ps)
 
     ps->code = mstring_new();
 
-    for (i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++) {
 
         const char *sampler_type = get_sampler_type(ps->tex_modes[i], &ps->state, i);
 
