@@ -250,9 +250,9 @@ static MString* get_var(struct PixelShader *ps, int reg, bool is_dest)
         break;
     case PS_REGISTER_C0:
         if (ps->flags & PS_COMBINERCOUNT_UNIQUE_C0 || ps->cur_stage == 8) {
-            MString *reg = mstring_from_fmt("c0_%d", ps->cur_stage);
-            add_const_ref(ps, mstring_get_str(reg));
-            return reg;
+            MString *reg_name = mstring_from_fmt("c0_%d", ps->cur_stage);
+            add_const_ref(ps, mstring_get_str(reg_name));
+            return reg_name;
         } else {  // Same c0
             add_const_ref(ps, "c0_0");
             return mstring_from_str("c0_0");
@@ -260,9 +260,9 @@ static MString* get_var(struct PixelShader *ps, int reg, bool is_dest)
         break;
     case PS_REGISTER_C1:
         if (ps->flags & PS_COMBINERCOUNT_UNIQUE_C1 || ps->cur_stage == 8) {
-            MString *reg = mstring_from_fmt("c1_%d", ps->cur_stage);
-            add_const_ref(ps, mstring_get_str(reg));
-            return reg;
+            MString *reg_name = mstring_from_fmt("c1_%d", ps->cur_stage);
+            add_const_ref(ps, mstring_get_str(reg_name));
+            return reg_name;
         } else {  // Same c1
             add_const_ref(ps, "c1_0");
             return mstring_from_str("c1_0");
@@ -726,7 +726,7 @@ static void apply_convolution_filter(const struct PixelShader *ps, MString *vars
         "}\n", tex, tex, tex, tex, tex_remap, tex);
 }
 
-static MString *psh_convert(struct PixelShader *ps)
+static MString* psh_convert(struct PixelShader *ps)
 {
     int i;
 
